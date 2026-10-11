@@ -914,7 +914,7 @@ local function buildCloud(parent, A)
 	local puffs, rim = {}, {}
 	-- walk the outline from a point inside it (the footprint is star-shaped around it)
 	local cx, cz = 0, -70
-	for deg = 0, 359, 9 do
+	for deg = 0, 359, 18 do
 		local a = rad(deg + rng:Float(-2, 2))
 		local dx, dz = cos(a), sin(a)
 		local r = 0
@@ -923,30 +923,30 @@ local function buildCloud(parent, A)
 		end
 		local bx, bz = cx + dx * r, cz + dz * r
 		local front = bz < ISL.FrontZ + 30 and abs(bx) < 24 -- the bridge docks here: keep it open and flat
-		local s = rng:Float(11, 15)
-		puffs[#puffs + 1] = { bx + dx * rng:Float(1, 4), rng:Float(-9, -5), bz + dz * rng:Float(1, 4), s, s * rng:Float(0.55, 0.7), s }
-		if not front and deg % 18 == 0 then
+		local s = rng:Float(12, 15)
+		puffs[#puffs + 1] = { bx - dx * rng:Float(0, 2), rng:Float(-10, -6), bz - dz * rng:Float(0, 2), s, s * rng:Float(0.55, 0.7), s }
+		if not front and deg % 36 == 0 then
 			local s2 = rng:Float(5.5, 7.5)
 			rim[#rim + 1] = { bx - dx * 1.5, rng:Float(-0.5, 1), bz - dz * 1.5, s2, s2 * 0.62, s2 }
 		end
 	end
 	-- a hanging belly: big lumps under the middle, narrowing down
-	for i = 1, 6 do
+	for i = 1, 5 do
 		local a = rng:Float(0, pi * 2)
 		local d = rng:Float(10, 60)
-		local s = rng:Float(26, 38)
+		local s = rng:Float(28, 38)
 		puffs[#puffs + 1] = { cos(a) * d, rng:Float(-34, -24), -60 + sin(a) * d * 1.4, s, rng:Float(10, 14), s }
 	end
 	local spec = {
-		V = 3,
+		V = 4,
 		Sdf = islandSdf,
 		Bounds = { -ISL.HalfW - 12, ISL.HalfW + 12, ISL.FrontZ - 12, ISL.DiscR + 12 },
 		Tiers = {
 			{ Inset = 0, H = 1 },
-			{ Inset = 7, H = 2 },
-			{ Inset = 20, H = 2 },
-			{ Inset = 40, H = 3 },
-			{ Inset = 64, H = 3 },
+			{ Inset = 10, H = 1 },
+			{ Inset = 26, H = 2 },
+			{ Inset = 50, H = 2 },
+			{ Inset = 78, H = 2 },
 		},
 		Puffs = puffs,
 		Rim = rim,
@@ -967,17 +967,22 @@ local function buildCloud(parent, A)
 	}
 	local g = cloudGrid(spec)
 	-- the top tier's top face sits 1.2 under the walking surface (the ground layers lie on it)
-	return VX.Build(g, { V = 3, Pal = CLOUD_PAL, Name = "IslandCloud", CF = A * CFrame.new(0, -1.2 - 1.5, 0), Collide = true, MaxParts = 380 })
+	return VX.Build(g, { V = 4, Pal = CLOUD_PAL, Name = "IslandCloud", CF = A * CFrame.new(0, -1.2 - 2, 0), Collide = true, MaxParts = 340, Parent = parent })
+end
+
+-- the element of a stand segment (two neighbours share one) and the angle its section is centred on
+local function segmentElement(k)
+	return floor(k / 2) % 8 + 1
+end
+local function sectionAngle(e)
+	return (2 * e - 1.5) * STEP16
 end
 
 ----------------------------------------------------------------------
--- Forum ground: one paving layer over the whole island (also under the colosseum: the floor sits 0.2 higher),
--- lighter / darker paving patches, and the inlays (the avenue's crimson runner, the arrival rose, the ring aprons)
+-- Forum ground: one paving layer over the whole island (also under the colosseum, whose floor lies on it), the
+-- avenue's crimson runner with gold edges from the bridge to the main gate, a gold star where the bridge lands and
+-- element tiles around the trophy. Paving top -0.2, runner 0, star / tiles +0.1.
 ----------------------------------------------------------------------
-local function avenueHalf()
-	return 9
-end
-
 local function buildGround(parent, A)
 	local f = newModel(parent, "Forum")
 	-- base paving (4-stud cells; its stair-stepped rim hides under the cloud's rim puffs)
@@ -1000,82 +1005,25 @@ local function buildGround(parent, A)
 		Parent = f,
 		MaxParts = 70,
 	})
-	-- patches + inlays (2-stud cells) outside the colosseum
-	local patches = Voxel.NewGrid(1)
-	local inlay = Voxel.NewGrid(1)
-	local function ringApron(x, z)
-		for _, r in ipairs(RINGS) do
-			local dx, dz = x - r.X, z - r.Z
-			local d = sqrt(dx * dx + dz * dz)
-			if d >= RING_A + 4.5 and d <= RING_A + 6.5 then
-				return true
-			end
-		end
-		return false
+	-- the runner: from the bridge's landing to the main gate's passage
+	local z0, z1 = ISL.FrontZ + 1, -(COL.WallOut + 1.5)
+	local len = z1 - z0
+	local mid = (z0 + z1) / 2
+	box(f, "Runner", A * CFrame.new(0, -0.2, mid), Vector3.new(4, 0.4, len), C.Crimson, { Collide = true, Shadow = false })
+	for _, sx in ipairs({ -1, 1 }) do
+		box(f, "RunnerEdge", A * CFrame.new(sx * 2.6, -0.2, mid), Vector3.new(1.2, 0.4, len), C.Gold, { Collide = true, Shadow = false })
 	end
-	for i = ceil((-ISL.HalfW) / 2), floor(ISL.HalfW / 2) do
-		for k = ceil(ISL.FrontZ / 2), floor(ISL.DiscR / 2) do
-			local x, z = i * 2, k * 2
-			local sd = islandSdf(x, z)
-			if sd <= -4 and polyR(x, z) > COL.PillarOut + 1 then
-				local ax = abs(x)
-				local key = nil
-				-- the avenue: a crimson runner with gold edges from the bridge to the main gate
-				if z <= -88 then
-					if ax <= 2 then
-						key = "Runner"
-					elseif ax <= 4 then
-						key = "Gold"
-					end
-				end
-				-- the arrival rose in front of the bridge
-				local rz = z - (ISL.FrontZ + 22)
-				local rr = sqrt(x * x + rz * rz)
-				if not key and rr >= 12 and rr <= 14 then
-					key = "Gold"
-				end
-				-- the trophy plaza ring
-				local tz = z + 124
-				local tr = sqrt(x * x + tz * tz)
-				if not key and tr >= 10 and tr <= 12 then
-					key = "Gold"
-				end
-				if not key and ringApron(x, z) then
-					key = "Trim"
-				end
-				if key then
-					Voxel.Set(inlay, i, 0, k, key)
-				else
-					local n = vnoise(x + 300, z + 300, 22, 5)
-					if n < 0.25 then
-						Voxel.Set(patches, i, 0, k, "PavingDark")
-					elseif n > 0.78 then
-						Voxel.Set(patches, i, 0, k, "PavingLight")
-					end
-				end
-			end
-		end
+	-- a gold eight-pointed star with a navy heart where the bridge lands
+	local star = A * CFrame.new(0, 0, ISL.FrontZ + 22)
+	for _, turn in ipairs({ 0, 45 }) do
+		box(f, "ArrivalStar", star * CFrame.new(0, -0.1, 0) * CFrame.Angles(0, math.rad(turn), 0), Vector3.new(9, 0.4, 9), C.Gold, { Collide = true, Shadow = false })
 	end
-	VX.Build(patches, {
-		V = 2,
-		Pal = { PavingDark = { Color = C.PavingDark, Material = MAT.Slate }, PavingLight = { Color = C.PavingLight, Material = MAT.Slate } },
-		Name = "PavingPatches",
-		CF = A * CFrame.new(0, -0.1 - 1, 0),
-		Collide = true,
-		Shadow = false,
-		Parent = f,
-		MaxParts = 70,
-	})
-	VX.Build(inlay, {
-		V = 2,
-		Pal = { Runner = C.Crimson, Gold = C.Gold, Trim = C.StoneLight },
-		Name = "Inlays",
-		CF = A * CFrame.new(0, 0 - 1, 0),
-		Collide = true,
-		Shadow = false,
-		Parent = f,
-		MaxParts = 70,
-	})
+	box(f, "ArrivalHeart", star * CFrame.new(0, 0, 0) * CFrame.Angles(0, math.rad(45), 0), Vector3.new(3.6, 0.4, 3.6), C.Navy, { Collide = true, Shadow = false })
+	-- element tiles around the trophy plinth
+	for e = 1, 8 do
+		local turn = A * CFrame.new(0, 0, -124) * CFrame.Angles(0, sectionAngle(e), 0)
+		box(f, "TrophyTile", turn * CFrame.new(0, -0.1, -7.6) * CFrame.Angles(0, math.rad(45), 0), Vector3.new(2, 0.4, 2), elementColor(e), { Collide = true, Shadow = false })
+	end
 	return f
 end
 
@@ -1164,34 +1112,60 @@ local function segmentGrid(kind)
 		return true
 	end)
 	fillA(g, COL.WallIn, COL.WallOut, COL.WallH, COL.WallH + 2, hwW, "Wall", function(ix)
-		return floor((ix + hwW) / 3) % 2 == 0
+		return floor((ix + hwW) / 4) % 2 == 0
 	end)
-	-- facade: plinth, a gold string course, the cornice (all protrude one stud)
+	if gate then
+		-- a gatehouse: the wall rises over the passage (the main gate's sign hangs on it), crowned by its own merlons
+		local gw = gh + 5
+		fillA(g, COL.WallIn, COL.WallOut, COL.WallH, COL.WallH + 6, gw, "Wall")
+		fillA(g, COL.WallIn, COL.WallOut, COL.WallH + 6, COL.WallH + 8, gw, "Wall", function(ix)
+			return floor((ix + gw) / 3) % 2 == 0
+		end)
+		fillA(g, COL.WallOut, COL.WallOut + 1, COL.WallH + 5, COL.WallH + 6, gw, "Cornice")
+	end
+	-- facade: a plinth, two pilasters (three bays), a gold band, the cornice; dark arch panels in the bays (flush with
+	-- the wall, framed by the protruding pilasters and bands: cheap and readable), the element banner in the middle bay
 	local fa = COL.WallOut
-	fillA(g, fa, fa + 1, -1, 1, hwW, "Plinth", function(ix, iy)
-		return not (gate and abs(ix) <= gh + 1)
-	end)
-	fillA(g, fa, fa + 1, 10, 11, hwW, "Gold", function(ix)
-		return not (gate and abs(ix) <= gh + 1)
-	end)
+	local function bayArch(ix, iy, cx, y0, y1)
+		local dx = abs(ix - cx)
+		if iy < y0 or iy > y1 then
+			return false
+		elseif iy < y1 then
+			return dx <= 3
+		end
+		return dx <= 2
+	end
 	fillA(g, fa, fa + 1, COL.WallH - 1, COL.WallH, hwW, "Cornice")
-	-- blind arches in two rows (the outer layer carved, the layer behind painted dark)
-	local cols = { -12, 0, 12 }
-	for _, cx in ipairs(cols) do
-		for ix = cx - 3, cx + 3 do
-			for iy = 0, COL.WallH do
-				local lower = inArch(ix, iy, cx, 2, 2, 8)
-				local upper = inArch(ix, iy, cx, 2, 12, 17)
-				local skip = gate and abs(ix) <= gh + 2
-				if (lower or upper) and not skip then
-					if not (kind ~= "Gate" and cx == 0 and upper) then
-						setA(g, ix, iy, COL.WallOut - 1, "Recess")
-					end
+	if not gate then
+		fillA(g, fa, fa + 1, -1, 1, hwW, "Plinth")
+		for _, px in ipairs({ -7, -6, 6, 7 }) do
+			for ia = fa, fa + 1 do
+				for iy = 1, 18 do
+					setA(g, px, iy, ia, "Pilaster")
 				end
 			end
 		end
-	end
-	if gate then
+		for ix = -16, 16 do
+			for iy = 2, 12 do
+				local side = bayArch(ix, iy, -12, 2, 12) or bayArch(ix, iy, 12, 2, 12)
+				local middle = bayArch(ix, iy, 0, 2, 9)
+				if side or middle then
+					setA(g, ix, iy, fa, "Recess")
+				end
+			end
+		end
+		-- an element banner hanging from the cornice in the middle bay, a gold diamond on it
+		for ix = -2, 2 do
+			for iy = 11, COL.WallH - 2 do
+				setA(g, ix, iy, fa, (iy == COL.WallH - 2) and "Gold" or "Banner")
+			end
+		end
+		setA(g, 0, 15, fa + 1, "Gold")
+		setA(g, 0, 14, fa + 1, "Gold")
+		setA(g, -1, 14, fa + 1, "Gold")
+		setA(g, 1, 14, fa + 1, "Gold")
+		setA(g, 0, 13, fa + 1, "Gold")
+	else
 		-- the gate's arch frame (protruding voussoirs + pilasters) and a raised portcullis in the opening's crown
 		for ix = -gh - 2, gh + 2 do
 			for iy = -1, COL.GateH + 3 do
@@ -1211,38 +1185,28 @@ local function segmentGrid(kind)
 				end
 			end
 		end
-		-- the passage floor (top at 0, like the colosseum floor) and its side walls are the cut stands
+		-- the passage floor (top at 0, like the colosseum floor's stone band) and its side walls are the cut stands
 		fillA(g, COL.FloorR - 1, COL.WallOut + 1, -1, 0, gh, "Passage")
-	else
-		-- an element banner over the middle upper arch
-		for ix = -2, 2 do
-			for iy = 11, COL.WallH - 2 do
-				local tail = iy == 11 and ix == 0
-				if not tail then
-					setA(g, ix, iy, fa, (iy == COL.WallH - 2) and "Gold" or "Banner")
-				end
-			end
-		end
-		setA(g, 0, 15, fa + 1, "Gold")
-		setA(g, 0, 14, fa + 1, "Gold")
-		setA(g, -1, 14, fa + 1, "Gold")
-		setA(g, 1, 14, fa + 1, "Gold")
-		setA(g, 0, 13, fa + 1, "Gold")
 	end
 	if kind == "BossGate" then
 		-- the boss gate: a big iron portcullis in the podium wall, a dark tunnel behind it, a gold crest above
 		for ix = -5, 5 do
 			for iy = -1, 4 do
-				setA(g, ix, iy, COL.FloorR, (ix % 2 == 0 or iy == 4) and "Iron" or "Recess")
-				setA(g, ix, iy, COL.FloorR + 1, "Recess")
+				setA(g, ix, iy, COL.FloorR, "Recess")
 			end
 		end
-		for ix = -3, 3 do
-			setA(g, ix, 5, COL.FloorR, "Gold")
-			setA(g, ix, 6, COL.FloorR + 1, "Gold")
+		for ix = -4, 4, 2 do
+			for iy = 0, 4 do
+				setA(g, ix, iy, COL.FloorR - 1, "Iron")
+			end
 		end
-		setA(g, 0, 7, COL.FloorR + 1, "Gold")
-		setA(g, 0, 8, COL.FloorR + 1, "Gold")
+		for ix = -5, 5 do
+			setA(g, ix, 5, COL.FloorR - 1, "Iron")
+		end
+		for ix = -3, 3 do
+			setA(g, ix, 6, COL.FloorR, "Gold")
+		end
+		setA(g, 0, 7, COL.FloorR, "Gold")
 	end
 	return g
 end
@@ -1255,11 +1219,12 @@ local SEG_PAL = {
 	Wall = C.StoneLight,
 	Plinth = C.StoneDark,
 	Cornice = C.Marble,
+	Pilaster = C.Marble,
 	Recess = C.Recess,
 	Gold = C.Gold,
 	Banner = C.Crimson, -- recoloured per segment
 	Iron = C.Iron,
-	Passage = { Color = C.Paving, Material = MAT.Slate },
+	Passage = { Color = C.Stone, Material = MAT.Slate },
 }
 
 local segTemplates = {}
@@ -1268,15 +1233,14 @@ local function segmentTemplate(kind)
 		return segTemplates[kind]
 	end
 	local g = segmentGrid(kind)
-	Voxel.Shade(g, { Only = { Podium = true, TierA = true, TierB = true, Wall = true, Plinth = true, Cornice = true }, Smooth = 1, Seed = 4, Light = false })
 	local m = VX.Build(g, {
 		V = 1,
 		Pal = SEG_PAL,
 		Name = "Segment",
 		CF = CFrame.new(0, 0.5, -0.5),
 		Collide = true,
-		MaxParts = 42,
-		Keep = { "Seat", "Banner", "Gold", "Recess", "Passage" },
+		MaxParts = 120, -- never reached: the colour clusters of the LOD would grey the stands out
+		Keep = { "Seat", "Banner", "Gold", "Recess", "Passage", "Iron" },
 	})
 	for _, d in ipairs(m:GetDescendants()) do
 		if d:IsA("BasePart") and (d.Name == "Recess" or d.Name == "Banner") then
@@ -1329,99 +1293,39 @@ local function pillar()
 	return m
 end
 
--- The arena floor: sand with darker drifts, a stone band under the podium, eight element diamonds (16-gon, apothem 72;
--- the cells reach under the podium wall so no gap shows) and the element wheel in the middle (1-stud inlay).
-local function buildFloor(parent, A)
-	local g = Voxel.NewGrid(1)
-	local n = ceil((COL.FloorR + 2) / 2)
-	for i = -n, n do
-		for k = -n, n do
-			local x, z = i * 2, k * 2
-			local pr = polyR(x, z)
-			if pr <= COL.FloorR + 1 then
-				local key = "Sand"
-				if pr >= COL.FloorR - 6 then
-					key = "FloorStone"
-				elseif pr >= COL.FloorR - 8 then
-					key = "FloorGold"
-				else
-					local r = sqrt(x * x + z * z)
-					if r >= 40 and r < 42 then
-						key = "FloorStone"
-					else
-						local nn = vnoise(x + 50, z + 50, 18, 3)
-						if nn < 0.3 then
-							key = "SandDark"
-						elseif nn > 0.8 then
-							key = "SandLight"
-						end
-					end
-				end
-				Voxel.Set(g, i, 0, k, key)
-			end
-		end
+-- 16-sided shapes from boxes turned k x 22.5 degrees (the colosseum's faces, the rings, the wheel). Boxes of one colour
+-- may overlap: their coplanar faces are identical, so nothing flickers. Edge j's normal is the segments' (NORMALS16).
+local function disc16(parent, name, cf, apothem, topY, h, color, material, collide)
+	local w = 2 * apothem * TAN16 + 0.2
+	for j = 0, 7 do
+		box(parent, name, cf * CFrame.Angles(0, j * STEP16, 0) * CFrame.new(0, topY - h / 2, 0), Vector3.new(w, h, apothem * 2), color, { Collide = collide, Material = material, Shadow = false })
 	end
-	-- the eight element diamonds (sector middles, between the gates)
-	for e = 1, 8 do
-		local a = (e - 0.5) * (pi * 2 / 8)
-		local v = CFrame.Angles(0, a, 0):VectorToWorldSpace(Vector3.new(0, 0, -1))
-		local cx, cz = v.X * 54 / 2, v.Z * 54 / 2
-		for i = floor(cx) - 3, ceil(cx) + 3 do
-			for k = floor(cz) - 3, ceil(cz) + 3 do
-				if abs(i - cx) + abs(k - cz) <= 2.2 then
-					Voxel.Set(g, i, 0, k, "Elem" .. e)
-				end
-			end
-		end
+end
+local function ring16(parent, name, cf, r0, r1, topY, h, color, material, collide)
+	local len = 2 * r1 * TAN16 + 0.15
+	for j = 0, 15 do
+		box(parent, name, cf * CFrame.Angles(0, j * STEP16, 0) * CFrame.new(0, topY - h / 2, -(r0 + r1) / 2), Vector3.new(len, h, r1 - r0), color, { Collide = collide, Material = material, Shadow = false })
 	end
-	local pal = {
-		Sand = { Color = C.Sand, Material = MAT.Sand },
-		SandDark = { Color = C.SandDark, Material = MAT.Sand },
-		SandLight = { Color = C.SandLight, Material = MAT.Sand },
-		FloorStone = { Color = C.Stone, Material = MAT.Slate },
-		FloorGold = C.GoldDark,
-	}
-	local keep = {}
-	for e = 1, 8 do
-		pal["Elem" .. e] = elementColor(e)
-		keep[#keep + 1] = "Elem" .. e
-	end
-	VX.Build(g, { V = 2, Pal = pal, Name = "ArenaFloor", CF = A * CFrame.new(0, -1, 0), Collide = true, Shadow = false, Parent = parent, MaxParts = 150, Keep = keep })
+end
 
-	-- the element wheel (1-stud cells, 0.1 over the sand)
-	local w = Voxel.NewGrid(1)
-	for i = -15, 15 do
-		for k = -15, 15 do
-			local r = sqrt(i * i + k * k)
-			local key = nil
-			if r <= 3.2 then
-				key = "Gold"
-			elseif r <= 4.6 then
-				key = "Navy"
-			elseif r <= 12.4 then
-				local ang = (atan2(i, -k) % (pi * 2)) / (pi * 2) * 8 -- 0..8 around, sector 1 at the front
-				local e = floor(ang) + 1
-				local frac = ang - floor(ang)
-				if frac < 0.06 or frac > 0.94 then
-					key = "Gold"
-				else
-					key = "W" .. e
-				end
-			elseif r <= 13.8 then
-				key = "Gold"
-			elseif r <= 14.9 then
-				key = "Navy"
-			end
-			if key then
-				Voxel.Set(w, i, 0, k, key)
-			end
-		end
-	end
-	local wpal = { Gold = C.Gold, Navy = C.Navy }
+-- The arena floor (apothem 72; the sand reaches under the podium wall): sand, a stone band and a gold line along the
+-- wall, a pale ring at 40 studs, an element diamond per section, and the element wheel in the middle (8 petals in the
+-- element colours between gold rays, a gold core and rim). Sand top -0.1, everything else on top at 0 / +0.1.
+local function buildFloor(parent, A)
+	local m = newModel(parent, "ArenaFloor")
+	disc16(m, "Sand", A, COL.FloorR + 1, -0.1, 1, C.Sand, MAT.Sand, true)
+	ring16(m, "FloorBand", A, COL.FloorR - 8, COL.FloorR + 1, 0, 1, C.Stone, MAT.Slate, true)
+	ring16(m, "FloorGold", A, COL.FloorR - 9.6, COL.FloorR - 8, 0, 1, C.GoldDark, nil, true)
+	ring16(m, "FloorLine", A, 40, 41.6, 0, 1, C.StoneLight, MAT.Slate, true)
 	for e = 1, 8 do
-		wpal["W" .. e] = elementColor(e)
+		local turn = A * CFrame.Angles(0, sectionAngle(e), 0)
+		box(m, "ElementMark", turn * CFrame.new(0, -0.5, -54) * CFrame.Angles(0, math.rad(45), 0), Vector3.new(4.6, 1, 4.6), elementColor(e), { Collide = true, Shadow = false })
+		box(m, "WheelPetal", turn * CFrame.new(0, -0.5, -10), Vector3.new(4, 1, 7), elementColor(e), { Collide = true, Shadow = false })
+		box(m, "WheelRay", A * CFrame.Angles(0, sectionAngle(e) + STEP16, 0) * CFrame.new(0, -0.5, -9.75), Vector3.new(0.7, 1, 8.5), C.Gold, { Collide = true, Shadow = false })
 	end
-	VX.Build(w, { V = 1, Pal = wpal, Name = "ElementWheel", CF = A * CFrame.new(0, 0.1 - 0.5, 0), Collide = true, Shadow = false, Parent = parent, MaxParts = 90 })
+	ring16(m, "WheelRim", A, 14, 15.2, 0, 1, C.Gold, nil, true)
+	disc16(m, "WheelCore", A, 5.5, 0.1, 1, C.Gold, nil, true)
+	return m
 end
 
 local function segmentKind(k)
@@ -1441,7 +1345,7 @@ local function buildColosseum(parent, A)
 		local kind = segmentKind(k)
 		local cf = A * CFrame.Angles(0, k * STEP16, 0)
 		local seg = place(segmentTemplate(kind), cf, segs, string.format("Segment_%02d", k))
-		local e = floor(((k + 1) % 16) / 2) + 1 -- two neighbouring sections share an element (the front gate sits between Shadow and Water)
+		local e = segmentElement(k) -- two neighbouring segments share an element (the wheel's petals point at them)
 		recolor(seg, "Seat", elementColor(e))
 		recolor(seg, "Banner", elementColor(e))
 		seg:SetAttribute("Element", ELEMENTS[e] and ELEMENTS[e].Id or "")
@@ -1451,7 +1355,7 @@ local function buildColosseum(parent, A)
 	for k = 0, 15 do
 		local cf = A * CFrame.Angles(0, (k + 0.5) * STEP16, 0)
 		local p = place(pillar(), cf, pillars, string.format("Pillar_%02d", k))
-		local e = floor(((k + 1.5) % 16) / 2) + 1
+		local e = segmentElement(k)
 		recolor(p, "Flame", flameColor(elementColor(e)))
 		if k % 2 == 0 then
 			local flame = p:FindFirstChild("Flame")
@@ -1541,11 +1445,6 @@ local function buildRing(parent, A, spec, index)
 	local slabW = 2 * RING_A * TAN16 + 0.4
 	for j = 0, 7 do
 		box(m, "RingFloor", cf * CFrame.Angles(0, j * STEP16, 0) * CFrame.new(0, RING_Y - 0.5, 0), Vector3.new(slabW, 1, RING_A * 2), C.SandLight, { Collide = true, Material = MAT.Sand, Shadow = false })
-	end
-	-- the inner disc of darker sand under the emblem (a 16-gon of apothem 10 the same way)
-	local innerW = 2 * 10 * TAN16 + 0.2
-	for j = 0, 7 do
-		box(m, "RingInner", cf * CFrame.Angles(0, j * STEP16, 0) * CFrame.new(0, RING_Y - 0.45, 0), Vector3.new(innerW, 1, 20), C.Sand, { Collide = true, Material = MAT.Sand, Shadow = false })
 	end
 	-- the curb: 16 blocks on the edges, in the ring's colour
 	local curbOut = RING_A + 1.6
@@ -1714,19 +1613,14 @@ local function raidEveryMinutes()
 	return 20
 end
 
+-- the label's width in px from its fractions of the board canvas (SurfaceGuis lay out on the client only)
 local function setLabel(label, text, px, color)
 	if not label then
 		return
 	end
-	local width = label.AbsoluteSize and label.AbsoluteSize.X or 0
-	if width <= 0 then
-		-- the label's box from its fractions of the canvas (SurfaceGuis lay out on the client only)
-		local parent = label.Parent
-		local w = BOARD_W * SIGN_PPS * label.Size.X.Scale
-		if parent and parent.Name == "DoublePill" then
-			w = BOARD_W * SIGN_PPS * 0.62
-		end
-		width = w
+	local width = BOARD_W * SIGN_PPS * label.Size.X.Scale
+	if label.Parent and label.Parent.Name == "DoublePill" then
+		width = BOARD_W * SIGN_PPS * 0.62 * label.Size.X.Scale
 	end
 	label.Text = fitText(text, px, width - 4)
 	if color then
@@ -1895,8 +1789,8 @@ local function startBoardTicker()
 			local now = os.clock()
 			local silent = not S.external or now - S.external > BOARD_SILENCE
 			if silent then
-				if S.boardState and not S.external then
-					S.boardState = nil
+				if S.boardState and S.external then
+					S.boardState = nil -- EventService went quiet: back to the schedule
 				end
 				if not S.lastFallback or now - S.lastFallback >= FALLBACK_REFRESH then
 					S.lastFallback = now
@@ -1933,44 +1827,19 @@ local function buildTrophy(parent, cf)
 	box(m, "PlinthTrim", cf * CFrame.new(0, 2.6, 0), Vector3.new(7.6, 0.4, 7.6), C.Gold, { Collide = true, Shadow = false })
 	box(m, "PlinthBase", cf * CFrame.new(0, 0.25, 0), Vector3.new(8.4, 0.5, 8.4), C.StoneDark, { Collide = true, Shadow = false })
 	local g = Voxel.NewGrid(20)
-	-- a big gold cup: square foot, stem, knot, round bowl with a lip, two handles and a star on top (0.5-stud voxels)
-	Voxel.Shape(g, { Kind = "RoundBox", Center = { 0, 1, 0 }, Size = { 9, 2, 9 }, Round = 1, Key = "Base" })
-	Voxel.Shape(g, { Kind = "RoundBox", Center = { 0, 2.5, 0 }, Size = { 6, 1, 6 }, Round = 1, Key = "Gold" })
-	Voxel.Shape(g, { Kind = "Capsule", A = { 0, 3, 0 }, B = { 0, 7, 0 }, Radius = 1.3, RadiusB = 1, Key = "Gold" })
-	Voxel.Shape(g, { Kind = "Ellipsoid", Center = { 0, 7.5, 0 }, Radius = { 2.2, 1.2, 2.2 }, Key = "Gold" })
-	Voxel.Shape(g, { Kind = "Ellipsoid", Center = { 0, 12.5, 0 }, Radius = { 5.6, 5.4, 5.6 }, Key = "Gold" })
-	Voxel.Shape(g, { Kind = "Box", Center = { 0, 17, 0 }, Size = { 14, 6, 14 }, Op = "Carve" })
-	Voxel.Shape(g, { Kind = "Ellipsoid", Center = { 0, 13, 0 }, Radius = { 4.4, 4.4, 4.4 }, Op = "Carve" })
-	Voxel.Shape(g, { Kind = "Torus", Center = { 0, 13.6, 0 }, Radius = 5.2, Thickness = 0.7, Key = "Rim" })
+	-- a big gold cup (0.5-stud voxels): square foot, stem with a knot, two handles, a hollow bowl with a rim, a gem
+	Voxel.Shape(g, { Kind = "RoundBox", Center = { 0, 1, 0 }, Size = { 10, 2, 10 }, Round = 1, Key = "Base" })
+	Voxel.Shape(g, { Kind = "RoundBox", Center = { 0, 2.5, 0 }, Size = { 7, 1, 7 }, Round = 1, Key = "Gold" })
+	Voxel.Shape(g, { Kind = "Capsule", A = { 0, 3, 0 }, B = { 0, 7.5, 0 }, Radius = 1.2, RadiusB = 0.9, Key = "Gold" })
+	Voxel.Shape(g, { Kind = "Ellipsoid", Center = { 0, 6, 0 }, Radius = { 1.8, 0.9, 1.8 }, Key = "Gold" })
 	for _, s in ipairs({ -1, 1 }) do
-		Voxel.Shape(g, {
-			Kind = "Torus",
-			Center = { s * 5.6, 11.5, 0 },
-			Radius = 2.4,
-			Thickness = 0.65,
-			Rotation = CFrame.Angles(math.pi / 2, 0, 0),
-			Key = "Gold",
-		})
+		Voxel.Shape(g, { Kind = "Torus", Center = { s * 5.6, 11.5, 0 }, Radius = 2.2, Thickness = 0.65, Rotation = CFrame.Angles(math.pi / 2, 0, 0), Key = "Gold" })
 	end
-	Voxel.Shape(g, { Kind = "Box", Center = { 0, 11.5, 0 }, Size = { 10.4, 8, 10.4 }, Op = "Carve", OnlyKeys = { Gold = true }, Pattern = function(x, y, z)
-		-- keep the handles outside the bowl only (carve what the torus put inside the cup)
-		if x * x + z * z <= 5.2 * 5.2 and y >= 8 then
-			return nil
-		end
-		return false
-	end })
-	Voxel.Shape(g, { Kind = "Ellipsoid", Center = { 0, 12.5, 0 }, Radius = { 5.6, 5.4, 5.6 }, Key = "Gold", KeepExisting = true, Pattern = function(x, y, z)
-		if y >= 13 then
-			return false
-		end
-		return nil
-	end })
-	Voxel.Shape(g, { Kind = "Ellipsoid", Center = { 0, 11, 0 }, Radius = { 1.6, 1.6, 0.6 }, Rotation = CFrame.new(), Key = "Gem", Pattern = function(x, y, z)
-		if z > -5 then
-			return false
-		end
-		return nil
-	end })
+	Voxel.Shape(g, { Kind = "Ellipsoid", Center = { 0, 12, 0 }, Radius = { 5.6, 5.2, 5.6 }, Key = "Gold" })
+	Voxel.Shape(g, { Kind = "Ellipsoid", Center = { 0, 13, 0 }, Radius = { 4.6, 4.6, 4.6 }, Op = "Carve" })
+	Voxel.Shape(g, { Kind = "Box", Center = { 0, 18.5, 0 }, Size = { 20, 8, 20 }, Op = "Carve" })
+	Voxel.Shape(g, { Kind = "Torus", Center = { 0, 14.2, 0 }, Radius = 5.2, Thickness = 0.7, Key = "Rim" })
+	Voxel.Shape(g, { Kind = "Ellipsoid", Center = { 0, 11, -5.4 }, Radius = { 1.2, 1.2, 0.6 }, Key = "Gem" })
 	Voxel.Shade(g, { Only = { Gold = true, Rim = true }, Smooth = 1, Seed = 2 })
 	local cup = VX.Build(g, {
 		V = 0.5,
@@ -1978,12 +1847,12 @@ local function buildTrophy(parent, cf)
 		Name = "Trophy",
 		CF = cf * CFrame.new(0, 2.8, 0),
 		Collide = false,
-		MaxParts = 44,
+		MaxParts = 36,
 	})
 	if cup then
 		cup.Parent = m
 	end
-	local star = box(m, "TrophyStar", cf * CFrame.new(0, 2.8 + 9.6, 0) * CFrame.Angles(0, 0, math.rad(45)), Vector3.new(1.4, 1.4, 0.5), C.Gold, { Material = MAT.Neon, Shadow = false })
+	local star = box(m, "TrophyStar", cf * CFrame.new(0, 2.8 + 8.8, 0) * CFrame.Angles(0, 0, math.rad(45)), Vector3.new(1.4, 1.4, 0.5), C.Gold, { Material = MAT.Neon, Shadow = false })
 	emitter(star, { Rate = 3, Lifetime = NumberRange.new(1.5, 2.5), Speed = NumberRange.new(0.5, 1.2), SpreadAngle = Vector2.new(180, 180) })
 	return m
 end
@@ -2053,7 +1922,7 @@ local function buildForumDecor(parent, A)
 	bannerPole(m, A * CFrame.new(-18, -0.2, ISL.FrontZ + 10) * CFrame.Angles(0, math.pi, 0), C.Crimson)
 	bannerPole(m, A * CFrame.new(18, -0.2, ISL.FrontZ + 10), C.Crimson)
 	-- planters between the rings and the colosseum and at the forum's front corners
-	for _, p in ipairs({ { -60, -102, 0 }, { 60, -102, 0 }, { -76, -192, 0 }, { 76, -192, 0 } }) do
+	for _, p in ipairs({ { -60, -102, 0 }, { 60, -102, 0 } }) do
 		place(planter(), A * CFrame.new(p[1], 0, p[2]) * CFrame.Angles(0, p[3], 0), m, "Planter")
 	end
 	buildTrophy(m, A * CFrame.new(0, -0.2, -124))
@@ -2065,7 +1934,7 @@ end
 ----------------------------------------------------------------------
 local function buildGateSign(parent, A)
 	local w, h = 11, 4.6
-	local cf = A * CFrame.new(0, COL.GateH + 4.9, -(COL.WallOut + 1.5))
+	local cf = A * CFrame.new(0, COL.WallH + 1.6, -(COL.WallOut + 1.5))
 	local part = box(parent, "GateSign", cf, Vector3.new(w, h, 0.6), C.Navy, { Collide = true, Shadow = false })
 	local frame = box(parent, "GateSignFrame", cf * CFrame.new(0, 0, 0.35), Vector3.new(w + 0.8, h + 0.8, 0.4), C.Gold, { Collide = true, Shadow = false })
 	frame.CanQuery = false
@@ -2096,7 +1965,7 @@ local function buildBridge(parent, A, startZ, endZ)
 	local mid = (startZ + endZ) / 2
 	local hw = BRIDGE_W / 2
 	-- deck: stone slabs (alternating shades), curbs and the crimson runner
-	local slabs = max(4, floor(len / 7 + 0.5))
+	local slabs = max(4, floor(len / 12 + 0.5))
 	local sl = len / slabs
 	for i = 1, slabs do
 		local z = startZ + (i - 0.5) * sl
@@ -2401,8 +2270,7 @@ local function pocketTemplate()
 				box(m, "Merlon", cf * CFrame.new(i * 7, wallH + 0.6, -(hf + 1)), Vector3.new(3, 1.2, 2), C.StoneLight, { Collide = true, Shadow = false })
 			end
 		end
-		box(m, "PocketBanner", cf * CFrame.new(0, wallH - 1, -(hf - 0.05)), Vector3.new(4, 4.4, 0.2), C.Crimson, { Shadow = false })
-		box(m, "PocketBannerTrim", cf * CFrame.new(0, wallH + 1.1, -(hf - 0.1)), Vector3.new(4.4, 0.4, 0.3), C.Gold, { Shadow = false })
+		box(m, "WallStripe", cf * CFrame.new(0, 1.6, -(hf - 0.05)), Vector3.new(POCKET_FLOOR - 2, 0.6, 0.2), C.Crimson, { Shadow = false })
 		local tower = cf * CFrame.new(hf + 1, 0, -(hf + 1))
 		box(m, "Tower", tower * CFrame.new(0, 3.5, 0), Vector3.new(5, 8, 5), C.Stone, { Collide = true })
 		box(m, "TowerTop", tower * CFrame.new(0, 7.8, 0), Vector3.new(6, 0.6, 6), C.Gold, { Collide = true, Shadow = false })
@@ -2742,7 +2610,12 @@ function ArenaBuilder.Build(lobbyInfo)
 		local rel = dock - ORIGIN
 		dockAlong = rel.X * dir.X + rel.Z * dir.Z
 		local lat = rel.X * side.X + rel.Z * side.Z
-		local blocker = abs(lat) < 1 and dockAlong < front and corridorBlocked(folder, dir, side, dockAlong + 1.5, front + 1) or "dock off the arena ray"
+		local blocker = nil
+		if abs(lat) > 1 or dockAlong >= front then
+			blocker = "the dock is off the arena ray"
+		else
+			blocker = corridorBlocked(folder, dir, side, dockAlong + 1.5, front + 1)
+		end
 		if blocker == nil then
 			link = "Bridge"
 		else
@@ -2787,11 +2660,11 @@ function ArenaBuilder.Build(lobbyInfo)
 	-- boards
 	local eventBoard, leaderboard = nil, nil
 	section("event board", function()
-		local cf = A * CFrame.new(-30, -0.2, -106) * CFrame.Angles(0, math.rad(-196), 0)
+		local cf = A * CFrame.new(-30, -0.2, -106) * CFrame.Angles(0, math.rad(-16), 0)
 		eventBoard = buildEventBoard(model, cf)
 	end)
 	section("leaderboard", function()
-		local cf = A * CFrame.new(30, -0.2, -106) * CFrame.Angles(0, math.rad(196), 0)
+		local cf = A * CFrame.new(30, -0.2, -106) * CFrame.Angles(0, math.rad(16), 0)
 		leaderboard = buildLeaderboard(model, cf)
 	end)
 	S.board = eventBoard
@@ -2835,8 +2708,9 @@ function ArenaBuilder.Build(lobbyInfo)
 	local lobbyCF = nil
 	if link == "Portal" then
 		section("portals", function()
-			local aSite = CFrame.new(site.Position) * CFrame.Angles(0, rad(16), 0) * CFrame.new(-site.Position) * site
-			aSite = flatLook(Vector3.new(ORIGIN.X, TOP, ORIGIN.Z) + (aSite.Position - Vector3.new(ORIGIN.X, TOP, ORIGIN.Z)), Vector3.new(ORIGIN.X, TOP, ORIGIN.Z))
+			local rel = site.Position - Vector3.new(ORIGIN.X, TOP, ORIGIN.Z)
+			local siteAngle = math.deg(atan2(rel.Z, rel.X))
+			local aSite = flatLook(polar(siteAngle + 16, Vector3.new(rel.X, 0, rel.Z).Magnitude, TOP), Vector3.new(ORIGIN.X, TOP, ORIGIN.Z))
 			local _, aPad = buildTrialPortal(model, aSite, C.Gold, "Arena", "Battle Arena", "Duels and Boss Raids", "Press E")
 			makePrompt(aPad, "ArenaPortalPrompt", "Travel", "Battle Arena")
 			local rSite = A * CFrame.new(0, 0, ISL.FrontZ + 34) * CFrame.Angles(0, pi, 0)
