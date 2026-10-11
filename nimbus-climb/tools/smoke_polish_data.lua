@@ -15,8 +15,9 @@
 --                          rebase), /tutorial keeps the paid gift paid; a reset whose save fails (outage) is kept
 --                          pending through the orphan retries; a normal save still never shrinks those fields
 --   polish_data_fwdcompat  a save keeps every stored field this version does not know (a Phase 2 profile: Version 3,
---                          Home.Stations / CollectorCash / LastSeen, Food, Hybrids, Tiers, Teams, Stats.Trophies) and
---                          the newer Version, while known fields still follow the Phase 1 rules
+--                          Home.Stations / CollectorCash / LastSeen, Food, Hybrids, Tiers, Stats.Trophies, and a
+--                          future Quests list; Teams is known since Phase 3) and the newer Version, while known fields
+--                          still follow the Phase 1 rules
 -- Plain Lua 5.1 syntax only.
 
 local K = _G.K
@@ -411,7 +412,8 @@ S.polish_data_fwdcompat = guarded("polish_data_fwdcompat", function()
 		Food = { Snack = 3 },
 		Hybrids = { h1 = { Body = "penguin", Style = "phoenix", Elements = { "Frost", "Flame" }, Name = "Pengnix", Rarity = "Rare", Tier = "Golden" } },
 		Tiers = { pebble_pup = { Golden = 1 } },
-		Teams = { { "a", "b", "c" } },
+		-- (Teams became a known, validated field in Phase 3; Quests stands in for a field no build knows yet)
+		Quests = { { "a", "b", "c" } },
 	}
 	local p = Mock.AddPlayer("PhaseTwoSave", ID)
 	advance(1.5)
@@ -429,7 +431,7 @@ S.polish_data_fwdcompat = guarded("polish_data_fwdcompat", function()
 	T.check(type(s.Hybrids) == "table" and type(s.Hybrids.h1) == "table" and s.Hybrids.h1.Name == "Pengnix" and type(s.Hybrids.h1.Elements) == "table" and s.Hybrids.h1.Elements[2] == "Flame",
 		"forward compat: ...Hybrids (fused pets) survive whole")
 	T.check(type(s.Tiers) == "table" and type(s.Tiers.pebble_pup) == "table" and s.Tiers.pebble_pup.Golden == 1, "forward compat: ...Tiers survive")
-	T.check(type(s.Teams) == "table" and type(s.Teams[1]) == "table" and s.Teams[1][3] == "c", "forward compat: ...Teams survive")
+	T.check(type(s.Quests) == "table" and type(s.Quests[1]) == "table" and s.Quests[1][3] == "c", "forward compat: ...an unknown field holding lists (Quests) survives")
 	T.check(type(s.Stats) == "table" and s.Stats.Trophies == 12, "forward compat: an unknown Stats field (Trophies) survives")
 	T.eq(s.Version, 3, "forward compat: a newer Version number is kept (never lowered to 2)")
 	local ghost = false

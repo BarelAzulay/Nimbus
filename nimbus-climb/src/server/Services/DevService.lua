@@ -28,13 +28,16 @@
 --   tokens [n]      DataService.AddTokens(n): n defaults to Config.Dev.GrantTokens, whole numbers only, clamped to
 --                   1 .. Config.Dev.MaxTokensPerCommand (chat also takes "50,000", "50k", "1m")
 --   reset           back to a brand-new player: tokens, pets, equipped pets, items, stats, Pet Index progress and
---                   rewards, Cash, Gems, home, pet levels (the lobby spot stays assigned for this session). The
---                   tutorial starts again as a new player's (gift and finish reward included: the reset took those
---                   tokens) when TutorialService has the Reload hook. Without it a tutorial that already paid its
---                   gift is ended as skipped, because every step from "spin" on needs the tokens and pets the reset
---                   just took (it would wait forever); an earlier tutorial carries on. Then
+--                   rewards, Cash, Gems, home, pet levels, the battle teams (3 empty presets, preset 1 active) and
+--                   the battle record (trophies, trial clears, raid and PvP counters, event pets); the lobby spot
+--                   stays assigned for this session. The tutorial starts again as a new player's (gift and finish
+--                   reward included: the reset took those tokens) when TutorialService has the Reload hook. Without
+--                   it a tutorial that already paid its gift is ended as skipped, because every step from "spin" on
+--                   needs the tokens and pets the reset just took (it would wait forever); an earlier tutorial
+--                   carries on. Then
 --                   DataService.ProfileRebased fires so PetService republishes the equipped pets / perks and
---                   IndexService forgets the completed groups. Refused during a match.
+--                   IndexService forgets the completed groups, and DataService.TeamsChanged fires for the battle
+--                   services. Refused during a match and during a pet battle (player attribute InBattle).
 --   tutorial        replay the tutorial from step 1. Needs the hook TutorialService.Reload(player, { Replay = true }):
 --                   it drops the running tutorial and reads it again from the profile; Replay = true means the
 --                   finish reward is not paid again. The stored progress goes back to step 1 with Gifted kept, so
@@ -75,7 +78,8 @@
 --
 -- Persistence: DataService merges Discovered, IndexClaimed, Tutorial.Done / Gifted and best times so they only
 -- ever grow (a gift can never be paid twice). reset and tutorial therefore call DataService.ResetFields for the
--- fields they rewind (reset: Discovered, IndexClaimed, best times and the rewound Tutorial; tutorial: Tutorial):
+-- fields they rewind (reset: Discovered, IndexClaimed, best times, the rewound Tutorial, the Phase 2 Home / Tiers /
+-- Hybrids / PetLevels and the Phase 3 Teams / Battle, whose cleared trials and event pets only grow; tutorial: Tutorial):
 -- the next successful save writes the session's values over the stored ones, so the reset lasts with DataStores
 -- on (the live game, Studio with API access) and a replay is not ended by the next autosave. Everything else
 -- (tokens, pets, items, stats, ...) follows through the normal delta save.
@@ -95,7 +99,9 @@ local Remotes = require(Shared.Remotes)
 
 local DevService = {}
 
-DevService.Commands = { "allpets", "tokens", "reset", "tutorial", "skiptutorial", "pet", "pets", "evolve", "clearpets", "devhelp" }
+DevService.Commands = {
+	"allpets", "tokens", "cash", "gems", "reset", "tutorial", "skiptutorial", "pet", "pets", "evolve", "clearpets", "devhelp",
+}
 
 local TAG = "[NimbusClimb][Dev] "
 local ATTR = "NC_Dev" -- PlayerGui attribute: true for developers (a hint for the client's DEV button)
@@ -115,11 +121,15 @@ for _, name in ipairs(DevService.Commands) do
 	KNOWN[name] = true
 end
 -- the commands that still run while the profile is provisional (see the persistence note)
-local PROVISIONAL_OK = { tokens = true, devhelp = true, pet = true, pets = true, evolve = true, clearpets = true }
+local PROVISIONAL_OK = {
+	tokens = true, cash = true, gems = true, devhelp = true, pet = true, pets = true, evolve = true, clearpets = true,
+}
 -- the pet showcase never touches the profile, so it does not wait for it
 local NO_PROFILE = { pet = true, pets = true, evolve = true, clearpets = true }
--- the commands that take a value, and its type (tokens: a number; the showcase: the rest of the chat line)
-local ARG_KIND = { tokens = "number", pet = "string", pets = "string", evolve = "string" }
+-- the commands that take a whole-number amount
+local NUMERIC = { tokens = true, cash = true, gems = true }
+-- the commands that take a value, and its type (tokens / cash / gems: a number; the showcase: the rest of the chat line)
+local ARG_KIND = { tokens = "number", cash = "number", gems = "number", pet = "string", pets = "string", evolve = "string" }
 local MAX_ARG_LENGTH = 48
 local STAGE_NAMES = { [0] = "Normal", [1] = "Evolved", [2] = "Evolved II" }
 local STAGE_WORDS = {
@@ -489,9 +499,41 @@ local function cmdTokens(player, profile, arg)
 	return true, "+" .. commas(amount) .. " Cloud Tokens", true
 end
 
+-- Phase 2 currencies (tycoon Cash and premium Gems) for testing the homes, fusion and the gem roulettes.
+local function grantCurrency(player, arg, label, configKey, fallback, adder)
+	local dev = devConfig()
+	local amount = arg
+	if amount == nil then
+		amount = isWhole(dev[configKey]) and dev[configKey] or fallback
+	end
+	if not isWhole(amount) then
+		return false, label .. " needs a whole number, like /" .. string.lower(label) .. " 50000"
+	end
+	local maxAmount = isWhole(dev.MaxTokensPerCommand) and dev.MaxTokensPerCommand or 100000000
+	amount = math.max(1, math.min(amount, math.max(1, maxAmount)))
+	if not hasFunction(DataService, adder) then
+		return false, label .. " is unavailable in this build"
+	end
+	DataService[adder](player, amount)
+	return true, "+" .. commas(amount) .. " " .. label, true
+end
+
+local function cmdCash(player, profile, arg)
+	return grantCurrency(player, arg, "Cash", "GrantCash", 1000000, "AddCash")
+end
+
+local function cmdGems(player, profile, arg)
+	return grantCurrency(player, arg, "Gems", "GrantGems", 1000, "AddGems")
+end
+
 local function cmdReset(player, profile)
 	if player:GetAttribute(Config.Attr.InMatch) == true then
 		return false, "leave the match first, then reset"
+	end
+	-- Phase 3: BattleService sets InBattle (the battle id) while the player's team fights
+	local battleId = player:GetAttribute(Config.Attr.InBattle or "InBattle")
+	if battleId ~= nil and battleId ~= false and battleId ~= "" and battleId ~= 0 then
+		return false, "leave the battle first, then reset"
 	end
 	local reload = tutorialReloader()
 	-- tokens through the public API so the HUD attribute and the leaderboard follow
@@ -509,10 +551,35 @@ local function cmdReset(player, profile)
 	wipe(tableField(profile, "IndexClaimed"))
 	profile.Cash = 0
 	profile.Gems = 0
+	-- Phase 2: the tycoon home (stations, garden, gym, collector), fused copies, food and pet levels go too
 	local home = tableField(profile, "Home")
 	home.Level, home.Prestige = 0, 0
+	home.CollectorCash = 0
 	wipe(tableField(home, "Rooms"))
+	wipe(tableField(home, "Stations"))
+	wipe(tableField(home, "Garden"))
+	wipe(tableField(home, "Gym"))
 	wipe(tableField(profile, "PetLevels"))
+	wipe(tableField(profile, "Tiers"))
+	wipe(tableField(profile, "Hybrids"))
+	wipe(tableField(profile, "Food"))
+	local care = loadModule(script.Parent, "PetCareService")
+	if hasFunction(care, "ClearKitchen") then
+		pcall(care.ClearKitchen, player)
+	end
+	-- Phase 3: the battle teams (3 empty presets, preset 1 active) and the battle record (trophies, trial clears, raid /
+	-- PvP counters, event pets), in the shape DataService keeps them
+	local teams = tableField(profile, "Teams")
+	wipe(teams)
+	teams.Presets = { {}, {}, {} }
+	teams.Active = 1
+	local battle = tableField(profile, "Battle")
+	wipe(battle)
+	for _, field in ipairs({ "Trophies", "TrialBest", "Raids", "RaidBestDamage", "PvPWins", "PvPLosses" }) do
+		battle[field] = 0
+	end
+	battle.TrialCleared = {}
+	battle.EventPets = {}
 	for _, attr in ipairs({ Config.Attr.Cash, Config.Attr.Gems }) do
 		if attr and player:GetAttribute(attr) ~= nil then
 			player:SetAttribute(attr, 0)
@@ -523,7 +590,20 @@ local function cmdReset(player, profile)
 	local tutorialNote = ""
 	local rewound = reload ~= nil or not TutorialService
 	-- the grow-only fields are written over the store at the next save (the store would merge them back otherwise)
-	overwriteStored(player, { Discovered = true, IndexClaimed = true, BestTimes = true, Tutorial = rewound })
+	overwriteStored(player, {
+		Discovered = true,
+		IndexClaimed = true,
+		BestTimes = true,
+		Tutorial = rewound,
+		-- Phase 2: a higher stored prestige would otherwise win the Home merge and bring the old home back
+		Home = true,
+		Tiers = true,
+		Hybrids = true,
+		PetLevels = true,
+		-- Phase 3: cleared trials and event pets only grow and best values only rise in the merge
+		Teams = true,
+		Battle = true,
+	})
 	if rewound then
 		rewindTutorial(player, profile, reload, true)
 	else
@@ -533,6 +613,10 @@ local function cmdReset(player, profile)
 	-- IndexService forgets the completed groups (execute() then marks it dirty and syncs it to the client)
 	if hasSignal(DataService, "ProfileRebased") then
 		DataService.ProfileRebased:Fire(player, profile)
+	end
+	-- Phase 3: the battle services re-read the (now empty) teams
+	if hasSignal(DataService, "TeamsChanged") then
+		DataService.TeamsChanged:Fire(player)
 	end
 	return true, "data reset: you are a brand-new player" .. tutorialNote, true
 end
@@ -763,14 +847,16 @@ end
 local function cmdHelp(player)
 	notify(player, "DEV: /pet <name> [0-2]  /pets [0-2]  /evolve <name|all> [1-2]  /clearpets", "info", HELP_SECONDS)
 	if tutorialReloader() then
-		return true, "/allpets  /tokens 50000  /reset  /tutorial  /skiptutorial  /devhelp", false
+		return true, "/allpets /tokens N /cash N /gems N /reset /tutorial /skiptutorial /devhelp", false
 	end
-	return true, "/allpets  /tokens 50000  /reset  /skiptutorial  /devhelp", false
+	return true, "/allpets /tokens N /cash N /gems N /reset /skiptutorial /devhelp", false
 end
 
 local HANDLERS = {
 	allpets = cmdAllPets,
 	tokens = cmdTokens,
+	cash = cmdCash,
+	gems = cmdGems,
 	reset = cmdReset,
 	tutorial = cmdTutorial,
 	skiptutorial = cmdSkipTutorial,
@@ -795,12 +881,12 @@ local function execute(player, command, arg, source)
 		notify(player, "DEV: unknown command '" .. printable(command) .. "' (try /devhelp)", "bad")
 		return false, "unknown command"
 	end
-	-- only "tokens" (a number) and the showcase commands (a short text) take a value
+	-- tokens / cash / gems take a whole number, the showcase commands a short text, the rest no value
 	local kind = ARG_KIND[name]
 	if arg ~= nil and (type(arg) ~= kind or (kind == "string" and #arg > MAX_ARG_LENGTH)) then
 		log(player, source, name, arg, "refused: bad value")
-		if name == "tokens" then
-			notify(player, "DEV: tokens needs a whole number, like /tokens 50000", "bad")
+		if NUMERIC[name] then
+			notify(player, "DEV: " .. name .. " needs a whole number, like /" .. name .. " 50000", "bad")
 		elseif kind == "string" then
 			notify(player, "DEV: " .. name .. " needs a short text, like /pet cloudy dragon 2", "bad")
 		else
@@ -917,7 +1003,7 @@ local function onChatted(player, message)
 	end
 	lastChat[player] = { Text = message, At = now }
 	local arg = nil
-	if word == "tokens" and rest ~= "" then
+	if NUMERIC[word] and rest ~= "" then
 		arg = parseAmount(rest)
 		if arg == nil then
 			arg = rest -- not a number: Run refuses it with a "bad" toast

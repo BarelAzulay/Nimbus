@@ -29,7 +29,8 @@
 --                   server re-enables), the owner's prompts stay; a new station pops in and ends exactly where the
 --                   server built it; the presses stamp (head moves, Puff emits) and pooled cloud blocks ride the belt
 --                   into the Collector; the Collector screen shows CollectorCash / CollectorCap ("FULL") and the tank
---                   fills; the Fusion swirl turns; the Garden's pets (GardenPets) stand on their cushions; the owner's pads dim when Cash cannot pay; far homes freeze and
+--                   fills; the Fusion swirl turns; the Garden's pets (GardenPets) and the Gym's (GymPets) stand on
+--                   their cushions / targets; the owner's pads dim when Cash cannot pay; far homes freeze and
 --                   recycle their blocks; nothing is created per frame; ClearPlot / removing the home cleans up; no
 --                   errors or warnings from HomeFx
 -- Plain Lua 5.1 syntax only.
@@ -436,7 +437,7 @@ local function serverScenarios()
 		end
 		local maxParts, maxAt, steps = 0, "", 0
 		local stationOk = T.tally("home plot: every purchase builds Station_<Id> under Home with StationId / Level / BuiltAt; the pads follow")
-		local padOk = T.tally("home plot: every pad is Pad_<Id> under Home/Pads with a BuyPrompt 'Buy' (E, 0.25 s, StationId, OwnerUserId), enabled only when unlocked")
+		local padOk = T.tally("home plot: every pad is Pad_<Id> under Home/Pads with a BuyPrompt 'Buy' (E, 0.25 s, StationId, OwnerUserId; the Prestige pad's says 'Prestige' with a hold >= 1 s), enabled only when unlocked")
 		local signOk = T.tally("home plot: every pad sign is a pixel-sized billboard (names >= 22 px, info >= 18 px, outlined, LightInfluence 0, MaxDistance 50-150) showing the name and 'Lv a -> b' + price or the lock reason")
 		local ghostOk = T.tally("home plot: stations that unlock later ('Unlocks at Prestige', 'Coming soon') show a cheap ghost (<= 12 parts, no prompts, no collisions)")
 		local function checkPads(pads)
@@ -448,7 +449,12 @@ local function serverScenarios()
 				else
 					local prompt = find(m, "BuyPrompt", "ProximityPrompt")
 					local locked = pad.Locked ~= nil and pad.Locked ~= ""
-					padOk:case(prompt ~= nil and prompt.ActionText == "Buy" and abs(prompt.HoldDuration - 0.25) < 1e-6 and prompt.KeyboardKeyCode == Enum.KeyCode.E
+					-- the Prestige pad buys nothing: "Prestige" with a long hold (it opens the prestige confirmation)
+					local wantText, holdOk = "Buy", prompt ~= nil and abs(prompt.HoldDuration - 0.25) < 1e-6
+					if pad.StationId == "Prestige" then
+						wantText, holdOk = "Prestige", prompt ~= nil and prompt.HoldDuration >= 1
+					end
+					padOk:case(prompt ~= nil and prompt.ActionText == wantText and holdOk and prompt.KeyboardKeyCode == Enum.KeyCode.E
 						and prompt:GetAttribute("StationId") == pad.StationId and prompt:GetAttribute("OwnerUserId") == owner.UserId
 						and m:GetAttribute("StationId") == pad.StationId and m:GetAttribute("OwnerUserId") == owner.UserId and prompt.Enabled == not locked,
 						pad.StationId .. (prompt and (" enabled=" .. tostring(prompt.Enabled) .. " locked=" .. tostring(locked)) or " no BuyPrompt"))

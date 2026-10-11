@@ -394,6 +394,26 @@ local function serverScenarios()
 		local equipId = PC.Pets[1].Id
 		local okEquip = PS.Equip(owner, equipId)
 		T.check(okEquip == true and owner:GetAttribute("EquippedPets") ~= "", "DEV reset: (precondition) a pet is equipped")
+		-- Phase 3 progress the reset must take too (the battle teams and the battle record). Set up through the API
+		-- (it syncs) BEFORE the raw edits below: those leave a state the ProfileSync validator rejects (Wins > Matches)
+		local hasP3 = type(DataS.SetTeam) == "function" and type(DataS.MutateBattle) == "function" and type(DataS.AddTrophies) == "function"
+		local teamPet = (PC.Pets[2] or PC.Pets[1]).Id
+		local teamPet2 = (PC.Pets[3] or PC.Pets[1]).Id
+		if hasP3 then
+			local okTeam, whyTeam = DataS.SetTeam(owner, 2, { teamPet, teamPet2 })
+			T.check(okTeam == true and DataS.SelectTeam(owner, 2) == true, "DEV reset: (precondition) a battle team is set and selected", tostring(whyTeam))
+			DataS.AddTrophies(owner, 40)
+			DataS.MutateBattle(owner, function(b)
+				b.TrialCleared[1], b.TrialCleared[2], b.TrialCleared[3] = true, true, true
+				b.TrialBest = 3
+				b.Raids, b.RaidBestDamage, b.PvPWins, b.PvPLosses = 2, 900, 5, 1
+				b.EventPets[teamPet] = true
+			end)
+			local rec = DataS.GetBattle(owner) or {}
+			T.check(rec.Trophies == 40 and rec.TrialBest == 3 and rec.PvPWins == 5 and rec.EventPets and rec.EventPets[teamPet] == true,
+				"DEV reset: (precondition) the battle record holds trophies, trial clears, raid / PvP counters and an event pet")
+			advance(0.5) -- the throttled (trailing) ProfileSync of these calls goes out now
+		end
 		local IC = K.M["shared/ItemCatalog"]
 		local itemId = IC and IC.List and IC.List[1] and IC.List[1].Id
 		if itemId then
@@ -405,6 +425,19 @@ local function serverScenarios()
 		prof.Cash, prof.Gems = 120, 7
 		prof.Home.Level = 2
 		prof.PetLevels[equipId] = { Level = 3, Xp = 10 }
+		-- Phase 2 progress the reset must take too (the whole home build, fused copies, food)
+		prof.Home.Stations = prof.Home.Stations or {}
+		prof.Home.Stations.Press1 = 3
+		prof.Home.Garden = prof.Home.Garden or {}
+		prof.Home.Garden[1] = equipId
+		prof.Home.Gym = prof.Home.Gym or {}
+		prof.Home.CollectorCash = 55
+		prof.Tiers = prof.Tiers or {}
+		prof.Tiers[equipId] = { Golden = 1 }
+		prof.Hybrids = prof.Hybrids or {}
+		prof.Hybrids.devtest = { Body = equipId, Style = equipId, Elements = {}, Name = "Test", Rarity = "Common", Tier = "Normal" }
+		prof.Food = prof.Food or {}
+		prof.Food.Snack = 4
 		-- refused in a match
 		owner:SetAttribute(Config.Attr.InMatch, true)
 		before = snapshotOf(owner)
@@ -413,6 +446,24 @@ local function serverScenarios()
 		T.check(unchanged and lastToast(owner, mark).kind == "bad", "DEV reset: refused during a match (nothing changes)", diff)
 		owner:SetAttribute(Config.Attr.InMatch, false)
 		advance(0.2)
+		-- ...and during a pet battle (BattleService sets InBattle = the battle id while the team fights)
+		if hasP3 then
+			owner:SetAttribute("InBattle", "smoke_battle")
+			before = snapshotOf(owner)
+			mark = send(owner, "reset")
+			unchanged, diff = same(before, snapshotOf(owner))
+			local keptTeam = DataS.ActiveTeamKeys(owner)
+			T.check(unchanged and lastToast(owner, mark).kind == "bad" and #keptTeam == 2 and (DataS.GetBattle(owner) or {}).Trophies == 40,
+				"DEV reset: refused during a pet battle (InBattle; nothing changes, the team and trophies stay)", diff .. " / " .. lastToast(owner, mark).text)
+			owner:SetAttribute("InBattle", nil)
+			advance(0.2)
+		end
+		local teamsFired = 0
+		local teamsConn = (hasP3 and DataS.TeamsChanged) and DataS.TeamsChanged:Connect(function(who)
+			if who == owner then
+				teamsFired = teamsFired + 1
+			end
+		end)
 		local spot = owner:GetAttribute(Config.Attr.SpotIndex)
 		local tutorialBefore = DataS.GetTutorial(owner)
 		mark = send(owner, "reset")
@@ -436,11 +487,33 @@ local function serverScenarios()
 		expect(next(prof.IndexClaimed) == nil, "index rewards")
 		expect(prof.Cash == 0 and prof.Gems == 0, "cash / gems")
 		expect(prof.Home.Level == 0 and next(prof.PetLevels) == nil, "home / pet levels")
-		T.check(#left == 0 and toast.kind == "good", "DEV reset: back to a brand-new player (tokens, pets, equipped, items, stats, Index, cash, gems, home)", table.concat(left, ", ") .. " / " .. toast.text)
+		expect(next(prof.Home.Stations or {}) == nil and next(prof.Home.Garden or {}) == nil and (prof.Home.CollectorCash or 0) == 0,
+			"home build (stations / garden / collector)")
+		expect(next(prof.Tiers or {}) == nil and next(prof.Hybrids or {}) == nil, "golden / rainbow / fused copies")
+		expect(next(prof.Food or {}) == nil, "food")
+		if hasP3 then
+			local tm = type(prof.Teams) == "table" and prof.Teams or {}
+			local presets = type(tm.Presets) == "table" and tm.Presets or {}
+			expect(#(presets[1] or {}) == 0 and #(presets[2] or {}) == 0 and #(presets[3] or {}) == 0 and tm.Active == 1, "battle teams")
+			local b = type(prof.Battle) == "table" and prof.Battle or {}
+			expect(b.Trophies == 0 and b.TrialBest == 0 and next(b.TrialCleared or {}) == nil and b.Raids == 0 and b.RaidBestDamage == 0
+				and b.PvPWins == 0 and b.PvPLosses == 0 and next(b.EventPets or {}) == nil, "battle record")
+		end
+		T.check(#left == 0 and toast.kind == "good", "DEV reset: back to a brand-new player (tokens, pets, equipped, items, stats, Index, cash, gems, home, battle teams + record)", table.concat(left, ", ") .. " / " .. toast.text)
 		T.eq(owner:GetAttribute(Config.Attr.SpotIndex), spot, "DEV reset: ...the lobby spot stays assigned")
 		syncs = K.remotesFor("ProfileSync", owner.UserId, mark)
 		snap = syncs[#syncs] and syncs[#syncs].args[1]
 		T.check(type(snap) == "table" and snap.Tokens == 0 and count(snap.Pets) == 0 and count(snap.Discovered) == 0, "DEV reset: ...and the menu is synced at once")
+		if hasP3 then
+			local st, sb = type(snap) == "table" and snap.Teams, type(snap) == "table" and snap.Battle
+			T.check(type(st) == "table" and type(st.Presets) == "table" and #(st.Presets[2] or { 1 }) == 0 and st.Active == 1 and #DataS.ActiveTeamKeys(owner) == 0
+				and type(sb) == "table" and sb.Trophies == 0 and type(sb.TrialCleared) == "table" and #sb.TrialCleared == 0 and count(sb.EventPets) == 0,
+				"DEV reset: ...the synced battle teams and battle record are empty too")
+			T.check(teamsFired >= 1, "DEV reset: ...DataService.TeamsChanged fires so the battle services re-read the team", "fired " .. teamsFired .. "x")
+		end
+		if teamsConn then
+			teamsConn:Disconnect()
+		end
 		if IS and type(IS.GetProgress) == "function" then
 			local found = 0
 			for _, info in pairs(IS.GetProgress(owner)) do
@@ -1258,7 +1331,9 @@ local function clientScenarios()
 			local label = "DEV " .. size[1] .. "x" .. size[2]
 			local floorPx = size[2] >= 1000 and 15 or 14
 			checkTile(label, floorPx)
-			checkTileToasts(label, true)
+			-- (844x390: with the Phase 2 currency stack - Cloud Tokens, Cash, Gems - only the newest toast fits under
+			-- it, so the "two newest toasts" check is reported only there, like the open panel's below)
+			checkTileToasts(label, size[1] ~= 844)
 			Mock.Click(named(g, "DevButton"))
 			advance(0.6)
 			checkPanel(label, floorPx, size[3])

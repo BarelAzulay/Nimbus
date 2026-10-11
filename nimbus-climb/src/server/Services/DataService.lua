@@ -1,7 +1,9 @@
--- DataService: persistent player profile (tokens, pets, items, stats, the v3 Pet Index / tutorial and the Phase 2
--- tycoon: Cash, Gems, Home, Food, pet levels, tier copies and fused hybrids) for Nimbus Climb.
+-- DataService: persistent player profile (tokens, pets, items, stats, the v3 Pet Index / tutorial, the Phase 2
+-- tycoon: Cash, Gems, Home, Food, pet levels, tier copies and fused hybrids, and the Phase 3 battle teams and battle
+-- record) for Nimbus Climb.
 --
--- Profile shape (ARCHITECTURE_V2.md section 1, ARCHITECTURE_V3.md section 1 + section 11 + "Phase 2 build contract"):
+-- Profile shape (ARCHITECTURE_V2.md section 1, ARCHITECTURE_V3.md section 1 + section 11 + "Phase 2 build contract" +
+-- "Phase 3 build contract"):
 --   { Version = 2, Tokens, Pets = {[petId]=count}, Equipped = {key...}, Items = {[itemId]=count},
 --     Stats = { Matches, Wins, TokensEarned, Spins, BestTimes = {[difficultyId]=seconds} }, SpotIndex,
 --     -- v3
@@ -12,7 +14,17 @@
 --              CollectorCash, LastSeen },
 --     Food = {[foodId]=count}, PetLevels = {[key]={Level, Xp}}, Tiers = {[petId]={Golden=n, Rainbow=n}},
 --     Hybrids = {[uid]={Body, Style, Elements, Name, Rarity, Tier}}, GemReceipts = {[purchaseId]=os.time()},
---     Teams = (reserved for Phase 3: plain data, saved whole) }
+--     -- Phase 3
+--     Teams = { Presets = { [1..3] = {key, key, key, key?} }, Active = 1..3 },
+--     Battle = { Trophies, TrialBest, TrialCleared = {[level]=true}, Raids, RaidBestDamage, PvPWins, PvPLosses,
+--                EventPets = {[petId]=true} } }
+--   Battle teams: a preset lists up to 3 UNIQUE keys in slot order (slot 4 once Home.Prestige reaches
+--   TycoonCatalog.Prestige.TeamSlotUnlock, 1); every key needs a FREE copy: owned (PetKeys.Count) more often than it
+--   works in the Garden / Gym. A key that loses its free copy (fused away, released, a developer reset, its last copy
+--   placed in the Garden / Gym) is dropped from every preset ("pruned", the pets behind it move up a slot): in every
+--   copy taken for a save or a snapshot, in the merge, and in the live profile on every Sync and after a MutateHome
+--   that moved pets (TeamsChanged fires then). A Phase 2 profile (no Teams / Battle, or the empty Teams reserve) gets
+--   the defaults: 3 empty presets, preset 1 active, a zeroed battle record.
 --   Pet copies are identified by keys (shared/PetKeys.lua): "petId" (Normal), "petId@Golden", "petId@Rainbow",
 --   "hyb:<uid>"; Equipped, PetLevels, Garden and Gym hold keys. Every plain petId of an old profile is a valid key.
 --   Garden / Gym slots are whole numbers 1..64 (other valid string slot names are kept as they are).
@@ -34,10 +46,21 @@
 --     Gifted stick once true) so a second server can never replay the tutorial gift; Tokens / Cash / Gems / Food
 --     counts / Home.CollectorCash travel as +/- deltas; Home.Stations / Garden / Gym, Tiers, Hybrids and PetLevels
 --     are replaced PER KEY when the session changed that key; GemReceipts only grow (bounded to the newest 100);
---     Teams are replaced whole. Home: a HIGHER Home.Prestige wins the whole Home (prestige resets the stations, so
+--     Teams merge PER PRESET (a preset the session changed replaces the stored one, Active is replaced when the
+--     session changed it; afterwards the presets are pruned against the merged copies); Battle: Trophies / Raids /
+--     PvPWins / PvPLosses travel as +/- deltas (never below 0), TrialBest / RaidBestDamage keep the higher value,
+--     TrialCleared / EventPets only grow (union). Home: a HIGHER Home.Prestige wins the whole Home (prestige resets the stations, so
 --     the other side's per-station changes are void); at equal prestige the Home merges per key (Level replaced,
---     LastSeen the later one). The ONE exception is ResetFields (developer tools only): the fields it names are
---     written over the stored ones at the next successful save instead of merged.
+--     LastSeen the later one). When both sides prestiged to that star (two runs from the same reset home), each
+--     station keeps the higher level, the Home Level grows by what that adds and the session's Collector counts
+--     from 0 (its prestige emptied it).
+--     Cash follows the same prestige rule, because a prestige resets Cash too: a session that prestiged past the
+--     store writes its balance (the Cash of the newest run), a session whose run the store prestiged past loses its
+--     Cash delta (that run was reset), and when both sides prestiged to the same star the session's Cash since its
+--     prestige joins the store's. A star reward (Gems) both sides paid counts once. Gem purchases: the receipt and
+--     its gems merge together (MarkReceipt records the amount): a receipt the store already holds was granted by
+--     another server, so its gems are not added again. The ONE exception is ResetFields (developer tools only):
+--     the fields it names are written over the stored ones at the next successful save instead of merged.
 --   * A PROVISIONAL profile (the load failed while the DataStore is reachable, e.g. an outage) holds
 --     defaults, not the player's data. One-time rewards must not be decided from it: GetTutorial
 --     answers nil and SetTutorial refuses until the background recovery read the real save (then
@@ -45,7 +68,10 @@
 --     IsProvisional(player) lets IndexService / DevService refuse claims and resets meanwhile. That
 --     is what keeps a failed load from replaying the tutorial gift / finish reward. Per-key data would be
 --     overwritten by stand-in values the same way, so GetHome answers nil, MutateHome only lets delta-safe changes
---     (CollectorCash, LastSeen) through and AddPetXp / MarkReceipt refuse while provisional. Without a usable
+--     (CollectorCash, LastSeen) through and AddPetXp / MarkReceipt refuse while provisional; likewise GetTeams /
+--     GetBattle answer nil, ActiveTeamKeys {}, SetTeam / SelectTeam refuse and MutateBattle only lets the fields
+--     through that merge as deltas or best values (a first clear or an event pet is never decided from stand-in
+--     data). AddTrophies keeps working (a delta). Without a usable
 --     store (Studio without API access) nothing is provisional: everything runs from memory.
 --   * Forward compatibility: a save keeps every stored field this version does not know (top level,
 --     inside Home and inside Stats) and a newer Version number, so a server still running an older build after
@@ -60,8 +86,10 @@
 --     rejoin simply picks it up again. It is only dropped after a successful write or after
 --     ORPHAN_TIMEOUT seconds. DataService alone makes this decision (Release); callers just call it.
 --   * The store never holds a sparse array: Garden / Gym are written as arrays with "" for empty slots (or a map
---     with string keys when a slot has a name); empty Phase 2 maps (Food, Tiers, Hybrids, GemReceipts, Teams) are
---     left out of the record. ProfileSync uses the same slot encoding (client State decodes it).
+--     with string keys when a slot has a name); empty Phase 2 maps (Food, Tiers, Hybrids, GemReceipts) and Teams /
+--     Battle while they hold the defaults are left out of the record. ProfileSync uses the same slot encoding (client
+--     State decodes it). Battle.TrialCleared is stored and synced as a DENSE array of booleans indexed by level
+--     ({true, true, false, true}: false = not cleared), so `TrialCleared[level]` reads the same on both sides.
 --
 -- Public API
 --   Load(player) -> live profile, GetProfile(player), MarkDirty(player), Sync(player), Save(player),
@@ -85,16 +113,47 @@
 --     AddPetXp(player, key, xp) -> levelsGained   owned copies only; the curve is TycoonCatalog.XpToNext(level)
 --                                       (a local fallback when that module is missing); synced
 --     The player attributes Config.Attr.Cash / Config.Attr.Gems mirror the (whole) balances for the HUD.
+--   Phase 3 (battle teams + the battle record; nothing here yields; reasons are short texts for a side toast):
+--     TeamsChanged                      Util.Signal (exists at module load) Fire(player) after every successful SetTeam /
+--                                       SelectTeam, when pruning dropped keys from the live presets, and after a rebase
+--     GetTeams(player) -> { Presets = { {key...}, {key...}, {key...} }, Active = 1..3, Slots = 3 | 4 }   a pruned copy
+--                                       (the ProfileSync shape) | nil until loaded and while provisional
+--     SetTeam(player, preset, keys) -> ok, reason   preset 1..3; keys = the pets in slot order ("" / false = an empty
+--                                       slot; the list is compacted). Refused: junk, a pet in a slot past Slots (slot 4
+--                                       before the prestige unlock), the same key twice, a key not owned, a key whose
+--                                       copies all work in the Garden / Gym, a profile not loaded or provisional. An
+--                                       empty list clears the preset. MarkDirty + SyncSoon + TeamsChanged.
+--     SelectTeam(player, preset) -> ok, reason      makes that preset the active one (MarkDirty + SyncSoon + TeamsChanged)
+--     ActiveTeamKeys(player) -> {key...}            the active preset's usable keys in slot order (slot = index);
+--                                       {} when the team is empty, the profile is not loaded or is provisional
+--     GetBattle(player) -> { Trophies, TrialBest, TrialCleared = {[level]=true}, Raids, RaidBestDamage, PvPWins,
+--                                       PvPLosses, EventPets = {[petId]=true} }   a copy | nil until loaded and while
+--                                       provisional (stand-in data must never decide a first clear or an event pet)
+--     MutateBattle(player, fn) -> ok    fn(battle) edits the LIVE record and must not yield; an error, or fn returning
+--                                       false, restores it (-> false). Afterwards it is sanitised in place: whole numbers
+--                                       >= 0, TrialCleared / EventPets never lose an entry and TrialBest / RaidBestDamage
+--                                       never go down (the store merges them so), TrialBest >= the highest cleared level.
+--                                       While provisional only Trophies / Raids / PvPWins / PvPLosses / RaidBestDamage may
+--                                       change (they merge safely into the real save): any other change rolls the whole
+--                                       call back (-> false). Pay a reward decided inside fn only once this returned true.
+--                                       A change is synced (throttled).
+--     AddTrophies(player, n) -> ok, total            n is rounded to a whole number and may be negative; the total
+--                                       never goes below 0. Works like AddCash (also before the load finished and while
+--                                       provisional: trophies merge as a delta). Synced (throttled).
 --   ProfileSync snapshot: Tokens, Pets, Equipped, Items, Stats, SpotIndex, Perks, Discovered, IndexClaimed,
 --     Tutorial + Phase 2: Cash, Gems, Home { Level, Prestige, Stations, Garden, Gym, CollectorCash } (slot maps
---     encoded like the store), Food, Tiers, Hybrids, PetLevels. Plain tables, never shared with the live profile.
+--     encoded like the store), Food, Tiers, Hybrids, PetLevels + Phase 3: Teams { Presets, Active, Slots } (pruned),
+--     Battle { Trophies, TrialBest, TrialCleared = {bool...} (index = level), Raids, RaidBestDamage, PvPWins,
+--     PvPLosses, EventPets = {[petId]=true} }. Plain tables, never shared with the live profile.
 --   Extras (used by PetService / IndexService / DevService / GemService, harmless otherwise): Release(player), Init(),
 --     ComputePerks(equippedKeys, profile|nil), IsDiscovered(player, petId), IsProvisional(player),
---     ResetFields(player, { Discovered, IndexClaimed, Tutorial, BestTimes, Home, Tiers, Hybrids, PetLevels = true })
+--     ResetFields(player, { Discovered, IndexClaimed, Tutorial, BestTimes, Home, Tiers, Hybrids, PetLevels, Teams,
+--     Battle = true })
 --     -> ok (the session's CURRENT values of those fields replace the stored ones at the next successful save),
---     HasReceipt(player, purchaseId) -> bool | nil, MarkReceipt(player, purchaseId) -> true (new: grant now) |
+--     HasReceipt(player, purchaseId) -> bool | nil, MarkReceipt(player, purchaseId, gems?) -> true (new: grant now) |
 --     false (already processed: grant nothing) | nil (not decidable now: profile not loaded or provisional -> answer
---     NotProcessedYet), SyncSoon(player) (a throttled Sync: at most one snapshot per 0.25 s, trailing call kept),
+--     NotProcessedYet; `gems` = the amount granted with it, so a purchase another server already stored is never
+--     added twice), SyncSoon(player) (a throttled Sync: at most one snapshot per 0.25 s, trailing call kept),
 --     signal ProfileRebased(player, profile).
 --
 -- Plain Lua 5.1-compatible syntax only.
@@ -116,6 +175,9 @@ DataService.ProfileLoaded = Util.Signal()
 -- Fired when the live profile was replaced by newer stored data (recovered failed load, or another
 -- server changed the save): (player, profile). PetService re-validates its attributes on this.
 DataService.ProfileRebased = Util.Signal()
+-- Phase 3: fired after SetTeam / SelectTeam, when stale keys were pruned from the live presets and after a rebase:
+-- (player). Exists at module load so other services can connect before any Init.
+DataService.TeamsChanged = Util.Signal()
 
 local PROFILE_VERSION = 2
 local RETRY_DELAY = 1.5 -- seconds between the two attempts of a read/write
@@ -136,7 +198,6 @@ local STAT_KEYS = { "Matches", "Wins", "TokensEarned", "Spins" }
 local MAX_TUTORIAL_STEP = 1000 -- sanity cap for Tutorial.Step (TutorialService clamps to its own step count)
 local MAX_LEVEL = 100000 -- sanity cap for home / station / pet levels and prestige
 local DEFAULT_MAX_PET_LEVEL = 100 -- AddPetXp cap when TycoonCatalog does not name one
-local PLAIN_DEPTH = 5 -- Teams (reserved) are kept as plain data up to this depth
 local TIER_NAMES = { "Golden", "Rainbow" }
 local VALID_TIER = { Normal = true, Golden = true, Rainbow = true }
 
@@ -145,13 +206,14 @@ local VALID_TIER = { Normal = true, Golden = true, Rainbow = true }
 local OVERWRITABLE = {
 	Discovered = true, IndexClaimed = true, Tutorial = true, BestTimes = true,
 	Home = true, Tiers = true, Hybrids = true, PetLevels = true,
+	Teams = true, Battle = true, -- Phase 3: the battle record's sets only grow and its best values only rise
 }
 -- Stored keys this version owns. Anything else in a stored profile belongs to a newer phase and is written back
 -- untouched by every save (see keepForeign).
 local KNOWN_TOP = {
 	Version = true, Tokens = true, Pets = true, Equipped = true, Items = true, Stats = true, SpotIndex = true,
 	Discovered = true, IndexClaimed = true, Tutorial = true, Cash = true, Gems = true, Home = true, PetLevels = true,
-	Food = true, Tiers = true, Hybrids = true, GemReceipts = true, Teams = true,
+	Food = true, Tiers = true, Hybrids = true, GemReceipts = true, Teams = true, Battle = true,
 	UpdatedAt = true,
 }
 local KNOWN_HOME = {
@@ -170,7 +232,8 @@ local KNOWN_STATS = { Matches = true, Wins = true, TokensEarned = true, Spins = 
 --   Overwrite = { [field] = true } fields ResetFields asked to write over the store (nil when none is pending;
 --     cleared only after a successful write, so orphan retries and BindToClose carry it too),
 --   OverwriteGen = counter bumped by every ResetFields (a reset during an in-flight save stays pending),
---   LastSync = os.clock() of the last ProfileSync, SyncQueued = a trailing SyncSoon is scheduled
+--   LastSync = os.clock() of the last ProfileSync, SyncQueued = a trailing SyncSoon is scheduled,
+--   ReceiptGems = { [purchaseId] = gems } granted with receipts not in the store yet (MarkReceipt; nil when none)
 -- }
 local cache = {}
 local store = nil
@@ -221,8 +284,10 @@ local function getTycoonCatalog()
 	return getShared("TycoonCatalog")
 end
 
--- resolve PetKeys now (DataService's pure merge code counts equipped copies with it inside UpdateAsync)
+-- resolve PetKeys now (DataService's pure merge code counts equipped copies with it inside UpdateAsync), and
+-- TycoonCatalog (the merge reads its team-slot unlock when it prunes the battle teams)
 getPetKeys()
+getTycoonCatalog()
 
 ----------------------------------------------------------------------
 -- Small helpers
@@ -413,6 +478,42 @@ local function newHome()
 	}
 end
 
+-- Phase 3 (battle teams + the battle record). Its constants and helpers live in ONE table: the main chunk of this
+-- module is close to Lua's limit of 200 local variables. None of the values below is in Config (local constants).
+local P3 = {
+	PRESETS = 3, -- saved team presets (Teams.Presets[1..3])
+	SLOTS = 3, -- pets in a team...
+	MAX_SLOTS = 4, -- ...and the 4th slot once Home.Prestige reaches the unlock
+	SLOT_UNLOCK = 1, -- prestige stars that unlock slot 4 when TycoonCatalog.Prestige.TeamSlotUnlock is missing
+	MAX_TRIAL_LEVEL = 200, -- sanity cap for TrialBest / TrialCleared levels (the trials go up to 30)
+	COUNTERS = { "Trophies", "Raids", "PvPWins", "PvPLosses" }, -- merge as +/- deltas (never below 0)
+	BESTS = { "TrialBest", "RaidBestDamage" }, -- merge as the higher value
+	-- what MutateBattle may change while the profile is provisional (these merge safely into the real save)
+	PROVISIONAL_OK = { Trophies = true, Raids = true, PvPWins = true, PvPLosses = true, RaidBestDamage = true },
+}
+
+-- 3 empty presets, preset 1 active
+function P3.newTeams()
+	local presets = {}
+	for i = 1, P3.PRESETS do
+		presets[i] = {}
+	end
+	return { Presets = presets, Active = 1 }
+end
+
+function P3.newBattle()
+	return {
+		Trophies = 0,
+		TrialBest = 0,
+		TrialCleared = {},
+		Raids = 0,
+		RaidBestDamage = 0,
+		PvPWins = 0,
+		PvPLosses = 0,
+		EventPets = {},
+	}
+end
+
 local function newProfile()
 	return {
 		Version = PROFILE_VERSION,
@@ -426,7 +527,7 @@ local function newProfile()
 		Discovered = {},
 		IndexClaimed = {},
 		Tutorial = newTutorial(),
-		-- Phase 2 (ARCHITECTURE_V3.md "Phase 2 build contract"); Teams is reserved for Phase 3
+		-- Phase 2 (ARCHITECTURE_V3.md "Phase 2 build contract")
 		Cash = 0,
 		Gems = 0,
 		Home = newHome(),
@@ -435,7 +536,9 @@ local function newProfile()
 		Tiers = {},
 		Hybrids = {},
 		GemReceipts = {},
-		Teams = {},
+		-- Phase 3 (ARCHITECTURE_V3.md "Phase 3 build contract")
+		Teams = P3.newTeams(),
+		Battle = P3.newBattle(),
 	}
 end
 
@@ -730,49 +833,6 @@ local function cleanReceipts(raw, trim)
 	return out
 end
 
--- Reserved data (Teams): plain copy (strings, finite numbers, booleans; string / number keys), depth-limited.
-local function cleanPlain(raw, depth)
-	depth = depth or 0
-	local t = type(raw)
-	if t == "string" then
-		if #raw <= 200 then
-			return raw
-		end
-		return nil
-	elseif t == "boolean" then
-		return raw
-	elseif t == "number" then
-		if isFinite(raw) then
-			return raw
-		end
-		return nil
-	elseif t ~= "table" or depth >= PLAIN_DEPTH then
-		return nil
-	end
-	local out = {}
-	local n = 0
-	for k, v in pairs(raw) do
-		local kt = type(k)
-		if (kt == "string" and #k <= MAX_KEY_LENGTH) or (kt == "number" and isFinite(k)) then
-			local clean = cleanPlain(v, depth + 1)
-			if clean ~= nil and n < 64 then
-				out[k] = clean
-				n = n + 1
-			end
-		end
-	end
-	return out
-end
-
--- Teams (reserved for Phase 3): always a table of plain data
-local function cleanTeams(raw)
-	local t = cleanPlain(raw)
-	if type(t) ~= "table" then
-		return {}
-	end
-	return t
-end
-
 -- Set-like map { [key] = true } with valid keys only (a stored list of ids is accepted as well).
 local function cleanSet(raw)
 	local out = {}
@@ -840,6 +900,263 @@ local function normalizeEquipped(profile)
 	profile.Equipped = out
 end
 
+----------------------------------------------------------------------
+-- Phase 3: battle teams + the battle record (pure helpers; they run inside UpdateAsync too)
+----------------------------------------------------------------------
+
+-- true for a key a team may hold: a valid key that PetKeys reads as a canonical key (without PetKeys: any valid key)
+function P3.teamKey(key)
+	if not validKey(key) then
+		return false
+	end
+	local keys = getPetKeys()
+	if keys and type(keys.Parse) == "function" then
+		local ok, parsed = pcall(keys.Parse, key)
+		return ok and parsed ~= nil
+	end
+	return true
+end
+
+-- Untrusted preset -> the keys of its slots 1..MAX_SLOTS in order, each once ("" / false / junk entries are skipped,
+-- so the pets behind an empty slot move up).
+function P3.cleanPreset(raw)
+	local out, seen = {}, {}
+	if type(raw) ~= "table" then
+		return out
+	end
+	for i = 1, P3.MAX_SLOTS do
+		local key = raw[i]
+		if P3.teamKey(key) and not seen[key] then
+			seen[key] = true
+			out[#out + 1] = key
+		end
+	end
+	return out
+end
+
+-- Untrusted Teams -> { Presets = { [1..PRESETS] = {key...} }, Active = 1..PRESETS }: the structure only (ownership is
+-- P3.prune's job). Migration: a Phase 2 profile has no Teams, or the empty reserve -> the defaults; a bare list of
+-- presets ({ {keys}, ... }) or of keys ({ key, ... } = preset 1) is read leniently.
+function P3.cleanTeams(raw)
+	local teams = P3.newTeams()
+	if type(raw) ~= "table" then
+		return teams
+	end
+	local presets = raw.Presets
+	if type(presets) ~= "table" then
+		if type(raw[1]) == "table" then
+			presets = raw
+		elseif type(raw[1]) == "string" then
+			presets = { raw }
+		else
+			presets = {}
+		end
+	end
+	for i = 1, P3.PRESETS do
+		local list = presets[i]
+		if list == nil then
+			list = presets[tostring(i)]
+		end
+		teams.Presets[i] = P3.cleanPreset(list)
+	end
+	local active = raw.Active
+	if isFinite(active) and active >= 1 and active <= P3.PRESETS and active == math.floor(active) then
+		teams.Active = active
+	end
+	return teams
+end
+
+-- Prestige stars that unlock team slot 4 (TycoonCatalog.Prestige.TeamSlotUnlock: resolved at load, so this is pure)
+function P3.slotUnlock()
+	local catalog = getTycoonCatalog()
+	local prestige = catalog and type(catalog.Prestige) == "table" and catalog.Prestige or nil
+	local unlock = prestige and prestige.TeamSlotUnlock
+	if isFinite(unlock) and unlock >= 0 then
+		return unlock
+	end
+	return P3.SLOT_UNLOCK
+end
+
+-- Team slots of any profile-like table: MAX_SLOTS once Home.Prestige reaches the unlock, SLOTS before.
+function P3.slotsOf(profile)
+	local home = type(profile) == "table" and profile.Home or nil
+	local stars = type(home) == "table" and home.Prestige or 0
+	if isFinite(stars) and stars >= P3.slotUnlock() then
+		return P3.MAX_SLOTS
+	end
+	return P3.SLOTS
+end
+
+-- { [key] = copies working in the Garden / Gym } (those copies cannot fight). Live slot maps or stored arrays ("").
+function P3.placedCopies(profile)
+	local out = {}
+	local home = type(profile) == "table" and profile.Home or nil
+	if type(home) ~= "table" then
+		return out
+	end
+	for _, field in ipairs({ "Garden", "Gym" }) do
+		for _, key in pairs(tableOr(home[field])) do
+			if type(key) == "string" and key ~= "" then
+				out[key] = (out[key] or 0) + 1
+			end
+		end
+	end
+	return out
+end
+
+-- Drops (in place) every key without a free copy (owned more often than placed in the Garden / Gym) and every key past
+-- the profile's team slots. `teams` is a clean Teams table; `profile` any profile-like table whose copies decide (the
+-- live profile, a clean copy or a merged record). Returns true when something was dropped.
+function P3.prune(profile, teams)
+	local placed = P3.placedCopies(profile)
+	local slots = P3.slotsOf(profile)
+	local free = {}
+	local changed = false
+	for i = 1, P3.PRESETS do
+		local list = teams.Presets[i]
+		local kept = {}
+		for _, key in ipairs(list) do
+			if free[key] == nil then
+				free[key] = ownedCount(profile, key) - (placed[key] or 0)
+			end
+			if free[key] >= 1 and #kept < slots then
+				kept[#kept + 1] = key
+			end
+		end
+		if #kept ~= #list then
+			teams.Presets[i] = kept
+			changed = true
+		end
+	end
+	return changed
+end
+
+-- A clean, pruned copy of a profile's Teams.
+function P3.teamsOf(profile)
+	local teams = P3.cleanTeams(type(profile) == "table" and profile.Teams or nil)
+	P3.prune(profile, teams)
+	return teams
+end
+
+function P3.isDefaultTeams(teams)
+	if teams.Active ~= 1 then
+		return false
+	end
+	for i = 1, P3.PRESETS do
+		if #teams.Presets[i] > 0 then
+			return false
+		end
+	end
+	return true
+end
+
+-- clean Teams -> the stored / synced form (Presets as a dense array of PRESETS lists)
+function P3.encodeTeams(teams)
+	local presets = {}
+	for i = 1, P3.PRESETS do
+		presets[i] = copyList(teams.Presets[i])
+	end
+	return { Presets = presets, Active = teams.Active }
+end
+
+-- A cleared trial level: a whole number 1..MAX_TRIAL_LEVEL (a numeric string too), or nil.
+function P3.trialLevel(value)
+	local n = value
+	if type(value) == "string" and string.find(value, "^%d+$") then
+		n = tonumber(value)
+	end
+	if isFinite(n) and n >= 1 and n <= P3.MAX_TRIAL_LEVEL and n == math.floor(n) then
+		return n
+	end
+	return nil
+end
+
+-- Untrusted cleared set: { [level] = true }, the stored / synced dense array of booleans (false = not cleared) or a
+-- list of level numbers -> { [level] = true }.
+function P3.cleanCleared(raw)
+	local out = {}
+	for key, value in pairs(tableOr(raw)) do
+		local level = nil
+		if value == true then
+			level = P3.trialLevel(key)
+		elseif type(key) == "number" and type(value) == "number" then
+			level = P3.trialLevel(value)
+		end
+		if level then
+			out[level] = true
+		end
+	end
+	return out
+end
+
+-- Untrusted Battle -> a clean record: whole numbers >= 0, TrialBest >= the highest cleared level.
+function P3.cleanBattle(raw)
+	local r = tableOr(raw)
+	local battle = P3.newBattle()
+	for _, field in ipairs(P3.COUNTERS) do
+		battle[field] = sanitize(r[field])
+	end
+	battle.RaidBestDamage = sanitize(r.RaidBestDamage)
+	battle.TrialBest = clampCount(r.TrialBest, P3.MAX_TRIAL_LEVEL)
+	battle.TrialCleared = P3.cleanCleared(r.TrialCleared)
+	for level in pairs(battle.TrialCleared) do
+		if level > battle.TrialBest then
+			battle.TrialBest = level
+		end
+	end
+	battle.EventPets = cleanSet(r.EventPets)
+	return battle
+end
+
+-- { [field] = true } of the fields that differ between two clean records
+function P3.battleChanges(a, b)
+	local out = {}
+	for _, field in ipairs(P3.COUNTERS) do
+		if a[field] ~= b[field] then
+			out[field] = true
+		end
+	end
+	for _, field in ipairs(P3.BESTS) do
+		if a[field] ~= b[field] then
+			out[field] = true
+		end
+	end
+	if not mapsEqual(a.TrialCleared, b.TrialCleared) then
+		out.TrialCleared = true
+	end
+	if not mapsEqual(a.EventPets, b.EventPets) then
+		out.EventPets = true
+	end
+	return out
+end
+
+function P3.isDefaultBattle(battle)
+	return next(P3.battleChanges(battle, P3.newBattle())) == nil
+end
+
+-- clean Battle -> the stored / synced form: TrialCleared as a dense array of booleans (index = level, never sparse)
+function P3.encodeBattle(battle)
+	local cleared, top = {}, 0
+	for level in pairs(battle.TrialCleared) do
+		if level > top then
+			top = level
+		end
+	end
+	for level = 1, top do
+		cleared[level] = battle.TrialCleared[level] == true
+	end
+	return {
+		Trophies = battle.Trophies,
+		TrialBest = battle.TrialBest,
+		TrialCleared = cleared,
+		Raids = battle.Raids,
+		RaidBestDamage = battle.RaidBestDamage,
+		PvPWins = battle.PvPWins,
+		PvPLosses = battle.PvPLosses,
+		EventPets = copyMap(battle.EventPets),
+	}
+end
+
 -- Live (possibly messy) profile -> clean profile with whole numbers. Read defensively: other modules mutate it.
 local function copyProfile(p)
 	local out = newProfile()
@@ -866,7 +1183,10 @@ local function copyProfile(p)
 	out.Food = cleanCounts(p.Food, MAX_FOOD)
 	out.Hybrids = cleanHybrids(p.Hybrids)
 	out.GemReceipts = cleanReceipts(p.GemReceipts)
-	out.Teams = cleanTeams(p.Teams)
+	-- Phase 3 (the copies, the Home and its prestige are final above: the presets are pruned against them)
+	out.Teams = P3.cleanTeams(p.Teams)
+	P3.prune(out, out.Teams)
+	out.Battle = P3.cleanBattle(p.Battle)
 	return out
 end
 
@@ -940,7 +1260,10 @@ local function normalizeProfile(raw)
 	p.PetLevels = copyPetLevels(raw.PetLevels)
 	p.Food = cleanCounts(raw.Food, MAX_FOOD)
 	p.GemReceipts = cleanReceipts(raw.GemReceipts, true)
-	p.Teams = cleanTeams(raw.Teams)
+	-- Phase 3 (migration: a Phase 2 profile has no Teams / Battle and gets the defaults; stale keys are pruned)
+	p.Teams = P3.cleanTeams(raw.Teams)
+	P3.prune(p, p.Teams)
+	p.Battle = P3.cleanBattle(raw.Battle)
 	return p
 end
 
@@ -981,6 +1304,7 @@ local function profilesEqual(a, b)
 		and deepEqual(a.Tiers, b.Tiers)
 		and deepEqual(a.Hybrids, b.Hybrids)
 		and deepEqual(a.Teams, b.Teams)
+		and deepEqual(a.Battle, b.Battle)
 end
 
 ----------------------------------------------------------------------
@@ -1081,14 +1405,114 @@ local function overwriteValues(live, overwrite)
 	if overwrite.PetLevels then
 		out.PetLevels = copyPetLevels(live.PetLevels)
 	end
+	if overwrite.Teams then
+		out.Teams = P3.teamsOf(live)
+	end
+	if overwrite.Battle then
+		out.Battle = P3.cleanBattle(live.Battle)
+	end
 	if next(out) == nil then
 		return nil
 	end
 	return out
 end
 
+-- The Teams delta (both clean): { Presets = { [i] = list } (only the presets the session changed), Active = n | nil },
+-- or nil when the session changed nothing.
+function P3.diffTeams(live, base)
+	local d = { Presets = {}, Active = nil }
+	local any = false
+	for i = 1, P3.PRESETS do
+		if not listsEqual(live.Presets[i], base.Presets[i]) then
+			d.Presets[i] = copyList(live.Presets[i])
+			any = true
+		end
+	end
+	if live.Active ~= base.Active then
+		d.Active = live.Active
+		any = true
+	end
+	if not any then
+		return nil
+	end
+	return d
+end
+
+-- Per preset: a changed preset replaces the stored one (the caller prunes once the owned copies are final).
+function P3.applyTeams(out, d)
+	if not d then
+		return
+	end
+	for i, list in pairs(d.Presets) do
+		out.Teams.Presets[i] = copyList(list)
+	end
+	if d.Active ~= nil then
+		out.Teams.Active = d.Active
+	end
+end
+
+-- The Battle delta (both clean), or nil: counters as +/- deltas, best values as candidates, cleared levels and event
+-- pets as additions (removals never travel: those sets only grow).
+function P3.diffBattle(live, base)
+	local d = { Counters = {}, Best = {}, Cleared = {}, EventPets = {} }
+	local any = false
+	for _, field in ipairs(P3.COUNTERS) do
+		local delta = live[field] - base[field]
+		if delta ~= 0 then
+			d.Counters[field] = delta
+			any = true
+		end
+	end
+	for _, field in ipairs(P3.BESTS) do
+		if live[field] > base[field] then
+			d.Best[field] = live[field]
+			any = true
+		end
+	end
+	for level in pairs(live.TrialCleared) do
+		if not base.TrialCleared[level] then
+			d.Cleared[level] = true
+			any = true
+		end
+	end
+	for id in pairs(live.EventPets) do
+		if not base.EventPets[id] then
+			d.EventPets[id] = true
+			any = true
+		end
+	end
+	if not any then
+		return nil
+	end
+	return d
+end
+
+function P3.applyBattle(out, d)
+	if not d then
+		return
+	end
+	local battle = out.Battle
+	for field, delta in pairs(d.Counters) do
+		battle[field] = sanitize(battle[field] + delta) -- Trophies (like every counter) never below 0
+	end
+	for field, value in pairs(d.Best) do
+		if value > battle[field] then
+			battle[field] = value
+		end
+	end
+	for level in pairs(d.Cleared) do
+		battle.TrialCleared[level] = true
+	end
+	for id in pairs(d.EventPets) do
+		battle.EventPets[id] = true
+	end
+	out.Battle = P3.cleanBattle(battle) -- TrialBest >= the highest cleared level
+end
+
 -- The Home delta, or nil when the session did not change the Home. Whole = the session's complete home (it wins
 -- when its prestige is higher than the stored one); the rest is the per-key merge used at equal prestige.
+-- BasePrestige / CollectorNow: when the session prestiged to the star the store also holds, its Collector filled up
+-- from 0 after that prestige (a delta against the pre-prestige base would wipe the store's Collector).
 local function diffHome(liveRaw, baseRaw)
 	local live, base = cleanHome(liveRaw, false), cleanHome(baseRaw, false)
 	if homesEqual(live, base) then
@@ -1097,11 +1521,13 @@ local function diffHome(liveRaw, baseRaw)
 	local d = {
 		Whole = live,
 		Prestige = live.Prestige,
+		BasePrestige = base.Prestige,
 		Level = nil,
 		Stations = diffReplace(live.Stations, base.Stations, sameValue),
 		Garden = diffReplace(live.Garden, base.Garden, sameValue),
 		Gym = diffReplace(live.Gym, base.Gym, sameValue),
 		CollectorCash = live.CollectorCash - base.CollectorCash,
+		CollectorNow = live.CollectorCash,
 		LastSeen = nil,
 	}
 	if live.Level ~= base.Level then
@@ -1113,11 +1539,35 @@ local function diffHome(liveRaw, baseRaw)
 	return d
 end
 
+-- { [star] = gems } the prestige reward TycoonService paid for every star in fromStars+1 .. toStars (empty without
+-- TycoonCatalog). Resolved here, outside UpdateAsync, so the merge itself stays pure.
+local function starRewards(fromStars, toStars)
+	local out = {}
+	local catalog = getTycoonCatalog()
+	if toStars <= fromStars or not catalog or type(catalog.PrestigeGems) ~= "function" then
+		return out
+	end
+	for star = fromStars + 1, math.min(toStars, fromStars + 100) do
+		local ok, gems = pcall(catalog.PrestigeGems, star)
+		if ok and isFinite(gems) and gems >= 1 then
+			out[star] = math.floor(gems) -- TycoonService.Prestige pays math.floor(PrestigeGems(stars))
+		end
+	end
+	return out
+end
+
 -- What changed between `base` and `live`. Counters travel as +/- deltas, "best" values as
 -- candidates, sets as additions, lists / single values as replacements. `live` may be the raw live
 -- profile, so every v3 / Phase 2 field is read defensively. `overwrite` (the entry's pending ResetFields, or nil)
 -- adds d.Overwrite: whole fields that replace the stored ones before anything else is merged.
-local function diffProfiles(live, base, overwrite)
+-- `opts` (optional): { ReceiptGems = { [purchaseId] = gems } (MarkReceipt), StandIn = true when `base` is not data
+-- read from the store (the load has not finished or failed: the delta then merges plainly) }. The delta carries what
+-- the prestige rule of applyDelta needs: BasePrestige / LivePrestige, CashNow (the live balance), StarGems (the
+-- reward of every star the session reached since its base) and ReceiptGems (the gems of each new receipt).
+local function diffProfiles(live, base, overwrite, opts)
+	opts = type(opts) == "table" and opts or {}
+	local baseStars = clampCount(type(base.Home) == "table" and base.Home.Prestige or 0, MAX_LEVEL)
+	local liveStars = clampCount(type(live.Home) == "table" and live.Home.Prestige or 0, MAX_LEVEL)
 	local d = {
 		Tokens = live.Tokens - base.Tokens,
 		Pets = diffCounts(live.Pets, base.Pets),
@@ -1141,9 +1591,21 @@ local function diffProfiles(live, base, overwrite)
 		Tiers = diffReplace(cleanTiers(live.Tiers), cleanTiers(base.Tiers), deepEqual),
 		Hybrids = diffReplace(cleanHybrids(live.Hybrids), cleanHybrids(base.Hybrids), deepEqual),
 		GemReceipts = {},
-		Teams = nil,
+		-- Phase 3 (the live presets are pruned the way copyProfile prunes them, so a stale key never keeps a delta alive)
+		Teams = P3.diffTeams(P3.teamsOf(live), P3.teamsOf(base)),
+		Battle = P3.diffBattle(P3.cleanBattle(live.Battle), P3.cleanBattle(base.Battle)),
 		Overwrite = overwriteValues(live, overwrite),
+		-- the prestige rule for Cash and the star rewards (applyDelta); receipt gems (no double grant)
+		BasePrestige = baseStars,
+		LivePrestige = liveStars,
+		CashNow = sanitizeCash(live.Cash),
+		StandIn = opts.StandIn == true,
+		StarGems = {},
+		ReceiptGems = {},
 	}
+	if not d.StandIn and liveStars > baseStars then
+		d.StarGems = starRewards(baseStars, liveStars)
+	end
 	for _, key in ipairs(STAT_KEYS) do
 		local delta = live.Stats[key] - base.Stats[key]
 		if delta ~= 0 then
@@ -1167,14 +1629,15 @@ local function diffProfiles(live, base, overwrite)
 		d.Tutorial = liveTutorial
 	end
 	local baseReceipts = cleanReceipts(base.GemReceipts)
+	local receiptGems = type(opts.ReceiptGems) == "table" and opts.ReceiptGems or {}
 	for id, t in pairs(cleanReceipts(live.GemReceipts)) do
 		if baseReceipts[id] == nil then
 			d.GemReceipts[id] = t
+			local gems = receiptGems[id]
+			if isFinite(gems) and gems >= 1 then
+				d.ReceiptGems[id] = math.floor(gems)
+			end
 		end
-	end
-	local liveTeams = cleanTeams(live.Teams)
-	if not deepEqual(liveTeams, cleanTeams(base.Teams)) then
-		d.Teams = liveTeams
 	end
 	return d
 end
@@ -1199,6 +1662,7 @@ local function isEmptyDelta(d)
 		and next(d.Hybrids) == nil
 		and next(d.GemReceipts) == nil
 		and d.Teams == nil
+		and d.Battle == nil
 		and d.Overwrite == nil
 end
 
@@ -1224,6 +1688,12 @@ local function applyReplace(target, changes)
 end
 
 -- Home merge: a higher prestige wins the whole Home; at equal prestige the session's changes merge per key.
+-- When BOTH sides prestiged to the stored star (the session's base is an earlier run), the session's delta against
+-- that base mixes its prestige reset with what it built since. Both runs started from the same reset home (decor
+-- kept) and stations only go up within a run, so every station keeps the higher of the two levels (a station the
+-- session's prestige reset does not remove the one the other run rebuilt), the Home Level grows by what that adds
+-- (it is the sum of the station levels), and the session's Collector, which filled from 0 after its prestige, joins
+-- the stored one.
 local function applyHome(out, dh)
 	if not dh then
 		return
@@ -1236,13 +1706,26 @@ local function applyHome(out, dh)
 	if stored.Prestige > dh.Prestige then
 		return -- another server prestiged past this session: its stations were reset, the session's edits are void
 	end
-	if dh.Level ~= nil then
-		stored.Level = dh.Level
+	if isFinite(dh.BasePrestige) and dh.BasePrestige < dh.Prestige then
+		local gained = 0
+		for key, level in pairs(dh.Stations) do
+			local current = stored.Stations[key] or 0
+			if isFinite(level) and level > current then
+				stored.Stations[key] = level
+				gained = gained + (level - current)
+			end
+		end
+		stored.Level = clampCount(stored.Level + gained, MAX_LEVEL)
+		stored.CollectorCash = sanitizeCash(stored.CollectorCash + (isFinite(dh.CollectorNow) and dh.CollectorNow or 0))
+	else
+		if dh.Level ~= nil then
+			stored.Level = dh.Level
+		end
+		applyReplace(stored.Stations, dh.Stations)
+		stored.CollectorCash = sanitizeCash(stored.CollectorCash + dh.CollectorCash)
 	end
-	applyReplace(stored.Stations, dh.Stations)
-	applyReplace(stored.Garden, dh.Garden)
+	applyReplace(stored.Garden, dh.Garden) -- garden / gym choices survive a prestige: the session's edits count
 	applyReplace(stored.Gym, dh.Gym)
-	stored.CollectorCash = sanitizeCash(stored.CollectorCash + dh.CollectorCash)
 	if dh.LastSeen ~= nil and dh.LastSeen > stored.LastSeen then
 		stored.LastSeen = dh.LastSeen
 	end
@@ -1279,6 +1762,12 @@ local function applyDelta(stored, d)
 		if o.PetLevels then
 			out.PetLevels = deepCopy(o.PetLevels)
 		end
+		if o.Teams then
+			out.Teams = P3.cleanTeams(o.Teams)
+		end
+		if o.Battle then
+			out.Battle = P3.cleanBattle(o.Battle)
+		end
 	end
 	out.Tokens = sanitize(out.Tokens + d.Tokens)
 	applyCounts(out.Pets, d.Pets, Config.Pets.MaxPerStack)
@@ -1313,8 +1802,45 @@ local function applyDelta(stored, d)
 			Gifted = d.Tutorial.Gifted or out.Tutorial.Gifted,
 		}
 	end
-	out.Cash = sanitizeCash(out.Cash + d.Cash)
-	out.Gems = sanitize(out.Gems + d.Gems)
+	-- Cash follows the Home's prestige rule (applyHome; a prestige resets Cash like the stations), and a star reward
+	-- both sides paid counts once. B = the session's base prestige, L = its live prestige, S = the stored one:
+	--   L > B and L > S  the session prestiged past the store: its balance (Cash since that prestige) is the Cash
+	--   S > B, L == S    both prestiged to S: the session's Cash since its prestige joins the store's
+	--   S > B, L < S     the store prestiged past the session's run: that run's Cash was reset (delta dropped)
+	--   otherwise        a plain delta
+	-- Skipped for a ResetFields Home (written over the store as it is) and a stand-in base (not store data).
+	local cashDelta, gemDelta = d.Cash, d.Gems
+	if not (o and o.Home) and not d.StandIn and isFinite(d.BasePrestige) and isFinite(d.LivePrestige) then
+		local s, b, l = out.Home.Prestige, d.BasePrestige, d.LivePrestige
+		if l > b and l > s then
+			cashDelta = sanitizeCash(d.CashNow) - out.Cash
+		elseif s > b then
+			if l == s then
+				cashDelta = sanitizeCash(d.CashNow)
+			else
+				cashDelta = 0
+			end
+		end
+		-- stars b+1 .. min(l, s) were reached and paid by the server that wrote the store too
+		local top = math.min(l, s)
+		for star, gems in pairs(type(d.StarGems) == "table" and d.StarGems or {}) do
+			if star > b and star <= top and isFinite(gems) then
+				gemDelta = gemDelta - gems
+			end
+		end
+	end
+	-- a purchase whose receipt the store already holds was granted by another server: its gems are not added again
+	-- (out.GemReceipts is still the stored set here: the receipts merge below)
+	if type(d.ReceiptGems) == "table" then
+		for id in pairs(d.GemReceipts) do
+			local gems = d.ReceiptGems[id]
+			if out.GemReceipts[id] ~= nil and isFinite(gems) then
+				gemDelta = gemDelta - gems
+			end
+		end
+	end
+	out.Cash = sanitizeCash(out.Cash + cashDelta)
+	out.Gems = sanitize(out.Gems + gemDelta)
 	applyReplace(out.PetLevels, d.PetLevels)
 	-- Phase 2
 	if not (o and o.Home) then
@@ -1330,12 +1856,18 @@ local function applyDelta(stored, d)
 		end
 	end
 	trimReceipts(out.GemReceipts, d.GemReceipts)
-	if d.Teams then
-		out.Teams = deepCopy(d.Teams)
+	-- Phase 3: presets per preset, the battle record by its rules. An overwritten field already is the session's whole
+	-- value (its counters must not count the session's delta a second time).
+	if not (o and o.Teams) then
+		P3.applyTeams(out, d.Teams)
 	end
-	-- last: the owned copies (Pets, Tiers, Hybrids) are final now
+	if not (o and o.Battle) then
+		P3.applyBattle(out, d.Battle)
+	end
+	-- last: the owned copies (Pets, Tiers, Hybrids) and the Home are final now
 	normalizeEquipped(out)
 	discoverOwned(out)
+	P3.prune(out, out.Teams)
 	return out
 end
 
@@ -1382,8 +1914,12 @@ local function toStored(p)
 	if next(p.GemReceipts) ~= nil then
 		rec.GemReceipts = copyMap(p.GemReceipts)
 	end
-	if next(p.Teams) ~= nil then
-		rec.Teams = deepCopy(p.Teams)
+	-- Phase 3: left out while they hold the defaults (most players never battle)
+	if not P3.isDefaultTeams(p.Teams) then
+		rec.Teams = P3.encodeTeams(p.Teams)
+	end
+	if not P3.isDefaultBattle(p.Battle) then
+		rec.Battle = P3.encodeBattle(p.Battle)
 	end
 	return rec
 end
@@ -1482,14 +2018,58 @@ local function replaceContents(target, src)
 	tutorial.Done = src.Tutorial.Done
 	tutorial.Gifted = src.Tutorial.Gifted
 	writeHome(ensureTable(target, "Home"), src.Home)
-	target.Teams = deepCopy(src.Teams)
+	-- Phase 3 (in place too)
+	refill(ensureTable(target, "Teams"), src.Teams)
+	refill(ensureTable(target, "Battle"), src.Battle)
+end
+
+-- Prunes the LIVE presets in place (keys that lost their free copy: fused away, released, placed in the Garden / Gym;
+-- a junk structure is repaired too). Returns true when the live Teams changed; the caller fires TeamsChanged once it
+-- is done (handlers run at once).
+function P3.pruneLive(entry)
+	local profile = entry.Profile
+	local teams = P3.teamsOf(profile)
+	if deepEqual(profile.Teams, teams) then
+		return false
+	end
+	refill(ensureTable(profile, "Teams"), teams)
+	entry.Dirty = true
+	return true
+end
+
+-- diffProfiles options of an entry: the gems of the receipts it marked, and whether its Base is a stand-in (the
+-- load has not finished, or failed and was not recovered yet: the Base is defaults, not store data).
+local function deltaOpts(entry)
+	return {
+		ReceiptGems = entry.ReceiptGems,
+		StandIn = entry.LoadFailed == true or entry.Loaded ~= true,
+	}
+end
+
+-- Drops the receipt amounts the entry no longer needs: receipts the store holds (they are in Base) or the live
+-- profile lost (taken back / trimmed). Only receipts still on their way to the store are looked up.
+local function pruneReceiptGems(entry)
+	local map = entry.ReceiptGems
+	if type(map) ~= "table" then
+		return
+	end
+	local live = tableOr(entry.Profile.GemReceipts)
+	local saved = type(entry.Base) == "table" and tableOr(entry.Base.GemReceipts) or {}
+	for id in pairs(copyMap(map)) do
+		if live[id] == nil or saved[id] ~= nil then
+			map[id] = nil
+		end
+	end
+	if next(map) == nil then
+		entry.ReceiptGems = nil
+	end
 end
 
 -- Moves the live profile onto freshly read store data while keeping everything the session did
 -- since `fromBase`. `newBase` becomes the new "known to be in the store" reference. A pending ResetFields
 -- keeps the session's values of its fields (they are still to be written over the store).
 local function rebase(entry, fromBase, stored, newBase)
-	local d = diffProfiles(entry.Profile, fromBase, entry.Overwrite)
+	local d = diffProfiles(entry.Profile, fromBase, entry.Overwrite, deltaOpts(entry))
 	local merged = applyDelta(stored, d)
 	replaceContents(entry.Profile, merged)
 	entry.Base = copyProfile(newBase)
@@ -1658,6 +2238,13 @@ local function homeSnapshot(rawHome)
 	}
 end
 
+-- What the client (and GetTeams) sees of the battle teams: the pruned presets, the active one and the slot count.
+function P3.teamsSnapshot(profile)
+	local out = P3.encodeTeams(P3.teamsOf(profile))
+	out.Slots = P3.slotsOf(profile)
+	return out
+end
+
 -- Plain-table snapshot for the client (no Instances, no shared references).
 local function buildSnapshot(profile)
 	local stats = profile.Stats
@@ -1687,6 +2274,9 @@ local function buildSnapshot(profile)
 		Tiers = cleanTiers(profile.Tiers),
 		Hybrids = cleanHybrids(profile.Hybrids),
 		PetLevels = copyPetLevels(profile.PetLevels),
+		-- Phase 3 (small: 3 presets of up to 4 keys, a handful of numbers, one boolean per trial level)
+		Teams = P3.teamsSnapshot(profile),
+		Battle = P3.encodeBattle(P3.cleanBattle(profile.Battle)),
 	}
 end
 
@@ -1906,6 +2496,7 @@ local function announceRebase(userId, entry)
 	pushAll(player, entry.Profile)
 	DataService.Sync(player)
 	DataService.ProfileRebased:Fire(player, entry.Profile)
+	DataService.TeamsChanged:Fire(player) -- the presets may have come from another server
 end
 
 -- Re-reads the store for an entry whose load failed and merges the session on top of it.
@@ -1975,7 +2566,7 @@ local function writeEntry(entry, userId)
 
 		local overwriteGen = entry.OverwriteGen
 		local snapshot = copyProfile(entry.Profile)
-		local delta = diffProfiles(snapshot, entry.Base, entry.Overwrite)
+		local delta = diffProfiles(snapshot, entry.Base, entry.Overwrite, deltaOpts(entry))
 		if isEmptyDelta(delta) then
 			entry.Dirty = false
 			return true
@@ -2009,6 +2600,7 @@ local function writeEntry(entry, userId)
 			else
 				entry.Base = snapshot
 			end
+			pruneReceiptGems(entry)
 			return true
 		end
 
@@ -2070,7 +2662,7 @@ end
 -- An unreadable comparison counts as "not clean": keeping data is always the safe direction.
 local function entryIsClean(entry)
 	local ok, empty = pcall(function()
-		return isEmptyDelta(diffProfiles(entry.Profile, entry.Base, entry.Overwrite))
+		return isEmptyDelta(diffProfiles(entry.Profile, entry.Base, entry.Overwrite, deltaOpts(entry)))
 	end)
 	return ok and empty == true
 end
@@ -2246,16 +2838,20 @@ function DataService.Sync(player)
 	if not entry or not entry.Loaded then
 		return
 	end
+	-- Phase 3: keys that lost their copy since the last sync (a fusion, a release, ...) leave the live presets
+	local pruned = P3.pruneLive(entry)
 	local remote = getRemote("ProfileSync")
-	if not remote then
-		return
+	if remote then
+		entry.LastSync = os.clock()
+		local ok, err = pcall(function()
+			remote:FireClient(player, buildSnapshot(entry.Profile))
+		end)
+		if not ok then
+			warn("[DataService] Sync failed: " .. tostring(err))
+		end
 	end
-	entry.LastSync = os.clock()
-	local ok, err = pcall(function()
-		remote:FireClient(player, buildSnapshot(entry.Profile))
-	end)
-	if not ok then
-		warn("[DataService] Sync failed: " .. tostring(err))
+	if pruned then
+		DataService.TeamsChanged:Fire(player)
 	end
 end
 
@@ -2372,9 +2968,10 @@ function DataService.SetTutorial(player, tutorial)
 end
 
 -- Extra (developer tools only): the session's CURRENT values of the named fields (Discovered, IndexClaimed,
--- Tutorial, BestTimes, Home, Tiers, Hybrids, PetLevels; fields = { Discovered = true, ... }) replace the stored ones
--- at the next successful save instead of being merged (those merges only ever grow, or a higher stored prestige would
--- win the Home back, so a /reset or /tutorial would otherwise come back with the next save). The caller changes the
+-- Tutorial, BestTimes, Home, Tiers, Hybrids, PetLevels, Teams, Battle; fields = { Discovered = true, ... }) replace the
+-- stored ones at the next successful save instead of being merged (those merges only ever grow, or a higher stored
+-- prestige would win the Home back, or the battle record's cleared trials / event pets / best values would come back,
+-- so a /reset or /tutorial would otherwise return with the next save). The caller changes the
 -- live values itself; everything after this call merges on top of them as usual. Pending until a save succeeds
 -- (orphan retries and BindToClose carry it). Returns true when recorded (false until the profile is loaded, while it
 -- is provisional, or without a known field).
@@ -2846,8 +3443,13 @@ function DataService.MutateHome(player, fn)
 		return false
 	end
 	entry.Dirty = true
+	-- Phase 3: a pet whose last free copy went to the Garden / Gym leaves the battle teams
+	local pruned = visible and P3.pruneLive(entry)
 	if visible then
 		DataService.SyncSoon(player)
+	end
+	if pruned then
+		DataService.TeamsChanged:Fire(player)
 	end
 	return true
 end
@@ -2868,8 +3470,11 @@ end
 
 -- Records a processed purchase id. true = new (grant it now, in the same step), false = already processed (grant
 -- nothing, the purchase is done), nil = cannot decide now (not loaded / provisional: answer NotProcessedYet).
--- The receipt and the granted gems travel in the same save (one UpdateAsync).
-function DataService.MarkReceipt(player, purchaseId)
+-- The receipt and the granted gems travel in the same save (one UpdateAsync). `gems` (optional) = what the caller
+-- grants for it: the merge then makes the grant follow its receipt atomically. When the stored profile already holds
+-- that receipt (another server granted the same purchase while this server's save failed and the player moved on),
+-- this session's grant is not added to the store a second time.
+function DataService.MarkReceipt(player, purchaseId, gems)
 	local entry = player and cache[player.UserId]
 	if not entry or not entry.Loaded or isProvisional(entry) or not validKey(purchaseId) then
 		return nil
@@ -2880,8 +3485,217 @@ function DataService.MarkReceipt(player, purchaseId)
 	end
 	receipts[purchaseId] = sanitizeTime(os.time())
 	trimReceipts(receipts, { [purchaseId] = true })
+	if isFinite(gems) and gems >= 1 then
+		local amounts = entry.ReceiptGems
+		if type(amounts) ~= "table" then
+			amounts = {}
+			entry.ReceiptGems = amounts
+		end
+		amounts[purchaseId] = math.floor(gems + 0.5) -- AddGems rounds the same way
+	end
 	entry.Dirty = true
 	return true
+end
+
+----------------------------------------------------------------------
+-- Phase 3: battle teams (presets merge per preset) + the battle record (counters as deltas, best values, sets that
+-- only grow). Nothing here yields; every refusal answers a short reason for a side toast.
+----------------------------------------------------------------------
+
+-- The cache entry of a loaded, non-provisional profile (team edits and record reads need the real data), or nil.
+function P3.realEntry(player)
+	local entry = player and cache[player.UserId]
+	if not entry or not entry.Loaded or isProvisional(entry) then
+		return nil
+	end
+	return entry
+end
+
+function P3.validPreset(preset)
+	return isFinite(preset) and preset >= 1 and preset <= P3.PRESETS and preset == math.floor(preset)
+end
+
+-- Checks a requested team against a profile. ok, keys (slot order, compacted) | reason
+function P3.checkTeam(profile, keys)
+	if type(keys) ~= "table" then
+		return false, "That team is not valid"
+	end
+	for index in pairs(keys) do
+		if type(index) ~= "number" or index ~= math.floor(index) or index < 1 or index > P3.MAX_SLOTS then
+			return false, "That team is not valid"
+		end
+	end
+	local slots = P3.slotsOf(profile)
+	local placed = P3.placedCopies(profile)
+	local list, seen = {}, {}
+	for i = 1, P3.MAX_SLOTS do
+		local key = keys[i]
+		if key ~= nil and key ~= "" and key ~= false then
+			if not P3.teamKey(key) then
+				return false, "That team is not valid"
+			end
+			if i > slots then
+				return false, "Team slot " .. i .. " unlocks at Prestige " .. tostring(P3.slotUnlock())
+			end
+			if seen[key] then
+				return false, "A pet can join a team only once"
+			end
+			seen[key] = true
+			local owned = ownedCount(profile, key)
+			if owned < 1 then
+				return false, "You do not own that pet"
+			end
+			if owned - (placed[key] or 0) < 1 then
+				return false, "That pet is busy in your Garden or Gym"
+			end
+			list[#list + 1] = key
+		end
+	end
+	return true, list
+end
+
+-- { Presets = { {key...} x3 }, Active, Slots = 3 | 4 } (a pruned copy), or nil until loaded / while provisional.
+function DataService.GetTeams(player)
+	local entry = P3.realEntry(player)
+	if not entry then
+		return nil
+	end
+	return P3.teamsSnapshot(entry.Profile)
+end
+
+-- Stores the pets of one preset (slot order; "" / false = an empty slot). ok, reason
+function DataService.SetTeam(player, preset, keys)
+	if not player or not P3.validPreset(preset) then
+		return false, "Pick a team from 1 to " .. P3.PRESETS
+	end
+	local entry = P3.realEntry(player)
+	if not entry then
+		return false, "Your data is still loading"
+	end
+	local profile = entry.Profile
+	local ok, result = P3.checkTeam(profile, keys)
+	if not ok then
+		return false, result
+	end
+	P3.pruneLive(entry) -- a clean live Teams table (the other presets drop their stale keys too)
+	profile.Teams.Presets[preset] = result
+	entry.Dirty = true
+	DataService.SyncSoon(player)
+	DataService.TeamsChanged:Fire(player)
+	return true
+end
+
+-- Makes a preset the active one. ok, reason
+function DataService.SelectTeam(player, preset)
+	if not player or not P3.validPreset(preset) then
+		return false, "Pick a team from 1 to " .. P3.PRESETS
+	end
+	local entry = P3.realEntry(player)
+	if not entry then
+		return false, "Your data is still loading"
+	end
+	P3.pruneLive(entry)
+	entry.Profile.Teams.Active = preset
+	entry.Dirty = true
+	DataService.SyncSoon(player)
+	DataService.TeamsChanged:Fire(player)
+	return true
+end
+
+-- The usable keys of the active preset in slot order (slot = index); {} when empty or unknown.
+function DataService.ActiveTeamKeys(player)
+	local entry = P3.realEntry(player)
+	if not entry then
+		return {}
+	end
+	local teams = P3.teamsOf(entry.Profile)
+	return copyList(teams.Presets[teams.Active])
+end
+
+-- A copy of the battle record (TrialCleared / EventPets as sets), or nil until loaded / while provisional.
+function DataService.GetBattle(player)
+	local entry = P3.realEntry(player)
+	if not entry then
+		return nil
+	end
+	return P3.cleanBattle(entry.Profile.Battle)
+end
+
+-- fn(battle) edits the live record (no yields). See the header for the rules. -> ok
+function DataService.MutateBattle(player, fn)
+	if not player or type(fn) ~= "function" then
+		return false
+	end
+	local entry = cache[player.UserId]
+	if not entry or not entry.Loaded then
+		return false
+	end
+	local live = ensureTable(entry.Profile, "Battle")
+	local before = P3.cleanBattle(live)
+	local ok, result = pcall(fn, live)
+	entry.Profile.Battle = live -- the record stays this table even if fn replaced the field
+	if not ok then
+		warn("[DataService] MutateBattle callback errored (record restored): " .. tostring(result))
+		refill(live, before)
+		return false
+	end
+	if result == false then
+		refill(live, before)
+		return false
+	end
+	local after = P3.cleanBattle(live)
+	-- the sets only grow and the best values never go down (the store merges them that way)
+	for level in pairs(before.TrialCleared) do
+		after.TrialCleared[level] = true
+	end
+	for id in pairs(before.EventPets) do
+		after.EventPets[id] = true
+	end
+	for _, field in ipairs(P3.BESTS) do
+		if before[field] > after[field] then
+			after[field] = before[field]
+		end
+	end
+	local changes = P3.battleChanges(before, after)
+	if isProvisional(entry) then
+		for field in pairs(changes) do
+			if not P3.PROVISIONAL_OK[field] then
+				refill(live, before) -- stand-in data must not decide a first clear or an event pet
+				return false
+			end
+		end
+	end
+	refill(live, after)
+	if next(changes) ~= nil then
+		entry.Dirty = true
+		DataService.SyncSoon(player)
+	end
+	return true
+end
+
+-- Adds (or with n < 0 takes) trophies; the total never goes below 0. -> ok, total
+function DataService.AddTrophies(player, n)
+	if not player or not isFinite(n) then
+		return false
+	end
+	local amount
+	if n >= 0 then
+		amount = math.floor(n + 0.5)
+	else
+		amount = -math.floor(-n + 0.5)
+	end
+	local entry = currencyEntry(player)
+	if not entry then
+		return false
+	end
+	local battle = ensureTable(entry.Profile, "Battle")
+	local before = battle.Trophies
+	battle.Trophies = sanitize(sanitize(before) + amount)
+	if battle.Trophies ~= before then
+		entry.Dirty = true
+		DataService.SyncSoon(player)
+	end
+	return true, battle.Trophies
 end
 
 ----------------------------------------------------------------------

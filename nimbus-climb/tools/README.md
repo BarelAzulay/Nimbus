@@ -3,6 +3,54 @@
 Checks and helpers for Nimbus Climb. The test pipeline (`run_checks.sh`, `syntax.py`, `check.mjs`, `smoke.py`) is
 described in the "Tests" section of the main `README.md`.
 
+## Place verifier: is the place file up to date?
+
+`verify_place.py` checks a Rojo-built place against `src/` (Python 3 only, no other packages): every
+`src/**/*.lua` must be in the place at its path with the class Rojo 7 gives it (`*.server.lua` Script,
+`*.client.lua` LocalScript, any other `.lua` ModuleScript) and a Source identical to the file on disk; sub-folders
+must be Folders, no two siblings may share a name, the place may hold no script that `src/` does not have, and the
+`$properties` of `default.project.json` (the lighting technology) must be there. It names every mismatch (with the
+first differing line) and exits 1, so run it after every rebuild:
+
+```sh
+rojo build default.project.json -o play/NimbusClimb.rbxlx
+python3 tools/verify_place.py                     # or: python3 tools/verify_place.py other.rbxlx
+```
+
+## Tycoon economy simulation
+
+`sim_tycoon.py` replays the tycoon homes (prices, incomes, house tiers, prestige, the Vault's offline pay) for an
+active player and a few hundred typical ones, prints when each milestone is reached and checks the pacing targets
+of ARCHITECTURE_V3.md. Its constants mirror `src/shared/TycoonCatalog.lua`: change both together (the smoke test
+`p2_economy` fails while they disagree).
+
+```sh
+python3 tools/sim_tycoon.py
+```
+
+## Battle balance simulation (Phase 3)
+
+`sim_battle.lua` runs the **real** battle engine (`src/shared/BattleSim.lua` on the numbers of
+`src/shared/BattleCatalog.lua`, with PetCatalog / PetKeys / TycoonCatalog) inside the Roblox mock under lupa, like
+`smoke.py`, and prints a balance report with `TARGET ok / MISS` lines: the Trial curve 1-30 against typical teams along
+the tycoon progression (early players clear ~1-8, mid game ~10-20, prestiged players reach 30), equal-power fights
+being fair, mirror duels at ~50%, one element-counter pet at ~60-65%, boss raids with 1 / 3 / 8 scripted players who
+RETREAT out of telegraphs (won in 100-240 s, non-dodgers see several telegraphs), every special useful but none an
+auto-win, no one-shots, no unkillable sustain teams, no stalls, and the step cost of a full raid. It boots the mock by
+itself (run it from the repo root), so no Python wrapper is needed beyond lupa:
+
+```sh
+python3 -c "import lupa.luajit21 as L; L.LuaRuntime().execute(open('tools/sim_battle.lua').read())"
+SIM_BATTLE="quick only=trials,raids" python3 -c "import lupa.luajit21 as L; L.LuaRuntime().execute(open('tools/sim_battle.lua').read())"
+```
+
+* `SIM_BATTLE` options: `quick` (32 seeds per matchup, ~15 s) or `full` (100 seeds, the default), `seeds=N`,
+  `only=roster,duels,elements,trials,raids,specials,extremes,perf,progression`, `verbose` (section timings).
+* Change a number in `BattleCatalog` -> re-run the sim. The smoke scenario `p3battle_balance`
+  (`tools/smoke_p3_battlecore.lua`) loads this file as a library (`SIM_BATTLE_LIBRARY = true`) and runs a short subset.
+* The scripted player (`SIM.Player`) presses SPECIAL when a meter is full, focuses a wounded enemy and retreats out of
+  telegraph shapes after a human-ish 0.4-0.9 s reaction; `Auto = true` teams cast on their own like NPC teams.
+
 ## Model renderer: see the voxel art without Studio
 
 `render_model.py` builds a model with the **real** game modules (inside the same lupa + `robloxmock.lua` world that

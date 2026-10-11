@@ -216,6 +216,10 @@ local TycoonService = loadOptionalService("TycoonService")
 local PetCareService = loadOptionalService("PetCareService")
 local FusionService = loadOptionalService("FusionService")
 local GemService = loadOptionalService("GemService")
+-- Phase 3 services (ARCHITECTURE_V3.md "Phase 3 build contract")
+local ArenaBuilder = loadOptionalService("ArenaBuilder")
+local BattleService = loadOptionalService("BattleService")
+local EventService = loadOptionalService("EventService")
 local StormAltar = loadOptionalService("StormAltar") -- the player's Stormfang landmark (ARCHITECTURE_V3.md section 10)
 
 ----------------------------------------------------------------------
@@ -232,6 +236,10 @@ local lobbyInfo = call("LobbyBuilder.Build", LobbyBuilder, "Build")
 lobbyInfo = normaliseLobbyInfo(lobbyInfo)
 if StormAltar then
 	call("StormAltar.Build", StormAltar, "Build", lobbyInfo)
+end
+local arenaInfo = nil
+if ArenaBuilder then
+	arenaInfo = call("ArenaBuilder.Build", ArenaBuilder, "Build", lobbyInfo)
 end
 
 call("DamageService.Init", DamageService, "Init")
@@ -330,6 +338,8 @@ if TutorialService then call("TutorialService.Init", TutorialService, "Init", lo
 	MatchService = MatchService,
 	SpotService = SpotService,
 	IndexService = IndexService,
+	BattleService = BattleService, -- Phase 3: tutorial chapter 3 listens to BattleService.BattleEnded
+	ArenaInfo = arenaInfo,
 }) end
 if TycoonService then call("TycoonService.Init", TycoonService, "Init", lobbyInfo, {
 	DataService = DataService,
@@ -350,11 +360,27 @@ if GemService then call("GemService.Init", GemService, "Init", {
 	DataService = DataService,
 	PetService = PetService,
 }) end
+if BattleService then call("BattleService.Init", BattleService, "Init", {
+	DataService = DataService,
+	PetService = PetService,
+	PetCareService = PetCareService,
+	TycoonService = TycoonService,
+	ArenaBuilder = ArenaBuilder,
+	ArenaInfo = arenaInfo,
+}) end
+if EventService then call("EventService.Init", EventService, "Init", {
+	DataService = DataService,
+	BattleService = BattleService,
+	PetCareService = PetCareService,
+	ArenaInfo = arenaInfo,
+}) end
 if DevService then call("DevService.Init", DevService, "Init", {
 	DataService = DataService,
 	PetService = PetService,
 	TutorialService = TutorialService,
 	IndexService = IndexService,
+	BattleService = BattleService, -- Phase 3: /raid and the DEV panel's raid button
+	EventService = EventService,
 }) end
 
 ----------------------------------------------------------------------

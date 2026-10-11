@@ -736,6 +736,54 @@ BUILDERS.homegym = function(level)
 	return homePetsView("Gym", "GymPets", level)
 end
 
+-- Phase 3 (server/Services/ArenaBuilder.lua):
+--   arena                the Battle Arena (workspace.BattleArena: island, colosseum, duel rings, boards, the bridge and
+--                        the Trial Portal on the plaza) built on the real lobby (+ the Storm Altar when it exists, like
+--                        Main does); combine with lobby (lobby+arena) and crop with --box to see the plaza link
+--   pocket[:<index>]     one private trial pocket (ArenaBuilder.BuildPocket(index), default 1) far out in the sky
+local arenaInfo = nil
+local function ensureArena()
+	if arenaInfo then
+		return arenaInfo
+	end
+	local info = ensureLobby()
+	local StormAltar = req("server/Services/StormAltar", true)
+	if StormAltar and type(StormAltar.Build) == "function" and not Workspace:FindFirstChild("StormAltar", true) then
+		pcall(StormAltar.Build, info)
+	end
+	local AB = req("server/Services/ArenaBuilder", true)
+	if not AB or type(AB.Build) ~= "function" then
+		fail("server/Services/ArenaBuilder.lua (Build) does not exist yet")
+	end
+	local result = AB.Build(info)
+	Mock.Advance(0.2)
+	if type(result) ~= "table" or not isInstance(result.Model) then
+		fail("ArenaBuilder.Build(lobbyInfo) returned no ArenaInfo with a Model")
+	end
+	arenaInfo = result
+	return result
+end
+
+BUILDERS.arena = function()
+	local info = ensureArena()
+	local look = typeof(info.Center) == "CFrame" and info.Center.LookVector or Vector3.new(0, 0, -1)
+	return { { root = info.Model, label = "Battle Arena", sub = "ArenaBuilder.Build(lobbyInfo) (" .. tostring(info.Link) .. " link)", facing = { look.X, 0, look.Z } } }
+end
+
+BUILDERS.pocket = function(index)
+	local AB = req("server/Services/ArenaBuilder", true)
+	if not AB or type(AB.BuildPocket) ~= "function" then
+		fail("server/Services/ArenaBuilder.lua (BuildPocket) does not exist yet")
+	end
+	local n = tonumber(index) or 1
+	local pocket = AB.BuildPocket(n)
+	Mock.Advance(0.2)
+	if type(pocket) ~= "table" or not isInstance(pocket.Model) then
+		fail("ArenaBuilder.BuildPocket(" .. n .. ") returned no pocket with a Model")
+	end
+	return { { root = pocket.Model, label = "Trial pocket " .. n, sub = "ArenaBuilder.BuildPocket(" .. n .. ")", facing = { 0, 0, -1 } } }
+end
+
 BUILDERS["storm_altar"] = BUILDERS["storm-altar"]
 BUILDERS.stormaltar = BUILDERS["storm-altar"]
 BUILDERS.npc = BUILDERS.npcs
