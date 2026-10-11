@@ -474,8 +474,15 @@ local function readLook(petDef)
 	if type(finish) ~= "string" or not FINISHES[finish] then
 		finish = nil
 	end
+	-- the catalog pet whose own evolved designs this copy uses: a Golden / Rainbow copy's Id is its key
+	-- ("<petId>@Golden"), its PetId the catalog id; nil for a fused hybrid (it evolves with its species' design)
+	local base = nil
+	if type(petDef) == "table" and src.Hybrid ~= true and petDef.IsHybrid ~= true then
+		base = (type(petDef.PetId) == "string" and petDef.PetId) or string.match(id, "^([^@]+)@") or id
+	end
 	return {
 		Id = id,
+		Base = base,
 		Rarity = rarity,
 		Species = species,
 		WingStyle = wing,
@@ -3510,7 +3517,7 @@ end
 -- palette for the evolved wings and jewellery
 function EVO.Palette(ctx)
 	local pal, look = ctx.Pal, ctx.Look
-	local st = EVO.Look[look.Id] or {}
+	local st = EVO.Look[look.Base] or {}
 	local W = st.Wing and evoRGB(st.Wing) or look.WingColor
 	local tip = st.Tip and mix(evoRGB(st.Tip), W, 0.25) or lighten(W, 0.45)
 	pal.Wing = W
@@ -3855,7 +3862,7 @@ end
 
 EVO.Species.Dog = function(ctx)
 	local g = ctx.Body
-	local corgi = ctx.Look.Id == "waffle_corgi"
+	local corgi = ctx.Look.Base == "waffle_corgi"
 	EVO.Quad(ctx, { W = corgi and 1.04 or 1, L = corgi and 1.08 or 1, Leg = corgi and 0.86 or 1, PawKey = "Belly", Tufts = true })
 	local c = EVO.Head(ctx, { 10.6, 9.2, 9.4 }, nil, corgi and -1 or 0)
 	pair(function(s)
@@ -3892,7 +3899,7 @@ end
 
 EVO.Species.Fox = function(ctx)
 	local g = ctx.Body
-	local id = ctx.Look.Id
+	local id = ctx.Look.Base
 	EVO.Quad(ctx, { W = 0.94, L = 1, PawKey = (id == "maple_fox") and "Patch" or "Belly", LegKey = "Fur", Tufts = true })
 	if id == "maple_fox" then
 		ctx.Pal.Patch = rgb(64, 40, 34)
@@ -4558,8 +4565,8 @@ function EVO.Sculpt(ctx)
 	local look = ctx.Look
 	ctx.Ascended = look.Evolved == 2
 	EVO.Palette(ctx)
-	if EVO.Colours[look.Id] then
-		EVO.Colours[look.Id](ctx.Pal)
+	if EVO.Colours[look.Base] then
+		EVO.Colours[look.Base](ctx.Pal)
 	end
 	if ctx.Ascended then
 		ASC.Palette(ctx)
@@ -4569,7 +4576,7 @@ function EVO.Sculpt(ctx)
 	end
 	local fn = EVO.Species[look.Species] or EVO.Species.Bear
 	fn(ctx)
-	local extra = (ctx.Ascended and ASC.Pets[look.Id]) or EVO.Pets[look.Id]
+	local extra = (ctx.Ascended and ASC.Pets[look.Base]) or EVO.Pets[look.Base]
 	if extra then
 		extra(ctx)
 	end
@@ -4628,7 +4635,7 @@ ASC.Look = {
 
 function ASC.Palette(ctx)
 	local pal, look = ctx.Pal, ctx.Look
-	local st = ASC.Look[look.Id] or {}
+	local st = ASC.Look[look.Base] or {}
 	local G = st.Glow and evoRGB(st.Glow) or lighten(look.Secondary, 0.3)
 	local GB = st.GlowB and evoRGB(st.GlowB) or lighten(look.WingColor, 0.4)
 	pal.Glow = { Color = G, Material = NEON }
@@ -5543,7 +5550,7 @@ local function buildBlueprint(look, detail, lean)
 		local budget = budgetOf(look, detail)
 		if look.Evolved then
 			EVO.Sculpt(ctx)
-			if look.Accessory and not EVO.Pets[look.Id] then
+			if look.Accessory and not EVO.Pets[look.Base] then
 				ACCESSORIES[look.Accessory](ctx)
 			end
 		else
@@ -6250,13 +6257,13 @@ function PetBuilder.EvolutionColors(petDef, stage)
 	initConstants()
 	local look = readLook(petDef)
 	if stage == 2 then
-		local st = ASC.Look[look.Id]
+		local st = ASC.Look[look.Base]
 		if st and st.Glow and st.GlowB then
 			return evoRGB(st.Glow), evoRGB(st.GlowB)
 		end
 		return lighten(look.Secondary, 0.3), lighten(look.WingColor, 0.4)
 	end
-	local st = EVO.Look[look.Id]
+	local st = EVO.Look[look.Base]
 	return rgb(255, 214, 90), (st and st.Gem) and evoRGB(st.Gem) or lighten(look.Secondary, 0.2)
 end
 
