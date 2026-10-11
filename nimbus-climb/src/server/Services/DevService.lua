@@ -47,13 +47,31 @@
 --   skiptutorial    mark the tutorial done without the finish reward (TutorialService.HandleEvent(player, "Skip"))
 --   raid            Phase 3: start a Boss Raid in the arena right now (EventService.StartNow("BossRaid"); without an
 --                   EventService, BattleService.StartRaid()). Touches no profile data; refused while a raid runs.
---   devhelp         a toast listing the chat commands
+--   devhelp         two toasts listing the chat commands (the pet showcase ones, then the others)
+-- The pet showcase (nothing is saved; the pets are built on the developer's OWN client only, by
+-- client/Controllers/DevPetShow.lua, through the server -> client remote DevPetShow(action, payload)):
+--   pet <pet> [stage]       one pet in front of you, at stage 0 (normal, the default), 1 (evolved) or 2 (second
+--                           evolution, Epic pets and up). <pet> is its name or id, spaces and case do not matter and
+--                           a unique part is enough ("/pet cloudy 2"); stage words: normal, evolved, evolved2 / max.
+--                           -> Spawn { PetId, Stage }
+--   pets [stage]            every pet (that has the stage) lined up in front of you -> Lineup { Stage, PetIds }
+--   evolve <pet|all> [stage]   the evolution animation: with no stage the whole line (normal -> evolved, then ->
+--                           evolved II for Epic+), 1 = normal -> evolved, 2 = evolved -> evolved II; "all" plays
+--                           every pet's evolutions one after another -> Evolve { Steps = { {PetId, From, To}, ... } }
+--   clearpets               removes the showcase pets and stops an evolution -> Clear {}
+-- They need no loaded profile and run while it is provisional; they change no data.
 -- After every change: DataService.MarkDirty + Sync (the menu updates at once) and a side toast "DEV: ..." (kind
 -- "good"); refusals get a "bad" toast. Rate limit: 4 commands per 2 seconds per player. Every command is logged with
 -- print("[NimbusClimb][Dev] ...") including the UserId. Nothing yields between reading and writing the profile.
 --
--- Chat: Player.Chatted (fires for the legacy chat and for TextChatService) of allowed players; "/allpets",
--- "/tokens 50000", "/reset", "/tutorial", "/skiptutorial", "/devhelp". Other "/" messages are left alone.
+-- Chat: "/allpets", "/tokens 50000", "/reset", "/tutorial", "/skiptutorial", "/raid", "/pet cloudy dragon 2", "/pets 1",
+-- "/evolve all", "/clearpets", "/devhelp", typed in the GAME's chat (not Studio's command bar). Two ways in, one
+-- parser (onChatted): Player.Chatted of allowed players (the legacy chat), and one TextChatCommand per command
+-- (PrimaryAlias "/<command>", children of TextChatService, made at Init when the place uses TextChatService):
+-- the new chat only hands a "/" message to the game when a TextChatCommand claims it, and claimed commands stay
+-- out of the public chat. Their Triggered event fires for every player; the permission check is the same.
+-- The same text from the same player again within DUPLICATE_WINDOW seconds is dropped (both ways may fire).
+-- Other "/" messages are left alone.
 -- Studio auto grant: with Config.Dev.StudioAutoGrant in Studio, every allowed player gets allpets + tokens once per
 -- server, right after their profile loads (a provisional profile waits until DataService.ProfileRebased says it
 -- recovered).
@@ -84,7 +102,10 @@ local Remotes = require(Shared.Remotes)
 
 local DevService = {}
 
-DevService.Commands = { "allpets", "tokens", "cash", "gems", "reset", "tutorial", "skiptutorial", "raid", "devhelp" }
+DevService.Commands = {
+	"allpets", "tokens", "cash", "gems", "reset", "tutorial", "skiptutorial", "raid", "pet", "pets", "evolve",
+	"clearpets", "devhelp",
+}
 
 local TAG = "[NimbusClimb][Dev] "
 local ATTR = "NC_Dev" -- PlayerGui attribute: true for developers (a hint for the client's DEV button)
@@ -94,6 +115,7 @@ local RATE_COUNT = 4 -- commands ...
 local RATE_WINDOW = 2 -- ... per this many seconds, per player
 local MAX_COMMAND_LENGTH = 32
 local MAX_CHAT_LENGTH = 200
+local DUPLICATE_WINDOW = 0.35 -- seconds: one chat line seen twice (Player.Chatted + TextChatCommand) runs once
 local GROUP_OWNER_RANK = 255
 local TOAST_SECONDS = 4
 local HELP_SECONDS = 8
@@ -103,9 +125,23 @@ for _, name in ipairs(DevService.Commands) do
 	KNOWN[name] = true
 end
 -- the commands that still run while the profile is provisional (see the persistence note)
-local PROVISIONAL_OK = { tokens = true, cash = true, gems = true, raid = true, devhelp = true }
+local PROVISIONAL_OK = {
+	tokens = true, cash = true, gems = true, raid = true, devhelp = true, pet = true, pets = true, evolve = true,
+	clearpets = true,
+}
+-- the pet showcase never touches the profile, so it does not wait for it
+local NO_PROFILE = { pet = true, pets = true, evolve = true, clearpets = true }
 -- the commands that take a whole-number amount
 local NUMERIC = { tokens = true, cash = true, gems = true }
+-- the commands that take a value, and its type (tokens / cash / gems: a number; the showcase: the rest of the chat line)
+local ARG_KIND = { tokens = "number", cash = "number", gems = "number", pet = "string", pets = "string", evolve = "string" }
+local MAX_ARG_LENGTH = 48
+local STAGE_NAMES = { [0] = "Normal", [1] = "Evolved", [2] = "Evolved II" }
+local STAGE_WORDS = {
+	["0"] = 0, normal = 0, base = 0,
+	["1"] = 1, evolved = 1, evo = 1, e1 = 1,
+	["2"] = 2, evolved2 = 2, evo2 = 2, e2 = 2, ii = 2, second = 2, max = 2,
+}
 
 ----------------------------------------------------------------------
 -- Collaborators (other engineers' modules: every use is guarded)
@@ -125,6 +161,7 @@ local function loadModule(parent, name)
 end
 
 local PetCatalog = loadModule(Shared, "PetCatalog")
+local PetBuilder = nil -- loaded on the first showcase command (MaxEvolution)
 local DataService = nil
 local TutorialService = nil
 local IndexService = nil
@@ -148,6 +185,8 @@ local devs = {} -- [player] = true: allowed when they joined (only decides who h
 local recent = {} -- [player] = { os.clock() of the commands accepted in the current window }
 local rateWarned = {} -- [player] = os.clock() of the last "slow down" toast
 local chatConns = {} -- [player] = Chatted connection
+local lastChat = {} -- [player] = { Text, At }: the last chat line handled (duplicates are dropped)
+local chatCommandsMade = false
 local autoGranted = {} -- [userId] = true once the Studio auto grant ran in this server
 local initialized = false
 local ready = false -- Init finished with the tools on (Config.Dev.Enabled and a DataService)
@@ -640,7 +679,200 @@ local function cmdRaid()
 	return false, "boss raids are not in this build", false
 end
 
-local function cmdHelp()
+----------------------------------------------------------------------
+-- The pet showcase (pet / pets / evolve / clearpets): validated here, built on the developer's own client
+----------------------------------------------------------------------
+
+-- 2 for Epic pets and up (PetBuilder.MaxEvolution; the same rule when PetBuilder cannot load)
+local function maxEvolution(def)
+	if PetBuilder == nil then
+		PetBuilder = loadModule(Shared, "PetBuilder") or false
+	end
+	if PetBuilder and hasFunction(PetBuilder, "MaxEvolution") then
+		local ok, top = pcall(PetBuilder.MaxEvolution, def)
+		if ok and (top == 1 or top == 2) then
+			return top
+		end
+	end
+	local r = def.Rarity
+	return (r == "Epic" or r == "Legendary" or r == "Mythic" or r == "Secret") and 2 or 1
+end
+
+local function squash(text)
+	return (string.gsub(string.lower(tostring(text)), "[^%a%d]", ""))
+end
+
+-- "cloudy dragon 2" -> "cloudy dragon", 2 (nil when the last word is not a stage)
+local function splitStage(text)
+	text = tostring(text or "")
+	local head, last = string.match(text, "^%s*(.-)%s*(%S+)%s*$")
+	if last then
+		local stage = STAGE_WORDS[string.lower(last)]
+		if stage ~= nil then
+			return head, stage
+		end
+	end
+	return (string.match(text, "^%s*(.-)%s*$")), nil
+end
+
+-- A catalog pet by id or name: exact first, then the one pet whose id or name contains the text.
+local function findPet(text)
+	local key = squash(text)
+	if key == "" then
+		return nil, "which pet? like /pet cloudy dragon 2"
+	end
+	local partial = {}
+	for _, def in ipairs(PetCatalog.Pets) do
+		if type(def) == "table" and type(def.Id) == "string" then
+			local id, name = squash(def.Id), squash(def.Name or def.Id)
+			if id == key or name == key then
+				return def
+			end
+			if string.find(id, key, 1, true) or string.find(name, key, 1, true) then
+				partial[#partial + 1] = def
+			end
+		end
+	end
+	if #partial == 1 then
+		return partial[1]
+	end
+	local shown = string.sub(tostring(text), 1, 24)
+	if #partial == 0 then
+		return nil, "no pet called '" .. shown .. "'"
+	end
+	local names = {}
+	for i = 1, math.min(4, #partial) do
+		names[i] = tostring(partial[i].Name or partial[i].Id)
+	end
+	return nil, "'" .. shown .. "' could be " .. table.concat(names, ", ") .. ((#partial > 4) and ", ..." or "")
+end
+
+local function nameOf(def)
+	return tostring(def.Name or def.Id)
+end
+
+-- Sends the showcase action to the developer's own client.
+local function showPets(player, action, payload)
+	local okRemote, remote = pcall(Remotes.Get, "DevPetShow")
+	if not (okRemote and remote) then
+		return false
+	end
+	local sent = pcall(function()
+		remote:FireClient(player, action, payload)
+	end)
+	return sent
+end
+
+local function needCatalog()
+	return PetCatalog ~= nil and type(PetCatalog.Pets) == "table"
+end
+
+local function cmdPet(player, _, arg)
+	if not needCatalog() then
+		return false, "the pet catalog is missing"
+	end
+	local text, stage = splitStage(arg)
+	local def, err = findPet(text)
+	if not def then
+		return false, err
+	end
+	stage = stage or 0
+	if stage > maxEvolution(def) then
+		return false, nameOf(def) .. " has no second evolution (Epic pets and up)"
+	end
+	if not showPets(player, "Spawn", { PetId = def.Id, Stage = stage }) then
+		return false, "the DevPetShow remote is missing"
+	end
+	return true, nameOf(def) .. " (" .. STAGE_NAMES[stage] .. ") in front of you; /clearpets removes it", false
+end
+
+local function cmdPets(player, _, arg)
+	if not needCatalog() then
+		return false, "the pet catalog is missing"
+	end
+	local text, stage = splitStage(arg)
+	if text ~= "" then
+		return false, "/pets takes only a stage: /pets, /pets 1 or /pets 2"
+	end
+	stage = stage or 0
+	local ids = {}
+	for _, def in ipairs(PetCatalog.Pets) do
+		if type(def) == "table" and type(def.Id) == "string" and maxEvolution(def) >= stage then
+			ids[#ids + 1] = def.Id
+		end
+	end
+	if not showPets(player, "Lineup", { Stage = stage, PetIds = ids }) then
+		return false, "the DevPetShow remote is missing"
+	end
+	return true, #ids .. " pets (" .. STAGE_NAMES[stage] .. ") lined up in front of you; /clearpets removes them", false
+end
+
+-- The evolutions of one pet: no stage = its whole line, 1 = normal -> evolved, 2 = evolved -> evolved II.
+local function stepsOf(def, stage, steps)
+	local top = maxEvolution(def)
+	local from, to = 0, top
+	if stage == 1 then
+		from, to = 0, 1
+	elseif stage == 2 then
+		from, to = 1, 2
+	end
+	for s = from + 1, math.min(to, top) do
+		steps[#steps + 1] = { PetId = def.Id, From = s - 1, To = s }
+	end
+end
+
+local function cmdEvolve(player, _, arg)
+	if not needCatalog() then
+		return false, "the pet catalog is missing"
+	end
+	local text, stage = splitStage(arg)
+	if stage == 0 then
+		return false, "evolve to 1 (Evolved) or 2 (Evolved II), like /evolve cloudy dragon 2"
+	end
+	local steps = {}
+	local label
+	if squash(text) == "all" then
+		for _, def in ipairs(PetCatalog.Pets) do
+			if type(def) == "table" and type(def.Id) == "string" then
+				stepsOf(def, stage, steps)
+			end
+		end
+		label = #steps .. " evolutions one after another"
+	else
+		if squash(text) == "" then
+			return false, "which pet? like /evolve cloudy dragon, or /evolve all"
+		end
+		local def, err = findPet(text)
+		if not def then
+			return false, err
+		end
+		if stage == 2 and maxEvolution(def) < 2 then
+			return false, nameOf(def) .. " has no second evolution (Epic pets and up)"
+		end
+		stepsOf(def, stage, steps)
+		label = nameOf(def) .. " evolving"
+		if #steps > 1 then
+			label = label .. " twice (Evolved, then Evolved II)"
+		else
+			label = label .. " to " .. STAGE_NAMES[steps[1].To]
+		end
+	end
+	if not showPets(player, "Evolve", { Steps = steps }) then
+		return false, "the DevPetShow remote is missing"
+	end
+	return true, label .. "; /clearpets stops it", false
+end
+
+local function cmdClearPets(player)
+	if not showPets(player, "Clear", {}) then
+		return false, "the DevPetShow remote is missing"
+	end
+	return true, "showcase pets removed", false
+end
+
+-- Two toasts (each fits a side toast): the pet showcase commands first, then the others.
+local function cmdHelp(player)
+	notify(player, "DEV: /pet <name> [0-2]  /pets [0-2]  /evolve <name|all> [1-2]  /clearpets", "info", HELP_SECONDS)
 	if tutorialReloader() then
 		return true, "/allpets /tokens N /cash N /gems N /reset /tutorial /skiptutorial /raid /devhelp", false
 	end
@@ -656,6 +888,10 @@ local HANDLERS = {
 	tutorial = cmdTutorial,
 	skiptutorial = cmdSkipTutorial,
 	raid = cmdRaid,
+	pet = cmdPet,
+	pets = cmdPets,
+	evolve = cmdEvolve,
+	clearpets = cmdClearPets,
 	devhelp = cmdHelp,
 }
 
@@ -673,18 +909,21 @@ local function execute(player, command, arg, source)
 		notify(player, "DEV: unknown command '" .. printable(command) .. "' (try /devhelp)", "bad")
 		return false, "unknown command"
 	end
-	-- only tokens / cash / gems take a value, and only a number
-	if arg ~= nil and (not NUMERIC[name] or type(arg) ~= "number") then
+	-- tokens / cash / gems take a whole number, the showcase commands a short text, the rest no value
+	local kind = ARG_KIND[name]
+	if arg ~= nil and (type(arg) ~= kind or (kind == "string" and #arg > MAX_ARG_LENGTH)) then
 		log(player, source, name, arg, "refused: bad value")
 		if NUMERIC[name] then
 			notify(player, "DEV: " .. name .. " needs a whole number, like /" .. name .. " 50000", "bad")
+		elseif kind == "string" then
+			notify(player, "DEV: " .. name .. " needs a short text, like /pet cloudy dragon 2", "bad")
 		else
 			notify(player, "DEV: " .. name .. " takes no value", "bad")
 		end
 		return false, "bad value"
 	end
 	local profile = getProfile(player)
-	if not profile then
+	if not profile and not NO_PROFILE[name] then
 		log(player, source, name, arg, "refused: profile not loaded")
 		notify(player, "DEV: your data is still loading, try again", "bad")
 		return false, "profile not loaded"
@@ -784,12 +1023,21 @@ local function onChatted(player, message)
 	if not KNOWN[word] then
 		return -- not one of ours (/e dance, /w name ...): leave it alone
 	end
+	-- the same line through both ways in (Player.Chatted and a TextChatCommand) runs once
+	local now = os.clock()
+	local last = lastChat[player]
+	if last and last.Text == message and now - last.At < DUPLICATE_WINDOW then
+		return
+	end
+	lastChat[player] = { Text = message, At = now }
 	local arg = nil
 	if NUMERIC[word] and rest ~= "" then
 		arg = parseAmount(rest)
 		if arg == nil then
 			arg = rest -- not a number: Run refuses it with a "bad" toast
 		end
+	elseif ARG_KIND[word] == "string" and rest ~= "" then
+		arg = rest -- the showcase commands read the rest of the line (pet name and stage)
 	end
 	local ok, err = pcall(DevService.Run, player, word, arg, "chat")
 	if not ok then
@@ -804,6 +1052,47 @@ local function connectChat(player)
 	chatConns[player] = player.Chatted:Connect(function(message)
 		onChatted(player, message)
 	end)
+end
+
+-- The new chat (TextChatService) only hands a "/" message to the game when a TextChatCommand claims it: one per
+-- command. Skipped for the legacy chat and wherever TextChatCommand cannot be made.
+local function makeChatCommands()
+	if chatCommandsMade then
+		return
+	end
+	chatCommandsMade = true
+	local okService, tcs = pcall(function()
+		return game:GetService("TextChatService")
+	end)
+	if not okService or not tcs then
+		return
+	end
+	local okVersion, version = pcall(function()
+		return tcs.ChatVersion
+	end)
+	if okVersion and version ~= nil and version ~= Enum.ChatVersion.TextChatService then
+		return -- the legacy chat: Player.Chatted sees every message
+	end
+	for _, name in ipairs(DevService.Commands) do
+		local ok = pcall(function()
+			local command = Instance.new("TextChatCommand")
+			command.Name = "NimbusDev_" .. name
+			command.PrimaryAlias = "/" .. name
+			command.Triggered:Connect(function(source, text)
+				local okPlayer, player = pcall(function()
+					return Players:GetPlayerByUserId(source.UserId)
+				end)
+				if okPlayer and player then
+					onChatted(player, text)
+				end
+			end)
+			command.Parent = tcs
+		end)
+		if not ok then
+			return -- no TextChatCommand here (an old engine, a test world): Player.Chatted still works
+		end
+	end
+	print(TAG .. "chat commands registered with TextChatService")
 end
 
 ----------------------------------------------------------------------
@@ -870,6 +1159,7 @@ local function onPlayerRemoving(player)
 		end)
 	end
 	chatConns[player] = nil
+	lastChat[player] = nil
 	rankCache[player] = nil
 	devs[player] = nil
 	recent[player] = nil
@@ -922,6 +1212,7 @@ function DevService.Init(deps)
 		return
 	end
 	ready = true
+	makeChatCommands()
 
 	if hasSignal(DataService, "ProfileLoaded") then
 		DataService.ProfileLoaded:Connect(function(player)

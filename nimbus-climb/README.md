@@ -557,11 +557,16 @@ server checks the permission again on every single command, so other players can
 | **+1,000 Gems** | Adds `Config.Dev.GrantGems` Gems (1,000), to try the gem roulettes and Fusion Mixes. |
 | **Restart tutorial** | Plays the tutorial again from step 1. Its rewards are not paid a second time. |
 | **Skip tutorial** | Ends the tutorial (without its finish reward). |
+| **Evolve every pet** | Plays every pet's evolution animation one after another in front of you (`/evolve all`). |
+| **Show all pets** / **Show evolved pets** / **Show Evolved II pets** | Lines up every pet at that stage in front of you (`/pets`, `/pets 1`, `/pets 2`). |
+| **Clear pet show** | Removes the showcase pets and stops an evolution (`/clearpets`). |
 | **Reset my data** | Back to a brand-new player: tokens, Cash, Gems, pets (also Golden, Rainbow and fused ones), pet levels, food and the Kitchen queue, items, stats, your home build (stations, Garden, Gym, Collector) and Prestige stars, Pet Index progress and rewards are wiped, and the tutorial starts again as for a new player. Tap once ("Are you sure?"), then tap again to confirm. Not during a climb. |
 
 Close it with the red X, `Esc` or gamepad B. Every change answers with a "DEV: ..." toast.
 
-**Chat commands** (type them in the chat; not case-sensitive):
+**Chat commands** (type them in the game's chat while playing: click the chat bubble at the top left of the game
+view or press `/`; not case-sensitive). Not in Studio's command bar at the bottom of the Studio window: that box
+runs Lua code and the game never sees what you type there.
 
 | Command | What it does |
 |---|---|
@@ -572,7 +577,18 @@ Close it with the red X, `Esc` or gamepad B. Every change answers with a "DEV: .
 | `/reset` | Same as Reset my data (no confirmation, so type it carefully). |
 | `/tutorial` | Same as Restart tutorial. |
 | `/skiptutorial` | Same as Skip tutorial. |
-| `/devhelp` | A toast listing the commands. |
+| `/pet <name> [stage]` | Builds that pet in front of you: stage `0` normal (the default), `1` evolved, `2` second evolution (Epic pets and up). The name or a unique part of it is enough, any case: `/pet cloudy 2`, `/pet Pebble Pup`. Each new pet stands beside the last one. |
+| `/pets [stage]` | Every pet lined up in rows in front of you: `/pets` (normal), `/pets 1` (all 30 evolved), `/pets 2` (the 13 second evolutions). |
+| `/evolve <name> [stage]` | Plays that pet's evolution animation in front of you: with no stage its whole line (normal -> evolved, then -> second evolution for Epic pets and up), `1` only normal -> evolved, `2` only evolved -> second evolution. |
+| `/evolve all [stage]` | Every pet's evolutions one after another (all 43 take about 4 minutes; `/evolve all 2` plays just the 13 second evolutions). |
+| `/clearpets` | Stops an evolution and removes the showcase pets. |
+| `/devhelp` | Two toasts listing the commands. |
+
+The pet showcase (`/pet`, `/pets`, `/evolve`, `/clearpets`) is built on your own screen only: other players do not
+see it, nothing is saved and your pets are not touched. The evolution animation is
+`src/client/Controllers/EvolutionFx.lua` (the pet charges up and spins in a pillar of light over a ring of runes,
+bursts into a flash and the evolved pet pops out; the second evolution gets a double ring and more sparks), ready for
+a real "evolve" button later.
 
 At most 4 commands every 2 seconds. Every command is written to the Output window as `[NimbusClimb][Dev] ...`.
 Changes are saved like normal progress (a reset lasts), so use them on a test account or in Studio when you want
@@ -675,7 +691,8 @@ src/server   Main.server.lua; Services: Lighting, LobbyBuilder, StormAltar, Play
              Course (layout + builder), Match, Portal, Spot, Pet, Item, Index, Tutorial, Npc, Dev, Tycoon,
              HomeBuilder, PetCare, Fusion, Gem, ArenaBuilder, Battle, Event
 src/client   Main.client.lua; State; UI/CloudUI; Controllers: Movement, Hud, DamageFx, Notify, Menu, Hotbar,
-             Pet, TokenFx, Index, Tutorial, Npc, SkyDragon, Showcase, Dev, HomeFx, Fusion, Battle, Arena
+             Pet, TokenFx, Index, Tutorial, Npc, SkyDragon, Showcase, Dev, DevPetShow (pet showcase),
+             EvolutionFx (evolution animation), HomeFx, Fusion, Battle, Arena
 ```
 
 The **server is authoritative** (health, tokens, Cash, Gems, pets, items, checkpoints, matches, home purchases

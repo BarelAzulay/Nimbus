@@ -21,8 +21,10 @@
 --     second and on every screen size change.
 --   * DevPanel: a compact CloudUI panel docked to the right edge, never centred, titled "Developer tools":
 --     "Give all pets", "+1M tokens" (Config.Dev.GrantTokens through Theme.ShortNumber), "Restart tutorial",
---     "Skip tutorial", "Start Boss Raid" (Phase 3: DevCommand "raid"), "Reset my data" (the first tap turns it
---     into "Are you sure?"; only a second, separate tap
+--     "Skip tutorial", "Start Boss Raid" (Phase 3: DevCommand "raid"), the pet showcase ("Evolve every pet" =
+--     DevCommand("evolve", "all"), "Show all pets" / "Show evolved pets" / "Show Evolved II pets" =
+--     DevCommand("pets", "0" | "1" | "2"), "Clear pet show" = DevCommand("clearpets"); client/Controllers/DevPetShow.lua
+--     builds them), "Reset my data" (the first tap turns it into "Are you sure?"; only a second, separate tap
 --     0.6 to 4 s later sends it, so a double click never resets) and the note "Only you can see this". For the
 --     first 0.4 s after it opens its buttons ignore taps (the rest of a double click on the tile lands there).
 --     It takes a free stretch of the right edge below the toasts' room, so the toasts that answer its buttons
@@ -475,6 +477,12 @@ local function buildPanel(gui)
 		{ Id = "tutorial", Text = "Restart tutorial", Style = "Blue" },
 		{ Id = "skiptutorial", Text = "Skip tutorial", Style = "Pink" },
 		{ Id = "raid", Text = "Start Boss Raid", Style = "Gold" }, -- Phase 3 (events): DevCommand("raid")
+		-- the pet showcase (DevService: evolve / pets / clearpets)
+		{ Id = "evolveall", Text = "Evolve every pet", Style = "Gold", Command = "evolve", Arg = "all" },
+		{ Id = "pets0", Text = "Show all pets", Style = "Blue", Command = "pets", Arg = "0" },
+		{ Id = "pets1", Text = "Show evolved pets", Style = "Blue", Command = "pets", Arg = "1" },
+		{ Id = "pets2", Text = "Show Evolved II pets", Style = "Blue", Command = "pets", Arg = "2" },
+		{ Id = "clearpets", Text = "Clear pet show", Style = "Gray", Command = "clearpets" },
 		{ Id = "reset", Text = "Reset my data", Style = "Red" },
 	}
 	UI.FullHeight = fullPanelHeight(#specs)
@@ -545,6 +553,10 @@ local function buildPanel(gui)
 		elseif id == "gems" then
 			callback = panelPress(function()
 				send("gems", grantAmount("GrantGems", 1000))
+			end)
+		elseif spec.Command then
+			callback = panelPress(function()
+				send(spec.Command, spec.Arg)
 			end)
 		else
 			callback = panelPress(function()
