@@ -771,6 +771,63 @@ BUILDERS.pocket = function(index)
 	return { { root = pocket.Model, label = "Trial pocket " .. n, sub = "ArenaBuilder.BuildPocket(" .. n .. ")", facing = { 0, 0, -1 } } }
 end
 
+-- Phase 3 bosses (shared/BossBuilder.lua, built from a BattleCatalog boss id):
+--   boss:<bossId>[:<pose>[:<detail>]]   one boss, pose Idle (default) | Windup | Attack | Basic | Enrage | Hurt | Down
+--                                       at the pose's strongest moment, detail High (default) | Low; pose may be
+--                                       "<Pose>/<attackId>" (e.g. Windup/chain) and "<Pose>!" shows it enraged
+--   bosses[:<pose>[:<detail>]]          the whole roster side by side
+local function bossEntry(bossId, pose, detail)
+	local BB = req("shared/BossBuilder", true)
+	if not BB or type(BB.Build) ~= "function" then
+		fail("shared/BossBuilder.lua (Build) does not exist yet")
+	end
+	local poseName, attack = tostring(pose or "Idle"), nil
+	local enraged = poseName:sub(-1) == "!"
+	if enraged then
+		poseName = poseName:sub(1, -2)
+	end
+	local slash = poseName:find("/", 1, true)
+	if slash then
+		attack = poseName:sub(slash + 1)
+		poseName = poseName:sub(1, slash - 1)
+	end
+	if poseName == "" then
+		poseName = "Idle"
+	end
+	local progress = ({ Windup = 1, Attack = 0.4, Basic = 0.4, Enrage = 0.5, Hurt = 0, Down = 1 })[poseName]
+	local d = (detail and detail:lower() == "low") and "Low" or "High"
+	local model = BB.Build(bossId, { Detail = d, Pose = poseName, Progress = progress, Attack = attack, Enraged = enraged, PoseTime = 0.6 })
+	if not model then
+		fail("BossBuilder.Build('" .. tostring(bossId) .. "') returned nil")
+	end
+	model.Parent = Workspace
+	Mock.Advance(0.05)
+	return { root = model, label = tostring(bossId), sub = poseName .. (attack and ("/" .. attack) or "") .. (enraged and " enraged" or "") .. "  " .. d .. "  " .. BB.PartCount(model) .. " parts, " .. string.format("%.1f", BB.GetHeight(model)) .. " studs", facing = { 0, 0, -1 } }
+end
+
+BUILDERS.boss = function(id, pose, detail)
+	if id == nil or id == "" then
+		fail("usage: boss:<bossId>[:<pose>[:<detail>]]")
+	end
+	return { bossEntry(id, pose, detail) }
+end
+
+BUILDERS.bosses = function(pose, detail)
+	local BB = req("shared/BossBuilder", true)
+	if not BB then
+		fail("shared/BossBuilder.lua does not exist yet")
+	end
+	local out = {}
+	for i, id in ipairs(BB.Ids()) do
+		local e = tryBuild(id, bossEntry, id, pose, detail)
+		if e.root then
+			e.root:PivotTo(CFrame.new((i - 2.5) * 44, 0, 0))
+		end
+		out[#out + 1] = e
+	end
+	return out
+end
+
 BUILDERS["storm_altar"] = BUILDERS["storm-altar"]
 BUILDERS.stormaltar = BUILDERS["storm-altar"]
 BUILDERS.npc = BUILDERS.npcs

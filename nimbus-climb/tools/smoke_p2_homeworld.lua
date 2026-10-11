@@ -13,7 +13,7 @@
 --                   signpost, idempotent, at most 3 parts per free plot; the lobby's free plots carry the prompt on
 --                   their own gate part), SetOwner (claim prompt + signpost only while free), a greedy progression
 --                   through TycoonCatalog.AvailablePads with SetStation + SetPads after every purchase (the plot
---                   never passes ~950 parts, the fully built plot stays <= 900), contract names and attributes on
+--                   never passes ~950 parts, the fully built plot stays <= 950), contract names and attributes on
 --                   stations (StationId, Level, BuiltAt, same level = no-op, level 0 removes), presses (PressHead,
 --                   Puff, Chute / Drop on the conveyor line), the Conveyor ending at the Collector's intake, the
 --                   Collector (CashLabel / CapLabel / CashFill / CollectPrompt / CollectPad), the Fusion Machine
@@ -541,7 +541,7 @@ local function serverScenarios()
 		ghostOk:report()
 		local full = partCount()
 		T.check(maxParts <= 950, "home plot: the plot never passes ~950 parts while it fills up (pads included)", "max " .. maxParts .. " after " .. maxAt)
-		T.check(full <= 900, "home plot: the fully built plot stays <= 900 parts", full .. " parts")
+		T.check(full <= 950, "home plot: the fully built plot stays <= 950 parts (the Phase 3 Arena Gate is a real build)", full .. " parts")
 		T.check(HB.PartCount == nil or HB.PartCount(spot) == full, "home plot: PartCount(spot) agrees")
 		local maxed = 0
 		for _, def in ipairs(TC.Stations) do

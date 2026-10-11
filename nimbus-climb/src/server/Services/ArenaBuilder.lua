@@ -990,20 +990,42 @@ local function buildGround(parent, A)
 	for i = ceil((-ISL.HalfW - 4) / 4), floor((ISL.HalfW + 4) / 4) do
 		for k = ceil((ISL.FrontZ - 4) / 4), floor((ISL.DiscR + 4) / 4) do
 			local x, z = i * 4, k * 4
-			if islandSdf(x, z) <= -2 then
-				Voxel.Set(base, i, 0, k, "Paving")
+			local d = islandSdf(x, z)
+			if d <= -2 then
+				-- a darker kerb band along the rim, lighter aprons around the duel rings, the trophy and along the avenue
+				-- (the colosseum hides the cells under its floor)
+				local key = "Paving"
+				local apron = false
+				for _, spec in ipairs(RINGS) do
+					local pr = polyR(x - spec.X, z - spec.Z)
+					if pr >= RING_A + 1 and pr <= RING_A + 9 then
+						apron = true
+					end
+				end
+				if d > -10 then
+					key = "Kerb"
+				elseif apron or (abs(x) <= 10 and z < -(COL.WallOut - 2)) then
+					key = "Apron"
+				elseif sqrt(x * x + (z + 124) * (z + 124)) <= 16 then
+					key = "Apron"
+				end
+				Voxel.Set(base, i, 0, k, key)
 			end
 		end
 	end
 	VX.Build(base, {
 		V = 4,
-		Pal = { Paving = { Color = C.Paving, Material = MAT.Slate } },
+		Pal = {
+			Paving = { Color = C.Paving, Material = MAT.Slate },
+			Apron = { Color = C.PavingLight, Material = MAT.Slate },
+			Kerb = { Color = C.PavingDark, Material = MAT.Slate },
+		},
 		Name = "Paving",
 		CF = A * CFrame.new(0, -0.2 - 2, 0),
 		Collide = true,
 		Shadow = false,
 		Parent = f,
-		MaxParts = 70,
+		MaxParts = 240,
 	})
 	-- the runner: from the bridge's landing to the main gate's passage
 	local z0, z1 = ISL.FrontZ + 1, -(COL.WallOut + 1.5)
@@ -1446,6 +1468,14 @@ local function buildRing(parent, A, spec, index)
 	for j = 0, 7 do
 		box(m, "RingFloor", cf * CFrame.Angles(0, j * STEP16, 0) * CFrame.new(0, RING_Y - 0.5, 0), Vector3.new(slabW, 1, RING_A * 2), C.SandLight, { Collide = true, Material = MAT.Sand, Shadow = false })
 	end
+	-- a painted circle (16 thin strips) where the two teams line up, and a darker sand rim inside the curb
+	local lineA = 21
+	local lineLen = 2 * lineA * TAN16 + 0.5
+	for j = 0, 15 do
+		local seg = cf * CFrame.Angles(0, j * STEP16, 0)
+		box(m, "RingLine", seg * CFrame.new(0, RING_Y + 0.03, -lineA), Vector3.new(lineLen, 0.1, 0.8), C.Marble, { Shadow = false })
+		box(m, "RingRim", seg * CFrame.new(0, RING_Y + 0.02, -(RING_A - 1.5)), Vector3.new(2 * (RING_A - 1.5) * TAN16 + 1.3, 0.08, 3), C.SandDark, { Material = MAT.Sand, Shadow = false })
+	end
 	-- the curb: 16 blocks on the edges, in the ring's colour
 	local curbOut = RING_A + 1.6
 	local curbLen = 2 * curbOut * TAN16 + 0.25
@@ -1528,7 +1558,7 @@ local function buildEventBoard(parent, cf)
 	labels.Header = signText(p, "Header", "ARENA EVENTS", "Title", 60, C.TextGold, 0.04, 0.03, 0.92, 0.15)
 	labels.Next = signText(p, "NextLabel", "NEXT EVENT", "Heading", 34, C.TextDim, 0.04, 0.2, 0.92, 0.1)
 	labels.Boss = signText(p, "BossLabel", "Boss Raid", "Title", 46, C.Text, 0.04, 0.31, 0.92, 0.12)
-	labels.Countdown = signText(p, "CountdownLabel", "--:--", "Display", 110, C.Text, 0.04, 0.44, 0.92, 0.27)
+	labels.Countdown = signText(p, "CountdownLabel", "--:--", "Display", 100, C.Text, 0.04, 0.44, 0.92, 0.27)
 	labels.Status = signText(p, "StatusLabel", "", "Body", 30, C.Text, 0.04, 0.72, 0.92, 0.11)
 	local pill = plainFrame(p, "DoublePill", {
 		AnchorPoint = Vector2.new(0.5, 0),
@@ -1641,7 +1671,7 @@ local function drawBoard()
 		setLabel(L.Next, "BOSS RAID LIVE!", 34, C.Gold)
 		local name, element = bossName(st.RaidBoss)
 		setLabel(L.Boss, name, 46, elementColorById(element) and elementColorById(element):Lerp(C.Text, 0.35) or C.Text)
-		setLabel(L.Countdown, clockText((st.RaidEndsAt or now) - now), 110, C.Text)
+		setLabel(L.Countdown, clockText((st.RaidEndsAt or now) - now), 100, C.Text)
 		local hpText = ""
 		if tonumber(st.RaidHp) and tonumber(st.RaidMaxHp) and st.RaidMaxHp > 0 then
 			hpText = string.format("HP %d%%", floor(100 * max(0, st.RaidHp) / st.RaidMaxHp + 0.5))
@@ -1657,12 +1687,12 @@ local function drawBoard()
 			local name, element = bossName(st.NextBoss)
 			setLabel(L.Boss, name, 46, elementColorById(element) and elementColorById(element):Lerp(C.Text, 0.35) or C.Text)
 		end
-		setLabel(L.Countdown, clockText((st.NextAt or now) - now), 110, C.Text)
+		setLabel(L.Countdown, clockText((st.NextAt or now) - now), 100, C.Text)
 		setLabel(L.Status, "Be in the arena with your team to join", 30, C.Text)
 	else
 		setLabel(L.Next, "BOSS RAIDS", 34, C.TextDim)
 		setLabel(L.Boss, "Every " .. raidEveryMinutes() .. " minutes", 46, C.Text)
-		setLabel(L.Countdown, "--:--", 110, C.TextDim)
+		setLabel(L.Countdown, "--:--", 100, C.TextDim)
 		setLabel(L.Status, "Watch this board for the countdown", 30, C.Text)
 	end
 	local doubleOn = st and st.DoubleActive and (st.DoubleAt or 0) > now
@@ -2226,7 +2256,7 @@ local function pocketTemplate()
 		Seed = 12,
 	})
 	VX.Build(g, { V = 4, Pal = CLOUD_PAL, Name = "PocketCloud", CF = CFrame.new(0, -1.2 - 2, 0), Collide = true, MaxParts = 70, Parent = m })
-	-- the floor: sand with a stone band, gold corners and a glowing X in the middle (2-stud cells)
+	-- the floor (2-stud cells): a stone border with gold corners, a crimson line inside it and sand
 	local fg = Voxel.NewGrid(1)
 	local hf = POCKET_FLOOR / 2
 	for i = -hf / 2, hf / 2 - 1 do
@@ -2235,31 +2265,43 @@ local function pocketTemplate()
 			local ax, az = abs(x), abs(z)
 			local key = "Sand"
 			if ax >= hf - 4 or az >= hf - 4 then
-				key = (ax >= hf - 4 and az >= hf - 4) and "Gold" or "Stone"
-			elseif abs(ax - az) <= 1 and ax <= 9 then
-				key = "Glow"
-			elseif vnoise(x + 9, z + 9, 14, 4) < 0.3 then
-				key = "SandDark"
+				if ax >= hf - 4 and az >= hf - 4 then
+					key = "Gold"
+				else
+					key = "Stone"
+				end
+			elseif ax >= hf - 6 or az >= hf - 6 then
+				key = "Line"
 			end
 			Voxel.Set(fg, i, 0, k, key)
 		end
 	end
+	local floorPal = {
+		Sand = { Color = C.Sand, Material = MAT.Sand },
+		SandDark = { Color = C.SandDark, Material = MAT.Sand },
+		Stone = { Color = C.Stone, Material = MAT.Slate },
+		StoneLight = { Color = C.StoneLight, Material = MAT.Slate },
+		Gold = C.Gold,
+		Line = C.Crimson,
+	}
 	VX.Build(fg, {
 		V = 2,
-		Pal = {
-			Sand = { Color = C.Sand, Material = MAT.Sand },
-			SandDark = { Color = C.SandDark, Material = MAT.Sand },
-			Stone = { Color = C.Stone, Material = MAT.Slate },
-			Gold = C.GoldDark,
-			Glow = { Color = TRIAL_COLOR, Material = MAT.Neon },
-		},
+		Pal = floorPal,
 		Name = "PocketFloor",
 		CF = CFrame.new(1, -1, 1),
 		Collide = true,
 		Shadow = false,
-		MaxParts = 50,
+		MaxParts = 40,
 		Parent = m,
 	})
+	-- the element wheel (like the colosseum's, smaller): eight petals in the element colours, a gold rim and core
+	local wheel = newModel(m, "ElementWheel")
+	for e = 1, 8 do
+		box(wheel, "WheelPetal", CFrame.Angles(0, sectionAngle(e), 0) * CFrame.new(0, -0.45, -7.4), Vector3.new(3.2, 1, 5.6), elementColor(e), { Collide = true, Shadow = false })
+	end
+	ring16(wheel, "WheelRim", CFrame.new(), 10.5, 11.6, 0.05, 1, C.Gold, nil, true)
+	disc16(wheel, "WheelCore", CFrame.new(), 4.2, 0.05, 1, C.Gold, nil, true)
+	ring16(wheel, "FloorCircle", CFrame.new(), 21, 22.2, 0.02, 1, C.SandLight, MAT.Sand, true)
 	-- low crenellated walls on the four sides and corner towers with braziers
 	local wallH = 3
 	for side = 0, 3 do
@@ -2271,6 +2313,14 @@ local function pocketTemplate()
 			end
 		end
 		box(m, "WallStripe", cf * CFrame.new(0, 1.6, -(hf - 0.05)), Vector3.new(POCKET_FLOOR - 2, 0.6, 0.2), C.Crimson, { Shadow = false })
+		-- two element banners hanging over the inner face of every wall (gold rod, cloth, a darker hem)
+		for b, bx in ipairs({ -17, 17 }) do
+			local col = elementColor(side * 2 + b)
+			local bcf = cf * CFrame.new(bx, 0, -(hf - 0.1))
+			box(m, "BannerRod", bcf * CFrame.new(0, 4.5, 0.05), Vector3.new(4.2, 0.35, 0.35), C.Gold, { Shadow = false })
+			box(m, "Banner", bcf * CFrame.new(0, 2.6, 0.15), Vector3.new(3.2, 3.6, 0.2), col, { Shadow = false })
+			box(m, "BannerHem", bcf * CFrame.new(0, 0.6, 0.15), Vector3.new(3.2, 0.5, 0.22), col:Lerp(C.Navy, 0.35), { Shadow = false })
+		end
 		local tower = cf * CFrame.new(hf + 1, 0, -(hf + 1))
 		box(m, "Tower", tower * CFrame.new(0, 3.5, 0), Vector3.new(5, 8, 5), C.Stone, { Collide = true })
 		box(m, "TowerTop", tower * CFrame.new(0, 7.8, 0), Vector3.new(6, 0.6, 6), C.Gold, { Collide = true, Shadow = false })
@@ -2283,6 +2333,8 @@ local function pocketTemplate()
 	-- the fighter's pad (side 1, -Z) and the enemies' gate (side 2, +Z)
 	box(m, "SpawnPad", CFrame.new(0, 0.1, -(hf - 7)), Vector3.new(7, 0.4, 7), C.Gold, { Collide = true, Shadow = false })
 	box(m, "SpawnGlow", CFrame.new(0, 0.32, -(hf - 7)), Vector3.new(5.6, 0.2, 5.6), rgb(96, 196, 108), { Material = MAT.Neon, Shadow = false })
+	box(m, "EnemyPad", CFrame.new(0, 0.1, hf - 7), Vector3.new(7, 0.4, 7), C.Iron, { Collide = true, Shadow = false })
+	box(m, "EnemyGlow", CFrame.new(0, 0.32, hf - 7), Vector3.new(5.6, 0.2, 5.6), C.Crimson, { Material = MAT.Neon, Shadow = false })
 	box(m, "EnemyGate", CFrame.new(0, 3, hf + 0.2), Vector3.new(10, 6, 0.6), C.Recess, { Collide = true, Shadow = false })
 	for i = -2, 2 do
 		box(m, "GateBar", CFrame.new(i * 2, 3, hf - 0.25), Vector3.new(0.4, 6, 0.4), C.Iron, { Collide = true, Shadow = false })
@@ -2361,6 +2413,11 @@ function ArenaBuilder.FreePocket(zone)
 	S.pockets[index] = nil
 	if info.Model then
 		info.Model:Destroy()
+	end
+	-- the holder goes away with the last pocket (the workspace stays as tidy as before the first trial)
+	local holder = Workspace:FindFirstChild("BattlePockets")
+	if holder and next(S.pockets) == nil and #holder:GetChildren() == 0 then
+		holder:Destroy()
 	end
 	return true
 end

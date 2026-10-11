@@ -970,8 +970,8 @@ S.p2flow_build = guarded("p2flow_build", function()
 	T.check(level(ann, "Gym") == 1 and stationModel(annInfo, "Gym") ~= nil, "flow gym: the Gym pad builds the Gym")
 	local arenaPrompt = buyPrompt(annInfo, "ArenaGate")
 	local arenaPad = X.HB and X.HB.GetPad and X.HB.GetPad(annInfo, "ArenaGate") or nil
-	T.check(arenaPrompt ~= nil and arenaPrompt.Enabled == false and arenaPad ~= nil and arenaPad:GetAttribute("Locked") == "Coming soon",
-		"flow gym: ...and the Arena Gate pad shows up as 'Coming soon' (Phase 3)", arenaPad and tostring(arenaPad:GetAttribute("Locked")) or "no pad")
+	T.check(arenaPrompt ~= nil and arenaPrompt.Enabled == true and arenaPad ~= nil and (arenaPad:GetAttribute("Locked") or "") == "",
+		"flow gym: ...and the Arena Gate pad shows up, buyable (Phase 3)", arenaPad and tostring(arenaPad:GetAttribute("Locked")) or "no pad")
 	mark = K.logSize()
 	Mock.FromClient(remote("PetCare"), ann, "GymSet", 1, F.eco)
 	advance(0.4)

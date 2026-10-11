@@ -22,7 +22,7 @@
 --       * a station shows a pad once its STATION prerequisites are built (the tree: the yard fills step by step);
 --         maxed stations show no pad
 --       * Locked (shown on the sign) when the next level needs more: "Reach Home Level 10", "Needs the Villa",
---         "Unlocks at Prestige 1", "Coming soon" (Arena Gate until Phase 3). Price is always the real price.
+--         "Unlocks at Prestige 1", "Coming soon" (no station since Phase 3). Price is always the real price.
 --       * once the Sky Castle is built the list also holds the PRESTIGE pad: { StationId = "Prestige",
 --         Kind = "Prestige", Prestige = true, Price = 0, NextLevel = stars + 1, Locked = "Reach Home Level 40" | nil }.
 --         TycoonService routes it to its Prestige() (never to a station purchase).
@@ -426,7 +426,6 @@ local STATIONS = {
 		Blurb = "Opens the way to pet battles.",
 		MaxLevel = 1, TierCaps = caps(1, 1, 1, 1),
 		Requires = { Gym = 1 },
-		ComingSoon = true, -- Phase 3 removes this flag
 		Price = { 150000 },
 		Effects = { { Battles = true } },
 		Slot = { CFrame = at(32, 14.5, 90), Footprint = V3(7, 12, 4), Pad = padAt(27, 14.5, 32, 14.5) },

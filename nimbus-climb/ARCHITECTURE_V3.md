@@ -674,3 +674,9 @@ Arena, set your team, win Trial 1, see a Boss Raid) and NPC tips for battles, el
   -> {Model, CFrame, Size, Spawn}` and `ArenaBuilder.FreePocket(zone)`.
 - *Ownership additions*: data also owns the DevService reset lines for Teams/Battle; events owns the DevService `raid`
   command and one DevController "Start Boss Raid" button (data and events run one after the other, never together).
+- *As built (arenaworld)*: `Portal_Trials` lives in `workspace.BattleArena` (= `ArenaInfo.TrialPortal`), NOT in
+  NimbusLobby (the lobby is at its part budget): the tutorial and any arrow/beam must target it there. The arena is
+  reached by a bridge from the plaza and by the home Arena Gate (a real station now: 150K Cash after the Gym). The
+  board prompts carry `OpenPanel = "Arena"` plus `OpenPanelTab = "Events"` / `"Leaderboard"`; duel pad prompts carry
+  `RingIndex` / `PadIndex`. Extra ArenaBuilder API: `ApplyArenaState(state)` (EventService draws the boards),
+  `InArena(pos)`, `ZoneAt(pos)`, `GetInfo()`, `GetPocket(i)`, signal `Teleported`.

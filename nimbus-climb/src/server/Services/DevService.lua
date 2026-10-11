@@ -1,7 +1,8 @@
 -- DevService: owner-only developer tools (Config.Dev). Lets the game's owner test everything: get every pet,
 -- add tokens, restart / skip the tutorial and wipe their own data back to a brand-new player.
 --
---   DevService.Init(deps)                          deps = { DataService, PetService, TutorialService, IndexService }
+--   DevService.Init(deps)                          deps = { DataService, PetService, TutorialService, IndexService,
+--                                                  BattleService, EventService } (Phase 3: the raid command)
 --                                                  (PetService is not needed: pets are written into the profile the
 --                                                  way PetService does it, and ProfileRebased refreshes its attributes)
 --   DevService.IsAllowed(player) -> bool           may yield ONCE per player for a group-owned game (group rank)
@@ -44,6 +45,8 @@
 --                   the "spin" gift is not paid again either (rewards are never paid twice). Without the hook the
 --                   command is refused, nothing changes, and the panel hides the button (NC_DevTutorial).
 --   skiptutorial    mark the tutorial done without the finish reward (TutorialService.HandleEvent(player, "Skip"))
+--   raid            Phase 3: start a Boss Raid in the arena right now (EventService.StartNow("BossRaid"); without an
+--                   EventService, BattleService.StartRaid()). Touches no profile data; refused while a raid runs.
 --   devhelp         a toast listing the chat commands
 -- After every change: DataService.MarkDirty + Sync (the menu updates at once) and a side toast "DEV: ..." (kind
 -- "good"); refusals get a "bad" toast. Rate limit: 4 commands per 2 seconds per player. Every command is logged with
@@ -81,7 +84,7 @@ local Remotes = require(Shared.Remotes)
 
 local DevService = {}
 
-DevService.Commands = { "allpets", "tokens", "cash", "gems", "reset", "tutorial", "skiptutorial", "devhelp" }
+DevService.Commands = { "allpets", "tokens", "cash", "gems", "reset", "tutorial", "skiptutorial", "raid", "devhelp" }
 
 local TAG = "[NimbusClimb][Dev] "
 local ATTR = "NC_Dev" -- PlayerGui attribute: true for developers (a hint for the client's DEV button)
@@ -100,7 +103,7 @@ for _, name in ipairs(DevService.Commands) do
 	KNOWN[name] = true
 end
 -- the commands that still run while the profile is provisional (see the persistence note)
-local PROVISIONAL_OK = { tokens = true, cash = true, gems = true, devhelp = true }
+local PROVISIONAL_OK = { tokens = true, cash = true, gems = true, raid = true, devhelp = true }
 -- the commands that take a whole-number amount
 local NUMERIC = { tokens = true, cash = true, gems = true }
 
@@ -125,6 +128,8 @@ local PetCatalog = loadModule(Shared, "PetCatalog")
 local DataService = nil
 local TutorialService = nil
 local IndexService = nil
+local EventService = nil -- Phase 3: /raid
+local BattleService = nil
 
 local function hasFunction(module, name)
 	return type(module) == "table" and type(module[name]) == "function"
@@ -615,11 +620,31 @@ local function cmdSkipTutorial(player, profile)
 	return true, "tutorial skipped (no finish reward)", true
 end
 
+-- Phase 3: a Boss Raid now (events owner). Nothing in the profile changes.
+local function cmdRaid()
+	if hasFunction(EventService, "StartNow") then
+		local ok, started, message = pcall(EventService.StartNow, "BossRaid")
+		if not ok then
+			warn("[DevService] EventService.StartNow failed: " .. tostring(started))
+			return false, "the raid could not start"
+		end
+		return started == true, tostring(message or (started and "raid started" or "the raid could not start")), false
+	end
+	if hasFunction(BattleService, "StartRaid") then
+		local ok, started, why = pcall(BattleService.StartRaid)
+		if ok and started == true then
+			return true, "raid started (join at the Arena)", false
+		end
+		return false, string.lower(tostring(ok and why or "the raid could not start")), false
+	end
+	return false, "boss raids are not in this build", false
+end
+
 local function cmdHelp()
 	if tutorialReloader() then
-		return true, "/allpets /tokens N /cash N /gems N /reset /tutorial /skiptutorial /devhelp", false
+		return true, "/allpets /tokens N /cash N /gems N /reset /tutorial /skiptutorial /raid /devhelp", false
 	end
-	return true, "/allpets /tokens N /cash N /gems N /reset /skiptutorial /devhelp", false
+	return true, "/allpets /tokens N /cash N /gems N /reset /skiptutorial /raid /devhelp", false
 end
 
 local HANDLERS = {
@@ -630,6 +655,7 @@ local HANDLERS = {
 	reset = cmdReset,
 	tutorial = cmdTutorial,
 	skiptutorial = cmdSkipTutorial,
+	raid = cmdRaid,
 	devhelp = cmdHelp,
 }
 
@@ -880,6 +906,8 @@ function DevService.Init(deps)
 	DataService = deps.DataService or loadModule(services, "DataService")
 	TutorialService = deps.TutorialService
 	IndexService = deps.IndexService
+	EventService = deps.EventService or loadModule(services, "EventService")
+	BattleService = deps.BattleService or loadModule(services, "BattleService")
 	if not PetCatalog then
 		PetCatalog = loadModule(Shared, "PetCatalog")
 	end

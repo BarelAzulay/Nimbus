@@ -21,7 +21,8 @@
 --     second and on every screen size change.
 --   * DevPanel: a compact CloudUI panel docked to the right edge, never centred, titled "Developer tools":
 --     "Give all pets", "+1M tokens" (Config.Dev.GrantTokens through Theme.ShortNumber), "Restart tutorial",
---     "Skip tutorial", "Reset my data" (the first tap turns it into "Are you sure?"; only a second, separate tap
+--     "Skip tutorial", "Start Boss Raid" (Phase 3: DevCommand "raid"), "Reset my data" (the first tap turns it
+--     into "Are you sure?"; only a second, separate tap
 --     0.6 to 4 s later sends it, so a double click never resets) and the note "Only you can see this". For the
 --     first 0.4 s after it opens its buttons ignore taps (the rest of a double click on the tile lands there).
 --     It takes a free stretch of the right edge below the toasts' room, so the toasts that answer its buttons
@@ -473,6 +474,7 @@ local function buildPanel(gui)
 		{ Id = "gems", Text = amountLabel(grantAmount("GrantGems", 1000), "Gems"), Style = "Blue" },
 		{ Id = "tutorial", Text = "Restart tutorial", Style = "Blue" },
 		{ Id = "skiptutorial", Text = "Skip tutorial", Style = "Pink" },
+		{ Id = "raid", Text = "Start Boss Raid", Style = "Gold" }, -- Phase 3 (events): DevCommand("raid")
 		{ Id = "reset", Text = "Reset my data", Style = "Red" },
 	}
 	UI.FullHeight = fullPanelHeight(#specs)

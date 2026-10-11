@@ -74,6 +74,12 @@ python3 tools/render_model.py module:server/Services/LobbyBuilder:Build -o any.p
 * Targets: `pet:<id>[:High|Low]`, `species:<Species>[:High|Low]`, `lobby`, `npcs`, `storm-altar`, `skydragon`,
   `token[:golden]`, `module:<path>:<func>[:lobby]`, several joined with `+`, or a `.json` dump from `--json`
   (`storm-altar` needs `server/Services/StormAltar.lua`; `npcs` and `storm-altar` build the lobby first).
+* Phase 3 targets: `arena` (workspace.BattleArena from `ArenaBuilder.Build(lobbyInfo)`: island, colosseum, duel rings,
+  boards, the bridge and the Trial Portal; `lobby+arena` with `--box` shows the plaza link) and `pocket[:<index>]`
+  (one private trial pocket from `ArenaBuilder.BuildPocket`).
+* Phase 3 bosses (`shared/BossBuilder.lua`): `boss:<bossId>[:<pose>[:High|Low]]` (pose Idle | Windup | Attack |
+  Basic | Enrage | Hurt | Down at its strongest moment; `Windup/chain` picks the attack id, a trailing `!` shows it
+  enraged, e.g. `boss:storm_titan:Attack/slam`, `boss:lava_golem:Enrage!`) and `bosses[:<pose>[:Low]]` (the roster).
 * Views: `front` looks the model in the face (a pet's LookVector), `side` at its right flank (face to the right),
   `back`, `left`, `threequarter`, `top` (front at the bottom). All views of a sheet share one scale.
 * Output: the PNG (part count in the bottom-right corner) plus the part count and bounding box on stdout.

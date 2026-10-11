@@ -102,7 +102,7 @@ REQ_DecorFountain = "Kitchen=1 House=Villa"
 REQ_DecorBanners = "Vault=1"
 REQ_DecorPodium = "Garden=1"
 KEEP_ON_PRESTIGE = "DecorLamps DecorFence DecorFlowers DecorFountain DecorBanners DecorPodium"
-COMING_SOON = "ArenaGate"
+COMING_SOON = ""  # none since Phase 3: the Arena Gate is a real station (teleport to the Battle Arena)
 # effects
 INCOME_Press1 = [5, 6.5, 8.5, 11, 14.5, 18.5, 24, 31, 41, 53]
 INCOME_Press2 = [13, 17, 22, 29, 37, 48, 63, 82, 106, 138]

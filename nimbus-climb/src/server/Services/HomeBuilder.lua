@@ -52,7 +52,9 @@
 --                              CapLabel), CashFill (attributes FillBottom, FillMax, FillWidth), Glow parts, the
 --                              Intake attribute, CollectPad (touch plate, attributes StationId / OwnerUserId) and the
 --                              owner-only ProximityPrompt `CollectPrompt` (ActionText "Collect"). The Fusion Machine
---                              has Swirl (a Model HomeFx spins) and `FusionPrompt` ("Fuse", owner only); the Kitchen
+--                              has Swirl (a Model HomeFx spins) and `FusionPrompt` ("Fuse", owner only); the Arena
+--                              Gate `ArenaGatePrompt` ("Go to Arena", owner only, attributes StationId / Teleport =
+--                              "Arena": ArenaBuilder teleports the owner to the Battle Arena); the Kitchen
 --                              a FeedBowl; Garden / Gym carry Attachments Spot<i> (attribute Slot) on the cushion /
 --                              target of every open place, where pets stand (HomeFx shows the GardenPets / GymPets).
 --     Pads/Pad_<StationId>     buy pads, 4 parts each (attributes StationId, OwnerUserId, NextLevel, Level, Price,
@@ -2203,6 +2205,26 @@ function Art.Arena(def, level)
 		box(tpl.Model, "Sword", cf * CFrame.new(0, 0.4, 0), Vector3.new(0.4, 3.6, 0.15), rgb(214, 222, 236), { Shadow = false })
 		box(tpl.Model, "Hilt", cf * CFrame.new(0, -1.5, 0), Vector3.new(1.2, 0.3, 0.3), C.Gold, { Shadow = false })
 		box(tpl.Model, "Hilt", cf * CFrame.new(0, -2.0, 0), Vector3.new(0.3, 0.8, 0.3), C.GoldDark, { Shadow = false })
+	end
+	-- Phase 3: the gate is a working teleport to the Battle Arena. ArenaBuilder handles `ArenaGatePrompt` (owner only,
+	-- near the gate, refused in a match or a battle); applyOwnerAttr writes OwnerUserId and enables it while owned.
+	local prompt = Instance.new("ProximityPrompt")
+	prompt.Name = "ArenaGatePrompt"
+	prompt.ActionText = "Go to Arena"
+	prompt.ObjectText = "Arena Gate"
+	prompt.KeyboardKeyCode = Enum.KeyCode.E
+	prompt.HoldDuration = 0
+	prompt.MaxActivationDistance = PROMPT_RANGE
+	prompt.RequiresLineOfSight = false
+	prompt:SetAttribute("StationId", "ArenaGate")
+	prompt:SetAttribute("Teleport", "Arena")
+	local portal = biggestPart(tpl.Model, "Portal") or biggestPart(tpl.Model)
+	if portal then
+		local att = Instance.new("Attachment")
+		att.Name = "PromptPoint"
+		att.CFrame = portal.CFrame:Inverse() * CFrame.new(0, 3.0, -1.5)
+		att.Parent = portal
+		prompt.Parent = att
 	end
 	return tpl
 end
