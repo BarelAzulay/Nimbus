@@ -98,6 +98,11 @@ Config.Remotes = {
 	"HomeAction", -- (action:string, arg:any)  Upgrade / GardenSet / Collect / Prestige / GoHome
 	"PetCare", -- (action:string, a:any, b:any)  Cook / Feed / GymSet
 	"Fusion", -- (action:string, a:any, b:any)  Upgrade / Mix
+	-- Phase 3 (ARCHITECTURE_V3.md "Phase 3 build contract")
+	"BattleState", -- server -> client (kind:string, payload:table)  Start / Snapshot / Events / End
+	"BattleCommand", -- (action:string, a:any)  Attack / Retreat / Special / Forfeit
+	"BattleRequest", -- (action:string, a:any, b:any)  TeamSet / TeamSelect / Trial / Challenge / ChallengeReply / Queue / Unqueue / JoinRaid / LeaveRaid
+	"ArenaState", -- server -> client (state:table)  next event, countdown, raid status, leaderboard
 }
 
 ----------------------------------------------------------------------
