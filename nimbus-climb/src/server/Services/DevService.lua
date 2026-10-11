@@ -28,13 +28,16 @@
 --   tokens [n]      DataService.AddTokens(n): n defaults to Config.Dev.GrantTokens, whole numbers only, clamped to
 --                   1 .. Config.Dev.MaxTokensPerCommand (chat also takes "50,000", "50k", "1m")
 --   reset           back to a brand-new player: tokens, pets, equipped pets, items, stats, Pet Index progress and
---                   rewards, Cash, Gems, home, pet levels (the lobby spot stays assigned for this session). The
---                   tutorial starts again as a new player's (gift and finish reward included: the reset took those
---                   tokens) when TutorialService has the Reload hook. Without it a tutorial that already paid its
---                   gift is ended as skipped, because every step from "spin" on needs the tokens and pets the reset
---                   just took (it would wait forever); an earlier tutorial carries on. Then
+--                   rewards, Cash, Gems, home, pet levels, the battle teams (3 empty presets, preset 1 active) and
+--                   the battle record (trophies, trial clears, raid and PvP counters, event pets); the lobby spot
+--                   stays assigned for this session. The tutorial starts again as a new player's (gift and finish
+--                   reward included: the reset took those tokens) when TutorialService has the Reload hook. Without
+--                   it a tutorial that already paid its gift is ended as skipped, because every step from "spin" on
+--                   needs the tokens and pets the reset just took (it would wait forever); an earlier tutorial
+--                   carries on. Then
 --                   DataService.ProfileRebased fires so PetService republishes the equipped pets / perks and
---                   IndexService forgets the completed groups. Refused during a match.
+--                   IndexService forgets the completed groups, and DataService.TeamsChanged fires for the battle
+--                   services. Refused during a match and during a pet battle (player attribute InBattle).
 --   tutorial        replay the tutorial from step 1. Needs the hook TutorialService.Reload(player, { Replay = true }):
 --                   it drops the running tutorial and reads it again from the profile; Replay = true means the
 --                   finish reward is not paid again. The stored progress goes back to step 1 with Gifted kept, so
@@ -57,7 +60,8 @@
 --
 -- Persistence: DataService merges Discovered, IndexClaimed, Tutorial.Done / Gifted and best times so they only
 -- ever grow (a gift can never be paid twice). reset and tutorial therefore call DataService.ResetFields for the
--- fields they rewind (reset: Discovered, IndexClaimed, best times and the rewound Tutorial; tutorial: Tutorial):
+-- fields they rewind (reset: Discovered, IndexClaimed, best times, the rewound Tutorial, the Phase 2 Home / Tiers /
+-- Hybrids / PetLevels and the Phase 3 Teams / Battle, whose cleared trials and event pets only grow; tutorial: Tutorial):
 -- the next successful save writes the session's values over the stored ones, so the reset lasts with DataStores
 -- on (the live game, Studio with API access) and a replay is not ended by the next autosave. Everything else
 -- (tokens, pets, items, stats, ...) follows through the normal delta save.
@@ -489,6 +493,11 @@ local function cmdReset(player, profile)
 	if player:GetAttribute(Config.Attr.InMatch) == true then
 		return false, "leave the match first, then reset"
 	end
+	-- Phase 3: BattleService sets InBattle (the battle id) while the player's team fights
+	local battleId = player:GetAttribute(Config.Attr.InBattle or "InBattle")
+	if battleId ~= nil and battleId ~= false and battleId ~= "" and battleId ~= 0 then
+		return false, "leave the battle first, then reset"
+	end
 	local reload = tutorialReloader()
 	-- tokens through the public API so the HUD attribute and the leaderboard follow
 	if hasFunction(DataService, "SpendTokens") and hasFunction(DataService, "GetTokens") then
@@ -521,6 +530,19 @@ local function cmdReset(player, profile)
 	if hasFunction(care, "ClearKitchen") then
 		pcall(care.ClearKitchen, player)
 	end
+	-- Phase 3: the battle teams (3 empty presets, preset 1 active) and the battle record (trophies, trial clears, raid /
+	-- PvP counters, event pets), in the shape DataService keeps them
+	local teams = tableField(profile, "Teams")
+	wipe(teams)
+	teams.Presets = { {}, {}, {} }
+	teams.Active = 1
+	local battle = tableField(profile, "Battle")
+	wipe(battle)
+	for _, field in ipairs({ "Trophies", "TrialBest", "Raids", "RaidBestDamage", "PvPWins", "PvPLosses" }) do
+		battle[field] = 0
+	end
+	battle.TrialCleared = {}
+	battle.EventPets = {}
 	for _, attr in ipairs({ Config.Attr.Cash, Config.Attr.Gems }) do
 		if attr and player:GetAttribute(attr) ~= nil then
 			player:SetAttribute(attr, 0)
@@ -541,6 +563,9 @@ local function cmdReset(player, profile)
 		Tiers = true,
 		Hybrids = true,
 		PetLevels = true,
+		-- Phase 3: cleared trials and event pets only grow and best values only rise in the merge
+		Teams = true,
+		Battle = true,
 	})
 	if rewound then
 		rewindTutorial(player, profile, reload, true)
@@ -551,6 +576,10 @@ local function cmdReset(player, profile)
 	-- IndexService forgets the completed groups (execute() then marks it dirty and syncs it to the client)
 	if hasSignal(DataService, "ProfileRebased") then
 		DataService.ProfileRebased:Fire(player, profile)
+	end
+	-- Phase 3: the battle services re-read the (now empty) teams
+	if hasSignal(DataService, "TeamsChanged") then
+		DataService.TeamsChanged:Fire(player)
 	end
 	return true, "data reset: you are a brand-new player" .. tutorialNote, true
 end

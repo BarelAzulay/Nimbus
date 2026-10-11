@@ -399,7 +399,8 @@ local function serverScenarios()
 		T.check(snap ~= nil and snap.Cash == 0 and snap.Gems == 0 and type(snap.Home) == "table" and type(snap.Home.Stations) == "table" and type(snap.Home.Garden) == "table"
 			and type(snap.Food) == "table" and type(snap.Tiers) == "table" and type(snap.Hybrids) == "table" and type(snap.PetLevels) == "table",
 			"p2 data: ProfileSync carries Cash, Gems, Home, Food, Tiers, Hybrids, PetLevels")
-		T.check(snap ~= nil and snap.GemReceipts == nil and snap.Home.LastSeen == nil and snap.Teams == nil, "p2 data: ...but not the server-only receipts / LastSeen (small payloads)")
+		-- (Phase 3 syncs Teams { Presets, Active, Slots } and Battle: smoke_p3_data.lua checks those)
+		T.check(snap ~= nil and snap.GemReceipts == nil and snap.Home.LastSeen == nil, "p2 data: ...but not the server-only receipts / LastSeen (small payloads)")
 
 		-- Cash
 		T.check(DataS.AddCash(p, 250) == true and DataS.GetCash(p) == 250 and p:GetAttribute(Config.Attr.Cash) == 250, "p2 data: AddCash -> GetCash and the Cash attribute")

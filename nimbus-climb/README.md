@@ -670,11 +670,12 @@ ARCHITECTURE.md, ARCHITECTURE_V2.md, ARCHITECTURE_V3.md   module contracts (the 
 
 src/shared   Config (every number)  TycoonCatalog (every tycoon number)  Theme  Util  Remotes  PetCatalog  PetKeys
              ItemCatalog  PetBuilder  Voxel (voxel sculpting kit)  TutorialSteps  NpcDialog
+             BattleCatalog (every battle number)  BattleSim (the battle simulation)  BossBuilder
 src/server   Main.server.lua; Services: Lighting, LobbyBuilder, StormAltar, Player, Data, Damage, Token, Hazard,
              Course (layout + builder), Match, Portal, Spot, Pet, Item, Index, Tutorial, Npc, Dev, Tycoon,
-             HomeBuilder, PetCare, Fusion, Gem
+             HomeBuilder, PetCare, Fusion, Gem, ArenaBuilder, Battle, Event
 src/client   Main.client.lua; State; UI/CloudUI; Controllers: Movement, Hud, DamageFx, Notify, Menu, Hotbar,
-             Pet, TokenFx, Index, Tutorial, Npc, SkyDragon, Showcase, Dev, HomeFx, Fusion
+             Pet, TokenFx, Index, Tutorial, Npc, SkyDragon, Showcase, Dev, HomeFx, Fusion, Battle, Arena
 ```
 
 The **server is authoritative** (health, tokens, Cash, Gems, pets, items, checkpoints, matches, home purchases

@@ -34,6 +34,12 @@
 --   AltarSite = CFrame | nil   reserved, empty spot inside the ring for the Storm Altar island (faces the plaza)
 --   AltarDock = Vector3 | nil  inner edge of the street junction in front of it (where a bridge can dock; that
 --                              junction's inner rope rail is left open for the altar's bridge and gate)
+--   Phase 3 (built by ArenaBuilder into workspace.BattleArena; the lobby only keeps their ground free):
+--   ArenaAngle = degrees | nil  the spoke just past the last portal; its junction's OUTER rope rail is open
+--   ArenaDock = Vector3 | nil   outer edge of that junction on the spoke's ray: the arena bridge leaves the street here
+--   ArenaBridgeWidth = studs    the arena bridge's deck width (the rail gap is 1.6 studs wider)
+--   TrialSite = CFrame | nil    the Trial Portal's ground point on the plaza (the next gate of the portal fan, on a stone
+--                              patch joined to the end of the promenade), LookVector = towards the plaza centre
 -- SpotInfo also carries PlotCFrame (centre of the flat yard surface, LookVector = towards the gate),
 -- PlotSize (= Config.Lobby.PlotSize), GateCFrame (gate, on the ground) and Accent (the plot colour).
 -- Spot folders are named Spot_NN and carry the attribute SpotIndex; portal / roulette models are named
@@ -140,6 +146,8 @@ G.SpokeEndR = (G.StreetR - G.StreetW / 2) / math.cos(math.rad(G.HalfStep)) + 2.4
 G.SpokeW = 10
 G.GardenR = 186 -- garden island centres
 G.GardenSize = 22 -- garden island radius
+G.ArenaBridgeW = 12 -- Phase 3: the arena bridge (ArenaBuilder) leaves the street through a gap this wide + 1.6
+G.TrialHalf = 12 -- Phase 3: half width of the Trial Portal's stone patch (the gate is 22 studs wide)
 
 ----------------------------------------------------------------------
 -- Palette: cheerful but not blinding. Nothing is pure white (cloud tops stay below 249 on red).
@@ -1206,6 +1214,37 @@ local function computeLayout()
 		L.AltarAngle = altar.Angle
 	end
 
+	-- Phase 3 (ArenaBuilder builds both into workspace.BattleArena; the lobby only keeps their ground free):
+	-- * the Battle Arena island floats beyond the homes; its bridge continues the spoke just past the last portal
+	--   straight through that street junction, between the two plots (the junction's outer rail opens for it);
+	-- * the Trial Portal stands on the plaza as the next gate of the portal fan, on a stone patch joined to the end
+	--   of the promenade (no tree on its site).
+	local arenaTarget = (L.PortalAngles[n] or 180) + L.PortalStep * 0.5
+	local arenaJ, arenaD = nil, 1e9
+	for _, info in ipairs(L.Junctions) do
+		if info.Spoke and not info.Garden and not info.Altar and angleDiff(info.Angle, L.ShopAngle) > 30
+			and (not L.AltarAngle or angleDiff(info.Angle, L.AltarAngle) > 30) then
+			local d = angleDiff(info.Angle, arenaTarget)
+			if d < arenaD then
+				arenaJ, arenaD = info, d
+			end
+		end
+	end
+	if arenaJ then
+		arenaJ.Arena = true
+		L.ArenaAngle = arenaJ.Angle
+	end
+	local trialAngle = ((L.PortalAngles[n] or 180) + L.PortalStep) % 360
+	local trialFree = angleDiff(trialAngle, L.ShopAngle) >= 30
+	for _, a in ipairs(L.PortalAngles) do
+		if angleDiff(trialAngle, a) < 30 then
+			trialFree = false
+		end
+	end
+	if trialFree then
+		L.TrialAngle = trialAngle
+	end
+
 	-- Exits through the plaza's soft cloud rim: spokes and the shop boardwalk.
 	L.RimGaps = {}
 	for _, a in ipairs(L.SpokeAngles) do
@@ -1241,6 +1280,14 @@ local function computeLayout()
 			local s0 = dirOf(endA)
 			segAB(s0.X * PORTAL_R, s0.Z * PORTAL_R, e.X * (PLAZA_R + 1), e.Z * (PLAZA_R + 1), G.StubHalf, "Sand")
 		end
+	end
+	if L.TrialAngle then
+		-- the Trial Portal's stone patch (pad + gate, like the promenade under the other portals) and a stone path
+		-- from the nearer end of the promenade
+		seg(L.TrialAngle, PORTAL_R - 10, PORTAL_R + 14, G.TrialHalf, "Stone")
+		local endA = (angleDiff(L.TrialAngle, L.PromFrom) < angleDiff(L.TrialAngle, L.PromTo)) and (L.PromFrom + 4) or (L.PromTo - 4)
+		local s0, t0 = dirOf(endA), dirOf(L.TrialAngle)
+		segAB(s0.X * PORTAL_R, s0.Z * PORTAL_R, t0.X * PORTAL_R, t0.Z * PORTAL_R, G.PathHalf, "Stone")
 	end
 	L.PlazaSegs = segs
 	return L
@@ -1823,6 +1870,18 @@ local function buildPlazaDecor(f, L)
 		{ L.ShopAngle - 31, 100, "Pine" },
 		{ L.ShopAngle + 31, 100, "Pine" },
 	}
+	-- Phase 3: the Trial Portal's site stays free (ArenaBuilder puts the gate there)
+	if L.TrialAngle then
+		local td = dirOf(L.TrialAngle)
+		reserve(td.X * (PORTAL_R + 3), td.Z * (PORTAL_R + 3), 14)
+		for i = #trees, 1, -1 do
+			local d = dirOf(trees[i][1])
+			local dx, dz = d.X * trees[i][2] - td.X * (PORTAL_R + 3), d.Z * trees[i][2] - td.Z * (PORTAL_R + 3)
+			if dx * dx + dz * dz < 20 * 20 then
+				table.remove(trees, i)
+			end
+		end
+	end
 	for i, t in ipairs(trees) do
 		local pos = plazaSpot(t[1], t[2], 6, L)
 		if pos then
@@ -3176,10 +3235,20 @@ local function buildRoads(root, L)
 		if not open then
 			sides[2] = G.StreetZ - sw / 2 + 0.9
 		end
-		for _, z in ipairs(sides) do
+		for k, z in ipairs(sides) do
 			local pA = (plotA * CFrame.new(-ix - 0.8, 0, z)).Position
 			local pB = (plotB * CFrame.new(ix + 0.8, 0, z)).Position
-			rail(jf, Vector3.new(pA.X, TOP, pA.Z), Vector3.new(pB.X, TOP, pB.Z))
+			if k == 1 and info.Arena then
+				-- Phase 3: the outer rail opens around the junction's ray for the arena bridge (ArenaBuilder)
+				local mid = (pA + pB) * 0.5
+				local u = Vector3.new(pB.X - pA.X, 0, pB.Z - pA.Z).Unit
+				local keep = G.ArenaBridgeW / 2 + 0.8
+				local q0, q1 = mid - u * keep, mid + u * keep
+				rail(jf, Vector3.new(pA.X, TOP, pA.Z), Vector3.new(q0.X, TOP, q0.Z))
+				rail(jf, Vector3.new(q1.X, TOP, q1.Z), Vector3.new(pB.X, TOP, pB.Z))
+			else
+				rail(jf, Vector3.new(pA.X, TOP, pA.Z), Vector3.new(pB.X, TOP, pB.Z))
+			end
 		end
 		if open then
 			-- short inner rails on both sides of the docking bridge
@@ -3519,6 +3588,15 @@ function LobbyBuilder.Build()
 		altarSite = faceCentre(polar(L.AltarAngle, G.GardenR, TOP))
 		altarDock = polar(L.AltarAngle, G.SpokeEndR - 2.4, TOP)
 	end
+	-- Phase 3: where ArenaBuilder links the Battle Arena (the outer edge of the junction on the arena spoke's ray) and
+	-- puts the Trial Portal (on the plaza ground, facing the centre)
+	local arenaDock, trialSite = nil, nil
+	if L.ArenaAngle then
+		arenaDock = polar(L.ArenaAngle, (G.StreetR + G.StreetW / 2) / math.cos(math.rad(G.HalfStep)), TOP)
+	end
+	if L.TrialAngle then
+		trialSite = faceCentre(polar(L.TrialAngle, PORTAL_R, TOP))
+	end
 
 	local parts = 0
 	for _, d in ipairs(root:GetDescendants()) do
@@ -3537,6 +3615,13 @@ function LobbyBuilder.Build()
 		NpcSpots = L.NpcSpots,
 		AltarSite = altarSite, -- reserved for the Storm Altar (ARCHITECTURE_V3.md section 10), faces the plaza
 		AltarDock = altarDock, -- street inner edge where a bridge to the altar island can dock
+		-- Phase 3 (ArenaBuilder): the arena bridge leaves the street here, straight out along ArenaAngle (degrees, the
+		-- spoke's ray through that junction, whose outer rail is open ArenaBridgeWidth + 1.6 studs); the Trial Portal
+		-- stands at TrialSite (ground, LookVector = towards the plaza centre) on its stone patch
+		ArenaAngle = L.ArenaAngle,
+		ArenaDock = arenaDock,
+		ArenaBridgeWidth = G.ArenaBridgeW,
+		TrialSite = trialSite,
 	}
 end
 

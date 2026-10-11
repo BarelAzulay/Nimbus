@@ -21,6 +21,11 @@
 --   State.Cash() / State.Gems()  read the Cash / Gems attributes, fall back to the snapshot
 --   State.CashChanged / State.GemsChanged   Util.Signal, Fire(value) when the attribute changes
 --
+--   Phase 3 (ARCHITECTURE_V3.md "Phase 3 build contract"):
+--   State.Teams() -> { Presets = { {key...}, {key...}, {key...} }, Active = 1..3, Slots = 3 | 4 }
+--   State.Battle() -> { Trophies, TrialBest, TrialCleared = {[level]=true}, Raids, RaidBestDamage, PvPWins,
+--                       PvPLosses, EventPets = {[petId]=true} }
+--
 -- Extras (not part of the cross-module contract): State.IsLoaded(), State.Perks(), State.Stats(),
 -- State.EquippedList(), State.TokensChanged (Signal, Fire(tokens) when the CloudTokens attribute changes),
 -- State.DiscoveredCount(petIdList|nil), State.Tutorial() -> { Step, Done, Gifted }, State.Tiers(), State.Hybrids().
@@ -30,7 +35,8 @@
 --     Stats = { Matches, Wins, TokensEarned, Spins, BestTimes = {[diffId]=sec} }, SpotIndex, Perks = {...},
 --     Discovered = {[petId]=true}, IndexClaimed = {[groupId]=true}, Tutorial = { Step, Done, Gifted },
 --     Cash, Gems, Home = {...}, Food = {[foodId]=count}, Tiers = {[petId]={Golden, Rainbow}},
---     Hybrids = {[uid]={Body, Style, Elements, Name, Rarity, Tier}}, PetLevels = {[key]={Level, Xp}} }
+--     Hybrids = {[uid]={Body, Style, Elements, Name, Rarity, Tier}}, PetLevels = {[key]={Level, Xp}},
+--     Teams = {...}, Battle = {...} }   (Phase 3; TrialCleared arrives as a dense array of booleans)
 -- Whatever arrives is sanitised here, so UI code can index it without nil/type checks. The server sends Garden /
 -- Gym as arrays with "" for empty slots (remotes mangle sparse arrays); they are decoded to {[slot]=key} here.
 -- Plain Lua 5.1-compatible syntax only.
@@ -257,6 +263,89 @@ local function cleanPetLevels(raw)
 	return out
 end
 
+-- Phase 3: battle teams. Presets are dense key lists (the server compacts them); Slots is 3, or 4 after Prestige 1.
+local TEAM_PRESETS = 3
+
+local function newTeams()
+	local presets = {}
+	for i = 1, TEAM_PRESETS do
+		presets[i] = {}
+	end
+	return { Presets = presets, Active = 1, Slots = 3 }
+end
+
+local function cleanTeams(raw)
+	local t = newTeams()
+	if type(raw) ~= "table" then
+		return t
+	end
+	if num(raw.Slots, 3) >= 4 then
+		t.Slots = 4
+	end
+	if type(raw.Presets) == "table" then
+		for i = 1, TEAM_PRESETS do
+			local list = raw.Presets[i]
+			if type(list) == "table" then
+				local seen = {}
+				for _, key in ipairs(list) do
+					if validId(key) and not seen[key] and #t.Presets[i] < t.Slots then
+						seen[key] = true
+						table.insert(t.Presets[i], key)
+					end
+				end
+			end
+		end
+	end
+	local active = num(raw.Active, 1)
+	if active >= 1 and active <= TEAM_PRESETS then
+		t.Active = math.floor(active)
+	end
+	return t
+end
+
+-- Phase 3: the battle record. TrialCleared becomes { [level] = true } (the server sends a dense boolean array).
+local function newBattle()
+	return {
+		Trophies = 0,
+		TrialBest = 0,
+		TrialCleared = {},
+		Raids = 0,
+		RaidBestDamage = 0,
+		PvPWins = 0,
+		PvPLosses = 0,
+		EventPets = {},
+	}
+end
+
+local function cleanBattle(raw)
+	local b = newBattle()
+	if type(raw) ~= "table" then
+		return b
+	end
+	b.Trophies = wholeNumber(raw.Trophies)
+	b.TrialBest = wholeNumber(raw.TrialBest)
+	b.Raids = wholeNumber(raw.Raids)
+	b.RaidBestDamage = wholeNumber(raw.RaidBestDamage)
+	b.PvPWins = wholeNumber(raw.PvPWins)
+	b.PvPLosses = wholeNumber(raw.PvPLosses)
+	if type(raw.TrialCleared) == "table" then
+		for level, value in pairs(raw.TrialCleared) do
+			local n = level
+			if type(level) == "string" then
+				n = tonumber(level)
+			end
+			if type(n) == "number" and n >= 1 and n == math.floor(n) and value == true then
+				b.TrialCleared[n] = true
+				if n > b.TrialBest then
+					b.TrialBest = n
+				end
+			end
+		end
+	end
+	b.EventPets = idSet(raw.EventPets)
+	return b
+end
+
 local function newSnapshot()
 	local perks = {}
 	for _, key in ipairs(PERK_KEYS) do
@@ -286,6 +375,9 @@ local function newSnapshot()
 		Tiers = {},
 		Hybrids = {},
 		PetLevels = {},
+		-- Phase 3
+		Teams = newTeams(),
+		Battle = newBattle(),
 	}
 end
 
@@ -341,6 +433,9 @@ local function normalise(raw)
 	snap.Tiers = cleanTiers(raw.Tiers)
 	snap.Hybrids = cleanHybrids(raw.Hybrids)
 	snap.PetLevels = cleanPetLevels(raw.PetLevels)
+	-- Phase 3
+	snap.Teams = cleanTeams(raw.Teams)
+	snap.Battle = cleanBattle(raw.Battle)
 	for id in pairs(snap.Tiers) do
 		snap.Discovered[id] = true -- a tier copy counts for its base pet
 	end
@@ -550,6 +645,15 @@ end
 
 function State.Hybrids()
 	return current.Hybrids
+end
+
+-- Phase 3
+function State.Teams()
+	return current.Teams
+end
+
+function State.Battle()
+	return current.Battle
 end
 
 local function attributeNumber(name)
