@@ -80,6 +80,11 @@ python3 tools/render_model.py module:server/Services/LobbyBuilder:Build -o any.p
 * Phase 3 bosses (`shared/BossBuilder.lua`): `boss:<bossId>[:<pose>[:High|Low]]` (pose Idle | Windup | Attack |
   Basic | Enrage | Hurt | Down at its strongest moment; `Windup/chain` picks the attack id, a trailing `!` shows it
   enraged, e.g. `boss:storm_titan:Attack/slam`, `boss:lava_golem:Enrage!`) and `bosses[:<pose>[:Low]]` (the roster).
+* Phase 3 battles (`client/Controllers/BattleController.lua`, client world): `battle[:<trial|duel|raid>[:<seconds>[:specials]]]`
+  steps a real BattleSim at 10 Hz and feeds it to the real BattleController the way BattleService sends it, then dumps
+  what the client drew (`workspace.ClientBattle`: unit models, boss, telegraphs, effects). `battle:raid:9` catches the
+  boss's first telegraph filling; `:specials` fills the local team's meters and casts every special just before the
+  dump, e.g. `python3 tools/render_model.py battle:raid:9:specials --views threequarter,top --size 1400 -o raid.png`.
 * Views: `front` looks the model in the face (a pet's LookVector), `side` at its right flank (face to the right),
   `back`, `left`, `threequarter`, `top` (front at the bottom). All views of a sheet share one scale.
 * Output: the PNG (part count in the bottom-right corner) plus the part count and bounding box on stdout.
@@ -116,6 +121,15 @@ python3 tools/render_gui.py portal:Hard:2 -o portal.png              # a portal'
   `party` (portal party panel), `results`, `menu:<Window>[:<Tab or Index group>]`, `tutorial[:<step>]`, `npc[:<n>]`,
   `dev` (owner panel), `toasts`, `gallery`, `portal[:<Id>[:<players>[:<studs>]]]`, or a `.json` dump written earlier
   with `--json`. `--list` prints them.
+* `battle[:<trial|duel|raid|spectate>[:<fight|ready|retreat|result|lost>]]` (Phase 3, BattleController): the battle
+  HUD fed by a real BattleSim stepped at 10 Hz through BattleState: top card, team rows with SPECIAL buttons (`ready`
+  lights two of them), ATTACK / RETREAT (`retreat` shows the regroup countdown), the result card (`result` / `lost`),
+  or the slim WATCHING card of a spectator; e.g. `python3 tools/render_gui.py battle:raid:ready --grid -o raid.png`.
+* `arena[:<view>[:<arg>]]` (Phase 3 UI: MenuController's Team window, ArenaController): a profile with a battle team,
+  trophies and trials 1-6 cleared, then `team` (default), `team4` (Prestige 1: four slots), `newteam` (empty presets),
+  `trials[:<level>]` (the Trial window on that level), `duels` / `raid` / `leaders` (the Arena panel's tabs, with two
+  more players to challenge, a running raid, Double Rewards) or `side` (no window: the duel invite, the queue, the raid
+  join card and the event countdown at the right edge); e.g. `python3 tools/render_gui.py arena:trials:12 --grid`.
 * `portal` draws world GUIs instead of the HUD: the real LobbyBuilder + PortalService run (as the server) with
   `players` members on the pad (default 1 on Medium), and the portal's GUIs are mirrored flat into a ScreenGui: the
   pixel billboard at its own size (it keeps that size on screen), the eye-level countdown face (a SurfaceGui) at the

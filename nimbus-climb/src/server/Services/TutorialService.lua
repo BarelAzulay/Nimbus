@@ -1,9 +1,10 @@
--- TutorialService: server-authoritative progress of the new-player tutorial (ARCHITECTURE_V3.md section 4 and the
+-- TutorialService: server-authoritative progress of the new-player tutorial (ARCHITECTURE_V3.md section 4, the
 -- Phase 2 "Tutorial" paragraph: claim a home, buy the first Cloud Press, collect the Cash, build the Kitchen, feed a
--- pet).
+-- pet; and the Phase 3 chapter: go to the Battle Arena, set a battle team, win Trial 1, see a Boss Raid).
 --
 --   TutorialService.Init(lobbyInfo, deps)     deps = { DataService, PetService, MatchService, SpotService, IndexService,
---                                                      TycoonService, PetCareService }  (missing ones are looked up)
+--                                                      TycoonService, PetCareService, BattleService, ArenaInfo }
+--                                                      (missing ones are looked up; ArenaInfo = ArenaBuilder.Build's)
 --   TutorialService.GetState(player) -> payload | nil       (the TutorialState payload below, a fresh copy)
 --   TutorialService.HandleEvent(player, eventName) -> ok, reason      (what the TutorialEvent remote does)
 --   TutorialService.Reload(player, opts) -> ok   drops the running tutorial and reads it again from the profile
@@ -11,7 +12,8 @@
 --   TutorialService.StepCompleted              Util.Signal, Fire(player, stepId, stepIndex)
 --   TutorialService.Finished                   Util.Signal, Fire(player, skipped)
 --
--- Steps come from shared/TutorialSteps.lua, in CHAPTERS (1 = the basics, 2 = the tycoon home). Progress lives in the
+-- Steps come from shared/TutorialSteps.lua, in CHAPTERS (1 = the basics, 2 = the tycoon home, 3 = pet battles).
+-- Progress lives in the
 -- profile (DataService.GetTutorial / SetTutorial: { Step, Done, Gifted }); DataService merges Done and Gifted so they
 -- stick once true, so the stored fields mean:
 --   Done = false              chapter 1 is running at Step
@@ -20,7 +22,8 @@
 --   Done = true, Step = #Steps + 1   everything finished (a chapter added later starts from there)
 --   Done = true, Step = SKIPPED_STEP (or a chapter-1 step: old saves)   skipped: no tutorial any more
 -- Completing a step marked ChapterEnd pays that chapter's reward once (the step is stored BEFORE paying, so a crash
--- can never pay twice): chapter 1 = Config.Tutorial.FinishReward (tokens), chapter 2 = HOME_FINISH_CASH Cash.
+-- can never pay twice): chapter 1 = Config.Tutorial.FinishReward (tokens), chapter 2 = HOME_FINISH_CASH Cash,
+-- chapter 3 = ARENA_FINISH_TOKENS Cloud Tokens.
 --
 -- A step completes on what the SERVER observes:
 --   Claimed       the player owns a home plot (SpotService.GetSpot; TycoonService.Claimed / the SpotIndex attribute
@@ -34,6 +37,13 @@
 --   Equipped      the equipped list changed to a non-empty one (PetService.PerksChanged / attribute EquippedPets),
 --                 or the client reports "PetsOpened" while a pet is equipped
 --   MatchStarted  / MatchEnded: the player attribute InMatch turning true / false
+--   ArenaReached  (Phase 3) the character stands in the Battle Arena: ArenaBuilder.InArena(position), else within
+--                 ArenaInfo.Radius of ArenaInfo.Center (2 Hz poll)
+--   TeamSet       the active battle team holds a pet: DataService.ActiveTeamKeys (DataService.TeamsChanged + the poll)
+--   TrialWon      Trial level 1 is cleared: BattleService.BattleEnded (a Trial the player won) or the saved
+--                 Battle.TrialCleared / TrialBest (DataService.GetBattle)
+--   RaidSeen      the player joined a Boss Raid (BattleService.RaidJoined / a Raid BattleEnded naming them), has a raid
+--                 in the record (Battle.Raids), or stands in the arena while BattleService.GetRaidStatus() is not nil
 --   Next / ShopOpened / IndexOpened: client reports through the TutorialEvent remote, accepted only when they
 --                 match the CURRENT step. "Skip" ends the tutorial (no reward, no later chapter); "Sync" asks for the
 --                 current state again. The remote is type checked and rate limited.
@@ -47,7 +57,11 @@
 -- the next pad on the way to a station (its prerequisites first), a built station (the Collector's CollectPad, the
 -- Kitchen's counter), or the Pets menu button once the player has food to feed. They are sent as
 -- { Kind = "Spot", Position, SpotIndex, Label } (or { Kind = "Menu", Id = "Pets" }) with a matching Hint, and the
--- poll re-sends the state whenever the target or the hint changes.
+-- poll re-sends the state whenever the target or the hint changes. Phase 3 targets { Kind = "Arena", Place } are
+-- resolved from ArenaInfo the same way (sent as Kind "Spot" + Position: the client draws its guide arrow for those):
+-- "Gate" = ArenaInfo.Spawn (the forum), "Trials" = ArenaInfo.TrialPortal, "Floor" = the colosseum floor; no arrow while
+-- the player fights (attribute InBattle). The raid step's hint counts down to the next raid in minutes
+-- (EventService.SecondsUntil) or says that one is running.
 --
 -- TutorialState payload (server -> that player, on join, on every change, on "Sync"):
 --   { Step = n, Total = #Steps, Id, Title, Text, Target = {Kind, Id, Label, Position = Vector3|nil, SpotIndex},
@@ -78,6 +92,10 @@ local NO_FREE_GRACE = 60 -- seconds without any free plot before a Claimed step 
 local SKIPPED_STEP = 1000 -- Tutorial.Step of a skipped tutorial (DataService caps Step at 1000): no later chapter
 -- Not in Config (lead-owned): the home chapter's reward, paid once when the "feed" step completes.
 local HOME_FINISH_CASH = 1000
+-- Not in Config (lead-owned): the pet-battle chapter's reward, paid once when its last step completes.
+local ARENA_FINISH_TOKENS = 500
+local ARENA_RADIUS = 160 -- studs around ArenaInfo.Center that count as the arena when ArenaBuilder.InArena is missing
+local ATTR_IN_BATTLE = "InBattle" -- BattleService's attribute (the battle id while the player fights)
 local STATION_FRONT_GAP = 2.5 -- studs in front of a station's footprint where its guide arrow stands
 local TOKEN_GLYPH = "\226\152\129" -- cloud
 
@@ -103,6 +121,11 @@ local KNOWN_COMPLETE_ON = {
 	Built = true,
 	Collected = true,
 	Fed = true,
+	-- Phase 3 (the pet-battle chapter)
+	ArenaReached = true,
+	TeamSet = true,
+	TrialWon = true,
+	RaidSeen = true,
 }
 
 ----------------------------------------------------------------------
@@ -133,6 +156,12 @@ local PetCareService = nil
 local HomeBuilder = nil -- read-only lookups of pads / stations (GetPad / GetStation)
 local TycoonCatalog = nil
 local lobby = nil
+-- Phase 3 (the pet-battle chapter): every use is guarded
+local BattleService = nil
+local ArenaBuilder = nil -- read-only: InArena(position)
+local EventService = nil -- read-only: SecondsUntil("BossRaid")
+local BattleCatalog = nil
+local arenaInfo = nil
 
 local function hasSignal(module, name)
 	return type(module) == "table" and type(module[name]) == "table" and type(module[name].Connect) == "function"
@@ -208,6 +237,15 @@ local function formatText(text)
 	text = tostring(text or "")
 	text = text:gsub("{GiftTokens}", tostring(giftTokens()))
 	text = text:gsub("{FinishTokens}", tostring(finishTokens()))
+	if text:find("{RaidMinutes}", 1, true) then
+		local minutes = 20
+		local events = type(BattleCatalog) == "table" and BattleCatalog.Events
+		local first = type(events) == "table" and type(events.Schedule) == "table" and events.Schedule[1]
+		if type(first) == "table" and tonumber(first.EveryMinutes) then
+			minutes = math.floor(tonumber(first.EveryMinutes))
+		end
+		text = text:gsub("{RaidMinutes}", tostring(minutes))
+	end
 	return text
 end
 
@@ -244,6 +282,7 @@ local function buildSteps()
 					Station = type(t.Station) == "string" and t.Station or nil,
 					Path = t.Path == true,
 					Food = t.Food == true,
+					Place = type(t.Place) == "string" and t.Place or nil,
 				}
 			end
 			local chapter = tonumber(raw.Chapter) or 1
@@ -744,11 +783,176 @@ local function homeTarget(player, track, step)
 	return { Kind = "Spot", SpotIndex = index, Position = padPosition(spot, goal), Label = t.Label or goal }, hint
 end
 
+----------------------------------------------------------------------
+-- Phase 3: the Battle Arena (ArenaInfo from ArenaBuilder.Build, BattleService, EventService)
+----------------------------------------------------------------------
+local function positionOfInfo(value)
+	if typeof(value) == "CFrame" then
+		return value.Position
+	elseif typeof(value) == "Vector3" then
+		return value
+	elseif typeof(value) == "Instance" then
+		if value:IsA("BasePart") then
+			return value.Position
+		elseif value:IsA("Model") then
+			local ok, cf = pcall(function()
+				return value:GetPivot()
+			end)
+			if ok and cf then
+				return cf.Position
+			end
+		end
+	elseif type(value) == "table" then
+		return positionOfInfo(value.CFrame)
+	end
+	return nil
+end
+
+-- the ArenaInfo (from Init, else ArenaBuilder.GetInfo once the arena is built)
+local function getArenaInfo()
+	if type(arenaInfo) == "table" then
+		return arenaInfo
+	end
+	if hasFunction(ArenaBuilder, "GetInfo") then
+		local ok, info = pcall(ArenaBuilder.GetInfo)
+		if ok and type(info) == "table" then
+			arenaInfo = info
+			return info
+		end
+	end
+	return nil
+end
+
+local function arenaKnown()
+	return getArenaInfo() ~= nil or hasFunction(ArenaBuilder, "InArena")
+end
+
+-- true while the player's character stands in the Battle Arena
+local function inArena(player)
+	local root = rootOf(player)
+	if not root then
+		return false
+	end
+	if hasFunction(ArenaBuilder, "InArena") then
+		local ok, inside = pcall(ArenaBuilder.InArena, root.Position)
+		if ok and type(inside) == "boolean" then
+			return inside
+		end
+	end
+	local info = getArenaInfo()
+	local center = info and positionOfInfo(info.Center)
+	if not center then
+		return false
+	end
+	local offset = root.Position - center
+	local radius = tonumber(info.Radius) or ARENA_RADIUS
+	return Vector3.new(offset.X, 0, offset.Z).Magnitude <= radius and math.abs(offset.Y) <= 80
+end
+
+local function inBattle(player)
+	local id = player:GetAttribute(ATTR_IN_BATTLE)
+	return id ~= nil and id ~= false and id ~= ""
+end
+
+local function activeTeamSize(player)
+	if not hasFunction(DataService, "ActiveTeamKeys") then
+		return 0
+	end
+	local ok, keys = pcall(DataService.ActiveTeamKeys, player)
+	if ok and type(keys) == "table" then
+		return #keys
+	end
+	return 0
+end
+
+local function battleRecord(player)
+	if not hasFunction(DataService, "GetBattle") then
+		return nil
+	end
+	local ok, record = pcall(DataService.GetBattle, player)
+	if ok and type(record) == "table" then
+		return record
+	end
+	return nil
+end
+
+local function trialOneCleared(player)
+	local record = battleRecord(player)
+	if not record then
+		return false
+	end
+	if type(record.TrialCleared) == "table" and (record.TrialCleared[1] == true or record.TrialCleared["1"] == true) then
+		return true
+	end
+	return (tonumber(record.TrialBest) or 0) >= 1
+end
+
+local function raidStatus()
+	if not hasFunction(BattleService, "GetRaidStatus") then
+		return nil
+	end
+	local ok, status = pcall(BattleService.GetRaidStatus)
+	if ok and type(status) == "table" then
+		return status
+	end
+	return nil
+end
+
+-- the raid step's hint: a running raid, or the minutes to the next one (minute steps: the state is re-sent rarely)
+local function raidHint(step)
+	local status = raidStatus()
+	if status then
+		return "A Boss Raid is on! Go to the colosseum"
+	end
+	if hasFunction(EventService, "SecondsUntil") then
+		local ok, seconds = pcall(EventService.SecondsUntil, "BossRaid")
+		if ok and type(seconds) == "number" and seconds >= 0 and seconds < math.huge then
+			local minutes = math.max(1, math.ceil(seconds / 60))
+			if minutes <= 1 then
+				return "Next Boss Raid in under a minute!"
+			end
+			return "Next Boss Raid in " .. minutes .. " min"
+		end
+	end
+	return step.Hint
+end
+
+-- { Kind = "Spot", Position, Label } for an Arena target (the client draws world arrows for Spot targets), or nil
+local function arenaTarget(player, target)
+	if inBattle(player) then
+		return nil
+	end
+	local info = getArenaInfo()
+	if not info then
+		return nil
+	end
+	local position = nil
+	if target.Place == "Trials" then
+		position = positionOfInfo(info.TrialPortal)
+	elseif target.Place == "Floor" then
+		position = positionOfInfo(info.Floor) or positionOfInfo(info.Center)
+	else
+		position = positionOfInfo(info.Spawn) or positionOfInfo(info.Center)
+	end
+	if typeof(position) ~= "Vector3" then
+		return nil
+	end
+	return { Kind = "Spot", Position = position, Label = target.Label or "Battle Arena", Arena = target.Place or "Gate" }
+end
+
 -- The target (sent to the client) and the hint of the current step.
 local function resolveStep(player, track, step)
 	local target = step.Target
+	local hint = step.Hint
+	if step.CompleteOn == "RaidSeen" then
+		hint = raidHint(step)
+	end
 	if not target then
-		return nil, step.Hint
+		return nil, hint
+	end
+	if target.Kind == "Arena" then
+		local ok, out = pcall(arenaTarget, player, target)
+		return ok and out or nil, hint
 	end
 	if target.Kind == "Spot" and (target.Gate or target.Pad or target.Station or target.Food) then
 		local ok, out, hint = pcall(homeTarget, player, track, step)
@@ -787,6 +991,7 @@ local function targetSignature(target, hint)
 		tostring(target.Id),
 		tostring(target.SpotIndex),
 		tostring(target.Label),
+		tostring(target.Arena),
 		p and string.format("%.0f,%.0f,%.0f", p.X, p.Y, p.Z) or "-",
 		tostring(hint),
 	}, "|")
@@ -887,6 +1092,13 @@ local function payChapter(player, track, chapter)
 		end
 		return 0
 	end
+	if chapter >= 3 then
+		if ARENA_FINISH_TOKENS > 0 and addTokens(player, ARENA_FINISH_TOKENS) then
+			notify(player, "Battle tutorial complete! +" .. commas(ARENA_FINISH_TOKENS) .. " " .. TOKEN_GLYPH .. " from Nimbus", "good", 6)
+			return ARENA_FINISH_TOKENS
+		end
+		return 0
+	end
 	if HOME_FINISH_CASH > 0 and addCash(player, HOME_FINISH_CASH) then
 		notify(player, "Home tutorial complete! +" .. money(HOME_FINISH_CASH) .. " Cash from Nimbus", "good", 6)
 	end
@@ -912,6 +1124,8 @@ local function enterStep(player, track)
 	track.CashSeen = getCash(player)
 	track.CollectorSeen = collectorCash(getHome(player))
 	track.TargetSig = nil
+	track.TrialWon = false
+	track.RaidSeen = false
 	if step.Gift and not track.Gifted then
 		local amount = giftTokens()
 		track.Gifted = true
@@ -999,6 +1213,14 @@ local function impossible(player, track, step)
 		return not homeReady() or not hasFunction(DataService, "GetCash")
 	elseif kind == "Fed" then
 		return not hasSignal(PetCareService, "Fed")
+	elseif kind == "ArenaReached" then
+		return not arenaKnown()
+	elseif kind == "TeamSet" then
+		return not hasFunction(DataService, "ActiveTeamKeys")
+	elseif kind == "TrialWon" then
+		return BattleService == nil or not (hasSignal(BattleService, "BattleEnded") or hasFunction(DataService, "GetBattle"))
+	elseif kind == "RaidSeen" then
+		return BattleService == nil or not (hasFunction(BattleService, "GetRaidStatus") or hasSignal(BattleService, "BattleEnded"))
 	end
 	return false
 end
@@ -1031,6 +1253,21 @@ local function satisfied(player, track, step)
 		return step.Station ~= nil and stationLevel(getHome(player), step.Station) >= 1
 	elseif kind == "Collected" then
 		return track.Collected == true
+	elseif kind == "ArenaReached" then
+		return not inMatch(player) and inArena(player)
+	elseif kind == "TeamSet" then
+		return activeTeamSize(player) > 0
+	elseif kind == "TrialWon" then
+		return track.TrialWon == true or trialOneCleared(player)
+	elseif kind == "RaidSeen" then
+		if track.RaidSeen == true then
+			return true
+		end
+		local record = battleRecord(player)
+		if record and (tonumber(record.Raids) or 0) >= 1 then
+			return true
+		end
+		return raidStatus() ~= nil and inArena(player)
 	end
 	return false
 end
@@ -1090,7 +1327,8 @@ end
 local function refreshTarget(player, track)
 	local step = currentStep(track)
 	local t = step and step.Target
-	if not t or not (t.Gate or t.Pad or t.Station or t.Food) then
+	local dynamic = step ~= nil and (step.CompleteOn == "RaidSeen" or (t ~= nil and t.Kind == "Arena"))
+	if not dynamic and (not t or not (t.Gate or t.Pad or t.Station or t.Food)) then
 		return
 	end
 	local ok, target, hint = pcall(resolveStep, player, track, step)
@@ -1444,6 +1682,12 @@ function TutorialService.Init(lobbyInfo, deps)
 	PetCareService = deps.PetCareService or loadModule(services, "PetCareService")
 	HomeBuilder = loadModule(services, "HomeBuilder")
 	TycoonCatalog = loadModule(Shared, "TycoonCatalog")
+	-- Phase 3 (the pet-battle chapter)
+	BattleService = deps.BattleService or loadModule(services, "BattleService")
+	arenaInfo = type(deps.ArenaInfo) == "table" and deps.ArenaInfo or nil
+	ArenaBuilder = loadModule(services, "ArenaBuilder")
+	EventService = deps.EventService or loadModule(services, "EventService")
+	BattleCatalog = loadModule(Shared, "BattleCatalog")
 
 	buildSteps()
 	if #steps == 0 then
@@ -1521,6 +1765,49 @@ function TutorialService.Init(lobbyInfo, deps)
 	if hasSignal(PetCareService, "Cooked") then
 		PetCareService.Cooked:Connect(function(player)
 			nudge(player) -- food arrived: the feed step now points at the Pets button
+		end)
+	end
+
+	-- the pet-battle chapter (signals exist at module load, so these connect even before those services Init)
+	if hasSignal(DataService, "TeamsChanged") then
+		DataService.TeamsChanged:Connect(function(player)
+			nudge(player)
+		end)
+	end
+	if hasSignal(BattleService, "BattleEnded") then
+		BattleService.BattleEnded:Connect(function(_battleId, result)
+			if type(result) ~= "table" then
+				return
+			end
+			local mark = nil
+			local list = nil
+			if result.Mode == "Trial" then
+				mark, list = "TrialWon", result.Winners
+			elseif result.Mode == "Raid" then
+				mark, list = "RaidSeen", result.Participants or result.Winners
+			end
+			if not mark or type(list) ~= "table" then
+				return
+			end
+			for _, userId in ipairs(list) do
+				local player = type(userId) == "number" and Players:GetPlayerByUserId(userId) or nil
+				local track = player and tracks[player]
+				local step = currentStep(track)
+				if step and step.CompleteOn == mark then
+					track[mark] = true
+					nudge(player)
+				end
+			end
+		end)
+	end
+	if hasSignal(BattleService, "RaidJoined") then
+		BattleService.RaidJoined:Connect(function(player)
+			local track = typeof(player) == "Instance" and tracks[player] or nil
+			local step = currentStep(track)
+			if step and step.CompleteOn == "RaidSeen" then
+				track.RaidSeen = true
+				nudge(player)
+			end
 		end)
 	end
 

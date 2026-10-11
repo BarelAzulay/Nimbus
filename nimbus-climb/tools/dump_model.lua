@@ -828,6 +828,116 @@ BUILDERS.bosses = function(pose, detail)
 	return out
 end
 
+-- Phase 3 battles (client/Controllers/BattleController.lua, client world):
+--   battle[:<trial|duel|raid>[:<seconds>[:specials]]]  a real BattleSim stepped at 10 Hz for <seconds> (default 6; raid
+--                        9, when the boss's first telegraph fills) fed to the real BattleController the way BattleService
+--                        sends it; the drawn workspace.ClientBattle (units, telegraphs, effects) is dumped. ":specials"
+--                        fills the local team's meters and casts every special a moment before the dump (their VFX).
+local function battleTeamOf(PC, count, skip)
+	local out, kinds = {}, {}
+	skip = skip or 0
+	for _, def in ipairs(PC.Pets) do
+		local sp = type(def.Special) == "table" and def.Special.Kind or nil
+		if sp and def.Role == "Combat" and not kinds[sp] and def.Rarity ~= "Secret" and not def.EventOnly then
+			if skip > 0 then
+				skip = skip - 1
+			else
+				kinds[sp] = true
+				out[#out + 1] = { Key = def.Id, PetId = def.Id, Level = 10, Tier = "Normal", Slot = #out + 1 }
+				if #out >= count then
+					break
+				end
+			end
+		end
+	end
+	return out
+end
+
+BUILDERS.battle = function(mode, seconds, extra)
+	local BC = req("client/Controllers/BattleController", true)
+	local Sim = req("shared/BattleSim", true)
+	local PC = req("shared/PetCatalog")
+	if not BC or not Sim then
+		fail("client/Controllers/BattleController.lua or shared/BattleSim.lua does not exist yet (client world?)")
+	end
+	local Players = game:GetService("Players")
+	local me = Players.LocalPlayer and Players.LocalPlayer.UserId or 4242
+	mode = (mode and mode ~= "") and mode:lower() or "trial"
+	local simMode = (mode == "raid") and "Raid" or ((mode == "duel") and "Duel" or "Trial")
+	local setup = { Mode = simMode, Seed = 5, Id = "dump_battle" }
+	if simMode == "Duel" then
+		setup.Teams = { { Owner = me, Side = 1, Pets = battleTeamOf(PC, 4) }, { Owner = 78, Side = 2, Pets = battleTeamOf(PC, 3, 3) } }
+	elseif simMode == "Raid" then
+		setup.Teams = { { Owner = me, Side = 1, Pets = battleTeamOf(PC, 4) }, { Owner = 77, Side = 1, Pets = battleTeamOf(PC, 3, 2) } }
+		setup.Boss = "storm_titan"
+	else
+		setup.Teams = { { Owner = me, Side = 1, Pets = battleTeamOf(PC, 4) } }
+		setup.Trial = 10
+	end
+	local sim, why = Sim.new(setup)
+	if not sim then
+		fail("BattleSim.new: " .. tostring(why))
+	end
+	pcall(BC.Init)
+	local id = "dump_battle"
+	local d = sim:Describe()
+	d.BattleId = id
+	d.Zone = { CFrame = CFrame.new(0, 0, 0), Size = Vector3.new(d.Zone.X, 30, d.Zone.Z), X = d.Zone.X, Z = d.Zone.Z }
+	d.Names = { [tostring(me)] = "Renderer", ["77"] = "Buddy", ["78"] = "Rival" }
+	d.Side, d.Spectator, d.T = 1, false, sim:Time()
+	BC.HandleState("Start", d, id)
+	local function dense()
+		local snap = sim:Snapshot()
+		local units, top = {}, 0
+		for k in pairs(snap.Units) do
+			top = math.max(top, k)
+		end
+		for k = 1, top do
+			units[k] = snap.Units[k] or { x = 0, z = 0, hp = 0, state = 5, meter = 0 }
+		end
+		snap.Units = units
+		snap.BattleId = id
+		return snap
+	end
+	local function step()
+		local evs = sim:Step(0.1)
+		if #evs > 0 then
+			BC.HandleState("Events", evs, id)
+		end
+		BC.HandleState("Snapshot", dense(), id)
+		Mock.Advance(0.1)
+	end
+	local total = tonumber(seconds) or ((simMode == "Raid") and 9 or 6)
+	for _ = 1, math.floor(total / 0.1) do
+		step()
+	end
+	if extra and extra:lower() == "specials" then
+		for _, u in ipairs(sim.units or {}) do
+			if u.owner == me and u.alive then
+				u.meter = 100
+			end
+		end
+		for slot = 1, 4 do
+			pcall(sim.Command, sim, me, "Special", slot)
+		end
+		step()
+		step()
+		step()
+	end
+	local folder = Workspace:FindFirstChild("ClientBattle")
+	if not folder then
+		fail("BattleController drew nothing (no workspace.ClientBattle)")
+	end
+	local view = Instance.new("Model")
+	view.Name = "BattleView"
+	for _, c in ipairs(folder:GetChildren()) do
+		c:Clone().Parent = view
+	end
+	view.Parent = Workspace
+	local st = BC.GetStats()
+	return { { root = view, label = "Battle: " .. simMode, sub = string.format("%d units, %d models, %d fx parts, %d telegraphs (t = %.1f s)", st.Units, st.Models, st.FxParts, st.Telegraphs, sim:Time()), facing = { 0, 0, -1 } } }
+end
+
 BUILDERS["storm_altar"] = BUILDERS["storm-altar"]
 BUILDERS.stormaltar = BUILDERS["storm-altar"]
 BUILDERS.npc = BUILDERS.npcs

@@ -414,6 +414,15 @@ S.p3events_schedule = guarded("p3events_schedule", function()
 		end
 	end
 	T.check(left <= every + 2, "schedule: the next raid is at most EveryMinutes away", string.format("%.0f s", left))
+	if left < announce + 5 then
+		-- already announced (the clock of earlier scenarios): let this one open, close it, and watch the next one
+		K.waitFor(function()
+			return BS().GetRaidStatus() ~= nil
+		end, left + 10)
+		clearRaid()
+		advance(1.5)
+		left = es.SecondsUntil("BossRaid")
+	end
 	if left > announce + 5 then
 		advance(left - announce - 5)
 	end

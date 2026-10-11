@@ -195,6 +195,7 @@ K.WIN = {
 	Shop = { 1180, 740, 800, 380 },
 	Stats = { 1080, 700, 800, 380 },
 	Home = { 1180, 740, 800, 380 },
+	Team = { 1180, 800, 800, 380 }, -- Phase 3: the battle team presets
 	Odds = { 780, 680, 600, 380 },
 }
 -- Portrait screens (a phone held upright): a window may get as narrow as TALL_MIN_W design px (and as tall as
@@ -291,6 +292,7 @@ local G = {
 	Hybrid = "\226\156\168", -- sparkles
 	Storm = "\226\154\161", -- high voltage
 	Robux = "R$",
+	Swords = "\226\154\148\239\184\143", -- crossed swords (emoji presentation): the Team tile
 }
 
 ----------------------------------------------------------------------
@@ -319,6 +321,8 @@ local Home = { Folder = nil, Conns = {}, LiveAt = 0, LivePending = false }
 local Feed = { Gui = nil, Key = nil, Token = 0 }
 local Gems = { Prices = {}, PriceAsked = {} }
 
+-- Phase 3: the Team window's entry points (P3.BuildTeam(win), P3.Settle(), P3.Battle(), P3.Refresh(); set below)
+local P3 = {}
 -- forward declarations
 local openWindow, closeWindow, toggleWindow, refreshOpenWindow, updateMenuActive
 local requestSpin, closeStage, skipSpin, closeOdds, openOdds, showHint, handleBack, beginStage
@@ -1839,6 +1843,9 @@ end
 local MENU = {
 	{ Id = "Inventory", Label = "Inventory", Glyph = G.Backpack, Color = BUTTONS.Blue, Action = menuActionInventory },
 	{ Id = "Pets", Label = "Pets", Glyph = G.Paw, Color = BUTTONS.Pink, Action = menuActionPets },
+	{ Id = "Team", Label = "Team", Glyph = G.Swords, Color = BUTTONS.Red, Action = function()
+		toggleWindow("Team") -- Phase 3: the battle team presets
+	end },
 	{ Id = "Index", Label = "Index", Glyph = G.Book, Color = TEAL, Action = menuActionIndex },
 	{ Id = "Shop", Label = "Shop", Glyph = G.Money, Color = BUTTONS.Gold, Action = menuActionShop },
 	{ Id = "Spot", Label = "Home", Glyph = G.House, Color = BUTTONS.Green, Action = menuActionSpot },
@@ -2240,6 +2247,7 @@ function updateMenuActive()
 	setActive("Shop", windows.Shop ~= nil and windows.Shop.Shown)
 	setActive("Stats", windows.Stats ~= nil and windows.Stats.Shown)
 	setActive("Spot", windows.Home ~= nil and windows.Home.Shown)
+	setActive("Team", windows.Team ~= nil and windows.Team.Shown)
 	if invWin and invWin.Shown and Entries.Pets then
 		Entries.Pets.SetBadge(false)
 	end
@@ -4972,6 +4980,27 @@ local function buildStats(win)
 		LayoutOrder = 2,
 	})
 
+	-- Phase 3: the battle record (trophies from PvP duels, the Trial ladder, raids)
+	local battle = makeInset(left, "Battle", {
+		Size = UDim2.new(1, 0, 0, 0),
+		AutomaticSize = Enum.AutomaticSize.Y,
+		LayoutOrder = 3,
+	})
+	pad(battle, 14, 10, 14, 12)
+	listLayout(battle, Enum.FillDirection.Vertical, 4)
+	makeText(battle, "Title", "Pet battles", "Heading", 22, WHITE, {
+		Size = UDim2.new(1, 0, 0, 28),
+		TextXAlignment = Enum.TextXAlignment.Left,
+		LayoutOrder = 1,
+	})
+	local battleLabel = makeText(battle, "Lines", "", "Body", 19, WHITE, {
+		Size = UDim2.new(1, 0, 0, 0),
+		AutomaticSize = Enum.AutomaticSize.Y,
+		TextWrapped = true,
+		TextXAlignment = Enum.TextXAlignment.Left,
+		LayoutOrder = 2,
+	})
+
 	-- right: best time per difficulty
 	local right = makeInset(content, "BestTimes", {
 		AnchorPoint = Vector2.new(1, 0),
@@ -5067,6 +5096,10 @@ local function buildStats(win)
 				label.TextColor3 = MUTED
 			end
 		end
+
+		local b = P3.Battle and P3.Battle() or {}
+		battleLabel.Text = string.format("\240\159\143\134 %s trophies     Trial best: %d / 30\nDuels: %s won, %s lost     Boss raids: %s",
+			commas(b.Trophies or 0), math.floor(tonumber(b.TrialBest) or 0), commas(b.PvPWins or 0), commas(b.PvPLosses or 0), commas(b.Raids or 0))
 
 		local lines = {}
 		local order = PetCatalog.PerkOrder or { "MaxHealth", "TokenBonus", "StaminaRegen", "CheckpointHeal" }
@@ -6051,6 +6084,1357 @@ do
 end
 
 ----------------------------------------------------------------------
+-- Team window (Phase 3): three battle-team presets, slots 1-3 (+ slot 4 at Prestige 1), the pet picker with element
+-- badges, levels and battle stats, live synergy (BattleCatalog.SynergyBonus), the element wheel and the team power.
+-- Edits show at once (a local draft) and are sent as BattleRequest("TeamSet", preset, keys) after a short pause; the
+-- server validates everything (owned, unique, not busy in the Garden / Gym, slot 4 rule) and ProfileSync brings the
+-- saved presets back. "Use this team" sends BattleRequest("TeamSelect", preset).
+----------------------------------------------------------------------
+-- (defined inside a function, not a do-block: the main chunk is at Lua's 200-local limit)
+P3.Define = function()
+	local PRESETS = 3
+	local MAX_SLOTS = 4
+	local SEND_DELAY = 0.45 -- seconds of quiet before an edited preset is sent
+	local DRAFT_HOLD = 4 -- seconds a local edit wins over the synced presets (then the server's answer does)
+	local CARD_GAP = 10
+	local CARD_H, CARD_H_SHORT = 146, 112 -- a team slot card (viewport on the left, the pet's details on the right)
+	local TILE_W, TILE_H = 140, 184
+	local TILE_W_SHORT, TILE_H_SHORT = 134, 166
+	local WHEEL_W, WHEEL_H = 300, 252
+	local INSET_X, INSET_Y = 24, 82 -- the panel's frame around Panel.Content (CloudUI.ContentInset)
+	local TEAM_ACCENT = Color3.fromRGB(214, 92, 96)
+	local POWER_GOLD = Color3.fromRGB(255, 214, 110)
+	local GOOD_TEXT = Color3.fromRGB(150, 236, 170)
+	local WARN_TEXT = Color3.fromRGB(255, 186, 150)
+	local GL = {
+		Trophy = "\240\159\143\134",
+		Swords = "\226\154\148",
+		Heart = "\226\157\164",
+		Bolt = "\226\154\161",
+		Plus = "+",
+		Arrow = "\226\158\156", -- heavy round-tipped rightwards arrow
+		Both = "\226\135\132", -- rightwards arrow over leftwards arrow
+		Close = "\195\151", -- multiplication sign
+	}
+
+	local T = {
+		Edit = nil, -- the preset shown (1..3)
+		Draft = {}, -- [preset] = { key... } edited locally, not confirmed yet
+		DraftAt = {},
+		SendToken = {},
+		Selected = nil, -- a team slot picked for a swap
+		ActivePending = nil,
+		ActiveAt = 0,
+		Catalog = nil,
+		PowerCache = {},
+	}
+
+	local function battleCatalog()
+		if T.Catalog then
+			return T.Catalog
+		end
+		local module = Shared:FindFirstChild("BattleCatalog")
+		if module then
+			local ok, result = pcall(require, module)
+			if ok and type(result) == "table" then
+				T.Catalog = result
+			end
+		end
+		return T.Catalog
+	end
+
+	local function copyList(list)
+		local out = {}
+		if type(list) == "table" then
+			for i, v in ipairs(list) do
+				out[i] = v
+			end
+		end
+		return out
+	end
+
+	local function sameList(a, b)
+		if #a ~= #b then
+			return false
+		end
+		for i = 1, #a do
+			if a[i] ~= b[i] then
+				return false
+			end
+		end
+		return true
+	end
+
+	local function teamsData()
+		if type(State.Teams) == "function" then
+			local ok, teams = pcall(State.Teams)
+			if ok and type(teams) == "table" and type(teams.Presets) == "table" then
+				return teams
+			end
+		end
+		return { Presets = { {}, {}, {} }, Active = 1, Slots = 3 }
+	end
+
+	local function battleData()
+		if type(State.Battle) == "function" then
+			local ok, battle = pcall(State.Battle)
+			if ok and type(battle) == "table" then
+				return battle
+			end
+		end
+		return { Trophies = 0, TrialBest = 0, TrialCleared = {}, PvPWins = 0, PvPLosses = 0, Raids = 0 }
+	end
+
+	local function slotCount()
+		local n = tonumber(teamsData().Slots) or 3
+		if n >= MAX_SLOTS then
+			return MAX_SLOTS
+		end
+		return 3
+	end
+
+	local function slotUnlockText()
+		local stars = 1
+		local prestige = TycoonCatalog and TycoonCatalog.Prestige
+		if type(prestige) == "table" and tonumber(prestige.TeamSlotUnlock) then
+			stars = tonumber(prestige.TeamSlotUnlock)
+		end
+		return "Prestige " .. tostring(stars)
+	end
+
+	local function serverKeys(preset)
+		return copyList(teamsData().Presets[preset])
+	end
+
+	-- the keys shown for a preset: the local draft while it is fresh, else the synced preset
+	local function keysOf(preset)
+		local draft = T.Draft[preset]
+		if draft then
+			if os.clock() - (T.DraftAt[preset] or 0) < DRAFT_HOLD then
+				return draft
+			end
+			T.Draft[preset] = nil
+		end
+		return serverKeys(preset)
+	end
+
+	local function activePreset()
+		if T.ActivePending then
+			if os.clock() - T.ActiveAt < DRAFT_HOLD and T.ActivePending ~= teamsData().Active then
+				return T.ActivePending
+			end
+			T.ActivePending = nil
+		end
+		local a = math.floor(tonumber(teamsData().Active) or 1)
+		if a < 1 or a > PRESETS then
+			a = 1
+		end
+		return a
+	end
+
+	-- copies of a key working in the Garden / Gym (a team needs a free copy)
+	local function placedCount(key)
+		local home = P2.homeData() or {}
+		local n = 0
+		for _, map in ipairs({ home.Garden, home.Gym }) do
+			if type(map) == "table" then
+				for _, k in pairs(map) do
+					if k == key then
+						n = n + 1
+					end
+				end
+			end
+		end
+		return n
+	end
+
+	local function freeCopies(key)
+		return State.OwnedCount(key) - placedCount(key)
+	end
+
+	local function entryOf(key)
+		local def = P2.defOfKey(key)
+		if not def then
+			return nil
+		end
+		local level = P2.petLevel(key)
+		return { Def = def, Level = level, Key = key }
+	end
+
+	local function catalogCall(fnName, ...)
+		local BC = battleCatalog()
+		if not BC or type(BC[fnName]) ~= "function" then
+			return nil
+		end
+		local ok, result = pcall(BC[fnName], ...)
+		if ok then
+			return result
+		end
+		warnOnce("BattleCatalog." .. fnName, result)
+		return nil
+	end
+
+	local function unitPower(entry)
+		if not entry then
+			return 0
+		end
+		local cacheKey = tostring(entry.Key) .. "#" .. tostring(entry.Level)
+		local cached = T.PowerCache[cacheKey]
+		if cached then
+			return cached
+		end
+		local p = tonumber(catalogCall("UnitPower", entry)) or 0
+		T.PowerCache[cacheKey] = p
+		return p
+	end
+
+	local function specialLine(def)
+		local special = type(def) == "table" and def.Special
+		if type(special) ~= "table" then
+			return nil
+		end
+		local name = tostring(special.Name or special.Kind or "Special")
+		local BC = battleCatalog()
+		local info = BC and type(BC.Specials) == "table" and BC.Specials[special.Kind]
+		if type(info) == "table" and info.Role then
+			return name .. " (" .. tostring(info.Role) .. ")", info.Text
+		end
+		return name, nil
+	end
+
+	-- the element wheel from Config.Elements.Strong: { "Water", "Flame", ... } + rival pairs { {"Celestial", "Shadow"} }
+	local function wheelOrder()
+		local E = Config.Elements or {}
+		local strong = E.Strong or {}
+		local order = E.Order or {}
+		local wheel, seen = {}, {}
+		local start = order[1]
+		local cur = start
+		for _ = 1, #order do
+			local beats = type(strong[cur]) == "table" and strong[cur][1]
+			if not cur or seen[cur] or not beats then
+				break
+			end
+			seen[cur] = true
+			wheel[#wheel + 1] = cur
+			cur = beats
+			if cur == start then
+				break
+			end
+		end
+		local rivals = {}
+		for _, id in ipairs(order) do
+			local beats = type(strong[id]) == "table" and strong[id][1]
+			if beats and not seen[id] and not seen[beats] then
+				seen[id] = true
+				seen[beats] = true
+				rivals[#rivals + 1] = { id, beats }
+			end
+		end
+		return wheel, rivals
+	end
+
+	local function elementColor(element)
+		local info = Config.Elements and Config.Elements.Info and Config.Elements.Info[element]
+		return info and info.Color or Colors.PanelLight
+	end
+
+	----------------------------------------------------------------------
+	-- Editing (optimistic draft + debounced TeamSet)
+	----------------------------------------------------------------------
+	local refreshTeam
+
+	local function sendPreset(preset)
+		T.SendToken[preset] = (T.SendToken[preset] or 0) + 1
+		local mine = T.SendToken[preset]
+		task.delay(SEND_DELAY, function()
+			if T.SendToken[preset] ~= mine then
+				return
+			end
+			local list = T.Draft[preset]
+			if not list then
+				return
+			end
+			T.DraftAt[preset] = os.clock() -- the server's answer (ProfileSync) is due from now
+			local remote = getRemote("BattleRequest")
+			if remote then
+				local ok, err = pcall(function()
+					remote:FireServer("TeamSet", preset, copyList(list))
+				end)
+				if not ok then
+					warnOnce("TeamSet", err)
+				end
+			end
+		end)
+	end
+
+	local function setDraft(preset, list)
+		T.Draft[preset] = list
+		T.DraftAt[preset] = os.clock()
+		sendPreset(preset)
+		refreshTeam()
+	end
+
+	local function addKey(key)
+		local preset = T.Edit or activePreset()
+		local list = copyList(keysOf(preset))
+		for i, k in ipairs(list) do
+			if k == key then
+				-- tapping a pet that is already in the team takes it out again
+				table.remove(list, i)
+				T.Selected = nil
+				setDraft(preset, list)
+				return
+			end
+		end
+		if freeCopies(key) < 1 then
+			showHint("That pet is busy in your Garden or Gym.", "info")
+			return
+		end
+		local slots = slotCount()
+		if T.Selected and T.Selected <= slots then
+			if T.Selected <= #list then
+				list[T.Selected] = key
+			else
+				list[#list + 1] = key
+			end
+			T.Selected = nil
+		elseif #list < slots then
+			list[#list + 1] = key
+		else
+			showHint("Your team is full. Tap a team slot, then a pet to swap it.", "info")
+			return
+		end
+		setDraft(preset, list)
+	end
+
+	local function removeSlot(index)
+		local preset = T.Edit or activePreset()
+		local list = copyList(keysOf(preset))
+		if list[index] then
+			table.remove(list, index)
+			T.Selected = nil
+			setDraft(preset, list)
+		end
+	end
+
+	local function clearPreset()
+		local preset = T.Edit or activePreset()
+		if #keysOf(preset) > 0 then
+			T.Selected = nil
+			setDraft(preset, {})
+		end
+	end
+
+	local function selectPreset()
+		local preset = T.Edit or activePreset()
+		if preset == activePreset() then
+			return
+		end
+		T.ActivePending = preset
+		T.ActiveAt = os.clock()
+		fireKeyed("TeamSelect", "BattleRequest", "TeamSelect", preset)
+		refreshTeam()
+	end
+
+	-- the synced presets arrived: drop drafts the server now agrees with
+	local function settleDrafts()
+		for preset, draft in pairs(T.Draft) do
+			if sameList(draft, serverKeys(preset)) and os.clock() - (T.DraftAt[preset] or 0) > SEND_DELAY then
+				T.Draft[preset] = nil
+			end
+		end
+		T.PowerCache = {} -- levels may have changed
+	end
+
+	----------------------------------------------------------------------
+	-- Widgets
+	----------------------------------------------------------------------
+	local function chip(parent, name, order)
+		local frame = makeFrame(parent, name, {
+			BackgroundTransparency = 0,
+			BackgroundColor3 = INSET_COLOR,
+			Size = UDim2.fromOffset(0, 48),
+			AutomaticSize = Enum.AutomaticSize.X,
+			LayoutOrder = order or 0,
+		})
+		corner(frame, 12)
+		stroke(frame, NAVY, 3, 0)
+		pad(frame, 12, 0, 14, 0)
+		listLayout(frame, Enum.FillDirection.Horizontal, 8, Enum.HorizontalAlignment.Left, Enum.VerticalAlignment.Center)
+		return frame
+	end
+
+	local function autoText(parent, name, text, role, size, color, order)
+		return makeText(parent, name, text, role, size, color, {
+			Size = UDim2.fromOffset(0, size + 8),
+			AutomaticSize = Enum.AutomaticSize.X,
+			LayoutOrder = order or 0,
+		})
+	end
+
+	-- a team slot card
+	local function buildCard(ui, parent, index)
+		local card = { Index = index }
+		card.Button = Util.Create("TextButton", {
+			Name = "Slot" .. index,
+			AutoButtonColor = false,
+			BorderSizePixel = 0,
+			Text = "",
+			BackgroundColor3 = WHITE,
+			LayoutOrder = index,
+			Parent = parent,
+		})
+		corner(card.Button, 14)
+		card.Stroke = stroke(card.Button, NAVY, 3, 0)
+		card.Gradient = Util.Create("UIGradient", { Rotation = 90, Parent = card.Button })
+		card.Number = makeFrame(card.Button, "Number", {
+			BackgroundTransparency = 0,
+			BackgroundColor3 = NAVY,
+			Position = UDim2.fromOffset(8, 8),
+			Size = UDim2.fromOffset(32, 32),
+			ZIndex = 4,
+		})
+		round(card.Number)
+		makeText(card.Number, "Text", tostring(index), "Button", 20, WHITE, { Size = UDim2.new(1, 0, 1, 0), ZIndex = 5 })
+		card.Remove = Util.Create("TextButton", {
+			Name = "Remove",
+			AutoButtonColor = false,
+			BorderSizePixel = 0,
+			Text = "",
+			BackgroundColor3 = BUTTONS.Red or BAD,
+			AnchorPoint = Vector2.new(1, 0),
+			Position = UDim2.new(1, -8, 0, 8),
+			Size = UDim2.fromOffset(34, 34),
+			ZIndex = 6,
+			Parent = card.Button,
+		})
+		round(card.Remove)
+		stroke(card.Remove, NAVY, 2.5, 0)
+		makeText(card.Remove, "X", GL.Close, "Button", 24, WHITE, { Size = UDim2.new(1, 0, 1, 0), ZIndex = 7 })
+		card.Remove.Activated:Connect(function()
+			safe("team remove", removeSlot, index)
+		end)
+		card.View = makeFrame(card.Button, "ViewHolder", {
+			Position = UDim2.fromOffset(8, 8),
+			Size = UDim2.fromOffset(120, 120),
+			ZIndex = 2,
+		})
+		local function line(name, text, role, size, color)
+			return makeText(card.Button, name, text, role, size, color, {
+				Size = UDim2.new(1, -150, 0, size + 6),
+				TextTruncate = Enum.TextTruncate.AtEnd,
+				TextXAlignment = Enum.TextXAlignment.Left,
+				ZIndex = 3,
+			})
+		end
+		card.Name = line("PetName", "", "Title", 23, WHITE)
+		card.Info = line("Info", "", "Body", 19, MUTED)
+		card.Elements = makeFrame(card.Button, "Elements", { Size = UDim2.new(1, -150, 0, 28), ZIndex = 3 })
+		listLayout(card.Elements, Enum.FillDirection.Horizontal, 6, Enum.HorizontalAlignment.Left, Enum.VerticalAlignment.Center)
+		card.Stats = line("Stats", "", "Heading", 20, POWER_GOLD)
+		card.Special = line("Special", "", "Body", 18, Theme.Lighten(PURPLE, 0.5))
+		-- empty / locked face
+		card.Empty = makeFrame(card.Button, "EmptyFace", { Size = UDim2.new(1, 0, 1, 0), ZIndex = 3 })
+		card.EmptyGlyph = makeText(card.Empty, "Glyph", GL.Plus, "Title", 52, Theme.Lighten(MUTED, 0.2), {
+			AnchorPoint = Vector2.new(0.5, 1),
+			Position = UDim2.new(0.5, 0, 0.5, 6),
+			Size = UDim2.fromOffset(90, 60),
+			ZIndex = 4,
+		})
+		card.EmptyText = makeText(card.Empty, "Caption", "Pick a pet", "Heading", 20, MUTED, {
+			AnchorPoint = Vector2.new(0.5, 0),
+			Position = UDim2.new(0.5, 0, 0.5, 8),
+			Size = UDim2.new(1, -24, 0, 50),
+			TextWrapped = true,
+			TextYAlignment = Enum.TextYAlignment.Top,
+			ZIndex = 4,
+		})
+		card.Button.Activated:Connect(function()
+			safe("team slot", function()
+				if card.Locked then
+					showHint("The 4th team slot unlocks at " .. slotUnlockText() .. ".", "info")
+					return
+				end
+				if T.Selected == index then
+					T.Selected = nil
+				else
+					T.Selected = index
+				end
+				refreshTeam()
+			end)
+		end)
+		CloudUI.Tooltip(card.Button, function()
+			return card.Tip
+		end)
+		ui.Cards[index] = card
+		return card
+	end
+
+	-- places a card's parts for its size: the viewport square on the left, the details beside it
+	local function layoutCard(card, h)
+		local view = math.min(h - 16, 104)
+		card.View.Position = UDim2.fromOffset(8, math.floor((h - view) / 2))
+		card.View.Size = UDim2.fromOffset(view, view)
+		local x = view + 16
+		local y = h >= CARD_H and 6 or 3
+		local function put(inst, height)
+			inst.Position = UDim2.fromOffset(x, y)
+			inst.Size = UDim2.new(1, -(x + 8), 0, height)
+			y = y + height + 1
+		end
+		put(card.Name, 28)
+		put(card.Info, 23)
+		put(card.Elements, 28)
+		y = y + 1
+		put(card.Stats, 25)
+		card.ShowSpecial = y + 23 <= h - 3
+		if card.ShowSpecial then
+			put(card.Special, 23)
+		end
+		-- the number sits on the viewport's top-left corner, the remove button on its bottom-right one
+		card.Number.Position = UDim2.fromOffset(4, 4)
+		card.Remove.AnchorPoint = Vector2.new(1, 1)
+		card.Remove.Position = UDim2.new(0, 8 + view + 4, 1, -4)
+	end
+
+	local function paintCard(card, key, entry, locked, selected)
+		local def = entry and entry.Def or nil
+		card.Locked = locked
+		card.Key = key
+		local filled = def ~= nil and not locked
+		local tint = filled and rarityOf(def) or Color3.fromRGB(70, 92, 150)
+		if locked then
+			tint = Color3.fromRGB(70, 78, 104)
+		end
+		card.Gradient.Color = ColorSequence.new(Theme.Lighten(INSET_COLOR, 0.28):Lerp(tint, 0.35), Theme.Darken(INSET_COLOR, 0.1):Lerp(tint, 0.18))
+		card.Button.BackgroundColor3 = WHITE
+		card.Stroke.Color = selected and GOLD or (filled and Theme.Lighten(tint, 0.15) or NAVY)
+		card.Stroke.Thickness = selected and 4 or 3
+		card.Remove.Visible = filled
+		card.Empty.Visible = not filled
+		for _, name in ipairs({ "Name", "Info", "Elements", "Stats", "Special" }) do
+			card[name].Visible = filled
+		end
+		card.View.Visible = filled
+		if locked then
+			card.EmptyGlyph.Text = G.Lock
+			card.EmptyText.Text = "Unlocks at " .. slotUnlockText()
+			card.EmptyText.TextColor3 = C2.Lock
+			card.Tip = "The 4th team slot unlocks at " .. slotUnlockText() .. "."
+		elseif not filled then
+			card.EmptyGlyph.Text = GL.Plus
+			card.EmptyText.Text = selected and "Now tap a pet" or "Pick a pet"
+			card.EmptyText.TextColor3 = selected and GOLD or MUTED
+			card.Tip = nil
+		end
+		if not filled then
+			if card.Viewport then
+				card.Viewport.Destroy()
+				card.Viewport = nil
+				card.ViewKey = nil
+			end
+			return
+		end
+		if card.ViewKey ~= key then
+			if card.Viewport then
+				card.Viewport.Destroy()
+				card.Viewport = nil
+			end
+			card.ViewKey = key
+			local ok, handle = pcall(CloudUI.PetViewport, card.View, def, UDim2.new(1, 0, 1, 0), {
+				Spin = "sway",
+				Animate = true,
+				Detail = "High",
+				ZIndex = 2,
+			})
+			if ok then
+				card.Viewport = handle
+			end
+		end
+		card.Name.Text = P2.displayName(key, def)
+		card.Name.TextColor3 = rarityText(def)
+		local tier = P2.tierOf(key, def)
+		local tierText = tier ~= "Normal" and (" " .. G.Bullet .. " " .. tier) or ""
+		card.Info.Text = "Lv " .. tostring(entry.Level) .. " " .. G.Bullet .. " " .. tostring(def.Rarity) .. tierText
+		for _, child in ipairs(card.Elements:GetChildren()) do
+			if child:IsA("GuiObject") then
+				child:Destroy()
+			end
+		end
+		for i, element in ipairs(elementsOf(def)) do
+			elementPill(card.Elements, element, 18, i)
+		end
+		local stats = catalogCall("UnitStats", entry)
+		local power = unitPower(entry)
+		if type(stats) == "table" then
+			card.Stats.Text = GL.Swords .. " " .. commas(power) .. "  " .. GL.Heart .. " " .. commas(math.floor((stats.MaxHp or 0) + 0.5))
+		else
+			card.Stats.Text = GL.Swords .. " " .. commas(power)
+		end
+		local special, specialText = specialLine(def)
+		local specialName = type(def.Special) == "table" and def.Special.Name or nil
+		card.Special.Text = specialName and (G.Sparkle .. " " .. tostring(specialName)) or ""
+		local tip = P2.displayName(key, def) .. " (Lv " .. tostring(entry.Level) .. ")"
+		if type(stats) == "table" then
+			tip = tip .. "\nPower " .. commas(power) .. ", Health " .. commas(math.floor((stats.MaxHp or 0) + 0.5))
+				.. ", " .. string.format("%.1f", stats.Dps or 0) .. " damage per second, " .. ((stats.Ranged and "ranged") or "melee")
+		end
+		if special then
+			tip = tip .. "\nSpecial: " .. special .. (specialText and (". " .. specialText) or "")
+		end
+		card.Tip = tip
+	end
+
+	-- a picker tile (one per owned pet copy)
+	local function buildTile(ui, key)
+		local tile = { Key = key }
+		tile.Button = Util.Create("TextButton", {
+			Name = "Pick_" .. key,
+			AutoButtonColor = false,
+			BorderSizePixel = 0,
+			Text = "",
+			BackgroundColor3 = WHITE,
+			Parent = ui.Grid,
+		})
+		corner(tile.Button, 12)
+		tile.Stroke = stroke(tile.Button, NAVY, 3, 0)
+		tile.Gradient = Util.Create("UIGradient", { Rotation = 90, Parent = tile.Button })
+		tile.View = makeFrame(tile.Button, "ViewHolder", {
+			AnchorPoint = Vector2.new(0.5, 0),
+			Position = UDim2.new(0.5, 0, 0, 4),
+			Size = UDim2.new(1, -12, 0, 78),
+			ZIndex = 2,
+		})
+		-- names wrap onto a second line instead of being cut ("Ember Phoenix", "Starlight Unicorn")
+		tile.Name = makeText(tile.Button, "PetName", "", "Body", 18, WHITE, {
+			Position = UDim2.fromOffset(4, 82),
+			Size = UDim2.new(1, -8, 0, 42),
+			TextWrapped = true,
+			TextTruncate = Enum.TextTruncate.AtEnd,
+			ZIndex = 3,
+		})
+		tile.Row = makeFrame(tile.Button, "Row", {
+			Position = UDim2.fromOffset(6, 126),
+			Size = UDim2.new(1, -12, 0, 28),
+			ZIndex = 3,
+		})
+		listLayout(tile.Row, Enum.FillDirection.Horizontal, 5, Enum.HorizontalAlignment.Center, Enum.VerticalAlignment.Center)
+		tile.Power = makeText(tile.Button, "Power", "", "Heading", 19, POWER_GOLD, {
+			Position = UDim2.fromOffset(6, 155),
+			Size = UDim2.new(1, -12, 0, 26),
+			ZIndex = 3,
+		})
+		tile.Mark = makeFrame(tile.Button, "InTeam", {
+			BackgroundTransparency = 0,
+			BackgroundColor3 = GOOD,
+			Position = UDim2.fromOffset(6, 6),
+			Size = UDim2.fromOffset(32, 32),
+			Visible = false,
+			ZIndex = 6,
+		})
+		round(tile.Mark)
+		stroke(tile.Mark, NAVY, 2.5, 0)
+		tile.MarkText = makeText(tile.Mark, "Text", "1", "Button", 20, WHITE, { Size = UDim2.new(1, 0, 1, 0), ZIndex = 7 })
+		tile.Dim = makeFrame(tile.Button, "Dim", {
+			BackgroundTransparency = 0.45,
+			BackgroundColor3 = Color3.fromRGB(12, 16, 36),
+			Size = UDim2.new(1, 0, 1, 0),
+			Visible = false,
+			ZIndex = 8,
+		})
+		corner(tile.Dim, 12)
+		tile.Busy = makeText(tile.Dim, "Busy", "Busy", "Heading", 19, C2.Lock, {
+			AnchorPoint = Vector2.new(0.5, 0.5),
+			Position = UDim2.new(0.5, 0, 0.36, 0),
+			Size = UDim2.new(1, -8, 0, 48),
+			TextWrapped = true,
+			ZIndex = 9,
+		})
+		tile.Button.Activated:Connect(function()
+			safe("team pick", addKey, key)
+		end)
+		CloudUI.Tooltip(tile.Button, function()
+			return tile.Tip
+		end)
+		ui.Tiles[key] = tile
+		return tile
+	end
+
+	local function paintTile(tile, entry, inTeamSlot, busyText)
+		local def = entry.Def
+		local tint = rarityOf(def)
+		tile.Gradient.Color = ColorSequence.new(Theme.Lighten(INSET_COLOR, 0.3):Lerp(tint, 0.38), Theme.Darken(INSET_COLOR, 0.05):Lerp(tint, 0.2))
+		tile.Stroke.Color = inTeamSlot and GOOD or Theme.Lighten(tint, 0.1)
+		tile.Stroke.Thickness = inTeamSlot and 4 or 3
+		tile.Name.Text = P2.displayName(entry.Key, def)
+		tile.Name.TextColor3 = rarityText(def)
+		local sig = table.concat(elementsOf(def), ",") .. "|" .. tostring(entry.Level)
+		if tile.RowSig ~= sig then
+			tile.RowSig = sig
+			for _, child in ipairs(tile.Row:GetChildren()) do
+				if child:IsA("GuiObject") then
+					child:Destroy()
+				end
+			end
+			autoText(tile.Row, "Level", "Lv " .. tostring(entry.Level), "Heading", 18, WHITE, 0)
+			for i, element in ipairs(elementsOf(def)) do
+				elementPill(tile.Row, element, 18, i)
+			end
+		end
+		local power = unitPower(entry)
+		tile.Power.Text = GL.Swords .. " " .. commas(power)
+		tile.Mark.Visible = inTeamSlot ~= nil
+		if inTeamSlot then
+			tile.MarkText.Text = tostring(inTeamSlot)
+		end
+		tile.Dim.Visible = busyText ~= nil and not inTeamSlot
+		tile.Busy.Text = busyText or ""
+		local special = specialLine(def)
+		tile.Tip = P2.displayName(entry.Key, def) .. " (Lv " .. tostring(entry.Level) .. ", Power " .. commas(power) .. ")"
+			.. (special and ("\nSpecial: " .. special) or "")
+			.. (inTeamSlot and "\nIn this team: tap to take it out" or "\nTap to add it to the team")
+	end
+
+	local function borderStroke(inst)
+		for _, child in ipairs(inst:GetChildren()) do
+			if child:IsA("UIStroke") and child.ApplyStrokeMode == Enum.ApplyStrokeMode.Border then
+				return child
+			end
+		end
+		return nil
+	end
+
+	-- the element wheel (Config.Elements): six elements on a ring, arrows to the one each beats, the rivals below
+	local function buildWheel(parent)
+		local wheel = makeInset(parent, "ElementWheel", { Size = UDim2.fromOffset(WHEEL_W, WHEEL_H) })
+		makeText(wheel, "Title", "Element wheel", "Heading", 20, WHITE, {
+			Position = UDim2.fromOffset(0, 4),
+			Size = UDim2.new(1, 0, 0, 26),
+		})
+		local nodes = {}
+		local order, rivals = wheelOrder()
+		local n = #order
+		local cx, cy, r = WHEEL_W / 2, 32 + 74 + 16, 74
+		local rx = 96 -- an ellipse: the pills need the width more than the height
+		local atan2 = math.atan2 or function(y, x)
+			return math.atan(y, x)
+		end
+		makeText(wheel, "Centre", "Each beats\nthe next", "Body", 18, MUTED, {
+			AnchorPoint = Vector2.new(0.5, 0.5),
+			Position = UDim2.fromOffset(cx, cy),
+			Size = UDim2.fromOffset(110, 48),
+		})
+		for i, element in ipairs(order) do
+			local a = math.rad(-90 + (i - 1) * 360 / math.max(n, 1))
+			local holder = makeFrame(wheel, "Node_" .. element, {
+				AnchorPoint = Vector2.new(0.5, 0.5),
+				Position = UDim2.fromOffset(math.floor(cx + rx * math.cos(a) + 0.5), math.floor(cy + r * math.sin(a) + 0.5)),
+				Size = UDim2.fromOffset(96, 30),
+				ZIndex = 3,
+			})
+			listLayout(holder, Enum.FillDirection.Horizontal, 0, Enum.HorizontalAlignment.Center, Enum.VerticalAlignment.Center)
+			local pill = elementPill(holder, element, 18, 1)
+			pill.ZIndex = 3
+			nodes[element] = { Pill = pill, Stroke = borderStroke(pill) }
+			local mid = math.rad(-90 + (i - 0.5) * 360 / math.max(n, 1))
+			makeText(wheel, "Arrow" .. i, GL.Arrow, "Heading", 20, Theme.Lighten(GOLD, 0.2), {
+				AnchorPoint = Vector2.new(0.5, 0.5),
+				Position = UDim2.fromOffset(math.floor(cx + (rx - 4) * math.cos(mid) + 0.5), math.floor(cy + (r - 4) * math.sin(mid) + 0.5)),
+				Size = UDim2.fromOffset(26, 26),
+				Rotation = math.deg(atan2(r * math.cos(mid), -rx * math.sin(mid))),
+				ZIndex = 2,
+			})
+		end
+		local row = makeFrame(wheel, "Rivals", {
+			AnchorPoint = Vector2.new(0.5, 1),
+			Position = UDim2.new(0.5, 0, 1, -8),
+			Size = UDim2.new(1, -16, 0, 32),
+		})
+		listLayout(row, Enum.FillDirection.Horizontal, 8, Enum.HorizontalAlignment.Center, Enum.VerticalAlignment.Center)
+		for i, pair in ipairs(rivals) do
+			local a = elementPill(row, pair[1], 18, i * 3)
+			autoText(row, "Both" .. i, GL.Both, "Heading", 22, Theme.Lighten(GOLD, 0.2), i * 3 + 1)
+			local b = elementPill(row, pair[2], 18, i * 3 + 2)
+			nodes[pair[1]] = { Pill = a, Stroke = borderStroke(a) }
+			nodes[pair[2]] = { Pill = b, Stroke = borderStroke(b) }
+		end
+		return wheel, nodes
+	end
+
+	local function clearChildren(frame)
+		for _, child in ipairs(frame:GetChildren()) do
+			if child:IsA("GuiObject") then
+				child:Destroy()
+			end
+		end
+	end
+
+	-- one synergy / matchup row: pills + a text
+	local function synergyRow(parent, order, pills, text, color)
+		local row = makeFrame(parent, "Row" .. order, {
+			Size = UDim2.new(1, 0, 0, 0),
+			AutomaticSize = Enum.AutomaticSize.Y,
+			LayoutOrder = order,
+		})
+		listLayout(row, Enum.FillDirection.Horizontal, 6, Enum.HorizontalAlignment.Left, Enum.VerticalAlignment.Center)
+		for i, p in ipairs(pills) do
+			if p.Element then
+				elementPill(row, p.Element, 18, i)
+			else
+				colorPill(row, "Tag" .. i, p.Text, p.Color, 18, i)
+			end
+		end
+		if text and text ~= "" then
+			makeText(row, "Text", text, "Body", 19, color or WHITE, {
+				Size = UDim2.new(1, -(#pills * 110), 0, 0),
+				AutomaticSize = Enum.AutomaticSize.Y,
+				TextWrapped = true,
+				TextXAlignment = Enum.TextXAlignment.Left,
+				LayoutOrder = 50,
+			})
+		end
+		return row
+	end
+
+	-- the Team window's layout for a window size (design px); split out of P3.BuildTeam: Lua's 60-upvalue limit
+	local function layoutTeam(ui, w, h, narrow, short, tall)
+		ui.Tall = tall
+		local cw = w - INSET_X -- Panel.Content
+		local cardH = short and CARD_H_SHORT or CARD_H
+		local topH = tall and 108 or 50
+		ui.Top.Size = UDim2.new(1, -28, 0, topH)
+		if tall then
+			ui.TabRow.Size = UDim2.new(1, 0, 0, 48)
+			ui.Chips.AnchorPoint = Vector2.new(0, 0)
+			ui.Chips.Position = UDim2.fromOffset(0, 58)
+			local tabW = math.floor((cw - 28 - 2 * 8) / 3)
+			for i = 1, PRESETS do
+				ui.Tabs[i].Size = UDim2.fromOffset(math.min(152, tabW), 46)
+			end
+		else
+			ui.TabRow.Size = UDim2.new(0, 3 * 160, 1, 0)
+			ui.Chips.AnchorPoint = Vector2.new(1, 0.5)
+			ui.Chips.Position = UDim2.new(1, 0, 0.5, 0)
+			for i = 1, PRESETS do
+				ui.Tabs[i].Size = UDim2.fromOffset(narrow and 128 or 152, 46)
+			end
+		end
+		ui.PowerCaption.Text = (tall or narrow) and "Power" or "Team Power"
+		local bodyTop = 10 + topH + 10
+		local colW
+		if tall then
+			-- one scrolling column: slots, actions, synergy, wheel, then the picker
+			ui.Left.Position = UDim2.fromOffset(14, bodyTop)
+			ui.Left.Size = UDim2.new(1, -28, 1, -(bodyTop + 8))
+			ui.Right.Visible = false
+			ui.PickerHead.Parent = ui.Left
+			ui.PickerHead.LayoutOrder = 4
+			ui.Grid.Parent = ui.Left
+			ui.Grid.LayoutOrder = 5
+			ui.Empty.Parent = ui.Left
+			ui.Empty.LayoutOrder = 6
+			colW = cw - 28 - 14
+			ui.SlotGrid.CellSize = UDim2.fromOffset(colW, cardH)
+			ui.Slots.Size = UDim2.new(1, 0, 0, 4 * cardH + 3 * CARD_GAP)
+			ui.Actions.Size = UDim2.new(1, 0, 0, 108)
+			ui.HelpText.Position = UDim2.fromOffset(0, 58)
+			ui.HelpText.Size = UDim2.new(1, 0, 0, 48)
+			ui.HelpText.Visible = true
+			local synH = 200
+			ui.Row.Size = UDim2.new(1, 0, 0, synH + 12 + WHEEL_H)
+			ui.Synergy.Size = UDim2.new(1, 0, 0, synH)
+			ui.Wheel.AnchorPoint = Vector2.new(0.5, 0)
+			ui.Wheel.Position = UDim2.new(0.5, 0, 0, synH + 12)
+			local cols = math.max(2, math.floor((colW + 10) / (TILE_W + 10)))
+			local tileW = math.min(TILE_W + 20, math.floor((colW - (cols - 1) * 10) / cols))
+			ui.GridLayout.CellSize = UDim2.fromOffset(tileW, TILE_H)
+		else
+			ui.Right.Visible = true
+			ui.PickerHead.Parent = ui.RightScroll
+			ui.PickerHead.LayoutOrder = 1
+			ui.Grid.Parent = ui.RightScroll
+			ui.Grid.LayoutOrder = 2
+			ui.Empty.Parent = ui.RightScroll
+			ui.Empty.LayoutOrder = 3
+			local tileW = short and TILE_W_SHORT or TILE_W
+			-- the picker holds 3 tiles a row (2 on narrow windows); the team column gets the rest
+			local cols = narrow and 2 or 3
+			local pickerW = cols * tileW + (cols - 1) * 10 + 12 + 22 + 12
+			ui.Right.AnchorPoint = Vector2.new(1, 0)
+			ui.Right.Position = UDim2.new(1, -14, 0, bodyTop)
+			ui.Right.Size = UDim2.new(0, pickerW, 1, -(bodyTop + 12))
+			ui.Left.Position = UDim2.fromOffset(14, bodyTop)
+			ui.Left.Size = UDim2.new(1, -(pickerW + 40), 1, -(bodyTop + 12))
+			colW = cw - pickerW - 40 - 14
+			local twoCols = colW >= 2 * 300 + CARD_GAP
+			local cardW = twoCols and math.floor((colW - CARD_GAP) / 2) or colW
+			ui.SlotGrid.CellSize = UDim2.fromOffset(cardW, cardH)
+			local rows = twoCols and 2 or 4
+			ui.Slots.Size = UDim2.new(1, 0, 0, rows * cardH + (rows - 1) * CARD_GAP)
+			ui.Actions.Size = UDim2.new(1, 0, 0, 52)
+			ui.HelpText.Position = UDim2.fromOffset(250, 0)
+			ui.HelpText.Size = UDim2.new(1, -384, 1, 0)
+			ui.HelpText.Visible = colW >= 560
+			local sideBySide = colW >= WHEEL_W + 12 + 280
+			if sideBySide then
+				ui.Row.Size = UDim2.new(1, 0, 0, WHEEL_H)
+				ui.Synergy.Size = UDim2.new(1, -(WHEEL_W + 12), 1, 0)
+				ui.Wheel.AnchorPoint = Vector2.new(1, 0)
+				ui.Wheel.Position = UDim2.new(1, 0, 0, 0)
+			else
+				ui.Row.Size = UDim2.new(1, 0, 0, 200 + 12 + WHEEL_H)
+				ui.Synergy.Size = UDim2.new(1, 0, 0, 200)
+				ui.Wheel.AnchorPoint = Vector2.new(0.5, 0)
+				ui.Wheel.Position = UDim2.new(0.5, 0, 0, 212)
+			end
+			ui.GridLayout.CellSize = UDim2.fromOffset(tileW, short and TILE_H_SHORT or TILE_H)
+		end
+		ui.UseButton.Position = UDim2.fromOffset(0, 0)
+		ui.ActiveLabel.Position = UDim2.fromOffset(4, 0)
+		ui.ClearButton.Position = UDim2.new(1, 0, 0, 0)
+		for _, card in ipairs(ui.Cards) do
+			layoutCard(card, cardH)
+		end
+	end
+
+	-- the Team window's contents from State (split out of P3.BuildTeam: Lua's 60-upvalue limit)
+	local function refreshTeamUi(ui, fillTiles)
+		local preset = T.Edit or activePreset()
+		T.Edit = preset
+		local active = activePreset()
+		local keys = keysOf(preset)
+		local slots = slotCount()
+		-- preset tabs
+		for i = 1, PRESETS do
+			local tab = ui.Tabs[i]
+			tab.Text = (i == active and (G.Star .. " ") or "") .. "Team " .. i
+			CloudUI.SetStyle(tab, i == preset and "Blue" or "Gray")
+		end
+		-- slot cards
+		local entries = {}
+		local slotOf = {}
+		for i, key in ipairs(keys) do
+			slotOf[key] = i
+			local entry = entryOf(key)
+			if entry then
+				entries[#entries + 1] = entry
+			end
+		end
+		for i = 1, MAX_SLOTS do
+			local card = ui.Cards[i]
+			local key = keys[i]
+			local entry = key and entryOf(key) or nil
+			paintCard(card, key, entry, i > slots, T.Selected == i)
+			card.Special.Visible = card.Special.Visible and card.ShowSpecial == true
+		end
+		-- power, trophies
+		local power = tonumber(catalogCall("TeamPower", entries)) or 0
+		ui.PowerText.Text = GL.Swords .. " " .. commas(power)
+		ui.TrophyText.Text = GL.Trophy .. " " .. commas(battleData().Trophies or 0)
+		-- actions
+		local isActive = preset == active
+		ui.UseButton.Visible = not isActive
+		ui.UseButton.Text = "Use Team " .. preset
+		CloudUI.SetDisabled(ui.UseButton, #keys == 0)
+		ui.ActiveLabel.Visible = isActive
+		CloudUI.SetDisabled(ui.ClearButton, #keys == 0)
+		if #keys == 0 then
+			ui.HelpText.Text = "Tap pets on the right to build this team."
+		elseif T.Selected then
+			ui.HelpText.Text = "Now tap a pet to put it in slot " .. T.Selected .. "."
+		else
+			ui.HelpText.Text = "Tap a pet to add it. Tap a slot, then a pet, to swap."
+		end
+
+		-- synergy (live) + matchups
+		clearChildren(ui.SynergyList)
+		makeText(ui.SynergyList, "Title", "Synergy", "Heading", 22, WHITE, {
+			Size = UDim2.new(1, 0, 0, 28),
+			TextXAlignment = Enum.TextXAlignment.Left,
+			LayoutOrder = 0,
+		})
+		local bonus = catalogCall("SynergyBonus", entries)
+		local list = type(bonus) == "table" and bonus.Entries or {}
+		local order = 1
+		for _, s in ipairs(list) do
+			local pills = {}
+			if s.Element then
+				pills[1] = { Element = s.Element }
+			else
+				pills[1] = { Text = tostring(s.Name or "Bonus"), Color = TEAL }
+			end
+			synergyRow(ui.SynergyList, order, pills, tostring(s.Text or ""), GOOD_TEXT)
+			order = order + 1
+		end
+		if #list == 0 then
+			local text = #entries == 0 and "Add pets to see their bonuses." or "No bonus yet: mix in a pet of the same element!"
+			local label = makeText(ui.SynergyList, "None", text, "Body", 19, MUTED, {
+				Size = UDim2.new(1, 0, 0, 0),
+				AutomaticSize = Enum.AutomaticSize.Y,
+				TextWrapped = true,
+				TextXAlignment = Enum.TextXAlignment.Left,
+				LayoutOrder = order,
+			})
+			label.Name = "None"
+			order = order + 1
+		end
+		-- the team's matchups: which elements it hits hard, which hit it hard
+		local teamElements, seen = {}, {}
+		for _, entry in ipairs(entries) do
+			for _, e in ipairs(elementsOf(entry.Def)) do
+				if not seen[e] then
+					seen[e] = true
+					teamElements[#teamElements + 1] = e
+				end
+			end
+		end
+		if #teamElements > 0 then
+			local strong, weak, sSeen, wSeen = {}, {}, {}, {}
+			local S = (Config.Elements and Config.Elements.Strong) or {}
+			for _, e in ipairs(teamElements) do
+				for _, target in ipairs(S[e] or {}) do
+					if not sSeen[target] then
+						sSeen[target] = true
+						strong[#strong + 1] = { Element = target }
+					end
+				end
+			end
+			for _, attacker in ipairs((Config.Elements and Config.Elements.Order) or {}) do
+				for _, target in ipairs(S[attacker] or {}) do
+					if seen[target] and not wSeen[attacker] then
+						wSeen[attacker] = true
+						weak[#weak + 1] = { Element = attacker }
+					end
+				end
+			end
+			if #strong > 0 then
+				makeText(ui.SynergyList, "StrongTitle", "Hits hard against", "Heading", 19, GOOD_TEXT, {
+					Size = UDim2.new(1, 0, 0, 26),
+					TextXAlignment = Enum.TextXAlignment.Left,
+					LayoutOrder = 20,
+				})
+				synergyRow(ui.SynergyList, 21, strong, nil)
+			end
+			if #weak > 0 then
+				makeText(ui.SynergyList, "WeakTitle", "Watch out for", "Heading", 19, WARN_TEXT, {
+					Size = UDim2.new(1, 0, 0, 26),
+					TextXAlignment = Enum.TextXAlignment.Left,
+					LayoutOrder = 22,
+				})
+				synergyRow(ui.SynergyList, 23, weak, nil)
+			end
+		end
+		-- the rules, always at the bottom (BattleCatalog.SynergyRules)
+		local BC = battleCatalog()
+		local rules = BC and type(BC.SynergyRules) == "table" and BC.SynergyRules or nil
+		if rules and type(rules.SameElement) == "table" then
+			local function pct(v)
+				return tostring(math.floor((tonumber(v) or 0) * 100 + 0.5)) .. "%"
+			end
+			local same = rules.SameElement
+			makeText(ui.SynergyList, "Rules", "Same element: 2 pets +" .. pct(same[2]) .. ", 3 +" .. pct(same[3]) .. ", 4 +" .. pct(same[4])
+				.. " Power. " .. tostring(rules.BalancedElements or 3) .. "+ elements: +" .. pct(rules.BalancedHealth) .. " Health.", "Body", 18, MUTED, {
+				Size = UDim2.new(1, 0, 0, 0),
+				AutomaticSize = Enum.AutomaticSize.Y,
+				TextWrapped = true,
+				TextXAlignment = Enum.TextXAlignment.Left,
+				LayoutOrder = 40,
+			})
+		end
+		-- wheel: the team's elements glow gold
+		for element, node in pairs(ui.WheelNodes) do
+			if node.Stroke then
+				node.Stroke.Color = seen[element] and GOLD or NAVY
+				node.Stroke.Thickness = seen[element] and 3.5 or 2
+			end
+			node.Pill.BackgroundTransparency = seen[element] and 0 or 0.25
+		end
+
+		-- picker: every owned copy, strongest first
+		local owned = P2.ownedKeys()
+		local rows = {}
+		local ownedSet = {}
+		for _, key in ipairs(owned) do
+			local entry = entryOf(key)
+			if entry then
+				ownedSet[key] = true
+				rows[#rows + 1] = { Key = key, Entry = entry, Power = unitPower(entry), Name = P2.displayName(key, entry.Def) }
+			end
+		end
+		table.sort(rows, function(a, b)
+			if a.Power ~= b.Power then
+				return a.Power > b.Power
+			end
+			return a.Name < b.Name
+		end)
+		for key, tile in pairs(ui.Tiles) do
+			if not ownedSet[key] then
+				if tile.Viewport then
+					tile.Viewport.Destroy()
+				end
+				tile.Button:Destroy()
+				ui.Tiles[key] = nil
+				ui.Ready[key] = nil
+			end
+		end
+		ui.Order = {}
+		local home = P2.homeData() or {}
+		for index, row in ipairs(rows) do
+			local tile = ui.Tiles[row.Key] or buildTile(ui, row.Key)
+			tile.Button.LayoutOrder = index
+			ui.Order[index] = row.Key
+			local busy = nil
+			if freeCopies(row.Key) < 1 then
+				local inGym = false
+				for _, k in pairs(home.Gym or {}) do
+					if k == row.Key then
+						inGym = true
+					end
+				end
+				busy = inGym and "In the Gym" or "In the Garden"
+			end
+			paintTile(tile, row.Entry, slotOf[row.Key], busy)
+		end
+		ui.Grid.Visible = #rows > 0
+		ui.Empty.Visible = #rows == 0
+		fillTiles()
+	end
+
+	----------------------------------------------------------------------
+	-- The window
+	----------------------------------------------------------------------
+	function P3.BuildTeam(win)
+		local content = win.Panel.Content
+		local ui = { Cards = {}, Tiles = {}, Ready = {}, Order = {} }
+		win.TeamUi = ui
+
+		-- top bar: the three presets (left), team power + trophies (right)
+		ui.Top = makeFrame(content, "TopBar", { Position = UDim2.fromOffset(14, 10), Size = UDim2.new(1, -28, 0, 50) })
+		ui.TabRow = makeFrame(ui.Top, "Presets", { Size = UDim2.new(0, 3 * 160, 1, 0) })
+		listLayout(ui.TabRow, Enum.FillDirection.Horizontal, 8, Enum.HorizontalAlignment.Left, Enum.VerticalAlignment.Center)
+		ui.Tabs = {}
+		for i = 1, PRESETS do
+			ui.Tabs[i] = CloudUI.Button({
+				Name = "Preset" .. i,
+				Text = "Team " .. i,
+				Size = UDim2.fromOffset(152, 46),
+				Style = "Gray",
+				TextSize = 22,
+				LayoutOrder = i,
+				Parent = ui.TabRow,
+				Callback = function()
+					T.Edit = i
+					T.Selected = nil
+					refreshTeam()
+				end,
+			})
+		end
+		ui.Chips = makeFrame(ui.Top, "Chips", {
+			AnchorPoint = Vector2.new(1, 0.5),
+			Position = UDim2.new(1, 0, 0.5, 0),
+			Size = UDim2.fromOffset(0, 48),
+			AutomaticSize = Enum.AutomaticSize.X,
+		})
+		listLayout(ui.Chips, Enum.FillDirection.Horizontal, 10, Enum.HorizontalAlignment.Right, Enum.VerticalAlignment.Center)
+		local powerChip = chip(ui.Chips, "PowerChip", 1)
+		ui.PowerCaption = autoText(powerChip, "Caption", "Team Power", "Heading", 19, MUTED, 1)
+		ui.PowerText = autoText(powerChip, "Value", GL.Swords .. " 0", "Display", 28, POWER_GOLD, 2)
+		local trophyChip = chip(ui.Chips, "TrophyChip", 2)
+		ui.TrophyText = autoText(trophyChip, "Value", GL.Trophy .. " 0", "Display", 28, WHITE, 1)
+		CloudUI.Tooltip(trophyChip, function()
+			local b = battleData()
+			return "Trophies: win duels in the Battle Arena (" .. commas(b.PvPWins or 0) .. " won, " .. commas(b.PvPLosses or 0) .. " lost)"
+		end)
+
+		-- sections (placed by OnLayout: two columns, or one scrolling column on portrait phones)
+		ui.Left = scroller(content, "Left", {})
+		pad(ui.Left, 2, 4, 12, 8)
+		listLayout(ui.Left, Enum.FillDirection.Vertical, 12)
+		ui.Right = makeInset(content, "Right", {})
+		ui.RightScroll = scroller(ui.Right, "PickerScroll", { Position = UDim2.fromOffset(6, 6), Size = UDim2.new(1, -12, 1, -12) })
+		pad(ui.RightScroll, 8, 6, 14, 10)
+		listLayout(ui.RightScroll, Enum.FillDirection.Vertical, 8)
+
+		ui.Slots = makeFrame(ui.Left, "Slots", { Size = UDim2.new(1, 0, 0, 262), LayoutOrder = 1 })
+		ui.SlotGrid = Util.Create("UIGridLayout", {
+			CellSize = UDim2.fromOffset(160, 262),
+			CellPadding = UDim2.fromOffset(CARD_GAP, CARD_GAP),
+			SortOrder = Enum.SortOrder.LayoutOrder,
+			HorizontalAlignment = Enum.HorizontalAlignment.Left,
+			Parent = ui.Slots,
+		})
+		for i = 1, MAX_SLOTS do
+			buildCard(ui, ui.Slots, i)
+		end
+
+		ui.Actions = makeFrame(ui.Left, "Actions", { Size = UDim2.new(1, 0, 0, 52), LayoutOrder = 2 })
+		ui.UseButton = CloudUI.Button({
+			Name = "UseTeam",
+			Text = "Use this team",
+			Size = UDim2.fromOffset(236, 50),
+			Style = "Green",
+			TextSize = 22,
+			Parent = ui.Actions,
+			Callback = function()
+				safe("team select", selectPreset)
+			end,
+		})
+		ui.ActiveLabel = makeText(ui.Actions, "ActiveLabel", G.Star .. " Your battle team", "Title", 24, GOLD, {
+			Size = UDim2.fromOffset(260, 50),
+			TextXAlignment = Enum.TextXAlignment.Left,
+		})
+		ui.ClearButton = CloudUI.Button({
+			Name = "ClearTeam",
+			Text = "Clear",
+			AnchorPoint = Vector2.new(1, 0),
+			Position = UDim2.new(1, 0, 0, 0),
+			Size = UDim2.fromOffset(120, 50),
+			Style = "Red",
+			TextSize = 22,
+			Parent = ui.Actions,
+			Callback = function()
+				safe("team clear", clearPreset)
+			end,
+		})
+		ui.HelpText = makeText(ui.Actions, "Help", "Tap a pet to add it. Tap a slot, then a pet, to swap.", "Body", 18, MUTED, {
+			Position = UDim2.fromOffset(250, 0),
+			Size = UDim2.new(1, -380, 1, 0),
+			TextWrapped = true,
+			TextXAlignment = Enum.TextXAlignment.Left,
+		})
+
+		ui.Row = makeFrame(ui.Left, "SynergyRow", { Size = UDim2.new(1, 0, 0, WHEEL_H), LayoutOrder = 3 })
+		ui.Synergy = makeInset(ui.Row, "Synergy", { Size = UDim2.new(1, -(WHEEL_W + 12), 1, 0) })
+		ui.SynergyList = scroller(ui.Synergy, "List", { Position = UDim2.fromOffset(4, 4), Size = UDim2.new(1, -8, 1, -8) })
+		pad(ui.SynergyList, 10, 6, 12, 8)
+		listLayout(ui.SynergyList, Enum.FillDirection.Vertical, 8)
+		ui.Wheel, ui.WheelNodes = buildWheel(ui.Row)
+		ui.Wheel.AnchorPoint = Vector2.new(1, 0)
+		ui.Wheel.Position = UDim2.new(1, 0, 0, 0)
+
+		-- picker
+		ui.PickerHead = makeFrame(ui.RightScroll, "PickerHead", { Size = UDim2.new(1, 0, 0, 34), LayoutOrder = 1 })
+		makeText(ui.PickerHead, "Title", "Your pets", "Title", 26, WHITE, {
+			Size = UDim2.new(0.5, 0, 1, 0),
+			TextXAlignment = Enum.TextXAlignment.Left,
+		})
+		makeText(ui.PickerHead, "Sort", "Strongest first", "Heading", 18, MUTED, {
+			AnchorPoint = Vector2.new(1, 0),
+			Position = UDim2.new(1, 0, 0, 0),
+			Size = UDim2.new(0.5, 0, 1, 0),
+			TextXAlignment = Enum.TextXAlignment.Right,
+		})
+		ui.Grid = makeFrame(ui.RightScroll, "PickerGrid", {
+			Size = UDim2.new(1, 0, 0, 0),
+			AutomaticSize = Enum.AutomaticSize.Y,
+			LayoutOrder = 2,
+		})
+		ui.GridLayout = Util.Create("UIGridLayout", {
+			CellSize = UDim2.fromOffset(TILE_W, TILE_H),
+			CellPadding = UDim2.fromOffset(10, 10),
+			SortOrder = Enum.SortOrder.LayoutOrder,
+			HorizontalAlignment = Enum.HorizontalAlignment.Center,
+			Parent = ui.Grid,
+		})
+		ui.Empty = makeFrame(ui.RightScroll, "Empty", { Size = UDim2.new(1, 0, 0, 150), LayoutOrder = 3, Visible = false })
+		makeText(ui.Empty, "Text", "No pets yet! Spin a roulette in the Shop to hatch a battle buddy.", "Body", 19, MUTED, {
+			Size = UDim2.new(1, 0, 0, 60),
+			TextWrapped = true,
+		})
+		CloudUI.Button({
+			Name = "GoShop",
+			Text = "Open Shop",
+			AnchorPoint = Vector2.new(0.5, 0),
+			Position = UDim2.new(0.5, 0, 0, 70),
+			Size = UDim2.fromOffset(200, 50),
+			Style = "Gold",
+			Parent = ui.Empty,
+			Callback = function()
+				safe("team shop", openWindow, "Shop", {})
+			end,
+		})
+
+		-- viewports of the picker tiles: a few per frame (time budget), Low detail
+		local function fillTiles()
+			if ui.Filling then
+				return
+			end
+			ui.Filling = true
+			task.spawn(function()
+				task.wait()
+				while win.Shown do
+					local more = false
+					local budget = Warm.Budget()
+					for _, key in ipairs(ui.Order) do
+						local tile = ui.Tiles[key]
+						if tile and not ui.Ready[key] then
+							if not Warm.Allows(budget) then
+								more = true
+								break
+							end
+							ui.Ready[key] = true
+							local def = P2.defOfKey(key)
+							if def then
+								local ok, handle = pcall(CloudUI.PetViewport, tile.View, def, UDim2.new(1, 0, 1, 0), {
+									Spin = "sway",
+									Animate = false,
+									Detail = "Low",
+									ZIndex = 2,
+								})
+								if ok then
+									tile.Viewport = handle
+								end
+							end
+							budget.Count = budget.Count + 1
+						end
+					end
+					if not more then
+						break
+					end
+					task.wait()
+				end
+				ui.Filling = false
+			end)
+		end
+
+		win.OnOpen = function(args)
+			settleDrafts()
+			local preset = args and tonumber(args.Preset)
+			if preset and preset >= 1 and preset <= PRESETS then
+				T.Edit = math.floor(preset)
+			else
+				T.Edit = activePreset()
+			end
+			T.Selected = nil
+		end
+
+		win.OnLayout = function(w, h, narrow, short, tall)
+			layoutTeam(ui, w, h, narrow, short, tall)
+		end
+
+		win.Refresh = function()
+			refreshTeamUi(ui, fillTiles)
+		end
+	end
+
+	function refreshTeam()
+		local win = windows.Team
+		if win then
+			refreshWindow(win)
+		end
+	end
+
+	-- State.Changed: drafts the server confirmed are dropped before the windows refresh
+	P3.Settle = settleDrafts
+	P3.Battle = battleData
+	P3.Refresh = function()
+		refreshTeam()
+	end
+end
+P3.Define()
+
+----------------------------------------------------------------------
 -- Roulette flow: BuyRoulette -> RouletteResult -> scrolling strip -> reveal card
 ----------------------------------------------------------------------
 local function refreshShopWindow()
@@ -6853,6 +8237,8 @@ local function onOpenPanel(panelId, args)
 		openIndex(type(groupId) == "string" and groupId or nil)
 	elseif key == "stats" then
 		openWindow("Stats", args)
+	elseif key == "team" or key == "teams" then
+		openWindow("Team", args)
 	elseif key == "close" then
 		closeEverything()
 	end
@@ -6869,6 +8255,9 @@ local function onStateChanged()
 	end
 	Badge.LastPetTotal = total
 	refreshIndexBadge()
+	if P3.Settle then
+		safe("team settle", P3.Settle)
+	end
 
 	for _, win in pairs(windows) do
 		refreshWindow(win)
@@ -7039,6 +8428,7 @@ function MenuController.Init()
 	createWindow({ Id = "Shop", Title = "Cloud Shop", Accent = BUTTONS.Gold, Build = buildShop, Tall = true })
 	createWindow({ Id = "Stats", Title = "Stats", Accent = PURPLE, Build = buildStats, Tall = true })
 	createWindow({ Id = "Home", Title = G.House .. " My Home", Accent = BUTTONS.Green, Build = buildHome, Tall = true })
+	createWindow({ Id = "Team", Title = "Battle Team", Accent = BUTTONS.Red, Build = P3.BuildTeam, Tall = true })
 	relayoutMenu()
 	updateMenuActive()
 

@@ -12,7 +12,9 @@
 -- The tips quote the game's real numbers: prices, bonuses, odds and rewards are read from Config / ItemCatalog /
 -- TycoonCatalog when this module loads, so they stay correct when those change. Phase 2 tips: claiming a home, the
 -- presses + Collector, house tiers and Prestige (Mayor Panda), the Kitchen + feeding (Granny Owl), the Gym (Coach
--- Corgi), the Fusion Machine, Gems and the Secret roulette at the Storm Altar (Professor Axolotl). Nimbus the Cloudy Dragon is NOT an NPC: it is
+-- Corgi), the Fusion Machine, Gems and the Secret roulette at the Storm Altar (Professor Axolotl). Phase 3 tips (pet
+-- battles): the battle controls (Sparky Fox), Boss Raids and events (Captain Penguin), the Trial Portal and battle
+-- teams (Coach Corgi), elements and team synergy in battle (Professor Axolotl), all quoting BattleCatalog. Nimbus the Cloudy Dragon is NOT an NPC: it is
 -- the tutorial guide. `Keywords` are phrases the dialog box highlights (numbers are highlighted automatically),
 -- `ColorWords` words it paints in their own colour (the element names).
 -- Lines never contain "<", ">" or "&" (the client renders them as rich text).
@@ -37,6 +39,18 @@ do
 	end)
 	if ok and type(mod) == "table" then
 		TycoonCatalog = mod
+	end
+end
+
+-- Phase 3: the battle numbers (raid schedule, trial count, trophies, synergy); optional
+local BattleCatalog = nil
+do
+	local module = script.Parent:FindFirstChild("BattleCatalog")
+	if module then
+		local ok, mod = pcall(require, module)
+		if ok and type(mod) == "table" then
+			BattleCatalog = mod
+		end
 	end
 end
 
@@ -364,6 +378,32 @@ end
 local gymLow, gymHigh, gymSlots = gymNumbers()
 
 ----------------------------------------------------------------------
+-- Phase 3 numbers (BattleCatalog: raids, trials, trophies, synergy)
+----------------------------------------------------------------------
+local BC = BattleCatalog or {}
+local raidMinutes, trialCount, trophyWin, synergyPair, balancedHealth = 20, 30, 20, "10%", "10%"
+do
+	local events = type(BC.Events) == "table" and BC.Events or {}
+	local first = type(events.Schedule) == "table" and events.Schedule[1] or nil
+	if type(first) == "table" and tonumber(first.EveryMinutes) then
+		raidMinutes = math.floor(tonumber(first.EveryMinutes))
+	end
+	if tonumber(BC.TrialCount) then
+		trialCount = math.floor(tonumber(BC.TrialCount))
+	end
+	if type(BC.Trophies) == "table" and tonumber(BC.Trophies.Win) then
+		trophyWin = math.floor(tonumber(BC.Trophies.Win))
+	end
+	local rules = type(BC.SynergyRules) == "table" and BC.SynergyRules or nil
+	if rules and type(rules.SameElement) == "table" and tonumber(rules.SameElement[2]) then
+		synergyPair = percent(rules.SameElement[2])
+	end
+	if rules and tonumber(rules.BalancedHealth) then
+		balancedHealth = percent(rules.BalancedHealth)
+	end
+end
+
+----------------------------------------------------------------------
 -- The NPCs (order = lobbyInfo.NpcSpots order: the two by the portals, the two beside the boardwalk to the
 -- shop, then the two on the lawns towards the shop)
 ----------------------------------------------------------------------
@@ -375,7 +415,7 @@ NpcDialog.Npcs = {
 		PetId = "aurora_fox",
 		Species = "Fox",
 		Accent = Color3.fromRGB(64, 188, 192),
-		Keywords = { "Shift", "RUN", "DASH!", "DASH", "Q", "1 to 4", "Heal Cloud", "big fall", "checkpoint" },
+		Keywords = { "Shift", "RUN", "DASH!", "DASH", "Q", "1 to 4", "Heal Cloud", "ATTACK", "RETREAT", "SPECIAL" },
 		Lines = {
 			"Zap! Hold Shift to run (the RUN button on phones). Running drains stamina, walking refills it.",
 			"Press Q to dash (DASH on phones). It costs " .. number(P.DashStaminaCost or 35) .. " stamina, recharges in "
@@ -383,7 +423,7 @@ NpcDialog.Npcs = {
 			"See a DASH! sign? That gap is too wide for a jump alone: jump first, then dash while you are in the air.",
 			"Keys 1 to 4 use your hotbar items during a climb. A Heal Cloud (" .. tokens(itemPrice("heal_cloud", 30))
 				.. ") restores 40% of your health.",
-			"Missed a jump? A big fall costs health and puts you back at your team's checkpoint. Shake it off!",
+			"In a pet battle: F = ATTACK (tap an enemy to focus it), R = RETREAT to heal, 1 to 4 = SPECIAL when it glows!",
 		},
 	},
 	{
@@ -393,15 +433,14 @@ NpcDialog.Npcs = {
 		PetId = "frostling_penguin",
 		Species = "Penguin",
 		Accent = Color3.fromRGB(88, 148, 226),
-		Keywords = { "portal pad", "next checkpoint", "Phoenix Feather", "Shield Bubble", "Pressure plates" },
+		Keywords = { "portal pad", "next checkpoint", "Phoenix Feather", "Boss Raid", "RETREAT", "event board", "Double Rewards" },
 		Lines = {
 			"Ahoy! Step onto a portal pad together: up to " .. number(M.MaxPlayers or 4) .. " climbers can sail into the same course.",
 			"Teammate down? Keep climbing! Reaching the next checkpoint revives everyone who is down.",
 			"A Phoenix Feather (" .. tokens(itemPrice("phoenix_feather", 150))
 				.. ") revives the nearest downed teammate right away, with 50% health.",
-			"Every checkpoint heals the team by " .. percent(D.CheckpointHealFraction or 0.35) .. ". A Shield Bubble ("
-				.. tokens(itemPrice("shield_bubble", 45)) .. ") blocks all damage for 8 seconds.",
-			"Pressure plates need a crew: one climber holds the plate while the others cross the bridge.",
+			"A Boss Raid starts every " .. raidMinutes .. " minutes in the arena: everyone fights one giant boss together!",
+			"Glowing circles mean a big hit: RETREAT out! The event board shows the next raid and Double Rewards.",
 		},
 	},
 	{
@@ -429,16 +468,14 @@ NpcDialog.Npcs = {
 		PetId = "waffle_corgi",
 		Species = "Dog",
 		Accent = Color3.fromRGB(240, 174, 70),
-		Keywords = { "yours to keep", "Golden tokens", "Harder courses", "Gym", "Combat pets", "Train in Gym", "Pet Battles" },
+		Keywords = { "yours to keep", "Trial Portal", "first clear", "Gym", "Combat pets", "Train in Gym", "Team", "trophies" },
 		Lines = {
 			"Woof! Every coin you grab on a climb is yours to keep, even when your team runs out of time!",
 			"Win a climb and every finisher gets a bonus: " .. winBonusList() .. " " .. TOKEN .. "!",
-			"Golden tokens are worth " .. tokens(T.GoldenValue or 5) .. " instead of " .. number(T.DefaultValue or 1)
-				.. ". Harder courses are longer and hide more coins!",
+			"The Trial Portal in the arena has " .. trialCount .. " levels of pet teams. Every first clear pays a big token bonus!",
 			"Combat pets get tough in your home Gym: open Pets and press Train in Gym. Each one gains " .. number(gymLow)
 				.. " XP a minute while you play.",
-			"Upgrade the Gym for more spots and faster training: up to " .. number(gymSlots) .. " pets and " .. number(gymHigh)
-				.. " XP a minute. Get ready for Pet Battles!",
+			"Tap Team to pick 3 battle pets (a 4th at Prestige 1). Duel friends on the rings: +" .. trophyWin .. " trophies a win!",
 		},
 	},
 	{
@@ -465,13 +502,13 @@ NpcDialog.Npcs = {
 		PetId = "nebula_axolotl",
 		Species = "Axolotl",
 		Accent = Color3.fromRGB(226, 112, 170),
-		Keywords = { "Element", "Pet Battles", "Fusion Machine", "Golden", "Rainbow", "hybrid", "Storm Altar", "Secret pets", "Gems", "Prestige" },
+		Keywords = { "Element", "battles", "Power", "Fusion Machine", "Golden", "Rainbow", "hybrid", "Storm Altar", "Secret pets", "Gems", "Prestige" },
 		ColorWords = elementColors(),
 		Lines = {
 			"Blub! Every pet has an Element. " .. joinAnd(wheelA) .. ".",
 			joinAnd(wheelB) .. ". " .. rivalLine,
-			"In Pet Battles a strong element hits for x" .. strongMul .. " damage, a weak one only x" .. weakMul
-				.. ". Pick your team wisely!",
+			"In battles a strong element hits x" .. strongMul .. ", a weak one x" .. weakMul .. ". Two of one element: +"
+				.. synergyPair .. " Power!",
 			fusionWhen .. ", build the Fusion Machine: " .. fusionCopies .. " copies make a Golden pet (x" .. goldenMul
 				.. "), " .. fusionCopies .. " Golden a Rainbow one (x" .. rainbowMul .. ")!",
 			"It also mixes two pets into a one-of-a-kind hybrid. Secret pets like Stormfang come from the Storm Altar for "

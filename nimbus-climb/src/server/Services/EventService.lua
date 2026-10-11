@@ -23,9 +23,9 @@
 --     watches it (a raid still open DurationSeconds + the join window + RAID_GRACE after its start is closed with
 --     BattleService.EndRaid) and, on BattleService.BattleEnded (Mode "Raid"), tells everyone how it went and who won
 --     an event pet. A raid that is due while one still runs (a developer started one) waits for it to end.
---   * Double Rewards: a DurationSeconds (1 hour) window every EveryMinutes (180); the first one DOUBLE_FIRST_AFTER
---     seconds after the server starts (no catalog value: local constant). Announced like the raid; while it runs
---     RewardMultiplier() is 2, the Workspace attribute DoubleRewards is true (clients / boards) and BattleService
+--   * Double Rewards: a DurationSeconds (1 hour) window every EveryMinutes (180), the first one EveryMinutes after the
+--     server starts (or the entry's FirstAfterSeconds when the catalog adds one). Announced like the raid; while it
+--     runs RewardMultiplier() is 2, the Workspace attribute DoubleRewards is true (clients / boards) and BattleService
 --     is told with SetDoubleRewards(true, seconds).
 --   * More kinds later (e.g. King of the Ring): add a KINDS entry + a BattleCatalog.Events.Schedule row.
 -- Raid rewards (paid exactly once): BattleService pays the tiers by damage share (BattleCatalog.RaidTier: Tokens x
@@ -82,7 +82,6 @@ local TICK = 1 -- scheduler step (seconds)
 local BROADCAST_FAST = 1 -- ArenaState period while a countdown or a raid runs
 local BROADCAST_SLOW = 5 -- ... otherwise
 local REMINDER_SECONDS = 30 -- the second raid toast
-local DOUBLE_FIRST_AFTER = 5400 -- the first Double Rewards hour of a fresh server: 90 min (catalog has no value)
 local RAID_GRACE = 30 -- seconds past DurationSeconds + the join window before a raid is closed by force
 local POSTPONE = 30 -- a raid due while another raid runs waits this long, then checks again
 local TOAST_SECONDS = 6
@@ -380,6 +379,22 @@ end
 ----------------------------------------------------------------------
 -- The schedule
 ----------------------------------------------------------------------
+local function everySeconds(entry)
+	local m = tonumber(entry.EveryMinutes) or 20
+	if not finite(m) or m <= 0 then
+		m = 20
+	end
+	return m * 60
+end
+
+local function announceSeconds(entry)
+	local a = tonumber(entry.AnnounceSeconds) or 120
+	if not finite(a) or a < 0 then
+		a = 120
+	end
+	return a
+end
+
 local KINDS = {}
 
 KINDS.BossRaid = {
@@ -411,7 +426,7 @@ KINDS.DoubleRewards = {
 		return true
 	end,
 	FirstAfter = function(entry)
-		return tonumber(entry.FirstAfterSeconds) or math.min((tonumber(entry.EveryMinutes) or 180) * 60, DOUBLE_FIRST_AFTER)
+		return tonumber(entry.FirstAfterSeconds) or everySeconds(entry)
 	end,
 	Prepare = function() end,
 	Announce = function(_, secondsLeft)
@@ -422,22 +437,6 @@ KINDS.DoubleRewards = {
 		return "started"
 	end,
 }
-
-local function everySeconds(entry)
-	local m = tonumber(entry.EveryMinutes) or 20
-	if not finite(m) or m <= 0 then
-		m = 20
-	end
-	return m * 60
-end
-
-local function announceSeconds(entry)
-	local a = tonumber(entry.AnnounceSeconds) or 120
-	if not finite(a) or a < 0 then
-		a = 120
-	end
-	return a
-end
 
 local function buildSlots()
 	St.slots = {}

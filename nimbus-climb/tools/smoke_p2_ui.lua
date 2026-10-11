@@ -76,12 +76,14 @@ local function serverScenarios()
 		for i, step in ipairs(Steps.Steps) do
 			ids[i] = step.Id
 		end
-		T.eq(table.concat(ids, ","), "welcome,home,shop,spin,equip,index,portal,finish,done,claim,press,collect,kitchen,feed",
+		-- (Phase 3 appends chapter 3, the pet battles, after these: tools/smoke_p3_ui.lua checks it)
+		T.eq(table.concat(ids, ",", 1, math.min(#ids, 14)), "welcome,home,shop,spin,equip,index,portal,finish,done,claim,press,collect,kitchen,feed",
 			"p2ui: the home chapter (claim, press, collect, kitchen, feed) is appended after the nine basics")
 		local start = Steps.ChapterStart and Steps.ChapterStart[2]
 		T.eq(start, 10, "p2ui: chapter 2 starts at step 10 (a finished Phase 1 tutorial stored Step = 10)")
 		local known = { Next = true, NearSpot = true, ShopOpened = true, Rolled = true, Equipped = true, IndexOpened = true,
-			MatchStarted = true, MatchEnded = true, Claimed = true, Built = true, Collected = true, Fed = true }
+			MatchStarted = true, MatchEnded = true, Claimed = true, Built = true, Collected = true, Fed = true,
+			ArenaReached = true, TeamSet = true, TrialWon = true, RaidSeen = true } -- (the last four: Phase 3, chapter 3)
 		local bad, ends = {}, {}
 		for i, step in ipairs(Steps.Steps) do
 			if not known[step.CompleteOn] then
@@ -101,7 +103,7 @@ local function serverScenarios()
 			end
 		end
 		T.check(#bad == 0, "p2ui: every step has a known CompleteOn, a real station and a short text", table.concat(bad, "; "))
-		T.eq(table.concat(ends, ","), "done,feed", "p2ui: each chapter ends on one ChapterEnd step (done, feed)")
+		T.eq(table.concat(ends, ",", 1, math.min(#ends, 2)), "done,feed", "p2ui: each chapter ends on one ChapterEnd step (done, feed)")
 		local byId = {}
 		for _, step in ipairs(Steps.Steps) do
 			byId[step.Id] = step
@@ -357,9 +359,12 @@ local function serverScenarios()
 		advance(0.6)
 		T.check(okFeed == true, "p2ui tutorial: the pet is fed")
 		st = state(p)
-		T.check(st and st.Done == true and st.Completed == true, "p2ui tutorial: feeding a pet ends the home chapter (Done)")
+		-- (Phase 3: the pet-battle chapter follows the home chapter; without it the tutorial is Done here)
+		local chapter3 = Steps.ChapterStart and Steps.ChapterStart[3]
+		T.check(st and ((st.Done == true and st.Completed == true) or (chapter3 ~= nil and st.Chapter == 3 and st.Step == chapter3)),
+			"p2ui tutorial: feeding a pet ends the home chapter (Done, or on to the battle chapter)")
 		T.eq(DataS.GetCash(p), cash0 + 1000, "p2ui tutorial: ...and pays the home chapter's Cash reward once")
-		T.eq(DataS.GetTutorial(p).Step, #Steps.Steps + 1, "p2ui tutorial: the stored Step is one past the end (a later chapter resumes there)")
+		T.eq(DataS.GetTutorial(p).Step, chapter3 or (#Steps.Steps + 1), "p2ui tutorial: the stored Step is one past the home chapter (a later chapter resumes there)")
 		TSv.HandleEvent(p, "Next")
 		TSv.HandleEvent(p, "Skip")
 		T.eq(DataS.GetCash(p), cash0 + 1000, "p2ui tutorial: nothing is paid twice")
@@ -368,7 +373,7 @@ local function serverScenarios()
 		advance(1.5)
 		p = Mock.AddPlayer(name, userId)
 		advance(1.2)
-		T.check(state(p) and state(p).Done == true, "p2ui tutorial: the finished chapter stays finished after a rejoin")
+		T.check(state(p) and (state(p).Done == true or (state(p).Chapter or 0) >= 3), "p2ui tutorial: the finished chapter stays finished after a rejoin")
 		leave(p)
 
 		-- a skipped tutorial never resumes

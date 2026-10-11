@@ -24,6 +24,8 @@
 --     with their own phase, ease towards their slot with an exponential filter (so they trail and catch up
 --     naturally), face the direction the owner travels, bank into turns, pitch forward when they speed up,
 --     flap harder when the owner runs or is in the air, and fly a little ahead of the owner while running.
+--   * Phase 3: while the owner's player attribute `InBattle` is set (BattleService), the followers are parked: the
+--     battle team fights on the floor, drawn by BattleController. They snap back into formation afterwards.
 --   * Owners that are downed keep their pets close; owners that teleport (> 35 studs in one step) or
 --     respawn get their pets snapped back into formation. A pet that ends up > 60 studs from its slot snaps.
 --   * Pets of OTHER players are only shown within 150 studs of the viewer (with a little hysteresis) and are
@@ -684,6 +686,10 @@ local function stepFollower(f, dt, now, viewPos)
 	end
 
 	-- 3. culling + level of detail -------------------------------------------------------------
+	if f.player:GetAttribute("InBattle") ~= nil then -- Phase 3: the team fights (BattleController draws it): park the followers
+		setVisible(f, false)
+		return
+	end
 	if f.isLocal then
 		if not f.visible then
 			setVisible(f, true)

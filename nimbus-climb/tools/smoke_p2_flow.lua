@@ -952,7 +952,9 @@ S.p2flow_build = guarded("p2flow_build", function()
 	T.check(DataS.GetFood(ann, "Snack") == 0 and lv == 2, "flow build: feeding the Snack (25 XP) levels the pet to 2", "level " .. tostring(lv))
 	T.check(toasted(ann, "Lv 2", mark, "good"), "flow build: ...a level-up toast")
 	local stDone = tut(ann)
-	T.check(stDone and stDone.Done == true and stDone.Completed == true, "flow build: feeding a pet ends the home chapter (the whole tutorial is done)")
+	-- (Phase 3 appends the pet-battle chapter: the home chapter's end moves on to it instead of finishing everything)
+	T.check(stDone and ((stDone.Done == true and stDone.Completed == true) or (stDone.Chapter or 0) >= 3),
+		"flow build: feeding a pet ends the home chapter (the tutorial is done, or on to the battle chapter)")
 	T.eq(cash(ann), c1 + 1000, "flow build: ...the home chapter's Cash reward (once)")
 	advance(1.2)
 	T.check(Ty.IncomePerSecond(ann) > income1, "flow build: the garden income follows the pet's level", income1 .. " -> " .. Ty.IncomePerSecond(ann))
@@ -1183,7 +1185,8 @@ S.p2flow_prestige = guarded("p2flow_prestige", function()
 			"flow merge: the live profile adopts the merged balances (HUD attributes too)")
 		T.check(home(ann).Prestige == 1 and stationModel(annInfo, "Vault") == nil and stationModel(annInfo, "Press1") == nil,
 			"flow merge: ...and the plot keeps showing the prestiged home")
-		T.check(tut(ann) and tut(ann).Done == true and DataS.GetTutorial(ann).Done == true, "flow merge: ...and the finished tutorial stays finished")
+		T.check(tut(ann) and (tut(ann).Done == true or (tut(ann).Chapter or 0) >= 3) and DataS.GetTutorial(ann).Done == true,
+			"flow merge: ...and the finished tutorial stays finished (or on the battle chapter)")
 	end
 	K.flushErrors("p2flow_prestige")
 	K.flushWarnings("p2flow_prestige", ALLOWED_WARNINGS)
@@ -1530,7 +1533,7 @@ S.p2flow_rejoin = guarded("p2flow_rejoin", function()
 	T.check(sameMap(DataS.GetFood(ann), keep.Food) and DataS.GetPetLevel(ann, PK.Make(F.eco, "Golden")) == keep.Golden
 		and countKeys(prof.Hybrids) == keep.Hybrids and mapText((prof.Tiers or {})[F.eco]) == keep.Tiers,
 		"flow rejoin: food, pet levels, the Golden copy and the hybrid are back")
-	T.check(tut(ann) and tut(ann).Done == true, "flow rejoin: the finished tutorial stays finished")
+	T.check(tut(ann) and (tut(ann).Done == true or (tut(ann).Chapter or 0) >= 3), "flow rejoin: the finished tutorial stays finished (or on the battle chapter)")
 	local h = home(ann)
 	T.check(h and h.Prestige == 1 and sameMap(h.Stations, keep.Home.Stations) and sameMap(h.Garden, keep.Home.Garden) and sameMap(h.Gym, keep.Home.Gym),
 		"flow rejoin: the saved home is intact (prestige, stations, garden, gym)")

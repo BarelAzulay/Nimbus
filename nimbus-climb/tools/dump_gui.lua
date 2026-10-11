@@ -30,6 +30,12 @@
 --   npc[:<n>]             the NPC dialog of NPC n (default 1); the NPCs are built by the real NpcService
 --   dev                   the owner-only DEV panel (NC_Dev attribute), when DevController exists
 --   toasts                four side toasts (info / good / bad / token)
+--   arena[:<view>[:<arg>]]  Phase 3 UI with a battle profile (team, trophies, trials 1-6 cleared): view team (default)
+--                         | team4 (Prestige 1) | newteam | trials[:<level>] | duels | raid | leaders | side (the duel
+--                         invite card, the queue, the open raid card and the event countdown, no window)
+--   battle[:<mode>[:<phase>]]  the Phase 3 battle HUD (BattleController) fed by a real BattleSim stepped at 10 Hz:
+--                         mode trial (default) | duel | raid | spectate, phase fight (default) | ready (two SPECIAL
+--                         buttons lit) | retreat | result (victory card) | lost (defeat card)
 --   portal[:<Id>[:<n>[:<studs>]]]  no game HUD: the real LobbyBuilder + PortalService with n players (default 1) on
 --                         the portal pad (default Medium); its world GUIs mirrored flat into the ScreenGui
 --                         WorldMirror: the pixel billboard at its own size, the eye-level countdown face at the
@@ -831,6 +837,7 @@ local function tutorialPayload(index)
 	local finish = tutorialCfg.FinishReward or {}
 	text = text:gsub("{GiftTokens}", tostring(tutorialCfg.GiftTokens or 0))
 	text = text:gsub("{FinishTokens}", tostring(finish.Tokens or 0))
+	text = text:gsub("{RaidMinutes}", "20") -- (Phase 3: TutorialService fills in BattleCatalog's raid schedule)
 	return {
 		Step = index, Total = #list, Id = step.Id, Title = step.Title, Text = text, Target = step.Target,
 		CompleteOn = step.CompleteOn, Hint = step.Hint, Button = step.Button, Gift = step.Gift == true,
@@ -987,6 +994,229 @@ scenario("toasts", function()
 	advance(0.15)
 	toClient("Notify", "+25 cloud tokens", "token", 8)
 	advance(0.9)
+end)
+
+-- Phase 3 UI (MenuController Team window, ArenaController): a profile with a battle team, trophies and trial
+-- progress, then one view. arena:team | team4 (Prestige 1: four slots) | newteam (empty presets) | trials[:<level>] |
+-- duels | raid | leaders | side (no window: a duel invite, the queue, an open raid and the event countdown)
+scenario("arena", function(view, arg)
+	local snap = snapshot()
+	local owned = {}
+	for id in pairs(snap.Pets or {}) do
+		owned[#owned + 1] = id
+	end
+	table.sort(owned)
+	local levels = {}
+	for i, id in ipairs(owned) do
+		levels[id] = { Level = 1 + (i * 7) % 18, Xp = 0 }
+	end
+	snap.PetLevels = levels
+	view = tostring(view or "team"):lower()
+	local prestige = (view == "team4") and 1 or 0
+	snap.Home = { Level = 12, Prestige = prestige, Stations = { Press1 = 2, Collector = 1, Garden = 1 }, Garden = { owned[5] or "" }, Gym = {}, CollectorCash = 0 }
+	local team = {}
+	if view ~= "newteam" then
+		team = { owned[3], owned[9], owned[12] }
+		if prestige > 0 then
+			team[4] = owned[14]
+		end
+	end
+	snap.Teams = { Presets = { team, { owned[1], owned[2] }, {} }, Active = 1, Slots = prestige > 0 and 4 or 3 }
+	local cleared = {}
+	for level = 1, 6 do
+		cleared[level] = true
+	end
+	snap.Battle = { Trophies = 340, TrialBest = 6, TrialCleared = cleared, Raids = 2, RaidBestDamage = 5400, PvPWins = 9, PvPLosses = 4, EventPets = {} }
+	toClient("ProfileSync", snap)
+	advance(0.4)
+	local leaders = {
+		{ UserId = 501, Name = "StormChaser", Trophies = 1210 },
+		{ UserId = 502, Name = "CloudyKnight", Trophies = 980 },
+		{ UserId = LocalPlayer.UserId, Name = LocalPlayer.Name, Trophies = 340 },
+		{ UserId = 503, Name = "PuddleFan", Trophies = 220 },
+		{ UserId = 504, Name = "Mochi", Trophies = 90 },
+	}
+	local raidOpen = view == "raid" or view == "side"
+	local state = {
+		Next = (view == "side") and { Kind = "DoubleRewards", Name = "Double Rewards", StartsIn = 95, Announced = true }
+			or { Kind = "BossRaid", BossId = "storm_titan", Name = "Storm Titan", StartsIn = raidOpen and 1180 or 95, Announced = true },
+		Raid = raidOpen and { Active = true, BossId = "lava_golem", Name = "Lava Golem", Hp = 61000, MaxHp = 90000, Players = 3, EndsIn = 214, Joinable = true, JoinEndsIn = 41, Waiting = false } or nil,
+		Double = { Active = view == "leaders", EndsIn = 1800 },
+		Leaderboard = leaders,
+	}
+	toClient("ArenaState", state)
+	if view == "duels" and type(Mock.AddPlayer) == "function" then
+		-- two more players in the server to challenge
+		pcall(Mock.AddPlayer, "StormChaser", 501)
+		pcall(Mock.AddPlayer, "CloudyKnight", 502)
+	end
+	if view == "side" or view == "duels" then
+		toClient("BattleState", "Lobby", {
+			Queue = { Queued = view == "side", Waiting = 2, Seconds = 14 },
+			Invites = { { FromUserId = 501, FromName = "StormChaser", Trophies = 1210, Power = 1380, ExpiresIn = 24 } },
+			Sent = view == "duels" and { ToUserId = 502, ToName = "CloudyKnight", ExpiresIn = 18 } or nil,
+		})
+	end
+	advance(0.4)
+	if view == "team" or view == "team4" or view == "newteam" then
+		toClient("OpenPanel", "Team", {})
+	elseif view == "trials" then
+		toClient("OpenPanel", "Trials", { Level = tonumber(arg) or 7 })
+	elseif view == "duels" then
+		toClient("OpenPanel", "Arena", { Tab = "Duels" })
+	elseif view == "raid" then
+		toClient("OpenPanel", "Arena", { Tab = "Raid" })
+	elseif view == "leaders" then
+		toClient("OpenPanel", "Arena", { Tab = "Leaderboard" })
+	end
+	advance(2.5)
+end)
+
+-- Phase 3 battle HUD (BattleController): a real BattleSim (shared/BattleSim.lua) is stepped at 10 Hz here and its
+-- Start / Snapshot / Events / End go to the client through BattleState, the way BattleService sends them.
+--   battle[:<trial|duel|raid|spectate>[:<fight|ready|retreat|result|lost>]]
+local function battleTeam(count, skip)
+	local PetCatalog = req("shared/PetCatalog", true)
+	local out, kinds = {}, {}
+	skip = skip or 0
+	if not PetCatalog or type(PetCatalog.Pets) ~= "table" then
+		return out
+	end
+	for _, def in ipairs(PetCatalog.Pets) do
+		local sp = type(def.Special) == "table" and def.Special.Kind or nil
+		if sp and def.Role == "Combat" and not kinds[sp] and def.Rarity ~= "Secret" and not def.EventOnly then
+			if skip > 0 then
+				skip = skip - 1
+			else
+				kinds[sp] = true
+				out[#out + 1] = { Key = def.Id, PetId = def.Id, Level = 8 + #out * 3, Tier = "Normal", Slot = #out + 1 }
+				if #out >= count then
+					break
+				end
+			end
+		end
+	end
+	return out
+end
+
+local function denseSnapshot(sim, id)
+	local snap = sim:Snapshot()
+	snap.BattleId = id
+	local units, top = {}, 0
+	for k in pairs(snap.Units) do
+		if k > top then
+			top = k
+		end
+	end
+	for k = 1, top do
+		units[k] = snap.Units[k] or { x = 0, z = 0, hp = 0, state = 5, meter = 0 }
+	end
+	snap.Units = units
+	return snap
+end
+
+scenario("battle", function(mode, phase)
+	mode = (mode and mode ~= "") and mode:lower() or "trial"
+	phase = (phase and phase ~= "") and phase:lower() or "fight"
+	local BC = req("client/Controllers/BattleController", true)
+	local Sim = req("shared/BattleSim", true)
+	if not BC or not Sim then
+		fail("BattleController / BattleSim missing")
+	end
+	local me = LocalPlayer.UserId
+	local spectate = mode == "spectate"
+	local simMode = (mode == "raid") and "Raid" or ((mode == "duel" or spectate) and "Duel" or "Trial")
+	local setup = { Mode = simMode, Seed = 11, Id = "dump_battle" }
+	local myPets = battleTeam(mode == "raid" and 4 or 3)
+	if simMode == "Duel" then
+		setup.Teams = {
+			{ Owner = spectate and 77 or me, Side = 1, Pets = myPets },
+			{ Owner = 78, Side = 2, Pets = battleTeam(3, 3) },
+		}
+	elseif simMode == "Raid" then
+		setup.Teams = {
+			{ Owner = me, Side = 1, Pets = myPets },
+			{ Owner = 77, Side = 1, Pets = battleTeam(3, 2) },
+			{ Owner = 78, Side = 1, Pets = battleTeam(3, 4) },
+		}
+		setup.Boss = "storm_titan"
+	else
+		setup.Teams = { { Owner = me, Side = 1, Pets = myPets } }
+		setup.Trial = 7
+	end
+	local sim, why = Sim.new(setup)
+	if not sim then
+		fail("BattleSim.new failed: " .. tostring(why))
+	end
+	local id = "dump_battle"
+	local zoneCF = CFrame.new(0, 300, 0)
+	local d = sim:Describe()
+	d.BattleId = id
+	d.Zone = { CFrame = zoneCF, Size = Vector3.new(d.Zone.X, 30, d.Zone.Z), X = d.Zone.X, Z = d.Zone.Z }
+	d.Names = { [tostring(me)] = LocalPlayer.Name, ["77"] = "Buddy", ["78"] = "Rival" }
+	d.Side = spectate and 0 or 1
+	d.Spectator = spectate
+	d.T = sim:Time()
+	if simMode == "Trial" then
+		d.Trial = { Level = 7, Name = "Ember Ridge", Chapter = 2, MiniBoss = false }
+	end
+	if spectate then
+		LocalPlayer:SetAttribute("InBattle", nil)
+	else
+		LocalPlayer:SetAttribute("InBattle", id)
+	end
+	toClient("BattleState", "Start", d, id)
+	local seconds = ({ fight = 6, ready = 5, retreat = 5, result = 9, lost = 9 })[phase] or 6
+	if simMode == "Raid" then
+		seconds = seconds + 6
+	end
+	local steps = floor(seconds / 0.1)
+	for i = 1, steps do
+		local evs = sim:Step(0.1)
+		if #evs > 0 then
+			toClient("BattleState", "Events", evs, id)
+		end
+		toClient("BattleState", "Snapshot", denseSnapshot(sim, id), id)
+		advance(0.1)
+		if phase == "retreat" and i == steps - 12 then
+			sim:Command(me, "Retreat")
+		end
+	end
+	if phase == "ready" then
+		-- full meters on the first two pets (white-box: a render of the lit SPECIAL buttons)
+		for _, u in ipairs(sim.units or {}) do
+			if u.owner == me and (u.slot == 1 or u.slot == 2) then
+				u.meter = 100
+			end
+		end
+		for _ = 1, 3 do
+			local evs = sim:Step(0.1)
+			if #evs > 0 then
+				toClient("BattleState", "Events", evs, id)
+			end
+			toClient("BattleState", "Snapshot", denseSnapshot(sim, id), id)
+			advance(0.1)
+		end
+		advance(0.2)
+	end
+	if phase == "result" or phase == "lost" then
+		local won = phase == "result"
+		local rewards
+		if simMode == "Raid" then
+			rewards = { Tokens = 420, Gems = won and 5 or 0, Xp = 180, Trophies = 0, LevelUps = 2, Tier = won and "Gold" or "Bronze", Share = 0.34, Damage = 5120, EventPet = nil }
+		elseif simMode == "Duel" then
+			rewards = { Tokens = won and 60 or 20, Gems = 0, Xp = 50, Trophies = won and 25 or -15, LevelUps = 0 }
+		else
+			rewards = { Tokens = won and 150 or 0, Gems = won and 10 or 0, Xp = won and 90 or 0, Trophies = 0, LevelUps = won and 1 or 0, FirstClear = won, Level = 7 }
+		end
+		LocalPlayer:SetAttribute("InBattle", nil)
+		toClient("BattleState", "End", {
+			BattleId = id, Mode = simMode, Outcome = won and "Win" or "Loss", Won = won, Spectator = false,
+			Reason = won and (simMode == "Raid" and "BossDown" or "Wipe") or (simMode == "Raid" and "Timeout" or "Wipe"),
+			Rewards = rewards,
+		}, id)
+		advance(0.8)
+	end
 end)
 
 ----------------------------------------------------------------------
