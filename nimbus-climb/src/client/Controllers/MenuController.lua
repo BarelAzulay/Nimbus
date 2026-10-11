@@ -6365,6 +6365,10 @@ P3.Define = function()
 					warnOnce("TeamSet", err)
 				end
 			end
+			-- a refused edit (busy pet, slot 4 ...) brings no ProfileSync: show the saved preset again once the draft expires
+			task.delay(DRAFT_HOLD + 0.1, function()
+				refreshTeam()
+			end)
 		end)
 	end
 

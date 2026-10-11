@@ -1804,10 +1804,13 @@ local function buildArena()
 		local nextEvent = S.Arena and type(S.Arena.Next) == "table" and S.Arena.Next or nil
 		local bossId = raid and raid.BossId or (nextEvent and nextEvent.BossId)
 		local boss = bossInfo(bossId)
-		clearChildren(ui.BossElement)
 		local element = boss and boss.Element
-		if element then
-			elementPill(ui.BossElement, element, 18, 1)
+		if ui.BossElementSig ~= tostring(element) then
+			ui.BossElementSig = tostring(element)
+			clearChildren(ui.BossElement)
+			if element then
+				elementPill(ui.BossElement, element, 18, 1)
+			end
 		end
 		ui.BossName.Text = (raid and raid.Name) or (boss and boss.Name) or (nextEvent and nextEvent.Name) or "Boss Raid"
 		ui.BossBlurb.Text = boss and tostring(boss.Blurb or "") or "A giant boss appears on the colosseum floor. Everyone in the arena can fight it together!"

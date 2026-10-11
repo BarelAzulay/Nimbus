@@ -381,7 +381,7 @@ local gymLow, gymHigh, gymSlots = gymNumbers()
 -- Phase 3 numbers (BattleCatalog: raids, trials, trophies, synergy)
 ----------------------------------------------------------------------
 local BC = BattleCatalog or {}
-local raidMinutes, trialCount, trophyWin, synergyPair, balancedHealth = 20, 30, 20, "10%", "10%"
+local raidMinutes, trialCount, trophyWin, synergyPair = 20, 30, 20, "10%"
 do
 	local events = type(BC.Events) == "table" and BC.Events or {}
 	local first = type(events.Schedule) == "table" and events.Schedule[1] or nil
@@ -397,9 +397,6 @@ do
 	local rules = type(BC.SynergyRules) == "table" and BC.SynergyRules or nil
 	if rules and type(rules.SameElement) == "table" and tonumber(rules.SameElement[2]) then
 		synergyPair = percent(rules.SameElement[2])
-	end
-	if rules and tonumber(rules.BalancedHealth) then
-		balancedHealth = percent(rules.BalancedHealth)
 	end
 end
 
