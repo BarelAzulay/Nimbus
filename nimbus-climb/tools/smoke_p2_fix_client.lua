@@ -1,5 +1,5 @@
 -- smoke_p2_fix_client.lua: regression checks for the Phase 2 review fixes on the client (HomeFx). Loaded by
--- tools/smoke.py in the CLIENT world only:
+-- tools/smoke.py in the client worlds (the desktop one and the touch phone one):
 --   client_p2fix_signs  pad signs stay readable (World text rule). A real home (HomeBuilder, as the server builds it)
 --                       is owned by the local player and seen through a Roblox classic camera (12.5 studs behind the
 --                       character, 15 degrees down, 70 degree field of view) with a real perspective projection (the
@@ -12,7 +12,14 @@
 --                       slightly moving camera sees no sign flicker, a walk shows no flashes and no overlap lasting
 --                       past one layout pass; a sign HomeBuilder rebuilds (new price) keeps its pad's answer at
 --                       once; standing at a locked pad shows its lock reason; another player's signs stay hidden
---                       (HomeFx.SignState says why for every sign)
+--                       (HomeFx.SignState says why for every sign). The HUD is drawn over every billboard: on the
+--                       844x390 screen, up the gate path of a Kitchen-step home (where the old layout put the Garden
+--                       Fence sign under the menu's Pets / Shop tiles and the Lanterns sign under the Cash pill) no
+--                       shown sign's plate reaches into the menu column, the currency pills, the vitals card or the
+--                       hotbar, the signs the HUD covers are held back (Stats().SignsUnderHud) and their room goes to
+--                       other signs; walking, a sign sliding under the HUD is gone by the next layout pass (hudWalk)
+--   client_p2fix_signs_mobile  (phone world) the same HUD walk on an 844x390 touch phone: the raised vitals card and
+--                       the RUN / DASH buttons as well
 --   client_p2fix_pets   garden / gym pets are built under a per-frame budget (the review measured 13 PetBuilder
 --                       builds in ONE frame, ~100 ms, when a full neighbour home came into range): a full home
 --                       (Garden L8 with 8 pets, Gym L5 with 5) fills in over several frames, never more than
@@ -167,6 +174,47 @@ local function onScreen(box)
 	return w > 0 and h > 0 and inside / (w * h) or 0
 end
 
+-- a GUI object's box on the screen (viewport px: a ScreenGui with IgnoreGuiInset = false starts below the top bar)
+local function screenRect(inst)
+	local g = inst:FindFirstAncestorOfClass("ScreenGui")
+	local dy = (g and not g.IgnoreGuiInset) and (Mock.TopInset or 0) or 0
+	local p, s = inst.AbsolutePosition, inst.AbsoluteSize
+	return { x0 = p.X, y0 = p.Y + dy, x1 = p.X + s.X, y1 = p.Y + s.Y + dy }
+end
+
+-- where the HUD (drawn over every billboard) covers the screen now: { rect, ... } plus each rect by its name
+local function hudRects()
+	local out = {}
+	local pg = LocalPlayer:FindFirstChild("PlayerGui")
+	local function add(name, inst)
+		if inst and inst:IsA("GuiObject") and KC.isShown(inst) and inst.AbsoluteSize.X > 0 and inst.AbsoluteSize.Y > 0 then
+			local r = screenRect(inst)
+			r.Name = name
+			out[name] = r
+			out[#out + 1] = r
+		end
+	end
+	local menu = pg and pg:FindFirstChild("NimbusMenu")
+	local hud = pg and pg:FindFirstChild("NimbusHud")
+	local hotbar = pg and pg:FindFirstChild("NimbusHotbar")
+	add("menu column", menu and menu:FindFirstChild("MenuColumn"))
+	add("currency pills", hud and hud:FindFirstChild("Currency", true))
+	add("vitals card", hud and hud:FindFirstChild("Vitals", true))
+	add("hotbar", hotbar and hotbar:FindFirstChild("Hotbar"))
+	-- touch devices: the RUN / DASH buttons
+	local mobile = pg and pg:FindFirstChild("MobileControls")
+	for _, d in ipairs(mobile and mobile:GetDescendants() or {}) do
+		if d:IsA("GuiButton") then
+			add("touch " .. d.Name, d)
+		end
+	end
+	return out
+end
+
+local function rectText(r)
+	return string.format("x %.0f..%.0f y %.0f..%.0f", r.x0, r.x1, r.y0, r.y1)
+end
+
 local function padOf(gui)
 	local node = gui.Parent
 	for _ = 1, 6 do
@@ -190,6 +238,141 @@ local function padSigns(root)
 		end
 	end
 	return out
+end
+
+----------------------------------------------------------------------------------------------------
+-- the HUD over the pad signs (client_p2fix_signs step 8, and client_p2fix_signs_mobile on a touch phone)
+----------------------------------------------------------------------------------------------------
+-- The HUD is drawn OVER every billboard. On the 844x390 screen, a Kitchen-step home (Press1 L3, Press2 L2, Collector
+-- L1, House L1) owned by the local player on `spot`, seen from its gate path, where the old layout put the Garden
+-- Fence sign under the menu's Pets / Shop tiles and the Lanterns sign under the Cash pill (the caller sets Cash and
+-- Gems: the server mirrors all three currencies on every player). At every stop up the path no shown sign's plate
+-- (outline included) reaches into the menu column, the currency pills, the vitals card, the hotbar or (on a touch
+-- device) the RUN / DASH buttons, every eligible sign whose plate the HUD covers is held back (Stats().SignsUnderHud
+-- counts at least those) and the room it leaves goes to other signs; walking up the path, a sign sliding under the HUD
+-- is gone by the next layout pass. Needs the real projection on the camera; leaves the viewport at 844x390 (the
+-- caller puts it back).
+local function hudWalk(label, HF, HB, TC, spot, cam, hrp)
+	local P = "HomeFx HUD " .. label .. ": "
+	local function state(gui)
+		if type(HF.SignState) ~= "function" then
+			return nil
+		end
+		return HF.SignState(gui)
+	end
+	local plot = spot.PlotCFrame
+	local function stand(sx, sz, lx, lz)
+		hrp.CFrame = CFrame.new((plot * CFrame.new(sx, 3, sz)).Position)
+		cam.CFrame = classicCamera(plot, sx, sz, lx, lz)
+	end
+	local kitchen = { Stations = { Press1 = 3, Press2 = 2, Collector = 1, House = 1 }, Prestige = 0 }
+	HB.BuildHome(spot, kitchen)
+	HB.SetPads(spot, TC.AvailablePads(kitchen))
+	local signsHere = padSigns(spot.Folder)
+	Mock.SetViewport(844, 390)
+	stand(0, -40, 0, 0)
+	KC.advance(1.5)
+	local hud = hudRects()
+	T.check(hud["menu column"] ~= nil and hud["currency pills"] ~= nil, P .. "the screen shows the menu column and the currency pills (precondition)",
+		(hud["menu column"] and rectText(hud["menu column"]) or "no column") .. ", " .. (hud["currency pills"] and rectText(hud["currency pills"]) or "no pills"))
+	local function keys(t)
+		local out = {}
+		for k in pairs(t) do
+			out[#out + 1] = k
+		end
+		table.sort(out)
+		return table.concat(out, ", ")
+	end
+	local function near(s)
+		local anchor = s.Gui.Adornee or s.Gui.Parent
+		return (anchor.Position + s.Gui.StudsOffsetWorldSpace - hrp.Position).Magnitude
+	end
+	local stops, emptyStops, shownTotal, covered = 0, 0, 0, 0
+	local underHud, coveredIds, statsLow, roomTo = {}, {}, {}, {}
+	for z = -40, -8, 4 do
+		stand(0, z, 0, z + 40)
+		KC.advance(0.6)
+		hud = hudRects()
+		stops = stops + 1
+		local shownNow, coveredNow = {}, {}
+		for _, s in ipairs(signsHere) do
+			local box = s.Gui.Parent and signBoxes(s.Gui, cam)
+			if box and s.Gui.Enabled then
+				shownNow[#shownNow + 1] = { Sign = s, Box = box }
+				for _, r in ipairs(hud) do
+					if boxesMeet(box, r, EDGE) then
+						underHud[#underHud + 1] = string.format("%s under the %s at z %d (plate %s, %s)", s.Id, r.Name, z, rectText(box), rectText(r))
+					end
+				end
+			elseif box and state(s.Gui) == "Crowded" then
+				for _, r in ipairs(hud) do
+					if boxesMeet(box, r) then
+						coveredNow[#coveredNow + 1] = { Sign = s, Box = box }
+						coveredIds[s.Id .. " (" .. r.Name .. ")"] = true
+						break
+					end
+				end
+			end
+		end
+		shownTotal = shownTotal + #shownNow
+		covered = covered + #coveredNow
+		if #shownNow == 0 then
+			emptyStops = emptyStops + 1
+		end
+		local st = HF.Stats()
+		if (tonumber(st.SignsUnderHud) or 0) < #coveredNow then
+			statsLow[#statsLow + 1] = string.format("z %d: %s < %d", z, tostring(st.SignsUnderHud), #coveredNow)
+		end
+		-- a shown sign where a sign the HUD holds back would have stood: the room went to it. Only pairs where the held
+		-- back sign is clearly nearer the player (by more than the 4 studs a shown sign keeps) and not locked count: the
+		-- layout places that one first, so only the HUD can have given its room away
+		for _, a in ipairs(shownNow) do
+			for _, b in ipairs(coveredNow) do
+				if not b.Sign.Locked and near(b.Sign) + 4 < near(a.Sign) and coversText(a.Box, b.Box) then
+					roomTo[a.Sign.Id .. " for " .. b.Sign.Id] = true
+				end
+			end
+		end
+	end
+	T.info(P .. "Kitchen-step home up the gate path: " .. stops .. " stops, " .. shownTotal .. " signs shown in all, "
+		.. covered .. " held back under the HUD (" .. keys(coveredIds) .. "), their room given to: " .. keys(roomTo))
+	T.check(#underHud == 0 and emptyStops == 0, P .. "no shown pad sign's plate reaches into the menu column, the currency pills, the vitals card, the hotbar or a touch button (a sign shows at every stop)",
+		#underHud > 0 and (#underHud .. " times, e.g. " .. underHud[1]) or (emptyStops .. " of " .. stops .. " stops without a sign"))
+	T.check(covered > 0, P .. "...where the HUD does cover eligible signs: they are held back (crowded)", covered .. " held back")
+	T.check(#statsLow == 0, P .. "...and Stats().SignsUnderHud counts them", table.concat(statsLow, "; "))
+	T.check(next(roomTo) ~= nil, P .. "...and the room they leave goes to other signs", "shown in their place: " .. keys(roomTo))
+
+	-- walking up the path (16 studs/s, a layout pass every 3 frames)
+	stand(0, -40, 0, 0)
+	KC.advance(1.0)
+	hud = hudRects()
+	local runs, worst, worstText, walked = {}, 0, "", 0
+	for z = -40, -8, 16 / 30 do
+		stand(0, z, 0, z + 40)
+		step(1)
+		walked = walked + 1
+		for _, s in ipairs(signsHere) do
+			local box = s.Gui.Enabled and s.Gui.Parent and signBoxes(s.Gui, cam)
+			local hit = nil
+			for _, r in ipairs(box and hud or {}) do
+				if boxesMeet(box, r, EDGE) then
+					hit = r
+					break
+				end
+			end
+			if hit then
+				runs[s.Gui] = (runs[s.Gui] or 0) + 1
+				if runs[s.Gui] > worst then
+					worst, worstText = runs[s.Gui], s.Id .. " under the " .. hit.Name
+				end
+			else
+				runs[s.Gui] = nil
+			end
+		end
+	end
+	T.info(P .. "gate path walk: " .. walked .. " frames, longest stay of a shown sign under the HUD " .. worst .. " frames"
+		.. (worstText ~= "" and (" (" .. worstText .. ")") or ""))
+	T.check(worst <= 4, P .. "...walking up the path, a sign sliding under the HUD is hidden by the next layout pass", worst .. " frames " .. worstText)
 end
 
 ----------------------------------------------------------------------------------------------------
@@ -429,11 +612,13 @@ S.client_p2fix_signs = guarded("client_p2fix_signs", function()
 		T.check(#theirSigns > 0 and theirsShown == 0 and theirsOther == #theirSigns, "HomeFx fix: another player's pad signs stay hidden (SignState \"Other\")",
 			theirsShown .. " shown, " .. theirsOther .. " of " .. #theirSigns .. " Other")
 
-		-- 5. the phone: the old code covered Cloud Press 1 / 2 and the Pet Garden completely here
+		-- 5. the phone: the old code covered Cloud Press 1 / 2 and the Pet Garden completely here. The HUD takes the
+		-- top-right (currency pills) and the left edge (menu column) of this screen and no sign may go under it (step 8),
+		-- so from here one sign has room (before the HUD counted, three showed: one of them under the menu column)
 		Mock.SetViewport(844, 390)
 		stand(0, -30, 0, 10)
 		KC.advance(1.0)
-		audit("Villa from the gate path on an 844x390 phone", 2)
+		audit("Villa from the gate path on an 844x390 phone", 1)
 		Mock.SetViewport(1920, 1080)
 
 		-- 6. a walk up the gate path (16 studs/s): no overlap outlives a layout pass, no flashes
@@ -509,6 +694,10 @@ S.client_p2fix_signs = guarded("client_p2fix_signs", function()
 		else
 			T.warn("HomeFx fix: no locked pad on the test home, lock-reason check skipped")
 		end
+
+		-- 8. the HUD over the signs on an 844x390 screen (hudWalk): a Kitchen-step home from its gate path
+		LocalPlayer:SetAttribute("Gems", 25)
+		hudWalk("844x390", HF, HB, TC, mine, cam, hrp)
 	end)
 	-- put everything back
 	Mock.SetViewport(savedViewport.X, savedViewport.Y)
@@ -525,6 +714,7 @@ S.client_p2fix_signs = guarded("client_p2fix_signs", function()
 		Mock.RemovePlayer(neighbour)
 	end
 	LocalPlayer:SetAttribute("Cash", nil)
+	LocalPlayer:SetAttribute("Gems", nil)
 	KC.advance(0.3)
 	if not ok then
 		T.fail("HomeFx fix: sign layout scenario raised an error", tostring(err))
@@ -538,6 +728,80 @@ S.client_p2fix_signs = guarded("client_p2fix_signs", function()
 	end
 	T.check(warned == nil and #Mock.Errors == errorsBefore, "HomeFx fix: no errors or warnings from HomeFx (signs)", tostring(warned))
 	KC.flushErrors("client_p2fix_signs")
+end)
+
+----------------------------------------------------------------------------------------------------
+-- client_p2fix_signs_mobile (the phone world: a touch device, so the real phone HUD with RUN / DASH)
+----------------------------------------------------------------------------------------------------
+S.client_p2fix_signs_mobile = guarded("client_p2fix_signs_mobile", function()
+	local UserInputService = game:GetService("UserInputService")
+	if not T.check(UserInputService.TouchEnabled, "HomeFx HUD 844x390 touch: the phone world is a touch device (precondition)") then
+		return
+	end
+	local HF = moduleAt("client", "Controllers/HomeFx")
+	local HB = moduleAt("server", "Services/HomeBuilder")
+	local TC = moduleAt("shared", "TycoonCatalog")
+	if not (HF and HB and TC and type(HF.Init) == "function") then
+		T.warn("HomeFx HUD 844x390 touch: HomeFx / HomeBuilder / TycoonCatalog missing in the phone world, skipped")
+		return
+	end
+	if not installProjection() then
+		T.warn("HomeFx HUD 844x390 touch: the mock has no Camera class table, skipped")
+		return
+	end
+	HF.Init()
+	local outputBefore, errorsBefore = #Mock.Output, #Mock.Errors
+	local cam = workspace.CurrentCamera
+	local savedCam, savedViewport = cam and cam.CFrame, Mock.Viewport
+	local character = LocalPlayer.Character
+	local hrp = character and character:FindFirstChild("HumanoidRootPart")
+	local savedHrp, savedAnchored = hrp and hrp.CFrame, hrp and hrp.Anchored
+	local root = Instance.new("Folder")
+	root.Name = "SmokeFixSignsTouch"
+	root.Parent = workspace
+	local ok, err = pcall(function()
+		if not (cam and hrp) then
+			T.warn("HomeFx HUD 844x390 touch: no camera or character in the phone world, skipped")
+			return
+		end
+		hrp.Anchored = true
+		local f = Instance.new("Folder")
+		f.Name = "Spot_75"
+		f.Parent = root
+		local base = CFrame.new(5600, 300, -5600)
+		local spot = { Index = 75, PlotCFrame = base, PlotSize = TC.PlotSize, Center = base.Position, Folder = f }
+		HB.PreparePlot(spot)
+		HB.SetOwner(spot, LocalPlayer)
+		LocalPlayer:SetAttribute("Cash", 1840)
+		LocalPlayer:SetAttribute("Gems", 25)
+		hudWalk("844x390 touch", HF, HB, TC, spot, cam, hrp)
+	end)
+	-- put everything back
+	Mock.SetViewport(savedViewport.X, savedViewport.Y)
+	removeProjection()
+	if hrp and savedHrp then
+		hrp.CFrame = savedHrp
+		hrp.Anchored = savedAnchored
+	end
+	if cam and savedCam then
+		cam.CFrame = savedCam
+	end
+	root:Destroy()
+	LocalPlayer:SetAttribute("Cash", nil)
+	LocalPlayer:SetAttribute("Gems", nil)
+	KC.advance(0.3)
+	if not ok then
+		T.fail("HomeFx HUD 844x390 touch: scenario raised an error", tostring(err))
+	end
+	local warned = nil
+	for i = outputBefore + 1, #Mock.Output do
+		local o = Mock.Output[i]
+		if o.kind == "warn" and o.text:find("HomeFx", 1, true) then
+			warned = o.text
+		end
+	end
+	T.check(warned == nil and #Mock.Errors == errorsBefore, "HomeFx HUD 844x390 touch: no errors or warnings from HomeFx", tostring(warned))
+	KC.flushErrors("client_p2fix_signs_mobile")
 end)
 
 ----------------------------------------------------------------------------------------------------

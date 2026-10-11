@@ -52281,9 +52281,10 @@ return FusionController
 --   HomeFx.Init()
 --   HomeFx.Count() -> number of home plots tracked
 --   HomeFx.Stats() -> { Homes, Near, Stations, Presses, Pops, Blocks, Pool, HiddenPrompts, HiddenSigns, SignsShown,
---                       SignsCrowded, SignsAway, GardenPets, GymPets, PetBuilds, PetColdBuilds, PetPoolHits, PetPool,
---                       PetFrameMost }   (Pet*: models built / first-time builds / taken from the pool, so far;
---                       models waiting in the pool now; the most garden / gym pets placed in one frame)
+--                       SignsCrowded, SignsUnderHud, SignsAway, GardenPets, GymPets, PetBuilds, PetColdBuilds,
+--                       PetPoolHits, PetPool, PetFrameMost }   (SignsUnderHud: the crowded signs whose place the HUD
+--                       covers; Pet*: models built / first-time builds / taken from the pool, so far; models waiting
+--                       in the pool now; the most garden / gym pets placed in one frame)
 --   HomeFx.SignState(padSign) -> "Shown" | "Crowded" | "Away" | "Pending" | "Locked" | "Other" | nil (see SignState)
 --
 -- Every Folder tagged "NC_Home" (HomeBuilder's per-plot `Home` folder, attributes OwnerUserId / CollectorCash /
@@ -52311,7 +52312,11 @@ return FusionController
 --     adornee + studs offsets, plate size from the sign's Plate), taken nearest-to-the-player first (lock reasons
 --     after what can be bought now, unless the player stands at that pad), and a sign whose plate would reach into
 --     the text of a sign already shown is hidden ("Crowded") until there is room for it again; signs Roblox does not
---     draw or that are mostly off the screen take no room. The pads keep their glow and pulse. A sign the layout has
+--     draw or that are mostly off the screen take no room. The HUD is drawn OVER every billboard, so where this
+--     game's own HUD covers the screen (the menu column, the currency pills and the rest of NimbusHud, the hotbar,
+--     the touch buttons, the tutorial card) counts as signs already shown: a sign that would land under it is hidden
+--     the same way and its room goes to another sign (measured every K.SIGN_HUD_CHECK seconds and when the screen
+--     size changes, see measureHud). The pads keep their glow and pulse. A sign the layout has
 --     not placed yet starts hidden (one frame), a rebuilt sign keeps its pad's last answer, and hysteresis
 --     (K.SIGN_CLEAR px, K.SIGN_KEEP studs, K.SIGN_HOLD seconds) keeps signs from flickering while the camera moves.
 --   * the local player's own pads glow when the Cash attribute can pay their Price and dim (price in red) when not.
@@ -52335,6 +52340,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
 local CollectionService = game:GetService("CollectionService")
 local Workspace = game:GetService("Workspace")
+local GuiService = game:GetService("GuiService")
 
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Config = require(Shared.Config)
@@ -52404,6 +52410,12 @@ local K = {
 	SIGN_RANGE_SLACK = 2, -- studs past a sign's MaxDistance it still counts as drawn (Roblox measures to the adornee)
 	SIGN_ONSCREEN = 0.85, -- share of a plate inside the screen to keep showing it (a cut-off plate reads as nothing)...
 	SIGN_ONSCREEN_BACK = 0.95, -- ...and to show it again
+	SIGN_HUD_GAP = 6, -- px kept between a plate and the HUD (the plate's 3.5 px outline, the HUD's strokes and coins)
+	SIGN_HUD_CLEAR = 24, -- px at 1080p (scaled with the screen height): a sign hidden next to the HUD comes back only
+	--                      this much farther from it. Signs move together, but against the HUD a sign moves as much
+	--                      as the camera turns (0.5 degrees = ~7 px at 1080p), so K.SIGN_CLEAR is not enough there
+	SIGN_HUD_CHECK = 1, -- seconds between two measurements of where the HUD is (not every pass: it rarely moves)...
+	SIGN_HUD_SETTLE = 0.25, -- ...and after a screen size change, once more this soon (the HUD lays itself out again)
 	PET_NEAR = 110, -- garden / gym pets are shown for homes this close to the camera (hysteresis +20)
 	PET_SCALE = 0.85,
 	PET_ANIM_STEP = 0.125, -- seconds between two PetBuilder.Animate calls of the garden / gym pets
@@ -52448,8 +52460,13 @@ local signSince = setmetatable({}, { __mode = "k" }) -- [BillboardGui] = clock w
 local signState = setmetatable({}, { __mode = "k" }) -- [BillboardGui] = why it shows or not (HomeFx.SignState)
 local signKeys = setmetatable({}, { __mode = "k" }) -- [BillboardGui] = the StationId of its pad
 local plateSizes = setmetatable({}, { __mode = "k" }) -- [BillboardGui] = Vector2, its plate's last laid-out size (px)
+local signUnderHud = setmetatable({}, { __mode = "k" }) -- [BillboardGui] = true while the HUD covers its place
 local signFocus = nil -- where the local player is (character, else camera), refreshed every K.SIGN_CHECK
 local nextSignCheck = 0
+local hudRects = {} -- where the HUD covers the screen (viewport px, grown by K.SIGN_HUD_GAP), see hudObstacles
+local hudNext = 0 -- clock of the next HUD measurement
+local hudViewX, hudViewY = 0, 0 -- the viewport size it was measured at
+local hudWarned = false
 local petPool = {} -- pet models put away (Parent = nil), oldest first: { Key = "<key>|<scale>", Model, Lo }
 local petFrameBuilds = 0 -- pet models built or taken from the pool in this frame (a first-time sculpt counts as full)
 local petFramePlaced = 0 -- pet models really placed in this frame
@@ -52857,28 +52874,194 @@ local function signPoint(gui, cam)
 	return p
 end
 
+-- The HUD over the signs: every ScreenGui is drawn on top of every billboard, so a sign laid out where the HUD is
+-- would be cut. measureHud returns where this game's own HUD covers the screen as rectangles in viewport px (the
+-- space of Camera:WorldToViewportPoint), each grown by K.SIGN_HUD_GAP:
+--   * NimbusMenu: the menu column (MenuColumn, left edge)
+--   * NimbusHud: every shown panel of its corner holders (the currency pills, the vitals card, the match / party
+--     panels, the title card) and the corner blocks HudController publishes on the gui (TopLeftRight x
+--     TopLeftBottom; TopRightLeft .. the right edge x TopRightBottom: the currency stack on short screens)
+--   * NimbusHotbar: the hotbar; MobileControls: the touch RUN / DASH buttons
+--   * NimbusTutorial: the tutorial card, or only its portrait bubble (+ "!" badge, "Tap me!" tag) while it is folded
+-- A ScreenGui with IgnoreGuiInset = false is laid out below Roblox's top bar: its AbsolutePosition is shifted by the
+-- GUI inset (GuiService:GetGuiInset()) to reach viewport px; an IgnoreGuiInset = true gui (MobileControls) covers
+-- the whole screen from its own AbsolutePosition. Every source is optional: a missing, disabled or hidden one covers
+-- nothing.
+local function guiInset()
+	local inset = nil
+	pcall(function()
+		inset = GuiService:GetGuiInset()
+	end)
+	if typeof(inset) == "Vector2" then
+		return inset.X, inset.Y
+	end
+	return 0, 0
+end
+
+-- true when `inst` is inside `root` and nothing between them is hidden
+local function shownIn(inst, root)
+	local node = inst
+	while node and node ~= root do
+		if node:IsA("GuiObject") and not node.Visible then
+			return false
+		end
+		node = node.Parent
+	end
+	return node ~= nil
+end
+
+-- inst's box in viewport px grown by the gap (nil when it is not a shown GuiObject of `root` with a size)
+local function hudBox(inst, root, dx, dy)
+	if not (inst and inst:IsA("GuiObject") and shownIn(inst, root)) then
+		return nil
+	end
+	local p, s = inst.AbsolutePosition, inst.AbsoluteSize
+	if not (s.X >= 1 and s.Y >= 1) then
+		return nil
+	end
+	local g = K.SIGN_HUD_GAP
+	return { X0 = p.X + dx - g, Y0 = p.Y + dy - g, X1 = p.X + s.X + dx + g, Y1 = p.Y + s.Y + dy + g, Hud = true }
+end
+
+local function measureHud(vp)
+	local list = {}
+	local pg = localPlayer and localPlayer:FindFirstChildOfClass("PlayerGui")
+	if not pg then
+		return list
+	end
+	local insetX, insetY = guiInset()
+	local function add(r)
+		if r then
+			list[#list + 1] = r
+		end
+		return r
+	end
+	-- a ScreenGui that is drawn now, and the offset from its descendants' AbsolutePosition to viewport px (one that
+	-- covers the whole screen starts at its own AbsolutePosition: right whether Roblox counts that from the top of
+	-- the screen, as this project's measurements assume, or from below the top bar)
+	local function gui(name)
+		local g = pg:FindFirstChild(name)
+		if not (g and g:IsA("ScreenGui") and g.Enabled) then
+			return nil, 0, 0
+		end
+		if g.IgnoreGuiInset then
+			local origin = g.AbsolutePosition
+			return g, -origin.X, -origin.Y
+		end
+		return g, insetX, insetY
+	end
+	local menu, mx, my = gui("NimbusMenu")
+	if menu then
+		add(hudBox(menu:FindFirstChild("MenuColumn"), menu, mx, my))
+	end
+	local hud, hx, hy = gui("NimbusHud")
+	if hud then
+		for _, holder in ipairs(hud:GetChildren()) do
+			if holder:IsA("GuiObject") and holder.Visible then
+				for _, panel in ipairs(holder:GetChildren()) do
+					add(hudBox(panel, hud, hx, hy))
+				end
+			end
+		end
+		local function attr(name)
+			local v = tonumber(hud:GetAttribute(name))
+			if v == nil or v ~= v then
+				return 0
+			end
+			return v
+		end
+		local g = K.SIGN_HUD_GAP
+		local right, bottom = attr("TopLeftRight"), attr("TopLeftBottom")
+		if right > 0 and bottom > 0 then
+			add({ X0 = hx - g, Y0 = hy - g, X1 = hx + right + g, Y1 = hy + bottom + g, Hud = true })
+		end
+		local left = attr("TopRightLeft")
+		bottom = attr("TopRightBottom")
+		if left > 0 and bottom > 0 then
+			add({ X0 = hx + left - g, Y0 = hy - g, X1 = vp.X + g, Y1 = hy + bottom + g, Hud = true })
+		end
+	end
+	local hotbar, bx, by = gui("NimbusHotbar")
+	if hotbar then
+		add(hudBox(hotbar:FindFirstChild("Hotbar"), hotbar, bx, by))
+	end
+	local mobile, tx, ty = gui("MobileControls")
+	if mobile then
+		for _, d in ipairs(mobile:GetDescendants()) do
+			if d:IsA("GuiButton") then
+				add(hudBox(d, mobile, tx, ty))
+			end
+		end
+	end
+	local tutorial, ux, uy = gui("NimbusTutorial")
+	local card = tutorial and tutorial:FindFirstChild("TutorialPanel")
+	if card then
+		local main = card:FindFirstChild("Main", true)
+		if main and shownIn(main, tutorial) then
+			add(hudBox(card, tutorial, ux, uy))
+		else
+			local portrait = card:FindFirstChild("Portrait", true)
+			local bubble = add(hudBox(portrait, tutorial, ux, uy))
+			if bubble then
+				for _, c in ipairs(portrait:GetChildren()) do
+					local r = hudBox(c, tutorial, ux, uy)
+					if r and (r.X0 < bubble.X0 or r.Y0 < bubble.Y0 or r.X1 > bubble.X1 or r.Y1 > bubble.Y1) then
+						add(r) -- the badge / tag sticking out of the bubble
+					end
+				end
+			end
+		end
+	end
+	return list
+end
+
+-- the HUD rectangles for this layout pass: measured again every K.SIGN_HUD_CHECK seconds, and at once (then once
+-- more K.SIGN_HUD_SETTLE later) when the viewport changes size
+local function hudObstacles(vp)
+	local resized = vp.X ~= hudViewX or vp.Y ~= hudViewY
+	if resized or clock >= hudNext then
+		hudViewX, hudViewY = vp.X, vp.Y
+		hudNext = clock + (resized and K.SIGN_HUD_SETTLE or K.SIGN_HUD_CHECK)
+		local ok, result = pcall(measureHud, vp)
+		if ok and type(result) == "table" then
+			hudRects = result
+		else
+			hudRects = {}
+			if not hudWarned then
+				hudWarned = true
+				warn("[HomeFx] could not measure the HUD: " .. tostring(result))
+			end
+		end
+	end
+	return hudRects
+end
+
 -- The on-screen layout (World text rule: a pile of overlapping plates is unreadable). Every sign in `list` may show;
 -- each is projected through the camera, the plate (bottom-centred on the billboard's bottom edge, like HomeBuilder's
 -- tags) becomes a screen rectangle, and the signs nearest the player go first (a locked pad's sign, unless the player
 -- stands right at it, as if K.SIGN_LOCKED_BACK studs farther: what can be bought now first): a sign is "Shown" when
 -- its plate leaves the text of every plate shown before it alone (an overlap of at most K.SIGN_INSET_X px side by side
--- or K.SIGN_INSET_Y px above / below only covers padding), else "Crowded"; a sign behind the camera, past its
--- MaxDistance (Roblox does not draw it) or mostly off the screen (less than K.SIGN_ONSCREEN of its plate inside: cut
--- off, it reads as nothing) is "Away" and takes no room. Hysteresis: a shown sign counts K.SIGN_KEEP studs nearer
--- and is placed before all others in its first K.SIGN_HOLD seconds; a hidden one needs K.SIGN_CLEAR px of extra room
--- (and K.SIGN_ONSCREEN_BACK of its plate on the screen) and stays hidden at least K.SIGN_HOLD seconds, keeping the
--- room it would get meanwhile.
+-- or K.SIGN_INSET_Y px above / below only covers padding), else "Crowded". The HUD (hudObstacles) is placed before
+-- every sign and no plate may reach into it at all (its rectangles carry their own gap): a sign under the HUD is
+-- "Crowded" as well (signUnderHud) and takes no room. A sign behind the camera, past its MaxDistance (Roblox does
+-- not draw it) or mostly off the screen (less than K.SIGN_ONSCREEN of its plate inside: cut off, it reads as
+-- nothing) is "Away" and takes no room. Hysteresis: a shown sign counts K.SIGN_KEEP studs nearer and is placed
+-- before all others in its first K.SIGN_HOLD seconds; a hidden one needs K.SIGN_CLEAR px of extra room (from the
+-- HUD: K.SIGN_HUD_CLEAR, scaled with the screen height) and K.SIGN_ONSCREEN_BACK of its plate on the screen, and
+-- stays hidden at least K.SIGN_HOLD seconds, keeping the room it would get meanwhile.
 local function layoutSigns(list)
 	local cam = Workspace.CurrentCamera
 	if not cam then
 		for _, gui in ipairs(list) do
 			signLayout[gui] = "Shown"
+			signUnderHud[gui] = nil
 		end
 		return
 	end
 	local vp = cam.ViewportSize
 	local eye = cam.CFrame.Position
 	local focus = signFocus or eye
+	local hud = hudObstacles(vp)
 	local items = {}
 	for _, gui in ipairs(list) do
 		local item = nil
@@ -52930,6 +53113,7 @@ local function layoutSigns(list)
 			items[#items + 1] = item
 		else
 			signLayout[gui] = "Away"
+			signUnderHud[gui] = nil
 		end
 	end
 	table.sort(items, function(a, b)
@@ -52942,19 +53126,30 @@ local function layoutSigns(list)
 		return a.Key < b.Key
 	end)
 	local placed = {}
-	local function fits(x0, y0, x1, y1)
+	for i, r in ipairs(hud) do
+		placed[i] = r
+	end
+	-- the first thing already placed (the HUD first) that the plate of `it` runs into when it is grown by `grow` px
+	-- against the other plates and by `hudGrow` px against the HUD; nil when there is room
+	local function blocker(it, grow, hudGrow)
 		for _, o in ipairs(placed) do
-			if min(x1, o.X1) - max(x0, o.X0) > K.SIGN_INSET_X and min(y1, o.Y1) - max(y0, o.Y0) > K.SIGN_INSET_Y then
-				return false
+			local g, sx, sy = grow, K.SIGN_INSET_X, K.SIGN_INSET_Y
+			if o.Hud then
+				g, sx, sy = hudGrow, 0, 0
+			end
+			if min(it.X1 + g, o.X1) - max(it.X0 - g, o.X0) > sx and min(it.Y1 + g, o.Y1) - max(it.Y0 - g, o.Y0) > sy then
+				return o
 			end
 		end
-		return true
+		return nil
 	end
+	local hudClear = max(K.SIGN_CLEAR, K.SIGN_HUD_CLEAR * vp.Y / 1080)
 	for _, it in ipairs(items) do
-		local g = K.SIGN_CLEAR
-		if not fits(it.X0, it.Y0, it.X1, it.Y1) then
+		local hit = blocker(it, 0, 0)
+		signUnderHud[it.Gui] = (hit ~= nil and hit.Hud == true) or nil
+		if hit then
 			signLayout[it.Gui] = "Crowded"
-		elseif it.Shown or (not it.Held and fits(it.X0 - g, it.Y0 - g, it.X1 + g, it.Y1 + g)) then
+		elseif it.Shown or (not it.Held and not blocker(it, K.SIGN_CLEAR, hudClear)) then
 			placed[#placed + 1] = it
 			signLayout[it.Gui] = "Shown"
 		else
@@ -54290,7 +54485,7 @@ function HomeFx.Stats()
 			hidden = hidden + 1
 		end
 	end
-	local shownSigns, crowded, away = 0, 0, 0
+	local shownSigns, crowded, underHud, away = 0, 0, 0, 0
 	for gui in pairs(signs) do
 		if gui.Parent then
 			if not gui.Enabled then
@@ -54301,6 +54496,9 @@ function HomeFx.Stats()
 				shownSigns = shownSigns + 1
 			elseif why == "Crowded" then
 				crowded = crowded + 1
+				if signUnderHud[gui] then
+					underHud = underHud + 1
+				end
 			elseif why == "Away" then
 				away = away + 1
 			end
@@ -54318,6 +54516,7 @@ function HomeFx.Stats()
 		HiddenSigns = hiddenSigns,
 		SignsShown = shownSigns,
 		SignsCrowded = crowded,
+		SignsUnderHud = underHud,
 		SignsAway = away,
 		GardenPets = pets,
 		GymPets = gymPets,
@@ -54329,9 +54528,10 @@ function HomeFx.Stats()
 	}
 end
 
--- why a pad sign shows or not: "Shown"; hidden: "Crowded" (no room on the screen), "Away" (behind the camera, off
--- the screen or past its MaxDistance), "Pending" (not laid out yet), "Locked" (a locked pad far away), "Other" (not
--- the local player's pad); nil for anything HomeFx does not track
+-- why a pad sign shows or not: "Shown"; hidden: "Crowded" (no room on the screen: another sign or the HUD is there;
+-- Stats().SignsUnderHud counts the HUD ones), "Away" (behind the camera, off the screen or past its MaxDistance),
+-- "Pending" (not laid out yet), "Locked" (a locked pad far away), "Other" (not the local player's pad); nil for
+-- anything HomeFx does not track
 function HomeFx.SignState(gui)
 	if typeof(gui) ~= "Instance" or not signs[gui] then
 		return nil
