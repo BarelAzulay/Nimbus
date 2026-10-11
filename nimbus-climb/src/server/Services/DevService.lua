@@ -505,10 +505,22 @@ local function cmdReset(player, profile)
 	wipe(tableField(profile, "IndexClaimed"))
 	profile.Cash = 0
 	profile.Gems = 0
+	-- Phase 2: the tycoon home (stations, garden, gym, collector), fused copies, food and pet levels go too
 	local home = tableField(profile, "Home")
 	home.Level, home.Prestige = 0, 0
+	home.CollectorCash = 0
 	wipe(tableField(home, "Rooms"))
+	wipe(tableField(home, "Stations"))
+	wipe(tableField(home, "Garden"))
+	wipe(tableField(home, "Gym"))
 	wipe(tableField(profile, "PetLevels"))
+	wipe(tableField(profile, "Tiers"))
+	wipe(tableField(profile, "Hybrids"))
+	wipe(tableField(profile, "Food"))
+	local care = loadModule(script.Parent, "PetCareService")
+	if hasFunction(care, "ClearKitchen") then
+		pcall(care.ClearKitchen, player)
+	end
 	for _, attr in ipairs({ Config.Attr.Cash, Config.Attr.Gems }) do
 		if attr and player:GetAttribute(attr) ~= nil then
 			player:SetAttribute(attr, 0)
@@ -519,7 +531,17 @@ local function cmdReset(player, profile)
 	local tutorialNote = ""
 	local rewound = reload ~= nil or not TutorialService
 	-- the grow-only fields are written over the store at the next save (the store would merge them back otherwise)
-	overwriteStored(player, { Discovered = true, IndexClaimed = true, BestTimes = true, Tutorial = rewound })
+	overwriteStored(player, {
+		Discovered = true,
+		IndexClaimed = true,
+		BestTimes = true,
+		Tutorial = rewound,
+		-- Phase 2: a higher stored prestige would otherwise win the Home merge and bring the old home back
+		Home = true,
+		Tiers = true,
+		Hybrids = true,
+		PetLevels = true,
+	})
 	if rewound then
 		rewindTutorial(player, profile, reload, true)
 	else

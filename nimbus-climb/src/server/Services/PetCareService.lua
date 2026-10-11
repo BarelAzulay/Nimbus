@@ -1058,6 +1058,19 @@ function PetCareService.Cook(player, foodId, qty)
 end
 
 -- { { FoodId, ReadyIn }... } (ReadyIn = seconds until that dish is done)
+-- Developer tools ("Reset my data"): drops the player's cooking queue without paying anything back.
+function PetCareService.ClearKitchen(player)
+	local k = kitchens[player]
+	if not k then
+		return false
+	end
+	k.Queue = {}
+	k.Batch = {}
+	k.BatchOrder = {}
+	publishKitchen(player, k)
+	return true
+end
+
 function PetCareService.GetQueue(player)
 	local out = {}
 	local k = player and kitchens[player]
