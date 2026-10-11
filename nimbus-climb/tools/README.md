@@ -3,6 +3,31 @@
 Checks and helpers for Nimbus Climb. The test pipeline (`run_checks.sh`, `syntax.py`, `check.mjs`, `smoke.py`) is
 described in the "Tests" section of the main `README.md`.
 
+## Place verifier: is the place file up to date?
+
+`verify_place.py` checks a Rojo-built place against `src/` (Python 3 only, no other packages): every
+`src/**/*.lua` must be in the place at its path with the class Rojo 7 gives it (`*.server.lua` Script,
+`*.client.lua` LocalScript, any other `.lua` ModuleScript) and a Source identical to the file on disk; sub-folders
+must be Folders, no two siblings may share a name, the place may hold no script that `src/` does not have, and the
+`$properties` of `default.project.json` (the lighting technology) must be there. It names every mismatch (with the
+first differing line) and exits 1, so run it after every rebuild:
+
+```sh
+rojo build default.project.json -o play/NimbusClimb.rbxlx
+python3 tools/verify_place.py                     # or: python3 tools/verify_place.py other.rbxlx
+```
+
+## Tycoon economy simulation
+
+`sim_tycoon.py` replays the tycoon homes (prices, incomes, house tiers, prestige, the Vault's offline pay) for an
+active player and a few hundred typical ones, prints when each milestone is reached and checks the pacing targets
+of ARCHITECTURE_V3.md. Its constants mirror `src/shared/TycoonCatalog.lua`: change both together (the smoke test
+`p2_economy` fails while they disagree).
+
+```sh
+python3 tools/sim_tycoon.py
+```
+
 ## Model renderer: see the voxel art without Studio
 
 `render_model.py` builds a model with the **real** game modules (inside the same lupa + `robloxmock.lua` world that

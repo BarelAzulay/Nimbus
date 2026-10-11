@@ -6,17 +6,39 @@ A cosy, co-op **sky village** game for Roblox. You live in a floating cloud vill
 glowing **portals** with up to three friends, and get flown to a freshly generated **sky course** that you climb
 as a team: dash over gaps, dodge spinning bars, lightning and swinging beams, share checkpoints and pick each
 other back up. Along the way you collect **Cloud Tokens**, and back home you spend them on **pets** (from
-roulettes) and **usable items**, fill your **Pet Index**, and show off your best pet on your own **home plot**.
+roulettes) and **usable items**, fill your **Pet Index**, and build your own **tycoon home**: claim a plot at
+its gate, build cloud presses that make **Cash**, put your pets to work, cook for them, train them, fuse them
+and prestige.
 
-Version 3 turns Nimbus Climb into a multi-concept game: the climb (obby) stays as a side mode, **tycoon homes**
-and **pet battles** are coming in the next two updates. This build (v3 phase 1) brings the new look, the
-pet collection and everything those updates build on.
+Version 3 turns Nimbus Climb into a multi-concept game: the **tycoon homes** are the main mode, the climb (obby)
+stays as a side mode, and **pet battles** come in the next update. This build is **v3 phase 2**: phase 1 brought
+the new look, the pet collection and everything the later updates build on (see
+[What's new in v3](#whats-new-in-v3-phase-1)), phase 2 adds the tycoon homes, Cash, Gems, prestige and the Fusion
+Machine (see [Tycoon homes](#tycoon-homes-phase-2)).
 
 Everything is built in code from plain parts and particles (no toolbox models), and all text uses one small
 `Theme` module, so the whole game shares the same chunky, friendly look. The only asset id in the code is the
 owner's own Stormfang artwork (`Config.Art.StormfangImage`).
 
-## What's new in v3
+## What's new in phase 2: tycoon homes
+
+- **Claim a home.** The 16 plots on the outer ring are classic Roblox tycoons now: walk up to a free gate and
+  press **E**. Your build is saved with your profile and comes back on whichever plot you claim next time.
+- **Buy pads.** Glowing pads on your yard build everything, step by step: **Cloud Presses** that make **Cash**,
+  the **Collector** that banks it, a **Pet Garden**, a **Kitchen**, a **Gym**, a **Vault**, your **House**
+  (Cottage, Villa, Manor, Sky Castle: a new house every 10 Home Levels) and decor.
+- **Pets at home.** Economy pets earn Cash in the Garden, Combat pets train in the Gym, and every pet levels up
+  when you feed it the food you cook in the Kitchen.
+- **Prestige.** At Home Level 40 with the Sky Castle you can start over for a star: x1.25 income forever, Gems,
+  and from the first star on the **Fusion Machine** (Golden and Rainbow pets, one-of-a-kind hybrids).
+- **Gems.** The premium currency: earned by prestiging and bought with Robux (once the owner has created the gem
+  packs), spent on cheap roulette spins and on the gems-only **Secret Roulette** at the Storm Altar, the only way
+  to get Secret pets like Stormfang.
+- **And around it:** a second tutorial chapter with Nimbus, new NPC tips, a **Home** window, Feed / Place in
+  Garden / Train in Gym in the Pets window, a Gems tab in the Shop, a Fusions tab in the Pet Index, Cash and Gems
+  on the HUD, and +Cash / +Gems developer tools for testing.
+
+## What's new in v3 (phase 1)
 
 - **Detailed voxel art everywhere.** Every pet is sculpted in a fine "MagicaVoxel" style: rounded heads, 2-3
   shades per colour, fur patterns, claws, inner ears and eyes carved *into* the face (dark iris, white highlight,
@@ -31,8 +53,8 @@ owner's own Stormfang artwork (`Config.Art.StormfangImage`).
 - **Stormfang and the Storm Altar.** The owner's own creature, a storm lynx in charcoal armour with glowing blue
   eyes, neon claws and a cyan forehead gem, riding a little storm cloud, is the game's signature **Secret pet**.
   It prowls on the **Storm Altar**, a dark storm-cloud island at the edge of the village with a ring of
-  glowing crystals (cross its bridge from the street and press **E** at the altar). The altar awakens in the
-  next update, where Secret pets will be summoned with Gems.
+  glowing crystals (cross its bridge from the street and press **E** at the altar). Since phase 2 the altar is
+  the gems-only **Secret Roulette** where Secret pets are summoned with Gems.
 - **Pet elements.** Every pet now has one of eight elements (see [Elements](#elements)), shown as a coloured
   badge in the Pet Index, the Pets window and the roulette odds list.
 - **The Pet Index.** A collection book of every pet: undiscovered pets are black `???` silhouettes; complete a
@@ -45,10 +67,9 @@ owner's own Stormfang artwork (`Config.Art.StormfangImage`).
   name tags in the world that keep the same size on screen when you zoom out.
 - **Portal lock-in.** Once you step on a portal pad you stay in the party until launch; the big red **Leave**
   button is the only way out, and friends outside see the countdown right on the gate.
-- **Home plots.** The 16 player spots are now big fenced home plots ready for the tycoon homes of the next
-  update.
+- **Home plots.** The 16 player spots are now big fenced home plots, which phase 2 turns into tycoon homes.
 - **Developer tools for the owner** (see [Developer tools](#developer-tools-owner-only)): a DEV panel and chat
-  commands to get every pet, add tokens, replay the tutorial or reset your data while testing.
+  commands to get every pet, add tokens, Cash or Gems, replay the tutorial or reset your data while testing.
 
 ## How to open the game
 
@@ -75,17 +96,20 @@ or the VS Code "Rojo" extension are the easy ways to get it).
 
 - **Max Players: 16 or less** (a place setting, in Studio's Game Settings or the place's settings on the Creator
   Hub). The village has exactly 16 home plots (`Config.Lobby.SpotCount`); a 17th player would still play but
-  would have no plot.
-- **Saving needs a published place.** Tokens, pets, items, stats, Pet Index progress and the tutorial step are
-  saved in a DataStore, and DataStores only work in a place published to Roblox (File -> Publish to Roblox). In
-  Studio also turn on Game Settings -> Security -> **Enable Studio Access to API Services**. Without these the
-  game still runs, it just forgets everything when you stop. Saves happen on leave, every 90 s and at server
-  shutdown (older v1 and v2 saves are migrated automatically).
+  could not claim a home until a plot frees up.
+- **Saving needs a published place.** Tokens, Cash, Gems, pets (with their levels, Golden / Rainbow copies and
+  hybrids), food, items, stats, your home build, Pet Index progress and the tutorial step are saved in a
+  DataStore, and DataStores only work in a place published to Roblox (File -> Publish to Roblox). In Studio also
+  turn on Game Settings -> Security -> **Enable Studio Access to API Services**. Without these the game still
+  runs, it just forgets everything when you stop. Saves happen on leave, every 90 s and at server shutdown (older
+  v1, v2 and v3 phase 1 saves are migrated automatically).
 - **After publishing an update, restart the live servers.** Once the game is published and people play it, every
   time you publish a new version open the Creator Hub -> your experience -> **Servers** and choose **Shut Down All
-  Servers**. Old servers still running the previous version do not
-  know the new save fields and could overwrite them (for example replaying the tutorial rewards). Players simply
-  rejoin into the new version.
+  Servers**. Old servers still running the previous version do not know the new save fields and could overwrite
+  them (for example replaying the tutorial rewards). Players simply rejoin into the new version.
+- **Gem packs need Developer Products.** Until you create them (see
+  [Selling Gems](#selling-gems-the-owners-setup)), the Shop's Gems tab says the packs open soon. Everything else
+  works without them: players still earn Gems by prestiging.
 - Leave *StreamingEnabled* off. Everything else (sky, lighting, gravity, the village) is created by the scripts,
   so an empty baseplate is all you need. To test parties use Test -> Clients and Servers with 2-4 players.
 - **The Stormfang artwork** (Storm Altar poster, Stormfang's Pet Index banner) is the image id in
@@ -101,16 +125,24 @@ or the VS Code "Rojo" extension are the easy ways to get it).
 | Run (drains stamina) | hold `Shift` | **RUN** button (tap to toggle) | `L3` (toggle) |
 | Dash (35 stamina, 1.6 s cooldown, works in the air) | `Q` | **DASH** button | `B` |
 | Use an item | `1` `2` `3` `4` (or click / tap a slot) | tap a slot | - |
-| Talk to an NPC pet, use the Storm Altar | `E` | tap the prompt | `X` |
+| Talk to an NPC pet, use the Storm Altar, claim a home, bank the Collector, feed at the bowl, use the Fusion Machine | `E` | tap the prompt | `X` |
+| Buy at a home pad (hold a moment) | hold `E` | hold the prompt | hold `X` |
+| Cook a Snack / Meal / Feast at your Kitchen counter | hold `E` / `R` / `F` | hold the prompt | hold `X` / `Y` / `B` |
 | Close a window | `Esc` or the red X | red X | `B` |
 
 ## First steps: the tutorial
 
 New players meet **Nimbus**, the Cloudy Dragon, in a small card on the left of the screen (never in the middle).
-Nine short steps teach the basics: say hello, visit your home plot, find the Cloud Shop, spin your first
-roulette (Nimbus gives you **50 Cloud Tokens** for it), equip your new pet, peek into the Pet Index, step into the
-Easy portal, play your first climb to the end, and collect **100 Cloud Tokens** at the end. A golden arrow, a sparkle trail and a
-distance sign point at places in the world; a pulsing ring points at menu tiles.
+Nine short steps teach the basics: say hello, claim your home plot (follow the arrow to a free gate and press
+**E**), find the Cloud Shop, spin your first roulette (Nimbus gives you **50 Cloud Tokens** for it), equip your
+new pet, peek into the Pet Index, step into the Easy portal, play your first climb to the end, and collect
+**100 Cloud Tokens** at the end. A golden arrow, a sparkle trail and a distance sign point at places in the world;
+a pulsing ring points at menu tiles.
+
+A second chapter teaches the tycoon home in five steps: claim your home (already done if you claimed it in the
+first chapter), build your first Cloud Press (free), build the Collector (free too) and step on it to bank your
+Cash, follow the arrow from pad to pad until you can build the Kitchen, then cook a Snack and feed a pet. Nimbus
+pays **1,000 Cash** at the end. Players who finished the phase 1 tutorial start right at this chapter.
 
 Tap Nimbus' portrait to fold the card into a small bubble (and again to open it). The **Skip tutorial** link
 ends it (it asks first). Your step is saved, so the tutorial continues where you left off.
@@ -126,14 +158,15 @@ ends it (it asks first). Your step is saved, so the tutorial continues where you
   |---|---|
   | **Sparky Fox**, Movement Trainer | running, dashing, dash-only gaps, items |
   | **Captain Penguin**, Co-op Captain | parties, reviving teammates, Phoenix Feather, pressure plates |
-  | **Granny Owl**, Pet Expert | roulettes and their chances, equipping pets, the Pet Index |
-  | **Coach Corgi**, Token Coach | earning more tokens: win bonus, golden tokens, harder portals, token perks |
-  | **Mayor Panda**, Village Mayor | your home plot, the podium, the coming tycoon homes |
-  | **Professor Axolotl**, Element Scholar | elements, the coming Pet Battles, the Storm Altar and Secret pets |
+  | **Granny Owl**, Pet Expert | roulettes and their chances (also with Gems), the Pet Index, cooking in the Kitchen and feeding pets |
+  | **Coach Corgi**, Token Coach | earning more tokens (win bonus, golden tokens, harder portals), training Combat pets in the Gym |
+  | **Mayor Panda**, Village Mayor | claiming a home, Cloud Presses and the Collector, Home Level and the house tiers, Prestige, the Garden, the Home window |
+  | **Professor Axolotl**, Element Scholar | elements, the coming Pet Battles, the Fusion Machine, Gems and the Secret pets of the Storm Altar |
 
 - **The Storm Altar** on its dark storm cloud at the village edge, with Stormfang prowling over the portal
-  disc. Press **E** at the altar for a peek at what is coming.
-- **The 16 home plots** on the big outer ring (see [Your home plot](#your-home-plot)).
+  disc. Press **E** at the altar to open the gems-only **Secret Roulette** (see
+  [Gems](#gems-and-the-secret-roulette)).
+- **The 16 home plots** on the big outer ring (see [Tycoon homes](#tycoon-homes-phase-2)).
 - **The Sage Dragon** in the sky above it all.
 
 ## The five portals
@@ -162,14 +195,255 @@ the next checkpoint. If everybody is downed, or time runs out, the team loses; i
 finish pad, it wins. Falling into the void, or missing a jump onto a lower lap of a spiral, costs health and puts
 you back at the team checkpoint. Golden tokens (worth 5) sit on the riskiest steps.
 
-## Your home plot
+## Tycoon homes (phase 2)
 
-Every player owns one of **16 home plots** on the village's outer ring: a fenced grass yard with a gate, a
-mailbox and a pet podium. It is saved with your profile (you get the same one back when it is free). The name
-tag over the mailbox shows your avatar, your name and your pet and token totals, and the podium shows a slowly
-turning copy of your rarest pet. You respawn there, and the **My Spot** tile teleports you home (not during a
-climb). The middle of the yard is kept empty on purpose: that is where your tycoon home will be built in the
-next update.
+The 16 home plots on the village's outer ring are classic Roblox tycoons: claim one at its gate, then build it
+up pad by pad until a Sky Castle stands on it, and prestige for a star. What is saved is **your home build**, not a
+plot number: it is rebuilt on whichever plot you claim. All the numbers below live in
+`src/shared/TycoonCatalog.lua`, balanced with the progression simulation `tools/sim_tycoon.py` (an active player
+makes a first purchase within seconds, buys something new every 1-2 minutes early on, gets the Villa after about
+half an hour and the first Prestige after about 2.5 hours; the second run takes about 1 h 20 min, the third under
+an hour).
+
+### Claiming a home
+
+- Walk up to a free gate (its signpost and name tag say **Free home**) and press **E** (*Claim Home*). One home
+  per player, and not during a climb.
+- The plot is yours until you leave the server. Then it is released: your build disappears from it (it is safe in
+  your save) and the gate offers *Claim Home* to someone else.
+- Coming back? If your last plot is free you get a side toast "Welcome back! Press E at your gate (#7)". Any other
+  free plot works just as well: your whole build comes back on it.
+- The **Home** tile of the menu takes you to your gate (or the nearest free one) while you have no home; once you
+  have one it opens the [Home window](#the-home-window). Nimbus' arrow leads to a free gate too.
+- The name tag over the mailbox shows your avatar, your name, your **Home Level** and one star per **Prestige**,
+  and the podium by the gate shows a slowly turning copy of your best pet (rarest first, Rainbow and Golden copies
+  before plain ones). With a home, you respawn there instead of on the plaza.
+
+### Buy pads and Home Level
+
+Everything on the yard is built from a **buy pad**: a glowing pad with a floating sign (icon, name, *Build* or
+*Lv 2 -> 3*, and the price in **Cash**). Stand on it and hold **E** for a moment (*Buy*). Only you see and use
+your own pads (other players' prompts stay off), and the server checks the owner, the price and the requirements
+of every purchase.
+
+- The station pops in with a little voxel animation, and new pads appear as your home grows (Cloud Press 2 after
+  Cloud Press 1 reaches level 2, the Garden and the Vault after Cloud Press 2 reaches level 2, the Kitchen after
+  the Garden ...), so the yard fills up step by step. The pad stays in front of a built station for its upgrades.
+- A locked pad says why: *Reach Home Level 10*, *Needs the Villa*, *Unlocks at Prestige 1* (with a blue
+  hologram of what is coming) or *Coming soon*.
+- **Home Level** = every purchase and every upgrade you made: each one adds 1.
+- Your first Cloud Press and the Collector are free, so a brand-new home makes Cash within seconds.
+
+### Cash: Cloud Presses and the Collector
+
+Cloud Presses puff glowing cloud blocks onto the conveyor and into the **Collector**; its screen shows the Cash
+waiting inside and how much it can hold. **Step on the Collector** (or press **E** at it, or *Collect* in the Home
+window) to bank it. A full Collector stops filling, so bank it now and then: Collector levels add +10 % to +40 %
+to the presses' income and hold more, and the Vault makes it bigger still. The server adds your income every
+second while you are in the game with your home claimed, also while you are on a climb. **Cash** is the tycoon
+currency; Cloud Tokens stay the climb currency.
+
+### Every station
+
+| Station | What it does | Levels | Needs | Price (level 1 -> top) |
+|---|---|---|---|---|
+| **Cloud Press 1** | The first money machine: 5 -> 53 Cash/s | 10 | claiming | free -> 160,000 |
+| **Cloud Press 2** | A bigger press: 13 -> 138 Cash/s | 10 | Cloud Press 1 Lv 2 | 700 -> 400,000 |
+| **Cloud Press 3** | A storm press: 34 -> 360 Cash/s | 10 | Cloud Press 2 Lv 3 + the Villa | 18,000 -> 1,040,000 |
+| **Cloud Press 4** | The great sky press: 88 -> 930 Cash/s | 10 | Cloud Press 3 Lv 3 + the Manor | 95,000 -> 1,900,000 |
+| **Collector** | Banks the Cash; +0 % -> +40 % press income; holds 2,000 + 5 min of income -> 150,000 + 10 min | 5 | Cloud Press 1 | free -> 800,000 |
+| **House** | Cottage -> Villa -> Manor -> Sky Castle (see below) | 4 | the Collector | 300 -> 520,000 |
+| **Pet Garden** | 1 -> 8 places for Economy pets that earn Cash | 8 | Cloud Press 2 Lv 2 | 1,500 -> 1,440,000 |
+| **Vault** | A bigger Collector and offline earnings | 5 | Cloud Press 2 Lv 2 | 9,000 -> 1,200,000 |
+| **Kitchen** | Cooks pet food; a queue of 3 -> 10 dishes, up to 2x faster | 5 | the Pet Garden | 3,500 -> 1,100,000 |
+| **Gym** | 1 -> 5 places where Combat pets train: 20 -> 80 XP a minute each | 5 | the Kitchen | 14,000 -> 1,300,000 |
+| **Fusion Machine** | Golden / Rainbow upgrades and hybrids; -10 % / -20 % token costs at Lv 2 / 3 | 3 | the Kitchen + **Prestige 1** | 25,000 -> 800,000 |
+| **Arena Gate** | Opens the way to Pet Battles (the sign says *Coming soon* until phase 3) | 1 | the Gym | 150,000 |
+| **Lanterns** | Decor along the path (wood, brass, crystal) | 3 | the Collector | 3,000 -> 210,000 |
+| **Garden Fence** | Decor around the yard (picket, hedge, cloudstone) | 3 | Cloud Press 2 Lv 2 | 7,000 -> 290,000 |
+| **Flower Beds** | Decor along the front fence (tulips, roses, starflowers) | 3 | the Pet Garden | 4,500 -> 240,000 |
+| **Fountain** | Decor in the middle of the yard (basin, tiered, sky) | 3 | the Kitchen + the Villa | 45,000 -> 880,000 |
+| **Banners** | Decor along the front fence (cloth, gold, royal) | 3 | the Vault | 12,000 -> 380,000 |
+| **Pet Podium** | Dresses up the podium of your best pet by the gate | 3 | the Pet Garden | 9,000 -> 340,000 |
+
+A pad shows up as soon as the stations it needs are built; until the rest is there too (a house tier, a Prestige
+star) its sign says what is missing. Every station grows visibly with its level (a level-1 press is small, a
+level-10 press big and shiny with gold). Decor is cheap, counts toward your Home Level like everything else and is
+**kept when you prestige**.
+
+### The house: a new tier every 10 Home Levels
+
+The House pad builds a **Cottage** (300 Cash). The next houses are deliberately hard to get: the **Villa** needs
+Home Level 10 (24,000 Cash), the **Manor** Home Level 20 (115,000) and the **Sky Castle** Home Level 30 (520,000);
+until then the House pad says *Reach Home Level N*. Every new house raises how far the other stations can level:
+
+| Max level with the ... | Cottage | Villa | Manor | Sky Castle |
+|---|---|---|---|---|
+| Cloud Press 1 and 2 | 6 | 8 | 9 | 10 |
+| Cloud Press 3 | - | 6 | 8 | 10 |
+| Cloud Press 4 | - | - | 8 | 10 |
+| Collector | 2 | 3 | 4 | 5 |
+| Pet Garden | 2 | 4 | 6 | 8 |
+| Kitchen, Gym, Vault | 1 | 2 | 4 | 5 |
+| Fusion Machine | 1 | 2 | 3 | 3 |
+| Decor | 1 | 2 | 3 | 3 |
+| Fountain | - | 1 | 2 | 3 |
+
+### The Pet Garden
+
+Open **Pets**, pick an **Economy** pet and press **Place in Garden**: it moves into the next free place of your
+Garden (one copy per place; places unlock with the Garden level: 1 to 8) and you can see it there. Each placed
+pet adds Cash per second to the Collector: its Income stat x its rarity (Common x1 up to Secret x13) x its level
+(+10 % per level) x its tier (Golden x1.5, Rainbow x2.5) x your prestige multiplier. A pet in the Garden cannot
+train in the Gym at the same time.
+
+### The Kitchen and feeding
+
+The Kitchen cooks pet food with Cash. Stand at the counter and hold **E** (*Cook Snack*), **R** (*Cook Meal*) or
+**F** (*Cook Feast*), or use the Cook buttons of the Feed picker in the Pets window. Dishes wait in a queue
+(3 dishes at Kitchen level 1, up to 10) and cook one at a time, even while you are away on a climb; finished food
+goes to your inventory. Better Kitchens cook faster (x1.25 at level 2 up to x2 at level 5). If you leave before a
+dish is done, you get its Cash back (unless you prestiged since you ordered it).
+
+| Food | Cost | XP | Base cook time | Needs Kitchen level |
+|---|---|---|---|---|
+| **Snack** | 50 Cash | 25 | 6 s | 1 |
+| **Meal** | 600 Cash | 150 | 20 s | 2 |
+| **Feast** | 6,000 Cash | 800 | 45 s | 4 |
+
+**Feeding:** open **Pets**, pick a pet, press **Feed** and choose a food; or press **E** at the feeding bowl next
+to the Kitchen, and every pet flying with you eats one food (the best one that does not waste XP). XP makes pets
+level up (level 1 -> 2 takes 20 XP, each later level takes more), and **every level adds 10 %** to the pet's stats:
+Income for Economy pets, Power / Health / Speed for Combat pets. Each pet copy has its own level, up to a cap by
+rarity: Common 20, Uncommon 25, Rare 30, Epic 35, Legendary 40, Mythic 45, Secret 50. A toast shows the new
+stats at every level-up.
+
+### The Gym
+
+Open **Pets**, pick a **Combat** pet and press **Train in Gym**. Every pet in the Gym gains XP by itself: 20 XP a
+minute at Gym level 1, up to 80 at level 5, with 1 to 5 places, while you are in the game with your home claimed
+(up to the pet's level cap). Get them strong for the coming Pet Battles.
+
+### The Vault and offline earnings
+
+The Vault makes the Collector hold more (from +5,000 and 5 more minutes of income at level 1 to +400,000 and 30
+more minutes at level 5) and pays you **while you are away**: when you join again, a side toast "While you were
+away: +..." pays a share of your income for the time you were gone. Nothing is paid for absences under 2 minutes,
+and nothing without a Vault.
+
+| Vault level | 1 | 2 | 3 | 4 | 5 |
+|---|---|---|---|---|---|
+| Share of your income | 10 % | 15 % | 20 % | 25 % | 30 % |
+| For up to | 1 h | 2 h | 3 h | 4 h | 4 h |
+
+### Prestige
+
+Prestige needs **Home Level 40 and the Sky Castle**. Once the Sky Castle stands, a star pad appears on your yard
+(it says *Reach Home Level 40* until you get there). Hold **E** on it (or press Prestige in the Home window): the
+Home window shows what starts over, what you keep and what you get, and nothing happens until you confirm there.
+
+- **Starts over:** your Cash, every station except the decor, and the Collector's contents.
+- **You keep:** all your pets (with their levels, Golden / Rainbow copies and hybrids), your food, your decor
+  (it still counts toward your Home Level, so the next run starts ahead), your Garden and Gym picks (they work
+  again as soon as those stations are rebuilt), Cloud Tokens and Gems.
+- **You get:** a **Prestige star** on your name tag, **x1.25 income** per star forever (it multiplies: x1.56 at 2
+  stars, x1.95 at 3 ...), **Gems** (100 for the first prestige, 10 fewer for each later one, never under 25), and
+  at Prestige 1 the **Fusion Machine** pad (and the 4th battle-team slot for the coming Pet Battles).
+
+### The Fusion Machine (after Prestige 1)
+
+Until your first Prestige the Fusion Machine pad is a blue hologram that says *Unlocks at Prestige 1*. Once it is
+built, press **E** at the machine (*Fuse*) to open the Fusion window (only near your own machine, not during a
+climb). It has two tabs:
+
+- **UPGRADE:** 3 copies of the same pet and tier make 1 of the next tier: Normal -> **Golden** (x1.5 stats and
+  perks, a gold shimmer) -> **Rainbow** (x2.5, an animated rainbow shimmer). The new copy keeps the level of its
+  inputs.
+- **MIX:** two different pets make a brand-new, one-of-a-kind **hybrid**: the body (species and special attack) of
+  the first, the colours, wings and accessory of the second, the elements of both, the higher of the two
+  rarities, stats = their average x1.2, and a blended name (Penguin + Phoenix -> "Pengnix"). Hybrids cannot be
+  mixed again or upgraded.
+
+Copies that are equipped, in the Garden or in the Gym are taken off first and the result takes over their place
+(the machine refuses only when the inputs are your only equipped pets). The machine's level 2 and 3 take 10 % and
+20 % off the token costs:
+
+| Rarity | Upgrade to Golden | Golden to Rainbow | Mix |
+|---|---|---|---|
+| Common | 150 tokens | 450 tokens | 200 tokens |
+| Uncommon | 300 | 900 | 400 |
+| Rare | 750 | 2,250 | 1,000 |
+| Epic | 1,800 | 5,400 | 2,500 |
+| Legendary | 4,500 | 13,500 | 6,000 |
+| Mythic | 10,000 | 30,000 | **60 Gems** |
+| Secret | 25,000 | 75,000 | **150 Gems** |
+
+A Mix pays for the higher rarity of its two pets. The Pet Index has a **Fusions** tile that lists your Golden,
+Rainbow and hybrid pets.
+
+### The Home window
+
+The **Home** tile of the menu opens it (once you have a home): your house tier, Home Level and Prestige stars,
+your income per second (presses + Garden pets, with the prestige multiplier), the Collector's Cash with a
+**Collect** button, the prestige progress (Home Level x/40 and the Sky Castle) with the **Prestige** button,
+**Go home** (a teleport to your yard, not during a climb), and every station with its level, what the next level
+does, its price and a **Build** / **Upgrade** button, or why it is still locked. So you can upgrade from
+anywhere, without walking to the pad.
+
+### Gems and the Secret Roulette
+
+**Gems** are the premium currency (shown on the HUD next to your tokens and Cash). You get them from every
+**Prestige** and by buying **Gem packs** with Robux in the Shop's **Gems** tab (once the owner has created them,
+see below). You spend them on:
+
+- **Roulette spins**, a cheaper premium way to roll, with the same odds as with tokens: Cloud 5, Storm 20,
+  Sky 75 and Celestial 300 Gems a spin.
+- **The Secret Roulette** at the **Storm Altar** (press **E** at the altar, or find it in the Shop's Gems tab):
+  1,500 Gems a spin, **Mythic 85 %, Secret 15 %**. It is the only place Secret pets come from (Stormfang, Eclipse
+  Dragon, Obsidian Phoenix, Phantom Kitsune).
+- **Fusion Mixes** with Mythic or Secret pets.
+
+The odds of every roulette are always one tap away (the odds list). Where Roblox does not allow paid random items
+for an account, the gem-priced roulettes and the Secret Roulette are hidden for that player and the altar says
+it is not available on their account; Gem packs and everything else still work.
+
+### Selling Gems: the owner's setup
+
+The four Gem packs are **Developer Products**: one-time Robux purchases that you, the owner, create on the
+Creator Hub. Until a pack has a real id it stays hidden (id `0` means "not created yet"), and with no pack
+created the Gems tab says "Gem packs open soon!".
+
+1. **Publish the game first** (File -> Publish to Roblox): developer products belong to a published experience.
+2. Open the **Creator Hub** (create.roblox.com) -> **Creations** -> your experience -> **Monetization** ->
+   **Developer Products**, and create a product for each pack: a name (for example "Pouch of Gems"), a
+   description, an icon if you like, and the **price in Robux** you want to charge.
+3. Copy each product's **ID** from the Developer Products list.
+4. Paste the ids into `Config.Gems.Products` in `src/shared/Config.lua`, one per pack. `Gems` is how many Gems the
+   game grants for that product (the Robux price is only set on the Creator Hub), `Name` is what the Shop shows:
+
+   ```lua
+   Config.Gems = {
+       Products = {
+           { Id = 1234567890, Gems = 100, Name = "Pouch of Gems" },  -- your real product ids here
+           { Id = 1234567891, Gems = 550, Name = "Bag of Gems" },
+           { Id = 1234567892, Gems = 1200, Name = "Chest of Gems" },
+           { Id = 1234567893, Gems = 6500, Name = "Vault of Gems" },
+       },
+       -- (the rest of Config.Gems stays as it is)
+   ```
+
+5. Rebuild the place file (or let Rojo sync it into Studio), publish, and **Shut Down All Servers** so every
+   server runs the new ids.
+
+Good to know: use each product id for one pack only, and keep the products you sold alive on the Creator Hub.
+Every purchase is granted **exactly once**: the purchase id is saved with the Gems in the player's save before
+Roblox is told it went through, so a retried or repeated receipt (even after the player rejoined another server)
+never pays twice, and a purchase whose save failed stays pending until Roblox asks again. Saving must work for
+that (a published place, see [Place settings](#how-to-open-the-game)). In Studio, test purchases cost nothing and
+grant the Gems right away. The gem prices of the roulettes (`Config.Gems.RouletteGemPrices`) and the Secret
+Roulette's price and odds (`Config.Gems.SecretRoulette`) are in the same table. The game sets
+`MarketplaceService.ProcessReceipt` in one place only (`GemService`): Roblox allows one per game, so do not add
+another one.
 
 ## Pets and roulettes
 
@@ -180,28 +454,32 @@ Kitsune). Visit the **shop island** or press the **Shop** tile, pick a roulette 
 
 | Roulette | Price | Odds per spin (pets inside a rarity are equally likely) |
 |---|---|---|
-| **Cloud** | 50 tokens | Common 60 %, Uncommon 28 %, Rare 10 %, Epic 2 % |
-| **Storm** | 250 tokens | Uncommon 35 %, Rare 40 %, Epic 20 %, Legendary 5 % |
-| **Sky** | 1,000 tokens | Rare 35 %, Epic 45 %, Legendary 17 %, Mythic 3 % |
-| **Celestial** | 5,000 tokens | Epic 45 %, Legendary 40 %, Mythic 15 % |
+| **Cloud** | 50 tokens (or 5 Gems) | Common 60 %, Uncommon 28 %, Rare 10 %, Epic 2 % |
+| **Storm** | 250 tokens (or 20 Gems) | Uncommon 35 %, Rare 40 %, Epic 20 %, Legendary 5 % |
+| **Sky** | 1,000 tokens (or 75 Gems) | Rare 35 %, Epic 45 %, Legendary 17 %, Mythic 3 % |
+| **Celestial** | 5,000 tokens (or 300 Gems) | Epic 45 %, Legendary 40 %, Mythic 15 % |
+| **Secret** (Storm Altar) | 1,500 Gems only | Mythic 85 %, Secret 15 % |
 
-Secret pets are in none of these roulettes: they will come from the gems-only Secret roulette at the Storm
-Altar in the next update.
+Secret pets are in none of the token roulettes: they only come from the gems-only Secret Roulette at the Storm
+Altar (see [Gems](#gems-and-the-secret-roulette)).
 
 Equip up to **3** pets from the Pets window. Each pet has one or two perks: **Max Health**, **Cloud Tokens**
 (more tokens per pickup), **Stamina Regen** and **Checkpoint Heal**. Perks add up, with caps (+50 % health, +100 %
 tokens, +60 % stamina regen, +100 % checkpoint heal). Pets never change run speed or jump height, and your
 loadout is locked while a climb is running. The mascot is the Mythic **Cloudy Dragon**.
 
-Every pet also has a **role** (Economy pets will earn Cash at your home, Combat pets will fight in Pet Battles),
-battle **stats** (Income, Power, Health, Speed; higher rarities are much stronger) and a named **special attack**
-(for example Stormfang's *Storm Pounce* or the Cloudy Dragon's *Cloud Breath*). The Pet Index shows them already;
-they come into play with the next two updates.
+Every pet also has a **role** (Economy pets earn Cash in your home's Garden, Combat pets train in your Gym and
+will fight in Pet Battles), **stats** (Income, Power, Health, Speed; higher rarities are much stronger, and every
+level a pet gains adds 10 %) and a named **special attack** (for example Stormfang's *Storm Pounce* or the Cloudy
+Dragon's *Cloud Breath*). The Pet Index shows them all; specials come into play with Pet Battles in the next
+update. Since phase 2 a pet can also be a **Golden** or **Rainbow** copy or a fused **hybrid** (see
+[the Fusion Machine](#the-fusion-machine-after-prestige-1)); the Pets window shows each copy with its tier badge,
+level and XP bar, and the Feed, Place in Garden and Train in Gym buttons.
 
 ## Elements
 
-Every pet has one element. They matter in the coming Pet Battles: a strong hit deals **x1.5** damage, a weak
-one **x0.75**, everything else x1.
+Every pet has one element (a fused hybrid has both of its parents'). They matter in the coming Pet Battles: a
+strong hit deals **x1.5** damage, a weak one **x0.75**, everything else x1.
 
 - **The wheel** (each beats the next): **Water > Flame > Frost > Nature > Earth > Storm >** back to Water.
 - **The pair** (each beats the other): **Celestial <-> Shadow**.
@@ -223,6 +501,9 @@ means a reward is waiting):
 |---|---|---|---|---|---|---|---|
 | Reward (Cloud Tokens) | 50 | 120 | 300 | 800 | 2,000 | 5,000 | 10,000 |
 
+Under the groups, the **Fusions** tile lists your Golden, Rainbow and hybrid pets (with a hybrid's parents and
+elements). Fusions are not part of the group rewards.
+
 ## Items
 
 Bought in the shop for cloud tokens, carried up to 5 of each, used on keys `1`-`4` during a climb (they do nothing
@@ -240,18 +521,18 @@ Nothing the game says appears in the middle of the screen. All text follows one 
 designed for a 1080p screen (body text 18 px or more, buttons 20 px or more), scales with your screen height and
 never drops below 14 px on a phone.
 
-- **Left, vertically centred: the menu** of six square tiles: Inventory, Pets, Index, Shop, My Spot, Stats.
+- **Left, vertically centred: the menu** of six square tiles: Inventory, Pets, Index, Shop, Home, Stats.
   Windows you open are centred on purpose (you asked for them) and close with Esc, the red X or gamepad B.
 - **Top-left:** party panel in the lobby (portal, countdown, members, the **Leave** button), match panel
   (difficulty, timer, checkpoints, team) in a climb. The tutorial card sits below it.
-- **Bottom-left:** your **Cloud Tokens** (big number with K / M), and under it the **health and stamina card**:
-  a heart badge with a thick health bar (it flashes and shakes when you are hit and pulses when you are low), a
-  lightning badge with the stamina bar, and the dash ring that sweeps while dash recharges. NPC dialogs open
-  just above it.
-- **Right: toasts** stack at the top-right, and the compact result card shows up at the right edge after a
-  climb. **Bottom-centre:** the item hotbar (1-4).
-- On phones the HUD moves up to clear the thumbstick, and on short landscape screens the token counter moves to
-  the top-right.
+- **Bottom-left:** your **Cloud Tokens**, **Cash** and **Gems** (big numbers with K / M), and under them the
+  **health and stamina card**: a heart badge with a thick health bar (it flashes and shakes when you are hit and
+  pulses when you are low), a lightning badge with the stamina bar, and the dash ring that sweeps while dash
+  recharges. NPC dialogs open just above it.
+- **Right: toasts** stack at the top-right (purchases, level-ups, "While you were away" and the rest), and the
+  compact result card shows up at the right edge after a climb. **Bottom-centre:** the item hotbar (1-4).
+- On phones the HUD moves up to clear the thumbstick, and on short landscape screens the currency counters move
+  to the top-right.
 
 ## Developer tools (owner only)
 
@@ -272,9 +553,11 @@ server checks the permission again on every single command, so other players can
 |---|---|
 | **Give all pets** | One copy of every pet you do not own yet (Secret pets too); every pet counts as discovered, so the Pet Index fills up and its rewards can be claimed. |
 | **+1M tokens** | Adds `Config.Dev.GrantTokens` Cloud Tokens (1,000,000). |
+| **+1M Cash** | Adds `Config.Dev.GrantCash` Cash (1,000,000), to try the home stations quickly. |
+| **+1,000 Gems** | Adds `Config.Dev.GrantGems` Gems (1,000), to try the gem roulettes and Fusion Mixes. |
 | **Restart tutorial** | Plays the tutorial again from step 1. Its rewards are not paid a second time. |
 | **Skip tutorial** | Ends the tutorial (without its finish reward). |
-| **Reset my data** | Back to a brand-new player: tokens, pets, items, stats, Pet Index progress and rewards are wiped, and the tutorial starts again as for a new player. Tap once ("Are you sure?"), then tap again to confirm. Not during a climb. |
+| **Reset my data** | Back to a brand-new player: tokens, Cash, Gems, pets (also Golden, Rainbow and fused ones), pet levels, food and the Kitchen queue, items, stats, your home build (stations, Garden, Gym, Collector) and Prestige stars, Pet Index progress and rewards are wiped, and the tutorial starts again as for a new player. Tap once ("Are you sure?"), then tap again to confirm. Not during a climb. |
 
 Close it with the red X, `Esc` or gamepad B. Every change answers with a "DEV: ..." toast.
 
@@ -284,6 +567,8 @@ Close it with the red X, `Esc` or gamepad B. Every change answers with a "DEV: .
 |---|---|
 | `/allpets` | Same as Give all pets. |
 | `/tokens` or `/tokens 50000` | Adds tokens: 1,000,000 by default, or the amount you type (`50000`, `50,000`, `50k` and `1m` all work; at most 100,000,000 at once). |
+| `/cash` or `/cash 50000` | Adds Cash the same way: 1,000,000 by default (at most 100,000,000 at once). |
+| `/gems` or `/gems 500` | Adds Gems the same way: 1,000 by default. Gems added like this are only for testing: real players get Gems from prestiges and purchases. |
 | `/reset` | Same as Reset my data (no confirmation, so type it carefully). |
 | `/tutorial` | Same as Restart tutorial. |
 | `/skiptutorial` | Same as Skip tutorial. |
@@ -302,23 +587,24 @@ to keep your real progress.
 | `Admins` | `{}` | Extra UserIds allowed in the live game, e.g. `Admins = { 12345678, 87654321 }`. |
 | `StudioAutoGrant` | `false` | `true`: every Studio test starts with every pet and `GrantTokens` tokens. |
 | `GrantTokens` | `1000000` | Tokens added by the button, by `/tokens` without a number and by `StudioAutoGrant`. |
-| `MaxTokensPerCommand` | `100000000` | The most one `/tokens` command can add. |
+| `GrantCash` | `1000000` | Cash added by the button and by `/cash` without a number. |
+| `GrantGems` | `1000` | Gems added by the button and by `/gems` without a number. |
+| `MaxTokensPerCommand` | `100000000` | The most one `/tokens`, `/cash` or `/gems` command can add. |
 
 ## Coming next
 
-- **Phase 2, tycoon homes:** claim a plot at its gate, then build it up with buy pads: cloud presses that make
-  **Cash**, a pet garden for Economy pets, a kitchen to feed pets, a gym, a vault, a house from Cottage to Sky
-  Castle, decor, and **Prestige**. Gems, gem roulettes and the Secret roulette at the Storm Altar.
 - **Phase 3, pet battles:** a Battle Arena with boss raids, PvP duels, a Trial Portal with 30 levels of NPC
-  teams, and on-screen Attack / Retreat / Special controls. Elements and special attacks come into play here.
+  teams, and on-screen Attack / Retreat / Special controls. Elements and special attacks come into play here,
+  your home's **Arena Gate** opens the way, and Prestige 1 unlocks a 4th battle-team slot.
 
 ## Rebuilding the place file
 
 `play/NimbusClimb.rbxlx` is generated from `src/`; never edit it by hand. After changing code, rebuild it from this
-folder with [Rojo](https://rojo.space) 7.7.1:
+folder with [Rojo](https://rojo.space) 7.7.1, then check it:
 
 ```bash
 rojo build default.project.json -o play/NimbusClimb.rbxlx
+python3 tools/verify_place.py   # every src/**/*.lua in the place, right class, identical Source
 ```
 
 It contains only the three script containers below (plus the lighting technology); the village is built by the
@@ -352,12 +638,21 @@ The script exits non-zero if anything fails and runs three steps:
 2. **`tools/check.mjs`**: static analysis (undefined globals, deprecated APIs, raw fonts, bad `Instance.new`,
    missing `require`s, and the public API listed in `tools/contract.json`).
 3. **`tools/smoke.py`**: loads the real modules into a Roblox mock (`tools/robloxmock.lua`) and plays the game
-   (about 4,000 checks): 5 difficulties x 300 generated courses audited (reach, headroom, cannons, tokens), full
+   (about 5,500 checks): 5 difficulties x 300 generated courses audited (reach, headroom, cannons, tokens), full
    matches (victory, defeat, timeout, leaving, concurrent slots), portal lock-in, damage and the fall rule,
-   hazards, home plots, pets, elements, roulettes, items, the Pet Index, the tutorial, NPCs, the Storm Altar, the
-   developer tools, saving (also during DataStore outages), and the whole client UI including the readability rule
-   and the "nothing in the middle of the screen" rule on desktop and phone sizes. Handy flags: `-v`,
-   `--only match_victory,damage_rules`, `--list`, `--seeds N`, `--strict`.
+   hazards, pets, elements, roulettes, items, the Pet Index, the tutorial, NPCs, the Storm Altar, the
+   developer tools, saving (also during DataStore outages), the tycoon homes (claiming, every pad and station,
+   income, the Collector, offline earnings, house tiers, prestige, exploit attempts on every remote, the home art
+   and its part budget), the Kitchen, feeding and the Gym, the Fusion Machine, Gems (receipts granted once, the
+   policy check, the gem and Secret roulettes), an end-to-end run of three players from the first claim through
+   prestige, fusion and a rejoin, the whole client UI including the readability rule and the "nothing in the
+   middle of the screen" rule on desktop and phone sizes, and even this README (its tycoon, gem, developer-tool
+   and tutorial numbers must match the game). Handy flags: `-v`, `--only match_victory,damage_rules`, `--list`,
+   `--seeds N`, `--strict`.
+
+`python3 tools/sim_tycoon.py` replays the tycoon economy for many simulated players and checks the pacing targets
+(first purchase, purchase gaps, Villa, first and later prestiges, offline earnings); the smoke test fails when its
+numbers and `TycoonCatalog.lua` disagree.
 
 The mock is not a physics engine (characters do not walk, moving platforms are not simulated), so test the feel
 in Studio too. To look at the art and the UI without Studio, `tools/render_model.py` draws any pet, the village,
@@ -369,21 +664,25 @@ the Storm Altar or the sky dragon to a PNG, and `tools/render_gui.py` draws the 
 ```
 default.project.json   Rojo project           play/NimbusClimb.rbxlx   ready-made place file
 Start-Rojo-*           one-click launchers    branding/                game icon + Stormfang art
-tools/                 syntax check, static analysis, smoke test (see "Tests"), model and GUI renderers
+tools/                 syntax check, static analysis, smoke test (see "Tests"), tycoon economy sim, place verifier,
+                       model and GUI renderers
 ARCHITECTURE.md, ARCHITECTURE_V2.md, ARCHITECTURE_V3.md   module contracts (the newest wins where they differ)
 
-src/shared   Config (every number)  Theme  Util  Remotes  PetCatalog  ItemCatalog  PetBuilder  Voxel (voxel
-             sculpting kit)  TutorialSteps  NpcDialog
+src/shared   Config (every number)  TycoonCatalog (every tycoon number)  Theme  Util  Remotes  PetCatalog  PetKeys
+             ItemCatalog  PetBuilder  Voxel (voxel sculpting kit)  TutorialSteps  NpcDialog
 src/server   Main.server.lua; Services: Lighting, LobbyBuilder, StormAltar, Player, Data, Damage, Token, Hazard,
-             Course (layout + builder), Match, Portal, Spot, Pet, Item, Index, Tutorial, Npc, Dev
+             Course (layout + builder), Match, Portal, Spot, Pet, Item, Index, Tutorial, Npc, Dev, Tycoon,
+             HomeBuilder, PetCare, Fusion, Gem
 src/client   Main.client.lua; State; UI/CloudUI; Controllers: Movement, Hud, DamageFx, Notify, Menu, Hotbar,
-             Pet, TokenFx, Index, Tutorial, Npc, SkyDragon, Showcase, Dev
+             Pet, TokenFx, Index, Tutorial, Npc, SkyDragon, Showcase, Dev, HomeFx, Fusion
 ```
 
-The **server is authoritative** (health, tokens, pets, items, checkpoints, matches, the Pet Index, the tutorial,
-developer commands); clients only do input, movement feel, UI and purely visual animation (pets, tokens, NPCs,
-the sky dragon). Behaviour is attached with `CollectionService` tags (`Config.Tags`). Every tunable number,
-including roulette prices and odds, Index rewards, elements, difficulties and physics, lives in
-`src/shared/Config.lua`.
+The **server is authoritative** (health, tokens, Cash, Gems, pets, items, checkpoints, matches, home purchases
+and income, cooking, feeding, fusion, gem receipts, the Pet Index, the tutorial, developer commands); clients only
+do input, movement feel, UI and purely visual animation (pets, tokens, NPCs, the sky dragon, the presses, the
+conveyor and the stations popping in). Behaviour is attached with `CollectionService` tags (`Config.Tags`). Every
+tunable number, including roulette prices and odds, gem prices, Index rewards, elements, difficulties and physics,
+lives in `src/shared/Config.lua`; the tycoon's prices, incomes, foods and fusion costs live in
+`src/shared/TycoonCatalog.lua`.
 
-Have fun climbing!
+Have fun climbing, and building!

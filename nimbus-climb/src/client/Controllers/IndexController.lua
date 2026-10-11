@@ -9,7 +9,14 @@
 --
 -- MenuController opens it from the menu "Index" tile and from OpenPanel("Index"), and relays Opened as
 -- MenuController.WindowOpened("Index") (the tutorial listens there). This module never requires
--- MenuController (no require cycle).
+-- MenuController (no require cycle). Open("Fusions") opens the Fusions tab.
+--
+-- Phase 2 (ARCHITECTURE_V3.md section 11 + "Phase 2 build contract"): a "Fusions" tile under the rarity groups
+-- lists every fused pet the player owns: hybrids (mixed at the Fusion Machine, one of a kind) and Golden / Rainbow
+-- copies, each with its look (PetKeys.DefOf: merged hybrid looks, tier finishes), a tier / hybrid badge and its
+-- level. Fusions are not part of the group rewards: the rewards box explains how to fuse instead (and opens the
+-- Fusion Machine window once the player has one). The detail card shows the tier, the parents of a hybrid, both
+-- elements, and the stats at the pet's level x its tier.
 --
 -- Layout (cloud-styled through CloudUI, like the reference "Pet Index" window):
 --   title bar "Pet Index" + red X
@@ -95,8 +102,16 @@ local K = {
 	FOOTER_H = 46,
 	VIEW_H = 180,
 	VIEW_H_SHORT = 140,
-	GROUP_TILE_H = 72,
-	GROUP_TILE_H_SHORT = 60,
+	GROUP_TILE_H = 60, -- 7 rarity groups + the Fusions tile fit a 1080p window without scrolling
+	GROUP_TILE_H_SHORT = 56,
+	-- portrait screens (a phone held upright): the window may get as narrow as TALL_MIN_W and as tall as TALL_MAX_H
+	-- design px, and below TALL design px wide it stacks: a strip of group tiles, the grid, the detail card
+	TALL_MIN_W = 420,
+	TALL_MAX_H = 1100,
+	TALL = 760,
+	STRIP_H = 64, -- the group strip of the tall layout (tiles + room for its scroll bar)
+	STRIP_TILE_W = 150,
+	ELEMENTS_STRIP_W = 132,
 	ELEMENTS_BTN_H = 52,
 	ELEMENTS_BTN_H_SHORT = 44,
 	-- pet viewports are attached under a per-frame TIME budget: the first of a frame always, more only while the
@@ -162,7 +177,10 @@ local S = {
 	BackBound = false,
 	ElementsShown = false,
 	StatMax = nil,
+	FusionTile = nil, -- the "Fusions" group tile
+	FusionSig = nil, -- the fusion keys shown in the grid (rebuilt when they change)
 }
+local FUSIONS = "Fusions" -- the Fusions tab's group id
 local warned = {}
 local claimRemote = nil
 
@@ -525,6 +543,166 @@ local function getClaimRemote()
 end
 
 ----------------------------------------------------------------------
+-- Phase 2: fused pets (pet copy keys, shared/PetKeys through State)
+----------------------------------------------------------------------
+local FUSION_COLOR = Color3.fromRGB(150, 110, 232)
+local TIER_COLORS = { Golden = Color3.fromRGB(246, 196, 64), Rainbow = Color3.fromRGB(226, 110, 214) }
+local TIER_RANK = { Normal = 1, Golden = 2, Rainbow = 3 }
+
+-- a catalog def, or the def of a pet copy key ("cat@Golden", "hyb:<uid>": tier finish / merged hybrid look)
+local function defOf(id)
+	if type(id) ~= "string" then
+		return nil
+	end
+	local def = PetCatalog.Get(id)
+	if def then
+		return def
+	end
+	if type(State.DefOf) == "function" then
+		local ok, derived = pcall(State.DefOf, id)
+		if ok and type(derived) == "table" then
+			return derived
+		end
+	end
+	return nil
+end
+
+local function isHybridKey(key, def)
+	if type(def) == "table" and def.IsHybrid == true then
+		return true
+	end
+	return type(key) == "string" and key:sub(1, 4) == "hyb:"
+end
+
+local function tierOfKey(key, def)
+	local t = type(def) == "table" and def.Tier or nil
+	if t == "Golden" or t == "Rainbow" then
+		return t
+	end
+	local suffix = type(key) == "string" and key:match("@(%a+)$") or nil
+	if suffix == "Golden" or suffix == "Rainbow" then
+		return suffix
+	end
+	return "Normal"
+end
+
+local function rarityRank(rarityId)
+	for _, r in ipairs(Config.Rarities) do
+		if r.Id == rarityId then
+			return r.Order or 0
+		end
+	end
+	return 0
+end
+
+-- the player's fused pets: hybrids first, then Rainbow and Golden copies, rarest first
+local function fusionKeys()
+	local keys = {}
+	if type(State.Keys) == "function" then
+		local ok, list = pcall(State.Keys)
+		if ok and type(list) == "table" then
+			keys = list
+		end
+	end
+	local out, info = {}, {}
+	for i, key in ipairs(keys) do
+		if type(key) == "string" and not info[key] and (isHybridKey(key) or key:find("@", 1, true)) and State.OwnedCount(key) > 0 then
+			local def = defOf(key)
+			if def then
+				info[key] = {
+					Hybrid = isHybridKey(key, def) and 1 or 0,
+					Tier = TIER_RANK[tierOfKey(key, def)] or 1,
+					Rarity = rarityRank(def.Rarity),
+					Index = i,
+				}
+				out[#out + 1] = key
+			end
+		end
+	end
+	table.sort(out, function(a, b)
+		local x, y = info[a], info[b]
+		if x.Hybrid ~= y.Hybrid then
+			return x.Hybrid > y.Hybrid
+		end
+		if x.Tier ~= y.Tier then
+			return x.Tier > y.Tier
+		end
+		if x.Rarity ~= y.Rarity then
+			return x.Rarity > y.Rarity
+		end
+		return x.Index < y.Index
+	end)
+	return out
+end
+
+-- the defs of the player's fused pets (Id = the copy key) and a signature of the set (the grid is rebuilt when a
+-- fusion adds or removes one while the Fusions tab is shown)
+local function fusionDefs()
+	local defs, ids = {}, {}
+	for _, key in ipairs(fusionKeys()) do
+		local def = defOf(key)
+		if type(def) == "table" and type(def.Id) == "string" then
+			defs[#defs + 1] = def
+			ids[#ids + 1] = def.Id
+		end
+	end
+	return defs, table.concat(ids, ",")
+end
+
+local function petLevelOf(key)
+	if type(State.PetLevel) == "function" then
+		local ok, level = pcall(State.PetLevel, key)
+		if ok and type(level) == "number" then
+			return math.max(1, math.floor(level))
+		end
+	end
+	return 1
+end
+
+local function homeOf()
+	if type(State.Home) == "function" then
+		local ok, home = pcall(State.Home)
+		if ok and type(home) == "table" then
+			return home
+		end
+	end
+	return { Prestige = 0, Stations = {} }
+end
+
+-- opens the Fusion Machine window (FusionController, loaded on demand: no require cycle at load time)
+local function openFusionMachine()
+	local module = script.Parent:FindFirstChild("FusionController")
+	if not module then
+		return
+	end
+	local ok, fusion = pcall(require, module)
+	if ok and type(fusion) == "table" and type(fusion.Open) == "function" then
+		IndexController.Close()
+		pcall(fusion.Open, nil)
+	end
+end
+
+-- true once the player owns the Fusion Machine station
+local function hasFusionMachine()
+	local home = homeOf()
+	local stations = type(home.Stations) == "table" and home.Stations or {}
+	return (tonumber(stations.FusionMachine) or 0) >= 1
+end
+
+-- the Home window (MenuController, required at click time: both modules are loaded by then, so no cycle)
+local function openHomeWindow()
+	local module = script.Parent:FindFirstChild("MenuController")
+	if not module then
+		return
+	end
+	local ok, menu = pcall(require, module)
+	if ok and type(menu) == "table" and type(menu.Open) == "function" then
+		IndexController.Close()
+		pcall(menu.Open, "Home", {})
+	end
+end
+
+----------------------------------------------------------------------
 -- Visual helpers
 ----------------------------------------------------------------------
 -- CloudUI.Pill with a text size that stays >= 14 px at the phone scale (0.8).
@@ -660,10 +838,16 @@ local function fitWindow()
 	local area = guiSize()
 	local factor = Theme.ScreenFactor(viewportHeight())
 	local freeH = area.Y - 2 * K.MARGIN
+	-- portrait: a narrow, tall window (the stacked layout) keeps the readability scale
+	local minW, prefH = K.MIN_W, K.PREF_H
+	if area.X < area.Y then
+		minW = math.min(minW, K.TALL_MIN_W)
+		prefH = math.max(prefH, K.TALL_MAX_H)
+	end
 	local function solve(left)
 		local freeW = area.X - left - 2 * K.MARGIN
-		local w = Util.Clamp(math.floor(freeW / factor), K.MIN_W, K.PREF_W)
-		local h = Util.Clamp(math.floor((freeH - K.BUMPS * factor) / factor), K.MIN_H, K.PREF_H)
+		local w = Util.Clamp(math.floor(freeW / factor), minW, K.PREF_W)
+		local h = Util.Clamp(math.floor((freeH - K.BUMPS * factor) / factor), K.MIN_H, prefH)
 		local scale = Util.Clamp(math.min(factor, freeW / w, freeH / h), 0.3, 1.25)
 		return w, h, scale
 	end
@@ -693,10 +877,12 @@ local function relayout()
 	U.Fit.Scale = scale
 	U.Holder.Position = UDim2.fromOffset(math.floor(x + 0.5), math.floor(y + 0.5))
 
-	-- narrow windows get narrower side columns, short ones the compact layout
+	-- narrow windows get narrower side columns, short ones the compact layout, tall ones (portrait phones) stack
+	-- the group strip, the grid and the detail card
+	local tall = w < K.TALL
 	local narrow = w < K.NARROW
-	local short = h < K.SHORT
-	S.Narrow, S.Short = narrow, short
+	local short = h < K.SHORT and not tall
+	S.Narrow, S.Short, S.Tall = narrow, short, tall
 	local groupW = narrow and K.GROUP_W_NARROW or K.GROUP_W
 	local detailW = narrow and K.DETAIL_W_NARROW or K.DETAIL_W
 	local headerH = short and K.HEADER_H_SHORT or K.HEADER_H
@@ -704,10 +890,40 @@ local function relayout()
 	local footerH = short and 0 or K.FOOTER_H
 	U.Main.Size = UDim2.new(1, -20, 1, -(20 + footerH))
 	U.Footer.Visible = not short
-	U.Groups.Size = UDim2.new(0, groupW, 1, 0)
-	U.Detail.Size = UDim2.new(0, detailW, 1, 0)
-	U.Centre.Position = UDim2.new(0, groupW + K.GAP, 0, 0)
-	U.Centre.Size = UDim2.new(1, -(groupW + detailW + 2 * K.GAP), 1, 0)
+	if tall then
+		-- top: a sideways strip of group tiles (+ Elements); then the centre (header, grid, rewards); the detail
+		-- card fills the bottom
+		local strip = K.STRIP_H
+		U.Groups.Size = UDim2.new(1, 0, 0, strip)
+		U.GroupLayout.FillDirection = Enum.FillDirection.Horizontal
+		U.GroupLayout.HorizontalAlignment = Enum.HorizontalAlignment.Left
+		U.GroupLayout.VerticalAlignment = Enum.VerticalAlignment.Center
+		U.GroupList.ScrollingDirection = Enum.ScrollingDirection.X
+		U.GroupList.AutomaticCanvasSize = Enum.AutomaticSize.X
+		U.GroupList.Size = UDim2.new(1, U.ElementsButton and -(K.ELEMENTS_STRIP_W + 8) or 0, 1, 0)
+		U.GroupPad.PaddingTop = UDim.new(0, 0)
+		U.GroupPad.PaddingBottom = UDim.new(0, 12)
+		local centreTop = strip + 8
+		U.Centre.Position = UDim2.new(0, 0, 0, centreTop)
+		U.Centre.Size = UDim2.new(1, 0, 0.6, -centreTop)
+		U.Detail.AnchorPoint = Vector2.new(0, 1)
+		U.Detail.Position = UDim2.new(0, 0, 1, 0)
+		U.Detail.Size = UDim2.new(1, 0, 0.4, -8)
+	else
+		U.Groups.Size = UDim2.new(0, groupW, 1, 0)
+		U.GroupLayout.FillDirection = Enum.FillDirection.Vertical
+		U.GroupLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
+		U.GroupLayout.VerticalAlignment = Enum.VerticalAlignment.Top
+		U.GroupList.ScrollingDirection = Enum.ScrollingDirection.Y
+		U.GroupList.AutomaticCanvasSize = Enum.AutomaticSize.Y
+		U.GroupPad.PaddingTop = UDim.new(0, 6)
+		U.GroupPad.PaddingBottom = UDim.new(0, 6)
+		U.Detail.AnchorPoint = Vector2.new(1, 0)
+		U.Detail.Position = UDim2.new(1, 0, 0, 0)
+		U.Detail.Size = UDim2.new(0, detailW, 1, 0)
+		U.Centre.Position = UDim2.new(0, groupW + K.GAP, 0, 0)
+		U.Centre.Size = UDim2.new(1, -(groupW + detailW + 2 * K.GAP), 1, 0)
+	end
 	U.Header.Size = UDim2.new(1, 0, 0, headerH)
 	U.GridWell.Position = UDim2.fromOffset(0, headerH + 8)
 	U.GridWell.Size = UDim2.new(1, 0, 1, -(headerH + 8 + rewardH + 8))
@@ -724,27 +940,42 @@ local function relayout()
 		U.ClaimGlow.Size = UDim2.fromOffset(150 + 14, 52 + 10)
 		U.ClaimGlow.Position = UDim2.new(1, -14 - 75, 0.5, 0)
 	else
+		-- the portrait layout's centre is narrow: a smaller CLAIM button leaves the text more room
+		local buttonW, buttonH = tall and 150 or 184, tall and 52 or 60
 		U.RewardLabel.AnchorPoint = Vector2.new(0, 0)
 		U.RewardLabel.Position = UDim2.fromOffset(16, 8)
 		U.RewardAmount.AnchorPoint = Vector2.new(0, 0)
-		U.RewardAmount.Position = UDim2.fromOffset(140, 6)
-		U.RewardAmount.Size = UDim2.new(1, -350, 0, 32)
-		U.ClaimButton.Size = UDim2.fromOffset(184, 60)
-		U.ClaimGlow.Size = UDim2.fromOffset(184 + 16, 60 + 16)
-		U.ClaimGlow.Position = UDim2.new(1, -14 - 92, 0.5, 0)
+		U.RewardAmount.Position = UDim2.fromOffset(tall and 128 or 140, 6)
+		U.RewardAmount.Size = UDim2.new(1, -(buttonW + (tall and 150 or 166)), 0, 32)
+		U.ClaimButton.Size = UDim2.fromOffset(buttonW, buttonH)
+		U.ClaimGlow.Size = UDim2.fromOffset(buttonW + 16, buttonH + 16)
+		U.ClaimGlow.Position = UDim2.new(1, -14 - buttonW / 2, 0.5, 0)
 	end
+	S.RewardSubW = tall and -(150 + 44) or -230
 	if U.ElementsCard then
 		U.ElementsCard.Size = UDim2.new(1, 0, 1, -(rewardH + 8))
 	end
-	U.View.Size = UDim2.new(1, 0, 0, short and K.VIEW_H_SHORT or K.VIEW_H)
+	U.View.Size = UDim2.new(1, 0, 0, (short or tall) and K.VIEW_H_SHORT or K.VIEW_H)
 	local tileH = short and K.GROUP_TILE_H_SHORT or K.GROUP_TILE_H
+	local tileSize = tall and UDim2.new(0, K.STRIP_TILE_W, 1, 0) or UDim2.new(1, -10, 0, tileH)
 	for _, tile in pairs(S.GroupTiles) do
-		tile.Button.Size = UDim2.new(1, -10, 0, tileH)
+		tile.Button.Size = tileSize
+	end
+	if S.FusionTile then
+		S.FusionTile.Button.Size = tileSize
 	end
 	if U.ElementsButton then
-		local buttonH = short and K.ELEMENTS_BTN_H_SHORT or K.ELEMENTS_BTN_H
-		U.ElementsButton.Size = UDim2.new(1, -10, 0, buttonH)
-		U.GroupList.Size = UDim2.new(1, 0, 1, -(buttonH + 8))
+		if tall then
+			U.ElementsButton.AnchorPoint = Vector2.new(1, 0)
+			U.ElementsButton.Position = UDim2.new(1, 0, 0, 0)
+			U.ElementsButton.Size = UDim2.new(0, K.ELEMENTS_STRIP_W, 1, -12)
+		else
+			local buttonH = short and K.ELEMENTS_BTN_H_SHORT or K.ELEMENTS_BTN_H
+			U.ElementsButton.AnchorPoint = Vector2.new(0.5, 1)
+			U.ElementsButton.Position = UDim2.new(0.5, 0, 1, 0)
+			U.ElementsButton.Size = UDim2.new(1, -10, 0, buttonH)
+			U.GroupList.Size = UDim2.new(1, 0, 1, -(buttonH + 8))
+		end
 	end
 	local petW = narrow and K.TILE_W_NARROW or K.TILE_W
 	local petH = narrow and K.TILE_H_NARROW or K.TILE_H
@@ -792,7 +1023,7 @@ end
 ----------------------------------------------------------------------
 -- Group list (left)
 ----------------------------------------------------------------------
-local refreshAll, selectGroup, selectPet, renderDetail, showElements
+local refreshAll, selectGroup, selectPet, renderDetail, showElements, revealGroupTile
 
 local function buildGroupTile(group, index)
 	local color = rarityColor(group.Rarity)
@@ -844,7 +1075,7 @@ local function buildGroupTile(group, index)
 		TextScaled = true,
 		ZIndex = 2,
 	})
-	Util.Create("UITextSizeConstraint", { MaxTextSize = 24, MinTextSize = 17, Parent = tile.Name })
+	Util.Create("UITextSizeConstraint", { MaxTextSize = 24, MinTextSize = 18, Parent = tile.Name })
 	tile.Progress = makeText(button, "Progress", "0/0", "Heading", 19, WHITE, {
 		AnchorPoint = Vector2.new(1, 1),
 		Position = UDim2.new(1, -10, 1, -4),
@@ -900,6 +1131,73 @@ local function buildGroupTile(group, index)
 	return tile
 end
 
+-- The "Fusions" tile under the rarity groups (not a reward group): the player's hybrids and Golden / Rainbow copies.
+local function buildFusionTile(index)
+	local tile = {}
+	local button = Util.Create("TextButton", {
+		Name = "Group_" .. FUSIONS,
+		AutoButtonColor = false,
+		BorderSizePixel = 0,
+		Text = "",
+		BackgroundColor3 = WHITE,
+		Size = UDim2.new(1, -10, 0, K.GROUP_TILE_H),
+		LayoutOrder = index,
+		Parent = U.GroupList,
+	})
+	corner(button, 14)
+	tile.Stroke = stroke(button, NAVY, 3, 0)
+	Util.Create("UIGradient", {
+		Color = ColorSequence.new({
+			ColorSequenceKeypoint.new(0, Color3.fromRGB(246, 196, 64)),
+			ColorSequenceKeypoint.new(0.45, Color3.fromRGB(226, 110, 214)),
+			ColorSequenceKeypoint.new(1, Color3.fromRGB(88, 70, 170)),
+		}),
+		Rotation = 60,
+		Parent = button,
+	})
+	local gloss = makeFrame(button, "Gloss", {
+		BackgroundTransparency = 0.8,
+		BackgroundColor3 = WHITE,
+		Position = UDim2.fromOffset(8, 4),
+		Size = UDim2.new(1, -16, 0, 10),
+	})
+	round(gloss)
+	makeText(button, "Art", G.Sparkle, "Title", 38, WHITE, {
+		AnchorPoint = Vector2.new(1, 0),
+		Position = UDim2.new(1, -8, 0, 0),
+		Size = UDim2.fromOffset(40, 40),
+		TextTransparency = 0.45,
+		TextStrokeTransparency = 1,
+		Rotation = 12,
+	})
+	tile.Name = makeText(button, "GroupName", "Fusions", "Title", 24, WHITE, {
+		Position = UDim2.fromOffset(12, 4),
+		Size = UDim2.new(1, -52, 0, 30),
+		TextXAlignment = Enum.TextXAlignment.Left,
+		ZIndex = 2,
+	})
+	tile.Progress = makeText(button, "Progress", "", "Heading", 19, WHITE, {
+		AnchorPoint = Vector2.new(0, 1),
+		Position = UDim2.new(0, 12, 1, -4),
+		Size = UDim2.new(1, -24, 0, 24),
+		TextXAlignment = Enum.TextXAlignment.Left,
+		ZIndex = 2,
+	})
+	tile.Pop = Util.Create("UIScale", { Name = "Pop", Scale = 1, Parent = button })
+	button.MouseEnter:Connect(function()
+		tween(tile.Pop, 0.12, { Scale = 1.03 })
+	end)
+	button.MouseLeave:Connect(function()
+		tween(tile.Pop, 0.12, { Scale = 1 })
+	end)
+	button.Activated:Connect(function()
+		safe("select group", selectGroup, FUSIONS)
+	end)
+	tile.Button = button
+	S.FusionTile = tile
+	return tile
+end
+
 local function refreshGroupTiles()
 	for _, group in ipairs(S.Groups) do
 		local tile = S.GroupTiles[group.Id]
@@ -924,6 +1222,14 @@ local function refreshGroupTiles()
 			tile.Progress.TextColor3 = complete and Theme.Lighten(GOOD, 0.45) or WHITE
 		end
 	end
+	local fusionTile = S.FusionTile
+	if fusionTile then
+		local n = #fusionKeys()
+		fusionTile.Progress.Text = n == 1 and "1 fused pet" or (n .. " fused pets")
+		local selected = S.GroupId == FUSIONS
+		fusionTile.Stroke.Color = selected and GOLD or NAVY
+		fusionTile.Stroke.Thickness = selected and 4 or 3
+	end
 end
 
 ----------------------------------------------------------------------
@@ -943,7 +1249,12 @@ local function paintTile(tile)
 	local color = rarityAccent(def.Rarity)
 	if discovered then
 		tile.Gradient.Color = ColorSequence.new(Theme.Lighten(color, 0.55), Theme.Darken(color, 0.12))
-		tile.Caption.Text = def.Name
+		-- fused copies show the pet's own name: the chip carries the tier ("Golden Pebble Pup" needs three lines)
+		if tile.FusionChip and not isHybridKey(def.Id, def) then
+			tile.Caption.Text = def.Name or def.DisplayName
+		else
+			tile.Caption.Text = def.DisplayName or def.Name
+		end
 		tile.Caption.TextColor3 = WHITE
 	else
 		tile.Gradient.Color = ColorSequence.new(Color3.fromRGB(112, 132, 182), Color3.fromRGB(64, 80, 132))
@@ -980,6 +1291,17 @@ local function paintTile(tile)
 		for i, element in ipairs(elements) do
 			elementPill(tile.Elements, element, 18, i)
 		end
+	end
+	-- fused pets: a tier / hybrid chip (top-right) and the copy's level
+	if tile.FusionChip then
+		local tier = tierOfKey(def.Id, def)
+		local hybrid = isHybridKey(def.Id, def)
+		tile.FusionChip.Visible = hybrid or tier ~= "Normal"
+		tile.FusionChip.BackgroundColor3 = hybrid and FUSION_COLOR or (TIER_COLORS[tier] or GOLD)
+		tile.FusionText.Text = hybrid and "H" or (tier == "Rainbow" and "R" or "G")
+		local level = petLevelOf(def.Id)
+		tile.LevelTag.Text = "Lv " .. level
+		tile.LevelTag.Visible = level > 1
 	end
 end
 
@@ -1075,31 +1397,55 @@ local function buildTile(def, index)
 	tile.Art = makeFrame(button, "Art", {
 		AnchorPoint = Vector2.new(0.5, 0),
 		Position = UDim2.new(0.5, 0, 0, 6),
-		Size = UDim2.new(1, -12, 1, -44),
+		Size = UDim2.new(1, -12, 1, -50),
 		ZIndex = 2,
 	})
 	local band = makeFrame(button, "NameBand", {
 		AnchorPoint = Vector2.new(0.5, 1),
 		Position = UDim2.new(0.5, 0, 1, -5),
-		Size = UDim2.new(1, -10, 0, 32),
+		Size = UDim2.new(1, -10, 0, 40),
 		BackgroundTransparency = 0.25,
 		BackgroundColor3 = Color3.fromRGB(16, 24, 60),
 		ZIndex = 3,
 	})
 	corner(band, 9)
+	-- 18 design px on up to two lines: never under 14 px at the phone scale (readability rule)
 	tile.Caption = makeText(band, "Caption", "???", "Heading", 18, WHITE, {
-		Position = UDim2.fromOffset(4, 0),
-		Size = UDim2.new(1, -8, 1, 0),
-		TextScaled = true,
+		Position = UDim2.fromOffset(3, 0),
+		Size = UDim2.new(1, -6, 1, 0),
+		TextWrapped = true,
+		TextTruncate = Enum.TextTruncate.AtEnd,
+		LineHeight = 0.92,
 		ZIndex = 4,
 	})
-	Util.Create("UITextSizeConstraint", { MaxTextSize = 18, MinTextSize = 13, Parent = tile.Caption })
 	tile.Elements = makeFrame(button, "Elements", {
 		Position = UDim2.fromOffset(6, 6),
 		Size = UDim2.new(1, -12, 0, 26),
 		ZIndex = 4,
 	})
 	listLayout(tile.Elements, Enum.FillDirection.Horizontal, 3, Enum.HorizontalAlignment.Left, Enum.VerticalAlignment.Top)
+	if S.GroupId == FUSIONS then
+		local chip = makeFrame(button, "FusionBadge", {
+			AnchorPoint = Vector2.new(1, 0),
+			Position = UDim2.new(1, -6, 0, 6),
+			Size = UDim2.fromOffset(30, 30),
+			BackgroundTransparency = 0,
+			BackgroundColor3 = FUSION_COLOR,
+			ZIndex = 5,
+		})
+		round(chip)
+		stroke(chip, NAVY, 2.5, 0)
+		tile.FusionChip = chip
+		tile.FusionText = makeText(chip, "Mark", "", "Button", 18, WHITE, { Size = UDim2.new(1, 0, 1, 0), ZIndex = 6 })
+		tile.LevelTag = makeText(button, "LevelTag", "", "Heading", 18, WHITE, {
+			AnchorPoint = Vector2.new(1, 1),
+			Position = UDim2.new(1, -8, 1, -48),
+			Size = UDim2.fromOffset(70, 22),
+			TextXAlignment = Enum.TextXAlignment.Right,
+			Visible = false,
+			ZIndex = 5,
+		})
+	end
 	tile.Pop = Util.Create("UIScale", { Name = "Pop", Scale = 1, Parent = button })
 	button.MouseEnter:Connect(function()
 		tile.Hover = true
@@ -1133,6 +1479,15 @@ local function refreshTiles()
 end
 
 local function renderHeader()
+	if S.GroupId == FUSIONS then
+		local n = #S.TileOrder
+		U.GroupTitle.Text = G.Sparkle .. " Fusions"
+		U.GroupTitle.TextColor3 = Theme.Lighten(FUSION_COLOR, 0.45)
+		U.HeaderFill.Size = UDim2.new(n > 0 and 1 or 0, 0, 1, 0)
+		U.HeaderFill.BackgroundColor3 = Theme.Lighten(FUSION_COLOR, 0.15)
+		U.HeaderCount.Text = n == 1 and "1 fused pet" or (n .. " fused pets")
+		return
+	end
 	local group = S.GroupById[S.GroupId]
 	if not group then
 		return
@@ -1147,10 +1502,47 @@ local function renderHeader()
 end
 
 local function renderRewards()
+	if S.GroupId == FUSIONS then
+		-- fusions are not a reward group: how to fuse, and the way to the Fusion Machine (or to the Home window
+		-- that builds it / shows the prestige progress)
+		local home = homeOf()
+		local machine = hasFusionMachine()
+		local stars = tonumber(home.Prestige) or 0
+		U.RewardLabel.Visible = false
+		U.RewardAmount.Visible = false
+		U.RewardSub.Visible = true
+		local compact = S.Short or S.Tall
+		U.RewardSub.Position = UDim2.fromOffset(16, compact and 4 or 8)
+		U.RewardSub.Size = UDim2.new(1, -(compact and 182 or 230), 1, compact and -8 or -16)
+		if machine then
+			U.RewardSub.Text = "Fuse 3 copies into Golden (x1.5), 3 Golden into Rainbow (x2.5), or mix two pets into a hybrid!"
+		elseif stars >= 1 then
+			U.RewardSub.Text = "Build the Fusion Machine at home for Golden, Rainbow and hybrid pets!"
+		else
+			U.RewardSub.Text = "Reach Prestige 1 at home to unlock the Fusion Machine!"
+		end
+		U.RewardSub.TextColor3 = MUTED
+		local button = U.ClaimButton
+		button.Text = machine and "Fuse pets" or "My Home"
+		CloudUI.SetStyle(button, machine and "Blue" or "Green")
+		CloudUI.SetDisabled(button, false)
+		if U.ClaimPulse then
+			U.ClaimPulse:Cancel()
+			U.ClaimPulse = nil
+		end
+		U.ClaimGlow.Visible = false
+		return
+	end
 	local group = S.GroupById[S.GroupId]
 	if not group then
 		return
 	end
+	-- back from the Fusions tab: the reward box's own layout
+	U.RewardAmount.Visible = true
+	U.RewardLabel.Visible = not (S.Short and S.Narrow)
+	U.RewardSub.Visible = not S.Short
+	U.RewardSub.Position = UDim2.fromOffset(16, 44)
+	U.RewardSub.Size = UDim2.new(1, S.RewardSubW or -230, 0, 44)
 	local found, total, complete, claimed, claimable = groupStatus(group)
 	U.RewardAmount.Text = TOKEN_GLYPH .. " " .. commas(rewardTokens(group))
 	local button = U.ClaimButton
@@ -1211,7 +1603,7 @@ local function clearDetailPills()
 end
 
 function renderDetail()
-	local def = S.PetId and PetCatalog.Get(S.PetId) or nil
+	local def = S.PetId and defOf(S.PetId) or nil
 	if not def then
 		U.DetailBody.Visible = false
 		U.DetailEmpty.Visible = true
@@ -1261,19 +1653,32 @@ function renderDetail()
 		U.Banner.Image = art
 	end
 
-	U.Name.Text = discovered and def.Name or "???"
+	U.Name.Text = discovered and (def.DisplayName or def.Name) or "???"
+	local tier = tierOfKey(def.Id, def)
+	local hybrid = isHybridKey(def.Id, def)
+	local fused = hybrid or tier ~= "Normal"
 	U.Name.TextColor3 = discovered and Theme.Lighten(accent, 0.45) or MUTED
 
 	-- meta: rarity, element and role pills (rebuilt only when they change)
 	local elements = discovered and elementsOf(def) or {}
 	local role = discovered and def.Role or nil
-	local pillKey = tostring(def.Rarity) .. "|" .. table.concat(elements, ",") .. "|" .. tostring(role)
+	local pillKey = tostring(def.Rarity) .. "|" .. table.concat(elements, ",") .. "|" .. tostring(role) .. "|" .. tier .. "|" .. tostring(hybrid)
 	if S.PillKey ~= pillKey then
 		S.PillKey = pillKey
 		clearDetailPills()
 		local rarityPill = readablePill(def.Rarity, rarityColor(def.Rarity), U.Meta)
 		rarityPill.LayoutOrder = 1
 		table.insert(S.DetailPills, rarityPill)
+		if tier ~= "Normal" then
+			local tierPill = readablePill(tier, TIER_COLORS[tier] or GOLD, U.Meta)
+			tierPill.LayoutOrder = 2
+			table.insert(S.DetailPills, tierPill)
+		end
+		if hybrid then
+			local hybridPill = readablePill("Hybrid", FUSION_COLOR, U.Meta)
+			hybridPill.LayoutOrder = 3
+			table.insert(S.DetailPills, hybridPill)
+		end
 		for i, element in ipairs(elements) do
 			table.insert(S.DetailPills, elementPill(U.Meta, element, 18, 1 + i))
 		end
@@ -1291,7 +1696,13 @@ function renderDetail()
 
 	-- stats: real numbers once discovered, locked "?" rows before
 	local stats = nil
-	if discovered and type(PetCatalog.GetStats) == "function" then
+	if discovered and fused and type(PetCatalog.StatsOf) == "function" then
+		-- a fused copy: its stats at its own level x its tier (a hybrid's merged stats)
+		local ok, result = pcall(PetCatalog.StatsOf, def, petLevelOf(def.Id))
+		if ok and type(result) == "table" then
+			stats = result
+		end
+	elseif discovered and type(PetCatalog.GetStats) == "function" then
 		local ok, result = pcall(PetCatalog.GetStats, def.Id, 1)
 		if ok and type(result) == "table" then
 			stats = result
@@ -1335,11 +1746,21 @@ function renderDetail()
 
 	-- blurb or how to find it
 	if discovered then
-		U.Info.Text = tostring(def.Blurb or "")
+		local text = tostring(def.Blurb or "")
+		if hybrid then
+			-- PetKeys' hybrid blurb names both parents ("A fusion of Maple Fox and Storm Tabby.")
+			text = text .. " One of a kind: its parents' average stats x1.2."
+		elseif tier ~= "Normal" then
+			text = "A " .. tier .. " copy: x" .. (tier == "Rainbow" and "2.5" or "1.5") .. " stats and perks. " .. text
+		end
+		U.Info.Text = text
 		U.Info.TextColor3 = WHITE
 		local owned = State.OwnedCount(def.Id)
 		U.Owned.Visible = true
-		if owned > 0 then
+		if owned > 0 and fused then
+			U.Owned.Text = "Lv " .. petLevelOf(def.Id) .. "   " .. string.char(226, 128, 162) .. "   You own x" .. owned
+			U.Owned.TextColor3 = Theme.Lighten(GOOD, 0.4)
+		elseif owned > 0 then
 			U.Owned.Text = "You own x" .. owned
 			U.Owned.TextColor3 = Theme.Lighten(GOOD, 0.4)
 		else
@@ -1371,6 +1792,44 @@ function selectPet(petId)
 	renderDetail()
 end
 
+-- scrolls the group list so the tile of `groupId` is in view (Open("Fusions") on a short screen)
+function revealGroupTile(groupId)
+	local list = U.GroupList
+	local index = nil
+	if groupId == FUSIONS then
+		index = #S.Groups + 1
+	else
+		for i, group in ipairs(S.Groups) do
+			if group.Id == groupId then
+				index = i
+			end
+		end
+	end
+	if not list or not index then
+		return
+	end
+	if S.Tall then
+		return -- the sideways strip of the portrait layout: the player scrolls it (the header names the group)
+	end
+	-- CanvasPosition is in the list's own (pre-UIScale) pixels, like the tile sizes; the window's pop-in UIScale
+	-- may still be running (it starts at 0.86)
+	local scale = math.max(((U.Fit and U.Fit.Scale) or 1) * ((U.Pop and U.Pop.Scale) or 1), 0.01)
+	local visible = list.AbsoluteSize.Y / scale
+	if visible <= 1 then
+		return
+	end
+	local tileH = S.Short and K.GROUP_TILE_H_SHORT or K.GROUP_TILE_H
+	local top = 6 + (index - 1) * (tileH + 6)
+	local bottom = top + tileH
+	local y = list.CanvasPosition.Y
+	if top < y then
+		y = top - 6
+	elseif bottom > y + visible then
+		y = bottom - visible + 6
+	end
+	list.CanvasPosition = Vector2.new(0, math.max(0, y))
+end
+
 local function defaultPetOf(group)
 	-- the first discovered pet, else the first one
 	for _, def in ipairs(group.Pets) do
@@ -1382,30 +1841,49 @@ local function defaultPetOf(group)
 end
 
 function selectGroup(groupId)
+	-- the Fusions tab is a pseudo group: the player's fused copies (keys), rebuilt when that set changes
+	local fusions = groupId == FUSIONS
 	local group = S.GroupById[groupId]
-	if not group then
+	if not fusions and not group then
 		return
 	end
-	local changed = S.GroupId ~= groupId or #S.TileOrder == 0
+	local pets, sig
+	if fusions then
+		pets, sig = fusionDefs()
+	else
+		pets = group.Pets
+	end
+	local changed = S.GroupId ~= groupId or #S.TileOrder == 0 or (fusions and S.FusionSig ~= sig)
 	S.GroupId = groupId
 	if S.ElementsShown then
 		showElements(false)
 	end
 	if changed then
 		clearTiles()
-		for index, def in ipairs(group.Pets) do
+		S.FusionSig = sig
+		for index, def in ipairs(pets) do
 			buildTile(def, index)
 		end
 		U.Grid.CanvasPosition = Vector2.new(0, 0)
 		local keep = false
-		for _, def in ipairs(group.Pets) do
+		for _, def in ipairs(pets) do
 			if def.Id == S.PetId then
 				keep = true
 			end
 		end
 		if not keep then
-			S.PetId = defaultPetOf(group)
+			if fusions then
+				S.PetId = pets[1] and pets[1].Id or nil
+			else
+				S.PetId = defaultPetOf(group)
+			end
 		end
+	end
+	if U.FusionEmpty then
+		U.FusionEmpty.Visible = fusions and #pets == 0
+	end
+	if changed then
+		revealGroupTile(groupId)
 	end
 	refreshGroupTiles()
 	renderHeader()
@@ -1434,6 +1912,13 @@ end
 function refreshAll()
 	if not S.Built then
 		return
+	end
+	if S.GroupId == FUSIONS then
+		-- a fusion added / used up a copy while the tab is shown: rebuild its grid
+		local _, sig = fusionDefs()
+		if sig ~= S.FusionSig then
+			selectGroup(FUSIONS)
+		end
 	end
 	refreshGroupTiles()
 	refreshTiles()
@@ -1685,6 +2170,26 @@ local function buildCentre(centre)
 		HorizontalAlignment = Enum.HorizontalAlignment.Center,
 		Parent = U.Grid,
 	})
+	-- the Fusions tab without any fused pet yet
+	U.FusionEmpty = makeFrame(well, "FusionEmpty", { Size = UDim2.new(1, 0, 1, 0), Visible = false, ZIndex = 5 })
+	listLayout(U.FusionEmpty, Enum.FillDirection.Vertical, 10, Enum.HorizontalAlignment.Center, Enum.VerticalAlignment.Center)
+	makeText(U.FusionEmpty, "Glyph", G.Sparkle, "Title", 54, Theme.Lighten(FUSION_COLOR, 0.4), {
+		Size = UDim2.new(1, 0, 0, 60),
+		LayoutOrder = 1,
+		ZIndex = 5,
+	})
+	makeText(U.FusionEmpty, "Title", "No fused pets yet", "Title", 28, WHITE, {
+		Size = UDim2.new(1, -30, 0, 34),
+		LayoutOrder = 2,
+		ZIndex = 5,
+	})
+	makeText(U.FusionEmpty, "Body", "Golden and Rainbow copies and the hybrids you mix at the Fusion Machine show up here.", "Body", 19, MUTED, {
+		Size = UDim2.new(1, -60, 0, 0),
+		AutomaticSize = Enum.AutomaticSize.Y,
+		TextWrapped = true,
+		LayoutOrder = 3,
+		ZIndex = 5,
+	})
 
 	-- rewards box + CLAIM
 	local rewards = inset(centre, "Rewards", {
@@ -1729,7 +2234,15 @@ local function buildCentre(centre)
 		TextSize = 26,
 		ZIndex = 2,
 		Callback = function()
-			safe("claim", requestClaim)
+			if S.GroupId == FUSIONS then
+				if hasFusionMachine() then
+					safe("fusion machine", openFusionMachine)
+				else
+					safe("home window", openHomeWindow)
+				end
+			else
+				safe("claim", requestClaim)
+			end
 		end,
 		Parent = rewards,
 	})
@@ -1876,7 +2389,7 @@ local function buildDetail(detail)
 		TextXAlignment = Enum.TextXAlignment.Left,
 		TextScaled = true,
 	})
-	Util.Create("UITextSizeConstraint", { MaxTextSize = 22, MinTextSize = 16, Parent = U.SpecialName })
+	Util.Create("UITextSizeConstraint", { MaxTextSize = 22, MinTextSize = 18, Parent = U.SpecialName })
 	U.SpecialKind = makeText(special, "Kind", "", "Heading", 18, MUTED, {
 		AnchorPoint = Vector2.new(1, 0),
 		Position = UDim2.new(1, -10, 0, 28),
@@ -1949,11 +2462,12 @@ local function buildWindow()
 	U.Groups = makeFrame(main, "Groups", { Size = UDim2.new(0, K.GROUP_W, 1, 0) })
 	local listHeight = hasElements and -(K.ELEMENTS_BTN_H + 8) or 0
 	U.GroupList = scroller(U.Groups, "GroupList", { Size = UDim2.new(1, 0, 1, listHeight) })
-	pad(U.GroupList, 4, 6, 10, 6)
-	listLayout(U.GroupList, Enum.FillDirection.Vertical, 6, Enum.HorizontalAlignment.Center)
+	U.GroupPad = pad(U.GroupList, 4, 6, 10, 6)
+	U.GroupLayout = listLayout(U.GroupList, Enum.FillDirection.Vertical, 6, Enum.HorizontalAlignment.Center)
 	for index, group in ipairs(S.Groups) do
 		buildGroupTile(group, index)
 	end
+	buildFusionTile(#S.Groups + 1)
 	if hasElements then
 		U.ElementsButton = CloudUI.Button({
 			Name = "Elements",
@@ -2078,6 +2592,8 @@ function IndexController.Open(groupId)
 	if type(groupId) == "string" then
 		if S.GroupById[groupId] then
 			target = groupId
+		elseif groupId:lower() == FUSIONS:lower() or groupId:lower() == "fusion" then
+			target = FUSIONS
 		else
 			-- accept any capitalisation ("common")
 			for id in pairs(S.GroupById) do

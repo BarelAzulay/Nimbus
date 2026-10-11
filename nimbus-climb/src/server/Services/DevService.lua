@@ -77,7 +77,7 @@ local Remotes = require(Shared.Remotes)
 
 local DevService = {}
 
-DevService.Commands = { "allpets", "tokens", "reset", "tutorial", "skiptutorial", "devhelp" }
+DevService.Commands = { "allpets", "tokens", "cash", "gems", "reset", "tutorial", "skiptutorial", "devhelp" }
 
 local TAG = "[NimbusClimb][Dev] "
 local ATTR = "NC_Dev" -- PlayerGui attribute: true for developers (a hint for the client's DEV button)
@@ -96,7 +96,9 @@ for _, name in ipairs(DevService.Commands) do
 	KNOWN[name] = true
 end
 -- the commands that still run while the profile is provisional (see the persistence note)
-local PROVISIONAL_OK = { tokens = true, devhelp = true }
+local PROVISIONAL_OK = { tokens = true, cash = true, gems = true, devhelp = true }
+-- the commands that take a whole-number amount
+local NUMERIC = { tokens = true, cash = true, gems = true }
 
 ----------------------------------------------------------------------
 -- Collaborators (other engineers' modules: every use is guarded)
@@ -456,6 +458,33 @@ local function cmdTokens(player, profile, arg)
 	return true, "+" .. commas(amount) .. " Cloud Tokens", true
 end
 
+-- Phase 2 currencies (tycoon Cash and premium Gems) for testing the homes, fusion and the gem roulettes.
+local function grantCurrency(player, arg, label, configKey, fallback, adder)
+	local dev = devConfig()
+	local amount = arg
+	if amount == nil then
+		amount = isWhole(dev[configKey]) and dev[configKey] or fallback
+	end
+	if not isWhole(amount) then
+		return false, label .. " needs a whole number, like /" .. string.lower(label) .. " 50000"
+	end
+	local maxAmount = isWhole(dev.MaxTokensPerCommand) and dev.MaxTokensPerCommand or 100000000
+	amount = math.max(1, math.min(amount, math.max(1, maxAmount)))
+	if not hasFunction(DataService, adder) then
+		return false, label .. " is unavailable in this build"
+	end
+	DataService[adder](player, amount)
+	return true, "+" .. commas(amount) .. " " .. label, true
+end
+
+local function cmdCash(player, profile, arg)
+	return grantCurrency(player, arg, "Cash", "GrantCash", 1000000, "AddCash")
+end
+
+local function cmdGems(player, profile, arg)
+	return grantCurrency(player, arg, "Gems", "GrantGems", 1000, "AddGems")
+end
+
 local function cmdReset(player, profile)
 	if player:GetAttribute(Config.Attr.InMatch) == true then
 		return false, "leave the match first, then reset"
@@ -476,10 +505,22 @@ local function cmdReset(player, profile)
 	wipe(tableField(profile, "IndexClaimed"))
 	profile.Cash = 0
 	profile.Gems = 0
+	-- Phase 2: the tycoon home (stations, garden, gym, collector), fused copies, food and pet levels go too
 	local home = tableField(profile, "Home")
 	home.Level, home.Prestige = 0, 0
+	home.CollectorCash = 0
 	wipe(tableField(home, "Rooms"))
+	wipe(tableField(home, "Stations"))
+	wipe(tableField(home, "Garden"))
+	wipe(tableField(home, "Gym"))
 	wipe(tableField(profile, "PetLevels"))
+	wipe(tableField(profile, "Tiers"))
+	wipe(tableField(profile, "Hybrids"))
+	wipe(tableField(profile, "Food"))
+	local care = loadModule(script.Parent, "PetCareService")
+	if hasFunction(care, "ClearKitchen") then
+		pcall(care.ClearKitchen, player)
+	end
 	for _, attr in ipairs({ Config.Attr.Cash, Config.Attr.Gems }) do
 		if attr and player:GetAttribute(attr) ~= nil then
 			player:SetAttribute(attr, 0)
@@ -490,7 +531,17 @@ local function cmdReset(player, profile)
 	local tutorialNote = ""
 	local rewound = reload ~= nil or not TutorialService
 	-- the grow-only fields are written over the store at the next save (the store would merge them back otherwise)
-	overwriteStored(player, { Discovered = true, IndexClaimed = true, BestTimes = true, Tutorial = rewound })
+	overwriteStored(player, {
+		Discovered = true,
+		IndexClaimed = true,
+		BestTimes = true,
+		Tutorial = rewound,
+		-- Phase 2: a higher stored prestige would otherwise win the Home merge and bring the old home back
+		Home = true,
+		Tiers = true,
+		Hybrids = true,
+		PetLevels = true,
+	})
 	if rewound then
 		rewindTutorial(player, profile, reload, true)
 	else
@@ -537,14 +588,16 @@ end
 
 local function cmdHelp()
 	if tutorialReloader() then
-		return true, "/allpets  /tokens 50000  /reset  /tutorial  /skiptutorial  /devhelp", false
+		return true, "/allpets /tokens N /cash N /gems N /reset /tutorial /skiptutorial /devhelp", false
 	end
-	return true, "/allpets  /tokens 50000  /reset  /skiptutorial  /devhelp", false
+	return true, "/allpets /tokens N /cash N /gems N /reset /skiptutorial /devhelp", false
 end
 
 local HANDLERS = {
 	allpets = cmdAllPets,
 	tokens = cmdTokens,
+	cash = cmdCash,
+	gems = cmdGems,
 	reset = cmdReset,
 	tutorial = cmdTutorial,
 	skiptutorial = cmdSkipTutorial,
@@ -565,11 +618,11 @@ local function execute(player, command, arg, source)
 		notify(player, "DEV: unknown command '" .. printable(command) .. "' (try /devhelp)", "bad")
 		return false, "unknown command"
 	end
-	-- only "tokens" takes a value, and only a number
-	if arg ~= nil and (name ~= "tokens" or type(arg) ~= "number") then
+	-- only tokens / cash / gems take a value, and only a number
+	if arg ~= nil and (not NUMERIC[name] or type(arg) ~= "number") then
 		log(player, source, name, arg, "refused: bad value")
-		if name == "tokens" then
-			notify(player, "DEV: tokens needs a whole number, like /tokens 50000", "bad")
+		if NUMERIC[name] then
+			notify(player, "DEV: " .. name .. " needs a whole number, like /" .. name .. " 50000", "bad")
 		else
 			notify(player, "DEV: " .. name .. " takes no value", "bad")
 		end
@@ -677,7 +730,7 @@ local function onChatted(player, message)
 		return -- not one of ours (/e dance, /w name ...): leave it alone
 	end
 	local arg = nil
-	if word == "tokens" and rest ~= "" then
+	if NUMERIC[word] and rest ~= "" then
 		arg = parseAmount(rest)
 		if arg == nil then
 			arg = rest -- not a number: Run refuses it with a "bad" toast

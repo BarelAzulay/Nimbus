@@ -94,6 +94,10 @@ Config.Remotes = {
 	"TutorialEvent", -- (eventName:string)  v3: client-observed tutorial events (window opened, skip)
 	"IndexClaim", -- (groupId:string)  v3: claim a completed Pet Index group reward
 	"DevCommand", -- (command:string, arg:any)  developer tools; the server only obeys allowed players (Config.Dev)
+	-- Phase 2 (ARCHITECTURE_V3.md "Phase 2 build contract")
+	"HomeAction", -- (action:string, arg:any)  Upgrade / GardenSet / Collect / Prestige / GoHome
+	"PetCare", -- (action:string, a:any, b:any)  Cook / Feed / GymSet
+	"Fusion", -- (action:string, a:any, b:any)  Upgrade / Mix
 }
 
 ----------------------------------------------------------------------
@@ -398,8 +402,29 @@ Config.Elements = {
 	WeakMultiplier = 0.75, -- the defender's element is strong against the attacker
 }
 
+-- Phase 2: Gems (premium currency bought with Robux). The owner creates Developer Products on the Creator Hub and
+-- pastes their ids here; id 0 means "not created yet" and the product is hidden.
+Config.Gems = {
+	Products = {
+		{ Id = 0, Gems = 100, Name = "Pouch of Gems" },
+		{ Id = 0, Gems = 550, Name = "Bag of Gems" },
+		{ Id = 0, Gems = 1200, Name = "Chest of Gems" },
+		{ Id = 0, Gems = 6500, Name = "Vault of Gems" },
+	},
+	-- Gem prices for the token roulettes (a cheaper premium way to roll); the Secret roulette is gems only.
+	RouletteGemPrices = { Cloud = 5, Storm = 20, Sky = 75, Celestial = 300 },
+	SecretRoulette = {
+		Id = "Secret",
+		DisplayName = "Secret Roulette",
+		GemPrice = 1500,
+		Color = Color3.fromRGB(70, 90, 200),
+		AllowSecret = true,
+		Odds = { Mythic = 85, Secret = 15 },
+	},
+}
+
 -- Developer tools (owner only). The game's owner (and the extra UserIds in Admins, and everyone while testing in
--- Roblox Studio) gets a small DEV button and chat commands: /allpets, /tokens <n>, /reset, /tutorial, /skiptutorial,
+-- Roblox Studio) gets a small DEV button and chat commands: /allpets, /tokens <n>, /cash <n>, /gems <n>, /reset, /tutorial, /skiptutorial,
 -- /devhelp. Nobody else can use them: the server checks every request.
 Config.Dev = {
 	Enabled = true, -- master switch for the developer tools
@@ -407,6 +432,8 @@ Config.Dev = {
 	Admins = {}, -- extra Roblox UserIds allowed in the live game (the game's owner is always allowed)
 	StudioAutoGrant = false, -- true: in Studio, start every test with every pet and GrantTokens tokens
 	GrantTokens = 1000000, -- tokens added by the "+ tokens" button and by StudioAutoGrant
+	GrantCash = 1000000, -- Phase 2: Cash added by the "+ Cash" button (/cash n)
+	GrantGems = 1000, -- Phase 2: Gems added by the "+ Gems" button (/gems n)
 	MaxTokensPerCommand = 100000000,
 }
 

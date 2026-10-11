@@ -405,6 +405,19 @@ local function serverScenarios()
 		prof.Cash, prof.Gems = 120, 7
 		prof.Home.Level = 2
 		prof.PetLevels[equipId] = { Level = 3, Xp = 10 }
+		-- Phase 2 progress the reset must take too (the whole home build, fused copies, food)
+		prof.Home.Stations = prof.Home.Stations or {}
+		prof.Home.Stations.Press1 = 3
+		prof.Home.Garden = prof.Home.Garden or {}
+		prof.Home.Garden[1] = equipId
+		prof.Home.Gym = prof.Home.Gym or {}
+		prof.Home.CollectorCash = 55
+		prof.Tiers = prof.Tiers or {}
+		prof.Tiers[equipId] = { Golden = 1 }
+		prof.Hybrids = prof.Hybrids or {}
+		prof.Hybrids.devtest = { Body = equipId, Style = equipId, Elements = {}, Name = "Test", Rarity = "Common", Tier = "Normal" }
+		prof.Food = prof.Food or {}
+		prof.Food.Snack = 4
 		-- refused in a match
 		owner:SetAttribute(Config.Attr.InMatch, true)
 		before = snapshotOf(owner)
@@ -436,6 +449,10 @@ local function serverScenarios()
 		expect(next(prof.IndexClaimed) == nil, "index rewards")
 		expect(prof.Cash == 0 and prof.Gems == 0, "cash / gems")
 		expect(prof.Home.Level == 0 and next(prof.PetLevels) == nil, "home / pet levels")
+		expect(next(prof.Home.Stations or {}) == nil and next(prof.Home.Garden or {}) == nil and (prof.Home.CollectorCash or 0) == 0,
+			"home build (stations / garden / collector)")
+		expect(next(prof.Tiers or {}) == nil and next(prof.Hybrids or {}) == nil, "golden / rainbow / fused copies")
+		expect(next(prof.Food or {}) == nil, "food")
 		T.check(#left == 0 and toast.kind == "good", "DEV reset: back to a brand-new player (tokens, pets, equipped, items, stats, Index, cash, gems, home)", table.concat(left, ", ") .. " / " .. toast.text)
 		T.eq(owner:GetAttribute(Config.Attr.SpotIndex), spot, "DEV reset: ...the lobby spot stays assigned")
 		syncs = K.remotesFor("ProfileSync", owner.UserId, mark)
@@ -1138,7 +1155,9 @@ local function clientScenarios()
 			local label = "DEV " .. size[1] .. "x" .. size[2]
 			local floorPx = size[2] >= 1000 and 15 or 14
 			checkTile(label, floorPx)
-			checkTileToasts(label, true)
+			-- (844x390: with the Phase 2 currency stack - Cloud Tokens, Cash, Gems - only the newest toast fits under
+			-- it, so the "two newest toasts" check is reported only there, like the open panel's below)
+			checkTileToasts(label, size[1] ~= 844)
 			Mock.Click(named(g, "DevButton"))
 			advance(0.6)
 			checkPanel(label, floorPx, size[3])
