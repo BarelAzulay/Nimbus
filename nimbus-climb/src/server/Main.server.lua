@@ -338,6 +338,8 @@ if TutorialService then call("TutorialService.Init", TutorialService, "Init", lo
 	MatchService = MatchService,
 	SpotService = SpotService,
 	IndexService = IndexService,
+	BattleService = BattleService, -- Phase 3: tutorial chapter 3 listens to BattleService.BattleEnded
+	ArenaInfo = arenaInfo,
 }) end
 if TycoonService then call("TycoonService.Init", TycoonService, "Init", lobbyInfo, {
 	DataService = DataService,
@@ -377,6 +379,8 @@ if DevService then call("DevService.Init", DevService, "Init", {
 	PetService = PetService,
 	TutorialService = TutorialService,
 	IndexService = IndexService,
+	BattleService = BattleService, -- Phase 3: /raid and the DEV panel's raid button
+	EventService = EventService,
 }) end
 
 ----------------------------------------------------------------------

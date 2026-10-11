@@ -645,3 +645,32 @@ locks, recommended power vs. your team's power, rewards, first-clear badges), du
 quick queue, the raid join prompt and event countdown, the trophy leaderboard panel; tutorial chapter 3 (go to the
 Arena, set your team, win Trial 1, see a Boss Raid) and NPC tips for battles, elements in battle, teams and events.
 
+
+**Interfaces between the Phase 3 modules (so every engineer can code without waiting for the others):**
+- *Signals exist at module load* (`Util.Signal()`), so other services can connect before Init:
+  `BattleService.BattleEnded:Fire(battleId, result)` with `result = {Mode, Winners = {userId...}, Losers = {userId...},
+  Level (Trial), BossId (Raid), Damage = {[userId] = n} (Raid), Forfeit = bool}`; `DataService.TeamsChanged:Fire(player)`
+  after SetTeam/SelectTeam. TutorialService and DevService receive `BattleService` (and DevService `EventService`) in
+  their Init deps.
+- *Duel/queue status*: `BattleState("Lobby", {Queue = {Queued, Waiting}, Invites = {{FromUserId, FromName, Trophies,
+  Power, ExpiresIn}}, Sent = {ToUserId, ToName, ExpiresIn} | nil})`, sent by BattleService to a player whenever their
+  duel/queue status changes. Refusals and info use the existing `Notify` toasts (side, never centred).
+- *Snapshot frame*: `x, z` are studs relative to the zone centre from "Start" (`Zone = {CFrame, Size}`), floor at the
+  zone CFrame's height. Static unit info also carries `slot` (the owner's team slot 1-4) so the HUD maps buttons to
+  pets. `BattleSim` exposes its state codes and event types as constants (`BattleSim.States`, `BattleSim.Events`).
+- *ArenaState* (EventService broadcasts it every ~1 s while a countdown or raid runs, else every ~5 s and on join):
+  `{Next = {Kind = "BossRaid"|"DoubleRewards", BossId, StartsIn} | nil, Raid = BattleService.GetRaidStatus() ->
+  {Active, BossId, Hp, MaxHp, Players, EndsIn} | nil, Double = {Active, EndsIn} | nil, Leaderboard = {{UserId, Name,
+  Trophies} x10}}`. `EventService.StartNow(kind)` lets the developer tools start an event at once (`/raid`, DEV panel).
+- *World prompts that open windows* carry the attribute `OpenPanel = "<panelId>"` (`"Trials"`, `"Arena"`); the client
+  controller that owns the panel opens it from `ProximityPromptService.PromptTriggered` (like FusionController).
+  Trial starts are accepted near `Portal_Trials`; duel challenges and the queue inside the arena; raid joins inside the
+  arena while a raid is active.
+- *BattleCatalog helpers the UI uses*: `UnitPower(petId, level, tier)`, `TeamPower(list of {PetId, Level, Tier})`,
+  `Synergy(list of petIds) -> {{Id, Name, Text}}`, `Trials[level] = {Level, Name, RecommendedPower, MiniBoss,
+  Rewards = {Tokens, FirstClear = {Tokens, Gems}}}`, `Bosses[id] = {Name, Element, ...}`, `Specials[Kind] = {Name, Text}`.
+- *ArenaInfo* (from ArenaBuilder.Build): `{Model (workspace.BattleArena), Center (CFrame), Floor = {CFrame, Size},
+  Rings = {{CFrame, Size, Pads}}, Spawn (CFrame), ReturnCFrame, TrialPortal (BasePart)}`; `ArenaBuilder.BuildPocket(index)
+  -> {Model, CFrame, Size, Spawn}` and `ArenaBuilder.FreePocket(zone)`.
+- *Ownership additions*: data also owns the DevService reset lines for Teams/Battle; events owns the DevService `raid`
+  command and one DevController "Start Boss Raid" button (data and events run one after the other, never together).
