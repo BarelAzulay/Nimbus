@@ -290,13 +290,23 @@ local function detailOf(value)
 		return "Low"
 	elseif v == "high" then
 		return "High"
+	elseif v == "evolved" or v == "evo" then
+		return "EvoHigh"
+	elseif v == "evolvedlow" or v == "evolved-low" or v == "evolved_low" or v == "evolow" then
+		return "EvoLow"
+	elseif v == "evolved2" or v == "evo2" then
+		return "Evo2High"
+	elseif v == "evolved2low" or v == "evolved2-low" or v == "evolved2_low" or v == "evo2low" then
+		return "Evo2Low"
 	end
 	fail("detail must be High or Low, got '" .. tostring(value) .. "'")
 end
 
 local function petModel(def, detail, label, sub)
 	local PetBuilder = req("shared/PetBuilder")
-	local model = PetBuilder.Build(def, { Detail = detail })
+	local evolved = detail:sub(1, 3) == "Evo"
+	local stage = evolved and ((detail:sub(4, 4) == "2") and 2 or 1) or nil
+	local model = PetBuilder.Build(def, { Detail = (detail:gsub("^Evo2?", "")), Evolved = stage })
 	if not isInstance(model) then
 		fail("PetBuilder.Build returned no model for " .. tostring(def.Id))
 	end
@@ -420,9 +430,12 @@ end
 
 BUILDERS.pets = function(a)
 	local detail = detailOf(a)
+	local second = detail:sub(1, 4) == "Evo2" -- the second evolution: only the pets that have one
 	local out = {}
 	for _, def in ipairs(req("shared/PetCatalog").Pets) do
-		out[#out + 1] = tryBuild(tostring(def.Name or def.Id), catalogPet, def.Id, detail)
+		if not second or req("shared/PetBuilder").MaxEvolution(def) >= 2 then
+			out[#out + 1] = tryBuild(tostring(def.Name or def.Id), catalogPet, def.Id, detail)
+		end
 	end
 	return out
 end
