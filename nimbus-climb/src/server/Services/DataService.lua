@@ -36,8 +36,14 @@
 --     are replaced PER KEY when the session changed that key; GemReceipts only grow (bounded to the newest 100);
 --     Teams are replaced whole. Home: a HIGHER Home.Prestige wins the whole Home (prestige resets the stations, so
 --     the other side's per-station changes are void); at equal prestige the Home merges per key (Level replaced,
---     LastSeen the later one). The ONE exception is ResetFields (developer tools only): the fields it names are
---     written over the stored ones at the next successful save instead of merged.
+--     LastSeen the later one; when both sides prestiged to that star, the session's Collector counts from 0).
+--     Cash follows the same prestige rule, because a prestige resets Cash too: a session that prestiged past the
+--     store writes its balance (the Cash of the newest run), a session whose run the store prestiged past loses its
+--     Cash delta (that run was reset), and when both sides prestiged to the same star the session's Cash since its
+--     prestige joins the store's. A star reward (Gems) both sides paid counts once. Gem purchases: the receipt and
+--     its gems merge together (MarkReceipt records the amount): a receipt the store already holds was granted by
+--     another server, so its gems are not added again. The ONE exception is ResetFields (developer tools only):
+--     the fields it names are written over the stored ones at the next successful save instead of merged.
 --   * A PROVISIONAL profile (the load failed while the DataStore is reachable, e.g. an outage) holds
 --     defaults, not the player's data. One-time rewards must not be decided from it: GetTutorial
 --     answers nil and SetTutorial refuses until the background recovery read the real save (then
@@ -92,9 +98,10 @@
 --     ComputePerks(equippedKeys, profile|nil), IsDiscovered(player, petId), IsProvisional(player),
 --     ResetFields(player, { Discovered, IndexClaimed, Tutorial, BestTimes, Home, Tiers, Hybrids, PetLevels = true })
 --     -> ok (the session's CURRENT values of those fields replace the stored ones at the next successful save),
---     HasReceipt(player, purchaseId) -> bool | nil, MarkReceipt(player, purchaseId) -> true (new: grant now) |
+--     HasReceipt(player, purchaseId) -> bool | nil, MarkReceipt(player, purchaseId, gems?) -> true (new: grant now) |
 --     false (already processed: grant nothing) | nil (not decidable now: profile not loaded or provisional -> answer
---     NotProcessedYet), SyncSoon(player) (a throttled Sync: at most one snapshot per 0.25 s, trailing call kept),
+--     NotProcessedYet; `gems` = the amount granted with it, so a purchase another server already stored is never
+--     added twice), SyncSoon(player) (a throttled Sync: at most one snapshot per 0.25 s, trailing call kept),
 --     signal ProfileRebased(player, profile).
 --
 -- Plain Lua 5.1-compatible syntax only.
@@ -170,7 +177,8 @@ local KNOWN_STATS = { Matches = true, Wins = true, TokensEarned = true, Spins = 
 --   Overwrite = { [field] = true } fields ResetFields asked to write over the store (nil when none is pending;
 --     cleared only after a successful write, so orphan retries and BindToClose carry it too),
 --   OverwriteGen = counter bumped by every ResetFields (a reset during an in-flight save stays pending),
---   LastSync = os.clock() of the last ProfileSync, SyncQueued = a trailing SyncSoon is scheduled
+--   LastSync = os.clock() of the last ProfileSync, SyncQueued = a trailing SyncSoon is scheduled,
+--   ReceiptGems = { [purchaseId] = gems } granted with receipts not in the store yet (MarkReceipt; nil when none)
 -- }
 local cache = {}
 local store = nil
@@ -1089,6 +1097,8 @@ end
 
 -- The Home delta, or nil when the session did not change the Home. Whole = the session's complete home (it wins
 -- when its prestige is higher than the stored one); the rest is the per-key merge used at equal prestige.
+-- BasePrestige / CollectorNow: when the session prestiged to the star the store also holds, its Collector filled up
+-- from 0 after that prestige (a delta against the pre-prestige base would wipe the store's Collector).
 local function diffHome(liveRaw, baseRaw)
 	local live, base = cleanHome(liveRaw, false), cleanHome(baseRaw, false)
 	if homesEqual(live, base) then
@@ -1097,11 +1107,13 @@ local function diffHome(liveRaw, baseRaw)
 	local d = {
 		Whole = live,
 		Prestige = live.Prestige,
+		BasePrestige = base.Prestige,
 		Level = nil,
 		Stations = diffReplace(live.Stations, base.Stations, sameValue),
 		Garden = diffReplace(live.Garden, base.Garden, sameValue),
 		Gym = diffReplace(live.Gym, base.Gym, sameValue),
 		CollectorCash = live.CollectorCash - base.CollectorCash,
+		CollectorNow = live.CollectorCash,
 		LastSeen = nil,
 	}
 	if live.Level ~= base.Level then
@@ -1113,11 +1125,35 @@ local function diffHome(liveRaw, baseRaw)
 	return d
 end
 
+-- { [star] = gems } the prestige reward TycoonService paid for every star in fromStars+1 .. toStars (empty without
+-- TycoonCatalog). Resolved here, outside UpdateAsync, so the merge itself stays pure.
+local function starRewards(fromStars, toStars)
+	local out = {}
+	local catalog = getTycoonCatalog()
+	if toStars <= fromStars or not catalog or type(catalog.PrestigeGems) ~= "function" then
+		return out
+	end
+	for star = fromStars + 1, math.min(toStars, fromStars + 100) do
+		local ok, gems = pcall(catalog.PrestigeGems, star)
+		if ok and isFinite(gems) and gems >= 1 then
+			out[star] = math.floor(gems) -- TycoonService.Prestige pays math.floor(PrestigeGems(stars))
+		end
+	end
+	return out
+end
+
 -- What changed between `base` and `live`. Counters travel as +/- deltas, "best" values as
 -- candidates, sets as additions, lists / single values as replacements. `live` may be the raw live
 -- profile, so every v3 / Phase 2 field is read defensively. `overwrite` (the entry's pending ResetFields, or nil)
 -- adds d.Overwrite: whole fields that replace the stored ones before anything else is merged.
-local function diffProfiles(live, base, overwrite)
+-- `opts` (optional): { ReceiptGems = { [purchaseId] = gems } (MarkReceipt), StandIn = true when `base` is not data
+-- read from the store (the load has not finished or failed: the delta then merges plainly) }. The delta carries what
+-- the prestige rule of applyDelta needs: BasePrestige / LivePrestige, CashNow (the live balance), StarGems (the
+-- reward of every star the session reached since its base) and ReceiptGems (the gems of each new receipt).
+local function diffProfiles(live, base, overwrite, opts)
+	opts = type(opts) == "table" and opts or {}
+	local baseStars = clampCount(type(base.Home) == "table" and base.Home.Prestige or 0, MAX_LEVEL)
+	local liveStars = clampCount(type(live.Home) == "table" and live.Home.Prestige or 0, MAX_LEVEL)
 	local d = {
 		Tokens = live.Tokens - base.Tokens,
 		Pets = diffCounts(live.Pets, base.Pets),
@@ -1143,7 +1179,17 @@ local function diffProfiles(live, base, overwrite)
 		GemReceipts = {},
 		Teams = nil,
 		Overwrite = overwriteValues(live, overwrite),
+		-- the prestige rule for Cash and the star rewards (applyDelta); receipt gems (no double grant)
+		BasePrestige = baseStars,
+		LivePrestige = liveStars,
+		CashNow = sanitizeCash(live.Cash),
+		StandIn = opts.StandIn == true,
+		StarGems = {},
+		ReceiptGems = {},
 	}
+	if not d.StandIn and liveStars > baseStars then
+		d.StarGems = starRewards(baseStars, liveStars)
+	end
 	for _, key in ipairs(STAT_KEYS) do
 		local delta = live.Stats[key] - base.Stats[key]
 		if delta ~= 0 then
@@ -1167,9 +1213,14 @@ local function diffProfiles(live, base, overwrite)
 		d.Tutorial = liveTutorial
 	end
 	local baseReceipts = cleanReceipts(base.GemReceipts)
+	local receiptGems = type(opts.ReceiptGems) == "table" and opts.ReceiptGems or {}
 	for id, t in pairs(cleanReceipts(live.GemReceipts)) do
 		if baseReceipts[id] == nil then
 			d.GemReceipts[id] = t
+			local gems = receiptGems[id]
+			if isFinite(gems) and gems >= 1 then
+				d.ReceiptGems[id] = math.floor(gems)
+			end
 		end
 	end
 	local liveTeams = cleanTeams(live.Teams)
@@ -1242,7 +1293,12 @@ local function applyHome(out, dh)
 	applyReplace(stored.Stations, dh.Stations)
 	applyReplace(stored.Garden, dh.Garden)
 	applyReplace(stored.Gym, dh.Gym)
-	stored.CollectorCash = sanitizeCash(stored.CollectorCash + dh.CollectorCash)
+	if isFinite(dh.BasePrestige) and dh.BasePrestige < dh.Prestige and isFinite(dh.CollectorNow) then
+		-- both sides prestiged to this star: each Collector filled from 0 after its prestige, both count
+		stored.CollectorCash = sanitizeCash(stored.CollectorCash + dh.CollectorNow)
+	else
+		stored.CollectorCash = sanitizeCash(stored.CollectorCash + dh.CollectorCash)
+	end
 	if dh.LastSeen ~= nil and dh.LastSeen > stored.LastSeen then
 		stored.LastSeen = dh.LastSeen
 	end
@@ -1313,8 +1369,45 @@ local function applyDelta(stored, d)
 			Gifted = d.Tutorial.Gifted or out.Tutorial.Gifted,
 		}
 	end
-	out.Cash = sanitizeCash(out.Cash + d.Cash)
-	out.Gems = sanitize(out.Gems + d.Gems)
+	-- Cash follows the Home's prestige rule (applyHome; a prestige resets Cash like the stations), and a star reward
+	-- both sides paid counts once. B = the session's base prestige, L = its live prestige, S = the stored one:
+	--   L > B and L > S  the session prestiged past the store: its balance (Cash since that prestige) is the Cash
+	--   S > B, L == S    both prestiged to S: the session's Cash since its prestige joins the store's
+	--   S > B, L < S     the store prestiged past the session's run: that run's Cash was reset (delta dropped)
+	--   otherwise        a plain delta
+	-- Skipped for a ResetFields Home (written over the store as it is) and a stand-in base (not store data).
+	local cashDelta, gemDelta = d.Cash, d.Gems
+	if not (o and o.Home) and not d.StandIn and isFinite(d.BasePrestige) and isFinite(d.LivePrestige) then
+		local s, b, l = out.Home.Prestige, d.BasePrestige, d.LivePrestige
+		if l > b and l > s then
+			cashDelta = sanitizeCash(d.CashNow) - out.Cash
+		elseif s > b then
+			if l == s then
+				cashDelta = sanitizeCash(d.CashNow)
+			else
+				cashDelta = 0
+			end
+		end
+		-- stars b+1 .. min(l, s) were reached and paid by the server that wrote the store too
+		local top = math.min(l, s)
+		for star, gems in pairs(type(d.StarGems) == "table" and d.StarGems or {}) do
+			if star > b and star <= top and isFinite(gems) then
+				gemDelta = gemDelta - gems
+			end
+		end
+	end
+	-- a purchase whose receipt the store already holds was granted by another server: its gems are not added again
+	-- (out.GemReceipts is still the stored set here: the receipts merge below)
+	if type(d.ReceiptGems) == "table" then
+		for id in pairs(d.GemReceipts) do
+			local gems = d.ReceiptGems[id]
+			if out.GemReceipts[id] ~= nil and isFinite(gems) then
+				gemDelta = gemDelta - gems
+			end
+		end
+	end
+	out.Cash = sanitizeCash(out.Cash + cashDelta)
+	out.Gems = sanitize(out.Gems + gemDelta)
 	applyReplace(out.PetLevels, d.PetLevels)
 	-- Phase 2
 	if not (o and o.Home) then
@@ -1485,11 +1578,39 @@ local function replaceContents(target, src)
 	target.Teams = deepCopy(src.Teams)
 end
 
+-- diffProfiles options of an entry: the gems of the receipts it marked, and whether its Base is a stand-in (the
+-- load has not finished, or failed and was not recovered yet: the Base is defaults, not store data).
+local function deltaOpts(entry)
+	return {
+		ReceiptGems = entry.ReceiptGems,
+		StandIn = entry.LoadFailed == true or entry.Loaded ~= true,
+	}
+end
+
+-- Drops the receipt amounts the entry no longer needs: receipts the store holds (they are in Base) or the live
+-- profile lost (taken back / trimmed). Only receipts still on their way to the store are looked up.
+local function pruneReceiptGems(entry)
+	local map = entry.ReceiptGems
+	if type(map) ~= "table" then
+		return
+	end
+	local live = tableOr(entry.Profile.GemReceipts)
+	local saved = type(entry.Base) == "table" and tableOr(entry.Base.GemReceipts) or {}
+	for id in pairs(copyMap(map)) do
+		if live[id] == nil or saved[id] ~= nil then
+			map[id] = nil
+		end
+	end
+	if next(map) == nil then
+		entry.ReceiptGems = nil
+	end
+end
+
 -- Moves the live profile onto freshly read store data while keeping everything the session did
 -- since `fromBase`. `newBase` becomes the new "known to be in the store" reference. A pending ResetFields
 -- keeps the session's values of its fields (they are still to be written over the store).
 local function rebase(entry, fromBase, stored, newBase)
-	local d = diffProfiles(entry.Profile, fromBase, entry.Overwrite)
+	local d = diffProfiles(entry.Profile, fromBase, entry.Overwrite, deltaOpts(entry))
 	local merged = applyDelta(stored, d)
 	replaceContents(entry.Profile, merged)
 	entry.Base = copyProfile(newBase)
@@ -1975,7 +2096,7 @@ local function writeEntry(entry, userId)
 
 		local overwriteGen = entry.OverwriteGen
 		local snapshot = copyProfile(entry.Profile)
-		local delta = diffProfiles(snapshot, entry.Base, entry.Overwrite)
+		local delta = diffProfiles(snapshot, entry.Base, entry.Overwrite, deltaOpts(entry))
 		if isEmptyDelta(delta) then
 			entry.Dirty = false
 			return true
@@ -2009,6 +2130,7 @@ local function writeEntry(entry, userId)
 			else
 				entry.Base = snapshot
 			end
+			pruneReceiptGems(entry)
 			return true
 		end
 
@@ -2070,7 +2192,7 @@ end
 -- An unreadable comparison counts as "not clean": keeping data is always the safe direction.
 local function entryIsClean(entry)
 	local ok, empty = pcall(function()
-		return isEmptyDelta(diffProfiles(entry.Profile, entry.Base, entry.Overwrite))
+		return isEmptyDelta(diffProfiles(entry.Profile, entry.Base, entry.Overwrite, deltaOpts(entry)))
 	end)
 	return ok and empty == true
 end
@@ -2868,8 +2990,11 @@ end
 
 -- Records a processed purchase id. true = new (grant it now, in the same step), false = already processed (grant
 -- nothing, the purchase is done), nil = cannot decide now (not loaded / provisional: answer NotProcessedYet).
--- The receipt and the granted gems travel in the same save (one UpdateAsync).
-function DataService.MarkReceipt(player, purchaseId)
+-- The receipt and the granted gems travel in the same save (one UpdateAsync). `gems` (optional) = what the caller
+-- grants for it: the merge then makes the grant follow its receipt atomically. When the stored profile already holds
+-- that receipt (another server granted the same purchase while this server's save failed and the player moved on),
+-- this session's grant is not added to the store a second time.
+function DataService.MarkReceipt(player, purchaseId, gems)
 	local entry = player and cache[player.UserId]
 	if not entry or not entry.Loaded or isProvisional(entry) or not validKey(purchaseId) then
 		return nil
@@ -2880,6 +3005,14 @@ function DataService.MarkReceipt(player, purchaseId)
 	end
 	receipts[purchaseId] = sanitizeTime(os.time())
 	trimReceipts(receipts, { [purchaseId] = true })
+	if isFinite(gems) and gems >= 1 then
+		local amounts = entry.ReceiptGems
+		if type(amounts) ~= "table" then
+			amounts = {}
+			entry.ReceiptGems = amounts
+		end
+		amounts[purchaseId] = math.floor(gems + 0.5) -- AddGems rounds the same way
+	end
 	entry.Dirty = true
 	return true
 end

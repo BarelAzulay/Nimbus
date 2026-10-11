@@ -8,8 +8,11 @@
 --   (DataService.AddFood). The queue lives on the server for the session and keeps cooking wherever the player is in
 --   the server (a match, the lobby, ...). Ordering needs a claimed home with a Kitchen; the Cash check, the payment
 --   and the queue write are one non-yielding step (an order for more than the Cash or the queue allows cooks what
---   fits). A player who leaves gets the Cash of the dishes that had not finished back. Toasts: "Cooking ..." on
---   order, a summary when the queue is done, and a progress toast at most every 30 s while a long queue cooks.
+--   fits). A player who leaves gets the Cash of the dishes that had not finished back, but only for dishes paid in
+--   the current prestige run: a prestige resets Cash, so the dishes queued before it keep cooking into Food and are
+--   no longer refundable (TycoonService.Prestiged voids their refund; each dish also remembers the prestige it was
+--   paid in). Toasts: "Cooking ..." on order, a summary when the queue is done, and a progress toast at most every
+--   30 s while a long queue cooks.
 -- * Feeding: Feed(key, foodId) spends one food and gives that pet copy the food's Xp (DataService.AddPetXp). Pets
 --   level along TycoonCatalog.XpToNext up to their LEVEL CAP (PetCatalog.LevelCap: by rarity, Common 20 ... Secret
 --   50; TycoonCatalog may override the numbers). XP past the cap is not given and a capped pet is refused before any
@@ -114,7 +117,7 @@ local homeBuilder = nil -- HomeBuilder (optional: SetGym)
 local notifyRemote = nil
 local openPanelRemote = nil
 
-local kitchens = {} -- [Player] = { Queue = { { FoodId, Price, Base, Started, Seconds }... }, Batch, BatchOrder, LastToast }
+local kitchens = {} -- [Player] = { Queue = { { FoodId, Price, Base, Prestige, Started, Seconds }... }, Batch, BatchOrder, LastToast }
 local gyms = {} -- [Player] = { Pending = { [key] = xp }, LastTick, LastGrant, Capped = { [key] = true } }
 local gymShown = {} -- [Player] = { Folder = Instance, Text = string }
 local cooldowns = {} -- [Player] = { [key] = os.clock() }
@@ -471,6 +474,15 @@ local function stationLevel(home, id)
 	end
 	local v = type(home) == "table" and type(home.Stations) == "table" and home.Stations[id]
 	return isFinite(v) and math.max(0, math.floor(v)) or 0
+end
+
+-- prestige stars of a home (0 for none / junk)
+local function starsOf(home)
+	local v = type(home) == "table" and home.Prestige
+	if isFinite(v) and v > 0 then
+		return math.floor(v)
+	end
+	return 0
 end
 
 local function kitchenEffects(level)
@@ -902,20 +914,43 @@ local function tickKitchen(player, k, now)
 	k.Batch, k.BatchOrder, k.LastToast = {}, {}, now
 end
 
--- dishes still in the queue are refunded; finished ones were delivered by the tick
+-- A prestige resets Cash: the dishes still queued keep cooking into Food (kept by design), but the Cash they were
+-- paid with belonged to the reset run, so they are no longer refundable (leaving right after a prestige must not
+-- carry that Cash over the reset).
+local function voidRefunds(player)
+	local k = kitchens[player]
+	if not k then
+		return
+	end
+	for _, dish in ipairs(k.Queue) do
+		dish.Price = 0
+	end
+end
+
+-- dishes still in the queue are refunded; finished ones were delivered by the tick. Only dishes paid in the CURRENT
+-- prestige run count: a dish ordered before a prestige (this server's, or one another server's save brought in)
+-- was paid with Cash the prestige reset.
 local function refundKitchen(player)
 	local k = kitchens[player]
 	kitchens[player] = nil
 	if not k or #k.Queue == 0 then
 		return
 	end
-	local total = 0
-	for _, dish in ipairs(k.Queue) do
-		total = total + (dish.Price or 0)
-	end
 	-- only while the save is still in memory (DataService keeps it until the leave save is done; a change made now
 	-- travels with that save or with its retry)
-	if total > 0 and getProfile(player) then
+	local home = getHome(player)
+	if not home or not getProfile(player) then
+		return
+	end
+	local stars = starsOf(home)
+	local total = 0
+	for _, dish in ipairs(k.Queue) do
+		local price = dish.Price
+		if isFinite(price) and price > 0 and dish.Prestige == stars then
+			total = total + price
+		end
+	end
+	if total > 0 then
 		addCash(player, total)
 	end
 end
@@ -995,8 +1030,9 @@ function PetCareService.Cook(player, foodId, qty)
 		return false, "Not enough Cash: a " .. food.Name .. " costs " .. money(price)
 	end
 	local base = cookSeconds(food.Id, level) or (isFinite(food.CookSeconds) and food.CookSeconds > 0 and food.CookSeconds) or 5
+	local stars = starsOf(home) -- the prestige run that paid for these dishes (refunds only within it)
 	for _ = 1, count do
-		k.Queue[#k.Queue + 1] = { FoodId = food.Id, Price = price, Base = base }
+		k.Queue[#k.Queue + 1] = { FoodId = food.Id, Price = price, Base = base, Prestige = stars }
 	end
 	local now = os.clock()
 	if not k.Queue[1].Started then
@@ -1880,6 +1916,18 @@ function PetCareService.Init(deps)
 		warn("[PetCareService] the PetCare remote is missing (Config.Remotes)")
 	end
 	ProximityPromptService.PromptTriggered:Connect(onPromptTriggered)
+	-- a prestige resets Cash: what is still cooking can no longer be refunded as Cash (see voidRefunds)
+	local prestiged = tycoonService and tycoonService.Prestiged
+	if type(prestiged) == "table" and type(prestiged.Connect) == "function" then
+		local okConn, connErr = pcall(function()
+			prestiged:Connect(function(player)
+				voidRefunds(player)
+			end)
+		end)
+		if not okConn then
+			warn("[PetCareService] could not listen to TycoonService.Prestiged: " .. tostring(connErr))
+		end
+	end
 	Players.PlayerRemoving:Connect(onPlayerRemoving)
 	local okClose, closeErr = pcall(function()
 		game:BindToClose(onClose)

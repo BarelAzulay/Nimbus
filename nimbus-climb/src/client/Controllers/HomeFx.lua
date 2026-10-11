@@ -4,7 +4,7 @@
 --   HomeFx.Init()
 --   HomeFx.Count() -> number of home plots tracked
 --   HomeFx.Stats() -> { Homes, Near, Stations, Presses, Pops, Blocks, Pool, HiddenPrompts, HiddenSigns, GardenPets,
---                       GymPets }
+--                       GymPets, SignsShown, SignsCrowded, PetBuilds, PetColdBuilds, PetPool }
 --
 -- Every Folder tagged "NC_Home" (HomeBuilder's per-plot `Home` folder, attributes OwnerUserId / CollectorCash /
 -- CollectorCap) gets:
@@ -25,12 +25,24 @@
 --     while the local player owns a home (one home per player). The server still checks everything. The signs of
 --     the player's own LOCKED pads (their lock reason) only show within K.LOCKED_SIGN_NEAR studs, so the yard is not
 --     a field of lock signs: from afar it shows what can be bought now, like a classic tycoon.
+--   * readable pad signs (World text rule): the pad signs are pixel-sized billboards, so from the gate path a full
+--     yard used to stack them into a pile nobody could read (worse on phones). Every K.SIGN_CHECK the local player's
+--     own signs are laid out on the screen: projected through the camera (plate size from the sign's Plate), taken
+--     nearest-to-the-player first, and a sign whose plate would reach into the text of a sign already shown (or
+--     the other way round) is hidden until there is room for it again; the pads keep their glow and pulse. A sign
+--     the layout has not placed yet starts hidden (one frame), a rebuilt sign keeps its pad's last answer, and
+--     small hysteresis (K.SIGN_CLEAR px, K.SIGN_KEEP studs) keeps signs from flickering while the camera moves.
 --   * the local player's own pads glow when the Cash attribute can pay their Price and dim (price in red) when not.
 --   * the pets at work: every key of the plot's GardenPets attribute ("1=cat;3=fox@Golden", written by TycoonService
 --     on the plot folder) stands on the Garden's Spot<slot> cushion (full size), every key of GymPets (PetCareService)
 --     on the Gym's Spot<slot> target (a little smaller: the targets are closer together), PetBuilder Low detail,
 --     facing the yard, for homes within K.PET_NEAR studs; they breathe / flap a few times a second (gym pets
 --     livelier). Hybrid keys need their owner's record and are skipped. Pets live in workspace.ClientFx.HomePets.
+--     A full home has 13 of them (Garden L8 + Gym L5), so they are built under a per-frame budget like every other
+--     pet builder: at most K.PET_BUILD_MAX per frame and only while the frame has spent under K.PET_BUILD_BUDGET
+--     seconds building (a first-time sculpt takes the whole frame); the other slots fill in over the next frames.
+--     Pets of a home that goes out of range wait unparented in a small pool (K.PET_POOL models, oldest destroyed
+--     first), so walking back re-parents them instead of cloning them again.
 -- Cheap: one RenderStepped connection; homes farther than K.NEAR studs from the camera are frozen; the cloud blocks
 -- are pooled parts in workspace.ClientFx (never more than K.MAX_BLOCKS), nothing else is created per frame; no
 -- collisions, queries, touches or shadows on anything HomeFx makes. Plain Lua 5.1-compatible syntax only.
@@ -96,13 +108,20 @@ local K = {
 	PAD_DIM = 0.6, -- glow transparency of a pad the local player cannot pay for yet
 	LOCKED_SIGN_NEAR = 30, -- studs: the sign of one of the local player's LOCKED pads (its lock reason) shows only
 	LOCKED_SIGN_FAR = 34, -- this close (hidden again beyond FAR), so from afar the yard shows what can be bought now
-	SIGN_CHECK = 0.25, -- seconds between two of those distance checks
+	SIGN_CHECK = 0.1, -- seconds between two sign passes (those distance checks + the on-screen layout)
+	SIGN_INSET_X = 10, -- px of a plate's side padding another plate may cover without touching its text
+	SIGN_INSET_Y = 5, -- px of its top / bottom padding
+	SIGN_CLEAR = 6, -- px of extra room a hidden sign needs before it comes back (no flicker at the edge)
+	SIGN_KEEP = 4, -- studs: a shown sign keeps its place unless a hidden one is this much nearer the player
 	PET_NEAR = 110, -- garden / gym pets are shown for homes this close to the camera (hysteresis +20)
 	PET_SCALE = 0.85,
 	PET_ANIM_STEP = 0.125, -- seconds between two PetBuilder.Animate calls of the garden / gym pets
 	PET_ANIM_NEAR = 80, -- ...only this close
 	PET_HOVER = 0.08, -- studs between a pet's lowest block and its cushion
 	MAX_GARDEN_SLOTS = 8,
+	PET_BUILD_MAX = 3, -- garden / gym pet models built (or taken from the pool) in one frame at most...
+	PET_BUILD_BUDGET = 0.004, -- ...and only while the frame has spent less than this building (the first always runs)
+	PET_POOL = 16, -- pet models of homes gone out of range kept for the way back (oldest destroyed first)
 }
 
 local COLORS = {
