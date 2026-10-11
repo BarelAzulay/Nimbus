@@ -1458,8 +1458,9 @@ local function forget(player)
 	toastAt[player] = nil
 end
 
--- (LastSeen is NOT written here: DataService's leave save may already be running, and a change now would only
--- turn the entry into an orphan that needs another write. The periodic refresh keeps it within LASTSEEN_EVERY.)
+-- (LastSeen is not written here: the periodic refresh keeps it within LASTSEEN_EVERY of the leave and the offline pay
+-- only starts after 120 s, so the leave save gains nothing from it. A write here would be saved, though: DataService's
+-- leave save runs after the other PlayerRemoving handlers.)
 local function onPlayerRemoving(player)
 	departed[player] = true
 	TycoonService.Release(player)
