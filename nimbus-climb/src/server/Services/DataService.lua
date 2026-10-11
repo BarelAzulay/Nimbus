@@ -85,6 +85,10 @@
 --     autosave sweep (which walks the cache, not the player list) and by BindToClose, and a quick
 --     rejoin simply picks it up again. It is only dropped after a successful write or after
 --     ORPHAN_TIMEOUT seconds. DataService alone makes this decision (Release); callers just call it.
+--     The leave save starts only after the other PlayerRemoving handlers ran (task.defer), so what they write
+--     at leave time (PetCareService refunds the dishes still cooking) is still in the cache and travels with
+--     that save or with its orphan retry; a save started at once had nothing to write when the session was
+--     already saved, returned without yielding, and Release dropped the entry before those handlers ran.
 --   * The store never holds a sparse array: Garden / Gym are written as arrays with "" for empty slots (or a map
 --     with string keys when a slot has a name); empty Phase 2 maps (Food, Tiers, Hybrids, GemReceipts) and Teams /
 --     Battle while they hold the defaults are left out of the record. ProfileSync uses the same slot encoding (client
@@ -2744,7 +2748,12 @@ local function onPlayerRemoving(player)
 	-- PlayerService also saves (it does not release: Release is decided here); doing it here as well
 	-- means a missing call can never lose data or leak the cache entry. Saving twice is a no-op
 	-- (empty delta). Release keeps the entry when this save failed, see DataService.Release.
-	task.spawn(function()
+	-- Deferred so that the other PlayerRemoving handlers run first (their order is not guaranteed): what they
+	-- write at leave time (PetCareService refunds the dishes still cooking, any other late write) is then in the
+	-- snapshot of this save, or in its orphan retry. Started at once, a save with nothing to write returned
+	-- without yielding and Release dropped the entry inside the dispatch, before those handlers ran: their
+	-- writes were lost. A rejoin before this runs is fine: Load picks the entry up again and Release skips it.
+	task.defer(function()
 		DataService.Save(player)
 		DataService.Release(player)
 	end)
