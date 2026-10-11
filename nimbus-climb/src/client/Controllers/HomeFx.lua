@@ -3,8 +3,11 @@
 --
 --   HomeFx.Init()
 --   HomeFx.Count() -> number of home plots tracked
---   HomeFx.Stats() -> { Homes, Near, Stations, Presses, Pops, Blocks, Pool, HiddenPrompts, HiddenSigns, GardenPets,
---                       GymPets, SignsShown, SignsCrowded, PetBuilds, PetColdBuilds, PetPool }
+--   HomeFx.Stats() -> { Homes, Near, Stations, Presses, Pops, Blocks, Pool, HiddenPrompts, HiddenSigns, SignsShown,
+--                       SignsCrowded, SignsAway, GardenPets, GymPets, PetBuilds, PetColdBuilds, PetPoolHits, PetPool,
+--                       PetFrameMost }   (Pet*: models built / first-time builds / taken from the pool, so far;
+--                       models waiting in the pool now; the most garden / gym pets placed in one frame)
+--   HomeFx.SignState(padSign) -> "Shown" | "Crowded" | "Away" | "Pending" | "Locked" | "Other" | nil (see SignState)
 --
 -- Every Folder tagged "NC_Home" (HomeBuilder's per-plot `Home` folder, attributes OwnerUserId / CollectorCash /
 -- CollectorCap) gets:
@@ -27,11 +30,13 @@
 --     a field of lock signs: from afar it shows what can be bought now, like a classic tycoon.
 --   * readable pad signs (World text rule): the pad signs are pixel-sized billboards, so from the gate path a full
 --     yard used to stack them into a pile nobody could read (worse on phones). Every K.SIGN_CHECK the local player's
---     own signs are laid out on the screen: projected through the camera (plate size from the sign's Plate), taken
---     nearest-to-the-player first, and a sign whose plate would reach into the text of a sign already shown (or
---     the other way round) is hidden until there is room for it again; the pads keep their glow and pulse. A sign
---     the layout has not placed yet starts hidden (one frame), a rebuilt sign keeps its pad's last answer, and
---     small hysteresis (K.SIGN_CLEAR px, K.SIGN_KEEP studs) keeps signs from flickering while the camera moves.
+--     own signs are laid out on the screen: projected through the camera (Camera:WorldToViewportPoint of the
+--     adornee + studs offsets, plate size from the sign's Plate), taken nearest-to-the-player first (lock reasons
+--     after what can be bought now, unless the player stands at that pad), and a sign whose plate would reach into
+--     the text of a sign already shown is hidden ("Crowded") until there is room for it again; signs Roblox does not
+--     draw or that are mostly off the screen take no room. The pads keep their glow and pulse. A sign the layout has
+--     not placed yet starts hidden (one frame), a rebuilt sign keeps its pad's last answer, and hysteresis
+--     (K.SIGN_CLEAR px, K.SIGN_KEEP studs, K.SIGN_HOLD seconds) keeps signs from flickering while the camera moves.
 --   * the local player's own pads glow when the Cash attribute can pay their Price and dim (price in red) when not.
 --   * the pets at work: every key of the plot's GardenPets attribute ("1=cat;3=fox@Golden", written by TycoonService
 --     on the plot folder) stands on the Garden's Spot<slot> cushion (full size), every key of GymPets (PetCareService)
@@ -40,8 +45,9 @@
 --     livelier). Hybrid keys need their owner's record and are skipped. Pets live in workspace.ClientFx.HomePets.
 --     A full home has 13 of them (Garden L8 + Gym L5), so they are built under a per-frame budget like every other
 --     pet builder: at most K.PET_BUILD_MAX per frame and only while the frame has spent under K.PET_BUILD_BUDGET
---     seconds building (a first-time sculpt takes the whole frame); the other slots fill in over the next frames.
---     Pets of a home that goes out of range wait unparented in a small pool (K.PET_POOL models, oldest destroyed
+--     seconds building (a first-time build of a pet + size only as the frame's first, and it takes the whole
+--     frame); the other slots fill in over the next frames, slot by slot. Pets that leave (a home going out of
+--     range, a slot emptied, a station rebuilt) wait unparented in a small pool (K.PET_POOL models, oldest destroyed
 --     first), so walking back re-parents them instead of cloning them again.
 -- Cheap: one RenderStepped connection; homes farther than K.NEAR studs from the camera are frozen; the cloud blocks
 -- are pooled parts in workspace.ClientFx (never more than K.MAX_BLOCKS), nothing else is created per frame; no
@@ -109,10 +115,18 @@ local K = {
 	LOCKED_SIGN_NEAR = 30, -- studs: the sign of one of the local player's LOCKED pads (its lock reason) shows only
 	LOCKED_SIGN_FAR = 34, -- this close (hidden again beyond FAR), so from afar the yard shows what can be bought now
 	SIGN_CHECK = 0.1, -- seconds between two sign passes (those distance checks + the on-screen layout)
-	SIGN_INSET_X = 10, -- px of a plate's side padding another plate may cover without touching its text
-	SIGN_INSET_Y = 5, -- px of its top / bottom padding
+	SIGN_INSET_X = 8, -- px two plates may overlap side by side (only padding: HomeBuilder pads the text 14 px)...
+	SIGN_INSET_Y = 2, -- ...and above / below each other (6 px top padding, 8 px bottom, a 3.5 px edge)
 	SIGN_CLEAR = 6, -- px of extra room a hidden sign needs before it comes back (no flicker at the edge)
 	SIGN_KEEP = 4, -- studs: a shown sign keeps its place unless a hidden one is this much nearer the player
+	SIGN_HOLD = 0.35, -- seconds: a sign the layout hid stays hidden at least this long, one it showed stays (unless
+	--                   it would overlap a sign shown just as recently): no flashes while the player walks
+	SIGN_LOCKED_BACK = 15, -- studs: a locked pad's sign (its lock reason) yields to the pads that can be bought now...
+	SIGN_LOCKED_CLOSE = 8, -- ...except up close (no penalty this near, the full one from twice as far): standing at a
+	--                        locked pad shows why it is locked (its prompt is off, the sign is the only place to read it)
+	SIGN_RANGE_SLACK = 2, -- studs past a sign's MaxDistance it still counts as drawn (Roblox measures to the adornee)
+	SIGN_ONSCREEN = 0.85, -- share of a plate inside the screen to keep showing it (a cut-off plate reads as nothing)...
+	SIGN_ONSCREEN_BACK = 0.95, -- ...and to show it again
 	PET_NEAR = 110, -- garden / gym pets are shown for homes this close to the camera (hysteresis +20)
 	PET_SCALE = 0.85,
 	PET_ANIM_STEP = 0.125, -- seconds between two PetBuilder.Animate calls of the garden / gym pets
@@ -152,8 +166,18 @@ local PET_STATIONS = {
 local overrides = setmetatable({}, { __mode = "k" }) -- [ProximityPrompt] = state
 local signs = setmetatable({}, { __mode = "k" }) -- [BillboardGui] = home rec
 local signNear = setmetatable({}, { __mode = "k" }) -- [BillboardGui] = true while a locked pad's sign is close enough
+local signLayout = setmetatable({}, { __mode = "k" }) -- [BillboardGui] = the on-screen layout's answer (layoutSigns)
+local signSince = setmetatable({}, { __mode = "k" }) -- [BillboardGui] = clock when that answer last changed
+local signState = setmetatable({}, { __mode = "k" }) -- [BillboardGui] = why it shows or not (HomeFx.SignState)
+local signKeys = setmetatable({}, { __mode = "k" }) -- [BillboardGui] = the StationId of its pad
+local plateSizes = setmetatable({}, { __mode = "k" }) -- [BillboardGui] = Vector2, its plate's last laid-out size (px)
 local signFocus = nil -- where the local player is (character, else camera), refreshed every K.SIGN_CHECK
 local nextSignCheck = 0
+local petPool = {} -- pet models put away (Parent = nil), oldest first: { Key = "<key>|<scale>", Model, Lo }
+local petFrameBuilds = 0 -- pet models built or taken from the pool in this frame (a first-time sculpt counts as full)
+local petFramePlaced = 0 -- pet models really placed in this frame
+local petFrameStart = 0 -- os.clock() when this frame's first one started
+local petStats = { Builds = 0, Cold = 0, PoolHits = 0, FrameMost = 0 }
 local clock = 0
 local nextPopStart = 0
 local loopConn = nil
@@ -402,19 +426,268 @@ local function lockedAndFar(gui, rec)
 	return not near
 end
 
+-- the StationId of the pad a sign belongs to (its attribute, else the pad model's name "Pad_<Id>": a new pad model
+-- gets its attributes only after its sign is built)
+local function signKey(gui, rec)
+	local key = signKeys[gui]
+	if key then
+		return key
+	end
+	local node = gui.Parent
+	for _ = 1, 8 do
+		if not node or node == rec.Folder then
+			break
+		end
+		local id = node:GetAttribute("StationId")
+		if (id == nil or id == "") and node:IsA("Model") and string.sub(node.Name, 1, 4) == "Pad_" then
+			id = string.sub(node.Name, 5)
+		end
+		if id ~= nil and id ~= "" then
+			key = tostring(id)
+			break
+		end
+		node = node.Parent
+	end
+	signKeys[gui] = key
+	return key
+end
+
+-- why a sign may not show at all: "Other" (not one of the local player's pads), "Locked" (one of their locked pads,
+-- far away) or nil (it may show: the on-screen layout decides)
+local function signBlock(gui, rec)
+	local holder = ancestorWith(gui.Parent, "OwnerUserId", rec.Folder)
+	local uid = holder and tonumber(holder:GetAttribute("OwnerUserId")) or homeOwner(rec)
+	if uid ~= localUid or uid == 0 then
+		return "Other"
+	end
+	if lockedAndFar(gui, rec) then
+		return "Locked"
+	end
+	return nil
+end
+
+local function setSign(gui, show)
+	if gui.Enabled ~= show then
+		gui.Enabled = show
+	end
+end
+
+-- a sign that changed (new, rebuilt, its pad locked / unlocked, its home changed hands) between two layout passes
 local function applySign(gui)
 	local rec = signs[gui]
 	if not rec or not gui.Parent then
 		return
 	end
-	local holder = ancestorWith(gui.Parent, "OwnerUserId", rec.Folder)
-	local uid = holder and tonumber(holder:GetAttribute("OwnerUserId")) or homeOwner(rec)
-	local show = uid == localUid and uid ~= 0
-	if show and lockedAndFar(gui, rec) then
-		show = false
+	local block = signBlock(gui, rec)
+	if block then
+		signLayout[gui] = nil
+		signState[gui] = block
+		setSign(gui, false)
+		return
 	end
-	if gui.Enabled ~= show then
-		gui.Enabled = show
+	local answer = signLayout[gui]
+	if answer == nil then
+		-- not laid out yet: HomeBuilder rebuilds a pad's sign on every change, so a rebuilt sign takes its pad's
+		-- last answer (no flicker); a new one waits for the layout, which runs on the next frame
+		local key = signKey(gui, rec)
+		answer = key and rec.SignMemo[key] or nil
+		signLayout[gui] = answer
+		nextSignCheck = min(nextSignCheck, clock)
+	end
+	signState[gui] = answer or "Pending"
+	setSign(gui, answer == "Shown")
+end
+
+local function utf8len(text)
+	local _, n = string.gsub(tostring(text or ""), "[^\128-\191]", "")
+	return n
+end
+
+-- the plate's size when the layout engine has not measured it (yet): its rows of text
+local function estimatePlate(plate)
+	local w, h = 150, 70
+	if not plate then
+		return w, h
+	end
+	local widest, total, rows = 0, 0, 0
+	for _, row in ipairs(plate:GetChildren()) do
+		if row:IsA("GuiObject") then
+			local rw, rh, n = 0, 0, 0
+			for _, label in ipairs(row:GetChildren()) do
+				if label:IsA("TextLabel") then
+					local size = tonumber(label.TextSize) or 20
+					local tw = label.TextBounds.X
+					if not (tw > 0) then
+						tw = utf8len(label.Text) * size * 0.56
+					end
+					rw = rw + tw + ((n > 0) and 8 or 0)
+					rh = max(rh, size + 4)
+					n = n + 1
+				end
+			end
+			if n > 0 then
+				widest = max(widest, rw)
+				total = total + rh + ((rows > 0) and 3 or 0)
+				rows = rows + 1
+			end
+		end
+	end
+	if rows > 0 then
+		w, h = max(150, widest + 28), total + 14
+	end
+	return w, h
+end
+
+-- the sign's plate in pixels (it keeps that size on screen at any distance)
+local function plateSize(gui)
+	local plate = gui:FindFirstChild("Plate")
+	if plate and plate:IsA("GuiObject") then
+		local s = plate.AbsoluteSize
+		if s.X >= 40 and s.Y >= 20 then
+			plateSizes[gui] = s
+			return s.X, s.Y
+		end
+	end
+	local known = plateSizes[gui]
+	if known then
+		return known.X, known.Y
+	end
+	return estimatePlate(plate)
+end
+
+-- the world point the billboard hangs from: its adornee plus the studs offsets
+local function signPoint(gui, cam)
+	local anchor = gui.Adornee or gui.Parent
+	local base = nil
+	if anchor then
+		if anchor:IsA("BasePart") then
+			base = anchor.Position
+		elseif anchor:IsA("Attachment") then
+			base = anchor.WorldPosition
+		elseif anchor:IsA("Model") then
+			local ok, cf = pcall(anchor.GetPivot, anchor)
+			base = ok and cf and cf.Position or nil
+		end
+	end
+	if not base then
+		return nil
+	end
+	local p = base + gui.StudsOffsetWorldSpace
+	local so = gui.StudsOffset
+	if so.X ~= 0 or so.Y ~= 0 or so.Z ~= 0 then
+		p = p + cam.CFrame:VectorToWorldSpace(so)
+	end
+	return p
+end
+
+-- The on-screen layout (World text rule: a pile of overlapping plates is unreadable). Every sign in `list` may show;
+-- each is projected through the camera, the plate (bottom-centred on the billboard's bottom edge, like HomeBuilder's
+-- tags) becomes a screen rectangle, and the signs nearest the player go first (a locked pad's sign, unless the player
+-- stands right at it, as if K.SIGN_LOCKED_BACK studs farther: what can be bought now first): a sign is "Shown" when
+-- its plate leaves the text of every plate shown before it alone (an overlap of at most K.SIGN_INSET_X px side by side
+-- or K.SIGN_INSET_Y px above / below only covers padding), else "Crowded"; a sign behind the camera, past its
+-- MaxDistance (Roblox does not draw it) or mostly off the screen (less than K.SIGN_ONSCREEN of its plate inside: cut
+-- off, it reads as nothing) is "Away" and takes no room. Hysteresis: a shown sign counts K.SIGN_KEEP studs nearer
+-- and is placed before all others in its first K.SIGN_HOLD seconds; a hidden one needs K.SIGN_CLEAR px of extra room
+-- (and K.SIGN_ONSCREEN_BACK of its plate on the screen) and stays hidden at least K.SIGN_HOLD seconds, keeping the
+-- room it would get meanwhile.
+local function layoutSigns(list)
+	local cam = Workspace.CurrentCamera
+	if not cam then
+		for _, gui in ipairs(list) do
+			signLayout[gui] = "Shown"
+		end
+		return
+	end
+	local vp = cam.ViewportSize
+	local eye = cam.CFrame.Position
+	local focus = signFocus or eye
+	local items = {}
+	for _, gui in ipairs(list) do
+		local item = nil
+		local answer = signLayout[gui]
+		local fresh = signSince[gui] ~= nil and clock - signSince[gui] < K.SIGN_HOLD
+		local pos = signPoint(gui, cam)
+		if pos then
+			local maxD = tonumber(gui.MaxDistance) or 0
+			if maxD <= 0 or (pos - eye).Magnitude <= maxD + K.SIGN_RANGE_SLACK then
+				local ok, p = pcall(cam.WorldToViewportPoint, cam, pos)
+				if ok and typeof(p) == "Vector3" and p.Z > 0 then
+					local w, h = plateSize(gui)
+					local size, off = gui.Size, gui.SizeOffset
+					local bw, bh = size.X.Offset, size.Y.Offset
+					local cx = p.X + off.X * bw
+					local bottom = p.Y - off.Y * bh + bh / 2
+					local x0, y0 = cx - w / 2, bottom - h
+					local shown = answer == "Shown"
+					local inside = max(0, min(vp.X, x0 + w) - max(0, x0)) * max(0, min(vp.Y, y0 + h) - max(0, y0))
+					if inside >= w * h * (shown and K.SIGN_ONSCREEN or K.SIGN_ONSCREEN_BACK) then
+						local dist = (pos - focus).Magnitude
+						local d = dist
+						if shown then
+							d = d - K.SIGN_KEEP
+						end
+						local pad = ancestorWith(gui.Parent, "Locked", signs[gui].Folder)
+						local locked = pad and pad:GetAttribute("Locked")
+						if locked ~= nil and locked ~= "" then
+							local near = K.SIGN_LOCKED_CLOSE
+							d = d + K.SIGN_LOCKED_BACK * clamp01((dist - near) / near)
+						end
+						item = {
+							Gui = gui,
+							D = d,
+							Key = signKey(gui, signs[gui]) or "",
+							Shown = shown,
+							Pinned = fresh and shown, -- shown a moment ago: placed first, it stays
+							Held = fresh and not shown and answer ~= nil, -- hidden a moment ago: holds its room, not shown yet
+							X0 = x0,
+							Y0 = y0,
+							X1 = x0 + w,
+							Y1 = y0 + h,
+						}
+					end
+				end
+			end
+		end
+		if item then
+			items[#items + 1] = item
+		else
+			signLayout[gui] = "Away"
+		end
+	end
+	table.sort(items, function(a, b)
+		if a.Pinned ~= b.Pinned then
+			return a.Pinned
+		end
+		if a.D ~= b.D then
+			return a.D < b.D
+		end
+		return a.Key < b.Key
+	end)
+	local placed = {}
+	local function fits(x0, y0, x1, y1)
+		for _, o in ipairs(placed) do
+			if min(x1, o.X1) - max(x0, o.X0) > K.SIGN_INSET_X and min(y1, o.Y1) - max(y0, o.Y0) > K.SIGN_INSET_Y then
+				return false
+			end
+		end
+		return true
+	end
+	for _, it in ipairs(items) do
+		local g = K.SIGN_CLEAR
+		if not fits(it.X0, it.Y0, it.X1, it.Y1) then
+			signLayout[it.Gui] = "Crowded"
+		elseif it.Shown or (not it.Held and fits(it.X0 - g, it.Y0 - g, it.X1 + g, it.Y1 + g)) then
+			placed[#placed + 1] = it
+			signLayout[it.Gui] = "Shown"
+		else
+			-- it fits but stays hidden for now: its hold keeps the room (no farther sign flashes up there until it
+			-- comes back); one only short of K.SIGN_CLEAR keeps none (in a still view it would block for good)
+			if it.Held then
+				placed[#placed + 1] = it
+			end
+			signLayout[it.Gui] = "Crowded"
+		end
 	end
 end
 
@@ -429,7 +702,8 @@ local function focusPos()
 	return cam and cam.CFrame.Position or nil
 end
 
--- re-checks the signs of the local player's own home (locked pads show their reason only up close)
+-- every K.SIGN_CHECK: the signs of the local player's own home (locked pads show their reason only up close), laid
+-- out on the screen so none covers the text of another
 local function stepSigns()
 	if clock < nextSignCheck then
 		return
@@ -439,9 +713,39 @@ local function stepSigns()
 		return
 	end
 	signFocus = focusPos()
+	local list = {}
 	for gui, rec in pairs(signs) do
 		if gui.Parent and homeOwner(rec) == localUid then
-			applySign(gui)
+			local block = signBlock(gui, rec)
+			if block then
+				signLayout[gui] = nil
+				signState[gui] = block
+				setSign(gui, false)
+				local key = signKey(gui, rec)
+				if key then
+					rec.SignMemo[key] = nil
+				end
+			else
+				list[#list + 1] = gui
+			end
+		end
+	end
+	local before = {}
+	for i, gui in ipairs(list) do
+		before[i] = signLayout[gui] == "Shown"
+	end
+	layoutSigns(list)
+	for i, gui in ipairs(list) do
+		local rec = signs[gui]
+		local answer = signLayout[gui]
+		if (answer == "Shown") ~= before[i] or signSince[gui] == nil then
+			signSince[gui] = clock
+		end
+		signState[gui] = answer
+		setSign(gui, answer == "Shown")
+		local key = signKey(gui, rec)
+		if key then
+			rec.SignMemo[key] = answer
 		end
 	end
 end
@@ -1203,6 +1507,10 @@ local function buildPet(key, scale)
 		petLows[lowKey] = false
 		return nil
 	end
+	petStats.Builds = petStats.Builds + 1
+	if petLows[lowKey] == nil then
+		petStats.Cold = petStats.Cold + 1
+	end
 	model.Name = "HomePet"
 	model:SetAttribute("PetKey", key)
 	local list = collectParts(model)
@@ -1230,14 +1538,78 @@ local function buildPet(key, scale)
 	return model, lo
 end
 
+-- puts a pet model away (unparented) for the way back; the oldest beyond K.PET_POOL are destroyed
+local function poolPet(lowKey, model, lo)
+	local ok = lowKey ~= nil and lo ~= nil and pcall(function()
+		model.Parent = nil
+	end)
+	if not ok then
+		pcall(model.Destroy, model)
+		return
+	end
+	petPool[#petPool + 1] = { Key = lowKey, Model = model, Lo = lo }
+	while #petPool > K.PET_POOL do
+		local old = table.remove(petPool, 1)
+		pcall(old.Model.Destroy, old.Model)
+	end
+end
+
+local function pooledPet(lowKey)
+	for i = #petPool, 1, -1 do
+		if petPool[i].Key == lowKey then
+			return i
+		end
+	end
+	return nil
+end
+
 local function dropPet(pk, slot)
 	local entry = pk.Pets[slot]
 	if entry then
 		pk.Pets[slot] = nil
 		if entry.Model then
-			entry.Model:Destroy()
+			poolPet(entry.LowKey, entry.Model, entry.Lo)
 		end
 	end
+end
+
+-- may this frame still build (or take from the pool) a pet model? The first always may; a first-time build
+-- (`cold`: a new sculpt or template, many times a clone's cost) only as the frame's first; then at most
+-- K.PET_BUILD_MAX and only while the frame has spent less than K.PET_BUILD_BUDGET seconds on them
+local function petBudget(cold)
+	if petFrameBuilds == 0 then
+		return true
+	end
+	if cold or petFrameBuilds >= K.PET_BUILD_MAX then
+		return false
+	end
+	return os.clock() - petFrameStart < K.PET_BUILD_BUDGET
+end
+
+-- a pet model standing on `att`: from the pool when one waits there, else built; nil when it cannot be built
+local function placePet(key, scale, att)
+	local lowKey = key .. "|" .. scale
+	local model, lo = nil, nil
+	local i = pooledPet(lowKey)
+	if i then
+		local entry = table.remove(petPool, i)
+		local ok = pcall(function()
+			entry.Model:PivotTo(att.WorldCFrame * CFrame.new(0, K.PET_HOVER - entry.Lo, 0))
+			entry.Model.Parent = ensurePetFolder()
+		end)
+		if ok then
+			petStats.PoolHits = petStats.PoolHits + 1
+			return entry.Model, lowKey, entry.Lo
+		end
+		pcall(entry.Model.Destroy, entry.Model) -- destroyed while it waited: build a new one
+	end
+	model, lo = buildPet(key, scale)
+	if not model then
+		return nil
+	end
+	model:PivotTo(att.WorldCFrame * CFrame.new(0, K.PET_HOVER - lo, 0))
+	model.Parent = ensurePetFolder()
+	return model, lowKey, lo
 end
 
 local function clearPets(rec)
@@ -1262,16 +1634,31 @@ local function syncPets(rec, kind)
 			dropPet(pk, slot)
 		end
 	end
-	for slot, key in pairs(want) do
-		if not pk.Pets[slot] then
+	-- slot by slot under the frame's build budget: what does not fit waits for the next frame (still Dirty)
+	local scale = PET_STATIONS[kind].Scale
+	for slot = 1, K.MAX_GARDEN_SLOTS do
+		local key = want[slot]
+		if key and not pk.Pets[slot] then
 			local att = st.Model:FindFirstChild("Spot" .. slot, true)
-			if att and att:IsA("Attachment") then
-				local model, lo = buildPet(key, PET_STATIONS[kind].Scale)
+			local lowKey = key .. "|" .. scale
+			if att and att:IsA("Attachment") and petLows[lowKey] ~= false then
+				local cold = petLows[lowKey] == nil and pooledPet(lowKey) == nil
+				if not petBudget(cold) then
+					pk.Dirty = true
+					return
+				end
+				if petFrameBuilds == 0 then
+					petFrameStart = os.clock()
+				end
+				petFrameBuilds = cold and K.PET_BUILD_MAX or (petFrameBuilds + 1)
+				local model, lk, lo = placePet(key, scale, att)
 				if model then
 					model.Name = kind .. "Pet"
-					model:PivotTo(att.WorldCFrame * CFrame.new(0, K.PET_HOVER - lo, 0))
-					model.Parent = ensurePetFolder()
-					pk.Pets[slot] = { Key = key, Model = model, Station = st.Model }
+					pk.Pets[slot] = { Key = key, Model = model, Station = st.Model, LowKey = lk, Lo = lo }
+					petFramePlaced = petFramePlaced + 1
+					if petFramePlaced > petStats.FrameMost then
+						petStats.FrameMost = petFramePlaced
+					end
 				end
 			end
 		end
@@ -1407,7 +1794,8 @@ local function addHome(folder)
 		Conns = {},
 		Collector = nil,
 		Conveyor = nil,
-		Pet = { -- by station Kind: { Station = record | nil, Pets = { [slot] = { Key, Model, Station } }, Dirty }
+		SignMemo = {}, -- [StationId] = the layout's last answer for that pad's sign (a rebuilt sign starts with it)
+		Pet = { -- by station Kind: { Station = record | nil, Pets = { [slot] = { Key, Model, Station, LowKey, Lo } }, Dirty }
 			Garden = { Station = nil, Pets = {}, Dirty = false },
 			Gym = { Station = nil, Pets = {}, Dirty = false },
 		},
@@ -1557,6 +1945,7 @@ end
 local function step(dt)
 	dt = min(tonumber(dt) or 0, 0.1)
 	clock = clock + dt
+	petFrameBuilds, petFramePlaced = 0, 0
 	if #pops > 0 then
 		stepPops()
 	end
@@ -1624,9 +2013,20 @@ function HomeFx.Stats()
 			hidden = hidden + 1
 		end
 	end
+	local shownSigns, crowded, away = 0, 0, 0
 	for gui in pairs(signs) do
-		if gui.Parent and not gui.Enabled then
-			hiddenSigns = hiddenSigns + 1
+		if gui.Parent then
+			if not gui.Enabled then
+				hiddenSigns = hiddenSigns + 1
+			end
+			local why = signState[gui]
+			if why == "Shown" then
+				shownSigns = shownSigns + 1
+			elseif why == "Crowded" then
+				crowded = crowded + 1
+			elseif why == "Away" then
+				away = away + 1
+			end
 		end
 	end
 	return {
@@ -1639,9 +2039,27 @@ function HomeFx.Stats()
 		Pool = poolCreated,
 		HiddenPrompts = hidden,
 		HiddenSigns = hiddenSigns,
+		SignsShown = shownSigns,
+		SignsCrowded = crowded,
+		SignsAway = away,
 		GardenPets = pets,
 		GymPets = gymPets,
+		PetBuilds = petStats.Builds,
+		PetColdBuilds = petStats.Cold,
+		PetPoolHits = petStats.PoolHits,
+		PetPool = #petPool,
+		PetFrameMost = petStats.FrameMost,
 	}
+end
+
+-- why a pad sign shows or not: "Shown"; hidden: "Crowded" (no room on the screen), "Away" (behind the camera, off
+-- the screen or past its MaxDistance), "Pending" (not laid out yet), "Locked" (a locked pad far away), "Other" (not
+-- the local player's pad); nil for anything HomeFx does not track
+function HomeFx.SignState(gui)
+	if typeof(gui) ~= "Instance" or not signs[gui] then
+		return nil
+	end
+	return signState[gui]
 end
 
 function HomeFx.Init()

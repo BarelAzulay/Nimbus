@@ -14,7 +14,10 @@
 --   (TycoonCatalog.CheckPurchase), the price is paid with DataService.SpendCash and the level written with
 --   DataService.MutateHome IN ONE NON-YIELDING STEP (the cash is refunded if the home write is refused). The station
 --   then appears (HomeBuilder.SetStation; the client pops it in), the pads refresh and a side toast confirms it.
---   The Prestige pad (StationId "Prestige") routes to Prestige().
+--   The Prestige pad (StationId "Prestige", prompt "Prestige" with a long hold) never resets anything by itself: a
+--   prestige wipes the build and all Cash, so E on it opens the Home window on its prestige confirmation
+--   (OpenPanel("Home", { Action = "Prestige" })) and only HomeAction "Prestige" (that window's confirm button)
+--   prestiges. Buy(player, "Prestige") is refused the same way.
 -- * Income: a 1 s server tick adds (presses + Economy pets in the Garden) x the prestige multiplier
 --   (TycoonCatalog.IncomePerSecond) into Home.CollectorCash, capped by TycoonCatalog.CollectorCap (Collector +
 --   Vault). Garden pets count only when their key is owned (as many copies as are placed) and they are Economy pets.
@@ -41,7 +44,7 @@
 -- Public API (the contract):
 --   Init(lobbyInfo, deps)                deps = { DataService, PetService, SpotService }
 --   GetPlot(player) -> SpotInfo | nil    GetHome(player) -> home copy | nil
---   Buy(player, stationId) -> ok, newLevel | reason
+--   Buy(player, stationId) -> ok, newLevel | reason   (stations only: "Prestige" is refused, see the Prestige pad)
 --   Collect(player) -> ok, amount | reason
 --   Prestige(player) -> ok, stars | reason
 --   IncomePerSecond(player) -> cash/s, { Press, Garden, Multiplier }
@@ -99,6 +102,7 @@ local catalog = nil -- TycoonCatalog
 local petKeys = nil -- PetKeys (optional)
 local petCatalog = nil -- PetCatalog (optional)
 local notifyRemote = nil
+local openPanelRemote = nil -- OpenPanel (the Prestige pad opens the Home window on its confirmation)
 local spotList = {} -- [index] = SpotInfo (from lobbyInfo.Spots)
 
 local plots = {} -- [Player] = index
@@ -941,7 +945,8 @@ function TycoonService.Buy(player, stationId)
 		return false, "Unknown station"
 	end
 	if stationId == "Prestige" then
-		return TycoonService.Prestige(player)
+		-- never a one-press reset: Prestige() / HomeAction "Prestige" (the Home window's confirm button) do that
+		return false, "Prestige from the Home window (it shows what resets first)"
 	end
 	local def = catalog.Get(stationId)
 	if not def or def.Kind == "Prestige" then
@@ -1068,7 +1073,8 @@ end
 -- Prestige
 ----------------------------------------------------------------------
 
-function TycoonService.Prestige(player)
+-- Can this player prestige right now? true, home | false, reason (no side effects).
+local function prestigeCheck(player)
 	if not initialized or not catalog then
 		return false, "Homes are not ready yet"
 	end
@@ -1086,6 +1092,48 @@ function TycoonService.Prestige(player)
 	if not can then
 		return false, reason or "Not ready to prestige yet"
 	end
+	return true, home
+end
+
+local function openPanel(player, panelId, args)
+	if not player or not player.Parent then
+		return false
+	end
+	if not openPanelRemote then
+		local ok, remote = pcall(Remotes.Get, "OpenPanel")
+		if ok then
+			openPanelRemote = remote
+		end
+	end
+	if not openPanelRemote then
+		return false
+	end
+	local ok = pcall(function()
+		openPanelRemote:FireClient(player, panelId, args)
+	end)
+	return ok
+end
+
+-- E on the Prestige pad. A prestige resets the whole build and all Cash, so one press never does it: the pad opens
+-- the Home window on its prestige confirmation ("Starts over / You keep / You get"), and only that window's confirm
+-- button (HomeAction "Prestige") prestiges. ok | false, reason
+local function askPrestige(player)
+	local ok, reason = prestigeCheck(player)
+	if not ok then
+		return false, reason
+	end
+	if not openPanel(player, "Home", { Action = "Prestige" }) then
+		return false, "Open the Home window to prestige"
+	end
+	return true
+end
+
+function TycoonService.Prestige(player)
+	local ready, homeOrReason = prestigeCheck(player)
+	if not ready then
+		return false, homeOrReason
+	end
+	local home = homeOrReason
 	local stars = starsOf(home) + 1
 	local gems = 0
 	if type(catalog.PrestigeGems) == "function" then
@@ -1581,7 +1629,7 @@ local function onBuyPrompt(player, prompt)
 	end
 	local ok, reason
 	if stationId == "Prestige" then
-		ok, reason = TycoonService.Prestige(player)
+		ok, reason = askPrestige(player) -- opens the confirmation; nothing resets here
 	else
 		ok, reason = TycoonService.Buy(player, stationId)
 	end

@@ -8,12 +8,16 @@
 --   server). Idempotent through the profile's GemReceipts (DataService.MarkReceipt): the purchase id and the gems are
 --   written to the live profile in ONE non-yielding step, then the profile is saved (one UpdateAsync carries both),
 --   and only a successful save answers PurchaseGranted. So a purchase is granted once per purchase id: a second call
---   (Roblox retries, another server after a rejoin) finds the receipt and grants nothing; a lost save loses the receipt
---   together with the gems, and the retry grants them again. While the profile is not loaded yet (or provisional:
---   the load failed, the real save is unknown) the callback waits up to ProfileWaitSeconds, then answers
---   NotProcessedYet and Roblox asks again later. Unknown product, malformed receipt, player not in this server, failed
---   save: NotProcessedYet. In Studio a failed save still answers PurchaseGranted (test purchases cost nothing and the
---   gems are already in the session).
+--   (Roblox retries, another server after a rejoin) finds the receipt and grants nothing. A failed save keeps the
+--   receipt and the gems in the live profile and DataService keeps retrying that save (also after the player left);
+--   MarkReceipt records how many gems came with the receipt, so when another server granted the same purchase first
+--   (Roblox re-sent it there after a rejoin) the late save adds no gems for it: one purchase, one grant. While the
+--   profile is not loaded yet (or provisional: the load failed, the real save is unknown) the callback waits up to
+--   ProfileWaitSeconds, then answers NotProcessedYet and Roblox asks again later. Unknown product, malformed receipt,
+--   player not in this server, failed save: NotProcessedYet. In Studio a failed save still answers PurchaseGranted
+--   (test purchases cost nothing and the gems are already in the session). The thank-you toast and GemsPurchased
+--   come once per purchase, when it is granted for good (the save succeeded, or Studio): after a failed save, the
+--   retry that saves it sends them.
 -- * PromptPurchase(player, ref): a validated request (live player, not in a match, a CREATED product picked by its
 --   index in Config.Gems.Products or by its product id, a 1 s cooldown) -> MarketplaceService:PromptProductPurchase.
 --   A client may also prompt by itself: Gems are only ever granted by ProcessReceipt. Config.Remotes has no gem remote
@@ -47,7 +51,8 @@
 --   GemService.RollPet(id, rng) -> petId | nil      token roulettes: PetCatalog.RollPet; gems-only: the same rules
 --   GemService.GetOdds(id) -> {{PetId, Rarity, Chance}...}, GetRarityOdds(id) -> {{Rarity, Chance, Count}...},
 --   GemService.PossiblePets(id) -> {PetDef...}               (the shapes PetCatalog uses)
---   GemService.GemsPurchased   Util.Signal Fire(player, gems, productId, purchaseId) after a granted purchase
+--   GemService.GemsPurchased   Util.Signal Fire(player, gems, productId, purchaseId) once a purchase is granted for good
+--                              (saved; in Studio also unsaved), once per purchase
 --   GemService.ProfileWaitSeconds = 12                       how long ProcessReceipt waits for a loading profile
 --
 -- Plain Lua 5.1-compatible syntax only. Nothing here yields between a check and its write.
@@ -91,6 +96,7 @@ local catalogRef = nil
 local catalogTried = false
 
 local policy = {} -- [Player] = { State = "Checking"|"Allowed"|"Restricted", Busy, Fails, NextTry, LastTry }
+local pendingThanks = {} -- [Player] = { [receiptKey] = { Gems, ProductId, Done } } granted here, not saved yet
 local promptAt = {} -- [Player] = os.clock() of the last purchase prompt
 local lastCall = {} -- [Player] = { [key] = os.clock() }
 local warned = {} -- [key] = true: one warning per problem per server
@@ -771,6 +777,38 @@ local function unmarkReceipt(data, player, key)
 	end
 end
 
+-- A purchase granted here waits for its save before the player is thanked (the grant may still be answered
+-- NotProcessedYet). Returns the record the granting call keeps (a retry looks it up by the receipt key).
+local function holdThanks(player, key, gems, productId)
+	local map = pendingThanks[player]
+	if not map then
+		map = {}
+		pendingThanks[player] = map
+	end
+	local rec = { Gems = gems, ProductId = productId, Done = false }
+	map[key] = rec
+	return rec
+end
+
+-- The purchase is granted for good: the thank-you toast and GemsPurchased, once per purchase. `rec` = the record of
+-- the call that granted it (nil for a retry, which finds it in pendingThanks; nothing when it was thanked already).
+local function sendThanks(player, key, rec)
+	local map = pendingThanks[player]
+	if map then
+		rec = rec or map[key]
+		map[key] = nil
+		if next(map) == nil then
+			pendingThanks[player] = nil
+		end
+	end
+	if type(rec) ~= "table" or rec.Done then
+		return
+	end
+	rec.Done = true
+	notify(player, "+" .. Util.Commas(rec.Gems) .. " Gems! Thank you for your support!", "good", THANKS_SECONDS)
+	GemService.GemsPurchased:Fire(player, rec.Gems, rec.ProductId, key)
+end
+
 function GemService.ProcessReceipt(receiptInfo)
 	local NOT_YET = Enum.ProductPurchaseDecision.NotProcessedYet
 	local GRANTED = Enum.ProductPurchaseDecision.PurchaseGranted
@@ -801,16 +839,18 @@ function GemService.ProcessReceipt(receiptInfo)
 	end
 
 	-- Was it granted before? Only a loaded, non-provisional profile can tell (MarkReceipt answers nil until then).
-	local marked = data.MarkReceipt(player, key)
+	-- The amount travels with the receipt: a purchase another server already saved is never added to the store twice.
+	local marked = data.MarkReceipt(player, key, product.Gems)
 	local waited = 0
 	while marked == nil and player.Parent == Players and waited < GemService.ProfileWaitSeconds do
 		task.wait(PROFILE_POLL)
 		waited = waited + PROFILE_POLL
-		marked = data.MarkReceipt(player, key)
+		marked = data.MarkReceipt(player, key, product.Gems)
 	end
 	if marked == nil then
 		return NOT_YET
 	end
+	local thanks = nil
 	if marked == true then
 		-- a new purchase: the gems go in now, in the same step as the receipt (nothing yields in between)
 		if not data.AddGems(player, product.Gems) then
@@ -818,18 +858,19 @@ function GemService.ProcessReceipt(receiptInfo)
 			warnOnce("receipt-grant", "[GemService] could not add the Gems of a purchase: it stays pending")
 			return NOT_YET
 		end
-		notify(player, "+" .. Util.Commas(product.Gems) .. " Gems! Thank you for your support!", "good", THANKS_SECONDS)
-		GemService.GemsPurchased:Fire(player, product.Gems, productId, key)
+		thanks = holdThanks(player, key, product.Gems, productId)
 	end
 	-- Durable before Roblox hears "done": the save carries the receipt and the gems together (a duplicate call saves
-	-- too: an earlier save of this purchase may have failed).
+	-- too: an earlier save of this purchase may have failed). The player is thanked once it is granted for good.
 	if type(data.Save) == "function" then
 		local okSave, saved = pcall(data.Save, player)
 		if okSave and saved == true then
+			sendThanks(player, key, thanks)
 			return GRANTED
 		end
 	end
 	if RunService:IsStudio() then
+		sendThanks(player, key, thanks)
 		return GRANTED -- Studio test purchases cost nothing; the gems are in the session
 	end
 	return NOT_YET
@@ -926,6 +967,7 @@ end
 
 local function onPlayerRemoving(player)
 	policy[player] = nil
+	pendingThanks[player] = nil -- a save still in flight keeps its own record (sendThanks gets it passed)
 	promptAt[player] = nil
 	lastCall[player] = nil
 end

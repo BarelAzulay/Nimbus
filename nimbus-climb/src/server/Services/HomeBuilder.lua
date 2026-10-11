@@ -20,7 +20,9 @@
 --                                               entries: a glowing voxel pad + a pixel sign (icon, name, "Lv a -> b",
 --                                               price or the lock reason) + ProximityPrompt `BuyPrompt` (ActionText "Buy",
 --                                               HoldDuration 0.25, attributes StationId, OwnerUserId; disabled while
---                                               locked). Pads missing from the list are removed, unchanged pads are kept
+--                                               locked; the Prestige pad's says "Prestige" and needs a 1.5 s hold: it
+--                                               opens the prestige confirmation, see TycoonService).
+--                                               Pads missing from the list are removed, unchanged pads are kept
 --                                               (only their texts / attributes update). Locked "Unlocks at Prestige" /
 --                                               "Coming soon" stations show a blue hologram silhouette (`Ghost_<Id>`).
 --   HomeBuilder.SetCollector(spotInfo, cash, cap)  attribute updates only: CollectorCash / CollectorCap on the Home
@@ -111,6 +113,7 @@ end
 local MAT = Enum.Material
 local HOME_TAG = "NC_Home"
 local PROMPT_RANGE = 9 -- studs: buy pads and station prompts
+local PRESTIGE_HOLD = 1.5 -- seconds: the Prestige pad's prompt (it opens the prestige confirmation, never a quick tap)
 local CLAIM_RANGE = 12
 local PAD_SIGN_RANGE = 60 -- studs: pad signs (pixel tags) hide beyond this
 local PAD_SIGN_LIFT = 4.2 -- studs above the pad's base where the sign's plate starts
@@ -3257,9 +3260,11 @@ local function updatePad(rec, pad)
 		local base = m:FindFirstChild("Base")
 		local prompt = Instance.new("ProximityPrompt")
 		prompt.Name = "BuyPrompt"
-		prompt.ActionText = "Buy"
+		-- the Prestige pad buys nothing: a deliberate hold opens the Home window's prestige confirmation
+		local prestigePad = id == "Prestige"
+		prompt.ActionText = prestigePad and "Prestige" or "Buy"
 		prompt.KeyboardKeyCode = Enum.KeyCode.E
-		prompt.HoldDuration = 0.25
+		prompt.HoldDuration = prestigePad and PRESTIGE_HOLD or 0.25
 		prompt.MaxActivationDistance = PROMPT_RANGE
 		prompt.RequiresLineOfSight = false
 		prompt:SetAttribute("StationId", id)

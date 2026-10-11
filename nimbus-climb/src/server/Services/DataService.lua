@@ -36,7 +36,9 @@
 --     are replaced PER KEY when the session changed that key; GemReceipts only grow (bounded to the newest 100);
 --     Teams are replaced whole. Home: a HIGHER Home.Prestige wins the whole Home (prestige resets the stations, so
 --     the other side's per-station changes are void); at equal prestige the Home merges per key (Level replaced,
---     LastSeen the later one; when both sides prestiged to that star, the session's Collector counts from 0).
+--     LastSeen the later one). When both sides prestiged to that star (two runs from the same reset home), each
+--     station keeps the higher level, the Home Level grows by what that adds and the session's Collector counts
+--     from 0 (its prestige emptied it).
 --     Cash follows the same prestige rule, because a prestige resets Cash too: a session that prestiged past the
 --     store writes its balance (the Cash of the newest run), a session whose run the store prestiged past loses its
 --     Cash delta (that run was reset), and when both sides prestiged to the same star the session's Cash since its
@@ -1275,6 +1277,12 @@ local function applyReplace(target, changes)
 end
 
 -- Home merge: a higher prestige wins the whole Home; at equal prestige the session's changes merge per key.
+-- When BOTH sides prestiged to the stored star (the session's base is an earlier run), the session's delta against
+-- that base mixes its prestige reset with what it built since. Both runs started from the same reset home (decor
+-- kept) and stations only go up within a run, so every station keeps the higher of the two levels (a station the
+-- session's prestige reset does not remove the one the other run rebuilt), the Home Level grows by what that adds
+-- (it is the sum of the station levels), and the session's Collector, which filled from 0 after its prestige, joins
+-- the stored one.
 local function applyHome(out, dh)
 	if not dh then
 		return
@@ -1287,18 +1295,26 @@ local function applyHome(out, dh)
 	if stored.Prestige > dh.Prestige then
 		return -- another server prestiged past this session: its stations were reset, the session's edits are void
 	end
-	if dh.Level ~= nil then
-		stored.Level = dh.Level
-	end
-	applyReplace(stored.Stations, dh.Stations)
-	applyReplace(stored.Garden, dh.Garden)
-	applyReplace(stored.Gym, dh.Gym)
-	if isFinite(dh.BasePrestige) and dh.BasePrestige < dh.Prestige and isFinite(dh.CollectorNow) then
-		-- both sides prestiged to this star: each Collector filled from 0 after its prestige, both count
-		stored.CollectorCash = sanitizeCash(stored.CollectorCash + dh.CollectorNow)
+	if isFinite(dh.BasePrestige) and dh.BasePrestige < dh.Prestige then
+		local gained = 0
+		for key, level in pairs(dh.Stations) do
+			local current = stored.Stations[key] or 0
+			if isFinite(level) and level > current then
+				stored.Stations[key] = level
+				gained = gained + (level - current)
+			end
+		end
+		stored.Level = clampCount(stored.Level + gained, MAX_LEVEL)
+		stored.CollectorCash = sanitizeCash(stored.CollectorCash + (isFinite(dh.CollectorNow) and dh.CollectorNow or 0))
 	else
+		if dh.Level ~= nil then
+			stored.Level = dh.Level
+		end
+		applyReplace(stored.Stations, dh.Stations)
 		stored.CollectorCash = sanitizeCash(stored.CollectorCash + dh.CollectorCash)
 	end
+	applyReplace(stored.Garden, dh.Garden) -- garden / gym choices survive a prestige: the session's edits count
+	applyReplace(stored.Gym, dh.Gym)
 	if dh.LastSeen ~= nil and dh.LastSeen > stored.LastSeen then
 		stored.LastSeen = dh.LastSeen
 	end

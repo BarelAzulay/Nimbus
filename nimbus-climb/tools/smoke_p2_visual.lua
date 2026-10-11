@@ -432,6 +432,10 @@ local function clientScenarios()
 			end
 			local focus = hrp and hrp.Position or (cam and cam.CFrame.Position)
 			local farLocked, farLockedShown, unlockedShown, unlocked = 0, 0, 0, 0
+			-- (HomeFx also lays the signs out on the screen, World text rule: an unlocked pad's sign may wait while a
+			-- nearer one takes its place, smoke_p2_fix_client.lua; it is never hidden for being far or locked)
+			local layoutOnly = { Shown = true, Crowded = true, Away = true, Pending = true }
+			local laidOut = 0
 			local nearest, nearestD = nil, huge
 			for _, s in ipairs(signs) do
 				local anchor = s.Gui.Adornee or s.Gui.Parent
@@ -451,11 +455,16 @@ local function clientScenarios()
 					if s.Gui.Enabled then
 						unlockedShown = unlockedShown + 1
 					end
+					local why = type(HF.SignState) == "function" and HF.SignState(s.Gui) or nil
+					if (why == nil and s.Gui.Enabled) or layoutOnly[why] then
+						laidOut = laidOut + 1
+					end
 				end
 			end
 			T.check(farLocked > 0 and farLockedShown == 0, "HomeFx: the local player's locked pads keep their lock signs hidden from afar (the yard shows what can be bought now)",
 				farLockedShown .. " of " .. farLocked .. " far locked signs shown")
-			T.check(unlocked > 0 and unlockedShown == unlocked, "HomeFx: ...while its unlocked pads keep their signs", unlockedShown .. " of " .. unlocked)
+			T.check(unlocked > 0 and unlockedShown >= 1 and laidOut == unlocked, "HomeFx: ...while its unlocked pads keep their signs (only the on-screen layout holds some back)",
+				unlockedShown .. " shown, " .. laidOut .. " of " .. unlocked .. " left to the layout")
 			if nearest then
 				local anchor = nearest.Gui.Adornee or nearest.Gui.Parent
 				standAt(anchor.Position + Vector3.new(4, 3, 4))

@@ -28,11 +28,13 @@
 --                        Press 1 from the Home window (HomeAction Upgrade) and leaves: his save is a Phase 2 profile.
 --   p2flow_prestige      Ann builds the home up pad by pad: the next house is refused below its Home Level (toast,
 --                        nothing paid), Villa / Manor / Sky Castle at Home Level 10 / 20 / 30 (toasts), station caps per
---                        tier, until the Prestige pad unlocks; E on it: +1 star, the Gems reward, Cash 0, stations reset
+--                        tier, until the Prestige pad unlocks; E on it only opens the Home window on the prestige
+--                        confirmation (nothing resets); confirming there: +1 star, the Gems reward, Cash 0, stations reset
 --                        but decor, garden and gym choices kept (they stop earning / training until rebuilt), the plot
 --                        and the nameplate follow. DataStore merge after the prestige: a stale server's late prestige-0
 --                        write (an extra station level, +Cash, +Gems, +Snacks) lands before this server saves: the
---                        prestiged Home wins whole, the deltas add up, the live profile adopts the merged numbers.
+--                        prestiged Home and Cash win (the stale run was reset), Gems and Snacks add up, the live profile
+--                        adopts the merged numbers.
 --   p2flow_fusion_gems   After the prestige: rebuilding the way to the Fusion Machine, its pad unlocks, the garden pet
 --                        earns x1.25; three copies (one working in the Garden, one equipped) fuse through the Fusion
 --                        remote only next to the machine: the Golden copy takes over the garden slot and the
@@ -1105,18 +1107,28 @@ S.p2flow_prestige = guarded("p2flow_prestige", function()
 		return
 	end
 
-	-- prestige with E on the pad
+	-- E on the Prestige pad only asks: a reset of the whole build is never one key press
 	DataS.AddCash(ann, 12345)
 	DataS.Save(ann) -- the store holds the build of Home Level 40
 	local before = {
 		Cash = cash(ann), Gems = gems(ann), Stations = home(ann).Stations, Garden = home(ann).Garden, Gym = home(ann).Gym,
 		Snack = DataS.GetFood(ann, "Snack"), Eco = X.PK.Count(DataS.GetProfile(ann), F.eco), Level = TC.HomeLevelOf(home(ann)),
 	}
+	T.check(prestigePad.ActionText == "Prestige" and prestigePad.HoldDuration >= 1, "flow prestige: the Prestige pad's prompt says 'Prestige' and needs a long hold",
+		tostring(prestigePad.ActionText) .. " / " .. tostring(prestigePad.HoldDuration))
 	mark = K.logSize()
 	pressPad(ann, annInfo, "Prestige")
+	local asked = K.remotesFor("OpenPanel", ann.UserId, mark)
+	local ask = asked[#asked]
+	T.check(home(ann).Prestige == 0 and cash(ann) == before.Cash and ask ~= nil and ask.args[1] == "Home" and type(ask.args[2]) == "table" and ask.args[2].Action == "Prestige",
+		"flow prestige: E on the Prestige pad resets nothing: it opens the Home window on the prestige confirmation", tostring(home(ann).Prestige) .. " / " .. cash(ann) .. " / " .. #asked .. " OpenPanel")
+	-- the Home window's confirm button
+	advance(1.1)
+	Mock.FromClient(remote("HomeAction"), ann, "Prestige")
+	advance(0.3)
 	local after = home(ann)
 	T.check(after.Prestige == 1 and cash(ann) == 0 and gems(ann) == before.Gems + TC.PrestigeGems(1),
-		"flow prestige: E on the Prestige pad: +1 star, Cash 0, +" .. TC.PrestigeGems(1) .. " Gems", tostring(after.Prestige) .. " / " .. cash(ann) .. " / " .. gems(ann))
+		"flow prestige: confirming in the Home window (HomeAction 'Prestige'): +1 star, Cash 0, +" .. TC.PrestigeGems(1) .. " Gems", tostring(after.Prestige) .. " / " .. cash(ann) .. " / " .. gems(ann))
 	local wrong = {}
 	for _, def in ipairs(TC.Stations) do
 		local want = def.KeepOnPrestige and (before.Stations[def.Id] or 0) or 0
@@ -1140,9 +1152,11 @@ S.p2flow_prestige = guarded("p2flow_prestige", function()
 	T.check(gLv2 == gLv and gXp2 == gXp, "flow prestige: the pet in the reset Gym stops training", gLv .. "/" .. gXp .. " -> " .. gLv2 .. "/" .. gXp2)
 
 	-- DataStore merge after the prestige: a stale server's late write lands (Ann's previous session, at prestige 0:
-	-- an extra Vault level, +5000 Cash, +7 Gems, +2 Snacks). Its Home edits only count while the store is still at
-	-- prestige 0 (when an autosave of this server already stored the prestige, the other server's merge voids them);
-	-- Cash / Gems / Food always travel as deltas. Either way the outcome below is the same.
+	-- an extra Vault level, +5000 Cash, +7 Gems, +2 Snacks). Its Home edits and its Cash belong to the run this prestige
+	-- reset, so neither survives (the prestige rule); Gems and Food always travel as deltas. While the store is still at
+	-- prestige 0 this server's merge decides that; when an autosave of this server already stored the prestige, the
+	-- stale server's own merge does (it keeps only its Gems / Food deltas), so the record gets just those. Either way
+	-- the outcome below is the same.
 	local rec = stored(ann.UserId)
 	if T.check(type(rec) == "table" and type(rec.Home) == "table", "flow merge: (precondition) Ann has a save") then
 		local storeAtZero = (rec.Home.Prestige or 0) == 0
@@ -1151,8 +1165,8 @@ S.p2flow_prestige = guarded("p2flow_prestige", function()
 			rec.Home.Stations = type(rec.Home.Stations) == "table" and rec.Home.Stations or {}
 			rec.Home.Stations.Vault = min(5, (rec.Home.Stations.Vault or 0) + 1)
 			rec.Home.Level = (rec.Home.Level or 0) + 1
+			rec.Cash = (rec.Cash or 0) + 5000
 		end
-		rec.Cash = (rec.Cash or 0) + 5000
 		rec.Gems = (rec.Gems or 0) + 7
 		rec.Food = type(rec.Food) == "table" and rec.Food or {}
 		rec.Food.Snack = (rec.Food.Snack or 0) + 2
@@ -1161,11 +1175,11 @@ S.p2flow_prestige = guarded("p2flow_prestige", function()
 		local sh = type(s.Home) == "table" and s.Home or {}
 		T.check(sh.Prestige == 1 and sameMap(sh.Stations, home(ann).Stations) and (sh.Stations.Vault or 0) == (home(ann).Stations.Vault or 0),
 			"flow merge: the prestiged Home wins whole (the stale write's station levels do not come back)", mapText(sh.Stations))
-		T.eq(s.Cash, 5000, "flow merge: Cash merges as a delta: the stale server's +5000 stays, the prestige reset took the rest")
-		T.eq(s.Gems, before.Gems + 7 + TC.PrestigeGems(1), "flow merge: Gems: the stale +7 plus the prestige reward")
+		T.eq(s.Cash, 0, "flow merge: Cash follows the prestige: the stale server's +5000 belonged to the reset run (only this run's balance is stored)")
+		T.eq(s.Gems, before.Gems + 7 + TC.PrestigeGems(1), "flow merge: Gems: the stale +7 plus the prestige reward (paid once)")
 		T.check(type(s.Food) == "table" and s.Food.Snack == before.Snack + 2, "flow merge: Food merges as a delta (+2 Snacks)")
 		advance(0.6)
-		T.check(cash(ann) == 5000 and ann:GetAttribute(config().Attr.Cash) == 5000 and gems(ann) == s.Gems and ann:GetAttribute(config().Attr.Gems) == s.Gems,
+		T.check(cash(ann) == 0 and ann:GetAttribute(config().Attr.Cash) == 0 and gems(ann) == s.Gems and ann:GetAttribute(config().Attr.Gems) == s.Gems,
 			"flow merge: the live profile adopts the merged balances (HUD attributes too)")
 		T.check(home(ann).Prestige == 1 and stationModel(annInfo, "Vault") == nil and stationModel(annInfo, "Press1") == nil,
 			"flow merge: ...and the plot keeps showing the prestiged home")
