@@ -1234,8 +1234,16 @@ local function clientScenarios()
 		local heightWithout = named(g, "DevPanel").Size.Y.Offset
 		setHint(ATTR_TUTORIAL, true)
 		advance(0.6)
-		T.check(shown(restart) and named(g, "DevPanel").Size.Y.Offset > heightWithout, "DEV panel: NC_DevTutorial = true shows 'Restart tutorial' (and the panel grows for it)",
-			heightWithout .. " -> " .. named(g, "DevPanel").Size.Y.Offset)
+		-- the panel grows for it; when it is already as tall as the screen allows, its list scrolls instead (the last
+		-- button then ends below the list's visible area)
+		local heightWith = named(g, "DevPanel").Size.Y.Offset
+		local lastButton = named(g, "Dev_reset")
+		local devList = lastButton and lastButton.Parent
+		local scrolls = devList ~= nil and devList:IsA("ScrollingFrame")
+			and lastButton.AbsolutePosition.Y + lastButton.AbsoluteSize.Y > devList.AbsolutePosition.Y + devList.AbsoluteSize.Y + 1
+		T.check(shown(restart) and (heightWith > heightWithout or scrolls),
+			"DEV panel: NC_DevTutorial = true shows 'Restart tutorial' (the panel grows for it, or scrolls to it when already as tall as the screen allows)",
+			heightWithout .. " -> " .. heightWith .. (scrolls and " (the list scrolls)" or ""))
 		local grantLabel = "+" .. Theme.ShortNumber(Config.Dev.GrantTokens) .. " tokens"
 		local expected = {
 			{ "Dev_allpets", "Give all pets", "allpets" },

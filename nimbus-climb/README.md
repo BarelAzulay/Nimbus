@@ -691,7 +691,8 @@ src/server   Main.server.lua; Services: Lighting, LobbyBuilder, StormAltar, Play
              Course (layout + builder), Match, Portal, Spot, Pet, Item, Index, Tutorial, Npc, Dev, Tycoon,
              HomeBuilder, PetCare, Fusion, Gem, ArenaBuilder, Battle, Event
 src/client   Main.client.lua; State; UI/CloudUI; Controllers: Movement, Hud, DamageFx, Notify, Menu, Hotbar,
-             Pet, TokenFx, Index, Tutorial, Npc, SkyDragon, Showcase, Dev, HomeFx, Fusion, Battle, Arena
+             Pet, TokenFx, Index, Tutorial, Npc, SkyDragon, Showcase, Dev, DevPetShow (pet showcase),
+             EvolutionFx (evolution animation), HomeFx, Fusion, Battle, Arena
 ```
 
 The **server is authoritative** (health, tokens, Cash, Gems, pets, items, checkpoints, matches, home purchases
