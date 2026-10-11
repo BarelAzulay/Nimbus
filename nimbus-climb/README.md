@@ -399,8 +399,9 @@ see below). You spend them on:
 - **Roulette spins**, a cheaper premium way to roll, with the same odds as with tokens: Cloud 5, Storm 20,
   Sky 75 and Celestial 300 Gems a spin.
 - **The Secret Roulette** at the **Storm Altar** (press **E** at the altar, or find it in the Shop's Gems tab):
-  1,500 Gems a spin, **Mythic 85 %, Secret 15 %**. It is the only place Secret pets come from (Stormfang, Eclipse
-  Dragon, Obsidian Phoenix, Phantom Kitsune).
+  1,500 Gems a spin, **Mythic 85 %, Secret 15 %**. It is the only place the four roulette Secret pets come from
+  (Stormfang, Eclipse Dragon, Obsidian Phoenix, Phantom Kitsune). The three Boss Raid Secrets (Magma Cub, Rime
+  Wyrmling, Hydralotl) are in no roulette at all: they only drop in Boss Raids.
 - **Fusion Mixes** with Mythic or Secret pets.
 
 The odds of every roulette are always one tap away (the odds list). Where Roblox does not allow paid random items
@@ -447,9 +448,9 @@ another one.
 
 ## Pets and roulettes
 
-**30 pets** in seven rarities fly beside their owner, and everybody sees everybody's pets: Common 6, Uncommon 6,
-Rare 5, Epic 4, Legendary 3, Mythic 2 and **Secret 4** (Stormfang, Eclipse Dragon, Obsidian Phoenix, Phantom
-Kitsune). Visit the **shop island** or press the **Shop** tile, pick a roulette and spin. Duplicates stack (up to
+**33 pets** in seven rarities fly beside their owner, and everybody sees everybody's pets: Common 6, Uncommon 6,
+Rare 5, Epic 4, Legendary 3, Mythic 2 and **Secret 7** (Stormfang, Eclipse Dragon, Obsidian Phoenix, Phantom
+Kitsune, and the three Boss Raid pets Magma Cub, Rime Wyrmling and Hydralotl). Visit the **shop island** or press the **Shop** tile, pick a roulette and spin. Duplicates stack (up to
 99 per pet).
 
 | Roulette | Price | Odds per spin (pets inside a rarity are equally likely) |
@@ -460,8 +461,9 @@ Kitsune). Visit the **shop island** or press the **Shop** tile, pick a roulette 
 | **Celestial** | 5,000 tokens (or 300 Gems) | Epic 45 %, Legendary 40 %, Mythic 15 % |
 | **Secret** (Storm Altar) | 1,500 Gems only | Mythic 85 %, Secret 15 % |
 
-Secret pets are in none of the token roulettes: they only come from the gems-only Secret Roulette at the Storm
-Altar (see [Gems](#gems-and-the-secret-roulette)).
+Secret pets are in none of the token roulettes: Stormfang and the other three roulette Secrets come from the
+gems-only Secret Roulette at the Storm Altar (see [Gems](#gems-and-the-secret-roulette)), and the three Boss Raid
+pets only drop in Boss Raids.
 
 Equip up to **3** pets from the Pets window. Each pet has one or two perks: **Max Health**, **Cloud Tokens**
 (more tokens per pickup), **Stamina Regen** and **Checkpoint Heal**. Perks add up, with caps (+50 % health, +100 %
@@ -557,6 +559,7 @@ server checks the permission again on every single command, so other players can
 | **+1,000 Gems** | Adds `Config.Dev.GrantGems` Gems (1,000), to try the gem roulettes and Fusion Mixes. |
 | **Restart tutorial** | Plays the tutorial again from step 1. Its rewards are not paid a second time. |
 | **Skip tutorial** | Ends the tutorial (without its finish reward). |
+| **Start Boss Raid** | Starts a Boss Raid in the arena right now (`/raid`), so you can test raids without waiting for the schedule. Not while a raid is already running. |
 | **Evolve every pet** | Plays every pet's evolution animation one after another in front of you (`/evolve all`). |
 | **Show all pets** / **Show evolved pets** / **Show Evolved II pets** | Lines up every pet at that stage in front of you (`/pets`, `/pets 1`, `/pets 2`). |
 | **Clear pet show** | Removes the showcase pets and stops an evolution (`/clearpets`). |
@@ -577,10 +580,11 @@ runs Lua code and the game never sees what you type there.
 | `/reset` | Same as Reset my data (no confirmation, so type it carefully). |
 | `/tutorial` | Same as Restart tutorial. |
 | `/skiptutorial` | Same as Skip tutorial. |
+| `/raid` | Same as Start Boss Raid. |
 | `/pet <name> [stage]` | Builds that pet in front of you: stage `0` normal (the default), `1` evolved, `2` second evolution (Epic pets and up). The name or a unique part of it is enough, any case: `/pet cloudy 2`, `/pet Pebble Pup`. Each new pet stands beside the last one. |
-| `/pets [stage]` | Every pet lined up in rows in front of you: `/pets` (normal), `/pets 1` (all 30 evolved), `/pets 2` (the 13 second evolutions). |
+| `/pets [stage]` | Every pet lined up in rows in front of you: `/pets` (normal), `/pets 1` (all 33 evolved), `/pets 2` (the 16 second evolutions). |
 | `/evolve <name> [stage]` | Plays that pet's evolution animation in front of you: with no stage its whole line (normal -> evolved, then -> second evolution for Epic pets and up), `1` only normal -> evolved, `2` only evolved -> second evolution. |
-| `/evolve all [stage]` | Every pet's evolutions one after another (all 43 take about 4 minutes; `/evolve all 2` plays just the 13 second evolutions). |
+| `/evolve all [stage]` | Every pet's evolutions one after another (all 49 take about 4½ minutes; `/evolve all 2` plays just the 16 second evolutions). |
 | `/clearpets` | Stops an evolution and removes the showcase pets. |
 | `/devhelp` | Two toasts listing the commands. |
 

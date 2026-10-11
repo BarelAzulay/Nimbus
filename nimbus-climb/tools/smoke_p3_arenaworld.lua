@@ -531,7 +531,9 @@ S.p3arena_boards = guarded("p3arena_boards", function()
 	end
 	advance(2)
 	local idle = visibleText(board)
-	T.check(idle:find("Every %d+ minutes") ~= nil or idle:find("BOSS RAIDS") ~= nil, "boards: without EventService the event board shows the raid schedule", idle)
+	-- EventService draws its next raid (NEXT: BOSS RAID, the boss, a countdown); without it the board shows the schedule
+	T.check(idle:find("NEXT: BOSS RAID", 1, true) ~= nil or idle:find("Every %d+ minutes") ~= nil or idle:find("BOSS RAIDS") ~= nil,
+		"boards: the event board shows when the next Boss Raid comes (EventService's state, or the schedule without it)", idle)
 
 	local BC = battleCatalog()
 	local bossId, bossName = nil, nil

@@ -241,7 +241,13 @@ local function catalogV3(PC, Config, rank)
 	local lastRank = 0
 	for i, g in ipairs(groupsOk and groups or {}) do
 		order[#order + 1] = tostring(g.Id)
+		-- the group: the rollable pets of the rarity, then its EventOnly raid pets (Phase 3)
 		local list = PC.ListByRarity(g.Id)
+		for _, def in ipairs(PC.ListByRarity(g.Id, true)) do
+			if def.EventOnly == true then
+				list[#list + 1] = def
+			end
+		end
 		local same = type(g.Pets) == "table" and #g.Pets == #list and #list > 0
 		for j, def in ipairs(list) do
 			same = same and g.Pets[j] == def
@@ -250,13 +256,13 @@ local function catalogV3(PC, Config, rank)
 		covered = covered + #list
 		local want = Config.Index.Rewards[g.Id]
 		local rewardOk = type(g.Reward) == "table" and type(want) == "table" and g.Reward.Tokens == want.Tokens
-		T.check(g.Id == g.Rarity and rank[g.Id] ~= nil and rank[g.Id] > lastRank and same, "IndexGroups()[" .. i .. "] is the " .. tostring(g.Id) .. " group (ListByRarity, rarity order)")
+		T.check(g.Id == g.Rarity and rank[g.Id] ~= nil and rank[g.Id] > lastRank and same, "IndexGroups()[" .. i .. "] is the " .. tostring(g.Id) .. " group (ListByRarity, then the EventOnly pets; rarity order)")
 		T.check(rewardOk, tostring(g.Id) .. " group reward = Config.Index.Rewards." .. tostring(g.Id) .. " (" .. tostring(want and want.Tokens) .. " tokens)", type(g.Reward) == "table" and tostring(g.Reward.Tokens) or tostring(g.Reward))
 		lastRank = rank[g.Id] or lastRank
 	end
 	local rarityWithPets = 0
 	for _, r in ipairs(Config.Rarities) do
-		if #PC.ListByRarity(r.Id) > 0 then
+		if #PC.ListByRarity(r.Id, true) > 0 then
 			rarityWithPets = rarityWithPets + 1
 		end
 	end
@@ -471,7 +477,14 @@ S.catalog = guarded("catalog", function()
 		T.eq(#PC.ListByRarity(rarity), want, "ListByRarity('" .. rarity .. "') returns them")
 	end
 	T.check((counts[SECRET] or 0) >= CONTRACT.v3.minSecretPets, "lineup has at least " .. CONTRACT.v3.minSecretPets .. " Secret pets", tostring(counts[SECRET]))
-	T.eq(#PC.ListByRarity(SECRET), counts[SECRET] or 0, "ListByRarity('Secret') returns them")
+	local eventSecrets = 0
+	for _, def in ipairs(PC.ListByRarity(SECRET, true)) do
+		if def.EventOnly == true then
+			eventSecrets = eventSecrets + 1
+		end
+	end
+	T.eq(#PC.ListByRarity(SECRET), (counts[SECRET] or 0) - eventSecrets, "ListByRarity('Secret') returns the rollable ones (the EventOnly raid pets stay out of every roulette)")
+	T.eq(#PC.ListByRarity(SECRET, true), counts[SECRET] or 0, "ListByRarity('Secret', true) returns them all, the raid pets included")
 	local perRarity = 0
 	for _, r in ipairs(Config.Rarities) do
 		perRarity = perRarity + (counts[r.Id] or 0)
