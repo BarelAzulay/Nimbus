@@ -32,8 +32,9 @@
 --   BattleCatalog.SynergyBonus(list)           -> { PowerMult = { [i] = 1 | 1.1 | 1.2 | 1.3 }, HealthMult = 1 | 1.1,
 --                                              Entries = Synergy(list), Groups = { [element] = count } }
 --   BattleCatalog.Trials[level]                { Level, Name, Chapter, RecommendedPower, MiniBoss = bool, Boss = petId|nil,
---                                              Team = { { PetId, Level, Tier, Boss = bool }... }, TimeLimit,
---                                              Rewards = { Tokens, Xp, FirstClear = { Tokens, Gems } } }   (1..30)
+--                                              Team = { { PetId, Level, Tier, Boss = bool, Handicap = 0..1|nil }... },
+--                                              TimeLimit, Rewards = { Tokens, Xp, FirstClear = { Tokens, Gems } } }   (1..30;
+--                                              level 1 is one handicapped pet: a sure first win for any single pet)
 --   BattleCatalog.TrialCount                   30
 --   BattleCatalog.TrialTeam(level)             -> a BattleSim team spec { Owner = "npc", Side = 2, Npc = true, Name, Pets }
 --   BattleCatalog.Bosses[id]                   { Id, Name, Element, Blurb, HpPerPlayer, Radius, Basic, Attacks, Minions,
@@ -41,10 +42,13 @@
 --   BattleCatalog.BossOrder                    { "storm_titan", "lava_golem", "frost_wyrm", "shadow_hydra" }
 --   BattleCatalog.NextBoss(index)              -> bossId (rotating roster, 1-based, wraps)
 --   BattleCatalog.BossHp(bossId, teams)        -> hp, perTeam   HP that lasts HpPerPlayer seconds of every team's DPS
+--   BattleCatalog.WeightedTeams(dpsList)       -> n   the head count behind GroupFactor / DamageGroup: min(1, dps / top dps)
+--                                              per team, so joiners who deal nothing do not inflate the boss
 --   BattleCatalog.Events                       { Schedule = { {Kind, EveryMinutes, AnnounceSeconds, DurationSeconds}... },
 --                                              FirstAfterSeconds, DoubleRewardsMultiplier }
 --   BattleCatalog.Raid                         reward tiers by damage share, event pet chance, gems chance
---   BattleCatalog.RaidTier(share, participated) -> tier table (Tiers[i]) for a damage share 0..1
+--   BattleCatalog.RaidTier(share, won)         -> tier table (Tiers[i], the Loss tier when won == false) for a damage
+--                                              share 0..1, nil below Raid.MinShare (no reward for no real damage)
 --   BattleCatalog.Trophies                     { Win, Loss, Draw, Floor, Forfeit, Tokens = { Win, Loss } }
 --   BattleCatalog.Zones                        default floor sizes (studs) per mode, BattleCatalog.TimeLimits per mode
 --   BattleCatalog.Validate()                   -> ok, { problem... }
@@ -171,6 +175,8 @@ BattleCatalog.Damage = {
 	RetreatDamageTaken = 0.5, -- a retreating team takes half damage ...
 	RetreatRegenPerSecond = 0.02, -- ... and regains 2% of max HP per second
 	RetreatLock = 1.5, -- seconds after RETREAT before ATTACK is accepted again
+	RetreatAutoResume = 3, -- a PLAYER team parked at its anchor goes back to attacking by itself this long after the lock
+	TelegraphMargin = 1.5, -- studs of clearance a retreating pet keeps beyond the edge of a telegraph it steps out of
 	MeterMax = 100, -- SPECIAL lights up at MeterMax
 	MeterStart = { 20, 50 }, -- every pet starts a battle with a random meter in this range (first casts spread out)
 	MeterOnHit = 4, -- meter gained per hit dealt (a pet trading blows fills its meter in ~12 s)
@@ -503,7 +509,8 @@ end
 BattleCatalog.TrialCount = 30
 BattleCatalog.MiniBoss = { Hp = 3, Power = 1.3, Scale = 1.7 }
 BattleCatalog.TrialCurve = {
-	FirstPower = 14, -- level 1 target TeamPower (a brand-new team of three level-1 Commons has ~23: trial 1 is a sure win)
+	FirstPower = 14, -- the curve's level-1 anchor (level 2 aims at ~17, a brand-new team of three level-1 Commons has ~23)
+	FirstTrialPower = 2, -- level 1 itself: a sure first win for ANY single level-1 pet (one Cloud spin, no SPECIAL pressed)
 	LastPower = 2000, -- level 30 target TeamPower (x BossBump): a level grows ~17%, so the power never drops
 	BossBump = 1.15, -- mini-boss levels aim a step higher
 	MaxPetLevel = 45, -- the NPC pet level the solver may use before stepping the team up a tier
@@ -517,10 +524,11 @@ BattleCatalog.TrialChapters = {
 	{ Name = "Eclipse", From = 26, To = 30 },
 }
 
--- { name, { petIds }, Boss = petId | nil, Tier = "Golden" | "Rainbow" | nil }
+-- { name, { petIds }, Boss = petId | nil, Handicap = 0..1 | nil (every NPC pet's HP, hits and special scaled down) }
 local TRIAL_ROSTER = {
-	-- Cloud Meadow (Common pets)
-	{ "Puddle Patrol", { "puddle_frog", "honey_bunny", "pebble_pup" } },
+	-- Cloud Meadow (Common pets). Level 1 is the tutorial's first fight: one sleepy pebble pup at half strength, so a
+	-- player who owns a single level-1 pet (any rarity, Economy or Combat) wins it without pressing anything.
+	{ "Puddle Patrol", { "pebble_pup" }, Handicap = 0.5 },
 	{ "Kitten Club", { "mallow_kitten", "pip_penguin", "honey_bunny" } },
 	{ "Biscuit Brigade", { "biscuit_bear", "pebble_pup", "puddle_frog" } },
 	{ "Frosty Friends", { "pip_penguin", "mallow_kitten", "biscuit_bear" } },
@@ -600,19 +608,22 @@ local function miniBossPower(entry)
 	return floor(base * sqrt(mb.Hp * mb.Power) + 0.5)
 end
 
--- TeamPower of a trial team (the mini-boss counts with its multipliers)
+-- TeamPower of a trial team (the mini-boss counts with its multipliers, a handicap scales every pet down)
 local function trialTeamPower(team)
 	local syn = BattleCatalog.SynergyBonus(team)
 	local total = 0
 	for i, entry in ipairs(team) do
 		local up = entry.Boss and miniBossPower(entry) or BattleCatalog.UnitPower(entry)
-		total = total + up * sqrt((syn.PowerMult[i] or 1) * syn.HealthMult)
+		total = total + up * num(entry.Handicap, 1) * sqrt((syn.PowerMult[i] or 1) * syn.HealthMult)
 	end
 	return floor(total * sizeFactor(#team) + 0.5)
 end
 
 local function targetPower(level)
 	local c = BattleCatalog.TrialCurve
+	if level == 1 and finite(c.FirstTrialPower) then
+		return c.FirstTrialPower
+	end
 	local n = BattleCatalog.TrialCount
 	local t = (level - 1) / (n - 1)
 	local p = c.FirstPower * (c.LastPower / c.FirstPower) ^ t
@@ -631,10 +642,14 @@ local function buildTrials()
 	for level = 1, BattleCatalog.TrialCount do
 		local row = TRIAL_ROSTER[level] or TRIAL_ROSTER[#TRIAL_ROSTER]
 		local target = max(targetPower(level), lastPower) -- integer pet levels overshoot: never drop below the last level
+		local handicap = nil
+		if finite(row.Handicap) and row.Handicap > 0 and row.Handicap < 1 then
+			handicap = row.Handicap
+		end
 		local function teamAt(lv, tr)
 			local team = {}
 			for i, petId in ipairs(row[2]) do
-				team[i] = { PetId = petId, Level = lv, Tier = tr, Boss = (row.Boss == petId) or nil }
+				team[i] = { PetId = petId, Level = lv, Tier = tr, Boss = (row.Boss == petId) or nil, Handicap = handicap }
 			end
 			return team
 		end
@@ -697,7 +712,7 @@ function BattleCatalog.TrialTeam(level)
 	end
 	local pets = {}
 	for i, entry in ipairs(trial.Team) do
-		pets[i] = { PetId = entry.PetId, Key = entry.PetId, Level = entry.Level, Tier = entry.Tier, Slot = i, Boss = entry.Boss }
+		pets[i] = { PetId = entry.PetId, Key = entry.PetId, Level = entry.Level, Tier = entry.Tier, Slot = i, Boss = entry.Boss, Handicap = entry.Handicap }
 	end
 	return { Owner = "npc", Side = 2, Npc = true, Name = trial.Name, Pets = pets, Trial = trial.Level }
 end
@@ -707,14 +722,19 @@ end
 -- max HP with the raid's average) so a raid stays about dodging telegraphs at every progression stage; boss HP
 -- lasts HpPerPlayer seconds of every participating team's expected DPS (BossHp), so 1 / 3 / 8 players all
 -- finish in about the same time. Telegraph shapes: Circle { Radius } at a target point, Line { Width, Length }
--- from the boss through a target point (Count > 1 fans several lines Spread degrees apart). Target: "Cluster"
--- (where most pets stand), "Random" (a random pet), "Nearest", "Self" (centred on the boss).
+-- from the boss through a target point, cut short a little past that point (BattleSim.LineOvershoot), so a team
+-- running home leaves it (Count > 1 fans several lines Spread degrees apart). Target: "Cluster" (where most pets
+-- stand), "Random" (a random pet), "Nearest", "Self" (centred on the boss). Every Telegraph lasts >= 2.2 s: the
+-- client's fill ends at the DODGE DEADLINE (render delay + ping + the run out), so a shorter warning would read as
+-- "too late" while it still looks half full.
 ----------------------------------------------------------------------
 BattleCatalog.BossRules = {
 	DamageBasis = { Own = 0.6, Average = 0.4 }, -- boss hit = fraction x (Own x victim MaxHp + Average x raid average MaxHp)
 	MinHp = 600,
 	MinionHp = 0.7, -- minion MaxHp = this x the raid's average pet MaxHp
 	MinionDamage = 0.035, -- minion hit = this x the average pet MaxHp
+	-- the head count behind GroupExponent / DamageGroup is WEIGHTED: a team counts min(1, its DPS / the strongest team's
+	-- DPS), so joiners who bring nothing (idle alts with level-1 pets) do not inflate the boss for everyone else
 	GroupExponent = 0.25, -- boss HP x teams ^ GroupExponent: big groups spread the boss's attention and dodge less (3 teams x1.32, 8 teams x1.68)
 	DamageGroup = { Min = 0.55, FullAt = 8 }, -- boss (and minion) damage x Min for one team, rising to x1 at FullAt teams
 	MinionInterval = 1.4,
@@ -747,8 +767,8 @@ BattleCatalog.Bosses = {
 		Scale = 1,
 		Basic = { Name = "Zap", Interval = 2.4, Damage = 0.05, Range = 16 },
 		Attacks = {
-			attack("slam", "Thunder Slam", "Circle", { Radius = 7, Telegraph = 2.0, Cooldown = 18, Damage = 0.2, Target = "Cluster", First = 8 }),
-			attack("chain", "Chain Lightning", "Line", { Width = 4, Length = 48, Telegraph = 1.8, Cooldown = 22, Damage = 0.35, Target = "Random", First = 17 }),
+			attack("slam", "Thunder Slam", "Circle", { Radius = 7, Telegraph = 2.2, Cooldown = 18, Damage = 0.2, Target = "Cluster", First = 8 }),
+			attack("chain", "Chain Lightning", "Line", { Width = 4, Length = 48, Telegraph = 2.2, Cooldown = 22, Damage = 0.35, Target = "Random", First = 17 }),
 		},
 		MinionPet = "storm_tabby",
 		Minions = { Name = "Spark Tabby", Waves = { { At = 0.7, PerPlayer = 0.5 }, { At = 0.35, PerPlayer = 0.75 } } },
@@ -765,7 +785,7 @@ BattleCatalog.Bosses = {
 		Scale = 1,
 		Basic = { Name = "Magma Fist", Interval = 2.8, Damage = 0.05, Range = 12 },
 		Attacks = {
-			attack("pool", "Magma Pool", "Circle", { Radius = 7, Telegraph = 1.8, Cooldown = 18, Damage = 0.15, Target = "Cluster", Linger = 5, LingerDamage = 0.03, First = 8 }),
+			attack("pool", "Magma Pool", "Circle", { Radius = 7, Telegraph = 2.2, Cooldown = 18, Damage = 0.15, Target = "Cluster", Linger = 5, LingerDamage = 0.03, First = 8 }),
 			attack("eruption", "Eruption", "Circle", { Radius = 15, Telegraph = 2.4, Cooldown = 30, Damage = 0.25, Target = "Self", First = 18 }),
 		},
 		MinionPet = "maple_fox",
@@ -783,7 +803,7 @@ BattleCatalog.Bosses = {
 		Scale = 1,
 		Basic = { Name = "Ice Spit", Interval = 2.2, Damage = 0.045, Range = 18 },
 		Attacks = {
-			attack("breath", "Frost Breath", "Line", { Width = 5, Length = 44, Telegraph = 1.8, Cooldown = 20, Damage = 0.3, Target = "Random", Freeze = 2.0, First = 8 }),
+			attack("breath", "Frost Breath", "Line", { Width = 5, Length = 44, Telegraph = 2.2, Cooldown = 20, Damage = 0.3, Target = "Random", Freeze = 2.0, First = 8 }),
 			attack("blizzard", "Blizzard", "Circle", { Radius = 8, Telegraph = 2.2, Cooldown = 22, Damage = 0.15, Target = "Cluster", Freeze = 2.5, First = 18 }),
 		},
 		MinionPet = "frostling_penguin",
@@ -801,8 +821,8 @@ BattleCatalog.Bosses = {
 		Scale = 1,
 		Basic = { Name = "Shadow Bite", Interval = 1.8, Damage = 0.04, Range = 14 },
 		Attacks = {
-			attack("fangs", "Void Fangs", "Line", { Width = 4, Length = 44, Count = 3, Spread = 30, Telegraph = 1.8, Cooldown = 20, Damage = 0.3, Target = "Random", First = 8 }),
-			attack("pulse", "Shadow Pulse", "Circle", { Radius = 8, Telegraph = 1.8, Cooldown = 20, Damage = 0.2, Target = "Cluster", First = 18 }),
+			attack("fangs", "Void Fangs", "Line", { Width = 4, Length = 44, Count = 3, Spread = 30, Telegraph = 2.2, Cooldown = 20, Damage = 0.3, Target = "Random", First = 8 }),
+			attack("pulse", "Shadow Pulse", "Circle", { Radius = 8, Telegraph = 2.2, Cooldown = 20, Damage = 0.2, Target = "Cluster", First = 18 }),
 		},
 		MinionPet = "twilight_dragon",
 		Minions = { Name = "Shade Hatchling", Waves = { { At = 0.75, PerPlayer = 0.5 }, { At = 0.5, PerPlayer = 0.5 }, { At = 0.25, PerPlayer = 0.75 } } },
@@ -824,20 +844,40 @@ function BattleCatalog.NextBoss(index)
 	return order[i]
 end
 
+-- The weighted head count of a list of team DPS values: every team counts min(1, dps / the strongest dps), so eight
+-- equal teams count 8 and one real team with seven idle alts counts a little over 1.
+function BattleCatalog.WeightedTeams(dpsList)
+	local top = 0
+	for _, dps in ipairs(type(dpsList) == "table" and dpsList or {}) do
+		if finite(dps) and dps > top then
+			top = dps
+		end
+	end
+	local n = 0
+	for _, dps in ipairs(type(dpsList) == "table" and dpsList or {}) do
+		if top > 0 and finite(dps) and dps > 0 then
+			n = n + min(1, dps / top)
+		end
+	end
+	return n
+end
+
 -- Boss HP for a list of team specs (each { Pets = {...} }): HpPerPlayer seconds of every team's expected DPS.
--- Returns the total (x GroupFactor(#teams), at least BossRules.MinHp) and the list of each team's raw share (BattleSim adds
--- / removes shares when players join or leave).
+-- Returns the total (x GroupFactor(weighted team count), at least BossRules.MinHp) and the list of each team's raw share
+-- (BattleSim adds / removes shares when players join or leave).
 function BattleCatalog.BossHp(bossId, teams)
 	local boss = BattleCatalog.Bosses[bossId]
 	local seconds = boss and boss.HpPerPlayer or 150
 	local total = 0
-	local shares = {}
+	local shares, dpsList = {}, {}
 	for i, team in ipairs(type(teams) == "table" and teams or {}) do
-		local share = BattleCatalog.ExpectedDps(team) * seconds
+		local dps = BattleCatalog.ExpectedDps(team)
+		local share = dps * seconds
 		shares[i] = share
+		dpsList[i] = dps
 		total = total + share
 	end
-	total = total * BattleCatalog.GroupFactor(#shares)
+	total = total * BattleCatalog.GroupFactor(BattleCatalog.WeightedTeams(dpsList))
 	local minHp = BattleCatalog.BossRules.MinHp
 	if total < minHp then
 		total = minHp
@@ -845,9 +885,9 @@ function BattleCatalog.BossHp(bossId, teams)
 	return floor(total + 0.5), shares
 end
 
--- teams ^ GroupExponent: the multiplier on the summed shares for a raid of `teams` player teams
+-- teams ^ GroupExponent: the multiplier on the summed shares for a raid of `teams` (weighted, may be fractional) teams
 function BattleCatalog.GroupFactor(teams)
-	local n = max(1, floor(tonumber(teams) or 1))
+	local n = max(1, num(teams, 1))
 	return n ^ (BattleCatalog.BossRules.GroupExponent or 0)
 end
 
@@ -870,16 +910,21 @@ BattleCatalog.Raid = {
 		{ Id = "Gold", MinShare = 0.25, Tokens = 500, Xp = 400, Gems = 10, GemChance = 0.25, EventPetChance = 0.05 },
 		{ Id = "Silver", MinShare = 0.10, Tokens = 300, Xp = 250, Gems = 5, GemChance = 0.15, EventPetChance = 0.03 },
 		{ Id = "Bronze", MinShare = 0.02, Tokens = 150, Xp = 120, Gems = 3, GemChance = 0.08, EventPetChance = 0.015 },
-		{ Id = "Helper", MinShare = 0, Tokens = 60, Xp = 50, Gems = 0, GemChance = 0, EventPetChance = 0.005 },
+		{ Id = "Helper", MinShare = 0.01, Tokens = 60, Xp = 50, Gems = 0, GemChance = 0, EventPetChance = 0.005 },
 	},
-	LossTokens = 25, -- everyone who fought a raid that failed
+	MinShare = 0.01, -- below this share of the boss's HP (an idle joiner, an alt) a raider earns nothing, won or lost
+	LossTokens = 25, -- everyone who really fought a raid that failed
 	LossXp = 20,
 }
 
+-- the reward tier for a damage share (0..1): nil below Raid.MinShare (no reward), the Loss tier when the raid failed
 function BattleCatalog.RaidTier(share, won)
 	local s = tonumber(share) or 0
+	if s ~= s or s < BattleCatalog.Raid.MinShare then
+		return nil
+	end
 	if won == false then
-		return { Id = "Loss", MinShare = 0, Tokens = BattleCatalog.Raid.LossTokens, Xp = BattleCatalog.Raid.LossXp, Gems = 0, GemChance = 0, EventPetChance = 0 }
+		return { Id = "Loss", MinShare = BattleCatalog.Raid.MinShare, Tokens = BattleCatalog.Raid.LossTokens, Xp = BattleCatalog.Raid.LossXp, Gems = 0, GemChance = 0, EventPetChance = 0 }
 	end
 	local tiers = BattleCatalog.Raid.Tiers
 	for _, tier in ipairs(tiers) do
@@ -975,7 +1020,7 @@ function BattleCatalog.Validate()
 		if t.MiniBoss and not t.Boss then
 			bad("trial " .. level .. ": a mini-boss level names no Boss pet")
 		end
-		if #t.Team < 3 or #t.Team > BattleCatalog.MaxTeamSize then
+		if #t.Team < (level == 1 and 1 or 3) or #t.Team > BattleCatalog.MaxTeamSize then
 			bad("trial " .. level .. ": team of " .. #t.Team .. " pets")
 		end
 		local bossSeen = false
@@ -1061,13 +1106,16 @@ function BattleCatalog.Validate()
 			end
 		end
 	end
-	-- raid tiers sorted by share, trophies floor
+	-- raid tiers sorted by share, nothing paid below Raid.MinShare, trophies floor
 	local lastShare = 2
 	for _, tier in ipairs(BattleCatalog.Raid.Tiers) do
 		if tier.MinShare >= lastShare then
 			bad("Raid.Tiers must be sorted by descending MinShare")
 		end
 		lastShare = tier.MinShare
+	end
+	if not finite(BattleCatalog.Raid.MinShare) or BattleCatalog.Raid.MinShare <= 0 or lastShare < BattleCatalog.Raid.MinShare then
+		bad("Raid.MinShare must be positive and no higher than the lowest tier's MinShare (a raider who did no real damage earns nothing)")
 	end
 	if BattleCatalog.Trophies.Loss >= 0 or BattleCatalog.Trophies.Win <= 0 or BattleCatalog.Trophies.Floor ~= 0 then
 		bad("Trophies: Win must be positive, Loss negative, Floor 0")

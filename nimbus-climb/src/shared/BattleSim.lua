@@ -38,6 +38,18 @@
 --       Zone, Leave, End); an empty table while finished.
 --   battle:Snapshot() -> { BattleId?, T, Units = { [id] = { x, z, hp, state, target?, meter, shield? } } }
 --       compact numbers: x / z to 0.1 stud, hp / meter / shield integers, state = BattleSim.States code
+--   battle:SnapshotDelta(last) -> { BattleId?, T, U = { number... } }    the WIRE form BattleService sends: only the
+--       units whose picture changed since `last` (the receiver's previous picture, { [id] = { x, z, hp, state, meter,
+--       shield, target } }, updated in place; pass {} for a full snapshot), each as the numbers
+--         code, pos [, hp] [, meter] [, shield] [, target]
+--       code = id x 128 + mask x 8 + state (mask bits: 1 hp, 2 meter, 4 shield, 8 target; target 0 = none),
+--       pos = (x + 200) x 10 x 4096 + (z + 200) x 10 (0.1 stud steps; a floor is at most 400 studs). A unit missing
+--       from U is unchanged (down units are sent once, then left out), so a 16-team raid stays a few KB/s per client.
+--   BattleSim.DecodeSnapshot(payload, previous) -> Units    the client side: the full picture { [id] = { x, z, hp,
+--       state, meter, shield, target } } from a SnapshotDelta payload and the previous picture (nil at the start);
+--       untouched units keep their previous table. Junk payloads decode to the previous picture.
+--   battle:Abort(reason) -> ok      ends a running battle now with no winner (Reason = reason, e.g. "Shutdown"): the
+--       result still carries Damage / Shares / Survivors
 --   battle:Result() -> nil while running, else { Mode, Reason, WinnerSide, Winners = { owner... },
 --       Losers = { owner... }, Draw, Forfeit, Level (Trial), BossId (Raid), Damage = { [owner] = n },
 --       Shares = { [owner] = 0..1 }, Duration, Survivors = { [owner] = n }, BossHp, BossMaxHp }
@@ -54,6 +66,12 @@
 --   BattleSim.States  = { Idle = 0, Moving = 1, Attacking = 2, Retreating = 3, Casting = 4, Down = 5, Stunned = 6 }
 --   BattleSim.StateNames[code] -> "Idle" ...
 --   BattleSim.Events  = { Hit, Special, KO, Telegraph, Spawn, Enrage, Order, Zone, Leave, End }  (strings)
+--   BattleSim.LineOvershoot = 6     a Line telegraph ends this far past the pet it is aimed at (never the whole floor)
+-- RETREAT (Damage.RetreatLock / RetreatAutoResume / TelegraphMargin): the pets run to their spots beside the owner's
+-- anchor and stand there; a pet inside an active Line telegraph first steps out sideways (the shortest way out), and
+-- a spot covered by an active telegraph moves out of it, so every telegraph can be escaped by a timely RETREAT, even
+-- one aimed at a team already parked. A PLAYER team (not Npc / Auto) parked at its spots with no telegraph on it goes
+-- back to ATTACK by itself RetreatLock + RetreatAutoResume seconds after the RETREAT (Order event with auto = true).
 -- Event shapes:
 --   Hit       { from, to, dmg, elem (1.5 / 0.75 when not neutral), special (kind), tele (telegraph id), zone = true,
 --               absorbed (shield), retreat = true }
@@ -64,7 +82,7 @@
 --               at (battle time of the hit), hits (seconds until it), freeze, linger }
 --   Spawn     { units = { unitInfo... }, wave, boss, owner }
 --   Enrage    { unit }
---   Order     { owner, order = "Attack" | "Retreat" | "Forfeit", target }
+--   Order     { owner, order = "Attack" | "Retreat" | "Forfeit", target, auto = true (the retreat ended by itself) }
 --   Zone      { unit, kind, x, z, r, seconds, side }
 --   Leave     { owner, units = { id... } }
 --   End       { reason, winnerSide }
@@ -100,6 +118,7 @@ BattleSim.Events = {
 }
 BattleSim.Orders = { Attack = "Attack", Retreat = "Retreat" }
 BattleSim.Modes = { "Trial", "Duel", "Raid" }
+BattleSim.LineOvershoot = 6 -- studs a Line telegraph runs past the pet it is aimed at
 
 local S_IDLE, S_MOVING, S_ATTACKING, S_RETREATING, S_CASTING, S_DOWN, S_STUNNED =
 	BattleSim.States.Idle, BattleSim.States.Moving, BattleSim.States.Attacking, BattleSim.States.Retreating,
@@ -110,6 +129,10 @@ local ORDER_ATTACK, ORDER_RETREAT = "Attack", "Retreat"
 local MAX_UNITS = 128 -- a raid of 8 teams x 4 pets + boss + waves stays far below this
 local MIN_DT, MAX_DT = 0.02, 0.5
 local ZONE_TICK = 0.5 -- zones (Storm clouds, lingering pools) hurt every enemy inside them this often (few events)
+local HOME_RADIUS = 1.0 -- a retreating pet this close to its spot counts as parked (the auto resume waits for all)
+-- the wire snapshot (SnapshotDelta / DecodeSnapshot): positions at 0.1 stud over a floor of at most 400 studs
+local POS_OFFSET, POS_STEPS, POS_BASE = 200, 10, 4096
+local MASK_HP, MASK_METER, MASK_SHIELD, MASK_TARGET = 1, 2, 4, 8
 
 ----------------------------------------------------------------------
 -- Lazy modules
@@ -185,7 +208,7 @@ end
 ----------------------------------------------------------------------
 local FALLBACK_DAMAGE = {
 	HpScale = 3, DamageScale = 0.6, Variance = 0.12, MinHit = 1,
-	RetreatDamageTaken = 0.5, RetreatRegenPerSecond = 0.02, RetreatLock = 1.5,
+	RetreatDamageTaken = 0.5, RetreatRegenPerSecond = 0.02, RetreatLock = 1.5, RetreatAutoResume = 3, TelegraphMargin = 1.5,
 	MeterMax = 100, MeterStart = { 20, 50 }, MeterOnHit = 4, MeterOnHurt = 2, MeterPerSecond = 2,
 	CastSeconds = 0.5, SpecialScale = 1, SeparationRadius = 2.6, RetargetSeconds = 0.5, EngageSlack = 0.6,
 	NpcSpecialDelay = { 0.4, 1.4 }, KoMeterLoss = true,
@@ -264,23 +287,51 @@ local function clampToFloor(self, u)
 	end
 end
 
+-- a body of radius `radius` at (px, pz) touches the circle (x, z, r)
+local function pointInCircle(px, pz, radius, x, z, r)
+	local dx, dz = px - x, pz - z
+	local reach = r + radius
+	return dx * dx + dz * dz <= reach * reach
+end
+
+-- ... touches the line segment from (x, z) along angle for `length`, half width + body radius
+local function pointInLine(px, pz, radius, x, z, angle, length, width)
+	local dx, dz = px - x, pz - z
+	local dirX, dirZ = cos(angle), sin(angle)
+	local along = dx * dirX + dz * dirZ
+	if along < -radius or along > length + radius then
+		return false
+	end
+	local perp = abs(dx * dirZ - dz * dirX)
+	return perp <= width / 2 + radius
+end
+
 -- inside a circle (unit body counts)
 local function inCircle(u, x, z, r)
-	local dx, dz = u.x - x, u.z - z
-	local reach = r + u.radius
-	return dx * dx + dz * dz <= reach * reach
+	return pointInCircle(u.x, u.z, u.radius, x, z, r)
 end
 
 -- inside a line segment from (x, z) along angle for `length`, half width + body radius
 local function inLine(u, x, z, angle, length, width)
-	local dx, dz = u.x - x, u.z - z
-	local dirX, dirZ = cos(angle), sin(angle)
-	local along = dx * dirX + dz * dirZ
-	if along < -u.radius or along > length + u.radius then
-		return false
+	return pointInLine(u.x, u.z, u.radius, x, z, angle, length, width)
+end
+
+-- the active telegraph (of the other side) that a body of `radius` at (x, z) is inside, or nil
+local function telegraphAt(self, side, x, z, radius)
+	local list = self.telegraphs
+	for i = 1, #list do
+		local tele = list[i]
+		if tele.boss.side ~= side then
+			if tele.shape == "Line" then
+				if pointInLine(x, z, radius, tele.x, tele.z, tele.angle, tele.length, tele.width) then
+					return tele
+				end
+			elseif pointInCircle(x, z, radius, tele.x, tele.z, tele.r) then
+				return tele
+			end
+		end
 	end
-	local perp = abs(dx * dirZ - dz * dirX)
-	return perp <= width / 2 + u.radius
+	return nil
 end
 
 ----------------------------------------------------------------------
@@ -401,12 +452,19 @@ local function unitFromDef(self, team, def, entry, slot, kind, powerMult)
 	local hit = us.Hit
 	local radius = us.Radius
 	local scale = 1
+	local specialPower = us.SpecialPower
 	if kind == "MiniBoss" then
 		local mb = (bc and bc.MiniBoss) or { Hp = 3, Power = 1.3, Scale = 1.7 }
 		maxHp = maxHp * mb.Hp
 		hit = hit * mb.Power
 		radius = radius * 1.4
 		scale = mb.Scale
+	end
+	-- a handicapped NPC pet (the tutorial's Trial 1): HP, hits and its special scaled down together
+	if finite(entry.Handicap) and entry.Handicap > 0 and entry.Handicap < 1 then
+		maxHp = maxHp * entry.Handicap
+		hit = hit * entry.Handicap
+		specialPower = specialPower * entry.Handicap
 	end
 	local special = type(def.Special) == "table" and def.Special or nil
 	local u = {
@@ -430,7 +488,7 @@ local function unitFromDef(self, team, def, entry, slot, kind, powerMult)
 		range = us.Range,
 		ranged = us.Ranged,
 		radius = radius,
-		specialPower = us.SpecialPower,
+		specialPower = specialPower,
 		specialFactor = min(1, num(us.SpecialFactor, 1)),
 		specialKind = (special and not entry.NoSpecial) and special.Kind or nil, -- NoSpecial: harness only
 		special = special,
@@ -455,6 +513,7 @@ local function unitFromDef(self, team, def, entry, slot, kind, powerMult)
 		alive = true,
 		gone = false,
 		damage = 0,
+		atHome = false, -- retreating: parked at its spot
 	}
 	self.units[id] = u
 	return u
@@ -587,18 +646,17 @@ function BattleSim:AddTeam(spec)
 		out[i] = unitInfo(u)
 	end
 	if self.started then
-		self:_refreshRaidScale()
 		local boss = self.boss
 		if boss and boss.alive and not team.npc and side == 1 then
-			-- the newcomer's full share joins the boss; the group factor grows with the head count
-			local n = self:_playerTeams()
-			local before = self:_groupFactor(n - 1)
-			local after = self:_groupFactor(n)
+			-- the newcomer's full share joins the boss; the group factor grows with the (weighted) head count
+			local before = self:_groupFactor(self:_effectiveTeams(team))
+			local after = self:_groupFactor(self:_effectiveTeams())
 			local share = team.dps * boss.hpSeconds
 			team.hpShare = share
 			boss.maxHp = boss.maxHp * after / before + share * after
 			boss.hp = boss.hp * after / before + share * after
 		end
+		self:_refreshRaidScale()
 		self.pending[#self.pending + 1] = { type = EV.Spawn, units = out, owner = spec.Owner }
 	end
 	return out
@@ -613,6 +671,22 @@ function BattleSim:_playerTeams()
 		end
 	end
 	return n
+end
+
+-- the same head count WEIGHTED by what each team brings (BattleCatalog.WeightedTeams: min(1, dps / the strongest
+-- team's dps)), the number behind the boss's HP group factor and its damage scaling; `excluding` leaves one team out
+function BattleSim:_effectiveTeams(excluding)
+	local dpsList = {}
+	for _, team in ipairs(self.teams) do
+		if team.side == 1 and not team.npc and not team.left and team ~= excluding then
+			dpsList[#dpsList + 1] = num(team.dps, 0)
+		end
+	end
+	local bc = catalog()
+	if bc and bc.WeightedTeams then
+		return bc.WeightedTeams(dpsList)
+	end
+	return #dpsList
 end
 
 function BattleSim:_groupFactor(n)
@@ -647,7 +721,7 @@ function BattleSim:_refreshRaidScale()
 		self.avgPetHp = 150
 		self.avgPetLevel = 1
 	end
-	self.playerTeamCount = self:_playerTeams()
+	self.playerTeamCount = self:_effectiveTeams()
 	-- minions scale with the participants (the same head-count factor as the boss: bossBasis of an average pet)
 	for _, u in ipairs(self.units) do
 		if u.kind == "Minion" and u.alive then
@@ -1488,8 +1562,10 @@ local function startTelegraph(self, boss, entry, events)
 			dz = 1
 		end
 		local baseAngle = atan2(dz, dx)
+		-- the line ends a little past the pet it is aimed at: a team running home leaves it instead of running along it
+		local length = min(num(a.Length, 40), sqrt(dx * dx + dz * dz) + BattleSim.LineOvershoot)
 		for k = 1, count do
-			shapes[#shapes + 1] = { x = boss.x, z = boss.z, angle = baseAngle + (k - (count + 1) / 2) * spread, length = num(a.Length, 40), width = num(a.Width, 5) }
+			shapes[#shapes + 1] = { x = boss.x, z = boss.z, angle = baseAngle + (k - (count + 1) / 2) * spread, length = r1(length), width = num(a.Width, 5) }
 		end
 	else
 		for _, p in ipairs(points) do
@@ -1778,6 +1854,135 @@ local function moveToward(u, tx, tz, step, stop)
 	return d - travel
 end
 
+-- a unit's place in its team (1..n) and the team size
+local function teamIndex(team, u)
+	local idx = 1
+	for i, v in ipairs(team.units) do
+		if v == u then
+			idx = i
+		end
+	end
+	return idx, #team.units
+end
+
+-- which side of a line (x, z, angle) the point (px, pz) is on: 1 / -1 (0 exactly on its axis)
+local function lineSide(px, pz, x, z, angle)
+	local cross = (px - x) * sin(angle) - (pz - z) * cos(angle)
+	if cross > 0 then
+		return 1
+	elseif cross < 0 then
+		return -1
+	end
+	return 0
+end
+
+-- The retreat spot of a pet: beside its owner's anchor (spread along the perpendicular), nudged out of any active
+-- telegraph that covers it (sideways out of a Line, radially out of a Circle), kept on the floor.
+local function retreatSpot(self, team, u)
+	local idx, n = teamIndex(team, u)
+	local cx, cz = -team.anchorX, -team.anchorZ
+	local len = sqrt(cx * cx + cz * cz)
+	if len < 0.01 then
+		cx, cz, len = 0, 1, 1
+	end
+	local px, pz = -cz / len, cx / len
+	local spread = (idx - (n + 1) / 2) * 2.4
+	local x, z = team.anchorX + px * spread, team.anchorZ + pz * spread
+	local margin = num(damageRules().TelegraphMargin, 1.5)
+	for _ = 1, 2 do -- stepping out of one shape may land in another
+		local tele = telegraphAt(self, u.side, x, z, u.radius)
+		if not tele then
+			break
+		end
+		if tele.shape == "Line" then
+			local side = lineSide(x, z, tele.x, tele.z, tele.angle)
+			if side == 0 then
+				side = (idx % 2 == 0) and 1 or -1
+			end
+			local dirX, dirZ = cos(tele.angle), sin(tele.angle)
+			local perp = abs((x - tele.x) * dirZ - (z - tele.z) * dirX)
+			local need = tele.width / 2 + u.radius + margin - perp
+			x, z = x + side * need * dirZ, z - side * need * dirX
+		else
+			local dx, dz = x - tele.x, z - tele.z
+			local d = sqrt(dx * dx + dz * dz)
+			if d < 0.01 then
+				dx, dz, d = -cx, -cz, len -- away from the floor centre
+			end
+			local need = tele.r + u.radius + margin
+			x, z = tele.x + dx / d * need, tele.z + dz / d * need
+		end
+	end
+	local hx, hz = max(0.5, self.zone.HalfX - u.radius), max(0.5, self.zone.HalfZ - u.radius)
+	return max(-hx, min(hx, x)), max(-hz, min(hz, z))
+end
+
+-- one retreating pet: step sideways out of a Line telegraph it stands in, else run to its spot; regenerate
+local function retreatStep(self, u, dt)
+	local D = damageRules()
+	local team = u.team
+	if u.hp < u.maxHp then
+		u.hp = min(u.maxHp, u.hp + u.maxHp * D.RetreatRegenPerSecond * dt)
+	end
+	local sx, sz = retreatSpot(self, team, u)
+	local tele = telegraphAt(self, u.side, u.x, u.z, u.radius)
+	if tele and tele.shape == "Line" then
+		local side = lineSide(u.x, u.z, tele.x, tele.z, tele.angle)
+		if side == 0 then
+			side = lineSide(sx, sz, tele.x, tele.z, tele.angle)
+		end
+		if side == 0 then
+			side = (u.id % 2 == 0) and 1 or -1
+		end
+		local step = u.moveSpeed * dt
+		u.x = u.x + side * sin(tele.angle) * step
+		u.z = u.z - side * cos(tele.angle) * step
+		u.atHome = false
+	else
+		local left = moveToward(u, sx, sz, u.moveSpeed * dt, 0.3)
+		u.atHome = left <= HOME_RADIUS
+	end
+	u.state = S_RETREATING
+	u.target = nil
+end
+
+-- the ATTACK order (a command, or the end of a retreat): every living pet re-picks its target
+local function orderAttack(self, team, focus)
+	team.focus = focus
+	team.order = ORDER_ATTACK
+	for _, u in ipairs(team.units) do
+		if u.alive then
+			u.retargetAt = 0
+			u.atHome = false
+			if u.state == S_RETREATING then
+				u.state = S_IDLE
+			end
+		end
+	end
+end
+
+-- A retreating PLAYER team whose living pets are all parked, with no telegraph on any of them, goes back to attacking
+-- RetreatLock + RetreatAutoResume seconds after the RETREAT (Npc / Auto teams keep their order until told otherwise).
+local function resumeRetreats(self, events)
+	local D = damageRules()
+	local wait = num(D.RetreatLock, 1.5) + num(D.RetreatAutoResume, 3)
+	for _, team in ipairs(self.teams) do
+		if team.order == ORDER_RETREAT and not team.auto and not team.left and not team.forfeited and self.t >= team.retreatAt + wait then
+			local ready = true
+			for _, u in ipairs(team.units) do
+				if u.alive and not u.gone and (not u.atHome or telegraphAt(self, u.side, u.x, u.z, u.radius)) then
+					ready = false
+					break
+				end
+			end
+			if ready then
+				orderAttack(self, team, nil)
+				events[#events + 1] = { type = EV.Order, owner = team.owner, order = "Attack", auto = true }
+			end
+		end
+	end
+end
+
 local function unitStep(self, u, dt, events)
 	local D = damageRules()
 	local t = self.t
@@ -1797,29 +2002,8 @@ local function unitStep(self, u, dt, events)
 		u.state = S_CASTING
 		return
 	end
-	local retreating = team.order == ORDER_RETREAT
-	if retreating then
-		-- run home, regenerate
-		if u.hp < u.maxHp then
-			u.hp = min(u.maxHp, u.hp + u.maxHp * D.RetreatRegenPerSecond * dt)
-		end
-		local n = #team.units
-		local idx = 1
-		for i, v in ipairs(team.units) do
-			if v == u then
-				idx = i
-			end
-		end
-		local cx, cz = -team.anchorX, -team.anchorZ
-		local len = sqrt(cx * cx + cz * cz)
-		if len < 0.01 then
-			cx, cz, len = 0, 1, 1
-		end
-		local px, pz = -cz / len, cx / len
-		local spread = (idx - (n + 1) / 2) * 2.4
-		moveToward(u, team.anchorX + px * spread, team.anchorZ + pz * spread, u.moveSpeed * dt, 0.3)
-		u.state = S_RETREATING
-		u.target = nil
+	if team.order == ORDER_RETREAT then
+		retreatStep(self, u, dt)
 		return
 	end
 	-- auto specials (NPC / harness teams)
@@ -1864,13 +2048,7 @@ local function unitStep(self, u, dt, events)
 			if ax == 0 and az == 0 then
 				base = 0
 			end
-			local n = #team.units
-			local idx = 1
-			for i, v in ipairs(team.units) do
-				if v == u then
-					idx = i
-				end
-			end
+			local idx, n = teamIndex(team, u)
 			local angle = base + (idx - (n + 1) / 2) * (pi / 4)
 			local r = reach - 0.5
 			moveToward(u, tx + cos(angle) * r, tz + sin(angle) * r, u.moveSpeed * dt, 0.2)
@@ -2126,6 +2304,7 @@ function BattleSim:Step(dt)
 		end
 	end
 	resolveAttacks(self, events)
+	resumeRetreats(self, events)
 	separate(self)
 	for i = 1, #list do
 		local u = list[i]
@@ -2175,16 +2354,7 @@ function BattleSim:Command(owner, action, arg)
 			end
 			focus = unit
 		end
-		team.focus = focus
-		team.order = ORDER_ATTACK
-		for _, u in ipairs(team.units) do
-			if u.alive then
-				u.retargetAt = 0
-				if u.state == S_RETREATING then
-					u.state = S_IDLE
-				end
-			end
-		end
+		orderAttack(self, team, focus)
 		self.pending[#self.pending + 1] = { type = EV.Order, owner = owner, order = "Attack", target = focus and focus.id or nil }
 		return true
 	elseif action == "Retreat" then
@@ -2198,6 +2368,7 @@ function BattleSim:Command(owner, action, arg)
 			if u.alive then
 				u.target = nil
 				u.autoCastAt = nil
+				u.atHome = false
 				if u.state ~= S_STUNNED and u.state ~= S_CASTING then
 					u.state = S_RETREATING
 				end
@@ -2290,9 +2461,10 @@ function BattleSim:RemoveTeam(owner)
 	local boss = self.boss
 	if boss and boss.alive and team.hpShare > 0 then
 		-- the leaver's share goes (at the boss's current HP fraction) and the group factor shrinks with the head count
-		local n = self:_playerTeams() -- already excludes this team
-		local before = self:_groupFactor(n + 1)
-		local after = self:_groupFactor(n)
+		team.left = false
+		local before = self:_groupFactor(self:_effectiveTeams())
+		team.left = true
+		local after = self:_groupFactor(self:_effectiveTeams())
 		local frac = boss.hp / boss.maxHp
 		local maxHp = (boss.maxHp - team.hpShare * before) * after / before
 		boss.maxHp = max(1, maxHp)
