@@ -912,6 +912,20 @@ S.client_p3battle_mobile = guarded("client_p3battle_mobile", function()
 	step(2)
 	local res = find("Root.ResultCard")
 	T.check(shown(res) and hasText(res, "DEFEAT") and res.AnchorPoint.Y == 0, "phone: the DEFEAT card sits at the top (not centred)")
+	-- turned sideways (844x390): the short screen puts the card top right, clear of the screen centre
+	Mock.SetViewport(844, 390)
+	step(2)
+	res = find("Root.ResultCard")
+	if res and shown(res) then
+		local r = screenRect(res)
+		local cx, cy = 844 / 2, 390 / 2
+		local covers = r.x0 <= cx and cx <= r.x1 and r.y0 <= cy and cy <= r.y1
+		T.check(res.AnchorPoint.X == 1 and not covers, "phone landscape: the result card moves top right, off the screen centre", fmt(r.x0) .. "," .. fmt(r.y0) .. " - " .. fmt(r.x1) .. "," .. fmt(r.y1))
+	else
+		T.fail("phone landscape: the result card disappeared on rotation")
+	end
+	Mock.SetViewport(390, 844)
+	step(2)
 	LocalPlayer:SetAttribute("InBattle", nil)
 	KC.advance(14)
 	T.check(BC.GetBattle() == nil and not BC.IsHudVisible(), "phone: everything freed afterwards")

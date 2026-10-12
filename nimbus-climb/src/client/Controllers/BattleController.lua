@@ -65,9 +65,10 @@
 --     its special), ATTACK / RETREAT as big touch buttons at the right edge, clear of the RUN / DASH buttons.
 --   * Tap / click an enemy in the world to focus it (a short tap that is not a camera drag; the nearest enemy on the
 --     screen within reach of the tap).
---   * Result card at the end (bottom right, or at the top in the compact layout; never centred): VICTORY / DEFEAT /
---     DRAW, the reason, the rewards (tokens, gems, trophies, XP, first clear, raid tier + damage share, event pet,
---     level-ups, double rewards), OK; it closes by itself after RESULT_SECONDS.
+--   * Result card at the end (bottom right; compact: top centre on a tall phone, top right on a landscape phone,
+--     re-placed on rotation; never centred): VICTORY / DEFEAT / DRAW, the reason, the rewards (tokens, gems,
+--     trophies, XP, first clear, raid tier + damage share, event pet, level-ups, double rewards), OK; it closes by
+--     itself after RESULT_SECONDS.
 -- Keys 1-4 are bound through ContextActionService only while you fight (High priority, sunk), so the item hotbar does
 -- not also fire them; they are released when the battle ends.
 --
@@ -857,7 +858,7 @@ function Fx.Flash(u, color)
 			f = {
 				hl = make("Highlight", {
 					Name = "HitFlash",
-					DepthMode = Enum.HighlightDepthMode.Occluded,
+					DepthMode = "Occluded", -- Enum.HighlightDepthMode.Occluded by name (no flash through the arena walls)
 					OutlineTransparency = 1,
 					FillTransparency = 1,
 					Enabled = false,
@@ -2935,7 +2936,7 @@ function Hud.TitleText(B)
 	return "vs " .. Hud.SideName(B, B.Side == 1 and 2 or 1)
 end
 
--- the result card at the end (bottom right, or at the top in the compact layout)
+-- the result card at the end (bottom right; compact: top centre on a tall phone, top right on a landscape phone)
 function Hud.ShowResult(B, payload)
 	if not Hud.Ensure() then
 		return
@@ -2978,8 +2979,16 @@ function Hud.ShowResult(B, payload)
 		sub = "Trial " .. tostring(B.Trial and B.Trial.Level or B.Level or "") .. (sub ~= "" and (" - " .. sub) or "")
 	end
 	local w = m.Compact and min(K.RESULT_W, m.W - 16) or K.RESULT_W
+	if m.Compact and m.Landscape then
+		w = max(300, min(w, floor(m.W / 2) - 16)) -- top right, clear of the screen centre
+	end
 	local y = K.PAD + 2
-	local title = label(res, titleText, "Title", 36, { Name = "Title", Position = UDim2.fromOffset(K.PAD + 4, y), Size = UDim2.fromOffset(w - 2 * K.PAD - 8, 42), TextXAlignment = Enum.TextXAlignment.Left, TextColor3 = color })
+	-- a landscape phone: OK next to the title and a slim timer at the bottom (the card stays above the jump / dash
+	-- buttons); an opaque card, since it sits over the currency pill in the top right
+	local short = m.Compact and m.Landscape
+	res.BackgroundTransparency = short and 0 or res.BackgroundTransparency
+	local titleW = w - 2 * K.PAD - 8 - (short and 112 or 0)
+	local title = label(res, titleText, "Title", short and 32 or 36, { Name = "Title", Position = UDim2.fromOffset(K.PAD + 4, y), Size = UDim2.fromOffset(titleW, 42), TextXAlignment = Enum.TextXAlignment.Left, TextColor3 = color })
 	title.TextStrokeColor3 = COLORS.Ink
 	y = y + 44
 	if sub ~= "" then
@@ -2996,14 +3005,27 @@ function Hud.ShowResult(B, payload)
 	end
 	local rowsN = math.ceil(#lines / 2)
 	y = y + rowsN * 36 + (rowsN > 0 and 4 or 0)
-	local ok = button(res, "OkButton", "OK", "Green", UDim2.fromOffset(120, 46), function()
-		Hud.HideResult()
-	end)
-	ok.Position = UDim2.new(1, -K.PAD - 120, 0, y)
-	Hud.resultTimer = thinBar(res, "Timer", 8, COLORS.Muted, { Position = UDim2.fromOffset(K.PAD + 4, y + 19), Size = UDim2.fromOffset(w - 2 * K.PAD - 140, 8) })
-	y = y + 46 + K.PAD
+	if short then
+		local ok = button(res, "OkButton", "OK", "Green", UDim2.fromOffset(100, 44), function()
+			Hud.HideResult()
+		end)
+		ok.Position = UDim2.new(1, -K.PAD - 100, 0, K.PAD)
+		Hud.resultTimer = thinBar(res, "Timer", 6, COLORS.Muted, { Position = UDim2.fromOffset(K.PAD + 4, y), Size = UDim2.fromOffset(w - 2 * K.PAD - 8, 6) })
+		y = y + 6 + K.PAD
+	else
+		local ok = button(res, "OkButton", "OK", "Green", UDim2.fromOffset(120, 46), function()
+			Hud.HideResult()
+		end)
+		ok.Position = UDim2.new(1, -K.PAD - 120, 0, y)
+		Hud.resultTimer = thinBar(res, "Timer", 8, COLORS.Muted, { Position = UDim2.fromOffset(K.PAD + 4, y + 19), Size = UDim2.fromOffset(w - 2 * K.PAD - 140, 8) })
+		y = y + 46 + K.PAD
+	end
 	res.Size = UDim2.fromOffset(w, y)
-	if m.Compact then
+	if m.Compact and m.Landscape then
+		-- a landscape phone is short: a top-centre card would cover the screen centre, so it sits top right
+		res.AnchorPoint = Vector2.new(1, 0)
+		res.Position = UDim2.new(1, -8, 0, 6)
+	elseif m.Compact then
 		res.AnchorPoint = Vector2.new(0.5, 0)
 		res.Position = UDim2.new(0.5, 0, 0, 6)
 	else
@@ -3015,7 +3037,8 @@ function Hud.ShowResult(B, payload)
 	Hud.top.Visible = false
 	Hud.team.Visible = false
 	Hud.cmd.Visible = false
-	St.result = { t0 = os.clock(), dur = K.RESULT_SECONDS }
+	local keep = St.result and St.result.payload == payload and St.result.t0 -- a relayout (rotation) keeps the timer
+	St.result = { t0 = keep or os.clock(), dur = K.RESULT_SECONDS, battle = B, payload = payload }
 	BattleController._wake()
 end
 
@@ -3939,6 +3962,10 @@ function BattleController.Init()
 		conns[#conns + 1] = cam:GetPropertyChangedSignal("ViewportSize"):Connect(function()
 			if St.battle then
 				pcall(Hud.Rebuild)
+			end
+			local r = St.result
+			if r and r.battle and Hud.result and Hud.result.Visible then
+				pcall(Hud.ShowResult, r.battle, r.payload) -- the card re-places itself (top right on a landscape phone)
 			end
 		end)
 	end

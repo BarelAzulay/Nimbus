@@ -181,6 +181,13 @@ local K = {
 	MIN_LABEL_PX = 14, -- smallest on-screen menu label on phones / tablets (readability rule)
 	GRID_ENTRY_H = 86, -- "Grid" layout: the label sits on the tile's bottom edge, so a row is shorter ...
 	GRID_LABEL_Y = -8, -- ... (label centre this far above the tile's bottom; "Column": 2 px below it)
+	-- "SmallGrid": labelled 2-column grid of smaller tiles for short touch landscape screens, where the seven tiles
+	-- (Phase 3 added Team) no longer fit the band above the thumbstick as a regular grid with readable labels: the
+	-- labels keep >= MIN_LABEL_PX and the tiles shrink only as far as the band needs, never below SMALL_TILE_MIN
+	-- design px (~44 px on screen at the smallest label scale: still a comfortable touch target)
+	SMALL_TILE_MIN = 60,
+	SMALL_LABEL_SPARE = 6, -- a SmallGrid row is its tile + this (the label sits on the tile's bottom edge)
+	SMALL_COL_GAP = 22, -- SmallGrid: wider gap between the two columns, so neighbouring labels never run together
 	BACK_ACTION = "NimbusMenuBack", -- ContextActionService action that owns gamepad B while something is closable
 	CARD_H = 474, -- roulette card
 	CARD_H_SHORT = 216,
@@ -2067,29 +2074,38 @@ end
 -- column would collide with the HUD corners) or "CompactGrid" (icon-only tiles, 2 x 3: short touch screens where
 -- the band above Roblox's thumbstick cannot hold labelled tiles at a readable size).
 local function setColumnLayout(mode)
-	if U.ColumnMode == mode and U.ColumnLayout and U.ColumnLayout.Parent then
+	local sizeKey = mode .. ":" .. tostring(mode == "SmallGrid" and U.SmallEntryH or 0)
+	if U.ColumnMode == sizeKey and U.ColumnLayout and U.ColumnLayout.Parent then
 		return
 	end
 	if U.ColumnLayout then
 		U.ColumnLayout:Destroy()
 	end
-	U.ColumnMode = mode
+	U.ColumnMode = sizeKey
 	local iconOnly = mode == "Compact" or mode == "CompactGrid"
 	local entryH = K.ENTRY_H
+	local tile = K.TILE
 	if iconOnly then
 		entryH = K.TILE
 	elseif mode == "Grid" then
 		entryH = K.GRID_ENTRY_H
+	elseif mode == "SmallGrid" then
+		entryH = U.SmallEntryH or (K.SMALL_TILE_MIN + K.SMALL_LABEL_SPARE)
+		tile = entryH - K.SMALL_LABEL_SPARE
 	end
+	local gridded = mode == "Grid" or mode == "SmallGrid"
 	for _, entry in pairs(Entries) do
 		entry.Root.Size = UDim2.fromOffset(K.ENTRY_W, entryH)
+		entry.Button.Size = UDim2.fromOffset(tile, tile)
+		entry.Glow.Position = UDim2.new(0.5, 0, 0, tile / 2)
+		entry.Glow.Size = UDim2.fromOffset(tile + 14, tile + 14)
 		entry.Label.Visible = not iconOnly
-		entry.Label.Position = UDim2.new(0.5, 0, 1, (mode == "Grid") and K.GRID_LABEL_Y or 2)
+		entry.Label.Position = UDim2.new(0.5, 0, 1, gridded and K.GRID_LABEL_Y or 2)
 	end
-	if mode == "Grid" or mode == "CompactGrid" then
+	if gridded or mode == "CompactGrid" then
 		U.ColumnLayout = Util.Create("UIGridLayout", {
 			CellSize = UDim2.fromOffset(K.ENTRY_W, entryH),
-			CellPadding = UDim2.fromOffset(K.GAP, K.GAP),
+			CellPadding = UDim2.fromOffset((mode == "SmallGrid") and K.SMALL_COL_GAP or K.GAP, K.GAP),
 			FillDirection = Enum.FillDirection.Horizontal,
 			FillDirectionMaxCells = 2,
 			SortOrder = Enum.SortOrder.LayoutOrder,
@@ -2132,14 +2148,19 @@ function relayoutMenu()
 	if area.X >= area.Y and touchDevice then
 		-- touch landscape: Roblox's thumbstick owns the bottom-left corner, and a tile on top of it would take the
 		-- thumb's touch (My Spot would teleport the player home). The column lives in the band between the top
-		-- margin and the stick: one labelled column when it fits at the screen factor, else the 2 x 3 grid while
-		-- its labels stay >= MIN_LABEL_PX, else icon-only tiles in a 2 x 3 grid.
+		-- margin and the stick: one labelled column when it fits at the screen factor, else the 2-column grid while
+		-- its labels stay >= MIN_LABEL_PX, else the same grid of smaller labelled tiles ("SmallGrid"), else icon-only
+		-- tiles in a 2-column grid.
 		local camera = workspace.CurrentCamera
 		local vp = camera and camera.ViewportSize or area
 		local stickTop = area.Y - ((math.min(vp.X, vp.Y) <= 500) and K.STICK_TOP_SMALL or K.STICK_TOP_LARGE)
 		local top = K.EDGE
 		local avail = stickTop - K.STICK_GAP - top
 		local labelScale = K.MIN_LABEL_PX / K.LABEL_TEXT
+		-- the tallest SmallGrid row that still fits the band with readable labels
+		local smallE = math.floor((avail / labelScale - (gridRows - 1) * K.GAP) / gridRows)
+		smallE = math.min(smallE, K.GRID_ENTRY_H - 2)
+		local smallH = gridRows * smallE + (gridRows - 1) * K.GAP
 		local h
 		if columnH * factor <= avail then
 			h = columnH
@@ -2147,6 +2168,11 @@ function relayoutMenu()
 			mode, cols, entryH = "Grid", 2, K.GRID_ENTRY_H
 			h = gridH
 			scale = math.min(factor, avail / gridH)
+		elseif smallE - K.SMALL_LABEL_SPARE >= K.SMALL_TILE_MIN and math.min(factor, avail / smallH) >= labelScale then
+			mode, cols, entryH = "SmallGrid", 2, smallE
+			U.SmallEntryH = smallE
+			h = smallH
+			scale = math.min(factor, avail / smallH)
 		else
 			mode, cols, entryH = "CompactGrid", 2, K.TILE
 			h = gridRows * K.TILE + (gridRows - 1) * K.GAP
@@ -2175,7 +2201,7 @@ function relayoutMenu()
 		end
 	end
 	local rows = math.ceil(n / cols)
-	local w = cols * K.ENTRY_W + (cols - 1) * K.GAP
+	local w = cols * K.ENTRY_W + (cols - 1) * ((mode == "SmallGrid") and K.SMALL_COL_GAP or K.GAP)
 	local h = rows * entryH + (rows - 1) * K.GAP
 	setColumnLayout(mode)
 	U.Column.Size = UDim2.fromOffset(w, h)

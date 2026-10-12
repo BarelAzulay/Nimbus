@@ -25,7 +25,8 @@
 --                       window at a time with the menu; side cards: a duel invite (Accept -> ChallengeReply), the queue
 --                       (Leave -> Unqueue), the raid card (JOIN -> JoinRaid), the event countdown; hidden while
 --                       fighting; every text >= 18 design px; no script errors
---   client_p3ui_mobile  (phone 390x844) the Team window, the Trial window and the Arena tabs keep every text >= 14 px
+--   client_p3ui_mobile  (phone 390x844) the Team window, the Trial window and the Arena tabs keep every text >= 14 px;
+--                       (844x390) the seven-tile menu stays two labelled columns above the thumbstick
 -- Plain Lua 5.1 syntax only.
 
 local T = SmokeCommon.T
@@ -887,6 +888,50 @@ local function clientScenarios()
 		check("the side cards", pg():FindFirstChild("NimbusArenaSide"))
 		toClient("BattleState", "Lobby", { Queue = { Queued = false, Waiting = 0 }, Invites = {} })
 		advance(0.3)
+
+		-- the seven-tile menu (Team added) on a landscape phone: still two labelled columns above Roblox's thumbstick
+		-- (the "SmallGrid": smaller tiles, labels >= 14 px) instead of icon-only tiles, and about as wide as the
+		-- six-tile grid it replaced (the HUD's party panel, the tutorial card and the home pad signs lay out around it)
+		Mock.SetViewport(844, 390)
+		advance(0.8)
+		local column = pg():FindFirstChild("NimbusMenu") and pg().NimbusMenu:FindFirstChild("MenuColumn")
+		if T.check(column ~= nil and shown(column), "p3ui phone 844x390: the menu column is shown") then
+			local xs, labels, small, entries = {}, 0, {}, 0
+			for _, entry in ipairs(column:GetChildren()) do
+				if entry:IsA("GuiObject") and entry.Name:find("^Entry_") then
+					entries = entries + 1
+					local box = Mock.GuiBox(entry)
+					if box then
+						xs[math.floor(box.x + 0.5)] = true
+					end
+					local label = entry:FindFirstChild("Label", true)
+					if label and shown(label) then
+						labels = labels + 1
+						local c = label:FindFirstChildOfClass("UITextSizeConstraint")
+						local lb = Mock.GuiBox(label)
+						local px = (c and c.MaxTextSize or label.TextSize) * ((lb and lb.scale) or 1)
+						if px < 14 - 0.05 then
+							small[#small + 1] = string.format("%s %.1f px", entry.Name, px)
+						end
+					end
+				end
+			end
+			local cols = 0
+			for _ in pairs(xs) do
+				cols = cols + 1
+			end
+			local cb = Mock.GuiBox(column)
+			T.check(entries == 7 and cols == 2, "p3ui phone 844x390: seven tiles (Team included) in two columns", entries .. " tiles, " .. cols .. " columns")
+			T.check(labels == 7 and #small == 0, "p3ui phone 844x390: every tile keeps its label, >= 14 px", labels .. " labels; " .. table.concat(small, ", "))
+			T.check(cb ~= nil and cb.w >= 150 and cb.w <= 185, "p3ui phone 844x390: the column is about as wide as the six-tile grid was (150-185 px)", cb and string.format("%.0f px", cb.w) or "no box")
+			-- gui-area pixels, like MenuController's own band (the classic stick's top is 96 px above the area's bottom)
+			local area = Mock.GuiLayerSize(column)
+			local bottom = column.AbsolutePosition.Y + column.AbsoluteSize.Y
+			T.check(area ~= nil and bottom <= area.Y - 96 + 0.5, "p3ui phone 844x390: the column ends above Roblox's thumbstick",
+				area and string.format("bottom %.0f vs stick top %.0f", bottom, area.Y - 96) or "?")
+		end
+		Mock.SetViewport(390, 844)
+		advance(0.6)
 	end)
 
 	return S
