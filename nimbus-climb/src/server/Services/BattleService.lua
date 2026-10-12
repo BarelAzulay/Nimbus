@@ -108,8 +108,8 @@
 --     win still counts in PvPWins); the same two players earn from at most PAIR_LIMIT duels per PAIR_WINDOW seconds
 --     (in this server's memory); a duel between teams more than DUEL_POWER_GAP apart in TeamPower is a PRACTICE duel
 --     (a clear side toast: no trophies, tokens, XP or PvP counters for either side).
---   * A raid player who leaves the arena / the game is removed from the raid (no reward); a raider whose damage share
---     stays under BattleCatalog.Raid.MinShare (or who dealt nothing) gets no reward either (BattleCatalog.RaidTier nil).
+--   * A raid player who leaves the arena / the game is removed from the raid (no reward); a raider whose pets never hit
+--     the boss (damage 0) gets no reward either (BattleCatalog.RaidTier nil); any hit earns at least the Helper tier.
 --   * game:BindToClose -> Shutdown(): every running battle ends void (Reason "Shutdown"): duels and trials pay nothing
 --     and penalise nobody, raids pay the tier of each fighter's current share (no event-pet roll); meanwhile new
 --     battles are refused and leaving players are not treated as forfeiting.
@@ -1325,10 +1325,10 @@ local function payRaid(b, part, res)
 	local damage = (type(res.Damage) == "table" and tonumber(res.Damage[uid])) or 0
 	local tier = BattleCatalog.RaidTier(share, won)
 	if not tier or damage <= 0 then
-		-- no real damage (an idle joiner, an alt): nothing, not even the Loss tier
+		-- no damage at all (an idle joiner whose pets never hit the boss): nothing, not even the Loss tier
 		local rw = emptyRewards()
 		rw.Tier, rw.Share, rw.Damage = "None", floor(share * 1000 + 0.5) / 1000, floor(damage)
-		notify(player, "Too little damage for a raid reward this time. Fight the boss!", "info", 5)
+		notify(player, "No raid reward this time: your pets never hit the boss.", "info", 5)
 		return rw
 	end
 	local double = BattleService.IsDoubleRewards()

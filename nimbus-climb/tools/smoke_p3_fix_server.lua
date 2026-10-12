@@ -12,7 +12,7 @@
 --   p3fixsrv_duel      a duel between teams far apart in power is a practice duel (toast, nothing paid, no PvP
 --                      counters); an honest duel between comparable teams is still paid in full (the early-forfeit
 --                      gate is checked by p3bs_duel)
---   p3fixsrv_raid      a raider under BattleCatalog.Raid.MinShare gets nothing (Tier "None", no Raids + 1, a toast) and
+--   p3fixsrv_raid      a raider whose pets never hit the boss gets nothing (Tier "None", no Raids + 1, a toast), any hit earns a tier, and
 --                      barely grows the boss (weighted head count); the result's Fighters leave out leavers and
 --                      EventService's toast / LastRaid.Players count them
 --   p3fixsrv_leave     both duellists leaving in one frame: the duel is void (no penalty, no PvP loss for either);
@@ -790,10 +790,12 @@ local function serverScenarios()
 		T.check(r ~= nil and r.Mode == "Raid", "raid share: (setup) the raid ends", r and r.Reason or "no end")
 		local rwAlt, rwHero = r and r.Rewards[alt.UserId], r and r.Rewards[hero.UserId]
 		local share = r and r.Shares[alt.UserId] or 1
-		T.check(share < cat.Raid.MinShare, "raid share: (setup) the alt's damage share stays under Raid.MinShare", fmt("%.4f", share))
+		T.check(share == 0, "raid share: (setup) the alt's pets never hit the boss (share 0)", fmt("%.4f", share))
 		T.check(rwAlt and rwAlt.Tier == "None" and rwAlt.Tokens == 0 and rwAlt.Xp == 0 and tokens(alt) == altTokens0 and (record(alt).Raids or 0) == altRaids0,
 			"raid share: the alt gets nothing (Tier None, no tokens / XP, no Raids + 1)", rwAlt and tostring(rwAlt.Tier) or "no rewards")
-		T.check(toasted(alt, "Too little damage", mark), "raid share: ...and a side toast says so")
+		T.check(toasted(alt, "never hit the boss", mark), "raid share: ...and a side toast says so")
+		T.check(cat.RaidTier(0.001, true) ~= nil and cat.RaidTier(0.001, true).Id == "Helper" and cat.RaidTier(0.001, false).Id == "Loss",
+			"raid share: a weak raider who hit the boss even a little earns the Helper tier (Loss when the raid fails)")
 		local loss = cat.RaidTier(1, false)
 		T.check(rwHero and rwHero.Tier == "Loss" and tokens(hero) - heroTokens0 == rwHero.Tokens and rwHero.Tokens == loss.Tokens * (rwHero.Double and 2 or 1),
 			"raid share: the hero who fought gets the Loss tier of the cut-short raid", rwHero and tostring(rwHero.Tier) or "none")

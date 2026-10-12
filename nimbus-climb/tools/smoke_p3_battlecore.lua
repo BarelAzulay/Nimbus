@@ -265,10 +265,11 @@ S.p3battle_catalog = guarded("p3battle_catalog", function()
 	-- events, raid tiers, trophies
 	T.check(type(BC.Events.Schedule) == "table" and BC.Events.Schedule[1].Kind == "BossRaid" and BC.Events.Schedule[1].EveryMinutes == 20 and BC.Events.Schedule[1].AnnounceSeconds == 120 and BC.Events.Schedule[2].Kind == "DoubleRewards" and BC.Events.DoubleRewardsMultiplier == 2, "event schedule: a Boss Raid every 20 min announced 2 min ahead, a Double Rewards hour")
 	local tiers = BC.Raid.Tiers
-	T.check(#tiers >= 3 and tiers[1].MinShare > tiers[#tiers].MinShare and tiers[#tiers].MinShare >= BC.Raid.MinShare and BC.Raid.MinShare > 0 and tiers[1].Tokens > tiers[#tiers].Tokens,
-		"raid reward tiers sorted by damage share, a minimum share (Raid.MinShare) under which nothing is paid")
-	T.check(BC.RaidTier(0.5).Id == tiers[1].Id and BC.RaidTier(BC.Raid.MinShare).Id == tiers[#tiers].Id and BC.RaidTier(0.3, false).Id == "Loss" and BC.RaidTier(0) == nil
-		and BC.RaidTier(0, false) == nil and BC.RaidTier("junk") == nil, "RaidTier picks by share, Loss when the raid failed, nil (no reward) below Raid.MinShare")
+	T.check(#tiers >= 3 and tiers[1].MinShare > tiers[#tiers].MinShare and tiers[#tiers].MinShare >= BC.Raid.MinShare and BC.Raid.MinShare >= 0 and tiers[1].Tokens > tiers[#tiers].Tokens,
+		"raid reward tiers sorted by damage share; the lowest tier needs no more than Raid.MinShare")
+	T.check(BC.RaidTier(0.5).Id == tiers[1].Id and BC.RaidTier(0.001).Id == tiers[#tiers].Id and BC.RaidTier(0.001, false).Id == "Loss" and BC.RaidTier(0.3, false).Id == "Loss"
+		and BC.RaidTier(0) == nil and BC.RaidTier(0, false) == nil and BC.RaidTier("junk") == nil,
+		"RaidTier picks by share, any hit earns at least the lowest tier (Loss when the raid failed), nil (no reward) for no damage")
 	T.check(BC.Trophies.Win > 0 and BC.Trophies.Loss < 0 and BC.Trophies.Floor == 0 and BC.Trophies.Forfeit <= BC.Trophies.Loss and BC.Trophies.Tokens.Win > BC.Trophies.Tokens.Loss, "PvP trophies: win +, loss -, floor 0, forfeit counts as a loss")
 	T.check(type(BC.EventPets()) == "table", "EventPets() lists EventOnly catalog pets")
 	T.check(BC.Zones.Trial.X > 0 and BC.Zones.Duel.X > 0 and BC.Zones.Raid.X > BC.Zones.Duel.X and BC.TimeLimits.Raid > BC.TimeLimits.Duel, "default zone sizes and time limits per mode")

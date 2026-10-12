@@ -48,7 +48,7 @@
 --                                              FirstAfterSeconds, DoubleRewardsMultiplier }
 --   BattleCatalog.Raid                         reward tiers by damage share, event pet chance, gems chance
 --   BattleCatalog.RaidTier(share, won)         -> tier table (Tiers[i], the Loss tier when won == false) for a damage
---                                              share 0..1, nil below Raid.MinShare (no reward for no real damage)
+--                                              share 0..1, nil for a share of 0 (pets that never hit the boss earn nothing)
 --   BattleCatalog.Trophies                     { Win, Loss, Draw, Floor, Forfeit, Tokens = { Win, Loss } }
 --   BattleCatalog.Zones                        default floor sizes (studs) per mode, BattleCatalog.TimeLimits per mode
 --   BattleCatalog.Validate()                   -> ok, { problem... }
@@ -915,17 +915,21 @@ BattleCatalog.Raid = {
 		{ Id = "Gold", MinShare = 0.25, Tokens = 500, Xp = 400, Gems = 10, GemChance = 0.25, EventPetChance = 0.05 },
 		{ Id = "Silver", MinShare = 0.10, Tokens = 300, Xp = 250, Gems = 5, GemChance = 0.15, EventPetChance = 0.03 },
 		{ Id = "Bronze", MinShare = 0.02, Tokens = 150, Xp = 120, Gems = 3, GemChance = 0.08, EventPetChance = 0.015 },
-		{ Id = "Helper", MinShare = 0.01, Tokens = 60, Xp = 50, Gems = 0, GemChance = 0, EventPetChance = 0.005 },
+		{ Id = "Helper", MinShare = 0, Tokens = 60, Xp = 50, Gems = 0, GemChance = 0, EventPetChance = 0.005 }, -- any hit
 	},
-	MinShare = 0.01, -- below this share of the boss's HP (an idle joiner, an alt) a raider earns nothing, won or lost
+	-- everyone who fights gets rewarded (the player's design: "everyone gets in this fight for the reward"): a raider
+	-- whose pets hit the boss at all earns at least Helper (Loss when the raid fails); only a share of 0 (an idle joiner
+	-- whose pets never hit it) earns nothing. Joiners who deal little cannot inflate the boss (WeightedTeams).
+	MinShare = 0,
 	LossTokens = 25, -- everyone who really fought a raid that failed
 	LossXp = 20,
 }
 
--- the reward tier for a damage share (0..1): nil below Raid.MinShare (no reward), the Loss tier when the raid failed
+-- the reward tier for a damage share (0..1): nil for no damage (share 0, or below Raid.MinShare), the Loss tier when
+-- the raid failed
 function BattleCatalog.RaidTier(share, won)
 	local s = tonumber(share) or 0
-	if s ~= s or s < BattleCatalog.Raid.MinShare then
+	if s ~= s or s <= 0 or s < BattleCatalog.Raid.MinShare then
 		return nil
 	end
 	if won == false then
@@ -1111,7 +1115,7 @@ function BattleCatalog.Validate()
 			end
 		end
 	end
-	-- raid tiers sorted by share, nothing paid below Raid.MinShare, trophies floor
+	-- raid tiers sorted by share, nothing paid for no damage, trophies floor
 	local lastShare = 2
 	for _, tier in ipairs(BattleCatalog.Raid.Tiers) do
 		if tier.MinShare >= lastShare then
@@ -1119,8 +1123,8 @@ function BattleCatalog.Validate()
 		end
 		lastShare = tier.MinShare
 	end
-	if not finite(BattleCatalog.Raid.MinShare) or BattleCatalog.Raid.MinShare <= 0 or lastShare < BattleCatalog.Raid.MinShare then
-		bad("Raid.MinShare must be positive and no higher than the lowest tier's MinShare (a raider who did no real damage earns nothing)")
+	if not finite(BattleCatalog.Raid.MinShare) or BattleCatalog.Raid.MinShare < 0 or lastShare < BattleCatalog.Raid.MinShare then
+		bad("Raid.MinShare must be 0 or more and no higher than the lowest tier's MinShare (a raider with no damage earns nothing)")
 	end
 	if BattleCatalog.Trophies.Loss >= 0 or BattleCatalog.Trophies.Win <= 0 or BattleCatalog.Trophies.Floor ~= 0 then
 		bad("Trophies: Win must be positive, Loss negative, Floor 0")

@@ -622,10 +622,10 @@ out, or after **5 min 30 s**.
 | **Gold** | 25 % or more | 500 | 400 | 10 (25 % chance) | 5 % |
 | **Silver** | 10 % or more | 300 | 250 | 5 (15 % chance) | 3 % |
 | **Bronze** | 2 % or more | 150 | 120 | 3 (8 % chance) | 1.5 % |
-| **Helper** | 1 % or more | 60 | 50 | - | 0.5 % |
+| **Helper** | any hit on the boss | 60 | 50 | - | 0.5 % |
 
-If the boss wins, everyone who dealt at least 1 % still gets **25 tokens** and **20 XP**. Under 1 % of the damage
-there is no reward.
+If the boss wins, everyone whose pets hit it still gets **25 tokens** and **20 XP**. Only a raider whose pets never
+hit the boss gets no reward.
 
 **The three Boss Raid pets** are Secret pets that are in no roulette at all: **Magma Cub** (Flame, a little echo of
 the Lava Golem), **Rime Wyrmling** (Frost, from the Frost Wyrm) and **Hydralotl** (Shadow, from the Shadow Hydra).
@@ -859,8 +859,8 @@ in-game pet and the Storm Altar are based on is in `branding/stormfang-*.png` / 
 
 ```bash
 pip install lupa            # once (also needs Python 3 and Node 18+; npm packages install on first use)
-tools/run_checks.sh         # everything, about 10 minutes
-tools/run_checks.sh --quick # shorter smoke test (fewer layout seeds), about 7 minutes
+tools/run_checks.sh         # everything, about 20 minutes
+tools/run_checks.sh --quick # shorter smoke test (fewer layout seeds), a little faster
 tools/run_checks.sh --static   # only the fast checks
 ```
 

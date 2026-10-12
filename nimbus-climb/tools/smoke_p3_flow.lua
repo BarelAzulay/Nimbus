@@ -2128,7 +2128,7 @@ S.p3flow_raid = scenario("p3flow_raid", function()
 		local rw = res.Rewards[uid]
 		local share = res.Shares[uid] or 0
 		shareSum = shareSum + share
-		-- nil below BattleCatalog.Raid.MinShare: that fighter earns nothing (Tier "None")
+		-- nil for no damage (pets that never hit the boss): that fighter earns nothing (Tier "None")
 		local tier = bc.RaidTier(share, won) or { Id = "None", Tokens = 0, Gems = 0, Xp = 0 }
 		local b = before[p]
 		local paidTokens = tokens(p) - b.tokens

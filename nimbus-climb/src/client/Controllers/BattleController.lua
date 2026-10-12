@@ -3266,7 +3266,7 @@ function Hud.RewardLines(B, rw)
 		lines[#lines + 1] = { "First clear!", COLORS.Mine }
 	end
 	if rw.Tier == "None" then
-		lines[#lines + 1] = { "Too little damage: no reward", COLORS.Weak }
+		lines[#lines + 1] = { "No hits on the boss: no reward", COLORS.Weak }
 	elseif rw.Tier then
 		local share = num(rw.Share, 0)
 		lines[#lines + 1] = { tostring(rw.Tier) .. " tier", COLORS.Gold }

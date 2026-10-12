@@ -502,7 +502,7 @@ S.client_p3fixcli_retreat = guarded("client_p3fixcli_retreat", function()
 		cleanup(BC)
 	end
 	resultFor("Duel", { Outcome = "Win", Won = true, Spectator = false, Reason = "Wipe", Rewards = { Practice = true, Tokens = 0, Xp = 0, Trophies = 0 } }, { "Practice duel: no rewards" }, "#0 (client): a practice duel says so (no '+0 Trophies')")
-	resultFor("Raid", { Outcome = "Win", Won = true, Spectator = false, Reason = "BossDown", Rewards = { Tier = "None", Share = 0.001, Tokens = 0 } }, { "Too little damage: no reward" }, "#1 (client): a raid share under the minimum reads 'no reward', not 'None tier'")
+	resultFor("Raid", { Outcome = "Win", Won = true, Spectator = false, Reason = "BossDown", Rewards = { Tier = "None", Share = 0, Tokens = 0 } }, { "No hits on the boss: no reward" }, "#1 (client): a raider with no hits reads 'no reward', not 'None tier'")
 	resultFor("Duel", { Outcome = "Draw", Won = false, Spectator = false, Reason = "Void", Rewards = { Void = true } }, { "does not count" }, "#3 (client): a void duel says it does not count")
 	T.check(battleWarnings(outBefore) == nil and #Mock.Errors == errBefore, "#8: no errors or warnings", tostring(battleWarnings(outBefore)))
 	KC.flushErrors("client_p3fixcli_retreat")

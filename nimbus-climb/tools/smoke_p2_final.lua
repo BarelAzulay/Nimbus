@@ -1084,15 +1084,21 @@ local function checkRaids(BC, PC, Config, lines, raidText, doubleText)
 		for i, tier in ipairs(R.Tiers or {}) do
 			local row = tiers[i] or {}
 			local gems = (tier.Gems or 0) > 0 and (num(tier.Gems) .. " (" .. num(tier.GemChance * 100) .. " % chance)") or "-"
-			local want = { tier.Id, num(tier.MinShare * 100) .. " % or more", num(tier.Tokens), num(tier.Xp), gems, num(tier.EventPetChance * 100) .. " %" }
+			local shareText = (tier.MinShare or 0) > 0 and (num(tier.MinShare * 100) .. " % or more") or "any hit on the boss"
+			local want = { tier.Id, shareText, num(tier.Tokens), num(tier.Xp), gems, num(tier.EventPetChance * 100) .. " %" }
 			for c = 1, 6 do
 				local got = c == 1 and plain(row[1]) or row[c]
 				t:case(got == want[c], tier.Id .. " column " .. c .. ": the README says " .. show(got) .. ", BattleCatalog " .. show(want[c]))
 			end
 		end
 	end
-	t:case(has(f, "dealt at least " .. num(R.MinShare * 100) .. " %") and has(f, "Under " .. num(R.MinShare * 100) .. " % of the damage"),
-		"the minimum share " .. num(R.MinShare * 100) .. " % (no reward below it)")
+	if (R.MinShare or 0) > 0 then
+		t:case(has(f, "dealt at least " .. num(R.MinShare * 100) .. " %") and has(f, "Under " .. num(R.MinShare * 100) .. " % of the damage"),
+			"the minimum share " .. num(R.MinShare * 100) .. " % (no reward below it)")
+	else
+		t:case(has(f, "everyone whose pets hit it") and has(f, "never") and has(f, "hit the boss gets no reward"),
+			"every raider whose pets hit the boss is rewarded; only no hits at all earns nothing")
+	end
 	t:case(has(f, "**" .. num(R.LossTokens) .. " tokens** and **" .. num(R.LossXp) .. " XP**"), "a lost raid pays " .. tostring(R.LossTokens) .. " tokens and "
 		.. tostring(R.LossXp) .. " XP")
 	local pets = type(PC.EventPets) == "function" and PC.EventPets() or {}
