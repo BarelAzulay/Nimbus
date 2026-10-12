@@ -12,10 +12,11 @@
 --     and a small "Skip tutorial" link that asks to confirm. Tapping the portrait folds the card into a bubble;
 --     screens too small for the card get the bubble automatically. The HUD's bottom-left block (HP / stamina card)
 --     is a hard limit: a bubble that has no room under the top-left panel (party / match panel on a landscape
---     phone) sits beside that panel instead. A card the player opens in the lobby may cover the idle vitals card
---     (and, as a last resort, the idle hotbar) but never the thumbstick, the touch buttons or the screen edge; in a
---     match it never covers the vitals (no room: the bubble), and a card opened in the lobby is folded back when
---     the match starts. While a menu window / the Pet Index / the roulette is open the card folds into the bubble
+--     phone) sits beside that panel instead. A card the player opens may reach toward the middle like a window,
+--     but never covers the vitals card, the currency pills, the hotbar, the thumbstick, the touch buttons or the
+--     screen edge (no room: the bubble), and a card opened in the lobby is folded back when a match starts. During
+--     a battle on a phone (BattleController's compact team cards at the top / left edge) the panel hides until the
+--     battle ends. While a menu window / the Pet Index / the roulette is open the card folds into the bubble
 --     and the menu pointer hides. Designed in 1080p pixels under a UIScale of
 --     Theme.ScreenFactor() (readability rule: body 20, captions 18, buttons 22, title 30 -> >= 14.4 px on phones).
 --     Step completion: a voxel confetti burst from the portrait; the end of the tutorial: a bigger one.
@@ -604,6 +605,41 @@ local function hotbarRect()
 	return nil
 end
 
+-- The HUD's bottom-left block (vitals card, currency pills) as rects in our gui coordinates.
+local function bottomLeftRects()
+	local out = {}
+	local pg = playerGui()
+	local hud = pg and pg:FindFirstChild("NimbusHud")
+	local block = hud and hud:FindFirstChild("BottomLeft")
+	if not (block and hud:IsA("ScreenGui") and hud.Enabled) then
+		return out
+	end
+	local dy = insetShift(hud)
+	for _, child in ipairs(block:GetChildren()) do
+		if child:IsA("GuiObject") and child.AbsoluteSize.X > 0 and shownIn(child, hud) then
+			out[#out + 1] = rectOf(child, dy)
+		end
+	end
+	return out
+end
+
+-- Phase 3: the compact battle team cards (BattleController on phones and small windows: a row under the battle's
+-- top card, or a grid at the left edge of a landscape phone where the menu tiles were) while the player fights;
+-- nil otherwise (no battle, or the wide layout's team card at the bottom right).
+local function battleTeamRect(area)
+	local pg = playerGui()
+	local battle = pg and pg:FindFirstChild("NimbusBattle")
+	local root = battle and battle:FindFirstChild("Root")
+	local team = root and root:FindFirstChild("Team")
+	if team and team:IsA("GuiObject") and team.AbsoluteSize.X > 0 and shownIn(team, battle) then
+		local r = rectOf(team, insetShift(battle))
+		if r.y0 < area.Y * 0.4 then
+			return r
+		end
+	end
+	return nil
+end
+
 -- Roblox's touch thumbstick (bottom-left; the classic stick or the dynamic stick's idle ring, whichever is
 -- bigger) in gui px, nil without touch.
 local function thumbstickRect(area)
@@ -765,16 +801,22 @@ local function layout()
 	width = math.max(width, K.PANEL_MIN_W)
 	S.autoCollapse = not fits
 
-	-- A card the player opened (or the finale) that does not fit there. In the lobby nothing can hurt the player and
-	-- the hotbar is idle, so the card the player asked for may cover the vitals card (and, as a last resort, the idle
-	-- hotbar) and reach towards the middle like any window the player opens; it never covers Roblox's thumbstick,
-	-- the touch buttons, the menu or the token pill and never leaves the screen, so its text, Next button and Skip
-	-- link are always reachable. In a match the vitals card stays a hard limit: the bubble.
+	-- A card the player opened (or the finale) that does not fit there. The card the player asked for may reach
+	-- towards the middle like any window the player opens; it never covers the vitals card / currency pills, the
+	-- hotbar, Roblox's thumbstick, the touch buttons, the menu or the token pill and never leaves the screen, so its
+	-- text, Next button and Skip link are always reachable. No such place (or in a match): the bubble.
 	local relaxed = nil
 	if not fits and not inMatch() then
 		local inputs = touchButtonRects()
 		inputs[#inputs + 1] = thumbstickRect(area)
+		-- the vitals card / currency pills and the hotbar are hard limits too: an opened card never covers them
+		for _, r in ipairs(bottomLeftRects()) do
+			inputs[#inputs + 1] = r
+		end
 		local bar = hotbarRect()
+		if bar then
+			inputs[#inputs + 1] = bar
+		end
 		local positions = { { Top = top, Left = nil } }
 		if hud.TopLeftRight > 0 then
 			-- beside the top-left panel (party panel) at the top edge
@@ -810,14 +852,18 @@ local function layout()
 			if not lastResort and t + h2 <= floorY then
 				return { Width = w2, Left = l, Top = t, H = h2, Scale = k, Compact = compact }
 			elseif lastResort then
-				-- shrink just enough (never below 0.7: body text 14 px) to keep the card on screen
+				-- shrink just enough (never below 0.7: body text 14 px) to keep the card on screen; when even that
+				-- would reach the vitals, the hotbar or a thumb control, the bubble stays
 				local fit = math.max(0.7, math.min(k, (floorY - t) / designH2))
 				local t2 = math.max(edge - K.PORTRAIT_Y * k, math.min(t, floorY - designH2 * fit))
+				if t2 + designH2 * fit > floorY + 0.5 then
+					return nil
+				end
 				return { Width = w2, Left = l, Top = t2, H = designH2 * fit, Scale = fit, Compact = compact }
 			end
 			return nil
 		end
-		for _, avoidBar in ipairs({ true, false }) do
+		for _, avoidBar in ipairs({ true }) do -- (the hotbar is always avoided now: it is one of the inputs)
 			for _, pos in ipairs(positions) do
 				for _, compact in ipairs({ false, true }) do
 					relaxed = relaxed or try(pos, avoidBar, compact, nil)
@@ -1687,6 +1733,11 @@ local function panelWanted()
 		return false
 	end
 	if inMatch() and st.CompleteOn ~= "MatchEnded" then
+		return false
+	end
+	-- a battle on a phone: the battle HUD's top card and team cards hold the top / left of the screen and the rest is
+	-- the fight (the HUD cues ATTACK / RETREAT / SPECIAL itself); Nimbus comes back when the battle ends
+	if UI.Gui and battleTeamRect(guiArea()) then
 		return false
 	end
 	return true

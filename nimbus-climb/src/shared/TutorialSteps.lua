@@ -51,7 +51,8 @@
 --               "MatchStarted" the player's InMatch attribute turned true
 --               "MatchEnded"   the player's InMatch attribute turned false again
 --               "ArenaReached" the player stands in the Battle Arena (ArenaBuilder.InArena, server poll)
---               "TeamSet"      the active battle team holds a pet (DataService.TeamsChanged / ActiveTeamKeys)
+--               "TeamSet"      the active battle team holds the player's pets: min(3, pets that can join a team)
+--                              (DataService.TeamsChanged / ActiveTeamKeys / FieldableKeys)
 --               "TrialWon"     Trial level 1 is cleared (BattleService.BattleEnded / Battle.TrialCleared)
 --               "RaidSeen"     the player joined a Boss Raid, or stood in the arena while one was running
 --   Station     the station id a "Built" step waits for
@@ -233,10 +234,10 @@ TutorialSteps.Steps = {
 		Id = "team",
 		Chapter = 3,
 		Title = "Pick Your Team",
-		Text = "Battles need a team! Tap Team and pick 3 pets. Pets of the same element power each other up!",
+		Text = "Battles need a team! Tap Team and put your pets in your team (up to 3; a 4th slot opens at Prestige 1). Same-element pets power each other up!",
 		Target = { Kind = "Menu", Id = "Team" },
 		CompleteOn = "TeamSet",
-		Hint = "Tap the glowing Team button",
+		Hint = "Tap the glowing Team button and put your pets in your team",
 	},
 	{
 		Id = "trial",

@@ -862,20 +862,25 @@ function BattleCatalog.WeightedTeams(dpsList)
 	return n
 end
 
--- Boss HP for a list of team specs (each { Pets = {...} }): HpPerPlayer seconds of every team's expected DPS.
--- Returns the total (x GroupFactor(weighted team count), at least BossRules.MinHp) and the list of each team's raw share
--- (BattleSim adds / removes shares when players join or leave).
+-- Boss HP for a list of team specs (each { Pets = {...} }): HpPerPlayer seconds of every team's expected DPS, each
+-- team's share weighted like the head count (min(1, dps / the strongest dps): a team that brings nothing adds nothing).
+-- Returns the total (x GroupFactor(weighted team count), at least BossRules.MinHp) and the list of each team's share
+-- (BattleSim recomputes the whole figure when players join or leave).
 function BattleCatalog.BossHp(bossId, teams)
 	local boss = BattleCatalog.Bosses[bossId]
 	local seconds = boss and boss.HpPerPlayer or 150
-	local total = 0
-	local shares, dpsList = {}, {}
+	local dpsList = {}
+	local top = 0
 	for i, team in ipairs(type(teams) == "table" and teams or {}) do
-		local dps = BattleCatalog.ExpectedDps(team)
-		local share = dps * seconds
-		shares[i] = share
-		dpsList[i] = dps
-		total = total + share
+		dpsList[i] = BattleCatalog.ExpectedDps(team)
+		top = max(top, dpsList[i])
+	end
+	local total = 0
+	local shares = {}
+	for i, dps in ipairs(dpsList) do
+		local weight = (top > 0) and min(1, dps / top) or 0
+		shares[i] = dps * seconds * weight
+		total = total + shares[i]
 	end
 	total = total * BattleCatalog.GroupFactor(BattleCatalog.WeightedTeams(dpsList))
 	local minHp = BattleCatalog.BossRules.MinHp

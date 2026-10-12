@@ -8,7 +8,8 @@
 --                                    panel on a narrow one). Max 4, 250 design px wide, newest on top, slide in
 --                                    from the right, `Toast` role font at the readable 18 px, a coloured accent
 --                                    bar + icon by kind (info|good|bad|token). Identical toasts that are still
---                                    showing are merged into "text x2".
+--                                    showing are merged into "text x2". A toast the column has no room for
+--                                    (a short landscape phone fits one) waits and shows once room frees up.
 --   MatchResult(result)           -> compact result card on the right edge (about 45% down): VICTORY!/DEFEAT in
 --                                    the Title font with a gradient, difficulty + stars, time, tokens, bonus,
 --                                    a small member list and a "Back to lobby in Ns" line. It closes when the
@@ -57,6 +58,11 @@ local MIN_DURATION = 1.5
 local MAX_DURATION = 8
 local MAX_TOAST_CHARS = 90
 local MIN_TOAST_H = 52 -- a one-line toast (design px)
+-- a toast the screen had no room for (a short landscape phone fits one) waits and comes back when room frees up,
+-- so two toasts sent together (/devhelp) are both read: up to WAIT_MAX wait, each for at most WAIT_SECONDS
+local WAIT_MAX = 3
+local WAIT_SECONDS = 20
+local WAIT_MIN_SHOWN = 1.5 -- seconds a toast must have been readable before it may be pushed out for good
 
 -- KEEP IN SYNC with HudController.lua: EDGE and TOUCH_EDGE.
 local EDGE = 12
@@ -112,6 +118,7 @@ local rng = Random.new()
 local UI = {} -- Gui, Stack, StackScale, ToastPad, ResultPad, ResultHolder
 local scalers = {}
 local toasts = {} -- live toasts, oldest first
+local waiting = {} -- toasts pushed out for room: { Text, Kind, Duration, Until }, oldest first
 local toastSerial = 0
 local result = { Panel = nil, Serial = 0, Height = 0 } -- the open result card (Height: design px)
 local lastDashFx = {}
@@ -367,7 +374,14 @@ local function trimToasts()
 		used = used + h
 		kept = kept + 1
 	end
+	local now = os.clock()
 	for _, toast in ipairs(drop) do
+		-- pushed out before it could be read: it waits for room (see flushWaiting)
+		local shownFor = now - (toast.Born or now)
+		local left = (toast.Expiry or now) - now
+		if shownFor < WAIT_MIN_SHOWN and left > MIN_DURATION and #waiting < WAIT_MAX then
+			table.insert(waiting, 1, { Text = toast.Text, Kind = toast.Kind, Duration = left, Until = now + WAIT_SECONDS })
+		end
 		dismissToast(toast)
 	end
 end
@@ -536,11 +550,16 @@ function dismissToast(toast)
 	end)
 end
 
+local flushWaiting -- defined after addToast
+
 local function scheduleExpiry(toast, duration)
 	toast.Expiry = os.clock() + duration
 	task.delay(duration + 0.02, function()
 		if not toast.Dead and os.clock() >= toast.Expiry then
 			dismissToast(toast)
+			if flushWaiting and #waiting > 0 then
+				task.delay(0.3, flushWaiting)
+			end
 		end
 	end)
 end
@@ -651,6 +670,7 @@ local function addToast(text, kind, duration)
 	end
 
 	local toast = buildToast(text, kind)
+	toast.Born = os.clock()
 	table.insert(toasts, toast)
 	-- never more than MAX_TOASTS (and never further down than the screen allows): the oldest leave first
 	while #toasts > MAX_TOASTS do
@@ -662,6 +682,29 @@ local function addToast(text, kind, duration)
 	tween(toast.Card, 0.38, { Position = UDim2.new(0, 0, 0, 0) }, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
 	setToastAlpha(toast, 0, 0.2)
 	scheduleExpiry(toast, duration)
+end
+
+-- Shows the oldest waiting toast when the column has room for it again (one at a time; stale ones are dropped).
+function flushWaiting()
+	local now = os.clock()
+	while #waiting > 0 and waiting[1].Until < now do
+		table.remove(waiting, 1)
+	end
+	local entry = waiting[1]
+	if not entry or not UI.Stack then
+		return
+	end
+	local k = currentScale()
+	local place = toastPlacement()
+	local used = 0
+	for _, live in ipairs(toasts) do
+		used = used + estimateToastHeight(live.Label.Text) + TOAST_GAP
+	end
+	if used + estimateToastHeight(entry.Text) > (place.Bottom - place.Top) / math.max(0.01, k) then
+		return -- still no room: tried again when the next toast leaves
+	end
+	table.remove(waiting, 1)
+	addToast(entry.Text, entry.Kind, entry.Duration)
 end
 
 local function buildToastStack()

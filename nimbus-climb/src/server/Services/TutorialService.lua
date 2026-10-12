@@ -39,7 +39,9 @@
 --   MatchStarted  / MatchEnded: the player attribute InMatch turning true / false
 --   ArenaReached  (Phase 3) the character stands in the Battle Arena: ArenaBuilder.InArena(position), else within
 --                 ArenaInfo.Radius of ArenaInfo.Center (2 Hz poll)
---   TeamSet       the active battle team holds a pet: DataService.ActiveTeamKeys (DataService.TeamsChanged + the poll)
+--   TeamSet       the active battle team holds the player's pets: DataService.ActiveTeamKeys has at least
+--                 min(3, the pets that can join a team: DataService.FieldableKeys) entries, so a player with one pet
+--                 passes with that one pet and a player with many must field three (DataService.TeamsChanged + the poll)
 --   TrialWon      Trial level 1 is cleared: BattleService.BattleEnded (a Trial the player won) or the saved
 --                 Battle.TrialCleared / TrialBest (DataService.GetBattle)
 --   RaidSeen      the player joined a Boss Raid (BattleService.RaidJoined / a Raid BattleEnded naming them), has a raid
@@ -865,6 +867,29 @@ local function activeTeamSize(player)
 	return 0
 end
 
+-- how many pets the player could put in a team (owned, not busy in the Garden / Gym); nil when unknown
+local function fieldablePets(player)
+	if not hasFunction(DataService, "FieldableKeys") then
+		return nil
+	end
+	local ok, keys = pcall(DataService.FieldableKeys, player)
+	if ok and type(keys) == "table" then
+		return #keys
+	end
+	return nil
+end
+
+-- the "team" step: the team holds the player's pets, up to the three slots the text promises (one pet is enough
+-- for a player who owns one)
+local function teamFilled(player)
+	local size = activeTeamSize(player)
+	if size <= 0 then
+		return false
+	end
+	local owned = fieldablePets(player) or size
+	return size >= math.min(3, owned)
+end
+
 local function battleRecord(player)
 	if not hasFunction(DataService, "GetBattle") then
 		return nil
@@ -1256,7 +1281,7 @@ local function satisfied(player, track, step)
 	elseif kind == "ArenaReached" then
 		return not inMatch(player) and inArena(player)
 	elseif kind == "TeamSet" then
-		return activeTeamSize(player) > 0
+		return teamFilled(player)
 	elseif kind == "TrialWon" then
 		return track.TrialWon == true or trialOneCleared(player)
 	elseif kind == "RaidSeen" then

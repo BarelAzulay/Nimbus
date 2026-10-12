@@ -6,12 +6,16 @@
 --     ~10-20, prestiged players reach 30), and "equal power is a fair fight"
 --   * PvP: equal teams win ~50%, an element counter ~60-65%, melee vs ranged compositions stay close
 --   * boss raids with 1 / 3 / 8 players (dodging players) finish in ~2-4 minutes, non-dodgers see several telegraphs
---   * every special is useful (and none is an auto-win), no one-shots, no unkillable sustain teams, no stalemates
+--   * dodge: a timely RETREAT escapes nearly every telegraph, Lines and Circles alike (>= 85% of threatened pets
+--     for a perfect dodger; a RETREAT one second after the warning still escapes most)
+--   * every special is useful (and none is an auto-win), no one-shots, no unkillable sustain teams, no stalemates;
+--     a team that only RETREATs returns to the fight by itself (Damage.RetreatAutoResume)
 --   * performance: a raid of 8 teams x 4 pets + boss + minions steps in well under 1 ms
 --
 -- Run it (lupa, from the repo root; see tools/README.md):
 --   python3 -c "import lupa.luajit21 as L; L.LuaRuntime().execute(open('tools/sim_battle.lua').read())"
 --   SIM_BATTLE="quick only=trials,raids" python3 -c "..."     options: quick | full | seeds=N | only=a,b | verbose
+--   sections: roster, duels, elements, trials, raids, dodge, specials, extremes, perf, progression
 -- The smoke scenario p3battle_balance loads this file as a library (global SIM_BATTLE_LIBRARY = true before the
 -- load) and runs a short subset. Plain Lua 5.1 syntax only.
 
@@ -843,6 +847,140 @@ section("raids", function(opts)
 	local hp2 = b:BossStatus().MaxHp
 	out(fmt("  boss max HP: 1 player %d -> a second joins %d -> leaves %d", hp0, hp1, hp2))
 	target("boss HP grows when a player joins and shrinks back when they leave", hp1 > hp0 * 1.8 and abs(hp2 - hp0) <= hp0 * 0.05)
+
+	header("Raids: joiners who bring nothing (idle alts with level-1 Commons) do not inflate the boss for the real player")
+	local alts = {}
+	for i = 1, 7 do
+		alts[i] = team(400 + i, 1, SIM.Stages[1].Pets, { Auto = true })
+	end
+	local solo = BS.new({ Mode = "Raid", Boss = "storm_titan", Seed = 5, Teams = { team(400, 1, SIM.Stages[7].Pets) } })
+	local withAlts = { team(400, 1, SIM.Stages[7].Pets) }
+	for i = 1, 7 do
+		withAlts[#withAlts + 1] = alts[i]
+	end
+	local crowded = BS.new({ Mode = "Raid", Boss = "storm_titan", Seed = 5, Teams = withAlts })
+	local soloHp, crowdedHp = solo:BossStatus().MaxHp, crowded:BossStatus().MaxHp
+	out(fmt("  Storm Titan HP for one S7 team %d, for the same team plus 7 idle alt teams %d (x%.2f); weighted head count %.2f",
+		soloHp, crowdedHp, crowdedHp / soloHp, crowded.playerTeamCount or 0))
+	target("seven alt teams with level-1 Commons add less than 15% to the boss's HP", crowdedHp <= soloHp * 1.15, fmt("x%.2f", crowdedHp / soloHp))
+end)
+
+-- 5b. dodge: does a timely RETREAT get a team out of every telegraph shape?
+local function inShape(ev, x, z, radius)
+	if ev.shape == "Line" then
+		local dx, dz = x - ev.x, z - ev.z
+		local dirX, dirZ = math.cos(ev.angle), math.sin(ev.angle)
+		local along = dx * dirX + dz * dirZ
+		if along < -radius or along > ev.length + radius then
+			return false
+		end
+		return abs(dx * dirZ - dz * dirX) <= ev.width / 2 + radius
+	end
+	local dx, dz = x - ev.x, z - ev.z
+	return dx * dx + dz * dz <= (ev.r + radius) * (ev.r + radius)
+end
+
+-- one raid: RETREAT `reaction` seconds after every telegraph that threatens a pet, ATTACK right after it lands;
+-- returns per shape { threatened, hit } (pets inside the shape at the warning / still hit at impact)
+local function dodgeRun(boss, pets, seed, reaction)
+	local b = BS.new({ Mode = "Raid", Boss = boss, Seed = seed, Teams = { team(101, 1, pets) } })
+	local radius, mine = {}, {}
+	for _, info in ipairs(b:StaticUnits()) do
+		radius[info.id] = info.radius
+		if info.owner == 101 then
+			mine[info.id] = true
+		end
+	end
+	local pending = {}
+	local tally = { Line = { threatened = 0, hit = 0 }, Circle = { threatened = 0, hit = 0 } }
+	local retreatAt, attackAt = nil, nil
+	local steps = 0
+	while not b:IsFinished() and steps < 3400 do
+		local events = b:Step(0.1)
+		steps = steps + 1
+		local t = b:Time()
+		local snap = b:Snapshot()
+		for _, ev in ipairs(events) do
+			if ev.type == "Telegraph" then
+				local threatened = {}
+				local any = false
+				for id in pairs(mine) do
+					local u = snap.Units[id]
+					if u and u.hp > 0 and inShape(ev, u.x, u.z, radius[id] or 2) then
+						threatened[id] = true
+						any = true
+					end
+				end
+				if any then
+					pending[ev.id] = { shape = ev.shape, threatened = threatened, hit = {} }
+					local at = t + reaction - 0.1 + 1e-6
+					if not retreatAt or at < retreatAt then
+						retreatAt = at
+					end
+					if not attackAt or ev.at + 0.1 > attackAt then
+						attackAt = ev.at + 0.1
+					end
+				end
+			elseif ev.type == "Hit" and ev.tele and pending[ev.tele] and mine[ev.to] then
+				pending[ev.tele].hit[ev.to] = true
+			end
+		end
+		if retreatAt and t >= retreatAt then
+			retreatAt = nil
+			b:Command(101, "Retreat")
+		end
+		if attackAt and t >= attackAt and not retreatAt and b:Command(101, "Attack") then
+			attackAt = nil
+		end
+	end
+	for _, p in pairs(pending) do
+		local row = tally[p.shape]
+		for id in pairs(p.threatened) do
+			row.threatened = row.threatened + 1
+			if p.hit[id] then
+				row.hit = row.hit + 1
+			end
+		end
+	end
+	return tally
+end
+
+section("dodge", function(opts)
+	header("Dodge: share of threatened pets a RETREAT gets out of each telegraph shape (every boss, an M5 team)")
+	local seeds = max(2, floor(opts.seeds / 8))
+	local pets = { pet("aurora_fox", 12), pet("storm_tabby", 14), pet("bamboo_panda", 14) }
+	local escaped = {}
+	for _, reaction in ipairs({ 0.1, 0.6, 1.0 }) do
+		local total = { Line = { threatened = 0, hit = 0 }, Circle = { threatened = 0, hit = 0 } }
+		for _, boss in ipairs(BC.BossOrder) do
+			for seed = 1, seeds do
+				local tally = dodgeRun(boss, pets, seed, reaction)
+				for shape, row in pairs(tally) do
+					total[shape].threatened = total[shape].threatened + row.threatened
+					total[shape].hit = total[shape].hit + row.hit
+				end
+			end
+		end
+		escaped[reaction] = {}
+		local parts = {}
+		for _, shape in ipairs({ "Line", "Circle" }) do
+			local row = total[shape]
+			escaped[reaction][shape] = row.threatened > 0 and (row.threatened - row.hit) / row.threatened or 1
+			parts[#parts + 1] = fmt("%s %d threatened, %d hit, %d%% escaped", shape, row.threatened, row.hit, floor(escaped[reaction][shape] * 100 + 0.5))
+		end
+		out(fmt("  RETREAT %.1f s after the warning: %s", reaction, table.concat(parts, "; ")))
+	end
+	target("a perfect dodger (RETREAT 0.1 s after the warning) escapes >= 85% of Line hits", escaped[0.1].Line >= 0.85, fmt("%d%%", floor(escaped[0.1].Line * 100 + 0.5)))
+	target("...and >= 85% of Circle hits", escaped[0.1].Circle >= 0.85, fmt("%d%%", floor(escaped[0.1].Circle * 100 + 0.5)))
+	target("a RETREAT 1.0 s after the warning (render delay + ping + run-out of a 2.2 s telegraph) still escapes >= 75% of both shapes",
+		escaped[1.0].Line >= 0.75 and escaped[1.0].Circle >= 0.75, fmt("Line %d%%, Circle %d%%", floor(escaped[1.0].Line * 100 + 0.5), floor(escaped[1.0].Circle * 100 + 0.5)))
+	local shortest = huge
+	for _, boss in ipairs(BC.BossOrder) do
+		for _, a in ipairs(BC.Bosses[boss].Attacks) do
+			shortest = min(shortest, a.Telegraph)
+		end
+	end
+	target("every boss telegraph lasts at least 2.2 s (the client fills toward the dodge deadline)", shortest >= 2.2, fmt("%.1f s", shortest))
 end)
 
 -- 6. specials
@@ -916,17 +1054,36 @@ section("extremes", function(opts)
 	local result = SIM.run({ Mode = "Duel", Seed = 1, Teams = { team(1, 1, { pet("stormfang", 50, "Rainbow") }, { Auto = true }), team(2, 2, { pet("mallow_kitten", 1) }, { Auto = true }) } }, { [1] = "auto", [2] = "auto" })
 	out(fmt("  maxed Stormfang vs a level-1 kitten: %s in %.1f s", result.Reason, result.Duration))
 	target("a hopeless mismatch ends quickly (< 15 s)", result.Duration < 15 and result.WinnerSide == 1)
-	-- retreat is not a stall: a team that only retreats still loses
+	-- retreat is not a stall: a player team that RETREATs and never presses ATTACK returns to the fight by itself
+	-- (Damage.RetreatLock + RetreatAutoResume after the RETREAT, once every pet is parked), so the duel still ends
 	local b = BS.new({ Mode = "Duel", Seed = 4, Teams = { team(1, 1, { pet("biscuit_bear", 10), pet("bubble_axolotl", 10), pet("moonlit_owl", 10) }), team(2, 2, { pet("biscuit_bear", 10), pet("bubble_axolotl", 10), pet("moonlit_owl", 10) }, { Auto = true }) } })
 	b:Command(1, "Retreat")
 	local steps = 0
+	local resumedAt = nil
 	while not b:IsFinished() and steps < 2000 do
-		b:Step(0.1)
+		for _, ev in ipairs(b:Step(0.1)) do
+			if ev.type == "Order" and ev.owner == 1 and ev.order == "Attack" and ev.auto and not resumedAt then
+				resumedAt = b:Time()
+			end
+		end
 		steps = steps + 1
 	end
 	local r = b:Result()
-	out(fmt("  a team that retreats forever: %s, winner side %s after %.1f s", r.Reason, tostring(r.WinnerSide), r.Duration))
-	target("retreating forever loses (no stall)", r.WinnerSide == 2)
+	local D = BC.Damage
+	out(fmt("  a team that only RETREATs: back to ATTACK by itself at %s s (lock %.1f + %.1f), %s, winner side %s after %.1f s", tostring(resumedAt), D.RetreatLock, D.RetreatAutoResume, r.Reason, tostring(r.WinnerSide), r.Duration))
+	target("a retreating player team resumes attacking by itself after the lock + RetreatAutoResume (no stall, no timeout)",
+		resumedAt ~= nil and resumedAt >= D.RetreatLock + D.RetreatAutoResume and resumedAt <= D.RetreatLock + D.RetreatAutoResume + 4 and r.Reason ~= "Timeout")
+	-- an Npc / Auto team keeps its order: hiding forever still loses
+	local hide = BS.new({ Mode = "Duel", Seed = 4, Teams = { team(1, 1, { pet("biscuit_bear", 10), pet("bubble_axolotl", 10), pet("moonlit_owl", 10) }, { Auto = true }), team(2, 2, { pet("biscuit_bear", 10), pet("bubble_axolotl", 10), pet("moonlit_owl", 10) }, { Auto = true }) } })
+	hide:Command(1, "Retreat")
+	steps = 0
+	while not hide:IsFinished() and steps < 2000 do
+		hide:Step(0.1)
+		steps = steps + 1
+	end
+	local rh = hide:Result()
+	out(fmt("  an Auto team that retreats forever: %s, winner side %s after %.1f s", rh.Reason, tostring(rh.WinnerSide), rh.Duration))
+	target("retreating forever loses (no stall)", rh.WinnerSide == 2)
 end)
 
 -- 8. performance
@@ -951,7 +1108,7 @@ section("perf", function(opts)
 	local ms = seconds / max(1, steps) * 1000
 	out(fmt("  %d steps, %d units at the end, %.1f events/step, %.3f ms per step (%s after %.1f s)", steps, units, events / max(1, steps), ms, b:Result() and b:Result().Reason or "unfinished", b:Time()))
 	target("a full raid steps in well under 1 ms (LuaJIT; Luau is a few times slower)", ms < 0.4, fmt("%.3f ms", ms))
-	-- snapshot size
+	-- snapshot size: the full picture vs the wire form (SnapshotDelta: only what changed since the last one)
 	local snap = b:Snapshot()
 	local n, fields = 0, 0
 	for _, u in pairs(snap.Units) do
@@ -960,7 +1117,12 @@ section("perf", function(opts)
 			fields = fields + 1
 		end
 	end
-	out(fmt("  snapshot: %d units, %.1f fields per unit", n, fields / max(1, n)))
+	local last = {}
+	local full = #b:SnapshotDelta(last).U
+	b:Step(0.1)
+	local delta = #b:SnapshotDelta(last).U
+	out(fmt("  snapshot: %d units, %.1f fields per unit; wire form: %d numbers for the full picture, %d one step later", n, fields / max(1, n), full, delta))
+	target("the wire snapshot of a step is well under 4 numbers per unit", delta <= 4 * max(1, n), fmt("%d numbers for %d units", delta, n))
 end)
 
 -- 9. progression reference

@@ -128,6 +128,7 @@
 --                                       copies all work in the Garden / Gym, a profile not loaded or provisional. An
 --                                       empty list clears the preset. MarkDirty + SyncSoon + TeamsChanged.
 --     SelectTeam(player, preset) -> ok, reason      makes that preset the active one (MarkDirty + SyncSoon + TeamsChanged)
+--     FieldableKeys(player) -> {key...}             every owned key with a copy free for a team (not in the Garden / Gym)
 --     ActiveTeamKeys(player) -> {key...}            the active preset's usable keys in slot order (slot = index);
 --                                       {} when the team is empty, the profile is not loaded or is provisional
 --     GetBattle(player) -> { Trophies, TrialBest, TrialCleared = {[level]=true}, Raids, RaidBestDamage, PvPWins,
@@ -3609,6 +3610,36 @@ function DataService.SelectTeam(player, preset)
 	DataService.SyncSoon(player)
 	DataService.TeamsChanged:Fire(player)
 	return true
+end
+
+-- Every owned key that could join a team right now (a copy not busy in the Garden / Gym): what the Team picker offers
+-- and what the tutorial's "team" step counts. {} until loaded or while provisional.
+function DataService.FieldableKeys(player)
+	local entry = P3.realEntry(player)
+	if not entry then
+		return {}
+	end
+	local profile = entry.Profile
+	local keys = getPetKeys()
+	local owned = {}
+	if keys and type(keys.List) == "function" then
+		local ok, list = pcall(keys.List, profile)
+		if ok and type(list) == "table" then
+			owned = list
+		end
+	else
+		for key in pairs(tableOr(profile.Pets)) do
+			owned[#owned + 1] = key
+		end
+	end
+	local placed = P3.placedCopies(profile)
+	local out = {}
+	for _, key in ipairs(owned) do
+		if type(key) == "string" and P3.teamKey(key) and ownedCount(profile, key) - (placed[key] or 0) >= 1 then
+			out[#out + 1] = key
+		end
+	end
+	return out
 end
 
 -- The usable keys of the active preset in slot order (slot = index); {} when empty or unknown.

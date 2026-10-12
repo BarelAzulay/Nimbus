@@ -462,7 +462,7 @@ S.p3bs_trial = scenario("p3bs_trial", function()
 			and start.Names and start.Names[tostring(p.UserId)] == p.DisplayName and type(start.Trial) == "table" and start.Trial.Level == 1,
 			"p3 trial: ...unit static info with the owner's slots 1-3, Sides (player vs npc), Names by userId string, Trial { Level }")
 		sides = #(start.Units or {})
-		T.check(sides >= 6, "p3 trial: ...both teams' units (" .. sides .. ")")
+		T.check(sides >= 4, "p3 trial: ...both teams' units (" .. sides .. ": three pets and Trial 1's single handicapped NPC pet)")
 	end
 	if pocketCF then
 		T.check(distanceToZone(p, pocketCF) < 40 and (K.root(p).Position - info.TrialPortal.Position).Magnitude > 500,
@@ -482,11 +482,15 @@ S.p3bs_trial = scenario("p3bs_trial", function()
 		if s.BattleId ~= id or e.args[3] ~= id then
 			idsOk = false
 		end
+		-- the wire form: U is a flat dense array of numbers (BattleSim:SnapshotDelta; the client decodes it)
 		local n = 0
-		for _ in pairs(s.Units) do
+		for _, v in pairs(s.U or {}) do
 			n = n + 1
+			if type(v) ~= "number" then
+				dense = false
+			end
 		end
-		if n ~= #s.Units or n == 0 then
+		if type(s.U) ~= "table" or n ~= #s.U or s.Units ~= nil then
 			dense = false
 		end
 		if not (s.T > lastT) then
@@ -494,7 +498,7 @@ S.p3bs_trial = scenario("p3bs_trial", function()
 		end
 		lastT = s.T
 	end
-	T.check(dense and idsOk and tUp, "p3 trial: every snapshot has Units as a dense array, the BattleId (also as the 3rd argument) and a rising T")
+	T.check(dense and idsOk and tUp, "p3 trial: every snapshot has U as a dense number array (the wire form), the BattleId (also as the 3rd argument) and a rising T")
 	-- the end
 	local done = waitEnded(w, id, 130)
 	local result = w.find(id)
@@ -673,9 +677,17 @@ local function storedBattle(userId)
 	return type(rec) == "table" and rec.Battle or nil
 end
 
-local function bothRetreat(bs, list)
-	for _, p in ipairs(list) do
-		bs.Command(p, "Retreat")
+-- keeps these players' teams RETREATing for `seconds` (a player team goes back to ATTACK by itself after
+-- Damage.RetreatLock + RetreatAutoResume, so the order is given again every 2 s)
+local function holdBack(bs, list, seconds)
+	local left = seconds
+	while left > 0 do
+		for _, p in ipairs(list) do
+			bs.Command(p, "Retreat")
+		end
+		local step = math.min(2, left)
+		advance(step)
+		left = left - step
 	end
 end
 
@@ -798,8 +810,7 @@ S.p3bs_duel = scenario("p3bs_duel", function()
 	ok, id2 = bs.StartDuel(a, b)
 	T.check(ok == true, "p3 duel: StartDuel(a, b) starts the next duel", tostring(id2))
 	advance(0.3)
-	bothRetreat(bs, { a, b })
-	advance(16)
+	holdBack(bs, { a }, 16) -- a holds back, b's team fights (a loser who dealt damage keeps the winner's rewards)
 	local ta1 = tokens(a)
 	Mock.FromClient(K.remoteFolder():FindFirstChild("BattleCommand"), b, "Forfeit")
 	advance(0.5)
@@ -816,8 +827,7 @@ S.p3bs_duel = scenario("p3bs_duel", function()
 	local id3
 	ok, id3 = bs.StartDuel(a, b)
 	advance(0.3)
-	bothRetreat(bs, { a, b })
-	advance(2)
+	holdBack(bs, { a, b }, 2)
 	local ta2, tra2, wins2 = tokens(a), record(a).Trophies, record(a).PvPWins
 	bs.Forfeit(b)
 	advance(0.5)
@@ -835,8 +845,7 @@ S.p3bs_duel = scenario("p3bs_duel", function()
 	ok, id4 = bs.StartDuel(a, b)
 	T.check(ok and toasted(a, "no trophies", m5), "p3 duel: the 4th duel of the same two players within 30 min is announced as trophy-free")
 	advance(0.3)
-	bothRetreat(bs, { a, b })
-	advance(17)
+	holdBack(bs, { a }, 17)
 	local tbBefore = record(b).Trophies
 	local traBefore = record(a).Trophies
 	local bUser = b.UserId
@@ -845,7 +854,8 @@ S.p3bs_duel = scenario("p3bs_duel", function()
 	advance(0.5)
 	local r4 = w.find(id4)
 	T.check(r4 ~= nil and contains(r4.Winners, a.UserId) and contains(r4.Losers, bUser) and r4.Forfeit == true, "p3 duel: a disconnect mid-duel: the leaver loses, the other wins")
-	T.check(r4 and r4.Rewards[a.UserId] and r4.Rewards[a.UserId].Trophies == 0 and record(a).Trophies == traBefore, "p3 duel: ...past the pair limit the winner gets no trophies")
+	T.check(r4 and r4.Rewards[a.UserId] and r4.Rewards[a.UserId].Trophies == 0 and record(a).Trophies == traBefore and r4.Rewards[a.UserId].Tokens == 0 and r4.Rewards[a.UserId].Xp == 0,
+		"p3 duel: ...past the pair limit the winner gets no trophies, tokens or XP")
 	advance(13) -- the leave save, then DataService's retry of the entry that changed meanwhile
 	Mock.DataStore.Latency = 0
 	local st = storedBattle(bUser)
@@ -1043,7 +1053,7 @@ S.p3bs_raid = scenario("p3bs_raid", function()
 	T.check(res and res.Mode == "Raid" and res.BossId == "storm_titan" and contains(res.Losers, r1.UserId) and not contains(res.Losers, r2.UserId)
 		and type(res.Damage) == "table" and (res.Damage[r1.UserId] or 0) > 0,
 		"p3 raid: the result { Mode Raid, BossId, Losers = the fighters still in it, Damage = {[userId] = n} }")
-	local loss = bc.RaidTier(0, false)
+	local loss = bc.RaidTier(1, false)
 	local rw1 = res and res.Rewards[r1.UserId]
 	T.check(rw1 and rw1.Tier == "Loss" and rw1.Tokens == loss.Tokens * 2 and tokens(r1) - tok1 == loss.Tokens * 2,
 		"p3 raid: a failed raid pays the Loss tier, doubled during Double Rewards", rw1 and tostring(rw1.Tokens) or "none")
@@ -1219,7 +1229,7 @@ S.p3bs_exploits = scenario("p3bs_exploits", function()
 		return
 	end
 	advance(0.3)
-	bs.Command(y, "Retreat") -- y's team never fights: the duel only ends when the test ends it
+	bs.Command(y, "Retreat") -- y's team holds back (the order is given again below: a player team resumes by itself)
 	advance(0.2) -- (its Order event goes out before the checks below look for orders)
 	local start = lastMsg(x, "Start", mark)
 	local ownId, enemyId = nil, nil
@@ -1252,6 +1262,7 @@ S.p3bs_exploits = scenario("p3bs_exploits", function()
 	end
 	T.check(retreatSeen and not foreign, "p3 exploits: a Retreat only orders the caller's own team (Order owner = the caller)")
 	advance(1.7)
+	bs.Command(y, "Retreat")
 	-- outside the zone (still inside the arena)
 	local padCF = K.root(x).CFrame
 	toArena(x, 0, 0)
@@ -1277,6 +1288,7 @@ S.p3bs_exploits = scenario("p3bs_exploits", function()
 	T.check(n >= 1 and n <= 11, "p3 exploits: 300 commands in one frame reach the battle at most ~10 times (token bucket)", n .. " orders")
 	advance(0.4)
 	bs.Command(x, "Retreat")
+	bs.Command(y, "Retreat")
 	-- two battles at once
 	T.check(bs.StartTrial(x, 1) == false and bs.JoinRaid(x) == false and bs.Queue(x) == false and bs.Challenge(x, z) == false and bs.StartDuel(x, z) == false,
 		"p3 exploits: a player in a battle cannot start or join another (trial, raid, queue, challenge, duel)")

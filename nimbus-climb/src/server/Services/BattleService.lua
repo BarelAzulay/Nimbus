@@ -19,8 +19,9 @@
 --                                 AFTER the rewards were paid. result = { Mode, Winners = {userId...}, Losers =
 --                                 {userId...}, Level (Trial), BossId (Raid), Damage = {[userId] = n}, Forfeit = bool }
 --                                 plus the extras BattleId, Reason, Draw, WinnerSide, Duration, Shares = {[userId] =
---                                 0..1}, Participants = {userId...}, Rewards = {[userId] = rewards}, RewardsPaid = true,
---                                 BossHp, BossMaxHp.
+--                                 0..1}, Participants = {userId...} (everyone who ever joined), Fighters = {userId...}
+--                                 (the participants still in at the end: raid leavers are not), Rewards = {[userId] =
+--                                 rewards}, RewardsPaid = true, BossHp, BossMaxHp.
 -- Extras: StartDuel(a, b) -> ok, battleId | reason, ReplyChallenge(player, fromUserId, accept) -> ok, reason,
 --   Queue(player) / Unqueue(player) -> ok, reason, JoinRaid(player) / LeaveRaid(player) -> ok, reason,
 --   Command(player, action, arg) -> ok, reason (what BattleCommand does), Forfeit(player) -> ok,
@@ -28,6 +29,8 @@
 --   EventService itself), IsDoubleRewards(), SetArena(arenaInfo, arenaBuilder), GetNetStats(), EstimateBytes(value),
 --   ListBattles() -> { summary... }, signals BattleStarted(battleId, info) and RaidJoined(player, battleId),
 --   flag BattleService.PayRaidRewards (default true: this service pays the raid tiers; see "Rewards"),
+--   Shutdown() (what game:BindToClose runs; tests call it: every running battle ends void with Reason "Shutdown", new
+--   battles are refused), SetClosing(bool) (tests: reopen after a Shutdown),
 --   BattleService.Debug = nil | { FailEnd = n } (tests: the next n battle ends fail, to exercise the fail-safe that
 --   frees the players, ring / pocket / raid, sends "End" and fires BattleEnded with Reason "Error" exactly once).
 --
@@ -61,11 +64,12 @@
 --   "Start"    battle:Describe() + Zone = { CFrame (floor centre), Size (Vector3: X, height, Z), X, Z } + Names =
 --              { [tostring(userId)] = name } + Side (the receiver's side, 0 for a spectator) + Spectator + T (+ Trial =
 --              { Level, Name, Chapter } for trials). Unit static info carries slot (the owner's team slot 1-4).
---   "Snapshot" battle:Snapshot() = { BattleId, T, Units = { [id] = { x, z, hp, state, target?, meter, shield? } } }; x / z
---              are studs relative to the zone centre (floor at the zone CFrame's height). Units is always a DENSE array
---              1..n (a unit that left a raid stays as a Down entry at its last place), so it survives Roblox's remote
---              serialisation; units at the END of the list that have been down DOWN_KEEP seconds are left out (a raid's
---              dead minion waves), which keeps the array dense.
+--   "Snapshot" battle:SnapshotDelta(last) = { BattleId, T, U = { number... } }: the units whose picture changed since the
+--              receiver's previous snapshot, as flat numbers (code, pos [, hp] [, meter] [, shield] [, target] per unit;
+--              BattleSim.DecodeSnapshot turns it back into { [id] = { x, z, hp, state, target, meter, shield } }); x / z
+--              are studs relative to the zone centre (floor at the zone CFrame's height). Down units are sent once and
+--              then left out, hp / meter / shield / target only when they change. Fighters get a snapshot every step
+--              (10 Hz), spectators every other step (5 Hz); a new receiver gets a full snapshot right after its "Start".
 --   "Events"   the list of Step() events ({ type = "Hit" | "Special" | "KO" | "Telegraph" | "Spawn" | "Enrage" |
 --              "Order" | "Zone" | "Leave" | "End", ... }), only when the step produced any.
 --   "End"      { BattleId, Mode, Result (the public result: owner maps keyed by tostring(userId)), Rewards (the
@@ -75,8 +79,8 @@
 --   Spectators: a player who is in no battle watches the NEAREST running battle within SPECTATE_MARGIN studs of its
 --   zone (one battle per client at a time; refreshed once a second). Bandwidth: EstimateBytes approximates the
 --   remote encoding; GetNetStats() reports bytes per second per client over the last window. Measured by
---   tools/smoke_p3_battleservice.lua (estimate per client): a trial ~6 KB/s, a duel ~6 KB/s, an 8-player raid ~23 KB/s
---   (25 units at 10 Hz: the full-snapshot design of the contract scales with the units on the floor).
+--   tools/smoke_p3_battleservice.lua and tools/smoke_p3_fix_server.lua (estimate per client): a trial or a duel a few
+--   KB/s, an 8-player raid well under 20 KB/s and a full 16-player raid under ~20 KB/s (the delta snapshots).
 --
 -- Teams: the active preset (DataService.ActiveTeamKeys, at most GetTeams().Slots pets: the 4th at Prestige 1), each key
 --   as { Key, PetId, Def = PetKeys.DefOf(key, profile), Level = DataService.GetPetLevel, Tier, Slot } (hybrids and tier
@@ -96,10 +100,19 @@
 --     an exploit) loses the trial (no reward); the pocket is freed. Falling off the pocket puts them back on its spawn.
 --   * A duel player who forfeits, leaves the game, leaves the arena or joins an obby match loses the duel at once: the
 --     forfeit penalty (BattleCatalog.Trophies.Forfeit, a PvP loss) is written right away (before their profile is
---     saved on leave); the opponent wins. A forfeit before FORFEIT_MIN_SECONDS pays the winner no trophies / tokens /
---     XP (no farming with an alt that quits at once); the same two players earn trophies from at most PAIR_LIMIT
---     duels per PAIR_WINDOW seconds.
---   * A raid player who leaves the arena / the game is removed from the raid (no reward).
+--     saved on leave); the opponent wins. When BOTH duellists leave together (a server shutdown, "migrate to the
+--     latest update", two friends quitting) the duel is void: nobody is penalised (a penalty already written to the
+--     first leaver is given back while DataService still holds the profile).
+--   * Duel rewards are gated against farming (payDuel): the winner's trophies, tokens and XP are withheld for a forfeit
+--     before FORFEIT_MIN_SECONDS and for a loser who dealt no damage (an alt that quits at once or never fights; the
+--     win still counts in PvPWins); the same two players earn from at most PAIR_LIMIT duels per PAIR_WINDOW seconds
+--     (in this server's memory); a duel between teams more than DUEL_POWER_GAP apart in TeamPower is a PRACTICE duel
+--     (a clear side toast: no trophies, tokens, XP or PvP counters for either side).
+--   * A raid player who leaves the arena / the game is removed from the raid (no reward); a raider whose damage share
+--     stays under BattleCatalog.Raid.MinShare (or who dealt nothing) gets no reward either (BattleCatalog.RaidTier nil).
+--   * game:BindToClose -> Shutdown(): every running battle ends void (Reason "Shutdown"): duels and trials pay nothing
+--     and penalise nobody, raids pay the tier of each fighter's current share (no event-pet roll); meanwhile new
+--     battles are refused and leaving players are not treated as forfeiting.
 --   * The player attribute InBattle holds the battle id (a string) while the player takes part (nil otherwise); trials
 --     keep it until the player is back at the Trial Portal. ArenaBuilder's teleports and DevService refuse during it.
 -- Rewards (paid exactly once per player per battle: the record is marked before anything is paid, every payment is a
@@ -191,13 +204,14 @@ local C = {
 	MAX_INVITES = 5, -- incoming invites per player
 	QUEUE_GAP_BASE = 60, -- trophies apart two queued players may be at once ...
 	QUEUE_GAP_PER_SECOND = 15, -- ... growing with the longer wait
-	FORFEIT_MIN_SECONDS = 15, -- a duel forfeited sooner pays the winner no trophies / tokens / XP
-	PAIR_LIMIT = 3, -- duels that pay trophies between the same two players ...
+	FORFEIT_MIN_SECONDS = 15, -- a duel that ends sooner (a forfeit, a stomp) pays the winner no trophies / tokens / XP
+	PAIR_LIMIT = 3, -- rewarded duels between the same two players ...
 	PAIR_WINDOW = 1800, -- ... per this many seconds
+	DUEL_POWER_GAP = 3, -- a duel between teams whose TeamPower differs by more than this factor is practice (no rewards)
 	RAID_RIM = 6, -- studs outside the raid floor where a joiner is placed
 	DUEL_PAD_OUTSIDE = 5, -- studs outside the duel floor where the duellists stand (the ring's pads)
 	ZONE_HEIGHT = 30, -- Size.Y of the zone in "Start"
-	DOWN_KEEP = 2, -- seconds a downed unit at the end of the unit list stays in the snapshots
+	SPECTATOR_SNAPSHOT_EVERY = 2, -- spectators get every 2nd snapshot (5 Hz)
 	TOAST_GAP = 1.5, -- the same toast text is not repeated within this many seconds
 	COMMAND_BURST = 10, -- BattleCommand token bucket
 	COMMAND_REFILL = 5, -- per second
@@ -252,6 +266,7 @@ local St = {
 	net = {}, -- [userId] = { bytes, since, rate, peak, messages }
 	double = nil, -- pushed Double Rewards state { Active, Until }
 	eventService = nil, -- resolved lazily (false = missing)
+	closing = false, -- Shutdown() ran: battles are refused, leavers are not forfeits
 	rng = Random.new(),
 }
 
@@ -704,6 +719,9 @@ local function canBattle(player)
 	if St.battleOf[player] then
 		return false, "You are already in a battle"
 	end
+	if St.closing then
+		return false, "The server is restarting: battles will be back in a moment"
+	end
 	if not aliveRoot(player) then
 		return false, "Wait until you respawn"
 	end
@@ -713,11 +731,6 @@ end
 ----------------------------------------------------------------------
 -- Battle records + messages
 ----------------------------------------------------------------------
-local DOWN = 5
-if BattleSim and type(BattleSim.States) == "table" and type(BattleSim.States.Down) == "number" then
-	DOWN = BattleSim.States.Down
-end
-
 local function newBattleId()
 	St.seq = St.seq + 1
 	return "B" .. St.seq
@@ -743,8 +756,8 @@ local function newBattle(id, mode, sim, zone)
 		Steps = 0,
 		State = "Running",
 		EventBuf = {},
-		MaxUnit = 0,
-		Last = {}, -- [unitId] = { x, z }: the last snapshot position (a unit that left keeps it, as a Down entry)
+		LastFighters = {}, -- the fighters' last snapshot picture (BattleSim:SnapshotDelta updates it; cleared = full next)
+		LastSpectators = {}, -- the spectators' (they get every 2nd snapshot)
 		Paid = {}, -- [userId] = rewards | false (marked before paying)
 		Broken = 0,
 		TickErrors = 0,
@@ -839,69 +852,33 @@ local function sendStart(b, player, spectator)
 	return false
 end
 
--- battle:Snapshot() with Units made DENSE (1..n): a unit that left stays as a Down entry at its last position, so
--- the table is a plain array on the wire (a sparse one would be cut at the first hole).
-local function buildSnapshot(b)
-	local ok, snap = pcall(b.Sim.Snapshot, b.Sim)
-	if not ok or type(snap) ~= "table" or type(snap.Units) ~= "table" then
+-- the wire snapshot for one receiver group (see the header): only what changed since that group's last one
+local function buildSnapshot(b, last)
+	local ok, snap = pcall(b.Sim.SnapshotDelta, b.Sim, last)
+	if not ok or type(snap) ~= "table" or type(snap.U) ~= "table" then
 		return nil
 	end
 	snap.BattleId = b.Id
-	local units = snap.Units
-	local top = b.MaxUnit
-	for id in pairs(units) do
-		if type(id) == "number" and id > top then
-			top = id
-		end
-	end
-	b.MaxUnit = top
-	local last = b.Last
-	local t = tonumber(snap.T) or 0
-	for id = 1, top do
-		local s = units[id]
-		local l = last[id]
-		if not l then
-			l = {}
-			last[id] = l
-		end
-		if s then
-			l.x, l.z = s.x, s.z
-		else
-			s = { x = l.x or 0, z = l.z or 0, hp = 0, state = DOWN, meter = 0 }
-			units[id] = s
-		end
-		if s.state == DOWN then
-			l.down = l.down or t
-		else
-			l.down = nil
-		end
-	end
-	-- units at the END of the list that have been down for DOWN_KEEP seconds leave the snapshot (a raid's dead minion
-	-- waves): the array stays dense, the clients already had their KO event
-	while top > 0 do
-		local l = last[top]
-		if l and l.down and t - l.down >= C.DOWN_KEEP then
-			units[top] = nil
-			top = top - 1
-		else
-			break
-		end
-	end
 	return snap
 end
 
-local function broadcast(b, kind, payload)
+-- to every receiver; `who` narrows it to "fighters" (participants) or "spectators"
+local function broadcast(b, kind, payload, who)
 	local bytes = estimateBytes(payload)
 	for player in pairs(b.Receivers) do
 		if isPlayer(player) then
-			send(player, kind, payload, b.Id, bytes)
+			local spectator = b.Spectators[player] == true
+			if who == nil or (who == "spectators") == spectator then
+				send(player, kind, payload, b.Id, bytes)
+			end
 		else
 			b.Receivers[player] = nil
 		end
 	end
 end
 
--- after the steps of one tick: the events, the "Start" of new receivers, then the snapshot
+-- after the steps of one tick: the events, the "Start" of new receivers, then the snapshots (a tick that sent a
+-- "Start" sends everyone a FULL snapshot; spectators get theirs every SPECTATOR_SNAPSHOT_EVERY ticks)
 local function flush(b)
 	if #b.EventBuf > 0 then
 		local list = b.EventBuf
@@ -912,16 +889,37 @@ local function flush(b)
 	for player in pairs(b.Pending) do
 		pending[#pending + 1] = player
 	end
+	local started = false
 	for _, player in ipairs(pending) do
 		if isPlayer(player) then
-			sendStart(b, player, b.Spectators[player] == true)
+			if sendStart(b, player, b.Spectators[player] == true) then
+				started = true
+			end
 		else
 			b.Pending[player] = nil
 		end
 	end
-	local snap = buildSnapshot(b)
+	if started then
+		b.LastFighters, b.LastSpectators = {}, {}
+	end
+	local snap = buildSnapshot(b, b.LastFighters)
 	if snap then
-		broadcast(b, "Snapshot", snap)
+		broadcast(b, "Snapshot", snap, "fighters")
+	end
+	if started or b.Steps % C.SPECTATOR_SNAPSHOT_EVERY == 0 then
+		local spectators = false
+		for player in pairs(b.Spectators) do
+			if b.Receivers[player] then
+				spectators = true
+				break
+			end
+		end
+		if spectators then
+			local snapS = buildSnapshot(b, b.LastSpectators)
+			if snapS then
+				broadcast(b, "Snapshot", snapS, "spectators")
+			end
+		end
 	end
 end
 
@@ -1204,6 +1202,32 @@ local function payDuelForfeit(b, part)
 	return rw
 end
 
+-- gives a forfeit penalty back (a duel that turned out void: both left, or the server is closing) while DataService
+-- still holds the profile; the rewards record becomes Void
+local function refundForfeit(b, part)
+	local rw = b.Paid[part.UserId]
+	if type(rw) ~= "table" or rw.Forfeit ~= true or rw.Refunded then
+		return
+	end
+	local player = part.Player
+	if type(try(dataService(), "GetProfile", player)) == "table" then
+		if finite(rw.Trophies) and rw.Trophies ~= 0 then
+			try(dataService(), "AddTrophies", player, -rw.Trophies)
+		end
+		try(dataService(), "MutateBattle", player, function(rec)
+			rec.PvPLosses = max(0, (tonumber(rec.PvPLosses) or 0) - 1)
+		end)
+	end
+	local void = emptyRewards()
+	void.Void = true
+	void.Refunded = true
+	b.Paid[part.UserId] = void
+end
+
+-- The anti-farming gates of a duel's rewards (trophies, tokens and XP move together): a practice duel (a huge power
+-- gap) pays nothing to anyone and counts for nothing; past the pair limit nothing is paid; a winner is not paid for a
+-- forfeit before FORFEIT_MIN_SECONDS or over a loser who dealt no damage (the win still counts in PvPWins). A duel
+-- fought to the end between comparable teams is always paid, however fast it went.
 local function payDuel(b, part, res)
 	local player = part.Player
 	local T = BattleCatalog.Trophies or {}
@@ -1211,34 +1235,38 @@ local function payDuel(b, part, res)
 	local xpT = type(T.Xp) == "table" and T.Xp or {}
 	local won = res.WinnerSide == part.Side
 	local draw = res.WinnerSide == nil
-	local early = res.Forfeit == true and (tonumber(res.Duration) or 0) < C.FORFEIT_MIN_SECONDS
-	local trophies, tokens, xp = 0, 0, 0
+	local short = (tonumber(res.Duration) or 0) < C.FORFEIT_MIN_SECONDS
+	local loserIdle = false
 	if won then
-		if not early then
-			trophies = b.PairOk and (tonumber(T.Win) or 0) or 0
-			tokens = tonumber(tokensT.Win) or 0
-			xp = tonumber(xpT.Win) or 0
+		for _, other in ipairs(b.PartList) do
+			if other ~= part and (tonumber(type(res.Damage) == "table" and res.Damage[other.UserId]) or 0) <= 0 then
+				loserIdle = true
+			end
 		end
-	elseif draw then
-		trophies = b.PairOk and (tonumber(T.Draw) or 0) or 0
-		tokens = tonumber(tokensT.Draw) or 0
-		xp = tonumber(xpT.Loss) or 0
-	else
-		trophies = b.PairOk and (tonumber(T.Loss) or 0) or 0
-		tokens = tonumber(tokensT.Loss) or 0
-		xp = tonumber(xpT.Loss) or 0
+	end
+	local stomp = won and ((res.Forfeit == true and short) or loserIdle)
+	local rewarded = b.PairOk and not b.Practice
+	local trophies, tokens, xp = 0, 0, 0
+	if rewarded and won and not stomp then
+		trophies, tokens, xp = tonumber(T.Win) or 0, tonumber(tokensT.Win) or 0, tonumber(xpT.Win) or 0
+	elseif rewarded and draw then
+		trophies, tokens, xp = tonumber(T.Draw) or 0, tonumber(tokensT.Draw) or 0, tonumber(xpT.Loss) or 0
+	elseif rewarded and not won then
+		trophies, tokens, xp = tonumber(T.Loss) or 0, tonumber(tokensT.Loss) or 0, tonumber(xpT.Loss) or 0
 	end
 	local double = tokens > 0 and BattleService.IsDoubleRewards()
 	if double then
 		tokens = floor(tokens * doubleMultiplier() + 0.5)
 	end
-	try(dataService(), "MutateBattle", player, function(rec)
-		if won then
-			rec.PvPWins = (tonumber(rec.PvPWins) or 0) + 1
-		elseif not draw then
-			rec.PvPLosses = (tonumber(rec.PvPLosses) or 0) + 1
-		end
-	end)
+	if not b.Practice then
+		try(dataService(), "MutateBattle", player, function(rec)
+			if won then
+				rec.PvPWins = (tonumber(rec.PvPWins) or 0) + 1
+			elseif not draw then
+				rec.PvPLosses = (tonumber(rec.PvPLosses) or 0) + 1
+			end
+		end)
+	end
 	local rw = emptyRewards()
 	local before = trophiesOf(player)
 	if trophies ~= 0 then
@@ -1252,10 +1280,19 @@ local function payDuel(b, part, res)
 	end
 	grantTokens(player, tokens)
 	rw.LevelUps = grantXp(player, part.Keys, xp, "Duel")
-	rw.Trophies, rw.Tokens, rw.Xp, rw.Double, rw.Early = trophies, tokens, xp, double, early or nil
+	rw.Trophies, rw.Tokens, rw.Xp, rw.Double = trophies, tokens, xp, double
+	rw.Early = (won and res.Forfeit == true and short) or nil
+	rw.Practice = b.Practice or nil
+	rw.Unpaid = (won and not rewarded) or (won and stomp) or nil
 	local text
-	if won and early then
+	if b.Practice then
+		text = (won and "Practice duel won!" or (draw and "Practice duel: a draw." or "Practice duel lost.")) .. " No rewards for practice."
+	elseif won and res.Forfeit == true and short then
 		text = "Your opponent left early: the win counts, no rewards."
+	elseif won and loserIdle then
+		text = "Your opponent never fought back: the win counts, no rewards."
+	elseif won and not rewarded then
+		text = "Victory! You two dueled a lot lately: no rewards this time."
 	elseif won then
 		text = "Victory! +" .. trophies .. " trophies, +" .. tokens .. " tokens"
 	elseif draw then
@@ -1273,10 +1310,18 @@ local function payRaid(b, part, res)
 	end
 	local player = part.Player
 	local uid = part.UserId
-	local won = res.WinnerSide == 1
+	local shutdown = res.Reason == "Shutdown"
+	local won = res.WinnerSide == 1 or shutdown -- a shutdown pays the tier of the share so far
 	local share = (type(res.Shares) == "table" and tonumber(res.Shares[uid])) or 0
 	local damage = (type(res.Damage) == "table" and tonumber(res.Damage[uid])) or 0
-	local tier = BattleCatalog.RaidTier(share, won) or {}
+	local tier = BattleCatalog.RaidTier(share, won)
+	if not tier or damage <= 0 then
+		-- no real damage (an idle joiner, an alt): nothing, not even the Loss tier
+		local rw = emptyRewards()
+		rw.Tier, rw.Share, rw.Damage = "None", floor(share * 1000 + 0.5) / 1000, floor(damage)
+		notify(player, "Too little damage for a raid reward this time. Fight the boss!", "info", 5)
+		return rw
+	end
 	local double = BattleService.IsDoubleRewards()
 	local tokens = tonumber(tier.Tokens) or 0
 	if double and tokens > 0 then
@@ -1297,7 +1342,7 @@ local function payRaid(b, part, res)
 	end)
 	local eventPet = nil
 	local petChance = tonumber(tier.EventPetChance) or 0
-	if petChance > 0 and St.rng:NextNumber() < petChance then
+	if petChance > 0 and not shutdown and St.rng:NextNumber() < petChance then
 		eventPet = grantEventPet(player)
 	end
 	grantTokens(player, tokens)
@@ -1310,7 +1355,9 @@ local function payRaid(b, part, res)
 	rw.Tokens, rw.Gems, rw.Xp, rw.Double = tokens, gems, xp, double
 	rw.Tier, rw.Share, rw.Damage, rw.EventPet = tier.Id, floor(share * 1000 + 0.5) / 1000, floor(damage), eventPet
 	local text
-	if won then
+	if shutdown then
+		text = "The server is restarting: " .. tostring(tier.Id) .. " tier for your damage so far, +" .. tokens .. " tokens"
+	elseif won then
 		text = "Boss defeated! " .. tostring(tier.Id) .. " tier: +" .. tokens .. " tokens"
 	else
 		text = "The boss won this time. +" .. tokens .. " tokens"
@@ -1331,10 +1378,14 @@ local function payOnce(b, part, res)
 		return b.Paid[uid] or nil
 	end
 	b.Paid[uid] = false
-	if res.Reason == "Error" then
+	if res.Reason == "Error" or (res.Reason == "Shutdown" and b.Mode ~= "Raid") then
+		-- void: nothing paid, nothing lost (raids on a shutdown pay the share so far: payRaid)
 		local rw = emptyRewards()
 		rw.Void = true
 		b.Paid[uid] = rw
+		if res.Reason == "Shutdown" then
+			notify(part.Player, "The server is restarting: this " .. (b.Mode == "Duel" and "duel" or "trial") .. " does not count.", "info", 5)
+		end
 		return rw
 	end
 	local fn = PAY[b.Mode]
@@ -1672,14 +1723,35 @@ local function finalizeBody(b, forcedReason)
 			result.Shares[owner] = s
 		end
 	end
+	-- a duel both players left (or that the shutdown ended) is void: no winner, no loser, nothing paid
+	if b.Mode == "Duel" and (b.Void or res.Reason == "Shutdown") then
+		result.Winners, result.Losers, result.WinnerSide, result.Draw = {}, {}, nil, true
+		if res.Reason ~= "Shutdown" then
+			result.Reason = "Void"
+		end
+		res = { Reason = result.Reason, Draw = true, Forfeit = res.Forfeit, Damage = res.Damage, Shares = res.Shares, Duration = res.Duration }
+		for _, part in ipairs(b.PartList) do
+			refundForfeit(b, part)
+		end
+	end
 	-- rewards: every participant still in the battle, once (a duel leaver was settled when they left)
+	result.Fighters = {}
 	for _, part in ipairs(b.PartList) do
 		result.Participants[#result.Participants + 1] = part.UserId
+		if not part.Left then
+			result.Fighters[#result.Fighters + 1] = part.UserId
+		end
 		local rw = nil
 		if b.Paid[part.UserId] ~= nil then
 			rw = b.Paid[part.UserId] or nil
 		elseif not part.Left and isPlayer(part.Player) then
-			rw = payOnce(b, part, res)
+			if res.Draw and result.Reason == "Void" then
+				rw = emptyRewards()
+				rw.Void = true
+				b.Paid[part.UserId] = rw
+			else
+				rw = payOnce(b, part, res)
+			end
 		end
 		if rw then
 			result.Rewards[part.UserId] = rw
@@ -1801,6 +1873,25 @@ local function forfeitDuel(b, part, why)
 	end
 	part.Forfeited = true
 	pcall(b.Sim.Command, b.Sim, part.UserId, "Forfeit")
+	-- both duellists gone (the other already forfeited / left, or is no longer here): the duel is void, no penalties
+	local opponentLeft = false
+	for _, other in ipairs(b.PartList) do
+		if other ~= part and (other.Forfeited or other.Left or not isPlayer(other.Player)) then
+			opponentLeft = true
+		end
+	end
+	if St.closing or opponentLeft then
+		for _, other in ipairs(b.PartList) do
+			refundForfeit(b, other)
+		end
+		if b.Paid[part.UserId] == nil then
+			local void = emptyRewards()
+			void.Void = true
+			b.Paid[part.UserId] = void
+		end
+		b.Void = true
+		return true
+	end
 	-- the penalty is written now: the player may be leaving the game this very moment (their profile saves next)
 	if b.Paid[part.UserId] == nil then
 		b.Paid[part.UserId] = false
@@ -2096,7 +2187,10 @@ local function startDuel(pa, pb)
 	local b = newBattle(id, "Duel", sim, zone)
 	b.RingIndex = ringIndex
 	St.ringBusy[ringIndex] = id
-	b.PairOk = pairAllows(pa, pb)
+	-- a huge power gap makes it a practice duel (nothing paid, nothing counted); the pair limit is only taken for real duels
+	local powerA, powerB = powerOf(specA), powerOf(specB)
+	b.Practice = max(powerA, powerB) > max(1, min(powerA, powerB)) * C.DUEL_POWER_GAP
+	b.PairOk = b.Practice or pairAllows(pa, pb)
 	for _, p in ipairs({ pa, pb }) do
 		stopWatching(p, "Joined")
 		removeFromQueue(p, true)
@@ -2111,9 +2205,14 @@ local function startDuel(pa, pb)
 	sendLobby(pb)
 	notify(pa, "Duel vs " .. shortName(pb) .. "! F = attack, R = retreat, 1-4 = specials", "info", 4)
 	notify(pb, "Duel vs " .. shortName(pa) .. "! F = attack, R = retreat, 1-4 = specials", "info", 4)
-	if not b.PairOk then
-		notify(pa, "You two dueled a lot lately: no trophies this time.", "info", 4)
-		notify(pb, "You two dueled a lot lately: no trophies this time.", "info", 4)
+	if b.Practice then
+		local strong = (powerA >= powerB) and pa or pb
+		local text = "Practice duel: " .. shortName(strong) .. "'s team is far stronger. No trophies or rewards."
+		notify(pa, text, "info", 5)
+		notify(pb, text, "info", 5)
+	elseif not b.PairOk then
+		notify(pa, "You two dueled a lot lately: no trophies or rewards this time.", "info", 4)
+		notify(pb, "You two dueled a lot lately: no trophies or rewards this time.", "info", 4)
 	end
 	return true, id
 end
@@ -2574,7 +2673,7 @@ function BattleService.JoinRaid(player)
 	end
 	leaveLobby(player)
 	BattleService.RaidJoined:Fire(player, b.Id)
-	notify(player, "You joined the raid on " .. bossName(raid.BossId) .. "! RETREAT from glowing circles.", "info", 4)
+	notify(player, "You joined the raid on " .. bossName(raid.BossId) .. "! RETREAT from glowing circles and lines.", "info", 4)
 	return true, b.Id
 end
 
@@ -3067,7 +3166,7 @@ end
 
 local function onPlayerRemoving(player)
 	local b = St.battleOf[player]
-	if b and b.State == "Running" then
+	if b and b.State == "Running" and not St.closing then
 		local part = b.Parts[player.UserId]
 		if part and not part.Left and not part.Forfeited then
 			dropOut(b, part, nil) -- a duel leaver's loss is written right now, before their profile is saved
@@ -3118,6 +3217,37 @@ local function onHeartbeat()
 			end
 		end
 	end
+end
+
+-- game:BindToClose (tests call it too): every running battle ends void with Reason "Shutdown" (duels / trials pay
+-- nothing and penalise nobody, raids pay the share so far), new battles are refused and leavers are no forfeits
+function BattleService.Shutdown()
+	St.closing = true
+	for _, b in ipairs(runningBattles()) do
+		local ok, err = pcall(function()
+			local _, events = b.Sim:Abort("Shutdown")
+			if type(events) == "table" then
+				for _, ev in ipairs(events) do
+					b.EventBuf[#b.EventBuf + 1] = ev
+				end
+			end
+			flush(b)
+		end)
+		if not ok then
+			warn("[BattleService] shutdown of " .. b.Id .. " failed: " .. tostring(err))
+		end
+		finalize(b, "Shutdown")
+	end
+	local raid = St.raid
+	if raid and not raid.Battle then
+		raidEndedWithoutPlayers(raid, "Shutdown")
+	end
+	return true
+end
+
+-- extra (tests): reopens battles after a Shutdown()
+function BattleService.SetClosing(flag)
+	St.closing = flag == true
 end
 
 local function every(period, fn, label)
@@ -3175,6 +3305,17 @@ function BattleService.Init(deps)
 			warn("[BattleService] PlayerRemoving failed: " .. tostring(err))
 		end
 	end)
+	local okClose, closeErr = pcall(function()
+		game:BindToClose(function()
+			local ok, err = pcall(BattleService.Shutdown)
+			if not ok then
+				warn("[BattleService] Shutdown failed: " .. tostring(err))
+			end
+		end)
+	end)
+	if not okClose then
+		warn("[BattleService] BindToClose failed: " .. tostring(closeErr))
+	end
 	-- players already in the game (Init runs after PlayerService): nobody starts in a battle
 	for _, player in ipairs(Players:GetPlayers()) do
 		if player:GetAttribute(C.ATTR_IN_BATTLE) ~= nil then

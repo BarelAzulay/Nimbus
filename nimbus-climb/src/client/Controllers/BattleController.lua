@@ -19,12 +19,18 @@
 --                                     BattleController.PerfClock when a test sets one; ResetStats() starts over)
 --   BattleController.IsHudVisible() -> bool
 --   BattleController.ScreenPick(x, y) -> unitId | nil   the enemy a tap / click at viewport pixel (x, y) would focus
+--   BattleController.GetTelegraphs() -> { { Id, Shape, At, From, SafeAt, Late } }  (tests: the render-clock deadline)
+--   GetBattle() also reports Threat (a telegraph covers one of my pets), Cue ("Attack" | "Retreat" | nil: the
+--   pulsing command), InterpDelay and TeamPlace ("Right" | "Top" | "Left": where the team cards sit)
 --
 -- Messages (BattleState(kind, payload, battleId), sent by BattleService)
 --   "Start"    battle:Describe() + Zone = { CFrame (floor centre), Size, X, Z } + Names + Side (0 = spectator) + Spectator
 --              + T (+ Trial = { Level, Name, Chapter, MiniBoss }). A second "Start" for the same battle (a raid
 --              spectator who joins) refreshes the units and the controls without rebuilding the models it keeps.
---   "Snapshot" { BattleId, T, Units = dense array [id] = { x, z, hp, state, target?, meter, shield? } }
+--   "Snapshot" { BattleId, T, U = { number... } }: BattleSim:SnapshotDelta's wire form (only the units whose picture
+--              changed, as flat numbers); BattleSim.DecodeSnapshot turns it into { [id] = { x, z, hp, state, target?,
+--              meter, shield } } against the previous picture. The older { BattleId, T, Units = { [id] = {...} } }
+--              form (the tools' drivers feed it) is taken as it is.
 --   "Events"   a list of BattleSim events (Hit, Special, KO, Telegraph, Spawn, Enrage, Order, Zone, Leave, End)
 --   "End"      { BattleId, Mode, Result, Rewards, Outcome, Won, Spectator, Reason }
 --
@@ -45,8 +51,10 @@
 --     (voxel shock ring + burst), Heal (rising voxel sparks), Shield (a translucent force-field cube on every shielded
 --     ally while the snapshot reports a shield), Storm (a voxel storm cloud with lightning over its zone), Pounce
 --     (a dash trail + hop), Freeze (ice crystals on every stunned unit), Beam (a long neon beam).
---   * Boss telegraphs: a glowing floor circle / line in BossBuilder.TelegraphColor that FILLS UP until the hit, then
---     flashes; lingering pools (Zone "Linger") glow for their seconds.
+--   * Boss telegraphs: a glowing floor circle / line in BossBuilder.TelegraphColor that FILLS UP until the dodge
+--     DEADLINE (the hit minus the render delay, the round trip of Player:GetNetworkPing and TELE_RUNOUT: a RETREAT
+--     pressed then still gets the pets out), then its rim flashes red until the hit; lingering pools (Zone "Linger")
+--     glow for their seconds. Spectators draw INTERP_DELAY_SPECTATOR behind (5 Hz snapshots).
 --   * Small HP bars (pixel BillboardGuis, no text) above every unit: green = yours, blue = allies, red = enemies; a
 --     bobbing voxel arrow marks the enemy your team focuses.
 --   * Spectators (a player near a duel ring / the raid floor) see the same battle from the stands, with only a slim
@@ -60,9 +68,15 @@
 --   * Team card (bottom right on wide screens): one row per team pet: slot key, name, level, element badge, HP bar,
 --     special meter, and its SPECIAL button (lights up gold and pulses when the meter is full, shows KO when down).
 --   * ATTACK / RETREAT above it (key hints F / R; gamepad X / Y; specials 1-4, gamepad LB / RB / LT / RT). ATTACK
---     shows the regroup countdown after a RETREAT. The header names the focused enemy (tap it to clear the focus).
+--     shows the regroup countdown after a RETREAT, then reads ATTACK! with a pulsing ring while the team rests, and
+--     RETREAT counts "RESTING n" down to BattleSim's auto resume (Damage.RetreatAutoResume; the Order { Attack, auto }
+--     event puts the HUD back). A full SPECIAL waits while resting and says so ("RESTING" / "ATTACK first"; compact
+--     "ATTACK 1st"). RETREAT reads RETREAT! with a pulsing ring while a telegraph that has not hit covers one of my
+--     pets. The header names the focused enemy (tap it to clear the focus).
 --   * Compact layout (touch screens and small windows): the team as a row of cards under the top card (tap a card =
---     its special), ATTACK / RETREAT as big touch buttons at the right edge, clear of the RUN / DASH buttons.
+--     its special); when that row would reach the middle of the screen (a landscape phone) the cards form a 2-column
+--     grid at the top-left edge instead and the menu tiles step aside (MenuController.SetColumnHidden) until the
+--     battle HUD goes; ATTACK / RETREAT as big touch buttons at the right edge, clear of the RUN / DASH buttons.
 --   * Tap / click an enemy in the world to focus it (a short tap that is not a camera drag; the nearest enemy on the
 --     screen within reach of the tap).
 --   * Result card at the end (bottom right; compact: top centre on a tall phone, top right on a landscape phone,
@@ -138,6 +152,15 @@ local K = {
 	DISPLAY_ORDER = 12, -- above the HUD (10) and the hotbar (11), below windows (20) and toasts (30)
 	FOLDER = "ClientBattle", -- workspace folder of the drawn battles
 	INTERP_DELAY = 0.12, -- seconds behind the server clock (snapshots arrive every 0.1 s)
+	INTERP_DELAY_SPECTATOR = 0.25, -- spectators get snapshots at 5 Hz (BattleService), so they draw further behind
+	-- telegraph deadline: the fill completes when a RETREAT pressed now still reaches the server TELE_RUNOUT seconds
+	-- before the hit (the pets need that long to run out: sim_battle "dodge", a 2.2 s telegraph escaped ~90% with a
+	-- RETREAT 1.2-1.4 s after the warning); after that the shape flashes until the impact
+	TELE_RUNOUT = 0.8,
+	TELE_MIN_FILL = 0.5, -- seconds: the fill never gets shorter than this (a very slow connection)
+	PING_DEFAULT = 0.1, -- round trip assumed when Player:GetNetworkPing is unavailable
+	PING_MAX = 0.5,
+	THREAT_PAD = 1.5, -- studs around a pet's centre that count as "in the shape" for the RETREAT! cue
 	OFFSET_RATE = 0.1, -- clock offset filter
 	MAX_SNAPS = 8,
 	PET_SCALE = 1.3, -- battle pets are a little bigger than followers, so they read from the stands
@@ -190,6 +213,9 @@ local K = {
 	CARD_H = 100,
 	TOUCH_W = 112, -- compact ATTACK / RETREAT buttons (design px)
 	TOUCH_H = 72,
+	WAIT_COMPACT = "ATTACK 1st", -- a compact card's SPECIAL with a full meter while the team rests
+	ROW_MAX_Y = 0.42, -- a compact team row whose bottom passes this share of the screen height moves to the left edge
+	SIDE_X = 12, -- design px: the left-edge team grid of a landscape phone
 	MIN_TEXT_PX = 14, -- no HUD text is ever drawn smaller on the screen (Readability rule)
 	EDGE = 16,
 	RESULT_W = 440,
@@ -205,6 +231,9 @@ local EV = (BattleSim and BattleSim.Events) or {
 local DMG = (BattleCatalog and BattleCatalog.Damage) or {}
 local METER_MAX = tonumber(DMG.MeterMax) or 100
 local RETREAT_LOCK = tonumber(DMG.RetreatLock) or 1.5
+-- a retreating player team goes back to ATTACK by itself this long after the regroup lock (BattleSim; only once
+-- every pet is parked at its spot and no telegraph covers one): the HUD's "RESTING" countdown
+local AUTO_RESUME = tonumber(DMG.RetreatAutoResume) or 3
 local SPECIALS = (BattleCatalog and BattleCatalog.Specials) or {}
 
 local COLORS = {
@@ -225,6 +254,8 @@ local COLORS = {
 	Muted = Theme.Colors.Muted or Color3.fromRGB(212, 224, 246),
 	Track = Color3.fromRGB(28, 36, 76),
 	Storm = Color3.fromRGB(72, 78, 108),
+	LateRim = Color3.fromRGB(255, 70, 60), -- a telegraph past its dodge deadline flashes in this
+	Wait = Color3.fromRGB(150, 132, 84), -- a SPECIAL with a full meter that waits for ATTACK
 	StormLight = Color3.fromRGB(112, 118, 150),
 }
 
@@ -306,6 +337,22 @@ end
 
 local function myUserId()
 	return LocalPlayer and LocalPlayer.UserId or 0
+end
+
+-- seconds the drawing runs behind the estimated server clock (spectators get 5 Hz snapshots)
+local function interpDelay(B)
+	return (B and B.Spectator) and K.INTERP_DELAY_SPECTATOR or K.INTERP_DELAY
+end
+
+-- the round trip to the server in seconds (Player:GetNetworkPing), clamped; a default when unavailable
+local function networkPing()
+	local ok, v = pcall(function()
+		return LocalPlayer:GetNetworkPing()
+	end)
+	if ok and type(v) == "number" and v == v and v >= 0 then
+		return clamp(v, 0, K.PING_MAX)
+	end
+	return K.PING_DEFAULT
 end
 
 local function make(className, props, parent)
@@ -1567,6 +1614,8 @@ function Tele.Start(B, ev)
 		width = num(ev.width, 4),
 		at = at,
 		from = at - hits,
+		-- the dodge deadline on the render clock: the render delay + the round trip + the run-out before the hit
+		safeAt = max(at - hits + min(K.TELE_MIN_FILL, hits * 0.5), at - (interpDelay(B) + networkPing() + K.TELE_RUNOUT)),
 		fill = fill,
 		edgeColor = edge,
 		freeze = ev.freeze,
@@ -1665,9 +1714,37 @@ local function setRim(tl, transparency)
 	end
 end
 
+-- is the zone-local point (x, z) inside the telegraph's shape (grown by pad studs)?
+function Tele.Covers(tl, x, z, pad)
+	local dx, dz = x - tl.x, z - tl.z
+	if tl.shape == "Line" then
+		local along = dx * (tl.dx or 1) + dz * (tl.dz or 0)
+		if along < -pad or along > tl.length + pad then
+			return false
+		end
+		return abs(dx * (tl.dz or 0) - dz * (tl.dx or 1)) <= tl.width / 2 + pad
+	end
+	return dx * dx + dz * dz <= (tl.r + pad) * (tl.r + pad)
+end
+
+-- one of my living pets stands in a telegraph that has not hit yet (the HUD's RETREAT! cue)
+local function threatened(B, tl)
+	for slot = 1, 4 do
+		local u = B.mine[slot]
+		if u and u.hp > 0 and u.state ~= S_DOWN and Tele.Covers(tl, u.x, u.z, K.THREAT_PAD) then
+			return true
+		end
+	end
+	return false
+end
+
 function Tele.Update(B, now)
 	local t = B.renderT
+	local threat = false
 	for id, tl in pairs(B.teles) do
+		if not threat and B.Fighter and t < tl.at and threatened(B, tl) then
+			threat = true
+		end
 		if t >= tl.at then
 			if not tl.impactAt then
 				tl.impactAt = now
@@ -1709,12 +1786,28 @@ function Tele.Update(B, now)
 				setRim(tl, 0.1 + 0.9 * p)
 			end
 		else
-			local p = clamp((t - tl.from) / max(0.05, tl.at - tl.from), 0, 1)
-			local pulse = 0.5 + 0.5 * sin(now * 10)
-			if tl.edge then
-				tl.edge.Transparency = 0.5 + 0.2 * pulse
+			-- the fill completes at the dodge deadline (safeAt), then the shape flashes until the hit
+			local fillEnd = tl.safeAt or tl.at
+			local p = clamp((t - tl.from) / max(0.05, fillEnd - tl.from), 0, 1)
+			if t >= fillEnd then
+				if not tl.late then
+					tl.late = true
+					for _, seg in ipairs(tl.rim or {}) do
+						seg.Color = COLORS.LateRim
+					end
+				end
+				local on = sin(now * 26) > 0
+				if tl.edge then
+					tl.edge.Transparency = on and 0.25 or 0.65
+				end
+				setRim(tl, on and 0 or 0.6)
+			else
+				local pulse = 0.5 + 0.5 * sin(now * 10)
+				if tl.edge then
+					tl.edge.Transparency = 0.5 + 0.2 * pulse
+				end
+				setRim(tl, 0.05 + 0.3 * pulse)
 			end
-			setRim(tl, 0.05 + 0.3 * pulse)
 			if tl.fillPart then
 				if tl.shape == "Circle" then
 					local d = max(0.1, tl.r * 2 * p)
@@ -1728,6 +1821,7 @@ function Tele.Update(B, now)
 			end
 		end
 	end
+	B.threat = threat
 end
 
 function Tele.ClearAll(B)
@@ -2374,8 +2468,8 @@ function Hud.SlotOfRow(i)
 	return row and row.slot or i
 end
 
--- lays the team rows out (wide: rows; compact: cards)
-function Hud.LayoutTeam(m, units)
+-- lays the team rows out (wide: rows; compact: cards in a row, or a grid of `cols` columns no wider than maxW)
+function Hud.LayoutTeam(m, units, cols, maxW)
 	local n = #units
 	for i = 1, max(n, #Hud.rows) do
 		local row = (i <= n) and rowFor(i) or Hud.rows[i]
@@ -2431,17 +2525,19 @@ function Hud.LayoutTeam(m, units)
 		end
 		return w, y - K.ROW_GAP + K.PAD
 	end
-	-- compact cards in a row
-	local avail = m.W - 16
-	if m.Landscape then
+	-- compact cards in a row (or a grid at the left edge of a landscape phone)
+	cols = min(n, cols or n)
+	local avail = maxW or (m.W - 16)
+	if m.Landscape and not maxW then
 		avail = avail - (2 * K.TOUCH_W + 30)
 	end
-	local cw = min(K.CARD_W, floor((avail - (n - 1) * 8) / n))
+	local cw = min(K.CARD_W, floor((avail - (cols - 1) * 8) / cols))
 	for i = 1, n do
 		local row = Hud.rows[i]
 		local f = row.Frame
+		local col, line = (i - 1) % cols, floor((i - 1) / cols)
 		f.Size = UDim2.fromOffset(cw, K.CARD_H)
-		f.Position = UDim2.fromOffset((i - 1) * (cw + 8), 0)
+		f.Position = UDim2.fromOffset(col * (cw + 8), line * (K.CARD_H + 8))
 		row.Chip.Visible = true
 		row.Chip.Size = UDim2.fromOffset(26, 26)
 		row.Chip.Position = UDim2.fromOffset(4, 4)
@@ -2470,7 +2566,8 @@ function Hud.LayoutTeam(m, units)
 		row.SpecialSub.Visible = false
 		row.CardHit.Visible = true
 	end
-	return n * cw + (n - 1) * 8, K.CARD_H
+	local lines = math.ceil(n / cols)
+	return cols * cw + (cols - 1) * 8, lines * K.CARD_H + (lines - 1) * 8
 end
 
 -- the enemy chips of the top card (trials and duels)
@@ -2531,9 +2628,12 @@ function Hud.Rebuild()
 		Hud.top.Visible = false
 		Hud.team.Visible = false
 		Hud.cmd.Visible = false
+		Hud.teamPlace = nil
+		Hud.SetMenuHidden(false)
 		return
 	end
 	local isFighting = B.Fighter and not B.ended
+	Hud.teamPlace = nil
 	local mine, enemies = Hud.Lists(B)
 	Hud.mineList = mine
 	Hud.enemyList = enemies
@@ -2635,10 +2735,24 @@ function Hud.Rebuild()
 			row.Element.BackgroundColor3 = elementColor(u.element)
 			local special = u.special
 			row.kind = special and special.Kind or nil
-			setText(row.SpecialSub, special and tostring(special.Name or special.Kind) or "No special")
+			row.subText = special and tostring(special.Name or special.Kind) or "No special"
+			setText(row.SpecialSub, row.subText)
+			row.stateKey = nil
 			row.last = nil
 		end
-		local tw, th = Hud.LayoutTeam(m, mine)
+		-- where the compact cards go: a row under the top card, unless that row would reach the middle of the screen
+		-- (a landscape phone): then a 2-column grid at the top-left edge, where the menu column steps aside
+		local place = m.Compact and "Top" or "Right"
+		local gridW = nil
+		if m.Compact and m.Landscape then
+			local rowBottom = m.Inset + (6 + Hud.topH + 8 + K.CARD_H) * m.F
+			if rowBottom > m.VY * K.ROW_MAX_Y then
+				place = "Left"
+				gridW = floor((m.W - topW) / 2) - K.SIDE_X - 10
+			end
+		end
+		Hud.teamPlace = place
+		local tw, th = Hud.LayoutTeam(m, mine, place == "Left" and 2 or nil, gridW)
 		if not m.Compact then
 			-- the team card: a panel behind the rows, bottom right
 			if not Hud.teamBack then
@@ -2687,7 +2801,12 @@ function Hud.Rebuild()
 			if m.Landscape and cx + tw / 2 > m.W - (2 * bw + 30) then
 				cx = (m.W - (2 * bw + 30)) / 2
 			end
-			Hud.team.Position = UDim2.fromOffset(cx, teamY)
+			if place == "Left" then
+				Hud.team.AnchorPoint = Vector2.new(0, 0)
+				Hud.team.Position = UDim2.fromOffset(K.SIDE_X, 6)
+			else
+				Hud.team.Position = UDim2.fromOffset(cx, teamY)
+			end
 			-- big touch buttons at the right edge, between the currency pill (top right) and RUN / DASH (bottom right)
 			Hud.cmd.AnchorPoint = Vector2.new(1, 0)
 			if m.Landscape then
@@ -2712,6 +2831,7 @@ function Hud.Rebuild()
 		Hud.retreatKey.Visible = not m.Touch
 		Hud.Keys()
 	end
+	Hud.SetMenuHidden(isFighting and Hud.teamPlace == "Left")
 	Hud.TrimButton(Hud.attack, m.Compact)
 	Hud.TrimButton(Hud.retreat, m.Compact)
 	Hud.FixText(Hud.root, m.F)
@@ -2867,25 +2987,33 @@ function Hud.Update(B, now, force)
 				row.Hp.SetColor(Theme.HealthColor(frac))
 			end
 			setThin(row.Meter, u.meter / METER_MAX)
-			local ready = not down and row.kind ~= nil and u.meter >= METER_MAX and B.order ~= "Retreat" and u.state ~= S_STUNNED
-			local stateKey = down and "down" or (ready and "ready" or (row.kind and "charge" or "none"))
+			local full = not down and row.kind ~= nil and u.meter >= METER_MAX and u.state ~= S_STUNNED
+			local ready = full and B.order ~= "Retreat"
+			-- a full meter while the team rests: the card says why it waits (specials need ATTACK first)
+			local waiting = full and B.order == "Retreat"
+			local stateKey = down and "down" or (ready and "ready" or (waiting and "wait" or (row.kind and "charge" or "none")))
 			if force or row.stateKey ~= stateKey then
 				row.stateKey = stateKey
 				local sb = row.Special
 				if stateKey == "ready" then
 					sb.BackgroundColor3 = COLORS.Gold
 					row.SpecialTop.TextColor3 = COLORS.White
+				elseif stateKey == "wait" then
+					sb.BackgroundColor3 = COLORS.Wait
 				elseif stateKey == "down" then
 					sb.BackgroundColor3 = Color3.fromRGB(80, 84, 104)
 				else
 					sb.BackgroundColor3 = Color3.fromRGB(96, 106, 140)
 				end
 				row.Frame.BackgroundTransparency = down and 0.45 or 0.15
-				row.Meter.Fill.BackgroundColor3 = ready and COLORS.Gold or Color3.fromRGB(226, 186, 92)
+				row.Meter.Fill.BackgroundColor3 = (ready or waiting) and COLORS.Gold or Color3.fromRGB(226, 186, 92)
+				setText(row.SpecialSub, waiting and "ATTACK first" or (row.subText or ""))
 			end
 			local top
 			if stateKey == "ready" then
 				top = "SPECIAL!"
+			elseif stateKey == "wait" then
+				top = (Hud.m and Hud.m.Compact) and K.WAIT_COMPACT or "RESTING"
 			elseif stateKey == "down" then
 				top = "KO"
 			elseif stateKey == "none" then
@@ -2903,27 +3031,33 @@ function Hud.Update(B, now, force)
 			end
 		end
 	end
-	-- commands
-	local lockLeft = 0
-	if B.order == "Retreat" then
-		lockLeft = RETREAT_LOCK - (now - B.retreatAt)
-	end
-	local attackText = (lockLeft > 0.05) and string.format("ATTACK %.1f", lockLeft) or "ATTACK"
-	if Hud.m and Hud.m.Compact and lockLeft > 0.05 then
-		attackText = string.format("%.1f", lockLeft)
+	-- commands: the regroup countdown on ATTACK, then ATTACK! pulses while the team rests (RETREAT counts down to
+	-- the server's auto resume); RETREAT! pulses while a telegraph that has not hit yet covers one of my pets
+	local compact = Hud.m and Hud.m.Compact
+	local retreating = B.order == "Retreat"
+	local since = retreating and (now - B.retreatAt) or 0
+	local lockLeft = retreating and (RETREAT_LOCK - since) or 0
+	local attackText, retreatText = "ATTACK", "RETREAT"
+	local callAttack, callRetreat = false, false
+	if retreating and lockLeft > 0.05 then
+		attackText = compact and string.format("%.1f", lockLeft) or string.format("ATTACK %.1f", lockLeft)
+		retreatText = compact and "RETREAT" or "RETREATING"
+	elseif retreating then
+		attackText = "ATTACK!"
+		callAttack = true
+		local resumeLeft = RETREAT_LOCK + AUTO_RESUME - since
+		retreatText = resumeLeft > 0.05 and ("RESTING " .. tostring(math.ceil(resumeLeft - 0.05))) or "RESTING"
+	elseif B.threat then
+		retreatText = "RETREAT!"
+		callRetreat = true
 	end
 	setText(Hud.attack, attackText)
 	setDisabled(Hud.attack, lockLeft > 0.05)
-	local compact = Hud.m and Hud.m.Compact
-	setText(Hud.retreat, (B.order == "Retreat" and not compact) and "RETREATING" or "RETREAT")
-	local ringA = Hud.attack:FindFirstChild("ActiveRing")
-	local ringR = Hud.retreat:FindFirstChild("ActiveRing")
-	if ringA then
-		ringA.Visible = B.order == "Attack" and B.focus ~= nil
-	end
-	if ringR then
-		ringR.Visible = B.order == "Retreat"
-	end
+	setText(Hud.retreat, retreatText)
+	B.cue = callAttack and "Attack" or (callRetreat and "Retreat" or nil)
+	local blink = 0.6 * (0.5 + 0.5 * sin(now * 9))
+	Hud.SetRing(Hud.attack:FindFirstChild("ActiveRing"), callAttack or (B.order == "Attack" and B.focus ~= nil), callAttack and blink or 0)
+	Hud.SetRing(Hud.retreat:FindFirstChild("ActiveRing"), retreating or callRetreat, callRetreat and blink or 0)
 	if Hud.focusPill and not (Hud.m and Hud.m.Compact) then
 		local f = B.focus and B.units[B.focus]
 		local text = f and ("TARGET: " .. f.name .. "  X") or ""
@@ -2932,6 +3066,20 @@ function Hud.Update(B, now, force)
 			Hud.focusPill.Visible = f ~= nil
 			Hud.focusText.Text = text
 		end
+	end
+end
+
+-- shows / hides an ActiveRing; a calling ring pulses (stroke transparency)
+function Hud.SetRing(ring, on, transparency)
+	if not ring then
+		return
+	end
+	if ring.Visible ~= on then
+		ring.Visible = on
+	end
+	local stroke = ring:FindFirstChildOfClass("UIStroke")
+	if stroke and abs(stroke.Transparency - transparency) > 0.02 then
+		stroke.Transparency = transparency
 	end
 end
 
@@ -3020,6 +3168,8 @@ function Hud.ShowResult(B, payload)
 		Abandoned = "Everyone left the raid.",
 		Ended = "The raid has ended.",
 		Error = "The battle was cancelled. No rewards were lost.",
+		Void = "Both players left: this duel does not count.",
+		Shutdown = raid and "The server is restarting: your damage so far still counts." or "The server is restarting: this battle does not count.",
 	}
 	local sub = reasons[tostring(payload.Reason)] or ""
 	if B.Mode == "Trial" then
@@ -3084,6 +3234,8 @@ function Hud.ShowResult(B, payload)
 	Hud.top.Visible = false
 	Hud.team.Visible = false
 	Hud.cmd.Visible = false
+	Hud.teamPlace = nil
+	Hud.SetMenuHidden(false)
 	local keep = St.result and St.result.payload == payload and St.result.t0 -- a relayout (rotation) keeps the timer
 	St.result = { t0 = keep or os.clock(), dur = K.RESULT_SECONDS, battle = B, payload = payload }
 	BattleController._wake()
@@ -3099,8 +3251,11 @@ function Hud.RewardLines(B, rw)
 	if gems > 0 then
 		lines[#lines + 1] = { "+" .. Theme.ShortNumber(gems) .. " Gems", Theme.Currency.Gems.Color }
 	end
+	if rw.Practice == true then
+		lines[#lines + 1] = { "Practice duel: no rewards", COLORS.Weak }
+	end
 	local trophies = num(rw.Trophies, 0)
-	if trophies ~= 0 or B.Mode == "Duel" then
+	if trophies ~= 0 or (B.Mode == "Duel" and rw.Practice ~= true and rw.Void ~= true) then
 		lines[#lines + 1] = { (trophies >= 0 and "+" or "") .. tostring(trophies) .. " Trophies", trophies >= 0 and COLORS.Gold or COLORS.Enemy }
 	end
 	local xp = num(rw.Xp, 0)
@@ -3110,7 +3265,9 @@ function Hud.RewardLines(B, rw)
 	if rw.FirstClear == true then
 		lines[#lines + 1] = { "First clear!", COLORS.Mine }
 	end
-	if rw.Tier then
+	if rw.Tier == "None" then
+		lines[#lines + 1] = { "Too little damage: no reward", COLORS.Weak }
+	elseif rw.Tier then
 		local share = num(rw.Share, 0)
 		lines[#lines + 1] = { tostring(rw.Tier) .. " tier", COLORS.Gold }
 		lines[#lines + 1] = { tostring(floor(share * 100 + 0.5)) .. "% of the damage", Color3.fromRGB(150, 110, 220) }
@@ -3168,6 +3325,25 @@ function Hud.SetVisible(on)
 		Hud.top.Visible = false
 		Hud.team.Visible = false
 		Hud.cmd.Visible = false
+		Hud.teamPlace = nil
+		Hud.SetMenuHidden(false)
+	end
+end
+
+-- the menu column (MenuController) steps aside while the team cards use the left edge of a landscape phone
+function Hud.SetMenuHidden(on)
+	on = on == true
+	if (Hud.menuHidden == true) == on then
+		return
+	end
+	local module = script.Parent:FindFirstChild("MenuController")
+	local ok, menu = pcall(function()
+		return module and require(module)
+	end)
+	if ok and type(menu) == "table" and type(menu.SetColumnHidden) == "function" and pcall(menu.SetColumnHidden, on) then
+		Hud.menuHidden = on
+	elseif not on then
+		Hud.menuHidden = false
 	end
 end
 
@@ -3393,6 +3569,9 @@ function BattleController.Command(action, arg)
 				row.shakeAt = now
 				Hud.Shake(row.Special)
 			end
+			if u and u.hp > 0 and u.special and u.meter >= METER_MAX and B.order == "Retreat" then
+				Hud.Shake(Hud.attack) -- a full special waits for ATTACK: point at it
+			end
 			return false
 		end
 	end
@@ -3544,7 +3723,7 @@ end
 
 function Net.Snapshot(payload, battleId)
 	local B = St.battle
-	if not B or type(payload) ~= "table" or type(payload.Units) ~= "table" then
+	if not B or type(payload) ~= "table" then
 		return
 	end
 	local id = payload.BattleId or battleId
@@ -3559,7 +3738,16 @@ function Net.Snapshot(payload, battleId)
 	if #snaps > 0 and T <= snaps[#snaps].T then
 		return -- out of order / duplicate
 	end
-	snaps[#snaps + 1] = { T = T, Units = payload.Units }
+	local units = payload.Units
+	if type(units) ~= "table" then
+		-- the wire form: only what changed since the last snapshot; the rest of the picture is carried forward
+		if type(payload.U) ~= "table" or not BattleSim or type(BattleSim.DecodeSnapshot) ~= "function" then
+			return
+		end
+		units = BattleSim.DecodeSnapshot(payload, B.lastUnits)
+		B.lastUnits = units
+	end
+	snaps[#snaps + 1] = { T = T, Units = units }
 	while #snaps > K.MAX_SNAPS do
 		table.remove(snaps, 1)
 	end
@@ -3696,7 +3884,7 @@ local function stepBattle(B, now, dt)
 	if not B.ended then
 		if B.haveOffset then
 			local latest = B.snaps[#B.snaps]
-			local t = now + B.offset - K.INTERP_DELAY
+			local t = now + B.offset - interpDelay(B)
 			if latest and t > latest.T + 0.15 then
 				t = latest.T + 0.15
 			end
@@ -3871,7 +4059,21 @@ function BattleController.GetBattle()
 			end
 			return n
 		end)(),
+		Threat = B.threat == true,
+		Cue = B.cue,
+		InterpDelay = interpDelay(B),
+		TeamPlace = Hud.teamPlace,
 	}
+end
+
+-- the drawn telegraphs (tests): { { Id, Shape, At, From, SafeAt, Late } ... } on the render clock
+function BattleController.GetTelegraphs()
+	local B = St.battle
+	local out = {}
+	for id, tl in pairs(B and B.teles or {}) do
+		out[#out + 1] = { Id = id, Shape = tl.shape, At = tl.at, From = tl.from, SafeAt = tl.safeAt, Late = tl.late == true }
+	end
+	return out
 end
 
 function BattleController.GetUnit(id)
@@ -3952,6 +4154,7 @@ function BattleController.Stop()
 		St.loop:Disconnect()
 		St.loop = nil
 	end
+	Hud.SetMenuHidden(false)
 	if Hud.gui then
 		Hud.gui:Destroy()
 	end

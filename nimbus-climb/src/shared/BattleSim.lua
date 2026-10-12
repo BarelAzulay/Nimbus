@@ -48,8 +48,8 @@
 --   BattleSim.DecodeSnapshot(payload, previous) -> Units    the client side: the full picture { [id] = { x, z, hp,
 --       state, meter, shield, target } } from a SnapshotDelta payload and the previous picture (nil at the start);
 --       untouched units keep their previous table. Junk payloads decode to the previous picture.
---   battle:Abort(reason) -> ok      ends a running battle now with no winner (Reason = reason, e.g. "Shutdown"): the
---       result still carries Damage / Shares / Survivors
+--   battle:Abort(reason) -> ok, events   ends a running battle now with no winner (Reason = reason, e.g. "Shutdown"):
+--       the result still carries Damage / Shares / Survivors; the events hold the End event
 --   battle:Result() -> nil while running, else { Mode, Reason, WinnerSide, Winners = { owner... },
 --       Losers = { owner... }, Draw, Forfeit, Level (Trial), BossId (Raid), Damage = { [owner] = n },
 --       Shares = { [owner] = 0..1 }, Duration, Survivors = { [owner] = n }, BossHp, BossMaxHp }
@@ -383,7 +383,6 @@ local function newTeamRecord(self, spec, side)
 		forfeited = false,
 		left = false,
 		index = #self.teams + 1,
-		hpShare = 0,
 		powerMult = {},
 		healthMult = 1,
 	}
@@ -648,18 +647,38 @@ function BattleSim:AddTeam(spec)
 	if self.started then
 		local boss = self.boss
 		if boss and boss.alive and not team.npc and side == 1 then
-			-- the newcomer's full share joins the boss; the group factor grows with the (weighted) head count
-			local before = self:_groupFactor(self:_effectiveTeams(team))
-			local after = self:_groupFactor(self:_effectiveTeams())
-			local share = team.dps * boss.hpSeconds
-			team.hpShare = share
-			boss.maxHp = boss.maxHp * after / before + share * after
-			boss.hp = boss.hp * after / before + share * after
+			-- the boss grows by what the newcomer brings (BattleCatalog.BossHp over everyone still in); the damage dealt
+			-- so far stays dealt
+			local before = boss.maxHp
+			boss.maxHp = self:_bossMaxHp()
+			boss.hp = max(1, boss.hp + (boss.maxHp - before))
 		end
 		self:_refreshRaidScale()
 		self.pending[#self.pending + 1] = { type = EV.Spawn, units = out, owner = spec.Owner }
 	end
 	return out
+end
+
+-- BattleCatalog.BossHp over the player teams still in the raid (their current pets)
+function BattleSim:_bossMaxHp()
+	local bc = catalog()
+	local specs = {}
+	for _, t in ipairs(self.teams) do
+		if t.side == 1 and not t.npc and not t.left then
+			local pets = {}
+			for j, u in ipairs(t.units) do
+				pets[j] = { Def = u.def, Level = u.level, Tier = u.tier }
+			end
+			specs[#specs + 1] = { Pets = pets }
+		end
+	end
+	if bc and bc.BossHp then
+		local hp = bc.BossHp(self.bossId, specs)
+		if finite(hp) and hp > 0 then
+			return hp
+		end
+	end
+	return 1000
 end
 
 -- player teams still in the raid (side 1, not NPC, not left)
@@ -687,14 +706,6 @@ function BattleSim:_effectiveTeams(excluding)
 		return bc.WeightedTeams(dpsList)
 	end
 	return #dpsList
-end
-
-function BattleSim:_groupFactor(n)
-	local bc = catalog()
-	if bc and bc.GroupFactor then
-		return bc.GroupFactor(n)
-	end
-	return 1
 end
 
 local bossBasis -- defined with the boss patterns below
@@ -760,27 +771,8 @@ local function makeBoss(self, bossId)
 	}
 	self.teams[#self.teams + 1] = team
 	self.teamByOwner["boss"] = team
-	local playerTeams = {}
-	for _, t in ipairs(self.teams) do
-		if t.side == 1 and not t.npc then
-			playerTeams[#playerTeams + 1] = t
-		end
-	end
-	local hp = 1000
-	local shares = {}
-	if bc.BossHp then
-		local specs = {}
-		for i, t in ipairs(playerTeams) do
-			specs[i] = { Pets = {} }
-			for j, u in ipairs(t.units) do
-				specs[i].Pets[j] = { Def = u.def, Level = u.level, Tier = u.tier }
-			end
-		end
-		hp, shares = bc.BossHp(bossId, specs)
-	end
-	for i, t in ipairs(playerTeams) do
-		t.hpShare = shares[i] or 0
-	end
+	self.bossId = bossId
+	local hp = self:_bossMaxHp()
 	local attacks = {}
 	for i, a in ipairs(def.Attacks or {}) do
 		attacks[i] = { def = a, nextAt = num(a.First, 6 + i * 6) } -- the first telegraph a few seconds in, then on cooldown
@@ -801,7 +793,6 @@ local function makeBoss(self, bossId)
 		elems = { def.Element },
 		maxHp = hp,
 		hp = hp,
-		hpSeconds = num(def.HpPerPlayer, 150),
 		hit = 0,
 		interval = num(def.Basic and def.Basic.Interval, 2.5),
 		moveSpeed = 0,
@@ -1073,6 +1064,139 @@ function BattleSim:Snapshot()
 		end
 	end
 	return { BattleId = self.id, T = r1(self.t), Units = units }
+end
+
+-- the wire form (see the header): the units whose picture changed since `last`, as flat numbers
+function BattleSim:SnapshotDelta(last)
+	if type(last) ~= "table" then
+		last = {}
+	end
+	local U = {}
+	local n = 0
+	local list = self.units
+	for i = 1, #list do
+		local u = list[i]
+		if not u.gone then
+			local hp = 0
+			if u.alive then
+				hp = ceil(u.hp - 0.0001)
+				if hp < 1 then
+					hp = 1
+				end
+			end
+			local x, z = r1(u.x), r1(u.z)
+			local meter = floor(u.meter + 0.5)
+			local shield = u.shield > 0 and floor(u.shield + 0.5) or 0
+			local tgt = u.target
+			local target = (tgt and tgt.alive and not tgt.gone) and tgt.id or 0
+			local l = last[u.id]
+			local mask = 0
+			if not l then
+				l = {}
+				last[u.id] = l
+				mask = MASK_HP + MASK_METER + MASK_SHIELD + MASK_TARGET
+			else
+				if l.hp ~= hp then
+					mask = mask + MASK_HP
+				end
+				if l.meter ~= meter then
+					mask = mask + MASK_METER
+				end
+				if l.shield ~= shield then
+					mask = mask + MASK_SHIELD
+				end
+				if (l.target or 0) ~= target then
+					mask = mask + MASK_TARGET
+				end
+			end
+			if mask > 0 or l.x ~= x or l.z ~= z or l.state ~= u.state then
+				l.x, l.z, l.hp, l.state, l.meter, l.shield = x, z, hp, u.state, meter, shield
+				l.target = (target ~= 0) and target or nil
+				local xi = floor((max(-POS_OFFSET, min(POS_OFFSET, x)) + POS_OFFSET) * POS_STEPS + 0.5)
+				local zi = floor((max(-POS_OFFSET, min(POS_OFFSET, z)) + POS_OFFSET) * POS_STEPS + 0.5)
+				U[n + 1] = u.id * 128 + mask * 8 + u.state
+				U[n + 2] = xi * POS_BASE + zi
+				n = n + 2
+				if mask % (MASK_HP * 2) >= MASK_HP then
+					n = n + 1
+					U[n] = hp
+				end
+				if mask % (MASK_METER * 2) >= MASK_METER then
+					n = n + 1
+					U[n] = meter
+				end
+				if mask % (MASK_SHIELD * 2) >= MASK_SHIELD then
+					n = n + 1
+					U[n] = shield
+				end
+				if mask % (MASK_TARGET * 2) >= MASK_TARGET then
+					n = n + 1
+					U[n] = target
+				end
+			end
+		end
+	end
+	return { BattleId = self.id, T = r1(self.t), U = U }
+end
+
+-- the client side of SnapshotDelta: the full picture from the payload and the previous picture (see the header)
+function BattleSim.DecodeSnapshot(payload, previous)
+	local out = {}
+	if type(previous) == "table" then
+		for id, rec in pairs(previous) do
+			out[id] = rec
+		end
+	end
+	local U = type(payload) == "table" and payload.U
+	if type(U) ~= "table" then
+		return out
+	end
+	local i = 1
+	local n = #U
+	while i + 1 <= n do
+		local code, pos = U[i], U[i + 1]
+		if not finite(code) or not finite(pos) or code ~= floor(code) or code < 128 or pos ~= floor(pos) or pos < 0 then
+			break -- junk: keep what decoded so far
+		end
+		local state = code % 8
+		local mask = floor(code / 8) % 16
+		local id = floor(code / 128)
+		local xi = floor(pos / POS_BASE)
+		local zi = pos % POS_BASE
+		local prev = out[id]
+		local rec = {
+			x = xi / POS_STEPS - POS_OFFSET,
+			z = zi / POS_STEPS - POS_OFFSET,
+			state = state,
+			hp = prev and prev.hp or nil,
+			meter = prev and prev.meter or 0,
+			shield = prev and prev.shield or 0,
+			target = prev and prev.target or nil,
+		}
+		i = i + 2
+		if mask % (MASK_HP * 2) >= MASK_HP then
+			rec.hp = tonumber(U[i])
+			i = i + 1
+		end
+		if mask % (MASK_METER * 2) >= MASK_METER then
+			rec.meter = tonumber(U[i]) or 0
+			i = i + 1
+		end
+		if mask % (MASK_SHIELD * 2) >= MASK_SHIELD then
+			rec.shield = tonumber(U[i]) or 0
+			i = i + 1
+		end
+		if mask % (MASK_TARGET * 2) >= MASK_TARGET then
+			local target = tonumber(U[i]) or 0
+			rec.target = (target > 0) and target or nil
+			i = i + 1
+		end
+		if i > n + 1 then
+			break -- a record cut short
+		end
+		out[id] = rec
+	end
+	return out
 end
 
 ----------------------------------------------------------------------
@@ -1895,7 +2019,11 @@ local function retreatSpot(self, team, u)
 			break
 		end
 		if tele.shape == "Line" then
-			local side = lineSide(x, z, tele.x, tele.z, tele.angle)
+			-- out to the side the pet itself is on (retreatStep sends the pet toward this spot: one direction for both)
+			local side = lineSide(u.x, u.z, tele.x, tele.z, tele.angle)
+			if side == 0 then
+				side = lineSide(x, z, tele.x, tele.z, tele.angle)
+			end
 			if side == 0 then
 				side = (idx % 2 == 0) and 1 or -1
 			end
@@ -1927,16 +2055,30 @@ local function retreatStep(self, u, dt)
 	local sx, sz = retreatSpot(self, team, u)
 	local tele = telegraphAt(self, u.side, u.x, u.z, u.radius)
 	if tele and tele.shape == "Line" then
-		local side = lineSide(u.x, u.z, tele.x, tele.z, tele.angle)
-		if side == 0 then
-			side = lineSide(sx, sz, tele.x, tele.z, tele.angle)
-		end
-		if side == 0 then
-			side = (u.id % 2 == 0) and 1 or -1
-		end
+		-- the shortest way out: past the line's end (lines stop just behind the pet they aim at; the same way out of
+		-- every line of a fan) when that stays on the floor, else sideways
+		local margin = num(D.TelegraphMargin, 1.5)
+		local dirX, dirZ = cos(tele.angle), sin(tele.angle)
+		local dx, dz = u.x - tele.x, u.z - tele.z
+		local along = dx * dirX + dz * dirZ
+		local perp = abs(dx * dirZ - dz * dirX)
+		local outEnd = tele.length + u.radius + margin - along
+		local outSide = tele.width / 2 + u.radius + margin - perp
 		local step = u.moveSpeed * dt
-		u.x = u.x + side * sin(tele.angle) * step
-		u.z = u.z - side * cos(tele.angle) * step
+		local ex, ez = tele.x + dirX * (along + outEnd), tele.z + dirZ * (along + outEnd)
+		if outEnd < outSide and abs(ex) <= self.zone.HalfX - u.radius and abs(ez) <= self.zone.HalfZ - u.radius then
+			u.x, u.z = u.x + dirX * step, u.z + dirZ * step
+		else
+			-- toward the side the spot lies on (the spot was moved out of this line on the pet's own side)
+			local side = lineSide(sx, sz, tele.x, tele.z, tele.angle)
+			if side == 0 then
+				side = lineSide(u.x, u.z, tele.x, tele.z, tele.angle)
+			end
+			if side == 0 then
+				side = (u.id % 2 == 0) and 1 or -1
+			end
+			u.x, u.z = u.x + side * dirZ * step, u.z - side * dirX * step
+		end
 		u.atHome = false
 	else
 		local left = moveToward(u, sx, sz, u.moveSpeed * dt, 0.3)
@@ -2257,6 +2399,17 @@ local function checkEnd(self, events)
 	end
 end
 
+-- ends a running battle now with no winner (a server shutdown): the result keeps every team's damage and shares.
+-- Returns ok and the End event (Step returns nothing more once finished).
+function BattleSim:Abort(reason)
+	if self.result then
+		return false
+	end
+	local events = {}
+	finish(self, nil, type(reason) == "string" and reason or "Aborted", events)
+	return true, events
+end
+
 function BattleSim:Step(dt)
 	local events = {}
 	if self.result then
@@ -2459,17 +2612,11 @@ function BattleSim:RemoveTeam(owner)
 		end
 	end
 	local boss = self.boss
-	if boss and boss.alive and team.hpShare > 0 then
-		-- the leaver's share goes (at the boss's current HP fraction) and the group factor shrinks with the head count
-		team.left = false
-		local before = self:_groupFactor(self:_effectiveTeams())
-		team.left = true
-		local after = self:_groupFactor(self:_effectiveTeams())
+	if boss and boss.alive and team.side == 1 then
+		-- the leaver's share goes, at the boss's current HP fraction (BattleCatalog.BossHp over everyone still in)
 		local frac = boss.hp / boss.maxHp
-		local maxHp = (boss.maxHp - team.hpShare * before) * after / before
-		boss.maxHp = max(1, maxHp)
+		boss.maxHp = max(1, self:_bossMaxHp())
 		boss.hp = max(1, min(frac * boss.maxHp, boss.maxHp))
-		team.hpShare = 0
 	end
 	self:_refreshRaidScale()
 	self.pending[#self.pending + 1] = { type = EV.Leave, owner = owner, units = ids }

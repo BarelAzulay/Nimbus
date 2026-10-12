@@ -10,6 +10,8 @@
 --          MenuController.IsOpen() -> true while a window, the odds popup or the roulette stage is up
 --          MenuController.IsPrewarmed(petId) -> true once that pet was pre-sculpted for the roulette strip
 --          MenuController.OpenFeed(key) -> opens Pets with the Feed picker of that pet copy
+--          MenuController.SetColumnHidden(hidden) -> hides / shows the menu tiles (BattleController: the team cards
+--          take the left edge of a landscape phone during a battle; the column frame keeps its place)
 --
 -- Screen: ScreenGui "NimbusMenu" (display order 20, IgnoreGuiInset = false).
 --   * Menu column, left-centre (the reference style): square-ish rounded icon tiles with a big glyph and a
@@ -2051,6 +2053,9 @@ local function buildTile(column, spec, index)
 	end
 	paintTile(entry)
 	Entries[spec.Id] = entry
+	if U.ColumnHidden and entry.Root then
+		entry.Root.Visible = false -- a battle on a landscape phone holds the left edge (SetColumnHidden)
+	end
 	return entry
 end
 
@@ -8417,6 +8422,18 @@ end
 -- hides its menu pointer meanwhile)
 function MenuController.IsOpen()
 	return openId ~= nil or Odds.Gui ~= nil or Spin.Stage ~= nil
+end
+
+-- Phase 3 (BattleController): hides the menu tiles while the battle team cards use the left edge of a landscape
+-- phone (nothing may sit in the screen centre there); false shows them again. The (transparent) column frame keeps
+-- its place, so the HUD, the tutorial and the DEV tile that measure it do not move.
+function MenuController.SetColumnHidden(hidden)
+	U.ColumnHidden = hidden == true
+	for _, entry in pairs(Entries) do
+		if entry.Root then
+			entry.Root.Visible = not U.ColumnHidden
+		end
+	end
 end
 
 -- Debug helper (smoke tests): true once `petId` was pre-sculpted at the roulette strip's detail.

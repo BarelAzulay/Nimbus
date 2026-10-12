@@ -800,6 +800,15 @@ local function onBattleEnded(battleId, result)
 			participants[#participants + 1] = tonumber(uid)
 		end
 	end
+	-- the raiders who were still in at the end (result.Fighters; leavers are not counted): the toast and LastRaid.Players
+	local fighters = {}
+	if type(result.Fighters) == "table" then
+		for _, uid in ipairs(result.Fighters) do
+			fighters[#fighters + 1] = tonumber(uid)
+		end
+	else
+		fighters = participants
+	end
 	-- fallback payer: only when BattleService did not pay (never both)
 	local rewards = type(result.Rewards) == "table" and result.Rewards or {}
 	local bs = battleService()
@@ -829,7 +838,7 @@ local function onBattleEnded(battleId, result)
 	while #top > 5 do
 		table.remove(top)
 	end
-	St.lastRaid = { BossId = bossId, Name = bossName(bossId), Won = won, Players = #participants, Top = top, EndedAt = now() }
+	St.lastRaid = { BossId = bossId, Name = bossName(bossId), Won = won, Players = #fighters, Top = top, EndedAt = now() }
 	St.raid = nil
 	local raidSlot = St.slots.BossRaid
 	local nextText = ""
@@ -839,7 +848,7 @@ local function onBattleEnded(battleId, result)
 	if #participants == 0 then
 		notifyAll("Nobody fought " .. bossName(bossId) .. "." .. nextText, "info", 5)
 	elseif won then
-		notifyAll(bossName(bossId) .. " was defeated by " .. #participants .. (#participants == 1 and " raider!" or " raiders!") .. nextText, "good", 6)
+		notifyAll(bossName(bossId) .. " was defeated by " .. #fighters .. (#fighters == 1 and " raider!" or " raiders!") .. nextText, "good", 6)
 	else
 		notifyAll(bossName(bossId) .. " won this time." .. nextText, "info", 6)
 	end
@@ -855,7 +864,7 @@ local function onBattleEnded(battleId, result)
 			end
 		end
 	end
-	EventService.EventEnded:Fire("BossRaid", { Kind = "BossRaid", BossId = bossId, Name = bossName(bossId), Won = won, Players = #participants, BattleId = battleId })
+	EventService.EventEnded:Fire("BossRaid", { Kind = "BossRaid", BossId = bossId, Name = bossName(bossId), Won = won, Players = #fighters, BattleId = battleId })
 	EventService.Broadcast()
 end
 

@@ -230,8 +230,8 @@ if CONTEXT ~= "server" then
 				if type(payload) ~= "table" then
 					return
 				end
-				if kind == "Start" and payload.Mode == "Trial" and not trialId then
-					trialId = payload.BattleId
+				if kind == "Start" and payload.Mode == "Trial" and type(payload.Trial) == "table" and payload.Trial.Level == 2 and not trialId then
+					trialId = payload.BattleId -- Trial 2: Trial 1 (one handicapped pet) is over in a few snapshots
 				elseif kind == "Snapshot" and payload.BattleId == trialId and not seen.trialHud then
 					seen.snaps = seen.snaps + 1
 					if seen.snaps == 12 then
@@ -246,7 +246,7 @@ if CONTEXT ~= "server" then
 						seen.trialHud = {
 							ok = b ~= nil and b.Id == trialId and b.Mode == "Trial" and b.Fighter == true and b.Spectator ~= true and BCtl.IsHudVisible(),
 							rows = rows,
-							top = hasText(at(battleGui(), "Root.TopCard"), "TRIAL 1"),
+							top = hasText(at(battleGui(), "Root.TopCard"), "TRIAL 2"),
 							models = b and b.Models or 0,
 							units = b and b.Units or 0,
 						}
@@ -303,7 +303,7 @@ if CONTEXT ~= "server" then
 			end
 		end, 0.25)
 		local th = seen.trialHud
-		T.check(th ~= nil and th.ok and th.rows == 3 and th.top, "client flow: Ava's real Trial 1 messages: BattleController draws her as a fighter (HUD: TRIAL 1, one row per pet)",
+		T.check(th ~= nil and th.ok and th.rows == 3 and th.top, "client flow: Ava's real Trial 2 messages: BattleController draws her as a fighter (HUD: TRIAL 2, one row per pet)",
 			th and ("rows " .. th.rows .. " top " .. tostring(th.top)) or "never reached")
 		T.check(th ~= nil and th.models == th.units and th.units >= 6, "client flow: ...every unit of the real 'Start' has a model", th and (th.models .. "/" .. th.units) or "")
 		T.check(seen.trialEnd ~= nil and seen.trialEnd.ok, "client flow: ...the real 'End' shows VICTORY with the tokens the server paid and First clear",
@@ -1398,7 +1398,7 @@ S.p3flow_trials = scenario("p3flow_trials", function()
 	-- Trials 1, 2, 3: won, first-clear rewards once, XP, the record
 	local cleared = {}
 	for level = 1, 3 do
-		F.record = level == 1 -- the client half replays Ava's first trial
+		F.record = level == 2 -- the client half replays Ava's Trial 2 (Trial 1 is over in a few snapshots)
 		local r = runTrial(ava, level, {
 			stay = true,
 			duringStart = function(out)
@@ -1425,6 +1425,9 @@ S.p3flow_trials = scenario("p3flow_trials", function()
 				"flow trials: Ava fights Trial 1 in her private pocket ('Start': Mode Trial, Side 1, Trial { Level 1 })")
 			T.check(#slots == 3 and slots[1] == 1 and slots[3] == 3 and keys[1] == TEAMS.Ava[1] and keys[2] == TEAMS.Ava[2] and keys[3] == TEAMS.Ava[3],
 				"flow trials: ...her units are her preset's keys in slots 1-3 (static unit info carries slot + key)", listText(keys))
+		end
+		if level == 2 then
+			-- (Trial 1 is one handicapped pet and is over before a command lands)
 			T.check(r.orders > 0, "flow trials: ...her BattleCommand Attack orders reach the battle (Order events)", tostring(r.orders))
 		end
 		local res, rw = r.result, r.rw
@@ -1458,46 +1461,49 @@ S.p3flow_trials = scenario("p3flow_trials", function()
 		"flow trials: a repeat clear of Trial 1 pays TrialRewards(1).Tokens only (" .. wantRepeat .. ")", r1.rw and tostring(r1.paid) or tostring(r1.refused))
 	F.facts.avaRepeat1 = wantRepeat
 
-	-- Bo loses Trial 1 with his one-pet preset: nothing paid, nothing cleared
+	-- Bo's one-pet preset (a level-1 pebble pup, the tutorial's situation) WINS Trial 1 without a single command: the
+	-- first fight is a sure thing; the same pet then LOSES Trial 2: nothing paid, nothing cleared
 	local mB = K.logSize()
 	request(bo, "TeamSelect", 2)
 	advance(0.3)
 	T.check(sameList(data.ActiveTeamKeys(bo), { TEAMS.BoWeak }) and (toasted(bo, "Team 2 is your battle team", mB)),
 		"flow trials: Bo selects his one-pet preset (BattleRequest TeamSelect)")
-	local rb = runTrial(bo, 1, {})
+	local rb1 = runTrial(bo, 1, { commands = false })
 	local bUnits = 0
-	for _, u in ipairs(rb.start and rb.start.Units or {}) do
+	for _, u in ipairs(rb1.start and rb1.start.Units or {}) do
 		if u.owner == bo.UserId then
 			bUnits = bUnits + 1
 		end
 	end
-	T.check(rb.id ~= nil and bUnits == 1, "flow trials: Bo's trial uses the ACTIVE preset (one unit)", tostring(bUnits))
+	T.check(rb1.id ~= nil and bUnits == 1, "flow trials: Bo's trial uses the ACTIVE preset (one unit)", tostring(bUnits))
+	local wantB1 = trialReward(1, rb1.rw, true)
+	T.check(rb1.result and contains(rb1.result.Winners, bo.UserId) and rb1.paid == wantB1 and record(bo).TrialCleared[1] == true,
+		"flow trials: Bo's single level-1 pet WINS Trial 1 without pressing anything (first clear paid once)", rb1.result and tostring(rb1.result.Reason) or "no end")
+	local rb = runTrial(bo, 2, {})
 	T.check(rb.result and contains(rb.result.Losers, bo.UserId) and #rb.result.Winners == 0 and rb.endMsg and rb.endMsg.Outcome == "Loss",
-		"flow trials: Bo LOSES Trial 1 (Outcome Loss)", rb.result and tostring(rb.result.Reason) or "no end")
-	T.check(rb.paid == 0 and (rb.rw == nil or (rb.rw.Tokens or 0) == 0) and record(bo).TrialCleared[1] ~= true and (toasted(bo, "lost", rb.mark)),
-		"flow trials: ...nothing is paid, Trial 1 stays uncleared, a side toast says so")
+		"flow trials: ...and LOSES Trial 2 (Outcome Loss)", rb.result and tostring(rb.result.Reason) or "no end")
+	T.check(rb.paid == 0 and (rb.rw == nil or (rb.rw.Tokens or 0) == 0) and record(bo).TrialCleared[2] ~= true and (toasted(bo, "lost", rb.mark)),
+		"flow trials: ...nothing is paid, Trial 2 stays uncleared, a side toast says so")
 	local okXp0 = gainedXp(bo, rb.xp0, 0)
 	T.check(okXp0, "flow trials: ...and a lost trial gives no pet XP")
-	-- with his main team he wins it
+	-- with his main team he wins Trial 2
 	request(bo, "TeamSelect", 1)
 	advance(0.3)
-	local rb2 = runTrial(bo, 1, {})
-	local wantB = trialReward(1, rb2.rw, true)
-	T.check(rb2.result and contains(rb2.result.Winners, bo.UserId) and rb2.paid == wantB and record(bo).TrialCleared[1] == true,
-		"flow trials: Bo wins Trial 1 with his main team (first clear paid once)", tostring(rb2.paid))
+	local rb2 = runTrial(bo, 2, {})
+	local wantB = trialReward(2, rb2.rw, true)
+	T.check(rb2.result and contains(rb2.result.Winners, bo.UserId) and rb2.paid == wantB and record(bo).TrialCleared[2] == true,
+		"flow trials: Bo wins Trial 2 with his main team (first clear paid once)", tostring(rb2.paid))
 
 	-- Cy inside the tutorial: no arrow while he fights; the win -> 'raid'
-	local hidden = nil
-	local rc = runTrial(cy, 1, {
-		during = function()
-			if hidden == nil then
-				advance(0.6)
-				local st = tutorial(cy)
-				hidden = st ~= nil and st.Id == "trial" and st.Target == nil
-			end
-		end,
-	})
+	-- (Trial 1 is over before the tutorial's poll sees the fight: the InBattle attribute stands in for it here)
+	cy:SetAttribute("InBattle", "flow-fake-battle")
+	advance(1.2)
+	local stHidden = tutorial(cy)
+	local hidden = stHidden ~= nil and stHidden.Id == "trial" and stHidden.Target == nil
+	cy:SetAttribute("InBattle", nil)
+	advance(1.2)
 	T.check(hidden == true, "flow tutorial: no guide arrow while Cy fights (InBattle)")
+	local rc = runTrial(cy, 1, {})
 	local cUnits = 0
 	for _, u in ipairs(rc.start and rc.start.Units or {}) do
 		if u.owner == cy.UserId then
@@ -2122,13 +2128,14 @@ S.p3flow_raid = scenario("p3flow_raid", function()
 		local rw = res.Rewards[uid]
 		local share = res.Shares[uid] or 0
 		shareSum = shareSum + share
-		local tier = bc.RaidTier(share, won)
+		-- nil below BattleCatalog.Raid.MinShare: that fighter earns nothing (Tier "None")
+		local tier = bc.RaidTier(share, won) or { Id = "None", Tokens = 0, Gems = 0, Xp = 0 }
 		local b = before[p]
 		local paidTokens = tokens(p) - b.tokens
 		local paidGems = gems(p) - b.gems
 		local line = p.Name .. " " .. tostring(rw and rw.Tier) .. " " .. string.format("%.2f", share) .. " +" .. paidTokens .. "t +" .. paidGems .. "g " .. tostring(rw and rw.EventPet)
-		local ok = rw ~= nil and rw.Tier == tier.Id and rw.Double == true and rw.Tokens == tier.Tokens * mult and paidTokens == rw.Tokens
-			and rw.Gems == tier.Gems and paidGems == tier.Gems and contains(res.Winners, uid)
+		local ok = rw ~= nil and rw.Tier == tier.Id and rw.Tokens == tier.Tokens * mult and paidTokens == rw.Tokens
+			and rw.Gems == tier.Gems and paidGems == tier.Gems and contains(res.Winners, uid) and (tier.Id == "None" or rw.Double == true)
 		if won then
 			local pet = rw and rw.EventPet
 			local prof = data.GetProfile(p)
@@ -2146,7 +2153,11 @@ S.p3flow_raid = scenario("p3flow_raid", function()
 	end
 	T.check(good, "flow raid: each fighter got the tier of their damage share: Tokens x" .. mult .. " (Double Rewards), its Gems, an event pet they did not have (owned, discovered, Battle.EventPets), the tier's pet XP, Raids + 1",
 		table.concat(detail, " | "))
-	T.check(abs(shareSum - 1) < 0.02, "flow raid: the damage shares of the fighters add up to 1", string.format("%.3f", shareSum))
+	local allShares = 0
+	for _, share in pairs(res.Shares) do
+		allShares = allShares + share
+	end
+	T.check(abs(allShares - 1) < 0.001 and shareSum > 0.9, "flow raid: the damage shares add up to 1 (the fighters' plus what Gus and Eli dealt before leaving)", string.format("%.3f / %.3f", shareSum, allShares))
 	T.check(res.Rewards[gus.UserId] == nil and tokens(gus) == before[gus].tokens and (record(gus).Raids or 0) == (before[gus].rec.Raids or 0),
 		"flow raid: Gus, who left early, gets nothing")
 	local se = stored(IDS.Eli)
@@ -2166,8 +2177,9 @@ S.p3flow_raid = scenario("p3flow_raid", function()
 		shout = (toasted(hal, "won the event pet " .. tostring(petDef and petDef.Name), mO))
 	end
 	T.check(not won or shout, "flow raid: the others hear who won an event pet (Hal hears about Ava's)")
-	local okAll, allText = toasted(hal, bossName .. " was defeated by " .. #res.Participants .. " raiders", mO)
-	T.check(not won or okAll, "flow raid: everyone hears how the raid went (" .. #res.Participants .. " raiders: everyone who fought it)", allText)
+	local fighters = type(res.Fighters) == "table" and #res.Fighters or -1
+	local okAll, allText = toasted(hal, bossName .. " was defeated by " .. fighters .. " raiders", mO)
+	T.check(fighters == #fightersLeft and (not won or okAll), "flow raid: everyone hears how the raid went (" .. fighters .. " raiders: those still in at the end, not Gus and Eli who left)", allText)
 	-- nothing is paid twice (EventService's fallback payer stays out of it)
 	local after = {}
 	for _, p in ipairs(fightersLeft) do
@@ -2183,8 +2195,8 @@ S.p3flow_raid = scenario("p3flow_raid", function()
 	T.check(not twice, "flow raid: nothing more is paid afterwards (rewards exactly once)")
 	-- EventService after the raid
 	local stE = es.GetState()
-	T.check(stE.LastRaid and stE.LastRaid.BossId == bossId and stE.LastRaid.Won == won and stE.LastRaid.Players == #res.Participants and type(stE.LastRaid.Top) == "table",
-		"flow raid: EventService.GetState().LastRaid sums it up (boss, won, " .. #res.Participants .. " participants, top damage)", stE.LastRaid and plain(stE.LastRaid) or "nil")
+	T.check(stE.LastRaid and stE.LastRaid.BossId == bossId and stE.LastRaid.Won == won and stE.LastRaid.Players == #fightersLeft and type(stE.LastRaid.Top) == "table",
+		"flow raid: EventService.GetState().LastRaid sums it up (boss, won, " .. #fightersLeft .. " raiders still in at the end, top damage)", stE.LastRaid and plain(stE.LastRaid) or "nil")
 	local mE = K.logSize()
 	advance(5.5)
 	local stAfter = lastArenaState(ava, mE)
