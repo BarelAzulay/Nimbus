@@ -14,8 +14,18 @@
 --                   rewards and step counts;
 --                 * every script of src/ is named in the project layout, the place-file instructions name the Rojo
 --                   build and tools/verify_place.py, and every "#anchor" link points at a heading.
+--                 * Phase 3 (pet battles): the "## Pet battles" section covers what the player asked for (the arena
+--                   by the plaza bridge and the home Arena Gate, the Team screen and slot 4 at Prestige 1, ATTACK /
+--                   RETREAT / SPECIAL with F / R / 1-4 and touch, RETREAT's auto resume, Trials 1-30, duels by
+--                   challenge and queue, practice duels, trophies and the leaderboard, Boss Raids and dodging, Double
+--                   Rewards, the Boss Raid pets, elements and synergy, /raid + Start Boss Raid, Studio's Clients and
+--                   Servers) and its numbers are BattleCatalog's (team size, RETREAT, specials, synergy, the Trial
+--                   chapters / rewards / first-clear Gems, the trophy table, BattleService's fair-play constants, the
+--                   raid schedule, the boss table, enrage and time limit, the reward tiers, Double Rewards) and
+--                   BattleController's key bindings; the rest of the README no longer calls battles "coming", counts
+--                   the Index pets and gives tutorial chapter 3's step count and reward.
 --                 A failure says what the README states and what the game has: update README.md (or the module).
--- README.md, DevService.lua and TutorialService.lua are read as text from the working directory (smoke.py /
+-- README.md, DevService.lua, TutorialService.lua, BattleService.lua and BattleController.lua are read as text from the working directory (smoke.py /
 -- run_checks.sh run from the repo root), like smoke_p2_economy.lua reads tools/sim_tycoon.py. The place file itself is
 -- checked by tools/verify_place.py: it is rebuilt at release time, so it may lag behind src/ while people work.
 -- Plain Lua 5.1 syntax only.
@@ -827,6 +837,325 @@ local function checkAnchors(lines, fences, text)
 end
 
 ----------------------------------------------------------------------------------------------------
+-- Phase 3: pet battles (the "## Pet battles" section and the battle bits of the rest of the README)
+----------------------------------------------------------------------------------------------------
+local TOPICS3 = {
+	{ "getting to the arena: the bridge and the home Arena Gate", { "Battle Arena", "bridge", "BATTLE ARENA", "**Arena Gate**", "press **E**" } },
+	{ "the Team screen", { "**Team**", "Use this team", "team power" } },
+	{ "the battle buttons and keys", { "**ATTACK**", "**RETREAT**", "**SPECIAL**", "`F`", "`R`", "`1`-`4`", "Phone", "tap the pet's card" } },
+	{ "what RETREAT does", { "less damage", "go back to fighting by themselves", "short rest", "RESTING" } },
+	{ "Trials at the Trial Portal", { "Trial Portal", "mini-boss", "first clear", "START" } },
+	{ "duels: challenge, the quick queue, practice duels", { "duel rings", "Challenge", "Accept", "Find a match", "practice duel" } },
+	{ "trophies and the leaderboard", { "Trophies", "leaderboard", "top 10" } },
+	{ "Boss Raids: joining and dodging", { "Boss Raid", "JOIN RAID", "circle or line", "RETREAT** before it is full", "minion waves", "enraged" } },
+	{ "Double Rewards", { "Double Rewards" } },
+	{ "elements and team synergy in battle", { "synergy", "Balanced" } },
+	{ "the developer raid tools", { "/raid", "Start Boss Raid" } },
+	{ "testing duels in Studio", { "Test", "Clients and Servers", "2 players" } },
+}
+
+local function minutesText(seconds)
+	seconds = floor((tonumber(seconds) or 0) + 0.5)
+	local m, s = floor(seconds / 60), seconds % 60
+	if s == 0 then
+		return m .. (m == 1 and " minute" or " minutes")
+	end
+	return m .. " min " .. s .. " s"
+end
+
+local function hoursText(minutes)
+	local h = (tonumber(minutes) or 0) / 60
+	return num(h) .. (h == 1 and " hour" or " hours")
+end
+
+local function scheduleOf(BC, kind)
+	for _, row in ipairs(((BC.Events or {}).Schedule) or {}) do
+		if row.Kind == kind then
+			return row
+		end
+	end
+	return {}
+end
+
+-- the elements that are strong against `element` (Config.Elements.Strong)
+local function strongAgainst(Config, element)
+	local out = {}
+	local E = Config.Elements or {}
+	for _, attacker in ipairs(E.Order or {}) do
+		for _, victim in ipairs((E.Strong or {})[attacker] or {}) do
+			if victim == element then
+				out[#out + 1] = attacker
+			end
+		end
+	end
+	return out
+end
+
+local function sourceNumber(src, name)
+	return src and tonumber(src:match("%f[%w_]" .. name .. "%s*=%s*(%d+%.?%d*)")) or nil
+end
+
+local function checkBattleTopics(p3)
+	local f = flat(p3)
+	local t = T.tally("docs: the README's Pet battles section covers every part the player asked for", 6)
+	for _, topic in ipairs(TOPICS3) do
+		for _, word in ipairs(topic[2]) do
+			t:case(has(f, word), topic[1] .. ": the section never says " .. show(word))
+		end
+	end
+	t:report()
+end
+
+local function checkBattleRules(BC, Config, TC, p3, text, controllerSource)
+	local t = T.tally("docs: teams, RETREAT, specials, elements and synergy match BattleCatalog / Config / TycoonCatalog", 6)
+	local f = flat(p3)
+	local D = BC.Damage or {}
+	-- the team
+	t:case(has(f, "**" .. tostring(BC.BaseTeamSize) .. " team slots**"), "the team has " .. tostring(BC.BaseTeamSize) .. " slots ('**N team slots**')")
+	local unlock = (TC.Prestige or {}).TeamSlotUnlock
+	t:case(unlock ~= nil and has(f, "**" .. tostring(BC.MaxTeamSize) .. "th slot opens at Prestige " .. tostring(unlock) .. "**"),
+		"slot " .. tostring(BC.MaxTeamSize) .. " opens at Prestige " .. tostring(unlock))
+	-- RETREAT
+	local less = "**" .. num((1 - (tonumber(D.RetreatDamageTaken) or 1)) * 100) .. " % less damage**"
+	t:case(has(f, less), "RETREAT: the section should say " .. show(less))
+	local regen = "**" .. num((tonumber(D.RetreatRegenPerSecond) or 0) * 100) .. " % of their health every second**"
+	t:case(has(f, regen), "RETREAT: the section should say " .. show(regen))
+	local lock = "ATTACK works again after **" .. num(D.RetreatLock) .. " s**"
+	t:case(has(f, lock), "RETREAT: the section should say " .. show(lock))
+	local rest = "short rest of " .. num(D.RetreatAutoResume) .. " s"
+	t:case(D.RetreatAutoResume ~= nil and has(f, rest), "RETREAT: the auto resume should read " .. show(rest))
+	-- specials
+	for _, kind in ipairs(BC.SpecialKinds or {}) do
+		t:case(has(f, "**" .. kind .. "**"), "the special kind " .. kind .. " is not named")
+	end
+	-- elements and synergy
+	local E = Config.Elements or {}
+	t:case(has(f, "**x" .. num(E.StrongMultiplier) .. "**") and has(f, "**x" .. num(E.WeakMultiplier) .. "**"),
+		"the battle section should give the element multipliers x" .. num(E.StrongMultiplier) .. " / x" .. num(E.WeakMultiplier))
+	local R = BC.SynergyRules or {}
+	local same = R.SameElement or {}
+	t:case(has(f, "**+" .. num((same[2] or 0) * 100) .. " % Power**"), "synergy: 2 of one element give +" .. num((same[2] or 0) * 100) .. " % Power")
+	for n = 3, 4 do
+		local want = "**" .. n .. " of one element +" .. num((same[n] or 0) * 100) .. " %"
+		t:case(same[n] ~= nil and has(f, want), "synergy: the section should say " .. show(want))
+	end
+	local balanced = "**" .. tostring(R.BalancedElements) .. " or more different elements:**"
+	t:case(has(f, balanced), "synergy: the section should say " .. show(balanced))
+	t:case(has(f, "**+" .. num((R.BalancedHealth or 0) * 100) .. " % Health**"), "synergy: Balanced gives +" .. num((R.BalancedHealth or 0) * 100) .. " % Health")
+	-- the keys: the controls table and the section quote what BattleController binds
+	local function bound(action, key)
+		return controllerSource ~= nil and controllerSource:find("K%." .. action .. ",[^\n]*Enum%.KeyCode%." .. key .. "[,%)]") ~= nil
+	end
+	local controls = rowsByName(tableRows(splitLines(text), "| Action | PC |"))
+	for _, spec in ipairs({ { "ACTION_ATTACK", "F", "ButtonX", "X", "Battle: ATTACK (your pets fight)" }, { "ACTION_RETREAT", "R", "ButtonY", "Y", "Battle: RETREAT (your pets run back to you)" } }) do
+		t:case(bound(spec[1], spec[2]) and bound(spec[1], spec[3]), "BattleController binds " .. spec[1] .. " to " .. spec[2] .. " and " .. spec[3])
+		local row = controls[spec[5]]
+		t:case(row ~= nil and row[2] == "`" .. spec[2] .. "`" and row[4] == "`" .. spec[4] .. "`", "the controls table row " .. show(spec[5])
+			.. " should read `" .. spec[2] .. "` / `" .. spec[4] .. "`")
+	end
+	for i, key in ipairs({ "One", "Two", "Three", "Four" }) do
+		t:case(controllerSource ~= nil and controllerSource:find("%[Enum%.KeyCode%." .. key .. "%]%s*=%s*" .. i) ~= nil, "BattleController maps key " .. i .. " to slot " .. i)
+	end
+	t:report()
+end
+
+local function checkTrials(BC, lines, trialText)
+	local t = T.tally("docs: the Trials (levels, chapters, rewards, time) match BattleCatalog", 6)
+	local f = flat(trialText)
+	t:case(has(f, "**" .. tostring(BC.TrialCount) .. " levels**"), "the Trial count " .. tostring(BC.TrialCount))
+	local step = nil
+	for lv = 1, BC.TrialCount or 0 do
+		if BC.Trials[lv] and BC.Trials[lv].MiniBoss then
+			step = lv
+			break
+		end
+	end
+	t:case(step ~= nil and has(f, "**mini-boss** (one big pet) on every " .. step .. "th level"), "the mini-boss comes every " .. tostring(step) .. "th level")
+	t:case(has(f, "You have **" .. minutesText((BC.TimeLimits or {}).Trial) .. "** to win"), "a Trial lasts " .. minutesText((BC.TimeLimits or {}).Trial))
+	local rows = tableRows(lines, "| Levels | Chapter |")
+	if t:case(rows ~= nil, "no Trial chapter table (| Levels | Chapter | Enemy pets |)") then
+		t:case(#rows == #(BC.TrialChapters or {}), "the chapter table has " .. #rows .. " rows, BattleCatalog " .. #(BC.TrialChapters or {}))
+		for i, ch in ipairs(BC.TrialChapters or {}) do
+			local row = rows[i] or {}
+			t:case(row[1] == ch.From .. "-" .. ch.To and row[2] == ch.Name, "chapter " .. i .. ": the README says " .. show(row[1]) .. " " .. show(row[2])
+				.. ", BattleCatalog " .. ch.From .. "-" .. ch.To .. " " .. ch.Name)
+		end
+	end
+	local R = BC.TrialRewardRules or {}
+	local first, last = BC.TrialRewards(1), BC.TrialRewards(BC.TrialCount)
+	local tokens = R.Tokens.Base .. " + " .. R.Tokens.PerLevel .. " x the level Cloud Tokens (**" .. first.Tokens .. "** at level 1 up to **"
+		.. last.Tokens .. "** at level " .. BC.TrialCount .. ")"
+	t:case(has(f, tokens), "the win tokens should read " .. show(tokens))
+	local xp = R.Xp.Base .. " + " .. R.Xp.PerLevel .. " x the level XP for every pet of your team (**" .. first.Xp .. "** up to **" .. last.Xp .. "**)"
+	t:case(has(f, xp), "the win XP should read " .. show(xp))
+	local fc = R.FirstClearTokens or {}
+	t:case(has(f, fc.PerLevel .. " x the level tokens") and fc.BossMult == 2 and has(f, "twice that on a mini-boss level"),
+		"the first clear pays " .. tostring(fc.PerLevel) .. " x the level tokens, x" .. tostring(fc.BossMult) .. " on mini-boss levels")
+	t:case(first.FirstClear.Tokens == fc.PerLevel and BC.TrialRewards(5).FirstClear.Tokens == fc.PerLevel * 5 * fc.BossMult,
+		"TrialRewards follows FirstClearTokens as documented")
+	local gemRows, header = tableRows(lines, "| First clear of level |")
+	if t:case(gemRows ~= nil and gemRows[1] ~= nil, "no first-clear Gems table (| First clear of level | 5 | 10 | ...)") then
+		local levels = {}
+		for lv in pairs(R.FirstClearGems or {}) do
+			levels[#levels + 1] = lv
+		end
+		table.sort(levels)
+		t:case(#header == #levels + 1, "the Gems table has " .. (#header - 1) .. " levels, BattleCatalog " .. #levels)
+		for i, lv in ipairs(levels) do
+			t:case(header[i + 1] == tostring(lv) and gemRows[1][i + 1] == num(R.FirstClearGems[lv]), "first clear of level " .. lv .. ": the README says "
+				.. show(header[i + 1]) .. " -> " .. show(gemRows[1][i + 1]) .. ", BattleCatalog " .. num(R.FirstClearGems[lv]) .. " Gems")
+			t:case(BC.TrialRewards(lv).FirstClear.Gems == R.FirstClearGems[lv], "TrialRewards(" .. lv .. ") pays the documented Gems")
+		end
+	end
+	t:report()
+end
+
+local function checkDuels(BC, lines, duelText, serviceSource)
+	local t = T.tally("docs: duels, trophies and the fair-play rules match BattleCatalog.Trophies / BattleService", 6)
+	local f = flat(duelText)
+	local TR = BC.Trophies or {}
+	local function signed(n)
+		n = tonumber(n) or 0
+		return (n > 0 and "+" or "") .. num(n)
+	end
+	local rows = tableRows(lines, "| Result | Trophies |")
+	if t:case(rows ~= nil, "no trophy table (| Result | Trophies | Cloud Tokens | XP for every team pet |)") then
+		local byName = rowsByName(rows)
+		t:case(#rows == 3, "the trophy table should have the rows Win, Draw, Loss")
+		for _, spec in ipairs({ { "Win", TR.Win, TR.Tokens.Win, TR.Xp.Win }, { "Draw", TR.Draw, TR.Tokens.Draw, TR.Xp.Loss }, { "Loss", TR.Loss, TR.Tokens.Loss, TR.Xp.Loss } }) do
+			local row = byName[spec[1]]
+			if t:case(row ~= nil, "no trophy row " .. spec[1]) then
+				t:case(row[2] == signed(spec[2]), spec[1] .. ": trophies " .. show(row[2]) .. " vs " .. signed(spec[2]))
+				t:case(row[3] == num(spec[3]), spec[1] .. ": tokens " .. show(row[3]) .. " vs " .. num(spec[3]))
+				t:case(row[4] == num(spec[4]), spec[1] .. ": XP " .. show(row[4]) .. " vs " .. num(spec[4]))
+			end
+		end
+	end
+	t:case(TR.Forfeit == TR.Loss and has(f, "during a duel counts as a loss"), "a leaver loses like a loss (Forfeit = Loss)")
+	t:case(has(f, "Trophies never drop below " .. num(TR.Floor)), "the trophy floor " .. tostring(TR.Floor))
+	t:case(has(f, "A duel lasts up to **" .. minutesText((BC.TimeLimits or {}).Duel) .. "**"), "a duel lasts " .. minutesText((BC.TimeLimits or {}).Duel))
+	local pairLimit, pairWindow = sourceNumber(serviceSource, "PAIR_LIMIT"), sourceNumber(serviceSource, "PAIR_WINDOW")
+	local early, gap = sourceNumber(serviceSource, "FORFEIT_MIN_SECONDS"), sourceNumber(serviceSource, "DUEL_POWER_GAP")
+	local invite = sourceNumber(serviceSource, "CHALLENGE_TIMEOUT")
+	if t:case(pairLimit and pairWindow and early and gap and invite, "BattleService's PAIR_LIMIT / PAIR_WINDOW / FORFEIT_MIN_SECONDS / DUEL_POWER_GAP / CHALLENGE_TIMEOUT are readable") then
+		local pairText = "**" .. num(pairLimit) .. " duels every " .. num(pairWindow / 60) .. " minutes**"
+		t:case(has(f, pairText), "the pair limit should read " .. show(pairText))
+		t:case(has(f, "the first **" .. num(early) .. " seconds**"), "the early-forfeit rule should say " .. num(early) .. " seconds")
+		t:case(has(f, "more than **" .. num(gap) .. " times** stronger"), "the practice rule should say more than " .. num(gap) .. " times stronger")
+		t:case(has(f, "**Decline** (" .. num(invite) .. " seconds)"), "an invite lasts " .. num(invite) .. " seconds")
+	end
+	t:report()
+end
+
+local function checkRaids(BC, PC, Config, lines, raidText, doubleText)
+	local t = T.tally("docs: Boss Raids (schedule, bosses, timings, reward tiers, raid pets) and Double Rewards match BattleCatalog", 6)
+	local f = flat(raidText)
+	local ev = BC.Events or {}
+	local raid = scheduleOf(BC, "BossRaid")
+	t:case(has(f, "**every " .. num(raid.EveryMinutes) .. " minutes**"), "a raid every " .. tostring(raid.EveryMinutes) .. " minutes")
+	t:case(has(f, "the first one " .. minutesText(ev.FirstAfterSeconds) .. " after a server starts"), "the first raid " .. minutesText(ev.FirstAfterSeconds) .. " after the start")
+	t:case(has(f, "**" .. minutesText(raid.AnnounceSeconds) .. "** before"), "the raid is announced " .. minutesText(raid.AnnounceSeconds) .. " before")
+	t:case(has(f, "**first " .. num(ev.JoinWindowSeconds) .. " seconds**"), "joining is open the first " .. tostring(ev.JoinWindowSeconds) .. " seconds")
+	local rows = tableRows(lines, "| Boss | Element |")
+	if t:case(rows ~= nil, "no boss table (| Boss | Element | Strong pets against it | Its big attacks |)") then
+		t:case(#rows == #(BC.BossOrder or {}), "the boss table has " .. #rows .. " rows, BattleCatalog " .. #(BC.BossOrder or {}) .. " bosses")
+		for i, id in ipairs(BC.BossOrder or {}) do
+			local boss = BC.Bosses[id] or {}
+			local row = rows[i] or {}
+			t:case(plain(row[1]) == boss.Name, "boss " .. i .. " of the rotation: the README says " .. show(plain(row[1])) .. ", BattleCatalog " .. tostring(boss.Name))
+			t:case(row[2] == boss.Element, tostring(boss.Name) .. ": element " .. show(row[2]) .. " vs " .. tostring(boss.Element))
+			t:case(row[3] == table.concat(strongAgainst(Config, boss.Element), ", "), tostring(boss.Name) .. ": strong pets " .. show(row[3]) .. " vs "
+				.. table.concat(strongAgainst(Config, boss.Element), ", "))
+			for _, a in ipairs(boss.Attacks or {}) do
+				t:case(has(row[4], a.Name), tostring(boss.Name) .. ": the attack " .. show(a.Name) .. " is not named")
+			end
+			t:case(boss.EnrageAt == BC.Bosses[BC.BossOrder[1]].EnrageAt and boss.TimeLimit == BC.Bosses[BC.BossOrder[1]].TimeLimit,
+				tostring(boss.Name) .. ": every boss shares the documented enrage time and time limit")
+		end
+		local first = BC.Bosses[(BC.BossOrder or {})[1]] or {}
+		t:case(has(f, "**enraged** after **" .. minutesText(first.EnrageAt) .. "**"), "the enrage comes after " .. minutesText(first.EnrageAt))
+		t:case(((BC.BossRules or {}).Enrage or {}).Damage == 2 and has(f, "hits twice as hard"), "enraged bosses hit x" .. tostring(((BC.BossRules or {}).Enrage or {}).Damage))
+		t:case(has(f, "after **" .. minutesText(first.TimeLimit) .. "**"), "a raid ends after " .. minutesText(first.TimeLimit))
+	end
+	local R = BC.Raid or {}
+	local tiers = tableRows(lines, "| Tier | Your share of the damage |")
+	if t:case(tiers ~= nil, "no raid tier table (| Tier | Your share of the damage | ...)") then
+		t:case(#tiers == #(R.Tiers or {}), "the tier table has " .. #tiers .. " rows, BattleCatalog " .. #(R.Tiers or {}))
+		for i, tier in ipairs(R.Tiers or {}) do
+			local row = tiers[i] or {}
+			local gems = (tier.Gems or 0) > 0 and (num(tier.Gems) .. " (" .. num(tier.GemChance * 100) .. " % chance)") or "-"
+			local want = { tier.Id, num(tier.MinShare * 100) .. " % or more", num(tier.Tokens), num(tier.Xp), gems, num(tier.EventPetChance * 100) .. " %" }
+			for c = 1, 6 do
+				local got = c == 1 and plain(row[1]) or row[c]
+				t:case(got == want[c], tier.Id .. " column " .. c .. ": the README says " .. show(got) .. ", BattleCatalog " .. show(want[c]))
+			end
+		end
+	end
+	t:case(has(f, "dealt at least " .. num(R.MinShare * 100) .. " %") and has(f, "Under " .. num(R.MinShare * 100) .. " % of the damage"),
+		"the minimum share " .. num(R.MinShare * 100) .. " % (no reward below it)")
+	t:case(has(f, "**" .. num(R.LossTokens) .. " tokens** and **" .. num(R.LossXp) .. " XP**"), "a lost raid pays " .. tostring(R.LossTokens) .. " tokens and "
+		.. tostring(R.LossXp) .. " XP")
+	local pets = type(PC.EventPets) == "function" and PC.EventPets() or {}
+	t:case(#pets >= 2, "PetCatalog has the Boss Raid pets")
+	for _, def in ipairs(pets) do
+		t:case(has(f, "**" .. def.Name .. "** (" .. tostring(def.Element)), "the Boss Raid pet " .. def.Name .. " (" .. tostring(def.Element) .. ") is not named")
+	end
+	t:case(has(f, "**The " .. NUMBER_WORDS[#pets]:lower() .. " Boss Raid pets**"), "the section should count " .. #pets .. " Boss Raid pets")
+	-- Double Rewards
+	local d = flat(doubleText)
+	local double = scheduleOf(BC, "DoubleRewards")
+	t:case(has(d, "Every **" .. hoursText(double.EveryMinutes) .. "**"), "Double Rewards every " .. hoursText(double.EveryMinutes))
+	t:case(has(d, "for **" .. hoursText((double.DurationSeconds or 0) / 60) .. "**"), "Double Rewards last " .. hoursText((double.DurationSeconds or 0) / 60))
+	t:case(has(d, "**x" .. num(ev.DoubleRewardsMultiplier) .. " Cloud Tokens**"), "Double Rewards pay x" .. num(ev.DoubleRewardsMultiplier))
+	t:case(has(d, "(announced " .. minutesText(double.AnnounceSeconds) .. " before"), "Double Rewards are announced " .. minutesText(double.AnnounceSeconds) .. " before")
+	t:report()
+end
+
+local function checkBattleDrift(Config, PC, Steps, text, tutorialText, tutorialSource)
+	local t = T.tally("docs: the rest of the README knows Phase 3 (tutorial chapter 3, Index count, no 'coming' battles)", 6)
+	local f = flat(text)
+	for _, stale in ipairs({ "coming Pet Battles", "in the next update", "come in the next update", "Coming soon* until phase 3", "This build is **v3 phase 2**" }) do
+		t:case(not has(f, stale), "the README still says " .. show(stale))
+	end
+	t:case(has(f, "This build is **v3 phase 3**"), "the intro names this build v3 phase 3")
+	if type(PC.TotalCount) == "function" then
+		t:case(has(f, "\"Unlocked: x/" .. PC.TotalCount() .. "\""), "the Pet Index footer counts " .. PC.TotalCount() .. " pets")
+	end
+	local counts = 0
+	for _, step in ipairs((type(Steps) == "table" and Steps.Steps) or {}) do
+		if step.Chapter == 3 then
+			counts = counts + 1
+		end
+	end
+	local tf = flat(tutorialText)
+	t:case(counts > 0 and has(tf, "third chapter teaches pet battles in " .. string.lower(NUMBER_WORDS[counts] or "?") .. " steps"),
+		"tutorial chapter 3 has " .. counts .. " steps")
+	local tokens = tutorialSource and tonumber(tutorialSource:match("local ARENA_FINISH_TOKENS = (%d+)"))
+	if t:case(tokens ~= nil, "TutorialService.lua has ARENA_FINISH_TOKENS") then
+		t:case(has(tf, "**" .. commas(tokens) .. " Cloud Tokens** at the end. Players who finished the first two chapters"),
+			"the battle chapter reward of " .. commas(tokens) .. " Cloud Tokens")
+	end
+	t:report()
+end
+
+local function checkPhase3(Config, PC, TC, Steps, lines, text, sub)
+	local BC, err = requireModule("shared/BattleCatalog")
+	if not T.check(BC ~= nil, "docs: shared/BattleCatalog loads", err) then
+		return
+	end
+	local p3 = sub("## Pet battles")
+	if p3 == "" then
+		return
+	end
+	checkBattleTopics(p3)
+	checkBattleRules(BC, Config, TC, p3, text, (readFile("src/client/Controllers/BattleController.lua")))
+	checkTrials(BC, lines, sub("### Trials 1-30"))
+	checkDuels(BC, lines, sub("### Duels and trophies"), (readFile("src/server/Services/BattleService.lua")))
+	checkRaids(BC, PC, Config, lines, sub("### Boss Raids"), sub("### Double Rewards"))
+	checkBattleDrift(Config, PC, Steps, text, sub("## First steps"), (readFile("src/server/Services/TutorialService.lua")))
+end
+
+----------------------------------------------------------------------------------------------------
 -- scenario
 ----------------------------------------------------------------------------------------------------
 S.p2final_docs = guarded("p2final_docs", function()
@@ -868,6 +1197,7 @@ S.p2final_docs = guarded("p2final_docs", function()
 	checkTutorial(Config, Steps, sub("## First steps"), (readFile("src/server/Services/TutorialService.lua")))
 	checkLayout(sub("## Project layout"), sub("## Rebuilding the place file"))
 	checkAnchors(lines, fences, text)
+	checkPhase3(Config, PC, TC, Steps, lines, text, sub)
 	T.eq(#game:GetDescendants(), before, "docs: the checks are pure (no Instances created)")
 	K.flushErrors("p2final_docs")
 end)

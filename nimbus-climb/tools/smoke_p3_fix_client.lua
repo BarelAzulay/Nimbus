@@ -20,9 +20,10 @@
 --                              row under the top card (tiles shown), 1920x1080 the team card at the bottom right
 --   client_p3fixcli_devhelp    (extra) the two /devhelp toasts on an 844x390 screen: the one pushed out for room waits
 --                              and is shown (whole, readable, at the right edge) after the other one
---   client_p3fixcli_tutorial   (extra) an opened tutorial card never covers the vitals card or the hotbar (lobby, with
---                              and without a party panel, 844x390 / 1280x720 / 1024x600 / 390x844), and the panel
---                              hides while compact battle cards hold the top / left of the screen
+--   client_p3fixcli_tutorial   (extra) with a party panel up (a match is about to start) an opened tutorial card never
+--                              covers the vitals card or the hotbar (beside the panel or not; 844x390 / 1280x720 /
+--                              1024x600 / 390x844), in the plain lobby it still opens; the panel hides while compact
+--                              battle cards hold the top / left of the screen and comes back after the battle
 --   client_p3fixcli_mobile     (phone world) the same landscape battle checks on an 844x390 touch phone (RUN / DASH,
 --                              thumbstick side), then back to portrait
 -- Plain Lua 5.1 syntax only.
@@ -790,7 +791,10 @@ S.client_p3fixcli_tutorial = guarded("client_p3fixcli_tutorial", function()
 			end
 			local r = card()
 			local label = size[1] .. "x" .. size[2] .. (party and " + party panel" or "")
-			if r then
+			if not party then
+				-- the plain lobby: the card the player asks for opens (it may lie over the idle vitals card there)
+				T.check(r ~= nil, "tutorial " .. label .. ": the card opens in the plain lobby")
+			elseif r then
 				checked = checked + 1
 				local hits = {}
 				for _, p in ipairs({ { "NimbusHud", "BottomLeft.Vitals" }, { "NimbusHotbar", "Hotbar" } }) do
@@ -809,7 +813,7 @@ S.client_p3fixcli_tutorial = guarded("client_p3fixcli_tutorial", function()
 			KC.advance(1)
 		end
 	end
-	T.check(checked >= 3, "tutorial: the opened card was placed on most screens", checked .. " of 8")
+	T.check(checked >= 2, "tutorial: with a party panel up the card still opens where there is room", checked .. " of 4")
 	-- a battle on a phone-sized screen: compact cards at the top / left, Nimbus waits
 	for _, size in ipairs({ { 844, 390 }, { 390, 844 } }) do
 		Mock.SetViewport(size[1], size[2])

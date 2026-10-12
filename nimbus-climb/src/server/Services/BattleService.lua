@@ -906,7 +906,8 @@ local function flush(b)
 	if snap then
 		broadcast(b, "Snapshot", snap, "fighters")
 	end
-	if started or b.Steps % C.SPECTATOR_SNAPSHOT_EVERY == 0 then
+	-- (counted in sim steps since the last spectator snapshot: a tick that ran several steps never skips them for good)
+	if started or b.Steps - (b.SpectatorStep or -math.huge) >= C.SPECTATOR_SNAPSHOT_EVERY then
 		local spectators = false
 		for player in pairs(b.Spectators) do
 			if b.Receivers[player] then
@@ -917,6 +918,7 @@ local function flush(b)
 		if spectators then
 			local snapS = buildSnapshot(b, b.LastSpectators)
 			if snapS then
+				b.SpectatorStep = b.Steps
 				broadcast(b, "Snapshot", snapS, "spectators")
 			end
 		end
@@ -1181,6 +1183,13 @@ local function payDuelForfeit(b, part)
 	local player = part.Player
 	local T = BattleCatalog.Trophies or {}
 	local delta = tonumber(T.Forfeit) or tonumber(T.Loss) or 0
+	if b.Practice then
+		-- a practice duel counts for nothing either way: leaving it costs no trophies and no PvP loss
+		local rw = emptyRewards()
+		rw.Forfeit = true
+		rw.Practice = true
+		return rw
+	end
 	if type(try(dataService(), "GetProfile", player)) ~= "table" then
 		local rw = emptyRewards()
 		rw.Forfeit = true
@@ -1210,7 +1219,7 @@ local function refundForfeit(b, part)
 		return
 	end
 	local player = part.Player
-	if type(try(dataService(), "GetProfile", player)) == "table" then
+	if rw.Practice ~= true and type(try(dataService(), "GetProfile", player)) == "table" then
 		if finite(rw.Trophies) and rw.Trophies ~= 0 then
 			try(dataService(), "AddTrophies", player, -rw.Trophies)
 		end

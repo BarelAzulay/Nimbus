@@ -8,17 +8,38 @@ as a team: dash over gaps, dodge spinning bars, lightning and swinging beams, sh
 other back up. Along the way you collect **Cloud Tokens**, and back home you spend them on **pets** (from
 roulettes) and **usable items**, fill your **Pet Index**, and build your own **tycoon home**: claim a plot at
 its gate, build cloud presses that make **Cash**, put your pets to work, cook for them, train them, fuse them
-and prestige.
+and prestige. Then send your pet team into the **Battle Arena**: Trials against NPC teams, duels against other
+players and Boss Raids that the whole server fights together.
 
-Version 3 turns Nimbus Climb into a multi-concept game: the **tycoon homes** are the main mode, the climb (obby)
-stays as a side mode, and **pet battles** come in the next update. This build is **v3 phase 2**: phase 1 brought
-the new look, the pet collection and everything the later updates build on (see
-[What's new in v3](#whats-new-in-v3-phase-1)), phase 2 adds the tycoon homes, Cash, Gems, prestige and the Fusion
-Machine (see [Tycoon homes](#tycoon-homes-phase-2)).
+Version 3 turns Nimbus Climb into a multi-concept game: the **tycoon homes** are the main mode, **pet battles**
+are the second one, and the climb (obby) stays as a side mode. This build is **v3 phase 3**: phase 1 brought the
+new look, the pet collection and everything the later updates build on (see
+[What's new in v3](#whats-new-in-v3-phase-1)), phase 2 added the tycoon homes, Cash, Gems, prestige and the Fusion
+Machine (see [Tycoon homes](#tycoon-homes-phase-2)), and phase 3 adds the **Battle Arena**: Trials, duels and Boss
+Raids with your pet team (see [Pet battles](#pet-battles-phase-3)).
 
 Everything is built in code from plain parts and particles (no toolbox models), and all text uses one small
 `Theme` module, so the whole game shares the same chunky, friendly look. The only asset id in the code is the
 owner's own Stormfang artwork (`Config.Art.StormfangImage`).
+
+## What's new in phase 3: pet battles
+
+- **The Battle Arena.** A big colosseum on its own cloud island. Walk over the stone bridge from the village street,
+  or build the **Arena Gate** at home and press **E** at it to be there at once.
+- **Your battle team.** The new **Team** tile in the menu: pick up to 3 pets (a 4th slot opens at **Prestige 1**),
+  save up to 3 teams and see their power and element bonuses.
+- **Real-time battles.** Your pets fight on their own; you lead them with **ATTACK** (`F`), **RETREAT** (`R`) and
+  one **SPECIAL** per pet (`1`-`4`), or with big touch buttons on a phone.
+- **Trials 1-30.** The **Trial Portal** next to the five climb portals opens 30 levels of NPC pet teams, a
+  mini-boss every 5 levels, tokens, pet XP and Gems for first clears.
+- **Duels and trophies.** Challenge another player on the arena's duel rings or join the quick queue, win
+  **trophies** and climb the trophy **leaderboard**. Nobody ever loses a pet.
+- **Boss Raids.** About every 20 minutes a giant boss (Storm Titan, Lava Golem, Frost Wyrm or Shadow Hydra) stomps
+  into the colosseum and everyone fights it together: dodge its glowing attacks, win tokens, XP, Gems and maybe one
+  of the three **Boss Raid pets**. Every few hours a **Double Rewards** hour doubles the battle tokens.
+- **And around it:** a third tutorial chapter, new NPC tips about battles, and for the owner the **Start Boss
+  Raid** button (`/raid`) plus the evolved pet forms in the developer pet showcase (see
+  [Developer tools](#developer-tools-owner-only)).
 
 ## What's new in phase 2: tycoon homes
 
@@ -98,8 +119,8 @@ or the VS Code "Rojo" extension are the easy ways to get it).
   Hub). The village has exactly 16 home plots (`Config.Lobby.SpotCount`); a 17th player would still play but
   could not claim a home until a plot frees up.
 - **Saving needs a published place.** Tokens, Cash, Gems, pets (with their levels, Golden / Rainbow copies and
-  hybrids), food, items, stats, your home build, Pet Index progress and the tutorial step are saved in a
-  DataStore, and DataStores only work in a place published to Roblox (File -> Publish to Roblox). In Studio also
+  hybrids), food, items, stats, your home build, your battle teams, trophies, Trial progress and Boss Raid
+  pets, Pet Index progress and the tutorial step are saved in a DataStore, and DataStores only work in a place published to Roblox (File -> Publish to Roblox). In Studio also
   turn on Game Settings -> Security -> **Enable Studio Access to API Services**. Without these the game still
   runs, it just forgets everything when you stop. Saves happen on leave, every 90 s and at server shutdown (older
   v1, v2 and v3 phase 1 saves are migrated automatically).
@@ -111,7 +132,8 @@ or the VS Code "Rojo" extension are the easy ways to get it).
   [Selling Gems](#selling-gems-the-owners-setup)), the Shop's Gems tab says the packs open soon. Everything else
   works without them: players still earn Gems by prestiging.
 - Leave *StreamingEnabled* off. Everything else (sky, lighting, gravity, the village) is created by the scripts,
-  so an empty baseplate is all you need. To test parties use Test -> Clients and Servers with 2-4 players.
+  so an empty baseplate is all you need. To test parties and duels use Test -> Clients and Servers with 2-4
+  players (see [Testing battles in Studio](#testing-battles-in-studio-owner)).
 - **The Stormfang artwork** (Storm Altar poster, Stormfang's Pet Index banner) is the image id in
   `Config.Art.StormfangImage`. If it shows up blank, the image is still waiting for Roblox moderation, or the id
   needs replacing with your own upload.
@@ -125,9 +147,13 @@ or the VS Code "Rojo" extension are the easy ways to get it).
 | Run (drains stamina) | hold `Shift` | **RUN** button (tap to toggle) | `L3` (toggle) |
 | Dash (35 stamina, 1.6 s cooldown, works in the air) | `Q` | **DASH** button | `B` |
 | Use an item | `1` `2` `3` `4` (or click / tap a slot) | tap a slot | - |
-| Talk to an NPC pet, use the Storm Altar, claim a home, bank the Collector, feed at the bowl, use the Fusion Machine | `E` | tap the prompt | `X` |
+| Talk to an NPC pet, use the Storm Altar, claim a home, bank the Collector, feed at the bowl, use the Fusion Machine, the Arena Gate, the Trial Portal, a duel pad or the arena boards | `E` | tap the prompt | `X` |
 | Buy at a home pad (hold a moment) | hold `E` | hold the prompt | hold `X` |
 | Cook a Snack / Meal / Feast at your Kitchen counter | hold `E` / `R` / `F` | hold the prompt | hold `X` / `Y` / `B` |
+| Battle: **ATTACK** (your pets fight) | `F` | **ATTACK** button | `X` |
+| Battle: **RETREAT** (your pets run back to you) | `R` | **RETREAT** button | `Y` |
+| Battle: a pet's **SPECIAL** (when its card glows) | `1` `2` `3` `4` (or click its card) | tap its card | `LB` `RB` `LT` `RT` |
+| Battle: focus one enemy | click it (or its chip at the top) | tap it | - |
 | Close a window | `Esc` or the red X | red X | `B` |
 
 ## First steps: the tutorial
@@ -144,29 +170,37 @@ first chapter), build your first Cloud Press (free), build the Collector (free t
 Cash, follow the arrow from pad to pad until you can build the Kitchen, then cook a Snack and feed a pet. Nimbus
 pays **1,000 Cash** at the end. Players who finished the phase 1 tutorial start right at this chapter.
 
+A third chapter teaches pet battles in four steps: follow the arrow over the bridge into the Battle Arena, tap
+**Team** and put your pets in your team, press **E** at the Trial Portal and win Trial level 1 (it is made so that
+any single level-1 pet wins it, even without pressing SPECIAL), then join or watch a Boss Raid. Nimbus pays
+**500 Cloud Tokens** at the end. Players who finished the first two chapters start right at this one.
+
 Tap Nimbus' portrait to fold the card into a small bubble (and again to open it). The **Skip tutorial** link
 ends it (it asks first). Your step is saved, so the tutorial continues where you left off.
 
 ## The village
 
-- **The plaza** in the middle, with the five difficulty **portals** on a ring around it.
+- **The plaza** in the middle, with the five difficulty **portals** on a ring around it, and next to them the
+  crimson **Trial Portal** with crossed swords (see [Trials](#trials-1-30-the-trial-portal)).
 - **The shop island** (follow the boardwalk): four roulette machines and the item counter.
 - **Six NPC pets** stand along the plaza and the paths. Each one has a name tag; walk up and press **E** to
   talk. They cycle through a few tips each (Next / Close):
 
   | NPC | Talks about |
   |---|---|
-  | **Sparky Fox**, Movement Trainer | running, dashing, dash-only gaps, items |
-  | **Captain Penguin**, Co-op Captain | parties, reviving teammates, Phoenix Feather, pressure plates |
+  | **Sparky Fox**, Movement Trainer | running, dashing, dash-only gaps, items, the battle keys (ATTACK, RETREAT, SPECIAL) |
+  | **Captain Penguin**, Co-op Captain | parties, reviving teammates, Phoenix Feather, Boss Raids, dodging their glowing circles, the event board and Double Rewards |
   | **Granny Owl**, Pet Expert | roulettes and their chances (also with Gems), the Pet Index, cooking in the Kitchen and feeding pets |
-  | **Coach Corgi**, Token Coach | earning more tokens (win bonus, golden tokens, harder portals), training Combat pets in the Gym |
+  | **Coach Corgi**, Token Coach | earning more tokens (win bonus), training Combat pets in the Gym, the Trial Portal, your battle team, duels and trophies |
   | **Mayor Panda**, Village Mayor | claiming a home, Cloud Presses and the Collector, Home Level and the house tiers, Prestige, the Garden, the Home window |
-  | **Professor Axolotl**, Element Scholar | elements, the coming Pet Battles, the Fusion Machine, Gems and the Secret pets of the Storm Altar |
+  | **Professor Axolotl**, Element Scholar | elements, elements and team synergy in battle, the Fusion Machine, Gems and the Secret pets of the Storm Altar |
 
 - **The Storm Altar** on its dark storm cloud at the village edge, with Stormfang prowling over the portal
   disc. Press **E** at the altar to open the gems-only **Secret Roulette** (see
   [Gems](#gems-and-the-secret-roulette)).
 - **The 16 home plots** on the big outer ring (see [Tycoon homes](#tycoon-homes-phase-2)).
+- **The Battle Arena** on its own cloud island beyond the homes, reached by a stone bridge from the village street
+  (see [Pet battles](#pet-battles-phase-3)).
 - **The Sage Dragon** in the sky above it all.
 
 ## The five portals
@@ -258,7 +292,7 @@ currency; Cloud Tokens stay the climb currency.
 | **Kitchen** | Cooks pet food; a queue of 3 -> 10 dishes, up to 2x faster | 5 | the Pet Garden | 3,500 -> 1,100,000 |
 | **Gym** | 1 -> 5 places where Combat pets train: 20 -> 80 XP a minute each | 5 | the Kitchen | 14,000 -> 1,300,000 |
 | **Fusion Machine** | Golden / Rainbow upgrades and hybrids; -10 % / -20 % token costs at Lv 2 / 3 | 3 | the Kitchen + **Prestige 1** | 25,000 -> 800,000 |
-| **Arena Gate** | Opens the way to Pet Battles (the sign says *Coming soon* until phase 3) | 1 | the Gym | 150,000 |
+| **Arena Gate** | Opens the way to pet battles: press **E** at it to go straight to the Battle Arena | 1 | the Gym | 150,000 |
 | **Lanterns** | Decor along the path (wood, brass, crystal) | 3 | the Collector | 3,000 -> 210,000 |
 | **Garden Fence** | Decor around the yard (picket, hedge, cloudstone) | 3 | Cloud Press 2 Lv 2 | 7,000 -> 290,000 |
 | **Flower Beds** | Decor along the front fence (tulips, roses, starflowers) | 3 | the Pet Garden | 4,500 -> 240,000 |
@@ -322,7 +356,7 @@ stats at every level-up.
 
 Open **Pets**, pick a **Combat** pet and press **Train in Gym**. Every pet in the Gym gains XP by itself: 20 XP a
 minute at Gym level 1, up to 80 at level 5, with 1 to 5 places, while you are in the game with your home claimed
-(up to the pet's level cap). Get them strong for the coming Pet Battles.
+(up to the pet's level cap). Get them strong for [pet battles](#pet-battles-phase-3).
 
 ### The Vault and offline earnings
 
@@ -348,7 +382,7 @@ Home window shows what starts over, what you keep and what you get, and nothing 
   again as soon as those stations are rebuilt), Cloud Tokens and Gems.
 - **You get:** a **Prestige star** on your name tag, **x1.25 income** per star forever (it multiplies: x1.56 at 2
   stars, x1.95 at 3 ...), **Gems** (100 for the first prestige, 10 fewer for each later one, never under 25), and
-  at Prestige 1 the **Fusion Machine** pad (and the 4th battle-team slot for the coming Pet Battles).
+  at Prestige 1 the **Fusion Machine** pad (and the 4th slot of your battle team).
 
 ### The Fusion Machine (after Prestige 1)
 
@@ -446,6 +480,176 @@ Roulette's price and odds (`Config.Gems.SecretRoulette`) are in the same table. 
 `MarketplaceService.ProcessReceipt` in one place only (`GemService`): Roblox allows one per game, so do not add
 another one.
 
+## Pet battles (phase 3)
+
+Your pets can fight now. Battles happen in the **Battle Arena** and in the **Trials**. The server runs every fight
+and decides every hit; your pets move and attack by themselves, and you lead them with three kinds of buttons.
+Nobody ever loses a pet in a battle: a knocked-out pet just sits out until the fight is over. All the numbers below
+live in `src/shared/BattleCatalog.lua`, balanced with the battle simulation `tools/sim_battle.lua` (see
+`tools/README.md`).
+
+### Getting to the Battle Arena
+
+- **The bridge:** follow the village street past the five portals to the stone bridge with the **BATTLE ARENA**
+  arch and walk across. The arena is a big colosseum on its own cloud island: the round **boss floor** inside, two
+  **duel rings** on the square in front of it, the **event board** (next event and its countdown) and the **trophy
+  leaderboard** next to the main gate.
+- **The Arena Gate at home:** build the **Arena Gate** pad on your yard (150,000 Cash, after the Gym) and press
+  **E** at the gate: it takes you straight to the arena (not during a climb or a battle).
+- **The Trial Portal** is not in the arena: it stands on the plaza next to the five climb portals.
+
+The battle buttons only work inside a battle; everywhere else your pets just follow you as usual.
+
+### Your battle team: the Team screen
+
+Tap the **Team** tile in the menu. You have **3 team slots** (a **4th slot opens at Prestige 1**) and up to
+**3 saved teams** (the tabs *Team 1* to *Team 3*); **Use this team** picks the one you fight with. Tap a slot, then a pet: every pet
+shows its element, level and battle stats. The screen shows your **team power** (compare it with a Trial's
+recommended power), the element bonuses your team gets right now and the element wheel. A pet that works in your
+Garden or trains in your Gym cannot fight at the same time (unless you own another copy). Pet levels count a lot:
+feed your pets and train them in the Gym.
+
+### In a battle: ATTACK, RETREAT, SPECIAL
+
+| Button | PC | Phone | Gamepad | What it does |
+|---|---|---|---|---|
+| **ATTACK** | `F` | ATTACK button | `X` | Your pets go for the enemy. Click / tap an enemy first to make every pet focus it. |
+| **RETREAT** | `R` | RETREAT button | `Y` | Your pets break off and run back to you. |
+| **SPECIAL** | `1`-`4` (or click the pet's card) | tap the pet's card | `LB` `RB` `LT` `RT` | That pet's special attack, when its card glows gold. |
+
+- **RETREAT** is how you dodge and rest: retreating pets take **50 % less damage** and heal **2 % of their health
+  every second**. ATTACK works again after **1.5 s**. You do not have to press it: once every pet is back with you,
+  they **go back to fighting by themselves after a short rest of 3 s** (the RETREAT button counts it down as
+  *RESTING*). Press ATTACK any time to go back in sooner.
+- **SPECIAL:** every pet has its own special attack (see the Pet Index). Its meter fills while the pet fights and
+  gets hit (and slowly by itself); when it is full the card glows and you press its key or tap the card. A special
+  waits while your team rests (the card says *ATTACK first*). The seven kinds: **Blast** (damage around the target),
+  **Heal** (heals the whole team), **Shield** (shields the whole team for a few seconds), **Storm** (a storm cloud
+  that hurts enemies under it), **Pounce** (a dash and one heavy strike), **Freeze** (enemies around the target
+  cannot move or attack for a moment) and **Beam** (hits every enemy in a line).
+- **The screen:** the top card shows the fight (enemies or the boss, the time left); your team's cards with health
+  and special meters and the ATTACK / RETREAT buttons sit at the bottom right on a computer and at the screen edges
+  on a phone. Nothing covers the middle of the screen. Damage numbers pop up above the pets in the world, and the
+  result card at the end lists everything you won.
+
+### Elements and team synergy in battle
+
+Elements work in battle exactly like the [element wheel](#elements): a pet hitting an element it is strong against
+deals **x1.5** damage, a pet hitting an element that is strong against it only **x0.75**. A team also gets bonuses
+for its mix of elements (the Team screen shows them live):
+
+- **2 pets of the same element:** **+10 % Power** for those pets; **3 of one element +20 %**, **4 of one element
+  +30 %**.
+- **3 or more different elements:** **Balanced**, **+10 % Health** for the whole team.
+
+### Trials 1-30: the Trial Portal
+
+Press **E** at the **Trial Portal** on the plaza to open the Trial window: **30 levels** of NPC pet teams, each one a
+little stronger, with a **mini-boss** (one big pet) on every 5th level. Pick a level and press **START**: you are
+flown to a private battle arena in the sky (so many players can fight at once) and back to the portal after the
+fight. Beat level N to unlock level N+1. You have **2 minutes** to win; running out of time counts as a loss.
+Level 1 is a gentle start: one sleepy Pebble Pup that any single level-1 pet beats.
+
+| Levels | Chapter | Enemy pets |
+|---|---|---|
+| 1-5 | Cloud Meadow | Common pets |
+| 6-10 | Maple Grove | Uncommon pets |
+| 11-15 | Tidewater | Rare pets (teams of four from level 12) |
+| 16-20 | Thunderhead | Epic and Legendary pets |
+| 21-25 | Twilight Peak | Legendary and Mythic pets |
+| 26-30 | Eclipse | Mythic and Secret pets (Stormfang waits at level 30) |
+
+**Rewards for every win:** 10 + 3 x the level Cloud Tokens (**13** at level 1 up to **100** at level 30) and
+20 + 6 x the level XP for every pet of your team (**26** up to **200**). **The first clear** of a level pays a big
+bonus on top: 40 x the level tokens (twice that on a mini-boss level), and Gems on the mini-boss levels:
+
+| First clear of level | 5 | 10 | 15 | 20 | 25 | 30 |
+|---|---|---|---|---|---|---|
+| Gems | 5 | 8 | 12 | 16 | 20 | 30 |
+
+### Duels and trophies
+
+Duel other players on the two **duel rings** in front of the colosseum. Both of you must be in the arena.
+
+- **Challenge:** press **E** on a duel ring's pad to open the Arena panel on its **Duels** tab, and press
+  **Challenge** next to a player. They get a card at the right edge of their screen with **Accept** /
+  **Decline** (30 seconds). The duel starts on a free ring; you stand on its pad and watch your team fight theirs.
+- **Quick queue:** press **Find a match** on the Duels tab and the game pairs you with the waiting player whose
+  trophies are closest. **Leave** on the queue card at the right edge takes you out of the queue.
+- A duel lasts up to **2 minutes**; then the team with more health left wins.
+- **Trophies and rewards:**
+
+  | Result | Trophies | Cloud Tokens | XP for every team pet |
+  |---|---|---|---|
+  | **Win** | +20 | 40 | 60 |
+  | **Draw** | 0 | 15 | 25 |
+  | **Loss** | -10 | 10 | 25 |
+
+  Trophies never drop below 0. Leaving the arena or the game during a duel counts as a loss.
+  When both players leave together, or the server shuts down, the duel does not count for anyone.
+- **Fair play:** the same two players earn rewards from at most **3 duels every 30 minutes**; a win by a forfeit in
+  the first **15 seconds**, or against a team that never dealt any damage, pays nothing. When one team is more than
+  **3 times** stronger than the other (team power), the duel is a **practice duel**: a side toast says so, and
+  nobody wins or loses trophies, tokens or XP. Practice duels are great for trying things out with a friend.
+- **The leaderboard:** the trophy board by the main gate and the **Leaders** tab of the Arena panel show the top 10
+  players in the server by trophies. Your trophies are saved.
+
+### Boss Raids
+
+About **every 20 minutes** (the first one 5 minutes after a server starts) a giant boss stomps into the colosseum.
+Everyone gets a side toast **2 minutes** before, and the event board counts down. When the raid opens, go into the
+arena and press **JOIN RAID** on the raid card at the right edge (or on the **Boss Raid** tab of the Arena panel): you
+can join during the **first 60 seconds**. Your team runs onto the boss floor and fights together with everyone
+else's. The boss has more health the more teams really fight it.
+
+| Boss | Element | Strong pets against it | Its big attacks |
+|---|---|---|---|
+| **Storm Titan** | Storm | Earth | Thunder Slam (circle), Chain Lightning (line) |
+| **Lava Golem** | Flame | Water | Magma Pool (circle that keeps burning), Eruption (a huge circle around the boss) |
+| **Frost Wyrm** | Frost | Flame | Frost Breath (line, freezes), Blizzard (circle, freezes) |
+| **Shadow Hydra** | Shadow | Celestial | Void Fangs (three lines), Shadow Pulse (circle) |
+
+The four bosses take turns in this order. **Dodging:** before a big attack a glowing **circle or line** appears on
+the floor and fills up. Press **RETREAT** before it is full (when it is full its edge flashes red: too late) and
+your pets run out of it, then they go back to fighting by themselves. Each boss also calls **minion waves** and gets
+**enraged** after **4 minutes** (it hits twice as hard); a raid ends when the boss is down, when every pet is knocked
+out, or after **5 min 30 s**.
+
+**Rewards** go to everyone who is still in the raid at the end, by the share of the boss's health they took off:
+
+| Tier | Your share of the damage | Cloud Tokens | XP for every team pet | Gems | Boss Raid pet chance |
+|---|---|---|---|---|---|
+| **Gold** | 25 % or more | 500 | 400 | 10 (25 % chance) | 5 % |
+| **Silver** | 10 % or more | 300 | 250 | 5 (15 % chance) | 3 % |
+| **Bronze** | 2 % or more | 150 | 120 | 3 (8 % chance) | 1.5 % |
+| **Helper** | 1 % or more | 60 | 50 | - | 0.5 % |
+
+If the boss wins, everyone who dealt at least 1 % still gets **25 tokens** and **20 XP**. Under 1 % of the damage
+there is no reward.
+
+**The three Boss Raid pets** are Secret pets that are in no roulette at all: **Magma Cub** (Flame, a little echo of
+the Lava Golem), **Rime Wyrmling** (Frost, from the Frost Wyrm) and **Hydralotl** (Shadow, from the Shadow Hydra).
+A raid can drop one you do not have yet; they are in the Pet Index like every other pet.
+
+### Double Rewards
+
+Every **3 hours** a **Double Rewards** hour starts (announced 2 minutes before, shown on the event board and on
+the countdown chip at the right edge): for **1 hour** every battle pays **x2 Cloud Tokens** (Trials, first clears,
+duels and Boss Raids).
+
+### Testing battles in Studio (owner)
+
+- **Boss Raids:** press **Play**, then the DEV panel's **Start Boss Raid** button or type `/raid` in the chat (see
+  [Developer tools](#developer-tools-owner-only)). Walk over the bridge into the arena and press **JOIN RAID**
+  within 60 seconds. One player is enough.
+- **Duels need two players:** on Studio's **Test** tab choose **Clients and Servers**, set **2 players** and press
+  **Start**. Studio opens a server window and one window per player. In each player window give yourself pets
+  (**Give all pets** in the DEV panel or `/allpets`), put pets in your team (**Team** tile) and walk into the arena.
+  Then challenge the other player from a duel pad and accept in the other window, or press **Find a match** in
+  both. Give
+  both players similar teams: a team more than 3 times stronger makes it a practice duel without rewards.
+- **Trials** work in a normal **Play** test: press **E** at the Trial Portal on the plaza.
+
 ## Pets and roulettes
 
 **33 pets** in seven rarities fly beside their owner, and everybody sees everybody's pets: Common 6, Uncommon 6,
@@ -470,18 +674,19 @@ Equip up to **3** pets from the Pets window. Each pet has one or two perks: **Ma
 tokens, +60 % stamina regen, +100 % checkpoint heal). Pets never change run speed or jump height, and your
 loadout is locked while a climb is running. The mascot is the Mythic **Cloudy Dragon**.
 
-Every pet also has a **role** (Economy pets earn Cash in your home's Garden, Combat pets train in your Gym and
-will fight in Pet Battles), **stats** (Income, Power, Health, Speed; higher rarities are much stronger, and every
+Every pet also has a **role** (Economy pets earn Cash in your home's Garden, Combat pets train in your Gym; both
+can fight in [pet battles](#pet-battles-phase-3)), **stats** (Income, Power, Health, Speed; higher rarities are much stronger, and every
 level a pet gains adds 10 %) and a named **special attack** (for example Stormfang's *Storm Pounce* or the Cloudy
-Dragon's *Cloud Breath*). The Pet Index shows them all; specials come into play with Pet Battles in the next
-update. Since phase 2 a pet can also be a **Golden** or **Rainbow** copy or a fused **hybrid** (see
+Dragon's *Cloud Breath*). The Pet Index shows them all; in battle each pet uses its special when you press SPECIAL.
+Since phase 2 a pet can also be a **Golden** or **Rainbow** copy or a fused **hybrid** (see
 [the Fusion Machine](#the-fusion-machine-after-prestige-1)); the Pets window shows each copy with its tier badge,
 level and XP bar, and the Feed, Place in Garden and Train in Gym buttons.
 
 ## Elements
 
-Every pet has one element (a fused hybrid has both of its parents'). They matter in the coming Pet Battles: a
-strong hit deals **x1.5** damage, a weak one **x0.75**, everything else x1.
+Every pet has one element (a fused hybrid has both of its parents'). They matter in pet battles: a strong hit deals
+**x1.5** damage, a weak one **x0.75**, everything else x1, and teams get bonuses for their mix of elements (see
+[Elements and team synergy](#elements-and-team-synergy-in-battle)).
 
 - **The wheel** (each beats the next): **Water > Flame > Frost > Nature > Earth > Storm >** back to Water.
 - **The pair** (each beats the other): **Celestial <-> Shadow**.
@@ -494,7 +699,8 @@ Pet Index has a small **Elements** card that shows the wheel.
 Open it with the **Index** tile. On the left one tile per rarity group with your progress ("3/6"); in the middle
 the group's pets (pets you have not found yet are black `???` silhouettes); on the right a detail card with the
 pet's rarity, element (with "Strong vs / Weak vs"), role, stats and special attack, and for Stormfang the
-owner's artwork as a banner. Every pet you ever win counts as discovered. The footer shows "Unlocked: x/30".
+owner's artwork as a banner. Every pet you ever win counts as discovered. The footer shows "Unlocked: x/33" (the
+three Boss Raid pets are listed with the Secret pets).
 
 Discover every pet of a group and press **CLAIM** for its reward (once per group; a red `!` on the group tile
 means a reward is waiting):
@@ -523,7 +729,7 @@ Nothing the game says appears in the middle of the screen. All text follows one 
 designed for a 1080p screen (body text 18 px or more, buttons 20 px or more), scales with your screen height and
 never drops below 14 px on a phone.
 
-- **Left, vertically centred: the menu** of six square tiles: Inventory, Pets, Index, Shop, Home, Stats.
+- **Left, vertically centred: the menu** of seven square tiles: Inventory, Pets, Team, Index, Shop, Home, Stats.
   Windows you open are centred on purpose (you asked for them) and close with Esc, the red X or gamepad B.
 - **Top-left:** party panel in the lobby (portal, countdown, members, the **Leave** button), match panel
   (difficulty, timer, checkpoints, team) in a climb. The tutorial card sits below it.
@@ -535,6 +741,11 @@ never drops below 14 px on a phone.
   compact result card shows up at the right edge after a climb. **Bottom-centre:** the item hotbar (1-4).
 - On phones the HUD moves up to clear the thumbstick, and on short landscape screens the currency counters move
   to the top-right.
+- **In the Battle Arena:** duel invites, the raid card and the event countdown are small cards at the right edge.
+  **In a battle:** a slim card at the top centre (the enemies or the boss, the time), your team's cards and the
+  ATTACK / RETREAT buttons at the bottom right. On a phone the team cards sit under the top card (on a landscape
+  phone at the top-left, where the menu tiles step aside while you fight) and ATTACK / RETREAT become big buttons at
+  the right edge.
 
 ## Developer tools (owner only)
 
@@ -559,11 +770,11 @@ server checks the permission again on every single command, so other players can
 | **+1,000 Gems** | Adds `Config.Dev.GrantGems` Gems (1,000), to try the gem roulettes and Fusion Mixes. |
 | **Restart tutorial** | Plays the tutorial again from step 1. Its rewards are not paid a second time. |
 | **Skip tutorial** | Ends the tutorial (without its finish reward). |
-| **Start Boss Raid** | Starts a Boss Raid in the arena right now (`/raid`), so you can test raids without waiting for the schedule. Not while a raid is already running. |
+| **Start Boss Raid** | Starts a Boss Raid in the arena right now (`/raid`), so you can test raids without waiting for the schedule (the next boss of the rotation; join it in the arena within 60 seconds). Not while a raid is already running. |
 | **Evolve every pet** | Plays every pet's evolution animation one after another in front of you (`/evolve all`). |
 | **Show all pets** / **Show evolved pets** / **Show Evolved II pets** | Lines up every pet at that stage in front of you (`/pets`, `/pets 1`, `/pets 2`). |
 | **Clear pet show** | Removes the showcase pets and stops an evolution (`/clearpets`). |
-| **Reset my data** | Back to a brand-new player: tokens, Cash, Gems, pets (also Golden, Rainbow and fused ones), pet levels, food and the Kitchen queue, items, stats, your home build (stations, Garden, Gym, Collector) and Prestige stars, Pet Index progress and rewards are wiped, and the tutorial starts again as for a new player. Tap once ("Are you sure?"), then tap again to confirm. Not during a climb. |
+| **Reset my data** | Back to a brand-new player: tokens, Cash, Gems, pets (also Golden, Rainbow and fused ones), pet levels, food and the Kitchen queue, items, stats, your home build (stations, Garden, Gym, Collector) and Prestige stars, your battle teams and battle record (trophies, Trial clears, raid and duel counters, Boss Raid pets), Pet Index progress and rewards are wiped, and the tutorial starts again as for a new player. Tap once ("Are you sure?"), then tap again to confirm. Not during a climb or a battle. |
 
 Close it with the red X, `Esc` or gamepad B. Every change answers with a "DEV: ..." toast.
 
@@ -613,9 +824,10 @@ to keep your real progress.
 
 ## Coming next
 
-- **Phase 3, pet battles:** a Battle Arena with boss raids, PvP duels, a Trial Portal with 30 levels of NPC
-  teams, and on-screen Attack / Retreat / Special controls. Elements and special attacks come into play here,
-  your home's **Arena Gate** opens the way, and Prestige 1 unlocks a 4th battle-team slot.
+- **More arena events:** the event scheduler is ready for new kinds next to Boss Raids and Double Rewards (for
+  example a King of the Ring).
+- **Evolving pets for real:** the evolved and second-evolution looks and the evolution animation are done (try them
+  with the developer pet showcase); an "evolve" button for players comes later.
 
 ## Rebuilding the place file
 
@@ -658,21 +870,24 @@ The script exits non-zero if anything fails and runs three steps:
 2. **`tools/check.mjs`**: static analysis (undefined globals, deprecated APIs, raw fonts, bad `Instance.new`,
    missing `require`s, and the public API listed in `tools/contract.json`).
 3. **`tools/smoke.py`**: loads the real modules into a Roblox mock (`tools/robloxmock.lua`) and plays the game
-   (about 5,500 checks): 5 difficulties x 300 generated courses audited (reach, headroom, cannons, tokens), full
+   (about 7,200 checks): 5 difficulties x 300 generated courses audited (reach, headroom, cannons, tokens), full
    matches (victory, defeat, timeout, leaving, concurrent slots), portal lock-in, damage and the fall rule,
    hazards, pets, elements, roulettes, items, the Pet Index, the tutorial, NPCs, the Storm Altar, the
    developer tools, saving (also during DataStore outages), the tycoon homes (claiming, every pad and station,
    income, the Collector, offline earnings, house tiers, prestige, exploit attempts on every remote, the home art
    and its part budget), the Kitchen, feeding and the Gym, the Fusion Machine, Gems (receipts granted once, the
    policy check, the gem and Secret roulettes), an end-to-end run of three players from the first claim through
-   prestige, fusion and a rejoin, the whole client UI including the readability rule and the "nothing in the
-   middle of the screen" rule on desktop and phone sizes, and even this README (its tycoon, gem, developer-tool
-   and tutorial numbers must match the game). Handy flags: `-v`, `--only match_victory,damage_rules`, `--list`,
+   prestige, fusion and a rejoin, pet battles (the battle simulation, Trials, duels with their anti-farming rules,
+   Boss Raids with up to 16 players, events, teams, the arena and its world text, the battle HUD and every battle
+   window, an end-to-end run of several players), the evolved pets and the pet showcase, the whole client UI
+   including the readability rule and the "nothing in the middle of the screen" rule on desktop and phone sizes,
+   and even this README (its tycoon, gem, battle, developer-tool and tutorial numbers must match the game). Handy flags: `-v`, `--only match_victory,damage_rules`, `--list`,
    `--seeds N`, `--strict`.
 
 `python3 tools/sim_tycoon.py` replays the tycoon economy for many simulated players and checks the pacing targets
 (first purchase, purchase gaps, Villa, first and later prestiges, offline earnings); the smoke test fails when its
-numbers and `TycoonCatalog.lua` disagree.
+numbers and `TycoonCatalog.lua` disagree. `tools/sim_battle.lua` does the same for battles (the Trial curve, fair
+duels, elements, Boss Raids with 1 / 3 / 8 players, dodging; see `tools/README.md` for how to run it).
 
 The mock is not a physics engine (characters do not walk, moving platforms are not simulated), so test the feel
 in Studio too. To look at the art and the UI without Studio, `tools/render_model.py` draws any pet, the village,
@@ -684,8 +899,8 @@ the Storm Altar or the sky dragon to a PNG, and `tools/render_gui.py` draws the 
 ```
 default.project.json   Rojo project           play/NimbusClimb.rbxlx   ready-made place file
 Start-Rojo-*           one-click launchers    branding/                game icon + Stormfang art
-tools/                 syntax check, static analysis, smoke test (see "Tests"), tycoon economy sim, place verifier,
-                       model and GUI renderers
+tools/                 syntax check, static analysis, smoke test (see "Tests"), tycoon economy sim, battle sim,
+                       place verifier, model and GUI renderers
 ARCHITECTURE.md, ARCHITECTURE_V2.md, ARCHITECTURE_V3.md   module contracts (the newest wins where they differ)
 
 src/shared   Config (every number)  TycoonCatalog (every tycoon number)  Theme  Util  Remotes  PetCatalog  PetKeys
@@ -700,11 +915,13 @@ src/client   Main.client.lua; State; UI/CloudUI; Controllers: Movement, Hud, Dam
 ```
 
 The **server is authoritative** (health, tokens, Cash, Gems, pets, items, checkpoints, matches, home purchases
-and income, cooking, feeding, fusion, gem receipts, the Pet Index, the tutorial, developer commands); clients only
-do input, movement feel, UI and purely visual animation (pets, tokens, NPCs, the sky dragon, the presses, the
-conveyor and the stations popping in). Behaviour is attached with `CollectionService` tags (`Config.Tags`). Every
+and income, cooking, feeding, fusion, gem receipts, every battle and its rewards, the Pet Index, the tutorial,
+developer commands); clients only do input, movement feel, UI and purely visual animation (pets, tokens, NPCs, the
+sky dragon, the presses, the conveyor and the stations popping in, and the battles: the server simulates every
+fight at 10 Hz and sends small snapshots, each client builds and animates the battle pets and bosses itself). Behaviour is attached with `CollectionService` tags (`Config.Tags`). Every
 tunable number, including roulette prices and odds, gem prices, Index rewards, elements, difficulties and physics,
 lives in `src/shared/Config.lua`; the tycoon's prices, incomes, foods and fusion costs live in
-`src/shared/TycoonCatalog.lua`.
+`src/shared/TycoonCatalog.lua`, and every battle number (Trials, bosses, rewards, trophies, events) in
+`src/shared/BattleCatalog.lua`.
 
-Have fun climbing, and building!
+Have fun climbing, building and battling!

@@ -469,7 +469,7 @@ NpcDialog.Npcs = {
 		Lines = {
 			"Woof! Every coin you grab on a climb is yours to keep, even when your team runs out of time!",
 			"Win a climb and every finisher gets a bonus: " .. winBonusList() .. " " .. TOKEN .. "!",
-			"The Trial Portal in the arena has " .. trialCount .. " levels of pet teams. Every first clear pays a big token bonus!",
+			"The Trial Portal on the plaza has " .. trialCount .. " levels of pet teams. Every first clear pays a big token bonus!",
 			"Combat pets get tough in your home Gym: open Pets and press Train in Gym. Each one gains " .. number(gymLow)
 				.. " XP a minute while you play.",
 			"Tap Team to pick 3 battle pets (a 4th at Prestige 1). Duel friends on the rings: +" .. trophyWin .. " trophies a win!",

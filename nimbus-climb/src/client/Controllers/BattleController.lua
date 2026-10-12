@@ -3735,8 +3735,9 @@ function Net.Snapshot(payload, battleId)
 		return
 	end
 	local snaps = B.snaps
-	if #snaps > 0 and T <= snaps[#snaps].T then
-		return -- out of order / duplicate
+	local stale = #snaps > 0 and T <= snaps[#snaps].T
+	if stale and payload.Units ~= nil then
+		return -- out of order / duplicate (the old full form)
 	end
 	local units = payload.Units
 	if type(units) ~= "table" then
@@ -3744,8 +3745,15 @@ function Net.Snapshot(payload, battleId)
 		if type(payload.U) ~= "table" or not BattleSim or type(BattleSim.DecodeSnapshot) ~= "function" then
 			return
 		end
+		-- every delta is decoded, even one with no newer T (the server's baseline already counts it as sent)
 		units = BattleSim.DecodeSnapshot(payload, B.lastUnits)
 		B.lastUnits = units
+		if stale then
+			if T == snaps[#snaps].T then
+				snaps[#snaps].Units = units
+			end
+			return
+		end
 	end
 	snaps[#snaps + 1] = { T = T, Units = units }
 	while #snaps > K.MAX_SNAPS do
