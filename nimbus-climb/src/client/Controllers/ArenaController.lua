@@ -1075,7 +1075,8 @@ local function buildTrials()
 		ui.EnemyCols = enemyCols
 		ui.StartButton.Size = UDim2.fromOffset(inner < 420 and 170 or 200, 54)
 		-- narrow details stack the level number over its name
-		local stack = inner < 440
+		-- (not on short landscape phones: there the height is what is missing, and "LEVEL 12 Storm Chasers" fits a line)
+		local stack = inner < 440 and not short
 		ui.HeadLayout.FillDirection = stack and Enum.FillDirection.Vertical or Enum.FillDirection.Horizontal
 		ui.HeadLayout.Padding = UDim.new(0, stack and 0 or 10)
 		ui.Head.Size = UDim2.new(1, 0, 0, stack and 76 or 40)

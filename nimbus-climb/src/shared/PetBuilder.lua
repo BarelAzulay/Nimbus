@@ -4589,19 +4589,40 @@ function EVO.Sculpt(ctx)
 	end
 end
 
-function EVO.SculptWing(ctx, w)
+-- which evolved wing a pet gets: by species, unless its per-pet design set ctx.EvoWingKind (the Phase 3 event pets:
+-- "Flame" | "Ice" | "Bat"); "Storm" = Stormfang's shard wings, "Fan" = the feathered fan
+function EVO.WingKind(ctx)
 	local look = ctx.Look
+	if ctx.EvoWingKind then
+		return ctx.EvoWingKind
+	elseif look.Species == "Dragon" and look.WingStyle == "Bat" then
+		return "Bat"
+	elseif look.Species == "Stormfang" then
+		return "Storm"
+	elseif look.Species == "Phoenix" then
+		return "Flame"
+	end
+	return "Fan"
+end
+
+function EVO.SculptWing(ctx, w)
 	if ctx.Ascended then
 		return ASC.SculptWings(ctx, w)
 	end
-	if look.Species == "Dragon" and look.WingStyle == "Bat" then
-		EVO.BatWing(ctx, w)
-	elseif look.Species == "Stormfang" then
+	local kind = EVO.WingKind(ctx)
+	if kind == "Bat" then
+		EVO.BatWing(ctx, w, ctx.WingOpts)
+	elseif kind == "Storm" then
 		EVO.ShardWing(ctx, w)
-	elseif look.Species == "Phoenix" then
-		EVO.FlameWing(ctx, w)
+	elseif kind == "Ice" then
+		EVO.ShardWing(ctx, w, ctx.WingOpts)
+	elseif kind == "Flame" then
+		EVO.FlameWing(ctx, w, ctx.WingOpts)
 	else
 		EVO.Fan(ctx, w)
+	end
+	if ctx.WingPaint then
+		ctx.WingPaint(ctx.Pal) -- (a per-pet recolour of the wing keys a wing sculpt set itself)
 	end
 end
 
@@ -4814,11 +4835,17 @@ function ASC.SculptWings(ctx, w)
 		return base
 	end
 	local sweep2, tilt2
-	if look.Species == "Dragon" and look.WingStyle == "Bat" then
+	local kind = EVO.WingKind(ctx)
+	if kind == "Bat" then
 		EVO.BatWing(ctx, w2, opts({ Size = 0.66, Glow = true, GlowWidth = 1.1 }, o2))
 		sweep2, tilt2 = ctx.WingSweep + 0.12, ctx.WingTilt - 0.42
 		EVO.BatWing(ctx, w, opts({ Size = 1.22, Glow = true, GlowWidth = 1.4 }, o1))
-	elseif look.Species == "Stormfang" then
+	elseif kind == "Ice" then
+		-- (Rime Wyrmling) two pairs of glacier-crystal blades with glowing edges
+		EVO.ShardWing(ctx, w2, opts({ Size = 0.7, Edges = true }, o2))
+		sweep2, tilt2 = ctx.WingSweep + 0.2, ctx.WingTilt - 0.5
+		EVO.ShardWing(ctx, w, opts({ Size = 1.2, Edges = true }, o1))
+	elseif kind == "Storm" then
 		local pal = ctx.Pal
 		pal.Wing = rgb(40, 50, 92)
 		pal.WingTip = rgb(62, 80, 148)
@@ -4828,7 +4855,7 @@ function ASC.SculptWings(ctx, w)
 		EVO.BatWing(ctx, w2, opts({ Size = 0.66, Glow = true, GlowWidth = 1.1 }, o2))
 		sweep2, tilt2 = ctx.WingSweep + 0.12, ctx.WingTilt - 0.42
 		EVO.BatWing(ctx, w, opts({ Size = 1.18, Glow = true, GlowWidth = 1.4 }, o1))
-	elseif look.Species == "Phoenix" then
+	elseif kind == "Flame" then
 		EVO.FlameWing(ctx, w2, opts({ Size = 0.7 }, o2))
 		sweep2, tilt2 = 1.15, -0.1
 		EVO.FlameWing(ctx, w, opts({ Size = 1.22, N = 6, Long = 1.08, Tilt = 0.72 }, o1))
@@ -4836,6 +4863,9 @@ function ASC.SculptWings(ctx, w)
 		ASC.AngelWing(ctx, w2, opts({ Size = 0.72, Glow = true, Sweep = 0.5, Tilt = -0.3 }, o2))
 		sweep2, tilt2 = ctx.WingSweep, ctx.WingTilt
 		ASC.AngelWing(ctx, w, opts({ Size = 1.06, Glow = true, Sweep = 0.05, Tilt = 0.5 }, o1))
+	end
+	if ctx.WingPaint then
+		ctx.WingPaint(ctx.Pal)
 	end
 	if ctx.NoWing2 then
 		return
@@ -5497,6 +5527,491 @@ ASC.Pets.phantom_kitsune = function(ctx)
 	EVO.Necklace(ctx, { Drops = 4 })
 	ASC.Greaves(ctx, { Gem = "GemB" })
 	ASC.Aura(ctx, "Wisp")
+end
+
+----------------------------------------------------------------------
+-- Phase 3 event pets (PetCatalog EventOnly: Boss Raid drops): bespoke evolved forms that echo their boss.
+-- Magma Cub (the Lava Golem): glowing magma cracks over basalt fur, a smoking volcano crest, a molten core in the
+-- chest, flame wings on a basalt arm. Rime Wyrmling (the Frost Wyrm): a crown of glacier crystals, frost ferns on the
+-- flanks, ice horns, claws and spines, glacier-crystal blade wings. Hydralotl (the Shadow Hydra): its six gills end in
+-- little hydra heads, a shadow fin crest, a forked tail, bat wings; the second evolution grows two more big heads.
+----------------------------------------------------------------------
+EVO.Look.magma_cub = { Gem = { 255, 112, 30 }, GemB = { 255, 206, 84 }, Wing = { 226, 82, 26 }, Tip = { 255, 196, 70 } }
+EVO.Look.rime_wyrmling = { Gem = { 70, 186, 255 }, GemB = { 214, 246, 255 }, Wing = { 168, 222, 250 }, Tip = { 240, 252, 255 } }
+EVO.Look.hydralotl = { Gem = { 176, 255, 96 }, GemB = { 140, 255, 206 }, Wing = { 92, 56, 150 }, Tip = { 118, 255, 196 } }
+ASC.Look.magma_cub = { Glow = { 255, 176, 56 }, GlowB = { 255, 92, 24 }, Aura = "Magma" }
+ASC.Look.rime_wyrmling = { Glow = { 150, 232, 255 }, GlowB = { 226, 248, 255 }, Aura = "Snow" }
+ASC.Look.hydralotl = { Glow = { 120, 255, 196 }, GlowB = { 196, 255, 110 }, Aura = "Orb" }
+
+EVO.Colours.magma_cub = function(pal)
+	pal.Basalt = rgb(92, 76, 74)
+	pal.Magma = { Color = rgb(255, 110, 28), Material = NEON }
+	pal.MagmaHot = { Color = rgb(255, 204, 80), Material = NEON }
+	-- fiery fan wings with amber tips
+	pal.WingTip = rgb(255, 170, 64)
+	pal.WingEdge = rgb(255, 214, 120)
+	pal.Toe = { Color = rgb(255, 110, 28), Material = NEON } -- (magma glowing between the toes)
+end
+
+EVO.Colours.rime_wyrmling = function(pal)
+	pal.Horn = rgb(232, 246, 255) -- (frost-white horns; the crown is the deep blue)
+	pal.Spine = rgb(206, 240, 255)
+	pal.Crystal = rgb(140, 210, 252)
+	pal.CrystalDeep = rgb(76, 160, 236)
+	pal.Frost = rgb(104, 178, 238) -- (frost ferns: blue on the pale scales)
+	pal.FrostTip = { Color = rgb(226, 250, 255), Material = NEON }
+end
+
+EVO.Colours.hydralotl = function(pal)
+	pal.HydraHead = rgb(86, 60, 138)
+	pal.HydraJaw = rgb(118, 236, 190)
+	pal.HydraEye = { Color = rgb(196, 255, 110), Material = NEON }
+	pal.HydraHorn = rgb(36, 26, 58)
+	pal.HydraGlow = { Color = rgb(130, 255, 200), Material = NEON }
+	pal.Spine = rgb(40, 28, 66)
+	pal.Claw = rgb(150, 255, 214)
+	pal.WingTip = rgb(72, 176, 150)
+end
+
+-- the signature colours of an event pet's design survive the part-budget LOD (never folded into the fur)
+function EVO.KeepKeys(ctx, keys)
+	ctx.Keep = ctx.Keep or {}
+	for _, k in ipairs(keys) do
+		ctx.Keep[k] = true
+	end
+end
+
+-- glowing cracks over the exposed voxels of `only` (a set of keys): a Voronoi network of plates (cell size o.Cell
+-- design units, crack half-width o.Width, about one voxel at least). Each surface voxel uses the 2D network of the
+-- plane it faces (side / top / front), so a crack is as thin on a curved flank as on a flat one. o.Skip(x, y, z)
+-- keeps an area clean (the face), o.Hot paints the middle of some cracks with a hotter key. Deterministic.
+function EVO.Cracks(g, key, only, o)
+	o = o or {}
+	local K = g.K or SK
+	-- (coarse grids - Low detail - get bigger plates, so the one-voxel cracks do not swallow the body)
+	local C = (o.Cell or 4.6) * max(1, 1 / K)
+	local w = max(o.Width or 0.36, 0.45 / K)
+	local seed = o.Seed or 0
+	local cells = g.Cells
+	local p0 = Voxel.Pack(0, 0, 0)
+	local dx, dy, dz = Voxel.Pack(1, 0, 0) - p0, Voxel.Pack(0, 1, 0) - p0, Voxel.Pack(0, 0, 1) - p0
+	local hits, hot = {}, {}
+	local function edge2(u, v, salt)
+		local cu, cv = floor(u / C), floor(v / C)
+		local d1, d2 = math.huge, math.huge
+		local a1u, a1v, a2u, a2v
+		for i = -1, 1 do
+			for j = -1, 1 do
+				local iu, iv = cu + i, cv + j
+				local fu = (iu + 0.15 + 0.7 * hash3(iu + seed, iv, salt)) * C
+				local fv = (iv + 0.15 + 0.7 * hash3(iu, iv + seed, salt + 17)) * C
+				local d = (u - fu) ^ 2 + (v - fv) ^ 2
+				if d < d1 then
+					d2, a2u, a2v = d1, a1u, a1v
+					d1, a1u, a1v = d, fu, fv
+				elseif d < d2 then
+					d2, a2u, a2v = d, fu, fv
+				end
+			end
+		end
+		if not a2u then
+			return math.huge, cu, cv
+		end
+		local nu, nv = a2u - a1u, a2v - a1v
+		local len = math.sqrt(nu * nu + nv * nv)
+		if len < 1e-6 then
+			return math.huge, cu, cv
+		end
+		return math.abs((u - (a1u + a2u) / 2) * nu + (v - (a1v + a2v) / 2) * nv) / len, cu, cv
+	end
+	for k, v in pairs(cells) do
+		if only[v] then
+			local mx = (cells[k + dx] and 0 or 1) - (cells[k - dx] and 0 or 1)
+			local my = (cells[k + dy] and 0 or 1) - (cells[k - dy] and 0 or 1)
+			local mz = (cells[k + dz] and 0 or 1) - (cells[k - dz] and 0 or 1)
+			local open = not (cells[k + dx] and cells[k - dx] and cells[k + dy] and cells[k - dy] and cells[k + dz] and cells[k - dz])
+			if open then
+				local vx0, vy0, vz0 = Voxel.Unpack(k)
+				local x, y, z = vx0 / K, vy0 / K, vz0 / K
+				if not (o.Skip and o.Skip(x, y, z)) then
+					local ax, ay, az = math.abs(mx), math.abs(my), math.abs(mz)
+					local e, cu, cv
+					if ay >= ax and ay >= az and (ay > 0 or (ax == 0 and az == 0)) then
+						e, cu, cv = edge2(x, z, 101) -- top / bottom
+					elseif ax >= az then
+						e, cu, cv = edge2(z, y, 203) -- flanks
+					else
+						e, cu, cv = edge2(x, y, 307) -- front / back
+					end
+					if e < w then
+						hits[#hits + 1] = k
+						if o.Hot and e < w * 0.5 and hash3(cu, cv, seed + 5) > 0.6 then
+							hot[k] = true
+						end
+					end
+				end
+			end
+		end
+	end
+	for _, k in ipairs(hits) do
+		cells[k] = hot[k] and o.Hot or key
+	end
+end
+
+-- a little volcano on the head: a basalt cone with a glowing crater and lava running down its front
+function EVO.MagmaVolcano(ctx, size, erupt)
+	local g = ctx.Body
+	local c = ctx.HeadC
+	local S = size or 1
+	local top = ctx.HeadTop + 4.4 * S
+	local zc = c[3] + 1.4
+	cone(g, "Basalt", { 0, ctx.HeadTop - 2.6, zc }, { 0, top, zc + 0.4 }, 4 * S, 2.2 * S)
+	carve(g, { Kind = "Ellipsoid", Center = { 0, top + 0.4, zc + 0.4 }, Radius = { 1.7 * S, 1.3, 1.7 * S } }, "Basalt")
+	ell(g, "MagmaHot", { 0, top - 0.7, zc + 0.4 }, { 1.6 * S, 0.9, 1.6 * S })
+	-- two lava runs down the front and one down the side
+	for _, r in ipairs({ { 0.9, -1 }, { -1.3, -0.7 } }) do
+		cap(g, "Magma", { r[1] * S, top - 0.2, zc + 0.4 - 2 * S }, { r[1] * 1.4 * S, ctx.HeadTop - 1, zc - 3.6 * S }, 0.75, 0.6, { Op = "Paint", OnlyKeys = "Basalt" })
+	end
+	cap(g, "Magma", { 2 * S, top - 0.4, zc + 0.6 }, { 3.4 * S, ctx.HeadTop - 0.6, zc + 1 }, 0.7, 0.55, { Op = "Paint", OnlyKeys = "Basalt" })
+	if erupt then
+		-- (second evolution) a lava fountain and glowing bombs above the crater
+		cone(g, "MagmaHot", { 0, top - 0.6, zc + 0.4 }, { 0.3, top + 4.4, zc + 0.5 }, 1.3, 0.3)
+		cone(g, "Magma", { 0, top - 0.4, zc + 0.4 }, { -1.6, top + 2.8, zc + 0.2 }, 0.9, 0.2)
+		cone(g, "Magma", { 0, top - 0.4, zc + 0.4 }, { 1.8, top + 2.6, zc + 1 }, 0.9, 0.2)
+		ell(g, "Magma", { -2.6, top + 4.2, zc - 0.4 }, { 0.8, 0.8, 0.8 })
+		ell(g, "MagmaHot", { 2.4, top + 5.4, zc + 1 }, { 0.7, 0.7, 0.7 })
+	end
+	ctx.VolcanoTop = top
+end
+
+-- the molten heart in the chest (the Lava Golem's core): a basalt rim round a glowing core
+function EVO.MagmaCore(ctx, r)
+	local g = ctx.Body
+	local by = ctx.EvoBelly or -6.5
+	local zf = ctx.ChestZ or -13
+	r = r or 1
+	paint(g, "Basalt", { Kind = "Ellipsoid", Center = { 0, by + 1.4, zf + 0.6 }, Radius = { 4.8 * r, 5 * r, 3 } }, "Fur")
+	ell(g, "Magma", { 0, by + 1.4, zf - 0.2 }, { 3 * r, 3.2 * r, 1.4 })
+	ell(g, "MagmaHot", { 0, by + 1.6, zf - 0.8 }, { 1.7 * r, 1.9 * r, 1.1 })
+end
+
+-- the cracks stay off the head (the face stays clean and cute; the volcano and horns have their own) and the belly
+function EVO.MagmaSkip(ctx)
+	local c = ctx.HeadC
+	local by = ctx.EvoBelly or -6.5
+	return function(x, y, z)
+		return (y > c[2] - 7.5 and z < c[3] + 10) or y < by - 5.5
+	end
+end
+
+EVO.Pets.magma_cub = function(ctx)
+	local g = ctx.Body
+	local c = ctx.HeadC
+	EVO.KeepKeys(ctx, { "Basalt", "MagmaHot" })
+	if ctx.BodyShade and ctx.BodyShade.Only then
+		ctx.BodyShade.Only.Basalt = true
+	end
+	-- stubby basalt horns with glowing tips, beside the volcano
+	pair(function(s)
+		curve(g, "Basalt", { { s * 6.4, ctx.HeadTop - 3.4, c[3] - 1.6 }, { s * 9, ctx.HeadTop + 0.4, c[3] - 1.2 }, { s * 9.6, ctx.HeadTop + 4.2, c[3] - 2.6 } }, 1.9, 0.6, { Smooth = true })
+		ell(g, "MagmaHot", { s * 9.6, ctx.HeadTop + 3.8, c[3] - 2.5 }, { 0.8, 1.2, 0.8 }, { Op = "Paint", OnlyKeys = "Basalt" })
+	end)
+	EVO.MagmaVolcano(ctx, 1.15)
+	EVO.MagmaCore(ctx, 1)
+	EVO.Cracks(g, "Magma", { Fur = true }, { Skip = EVO.MagmaSkip(ctx), Seed = 3, Cell = 7.2 })
+	EVO.Cracks(g, "Magma", { Basalt = true }, { Cell = 3.4, Width = 0.32, Seed = 5 })
+	EVO.Necklace(ctx, { Pendant = false, Drops = 4 })
+	if ctx.Tail then
+		EVO.Cracks(ctx.Tail, "Magma", { Fur = true }, { Cell = 2.6, Seed = 7 })
+	end
+end
+
+-- a crown of glacier crystals round the top of the head; the front one tallest. tipKey glows (second evolution)
+function EVO.FrostCrown(ctx, n, R, tall, tipKey)
+	local g = ctx.Body
+	local c = ctx.HeadC
+	local zc = c[3] - 2.6
+	local y0 = ctx.HeadTop - 1.8
+	shape(g, { Kind = "Torus", Center = { 0, y0 + 0.6, zc }, Radius = R + 0.5, Thickness = 0.8, Key = "Gold" })
+	for i = 0, n - 1 do
+		local a = -math.pi / 2 + i / n * TAU
+		local ca, sa = math.cos(a), math.sin(a)
+		local front = (1 - sa) / 2 -- 1 at the front, 0 at the back
+		local h = (0.45 + 0.55 * front) * tall
+		local base = { ca * R, y0, zc + sa * R }
+		local tip = { ca * (R + 1.4 + h * 0.12), y0 + h, zc + sa * (R + 1.4 + h * 0.12) }
+		cone(g, (i % 2 == 0) and "Crystal" or "CrystalDeep", base, tip, 1.3 + 0.5 * front, 0.15)
+		ell(g, tipKey or "Spine", { tip[1] - ca * 0.3, tip[2] - 1.2, tip[3] - sa * 0.3 }, { 0.8, 1.4, 0.8 }, { Op = "Paint", OnlyKeys = { Crystal = true, CrystalDeep = true } })
+	end
+	ell(g, "Gem", { 0, y0 + 0.8, zc - R - 1 }, { 1.1, 1.3, 0.8 })
+end
+
+-- frost ferns painted on both flanks: fronds in the side view (z, y), each a stem with alternating leaflets
+function EVO.FrostFerns(ctx, fronds)
+	local g = ctx.Body
+	local by = ctx.EvoBelly or -6.5
+	local segs = {}
+	for _, f in ipairs(fronds) do
+		local z0, y0, len, ang = f[1], by + f[2], f[3], math.rad(f[4])
+		local dz, dyy = math.sin(ang), math.cos(ang)
+		segs[#segs + 1] = { z0, y0, z0 + dz * len, y0 + dyy * len }
+		local n = floor(len / 1.7)
+		for i = 1, n do
+			local t = i / (n + 1)
+			local pz, py = z0 + dz * len * t, y0 + dyy * len * t
+			local ll = 2.6 * (1 - t * 0.55)
+			local side = (i % 2 == 0) and 1 or -1
+			local la = ang + side * math.rad(55)
+			segs[#segs + 1] = { pz, py, pz + math.sin(la) * ll, py + math.cos(la) * ll }
+		end
+	end
+	local half = max(0.4, 0.55 / SK)
+	local function onFern(y, z)
+		for _, s in ipairs(segs) do
+			local ax, ay, bx, byy = s[1], s[2], s[3], s[4]
+			local vz, vy = bx - ax, byy - ay
+			local t = clamp(((z - ax) * vz + (y - ay) * vy) / (vz * vz + vy * vy), 0, 1)
+			local ez, ey = z - (ax + vz * t), y - (ay + vy * t)
+			if ez * ez + ey * ey < half * half then
+				return true
+			end
+		end
+		return false
+	end
+	pair(function(s)
+		paint(g, "Frost", { Kind = "Box", Center = { s * 9, by + 1, 3 }, Size = { 9, 20, 34 }, Pattern = function(x, y, z)
+			if onFern(y, z) then
+				return "Frost"
+			end
+			return false
+		end }, "Fur")
+	end)
+end
+
+EVO.RimeFronds = { { -5.5, -3.5, 9.5, 28 }, { 5, -4.5, 8.5, 34 }, { 13, -2, 6, 20 } }
+
+function EVO.RimeWings(ctx)
+	ctx.EvoWingKind = "Ice"
+	ctx.WingPaint = function(pal)
+		pal.Wing = { Color = rgb(176, 228, 252), Material = Enum.Material.Glass, Transparency = 0.12 }
+		pal.WingTrim = { Color = rgb(116, 196, 246), Material = Enum.Material.Glass, Transparency = 0.12 }
+		pal.WingEdge = { Color = rgb(228, 250, 255), Material = NEON }
+	end
+end
+
+EVO.Pets.rime_wyrmling = function(ctx)
+	local pal = ctx.Pal
+	EVO.KeepKeys(ctx, { "Crystal", "CrystalDeep", "Frost" })
+	pal.Claw = rgb(214, 244, 255) -- (the species set gold claws)
+	EVO.FrostCrown(ctx, 7, 3.6, 9.4)
+	EVO.FrostFerns(ctx, EVO.RimeFronds)
+	-- the tail's spade becomes a cluster of ice crystals
+	if ctx.Tail then
+		cone(ctx.Tail, "Crystal", { 15, -10, 14 }, { 19.6, -3.8, 14.6 }, 1.9, 0.2)
+		cone(ctx.Tail, "CrystalDeep", { 15.6, -10, 14 }, { 21.6, -13.6, 15.4 }, 1.6, 0.2)
+		cone(ctx.Tail, "CrystalDeep", { 14.6, -10, 14 }, { 13.4, -4.8, 18.6 }, 1.4, 0.2)
+	end
+	EVO.Necklace(ctx, { Drops = 4 })
+	EVO.Anklets(ctx, { Gem = "GemB" })
+	EVO.RimeWings(ctx)
+end
+
+-- a little hydra head (the Hydralotl's gills and necks): centre p, facing dir, radius r; eyes glow
+function EVO.HydraHead(ctx, g, p, dir, r, o)
+	o = o or {}
+	local d = Vector3.new(dir[1], dir[2], dir[3]).Unit
+	local up0 = Vector3.new(0, 1, 0)
+	local side = d:Cross(up0)
+	if side.Magnitude < 0.05 then
+		side = Vector3.new(1, 0, 0)
+	end
+	side = side.Unit
+	local up = side:Cross(d).Unit
+	local P = Vector3.new(p[1], p[2], p[3])
+	local function at(v)
+		return { v.X, v.Y, v.Z }
+	end
+	local rot = CFrame.lookAt(Vector3.new(0, 0, 0), d)
+	-- skull and snout, a pale lower jaw, a dark mouth line
+	ell(g, "HydraHead", p, { r * 0.9, r * 0.8, r }, { Rotation = rot, Pivot = p })
+	cone(g, "HydraHead", at(P + d * r * 0.4 + up * r * 0.05), at(P + d * r * 1.75 - up * r * 0.1), r * 0.62, r * 0.36)
+	cap(g, "HydraJaw", at(P + d * r * 0.2 - up * r * 0.42), at(P + d * r * 1.55 - up * r * 0.42), r * 0.42, r * 0.28)
+	if ctx.High and r >= 2.4 then
+		cap(g, "Mouth", at(P + d * r * 0.7 - up * r * 0.18 + side * r * 0.42), at(P + d * r * 1.7 - up * r * 0.2), 0.45, 0.35, { Op = "Paint", OnlyKeys = { HydraHead = true, HydraJaw = true } })
+		cap(g, "Mouth", at(P + d * r * 0.7 - up * r * 0.18 - side * r * 0.42), at(P + d * r * 1.7 - up * r * 0.2), 0.45, 0.35, { Op = "Paint", OnlyKeys = { HydraHead = true, HydraJaw = true } })
+	end
+	-- horns sweeping back
+	for _, s in ipairs({ 1, -1 }) do
+		cone(g, "HydraHorn", at(P + up * r * 0.55 + side * s * r * 0.4 - d * r * 0.1), at(P + up * r * 1.25 + side * s * r * 0.7 - d * r * 1.1), r * 0.26, 0.1)
+	end
+	-- glowing eyes on the surface (bigger heads get 2-voxel eyes)
+	for _, s in ipairs({ 1, -1 }) do
+		local e = (d * 0.62 + side * s * 0.6 + up * 0.42).Unit
+		local q = P + Vector3.new(e.X * r * 0.9, e.Y * r * 0.8, e.Z * r)
+		if r >= 2.4 then
+			ell(g, "HydraEye", at(q), { 0.55, 0.55, 0.55 })
+		else
+			set(g, vx(q.X), vx(q.Y), vx(q.Z), "HydraEye")
+		end
+	end
+	if o.Frill then
+		for _, s in ipairs({ 1, -1 }) do
+			cone(g, "Gill", at(P - d * r * 0.2 + side * s * r * 0.75), at(P - d * r * 0.9 + side * s * r * 1.6 + up * r * 0.6), r * 0.32, 0.15)
+		end
+	end
+end
+
+-- the axolotl's six gills (where the species sculpted them) end in little hydra heads
+function EVO.HydraGillHeads(ctx, r)
+	local c = ctx.HeadC
+	pair(function(s)
+		for i = 0, 2 do
+			local y = c[2] + 4.6 - i * 4
+			local b = { s * (15 + (i == 1 and 1.5 or 0)), y + 3 - i * 1.6, c[3] + 4 }
+			local dir = { s * 0.62, 0.42 - i * 0.26, -0.66 }
+			EVO.HydraHead(ctx, ctx.Body, { b[1] + s * 0.9, b[2] + 0.5, b[3] - 1 }, dir, r)
+		end
+	end)
+end
+
+-- a shadow fin crest down the back with glowing tips
+function EVO.HydraCrest(ctx, n)
+	local g = ctx.Body
+	local by = ctx.EvoBelly or -6.5
+	for i = 0, n - 1 do
+		local z = -5.4 + i * 3.1
+		local h = 3.6 - math.abs(i - (n - 1) * 0.35) * 0.32
+		cone(g, "Spine", { 0, by + 6.4, z }, { 0, by + 7.2 + h, z + 1.8 }, 1.5, 0.2)
+		ell(g, "HydraGlow", { 0, by + 6.6 + h, z + 1.6 }, { 0.7, 0.9, 0.7 }, { Op = "Paint", OnlyKeys = "Spine" })
+	end
+end
+
+-- the forked tail: two more tails branching off the axolotl's own, each tipped with a glow
+function EVO.HydraTails(ctx, t, long)
+	local L = long or 1
+	for _, br in ipairs({ { -1, -0.6 }, { 1, -2.6 } }) do
+		local s = br[1]
+		local tip = { s * 7.4 * L, br[2] * L, 17 * L }
+		curve(t, "Fur", { { 0.6, -1.2, 8 }, { s * 3.2 * L, -1 * L, 12.6 * L }, tip }, 2.2, 1, { Smooth = true })
+		ell(t, "HydraGlow", tip, { 1.2, 1.2, 1.2 })
+		ell(t, "Gill", { tip[1] - s * 0.4, tip[2] + 1.6, tip[3] - 3 }, { 0.8, 1.6, 3.4 })
+	end
+	ell(t, "HydraGlow", { 3, -2, 17.2 }, { 1.2, 1.2, 1.2 })
+end
+
+EVO.Pets.hydralotl = function(ctx)
+	EVO.KeepKeys(ctx, { "HydraEye", "HydraHead", "HydraJaw" })
+	EVO.HydraGillHeads(ctx, 2.2)
+	EVO.HydraCrest(ctx, 7)
+	if ctx.Tail then
+		EVO.HydraTails(ctx, ctx.Tail)
+	end
+	EVO.Necklace(ctx, { Drops = 4 })
+	ctx.EvoWingKind = "Bat"
+	ctx.WingOpts = { Size = 0.86 }
+end
+
+-- elemental aura bits of the event pets' second evolutions
+ASC.AuraBits.Magma = function(a, p, i)
+	-- a basalt bomb trailing a flame
+	box(a, "AuraRock", p, { 2.6, 2.2, 2.4 })
+	cone(a, auraKey(i), { p[1], p[2] + 1, p[3] }, { p[1] + 0.3, p[2] + 3.8, p[3] }, 1.1, 0)
+end
+ASC.AuraBits.Snow = function(a, p, i)
+	local k = auraKey(i)
+	for j = 0, 2 do
+		local ang = j * math.pi / 3 + 0.26
+		local ux, uy = math.cos(ang) * 2.6, math.sin(ang) * 2.6
+		cap(a, k, { p[1] - ux, p[2] - uy, p[3] }, { p[1] + ux, p[2] + uy, p[3] }, 0.4, 0.4)
+	end
+	ell(a, "AuraC", p, { 0.8, 0.8, 0.8 })
+end
+
+ASC.Pets.magma_cub = function(ctx)
+	local g, pal = ctx.Body, ctx.Pal
+	local c = ctx.HeadC
+	EVO.KeepKeys(ctx, { "Basalt", "MagmaHot" })
+	if ctx.BodyShade and ctx.BodyShade.Only then
+		ctx.BodyShade.Only.Basalt = true
+	end
+	-- the volcano erupts; a crown of basalt spikes with glowing tips rings it
+	EVO.MagmaVolcano(ctx, 1.4, true)
+	for i = 0, 5 do
+		local a = (i + 0.5) / 6 * TAU
+		local ca, sa = math.cos(a), math.sin(a)
+		local base = { ca * 5.2, ctx.HeadTop - 2.4, c[3] + 1.4 + sa * 4.6 }
+		local tip = { ca * 8.4, ctx.HeadTop + 3 + ((i % 2 == 0) and 1.6 or 0), c[3] + 1.4 + sa * 7.2 }
+		cone(g, "Basalt", base, tip, 1.5, 0.25)
+		ell(g, "MagmaHot", tip, { 0.7, 0.9, 0.7 }, { Op = "Paint", OnlyKeys = "Basalt" })
+	end
+	-- basalt boulders on the shoulders (the golem's), split by magma
+	local L = ctx.Legs
+	local by = ctx.EvoBelly
+	local W = L.Front[1] / 5.3
+	pair(function(s)
+		local p = { s * 8.6 * W, by + 2.4, L.Front[2] + 0.8 }
+		ell(g, "Basalt", p, { 3.8, 4.4, 5.2 })
+		cone(g, "Basalt", { p[1] + s * 1.6, p[2] + 2.6, p[3] + 1 }, { p[1] + s * 4.4, p[2] + 7, p[3] + 3.2 }, 1.4, 0.2)
+		ell(g, "MagmaHot", { p[1] + s * 4.2, p[2] + 6.6, p[3] + 3 }, { 0.7, 0.9, 0.7 }, { Op = "Paint", OnlyKeys = "Basalt" })
+	end)
+	EVO.MagmaCore(ctx, 1.25)
+	EVO.Cracks(g, "Magma", { Fur = true }, { Skip = EVO.MagmaSkip(ctx), Seed = 3, Cell = 6.2, Width = 0.38 })
+	EVO.Cracks(g, "Magma", { Basalt = true }, { Cell = 3, Width = 0.36, Seed = 5 })
+	EVO.Necklace(ctx, { Pendant = false, Drops = 4 })
+	ASC.Greaves(ctx, { Gem = "Gem" })
+	-- the tail: a basalt stub dripping magma
+	local t = newTail(ctx, ctx.TailHinge, 0.2)
+	ell(t, "Fur", { 0, 0.5, 1.5 }, { 3.2, 3.2, 3.2 })
+	cone(t, "Basalt", { 0, 1, 2.6 }, { 0, 2.4, 6.6 }, 1.8, 0.3)
+	EVO.Cracks(t, "Magma", { Fur = true, Basalt = true }, { Cell = 2.4, Width = 0.4, Seed = 7 })
+	ell(t, "MagmaHot", { 0, 2.3, 6.4 }, { 0.8, 0.8, 0.8 })
+	ASC.Aura(ctx, "Magma", { R = 21 })
+	pal.AuraRock = rgb(56, 44, 46)
+end
+
+ASC.Pets.rime_wyrmling = function(ctx)
+	local pal = ctx.Pal
+	EVO.KeepKeys(ctx, { "Crystal", "CrystalDeep", "Frost", "FrostTip" })
+	pal.Claw = rgb(214, 244, 255)
+	ascDragon(ctx, { Gem = "GemB" })
+	EVO.FrostCrown(ctx, 9, 3.8, 12.5, "FrostTip")
+	EVO.FrostFerns(ctx, EVO.RimeFronds)
+	EVO.Necklace(ctx, { Drops = 4 })
+	-- ice crystals along the tail's blade
+	if ctx.Tail then
+		cone(ctx.Tail, "Crystal", { 14, -9, 18 }, { 17, -4.6, 19 }, 1.3, 0.15)
+		cone(ctx.Tail, "CrystalDeep", { 9, -6.6, 18 }, { 10.6, -2.4, 19.6 }, 1.1, 0.15)
+	end
+	EVO.RimeWings(ctx)
+	ASC.Aura(ctx, "Snow")
+	pal.AuraC = rgb(246, 252, 255)
+end
+
+ASC.Pets.hydralotl = function(ctx)
+	local g = ctx.Body
+	EVO.KeepKeys(ctx, { "HydraEye", "HydraHead", "HydraJaw" })
+	local by = ctx.EvoBelly
+	-- two more heads on long necks rising from the shoulders: the Shadow Hydra's three heads
+	pair(function(s)
+		local pts = { { s * 6.4, by + 5, -4.6 }, { s * 12, by + 11.6, -2.6 }, { s * 15.4, by + 19.6, -4 }, { s * 15.6, by + 25.6, -7.6 } }
+		curve(g, "HydraHead", pts, 3.2, 2.4, { Smooth = true })
+		paint(g, "HydraJaw", { Kind = "Curve", Points = { { s * 6, by + 4.6, -7.4 }, { s * 12, by + 11.2, -5.6 }, { s * 15.4, by + 19.2, -7 } }, Radius = 1.8, RadiusB = 1.4, Smooth = true }, "HydraHead")
+		EVO.HydraHead(ctx, g, { s * 15.6, by + 27.2, -10.2 }, { s * 0.22, -0.18, -1 }, 3.8, { Frill = true })
+	end)
+	-- (the gills keep the beads they had; the three big heads speak for the hydra now)
+	EVO.HydraCrest(ctx, 8)
+	ASC.ChestPlate(ctx)
+	ASC.Greaves(ctx, { Gem = "GemB" })
+	EVO.Necklace(ctx, { Pendant = false, Drops = 4 })
+	-- a longer forked tail with glowing fins
+	local t = newTail(ctx, ctx.TailHinge, 0.3)
+	curve(t, "Fur", { { 0, 0, 0 }, { 0, -0.6, 7 }, { 1.6, -1.4, 13 }, { 3, -2, 18.4 } }, 3.6, 1.3, { Smooth = true })
+	ell(t, "Gill", { 1, 1.8, 11 }, { 1, 2.6, 8.4 })
+	ell(t, "HydraGlow", { 1, 3.6, 11 }, { 0.9, 0.9, 7.4 }, { Op = "Paint", OnlyKeys = "Gill" })
+	EVO.HydraTails(ctx, t, 1.12)
+	ctx.EvoWingKind = "Bat"
+	ASC.Aura(ctx, "Orb")
+	ctx.Pal.AuraDark = rgb(40, 26, 68)
 end
 
 ----------------------------------------------------------------------

@@ -1638,6 +1638,25 @@ local function buildEventBoard(parent, cf)
 	outline(pill, C.Ink, 3)
 	labels.Double = signText(pill, "DoubleLabel", "", "Heading", 30, C.Text, 0, 0, 1, 1)
 	labels.DoublePill = pill
+	-- the live boss's HP bar (in the pill's slot while a raid runs): the board reads at a glance from the forum
+	local track = plainFrame(p, "RaidHpBar", {
+		AnchorPoint = Vector2.new(0.5, 0),
+		Position = UDim2.new(0.5, 0, 0.855, 0),
+		Size = UDim2.new(0.8, 0, 0.085, 0),
+		BackgroundColor3 = C.Navy,
+		BackgroundTransparency = 0,
+		Visible = false,
+		ClipsDescendants = true,
+	})
+	rounded(track, 16)
+	outline(track, C.Ink, 3)
+	labels.RaidFill = plainFrame(track, "Fill", {
+		Size = UDim2.new(1, 0, 1, 0),
+		BackgroundColor3 = C.Crimson,
+		BackgroundTransparency = 0,
+	})
+	rounded(labels.RaidFill, 16)
+	labels.RaidBar = track
 	makePrompt(panel, "BoardPrompt", "Events", "Event Board", "Arena", { OpenPanelTab = "Events" })
 	return { Model = m, Gui = gui, Panel = panel, Labels = labels }
 end
@@ -1762,6 +1781,17 @@ local function drawBoard()
 		setLabel(L.Status, "Watch this board for the countdown", 30, C.Text)
 	end
 	local doubleOn = st and st.DoubleActive and (st.DoubleAt or 0) > now
+	-- the HP bar takes the pill's slot while a raid runs, unless Double Rewards needs it (the HP % stays in the text)
+	local raidBar = not doubleOn and st and st.RaidActive and tonumber(st.RaidHp) and tonumber(st.RaidMaxHp) and st.RaidMaxHp > 0
+	if L.RaidBar then
+		L.RaidBar.Visible = raidBar and true or false
+		if raidBar then
+			local f = max(0, min(1, st.RaidHp / st.RaidMaxHp))
+			L.RaidFill.Size = UDim2.new(f, 0, 1, 0)
+			local _, element = bossName(st.RaidBoss)
+			L.RaidFill.BackgroundColor3 = elementColorById(element) or C.Crimson
+		end
+	end
 	L.DoublePill.Visible = doubleOn and true or false
 	if doubleOn then
 		setLabel(L.Double, "x2 REWARDS  " .. clockText(st.DoubleAt - now), 30, C.Text)

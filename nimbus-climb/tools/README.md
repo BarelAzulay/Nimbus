@@ -136,6 +136,12 @@ python3 tools/render_gui.py portal:Hard:2 -o portal.png              # a portal'
   `trials[:<level>]` (the Trial window on that level), `duels` / `raid` / `leaders` (the Arena panel's tabs, with two
   more players to challenge, a running raid, Double Rewards) or `side` (no window: the duel invite, the queue, the raid
   join card and the event countdown at the right edge); e.g. `python3 tools/render_gui.py arena:trials:12 --grid`.
+* `arenaboards[:<countdown|raid|idle>]` (Phase 3, ArenaBuilder) draws the Battle Arena's world GUIs instead of the HUD,
+  like `portal`: the real LobbyBuilder + ArenaBuilder build the arena (as the server), a sample ArenaState goes through
+  `ApplyArenaState` (`countdown`: the next Boss Raid in 1:35 + Double Rewards, `raid`: a live raid with its HP bar,
+  `idle`: the next raid 20 minutes away), then every SurfaceGui (event board, trophy leaderboard, gate and arch signs,
+  both faces) is drawn at its on-screen size from 30 studs and every BillboardGui (duel pad tags, the Trial Portal) at
+  its pixel size, one copy of each; e.g. `python3 tools/render_gui.py arenaboards:raid -o boards.png`.
 * `portal` draws world GUIs instead of the HUD: the real LobbyBuilder + PortalService run (as the server) with
   `players` members on the pad (default 1 on Medium), and the portal's GUIs are mirrored flat into a ScreenGui: the
   pixel billboard at its own size (it keeps that size on screen), the eye-level countdown face (a SurfaceGui) at the

@@ -968,12 +968,24 @@ end)
 ----------------------------------------------------------------------------------------------------
 -- scenario: replay of the real server traffic
 ----------------------------------------------------------------------------------------------------
+-- Phase 3: EventService sends ArenaState to every client every 1-5 s for the whole server run (hours of game time).
+-- Replayed one by one for each picked player, those status broadcasts alone made this scenario run for many minutes
+-- (every gap between two replayed messages is advanced, up to 4 s): only the latest state matters to the client, so a
+-- broadcast is replayed at most every ARENA_STATE_GAP seconds of server time (client_p3ui / client_p3flow cover the
+-- arena side cards and countdowns).
+local ARENA_STATE_GAP = 60
 local function replayFor(userId)
 	local picked = {}
+	local lastArenaState = -math.huge
 	for i = 1, #REPLICATION do
 		local e = REPLICATION[i]
 		if e.kind == "remote" then
-			if e.target == "all" or e.userId == userId then
+			if e.target == "all" and e.remote == "ArenaState" then
+				if e.time - lastArenaState >= ARENA_STATE_GAP then
+					lastArenaState = e.time
+					picked[#picked + 1] = e
+				end
+			elseif e.target == "all" or e.userId == userId then
 				picked[#picked + 1] = e
 			end
 		elseif (e.kind == "attr" or e.kind == "health") and e.userId == userId then
@@ -1055,6 +1067,7 @@ S.client_replay = guarded("client_replay", function()
 	end
 	local baselineGui = #gui():GetDescendants()
 	local baselineBreakdown = guiBreakdown()
+	local hadBattleHud = gui():FindFirstChild("NimbusBattle") ~= nil
 	local maxGui = 0
 	local total = 0
 	local shownResult, shownPanel, shownParty = false, false, false
@@ -1128,7 +1141,20 @@ S.client_replay = guarded("client_replay", function()
 	smallProfile()
 	advance(2.0)
 	T.check(maxGui < baselineGui + 4000, "the GUI stays small during a long session (toasts / floats are cleaned up)", "peak " .. maxGui .. " objects, " .. baselineGui .. " before (" .. baselineBreakdown .. ")")
-	T.check(#gui():GetDescendants() <= baselineGui + 120, "the GUI is tidy after the replay (no growth from toasts, result cards, roulette reveals)", #gui():GetDescendants() .. " objects after, " .. baselineGui .. " before; now: " .. guiBreakdown() .. "; before: " .. baselineBreakdown)
+	-- Phase 3: the battle HUD (ScreenGui NimbusBattle) is built the first time the client draws a battle and then kept,
+	-- hidden, for the next one: a replay with battle traffic adds it once. While no battle is left and the HUD is hidden,
+	-- it is not growth (a battle stuck on the client would show it and still count).
+	local idleBattleHud = 0
+	local battleHud = gui():FindFirstChild("NimbusBattle")
+	if battleHud and not hadBattleHud then
+		local inst = Mock.GetPath(ROOTS["client"] .. "/Controllers/BattleController")
+		local okB, BattleController = pcall(require, inst)
+		if okB and type(BattleController) == "table" and type(BattleController.GetBattle) == "function" and BattleController.GetBattle() == nil
+			and type(BattleController.IsHudVisible) == "function" and not BattleController.IsHudVisible() then
+			idleBattleHud = 1 + #battleHud:GetDescendants()
+		end
+	end
+	T.check(#gui():GetDescendants() - idleBattleHud <= baselineGui + 120, "the GUI is tidy after the replay (no growth from toasts, result cards, roulette reveals)", #gui():GetDescendants() .. " objects after (" .. idleBattleHud .. " of them the idle battle HUD), " .. baselineGui .. " before; now: " .. guiBreakdown() .. "; before: " .. baselineBreakdown)
 end)
 
 ----------------------------------------------------------------------------------------------------

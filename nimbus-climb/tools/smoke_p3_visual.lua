@@ -4,7 +4,8 @@
 --                     floor (flat slabs just over the sand, inside the gold line, clear of the element wheel), framed
 --                     element marks, worn / warm stretches in the forum paving, sand drifts on every duel ring (under
 --                     its painted circle), drifts on a trial pocket's floor; the arena stays <= 2500 parts and a
---                     pocket <= 250; the gate and arch sign titles fit their panels (World text rule sizes kept)
+--                     pocket <= 250; the gate and arch sign titles fit their panels (World text rule sizes kept); the
+--                     event board draws the live boss HP bar (and hides it without a raid)
 --   p3visual_bosses   (server) every boss keeps its shading and its colour regions at High detail (the torso is not
 --                     folded into one flat colour: several shades per region, the Frost Wyrm's belly and frost patch,
 --                     the Hydra's belly, the Golem's ash), High <= 1000 parts and Low <= 760, Low keeps the accents
@@ -160,6 +161,17 @@ local function serverScenarios()
 				T.check(need <= width and title.TextSize / pps >= 1, "visual arena: the " .. spec[1] .. " title fits its panel and stays >= 1 stud tall",
 					string.format("%s at %d px: ~%d of %d px", title.Text, title.TextSize, need, width))
 			end
+		end
+
+		-- the event board shows the live boss's HP as a bar (in the Double Rewards pill's slot)
+		if AB.ApplyArenaState then
+			AB.ApplyArenaState({ Raid = { Active = true, BossId = "lava_golem", Hp = 61000, MaxHp = 90000, Players = 3, EndsIn = 200 }, Leaderboard = {} })
+			local bar = find(model, "RaidHpBar")
+			local fill = bar and bar:FindFirstChild("Fill")
+			T.check(bar and bar.Visible and fill and abs(fill.Size.X.Scale - 61000 / 90000) < 0.01, "visual arena: the event board draws the raid boss's HP bar",
+				fill and string.format("%.2f", fill.Size.X.Scale) or "no bar")
+			AB.ApplyArenaState({ Next = { Kind = "BossRaid", BossId = "storm_titan", StartsIn = 600 }, Leaderboard = {} })
+			T.check(bar and not bar.Visible, "visual arena: ...and hides it when no raid runs")
 		end
 
 		-- a trial pocket: sand drifts on its floor, within 250 parts
@@ -395,8 +407,9 @@ local function clientScenarios()
 					Mock.Step(0.1)
 				end
 				T.check(#rimParts() == 0, "visual client: no telegraph rim is left once the battle is over", #rimParts() .. " left")
-				if BC.Stop then
-					pcall(BC.Stop)
+				-- (no BattleController.Stop here: it disconnects the controller for the scenarios that follow)
+				for _ = 1, 60 do
+					Mock.Step(0.1) -- let the result card close by itself
 				end
 			end
 		end
