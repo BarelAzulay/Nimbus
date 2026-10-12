@@ -63,6 +63,11 @@
 --             Bear / Dog / earthy -> Earth, Owl / electric / windy sky pets -> Storm, Unicorn / halo -> Celestial,
 --             dark Secrets -> Shadow). Every element has at least 3 pets across several rarities.
 --   Signature = true (optional): the player's own creature (Stormfang); it leads its rarity in every list.
+--   EventOnly = true (optional, Phase 3 events): an exclusive Boss Raid drop. Never in any roulette (RollPet /
+--             GetOdds / PossiblePets / IsRollable skip it and ListByRarity, the roulette pool every roulette
+--             (token and gems-only) is built from, leaves it out unless asked with ListByRarity(rarity, true)).
+--             It is still a full catalog pet: in PetCatalog.Pets, Get, TotalCount and its rarity's Pet Index group
+--             (after the regular pets). Helpers: PetCatalog.EventPets() -> { PetDef... }, PetCatalog.IsEventOnly(id).
 --
 -- Secret pets (Rarity "Secret") come only from a roulette that sets `AllowSecret = true` (the gems-only Secret
 -- roulette of phase 2). No current roulette does, so RollPet / GetOdds / PossiblePets never offer them.
@@ -536,6 +541,51 @@ local RAW = {
 		Stats = Stats(12, 4, 36, 13),
 		Special = Special("foxfire_ward", "Foxfire Ward", "Shield", 44, C(124, 252, 228)),
 	},
+
+	------------------------------------------------------------ Event pets (Phase 3): Boss Raid drops only
+	-- EventOnly = true: never in a roulette (see the header). Each one is a little echo of an arena boss: the Lava
+	-- Golem's basalt and magma, the Frost Wyrm's glacier crystal, the Shadow Hydra's many-headed gills. Secret
+	-- rarity (the raid's rarest prize; the v2 rarities keep their lineup); perks between the best Mythic and
+	-- Stormfang, Power below Stormfang's; two Combat pets and one Economy pet (the Secret tier stays mixed).
+	{
+		Id = "magma_cub", Name = "Magma Cub", Rarity = "Secret", EventOnly = true,
+		Blurb = "Chipped off the Lava Golem's shoulder. Its basalt fur cracks with glowing magma when it is happy.",
+		Look = {
+			Species = "Bear", Primary = C(58, 46, 46), Secondary = C(255, 104, 28), Eye = C(255, 214, 92),
+			Glow = true, Accessory = "Horns", WingStyle = "Flame", WingColor = C(255, 104, 36),
+		},
+		Perks = { CheckpointHeal = 0.26, StaminaRegen = 0.19 },
+		Element = "Flame",
+		Role = "Combat",
+		Stats = Stats(3, 12, 72, 9),
+		Special = Special("lava_slam", "Lava Slam", "Blast", 50, C(255, 112, 40)),
+	},
+	{
+		Id = "rime_wyrmling", Name = "Rime Wyrmling", Rarity = "Secret", EventOnly = true,
+		Blurb = "Hatched from a shard of the Frost Wyrm's crown. Its breath paints frost ferns on every window.",
+		Look = {
+			Species = "Dragon", Primary = C(196, 228, 248), Secondary = C(70, 150, 214), Eye = C(150, 236, 255),
+			Glow = true, Accessory = "Horns", WingStyle = "Crystal", WingColor = C(150, 214, 250),
+		},
+		Perks = { TokenBonus = 0.26, StaminaRegen = 0.18 },
+		Element = "Frost",
+		Role = "Combat",
+		Stats = Stats(3, 12, 66, 12),
+		Special = Special("glacier_breath", "Glacier Breath", "Freeze", 46, C(156, 230, 255)),
+	},
+	{
+		Id = "hydralotl", Name = "Hydralotl", Rarity = "Secret", EventOnly = true,
+		Blurb = "The Shadow Hydra's smallest head wandered off and grew a body. Its six gills whisper to each other.",
+		Look = {
+			Species = "Axolotl", Primary = C(52, 38, 82), Secondary = C(118, 255, 196), Eye = C(196, 255, 120),
+			Glow = true, Accessory = "Horns", WingStyle = "Bat", WingColor = C(96, 58, 156),
+		},
+		Perks = { TokenBonus = 0.24, CheckpointHeal = 0.22 },
+		Element = "Shadow",
+		Role = "Economy", -- a raid prize for the tycoon side too: its gills hum over the Garden all day
+		Stats = Stats(12, 4, 36, 13),
+		Special = Special("void_fangs", "Void Fangs", "Beam", 40, C(150, 110, 255)),
+	},
 }
 
 ----------------------------------------------------------------------
@@ -592,6 +642,28 @@ for _, def in ipairs(PetCatalog.Pets) do
 	table.insert(byRarity[def.Rarity], def)
 end
 
+-- rarityId -> { PetDef... } without the EventOnly pets: the roulette pools (Phase 3 event pets are raid drops only)
+local poolByRarity = {}
+local eventPets = {}
+for rarityId, list in pairs(byRarity) do
+	local pool = {}
+	for _, def in ipairs(list) do
+		if def.EventOnly == true then
+			table.insert(eventPets, def)
+		else
+			table.insert(pool, def)
+		end
+	end
+	poolByRarity[rarityId] = pool
+end
+table.sort(eventPets, function(a, b)
+	local oa, ob = rarityOrder(a.Rarity), rarityOrder(b.Rarity)
+	if oa ~= ob then
+		return oa < ob
+	end
+	return a.Name < b.Name
+end)
+
 ----------------------------------------------------------------------
 -- Lookups
 ----------------------------------------------------------------------
@@ -603,9 +675,13 @@ function PetCatalog.Get(id)
 	return PetCatalog.ById[id]
 end
 
-function PetCatalog.ListByRarity(rarityId)
+-- The roulette pool of a rarity: EventOnly pets are left out unless includeEvent is true (Phase 3).
+function PetCatalog.ListByRarity(rarityId, includeEvent)
 	local out = {}
-	local list = byRarity[rarityId]
+	local list = poolByRarity[rarityId]
+	if includeEvent == true then
+		list = byRarity[rarityId]
+	end
 	if list then
 		for i, def in ipairs(list) do
 			out[i] = def
@@ -620,6 +696,20 @@ end
 
 function PetCatalog.TotalCount()
 	return #PetCatalog.Pets
+end
+
+-- Phase 3: the exclusive Boss Raid pets (EventOnly = true), rarity order then Name. A fresh list.
+function PetCatalog.EventPets()
+	local out = {}
+	for i, def in ipairs(eventPets) do
+		out[i] = def
+	end
+	return out
+end
+
+function PetCatalog.IsEventOnly(petId)
+	local def = PetCatalog.Get(petId)
+	return def ~= nil and def.EventOnly == true
 end
 
 ----------------------------------------------------------------------
@@ -655,7 +745,7 @@ local function oddsEntries(rouletteId)
 	local total = 0
 	for _, r in ipairs(rarityList) do
 		local w = roulette.Odds[r.Id]
-		local pets = byRarity[r.Id]
+		local pets = poolByRarity[r.Id] -- never the EventOnly raid pets
 		if type(w) == "number" and w > 0 and pets and #pets > 0 and rarityAllowed(roulette, r.Id) then
 			table.insert(entries, { Rarity = r.Id, Weight = w, Pets = pets })
 			total = total + w
@@ -749,7 +839,7 @@ end
 -- Extra: true when at least one current roulette can roll this pet (Secret pets: false until phase 2).
 function PetCatalog.IsRollable(petId)
 	local def = PetCatalog.Get(petId)
-	if not def then
+	if not def or def.EventOnly == true then
 		return false
 	end
 	for _, roulette in ipairs(Config.Roulettes) do
@@ -1058,14 +1148,20 @@ local function copyReward(rarityId)
 	return out
 end
 
+-- A rarity's group lists its roulette pets first, then its EventOnly raid pets (shown in the Index too).
 local function buildGroup(rarityId)
 	local pets = byRarity[rarityId]
 	if not pets or #pets == 0 then
 		return nil
 	end
 	local list = {}
-	for i, def in ipairs(pets) do
-		list[i] = def
+	for _, def in ipairs(poolByRarity[rarityId] or {}) do
+		table.insert(list, def)
+	end
+	for _, def in ipairs(pets) do
+		if def.EventOnly == true then
+			table.insert(list, def)
+		end
 	end
 	return { Id = rarityId, Rarity = rarityId, Pets = list, Reward = copyReward(rarityId) }
 end
@@ -1394,7 +1490,7 @@ function PetCatalog.Validate()
 					bad("roulette " .. roulette.Id .. " lists Secret pets without AllowSecret = true (they are ignored)")
 				else
 					total = total + w
-					if not byRarity[rarityId] or #byRarity[rarityId] == 0 then
+					if not poolByRarity[rarityId] or #poolByRarity[rarityId] == 0 then
 						bad("roulette " .. roulette.Id .. " lists rarity " .. tostring(rarityId) .. " but no pet has it")
 					end
 				end
@@ -1402,6 +1498,15 @@ function PetCatalog.Validate()
 		end
 		if total <= 0 then
 			bad("roulette " .. roulette.Id .. " has no positive odds")
+		end
+	end
+
+	-- Phase 3 event pets: real pets (validated above), never in a roulette pool
+	for _, def in ipairs(eventPets) do
+		for _, poolDef in ipairs(poolByRarity[def.Rarity] or {}) do
+			if poolDef == def then
+				bad(tostring(def.Id) .. ": an EventOnly pet is in a roulette pool")
+			end
 		end
 	end
 

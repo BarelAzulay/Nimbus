@@ -551,3 +551,133 @@ a side toast to everyone and a countdown on the event board) runs events on the 
 **Progression.** Pet XP from battles + Kitchen food + Gym; levels raise stats (`PetCatalog.GetStats`). Rewards are
 Tokens (shop, roulettes), trophies (rank/leaderboard), rare Gems.
 
+## Phase 3 build contract (the engineers code strictly to these names)
+Phases 1 and 2 are merged (Pet Index, tutorial, NPCs, Stormfang, elements, developer tools, tycoon homes, pet keys,
+pet levels and stats via `PetCatalog.GetStats(petId, level, tier)`, Golden/Rainbow/hybrid pets, Gems). Phase 3 adds
+the battles described above. **Architecture: the server simulates, the clients draw.** Battle pets, enemy pets and
+bosses are NOT server-moved parts: the server runs a pure simulation at 10 Hz and sends compact snapshots; every
+client builds and animates the models locally (PetBuilder / BossBuilder) and interpolates between snapshots
+(Replication rule). Follower pets hide while their owner's team is in a battle.
+
+**Ownership**
+| Agent | Files |
+|---|---|
+| battlecore | `shared/BattleSim.lua` (new), `shared/BattleCatalog.lua` (new), `tools/sim_battle.lua` (new, balance harness) |
+| data | `server/Services/DataService.lua` (Teams + Battle fields), `shared/PetKeys.lua` (only if needed) |
+| battleservice | `server/Services/BattleService.lua` (new) |
+| arenaworld | `server/Services/ArenaBuilder.lua` (new), `server/Services/LobbyBuilder.lua` (arena link + Trial Portal only), `shared/TycoonCatalog.lua` (ArenaGate ComingSoon flag only), `server/Services/HomeBuilder.lua` (Arena Gate prompt only) |
+| events | `server/Services/EventService.lua` (new), `shared/BossBuilder.lua` (new), `shared/PetCatalog.lua` (event pets only) |
+| battleclient | `client/Controllers/BattleController.lua` (new), `client/Controllers/PetController.lua` (hide followers in battle only) |
+| ui | `client/Controllers/ArenaController.lua` (new), `client/Controllers/MenuController.lua` (Team screen + trophies), `shared/TutorialSteps.lua`, `server/Services/TutorialService.lua`, `shared/NpcDialog.lua` |
+Lead-owned: Config.lua, Main.server.lua, Main.client.lua, the docs.
+
+**Remotes (Config.Remotes, added by the lead):**
+`BattleState` server->client `(kind, payload)`: "Start" {BattleId, Mode = "Trial"|"Duel"|"Raid", Zone (center CFrame +
+size), Sides, Units (static info: id, side, owner, key or boss id, species/look ref, max hp, element)}, "Snapshot"
+{BattleId, T, Units = {id -> {x, z, hp, state, target, meter}}} (10 Hz, only to participants and nearby spectators,
+compact numbers), "Events" {list of {type = "Hit"|"Special"|"KO"|"Telegraph"|"Spawn"|"Enrage"|..., ...}}, "End"
+{BattleId, Result, Rewards}. `BattleCommand` client->server `(action, a)`: "Attack" (targetUnitId|nil), "Retreat",
+"Special" (teamSlot), "Forfeit". `BattleRequest` client->server `(action, a, b)`: "TeamSet" (preset 1-3, {keys}),
+"TeamSelect" (preset), "Trial" (level), "Challenge" (userId), "ChallengeReply" (userId, accept), "Queue", "Unqueue",
+"JoinRaid", "LeaveRaid". `ArenaState` server->client `(state)`: next event, countdown, current raid status,
+leaderboard top 10. All client->server traffic: type-checked, rate-limited, refused outside the right zone.
+
+**Data (DataService):** `Teams = {Presets = {[1..3] = {key, key, key, key?}}, Active = 1}` (slot 4 usable only at
+Home.Prestige >= 1; keys must be owned, unique, and not in the Garden/Gym; fusion/reset removes stale keys);
+`Battle = {Trophies, TrialBest, TrialCleared = {[level] = true}, Raids, RaidBestDamage, PvPWins, PvPLosses,
+EventPets = {[petId] = true}}` with migration, delta-save rules (Trophies/PvP counters as deltas, TrialCleared and
+EventPets grow-only), ProfileSync additions, and API `GetTeams/SetTeam/SelectTeam/ActiveTeamKeys`,
+`GetBattle/MutateBattle(player, fn)`, `AddTrophies(player, n)` (n may be negative, floor 0).
+
+**BattleCatalog + BattleSim (battlecore).** `BattleCatalog`: species combat profiles (melee/ranged, range, move speed,
+attack interval, hit radius) for every species, the damage formula constants (Power x level/tier scaling x
+`PetCatalog.ElementMultiplier` x variance; Retreat damage reduction and regen; special meter gain), special effects per
+`Special.Kind` (Blast, Heal, Shield, Storm, Pounce, Freeze, Beam), team synergy (section 11), the 30 Trial levels
+(NPC teams built from catalog pets with levels/tiers, a mini-boss every 5 levels, first-clear and repeat rewards), the
+boss roster (Storm Titan, Lava Golem, Frost Wyrm, Shadow Hydra: element, HP per participant, attacks with telegraph
+shapes and timings, minion waves, enrage timer), the event schedule (Boss Raid every ~20 min announced 2 min ahead,
+plus Double Rewards hour) and trophy rules for PvP (win/loss amounts, floor 0). `BattleSim` is a PURE module (no
+Instances, no services): `BattleSim.new(setup) -> battle`, `battle:Command(side/owner, action, arg)`,
+`battle:Step(dt) -> events`, `battle:Snapshot()`, `battle:Result()`; deterministic for a seed; positions on a 2D floor
+(x, z) inside the zone; units move, pick targets (focus target when commanded), attack in range, retreat to their
+owner's anchor with reduced damage taken and slow regen, use specials when commanded and the meter is full, die and
+stay down until the battle ends; bosses run their attack patterns with telegraphs that units can leave by retreating.
+`tools/sim_battle.lua` (run with lupa like the smoke tests) balances it: trial curve vs. typical player power along the
+tycoon progression (pet levels from TycoonCatalog XP), PvP fairness between equal teams, boss raids with 1/3/8
+players finishing in ~2-4 minutes, no unkillable or one-shot builds, elements mattering but not deciding everything.
+
+**BattleService (battleservice).** `Init({DataService, PetService, PetCareService, TycoonService})`; runs every battle
+with BattleSim at 10 Hz on the server; modes: Trial (a private pocket arena per player built by ArenaBuilder, far out
+in the sky; teleports in and back), Duel (two players on an arena duel ring; challenge -> accept, or the quick queue),
+Raid (the boss floor; EventService starts and stops it; players join in the arena). Owns the battle zones (tagged
+`NC_BattleZone`), the BattleCommand / BattleRequest remotes, team validation (active preset, slot 4 rule), rewards
+(Tokens, trophies, pet XP via `PetCareService.GrantXp`, Gems chance) paid exactly once, disconnect/forfeit rules (a
+leaver loses a duel; nobody loses pets), and the player attribute `InBattle` (battle id) for the client.
+API: `StartTrial(player, level)`, `Challenge(a, b)`, `StartRaid(bossId)`/`EndRaid()`, `GetBattle(player)`,
+`IsInBattle(player)`, signals `BattleEnded(battleId, result)`.
+
+**ArenaBuilder (arenaworld).** `ArenaBuilder.Build(lobbyInfo) -> ArenaInfo` (called by Main after the lobby): the Battle
+Arena island in the detailed voxel style (colosseum floor = the boss stage, 2+ duel rings with challenge pads,
+spectator stands, the event board and trophy leaderboard as readable SurfaceGuis, banners), placed so it never
+collides with homes, the Storm Altar or the sky dragon's path, and linked to the plaza (a bridge through a free ring
+junction if one fits, otherwise an Arena Portal in the plaza + a return portal); the **Trial Portal** `Portal_Trials`
+in the plaza (styled like the difficulty portals, prompt opens the Trial window); `BuildPocket(index) -> zone` for
+private trial arenas; the home **Arena Gate** becomes a working teleport to the arena (remove TycoonCatalog's
+ComingSoon flag). Part budget: arena <= ~2500, each pocket <= ~250 (cloned).
+
+**EventService + BossBuilder (events).** The scheduler (every ~20 min a Boss Raid, announced 2 minutes before with a
+side toast to everyone + the ArenaState countdown; a Double Rewards hour type), raid lifecycle through BattleService,
+reward tiers by damage contribution, a chance of an exclusive **event pet** (2-3 new pets in PetCatalog with
+`EventOnly = true`: never in roulettes, shown in the Index), and BossBuilder: big detailed-voxel bosses
+(Storm Titan, Lava Golem, Frost Wyrm, Shadow Hydra) built on the client from BattleCatalog ids, with named parts for
+attack animations and telegraph effects.
+
+**BattleController (battleclient).** Builds and animates every battle unit from BattleState (PetBuilder for pets,
+BossBuilder for bosses), interpolates snapshots, plays lunges, hit flashes, damage numbers (never in the screen
+centre), special VFX per Kind and element, KO poof, boss telegraphs on the floor (glowing circles/lines that fill up
+before the hit); the battle HUD (only inside battle zones): team pets' HP bars, element badges, special meters, and the
+**ATTACK / RETREAT / SPECIAL** buttons (keys F / R / 1-4, gamepad, touch-sized), tap/click an enemy to focus it;
+hides the follower pets during a battle (one line in PetController). Cheap per frame.
+
+**ArenaController + Team screen (ui).** The Team screen in the menu (3 presets, slots 1-3 + slot 4 at Prestige 1,
+pick pets with element badges and stats, live synergy bonuses, the element wheel), the Trial window (30 levels with
+locks, recommended power vs. your team's power, rewards, first-clear badges), duel challenge/accept prompts and the
+quick queue, the raid join prompt and event countdown, the trophy leaderboard panel; tutorial chapter 3 (go to the
+Arena, set your team, win Trial 1, see a Boss Raid) and NPC tips for battles, elements in battle, teams and events.
+
+
+**Interfaces between the Phase 3 modules (so every engineer can code without waiting for the others):**
+- *Signals exist at module load* (`Util.Signal()`), so other services can connect before Init:
+  `BattleService.BattleEnded:Fire(battleId, result)` with `result = {Mode, Winners = {userId...}, Losers = {userId...},
+  Level (Trial), BossId (Raid), Damage = {[userId] = n} (Raid), Forfeit = bool}`; `DataService.TeamsChanged:Fire(player)`
+  after SetTeam/SelectTeam. TutorialService and DevService receive `BattleService` (and DevService `EventService`) in
+  their Init deps.
+- *Duel/queue status*: `BattleState("Lobby", {Queue = {Queued, Waiting}, Invites = {{FromUserId, FromName, Trophies,
+  Power, ExpiresIn}}, Sent = {ToUserId, ToName, ExpiresIn} | nil})`, sent by BattleService to a player whenever their
+  duel/queue status changes. Refusals and info use the existing `Notify` toasts (side, never centred).
+- *Snapshot frame*: `x, z` are studs relative to the zone centre from "Start" (`Zone = {CFrame, Size}`), floor at the
+  zone CFrame's height. Static unit info also carries `slot` (the owner's team slot 1-4) so the HUD maps buttons to
+  pets. `BattleSim` exposes its state codes and event types as constants (`BattleSim.States`, `BattleSim.Events`).
+- *ArenaState* (EventService broadcasts it every ~1 s while a countdown or raid runs, else every ~5 s and on join):
+  `{Next = {Kind = "BossRaid"|"DoubleRewards", BossId, StartsIn} | nil, Raid = BattleService.GetRaidStatus() ->
+  {Active, BossId, Hp, MaxHp, Players, EndsIn} | nil, Double = {Active, EndsIn} | nil, Leaderboard = {{UserId, Name,
+  Trophies} x10}}`. `EventService.StartNow(kind)` lets the developer tools start an event at once (`/raid`, DEV panel).
+- *World prompts that open windows* carry the attribute `OpenPanel = "<panelId>"` (`"Trials"`, `"Arena"`); the client
+  controller that owns the panel opens it from `ProximityPromptService.PromptTriggered` (like FusionController).
+  Trial starts are accepted near `Portal_Trials`; duel challenges and the queue inside the arena; raid joins inside the
+  arena while a raid is active.
+- *BattleCatalog helpers the UI uses*: `UnitPower(petId, level, tier)`, `TeamPower(list of {PetId, Level, Tier})`,
+  `Synergy(list of petIds) -> {{Id, Name, Text}}`, `Trials[level] = {Level, Name, RecommendedPower, MiniBoss,
+  Rewards = {Tokens, FirstClear = {Tokens, Gems}}}`, `Bosses[id] = {Name, Element, ...}`, `Specials[Kind] = {Name, Text}`.
+- *ArenaInfo* (from ArenaBuilder.Build): `{Model (workspace.BattleArena), Center (CFrame), Floor = {CFrame, Size},
+  Rings = {{CFrame, Size, Pads}}, Spawn (CFrame), ReturnCFrame, TrialPortal (BasePart)}`; `ArenaBuilder.BuildPocket(index)
+  -> {Model, CFrame, Size, Spawn}` and `ArenaBuilder.FreePocket(zone)`.
+- *Ownership additions*: data also owns the DevService reset lines for Teams/Battle; events owns the DevService `raid`
+  command and one DevController "Start Boss Raid" button (data and events run one after the other, never together).
+- *As built (arenaworld)*: `Portal_Trials` is parented to `workspace.BattleArena` (= `ArenaInfo.TrialPortal`), NOT to
+  NimbusLobby (the lobby is at its part budget), but it STANDS on the plaza at `LobbyInfo.TrialSite` next to the climb
+  portals: the tutorial and any arrow/beam must target it through ArenaInfo. The arena is
+  reached by a bridge from the plaza and by the home Arena Gate (a real station now: 150K Cash after the Gym). The
+  board prompts carry `OpenPanel = "Arena"` plus `OpenPanelTab = "Events"` / `"Leaderboard"`; duel pad prompts carry
+  `RingIndex` / `PadIndex`. Extra ArenaBuilder API: `ApplyArenaState(state)` (EventService draws the boards),
+  `InArena(pos)`, `ZoneAt(pos)`, `GetInfo()`, `GetPocket(i)`, signal `Teleported`.

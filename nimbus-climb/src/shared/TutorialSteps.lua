@@ -4,17 +4,20 @@
 --
 -- Chapters. Saved progress is the step INDEX (Profile.Tutorial.Step), so steps are only ever APPENDED: chapter 1
 -- (steps 1-9, the Phase 1 basics) keeps its indices, chapter 2 (the tycoon home, Phase 2) follows, Phase 3 appends
--- the arena. A player who finished an earlier chapter resumes at the first step of the next one when it ships
+-- the arena (chapter 3, Phase 3: go to the Battle Arena, set a battle team, win Trial 1, see a Boss Raid). A player who
+-- finished an earlier chapter resumes at the first step of the next one when it ships
 -- (TutorialService: a stored Done tutorial whose Step points into a later chapter carries on from there).
 --
 -- Step fields
 --   Id          unique step id
---   Chapter     1 (basics) or 2 (home); defaults to 1
+--   Chapter     1 (basics), 2 (home) or 3 (pet battles); defaults to 1
 --   ChapterEnd  true on the last step of a chapter: completing it pays the chapter's reward once
---               (chapter 1: Config.Tutorial.FinishReward; chapter 2: TutorialService's home reward)
+--               (chapter 1: Config.Tutorial.FinishReward; chapters 2 and 3: TutorialService's rewards)
 --   Title       short headline shown above the text
 --   Text        what Nimbus says (short, friendly). Placeholders filled in by TutorialService:
---               {GiftTokens} = Config.Tutorial.GiftTokens, {FinishTokens} = Config.Tutorial.FinishReward.Tokens
+--               {GiftTokens} = Config.Tutorial.GiftTokens, {FinishTokens} = Config.Tutorial.FinishReward.Tokens,
+--               {RaidMinutes} = minutes between two Boss Raids (BattleCatalog.Events; the raid step builds its text from
+--               BattleCatalog when this module loads, so it needs no placeholder)
 --   Target      nil, or where the guide arrow points:
 --                 { Kind = "Spot" }                     the player's own home plot (SpotIndex attribute)
 --                 { Kind = "Spot", Gate = true }        the gate of the plot the player should claim: their claimed
@@ -28,7 +31,11 @@
 --                 { Kind = "Shop" }                     the roulette machines (Roulette_<first roulette id>)
 --                 { Kind = "Roulette", Id = "Cloud" }   model Roulette_<Id> under workspace.NimbusLobby
 --                 { Kind = "Portal", Id = "Easy" }      model Portal_<Id> under workspace.NimbusLobby
---                 { Kind = "Menu", Id = "Pets" }        the menu button MenuButton_<Id>
+--                 { Kind = "Menu", Id = "Pets" }        the menu button MenuButton_<Id> ("Team": the battle team tile)
+--                 { Kind = "Arena", Place = "Gate" }    Phase 3, resolved by TutorialService from ArenaInfo and sent as
+--                                                       { Kind = "Spot", Position, Label }: "Gate" = the arena's arrival
+--                                                       forum (ArenaInfo.Spawn), "Trials" = the Trial Portal
+--                                                       (ArenaInfo.TrialPortal), "Floor" = the colosseum floor (raids)
 --               Label (optional) names the target on the floating sign above the arrow. TutorialService resolves
 --               the home targets on the server and sends Kind "Spot" + Position (or Kind "Menu") to the client.
 --   CompleteOn  "Next"         the player presses Next (client event)
@@ -43,6 +50,11 @@
 --               "IndexOpened"  the Pet Index window opened (client event)
 --               "MatchStarted" the player's InMatch attribute turned true
 --               "MatchEnded"   the player's InMatch attribute turned false again
+--               "ArenaReached" the player stands in the Battle Arena (ArenaBuilder.InArena, server poll)
+--               "TeamSet"      the active battle team holds the player's pets: min(3, pets that can join a team)
+--                              (DataService.TeamsChanged / ActiveTeamKeys / FieldableKeys)
+--               "TrialWon"     Trial level 1 is cleared (BattleService.BattleEnded / Battle.TrialCleared)
+--               "RaidSeen"     the player joined a Boss Raid, or stood in the arena while one was running
 --   Station     the station id a "Built" step waits for
 --   Gift        true: entering this step grants Config.Tutorial.GiftTokens once (Profile.Tutorial.Gifted)
 --   Hint        short objective line shown under the text while the step waits for an action (TutorialService
@@ -52,6 +64,20 @@
 -- Plain Lua 5.1-compatible syntax only.
 
 local TutorialSteps = {}
+
+-- minutes between two Boss Raids for the chapter 3 text (BattleCatalog.Events; data read once, 20 without it)
+local RAID_MINUTES = 20
+do
+	local module = script.Parent:FindFirstChild("BattleCatalog")
+	if module then
+		local ok, catalog = pcall(require, module)
+		local events = ok and type(catalog) == "table" and catalog.Events or nil
+		local first = type(events) == "table" and type(events.Schedule) == "table" and events.Schedule[1] or nil
+		if type(first) == "table" and tonumber(first.EveryMinutes) then
+			RAID_MINUTES = math.floor(tonumber(first.EveryMinutes))
+		end
+	end
+end
 
 TutorialSteps.Guide = {
 	Name = "Nimbus",
@@ -193,6 +219,44 @@ TutorialSteps.Steps = {
 		Target = { Kind = "Spot", Station = "Kitchen", Food = true, Label = "Kitchen" },
 		CompleteOn = "Fed",
 		Hint = "Cook a Snack, then feed a pet",
+	},
+	-------------------------------------------------------------------------------------- chapter 3: pet battles
+	{
+		Id = "arena",
+		Chapter = 3,
+		Title = "The Battle Arena",
+		Text = "Your pets are strong enough to battle now! Follow my arrow over the bridge to the Battle Arena.",
+		Target = { Kind = "Arena", Place = "Gate", Label = "Battle Arena" },
+		CompleteOn = "ArenaReached",
+		Hint = "Walk into the Battle Arena",
+	},
+	{
+		Id = "team",
+		Chapter = 3,
+		Title = "Pick Your Team",
+		Text = "Battles need a team! Tap Team and put your pets in your team (up to 3; a 4th slot opens at Prestige 1). Same-element pets power each other up!",
+		Target = { Kind = "Menu", Id = "Team" },
+		CompleteOn = "TeamSet",
+		Hint = "Tap the glowing Team button and put your pets in your team",
+	},
+	{
+		Id = "trial",
+		Chapter = 3,
+		Title = "Your First Trial",
+		Text = "Press E at the Trial Portal and start Level 1. Tap ATTACK, RETREAT when it gets rough, SPECIAL when it glows!",
+		Target = { Kind = "Arena", Place = "Trials", Label = "Trial Portal" },
+		CompleteOn = "TrialWon",
+		Hint = "Win Trial level 1",
+	},
+	{
+		Id = "raid",
+		Chapter = 3,
+		ChapterEnd = true,
+		Title = "Boss Raids!",
+		Text = "Every " .. RAID_MINUTES .. " minutes a giant boss stomps into the colosseum and everyone fights it together. Be there!",
+		Target = { Kind = "Arena", Place = "Floor", Label = "Boss Raid floor" },
+		CompleteOn = "RaidSeen",
+		Hint = "Join or watch a Boss Raid",
 	},
 }
 

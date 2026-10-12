@@ -490,10 +490,10 @@ local function padChecks(TC)
 	local hk1 = home({ Press1 = 2, Press2 = 2, Collector = 1, Garden = 1, Kitchen = 1 }, 1)
 	fm = padOf(TC.AvailablePads(hk1), "FusionMachine")
 	T.check(fm and fm.Locked == nil, "economy: ...and opens with 1 prestige star")
-	-- Arena Gate: coming soon
+	-- Arena Gate: a real station since Phase 3 (a teleport to the Battle Arena), buyable once the Gym stands
 	local hg = home({ Press1 = 2, Press2 = 2, Collector = 1, Garden = 1, Kitchen = 1, Gym = 1 })
 	local ag = padOf(TC.AvailablePads(hg), "ArenaGate")
-	T.check(ag and ag.Locked == "Coming soon", "economy: the Arena Gate pad says 'Coming soon' (Phase 3)", ag and tostring(ag.Locked))
+	T.check(ag and ag.Locked == nil and ag.NextLevel == 1, "economy: the Arena Gate pad is buyable after the Gym (Phase 3)", ag and tostring(ag.Locked))
 	-- prestige pad only with the Sky Castle; locked below Home Level 40
 	local manor = builtTo(TC, 3, 0)
 	local hasPrestige = false

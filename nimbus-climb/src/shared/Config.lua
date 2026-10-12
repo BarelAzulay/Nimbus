@@ -80,6 +80,8 @@ Config.Remotes = {
 	"RouletteResult", -- (result:table)    see ARCHITECTURE_V2.md
 	"OpenPanel", -- (panelId:string, args:table|nil)  e.g. ("Shop", {Tab="Roulette", RouletteId="Cloud"})
 	"TutorialState", -- (state:table)  v3, see ARCHITECTURE_V3.md
+	"DevPetShow", -- (action:string, payload:table)  developer pet showcase for the developer's own client:
+	--   Spawn {PetId, Stage} / Lineup {Stage, PetIds} / Evolve {Steps = {{PetId, From, To}...}} / Clear {}
 	-- client -> server
 	"Dash", -- ()
 	"LeaveParty", -- ()
@@ -98,6 +100,11 @@ Config.Remotes = {
 	"HomeAction", -- (action:string, arg:any)  Upgrade / GardenSet / Collect / Prestige / GoHome
 	"PetCare", -- (action:string, a:any, b:any)  Cook / Feed / GymSet
 	"Fusion", -- (action:string, a:any, b:any)  Upgrade / Mix
+	-- Phase 3 (ARCHITECTURE_V3.md "Phase 3 build contract")
+	"BattleState", -- server -> client (kind:string, payload:table)  Start / Snapshot / Events / End
+	"BattleCommand", -- (action:string, a:any)  Attack / Retreat / Special / Forfeit
+	"BattleRequest", -- (action:string, a:any, b:any)  TeamSet / TeamSelect / Trial / Challenge / ChallengeReply / Queue / Unqueue / JoinRaid / LeaveRaid
+	"ArenaState", -- server -> client (state:table)  next event, countdown, raid status, leaderboard
 }
 
 ----------------------------------------------------------------------

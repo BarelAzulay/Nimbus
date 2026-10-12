@@ -25,17 +25,22 @@ local CONTROLLER_NAMES = {
 	"TutorialController",
 	"ShowcaseController",
 	"DevController",
+	"DevPetShow", -- the developer pet showcase (/pet, /pets, /evolve; client/Controllers/EvolutionFx.lua)
 	-- Phase 2
 	"HomeFx",
 	"FusionController",
+	-- Phase 3
+	"BattleController",
+	"ArenaController",
 }
 
 local TAG = "[NimbusClimb] "
 
 -- Newer controllers that a build may not contain yet: skip them quietly when absent.
 local OPTIONAL = { SkyDragonController = true, IndexController = true, NpcController = true, TutorialController = true,
-	ShowcaseController = true, DevController = true,
-	HomeFx = true, FusionController = true }
+	ShowcaseController = true, DevController = true, DevPetShow = true,
+	HomeFx = true, FusionController = true,
+	BattleController = true, ArenaController = true }
 
 local client = script.Parent
 

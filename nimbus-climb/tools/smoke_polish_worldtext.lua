@@ -285,11 +285,13 @@ local function auditGui(gui)
 	return rec
 end
 
+-- (Phase 3: "BattleNumber" = BattleController's pooled floating damage numbers, combat text like NC_FloatText: pixel-sized
+-- and outlined, never on a name plate. They are in the client world once it has drawn a battle.)
 local function exempt(gui)
 	local cur = gui
 	while cur and cur ~= game do
 		local n = cur.Name
-		if n == "StormAltar" or n == "StormfangShowcase" or n == "StormAltarSign" or n == "NC_FloatText" then
+		if n == "StormAltar" or n == "StormfangShowcase" or n == "StormAltarSign" or n == "NC_FloatText" or n == "BattleNumber" then
 			return n
 		end
 		cur = cur.Parent

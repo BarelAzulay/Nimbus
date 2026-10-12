@@ -290,13 +290,23 @@ local function detailOf(value)
 		return "Low"
 	elseif v == "high" then
 		return "High"
+	elseif v == "evolved" or v == "evo" then
+		return "EvoHigh"
+	elseif v == "evolvedlow" or v == "evolved-low" or v == "evolved_low" or v == "evolow" then
+		return "EvoLow"
+	elseif v == "evolved2" or v == "evo2" then
+		return "Evo2High"
+	elseif v == "evolved2low" or v == "evolved2-low" or v == "evolved2_low" or v == "evo2low" then
+		return "Evo2Low"
 	end
 	fail("detail must be High or Low, got '" .. tostring(value) .. "'")
 end
 
 local function petModel(def, detail, label, sub)
 	local PetBuilder = req("shared/PetBuilder")
-	local model = PetBuilder.Build(def, { Detail = detail })
+	local evolved = detail:sub(1, 3) == "Evo"
+	local stage = evolved and ((detail:sub(4, 4) == "2") and 2 or 1) or nil
+	local model = PetBuilder.Build(def, { Detail = (detail:gsub("^Evo2?", "")), Evolved = stage })
 	if not isInstance(model) then
 		fail("PetBuilder.Build returned no model for " .. tostring(def.Id))
 	end
@@ -420,9 +430,12 @@ end
 
 BUILDERS.pets = function(a)
 	local detail = detailOf(a)
+	local second = detail:sub(1, 4) == "Evo2" -- the second evolution: only the pets that have one
 	local out = {}
 	for _, def in ipairs(req("shared/PetCatalog").Pets) do
-		out[#out + 1] = tryBuild(tostring(def.Name or def.Id), catalogPet, def.Id, detail)
+		if not second or req("shared/PetBuilder").MaxEvolution(def) >= 2 then
+			out[#out + 1] = tryBuild(tostring(def.Name or def.Id), catalogPet, def.Id, detail)
+		end
 	end
 	return out
 end
@@ -721,6 +734,221 @@ end
 
 BUILDERS.homegym = function(level)
 	return homePetsView("Gym", "GymPets", level)
+end
+
+-- Phase 3 (server/Services/ArenaBuilder.lua):
+--   arena                the Battle Arena (workspace.BattleArena: island, colosseum, duel rings, boards, the bridge and
+--                        the Trial Portal on the plaza) built on the real lobby (+ the Storm Altar when it exists, like
+--                        Main does); combine with lobby (lobby+arena) and crop with --box to see the plaza link
+--   pocket[:<index>]     one private trial pocket (ArenaBuilder.BuildPocket(index), default 1) far out in the sky
+local arenaInfo = nil
+local function ensureArena()
+	if arenaInfo then
+		return arenaInfo
+	end
+	local info = ensureLobby()
+	local StormAltar = req("server/Services/StormAltar", true)
+	if StormAltar and type(StormAltar.Build) == "function" and not Workspace:FindFirstChild("StormAltar", true) then
+		pcall(StormAltar.Build, info)
+	end
+	local AB = req("server/Services/ArenaBuilder", true)
+	if not AB or type(AB.Build) ~= "function" then
+		fail("server/Services/ArenaBuilder.lua (Build) does not exist yet")
+	end
+	local result = AB.Build(info)
+	Mock.Advance(0.2)
+	if type(result) ~= "table" or not isInstance(result.Model) then
+		fail("ArenaBuilder.Build(lobbyInfo) returned no ArenaInfo with a Model")
+	end
+	arenaInfo = result
+	return result
+end
+
+BUILDERS.arena = function()
+	local info = ensureArena()
+	local look = typeof(info.Center) == "CFrame" and info.Center.LookVector or Vector3.new(0, 0, -1)
+	return { { root = info.Model, label = "Battle Arena", sub = "ArenaBuilder.Build(lobbyInfo) (" .. tostring(info.Link) .. " link)", facing = { look.X, 0, look.Z } } }
+end
+
+BUILDERS.pocket = function(index)
+	local AB = req("server/Services/ArenaBuilder", true)
+	if not AB or type(AB.BuildPocket) ~= "function" then
+		fail("server/Services/ArenaBuilder.lua (BuildPocket) does not exist yet")
+	end
+	local n = tonumber(index) or 1
+	local pocket = AB.BuildPocket(n)
+	Mock.Advance(0.2)
+	if type(pocket) ~= "table" or not isInstance(pocket.Model) then
+		fail("ArenaBuilder.BuildPocket(" .. n .. ") returned no pocket with a Model")
+	end
+	return { { root = pocket.Model, label = "Trial pocket " .. n, sub = "ArenaBuilder.BuildPocket(" .. n .. ")", facing = { 0, 0, -1 } } }
+end
+
+-- Phase 3 bosses (shared/BossBuilder.lua, built from a BattleCatalog boss id):
+--   boss:<bossId>[:<pose>[:<detail>]]   one boss, pose Idle (default) | Windup | Attack | Basic | Enrage | Hurt | Down
+--                                       at the pose's strongest moment, detail High (default) | Low; pose may be
+--                                       "<Pose>/<attackId>" (e.g. Windup/chain) and "<Pose>!" shows it enraged
+--   bosses[:<pose>[:<detail>]]          the whole roster side by side
+local function bossEntry(bossId, pose, detail)
+	local BB = req("shared/BossBuilder", true)
+	if not BB or type(BB.Build) ~= "function" then
+		fail("shared/BossBuilder.lua (Build) does not exist yet")
+	end
+	local poseName, attack = tostring(pose or "Idle"), nil
+	local enraged = poseName:sub(-1) == "!"
+	if enraged then
+		poseName = poseName:sub(1, -2)
+	end
+	local slash = poseName:find("/", 1, true)
+	if slash then
+		attack = poseName:sub(slash + 1)
+		poseName = poseName:sub(1, slash - 1)
+	end
+	if poseName == "" then
+		poseName = "Idle"
+	end
+	local progress = ({ Windup = 1, Attack = 0.4, Basic = 0.4, Enrage = 0.5, Hurt = 0, Down = 1 })[poseName]
+	local d = (detail and detail:lower() == "low") and "Low" or "High"
+	local model = BB.Build(bossId, { Detail = d, Pose = poseName, Progress = progress, Attack = attack, Enraged = enraged, PoseTime = 0.6 })
+	if not model then
+		fail("BossBuilder.Build('" .. tostring(bossId) .. "') returned nil")
+	end
+	model.Parent = Workspace
+	Mock.Advance(0.05)
+	return { root = model, label = tostring(bossId), sub = poseName .. (attack and ("/" .. attack) or "") .. (enraged and " enraged" or "") .. "  " .. d .. "  " .. BB.PartCount(model) .. " parts, " .. string.format("%.1f", BB.GetHeight(model)) .. " studs", facing = { 0, 0, -1 } }
+end
+
+BUILDERS.boss = function(id, pose, detail)
+	if id == nil or id == "" then
+		fail("usage: boss:<bossId>[:<pose>[:<detail>]]")
+	end
+	return { bossEntry(id, pose, detail) }
+end
+
+BUILDERS.bosses = function(pose, detail)
+	local BB = req("shared/BossBuilder", true)
+	if not BB then
+		fail("shared/BossBuilder.lua does not exist yet")
+	end
+	local out = {}
+	for i, id in ipairs(BB.Ids()) do
+		local e = tryBuild(id, bossEntry, id, pose, detail)
+		if e.root then
+			e.root:PivotTo(CFrame.new((i - 2.5) * 44, 0, 0))
+		end
+		out[#out + 1] = e
+	end
+	return out
+end
+
+-- Phase 3 battles (client/Controllers/BattleController.lua, client world):
+--   battle[:<trial|duel|raid>[:<seconds>[:specials]]]  a real BattleSim stepped at 10 Hz for <seconds> (default 6; raid
+--                        9, when the boss's first telegraph fills) fed to the real BattleController the way BattleService
+--                        sends it; the drawn workspace.ClientBattle (units, telegraphs, effects) is dumped. ":specials"
+--                        fills the local team's meters and casts every special a moment before the dump (their VFX).
+local function battleTeamOf(PC, count, skip)
+	local out, kinds = {}, {}
+	skip = skip or 0
+	for _, def in ipairs(PC.Pets) do
+		local sp = type(def.Special) == "table" and def.Special.Kind or nil
+		if sp and def.Role == "Combat" and not kinds[sp] and def.Rarity ~= "Secret" and not def.EventOnly then
+			if skip > 0 then
+				skip = skip - 1
+			else
+				kinds[sp] = true
+				out[#out + 1] = { Key = def.Id, PetId = def.Id, Level = 10, Tier = "Normal", Slot = #out + 1 }
+				if #out >= count then
+					break
+				end
+			end
+		end
+	end
+	return out
+end
+
+BUILDERS.battle = function(mode, seconds, extra)
+	local BC = req("client/Controllers/BattleController", true)
+	local Sim = req("shared/BattleSim", true)
+	local PC = req("shared/PetCatalog")
+	if not BC or not Sim then
+		fail("client/Controllers/BattleController.lua or shared/BattleSim.lua does not exist yet (client world?)")
+	end
+	local Players = game:GetService("Players")
+	local me = Players.LocalPlayer and Players.LocalPlayer.UserId or 4242
+	mode = (mode and mode ~= "") and mode:lower() or "trial"
+	local simMode = (mode == "raid") and "Raid" or ((mode == "duel") and "Duel" or "Trial")
+	local setup = { Mode = simMode, Seed = 5, Id = "dump_battle" }
+	if simMode == "Duel" then
+		setup.Teams = { { Owner = me, Side = 1, Pets = battleTeamOf(PC, 4) }, { Owner = 78, Side = 2, Pets = battleTeamOf(PC, 3, 3) } }
+	elseif simMode == "Raid" then
+		setup.Teams = { { Owner = me, Side = 1, Pets = battleTeamOf(PC, 4) }, { Owner = 77, Side = 1, Pets = battleTeamOf(PC, 3, 2) } }
+		setup.Boss = "storm_titan"
+	else
+		setup.Teams = { { Owner = me, Side = 1, Pets = battleTeamOf(PC, 4) } }
+		setup.Trial = 10
+	end
+	local sim, why = Sim.new(setup)
+	if not sim then
+		fail("BattleSim.new: " .. tostring(why))
+	end
+	pcall(BC.Init)
+	local id = "dump_battle"
+	local d = sim:Describe()
+	d.BattleId = id
+	d.Zone = { CFrame = CFrame.new(0, 0, 0), Size = Vector3.new(d.Zone.X, 30, d.Zone.Z), X = d.Zone.X, Z = d.Zone.Z }
+	d.Names = { [tostring(me)] = "Renderer", ["77"] = "Buddy", ["78"] = "Rival" }
+	d.Side, d.Spectator, d.T = 1, false, sim:Time()
+	BC.HandleState("Start", d, id)
+	local function dense()
+		local snap = sim:Snapshot()
+		local units, top = {}, 0
+		for k in pairs(snap.Units) do
+			top = math.max(top, k)
+		end
+		for k = 1, top do
+			units[k] = snap.Units[k] or { x = 0, z = 0, hp = 0, state = 5, meter = 0 }
+		end
+		snap.Units = units
+		snap.BattleId = id
+		return snap
+	end
+	local function step()
+		local evs = sim:Step(0.1)
+		if #evs > 0 then
+			BC.HandleState("Events", evs, id)
+		end
+		BC.HandleState("Snapshot", dense(), id)
+		Mock.Advance(0.1)
+	end
+	local total = tonumber(seconds) or ((simMode == "Raid") and 9 or 6)
+	for _ = 1, math.floor(total / 0.1) do
+		step()
+	end
+	if extra and extra:lower() == "specials" then
+		for _, u in ipairs(sim.units or {}) do
+			if u.owner == me and u.alive then
+				u.meter = 100
+			end
+		end
+		for slot = 1, 4 do
+			pcall(sim.Command, sim, me, "Special", slot)
+		end
+		step()
+		step()
+		step()
+	end
+	local folder = Workspace:FindFirstChild("ClientBattle")
+	if not folder then
+		fail("BattleController drew nothing (no workspace.ClientBattle)")
+	end
+	local view = Instance.new("Model")
+	view.Name = "BattleView"
+	for _, c in ipairs(folder:GetChildren()) do
+		c:Clone().Parent = view
+	end
+	view.Parent = Workspace
+	local st = BC.GetStats()
+	return { { root = view, label = "Battle: " .. simMode, sub = string.format("%d units, %d models, %d fx parts, %d telegraphs (t = %.1f s)", st.Units, st.Models, st.FxParts, st.Telegraphs, sim:Time()), facing = { 0, 0, -1 } } }
 end
 
 BUILDERS["storm_altar"] = BUILDERS["storm-altar"]
