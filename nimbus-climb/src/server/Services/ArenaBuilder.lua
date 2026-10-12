@@ -218,9 +218,12 @@ local C = {
 	Paving = rgb(214, 206, 192),
 	PavingLight = rgb(228, 222, 208),
 	PavingDark = rgb(192, 184, 170),
+	PavingWorn = rgb(203, 195, 181),
+	PavingWarm = rgb(224, 212, 190),
 	Sand = rgb(234, 210, 160),
 	SandDark = rgb(214, 186, 136),
 	SandLight = rgb(242, 224, 182),
+	SandDrift = rgb(222, 196, 146),
 	Gold = rgb(244, 198, 84),
 	GoldDark = rgb(206, 154, 62),
 	Iron = rgb(64, 70, 92),
@@ -978,6 +981,26 @@ local function sectionAngle(e)
 	return (2 * e - 1.5) * STEP16
 end
 
+-- Thin flat patches on a floor: cells = { { i, k, key }... } on a `cell`-stud grid around `cf` (cell i, k centred on
+-- x = i * cell, z = k * cell), greedily merged per key into slabs `h` studs thick whose top is at `top`. A subtle
+-- colour variation (sand drifts, worn paving) for a handful of parts.
+local function flatPatches(parent, name, cells, cell, cf, top, h, pal, material)
+	local g = Voxel.NewGrid(1)
+	for _, c in ipairs(cells) do
+		Voxel.Set(g, c[1], 0, c[2], c[3])
+	end
+	if g.Count == 0 then
+		return nil
+	end
+	local m = newModel(parent, name)
+	for _, b in ipairs(Voxel.Merge(g)) do
+		local sx, sz = (b.X1 - b.X0 + 1) * cell, (b.Z1 - b.Z0 + 1) * cell
+		local cx, cz = (b.X0 + b.X1) * 0.5 * cell, (b.Z0 + b.Z1) * 0.5 * cell
+		box(m, b.Key, cf * CFrame.new(cx, top - h / 2, cz), Vector3.new(sx, h, sz), pal[b.Key] or C.Sand, { Collide = true, Material = material, Shadow = false })
+	end
+	return m
+end
+
 ----------------------------------------------------------------------
 -- Forum ground: one paving layer over the whole island (also under the colosseum, whose floor lies on it), the
 -- avenue's crimson runner with gold edges from the bridge to the main gate, a gold star where the bridge lands and
@@ -1008,6 +1031,14 @@ local function buildGround(parent, A)
 					key = "Apron"
 				elseif sqrt(x * x + (z + 124) * (z + 124)) <= 16 then
 					key = "Apron"
+				else
+					-- worn and sun-warmed stretches so the big forum never reads as one flat colour
+					local n = vnoise(x, z, 30, SEED + 3)
+					if n < 0.3 then
+						key = "Worn"
+					elseif n > 0.72 then
+						key = "Warm"
+					end
 				end
 				Voxel.Set(base, i, 0, k, key)
 			end
@@ -1019,13 +1050,15 @@ local function buildGround(parent, A)
 			Paving = { Color = C.Paving, Material = MAT.Slate },
 			Apron = { Color = C.PavingLight, Material = MAT.Slate },
 			Kerb = { Color = C.PavingDark, Material = MAT.Slate },
+			Worn = { Color = C.PavingWorn, Material = MAT.Slate },
+			Warm = { Color = C.PavingWarm, Material = MAT.Slate },
 		},
 		Name = "Paving",
 		CF = A * CFrame.new(0, -0.2 - 2, 0),
 		Collide = true,
 		Shadow = false,
 		Parent = f,
-		MaxParts = 240,
+		MaxParts = 370,
 	})
 	-- the runner: from the bridge's landing to the main gate's passage
 	local z0, z1 = ISL.FrontZ + 1, -(COL.WallOut + 1.5)
@@ -1339,9 +1372,26 @@ local function buildFloor(parent, A)
 	ring16(m, "FloorBand", A, COL.FloorR - 8, COL.FloorR + 1, 0, 1, C.Stone, MAT.Slate, true)
 	ring16(m, "FloorGold", A, COL.FloorR - 9.6, COL.FloorR - 8, 0, 1, C.GoldDark, nil, true)
 	ring16(m, "FloorLine", A, 40, 41.6, 0, 1, C.StoneLight, MAT.Slate, true)
+	-- raked sand: darker and paler drifts (4-stud cells, top -0.04) between the wheel and the gold line
+	local cells = {}
+	for i = -15, 15 do
+		for k = -15, 15 do
+			local x, z = i * 4, k * 4
+			if polyR(x, z) <= COL.FloorR - 12.6 and sqrt(x * x + z * z) > 18.2 then
+				local n = vnoise(x, z, 22, SEED + 11)
+				if n < 0.33 then
+					cells[#cells + 1] = { i, k, "SandDark" }
+				elseif n > 0.7 then
+					cells[#cells + 1] = { i, k, "SandLight" }
+				end
+			end
+		end
+	end
+	flatPatches(m, "SandDrift", cells, 4, A, -0.04, 0.2, { SandDark = C.SandDrift, SandLight = C.SandLight }, MAT.Sand)
 	for e = 1, 8 do
 		local turn = A * CFrame.Angles(0, sectionAngle(e), 0)
-		box(m, "ElementMark", turn * CFrame.new(0, -0.5, -54) * CFrame.Angles(0, math.rad(45), 0), Vector3.new(4.6, 1, 4.6), elementColor(e), { Collide = true, Shadow = false })
+		box(m, "ElementFrame", turn * CFrame.new(0, -0.52, -54) * CFrame.Angles(0, math.rad(45), 0), Vector3.new(6.6, 1, 6.6), C.GoldDark, { Collide = true, Shadow = false })
+		box(m, "ElementMark", turn * CFrame.new(0, -0.45, -54) * CFrame.Angles(0, math.rad(45), 0), Vector3.new(5, 1, 5), elementColor(e), { Collide = true, Shadow = false })
 		box(m, "WheelPetal", turn * CFrame.new(0, -0.5, -10), Vector3.new(4, 1, 7), elementColor(e), { Collide = true, Shadow = false })
 		box(m, "WheelRay", A * CFrame.Angles(0, sectionAngle(e) + STEP16, 0) * CFrame.new(0, -0.5, -9.75), Vector3.new(0.7, 1, 8.5), C.Gold, { Collide = true, Shadow = false })
 	end
@@ -1468,6 +1518,22 @@ local function buildRing(parent, A, spec, index)
 	for j = 0, 7 do
 		box(m, "RingFloor", cf * CFrame.Angles(0, j * STEP16, 0) * CFrame.new(0, RING_Y - 0.5, 0), Vector3.new(slabW, 1, RING_A * 2), C.SandLight, { Collide = true, Material = MAT.Sand, Shadow = false })
 	end
+	-- sand drifts (3-stud cells) between the emblem and the rim, different on every ring
+	local cells = {}
+	for i = -10, 10 do
+		for k = -10, 10 do
+			local x, z = i * 3, k * 3
+			if polyR(x, z) <= RING_A - 5.4 and sqrt(x * x + z * z) > 9.8 then
+				local n = vnoise(x + spec.X, z + spec.Z, 14, SEED + 17)
+				if n < 0.36 then
+					cells[#cells + 1] = { i, k, "SandDark" }
+				elseif n > 0.8 then
+					cells[#cells + 1] = { i, k, "SandPale" }
+				end
+			end
+		end
+	end
+	flatPatches(m, "RingDrift", cells, 3, cf, RING_Y + 0.04, 0.12, { SandDark = C.Sand, SandPale = C.SandDrift }, MAT.Sand)
 	-- a painted circle (16 thin strips) where the two teams line up, and a darker sand rim inside the curb
 	local lineA = 21
 	local lineLen = 2 * lineA * TAN16 + 0.5
@@ -1970,7 +2036,7 @@ local function buildGateSign(parent, A)
 	frame.CanQuery = false
 	local gui = surfaceGui(part, Enum.NormalId.Front)
 	local p = signPanel(gui, C.TextGold)
-	signText(p, "Title", "BATTLE ARENA", "Title", 76, C.TextGold, 0.04, 0.06, 0.92, 0.5)
+	signText(p, "Title", "BATTLE ARENA", "Title", 64, C.TextGold, 0.04, 0.08, 0.92, 0.48)
 	signText(p, "Subtitle", "Boss raids every " .. raidEveryMinutes() .. " min", "Heading", 30, C.Text, 0.04, 0.6, 0.92, 0.3)
 	-- the main gate's own prompt: the arena panel (raids, duels, the queue)
 	local anchor = anchorPart(parent, "GatePromptAnchor", A * CFrame.new(0, 3, -(COL.WallOut + 2)), Vector3.new(1, 1, 1))
@@ -1984,7 +2050,7 @@ end
 local function archSign(part, face, title, sub)
 	local gui = surfaceGui(part, face)
 	local p = signPanel(gui, C.TextGold)
-	signText(p, "Title", title, "Title", 70, C.TextGold, 0.04, 0.05, 0.92, 0.52)
+	signText(p, "Title", title, "Title", 62, C.TextGold, 0.04, 0.06, 0.92, 0.5)
 	signText(p, "Subtitle", sub, "Heading", 30, C.Text, 0.04, 0.6, 0.92, 0.32)
 	return gui
 end
@@ -2272,13 +2338,15 @@ local function pocketTemplate()
 				end
 			elseif ax >= hf - 6 or az >= hf - 6 then
 				key = "Line"
+			elseif vnoise(x - x % 4, z - z % 4, 24, SEED + 21) < 0.32 then
+				key = "SandDark" -- raked drifts so the sand never reads as one flat colour
 			end
 			Voxel.Set(fg, i, 0, k, key)
 		end
 	end
 	local floorPal = {
 		Sand = { Color = C.Sand, Material = MAT.Sand },
-		SandDark = { Color = C.SandDark, Material = MAT.Sand },
+		SandDark = { Color = C.SandDrift, Material = MAT.Sand },
 		Stone = { Color = C.Stone, Material = MAT.Slate },
 		StoneLight = { Color = C.StoneLight, Material = MAT.Slate },
 		Gold = C.Gold,
@@ -2291,7 +2359,7 @@ local function pocketTemplate()
 		CF = CFrame.new(1, -1, 1),
 		Collide = true,
 		Shadow = false,
-		MaxParts = 40,
+		MaxParts = 58,
 		Parent = m,
 	})
 	-- the element wheel (like the colosseum's, smaller): eight petals in the element colours, a gold rim and core

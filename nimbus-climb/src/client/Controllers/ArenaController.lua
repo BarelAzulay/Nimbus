@@ -1069,7 +1069,8 @@ local function buildTrials()
 		end
 		local inner = detailW - 8 - 30
 		local enemyCols = inner >= 4 * 112 + 3 * 8 and 4 or 2
-		local cardW = math.min(130, math.floor((inner - (enemyCols - 1) * 8) / enemyCols))
+		-- two columns (portrait phones) use the width they have instead of leaving a gap on the right
+		local cardW = math.min(enemyCols == 2 and 190 or 130, math.floor((inner - (enemyCols - 1) * 8) / enemyCols))
 		ui.EnemyLayout.CellSize = UDim2.fromOffset(cardW, 150)
 		ui.EnemyCols = enemyCols
 		ui.StartButton.Size = UDim2.fromOffset(inner < 420 and 170 or 200, 54)
@@ -1138,7 +1139,8 @@ local function buildTrials()
 			crown.Position = UDim2.new(0.5, 0, 0, 2)
 			crown.ZIndex = 5
 		end
-		makeText(card, "PetName", def and tostring(def.Name) or tostring(entry.PetId), "Body", 18, rarityText(def), {
+		-- white on the rarity-tinted card (the tint and the border carry the rarity; a same-hue name lost contrast)
+		makeText(card, "PetName", def and tostring(def.Name) or tostring(entry.PetId), "Body", 18, WHITE, {
 			Position = UDim2.fromOffset(4, 74),
 			Size = UDim2.new(1, -8, 0, 40),
 			TextWrapped = true,

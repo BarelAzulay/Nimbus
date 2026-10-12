@@ -1788,6 +1788,146 @@ local function homePadsScene(tier, width, height)
 end
 
 ----------------------------------------------------------------------
+-- arenaboards[:<raid|countdown|idle>]: the Battle Arena's world GUIs (server/Services/ArenaBuilder.lua) mirrored flat
+-- like the portal's: every SurfaceGui (event board, trophy leaderboard, gate and ring signs) as it looks from 30 studs
+-- and at its canvas size, every BillboardGui (pixel tags) at its own size. The boards get a sample ArenaState first.
+----------------------------------------------------------------------
+local function arenaBoardsScene(view, width, height)
+	Config = req("shared/Config")
+	local okMetrics, why = installMetrics()
+	if not okMetrics then
+		note("text metrics: " .. tostring(why))
+	end
+	ensureRemotes()
+	Mock.SetViewport(width, height)
+	local context = Mock.Context
+	Mock.Context = "server"
+	local LobbyBuilder = req("server/Services/LobbyBuilder")
+	local AB = req("server/Services/ArenaBuilder", true)
+	if not AB then
+		Mock.Context = context
+		fail("arenaboards needs server/Services/ArenaBuilder.lua")
+	end
+	local lobby = LobbyBuilder.Build()
+	local info = AB.Build(lobby)
+	view = tostring(view or "countdown"):lower()
+	local names = { "StormChaser", "CloudyKnight", "SkyClimber", "PuddleFan", "Mochi", "NimbusKing_2014", "Zap", "Fluffernutter", "Ana", "Bo" }
+	local board = {}
+	for i, n in ipairs(names) do
+		board[i] = { UserId = 9000 + i, Name = n, Trophies = 2400 - i * 210 }
+	end
+	local state = { Leaderboard = board }
+	if view == "raid" then
+		state.Raid = { Active = true, BossId = "lava_golem", Hp = 61000, MaxHp = 90000, Players = 3, EndsIn = 211 }
+		state.Next = { Kind = "DoubleRewards", StartsIn = 1500 }
+	elseif view == "idle" then
+		state.Next = { Kind = "BossRaid", BossId = "frost_wyrm", StartsIn = 1177 }
+	else
+		state.Next = { Kind = "BossRaid", BossId = "storm_titan", StartsIn = 95 }
+		state.Double = { Active = true, EndsIn = 2400 }
+	end
+	if type(AB.ApplyArenaState) == "function" then
+		local ok, err = pcall(AB.ApplyArenaState, state)
+		if not ok then
+			note("ApplyArenaState: " .. tostring(err))
+		end
+	end
+	advance(0.3)
+	Mock.Context = context
+
+	local pg = LocalPlayer:WaitForChild("PlayerGui")
+	local screen = make("ScreenGui", { Name = "WorldMirror", IgnoreGuiInset = true, ResetOnSpawn = false, ZIndexBehavior = Enum.ZIndexBehavior.Sibling })
+	local vp = Mock.Viewport
+	local x, y, rowH = 24, 104, 0
+	local function place(w, h, caption)
+		w = max(w, utf8len(caption) * 10 + 12)
+		if x > 24 and x + w > vp.X - 24 then
+			x, y, rowH = 24, y + rowH + 56, 0
+		end
+		local px, py = x, y
+		x = x + w + 36
+		rowH = max(rowH, h)
+		return px, py
+	end
+	local root = (type(info) == "table" and info.Model) or workspace:FindFirstChild("BattleArena")
+	if not root then
+		fail("arenaboards: no workspace.BattleArena")
+	end
+	local surfaces, tags = {}, {}
+	for _, d in ipairs(root:GetDescendants()) do
+		if d:IsA("SurfaceGui") then
+			surfaces[#surfaces + 1] = d
+		elseif d:IsA("BillboardGui") then
+			tags[#tags + 1] = d
+		end
+	end
+	local function byName(a, b)
+		return a:GetFullName() < b:GetFullName()
+	end
+	table.sort(surfaces, byName)
+	table.sort(tags, byName)
+	local seen = {}
+	local function shortName(gui)
+		local p = gui.Parent
+		local q = p and p.Parent
+		return (q and q.Name ~= "BattleArena" and (q.Name .. ".") or "") .. (p and p.Name or "?")
+	end
+	for _, gui in ipairs(surfaces) do
+		local part = gui.Adornee or gui.Parent
+		local fw, fh = 4, 2
+		if part and part:IsA("BasePart") then
+			local sz = part.Size
+			if gui.Face == Enum.NormalId.Top or gui.Face == Enum.NormalId.Bottom then
+				fw, fh = sz.X, sz.Z
+			elseif gui.Face == Enum.NormalId.Left or gui.Face == Enum.NormalId.Right then
+				fw, fh = sz.Z, sz.Y
+			else
+				fw, fh = sz.X, sz.Y
+			end
+		end
+		local caption = shortName(gui) .. " " .. gui.Face.Name
+		-- duplicate signs (the two rings, the copies of a sign) once each
+		local key = caption:gsub("%d", "#")
+		if not seen[key] then
+			seen[key] = true
+			local pps = gui.PixelsPerStud or 50
+			local w, h = fw * pps, fh * pps
+			local s = onScreenScale(gui, 30)
+			local cap = caption .. fmt(" from 30 studs (x%.2f)", s)
+			local px, py = place(w * s, h * s, cap)
+			local cell = make("Frame", { Name = gui.Name, BackgroundTransparency = 1, Position = UDim2.fromOffset(px, py), Size = UDim2.fromOffset(w * s, h * s) }, screen)
+			for _, c in ipairs(gui:GetChildren()) do
+				if c:IsA("GuiObject") then
+					c:Clone().Parent = cell
+				end
+			end
+			deepScale(cell, s)
+			label(screen, cap, 18, {
+				Name = "Caption",
+				Position = UDim2.fromOffset(px, py - 30),
+				Size = UDim2.fromOffset(max(utf8len(cap) * 10 + 12, w * s), 24),
+				TextXAlignment = Enum.TextXAlignment.Left,
+				TextStrokeTransparency = 0.2,
+				TextStrokeColor3 = NAVY,
+			})
+		end
+	end
+	for _, gui in ipairs(tags) do
+		local caption = shortName(gui)
+		local key = caption:gsub("%d", "#")
+		if not seen[key] then
+			seen[key] = true
+			local w, h = canvasOf(gui)
+			local px, py = place(w, h, caption)
+			mirrorCell(screen, gui, px, py, 1, caption)
+		end
+	end
+	screen.Parent = pg
+	advance(0.1)
+	return okMetrics
+end
+
+----------------------------------------------------------------------
 -- boot
 ----------------------------------------------------------------------
 local function boot(width, height, touch, keepTitle)
@@ -1871,6 +2011,11 @@ else
 	elseif name == "homepads" then
 		-- the world GUIs of a Phase 2 home (no game HUD)
 		local okMetrics = homePadsScene(fields[2], width, height)
+		data = walk()
+		data.metrics = okMetrics and "font" or "mock"
+	elseif name == "arenaboards" then
+		-- the Battle Arena's world GUIs (no game HUD)
+		local okMetrics = arenaBoardsScene(fields[2], width, height)
 		data = walk()
 		data.metrics = okMetrics and "font" or "mock"
 	else

@@ -1571,7 +1571,8 @@ function Tele.Start(B, ev)
 		edgeColor = edge,
 		freeze = ev.freeze,
 	}
-	local edgePart = Fx.Part(edge, Enum.Material.Neon, 0.6)
+	-- the danger area: the pale edge colour tinted toward the fill, so it still shows on the pale arena sand
+	local edgePart = Fx.Part(edge:Lerp(fill, 0.35), Enum.Material.Neon, 0.6)
 	local fillPart = Fx.Part(fill, Enum.Material.Neon, 0.35)
 	tl.edge, tl.fillPart = edgePart, fillPart
 	if tl.shape == "Circle" then
@@ -1600,6 +1601,40 @@ function Tele.Start(B, ev)
 			fillPart.Size = Vector3.new(tl.width * 0.96, 0.14, 0.1)
 		end
 	end
+	-- a crisp rim in the saturated telegraph colour: the pale area alone barely reads on the arena's sand, the rim
+	-- says exactly where safety starts (16 segments round a circle; two rails and an end cap along a line)
+	local rimColor = fill:Lerp(Color3.new(0, 0, 0), 0.22)
+	tl.rim = {}
+	if tl.shape == "Circle" then
+		local segLen = 2 * tl.r * math.tan(pi / 16) + 0.12
+		for j = 0, 15 do
+			local seg = Fx.Part(rimColor, Enum.Material.Neon, 0.1)
+			if not seg then
+				break
+			end
+			seg.Size = Vector3.new(segLen, 0.16, 0.55)
+			seg.CFrame = worldFrame(B, tl.x, 0.14, tl.z, 0) * CFrame.Angles(0, j * pi / 8, 0) * CFrame.new(0, 0, -(tl.r - 0.27))
+			tl.rim[#tl.rim + 1] = seg
+		end
+	else
+		-- the frame of edgePart: local X across the line, local Z along it
+		local mid = worldFrame(B, tl.x + tl.dx * tl.length / 2, 0.14, tl.z + tl.dz * tl.length / 2, tl.yaw)
+		local tip = worldFrame(B, tl.x + tl.dx * (tl.length - 0.27), 0.14, tl.z + tl.dz * (tl.length - 0.27), tl.yaw)
+		local pieces = {
+			{ mid * CFrame.new(tl.width / 2 - 0.27, 0, 0), Vector3.new(0.55, 0.16, tl.length) },
+			{ mid * CFrame.new(-(tl.width / 2 - 0.27), 0, 0), Vector3.new(0.55, 0.16, tl.length) },
+			{ tip, Vector3.new(tl.width, 0.16, 0.55) },
+		}
+		for _, piece in ipairs(pieces) do
+			local seg = Fx.Part(rimColor, Enum.Material.Neon, 0.1)
+			if not seg then
+				break
+			end
+			seg.Size = piece[2]
+			seg.CFrame = piece[1]
+			tl.rim[#tl.rim + 1] = seg
+		end
+	end
 	B.teles[id] = tl
 	-- the boss winds up toward it
 	if boss and boss.isBoss then
@@ -1618,6 +1653,16 @@ function Tele.Free(tl)
 	Fx.Free(tl.edge)
 	Fx.Free(tl.fillPart)
 	tl.edge, tl.fillPart = nil, nil
+	for _, seg in ipairs(tl.rim or {}) do
+		Fx.Free(seg)
+	end
+	tl.rim = nil
+end
+
+local function setRim(tl, transparency)
+	for _, seg in ipairs(tl.rim or {}) do
+		seg.Transparency = transparency
+	end
 end
 
 function Tele.Update(B, now)
@@ -1661,6 +1706,7 @@ function Tele.Update(B, now)
 				if tl.fillPart then
 					tl.fillPart.Transparency = 0.05 + 0.95 * p
 				end
+				setRim(tl, 0.1 + 0.9 * p)
 			end
 		else
 			local p = clamp((t - tl.from) / max(0.05, tl.at - tl.from), 0, 1)
@@ -1668,6 +1714,7 @@ function Tele.Update(B, now)
 			if tl.edge then
 				tl.edge.Transparency = 0.5 + 0.2 * pulse
 			end
+			setRim(tl, 0.05 + 0.3 * pulse)
 			if tl.fillPart then
 				if tl.shape == "Circle" then
 					local d = max(0.1, tl.r * 2 * p)

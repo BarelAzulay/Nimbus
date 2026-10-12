@@ -6798,7 +6798,9 @@ P3.Define = function()
 		tile.Stroke.Color = inTeamSlot and GOOD or Theme.Lighten(tint, 0.1)
 		tile.Stroke.Thickness = inTeamSlot and 4 or 3
 		tile.Name.Text = P2.displayName(entry.Key, def)
-		tile.Name.TextColor3 = rarityText(def)
+		-- white on the rarity-tinted card (a rarity-coloured name on a card of the same hue lost its contrast);
+		-- the card's tint and border already say the rarity, like the Pets panel
+		tile.Name.TextColor3 = WHITE
 		local sig = table.concat(elementsOf(def), ",") .. "|" .. tostring(entry.Level)
 		if tile.RowSig ~= sig then
 			tile.RowSig = sig

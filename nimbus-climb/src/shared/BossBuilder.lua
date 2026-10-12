@@ -38,7 +38,7 @@
 --   Every joint Model has attributes Pivot (Vector3, studs, Root space at rest) and JointParent (string, "" = Root).
 --   Effect points are Attachments named "Fx_<name>" inside the joint that carries them.
 -- Facing: -Z (Root.CFrame.LookVector). The bosses are 22-27 studs tall at Scale 1 (VoxelSize 0.5 stud), so they read
--- from the colosseum stands; High <= ~900 parts, Low <= ~700 (Low merges shades first).
+-- from the colosseum stands; High <= ~950 parts, Low <= ~700 (Low merges shades first).
 
 local Shared = script.Parent
 local Voxel = require(Shared:WaitForChild("Voxel"))
@@ -705,12 +705,21 @@ local SCULPT = {
 	shadow_hydra = sculptShadowHydra,
 }
 
--- part budget per joint group (High; Low uses LOW_FACTOR)
+-- part budget per joint group (High; Low uses LOW_FACTOR). The torsos get enough parts to keep their light / dark
+-- shading (ART DIRECTION: 2-3 shades per colour region); below it the LOD folds the shades away and the biggest
+-- surfaces of the bosses read as one flat colour. The storm vortex stays lean (it spins: detail there is noise).
 local BUDGET = {
-	storm_titan = { Base = 170, Body = 330, Head = 130, ArmL = 150, ArmR = 150 },
-	lava_golem = { Body = 480, Head = 90, ArmL = 150, ArmR = 150 },
-	frost_wyrm = { Body = 420, Head = 170, Jaw = 60, WingL = 120, WingR = 120 },
-	shadow_hydra = { Body = 400, Head1 = 160, Head2 = 170, Head3 = 160 },
+	storm_titan = { Base = 170, Body = 420, Head = 130, ArmL = 150, ArmR = 150 },
+	lava_golem = { Body = 560, Head = 90, ArmL = 150, ArmR = 150 },
+	frost_wyrm = { Body = 560, Head = 170, Jaw = 60, WingL = 120, WingR = 120 },
+	shadow_hydra = { Body = 470, Head1 = 160, Head2 = 160, Head3 = 160 },
+}
+-- colour regions the LOD never blends into their neighbours (a belly, the frost patch, brass bands)
+local KEEP = {
+	storm_titan = { "Metal", "Mist", "Bolt", "Rune", "Eye" },
+	lava_golem = { "Ash", "Crust", "Magma", "MagmaHot", "Eye" },
+	frost_wyrm = { "Belly", "ScaleDark", "Frost", "Glow", "Eye", "Crystal" },
+	shadow_hydra = { "Belly", "Spike", "Glow", "Eye", "Fang", "Claw" },
 }
 local LOW_FACTOR = 0.5
 
@@ -805,7 +814,7 @@ local function buildTemplate(bossId, detail, scale)
 			maxParts = floor(maxParts * LOW_FACTOR)
 		end
 		local joint = rigDef.Joints[name]
-		local group, parts = Voxel.Build(g, { VoxelSize = vs, Palette = palette, Name = name, MaxParts = maxParts, CastShadow = false })
+		local group, parts = Voxel.Build(g, { VoxelSize = vs, Palette = palette, Name = name, MaxParts = maxParts, Keep = KEEP[bossId], CastShadow = false })
 		for _, p in ipairs(parts) do
 			-- big pieces cast shadows (the boss should sit on the floor); small ones stay cheap
 			p.CastShadow = max(p.Size.X, p.Size.Y, p.Size.Z) >= 3 * scale
