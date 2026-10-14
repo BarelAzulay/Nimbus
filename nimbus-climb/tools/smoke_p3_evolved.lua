@@ -332,7 +332,7 @@ local function serverScenarios()
 			names[name] = true
 			T.check(string.find(handlers, "\n%s*" .. name .. "%s*=%s*cmd") ~= nil, "evolved dev tools: '" .. name .. "' (DevService.Commands) has a handler")
 		end
-		for _, name in ipairs({ "raid", "pet", "pets", "evolve", "clearpets", "devhelp" }) do
+		for _, name in ipairs({ "raid", "pet", "pets", "evolve", "clearpets", "devhelp", "petlevel" }) do -- petlevel: Phase 4 (data)
 			T.check(names[name] == true, "evolved dev tools: DevService.Commands lists '" .. name .. "'")
 		end
 		local fnStart = string.find(src, "local function makeChatCommands", 1, true)

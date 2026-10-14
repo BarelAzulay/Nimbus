@@ -22,10 +22,22 @@
 --   BattleCatalog.Damage                       the formula constants (HpScale, DamageScale, Variance, Retreat*, Meter*, ...)
 --   BattleCatalog.Specials[Kind]               { Name, Text, Role, ...effect numbers } for Blast, Heal, Shield, Storm,
 --                                              Pounce, Freeze, Beam
---   BattleCatalog.UnitStats(def|petId|key, level, tier) -> { MaxHp, Hit, Interval, Dps, MoveSpeed, Range, Ranged,
---                                              Radius, SpecialPower, SpecialFactor, Profile, Species, Elements, Scale } | nil
---   BattleCatalog.UnitPower(petId, level, tier) -> n    a single number for the UI (sqrt(DPS x HP) / 3); petId may
---                                              be a pet id, a pet key or a def (PetKeys.DefOf)
+--   BattleCatalog.UnitStats(def|petId|key|entry, level, tier, extras) -> { MaxHp, Hit, Interval, Dps, MoveSpeed, Range,
+--                                              Ranged, Radius, SpecialPower, SpecialFactor, Profile, Species, Elements,
+--                                              Scale, Defense, MeterRate, Evo, Boost, Train } | nil
+--                                              Phase 4: extras = { Evo = 0..2 (the STORED stage, PetGrowth[key].Evo),
+--                                              Train = { Speed, Physique, Ability, Defense } (ranks 0..10; the flat
+--                                              PetGrowth record works too), Boost = > 1 (ring champions) }; read from
+--                                              the entry table itself when extras is nil. Evolution x Power, Health and
+--                                              the special (PetCatalog.EvolutionMultiplier); Training (section 3.7):
+--                                              Interval / (1 + 0.04 Speed), MaxHp x (1 + 0.05 Physique) (the special
+--                                              does not grow with it), special x (1 + 0.04 Ability), MeterRate = 1 +
+--                                              0.04 Ability, Defense = 0.03 x rank (BattleSim.applyDamage); Boost x HP,
+--                                              hits and the special. No extras = the Phase 3 numbers bit for bit (NPC
+--                                              trial teams never evolve or train).
+--   BattleCatalog.UnitPower(petId, level, tier, extras) -> n    a single number for the UI: sqrt(DPS x HP / (1 -
+--                                              Defense)) / 3; petId may be a pet id, a pet key, a def (PetKeys.DefOf)
+--                                              or an entry table (its Evo / Train / Boost count)
 --   BattleCatalog.TeamPower(list)              -> n    list of { PetId | Key | Def, Level, Tier } (or plain ids / keys),
 --                                              synergy included, x (3 / pets) ^ SizeExponent (focus fire favours fewer, bigger pets)
 --   BattleCatalog.Synergy(list of petIds)      -> { { Id, Name, Text }... }   the active bonuses (ids / keys / defs)
@@ -51,8 +63,32 @@
 --                                              share 0..1, nil for a share of 0 (pets that never hit the boss earn nothing)
 --   BattleCatalog.Trophies                     { Win, Loss, Draw, Floor, Forfeit, Tokens = { Win, Loss } }
 --   BattleCatalog.Zones                        default floor sizes (studs) per mode, BattleCatalog.TimeLimits per mode
+--                                              (Trial, Duel, Raid, Ring = 44 x 44 / 90 s)
 --   BattleCatalog.Validate()                   -> ok, { problem... }
 -- Extras: ExpectedDps(team spec), AverageMaxHp(team spec), StatsOf(entry), EventPets(), ChapterOf(level), TrialRewards(level, double)
+--
+-- Phase 4 ("Phase 4 build contract" 3.5-3.8, 5.4):
+--   BattleCatalog.Training                     { MaxRank 10, Speed 0.04, Physique 0.05, Ability 0.04, AbilityMeter 0.04,
+--                                              Defense 0.03 } (per rank); TrainingSkills = { { Id, Name, Text }... } in
+--                                              the order Speed, Physique, Ability, Defense
+--   BattleCatalog.TrialRewardRules             + LossShare 1/3, LossMinSeconds 20, LossMinDamage 0.2: a REAL loss (the fight
+--                                              lasted >= 20 s or the team dealt >= 20% of the enemy team's HP; never a
+--                                              forfeit / leave / disconnect / shutdown, which BattleService rules out)
+--                                              pays a third of the win XP. LossXp(winXp, seconds, dealtShare) -> xp (0
+--                                              when the gate is not met); RealLoss(seconds, dealtShare) -> bool
+--   BattleCatalog.Ring                         the Champion Ring numbers (EasyRounds, FirstPower, Growth, BossEvery,
+--                                              BossBump, MinHandicap, ChampionMaxLevel, Bands, cash / XP / token rules,
+--                                              TimeLimit, Intermission)
+--   BattleCatalog.ChampionTeam(round, seed)    -> a BattleSim team spec { Owner = "npc", Side = 2, Npc = true, Name, Round,
+--                                              Seed, TargetPower, Power, Champion = { PetId, Level, Tier, Boss, Boost,
+--                                              Handicap, Name, Power }, Pets = { { PetId, Key, Level, Tier, Slot = 1,
+--                                              Boss, Handicap, Boost, Crowned = true } } }   pure and deterministic for
+--                                              (round, seed); one crowned pet per round; the power never drops from a
+--                                              round to the next and never stops growing (Boost past level 50 Rainbow)
+--   BattleCatalog.RingPower(round, seed)       -> the champion's power of that round (ChampionTeam(...).Power)
+--   BattleCatalog.RingTarget(round)            -> the curve's target power (0 for the easy rounds 1-3)
+--   BattleCatalog.RingSeconds(round)           -> min(SecondsMax, SecondsBase + SecondsPerRound x round)
+--   BattleCatalog.RingRewards(round, incomePerSecond, isRecord) -> { Cash, Xp, Tokens, Seconds, Floor, Record, Boss }
 
 local Shared = script.Parent
 local Config = require(Shared.Config)
@@ -114,8 +150,9 @@ BattleCatalog.Zones = {
 	Trial = { X = 56, Z = 56 }, -- a private pocket in the sky
 	Duel = { X = 44, Z = 44 }, -- a duel ring
 	Raid = { X = 96, Z = 96 }, -- the colosseum floor
+	Ring = { X = 44, Z = 44 }, -- Phase 4: the Champion Ring pocket (one champion per round)
 }
-BattleCatalog.TimeLimits = { Trial = 120, Duel = 120, Raid = 330 }
+BattleCatalog.TimeLimits = { Trial = 120, Duel = 120, Raid = 330, Ring = 90 } -- Ring: a timeout is a loss, like a Trial
 BattleCatalog.StepSeconds = 0.1 -- the server simulates at 10 Hz
 BattleCatalog.MaxTeamSize = 4
 BattleCatalog.BaseTeamSize = 3 -- the 4th slot unlocks at Prestige 1 (TycoonCatalog.Prestige.TeamSlotUnlock)
@@ -192,6 +229,17 @@ BattleCatalog.Damage = {
 	EngageSlack = 0.6, -- extra studs of reach so moving targets still get hit
 	NpcSpecialDelay = { 0.4, 1.4 }, -- NPC teams cast a full special after this random delay
 	KoMeterLoss = true, -- a downed pet's meter is lost
+	-- Phase 4 OVERTIME (no stalemates): a trained Shield / Heal pet (Ability + Defense) can out-sustain its own mirror
+	-- forever, so past At seconds every hit of a DUEL grows by PerSecond x the seconds past At (x2.5 at +10 s, x4 at
+	-- +20 s) and the duel ends well before its time limit. Trials, raids and the ring keep their own endings (a
+	-- timeout loses / the boss enrages); short custom time limits never reach it. BattleSim sends one Overtime event.
+	Overtime = { Modes = { Duel = true }, At = 75, PerSecond = 0.15 },
+	-- Phase 4 NO ONE-SHOTS in PvP: in a duel a single pet hit never takes more than Share of the victim's max HP (a
+	-- trained + evolved level-100 Pounce would otherwise delete a full-health pet). Trials, raids and the ring: unchanged.
+	MaxHit = { Modes = { Duel = true }, Share = 0.6 },
+	-- ExpectedDps (boss HP, raid head counts): about this share of a pet's damage comes from its SPECIAL, so Ability
+	-- training (special power x meter speed) adds to the expected damage and raids stay 100-240 s for trained teams
+	SpecialDpsShare = 0.3,
 }
 
 ----------------------------------------------------------------------
@@ -282,8 +330,106 @@ local function moveFactor(speed)
 	return max(0.5, m.Base + m.PerSpeed * speed)
 end
 
--- MaxHp, average hit, interval, DPS ... of one pet copy at a level and tier
-function BattleCatalog.UnitStats(subject, level, tier)
+----------------------------------------------------------------------
+-- Phase 4: the Training Place (section 3.7). Per rank: Attack Speed +4% attacks, Physique +5% max health, Ability +4%
+-- special power and +4% special charge, Defense -3% damage taken (BattleSim.applyDamage, after the RETREAT halving and
+-- before MinHit / shields). Ranks 0..MaxRank; at rank 10 an all-round trained team has ~x1.73 TeamPower.
+----------------------------------------------------------------------
+BattleCatalog.Training = { MaxRank = 10, Speed = 0.04, Physique = 0.05, Ability = 0.04, AbilityMeter = 0.04, Defense = 0.03 }
+BattleCatalog.TrainingSkills = {
+	{ Id = "Speed", Name = "Attack Speed", Text = "+4% attacks per rank" },
+	{ Id = "Physique", Name = "Physique", Text = "+5% max health per rank" },
+	{ Id = "Ability", Name = "Ability", Text = "+4% special power and charge per rank" },
+	{ Id = "Defense", Name = "Defense", Text = "-3% damage taken per rank" },
+}
+
+-- Phase 4 helpers (one table: contract section 6)
+local P4 = {}
+P4.SKILLS = { "Speed", "Physique", "Ability", "Defense" }
+P4.EVO_FALLBACK = { 1.25, 1.5 }
+P4.MAX_BOOST = 1e12 -- a junk Boost never turns into inf / NaN HP
+
+-- a rank as a whole number 0..MaxRank (junk -> 0)
+function P4.rank(v)
+	if not finite(v) or v < 1 then
+		return 0
+	end
+	local top = num(BattleCatalog.Training.MaxRank, 10)
+	v = floor(v)
+	if v > top then
+		return top
+	end
+	return v
+end
+
+-- the extras of a UnitStats call: explicit extras win field by field, else the entry table's own fields
+-- -> evo stage (counted), ranks (table or nil when untrained), boost (>= 1)
+function P4.extras(def, level, subject, extras)
+	local entry = (type(subject) == "table" and type(subject.Stats) ~= "table") and subject or nil
+	local function field(name)
+		local v = nil
+		if type(extras) == "table" then
+			v = extras[name]
+		end
+		if v == nil and entry then
+			v = entry[name]
+		end
+		return v
+	end
+	-- evolution: the stored stage, clamped to what the pet can reach (PetCatalog.EvolutionStage)
+	local evo = 0
+	local stored = field("Evo")
+	if finite(stored) and stored >= 1 then
+		local pc = petCatalog()
+		if pc and pc.EvolutionStage then
+			local ok, result = pcall(pc.EvolutionStage, def, level, stored)
+			evo = (ok and finite(result)) and result or 0
+		else
+			evo = min(floor(stored), #P4.EVO_FALLBACK)
+		end
+	end
+	-- training: Train = { Speed, Physique, Ability, Defense }, or the flat PetGrowth record itself
+	local ranks = nil
+	local train = field("Train")
+	local source = type(train) == "table" and train or nil
+	if not source and type(extras) == "table" then
+		source = extras
+	end
+	if source then
+		for _, skill in ipairs(P4.SKILLS) do
+			local r = P4.rank(source[skill])
+			if r > 0 then
+				ranks = ranks or { Speed = 0, Physique = 0, Ability = 0, Defense = 0 }
+				ranks[skill] = r
+			end
+		end
+	end
+	-- ring champions: x Boost (> 1 only; Handicap covers < 1)
+	local boost = 1
+	local b = field("Boost")
+	if finite(b) and b > 1 then
+		boost = min(b, P4.MAX_BOOST)
+	end
+	return evo, ranks, boost
+end
+
+function P4.evoMult(stage)
+	if stage < 1 then
+		return 1
+	end
+	local pc = petCatalog()
+	if pc and pc.EvolutionMultiplier then
+		local ok, m = pcall(pc.EvolutionMultiplier, stage)
+		if ok and finite(m) and m > 0 then
+			return m
+		end
+	end
+	return P4.EVO_FALLBACK[min(stage, #P4.EVO_FALLBACK)] or 1
+end
+
+-- MaxHp, average hit, interval, DPS ... of one pet copy at a level and tier (+ Phase 4 extras: evolution, training,
+-- the ring Boost; none of them -> exactly the Phase 3 numbers)
+function BattleCatalog.UnitStats(subject, level, tier, extras)
 	local def, entryLevel, entryTier = BattleCatalog.StatsOf(subject)
 	if not def then
 		return nil
@@ -293,6 +439,17 @@ function BattleCatalog.UnitStats(subject, level, tier)
 	end
 	if tier == nil then
 		tier = entryTier
+	end
+	local evo, ranks, boost = P4.extras(def, level, subject, extras)
+	local evoMult = P4.evoMult(evo)
+	local TR = BattleCatalog.Training
+	local speedMult, hpMult, abilityMult, meterRate, defense = 1, 1, 1, 1, 0
+	if ranks then
+		speedMult = 1 + num(TR.Speed, 0) * ranks.Speed
+		hpMult = 1 + num(TR.Physique, 0) * ranks.Physique
+		abilityMult = 1 + num(TR.Ability, 0) * ranks.Ability
+		meterRate = 1 + num(TR.AbilityMeter, 0) * ranks.Ability
+		defense = min(0.9, num(TR.Defense, 0) * ranks.Defense)
 	end
 	local pc = petCatalog()
 	local stats = nil
@@ -315,15 +472,17 @@ function BattleCatalog.UnitStats(subject, level, tier)
 	if finite(def.Stats.Health) and def.Stats.Health > 0 then
 		scale = health / def.Stats.Health
 	end
-	local interval = profile.Interval / rateFactor(speed)
-	local hit = power * D.DamageScale * profile.DamageMult
+	-- Attack Speed divides the interval (the cached def.Stats.Speed is never touched)
+	local interval = profile.Interval / rateFactor(speed) / speedMult
+	local hit = power * D.DamageScale * profile.DamageMult * evoMult * boost
 	local specialPower, specialFactor = 0, 1
 	if type(def.Special) == "table" and finite(def.Special.Power) then
 		local curve = D.SpecialPowerCurve
 		if type(curve) == "table" and finite(def.Stats.Power) and def.Stats.Power > 0 then
 			specialFactor = (def.Stats.Power / num(curve.Reference, 10)) ^ num(curve.Exponent, 0.5)
 		end
-		specialPower = def.Special.Power * scale * specialFactor
+		-- `scale` is the level / rarity / tier growth only: Physique never feeds the special
+		specialPower = def.Special.Power * scale * specialFactor * evoMult * abilityMult * boost
 	end
 	local elements = {}
 	if pc and pc.ElementsOf then
@@ -332,10 +491,16 @@ function BattleCatalog.UnitStats(subject, level, tier)
 		elements = { def.Element }
 	end
 	return {
-		MaxHp = health * D.HpScale,
+		MaxHp = health * D.HpScale * evoMult * hpMult * boost,
 		Hit = hit,
 		Interval = interval,
 		Dps = hit / interval,
+		Defense = defense, -- 0..0.3: the share of every hit taken that Defense blocks (BattleSim.applyDamage)
+		MeterRate = meterRate, -- x every SPECIAL meter gain (Ability)
+		SpecialBoost = abilityMult, -- the Ability factor on the special (already inside SpecialPower)
+		Evo = evo, -- the evolution stage that counts (0 / 1 / 2)
+		Boost = boost, -- 1, or a ring champion's Boost
+		Train = ranks, -- { Speed, Physique, Ability, Defense } (whole ranks) or nil when untrained
 		MoveSpeed = profile.MoveSpeed * moveFactor(speed),
 		Range = profile.Range,
 		Ranged = profile.Attack == "Ranged",
@@ -351,7 +516,7 @@ function BattleCatalog.UnitStats(subject, level, tier)
 	}
 end
 
-BattleCatalog.PowerScale = 1 / 3 -- UnitPower = sqrt(DPS x MaxHp) x PowerScale (a Common level-1 fighter ~ 10)
+BattleCatalog.PowerScale = 1 / 3 -- UnitPower = sqrt(DPS x MaxHp / (1 - Defense)) x PowerScale (a Common level-1 fighter ~ 10)
 -- TeamPower x (BaseTeamSize / pets) ^ SizeExponent: focus fire favours fewer, bigger pets (measured by tools/sim_battle.lua:
 -- 3 pets beat 4 pets of the same summed power ~90% of the time; this takes ~5% off a 4-pet team and adds ~8% to a pair)
 BattleCatalog.SizeExponent = 0.2
@@ -363,10 +528,16 @@ local function sizeFactor(n)
 	return (BattleCatalog.BaseTeamSize / n) ^ BattleCatalog.SizeExponent
 end
 
-function BattleCatalog.UnitPower(subject, level, tier)
-	local us = BattleCatalog.UnitStats(subject, level, tier)
+-- Defense counts as effective HP (MaxHp / (1 - Defense)), so TeamPower, ExpectedDps-based boss HP and the duel practice
+-- gap see trained pets as they really fight
+function BattleCatalog.UnitPower(subject, level, tier, extras)
+	local us = BattleCatalog.UnitStats(subject, level, tier, extras)
 	if not us then
 		return 0
+	end
+	local defense = num(us.Defense, 0)
+	if defense > 0 then
+		return max(1, floor(sqrt(us.Dps * us.MaxHp / (1 - defense)) * BattleCatalog.PowerScale + 0.5))
 	end
 	return max(1, floor(sqrt(us.Dps * us.MaxHp) * BattleCatalog.PowerScale + 0.5))
 end
@@ -469,15 +640,23 @@ function BattleCatalog.TeamPower(list)
 	return floor(total * sizeFactor(#list) + 0.5)
 end
 
--- Expected DPS of a team spec ({ Pets = { entry... } } or a plain list), synergy Power included, elements ignored
+-- Expected DPS of a team spec ({ Pets = { entry... } } or a plain list), synergy Power included, elements ignored.
+-- Phase 4: Ability training speeds up and powers up the specials, which carry about Damage.SpecialDpsShare of a pet's
+-- damage: that part grows by SpecialBoost x MeterRate (exactly 1 without training: the Phase 3 boss HP is unchanged)
 function BattleCatalog.ExpectedDps(team)
 	local list = type(team) == "table" and (team.Pets or team) or {}
 	local syn = BattleCatalog.SynergyBonus(list)
+	local share = num(BattleCatalog.Damage.SpecialDpsShare, 0)
 	local total = 0
 	for i, entry in ipairs(list) do
 		local us = BattleCatalog.UnitStats(entry)
 		if us then
-			total = total + us.Dps * (syn.PowerMult[i] or 1)
+			local dps = us.Dps * (syn.PowerMult[i] or 1)
+			local gain = num(us.SpecialBoost, 1) * num(us.MeterRate, 1)
+			if gain > 1 and share > 0 then
+				dps = dps * (1 + share * (gain - 1))
+			end
+			total = total + dps
 		end
 	end
 	return total
@@ -572,7 +751,32 @@ BattleCatalog.TrialRewardRules = {
 	Xp = { Base = 20, PerLevel = 6 }, -- pet XP per team pet per win: 26 .. 200
 	FirstClearTokens = { PerLevel = 40, BossMult = 2 }, -- 40 .. 1200 (x2 on mini-boss levels)
 	FirstClearGems = { [5] = 5, [10] = 8, [15] = 12, [20] = 16, [25] = 20, [30] = 30 },
+	-- Phase 4 (section 3.5): a REAL loss pays a third of the win XP to every team pet. Real = the fight lasted at least
+	-- LossMinSeconds OR the team dealt at least LossMinDamage of the enemy team's HP, and it was not a forfeit, a leave, a
+	-- disconnect or a shutdown (BattleService rules those out). The same gate pays the round that ends a ring run.
+	LossShare = 1 / 3,
+	LossMinSeconds = 20,
+	LossMinDamage = 0.2,
 }
+
+-- the loss-XP gate (section 3.5): seconds the fight lasted, dealtShare = the share of the enemy team's max HP the team
+-- took off (0..1; BattleSim's result.Hp[enemySide] is what was LEFT, so dealtShare = 1 - that)
+function BattleCatalog.RealLoss(seconds, dealtShare)
+	local R = BattleCatalog.TrialRewardRules
+	if finite(seconds) and seconds >= num(R.LossMinSeconds, 20) then
+		return true
+	end
+	return finite(dealtShare) and dealtShare >= num(R.LossMinDamage, 0.2)
+end
+
+-- the XP a real loss pays per team pet: round(winXp x LossShare), 0 when the gate is not met (forfeits, leaves,
+-- disconnects and shutdowns are the caller's to rule out before calling)
+function BattleCatalog.LossXp(winXp, seconds, dealtShare)
+	if not finite(winXp) or winXp <= 0 or not BattleCatalog.RealLoss(seconds, dealtShare) then
+		return 0
+	end
+	return floor(winXp * num(BattleCatalog.TrialRewardRules.LossShare, 1 / 3) + 0.5)
+end
 
 function BattleCatalog.ChapterOf(level)
 	for _, ch in ipairs(BattleCatalog.TrialChapters) do
@@ -715,6 +919,410 @@ function BattleCatalog.TrialTeam(level)
 		pets[i] = { PetId = entry.PetId, Key = entry.PetId, Level = entry.Level, Tier = entry.Tier, Slot = i, Boss = entry.Boss, Handicap = entry.Handicap }
 	end
 	return { Owner = "npc", Side = 2, Npc = true, Name = trial.Name, Pets = pets, Trial = trial.Level }
+end
+
+----------------------------------------------------------------------
+-- Phase 4: the Champion Ring (section 3.8). One crowned champion pet per round, a stronger one every round. Rounds 1-3
+-- are one handicapped level-1 Common (a sure win for any single level-1 pet). From round 4 the champion aims at the
+-- target TeamPower FirstPower x Growth ^ (round - 4) (x BossBump on every BossEvery-th round), with a species drawn
+-- with the run's seed from the round's rarity band (never an EventOnly pet), solved in this order: a plain level-1
+-- pet above the target is handicapped down to it (Handicap >= MinHandicap); else the lowest level 1..ChampionMaxLevel
+-- of the plain pet; else the mini-boss form (BattleCatalog.MiniBoss: HP x3, hits x1.3, model x1.7) at the lowest
+-- level, Normal -> Golden -> Rainbow; else the level-ChampionMaxLevel Rainbow mini-boss with Boost = target / power
+-- (HP, hits and the special x Boost), so the ladder never ends. Every BossEvery-th round is a "giant boss" round:
+-- its champion always takes the mini-boss form (the plain-pet step is skipped). The target of a round is never below
+-- the power of the round before (the trial builder's rule: integer levels overshoot a little), so the power never
+-- drops from one round to the next. Champions keep the proven level-50 ladder after the player's level-100 rule.
+----------------------------------------------------------------------
+BattleCatalog.Ring = {
+	EasyRounds = {
+		{ PetId = "pebble_pup", Handicap = 0.45 },
+		{ PetId = "pip_penguin", Handicap = 0.55 },
+		{ PetId = "honey_bunny", Handicap = 0.65 },
+	},
+	FirstPower = 3.0, -- round 4's target TeamPower (one weak Common)
+	Growth = 1.18, -- x per round
+	BossEvery = 10, -- every 10th round: a giant boss champion, x BossBump, first win pays BossTokens
+	BossBump = 1.15,
+	MinHandicap = 0.3,
+	ChampionMaxLevel = 50, -- champions never level past 50 (the Boost covers the rest)
+	Bands = { -- the champion's rarity by round (rounds 1-3 are the EasyRounds); the last band is open-ended
+		{ From = 4, To = 9, Rarities = { "Common" } },
+		{ From = 10, To = 15, Rarities = { "Common", "Uncommon" } },
+		{ From = 16, To = 21, Rarities = { "Uncommon", "Rare" } },
+		{ From = 22, To = 27, Rarities = { "Rare", "Epic" } },
+		{ From = 28, To = 33, Rarities = { "Epic", "Legendary" } },
+		{ From = 34, To = 41, Rarities = { "Legendary", "Mythic" } },
+		{ From = 42, Rarities = { "Mythic", "Secret" } },
+	},
+	-- Cash per round won = max(CashFloorBase + CashFloorPerRound x r, IncomePerSecond x RingSeconds(r)), x RecordMult on
+	-- a new record; RingSeconds(r) = min(SecondsMax, SecondsBase + SecondsPerRound x r)
+	CashFloorBase = 20,
+	CashFloorPerRound = 2,
+	SecondsBase = 1.5,
+	SecondsPerRound = 0.1,
+	SecondsMax = 9,
+	RecordMult = 3,
+	BossTokens = 100, -- the first win of a boss round (a new record on a BossEvery-th round)
+	XpBase = 20, -- XP per team pet per round won: XpBase + XpPerRound x r (the run's last round: LossXp's third)
+	XpPerRound = 6,
+	TimeLimit = 90, -- = TimeLimits.Ring; a timeout is a loss
+	Intermission = 3, -- seconds between two rounds
+	MaxRound = 100000, -- rounds are clamped to 1..MaxRound
+}
+
+P4.RING_M = 2147483647
+P4.MAX_POWER = 1e15 -- the target curve flattens out here (far past any record) instead of overflowing
+P4.RING_MEMO_SEEDS = 64 -- the per-seed history kept for the "never drops" rule (oldest seed forgotten first)
+P4.baseCache = {} -- "petId|level|tier" -> TeamPower of that single plain pet
+P4.ringMemo = {} -- [seed] = { [round] = champion power } for the rounds before the saturation round
+P4.ringOrder = {}
+
+-- a whole round 1..MaxRound (junk -> 1)
+function P4.round(r)
+	r = tonumber(r)
+	if not finite(r) or r < 1 then
+		return 1
+	end
+	r = floor(r)
+	local top = num(BattleCatalog.Ring.MaxRound, 100000)
+	if r > top then
+		return top
+	end
+	return r
+end
+
+-- a whole seed 0..RING_M - 2 (junk -> 1)
+function P4.seed(seed)
+	local s = tonumber(seed)
+	if not finite(s) then
+		s = 1
+	end
+	return floor(math.abs(s)) % (P4.RING_M - 1)
+end
+
+-- rarity -> { petId... } in catalog order, never the EventOnly raid pets (cached once PetCatalog is there)
+function P4.pools()
+	if P4.poolCache then
+		return P4.poolCache
+	end
+	local pools = {}
+	local pc = petCatalog()
+	if pc and type(pc.Pets) == "table" then
+		for _, def in ipairs(pc.Pets) do
+			if def.EventOnly ~= true and type(def.Id) == "string" and type(def.Rarity) == "string" then
+				pools[def.Rarity] = pools[def.Rarity] or {}
+				table.insert(pools[def.Rarity], def.Id)
+			end
+		end
+		P4.poolCache = pools
+	end
+	return pools
+end
+
+function P4.band(r)
+	local bands = BattleCatalog.Ring.Bands
+	for _, b in ipairs(bands) do
+		if r >= num(b.From, 1) and (b.To == nil or r <= b.To) then
+			return b.Rarities
+		end
+	end
+	return bands[#bands].Rarities
+end
+
+-- the round's species, drawn with the run seed (Lehmer steps, exact in doubles: every value stays below 2^53)
+function P4.pickSpecies(r, s)
+	local M = P4.RING_M
+	local x = ((s % M) * 1000 + r) % M
+	x = (x * 7919 + 104729) % M
+	if x == 0 then
+		x = 1
+	end
+	local function nextInt(n)
+		x = (x * 48271) % M
+		return 1 + (x % n)
+	end
+	local pools = P4.pools()
+	local rarities = P4.band(r)
+	local list = pools[rarities[nextInt(#rarities)]]
+	if not list or #list == 0 then
+		for _, rarity in ipairs(rarities) do
+			if pools[rarity] and #pools[rarity] > 0 then
+				list = pools[rarity]
+				break
+			end
+		end
+		list = list or pools.Common
+	end
+	if not list or #list == 0 then
+		return nil
+	end
+	return list[nextInt(#list)]
+end
+
+function P4.basePower(petId, level, tier)
+	local key = petId .. "|" .. level .. "|" .. tier
+	local p = P4.baseCache[key]
+	if p == nil then
+		p = BattleCatalog.TeamPower({ { PetId = petId, Level = level, Tier = tier } })
+		P4.baseCache[key] = p
+	end
+	return p
+end
+
+-- a champion entry's TeamPower: the plain pet's, x the mini-boss factor, x Handicap, x Boost
+function P4.power(e)
+	local p = P4.basePower(e.PetId, e.Level, e.Tier)
+	if e.Boss then
+		local mb = BattleCatalog.MiniBoss
+		p = p * sqrt(mb.Hp * mb.Power)
+	end
+	if e.Handicap then
+		p = p * e.Handicap
+	end
+	if e.Boost then
+		p = p * e.Boost
+	end
+	return p
+end
+
+function BattleCatalog.RingTarget(round)
+	local R = BattleCatalog.Ring
+	local r = P4.round(round)
+	local easy = #R.EasyRounds
+	if r <= easy then
+		return 0
+	end
+	local p = R.FirstPower * R.Growth ^ (r - easy - 1)
+	if r % R.BossEvery == 0 then
+		p = p * R.BossBump
+	end
+	if not finite(p) or p > P4.MAX_POWER then
+		return P4.MAX_POWER
+	end
+	return p
+end
+
+-- one round's champion entry for a goal: entry, goal, power (see the solve order above)
+function P4.solve(r, s, prevPower)
+	local R = BattleCatalog.Ring
+	local easy = R.EasyRounds[r]
+	if easy then
+		local e = { PetId = easy.PetId, Level = 1, Tier = "Normal", Handicap = easy.Handicap }
+		return e, 0, P4.power(e)
+	end
+	local goal = BattleCatalog.RingTarget(r)
+	if prevPower and prevPower > goal then
+		goal = prevPower
+	end
+	local petId = P4.pickSpecies(r, s)
+	if not petId then
+		return nil, goal, goal
+	end
+	local bossRound = (r % R.BossEvery == 0)
+	local topLevel = max(1, floor(num(R.ChampionMaxLevel, 50)))
+	local function at(level, tier, boss)
+		return { PetId = petId, Level = level, Tier = tier, Boss = boss or nil }
+	end
+	-- a level-1 pet (the mini-boss form on boss rounds) above the goal is handicapped down to it
+	local first = at(1, "Normal", bossRound)
+	local p1 = P4.power(first)
+	if p1 > goal then
+		local h = goal / p1
+		if h < R.MinHandicap then
+			first.Handicap = R.MinHandicap
+			return first, goal, p1 * R.MinHandicap
+		end
+		first.Handicap = h
+		return first, goal, goal
+	end
+	-- the lowest level that reaches the goal: the plain pet, then the mini-boss form Normal -> Golden -> Rainbow
+	local forms = { { false, "Normal" }, { true, "Normal" }, { true, "Golden" }, { true, "Rainbow" } }
+	for i, form in ipairs(forms) do
+		if (i > 1 or not bossRound) and P4.power(at(topLevel, form[2], form[1])) >= goal then
+			local lo, hi = 1, topLevel
+			while lo < hi do
+				local mid = floor((lo + hi) / 2)
+				if P4.power(at(mid, form[2], form[1])) >= goal then
+					hi = mid
+				else
+					lo = mid + 1
+				end
+			end
+			local e = at(lo, form[2], form[1])
+			return e, goal, P4.power(e)
+		end
+	end
+	-- the level-ChampionMaxLevel Rainbow mini-boss, x Boost: endless
+	local top = at(topLevel, "Rainbow", true)
+	local tp = P4.power(top)
+	if tp > 0 and goal > tp then
+		top.Boost = goal / tp
+		return top, goal, goal
+	end
+	return top, goal, tp
+end
+
+-- the per-seed history; reset whenever a Ring knob changes (the sim tunes them)
+function P4.memoFor(s)
+	local R = BattleCatalog.Ring
+	local sig = table.concat({ tostring(R.FirstPower), tostring(R.Growth), tostring(R.BossEvery), tostring(R.BossBump), tostring(R.MinHandicap), tostring(R.ChampionMaxLevel), tostring(#R.EasyRounds), tostring(#R.Bands) }, "|")
+	if sig ~= P4.ringSig then
+		P4.ringSig = sig
+		P4.ringMemo = {}
+		P4.ringOrder = {}
+		P4.ringSat = nil
+	end
+	local m = P4.ringMemo[s]
+	if not m then
+		m = {}
+		P4.ringMemo[s] = m
+		P4.ringOrder[#P4.ringOrder + 1] = s
+		if #P4.ringOrder > P4.RING_MEMO_SEEDS then
+			P4.ringMemo[table.remove(P4.ringOrder, 1)] = nil
+		end
+	end
+	return m
+end
+
+-- the saturation round: from here on the target is above every species' level-ChampionMaxLevel Rainbow mini-boss, so
+-- every champion takes a Boost and its power is exactly max(target, the power before the saturation round)
+function P4.saturation()
+	if P4.ringSat then
+		return P4.ringSat
+	end
+	local R = BattleCatalog.Ring
+	local topLevel = max(1, floor(num(R.ChampionMaxLevel, 50)))
+	local mb = BattleCatalog.MiniBoss
+	local maxTop = 0
+	for _, list in pairs(P4.pools()) do
+		for _, id in ipairs(list) do
+			maxTop = max(maxTop, P4.basePower(id, topLevel, "Rainbow") * sqrt(mb.Hp * mb.Power))
+		end
+	end
+	local r = #R.EasyRounds + 1
+	local top = num(R.MaxRound, 100000)
+	while r < top and BattleCatalog.RingTarget(r) < maxTop do
+		r = r + 1
+	end
+	P4.ringSat = r
+	return r
+end
+
+-- the champion power of round k < saturation for seed s (memoized, computed forward from the last known round)
+function P4.history(k, s, memo)
+	if k < 1 then
+		return nil
+	end
+	if memo[k] then
+		return memo[k]
+	end
+	local start = k
+	while start > 1 and not memo[start - 1] do
+		start = start - 1
+	end
+	local prev = (start > 1) and memo[start - 1] or nil
+	for j = start, k do
+		local _, _, p = P4.solve(j, s, prev)
+		memo[j] = p
+		prev = p
+	end
+	return memo[k]
+end
+
+-- entry, goal, power of round r for seed s, with the "never drops" rule
+function P4.ring(r, s)
+	local memo = P4.memoFor(s)
+	local sat = P4.saturation()
+	if r >= sat then
+		return P4.solve(r, s, P4.history(sat - 1, s, memo))
+	end
+	return P4.solve(r, s, P4.history(r - 1, s, memo))
+end
+
+-- A BattleSim team spec for the champion of `round` in the run with `seed` (fresh tables; pure and deterministic)
+function BattleCatalog.ChampionTeam(round, seed)
+	local r = P4.round(round)
+	local s = P4.seed(seed)
+	local entry, goal, power = P4.ring(r, s)
+	if not entry then
+		return nil
+	end
+	local pc = petCatalog()
+	local def = pc and pc.Get and pc.Get(entry.PetId)
+	local name = (def and (def.DisplayName or def.Name)) or entry.PetId
+	local pet = {
+		PetId = entry.PetId,
+		Key = entry.PetId,
+		Level = entry.Level,
+		Tier = entry.Tier,
+		Slot = 1,
+		Boss = entry.Boss,
+		Handicap = entry.Handicap,
+		Boost = entry.Boost,
+		Crowned = true,
+	}
+	return {
+		Owner = "npc",
+		Side = 2,
+		Npc = true,
+		Name = "Champion " .. name,
+		Round = r,
+		Seed = s,
+		TargetPower = goal,
+		Power = power,
+		Champion = {
+			PetId = entry.PetId,
+			Level = entry.Level,
+			Tier = entry.Tier,
+			Boss = entry.Boss == true,
+			Boost = entry.Boost,
+			Handicap = entry.Handicap,
+			Name = name,
+			Power = power,
+		},
+		Pets = { pet },
+	}
+end
+
+-- the champion's power of a round (the same number as ChampionTeam(round, seed).Power)
+function BattleCatalog.RingPower(round, seed)
+	local _, _, power = P4.ring(P4.round(round), P4.seed(seed))
+	return power
+end
+
+function BattleCatalog.RingSeconds(round)
+	local R = BattleCatalog.Ring
+	return min(R.SecondsMax, R.SecondsBase + R.SecondsPerRound * P4.round(round))
+end
+
+-- The rewards of one round WON: Cash = max(floor, seconds of the climber's own garden income) (x RecordMult on a new
+-- record), Xp per team pet, Tokens = BossTokens for the first win of a boss round (= a new record on a BossEvery-th
+-- round). incomePerSecond: TycoonService.IncomePerSecond(player) (0 without garden pets: the floor only).
+function BattleCatalog.RingRewards(round, incomePerSecond, isRecord)
+	local R = BattleCatalog.Ring
+	local r = P4.round(round)
+	local ips = tonumber(incomePerSecond)
+	if not finite(ips) or ips < 0 then
+		ips = 0
+	end
+	local record = isRecord == true
+	local seconds = BattleCatalog.RingSeconds(r)
+	local cashFloor = floor(R.CashFloorBase + R.CashFloorPerRound * r)
+	local cash = max(cashFloor, floor(ips * seconds))
+	if record then
+		cash = cash * R.RecordMult
+	end
+	local boss = (r % R.BossEvery == 0)
+	return {
+		Cash = cash,
+		Xp = R.XpBase + R.XpPerRound * r,
+		Tokens = (record and boss) and R.BossTokens or 0,
+		Seconds = seconds,
+		Floor = cashFloor,
+		Record = record,
+		Boss = boss,
+	}
 end
 
 ----------------------------------------------------------------------
@@ -1128,6 +1736,87 @@ function BattleCatalog.Validate()
 	end
 	if BattleCatalog.Trophies.Loss >= 0 or BattleCatalog.Trophies.Win <= 0 or BattleCatalog.Trophies.Floor ~= 0 then
 		bad("Trophies: Win must be positive, Loss negative, Floor 0")
+	end
+	-- Phase 4: training, the loss-XP gate, the Champion Ring
+	local TR = BattleCatalog.Training
+	if TR.MaxRank ~= 10 or not finite(TR.Defense) or TR.Defense * TR.MaxRank > 0.3 + 1e-9 then
+		bad("Training: MaxRank 10 and Defense capped at 30% at rank 10")
+	end
+	for _, skill in ipairs({ "Speed", "Physique", "Ability", "AbilityMeter", "Defense" }) do
+		if not finite(TR[skill]) or TR[skill] <= 0 or TR[skill] > 0.1 then
+			bad("Training." .. skill .. " must be a small positive share per rank")
+		end
+	end
+	if #BattleCatalog.TrainingSkills ~= 4 then
+		bad("TrainingSkills lists the four skills")
+	end
+	local TRR = BattleCatalog.TrialRewardRules
+	if not finite(TRR.LossShare) or TRR.LossShare <= 0 or TRR.LossShare >= 1 or not finite(TRR.LossMinSeconds) or not finite(TRR.LossMinDamage) then
+		bad("TrialRewardRules: LossShare in (0, 1), LossMinSeconds, LossMinDamage")
+	end
+	local R = BattleCatalog.Ring
+	if BattleCatalog.Zones.Ring == nil or BattleCatalog.TimeLimits.Ring ~= R.TimeLimit then
+		bad("Ring: Zones.Ring and TimeLimits.Ring = Ring.TimeLimit")
+	end
+	if not (R.Growth > 1 and R.Growth > R.BossBump and R.BossBump >= 1 and R.FirstPower > 0 and R.MinHandicap > 0 and R.MinHandicap < 1) then
+		bad("Ring: Growth > BossBump >= 1 (the target never drops), FirstPower > 0, MinHandicap in (0, 1)")
+	end
+	for i, easy in ipairs(R.EasyRounds) do
+		local def = pc and pc.Get and pc.Get(easy.PetId)
+		if pc and (not def or def.Rarity ~= "Common") then
+			bad("Ring.EasyRounds[" .. i .. "] must be a Common catalog pet")
+		end
+		if not finite(easy.Handicap) or easy.Handicap <= 0 or easy.Handicap >= 1 then
+			bad("Ring.EasyRounds[" .. i .. "] needs a Handicap in (0, 1)")
+		end
+	end
+	local nextFrom = #R.EasyRounds + 1
+	for i, b in ipairs(R.Bands) do
+		if b.From ~= nextFrom or type(b.Rarities) ~= "table" or #b.Rarities == 0 then
+			bad("Ring.Bands[" .. i .. "] must start at round " .. nextFrom .. " and name rarities")
+		end
+		nextFrom = (b.To or huge) + 1
+		for _, rarity in ipairs(b.Rarities or {}) do
+			local pool = P4.pools()[rarity]
+			if pc and (not pool or #pool == 0) then
+				bad("Ring.Bands[" .. i .. "]: no catalog pets of rarity " .. tostring(rarity))
+			end
+		end
+	end
+	if nextFrom ~= huge then
+		bad("Ring.Bands: the last band must be open-ended (no To)")
+	end
+	if pc then
+		local last = 0
+		local boosted = nil
+		for round = 1, 80 do
+			local spec = BattleCatalog.ChampionTeam(round, 1)
+			if type(spec) ~= "table" or #spec.Pets ~= 1 then
+				bad("ChampionTeam(" .. round .. ", 1) must be a one-pet team spec")
+				break
+			end
+			-- rounds 1-3 are the fixed easy rounds; from the first solved round on the power never drops
+			if round > #R.EasyRounds and spec.Power < last then
+				bad("ChampionTeam: round " .. round .. " is weaker than round " .. (round - 1))
+			end
+			last = spec.Power
+			if spec.Pets[1].Boost and not boosted then
+				boosted = round
+			end
+			if pc.IsEventOnly and pc.IsEventOnly(spec.Pets[1].PetId) then
+				bad("ChampionTeam: round " .. round .. " fields an EventOnly pet")
+			end
+			if spec.Pets[1].Level > R.ChampionMaxLevel then
+				bad("ChampionTeam: round " .. round .. " is above ChampionMaxLevel")
+			end
+		end
+		if not boosted then
+			bad("ChampionTeam: no Boost by round 80 (the ladder must never end)")
+		end
+	end
+	local rw = BattleCatalog.RingRewards(1, 0, false)
+	if rw.Cash ~= R.CashFloorBase + R.CashFloorPerRound or rw.Xp ~= R.XpBase + R.XpPerRound or rw.Tokens ~= 0 then
+		bad("RingRewards(1, 0, false) must pay the floor Cash and round-1 XP")
 	end
 	return #problems == 0, problems
 end

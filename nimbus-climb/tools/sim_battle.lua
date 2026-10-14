@@ -136,14 +136,29 @@ end
 ----------------------------------------------------------------------
 -- Team specs
 ----------------------------------------------------------------------
-local function pet(key, level, tier)
-	return { Key = key, Level = level or 1, Tier = tier }
+local function pet(key, level, tier, extra)
+	local p = { Key = key, Level = level or 1, Tier = tier }
+	for k, v in pairs(extra or {}) do
+		p[k] = v
+	end
+	return p
+end
+
+-- the entry fields a team spec carries (Phase 4: Evo / Train / Boost / Boss / Handicap / Crowned / Xp go along)
+local ENTRY_FIELDS = { "Key", "PetId", "Def", "Level", "Tier", "Evo", "Train", "Boost", "Boss", "Handicap", "Crowned", "Xp", "XpNext" }
+local function copyEntry(p)
+	local e = {}
+	for _, k in ipairs(ENTRY_FIELDS) do
+		e[k] = p[k]
+	end
+	return e
 end
 
 local function team(owner, side, pets, flags)
 	local list = {}
 	for i, p in ipairs(pets) do
-		list[i] = { Key = p.Key, PetId = p.PetId, Def = p.Def, Level = p.Level, Tier = p.Tier, Slot = i }
+		list[i] = copyEntry(p)
+		list[i].Slot = i
 	end
 	local spec = { Owner = owner, Side = side, Pets = list }
 	for k, v in pairs(flags or {}) do
@@ -155,7 +170,7 @@ end
 local function powerOf(pets)
 	local list = {}
 	for i, p in ipairs(pets) do
-		list[i] = { Key = p.Key, PetId = p.PetId, Def = p.Def, Level = p.Level, Tier = p.Tier }
+		list[i] = copyEntry(p)
 	end
 	return BC.TeamPower(list)
 end
@@ -1125,18 +1140,460 @@ section("perf", function(opts)
 	target("the wire snapshot of a step is well under 4 numbers per unit", delta <= 4 * max(1, n), fmt("%d numbers for %d units", delta, n))
 end)
 
--- 9. progression reference
-section("progression", function(opts)
-	header("Progression reference: pet XP behind each stage (TycoonCatalog.XpToNext; a Feast = " .. TC.Foods.Feast.Xp .. " XP for $" .. TC.Foods.Feast.Price .. ")")
-	for _, stage in ipairs(SIM.Stages) do
+----------------------------------------------------------------------
+-- Phase 4 helpers: trained / evolved copies, the ring runs, the duel practice gap
+----------------------------------------------------------------------
+local P4 = {}
+
+function P4.ranks(r)
+	return { Speed = r, Physique = r, Ability = r, Defense = r }
+end
+
+-- copies of `pets` with Train (a ranks table or nil), Evo (0..2 or nil) and a level override (nil = keep)
+function P4.trained(pets, ranks, evo, level)
+	local list = {}
+	for i, p in ipairs(pets) do
+		local e = copyEntry(p)
+		e.Train = ranks
+		e.Evo = evo
+		if level then
+			e.Level = level
+		end
+		list[i] = e
+	end
+	return list
+end
+
+function P4.median(list)
+	if #list == 0 then
+		return 0
+	end
+	local copy = {}
+	for i, v in ipairs(list) do
+		copy[i] = v
+	end
+	table.sort(copy)
+	return copy[floor(#copy / 2) + 1]
+end
+
+function P4.mean(list)
+	local s = 0
+	for _, v in ipairs(list) do
+		s = s + v
+	end
+	return #list > 0 and s / #list or 0
+end
+
+-- every team pet can reach the second evolution (Epic and rarer)
+function P4.allTwice(pets)
+	for _, p in ipairs(pets) do
+		if not PC.MaxEvolution or PC.MaxEvolution(p.Key) < 2 then
+			return false
+		end
+	end
+	return true
+end
+
+-- the practice-duel factor of BattleService (C.DUEL_POWER_GAP), read from its source; 3 if it cannot be found
+function P4.duelGap()
+	for _, root in ipairs({ ".", "..", "nimbus-climb" }) do
+		local src = readFile(root .. "/src/server/Services/BattleService.lua")
+		if src then
+			local v = tonumber(src:match("DUEL_POWER_GAP%s*=%s*([%d%.]+)"))
+			if v then
+				return v
+			end
+		end
+	end
+	return 3
+end
+
+-- one Champion Ring round: the player's team (scripted player) vs ChampionTeam(round, runSeed)
+function P4.ringFight(pets, round, runSeed, battleSeed)
+	local setup = { Mode = "Ring", Seed = battleSeed, Round = round, Teams = { team(77, 1, pets), BC.ChampionTeam(round, runSeed) } }
+	return SIM.run(setup, { [77] = "player" })
+end
+
+-- one ring run from round 1 (fresh HP every round) -> record, { fight durations }, total seconds incl. intermissions
+function P4.ringRun(pets, runSeed, maxRound)
+	local r, total = 1, 0
+	local durations = {}
+	local intermission = BC.Ring.Intermission or 3
+	while r <= (maxRound or 150) do
+		local res = P4.ringFight(pets, r, runSeed, runSeed * 13 + r)
+		local d = res and res.Duration or 0
+		total = total + d
+		if not res or res.WinnerSide ~= 1 then
+			break
+		end
+		durations[#durations + 1] = d
+		total = total + intermission
+		r = r + 1
+	end
+	return r - 1, durations, total
+end
+
+-- the level-1 Commons / Uncommons a new player can roll
+function P4.starters()
+	local list = {}
+	for _, def in ipairs(PC.Pets) do
+		local rollable = (PC.IsRollable and PC.IsRollable(def.Id)) or (not PC.IsRollable and def.EventOnly ~= true)
+		if rollable and (def.Rarity == "Common" or def.Rarity == "Uncommon") then
+			list[#list + 1] = def.Id
+		end
+	end
+	return list
+end
+
+-- 9. training + evolution (Phase 4)
+section("training", function(opts)
+	header("Training + evolution (Phase 4, 3.6 / 3.7): TeamPower of each stage with all four skills trained / evolved")
+	out(fmt("  %-4s %-11s %6s | %-15s | %-15s | %-15s | %-15s | %s", "", "", "power", "all ranks 5", "all ranks 10", "Evolved I", "Evolved II", "Evolved II + rank 10"))
+	local r5lo, r5hi, r10lo, r10hi = huge, 0, huge, 0
+	local e1lo, e1hi, e2lo, e2hi = huge, 0, huge, 0
+	for _, st in ipairs(SIM.Stages) do
+		local base = powerOf(st.Pets)
+		local r5 = powerOf(P4.trained(st.Pets, P4.ranks(5)))
+		local r10 = powerOf(P4.trained(st.Pets, P4.ranks(10)))
+		local e1 = powerOf(P4.trained(st.Pets, nil, 1))
+		local e2 = powerOf(P4.trained(st.Pets, nil, 2))
+		local both = powerOf(P4.trained(st.Pets, P4.ranks(10), 2))
+		local twice = P4.allTwice(st.Pets)
+		out(fmt("  %-4s %-11s %6d | %6d (x%.2f) | %6d (x%.2f) | %6d (x%.2f) | %6d (x%.2f)%s | %6d (x%.2f)", st.Id, st.Name, base, r5, r5 / base, r10, r10 / base, e1, e1 / base, e2, e2 / base, twice and " " or "*", both, both / base))
+		r5lo, r5hi = min(r5lo, r5 / base), max(r5hi, r5 / base)
+		r10lo, r10hi = min(r10lo, r10 / base), max(r10hi, r10 / base)
+		-- the tiny Day-1 numbers round to whole powers: the evolution ratio is judged from the first week on
+		if base >= 40 then
+			e1lo, e1hi = min(e1lo, e1 / base), max(e1hi, e1 / base)
+			if twice then
+				e2lo, e2hi = min(e2lo, e2 / base), max(e2hi, e2 / base)
+			end
+		end
+	end
+	out("  (* = not every pet of the team evolves twice: Common / Uncommon / Rare stop at Evolved I)")
+	target("all four skills at rank 5: x1.25-1.4 TeamPower at every stage", r5lo >= 1.25 and r5hi <= 1.4, fmt("x%.2f .. x%.2f", r5lo, r5hi))
+	target("all four skills at rank 10: x1.6-1.85 TeamPower at every stage", r10lo >= 1.6 and r10hi <= 1.85, fmt("x%.2f .. x%.2f", r10lo, r10hi))
+	target("Evolved I is x1.25 and Evolved II x1.5 TeamPower (+-0.03)", e1lo >= 1.22 and e1hi <= 1.28 and e2lo >= 1.47 and e2hi <= 1.53, fmt("I x%.2f .. x%.2f, II x%.2f .. x%.2f", e1lo, e1hi, e2lo, e2hi))
+	local us0 = BC.UnitStats("storm_tabby", 10)
+	local us1 = BC.UnitStats("storm_tabby", 10, nil, { Train = P4.ranks(10) })
+	out(fmt("  storm_tabby L10 rank 10: interval %.2f -> %.2f s, max HP %d -> %d, special %d -> %d, damage taken x%.2f, meter x%.2f", us0.Interval, us1.Interval, us0.MaxHp, us1.MaxHp, us0.SpecialPower, us1.SpecialPower, 1 - us1.Defense, us1.MeterRate))
+
+	header("Training: trained mirror duels (scripted players both sides): fair, no draws, no timeouts")
+	local mirrorOk, worst = true, 50
+	for _, idx in ipairs({ 3, 5, 7, 9 }) do
+		local st = SIM.Stages[idx]
+		for _, case in ipairs({ { "untrained", nil, nil }, { "rank 5", P4.ranks(5), 1 }, { "rank 10 + Evolved II", P4.ranks(10), 2 } }) do
+			local pets = P4.trained(st.Pets, case[2], case[3])
+			local agg = series(function(seed)
+				return { Mode = "Duel", Seed = seed, Teams = { team(1, 1, pets), team(2, 2, pets) } }
+			end, { [1] = "player", [2] = "player" }, opts.seeds)
+			out(fmt("  %-4s %-22s side1 %3d%%  draws %d  timeouts %d  dur %5.1f s  maxHit %.2f", st.Id, case[1], agg.winPct, agg.draws, agg.timeouts, agg.avgDur, agg.maxPetHit))
+			if case[2] then
+				if abs(agg.winPct - 50) > abs(worst - 50) then
+					worst = agg.winPct
+				end
+				if agg.winPct < 35 or agg.winPct > 65 or agg.draws > 0 or agg.timeouts > 0 then
+					mirrorOk = false
+				end
+			end
+		end
+	end
+	target("trained mirror duels are fair (35-65%) with no draws and no timeouts", mirrorOk, fmt("worst %d%%", worst))
+	local st5 = SIM.Stages[5]
+	for _, r in ipairs({ 2, 5, 10 }) do
+		local agg = series(function(seed)
+			return { Mode = "Duel", Seed = seed, Teams = { team(1, 1, P4.trained(st5.Pets, P4.ranks(r))), team(2, 2, st5.Pets) } }
+		end, { [1] = "player", [2] = "player" }, max(8, floor(opts.seeds / 2)))
+		out(fmt("  S5 all ranks %2d vs the same team untrained: trained wins %3d%%  dur %5.1f s", r, agg.winPct, agg.avgDur))
+	end
+
+	header("Training: a trained + evolved team (S7, rank 10, Evolved II) vs every boss with 1 / 3 dodging players")
+	local seeds = max(1, floor(opts.seeds / 8))
+	local pets7 = P4.trained(SIM.Stages[7].Pets, P4.ranks(10), 2)
+	local won, combos, durOk, bossHit = 0, 0, true, 0
+	for _, boss in ipairs(BC.BossOrder) do
+		for _, players in ipairs({ 1, 3 }) do
+			local policies = {}
+			for i = 1, players do
+				policies[500 + i] = "player"
+			end
+			local agg = series(function(seed)
+				local teams = {}
+				for i = 1, players do
+					teams[i] = team(500 + i, 1, pets7)
+				end
+				return { Mode = "Raid", Boss = boss, Seed = seed, Teams = teams }
+			end, policies, seeds)
+			out(fmt("  %-13s %dp: win %3d%% dur %5.1f s (dodges %4.1f, KOs %4.1f, maxBossHit %.2f)", boss, players, agg.winPct, agg.avgDur, agg.dodges / max(1, agg.n), agg.kos / max(1, agg.n), agg.maxBossHit))
+			combos = combos + 1
+			bossHit = max(bossHit, agg.maxBossHit)
+			if agg.winPct >= 50 then
+				won = won + 1
+				if agg.avgDur < 100 or agg.avgDur > 240 then
+					durOk = false
+				end
+			end
+		end
+	end
+	target("a trained team still wins its raids by dodging (>= 90% of the combos) in 100-240 s", won >= combos * 0.9 and durOk, fmt("%d of %d won", won, combos))
+	target("no boss hit takes more than 80% of a trained pet", bossHit <= 0.8, fmt("max %.2f", bossHit))
+end)
+
+-- 10. the Champion Ring (Phase 4)
+section("ring", function(opts)
+	local R = BC.Ring
+	header(fmt("Champion Ring (3.8): single level-1 pets vs the first rounds (scripted player; FirstPower %.2f, Growth %.2f)", R.FirstPower, R.Growth))
+	local seeds1 = opts.quick and 24 or 48
+	local starters = P4.starters()
+	local NR = 8
+	local worst, avg = {}, {}
+	for r = 1, NR do
+		worst[r], avg[r] = 100, 0
+	end
+	for _, id in ipairs(starters) do
+		local row = {}
+		for r = 1, NR do
+			local wins, dur = 0, 0
+			for seed = 1, seeds1 do
+				local res = P4.ringFight({ pet(id, 1) }, r, seed, seed * 7 + r)
+				if res and res.WinnerSide == 1 then
+					wins = wins + 1
+				end
+				dur = dur + (res and res.Duration or 0)
+			end
+			local p = pct(wins, seeds1)
+			worst[r] = min(worst[r], p)
+			avg[r] = avg[r] + p / #starters
+			row[#row + 1] = fmt("r%d %3d%%/%2.0fs", r, p, dur / seeds1)
+		end
+		out(fmt("  %-15s %s", id, table.concat(row, " ")))
+	end
+	local w, a = {}, {}
+	for r = 1, NR do
+		w[#w + 1] = fmt("r%d %d%%", r, worst[r])
+		a[#a + 1] = fmt("r%d %.0f%%", r, avg[r])
+	end
+	out("  worst single pet: " .. table.concat(w, "  "))
+	out("  average        : " .. table.concat(a, "  "))
+	target(fmt("rounds 1-3 are won >= 95%% by EVERY single level-1 rollable Common / Uncommon (%d pets, %d seeds)", #starters, seeds1), worst[1] >= 95 and worst[2] >= 95 and worst[3] >= 95, fmt("worst r1 %d%%, r2 %d%%, r3 %d%%", worst[1], worst[2], worst[3]))
+	target("the single-pet average stays >= 85% at rounds 4-5 and >= 50% at round 8 (no cliff)", avg[4] >= 85 and avg[5] >= 85 and avg[8] >= 50, fmt("r4 %.0f%%, r5 %.0f%%, r8 %.0f%%", avg[4], avg[5], avg[8]))
+
+	header("Champion Ring: the record (the last round won, fresh HP every round) per progression stage")
+	local seeds2 = opts.quick and 8 or 16
+	local medians, fightOk, lastMedian, monotonic = {}, true, -1, true
+	local runMinutes = {}
+	for _, st in ipairs(SIM.Stages) do
+		local records, durs, totals = {}, {}, {}
+		for seed = 1, seeds2 do
+			local rec, d, total = P4.ringRun(st.Pets, 1000 + seed)
+			records[#records + 1] = rec
+			for _, x in ipairs(d) do
+				durs[#durs + 1] = x
+			end
+			totals[#totals + 1] = total
+		end
+		local med = P4.median(records)
+		medians[st.Id] = med
+		local avgFight = P4.mean(durs)
+		runMinutes[st.Id] = P4.mean(totals) / 60
+		table.sort(records)
 		local xp = 0
+		for r = 1, med do
+			xp = xp + BC.RingRewards(r, 0, false).Xp
+		end
+		out(fmt("  %-4s %-11s power %6d  record median %3d (min %d, max %d)  avg fight %4.1f s  run %4.1f min  XP per pet %5d", st.Id, st.Name, powerOf(st.Pets), med, records[1], records[#records], avgFight, runMinutes[st.Id], xp))
+		if avgFight < 4 or avgFight > 40 then
+			fightOk = false
+		end
+		if med < lastMedian then
+			monotonic = false
+		end
+		lastMedian = max(lastMedian, med)
+	end
+	local function within(id, lo, hi)
+		return medians[id] >= lo and medians[id] <= hi
+	end
+	target("median records: S1 13-19, S3 20-26, S5 25-31, S7 33-39, S9 41-47, S10 48-54", within("S1", 13, 19) and within("S3", 20, 26) and within("S5", 25, 31) and within("S7", 33, 39) and within("S9", 41, 47) and within("S10", 48, 54),
+		fmt("S1 %d S3 %d S5 %d S7 %d S9 %d S10 %d", medians.S1, medians.S3, medians.S5, medians.S7, medians.S9, medians.S10))
+	target("the record never falls with the stage", monotonic)
+	target("ring fights last 4-40 s on average at every stage", fightOk)
+
+	header("Champion Ring: the ladder (power never drops, never ends; Boost past the level-50 Rainbow boss)")
+	local mono, firstBoost, lateOk = true, {}, true
+	for seed = 1, 60 do
+		local last = 0
+		local first = nil
+		for r = 1, 120 do
+			local spec = BC.ChampionTeam(r, seed)
+			if r > #R.EasyRounds and spec.Power < last then
+				mono = false
+			end
+			last = spec.Power
+			local boost = spec.Pets[1].Boost
+			if boost and boost > 1 and not first then
+				first = r
+			end
+			if r >= 52 and not (boost and boost > 1) then
+				lateOk = false
+			end
+		end
+		firstBoost[#firstBoost + 1] = first or 999
+	end
+	table.sort(firstBoost)
+	local medBoost = P4.median(firstBoost)
+	local p120, p100 = BC.RingPower(120, 1), BC.RingPower(100, 1)
+	target("the champion's power never drops from a round to the next (rounds 3-120, 60 seeds)", mono)
+	target("no ceiling: round 120 is stronger than round 100", p120 > p100, fmt("%.0f vs %.0f", p120, p100))
+	target("Boost > 1 starts at rounds 40-50 (median first boosted round) and every champion from round 52 on is boosted", medBoost >= 40 and medBoost <= 50 and lateOk, fmt("first boosted round: min %d, median %d, max %d", firstBoost[1], medBoost, firstBoost[#firstBoost]))
+	for _, r in ipairs({ 1, 2, 3, 4, 5, 6, 7, 8, 10, 12, 15, 20, 25, 30, 35, 40, 45, 50, 60, 70, 80, 100, 120 }) do
+		local spec = BC.ChampionTeam(r, 1)
+		local e = spec.Pets[1]
+		local rw = BC.RingRewards(r, 300, false)
+		out(fmt("  round %3d  target %10.1f  power %10.1f  %-18s L%-2d %-7s%s%s%s   win: $%d at 300/s ($%d floor), %d XP", r, BC.RingTarget(r), spec.Power, e.PetId, e.Level, e.Tier, e.Boss and " BOSS" or "", e.Boost and fmt(" x%.2f", e.Boost) or "", e.Handicap and fmt(" h%.2f", e.Handicap) or "", rw.Cash, rw.Floor, rw.Xp))
+	end
+end)
+
+-- 11. the level-100 stage (the player's later rule: pets level up to 100; champions keep their level-50 ladder)
+section("level100", function(opts)
+	header("Level 100 (the player's rule): the S10 pets at level 100, Evolved II, every skill at rank 10")
+	local s10 = SIM.Stages[10].Pets
+	local l100 = P4.trained(s10, nil, nil, 100)
+	local l100max = P4.trained(s10, P4.ranks(10), 2, 100)
+	local s10max = P4.trained(s10, P4.ranks(10), 2)
+	local gap = P4.duelGap()
+	local p50, p50max, p100, p100max = powerOf(s10), powerOf(s10max), powerOf(l100), powerOf(l100max)
+	out(fmt("  TeamPower: S10 (L45-50 Rainbow) %d, S10 trained + evolved %d, the same pets at L100 %d, L100 trained + evolved %d (x%.2f of S10)", p50, p50max, p100, p100max, p100max / p50))
+	out(fmt("  BattleService practice rule: a duel whose powers differ by more than x%.1f pays nothing", gap))
+	out(fmt("    L100 maxed vs S10: x%.2f (%s); L100 maxed vs S10 maxed: x%.2f (%s); L100 vs S10, both untrained: x%.2f (%s)", p100max / p50, p100max > p50 * gap and "practice" or "ranked",
+		p100max / p50max, p100max > p50max * gap and "practice" or "ranked", p100 / p50, p100 > p50 * gap and "practice" or "ranked"))
+	target("the duel practice gap catches a maxed L100 team vs an L50 team (S10)", p100max > p50 * gap, fmt("x%.2f > x%.1f", p100max / p50, gap))
+	local agg = series(function(seed)
+		return { Mode = "Duel", Seed = seed, Teams = { team(1, 1, l100max), team(2, 2, s10) } }
+	end, { [1] = "player", [2] = "player" }, max(8, floor(opts.seeds / 4)))
+	out(fmt("  L100 maxed vs S10 (L50): L100 wins %3d%%  dur %5.1f s  maxHit %.2f", agg.winPct, agg.avgDur, agg.maxPetHit))
+
+	header("Level 100: mirror duels (fair, no draws / timeouts, no one-shots)")
+	local mirrorOk, hitMax, worst = true, 0, 50
+	local builds = {
+		{ "untrained L100", l100 },
+		{ "L100 rank 10 + Evolved II", l100max },
+		{ "L100 attack build (Speed + Ability 10, Evolved II)", P4.trained(s10, { Speed = 10, Ability = 10 }, 2, 100) },
+	}
+	for _, b in ipairs(builds) do
+		local m = series(function(seed)
+			return { Mode = "Duel", Seed = seed, Teams = { team(1, 1, b[2]), team(2, 2, b[2]) } }
+		end, { [1] = "player", [2] = "player" }, opts.seeds)
+		out(fmt("  %-52s side1 %3d%%  draws %d  timeouts %d  dur %5.1f s  maxHit %.2f", b[1], m.winPct, m.draws, m.timeouts, m.avgDur, m.maxPetHit))
+		hitMax = max(hitMax, m.maxPetHit)
+		if abs(m.winPct - 50) > abs(worst - 50) then
+			worst = m.winPct
+		end
+		if m.winPct < 35 or m.winPct > 65 or m.draws > 0 or m.timeouts > 0 then
+			mirrorOk = false
+		end
+	end
+	local glass = series(function(seed)
+		return { Mode = "Duel", Seed = seed, Teams = { team(1, 1, P4.trained(s10, { Speed = 10, Ability = 10 }, 2, 100)), team(2, 2, l100) } }
+	end, { [1] = "player", [2] = "player" }, max(8, floor(opts.seeds / 2)))
+	out(fmt("  %-52s attack build wins %3d%%  dur %5.1f s  maxHit %.2f", "L100 attack build vs the same pets untrained", glass.winPct, glass.avgDur, glass.maxPetHit))
+	target("L100 trained mirror duels are fair (35-65%) with no draws and no timeouts", mirrorOk, fmt("worst %d%%", worst))
+	local cap = (type(BC.Damage.MaxHit) == "table" and BC.Damage.MaxHit.Share) or 1
+	local worstHit = max(hitMax, glass.maxPetHit, agg.maxPetHit)
+	target(fmt("no one-shot builds at level 100: no duel hit takes more than %d%% of a pet (mirrors, the attack build, L100 vs L50)", floor(cap * 100 + 0.5)), worstHit <= cap + 0.005 and worstHit < 1,
+		fmt("mirrors %.2f, attack build vs untrained %.2f, L100 vs L50 %.2f", hitMax, glass.maxPetHit, agg.maxPetHit))
+
+	header("Level 100: the maxed L100 team vs every boss with 1 / 3 dodging players")
+	local seeds = max(1, floor(opts.seeds / 8))
+	local won, combos, durOk, bossHit = 0, 0, true, 0
+	for _, boss in ipairs(BC.BossOrder) do
+		for _, players in ipairs({ 1, 3 }) do
+			local policies = {}
+			for i = 1, players do
+				policies[600 + i] = "player"
+			end
+			local raid = series(function(seed)
+				local teams = {}
+				for i = 1, players do
+					teams[i] = team(600 + i, 1, l100max)
+				end
+				return { Mode = "Raid", Boss = boss, Seed = seed, Teams = teams }
+			end, policies, seeds)
+			out(fmt("  %-13s %dp: win %3d%% dur %5.1f s (dodges %4.1f, KOs %4.1f, maxBossHit %.2f)", boss, players, raid.winPct, raid.avgDur, raid.dodges / max(1, raid.n), raid.kos / max(1, raid.n), raid.maxBossHit))
+			combos = combos + 1
+			bossHit = max(bossHit, raid.maxBossHit)
+			if raid.winPct >= 50 then
+				won = won + 1
+				if raid.avgDur < 100 or raid.avgDur > 240 then
+					durOk = false
+				end
+			end
+		end
+	end
+	target("a maxed L100 team still wins its raids by dodging (>= 90% of the combos) in 100-240 s", won >= combos * 0.9 and durOk, fmt("%d of %d won", won, combos))
+	target("no boss hit takes more than 80% of a maxed L100 pet", bossHit <= 0.8, fmt("max %.2f", bossHit))
+	local records = {}
+	for seed = 1, opts.quick and 4 or 8 do
+		records[#records + 1] = P4.ringRun(l100max, 2000 + seed)
+	end
+	out(fmt("  Champion Ring record of the maxed L100 team: median %d (the champions stop at level 50 and grow by Boost)", P4.median(records)))
+end)
+
+-- 12. progression reference
+section("progression", function(opts)
+	local feedShare = (type(TC.FeedShare) == "table" and TC.FeedShare[1]) or 0.25
+	header(fmt("Progression reference: pet XP behind each stage (TycoonCatalog.XpToNext) and its Food Machine price (machine level 1: %d%% of a bar per feed)", floor(feedShare * 100 + 0.5)))
+	local Config = require(Shared.Config)
+	-- one machine feed's price: TycoonCatalog.FeedPrice, else the contract formula XpToNext x RarityScale x FeedBase
+	local function feedPrice(key, level)
+		if TC.FeedPrice then
+			local ok, price = pcall(TC.FeedPrice, key, level)
+			if ok and type(price) == "number" then
+				return price
+			end
+		end
+		local def = PC.Get(key)
+		local scales = type(Config.PetStats) == "table" and Config.PetStats.RarityScale or {}
+		local scale = (def and scales[def.Rarity]) or 1
+		local need = TC.XpToNext(level)
+		if need == huge then
+			return 0
+		end
+		return floor(need * scale * (TC.FeedBase or 2.0) + 0.5)
+	end
+	-- Cash to grow a pet from level `from` to `to` with machine feeds (fractional feeds: leftover XP carries over)
+	local function cashFor(key, from, to)
+		local cash = 0
+		for l = from, to - 1 do
+			local need = TC.XpToNext(l)
+			if need ~= huge then
+				cash = cash + feedPrice(key, l) / feedShare
+			end
+		end
+		return cash
+	end
+	local function fmtCash(n)
+		local s = TC.FormatCash and TC.FormatCash(n) or tostring(floor(n))
+		if s:sub(1, 1) ~= "$" then
+			s = "$" .. s
+		end
+		return s
+	end
+	for _, stage in ipairs(SIM.Stages) do
+		local xp, cash = 0, 0
 		local ids = {}
 		for _, p in ipairs(stage.Pets) do
 			xp = xp + TC.XpForLevel(p.Level)
+			cash = cash + cashFor(p.Key, 1, p.Level)
 			ids[#ids + 1] = p.Key .. " L" .. p.Level .. (p.Tier and ("@" .. p.Tier) or "")
 		end
-		out(fmt("  %-4s %-11s power %5d  team XP %8d (= %5.0f Feasts, $%s)  %s", stage.Id, stage.Name, powerOf(stage.Pets), xp, xp / TC.Foods.Feast.Xp, TC.FormatCash(xp / TC.Foods.Feast.Xp * TC.Foods.Feast.Price), table.concat(ids, ", ")))
+		out(fmt("  %-4s %-11s power %5d  team XP %8d  Food Machine %9s  %s", stage.Id, stage.Name, powerOf(stage.Pets), xp, fmtCash(cash), table.concat(ids, ", ")))
 	end
+	local xp100, cash100 = 0, 0
+	for _, p in ipairs(SIM.Stages[10].Pets) do
+		xp100 = xp100 + TC.XpForLevel(100) - TC.XpForLevel(p.Level)
+		cash100 = cash100 + cashFor(p.Key, p.Level, 100)
+	end
+	out(fmt("  L100 the S10 pets from their levels to 100: team XP %d, Food Machine %s (or ring rounds: round 50 pays %d XP per pet)", xp100, fmtCash(cash100), BC.RingRewards(50, 0, false).Xp))
 	out("  trial ladder: " .. (function()
 		local parts = {}
 		for lv = 1, BC.TrialCount, 1 do

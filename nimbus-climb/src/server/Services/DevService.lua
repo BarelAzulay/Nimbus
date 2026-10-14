@@ -949,14 +949,15 @@ local function cmdClearPets(player)
 	return true, "showcase pets removed", false
 end
 
--- Two toasts (each fits a side toast, <= 90 characters with the "DEV: " prefix): the pet showcase commands and
--- /devhelp first, then the others.
+-- Two toasts (each fits a side toast, <= 90 characters with the "DEV: " prefix; the first one, 73 characters, also
+-- fits a 390 px phone card whole): the pet showcase commands first, then the others (/petlevel among them since
+-- Phase 4; the numeric commands take a number, which their refusal toasts spell out: "like /tokens 50000").
 local function cmdHelp(player)
-	notify(player, "DEV: /pet <name> [0-2]  /pets [0-2]  /evolve <name|all> [1-2]  /clearpets  /devhelp", "info", HELP_SECONDS)
+	notify(player, "DEV: /pet <name> [0-2]  /pets [0-2]  /evolve <name|all> [1-2]  /clearpets", "info", HELP_SECONDS)
 	if tutorialReloader() then
-		return true, "/allpets /tokens N /cash N /gems N /petlevel N /reset /tutorial /skiptutorial /raid", false
+		return true, "/allpets /tokens /cash /gems /petlevel /reset /tutorial /skiptutorial /raid /devhelp", false
 	end
-	return true, "/allpets /tokens N /cash N /gems N /petlevel N /reset /skiptutorial /raid", false
+	return true, "/allpets /tokens /cash /gems /petlevel /reset /skiptutorial /raid /devhelp", false
 end
 
 local HANDLERS = {

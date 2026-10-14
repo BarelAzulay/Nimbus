@@ -20,7 +20,9 @@
 --                    below 0; Migrations union; LegacySlots / LegacyPrices per key, a higher Prestige dropping them);
 --                    normalizeEquipped drops a training key on load; ResetFields({ PetGrowth, Ring }); provisional
 --                    refusals; a REAL second server (a second copy of the module on the same mock store) completing
---                    the same job and evolving the pet while the first server completed it
+--                    the same job and evolving the pet while the first server completed it; a late save that ends an
+--                    old job, or a third server's stale start, never wipes the NEWER paid job another server started
+--                    (P4.newerJob: same skill, higher target rank), and two completions still give one rank
 --   p4data_migrate   (booted, DataStore) P4.migrate on a Phase 3 veteran (LegacySlots above 3 + stars, LegacyPrices
 --                    after a prestige, the Gym emptied with its keys reported, Migrations.P4, the Migrated signal and
 --                    MigratedNow, Home Level / tier / Garden untouched, no Cash payout), the small cases (a Garden at
@@ -200,12 +202,55 @@ local function epicId()
 	return nil
 end
 
--- a second, independent copy of DataService (its own cache, the same mock DataStore): "another server"
+-- The signals a DataService copy hooks on its first Load (DataService.hook: the leave save on Players.PlayerRemoving
+-- and the RequestProfile resync); a thrown-away copy must drop them again, or final_checks counts them as leaked
+-- connections (the mock keeps every signal's connections in its `_conns` list).
+local function hookedSignals()
+	local out = { game:GetService("Players").PlayerRemoving }
+	local folder = K.remoteFolder and K.remoteFolder()
+	local remote = folder and folder:FindFirstChild("RequestProfile")
+	if remote then
+		out[#out + 1] = remote.OnServerEvent
+	end
+	return out
+end
+
+local function connectionMarks()
+	local marks = {}
+	for _, sig in ipairs(hookedSignals()) do
+		local conns = type(sig) == "table" and rawget(sig, "_conns") or nil
+		marks[#marks + 1] = { conns = conns, n = conns and #conns or 0 }
+	end
+	return marks
+end
+
+-- disconnects every connection made on the hooked signals since `marks`; true when each list is back at its mark
+local function dropHooks(marks)
+	local clean = true
+	for _, m in ipairs(marks) do
+		if m.conns then
+			for i = #m.conns, m.n + 1, -1 do
+				local conn = m.conns[i]
+				if type(conn) == "table" and conn.Disconnect then
+					conn:Disconnect()
+				end
+			end
+			clean = clean and #m.conns == m.n
+		else
+			clean = false
+		end
+	end
+	return clean
+end
+
+-- a second, independent copy of DataService (its own cache, the same mock DataStore): "another server". Returns the
+-- module, its ModuleScript and release(): destroys the clone and drops the hooks it connected (true when none leaked).
 local function secondServer(name)
 	local inst = K.moduleInstance("server/Services/DataService")
 	if not inst then
 		return nil
 	end
+	local marks = connectionMarks()
 	local clone = inst:Clone()
 	clone.Name = name
 	clone.Parent = inst.Parent
@@ -214,7 +259,11 @@ local function secondServer(name)
 		clone:Destroy()
 		return nil, module
 	end
-	return module, clone
+	local function release()
+		clone:Destroy()
+		return dropHooks(marks)
+	end
+	return module, clone, release
 end
 
 -- counts Migrated firings while connected
@@ -501,8 +550,8 @@ S.p4data_growth = guarded("p4data_growth", function()
 	DataS.Sync(p)
 	snap = lastSnapshot(p, mark)
 	local sg = type(snap) == "table" and snap.PetGrowth or {}
-	T.check(type(sg[a]) == "table" and sg[a].Evo == 1 and sg[a].Speed == 3 and sg[a].Defense == 5 and sg[a].Physique == nil and sg[a].Ability == nil and sg[a].Job == nil,
-		"p4 growth: ProfileSync sends a growth entry without its zero numbers (the client fills them)", growthText(sg[a]))
+	T.check(type(sg[a]) == "table" and sg[a].Evo == 1 and sg[a].Speed == 3 and sg[a].Physique == 10 and sg[a].Defense == 5 and sg[a].Ability == nil and sg[a].Job == nil,
+		"p4 growth: ProfileSync sends a growth entry without its zero numbers (Ability 0 left out; the client fills them)", growthText(sg[a]))
 	T.check(type(sg[c]) == "table" and sg[c].Defense == 2 and type(sg[c].Job) == "table" and sg[c].Job.Stat == "Defense" and sg[c].Job.Rank == 3 and sg[c].Job.From == "Garden:1" and sg[c].Job.Paid == 2700 and sg[c].Job.Ends == t0 + 180,
 		"p4 growth: ...with the running Job (Stat, Ends, Rank, Slot, From, Paid)", growthText(sg[c]))
 	T.check(type(snap) == "table" and type(snap.Ring) == "table" and snap.Ring.Best == 5 and snap.Ring.Runs == 0, "p4 growth: ...and the Ring record")
@@ -614,7 +663,9 @@ S.p4data_save = guarded("p4data_save", function()
 	T.eq(DataS.Save(bp), true, "p4 save: (precondition) the big profile saves")
 	local sbig = (stored(BIG) or {}).PetGrowth or {}
 	local bytes = sizeOf(sbig)
-	T.check(count(sbig) == 150 and bytes < 12000, "p4 save: 150 fully trained and evolved keys store under ~12 KB (" .. bytes .. " bytes, " .. math.floor(bytes / 150) .. " per key)")
+	-- (JSON-like bytes: ~83 per fully trained, evolved key with a 19-character "<petId>@Rainbow" key, ~12.2 KB for 150: the
+	-- contract's "~80 bytes / ~12 KB"; the DataStore limit is 4 MB)
+	T.check(count(sbig) == 150 and bytes < 12800, "p4 save: 150 fully trained and evolved keys store under ~12.5 KB (" .. bytes .. " bytes, " .. math.floor(bytes / 150) .. " per key)")
 	K.removePlayers({ bp })
 	advance(2)
 
@@ -629,7 +680,7 @@ S.p4data_save = guarded("p4data_save", function()
 			[d] = { Physique = 1, Job = { Stat = "Physique", Ends = t0 + 10, Rank = 2, Slot = 5, From = "Free", Paid = 300 } },
 		},
 		Ring = { Best = 1e12, Runs = -3 },
-		Migrations = { P4 = true, [""] = true, Bad = 5, { "ListEntry" } },
+		Migrations = { P4 = true, [""] = true, Bad = 5, "ListEntry" },
 	})
 	local j = join("P4Junk", JK)
 	local ja = DataS.GetGrowth(j, a)
@@ -766,11 +817,24 @@ S.p4data_save = guarded("p4data_save", function()
 		rp.Ring.Best, rp.Ring.Runs = 0, 0
 		DataS.MarkDirty(rr)
 	end
-	wipeLive()
+	-- without ResetFields: lower numbers lose against the stored ones (Evo / ranks / Best only rise; Runs is a delta)
+	local rp0 = DataS.GetProfile(rr)
+	rp0.PetGrowth[a] = { Evo = 0, Speed = 1, Defense = 1 }
+	rp0.Ring.Best, rp0.Ring.Runs = 0, 0
+	DataS.MarkDirty(rr)
 	DataS.Save(rr)
 	local srs = stored(RS) or {}
-	T.check(type(srs.PetGrowth) == "table" and srs.PetGrowth[a] ~= nil and srs.PetGrowth[a].Speed == 5 and type(srs.Ring) == "table" and srs.Ring.Best == 30,
-		"p4 save: (without ResetFields a wiped growth map / Best come back: they only rise; Runs follows as a delta)", type(srs.Ring) == "table" and tostring(srs.Ring.Runs) or "-")
+	T.check(type(srs.PetGrowth) == "table" and srs.PetGrowth[a] ~= nil and srs.PetGrowth[a].Speed == 5 and srs.PetGrowth[a].Defense == 2 and srs.PetGrowth[a].Evo == 1
+		and type(srs.Ring) == "table" and srs.Ring.Best == 30 and srs.Ring.Runs == 0,
+		"p4 save: (without ResetFields lowered stages / ranks / Best come back: they only rise; Runs follows as a delta, 9 - 9 = 0)", growthText((srs.PetGrowth or {})[a]) .. " " .. (type(srs.Ring) == "table" and tostring(srs.Ring.Best) .. "/" .. tostring(srs.Ring.Runs) or "-"))
+	advance(0.5)
+	T.check(DataS.GetGrowth(rr, a).Speed == 5 and DataS.GetGrowth(rr, a).Evo == 1 and DataS.GetRing(rr).Best == 30, "p4 save: ...and the live profile takes the stored values back")
+	-- (a key deleted from the live map travels as false and leaves the store: the rule for a pet fused away or released;
+	-- MutateGrowth keeps an OWNED key's numbers, so only a raw wipe or an unowned key gets here)
+	wipeLive()
+	DataS.Save(rr)
+	srs = stored(RS) or {}
+	T.check(srs.PetGrowth == nil and type(srs.Ring) == "table" and srs.Ring.Best == 30, "p4 save: a key deleted from the live map leaves the store (false in the delta); Best still comes back without ResetFields")
 	advance(0.5)
 	wipeLive()
 	T.eq(DataS.ResetFields(rr, { PetGrowth = true, Ring = true }), true, "p4 save: ResetFields accepts PetGrowth and Ring")
@@ -813,7 +877,7 @@ S.p4data_save = guarded("p4data_save", function()
 	advance(3)
 
 	-- a REAL second server: a second copy of the module on the same mock store
-	local B, cloneB = secondServer("DataServiceP4ServerB")
+	local B, cloneB, releaseB = secondServer("DataServiceP4ServerB")
 	if T.check(B ~= nil and type(B.MutateGrowth) == "function", "p4 save: a second copy of DataService loads as 'server B' (own cache, same store)", tostring(cloneB)) then
 		local TWO = 954109
 		record(TWO, { PetGrowth = { [a] = { Speed = 2, Job = { Stat = "Speed", Ends = t0 + 30, Rank = 3, Slot = 1, From = "Free", Paid = 2700 } } } })
@@ -853,6 +917,65 @@ S.p4data_save = guarded("p4data_save", function()
 			st = (stored(TWO) or {}).PetGrowth or {}
 			T.check(type(st[a]) == "table" and st[a].Speed == 4 and st[a].Job == nil and st[a].Defense == 1 and st[a].Evo == 1,
 				"p4 two servers: A's stale Job (rank 4, completed by B) is dropped by the merge; the rank is 4, not 5; Defense 1 and the stage stay", growthText(st[a]))
+			-- a LATE save must not wipe a newer job: B completes Defense 1 -> 2 and starts 2 -> 3 (and pays); A, still holding
+			-- the 1 -> 2 job, completes it afterwards (its tick) and saves later: B's paid rank-3 job survives, the rank is 2
+			B.AddTokens(tp, 1)
+			T.check(B.Save(tp) == true and B.GetGrowth(tp, a).Defense == 1, "p4 two servers: (precondition) server B adopts A's Defense 1 through its own save")
+			T.check(B.MutateGrowth(tp, function(g)
+				g[a].Job = { Stat = "Defense", Ends = t0 + 20, Rank = 2, Slot = 2, From = "Free", Paid = 1200 }
+			end) == true and B.Save(tp) == true, "p4 two servers: (precondition) server B starts Defense 1 -> 2 and saves")
+			DataS.AddTokens(tp, 1)
+			T.check(DataS.Save(tp) == true and DataS.GetGrowth(tp, a).Job ~= nil and DataS.GetGrowth(tp, a).Job.Rank == 2, "p4 two servers: (precondition) server A adopts that job")
+			T.check(B.MutateGrowth(tp, function(g)
+				g[a].Defense = 2
+				g[a].Job = { Stat = "Defense", Ends = t0 + 200, Rank = 3, Slot = 2, From = "Free", Paid = 2700 }
+			end) == true and B.Save(tp) == true, "p4 two servers: server B completes Defense 2 and starts the rank-3 job in one step, then saves")
+			T.check(DataS.MutateGrowth(tp, function(g)
+				g[a].Defense = g[a].Job.Rank
+				g[a].Job = nil
+			end) == true and DataS.Save(tp) == true, "p4 two servers: server A completes its (stale) rank-2 job afterwards and saves")
+			st = (stored(TWO) or {}).PetGrowth or {}
+			T.check(type(st[a]) == "table" and st[a].Defense == 2 and type(st[a].Job) == "table" and st[a].Job.Rank == 3 and st[a].Job.Paid == 2700 and st[a].Job.Ends == t0 + 200,
+				"p4 two servers: A's late clear names the job it ended (Defense -> 2): B's NEWER paid rank-3 job survives; the rank is 2 once", growthText(st[a]))
+			advance(0.3)
+			T.check(DataS.GetGrowth(tp, a).Job ~= nil and DataS.GetGrowth(tp, a).Job.Rank == 3 and DataS.TrainingKeys(tp)[a] == true, "p4 two servers: ...and server A adopts B's job (the lock is back on A)")
+			-- a STALE start must not wipe it either: A thinks Defense is 2 with no job and starts 2 -> 3 itself? it cannot
+			-- (A holds B's job now), so a fresh server C that loaded before B's save stands in: its base has no job
+			local C, cloneC, releaseC = secondServer("DataServiceP4ServerC")
+			if T.check(C ~= nil, "p4 two servers: a third copy of DataService loads as 'server C'", tostring(cloneC)) then
+				local okC, errC = pcall(function()
+					local rec = data[storeKey(TWO)]
+					local keptJob = rec.PetGrowth[a].Job
+					rec.PetGrowth[a].Job = nil -- C loads an older picture of the store: Defense 2, no job
+					C.Load(tp)
+					T.check(C.GetGrowth(tp, a).Job == nil and C.GetGrowth(tp, a).Defense == 2, "p4 two servers: (precondition) server C sees Defense 2 and no job")
+					rec.PetGrowth[a].Job = keptJob -- B's save is in the store again
+					T.check(C.MutateGrowth(tp, function(g)
+						g[a].Job = { Stat = "Defense", Ends = t0 + 400, Rank = 3, Slot = 1, From = "Follow", Paid = 2700 }
+					end) == true and C.Save(tp) == true, "p4 two servers: server C starts its own Defense 2 -> 3 job (the player paid twice on two servers) and saves")
+					st = (stored(TWO) or {}).PetGrowth or {}
+					T.check(type(st[a]) == "table" and st[a].Defense == 2 and type(st[a].Job) == "table" and st[a].Job.Rank == 3 and st[a].Job.Ends == t0 + 400 and st[a].Job.Slot == 1,
+						"p4 two servers: a job at the SAME target replaces the stored one (the session's value; the same job, not a newer one): one rank-3 job, never two ranks", growthText(st[a]))
+					T.check(C.MutateGrowth(tp, function(g)
+						g[a].Defense = 3
+						g[a].Job = nil
+					end) == true and C.Save(tp) == true, "p4 two servers: server C completes rank 3")
+					T.check(B.MutateGrowth(tp, function(g)
+						g[a].Defense = 3
+						g[a].Job = nil
+					end) == true and B.Save(tp) == true, "p4 two servers: server B completes its copy of the same job")
+					st = (stored(TWO) or {}).PetGrowth or {}
+					T.check(type(st[a]) == "table" and st[a].Defense == 3 and st[a].Job == nil, "p4 two servers: Defense 3 exactly once, no job left (two servers, two completions, one rank)", growthText(st[a]))
+					DataS.AddTokens(tp, 1)
+					DataS.Save(tp)
+					advance(0.3)
+					T.check(DataS.GetGrowth(tp, a).Defense == 3 and DataS.GetGrowth(tp, a).Job == nil, "p4 two servers: ...server A agrees after its save")
+				end)
+				if not okC then
+					T.fail("p4 two servers (server C): scenario errored", tostring(errC))
+				end
+				T.check(releaseC() == true, "p4 two servers: server C's hooks are dropped with it (no leaked connections)")
+			end
 			-- the ring on two servers: Best max, Runs delta
 			T.check(DataS.MutateRing(tp, function(ring)
 				ring.Best, ring.Runs = 9, 1
@@ -867,9 +990,7 @@ S.p4data_save = guarded("p4data_save", function()
 		if not okB then
 			T.fail("p4 two servers: scenario errored", tostring(errB))
 		end
-		if cloneB then
-			cloneB:Destroy()
-		end
+		T.check(releaseB() == true, "p4 two servers: server B's leave-save / resync hooks are dropped with it (no leaked connections)")
 	end
 	K.flushErrors("p4data_save")
 	K.flushWarnings("p4data_save", { "[DataService]" })
@@ -928,6 +1049,8 @@ S.p4data_migrate = guarded("p4data_migrate", function()
 	T.check(home.LegacySlots == 6 and home.LegacyPrices == true, "p4 migrate: 1 + 2: Home.LegacySlots = the old Garden level (6 > 3 + 1 star) and LegacyPrices = true (Prestige > 0)")
 	T.check(count(home.Gym) == 0, "p4 migrate: 3: the old Gym is emptied (those pets are free again)")
 	T.check(DataS.IsMigrated(v, "P4") == true, "p4 migrate: 4: Migrations.P4 = true")
+	T.check(DataS.IsMigrated(v, "P4Veteran") == true and DataS.IsMigrated(v, "P4Welcome") == false,
+		"p4 migrate: ...and Migrations.P4Veteran (persisted: the welcome toast is owed on the first claim, in any session); P4Welcome is TycoonService's to set")
 	T.check(home.Level == 20 and home.Prestige == 1 and home.Stations.Press1 == 5 and home.Stations.Press2 == 3 and home.Stations.Collector == 4 and home.Stations.Garden == 6 and home.Stations.Kitchen == 1
 		and home.Stations.Gym == 2 and count(home.Stations) == 6 and sameList({ home.Garden[1], home.Garden[2], home.Garden[3], home.Garden[4], home.Garden[5], home.Garden[6] }, { a, b, c, d, e, f }) and home.CollectorCash == 1234 and home.LastSeen == 1700000000,
 		"p4 migrate: nothing else changes: Home Level, Prestige, every station level (Garden 6, Gym 2 included), the 6 garden pets, CollectorCash, LastSeen")
@@ -942,7 +1065,7 @@ S.p4data_migrate = guarded("p4data_migrate", function()
 	advance(2)
 	local sv = stored(VET) or {}
 	local svh = type(sv.Home) == "table" and sv.Home or {}
-	T.check(type(sv.Migrations) == "table" and sv.Migrations.P4 == true and svh.LegacySlots == 6 and svh.LegacyPrices == true and type(svh.Gym) == "table" and #svh.Gym == 0 and svh.Level == 20
+	T.check(type(sv.Migrations) == "table" and sv.Migrations.P4 == true and sv.Migrations.P4Veteran == true and svh.LegacySlots == 6 and svh.LegacyPrices == true and type(svh.Gym) == "table" and #svh.Gym == 0 and svh.Level == 20
 		and svh.Stations.Garden == 6 and type(svh.Garden) == "table" and #svh.Garden == 6 and svh.CollectorCash == 1234,
 		"p4 migrate: the save holds the marker, LegacySlots / LegacyPrices, an empty Gym and everything else unchanged")
 	-- idempotent: a second load changes nothing and fires nothing; a Gym pet put back stays (the migration never runs again)
@@ -984,8 +1107,9 @@ S.p4data_migrate = guarded("p4data_migrate", function()
 	local n = join("P4Newbie", NEW)
 	fired = watch.since(n, m2)
 	info = DataS.MigratedNow(n, "P4")
-	T.check(#fired == 1 and type(info) == "table" and info.Veteran == false and info.LegacySlots == nil and info.LegacyPrices == false and info.GymPets == 0 and info.CollectorCash == 0 and DataS.IsMigrated(n, "P4") == true,
-		"p4 migrate: a brand-new player is marked at once with Veteran = false (TycoonService shows no welcome toast)")
+	T.check(#fired == 1 and type(info) == "table" and info.Veteran == false and info.LegacySlots == nil and info.LegacyPrices == false and info.GymPets == 0 and info.CollectorCash == 0 and DataS.IsMigrated(n, "P4") == true
+		and DataS.IsMigrated(n, "P4Veteran") == false,
+		"p4 migrate: a brand-new player is marked at once with Veteran = false and no P4Veteran marker (TycoonService shows no welcome toast)")
 	K.removePlayers({ n })
 	advance(2)
 
@@ -1012,7 +1136,7 @@ S.p4data_migrate = guarded("p4data_migrate", function()
 	advance(3)
 
 	-- two servers migrate the same save: one result
-	local B, cloneB = secondServer("DataServiceP4MigrateB")
+	local B, cloneB, releaseB = secondServer("DataServiceP4MigrateB")
 	if T.check(B ~= nil, "p4 migrate: a second copy of DataService loads as 'server B'", tostring(cloneB)) then
 		local TWO = 954206
 		veteran(TWO, bigHome())
@@ -1040,9 +1164,7 @@ S.p4data_migrate = guarded("p4data_migrate", function()
 		if not okB then
 			T.fail("p4 two servers (migration): scenario errored", tostring(errB))
 		end
-		if cloneB then
-			cloneB:Destroy()
-		end
+		T.check(releaseB() == true, "p4 two servers (migration): server B's hooks are dropped with it (no leaked connections)")
 	end
 
 	-- the next prestige ends the extras; a Phase 3 prestige on the store keeps them (foreign keys) until a Phase 4 one
@@ -1214,13 +1336,13 @@ S.p4data_dev = guarded("p4data_dev", function()
 		T.check((DataS.GetPetLevel(owner, a)) == 50 and (DataS.GetPetLevel(owner, b)) == 50 and toast.kind == "good", "p4 dev: chat '/petlevel 50' sets both equipped pets to 50 with a good toast", toast.text)
 		mark = chat("/petlevel 1")
 		T.check((DataS.GetPetLevel(owner, a)) == 1 and lastToast(mark).kind == "good", "p4 dev: '/petlevel 1' goes down too (a developer tool)")
-		mark = chat("/petlevel lots")
-		toast = lastToast(mark)
-		T.check((DataS.GetPetLevel(owner, a)) == 1 and toast.kind == "bad" and toast.text:find("petlevel", 1, true) ~= nil, "p4 dev: '/petlevel lots' is refused with a bad toast naming the command", toast.text)
 		advance(0.5)
 		local syncs = K.remotesFor("ProfileSync", OWNER, mark)
 		local snap = syncs[#syncs] and syncs[#syncs].args[1]
-		T.check(type(snap) == "table" and type(snap.PetLevels) == "table" and snap.PetLevels[a] and snap.PetLevels[a].Level == 1, "p4 dev: ...the menu is synced")
+		T.check(type(snap) == "table" and type(snap.PetLevels) == "table" and snap.PetLevels[a] and snap.PetLevels[a].Level == 1, "p4 dev: ...the menu is synced (ProfileSync carries the new level)")
+		mark = chat("/petlevel lots")
+		toast = lastToast(mark)
+		T.check((DataS.GetPetLevel(owner, a)) == 1 and toast.kind == "bad" and toast.text:find("petlevel", 1, true) ~= nil, "p4 dev: '/petlevel lots' is refused with a bad toast naming the command", toast.text)
 		-- the help lists it (two toasts that fit)
 		mark = chat("/devhelp")
 		local help, fits = {}, true
@@ -1267,8 +1389,16 @@ S.p4data_dev = guarded("p4data_dev", function()
 		advance(4)
 		T.check(DataS.IsProvisional(adm) == true, "p4 dev: (precondition) the admin's profile is provisional")
 		advance(0.6)
+		local markP = K.logSize()
 		local okP, msgP = Dev.Run(adm, "petlevel", 20, "smoke")
-		T.check(okP == false and tostring(msgP):lower():find("loading", 1, true) ~= nil, "p4 dev: /petlevel is refused while provisional ('still loading')", tostring(msgP))
+		local toastP = "(no DEV toast)"
+		for _, e in ipairs(K.remotesFor("Notify", ADMIN, markP)) do
+			if tostring(e.args[1]):sub(1, 4) == "DEV:" then
+				toastP = tostring(e.args[1])
+			end
+		end
+		T.check(okP == false and tostring(msgP):lower():find("provisional", 1, true) ~= nil and toastP:lower():find("still loading", 1, true) ~= nil,
+			"p4 dev: /petlevel is refused while provisional (reason 'profile provisional', toast 'your data is still loading')", tostring(msgP) .. " / " .. toastP)
 		DSt.Fail = false
 		K.waitFor(function()
 			return not DataS.IsProvisional(adm)
@@ -1323,9 +1453,11 @@ S.p4data_rollout = guarded("p4data_rollout", function()
 	fixture.Name = "DataServicePhase3Fixture"
 	fixture.Source = src
 	fixture.Parent = inst.Parent
+	local marks = connectionMarks() -- the fixture hooks PlayerRemoving / RequestProfile on its first Load: dropped below
 	local okReq, P3DS = pcall(require, fixture)
 	if not T.check(okReq and type(P3DS) == "table" and type(P3DS.Load) == "function", "p4 rollout: the fixture loads as a second module (a 'Phase 3 server')", tostring(P3DS)) then
 		fixture:Destroy()
+		dropHooks(marks)
 		return
 	end
 	local ids = petIds(6)
@@ -1371,6 +1503,9 @@ S.p4data_rollout = guarded("p4data_rollout", function()
 		local p = join("P4Rollout", ROLL)
 		T.check(DataS.GetGrowth(p, a).Job ~= nil and DataS.GetRing(p).Best == 21 and DataS.GetHome(p).LegacySlots == 6 and DataS.MigratedNow(p, "P4") == nil,
 			"p4 rollout: (precondition) the Phase 4 server loads the Phase 4 profile (already migrated)")
+		-- (other services may grant tokens on the join, e.g. a tutorial finish for a step past the steps this build knows:
+		-- the token checks below are relative to what the Phase 4 session holds now; the Phase 3 server's base is the store)
+		local tokens4 = DataS.GetTokens(p)
 		-- the Phase 3 server loads the same player
 		local p3prof = P3DS.Load(p)
 		T.check(type(p3prof) == "table" and p3prof.PetGrowth == nil and p3prof.Ring == nil and p3prof.Migrations == nil and p3prof.Home.LegacySlots == nil,
@@ -1394,7 +1529,8 @@ S.p4data_rollout = guarded("p4data_rollout", function()
 			"p4 rollout: the station levels, the Home Level, Prestige and CollectorCash are unchanged")
 		T.check(type(st.PetLevels) == "table" and st.PetLevels[a].Level == 57 and st.PetLevels[a].Xp == 500 and st.PetLevels[b].Level == 100,
 			"p4 rollout: a level-57 pet (above the Phase 3 cap of 50) and a level-100 pet are stored back as they are")
-		T.check(st.Tokens == 15 and st.Battle.Trophies == 42 and st.Cash == 777, "p4 rollout: ...with the Phase 3 server's own changes (tokens, trophies)")
+		T.check(st.Tokens == 15 and type(st.Battle) == "table" and st.Battle.Trophies == 42 and st.Cash == 777, "p4 rollout: ...with the Phase 3 server's own changes (tokens 10 + 5, trophies 40 + 2, Cash 777)",
+			tostring(st.Tokens) .. "/" .. tostring(type(st.Battle) == "table" and st.Battle.Trophies or "no Battle") .. "/" .. tostring(st.Cash))
 		T.check(type(st.Equipped) == "table" and #st.Equipped == 2, "p4 rollout: the Phase 3 server stored the training pet as equipped (it knows no lock)")
 		-- the Phase 4 server reads it back (its next save adopts the store)
 		DataS.AddTokens(p, 1)
@@ -1407,7 +1543,9 @@ S.p4data_rollout = guarded("p4data_rollout", function()
 			"p4 rollout: ...Ring and Migrations too; the migration does not run again")
 		local home = DataS.GetHome(p)
 		T.check(home.LegacySlots == 6 and home.LegacyPrices == true and home.Level == 20 and home.Stations.Garden == 6 and count(home.Stations) == 6, "p4 rollout: ...the legacy Home keys, the Home Level and the station levels")
-		T.check(DataS.GetTokens(p) == 16 and (DataS.GetBattle(p) or {}).Trophies == 42, "p4 rollout: ...and the Phase 3 server's tokens and trophies")
+		T.check(DataS.GetTokens(p) == tokens4 + 5 + 1 and (stored(ROLL) or {}).Tokens == tokens4 + 5 + 1 and (DataS.GetBattle(p) or {}).Trophies == 42,
+			"p4 rollout: ...and the Phase 3 server's tokens and trophies (its +5 and this session's +1 both land once; trophies 42)",
+			tostring(DataS.GetTokens(p)) .. "/" .. tostring((DataS.GetBattle(p) or {}).Trophies) .. " stored " .. tostring((stored(ROLL) or {}).Tokens) .. "/" .. tostring(((stored(ROLL) or {}).Battle or {}).Trophies) .. " session had " .. tostring(tokens4))
 		local prof = DataS.GetProfile(p)
 		T.check(sameList(prof.Equipped, { b }) and DataS.TrainingKeys(p)[a] == true, "p4 rollout: the training pet the Phase 3 server equipped is dropped by the Phase 4 load (the lock returns)", listText(prof.Equipped))
 		T.check((DataS.GetPetLevel(p, a)) == 57 and select(2, DataS.GetPetLevel(p, a)) == 500 and (DataS.GetPetLevel(p, b)) == 100, "p4 rollout: the level-57 pet keeps its level and XP")
@@ -1461,6 +1599,7 @@ S.p4data_rollout = guarded("p4data_rollout", function()
 			"p4 rollout: after both servers saved at the leave the record still holds every Phase 4 field")
 	end)
 	fixture:Destroy()
+	T.check(dropHooks(marks) == true, "p4 rollout: the Phase 3 module's leave-save / resync hooks are dropped with it (no leaked connections)")
 	if not okRun then
 		error(errRun, 0)
 	end

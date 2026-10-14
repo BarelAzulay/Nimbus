@@ -784,6 +784,13 @@ pets at level 100 (evolutions stay the same) but obviously it becomes harder fro
   only see the few minutes of a rollout).
 * care / careui / ui / docs: every "max level" check and text reads the cap (100): "Lv 57 / 100", the Food Machine's cap refusal,
   level-up toasts ("Ready to evolve!" stays at 20 and 50), the README and the NPC tips.
+* Re-proved in wave 1 (`python3 tools/sim_tycoon.py`, pets growing to 100, the contract's numbers unchanged: ALL TARGETS MET, also with
+  `--ring 0.08`; `--check` and `--migrate` OK): first paid pad 0:27; Villa median 30:27; first Prestige median 2:23:47 (p10 1:52, p90 2:51);
+  2nd run 1:04, 3rd 0:57 (later runs on seed 3: 68, 62, 59, 43, 37, 37, 33, 28, 24 min); prestige Gems at most 84 per hour; first EVOLVE
+  median 1:18; Food Machine road for a Common L1 -> 100: $9.6M at a level-1 machine, $4.8M at level 5. These replace the cap-50 pacing
+  numbers of 3.12 (later runs are a little longer: levels past 50 cost more per coin gained).
+* Level-ups are announced with ONE toast per XP grant (a feed, a fight, a "Level up" batch), never one toast per level: a big grant can
+  now cross many levels at once (the client_replay GUI-size check pins it).
 
 ### 3. Exact rules and numbers
 
@@ -877,8 +884,8 @@ ScoopRadius(home) = Magnet Radius (6 studs without)
   Cushions 2 x 2 in 3 x 3 beds, a bowl (client-drawn) in front of each toward the nearest walk.
 * Two sand walks 3 studs wide at Z = -3.5 and Z = +3.5, joined at both ends; the entrance is the 3-stud gap between
   the front-row cushions at X = 0 (the pad at plot (10, -1) faces it). `Garden.Slot.Walkable` covers the walks.
-* `TycoonCatalog.CoinPoint(slot)` (station frame): front row (x, 0, -2.6), middle row (x, 0, -4.4) (both on the front
-  walk, two lines), back row (x, 0, +3.5). `Garden.Slot.WelcomePile` = plot-local (13.5, 0, 2.5): beside the entrance,
+* `TycoonCatalog.CoinPoint(slot)` (station frame): front row (x, 0, -4.4), middle row (x, 0, -2.6) (both on the front
+  walk, two lines, each 2.6 studs from its own cushion so a pet's coins land next to it), back row (x, 0, +3.5). `Garden.Slot.WelcomePile` = plot-local (13.5, 0, 2.5): beside the entrance,
   off the pad. Validate: every coin point inside the yard, >= 1.5 studs apart, on no pad, inside the footprint or the
   entrance strip.
 * Places beyond the open count show a seedling bed with a small sign "Prestige to open". Open empty places carry a

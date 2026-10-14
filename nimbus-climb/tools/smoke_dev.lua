@@ -499,6 +499,14 @@ local function serverScenarios()
 			expect(b.Trophies == 0 and b.TrialBest == 0 and next(b.TrialCleared or {}) == nil and b.Raids == 0 and b.RaidBestDamage == 0
 				and b.PvPWins == 0 and b.PvPLosses == 0 and next(b.EventPets or {}) == nil, "battle record")
 		end
+		-- Phase 4: evolution stages, training ranks / jobs and the Champion Ring record go too; the Migrations markers stay
+		-- (smoke_p4_data.lua p4data_dev sets them up first and checks the ResetFields overwrite past an autosave)
+		if type(DataS.GetGrowthMap) == "function" and type(DataS.GetRing) == "function" then
+			expect(next(prof.PetGrowth or {}) == nil and next(DataS.GetGrowthMap(owner)) == nil, "pet growth (evolution / training)")
+			local ring = DataS.GetRing(owner) or {}
+			expect(type(prof.Ring) == "table" and prof.Ring.Best == 0 and prof.Ring.Runs == 0 and ring.Best == 0 and ring.Runs == 0, "ring record")
+			expect(type(prof.Migrations) == "table" and prof.Migrations.P4 == true, "migration markers kept")
+		end
 		T.check(#left == 0 and toast.kind == "good", "DEV reset: back to a brand-new player (tokens, pets, equipped, items, stats, Index, cash, gems, home, battle teams + record)", table.concat(left, ", ") .. " / " .. toast.text)
 		T.eq(owner:GetAttribute(Config.Attr.SpotIndex), spot, "DEV reset: ...the lobby spot stays assigned")
 		syncs = K.remotesFor("ProfileSync", owner.UserId, mark)

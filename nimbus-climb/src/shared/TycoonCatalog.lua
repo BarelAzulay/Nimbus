@@ -368,7 +368,7 @@ TycoonCatalog.Layout = {
 -- next to the entrance), 0 = the middle row (5-8), +7 = the back row (9-12)
 local GARDEN_X = { -7.5, -2.5, 2.5, 7.5 }
 local GARDEN_ROWS = { -7, 0, 7 }
-local GARDEN_COIN_Z = { -2.6, -4.4, 3.5 } -- the pile of each row: front + middle rows on the front walk, back row on the back walk
+local GARDEN_COIN_Z = { -4.4, -2.6, 3.5 } -- the pile of each row, 2.6 studs from its own cushion: front + middle rows on the front walk, back row on the back walk
 local GARDEN_SPOTS = {}
 local GARDEN_COINS = {}
 for row, z in ipairs(GARDEN_ROWS) do

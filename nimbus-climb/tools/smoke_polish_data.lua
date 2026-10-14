@@ -412,9 +412,13 @@ S.polish_data_fwdcompat = guarded("polish_data_fwdcompat", function()
 		Food = { Snack = 3 },
 		Hybrids = { h1 = { Body = "penguin", Style = "phoenix", Elements = { "Frost", "Flame" }, Name = "Pengnix", Rarity = "Rare", Tier = "Golden" } },
 		Tiers = { pebble_pup = { Golden = 1 } },
-		-- (Teams became a known, validated field in Phase 3; Quests stands in for a field no build knows yet)
+		-- (Teams became a known, validated field in Phase 3; Quests stands in for a field no build knows yet; Phase 4's
+		-- PetGrowth / Ring / Migrations and Home.LegacySlots / LegacyPrices are known now: Weather stands in for a
+		-- future Home key)
 		Quests = { { "a", "b", "c" } },
+		Season = { Id = 7, Stars = { 1, 2 } },
 	}
+	DSt.Data[storeKey(ID)].Home.Weather = "sunny"
 	local p = Mock.AddPlayer("PhaseTwoSave", ID)
 	advance(1.5)
 	DataS.AddTokens(p, 1)
@@ -432,6 +436,13 @@ S.polish_data_fwdcompat = guarded("polish_data_fwdcompat", function()
 		"forward compat: ...Hybrids (fused pets) survive whole")
 	T.check(type(s.Tiers) == "table" and type(s.Tiers.pebble_pup) == "table" and s.Tiers.pebble_pup.Golden == 1, "forward compat: ...Tiers survive")
 	T.check(type(s.Quests) == "table" and type(s.Quests[1]) == "table" and s.Quests[1][3] == "c", "forward compat: ...an unknown field holding lists (Quests) survives")
+	T.check(type(s.Season) == "table" and s.Season.Id == 7 and type(s.Season.Stars) == "table" and s.Season.Stars[2] == 2 and home.Weather == "sunny",
+		"forward compat: a top-level field (Season) and a Home key (Weather) no build knows yet survive a Phase 4 save")
+	-- Phase 4's own fields are KNOWN now (ARCHITECTURE_V3.md "Phase 4 build contract" 4.1 / 4.4): this Prestige-1 veteran
+	-- was migrated on load (Migrations.P4, LegacyPrices; its Garden level 0 earns no LegacySlots) and the fields are
+	-- written as data, not carried as foreign keys (smoke_p4_data.lua p4data_rollout runs the frozen Phase 3 module)
+	T.check(type(s.Migrations) == "table" and s.Migrations.P4 == true and home.LegacyPrices == true and home.LegacySlots == nil and s.PetGrowth == nil and s.Ring == nil,
+		"forward compat: the Phase 4 fields are known fields now (the migration marker and LegacyPrices written; empty PetGrowth / default Ring left out)")
 	T.check(type(s.Stats) == "table" and s.Stats.Trophies == 12, "forward compat: an unknown Stats field (Trophies) survives")
 	T.eq(s.Version, 3, "forward compat: a newer Version number is kept (never lowered to 2)")
 	local ghost = false

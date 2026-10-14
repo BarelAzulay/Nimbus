@@ -210,7 +210,12 @@
           "GetRing",
           "MutateRing",
           "IsMigrated",
-          "MarkMigrated"
+          "MarkMigrated",
+          "MigratedNow",
+          "SetPetLevel"
+        ],
+        "signals": [
+          "Migrated"
         ]
       }
     },

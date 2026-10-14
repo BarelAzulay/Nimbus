@@ -88,9 +88,11 @@
 --     its gems merge together (MarkReceipt records the amount): a receipt the store already holds was granted by
 --     another server, so its gems are not added again. Phase 4: PetGrowth merges PER KEY: Evo and every rank keep
 --     the HIGHER value (never down; a rank is a target value, so two servers completing one job give one rank), the
---     Job is the session's value when the session changed it (a cleared job travels as `false`; a job the session
---     never touched leaves the stored one alone), then P4.cleanGrowth drops a Job whose Rank is not above the merged
---     rank (completed elsewhere); a key the session removed travels as `false`. Ring.Best keeps the higher value,
+--     Job is the session's value when the session changed it (a cleared job travels as `false` + the job it ended; a
+--     job the session never touched leaves the stored one alone; a stored job that is NEWER than the one the session
+--     ended or started, the same skill at a higher target, survives: two servers can race during the rollout or an
+--     outage's late leave save), then P4.cleanGrowth drops a Job whose Rank is not above the merged rank (completed
+--     elsewhere); a key the session removed travels as `false`. Ring.Best keeps the higher value,
 --     Ring.Runs travels as a +/- delta. Migrations only grow (union). Home.LegacySlots / LegacyPrices merge with the
 --     Home (per-key replace; a higher Prestige wins the whole Home, which has them cleared).
 --     The ONE exception is ResetFields (developer tools only):
@@ -216,7 +218,11 @@
 --                                       GymKeys = {key...} (the Gym pets set free), GymPets = #GymKeys,
 --                                       CollectorCash = n (the Cash that waited on the Phase 3 Collector) }.
 --                                       TycoonService shows the one welcome toast on the first claim when
---                                       MigratedNow(player, "P4").Veteran is true.
+--                                       MigratedNow(player, "P4").Veteran is true. Because that first claim may
+--                                       happen in a LATER session, the migration also persists the marker
+--                                       Migrations.P4Veteran (IsMigrated(player, "P4Veteran")); TycoonService
+--                                       shows the toast when it is set and "P4Welcome" is not, then
+--                                       MarkMigrated(player, "P4Welcome") (a union: never shown twice).
 --     Migrated                          Util.Signal (exists at module load) Fire(player, name, info) right after the
 --                                       ProfileLoaded / ProfileRebased that ran a migration
 --     SetPetLevel(player, key, level) -> ok   developer tools: writes { Level, Xp = 0 } for an OWNED key (1..the curve's
@@ -597,6 +603,8 @@ local P4 = {
 	MAX_FROM = 16, -- Job.From: "Follow" | "Garden:<slot>" | "Free" (a short string)
 	MAX_RING = 100000, -- sanity cap for Ring.Best (the ring is endless; records are a few dozen rounds)
 	MIGRATION = "P4", -- Migrations[name] of the one-time Phase 4 migration (section 4.3)
+	VETERAN_MARK = "P4Veteran", -- set by that migration when the profile had a home before (the welcome toast is owed)
+	WELCOME_MARK = "P4Welcome", -- set by TycoonService (MarkMigrated) once the welcome toast was shown on the first claim
 	GARDEN_SLOTS_BASE = 3, -- 3 + Prestige garden places when TycoonCatalog.Prestige.GardenSlotsBase is missing
 	GARDEN_SLOTS_PER_STAR = 1,
 }
@@ -1426,6 +1434,7 @@ function P4.diffGrowth(live, base)
 				end
 			elseif baseJob then
 				d.Job = false
+				d.JobDone = { Stat = baseJob.Stat, Rank = baseJob.Rank } -- WHICH job ended (P4.newerJob keeps a newer stored one)
 			end
 			out[key] = d
 			any = true
@@ -1443,10 +1452,21 @@ function P4.diffGrowth(live, base)
 	return out
 end
 
+-- true when the STORED job `cur` is a newer job of the same key than `ref` (the job a session ended or started): the
+-- same skill at a higher target rank. Two servers holding one player (the rollout minutes, an outage's late leave
+-- save) can race: server B completes Speed 2 -> 3 and starts 3 -> 4 while server A's later save still ends the 2 -> 3
+-- job (or starts its own stale 2 -> 3): A must not wipe B's paid rank-4 job. A job of another skill, or at the same /
+-- a lower target, is the same job or an older one and follows the session's value (the sanitizer then drops it when
+-- it is stale).
+function P4.newerJob(cur, ref)
+	return type(cur) == "table" and type(ref) == "table" and cur.Stat == ref.Stat and isFinite(cur.Rank) and isFinite(ref.Rank) and cur.Rank > ref.Rank
+end
+
 -- Per key: Evo and every rank keep the HIGHER value (a rank is a target value: two servers completing one job give
--- one rank), the Job follows the delta (a table replaces, false clears, absent keeps the stored one), a key marked
--- false goes; then the map is cleaned: a Job whose target rank is not above the merged rank (completed elsewhere) is
--- dropped and empty entries go.
+-- one rank), the Job follows the delta (a table replaces, false + JobDone clears, absent keeps the stored one; a
+-- stored job that is NEWER than the one the session ended or started survives, P4.newerJob), a key marked false goes;
+-- then the map is cleaned: a Job whose target rank is not above the merged rank (completed elsewhere) is dropped and
+-- empty entries go.
 function P4.applyGrowth(out, dg)
 	if not dg then
 		return
@@ -1462,9 +1482,13 @@ function P4.applyGrowth(out, dg)
 				cur[stat] = math.max(cur[stat], clampCount(d[stat], P4.MAX_RANK))
 			end
 			if d.Job == false then
-				cur.Job = nil
+				if not P4.newerJob(cur.Job, d.JobDone) then
+					cur.Job = nil
+				end
 			elseif type(d.Job) == "table" then
-				cur.Job = copyMap(d.Job)
+				if not P4.newerJob(cur.Job, d.Job) then
+					cur.Job = copyMap(d.Job)
+				end
 			end
 			map[key] = cur
 		end
@@ -4567,7 +4591,13 @@ function P4.migrateP4(profile)
 	end
 	info.GymPets = #info.GymKeys
 	repairHome(home) -- whole numbers, the CollectorCash fraction kept
-	ensureTable(profile, "Migrations")[P4.MIGRATION] = true
+	local migrations = ensureTable(profile, "Migrations")
+	migrations[P4.MIGRATION] = true
+	if info.Veteran then
+		-- persisted (a union like every marker): TycoonService shows the one welcome toast on the FIRST claim, which may
+		-- happen in a later session than the migration; it marks P4.WELCOME_MARK itself once the toast was shown
+		migrations[P4.VETERAN_MARK] = true
+	end
 	return info
 end
 
