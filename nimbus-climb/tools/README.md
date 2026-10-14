@@ -48,7 +48,7 @@ python3 tools/sim_tycoon.py --plan yard.png # the yard from above: stations, pad
   every home, no dead end, and a median time-to-the-next-pad ratio <= 1.0 in every house tier / star bucket.
 * Exit status 1 when a target is missed (or `--check` / `--migrate` finds a problem).
 
-## Battle balance simulation (Phase 3)
+## Battle balance simulation (Phase 3 + Phase 4)
 
 `sim_battle.lua` runs the **real** battle engine (`src/shared/BattleSim.lua` on the numbers of
 `src/shared/BattleCatalog.lua`, with PetCatalog / PetKeys / TycoonCatalog) inside the Roblox mock under lupa, like
@@ -64,8 +64,19 @@ python3 -c "import lupa.luajit21 as L; L.LuaRuntime().execute(open('tools/sim_ba
 SIM_BATTLE="quick only=trials,raids" python3 -c "import lupa.luajit21 as L; L.LuaRuntime().execute(open('tools/sim_battle.lua').read())"
 ```
 
-* `SIM_BATTLE` options: `quick` (32 seeds per matchup, ~15 s) or `full` (100 seeds, the default), `seeds=N`,
-  `only=roster,duels,elements,trials,raids,specials,extremes,perf,progression`, `verbose` (section timings).
+* `SIM_BATTLE` options: `quick` (32 seeds per matchup, ~20 s) or `full` (100 seeds, the default), `seeds=N`,
+  `only=roster,duels,elements,trials,raids,dodge,specials,extremes,perf,training,ring,level100,progression`,
+  `verbose` (section timings).
+* Phase 4 sections (`ARCHITECTURE_V3.md` "Phase 4 build contract" 8.3): `training` (TeamPower with all four skills at
+  rank 5 x1.25-1.4 and rank 10 x1.6-1.85, Evolved I / II x1.25 / x1.5, trained mirror duels 35-65% with no draws or
+  timeouts, a trained + evolved team still needs 100-240 s for a raid with dodging players), `ring` (the Champion Ring:
+  rounds 1-3 won >= 95% by every single level-1 rollable Common / Uncommon, the single-pet average >= 85% at rounds 4-5
+  and >= 50% at round 8, the median record per stage S1 13-19 / S3 20-26 / S5 25-31 / S7 33-39 / S9 41-47 / S10 48-54,
+  fights 4-40 s, the champion's power never dropping to round 120, Boost from rounds 40-50, the round table with its
+  rewards), `level100` (the player's level-100 rule: the S10 pets at level 100, Evolved II, every skill at rank 10 ->
+  raids 100-240 s, no duel hit above `Damage.MaxHit` (no one-shots), fair mirrors, the duel practice gap
+  `DUEL_POWER_GAP` read from BattleService catches the maxed L100 team vs an L50 team) and `progression` (the XP behind
+  each stage and its Food Machine price, `TycoonCatalog.FeedPrice`). `SIM.Stages` are the Phase 3 stages, unchanged.
 * Change a number in `BattleCatalog` -> re-run the sim. The smoke scenario `p3battle_balance`
   (`tools/smoke_p3_battlecore.lua`) loads this file as a library (`SIM_BATTLE_LIBRARY = true`) and runs a short subset.
 * The scripted player (`SIM.Player`) presses SPECIAL when a meter is full, focuses a wounded enemy and retreats out of

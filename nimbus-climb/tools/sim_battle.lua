@@ -11,11 +11,19 @@
 --   * every special is useful (and none is an auto-win), no one-shots, no unkillable sustain teams, no stalemates;
 --     a team that only RETREATs returns to the fight by itself (Damage.RetreatAutoResume)
 --   * performance: a raid of 8 teams x 4 pets + boss + minions steps in well under 1 ms
+--   Phase 4 ("Phase 4 build contract" 8.3):
+--   * training: all four skills rank 5 x1.25-1.4 / rank 10 x1.6-1.85 TeamPower, Evolved x1.25 / x1.5, trained mirror
+--     duels 35-65% with no draws or timeouts (Damage.Overtime), trained raids still 100-240 s with dodging players
+--   * ring: the Champion Ring (rounds 1-3 for every single level-1 starter, the single-pet slope, the median record per
+--     stage, fights 4-40 s, the power never dropping and never stopping, Boost from rounds 40-50)
+--   * level100: a maxed level-100 team (raids 100-240 s, no one-shots, fair mirrors, the duel practice gap)
+--   * progression: the XP behind each stage and its Food Machine price
 --
 -- Run it (lupa, from the repo root; see tools/README.md):
 --   python3 -c "import lupa.luajit21 as L; L.LuaRuntime().execute(open('tools/sim_battle.lua').read())"
 --   SIM_BATTLE="quick only=trials,raids" python3 -c "..."     options: quick | full | seeds=N | only=a,b | verbose
---   sections: roster, duels, elements, trials, raids, dodge, specials, extremes, perf, progression
+--   sections: roster, duels, elements, trials, raids, dodge, specials, extremes, perf, training, ring, level100,
+--   progression
 -- The smoke scenario p3battle_balance loads this file as a library (global SIM_BATTLE_LIBRARY = true before the
 -- load) and runs a short subset. Plain Lua 5.1 syntax only.
 
