@@ -349,7 +349,7 @@ dish is done, you get its Cash back (unless you prestiged since you ordered it).
 to the Kitchen, and every pet flying with you eats one food (the best one that does not waste XP). XP makes pets
 level up (level 1 -> 2 takes 20 XP, each later level takes more), and **every level adds 10 %** to the pet's stats:
 Income for Economy pets, Power / Health / Speed for Combat pets. Each pet copy has its own level, up to a cap by
-rarity: Common 50, Uncommon 50, Rare 50, Epic 50, Legendary 50, Mythic 50, Secret 50 (Phase 4: every pet reaches 50). A toast shows the new
+rarity: Common 100, Uncommon 100, Rare 100, Epic 100, Legendary 100, Mythic 100, Secret 100 (Phase 4: every pet reaches 100). A toast shows the new
 stats at every level-up.
 
 ### The Gym

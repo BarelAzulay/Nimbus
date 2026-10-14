@@ -171,9 +171,10 @@ setmetatable(TycoonCatalog.Foods, { __index = FOOD_BY_ID })
 
 ----------------------------------------------------------------------
 -- Pet XP curve: XpToNext(level) = round(Base * level ^ Exponent / Round) * Round, up to MaxLevel.
--- Pet stats grow +10% per level (PetCatalog.GetStats), so a level-50 pet earns 5.9x its level-1 income.
+-- Pet stats grow +10% per level (PetCatalog.GetStats), so a level-50 pet earns 5.9x its level-1 income and a level-100
+-- pet 10.9x. Phase 4: every pet levels up to 100 (the player's rule); the evolutions stay at 20 and 50.
 ----------------------------------------------------------------------
-TycoonCatalog.PetXp = { MaxLevel = 50, Base = 20, Exponent = 1.6, Round = 5 }
+TycoonCatalog.PetXp = { MaxLevel = 100, Base = 20, Exponent = 1.6, Round = 5 }
 TycoonCatalog.MaxPetLevel = TycoonCatalog.PetXp.MaxLevel -- DataService.AddPetXp caps levels here
 
 ----------------------------------------------------------------------

@@ -29,10 +29,10 @@
 --   PetCatalog.TotalCount()               -> number of pets in the catalog (Secret pets included)
 --   Phase 2 pet levels (care agent; the XP curve itself is TycoonCatalog.XpToNext):
 --   PetCatalog.LevelCap(subject)          -> the highest level XP (food, fights) can raise a pet to, by rarity
---                                            (subject = rarity id, pet id, pet key or def): Phase 4: 50 for every
+--                                            (subject = rarity id, pet id, pet key or def): Phase 4: 100 for every
 --                                            rarity. TycoonCatalog may override them (PetXp.RarityCaps /
 --                                            PetLevelCaps); never above MaxPetLevel(). nil for unknown pets.
---   PetCatalog.MaxPetLevel()              -> top of the XP curve (TycoonCatalog.MaxPetLevel, else MaxLevel = 50)
+--   PetCatalog.MaxPetLevel()              -> top of the XP curve (TycoonCatalog.MaxPetLevel, else MaxLevel = 100)
 --   PetCatalog.LevelFactor(level)         -> 1 + 0.1 * (level - 1)   (level clamped like GetStats)
 --   PetCatalog.TierMultiplier(tier)       -> 1 | 1.5 | 2.5 (a tier name, a pet key, a def or a multiplier)
 --   Phase 4 evolution and garden roles (ARCHITECTURE_V3.md "Phase 4 build contract" 3.2 / 3.6):
@@ -954,12 +954,12 @@ end
 -- PetLevels[key], XP curve TycoonCatalog.XpToNext); every level adds LevelBonus of the level-1 stats.
 ----------------------------------------------------------------------
 
-PetCatalog.MaxLevel = 50 -- top of the XP curve when TycoonCatalog does not name one (its PetXp.MaxLevel wins)
+PetCatalog.MaxLevel = 100 -- top of the XP curve when TycoonCatalog does not name one (its PetXp.MaxLevel wins)
 PetCatalog.LevelBonus = 0.1 -- +10% of the level-1 stats per level (TycoonCatalog.PetIncome uses the same)
--- the highest level XP can raise a pet to, by rarity. Phase 4: every rarity reaches 50 (the evolutions come at 20 and
--- 50; Common, Uncommon and Rare pets evolve once, Epic and rarer twice). TycoonCatalog may override these
+-- the highest level XP can raise a pet to, by rarity. Phase 4: every rarity reaches 100 (the player's rule; the
+-- evolutions come at 20 and 50: Common, Uncommon and Rare pets evolve once, Epic and rarer twice). TycoonCatalog may override these
 -- (PetXp.RarityCaps or PetLevelCaps); a rarity missing here is capped at MaxPetLevel().
-PetCatalog.LevelCaps = { Common = 50, Uncommon = 50, Rare = 50, Epic = 50, Legendary = 50, Mythic = 50, Secret = 50 }
+PetCatalog.LevelCaps = { Common = 100, Uncommon = 100, Rare = 100, Epic = 100, Legendary = 100, Mythic = 100, Secret = 100 }
 -- stat multiplier of a pet copy's tier (PetKeys.TierMultiplier / TycoonCatalog.TierMultiplier hold the same values)
 PetCatalog.TierMultipliers = { Normal = 1, Golden = 1.5, Rainbow = 2.5 }
 

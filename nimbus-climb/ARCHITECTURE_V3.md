@@ -714,7 +714,7 @@ The player's words are requirements. Everything else below was decided so a kid 
 | 2 | "not like an old typical boring tycoon (money machines). ... pets eating from the garden they're working on, and they poop the cash (rainbow coins) and the player picks them up (only the house owner can pick his own)" | The Pet Garden is the only money source. Pets in it eat from their bowls and pop out **rainbow coins** onto the garden walks; the owner walks over them to scoop (server-side owner check, no pickup remote). The four Cloud Presses become **food plants** (Berry Bush, Carrot Patch, Cloud Melons, Starfruit Tree) whose fruit flies into the bowls: better food = bigger coins; the Collector becomes the **Coin Magnet** (scoop from farther, bigger piles). No pet in the garden = no coins. (3.1-3.3) |
 | 3 | "about the kitchen ... a basic food machine you press to buy food from, and an upgrade option which upgrades food's xp. You press on the machine, then it opens your pets list, there you click on which pet to feed, and each feed costs money and gives them xp" | The Kitchen slot becomes the **Food Machine**: press E -> your pet list -> **Feed $X (+Y XP)** per pet. One feed fills 25% of the pet's XP bar; the machine's upgrade (its pad, also offered inside the window) raises it to 30 / 35 / 42 / 50% for the same price. No stock, no waiting. (3.4) |
 | 4 | "The other xp system will be from fights! Pets gain xp from each fight" | Every Trial, duel, raid and Champion Ring round pays XP to every pet that fought (a win pays full, a loss a third when the pets really fought). The ring is the best XP per minute that costs nothing. (3.5) |
-| 5 | "first [evolution] at level 20 and the second one at 50"; decisions: an **EVOLVE button** with the animation; **Epic and up** evolve again at 50, Common / Uncommon / Rare stop at their first evolution | "Ready to evolve!" at 20: a glowing EVOLVE button (Pets card, Food Machine row, floating card pill); the evolution plays in the world in front of the player. Epic+ again at 50. Evolved pets: x1.25 power, health and coins (x1.5 after the second). Every rarity can reach level 50 (settled, section 11). (3.6) |
+| 5 | "first [evolution] at level 20 and the second one at 50"; decisions: an **EVOLVE button** with the animation; **Epic and up** evolve again at 50, Common / Uncommon / Rare stop at their first evolution | "Ready to evolve!" at 20: a glowing EVOLVE button (Pets card, Food Machine row, floating card pill); the evolution plays in the world in front of the player. Epic+ again at 50. Evolved pets: x1.25 power, health and coins (x1.5 after the second). Every rarity can reach level 100 (the player's later rule, section 11). (3.6) |
 | 6 | "gym ... 'training place' for stats upgrade: ... choose which pet to train and what to train (attack speed / physique / ability / defense). You cannot have a training pet on you while it's training!" | The Gym slot becomes the **Training Place**: pick a pet and a skill; pay Cash; rank r takes r minutes. Starting takes the pet off you and out of the Garden by itself; it comes back by itself when done; Stop refunds. A training pet cannot be equipped, placed, fused or fielded (presets keep it). (3.7) |
 | 7 | "at the start you can put up to 3 pets max (the higher level they are the more cash they produce; economic pets produce 60% more cash than combat pets; it also changes with their rarity and level). Each prestige ... another pet (prestige 1 can put 4 and so on)" | Garden places = 3 + Prestige stars (12 at most; 12 places are drawn). Any pet can work; coin = Food x PetPower, PetPower = rarity x level x Golden/Rainbow x **Economy 1.6 / Combat 1.0** x evolution. Veterans keep old extra places until their next Prestige (LegacySlots). (3.1, 3.2) |
 | 8 | "home returning button ... opens a small cool portal only he and his pets can go through, which leads to his house" | **Go home** opens a swirling voxel portal 6 studs ahead for 10 s; only the owner's character is teleported (server check); pets dive in after and pop out of an arrival ring at home (client visuals). (3.10) |
@@ -723,7 +723,7 @@ The player's words are requirements. Everything else below was decided so a kid 
 | 11 | "make the pets follow the player from behind instead of being stuck to the player from his sides" | Trailing formation: 4-6.5 studs behind, never ahead while running (prototyped against the smoke windows). (3.9) |
 | 12 | Later: "the portal is early available so even new players can go into fights there as long as they have at least 1 pet" ... "he do needs to first atleast a home and a pet" | **Portal_Ring** stands on the plaza next to the Trial Portal. Entry needs a claimed home ("Claim your home first") and at least one owned pet ("You need a pet"); fighters = the Team, else the equipped pets, else the best owned pets. Rounds 1-3 are one handicapped level-1 Common: **every one of the 12 single level-1 starter pets wins all three at 100% (24 seeds, real BattleSim)**. (3.8) |
 | 13 | Decisions: Fable for the riskiest pieces, Opus elsewhere; ultracode | Ownership table and waves in section 10; every number proved by a sim; every rule tested. |
-| 14 | Not specified -> decided: old presses / Collector / Vault progress and Home Level; house tiers and prestige without machines; offline earnings; coin values, drops, caps; machine prices; training costs / times / effects / caps; level caps; battle balance; the ring's name, place, rewards, record; what "safe zone" means in code; tutorial chapter 2 and NPC tips | Sections 3 and 4: ids kept so Home Level, tiers (10/20/30) and Prestige (40 + Sky Castle) are unchanged; offline coins go into the Welcome-back pile; all numbers in 3.1-3.8; caps 50; evolution / training only through `UnitStats` extras (trials unchanged); "Champion Ring" on the plaza; safe zone = outside `NC_BattleZone` parts and obby courses; chapter 2 rewritten in place, chapter 4 appended, NPC tips in section 9. |
+| 14 | Not specified -> decided: old presses / Collector / Vault progress and Home Level; house tiers and prestige without machines; offline earnings; coin values, drops, caps; machine prices; training costs / times / effects / caps; level caps; battle balance; the ring's name, place, rewards, record; what "safe zone" means in code; tutorial chapter 2 and NPC tips | Sections 3 and 4: ids kept so Home Level, tiers (10/20/30) and Prestige (40 + Sky Castle) are unchanged; offline coins go into the Welcome-back pile; all numbers in 3.1-3.8; caps 100 (the player's later rule); evolution / training only through `UnitStats` extras (trials unchanged); "Champion Ring" on the plaza; safe zone = outside `NC_BattleZone` parts and obby courses; chapter 2 rewritten in place, chapter 4 appended, NPC tips in section 9. |
 
 ### 2. The design in simple words (what the README will say)
 
@@ -743,7 +743,8 @@ The player's words are requirements. Everything else below was decided so a kid 
 * **Every fight gives XP** (a win the full amount, a loss a third if your pets fought). The Champion Ring is the best
   free XP in the game.
 * **EVOLVE!** At level 20 a pet glows "Ready to evolve!": press EVOLVE and watch it change. Evolved pets are 25%
-  stronger and richer. Epic and rarer pets evolve again at level 50 (50% in total). Every pet can reach level 50.
+  stronger and richer. Epic and rarer pets evolve again at level 50 (50% in total). Every pet can reach level 100;
+  each level takes more XP than the one before.
 * **Training Place** (the old Gym): press E, pick a pet and a skill (Attack Speed, Physique, Ability, Defense). Rank 3
   takes 3 minutes. A training pet rests at home: it cannot follow you or fight until it is done, then it comes back by
   itself. Stop gives the Cash back.
@@ -762,6 +763,27 @@ The player's words are requirements. Everything else below was decided so a kid 
 
 Sections 1-2 above are the player-facing design; sections 3-11 are the contract. File:line anchors point at the Phase 3
 release (main at 35800c0) and may drift by a few lines as the waves land: search for the named function.
+
+**Player update (given after this contract was written; it overrides every "level 50 cap" below): "make the max level for all
+pets at level 100 (evolutions stay the same) but obviously it becomes harder from a level to another (xp required)".**
+* Every rarity levels up to **100**; the evolutions stay at 20 (every pet) and 50 (Epic and rarer). The XP curve is unchanged and
+  keeps rising level after level: 20 XP for L1 -> 2, 10,125 for L49 -> 50, 31,190 for L99 -> 100 (195,880 XP in total to reach
+  50, 1,203,340 to reach 100). Every level still adds +10% of the level-1 stats (L50 x5.9, L100 x10.9).
+* Landed in wave 0: `PetCatalog.LevelCaps` 100 for every rarity, `PetCatalog.MaxLevel` 100, `TycoonCatalog.PetXp.MaxLevel` 100,
+  `tools/sim_tycoon.py` `PET_XP[0]` 100, the README cap line and `p2care_stats`. Nothing may hard-code 50 as a level cap: read
+  `PetCatalog.LevelCap` / `MaxPetLevel` (50 stays only where it means the second evolution).
+* economy: re-prove EVERY pacing target of 3.12 / 8.3 with pets growing to 100 (the sim's `CAP` list = 100; `FeedPrice` keeps
+  following `XpToNext`, so the road from 50 to 100 costs about 5x the road to 50); retune the catalog knobs if a target fails
+  (the later prestige runs and the Gems per hour are the ones to watch, because pets keep their levels through Prestige).
+* battlecore: Champion Ring champions keep their proven ladder: `BattleCatalog.Ring.ChampionMaxLevel = 50` (the solver's "lowest
+  level 1..50" and "level-50 Rainbow boss with Boost" of 3.8 stay as written; the Boost covers the rest), so every ring target of 8.3
+  still holds; `sim_battle.lua` adds a level-100 stage to its report (a trained and evolved L100 team: raids still 100-240 s with
+  dodging players, no one-shots, mirror duels 35-65%, the practice gap (`DUEL_POWER_GAP`) catches L100 vs L50 duels).
+* data: every clamp reads `MaxPetLevel` (100); `/petlevel <1..100>`; check what the frozen Phase 3 DataService does with a level
+  above 50 during the rollout (it clamps with its own MaxLevel 50) and record the effect next to the 4.4 table (a Phase 3 server can
+  only see the few minutes of a rollout).
+* care / careui / ui / docs: every "max level" check and text reads the cap (100): "Lv 57 / 100", the Food Machine's cap refusal,
+  level-up toasts ("Ready to evolve!" stays at 20 and 50), the README and the NPC tips.
 
 ### 3. Exact rules and numbers
 
@@ -882,7 +904,7 @@ FeedPrice(def, level)       = XpToNext(level) x RarityScale(def) x FeedBase     
   per XP); rarer pets eat fancier food (x1.5 ... x13) and their coins grow the same way, so the payback per level is
   the same for every rarity. Examples (Common, Lv1 machine): L1 feed $40 for 5 XP; L10 $1,590 for 199 XP; L19 $4,450
   for 556 XP. Road L1 -> 20: $139K (Lv1 machine) / $69.5K (Lv5); L1 -> 50: $1.57M / $784K; Legendary x5.5.
-* Refusals before any Cash moves: no Food Machine ("Build the Food Machine at home first"), level 50 ("Rocky is at max
+* Refusals before any Cash moves: no Food Machine ("Build the Food Machine at home first"), level 100 ("Rocky is at max
   level"), not owned, provisional profile ("Your save is still loading, try again in a moment"), a key in a running
   battle (`BattleService.KeysInBattle`). Cash is spent and the XP written in one non-yielding step; the Cash comes back
   when the XP write gives 0 (the `feed()` pattern, PetCareService.lua:1130-1138).
@@ -900,8 +922,9 @@ FeedPrice(def, level)       = XpToNext(level) x RarityScale(def) x FeedBase     
 
 #### 3.5 XP, levels and caps
 
-* The curve stays: `XpToNext(L) = round(20 x L^1.6 / 5) x 5`, MaxLevel 50 (L20 = 17,375 XP total, L50 = 195,880).
-* **Level cap 50 for every rarity** (PetCatalog.LevelCaps :946 -> 50 each; `FALLBACK_LEVEL_CAPS` PetCareService.lua:96
+* The curve stays: `XpToNext(L) = round(20 x L^1.6 / 5) x 5`, **MaxLevel 100** (the player's later rule; L20 = 17,375 XP total,
+  L50 = 195,880, L100 = 1,203,340; one level costs 20 XP at L1, 10,125 at L49, 31,190 at L99).
+* **Level cap 100 for every rarity** (PetCatalog.LevelCaps :946 -> 100 each, landed in wave 0; `FALLBACK_LEVEL_CAPS` PetCareService.lua:96
   too). Caps only rise, so no saved pet is above its cap; pets parked at 35/40/45 simply grow again.
 * XP sources (ALL through `PetCareService.GrantXp`, cap-aware, level-up toasts; never `DataService.AddPetXp` directly):
 
@@ -1200,7 +1223,7 @@ Home keys only. Verified rule: a Phase 3 server still running during the rollout
 | `Home.Stations` | `{[id] = level}`, the same 18 ids | unchanged: Press1-4 = plant levels, Collector = Magnet level, Kitchen = machine, Gym = training spots | per-key replace (unchanged) | - | with Home |
 | `Home.Garden` | `{[slot] = key}`, any role, slots 1..12 used | unchanged; extra keys above the open count stay (resting) | per-key replace (unchanged) | - | with Home |
 | `Home.Gym` | `{[slot] = key}` | emptied on every Phase 4 home load (KNOWN_HOME keeps "Gym" so Phase 3 writes stay understood; `P3.placedCopies` keeps counting it, harmlessly) | per-key replace (unchanged) | - | with Home |
-| `PetLevels` | `{Level, Xp}` | unchanged; every cap now 50 | per-key replace (unchanged) | `AddPetXp` refused (unchanged) | wiped |
+| `PetLevels` | `{Level, Xp}` | unchanged; every cap now 100 | per-key replace (unchanged) | `AddPetXp` refused (unchanged) | wiped |
 | `Food` | counts | leftovers, spent first by the Food Machine | delta (unchanged) | - | - |
 | `Battle`, `Teams`, `Tutorial` | unchanged shapes | untouched by Phase 4 | unchanged | unchanged | unchanged |
 
@@ -1259,7 +1282,7 @@ Everything else needs NO data change, by construction:
 | `Food` (Snack / Meal / Feast) | leftovers, fed first and free | same field |
 | Gym level / `Home.Gym` slots | Training Place spots / cleared | the XP those pets earned is kept |
 | Vault level | Vault level (bigger piles + offline coins) | same id, same offline numbers |
-| `PetLevels` | same; caps raised to 50 | caps only go up; a pet at 20+ / 50 is "Ready to evolve!" and gets its own EVOLVE moment |
+| `PetLevels` | same; caps raised to 100 | caps only go up; a pet at 20+ / 50 is "Ready to evolve!" and gets its own EVOLVE moment |
 | Prestige stars | + garden places, x1.25 coins, old prices this run | same field |
 | `Tutorial.Step` | same index rule; chapter 4 appended | section 9 |
 | `Teams` presets | unchanged (garden pets may now fight; training pets are skipped at read time) | no pruning |
@@ -1292,7 +1315,7 @@ new keys (none may sit inside a rebuilt table).
 #### 4.5 Developer reset and fusion
 `DevService.cmdReset` (:536-629) wipes `PetGrowth`, sets `Ring = {Best = 0, Runs = 0}`, leaves `Migrations`, adds both
 to the `ResetFields` list (:609), calls `PetCareService.ClearSessions(player)` and `TycoonService.ClearCoins(player)`
-instead of `ClearKitchen` (:573-576); new owner command `/petlevel <1..50>` sets every equipped pet's level (to try
+instead of `ClearKitchen` (:573-576); new owner command `/petlevel <1..100>` sets every equipped pet's level (to try
 EVOLVE quickly; dev-only, same rules as the others). `FusionService` (:900-940 commit) carries `PetGrowth` as in 3.6
 through `DataService.MutateGrowth` in the same non-yielding commit, refuses training inputs, and places a fused result
 back into a freed Garden slot whatever its role (no Gym placement; `freeHomeSlots` :791-850).
@@ -1308,7 +1331,7 @@ back into a freed Garden slot whatever its role (no Gym placement; `freeHomeSlot
 | HomeAction | `Collect` | scoops every pile in range (kept for old clients / tests) | unchanged | - |
 | HomeAction | `Prestige` | unchanged | unchanged | + "Garden place N unlocked!" toast |
 | HomeAction | `GoHome` | not in a match / battle / ring run / portal party, alive | 3 s | `HomePortal` attribute |
-| PetCare | `Feed` (key, opts) with `opts = nil` (machine food) or a table `{Food = "Snack"|"Meal"|"Feast"}` (a leftover) or `{Count = 1..10}` ("Level up"); a plain string in `b` is read as `Food` (old clients) | owned, level < 50, machine built (machine food), Cash, loaded, not in battle | 0.1 s + the shared burst 12 / 6 per s | toast + one sync |
+| PetCare | `Feed` (key, opts) with `opts = nil` (machine food) or a table `{Food = "Snack"|"Meal"|"Feast"}` (a leftover) or `{Count = 1..10}` ("Level up"); a plain string in `b` is read as `Food` (old clients) | owned, level < 100 (the cap), machine built (machine food), Cash, loaded, not in battle | 0.1 s + the shared burst 12 / 6 per s | toast + one sync |
 | PetCare | `Evolve` (key) | owned, level >= 20 / 50, stage < MaxEvolution, not in battle, not provisional | 1 s | `OpenPanel("Evolve")` |
 | PetCare | `Train` (key, stat) stat in Speed / Physique / Ability / Defense | owned, station, free spot, not training, not in battle, rank < 10, Cash | 0.25 s | toast |
 | PetCare | `TrainStop` (key) | a job exists | 0.25 s | toast (refund) |
@@ -1358,7 +1381,7 @@ Every action: type / range / NaN checks, a per-action cooldown and the shared pe
   PileSeconds rising, FoodMachine FeedShare rising <= 1, Training Slots rising, Vault PileSeconds rising, coin points inside the yard and off pads, the
   WelcomePile off pads). Removed: `PressIncome`, `CollectorCap` (alias kept one release returning `PileSeconds x income`), `KitchenSpeed`, `CookSecondsFor`,
   `FoodsFor`, `GymXpPerMinute`, `GymSlots` (-> `TrainingSlots`); `PetIncome` kept as an alias of `PetPower x FoodOf / 8`.
-* `PetCatalog` (lead, LANDED in wave 0): `LevelCaps` all 50, `EvolutionLevels {20, 50}`, `EvolutionBoost {1.25, 1.5}`, `EvolveTwice` (the Epic+ rarity set),
+* `PetCatalog` (lead, LANDED in wave 0): `LevelCaps` all 100 (`MaxLevel` fallback 100; `TycoonCatalog.PetXp.MaxLevel` 100), `EvolutionLevels {20, 50}`, `EvolutionBoost {1.25, 1.5}`, `EvolveTwice` (the Epic+ rarity set),
   `RoleMult = { Economy 1.6, Combat 1 }`, `MaxEvolution(subject)`, `EvolutionStage(subject, level, stored)`, `CanEvolve(subject, level, stage)`,
   `EvolutionMultiplier(stage) -> 1 | 1.25 | 1.5`, `RoleMultiplier(subject) -> 1.6 | 1` (a subject is a def, a rarity id, a pet id or a pet key; a hybrid key needs
   its def from `PetKeys.DefOf`); `StatsOf` / `GetStats` unchanged; `StatNames.Income` reads "Coins".
@@ -1457,7 +1480,7 @@ Every action: type / range / NaN checks, a per-action cooldown and the shared pe
 | `smoke_p4_care.lua` (replaces `smoke_p2_care.lua`'s kitchen / gym / shutdown scenarios) | server (booted) | care (W2) | Food Machine: no machine refused before paying, price and XP per level, "Level up" batch priced per feed, leftovers first and free, cap refusal, refund on a failed XP write, `Fed` fires, `Cook` / `GymSet` answer the toast; Evolve at 19 / 20 / 49 / 50 x rarities, Common never stage 2, refusals (battle, provisional), stage stored, OpenPanel sent, a training pet may evolve; Training: start pays / unequips every copy / clears the Garden slot / remembers From, equip + GardenSet + Fusion refusals, team skip with the preset kept, finish after the time (mock clock) adds the rank and returns the pet (Follow / Garden / Free), offline finish on load, Stop refunds once, spots, rank cap 10, two-server completion = one rank, prestige keeps jobs, `Home.Gym` emptied once with a toast; fusion carry-over; `ClearSessions` |
 | `smoke_p4_ring.lua` | server (booted) | battleservice (W2) | refusals in order (no home / no pet / far / in a match / provisional) with their texts; team -> equipped -> best owned fallback; a single level-1 pet wins round 1; chaining keeps InBattle and the pocket (no gap); rewards once per round; Cash = seconds of the climber's income with the floor; record x3 and boss Tokens once; `Ring.Best` max-merge, `Runs` delta; checkpoint start; the loss-XP gate; Forfeit in an intermission vs in a fight; leave / respawn / shutdown between and during rounds; the pocket freed; `RingBoard`; trial loss XP (>= 20 s or 20% damage, not forfeit) |
 | `smoke_p4_pets_client.lua` | client + phone | pets (W3) | own follower card "Lv n" + XP fill = xp / xpToNext at 22 px with a stroke; another player's card shows the level from `EquippedInfo` only; cards hidden InBattle; >= 14 px on 390x844; pets behind the owner while walking (travel-direction offset <= +0.5 studs) and the 2-7 / < 12 / < 8 windows; evolved Low followers within `petEvoLow`; the 6-model cap for others; `PlayEvolution` parks and restores the follower; the portal dive |
-| `smoke_p4_careui.lua` | client + phone | careui (W3) | CareController feed list (garden pets first, Feed / Level up prices from the catalog, leftovers line, EVOLVE button), the garden picker (`Action = "Garden"`), the training window (4 skills, rank bars, cost / time, Stop confirm), EvolutionFx on clones in the world, the Pets panel (Garden for any pet, "Coins $/s" pill, Lv n / 50, Equip disabled while training, evolution badge), the Home window (Garden card: coins waiting, coins/min, places N/12, the legacy lines, no Collect; new station names / effects; the prestige texts; Portal home sends `HomeAction "GoHome"` and closes), all at 1920x1080 / 1280x720 / 390x844 / 844x390 with nothing in the screen centre |
+| `smoke_p4_careui.lua` | client + phone | careui (W3) | CareController feed list (garden pets first, Feed / Level up prices from the catalog, leftovers line, EVOLVE button), the garden picker (`Action = "Garden"`), the training window (4 skills, rank bars, cost / time, Stop confirm), EvolutionFx on clones in the world, the Pets panel (Garden for any pet, "Coins $/s" pill, Lv n / 100, Equip disabled while training, evolution badge), the Home window (Garden card: coins waiting, coins/min, places N/12, the legacy lines, no Collect; new station names / effects; the prestige texts; Portal home sends `HomeAction "GoHome"` and closes), all at 1920x1080 / 1280x720 / 390x844 / 844x390 with nothing in the screen centre |
 | `smoke_p4_ui.lua` | server (content + booted chapter flow) + client | ui (W3) | tutorial chapters 2 and 4 (index rule: chapter starts 10 / 15 / 19, ids, targets, texts 20-200 bytes, mid-chapter resume from indices 10-14 on a migrated save, a finished Phase 3 tutorial resuming into chapter 4, the 300-token reward once, skipped players never see it), NPC tips (lengths, needles from the catalogs), the ring window (record, start picker, refusal texts), the safe-zone toast |
 | `smoke_p4_flow.lua` | server + client | flow (W4) | end-to-end with 3-6 players: a new player (claim -> free Garden -> place a pet -> coins -> Food Machine -> feed -> ring rounds 1-3 with one level-1 pet -> `/petlevel 20` + EVOLVE -> train (lock, auto-return) -> prestige with garden place 4 and the Garden still built); a migrated Phase 3 save (presses + Collector Cash + leftover Feasts + Gym pets + a 6-pet Garden L6: Home Level and tier unchanged, plants built, the Welcome-back pile, LegacySlots, Gym pets back, leftovers fed, Ready to evolve); a veteran resuming chapter 4; a leave / rejoin mid-training and mid-run; the two-server merge |
 
@@ -1642,10 +1665,10 @@ pure clients (battleclient, homefx) have slack.
 ### 11. Open risks, the two questions for the player, and where each judge must-fix landed
 
 **The two choices the player's words left open (settled by the lead before Wave 0; the player may still change them):**
-1. "Common, Uncommon and Rare pets stop at their first evolution (level 20)" is read as "they evolve ONCE": **every pet still levels up to 50**, and only
-   Epic and rarer pets evolve a second time at 50 (two of the three designs read it this way; a Common capped at 20 would hit its max level the moment
-   it evolves, with nothing left to grow). If the player meant that their LEVEL stops at 20 / 25 / 30, the switch is one table (`PetCatalog.LevelCaps`)
-   and the sim's `CAP` list; the coin and feed balance of section 3 was tuned for 50.
+1. "Common, Uncommon and Rare pets stop at their first evolution (level 20)" is read as "they evolve ONCE", and only Epic and rarer pets evolve a
+   second time at 50. The player then confirmed it and raised the cap: **"make the max level for all pets at level 100 (evolutions stay the same) but
+   obviously it becomes harder from a level to another (xp required)"**: every pet levels up to 100, the XP curve keeps rising (see the player update
+   at the top of this contract).
 2. **The four Cloud Presses become food plants** on the same pads (Berry Bush, Carrot Patch, Cloud Melons, Starfruit Tree) and the Collector the Coin
    Magnet. This is the player's own picture ("pets eating from the garden they're working on"): the plants are what the pets eat, and the pets make ALL
    the money (no pet in the garden = no coins; better plants = bigger coins). It keeps every player's Home Level, house and prestige exactly as they are.

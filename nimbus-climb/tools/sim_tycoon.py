@@ -130,7 +130,7 @@ PRESTIGE_GEMS = [100, 10, 25]  # first reward, minus per later star, floor
 FOOD_Snack = [50, 25, 6, 1]
 FOOD_Meal = [600, 150, 20, 2]
 FOOD_Feast = [6000, 800, 45, 4]
-PET_XP = [50, 20, 1.6, 5]  # MaxLevel, Base, Exponent, Round: XpToNext(L) = round(Base * L ^ Exponent / Round) * Round
+PET_XP = [100, 20, 1.6, 5]  # MaxLevel, Base, Exponent, Round: XpToNext(L) = round(Base * L ^ Exponent / Round) * Round
 TIER_MULTIPLIER = [1, 1.5, 2.5]  # Normal, Golden, Rainbow
 # pets (from Config + PetCatalog; the smoke check verifies them): rarity order Common .. Secret
 RARITY_SCALE = [1, 1.5, 2.3, 3.5, 5.5, 8.5, 13]
