@@ -29,9 +29,14 @@
 --   tokens [n]      DataService.AddTokens(n): n defaults to Config.Dev.GrantTokens, whole numbers only, clamped to
 --                   1 .. Config.Dev.MaxTokensPerCommand (chat also takes "50,000", "50k", "1m")
 --   reset           back to a brand-new player: tokens, pets, equipped pets, items, stats, Pet Index progress and
---                   rewards, Cash, Gems, home, pet levels, the battle teams (3 empty presets, preset 1 active) and
---                   the battle record (trophies, trial clears, raid and PvP counters, event pets); the lobby spot
---                   stays assigned for this session. The tutorial starts again as a new player's (gift and finish
+--                   rewards, Cash, Gems, home, pet levels, the battle teams (3 empty presets, preset 1 active),
+--                   the battle record (trophies, trial clears, raid and PvP counters, event pets), the Phase 4 pet
+--                   growth (evolution stages, training ranks and jobs) and the Champion Ring record (Best 0, Runs 0;
+--                   the Migrations markers stay: a reset player is not migrated again); the lobby spot
+--                   stays assigned for this session. PetCareService.ClearSessions(player) (the live training /
+--                   feeding sessions) and TycoonService.ClearCoins(player) (the coin piles) are called when those
+--                   functions exist (PetCareService.ClearKitchen while the old Kitchen is still in the build).
+--                   The tutorial starts again as a new player's (gift and finish
 --                   reward included: the reset took those tokens) when TutorialService has the Reload hook. Without
 --                   it a tutorial that already paid its gift is ended as skipped, because every step from "spin" on
 --                   needs the tokens and pets the reset just took (it would wait forever); an earlier tutorial
@@ -47,6 +52,10 @@
 --   skiptutorial    mark the tutorial done without the finish reward (TutorialService.HandleEvent(player, "Skip"))
 --   raid            Phase 3: start a Boss Raid in the arena right now (EventService.StartNow("BossRaid"); without an
 --                   EventService, BattleService.StartRaid()). Touches no profile data; refused while a raid runs.
+--   petlevel <n>    Phase 4: sets every EQUIPPED pet's level to n (1..the curve's max level, 100; XP 0) through
+--                   DataService.SetPetLevel, to try "Ready to evolve!" / EVOLVE at 20 and 50 quickly. Refused with
+--                   no pet equipped, a level out of range, a provisional profile. Levels only: evolution stages and
+--                   training ranks are untouched.
 --   devhelp         two toasts listing the chat commands (the pet showcase ones, then the others)
 -- The pet showcase (nothing is saved; the pets are built on the developer's OWN client only, by
 -- client/Controllers/DevPetShow.lua, through the server -> client remote DevPetShow(action, payload)):
@@ -64,8 +73,8 @@
 -- "good"); refusals get a "bad" toast. Rate limit: 4 commands per 2 seconds per player. Every command is logged with
 -- print("[NimbusClimb][Dev] ...") including the UserId. Nothing yields between reading and writing the profile.
 --
--- Chat: "/allpets", "/tokens 50000", "/reset", "/tutorial", "/skiptutorial", "/raid", "/pet cloudy dragon 2", "/pets 1",
--- "/evolve all", "/clearpets", "/devhelp", typed in the GAME's chat (not Studio's command bar). Two ways in, one
+-- Chat: "/allpets", "/tokens 50000", "/reset", "/tutorial", "/skiptutorial", "/raid", "/petlevel 20", "/pet cloudy dragon 2",
+-- "/pets 1", "/evolve all", "/clearpets", "/devhelp", typed in the GAME's chat (not Studio's command bar). Two ways in, one
 -- parser (onChatted): Player.Chatted of allowed players (the legacy chat), and one TextChatCommand per command
 -- (PrimaryAlias "/<command>", children of TextChatService, made at Init when the place uses TextChatService):
 -- the new chat only hands a "/" message to the game when a TextChatCommand claims it, and claimed commands stay
@@ -82,7 +91,8 @@
 -- Persistence: DataService merges Discovered, IndexClaimed, Tutorial.Done / Gifted and best times so they only
 -- ever grow (a gift can never be paid twice). reset and tutorial therefore call DataService.ResetFields for the
 -- fields they rewind (reset: Discovered, IndexClaimed, best times, the rewound Tutorial, the Phase 2 Home / Tiers /
--- Hybrids / PetLevels and the Phase 3 Teams / Battle, whose cleared trials and event pets only grow; tutorial: Tutorial):
+-- Hybrids / PetLevels, the Phase 3 Teams / Battle, whose cleared trials and event pets only grow, and the Phase 4
+-- PetGrowth / Ring, whose stages, ranks and Best only rise in the merge; tutorial: Tutorial):
 -- the next successful save writes the session's values over the stored ones, so the reset lasts with DataStores
 -- on (the live game, Studio with API access) and a replay is not ended by the next autosave. Everything else
 -- (tokens, pets, items, stats, ...) follows through the normal delta save.
@@ -103,7 +113,7 @@ local Remotes = require(Shared.Remotes)
 local DevService = {}
 
 DevService.Commands = {
-	"allpets", "tokens", "cash", "gems", "reset", "tutorial", "skiptutorial", "raid", "pet", "pets", "evolve",
+	"allpets", "tokens", "cash", "gems", "petlevel", "reset", "tutorial", "skiptutorial", "raid", "pet", "pets", "evolve",
 	"clearpets", "devhelp",
 }
 
@@ -132,10 +142,14 @@ local PROVISIONAL_OK = {
 -- the pet showcase never touches the profile, so it does not wait for it
 local NO_PROFILE = { pet = true, pets = true, evolve = true, clearpets = true }
 -- the commands that take a whole-number amount
-local NUMERIC = { tokens = true, cash = true, gems = true }
--- the commands that take a value, and its type (tokens / cash / gems: a number; the showcase: the rest of the chat line)
-local ARG_KIND = { tokens = "number", cash = "number", gems = "number", pet = "string", pets = "string", evolve = "string" }
+local NUMERIC = { tokens = true, cash = true, gems = true, petlevel = true }
+-- the commands that take a value, and its type (tokens / cash / gems / petlevel: a number; the showcase: the rest of
+-- the chat line)
+local ARG_KIND = { tokens = "number", cash = "number", gems = "number", petlevel = "number", pet = "string", pets = "string", evolve = "string" }
+-- the example value a refusal toast shows for a numeric command (50000 for the currencies)
+local ARG_EXAMPLE = { petlevel = "20" }
 local MAX_ARG_LENGTH = 48
+local DEFAULT_MAX_PET_LEVEL = 100 -- /petlevel's cap when neither PetCatalog nor TycoonCatalog names one
 local STAGE_NAMES = { [0] = "Normal", [1] = "Evolved", [2] = "Evolved II" }
 local STAGE_WORDS = {
 	["0"] = 0, normal = 0, base = 0,
@@ -570,9 +584,23 @@ local function cmdReset(player, profile)
 	wipe(tableField(profile, "Tiers"))
 	wipe(tableField(profile, "Hybrids"))
 	wipe(tableField(profile, "Food"))
+	-- Phase 4: evolution stages, training ranks and running jobs go; the Champion Ring record starts over; the
+	-- Migrations markers stay (a reset player is not migrated a second time: there is nothing old to migrate)
+	wipe(tableField(profile, "PetGrowth"))
+	local ring = tableField(profile, "Ring")
+	wipe(ring)
+	ring.Best, ring.Runs = 0, 0
+	-- the live session state of the other services: training / feeding sessions (Phase 4 PetCareService.ClearSessions;
+	-- the old Kitchen's ClearKitchen while that build is still here) and the coin piles (TycoonService.ClearCoins)
 	local care = loadModule(script.Parent, "PetCareService")
-	if hasFunction(care, "ClearKitchen") then
+	if hasFunction(care, "ClearSessions") then
+		pcall(care.ClearSessions, player)
+	elseif hasFunction(care, "ClearKitchen") then
 		pcall(care.ClearKitchen, player)
+	end
+	local tycoon = loadModule(script.Parent, "TycoonService")
+	if hasFunction(tycoon, "ClearCoins") then
+		pcall(tycoon.ClearCoins, player)
 	end
 	-- Phase 3: the battle teams (3 empty presets, preset 1 active) and the battle record (trophies, trial clears, raid /
 	-- PvP counters, event pets), in the shape DataService keeps them
@@ -610,6 +638,9 @@ local function cmdReset(player, profile)
 		-- Phase 3: cleared trials and event pets only grow and best values only rise in the merge
 		Teams = true,
 		Battle = true,
+		-- Phase 4: evolution stages, training ranks and the ring record only rise in the merge (Migrations are kept)
+		PetGrowth = true,
+		Ring = true,
 	})
 	if rewound then
 		rewindTutorial(player, profile, reload, true)
@@ -657,6 +688,54 @@ local function cmdSkipTutorial(player, profile)
 	end
 	tutorial.Done = true
 	return true, "tutorial skipped (no finish reward)", true
+end
+
+-- Phase 4: the top of the pet XP curve (PetCatalog.MaxPetLevel, else TycoonCatalog.PetXp.MaxLevel, else 100)
+local function maxPetLevel()
+	if PetCatalog and hasFunction(PetCatalog, "MaxPetLevel") then
+		local ok, top = pcall(PetCatalog.MaxPetLevel)
+		if ok and isWhole(top) and top >= 1 then
+			return top
+		end
+	end
+	local tycoon = loadModule(Shared, "TycoonCatalog")
+	local px = tycoon and type(tycoon.PetXp) == "table" and tycoon.PetXp or nil
+	if px and isWhole(px.MaxLevel) and px.MaxLevel >= 1 then
+		return px.MaxLevel
+	end
+	return DEFAULT_MAX_PET_LEVEL
+end
+
+-- Phase 4: every equipped pet to level n (XP 0) through DataService.SetPetLevel (the curve's cap; owned keys only).
+local function cmdPetLevel(player, profile, arg)
+	local top = maxPetLevel()
+	if not isWhole(arg) then
+		return false, "petlevel needs a whole number from 1 to " .. top .. ", like /petlevel 20"
+	end
+	if arg < 1 or arg > top then
+		return false, "petlevel takes a level from 1 to " .. top
+	end
+	if not hasFunction(DataService, "SetPetLevel") then
+		return false, "pet levels are unavailable in this build"
+	end
+	local equipped = type(profile.Equipped) == "table" and profile.Equipped or {}
+	if #equipped == 0 then
+		return false, "equip a pet first (Menu > Pets), then /petlevel " .. arg
+	end
+	local set, seen = 0, {}
+	for _, key in ipairs(equipped) do
+		if type(key) == "string" and not seen[key] then
+			seen[key] = true
+			local ok, done = pcall(DataService.SetPetLevel, player, key, arg)
+			if ok and done == true then
+				set = set + 1
+			end
+		end
+	end
+	if set == 0 then
+		return false, "no equipped pet could be set to level " .. arg
+	end
+	return true, set .. (set == 1 and " equipped pet is" or " equipped pets are") .. " level " .. arg .. " now", true
 end
 
 -- Phase 3: a Boss Raid now (events owner). Nothing in the profile changes.
@@ -870,13 +949,14 @@ local function cmdClearPets(player)
 	return true, "showcase pets removed", false
 end
 
--- Two toasts (each fits a side toast): the pet showcase commands first, then the others.
+-- Two toasts (each fits a side toast, <= 90 characters with the "DEV: " prefix): the pet showcase commands and
+-- /devhelp first, then the others.
 local function cmdHelp(player)
-	notify(player, "DEV: /pet <name> [0-2]  /pets [0-2]  /evolve <name|all> [1-2]  /clearpets", "info", HELP_SECONDS)
+	notify(player, "DEV: /pet <name> [0-2]  /pets [0-2]  /evolve <name|all> [1-2]  /clearpets  /devhelp", "info", HELP_SECONDS)
 	if tutorialReloader() then
-		return true, "/allpets /tokens N /cash N /gems N /reset /tutorial /skiptutorial /raid /devhelp", false
+		return true, "/allpets /tokens N /cash N /gems N /petlevel N /reset /tutorial /skiptutorial /raid", false
 	end
-	return true, "/allpets /tokens N /cash N /gems N /reset /skiptutorial /raid /devhelp", false
+	return true, "/allpets /tokens N /cash N /gems N /petlevel N /reset /skiptutorial /raid", false
 end
 
 local HANDLERS = {
@@ -884,6 +964,7 @@ local HANDLERS = {
 	tokens = cmdTokens,
 	cash = cmdCash,
 	gems = cmdGems,
+	petlevel = cmdPetLevel,
 	reset = cmdReset,
 	tutorial = cmdTutorial,
 	skiptutorial = cmdSkipTutorial,
@@ -914,7 +995,7 @@ local function execute(player, command, arg, source)
 	if arg ~= nil and (type(arg) ~= kind or (kind == "string" and #arg > MAX_ARG_LENGTH)) then
 		log(player, source, name, arg, "refused: bad value")
 		if NUMERIC[name] then
-			notify(player, "DEV: " .. name .. " needs a whole number, like /" .. name .. " 50000", "bad")
+			notify(player, "DEV: " .. name .. " needs a whole number, like /" .. name .. " " .. (ARG_EXAMPLE[name] or "50000"), "bad")
 		elseif kind == "string" then
 			notify(player, "DEV: " .. name .. " needs a short text, like /pet cloudy dragon 2", "bad")
 		else

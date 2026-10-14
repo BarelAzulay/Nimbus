@@ -19,14 +19,34 @@ python3 tools/verify_place.py                     # or: python3 tools/verify_pla
 
 ## Tycoon economy simulation
 
-`sim_tycoon.py` replays the tycoon homes (prices, incomes, house tiers, prestige, the Vault's offline pay) for an
-active player and a few hundred typical ones, prints when each milestone is reached and checks the pacing targets
-of ARCHITECTURE_V3.md. Its constants mirror `src/shared/TycoonCatalog.lua`: change both together (the smoke test
-`p2_economy` fails while they disagree).
+`sim_tycoon.py` replays the Phase 4 tycoon homes (pets make the money: rainbow coins from the Pet Garden, the food
+plants, the Coin Magnet, the Food Machine, EVOLVE at 20 / 50, pets growing to level 100, prestige with x1.5 prices
+per star, the Vault's offline coins) for an active player and 120 typical ones (3 prestige runs each), prints when
+each milestone is reached (first paid pad, Villa, first prestige, first EVOLVE, later runs, prestige Gems per hour)
+and checks the pacing targets of ARCHITECTURE_V3.md "Phase 4 build contract" 3.12 / 8.3: it must print
+`ALL TARGETS MET`. Its constants block mirrors `src/shared/TycoonCatalog.lua` (and the pet data of `PetCatalog` /
+`Config`): change both together (the smoke test `p2_economy`, `tools/smoke_p4_economy.lua`, fails while they
+disagree).
 
 ```sh
-python3 tools/sim_tycoon.py
+python3 tools/sim_tycoon.py                 # timeline of one player + Monte Carlo + targets (~20 s)
+python3 tools/sim_tycoon.py --quiet         # summary only
+python3 tools/sim_tycoon.py --ring 0.08     # a kid who climbs the Champion Ring regularly (+8% Cash)
+python3 tools/sim_tycoon.py --feed 0.5      # a heavy feeder (half the coins go to the Food Machine)
+python3 tools/sim_tycoon.py --mode combat   # the timeline player only gets Combat pets
+python3 tools/sim_tycoon.py --check         # catalog == sim: effect tables, pads with star prices, income, feeding (lupa)
+python3 tools/sim_tycoon.py --migrate       # 300 Phase 3 homes on their first Phase 4 login (Home Level, dead ends, pad time)
+python3 tools/sim_tycoon.py --plan yard.png # the yard from above: stations, pads, garden walks, coin piles (lupa + Pillow)
 ```
+
+* `--check` loads the real catalog (and PetCatalog) with lupa and compares every constant, `AvailablePads` (incl.
+  `PriceAt` with stars and `LegacyPrices`), `FoodOf`, `GardenSlots`, `IncomePerSecond`, `PileSeconds`, `ScoopRadius`,
+  `OfflineEarnings` and `StationsAfterPrestige` on 400 random homes, `FeedXp` / `FeedPrice` / `TrainCost` /
+  `TrainSeconds` at every level and rank, and runs `Validate()`.
+* `--migrate` imports the frozen Phase 3 sim (`tools/fixtures/sim_tycoon_phase3.py`) by path, stops 300 old homes at
+  random moments, applies the one-time migration (LegacySlots, LegacyPrices) and gates on: Home Level unchanged in
+  every home, no dead end, and a median time-to-the-next-pad ratio <= 1.0 in every house tier / star bucket.
+* Exit status 1 when a target is missed (or `--check` / `--migrate` finds a problem).
 
 ## Battle balance simulation (Phase 3)
 

@@ -17,7 +17,10 @@
 --   State.DefOf(key) -> def|nil  PetKeys.DefOf against the snapshot (tier finishes, merged hybrid looks)
 --   State.PetLevel(key) -> level, xp      State.Food() -> {[foodId]=count}      State.FoodCount(foodId)
 --   State.Home() -> { Level, Prestige, Stations = {[id]=level}, Garden = {[slot]=key}, Gym = {[slot]=key},
---                     CollectorCash }   (CollectorCash as of the last sync: the live amount is on the plot)
+--                     CollectorCash, LegacySlots = n | nil, LegacyPrices = true | nil }
+--                                (CollectorCash as of the last sync: the live amount is on the plot; the Phase 4
+--                                LegacySlots / LegacyPrices are a veteran's extra garden places / old prices until
+--                                their next Prestige, absent for everyone else)
 --   State.Cash() / State.Gems()  read the Cash / Gems attributes, fall back to the snapshot
 --   State.CashChanged / State.GemsChanged   Util.Signal, Fire(value) when the attribute changes
 --
@@ -26,9 +29,19 @@
 --   State.Battle() -> { Trophies, TrialBest, TrialCleared = {[level]=true}, Raids, RaidBestDamage, PvPWins,
 --                       PvPLosses, EventPets = {[petId]=true} }
 --
+--   Phase 4 (ARCHITECTURE_V3.md "Phase 4 build contract" section 4):
+--   State.PetGrowth(key) -> { Evo = 0..2, Speed, Physique, Ability, Defense = 0..10, Job = { Stat, Ends, Rank, Slot,
+--                             From, Paid } | nil }   always a table (zeros for a pet without growth; the server
+--                             leaves zero numbers out of the snapshot and they are filled in here). Evo is the stored
+--                             evolution stage (pressing EVOLVE), the four numbers are training ranks, Job the running
+--                             training job (Ends = server os.time(); display only)
+--   State.Ring() -> { Best, Runs }   the Champion Ring record (Best = the highest round won, Runs = finished runs)
+--
 -- Extras (not part of the cross-module contract): State.IsLoaded(), State.Perks(), State.Stats(),
 -- State.EquippedList(), State.TokensChanged (Signal, Fire(tokens) when the CloudTokens attribute changes),
--- State.DiscoveredCount(petIdList|nil), State.Tutorial() -> { Step, Done, Gifted }, State.Tiers(), State.Hybrids().
+-- State.DiscoveredCount(petIdList|nil), State.Tutorial() -> { Step, Done, Gifted }, State.Tiers(), State.Hybrids(),
+-- State.IsTraining(key) (true while the key has a training Job), State.TrainingKeys() -> {[key] = true},
+-- State.PetGrowthMap() -> the whole { [key] = entry } map (read-only).
 --
 -- The snapshot shape (ARCHITECTURE_V2.md section 1 + ARCHITECTURE_V3.md section 1 + Phase 2):
 --   { Tokens, Pets = {[petId]=count}, Equipped = {key,...}, Items = {[itemId]=count},
@@ -36,7 +49,8 @@
 --     Discovered = {[petId]=true}, IndexClaimed = {[groupId]=true}, Tutorial = { Step, Done, Gifted },
 --     Cash, Gems, Home = {...}, Food = {[foodId]=count}, Tiers = {[petId]={Golden, Rainbow}},
 --     Hybrids = {[uid]={Body, Style, Elements, Name, Rarity, Tier}}, PetLevels = {[key]={Level, Xp}},
---     Teams = {...}, Battle = {...} }   (Phase 3; TrialCleared arrives as a dense array of booleans)
+--     Teams = {...}, Battle = {...},   (Phase 3; TrialCleared arrives as a dense array of booleans)
+--     PetGrowth = {[key]={Evo?, Speed?, Physique?, Ability?, Defense?, Job?}}, Ring = { Best, Runs } }   (Phase 4)
 -- Whatever arrives is sanitised here, so UI code can index it without nil/type checks. The server sends Garden /
 -- Gym as arrays with "" for empty slots (remotes mangle sparse arrays); they are decoded to {[slot]=key} here.
 -- Plain Lua 5.1-compatible syntax only.
@@ -174,7 +188,7 @@ local function slotMap(raw)
 end
 
 local function newHome()
-	return { Level = 0, Prestige = 0, Stations = {}, Garden = {}, Gym = {}, CollectorCash = 0 }
+	return { Level = 0, Prestige = 0, Stations = {}, Garden = {}, Gym = {}, CollectorCash = 0, LegacySlots = nil, LegacyPrices = nil }
 end
 
 local function cleanHome(raw)
@@ -188,7 +202,80 @@ local function cleanHome(raw)
 	h.Garden = slotMap(raw.Garden)
 	h.Gym = slotMap(raw.Gym)
 	h.CollectorCash = wholeNumber(raw.CollectorCash)
+	-- Phase 4 (veterans only): a whole number of garden places >= 1, or nil; true, or nil
+	local legacy = wholeNumber(raw.LegacySlots)
+	if legacy >= 1 then
+		h.LegacySlots = math.min(legacy, MAX_SLOT)
+	end
+	if raw.LegacyPrices == true then
+		h.LegacyPrices = true
+	end
 	return h
+end
+
+-- Phase 4: pet growth per key. The server leaves zero numbers out of the snapshot: they are filled in here, so every
+-- entry has Evo and the four ranks.
+local GROWTH_STATS = { "Speed", "Physique", "Ability", "Defense" }
+local GROWTH_STAT_SET = { Speed = true, Physique = true, Ability = true, Defense = true }
+local MAX_EVO = 2
+local MAX_RANK = 10
+
+local function newGrowth()
+	local e = { Evo = 0 }
+	for _, stat in ipairs(GROWTH_STATS) do
+		e[stat] = 0
+	end
+	return e
+end
+
+local function cleanJob(raw)
+	if type(raw) ~= "table" or not GROWTH_STAT_SET[raw.Stat] then
+		return nil
+	end
+	local job = { Stat = raw.Stat, Ends = wholeNumber(raw.Ends), Rank = math.min(wholeNumber(raw.Rank), MAX_RANK), Slot = wholeNumber(raw.Slot), Paid = wholeNumber(raw.Paid) }
+	if type(raw.From) == "string" and raw.From ~= "" then
+		job.From = raw.From
+	end
+	return job
+end
+
+local function cleanGrowthEntry(raw)
+	local e = newGrowth()
+	if type(raw) ~= "table" then
+		return e
+	end
+	e.Evo = math.min(wholeNumber(raw.Evo), MAX_EVO)
+	for _, stat in ipairs(GROWTH_STATS) do
+		e[stat] = math.min(wholeNumber(raw[stat]), MAX_RANK)
+	end
+	e.Job = cleanJob(raw.Job)
+	return e
+end
+
+local function cleanGrowth(raw)
+	local out = {}
+	if type(raw) ~= "table" then
+		return out
+	end
+	for key, entry in pairs(raw) do
+		if validId(key) and type(entry) == "table" then
+			out[key] = cleanGrowthEntry(entry)
+		end
+	end
+	return out
+end
+
+local function newRing()
+	return { Best = 0, Runs = 0 }
+end
+
+local function cleanRing(raw)
+	local r = newRing()
+	if type(raw) == "table" then
+		r.Best = wholeNumber(raw.Best)
+		r.Runs = wholeNumber(raw.Runs)
+	end
+	return r
 end
 
 local function cleanTiers(raw)
@@ -378,6 +465,9 @@ local function newSnapshot()
 		-- Phase 3
 		Teams = newTeams(),
 		Battle = newBattle(),
+		-- Phase 4
+		PetGrowth = {},
+		Ring = newRing(),
 	}
 end
 
@@ -436,6 +526,9 @@ local function normalise(raw)
 	-- Phase 3
 	snap.Teams = cleanTeams(raw.Teams)
 	snap.Battle = cleanBattle(raw.Battle)
+	-- Phase 4
+	snap.PetGrowth = cleanGrowth(raw.PetGrowth)
+	snap.Ring = cleanRing(raw.Ring)
 	for id in pairs(snap.Tiers) do
 		snap.Discovered[id] = true -- a tier copy counts for its base pet
 	end
@@ -654,6 +747,43 @@ end
 
 function State.Battle()
 	return current.Battle
+end
+
+-- Phase 4: one pet's growth { Evo, Speed, Physique, Ability, Defense, Job | nil } (always a table; zeros for a pet
+-- without growth). Read-only: the entry belongs to the snapshot.
+function State.PetGrowth(key)
+	local entry = type(key) == "string" and current.PetGrowth[key]
+	if entry then
+		return entry
+	end
+	return newGrowth()
+end
+
+-- The whole growth map { [key] = entry } (read-only).
+function State.PetGrowthMap()
+	return current.PetGrowth
+end
+
+-- true while that key has a running training Job (it cannot be equipped, placed, fused or fielded meanwhile).
+function State.IsTraining(key)
+	local entry = type(key) == "string" and current.PetGrowth[key]
+	return entry ~= nil and entry.Job ~= nil
+end
+
+-- { [key] = true } of every pet in training (a fresh table).
+function State.TrainingKeys()
+	local out = {}
+	for key, entry in pairs(current.PetGrowth) do
+		if entry.Job ~= nil then
+			out[key] = true
+		end
+	end
+	return out
+end
+
+-- The Champion Ring record { Best, Runs }.
+function State.Ring()
+	return current.Ring
 end
 
 local function attributeNumber(name)
