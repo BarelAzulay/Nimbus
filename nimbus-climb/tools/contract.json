@@ -489,7 +489,11 @@
         "Validate",
         "AvailablePads",
         "HomeLevelOf",
-        "GardenSlots"
+        "GardenSlots",
+        "LuckyEV",
+        "CoinValue",
+        "HeapStage",
+        "XpForLevel"
       ],
       "pending": {
         "_comment": "ARCHITECTURE_V3.md \"Phase 4 build contract\" section 5.4 (wave 1, economy engineer)",
@@ -521,12 +525,18 @@
         "UnitPower",
         "TeamPower",
         "ExpectedDps",
-        "AverageMaxHp"
+        "AverageMaxHp",
+        "RealLoss",
+        "LossXp",
+        "RingPower",
+        "RingTarget",
+        "RingSeconds"
       ],
       "fields": [
         "Zones",
         "TimeLimits",
-        "TrialRewardRules"
+        "TrialRewardRules",
+        "TrainingSkills"
       ],
       "pending": {
         "_comment": "ARCHITECTURE_V3.md \"Phase 4 build contract\" section 5.4 (wave 1, battlecore engineer)",

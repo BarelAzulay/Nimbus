@@ -237,6 +237,9 @@ BattleCatalog.Damage = {
 	-- Phase 4 NO ONE-SHOTS in PvP: in a duel a single pet hit never takes more than Share of the victim's max HP (a
 	-- trained + evolved level-100 Pounce would otherwise delete a full-health pet). Trials, raids and the ring: unchanged.
 	MaxHit = { Modes = { Duel = true }, Share = 0.6 },
+	-- Phase 4 NO DRAWS in PvP: when the last pets of both duel teams fall in the same step (a double knock-out, more
+	-- likely in overtime), the team that dealt more damage in the fight wins; forfeits / leaves stay a draw
+	DoubleKoByDamage = { Duel = true },
 	-- ExpectedDps (boss HP, raid head counts): about this share of a pet's damage comes from its SPECIAL, so Ability
 	-- training (special power x meter speed) adds to the expected damage and raids stay 100-240 s for trained teams
 	SpecialDpsShare = 0.3,

@@ -792,6 +792,24 @@ pets at level 100 (evolutions stay the same) but obviously it becomes harder fro
 * Level-ups are announced with ONE toast per XP grant (a feed, a fight, a "Level up" batch), never one toast per level: a big grant can
   now cross many levels at once (the client_replay GUI-size check pins it).
 
+**Wave 1 decisions (landed; the lead accepted them, they are contract now):**
+* Duels only (`BattleCatalog.Damage`): `Overtime = { Modes = {Duel}, At = 75, PerSecond = 0.15 }` (after 75 s every duel hit grows
+  by 15% per second, BattleSim event `Overtime`), `MaxHit = { Modes = {Duel}, Share = 0.6 }` (no single hit takes more than 60% of a
+  pet's max HP) and `DoubleKoByDamage = { Duel = true }` (both last pets fall in one step: the side that dealt more damage wins).
+  Without them a fully trained Shield / Heal mirror never ends and an Evolved II level-100 Pounce one-shots. Trials, raids and the
+  ring keep the Phase 3 rules. `ExpectedDps` counts Ability with `SpecialDpsShare = 0.3` (raid boss HP stays honest for trained
+  teams; untrained it is the Phase 3 number).
+* Champion Ring: every 10th round is ALWAYS the giant mini-boss champion; a round's goal is `max(target, previous round's power)`;
+  Boost also scales the special. New BattleCatalog helpers: `RealLoss`, `LossXp`, `RingPower`, `RingTarget`, `RingSeconds`,
+  `TrainingSkills`; `unitInfo.boss = true` marks a mini-boss pet (raid bosses keep their boss id string).
+* Data: `Migrations.P4Veteran` (a migrated profile that had a home) and `P4Welcome` (TycoonService marks the welcome toast as shown,
+  in any later session); a cleared training Job travels as `false` + `JobDone`, and a stored job of the same skill at a HIGHER rank
+  survives a stale clear; `MutateGrowth` keeps an owned key's Evo / ranks even if fn deletes its entry; `MutateHome` clears
+  `LegacySlots` / `LegacyPrices` itself when Prestige rises; extra API `MigratedNow`, `Migrated` (signal), `SetPetLevel`.
+* Economy: `TycoonCatalog.Version = 4`; kinds renamed Press -> Plant, Collector -> Magnet, Kitchen -> FoodMachine, Gym -> Training (ids
+  unchanged); extras `LuckyEV`, `CoinValue`, `HeapStage`, `XpForLevel`, `CheckPurchase`, `StationsAfterPrestige`; the Phase 3 compat
+  aliases are deleted in wave 4.
+
 ### 3. Exact rules and numbers
 
 #### 3.1 Stations (TycoonCatalog; the 18 ids, slots and tier caps are UNCHANGED; the tier-cap sums stay 29 / 51 / 78 / 91)

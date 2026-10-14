@@ -61,6 +61,9 @@
 --       Losers = { owner... }, Draw, Forfeit, Level (Trial), BossId (Raid), Round (Ring), Damage = { [owner] = n },
 --       Shares = { [owner] = 0..1 }, Duration, Survivors = { [owner] = n }, Hp = { [side] = HP share left }, BossHp,
 --       BossMaxHp }   (the loss-XP gate: the share a team dealt = 1 - Hp[the other side])
+--       Phase 4 duel rules (BattleCatalog.Damage): Overtime (past At seconds every hit grows), MaxHit (no single pet hit
+--       takes more than Share of a pet's max HP) and DoubleKoByDamage (both last pets down in one step: the team that
+--       dealt more damage wins, Reason "Wipe"; forfeits stay a Draw). Trials, raids and the ring keep the Phase 3 rules.
 --   battle:Describe() -> the static "Start" payload: { BattleId?, Mode, Seed, Zone = { X, Z }, TimeLimit, Level,
 --       BossId, Round (Ring), Sides = { [side] = { owner... } }, Units = { unitInfo... } }
 --   battle:StaticUnits() -> { unitInfo... }     unitInfo = { id, side, owner, slot, kind = "Pet" | "MiniBoss" |
@@ -2444,7 +2447,29 @@ local function checkEnd(self, events)
 		return
 	end
 	if alive1 == 0 and alive2 == 0 then
-		finish(self, nil, "Draw", events)
+		-- Phase 4 (Damage.DoubleKoByDamage): a duel's double knock-out goes to the team that dealt more damage
+		local rule = damageRules().DoubleKoByDamage
+		local winner = nil
+		if type(rule) == "table" and rule[self.mode] and not self.forfeitSeen then
+			local d1, d2 = 0, 0
+			for _, team in ipairs(self.teams) do
+				if team.side == 1 then
+					d1 = d1 + team.damage
+				else
+					d2 = d2 + team.damage
+				end
+			end
+			if d1 > d2 then
+				winner = 1
+			elseif d2 > d1 then
+				winner = 2
+			end
+		end
+		if winner then
+			finish(self, winner, "Wipe", events)
+		else
+			finish(self, nil, "Draw", events)
+		end
 	elseif alive1 == 0 then
 		finish(self, 2, self.forfeitSeen and "Forfeit" or "Wipe", events)
 	elseif alive2 == 0 then
