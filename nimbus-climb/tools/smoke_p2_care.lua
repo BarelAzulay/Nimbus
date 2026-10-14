@@ -418,8 +418,15 @@ S.p2care_stats = guarded("p2care_stats", function()
 		end
 	end
 	T.check(capsOk, "care caps: every rarity has a whole level cap in 1..top that never drops with rarity", table.concat(capText, ", "))
-	T.check(PCat.LevelCap("Common") < PCat.LevelCap("Mythic") and PCat.LevelCap("Mythic") <= PCat.LevelCap("Secret"),
-		"care caps: rarer pets grow further (" .. table.concat(capText, ", ") .. ")")
+	-- Phase 4 (ARCHITECTURE_V3.md "Phase 4 build contract" 3.5): every rarity grows to level 50; the evolutions come at
+	-- 20 (every pet) and 50 (Epic and rarer), so a Common still reaches level 50 after its one evolution
+	local all50 = true
+	for _, r in ipairs(rarities) do
+		if PCat.LevelCap(r.Id) ~= 50 or PCat.LevelCap(r.Id) ~= top then
+			all50 = false
+		end
+	end
+	T.check(all50, "care caps: every rarity grows to level 50, the top of the XP curve (" .. table.concat(capText, ", ") .. ")")
 	local capForms = T.tally("care caps: LevelCap(rarity) == LevelCap(petId) == LevelCap(key) == LevelCap(def) for every pet")
 	for _, d in ipairs(PCat.Pets) do
 		local c = PCat.LevelCap(d.Rarity)
@@ -853,11 +860,12 @@ S.p2care_feed = guarded("p2care_feed", function()
 	local cx0 = totalXp(p, combat.Id)
 	local g2, l2 = Care.GrantXp(p, combat.Id, 30, "Battle")
 	T.check(g2 == 30 and totalXp(p, combat.Id) == cx0 + 30 and type(l2) == "number", "care caps: GrantXp gives XP below the cap")
-	-- a pet already above its cap (old data / developer tools) cannot be fed
+	-- Phase 4: every cap is the top of the XP curve (50), so no pet sits above its cap any more; a pet AT the top
+	-- (old data / developer tools push past it and are clamped) cannot be fed
 	DataS.AddPetXp(p, combat.Id, Cat.XpForLevel(PCat.LevelCap(combat.Id) + 3))
 	local over = DataS.GetPetLevel(p, combat.Id)
 	local okOver = Care.Feed(p, combat.Id, "Snack")
-	T.check(over > PCat.LevelCap(combat.Id) and not okOver and DataS.GetPetLevel(p, combat.Id) == over, "care caps: a pet above its cap (old data) is refused, its level stays")
+	T.check(over == PCat.LevelCap(combat.Id) and not okOver and DataS.GetPetLevel(p, combat.Id) == over, "care caps: a pet at the top level (50) is refused, its level stays")
 
 	c1:Disconnect()
 	c2:Disconnect()

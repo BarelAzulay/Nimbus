@@ -86,14 +86,25 @@
         "SumPerks",
         "IndexGroups",
         "GetStats",
-        "TotalCount"
+        "TotalCount",
+        "LevelCap",
+        "MaxPetLevel",
+        "MaxEvolution",
+        "EvolutionStage",
+        "CanEvolve",
+        "EvolutionMultiplier",
+        "RoleMultiplier"
       ],
       "fields": [
         "Species",
         "Pets",
         "ById",
         "Accessories",
-        "WingStyles"
+        "WingStyles",
+        "LevelCaps",
+        "EvolutionLevels",
+        "EvolutionBoost",
+        "RoleMult"
       ],
       "pending": {
         "_comment": "ARCHITECTURE_V3.md section 11 (elements, built in the Stormfang round)",
@@ -186,7 +197,22 @@
       ],
       "signals": [
         "ProfileLoaded"
-      ]
+      ],
+      "pending": {
+        "_comment": "ARCHITECTURE_V3.md \"Phase 4 build contract\" section 5.4 (wave 1, data engineer)",
+        "functions": [
+          "GetGrowth",
+          "GetGrowthMap",
+          "MutateGrowth",
+          "TrainingKeys",
+          "GetEvolution",
+          "SetEvolution",
+          "GetRing",
+          "MutateRing",
+          "IsMigrated",
+          "MarkMigrated"
+        ]
+      }
     },
     "server/Services/DamageService": {
       "functions": [
@@ -258,12 +284,19 @@
         "Unequip",
         "GetEquipped",
         "GetPerks",
-        "GetTokenMultiplier"
+        "GetTokenMultiplier",
+        "Refresh"
       ],
       "signals": [
         "PerksChanged",
         "Rolled"
-      ]
+      ],
+      "pending": {
+        "_comment": "ARCHITECTURE_V3.md \"Phase 4 build contract\" section 5.4 (wave 2, care engineer)",
+        "functions": [
+          "UnequipKey"
+        ]
+      }
     },
     "server/Services/ItemService": {
       "functions": [
@@ -328,7 +361,14 @@
       ],
       "signals": [
         "Changed"
-      ]
+      ],
+      "pending": {
+        "_comment": "ARCHITECTURE_V3.md \"Phase 4 build contract\" section 5.4 (wave 1, data engineer)",
+        "functions": [
+          "PetGrowth",
+          "Ring"
+        ]
+      }
     },
     "client/UI/CloudUI": {
       "functions": [
@@ -388,7 +428,13 @@
         "Init",
         "Stop",
         "GetPetCount"
-      ]
+      ],
+      "pending": {
+        "_comment": "ARCHITECTURE_V3.md \"Phase 4 build contract\" section 5.4 (wave 2, pets engineer)",
+        "functions": [
+          "PlayEvolution"
+        ]
+      }
     },
     "client/Controllers/TokenFx": {
       "functions": [
@@ -429,6 +475,200 @@
       "functions": [
         "Init"
       ]
+    },
+    "shared/TycoonCatalog": {
+      "functions": [
+        "IncomePerSecond",
+        "OfflineEarnings",
+        "XpToNext",
+        "Validate",
+        "AvailablePads",
+        "HomeLevelOf",
+        "GardenSlots"
+      ],
+      "pending": {
+        "_comment": "ARCHITECTURE_V3.md \"Phase 4 build contract\" section 5.4 (wave 1, economy engineer)",
+        "functions": [
+          "FoodOf",
+          "PetPower",
+          "LuckyChance",
+          "ScoopRadius",
+          "PileSeconds",
+          "CoinPoint",
+          "FeedXp",
+          "FeedPrice",
+          "TrainCost",
+          "TrainSeconds",
+          "TrainingSlots",
+          "StarPriceMultiplier",
+          "PriceAt"
+        ],
+        "fields": [
+          "Coins",
+          "FeedShare",
+          "Training"
+        ]
+      }
+    },
+    "shared/BattleCatalog": {
+      "functions": [
+        "UnitStats",
+        "UnitPower",
+        "TeamPower",
+        "ExpectedDps",
+        "AverageMaxHp"
+      ],
+      "fields": [
+        "Zones",
+        "TimeLimits",
+        "TrialRewardRules"
+      ],
+      "pending": {
+        "_comment": "ARCHITECTURE_V3.md \"Phase 4 build contract\" section 5.4 (wave 1, battlecore engineer)",
+        "functions": [
+          "ChampionTeam",
+          "RingRewards"
+        ],
+        "fields": [
+          "Ring",
+          "Training"
+        ]
+      }
+    },
+    "server/Services/TycoonService": {
+      "optional": true,
+      "functions": [
+        "Init",
+        "GetPlot",
+        "GetHome",
+        "Buy",
+        "Collect",
+        "Prestige",
+        "IncomePerSecond",
+        "GardenSet",
+        "GoHome"
+      ],
+      "signals": [
+        "HomeChanged",
+        "Claimed",
+        "Prestiged",
+        "Released"
+      ],
+      "pending": {
+        "_comment": "ARCHITECTURE_V3.md \"Phase 4 build contract\" section 5.4 (wave 2, tycoon engineer)",
+        "functions": [
+          "PileSeconds",
+          "CoinsWaiting",
+          "OpenHomePortal",
+          "ClearCoins"
+        ],
+        "signals": [
+          "CoinsScooped",
+          "PortalUsed"
+        ]
+      }
+    },
+    "server/Services/PetCareService": {
+      "optional": true,
+      "functions": [
+        "Init",
+        "Feed",
+        "GrantXp",
+        "LevelCap"
+      ],
+      "signals": [
+        "Fed",
+        "LevelUp"
+      ],
+      "pending": {
+        "_comment": "ARCHITECTURE_V3.md \"Phase 4 build contract\" section 5.4 (wave 2, care engineer)",
+        "functions": [
+          "Evolve",
+          "Train",
+          "TrainStop",
+          "ClearSessions"
+        ],
+        "signals": [
+          "Evolved",
+          "TrainingStarted",
+          "TrainingDone"
+        ]
+      }
+    },
+    "server/Services/BattleService": {
+      "optional": true,
+      "functions": [
+        "Init"
+      ],
+      "signals": [
+        "BattleEnded"
+      ],
+      "pending": {
+        "_comment": "ARCHITECTURE_V3.md \"Phase 4 build contract\" section 5.4 (wave 2, battleservice engineer)",
+        "functions": [
+          "StartRing",
+          "KeysInBattle"
+        ]
+      }
+    },
+    "server/Services/HomeBuilder": {
+      "optional": true,
+      "functions": [
+        "Init",
+        "PreparePlot",
+        "SetStation",
+        "BuildHome",
+        "SetPads",
+        "SetOwner",
+        "ClearPlot",
+        "GetStation"
+      ],
+      "pending": {
+        "_comment": "ARCHITECTURE_V3.md \"Phase 4 build contract\" section 5.4 (wave 2, homeworld engineer)",
+        "functions": [
+          "SetGarden",
+          "SetTraining"
+        ]
+      }
+    },
+    "server/Services/ArenaBuilder": {
+      "optional": true,
+      "functions": [
+        "Build",
+        "BuildPocket",
+        "ZoneAt"
+      ]
+    },
+    "client/UI/PetCard": {
+      "optional": true,
+      "pending": {
+        "_comment": "ARCHITECTURE_V3.md \"Phase 4 build contract\" section 5.4 (wave 2, pets engineer): a missing file is info until it lands",
+        "functions": [
+          "New"
+        ]
+      }
+    },
+    "client/Controllers/CareController": {
+      "optional": true,
+      "pending": {
+        "_comment": "ARCHITECTURE_V3.md \"Phase 4 build contract\" section 5.4 (wave 3, careui engineer)",
+        "functions": [
+          "Init",
+          "Open",
+          "Close",
+          "IsOpen"
+        ]
+      }
+    },
+    "client/Controllers/HomePortalFx": {
+      "optional": true,
+      "pending": {
+        "_comment": "ARCHITECTURE_V3.md \"Phase 4 build contract\" section 5.4 (wave 3, homefx engineer)",
+        "functions": [
+          "Init",
+          "Stop"
+        ]
+      }
     }
   },
   "scripts": [
@@ -536,7 +776,9 @@
       "petLow": 120,
       "skyDragon": 300,
       "stormAltar": 450,
-      "showcasePet": 350
+      "showcasePet": 350,
+      "petEvoLow": 380,
+      "petEvo2Low": 520
     },
     "petDetail": {
       "levels": [
