@@ -16,17 +16,17 @@ Updated: 2026-10-18 (after wave 2). Branch `v3-phase4`. Plan: `ARCHITECTURE_V3.m
 | 0 lead | contract, shared edits, fixtures | DONE (196da12, 7de086f, 7be2bb8 cap 100) |
 | 1 | data (Fable), economy, battlecore | DONE (5a40987). Gate: 7466 pass, 102 known red |
 | 2 | tycoon, care, battleservice (Fable); homeworld, arenaworld, pets | DONE (297c9ae). Reports: scratchpad/p4_wave2_notes.md. Lead after: data-test fixes, contract.json (Piles, SetGarden/SetTraining) |
-| 3 | homefx, battleclient, careui, ui | RUNNING (scratchpad/p4w3.js, all Opus). Wave-2 gate running in worktree scratchpad/gate_w2 (log gate_w2.log) |
-| 4 | docs (README), flow tests | not started |
+| 3 | homefx, battleclient, careui, ui | DONE (70b04b6). Reports: scratchpad/p4_wave3_notes.md. Gate in worktree scratchpad/gate_w3 (log gate_w3.log) |
+| 4 | flow, fixer (flaky tests, ring dump_gui scenarios, compat aliases), docs | script scratchpad/p4w4.js |
 | 5 | review + verify + fix, full suite, place file, merge, send | not started |
 
 ## How to resume a wave
 `Workflow({scriptPath: "<scratchpad>/p4wN.js", resumeFromRunId: "<run id>"})` - done agents replay from cache. Do NOT edit the
-script's PRE / task text before resuming (they are part of every cache key). Run ids: wave 2 wf_c2d57c0b-817 (done); wave 3 wf_c0748700-200 (running).
+script's PRE / task text before resuming (they are part of every cache key). Run ids: wave 2 wf_c2d57c0b-817 (done); wave 3 wf_c0748700-200 (done).
 
 ## Files the lead keeps (scratchpad = /tmp/claude-0/-home-user/8bec7944-bcd6-57fb-b0e4-c3304e2d2b43/scratchpad)
-- `p4w1.js`, `p4w2.js`, `p4w3.js` (wave scripts).
-- `p4_wave1_notes.md`: wave-1 builders' reports (exact API). `p4_wave2_notes.md`: wave-2 reports (same format). Write `p4_wave3_notes.md` after wave 3.
+- `p4w1.js` .. `p4w4.js` (wave scripts).
+- `p4_wave1_notes.md`: wave-1 builders' reports (exact API). `p4_wave2_notes.md`: wave-2 reports (same format). `p4_wave3_notes.md`: wave-3 reports.
 - Wave reports live in the workflow journal: `/root/.claude/projects/-home-user/8bec7944-bcd6-57fb-b0e4-c3304e2d2b43/subagents/workflows/<run>/journal.jsonl`.
 
 ## Known red until later waves (gate after wave 2 must show only these)
