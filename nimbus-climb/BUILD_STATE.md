@@ -18,7 +18,7 @@ Updated: 2026-10-18 (after wave 2). Branch `v3-phase4`. Plan: `ARCHITECTURE_V3.m
 | 2 | tycoon, care, battleservice (Fable); homeworld, arenaworld, pets | DONE (297c9ae). Reports: scratchpad/p4_wave2_notes.md. Lead after: data-test fixes, contract.json (Piles, SetGarden/SetTraining) |
 | 3 | homefx, battleclient, careui, ui | DONE (70b04b6). Reports: scratchpad/p4_wave3_notes.md. Gate in worktree scratchpad/gate_w3 (log gate_w3.log) |
 | 4 | flow, fixer, docs | DONE (wf_07cbfb76-a84, notes scratchpad/p4_wave4_notes.md; leads applied: /petlevel Refresh, COMPAT deleted). Gate in scratchpad/gate_w4, log gate_w4.log |
-| 5 | review + verify + fix, full suite, place file, merge, send | not started |
+| 5 | review + verify + fix, full suite, place file, merge, send | RUNNING review wf_a3116583-fae (script scratchpad/p4w5.js: 3 lenses -> 3 verifiers -> fixers server/battle/client). Gate w4 running (gate_w4.log). After: notes p4_wave5_notes.md, gate, run_checks.sh, rojo build + verify_place, merge to main, send rbxlx + zip. Resume: Workflow({scriptPath: scratchpad/p4w5.js, resumeFromRunId: "wf_a3116583-fae"}) |
 
 ## How to resume a wave
 `Workflow({scriptPath: "<scratchpad>/p4wN.js", resumeFromRunId: "<run id>"})` - done agents replay from cache. Do NOT edit the
