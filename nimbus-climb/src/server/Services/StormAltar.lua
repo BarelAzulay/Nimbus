@@ -104,7 +104,7 @@ local PROWL = math.rad(-8) -- forward lean of the showcase (nose down)
 local BRIDGE_W = 8
 local RAMP_LEVEL = 5 -- studs of level deck over the island edge before the ramp slopes down to the street
 local GAP_HALF = 26 -- degrees kept free of rim billows around the bridge
-local MAX_PARTS = 450
+local MAX_PARTS = 500
 -- the entrance gate's poster (World text rule: a SurfaceGui at 50 px per stud, titles >= 1 stud, lines >= 0.6 stud)
 local POSTER_PPS = 50
 local PANEL_W, PANEL_H = 12, 6.4 -- studs = 600 x 320 px

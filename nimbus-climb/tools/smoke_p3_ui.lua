@@ -341,6 +341,13 @@ local function serverScenarios()
 		T.eq(mine, 0, "p3ui tutorial: no script errors from TutorialService")
 	end)
 
+	-- Phase 5 (ARCHITECTURE_V3.md "Phase 5 build contract" 8 / 11, C18): the chapter-3 half of this file belongs to the
+	-- tutorial owner (W4): p3ui_content / p3ui_tutorial above (team -> dungeon -> raid, the Dungeon pad arrow, the NPC
+	-- needles from the catalogs) and any new server scenario, written INSIDE this block (own block only; re-read the file
+	-- right before each edit).
+	-- [owner: tutorial] begin
+	-- [owner: tutorial] end
+
 	return S
 end
 
@@ -945,6 +952,13 @@ local function clientScenarios()
 		Mock.SetViewport(390, 844)
 		advance(0.6)
 	end)
+
+	-- Phase 5 (ARCHITECTURE_V3.md "Phase 5 build contract" 10.5 / 11, C18): the arena / ring windows half of this file
+	-- belongs to the dungeonclient owner (W4): the Trial window checks of client_p3ui / client_p3ui_mobile above go
+	-- (the Dungeon prompt hand-off, Practice invite flag, Ring card stage and Dock take their place) and any new client
+	-- scenario is written INSIDE this block (own block only; re-read the file right before each edit).
+	-- [owner: dungeonclient] begin
+	-- [owner: dungeonclient] end
 
 	return S
 end

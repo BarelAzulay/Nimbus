@@ -1063,6 +1063,30 @@ BUILDERS.npc = BUILDERS.npcs
 BUILDERS.dragon = BUILDERS.skydragon
 
 ----------------------------------------------------------------------
+-- Phase 5 per-owner target blocks (ARCHITECTURE_V3.md "Phase 5 build contract" 11, C18). Each owner adds its targets
+-- to BUILDERS (BUILDERS.<kind> = function(a, b, c) ... return { { root, label, sub, facing } } end) from INSIDE its own
+-- block only (own block only; re-read the file right before each edit; never touch another block or the dispatch
+-- below). New helpers go into the owner's block too. The lead adds the python-side entries of tools/render_model.py
+-- (--list, view presets such as `lobby --views top`) at the gate from the owners' reports.
+----------------------------------------------------------------------
+
+-- [owner: worldlobby] begin
+-- (lobby with the Gate Court: `lobby` keeps its name; `gates` = the six gates + the court; `gate:<Home|Obby|Dungeon|Ring|Arena|Altar>`)
+-- [owner: worldlobby] end
+
+-- [owner: homeworld] begin
+-- (home:Press1:<1..40> = the Berry Farm levels, homegarden = 12 beds + the Food Bowl, the Fence / Fountain levels, the House tiers)
+-- [owner: homeworld] end
+
+-- [owner: dungeon] begin
+-- (dungeon:portal, dungeon:room:<kind>, dungeon:boss, dungeon:run:<floor> = a built run of 4 rooms)
+-- [owner: dungeon] end
+
+-- [owner: arenaart] begin
+-- (arena, arena:ring, pocket:ring after the 6.4 art pass; the trial pocket is gone)
+-- [owner: arenaart] end
+
+----------------------------------------------------------------------
 -- main
 ----------------------------------------------------------------------
 local target = tostring(ARGS.target or "")

@@ -18,8 +18,8 @@
 --   v3:
 --   PetCatalog.IndexGroups()              -> { { Id, Rarity, Pets = {PetDef...}, Reward = {Tokens = n} }... }
 --                                            one group per rarity that has pets, in rarity order (Secret last)
---   PetCatalog.GetStats(petId, level, tier) -> { Income, Power, Health, Speed } | nil   (Phase 2: tier added)
---                                            base * Config.PetStats.RarityScale[rarity] * (1 + 0.1 * (level - 1))
+--   PetCatalog.GetStats(petId, level, tier, stage) -> { Income, Power, Health, Speed } | nil   (Phase 2: tier; Phase 5: stage)
+--                                            base * Config.PetStats.RarityScale[rarity] * LevelFactor(level, stage)
 --                                            * tier multiplier (Normal 1, Golden 1.5, Rainbow 2.5). The same numbers
 --                                            as TycoonCatalog.PetPower x FoodOf / MealSeconds, so the Income shown is the Cash/s the Garden
 --                                            pays (prestige not applied). petId may also be a pet key ("cat@Golden":
@@ -33,13 +33,21 @@
 --                                            rarity. TycoonCatalog may override them (PetXp.RarityCaps /
 --                                            PetLevelCaps); never above MaxPetLevel(). nil for unknown pets.
 --   PetCatalog.MaxPetLevel()              -> top of the XP curve (TycoonCatalog.MaxPetLevel, else MaxLevel = 100)
---   PetCatalog.LevelFactor(level)         -> 1 + 0.1 * (level - 1)   (level clamped like GetStats)
+--   PetCatalog.LevelFactor(level, stage)  -> 1 + LevelBonus x (level - 1) x EvolutionBonus[stage]   (level clamped like
+--                                            GetStats; stage nil -> 0; Phase 5 contract 3.1: the ONE level formula for
+--                                            battle, coins and UI; rarity 1 examples: L1 1.0, L20 evo1 3.85, L50 evo2 10.19)
+--   PetCatalog.StatsOf(def, level, tier, stage) -> the body of GetStats for a def table (stage = the STORED stage,
+--                                            cleaned by EvolutionStage(def, level, stored); the level alone never evolves)
+--   PetCatalog.EvolutionBonus             { [0] = 1, [1] = 1.5, [2] = 1.875 }: multiplies the LEVEL BONUS (not the stat)
+--   PetCatalog.EvolutionBonusOf(stage)    -> 1 | 1.5 | 1.875  ("Level bonus x1.5" in texts; junk / nil -> 1)
 --   PetCatalog.TierMultiplier(tier)       -> 1 | 1.5 | 2.5 (a tier name, a pet key, a def or a multiplier)
 --   Phase 4 evolution and garden roles (ARCHITECTURE_V3.md "Phase 4 build contract" 3.2 / 3.6):
 --   PetCatalog.EvolutionLevels            { 20, 50 }: the level a pet needs for stage 1 / stage 2
---   PetCatalog.EvolutionBoost             { 1.25, 1.5 }: battle Power / Health and garden coins at stage 1 / 2
---                                            (applied by BattleCatalog.UnitStats and TycoonCatalog.PetPower, NEVER
---                                            inside GetStats / StatsOf)
+--   PetCatalog.EvolutionBoost             DEPRECATED (Phase 5): { 1.25, 1.5 }, the Phase 4 flat stage boost. Kept with
+--                                            its old values so Phase 4 callers (BattleCatalog P4.evoMult, TycoonCatalog
+--                                            MIRROR, PetCareService toast, CareController, NpcDialog, sim_tycoon) keep
+--                                            running until they switch to LevelFactor(level, stage) / GetStats(.., stage);
+--                                            the lead deletes it in the wave-3 gate (contract 3.1 / 10.5)
 --   PetCatalog.RoleMult                   { Economy = 1.6, Combat = 1 }: garden coins by Role
 --   PetCatalog.MaxEvolution(subject)      -> 1 | 2  (2 for Epic, Legendary, Mythic, Secret: the data mirror of
 --                                            PetBuilder.MaxEvolution). subject = def, rarity id, pet id or pet key
@@ -49,7 +57,7 @@
 --                                            level alone never evolves a pet
 --   PetCatalog.CanEvolve(subject, level, stage) -> nextStage | nil  when level >= EvolutionLevels[next] and
 --                                            next <= MaxEvolution(subject)
---   PetCatalog.EvolutionMultiplier(stage) -> 1 | 1.25 | 1.5  (EvolutionBoost by a cleaned stage)
+--   PetCatalog.EvolutionMultiplier(stage) -> 1 | 1.25 | 1.5  DEPRECATED like EvolutionBoost (deleted in the W3 gate)
 --   PetCatalog.RoleMultiplier(subject)    -> RoleMult[def.Role] (1 for unknown roles / pets)
 --   v3 elements (ARCHITECTURE_V3.md section 11, chart in Config.Elements):
 --   PetCatalog.ElementsOf(def)            -> { element... }  a pet's Element, or a fused hybrid's Elements
@@ -63,6 +71,9 @@
 --                                            (clamped to weak .. strong). Unknown / nil elements count as x1.
 -- Extras (nothing depends on them): PerkOrder, PerkNames, Accessories, WingStyles, Roles, RoleBlurbs,
 --   StatOrder, StatNames, SpecialKinds, GetRarityOdds, PerkLines, GetIndexGroup, IsRollable, Validate.
+--   Phase 5 (contract 3.2): SpecialKinds + "Rally" (fighter damage +35% for 8 s) and "Haste" (attack + move speed
+--   +35% for 8 s). Every Economy pet (a Support in battle) has exactly one Support kind: Heal, Shield, Rally or Haste;
+--   ids kept, names kept where they fit. Combat pets keep their specials. Validate enforces it.
 --
 -- PetDef v3 fields (every pet has them):
 --   Role    = "Economy" | "Combat". Economy pets earn Cash at home (phase 2): high Income, low Power/Health.
@@ -121,7 +132,8 @@ PetCatalog.RoleBlurbs = {
 }
 PetCatalog.StatOrder = { "Income", "Power", "Health", "Speed" }
 PetCatalog.StatNames = { Income = "Coins", Power = "Power", Health = "Health", Speed = "Speed" } -- Phase 4: pets make coins
-PetCatalog.SpecialKinds = { "Blast", "Heal", "Shield", "Storm", "Pounce", "Freeze", "Beam" }
+PetCatalog.SpecialKinds = { "Blast", "Heal", "Shield", "Storm", "Pounce", "Freeze", "Beam", "Rally", "Haste" } -- Phase 5: + Rally / Haste (Support kinds)
+PetCatalog.SupportKinds = { "Heal", "Shield", "Rally", "Haste" } -- Phase 5 contract 3.2: the kinds an Economy (Support) pet may have
 
 local SECRET = "Secret"
 
@@ -159,7 +171,7 @@ local RAW = {
 		Element = "Earth",
 		Role = "Economy",
 		Stats = Stats(10, 3, 28, 11),
-		Special = Special("fetch_dash", "Fetch Dash", "Pounce", 22, C(236, 196, 128)),
+		Special = Special("fetch_dash", "Fetch Dash", "Haste", 22, C(236, 196, 128)),
 	},
 	{
 		Id = "mallow_kitten", Name = "Mallow Kitten", Rarity = "Common",
@@ -224,7 +236,7 @@ local RAW = {
 		Element = "Frost",
 		Role = "Economy",
 		Stats = Stats(9, 3, 30, 9),
-		Special = Special("snowball_toss", "Snowball Toss", "Freeze", 16, C(186, 220, 250)),
+		Special = Special("snowball_toss", "Snow Wall", "Shield", 16, C(186, 220, 250)),
 	},
 
 	------------------------------------------------------------ Uncommon (6): 3 Economy, 3 Combat
@@ -278,7 +290,7 @@ local RAW = {
 		Element = "Storm",
 		Role = "Economy",
 		Stats = Stats(10, 3, 26, 11),
-		Special = Special("drowsy_lullaby", "Drowsy Lullaby", "Freeze", 18, C(190, 170, 230)),
+		Special = Special("drowsy_lullaby", "Drowsy Lullaby", "Heal", 18, C(190, 170, 230)),
 	},
 	{
 		Id = "waffle_corgi", Name = "Waffle Corgi", Rarity = "Uncommon",
@@ -291,7 +303,7 @@ local RAW = {
 		Element = "Earth",
 		Role = "Economy",
 		Stats = Stats(12, 3, 28, 10),
-		Special = Special("sunny_bark", "Sunny Bark", "Heal", 24, C(250, 212, 96)),
+		Special = Special("sunny_bark", "Sunny Bark", "Rally", 24, C(250, 212, 96)),
 	},
 	{
 		Id = "bubble_axolotl", Name = "Bubble Axolotl", Rarity = "Uncommon",
@@ -332,7 +344,7 @@ local RAW = {
 		Element = "Nature",
 		Role = "Economy",
 		Stats = Stats(11, 3, 30, 11),
-		Special = Special("spore_cloud", "Spore Cloud", "Storm", 18, C(176, 214, 132)),
+		Special = Special("spore_cloud", "Spore Cloud", "Rally", 18, C(176, 214, 132)),
 	},
 	{
 		Id = "frostling_penguin", Name = "Frostling Penguin", Rarity = "Rare",
@@ -412,7 +424,7 @@ local RAW = {
 		Element = "Water",
 		Role = "Economy",
 		Stats = Stats(12, 3, 30, 9),
-		Special = Special("stardust_swirl", "Stardust Swirl", "Storm", 20, C(176, 146, 244)),
+		Special = Special("stardust_swirl", "Stardust Swirl", "Haste", 20, C(176, 146, 244)),
 	},
 	{
 		Id = "candy_unicorn", Name = "Candy Unicorn", Rarity = "Epic",
@@ -425,7 +437,7 @@ local RAW = {
 		Element = "Celestial",
 		Role = "Economy",
 		Stats = Stats(12, 4, 30, 11),
-		Special = Special("sugar_rush", "Sugar Rush", "Heal", 30, C(246, 170, 214)),
+		Special = Special("sugar_rush", "Sugar Rush", "Haste", 30, C(246, 170, 214)),
 	},
 
 	------------------------------------------------------------ Legendary (3): 1 Economy, 2 Combat
@@ -599,7 +611,7 @@ local RAW = {
 		Element = "Shadow",
 		Role = "Economy", -- a raid prize for the tycoon side too: its gills hum over the Garden all day
 		Stats = Stats(12, 4, 36, 13),
-		Special = Special("void_fangs", "Void Fangs", "Beam", 40, C(150, 110, 255)),
+		Special = Special("void_fangs", "Void Fangs", "Rally", 40, C(150, 110, 255)),
 	},
 }
 
@@ -956,6 +968,10 @@ end
 
 PetCatalog.MaxLevel = 100 -- top of the XP curve when TycoonCatalog does not name one (its PetXp.MaxLevel wins)
 PetCatalog.LevelBonus = 0.1 -- +10% of the level-1 stats per level (TycoonCatalog.PetPower uses the same)
+-- Phase 5 (contract 3.1): an evolution multiplies the LEVEL BONUS, not the stat: LevelFactor(level, stage) =
+-- 1 + LevelBonus x (level - 1) x EvolutionBonus[stage]. Rarity 1: L1 1.0 (unchanged), L20 evo1 3.85 (Phase 4: 3.625),
+-- L50 evo2 10.19 (was 8.85), L100 evo2 19.56; nobody gets weaker (p5design/lead/proto_check.py).
+PetCatalog.EvolutionBonus = { [0] = 1, [1] = 1.5, [2] = 1.875 }
 -- the highest level XP can raise a pet to, by rarity. Phase 4: every rarity reaches 100 (the player's rule; the
 -- evolutions come at 20 and 50: Common, Uncommon and Rare pets evolve once, Epic and rarer twice). TycoonCatalog may override these
 -- (PetXp.RarityCaps or PetLevelCaps); a rarity missing here is capped at MaxPetLevel().
@@ -1013,8 +1029,30 @@ local function clampLevel(level)
 	return lv
 end
 
-function PetCatalog.LevelFactor(level)
-	return 1 + PetCatalog.LevelBonus * (clampLevel(level) - 1)
+-- stage -> whole number in 0..2 (nil, junk, NaN and anything below 1 count as 0; above the table's top counts as top).
+-- Without a def this is the only clamp; StatsOf / GetStats clean the stage with EvolutionStage(def, ..) first, so a
+-- Common pet never gets the stage-2 bonus.
+local function clampStage(stage)
+	local s = tonumber(stage)
+	if not finite(s) or s < 1 then
+		return 0
+	end
+	s = math.floor(s)
+	local top = #PetCatalog.EvolutionBonus
+	if s > top then
+		return top
+	end
+	return s
+end
+
+-- 1 | 1.5 | 1.875: the level-bonus multiplier of a stage (contract 3.1; "Level bonus x1.5" in texts)
+function PetCatalog.EvolutionBonusOf(stage)
+	return PetCatalog.EvolutionBonus[clampStage(stage)] or 1
+end
+
+-- 1 + LevelBonus x (level - 1) x EvolutionBonus[stage]; stage nil -> 0 (the Phase 4 formula, bit-identical)
+function PetCatalog.LevelFactor(level, stage)
+	return 1 + PetCatalog.LevelBonus * (clampLevel(level) - 1) * PetCatalog.EvolutionBonusOf(stage)
 end
 
 -- "cat@Golden" -> "cat", "Golden"; "cat" -> "cat", nil; hybrid keys ("hyb:...") -> nil (they need the profile)
@@ -1110,7 +1148,11 @@ end
 ----------------------------------------------------------------------
 
 PetCatalog.EvolutionLevels = { 20, 50 } -- stage 1 at level 20 (every pet), stage 2 at level 50 (Epic and rarer)
-PetCatalog.EvolutionBoost = { 1.25, 1.5 } -- x Power, Health (and so the special) and garden coins at stage 1 / 2
+-- DEPRECATED (Phase 5 contract 3.1 / C6): the Phase 4 flat boost, kept with its OLD values only so Phase 4 callers keep
+-- running (BattleCatalog P4.evoMult, TycoonCatalog MIRROR, PetCareService, CareController, NpcDialog, sim_tycoon.py).
+-- New code uses LevelFactor(level, stage) / GetStats(.., stage) / EvolutionBonusOf. The lead deletes EvolutionBoost and
+-- EvolutionMultiplier in the wave-3 gate once check.mjs lists no caller.
+PetCatalog.EvolutionBoost = { 1.25, 1.5 }
 PetCatalog.EvolveTwice = { Epic = true, Legendary = true, Mythic = true, Secret = true } -- PetBuilder's ASCEND_RARITY
 PetCatalog.RoleMult = { Economy = 1.6, Combat = 1 } -- garden coins by Role: Economy pets make 60% more
 
@@ -1173,7 +1215,7 @@ function PetCatalog.CanEvolve(subject, level, stage)
 	return nextStage
 end
 
--- 1 | 1.25 | 1.5 for stage 0 | 1 | 2 (junk counts as 0; above 2 counts as 2)
+-- DEPRECATED (see EvolutionBoost): 1 | 1.25 | 1.5 for stage 0 | 1 | 2 (junk counts as 0; above 2 counts as 2)
 function PetCatalog.EvolutionMultiplier(stage)
 	local s = tonumber(stage)
 	if not finite(s) or s < 1 then
@@ -1194,9 +1236,11 @@ function PetCatalog.RoleMultiplier(subject)
 	return 1
 end
 
--- Stats of a def table at a level and tier (the body of GetStats; defs from PetKeys.DefOf work: tier copies carry
--- StatMultiplier, hybrids their averaged base Stats and the higher rarity). tier nil -> the def's own tier.
-function PetCatalog.StatsOf(def, level, tier)
+-- Stats of a def table at a level, tier and evolution stage (the body of GetStats; defs from PetKeys.DefOf work: tier
+-- copies carry StatMultiplier, hybrids their averaged base Stats and the higher rarity). tier nil -> the def's own tier.
+-- stage (Phase 5) = the STORED stage (PetGrowth[key].Evo), cleaned by EvolutionStage(def, level, stage): nil -> 0, and
+-- the level alone never evolves a pet; it scales the level bonus (LevelFactor), never the stat itself.
+function PetCatalog.StatsOf(def, level, tier, stage)
 	if type(def) ~= "table" or type(def.Stats) ~= "table" then
 		return nil
 	end
@@ -1206,7 +1250,11 @@ function PetCatalog.StatsOf(def, level, tier)
 	else
 		mult = PetCatalog.TierMultiplier(tier)
 	end
-	local factor = rarityScale(def.Rarity) * PetCatalog.LevelFactor(level) * mult
+	local cleanStage = 0
+	if stage ~= nil then
+		cleanStage = PetCatalog.EvolutionStage(def, level, stage)
+	end
+	local factor = rarityScale(def.Rarity) * PetCatalog.LevelFactor(level, cleanStage) * mult
 	local out = {}
 	for _, key in ipairs(PetCatalog.StatOrder) do
 		local base = def.Stats[key]
@@ -1218,12 +1266,13 @@ function PetCatalog.StatsOf(def, level, tier)
 	return out
 end
 
--- GetStats("cloudy_dragon", 3) -> { Income, Power, Health, Speed } = base * RarityScale * (1 + 0.1 * (level - 1))
+-- GetStats("cloudy_dragon", 3) -> { Income, Power, Health, Speed } = base * RarityScale * LevelFactor(level, stage)
 -- * tier multiplier. level defaults to 1 (anything below 1 or not a number counts as 1; fractions are floored;
--- clamped to MaxPetLevel()). nil for unknown pets. See the API notes at the top for keys, defs and tiers.
-function PetCatalog.GetStats(petId, level, tier)
+-- clamped to MaxPetLevel()); stage (Phase 5, optional) is the stored evolution stage, nil = the pure level formula.
+-- nil for unknown pets. See the API notes at the top for keys, defs and tiers.
+function PetCatalog.GetStats(petId, level, tier, stage)
 	if type(petId) == "table" then
-		return PetCatalog.StatsOf(petId, level, tier)
+		return PetCatalog.StatsOf(petId, level, tier, stage)
 	end
 	local base, keyTier = splitKey(petId)
 	local def = PetCatalog.Get(base)
@@ -1233,7 +1282,7 @@ function PetCatalog.GetStats(petId, level, tier)
 	if tier == nil then
 		tier = keyTier
 	end
-	return PetCatalog.StatsOf(def, level, tier or "Normal")
+	return PetCatalog.StatsOf(def, level, tier or "Normal", stage)
 end
 
 ----------------------------------------------------------------------
@@ -1430,6 +1479,10 @@ function PetCatalog.Validate()
 	for _, s in ipairs(PetCatalog.SpecialKinds) do
 		kindSet[s] = true
 	end
+	local supportKindSet = {}
+	for _, s in ipairs(PetCatalog.SupportKinds) do
+		supportKindSet[s] = true
+	end
 
 	local seenIds, seenNames, seenSpecials = {}, {}, {}
 	local elementPets, elementRarities = {}, {}
@@ -1522,6 +1575,9 @@ function PetCatalog.Validate()
 			end
 			if not kindSet[special.Kind] then
 				bad(id .. ": unknown special kind " .. tostring(special.Kind))
+			elseif def.Role == "Economy" and not supportKindSet[special.Kind] then
+				-- Phase 5 contract 3.2: Economy pets are Supports in battle; their special is Heal / Shield / Rally / Haste
+				bad(id .. ": an Economy pet needs a Support special (Heal, Shield, Rally or Haste), has " .. tostring(special.Kind))
 			end
 			if type(special.Power) ~= "number" or special.Power <= 0 then
 				bad(id .. ": Special.Power must be a positive number")

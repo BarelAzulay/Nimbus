@@ -1370,7 +1370,9 @@ S.p3bs_exploits = scenario("p3bs_exploits", function()
 	-- an obby match during a battle loses it
 	local zb = bs.GetBattle(z)
 	z:SetAttribute("InMatch", true)
-	advance(0.7)
+	-- the 2 Hz monitor drops z, the next 10 Hz tick ends the trial and sends End: up to ~0.7 s depending on the monitor's
+	-- phase (the earlier scenarios' fight lengths shift it), so wait two monitor ticks
+	advance(1.2)
 	local rz = zb and w.find(zb.BattleId)
 	T.check(rz ~= nil and contains(rz.Losers, z.UserId), "p3 exploits: a player pulled into an obby match loses the battle at once")
 	z:SetAttribute("InMatch", false)

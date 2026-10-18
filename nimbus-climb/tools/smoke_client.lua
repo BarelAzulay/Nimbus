@@ -20,6 +20,29 @@ local S = {}
 local M = {} -- controllers by short name
 local Config, Util, Theme
 
+-- Phase 5 (ARCHITECTURE_V3.md "Phase 5 build contract" 7.1, m13): Roblox runs the LocalScripts under ReplicatedFirst
+-- (src/first, e.g. the loading screen) before PlayerScripts; the client boots do the same. Nothing to do when the
+-- folder is empty (before the menu wave).
+local function runFirstScripts()
+	local path = ROOTS and ROOTS["first"]
+	if not path then
+		return 0
+	end
+	local ok, folder = pcall(Mock.GetPath, path)
+	if not ok or not folder then
+		return 0
+	end
+	local n = 0
+	for _, inst in ipairs(folder:GetDescendants()) do
+		if inst:IsA("LocalScript") then
+			Mock.RunScript(inst)
+			n = n + 1
+		end
+	end
+	return n
+end
+_G.runFirstScripts = runFirstScripts
+
 local errorCursor = 0
 local outputCursor = 0
 
@@ -301,6 +324,7 @@ S.client_load = guarded("client_load", function()
 	Mock.StarterGuiFailures = 2
 	local main = Mock.GetPath(ROOTS["client"] .. "/Main")
 	T.check(main:IsA("LocalScript"), "client/Main.client.lua is a LocalScript")
+	runFirstScripts()
 	Mock.RunScript(main)
 	advance(1.5)
 	local ready = false
@@ -415,11 +439,24 @@ S.client_input = guarded("client_input", function()
 	T.near(h.WalkSpeed, P.WalkSpeed, 1.5, "releasing Shift returns to walking speed")
 	advance(3)
 	T.check(LocalPlayer:GetAttribute("Stamina") > staminaRunning + 5, "stamina regenerates when not running", staminaRunning .. " -> " .. tostring(LocalPlayer:GetAttribute("Stamina")))
-	-- run until exhausted: running stops, stamina never negative
+	-- run until exhausted: running stops, stamina never negative. Phase 5 (Config.Physics: 150 stamina, regen 45/s): a
+	-- held Shift resumes running EXHAUST_RESUME stamina after the regen delay (~0.6 s), so the check samples 0.3 s after
+	-- the attribute hits 0 (written at the edge) instead of a fixed 3 s later.
 	Mock.KeysDown.LeftShift = true
 	press("NimbusRun", "Begin")
-	advance(P.MaxStamina / P.RunStaminaDrain + 3)
-	T.check(LocalPlayer:GetAttribute("Stamina") >= 0, "stamina never goes negative", tostring(LocalPlayer:GetAttribute("Stamina")))
+	local exhaustDeadline = P.MaxStamina / P.RunStaminaDrain + 3
+	local ran, hitZero = 0, false
+	while ran < exhaustDeadline do
+		advance(1 / 30)
+		ran = ran + 1 / 30
+		local st = LocalPlayer:GetAttribute("Stamina")
+		if type(st) == "number" and st <= 0 then
+			hitZero = true
+			break
+		end
+	end
+	T.check(hitZero and LocalPlayer:GetAttribute("Stamina") >= 0, "stamina never goes negative", tostring(LocalPlayer:GetAttribute("Stamina")))
+	advance(0.3)
 	T.check(h.WalkSpeed < P.RunSpeed - 3, "an exhausted player can no longer run", "WalkSpeed " .. fmt(h.WalkSpeed))
 	Mock.KeysDown.LeftShift = false
 	press("NimbusRun", "End")
@@ -1195,6 +1232,7 @@ S.client_mobile = guarded("client_mobile", function()
 	Config = require(Mock.GetPath(ROOTS["shared"] .. "/Config"))
 	Theme = require(Mock.GetPath(ROOTS["shared"] .. "/Theme"))
 	ensureRemotes()
+	runFirstScripts()
 	Mock.RunScript(Mock.GetPath(ROOTS["client"] .. "/Main"))
 	advance(3)
 	local mobile = gui():FindFirstChild("MobileControls")

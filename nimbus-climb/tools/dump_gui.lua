@@ -2212,6 +2212,41 @@ scenario("petcards", function()
 	petCardsScene()
 end)
 
+----------------------------------------------------------------------
+-- Phase 5 per-owner scene blocks (ARCHITECTURE_V3.md "Phase 5 build contract" 11, C18). Each owner registers its
+-- scenes with scenario(name, fn) from INSIDE its own block only (own block only; re-read the file right before each
+-- edit; never touch another block or the dispatch below). New helpers go into the owner's block too. The lead adds
+-- the python-side entries of tools/render_gui.py (--list, view presets) at the gate from the owners' reports.
+----------------------------------------------------------------------
+
+-- [owner: neonkit] begin
+-- (the Neon widget gallery: NeonKit Card / Tile / Pill / Button / Orb / Dock at 4 sizes; the HUD pills + stamina ticks)
+-- [owner: neonkit] end
+
+-- [owner: battleclient] begin
+-- (battle:fighter, battle:raid, battle:dungeon: the 4.7 HUD on NeonKit; replaces the Phase 3/4 battle scenes above when it lands)
+-- [owner: battleclient] end
+
+-- [owner: careui] begin
+-- (menu:* tile grid + Dock, feed = the Food Machine window, garden, train, looks, home:strip)
+-- [owner: careui] end
+
+-- [owner: menu] begin
+-- (mainmenu, loading, settings)
+-- [owner: menu] end
+
+-- [owner: dungeonclient] begin
+-- (arena:dungeon, obby, ring: the Dungeon / Obby / Ring / Arena side panels; arena:trials is gone)
+-- [owner: dungeonclient] end
+
+-- [owner: homefx+pets] begin
+-- (follow windows, home signs / basket line if a scene is wanted)
+-- [owner: homefx+pets] end
+
+-- [owner: tutorial] begin
+-- (tutorial panel + pointer scenes for chapters 2-4)
+-- [owner: tutorial] end
+
 local function boot(width, height, touch, keepTitle)
 	Config = req("shared/Config")
 	local okMetrics, why = installMetrics()
@@ -2229,6 +2264,15 @@ local function boot(width, height, touch, keepTitle)
 	local main = Mock.GetPath(ROOTS["client"] .. "/Main")
 	if not main or not main:IsA("LocalScript") then
 		fail("client/Main.client.lua was not mounted")
+	end
+	-- Phase 5 (7.1, m13): the ReplicatedFirst LocalScripts (src/first: the loading screen) run before Main, like Roblox
+	local firstFolder = ROOTS["first"] and Mock.GetPath(ROOTS["first"]) or nil
+	if firstFolder then
+		for _, inst in ipairs(firstFolder:GetDescendants()) do
+			if inst:IsA("LocalScript") then
+				Mock.RunScript(inst)
+			end
+		end
 	end
 	Mock.RunScript(main)
 	advance(0.8)

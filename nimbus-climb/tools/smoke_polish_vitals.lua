@@ -398,7 +398,9 @@ S.client_polish_vitals = guarded("client_polish_vitals", function()
 	dash()
 	advance(1 / 30)
 	local cost = (Config.Physics.DashStaminaCost or 35) / (Config.Physics.MaxStamina or 100)
-	T.check(fraction(c.StFill) > before - cost + 0.05, "vitals: the dash cost eases out of the stamina tube (no jump)", fmt("%.2f", fraction(c.StFill)))
+	-- Phase 5: with 150 stamina a dash is a 23% slice (was 35%); the tube eases at the same rate (HudController 18/s), so
+	-- ~80% of the slice has gone after the dash's frames and about a fifth is still easing: the margin is 0.03 of the tube
+	T.check(fraction(c.StFill) > before - cost + 0.03, "vitals: the dash cost eases out of the stamina tube (no jump)", fmt("%.2f", fraction(c.StFill)))
 	advance(0.4)
 	local cd = MC and MC.GetDashCooldownFraction and MC.GetDashCooldownFraction() or -1
 	local angle = (1 - cd) * 360

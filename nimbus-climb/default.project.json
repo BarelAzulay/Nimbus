@@ -10,6 +10,10 @@
       "$className": "ServerScriptService",
       "Server": { "$path": "src/server" }
     },
+    "ReplicatedFirst": {
+      "$className": "ReplicatedFirst",
+      "First": { "$path": "src/first" }
+    },
     "StarterPlayer": {
       "$className": "StarterPlayer",
       "StarterPlayerScripts": {
@@ -20,7 +24,7 @@
     "Lighting": {
       "$className": "Lighting",
       "$properties": {
-        "Technology": "ShadowMap"
+        "Technology": "Future"
       }
     }
   }

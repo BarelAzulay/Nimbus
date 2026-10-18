@@ -328,7 +328,8 @@ function analyse(file) {
 	const isTheme = base === "Theme.lua" && path.basename(path.dirname(file)) === "shared";
 	const isConfig = base === "Config.lua" && path.basename(path.dirname(file)) === "shared";
 	const normPath = file.replace(/\\/g, "/");
-	const side = /\/src\/server\//.test(normPath) ? "server" : /\/src\/client\//.test(normPath) ? "client" : "shared";
+	// src/first = ReplicatedFirst LocalScripts (Phase 5 loading screen): client-side code like src/client
+	const side = /\/src\/server\//.test(normPath) ? "server" : /\/src\/(client|first)\//.test(normPath) ? "client" : "shared";
 	const allowedArt = contract.v3 && typeof contract.v3.artImage === "string" ? contract.v3.artImage : null;
 	const isScript = base.endsWith(".server.lua") || base.endsWith(".client.lua");
 	const dir = path.dirname(file);
