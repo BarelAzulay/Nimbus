@@ -673,11 +673,11 @@ S.p4data_save = guarded("p4data_save", function()
 	local JK = 954104
 	record(JK, {
 		PetGrowth = {
-			[a] = { Evo = 5, Speed = 11, Physique = -1, Ability = "x", Defense = 2.9, Job = { Stat = "Speed", Ends = t0 + 10, Rank = 12, Slot = 1 } },
-			[b] = { Speed = 2, Job = { Stat = "Speed", Ends = t0 + 10, Rank = 2, Slot = 1, Paid = 100 } }, -- stale: completed elsewhere
+			[a] = { Evo = 5, Speed = 11, Physique = -1, Ability = "x", Defense = 2.9, Job = { Stat = "Speed", Ends = t0 + 3600, Rank = 12, Slot = 1 } },
+			[b] = { Speed = 2, Job = { Stat = "Speed", Ends = t0 + 3600, Rank = 2, Slot = 1, Paid = 100 } }, -- stale: completed elsewhere
 			[c] = { Evo = 0 },
 			[""] = { Evo = 1 },
-			[d] = { Physique = 1, Job = { Stat = "Physique", Ends = t0 + 10, Rank = 2, Slot = 5, From = "Free", Paid = 300 } },
+			[d] = { Physique = 1, Job = { Stat = "Physique", Ends = t0 + 3600, Rank = 2, Slot = 5, From = "Free", Paid = 300 } },
 		},
 		Ring = { Best = 1e12, Runs = -3 },
 		Migrations = { P4 = true, [""] = true, Bad = 5, "ListEntry" },
@@ -880,7 +880,9 @@ S.p4data_save = guarded("p4data_save", function()
 	local B, cloneB, releaseB = secondServer("DataServiceP4ServerB")
 	if T.check(B ~= nil and type(B.MutateGrowth) == "function", "p4 save: a second copy of DataService loads as 'server B' (own cache, same store)", tostring(cloneB)) then
 		local TWO = 954109
-		record(TWO, { PetGrowth = { [a] = { Speed = 2, Job = { Stat = "Speed", Ends = t0 + 30, Rank = 3, Slot = 1, From = "Free", Paid = 2700 } } } })
+		-- (the jobs here end an hour out: server A runs PetCareService, whose tick completes a due job by itself; the
+		-- completions below are the test's, written the way each server's tick writes them, at a moment it controls)
+		record(TWO, { PetGrowth = { [a] = { Speed = 2, Job = { Stat = "Speed", Ends = t0 + 3630, Rank = 3, Slot = 1, From = "Free", Paid = 2700 } } } })
 		local okB, errB = pcall(function()
 			local tp = join("P4TwoServers", TWO)
 			B.Load(tp)
@@ -891,14 +893,14 @@ S.p4data_save = guarded("p4data_save", function()
 					g[a].Job = nil
 				end)
 			end
-			T.check(complete(DataS) == true and complete(B) == true, "p4 two servers: both servers complete the same job (the clock passed Ends on both)")
+			T.check(complete(DataS) == true and complete(B) == true, "p4 two servers: both servers complete the same job (as each tick does once the clock passes Ends)")
 			T.check(DataS.Save(tp) == true and B.Save(tp) == true, "p4 two servers: both save")
 			local st = (stored(TWO) or {}).PetGrowth or {}
 			T.check(type(st[a]) == "table" and st[a].Speed == 3 and st[a].Job == nil, "p4 two servers: the store holds rank 3 exactly once (not 4) and no job", growthText(st[a]))
 			-- server B evolves a and starts the next job while server A (stale: it still thinks the job is running after a
 			-- fresh load) completes it again later: B's whole entry travels, A's completion lands on the same rank
 			T.check(B.SetEvolution(tp, a, 1) == true and B.MutateGrowth(tp, function(g)
-				g[a].Job = { Stat = "Speed", Ends = t0 + 90, Rank = 4, Slot = 1, From = "Free", Paid = 4800 }
+				g[a].Job = { Stat = "Speed", Ends = t0 + 3690, Rank = 4, Slot = 1, From = "Free", Paid = 4800 }
 			end) == true and B.Save(tp) == true, "p4 two servers: server B evolves the pet and starts rank 4")
 			DataS.AddTokens(tp, 1)
 			T.eq(DataS.Save(tp), true, "p4 two servers: server A saves a token (it adopts the store)")
@@ -922,20 +924,20 @@ S.p4data_save = guarded("p4data_save", function()
 			B.AddTokens(tp, 1)
 			T.check(B.Save(tp) == true and B.GetGrowth(tp, a).Defense == 1, "p4 two servers: (precondition) server B adopts A's Defense 1 through its own save")
 			T.check(B.MutateGrowth(tp, function(g)
-				g[a].Job = { Stat = "Defense", Ends = t0 + 20, Rank = 2, Slot = 2, From = "Free", Paid = 1200 }
+				g[a].Job = { Stat = "Defense", Ends = t0 + 3620, Rank = 2, Slot = 2, From = "Free", Paid = 1200 }
 			end) == true and B.Save(tp) == true, "p4 two servers: (precondition) server B starts Defense 1 -> 2 and saves")
 			DataS.AddTokens(tp, 1)
 			T.check(DataS.Save(tp) == true and DataS.GetGrowth(tp, a).Job ~= nil and DataS.GetGrowth(tp, a).Job.Rank == 2, "p4 two servers: (precondition) server A adopts that job")
 			T.check(B.MutateGrowth(tp, function(g)
 				g[a].Defense = 2
-				g[a].Job = { Stat = "Defense", Ends = t0 + 200, Rank = 3, Slot = 2, From = "Free", Paid = 2700 }
+				g[a].Job = { Stat = "Defense", Ends = t0 + 3800, Rank = 3, Slot = 2, From = "Free", Paid = 2700 }
 			end) == true and B.Save(tp) == true, "p4 two servers: server B completes Defense 2 and starts the rank-3 job in one step, then saves")
 			T.check(DataS.MutateGrowth(tp, function(g)
 				g[a].Defense = g[a].Job.Rank
 				g[a].Job = nil
 			end) == true and DataS.Save(tp) == true, "p4 two servers: server A completes its (stale) rank-2 job afterwards and saves")
 			st = (stored(TWO) or {}).PetGrowth or {}
-			T.check(type(st[a]) == "table" and st[a].Defense == 2 and type(st[a].Job) == "table" and st[a].Job.Rank == 3 and st[a].Job.Paid == 2700 and st[a].Job.Ends == t0 + 200,
+			T.check(type(st[a]) == "table" and st[a].Defense == 2 and type(st[a].Job) == "table" and st[a].Job.Rank == 3 and st[a].Job.Paid == 2700 and st[a].Job.Ends == t0 + 3800,
 				"p4 two servers: A's late clear names the job it ended (Defense -> 2): B's NEWER paid rank-3 job survives; the rank is 2 once", growthText(st[a]))
 			advance(0.3)
 			T.check(DataS.GetGrowth(tp, a).Job ~= nil and DataS.GetGrowth(tp, a).Job.Rank == 3 and DataS.TrainingKeys(tp)[a] == true, "p4 two servers: ...and server A adopts B's job (the lock is back on A)")
@@ -951,10 +953,10 @@ S.p4data_save = guarded("p4data_save", function()
 					T.check(C.GetGrowth(tp, a).Job == nil and C.GetGrowth(tp, a).Defense == 2, "p4 two servers: (precondition) server C sees Defense 2 and no job")
 					rec.PetGrowth[a].Job = keptJob -- B's save is in the store again
 					T.check(C.MutateGrowth(tp, function(g)
-						g[a].Job = { Stat = "Defense", Ends = t0 + 400, Rank = 3, Slot = 1, From = "Follow", Paid = 2700 }
+						g[a].Job = { Stat = "Defense", Ends = t0 + 4000, Rank = 3, Slot = 1, From = "Follow", Paid = 2700 }
 					end) == true and C.Save(tp) == true, "p4 two servers: server C starts its own Defense 2 -> 3 job (the player paid twice on two servers) and saves")
 					st = (stored(TWO) or {}).PetGrowth or {}
-					T.check(type(st[a]) == "table" and st[a].Defense == 2 and type(st[a].Job) == "table" and st[a].Job.Rank == 3 and st[a].Job.Ends == t0 + 400 and st[a].Job.Slot == 1,
+					T.check(type(st[a]) == "table" and st[a].Defense == 2 and type(st[a].Job) == "table" and st[a].Job.Rank == 3 and st[a].Job.Ends == t0 + 4000 and st[a].Job.Slot == 1,
 						"p4 two servers: a job at the SAME target replaces the stored one (the session's value; the same job, not a newer one): one rank-3 job, never two ranks", growthText(st[a]))
 					T.check(C.MutateGrowth(tp, function(g)
 						g[a].Defense = 3
@@ -1589,9 +1591,13 @@ S.p4data_rollout = guarded("p4data_rollout", function()
 		P3DS.Save(p)
 		DataS.AddTokens(p, 1)
 		DataS.Save(p)
+		-- the Gym slot is read from the record this save wrote (its rebase lets PetCareService empty the live Gym)
+		local rh = (stored(ROLL) or {}).Home or {}
+		local rgym = type(rh.Gym) == "table" and rh.Gym or {}
 		advance(0.3)
 		home = DataS.GetHome(p)
-		T.check(home.Gym[1] == c and home.Garden[8] == d and home.LegacySlots == 6, "p4 rollout: a Phase 3 Gym placement and an 8th garden pet arrive intact (PetCareService empties the Gym on its home load; extra garden keys rest)")
+		T.check(rgym[1] == c and type(rh.Garden) == "table" and rh.Garden[8] == d and home.Garden[8] == d and home.LegacySlots == 6,
+			"p4 rollout: a Phase 3 Gym placement and an 8th garden pet arrive intact (PetCareService empties the Gym on its home load; extra garden keys rest)", listText(rgym))
 		K.removePlayers({ p })
 		advance(3)
 		local final = stored(ROLL) or {}

@@ -1257,16 +1257,18 @@ S.p4care_load = guarded("p4care_load", function()
 			B.Load(a)
 			advance(0.5)
 			T.check(B.GetGrowth(a, combat.Id).Job ~= nil and B.GetGrowth(a, combat.Id).Job.Rank == 1, "care load: server B holds the same running job")
-			-- the clock passes Ends: B completes it (its own PetCareService would use the same recipe), A's tick completes it too
+			-- the clock passes Ends: B completes it (its own PetCareService would use the same recipe), A's tick completes it too.
+			-- B writes its completion only after A's tick: A's autosave (every 90 s) may fall inside the job's minute, and
+			-- adopting B's saved completion first would leave A's tick nothing to complete
 			local okB = B.MutateGrowth(a, function(gr)
 				gr[combat.Id].Defense = gr[combat.Id].Job.Rank
 				gr[combat.Id].Job = nil
 			end)
-			T.check(okB == true and B.Save(a) == true, "care load: server B completes the job and saves")
 			local cashA = cashOf(a)
 			advance(Cat.TrainSeconds(1) + 2)
 			local ga = growthOf(a, combat.Id)
-			T.check(ga.Defense == 1 and ga.Job == nil and doneFor(uid2) == 1 and cashOf(a) == cashA, "care load: server A's tick completes it as well: rank 1 (the target), one TrainingDone, no refund", jobText(ga) .. " D" .. tostring(ga.Defense))
+			T.check(ga.Defense == 1 and ga.Job == nil and doneFor(uid2) == 1 and cashOf(a) == cashA, "care load: server A's tick completes it as well: rank 1 (the target), one TrainingDone, no refund", jobText(ga) .. " D" .. tostring(ga.Defense) .. " done " .. tostring(doneFor(uid2)) .. " cash " .. tostring(cashOf(a)) .. "/" .. tostring(cashA))
+			T.check(okB == true and B.Save(a) == true, "care load: server B completes the job and saves")
 			T.eq(DataS.Save(a), true, "care load: server A saves")
 			local st = (stored(uid2) or {}).PetGrowth or {}
 			T.check(type(st[combat.Id]) == "table" and st[combat.Id].Defense == 1 and st[combat.Id].Job == nil, "care load: the store holds Defense 1 exactly once (not 2) and no job (X11)", st[combat.Id] and ("D" .. tostring(st[combat.Id].Defense)) or "nil")

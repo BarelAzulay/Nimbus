@@ -624,10 +624,14 @@ local function serverScenarios()
 			"p2 save: ...and the Phase 4 defaults too (no PetGrowth, no Ring { 0, 0 }); the Migrations marker of a new profile is stored")
 		K.removePlayers({ s })
 		advance(2)
+		-- (Phase 4: PetCareService empties Home.Gym on every home load, so the Gym slot is checked in the record the
+		-- rejoin reads -- taken before the join, no save can race it -- and the Garden in the live home)
+		local sr = stored(SL) or {}
+		local gr = type(sr.Home) == "table" and type(sr.Home.Gym) == "table" and sr.Home.Gym or {}
 		local s2 = join("P2Slots", SL)
 		local home2 = DataS.GetHome(s2)
-		T.check(home2 and home2.Garden[1] == "pebble_pup" and home2.Garden[2] == nil and home2.Garden[3] == "pip_penguin" and home2.Gym[2] == "cloudy_dragon",
-			"p2 save: ...and read back as slot -> key")
+		T.check(home2 and home2.Garden[1] == "pebble_pup" and home2.Garden[2] == nil and home2.Garden[3] == "pip_penguin" and gr[1] == "" and gr[2] == "cloudy_dragon",
+			"p2 save: ...and read back as slot -> key", listText(gr))
 		K.removePlayers({ s2 })
 		advance(2)
 
