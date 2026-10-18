@@ -80,6 +80,10 @@
 --     its special); when that row would reach the middle of the screen (a landscape phone) the cards form a 2-column
 --     grid at the top-left edge instead and the menu tiles step aside (MenuController.SetColumnHidden) until the
 --     battle HUD goes; ATTACK / RETREAT as big touch buttons at the right edge, clear of the RUN / DASH buttons.
+--   * LEAVE (Champion Ring and Trials only, never duels or raids): beside ATTACK / RETREAT (wide: left of them;
+--     portrait phone: above ATTACK; landscape phone: under the team grid) and on the ring's next-round card; two
+--     presses ("Sure? Tap again" for 3 s first) send BattleCommand "Forfeit", which Command also lets through between
+--     two ring rounds (the won round has ended, the next Start has not come yet).
 --   * Tap / click an enemy in the world to focus it (a short tap that is not a camera drag; the nearest enemy on the
 --     screen within reach of the tap).
 --   * Result card at the end (bottom right; compact: top centre on a tall phone, top right on a landscape phone,
@@ -250,6 +254,15 @@ local K = {
 	MIN_TEXT_PX = 14, -- no HUD text is ever drawn smaller on the screen (Readability rule)
 	EDGE = 16,
 	RESULT_W = 440,
+	-- LEAVE (Ring / Trial only): the first press arms it for LEAVE_CONFIRM seconds, the second sends "Forfeit"
+	LEAVE_CONFIRM = 3,
+	LEAVE_W = 150, -- wide screens: left of ATTACK / RETREAT, CMD_H tall
+	LEAVE_H = 56, -- compact: above ATTACK (portrait) / under ATTACK; the next-round card's button
+	LEAVE_W_GRID = 200, -- a landscape phone: under the left-edge team grid, one line
+	LEAVE_H_GRID = 48,
+	LEAVE_W_MIN = 100, -- the narrowest LEAVE (two lines when armed)
+	LEAVE_TAB_W = 116, -- a landscape phone's next-round card: beside its bottom-left corner (DASH / RUN sit below it)
+	LEAVE_CARD_W = 230, -- the next-round card's bottom row (wide screens / portrait phones)
 }
 
 local STATES = (BattleSim and BattleSim.States) or { Idle = 0, Moving = 1, Attacking = 2, Retreating = 3, Casting = 4, Down = 5, Stunned = 6 }
@@ -327,6 +340,7 @@ local Input = {} -- keys, gamepad, taps
 local Net = {} -- messages
 local Cards = {} -- Phase 4: the PetCard above every battle unit
 local Ring = {} -- Phase 4: the Champion Ring HUD (round / record / next-round side card / run card), duel overtime
+local Leave = {} -- LEAVE (two presses -> BattleCommand "Forfeit"): Champion Ring runs and Trials only
 
 ----------------------------------------------------------------------
 -- Helpers
@@ -2460,6 +2474,186 @@ function Hud.KeyText(kind, slot)
 	return tostring(slot)
 end
 
+----------------------------------------------------------------------
+-- LEAVE: stops a Champion Ring run or a Trial (BattleCommand "Forfeit"; the server ends the run cleanly and the
+-- climber comes back at the portal). Never in duels (a forfeit costs trophies) or raids. Two presses, like
+-- HudController's match Leave: the first turns it into "Sure? Tap again" for LEAVE_CONFIRM seconds, the second
+-- sends it. One button beside the commands (a child of Commands, so it goes wherever they go) and one on the ring's
+-- next-round card; both share the confirm state. Repainted only on a press / its timeout (task.delay), never per frame.
+----------------------------------------------------------------------
+Leave.armedUntil = 0
+Leave.sentUntil = 0
+Leave.buttons = {}
+
+function Leave.Allowed(B)
+	return B ~= nil and B.Fighter == true and (B.Mode == "Ring" or B.Mode == "Trial")
+end
+
+function Leave.Make(parent, textSize)
+	local b = button(parent, "LeaveButton", "LEAVE", "Pink", UDim2.fromOffset(K.LEAVE_W, K.CMD_H), function()
+		Leave.Press()
+	end)
+	b.TextWrapped = true
+	b.TextSize = textSize
+	b:SetAttribute("BaseText", textSize)
+	b:SetAttribute("LeaveStyle", "Pink")
+	Leave.buttons[#Leave.buttons + 1] = b
+	return b
+end
+
+-- the shown text + style for the current confirm state
+function Leave.State(now)
+	if now < Leave.sentUntil then
+		return "Leaving...", "Gray"
+	elseif now < Leave.armedUntil then
+		return "Sure? Tap again", "Red"
+	end
+	return "LEAVE", "Pink"
+end
+
+function Leave.Paint()
+	local text, style = Leave.State(os.clock())
+	local live = {}
+	for _, b in ipairs(Leave.buttons) do
+		if b.Parent then
+			live[#live + 1] = b
+			setText(b, text)
+			if b:GetAttribute("LeaveStyle") ~= style then
+				b:SetAttribute("LeaveStyle", style)
+				if CloudUI and type(CloudUI.SetStyle) == "function" then
+					CloudUI.SetStyle(b, style)
+				else
+					b.BackgroundColor3 = Theme.Buttons[style] or COLORS.Ally
+				end
+			end
+		end
+	end
+	Leave.buttons = live
+end
+
+function Leave.Press()
+	local now = os.clock()
+	if now < Leave.sentUntil or not Leave.Allowed(St.battle) then
+		return
+	end
+	if now < Leave.armedUntil then
+		Leave.armedUntil = 0
+		if BattleController.Command("Forfeit") then
+			Leave.sentUntil = now + K.LEAVE_CONFIRM -- the run's End normally closes the HUD long before this
+		end
+	else
+		Leave.armedUntil = now + K.LEAVE_CONFIRM
+	end
+	Leave.Paint()
+	task.delay(K.LEAVE_CONFIRM + 0.05, Leave.Paint) -- back to LEAVE when nobody pressed again
+end
+
+-- a new battle (a ring round too) and the step from a fight to the next-round card start unarmed
+function Leave.Track(B)
+	local phase = B and B.ended and "next" or "fight"
+	if Leave.battle ~= B or Leave.phase ~= phase then
+		Leave.battle = B
+		Leave.phase = phase
+		Leave.armedUntil = 0
+		Leave.sentUntil = 0
+		Leave.Paint()
+	end
+end
+
+-- the HUD's vitals card (NimbusHud BottomLeft.Vitals) in design px: left, top, right, bottom (nil when not shown;
+-- like Ring.CurrencyBottom: both GUIs are laid out below the top bar)
+function Leave.Vitals(m)
+	local pg = LocalPlayer and LocalPlayer:FindFirstChild("PlayerGui")
+	local hud = pg and pg:FindFirstChild("NimbusHud")
+	local v = hud and hud:FindFirstChild("Vitals", true)
+	if not v or not v:IsA("GuiObject") or not v.Visible or v.AbsoluteSize.X <= 0 then
+		return nil
+	end
+	local f = max(0.05, m.F)
+	local p, size = v.AbsolutePosition, v.AbsoluteSize
+	return floor(p.X / f), floor(p.Y / f), math.ceil((p.X + size.X) / f), math.ceil((p.Y + size.Y) / f)
+end
+
+local function leaveSize(b, w, h, text)
+	b.Size = UDim2.fromOffset(w, h)
+	b.TextSize = text
+	b:SetAttribute("BaseText", text)
+end
+
+-- the commands' LEAVE: wide = left of ATTACK / RETREAT; compact portrait = above ATTACK in the right-edge column;
+-- a landscape phone = under the left-edge team grid (the commands row has the currency pill above it and DASH under
+-- RETREAT); a landscape screen with the team on top = under ATTACK. Positions are relative to the Commands frame.
+function Leave.Place(m, B, isFighting)
+	Leave.Track(B)
+	local b = Hud.leave
+	if not b then
+		return
+	end
+	b.Visible = isFighting == true and Leave.Allowed(B)
+	if not b.Visible then
+		return
+	end
+	local cw, ch = Hud.cmd.Size.X.Offset, Hud.cmd.Size.Y.Offset
+	if not m.Compact then
+		leaveSize(b, K.LEAVE_W, K.CMD_H, 22)
+		b.Position = UDim2.fromOffset(-K.LEAVE_W - 12, 0)
+	elseif not m.Landscape then
+		leaveSize(b, cw, K.LEAVE_H, 18)
+		b.Position = UDim2.fromOffset(0, -K.LEAVE_H - 12)
+	elseif Hud.teamPlace == "Left" then
+		-- as wide as the grid, but never into the vitals card (a short phone puts it right next to the grid)
+		local left = Hud.cmd.Position.X.Offset - cw -- Commands is anchored at its top-right corner
+		local y = 6 + Hud.team.Size.Y.Offset + 10
+		local w = min(Hud.team.Size.X.Offset, K.LEAVE_W_GRID)
+		local vl, _, _, vb = Leave.Vitals(m)
+		if vl and vb > y then
+			w = max(K.LEAVE_W_MIN, min(w, vl - 10 - K.SIDE_X))
+		end
+		leaveSize(b, w, (w >= K.LEAVE_W_GRID - 10) and K.LEAVE_H_GRID or K.LEAVE_H, 18) -- narrower: "Sure? Tap again" takes two lines
+		b.Position = UDim2.fromOffset(K.SIDE_X - left, y - Hud.cmd.Position.Y.Offset)
+	else
+		leaveSize(b, K.TOUCH_W, K.LEAVE_H, 18)
+		b.Position = UDim2.fromOffset(0, ch + 10)
+	end
+	Hud.TrimButton(b, m.Compact)
+	Leave.Paint()
+end
+
+-- the next-round card's LEAVE: a row at the bottom of the card (returns the card's new height); on a landscape phone
+-- beside the card's bottom-left corner, under the top card (no room inside or below: the currency pill is above the
+-- card, DASH / RUN below it)
+function Leave.PlaceOnCard(m, B, w, y)
+	local b = Hud.nextLeave
+	if not b then
+		return y
+	end
+	Leave.Track(B)
+	b.Visible = Leave.Allowed(B)
+	if not b.Visible then
+		return y
+	end
+	Hud.TrimButton(b, m.Compact)
+	Leave.Paint()
+	if m.Compact and m.Landscape then
+		leaveSize(b, K.LEAVE_TAB_W, K.LEAVE_H, 18)
+		local cardTop = Hud.next.Position.Y.Offset -- the card is anchored at its top-right corner here
+		local below = 6 + (Hud.topH or 80) + 8 - cardTop -- the top card's bottom + a gap, card-relative
+		local at = y - K.LEAVE_H -- level with the card's bottom ...
+		local vl, vt, vr = Leave.Vitals(m)
+		local x1 = Hud.next.Position.X.Offset - w - 8 -- (the card's left edge - the gap)
+		if vl and vr > x1 - K.LEAVE_TAB_W and vl < x1 then
+			at = min(at, vt - cardTop - 8 - K.LEAVE_H) -- ... but above the vitals card when it reaches under it
+		end
+		b.AnchorPoint = Vector2.new(1, 0)
+		b.Position = UDim2.fromOffset(-8, max(at, below))
+		return y
+	end
+	leaveSize(b, min(w - 2 * K.PAD - 8, K.LEAVE_CARD_W), K.LEAVE_H - 4, m.Compact and 18 or 22) -- one line, also armed
+	b.AnchorPoint = Vector2.new(1, 0)
+	b.Position = UDim2.new(1, -K.PAD - 4, 0, y)
+	return y + K.LEAVE_H - 4 + K.PAD
+end
+
 function Hud.BuildCommands()
 	local cmd = Hud.cmd
 	Hud.attack = button(cmd, "AttackButton", "ATTACK", "Red", UDim2.fromOffset(215, K.CMD_H), function()
@@ -2468,6 +2662,7 @@ function Hud.BuildCommands()
 	Hud.retreat = button(cmd, "RetreatButton", "RETREAT", "Blue", UDim2.fromOffset(215, K.CMD_H), function()
 		BattleController.Command("Retreat")
 	end)
+	Hud.leave = Leave.Make(cmd, 20)
 	Hud.attackKey = keyChip(Hud.attack, "F", { Position = UDim2.fromOffset(-6, -8) })
 	Hud.retreatKey = keyChip(Hud.retreat, "R", { Position = UDim2.fromOffset(-6, -8) })
 	for _, b in ipairs({ Hud.attack, Hud.retreat }) do
@@ -2901,6 +3096,7 @@ function Hud.Rebuild()
 	end
 	Hud.cmd.Visible = isFighting
 	Hud.SetMenuHidden((isFighting or between) and Hud.teamPlace == "Left")
+	Leave.Place(m, B, isFighting)
 	Ring.PlaceNext(B)
 	Hud.TrimButton(Hud.attack, m.Compact)
 	Hud.TrimButton(Hud.retreat, m.Compact)
@@ -3791,6 +3987,7 @@ function Ring.EnsureNext()
 	Hud.nextExtra = label(f, "", "Label", 18, { Name = "Extra", TextXAlignment = Enum.TextXAlignment.Left, TextColor3 = COLORS.Mine })
 	Hud.nextCount = label(f, "", "Display", 24, { Name = "Countdown", TextXAlignment = Enum.TextXAlignment.Left, TextColor3 = COLORS.White })
 	Hud.nextBar = thinBar(f, "Timer", 8, Ring.GOLD)
+	Hud.nextLeave = Leave.Make(f, 20) -- LEAVE between two rounds (BattleService takes "Forfeit" during the intermission)
 	return f
 end
 
@@ -3880,6 +4077,7 @@ function Ring.PlaceNext(B)
 	Hud.nextBar.Root.Position = UDim2.fromOffset(K.PAD + 4, y)
 	Hud.nextBar.Root.Size = UDim2.fromOffset(inner, 8)
 	y = y + 8 + K.PAD
+	y = Leave.PlaceOnCard(m, B, w, y)
 	f.Size = UDim2.fromOffset(w, y)
 	f.Visible = true
 	Hud.FixText(f, m.F)
@@ -4213,7 +4411,11 @@ end
 
 function BattleController.Command(action, arg)
 	local B = St.battle
-	if not B or not B.Fighter or B.ended then
+	if not B or not B.Fighter then
+		return false
+	end
+	-- a ring run can be left between two rounds too: the won round has ended, the next Start has not come yet
+	if B.ended and not (action == "Forfeit" and B.Mode == "Ring" and B.ringNext ~= nil) then
 		return false
 	end
 	if action ~= "Attack" and action ~= "Retreat" and action ~= "Special" and action ~= "Forfeit" then
@@ -4272,6 +4474,9 @@ function BattleController.Command(action, arg)
 	end)
 	if not ok then
 		return false
+	end
+	if action == "Forfeit" then
+		return true -- the run's / trial's End does the rest
 	end
 	-- optimistic feedback (the Order event confirms)
 	if action == "Retreat" then

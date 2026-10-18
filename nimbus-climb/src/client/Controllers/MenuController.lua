@@ -5563,7 +5563,7 @@ do
 				local gems = P2.catalogCall("PrestigeGems", stars + 1) or P.GemReward or 0
 				local mult = P2.catalogCall("PrestigeMultiplier", stars + 1) or ((P.IncomeMultiplier or 1.25) ^ (stars + 1))
 				H.ConfirmLines.Reset.Text = "Your Cash, the coins on the lawn and your stations (the Garden stays)"
-				H.ConfirmLines.Keep.Text = "Pets, levels, evolutions, training (no Cash back if stopped), Garden pets, food and decor"
+				H.ConfirmLines.Keep.Text = "Pets, levels, evolutions, training (no Cash back on Stop), food, decor"
 				local places = math.min(tonumber(P.GardenSlotsMax) or 12, (tonumber(P.GardenSlotsBase) or 3) + (tonumber(P.GardenSlotsPerStar) or 1) * (stars + 1))
 				local gain = "Star " .. (stars + 1) .. ": x" .. shortNumber(math.floor(mult * 100 + 0.5) / 100) .. " coins, garden place " .. places .. " and " .. commas(gems) .. " Gems"
 				if stars + 1 == (tonumber(P.FusionUnlock) or 1) then

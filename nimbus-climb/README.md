@@ -827,6 +827,7 @@ what the next win pays. Pick where to start (round 1, or any boss round you have
   single level-1 pet beats; then the champions get rarer and stronger, and **every 10th round is a giant boss**. You
   have **90 seconds** for a round; lose once (or run out of time) and the run ends. Between two rounds you get 3
   seconds and a side card ("Round 8 won! ... Round 9 in 3"). Your health comes back full every round.
+  Tap LEAVE (twice) to stop a run; you come back at the Champion Ring portal.
 - **Every win pays Cash and XP:** the bigger of $20 + $2 x the round and what your garden makes in 1.5 + 0.1 x the
   round seconds (at most 9 seconds), and 20 + 6 x the round XP for every pet of your team. A **new record** round
   pays **x3 Cash**, and beating a boss round for the first time pays **100 Cloud Tokens**. The round that ends your

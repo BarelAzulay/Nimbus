@@ -8,6 +8,16 @@
 --                             at 844x390 the rows read either way; at 1280x720 and 1920x1080 they stay one line
 --                             (STATION_ROW_H)
 --   client_p4fix_mobile       (phone world) the same at 740x360 and 667x375 on the touch phone, then back to portrait
+--   client_p4fix_leave        a Champion Ring run / a Trial can be left (BattleCommand "Forfeit", BattleService takes it
+--                             in a fight and in the ring intermission): BattleController's LEAVE beside ATTACK / RETREAT
+--                             and on the next-round card, two presses (the first says "Sure? Tap again" and sends
+--                             nothing; it falls back to LEAVE after ~3 s; the second sends exactly one Forfeit), a
+--                             Forfeit between two rounds passes Command while the won round has ended (Attack does
+--                             not); no LEAVE in duels; off the screen centre, clear of the other battle controls,
+--                             Theme's Button font, >= 14 px at 1920x1080 / 1280x720 / 390x844 / 844x390
+--   client_p4fix_leave_mobile (phone world) the same layout checks on the touch phone (390x844, 844x390, 740x360,
+--                             667x375): LEAVE covers no other button (RUN / DASH, menu, hotbar), no team card, no
+--                             top card and stays on the screen
 -- Plain Lua 5.1 syntax only.
 
 local T = SmokeCommon.T
@@ -39,6 +49,7 @@ end
 
 local Config = moduleAt("shared", "Config")
 local PetCatalog = moduleAt("shared", "PetCatalog")
+local Theme = moduleAt("shared", "Theme")
 
 local function pg()
 	return LocalPlayer:FindFirstChildOfClass("PlayerGui")
@@ -305,6 +316,341 @@ S.client_p4fix_mobile = guarded("client_p4fix_mobile", function()
 		{ 667, 375, true, true },
 	})
 	cleanup()
+end)
+
+----------------------------------------------------------------------------------------------------
+-- LEAVE in the battle HUD (a ring run / a trial can be stopped: BattleCommand "Forfeit")
+----------------------------------------------------------------------------------------------------
+local function battleGui()
+	return pg() and pg():FindFirstChild("NimbusBattle")
+end
+
+local function at(path)
+	local cur = battleGui()
+	for name in string.gmatch(path, "[^%.]+") do
+		cur = cur and cur:FindFirstChild(name)
+	end
+	return cur
+end
+
+local function rect(obj)
+	local p, s = obj.AbsolutePosition, obj.AbsoluteSize
+	local gui = obj:FindFirstAncestorOfClass("ScreenGui")
+	local dy = (gui and gui.IgnoreGuiInset == false) and (Mock.TopInset or 36) or 0
+	return { x0 = p.X, y0 = p.Y + dy, x1 = p.X + s.X, y1 = p.Y + s.Y + dy }
+end
+
+local function hits(a, b)
+	return a.x0 < b.x1 - 1 and b.x0 < a.x1 - 1 and a.y0 < b.y1 - 1 and b.y0 < a.y1 - 1
+end
+
+local function forfeits(from)
+	local n = 0
+	for _, e in ipairs(_G.KC.serverCalls("BattleCommand", from)) do
+		if e.args[1] == "Forfeit" then
+			n = n + 1
+		end
+	end
+	return n
+end
+
+local function team(count)
+	local out, kinds = {}, {}
+	for _, def in ipairs(PetCatalog.Pets) do
+		local sp = type(def.Special) == "table" and def.Special.Kind or nil
+		if sp and def.Role == "Combat" and not kinds[sp] and def.Rarity ~= "Secret" and not def.EventOnly then
+			kinds[sp] = true
+			out[#out + 1] = { Key = def.Id, PetId = def.Id, Level = 30, Tier = "Normal", Slot = #out + 1, Xp = 100, XpNext = 6000 }
+			if #out >= count then
+				break
+			end
+		end
+	end
+	return out
+end
+
+-- a battle sent the way BattleService sends it (Start / Snapshot / End through BattleState)
+local function newBattle(mode, round)
+	local Sim = moduleAt("shared", "BattleSim")
+	local BCat = moduleAt("shared", "BattleCatalog")
+	if not Sim or not BCat then
+		return nil
+	end
+	local me = LocalPlayer.UserId
+	local id = "p4fix_" .. mode .. "_" .. tostring(math.random(100000, 999999))
+	local opts = { Mode = mode, Seed = 5, Id = id, Zone = { X = 44, Z = 44 }, TimeLimit = 90 }
+	local ring = nil
+	if mode == "Ring" then
+		local spec = BCat.ChampionTeam(round, 7)
+		local ch = spec.Champion or {}
+		opts.Round = round
+		opts.Teams = { { Owner = me, Side = 1, Pets = team(3) }, spec }
+		ring = { Round = round, Best = 12, Start = 1, Champion = { PetId = ch.PetId, Level = ch.Level, Tier = ch.Tier, Boss = ch.Boss == true, Name = ch.Name } }
+	elseif mode == "Trial" then
+		opts.Trial = 3
+		opts.Teams = { { Owner = me, Side = 1, Pets = team(3) } }
+	else
+		opts.Teams = { { Owner = me, Side = 1, Pets = team(2) }, { Owner = 78, Side = 2, Pets = team(2) } }
+	end
+	local sim = Sim.new(opts)
+	if not sim then
+		return nil
+	end
+	local d = { sim = sim, id = id }
+	function d.start()
+		local p = sim:Describe()
+		p.BattleId = id
+		p.Zone = { CFrame = CFrame.new(0, 200, 0), Size = Vector3.new(p.Zone.X, 30, p.Zone.Z), X = p.Zone.X, Z = p.Zone.Z }
+		p.Names = { [tostring(me)] = LocalPlayer.Name, ["78"] = "Rival" }
+		p.Side = 1
+		p.Spectator = false
+		p.T = sim:Time()
+		p.Ring = ring
+		LocalPlayer:SetAttribute("InBattle", id)
+		_G.KC.toClient("BattleState", "Start", p, id)
+		for _ = 1, 3 do
+			sim:Step(0.1)
+			local snap = sim:Snapshot()
+			snap.BattleId = id
+			_G.KC.toClient("BattleState", "Snapshot", snap, id)
+			Mock.Step(1 / 30)
+			Mock.Step(1 / 30)
+		end
+	end
+	function d.finish(payload)
+		payload.BattleId = id
+		_G.KC.toClient("BattleState", "End", payload, id)
+		Mock.Step(1 / 30)
+		Mock.Step(1 / 30)
+	end
+	return d
+end
+
+local function ringWon(round)
+	return { Mode = "Ring", Outcome = "Win", Won = true, Spectator = false, Reason = "Wipe",
+		Rewards = { Won = true, Next = round + 1, Round = round, Cash = 40, Xp = 20 + 6 * round, Tokens = 0, Record = false, Seconds = 1.6, LevelUps = 0 } }
+end
+
+local function ringFinal(round)
+	return { Mode = "Ring", Outcome = "Left", Won = false, Spectator = false, Reason = "Forfeit", Round = round,
+		Rewards = { Won = false, Final = true, Round = round, Cash = 0, Xp = 0, Run = { Wins = 1, Cash = 40, Xp = 50, Tokens = 0, Round = round, Start = 1, Best = 12 } } }
+end
+
+local function closeBattle()
+	LocalPlayer:SetAttribute("InBattle", nil)
+	advance(4)
+	local ok = at("Root.ResultCard.OkButton")
+	if ok then
+		Mock.Click(ok)
+	end
+	Mock.Step(1 / 30)
+	Mock.Step(1 / 30)
+end
+
+-- layout problems of a shown LEAVE at this viewport (nil = fine); others = rects of things it must not cover
+local function leaveProblem(b, w, h, others)
+	if not b or not shown(b) then
+		return "not shown"
+	end
+	local r = rect(b)
+	local scale = at("Root.ReadScale")
+	local px = b.TextSize * (scale and scale.Scale or 1)
+	if px < 13.99 then
+		return "text " .. string.format("%.1f", px) .. " px"
+	end
+	if b.Font ~= Theme.Fonts.Button then
+		return "font " .. tostring(b.Font) .. " is not Theme's Button role"
+	end
+	if r.x1 - r.x0 < 40 or r.y1 - r.y0 < 30 then
+		return string.format("too small to tap (%.0fx%.0f px)", r.x1 - r.x0, r.y1 - r.y0)
+	end
+	if r.x0 < -1 or r.y0 < -1 or r.x1 > w + 1 or r.y1 > h + 1 then
+		return "off the screen"
+	end
+	local cx, cy = w / 2, h / 2
+	if r.x0 <= cx and cx <= r.x1 and r.y0 <= cy and cy <= r.y1 then
+		return "in the screen centre"
+	end
+	local mx, my = (r.x0 + r.x1) / 2, (r.y0 + r.y1) / 2
+	if math.abs(mx - cx) < 0.1 * w and math.abs(my - cy) < 0.1 * h then
+		return "its text sits in the middle of the screen"
+	end
+	for _, o in ipairs(others) do
+		if hits(r, o[2]) then
+			return string.format("covers %s (LEAVE %.0f,%.0f-%.0f,%.0f; it %.0f,%.0f-%.0f,%.0f)", o[1], r.x0, r.y0, r.x1, r.y1, o[2].x0, o[2].y0, o[2].x1, o[2].y1)
+		end
+	end
+	return nil
+end
+
+-- what LEAVE must keep clear of: the battle HUD's other parts + every other GUI's buttons
+local function obstacles(card)
+	local out = {}
+	for _, path in ipairs({ "Root.TopCard", "Root.Commands.AttackButton", "Root.Commands.RetreatButton", "Root.ResultCard" }) do
+		local o = at(path)
+		if o and shown(o) then
+			out[#out + 1] = { path, rect(o) }
+		end
+	end
+	if not card then
+		local nc = at("Root.NextRoundCard")
+		if nc and shown(nc) then
+			out[#out + 1] = { "Root.NextRoundCard", rect(nc) }
+		end
+	end
+	for i = 1, 4 do
+		local o = at("Root.Team.Row" .. i)
+		if o and shown(o) then
+			out[#out + 1] = { "Row" .. i, rect(o) }
+		end
+	end
+	local back = at("Root.Team.Back")
+	if back and shown(back) then
+		out[#out + 1] = { "Root.Team.Back", rect(back) }
+	end
+	for _, g in ipairs(pg() and pg():GetChildren() or {}) do
+		if g:IsA("ScreenGui") and g.Name ~= "NimbusBattle" and g.Enabled then
+			for _, o in ipairs(g:GetDescendants()) do
+				if o:IsA("GuiButton") and shown(o) and o.AbsoluteSize.X > 20 and o.AbsoluteSize.X < 300 then
+					out[#out + 1] = { o:GetFullName():gsub("^Players%.[^.]+%.PlayerGui%.", ""), rect(o) }
+				end
+			end
+			for _, path in ipairs({ "Vitals", "Currency", "Hotbar" }) do
+				local o = g:FindFirstChild(path, true)
+				if o and o:IsA("GuiObject") and shown(o) then
+					out[#out + 1] = { g.Name .. "." .. path, rect(o) }
+				end
+			end
+		end
+	end
+	return out
+end
+
+-- the fight's LEAVE and the next-round card's LEAVE at each size: shown, readable, clear of everything
+local function checkLeaveLayout(tag, sizes)
+	for _, size in ipairs(sizes) do
+		local w, h = size[1], size[2]
+		local name = tag .. " " .. w .. "x" .. h
+		Mock.SetViewport(w, h)
+		advance(0.5)
+		local d = newBattle("Ring", 4)
+		if not T.check(d ~= nil, name .. ": a ring round to lay out") then
+			return
+		end
+		d.start()
+		advance(0.3)
+		local b = at("Root.Commands.LeaveButton")
+		local why = leaveProblem(b, w, h, obstacles(false))
+		T.check(why == nil, name .. ": the fight's LEAVE is readable, off the centre and covers no control / card / button", tostring(why) .. (b and string.format(" [%.0f,%.0f %.0fx%.0f]", b.AbsolutePosition.X, b.AbsolutePosition.Y, b.AbsoluteSize.X, b.AbsoluteSize.Y) or ""))
+		d.finish(ringWon(4))
+		advance(0.3)
+		local nb = at("Root.NextRoundCard.LeaveButton")
+		why = leaveProblem(nb, w, h, obstacles(true))
+		T.check(why == nil and not shown(b), name .. ": the next-round card's LEAVE is readable and covers nothing (the fight's LEAVE went with the commands)", tostring(why))
+		d.finish(ringFinal(4))
+		closeBattle()
+	end
+end
+
+S.client_p4fix_leave = guarded("client_p4fix_leave", function()
+	bootIfNeeded()
+	local BC = moduleAt("client", "Controllers/BattleController")
+	if not T.check(BC ~= nil and type(BC.Command) == "function", "p4fix leave: BattleController loads") then
+		return
+	end
+	local errBefore = #Mock.Errors
+	Mock.SetViewport(1920, 1080)
+	advance(0.5)
+	-- a ring round: LEAVE beside ATTACK / RETREAT
+	local d = newBattle("Ring", 3)
+	if not T.check(d ~= nil, "p4fix leave: a ring round (BattleSim + ChampionTeam)") then
+		return
+	end
+	d.start()
+	local b = at("Root.Commands.LeaveButton")
+	T.check(b and shown(b) and b.Text == "LEAVE", "p4fix leave: a ring fight shows LEAVE beside ATTACK / RETREAT", b and tostring(b.Text) or "missing")
+	local mark = #Mock.RemoteLog
+	if b then
+		Mock.Click(b)
+	end
+	advance(0.1)
+	T.check(b and b.Text == "Sure? Tap again" and forfeits(mark) == 0, "p4fix leave: the first tap only asks (Sure? Tap again), nothing is sent", b and b.Text or "")
+	advance(3.3)
+	T.check(b and b.Text == "LEAVE" and forfeits(mark) == 0, "p4fix leave: without a second tap it goes back to LEAVE after ~3 s", b and b.Text or "")
+	if b then
+		Mock.Click(b)
+		advance(0.4)
+		Mock.Click(b)
+	end
+	advance(0.1)
+	T.check(forfeits(mark) == 1, "p4fix leave: two taps send exactly one BattleCommand('Forfeit')", forfeits(mark) .. " sent")
+	T.check(b and b.Text ~= "Sure? Tap again", "p4fix leave: ...and the button stops asking", b and b.Text or "")
+	-- the server ends the run (BattleService: Forfeit -> the run's final End)
+	d.finish(ringFinal(3))
+	advance(0.3)
+	T.check(shown(at("Root.ResultCard")) and not shown(at("Root.Commands.LeaveButton")), "p4fix leave: the run's End after a Forfeit in a fight: the result card, no LEAVE left")
+	closeBattle()
+	-- between two rounds: the next-round card has its own LEAVE, and Forfeit passes Command while the round has ended
+	d = newBattle("Ring", 3)
+	d.start()
+	b = at("Root.Commands.LeaveButton")
+	T.check(b and b.Text == "LEAVE", "p4fix leave: the next run's round starts with a plain LEAVE", b and b.Text or "missing")
+	if b then
+		Mock.Click(b) -- armed in the fight ...
+	end
+	d.finish(ringWon(3)) -- ... and the round is won: the card starts unarmed
+	advance(0.3)
+	local nb = at("Root.NextRoundCard.LeaveButton")
+	T.check(nb and shown(nb) and nb.Text == "LEAVE" and not shown(b), "p4fix leave: the next-round card shows LEAVE (the commands are gone)", nb and tostring(nb.Text) or "missing")
+	T.check(BC.Command("Attack", nil) == false, "p4fix leave: between rounds ATTACK is still refused locally")
+	mark = #Mock.RemoteLog
+	if nb then
+		Mock.Click(nb)
+		advance(0.3)
+		T.check(nb.Text == "Sure? Tap again" and forfeits(mark) == 0, "p4fix leave: the card's first tap only asks", nb.Text)
+		Mock.Click(nb)
+	end
+	advance(0.1)
+	T.check(forfeits(mark) == 1, "p4fix leave: the card's second tap sends Forfeit during the intermission (Command lets it through)", forfeits(mark) .. " sent")
+	d.finish(ringFinal(3))
+	advance(0.3)
+	T.check(shown(at("Root.ResultCard")) and not shown(at("Root.NextRoundCard")) and not shown(at("Root.Commands.LeaveButton")), "p4fix leave: the run's End shows the result card, no LEAVE left")
+	closeBattle()
+	-- a trial has LEAVE, a duel never does (a forfeited duel costs trophies)
+	local tr = newBattle("Trial")
+	if tr then
+		tr.start()
+		T.check(shown(at("Root.Commands.LeaveButton")), "p4fix leave: a Trial shows LEAVE")
+		tr.finish({ Mode = "Trial", Outcome = "Loss", Won = false, Spectator = false, Reason = "Forfeit", Rewards = { Tokens = 0, Gems = 0, Xp = 0, Trophies = 0, LevelUps = 0, Level = 3 } })
+		closeBattle()
+	end
+	local du = newBattle("Duel")
+	if du then
+		du.start()
+		T.check(shown(at("Root.Commands.AttackButton")) and not shown(at("Root.Commands.LeaveButton")), "p4fix leave: a duel has no LEAVE")
+		du.finish({ Mode = "Duel", Outcome = "Win", Won = true, Spectator = false, Reason = "Wipe", Rewards = { Tokens = 60, Gems = 0, Xp = 60, Trophies = 25, LevelUps = 0 } })
+		closeBattle()
+	end
+	-- the layout at the four render sizes (this world is a desktop: the small sizes use the compact HUD)
+	checkLeaveLayout("desktop", { { 1920, 1080 }, { 1280, 720 }, { 390, 844 }, { 844, 390 } })
+	Mock.SetViewport(1920, 1080)
+	advance(0.5)
+	T.check(BC.GetBattle() == nil and #Mock.Errors == errBefore, "p4fix leave: everything freed, no errors", tostring(Mock.Errors[#Mock.Errors]))
+	_G.KC.flushErrors("client_p4fix_leave")
+end)
+
+S.client_p4fix_leave_mobile = guarded("client_p4fix_leave_mobile", function()
+	bootIfNeeded()
+	local BC = moduleAt("client", "Controllers/BattleController")
+	if not T.check(BC ~= nil, "p4fix leave phone: BattleController loads") then
+		return
+	end
+	local errBefore = #Mock.Errors
+	checkLeaveLayout("phone", { { 390, 844 }, { 844, 390 }, { 740, 360 }, { 667, 375 } })
+	Mock.SetViewport(390, 844)
+	advance(0.5)
+	T.check(BC.GetBattle() == nil and #Mock.Errors == errBefore, "p4fix leave phone: everything freed, no errors", tostring(Mock.Errors[#Mock.Errors]))
+	_G.KC.flushErrors("client_p4fix_leave_mobile")
 end)
 
 return S
