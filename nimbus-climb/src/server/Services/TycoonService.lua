@@ -105,7 +105,6 @@ local BUY_COOLDOWN = 0.2
 local COLLECT_COOLDOWN = 0.5
 local GARDEN_COOLDOWN = 0.2
 local PRESTIGE_COOLDOWN = 1
-local GOHOME_COOLDOWN = 3 -- contract 3.10 / X19: one portal request per 3 s
 local COLLECT_TOAST_GAP = 3 -- seconds between "scooped" toasts of the explicit Collect action
 local BURST_SIZE = 10 -- HomeAction / prompt requests a player may send at once...
 local BURST_REFILL = 5 -- ...refilled at this many per second
@@ -118,7 +117,6 @@ local GATE_PROMPT_LIFT = 3.5 -- the fallback ClaimPrompt anchor above the gate's
 local CLAIM_DISTANCE = 12
 local CLAIM_SLACK = 15 -- studs past the prompt's MaxActivationDistance a claimer may stand (latency, big avatars)
 local ATTR_IN_BATTLE = Config.Attr.InBattle or "InBattle" -- BattleService's player attribute (battle id)
-local ATTR_PORTAL_LOCKED = "PortalLocked" -- PortalService: locked on a portal pad for a party countdown
 
 local initialized = false
 local running = false
@@ -162,6 +160,8 @@ local Coins = {
 }
 local Portal = {
 	TICK = 0.2, -- seconds between owner checks
+	COOLDOWN = 3, -- contract 3.10 / X19: one portal request per 3 s
+	ATTR_LOCKED = "PortalLocked", -- PortalService: locked on a portal pad for a party countdown
 	AHEAD = 6, -- studs in front of the character
 	WALL_GAP = 1.5, -- the portal stops this far before a wall
 	OPEN_SECONDS = 10,
@@ -290,19 +290,6 @@ local function money(n)
 		end
 	end
 	return "$" .. tostring(math.floor(tonumber(n) or 0))
-end
-
-local function durationText(seconds)
-	seconds = math.max(0, math.floor(seconds or 0))
-	local hours = math.floor(seconds / 3600)
-	local minutes = math.floor((seconds % 3600) / 60)
-	if hours > 0 then
-		if minutes > 0 then
-			return hours .. "h " .. minutes .. "m"
-		end
-		return hours .. "h"
-	end
-	return math.max(1, minutes) .. " min"
 end
 
 -- 1.25 -> "1.25", 1.5625 -> "1.56", 2 -> "2"
@@ -764,8 +751,9 @@ end
 -- The meal timers follow the placed keys: a slot whose key changed waits a full meal (X5: a NEW placement's first
 -- coin after MealSeconds); the same key back in its slot within one meal keeps its old timer (removing and
 -- re-placing a pet right after a coin gains nothing). Keys found on a fresh ledger (load / claim) get a random start
--- phase so a dozen piles do not all pop in the same second.
-function Coins.followKeys(st, valid, now, meal)
+-- phase so a dozen piles do not all pop in the same second. A key resting above the open count (`open`) owns no
+-- timer: the place that opens later (a Prestige) starts with a full meal, never with a backlog.
+function Coins.followKeys(st, valid, now, meal, open)
 	for slot = 1, MAX_SLOT do
 		local key = valid[slot]
 		local was = st.Keys[slot]
@@ -788,6 +776,9 @@ function Coins.followKeys(st, valid, now, meal)
 				st.NextMeal[slot] = nil
 			end
 		end
+		if open ~= nil and slot > open and st.NextMeal[slot] ~= nil then
+			st.NextMeal[slot] = nil -- resting: no meal is owed while the place is closed
+		end
 	end
 	st.Fresh = false
 end
@@ -807,7 +798,11 @@ function Coins.meals(st, home, entries, valid, now)
 	for slot = 1, math.min(open, MAX_SLOT) do
 		local entry = valid[slot] and entries[slot]
 		if entry then
-			local due = st.NextMeal[slot] or (now + meal)
+			local due = st.NextMeal[slot]
+			if not due then
+				due = now + meal -- a place that just opened (or a timer dropped while resting): a full meal first
+				st.NextMeal[slot] = due
+			end
 			if now >= due then
 				local power = catalog.PetPower(entry)
 				local coin = catalog.CoinValue(home, power, stars)
@@ -1030,6 +1025,11 @@ local function syncPlot(player, home, income, valid, entries)
 		income, parts, valid, entries = incomeOf(player, home)
 	end
 	local st = Coins.ensure(player)
+	if st.Fresh then
+		-- a rebuilt ledger (claim, load, rebase, prestige, reset): the keys already in the garden get their random
+		-- start phase NOW, so a pet placed a moment later waits a full meal like every new placement (X5)
+		Coins.followKeys(st, valid or {}, os.clock(), catalog.Coins.MealSeconds, gardenSlots(home))
+	end
 	Coins.reconcile(st, bankOf(home))
 	Coins.show(index, st, home, income, entries)
 	local s = shown[index] or {}
@@ -1734,7 +1734,7 @@ function TycoonService.GardenSet(player, slot, key)
 		if after then
 			local income, _, valid, entries = incomeOf(player, after)
 			local st = Coins.ensure(player)
-			Coins.followKeys(st, valid, os.clock(), catalog.Coins.MealSeconds) -- X5: the timer rule, right away
+			Coins.followKeys(st, valid, os.clock(), catalog.Coins.MealSeconds, gardenSlots(after)) -- X5: the timer rule, right away
 			syncPlot(player, after, income, valid, entries)
 		end
 	end
@@ -1839,7 +1839,7 @@ function Portal.refuse(player)
 	if (inBattle ~= nil and inBattle ~= false and inBattle ~= "") or (battleService and type(battleService.IsInBattle) == "function" and battleService.IsInBattle(player) == true) then
 		return "Finish your battle first!"
 	end
-	if player:GetAttribute(ATTR_PORTAL_LOCKED) ~= nil then
+	if player:GetAttribute(Portal.ATTR_LOCKED) ~= nil then
 		return "Leave the portal party first"
 	end
 	local humanoid = Util.GetHumanoid(player)
@@ -1936,7 +1936,7 @@ function Portal.openFor(player)
 			return false, "Every home is taken right now."
 		end
 	end
-	if not cooldown(player, "GoHome", GOHOME_COOLDOWN) then
+	if not cooldown(player, "GoHome", Portal.COOLDOWN) then
 		return false, "Wait a moment"
 	end
 	local pos, yaw = Portal.place(player)
@@ -2085,7 +2085,7 @@ local function onHomeLoaded(player)
 			end
 		end
 		task.delay(OFFLINE_TOAST_DELAY, function()
-			notify(player, "Welcome back! Your pets made " .. money(amount) .. " while you were away (" .. durationText(away) .. "): scoop it in your garden!", "good", 7)
+			notify(player, "Welcome back! Your pets made " .. money(amount) .. " while you were away: scoop it in your garden!", "good", 7)
 		end)
 	end
 end
@@ -2145,7 +2145,7 @@ local function tickPlayer(player, index, now)
 	end
 	local income, _, valid, entries = incomeOf(player, home)
 	local st = Coins.ensure(player)
-	Coins.followKeys(st, valid, now, catalog.Coins.MealSeconds)
+	Coins.followKeys(st, valid, now, catalog.Coins.MealSeconds, gardenSlots(home))
 	if dt > 0 then
 		local added, drops = Coins.meals(st, home, entries, valid, now)
 		if added > 0 then

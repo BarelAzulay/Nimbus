@@ -19,8 +19,10 @@
 --                      inputs, PetKeys.DefOf of the result (stats = average x1.2), the hybrid level = the parents'
 --                      average; refusals (same pet twice, hybrid inputs, short of gems, a full hybrid collection)
 --   p2fusion_exploits  (server, booted) equipped copies are taken off first and the result takes their slot; the
---                      "only equipped pets" rule and its way out; Garden / Gym copies are freed and the result takes
---                      the slot; atomic (a full result stack refuses before anything changes); the Fusion remote:
+--                      "only equipped pets" rule and its way out; Garden copies are freed and the result takes the
+--                      slot whatever its role (no Gym placement: Phase 4); the evolution stage and training ranks are
+--                      carried (Upgrade: the higher of each; Mix: stage 0, the parents' higher ranks); a training input
+--                      is refused; atomic (a full result stack refuses before anything changes); the Fusion remote:
 --                      junk arguments, spam (one fusion per cooldown), no home claimed, too far from the machine, near it
 --   client_p2fusion    (client) FusionController: the NimbusFusion window opens with OpenPanel("Fusion") and with E on
 --                      the player's own FusionPrompt (not on someone else's), the plan mirrors the server (result,
@@ -826,12 +828,13 @@ local function serverScenarios()
 		T.check(ok and count(p, "biscuit_bear@Golden") == 1 and #prof.Equipped == 0, "fusion: ...after unequipping them it works", tostring(key))
 		leave(p)
 
-		-- Garden / Gym copies are freed first and the result takes over the slot
+		-- Garden copies are freed first and the result takes over the slot, whatever its role (Phase 4: any pet works in
+		-- the garden); an old Gym slot is only cleared (no Gym placement: the Gym is the Training Place)
 		p = readyPlayer("Gardener", 1)
 		prof = DataS.GetProfile(p)
 		local econ, combat = nil, nil
 		for _, d in ipairs(PCat.Pets) do
-			if d.Rarity ~= "Secret" then
+			if d.Rarity ~= "Secret" and d.EventOnly ~= true then
 				if d.Role == "Economy" and not econ then
 					econ = d.Id
 				elseif d.Role == "Combat" and not combat then
@@ -842,7 +845,9 @@ local function serverScenarios()
 		give(p, econ, 3)
 		give(p, combat, 3)
 		DataS.MutateHome(p, function(h)
+			h.Stations.Garden = 1
 			h.Garden[1] = econ
+			h.Garden[2] = combat
 			h.Gym[2] = combat
 		end)
 		ok = F.Upgrade(p, econ)
@@ -850,7 +855,62 @@ local function serverScenarios()
 		advance(0.2)
 		local home = DataS.GetHome(p)
 		T.check(ok and home.Garden[1] == econ .. "@Golden", "fusion: a Garden copy leaves its slot first; the Golden Economy pet takes the slot", tostring(home.Garden[1]))
-		T.check(ok2 and home.Gym[2] == combat .. "@Golden", "fusion: a Gym copy leaves its slot first; the Golden Combat pet takes the slot", tostring(home.Gym[2]))
+		T.check(ok2 and home.Garden[2] == combat .. "@Golden", "fusion: ...a Combat pet's Garden copy likewise (Phase 4: any role works in the garden)", tostring(home.Garden[2]))
+		T.check(ok2 and home.Gym[2] == nil and next(home.Gym) == nil, "fusion: an old Gym slot is cleared and the result is NOT placed in the Gym (retired)", tostring(home.Gym[2]))
+
+		-- Phase 4: the evolution stage and the training ranks are carried to the result
+		give(p, econ, 3) -- 3 Normal copies again
+		T.check(DataS.MutateGrowth(p, function(g)
+			g[econ] = { Evo = 1, Speed = 3, Physique = 2 }
+			g[econ .. "@Golden"] = { Evo = 0, Speed = 1, Ability = 4 }
+		end) == true, "fusion: (setup) the Normal copies carry stage 1 + Speed 3 / Physique 2; the Golden copy Speed 1 / Ability 4")
+		ok = F.Upgrade(p, econ)
+		local gg = DataS.GetGrowth(p, econ .. "@Golden")
+		T.check(ok and gg.Evo == 1 and gg.Speed == 3 and gg.Physique == 2 and gg.Ability == 4 and gg.Defense == 0,
+			"fusion: an upgraded copy gets the input key's stage and ranks, the higher of each (Evo 1, Speed 3, Physique 2, Ability 4)",
+			"Evo " .. tostring(gg.Evo) .. " S" .. tostring(gg.Speed) .. " P" .. tostring(gg.Physique) .. " A" .. tostring(gg.Ability))
+		T.check(DataS.GetGrowthMap(p)[econ] == nil or count(p, econ) > 0, "fusion: the input key's entry is dropped when no copy of it is left")
+		-- a Mix starts at stage 0 with the parents' higher rank per skill
+		local pa, pb = "pip_penguin", "ember_phoenix"
+		give(p, pa, 1)
+		give(p, pb, 1)
+		T.check(DataS.MutateGrowth(p, function(g)
+			g[pa] = { Evo = 2, Speed = 5, Defense = 1 }
+			g[pb] = { Evo = 1, Speed = 2, Defense = 6, Ability = 3 }
+		end) == true, "fusion: (setup) two evolved, trained parents")
+		local okMix, hybKey = F.Mix(p, pa, pb)
+		local gh = okMix and DataS.GetGrowth(p, hybKey) or {}
+		T.check(okMix and gh.Evo == 0 and gh.Speed == 5 and gh.Defense == 6 and gh.Ability == 3 and gh.Physique == 0,
+			"fusion: a Mix starts at stage 0 with the parents' higher rank per skill (Speed 5, Defense 6, Ability 3)",
+			tostring(hybKey) .. " Evo " .. tostring(gh.Evo) .. " S" .. tostring(gh.Speed) .. " D" .. tostring(gh.Defense) .. " A" .. tostring(gh.Ability))
+		-- a training input is refused (the lock)
+		give(p, combat, 3)
+		local tokens0 = DataS.GetTokens(p)
+		T.check(DataS.MutateGrowth(p, function(g)
+			g[combat] = g[combat] or {}
+			g[combat].Job = { Stat = "Speed", Ends = os.time() + 600, Rank = (g[combat].Speed or 0) + 1, Slot = 1, From = "Free", Paid = 300 }
+		end) == true and DataS.TrainingKeys(p)[combat] == true, "fusion: (setup) a Combat copy trains")
+		local okTr, whyTr = F.Upgrade(p, combat)
+		T.check(okTr == false and tostring(whyTr):find("is training", 1, true) ~= nil and count(p, combat) == 3 and DataS.GetTokens(p) == tokens0,
+			"fusion: a training input is refused ('... is training: wait for it to finish'), nothing used", tostring(whyTr))
+		give(p, econ, 1)
+		local okTr2, whyTr2 = F.Mix(p, combat, econ)
+		T.check(okTr2 == false and tostring(whyTr2):find("is training", 1, true) ~= nil, "fusion: ...for a Mix too", tostring(whyTr2))
+		DataS.MutateGrowth(p, function(g)
+			g[combat].Job = nil
+		end)
+		-- ...and so is an upgrade whose RESULT key trains (its paid job would end early under the carried rank)
+		give(p, combat .. "@Golden", 1)
+		T.check(DataS.MutateGrowth(p, function(g)
+			g[combat .. "@Golden"] = g[combat .. "@Golden"] or {}
+			g[combat .. "@Golden"].Job = { Stat = "Speed", Ends = os.time() + 600, Rank = 1, Slot = 1, From = "Free", Paid = 300 }
+		end) == true, "fusion: (setup) the Golden copy trains")
+		local okTr3, whyTr3 = F.Upgrade(p, combat)
+		T.check(okTr3 == false and tostring(whyTr3):find("is training", 1, true) ~= nil and count(p, combat) == 3, "fusion: an upgrade whose result key is training is refused too", tostring(whyTr3))
+		DataS.MutateGrowth(p, function(g)
+			g[combat .. "@Golden"].Job = nil
+		end)
+		PK().Remove(DataS.GetProfile(p), econ, 1) -- back to no Normal copy for the atomic check below
 
 		-- atomic: a full result stack refuses before anything changes
 		give(p, econ, 3)

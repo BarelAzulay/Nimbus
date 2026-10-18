@@ -100,7 +100,6 @@ local FALLBACK_MAX_LEVEL = 100
 local PROMPT_KEYS = { Keyboard = Enum.KeyCode.E, Gamepad = Enum.KeyCode.ButtonX }
 local ATTR_TRAINING = "TrainingPets"
 local ATTR_IN_BATTLE = Config.Attr.InBattle or "InBattle"
-local ATTR_IN_MATCH = Config.Attr.InMatch or "InMatch"
 local CARE_SIG = "CareSig" -- attribute on a station model: which prompts this service built on it
 local CARE_MARK = "CareMade" -- attribute on every prompt this service made
 local SIG_PREFIX = "p4:" -- stale Phase 3 Kitchen prompts (sig "<level>:<userId>") never match a Phase 4 signature
@@ -397,15 +396,13 @@ local function foodDef(foodId)
 	if type(foodId) ~= "string" or foodId == "" or #foodId > MAX_ID_LENGTH or not catalog then
 		return nil
 	end
-	local def = nil
-	if type(catalog.FoodById) == "function" then
+	-- the leftover foods are data (TycoonCatalog.Foods / FoodsById); FoodById is a Phase 3 compat function
+	local def = type(catalog.FoodsById) == "table" and catalog.FoodsById[foodId] or nil
+	if type(def) ~= "table" and type(catalog.FoodById) == "function" then
 		local ok, result = pcall(catalog.FoodById, foodId)
 		if ok then
 			def = result
 		end
-	end
-	if type(def) ~= "table" and type(catalog.FoodsById) == "table" then
-		def = catalog.FoodsById[foodId]
 	end
 	if type(def) ~= "table" or def.Id ~= foodId or not isFinite(def.Xp) or def.Xp <= 0 then
 		return nil
@@ -1539,9 +1536,6 @@ function PetCareService.Train(player, key, stat)
 	end
 	if runningJobs >= slots or not mat then
 		return false, "The Training Place is full (" .. runningJobs .. "/" .. slots .. " training)"
-	end
-	if player:GetAttribute(ATTR_IN_MATCH) == true then
-		return false, "Finish your match first"
 	end
 	if Care.busyInBattle(player, key) then
 		return false, "Finish your battle first"

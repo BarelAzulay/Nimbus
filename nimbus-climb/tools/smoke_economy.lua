@@ -378,7 +378,10 @@ local function tutorialFlow()
 			return stepId(p) ~= "claim"
 		end, 3)
 	end
-	T.eq(stepId(p), "press", "Tutorial: E at the gate completes 'claim' -> 'press'")
+	-- Phase 4: chapter 2's second step is the Pet Garden ("garden"; the Phase 3 build still names it "press" until
+	-- wave 3 renames it in TutorialSteps: the check reads index 11, the chapter's fixed step index)
+	local gardenStep = (Steps.Steps[11] and Steps.Steps[11].Id) or "garden"
+	T.eq(stepId(p), gardenStep, "Tutorial: E at the gate completes 'claim' -> 'garden' (chapter 2, step index 11)")
 	send(p, "Next")
 	T.eq(DataS.GetTokens(p), tokens + finishReward, "Tutorial: the basics reward is paid only once")
 	T.check(DataS.GetTutorial(p).Done == true, "Tutorial: Tutorial.Done is stored once the basics are finished")
@@ -386,8 +389,8 @@ local function tutorialFlow()
 	advance(1.5)
 	p = joinWithId("Newbie", 940001)
 	advance(0.5)
-	T.check(TS.GetState(p) and TS.GetState(p).Id == "press" and DataS.GetTokens(p) == tokens + finishReward,
-		"Tutorial: after a rejoin the home chapter resumes ('press'), the basics are not replayed nor paid again")
+	T.check(TS.GetState(p) and TS.GetState(p).Id == gardenStep and DataS.GetTokens(p) == tokens + finishReward,
+		"Tutorial: after a rejoin the home chapter resumes ('garden'), the basics are not replayed nor paid again")
 	send(p, "Skip")
 	T.check(TS.GetState(p) and TS.GetState(p).Done == true and DataS.GetTokens(p) == tokens + finishReward, "Tutorial: Skip ends the rest (Done = true, nothing paid)")
 	if fc then
@@ -616,25 +619,52 @@ S.spots = guarded("spots", function()
 		T.eq(SS.Teleport(P), true, "SpotService.Teleport(player) succeeds")
 		T.check(planar(root(P).Position, sp.SpawnCFrame.Position) <= 8 and abs(root(P).Position.Y - sp.SpawnCFrame.Position.Y) <= 6, "...and puts the player on their spot", fmt(planar(root(P).Position, sp.SpawnCFrame.Position)))
 		advance(0.6)
+		-- Phase 4: the GoToSpot remote (the Home tile) opens the home portal; walking in teleports home
+		local portalAttr = Config.Attr.HomePortal
+		local function walkInto(player)
+			local x, y, z = tostring(player:GetAttribute(portalAttr)):match("^([^,]+),([^,]+),([^,]+)")
+			if not x then
+				return false
+			end
+			Mock.Teleport(player, CFrame.new(Vector3.new(tonumber(x), tonumber(y) + 3, tonumber(z))))
+			advance(0.5)
+			return true
+		end
 		Mock.Teleport(P, info.SpawnCFrame)
 		advance(0.3)
 		Mock.FromClient(remoteFolder().GoToSpot, P)
 		advance(0.1)
-		T.check(planar(root(P).Position, sp.SpawnCFrame.Position) <= 8, "the GoToSpot remote teleports the player to their spot")
+		T.check(type(P:GetAttribute(portalAttr)) == "string" and planar(root(P).Position, info.SpawnCFrame.Position) <= 6,
+			"the GoToSpot remote opens the home portal (HomePortal attribute) where the player stands, no teleport yet", tostring(P:GetAttribute(portalAttr)))
+		T.check(walkInto(P) and planar(root(P).Position, sp.SpawnCFrame.Position) <= 8, "walking into the portal teleports the player to their spot")
 		Mock.Teleport(P, info.SpawnCFrame)
 		advance(0.05)
 		Mock.FromClient(remoteFolder().GoToSpot, P)
 		advance(0.05)
-		T.check(planar(root(P).Position, info.SpawnCFrame.Position) <= 6, "GoToSpot is rate limited (a second call inside 0.25 s is ignored)")
-		advance(0.5)
+		Mock.FromClient(remoteFolder().GoToSpot, P)
+		advance(0.05)
+		T.check(P:GetAttribute(portalAttr) == nil and planar(root(P).Position, info.SpawnCFrame.Position) <= 6,
+			"GoToSpot is rate limited (0.25 s) and the portal has a 3 s cooldown: no second portal right after one was used")
+		advance(3.5)
 		P:SetAttribute("InMatch", true)
 		Mock.Teleport(P, info.SpawnCFrame)
 		advance(0.3)
 		T.eq(SS.Teleport(P), false, "Teleport is refused during a match")
 		Mock.FromClient(remoteFolder().GoToSpot, P)
 		advance(0.3)
-		T.check(planar(root(P).Position, info.SpawnCFrame.Position) <= 6, "GoToSpot is ignored during a match")
+		T.check(P:GetAttribute(portalAttr) == nil and planar(root(P).Position, info.SpawnCFrame.Position) <= 6, "GoToSpot is ignored during a match (no portal, no move)")
 		P:SetAttribute("InMatch", false)
+		advance(0.3)
+		-- Phase 4 safe zones: no teleport may pull a player out of a battle or a Champion Ring run
+		local inBattleAttr = Config.Attr.InBattle or "InBattle"
+		P:SetAttribute(inBattleAttr, "battle_smoke")
+		local markB = logSize()
+		T.eq(SS.Teleport(P), false, "SpotService.Teleport is refused while InBattle")
+		Mock.FromClient(remoteFolder().GoToSpot, P)
+		advance(0.3)
+		T.check(P:GetAttribute(portalAttr) == nil and planar(root(P).Position, info.SpawnCFrame.Position) <= 6 and notified(P, "Finish your battle first!", "bad", markB),
+			"GoToSpot is refused while InBattle with the 'Finish your battle first!' toast (no portal, no move)")
+		P:SetAttribute(inBattleAttr, nil)
 		advance(0.3)
 	end
 
@@ -650,9 +680,9 @@ S.spots = guarded("spots", function()
 	T.check(qs.Folder:FindFirstChild("ShowcasePet", true) == nil, "a player without pets has an empty podium")
 	local okTy, Tycoon = pcall(require, K.moduleInstance("server/Services/TycoonService"))
 	if okTy and type(Tycoon) == "table" and type(Tycoon.Buy) == "function" then
-		Tycoon.Buy(Q, "Press1")
+		Tycoon.Buy(Q, "Garden") -- Phase 4: the free Pet Garden is the first (and only) pad of a fresh home
 		advance(1.6)
-		T.eq(qs.SubLabel.Text, "Home Level 1", "the nameplate follows the Home Level (Press 1 built)")
+		T.eq(qs.SubLabel.Text, "Home Level 1", "the nameplate follows the Home Level (the free Pet Garden built)")
 	end
 	grant(Q, common, 2)
 	advance(1.6)

@@ -13,6 +13,16 @@
 --   Extra (Phase 2): PetService.Refresh(player) -> changed   re-validates the equipped list against what the player
 --                    owns (after FusionService / DevService removed copies: excess or vanished keys are unequipped),
 --                    republishes the attributes and perks, MarkDirty + Sync when something changed.
+-- Phase 4 (ARCHITECTURE_V3.md "Phase 4 build contract" 3.7, 5.3, 5.4):
+--   * the training lock: Equip refuses a key with a running training job ("Rocky is training (2:10 left)"; the ONE
+--     source is DataService.TrainingKeys), and the list re-validation drops training keys (a Phase 3 server may have
+--     equipped one during the rollout).
+--   * PetService.UnequipKey(player, key) -> removed   takes every equipped copy of the key off (PetCareService calls it
+--     when a pet starts training).
+--   * attribute EquippedInfo (Config.Attr) = "23:1,5:0": level:evolution stage per EquippedPets entry, written by
+--     refreshPlayer (equip changes, Refresh after level-ups / evolutions) only when it changed and at most every 0.5 s
+--     per player (a burst of level-ups coalesces into one deferred write); other clients draw the pet cards and the
+--     evolved follower models from it.
 --
 -- v3 (ARCHITECTURE_V3.md section 3): every successful roll marks the pet as discovered for the Pet Index
 -- (DataService.MarkDiscovered) before the ProfileSync goes out; RouletteResult.IsNew keeps meaning "first time
@@ -133,6 +143,8 @@ local ANNOUNCE_ORDER = rarityOrder.Rare or 3
 
 local perkState = {} -- [player] = { Perks = {...} }
 local lastCall = {} -- [player] = { [key] = os.clock() }
+local infoState = {} -- [player] = { At = os.clock() of the last EquippedInfo write, Pending = true while a deferred write waits }
+local INFO_GAP = 0.5 -- EquippedInfo is written at most this often per player (level-up bursts coalesce)
 local remotesConnected = false
 local playersConnected = false
 local promptObjects = {}
@@ -301,6 +313,115 @@ end
 -- Perks + attributes
 ----------------------------------------------------------------------
 
+-- Phase 4 (ARCHITECTURE_V3.md "Phase 4 build contract" 3.7, 4.1): the training lock. DataService.TrainingKeys is the
+-- ONE source: { [key] = true } of the keys with a running training job ({} before the load / while provisional).
+local function trainingKeys(player)
+	if type(DataService.TrainingKeys) ~= "function" then
+		return {}
+	end
+	local ok, set = pcall(DataService.TrainingKeys, player)
+	if ok and type(set) == "table" then
+		return set
+	end
+	return {}
+end
+
+-- "2:10" of training left for a key (its Job.Ends is a server os.time() stamp), or nil
+local function trainingLeft(player, key)
+	if type(DataService.GetGrowth) ~= "function" then
+		return nil
+	end
+	local ok, growth = pcall(DataService.GetGrowth, player, key)
+	local job = ok and type(growth) == "table" and growth.Job or nil
+	local ends = type(job) == "table" and tonumber(job.Ends) or nil
+	if not ends or ends ~= ends then
+		return nil
+	end
+	local s = math.max(0, math.ceil(ends - os.time()))
+	return string.format("%d:%02d", math.floor(s / 60), s % 60)
+end
+
+local function petLevelOf(player, key)
+	if type(DataService.GetPetLevel) ~= "function" then
+		return 1
+	end
+	local ok, level = pcall(DataService.GetPetLevel, player, key)
+	if ok and type(level) == "number" and level == level and level >= 1 then
+		return math.floor(level)
+	end
+	return 1
+end
+
+local function evolutionOf(player, key)
+	if type(DataService.GetEvolution) ~= "function" then
+		return 0
+	end
+	local ok, stage = pcall(DataService.GetEvolution, player, key)
+	if ok and type(stage) == "number" and stage == stage and stage >= 0 then
+		return math.floor(stage)
+	end
+	return 0
+end
+
+-- "23:1,5:0": level:stage per EquippedPets entry (Phase 4 contract 5.3; other clients draw the pet cards and the evolved
+-- models from it, since PetLevels / PetGrowth only sync to the owner)
+local function equippedInfo(player, profile)
+	local parts = {}
+	for i, key in ipairs(profile.Equipped) do
+		parts[i] = tostring(petLevelOf(player, key)) .. ":" .. tostring(evolutionOf(player, key))
+	end
+	return table.concat(parts, ",")
+end
+
+-- Writes EquippedInfo when it changed, at most every INFO_GAP seconds per player (a burst of level-ups coalesces into
+-- one deferred write that carries the final value). Written BEFORE EquippedPets when it is due, so a client that sees
+-- a new list already has its levels.
+local function publishInfo(player, profile)
+	local attr = Config.Attr.EquippedInfo
+	if type(attr) ~= "string" then
+		return
+	end
+	local text = equippedInfo(player, profile)
+	if player:GetAttribute(attr) == text then
+		return
+	end
+	local now = os.clock()
+	local state = infoState[player]
+	if not state then
+		state = { At = -math.huge, Pending = false }
+		infoState[player] = state
+	end
+	if now - state.At >= INFO_GAP then
+		state.At = now
+		player:SetAttribute(attr, text)
+		return
+	end
+	if state.Pending then
+		return
+	end
+	state.Pending = true
+	task.delay(INFO_GAP - (now - state.At), function()
+		local s = infoState[player]
+		if s then
+			s.Pending = false
+		end
+		if not isLivePlayer(player) then
+			return
+		end
+		local latest = DataService.GetProfile(player)
+		if type(latest) ~= "table" or type(latest.Equipped) ~= "table" then
+			return
+		end
+		local value = equippedInfo(player, latest)
+		if player:GetAttribute(attr) ~= value then
+			if s then
+				s.At = os.clock()
+			end
+			player:SetAttribute(attr, value)
+		end
+	end)
+end
+
 -- Recomputes perks from the profile and publishes the attributes. `silent` skips PerksChanged.
 local function refreshPlayer(player, silent)
 	if not isLivePlayer(player) then
@@ -320,6 +441,7 @@ local function refreshPlayer(player, silent)
 			player:SetAttribute(HYBRID_ATTR, looks)
 		end
 	end
+	publishInfo(player, profile)
 	player:SetAttribute(Config.Attr.EquippedPets, table.concat(profile.Equipped, ","))
 	player:SetAttribute(Config.Attr.PerkStaminaRegen, perks.StaminaRegen)
 	if not silent then
@@ -327,16 +449,18 @@ local function refreshPlayer(player, silent)
 	end
 end
 
--- Drops equipped keys that are unknown (pets that left the catalog, hybrids whose record is gone) or owned fewer
--- times than they are equipped (copies fused away), and trims to the slot limit. Returns true if anything changed.
-local function validateEquipped(profile)
+-- Drops equipped keys that are unknown (pets that left the catalog, hybrids whose record is gone), owned fewer
+-- times than they are equipped (copies fused away) or training (Phase 4: a training pet cannot be on the player; a
+-- Phase 3 server may have equipped one during the rollout), and trims to the slot limit. Returns true if anything changed.
+local function validateEquipped(profile, player)
 	if type(profile.Equipped) ~= "table" then
 		profile.Equipped = {}
 	end
+	local training = player and trainingKeys(player) or {}
 	local kept = {}
 	local used = {}
 	for _, key in ipairs(profile.Equipped) do
-		if type(key) == "string" and #kept < Config.Pets.MaxEquipped and defOf(key, profile) then
+		if type(key) == "string" and #kept < Config.Pets.MaxEquipped and defOf(key, profile) and not training[key] then
 			local n = (used[key] or 0) + 1
 			if n <= ownedCount(profile, key) then
 				used[key] = n
@@ -393,7 +517,7 @@ local function onProfileReady(player)
 	if not profile then
 		return
 	end
-	local changed = validateEquipped(profile)
+	local changed = validateEquipped(profile, player)
 	discoverOwned(player, profile) -- the ProfileSync snapshot already lists owned pets, so no extra Sync
 	refreshPlayer(player, false)
 	if changed then
@@ -465,6 +589,13 @@ function PetService.Equip(player, key)
 	if owned <= 0 then
 		return false, "You do not own that pet"
 	end
+	if trainingKeys(player)[key] then
+		-- Phase 4: a training pet rests at home until its job is done (the lock: DataService.TrainingKeys)
+		local def = defOf(key, profile)
+		local name = type(def) == "table" and (def.DisplayName or def.Name) or key
+		local left = trainingLeft(player, key)
+		return false, tostring(name) .. " is training" .. (left and (" (" .. left .. " left)") or "")
+	end
 	local equipped = profile.Equipped
 	if #equipped >= Config.Pets.MaxEquipped then
 		return false, "All " .. Config.Pets.MaxEquipped .. " pet slots are full"
@@ -515,8 +646,33 @@ function PetService.Unequip(player, key)
 	return false, "That pet is not equipped"
 end
 
+-- Phase 4 (contract 3.7 / 5.4): takes EVERY equipped copy of `key` off (PetCareService calls it when a pet starts
+-- training; the server decides, so a running match does not lock it). Returns the number of copies removed.
+function PetService.UnequipKey(player, key)
+	if not isLivePlayer(player) or not validId(key) then
+		return 0
+	end
+	local profile = DataService.GetProfile(player)
+	if not profile or type(profile.Equipped) ~= "table" then
+		return 0
+	end
+	local equipped = profile.Equipped
+	local removed = 0
+	for i = #equipped, 1, -1 do
+		if equipped[i] == key then
+			table.remove(equipped, i)
+			removed = removed + 1
+		end
+	end
+	if removed > 0 then
+		finishEquipChange(player)
+	end
+	return removed
+end
+
 -- Extra: re-validates the equipped list against what the player owns now (FusionService / DevService call it after
--- removing copies), republishes the attributes and perks. Returns true when the list changed.
+-- removing copies; PetCareService after a level-up / evolution / training start), republishes the attributes
+-- (EquippedPets, EquippedHybrids, EquippedInfo) and perks. Returns true when the list changed.
 function PetService.Refresh(player)
 	if not isLivePlayer(player) then
 		return false
@@ -525,7 +681,7 @@ function PetService.Refresh(player)
 	if not profile then
 		return false
 	end
-	local changed = validateEquipped(profile)
+	local changed = validateEquipped(profile, player)
 	refreshPlayer(player, false)
 	if changed then
 		DataService.MarkDirty(player)
@@ -929,6 +1085,7 @@ local function connectPlayers()
 	Players.PlayerRemoving:Connect(function(player)
 		perkState[player] = nil
 		lastCall[player] = nil
+		infoState[player] = nil
 	end)
 end
 
