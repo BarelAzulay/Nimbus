@@ -2219,8 +2219,12 @@ S.p3flow_raid = scenario("p3flow_raid", function()
 	local mE = K.logSize()
 	advance(5.5)
 	local stAfter = lastArenaState(ava, mE)
-	T.check(stAfter and stAfter.Raid == nil and stAfter.Next and stAfter.Next.Kind == "BossRaid" and stAfter.Next.StartsIn > 15 * 60,
-		"flow raid: ArenaState afterwards: no raid, the next one ~20 minutes away", stAfter and plain(stAfter.Next) or "none")
+	-- the raid's own countdown is NextRaid: Next is the soonest event of any kind, and the scheduled Double Rewards
+	-- window (every 3 h of server time) may well come before the next raid this far into the run
+	local raidNext = stAfter and stAfter.NextRaid
+	T.check(stAfter and stAfter.Raid == nil and type(raidNext) == "table" and raidNext.StartsIn > 15 * 60 and stAfter.Next
+		and (stAfter.Next.Kind == "BossRaid" and stAfter.Next.StartsIn == raidNext.StartsIn or stAfter.Next.Kind ~= "BossRaid" and stAfter.Next.StartsIn <= raidNext.StartsIn),
+		"flow raid: ArenaState afterwards: no raid, the next one ~20 minutes away", stAfter and (plain(stAfter.Next) .. " / NextRaid " .. plain(raidNext)) or "none")
 	T.check(bs.GetRaidStatus() == nil and ava:GetAttribute("InBattle") == nil and fay:GetAttribute("InBattle") == nil, "flow raid: everyone is free again")
 	-- Double Rewards end
 	local mX = K.logSize()

@@ -35,7 +35,7 @@ final_checks only as a cascade of those.
 
 ## Open items
 - dump_gui SetCollector + CashGui, TutorialService CollectPad, client_p2home rewrite, petcards scenario: given to wave 3 (careui / ui / homefx).
-- p3flow_raid "next raid ~20 min" + hazards lightning peak: seen order-dependent once; watch in gates.
+- p3flow_raid + hazards: fixed (test isolation: game clock passes Double Rewards; random strike overlap). p4garden_coins flaked once in a prefix run: watch.
 - Contract 3.2 optional notes: bank stored as whole Cash; resting-key full-meal rule; portal yaw definition.
 
 ## Token-saving rules (player asked)
