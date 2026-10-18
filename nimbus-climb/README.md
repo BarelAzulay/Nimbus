@@ -496,7 +496,7 @@ minutes**. Training prices never go up with Prestige. The Training Place level i
 A training pet rests at home on its mat, with a purple timer on its card: it leaves the Garden and stops following
 you, and it cannot follow you, fight or be fused until it is done ("Rocky is training (2:10 left)"). Then it gets
 its rank and comes back by itself: to your side, or to its garden place. **Stop** ends a training early and gives
-all the Cash back (no rank). Training keeps going while you are away and through a Prestige: the rank is waiting
+all the Cash back (no rank), but not after a Prestige: that Cash went with the old run. Training keeps going while you are away and through a Prestige: the rank is waiting
 when you come back ("Training done while you were away!"). Trained skills count in every battle.
 
 ### The Vault and offline coins
@@ -523,7 +523,8 @@ Scoop your coins first!
   stays at level 1 with your pets in it, so the coins never stop).
 - **You keep:** all your pets (with their levels, evolutions, trained skills, Golden / Rainbow copies and hybrids),
   your garden pets, your leftover food, your decor (it still counts toward your Home Level, so the next run starts
-  ahead), trainings that are still running, Cloud Tokens and Gems.
+  ahead), trainings that are still running (they still finish for their rank; stopping one after the Prestige gives
+  no Cash back), Cloud Tokens and Gems.
 - **You get:** a **Prestige star** on your name tag, **x1.25 coins** per star forever (it multiplies: x1.56 at 2
   stars, x1.95 at 3 ...), **+1 garden place**, **Gems** (100 for the first prestige, 10 fewer for each later one,
   never under 25), and at Prestige 1 the **Fusion Machine** pad (and the 4th slot of your battle team).

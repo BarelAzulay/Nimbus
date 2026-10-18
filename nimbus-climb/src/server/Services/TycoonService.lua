@@ -1575,6 +1575,18 @@ function TycoonService.Prestige(player)
 	if gems > 0 and type(dataService.AddGems) == "function" then
 		dataService.AddGems(player, gems)
 	end
+	-- the running training jobs keep going (3.7) but the Cash paid into them went with the old run: a Stop after the
+	-- prestige refunds nothing (otherwise Cash parked in training would carry over the reset)
+	if type(dataService.MutateGrowth) == "function" then
+		dataService.MutateGrowth(player, function(growth)
+			for _, entry in pairs(growth) do
+				if type(entry) == "table" and type(entry.Job) == "table" then
+					entry.Job.Paid = 0
+				end
+			end
+			return true
+		end)
+	end
 
 	Coins.reset(player, 0) -- the coins on the lawn are gone with the bank
 	local after = getHome(player)

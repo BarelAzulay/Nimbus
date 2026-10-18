@@ -1678,8 +1678,21 @@ local function releaseParticipant(b, part)
 	end
 end
 
-local function returnCFrame(part)
+local function returnCFrame(part, mode)
 	local info = arena()
+	if mode == "Ring" then
+		-- ring climbers come back in front of the Champion Ring portal (built like ReturnCFrame from the trial site),
+		-- else where they pressed START (within RING_RANGE of it); an older lobby without RingSite: the Trial Portal
+		local site = info and info.RingSite
+		if typeof(site) == "CFrame" then
+			local cfr = CFrame.lookAt(site.Position + site.LookVector * 12 + Vector3.new(0, 3, 0),
+				site.Position + site.LookVector * 30 + Vector3.new(0, 3, 0))
+			return cfr * CFrame.new(St.rng:NextNumber(-3, 3), 0, St.rng:NextNumber(-2, 2))
+		end
+		if typeof(part.Origin) == "CFrame" then
+			return part.Origin
+		end
+	end
 	local cf = info and info.ReturnCFrame
 	if typeof(cf) == "CFrame" then
 		return cf * CFrame.new(St.rng:NextNumber(-3, 3), 0, St.rng:NextNumber(-2, 2))
@@ -1726,7 +1739,7 @@ local function forceRelease(b)
 				if root then
 					local x, _, z = zoneLocal(b.Zone, root.Position)
 					if sqrt(x * x + z * z) <= C.POCKET_LEASH + 40 then
-						teleport(part.Player, returnCFrame(part))
+						teleport(part.Player, returnCFrame(b.Mode == "Ring" and b.Ring or part, b.Mode))
 					end
 				end
 			end)
@@ -3251,7 +3264,7 @@ function RingRun.finish(run, b)
 		if root then
 			local x, _, z = zoneLocal(run.Zone, root.Position)
 			if sqrt(x * x + z * z) <= C.POCKET_LEASH + 40 then
-				teleport(player, returnCFrame({ Origin = run.Origin }))
+				teleport(player, returnCFrame({ Origin = run.Origin }, "Ring"))
 			end
 		end
 	end
@@ -3873,6 +3886,10 @@ function BattleService.Command(player, action, arg)
 	if not isPlayer(player) then
 		return false, "NoPlayer"
 	end
+	-- Forfeit first: between two ring rounds the won round's battle is already Ended, and Forfeit does its own checks
+	if action == "Forfeit" then
+		return BattleService.Forfeit(player)
+	end
 	local b = St.battleOf[player]
 	if not b or b.State ~= "Running" then
 		return false, "NoBattle"
@@ -3880,9 +3897,6 @@ function BattleService.Command(player, action, arg)
 	local part = b.Parts[player.UserId]
 	if not part or part.Left or part.Forfeited then
 		return false, "NoBattle"
-	end
-	if action == "Forfeit" then
-		return BattleService.Forfeit(player)
 	end
 	if action ~= "Attack" and action ~= "Retreat" and action ~= "Special" then
 		return false, "UnknownAction"

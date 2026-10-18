@@ -2126,6 +2126,12 @@ function H.askTrain(key, stat)
 	})
 end
 
+-- the Cash a Stop gives back: the job's Paid (0 after a Prestige)
+function H.paidOf(key)
+	local job = H.job(key)
+	return type(job) == "table" and tonumber(job.Paid) or 0
+end
+
 function H.askStop(key)
 	local def = key and H.def(key)
 	if not def or not H.job(key) then
@@ -2134,7 +2140,8 @@ function H.askStop(key)
 	H.showConfirm({
 		Kind = "Stop",
 		Title = "Stop training?",
-		Text = "You get the Cash back, no rank. " .. H.name(key, def) .. " comes back to you right away.",
+		Text = (H.paidOf(key) > 0 and "You get the Cash back, no rank. " or "No rank and no Cash back (it was paid before your Prestige). ")
+			.. H.name(key, def) .. " comes back to you right away.",
 		YesText = "Stop training",
 		NoText = "Keep training",
 		Style = "Pink",
