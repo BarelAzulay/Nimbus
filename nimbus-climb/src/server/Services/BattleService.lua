@@ -127,8 +127,9 @@
 --   stands inside that battle's zone (Forfeit works anywhere), type-checked, token-bucket rate limited.
 -- BattleRequest (action, a, b): "TeamSet" (preset 1-3, {keys}), "TeamSelect" (preset) (DataService validates: owned,
 --   unique, not busy in the Garden / Gym, slot 4 at Prestige 1), "Trial" (level), "Challenge" (userId),
---   "ChallengeReply" (userId, accept), "Queue", "Unqueue", "JoinRaid", "LeaveRaid". Type-checked, a cooldown per action
---   plus a shared burst bucket; refusals answer with a side toast (Notify, never centred; repeats throttled).
+--   "ChallengeReply" (userId, accept), "Queue", "Unqueue", "JoinRaid", "LeaveRaid", "Ring" (startRound). Type-checked, a
+--   cooldown per action plus a shared burst bucket; refusals answer with a side toast (Notify, never centred; repeats
+--   throttled).
 --
 -- Leaving, forfeits, tricks ("nobody loses pets": no pet is ever taken)
 --   * A trial player who forfeits, leaves the game, respawns elsewhere or ends up away from the pocket (teleported,
@@ -153,7 +154,11 @@
 -- Rewards (paid exactly once per player per battle: the record is marked before anything is paid, every payment is a
 --   non-yielding DataService call; BattleEnded fires afterwards with RewardsPaid = true):
 --   * Trial win: BattleCatalog.TrialRewards(level, double).Tokens (+ FirstClear.Tokens / Gems on the first clear, decided
---     inside DataService.MutateBattle and paid only when it returned true) and Xp to every team pet.
+--     inside DataService.MutateBattle and paid only when it returned true) and Xp to every team pet. A trial LOSS pays
+--     a third of that XP when it was a real loss (BattleCatalog.LossXp: the fight lasted >= 20 s or the team dealt >= 20%
+--     of the enemy team's HP; never a forfeit, a leave, a disconnect or a shutdown).
+--   * Ring round won: Cash (seconds of the climber's own garden income, floor 20 + 2r, x3 on a new record), XP 20 + 6r
+--     per team pet, +100 Tokens for the first clear of a boss round; the run's last round: the loss third (see "Modes").
 --   * Duel: BattleCatalog.Trophies (Win / Loss / Draw / Forfeit, Tokens, Xp); PvPWins / PvPLosses.
 --   * Raid (only to the teams still in it at the end, when BattleService.PayRaidRewards is true): the tier of the
 --     player's damage share, BattleCatalog.RaidTier(share, won): Tokens, Xp, a GemChance of Gems and an EventPetChance
@@ -212,6 +217,7 @@ local BattleSim = loadShared("BattleSim")
 local BattleCatalog = loadShared("BattleCatalog")
 local PetKeys = loadShared("PetKeys")
 local PetCatalog = loadShared("PetCatalog")
+local TycoonCatalog = loadShared("TycoonCatalog") -- Phase 4: XpToNext for the pet cards' xp / xpNext in "Start"
 
 ----------------------------------------------------------------------
 -- Tunables (Config.Battle does not exist: local constants, listed as a deviation)
@@ -225,7 +231,8 @@ local C = {
 	HOUSEKEEPING_PERIOD = 1, -- invites, queue pairing, spectators, raid window
 	OUT_STRIKES = 2, -- consecutive failed presence checks before a forfeit / leave (1 s)
 	TRIAL_RANGE = 30, -- studs from the Trial Portal where a trial may start
-	TRIAL_RETURN_DELAY = 4, -- seconds between a trial's end and the teleport back
+	RING_RANGE = 30, -- studs from Portal_Ring where a Champion Ring run may start (Phase 4 contract 3.8)
+	TRIAL_RETURN_DELAY = 4, -- seconds between a trial's (or a ring run's) end and the teleport back
 	POCKET_LEASH = 140, -- studs (horizontal) from the pocket centre before a trial player counts as gone
 	POCKET_FALL = 25, -- studs under the pocket floor where a falling player is put back on the spawn
 	MAX_POCKETS = 64,
@@ -266,6 +273,7 @@ local C = {
 		Unqueue = 0.5,
 		JoinRaid = 1,
 		LeaveRaid = 1,
+		Ring = 1.5, -- Phase 4: BattleRequest("Ring", startRound)
 	},
 }
 if BattleCatalog and type(BattleCatalog.StepSeconds) == "number" and BattleCatalog.StepSeconds > 0 then
@@ -301,9 +309,18 @@ local St = {
 	net = {}, -- [userId] = { bytes, since, rate, peak, messages }
 	double = nil, -- pushed Double Rewards state { Active, Until }
 	eventService = nil, -- resolved lazily (false = missing)
+	tycoonService = nil, -- resolved lazily when Init got none (false = missing): GetPlot / IncomePerSecond for the ring
 	closing = false, -- Shutdown() ran: battles are refused, leavers are not forfeits
 	rng = Random.new(),
+	ringRuns = {}, -- [Player] = RingRun record (Phase 4 Champion Ring; see the header)
+	ringSeq = 0,
+	ringBoard = {}, -- [userId] = { Name, Best }: the best records seen in this server (the Portal_Ring RingBoard attribute)
+	ringBoardText = nil,
+	ringPortal = nil, -- the Portal_Ring model found in the workspace (cached)
 }
+
+-- Phase 4 Champion Ring helpers (one table: Lua's 200-locals limit; ARCHITECTURE_V3.md "Phase 4 build contract" 6)
+local RingRun = {}
 
 ----------------------------------------------------------------------
 -- Small helpers
@@ -675,8 +692,11 @@ local function trophiesOf(player)
 end
 
 -- The BattleSim team spec of the player's active preset: { Owner = userId, Side, Name, Pets = { { Key, PetId, Def,
--- Level, Tier, Slot }... } }, or nil + a reason for a toast.
-local function teamOf(player, side)
+-- Level, Tier, Slot, Evo, Train, Xp, XpNext }... } }, or nil + a reason for a toast. `fallback` (Phase 4, the Champion
+-- Ring): a fixed key list used INSTEAD of the active preset (the run's fighters); the empty-team refusal stays for
+-- trials, duels and raids. Training keys (DataService.TrainingKeys) are skipped either way; the stored evolution stage
+-- and training ranks (DataService.GetGrowth) ride on each entry as the UnitStats extras.
+local function teamOf(player, side, fallback)
 	local DS = dataService()
 	if not hasFn(DS, "ActiveTeamKeys") or not PetKeys then
 		return nil, "Battles are not ready yet"
@@ -685,9 +705,16 @@ local function teamOf(player, side)
 	if type(teams) ~= "table" then
 		return nil, "Your data is still loading"
 	end
-	local keys = try(DS, "ActiveTeamKeys", player)
-	if type(keys) ~= "table" or #keys == 0 then
-		return nil, "Pick your battle team first (Menu > Team)"
+	local keys = fallback
+	if type(keys) ~= "table" then
+		keys = try(DS, "ActiveTeamKeys", player)
+		if type(keys) ~= "table" or #keys == 0 then
+			return nil, "Pick your battle team first (Menu > Team)"
+		end
+	end
+	local training = try(DS, "TrainingKeys", player)
+	if type(training) ~= "table" then
+		training = {}
 	end
 	local slots = tonumber(teams.Slots) or 3
 	local profile = try(DS, "GetProfile", player)
@@ -696,13 +723,26 @@ local function teamOf(player, side)
 		if i > slots then
 			break
 		end
-		if type(key) == "string" then
+		if type(key) == "string" and not training[key] then
 			local okP, parsed = pcall(PetKeys.Parse, key)
 			local okD, def = pcall(PetKeys.DefOf, key, profile)
 			if okP and type(parsed) == "table" and okD and type(def) == "table" and type(def.Stats) == "table" then
-				local level = try(DS, "GetPetLevel", player, key)
+				local level, xp = try(DS, "GetPetLevel", player, key)
 				if not isInteger(level) or level < 1 then
 					level = 1
+				end
+				local growth = try(DS, "GetGrowth", player, key)
+				local evo, train = 0, nil
+				if type(growth) == "table" then
+					evo = isInteger(growth.Evo) and growth.Evo or 0
+					train = { Speed = growth.Speed, Physique = growth.Physique, Ability = growth.Ability, Defense = growth.Defense }
+				end
+				local xpNext = nil
+				if TycoonCatalog and type(TycoonCatalog.XpToNext) == "function" then
+					local okX, v = pcall(TycoonCatalog.XpToNext, level)
+					if okX and type(v) == "number" then
+						xpNext = v
+					end
 				end
 				pets[#pets + 1] = {
 					Key = key,
@@ -711,6 +751,10 @@ local function teamOf(player, side)
 					Level = level,
 					Tier = parsed.Tier or "Normal",
 					Slot = i,
+					Evo = evo,
+					Train = train,
+					Xp = finite(xp) and xp or 0,
+					XpNext = xpNext,
 				}
 			end
 		end
@@ -727,7 +771,8 @@ local function powerOf(spec)
 	end
 	local list = {}
 	for i, pet in ipairs(spec.Pets) do
-		list[i] = { Def = pet.Def, Level = pet.Level, Tier = pet.Tier }
+		-- Evo / Train ride along: TeamPower honours them (a trained team is not undercounted by DUEL_POWER_GAP)
+		list[i] = { Def = pet.Def, Level = pet.Level, Tier = pet.Tier, Evo = pet.Evo, Train = pet.Train }
 	end
 	local ok, power = pcall(BattleCatalog.TeamPower, list)
 	if ok and finite(power) then
@@ -751,7 +796,7 @@ local function canBattle(player)
 	if locked ~= nil and locked ~= false and locked ~= "" then
 		return false, "Leave the portal party first"
 	end
-	if St.battleOf[player] then
+	if St.battleOf[player] or St.ringRuns[player] then
 		return false, "You are already in a battle"
 	end
 	if St.closing then
@@ -873,6 +918,9 @@ local function startPayload(b, player, spectator)
 	d.T = b.Sim:Time()
 	if b.TrialInfo then
 		d.Trial = b.TrialInfo
+	end
+	if b.Mode == "Ring" then
+		d.Ring = RingRun.startInfo(b)
 	end
 	return d
 end
@@ -1168,7 +1216,22 @@ local function payTrial(b, part, res)
 	rw.Level = level
 	rw.FirstClear = false
 	if res.WinnerSide ~= 1 or part.Forfeited then
-		notify(player, "Trial " .. tostring(level) .. " lost. Train your team and try again!", "bad", 4)
+		-- Phase 4 (3.5): a REAL loss (>= 20 s or >= 20% of the enemy HP dealt; never a forfeit / leave / disconnect /
+		-- shutdown, which all arrive as part.Forfeited or Reason "Shutdown") pays a third of the win XP
+		local xp = 0
+		if not part.Forfeited and not part.Left and res.Reason ~= "Shutdown" and res.Reason ~= "Error" and type(BattleCatalog.LossXp) == "function" then
+			local okL, lossXp = pcall(BattleCatalog.LossXp, tonumber(BattleCatalog.TrialRewards(level, false).Xp) or 0, res.Duration, RingRun.dealtShare(res))
+			if okL and finite(lossXp) and lossXp > 0 then
+				xp = floor(lossXp)
+			end
+		end
+		if xp > 0 then
+			rw.LevelUps = grantXp(player, part.Keys, xp, "Trial")
+			rw.Xp = xp
+			notify(player, "Trial " .. tostring(level) .. " lost, but your pets learned: +" .. xp .. " XP each", "info", 4)
+		else
+			notify(player, "Trial " .. tostring(level) .. " lost. Train your team and try again!", "bad", 4)
+		end
 		return rw
 	end
 	local double = BattleService.IsDoubleRewards()
@@ -1413,7 +1476,14 @@ local function payRaid(b, part, res)
 	return rw
 end
 
-local PAY = { Trial = payTrial, Duel = payDuel, Raid = payRaid }
+local PAY = {
+	Trial = payTrial,
+	Duel = payDuel,
+	Raid = payRaid,
+	Ring = function(b, part, res) -- Phase 4 (defined below with the other Champion Ring helpers)
+		return RingRun.pay(b, part, res)
+	end,
+}
 
 -- pays one participant exactly once (marked before anything is paid); returns the rewards record or nil
 local function payOnce(b, part, res)
@@ -1426,9 +1496,16 @@ local function payOnce(b, part, res)
 		-- void: nothing paid, nothing lost (raids on a shutdown pay the share so far: payRaid)
 		local rw = emptyRewards()
 		rw.Void = true
+		if b.Mode == "Ring" then
+			-- the running round is void; the run is over (the wins already paid stay paid): the result card data
+			rw.Final = true
+			rw.Round = b.Round
+			rw.Run = RingRun.summary(b.Ring, b.Round)
+		end
 		b.Paid[uid] = rw
 		if res.Reason == "Shutdown" then
-			notify(part.Player, "The server is restarting: this " .. (b.Mode == "Duel" and "duel" or "trial") .. " does not count.", "info", 5)
+			local what = (b.Mode == "Duel" and "duel") or (b.Mode == "Ring" and "ring round") or "trial"
+			notify(part.Player, "The server is restarting: this " .. what .. " does not count.", "info", 5)
 		end
 		return rw
 	end
@@ -1566,6 +1643,8 @@ local function publicResult(result)
 		Losers = result.Losers,
 		Level = result.Level,
 		BossId = result.BossId,
+		Round = result.Round,
+		Won = result.Won,
 		Duration = result.Duration,
 		BossHp = result.BossHp,
 		BossMaxHp = result.BossMaxHp,
@@ -1634,8 +1713,11 @@ end
 -- frees everything a battle holds (players, ring, pocket, raid, zone) and forgets it: the way out when its end failed
 local function forceRelease(b)
 	b.State = "Ended"
+	if b.Ring then
+		pcall(RingRun.abandon, b.Ring)
+	end
 	for _, part in ipairs(b.PartList) do
-		if b.Mode == "Trial" and isPlayer(part.Player) and St.battleOf[part.Player] == b then
+		if (b.Mode == "Trial" or b.Mode == "Ring") and isPlayer(part.Player) and St.battleOf[part.Player] == b then
 			-- nobody stays stranded in a pocket far out in the sky
 			pcall(function()
 				local root = aliveRoot(part.Player)
@@ -1693,6 +1775,8 @@ local function forceRelease(b)
 			Forfeit = false,
 			Level = b.Level,
 			BossId = b.BossId,
+			Round = b.Round,
+			Won = (b.Mode == "Ring") and false or nil,
 			Damage = {},
 			Shares = {},
 			Participants = participants,
@@ -1738,6 +1822,7 @@ local function finalizeBody(b, forcedReason)
 		Losers = {},
 		Level = b.Level,
 		BossId = b.BossId,
+		Round = b.Round,
 		Damage = {},
 		Shares = {},
 		Duration = res.Duration,
@@ -1777,6 +1862,12 @@ local function finalizeBody(b, forcedReason)
 		for _, part in ipairs(b.PartList) do
 			refundForfeit(b, part)
 		end
+	end
+	if b.Mode == "Ring" then
+		-- Won: the climber's round was won (a forfeit, a leave, a shutdown and an error all count as not won)
+		local climber = b.Ring and b.Ring.UserId or (b.PartList[1] and b.PartList[1].UserId)
+		local part = climber and b.Parts[climber]
+		result.Won = climber ~= nil and contains(result.Winners, climber) and part ~= nil and not part.Forfeited and not part.Left and res.Reason ~= "Shutdown"
 	end
 	-- rewards: every participant still in the battle, once (a duel leaver was settled when they left)
 	result.Fighters = {}
@@ -1835,7 +1926,8 @@ local function finalizeBody(b, forcedReason)
 	end
 	b.Receivers, b.Pending, b.Spectators = {}, {}, {}
 	releaseZone(b)
-	-- the participants are free again (trials: once they are back at the portal)
+	-- the participants are free again (trials: once they are back at the portal; a ring WIN keeps the participant and
+	-- chains the next round, a ring loss ends the run the trial way)
 	if b.Mode == "Trial" then
 		task.delay(C.TRIAL_RETURN_DELAY, function()
 			local ok, err = pcall(finishTrial, b)
@@ -1843,6 +1935,8 @@ local function finalizeBody(b, forcedReason)
 				warn("[BattleService] trial cleanup failed: " .. tostring(err))
 			end
 		end)
+	elseif b.Mode == "Ring" then
+		RingRun.afterBattle(b, result)
 	else
 		for _, part in ipairs(b.PartList) do
 			releaseParticipant(b, part)
@@ -1984,6 +2078,8 @@ local function dropOut(b, part, why)
 		return leaveRaid(b, part, why)
 	elseif b.Mode == "Duel" then
 		return forfeitDuel(b, part, why)
+	elseif b.Mode == "Ring" then
+		return RingRun.dropOut(b, part, why)
 	end
 	return forfeitTrial(b, part, why)
 end
@@ -2182,7 +2278,7 @@ local function beginBattle(b)
 			sendStart(b, part.Player, false)
 		end
 	end
-	BattleService.BattleStarted:Fire(b.Id, { Mode = b.Mode, Players = players, Level = b.Level, BossId = b.BossId })
+	BattleService.BattleStarted:Fire(b.Id, { Mode = b.Mode, Players = players, Level = b.Level, BossId = b.BossId, Round = b.Round })
 end
 
 -- ok, battleId | reason, culprit (the player the refusal is about; nil = no free ring / no arena)
@@ -2577,6 +2673,835 @@ function BattleService.StartTrial(player, level)
 end
 
 ----------------------------------------------------------------------
+-- The Champion Ring (Phase 4, contract 3.8): one RingRun per player, a fresh BattleSim per round in one private pocket.
+-- Every helper lives in RingRun (see the header for the run record and the flow).
+----------------------------------------------------------------------
+-- TycoonService: from Init's deps, else the sibling module (resolved lazily; false = missing)
+function RingRun.tycoon()
+	local dep = St.deps.TycoonService
+	if type(dep) == "table" then
+		return dep
+	end
+	if St.tycoonService == nil then
+		St.tycoonService = false
+		local folder = script.Parent
+		local inst = folder and folder:FindFirstChild("TycoonService")
+		if inst then
+			local ok, mod = pcall(require, inst)
+			if ok and type(mod) == "table" then
+				St.tycoonService = mod
+			end
+		end
+	end
+	return St.tycoonService or nil
+end
+
+-- the Position of a part, a model (its pivot) or an ArenaInfo entry { Pad | Part | Model | CFrame | Position }
+function RingRun.positionOf(thing)
+	if type(thing) == "table" then
+		if typeof(thing.Position) == "Vector3" then
+			return thing.Position
+		end
+		if typeof(thing.CFrame) == "CFrame" then
+			return thing.CFrame.Position
+		end
+		return RingRun.positionOf(thing.Pad or thing.Part or thing.Model)
+	end
+	if typeof(thing) ~= "Instance" or not thing:IsDescendantOf(Workspace) then
+		return nil
+	end
+	if thing:IsA("BasePart") then
+		return thing.Position
+	end
+	local ok, cf = pcall(function()
+		return thing:GetPivot()
+	end)
+	if ok and typeof(cf) == "CFrame" then
+		return cf.Position
+	end
+	return nil
+end
+
+-- the Portal_Ring model in the workspace (cached; nil in a build without one)
+function RingRun.portalModel()
+	local model = St.ringPortal
+	if not (typeof(model) == "Instance" and model:IsDescendantOf(Workspace)) then
+		model = Workspace:FindFirstChild("Portal_Ring", true)
+		St.ringPortal = model
+	end
+	return model
+end
+
+-- where ring starts are accepted: ArenaInfo.RingPortal, else the Portal_Ring model, else the Trial Portal (the
+-- contract's zero-part fallback: the Ring prompt sits on Portal_Trials)
+function RingRun.portalPosition()
+	local info = arena()
+	local pos = info and RingRun.positionOf(info.RingPortal)
+	if pos then
+		return pos
+	end
+	pos = RingRun.positionOf(RingRun.portalModel())
+	if pos then
+		return pos
+	end
+	return trialPortalPosition()
+end
+
+-- the instances that carry the RingBoard attribute (Portal_Ring and ArenaInfo.RingPortal's part / model)
+function RingRun.portalInstances()
+	local out, seen = {}, {}
+	local function add(inst)
+		if typeof(inst) == "Instance" and not seen[inst] then
+			seen[inst] = true
+			out[#out + 1] = inst
+		end
+	end
+	add(RingRun.portalModel())
+	local info = arena()
+	local portal = info and info.RingPortal
+	if type(portal) == "table" then
+		add(portal.Model)
+		add(portal.Pad)
+		add(portal.Part)
+	else
+		add(portal)
+	end
+	return out
+end
+
+-- the owned keys (PetKeys.List), {} without a profile
+function RingRun.ownedKeys(player)
+	local profile = try(dataService(), "GetProfile", player)
+	if type(profile) ~= "table" or not PetKeys or type(PetKeys.List) ~= "function" then
+		return {}
+	end
+	local ok, list = pcall(PetKeys.List, profile)
+	if ok and type(list) == "table" then
+		return list
+	end
+	return {}
+end
+
+-- The ring's fighters, in the contract's order: the active team (training pets skipped), else the equipped keys, else
+-- the best owned pets by UnitPower; training pets skipped everywhere; at most GetTeams().Slots. -> keys, source
+function RingRun.fighters(player, owned)
+	local DS = dataService()
+	local training = try(DS, "TrainingKeys", player)
+	if type(training) ~= "table" then
+		training = {}
+	end
+	local teams = try(DS, "GetTeams", player)
+	local slots = (type(teams) == "table" and tonumber(teams.Slots)) or 3
+	local function pick(list)
+		local out, seen = {}, {}
+		for _, key in ipairs(type(list) == "table" and list or {}) do
+			if #out >= slots then
+				break
+			end
+			if type(key) == "string" and not training[key] and not seen[key] then
+				seen[key] = true
+				out[#out + 1] = key
+			end
+		end
+		return out
+	end
+	local keys = pick(try(DS, "ActiveTeamKeys", player))
+	if #keys > 0 then
+		return keys, "Team"
+	end
+	local equipped = try(St.deps.PetService, "GetEquipped", player)
+	local profile = try(DS, "GetProfile", player)
+	if type(equipped) ~= "table" and type(profile) == "table" then
+		equipped = profile.Equipped
+	end
+	keys = pick(equipped)
+	if #keys > 0 then
+		return keys, "Equipped"
+	end
+	local scored = {}
+	for _, key in ipairs(type(owned) == "table" and owned or {}) do
+		if type(key) == "string" and not training[key] and PetKeys then
+			local okD, def = pcall(PetKeys.DefOf, key, profile)
+			if okD and type(def) == "table" and type(def.Stats) == "table" then
+				local okP, parsed = pcall(PetKeys.Parse, key)
+				local level = try(DS, "GetPetLevel", player, key)
+				local power = 0
+				if BattleCatalog and type(BattleCatalog.UnitPower) == "function" then
+					local okU, p = pcall(BattleCatalog.UnitPower, def, isInteger(level) and level or 1, (okP and type(parsed) == "table" and parsed.Tier) or "Normal", try(DS, "GetGrowth", player, key))
+					if okU and finite(p) then
+						power = p
+					end
+				end
+				scored[#scored + 1] = { Key = key, Power = power, Order = #scored }
+			end
+		end
+	end
+	table.sort(scored, function(x, y)
+		if x.Power ~= y.Power then
+			return x.Power > y.Power
+		end
+		return x.Order < y.Order
+	end)
+	local list = {}
+	for _, s in ipairs(scored) do
+		list[#list + 1] = s.Key
+	end
+	return pick(list), "Best"
+end
+
+-- the climber's garden income per second (0 without a home / garden pets: the floor only)
+function RingRun.income(player)
+	local v = try(RingRun.tycoon(), "IncomePerSecond", player)
+	if finite(v) and v > 0 then
+		return v
+	end
+	return 0
+end
+
+-- the share of the enemy side's HP a result says the player's side dealt (the loss-XP gate), 0..1
+function RingRun.dealtShare(res)
+	local left = type(res) == "table" and type(res.Hp) == "table" and tonumber(res.Hp[2]) or nil
+	if not finite(left) then
+		return 0
+	end
+	return max(0, min(1, 1 - left))
+end
+
+function RingRun.intermission()
+	local R = BattleCatalog and BattleCatalog.Ring
+	local s = type(R) == "table" and tonumber(R.Intermission) or 3
+	if not finite(s) or s < 0 then
+		s = 3
+	end
+	return s
+end
+
+-- "2,571" for the toasts (whole Cash)
+function RingRun.money(n)
+	local s = tostring(floor((tonumber(n) or 0) + 0.5))
+	local out = s
+	while true do
+		local k
+		out, k = out:gsub("^(-?%d+)(%d%d%d)", "%1,%2")
+		if k == 0 then
+			break
+		end
+	end
+	return out
+end
+
+-- the result card data of a run (final "End" Rewards.Run; `round` = the round the run ended on)
+function RingRun.summary(run, round)
+	if type(run) ~= "table" then
+		return { Wins = 0, Cash = 0, Xp = 0, Tokens = 0, Round = round or 1, Start = 1, Best = 0 }
+	end
+	return {
+		Wins = run.Wins,
+		Cash = run.Cash,
+		Xp = run.Xp,
+		Tokens = run.Tokens,
+		Round = round or run.Round,
+		Start = run.Start,
+		Record = run.Record, -- the round of the new record set in this run, or nil
+		Best = max(tonumber(run.Best0) or 0, tonumber(run.Record) or 0),
+	}
+end
+
+-- "Run over after round 12: 11 wins, +$2,571, +806 XP. New record: round 11!"
+function RingRun.cardText(run, round)
+	local s = RingRun.summary(run, round)
+	local text = "Run over after round " .. tostring(s.Round) .. ": " .. s.Wins .. (s.Wins == 1 and " win" or " wins")
+	if s.Wins > 0 then
+		text = text .. ", +$" .. RingRun.money(s.Cash) .. ", +" .. s.Xp .. " XP"
+	end
+	if s.Record then
+		text = text .. ". New record: round " .. s.Record .. "!"
+	else
+		text = text .. "."
+	end
+	return text
+end
+
+-- "Start".Ring: { Round, Best, Start, Champion = { PetId, Level, Tier, Boss, Name } }
+function RingRun.startInfo(b)
+	local run = b.Ring
+	local ch = type(b.Champion) == "table" and b.Champion or {}
+	return {
+		Round = b.Round or (run and run.Round) or 1,
+		Best = run and max(tonumber(run.Best0) or 0, tonumber(run.Record) or 0) or 0,
+		Start = run and run.Start or 1,
+		Champion = { PetId = ch.PetId, Level = ch.Level, Tier = ch.Tier, Boss = ch.Boss == true, Name = ch.Name },
+	}
+end
+
+-- the final "End" rewards of a run that ended between two rounds (nothing is paid: the last round was already paid)
+function RingRun.finalRewards(run, round)
+	local rw = emptyRewards()
+	rw.Cash = 0
+	rw.Round = round
+	rw.Won = false
+	rw.Final = true
+	rw.Run = RingRun.summary(run, round)
+	return rw
+end
+
+-- Ring.Runs + 1 exactly once per run (written the moment the run ends: on a leave it travels with the leave save),
+-- then the RingBoard
+function RingRun.closeRecord(run)
+	if run.Recorded then
+		return
+	end
+	run.Recorded = true
+	local DS = dataService()
+	if type(try(DS, "GetProfile", run.Player)) == "table" then
+		try(DS, "MutateRing", run.Player, function(ring)
+			ring.Runs = (tonumber(ring.Runs) or 0) + 1
+		end)
+	end
+	RingRun.updateBoard(run)
+end
+
+-- the best records seen in this server -> the Portal_Ring attribute RingBoard = "Alex|31;Sam|24;Kim|20"
+function RingRun.updateBoard(run)
+	local best = max(tonumber(run.Best0) or 0, tonumber(run.Record) or 0)
+	local ring = try(dataService(), "GetRing", run.Player)
+	if type(ring) == "table" then
+		best = max(best, tonumber(ring.Best) or 0)
+	end
+	if best <= 0 then
+		return
+	end
+	local entry = St.ringBoard[run.UserId]
+	if not entry or best > entry.Best then
+		St.ringBoard[run.UserId] = { Name = run.Name, Best = best }
+	end
+	RingRun.writeBoard()
+end
+
+function RingRun.writeBoard()
+	local list = {}
+	for _, e in pairs(St.ringBoard) do
+		list[#list + 1] = e
+	end
+	table.sort(list, function(x, y)
+		if x.Best ~= y.Best then
+			return x.Best > y.Best
+		end
+		return x.Name < y.Name
+	end)
+	local parts = {}
+	for i = 1, min(3, #list) do
+		parts[i] = tostring(list[i].Name):gsub("[|;]", "") .. "|" .. tostring(list[i].Best)
+	end
+	local text = table.concat(parts, ";")
+	if text == St.ringBoardText then
+		return
+	end
+	St.ringBoardText = text
+	for _, inst in ipairs(RingRun.portalInstances()) do
+		pcall(function()
+			inst:SetAttribute("RingBoard", text)
+		end)
+	end
+end
+
+-- the rewards of one ring round (payOnce -> PAY.Ring): a WIN pays Cash (seconds of the climber's own garden income,
+-- the floor, x3 on a new record decided inside ONE MutateRing together with the first boss clear's Tokens) and XP to
+-- every team pet; the round that ENDS the run pays a third of its XP under the trial-loss gate (never for a forfeit,
+-- a leave or a shutdown) and carries the result card data (Final, Run)
+function RingRun.pay(b, part, res)
+	local run = b.Ring
+	local player = part.Player
+	local round = tonumber(b.Round) or (run and run.Round) or 1
+	local R = BattleCatalog.Ring or {}
+	local winXp = (tonumber(R.XpBase) or 20) + (tonumber(R.XpPerRound) or 6) * round
+	local rw = emptyRewards()
+	rw.Cash, rw.Round, rw.Won = 0, round, false
+	if res.WinnerSide == 1 and not part.Forfeited and not part.Left then
+		local isRecord = false
+		local okM = try(dataService(), "MutateRing", player, function(ring)
+			if round > (tonumber(ring.Best) or 0) then
+				ring.Best = round
+				isRecord = true
+			end
+		end)
+		isRecord = okM == true and isRecord
+		local rewards = BattleCatalog.RingRewards(round, RingRun.income(player), isRecord)
+		local cash = tonumber(rewards.Cash) or 0
+		if cash > 0 and try(dataService(), "AddCash", player, cash) ~= true then
+			cash = 0
+		end
+		local tokens = tonumber(rewards.Tokens) or 0
+		grantTokens(player, tokens)
+		rw.LevelUps = grantXp(player, part.Keys, winXp, "Ring")
+		rw.Cash, rw.Xp, rw.Tokens, rw.Record, rw.Next, rw.Won = cash, winXp, tokens, isRecord, round + 1, true
+		rw.Seconds = rewards.Seconds
+		if run then
+			run.Wins = run.Wins + 1
+			run.Cash = run.Cash + cash
+			run.Xp = run.Xp + winXp
+			run.Tokens = run.Tokens + tokens
+			if isRecord then
+				run.Record = round
+			end
+		end
+		local text = "Round " .. round .. " won! +$" .. RingRun.money(cash) .. ", +" .. winXp .. " XP"
+		if isRecord then
+			text = text .. " (new record: x3 Cash!)"
+		end
+		if tokens > 0 then
+			text = text .. " +" .. tokens .. " Tokens"
+		end
+		notify(player, text, "good", 4)
+		return rw
+	end
+	local xp = 0
+	if not part.Forfeited and not part.Left and res.Reason ~= "Shutdown" and res.Reason ~= "Error" and type(BattleCatalog.LossXp) == "function" then
+		local okL, lossXp = pcall(BattleCatalog.LossXp, winXp, res.Duration, RingRun.dealtShare(res))
+		if okL and finite(lossXp) and lossXp > 0 then
+			xp = floor(lossXp)
+		end
+	end
+	if xp > 0 then
+		rw.LevelUps = grantXp(player, part.Keys, xp, "Ring")
+	end
+	rw.Xp = xp
+	if run then
+		run.Xp = run.Xp + xp
+	end
+	rw.Final = true
+	rw.Run = RingRun.summary(run, round)
+	notify(player, RingRun.cardText(run, round), "info", 6)
+	return rw
+end
+
+-- a free index of the shared pocket pool (trials and ring runs)
+function RingRun.freePocketIndex()
+	for i = 1, C.MAX_POCKETS do
+		if not St.pocketBusy[i] then
+			return i
+		end
+	end
+	return nil
+end
+
+-- ArenaBuilder.BuildPocket(index, "Ring") under pcall; the trial pocket is the fallback. -> pocket info | nil
+function RingRun.buildPocket(builder, index)
+	local okP, pocket = pcall(builder.BuildPocket, index, "Ring")
+	if okP and type(pocket) == "table" and typeof(pocket.CFrame) == "CFrame" then
+		return pocket
+	end
+	warn("[BattleService] BuildPocket(" .. index .. ", Ring) failed: " .. tostring(pocket) .. " (the trial pocket stands in)")
+	okP, pocket = pcall(builder.BuildPocket, index)
+	if okP and type(pocket) == "table" and typeof(pocket.CFrame) == "CFrame" then
+		return pocket
+	end
+	warn("[BattleService] BuildPocket(" .. index .. ") failed: " .. tostring(pocket))
+	return nil
+end
+
+-- starts the run's current round: a fresh BattleSim in the run's pocket; the new InBattle id is written by
+-- addParticipant BEFORE the previous battle lets the player go (no gap). -> ok, battleId | reason
+function RingRun.startRound(run)
+	local player = run.Player
+	if St.ringRuns[player] ~= run or run.State == "Ending" or run.State == "Ended" then
+		return false, "The run is over"
+	end
+	if St.closing then
+		return false, "The server is restarting: battles will be back in a moment"
+	end
+	if not isPlayer(player) or not aliveRoot(player) then
+		return false, "Wait until you respawn"
+	end
+	local spec, reason = teamOf(player, 1, run.Keys)
+	if not spec then
+		return false, reason
+	end
+	local okC, champion = pcall(BattleCatalog.ChampionTeam, run.Round, run.Seed)
+	if not okC or type(champion) ~= "table" or type(champion.Pets) ~= "table" then
+		warn("[BattleService] ChampionTeam(" .. tostring(run.Round) .. ") failed: " .. tostring(champion))
+		return false, "The Champion Ring could not start"
+	end
+	local R = BattleCatalog.Ring or {}
+	local id = newBattleId()
+	local okS, sim, simWhy = pcall(BattleSim.new, {
+		Mode = "Ring",
+		Id = id,
+		Seed = newSeed(),
+		Round = run.Round,
+		Zone = { X = run.Zone.X, Z = run.Zone.Z },
+		Teams = { spec, champion },
+		TimeLimit = tonumber(R.TimeLimit) or 90,
+	})
+	if not okS or type(sim) ~= "table" then
+		warn("[BattleService] ring round setup failed: " .. tostring(okS and simWhy or sim))
+		return false, "The Champion Ring could not start"
+	end
+	local b = newBattle(id, "Ring", sim, run.Zone)
+	b.Ring = run
+	b.Round = run.Round
+	b.Champion = champion.Champion
+	run.LastId = id
+	run.Battle = b
+	run.State = "Fighting"
+	addParticipant(b, player, 1, spec) -- St.battleOf + InBattle move to the new round at once
+	St.pocketBusy[run.PocketIndex] = id
+	beginBattle(b)
+	return true, id
+end
+
+-- the intermission timer fired: the next round of a run that is still waiting for it
+function RingRun.nextRound(run, round)
+	local player = run.Player
+	if St.ringRuns[player] ~= run or run.State ~= "Intermission" or run.Round ~= round then
+		return
+	end
+	if St.closing then
+		RingRun.endRun(run, nil, "Shutdown")
+		return
+	end
+	if not isPlayer(player) or not aliveRoot(player) then
+		RingRun.endRun(run, nil, "Left")
+		return
+	end
+	local ok, why = RingRun.startRound(run)
+	if not ok then
+		notify(player, why or "The Champion Ring could not continue", "bad", 4)
+		RingRun.endRun(run, nil, "Error")
+	end
+end
+
+-- after a ring battle's rewards and "End" went out (finalizeBody): a WIN keeps the participant and chains the next
+-- round; anything else ends the run the trial way
+function RingRun.afterBattle(b, result)
+	local run = b.Ring
+	if not run then
+		task.delay(C.TRIAL_RETURN_DELAY, function()
+			pcall(finishTrial, b)
+		end)
+		return
+	end
+	local player = run.Player
+	if result.Won == true and run.State == "Fighting" and St.ringRuns[player] == run and isPlayer(player) and not St.closing then
+		run.State = "Intermission"
+		run.Round = run.Round + 1
+		run.Battle = nil
+		run.Strikes = 0
+		St.pocketBusy[run.PocketIndex] = run.Id -- the pocket stays ours between the rounds
+		unregister(b) -- the battle is over; the participant record keeps the player InBattle until the next Start
+		local round = run.Round
+		task.delay(RingRun.intermission(), function()
+			local ok, err = pcall(RingRun.nextRound, run, round)
+			if not ok then
+				warn("[BattleService] ring round " .. tostring(round) .. " failed: " .. tostring(err))
+				pcall(RingRun.endRun, run, nil, "Error")
+			end
+		end)
+		return
+	end
+	RingRun.endRun(run, b, result.Reason)
+end
+
+-- the run is over (b = its last battle, nil when it ended between two rounds): Ring.Runs + 1 and the RingBoard now,
+-- the final "End" when no battle carried it, the return teleport + release + FreePocket TRIAL_RETURN_DELAY later
+function RingRun.endRun(run, b, reason)
+	if run.State == "Ending" or run.State == "Ended" then
+		return
+	end
+	run.State = "Ending"
+	run.Battle = nil
+	local player = run.Player
+	RingRun.closeRecord(run)
+	if b == nil and isPlayer(player) then
+		-- between two rounds: the client only knows the last round was won; the result card data goes out now
+		local round = max(1, (tonumber(run.Round) or 1) - 1)
+		send(player, "End", {
+			BattleId = run.LastId,
+			Mode = "Ring",
+			Round = round,
+			Rewards = RingRun.finalRewards(run, round),
+			Outcome = "Left",
+			Won = false,
+			Spectator = false,
+			Reason = reason or "Left",
+		}, run.LastId)
+		if reason ~= "Forfeit" then
+			notify(player, RingRun.cardText(run, round), "info", 6)
+		end
+	end
+	task.delay(C.TRIAL_RETURN_DELAY, function()
+		local ok, err = pcall(RingRun.finish, run, b)
+		if not ok then
+			warn("[BattleService] ring cleanup failed: " .. tostring(err))
+		end
+	end)
+end
+
+-- the cleanup of an ended run: back to the portal (a player still at the pocket), the participant released, the
+-- pocket freed, the run forgotten
+function RingRun.finish(run, b)
+	local player = run.Player
+	if St.ringRuns[player] == run then
+		St.ringRuns[player] = nil
+	end
+	if isPlayer(player) then
+		local root = aliveRoot(player)
+		if root then
+			local x, _, z = zoneLocal(run.Zone, root.Position)
+			if sqrt(x * x + z * z) <= C.POCKET_LEASH + 40 then
+				teleport(player, returnCFrame({ Origin = run.Origin }))
+			end
+		end
+	end
+	local held = St.battleOf[player]
+	if held and held.Ring == run then
+		St.battleOf[player] = nil
+		setInBattle(player, nil)
+		if isPlayer(player) then
+			St.watchCooldown[player] = { [held.Id] = now() + C.SPECTATE_COOLDOWN }
+		end
+	end
+	if b then
+		unregister(b)
+	end
+	local index = run.PocketIndex
+	if index then
+		local busy = St.pocketBusy[index]
+		if busy == run.Id or (b and busy == b.Id) or busy == run.LastId then
+			if hasFn(St.arenaBuilder, "FreePocket") then
+				pcall(St.arenaBuilder.FreePocket, run.Pocket or index)
+			end
+			St.pocketBusy[index] = nil
+		end
+	end
+	run.State = "Ended"
+end
+
+-- the fail-safe path (forceRelease of a ring battle): the record closed, the run forgotten (the pocket is freed by
+-- forceRelease itself)
+function RingRun.abandon(run)
+	RingRun.closeRecord(run)
+	if St.ringRuns[run.Player] == run then
+		St.ringRuns[run.Player] = nil
+	end
+	local index = run.PocketIndex
+	if index and St.pocketBusy[index] == run.Id then
+		if hasFn(St.arenaBuilder, "FreePocket") then
+			pcall(St.arenaBuilder.FreePocket, run.Pocket or index)
+		end
+		St.pocketBusy[index] = nil
+	end
+	run.State = "Ended"
+end
+
+-- the way out of a running ring round (Forfeit, the leash, a respawn, an obby match, a disconnect): the record is
+-- closed at once (a leaver's Runs + 1 travels with the leave save), then the round is forfeited like a trial
+function RingRun.dropOut(b, part, why)
+	local run = b.Ring
+	if run and St.ringRuns[run.Player] == run and run.State == "Fighting" then
+		run.State = "Ending"
+		RingRun.closeRecord(run)
+	end
+	return forfeitTrial(b, part, why)
+end
+
+-- PlayerRemoving: a run between two rounds ends now (a run mid-round was closed by dropOut and ends with its battle)
+function RingRun.leave(run)
+	if run.State == "Intermission" then
+		RingRun.endRun(run, nil, "Left")
+	elseif run.State == "Fighting" then
+		RingRun.closeRecord(run)
+	end
+end
+
+-- the presence check of a run between two rounds (monitorTick): alive, not in an obby match, at the pocket
+function RingRun.monitor(run)
+	local player = run.Player
+	if run.State ~= "Intermission" or St.ringRuns[player] ~= run then
+		return
+	end
+	if not isPlayer(player) then
+		RingRun.endRun(run, nil, "Left")
+		return
+	end
+	if player:GetAttribute(Config.Attr.InMatch) == true then
+		notify(player, "You left the battle for an obby match.", "info", 4)
+		RingRun.endRun(run, nil, "Left")
+		return
+	end
+	local root = aliveRoot(player)
+	local here = false
+	if root then
+		local x, y, z = zoneLocal(run.Zone, root.Position)
+		here = sqrt(x * x + z * z) <= C.POCKET_LEASH and y <= 220
+		if here and y < -C.POCKET_FALL and run.Zone.Spawn then
+			teleport(player, run.Zone.Spawn) -- slipped off the pocket between two rounds: back on the spawn
+		end
+	end
+	if here then
+		run.Strikes = 0
+		return
+	end
+	run.Strikes = (run.Strikes or 0) + 1
+	if run.Strikes >= C.OUT_STRIKES then
+		notify(player, "You left the ring: the run is over.", "bad", 4)
+		RingRun.endRun(run, nil, "Left")
+	end
+end
+
+-- BattleRequest("Ring", startRound) -> the entry checks of contract 3.8, IN ORDER, each with its toast; then the run
+function BattleService.StartRing(player, startRound)
+	if not isPlayer(player) then
+		return false, "That player is not here"
+	end
+	if not BattleSim or not BattleCatalog or not PetKeys or type(BattleCatalog.ChampionTeam) ~= "function" or type(BattleCatalog.RingRewards) ~= "function" then
+		return false, "Battles are not ready yet"
+	end
+	-- 1) a home claimed this session
+	if type(try(RingRun.tycoon(), "GetPlot", player)) ~= "table" then
+		return false, "Claim your home first"
+	end
+	-- 2) at least one owned pet
+	local owned = RingRun.ownedKeys(player)
+	if #owned == 0 then
+		return false, "You need a pet"
+	end
+	-- 3) the fighters: the team, else the equipped pets, else the best owned pets (training pets skipped)
+	local keys, source = RingRun.fighters(player, owned)
+	if #keys == 0 then
+		return false, "Your pets are all training right now"
+	end
+	-- 4) free to battle
+	local ok, why = canBattle(player)
+	if not ok then
+		return false, why
+	end
+	-- 5) at the Champion Ring portal
+	local portal = RingRun.portalPosition()
+	local root = aliveRoot(player)
+	if not portal or not root or (root.Position - portal).Magnitude > C.RING_RANGE then
+		return false, "Walk to the Champion Ring portal"
+	end
+	-- 6) the save is loaded and not provisional
+	local DS = dataService()
+	local ring = try(DS, "GetRing", player)
+	if type(ring) ~= "table" or try(DS, "IsProvisional", player) == true then
+		return false, "Your save is still loading, try again in a moment"
+	end
+	-- 7) the start round: 1, or a boss round the player already beat
+	local R = BattleCatalog.Ring or {}
+	local every = tonumber(R.BossEvery) or 10
+	local first = startRound
+	if first == nil then
+		first = 1
+	end
+	if not isInteger(first) or first < 1 or first > (tonumber(R.MaxRound) or 100000) then
+		return false, "Start from round 1 or a boss round you beat"
+	end
+	if first > 1 and (first % every ~= 0 or (tonumber(ring.Best) or 0) < first) then
+		return false, "Start from round 1 or a boss round you beat"
+	end
+	-- 8) the spec (the keys stay fixed for the whole run)
+	local spec, reason = teamOf(player, 1, keys)
+	if not spec then
+		return false, reason
+	end
+	-- 9) the pocket
+	local builder = St.arenaBuilder
+	if not hasFn(builder, "BuildPocket") then
+		return false, "The Champion Ring is closed"
+	end
+	local index = RingRun.freePocketIndex()
+	if not index then
+		return false, "Every ring is busy. Try again soon!"
+	end
+	local pocket = RingRun.buildPocket(builder, index)
+	if not pocket then
+		return false, "The Champion Ring could not open"
+	end
+	local zone = zoneFrom(pocket.CFrame, (type(BattleCatalog.Zones) == "table" and BattleCatalog.Zones.Ring) or { X = 44, Z = 44 }, pocket.Zone)
+	zone.Spawn = pocket.Spawn
+	if typeof(zone.Spawn) ~= "CFrame" then
+		zone.Spawn = lookFrom((pocket.CFrame * CFrame.new(0, 3, -(zone.Z / 2 - 5))).Position, pocket.CFrame.Position)
+	end
+	zone.Pocket = pocket
+	zone.PocketIndex = index
+	St.ringSeq = St.ringSeq + 1
+	local run = {
+		Id = "R" .. St.ringSeq,
+		Player = player,
+		UserId = player.UserId,
+		Name = shortName(player, 16),
+		Pocket = pocket,
+		PocketIndex = index,
+		Zone = zone,
+		Round = first,
+		Start = first,
+		Seed = newSeed(),
+		Keys = keys,
+		Source = source,
+		Wins = 0,
+		Cash = 0,
+		Xp = 0,
+		Tokens = 0,
+		Record = nil,
+		Best0 = tonumber(ring.Best) or 0,
+		State = "Intermission",
+		Battle = nil,
+		LastId = nil,
+		Recorded = false,
+		Strikes = 0,
+		Origin = root.CFrame,
+	}
+	St.ringRuns[player] = run
+	St.pocketBusy[index] = run.Id
+	stopWatching(player, "Joined")
+	leaveLobby(player)
+	teleport(player, zone.Spawn)
+	local okR, idOrWhy = RingRun.startRound(run)
+	if not okR then
+		run.Recorded = true -- nothing happened: no run to count
+		St.ringRuns[player] = nil
+		if St.pocketBusy[index] == run.Id then
+			if hasFn(builder, "FreePocket") then
+				pcall(builder.FreePocket, pocket)
+			end
+			St.pocketBusy[index] = nil
+		end
+		teleport(player, root.CFrame)
+		return false, idOrWhy or "The Champion Ring could not start"
+	end
+	local champion = type(spec) == "table" and St.battles[idOrWhy] and St.battles[idOrWhy].Champion or nil
+	local who = (type(champion) == "table" and champion.Name) and (": " .. tostring(champion.Name)) or ""
+	notify(player, "Champion Ring, round " .. first .. who .. "! F = attack, R = retreat, 1-4 = specials", "info", 4)
+	return true, idOrWhy
+end
+
+-- { [key] = true }: the pet keys of the player's running battle or ring run (a run's fixed list also between rounds)
+function BattleService.KeysInBattle(player)
+	local set = {}
+	if typeof(player) ~= "Instance" then
+		return set
+	end
+	local run = St.ringRuns[player]
+	if run and run.State ~= "Ended" then
+		for _, key in ipairs(run.Keys) do
+			set[key] = true
+		end
+	end
+	local b = St.battleOf[player]
+	if b and b.State == "Running" then
+		local part = b.Parts[player.UserId]
+		if part and not part.Left then
+			for _, key in ipairs(part.Keys) do
+				set[key] = true
+			end
+		end
+	end
+	return set
+end
+
+----------------------------------------------------------------------
 -- Boss raids (EventService opens / ends them; players join inside the arena)
 ----------------------------------------------------------------------
 local function bossName(bossId)
@@ -2825,13 +3750,19 @@ function BattleService.GetBattle(player)
 	end
 	local part = b.Parts[player.UserId]
 	local okT, t = pcall(b.Sim.Time, b.Sim)
+	local run = St.ringRuns[player]
+	local state = b.State
+	if run and run.State == "Intermission" then
+		state = "Intermission" -- a ring run between two rounds (the next Start comes by itself)
+	end
 	return {
 		BattleId = b.Id,
 		Mode = b.Mode,
 		Side = part and part.Side or 0,
 		Level = b.Level,
 		BossId = b.BossId,
-		State = b.State,
+		Round = (run and run.Round) or b.Round,
+		State = state,
 		T = okT and t or 0,
 		Zone = { CFrame = b.Zone.CFrame, Size = Vector3.new(b.Zone.X, C.ZONE_HEIGHT, b.Zone.Z) },
 	}
@@ -2861,6 +3792,7 @@ function BattleService.ListBattles()
 				Receivers = receivers,
 				Level = b.Level,
 				BossId = b.BossId,
+				Round = b.Round,
 				RingIndex = b.RingIndex,
 				PocketIndex = b.Zone.PocketIndex,
 			}
@@ -2901,7 +3833,17 @@ end
 -- Commands
 ----------------------------------------------------------------------
 function BattleService.Forfeit(player)
-	local b = typeof(player) == "Instance" and St.battleOf[player]
+	if typeof(player) ~= "Instance" then
+		return false, "NoBattle"
+	end
+	local run = St.ringRuns[player]
+	if run and run.State == "Intermission" then
+		-- between two ring rounds: the run ends cleanly, the last round (already paid) is kept
+		RingRun.endRun(run, nil, "Forfeit")
+		notify(player, "You left the Champion Ring.", "info", 4)
+		return true
+	end
+	local b = St.battleOf[player]
 	if not b or b.State ~= "Running" then
 		return false, "NoBattle"
 	end
@@ -2913,6 +3855,8 @@ function BattleService.Forfeit(player)
 		leaveRaid(b, part, "You left the raid.")
 	elseif b.Mode == "Duel" then
 		forfeitDuel(b, part, "You forfeited the duel.")
+	elseif b.Mode == "Ring" then
+		RingRun.dropOut(b, part, "You left the Champion Ring.")
 	else
 		forfeitTrial(b, part, "You left the trial.")
 	end
@@ -2971,7 +3915,7 @@ end
 -- true while the participant is where they belong (trial: at their pocket; duel / raid: inside the arena)
 local function present(b, part, root)
 	local pos = root.Position
-	if b.Mode == "Trial" then
+	if b.Mode == "Trial" or b.Mode == "Ring" then
 		local x, y, z = zoneLocal(b.Zone, pos)
 		if sqrt(x * x + z * z) > C.POCKET_LEASH or y > 220 then
 			return false
@@ -3009,6 +3953,8 @@ local function monitorBattle(b)
 							why = "You left the arena: you are out of the raid."
 						elseif b.Mode == "Duel" then
 							why = "You left the arena: the duel is lost."
+						elseif b.Mode == "Ring" then
+							why = "You left the ring: the run is over."
 						else
 							why = "You left the trial: it is lost."
 						end
@@ -3025,6 +3971,19 @@ local function monitorTick()
 		local ok, err = pcall(monitorBattle, b)
 		if not ok then
 			warn("[BattleService] monitor failed for " .. b.Id .. ": " .. tostring(err))
+		end
+	end
+	-- ring runs between two rounds (no battle runs): the climber must stay at the pocket, alive and out of matches
+	local runs = {}
+	for _, run in pairs(St.ringRuns) do
+		if run.State == "Intermission" then
+			runs[#runs + 1] = run
+		end
+	end
+	for _, run in ipairs(runs) do
+		local ok, err = pcall(RingRun.monitor, run)
+		if not ok then
+			warn("[BattleService] ring monitor failed for " .. tostring(run.Id) .. ": " .. tostring(err))
 		end
 	end
 end
@@ -3202,6 +4161,9 @@ local function onRequest(player, action, a, b)
 		ok, why = BattleService.JoinRaid(player)
 	elseif action == "LeaveRaid" then
 		ok, why = BattleService.LeaveRaid(player)
+	elseif action == "Ring" then
+		-- Phase 4: the Champion Ring (a missing start round means round 1; junk is refused inside StartRing)
+		ok, why = BattleService.StartRing(player, a)
 	end
 	if not ok and type(why) == "string" then
 		notify(player, why, "bad", 3)
@@ -3213,8 +4175,14 @@ local function onPlayerRemoving(player)
 	if b and b.State == "Running" and not St.closing then
 		local part = b.Parts[player.UserId]
 		if part and not part.Left and not part.Forfeited then
-			dropOut(b, part, nil) -- a duel leaver's loss is written right now, before their profile is saved
+			-- a duel leaver's loss (and a ring run's Runs + 1) is written right now, before their profile is saved
+			dropOut(b, part, nil)
 		end
+	end
+	local run = St.ringRuns[player]
+	if run then
+		-- a ring run between two rounds (no battle runs), or one whose record was not closed yet
+		pcall(RingRun.leave, run)
 	end
 	St.battleOf[player] = nil
 	if St.watching[player] then
@@ -3281,6 +4249,19 @@ function BattleService.Shutdown()
 			warn("[BattleService] shutdown of " .. b.Id .. " failed: " .. tostring(err))
 		end
 		finalize(b, "Shutdown")
+	end
+	-- ring runs between two rounds (no battle runs) end too: Runs + 1, the pocket freed, the result card data
+	local runs = {}
+	for _, run in pairs(St.ringRuns) do
+		if run.State == "Intermission" then
+			runs[#runs + 1] = run
+		end
+	end
+	for _, run in ipairs(runs) do
+		local ok, err = pcall(RingRun.endRun, run, nil, "Shutdown")
+		if not ok then
+			warn("[BattleService] shutdown of ring run " .. tostring(run.Id) .. " failed: " .. tostring(err))
+		end
 	end
 	local raid = St.raid
 	if raid and not raid.Battle then
