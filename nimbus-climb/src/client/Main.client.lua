@@ -32,6 +32,9 @@ local CONTROLLER_NAMES = {
 	-- Phase 3
 	"BattleController",
 	"ArenaController",
+	-- Phase 4 (ARCHITECTURE_V3.md "Phase 4 build contract")
+	"CareController", -- Food Machine feed list, garden picker, Training Place window, the EVOLVE moment
+	"HomePortalFx", -- the home portal and the arrival ring
 }
 
 local TAG = "[NimbusClimb] "
@@ -40,7 +43,8 @@ local TAG = "[NimbusClimb] "
 local OPTIONAL = { SkyDragonController = true, IndexController = true, NpcController = true, TutorialController = true,
 	ShowcaseController = true, DevController = true, DevPetShow = true,
 	HomeFx = true, FusionController = true,
-	BattleController = true, ArenaController = true }
+	BattleController = true, ArenaController = true,
+	CareController = true, HomePortalFx = true }
 
 local client = script.Parent
 

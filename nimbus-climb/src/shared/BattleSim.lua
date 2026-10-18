@@ -15,19 +15,26 @@
 -- API (the contract):
 --   BattleSim.new(setup) -> battle | nil, reason
 --     setup = {
---       Mode = "Trial" | "Duel" | "Raid",            -- default "Duel"
+--       Mode = "Trial" | "Duel" | "Raid" | "Ring",   -- default "Duel"; "Ring" (Phase 4, the Champion Ring) plays like a
+--                                                     Trial: a timeout is a loss (side 2 wins)
 --       Seed = n,                                     -- RNG seed (default 1)
 --       Id = any,                                     -- optional battle id, echoed in Snapshot / Describe
 --       Zone = n | { X = w, Z = d } | { w, d },       -- floor size in studs (default BattleCatalog.Zones[Mode])
 --       Teams = { team... },                          -- see AddTeam
 --       Trial = level,                                -- adds BattleCatalog.TrialTeam(level) on side 2
 --       Boss = bossId,                                -- adds the boss (BattleCatalog.Bosses) on side 2 (Mode "Raid")
+--       Round = n,                                    -- Ring: the round number, echoed in Describe / Result
 --       TimeLimit = seconds,                          -- default BattleCatalog.TimeLimits[Mode] (Raid: the boss's)
 --       Specials = false,                             -- harness: nobody can cast specials
 --     }
 --     team = { Owner = userId | string, Side = 1 | 2, Name, Anchor = { x, z } | nil, Npc = bool, Auto = bool,
 --              Specials = false (harness: this team never casts), Pets = { { Key, PetId, Def, Level, Tier, Slot,
---              NoSpecial = true (harness: this pet never casts) }... } }
+--              NoSpecial = true (harness: this pet never casts), Boss, Handicap,
+--              Evo = 0..2, Train = { Speed, Physique, Ability, Defense }, Boost = > 1, Xp, XpNext, Crowned }... } }
+--       Phase 4 entry fields: Evo (the stored evolution stage), Train (training ranks) and Boost (ring champions) go to
+--       BattleCatalog.UnitStats (evolution / training / Boost numbers; Defense cuts every hit the pet takes after the
+--       RETREAT halving and before MinHit / shields; Ability speeds up every meter gain); Xp / XpNext (the owner's own
+--       pets: the XP bar) and Crowned (the ring champion) only go to the static unit info. NPC teams pass none of them.
 --       Def may be a PetKeys.DefOf def (hybrids need it); otherwise Key / PetId is resolved through PetCatalog and
 --       PetKeys. Npc / Auto teams cast their specials on their own (NPC trial teams, the harness); a player's team
 --       casts only on the owner's "Special" command.
@@ -51,13 +58,18 @@
 --   battle:Abort(reason) -> ok, events   ends a running battle now with no winner (Reason = reason, e.g. "Shutdown"):
 --       the result still carries Damage / Shares / Survivors; the events hold the End event
 --   battle:Result() -> nil while running, else { Mode, Reason, WinnerSide, Winners = { owner... },
---       Losers = { owner... }, Draw, Forfeit, Level (Trial), BossId (Raid), Damage = { [owner] = n },
---       Shares = { [owner] = 0..1 }, Duration, Survivors = { [owner] = n }, BossHp, BossMaxHp }
+--       Losers = { owner... }, Draw, Forfeit, Level (Trial), BossId (Raid), Round (Ring), Damage = { [owner] = n },
+--       Shares = { [owner] = 0..1 }, Duration, Survivors = { [owner] = n }, Hp = { [side] = HP share left }, BossHp,
+--       BossMaxHp }   (the loss-XP gate: the share a team dealt = 1 - Hp[the other side])
+--       Phase 4 duel rules (BattleCatalog.Damage): Overtime (past At seconds every hit grows), MaxHit (no single pet hit
+--       takes more than Share of a pet's max HP) and DoubleKoByDamage (both last pets down in one step: the team that
+--       dealt more damage wins, Reason "Wipe"; forfeits stay a Draw). Trials, raids and the ring keep the Phase 3 rules.
 --   battle:Describe() -> the static "Start" payload: { BattleId?, Mode, Seed, Zone = { X, Z }, TimeLimit, Level,
---       BossId, Sides = { [side] = { owner... } }, Units = { unitInfo... } }
+--       BossId, Round (Ring), Sides = { [side] = { owner... } }, Units = { unitInfo... } }
 --   battle:StaticUnits() -> { unitInfo... }     unitInfo = { id, side, owner, slot, kind = "Pet" | "MiniBoss" |
---       "Boss" | "Minion", key, petId, boss (bossId), name, species, look (PetBuilder Look), element, elements,
---       maxHp, level, tier, scale, ranged, range, radius, special = { Id, Name, Kind, Color } }
+--       "Boss" | "Minion", key, petId, boss (bossId; true for a pet in the mini-boss form), name, species, look
+--       (PetBuilder Look), element, elements, maxHp, level, tier, scale, ranged, range, radius, special = { Id, Name,
+--       Kind, Color }, evo (0..2), xp / xpNext (when the entry carries them), crowned (the ring champion) }
 --   battle:AddTeam(team) -> infos | nil, reason    (raids: a player joins; queues a Spawn event)
 --   battle:RemoveTeam(owner) -> ok                 (raids: a player leaves; queues a Leave event)
 --   battle:SetAnchor(owner, x, z) -> ok            (where the team retreats to; clamped to the floor)
@@ -65,7 +77,7 @@
 --   battle:Time(), battle:IsFinished(), battle:Owners(), battle:TeamOf(owner) (read-only summary)
 --   BattleSim.States  = { Idle = 0, Moving = 1, Attacking = 2, Retreating = 3, Casting = 4, Down = 5, Stunned = 6 }
 --   BattleSim.StateNames[code] -> "Idle" ...
---   BattleSim.Events  = { Hit, Special, KO, Telegraph, Spawn, Enrage, Order, Zone, Leave, End }  (strings)
+--   BattleSim.Events  = { Hit, Special, KO, Telegraph, Spawn, Enrage, Order, Zone, Leave, End, Overtime }  (strings)
 --   BattleSim.LineOvershoot = 6     a Line telegraph ends this far past the pet it is aimed at (never the whole floor)
 -- RETREAT (Damage.RetreatLock / RetreatAutoResume / TelegraphMargin): the pets run to their spots beside the owner's
 -- anchor and stand there; a pet inside an active Line telegraph first steps out sideways (the shortest way out), and
@@ -86,6 +98,8 @@
 --   Zone      { unit, kind, x, z, r, seconds, side }
 --   Leave     { owner, units = { id... } }
 --   End       { reason, winnerSide }
+--   Overtime  { at, perSecond }   once per duel at Damage.Overtime.At seconds: every hit grows by perSecond per second
+--               past `at` (Phase 4: trained Shield / Heal mirrors would otherwise stall to the time limit)
 
 local Shared = script.Parent
 
@@ -115,9 +129,14 @@ BattleSim.Events = {
 	Zone = "Zone",
 	Leave = "Leave",
 	End = "End",
+	Overtime = "Overtime", -- Phase 4: a duel past Damage.Overtime.At (every hit grows from now on)
 }
 BattleSim.Orders = { Attack = "Attack", Retreat = "Retreat" }
-BattleSim.Modes = { "Trial", "Duel", "Raid" }
+BattleSim.Modes = { "Trial", "Duel", "Raid", "Ring" }
+local MODE_OK = {}
+for _, m in ipairs(BattleSim.Modes) do
+	MODE_OK[m] = true
+end
 BattleSim.LineOvershoot = 6 -- studs a Line telegraph runs past the pet it is aimed at
 
 local S_IDLE, S_MOVING, S_ATTACKING, S_RETREATING, S_CASTING, S_DOWN, S_STUNNED =
@@ -438,7 +457,8 @@ end
 
 local function unitFromDef(self, team, def, entry, slot, kind, powerMult)
 	local bc = catalog()
-	local us = bc and bc.UnitStats and bc.UnitStats(def, entry.Level, entry.Tier)
+	-- the entry doubles as the UnitStats extras: Evo, Train and Boost (Phase 4) are read from it
+	local us = bc and bc.UnitStats and bc.UnitStats(def, entry.Level, entry.Tier, entry)
 	if not us then
 		return nil
 	end
@@ -495,6 +515,15 @@ local function unitFromDef(self, team, def, entry, slot, kind, powerMult)
 		level = num(entry.Level, 1),
 		tier = entry.Tier or def.Tier or "Normal",
 		scale = scale,
+		-- Phase 4: evolution / training / ring Boost (already inside maxHp / hit / interval / specialPower via UnitStats)
+		evo = num(us.Evo, 0),
+		train = us.Train,
+		boost = (finite(us.Boost) and us.Boost > 1) and us.Boost or nil,
+		defense = max(0, min(0.9, num(us.Defense, 0))),
+		meterRate = max(0.1, num(us.MeterRate, 1)),
+		xp = (finite(entry.Xp) and entry.Xp >= 0) and floor(entry.Xp) or nil,
+		xpNext = (finite(entry.XpNext) and entry.XpNext >= 0) and floor(entry.XpNext) or nil,
+		crowned = entry.Crowned == true or nil,
 		x = 0,
 		z = 0,
 		px = 0,
@@ -561,6 +590,16 @@ local function unitInfo(u)
 	}
 	if u.boss then
 		info.boss = u.boss.Id
+	elseif u.kind == "MiniBoss" then
+		info.boss = true -- a pet in the mini-boss form (a trial's boss pet, a giant ring champion)
+	end
+	info.evo = u.evo or 0
+	if u.xp then
+		info.xp = u.xp
+		info.xpNext = u.xpNext
+	end
+	if u.crowned then
+		info.crowned = true
 	end
 	if u.special then
 		info.special = { Id = u.special.Id, Name = u.special.Name, Kind = u.special.Kind, Color = u.special.Color }
@@ -667,7 +706,7 @@ function BattleSim:_bossMaxHp()
 		if t.side == 1 and not t.npc and not t.left then
 			local pets = {}
 			for j, u in ipairs(t.units) do
-				pets[j] = { Def = u.def, Level = u.level, Tier = u.tier }
+				pets[j] = { Def = u.def, Level = u.level, Tier = u.tier, Evo = u.evo, Train = u.train, Boost = u.boost }
 			end
 			specs[#specs + 1] = { Pets = pets }
 		end
@@ -840,7 +879,7 @@ function BattleSim.new(setup)
 		return nil, "BadSetup"
 	end
 	local mode = setup.Mode
-	if mode ~= "Trial" and mode ~= "Duel" and mode ~= "Raid" then
+	if not MODE_OK[mode] then
 		mode = (setup.Boss ~= nil and "Raid") or (setup.Trial ~= nil and "Trial") or "Duel"
 	end
 	local bc = catalog()
@@ -867,8 +906,22 @@ function BattleSim.new(setup)
 	self.nextTelegraphId = 1
 	self.avgPetHp = 150
 	self.avgPetLevel = 1
-	local limits = (bc and bc.TimeLimits) or { Trial = 90, Duel = 120, Raid = 330 }
+	local limits = (bc and bc.TimeLimits) or { Trial = 90, Duel = 120, Raid = 330, Ring = 90 }
 	self.timeLimit = num(setup.TimeLimit, limits[mode] or 120)
+	if mode == "Ring" and finite(setup.Round) then
+		self.round = floor(setup.Round)
+	end
+	-- overtime (Damage.Overtime): duels only; nil = never
+	local ot = damageRules().Overtime
+	if type(ot) == "table" and type(ot.Modes) == "table" and ot.Modes[mode] and finite(ot.At) and finite(ot.PerSecond) and ot.PerSecond > 0 then
+		self.overtimeAt = ot.At
+		self.overtimeRate = ot.PerSecond
+	end
+	-- no one-shots in PvP (Damage.MaxHit): a single pet hit takes at most Share of the victim's max HP
+	local mh = damageRules().MaxHit
+	if type(mh) == "table" and type(mh.Modes) == "table" and mh.Modes[mode] and finite(mh.Share) and mh.Share > 0 then
+		self.maxHitShare = mh.Share
+	end
 
 	local teams = type(setup.Teams) == "table" and setup.Teams or {}
 	for _, spec in ipairs(teams) do
@@ -976,6 +1029,7 @@ function BattleSim:Describe()
 		TimeLimit = self.timeLimit,
 		Level = self.level,
 		BossId = self.bossId,
+		Round = self.round,
 		Sides = sides,
 		Units = self:StaticUnits(),
 	}
@@ -1243,6 +1297,9 @@ local function applyDamage(self, attacker, victim, amount, events, extra, noVari
 	end
 	local D = damageRules()
 	local dmg = amount
+	if self.overtimeMult then
+		dmg = dmg * self.overtimeMult
+	end
 	local mult = 1
 	if attacker then
 		mult = elemMult(self, attacker, victim)
@@ -1263,6 +1320,15 @@ local function applyDamage(self, attacker, victim, amount, events, extra, noVari
 	if retreating then
 		dmg = dmg * D.RetreatDamageTaken
 	end
+	-- Phase 4 training: Defense blocks a share of every hit (after the RETREAT halving, before MinHit / shields)
+	local defense = victim.defense
+	if defense and defense > 0 then
+		dmg = dmg * (1 - defense)
+	end
+	local cap = self.maxHitShare
+	if cap and attacker and attacker.kind ~= "Boss" and dmg > victim.maxHp * cap then
+		dmg = victim.maxHp * cap
+	end
 	if dmg < D.MinHit then
 		dmg = D.MinHit
 	end
@@ -1278,11 +1344,11 @@ local function applyDamage(self, attacker, victim, amount, events, extra, noVari
 		attacker.team.damage = attacker.team.damage + dmg
 		-- only plain attacks build the meter (a special's own hits, zones and telegraphs never refund it)
 		if attacker.kind ~= "Boss" and attacker.alive and extra == nil then
-			attacker.meter = min(D.MeterMax, attacker.meter + D.MeterOnHit)
+			attacker.meter = min(D.MeterMax, attacker.meter + D.MeterOnHit * (attacker.meterRate or 1))
 		end
 	end
 	if victim.kind ~= "Boss" then
-		victim.meter = min(D.MeterMax, victim.meter + D.MeterOnHurt)
+		victim.meter = min(D.MeterMax, victim.meter + D.MeterOnHurt * (victim.meterRate or 1))
 	end
 	local ev = { type = EV.Hit, from = attacker and attacker.id or nil, to = victim.id, dmg = floor(dmg + 0.5) }
 	if mult ~= 1 then
@@ -2134,7 +2200,7 @@ local function unitStep(self, u, dt, events)
 		u.shield = 0
 	end
 	if u.kind ~= "Boss" then
-		u.meter = min(D.MeterMax, u.meter + D.MeterPerSecond * dt)
+		u.meter = min(D.MeterMax, u.meter + D.MeterPerSecond * dt * (u.meterRate or 1))
 	end
 	if t < u.stunUntil then
 		u.state = S_STUNNED
@@ -2308,6 +2374,7 @@ local function finish(self, winnerSide, reason, events)
 		Forfeit = self.forfeitSeen == true,
 		Level = self.level,
 		BossId = self.bossId,
+		Round = self.round,
 		Damage = {},
 		Shares = {},
 		Duration = r1(self.t),
@@ -2380,13 +2447,35 @@ local function checkEnd(self, events)
 		return
 	end
 	if alive1 == 0 and alive2 == 0 then
-		finish(self, nil, "Draw", events)
+		-- Phase 4 (Damage.DoubleKoByDamage): a duel's double knock-out goes to the team that dealt more damage
+		local rule = damageRules().DoubleKoByDamage
+		local winner = nil
+		if type(rule) == "table" and rule[self.mode] and not self.forfeitSeen then
+			local d1, d2 = 0, 0
+			for _, team in ipairs(self.teams) do
+				if team.side == 1 then
+					d1 = d1 + team.damage
+				else
+					d2 = d2 + team.damage
+				end
+			end
+			if d1 > d2 then
+				winner = 1
+			elseif d2 > d1 then
+				winner = 2
+			end
+		end
+		if winner then
+			finish(self, winner, "Wipe", events)
+		else
+			finish(self, nil, "Draw", events)
+		end
 	elseif alive1 == 0 then
 		finish(self, 2, self.forfeitSeen and "Forfeit" or "Wipe", events)
 	elseif alive2 == 0 then
 		finish(self, 1, self.forfeitSeen and "Forfeit" or "Wipe", events)
 	elseif self.t >= self.timeLimit then
-		if self.mode == "Trial" then
+		if self.mode == "Trial" or self.mode == "Ring" then
 			finish(self, 2, "Timeout", events)
 		else
 			local f1, f2 = sideHpFraction(self, 1), sideHpFraction(self, 2)
@@ -2423,6 +2512,13 @@ function BattleSim:Step(dt)
 	end
 	self.t = self.t + dt
 	self.stepCount = self.stepCount + 1
+	-- overtime: every hit grows past overtimeAt (one Overtime event when it starts)
+	if self.overtimeAt and self.t >= self.overtimeAt then
+		if not self.overtimeMult then
+			events[#events + 1] = { type = EV.Overtime, at = r1(self.overtimeAt), perSecond = self.overtimeRate }
+		end
+		self.overtimeMult = 1 + self.overtimeRate * (self.t - self.overtimeAt)
+	end
 	-- queued events (joins / leaves between steps)
 	if #self.pending > 0 then
 		for _, ev in ipairs(self.pending) do

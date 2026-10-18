@@ -394,12 +394,20 @@ local function serverScenarios()
 			and type(prof.PetLevels) == "table" and type(prof.GemReceipts) == "table" and type(prof.Teams) == "table",
 			"p2 data: a new profile has the Phase 2 defaults (Cash, Gems, Home {Level, Prestige, Stations, Garden, Gym, CollectorCash}, Food, Tiers, Hybrids, PetLevels, GemReceipts, Teams)")
 		T.check(h.Rooms == h.Stations, "p2 data: Home.Rooms (the v3 reserve) is the same table as Home.Stations")
+		-- Phase 4 (ARCHITECTURE_V3.md "Phase 4 build contract" section 4.1): new top-level fields with their defaults; the
+		-- veteran Home keys are absent (nil) for a new player
+		T.check(type(prof.PetGrowth) == "table" and next(prof.PetGrowth) == nil and type(prof.Ring) == "table" and prof.Ring.Best == 0 and prof.Ring.Runs == 0
+			and type(prof.Migrations) == "table" and h.LegacySlots == nil and h.LegacyPrices == nil,
+			"p2 data: ...and the Phase 4 defaults (PetGrowth {}, Ring { Best 0, Runs 0 }, Migrations; no Home.LegacySlots / LegacyPrices)")
 		T.check(p:GetAttribute(Config.Attr.Cash) == 0 and p:GetAttribute(Config.Attr.Gems) == 0, "p2 data: the Cash / Gems attributes mirror the balances from the join on")
 		local snap = lastSnapshot(p, mark)
 		T.check(snap ~= nil and snap.Cash == 0 and snap.Gems == 0 and type(snap.Home) == "table" and type(snap.Home.Stations) == "table" and type(snap.Home.Garden) == "table"
 			and type(snap.Food) == "table" and type(snap.Tiers) == "table" and type(snap.Hybrids) == "table" and type(snap.PetLevels) == "table",
 			"p2 data: ProfileSync carries Cash, Gems, Home, Food, Tiers, Hybrids, PetLevels")
-		-- (Phase 3 syncs Teams { Presets, Active, Slots } and Battle: smoke_p3_data.lua checks those)
+		-- (Phase 3 syncs Teams { Presets, Active, Slots } and Battle: smoke_p3_data.lua checks those; Phase 4 syncs
+		-- PetGrowth and Ring, never the Migrations markers: smoke_p4_data.lua checks the shapes)
+		T.check(snap ~= nil and type(snap.PetGrowth) == "table" and type(snap.Ring) == "table" and snap.Ring.Best == 0 and snap.Ring.Runs == 0 and snap.Migrations == nil,
+			"p2 data: ...and the Phase 4 PetGrowth / Ring (no Migrations)")
 		T.check(snap ~= nil and snap.GemReceipts == nil and snap.Home.LastSeen == nil, "p2 data: ...but not the server-only receipts / LastSeen (small payloads)")
 
 		-- Cash
@@ -612,12 +620,18 @@ local function serverScenarios()
 		T.check(g[1] == "pebble_pup" and g[2] == "" and g[3] == "pip_penguin" and #g == 3 and gy[1] == "" and gy[2] == "cloudy_dragon",
 			"p2 save: Garden / Gym are stored as arrays with '' for empty slots (no sparse arrays in the store)", listText(g) .. " " .. listText(gy))
 		T.check(ss.Food == nil and ss.Tiers == nil and ss.Hybrids == nil and ss.GemReceipts == nil and ss.Teams == nil, "p2 save: empty Phase 2 maps are left out of the record")
+		T.check(ss.PetGrowth == nil and ss.Ring == nil and type(ss.Migrations) == "table" and ss.Migrations.P4 == true,
+			"p2 save: ...and the Phase 4 defaults too (no PetGrowth, no Ring { 0, 0 }); the Migrations marker of a new profile is stored")
 		K.removePlayers({ s })
 		advance(2)
+		-- (Phase 4: PetCareService empties Home.Gym on every home load, so the Gym slot is checked in the record the
+		-- rejoin reads -- taken before the join, no save can race it -- and the Garden in the live home)
+		local sr = stored(SL) or {}
+		local gr = type(sr.Home) == "table" and type(sr.Home.Gym) == "table" and sr.Home.Gym or {}
 		local s2 = join("P2Slots", SL)
 		local home2 = DataS.GetHome(s2)
-		T.check(home2 and home2.Garden[1] == "pebble_pup" and home2.Garden[2] == nil and home2.Garden[3] == "pip_penguin" and home2.Gym[2] == "cloudy_dragon",
-			"p2 save: ...and read back as slot -> key")
+		T.check(home2 and home2.Garden[1] == "pebble_pup" and home2.Garden[2] == nil and home2.Garden[3] == "pip_penguin" and gr[1] == "" and gr[2] == "cloudy_dragon",
+			"p2 save: ...and read back as slot -> key", listText(gr))
 		K.removePlayers({ s2 })
 		advance(2)
 

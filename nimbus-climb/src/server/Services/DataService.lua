@@ -1,9 +1,10 @@
 -- DataService: persistent player profile (tokens, pets, items, stats, the v3 Pet Index / tutorial, the Phase 2
--- tycoon: Cash, Gems, Home, Food, pet levels, tier copies and fused hybrids, and the Phase 3 battle teams and battle
--- record) for Nimbus Climb.
+-- tycoon: Cash, Gems, Home, Food, pet levels, tier copies and fused hybrids, the Phase 3 battle teams and battle
+-- record, and the Phase 4 pet growth (evolution stages, training), the Champion Ring record and the migration
+-- markers) for Nimbus Climb.
 --
 -- Profile shape (ARCHITECTURE_V2.md section 1, ARCHITECTURE_V3.md section 1 + section 11 + "Phase 2 build contract" +
--- "Phase 3 build contract"):
+-- "Phase 3 build contract" + "Phase 4 build contract" section 4):
 --   { Version = 2, Tokens, Pets = {[petId]=count}, Equipped = {key...}, Items = {[itemId]=count},
 --     Stats = { Matches, Wins, TokensEarned, Spins, BestTimes = {[difficultyId]=seconds} }, SpotIndex,
 --     -- v3
@@ -11,20 +12,46 @@
 --     -- Phase 2
 --     Cash, Gems,
 --     Home = { Level, Prestige, Stations = {[stationId]=level}, Garden = {[slot]=key}, Gym = {[slot]=key},
---              CollectorCash, LastSeen },
+--              CollectorCash, LastSeen,
+--              LegacySlots = n | nil, LegacyPrices = true | nil },     -- Phase 4 (veterans, see below)
 --     Food = {[foodId]=count}, PetLevels = {[key]={Level, Xp}}, Tiers = {[petId]={Golden=n, Rainbow=n}},
 --     Hybrids = {[uid]={Body, Style, Elements, Name, Rarity, Tier}}, GemReceipts = {[purchaseId]=os.time()},
 --     -- Phase 3
 --     Teams = { Presets = { [1..3] = {key, key, key, key?} }, Active = 1..3 },
 --     Battle = { Trophies, TrialBest, TrialCleared = {[level]=true}, Raids, RaidBestDamage, PvPWins, PvPLosses,
---                EventPets = {[petId]=true} } }
+--                EventPets = {[petId]=true} },
+--     -- Phase 4 (new TOP-LEVEL fields only: a Phase 3 server still running during the rollout rebuilds Battle,
+--     -- Teams, PetLevels entries and slot values from the keys it knows and would erase anything new inside them;
+--     -- keepForeign writes unknown top-level and Home keys back untouched)
+--     PetGrowth = { [key] = { Evo = 0..2, Speed, Physique, Ability, Defense = 0..10,
+--                            Job = { Stat, Ends, Rank, Slot, From, Paid } | nil } },
+--     Ring = { Best = 0..100000, Runs },
+--     Migrations = { P4 = true } }
 --   Battle teams: a preset lists up to 3 UNIQUE keys in slot order (slot 4 once Home.Prestige reaches
 --   TycoonCatalog.Prestige.TeamSlotUnlock, 1); every key needs a FREE copy: owned (PetKeys.Count) more often than it
---   works in the Garden / Gym. A key that loses its free copy (fused away, released, a developer reset, its last copy
---   placed in the Garden / Gym) is dropped from every preset ("pruned", the pets behind it move up a slot): in every
---   copy taken for a save or a snapshot, in the merge, and in the live profile on every Sync and after a MutateHome
---   that moved pets (TeamsChanged fires then). A Phase 2 profile (no Teams / Battle, or the empty Teams reserve) gets
---   the defaults: 3 empty presets, preset 1 active, a zeroed battle record.
+--   works in the Gym (Phase 4: a Garden pet keeps earning at home while it follows you and fights, so only Home.Gym
+--   copies count, and Phase 4 empties the Gym on its one-time migration). A key that loses its free copy (fused away,
+--   released, a developer reset, its last copy placed in the Gym) is dropped from every preset ("pruned", the pets
+--   behind it move up a slot): in every copy taken for a save or a snapshot, in the merge, and in the live profile on
+--   every Sync and after a MutateHome that moved pets (TeamsChanged fires then). A Phase 2 profile (no Teams / Battle,
+--   or the empty Teams reserve) gets the defaults: 3 empty presets, preset 1 active, a zeroed battle record.
+--   Phase 4 pet growth, per KEY like levels: Evo is the evolution stage the player unlocked by pressing EVOLVE
+--   (0..2; the boost counts only from the stored stage, never from the level alone); Speed / Physique / Ability /
+--   Defense are the training ranks (0..10); Job is the running training job: Stat (one of the four), Ends (os.time()
+--   when it completes), Rank (the TARGET rank = the stat's rank + 1, so two servers completing the same job give rank
+--   3, not 4; a Job whose Rank is not above the stored rank was completed elsewhere and is dropped by P4.cleanGrowth),
+--   Slot (the Training Place mat 1..5), From ("Follow" | "Garden:<slot>" | "Free": where the pet goes back to), Paid
+--   (the Cash to refund on Stop). An all-zero entry without a Job is not kept.
+--   THE TRAINING LOCK is a READ-TIME filter, one source of truth: TrainingKeys(player) = every key with a Job.
+--   normalizeEquipped drops such keys from Equipped (a Phase 3 server may have equipped one during the rollout),
+--   FieldableKeys and ActiveTeamKeys skip them; P3.checkTeam keeps accepting them in presets and P3.prune is NEVER
+--   taught about training (it runs in normalizeProfile, copyProfile, applyDelta and MutateHome's pruneLive and would
+--   delete the pet from its preset for good). Garden pets are never busy (P3.placedCopies counts Home.Gym only).
+--   Ring: Best = the highest Champion Ring round won (0 = never), Runs = finished runs.
+--   Migrations: one-time data migrations this profile went through (P4 = the Phase 4 migration, section 4.3).
+--   Home.LegacySlots (a veteran's old garden size when it was above 3 + Prestige) and Home.LegacyPrices (true for a
+--   veteran who had prestiged on Phase 3: base prices until the next prestige) are written ONLY by the Phase 4
+--   migration and cleared by the next prestige (MutateHome clears both whenever the Home's Prestige rises).
 --   Pet copies are identified by keys (shared/PetKeys.lua): "petId" (Normal), "petId@Golden", "petId@Rainbow",
 --   "hyb:<uid>"; Equipped, PetLevels, Garden and Gym hold keys. Every plain petId of an old profile is a valid key.
 --   Garden / Gym slots are whole numbers 1..64 (other valid string slot names are kept as they are).
@@ -59,7 +86,16 @@
 --     Cash delta (that run was reset), and when both sides prestiged to the same star the session's Cash since its
 --     prestige joins the store's. A star reward (Gems) both sides paid counts once. Gem purchases: the receipt and
 --     its gems merge together (MarkReceipt records the amount): a receipt the store already holds was granted by
---     another server, so its gems are not added again. The ONE exception is ResetFields (developer tools only):
+--     another server, so its gems are not added again. Phase 4: PetGrowth merges PER KEY: Evo and every rank keep
+--     the HIGHER value (never down; a rank is a target value, so two servers completing one job give one rank), the
+--     Job is the session's value when the session changed it (a cleared job travels as `false` + the job it ended; a
+--     job the session never touched leaves the stored one alone; a stored job that is NEWER than the one the session
+--     ended or started, the same skill at a higher target, survives: two servers can race during the rollout or an
+--     outage's late leave save), then P4.cleanGrowth drops a Job whose Rank is not above the merged rank (completed
+--     elsewhere); a key the session removed travels as `false`. Ring.Best keeps the higher value,
+--     Ring.Runs travels as a +/- delta. Migrations only grow (union). Home.LegacySlots / LegacyPrices merge with the
+--     Home (per-key replace; a higher Prestige wins the whole Home, which has them cleared).
+--     The ONE exception is ResetFields (developer tools only):
 --     the fields it names are written over the stored ones at the next successful save instead of merged.
 --   * A PROVISIONAL profile (the load failed while the DataStore is reachable, e.g. an outage) holds
 --     defaults, not the player's data. One-time rewards must not be decided from it: GetTutorial
@@ -71,7 +107,11 @@
 --     (CollectorCash, LastSeen) through and AddPetXp / MarkReceipt refuse while provisional; likewise GetTeams /
 --     GetBattle answer nil, ActiveTeamKeys {}, SetTeam / SelectTeam refuse and MutateBattle only lets the fields
 --     through that merge as deltas or best values (a first clear or an event pet is never decided from stand-in
---     data). AddTrophies keeps working (a delta). Without a usable
+--     data). AddTrophies keeps working (a delta). Phase 4: MutateGrowth / SetEvolution / MutateRing / SetPetLevel are
+--     refused while provisional (training, evolution, their completion and ring records wait for the real save; the
+--     ring does not start); GetRing / GetGrowthMap-based decisions answer nil / {} through TrainingKeys, ActiveTeamKeys
+--     and FieldableKeys; MarkMigrated is allowed (a union); the Phase 4 migration does not run on a provisional
+--     profile (it runs after the recovery, on ProfileRebased). Without a usable
 --     store (Studio without API access) nothing is provisional: everything runs from memory.
 --   * Forward compatibility: a save keeps every stored field this version does not know (top level,
 --     inside Home and inside Stats) and a newer Version number, so a server still running an older build after
@@ -128,9 +168,11 @@
 --                                       copies all work in the Garden / Gym, a profile not loaded or provisional. An
 --                                       empty list clears the preset. MarkDirty + SyncSoon + TeamsChanged.
 --     SelectTeam(player, preset) -> ok, reason      makes that preset the active one (MarkDirty + SyncSoon + TeamsChanged)
---     FieldableKeys(player) -> {key...}             every owned key with a copy free for a team (not in the Garden / Gym)
---     ActiveTeamKeys(player) -> {key...}            the active preset's usable keys in slot order (slot = index);
---                                       {} when the team is empty, the profile is not loaded or is provisional
+--     FieldableKeys(player) -> {key...}             every owned key with a copy free for a team (not in the Gym, not in
+--                                       training; Phase 4: a garden pet may fight)
+--     ActiveTeamKeys(player) -> {key...}            the active preset's usable keys in slot order, compacted (Phase 4: a
+--                                       training pet is skipped at read time, the preset keeps it); {} when the team
+--                                       is empty, the profile is not loaded or is provisional
 --     GetBattle(player) -> { Trophies, TrialBest, TrialCleared = {[level]=true}, Raids, RaidBestDamage, PvPWins,
 --                                       PvPLosses, EventPets = {[petId]=true} }   a copy | nil until loaded and while
 --                                       provisional (stand-in data must never decide a first clear or an event pet)
@@ -145,15 +187,57 @@
 --     AddTrophies(player, n) -> ok, total            n is rounded to a whole number and may be negative; the total
 --                                       never goes below 0. Works like AddCash (also before the load finished and while
 --                                       provisional: trophies merge as a delta). Synced (throttled).
+--   Phase 4 (ARCHITECTURE_V3.md "Phase 4 build contract" section 4.2; nothing here yields; every helper lives in the
+--   P4 table next to P3):
+--     GetGrowth(player, key) -> { Evo, Speed, Physique, Ability, Defense, Job = {...} | nil }   a copy, zeros when
+--                                       absent (also before the load and while provisional: display only)
+--     GetGrowthMap(player) -> { [key] = entry }   a clean copy of the whole map ({} until loaded / while provisional)
+--     MutateGrowth(player, fn) -> ok    fn(growth) edits the LIVE PetGrowth map { [key] = entry } and must not yield.
+--                                       Refused until loaded and while provisional. An error, or fn returning false,
+--                                       restores the map (-> false). Afterwards it is cleaned in place
+--                                       (P4.cleanGrowth) and no Evo / rank may go down (the store merges them as
+--                                       the higher value, so a lower write would come back anyway); a changed map is
+--                                       synced (throttled). Decide a reward / refund inside fn and pay it only once
+--                                       this returned true (the Job and the Cash then travel in the same step).
+--     TrainingKeys(player) -> {[key] = true}        every key with a running Job ({} until loaded / while provisional):
+--                                       the ONE source of the training lock (PetService.Equip, GardenSet, Fusion,
+--                                       teamOf, the ring start and this module's own filters read it)
+--     GetEvolution(player, key) -> 0..2             the stored stage (0 when absent)
+--     SetEvolution(player, key, stage) -> ok        only up: true when the stage was raised to `stage` (<= 2 and <=
+--                                       PetCatalog.MaxEvolution of the key's def when the catalog is there); false
+--                                       for a stage not above the stored one, junk, not loaded, provisional
+--     GetRing(player) -> { Best, Runs } | nil       a copy; nil until loaded and while provisional
+--     MutateRing(player, fn) -> ok      fn(ring) edits the live record (no yields); Best never goes down (max), Runs
+--                                       is a whole number >= 0; rollback on error / false; refused while provisional.
+--                                       Decide "new record" / "first boss clear" rewards inside fn.
+--     IsMigrated(player, name) -> bool | nil        nil until loaded and while provisional (not decidable)
+--     MarkMigrated(player, name) -> ok  records Migrations[name] = true (a union: allowed while provisional)
+--     MigratedNow(player, name) -> info | nil       info when THIS session ran that migration on this profile (the
+--                                       entry remembers it until the player is released): for "P4" { Veteran = bool
+--                                       (the profile had a home before), LegacySlots = n | nil, LegacyPrices = bool,
+--                                       GymKeys = {key...} (the Gym pets set free), GymPets = #GymKeys,
+--                                       CollectorCash = n (the Cash that waited on the Phase 3 Collector) }.
+--                                       TycoonService shows the one welcome toast on the first claim when
+--                                       MigratedNow(player, "P4").Veteran is true. Because that first claim may
+--                                       happen in a LATER session, the migration also persists the marker
+--                                       Migrations.P4Veteran (IsMigrated(player, "P4Veteran")); TycoonService
+--                                       shows the toast when it is set and "P4Welcome" is not, then
+--                                       MarkMigrated(player, "P4Welcome") (a union: never shown twice).
+--     Migrated                          Util.Signal (exists at module load) Fire(player, name, info) right after the
+--                                       ProfileLoaded / ProfileRebased that ran a migration
+--     SetPetLevel(player, key, level) -> ok   developer tools: writes { Level, Xp = 0 } for an OWNED key (1..the curve's
+--                                       max level); refused until loaded / while provisional; synced
 --   ProfileSync snapshot: Tokens, Pets, Equipped, Items, Stats, SpotIndex, Perks, Discovered, IndexClaimed,
---     Tutorial + Phase 2: Cash, Gems, Home { Level, Prestige, Stations, Garden, Gym, CollectorCash } (slot maps
---     encoded like the store), Food, Tiers, Hybrids, PetLevels + Phase 3: Teams { Presets, Active, Slots } (pruned),
---     Battle { Trophies, TrialBest, TrialCleared = {bool...} (index = level), Raids, RaidBestDamage, PvPWins,
---     PvPLosses, EventPets = {[petId]=true} }. Plain tables, never shared with the live profile.
+--     Tutorial + Phase 2: Cash, Gems, Home { Level, Prestige, Stations, Garden, Gym, CollectorCash, LegacySlots?,
+--     LegacyPrices? } (slot maps encoded like the store), Food, Tiers, Hybrids, PetLevels + Phase 3: Teams { Presets,
+--     Active, Slots } (pruned), Battle { Trophies, TrialBest, TrialCleared = {bool...} (index = level), Raids,
+--     RaidBestDamage, PvPWins, PvPLosses, EventPets = {[petId]=true} } + Phase 4: PetGrowth { [key] = { Evo?, Speed?,
+--     Physique?, Ability?, Defense?, Job? } } (zero numbers left out: the client fills them), Ring { Best, Runs }.
+--     Plain tables, never shared with the live profile.
 --   Extras (used by PetService / IndexService / DevService / GemService, harmless otherwise): Release(player), Init(),
 --     ComputePerks(equippedKeys, profile|nil), IsDiscovered(player, petId), IsProvisional(player),
 --     ResetFields(player, { Discovered, IndexClaimed, Tutorial, BestTimes, Home, Tiers, Hybrids, PetLevels, Teams,
---     Battle = true })
+--     Battle, PetGrowth, Ring, Migrations = true })
 --     -> ok (the session's CURRENT values of those fields replace the stored ones at the next successful save),
 --     HasReceipt(player, purchaseId) -> bool | nil, MarkReceipt(player, purchaseId, gems?) -> true (new: grant now) |
 --     false (already processed: grant nothing) | nil (not decidable now: profile not loaded or provisional -> answer
@@ -183,6 +267,9 @@ DataService.ProfileRebased = Util.Signal()
 -- Phase 3: fired after SetTeam / SelectTeam, when stale keys were pruned from the live presets and after a rebase:
 -- (player). Exists at module load so other services can connect before any Init.
 DataService.TeamsChanged = Util.Signal()
+-- Phase 4: fired right after the ProfileLoaded / ProfileRebased that ran a one-time migration on the profile:
+-- (player, name, info) with name "P4" and the info table of MigratedNow (see the header). Exists at module load.
+DataService.Migrated = Util.Signal()
 
 local PROFILE_VERSION = 2
 local RETRY_DELAY = 1.5 -- seconds between the two attempts of a read/write
@@ -212,6 +299,7 @@ local OVERWRITABLE = {
 	Discovered = true, IndexClaimed = true, Tutorial = true, BestTimes = true,
 	Home = true, Tiers = true, Hybrids = true, PetLevels = true,
 	Teams = true, Battle = true, -- Phase 3: the battle record's sets only grow and its best values only rise
+	PetGrowth = true, Ring = true, Migrations = true, -- Phase 4: ranks / stages / Best only rise, Migrations only grow
 }
 -- Stored keys this version owns. Anything else in a stored profile belongs to a newer phase and is written back
 -- untouched by every save (see keepForeign).
@@ -219,11 +307,13 @@ local KNOWN_TOP = {
 	Version = true, Tokens = true, Pets = true, Equipped = true, Items = true, Stats = true, SpotIndex = true,
 	Discovered = true, IndexClaimed = true, Tutorial = true, Cash = true, Gems = true, Home = true, PetLevels = true,
 	Food = true, Tiers = true, Hybrids = true, GemReceipts = true, Teams = true, Battle = true,
+	PetGrowth = true, Ring = true, Migrations = true, -- Phase 4
 	UpdatedAt = true,
 }
 local KNOWN_HOME = {
 	Level = true, Rooms = true, Prestige = true, Stations = true, Garden = true, Gym = true, CollectorCash = true,
 	LastSeen = true,
+	LegacySlots = true, LegacyPrices = true, -- Phase 4
 }
 local KNOWN_STATS = { Matches = true, Wins = true, TokensEarned = true, Spins = true, BestTimes = true }
 
@@ -468,7 +558,8 @@ local function newTutorial()
 	return { Step = 1, Done = false, Gifted = false }
 end
 
--- Home.Rooms is the same table as Home.Stations (the v3 name, kept for old code).
+-- Home.Rooms is the same table as Home.Stations (the v3 name, kept for old code). The Phase 4 keys LegacySlots /
+-- LegacyPrices are absent (nil) unless the Phase 4 migration wrote them.
 local function newHome()
 	local stations = {}
 	return {
@@ -480,6 +571,8 @@ local function newHome()
 		Gym = {},
 		CollectorCash = 0,
 		LastSeen = 0,
+		LegacySlots = nil,
+		LegacyPrices = nil,
 	}
 end
 
@@ -495,6 +588,25 @@ local P3 = {
 	BESTS = { "TrialBest", "RaidBestDamage" }, -- merge as the higher value
 	-- what MutateBattle may change while the profile is provisional (these merge safely into the real save)
 	PROVISIONAL_OK = { Trophies = true, Raids = true, PvPWins = true, PvPLosses = true, RaidBestDamage = true },
+}
+
+-- Phase 4 (pet growth: evolution stages + training; the Champion Ring record; migration markers; the veteran Home
+-- keys). Like P3, ONE table holds every constant and helper (the one new top-level local of Phase 4). None of the
+-- values below is in Config (local constants of the save format; the game rules live in PetCatalog / BattleCatalog /
+-- TycoonCatalog and are read lazily where a rule, not the format, decides).
+local P4 = {
+	STATS = { "Speed", "Physique", "Ability", "Defense" }, -- the training skills (PetGrowth[key][stat] = rank)
+	STAT_SET = { Speed = true, Physique = true, Ability = true, Defense = true },
+	MAX_RANK = 10, -- training ranks 0..10
+	MAX_EVO = 2, -- evolution stages 0..2 (PetCatalog.MaxEvolution decides per rarity; the data clamps at 2)
+	MAX_JOB_SLOT = 5, -- Training Place mats 1..5
+	MAX_FROM = 16, -- Job.From: "Follow" | "Garden:<slot>" | "Free" (a short string)
+	MAX_RING = 100000, -- sanity cap for Ring.Best (the ring is endless; records are a few dozen rounds)
+	MIGRATION = "P4", -- Migrations[name] of the one-time Phase 4 migration (section 4.3)
+	VETERAN_MARK = "P4Veteran", -- set by that migration when the profile had a home before (the welcome toast is owed)
+	WELCOME_MARK = "P4Welcome", -- set by TycoonService (MarkMigrated) once the welcome toast was shown on the first claim
+	GARDEN_SLOTS_BASE = 3, -- 3 + Prestige garden places when TycoonCatalog.Prestige.GardenSlotsBase is missing
+	GARDEN_SLOTS_PER_STAR = 1,
 }
 
 -- 3 empty presets, preset 1 active
@@ -544,6 +656,10 @@ local function newProfile()
 		-- Phase 3 (ARCHITECTURE_V3.md "Phase 3 build contract")
 		Teams = P3.newTeams(),
 		Battle = P3.newBattle(),
+		-- Phase 4 (ARCHITECTURE_V3.md "Phase 4 build contract" section 4)
+		PetGrowth = {},
+		Ring = { Best = 0, Runs = 0 },
+		Migrations = {},
 	}
 end
 
@@ -700,6 +816,14 @@ local function cleanHome(raw, migrate)
 	home.Gym = cleanSlots(h.Gym)
 	home.CollectorCash = sanitizeCash(h.CollectorCash)
 	home.LastSeen = sanitizeTime(h.LastSeen)
+	-- Phase 4 (veterans): a whole number of garden places >= 1, or nil; true, or nil
+	local legacy = h.LegacySlots
+	if isFinite(legacy) and legacy >= 1 then
+		home.LegacySlots = math.min(math.floor(legacy), MAX_SLOT)
+	end
+	if h.LegacyPrices == true then
+		home.LegacyPrices = true
+	end
 	return home
 end
 
@@ -708,15 +832,20 @@ local function homesEqual(a, b)
 		and a.Prestige == b.Prestige
 		and a.CollectorCash == b.CollectorCash
 		and a.LastSeen == b.LastSeen
+		and a.LegacySlots == b.LegacySlots
+		and a.LegacyPrices == b.LegacyPrices
 		and mapsEqual(a.Stations, b.Stations)
 		and mapsEqual(a.Garden, b.Garden)
 		and mapsEqual(a.Gym, b.Gym)
 end
 
--- what the client sees of a home (CollectorCash / LastSeen changes alone are not worth a snapshot)
+-- what the client sees of a home (CollectorCash / LastSeen changes alone are not worth a snapshot; neither is
+-- LegacyPrices alone: it only ever changes together with a Prestige or in the one-time migration before the first
+-- snapshot of the session)
 local function homeVisiblyEqual(a, b)
 	return a.Level == b.Level
 		and a.Prestige == b.Prestige
+		and a.LegacySlots == b.LegacySlots
 		and mapsEqual(a.Stations, b.Stations)
 		and mapsEqual(a.Garden, b.Garden)
 		and mapsEqual(a.Gym, b.Gym)
@@ -886,14 +1015,17 @@ local function ownedCount(profile, key)
 	return 0
 end
 
--- Drops equipped keys that are not owned, are over their owned count, or exceed the slot limit.
--- (Runs after Pets, Tiers and Hybrids are final: tier and hybrid copies count too.)
+-- Drops equipped keys that are not owned, are over their owned count, exceed the slot limit, or (Phase 4) are in
+-- training (a Phase 3 server may have equipped one during the rollout; the pet comes back by itself when the job
+-- ends: PetCareService's auto-return). Runs after Pets, Tiers, Hybrids AND PetGrowth are final: tier and hybrid
+-- copies count too, and the training lock reads the clean growth map.
 local function normalizeEquipped(profile)
 	local out = {}
 	local used = {}
 	local maxEquipped = Config.Pets.MaxEquipped
+	local training = P4.trainingSet(profile.PetGrowth)
 	for _, id in ipairs(profile.Equipped) do
-		if type(id) == "string" and #out < maxEquipped then
+		if type(id) == "string" and #out < maxEquipped and not training[id] then
 			local owned = ownedCount(profile, id)
 			local count = used[id] or 0
 			if count < owned then
@@ -992,18 +1124,19 @@ function P3.slotsOf(profile)
 	return P3.SLOTS
 end
 
--- { [key] = copies working in the Garden / Gym } (those copies cannot fight). Live slot maps or stored arrays ("").
+-- { [key] = copies working in the Gym } (those copies cannot fight). Live slot maps or stored arrays (""). Phase 4:
+-- the Garden no longer counts (a garden pet earns at home while it follows you and fights; training is the only busy
+-- state and it is a read-time filter, never a prune), and Home.Gym is emptied by the one-time Phase 4 migration, so
+-- this is {} for every migrated profile (kept so Phase 3 writes during the rollout stay understood).
 function P3.placedCopies(profile)
 	local out = {}
 	local home = type(profile) == "table" and profile.Home or nil
 	if type(home) ~= "table" then
 		return out
 	end
-	for _, field in ipairs({ "Garden", "Gym" }) do
-		for _, key in pairs(tableOr(home[field])) do
-			if type(key) == "string" and key ~= "" then
-				out[key] = (out[key] or 0) + 1
-			end
+	for _, key in pairs(tableOr(home.Gym)) do
+		if type(key) == "string" and key ~= "" then
+			out[key] = (out[key] or 0) + 1
 		end
 	end
 	return out
@@ -1162,6 +1295,247 @@ function P3.encodeBattle(battle)
 	}
 end
 
+----------------------------------------------------------------------
+-- Phase 4: pet growth (evolution stages + training ranks + the running job), the Champion Ring record and the
+-- migration markers (pure helpers; they run inside UpdateAsync too). The format rules (ARCHITECTURE_V3.md "Phase 4
+-- build contract" 4.1 / 4.2) are in the header.
+----------------------------------------------------------------------
+
+-- a growth entry with every number 0 and no Job
+function P4.zeroEntry()
+	local e = { Evo = 0 }
+	for _, stat in ipairs(P4.STATS) do
+		e[stat] = 0
+	end
+	return e
+end
+
+-- Untrusted Job -> a clean job for an entry whose ranks are final, or nil (dropped): Stat one of the four skills,
+-- Ends a sane os.time() stamp > 0, Rank EXACTLY the stat's rank + 1 (a job whose target rank is not above the stored
+-- rank was completed elsewhere and must never re-apply; a target further above cannot happen; rank 10 is the top),
+-- Slot a Training Place mat 1..MAX_JOB_SLOT, From a short string (optional), Paid whole Cash >= 0 (the Stop refund).
+function P4.cleanJob(raw, entry)
+	if type(raw) ~= "table" then
+		return nil
+	end
+	local stat = raw.Stat
+	if not P4.STAT_SET[stat] then
+		return nil
+	end
+	local target = entry[stat] + 1
+	local rank = raw.Rank
+	if not isFinite(rank) or math.floor(rank) ~= target or target > P4.MAX_RANK then
+		return nil
+	end
+	local ends = sanitizeTime(raw.Ends)
+	if ends <= 0 then
+		return nil
+	end
+	local slot = raw.Slot
+	if not isFinite(slot) or slot < 1 or slot > P4.MAX_JOB_SLOT or slot ~= math.floor(slot) then
+		return nil
+	end
+	local job = { Stat = stat, Ends = ends, Rank = target, Slot = slot, Paid = sanitizeCash(raw.Paid) }
+	if type(raw.From) == "string" and #raw.From >= 1 and #raw.From <= P4.MAX_FROM then
+		job.From = raw.From
+	end
+	return job
+end
+
+-- Untrusted growth entry -> { Evo 0..2, Speed, Physique, Ability, Defense 0..10, Job? } (fresh tables), or nil for
+-- junk and for an entry that is all zeros without a Job (keeps the save small).
+function P4.cleanEntry(raw)
+	if type(raw) ~= "table" then
+		return nil
+	end
+	local e = P4.zeroEntry()
+	e.Evo = clampCount(raw.Evo, P4.MAX_EVO)
+	local any = e.Evo > 0
+	for _, stat in ipairs(P4.STATS) do
+		local rank = clampCount(raw[stat], P4.MAX_RANK)
+		e[stat] = rank
+		any = any or rank > 0
+	end
+	local job = P4.cleanJob(raw.Job, e)
+	if job then
+		e.Job = job
+		any = true
+	end
+	if not any then
+		return nil
+	end
+	return e
+end
+
+-- Untrusted PetGrowth map (live, stored or synced) -> { [validKey] = clean entry }
+function P4.cleanGrowth(raw)
+	local out = {}
+	for key, entry in pairs(tableOr(raw)) do
+		local clean = validKey(key) and P4.cleanEntry(entry)
+		if clean then
+			out[key] = clean
+		end
+	end
+	return out
+end
+
+-- clean growth -> the stored / synced form: zero numbers left out (every reader fills them: cleanEntry here,
+-- State.PetGrowth on the client), the Job copied. ~80 bytes per fully trained, evolved key.
+function P4.encodeGrowth(growth)
+	local out = {}
+	for key, e in pairs(growth) do
+		local rec = {}
+		if e.Evo > 0 then
+			rec.Evo = e.Evo
+		end
+		for _, stat in ipairs(P4.STATS) do
+			if e[stat] > 0 then
+				rec[stat] = e[stat]
+			end
+		end
+		if e.Job then
+			rec.Job = copyMap(e.Job)
+		end
+		out[key] = rec
+	end
+	return out
+end
+
+-- { [key] = true } of every key with a running job: the training lock. Any growth map (live, clean or stored); junk
+-- is ignored (a junk job never survives a clean anyway).
+function P4.trainingSet(growth)
+	local out = {}
+	for key, entry in pairs(tableOr(growth)) do
+		if validKey(key) and type(entry) == "table" and type(entry.Job) == "table" and P4.STAT_SET[entry.Job.Stat] then
+			out[key] = true
+		end
+	end
+	return out
+end
+
+-- The PetGrowth delta (both clean), or nil: every changed key -> its whole clean live entry, where Job is the live
+-- job when the session changed it, `false` when the session cleared a job the base had, and absent when the session
+-- left it alone (the stored job then stays: a job another server started is never wiped by a session that never saw
+-- it); a key the session removed -> false.
+function P4.diffGrowth(live, base)
+	local out, any = {}, false
+	for key, e in pairs(live) do
+		local b = base[key]
+		if b == nil or not deepEqual(e, b) then
+			local d = P4.zeroEntry()
+			d.Evo = e.Evo
+			for _, stat in ipairs(P4.STATS) do
+				d[stat] = e[stat]
+			end
+			local liveJob, baseJob = e.Job, b and b.Job or nil
+			if liveJob then
+				if not (baseJob and deepEqual(liveJob, baseJob)) then
+					d.Job = copyMap(liveJob)
+				end
+			elseif baseJob then
+				d.Job = false
+				d.JobDone = { Stat = baseJob.Stat, Rank = baseJob.Rank } -- WHICH job ended (P4.newerJob keeps a newer stored one)
+			end
+			out[key] = d
+			any = true
+		end
+	end
+	for key in pairs(base) do
+		if live[key] == nil then
+			out[key] = false
+			any = true
+		end
+	end
+	if not any then
+		return nil
+	end
+	return out
+end
+
+-- true when the STORED job `cur` is a newer job of the same key than `ref` (the job a session ended or started): the
+-- same skill at a higher target rank. Two servers holding one player (the rollout minutes, an outage's late leave
+-- save) can race: server B completes Speed 2 -> 3 and starts 3 -> 4 while server A's later save still ends the 2 -> 3
+-- job (or starts its own stale 2 -> 3): A must not wipe B's paid rank-4 job. A job of another skill, or at the same /
+-- a lower target, is the same job or an older one and follows the session's value (the sanitizer then drops it when
+-- it is stale).
+function P4.newerJob(cur, ref)
+	return type(cur) == "table" and type(ref) == "table" and cur.Stat == ref.Stat and isFinite(cur.Rank) and isFinite(ref.Rank) and cur.Rank > ref.Rank
+end
+
+-- Per key: Evo and every rank keep the HIGHER value (a rank is a target value: two servers completing one job give
+-- one rank), the Job follows the delta (a table replaces, false + JobDone clears, absent keeps the stored one; a
+-- stored job that is NEWER than the one the session ended or started survives, P4.newerJob), a key marked false goes;
+-- then the map is cleaned: a Job whose target rank is not above the merged rank (completed elsewhere) is dropped and
+-- empty entries go.
+function P4.applyGrowth(out, dg)
+	if not dg then
+		return
+	end
+	local map = out.PetGrowth
+	for key, d in pairs(dg) do
+		if d == false then
+			map[key] = nil
+		elseif type(d) == "table" then
+			local cur = map[key] or P4.zeroEntry()
+			cur.Evo = math.max(cur.Evo, clampCount(d.Evo, P4.MAX_EVO))
+			for _, stat in ipairs(P4.STATS) do
+				cur[stat] = math.max(cur[stat], clampCount(d[stat], P4.MAX_RANK))
+			end
+			if d.Job == false then
+				if not P4.newerJob(cur.Job, d.JobDone) then
+					cur.Job = nil
+				end
+			elseif type(d.Job) == "table" then
+				if not P4.newerJob(cur.Job, d.Job) then
+					cur.Job = copyMap(d.Job)
+				end
+			end
+			map[key] = cur
+		end
+	end
+	out.PetGrowth = P4.cleanGrowth(map)
+end
+
+-- Untrusted ring record -> { Best = 0..MAX_RING, Runs >= 0 } (whole numbers)
+function P4.cleanRing(raw)
+	local r = tableOr(raw)
+	return { Best = clampCount(r.Best, P4.MAX_RING), Runs = sanitize(r.Runs) }
+end
+
+function P4.isDefaultRing(ring)
+	return ring.Best == 0 and ring.Runs == 0
+end
+
+-- The Ring delta (both clean), or nil: Best as a candidate when it rose, Runs as a +/- delta.
+function P4.diffRing(live, base)
+	local d, any = { Best = nil, Runs = nil }, false
+	if live.Best > base.Best then
+		d.Best = live.Best
+		any = true
+	end
+	if live.Runs ~= base.Runs then
+		d.Runs = live.Runs - base.Runs
+		any = true
+	end
+	if not any then
+		return nil
+	end
+	return d
+end
+
+function P4.applyRing(out, dr)
+	if not dr then
+		return
+	end
+	local ring = out.Ring
+	if isFinite(dr.Best) and dr.Best > ring.Best then
+		ring.Best = clampCount(dr.Best, P4.MAX_RING)
+	end
+	if isFinite(dr.Runs) then
+		ring.Runs = sanitize(ring.Runs + dr.Runs) -- never below 0
+	end
+end
+
 -- Live (possibly messy) profile -> clean profile with whole numbers. Read defensively: other modules mutate it.
 local function copyProfile(p)
 	local out = newProfile()
@@ -1188,6 +1562,10 @@ local function copyProfile(p)
 	out.Food = cleanCounts(p.Food, MAX_FOOD)
 	out.Hybrids = cleanHybrids(p.Hybrids)
 	out.GemReceipts = cleanReceipts(p.GemReceipts)
+	-- Phase 4 (before the presets: the live Equipped list is copied as it is, but the growth map is read everywhere)
+	out.PetGrowth = P4.cleanGrowth(p.PetGrowth)
+	out.Ring = P4.cleanRing(p.Ring)
+	out.Migrations = cleanSet(p.Migrations)
 	-- Phase 3 (the copies, the Home and its prestige are final above: the presets are pruned against them)
 	out.Teams = P3.cleanTeams(p.Teams)
 	P3.prune(out, out.Teams)
@@ -1250,9 +1628,13 @@ local function normalizeProfile(raw)
 	if isFinite(spot) and spot >= 1 and spot <= Config.Lobby.SpotCount and spot == math.floor(spot) then
 		p.SpotIndex = spot
 	end
-	-- Phase 2 copies first: the equipped list may hold tier / hybrid keys
+	-- Phase 2 copies first: the equipped list may hold tier / hybrid keys; Phase 4 growth too: a training key may not
+	-- stay equipped (a Phase 3 server may have equipped it during the rollout)
 	p.Tiers = cleanTiers(raw.Tiers)
 	p.Hybrids = cleanHybrids(raw.Hybrids)
+	p.PetGrowth = P4.cleanGrowth(raw.PetGrowth)
+	p.Ring = P4.cleanRing(raw.Ring)
+	p.Migrations = cleanSet(raw.Migrations)
 	normalizeEquipped(p)
 	-- v3 fields (absent in v2 saves: the defaults from newProfile stay)
 	p.Discovered = cleanSet(raw.Discovered)
@@ -1310,6 +1692,10 @@ local function profilesEqual(a, b)
 		and deepEqual(a.Hybrids, b.Hybrids)
 		and deepEqual(a.Teams, b.Teams)
 		and deepEqual(a.Battle, b.Battle)
+		-- Phase 4
+		and deepEqual(a.PetGrowth, b.PetGrowth)
+		and deepEqual(a.Ring, b.Ring)
+		and mapsEqual(a.Migrations, b.Migrations)
 end
 
 ----------------------------------------------------------------------
@@ -1415,6 +1801,16 @@ local function overwriteValues(live, overwrite)
 	end
 	if overwrite.Battle then
 		out.Battle = P3.cleanBattle(live.Battle)
+	end
+	-- Phase 4
+	if overwrite.PetGrowth then
+		out.PetGrowth = P4.cleanGrowth(live.PetGrowth)
+	end
+	if overwrite.Ring then
+		out.Ring = P4.cleanRing(live.Ring)
+	end
+	if overwrite.Migrations then
+		out.Migrations = cleanSet(live.Migrations)
 	end
 	if next(out) == nil then
 		return nil
@@ -1534,12 +1930,21 @@ local function diffHome(liveRaw, baseRaw)
 		CollectorCash = live.CollectorCash - base.CollectorCash,
 		CollectorNow = live.CollectorCash,
 		LastSeen = nil,
+		-- Phase 4 (per-key replace): the new value, false when the session cleared it, nil when untouched
+		LegacySlots = nil,
+		LegacyPrices = nil,
 	}
 	if live.Level ~= base.Level then
 		d.Level = live.Level
 	end
 	if live.LastSeen ~= base.LastSeen then
 		d.LastSeen = live.LastSeen
+	end
+	if live.LegacySlots ~= base.LegacySlots then
+		d.LegacySlots = live.LegacySlots or false
+	end
+	if live.LegacyPrices ~= base.LegacyPrices then
+		d.LegacyPrices = live.LegacyPrices or false
 	end
 	return d
 end
@@ -1599,6 +2004,10 @@ local function diffProfiles(live, base, overwrite, opts)
 		-- Phase 3 (the live presets are pruned the way copyProfile prunes them, so a stale key never keeps a delta alive)
 		Teams = P3.diffTeams(P3.teamsOf(live), P3.teamsOf(base)),
 		Battle = P3.diffBattle(P3.cleanBattle(live.Battle), P3.cleanBattle(base.Battle)),
+		-- Phase 4: growth per key (nil when unchanged), the ring record (Best candidate / Runs delta), new markers
+		PetGrowth = P4.diffGrowth(P4.cleanGrowth(live.PetGrowth), P4.cleanGrowth(base.PetGrowth)),
+		Ring = P4.diffRing(P4.cleanRing(live.Ring), P4.cleanRing(base.Ring)),
+		Migrations = diffSet(live.Migrations, base.Migrations),
 		Overwrite = overwriteValues(live, overwrite),
 		-- the prestige rule for Cash and the star rewards (applyDelta); receipt gems (no double grant)
 		BasePrestige = baseStars,
@@ -1668,6 +2077,9 @@ local function isEmptyDelta(d)
 		and next(d.GemReceipts) == nil
 		and d.Teams == nil
 		and d.Battle == nil
+		and d.PetGrowth == nil
+		and d.Ring == nil
+		and next(d.Migrations) == nil
 		and d.Overwrite == nil
 end
 
@@ -1734,6 +2146,17 @@ local function applyHome(out, dh)
 	if dh.LastSeen ~= nil and dh.LastSeen > stored.LastSeen then
 		stored.LastSeen = dh.LastSeen
 	end
+	-- Phase 4: the veteran extras merge per key too (a value replaces, false removes, nil leaves the stored one)
+	if dh.LegacySlots == false then
+		stored.LegacySlots = nil
+	elseif isFinite(dh.LegacySlots) and dh.LegacySlots >= 1 then
+		stored.LegacySlots = math.min(math.floor(dh.LegacySlots), MAX_SLOT)
+	end
+	if dh.LegacyPrices == false then
+		stored.LegacyPrices = nil
+	elseif dh.LegacyPrices == true then
+		stored.LegacyPrices = true
+	end
 end
 
 -- stored profile + delta -> new profile. Pure (runs inside UpdateAsync, which may retry it).
@@ -1772,6 +2195,15 @@ local function applyDelta(stored, d)
 		end
 		if o.Battle then
 			out.Battle = P3.cleanBattle(o.Battle)
+		end
+		if o.PetGrowth then
+			out.PetGrowth = P4.cleanGrowth(o.PetGrowth)
+		end
+		if o.Ring then
+			out.Ring = P4.cleanRing(o.Ring)
+		end
+		if o.Migrations then
+			out.Migrations = cleanSet(o.Migrations)
 		end
 	end
 	out.Tokens = sanitize(out.Tokens + d.Tokens)
@@ -1869,7 +2301,20 @@ local function applyDelta(stored, d)
 	if not (o and o.Battle) then
 		P3.applyBattle(out, d.Battle)
 	end
-	-- last: the owned copies (Pets, Tiers, Hybrids) and the Home are final now
+	-- Phase 4: growth per key (the higher Evo / ranks, the session's Job), the ring record (Best max, Runs delta),
+	-- the migration markers (union; an overwritten set already holds the session's additions)
+	if not (o and o.PetGrowth) then
+		P4.applyGrowth(out, d.PetGrowth)
+	end
+	if not (o and o.Ring) then
+		P4.applyRing(out, d.Ring)
+	end
+	for name in pairs(tableOr(d.Migrations)) do
+		if validKey(name) then
+			out.Migrations[name] = true
+		end
+	end
+	-- last: the owned copies (Pets, Tiers, Hybrids), the Home and the growth map (the training lock) are final now
 	normalizeEquipped(out)
 	discoverOwned(out)
 	P3.prune(out, out.Teams)
@@ -1904,6 +2349,8 @@ local function toStored(p)
 			Gym = encodeSlots(h.Gym),
 			CollectorCash = h.CollectorCash,
 			LastSeen = h.LastSeen,
+			LegacySlots = h.LegacySlots, -- Phase 4: absent unless the migration wrote them
+			LegacyPrices = h.LegacyPrices,
 		},
 		PetLevels = deepCopy(p.PetLevels),
 	}
@@ -1925,6 +2372,16 @@ local function toStored(p)
 	end
 	if not P3.isDefaultBattle(p.Battle) then
 		rec.Battle = P3.encodeBattle(p.Battle)
+	end
+	-- Phase 4: left out while empty / default (zero numbers inside growth entries left out too)
+	if next(p.PetGrowth) ~= nil then
+		rec.PetGrowth = P4.encodeGrowth(p.PetGrowth)
+	end
+	if not P4.isDefaultRing(p.Ring) then
+		rec.Ring = { Best = p.Ring.Best, Runs = p.Ring.Runs }
+	end
+	if next(p.Migrations) ~= nil then
+		rec.Migrations = copyMap(p.Migrations)
 	end
 	return rec
 end
@@ -1993,6 +2450,8 @@ local function writeHome(target, src)
 	refill(ensureTable(target, "Gym"), src.Gym)
 	target.CollectorCash = src.CollectorCash
 	target.LastSeen = src.LastSeen
+	target.LegacySlots = src.LegacySlots -- Phase 4 (nil clears)
+	target.LegacyPrices = src.LegacyPrices
 end
 
 -- Overwrites the fields of `target` with `src` IN PLACE (other modules may hold the table).
@@ -2026,6 +2485,10 @@ local function replaceContents(target, src)
 	-- Phase 3 (in place too)
 	refill(ensureTable(target, "Teams"), src.Teams)
 	refill(ensureTable(target, "Battle"), src.Battle)
+	-- Phase 4 (in place too)
+	refill(ensureTable(target, "PetGrowth"), src.PetGrowth)
+	refill(ensureTable(target, "Ring"), src.Ring)
+	refill(ensureTable(target, "Migrations"), src.Migrations)
 end
 
 -- Prunes the LIVE presets in place (keys that lost their free copy: fused away, released, placed in the Garden / Gym;
@@ -2240,6 +2703,8 @@ local function homeSnapshot(rawHome)
 		Garden = encodeSlots(h.Garden),
 		Gym = encodeSlots(h.Gym),
 		CollectorCash = h.CollectorCash,
+		LegacySlots = h.LegacySlots, -- Phase 4 (absent for most homes)
+		LegacyPrices = h.LegacyPrices,
 	}
 end
 
@@ -2282,6 +2747,9 @@ local function buildSnapshot(profile)
 		-- Phase 3 (small: 3 presets of up to 4 keys, a handful of numbers, one boolean per trial level)
 		Teams = P3.teamsSnapshot(profile),
 		Battle = P3.encodeBattle(P3.cleanBattle(profile.Battle)),
+		-- Phase 4 (growth entries without their zero numbers; the ring record always whole)
+		PetGrowth = P4.encodeGrowth(P4.cleanGrowth(profile.PetGrowth)),
+		Ring = P4.cleanRing(profile.Ring),
 	}
 end
 
@@ -2499,9 +2967,13 @@ local function announceRebase(userId, entry)
 		return
 	end
 	pushAll(player, entry.Profile)
+	-- Phase 4: the one-time migration of a profile that arrives here from a recovered (provisional) load, before the
+	-- snapshot and the signals (idempotent: a profile another server already migrated is left alone)
+	local migrated = P4.migrateEntry(entry, player)
 	DataService.Sync(player)
 	DataService.ProfileRebased:Fire(player, entry.Profile)
 	DataService.TeamsChanged:Fire(player) -- the presets may have come from another server
+	P4.announceMigration(player, migrated)
 end
 
 -- Re-reads the store for an entry whose load failed and merges the session on top of it.
@@ -2817,8 +3289,13 @@ function DataService.Load(player)
 		if entry.LoadFailed then
 			scheduleRecovery(player.UserId)
 		end
+		-- Phase 4: the one-time migration (section 4.3) of a loaded, non-provisional profile, in the same step as the
+		-- load, so TycoonService's ProfileLoaded handler already sees the migrated Home (a provisional profile is
+		-- migrated after its recovery, on ProfileRebased)
+		local migrated = P4.migrateEntry(entry, player)
 		DataService.Sync(player)
 		DataService.ProfileLoaded:Fire(player, entry.Profile)
+		P4.announceMigration(player, migrated)
 	end
 	return entry.Profile
 end
@@ -2978,10 +3455,11 @@ function DataService.SetTutorial(player, tutorial)
 end
 
 -- Extra (developer tools only): the session's CURRENT values of the named fields (Discovered, IndexClaimed,
--- Tutorial, BestTimes, Home, Tiers, Hybrids, PetLevels, Teams, Battle; fields = { Discovered = true, ... }) replace the
--- stored ones at the next successful save instead of being merged (those merges only ever grow, or a higher stored
--- prestige would win the Home back, or the battle record's cleared trials / event pets / best values would come back,
--- so a /reset or /tutorial would otherwise return with the next save). The caller changes the
+-- Tutorial, BestTimes, Home, Tiers, Hybrids, PetLevels, Teams, Battle, PetGrowth, Ring, Migrations; fields =
+-- { Discovered = true, ... }) replace the stored ones at the next successful save instead of being merged (those
+-- merges only ever grow, or a higher stored prestige would win the Home back, or the battle record's cleared trials /
+-- event pets / best values would come back, or the Phase 4 evolution stages / training ranks / ring record would keep
+-- their higher stored values, so a /reset or /tutorial would otherwise return with the next save). The caller changes the
 -- live values itself; everything after this call merges on top of them as usual. Pending until a save succeeds
 -- (orphan retries and BindToClose carry it). Returns true when recorded (false until the profile is loaded, while it
 -- is provisional, or without a known field).
@@ -3447,6 +3925,13 @@ function DataService.MutateHome(player, fn)
 	end
 	repairHome(home)
 	local after = cleanHome(home, false)
+	-- Phase 4: a prestige ends the veteran extras of the one-time migration (the old garden places and the old prices
+	-- last "until your next Prestige"; the merge agrees: a higher Prestige wins the whole Home, which has them cleared)
+	if after.Prestige > before.Prestige and (after.LegacySlots ~= nil or after.LegacyPrices ~= nil) then
+		home.LegacySlots = nil
+		home.LegacyPrices = nil
+		after = cleanHome(home, false)
+	end
 	local visible = not homeVisiblyEqual(before, after)
 	if visible and isProvisional(entry) then
 		restore()
@@ -3612,8 +4097,9 @@ function DataService.SelectTeam(player, preset)
 	return true
 end
 
--- Every owned key that could join a team right now (a copy not busy in the Garden / Gym): what the Team picker offers
--- and what the tutorial's "team" step counts. {} until loaded or while provisional.
+-- Every owned key that could join a team right now (a copy not busy in the Gym, and not in training: Phase 4's
+-- read-time lock; a garden pet may fight): what the Team picker offers and what the tutorial's "team" step counts.
+-- {} until loaded or while provisional.
 function DataService.FieldableKeys(player)
 	local entry = P3.realEntry(player)
 	if not entry then
@@ -3633,23 +4119,32 @@ function DataService.FieldableKeys(player)
 		end
 	end
 	local placed = P3.placedCopies(profile)
+	local training = P4.trainingSet(profile.PetGrowth)
 	local out = {}
 	for _, key in ipairs(owned) do
-		if type(key) == "string" and P3.teamKey(key) and ownedCount(profile, key) - (placed[key] or 0) >= 1 then
+		if type(key) == "string" and P3.teamKey(key) and not training[key] and ownedCount(profile, key) - (placed[key] or 0) >= 1 then
 			out[#out + 1] = key
 		end
 	end
 	return out
 end
 
--- The usable keys of the active preset in slot order (slot = index); {} when empty or unknown.
+-- The usable keys of the active preset in slot order (compacted: a training pet is skipped at read time, the preset
+-- keeps it); {} when empty or unknown.
 function DataService.ActiveTeamKeys(player)
 	local entry = P3.realEntry(player)
 	if not entry then
 		return {}
 	end
 	local teams = P3.teamsOf(entry.Profile)
-	return copyList(teams.Presets[teams.Active])
+	local training = P4.trainingSet(entry.Profile.PetGrowth)
+	local out = {}
+	for _, key in ipairs(teams.Presets[teams.Active]) do
+		if not training[key] then
+			out[#out + 1] = key
+		end
+	end
+	return out
 end
 
 -- A copy of the battle record (TrialCleared / EventPets as sets), or nil until loaded / while provisional.
@@ -3736,6 +4231,405 @@ function DataService.AddTrophies(player, n)
 		DataService.SyncSoon(player)
 	end
 	return true, battle.Trophies
+end
+
+----------------------------------------------------------------------
+-- Phase 4: pet growth (evolution stages + training ranks + the running job), the Champion Ring record, the migration
+-- markers and the one-time Phase 4 migration (ARCHITECTURE_V3.md "Phase 4 build contract" 4.2 / 4.3). Nothing here
+-- yields; every helper lives in P4 (the main chunk is close to Lua's 200-local limit).
+----------------------------------------------------------------------
+
+-- The live PetGrowth map of a profile (repaired in place when another module dropped it).
+function P4.liveGrowth(profile)
+	return ensureTable(profile, "PetGrowth")
+end
+
+-- The live Ring record of a profile (repaired in place).
+function P4.liveRing(profile)
+	local ring = profile.Ring
+	if type(ring) ~= "table" then
+		ring = { Best = 0, Runs = 0 }
+		profile.Ring = ring
+	end
+	return ring
+end
+
+-- true when a clean growth entry has an Evo or a rank above 0
+function P4.hasGains(e)
+	if e.Evo > 0 then
+		return true
+	end
+	for _, stat in ipairs(P4.STATS) do
+		if e[stat] > 0 then
+			return true
+		end
+	end
+	return false
+end
+
+-- No Evo / rank may go down through MutateGrowth (the store merges them as the higher value, so a lower write would
+-- come back anyway): per key the clean `after` keeps the higher of before / after; an entry fn removed while its key is
+-- still owned keeps its numbers (its Job goes: to clear a job set Job = nil, never delete a trained pet's entry); an
+-- entry of a key no longer owned (fused away, released) may vanish. Returns the re-cleaned map (a Job whose target is
+-- no longer the stat's rank + 1 after the max is stale and goes).
+function P4.keepGains(profile, before, after)
+	for key, e in pairs(before) do
+		local a = after[key]
+		if a == nil then
+			if P4.hasGains(e) and ownedCount(profile, key) > 0 then
+				local kept = P4.zeroEntry()
+				kept.Evo = e.Evo
+				for _, stat in ipairs(P4.STATS) do
+					kept[stat] = e[stat]
+				end
+				after[key] = kept
+			end
+		else
+			a.Evo = math.max(a.Evo, e.Evo)
+			for _, stat in ipairs(P4.STATS) do
+				a[stat] = math.max(a[stat], e[stat])
+			end
+		end
+	end
+	return P4.cleanGrowth(after)
+end
+
+-- PetCatalog.MaxEvolution of a key (its def through PetKeys.DefOf when the catalog is there), else the data cap 2.
+function P4.maxEvolution(profile, key)
+	local catalog = getPetCatalog()
+	if not catalog or type(catalog.MaxEvolution) ~= "function" then
+		return P4.MAX_EVO
+	end
+	local subject = key
+	local keys = getPetKeys()
+	if keys and type(keys.DefOf) == "function" then
+		local okDef, def = pcall(keys.DefOf, key, profile)
+		if okDef and type(def) == "table" then
+			subject = def
+		end
+	end
+	local ok, top = pcall(catalog.MaxEvolution, subject)
+	if ok and isFinite(top) and top >= 0 then
+		return math.min(math.floor(top), P4.MAX_EVO)
+	end
+	return P4.MAX_EVO
+end
+
+-- A copy of one pet's growth { Evo, Speed, Physique, Ability, Defense, Job = {...} | nil }: zeros when the key has none
+-- (also before the load and while provisional: display only).
+function DataService.GetGrowth(player, key)
+	local entry = player and cache[player.UserId]
+	local clean = nil
+	if entry and validKey(key) then
+		clean = P4.cleanEntry(tableOr(entry.Profile.PetGrowth)[key])
+	end
+	return clean or P4.zeroEntry()
+end
+
+-- A clean copy of the whole growth map { [key] = entry }; {} until loaded and while provisional.
+function DataService.GetGrowthMap(player)
+	local entry = P3.realEntry(player)
+	if not entry then
+		return {}
+	end
+	return P4.cleanGrowth(entry.Profile.PetGrowth)
+end
+
+-- fn(growth) edits the LIVE PetGrowth map { [key] = { Evo, Speed, Physique, Ability, Defense, Job } } (no yields).
+-- Refused until loaded and while provisional (-> false). An error, or fn returning false, restores the map (-> false).
+-- Afterwards the map is cleaned in place (P4.cleanGrowth: junk and stale Jobs dropped, numbers clamped) and no Evo /
+-- rank may go down (P4.keepGains); every entry is replaced by a clean copy, so re-read entries with GetGrowth after
+-- the call. A changed map is synced (throttled). Decide a reward / refund inside fn and pay it only once this returned
+-- true: the Job and the Cash then travel in the same save.
+function DataService.MutateGrowth(player, fn)
+	if not player or type(fn) ~= "function" then
+		return false
+	end
+	local entry = P3.realEntry(player)
+	if not entry then
+		return false
+	end
+	local profile = entry.Profile
+	local live = P4.liveGrowth(profile)
+	local before = P4.cleanGrowth(live)
+	local ok, result = pcall(fn, live)
+	profile.PetGrowth = live -- the map stays this table even if fn replaced the field
+	if not ok then
+		warn("[DataService] MutateGrowth callback errored (growth restored): " .. tostring(result))
+		refill(live, before)
+		return false
+	end
+	if result == false then
+		refill(live, before)
+		return false
+	end
+	local after = P4.keepGains(profile, before, P4.cleanGrowth(live))
+	local changed = not deepEqual(before, after)
+	refill(live, after)
+	if changed then
+		entry.Dirty = true
+		DataService.SyncSoon(player)
+	end
+	return true
+end
+
+-- { [key] = true } of every key with a running training Job: the ONE source of the training lock (PetService.Equip,
+-- GardenSet, Fusion, teamOf, the ring start and this module's own filters read it). {} until loaded / while
+-- provisional.
+function DataService.TrainingKeys(player)
+	local entry = P3.realEntry(player)
+	if not entry then
+		return {}
+	end
+	return P4.trainingSet(entry.Profile.PetGrowth)
+end
+
+-- The stored evolution stage of a key (0..2; 0 when absent). The boost counts only from this stored stage.
+function DataService.GetEvolution(player, key)
+	return DataService.GetGrowth(player, key).Evo
+end
+
+-- Raises the stored stage of an OWNED key to `stage` (1..2, at most PetCatalog.MaxEvolution of its def). Only up:
+-- false for a stage not above the stored one, junk, a key not owned, a profile not loaded or provisional.
+function DataService.SetEvolution(player, key, stage)
+	if not player or not validKey(key) or not isFinite(stage) or stage ~= math.floor(stage) or stage < 1 or stage > P4.MAX_EVO then
+		return false
+	end
+	local entry = P3.realEntry(player)
+	if not entry then
+		return false
+	end
+	local profile = entry.Profile
+	if ownedCount(profile, key) < 1 or stage > P4.maxEvolution(profile, key) then
+		return false
+	end
+	if stage <= DataService.GetGrowth(player, key).Evo then
+		return false
+	end
+	return DataService.MutateGrowth(player, function(growth)
+		local e = growth[key]
+		if type(e) ~= "table" then
+			e = {}
+			growth[key] = e
+		end
+		e.Evo = stage
+	end)
+end
+
+-- A copy of the Champion Ring record { Best, Runs }, or nil until loaded and while provisional (a stand-in record must
+-- never decide a new record or a first boss clear).
+function DataService.GetRing(player)
+	local entry = P3.realEntry(player)
+	if not entry then
+		return nil
+	end
+	return P4.cleanRing(entry.Profile.Ring)
+end
+
+-- fn(ring) edits the live record { Best, Runs } (no yields). Refused until loaded and while provisional. An error, or
+-- fn returning false, restores it (-> false). Afterwards: whole numbers >= 0, Best never goes down (the store merges it
+-- as the higher value), Runs is replaced (it travels as a +/- delta). Decide "new record" / "first boss clear" inside
+-- fn and pay only once this returned true. A change is synced (throttled).
+function DataService.MutateRing(player, fn)
+	if not player or type(fn) ~= "function" then
+		return false
+	end
+	local entry = P3.realEntry(player)
+	if not entry then
+		return false
+	end
+	local profile = entry.Profile
+	local live = P4.liveRing(profile)
+	local before = P4.cleanRing(live)
+	local ok, result = pcall(fn, live)
+	profile.Ring = live -- the record stays this table even if fn replaced the field
+	if not ok then
+		warn("[DataService] MutateRing callback errored (record restored): " .. tostring(result))
+		refill(live, before)
+		return false
+	end
+	if result == false then
+		refill(live, before)
+		return false
+	end
+	local after = P4.cleanRing(live)
+	if after.Best < before.Best then
+		after.Best = before.Best
+	end
+	local changed = after.Best ~= before.Best or after.Runs ~= before.Runs
+	refill(live, after)
+	if changed then
+		entry.Dirty = true
+		DataService.SyncSoon(player)
+	end
+	return true
+end
+
+-- true / false once the profile is loaded and not provisional (nil before: not decidable).
+function DataService.IsMigrated(player, name)
+	local entry = P3.realEntry(player)
+	if not entry or not validKey(name) then
+		return nil
+	end
+	return tableOr(entry.Profile.Migrations)[name] == true
+end
+
+-- Records Migrations[name] = true (a union in the merge, so it is allowed while provisional). true when it is set now.
+function DataService.MarkMigrated(player, name)
+	if not player or not validKey(name) then
+		return false
+	end
+	local entry = cache[player.UserId]
+	if not entry or not entry.Loaded then
+		return false
+	end
+	local migrations = ensureTable(entry.Profile, "Migrations")
+	if migrations[name] ~= true then
+		migrations[name] = true
+		entry.Dirty = true
+	end
+	return true
+end
+
+-- The info of a migration THIS session ran on the profile (remembered until the player is released), or nil. For
+-- "P4": { Veteran, LegacySlots, LegacyPrices, GymKeys, GymPets, CollectorCash } (see the header). TycoonService shows
+-- the one welcome toast on the first claim when MigratedNow(player, "P4") answers a Veteran.
+function DataService.MigratedNow(player, name)
+	local entry = player and cache[player.UserId]
+	if not entry or type(entry.MigratedNow) ~= "table" or not validKey(name) then
+		return nil
+	end
+	local info = entry.MigratedNow[name]
+	if type(info) ~= "table" then
+		return nil
+	end
+	return deepCopy(info)
+end
+
+-- Developer tools (/petlevel): writes { Level, Xp = 0 } for an OWNED key, level a whole number 1..the curve's max level
+-- (TycoonCatalog.PetXp.MaxLevel, 100). Refused until loaded and while provisional. Synced (throttled).
+function DataService.SetPetLevel(player, key, level)
+	if not player or not validKey(key) or not isFinite(level) or level ~= math.floor(level) then
+		return false
+	end
+	local entry = P3.realEntry(player)
+	if not entry then
+		return false
+	end
+	local profile = entry.Profile
+	if level < 1 or level > maxPetLevel() or ownedCount(profile, key) < 1 then
+		return false
+	end
+	ensureTable(profile, "PetLevels")[key] = { Level = level, Xp = 0 }
+	entry.Dirty = true
+	DataService.SyncSoon(player)
+	return true
+end
+
+-- Garden places a home has by right (TycoonCatalog.Prestige.GardenSlotsBase / GardenSlotsPerStar; 3 + 1 per star
+-- without them), so the migration can see which veterans had more.
+function P4.gardenPlaces(stars)
+	local base, perStar = P4.GARDEN_SLOTS_BASE, P4.GARDEN_SLOTS_PER_STAR
+	local catalog = getTycoonCatalog()
+	local prestige = catalog and type(catalog.Prestige) == "table" and catalog.Prestige or nil
+	if prestige then
+		if isFinite(prestige.GardenSlotsBase) and prestige.GardenSlotsBase >= 0 then
+			base = math.floor(prestige.GardenSlotsBase)
+		end
+		if isFinite(prestige.GardenSlotsPerStar) and prestige.GardenSlotsPerStar >= 0 then
+			perStar = math.floor(prestige.GardenSlotsPerStar)
+		end
+	end
+	return base + perStar * sanitize(stars)
+end
+
+-- The one-time Phase 4 migration of a LIVE profile (section 4.3), in one non-yielding step; returns its info:
+--   1. extra garden places: a Phase 3 Garden's level was its slot count; above 3 + Prestige it becomes LegacySlots
+--      ("You keep your extra garden places until your next Prestige")
+--   2. old prices: a veteran who had prestiged keeps the base prices until the next Prestige (LegacyPrices)
+--   3. the old Gym is emptied (those pets are free again; their Gym XP is already in PetLevels)
+--   4. Migrations.P4 = true
+-- No one-time Cash payout anywhere (a payout plus a marker can double-pay across two servers); everything else needs
+-- no data change (the station ids, Home Level, Prestige, CollectorCash, Food and PetLevels keep their meaning).
+function P4.migrateP4(profile)
+	local home = liveHome(profile)
+	local clean = cleanHome(home, false)
+	local info = {
+		Veteran = clean.Level > 0 or clean.Prestige > 0 or next(clean.Stations) ~= nil,
+		LegacySlots = nil,
+		LegacyPrices = false,
+		GymKeys = {},
+		GymPets = 0,
+		CollectorCash = clean.CollectorCash,
+	}
+	local oldSlots = clean.Stations.Garden or 0
+	if oldSlots > P4.gardenPlaces(clean.Prestige) then
+		home.LegacySlots = math.min(oldSlots, MAX_SLOT)
+		info.LegacySlots = home.LegacySlots
+	end
+	if clean.Prestige > 0 then
+		home.LegacyPrices = true
+		info.LegacyPrices = true
+	end
+	local gym = ensureTable(home, "Gym")
+	local slots = {}
+	for slot in pairs(gym) do
+		slots[#slots + 1] = slot
+	end
+	table.sort(slots, function(a, b)
+		if type(a) == type(b) then
+			return a < b
+		end
+		return type(a) == "number" -- numbered mats first, named slots after
+	end)
+	for _, slot in ipairs(slots) do
+		local key = gym[slot]
+		if validKey(key) then
+			info.GymKeys[#info.GymKeys + 1] = key
+		end
+		gym[slot] = nil
+	end
+	info.GymPets = #info.GymKeys
+	repairHome(home) -- whole numbers, the CollectorCash fraction kept
+	local migrations = ensureTable(profile, "Migrations")
+	migrations[P4.MIGRATION] = true
+	if info.Veteran then
+		-- persisted (a union like every marker): TycoonService shows the one welcome toast on the FIRST claim, which may
+		-- happen in a later session than the migration; it marks P4.WELCOME_MARK itself once the toast was shown
+		migrations[P4.VETERAN_MARK] = true
+	end
+	return info
+end
+
+-- Runs the Phase 4 migration on a cache entry when it is due: loaded, not provisional (stand-in defaults must never
+-- be migrated: the real save is migrated after the recovery, on ProfileRebased) and not marked yet (idempotent: a
+-- profile another server already migrated is left alone; the marker merges as a union). Returns the info, or nil.
+function P4.migrateEntry(entry, player)
+	if not entry or not entry.Loaded or isProvisional(entry) then
+		return nil
+	end
+	local profile = entry.Profile
+	if tableOr(profile.Migrations)[P4.MIGRATION] == true then
+		return nil
+	end
+	local ok, info = pcall(P4.migrateP4, profile)
+	if not ok then
+		warn("[DataService] Phase 4 migration failed (it runs again on the next load): " .. tostring(info))
+		return nil
+	end
+	entry.Dirty = true
+	if type(entry.MigratedNow) ~= "table" then
+		entry.MigratedNow = {}
+	end
+	entry.MigratedNow[P4.MIGRATION] = info
+	return info
+end
+
+-- Fires Migrated(player, "P4", info) right after the ProfileLoaded / ProfileRebased that ran the migration.
+function P4.announceMigration(player, info)
+	if type(info) == "table" and player then
+		DataService.Migrated:Fire(player, P4.MIGRATION, deepCopy(info))
+	end
 end
 
 ----------------------------------------------------------------------

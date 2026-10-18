@@ -19,10 +19,17 @@
 --   storm-altar                     StormAltar.Build(lobbyInfo) after the lobby (server/Services/StormAltar.lua)
 --   skydragon                       the Sage Dragon SkyDragonController builds (client world)
 --   token[:golden]                  TokenService.MakeTokenPart (a normal or a golden coin)
---   home:<StationId>[:<level>|all]  a Phase 2 home station (HomeBuilder.BuildStationModel), see BUILDERS.home
---   homeplot[:<tier>[:pads]]        a fully built home plot on the lobby for house tier 1-4, see BUILDERS.homeplot
+--   home:<StationId>[:<level>|all[:<open>]]  a home station (HomeBuilder.BuildStationModel), see BUILDERS.home
+--                                   (Press1..4 = the food plants, Collector = the Coin Magnet, Kitchen = the Food
+--                                   Machine, Gym = the Training Place; <open> = the Garden's open places)
+--   homerow:<StationId>[:<levels>[:<open>]]  levels side by side; homegardens[:<level>[:<opens>]] open counts side by side
+--   homeplot[:<tier>[:pads]]        a fully built home plot on the lobby for house tier 1-4 or its name (Cottage, Villa,
+--                                   Manor, SkyCastle), see BUILDERS.homeplot
 --   homefree                        spot 1 prepared by HomeBuilder but unclaimed (gate, claim signpost)
---   homegarden[:<level>] / homegym[:<level>]  (client) the Pet Garden / Gym with pets, placed by the real HomeFx
+--   homegarden[:<open>[:<level>]] / hometrain[:<level>] (homegym)  (client) the Pet Garden with a pet on every open place
+--                                   and coin piles / the Training Place with a pet on every mat, drawn by the real HomeFx
+--   pocket[:<index>|ring]           an ArenaBuilder pocket (pocket:ring = BuildPocket(1, "Ring"))
+--   portal:home                     (client) the home portal HomePortalFx draws from the player's HomePortal attribute
 --   module:<path>:<func>[:lobby]    generic: require src/<path> (e.g. shared/Foo, server/Services/Foo) and call
 --                                   <func>() (or <func>(lobbyInfo) with :lobby); the result may be an Instance, a
 --                                   table with Model / Folder / Root, or nothing (then the new Workspace children)
@@ -547,12 +554,15 @@ BUILDERS.module = function(path, func, extra)
 	end
 	return out
 end
--- Phase 2 homes (server/Services/HomeBuilder.lua):
---   home:<StationId>[:<level>|all]   one station model at the origin (front -Z); "all" = every level, one model each
---   homerow:<StationId>[:<levels>]   levels side by side in one model (compare sizes at one scale), e.g. 1,4,7,10
---   homeplot[:<tier>[:pads]]       spot 1 of the real lobby built up for house tier 1-4 (every station at the cap of
---                                    that tier; tier 4 = everything maxed), owned by a stand-in player; ":pads" also
---                                    places the buy pads TycoonCatalog.AvailablePads would show
+-- Homes (server/Services/HomeBuilder.lua):
+--   home:<StationId>[:<level>|all[:<open>]]  one station model at the origin (front -Z); "all" = every level, one model
+--                                    each; <open> = the Garden's open place count (default Prestige.GardenSlotsBase)
+--   homerow:<StationId>[:<levels>[:<open>]]  levels side by side in one model (compare sizes at one scale), e.g. 1,4,7,10
+--   homegardens[:<level>[:<opens>]]  the Garden at one level with several open counts side by side (default 3,7,12)
+--   homeplot[:<tier>[:pads]]       spot 1 of the real lobby built up for house tier 1-4 / Cottage / Villa / Manor /
+--                                    SkyCastle (every station at the cap of that tier; tier 4 = everything maxed and
+--                                    Prestige 1), owned by a stand-in player, the Garden's open places from
+--                                    TycoonCatalog.GardenSlots; ":pads" also places the buy pads AvailablePads shows
 local function homeBuilder()
 	local HB = req("server/Services/HomeBuilder", true)
 	if not HB then
@@ -561,7 +571,7 @@ local function homeBuilder()
 	return HB
 end
 
-BUILDERS.home = function(id, level)
+BUILDERS.home = function(id, level, open)
 	local HB = homeBuilder()
 	local TC = req("shared/TycoonCatalog")
 	local def = TC.Get(id or "")
@@ -582,18 +592,19 @@ BUILDERS.home = function(id, level)
 	end
 	local out = {}
 	for _, l in ipairs(levels) do
-		local m = HB.BuildStationModel(id, l)
+		local m = HB.BuildStationModel(id, l, nil, tonumber(open))
 		if not m then
 			fail("HomeBuilder.BuildStationModel(" .. id .. ", " .. l .. ") returned nothing")
 		end
 		m.Parent = Workspace
-		out[#out + 1] = { root = m, label = def.Name .. "  Lv " .. l, sub = id .. ":" .. l, facing = { 0, 0, -1 } }
+		local extra = (def.Kind == "Garden") and ("  " .. tostring(m:GetAttribute("Open")) .. " open places") or ""
+		out[#out + 1] = { root = m, label = def.Name .. "  Lv " .. l .. extra, sub = id .. ":" .. l, facing = { 0, 0, -1 } }
 	end
 	return out
 end
 
 -- homerow:<StationId>[:<l1,l2,...>]  the given levels (default: every level) side by side, ONE model, one scale
-BUILDERS.homerow = function(id, list)
+BUILDERS.homerow = function(id, list, open)
 	local HB = homeBuilder()
 	local TC = req("shared/TycoonCatalog")
 	local def = TC.Get(id or "")
@@ -613,7 +624,7 @@ BUILDERS.homerow = function(id, list)
 	folder.Name = "Row_" .. id
 	local step = math.min(def.Slot.Footprint.X, 40) + 4
 	for i, l in ipairs(levels) do
-		local m = HB.BuildStationModel(id, l)
+		local m = HB.BuildStationModel(id, l, nil, tonumber(open))
 		if m then
 			for _, d in ipairs(m:GetDescendants()) do
 				if d:IsA("BasePart") then
@@ -627,10 +638,43 @@ BUILDERS.homerow = function(id, list)
 	return { { root = folder, label = def.Name .. " levels " .. table.concat(levels, ","), sub = id, facing = { 0, 0, -1 } } }
 end
 
+-- homegardens[:<level>[:<opens>]]  the Garden at one level, one model per open count, side by side
+BUILDERS.homegardens = function(level, list)
+	local HB = homeBuilder()
+	local TC = req("shared/TycoonCatalog")
+	local def = TC.Get("Garden")
+	level = math.max(1, math.min(def.MaxLevel, tonumber(level) or def.MaxLevel))
+	local opens = {}
+	for v in tostring(list or "3,7,12"):gmatch("[^,]+") do
+		opens[#opens + 1] = tonumber(v)
+	end
+	local folder = Instance.new("Model")
+	folder.Name = "Gardens"
+	local step = def.Slot.Footprint.X + 4
+	local total = 0
+	for i, o in ipairs(opens) do
+		local m = HB.BuildStationModel("Garden", level, nil, o)
+		if m then
+			for _, d in ipairs(m:GetDescendants()) do
+				if d:IsA("BasePart") then
+					d.CFrame = CFrame.new((i - 1) * step, 0, 0) * d.CFrame
+					total = total + 1
+				end
+			end
+			m.Parent = folder
+		end
+	end
+	folder.Parent = Workspace
+	return { { root = folder, label = "Pet Garden Lv " .. level .. ", open places " .. table.concat(opens, " / "), sub = "Garden", facing = { 0, 0, -1 } } }
+end
+
+local TIER_NAMES = { cottage = 1, villa = 2, manor = 3, skycastle = 4, castle = 4 }
+
 BUILDERS.homeplot = function(tier, extra)
 	local HB = homeBuilder()
 	local TC = req("shared/TycoonCatalog")
 	local info = ensureLobby()
+	tier = TIER_NAMES[tostring(tier or ""):lower()] or tier
 	tier = math.max(1, math.min(4, tonumber(tier) or 4))
 	HB.Init(info)
 	local spot = info.Spots[1]
@@ -653,14 +697,17 @@ BUILDERS.homeplot = function(tier, extra)
 			home.Stations[def.Id] = math.min(cap, def.MaxLevel)
 		end
 	end
+	local open = (type(TC.GardenSlots) == "function") and TC.GardenSlots(home) or 3
+	if type(HB.SetGarden) == "function" then
+		HB.SetGarden(spot, {}, open)
+	end
 	HB.BuildHome(spot, home)
 	if extra == "pads" then
 		HB.SetPads(spot, TC.AvailablePads(home))
 	end
-	HB.SetCollector(spot, 1234, 5000)
 	Mock.Advance(0.2)
 	local parts = HB.PartCount(spot)
-	return { { root = spot.Folder, label = "Home plot: " .. TC.HouseTiers[tier].Name, sub = "Home folder: " .. parts .. " parts", facing = { spot.PlotCFrame.LookVector.X, 0, spot.PlotCFrame.LookVector.Z } } }
+	return { { root = spot.Folder, label = "Home plot: " .. TC.HouseTiers[tier].Name, sub = "Home folder: " .. parts .. " parts, " .. open .. " garden places", facing = { spot.PlotCFrame.LookVector.X, 0, spot.PlotCFrame.LookVector.Z } } }
 end
 
 -- homefree   spot 1 of the real lobby prepared by HomeBuilder.Init but not claimed: the gate's ClaimPrompt anchor and the
@@ -674,10 +721,11 @@ BUILDERS.homefree = function()
 	return { { root = spot.Folder, label = "Free home plot", sub = "spot 1, unclaimed", facing = { spot.PlotCFrame.LookVector.X, 0, spot.PlotCFrame.LookVector.Z } } }
 end
 
--- homegarden[:<level>] / homegym[:<level>]  (client world) a Pet Garden / Gym at <level> (default: its top level) on a
---            test plot with a pet on every open place: HomeBuilder builds the plot, the plot's GardenPets / GymPets
---            attribute names the pets and the real HomeFx puts them on the cushions / targets (PetBuilder Low)
-local function homePetsView(stationId, attr, level)
+-- homegarden[:<open>[:<level>]] / hometrain[:<level>] (homegym)  (client world) the Pet Garden (default: 12 open
+--            places, its top level) with a pet on every open place and a coin pile at each (CoinPiles), or the Training
+--            Place (default: its top level) with a pet on every mat (TrainingPets): HomeBuilder builds the plot, the
+--            plot attributes name the pets and the real HomeFx draws them (PetBuilder Low)
+local function homePetsView(stationId, level, open)
 	local HB = homeBuilder()
 	local TC = req("shared/TycoonCatalog")
 	local PC = req("shared/PetCatalog")
@@ -691,19 +739,39 @@ local function homePetsView(stationId, attr, level)
 	local spot = { Index = 99, PlotCFrame = cf, PlotSize = TC.PlotSize, Center = cf.Position, Folder = folder }
 	Fx.Init()
 	HB.PreparePlot(spot)
-	HB.SetStation(spot, stationId, level)
-	local role = (stationId == "Gym") and "Combat" or "Economy"
 	local ids = {}
 	for _, d in ipairs(PC.Pets) do
-		if d.Role == role and #ids < 8 then
+		if #ids < 12 and not d.EventOnly then
 			ids[#ids + 1] = d.Id
 		end
 	end
-	local list = {}
-	for i = 1, level do
-		list[#list + 1] = i .. "=" .. ids[((i - 1) % #ids) + 1] .. ((i % 3 == 0) and "@Golden" or "")
+	local count = level
+	if stationId == "Garden" then
+		count = math.max(1, math.min(#def.Slot.Spots, tonumber(open) or #def.Slot.Spots))
 	end
-	folder:SetAttribute(attr, table.concat(list, ";"))
+	local list, valid, piles = {}, {}, {}
+	for i = 1, count do
+		local key = ids[((i - 1) % #ids) + 1] .. ((i % 3 == 0) and "@Golden" or "")
+		valid[i] = key
+		if stationId == "Garden" then
+			list[#list + 1] = i .. "=" .. key
+			piles[#piles + 1] = i .. "=" .. tostring((i % 5) + 1) .. ((i % 4 == 0) and "F" or "") .. ((i % 6 == 0) and "*" or "")
+		else
+			list[#list + 1] = i .. "=" .. key .. ":" .. ({ "Speed", "Physique", "Ability", "Defense" })[((i - 1) % 4) + 1] .. ":" .. tostring(os.time() + 60 * i)
+		end
+	end
+	if stationId == "Garden" then
+		if type(HB.SetGarden) == "function" then
+			HB.SetGarden(spot, valid, count)
+		end
+		folder:SetAttribute("GardenSlots", count)
+		folder:SetAttribute("GardenPets", table.concat(list, ";"))
+		folder:SetAttribute("CoinPiles", table.concat(piles, ";") .. ";W=5")
+	else
+		folder:SetAttribute("TrainingPets", table.concat(list, ";"))
+		folder:SetAttribute("GymPets", table.concat(list, ";"))
+	end
+	HB.SetStation(spot, stationId, level)
 	local cam = Workspace.CurrentCamera
 	if cam then
 		cam.CFrame = CFrame.lookAt(Vector3.new(0, 30, -40), Vector3.new(0, 0, 0))
@@ -715,25 +783,57 @@ local function homePetsView(stationId, attr, level)
 	if station then
 		station:Clone().Parent = view
 	end
-	local pets = Workspace:FindFirstChild("ClientFx") and Workspace.ClientFx:FindFirstChild("HomePets")
 	local n = 0
-	if pets then
-		for _, p in ipairs(pets:GetChildren()) do
-			p:Clone().Parent = view
-			n = n + 1
+	local fx = Workspace:FindFirstChild("ClientFx")
+	if fx then
+		for _, sub in ipairs(fx:GetChildren()) do
+			for _, p in ipairs(sub:GetChildren()) do
+				p:Clone().Parent = view
+				n = n + 1
+			end
 		end
 	end
 	view.Parent = Workspace
 	local look = (cf * def.Slot.CFrame).LookVector
-	return { { root = view, label = def.Name .. " Lv " .. level .. " with " .. n .. " pets", sub = "HomeFx " .. attr, facing = { look.X, 0, look.Z } } }
+	return { { root = view, label = def.Name .. " Lv " .. level .. " with " .. count .. " pets", sub = "HomeFx: " .. n .. " client pieces", facing = { look.X, 0, look.Z } } }
 end
 
-BUILDERS.homegarden = function(level)
-	return homePetsView("Garden", "GardenPets", level)
+BUILDERS.homegarden = function(open, level)
+	return homePetsView("Garden", level, open)
 end
 
-BUILDERS.homegym = function(level)
-	return homePetsView("Gym", "GymPets", level)
+BUILDERS.hometrain = function(level)
+	return homePetsView("Gym", level)
+end
+BUILDERS.homegym = BUILDERS.hometrain
+
+-- portal:home  (client world) the home portal HomePortalFx (wave 3) draws from the local player's HomePortal attribute
+--              ("x,y,z,yaw,closesAt"): everything new in the Workspace after a few frames
+BUILDERS.portal = function()
+	local Fx = req("client/Controllers/HomePortalFx", true)
+	if not Fx or type(Fx.Init) ~= "function" then
+		fail("client/Controllers/HomePortalFx.lua (Init) does not exist yet")
+	end
+	local before = {}
+	for _, c in ipairs(Workspace:GetChildren()) do
+		before[c] = true
+	end
+	Fx.Init()
+	local lp = game:GetService("Players").LocalPlayer
+	if lp then
+		local now = Workspace:GetServerTimeNow()
+		lp:SetAttribute("HomePortal", string.format("%d,%d,%d,%d,%d", 0, 3, 0, 0, math.floor(now + 10)))
+	end
+	Mock.Advance(1.0)
+	local view = Instance.new("Model")
+	view.Name = "PortalView"
+	for _, c in ipairs(Workspace:GetChildren()) do
+		if not before[c] and c ~= view then
+			c:Clone().Parent = view
+		end
+	end
+	view.Parent = Workspace
+	return { { root = view, label = "Home portal", sub = "HomePortalFx", facing = { 0, 0, -1 } } }
 end
 
 -- Phase 3 (server/Services/ArenaBuilder.lua):
@@ -770,18 +870,24 @@ BUILDERS.arena = function()
 	return { { root = info.Model, label = "Battle Arena", sub = "ArenaBuilder.Build(lobbyInfo) (" .. tostring(info.Link) .. " link)", facing = { look.X, 0, look.Z } } }
 end
 
-BUILDERS.pocket = function(index)
+BUILDERS.pocket = function(index, kind)
 	local AB = req("server/Services/ArenaBuilder", true)
 	if not AB or type(AB.BuildPocket) ~= "function" then
 		fail("server/Services/ArenaBuilder.lua (BuildPocket) does not exist yet")
 	end
+	-- pocket:ring = BuildPocket(1, "Ring"); pocket:<n>[:<kind>]
+	if index and not tonumber(index) then
+		kind, index = index, nil
+	end
 	local n = tonumber(index) or 1
-	local pocket = AB.BuildPocket(n)
+	local mode = kind and (tostring(kind):sub(1, 1):upper() .. tostring(kind):sub(2):lower()) or nil
+	local pocket = AB.BuildPocket(n, mode)
 	Mock.Advance(0.2)
 	if type(pocket) ~= "table" or not isInstance(pocket.Model) then
-		fail("ArenaBuilder.BuildPocket(" .. n .. ") returned no pocket with a Model")
+		fail("ArenaBuilder.BuildPocket(" .. n .. ", " .. tostring(mode) .. ") returned no pocket with a Model")
 	end
-	return { { root = pocket.Model, label = "Trial pocket " .. n, sub = "ArenaBuilder.BuildPocket(" .. n .. ")", facing = { 0, 0, -1 } } }
+	local title = (mode == "Ring") and "Champion Ring pocket " or "Trial pocket "
+	return { { root = pocket.Model, label = title .. n, sub = "ArenaBuilder.BuildPocket(" .. n .. (mode and (", " .. mode) or "") .. ")", facing = { 0, 0, -1 } } }
 end
 
 -- Phase 3 bosses (shared/BossBuilder.lua, built from a BattleCatalog boss id):

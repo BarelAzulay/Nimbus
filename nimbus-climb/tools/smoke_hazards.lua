@@ -357,7 +357,14 @@ S.hazards = guarded("hazards", function()
 		end
 		away()
 		reset()
-		-- bolts and discs are short-lived: count runtime parts that appeared after the hazards started
+		-- bolts and discs are short-lived: count runtime parts that appeared after the hazards started.
+		-- The bound is per zone, not one fixed number: at any instant a LightningZone shows at most one strike (a bolt
+		-- of BOLT_SEGMENTS = 8 glow + core parts, the flash, the impact anchor: all gone within 1.2 s) plus the next
+		-- warning's ring + fill. The zones run on random phases (HazardService's auto-seeded Random), so several can
+		-- strike in the same instant (5 of 6 zones at once = 92 parts, legitimately). A leak grows without bound
+		-- instead (~18 parts per strike, every zone, every Interval, over the 12 intervals sampled below).
+		local perZone = 2 * 8 + 2 + 2
+		local bound = #zones * perZone
 		local function runtimeParts()
 			local n = 0
 			for _, d in ipairs(holder:GetDescendants()) do
@@ -372,7 +379,7 @@ S.hazards = guarded("hazards", function()
 			advance(interval / 2)
 			peak = max(peak, runtimeParts())
 		end
-		T.check(peak <= 90, "lightning bolts / warning discs are short-lived (bounded count)", "peak " .. peak .. " temporary parts")
+		T.check(peak <= bound, "lightning bolts / warning discs are short-lived (bounded count)", "peak " .. peak .. " temporary parts, bound " .. bound .. " for " .. #zones .. " zones")
 		W.runtimeParts = runtimeParts
 	else
 		T.fail("hazards: no LightningZone in the sampled courses")

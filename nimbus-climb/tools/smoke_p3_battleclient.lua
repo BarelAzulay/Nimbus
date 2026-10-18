@@ -18,6 +18,19 @@
 --                             effect caps (pooled parts, numbers), the measured frame cost, BOSS DEFEATED card
 --   client_p3battle_spectate  a duel watched from the stands: models but no controls / keys / commands, the slim
 --                             WATCHING card, "End" OutOfRange frees everything at once; junk messages are ignored
+--   client_p3battle_cards     (Phase 4, 3.9) a PetCard above every unit: own "Unit" (Lv >= 22 px + HP + SPECIAL + XP =
+--                             xp / xpNext, full at the cap 100), enemies "Enemy" (Lv + HP only), evolved units built
+--                             evolved within petEvoLow / petEvo2Low with their stars, no card write between snapshots
+--                             and far fewer writes than frames, HP fill = hp / maxHp, a full meter fills SPECIAL,
+--                             End.Rewards.Xp moves the XP bar, every card freed with the battle
+--   client_p3battle_ring      (Phase 4, 3.8) a Champion Ring run: CHAMPION RING - Round 1 - Best 12 + the win pay pill,
+--                             the crowned champion (gold voxel crown, 22 px tag), a won round's side card (no result
+--                             card, Round 2 in 3 counting down, top card + team kept, commands gone, off the centre),
+--                             the next Start in the same pocket keeps my pets' models, the old floor freed by battle id,
+--                             the run's result card (RUN OVER, Rounds won, Cash, XP, Best), a record run ended between
+--                             rounds (RECORD x3 pill, NEW RECORD!), the BOSS pill on round 20, duel OVERTIME
+--   client_p3battle_ring_mobile (phone world) unit card Lv >= 14 px, the side card readable, off the centre and clear of
+--                             the top / team cards at 390x844 and 844x390, the run's card off the centre
 --   client_p3battle_mobile    (phone world) the compact HUD: touch-sized ATTACK / RETREAT, every battle text >= 14 px on
 --                             the screen, nothing over the RUN / DASH buttons or in the screen centre, a tap on a team
 --                             card casts its special
@@ -198,11 +211,12 @@ local function newDriver(opts)
 		return nil, "shared/BattleSim.lua missing"
 	end
 	local id = "smoke_" .. tostring(opts.Mode) .. "_" .. tostring(math.random(100000, 999999))
-	local sim, why = Sim.new({ Mode = opts.Mode, Seed = opts.Seed or 3, Id = id, Teams = opts.Teams, Trial = opts.Trial, Boss = opts.Boss, Specials = opts.Specials })
+	local sim, why = Sim.new({ Mode = opts.Mode, Seed = opts.Seed or 3, Id = id, Teams = opts.Teams, Trial = opts.Trial, Boss = opts.Boss, Specials = opts.Specials,
+		Round = opts.Round, Zone = opts.Zone, TimeLimit = opts.TimeLimit })
 	if not sim then
 		return nil, why
 	end
-	local d = setmetatable({ sim = sim, id = id, zoneCF = opts.ZoneCF or CFrame.new(0, 200, 0), side = opts.Side or 1, logIndex = #Mock.RemoteLog, events = {}, stepped = 0 }, Driver)
+	local d = setmetatable({ sim = sim, id = id, zoneCF = opts.ZoneCF or CFrame.new(0, 200, 0), side = opts.Side or 1, logIndex = #Mock.RemoteLog, events = {}, stepped = 0, ring = opts.Ring }, Driver)
 	d.me = LocalPlayer.UserId
 	return d
 end
@@ -215,6 +229,7 @@ function Driver:startPayload()
 	p.Side = self.side
 	p.Spectator = self.side == 0
 	p.T = self.sim:Time()
+	p.Ring = self.ring -- Phase 4: BattleService's "Start".Ring for a Champion Ring round
 	return p
 end
 
@@ -328,6 +343,29 @@ end
 ----------------------------------------------------------------------------------------------------
 -- scenario: a full trial on the desktop
 ----------------------------------------------------------------------------------------------------
+-- Phase 4 test helpers: the PetCard above a unit (its billboard keeps the Phase 3 name HpBar)
+local function cardOf(BC, id)
+	local info = BC.GetUnit(id)
+	local gui = info and info.Card and info.Card.Gui
+	return gui, info
+end
+
+local function rowShown(gui, name)
+	local f = gui and gui:FindFirstChild("Plate") and gui.Plate:FindFirstChild(name)
+	return f ~= nil and f.Visible == true
+end
+
+local function fillOf(gui, name)
+	local f = gui and gui:FindFirstChild("Plate") and gui.Plate:FindFirstChild(name)
+	local fill = f and f:FindFirstChild("Fill")
+	return fill and fill.Size.X.Scale or nil
+end
+
+local function levelText(gui)
+	local l = gui and gui:FindFirstChild("Plate") and gui.Plate:FindFirstChild("Level")
+	return l and l.Text or nil, l
+end
+
 S.client_p3battle_trial = guarded("client_p3battle_trial", function()
 	local Config = KC.env()
 	local BC = moduleAt("client", "Controllers/BattleController")
@@ -809,12 +847,8 @@ local function overlap(a, b)
 	return a.x0 < b.x1 - 1 and b.x0 < a.x1 - 1 and a.y0 < b.y1 - 1 and b.y0 < a.y1 - 1
 end
 
-S.client_p3battle_mobile = guarded("client_p3battle_mobile", function()
-	local BC = moduleAt("client", "Controllers/BattleController")
-	if not BC then
-		T.fail("BattleController missing (phone)")
-		return
-	end
+-- the phone world boots its own client (once)
+local function bootPhone()
 	-- the phone world boots its own client
 	local main = Mock.GetPath(ROOTS["client"] .. "/Main")
 	if main and not (LocalPlayer:FindFirstChild("PlayerGui") and LocalPlayer.PlayerGui:FindFirstChild("NimbusHud")) then
@@ -833,6 +867,15 @@ S.client_p3battle_mobile = guarded("client_p3battle_mobile", function()
 		Mock.RunScript(main)
 		Mock.Advance(8)
 	end
+end
+
+S.client_p3battle_mobile = guarded("client_p3battle_mobile", function()
+	local BC = moduleAt("client", "Controllers/BattleController")
+	if not BC then
+		T.fail("BattleController missing (phone)")
+		return
+	end
+	bootPhone()
 	local outBefore, errBefore = #Mock.Output, #Mock.Errors
 	local d = newDriver({ Mode = "Trial", Trial = 2, Teams = { { Owner = LocalPlayer.UserId, Side = 1, Pets = catalogTeam(4) } } })
 	if not d then
@@ -931,6 +974,491 @@ S.client_p3battle_mobile = guarded("client_p3battle_mobile", function()
 	T.check(BC.GetBattle() == nil and not BC.IsHudVisible(), "phone: everything freed afterwards")
 	T.check(battleWarnings(outBefore) == nil and #Mock.Errors == errBefore, "BattleController: no errors or warnings (phone)", tostring(battleWarnings(outBefore)))
 	KC.flushErrors("client_p3battle_mobile")
+end)
+
+----------------------------------------------------------------------------------------------------
+-- Phase 4 (ARCHITECTURE_V3.md "Phase 4 build contract" 3.5 / 3.8 / 3.9 / 8.2): unit cards and the Champion Ring
+----------------------------------------------------------------------------------------------------
+-- an Epic-or-rarer Combat pet (it may evolve twice)
+local function epicPet()
+	local PC = moduleAt("shared", "PetCatalog")
+	for _, def in ipairs(PC and PC.Pets or {}) do
+		if def.Role == "Combat" and not def.EventOnly and (def.Rarity == "Epic" or def.Rarity == "Legendary" or def.Rarity == "Mythic") then
+			return def.Id
+		end
+	end
+	return nil
+end
+
+local function partCount(model)
+	local n = 0
+	for _, p in ipairs(model and model:GetDescendants() or {}) do
+		if p:IsA("BasePart") then
+			n = n + 1
+		end
+	end
+	return n
+end
+
+local function cardWrites(BC, ids)
+	local n = 0
+	for _, id in ipairs(ids) do
+		local info = BC.GetUnit(id)
+		n = n + (info and info.Writes or 0)
+	end
+	return n
+end
+
+S.client_p3battle_cards = guarded("client_p3battle_cards", function()
+	local BC = moduleAt("client", "Controllers/BattleController")
+	local TC = moduleAt("shared", "TycoonCatalog")
+	local PetCard = moduleAt("client", "UI/PetCard")
+	if not BC or not TC or not PetCard then
+		T.fail("BattleController / TycoonCatalog / PetCard missing")
+		return
+	end
+	local outBefore, errBefore = #Mock.Output, #Mock.Errors
+	local cardsBefore = PetCard.Count()
+	local budgets = (CONTRACT and CONTRACT.v3 and CONTRACT.v3.partBudget) or {}
+	local need20 = TC.XpToNext(20)
+	local team = catalogTeam(2, 0, 20)
+	team[1].Xp, team[1].XpNext = 1000, need20 -- a level-20 pet a little into its bar
+	team[2].Level, team[2].Evo, team[2].Xp = 100, 1, 0 -- at the cap (100): the server leaves XpNext out
+	local epic = epicPet()
+	if epic then
+		team[3] = { Key = epic, PetId = epic, Level = 55, Tier = "Normal", Slot = 3, Evo = 2, Xp = 500, XpNext = TC.XpToNext(55) }
+	end
+	local d = newDriver({ Mode = "Trial", Trial = 5, Teams = { { Owner = LocalPlayer.UserId, Side = 1, Pets = team } }, Specials = false })
+	if not T.check(d ~= nil, "cards: battle driver (trial 5)") then
+		return
+	end
+	LocalPlayer:SetAttribute("InBattle", d.id)
+	d:start()
+	d:run(1.0, 30)
+	local mineIds, enemyIds, bySlot = {}, {}, {}
+	for _, u in ipairs(d.sim.units) do
+		if u.owner == LocalPlayer.UserId then
+			mineIds[#mineIds + 1] = u.id
+			bySlot[u.slot] = u
+		else
+			enemyIds[#enemyIds + 1] = u.id
+		end
+	end
+	-- own units: level + HP + SPECIAL + XP, pixel-sized, readable
+	local bad = nil
+	for _, id in ipairs(mineIds) do
+		local gui, info = cardOf(BC, id)
+		local text, lvl = levelText(gui)
+		if not gui then
+			bad = "no card on unit " .. id
+		elseif gui.Name ~= "HpBar" or info.Card.Mode ~= "Unit" then
+			bad = "unit " .. id .. ": " .. gui.Name .. " / " .. tostring(info.Card.Mode)
+		elseif not (rowShown(gui, "Hp") and rowShown(gui, "Special") and rowShown(gui, "Xp")) then
+			bad = "unit " .. id .. ": rows hidden"
+		elseif text ~= "Lv " .. tostring(info.Level) then
+			bad = "unit " .. id .. ": " .. tostring(text)
+		elseif gui.LightInfluence ~= 0 or gui.Size.X.Scale ~= 0 or gui.Size.Y.Scale ~= 0 or not gui.AlwaysOnTop then
+			bad = "unit " .. id .. ": not a pixel billboard"
+		elseif not lvl or lvl.TextSize < 22 then
+			bad = "unit " .. id .. ": Lv " .. tostring(lvl and lvl.TextSize) .. " px"
+		end
+	end
+	T.check(#mineIds >= 2 and bad == nil, "cards: every own unit carries a PetCard (HpBar, mode Unit: Lv n >= 22 px + HP + SPECIAL + XP, pixel-sized, LightInfluence 0)", tostring(bad))
+	local g1 = cardOf(BC, bySlot[1] and bySlot[1].id)
+	local g2 = cardOf(BC, bySlot[2] and bySlot[2].id)
+	T.near(fillOf(g1, "Xp") or -1, 1000 / need20, 0.01, "cards: the XP fill is xp / xpNext from Start (level 20)")
+	T.near(fillOf(g2, "Xp") or -1, 1, 0.001, "cards: a pet at the level cap (100, no xpNext) shows a full XP bar")
+	-- enemies: level + HP only
+	bad = nil
+	for _, id in ipairs(enemyIds) do
+		local gui, info = cardOf(BC, id)
+		local su = nil
+		for _, u in ipairs(d.sim.units) do
+			if u.id == id then
+				su = u
+			end
+		end
+		if not gui or info.Card.Mode ~= "Enemy" then
+			bad = "enemy " .. id .. ": " .. tostring(info and info.Card and info.Card.Mode)
+		elseif not rowShown(gui, "Hp") or rowShown(gui, "Special") or rowShown(gui, "Xp") then
+			bad = "enemy " .. id .. ": rows"
+		elseif su and levelText(gui) ~= "Lv " .. tostring(su.level) then
+			bad = "enemy " .. id .. ": " .. tostring(levelText(gui))
+		end
+	end
+	T.check(#enemyIds > 0 and bad == nil, "cards: every enemy carries a PetCard (mode Enemy: Lv n + HP, no SPECIAL / XP)", tostring(bad))
+	-- evolved units: PetBuilder opts.Evolved at Low detail within the budgets, stars on the card
+	local u2 = bySlot[2] and BC.GetUnit(bySlot[2].id)
+	local stars2 = g2 and g2:FindFirstChild("StarBadge")
+	T.check(u2 and u2.Evo == 1 and u2.Model and u2.Model:GetAttribute("BC_Evo") == 1 and partCount(u2.Model) <= (budgets.petEvoLow or 380) and stars2 and stars2.Visible,
+		"cards: an evolved unit is built evolved (Low, <= petEvoLow parts) with a star on its card", u2 and (tostring(u2.Evo) .. " / " .. partCount(u2.Model) .. " parts") or "nil")
+	if epic then
+		local u3 = bySlot[3] and BC.GetUnit(bySlot[3].id)
+		local g3 = bySlot[3] and cardOf(BC, bySlot[3].id)
+		local st = g3 and g3:FindFirstChild("StarBadge")
+		T.check(u3 and u3.Evo == 2 and partCount(u3.Model) <= (budgets.petEvo2Low or 520) and st and st.Visible and tostring(st.Stars.Text) == "\226\152\133\226\152\133",
+			"cards: a second-evolution unit (Epic+) uses Evolved = 2 within petEvo2Low and shows two stars", u3 and (tostring(u3.Evo) .. " / " .. partCount(u3.Model) .. " parts") or "nil")
+	end
+	-- fills written only on change: 60 frames without a new snapshot write nothing; a fight writes far less than once per frame
+	local all = {}
+	for _, id in ipairs(mineIds) do
+		all[#all + 1] = id
+	end
+	for _, id in ipairs(enemyIds) do
+		all[#all + 1] = id
+	end
+	local w0 = cardWrites(BC, all)
+	local hp0 = fillOf(g1, "Hp")
+	step(60, 1 / 60)
+	T.eq(cardWrites(BC, all) - w0, 0, "cards: no card write while the snapshots do not change (never per frame)")
+	T.check(fillOf(g1, "Hp") == hp0, "cards: the HP fill is untouched between snapshots")
+	w0 = cardWrites(BC, all)
+	local frames = 0
+	for _ = 1, 20 do
+		d:forward()
+		local evs = d.sim:Step(0.1)
+		if #evs > 0 then
+			KC.toClient("BattleState", "Events", evs, d.id)
+		end
+		KC.toClient("BattleState", "Snapshot", d:snapshot(), d.id)
+		step(6, 0.1 / 6)
+		frames = frames + 6
+	end
+	local writes = cardWrites(BC, all) - w0
+	T.check(writes <= 2 * 20 * #all and writes < frames * #all / 2, "cards: HP / SPECIAL writes follow the 10 Hz snapshots, not the 60 fps frames", writes .. " writes, " .. frames .. " frames x " .. #all .. " units")
+	-- the HP fill matches the drawn HP; a full meter fills the SPECIAL row
+	local worst = 0
+	for _, id in ipairs(all) do
+		local gui, info = cardOf(BC, id)
+		local f = fillOf(gui, "Hp")
+		if f and info and info.MaxHp > 0 and not info.Parked then
+			worst = max(worst, abs(f - max(0, min(1, info.Hp / info.MaxHp))))
+		end
+	end
+	T.check(worst < 0.01, "cards: every HP fill = hp / maxHp of the drawn unit", fmt(worst, 3))
+	for _, u in ipairs(d:myUnits()) do
+		u.meter = 100
+	end
+	d:step(30)
+	d:step(30)
+	T.near(fillOf(g1, "Special") or -1, 1, 0.001, "cards: a full meter fills the SPECIAL row")
+	-- the fight's XP (End.Rewards.Xp) moves the XP bars (3.5: the toasts come from the server)
+	d:finish({ Mode = "Trial", Outcome = "Win", Won = true, Spectator = false, Reason = "Wipe", Rewards = { Tokens = 100, Gems = 0, Xp = 90, Trophies = 0, LevelUps = 0, Level = 5 } })
+	step(2)
+	T.near(fillOf(g1, "Xp") or -1, 1090 / need20, 0.01, "cards: End.Rewards.Xp moves the XP fill (level 20: 1000 + 90)")
+	T.near(fillOf(g2, "Xp") or -1, 1, 0.001, "cards: a capped pet's XP bar stays full")
+	LocalPlayer:SetAttribute("InBattle", nil)
+	KC.advance(4)
+	local hide = find("Root.ResultCard.OkButton")
+	if hide then
+		Mock.Click(hide)
+	end
+	step(2)
+	T.eq(PetCard.Count(), cardsBefore, "cards: every unit card is freed with the battle")
+	T.check(battleWarnings(outBefore) == nil and #Mock.Errors == errBefore, "BattleController: no errors or warnings (cards)", tostring(battleWarnings(outBefore)))
+	KC.flushErrors("client_p3battle_cards")
+end)
+
+-- one Champion Ring round, the way BattleService sends it (Start.Ring + the champion team of BattleCatalog)
+local function ringDriver(round, best, start, team, seed)
+	local BCat = moduleAt("shared", "BattleCatalog")
+	if not BCat or type(BCat.ChampionTeam) ~= "function" then
+		return nil, "BattleCatalog.ChampionTeam missing"
+	end
+	local spec = BCat.ChampionTeam(round, seed or 7)
+	local ch = spec.Champion or {}
+	return newDriver({
+		Mode = "Ring", Round = round, Seed = round, Zone = { X = 44, Z = 44 }, TimeLimit = 90,
+		Teams = { { Owner = LocalPlayer.UserId, Side = 1, Pets = team }, spec },
+		Ring = { Round = round, Best = best, Start = start, Champion = { PetId = ch.PetId, Level = ch.Level, Tier = ch.Tier, Boss = ch.Boss == true, Name = ch.Name } },
+	})
+end
+
+local function champion(d)
+	for _, u in ipairs(d.sim.units) do
+		if u.side == 2 then
+			return u
+		end
+	end
+	return nil
+end
+
+local function ringTeam()
+	local team = catalogTeam(2, 0, 30)
+	for _, p in ipairs(team) do
+		p.Xp, p.XpNext = 100, 6000
+	end
+	return team
+end
+
+-- a won round: { Won, Next, Round, Cash, Xp, Tokens, Record, Seconds, LevelUps }
+local function wonEnd(round, cash, record, tokens)
+	return { Mode = "Ring", Outcome = "Win", Won = true, Spectator = false, Reason = "Wipe",
+		Rewards = { Won = true, Next = round + 1, Round = round, Cash = cash, Xp = 20 + 6 * round, Tokens = tokens or 0, Record = record == true, Seconds = 1.6, LevelUps = 0 } }
+end
+
+local function finalEnd(round, run, extra)
+	local p = { Mode = "Ring", Outcome = "Loss", Won = false, Spectator = false, Reason = "Wipe",
+		Rewards = { Won = false, Final = true, Round = round, Cash = 0, Xp = 0, Run = run } }
+	for k, v in pairs(extra or {}) do
+		p[k] = v
+	end
+	return p
+end
+
+local function centreFree(obj, w, h)
+	if not obj or not shown(obj) then
+		return false
+	end
+	local r = screenRect(obj)
+	local cx, cy = w / 2, h / 2
+	return not (r.x0 <= cx and cx <= r.x1 and r.y0 <= cy and cy <= r.y1)
+end
+
+S.client_p3battle_ring = guarded("client_p3battle_ring", function()
+	local BC = moduleAt("client", "Controllers/BattleController")
+	if not BC then
+		T.fail("BattleController missing")
+		return
+	end
+	local outBefore, errBefore = #Mock.Output, #Mock.Errors
+	local me = LocalPlayer.UserId
+	local team = ringTeam()
+	local d1, why = ringDriver(1, 12, 1, team)
+	if not T.check(d1 ~= nil, "ring: round 1 driver (BattleSim Mode Ring + ChampionTeam)", tostring(why)) then
+		return
+	end
+	LocalPlayer:SetAttribute("InBattle", d1.id)
+	d1:start()
+	d1:step(30)
+	d1:step(30)
+	local b = BC.GetBattle()
+	T.check(b and b.Mode == "Ring" and b.Round == 1 and b.Best == 12 and b.Fighter, "ring: Start draws the round as a fighter (Round / Best from Start.Ring)", b and (tostring(b.Round) .. " / " .. tostring(b.Best)) or "nil")
+	local top = find("Root.TopCard")
+	T.check(shown(top) and hasText(top, "CHAMPION RING") and hasText(top, "Round 1 %- Best 12"), "ring HUD: the top card reads CHAMPION RING - Round 1 - Best 12")
+	T.check(hasText(find("Root.TopCard.RingInfo"), "Win: %+%$[%d,%.KMB]+  %+26 XP"), "ring HUD: the Cash and XP of a win (RingRewards: round 1 pays 26 XP)", tostring((find("Root.TopCard.RingInfo.WinPay") or {}).Text))
+	T.check(not shown(find("Root.TopCard.RingInfo.Record")) and not shown(find("Root.TopCard.RingInfo.Boss")), "ring HUD: no record / boss pill on round 1 (best 12)")
+	T.check(shown(find("Root.Commands.AttackButton")) and shown(find("Root.Commands.RetreatButton")) and (hasText(find("Root.Team"), "SPECIAL") or hasText(find("Root.Team"), "%%")), "ring HUD: the Phase 3 controls (ATTACK / RETREAT / SPECIAL) work in the ring")
+	-- the champion: crowned, a name tag above its card
+	local ch = champion(d1)
+	local cu = ch and BC.GetUnit(ch.id)
+	local tag = cu and cu.Model and cu.Model:FindFirstChild("ChampionTag")
+	local tagLabel = tag and tag:FindFirstChild("Name", true)
+	T.check(cu and cu.Crowned and tag and tagLabel and tostring(tagLabel.Text):find("^Champion") and tagLabel.TextSize >= 22 and tag.LightInfluence == 0 and tag.Size.X.Scale == 0,
+		"ring: the champion wears the crown and a 22 px name tag above its card", tagLabel and (tagLabel.Text .. " " .. tagLabel.TextSize .. " px") or "nil")
+	-- the crown is PetBuilder's voxel Crown accessory: gold voxels on top of the head
+	local gold = 0
+	if cu and cu.Model then
+		local okB, cf, size = pcall(cu.Model.GetBoundingBox, cu.Model)
+		local topY = okB and (cf.Position.Y + size.Y / 2) or nil
+		for _, p in ipairs(cu.Model:GetDescendants()) do
+			local c = p:IsA("BasePart") and p.Color
+			if c and topY and c.R > 0.8 and c.G > 0.55 and c.B < 0.45 and p.Position.Y > topY - size.Y * 0.35 then
+				gold = gold + 1
+			end
+		end
+	end
+	T.check(gold > 0, "ring: the champion's model wears a gold voxel crown on its head", gold .. " gold parts near the top")
+	local chCard = cu and cu.Card
+	T.check(chCard and chCard.Mode == "Enemy" and tag and tag.Size.Y.Offset > chCard.Gui.Size.Y.Offset, "ring: the champion's card is an enemy card and the tag clears it", chCard and tostring(chCard.Mode) or "nil")
+	-- win the round
+	d1:run(25, 30)
+	local res = d1.sim:Result()
+	T.check(res and res.WinnerSide == 1, "ring: the level-30 team wins round 1", res and tostring(res.WinnerSide) or "running")
+	local models = {}
+	for _, u in ipairs(d1:myUnits()) do
+		models[u.key] = BC.GetUnit(u.id) and BC.GetUnit(u.id).Model
+	end
+	d1:finish(wonEnd(1, 22, false))
+	step(2)
+	b = BC.GetBattle()
+	local nextCard = find("Root.NextRoundCard")
+	T.check(not shown(find("Root.ResultCard")), "ring: a won round shows no result card")
+	T.check(shown(nextCard) and hasText(nextCard, "Round 1 won!") and hasText(nextCard, "%+%$22") and hasText(nextCard, "%+26 XP") and hasText(nextCard, "Round 2 in 3"),
+		"ring: the side card reads Round 1 won! +$22 +26 XP - Round 2 in 3")
+	T.check(b and b.Next == 2 and b.Ended, "ring: GetBattle().Next = 2 between the rounds", b and tostring(b.Next) or "nil")
+	T.check(shown(find("Root.TopCard")) and shown(find("Root.Team")) and not shown(find("Root.Commands")), "ring: between rounds the top card and the team stay, the commands go")
+	local vp = workspace.CurrentCamera.ViewportSize
+	T.check(centreFree(nextCard, vp.X, vp.Y) and not overlap(screenRect(nextCard), screenRect(find("Root.Team"))), "ring: the side card is off the screen centre and clear of the team card")
+	KC.advance(1.2)
+	T.check(hasText(find("Root.NextRoundCard"), "Round 2 in 2"), "ring: the countdown runs (Round 2 in 2)", tostring((find("Root.NextRoundCard.Countdown") or {}).Text))
+	local kept = true
+	for _, m in pairs(models) do
+		kept = kept and m ~= nil and m.Parent ~= nil
+	end
+	T.check(kept, "ring: my pets stay on the floor between the rounds")
+	-- round 2: a new battle id in the same pocket
+	local d2 = ringDriver(2, 12, 1, team)
+	LocalPlayer:SetAttribute("InBattle", d2.id)
+	d2:start()
+	step(1)
+	local same, parented = 0, 0
+	for _, u in ipairs(d2:myUnits()) do
+		local info = BC.GetUnit(u.id)
+		if info and info.Model and info.Model == models[u.key] then
+			same = same + 1
+		end
+		if info and info.Model and info.Model.Parent ~= nil then
+			parented = parented + 1
+		end
+	end
+	T.check(same == #d2:myUnits() and parented == same, "ring: End -> Start in one pocket keeps my pets' models (no rebuild, no blink)", same .. "/" .. #d2:myUnits())
+	b = BC.GetBattle()
+	T.check(b and b.Id == d2.id and b.Round == 2 and not b.Ended and b.Next == nil, "ring: the next Start is the new round", b and tostring(b.Round) or "nil")
+	T.check(not shown(find("Root.NextRoundCard")) and hasText(find("Root.TopCard"), "Round 2 %- Best 12") and shown(find("Root.Commands.AttackButton")), "ring: the side card goes, the top card says Round 2, the commands are back")
+	local cb = workspace:FindFirstChild("ClientBattle")
+	T.check(cb and cb:FindFirstChild("Battle_" .. d1.id) == nil, "ring: the won round's floor folder is freed (cleanup keyed by battle id)")
+	d2:run(1.0, 30)
+	-- the run ends: the result card with the run's Cash / Rounds / Record
+	d2:finish(finalEnd(2, { Wins = 1, Cash = 22, Xp = 35, Tokens = 0, Round = 2, Start = 1, Best = 12 }))
+	step(2)
+	local rc = find("Root.ResultCard")
+	T.check(shown(rc) and hasText(rc, "RUN OVER") and hasText(rc, "Rounds won: 1") and hasText(rc, "%+%$22 Cash") and hasText(rc, "%+35 Pet XP") and hasText(rc, "Best: round 12") and not hasText(rc, "VICTORY"),
+		"ring: the run's result card: RUN OVER, Rounds won, Cash, XP, the record")
+	T.check(rc and rc.AnchorPoint.X == 1 and rc.AnchorPoint.Y == 1, "ring: the result card sits bottom right (never centred)")
+	LocalPlayer:SetAttribute("InBattle", nil)
+	KC.advance(4)
+	T.check(BC.GetBattle() == nil, "ring: the battle is freed after the run")
+	local ok = find("Root.ResultCard.OkButton")
+	if ok then
+		Mock.Click(ok)
+	end
+	step(2)
+	-- a new record, then the run ends between two rounds (its final End names the won round's battle id)
+	local d3 = ringDriver(13, 12, 10, team)
+	LocalPlayer:SetAttribute("InBattle", d3.id)
+	d3:start()
+	d3:step(30)
+	T.check(shown(find("Root.TopCard.RingInfo.Record")) and hasText(find("Root.TopCard.RingInfo"), "RECORD x3"), "ring HUD: past the record the top card says RECORD x3")
+	d3:finish(wonEnd(13, 300, true))
+	step(2)
+	T.check(hasText(find("Root.NextRoundCard"), "New record! Cash x3") and hasText(find("Root.TopCard"), "Best 13"), "ring: a record round's side card says so and the top card's best follows")
+	KC.toClient("BattleState", "End", finalEnd(13, { Wins = 4, Cash = 900, Xp = 400, Tokens = 0, Round = 13, Start = 10, Record = 13, Best = 13 }, { BattleId = d3.id, Outcome = "Left", Reason = "Forfeit", Round = 13 }), d3.id)
+	step(2)
+	rc = find("Root.ResultCard")
+	T.check(shown(rc) and hasText(rc, "NEW RECORD!") and hasText(rc, "Best: round 13!") and hasText(rc, "Rounds won: 4") and hasText(rc, "%+%$900 Cash") and hasText(rc, "left after round 13"),
+		"ring: a run that ends between rounds gets its card (NEW RECORD!, the record line)")
+	T.check(not shown(find("Root.NextRoundCard")), "ring: the result card replaces the side card")
+	LocalPlayer:SetAttribute("InBattle", nil)
+	KC.advance(4)
+	ok = find("Root.ResultCard.OkButton")
+	if ok then
+		Mock.Click(ok)
+	end
+	step(2)
+	-- a boss round: the BOSS pill, a giant crowned champion
+	local d4 = ringDriver(20, 25, 1, team)
+	LocalPlayer:SetAttribute("InBattle", d4.id)
+	d4:start()
+	d4:run(0.5, 30)
+	local boss = champion(d4)
+	local bu = boss and BC.GetUnit(boss.id)
+	T.check(shown(find("Root.TopCard.RingInfo.Boss")) and bu and bu.Kind == "MiniBoss" and bu.Crowned, "ring HUD: every 10th round shows the BOSS pill and a crowned mini-boss champion", bu and tostring(bu.Kind) or "nil")
+	d4:finish(finalEnd(20, { Wins = 0, Cash = 0, Xp = 0, Tokens = 0, Round = 20, Start = 1, Best = 25 }))
+	step(2)
+	LocalPlayer:SetAttribute("InBattle", nil)
+	KC.advance(4)
+	ok = find("Root.ResultCard.OkButton")
+	if ok then
+		Mock.Click(ok)
+	end
+	step(2)
+	-- duel overtime (BattleCatalog.Damage.Overtime): the top card says hits grow
+	local dd = newDriver({ Mode = "Duel", Teams = { { Owner = me, Side = 1, Pets = catalogTeam(2) }, { Owner = 78, Side = 2, Pets = catalogTeam(2, 2) } } })
+	LocalPlayer:SetAttribute("InBattle", dd.id)
+	dd:start()
+	dd:step(30)
+	T.check(not shown(find("Root.TopCard.RingInfo")), "duel: no overtime line before overtime")
+	KC.toClient("BattleState", "Events", { { type = "Overtime", at = 75, perSecond = 0.15 } }, dd.id)
+	for _ = 1, 4 do
+		dd:step(30)
+	end
+	b = BC.GetBattle()
+	T.check(b and b.Overtime and shown(find("Root.TopCard.RingInfo.Overtime")) and hasText(find("Root.TopCard.RingInfo"), "OVERTIME: hits %+15%% a second"), "duel: the Overtime event puts OVERTIME: hits +15% a second in the top card", b and tostring(b.Overtime) or "nil")
+	T.check(centreFree(find("Root.TopCard"), vp.X, vp.Y), "duel: the overtime line stays in the top card (off the screen centre)")
+	dd:finish({ Mode = "Duel", Outcome = "Win", Won = true, Spectator = false, Reason = "Wipe", Rewards = { Tokens = 60, Gems = 0, Xp = 60, Trophies = 25, LevelUps = 0 } })
+	step(2)
+	LocalPlayer:SetAttribute("InBattle", nil)
+	KC.advance(4)
+	ok = find("Root.ResultCard.OkButton")
+	if ok then
+		Mock.Click(ok)
+	end
+	step(2)
+	T.check(BC.GetBattle() == nil and not BC.IsHudVisible(), "ring: everything freed afterwards")
+	T.check(battleWarnings(outBefore) == nil and #Mock.Errors == errBefore, "BattleController: no errors or warnings (ring)", tostring(battleWarnings(outBefore)))
+	KC.flushErrors("client_p3battle_ring")
+end)
+
+-- (phone world) the ring's side card and the unit cards on a 390x844 touch screen and turned sideways
+S.client_p3battle_ring_mobile = guarded("client_p3battle_ring_mobile", function()
+	local BC = moduleAt("client", "Controllers/BattleController")
+	if not BC then
+		T.fail("BattleController missing (phone)")
+		return
+	end
+	bootPhone()
+	local outBefore, errBefore = #Mock.Output, #Mock.Errors
+	for _, size in ipairs({ { 390, 844 }, { 844, 390 } }) do
+		Mock.SetViewport(size[1], size[2])
+		step(2)
+		local tagName = size[1] .. "x" .. size[2]
+		local d = ringDriver(4, 12, 1, ringTeam())
+		LocalPlayer:SetAttribute("InBattle", d.id)
+		d:start()
+		d:run(1.0, 30)
+		local small = nil
+		for _, u in ipairs(d.sim.units) do
+			local gui = cardOf(BC, u.id)
+			local _, lvl = levelText(gui)
+			if not lvl or lvl.TextSize < 14 then
+				small = "unit " .. u.id .. " " .. tostring(lvl and lvl.TextSize)
+			end
+		end
+		T.check(small == nil, "phone " .. tagName .. ": every unit card's Lv text is >= 14 px", tostring(small))
+		d:finish(wonEnd(4, 28, false))
+		step(2)
+		local nc = find("Root.NextRoundCard")
+		local scale = find("Root.ReadScale")
+		local f = scale and scale.Scale or 1
+		small = nil
+		for _, t in ipairs(shownTexts(nc)) do
+			if t.TextSize * f < 13.99 then
+				small = t.Name .. " " .. fmt(t.TextSize * f)
+			end
+		end
+		T.check(shown(nc) and small == nil, "phone " .. tagName .. ": the side card's texts are >= 14 px", tostring(small))
+		T.check(centreFree(nc, size[1], size[2]), "phone " .. tagName .. ": the side card is off the screen centre")
+		local clash = nil
+		for i = 1, 4 do
+			local row = find("Root.Team.Row" .. i)
+			if row and shown(row) and overlap(screenRect(row), screenRect(nc)) then
+				clash = "Row" .. i
+			end
+		end
+		if shown(find("Root.TopCard")) and overlap(screenRect(find("Root.TopCard")), screenRect(nc)) then
+			clash = "TopCard"
+		end
+		T.check(clash == nil, "phone " .. tagName .. ": the side card covers neither the top card nor the team cards", tostring(clash))
+		local r = screenRect(nc)
+		T.check(r.x0 >= 0 and r.y0 >= 0 and r.x1 <= size[1] + 1 and r.y1 <= size[2] + 1, "phone " .. tagName .. ": the side card fits the screen", fmt(r.x0) .. "," .. fmt(r.y0) .. " - " .. fmt(r.x1) .. "," .. fmt(r.y1))
+		KC.toClient("BattleState", "End", finalEnd(4, { Wins = 1, Cash = 28, Xp = 44, Tokens = 0, Round = 4, Start = 1, Best = 12 }, { BattleId = d.id, Outcome = "Left", Reason = "Forfeit" }), d.id)
+		step(2)
+		local rc = find("Root.ResultCard")
+		T.check(shown(rc) and centreFree(rc, size[1], size[2]) and hasText(rc, "Rounds won: 1"), "phone " .. tagName .. ": the run's card is off the screen centre")
+		LocalPlayer:SetAttribute("InBattle", nil)
+		KC.advance(4)
+		local ok = find("Root.ResultCard.OkButton")
+		if ok then
+			Mock.Click(ok)
+		end
+		step(2)
+	end
+	Mock.SetViewport(390, 844)
+	step(2)
+	T.check(BC.GetBattle() == nil and not BC.IsHudVisible(), "phone: the ring frees everything afterwards")
+	T.check(battleWarnings(outBefore) == nil and #Mock.Errors == errBefore, "BattleController: no errors or warnings (phone ring)", tostring(battleWarnings(outBefore)))
+	KC.flushErrors("client_p3battle_ring_mobile")
 end)
 
 return S

@@ -40,6 +40,10 @@
 --   ArenaBridgeWidth = studs    the arena bridge's deck width (the rail gap is 1.6 studs wider)
 --   TrialSite = CFrame | nil    the Trial Portal's ground point on the plaza (the next gate of the portal fan, on a stone
 --                              patch joined to the end of the promenade), LookVector = towards the plaza centre
+--   Phase 4: RingSite = CFrame | nil  the Champion Ring portal's ground point (ArenaBuilder's Portal_Ring): the first
+--                              free gate of the fan beside the Trial Portal (before the first portal, else after the
+--                              Trial Portal; >= 30 degrees from the shop, every portal and the Trial Portal), on a stone
+--                              patch like the trial's, LookVector = towards the plaza centre
 -- SpotInfo also carries PlotCFrame (centre of the flat yard surface, LookVector = towards the gate),
 -- PlotSize (= Config.Lobby.PlotSize), GateCFrame (gate, on the ground) and Accent (the plot colour).
 -- Spot folders are named Spot_NN and carry the attribute SpotIndex; portal / roulette models are named
@@ -1244,6 +1248,20 @@ local function computeLayout()
 	if trialFree then
 		L.TrialAngle = trialAngle
 	end
+	-- Phase 4: the Champion Ring portal takes the first free gate of the fan beside the Trial Portal (before the first
+	-- portal, else after the Trial Portal), with the same >= 30 degree checks (and >= 30 degrees from the Trial Portal)
+	for _, cand in ipairs({ ((L.PortalAngles[1] or 0) - L.PortalStep) % 360, (trialAngle + L.PortalStep) % 360 }) do
+		local free = not L.RingAngle and angleDiff(cand, L.ShopAngle) >= 30
+			and (not L.TrialAngle or angleDiff(cand, L.TrialAngle) >= 30)
+		for _, a in ipairs(L.PortalAngles) do
+			if angleDiff(cand, a) < 30 then
+				free = false
+			end
+		end
+		if free then
+			L.RingAngle = cand
+		end
+	end
 
 	-- Exits through the plaza's soft cloud rim: spokes and the shop boardwalk.
 	L.RimGaps = {}
@@ -1281,13 +1299,15 @@ local function computeLayout()
 			segAB(s0.X * PORTAL_R, s0.Z * PORTAL_R, e.X * (PLAZA_R + 1), e.Z * (PLAZA_R + 1), G.StubHalf, "Sand")
 		end
 	end
-	if L.TrialAngle then
-		-- the Trial Portal's stone patch (pad + gate, like the promenade under the other portals) and a stone path
-		-- from the nearer end of the promenade
-		seg(L.TrialAngle, PORTAL_R - 10, PORTAL_R + 14, G.TrialHalf, "Stone")
-		local endA = (angleDiff(L.TrialAngle, L.PromFrom) < angleDiff(L.TrialAngle, L.PromTo)) and (L.PromFrom + 4) or (L.PromTo - 4)
-		local s0, t0 = dirOf(endA), dirOf(L.TrialAngle)
-		segAB(s0.X * PORTAL_R, s0.Z * PORTAL_R, t0.X * PORTAL_R, t0.Z * PORTAL_R, G.PathHalf, "Stone")
+	-- the Trial Portal's (and the Champion Ring portal's) stone patch (pad + gate, like the promenade under the other
+	-- portals) and a stone path from the nearer end of the promenade
+	for _, gateAngle in ipairs({ L.TrialAngle or false, L.RingAngle or false }) do
+		if gateAngle then
+			seg(gateAngle, PORTAL_R - 10, PORTAL_R + 14, G.TrialHalf, "Stone")
+			local endA = (angleDiff(gateAngle, L.PromFrom) < angleDiff(gateAngle, L.PromTo)) and (L.PromFrom + 4) or (L.PromTo - 4)
+			local s0, t0 = dirOf(endA), dirOf(gateAngle)
+			segAB(s0.X * PORTAL_R, s0.Z * PORTAL_R, t0.X * PORTAL_R, t0.Z * PORTAL_R, G.PathHalf, "Stone")
+		end
 	end
 	L.PlazaSegs = segs
 	return L
@@ -1870,15 +1890,17 @@ local function buildPlazaDecor(f, L)
 		{ L.ShopAngle - 31, 100, "Pine" },
 		{ L.ShopAngle + 31, 100, "Pine" },
 	}
-	-- Phase 3: the Trial Portal's site stays free (ArenaBuilder puts the gate there)
-	if L.TrialAngle then
-		local td = dirOf(L.TrialAngle)
-		reserve(td.X * (PORTAL_R + 3), td.Z * (PORTAL_R + 3), 14)
-		for i = #trees, 1, -1 do
-			local d = dirOf(trees[i][1])
-			local dx, dz = d.X * trees[i][2] - td.X * (PORTAL_R + 3), d.Z * trees[i][2] - td.Z * (PORTAL_R + 3)
-			if dx * dx + dz * dz < 20 * 20 then
-				table.remove(trees, i)
+	-- Phase 3 / 4: the Trial Portal's and the Champion Ring portal's sites stay free (ArenaBuilder puts the gates there)
+	for _, gateAngle in ipairs({ L.TrialAngle or false, L.RingAngle or false }) do
+		if gateAngle then
+			local td = dirOf(gateAngle)
+			reserve(td.X * (PORTAL_R + 3), td.Z * (PORTAL_R + 3), 14)
+			for i = #trees, 1, -1 do
+				local d = dirOf(trees[i][1])
+				local dx, dz = d.X * trees[i][2] - td.X * (PORTAL_R + 3), d.Z * trees[i][2] - td.Z * (PORTAL_R + 3)
+				if dx * dx + dz * dz < 20 * 20 then
+					table.remove(trees, i)
+				end
 			end
 		end
 	end
@@ -3597,6 +3619,8 @@ function LobbyBuilder.Build()
 	if L.TrialAngle then
 		trialSite = faceCentre(polar(L.TrialAngle, PORTAL_R, TOP))
 	end
+	-- Phase 4: the Champion Ring portal's ground point (ArenaBuilder builds Portal_Ring there)
+	local ringSite = L.RingAngle and faceCentre(polar(L.RingAngle, PORTAL_R, TOP)) or nil
 
 	local parts = 0
 	for _, d in ipairs(root:GetDescendants()) do
@@ -3622,6 +3646,9 @@ function LobbyBuilder.Build()
 		ArenaDock = arenaDock,
 		ArenaBridgeWidth = G.ArenaBridgeW,
 		TrialSite = trialSite,
+		-- Phase 4 (ArenaBuilder): the Champion Ring portal stands at RingSite (ground, LookVector = towards the plaza
+		-- centre) on its own stone patch, the next free gate of the portal fan beside the Trial Portal
+		RingSite = ringSite,
 	}
 end
 

@@ -1,6 +1,8 @@
 -- TutorialService: server-authoritative progress of the new-player tutorial (ARCHITECTURE_V3.md section 4, the
--- Phase 2 "Tutorial" paragraph: claim a home, buy the first Cloud Press, collect the Cash, build the Kitchen, feed a
--- pet; and the Phase 3 chapter: go to the Battle Arena, set a battle team, win Trial 1, see a Boss Raid).
+-- Phase 2 "Tutorial" paragraph, rewritten by Phase 4 "Phase 4 build contract" section 9: claim a home, put a pet in the
+-- Pet Garden, scoop its rainbow coins, build the Food Machine, feed a pet; the Phase 3 chapter: go to the Battle Arena,
+-- set a battle team, win Trial 1, see a Boss Raid; and the Phase 4 chapter: train a pet, win a Champion Ring round, walk
+-- through the home portal).
 --
 --   TutorialService.Init(lobbyInfo, deps)     deps = { DataService, PetService, MatchService, SpotService, IndexService,
 --                                                      TycoonService, PetCareService, BattleService, ArenaInfo }
@@ -12,7 +14,8 @@
 --   TutorialService.StepCompleted              Util.Signal, Fire(player, stepId, stepIndex)
 --   TutorialService.Finished                   Util.Signal, Fire(player, skipped)
 --
--- Steps come from shared/TutorialSteps.lua, in CHAPTERS (1 = the basics, 2 = the tycoon home, 3 = pet battles).
+-- Steps come from shared/TutorialSteps.lua, in CHAPTERS (1 = the basics, 2 = the tycoon home, 3 = pet battles, 4 = pets
+-- make the money).
 -- Progress lives in the
 -- profile (DataService.GetTutorial / SetTutorial: { Step, Done, Gifted }); DataService merges Done and Gifted so they
 -- stick once true, so the stored fields mean:
@@ -23,15 +26,20 @@
 --   Done = true, Step = SKIPPED_STEP (or a chapter-1 step: old saves)   skipped: no tutorial any more
 -- Completing a step marked ChapterEnd pays that chapter's reward once (the step is stored BEFORE paying, so a crash
 -- can never pay twice): chapter 1 = Config.Tutorial.FinishReward (tokens), chapter 2 = HOME_FINISH_CASH Cash,
--- chapter 3 = ARENA_FINISH_TOKENS Cloud Tokens.
+-- chapter 3 = ARENA_FINISH_TOKENS Cloud Tokens, chapter 4 = RING_FINISH_TOKENS Cloud Tokens.
 --
 -- A step completes on what the SERVER observes:
 --   Claimed       the player owns a home plot (SpotService.GetSpot; TycoonService.Claimed / the SpotIndex attribute
 --                 for an instant answer, a 2 Hz poll as the backup)
 --   Built         the saved home has the step's Station at level >= 1 (DataService.GetHome; TycoonService.HomeChanged)
---   Collected     the Collector emptied into the balance: Home.CollectorCash went down while Cash went up (the Cash
---                 attribute changing + the poll; purchases, income ticks and offline pay never look like that)
---   Fed           PetCareService.Fed (the Pets panel's Feed or the Kitchen's bowl)
+--   Collected     (Phase 2, retired with the Collector: no step uses it, a step that still did passes at once)
+--   Fed           PetCareService.Fed (a feed at the Food Machine / the Pets panel)
+--   GardenPlaced  (Phase 4) a pet sits in an OPEN place of the Pet Garden (Home.Garden, TycoonCatalog.GardenSlots;
+--                 TycoonService.HomeChanged + the poll)
+--   CoinsScooped  TycoonService.CoinsScooped while the step runs; a home that already has the Food Machine passes at once
+--   TrainingStarted  PetCareService.TrainingStarted, or any training job / rank in DataService.GetGrowthMap
+--   RingWon       BattleService.BattleEnded with Mode "Ring" and Won, or DataService.GetRing(player).Best >= 1
+--   PortalUsed    TycoonService.PortalUsed while the step runs (the player walked through their home portal)
 --   NearSpot      2 Hz poll: the character within 14 studs (horizontally) of SpotService.GetSpot(player).Center
 --   Rolled        PetService.Rolled (backup: Profile.Stats.Spins grew since the step began)
 --   Equipped      the equipped list changed to a non-empty one (PetService.PerksChanged / attribute EquippedPets),
@@ -56,12 +64,14 @@
 -- Guide targets of the home steps are resolved HERE (the client only knows the lobby names): the gate of the plot to
 -- claim (the claimed plot, else the last plot when free, else the nearest free one; pinned while it stays free so
 -- the arrow does not hop between plots), a buy pad on the own plot (HomeBuilder.GetPad, else the TycoonCatalog slot),
--- the next pad on the way to a station (its prerequisites first), a built station (the Collector's CollectPad, the
--- Kitchen's counter), or the Pets menu button once the player has food to feed. They are sent as
+-- the next pad on the way to a station (its prerequisites first), a built station (the Food Machine's Hopper, a
+-- Training Place mat), the first empty open place of the Pet Garden, the fullest rainbow-coin pile
+-- (TycoonService.Piles), or the Shop / the Pets menu button when a pet is missing. They are sent as
 -- { Kind = "Spot", Position, SpotIndex, Label } (or { Kind = "Menu", Id = "Pets" }) with a matching Hint, and the
 -- poll re-sends the state whenever the target or the hint changes. Phase 3 targets { Kind = "Arena", Place } are
 -- resolved from ArenaInfo the same way (sent as Kind "Spot" + Position: the client draws its guide arrow for those):
--- "Gate" = ArenaInfo.Spawn (the forum), "Trials" = ArenaInfo.TrialPortal, "Floor" = the colosseum floor; no arrow while
+-- "Gate" = ArenaInfo.Spawn (the forum), "Trials" = ArenaInfo.TrialPortal, "Floor" = the colosseum floor, "Ring" = the
+-- Champion Ring portal (ArenaInfo.RingPortal; the gate of a free home first while the player has none); no arrow while
 -- the player fights (attribute InBattle). The raid step's hint counts down to the next raid in minutes
 -- (EventService.SecondsUntil) or says that one is running.
 --
@@ -96,6 +106,8 @@ local SKIPPED_STEP = 1000 -- Tutorial.Step of a skipped tutorial (DataService ca
 local HOME_FINISH_CASH = 1000
 -- Not in Config (lead-owned): the pet-battle chapter's reward, paid once when its last step completes.
 local ARENA_FINISH_TOKENS = 500
+-- Not in Config (lead-owned): the Phase 4 chapter's reward ("Pets tutorial complete!"), paid once by its last step.
+local RING_FINISH_TOKENS = 300
 local ARENA_RADIUS = 160 -- studs around ArenaInfo.Center that count as the arena when ArenaBuilder.InArena is missing
 local ATTR_IN_BATTLE = "InBattle" -- BattleService's attribute (the battle id while the player fights)
 local STATION_FRONT_GAP = 2.5 -- studs in front of a station's footprint where its guide arrow stands
@@ -128,6 +140,12 @@ local KNOWN_COMPLETE_ON = {
 	TeamSet = true,
 	TrialWon = true,
 	RaidSeen = true,
+	-- Phase 4 (chapter 2 rewritten + chapter 4)
+	GardenPlaced = true,
+	CoinsScooped = true,
+	TrainingStarted = true,
+	RingWon = true,
+	PortalUsed = true,
 }
 
 ----------------------------------------------------------------------
@@ -157,6 +175,7 @@ local TycoonService = nil
 local PetCareService = nil
 local HomeBuilder = nil -- read-only lookups of pads / stations (GetPad / GetStation)
 local TycoonCatalog = nil
+local PetKeys = nil -- read-only: List(profile) (does the player own a pet?)
 local lobby = nil
 -- Phase 3 (the pet-battle chapter): every use is guarded
 local BattleService = nil
@@ -284,6 +303,8 @@ local function buildSteps()
 					Station = type(t.Station) == "string" and t.Station or nil,
 					Path = t.Path == true,
 					Food = t.Food == true,
+					GardenSpot = t.GardenSpot == true,
+					Coins = t.Coins == true,
 					Place = type(t.Place) == "string" and t.Place or nil,
 				}
 			end
@@ -398,20 +419,6 @@ local function getHome(player)
 	return nil
 end
 
-local function getCash(player)
-	if hasFunction(DataService, "GetCash") then
-		local ok, cash = pcall(DataService.GetCash, player)
-		if ok and type(cash) == "number" then
-			return cash
-		end
-	end
-	local attr = Config.Attr.Cash and player:GetAttribute(Config.Attr.Cash)
-	if type(attr) == "number" then
-		return attr
-	end
-	return 0
-end
-
 local function stationLevel(home, id)
 	local stations = type(home) == "table" and home.Stations
 	local level = type(stations) == "table" and stations[id]
@@ -421,28 +428,24 @@ local function stationLevel(home, id)
 	return 0
 end
 
-local function collectorCash(home)
-	local cash = type(home) == "table" and tonumber(home.CollectorCash) or 0
-	if cash ~= cash then
-		return 0
+-- true when the player owns at least one pet (PetKeys.List, else the plain Pets counts)
+local function ownsPet(player)
+	local profile = getProfile(player)
+	if not profile then
+		return false
 	end
-	return cash
-end
-
-local function foodTotal(player)
-	if not hasFunction(DataService, "GetFood") then
-		return 0
-	end
-	local ok, food = pcall(DataService.GetFood, player)
-	local total = 0
-	if ok and type(food) == "table" then
-		for _, n in pairs(food) do
-			if type(n) == "number" and n > 0 then
-				total = total + n
-			end
+	if hasFunction(PetKeys, "List") then
+		local ok, list = pcall(PetKeys.List, profile)
+		if ok and type(list) == "table" then
+			return #list > 0
 		end
 	end
-	return total
+	for _, n in pairs(type(profile.Pets) == "table" and profile.Pets or {}) do
+		if type(n) == "number" and n > 0 then
+			return true
+		end
+	end
+	return false
 end
 
 local function stationDef(id)
@@ -618,14 +621,27 @@ local function padPosition(spot, id)
 	return nil
 end
 
--- where a built station's arrow stands: the Collector's CollectPad, else just in front of the station's footprint
+-- the world position of a marker inside a model: a BasePart's Position or an Attachment's WorldPosition
+local function markerPosition(model, name)
+	local mark = typeof(model) == "Instance" and model:FindFirstChild(name, true) or nil
+	if mark and mark:IsA("BasePart") then
+		return mark.Position
+	elseif mark and mark:IsA("Attachment") then
+		return mark.WorldPosition
+	end
+	return nil
+end
+
+-- the marker of a built station the arrow points at (HomeBuilder's Phase 4 art): the Food Machine's Hopper, the first
+-- Training Place mat
+local STATION_MARKERS = { Kitchen = "Hopper", Gym = "Spot1" }
+
+-- where a built station's arrow stands: its marker (STATION_MARKERS), else just in front of the station's footprint
 local function stationPosition(spot, id)
 	local model = homeBuilderCall("GetStation", spot, id)
-	if model then
-		local pad = model:FindFirstChild("CollectPad", true)
-		if pad and pad:IsA("BasePart") then
-			return pad.Position
-		end
+	local marked = STATION_MARKERS[id] and markerPosition(model, STATION_MARKERS[id]) or nil
+	if marked then
+		return marked
 	end
 	local def = stationDef(id)
 	if def and type(def.Slot) == "table" and typeof(def.Slot.CFrame) == "CFrame" and typeof(spot.PlotCFrame) == "CFrame" then
@@ -633,6 +649,153 @@ local function stationPosition(spot, id)
 		return (spot.PlotCFrame * def.Slot.CFrame * CFrame.new(0, 0, -(depth / 2 + STATION_FRONT_GAP))).Position
 	end
 	return pivotOf(model)
+end
+
+----------------------------------------------------------------------
+-- Phase 4: the Pet Garden and its rainbow coins (Home.Garden, TycoonCatalog.GardenSlots, TycoonService.Piles)
+----------------------------------------------------------------------
+local Garden = {}
+
+-- how many garden places are open (0 while the Pet Garden is not built)
+function Garden.open(home)
+	if not hasFunction(TycoonCatalog, "GardenSlots") or type(home) ~= "table" then
+		return 0
+	end
+	local ok, n = pcall(TycoonCatalog.GardenSlots, home)
+	if ok and type(n) == "number" and n == n then
+		return math.max(0, math.floor(n))
+	end
+	return 0
+end
+
+-- the key in garden place `slot`, or nil
+function Garden.keyAt(home, slot)
+	local garden = type(home) == "table" and home.Garden or nil
+	local key = type(garden) == "table" and (garden[slot] or garden[tostring(slot)]) or nil
+	if type(key) == "string" and key ~= "" then
+		return key
+	end
+	return nil
+end
+
+-- true when a pet sits in an open garden place (the "garden" step)
+function Garden.placed(player)
+	local home = getHome(player)
+	if not home or stationLevel(home, "Garden") < 1 then
+		return false
+	end
+	for slot = 1, Garden.open(home) do
+		if Garden.keyAt(home, slot) then
+			return true
+		end
+	end
+	return false
+end
+
+-- the world position of garden place `slot` (the lawn's Spot<slot> attachment, else the catalog layout)
+function Garden.placePosition(spot, slot)
+	local model = homeBuilderCall("GetStation", spot, "Garden")
+	local at = markerPosition(model, "Spot" .. tostring(slot))
+	if at then
+		return at
+	end
+	local def = stationDef("Garden")
+	local spots = def and type(def.Slot) == "table" and def.Slot.Spots or nil
+	local local3 = type(spots) == "table" and spots[slot] or nil
+	if typeof(local3) == "Vector3" and typeof(def.Slot.CFrame) == "CFrame" and typeof(spot.PlotCFrame) == "CFrame" then
+		return (spot.PlotCFrame * def.Slot.CFrame * CFrame.new(local3)).Position
+	end
+	return pivotOf(model)
+end
+
+-- the pile with the most Cash in it ({ Coins, Value, Pos } from TycoonService.Piles; "W" = the Welcome-back pile), or nil
+function Garden.fullestPile(player)
+	if not hasFunction(TycoonService, "Piles") then
+		return nil
+	end
+	local ok, piles = pcall(TycoonService.Piles, player)
+	if not ok or type(piles) ~= "table" then
+		return nil
+	end
+	local best, bestValue = nil, -1
+	for slot, pile in pairs(piles) do
+		if type(pile) == "table" and typeof(pile.Pos) == "Vector3" then
+			local value = tonumber(pile.Value) or 0
+			local real = (slot == "W" and value >= 1) or (slot ~= "W" and (tonumber(pile.Coins) or 0) >= 1)
+			if real and value > bestValue then
+				best, bestValue = pile, value
+			end
+		end
+	end
+	return best
+end
+
+-- the "garden" step: no pet -> the Shop; no Pet Garden -> its free pad; else the first empty open place (or Pets)
+function Garden.target(player, spot, home, index, step)
+	if not ownsPet(player) then
+		local shop = { Kind = "Shop", Id = firstRouletteId(), Label = "Cloud Shop" }
+		local ok, position = pcall(lobbyPosition, player, shop)
+		shop.Position = ok and typeof(position) == "Vector3" and position or nil
+		return shop, "Spin a roulette for a pet"
+	end
+	if stationLevel(home, "Garden") < 1 then
+		return { Kind = "Spot", SpotIndex = index, Position = padPosition(spot, "Garden"), Label = "Pet Garden pad" },
+			"Build your free Pet Garden (press E on its pad)"
+	end
+	for slot = 1, Garden.open(home) do
+		if not Garden.keyAt(home, slot) then
+			local at = Garden.placePosition(spot, slot)
+			if at then
+				return { Kind = "Spot", SpotIndex = index, Position = at, Label = step.Target.Label or "Pet Garden" },
+					"Press E on a garden spot to put a pet in it"
+			end
+		end
+	end
+	return { Kind = "Menu", Id = "Pets", Label = "Pets" }, "Open Pets and press Garden"
+end
+
+-- the "coins" step: the fullest pile, else the Garden while its pets make the first coins
+function Garden.coinsTarget(player, spot, index, step)
+	local pile = Garden.fullestPile(player)
+	if pile then
+		return { Kind = "Spot", SpotIndex = index, Position = pile.Pos, Label = step.Target.Label or "Your coins" },
+			"Walk over your rainbow coins"
+	end
+	return { Kind = "Spot", SpotIndex = index, Position = stationPosition(spot, "Garden"), Label = "Pet Garden" },
+		"Your garden pets are making coins: wait a moment"
+end
+
+-- true when the player trains (or has trained) a pet: any Job or any rank in PetGrowth
+local function hasTrained(player)
+	if not hasFunction(DataService, "GetGrowthMap") then
+		return false
+	end
+	local ok, map = pcall(DataService.GetGrowthMap, player)
+	if not ok or type(map) ~= "table" then
+		return false
+	end
+	for _, entry in pairs(map) do
+		if type(entry) == "table" then
+			if type(entry.Job) == "table" then
+				return true
+			end
+			for _, stat in ipairs({ "Speed", "Physique", "Ability", "Defense" }) do
+				if (tonumber(entry[stat]) or 0) > 0 then
+					return true
+				end
+			end
+		end
+	end
+	return false
+end
+
+-- true when the stored Champion Ring record has a won round
+local function ringBest(player)
+	if not hasFunction(DataService, "GetRing") then
+		return 0
+	end
+	local ok, ring = pcall(DataService.GetRing, player)
+	return ok and type(ring) == "table" and (tonumber(ring.Best) or 0) or 0
 end
 
 local function padsById(home)
@@ -732,31 +895,33 @@ local function homeTarget(player, track, step)
 	end
 	local home = getHome(player) or {}
 	local index = spotIndexOf(spot)
+	if t.GardenSpot then
+		return Garden.target(player, spot, home, index, step)
+	end
+	if t.Coins then
+		return Garden.coinsTarget(player, spot, index, step)
+	end
 	if t.Food then
-		local kitchen = t.Station or "Kitchen"
-		if foodTotal(player) > 0 then
-			return { Kind = "Menu", Id = "Pets", Label = "Pets" }, "Open Pets and press Feed"
-		end
-		if stationLevel(home, kitchen) >= 1 then
-			return { Kind = "Spot", SpotIndex = index, Position = stationPosition(spot, kitchen), Label = t.Label or "Kitchen" },
-				"Cook a Snack at the Kitchen (press E)"
+		local machine = t.Station or "Kitchen"
+		if stationLevel(home, machine) >= 1 then
+			return { Kind = "Spot", SpotIndex = index, Position = stationPosition(spot, machine), Label = t.Label or "Food Machine" },
+				"Press E at the Food Machine, then Feed"
 		end
 		local byId = padsById(home)
-		local pad = padToward(home, byId, kitchen, 0, {}) or cheapestPad(byId)
+		local pad = padToward(home, byId, machine, 0, {}) or cheapestPad(byId)
 		if pad then
 			return { Kind = "Spot", SpotIndex = index, Position = padPosition(spot, pad.StationId), Label = padText(pad) },
-				"Build the Kitchen first"
+				"Build the Food Machine first"
 		end
 		return nil, step.Hint
 	end
 	local stationId = t.Station
 	if stationId and stationLevel(home, stationId) >= 1 then
-		local label = t.Label or stationId
 		local hint = step.Hint
-		if step.CompleteOn == "Collected" then
-			hint = "Step on the Collector to bank your Cash"
+		if stationId == "Gym" then
+			hint = "Press E at the Training Place: pick a pet and a skill"
 		end
-		return { Kind = "Spot", SpotIndex = index, Position = stationPosition(spot, stationId), Label = label }, hint
+		return { Kind = "Spot", SpotIndex = index, Position = stationPosition(spot, stationId), Label = t.Label or stationId }, hint
 	end
 	local goal = t.Pad
 	if not goal then
@@ -775,9 +940,7 @@ local function homeTarget(player, track, step)
 		end
 	end
 	local hint = step.Hint
-	if step.CompleteOn == "Collected" then
-		hint = "Build the free Collector pad"
-	elseif pad and not pad.Locked and t.Path then
+	if pad and not pad.Locked and t.Path then
 		hint = "Build " .. padText(pad)
 	elseif pad and pad.Locked then
 		hint = tostring(pad.Locked)
@@ -956,6 +1119,8 @@ local function arenaTarget(player, target)
 		position = positionOfInfo(info.TrialPortal)
 	elseif target.Place == "Floor" then
 		position = positionOfInfo(info.Floor) or positionOfInfo(info.Center)
+	elseif target.Place == "Ring" then
+		position = positionOfInfo(info.RingPortal) or positionOfInfo(info.RingSite) or positionOfInfo(info.TrialPortal)
 	else
 		position = positionOfInfo(info.Spawn) or positionOfInfo(info.Center)
 	end
@@ -976,10 +1141,15 @@ local function resolveStep(player, track, step)
 		return nil, hint
 	end
 	if target.Kind == "Arena" then
+		if target.Place == "Ring" and TycoonService ~= nil and getSpot(player) == nil and not inBattle(player) then
+			-- the Champion Ring needs a claimed home: the gate of a free one first
+			local okGate, gate = pcall(gateTarget, player, track)
+			return okGate and gate or nil, "Claim your home first: press E at a free gate"
+		end
 		local ok, out = pcall(arenaTarget, player, target)
 		return ok and out or nil, hint
 	end
-	if target.Kind == "Spot" and (target.Gate or target.Pad or target.Station or target.Food) then
+	if target.Kind == "Spot" and (target.Gate or target.Pad or target.Station or target.Food or target.GardenSpot or target.Coins) then
 		local ok, out, hint = pcall(homeTarget, player, track, step)
 		if not ok then
 			return nil, step.Hint
@@ -1117,6 +1287,13 @@ local function payChapter(player, track, chapter)
 		end
 		return 0
 	end
+	if chapter >= 4 then
+		if RING_FINISH_TOKENS > 0 and addTokens(player, RING_FINISH_TOKENS) then
+			notify(player, "Pets tutorial complete! +" .. commas(RING_FINISH_TOKENS) .. " Tokens", "good", 6)
+			return RING_FINISH_TOKENS
+		end
+		return 0
+	end
 	if chapter >= 3 then
 		if ARENA_FINISH_TOKENS > 0 and addTokens(player, ARENA_FINISH_TOKENS) then
 			notify(player, "Battle tutorial complete! +" .. commas(ARENA_FINISH_TOKENS) .. " " .. TOKEN_GLYPH .. " from Nimbus", "good", 6)
@@ -1145,12 +1322,13 @@ local function enterStep(player, track)
 	track.LastEquipped = equippedCsv(player)
 	track.NoSpotTime = 0
 	track.NoFreeTime = 0
-	track.Collected = false
-	track.CashSeen = getCash(player)
-	track.CollectorSeen = collectorCash(getHome(player))
 	track.TargetSig = nil
 	track.TrialWon = false
 	track.RaidSeen = false
+	track.CoinsScooped = false
+	track.TrainingStarted = false
+	track.RingWon = false
+	track.PortalUsed = false
 	if step.Gift and not track.Gifted then
 		local amount = giftTokens()
 		track.Gifted = true
@@ -1235,7 +1413,15 @@ local function impossible(player, track, step)
 	elseif kind == "Built" then
 		return not homeReady() or stationDef(step.Station) == nil
 	elseif kind == "Collected" then
-		return not homeReady() or not hasFunction(DataService, "GetCash")
+		return true -- retired with the Collector (Phase 4): nothing can complete it any more
+	elseif kind == "GardenPlaced" or kind == "CoinsScooped" then
+		return not homeReady() or not hasFunction(TycoonService, "GardenSet")
+	elseif kind == "TrainingStarted" then
+		return not hasFunction(PetCareService, "Train")
+	elseif kind == "RingWon" then
+		return not hasFunction(BattleService, "StartRing")
+	elseif kind == "PortalUsed" then
+		return not hasFunction(TycoonService, "OpenHomePortal")
 	elseif kind == "Fed" then
 		return not hasSignal(PetCareService, "Fed")
 	elseif kind == "ArenaReached" then
@@ -1276,8 +1462,17 @@ local function satisfied(player, track, step)
 		return getSpot(player) ~= nil
 	elseif kind == "Built" then
 		return step.Station ~= nil and stationLevel(getHome(player), step.Station) >= 1
-	elseif kind == "Collected" then
-		return track.Collected == true
+	elseif kind == "GardenPlaced" then
+		return Garden.placed(player)
+	elseif kind == "CoinsScooped" then
+		-- a mid-chapter veteran whose home already has the Food Machine knows the coins
+		return track.CoinsScooped == true or stationLevel(getHome(player), "Kitchen") >= 1
+	elseif kind == "TrainingStarted" then
+		return track.TrainingStarted == true or hasTrained(player)
+	elseif kind == "RingWon" then
+		return track.RingWon == true or ringBest(player) >= 1
+	elseif kind == "PortalUsed" then
+		return track.PortalUsed == true
 	elseif kind == "ArenaReached" then
 		return not inMatch(player) and inArena(player)
 	elseif kind == "TeamSet" then
@@ -1329,31 +1524,12 @@ local function onEquipChanged(player)
 	end
 end
 
--- "Collected": the Collector emptied into the balance since the last look (Cash up AND Home.CollectorCash down).
-local function checkCollected(player)
-	local track = tracks[player]
-	local step = currentStep(track)
-	if not step or step.CompleteOn ~= "Collected" then
-		return
-	end
-	local cash = getCash(player)
-	local collector = collectorCash(getHome(player))
-	if cash > (track.CashSeen or math.huge) and collector < (track.CollectorSeen or -math.huge) then
-		track.Collected = true
-	end
-	track.CashSeen = cash
-	track.CollectorSeen = collector
-	if track.Collected then
-		settle(player, track)
-	end
-end
-
 -- Re-sends the state when a home step's target or hint changed (a pad got built, food arrived, a plot was taken).
 local function refreshTarget(player, track)
 	local step = currentStep(track)
 	local t = step and step.Target
 	local dynamic = step ~= nil and (step.CompleteOn == "RaidSeen" or (t ~= nil and t.Kind == "Arena"))
-	if not dynamic and (not t or not (t.Gate or t.Pad or t.Station or t.Food)) then
+	if not dynamic and (not t or not (t.Gate or t.Pad or t.Station or t.Food or t.GardenSpot or t.Coins)) then
 		return
 	end
 	local ok, target, hint = pcall(resolveStep, player, track, step)
@@ -1510,11 +1686,6 @@ local function onPlayerAdded(player)
 			end
 		end
 	end))
-	if Config.Attr.Cash then
-		table.insert(conns, player:GetAttributeChangedSignal(Config.Attr.Cash):Connect(function()
-			checkCollected(player)
-		end))
-	end
 	task.spawn(loadPlayer, player)
 end
 
@@ -1641,12 +1812,6 @@ local function pollPlayer(player, dt)
 		else
 			track.NoFreeTime = 0
 		end
-	elseif step.CompleteOn == "Collected" then
-		checkCollected(player)
-		track = tracks[player]
-		if not currentStep(track) then
-			return
-		end
 	end
 	settle(player, track)
 	track = tracks[player]
@@ -1707,6 +1872,7 @@ function TutorialService.Init(lobbyInfo, deps)
 	PetCareService = deps.PetCareService or loadModule(services, "PetCareService")
 	HomeBuilder = loadModule(services, "HomeBuilder")
 	TycoonCatalog = loadModule(Shared, "TycoonCatalog")
+	PetKeys = loadModule(Shared, "PetKeys")
 	-- Phase 3 (the pet-battle chapter)
 	BattleService = deps.BattleService or loadModule(services, "BattleService")
 	arenaInfo = type(deps.ArenaInfo) == "table" and deps.ArenaInfo or nil
@@ -1787,11 +1953,22 @@ function TutorialService.Init(lobbyInfo, deps)
 			end
 		end)
 	end
-	if hasSignal(PetCareService, "Cooked") then
-		PetCareService.Cooked:Connect(function(player)
-			nudge(player) -- food arrived: the feed step now points at the Pets button
-		end)
+	-- Phase 4: the server signals of the new steps (each marks only the step that waits for it)
+	local function markOn(module, signalName, mark)
+		if hasSignal(module, signalName) then
+			module[signalName]:Connect(function(player)
+				local track = typeof(player) == "Instance" and tracks[player] or nil
+				local step = currentStep(track)
+				if step and step.CompleteOn == mark then
+					track[mark] = true
+					nudge(player)
+				end
+			end)
+		end
 	end
+	markOn(TycoonService, "CoinsScooped", "CoinsScooped")
+	markOn(TycoonService, "PortalUsed", "PortalUsed")
+	markOn(PetCareService, "TrainingStarted", "TrainingStarted")
 
 	-- the pet-battle chapter (signals exist at module load, so these connect even before those services Init)
 	if hasSignal(DataService, "TeamsChanged") then
@@ -1810,6 +1987,8 @@ function TutorialService.Init(lobbyInfo, deps)
 				mark, list = "TrialWon", result.Winners
 			elseif result.Mode == "Raid" then
 				mark, list = "RaidSeen", result.Participants or result.Winners
+			elseif result.Mode == "Ring" and result.Won == true then
+				mark, list = "RingWon", result.Winners
 			end
 			if not mark or type(list) ~= "table" then
 				return

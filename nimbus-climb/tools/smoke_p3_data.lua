@@ -5,11 +5,13 @@
 --   p3data_teams   (booted) the API exists and TeamsChanged is created at module load; a new profile's defaults
 --                  (3 empty presets, preset 1 active, 3 slots) in GetTeams, the live profile and ProfileSync;
 --                  SetTeam validation (preset 1..3, junk lists, the 4th slot only from Prestige 1, a key once per
---                  team, owned copies only, copies busy in the Garden / Gym counted per copy, canonical keys, tier and
---                  hybrid keys, empty slots compacted, an empty list clears the preset); SelectTeam; ActiveTeamKeys;
---                  GetTeams / ActiveTeamKeys hand out copies; TeamsChanged after SetTeam / SelectTeam; stale keys
---                  pruned after a copy vanishes (next Sync), after a Garden placement (MutateHome) and after a real
---                  fusion (FusionService.Upgrade); the synced Teams { Presets, Active, Slots } stay plain and small
+--                  team, owned copies only, copies busy in the Gym counted per copy (Phase 4: a garden pet may fight,
+--                  and a TRAINING pet is skipped at read time by FieldableKeys / ActiveTeamKeys while its preset keeps
+--                  it), canonical keys, tier and hybrid keys, empty slots compacted, an empty list clears the preset);
+--                  SelectTeam; ActiveTeamKeys; GetTeams / ActiveTeamKeys hand out copies; TeamsChanged after SetTeam /
+--                  SelectTeam; stale keys pruned after a copy vanishes (next Sync), after a Gym placement (MutateHome;
+--                  a Garden placement prunes nothing since Phase 4) and after a real fusion (FusionService.Upgrade);
+--                  the synced Teams { Presets, Active, Slots } stay plain and small
 --   p3data_battle  (booted) GetBattle copies; AddTrophies (whole numbers, negative, never below 0, junk refused,
 --                  synced); MutateBattle (edits, rollback on error / false, whole numbers >= 0, TrialCleared and
 --                  EventPets only grow, TrialBest / RaidBestDamage never drop, TrialBest >= the highest cleared
@@ -286,8 +288,29 @@ S.p3data_teams = guarded("p3data_teams", function()
 		home.Garden[1] = d
 		home.Gym[2] = e
 	end) == true, "p3 teams: (precondition) d works in the Garden, one of the two e copies trains in the Gym")
+	-- Phase 4: a garden pet earns at home while it follows you and fights (P3.placedCopies counts Home.Gym only); the
+	-- only busy state is a running training Job, and that is a READ-TIME filter (TrainingKeys): the preset keeps the pet
 	ok, why = DataS.SetTeam(p, 2, { d })
-	T.check(ok == false and type(why) == "string" and why:find("Garden", 1, true) ~= nil, "p3 teams: a pet whose only copy works in the Garden cannot fight", tostring(why))
+	T.check(ok == true and sameList(DataS.GetTeams(p).Presets[2], { d }), "p3 teams: a pet whose only copy works in the Garden CAN fight (Phase 4: garden pets are not busy)", tostring(why))
+	if type(DataS.MutateGrowth) == "function" and type(DataS.TrainingKeys) == "function" then
+		local okJob = DataS.MutateGrowth(p, function(growth)
+			growth[d] = { Job = { Stat = "Physique", Ends = os.time() + 120, Rank = 1, Slot = 1, From = "Garden:1", Paid = 300 } }
+		end)
+		local fieldable = {}
+		for _, key in ipairs(DataS.FieldableKeys(p)) do
+			fieldable[key] = true
+		end
+		T.check(okJob == true and DataS.TrainingKeys(p)[d] == true and sameList(DataS.GetTeams(p).Presets[2], { d }) and fieldable[d] == nil,
+			"p3 teams: a TRAINING pet (a running Job) is skipped at read time: FieldableKeys leaves it out while its preset keeps it", listText(DataS.FieldableKeys(p)))
+		local okKeep, whyKeep = DataS.SetTeam(p, 2, { d, b })
+		T.check(okKeep == true and sameList(DataS.GetTeams(p).Presets[2], { d, b }), "p3 teams: ...and SetTeam still accepts it in a preset (P3.checkTeam is not taught about training)", tostring(whyKeep))
+		T.check(DataS.SelectTeam(p, 2) == true and sameList(DataS.ActiveTeamKeys(p), { b }), "p3 teams: ...ActiveTeamKeys skips it (compacted) while the job runs", listText(DataS.ActiveTeamKeys(p)))
+		DataS.MutateGrowth(p, function(growth)
+			growth[d] = nil
+		end)
+		T.check(DataS.TrainingKeys(p)[d] == nil and sameList(DataS.ActiveTeamKeys(p), { d, b }), "p3 teams: ...the job gone, the pet is back in the active team at once (nothing was pruned)", listText(DataS.ActiveTeamKeys(p)))
+		DataS.SelectTeam(p, 1)
+	end
 	ok, why = DataS.SetTeam(p, 2, { e })
 	T.check(ok == true and sameList(DataS.GetTeams(p).Presets[2], { e }), "p3 teams: ...a pet with a second, free copy can (copies are counted)", tostring(why))
 	ok, why = DataS.SetTeam(p, 3, { a .. "@Golden", "hyb:p3h", a })
@@ -348,13 +371,13 @@ S.p3data_teams = guarded("p3data_teams", function()
 	T.check(watch.since(p, m2) >= 1, "p3 teams: ...TeamsChanged fires")
 	snap = lastSnapshot(p, mark)
 	T.check(type(snap) == "table" and sameList(snap.Teams.Presets[1], { a, c, f }), "p3 teams: ...and that very snapshot is pruned")
-	-- pruning: the last free copy goes to the Garden (MutateHome)
-	local m3 = watch.mark()
+	-- Phase 4: the last free copy going to the Garden prunes NOTHING (garden pets fight); the Gym still does
 	DataS.MutateHome(p, function(home)
 		home.Garden[2] = c
 	end)
-	T.check(sameList(DataS.GetTeams(p).Presets[1], { a, f }) and watch.since(p, m3) >= 1,
-		"p3 teams: a pet whose last free copy goes to the Garden leaves the teams at once (MutateHome) and TeamsChanged fires", listText(DataS.GetTeams(p).Presets[1]))
+	T.check(sameList(DataS.GetTeams(p).Presets[1], { a, c, f }) and sameList(DataS.GetTeams(p).Presets[3], { a .. "@Golden", "hyb:p3h", a }),
+		"p3 teams: a pet whose last free copy goes to the Garden STAYS in its team (Phase 4: P3.placedCopies counts Home.Gym only)",
+		listText(DataS.GetTeams(p).Presets[1]) .. " / " .. listText(DataS.GetTeams(p).Presets[3]))
 	ok = DataS.SetTeam(p, 2, { e, f })
 	T.check(ok == true and sameList(DataS.GetTeams(p).Presets[2], { e, f }), "p3 teams: (precondition) team 2 holds e (its free copy) and f")
 	DataS.MutateHome(p, function(home)
@@ -697,8 +720,8 @@ S.p3data_save = guarded("p3data_save", function()
 	advance(2)
 	data[storeKey(P4)].Home = homeOf(0, { "", b })
 	s4 = join("P3Slots", P4)
-	T.check(sameList(DataS.GetTeams(s4).Presets[1], { a, c, d }) and DataS.GetTeams(s4).Slots == 3,
-		"p3 save: ...without the prestige only 3 pets stay, and a pet working in the stored Garden ('' = empty slot) is dropped", listText(DataS.GetTeams(s4).Presets[1]))
+	T.check(sameList(DataS.GetTeams(s4).Presets[1], { a, b, c }) and DataS.GetTeams(s4).Slots == 3,
+		"p3 save: ...without the prestige only 3 pets stay (slot 4 dropped); a pet working in the stored Garden ('' = empty slot) STAYS (Phase 4: garden pets fight)", listText(DataS.GetTeams(s4).Presets[1]))
 	K.removePlayers({ s4 })
 	advance(2)
 

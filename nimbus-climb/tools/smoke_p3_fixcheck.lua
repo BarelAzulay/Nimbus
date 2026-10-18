@@ -385,6 +385,15 @@ local function serverScenarios()
 		local ok, id = bs.StartDuel(strong, weak)
 		T.check(ok == true, "practice forfeit: (setup) a practice duel starts", tostring(id))
 		advance(0.2)
+		-- Phase 4: KeysInBattle names each duellist's own fighting keys (the mode name stays "Duel")
+		local kS, kW = bs.KeysInBattle(strong), bs.KeysInBattle(weak)
+		local nS = 0
+		for _ in pairs(kS) do
+			nS = nS + 1
+		end
+		local gS = bs.GetBattle(strong)
+		T.check(ok == true and nS == #STRONG and kS[STRONG[1]] == true and kW.pebble_pup == true and kW[STRONG[1]] == nil and gS and gS.Mode == "Duel" and gS.Round == nil,
+			"practice forfeit: KeysInBattle lists each duellist's own keys while the duel runs (GetBattle Mode Duel, no Round)", tostring(nS))
 		bs.Forfeit(weak) -- "they are far stronger": the weak player walks away at once
 		K.waitFor(function()
 			return w.find(id) ~= nil

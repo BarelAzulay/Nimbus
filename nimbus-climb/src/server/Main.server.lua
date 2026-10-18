@@ -341,20 +341,25 @@ if TutorialService then call("TutorialService.Init", TutorialService, "Init", lo
 	BattleService = BattleService, -- Phase 3: tutorial chapter 3 listens to BattleService.BattleEnded
 	ArenaInfo = arenaInfo,
 }) end
+-- Phase 4: TycoonService (the home portal), PetCareService (feeding / evolving / training) and FusionService refuse
+-- pets in a running battle or Champion Ring run: they get BattleService's module table now (its Init runs below).
 if TycoonService then call("TycoonService.Init", TycoonService, "Init", lobbyInfo, {
 	DataService = DataService,
 	PetService = PetService,
 	SpotService = SpotService,
+	BattleService = BattleService,
 }) end
 if PetCareService then call("PetCareService.Init", PetCareService, "Init", {
 	DataService = DataService,
 	PetService = PetService,
 	TycoonService = TycoonService,
+	BattleService = BattleService,
 }) end
 if FusionService then call("FusionService.Init", FusionService, "Init", {
 	DataService = DataService,
 	PetService = PetService,
 	TycoonService = TycoonService,
+	BattleService = BattleService,
 }) end
 if GemService then call("GemService.Init", GemService, "Init", {
 	DataService = DataService,

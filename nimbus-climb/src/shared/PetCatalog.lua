@@ -21,21 +21,36 @@
 --   PetCatalog.GetStats(petId, level, tier) -> { Income, Power, Health, Speed } | nil   (Phase 2: tier added)
 --                                            base * Config.PetStats.RarityScale[rarity] * (1 + 0.1 * (level - 1))
 --                                            * tier multiplier (Normal 1, Golden 1.5, Rainbow 2.5). The same numbers
---                                            as TycoonCatalog.PetIncome, so the Income shown is the Cash/s the Garden
+--                                            as TycoonCatalog.PetPower x FoodOf / MealSeconds, so the Income shown is the Cash/s the Garden
 --                                            pays (prestige not applied). petId may also be a pet key ("cat@Golden":
 --                                            the tier comes from the key unless `tier` is given) or a def table
 --                                            (PetKeys.DefOf: tier copies and fused hybrids). level defaults to 1 and
 --                                            is clamped to 1..MaxPetLevel(); tier also takes a key or a multiplier.
 --   PetCatalog.TotalCount()               -> number of pets in the catalog (Secret pets included)
 --   Phase 2 pet levels (care agent; the XP curve itself is TycoonCatalog.XpToNext):
---   PetCatalog.LevelCap(subject)          -> the highest level feeding / the Gym can raise a pet to, by rarity
---                                            (subject = rarity id, pet id, pet key or def): Common 20, Uncommon 25,
---                                            Rare 30, Epic 35, Legendary 40, Mythic 45, Secret 50. TycoonCatalog may
---                                            override them (PetXp.RarityCaps / PetLevelCaps); never above
---                                            MaxPetLevel(). nil for unknown pets.
---   PetCatalog.MaxPetLevel()              -> top of the XP curve (TycoonCatalog.MaxPetLevel, else MaxLevel = 50)
+--   PetCatalog.LevelCap(subject)          -> the highest level XP (food, fights) can raise a pet to, by rarity
+--                                            (subject = rarity id, pet id, pet key or def): Phase 4: 100 for every
+--                                            rarity. TycoonCatalog may override them (PetXp.RarityCaps /
+--                                            PetLevelCaps); never above MaxPetLevel(). nil for unknown pets.
+--   PetCatalog.MaxPetLevel()              -> top of the XP curve (TycoonCatalog.MaxPetLevel, else MaxLevel = 100)
 --   PetCatalog.LevelFactor(level)         -> 1 + 0.1 * (level - 1)   (level clamped like GetStats)
 --   PetCatalog.TierMultiplier(tier)       -> 1 | 1.5 | 2.5 (a tier name, a pet key, a def or a multiplier)
+--   Phase 4 evolution and garden roles (ARCHITECTURE_V3.md "Phase 4 build contract" 3.2 / 3.6):
+--   PetCatalog.EvolutionLevels            { 20, 50 }: the level a pet needs for stage 1 / stage 2
+--   PetCatalog.EvolutionBoost             { 1.25, 1.5 }: battle Power / Health and garden coins at stage 1 / 2
+--                                            (applied by BattleCatalog.UnitStats and TycoonCatalog.PetPower, NEVER
+--                                            inside GetStats / StatsOf)
+--   PetCatalog.RoleMult                   { Economy = 1.6, Combat = 1 }: garden coins by Role
+--   PetCatalog.MaxEvolution(subject)      -> 1 | 2  (2 for Epic, Legendary, Mythic, Secret: the data mirror of
+--                                            PetBuilder.MaxEvolution). subject = def, rarity id, pet id or pet key
+--                                            (hybrid keys need their def: PetKeys.DefOf); unknown -> 1
+--   PetCatalog.EvolutionStage(subject, level, stored) -> 0 | 1 | 2  the stored stage (PetGrowth[key].Evo, set by
+--                                            pressing EVOLVE) cleaned to a whole number in 0..MaxEvolution; the
+--                                            level alone never evolves a pet
+--   PetCatalog.CanEvolve(subject, level, stage) -> nextStage | nil  when level >= EvolutionLevels[next] and
+--                                            next <= MaxEvolution(subject)
+--   PetCatalog.EvolutionMultiplier(stage) -> 1 | 1.25 | 1.5  (EvolutionBoost by a cleaned stage)
+--   PetCatalog.RoleMultiplier(subject)    -> RoleMult[def.Role] (1 for unknown roles / pets)
 --   v3 elements (ARCHITECTURE_V3.md section 11, chart in Config.Elements):
 --   PetCatalog.ElementsOf(def)            -> { element... }  a pet's Element, or a fused hybrid's Elements
 --                                            (deduplicated, only names from Config.Elements.Order; {} otherwise)
@@ -105,7 +120,7 @@ PetCatalog.RoleBlurbs = {
 	Combat = "Fights in the arena with strong attacks.",
 }
 PetCatalog.StatOrder = { "Income", "Power", "Health", "Speed" }
-PetCatalog.StatNames = { Income = "Income", Power = "Power", Health = "Health", Speed = "Speed" }
+PetCatalog.StatNames = { Income = "Coins", Power = "Power", Health = "Health", Speed = "Speed" } -- Phase 4: pets make coins
 PetCatalog.SpecialKinds = { "Blast", "Heal", "Shield", "Storm", "Pounce", "Freeze", "Beam" }
 
 local SECRET = "Secret"
@@ -939,11 +954,12 @@ end
 -- PetLevels[key], XP curve TycoonCatalog.XpToNext); every level adds LevelBonus of the level-1 stats.
 ----------------------------------------------------------------------
 
-PetCatalog.MaxLevel = 50 -- top of the XP curve when TycoonCatalog does not name one (its PetXp.MaxLevel wins)
-PetCatalog.LevelBonus = 0.1 -- +10% of the level-1 stats per level (TycoonCatalog.PetIncome uses the same)
--- the highest level feeding / training can reach, by rarity (rarer pets grow further). TycoonCatalog may override
--- these (PetXp.RarityCaps or PetLevelCaps); a rarity missing here is capped at MaxPetLevel().
-PetCatalog.LevelCaps = { Common = 20, Uncommon = 25, Rare = 30, Epic = 35, Legendary = 40, Mythic = 45, Secret = 50 }
+PetCatalog.MaxLevel = 100 -- top of the XP curve when TycoonCatalog does not name one (its PetXp.MaxLevel wins)
+PetCatalog.LevelBonus = 0.1 -- +10% of the level-1 stats per level (TycoonCatalog.PetPower uses the same)
+-- the highest level XP can raise a pet to, by rarity. Phase 4: every rarity reaches 100 (the player's rule; the
+-- evolutions come at 20 and 50: Common, Uncommon and Rare pets evolve once, Epic and rarer twice). TycoonCatalog may override these
+-- (PetXp.RarityCaps or PetLevelCaps); a rarity missing here is capped at MaxPetLevel().
+PetCatalog.LevelCaps = { Common = 100, Uncommon = 100, Rare = 100, Epic = 100, Legendary = 100, Mythic = 100, Secret = 100 }
 -- stat multiplier of a pet copy's tier (PetKeys.TierMultiplier / TycoonCatalog.TierMultiplier hold the same values)
 PetCatalog.TierMultipliers = { Normal = 1, Golden = 1.5, Rainbow = 2.5 }
 
@@ -1084,6 +1100,98 @@ function PetCatalog.LevelCap(subject)
 		return top
 	end
 	return math.min(math.floor(cap), top)
+end
+
+----------------------------------------------------------------------
+-- Phase 4: evolution (the EVOLVE button) and garden roles. The stage lives per pet key in the profile
+-- (DataService PetGrowth[key].Evo, grow-only) and counts only after the player pressed EVOLVE. The boost is applied
+-- by BattleCatalog.UnitStats and TycoonCatalog.PetPower, never inside GetStats / StatsOf (the Index, the Trial
+-- solver and the content tests pin the pure level formula). NPC pets never evolve.
+----------------------------------------------------------------------
+
+PetCatalog.EvolutionLevels = { 20, 50 } -- stage 1 at level 20 (every pet), stage 2 at level 50 (Epic and rarer)
+PetCatalog.EvolutionBoost = { 1.25, 1.5 } -- x Power, Health (and so the special) and garden coins at stage 1 / 2
+PetCatalog.EvolveTwice = { Epic = true, Legendary = true, Mythic = true, Secret = true } -- PetBuilder's ASCEND_RARITY
+PetCatalog.RoleMult = { Economy = 1.6, Combat = 1 } -- garden coins by Role: Economy pets make 60% more
+
+-- a def table from a def, a pet id or a pet key (hybrid keys need the profile: pass PetKeys.DefOf's def instead)
+local function defOf(subject)
+	if type(subject) == "table" then
+		return subject
+	end
+	if type(subject) == "string" then
+		return PetCatalog.Get(splitKey(subject))
+	end
+	return nil
+end
+
+-- 1 | 2: how far a pet can evolve. subject: a def, a rarity id, a pet id or a pet key; unknown -> 1.
+function PetCatalog.MaxEvolution(subject)
+	local rarity = nil
+	if type(subject) == "table" then
+		rarity = subject.Rarity
+	elseif type(subject) == "string" then
+		if rarityById[subject] then
+			rarity = subject
+		else
+			local def = defOf(subject)
+			rarity = def and def.Rarity or nil
+		end
+	end
+	if type(rarity) == "string" and PetCatalog.EvolveTwice[rarity] then
+		return 2
+	end
+	return 1
+end
+
+-- the stage that counts: the stored stage (pressing EVOLVE writes it) as a whole number in 0..MaxEvolution(subject).
+-- level is accepted for symmetry with CanEvolve; it never raises or lowers the stored stage.
+function PetCatalog.EvolutionStage(subject, level, stored)
+	local stage = tonumber(stored)
+	if not finite(stage) or stage < 1 then
+		return 0
+	end
+	stage = math.floor(stage)
+	local top = PetCatalog.MaxEvolution(subject)
+	if stage > top then
+		return top
+	end
+	return stage
+end
+
+-- the next stage a pet at `level` with stored `stage` may evolve to, or nil (not there yet / fully evolved)
+function PetCatalog.CanEvolve(subject, level, stage)
+	local nextStage = PetCatalog.EvolutionStage(subject, level, stage) + 1
+	if nextStage > PetCatalog.MaxEvolution(subject) then
+		return nil
+	end
+	local need = PetCatalog.EvolutionLevels[nextStage]
+	local lv = tonumber(level)
+	if not finite(need) or not finite(lv) or math.floor(lv) < need then
+		return nil
+	end
+	return nextStage
+end
+
+-- 1 | 1.25 | 1.5 for stage 0 | 1 | 2 (junk counts as 0; above 2 counts as 2)
+function PetCatalog.EvolutionMultiplier(stage)
+	local s = tonumber(stage)
+	if not finite(s) or s < 1 then
+		return 1
+	end
+	s = math.min(math.floor(s), #PetCatalog.EvolutionBoost)
+	return PetCatalog.EvolutionBoost[s] or 1
+end
+
+-- garden coin multiplier of a pet's Role (Economy 1.6, Combat 1); unknown pets / roles -> 1
+function PetCatalog.RoleMultiplier(subject)
+	local def = defOf(subject)
+	local role = def and def.Role or (type(subject) == "string" and subject or nil)
+	local m = role and PetCatalog.RoleMult[role]
+	if finite(m) and m > 0 then
+		return m
+	end
+	return 1
 end
 
 -- Stats of a def table at a level and tier (the body of GetStats; defs from PetKeys.DefOf work: tier copies carry

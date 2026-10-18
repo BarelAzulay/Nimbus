@@ -379,12 +379,24 @@ S.p3bs_contract = scenario("p3bs_contract", function()
 	local missing = {}
 	for _, fn in ipairs({ "Init", "StartTrial", "Challenge", "StartRaid", "EndRaid", "GetBattle", "IsInBattle", "GetRaidStatus",
 		"StartDuel", "ReplyChallenge", "Queue", "Unqueue", "JoinRaid", "LeaveRaid", "Command", "Forfeit", "SetDoubleRewards",
-		"IsDoubleRewards", "GetNetStats", "EstimateBytes", "ListBattles" }) do
+		"IsDoubleRewards", "GetNetStats", "EstimateBytes", "ListBattles", "StartRing", "KeysInBattle" }) do
 		if type(bs[fn]) ~= "function" then
 			missing[#missing + 1] = fn
 		end
 	end
-	T.check(#missing == 0, "p3 bs: the contract API (StartTrial, Challenge, StartRaid / EndRaid, GetBattle, IsInBattle, GetRaidStatus) and the extras exist", table.concat(missing, ", "))
+	T.check(#missing == 0, "p3 bs: the contract API (StartTrial, Challenge, StartRaid / EndRaid, GetBattle, IsInBattle, GetRaidStatus, Phase 4 StartRing / KeysInBattle) and the extras exist", table.concat(missing, ", "))
+	-- Phase 4: the mode names (BattleSim.Modes carries the Champion Ring too) and the safe answers of the new API
+	local sim = req("shared/BattleSim")
+	local modes = sim and sim.Modes or {}
+	local modeSet = {}
+	for k, v in pairs(modes) do
+		modeSet[type(k) == "string" and k or v] = true
+	end
+	T.check(modeSet.Trial and modeSet.Duel and modeSet.Raid and modeSet.Ring, "p3 bs: the mode names are Trial / Duel / Raid / Ring (BattleSim.Modes)")
+	local keysNil = bs.KeysInBattle(nil)
+	T.check(type(keysNil) == "table" and next(keysNil) == nil, "p3 bs: KeysInBattle(nil) is an empty set")
+	local okRingNil, whyRingNil = bs.StartRing(nil, 1)
+	T.check(okRingNil == false and type(whyRingNil) == "string", "p3 bs: StartRing(nil) refuses with a reason")
 	local sig = bs.BattleEnded
 	T.check(type(sig) == "table" and type(sig.Connect) == "function" and type(sig.Fire) == "function", "p3 bs: BattleEnded is a Util.Signal")
 	local inst = K.moduleInstance("server/Services/BattleService")
@@ -418,6 +430,12 @@ S.p3bs_trial = scenario("p3bs_trial", function()
 	local info = arenaInfo()
 	local w = watchEnded()
 	local p = newPlayer("Trialist", STRONG)
+	-- Phase 4: the stored evolution stage and training ranks ride into the fight as the UnitStats extras (teamOf):
+	-- the first pet is Evolved (stage 1) and trained in Physique rank 2, the second untouched
+	local grew = data.MutateGrowth and data.MutateGrowth(p, function(g)
+		g[STRONG[1]] = { Evo = 1, Physique = 2 }
+	end)
+	T.check(grew == true, "p3 trial: (setup) the first team pet is Evolved I with Physique rank 2 (DataService.MutateGrowth)")
 	toLobby(p)
 	local ok, why = bs.StartTrial(p, 1)
 	T.check(ok == false and type(why) == "string" and why:find("Trial Portal") ~= nil, "p3 trial: refused away from the Trial Portal", tostring(why))
@@ -470,6 +488,48 @@ S.p3bs_trial = scenario("p3bs_trial", function()
 	end
 	ok, why = bs.StartTrial(p, 1)
 	T.check(ok == false and type(why) == "string" and why:find("already") ~= nil, "p3 trial: one battle at a time (a second StartTrial is refused)", tostring(why))
+	-- Phase 4: KeysInBattle = the team's keys while the trial runs; a home teleport is refused InBattle
+	local inBattle = bs.KeysInBattle(p)
+	local nKeys = 0
+	for _ in pairs(inBattle) do
+		nKeys = nKeys + 1
+	end
+	T.check(nKeys == 3 and inBattle[STRONG[1]] == true and inBattle[STRONG[2]] == true and inBattle[STRONG[3]] == true, "p3 trial: KeysInBattle(player) = the fighting team's keys", tostring(nKeys))
+	local Ty = req("server/Services/TycoonService")
+	if Ty and type(Ty.GoHome) == "function" then
+		local okHome, whyHome = Ty.GoHome(p)
+		T.check(okHome == false and type(whyHome) == "string" and whyHome:find("battle", 1, true) ~= nil and p:GetAttribute(K.config().Attr.HomePortal or "HomePortal") == nil,
+			"p3 trial: GoHome (the home portal) is refused InBattle ('Finish your battle first!')", tostring(whyHome))
+	else
+		T.info("*TycoonService.GoHome not in this build: the InBattle refusal was skipped")
+	end
+	-- Phase 4: the evolved, trained pet fights with the UnitStats extras (evo in the static info, MaxHp x1.25 x1.10)
+	if type(start) == "table" then
+		local PetCatalog = req("shared/PetCatalog")
+		local def = PetCatalog and PetCatalog.Get(STRONG[1])
+		local level = data.GetPetLevel(p, STRONG[1]) or 1
+		local plain = def and bc.UnitStats(def, level, "Normal")
+		local grown = def and bc.UnitStats(def, level, "Normal", { Evo = 1, Train = { Physique = 2 } })
+		-- the team's element synergy (Phase 3) multiplies every unit's HP the same way: expected = grown x HealthMult
+		local synList = {}
+		for i, key in ipairs(STRONG) do
+			synList[i] = { Def = PetCatalog and PetCatalog.Get(key), Level = data.GetPetLevel(p, key) or 1, Tier = "Normal" }
+		end
+		local okSyn, syn = pcall(bc.SynergyBonus, synList)
+		local healthMult = (okSyn and type(syn) == "table" and tonumber(syn.HealthMult)) or 1
+		local wantHp = grown and math.floor(grown.MaxHp * healthMult + 0.5) or -1
+		local u1, u2 = nil, nil
+		for _, u in ipairs(start.Units or {}) do
+			if u.owner == p.UserId and u.key == STRONG[1] then
+				u1 = u
+			elseif u.owner == p.UserId and u.key == STRONG[2] then
+				u2 = u
+			end
+		end
+		T.check(u1 and u2 and u1.evo == 1 and u2.evo == 0 and grown and plain and math.abs(u1.maxHp - wantHp) <= 1 and grown.MaxHp > plain.MaxHp * 1.3 and type(u1.xp) == "number" and type(u1.xpNext) == "number",
+			"p3 trial: the evolved + trained pet's unit carries evo 1 and the boosted MaxHp (x1.25 x1.10, then the team synergy), the plain pet evo 0; own units carry xp / xpNext",
+			u1 and ("evo " .. tostring(u1.evo) .. " hp " .. tostring(u1.maxHp) .. " vs " .. tostring(wantHp)) or "no unit")
+	end
 	-- snapshots at ~10 Hz, dense, with the battle id
 	local m1 = K.logSize()
 	advance(1.0)
@@ -949,6 +1009,9 @@ S.p3bs_raid = scenario("p3bs_raid", function()
 	local bs, bc = BS(), BC()
 	local info = arenaInfo()
 	local w = watchEnded()
+	-- hold the EventService schedule BEFORE ending a leftover raid: late in a full run the game clock can sit at a
+	-- scheduled raid moment, and the schedule would open the next raid right away (the "no raid" check then sees it)
+	local startRaid = holdRaidSchedule(bs)
 	endAnyRaid(bs)
 	local r1 = newPlayer("Raid", STRONG, 10)
 	local r2 = newPlayer("Raid", MID, 10)
@@ -961,7 +1024,6 @@ S.p3bs_raid = scenario("p3bs_raid", function()
 	toLobby(outsider)
 	local okNo, whyNo = bs.JoinRaid(r1)
 	T.check(bs.GetRaidStatus() == nil and okNo == false and type(whyNo) == "string", "p3 raid: no raid: GetRaidStatus nil, JoinRaid refused", tostring(whyNo))
-	local startRaid = holdRaidSchedule(bs)
 	endAnyRaid(bs)
 	T.check(startRaid("no_such_boss") == false, "p3 raid: an unknown boss is refused")
 	local ok, raidId = startRaid("storm_titan")

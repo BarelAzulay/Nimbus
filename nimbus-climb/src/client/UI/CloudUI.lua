@@ -12,7 +12,7 @@
 --   CloudUI.Slot(props)       -> { Root, Button, SetContent, SetSelected, SetCount, SetHotkey, ... }
 --   CloudUI.Tabs(props)       -> { Root, Content, Add, Select, GetSelected, GetPage, GetButton }
 --   CloudUI.Grid(parent, cellSize, padding) -> ScrollingFrame (UIGridLayout, automatic canvas)
---   CloudUI.PetViewport(parent, petDef, size, opts) -> { Frame, Destroy, SetAnimated, SetExcited }
+--   CloudUI.PetViewport(parent, petDef, size, opts) -> { Frame, Destroy, SetAnimated, SetExcited }   (opts.Evolved: Phase 4)
 --   CloudUI.Pill(text, kind, parent) -> TextLabel
 --   CloudUI.Tooltip(guiObject, textFn) -> disconnect function
 --   CloudUI.RarityColor(rarityId) -> Color3
@@ -1422,7 +1422,9 @@ end
 -- CloudUI.Update loop; hidden viewports skip work and destroyed ones unregister themselves.
 -- size: UDim2 | Vector2 | number (square pixels) | nil (fill the parent)
 -- opts: Position, AnchorPoint, ZIndex, Animate (default true), Spin ("spin"|"sway"|"none", default "spin"),
---       Flap (speed multiplier), Excited (0..1), Detail ("High" default | "Low", passed to PetBuilder.Build)
+--       Flap (speed multiplier), Excited (0..1), Detail ("High" default | "Low", passed to PetBuilder.Build),
+--       Evolved (Phase 4: the stored evolution stage 1 | 2 (or true = 1), passed to PetBuilder.Build as opts.Evolved;
+--       0 / nil / false = the normal form; the def itself is never changed)
 function CloudUI.PetViewport(parent, petDef, size, opts)
 	opts = opts or {}
 	viewportCounter = viewportCounter + 1
@@ -1467,6 +1469,14 @@ function CloudUI.PetViewport(parent, petDef, size, opts)
 			local buildOpts = { Scale = 1 }
 			if opts.Detail == "Low" or opts.Detail == "High" then
 				buildOpts.Detail = opts.Detail
+			end
+			local evolved = opts.Evolved
+			if evolved == true then
+				evolved = 1
+			end
+			evolved = tonumber(evolved)
+			if evolved and evolved >= 1 then
+				buildOpts.Evolved = math.min(2, math.floor(evolved))
 			end
 			local ok, built = pcall(builder.Build, petDef, buildOpts)
 			if ok and typeof(built) == "Instance" then

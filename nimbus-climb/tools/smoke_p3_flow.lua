@@ -19,17 +19,17 @@
 --                   then 3 pets saved (toast, TeamsChanged once, ProfileSync); Bo keeps a second preset. Cy claims his
 --                   home (E at a free gate: his Phase 2 build comes back), buys the Arena Gate on its pad (a "Coming
 --                   soon" pad in Phase 2) and walks through it to the arena ("arena" -> "team", the Team tile rings);
---                   his Garden pet is refused, four pets are accepted (slot 4 at Prestige 1) -> "trial" (the arrow at
---                   the Trial Portal)
+--                   his Garden pet MAY join (Phase 4: only a training pet is busy), four pets are accepted (slot 4 at
+--                   Prestige 1) -> "trial" (the arrow at the Trial Portal); his migrated Press1 = 2 reads as a Berry Bush
 --   p3flow_trials   Ava at the Trial Portal: away from it refused, Trial 2 locked, Trials 1, 2, 3 won through the remote
 --                   (the pocket teleport, InBattle, "Start" with her preset's keys in slots 1-3, her Attack orders reach
 --                   the sim, the end, the return): first-clear tokens paid once, pet XP to every team pet (the exact
 --                   total), the record + ProfileSync; a repeat clear pays the repeat amount only. Bo selects his one-pet
---                   preset (TeamSelect) and LOSES Trial 1 (nothing paid, nothing cleared, no XP), then wins it with his
---                   main team. Cy wins Trial 1 with four pets inside the tutorial (no arrow while fighting) -> "raid"
---                   (the arrow at the colosseum floor, a hint counting down to the next raid). Cy puts a team pet into
---                   his Gym (PetCare GymSet): it leaves his battle team (pruned, TeamsChanged, ProfileSync) and cannot
---                   rejoin it while it trains
+--                   preset (TeamSelect), WINS Trial 1 and LOSES Trial 2 (nothing paid, nothing cleared; Phase 4: a third
+--                   of the XP only for a real loss >= 20 s / 20% damage), then wins it with his main team. Cy wins Trial 1
+--                   with four pets inside the tutorial (no arrow while fighting) -> "raid" (the arrow at the colosseum
+--                   floor, a hint counting down to the next raid). Cy sends a team pet to train (PetCare Train, Phase 4):
+--                   his fielded team skips it (ActiveTeamKeys 3) while the preset keeps it (ProfileSync: the Job)
 --   p3flow_duels    Ava challenges Bo through the remote ("Lobby": Invites / Sent), Bo accepts: a duel on a ring with
 --                   Hal watching nearby (a spectator 'Start' / 'End'); the end pays trophies / tokens / XP / PvP counters
 --                   once and the leaderboard (ArenaState + the trophy board in the arena) shows the winner. Dee and Eli
@@ -55,7 +55,8 @@
 --   p3flow_rejoin   Ava leaves (the save: Teams + Battle in the stored encoding) and rejoins: teams, record, pet levels
 --                   and her event pet are back, Trial 4 is open (and forfeited), the leaderboard has her again; Eli
 --                   rejoins after his raid disconnect (no raid in his record, no raid to rejoin); Cy rejoins: his
---                   finished tutorial pays nothing again, his team and his Gym pet are kept
+--                   finished tutorial pays nothing again, his 4-pet preset is kept and his trainee still trains or came
+--                   back with its rank
 --   p3flow_solo     Roblox Studio Play Solo: everybody else leaves; Ava starts a Boss Raid with the DEV button
 --                   (DevCommand raid), joins it alone (a raid for one team), fights it and gets the tier of all the damage,
 --                   paid once; then she waits for the SCHEDULED Double Rewards hour: announced ~2 minutes ahead, it
@@ -629,6 +630,17 @@ local function stepId(p)
 		return "done!"
 	end
 	return st.Id
+end
+
+-- chapter 3 is behind the player: the whole tutorial is done, or chapter 4 (Phase 4: train / ring / portal) runs
+local function chapter3Finished(st)
+	if type(st) ~= "table" then
+		return false
+	end
+	if st.Done == true then
+		return true
+	end
+	return st.Chapter == 4 and (st.Id == "train" or st.Id == "ring" or st.Id == "portal")
 end
 
 -- the total XP a pet copy holds (levels converted back to XP with the tycoon curve)
@@ -1242,8 +1254,13 @@ S.p3flow_arrive = scenario("p3flow_arrive", function()
 		return #st.Leaderboard <= 10
 	end
 	local st = lastArenaState(ava, mark)
-	T.check(arenaShapeOk(st) and st.Next and st.Next.Kind == "BossRaid", "flow arrive: a joining player gets ArenaState { Next = { Kind, BossId, StartsIn }, Raid, Double, Leaderboard }",
-		st and plain(st.Next) or "none")
+	-- (the flows run late, when the game clock is large: Next is the soonest event of ANY kind, a scheduled Double
+	-- Rewards hour may come first; the raid's own countdown is NextRaid)
+	local nextOk = st and st.Next and (st.Next.Kind == "BossRaid" or st.Next.Kind == "DoubleRewards")
+	local raidNext = st and (st.NextRaid or (st.Next and st.Next.Kind == "BossRaid" and st.Next) or nil)
+	T.check(arenaShapeOk(st) and nextOk and (raidNext == nil or (type(raidNext.BossId) == "string" and type(raidNext.StartsIn) == "number")),
+		"flow arrive: a joining player gets ArenaState { Next = { Kind, StartsIn }, NextRaid = { BossId }, Raid, Double, Leaderboard }",
+		st and (plain(st.Next) .. " / NextRaid " .. plain(st.NextRaid)) or "none")
 
 	-- ProfileSync: Teams + Battle (Phase 3)
 	local sa = lastSync(ava, mark)
@@ -1263,6 +1280,11 @@ S.p3flow_arrive = scenario("p3flow_arrive", function()
 	T.check(data.GetCash(cy) == 4321 and data.GetGems(cy) == 77 and tokens(cy) == 2500 and chome and chome.Prestige == 1 and chome.Stations.Press1 == 2
 		and data.GetPetLevel(cy, TEAMS.Cy[1]) == 12 and cprof.Pets[TEAMS.CyGarden] == 1 and chome.Garden[1] == TEAMS.CyGarden,
 		"flow arrive: ...his Phase 2 data is intact (Cash, Gems, tokens, the prestige home, the Garden pet, pet levels)")
+	-- Phase 4: the migrated save keeps Press1 = 2, which now means a level-2 Berry Bush (the kind Plant)
+	local TCat0 = TC()
+	local press1 = TCat0 and TCat0.Get and TCat0.Get("Press1")
+	T.check(chome and chome.Stations.Press1 == 2 and press1 and press1.Name == "Berry Bush" and press1.Kind == "Plant",
+		"flow arrive: ...his Press1 = 2 is kept and reads as a level-2 Berry Bush (Phase 4 food plant)", press1 and tostring(press1.Name) or "no def")
 	local sc = lastSync(cy, mark)
 	T.check(type(sc) == "table" and type(sc.Teams) == "table" and sc.Teams.Slots == 4 and type(sc.Battle) == "table",
 		"flow arrive: ...and his ProfileSync carries Teams (Slots 4) + Battle")
@@ -1354,12 +1376,12 @@ S.p3flow_arrive = scenario("p3flow_arrive", function()
 	ts = tutorial(cy)
 	T.check(ts and ts.Id == "team" and ts.Target and ts.Target.Kind == "Menu" and ts.Target.Id == "Team",
 		"flow tutorial: arriving in the Battle Arena -> 'team' (the Team tile rings)", ts and tostring(ts.Id) or "nil")
-	-- his Garden pet is busy; four pets are fine at Prestige 1
+	-- Phase 4: his Garden pet earns at home AND may fight (only a training pet is busy); four pets are fine at Prestige 1
 	local m4 = K.logSize()
 	request(cy, "TeamSet", 1, { TEAMS.Cy[1], TEAMS.CyGarden })
 	advance(0.6)
-	T.check((toasted(cy, "Garden", m4)) and #data.GetTeams(cy).Presets[1] == 0 and stepId(cy) == "team",
-		"flow teams: Cy's pet that works in his Garden cannot join a team (toast; 'team' keeps waiting)", table.concat(toasts(cy, m4), " | "))
+	T.check(sameList(data.GetTeams(cy).Presets[1], { TEAMS.Cy[1], TEAMS.CyGarden }) and sameList(data.ActiveTeamKeys(cy), { TEAMS.Cy[1], TEAMS.CyGarden }),
+		"flow teams: Cy's pet that works in his Garden MAY join a team (Phase 4: garden pets stay available)", table.concat(toasts(cy, m4), " | "))
 	request(cy, "TeamSet", 1, TEAMS.Cy)
 	waitFor(function()
 		return stepId(cy) ~= "team"
@@ -1484,8 +1506,16 @@ S.p3flow_trials = scenario("p3flow_trials", function()
 		"flow trials: ...and LOSES Trial 2 (Outcome Loss)", rb.result and tostring(rb.result.Reason) or "no end")
 	T.check(rb.paid == 0 and (rb.rw == nil or (rb.rw.Tokens or 0) == 0) and record(bo).TrialCleared[2] ~= true and (toasted(bo, "lost", rb.mark)),
 		"flow trials: ...nothing is paid, Trial 2 stays uncleared, a side toast says so")
-	local okXp0 = gainedXp(bo, rb.xp0, 0)
-	T.check(okXp0, "flow trials: ...and a lost trial gives no pet XP")
+	-- Phase 4 (contract 3.5): a REAL loss (the fight lasted >= 20 s or the team dealt >= 20% of the enemy HP) pays a third
+	-- of the win XP to every team pet; a short fight with little damage pays nothing. The result does not carry the
+	-- damage share, so the third is REQUIRED past 20 s and ALLOWED before it; the pets get exactly what the record says.
+	local rules = bc.TrialRewardRules or {}
+	local lossThird = math.floor((select(2, trialReward(2, rb.rw, false))) / 3 + 0.5)
+	local lossXp = rb.rw and tonumber(rb.rw.Xp) or 0
+	local longFight = rb.result ~= nil and tonumber(rb.result.Duration) ~= nil and rb.result.Duration >= (rules.LossMinSeconds or 20)
+	local lossOk = (lossXp == 0 or lossXp == lossThird) and (not longFight or lossXp == lossThird)
+	T.check(lossOk and gainedXp(bo, rb.xp0, lossXp), "flow trials: ...a lost trial pays a third of the win XP (" .. lossThird .. ") only for a real loss (>= 20 s or >= 20% damage), else nothing: paid " .. tostring(lossXp),
+		rb.result and ("Duration " .. tostring(rb.result.Duration)) or "no end")
 	-- with his main team he wins Trial 2
 	request(bo, "TeamSelect", 1)
 	advance(0.3)
@@ -1521,28 +1551,29 @@ S.p3flow_trials = scenario("p3flow_trials", function()
 		"flow tutorial: winning Trial 1 -> 'raid' (the arrow at the colosseum floor)", st and tostring(st.Id) or "nil")
 	T.check(st and tostring(st.Hint):find("Boss Raid", 1, true) ~= nil, "flow tutorial: ...its hint counts down to the next Boss Raid", st and tostring(st.Hint))
 
-	-- Cy's home (Phase 2) meets his battle team: a team pet that starts training in the Gym leaves the team
-	local home = data.GetHome(cy)
-	local changedCy = 0
-	local connCy = data.TeamsChanged:Connect(function(p)
-		if p == cy then
-			changedCy = changedCy + 1
-		end
-	end)
+	-- Cy's home meets his battle team (Phase 4, contract 3.7): a team pet that starts TRAINING at the Training Place
+	-- (PetCare "Train") is skipped at read time: ActiveTeamKeys fields 3, the preset keeps all 4
+	local TCat = TC()
+	local trainCost = (TCat and TCat.TrainCost and TCat.TrainCost(TEAMS.Cy[4], 1)) or 300
+	if data.GetCash(cy) < trainCost then
+		data.AddCash(cy, trainCost - data.GetCash(cy))
+	end
 	local mG = K.logSize()
-	Mock.FromClient(remote("PetCare"), cy, "GymSet", 1, TEAMS.Cy[4])
+	Mock.FromClient(remote("PetCare"), cy, "Train", TEAMS.Cy[4], "Physique")
 	advance(0.6)
-	connCy:Disconnect()
-	home = data.GetHome(cy)
 	local cyKeys = data.ActiveTeamKeys(cy)
-	T.check(home and home.Gym[1] == TEAMS.Cy[4] and #cyKeys == 3 and not contains(cyKeys, TEAMS.Cy[4]) and changedCy >= 1,
-		"flow home: Cy puts his Combat pet into the Gym (PetCare GymSet): it leaves his battle team (pruned; TeamsChanged)", listText(cyKeys))
+	local training = data.TrainingKeys(cy)
+	T.check(training[TEAMS.Cy[4]] == true and #cyKeys == 3 and not contains(cyKeys, TEAMS.Cy[4]) and sameList(data.GetTeams(cy).Presets[1], TEAMS.Cy) and (toasted(cy, "started Physique training", mG)),
+		"flow home: Cy sends his Combat pet to train (PetCare Train): it is skipped by his battle team (ActiveTeamKeys 3) while the preset keeps it", listText(cyKeys) .. " | " .. table.concat(toasts(cy, mG), " | "))
 	local syCy = lastSync(cy, mG)
-	T.check(syCy and syCy.Teams and #syCy.Teams.Presets[1] == 3 and syCy.Home and syCy.Home.Gym, "flow home: ...ProfileSync shows the 3-pet team and the Gym pet")
+	T.check(syCy and syCy.Teams and #syCy.Teams.Presets[1] == 4 and syCy.PetGrowth and syCy.PetGrowth[TEAMS.Cy[4]] and syCy.PetGrowth[TEAMS.Cy[4]].Job,
+		"flow home: ...ProfileSync shows the 4-pet preset and the training Job")
 	local mG2 = K.logSize()
 	request(cy, "TeamSet", 1, TEAMS.Cy)
-	T.check((toasted(cy, "busy in your Garden or Gym", mG2)) and #data.ActiveTeamKeys(cy) == 3, "flow home: ...and cannot rejoin the team while it trains")
+	advance(0.3)
+	T.check(#data.ActiveTeamKeys(cy) == 3 and #data.GetTeams(cy).Presets[1] == 4, "flow home: ...saving the preset again keeps the trainee in it, the fielded team stays 3 while it trains")
 	F.facts.cyTeam = cyKeys
+	F.facts.cyTrainee = TEAMS.Cy[4]
 	toLobby(cy, 6)
 	toLobby(bo, -6)
 	toLobby(ava)
@@ -1948,16 +1979,18 @@ S.p3flow_raid = scenario("p3flow_raid", function()
 	T.check(stO and type(stO.Raid) == "table" and stO.Raid.Active == true and stO.Raid.BossId == bossId and stO.Raid.Joinable == true,
 		"flow raid: ArenaState.Raid = BattleService.GetRaidStatus()")
 	-- the tutorial: standing in the arena while a raid runs finishes chapter 3 (its reward once)
+	-- (Phase 4: chapter 4 follows at once; Cy's trainee passes 'train' right away, so he may already be at 'ring')
 	waitFor(function()
-		return stepId(cy) == "done!"
+		return chapter3Finished(tutorial(cy))
 	end, 4)
 	local stC = tutorial(cy)
 	local src = nil
 	local inst = K.moduleInstance("server/Services/TutorialService")
 	src = inst and inst.Source or ""
 	local reward = tonumber(src:match("local ARENA_FINISH_TOKENS = (%d+)")) or 500
-	T.check(stC and stC.Done == true and stC.Completed == true and tokens(cy) - cyTokens0 == reward,
-		"flow tutorial: Cy standing in the arena during the raid finishes the battle chapter (+" .. reward .. " tokens)", tostring(tokens(cy) - cyTokens0))
+	T.check(chapter3Finished(stC) and tokens(cy) - cyTokens0 == reward,
+		"flow tutorial: Cy standing in the arena during the raid finishes the battle chapter (+" .. reward .. " tokens; done, or on to chapter 4)",
+		tostring(tokens(cy) - cyTokens0) .. " / " .. (stC and (tostring(stC.Chapter) .. ":" .. tostring(stC.Id)) or "no state"))
 
 	-- joins through the remote
 	local fighters = { ava, bo, cy, dee, eli, gus }
@@ -1980,12 +2013,16 @@ S.p3flow_raid = scenario("p3flow_raid", function()
 				end
 			end
 			table.sort(mine)
+			-- the fielded team of this moment: his trainee is skipped while its job runs (a rank-1 job takes a minute:
+			-- the earlier chapters may have let it finish, then the pet is back in the team)
 			local want = {}
-			for k, v in ipairs(F.facts.cyTeam or {}) do
+			for k, v in ipairs(data.ActiveTeamKeys(cy) or {}) do
 				want[k] = v
 			end
 			table.sort(want)
-			T.check(#mine == 3 and sameList(mine, want), "flow raid: Cy fights with his team as it is now (the Gym pet stays home)", listText(mine))
+			local stillTraining = data.TrainingKeys(cy)[F.facts.cyTrainee or ""] == true
+			T.check(#mine == #want and sameList(mine, want) and ((stillTraining and #mine == 3) or (not stillTraining and #mine == 4)),
+				"flow raid: Cy fights with his team as it is now (a training pet stays home, a finished trainee is back)", listText(mine) .. (stillTraining and " (training)" or " (done)"))
 		end
 	end
 	local players = bs.GetRaidStatus().Players
@@ -2200,8 +2237,12 @@ S.p3flow_raid = scenario("p3flow_raid", function()
 	local mE = K.logSize()
 	advance(5.5)
 	local stAfter = lastArenaState(ava, mE)
-	T.check(stAfter and stAfter.Raid == nil and stAfter.Next and stAfter.Next.Kind == "BossRaid" and stAfter.Next.StartsIn > 15 * 60,
-		"flow raid: ArenaState afterwards: no raid, the next one ~20 minutes away", stAfter and plain(stAfter.Next) or "none")
+	-- the raid's own countdown is NextRaid: Next is the soonest event of any kind, and the scheduled Double Rewards
+	-- window (every 3 h of server time) may well come before the next raid this far into the run
+	local raidNext = stAfter and stAfter.NextRaid
+	T.check(stAfter and stAfter.Raid == nil and type(raidNext) == "table" and raidNext.StartsIn > 15 * 60 and stAfter.Next
+		and (stAfter.Next.Kind == "BossRaid" and stAfter.Next.StartsIn == raidNext.StartsIn or stAfter.Next.Kind ~= "BossRaid" and stAfter.Next.StartsIn <= raidNext.StartsIn),
+		"flow raid: ArenaState afterwards: no raid, the next one ~20 minutes away", stAfter and (plain(stAfter.Next) .. " / NextRaid " .. plain(raidNext)) or "none")
 	T.check(bs.GetRaidStatus() == nil and ava:GetAttribute("InBattle") == nil and fay:GetAttribute("InBattle") == nil, "flow raid: everyone is free again")
 	-- Double Rewards end
 	local mX = K.logSize()
@@ -2300,11 +2341,12 @@ S.p3flow_rejoin = scenario("p3flow_rejoin", function()
 		leave(cy)
 		cy = join("Cy")
 		local stc = tutorial(cy)
-		T.check((stc == nil or stc.Done == true) and tokens(cy) == tc0, "flow rejoin: Cy's finished battle chapter stays finished (no reward again)",
-			stc and tostring(stc.Id) or "no state")
-		local hc = data.GetHome(cy)
-		T.check(data.GetTeams(cy).Slots == 4 and sameList(data.GetTeams(cy).Presets[1], F.facts.cyTeam) and hc and hc.Gym[1] == TEAMS.Cy[4],
-			"flow rejoin: Cy keeps his team (Slots 4) and his pet keeps training in the Gym", listText(data.GetTeams(cy).Presets[1]))
+		T.check((stc == nil or chapter3Finished(stc)) and tokens(cy) == tc0, "flow rejoin: Cy's finished battle chapter stays finished (done or in chapter 4, no reward again)",
+			stc and (tostring(stc.Chapter) .. ":" .. tostring(stc.Id)) or "no state")
+		local trainee = F.facts.cyTrainee or TEAMS.Cy[4]
+		local growthC = data.GetGrowth(cy, trainee) or {}
+		T.check(data.GetTeams(cy).Slots == 4 and sameList(data.GetTeams(cy).Presets[1], TEAMS.Cy) and (data.TrainingKeys(cy)[trainee] == true or growthC.Physique == 1),
+			"flow rejoin: Cy keeps his team (Slots 4, the 4-pet preset) and his trainee keeps training or came back with Physique rank 1", listText(data.GetTeams(cy).Presets[1]) .. " Physique " .. tostring(growthC.Physique))
 	end
 end)
 

@@ -1,6 +1,6 @@
 -- EvolutionFx (client): the evolution animation of a pet, played on this client only (its parts never exist on
--- the server, so nothing replicates). Used by the developer pet showcase (DevPetShow, "/evolve") and ready for the
--- game's own evolve button.
+-- the server, so nothing replicates). Used by the developer pet showcase (DevPetShow, "/evolve") and by the game's own
+-- EVOLVE moment (CareController, Phase 4: two fresh PetBuilder clones in front of the player, with Confetti = true).
 --
 --   EvolutionFx.Play(fromModel, toModel, pose, opts) -> handle
 --       fromModel  the pet as it is now: a PetBuilder model at rest (any stage), placed at `pose`
@@ -10,6 +10,7 @@
 --                    Colors = { Color3, Color3 } (glow, sparks: PetBuilder.EvolutionColors),
 --                    Stage = 1 | 2 (the stage reached; the second evolution is grander and longer),
 --                    Ground = y of the floor under the pets (default: just under fromModel),
+--                    Confetti = true (Phase 4, the game's EVOLVE moment: a burst of voxel confetti at the reveal),
 --                    OnDone = function(toModel) (called once, after the animation or Stop) }
 --       handle     { Done = false/true, Model = the pet on show (fromModel, then toModel), Stop = function() }
 --                  Stop() ends it at once: fromModel destroyed, toModel at rest at `pose`, the effects gone.
@@ -52,6 +53,15 @@ local K = {
 	SPARKS = { 22, 34 },
 	PILLAR = { 9, 12 }, -- pillar height in pet heights... capped below
 	PILLAR_MAX = 60, -- studs
+	CONFETTI = 26, -- voxel confetti bits (opts.Confetti)
+	CONFETTI_COLORS = {
+		Color3.fromRGB(255, 96, 120),
+		Color3.fromRGB(255, 176, 64),
+		Color3.fromRGB(255, 226, 90),
+		Color3.fromRGB(110, 214, 120),
+		Color3.fromRGB(96, 176, 255),
+		Color3.fromRGB(186, 128, 255),
+	},
 }
 
 local plays = {}
@@ -289,6 +299,24 @@ local function buildEffects(play)
 			Spin = Vector3.new(hash(i, 8) * 9, hash(i, 9) * 9, hash(i, 10) * 9),
 		}
 	end
+	-- confetti (Phase 4's EVOLVE moment): flat voxel bits that pop up from the pet and flutter down
+	play.Confetti = {}
+	if play.ConfettiOn then
+		for i = 1, K.CONFETTI do
+			local col = K.CONFETTI_COLORS[(i - 1) % #K.CONFETTI_COLORS + 1]
+			local part = effectPart(play, "EvolveConfetti", nil, col, Vector3.new(u * 0.5, u * 0.08, u * 0.32))
+			part.Material = Enum.Material.SmoothPlastic
+			part.Transparency = 1
+			local a = hash(i, 13) * TAU
+			local speed = R * (0.8 + hash(i, 14) * 1.6)
+			play.Confetti[i] = {
+				Part = part,
+				V = Vector3.new(math.cos(a) * speed, R * (3 + hash(i, 15) * 2.4), math.sin(a) * speed),
+				Spin = Vector3.new(4 + hash(i, 16) * 8, hash(i, 17) * 6, 3 + hash(i, 18) * 8),
+				Phase = hash(i, 19) * TAU,
+			}
+		end
+	end
 end
 
 local function cleanup(play)
@@ -466,6 +494,26 @@ local function step(play, dt)
 			sp.Part.Transparency = clamp01(q / 1.2)
 		end
 		Workspace:BulkMoveTo(sl, sc, Enum.BulkMoveMode.FireCFrameChanged)
+		if #play.Confetti > 0 then
+			-- up fast, then a slow flutter down (drag), fading out near the end of the settle
+			local cl, cc = {}, {}
+			local top = pose.Position + Vector3.new(0, H * 0.6, 0)
+			local fade = clamp01((q - 1.3) / 0.6)
+			for i, cf in ipairs(play.Confetti) do
+				local k = 1 - math.exp(-2.2 * q)
+				local drift = cf.V * (k / 2.2)
+				local fall = 2.4 * math.max(0, q - 0.35) ^ 1.5
+				local sway = math.sin(q * 6 + cf.Phase) * u * 0.6
+				local pos = top + Vector3.new(drift.X + sway, drift.Y - fall * R, drift.Z)
+				if pos.Y < play.Ground + u * 0.1 then
+					pos = Vector3.new(pos.X, play.Ground + u * 0.1, pos.Z)
+				end
+				cl[i] = cf.Part
+				cc[i] = CFrame.new(pos) * CFrame.Angles(cf.Spin.X * q, cf.Spin.Y * q, cf.Spin.Z * q)
+				cf.Part.Transparency = fade
+			end
+			Workspace:BulkMoveTo(cl, cc, Enum.BulkMoveMode.FireCFrameChanged)
+		end
 	end
 	play.Handle.T = t
 end
@@ -525,6 +573,7 @@ function EvolutionFx.Play(fromModel, toModel, pose, opts)
 		Radius = math.max(0.8, radius),
 		Ground = (type(opts.Ground) == "number") and opts.Ground or (pose.Position.Y + low - 0.5),
 		OnDone = opts.OnDone,
+		ConfettiOn = opts.Confetti == true,
 		T = 0,
 		Yaw = 0,
 	}

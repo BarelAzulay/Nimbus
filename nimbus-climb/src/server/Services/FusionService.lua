@@ -15,12 +15,19 @@
 -- * Requirements (every request): the profile is loaded and not provisional, the player is not in a match,
 --   Home.Prestige >= TycoonCatalog.Prestige.FusionUnlock (1) and Home.Stations.FusionMachine >= 1. Requests through the
 --   remote must also come from near the player's own Fusion Machine (the window opens with E at the machine).
--- * Copies in use: inputs are taken from free copies first. A copy that is equipped, working in the Garden or training
---   in the Gym is taken off first (never consumed while in use), and the result takes over the freed place (the
---   equipped slot; the Garden slot for an Economy result, the Gym slot for a Combat one). If the inputs are the player's
---   ONLY equipped pets (fusing would leave nothing equipped) the fusion is refused: unequip them or equip another pet.
+-- * Copies in use: inputs are taken from free copies first. A copy that is equipped or working in the Garden is taken
+--   off first (never consumed while in use), and the result takes over the freed place (the equipped slot; the freed
+--   Garden slot whatever its role: Phase 4 gardens take any pet). If the inputs are the player's ONLY equipped pets
+--   (fusing would leave nothing equipped) the fusion is refused: unequip them or equip another pet. Phase 4
+--   (ARCHITECTURE_V3.md "Phase 4 build contract" 3.6 / 4.5): a TRAINING input (DataService.TrainingKeys) is refused
+--   ("Rocky is training: wait for it to finish"); old Home.Gym slots are only cleared (no Gym placement: the Gym is the
+--   Training Place now).
 -- * Levels: an upgraded copy keeps the level of its inputs (the target key's level is raised to it, never lowered);
 --   a hybrid starts at the average level of its parents.
+-- * Growth (Phase 4): "Fusing keeps your pet's evolution and training". An upgraded copy gets the input key's stored
+--   evolution stage and training ranks (the higher of each, result vs input); a Mix (hybrid) starts at stage 0 with the
+--   parents' higher rank per skill. Written through DataService.MutateGrowth in the same non-yielding commit as the
+--   pets (the input key's entry is dropped when no copy of it is left).
 -- * Atomic: every check runs first; then the inputs are removed, the result added and the price paid in ONE
 --   non-yielding step (anything unexpected restores the pets and nothing is charged). Then PetService.Refresh
 --   republishes the equipped attributes / perks and the profile is synced.
@@ -402,6 +409,42 @@ local function priceText(cost)
 	return tostring(amount) .. " Cloud Tokens"
 end
 
+-- Phase 4: { [key] = true } of the keys with a running training job (DataService.TrainingKeys, the ONE lock source)
+local function trainingKeys(player)
+	if not dataService or type(dataService.TrainingKeys) ~= "function" then
+		return {}
+	end
+	local ok, set = pcall(dataService.TrainingKeys, player)
+	if ok and type(set) == "table" then
+		return set
+	end
+	return {}
+end
+
+-- Phase 4: the stored growth of a key { Evo, Speed, Physique, Ability, Defense } (zeros when unknown)
+local GROWTH_STATS = { "Speed", "Physique", "Ability", "Defense" }
+local function growthOf(player, key)
+	local out = { Evo = 0 }
+	for _, stat in ipairs(GROWTH_STATS) do
+		out[stat] = 0
+	end
+	if not dataService or type(dataService.GetGrowth) ~= "function" then
+		return out
+	end
+	local ok, g = pcall(dataService.GetGrowth, player, key)
+	if ok and type(g) == "table" then
+		if isFinite(g.Evo) and g.Evo > 0 then
+			out.Evo = math.floor(g.Evo)
+		end
+		for _, stat in ipairs(GROWTH_STATS) do
+			if isFinite(g[stat]) and g[stat] > 0 then
+				out[stat] = math.floor(g[stat])
+			end
+		end
+	end
+	return out
+end
+
 local function levelOf(profile, key)
 	local levels = type(profile.PetLevels) == "table" and profile.PetLevels or {}
 	local raw = levels[key]
@@ -669,6 +712,17 @@ local function buildPlan(player, action, a, b)
 	else
 		return false, "Unknown fusion"
 	end
+	-- Phase 4: a training pet cannot be fused (the lock); nor can the result key train meanwhile (carrying a higher rank
+	-- onto it would end its paid job early)
+	local training = trainingKeys(player)
+	for _, input in ipairs(plan.Inputs) do
+		if training[input.Key] then
+			return false, displayName(defOf(input.Key, profile), input.Key) .. " is training: wait for it to finish"
+		end
+	end
+	if plan.ResultKey and training[plan.ResultKey] then
+		return false, displayName(defOf(plan.ResultKey, profile), plan.ResultKey) .. " is training: wait for it to finish"
+	end
 	local freed, short = planUse(profile, home, plan.Inputs)
 	if not freed then
 		return false, short or "You do not have those pets"
@@ -801,8 +855,9 @@ local function rebuildEquipped(profile, freed, resultKey)
 	return placed
 end
 
--- Clears the freed Garden / Gym slots; the result takes the first freed slot that fits its role.
-local function freeHomeSlots(player, freed, resultKey, resultRole)
+-- Clears the freed Garden slots (and any old Gym slot: the Gym is retired); the result takes the smallest freed Garden
+-- slot whatever its role (Phase 4: any pet works in the garden). No Gym placement.
+local function freeHomeSlots(player, freed, resultKey)
 	if #freed.Garden == 0 and #freed.Gym == 0 then
 		return true, nil
 	end
@@ -811,56 +866,85 @@ local function freeHomeSlots(player, freed, resultKey, resultRole)
 		if type(home.Garden) ~= "table" then
 			home.Garden = {}
 		end
-		if type(home.Gym) ~= "table" then
-			home.Gym = {}
-		end
 		for _, slot in ipairs(freed.Garden) do
 			home.Garden[slot] = nil
 		end
-		for _, slot in ipairs(freed.Gym) do
-			home.Gym[slot] = nil
+		if type(home.Gym) == "table" then
+			for _, slot in ipairs(freed.Gym) do
+				home.Gym[slot] = nil
+			end
 		end
-		if resultKey then
-			-- smallest freed slot of the fitting kind
-			local function first(list)
-				local best = nil
-				for _, s in ipairs(list) do
-					if type(s) == "number" and (best == nil or s < best) then
-						best = s
-					end
+		if resultKey and #freed.Garden > 0 then
+			local slot = nil
+			for _, s in ipairs(freed.Garden) do
+				if type(s) == "number" and (slot == nil or s < slot) then
+					slot = s
 				end
-				return best
 			end
-			local function holds(map)
-				for _, k in pairs(map) do
-					if k == resultKey then
-						return true
-					end
-				end
-				return false
-			end
-			-- (a key never works in the Garden and trains in the Gym at the same time: TycoonService / PetCareService)
-			if resultRole == "Economy" and #freed.Garden > 0 and not holds(home.Gym) then
-				local slot = first(freed.Garden)
-				if slot then
-					home.Garden[slot] = resultKey
-					placedIn = "Garden"
-				end
-			elseif resultRole == "Combat" and #freed.Gym > 0 and not holds(home.Garden) then
-				local slot = first(freed.Gym)
-				if slot then
-					home.Gym[slot] = resultKey
-					placedIn = "Gym"
-				end
+			if slot then
+				home.Garden[slot] = resultKey
+				placedIn = "Garden"
 			end
 		end
 		return true
 	end)
 	if not ok or wrote ~= true then
-		warn("[FusionService] could not free the Garden / Gym slots of the fused pets")
+		warn("[FusionService] could not free the Garden slots of the fused pets")
 		return false, nil
 	end
 	return true, placedIn
+end
+
+-- Phase 4 (contract 3.6): the result's growth, in the same non-yielding commit as the pets. Upgrade: the result gets
+-- the input key's stage and ranks (the higher of each); Mix: stage 0 and the parents' higher rank per skill. The entry
+-- of an input key no copy of which is left is dropped (an owned key's numbers are kept by DataService anyway).
+local function carryGrowth(player, plan, resultKey, before)
+	if not dataService or type(dataService.MutateGrowth) ~= "function" then
+		return false
+	end
+	local profile = plan.Profile
+	local gone = {}
+	for _, input in ipairs(plan.Inputs) do
+		if countOf(profile, input.Key) < 1 then
+			gone[#gone + 1] = input.Key
+		end
+	end
+	local ok, wrote = dsCall("MutateGrowth", player, function(g)
+		local e = g[resultKey]
+		if type(e) ~= "table" then
+			e = {}
+			g[resultKey] = e
+		end
+		if plan.Action == "Upgrade" then
+			local stage = before[1].Evo
+			if isFinite(e.Evo) and e.Evo > stage then
+				stage = e.Evo
+			end
+			e.Evo = stage
+		elseif not isFinite(e.Evo) then
+			e.Evo = 0
+		end
+		for _, stat in ipairs(GROWTH_STATS) do
+			local rank = isFinite(e[stat]) and e[stat] or 0
+			for _, b in ipairs(before) do
+				if b[stat] > rank then
+					rank = b[stat]
+				end
+			end
+			e[stat] = rank
+		end
+		for _, key in ipairs(gone) do
+			if key ~= resultKey then
+				g[key] = nil
+			end
+		end
+		return true
+	end)
+	if not ok or wrote ~= true then
+		warn("[FusionService] could not carry the evolution / training of the fused pets")
+		return false
+	end
+	return true
 end
 
 local function newHybridUid(profile)
@@ -898,6 +982,10 @@ local function execute(player, plan)
 	end
 
 	-- everything below runs without yielding: the inputs leave, the result arrives and the price is paid together
+	local before = {}
+	for i, input in ipairs(plan.Inputs) do
+		before[i] = growthOf(player, input.Key)
+	end
 	local snap = takeSnapshot(profile, plan)
 	local consumed = {}
 	local okStep, err = pcall(function()
@@ -931,12 +1019,12 @@ local function execute(player, plan)
 		warn("[FusionService] fusion rolled back: " .. tostring(err))
 		return false, "The fusion fizzled: nothing was used"
 	end
-	-- the result takes over the places the inputs left
+	-- the result takes over the places the inputs left, and their evolution / training
 	rebuildEquipped(profile, plan.Freed, resultKey)
 	writeLevel(profile, resultKey, plan.Level)
+	carryGrowth(player, plan, resultKey, before)
 	local def = defOf(resultKey, profile)
-	local role = (type(def) == "table" and def.Role) or plan.Role
-	freeHomeSlots(player, plan.Freed, resultKey, role)
+	freeHomeSlots(player, plan.Freed, resultKey)
 	dsCall("MarkDirty", player)
 	return true, resultKey, def, consumed
 end

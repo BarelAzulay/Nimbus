@@ -3,19 +3,23 @@
 -- Gems tab, the Index Fusions tab (client/Controllers/MenuController.lua, IndexController.lua), the appended home
 -- chapter of the tutorial (shared/TutorialSteps.lua, server/Services/TutorialService.lua) and the NPC tips
 -- (shared/NpcDialog.lua). Loaded by tools/smoke.py in BOTH worlds; ARGS.context picks the half:
---   p2ui_content        (server, content) the home chapter is appended after the nine basics (ids, chapters, ChapterEnd,
---                       known CompleteOn, Station of every "Built" step, home targets); NPC tips: every NPC has 3-5
---                       lines that fit the dialog (<= 125 bytes, no rich-text characters), the Kitchen tip is Granny
---                       Owl's, the Gym tip Coach Corgi's, and Fusion, Prestige and Gems are explained with the real
---                       numbers of TycoonCatalog / Config.Gems
---   p2ui_tutorial       (server, booted) a player who finished the basics resumes at "claim": the arrow points at a
---                       free gate, E claims (-> "press": the arrow points at the Press 1 pad of the claimed plot),
---                       building Press 1 (-> "collect": first the free Collector pad, then the Collector itself),
---                       banking the Collector (-> "kitchen": the arrow walks the pads on the way to the Kitchen, each
---                       one buyable), the Kitchen (-> "feed": the Kitchen while there is no food, then the Pets menu
---                       button), feeding a pet ends the chapter: Done, the Cash reward paid once, kept after a rejoin;
---                       a skipped tutorial never resumes; a new player's "home" step completes by claiming a plot;
---                       events of another step are refused
+--   p2ui_content        (server, content) the home chapter follows the nine basics (Phase 4 ids claim, garden, coins,
+--                       machine, feed; chapters, ChapterEnd, known CompleteOn incl. the Phase 4 ones, Station of every
+--                       "Built" step, home targets, no Collector / Kitchen / cooking left); NPC tips: every NPC has 3-5
+--                       lines that fit the dialog (<= 125 bytes, no rich-text characters), Granny Owl explains the Food
+--                       Machine (FeedShare[1]) and EVOLVE, Coach Corgi the Training Place and the Champion Ring, Mayor
+--                       Panda the Pet Garden's rainbow coins and Prestige, Fusion and Gems with the real numbers of
+--                       TycoonCatalog / Config.Gems; nobody talks about the Collector / Kitchen / Gym
+--   p2ui_tutorial       (server, booted) Phase 4 chapter 2 (contract section 9): a player who finished the basics
+--                       resumes at "claim": the arrow points at a free gate, E claims (-> "garden": the arrow points at
+--                       the Shop without a pet, then at the free Pet Garden pad, then at a place in the built Garden), a
+--                       pet put in the Garden
+--                       (-> "coins": the arrow points at the coin pile its meals make), walking over the coins
+--                       (-> "machine": the arrow walks the pads on the way to the Food Machine, each one buyable),
+--                       the Food Machine (-> "feed": the arrow points at the machine), a feed ends the chapter: Done
+--                       or on to chapter 3, the Cash reward paid once, kept after a rejoin; a skipped tutorial never
+--                       resumes; a new player's "home" step completes by claiming a plot; events of another step are
+--                       refused
 --   client_p2ui         (client) the Home tile (MenuButton_Spot, "Home"): GoToSpot + a side hint without a home, the
 --                       Home window with one: every station row, live Collector / income numbers from the plot folder,
 --                       Upgrade / Collect / Go home / a confirmed Prestige send HomeAction, locked stations show why;
@@ -76,14 +80,16 @@ local function serverScenarios()
 		for i, step in ipairs(Steps.Steps) do
 			ids[i] = step.Id
 		end
-		-- (Phase 3 appends chapter 3, the pet battles, after these: tools/smoke_p3_ui.lua checks it)
-		T.eq(table.concat(ids, ",", 1, math.min(#ids, 14)), "welcome,home,shop,spin,equip,index,portal,finish,done,claim,press,collect,kitchen,feed",
-			"p2ui: the home chapter (claim, press, collect, kitchen, feed) is appended after the nine basics")
+		-- (Phase 3 appends chapter 3, the pet battles, and Phase 4 chapter 4 after these: smoke_p3_ui / smoke_p4_ui check them)
+		-- Phase 4 rewrote chapter 2 IN PLACE (contract section 9: saved progress is the step index, so it keeps 5 steps)
+		T.eq(table.concat(ids, ",", 1, math.min(#ids, 14)), "welcome,home,shop,spin,equip,index,portal,finish,done,claim,garden,coins,machine,feed",
+			"p2ui: the home chapter (claim, garden, coins, machine, feed) follows the nine basics")
 		local start = Steps.ChapterStart and Steps.ChapterStart[2]
 		T.eq(start, 10, "p2ui: chapter 2 starts at step 10 (a finished Phase 1 tutorial stored Step = 10)")
 		local known = { Next = true, NearSpot = true, ShopOpened = true, Rolled = true, Equipped = true, IndexOpened = true,
 			MatchStarted = true, MatchEnded = true, Claimed = true, Built = true, Collected = true, Fed = true,
-			ArenaReached = true, TeamSet = true, TrialWon = true, RaidSeen = true } -- (the last four: Phase 3, chapter 3)
+			ArenaReached = true, TeamSet = true, TrialWon = true, RaidSeen = true, -- (Phase 3, chapter 3)
+			GardenPlaced = true, CoinsScooped = true, TrainingStarted = true, RingWon = true, PortalUsed = true } -- (Phase 4)
 		local bad, ends = {}, {}
 		for i, step in ipairs(Steps.Steps) do
 			if not known[step.CompleteOn] then
@@ -110,9 +116,28 @@ local function serverScenarios()
 		end
 		T.check(byId.home and byId.home.CompleteOn == "Claimed" and byId.home.Target and byId.home.Target.Gate == true,
 			"p2ui: the basics' 'home' step now leads to a free gate and completes on a claim (E at the gate)")
-		T.check(byId.claim.CompleteOn == "Claimed" and byId.press.Station == "Press1" and byId.collect.CompleteOn == "Collected"
-			and byId.kitchen.Station == "Kitchen" and byId.kitchen.Target.Path == true and byId.feed.CompleteOn == "Fed"
-			and byId.feed.Target.Food == true, "p2ui: claim -> Press 1 -> collect -> Kitchen (following the pad path) -> feed")
+		local function target(id)
+			return byId[id] and type(byId[id].Target) == "table" and byId[id].Target or {}
+		end
+		T.check(byId.claim and byId.claim.CompleteOn == "Claimed" and target("claim").Gate == true,
+			"p2ui: 'claim' points at a free gate and completes on a claim")
+		T.check(byId.garden and byId.garden.CompleteOn == "GardenPlaced" and target("garden").GardenSpot == true
+			and (target("garden").Station == "Garden" or target("garden").Pad == "Garden"),
+			"p2ui: 'garden' (the free Pet Garden, then a garden spot) completes on GardenPlaced")
+		T.check(byId.coins and byId.coins.CompleteOn == "CoinsScooped" and target("coins").Coins == true,
+			"p2ui: 'coins' points at the coins and completes on CoinsScooped")
+		T.check(byId.machine and byId.machine.CompleteOn == "Built" and byId.machine.Station == "Kitchen" and target("machine").Path == true,
+			"p2ui: 'machine' follows the pad path to the Food Machine (Built, Station Kitchen)")
+		T.check(byId.feed and byId.feed.CompleteOn == "Fed" and target("feed").Food == true and byId.feed.ChapterEnd == true,
+			"p2ui: 'feed' (the Food Machine) completes on Fed and ends the chapter")
+		local text = tostring(byId.feed and byId.feed.Text or "") .. " " .. tostring(byId.garden and byId.garden.Text or "")
+		T.check(text:find("Food Machine", 1, true) and text:find("Garden", 1, true), "p2ui: the chapter talks about the Pet Garden and the Food Machine")
+		local all2 = ""
+		for i = start, math.min(#Steps.Steps, start + 4) do
+			all2 = all2 .. " " .. tostring(Steps.Steps[i].Text)
+		end
+		T.check(not all2:find("Collector", 1, true) and not all2:find("Kitchen", 1, true) and not all2:find("Cook", 1, true),
+			"p2ui: chapter 2 no longer mentions the Collector, the Kitchen or cooking")
 
 		-- NPC tips
 		if not T.check(type(ND) == "table" and type(ND.Npcs) == "table" and #ND.Npcs == 6, "p2ui: shared/NpcDialog has the six NPCs") then
@@ -143,15 +168,22 @@ local function serverScenarios()
 			end
 			return true
 		end
-		local snack = TC and TC.Foods and TC.Foods.Snack
-		T.check(says("granny_owl", "Kitchen", "Feed", snack and (tostring(snack.Xp) .. " XP") or "XP"),
-			"p2ui: Granny Owl explains the Kitchen and feeding (with the Snack's real XP)")
-		local gym1 = TC and TC.EffectsOf and TC.EffectsOf("Gym", 1)
-		T.check(says("coach_corgi", "Gym", "Train in Gym", gym1 and (tostring(gym1.XpPerMinute) .. " XP a minute") or "XP"),
-			"p2ui: Coach Corgi explains the Gym (with its real XP per minute)")
+		-- Phase 4 tips (contract section 9): numbers read from the catalogs
+		local share = TC and TC.FeedShare and TC.FeedShare[1]
+		local sharePct = share and (tostring(math.floor(share * 100 + 0.5)) .. "%") or "%"
+		T.check(says("granny_owl", "Food Machine", "Feed", "EVOLVE", sharePct),
+			"p2ui: Granny Owl explains the Food Machine, feeding (" .. sharePct .. " of the bar) and EVOLVE")
+		T.check(says("coach_corgi", "Training Place", "Champion Ring"), "p2ui: Coach Corgi explains the Training Place and the Champion Ring")
 		local P = TC and TC.Prestige or {}
-		T.check(says("mayor_panda", "free gate", "Prestige", "Home Level " .. tostring(P.HomeLevel or 40), tostring(P.GemReward or 100) .. " Gems"),
-			"p2ui: Mayor Panda explains claiming a home and Prestige (Home Level " .. tostring(P.HomeLevel) .. ", the Gems reward)")
+		T.check(says("mayor_panda", "free gate", "Pet Garden", "rainbow coins", "Prestige", "Home Level " .. tostring(P.HomeLevel or 40),
+			tostring(P.GemReward or 100) .. " Gems"),
+			"p2ui: Mayor Panda explains claiming a home, the Pet Garden's rainbow coins and Prestige (Home Level " .. tostring(P.HomeLevel) .. ", the Gems reward)")
+		local npcAll = ""
+		for _, t in pairs(all) do
+			npcAll = npcAll .. t
+		end
+		T.check(not npcAll:find("Collector", 1, true) and not npcAll:find("Kitchen", 1, true) and not npcAll:find("Gym", 1, true),
+			"p2ui: no NPC talks about the Collector, the Kitchen or the Gym any more")
 		local Util = requireAt("shared/Util")
 		local secret = Config.Gems and Config.Gems.SecretRoulette
 		local secretPrice = (secret and Util and Util.Commas) and Util.Commas(secret.GemPrice) or "1,500"
@@ -283,42 +315,60 @@ local function serverScenarios()
 		waitFor(function()
 			return stepId(p) ~= "claim"
 		end, 3)
-		T.eq(stepId(p), "press", "p2ui tutorial: E at the gate completes 'claim'")
+		T.eq(stepId(p), "garden", "p2ui tutorial: E at the gate completes 'claim'")
 		local info = SS.GetSpot(p)
 		st = state(p)
-		local pressPad = info and padPosition(HB, TC, info, "Press1")
+		T.check(st and st.Target and st.Target.Kind == "Shop", "p2ui tutorial: without a pet the 'garden' arrow points at the Shop first",
+			st and st.Target and tostring(st.Target.Kind) .. " / " .. tostring(st.Hint))
+		local prof = DataS.GetProfile(p)
+		PK.Add(prof, "pebble_pup", 1)
+		DataS.MarkDirty(p)
+		advance(1.2)
+		st = state(p)
+		local gardenPad = info and padPosition(HB, TC, info, "Garden")
 		T.check(st and st.Target and st.Target.Kind == "Spot" and st.Target.SpotIndex == index and typeof(st.Target.Position) == "Vector3"
-			and pressPad ~= nil and (st.Target.Position - pressPad).Magnitude < 1,
-			"p2ui tutorial: the 'press' arrow points at the Cloud Press 1 pad of the claimed plot")
-		local okBuy = Ty.Buy(p, "Press1")
+			and gardenPad ~= nil and (st.Target.Position - gardenPad).Magnitude < 1,
+			"p2ui tutorial: the 'garden' arrow points at the free Pet Garden pad of the claimed plot")
+		local okBuy = Ty.Buy(p, "Garden")
 		advance(0.6)
-		T.check(okBuy == true, "p2ui tutorial: Press 1 is bought (free)")
-		T.eq(stepId(p), "collect", "p2ui tutorial: building Press 1 completes 'press'")
+		T.check(okBuy == true, "p2ui tutorial: the Pet Garden is built (free)")
+		T.eq(stepId(p), "garden", "p2ui tutorial: building the Garden alone does not complete 'garden'")
 		st = state(p)
-		local collectorPad = padPosition(HB, TC, info, "Collector")
-		T.check(st and st.Target and collectorPad and (st.Target.Position - collectorPad).Magnitude < 1 and tostring(st.Hint):find("Collector", 1, true),
-			"p2ui tutorial: 'collect' first points at the free Collector pad", st and tostring(st.Hint))
-		Ty.Buy(p, "Collector")
+		local station = HB.GetStation and HB.GetStation(info, "Garden")
+		local okPivot, gardenCf = pcall(function()
+			return station:GetPivot()
+		end)
+		T.check(st and st.Target and typeof(st.Target.Position) == "Vector3" and okPivot and gardenCf
+			and (st.Target.Position - gardenCf.Position).Magnitude < 16 and (st.Target.Position - gardenPad).Magnitude > 0.5,
+			"p2ui tutorial: ...then at a place in the built Garden", st and tostring(st.Hint))
+		local okPlace = Ty.GardenSet(p, 1, "pebble_pup")
 		advance(0.6)
+		T.check(okPlace == true, "p2ui tutorial: a pet is put in garden place 1")
+		T.eq(stepId(p), "coins", "p2ui tutorial: a pet in the Garden completes 'garden'")
+		-- coins: the pet eats and pops out coins; walking over them scoops them
+		advance(20)
+		local piles = Ty.Piles and Ty.Piles(p)
+		local pile = piles and piles[1]
+		T.check(pile and (tonumber(pile.Coins) or 0) >= 1 and typeof(pile.Pos) == "Vector3", "p2ui tutorial: the garden pet popped out coins")
 		st = state(p)
-		T.check(st and st.Id == "collect" and st.Target and collectorPad and (st.Target.Position - collectorPad).Magnitude > 0.5
-			and tostring(st.Hint):find("Step on the Collector", 1, true),
-			"p2ui tutorial: ...then at the built Collector itself ('Step on the Collector')", st and tostring(st.Hint))
-		advance(4) -- the presses fill the Collector (1 s income tick)
-		local home = DataS.GetHome(p)
-		T.check(home and (tonumber(home.CollectorCash) or 0) >= 1, "p2ui tutorial: the Collector filled up", home and tostring(home.CollectorCash))
-		T.eq(stepId(p), "collect", "p2ui tutorial: income alone does not complete 'collect'")
-		local okCollect = Ty.Collect(p)
-		advance(0.6)
-		T.check(okCollect == true, "p2ui tutorial: the Collector is banked")
-		T.eq(stepId(p), "kitchen", "p2ui tutorial: banking the Collector completes 'collect'")
+		T.check(st and st.Id == "coins" and st.Target and typeof(st.Target.Position) == "Vector3" and pile and (st.Target.Position - pile.Pos).Magnitude < 4,
+			"p2ui tutorial: the 'coins' arrow points at the coin pile", st and tostring(st.Hint))
+		if pile then
+			Mock.Teleport(p, CFrame.new(pile.Pos + Vector3.new(0, 3, 0)))
+		end
+		waitFor(function()
+			return stepId(p) ~= "coins"
+		end, 3)
+		T.eq(stepId(p), "machine", "p2ui tutorial: scooping the coins completes 'coins'")
+		Mock.Teleport(p, (SS.GateCFrame(info) or CFrame.new()) * CFrame.new(0, 3, -5))
+		advance(0.5)
 
-		-- kitchen: the arrow names the next pad on the way, every one of them buyable
+		-- machine: the arrow names the next pad on the way, every one of them buyable
 		DataS.AddCash(p, 5000000)
 		advance(0.6)
 		local path, lost = {}, nil
 		for _ = 1, 40 do
-			if stepId(p) ~= "kitchen" then
+			if stepId(p) ~= "machine" then
 				break
 			end
 			st = state(p)
@@ -337,37 +387,36 @@ local function serverScenarios()
 			Ty.Buy(p, padId)
 			advance(0.5)
 		end
-		T.check(lost == nil and #path >= 2 and path[#path] == "Kitchen", "p2ui tutorial: following the 'kitchen' arrow from pad to pad builds the Kitchen",
+		T.check(lost == nil and #path >= 1 and path[#path] == "Kitchen", "p2ui tutorial: following the 'machine' arrow from pad to pad builds the Food Machine",
 			table.concat(path, " > ") .. (lost and (" (lost at: " .. lost .. ")") or ""))
-		T.eq(stepId(p), "feed", "p2ui tutorial: building the Kitchen completes 'kitchen'")
+		T.eq(stepId(p), "feed", "p2ui tutorial: building the Food Machine completes 'machine'")
 		st = state(p)
-		T.check(st and st.Target and st.Target.Kind == "Spot" and tostring(st.Hint):find("Cook", 1, true),
-			"p2ui tutorial: without food, 'feed' points at the Kitchen ('Cook a Snack')", st and tostring(st.Hint))
-		local okCook = Care.Cook(p, "Snack", 1)
-		T.check(okCook == true, "p2ui tutorial: a Snack is ordered at the Kitchen")
-		waitFor(function()
-			return (DataS.GetFood(p, "Snack") or 0) > 0
-		end, 20)
-		advance(1.2)
-		st = state(p)
-		T.check(st and st.Target and st.Target.Kind == "Menu" and st.Target.Id == "Pets", "p2ui tutorial: with food, 'feed' points at the Pets menu button")
-		local prof = DataS.GetProfile(p)
-		PK.Add(prof, "pebble_pup", 1)
-		DataS.MarkDirty(p)
+		local machinePos = nil
+		local kitchen = HB.GetStation and HB.GetStation(info, "Kitchen")
+		if kitchen then
+			local okK, kcf = pcall(function()
+				return kitchen:GetPivot()
+			end)
+			machinePos = okK and kcf and kcf.Position or nil
+		end
+		T.check(st and st.Target and st.Target.Kind == "Spot" and typeof(st.Target.Position) == "Vector3" and machinePos
+			and (st.Target.Position - machinePos).Magnitude < 12,
+			"p2ui tutorial: 'feed' points at the Food Machine", st and tostring(st.Hint))
 		local cash0 = DataS.GetCash(p)
-		local okFeed = Care.Feed(p, "pebble_pup", "Snack")
+		local okFeed, fed = Care.Feed(p, "pebble_pup", nil)
 		advance(0.6)
-		T.check(okFeed == true, "p2ui tutorial: the pet is fed")
+		T.check(okFeed == true, "p2ui tutorial: the pet is fed at the Food Machine", tostring(fed))
+		local paid = (type(fed) == "table" and tonumber(fed.Paid)) or 0
 		st = state(p)
 		-- (Phase 3: the pet-battle chapter follows the home chapter; without it the tutorial is Done here)
 		local chapter3 = Steps.ChapterStart and Steps.ChapterStart[3]
 		T.check(st and ((st.Done == true and st.Completed == true) or (chapter3 ~= nil and st.Chapter == 3 and st.Step == chapter3)),
 			"p2ui tutorial: feeding a pet ends the home chapter (Done, or on to the battle chapter)")
-		T.eq(DataS.GetCash(p), cash0 + 1000, "p2ui tutorial: ...and pays the home chapter's Cash reward once")
+		T.eq(DataS.GetCash(p), cash0 - paid + 1000, "p2ui tutorial: ...and pays the home chapter's Cash reward once")
 		T.eq(DataS.GetTutorial(p).Step, chapter3 or (#Steps.Steps + 1), "p2ui tutorial: the stored Step is one past the home chapter (a later chapter resumes there)")
 		TSv.HandleEvent(p, "Next")
 		TSv.HandleEvent(p, "Skip")
-		T.eq(DataS.GetCash(p), cash0 + 1000, "p2ui tutorial: nothing is paid twice")
+		T.eq(DataS.GetCash(p), cash0 - paid + 1000, "p2ui tutorial: nothing is paid twice")
 		local userId, name = p.UserId, p.Name
 		leave(p)
 		advance(1.5)
@@ -510,13 +559,13 @@ local function clientScenarios()
 			home = {
 				Level = 41, Prestige = 1,
 				Stations = { Press1 = 10, Press2 = 10, Press3 = 8, Press4 = 6, Collector = 5, Garden = 5, Kitchen = 4, Gym = 4, Vault = 4, House = 4, FusionMachine = 1 },
-				Garden = { "honey_bunny", "" }, Gym = { "" }, CollectorCash = 500,
+				Garden = { "honey_bunny", "" }, Gym = {}, CollectorCash = 500,
 			}
 		else
 			home = {
 				Level = 20, Prestige = 1,
 				Stations = { Press1 = 5, Press2 = 3, Collector = 3, Garden = 2, Kitchen = 2, Gym = 1, Vault = 1, House = 2, DecorLamps = 1 },
-				Garden = { "honey_bunny", "" }, Gym = { "cloudy_dragon" }, CollectorCash = 1840,
+				Garden = { "honey_bunny", "" }, Gym = {}, CollectorCash = 1840,
 			}
 		end
 		return {
@@ -534,7 +583,12 @@ local function clientScenarios()
 			Food = { Snack = 4, Meal = 1 },
 			Tiers = { pebble_pup = { Golden = 2 }, maple_fox = { Rainbow = 1 } },
 			Hybrids = { hc1 = { Body = "pip_penguin", Style = "maple_fox", Elements = { "Frost", "Flame" }, Name = "Pipfox", Rarity = "Uncommon", Tier = "Normal", Seed = 3 } },
-			PetLevels = { ["pebble_pup@Golden"] = { Level = 12, Xp = 300 }, cloudy_dragon = { Level = 18, Xp = 100 } },
+			PetLevels = { ["pebble_pup@Golden"] = { Level = 12, Xp = 300 }, cloudy_dragon = { Level = 18, Xp = 100 }, ["maple_fox@Rainbow"] = { Level = 20, Xp = 40 } },
+			-- Phase 4: sleepy_owl is training (it cannot be equipped), cloudy_dragon evolved once
+			PetGrowth = {
+				cloudy_dragon = { Evo = 1 },
+				sleepy_owl = { Physique = 1, Job = { Stat = "Physique", Ends = os.time() + 130, Rank = 2, Slot = 1, From = "Free", Paid = 1200 } },
+			},
 		}
 	end
 
@@ -554,8 +608,8 @@ local function clientScenarios()
 			plot.Parent = lobby
 		end
 		plot:SetAttribute("CollectorCash", 1840)
-		plot:SetAttribute("CollectorCap", 6000)
 		plot:SetAttribute("IncomePerSecond", 38.5)
+		plot:SetAttribute("GardenSlots", 4)
 		LocalPlayer:SetAttribute(Config.Attr.SpotIndex, 7)
 		LocalPlayer:SetAttribute(Config.Attr.Cash, 48250)
 		LocalPlayer:SetAttribute(Config.Attr.Gems, 1820)
@@ -664,18 +718,21 @@ local function clientScenarios()
 		T.check(houseName and houseName.Text == "Villa" and homeLevel and homeLevel.Text == "Home Level 20",
 			"p2ui menu: the house tier and the Home Level show", (houseName and houseName.Text or "?") .. " / " .. (homeLevel and homeLevel.Text or "?"))
 		local income = find(win, "PerSecond")
-		local bar = find(win, "CollectorBar")
-		T.check(income and income.Text:find("38.5", 1, true) and bar and find(bar, "Text") and find(bar, "Text").Text:find("1,840", 1, true),
-			"p2ui menu: income per second and the Collector's cash come from the plot folder", (income and income.Text or "?"))
+		local waiting = find(win, "CoinsWaiting")
+		T.check(income and income.Text:find("38.5", 1, true) and waiting and waiting.Text:find("1,840", 1, true),
+			"p2ui menu: income per second and the coins waiting come from the plot folder", (income and income.Text or "?") .. " / " .. (waiting and waiting.Text or "?"))
 		plot:SetAttribute("CollectorCash", 2500)
 		advance(0.5)
-		T.check(bar and find(bar, "Text") and find(bar, "Text").Text:find("2,500", 1, true), "p2ui menu: ...and follow its live attributes",
-			bar and find(bar, "Text") and find(bar, "Text").Text or "")
+		T.check(waiting and waiting.Text:find("2,500", 1, true), "p2ui menu: ...and follow its live attributes", waiting and waiting.Text or "")
+		local places = find(win, "Places")
+		T.check(places and places.Text == "Places 4/12", "p2ui menu: the Pet Garden card shows its places (the plot's GardenSlots)", places and places.Text or "")
 		local mult = find(win, "Multiplier")
 		T.check(mult and mult.Visible and mult.Text == "x1.25", "p2ui menu: the prestige multiplier tag shows x1.25 for one star")
-		-- Upgrade / Build / locks
+		-- Upgrade / Build / locks (Station_Press1 is the Berry Bush now)
 		local press1 = find(win, "Station_Press1")
 		local upgrade = press1 and find(press1, "Upgrade")
+		local berry = TC.Get("Press1")
+		T.check(press1 and find(press1, "Name") and find(press1, "Name").Text == berry.Name, "p2ui menu: Station_Press1 is the " .. tostring(berry.Name))
 		mark = #Mock.RemoteLog
 		T.check(upgrade and upgrade.Visible and not disabled(upgrade), "p2ui menu: an affordable upgrade is enabled")
 		if upgrade then
@@ -691,14 +748,7 @@ local function clientScenarios()
 		local vault = find(win, "Station_Vault")
 		local vaultButton = vault and find(vault, "Upgrade")
 		T.check(vaultButton and disabled(vaultButton), "p2ui menu: an upgrade the player cannot afford is disabled")
-		mark = #Mock.RemoteLog
-		local collect = find(win, "Collect")
-		if collect then
-			Mock.Click(collect)
-			advance(0.2)
-		end
-		hc = calls("HomeAction", mark)
-		T.check(#hc == 1 and hc[1].args[1] == "Collect", "p2ui menu: Collect sends HomeAction('Collect')")
+		T.check(find(win, "Collect") == nil and find(win, "CollectorCard") == nil, "p2ui menu: no Collect button and no Collector card (kids walk over their coins)")
 		local prestige = find(win, "Prestige")
 		T.check(prestige and disabled(prestige), "p2ui menu: Prestige is disabled before Home Level 40 + the Sky Castle")
 		-- castle: the confirmed prestige
@@ -709,7 +759,8 @@ local function clientScenarios()
 		advance(0.3)
 		local confirm = find(win, "PrestigeConfirm")
 		local gain = confirm and find(confirm, "Line_Gain")
-		T.check(confirm and confirm.Visible and gain and find(gain, "Text").Text:find("Star 2", 1, true), "p2ui menu: Prestige asks first (what resets, what stays, star 2)")
+		T.check(confirm and confirm.Visible and gain and find(gain, "Text").Text:find("Star 2", 1, true) and find(gain, "Text").Text:find("garden place 5", 1, true),
+			"p2ui menu: Prestige asks first (what resets, what stays, star 2 with garden place 5)", gain and find(gain, "Text").Text or "")
 		mark = #Mock.RemoteLog
 		Mock.Click(find(confirm, "ConfirmPrestige"))
 		advance(0.2)
@@ -748,67 +799,96 @@ local function clientScenarios()
 		local xpBar = find(find(inv, "Detail"), "XpBar")
 		T.check(tierPill ~= nil and xpBar ~= nil and find(xpBar, "Text") and find(xpBar, "Text").Text:find("300", 1, true),
 			"p2ui pets: the tier pill and the XP bar (300 / next) show")
-		local PC = moduleAt("shared", "PetCatalog")
-		local stats = PC and PC.GetStats and PC.GetStats("pebble_pup", 12, "Golden")
-		local incomePill = find(inv, "Stat_Income")
-		local want = stats and string.format("%.1f", floor(stats.Income * 10 + 0.5) / 10) or "?"
-		want = (want:gsub("%.0$", ""))
-		T.check(stats and incomePill and incomePill.Text:find("$" .. want, 1, true),
-			"p2ui pets: stats are scaled by rarity, level and tier (PetCatalog.GetStats)", (incomePill and incomePill.Text or "") .. " want $" .. want)
-		-- the Feed picker
+		local levelText = find(find(inv, "Detail"), "Level")
+		T.check(levelText and levelText.Text == "Lv 12 / 100", "p2ui pets: the detail card shows 'Lv 12 / 100' (the cap read from PetCatalog)", levelText and levelText.Text or "")
+		-- Phase 4: the coins it makes in the Garden (PetPower x food x stars / meal x the Lucky EV)
+		local home = snapshot("mid").Home
+		local food = TC.FoodOf(home)
+		if food <= 0 then
+			food = TC.Coins.GrassFood
+		end
+		local rate = TC.PetPower("pebble_pup@Golden", 12, nil, 0) * food * TC.PrestigeMultiplier(1) * TC.LuckyEV(home) / TC.Coins.MealSeconds
+		local want = rate < 100 and ((string.format("%.1f", floor(rate * 10 + 0.5) / 10)):gsub("%.0$", "")) or nil
+		local coinsPill = find(inv, "Stat_Income")
+		T.check(coinsPill and coinsPill.Text:find("Coins", 1, true) and (want == nil or coinsPill.Text:find("$" .. want, 1, true)),
+			"p2ui pets: the Coins $/s pill shows what the pet makes in the Garden", (coinsPill and coinsPill.Text or "") .. " want $" .. tostring(want))
+		-- Feed -> the Food Machine list (CareController), this pet first
+		local Care = moduleAt("client", "Controllers/CareController")
 		mark = #Mock.RemoteLog
 		Mock.Click(find(inv, "FeedPet"))
-		advance(0.4)
-		local picker = find(inv, "FeedPicker")
-		T.check(picker and picker.Visible, "p2ui pets: Feed opens the food picker")
-		local snackRow = picker and find(picker, "Food_Snack")
-		Mock.Click(snackRow and find(snackRow, "Feed"))
-		advance(0.4)
-		Mock.Click(snackRow and find(snackRow, "Cook"))
-		advance(0.2)
+		advance(0.6)
+		local careGui = pg():FindFirstChild("NimbusCare")
+		local careWin = careGui and careGui:FindFirstChild("Window_Care")
+		T.check(Care and Care.Mode and Care.Mode() == "Feed" and careWin and careWin.Visible and not (inv and inv.Visible and MC.IsOpen()),
+			"p2ui pets: Feed opens the Food Machine list (CareController) instead of the old picker")
+		local row = careWin and find(careWin, "Feed_pebble_pup@Golden")
+		T.check(row and row.LayoutOrder == 1, "p2ui pets: ...with that pet first")
+		if row then
+			Mock.Click(find(row, "Feed"))
+			advance(0.4)
+		end
 		local pc = calls("PetCare", mark)
-		T.check(#pc == 2 and pc[1].args[1] == "Feed" and pc[1].args[2] == "pebble_pup@Golden" and pc[1].args[3] == "Snack"
-			and pc[2].args[1] == "Cook" and pc[2].args[2] == "Snack", "p2ui pets: Feed / Cook in the picker send PetCare('Feed', key, food) / PetCare('Cook', food, 1)")
-		small = smallTexts(picker, 18)
-		T.check(#small == 0, "p2ui pets: every text of the Feed picker is >= 18 design px", table.concat(small, ", "))
-		Mock.Click(find(picker, "CloseFeed"))
+		T.check(#pc == 1 and pc[1].args[1] == "Feed" and pc[1].args[2] == "pebble_pup@Golden", "p2ui pets: its Feed sends PetCare('Feed', key)")
+		T.check(find(inv, "FeedPicker") == nil, "p2ui pets: the old Feed picker is gone")
+		if Care then
+			Care.Close()
+		end
 		advance(0.3)
-		T.check(not picker.Visible, "p2ui pets: Done closes the picker")
-		-- Garden / Gym
-		local work = find(inv, "WorkPet")
+		-- Garden (any role) / Train / EVOLVE
 		MC.Open("Pets", { Key = "honey_bunny" })
-		advance(0.3)
+		advance(0.4)
+		local work = find(inv, "WorkPet")
 		mark = #Mock.RemoteLog
 		T.check(work and work.Text == "Leave Garden", "p2ui pets: a pet working in the Garden offers 'Leave Garden'", work and work.Text or "")
 		Mock.Click(work)
 		advance(0.3)
 		hc = calls("HomeAction", mark)
 		T.check(#hc == 1 and hc[1].args[1] == "GardenSet" and type(hc[1].args[2]) == "table" and hc[1].args[2].Slot == 1 and hc[1].args[2].Key == nil,
-			"p2ui pets: ...which clears its slot (HomeAction GardenSet {Slot = 1})")
-		MC.Open("Pets", { Key = "pebble_pup" })
+			"p2ui pets: ...which clears its place (HomeAction GardenSet {Slot = 1})")
+		MC.Open("Pets", { Key = "mallow_kitten" })
 		advance(0.3)
 		mark = #Mock.RemoteLog
-		T.check(work.Text == "Place in Garden" and not disabled(work), "p2ui pets: an Economy pet offers 'Place in Garden'")
+		T.check(work.Text == "Garden" and not disabled(work), "p2ui pets: a Combat pet can go to the Garden too ('Garden')")
 		Mock.Click(work)
 		advance(0.3)
 		hc = calls("HomeAction", mark)
-		T.check(#hc == 1 and hc[1].args[1] == "GardenSet" and hc[1].args[2].Slot == 2 and hc[1].args[2].Key == "pebble_pup",
-			"p2ui pets: ...into the first free slot (GardenSet {Slot = 2, Key})")
-		MC.Open("Pets", { Key = "mallow_kitten" })
+		T.check(#hc == 1 and hc[1].args[1] == "GardenSet" and hc[1].args[2].Slot == 2 and hc[1].args[2].Key == "mallow_kitten",
+			"p2ui pets: ...into the first free place (GardenSet {Slot = 2, Key})")
+		-- a pet in training: no Equip, its timer
+		MC.Open("Pets", { Key = "sleepy_owl" })
 		advance(0.3)
-		T.check(work.Text == "Train in Gym" and disabled(work), "p2ui pets: a Combat pet offers 'Train in Gym' (disabled while the Gym is full)")
-		toClient("ProfileSync", (function()
-			local s = snapshot("mid")
-			s.Home.Gym = { "" }
-			return s
-		end)())
-		advance(0.4)
+		local status = find(find(inv, "Detail"), "Work")
+		T.check(disabled(find(inv, "Equip")) and status and status.Text:find("Training Physique", 1, true),
+			"p2ui pets: a pet in training cannot be equipped and shows its training", status and status.Text or "")
+		Mock.Click(find(inv, "TrainPet"))
+		advance(0.5)
+		T.check(Care and Care.Mode() == "Train", "p2ui pets: Train opens the Training Place window")
+		if Care then
+			Care.Close()
+		end
+		advance(0.3)
+		-- EVOLVE (the Rainbow maple fox copy is level 20)
+		MC.Open("Pets", { Key = "cloudy_dragon" })
+		advance(0.3)
+		local evoPill = find(inv, "Evolution")
+		T.check(evoPill and evoPill.Visible and evoPill.Text:find("Evolved", 1, true), "p2ui pets: an evolved pet shows its evolution pill")
+		T.check(not find(inv, "EvolvePet").Visible, "p2ui pets: no EVOLVE button below the next evolution level")
+		MC.Open("Pets", { Key = "maple_fox@Rainbow" })
+		advance(0.3)
+		local evolve = find(inv, "EvolvePet")
+		T.check(evolve and evolve.Visible and not disabled(evolve), "p2ui pets: a level-20 pet shows EVOLVE!")
 		mark = #Mock.RemoteLog
-		Mock.Click(work)
+		Mock.Click(evolve)
+		advance(0.4)
+		local yes = careGui and find(careGui, "ConfirmYes")
+		T.check(yes and find(careGui, "CareConfirm").Visible, "p2ui pets: EVOLVE asks first")
+		Mock.Click(yes)
 		advance(0.3)
 		pc = calls("PetCare", mark)
-		T.check(#pc == 1 and pc[1].args[1] == "GymSet" and pc[1].args[3] == "mallow_kitten", "p2ui pets: Train in Gym sends PetCare('GymSet', slot, key)")
-		small = smallTexts(inv, 18)
+		T.check(#pc == 1 and pc[1].args[1] == "Evolve" and pc[1].args[2] == "maple_fox@Rainbow", "p2ui pets: ...then sends PetCare('Evolve', key)")
+		MC.Open("Pets", { Key = "pebble_pup@Golden" })
+		advance(0.3)
+		local small = smallTexts(inv, 18)
 		T.check(#small == 0, "p2ui pets: every text of the Pets page is >= 18 design px", table.concat(small, ", "))
 
 		-- Shop Gems tab
@@ -925,7 +1005,12 @@ local function clientScenarios()
 		check("the Pets page", menu:FindFirstChild("Window_Inventory"))
 		MC.Open("Feed", { Key = "pebble_pup@Golden" })
 		advance(0.8)
-		check("the Feed picker", menu:FindFirstChild("Window_Inventory"))
+		check("the Food Machine list", pg():FindFirstChild("NimbusCare"))
+		local Care = moduleAt("client", "Controllers/CareController")
+		if Care then
+			Care.Close()
+			advance(0.3)
+		end
 		LocalPlayer:SetAttribute("PaidRandomItemsRestricted", false)
 		MC.Open("Shop", { Tab = "Gems" })
 		advance(0.8)

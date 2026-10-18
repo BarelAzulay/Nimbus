@@ -24,8 +24,23 @@
 --   countdown             the pre-match countdown inside the match panel
 --   party                 the portal party panel with its countdown
 --   results               the victory results card
---   menu:<Window>[:<Tab>] Inventory / Pets / Index / Shop / Stats through the OpenPanel remote (Tab = window tab, or
---                         the Index group, e.g. menu:Index:Mythic, menu:Shop:Items)
+--   menu:<Window>[:<Tab>[:<Action>[:<Key>]]] Inventory / Pets / Index / Shop / Stats through the OpenPanel remote
+--                         (Tab = window tab, or the Index group, e.g. menu:Index:Mythic, menu:Shop:Items; Action / Key
+--                         are passed along, e.g. menu:Pets:Pets::<petKey>, menu:Pets:Pets:Evolve:<petKey>; with an
+--                         Action or Key the Phase 4 care profile below is synced first)
+--   home[:coins]          Phase 4: the Home window with the care profile (Prestige 1, the Garden with 4 places, plants,
+--                         the Food Machine, the Training Place) and the plot attributes CollectorCash / IncomePerSecond /
+--                         GardenSlots / CoinPiles; ":coins" = a migrated home (LegacySlots 6, LegacyPrices) with a big
+--                         pile of coins waiting
+--   feed                  Phase 4 (CareController): the Food Machine list (garden pets first, leftovers, a pet ready to
+--                         EVOLVE, a level-100 pet, the machine footer)
+--   garden[:<slot>]       the garden picker for place <slot> (default 3: an empty place)
+--   train[:<key>]         the Training Place window (default: the pet that is training, with its timer and Stop)
+--   evolve                the EVOLVE confirm over the Pets panel
+--   ring[:<view>]         Phase 4 (ArenaController's Champion Ring window): OpenPanel("Ring") with a ring record
+--                         (Best 24); view new (no record yet) | record (default)
+--   petcards              the floating pet cards (PetController's own followers + one sample of every PetCard mode)
+--                         mirrored flat into the ScreenGui WorldMirror
 --   tutorial[:<step>]     the tutorial side panel at step n (default 1)
 --   npc[:<n>]             the NPC dialog of NPC n (default 1); the NPCs are built by the real NpcService
 --   dev                   the owner-only DEV panel (NC_Dev attribute), when DevController exists
@@ -34,8 +49,11 @@
 --                         | team4 (Prestige 1) | newteam | trials[:<level>] | duels | raid | leaders | side (the duel
 --                         invite card, the queue, the open raid card and the event countdown, no window)
 --   battle[:<mode>[:<phase>]]  the Phase 3 battle HUD (BattleController) fed by a real BattleSim stepped at 10 Hz:
---                         mode trial (default) | duel | raid | spectate, phase fight (default) | ready (two SPECIAL
---                         buttons lit) | retreat | result (victory card) | lost (defeat card)
+--                         mode trial (default) | duel | raid | spectate | ring, phase fight (default) | ready (two SPECIAL
+--                         buttons lit) | retreat | result (victory card) | lost (defeat card) | overtime (the duel
+--                         OVERTIME banner); Phase 4 ring phases end in the round number (default 8): fight<n> (the
+--                         ring HUD vs the round's champion team) | next<n> (the next-round card after a win) |
+--                         result<n> (the run's result card) | record<n> (the result card with a new best round)
 --   portal[:<Id>[:<n>[:<studs>]]]  no game HUD: the real LobbyBuilder + PortalService with n players (default 1) on
 --                         the portal pad (default Medium); its world GUIs mirrored flat into the ScreenGui
 --                         WorldMirror: the pixel billboard at its own size, the eye-level countdown face at the
@@ -43,8 +61,9 @@
 --                         walls) over a sketch of the swirl, and the face's canvas at 1:1
 --   homepads[:<tier>]     no game HUD: a Phase 2 home (real LobbyBuilder + HomeBuilder + TycoonCatalog) built half way
 --                         to house tier <tier> (default 2) with its buy pads; every pad sign (pixel billboards at
---                         their own size), the "FREE HOME" signpost of a free plot and the Collector's cash screen
---                         (from 30 studs and at canvas size) mirrored flat into the ScreenGui WorldMirror
+--                         their own size) and the "FREE HOME" signpost of a free plot (from 30 studs and at canvas
+--                         size) mirrored flat into the ScreenGui WorldMirror (the plot attributes CollectorCash /
+--                         CoinPiles are set like TycoonService does)
 --
 -- Every dumped node: absolute screen position/size (top bar inset included), cumulative UIScale, ZIndex, Rotation,
 -- clipping, background colour/transparency, legacy border, UICorner radius in px, UIStrokes (colour, thickness in
@@ -840,6 +859,7 @@ local function tutorialPayload(index)
 	text = text:gsub("{RaidMinutes}", "20") -- (Phase 3: TutorialService fills in BattleCatalog's raid schedule)
 	return {
 		Step = index, Total = #list, Id = step.Id, Title = step.Title, Text = text, Target = step.Target,
+		Chapter = step.Chapter or 1,
 		CompleteOn = step.CompleteOn, Hint = step.Hint, Button = step.Button, Gift = step.Gift == true,
 		Done = false, Completed = false, Skipped = false, Reward = 0,
 	}
@@ -914,13 +934,27 @@ scenario("results", function()
 	advance(4)
 end)
 
-scenario("menu", function(window, tab)
+local careProfile -- (Phase 4, defined below)
+scenario("menu", function(window, tab, action, key)
 	if not window or window == "" then
-		fail("usage: menu:<Inventory|Pets|Index|Shop|Stats>[:<Tab>]")
+		fail("usage: menu:<Inventory|Pets|Index|Shop|Stats>[:<Tab>[:<Action>[:<Key>]]]")
 	end
 	local args = nil
-	if tab and tab ~= "" then
-		args = { Tab = tab, GroupId = tab }
+	if (tab and tab ~= "") or (action and action ~= "") or (key and key ~= "") then
+		args = {}
+		if tab and tab ~= "" then
+			args.Tab = tab
+			args.GroupId = tab
+		end
+		if action and action ~= "" then
+			args.Action = action
+		end
+		if key and key ~= "" then
+			args.Key = key
+		end
+	end
+	if (action and action ~= "") or (key and key ~= "") then
+		careProfile()
 	end
 	toClient("OpenPanel", window, args)
 	advance(2.5)
@@ -1078,7 +1112,7 @@ end)
 
 -- Phase 3 battle HUD (BattleController): a real BattleSim (shared/BattleSim.lua) is stepped at 10 Hz here and its
 -- Start / Snapshot / Events / End go to the client through BattleState, the way BattleService sends them.
---   battle[:<trial|duel|raid|spectate>[:<fight|ready|retreat|result|lost>]]
+--   battle[:<trial|duel|raid|spectate>[:<fight|ready|retreat|result|lost|overtime>]], battle:ring:<fight|next|result|record><round>
 local function battleTeam(count, skip)
 	local PetCatalog = req("shared/PetCatalog", true)
 	local out, kinds = {}, {}
@@ -1129,8 +1163,10 @@ scenario("battle", function(mode, phase)
 	end
 	local me = LocalPlayer.UserId
 	local spectate = mode == "spectate"
-	local simMode = (mode == "raid") and "Raid" or ((mode == "duel" or spectate) and "Duel" or "Trial")
+	local simMode = (mode == "raid") and "Raid" or ((mode == "duel" or spectate) and "Duel" or (mode == "ring" and "Ring" or "Trial"))
 	local setup = { Mode = simMode, Seed = 11, Id = "dump_battle" }
+	local ringRound = tonumber(phase:match("(%d+)$")) or 8
+	phase = phase:gsub("%d+$", "")
 	local myPets = battleTeam(mode == "raid" and 4 or 3)
 	if simMode == "Duel" then
 		setup.Teams = {
@@ -1144,6 +1180,17 @@ scenario("battle", function(mode, phase)
 			{ Owner = 78, Side = 1, Pets = battleTeam(3, 4) },
 		}
 		setup.Boss = "storm_titan"
+	elseif simMode == "Ring" then
+		local BCat = req("shared/BattleCatalog", true)
+		local champ = BCat.ChampionTeam(ringRound, 7)
+		for _, p in ipairs(myPets) do
+			p.Level = p.Level + 12
+			p.Xp, p.XpNext = 300, 4000
+		end
+		myPets[2].Evo = 1
+		setup.Teams = { { Owner = me, Side = 1, Pets = myPets }, champ }
+		setup.Round, setup.Zone, setup.TimeLimit = ringRound, { X = 44, Z = 44 }, 90
+		setup.RingChamp = champ.Champion
 	else
 		setup.Teams = { { Owner = me, Side = 1, Pets = myPets } }
 		setup.Trial = 7
@@ -1164,6 +1211,10 @@ scenario("battle", function(mode, phase)
 	if simMode == "Trial" then
 		d.Trial = { Level = 7, Name = "Ember Ridge", Chapter = 2, MiniBoss = false }
 	end
+	if simMode == "Ring" then
+		local ch = setup.RingChamp or {}
+		d.Ring = { Round = ringRound, Best = 12, Start = 1, Champion = { PetId = ch.PetId, Level = ch.Level, Tier = ch.Tier, Boss = ch.Boss == true, Name = ch.Name } }
+	end
 	if spectate then
 		LocalPlayer:SetAttribute("InBattle", nil)
 	else
@@ -1171,6 +1222,9 @@ scenario("battle", function(mode, phase)
 	end
 	toClient("BattleState", "Start", d, id)
 	local seconds = ({ fight = 6, ready = 5, retreat = 5, result = 9, lost = 9 })[phase] or 6
+	if simMode == "Ring" then
+		seconds = (phase == "fight") and 1.5 or 3
+	end
 	if simMode == "Raid" then
 		seconds = seconds + 6
 	end
@@ -1202,6 +1256,30 @@ scenario("battle", function(mode, phase)
 			advance(0.1)
 		end
 		advance(0.2)
+	end
+	if simMode == "Ring" and (phase == "next" or phase == "result" or phase == "record") then
+		LocalPlayer:SetAttribute("InBattle", id)
+		toClient("BattleState", "End", { BattleId = id, Mode = "Ring", Outcome = "Win", Won = true, Spectator = false, Reason = "Wipe",
+			Rewards = { Won = true, Next = ringRound + 1, Round = ringRound, Cash = phase == "record" and 1284 or 428, Xp = 20 + 6 * ringRound, Tokens = 0, Record = phase == "record", LevelUps = 0 } }, id)
+		advance(phase == "next" and 0.9 or 0.5)
+		if phase == "result" or phase == "record" then
+			toClient("BattleState", "End", { BattleId = id, Mode = "Ring", Outcome = "Left", Won = false, Spectator = false, Reason = "Forfeit", Round = ringRound,
+				Rewards = { Won = false, Final = true, Round = ringRound, Cash = 0, Xp = 0, LevelUps = 2,
+					Run = { Wins = ringRound, Cash = 2571, Xp = 806, Tokens = phase == "record" and 100 or 0, Round = ringRound, Start = 1, Record = phase == "record" and ringRound or nil, Best = 12 } } }, id)
+			advance(0.8)
+		end
+		return
+	end
+	if phase == "overtime" then
+		toClient("BattleState", "Events", { { type = "Overtime", at = 75, perSecond = 0.15 } }, id)
+		for _ = 1, 5 do
+			local evs = sim:Step(0.1)
+			if #evs > 0 then
+				toClient("BattleState", "Events", evs, id)
+			end
+			toClient("BattleState", "Snapshot", denseSnapshot(sim, id), id)
+			advance(0.1)
+		end
 	end
 	if phase == "result" or phase == "lost" then
 		local won = phase == "result"
@@ -1693,7 +1771,12 @@ local function homePadsScene(tier, width, height)
 	end
 	HB.BuildHome(spot, home)
 	HB.SetPads(spot, TC.AvailablePads(home))
-	HB.SetCollector(spot, 12345, 50000)
+	if HB.SetGarden and TC.GardenSlots then
+		pcall(HB.SetGarden, spot, {}, TC.GardenSlots(home))
+	end
+	-- the plot attributes TycoonService writes (coins waiting, the heaps HomeFx draws)
+	spot.Folder:SetAttribute("CollectorCash", 12345)
+	spot.Folder:SetAttribute("CoinPiles", "1=3;2=5F;W=5")
 	advance(0.3)
 	Mock.Context = context
 
@@ -1780,8 +1863,6 @@ local function homePadsScene(tier, width, height)
 	end
 	local claim = free and free.Folder and free.Folder:FindFirstChild("ClaimGui", true)
 	surface(claim, "Claim sign")
-	local cash = spot.Folder:FindFirstChild("CashGui", true)
-	surface(cash, "Collector screen")
 	screen.Parent = pg
 	advance(0.1)
 	return okMetrics
@@ -1930,6 +2011,207 @@ end
 ----------------------------------------------------------------------
 -- boot
 ----------------------------------------------------------------------
+----------------------------------------------------------------------
+-- Phase 4 (careui): the care profile and the Home / Food Machine / garden picker / Training Place / ring / pet card
+-- scenarios. careProfile(variant) syncs a profile in the middle of Phase 4 and sets the plot attributes.
+----------------------------------------------------------------------
+local CARE = {}
+
+function CARE.ids()
+	local PetCatalog = req("shared/PetCatalog")
+	local by = {}
+	for _, def in ipairs(PetCatalog.Pets or {}) do
+		if not def.EventOnly and def.Rarity ~= "Secret" then
+			by[def.Rarity] = by[def.Rarity] or {}
+			table.insert(by[def.Rarity], def.Id)
+		end
+	end
+	local function pick(r, i)
+		return by[r] and by[r][i] or (by.Common and by.Common[1])
+	end
+	return {
+		Garden1 = pick("Common", 1), Garden2 = pick("Uncommon", 1), Ready = pick("Uncommon", 2),
+		Epic = pick("Epic", 1), Training = pick("Rare", 1), Legend = pick("Legendary", 1), Follower = pick("Common", 2),
+	}
+end
+
+function CARE.plot(attrs)
+	local lobby = workspace:FindFirstChild("NimbusLobby")
+	if not lobby then
+		lobby = Instance.new("Folder")
+		lobby.Name = "NimbusLobby"
+		lobby.Parent = workspace
+	end
+	local plot = lobby:FindFirstChild("Spot_03")
+	if not plot then
+		plot = Instance.new("Folder")
+		plot.Name = "Spot_03"
+		plot:SetAttribute("SpotIndex", 3)
+		plot.Parent = lobby
+	end
+	for k, v in pairs(attrs) do
+		plot:SetAttribute(k, v)
+	end
+	LocalPlayer:SetAttribute(Config.Attr.SpotIndex, 3)
+	return plot
+end
+
+function careProfile(variant)
+	local ids = CARE.ids()
+	local snap = snapshot()
+	for _, id in pairs(ids) do
+		snap.Pets[id] = math.max(snap.Pets[id] or 0, 1)
+	end
+	snap.Equipped = { ids.Epic, ids.Follower }
+	local legacy = variant == "coins"
+	snap.Home = {
+		Level = legacy and 27 or 21,
+		Prestige = 1,
+		Stations = { Garden = 3, Press1 = 6, Press2 = 3, Press3 = 1, Collector = 2, Kitchen = 2, Gym = 2, Vault = 1, House = 2, DecorLamps = 1 },
+		Garden = { ids.Garden1, ids.Garden2, "", "" },
+		Gym = {},
+		CollectorCash = legacy and 48210 or 1840,
+		LegacySlots = legacy and 6 or nil,
+		LegacyPrices = legacy or nil,
+	}
+	snap.Cash = 48250
+	snap.Gems = 320
+	snap.Food = { Feast = 3, Snack = 1 }
+	snap.PetLevels = {
+		[ids.Garden1] = { Level = 12, Xp = 300 },
+		[ids.Garden2] = { Level = 9, Xp = 40 },
+		[ids.Ready] = { Level = 20, Xp = 120 },
+		[ids.Epic] = { Level = 57, Xp = 9000 },
+		[ids.Training] = { Level = 7, Xp = 0 },
+		[ids.Legend] = { Level = 100, Xp = 0 },
+	}
+	snap.PetGrowth = {
+		[ids.Epic] = { Evo = 1, Speed = 2, Physique = 3 },
+		[ids.Training] = { Physique = 2, Job = { Stat = "Physique", Ends = os.time() + 130, Rank = 3, Slot = 1, From = "Follow", Paid = 2700 } },
+		[ids.Legend] = { Evo = 2, Speed = 10, Physique = 6, Ability = 4, Defense = 1 },
+	}
+	snap.Ring = { Best = (variant == "new") and 0 or 24, Runs = (variant == "new") and 0 or 9 }
+	snap.Tutorial = { Step = 22, Done = true, Gifted = true }
+	LocalPlayer:SetAttribute(Config.Attr.Cash, snap.Cash)
+	LocalPlayer:SetAttribute(Config.Attr.Gems, snap.Gems)
+	CARE.plot({
+		CollectorCash = snap.Home.CollectorCash,
+		IncomePerSecond = legacy and 412.6 or 38.5,
+		GardenSlots = legacy and 6 or 4,
+		HomeLevel = snap.Home.Level,
+		Prestige = 1,
+		CoinPiles = legacy and "1=5;2=4*;W=5" or "1=3;2=2",
+	})
+	toClient("ProfileSync", snap)
+	advance(0.5)
+	return ids, snap
+end
+
+scenario("home", function(variant)
+	careProfile(variant == "coins" and "coins" or nil)
+	toClient("OpenPanel", "Home", {})
+	advance(2.5)
+end)
+
+scenario("feed", function()
+	careProfile()
+	toClient("OpenPanel", "Pets", { Tab = "Pets", Action = "Feed" })
+	advance(3)
+end)
+
+scenario("garden", function(slot)
+	careProfile()
+	toClient("OpenPanel", "Pets", { Action = "Garden", Slot = tonumber(slot) or 3 })
+	advance(3)
+end)
+
+scenario("train", function(key)
+	local ids = careProfile()
+	toClient("OpenPanel", "Train", { Key = (key and key ~= "") and key or ids.Training })
+	advance(3)
+end)
+
+scenario("evolve", function()
+	local ids = careProfile()
+	toClient("OpenPanel", "Pets", { Tab = "Pets", Key = ids.Ready, Action = "Evolve" })
+	advance(3)
+end)
+
+scenario("ring", function(view)
+	careProfile(view == "new" and "new" or nil)
+	toClient("OpenPanel", "Ring", {})
+	advance(2.5)
+end)
+
+----------------------------------------------------------------------
+-- petcards: the floating pet cards of PetController + every PetCard mode, mirrored
+----------------------------------------------------------------------
+local function petCardsScene(width, height)
+	local PetCatalog = req("shared/PetCatalog")
+	local function firstOf(rarity, skip)
+		for _, def in ipairs(PetCatalog.Pets) do
+			if def.Rarity == rarity and def.Id ~= skip and not def.EventOnly then
+				return def.Id
+			end
+		end
+	end
+	local common, epic, legend = firstOf("Common"), firstOf("Epic"), firstOf("Legendary")
+	local snap = snapshot()
+	snap.Pets[common] = 1
+	snap.Pets[epic] = 1
+	snap.Pets[legend] = 1
+	snap.Equipped = { common, epic, legend }
+	snap.PetLevels = { [common] = { Level = 20, Xp = 300 }, [epic] = { Level = 57, Xp = 9000 }, [legend] = { Level = 100, Xp = 0 } }
+	snap.PetGrowth = { [epic] = { Evo = 1 }, [legend] = { Evo = 2 } }
+	toClient("ProfileSync", snap)
+	LocalPlayer:SetAttribute("EquippedPets", common .. "," .. epic .. "," .. legend)
+	advance(4)
+	local PC = req("client/Controllers/PetController")
+	local PetCard = req("client/UI/PetCard")
+	local pg = LocalPlayer:WaitForChild("PlayerGui")
+	local screen = make("ScreenGui", { Name = "WorldMirror", IgnoreGuiInset = true, ResetOnSpawn = false, ZIndexBehavior = Enum.ZIndexBehavior.Sibling })
+	local vp = Mock.Viewport
+	local x0 = 150 -- right of the menu column
+	local x, y, rowH = x0, math.floor(vp.Y * 0.30), 0
+	local function place(w, h, caption)
+		local cw = max(w, utf8len(caption) * 9 + 12)
+		if x > x0 and x + cw > vp.X - 24 then
+			x, y, rowH = x0, y + rowH + 50, 0
+		end
+		local px, py = x, y
+		x = x + cw + 28
+		rowH = max(rowH, h)
+		return px, py
+	end
+	local cards = PC.GetCards and PC.GetCards() or {}
+	for _, c in ipairs(cards) do
+		local w, h = canvasOf(c.Gui)
+		local px, py = place(w, h, tostring(c.Key):sub(1, 12))
+		mirrorCell(screen, c.Gui, px, py, 1, tostring(c.Key):sub(1, 12))
+	end
+	local samples = {}
+	local function sample(mode, caption, fn)
+		local card = PetCard.New(nil, mode, 2)
+		fn(card)
+		samples[#samples + 1] = card
+		local w, h = canvasOf(card.Gui)
+		local px, py = place(w, h, caption)
+		mirrorCell(screen, card.Gui, px, py, 1, caption)
+	end
+	sample("Unit", "Unit", function(c) c:SetLevel(34, 1, false); c:SetHp(0.62); c:SetSpecial(1, true); c:SetXp(0.4) end)
+	sample("Ally", "Ally", function(c) c:SetLevel(12, 0, false); c:SetHp(0.8) end)
+	sample("Enemy", "Enemy", function(c) c:SetLevel(28, 0, false); c:SetHp(0.3) end)
+	sample("Training", "Training", function(c) c:SetLevel(12, 0, false); c:SetXp(0.7); c:SetTimer(0.4, "2:10") end)
+	sample("Other", "Other", function(c) c:SetLevel(7, 1, false) end)
+	sample("Garden", "Garden", function(c) c:SetLevel(99, 2, false); c:SetXp(0.95) end)
+	sample("Follower", "Ready", function(c) c:SetLevel(50, 1, true); c:SetXp(0) end)
+	screen.Parent = pg
+	advance(0.1)
+end
+scenario("petcards", function()
+	petCardsScene()
+end)
+
 local function boot(width, height, touch, keepTitle)
 	Config = req("shared/Config")
 	local okMetrics, why = installMetrics()
@@ -2024,7 +2306,7 @@ else
 			fail("unknown scenario '" .. spec .. "'. Known: gallery, portal, " .. table.concat(ORDER, ", "))
 		end
 		local metrics = boot(width, height, ARGS.touch == true, name == "title")
-		fn(fields[2], fields[3])
+		fn(fields[2], fields[3], fields[4], fields[5])
 		data = walk()
 		data.metrics = metrics and "font" or "mock"
 	end

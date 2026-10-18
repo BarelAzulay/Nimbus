@@ -66,6 +66,10 @@ Config.Attr = {
 	-- v3 (see ARCHITECTURE_V3.md). Cash and Gems arrive with the tycoon phase; the HUD shows them only once set.
 	Cash = "Cash", -- number, tycoon money (server writes)
 	Gems = "Gems", -- number, premium currency (server writes)
+	-- Phase 4 (ARCHITECTURE_V3.md "Phase 4 build contract", section 5.3)
+	EquippedInfo = "EquippedInfo", -- "23:1,5:0" level:evolution stage per EquippedPets entry (PetService writes)
+	HomePortal = "HomePortal", -- "x,y,z,yaw,closesAt" while the owner's home portal is open, absent when closed (TycoonService)
+	PortalArrived = "PortalArrived", -- server time of the last arrival through the home portal (TycoonService)
 }
 
 Config.Remotes = {
@@ -97,13 +101,13 @@ Config.Remotes = {
 	"IndexClaim", -- (groupId:string)  v3: claim a completed Pet Index group reward
 	"DevCommand", -- (command:string, arg:any)  developer tools; the server only obeys allowed players (Config.Dev)
 	-- Phase 2 (ARCHITECTURE_V3.md "Phase 2 build contract")
-	"HomeAction", -- (action:string, arg:any)  Upgrade / GardenSet / Collect / Prestige / GoHome
-	"PetCare", -- (action:string, a:any, b:any)  Cook / Feed / GymSet
+	"HomeAction", -- (action:string, arg:any)  Upgrade / GardenSet / Collect / Prestige / GoHome (Phase 4: GoHome opens the home portal)
+	"PetCare", -- (action:string, a:any, b:any)  Phase 4: Feed (key, opts) / Evolve (key) / Train (key, stat) / TrainStop (key); Cook / GymSet are retired (one toast)
 	"Fusion", -- (action:string, a:any, b:any)  Upgrade / Mix
 	-- Phase 3 (ARCHITECTURE_V3.md "Phase 3 build contract")
 	"BattleState", -- server -> client (kind:string, payload:table)  Start / Snapshot / Events / End
 	"BattleCommand", -- (action:string, a:any)  Attack / Retreat / Special / Forfeit
-	"BattleRequest", -- (action:string, a:any, b:any)  TeamSet / TeamSelect / Trial / Challenge / ChallengeReply / Queue / Unqueue / JoinRaid / LeaveRaid
+	"BattleRequest", -- (action:string, a:any, b:any)  TeamSet / TeamSelect / Trial / Challenge / ChallengeReply / Queue / Unqueue / JoinRaid / LeaveRaid / Ring (Phase 4: startRound)
 	"ArenaState", -- server -> client (state:table)  next event, countdown, raid status, leaderboard
 }
 

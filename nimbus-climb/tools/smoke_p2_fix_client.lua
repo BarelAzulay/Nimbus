@@ -20,13 +20,13 @@
 --                       other signs; walking, a sign sliding under the HUD is gone by the next layout pass (hudWalk)
 --   client_p2fix_signs_mobile  (phone world) the same HUD walk on an 844x390 touch phone: the raised vitals card and
 --                       the RUN / DASH buttons as well
---   client_p2fix_pets   garden / gym pets are built under a per-frame budget (the review measured 13 PetBuilder
---                       builds in ONE frame, ~100 ms, when a full neighbour home came into range): a full home
---                       (Garden L8 with 8 pets, Gym L5 with 5) fills in over several frames, never more than
---                       3 models in a frame, a first-time build alone in its frame; with a simulated CPU clock
+--   client_p2fix_pets   garden / training pets are built under a per-frame budget (the review measured 13 PetBuilder
+--                       builds in ONE frame, ~100 ms, when a full neighbour home came into range): a full Phase 4
+--                       home (12 garden places, Training Place L5: 17 pets) fills in over several frames, never more
+--                       than 3 models in a frame, a first-time build alone in its frame; with a simulated CPU clock
 --                       (5 ms per PetBuilder.Build) only one build fits the 4 ms frame budget; pets of a home that
---                       goes out of range wait in a pool (<= 16 models, unparented) and come back from it without
---                       a single new build, on their own cushions / targets; nothing is left behind
+--                       goes out of range wait in a pool (<= 20 models, unparented) and come back from it without
+--                       a single new build, on their own cushions / mats; nothing is left behind
 -- Plain Lua 5.1 syntax only.
 
 local T = SmokeCommon.T
@@ -843,24 +843,27 @@ S.client_p2fix_pets = guarded("client_p2fix_pets", function()
 			T.warn("HomeFx fix: no camera in the client world, pet budget skipped")
 			return
 		end
-		-- 13 different pets (from the end of the catalog: keys no other scenario showed in a home yet)
+		-- 17 different pets (from the end of the catalog: keys no other scenario showed in a home yet)
 		local ids = {}
 		for i = #PC.Pets, 1, -1 do
 			local d = PC.Pets[i]
-			if type(d) == "table" and type(d.Id) == "string" and #ids < 13 then
+			if type(d) == "table" and type(d.Id) == "string" and #ids < 17 then
 				ids[#ids + 1] = d.Id
 			end
 		end
-		if #ids < 13 then
-			T.warn("HomeFx fix: fewer than 13 catalog pets, pet budget skipped")
+		if #ids < 17 then
+			T.warn("HomeFx fix: fewer than 17 catalog pets, pet budget skipped")
 			return
 		end
-		local garden, gym = {}, {}
-		for i = 1, 8 do
+		local garden, gym, valid = {}, {}, {}
+		for i = 1, 12 do
 			garden[#garden + 1] = i .. "=" .. ids[i]
+			valid[i] = ids[i]
 		end
+		local ends = math.floor(workspace:GetServerTimeNow()) + 600
+		local skills = { "Speed", "Physique", "Ability", "Defense", "Speed" }
 		for i = 1, 5 do
-			gym[#gym + 1] = i .. "=" .. ids[8 + i]
+			gym[#gym + 1] = i .. "=" .. ids[12 + i] .. ":" .. skills[i] .. ":" .. ends
 		end
 		local base = CFrame.new(-5600, 300, -5600)
 		local function makeHome(index, cf)
@@ -870,10 +873,14 @@ S.client_p2fix_pets = guarded("client_p2fix_pets", function()
 			local spot = { Index = index, PlotCFrame = cf, PlotSize = TC.PlotSize, Center = cf.Position, Folder = f }
 			HB.PreparePlot(spot)
 			HB.SetOwner(spot, neighbour)
-			-- an endgame neighbour: Garden L8 (8 places) and Gym L5 (5 places), all taken
-			HB.BuildHome(spot, { Stations = { Press1 = 10, Collector = 5, House = 4, Garden = 8, Gym = 5, Kitchen = 4, Vault = 4 }, Prestige = 1 })
+			-- an endgame neighbour: 12 open garden places and the Training Place L5 (5 mats), all taken
+			HB.BuildHome(spot, { Stations = { Press1 = 10, Collector = 5, House = 4, Garden = 8, Gym = 5, Kitchen = 4, Vault = 4 }, Prestige = 9 })
+			if type(HB.SetGarden) == "function" then
+				HB.SetGarden(spot, valid, 12)
+			end
+			f:SetAttribute("GardenSlots", 12)
 			f:SetAttribute("GardenPets", table.concat(garden, ";"))
-			f:SetAttribute("GymPets", table.concat(gym, ";"))
+			f:SetAttribute("TrainingPets", table.concat(gym, ";"))
 			return spot
 		end
 		local far = base * CFrame.new(0, 60, -600)
@@ -941,23 +948,23 @@ S.client_p2fix_pets = guarded("client_p2fix_pets", function()
 			}
 		end
 
-		-- 1. the first approach to home A: 13 pets (first-time builds) fill in over frames, one cold build per frame
+		-- 1. the first approach to home A: 17 pets (first-time builds) fill in over frames, one cold build per frame
 		cam.CFrame = CFrame.lookAt((base * CFrame.new(0, 40, -70)).Position, base.Position)
-		local r1 = watch(a, 13, 120)
+		local r1 = watch(a, 17, 160)
 		onA = countAt(a)
 		local function info(label, r)
 			T.info(string.format("HomeFx fix: %s: %d frames, at most %d a frame, %d built (%d first-time), %d from the pool", label, r.Frames, r.Worst, r.Builds, r.Cold, r.Hits))
 		end
 		info("first approach to home A", r1)
-		T.check(r1.Reached and onA == 13, "HomeFx fix: a full neighbour home (Garden L8 + Gym L5) shows all 13 of its pets", onA .. " pets after " .. r1.Frames .. " frames")
-		T.check(r1.Worst <= 3 and r1.Frames >= 5, "HomeFx fix: ...built over several frames, never more than 3 in one (the review saw 13 in one frame)",
+		T.check(r1.Reached and onA == 17, "HomeFx fix: a full neighbour home (12 garden places + Training Place L5) shows all 17 of its pets", onA .. " pets after " .. r1.Frames .. " frames")
+		T.check(r1.Worst <= 3 and r1.Frames >= 6, "HomeFx fix: ...built over several frames, never more than 3 in one (the review saw 13 in one frame)",
 			"at most " .. r1.Worst .. " in a frame, " .. r1.Frames .. " frames")
 		T.check(r1.HasStats and r1.ColdBad == 0 and (r1.Cold == 0 or r1.ColdAlone == r1.Cold), "HomeFx fix: ...a first-time build is alone in its frame (Stats().PetColdBuilds)",
 			r1.Cold .. " first-time builds, " .. r1.ColdAlone .. " alone, " .. r1.ColdBad .. " shared a frame")
 		local placedOk = true
 		local gardenStation = a.Folder:FindFirstChild("Station_Garden", true)
 		local pf = petsFolder()
-		for slot = 1, 8 do
+		for slot = 1, 12 do
 			local att = gardenStation and gardenStation:FindFirstChild("Spot" .. slot, true)
 			local found = false
 			for _, m in ipairs(pf and pf:GetChildren() or {}) do
@@ -974,7 +981,7 @@ S.client_p2fix_pets = guarded("client_p2fix_pets", function()
 		end
 		T.check(placedOk, "HomeFx fix: ...each Garden pet on its own cushion")
 
-		-- 2. home B with the same 13 pets while A still shows them: no pooled model to take, every one a build. A
+		-- 2. home B with the same 17 pets while A still shows them: no pooled model to take, every one a build. A
 		-- simulated CPU clock (5 ms per PetBuilder.Build, reset every frame) shows the time budget: one per frame
 		local spent, frameAt = 0, -1
 		os.clock = function()
@@ -999,13 +1006,13 @@ S.client_p2fix_pets = guarded("client_p2fix_pets", function()
 		-- frames: the next os.clock() read is a frame later, so the clock never runs backwards for anyone.)
 		PB.Build = realBuild
 		os.clock = realClock
-		local r3 = watch(b, 13, 120)
+		local r3 = watch(b, 17, 160)
 		info("home B at normal speed", r3)
 		onB = countAt(b)
-		T.check(r3.Reached and onB == 13 and r3.Worst == 3, "HomeFx fix: ...and at a normal speed 3 a frame (no more) until all 13 stand", onB .. " pets, at most " .. r3.Worst .. " in a frame")
-		T.check(countAt(a) == 13, "HomeFx fix: ...home A keeps its pets meanwhile", tostring(countAt(a)))
+		T.check(r3.Reached and onB == 17 and r3.Worst == 3, "HomeFx fix: ...and at a normal speed 3 a frame (no more) until all 17 stand", onB .. " pets, at most " .. r3.Worst .. " in a frame")
+		T.check(countAt(a) == 17, "HomeFx fix: ...home A keeps its pets meanwhile", tostring(countAt(a)))
 
-		-- 3. walking away: both homes put their pets away into the pool (<= 16 models, unparented)
+		-- 3. walking away: both homes put their pets away into the pool (<= 20 models, unparented)
 		local away = base * CFrame.new(0, 60, -700)
 		cam.CFrame = CFrame.lookAt(away.Position, away.Position + Vector3.new(0, 0, -1))
 		KC.advance(1.5)
@@ -1021,15 +1028,15 @@ S.client_p2fix_pets = guarded("client_p2fix_pets", function()
 			end
 		end
 		T.check(left == 0 and countAt(a) == 0 and countAt(b) == 0, "HomeFx fix: homes out of range put their pets away", left .. " test pets still in HomePets")
-		T.check(n(st3, "PetPool") >= 13 and n(st3, "PetPool") <= 16, "HomeFx fix: ...into a small pool (16 models at most, the oldest destroyed first)", "pool " .. n(st3, "PetPool"))
+		T.check(n(st3, "PetPool") >= 17 and n(st3, "PetPool") <= 20, "HomeFx fix: ...into a small pool (20 models at most, the oldest destroyed first)", "pool " .. n(st3, "PetPool"))
 
 		-- 4. walking back to home A: its pets come back from the pool (no new build), on their cushions
 		cam.CFrame = CFrame.lookAt((base * CFrame.new(0, 40, -70)).Position, base.Position)
-		local r4 = watch(a, 13, 120)
+		local r4 = watch(a, 17, 160)
 		info("back to home A", r4)
-		T.check(r4.Reached and countAt(a) == 13 and r4.Worst <= 3, "HomeFx fix: walking back, home A's 13 pets return (at most 3 a frame)", countAt(a) .. " pets, at most " .. r4.Worst .. " in a frame")
-		-- (both homes show the same 13 pets: whichever 16 models the pool kept, every one home A needs is there)
-		T.check(r4.HasStats and r4.Hits >= 13 and r4.Builds == 0, "HomeFx fix: ...re-parented from the pool instead of built again",
+		T.check(r4.Reached and countAt(a) == 17 and r4.Worst <= 3, "HomeFx fix: walking back, home A's 17 pets return (at most 3 a frame)", countAt(a) .. " pets, at most " .. r4.Worst .. " in a frame")
+		-- (both homes show the same 17 pets: whichever 20 models the pool kept, every one home A needs is there)
+		T.check(r4.HasStats and r4.Hits >= 17 and r4.Builds == 0, "HomeFx fix: ...re-parented from the pool instead of built again",
 			r4.Hits .. " from the pool, " .. r4.Builds .. " built")
 		local st4 = stats()
 		T.check(n(st4, "PetFrameMost") <= 3 and n(st4, "PetFrameMost") >= 1, "HomeFx fix: Stats().PetFrameMost: never more than 3 pets placed in one frame", tostring(st4.PetFrameMost))

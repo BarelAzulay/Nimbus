@@ -11,8 +11,20 @@
 --                     elements on hits (x1.5 / x0.75), synergy in the sim, results of trials / duels / raids (timeouts,
 --                     forfeits, shares), boss telegraphs that a retreating team escapes, minion waves, enrage, join /
 --                     leave, performance of a full raid (8 x 4 pets + boss + waves) at 10 Hz
+--   p4battle_catalog  Phase 4 BattleCatalog: Zones / TimeLimits Ring, Training, the loss-XP gate (LossShare, RealLoss,
+--                     LossXp), UnitStats extras (Evo / Train / Boost: each training effect, nothing = the Phase 3 numbers
+--                     bit for bit, the cached def untouched), UnitPower with Defense, TeamPower gains, ExpectedDps /
+--                     BossHp / AverageMaxHp honest, Trials 1-30 unchanged, Ring data, ChampionTeam (easy rounds, spec
+--                     shape, deterministic per seed in any call order, power never drops to round 120, no ceiling, bands,
+--                     the giant boss every 10th round, Boost from rounds 38-50, junk), RingRewards
+--   p4battle_sim      Phase 4 BattleSim: Modes + Ring (describe, unit info evo / boss / crowned / xp, timeout = loss,
+--                     a single level-1 pet wins round 1), entry Boost / Evo / Train in the units, Defense in applyDamage
+--                     (and after the RETREAT halving), the meter rate, the raid boss with trained teams, overtime, the
+--                     duel hit cap and the double knock-out rule (no stalls, no one-shots, no draws), determinism,
+--                     performance
 --   p3battle_balance  tools/sim_battle.lua as a library: a short balance subset (mirror fairness, trial 1 for a day-1
---                     team, the maxed team at trial 30, a solo raid with the scripted dodger)
+--                     team, the maxed team at trial 30, a solo raid with the scripted dodger; Phase 4: ring rounds 1-3 and
+--                     a Day-1 record, a trained mirror duel)
 -- White-box: a few checks reach into battle.units / battle.teams (same Lua state) to set a meter or an HP value.
 -- Plain Lua 5.1 syntax only.
 
@@ -818,6 +830,468 @@ S.p3battle_sim = guarded("p3battle_sim", function()
 end)
 
 ----------------------------------------------------------------------------------------------------
+-- p4battle_catalog (Phase 4: training, evolution, the loss-XP gate, the Champion Ring data and solver)
+----------------------------------------------------------------------------------------------------
+-- the Phase 3 RecommendedPower of trials 1-30: NPC pets never evolve or train, so these never move
+local TRIAL_POWER = { 2, 18, 22, 24, 36, 36, 41, 48, 56, 78, 78, 93, 112, 136, 180, 188, 225, 268, 313, 429, 430, 509, 609, 726, 981, 1020, 1208, 1430, 1715, 2300 }
+
+local function allRanks(r)
+	return { Speed = r, Physique = r, Ability = r, Defense = r }
+end
+
+S.p4battle_catalog = guarded("p4battle_catalog", function()
+	local BC, err = loadModule("BattleCatalog")
+	if not T.check(BC ~= nil, "BattleCatalog loads", err) then
+		return
+	end
+	local PC = loadModule("PetCatalog")
+	local D = BC.Damage
+
+	-- zones, time limits, training data, the loss-XP gate
+	T.check(BC.Zones.Ring and BC.Zones.Ring.X == 44 and BC.Zones.Ring.Z == 44 and BC.TimeLimits.Ring == 90 and BC.Ring.TimeLimit == 90, "Zones.Ring = 44 x 44, TimeLimits.Ring = Ring.TimeLimit = 90")
+	T.check(BC.Zones.Trial.X == 56 and BC.Zones.Duel.X == 44 and BC.Zones.Raid.X == 96 and BC.TimeLimits.Trial == 120 and BC.TimeLimits.Duel == 120 and BC.TimeLimits.Raid == 330, "the Phase 3 zones and time limits are unchanged")
+	local TR = BC.Training
+	T.check(TR.MaxRank == 10 and TR.Speed == 0.04 and TR.Physique == 0.05 and TR.Ability == 0.04 and TR.AbilityMeter == 0.04 and TR.Defense == 0.03, "Training = { MaxRank 10, Speed .04, Physique .05, Ability .04, AbilityMeter .04, Defense .03 }")
+	local skillIds = {}
+	for i, sk in ipairs(BC.TrainingSkills) do
+		skillIds[i] = sk.Id
+		T.check(type(sk.Name) == "string" and type(sk.Text) == "string" and #sk.Text > 5, "TrainingSkills[" .. i .. "] has Id, Name, Text")
+	end
+	T.eq(table.concat(skillIds, ","), "Speed,Physique,Ability,Defense", "TrainingSkills order: Speed, Physique, Ability, Defense")
+	local R = BC.TrialRewardRules
+	T.check(abs(R.LossShare - 1 / 3) < 1e-12 and R.LossMinSeconds == 20 and R.LossMinDamage == 0.2, "TrialRewardRules: LossShare 1/3, LossMinSeconds 20, LossMinDamage 0.2")
+	T.check(R.Xp.Base == 20 and R.Xp.PerLevel == 6 and R.Tokens.Base == 10, "the trial win rewards are unchanged")
+	T.check(BC.RealLoss(20, 0) and BC.RealLoss(5, 0.2) and not BC.RealLoss(19.9, 0.19) and not BC.RealLoss(nil, nil) and not BC.RealLoss("x", "y"), "RealLoss: >= 20 s or >= 20% of the enemy HP dealt")
+	T.check(BC.LossXp(26, 25, 0) == 9 and BC.LossXp(200, 3, 0.5) == 67 and BC.LossXp(200, 3, 0.1) == 0 and BC.LossXp(0, 60, 1) == 0 and BC.LossXp(nil, 60, 1) == 0, "LossXp = a third of the win XP for a real loss, 0 otherwise")
+
+	-- UnitStats extras: none = the Phase 3 numbers exactly
+	local t = T.tally("UnitStats with no extras / empty extras / an untrained entry = the Phase 3 numbers bit for bit")
+	for _, id in ipairs({ "mallow_kitten", "storm_tabby", "aurora_fox", "stormfang", "honey_bunny" }) do
+		for _, lv in ipairs({ 1, 20, 50, 100 }) do
+			local a = BC.UnitStats(id, lv)
+			local b = BC.UnitStats(id, lv, nil, {})
+			local c = BC.UnitStats({ PetId = id, Level = lv })
+			local same = a.MaxHp == b.MaxHp and a.Hit == b.Hit and a.Interval == b.Interval and a.SpecialPower == b.SpecialPower and a.MaxHp == c.MaxHp and a.Hit == c.Hit and a.Interval == c.Interval
+			t:case(same and a.Defense == 0 and a.MeterRate == 1 and a.Evo == 0 and a.Boost == 1 and a.Train == nil, id .. " L" .. lv)
+		end
+	end
+	t:report()
+	local stats = PC.GetStats("storm_tabby", 10)
+	local base = BC.UnitStats("storm_tabby", 10)
+	T.near(base.MaxHp, stats.Health * D.HpScale, 1e-6, "UnitStats MaxHp still = Health x HpScale (GetStats untouched)")
+
+	-- evolution
+	local e1 = BC.UnitStats("storm_tabby", 20, nil, { Evo = 1 })
+	local base20 = BC.UnitStats("storm_tabby", 20)
+	T.check(e1.Evo == 1 and abs(e1.MaxHp / base20.MaxHp - 1.25) < 1e-9 and abs(e1.Hit / base20.Hit - 1.25) < 1e-9 and abs(e1.SpecialPower / base20.SpecialPower - 1.25) < 1e-9 and e1.Interval == base20.Interval, "Evolved I: x1.25 HP, hits and special (interval unchanged)")
+	local epic = BC.UnitStats("aurora_fox", 50, nil, { Evo = 2 })
+	local epicBase = BC.UnitStats("aurora_fox", 50)
+	T.check(epic.Evo == 2 and abs(epic.MaxHp / epicBase.MaxHp - 1.5) < 1e-9 and abs(epic.Hit / epicBase.Hit - 1.5) < 1e-9, "Evolved II (an Epic pet): x1.5")
+	T.check(BC.UnitStats("mallow_kitten", 60, nil, { Evo = 2 }).Evo == 1 and BC.UnitStats("mallow_kitten", 60, nil, { Evo = 9 }).Evo == 1 and BC.UnitStats("mallow_kitten", 60, nil, { Evo = -3 }).Evo == 0 and BC.UnitStats("mallow_kitten", 60, nil, { Evo = "x" }).Evo == 0, "a Common counts at most Evolved I; junk stages count 0")
+	T.near(BC.UnitPower({ PetId = "storm_tabby", Level = 20, Evo = 1 }) / BC.UnitPower("storm_tabby", 20), 1.25, 0.03, "UnitPower x1.25 for Evolved I (read from the entry table)")
+
+	-- training effects (one skill at a time), the cached def never mutated
+	local def = PC.Get("storm_tabby")
+	local speedBefore = def.Stats.Speed
+	local sp = BC.UnitStats("storm_tabby", 10, nil, { Train = { Speed = 10 } })
+	T.check(abs(base.Interval / sp.Interval - 1.4) < 1e-9 and sp.MaxHp == base.MaxHp and sp.Hit == base.Hit and abs(sp.Dps / base.Dps - 1.4) < 1e-9 and def.Stats.Speed == speedBefore, "Attack Speed rank 10: interval / 1.4 (def.Stats.Speed untouched)")
+	local ph = BC.UnitStats("storm_tabby", 10, nil, { Train = { Physique = 4 } })
+	T.check(abs(ph.MaxHp / base.MaxHp - 1.2) < 1e-9 and ph.SpecialPower == base.SpecialPower and ph.Hit == base.Hit, "Physique rank 4: max HP x1.2, the special does not grow with it")
+	local ab = BC.UnitStats("storm_tabby", 10, nil, { Train = { Ability = 5 } })
+	T.check(abs(ab.SpecialPower / base.SpecialPower - 1.2) < 1e-9 and abs(ab.MeterRate - 1.2) < 1e-9 and ab.Hit == base.Hit and ab.MaxHp == base.MaxHp, "Ability rank 5: special x1.2, MeterRate 1.2")
+	local de = BC.UnitStats("storm_tabby", 10, nil, { Train = { Defense = 10 } })
+	T.check(abs(de.Defense - 0.3) < 1e-9 and de.MaxHp == base.MaxHp, "Defense rank 10: Defense 0.30 (30% cap)")
+	T.check(abs(BC.UnitStats("storm_tabby", 10, nil, { Train = { Defense = 25, Speed = 10.7 } }).Defense - 0.3) < 1e-9 and BC.UnitStats("storm_tabby", 10, nil, { Train = { Defense = -2, Physique = "x" } }).Train == nil, "ranks are whole numbers clamped to 0..10 (junk counts 0)")
+	local flat = BC.UnitStats("storm_tabby", 10, nil, { Evo = 1, Speed = 3, Physique = 3, Ability = 3, Defense = 3, Job = { Stat = "Speed" } })
+	local nested = BC.UnitStats("storm_tabby", 10, nil, { Evo = 1, Train = allRanks(3) })
+	T.check(flat.MaxHp == nested.MaxHp and flat.Interval == nested.Interval and flat.Defense == nested.Defense and flat.Evo == 1, "a flat PetGrowth record works as extras too")
+	local entry = { PetId = "storm_tabby", Level = 10, Evo = 1, Train = allRanks(3) }
+	local fromEntry = BC.UnitStats(entry)
+	T.check(fromEntry.MaxHp == nested.MaxHp and fromEntry.Hit == nested.Hit and fromEntry.Train.Speed == 3, "extras are read from an entry table")
+	local over = BC.UnitStats(entry, nil, nil, { Evo = 0 })
+	T.check(over.Evo == 0 and over.Train.Speed == 3, "explicit extras win over the entry's own fields")
+	-- Boost (ring champions)
+	local bo = BC.UnitStats("cloudy_dragon", 50, "Rainbow", { Boost = 3 })
+	local boBase = BC.UnitStats("cloudy_dragon", 50, "Rainbow")
+	T.check(abs(bo.MaxHp / boBase.MaxHp - 3) < 1e-9 and abs(bo.Hit / boBase.Hit - 3) < 1e-9 and abs(bo.SpecialPower / boBase.SpecialPower - 3) < 1e-9 and bo.Boost == 3, "Boost 3: HP, hits and the special x3")
+	T.check(BC.UnitStats("cloudy_dragon", 50, nil, { Boost = 0.5 }).Boost == 1 and BC.UnitStats("cloudy_dragon", 50, nil, { Boost = 0 / 0 }).Boost == 1 and BC.UnitStats("cloudy_dragon", 50, nil, { Boost = math.huge }).MaxHp < math.huge, "a Boost <= 1 or junk is ignored; a huge Boost stays finite")
+	T.near(BC.UnitPower({ PetId = "cloudy_dragon", Level = 50, Tier = "Rainbow", Boost = 3 }) / BC.UnitPower("cloudy_dragon", 50, "Rainbow"), 3, 0.01, "UnitPower x Boost")
+
+	-- UnitPower honours Defense; TeamPower gains; ExpectedDps / BossHp / AverageMaxHp
+	local tr10 = BC.UnitStats("storm_tabby", 10, nil, { Train = allRanks(10) })
+	T.eq(BC.UnitPower("storm_tabby", 10, nil, { Train = allRanks(10) }), math.max(1, floor(sqrt(tr10.Dps * tr10.MaxHp / (1 - tr10.Defense)) * BC.PowerScale + 0.5)), "UnitPower = sqrt(Dps x MaxHp / (1 - Defense)) x PowerScale")
+	local mid = { { PetId = "aurora_fox", Level = 12 }, { PetId = "storm_tabby", Level = 14 }, { PetId = "frostling_penguin", Level = 12 } }
+	local function trained(list, ranks, evo)
+		local out = {}
+		for i, e in ipairs(list) do
+			out[i] = { PetId = e.PetId, Level = e.Level, Tier = e.Tier, Train = ranks, Evo = evo }
+		end
+		return out
+	end
+	local p0 = BC.TeamPower(mid)
+	local r5, r10 = BC.TeamPower(trained(mid, allRanks(5))) / p0, BC.TeamPower(trained(mid, allRanks(10))) / p0
+	T.check(r5 >= 1.25 and r5 <= 1.4 and r10 >= 1.6 and r10 <= 1.85, "TeamPower: all four skills rank 5 x1.25-1.4, rank 10 x1.6-1.85", fmt("x%.2f / x%.2f", r5, r10))
+	local dps0 = BC.ExpectedDps({ Pets = mid })
+	local manual = 0
+	local syn = BC.SynergyBonus(mid)
+	for i, e in ipairs(mid) do
+		manual = manual + BC.UnitStats(e).Dps * (syn.PowerMult[i] or 1)
+	end
+	T.near(dps0, manual, 1e-9, "ExpectedDps of an untrained team = the Phase 3 sum (boss HP unchanged)")
+	local dpsAb = BC.ExpectedDps({ Pets = trained(mid, { Ability = 10 }) })
+	T.near(dpsAb / dps0, 1 + D.SpecialDpsShare * (1.4 * 1.4 - 1), 1e-9, "ExpectedDps counts Ability's stronger, faster specials (Damage.SpecialDpsShare)")
+	T.check(BC.BossHp("storm_titan", { { Pets = trained(mid, allRanks(10), 1) } }) > BC.BossHp("storm_titan", { { Pets = mid } }) * 1.5, "a trained + evolved team faces a bigger raid boss")
+	T.near(BC.AverageMaxHp({ Pets = trained(mid, { Physique = 10 }) }) / BC.AverageMaxHp({ Pets = mid }), 1.5, 1e-9, "AverageMaxHp counts Physique")
+
+	-- the trial numbers never move (NPC pets never evolve or train)
+	t = T.tally("Trials 1-30 keep their Phase 3 RecommendedPower and their NPC entries carry no Evo / Train / Boost")
+	for lv = 1, 30 do
+		local trial = BC.Trials[lv]
+		local clean = true
+		for _, e in ipairs(BC.TrialTeam(lv).Pets) do
+			if e.Evo ~= nil or e.Train ~= nil or e.Boost ~= nil then
+				clean = false
+			end
+		end
+		t:case(trial.RecommendedPower == TRIAL_POWER[lv] and clean, "trial " .. lv .. ": " .. tostring(trial.RecommendedPower))
+	end
+	t:report()
+
+	-- the Champion Ring data
+	local Ring = BC.Ring
+	T.check(#Ring.EasyRounds == 3 and Ring.EasyRounds[1].PetId == "pebble_pup" and Ring.EasyRounds[1].Handicap == 0.45 and Ring.EasyRounds[2].PetId == "pip_penguin" and Ring.EasyRounds[2].Handicap == 0.55 and Ring.EasyRounds[3].PetId == "honey_bunny" and Ring.EasyRounds[3].Handicap == 0.65,
+		"Ring.EasyRounds: pebble_pup 0.45, pip_penguin 0.55, honey_bunny 0.65")
+	T.check(Ring.FirstPower == 3.0 and Ring.Growth == 1.18 and Ring.BossEvery == 10 and Ring.BossBump == 1.15 and Ring.MinHandicap == 0.3 and Ring.ChampionMaxLevel == 50, "Ring curve: FirstPower 3.0, Growth 1.18, BossEvery 10, BossBump 1.15, MinHandicap 0.3, ChampionMaxLevel 50")
+	T.check(Ring.CashFloorBase == 20 and Ring.CashFloorPerRound == 2 and Ring.SecondsBase == 1.5 and Ring.SecondsPerRound == 0.1 and Ring.SecondsMax == 9 and Ring.RecordMult == 3 and Ring.BossTokens == 100 and Ring.XpBase == 20 and Ring.XpPerRound == 6 and Ring.Intermission == 3,
+		"Ring rewards: floor 20 + 2r, seconds min(9, 1.5 + 0.1r), record x3, boss Tokens 100, XP 20 + 6r, 3 s between rounds")
+	local bandOk = #Ring.Bands == 7 and Ring.Bands[1].From == 4 and Ring.Bands[1].To == 9 and Ring.Bands[7].From == 42 and Ring.Bands[7].To == nil and Ring.Bands[7].Rarities[1] == "Mythic" and Ring.Bands[7].Rarities[2] == "Secret"
+	T.check(bandOk, "Ring.Bands: 4-9 Common ... 42+ Mythic / Secret")
+	T.check(BC.RingTarget(1) == 0 and BC.RingTarget(3) == 0 and abs(BC.RingTarget(4) - 3) < 1e-9 and abs(BC.RingTarget(5) - 3.54) < 1e-9 and abs(BC.RingTarget(10) - 3 * 1.18 ^ 6 * 1.15) < 1e-9, "RingTarget: 0 for rounds 1-3, 3.0 x 1.18^(r-4), x1.15 on every 10th")
+
+	-- ChampionTeam: the easy rounds, the spec shape
+	for r = 1, 3 do
+		local spec = BC.ChampionTeam(r, 7)
+		local e = spec.Pets[1]
+		T.check(#spec.Pets == 1 and e.PetId == Ring.EasyRounds[r].PetId and e.Level == 1 and e.Handicap == Ring.EasyRounds[r].Handicap and e.Boost == nil and PC.Get(e.PetId).Rarity == "Common", "round " .. r .. ": one handicapped level-1 Common (" .. e.PetId .. ")")
+	end
+	local spec = BC.ChampionTeam(12, 5)
+	local e = spec.Pets[1]
+	T.check(spec.Owner == "npc" and spec.Side == 2 and spec.Npc == true and spec.Round == 12 and type(spec.Name) == "string" and spec.Name:find("Champion") and #spec.Pets == 1 and e.Slot == 1 and e.Crowned == true and e.Key == e.PetId and type(e.Level) == "number" and type(e.Tier) == "string",
+		"ChampionTeam is a BattleSim team spec: npc, side 2, one crowned pet in slot 1")
+	T.check(type(spec.Champion) == "table" and spec.Champion.PetId == e.PetId and spec.Champion.Level == e.Level and spec.Champion.Tier == e.Tier and type(spec.Champion.Boss) == "boolean" and type(spec.Champion.Name) == "string" and spec.Champion.Power == spec.Power and spec.TargetPower > 0,
+		"ChampionTeam.Champion = { PetId, Level, Tier, Boss, Name, Power } for the Start payload")
+	spec.Pets[1].Level = 999
+	T.check(BC.ChampionTeam(12, 5).Pets[1].Level ~= 999, "ChampionTeam returns fresh tables")
+	T.check(BC.ChampionTeam(nil, nil) ~= nil and BC.ChampionTeam("x", "y") ~= nil and BC.ChampionTeam(-5, 3).Round == 1 and BC.ChampionTeam(1e12, 3).Round == Ring.MaxRound and BC.ChampionTeam(4.7, 3).Round == 4, "junk rounds / seeds never error (rounds clamp to 1..MaxRound)")
+	T.check(BC.RingPower(25, 9) == BC.ChampionTeam(25, 9).Power, "RingPower = ChampionTeam(...).Power")
+
+	-- deterministic per seed, the ladder rules (monotonic, endless, bands, boss rounds, level cap, never EventOnly)
+	local function sig(sp)
+		local x = sp.Pets[1]
+		return table.concat({ x.PetId, x.Level, x.Tier, tostring(x.Boss), tostring(x.Handicap), tostring(x.Boost), tostring(sp.Power) }, "|")
+	end
+	local first = {}
+	for r = 1, 60 do
+		first[r] = sig(BC.ChampionTeam(r, 4242))
+	end
+	for seed = 1, 80 do
+		BC.ChampionTeam(40, seed) -- churn the per-seed history
+	end
+	local same, differs = true, false
+	for r = 60, 1, -1 do
+		if sig(BC.ChampionTeam(r, 4242)) ~= first[r] then
+			same = false
+		end
+		if sig(BC.ChampionTeam(r, 4243)) ~= first[r] then
+			differs = true
+		end
+	end
+	T.check(same, "ChampionTeam is deterministic per (round, seed), whatever was asked before (any order)")
+	T.check(differs, "another run seed draws other champions")
+	local mono = T.tally("the champion's power never drops from a round to the next (rounds 3-120, seeds 1-20)")
+	local rules = T.tally("every champion: a band rarity, level <= ChampionMaxLevel, never an EventOnly pet, the giant mini-boss form on every 10th round")
+	local boostTally = T.tally("Boost > 1 starts around rounds 38-50 and every champion from round 55 on is boosted")
+	local rarityOf = {}
+	for _, b in ipairs(Ring.Bands) do
+		for r = b.From, b.To or 200 do
+			rarityOf[r] = {}
+			for _, rar in ipairs(b.Rarities) do
+				rarityOf[r][rar] = true
+			end
+		end
+	end
+	for seed = 1, 20 do
+		local last, firstBoost = 0, nil
+		for r = 1, 120 do
+			local sp = BC.ChampionTeam(r, seed)
+			local x = sp.Pets[1]
+			if r > 3 then
+				mono:case(sp.Power >= last, fmt("seed %d round %d: %.2f < %.2f", seed, r, sp.Power, last))
+			end
+			last = sp.Power
+			local d = PC.Get(x.PetId)
+			if r > 3 then
+				local okRule = d ~= nil and not d.EventOnly and rarityOf[r][d.Rarity] and x.Level >= 1 and x.Level <= Ring.ChampionMaxLevel and (r % 10 ~= 0 or x.Boss == true)
+				rules:case(okRule, fmt("seed %d round %d: %s %s L%d boss %s", seed, r, x.PetId, d and d.Rarity or "?", x.Level, tostring(x.Boss)))
+			end
+			if x.Boost and not firstBoost then
+				firstBoost = r
+			end
+			if r >= 55 then
+				boostTally:case(x.Boost ~= nil and x.Boost > 1 and x.Level == Ring.ChampionMaxLevel and x.Tier == "Rainbow" and x.Boss == true, fmt("seed %d round %d not boosted", seed, r))
+			end
+		end
+		boostTally:case(firstBoost ~= nil and firstBoost >= 38 and firstBoost <= 50, fmt("seed %d: first Boost at round %s", seed, tostring(firstBoost)))
+	end
+	mono:report()
+	rules:report()
+	boostTally:report()
+	T.check(BC.RingPower(120, 1) > BC.RingPower(100, 1) and BC.RingPower(100, 1) > BC.RingPower(80, 1) and BC.RingPower(80, 1) > BC.RingPower(60, 1), "no ceiling: rounds 60 < 80 < 100 < 120")
+	T.check(BC.ChampionTeam(200, 3).Power < math.huge and BC.RingPower(Ring.MaxRound, 3) < math.huge, "far rounds stay finite")
+
+	-- RingRewards
+	local rw = BC.RingRewards(1, 0, false)
+	T.check(rw.Cash == 22 and rw.Xp == 26 and rw.Tokens == 0 and rw.Record == false and rw.Boss == false, "round 1, no garden income: the $22 floor and 26 XP")
+	rw = BC.RingRewards(12, 300, false)
+	T.check(rw.Cash == floor(300 * 2.7) and rw.Xp == 92 and abs(rw.Seconds - 2.7) < 1e-9, "round 12 at $300/s: 2.7 s of income ($810), 92 XP")
+	T.check(BC.RingRewards(12, 300, true).Cash == 3 * 810 and BC.RingRewards(12, 300, true).Tokens == 0, "a new record pays x3 Cash (no Tokens off a boss round)")
+	T.check(BC.RingRewards(20, 300, true).Tokens == 100 and BC.RingRewards(20, 300, false).Tokens == 0 and BC.RingRewards(20, 300, false).Boss == true, "the first win of a boss round (a record on a 10th round) pays 100 Tokens, once")
+	T.check(abs(BC.RingSeconds(200) - 9) < 1e-9 and BC.RingRewards(200, 1000, false).Cash == 9000, "RingSeconds caps at 9 s")
+	T.check(BC.RingRewards(5, -100, "yes").Cash == 30 and BC.RingRewards(5, 0 / 0, nil).Cash == 30 and BC.RingRewards("x", nil, nil).Xp == 26, "junk income / record flags pay the floor, no x3")
+end)
+
+----------------------------------------------------------------------------------------------------
+-- p4battle_sim (Phase 4 BattleSim: the Ring mode, entry Evo / Train / Boost, Defense, the meter rate, unit info,
+-- overtime and the duel hit cap, determinism and performance)
+----------------------------------------------------------------------------------------------------
+S.p4battle_sim = guarded("p4battle_sim", function()
+	local BS, err = loadModule("BattleSim")
+	if not T.check(BS ~= nil, "BattleSim loads", err) then
+		return
+	end
+	local BC = loadModule("BattleCatalog")
+	local D = BC.Damage
+
+	local modes = {}
+	for _, m in ipairs(BS.Modes) do
+		modes[m] = true
+	end
+	T.check(modes.Trial and modes.Duel and modes.Raid and modes.Ring and #BS.Modes == 4, "BattleSim.Modes = Trial, Duel, Raid, Ring")
+	T.check(BS.Events.Overtime == "Overtime", "BattleSim.Events.Overtime")
+
+	-- a ring round: setup, describe, unit info
+	local me = team(77, 1, { pet("maple_fox", 5, nil, { Evo = 0, Xp = 40, XpNext = 115 }) })
+	local b = BS.new({ Mode = "Ring", Seed = 3, Round = 10, Teams = { me, BC.ChampionTeam(10, 3) } })
+	T.check(b ~= nil, "a Ring battle starts with ChampionTeam on side 2")
+	local desc = b:Describe()
+	T.check(desc.Mode == "Ring" and desc.Zone.X == 44 and desc.Zone.Z == 44 and desc.TimeLimit == 90 and desc.Round == 10 and #desc.Sides[1] == 1 and desc.Sides[2][1] == "npc", "Describe: Mode Ring, 44 x 44, 90 s, Round 10")
+	local mine, champ = nil, nil
+	for _, u in ipairs(desc.Units) do
+		if u.side == 1 then
+			mine = u
+		else
+			champ = u
+		end
+	end
+	T.check(mine and mine.evo == 0 and mine.xp == 40 and mine.xpNext == 115 and mine.crowned == nil and mine.boss == nil, "own unit info: evo, xp / xpNext from the entry")
+	T.check(champ and champ.crowned == true and champ.boss == true and champ.kind == "MiniBoss" and champ.xp == nil and champ.evo == 0 and champ.scale > 1, "the round-10 champion: crowned, the giant mini-boss form (boss = true), no XP")
+	local raw = BS.new({ Mode = "Duel", Seed = 1, Teams = { team(1, 1, { pet("maple_fox", 5, nil, { Xp = 10, XpNext = 1 / 0 }) }), team(2, 2, { pet("maple_fox", 5) }) } })
+	T.check(raw:StaticUnits()[1].xp == 10 and raw:StaticUnits()[1].xpNext == nil and raw:StaticUnits()[2].xp == nil, "a non-finite XpNext (the level cap) is left out; entries without Xp send none")
+	local snap = b:Snapshot()
+	local keysOk = true
+	for _, s in pairs(snap.Units) do
+		for k in pairs(s) do
+			if k ~= "x" and k ~= "z" and k ~= "hp" and k ~= "state" and k ~= "meter" and k ~= "target" and k ~= "shield" then
+				keysOk = false
+			end
+		end
+	end
+	T.check(keysOk, "the snapshot wire format is unchanged (x, z, hp, state, meter, target, shield)")
+
+	-- a single level-1 pet wins round 1; a ring timeout is a loss
+	local t = T.tally("a single level-1 pet (any starter) wins ring round 1 (auto-battle)")
+	for _, id in ipairs({ "pebble_pup", "honey_bunny", "pip_penguin", "mochi_slime", "sleepy_owl" }) do
+		for seed = 1, 3 do
+			local rb = BS.new({ Mode = "Ring", Seed = seed, Round = 1, Teams = { team(1, 1, { pet(id, 1) }, { Auto = true }), BC.ChampionTeam(1, seed) } })
+			run(rb, 1000)
+			local res = rb:Result()
+			t:case(res and res.WinnerSide == 1 and res.Round == 1 and res.Mode == "Ring", id .. " seed " .. seed .. ": " .. tostring(res and res.Reason))
+		end
+	end
+	t:report()
+	local slow = BS.new({ Mode = "Ring", Seed = 2, Round = 4, TimeLimit = 2, Teams = { team(1, 1, { pet("mallow_kitten", 1) }), BC.ChampionTeam(4, 2) } })
+	slow:Command(1, "Retreat")
+	run(slow, 100)
+	local res = slow:Result()
+	T.check(res and res.Reason == "Timeout" and res.WinnerSide == 2 and res.Losers[1] == 1 and res.Round == 4, "a ring round at the time limit is lost (like a Trial)")
+	T.check(type(res.Hp) == "table" and res.Hp[2] > 0, "results carry the HP share left per side (the loss-XP gate's damage dealt = 1 - Hp[enemy])")
+
+	-- Boost: HP and hits x Boost in the sim
+	local plain = BS.new({ Mode = "Ring", Seed = 1, Teams = { team(1, 1, { pet("maple_fox", 5) }), { Owner = "npc", Side = 2, Npc = true, Pets = { { PetId = "cloudy_dragon", Key = "cloudy_dragon", Level = 50, Tier = "Rainbow", Slot = 1, Boss = true } } } } })
+	local boosted = BS.new({ Mode = "Ring", Seed = 1, Teams = { team(1, 1, { pet("maple_fox", 5) }), { Owner = "npc", Side = 2, Npc = true, Pets = { { PetId = "cloudy_dragon", Key = "cloudy_dragon", Level = 50, Tier = "Rainbow", Slot = 1, Boss = true, Boost = 4 } } } } })
+	T.check(abs(boosted.units[2].maxHp / plain.units[2].maxHp - 4) < 1e-9 and abs(boosted.units[2].hit / plain.units[2].hit - 4) < 1e-9 and abs(boosted.units[2].specialPower / plain.units[2].specialPower - 4) < 1e-9, "entry.Boost: the champion's HP, hits and special x Boost (on top of the mini-boss form)")
+
+	-- evolution / training in the sim (entry fields)
+	local evoB = BS.new({ Mode = "Duel", Seed = 1, Teams = { team(1, 1, { pet("storm_tabby", 20, nil, { Evo = 1, Train = { Speed = 10, Physique = 10, Ability = 5, Defense = 10 } }) }), team(2, 2, { pet("storm_tabby", 20) }) } })
+	local u1, u2 = evoB.units[1], evoB.units[2]
+	T.check(abs(u1.maxHp / u2.maxHp - 1.25 * 1.5) < 1e-9 and abs(u1.hit / u2.hit - 1.25) < 1e-9 and abs(u2.interval / u1.interval - 1.4) < 1e-9 and abs(u1.defense - 0.3) < 1e-9 and abs(u1.meterRate - 1.2) < 1e-9 and u2.defense == 0 and u2.meterRate == 1,
+		"entry Evo / Train reach the unit: HP x1.25 x1.5, hits x1.25, interval / 1.4, defense 0.3, meter rate 1.2")
+	T.check(evoB:StaticUnits()[1].evo == 1 and evoB:StaticUnits()[2].evo == 0, "unit info evo")
+
+	-- Defense: every hit on the defender x0.7, after the RETREAT halving (two identical duels, only the Defense differs)
+	local function defenseDuel(defRank)
+		local side2 = { pet("biscuit_bear", 15, nil, { Train = { Defense = defRank } }), pet("bamboo_panda", 15, nil, { Train = { Defense = defRank } }) }
+		return BS.new({ Mode = "Duel", Seed = 31, Specials = false, Teams = { team(1, 1, { pet("storm_tabby", 15), pet("maple_fox", 15) }, { Auto = true }), team(2, 2, side2, { Auto = true }) } })
+	end
+	local function firstHitsOnSide2(bt, steps)
+		local list = {}
+		run(bt, steps, function(events)
+			for _, ev in ipairs(events) do
+				if ev.type == "Hit" and ev.to >= 3 and ev.dmg > 0 then
+					list[#list + 1] = ev
+				end
+			end
+		end)
+		return list
+	end
+	local d0, d10 = defenseDuel(0), defenseDuel(10)
+	local h0, h10 = firstHitsOnSide2(d0, 60), firstHitsOnSide2(d10, 60)
+	local sum0, sum10, n = 0, 0, math.min(#h0, #h10, 8)
+	for i = 1, n do
+		sum0, sum10 = sum0 + h0[i].dmg, sum10 + h10[i].dmg
+	end
+	T.check(n >= 4 and abs(sum10 / sum0 - 0.7) < 0.05, "Defense rank 10: the same hits deal x0.7 (applyDamage)", fmt("%d hits: %d vs %d", n, sum10, sum0))
+	d0, d10 = defenseDuel(0), defenseDuel(10)
+	d0:Command(2, "Retreat")
+	d10:Command(2, "Retreat")
+	h0, h10 = firstHitsOnSide2(d0, 60), firstHitsOnSide2(d10, 60)
+	sum0, sum10, n = 0, 0, 0
+	for i = 1, math.min(#h0, #h10, 8) do
+		if h0[i].retreat and h10[i].retreat then
+			sum0, sum10, n = sum0 + h0[i].dmg, sum10 + h10[i].dmg, n + 1
+		end
+	end
+	T.check(n >= 2 and abs(sum10 / sum0 - 0.7) < 0.06, "Defense stacks with the RETREAT halving (x0.5 x0.7)", fmt("%d hits: %d vs %d", n, sum10, sum0))
+
+	-- the meter rate: Ability speeds up every meter gain (passive gain checked before anyone is in reach)
+	local function meterDuel(ability)
+		return BS.new({ Mode = "Duel", Seed = 9, Zone = 120, Specials = false, Teams = { team(1, 1, { pet("storm_tabby", 10, nil, { Train = { Ability = ability } }) }), team(2, 2, { pet("storm_tabby", 10) }) } })
+	end
+	local m0, m10 = meterDuel(0), meterDuel(10)
+	local start0, start10 = m0.units[1].meter, m10.units[1].meter
+	run(m0, 10)
+	run(m10, 10)
+	T.check(abs(start0 - start10) < 1e-9 and abs((m10.units[1].meter - start10) / (m0.units[1].meter - start0) - 1.4) < 1e-6, "Ability rank 10: the passive meter fills x1.4", fmt("%.2f vs %.2f", m10.units[1].meter - start10, m0.units[1].meter - start0))
+
+	-- raids: the boss grows with a trained team (BossHp over the units' Evo / Train)
+	local midPets = { pet("aurora_fox", 12), pet("storm_tabby", 14), pet("bamboo_panda", 14) }
+	local trainedPets = {}
+	for i, p in ipairs(midPets) do
+		trainedPets[i] = pet(p.Key, p.Level, nil, { Evo = 1, Train = allRanks(10) })
+	end
+	local raidPlain = BS.new({ Mode = "Raid", Boss = "storm_titan", Seed = 2, Teams = { team(1, 1, midPets) } })
+	local raidTrained = BS.new({ Mode = "Raid", Boss = "storm_titan", Seed = 2, Teams = { team(1, 1, trainedPets) } })
+	T.near(raidTrained:BossStatus().MaxHp / raidPlain:BossStatus().MaxHp, BC.ExpectedDps({ Pets = trainedPets }) / BC.ExpectedDps({ Pets = midPets }), 0.02, "a trained team's raid boss grows with its expected DPS")
+	raidTrained:AddTeam(team(2, 1, midPets))
+	raidTrained:RemoveTeam(2)
+	T.near(raidTrained:BossStatus().MaxHp / raidPlain:BossStatus().MaxHp, BC.ExpectedDps({ Pets = trainedPets }) / BC.ExpectedDps({ Pets = midPets }), 0.02, "the boss HP recomputed on a join / leave keeps the training")
+
+	-- overtime + the duel hit cap: a trained Shield mirror (it would stall forever) ends before the time limit
+	local stall = { pet("bubble_axolotl", 20, nil, { Train = allRanks(10) }) }
+	local ot = BS.new({ Mode = "Duel", Seed = 4, Teams = { team(1, 1, stall, { Auto = true }), team(2, 2, stall, { Auto = true }) } })
+	local otEvents = run(ot, 1300)
+	local otRes = ot:Result()
+	local otEv = nil
+	for _, ev in ipairs(otEvents) do
+		if ev.type == "Overtime" then
+			otEv = otEv and "twice" or ev
+		end
+	end
+	T.check(type(otEv) == "table" and otEv.at == D.Overtime.At and otEv.perSecond == D.Overtime.PerSecond, "one Overtime event at Damage.Overtime.At", tostring(otEv))
+	T.check(otRes and otRes.Reason ~= "Timeout" and otRes.Duration < BC.TimeLimits.Duel and otRes.Duration > D.Overtime.At, "a trained Shield mirror ends in overtime, not at the time limit", otRes and (otRes.Reason .. " " .. otRes.Duration))
+	local trialOt = BS.new({ Mode = "Trial", Trial = 3, Seed = 1, Teams = { team(1, 1, stall) } })
+	local ringOt = BS.new({ Mode = "Ring", Seed = 1, Teams = { team(1, 1, stall), BC.ChampionTeam(30, 1) } })
+	T.check(trialOt.overtimeAt == nil and ringOt.overtimeAt == nil and trialOt.maxHitShare == nil and ringOt.maxHitShare == nil and ot.overtimeAt == D.Overtime.At and ot.maxHitShare == D.MaxHit.Share, "overtime and the hit cap are duel rules (trials, raids and the ring unchanged)")
+	local big = BS.new({ Mode = "Duel", Seed = 2, Teams = { team(1, 1, { pet("stormfang", 100, "Rainbow", { Evo = 2, Train = { Ability = 10, Speed = 10 } }) }, { Auto = true }), team(2, 2, { pet("mallow_kitten", 1) }, { Auto = true }) } })
+	local maxShare = 0
+	run(big, 300, function(events)
+		for _, ev in ipairs(events) do
+			if ev.type == "Hit" and ev.to == 2 then
+				maxShare = math.max(maxShare, (ev.dmg + (ev.absorbed or 0)) / big.units[2].maxHp)
+			end
+		end
+	end)
+	T.check(maxShare > 0 and maxShare <= D.MaxHit.Share + 0.01, "in a duel no single hit takes more than Damage.MaxHit.Share of a pet (no one-shots, even L100 vs L1)", fmt("%.2f", maxShare))
+
+	-- a duel's double knock-out (both last pets fall in the same step) goes to the team that dealt more damage;
+	-- a forfeit or a trial keeps the draw (white-box: two adjacent pets on 1 HP that swing in the same step)
+	local function doubleKo(mode, forfeit)
+		local setup = { Mode = mode, Seed = 3, Specials = false, Teams = { team(1, 1, { pet("storm_tabby", 10) }, { Auto = true }), team(2, 2, { pet("storm_tabby", 10) }, { Auto = true }) } }
+		local bt = BS.new(setup)
+		local a, z = bt.units[1], bt.units[2]
+		a.x, a.z, z.x, z.z = 0, -1.5, 0, 1.5
+		a.hp, z.hp = 1, 1
+		a.nextAttack, z.nextAttack = 0, 0
+		bt.teams[1].damage, bt.teams[2].damage = 120, 80
+		if forfeit then
+			bt.forfeitSeen = true
+		end
+		bt:Step(0.1)
+		return bt:Result()
+	end
+	local ko = doubleKo("Duel", false)
+	T.check(ko and ko.WinnerSide == 1 and ko.Draw == false and ko.Reason == "Wipe" and ko.Winners[1] == 1, "a duel double knock-out goes to the team that dealt more damage (no draw)", ko and tostring(ko.Reason))
+	ko = doubleKo("Duel", true)
+	T.check(ko and ko.Draw == true and ko.WinnerSide == nil, "a double knock-out after a forfeit stays a draw", ko and tostring(ko.Reason))
+	ko = doubleKo("Ring", false)
+	T.check(ko and ko.Draw == true and ko.Reason == "Draw", "outside duels a double knock-out stays a draw (Phase 3 rule)", ko and tostring(ko.Reason))
+
+	-- determinism with the new fields
+	local function ringSetup(seed)
+		return { Mode = "Ring", Seed = seed, Round = 15, Teams = { team(1, 1, { pet("storm_tabby", 8, nil, { Evo = 0, Train = { Speed = 3, Ability = 2 } }), pet("maple_fox", 7) }, { Auto = true }), BC.ChampionTeam(15, seed) } }
+	end
+	local ra, rb2 = BS.new(ringSetup(5)), BS.new(ringSetup(5))
+	local sameRun = true
+	for _ = 1, 400 do
+		local e1, e2 = ra:Step(0.1), rb2:Step(0.1)
+		if #e1 ~= #e2 then
+			sameRun = false
+		end
+		for i, ev in ipairs(e1) do
+			local ev2 = e2[i]
+			if not ev2 or ev.type ~= ev2.type or ev.dmg ~= ev2.dmg or ev.to ~= ev2.to then
+				sameRun = false
+			end
+		end
+	end
+	T.check(sameRun and ra:Result() ~= nil and ra:Result().WinnerSide == rb2:Result().WinnerSide and ra:Result().Duration == rb2:Result().Duration, "a ring round with trained pets replays the same for a seed")
+
+	-- performance: a raid of 8 trained + evolved teams, ChampionTeam solves
+	local teams = {}
+	for i = 1, 8 do
+		teams[i] = team(100 + i, 1, { pet("cloudy_dragon", 60, "Golden", { Evo = 2, Train = allRanks(10) }), pet("twilight_dragon", 60, nil, { Evo = 2, Train = allRanks(7) }), pet("ember_phoenix", 55, "Golden", { Evo = 2 }), pet("aurora_fox", 50, "Golden", { Evo = 1, Train = allRanks(4) }) }, { Auto = true })
+	end
+	local perf = BS.new({ Mode = "Raid", Boss = "shadow_hydra", Seed = 5, Teams = teams })
+	local clock = Mock.RealClock or os.clock
+	local t0 = clock()
+	local steps = 0
+	while not perf:IsFinished() and steps < 2000 do
+		perf:Step(0.1)
+		perf:Snapshot()
+		steps = steps + 1
+	end
+	local ms = (clock() - t0) / math.max(1, steps) * 1000
+	T.check(steps > 300 and ms < 1.0, "a raid of 8 trained + evolved teams steps in under 1 ms (LuaJIT)", fmt("%.3f ms over %d steps", ms, steps))
+	t0 = clock()
+	for seed = 5000, 5049 do
+		BC.ChampionTeam(60, seed)
+	end
+	local solveMs = (clock() - t0) * 1000 / 50
+	T.check(solveMs < 10, "ChampionTeam for a fresh run seed at round 60 takes a few ms at most", fmt("%.2f ms", solveMs))
+	T.info("*Phase 4 battle core: " .. fmt("trained raid %.3f ms/step, cold ChampionTeam(60) %.2f ms", ms, solveMs))
+end)
+
+----------------------------------------------------------------------------------------------------
 -- p3battle_balance: tools/sim_battle.lua as a library
 ----------------------------------------------------------------------------------------------------
 S.p3battle_balance = guarded("p3battle_balance", function()
@@ -873,6 +1347,35 @@ S.p3battle_balance = guarded("p3battle_balance", function()
 	-- a solo scripted dodger beats a raid
 	local result, stats = SIM.run({ Mode = "Raid", Boss = "storm_titan", Seed = 3, Teams = { team(1, 1, SIM.Stages[8].Pets) } }, { [1] = "player" })
 	T.check(result and result.Reason == "BossDown" and result.Duration >= 60 and result.Duration <= 240 and stats.dodges >= 3, "a solo prestige-2 team with a dodging player wins a Storm Titan raid in 1-4 minutes", result and fmt("%s %.0f s, %d dodges", result.Reason, result.Duration, stats.dodges))
+	-- Phase 4 subset (the full sections: training, ring, level100)
+	T.check(SIM.sections.training ~= nil and SIM.sections.ring ~= nil and SIM.sections.level100 ~= nil and SIM.sections.progression ~= nil, "the report has the Phase 4 sections (training, ring, level100, progression)")
+	local BC = loadModule("BattleCatalog")
+	local wins = 0
+	for seed = 1, 6 do
+		local res = SIM.run({ Mode = "Ring", Seed = seed, Round = 3, Teams = { team(1, 1, { pet("pip_penguin", 1) }), BC.ChampionTeam(3, seed) } }, { [1] = "player" })
+		if res and res.WinnerSide == 1 then
+			wins = wins + 1
+		end
+	end
+	T.check(wins == 6, "one level-1 pip_penguin (the weakest starter) wins ring round 3 with a scripted player", fmt("%d of 6", wins))
+	local stage1 = SIM.Stages[1].Pets
+	local r = 1
+	while r <= 30 do
+		local res = SIM.run({ Mode = "Ring", Seed = 50 + r, Round = r, Teams = { team(1, 1, stage1), BC.ChampionTeam(r, 50) } }, { [1] = "player" })
+		if not res or res.WinnerSide ~= 1 then
+			break
+		end
+		r = r + 1
+	end
+	T.check(r - 1 >= 12 and r - 1 <= 21, "a Day-1 team (three level-1 Commons) sets a ring record around 13-19", r - 1)
+	local mirror = {}
+	for i, p in ipairs(SIM.Stages[5].Pets) do
+		mirror[i] = pet(p.Key, p.Level, p.Tier, { Evo = 1, Train = { Speed = 10, Physique = 10, Ability = 10, Defense = 10 } })
+	end
+	agg = SIM.series(function(seed)
+		return { Mode = "Duel", Seed = seed, Teams = { team(1, 1, mirror), team(2, 2, mirror) } }
+	end, { [1] = "player", [2] = "player" }, 8)
+	T.check(agg.n == 8 and agg.draws == 0 and agg.timeouts == 0 and agg.winPct >= 25 and agg.winPct <= 75, "a trained + evolved mirror duel (S5, rank 10) is fair and never stalls", fmt("%d%%, %.1f s", agg.winPct, agg.avgDur))
 	T.info("*balance subset ok; the full report: see tools/README.md (sim_battle.lua)")
 end)
 

@@ -1,9 +1,9 @@
 -- smoke_fix_server.lua: regression checks for the Phase 2 review fixes on the SERVER side (fix:server). Server world
--- only, booted; the scenarios run before the care block (they advance the clock far past cook times, and
--- p2care_exploits leaves a dish cooking for p2care_shutdown).
---   fixsrv_kitchen_prestige  Kitchen dishes paid before a prestige keep cooking (into Food) but are no longer refunded
---                            as Cash when the player leaves: Cash never carries over a prestige, also not when the
---                            prestige came from another server's save; dishes of the current run are still refunded
+-- only, booted.
+--   fixsrv_training_prestige (Phase 4) a prestige keeps the running training jobs (they finish later for ONE rank),
+--                            clears the coin piles and keeps the Garden at L1; leaving right after it refunds nothing
+--                            (Cash never carries over a prestige, also not when the prestige came from another
+--                            server's save); a Stop in the current run refunds once
 --   fixsrv_receipt_merge     one gem purchase is granted once across servers: server A's failed save (kept and
 --                            retried as an orphan) lands after server B granted the re-sent receipt and adds no
 --                            second grant (but keeps what A's player spent); B granting a receipt A's late save
@@ -33,7 +33,7 @@ end
 local abs, floor, max = math.abs, math.floor, math.max
 local advance, config, mod = K.advance, K.config, K.mod
 local ALLOWED_WARNINGS = { "[DataService]", "[GemService]" }
--- a Sky Castle home at Home Level 52 with a Lv 5 Kitchen (a queue of 10): ready to prestige
+-- a Sky Castle home at Home Level 52 with a Lv 5 Training Place: ready to prestige
 local PRESTIGE_READY = { Press1 = 10, Press2 = 10, Collector = 5, Garden = 8, Kitchen = 5, Gym = 5, Vault = 5, House = 4 }
 
 ----------------------------------------------------------------------------------------------------
@@ -243,110 +243,151 @@ local function prestigeElsewhere(rec, cash, extra, collector)
 end
 
 ----------------------------------------------------------------------------------------------------
--- fixsrv_kitchen_prestige
+-- fixsrv_training_prestige (Phase 4: the Kitchen queue is gone; the Training Place's jobs are the money that crosses a
+-- prestige: ARCHITECTURE_V3.md "Phase 4 build contract" 3.1 / 3.7 / X11)
 ----------------------------------------------------------------------------------------------------
-S.fixsrv_kitchen_prestige = guarded("fixsrv_kitchen_prestige", function()
+S.fixsrv_training_prestige = guarded("fixsrv_training_prestige", function()
 	if not K.needBoot() then
 		return
 	end
 	local D, Ty, Cat, Care = DS(), TS(), TC(), PCS()
-	if not T.check(Ty ~= nil and Cat ~= nil and Care ~= nil, "kitchen prestige: (precondition) TycoonService, TycoonCatalog and PetCareService load") then
+	if not T.check(Ty ~= nil and Cat ~= nil and Care ~= nil and type(Care.Train) == "function", "training prestige: (precondition) TycoonService, TycoonCatalog and PetCareService (Train) load") then
 		return
+	end
+	local PCat = requireAt("shared/PetCatalog")
+	local Keys = requireAt("shared/PetKeys")
+	local pet = nil
+	for _, def in ipairs(PCat.Pets) do
+		if def.EventOnly ~= true and def.Rarity == "Common" then
+			pet = def
+			break
+		end
+	end
+	if not T.check(pet ~= nil and Keys ~= nil, "training prestige: (precondition) a Common pet and PetKeys") then
+		return
+	end
+	local function givePet(p, key, n)
+		local prof = D.GetProfile(p)
+		Keys.Add(prof, key, n or 1)
+		D.MarkDirty(p)
 	end
 	local DSt = Mock.DataStore
 	local saved = { Latency = DSt.Latency }
 	local players = {}
+	local cost = Cat.TrainCost(pet, 1)
 	local okRun, errRun = pcall(function()
-		local feast = Cat.Foods.Feast
-		local eff = Cat.EffectsOf("Kitchen", PRESTIGE_READY.Kitchen) or {}
-		local queue = tonumber(eff.Queue or eff.Slots) or 4
-
-		-- 1) the reviewer's case: Kitchen Lv 5 at the Sky Castle, every Cash spent on a full queue of Feasts, prestige,
-		--    leave at once: before the fix the leave refund brought the whole order back as Cash after the reset
+		-- 1) the Sky Castle at Home Level 40+: a pet works in the garden and another trains with every Cash spent on the
+		--    job; coins wait on the lawn; prestige; leave at once. The job survives (and finishes later for one rank), no
+		--    refund ever lands, the coin piles are cleared, the Garden stays at L1 and keeps its pet
 		local uid = newUserId()
-		local p = join("KitchenStar", uid)
+		local p = join("TrainStar", uid)
 		players[#players + 1] = p
-		if not T.check(claimFree(p) ~= nil, "kitchen prestige: (precondition) a free plot was claimed") then
+		if not T.check(claimFree(p) ~= nil, "training prestige: (precondition) a free plot was claimed") then
 			return
 		end
 		setStations(p, PRESTIGE_READY)
-		T.check(Cat.CanPrestige(D.GetHome(p)), "kitchen prestige: (precondition) the Sky Castle home is ready to prestige")
+		T.check(Cat.CanPrestige(D.GetHome(p)), "training prestige: (precondition) the Sky Castle home is ready to prestige")
+		givePet(p, pet.Id, 2)
+		T.check(Ty.GardenSet(p, 1, pet.Id) == true, "training prestige: (setup) one copy works in Garden place 1")
 		D.SpendCash(p, D.GetCash(p))
-		D.AddCash(p, queue * feast.Price)
-		care(p, "Cook", "Feast", queue)
+		D.AddCash(p, cost)
+		local okT, job = Care.Train(p, pet.Id .. "", "Physique")
+		-- (the training copy is the free one: the garden copy is cleared by the start, so put the pet back for the check)
 		advance(0.3)
-		T.check(D.GetCash(p) == 0 and #Care.GetQueue(p) == queue, "kitchen prestige: (setup) " .. queue .. " Feasts ordered with all the Cash",
-			"Cash " .. D.GetCash(p) .. ", queue " .. #Care.GetQueue(p))
+		T.check(okT == true and D.GetCash(p) == 0 and type(job) == "table", "training prestige: (setup) Physique training started with all the Cash", tostring(job))
+		D.MutateHome(p, function(h)
+			h.CollectorCash = 500 -- coins waiting on the lawn
+			return true
+		end)
+		advance(0.3)
 		homeAction(p, "Prestige")
-		advance(0.3)
+		advance(0.5)
 		local h = D.GetHome(p)
-		T.check(h ~= nil and h.Prestige == 1 and D.GetCash(p) == 0, "kitchen prestige: (setup) Prestige 1 with the order still cooking",
-			tostring(h and h.Prestige) .. " / " .. D.GetCash(p))
-		T.eq(#Care.GetQueue(p), queue, "kitchen prestige: the queued dishes keep cooking after the prestige (they still become Food)")
+		T.check(h ~= nil and h.Prestige == 1 and D.GetCash(p) == 0, "training prestige: Prestige 1 with the job still running (Cash 0)", tostring(h and h.Prestige) .. " / " .. D.GetCash(p))
+		T.check(h ~= nil and h.Stations.Garden == 1 and (h.Stations.Gym or 0) == 0 and (h.Stations.Kitchen or 0) == 0, "training prestige: the stations reset EXCEPT the Garden, kept at L1 (coins never stop)", h and stationsText(h.Stations) or "no home")
+		T.check(h ~= nil and (h.CollectorCash or 0) == 0 and Ty.CoinsWaiting(p) == 0, "training prestige: the coins on the lawn are cleared", tostring(h and h.CollectorCash))
+		local g = D.GetGrowth(p, pet.Id)
+		T.check(type(g.Job) == "table" and g.Job.Stat == "Physique" and g.Job.Ends == job.Ends and D.TrainingKeys(p)[pet.Id] == true, "training prestige: the running training job survives the prestige (the lock too)")
 		DSt.Latency = 0.2 -- real DataStore calls yield: the leave save is in flight while the leave handlers run
 		leave(p)
 		advance(2)
 		DSt.Latency = saved.Latency
 		advance(15) -- a retry of the leave save (orphan) lands too
 		local rec = stored(uid) or {}
-		T.check(rec.Cash == 0 and type(rec.Home) == "table" and rec.Home.Prestige == 1,
-			"kitchen prestige: leaving right after the prestige refunds nothing: the stored Cash stays 0 at Prestige 1 (Cash does not carry over a prestige)",
-			"stored Cash " .. tostring(rec.Cash) .. ", Prestige " .. tostring(type(rec.Home) == "table" and rec.Home.Prestige))
-		local back = join("KitchenStarBack", uid)
+		T.check(rec.Cash == 0 and type(rec.Home) == "table" and rec.Home.Prestige == 1 and type(rec.PetGrowth) == "table" and type(rec.PetGrowth[pet.Id]) == "table" and type(rec.PetGrowth[pet.Id].Job) == "table",
+			"training prestige: leaving right after the prestige refunds nothing: the stored Cash stays 0 at Prestige 1 and the job is saved",
+			"stored Cash " .. tostring(rec.Cash) .. ", Prestige " .. tostring(type(rec.Home) == "table" and rec.Home.Prestige) .. ", job " .. tostring(type(rec.PetGrowth) == "table" and rec.PetGrowth[pet.Id] and rec.PetGrowth[pet.Id].Job ~= nil))
+		advance(Cat.TrainSeconds(1) + 2) -- the job ends while the player is away
+		local back = join("TrainStarBack", uid)
 		players[#players + 1] = back
-		T.eq(D.GetCash(back), 0, "kitchen prestige: ...and after rejoining the balance is still 0")
+		advance(1)
+		local gb = D.GetGrowth(back, pet.Id)
+		T.check(gb.Physique == 1 and gb.Job == nil and D.GetCash(back) == 0, "training prestige: ...after rejoining the job completed once (rank 1), the balance is still 0 (no refund across a prestige)", "P" .. tostring(gb.Physique) .. " cash " .. D.GetCash(back))
 		leave(back)
 
-		-- 2) the prestige came from ANOTHER server's save (adopted through a rebase): dishes paid in the old run are not
-		--    refunded either (each dish remembers the prestige run that paid for it)
+		-- 2) the prestige came from ANOTHER server's save (adopted through a rebase): the job survives that too and
+		--    nothing is refunded
 		local uid2 = newUserId()
-		local q = join("KitchenRebase", uid2)
+		local q = join("TrainRebase", uid2)
 		players[#players + 1] = q
-		if T.check(claimFree(q) ~= nil, "kitchen prestige: (precondition) a second plot was claimed") then
-			setStations(q, { Kitchen = PRESTIGE_READY.Kitchen })
+		if T.check(claimFree(q) ~= nil, "training prestige: (precondition) a second plot was claimed") then
+			setStations(q, { Gym = PRESTIGE_READY.Gym, Garden = 1 })
+			givePet(q, pet.Id, 1)
 			D.Save(q)
 			D.SpendCash(q, D.GetCash(q))
-			D.AddCash(q, 2 * feast.Price)
-			care(q, "Cook", "Feast", 2)
+			D.AddCash(q, cost)
+			local okQ, jobQ = Care.Train(q, pet.Id, "Speed")
 			advance(0.3)
-			T.check(D.GetCash(q) == 0 and #Care.GetQueue(q) == 2, "kitchen prestige: (setup) two Feasts ordered at Prestige 0", "Cash " .. D.GetCash(q))
+			T.check(okQ == true and D.GetCash(q) == 0, "training prestige: (setup) a Speed job started at Prestige 0 with all the Cash")
 			-- the other server prestiged and banked 777 since; this server adopts its save with its next write
 			local recQ = stored(uid2)
-			prestigeElsewhere(recQ, 777, { Kitchen = PRESTIGE_READY.Kitchen }, 0)
+			prestigeElsewhere(recQ, 777, { Gym = PRESTIGE_READY.Gym }, 0)
 			D.AddTokens(q, 1) -- something to save (an empty delta never reads the store)
 			D.Save(q)
 			advance(0.5)
 			local hq = D.GetHome(q)
-			T.check(hq ~= nil and hq.Prestige == 1 and D.GetCash(q) == 777, "kitchen prestige: (setup) this server adopted the other server's prestige (Cash 777)",
+			T.check(hq ~= nil and hq.Prestige == 1 and D.GetCash(q) == 777, "training prestige: (setup) this server adopted the other server's prestige (Cash 777)",
 				tostring(hq and hq.Prestige) .. " / " .. D.GetCash(q))
-			-- unsaved progress at the leave (a session normally has some): the leave save is in flight while the leave
-			-- handlers run, so a refund would land in it
+			local gq = D.GetGrowth(q, pet.Id)
+			T.check(type(gq.Job) == "table" and gq.Job.Ends == jobQ.Ends, "training prestige: the job started before the adopted prestige is still running")
 			D.AddTokens(q, 1)
 			DSt.Latency = 0.2
 			leave(q)
 			advance(2)
 			DSt.Latency = saved.Latency
 			advance(15)
-			T.eq((stored(uid2) or {}).Cash, 777, "kitchen prestige: dishes paid before a prestige another server made are not refunded on leave either")
+			local rq = stored(uid2) or {}
+			T.check(rq.Cash == 777 and type(rq.PetGrowth) == "table" and type(rq.PetGrowth[pet.Id]) == "table" and type(rq.PetGrowth[pet.Id].Job) == "table",
+				"training prestige: a job paid before a prestige another server made is not refunded on leave either; the job is saved", "Cash " .. tostring(rq.Cash))
 		end
 
-		-- 3) control: dishes paid in the current run are still refunded when the player leaves
+		-- 3) control: a job of the current run stopped by the player is refunded (once), and leaving mid-job refunds nothing
 		local uid3 = newUserId()
-		local c = join("KitchenRun", uid3)
+		local c = join("TrainRun", uid3)
 		players[#players + 1] = c
-		if T.check(claimFree(c) ~= nil, "kitchen prestige: (precondition) a third plot was claimed") then
-			setStations(c, { Kitchen = PRESTIGE_READY.Kitchen })
+		if T.check(claimFree(c) ~= nil, "training prestige: (precondition) a third plot was claimed") then
+			setStations(c, { Gym = PRESTIGE_READY.Gym, Garden = 1 })
+			givePet(c, pet.Id, 1)
 			D.SpendCash(c, D.GetCash(c))
-			D.AddCash(c, 2 * feast.Price)
-			care(c, "Cook", "Feast", 2)
+			D.AddCash(c, cost)
+			care(c, "Train", pet.Id, "Defense")
 			advance(0.3)
-			T.eq(D.GetCash(c), 0, "kitchen prestige: (setup) two Feasts ordered in the current run")
+			T.eq(D.GetCash(c), 0, "training prestige: (setup) a Defense job in the current run")
+			care(c, "TrainStop", pet.Id)
+			advance(0.3)
+			care(c, "TrainStop", pet.Id)
+			advance(0.3)
+			T.check(D.GetCash(c) == cost and D.GetGrowth(c, pet.Id).Job == nil, "training prestige: (control) Stop in the current run refunds the job's Cash exactly once", "cash " .. D.GetCash(c))
+			care(c, "Train", pet.Id, "Defense")
+			advance(0.3)
+			T.eq(D.GetCash(c), 0, "training prestige: (setup) started again")
 			DSt.Latency = 0.2
 			leave(c)
 			advance(2)
 			DSt.Latency = saved.Latency
 			advance(15)
-			T.eq((stored(uid3) or {}).Cash, 2 * feast.Price, "kitchen prestige: (control) dishes of the current run are still refunded on leave")
+			local rc = stored(uid3) or {}
+			T.check(rc.Cash == 0 and type(rc.PetGrowth) == "table" and type(rc.PetGrowth[pet.Id]) == "table" and type(rc.PetGrowth[pet.Id].Job) == "table", "training prestige: (control) leaving mid-job refunds nothing: the job keeps running in the save", "Cash " .. tostring(rc.Cash))
 		end
 	end)
 	DSt.Latency = saved.Latency
@@ -354,8 +395,8 @@ S.fixsrv_kitchen_prestige = guarded("fixsrv_kitchen_prestige", function()
 	if not okRun then
 		error(errRun, 0)
 	end
-	K.flushErrors("fixsrv_kitchen_prestige")
-	K.flushWarnings("fixsrv_kitchen_prestige", ALLOWED_WARNINGS)
+	K.flushErrors("fixsrv_training_prestige")
+	K.flushWarnings("fixsrv_training_prestige", ALLOWED_WARNINGS)
 end)
 
 ----------------------------------------------------------------------------------------------------

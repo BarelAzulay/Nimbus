@@ -1,60 +1,51 @@
--- smoke_p2_flow.lua: the END-TO-END Phase 2 flow (ARCHITECTURE_V3.md "Phase 2: Tycoon homes" + "Phase 2 build
--- contract"): three simulated players play the tycoon homes together on the booted game, through the same doors a
--- client uses (ProximityPrompts, the HomeAction / PetCare / Fusion / BuyRoulette / TutorialEvent / EquipPet remotes,
--- the Collector pad, MarketplaceService.ProcessReceipt) while TycoonService, PetCareService, FusionService,
--- GemService, TutorialService, SpotService, HomeBuilder, PetService and DataService all run at once. Cash for the big
--- purchases comes from DataService.AddCash (a stand-in for hours of Collector income, like tools/sim_tycoon.py).
+-- smoke_p2_flow.lua: the END-TO-END home flow (ARCHITECTURE_V3.md "Phase 2: Tycoon homes" + "Phase 2 build contract",
+-- rewritten for the "Phase 4 build contract": presses -> food plants, Collector -> Coin Magnet, Kitchen -> Food
+-- Machine, Gym -> Training Place, rainbow coins): three simulated players play the homes together on the booted game,
+-- through the same doors a client uses (ProximityPrompts, the HomeAction / PetCare / Fusion / BuyRoulette /
+-- TutorialEvent / EquipPet / GoToSpot remotes, walking over coins, the home portal, MarketplaceService.ProcessReceipt)
+-- while TycoonService, PetCareService, FusionService, GemService, TutorialService, SpotService, HomeBuilder, PetService
+-- and DataService all run at once. Cash for the big purchases comes from DataService.AddCash (a stand-in for hours of
+-- garden income, like tools/sim_tycoon.py). Payments are checked against Cash + the coins scooped meanwhile
+-- (TycoonService.CoinsScooped): a player walking past their garden scoops it.
 -- Loaded by tools/smoke.py in BOTH worlds (ARGS.context picks the half). In the server world the scenarios are chapters
--- of ONE story and run in order (before the care block: p2care_exploits leaves a dish cooking for p2care_shutdown):
+-- of ONE story and run in order:
 --   p2flow_arrive        Ann (new), Ben (new, an account where paid random items are restricted) and Cid (a v3 /
 --                        Phase 1 save: Home.Rooms reserve, finished basics, an old SpotIndex) join: nobody gets a
---                        plot, Cash / Gems attributes, the policy state, the join toasts ("Pick a free home" /
---                        "Welcome back! Press E at your gate (#n)"), Cid's migrated profile + ProfileSync and his
---                        tutorial resuming at the home chapter. Cid claims his old plot ('claim' -> 'press'). Ann
---                        plays the whole basics chapter: Next, the 'home' arrow to a free gate, GoToSpot, E at the
---                        gate, a lobby respawn at her home, the Shop, the gift spin (a forced Economy pet,
---                        auto-equipped), Pets, the Index, a real Easy match (claiming her plot meanwhile is refused),
---                        'done' pays the basics reward and the home chapter's 'claim' completes at once (she already
---                        has a home) -> 'press' points at her Press 1 pad. Ben skips the tutorial, claims a plot and
---                        can neither claim Ann's plot nor use her pads.
---   p2flow_build         Ann's home chapter + the care stations, with Ben building next door: the free Press 1 and
---                        Collector pads, both Collectors fill at the same time, Ben cannot bank Ann's Collector,
---                        stepping on it banks it ('collect' -> 'kitchen'); following the 'kitchen' arrow pad by pad
---                        (every pad on the way bought with E), the Garden on the way (an Economy pet placed with
---                        HomeAction GardenSet earns), E at the Kitchen counter cooks a Snack (Ben's E on it does
---                        nothing), feeding the pet through the PetCare remote levels it up and ends the home chapter
---                        (Cash reward once; the garden income follows the level); the Gym: role checks both ways, a
---                        Combat pet trains through PetCare GymSet and levels up from the Gym alone. Cid builds his
---                        Press 1 from the Home window (HomeAction Upgrade) and leaves: his save is a Phase 2 profile.
---   p2flow_prestige      Ann builds the home up pad by pad: the next house is refused below its Home Level (toast,
---                        nothing paid), Villa / Manor / Sky Castle at Home Level 10 / 20 / 30 (toasts), station caps per
---                        tier, until the Prestige pad unlocks; E on it only opens the Home window on the prestige
---                        confirmation (nothing resets); confirming there: +1 star, the Gems reward, Cash 0, stations reset
---                        but decor, garden and gym choices kept (they stop earning / training until rebuilt), the plot
---                        and the nameplate follow. DataStore merge after the prestige: a stale server's late prestige-0
---                        write (an extra station level, +Cash, +Gems, +Snacks) lands before this server saves: the
---                        prestiged Home and Cash win (the stale run was reset), Gems and Snacks add up, the live profile
---                        adopts the merged numbers.
---   p2flow_fusion_gems   After the prestige: rebuilding the way to the Fusion Machine, its pad unlocks, the garden pet
---                        earns x1.25; three copies (one working in the Garden, one equipped) fuse through the Fusion
---                        remote only next to the machine: the Golden copy takes over the garden slot and the
---                        equipped place and keeps the level; gem packs through ProcessReceipt (granted once, saved
---                        with the receipt, a retry grants nothing, a pack that is not created stays pending); the Storm
---                        Altar opens the Shop on the Secret roulette for Ann (a side toast for Ben); a gem spin of the
---                        Secret roulette (Mythic / Secret pet, discovered; refused for Ben, nothing charged); mixing that
---                        pet with the training Combat pet costs Gems and makes a hybrid record; the hybrid takes Ann's
---                        podium on a tag plate that hugs its short blended name.
---   p2flow_rejoin        Ann leaves with two Snacks cooking (refunded into the leave save) and her plot is cleared;
---                        Cid rejoins ("Welcome back") and claims Ann's old plot (his Phase 2 build comes back there);
---                        Ann rejoins ("Pick a free home": her last plot is taken), every saved number is back, she claims
---                        another plot and the whole build is restored there (stations at their levels, the prestige
---                        star, GardenPets / GymPets, the Kitchen's cook prompts, income), an old gem receipt is still
---                        known. DataStore merge the other way: Ben's previous server lands a late Prestige-1 Home while
---                        he plays at Prestige 0 here: his session's station edit is void, his live Home and the plot in
---                        the world follow (stations, star, Prestige attribute, the Fusion Machine requirement).
+--                        plot, Cash / Gems attributes, the policy state, the join toasts, Cid's migrated profile +
+--                        ProfileSync and his tutorial resuming at the home chapter; Cid claims his old plot ('claim' ->
+--                        'garden', the arrow on his free Pet Garden pad). Ann plays the basics chapter: the Home
+--                        button opens her home portal toward a free gate (walk in, no claim), E at the gate, a lobby
+--                        respawn at her home, the gift spin, a real Easy match, 'done' -> 'garden'. Ben skips the
+--                        tutorial, claims a plot and can neither claim Ann's plot nor use her pads.
+--   p2flow_build         Ann's home chapter: the free Pet Garden pad (the only pad of a fresh home), a pet in garden
+--                        place 1 (HomeAction GardenSet, what the GardenSpotPrompt's picker sends) -> 'coins'; Ben's
+--                        own Garden with a Combat pet (1/1.6 of the coins); a coin after one meal, Ben walking over
+--                        Ann's pile scoops nothing, Ann's walk scoops it -> 'machine'; the arrow pad by pad (the
+--                        Berry Bush makes bigger coins) to the Food Machine -> 'feed'; the locked Fusion Machine pad;
+--                        the owner-only FeedPrompt opens the feed list, a 'Level up' batch levels the pet (one toast,
+--                        the chapter's Cash reward once); the Training Place: TrainPrompt, a Combat pet in the Garden,
+--                        Train (PetCare) with the lock (no equip, no garden place) and the automatic return to its
+--                        place with rank 1. Ben levels his Berry Bush to the Cottage cap. Cid builds his Garden from
+--                        the Home window, places a pet and leaves: his save is a Phase 4 home.
+--   p2flow_prestige      Ann builds the home up pad by pad: the next house is refused below its Home Level, Villa /
+--                        Manor / Sky Castle, until the Prestige pad unlocks; E on it only opens the confirmation;
+--                        confirming: +1 star, Gems, Cash 0, stations reset but decor kept and the Pet Garden at Lv 1,
+--                        garden place 4, the garden keeps making coins, a training job runs through the prestige.
+--                        DataStore merge after the prestige: a stale prestige-0 write (station level, +Cash, +Gems,
+--                        +Snacks) lands before this server saves: the prestiged Home and Cash win, Gems and Snacks add up.
+--   p2flow_fusion_gems   After the prestige: the star prices, the Fusion Machine pad unlocks; three copies (one in the
+--                        Garden, one equipped) fuse only next to the machine: the Golden copy takes over the garden
+--                        place and the equipped place and makes x1.5 coins; gem packs through ProcessReceipt; the Storm
+--                        Altar opens the Secret roulette; a gem spin; mixing that pet with the trained Combat pet makes a
+--                        hybrid that takes its garden place and keeps its training ranks; the podium tag.
+--   p2flow_rejoin        Ann leaves with coins on her lawn (kept as the bank) and her plot is cleared; Cid rejoins and
+--                        claims Ann's old plot (his Garden comes back there, 'coins'); Ann rejoins ("Pick a free home"),
+--                        every saved number is back, she claims another plot and the whole build is restored there
+--                        (stations, the star, GardenPets, the FeedPrompt, income), an old gem receipt is still known.
+--                        DataStore merge the other way: Ben's previous server lands a late Prestige-1 Home while he
+--                        plays at Prestige 0 here: his live Home and the plot in the world follow it.
 --   client_p2flow        (client) the flow's players end with a finished tutorial: the card shows the finale and
---                        leaves; a tutorial restarted afterwards in the same session (the developer tools' restart)
---                        shows its card and its world guide again (TutorialController kept its finale flag forever)
+--                        leaves; a tutorial restarted afterwards in the same session shows its card and its world guide
 -- Plain Lua 5.1 syntax only.
 
 local T = SmokeCommon.T
@@ -507,21 +498,114 @@ local function padPosition(info, id)
 	return nil
 end
 
-local function cookPrompt(info, foodId)
-	if not info or not info.Folder then
+-- Phase 4: a care prompt (FeedPrompt on the Food Machine's Hopper, TrainPrompt on the Training Place) of a plot
+local function carePrompt(info, stationId, name)
+	local st = stationModel(info, stationId)
+	if not st then
 		return nil
 	end
-	for _, d in ipairs(info.Folder:GetDescendants()) do
-		if d:IsA("ProximityPrompt") and d.Name == "CookPrompt" and d:GetAttribute("FoodId") == foodId then
+	for _, d in ipairs(st:GetDescendants()) do
+		if d:IsA("ProximityPrompt") and d.Name == name then
 			return d
 		end
 	end
 	return nil
 end
 
-local function collectPad(info)
-	local st = stationModel(info, "Collector")
-	return st and st:FindFirstChild("CollectPad", true) or nil
+-- the GardenSpotPrompt ("Put a pet here") of a garden place
+local function gardenPrompt(info, slot)
+	local st = stationModel(info, "Garden")
+	if not st then
+		return nil
+	end
+	for _, d in ipairs(st:GetDescendants()) do
+		if d:IsA("ProximityPrompt") and d.Name == "GardenSpotPrompt" and d:GetAttribute("Slot") == slot then
+			return d
+		end
+	end
+	return nil
+end
+
+-- where garden place `slot` is (its Spot<slot> attachment, the point the tutorial arrow uses)
+local function gardenSpotPos(info, slot)
+	local st = stationModel(info, "Garden")
+	local a = st and st:FindFirstChild("Spot" .. tostring(slot), true)
+	if a and a:IsA("Attachment") then
+		return a.WorldPosition
+	end
+	return nil
+end
+
+-- the plaza, far from every garden (nobody scoops coins there)
+local function away(p)
+	Mock.Teleport(p, CFrame.new(config().Lobby.Origin + Vector3.new(0, 4, 0)))
+end
+
+local function standAt(p, pos)
+	Mock.Teleport(p, CFrame.new(pos + Vector3.new(0, 3, 0)))
+end
+
+-- "x,y,z,yaw,closesAt" of the HomePortal attribute -> the portal's ground point
+local function parsePortal(text)
+	if type(text) ~= "string" then
+		return nil
+	end
+	local parts = {}
+	for n in text:gmatch("[^,]+") do
+		parts[#parts + 1] = tonumber(n)
+	end
+	if #parts ~= 5 then
+		return nil
+	end
+	return Vector3.new(parts[1], parts[2], parts[3])
+end
+
+-- every whole Cash amount a player scooped from the lawn (TycoonService.CoinsScooped) since the ledger started:
+-- purchases are checked against Cash + scooped, because a player standing near the garden scoops by walking past
+local function scoopLedger()
+	local Ty = requireAt("server/Services/TycoonService")
+	local totals = {}
+	local conn = nil
+	if Ty and Ty.CoinsScooped and Ty.CoinsScooped.Connect then
+		conn = Ty.CoinsScooped:Connect(function(player, amount)
+			if player then
+				totals[player.UserId] = (totals[player.UserId] or 0) + (tonumber(amount) or 0)
+			end
+		end)
+	end
+	return {
+		of = function(p)
+			return totals[p.UserId] or 0
+		end,
+		stop = function()
+			if conn then
+				conn:Disconnect()
+				conn = nil
+			end
+		end,
+	}
+end
+
+local function givePet(p, key, n)
+	local DataS = mod("DataService")
+	local PK = requireAt("shared/PetKeys")
+	local ok = PK.Add(DataS.GetProfile(p), key, n or 1)
+	DataS.MarkDirty(p)
+	return ok
+end
+
+-- the GardenPets text a home's Garden map should show ('1=a;2=b', slot order)
+local function gardenText(garden)
+	local slots = {}
+	for slot in pairs(type(garden) == "table" and garden or {}) do
+		slots[#slots + 1] = slot
+	end
+	table.sort(slots)
+	local parts = {}
+	for _, slot in ipairs(slots) do
+		parts[#parts + 1] = tostring(slot) .. "=" .. tostring(garden[slot])
+	end
+	return table.concat(parts, ";")
 end
 
 -- the cheapest unlocked, affordable-with-funding pad of a home (not the Prestige pad)
@@ -679,16 +763,16 @@ S.p2flow_arrive = guarded("p2flow_arrive", function()
 	local sugg = SS.SuggestSpot(cid)
 	T.check(sugg == spots()[F.plot.Cid], "flow migrate: ...and the guide / GoToSpot lead to that gate (SuggestSpot)")
 
-	-- Cid claims his old plot: 'claim' -> 'press'
+	-- Cid claims his old plot: 'claim' -> 'garden' (Phase 4: the free Pet Garden comes first)
 	claim(cid, F.plot.Cid)
-	waitStep(cid, "press", 3)
+	waitStep(cid, "garden", 3)
 	local cidInfo = spots()[F.plot.Cid]
 	T.check(SS.GetSpot(cid) == cidInfo and cidInfo.Folder:GetAttribute("OwnerUserId") == cid.UserId, "flow migrate: E at his gate gives Cid his old plot")
-	T.eq(stepOf(cid), "press", "flow migrate: ...and completes the tutorial's 'claim'")
+	T.eq(stepOf(cid), "garden", "flow migrate: ...and completes the tutorial's 'claim'")
 	local stCp = tut(cid)
-	local cidPad = padPosition(cidInfo, "Press1")
+	local cidPad = padPosition(cidInfo, "Garden")
 	T.check(stCp and stCp.Target and typeof(stCp.Target.Position) == "Vector3" and cidPad ~= nil and (stCp.Target.Position - cidPad).Magnitude < 1,
-		"flow migrate: ...'press' points at the Press 1 pad of his plot")
+		"flow migrate: ...'garden' points at the free Pet Garden pad of his plot (he owns pets already)")
 
 	-- Ann: the basics chapter, start to end
 	T.eq(TSv.HandleEvent(ann, "ShopOpened"), false, "flow tutorial: an event of another step is refused")
@@ -703,10 +787,29 @@ S.p2flow_arrive = guarded("p2flow_arrive", function()
 		"flow tutorial: 'home' points at the gate of a free plot", target and tostring(target.SpotIndex) or "no target") then
 		return
 	end
+	-- Phase 4: the Home button (GoToSpot) opens Ann's home portal; without a home it leads to a free gate
+	mark = K.logSize()
+	Mock.Teleport(ann, CFrame.new(Config.Lobby.Origin + Vector3.new(14, 4, 9))) -- (off the plaza centre: every gate is as near from there)
+	advance(0.2)
 	Mock.FromClient(remote("GoToSpot"), ann)
-	advance(0.6)
-	T.check(K.root(ann) and K.planar(K.root(ann).Position, gate.Position) <= 12 and SS.GetSpot(ann) == nil,
-		"flow tutorial: the Home button (GoToSpot) walks Ann to a free gate without claiming it")
+	advance(0.4)
+	local portalAt = parsePortal(ann:GetAttribute(Config.Attr.HomePortal or "HomePortal"))
+	T.check(portalAt ~= nil and SS.GetSpot(ann) == nil, "flow tutorial: the Home button (GoToSpot) opens Ann's home portal (HomePortal), no plot claimed",
+		tostring(ann:GetAttribute(Config.Attr.HomePortal or "HomePortal")))
+	if portalAt then
+		standAt(ann, portalAt)
+		advance(0.6)
+	end
+	local nearGate = math.huge
+	for _, i in ipairs(freePlots()) do
+		local g = SS.GateCFrame(spots()[i])
+		if g and K.root(ann) then
+			nearGate = min(nearGate, K.planar(K.root(ann).Position, g.Position))
+		end
+	end
+	T.check(nearGate <= 12 and SS.GetSpot(ann) == nil and ann:GetAttribute(Config.Attr.HomePortal or "HomePortal") == nil,
+		"flow tutorial: walking into it lands Ann at a free gate without claiming it (the portal closes)", string.format("%.1f studs", nearGate))
+	T.check(toasted(ann, "Press E at the gate to claim this home", mark, "info"), "flow tutorial: ...'Press E at the gate to claim this home!'")
 	mark = K.logSize()
 	claim(ann, F.plot.Ann)
 	waitStep(ann, "shop", 3)
@@ -766,15 +869,15 @@ S.p2flow_arrive = guarded("p2flow_arrive", function()
 	local t0 = tokens(ann)
 	mark = K.logSize()
 	tutEvent(ann, "Next")
-	waitStep(ann, "press", 3)
+	waitStep(ann, "garden", 3)
 	T.eq(tokens(ann), t0 + Config.Tutorial.FinishReward.Tokens, "flow tutorial: 'done' pays the basics reward (" .. Config.Tutorial.FinishReward.Tokens .. " tokens)")
-	T.eq(stepOf(ann), "press", "flow tutorial: the home chapter's 'claim' completes at once (Ann already has a home) -> 'press'")
+	T.eq(stepOf(ann), "garden", "flow tutorial: the home chapter's 'claim' completes at once (Ann already has a home) -> 'garden'")
 	local stP = tut(ann)
-	local annPad = padPosition(annInfo, "Press1")
+	local annPad = padPosition(annInfo, "Garden")
 	T.check(stP and stP.Chapter == 2 and stP.Target and stP.Target.SpotIndex == F.plot.Ann and annPad ~= nil and typeof(stP.Target.Position) == "Vector3"
-		and (stP.Target.Position - annPad).Magnitude < 1, "flow tutorial: ...the arrow points at the Press 1 pad of her plot")
+		and (stP.Target.Position - annPad).Magnitude < 1, "flow tutorial: ...the arrow points at the free Pet Garden pad of her plot")
 	local stored1 = DataS.GetTutorial(ann)
-	T.check(stored1 and stored1.Done == true and stored1.Step == X.Steps.IndexOf.press, "flow tutorial: the stored progress: basics done, Step = 'press'",
+	T.check(stored1 and stored1.Done == true and stored1.Step == X.Steps.IndexOf.garden, "flow tutorial: the stored progress: basics done, Step = 'garden'",
 		stored1 and (tostring(stored1.Done) .. " / " .. tostring(stored1.Step)) or "nil")
 
 	-- Ben: skips the tutorial, claims a plot, cannot touch Ann's
@@ -790,11 +893,11 @@ S.p2flow_arrive = guarded("p2flow_arrive", function()
 	claim(ben, F.plot.Cid)
 	T.check(SS.GetSpot(ben) == benInfo and SS.GetOwner(F.plot.Cid) == cid and toasted(ben, "already have a home", mark, "bad"),
 		"flow: a second claim is refused (one plot per player)")
-	local annPress = buyPrompt(annInfo, "Press1")
-	if T.check(annPress ~= nil and annPress:GetAttribute("OwnerUserId") == ann.UserId, "flow: Ann's Press 1 pad carries her OwnerUserId (HomeFx hides it for others)") then
-		Mock.Trigger(annPress, ben)
+	local annPad1 = buyPrompt(annInfo, "Garden")
+	if T.check(annPad1 ~= nil and annPad1:GetAttribute("OwnerUserId") == ann.UserId, "flow: Ann's Pet Garden pad carries her OwnerUserId (HomeFx hides it for others)") then
+		Mock.Trigger(annPad1, ben)
 		advance(0.3)
-		T.check(level(ann, "Press1") == 0 and level(ben, "Press1") == 0, "flow: Ben's E on Ann's pad builds nothing (for nobody)")
+		T.check(level(ann, "Garden") == 0 and level(ben, "Garden") == 0, "flow: Ben's E on Ann's pad builds nothing (for nobody)")
 	end
 	T.check(SS.GetOwner(F.plot.Ann) == ann and SS.GetOwner(F.plot.Ben) == ben and SS.GetOwner(F.plot.Cid) == cid,
 		"flow: three plots, three owners")
@@ -820,216 +923,311 @@ S.p2flow_build = guarded("p2flow_build", function()
 		"flow build: (precondition) Ann and Ben are in the game with their plots (p2flow_arrive)") then
 		return
 	end
-	local Config = config()
-	local DataS, Ty, TC, PK = X.DataS, X.Ty, X.TC, X.PK
-	local annInfo, benInfo = spots()[F.plot.Ann], spots()[F.plot.Ben]
+	local ledger = scoopLedger()
+	local okRun, errRun = pcall(function()
+		local Config = config()
+		local DataS, Ty, TC, PK = X.DataS, X.Ty, X.TC, X.PK
+		local annInfo, benInfo = spots()[F.plot.Ann], spots()[F.plot.Ben]
+		local meal = TC.Coins.MealSeconds
 
-	-- the free Press 1 and Collector pads, on both plots
-	local mark = K.logSize()
-	pressPad(ann, annInfo, "Press1")
-	T.check(level(ann, "Press1") == 1 and cash(ann) == 0, "flow build: E on the Press 1 pad builds it for free")
-	T.check(toasted(ann, "Built Cloud Press 1", mark, "good"), "flow build: ...'Built Cloud Press 1!' toast")
-	T.check(stationModel(annInfo, "Press1") ~= nil, "flow build: ...the press stands on Ann's plot (Station_Press1)")
-	waitStep(ann, "collect", 3)
-	T.eq(stepOf(ann), "collect", "flow build: building Press 1 completes 'press'")
-	pressPad(ben, benInfo, "Press1")
-	pressPad(ben, benInfo, "Collector")
-	pressPad(ann, annInfo, "Collector")
-	T.check(level(ann, "Collector") == 1 and level(ben, "Collector") == 1 and level(ben, "Press1") == 1, "flow build: both Collectors are built (free)")
-	T.check(home(ann).Level == 2 and annInfo.Folder:GetAttribute("HomeLevel") == 2, "flow build: Home Level 2 (replicated on the plot folder)")
-	DataS.MutateHome(ann, function(h)
-		h.CollectorCash = 0
-	end)
-	DataS.MutateHome(ben, function(h)
-		h.CollectorCash = 0
-	end)
-	advance(4.2)
-	local ca, cb = home(ann).CollectorCash, home(ben).CollectorCash
-	T.check(ca >= 15 and ca <= 25 and cb >= 15 and cb <= 25, "flow build: both Collectors fill at the same time (~5 Cash/s each)", ca .. " / " .. cb)
-	T.eq(annInfo.Folder:GetAttribute("CollectorCash"), floor(home(ann).CollectorCash), "flow build: Ann's plot folder replicates her Collector amount")
-	local pad = collectPad(annInfo)
-	if T.check(pad ~= nil, "flow build: Ann's Collector has its CollectPad") then
-		Mock.Touch(pad, K.root(ben))
-		T.check(cash(ben) == 0 and home(ann).CollectorCash >= ca, "flow build: Ben stepping on Ann's Collector banks nothing")
-		local before = cash(ann)
-		local inside = floor(home(ann).CollectorCash)
-		Mock.Touch(pad, K.root(ann))
-		T.check(cash(ann) - before >= inside and inside > 0, "flow build: stepping on her Collector banks Ann's Cash", (cash(ann) - before) .. " of " .. inside)
-		waitStep(ann, "kitchen", 3)
-		T.eq(stepOf(ann), "kitchen", "flow build: banking completes 'collect'")
-	end
-	T.check(home(ben).CollectorCash >= cb and cash(ben) == 0, "flow build: Ben's Collector keeps his own Cash")
+		-- the free Pet Garden (the only pad of a fresh home), then a pet in it: 'garden'
+		local pads0 = TC.AvailablePads(home(ann))
+		T.check(#pads0 == 1 and pads0[1].StationId == "Garden" and pads0[1].Price == 0, "flow build: Ann's fresh home shows one pad: the free Pet Garden", tostring(#pads0))
+		local mark = K.logSize()
+		pressPad(ann, annInfo, "Garden")
+		T.check(level(ann, "Garden") == 1 and cash(ann) == 0, "flow build: E on the Pet Garden pad builds it for free")
+		T.check(toasted(ann, "Built Pet Garden", mark, "good"), "flow build: ...'Built Pet Garden!' toast")
+		advance(0.6)
+		T.check(stationModel(annInfo, "Garden") ~= nil and annInfo.Folder:GetAttribute("GardenSlots") == 3,
+			"flow build: ...the Garden stands on Ann's plot with 3 open places (GardenSlots)", tostring(annInfo.Folder:GetAttribute("GardenSlots")))
+		T.eq(stepOf(ann), "garden", "flow build: the Garden alone does not finish 'garden' (a pet must sit in it)")
+		local stG = tut(ann)
+		local spot1 = gardenSpotPos(annInfo, 1)
+		T.check(stG and stG.Target and typeof(stG.Target.Position) == "Vector3" and spot1 ~= nil and (stG.Target.Position - spot1).Magnitude < 1,
+			"flow build: ...its arrow moves to garden place 1")
+		local gp = gardenPrompt(annInfo, 1)
+		T.check(gp ~= nil and gp.Enabled == true and gp:GetAttribute("OwnerUserId") == ann.UserId,
+			"flow build: the empty place has Ann's 'Put a pet here' prompt (GardenSpotPrompt; the client's picker answers it)")
+		mark = K.logSize()
+		Mock.FromClient(remote("HomeAction"), ann, "GardenSet", { 1, F.eco })
+		advance(0.4)
+		T.check(home(ann).Garden[1] == F.eco and annInfo.Folder:GetAttribute("GardenPets") == "1=" .. F.eco,
+			"flow build: the picker's HomeAction GardenSet puts the pet in place 1 (GardenPets on the plot)", tostring(annInfo.Folder:GetAttribute("GardenPets")))
+		T.check(toasted(ann, "is working in your Garden", mark), "flow build: ...'<pet> is working in your Garden!'")
+		waitStep(ann, "coins", 3)
+		T.eq(stepOf(ann), "coins", "flow build: a pet in the Garden completes 'garden'")
+		local gpTaken = gardenPrompt(annInfo, 1)
+		T.check(gpTaken ~= nil and gpTaken.Enabled == false, "flow build: ...and the taken place's prompt turns off")
 
-	-- the 'kitchen' arrow, pad by pad (the Garden is on the way: an Economy pet goes to work there)
-	local path, lost, gardenIncome = {}, nil, nil
-	for _ = 1, 30 do
-		if stepOf(ann) ~= "kitchen" then
-			break
+		-- Ben next door: his own free Garden with a Combat pet (any role works there; Combat earns 1/1.6)
+		givePet(ben, F.combat, 1)
+		pressPad(ben, benInfo, "Garden")
+		Mock.FromClient(remote("HomeAction"), ben, "GardenSet", { 1, F.combat })
+		advance(0.4)
+		T.check(level(ben, "Garden") == 1 and home(ben).Garden[1] == F.combat, "flow build: Ben builds his own free Garden and puts a Combat pet in it (any role may work there)")
+		local incA, incB = Ty.IncomePerSecond(ann), Ty.IncomePerSecond(ben)
+		T.check(incA > 0 and incB > 0 and abs(incA / incB - 1.6) < 1e-6, "flow build: ...a Combat pet makes 1/1.6 of the coins of an Economy pet of the same rarity and level",
+			incA .. " / " .. incB)
+
+		-- rainbow coins: one per meal, only the owner scoops them: 'coins'
+		away(ann)
+		away(ben)
+		advance(meal + 1.5)
+		local piles = Ty.Piles(ann)
+		local pile = piles and piles[1]
+		T.check(pile ~= nil and pile.Coins >= 1 and typeof(pile.Pos) == "Vector3", "flow build: after one meal (" .. meal .. " s) Ann's pet popped a coin into its pile",
+			pile and tostring(pile.Coins) or "no pile")
+		T.check(tostring(annInfo.Folder:GetAttribute("CoinPiles")):match("^1=%d") ~= nil, "flow build: ...shown on the plot (CoinPiles)", tostring(annInfo.Folder:GetAttribute("CoinPiles")))
+		if pile then
+			advance(1.2)
+			local stC = tut(ann)
+			T.check(stC and stC.Target and typeof(stC.Target.Position) == "Vector3" and (stC.Target.Position - pile.Pos).Magnitude < 1, "flow build: 'coins' points at the pile")
+			local bank0, cb0, lb0 = home(ann).CollectorCash, cash(ben), ledger.of(ben)
+			standAt(ben, pile.Pos)
+			advance(0.6)
+			away(ben)
+			T.check(cash(ben) == cb0 and ledger.of(ben) == lb0 and home(ann).CollectorCash >= bank0 - 1e-6, "flow build: Ben walking over Ann's coins scoops nothing")
+			local c0, la0 = cash(ann), ledger.of(ann)
+			local onLawn = floor(home(ann).CollectorCash)
+			standAt(ann, pile.Pos)
+			advance(0.4)
+			away(ann)
+			local gained = cash(ann) - c0
+			T.check(onLawn > 0 and gained >= onLawn and gained == ledger.of(ann) - la0, "flow build: Ann walking over her pile scoops it (+$" .. gained .. ", CoinsScooped)",
+				gained .. " of " .. onLawn)
+			waitStep(ann, "machine", 3)
+			T.eq(stepOf(ann), "machine", "flow build: scooping completes 'coins'")
 		end
-		local stK = tut(ann)
-		local nextPad = nil
-		for _, padDef in ipairs(TC.AvailablePads(home(ann))) do
-			local pos = padPosition(annInfo, padDef.StationId)
-			if padDef.Locked == nil and pos and stK.Target and typeof(stK.Target.Position) == "Vector3" and (pos - stK.Target.Position).Magnitude < 0.5 then
-				nextPad = padDef
+
+		-- the 'machine' arrow, pad by pad: the Berry Bush on the way (plants make bigger coins), then the Food Machine
+		local path, lost, foodUp = {}, nil, nil
+		for _ = 1, 30 do
+			if stepOf(ann) ~= "machine" then
+				break
+			end
+			local stK = tut(ann)
+			local nextPad = nil
+			for _, padDef in ipairs(TC.AvailablePads(home(ann))) do
+				local pos = padPosition(annInfo, padDef.StationId)
+				if padDef.Locked == nil and pos and stK.Target and typeof(stK.Target.Position) == "Vector3" and (pos - stK.Target.Position).Magnitude < 0.5 then
+					nextPad = padDef
+				end
+			end
+			if not nextPad then
+				lost = tostring(stK and stK.Hint)
+				break
+			end
+			fund(ann, nextPad.Price)
+			local before = level(ann, nextPad.StationId)
+			local inc0 = Ty.IncomePerSecond(ann)
+			pressPad(ann, annInfo, nextPad.StationId)
+			path[#path + 1] = nextPad.StationId
+			if level(ann, nextPad.StationId) ~= before + 1 then
+				lost = nextPad.StationId .. " was not built"
+				break
+			end
+			if nextPad.StationId == "Press1" then
+				foodUp = Ty.IncomePerSecond(ann) > inc0
 			end
 		end
-		if not nextPad then
-			lost = tostring(stK and stK.Hint)
-			break
-		end
-		fund(ann, nextPad.Price)
-		local before = level(ann, nextPad.StationId)
-		pressPad(ann, annInfo, nextPad.StationId)
-		path[#path + 1] = nextPad.StationId
-		if level(ann, nextPad.StationId) ~= before + 1 then
-			lost = nextPad.StationId .. " was not built"
-			break
-		end
-		if nextPad.StationId == "Garden" then
-			local base = Ty.IncomePerSecond(ann)
-			Mock.FromClient(remote("HomeAction"), ann, "GardenSet", { 1, F.eco })
-			advance(1.2)
-			gardenIncome = Ty.IncomePerSecond(ann) - base
-			T.check(home(ann).Garden[1] == F.eco and abs(gardenIncome - TC.PetIncome(X.PC.Get(F.eco), 1)) < 1e-6,
-				"flow build: the Economy pet placed in the Garden (HomeAction GardenSet) earns its Income", tostring(gardenIncome))
-			T.eq(annInfo.Folder:GetAttribute("GardenPets"), "1=" .. F.eco, "flow build: ...shown on the plot (GardenPets)")
-		end
-	end
-	T.check(lost == nil and path[#path] == "Kitchen", "flow build: following the 'kitchen' arrow pad by pad builds the Kitchen", table.concat(path, " > ") .. (lost and (" (lost: " .. lost .. ")") or ""))
-	T.check(gardenIncome ~= nil, "flow build: ...with the Garden on the way")
-	waitStep(ann, "feed", 3)
-	T.eq(stepOf(ann), "feed", "flow build: the Kitchen completes 'kitchen'")
+		away(ann)
+		T.check(lost == nil and path[#path] == "Kitchen", "flow build: following the 'machine' arrow pad by pad builds the Food Machine", table.concat(path, " > ") .. (lost and (" (lost: " .. lost .. ")") or ""))
+		T.check(foodUp == true, "flow build: ...with the Berry Bush on the way (every coin bigger: IncomePerSecond up)")
+		waitStep(ann, "feed", 3)
+		T.eq(stepOf(ann), "feed", "flow build: the Food Machine completes 'machine'")
 
-	-- the player's rule: the Fusion Machine pad is a locked silhouette until Prestige 1
-	local fusionPrompt = buyPrompt(annInfo, "FusionMachine")
-	local fusionPad = X.HB and X.HB.GetPad and X.HB.GetPad(annInfo, "FusionMachine") or nil
-	if T.check(fusionPrompt ~= nil, "flow build: with the Kitchen built, the Fusion Machine pad appears") then
-		T.check(fusionPrompt.Enabled == false and fusionPad ~= nil and fusionPad:GetAttribute("Locked") == "Unlocks at Prestige 1",
-			"flow build: ...locked: 'Unlocks at Prestige 1' (its prompt is off)", fusionPad and tostring(fusionPad:GetAttribute("Locked")) or "no pad model")
-		T.check(annInfo.Folder:FindFirstChild("Ghost_FusionMachine", true) ~= nil, "flow build: ...with the machine's silhouette on the yard")
-		fund(ann, TC.PriceFor("FusionMachine", 1))
-		local c = cash(ann)
+		-- the player's rule: the Fusion Machine pad is a locked silhouette until Prestige 1
+		local fusionPrompt = buyPrompt(annInfo, "FusionMachine")
+		local fusionPad = X.HB and X.HB.GetPad and X.HB.GetPad(annInfo, "FusionMachine") or nil
+		if T.check(fusionPrompt ~= nil, "flow build: with the Food Machine built, the Fusion Machine pad appears") then
+			T.check(fusionPrompt.Enabled == false and fusionPad ~= nil and fusionPad:GetAttribute("Locked") == "Unlocks at Prestige 1",
+				"flow build: ...locked: 'Unlocks at Prestige 1' (its prompt is off)", fusionPad and tostring(fusionPad:GetAttribute("Locked")) or "no pad model")
+			T.check(annInfo.Folder:FindFirstChild("Ghost_FusionMachine", true) ~= nil, "flow build: ...with the machine's silhouette on the yard")
+			fund(ann, TC.PriceFor("FusionMachine", 1))
+			local c = cash(ann)
+			mark = K.logSize()
+			Mock.Trigger(fusionPrompt, ann) -- (a forged press: the engine does not fire a disabled prompt)
+			advance(0.3)
+			away(ann)
+			T.check(level(ann, "FusionMachine") == 0 and cash(ann) == c and toasted(ann, "Unlocks at Prestige 1", mark, "bad"),
+				"flow build: a forced press on it builds nothing, takes nothing and says why")
+		end
+
+		-- E at the Food Machine (owner only) opens the feed list; the list's Feed button is the PetCare remote
+		advance(1.2) -- PetCareService dresses the machine's prompts on its next tick
+		local feedPrompt = carePrompt(annInfo, "Kitchen", "FeedPrompt")
+		if T.check(feedPrompt ~= nil and feedPrompt:GetAttribute("OwnerUserId") == ann.UserId and feedPrompt.Parent and feedPrompt.Parent.Name == "Hopper",
+			"flow build: the Food Machine has Ann's 'Feed pets' prompt on its Hopper", feedPrompt and feedPrompt.Parent and feedPrompt.Parent.Name or "no prompt") then
+			local at = promptPosition(feedPrompt)
+			mark = K.logSize()
+			if at then
+				Mock.Teleport(ben, CFrame.new(at + Vector3.new(0, 0, -3)))
+			end
+			Mock.Trigger(feedPrompt, ben)
+			advance(0.3)
+			away(ben)
+			T.eq(#K.remotesFor("OpenPanel", ben.UserId, mark), 0, "flow build: Ben's E on Ann's Food Machine opens nothing")
+			if at then
+				Mock.Teleport(ann, CFrame.new(at + Vector3.new(0, 0, -3)))
+			end
+			Mock.Trigger(feedPrompt, ann)
+			advance(0.3)
+			away(ann)
+			local op = K.lastRemote("OpenPanel", ann.UserId, mark)
+			T.check(op ~= nil and op.args[1] == "Pets" and type(op.args[2]) == "table" and op.args[2].Action == "Feed", "flow build: Ann's E opens her Pets panel on Feed (OpenPanel)")
+			local stF = tut(ann)
+			local machineAt = pivotOf(stationModel(annInfo, "Kitchen"))
+			T.check(stF and stF.Target and typeof(stF.Target.Position) == "Vector3" and machineAt ~= nil and K.planar(stF.Target.Position, machineAt.Position) <= 16,
+				"flow build: 'feed' points at the Food Machine (its front)", stF and stF.Target and machineAt and string.format("%.1f studs", K.planar(stF.Target.Position, machineAt.Position)) or "")
+		end
+		-- a 'Level up' batch: machine feeds until Lv 2, each priced at the level it is eaten at (no leftovers yet)
+		local ecoDef = X.PC.Get(F.eco)
+		local lv0, xp0 = DataS.GetPetLevel(ann, F.eco)
+		local machineLevel = level(ann, "Kitchen")
+		local feeds, price, xp = 0, 0, xp0 or 0
+		while feeds < 10 and xp < TC.XpToNext(lv0) do
+			xp = xp + TC.FeedXp(lv0, machineLevel)
+			price = price + TC.FeedPrice(ecoDef, lv0)
+			feeds = feeds + 1
+		end
+		fund(ann, price)
+		local c1 = cash(ann)
+		local income1 = Ty.IncomePerSecond(ann)
 		mark = K.logSize()
-		Mock.Trigger(fusionPrompt, ann) -- (a forged press: the engine does not fire a disabled prompt)
-		advance(0.3)
-		T.check(level(ann, "FusionMachine") == 0 and cash(ann) == c and toasted(ann, "Unlocks at Prestige 1", mark, "bad"),
-			"flow build: a forced press on it builds nothing, takes nothing and says why")
-	end
-
-	-- E at the Kitchen counter cooks a Snack (only for the owner)
-	advance(1.2) -- PetCareService puts the cook prompts on its next tick
-	local cook = cookPrompt(annInfo, "Snack")
-	if T.check(cook ~= nil and cook:GetAttribute("OwnerUserId") == ann.UserId, "flow build: the Kitchen has Ann's 'Cook Snack' prompt") then
-		fund(ann, 50)
-		local c0, cBen = cash(ann), cash(ben)
-		Mock.Trigger(cook, ben)
-		advance(0.4)
-		T.check(cash(ann) == c0 and cash(ben) == cBen and (ann:GetAttribute("KitchenQueue") or "") == "", "flow build: Ben's E on Ann's counter cooks nothing")
-		local at = promptPosition(cook)
-		if at then
-			Mock.Teleport(ann, CFrame.new(at + Vector3.new(0, 0, -3)))
-		end
-		Mock.Trigger(cook, ann)
-		advance(0.4)
-		T.check(cash(ann) == c0 - TC.Foods.Snack.Price and ann:GetAttribute("KitchenQueue") == "Snack", "flow build: Ann's E cooks a Snack (Cash paid, KitchenQueue)",
-			tostring(ann:GetAttribute("KitchenQueue")))
-		K.waitFor(function()
-			return DataS.GetFood(ann, "Snack") >= 1
-		end, 12)
-		T.eq(DataS.GetFood(ann, "Snack"), 1, "flow build: ...the Snack is done after its cook time")
-		advance(1.2)
-		local stF = tut(ann)
-		T.check(stF and stF.Target and stF.Target.Kind == "Menu" and stF.Target.Id == "Pets", "flow build: with food, 'feed' points at the Pets button")
-	end
-	-- the Pets panel's Feed button (PetCare remote)
-	mark = K.logSize()
-	local c1 = cash(ann)
-	local income1 = Ty.IncomePerSecond(ann)
-	Mock.FromClient(remote("PetCare"), ann, "Feed", F.eco, "Snack")
-	advance(0.6)
-	local lv = DataS.GetPetLevel(ann, F.eco)
-	T.check(DataS.GetFood(ann, "Snack") == 0 and lv == 2, "flow build: feeding the Snack (25 XP) levels the pet to 2", "level " .. tostring(lv))
-	T.check(toasted(ann, "Lv 2", mark, "good"), "flow build: ...a level-up toast")
-	local stDone = tut(ann)
-	-- (Phase 3 appends the pet-battle chapter: the home chapter's end moves on to it instead of finishing everything)
-	T.check(stDone and ((stDone.Done == true and stDone.Completed == true) or (stDone.Chapter or 0) >= 3),
-		"flow build: feeding a pet ends the home chapter (the tutorial is done, or on to the battle chapter)")
-	T.eq(cash(ann), c1 + 1000, "flow build: ...the home chapter's Cash reward (once)")
-	advance(1.2)
-	T.check(Ty.IncomePerSecond(ann) > income1, "flow build: the garden income follows the pet's level", income1 .. " -> " .. Ty.IncomePerSecond(ann))
-
-	-- the Gym: a Combat pet from the roulette trains there
-	DataS.AddTokens(ann, 50)
-	withRoll(F.combat, function()
-		advance(0.3)
-		Mock.FromClient(remote("BuyRoulette"), ann, "Cloud")
-	end)
-	advance(0.5)
-	T.eq(PK.Count(DataS.GetProfile(ann), F.combat), 1, "flow gym: a Combat pet from the Cloud Roulette (" .. F.combat .. ")")
-	fund(ann, TC.PriceFor("Gym", 1))
-	pressPad(ann, annInfo, "Gym")
-	T.check(level(ann, "Gym") == 1 and stationModel(annInfo, "Gym") ~= nil, "flow gym: the Gym pad builds the Gym")
-	local arenaPrompt = buyPrompt(annInfo, "ArenaGate")
-	local arenaPad = X.HB and X.HB.GetPad and X.HB.GetPad(annInfo, "ArenaGate") or nil
-	T.check(arenaPrompt ~= nil and arenaPrompt.Enabled == true and arenaPad ~= nil and (arenaPad:GetAttribute("Locked") or "") == "",
-		"flow gym: ...and the Arena Gate pad shows up, buyable (Phase 3)", arenaPad and tostring(arenaPad:GetAttribute("Locked")) or "no pad")
-	mark = K.logSize()
-	Mock.FromClient(remote("PetCare"), ann, "GymSet", 1, F.eco)
-	advance(0.4)
-	Mock.FromClient(remote("HomeAction"), ann, "GardenSet", { 1, F.combat })
-	advance(0.4)
-	T.check(home(ann).Gym[1] == nil and home(ann).Garden[1] == F.eco, "flow gym: an Economy pet cannot train and a Combat pet cannot work in the Garden")
-	T.check(toasted(ann, "Only Combat pets", mark, "bad") and toasted(ann, "Only Economy pets", mark, "bad"), "flow gym: ...both refusals toast why")
-	Mock.FromClient(remote("PetCare"), ann, "GymSet", 1, F.combat)
-	advance(1.2)
-	T.check(home(ann).Gym[1] == F.combat and annInfo.Folder:GetAttribute("GymPets") == "1=" .. F.combat, "flow gym: the Combat pet trains in Gym slot 1 (GymPets on the plot)",
-		tostring(annInfo.Folder:GetAttribute("GymPets")))
-	local g0 = DataS.GetPetLevel(ann, F.combat)
-	advance(75) -- (XP is granted every 10 s)
-	local g1, gx = DataS.GetPetLevel(ann, F.combat)
-	T.check(g0 == 1 and g1 >= 2, "flow gym: a minute in a Lv 1 Gym levels it up (" .. TC.GymXpPerMinute(home(ann)) .. " XP per minute, " .. TC.XpToNext(1) .. " XP to Lv 2)",
-		g0 .. " -> " .. tostring(g1) .. " (" .. tostring(gx) .. " xp)")
-
-	-- Ben's home ran on its own the whole time
-	T.check(cash(ben) == 0 and home(ben).CollectorCash > cb and level(ben, "Garden") == 0, "flow build: Ben's plot earned its own Cash meanwhile (nothing of Ann's)")
-	-- the house tier caps the presses: Ben's Cottage takes Press 1 to Lv 6, the 7th level needs the Villa
-	local cap = TC.MaxLevelAt("Press1", home(ben))
-	local upTo = {}
-	for _ = level(ben, "Press1") + 1, cap do
-		local nextLv = level(ben, "Press1") + 1
-		fund(ben, TC.PriceFor("Press1", nextLv))
-		pressPad(ben, benInfo, "Press1")
-		upTo[#upTo + 1] = level(ben, "Press1")
-	end
-	T.check(cap == 6 and level(ben, "Press1") == cap, "flow build: Ben levels his Press 1 to the Cottage's cap (Lv " .. tostring(cap) .. ") with E", table.concat(upTo, ","))
-	local benPadModel = X.HB and X.HB.GetPad and X.HB.GetPad(benInfo, "Press1") or nil
-	T.check(benPadModel ~= nil and benPadModel:GetAttribute("Locked") == "Needs the Villa" and buyPrompt(benInfo, "Press1").Enabled == false,
-		"flow build: ...then its pad reads 'Needs the Villa' (prompt off)", benPadModel and tostring(benPadModel:GetAttribute("Locked")) or "no pad")
-	fund(ben, TC.PriceFor("Press1", cap + 1))
-	local cBen2 = cash(ben)
-	mark = K.logSize()
-	advance(1.6)
-	pressPad(ben, benInfo, "Press1")
-	T.check(level(ben, "Press1") == cap and cash(ben) == cBen2 and toasted(ben, "Needs the Villa", mark, "bad"), "flow build: ...and a forced press is refused with that reason (nothing paid)")
-	DataS.SpendCash(ben, cash(ben)) -- (back to an empty wallet)
-
-	-- Cid: his Press 1 from the Home window (HomeAction Upgrade), then he leaves: the save is a Phase 2 profile
-	if cid and cid.Parent and F.plot.Cid then
-		Mock.FromClient(remote("HomeAction"), cid, "Upgrade", "Press1")
+		Mock.FromClient(remote("PetCare"), ann, "Feed", F.eco, { Count = feeds })
 		advance(0.6)
-		T.eq(level(cid, "Press1"), 1, "flow migrate: Cid builds his Press 1 from the Home window (HomeAction Upgrade)")
-		waitStep(cid, "collect", 3)
-		T.eq(stepOf(cid), "collect", "flow migrate: ...his tutorial moves on ('collect')")
-		leave(cid)
-		advance(1.5)
-		local rec = stored(F.ids.Cid) or {}
-		local rh = type(rec.Home) == "table" and rec.Home or {}
-		T.check(rec.Version == 2 and type(rh.Stations) == "table" and rh.Stations.Press1 == 1 and rh.Rooms == nil and rh.Prestige == 0 and rh.Level == 1,
-			"flow migrate: Cid's save is a Phase 2 profile now (Home.Stations, no Rooms, Version 2)", mapText(rh.Stations))
-		T.check(rec.SpotIndex == F.plot.Cid and type(rec.Tutorial) == "table" and rec.Tutorial.Step == X.Steps.IndexOf.collect and rec.Tokens == 340,
-			"flow migrate: ...with his plot, tutorial progress and tokens")
-		T.eq(spots()[F.plot.Cid].NameLabel.Text, "Free home", "flow migrate: his plot is free again")
+		local lv = DataS.GetPetLevel(ann, F.eco)
+		T.check(lv0 == 1 and lv == 2, "flow build: a 'Level up' batch of " .. feeds .. " machine feeds levels the pet to 2", tostring(lv0) .. " -> " .. tostring(lv))
+		T.eq(#toasts(ann, "reached Lv 2", mark), 1, "flow build: ...with one level-up toast")
+		local stDone = tut(ann)
+		-- (Phase 3 appends the pet-battle chapter: the home chapter's end moves on to it instead of finishing everything)
+		T.check(stDone and ((stDone.Done == true and stDone.Completed == true) or (stDone.Chapter or 0) >= 3),
+			"flow build: feeding a pet ends the home chapter (the tutorial is done, or on to the battle chapter)")
+		T.eq(cash(ann), c1 - price + 1000, "flow build: ...the feeds cost $" .. price .. " and the home chapter pays its Cash reward (once)")
+		advance(1.2)
+		T.check(Ty.IncomePerSecond(ann) > income1, "flow build: the garden coins follow the pet's level", income1 .. " -> " .. Ty.IncomePerSecond(ann))
+
+		-- the Training Place: a Combat pet from the roulette trains there (Phase 4: no more Gym slots)
+		DataS.AddTokens(ann, 50)
+		withRoll(F.combat, function()
+			advance(0.3)
+			Mock.FromClient(remote("BuyRoulette"), ann, "Cloud")
+		end)
+		advance(0.5)
+		T.eq(PK.Count(DataS.GetProfile(ann), F.combat), 1, "flow train: a Combat pet from the Cloud Roulette (" .. F.combat .. ")")
+		fund(ann, TC.PriceFor("Gym", 1))
+		pressPad(ann, annInfo, "Gym")
+		away(ann)
+		T.check(level(ann, "Gym") == 1 and stationModel(annInfo, "Gym") ~= nil, "flow train: the Training Place pad builds it")
+		local arenaPrompt = buyPrompt(annInfo, "ArenaGate")
+		local arenaPad = X.HB and X.HB.GetPad and X.HB.GetPad(annInfo, "ArenaGate") or nil
+		T.check(arenaPrompt ~= nil and arenaPrompt.Enabled == true and arenaPad ~= nil and (arenaPad:GetAttribute("Locked") or "") == "",
+			"flow train: ...and the Arena Gate pad shows up, buyable (Phase 3)", arenaPad and tostring(arenaPad:GetAttribute("Locked")) or "no pad")
+		advance(1.2)
+		local trainPrompt = carePrompt(annInfo, "Gym", "TrainPrompt")
+		if T.check(trainPrompt ~= nil and trainPrompt:GetAttribute("OwnerUserId") == ann.UserId, "flow train: the Training Place has Ann's 'Train pets' prompt") then
+			local at = promptPosition(trainPrompt)
+			if at then
+				Mock.Teleport(ann, CFrame.new(at + Vector3.new(0, 0, -3)))
+			end
+			mark = K.logSize()
+			Mock.Trigger(trainPrompt, ann)
+			advance(0.3)
+			away(ann)
+			local op = K.lastRemote("OpenPanel", ann.UserId, mark)
+			T.check(op ~= nil and op.args[1] == "Train", "flow train: ...E opens the training window (OpenPanel 'Train')")
+		end
+		-- any role works in the Garden now: the Combat pet takes place 2
+		Mock.FromClient(remote("HomeAction"), ann, "GardenSet", { 2, F.combat })
+		advance(0.4)
+		T.check(home(ann).Garden[2] == F.combat and annInfo.Folder:GetAttribute("GardenPets") == "1=" .. F.eco .. ";2=" .. F.combat,
+			"flow train: the Combat pet works in garden place 2 (GardenPets)", tostring(annInfo.Folder:GetAttribute("GardenPets")))
+		local combatDef = X.PC.Get(F.combat)
+		local cost = TC.TrainCost(combatDef, 1)
+		fund(ann, cost)
+		local c2 = cash(ann)
+		mark = K.logSize()
+		Mock.FromClient(remote("PetCare"), ann, "Train", F.combat, "Physique")
+		advance(0.4)
+		local g = DataS.GetGrowth(ann, F.combat)
+		local job = g and g.Job
+		T.check(type(job) == "table" and job.Stat == "Physique" and job.Rank == 1 and c2 - cash(ann) == cost,
+			"flow train: Train (PetCare) starts Physique rank 1 for $" .. tostring(cost), job and (tostring(job.Stat) .. " " .. tostring(job.Rank)) or "no job")
+		T.check(toasted(ann, "started Physique training", mark), "flow train: ...'started Physique training' toast")
+		T.check(home(ann).Garden[2] == nil and type(job) == "table" and job.From == "Garden:2", "flow train: ...the trainee leaves its garden place and remembers it (From 'Garden:2')",
+			job and tostring(job.From) or "")
+		T.check(tostring(annInfo.Folder:GetAttribute("TrainingPets")):find(F.combat .. ":Physique:", 1, true) ~= nil, "flow train: ...shown on the plot (TrainingPets)",
+			tostring(annInfo.Folder:GetAttribute("TrainingPets")))
+		-- the training lock: neither equipped nor in the Garden while it trains
+		mark = K.logSize()
+		advance(1.6)
+		Mock.FromClient(remote("EquipPet"), ann, F.combat)
+		advance(0.4)
+		Mock.FromClient(remote("HomeAction"), ann, "GardenSet", { 2, F.combat })
+		advance(0.4)
+		local eq = DataS.GetProfile(ann).Equipped
+		local isEq = false
+		for _, k in ipairs(eq) do
+			isEq = isEq or k == F.combat
+		end
+		T.check(not isEq and home(ann).Garden[2] == nil and toasted(ann, "is training", mark), "flow train: a training pet can be neither equipped nor put in the Garden ('is training')")
+		-- done after its time: rank 1, back in its place by itself
+		mark = K.logSize()
+		advance(TC.TrainSeconds(1) + 2)
+		g = DataS.GetGrowth(ann, F.combat)
+		T.check(g and g.Physique == 1 and g.Job == nil, "flow train: after " .. TC.TrainSeconds(1) .. " s the pet has Physique rank 1", g and tostring(g.Physique) or "")
+		T.check(home(ann).Garden[2] == F.combat and toasted(ann, "finished Physique training", mark), "flow train: ...and is back in garden place 2 by itself (with a toast)")
+
+		-- Ben's home ran on its own the whole time
+		T.check(home(ben).CollectorCash > 0 and ledger.of(ben) == 0 and level(ben, "Kitchen") == 0, "flow build: Ben's garden made his own coins meanwhile (nothing of Ann's)",
+			tostring(home(ben).CollectorCash))
+		-- the house tier caps the plants: Ben's Cottage takes the Berry Bush to Lv 6, the 7th level needs the Villa
+		local cap = TC.MaxLevelAt("Press1", home(ben))
+		local upTo = {}
+		for _ = level(ben, "Press1") + 1, cap do
+			local nextLv = level(ben, "Press1") + 1
+			fund(ben, TC.PriceFor("Press1", nextLv))
+			pressPad(ben, benInfo, "Press1")
+			upTo[#upTo + 1] = level(ben, "Press1")
+		end
+		T.check(cap == 6 and level(ben, "Press1") == cap, "flow build: Ben levels his Berry Bush to the Cottage's cap (Lv " .. tostring(cap) .. ") with E", table.concat(upTo, ","))
+		local benPadModel = X.HB and X.HB.GetPad and X.HB.GetPad(benInfo, "Press1") or nil
+		T.check(benPadModel ~= nil and benPadModel:GetAttribute("Locked") == "Needs the Villa" and buyPrompt(benInfo, "Press1").Enabled == false,
+			"flow build: ...then its pad reads 'Needs the Villa' (prompt off)", benPadModel and tostring(benPadModel:GetAttribute("Locked")) or "no pad")
+		fund(ben, TC.PriceFor("Press1", cap + 1))
+		local cBen2, lBen2 = cash(ben), ledger.of(ben)
+		mark = K.logSize()
+		advance(1.6)
+		pressPad(ben, benInfo, "Press1")
+		T.check(level(ben, "Press1") == cap and cash(ben) - (ledger.of(ben) - lBen2) == cBen2 and toasted(ben, "Needs the Villa", mark, "bad"),
+			"flow build: ...and a forced press is refused with that reason (nothing paid)")
+		away(ben)
+		DataS.SpendCash(ben, cash(ben)) -- (back to an empty wallet)
+
+		-- Cid: his free Garden from the Home window (HomeAction Upgrade), a pet in it, then he leaves
+		if cid and cid.Parent and F.plot.Cid then
+			Mock.FromClient(remote("HomeAction"), cid, "Upgrade", "Garden")
+			advance(0.6)
+			T.eq(level(cid, "Garden"), 1, "flow migrate: Cid builds his Pet Garden from the Home window (HomeAction Upgrade)")
+			Mock.FromClient(remote("HomeAction"), cid, "GardenSet", { 1, F.eco })
+			advance(0.4)
+			waitStep(cid, "coins", 3)
+			T.eq(stepOf(cid), "coins", "flow migrate: ...puts a pet in it and his tutorial moves on ('coins')")
+			leave(cid)
+			advance(1.5)
+			local rec = stored(F.ids.Cid) or {}
+			local rh = type(rec.Home) == "table" and rec.Home or {}
+			T.check(rec.Version == 2 and type(rh.Stations) == "table" and rh.Stations.Garden == 1 and type(rh.Garden) == "table" and rh.Garden[1] == F.eco
+				and rh.Rooms == nil and rh.Prestige == 0 and rh.Level == 1, "flow migrate: Cid's save is a Phase 4 home now (Home.Stations with the Garden, its pet, no Rooms)", mapText(rh.Stations))
+			T.check(type(rec.Migrations) == "table" and rec.Migrations.P4 == true, "flow migrate: ...marked migrated (Migrations.P4)")
+			T.check(rec.SpotIndex == F.plot.Cid and type(rec.Tutorial) == "table" and rec.Tutorial.Step == X.Steps.IndexOf.coins and rec.Tokens == 340,
+				"flow migrate: ...with his plot, tutorial progress and tokens")
+			T.eq(spots()[F.plot.Cid].NameLabel.Text, "Free home", "flow migrate: his plot is free again")
+		end
+	end)
+	ledger.stop()
+	if not okRun then
+		error(errRun, 0)
 	end
 	K.flushErrors("p2flow_build")
 	K.flushWarnings("p2flow_build", ALLOWED_WARNINGS)
@@ -1044,149 +1242,181 @@ S.p2flow_prestige = guarded("p2flow_prestige", function()
 	end
 	local X = svc()
 	local ann = F.p.Ann
-	if not T.check(ann and ann.Parent and F.plot.Ann and level(ann, "Kitchen") >= 1, "flow prestige: (precondition) Ann has her plot with a Kitchen (p2flow_build)") then
+	if not T.check(ann and ann.Parent and F.plot.Ann and level(ann, "Kitchen") >= 1, "flow prestige: (precondition) Ann has her plot with a Food Machine (p2flow_build)") then
 		return
 	end
-	local DataS, Ty, TC, SS = X.DataS, X.Ty, X.TC, X.SS
-	local annInfo = spots()[F.plot.Ann]
-	local mark = K.logSize()
+	-- (Ann scoops her coins whenever she walks past them: every payment below is checked against Cash + scooped)
+	local ledger = scoopLedger()
+	local okRun, errRun = pcall(function()
+		local DataS, Ty, TC = X.DataS, X.Ty, X.TC
+		local annInfo = spots()[F.plot.Ann]
+		local mark = K.logSize()
 
-	-- pad by pad up to the Prestige pad (the next house first whenever it is open, then the cheapest pad)
-	local problems, gateRefused = {}, {}
-	local purchases = 0
-	for _ = 1, 300 do
-		local h = home(ann)
-		if TC.CanPrestige(h) then
-			break
-		end
-		local housePad = nil
-		for _, padDef in ipairs(TC.AvailablePads(h)) do
-			if padDef.StationId == "House" then
-				housePad = padDef
+		-- pad by pad up to the Prestige pad (the next house first whenever it is open, then the cheapest pad)
+		local problems, gateRefused = {}, {}
+		local purchases = 0
+		for _ = 1, 300 do
+			local h = home(ann)
+			if TC.CanPrestige(h) then
+				break
 			end
-			if padDef.StationId == "House" and padDef.Locked and padDef.Locked:find("Reach Home Level", 1, true) and not gateRefused[padDef.NextLevel] then
-				-- the next house below its Home Level: refused even with the Cash in hand
-				gateRefused[padDef.NextLevel] = true
-				fund(ann, padDef.Price)
-				local c = cash(ann)
-				local m = K.logSize()
-				advance(1.6) -- (the same refusal text is not repeated within 1.5 s)
-				pressPad(ann, annInfo, "House")
-				if level(ann, "House") ~= padDef.Level or cash(ann) ~= c or not toasted(ann, padDef.Locked, m, "bad") then
-					problems[#problems + 1] = "the " .. tostring(padDef.Title) .. " was not refused below " .. padDef.Locked
+			local housePad = nil
+			for _, padDef in ipairs(TC.AvailablePads(h)) do
+				if padDef.StationId == "House" then
+					housePad = padDef
+				end
+				if padDef.StationId == "House" and padDef.Locked and padDef.Locked:find("Reach Home Level", 1, true) and not gateRefused[padDef.NextLevel] then
+					-- the next house below its Home Level: refused even with the Cash in hand
+					gateRefused[padDef.NextLevel] = true
+					fund(ann, padDef.Price)
+					local c, l0 = cash(ann), ledger.of(ann)
+					local m = K.logSize()
+					advance(1.6) -- (the same refusal text is not repeated within 1.5 s)
+					pressPad(ann, annInfo, "House")
+					if level(ann, "House") ~= padDef.Level or cash(ann) - (ledger.of(ann) - l0) ~= c or not toasted(ann, padDef.Locked, m, "bad") then
+						problems[#problems + 1] = "the " .. tostring(padDef.Title) .. " was not refused below " .. padDef.Locked
+					end
 				end
 			end
+			local best = (housePad and housePad.Locked == nil) and housePad or cheapestPad(TC, h)
+			if not best then
+				problems[#problems + 1] = "dead end at Home Level " .. TC.HomeLevelOf(h)
+				break
+			end
+			fund(ann, best.Price)
+			local c, l0 = cash(ann), ledger.of(ann)
+			local before = level(ann, best.StationId)
+			if not pressPad(ann, annInfo, best.StationId) then
+				problems[#problems + 1] = "no pad for " .. best.StationId
+				break
+			end
+			purchases = purchases + 1
+			local paid = c + (ledger.of(ann) - l0) - cash(ann)
+			if level(ann, best.StationId) ~= before + 1 or paid ~= best.Price then
+				problems[#problems + 1] = best.StationId .. " Lv " .. (before + 1) .. ": paid " .. paid .. " of " .. tostring(best.Price)
+				break
+			end
 		end
-		local best = (housePad and housePad.Locked == nil) and housePad or cheapestPad(TC, h)
-		if not best then
-			problems[#problems + 1] = "dead end at Home Level " .. TC.HomeLevelOf(h)
-			break
+		away(ann)
+		local h = home(ann)
+		T.check(#problems == 0, "flow prestige: " .. purchases .. " purchases with E on the pads, each for exactly its price", table.concat(problems, " | "))
+		T.check(gateRefused[2] and gateRefused[3] and gateRefused[4], "flow prestige: the Villa, Manor and Sky Castle pads refuse below Home Level 10 / 20 / 30 (toast, nothing paid)",
+			"refused: " .. mapText(gateRefused))
+		for _, name in ipairs({ "Villa", "Manor", "Sky Castle" }) do
+			T.check(toasted(ann, name .. " built!", mark, "good"), "flow prestige: '" .. name .. " built!' toast")
 		end
-		fund(ann, best.Price)
-		local c = cash(ann)
-		local before = level(ann, best.StationId)
-		if not pressPad(ann, annInfo, best.StationId) then
-			problems[#problems + 1] = "no pad for " .. best.StationId
-			break
+		T.check(toasted(ann, "Prestige is ready", mark, "good"), "flow prestige: 'Prestige is ready at your home!' toast")
+		T.check(TC.CanPrestige(h) and TC.HomeLevelOf(h) >= 40 and level(ann, "House") == 4, "flow prestige: the Sky Castle at Home Level " .. TC.HomeLevelOf(h))
+		local prestigePad = buyPrompt(annInfo, "Prestige")
+		if not T.check(prestigePad ~= nil, "flow prestige: the Prestige pad appears on the plot") then
+			return
 		end
-		purchases = purchases + 1
-		if level(ann, best.StationId) ~= before + 1 or c - cash(ann) ~= best.Price then
-			problems[#problems + 1] = best.StationId .. " Lv " .. (before + 1) .. ": paid " .. (c - cash(ann)) .. " of " .. tostring(best.Price)
-			break
-		end
-	end
-	local h = home(ann)
-	T.check(#problems == 0, "flow prestige: " .. purchases .. " purchases with E on the pads, each for exactly its price", table.concat(problems, " | "))
-	T.check(gateRefused[2] and gateRefused[3] and gateRefused[4], "flow prestige: the Villa, Manor and Sky Castle pads refuse below Home Level 10 / 20 / 30 (toast, nothing paid)",
-		"refused: " .. mapText(gateRefused))
-	for _, name in ipairs({ "Villa", "Manor", "Sky Castle" }) do
-		T.check(toasted(ann, name .. " built!", mark, "good"), "flow prestige: '" .. name .. " built!' toast")
-	end
-	T.check(toasted(ann, "Prestige is ready", mark, "good"), "flow prestige: 'Prestige is ready at your home!' toast")
-	T.check(TC.CanPrestige(h) and TC.HomeLevelOf(h) >= 40 and level(ann, "House") == 4, "flow prestige: the Sky Castle at Home Level " .. TC.HomeLevelOf(h))
-	local prestigePad = buyPrompt(annInfo, "Prestige")
-	if not T.check(prestigePad ~= nil, "flow prestige: the Prestige pad appears on the plot") then
-		return
-	end
+		T.eq(TC.GardenSlots(h), 3, "flow prestige: 3 garden places before the first Prestige")
 
-	-- E on the Prestige pad only asks: a reset of the whole build is never one key press
-	DataS.AddCash(ann, 12345)
-	DataS.Save(ann) -- the store holds the build of Home Level 40
-	local before = {
-		Cash = cash(ann), Gems = gems(ann), Stations = home(ann).Stations, Garden = home(ann).Garden, Gym = home(ann).Gym,
-		Snack = DataS.GetFood(ann, "Snack"), Eco = X.PK.Count(DataS.GetProfile(ann), F.eco), Level = TC.HomeLevelOf(home(ann)),
-	}
-	T.check(prestigePad.ActionText == "Prestige" and prestigePad.HoldDuration >= 1, "flow prestige: the Prestige pad's prompt says 'Prestige' and needs a long hold",
-		tostring(prestigePad.ActionText) .. " / " .. tostring(prestigePad.HoldDuration))
-	mark = K.logSize()
-	pressPad(ann, annInfo, "Prestige")
-	local asked = K.remotesFor("OpenPanel", ann.UserId, mark)
-	local ask = asked[#asked]
-	T.check(home(ann).Prestige == 0 and cash(ann) == before.Cash and ask ~= nil and ask.args[1] == "Home" and type(ask.args[2]) == "table" and ask.args[2].Action == "Prestige",
-		"flow prestige: E on the Prestige pad resets nothing: it opens the Home window on the prestige confirmation", tostring(home(ann).Prestige) .. " / " .. cash(ann) .. " / " .. #asked .. " OpenPanel")
-	-- the Home window's confirm button
-	advance(1.1)
-	Mock.FromClient(remote("HomeAction"), ann, "Prestige")
-	advance(0.3)
-	local after = home(ann)
-	T.check(after.Prestige == 1 and cash(ann) == 0 and gems(ann) == before.Gems + TC.PrestigeGems(1),
-		"flow prestige: confirming in the Home window (HomeAction 'Prestige'): +1 star, Cash 0, +" .. TC.PrestigeGems(1) .. " Gems", tostring(after.Prestige) .. " / " .. cash(ann) .. " / " .. gems(ann))
-	local wrong = {}
-	for _, def in ipairs(TC.Stations) do
-		local want = def.KeepOnPrestige and (before.Stations[def.Id] or 0) or 0
-		if (after.Stations[def.Id] or 0) ~= want then
-			wrong[#wrong + 1] = def.Id .. "=" .. tostring(after.Stations[def.Id])
-		end
-	end
-	T.check(#wrong == 0, "flow prestige: stations reset, decor kept", table.concat(wrong, ","))
-	T.check(sameMap(after.Garden, before.Garden) and sameMap(after.Gym, before.Gym) and DataS.GetFood(ann, "Snack") == before.Snack
-		and X.PK.Count(DataS.GetProfile(ann), F.eco) == before.Eco, "flow prestige: garden and gym choices, food and pets are kept")
-	T.check(toasted(ann, "Prestige 1!", mark, "good") and toasted(ann, "Fusion Machine unlocked", mark, "good"), "flow prestige: 'Prestige 1!' and 'Fusion Machine unlocked' toasts")
-	advance(1.2)
-	T.check(annInfo.SubLabel.Text:find(STAR, 1, true) ~= nil and annInfo.Folder:GetAttribute("Prestige") == 1, "flow prestige: the nameplate shows the star (Prestige attribute 1)", annInfo.SubLabel.Text)
-	T.check(stationModel(annInfo, "Press1") == nil and stationModel(annInfo, "House") == nil and stationModel(annInfo, "Garden") == nil,
-		"flow prestige: the reset stations leave the plot")
-	T.eq(Ty.IncomePerSecond(ann), 0, "flow prestige: no presses, no Collector: the garden pet earns nothing until the Garden is rebuilt")
-	advance(11) -- XP that piled up before the reset is granted on the next 10 s Gym grant
-	local gLv, gXp = DataS.GetPetLevel(ann, F.combat)
-	advance(25)
-	local gLv2, gXp2 = DataS.GetPetLevel(ann, F.combat)
-	T.check(gLv2 == gLv and gXp2 == gXp, "flow prestige: the pet in the reset Gym stops training", gLv .. "/" .. gXp .. " -> " .. gLv2 .. "/" .. gXp2)
+		-- a training job running through the prestige (Phase 4: Prestige keeps every training job)
+		local combatDef = X.PC.Get(F.combat)
+		fund(ann, TC.TrainCost(combatDef, 1) or 0)
+		local mTrain = K.logSize()
+		advance(0.3)
+		Mock.FromClient(remote("PetCare"), ann, "Train", F.combat, "Speed")
+		advance(0.4)
+		local jobBefore = DataS.GetGrowth(ann, F.combat).Job
+		T.check(type(jobBefore) == "table" and jobBefore.Stat == "Speed" and jobBefore.From == "Garden:2", "flow prestige: (here) the Combat pet starts Speed training from garden place 2",
+			table.concat(toasts(ann, "", mTrain), " | "))
 
-	-- DataStore merge after the prestige: a stale server's late write lands (Ann's previous session, at prestige 0:
-	-- an extra Vault level, +5000 Cash, +7 Gems, +2 Snacks). Its Home edits and its Cash belong to the run this prestige
-	-- reset, so neither survives (the prestige rule); Gems and Food always travel as deltas. While the store is still at
-	-- prestige 0 this server's merge decides that; when an autosave of this server already stored the prestige, the
-	-- stale server's own merge does (it keeps only its Gems / Food deltas), so the record gets just those. Either way
-	-- the outcome below is the same.
-	local rec = stored(ann.UserId)
-	if T.check(type(rec) == "table" and type(rec.Home) == "table", "flow merge: (precondition) Ann has a save") then
-		local storeAtZero = (rec.Home.Prestige or 0) == 0
-		T.info("flow merge: the stale write lands " .. (storeAtZero and "before this server saved the prestige" or "after an autosave stored the prestige"))
-		if storeAtZero then
-			rec.Home.Stations = type(rec.Home.Stations) == "table" and rec.Home.Stations or {}
-			rec.Home.Stations.Vault = min(5, (rec.Home.Stations.Vault or 0) + 1)
-			rec.Home.Level = (rec.Home.Level or 0) + 1
-			rec.Cash = (rec.Cash or 0) + 5000
+		-- E on the Prestige pad only asks: a reset of the whole build is never one key press
+		DataS.AddCash(ann, 12345)
+		DataS.Save(ann) -- the store holds the build of Home Level 40
+		local before = {
+			Cash = cash(ann), Gems = gems(ann), Stations = home(ann).Stations, Garden = home(ann).Garden,
+			Snack = DataS.GetFood(ann, "Snack"), Eco = X.PK.Count(DataS.GetProfile(ann), F.eco), Level = TC.HomeLevelOf(home(ann)),
+			EcoLevel = DataS.GetPetLevel(ann, F.eco), Physique = DataS.GetGrowth(ann, F.combat).Physique,
+		}
+		T.check(prestigePad.ActionText == "Prestige" and prestigePad.HoldDuration >= 1, "flow prestige: the Prestige pad's prompt says 'Prestige' and needs a long hold",
+			tostring(prestigePad.ActionText) .. " / " .. tostring(prestigePad.HoldDuration))
+		mark = K.logSize()
+		local l1 = ledger.of(ann)
+		pressPad(ann, annInfo, "Prestige")
+		away(ann)
+		local asked = K.remotesFor("OpenPanel", ann.UserId, mark)
+		local ask = asked[#asked]
+		T.check(home(ann).Prestige == 0 and cash(ann) - (ledger.of(ann) - l1) == before.Cash and ask ~= nil and ask.args[1] == "Home" and type(ask.args[2]) == "table" and ask.args[2].Action == "Prestige",
+			"flow prestige: E on the Prestige pad resets nothing: it opens the Home window on the prestige confirmation", tostring(home(ann).Prestige) .. " / " .. cash(ann) .. " / " .. #asked .. " OpenPanel")
+		-- the Home window's confirm button
+		advance(1.1)
+		Mock.FromClient(remote("HomeAction"), ann, "Prestige")
+		advance(0.3)
+		local after = home(ann)
+		T.check(after.Prestige == 1 and cash(ann) == 0 and after.CollectorCash == 0 and gems(ann) == before.Gems + TC.PrestigeGems(1),
+			"flow prestige: confirming in the Home window (HomeAction 'Prestige'): +1 star, Cash 0, no coins left, +" .. TC.PrestigeGems(1) .. " Gems",
+			tostring(after.Prestige) .. " / " .. cash(ann) .. " / " .. gems(ann))
+		local want = TC.StationsAfterPrestige(before.Stations)
+		local wrong = {}
+		for _, def in ipairs(TC.Stations) do
+			if (after.Stations[def.Id] or 0) ~= (want[def.Id] or 0) then
+				wrong[#wrong + 1] = def.Id .. "=" .. tostring(after.Stations[def.Id])
+			end
 		end
-		rec.Gems = (rec.Gems or 0) + 7
-		rec.Food = type(rec.Food) == "table" and rec.Food or {}
-		rec.Food.Snack = (rec.Food.Snack or 0) + 2
-		DataS.Save(ann)
-		local s = stored(ann.UserId) or {}
-		local sh = type(s.Home) == "table" and s.Home or {}
-		T.check(sh.Prestige == 1 and sameMap(sh.Stations, home(ann).Stations) and (sh.Stations.Vault or 0) == (home(ann).Stations.Vault or 0),
-			"flow merge: the prestiged Home wins whole (the stale write's station levels do not come back)", mapText(sh.Stations))
-		T.eq(s.Cash, 0, "flow merge: Cash follows the prestige: the stale server's +5000 belonged to the reset run (only this run's balance is stored)")
-		T.eq(s.Gems, before.Gems + 7 + TC.PrestigeGems(1), "flow merge: Gems: the stale +7 plus the prestige reward (paid once)")
-		T.check(type(s.Food) == "table" and s.Food.Snack == before.Snack + 2, "flow merge: Food merges as a delta (+2 Snacks)")
-		advance(0.6)
-		T.check(cash(ann) == 0 and ann:GetAttribute(config().Attr.Cash) == 0 and gems(ann) == s.Gems and ann:GetAttribute(config().Attr.Gems) == s.Gems,
-			"flow merge: the live profile adopts the merged balances (HUD attributes too)")
-		T.check(home(ann).Prestige == 1 and stationModel(annInfo, "Vault") == nil and stationModel(annInfo, "Press1") == nil,
-			"flow merge: ...and the plot keeps showing the prestiged home")
-		T.check(tut(ann) and (tut(ann).Done == true or (tut(ann).Chapter or 0) >= 3) and DataS.GetTutorial(ann).Done == true,
-			"flow merge: ...and the finished tutorial stays finished (or on the battle chapter)")
+		T.check(#wrong == 0 and (after.Stations.Garden or 0) == 1, "flow prestige: stations reset, decor kept, the Pet Garden stays built at Lv 1", table.concat(wrong, ","))
+		T.check(sameMap(after.Garden, before.Garden) and DataS.GetFood(ann, "Snack") == before.Snack and X.PK.Count(DataS.GetProfile(ann), F.eco) == before.Eco
+			and DataS.GetPetLevel(ann, F.eco) == before.EcoLevel, "flow prestige: the garden places, food, pets and pet levels are kept")
+		T.check(toasted(ann, "Prestige 1!", mark, "good") and toasted(ann, "Fusion Machine unlocked", mark, "good"), "flow prestige: 'Prestige 1!' and 'Fusion Machine unlocked' toasts")
+		T.check(TC.GardenSlots(after) == 4 and toasted(ann, "Garden place 4 unlocked", mark), "flow prestige: ...and garden place 4 opens ('Garden place 4 unlocked!')")
+		local jobAfter = DataS.GetGrowth(ann, F.combat).Job
+		T.check(type(jobAfter) == "table" and jobAfter.Stat == "Speed" and jobAfter.Ends == jobBefore.Ends and DataS.GetGrowth(ann, F.combat).Physique == before.Physique,
+			"flow prestige: the training job and the earned ranks survive the prestige")
+		advance(1.2)
+		T.check(annInfo.SubLabel.Text:find(STAR, 1, true) ~= nil and annInfo.Folder:GetAttribute("Prestige") == 1 and annInfo.Folder:GetAttribute("GardenSlots") == 4,
+			"flow prestige: the nameplate shows the star (Prestige 1, GardenSlots 4 on the plot)", annInfo.SubLabel.Text)
+		T.check(stationModel(annInfo, "Press1") == nil and stationModel(annInfo, "House") == nil and stationModel(annInfo, "Garden") ~= nil,
+			"flow prestige: the reset stations leave the plot, the Pet Garden stays")
+		T.check(Ty.IncomePerSecond(ann) > 0, "flow prestige: the garden pets keep making coins right away (the coins never stop)", tostring(Ty.IncomePerSecond(ann)))
+		-- the job ends after the prestige: the pet comes back to its place
+		advance(TC.TrainSeconds(1) + 2)
+		away(ann)
+		local gDone = DataS.GetGrowth(ann, F.combat)
+		T.check(gDone.Speed == 1 and gDone.Job == nil and home(ann).Garden[2] == F.combat, "flow prestige: the job finishes after the prestige (Speed rank 1) and the pet is back in place 2")
+		local cashNow = cash(ann)
+
+		-- DataStore merge after the prestige: a stale server's late write lands (Ann's previous session, at prestige 0:
+		-- an extra Vault level, +5000 Cash, +7 Gems, +2 Snacks). Its Home edits and its Cash belong to the run this prestige
+		-- reset, so neither survives (the prestige rule); Gems and Food always travel as deltas. While the store is still at
+		-- prestige 0 this server's merge decides that; when an autosave of this server already stored the prestige, the
+		-- stale server's own merge does (it keeps only its Gems / Food deltas), so the record gets just those. Either way
+		-- the outcome below is the same.
+		local rec = stored(ann.UserId)
+		if T.check(type(rec) == "table" and type(rec.Home) == "table", "flow merge: (precondition) Ann has a save") then
+			local storeAtZero = (rec.Home.Prestige or 0) == 0
+			T.info("flow merge: the stale write lands " .. (storeAtZero and "before this server saved the prestige" or "after an autosave stored the prestige"))
+			if storeAtZero then
+				rec.Home.Stations = type(rec.Home.Stations) == "table" and rec.Home.Stations or {}
+				rec.Home.Stations.Vault = min(5, (rec.Home.Stations.Vault or 0) + 1)
+				rec.Home.Level = (rec.Home.Level or 0) + 1
+				rec.Cash = (rec.Cash or 0) + 5000
+			end
+			rec.Gems = (rec.Gems or 0) + 7
+			rec.Food = type(rec.Food) == "table" and rec.Food or {}
+			rec.Food.Snack = (rec.Food.Snack or 0) + 2
+			DataS.Save(ann)
+			local s = stored(ann.UserId) or {}
+			local sh = type(s.Home) == "table" and s.Home or {}
+			T.check(sh.Prestige == 1 and sameMap(sh.Stations, home(ann).Stations) and (sh.Stations.Vault or 0) == (home(ann).Stations.Vault or 0),
+				"flow merge: the prestiged Home wins whole (the stale write's station levels do not come back)", mapText(sh.Stations))
+			T.eq(s.Cash, cashNow, "flow merge: Cash follows the prestige: the stale server's +5000 belonged to the reset run (only this run's balance is stored)")
+			T.eq(s.Gems, before.Gems + 7 + TC.PrestigeGems(1), "flow merge: Gems: the stale +7 plus the prestige reward (paid once)")
+			T.check(type(s.Food) == "table" and s.Food.Snack == (before.Snack or 0) + 2, "flow merge: Food merges as a delta (+2 Snacks)")
+			advance(0.6)
+			T.check(cash(ann) == s.Cash and ann:GetAttribute(config().Attr.Cash) == s.Cash and gems(ann) == s.Gems and ann:GetAttribute(config().Attr.Gems) == s.Gems,
+				"flow merge: the live profile adopts the merged balances (HUD attributes too)")
+			T.check(home(ann).Prestige == 1 and stationModel(annInfo, "Vault") == nil and stationModel(annInfo, "Press1") == nil,
+				"flow merge: ...and the plot keeps showing the prestiged home")
+			T.check(tut(ann) and (tut(ann).Done == true or (tut(ann).Chapter or 0) >= 3) and DataS.GetTutorial(ann).Done == true,
+				"flow merge: ...and the finished tutorial stays finished (or on the battle chapter)")
+		end
+	end)
+	ledger.stop()
+	if not okRun then
+		error(errRun, 0)
 	end
 	K.flushErrors("p2flow_prestige")
 	K.flushWarnings("p2flow_prestige", ALLOWED_WARNINGS)
@@ -1210,27 +1440,32 @@ S.p2flow_fusion_gems = guarded("p2flow_fusion_gems", function()
 	local prof = DataS.GetProfile(ann)
 
 	-- rebuild the way to the Fusion Machine
-	local route = { "Press1", "Collector", "Press1", "Press2", "Press2", "Garden", "Kitchen" }
+	-- (the Garden was kept; star prices x1.5 now)
+	local route = { "Press1", "Kitchen" }
 	local missed = {}
 	for _, id in ipairs(route) do
 		local lvBefore = level(ann, id)
-		local price = TC.PriceFor(id, lvBefore + 1) or 0
-		fund(ann, price)
+		local okBuy, price = TC.CheckPurchase(home(ann), id)
+		T.check(okBuy == true and price == TC.PriceAt(id, lvBefore + 1, home(ann)) and price > (TC.PriceFor(id, lvBefore + 1) or 0),
+			"flow fusion: " .. id .. " costs the star price after the prestige ($" .. tostring(price) .. " = PriceAt, above the base price)")
+		fund(ann, price or 0)
 		pressPad(ann, annInfo, id)
 		if level(ann, id) ~= lvBefore + 1 then
 			missed[#missed + 1] = id
 		end
 	end
-	T.check(#missed == 0, "flow fusion: Ann rebuilds Press 1, the Collector, Press 2, the Garden and the Kitchen", table.concat(missed, ","))
+	away(ann)
+	T.check(#missed == 0, "flow fusion: Ann rebuilds the Berry Bush and the Food Machine", table.concat(missed, ","))
 	advance(1.2)
 	local base = Ty.IncomePerSecond(ann)
 	local _, parts = Ty.IncomePerSecond(ann)
-	T.check(type(parts) == "table" and abs((parts.Multiplier or 0) - TC.PrestigeMultiplier(1)) < 1e-6 and (parts.Garden or 0) > 0,
-		"flow fusion: the garden pet earns again, everything x" .. TC.PrestigeMultiplier(1), tostring(base))
+	T.check(type(parts) == "table" and abs((parts.Multiplier or 0) - TC.PrestigeMultiplier(1)) < 1e-6 and base > 0,
+		"flow fusion: the garden pets earn, every coin x" .. TC.PrestigeMultiplier(1), tostring(base))
 	local okPad, priceFusion, lockFusion = TC.CheckPurchase(home(ann), "FusionMachine")
-	T.check(okPad == true and buyPrompt(annInfo, "FusionMachine") ~= nil, "flow fusion: the Fusion Machine pad is unlocked (Prestige 1 + Kitchen)", tostring(lockFusion))
+	T.check(okPad == true and buyPrompt(annInfo, "FusionMachine") ~= nil, "flow fusion: the Fusion Machine pad is unlocked (Prestige 1 + Food Machine)", tostring(lockFusion))
 	fund(ann, priceFusion or 0)
 	pressPad(ann, annInfo, "FusionMachine")
+	away(ann)
 	local machine = stationModel(annInfo, "FusionMachine")
 	if not T.check(level(ann, "FusionMachine") == 1 and machine ~= nil, "flow fusion: E on its pad builds the Fusion Machine") then
 		return
@@ -1280,12 +1515,14 @@ S.p2flow_fusion_gems = guarded("p2flow_fusion_gems", function()
 	T.check(res and res.args[1] == "Result" and type(res.args[2]) == "table" and res.args[2].Ok == true and res.args[2].Key == golden,
 		"flow fusion: the window gets Fusion('Result', {Ok, Key}) for its animation")
 	advance(1.2)
-	T.eq(annInfo.Folder:GetAttribute("GardenPets"), "1=" .. golden, "flow fusion: the plot shows the Golden pet in the Garden")
-	local ecoDef = X.PC.Get(F.eco)
-	local wantGarden = TC.PetIncome(ecoDef, level0, "Golden") * TC.PrestigeMultiplier(1)
-	local _, parts2 = Ty.IncomePerSecond(ann)
-	T.check(type(parts2) == "table" and abs((parts2.Garden or 0) - wantGarden) < 1e-6,
-		"flow fusion: the Golden garden pet earns x1.5 (and the prestige x" .. TC.PrestigeMultiplier(1) .. ")", tostring(parts2 and parts2.Garden) .. " vs " .. wantGarden)
+	T.eq(annInfo.Folder:GetAttribute("GardenPets"), "1=" .. golden .. ";2=" .. F.combat, "flow fusion: the plot shows the Golden pet in the Garden")
+	local ecoDef, combatDef = X.PC.Get(F.eco), X.PC.Get(F.combat)
+	local goldenEntry = { Def = ecoDef, Level = level0, Tier = "Golden", Stage = DataS.GetEvolution(ann, golden), Key = golden }
+	local normalEntry = { Def = ecoDef, Level = level0, Tier = "Normal", Stage = 0, Key = F.eco }
+	local combatEntry = { Def = combatDef, Level = (DataS.GetPetLevel(ann, F.combat)), Tier = "Normal", Stage = DataS.GetEvolution(ann, F.combat), Key = F.combat }
+	local wantIncome = TC.IncomePerSecond(home(ann), { [1] = goldenEntry, [2] = combatEntry }, 1)
+	T.check(abs(TC.PetPower(goldenEntry) / TC.PetPower(normalEntry) - 1.5) < 1e-6 and abs(Ty.IncomePerSecond(ann) - wantIncome) < 1e-6,
+		"flow fusion: the Golden garden pet makes x1.5 coins (and the prestige x" .. TC.PrestigeMultiplier(1) .. ")", tostring(Ty.IncomePerSecond(ann)) .. " vs " .. tostring(wantIncome))
 
 	-- gem packs (the owner pasted two product ids; restored below)
 	local G = Config.Gems.Products
@@ -1400,7 +1637,7 @@ S.p2flow_fusion_gems = guarded("p2flow_fusion_gems", function()
 	T.check(gems(ben) == gB and countKeys(DataS.GetProfile(ben).Pets) == pB, "flow secret: Ben's spin is refused, nothing charged")
 	F.secretPet = won
 
-	-- mixing the Secret-roulette pet with the training Combat pet (Mythic / Secret inputs cost Gems)
+	-- mixing the Secret-roulette pet with the trained Combat pet (Mythic / Secret inputs cost Gems)
 	if won then
 		local mixCost = TC.FusionCost("Mix", wonDef.Rarity, nil, 1) or {}
 		local gemsBefore, tokensBefore = gems(ann), tokens(ann)
@@ -1424,12 +1661,10 @@ S.p2flow_fusion_gems = guarded("p2flow_fusion_gems", function()
 			T.check(record.Rarity == wonDef.Rarity and type(record.Elements) == "table" and #record.Elements >= 1 and type(record.Name) == "string",
 				"flow fusion: ...the hybrid has the higher rarity, both elements and a blended name (" .. tostring(record.Name) .. ")")
 			local def = PK.DefOf(hybridKey, prof)
-			local gymNow = home(ann).Gym[1]
-			if def and def.Role == "Combat" then
-				T.eq(gymNow, hybridKey, "flow fusion: ...the Combat hybrid took over the Gym slot of its input")
-			else
-				T.eq(gymNow, nil, "flow fusion: ...the Gym slot of the used Combat pet is free")
-			end
+			T.eq(home(ann).Garden[2], hybridKey, "flow fusion: ...the hybrid took over the garden place of its input (any role works there)")
+			local gh = DataS.GetGrowth(ann, hybridKey)
+			T.check(gh and gh.Physique >= 1 and gh.Speed >= 1 and gh.Evo == 0, "flow fusion: ...and keeps the best training ranks of its parents (Physique 1, Speed 1), unevolved",
+				gh and (tostring(gh.Physique) .. "/" .. tostring(gh.Speed) .. "/" .. tostring(gh.Evo)) or "")
 			T.check(prof.Equipped[2] == hybridKey, "flow fusion: ...and the equipped place of the Combat pet", table.concat(prof.Equipped, ","))
 			F.hybrid = hybridKey
 
@@ -1480,15 +1715,12 @@ S.p2flow_rejoin = guarded("p2flow_rejoin", function()
 	local annOld = F.plot.Ann
 	local annInfo = spots()[annOld]
 
-	-- Ann orders two Snacks and leaves while they cook: the leave save gets the Cash back
-	fund(ann, 2 * TC.Foods.Snack.Price)
-	local beforeOrder = cash(ann)
-	Mock.FromClient(remote("PetCare"), ann, "Cook", "Snack", 2)
-	advance(0.4)
-	T.check(cash(ann) == beforeOrder - 2 * TC.Foods.Snack.Price and ann:GetAttribute("KitchenQueue") == "Snack,Snack",
-		"flow rejoin: (precondition) two Snacks cooking", tostring(ann:GetAttribute("KitchenQueue")))
+	-- Ann leaves with coins on her lawn: the leave save keeps them (the bank, whole Cash) for the Welcome-back pile
+	away(ann)
+	advance(2 * TC.Coins.MealSeconds + 1)
+	T.check(home(ann).CollectorCash >= 1, "flow rejoin: (precondition) coins wait on Ann's lawn", tostring(home(ann).CollectorCash))
 	local keep = {
-		Cash = beforeOrder, Gems = gems(ann), Tokens = tokens(ann), Home = home(ann), Food = DataS.GetFood(ann),
+		Cash = cash(ann), Bank = home(ann).CollectorCash, Gems = gems(ann), Tokens = tokens(ann), Home = home(ann), Food = DataS.GetFood(ann),
 		Level = TC.HomeLevelOf(home(ann)), Golden = DataS.GetPetLevel(ann, PK.Make(F.eco, "Golden")),
 		Hybrids = countKeys(DataS.GetProfile(ann).Hybrids), Tiers = mapText((DataS.GetProfile(ann).Tiers or {})[F.eco]),
 		Income = Ty.IncomePerSecond(ann),
@@ -1500,7 +1732,9 @@ S.p2flow_rejoin = guarded("p2flow_rejoin", function()
 	end)
 	DSt.Latency = 0
 	local rec = stored(F.ids.Ann) or {}
-	T.check(okLeave and rec.Cash == keep.Cash, "flow rejoin: leaving refunds the Snacks still cooking (into the save)", tostring(rec.Cash) .. " vs " .. keep.Cash)
+	local recBank = type(rec.Home) == "table" and rec.Home.CollectorCash or nil
+	T.check(okLeave and rec.Cash == keep.Cash and type(recBank) == "number" and recBank >= floor(keep.Bank) and recBank == floor(recBank),
+		"flow rejoin: the leave save keeps her Cash and the coins on her lawn (the bank as whole Cash)", tostring(rec.Cash) .. " vs " .. keep.Cash .. ", bank " .. tostring(recBank) .. " vs " .. keep.Bank)
 	T.check(SS.GetOwner(annOld) == nil and annInfo.NameLabel.Text == "Free home" and annInfo.SubLabel.Text == "Press E at the gate" and #stationIds(annInfo) == 0
 		and claimPromptOf(annOld) and claimPromptOf(annOld).Enabled == true, "flow rejoin: Ann's plot is released and cleared (Free home, no stations, the ClaimPrompt is back)",
 		table.concat(stationIds(annInfo), ","))
@@ -1512,15 +1746,15 @@ S.p2flow_rejoin = guarded("p2flow_rejoin", function()
 	T.check(toasted(cid, "Welcome back! Press E at your gate (#" .. tostring(F.plot.Cid) .. ")", mark), "flow rejoin: Cid gets 'Welcome back! Press E at your gate'")
 	claim(cid, annOld)
 	advance(1.2)
-	T.check(SS.GetSpot(cid) == annInfo and level(cid, "Press1") == 1 and stationModel(annInfo, "Press1") ~= nil
+	T.check(SS.GetSpot(cid) == annInfo and level(cid, "Garden") == 1 and stationModel(annInfo, "Garden") ~= nil
 		and annInfo.NameLabel.Text == cid.DisplayName and annInfo.SubLabel.Text == "Home Level 1",
-		"flow rejoin: Cid claims Ann's old plot and his Phase 2 build comes back there", annInfo.SubLabel.Text)
-	T.eq(stepOf(cid), "collect", "flow rejoin: ...his tutorial resumes where he left it")
+		"flow rejoin: Cid claims Ann's old plot and his Phase 4 build comes back there (the Pet Garden)", annInfo.SubLabel.Text)
+	T.eq(annInfo.Folder:GetAttribute("GardenPets"), "1=" .. F.eco, "flow rejoin: ...with his garden pet (GardenPets)")
+	T.eq(stepOf(cid), "coins", "flow rejoin: ...his tutorial resumes where he left it")
 	local stCid = tut(cid)
-	local cidCollector = padPosition(annInfo, "Collector")
-	T.check(stCid and stCid.Target and stCid.Target.SpotIndex == annOld and typeof(stCid.Target.Position) == "Vector3" and cidCollector ~= nil
-		and (stCid.Target.Position - cidCollector).Magnitude < 1, "flow rejoin: ...and its arrow points at the Collector pad of his new plot",
-		stCid and stCid.Target and tostring(stCid.Target.SpotIndex) or "no target")
+	T.check(stCid and stCid.Target and stCid.Target.SpotIndex == annOld and typeof(stCid.Target.Position) == "Vector3"
+		and stationModel(annInfo, "Garden") ~= nil and K.planar(stCid.Target.Position, pivotOf(stationModel(annInfo, "Garden")).Position) < 20,
+		"flow rejoin: ...and its arrow points at his coins in the garden of his new plot", stCid and stCid.Target and tostring(stCid.Target.SpotIndex) or "no target")
 
 	-- Ann rejoins: her last plot is taken now
 	mark = K.logSize()
@@ -1535,8 +1769,9 @@ S.p2flow_rejoin = guarded("p2flow_rejoin", function()
 		"flow rejoin: food, pet levels, the Golden copy and the hybrid are back")
 	T.check(tut(ann) and (tut(ann).Done == true or (tut(ann).Chapter or 0) >= 3), "flow rejoin: the finished tutorial stays finished (or on the battle chapter)")
 	local h = home(ann)
-	T.check(h and h.Prestige == 1 and sameMap(h.Stations, keep.Home.Stations) and sameMap(h.Garden, keep.Home.Garden) and sameMap(h.Gym, keep.Home.Gym),
-		"flow rejoin: the saved home is intact (prestige, stations, garden, gym)")
+	T.check(h and h.Prestige == 1 and sameMap(h.Stations, keep.Home.Stations) and sameMap(h.Garden, keep.Home.Garden) and next(h.Gym or {}) == nil,
+		"flow rejoin: the saved home is intact (prestige, stations, garden places; no Gym slots)")
+	T.check(h and h.CollectorCash == recBank, "flow rejoin: ...and her coins are back in the bank (no offline pay for a short absence)", h and tostring(h.CollectorCash) or "")
 	local sugg = SS.SuggestSpot(ann)
 	local newIndex = nil
 	for i, info in pairs(spots()) do
@@ -1563,9 +1798,10 @@ S.p2flow_rejoin = guarded("p2flow_rejoin", function()
 	T.check(#miss == 0, "flow rejoin: every saved station stands on the new plot at its level", table.concat(miss, ","))
 	T.check(newInfo.Folder:GetAttribute("Prestige") == 1 and newInfo.Folder:GetAttribute("HomeLevel") == keep.Level and newInfo.SubLabel.Text:find(STAR, 1, true) ~= nil,
 		"flow rejoin: the nameplate and plot attributes show Home Level " .. keep.Level .. " and the star", newInfo.SubLabel.Text)
-	T.eq(newInfo.Folder:GetAttribute("GardenPets"), "1=" .. PK.Make(F.eco, "Golden"), "flow rejoin: the Golden pet works in the Garden again (GardenPets)")
-	local cook = cookPrompt(newInfo, "Snack")
-	T.check(cook ~= nil and cook:GetAttribute("OwnerUserId") == ann.UserId, "flow rejoin: the rebuilt Kitchen has Ann's cook prompt again")
+	T.eq(newInfo.Folder:GetAttribute("GardenPets"), gardenText(keep.Home.Garden), "flow rejoin: the Golden pet and the hybrid work in the Garden again (GardenPets)")
+	advance(1.2)
+	local feedP = carePrompt(newInfo, "Kitchen", "FeedPrompt")
+	T.check(feedP ~= nil and feedP:GetAttribute("OwnerUserId") == ann.UserId, "flow rejoin: the rebuilt Food Machine has Ann's 'Feed pets' prompt again")
 	T.check(abs(Ty.IncomePerSecond(ann) - keep.Income) < 1e-6, "flow rejoin: the same income as before leaving", Ty.IncomePerSecond(ann) .. " vs " .. keep.Income)
 	if F.receipt then
 		local G = Config.Gems.Products
@@ -1587,17 +1823,20 @@ S.p2flow_rejoin = guarded("p2flow_rejoin", function()
 		local brec = stored(ben.UserId)
 		if T.check(type(brec) == "table" and type(brec.Home) == "table" and brec.Home.Prestige == 0, "flow merge 2: (precondition) Ben's save is at Prestige 0") then
 			local b0 = brec.Cash or 0
-			brec.Home = { Level = 5, Prestige = 1, Stations = { Press1 = 3, Collector = 1, DecorLamps = 1 }, Garden = {}, Gym = {}, CollectorCash = 0, LastSeen = os.time() }
+			brec.Home = { Level = 6, Prestige = 1, Stations = { Garden = 1, Press1 = 3, Collector = 1, DecorLamps = 1 }, Garden = {}, Gym = {}, CollectorCash = 0, LastSeen = os.time() }
 			brec.Cash = b0 + 777
+			fund(ben, TC.PriceFor("Collector", 1))
+			pressPad(ben, benInfo, "Collector")
 			fund(ben, TC.PriceFor("House", 1))
 			pressPad(ben, benInfo, "House")
-			T.eq(level(ben, "House"), 1, "flow merge 2: (here) Ben builds his Cottage at Prestige 0")
+			away(ben)
+			T.eq(level(ben, "House"), 1, "flow merge 2: (here) Ben builds his Coin Magnet and his Cottage at Prestige 0")
 			local cashNow = cash(ben) -- the session's Cash change since the save is b0 -> cashNow
 			local mk = K.logSize()
 			DataS.Save(ben)
 			local s = stored(ben.UserId) or {}
 			local sh = type(s.Home) == "table" and s.Home or {}
-			T.check(sh.Prestige == 1 and type(sh.Stations) == "table" and sh.Stations.Press1 == 3 and sh.Stations.DecorLamps == 1 and sh.Stations.House == nil,
+			T.check(sh.Prestige == 1 and type(sh.Stations) == "table" and sh.Stations.Press1 == 3 and sh.Stations.DecorLamps == 1 and sh.Stations.House == nil and sh.Stations.Garden == 1,
 				"flow merge 2: the stored higher prestige wins the whole Home (this server's Cottage is void)", mapText(sh.Stations))
 			T.eq(s.Cash, (b0 + 777) + (cashNow - b0), "flow merge 2: Cash still merges as a delta (+777 from the other server, this server's change on top)")
 			advance(2.5)
@@ -1606,7 +1845,7 @@ S.p2flow_rejoin = guarded("p2flow_rejoin", function()
 			T.check(bh and bh.Prestige == 1 and bh.Stations.Press1 == 3 and bh.Stations.DecorLamps == 1 and bh.Stations.House == nil, "flow merge 2: Ben's live Home adopts it")
 			local p1 = stationModel(benInfo, "Press1")
 			T.check(p1 ~= nil and p1:GetAttribute("Level") == 3 and stationModel(benInfo, "DecorLamps") ~= nil and stationModel(benInfo, "House") == nil,
-				"flow merge 2: ...the plot in the world follows (Press 1 Lv 3, the lanterns, no Cottage)")
+				"flow merge 2: ...the plot in the world follows (the Berry Bush at Lv 3, the lanterns, no Cottage)")
 			T.check(benInfo.Folder:GetAttribute("Prestige") == 1 and benInfo.SubLabel.Text:find(STAR, 1, true) ~= nil, "flow merge 2: ...the star on his nameplate", benInfo.SubLabel.Text)
 			T.check(#K.remotesFor("ProfileSync", ben.UserId, mk) >= 1, "flow merge 2: ...and his client gets the new snapshot")
 			T.check(tut(ben) and tut(ben).Done == true, "flow merge 2: ...his skipped tutorial stays skipped")

@@ -1,18 +1,20 @@
 -- smoke_p2_visual.lua: the Phase 2 visual pass (ARCHITECTURE_V3.md ART DIRECTION, Readability + World text rules,
 -- "Phase 2 build contract"). Loaded by tools/smoke.py in BOTH worlds; ARGS.context picks the half:
---   p2visual_art    (server) the station art the visual pass reworked, level by level (HomeBuilder.BuildStationModel):
+--   p2visual_art    (server) the station art the visual passes reworked, level by level (HomeBuilder.BuildStationModel):
 --                   the Fusion Machine keeps its contract parts (two tinted input pods + the output pod = 3 PodGlass,
 --                   the Chamber, a Swirl of >= 3 parts, SwirlCenter, the FusionPrompt on an Attachment by the output
 --                   pod) inside its 90-part budget, with breathing neon "Glow" parts, gold from level 2 and crystals
---                   at 3; every locked Garden bed carries a seedling; the Gym's ropes run along the back and the sides
---                   only (nothing between the yard and the training pets); the Sky Castle has its rose window
+--                   at 3; every closed Garden bed carries a seedling (open counts 3 / 7 / 12); the Training Place keeps
+--                   its front open and gives every mat its own colour; the food plants show their fruit colour and
+--                   sparkle at the top level; the Coin Magnet's red horseshoe; the Food Machine's hopper full of fruit
+--                   and its glowing button; the Sky Castle has its rose window
 --   p2visual_plot   (server, booted) a private test plot: the staked-out house lot (owned, no House yet: stakes, a
 --                   string, planks and bricks, no collisions, <= 12 parts; gone with the House, back after a prestige
 --                   reset, kept by ClearPlot while owned, never on a free plot); a locked station's ghost is a
 --                   ForceField hologram (light, no collisions, no prompts, <= 12 parts); the Prestige pad's sign says
 --                   what the reset buys ("Reset: x1.25 income")
 --   client_p2visual (client) HomeFx shows the sign of one of the local player's LOCKED pads only up close (its
---                   unlocked pads keep their signs from afar), Garden pets stand bigger than Gym pets; the Fusion
+--                   unlocked pads keep their signs from afar), Garden pets stand bigger than Training Place pets; the Fusion
 --                   window's locked card is opaque with a teaser line, a Mix pick mark sits in the tile's top-left
 --                   corner clear of the pet; the Shop's Secret roulette hint is the short one-liner
 -- Plain Lua 5.1 syntax only.
@@ -155,49 +157,113 @@ local function serverScenarios()
 		fusion:report()
 		look:report()
 
-		-- the Garden: a seedling on every locked bed
-		local garden = T.tally("visual art: every locked Pet Garden bed carries a seedling (Stem + Sprout), open beds none")
+		-- the Garden: a seedling on every bed beyond the open places (3 + Prestige stars, SetGarden), open beds none
+		local garden = T.tally("visual art: every closed Pet Garden bed carries a seedling (Stem + Sprout), open beds none (open counts 3 / 7 / 12)")
 		local gdef = TC.Get("Garden")
-		local places = (gdef and gdef.Slot and gdef.Slot.Spots) and #gdef.Slot.Spots or 8
-		for level = 1, (gdef and gdef.MaxLevel or 8) do
-			local ok, m = pcall(HB.BuildStationModel, "Garden", level)
-			if ok and typeof(m) == "Instance" then
-				local stems, sprouts = #named(m, "Stem"), #named(m, "Sprout")
-				garden:case(stems == places - level and sprouts == places - level, "level " .. level .. ": " .. stems .. " stems, " .. sprouts .. " sprouts")
-			else
-				garden:case(false, "level " .. level .. ": " .. tostring(m))
+		local places = (gdef and gdef.Slot and gdef.Slot.Spots) and #gdef.Slot.Spots or 12
+		for _, open in ipairs({ 3, 7, 12 }) do
+			for _, level in ipairs({ 1, 5, (gdef and gdef.MaxLevel or 8) }) do
+				local ok, m = pcall(HB.BuildStationModel, "Garden", level, nil, open)
+				if ok and typeof(m) == "Instance" then
+					local stems, sprouts = #named(m, "Stem"), #named(m, "Sprout")
+					garden:case(stems == places - open and sprouts == places - open, "level " .. level .. " open " .. open .. ": " .. stems .. " stems, " .. sprouts .. " sprouts")
+					m:Destroy()
+				else
+					garden:case(false, "level " .. level .. " open " .. open .. ": " .. tostring(m))
+				end
 			end
 		end
 		garden:report()
 
-		-- the Gym: the ropes never run between the yard (front, -Z) and the training places
-		local gym = T.tally("visual art: the Gym's ring ropes run along the back and the sides only (the yard sees the training pets)")
+		-- the Training Place: nothing tall between the yard (front, -Z) and the training mats; every mat its own colour
+		local train = T.tally("visual art: the Training Place keeps its front open (nothing over knee height in front of the mats) and every mat has its own bright colour")
 		local ydef = TC.Get("Gym")
-		local spotZ = 0
+		local frontZ = huge
 		for _, p in ipairs((ydef and ydef.Slot and ydef.Slot.Spots) or {}) do
-			spotZ = max(spotZ, p.Z)
+			frontZ = min(frontZ, p.Z - 1.3)
 		end
 		for level = 1, (ydef and ydef.MaxLevel or 5) do
 			local ok, m = pcall(HB.BuildStationModel, "Gym", level)
 			if ok and typeof(m) == "Instance" then
-				local bad, sides = nil, 0
+				local bad = nil
 				for _, p in ipairs(parts(m)) do
-					if p.Name == "Rope" or p.Name == "Rope2" then
-						if p.Size.X >= p.Size.Z then
-							if p.Position.Z <= spotZ then
-								bad = p.Name .. " at z " .. string.format("%.1f", p.Position.Z)
-							end
-						else
-							sides = sides + 1
-						end
+					local top = p.Position.Y + p.Size.Y / 2
+					local back = p.Position.Z + p.Size.Z / 2
+					if top > 1.6 and back <= frontZ + 0.01 then
+						bad = p.Name .. string.format(" at z %.1f, top %.1f", p.Position.Z, top)
 					end
 				end
-				gym:case(bad == nil and (level < 4 or sides >= 2), "level " .. level .. ": " .. tostring(bad or (sides .. " side ropes")))
+				local colours, mats = {}, named(m, "Mat")
+				for _, p in ipairs(mats) do
+					colours[p.Color:ToHex()] = true
+				end
+				local distinct = 0
+				for _ in pairs(colours) do
+					distinct = distinct + 1
+				end
+				train:case(bad == nil and #mats == level and distinct == level, "level " .. level .. ": " .. tostring(bad or (#mats .. " mats, " .. distinct .. " colours")))
+				m:Destroy()
 			else
-				gym:case(false, "level " .. level .. ": " .. tostring(m))
+				train:case(false, "level " .. level .. ": " .. tostring(m))
 			end
 		end
-		gym:report()
+		train:report()
+
+		-- the food plants read as food at a glance: their fruit colour is on the model, the top level glows
+		local fruit = T.tally("visual art: every food plant shows its fruit colour (FruitColor parts on the plant) and sparkles at its top level")
+		for _, id in ipairs({ "Press1", "Press2", "Press3", "Press4" }) do
+			local def = TC.Get(id)
+			for _, level in ipairs({ 1, 5, def.MaxLevel }) do
+				local ok, m = pcall(HB.BuildStationModel, id, level)
+				if ok and typeof(m) == "Instance" then
+					local want = m:GetAttribute("FruitColor")
+					local hits = 0
+					for _, p in ipairs(parts(m)) do
+						if typeof(want) == "Color3" and abs(p.Color.R - want.R) + abs(p.Color.G - want.G) + abs(p.Color.B - want.B) < 0.25 then
+							hits = hits + 1
+						end
+					end
+					local sparkle = find(m, "Sparkle", "Attachment")
+					fruit:case(hits >= 1 and ((level == def.MaxLevel) == (sparkle ~= nil)), id .. " level " .. level .. ": " .. hits .. " fruit parts, sparkle " .. tostring(sparkle ~= nil))
+					m:Destroy()
+				else
+					fruit:case(false, id .. " level " .. level .. ": " .. tostring(m))
+				end
+			end
+		end
+		fruit:report()
+
+		-- the Coin Magnet: a red horseshoe on the head; the Food Machine: fruit inside a see-through hopper and a lit button
+		local okM, mag = pcall(HB.BuildStationModel, "Collector", 5)
+		if okM and typeof(mag) == "Instance" then
+			local head = mag:FindFirstChild("MagnetHead")
+			local red = 0
+			for _, p in ipairs(parts(head)) do
+				if p.Color.R > 0.75 and p.Color.G < 0.4 and p.Color.B < 0.4 then
+					red = red + 1
+				end
+			end
+			T.check(head ~= nil and red >= 1 and find(mag, "Sparkle", "Attachment") ~= nil, "visual art: the Coin Magnet's head is a red horseshoe magnet; the top level sparkles", red .. " red parts")
+			mag:Destroy()
+		end
+		local okF, fm = pcall(HB.BuildStationModel, "Kitchen", 1)
+		if okF and typeof(fm) == "Instance" then
+			local hopper = find(fm, "Hopper", "BasePart")
+			local inside, lit = 0, 0
+			for _, p in ipairs(parts(fm)) do
+				if hopper and p ~= hopper and p.Transparency < 0.2 then
+					local d = hopper.CFrame:PointToObjectSpace(p.Position)
+					if abs(d.X) < hopper.Size.X / 2 and abs(d.Y) < hopper.Size.Y / 2 and abs(d.Z) < hopper.Size.Z / 2 then
+						inside = inside + 1
+					end
+				end
+				if p.Material == Enum.Material.Neon then
+					lit = lit + 1
+				end
+			end
+			T.check(hopper ~= nil and inside >= 2 and lit >= 1, "visual art: the Food Machine's glass hopper is full of fruit and its FEED button glows", inside .. " fruit parts inside, " .. lit .. " neon")
+			fm:Destroy()
+		end
 
 		-- the Sky Castle's facade centrepiece
 		local okH, castle = pcall(HB.BuildStationModel, "House", 4)
@@ -260,7 +326,7 @@ local function serverScenarios()
 			T.check(abs(loc.X) < 2 and abs(loc.Z) < 4, "visual plot: ...where the house will stand (the House slot)", string.format("%.1f, %.1f", loc.X, loc.Z))
 		end
 		HB.SetStation(spot, "Collector", 1)
-		T.check(home:FindFirstChild("HouseLot") ~= nil, "visual plot: other stations leave the lot alone")
+		T.check(home:FindFirstChild("HouseLot") ~= nil, "visual plot: other stations (the Coin Magnet) leave the lot alone")
 		HB.SetStation(spot, "House", 1)
 		T.check(home:FindFirstChild("HouseLot") == nil, "visual plot: building the House clears the lot")
 		HB.SetStation(spot, "House", 0)
@@ -397,7 +463,7 @@ local function clientScenarios()
 			HB.SetStation(spot, "Gym", 1)
 			local petId = "pebble_pup"
 			folder:SetAttribute("GardenPets", "1=" .. petId)
-			folder:SetAttribute("GymPets", "1=" .. petId)
+			folder:SetAttribute("TrainingPets", "1=" .. petId .. ":Ability:" .. tostring(math.floor(workspace:GetServerTimeNow()) + 300))
 			local character = LocalPlayer.Character
 			local hrp = character and character:FindFirstChild("HumanoidRootPart")
 			local savedHrp = hrp and hrp.CFrame
@@ -474,7 +540,7 @@ local function clientScenarios()
 				advance(0.6)
 				T.check(not nearest.Gui.Enabled, "HomeFx: ...and walking away hides it again")
 			end
-			-- garden pets stand bigger than gym pets (5 studs between cushions, 3 between targets)
+			-- garden pets stand bigger than training pets (5 studs between cushions, 3 between mats)
 			standAt(base * Vector3.new(0, 4, -10))
 			advance(1.5)
 			local pets = workspace:FindFirstChild("ClientFx") and workspace.ClientFx:FindFirstChild("HomePets")
@@ -483,13 +549,13 @@ local function clientScenarios()
 				if m:GetAttribute("PetKey") == petId then
 					if m.Name == "GardenPet" then
 						gardenH = max(gardenH, height(m))
-					elseif m.Name == "GymPet" then
+					elseif m.Name == "TrainingPet" then
 						gymH = max(gymH, height(m))
 					end
 				end
 			end
-			T.check(gardenH > 0 and gymH > 0 and gardenH > gymH * 1.08, "HomeFx: Garden pets stand full size, Gym pets a little smaller (their places are closer)",
-				string.format("garden %.2f, gym %.2f", gardenH, gymH))
+			T.check(gardenH > 0 and gymH > 0 and gardenH > gymH * 1.08, "HomeFx: Garden pets stand full size, Training Place pets a little smaller (their mats are closer)",
+				string.format("garden %.2f, training %.2f", gardenH, gymH))
 			if hrp and savedHrp then
 				hrp.CFrame = savedHrp
 				hrp.Anchored = savedAnchored

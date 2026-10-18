@@ -4,7 +4,7 @@
 -- (shared/TutorialSteps.lua, server/Services/TutorialService.lua) and the battle tips of shared/NpcDialog.lua. Loaded by
 -- tools/smoke.py in BOTH worlds; ARGS.context picks the half:
 --   p3ui_content        (server, content) chapter 3 is appended after the home chapter (arena, team, trial, raid; chapter
---                       3, the raid step ends it, known CompleteOn, Arena targets with a Place, short texts, the raid
+--                       3 up to ChapterStart[4] - 1, the raid step ends it, known CompleteOn, Arena targets with a Place, short texts, the raid
 --                       minutes placeholder); NPC tips: every NPC keeps 3-5 lines that fit the dialog, and the battle
 --                       controls (Sparky Fox), Boss Raids with the real schedule (Captain Penguin), the Trial Portal,
 --                       battle teams and trophies (Coach Corgi), elements and synergy in battle (Professor Axolotl) are
@@ -12,8 +12,8 @@
 --   p3ui_tutorial       (server, booted) a player who finished the home chapter resumes at "arena": the arrow points at
 --                       the arena's forum (ArenaInfo.Spawn); walking in -> "team" (the Team menu tile); a battle team ->
 --                       "trial" (the arrow at the Trial Portal, none while fighting); Trial 1 cleared -> "raid" (a hint
---                       with the raid countdown); standing in the arena while a raid runs ends the chapter: Done, the
---                       token reward paid once; a BattleEnded trial win completes "trial" by itself
+--                       with the raid countdown); standing in the arena while a raid runs ends the chapter: on to
+--                       chapter 4 (Phase 4), the token reward paid once; a BattleEnded trial win completes "trial" by itself
 --   client_p3ui         (client) the Team tile (MenuButton_Team) and window: slot cards (pet, level, element, power),
 --                       slot 4 locked before Prestige 1 and open after, live synergy + matchups, the element wheel, the
 --                       team power and trophies, the picker (every owned copy, busy ones dimmed); remove / add / swap
@@ -87,8 +87,10 @@ local function serverScenarios()
 		if not T.check(type(start) == "number" and type(home) == "number" and start > home, "p3ui: chapter 3 (pet battles) is appended after the home chapter", tostring(start)) then
 			return
 		end
+		-- (Phase 4 appends chapter 4 after chapter 3: it ends at ChapterStart[4] - 1; smoke_p4_ui checks chapter 4)
+		local last = (Steps.ChapterStart[4] and Steps.ChapterStart[4] - 1) or #Steps.Steps
 		local ids = {}
-		for i = start, #Steps.Steps do
+		for i = start, last do
 			ids[#ids + 1] = Steps.Steps[i].Id
 		end
 		T.eq(table.concat(ids, ","), "arena,team,trial,raid", "p3ui: chapter 3 = go to the Arena, set your team, win Trial 1, see a Boss Raid")
@@ -98,7 +100,7 @@ local function serverScenarios()
 		end
 		local bad = {}
 		local placed = { Gate = true, Trials = true, Floor = true }
-		for i = start, #Steps.Steps do
+		for i = start, last do
 			local step = Steps.Steps[i]
 			if step.Chapter ~= 3 then
 				bad[#bad + 1] = step.Id .. " chapter " .. tostring(step.Chapter)
@@ -126,7 +128,7 @@ local function serverScenarios()
 			and tostring(byId.raid.Text):find("Every " .. tostring(minutes) .. " minutes", 1, true) ~= nil and not tostring(byId.raid.Text):find("{", 1, true),
 			"p3ui: 'raid' ends the chapter (ChapterEnd), points at the colosseum floor and quotes the raid schedule (every " .. tostring(minutes) .. " minutes)")
 		local ends = 0
-		for i = start, #Steps.Steps do
+		for i = start, last do
 			if Steps.Steps[i].ChapterEnd then
 				ends = ends + 1
 			end
@@ -175,9 +177,10 @@ local function serverScenarios()
 			"p3ui: Coach Corgi explains the Trial Portal, battle teams and trophies (+" .. tostring(win) .. ")")
 		local strong = Config.Elements and Config.Elements.StrongMultiplier or 1.5
 		T.check(says("professor_axolotl", "battles", "x" .. tostring(strong), "Power"), "p3ui: Professor Axolotl explains elements and synergy in battle")
-		-- the Phase 2 tips stay
-		T.check(says("coach_corgi", "Gym", "Train in Gym") and says("granny_owl", "Kitchen", "Feed", "Gems")
-			and says("professor_axolotl", "Fusion Machine", "Storm Altar"), "p3ui: the Phase 2 tips (Gym, Kitchen, Fusion, Storm Altar) are still there")
+		-- the home tips (Phase 4 names: the Training Place, the Food Machine) and the Phase 2 Fusion / Gems tips stay
+		T.check(says("coach_corgi", "Training Place", "Trial Portal") and says("granny_owl", "Food Machine", "Feed", "Gems")
+			and says("professor_axolotl", "Fusion Machine", "Storm Altar"),
+			"p3ui: the home tips (Training Place, Food Machine, Fusion, Storm Altar) are still there")
 	end)
 
 	------------------------------------------------------------------------------------------------
@@ -296,7 +299,10 @@ local function serverScenarios()
 		end, 3)
 		T.check(okRaid == true, "p3ui tutorial: (setup) a raid opens")
 		st = state(p)
-		T.check(st and st.Done == true and st.Completed == true, "p3ui tutorial: being in the arena during a Boss Raid ends the battle chapter")
+		-- (Phase 4: chapter 4 follows, so the tutorial goes on at its first step instead of being Done)
+		local chapter4 = Steps.ChapterStart[4]
+		T.check(st and ((chapter4 and st.Done ~= true and st.Step == chapter4 and st.Chapter == 4) or (not chapter4 and st.Done == true and st.Completed == true)),
+			"p3ui tutorial: being in the arena during a Boss Raid ends the battle chapter (on to chapter 4)", st and tostring(st.Id))
 		local paid = DataS.GetTokens(p) - tokens0
 		local src = sourceOf("server/Services/TutorialService")
 		local reward = type(src) == "string" and tonumber(src:match("local ARENA_FINISH_TOKENS = (%d+)")) or 500
@@ -304,7 +310,7 @@ local function serverScenarios()
 		TSv.HandleEvent(p, "Next")
 		advance(0.6)
 		T.eq(DataS.GetTokens(p) - tokens0, reward, "p3ui tutorial: nothing is paid twice")
-		T.eq(DataS.GetTutorial(p).Step, #Steps.Steps + 1, "p3ui tutorial: the stored Step is one past the end")
+		T.eq(DataS.GetTutorial(p).Step, chapter4 or (#Steps.Steps + 1), "p3ui tutorial: the stored Step is one past the battle chapter (ChapterStart[4])")
 		pcall(BS.EndRaid)
 		waitFor(function()
 			return BS.GetRaidStatus() == nil
@@ -323,7 +329,7 @@ local function serverScenarios()
 		T.eq(stepId(q), "raid", "p3ui tutorial: BattleService.BattleEnded (a trial the player won) completes 'trial'")
 		BS.BattleEnded:Fire("ui-test-2", { Mode = "Raid", Winners = {}, Losers = {}, Participants = { q.UserId } })
 		advance(0.6)
-		T.eq(stepId(q), "done!", "p3ui tutorial: a raid the player fought in completes 'raid'")
+		T.eq(stepId(q), Steps.ChapterStart[4] and Steps.Steps[Steps.ChapterStart[4]].Id or "done!", "p3ui tutorial: a raid the player fought in completes 'raid'")
 		leave(q)
 
 		local mine = 0
@@ -503,6 +509,9 @@ local function clientScenarios()
 			PetLevels = levels,
 			Teams = { Presets = presets or { TEAM, { "pebble_pup" }, {} }, Active = 1, Slots = (prestige or 0) >= 1 and 4 or 3 },
 			Battle = { Trophies = 340, TrialBest = 6, TrialCleared = cleared, Raids = 1, RaidBestDamage = 100, PvPWins = 9, PvPLosses = 4, EventPets = {} },
+			-- Phase 4: a pet in training is the only busy pet (garden pets fight)
+			PetGrowth = { honey_bunny = { Job = { Stat = "Physique", Ends = os.time() + 3600, Rank = 1, Slot = 1, From = "Free", Paid = 0 } } },
+			Ring = { Best = 12, Runs = 4 },
 		}
 	end
 
@@ -601,8 +610,11 @@ local function clientScenarios()
 			n = n + 1
 		end
 		T.eq(n, #OWNED, "p3ui team: the picker lists every owned pet copy")
-		local busy = picks.Pick_bubble_axolotl
-		T.check(busy and find(busy, "Dim") and shown(find(busy, "Dim")), "p3ui team: a pet working in the Garden is dimmed in the picker")
+		-- (Phase 4: garden pets fight too; a pet in training is the busy one)
+		local garden = picks.Pick_bubble_axolotl
+		T.check(garden and not (find(garden, "Dim") and shown(find(garden, "Dim"))), "p3ui team: a pet working in the Garden is NOT dimmed (Phase 4: garden pets fight)")
+		local busy = picks.Pick_honey_bunny
+		T.check(busy and find(busy, "Dim") and shown(find(busy, "Dim")), "p3ui team: a pet in training is dimmed in the picker")
 		local inTeam = picks["Pick_" .. TEAM[2]]
 		T.check(inTeam and find(inTeam, "InTeam") and shown(find(inTeam, "InTeam")), "p3ui team: team pets carry their slot number in the picker")
 		local small = smallTexts(win, 18)
@@ -628,7 +640,7 @@ local function clientScenarios()
 		mark = #Mock.RemoteLog
 		Mock.Click(busy)
 		advance(0.8)
-		T.check(lastRequest(mark, "TeamSet") == nil, "p3ui team: a pet busy in the Garden is not added")
+		T.check(lastRequest(mark, "TeamSet") == nil, "p3ui team: a pet in training is not added")
 		-- swap: tap slot 1, then a pet
 		mark = #Mock.RemoteLog
 		Mock.Click(slots[1])
