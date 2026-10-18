@@ -13,15 +13,19 @@
 --   BattleService.EndRaid() -> ok                         EventService: ends it (a running fight ends as a timeout)
 --   BattleService.GetRaidStatus() -> { Active, BossId, Name, Hp, MaxHp, Players, EndsIn, Enraged, Joinable, JoinEndsIn,
 --                                 Waiting, BattleId } | nil                       (ArenaState.Raid)
---   BattleService.GetBattle(player) -> { BattleId, Mode, Side, Level, BossId, State, Zone = { CFrame, Size } } | nil
+--   BattleService.StartRing(player, startRound) -> ok, battleId | reason     Phase 4: the Champion Ring (see "Modes")
+--   BattleService.KeysInBattle(player) -> { [key] = true }   the pet keys in the player's running battle or ring run
+--                                 (PetCareService Feed / Train / Evolve, FusionService and GardenSet refuse them)
+--   BattleService.GetBattle(player) -> { BattleId, Mode, Side, Level, BossId, Round (Ring), State, Zone = { CFrame,
+--                                 Size } } | nil   (a ring run between two rounds reads State "Intermission")
 --   BattleService.IsInBattle(player) -> bool
 --   BattleService.BattleEnded     Util.Signal (exists at module load): Fire(battleId, result), once per battle,
 --                                 AFTER the rewards were paid. result = { Mode, Winners = {userId...}, Losers =
---                                 {userId...}, Level (Trial), BossId (Raid), Damage = {[userId] = n}, Forfeit = bool }
---                                 plus the extras BattleId, Reason, Draw, WinnerSide, Duration, Shares = {[userId] =
---                                 0..1}, Participants = {userId...} (everyone who ever joined), Fighters = {userId...}
---                                 (the participants still in at the end: raid leavers are not), Rewards = {[userId] =
---                                 rewards}, RewardsPaid = true, BossHp, BossMaxHp.
+--                                 {userId...}, Level (Trial), BossId (Raid), Round + Won (Ring), Damage = {[userId] =
+--                                 n}, Forfeit = bool } plus the extras BattleId, Reason, Draw, WinnerSide, Duration,
+--                                 Shares = {[userId] = 0..1}, Participants = {userId...} (everyone who ever joined),
+--                                 Fighters = {userId...} (the participants still in at the end: raid leavers are
+--                                 not), Rewards = {[userId] = rewards}, RewardsPaid = true, BossHp, BossMaxHp.
 -- Extras: StartDuel(a, b) -> ok, battleId | reason, ReplyChallenge(player, fromUserId, accept) -> ok, reason,
 --   Queue(player) / Unqueue(player) -> ok, reason, JoinRaid(player) / LeaveRaid(player) -> ok, reason,
 --   Command(player, action, arg) -> ok, reason (what BattleCommand does), Forfeit(player) -> ok,
@@ -55,6 +59,34 @@
 --     "LeaveRaid" / leaving the arena / a disconnect removes the team (RemoveTeam: the boss sheds that share). The raid
 --     ends when the sim ends (boss down, wipe, the boss's time limit, everybody left) or on EndRaid(); a raid nobody
 --     joined closes at the end of the join window. ArenaState.Raid = GetRaidStatus().
+--   * Ring (Phase 4, ARCHITECTURE_V3.md "Phase 4 build contract" 3.8 / 3.11 / 5.1-5.4; every helper lives in the
+--     RingRun table): BattleRequest("Ring", startRound) near Portal_Ring (ArenaInfo.RingPortal, else the Portal_Ring
+--     model, else the Trial Portal as the zero-part fallback; RING_RANGE studs) -> StartRing. The entry checks, in
+--     this order with their toasts: a home claimed this session (TycoonService.GetPlot, "Claim your home first"), at
+--     least one owned pet ("You need a pet"), the fighters (the active team with training pets skipped, else the
+--     equipped keys, else the best owned pets by UnitPower, up to GetTeams().Slots), canBattle, within RING_RANGE of
+--     the portal ("Walk to the Champion Ring portal"), the profile loaded and not provisional ("Your save is still
+--     loading, try again in a moment"), the start round (1, or a boss round 10k with Ring.Best >= 10k). One RingRun per
+--     player: { Id, Player, UserId, Name, Pocket, PocketIndex, Zone, Round, Start, Seed, Keys (fixed at the start; the
+--     spec is rebuilt from them every round, so levels won meanwhile count), Wins, Cash, Xp, Tokens, Record, Best0,
+--     State = "Fighting" | "Intermission" | "Ending" | "Ended" }. The run's pocket comes from the shared pool
+--     (St.pocketBusy) via ArenaBuilder.BuildPocket(index, "Ring") (pcall; the trial pocket is the fallback). Every
+--     round is a fresh BattleSim (Mode "Ring", Zone 44 x 44, Teams = { the player's spec, BattleCatalog.ChampionTeam
+--     (round, seed) }, TimeLimit 90: a timeout is a loss). A WIN pays once (payOnce / RingRun.pay: Cash =
+--     BattleCatalog.RingRewards(round, TycoonService.IncomePerSecond(player), isRecord) with the record x3 and the first
+--     boss clear's Tokens decided inside ONE DataService.MutateRing; XP 20 + 6r per team pet through
+--     PetCareService.GrantXp source "Ring"), sends "End" with Rewards.Next / Cash / Record / Tokens, keeps the
+--     participant (the new InBattle id is written by the next round's addParticipant BEFORE the old one is let go:
+--     no gap, followers stay parked, GoHome / portals stay refused), waits Ring.Intermission seconds and starts the
+--     next round in the same pocket. A loss, a timeout, Forfeit, leaving the pocket, a respawn elsewhere, an obby
+--     match, a disconnect or a shutdown ends the run the trial way (the return teleport TRIAL_RETURN_DELAY later,
+--     release, FreePocket, Ring.Runs + 1 written at once: on a leave it travels with the leave save) and the round
+--     that ends the run pays a third of its XP under the trial-loss gate (BattleCatalog.LossXp; never for a forfeit,
+--     a leave, a disconnect or a shutdown). The final "End" carries Rewards.Final = true and Rewards.Run = { Wins,
+--     Cash, Xp, Tokens, Round, Start, Record, Best } (the result card). Forfeit during an intermission ends the run
+--     cleanly (the last round kept). "Start" carries Ring = { Round, Best, Start, Champion = { PetId, Level, Tier,
+--     Boss, Name } }; BattleEnded fires with Mode "Ring", Round and Won. When a run ends the Portal_Ring attribute
+--     RingBoard = "Alex|31;Sam|24;Kim|20" (the best records in this server) is rewritten.
 --
 -- The loop: on Heartbeat every running battle runs the fixed 0.1 s steps that are due against the wall clock (a
 -- stalled server catches up at most MAX_CATCHUP steps per frame, merging their events into one message). After each
@@ -83,8 +115,11 @@
 --   KB/s, an 8-player raid well under 20 KB/s and a full 16-player raid under ~20 KB/s (the delta snapshots).
 --
 -- Teams: the active preset (DataService.ActiveTeamKeys, at most GetTeams().Slots pets: the 4th at Prestige 1), each key
---   as { Key, PetId, Def = PetKeys.DefOf(key, profile), Level = DataService.GetPetLevel, Tier, Slot } (hybrids and tier
---   copies keep their own stats); the team is fixed for the whole battle.
+--   as { Key, PetId, Def = PetKeys.DefOf(key, profile), Level = DataService.GetPetLevel, Tier, Slot, Evo, Train = {
+--   Speed, Physique, Ability, Defense }, Xp, XpNext } (hybrids and tier copies keep their own stats; Phase 4: the
+--   stored evolution stage and training ranks from DataService.GetGrowth ride as the UnitStats extras, so evolution and
+--   training count in trials, duels, raids and the ring; training keys are skipped: DataService.TrainingKeys); the team
+--   is fixed for the whole battle (a ring run rebuilds it from its fixed key list every round).
 -- Owners and anchors: a team's owner is the player's UserId. Twice a second every participant's position (zone-local)
 --   becomes their team's anchor (battle:SetAnchor), so RETREAT means "back to me".
 -- BattleCommand (action, a): "Attack" (target unit id | nil), "Retreat", "Special" (team slot 1-4), "Forfeit". Only the
