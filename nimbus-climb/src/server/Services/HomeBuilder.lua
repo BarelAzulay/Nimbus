@@ -1,6 +1,7 @@
--- HomeBuilder (Phase 2, homeworld): builds the tycoon home of a lobby plot in the DETAILED VOXEL style
--- (ARCHITECTURE_V3.md "Phase 2: Tycoon homes" + "Phase 2 build contract" + ART DIRECTION), sculpted with
--- shared/Voxel.lua. A server module: TycoonService requires it and decides WHAT is built; HomeBuilder only draws.
+-- HomeBuilder (Phase 2 + Phase 4, homeworld): builds the tycoon home of a lobby plot in the DETAILED VOXEL style
+-- (ARCHITECTURE_V3.md "Phase 2 build contract", "Phase 4 build contract" 3.1 / 3.3 / 3.7 / 5.2 / 5.4 / 6 + ART
+-- DIRECTION), sculpted with shared/Voxel.lua. A server module: TycoonService requires it and decides WHAT is built;
+-- HomeBuilder only draws.
 --
 -- Contract API:
 --   HomeBuilder.Init(lobbyInfo)                 remembers the lobby and prepares every plot in lobbyInfo.Spots
@@ -13,9 +14,10 @@
 --                                               stone paths of the yard while owned (and the staked-out house lot
 --                                               while there is no House yet)
 --   HomeBuilder.SetStation(spotInfo, id, level) builds or replaces the station model `Station_<Id>` (attributes
---                                               StationId, Level, BuiltAt = workspace:GetServerTimeNow(), Kind) under
---                                               the Home folder at PlotCFrame * Slot.CFrame; level 0 removes it; the same
---                                               level again is a no-op. Returns the model (nil when removed / invalid).
+--                                               StationId, Level, BuiltAt = workspace:GetServerTimeNow(), Kind + the
+--                                               art's points / info) under the Home folder at PlotCFrame * Slot.CFrame;
+--                                               level 0 removes it; the same level again is a no-op. Returns the model.
+--                                               The art is chosen by the station's Kind (TycoonCatalog.Kinds).
 --   HomeBuilder.SetPads(spotInfo, pads)         the buy pads `Pad_<StationId>` (Home/Pads) for TycoonCatalog.AvailablePads
 --                                               entries: a glowing voxel pad + a pixel sign (icon, name, "Lv a -> b",
 --                                               price or the lock reason) + ProximityPrompt `BuyPrompt` (ActionText "Buy",
@@ -25,53 +27,64 @@
 --                                               Pads missing from the list are removed, unchanged pads are kept
 --                                               (only their texts / attributes update). Locked "Unlocks at Prestige" /
 --                                               "Coming soon" stations show a blue hologram silhouette (`Ghost_<Id>`).
---   HomeBuilder.SetCollector(spotInfo, cash, cap)  attribute updates only: CollectorCash / CollectorCap on the Home
---                                               folder (HomeFx draws the amount, the tank fill and the glow)
---   HomeBuilder.ClearPlot(spotInfo)             removes every station, pad, ghost and the conveyor (the paths too when
---                                               nobody owns the plot; while owned the paths and the house lot stay);
---                                               the claim prompt stays
+--   HomeBuilder.SetGarden(spotInfo, valid, open)  (Phase 4, TycoonService) the Garden's open places (3 + Prestige
+--                                               stars, <= 12; NOT the Garden level) and the placed keys valid =
+--                                               { [slot] = key }: a new open count rebuilds the Garden (template
+--                                               Garden:<level>:<open>); the GardenSpotPrompt of every OPEN EMPTY place
+--                                               is enabled, the others disabled. Remembered per plot.
+--   HomeBuilder.SetTraining(spotInfo, pets)     (Phase 4, PetCareService, optional) pets = { [mat] = { Key, Stat, Ends } }:
+--                                               attributes Busy / Key / Stat / Ends on the Training Place's Spot<i>
+--                                               (HomeFx reads the plot's TrainingPets attribute)
+--   HomeBuilder.ClearPlot(spotInfo)             removes every station, pad and ghost (the paths too when nobody owns
+--                                               the plot; while owned the paths and the house lot stay); the claim
+--                                               prompt stays; the remembered garden / training state is dropped
 -- Extras (nothing depends on them): GetHomeFolder(spotInfo), GetStation(spotInfo, id), GetPad(spotInfo, id),
 --   GetClaimPrompt(spotInfo), BuildHome(spotInfo, home) (every station of home.Stations, others removed),
---   BuildStationModel(id, level) -> a fresh clone at the origin (renders / tests), PartCount(spotInfo),
---   StationBuilt = Util.Signal Fire(spotInfo, stationId, model|nil), Points(id, level) (local fx points).
+--   BuildStationModel(id, level, accent, open) -> a fresh clone at the origin (renders / tests; open = the Garden's
+--   open place count), PartCount(spotInfo), StationBuilt = Util.Signal Fire(spotInfo, stationId, model|nil),
+--   Points(id, level) (local fx points). Phase 4 removed SetCollector, the Collector screen / CollectPad / conveyor.
 --
 -- Workspace layout (Spot_NN = spotInfo.Folder):
 --   Spot_NN/ClaimGate          ClaimSign (a two-part signpost, while free); ClaimAnchor (invisible, only when the lobby
 --                              has no gate part) -- the ClaimPrompt rides the Attachment ClaimPoint in the gate opening,
 --                              on the lobby's GateBeam when there is one (free plots add 2 parts to the lobby)
---   Spot_NN/Home  (Folder, tag NC_Home; attributes SpotIndex, PlotCFrame, OwnerUserId, OwnerName, CollectorCash,
---                  CollectorCap)
+--   Spot_NN/Home  (Folder, tag NC_Home; attributes SpotIndex, PlotCFrame, OwnerUserId, OwnerName)
 --     Paths                    the yard's stone paths (TycoonCatalog.Layout.Paths), one merged voxel layer
 --     HouseLot                 stakes, a string, planks and bricks where the house will stand (owned, no House yet)
---     Conveyor                 the belt from the farthest press into the Collector (attributes Start, Finish = world
---                              points on the belt top, Speed); rebuilt when the presses change
---     Station_<Id>             the station models. Presses carry PressHead (a Model HomeFx bounces), a PuffPoint
---                              attachment (ParticleEmitter "Puff", disabled: HomeFx emits) and the attributes
---                              Chute / Drop (world points: chute mouth, landing spot on the belt), BlockSize,
---                              BlockColor, PuffInterval. The Collector has Screen (SurfaceGui CashGui > CashLabel,
---                              CapLabel), CashFill (attributes FillBottom, FillMax, FillWidth), Glow parts, the
---                              Intake attribute, CollectPad (touch plate, attributes StationId / OwnerUserId) and the
---                              owner-only ProximityPrompt `CollectPrompt` (ActionText "Collect"). The Fusion Machine
---                              has Swirl (a Model HomeFx spins) and `FusionPrompt` ("Fuse", owner only); the Arena
---                              Gate `ArenaGatePrompt` ("Go to Arena", owner only, attributes StationId / Teleport =
---                              "Arena": ArenaBuilder teleports the owner to the Battle Arena); the Kitchen
---                              a FeedBowl; Garden / Gym carry Attachments Spot<i> (attribute Slot) on the cushion /
---                              target of every open place, where pets stand (HomeFx shows the GardenPets / GymPets).
+--     Station_<Id>             the station models (section 6 budgets: plant 45, Magnet 55, Garden 85, Food Machine 55,
+--                              Training Place 90, House 150, Fusion 90, fence 60, others 80):
+--                              * Plant (Press1..4: Berry Bush, Carrot Patch, Cloud Melons, Starfruit Tree): a planter
+--                                that grows with the level; attributes FruitPoint (world point), Fruit, FruitColor
+--                              * Magnet (Collector): the Coin Magnet totem; `MagnetHead` (a Model HomeFx spins) and the
+--                                MagnetCenter attribute
+--                              * Garden: 12 places (Slot.Spots, 3 x 4) with sand walks (parts named after
+--                                Slot.Walkable), flower beds + cushions on the open places, seedling beds with a
+--                                "Prestige to open" placard (ClosedSign / ClosedGui) on the others; Attachments
+--                                Spot<i> (attributes Slot, Open) on every cushion; on every open place an Attachment
+--                                PromptPoint<i> with the owner-only ProximityPrompt `GardenSpotPrompt` ("Put a pet
+--                                here", E, attributes Slot / OwnerUserId / StationId, MaxActivationDistance 3,
+--                                RequiresLineOfSight false) at the cushion's far edge; attribute Open on the model.
+--                                Bowls, fruit, coins and heaps are CLIENT parts (HomeFx).
+--                              * FoodMachine (Kitchen): the glass `Hopper` part (PetCareService's FeedPrompt sits on
+--                                it), attributes ChuteMouth / Tray / HopperTop
+--                              * Training (Gym): mats with Attachments Spot<i> (attribute Slot) on the deck
+--                              * Fusion Machine: Swirl (a Model HomeFx spins) and `FusionPrompt` ("Fuse", owner only);
+--                                Arena Gate: `ArenaGatePrompt` ("Go to Arena", owner only, attributes StationId /
+--                                Teleport = "Arena": ArenaBuilder teleports the owner to the Battle Arena)
 --     Pads/Pad_<StationId>     buy pads, 4 parts each (attributes StationId, OwnerUserId, NextLevel, Level, Price,
 --                              Locked ("" when unlocked), Title, LevelText, Kind, BuiltAt): a stone Base (walkable; it
 --                              carries the BuyPrompt and the BillboardGui `PadSign`), the state's neon Glow plate and a
 --                              two-part neon Emblem ("+" build, arrow upgrade, padlock, star prestige)
 --     Ghost_<Id>               hologram silhouette (the 12 biggest blocks, ForceField) of a station that unlocks later
 --
--- Art: every station grows visibly with its level (a level-1 Cloud Press is a small press, level 10 big and shiny
--- with gold; the House is a Cottage -> Villa -> Manor -> Sky Castle; the Fusion Machine has two input pods, a
--- swirling cloud chamber and an output pod). Each (station, level) is sculpted ONCE per server, merged with the
--- greedy voxel merge and kept as a template that is :Clone()d onto every plot. A fully built plot stays under
--- ~900 parts (pads included; tools/smoke_p2_homeworld.lua walks a whole greedy progression and checks it). No
--- server-side animation (Replication rule): HomeFx (client) pops stations in, bounces the presses, moves the cloud
--- blocks along the conveyor, fills and lights the Collector, spins the fusion swirl, shows the garden / gym pets and
--- hides other players' pads. The art is sculpted on a 0.5 stud voxel grid (cell edges round half away from the model's
--- axis, so the models stay symmetric).
+-- Art: every station grows visibly with its level (a level-1 Berry Bush is a small bush in a wooden planter, level 10
+-- a big berry-laden bush in a gold one; the House is a Cottage -> Villa -> Manor -> Sky Castle; the Fusion Machine has
+-- two input pods, a swirling cloud chamber and an output pod). Each (station, level) is sculpted ONCE per server,
+-- merged with the greedy voxel merge and kept as a template that is :Clone()d onto every plot. A fully built plot stays
+-- <= 950 parts (pads included; tools/smoke_p2_homeworld.lua walks a whole greedy progression and checks it). No
+-- server-side animation and no Instance per coin (Replication rule): HomeFx (client) pops stations in, spins the magnet
+-- and the fusion swirl, draws the coins, bowls, fruit and pets, and hides other players' pads and prompts. The art is
+-- sculpted on a 0.5 stud voxel grid (cell edges round half away from the model's axis, so the models stay symmetric).
 -- Texts follow the World text rule (pixel-sized billboard tags, surface signs at 50 px per stud with >= 0.6 stud
 -- letters). The only fonts are Theme roles. Plain Lua 5.1-compatible syntax only.
 
@@ -120,8 +133,6 @@ local CLAIM_RANGE = 12
 local PAD_SIGN_RANGE = 60 -- studs: pad signs (pixel tags) hide beyond this
 local PAD_SIGN_LIFT = 4.2 -- studs above the pad's base where the sign's plate starts
 local GHOST_PARTS = 12 -- a locked station's silhouette keeps only its biggest blocks
-local BELT_TOP = 1.5 -- studs above the yard: the conveyor's walking... rolling surface
-local BELT_SPEED = 5 -- studs per second (HomeFx)
 local SIGN_PPS = 50 -- surface signs: pixels per stud
 local TAG_NAME = 24 -- px: pad sign names (World text rule: >= 22)
 local TAG_INFO = 20 -- px: info lines (>= 18)
@@ -892,51 +903,6 @@ end
 ----------------------------------------------------------------------
 local Art = {}
 
--- shared look of the four presses
-local PRESS_STYLE = {
-	Press1 = { Body = rgb(118, 182, 238), Accent = rgb(70, 122, 196), Frame = rgb(58, 76, 120), Glow = rgb(176, 232, 255), Block = rgb(226, 242, 255) },
-	Press2 = { Body = rgb(104, 202, 168), Accent = rgb(58, 148, 122), Frame = rgb(48, 92, 92), Glow = rgb(178, 252, 214), Block = rgb(222, 255, 238) },
-	Press3 = { Body = rgb(150, 126, 228), Accent = rgb(100, 80, 182), Frame = rgb(60, 52, 112), Glow = rgb(132, 226, 255), Block = rgb(214, 226, 255), Crackle = true },
-	Press4 = { Body = rgb(246, 238, 222), Accent = rgb(84, 118, 214), Frame = rgb(54, 72, 146), Glow = rgb(255, 222, 132), Block = rgb(255, 242, 206), Royal = true },
-}
-
--- the frame tells the level at a glance: wood (1-3), iron (4-6), iron with gold caps (7-9), all gold (10)
-local function pressPalette(st, level)
-	local frame, cap
-	if level <= 3 then
-		frame, cap = C.PlankDark, C.PlankLight
-	elseif level <= 6 then
-		frame, cap = st.Frame or C.Iron, C.IronLight
-	elseif level <= 9 then
-		frame, cap = st.Frame or C.Iron, P.Gold
-	else
-		frame, cap = P.Gold, { Color = st.Glow, Material = MAT.Neon }
-	end
-	return mergeTables(P, {
-		Body = st.Body,
-		Accent = (level >= 10) and P.Gold or st.Accent,
-		Core = { Color = st.Glow, Material = MAT.Neon },
-		Lid = (level >= 10) and P.Gold or rgb(246, 242, 232),
-		Frame = frame,
-		FrameCap = cap,
-		Plate = C.IronLight,
-		Rod = C.IronLight,
-		Hopper = (level >= 7) and P.Gold or st.Accent,
-		Plinth = C.StoneDark,
-		Dial = C.Cream,
-		Needle = C.Red,
-		Bolt = (level >= 6) and C.GoldDark or C.IronDark,
-		Mouth = rgb(36, 40, 58),
-		Chute = C.IronLight,
-		Bulb = { Color = C.Lamp, Material = MAT.Neon },
-		Crack = { Color = st.Glow, Material = MAT.Neon },
-		Cloud = C.Cloud,
-		CloudShade = rgb(212, 222, 244),
-		CloudLight = rgb(252, 253, 255),
-		CopperDark = rgb(178, 104, 66),
-	})
-end
-
 -- a puffy voxel cloud sitting on y0: a shaded underside, a big round middle, a bright crown and a side puff.
 -- r = the middle puff's radius (studs). Cheap: about 6 boxes.
 puffCloud = function(s, x, y0, z, r, seed)
@@ -951,396 +917,551 @@ puffCloud = function(s, x, y0, z, r, seed)
 	SK.Box(s, px - snap(r * 0.45), px + snap(r * 0.45), y0 + V, y0 + V + h * 0.75, z - snap(r * 0.45), z + snap(r * 0.45), "Cloud", true)
 end
 
-function Art.Press(def, level)
-	local st = PRESS_STYLE[def.Id] or PRESS_STYLE.Press1
-	local maxLv = def.MaxLevel or 10
-	local t = (level - 1) / max(1, maxLv - 1)
-	local extra = ((def.Slot and def.Slot.Footprint and def.Slot.Footprint.Y) or 10) - 10 -- 0..3 for presses 1..4
-	local pal = pressPalette(st, level)
-	local W = snap(4 + 2 * t, 1) -- body width (whole studs keep it symmetric)
-	local hw = W / 2
-	local hb = snap(2.5 + 1.0 * t + extra * 0.25 * t)
-	local rod = snap(0.5 + 0.5 * t + extra * 0.25 * t)
-	local bt = (level >= 4) and 1.0 or 0.5
-	local tpl = newTemplate("Press")
+----------------------------------------------------------------------
+-- Food plants (Phase 4: the four old Cloud Press slots, ids Press1..4 = Berry Bush, Carrot Patch, Cloud Melons,
+-- Starfruit Tree). Front -Z faces the pad. Each grows in a raised planter (wood at 1-3, stone at 4-6, stone with gold
+-- corner caps at 7-9, all gold at 10) and visibly GROWS with its level: taller, wider, more fruit. <= 45 parts.
+-- HomeFx (client) reads the FruitPoint (world point) / Fruit / FruitColor attributes to fly fruit into the bowls.
+----------------------------------------------------------------------
+local Plant = {}
 
-	local s = SK.New(0.5)
-	local y0 = 0.5
-	local bodyTop = y0 + hb
-	-- plinth, the rounded body (shaded), a darker foot band and a lid one voxel wider than the body
-	SK.RBox(s, -hw - 0.5, hw + 0.5, 0, 0.5, -hw - 0.5, hw + 0.5, 0.5, "Plinth")
-	SK.RBox(s, -hw, hw, y0, bodyTop - 0.5, -hw, hw, 0.75, "Body")
-	SK.Box(s, -hw, hw, y0, y0 + 0.5, -hw, hw, "Accent")
-	SK.RBox(s, -hw - 0.5, hw + 0.5, bodyTop - 0.5, bodyTop, -hw - 0.5, hw + 0.5, 0.5, "Lid")
-	-- the back: chute mouth + a trough reaching over the conveyor (local +Z = the belt side)
-	SK.Box(s, -1.0, 1.0, 2.0, min(bodyTop - 0.5, 3.0), hw - 0.5, hw, "Mouth")
-	SK.Box(s, -1.0, 1.0, 1.5, 2.0, hw, 5.5, "Chute")
-	SK.Box(s, -1.5, 1.5, 2.0, 2.5, 5.0, 5.5, "Chute")
-	-- the front: the glowing pressing chamber (the press's heart), bolts, a pressure dial
-	local cw = (level >= 4) and 2.0 or 1.0
-	local ch = (level >= 4) and 1.5 or 1.0
-	SK.Box(s, -cw / 2 - 0.5, cw / 2 + 0.5, y0 + 0.5, y0 + 1.0 + ch, -hw - 0.5, -hw, "Accent")
-	SK.Box(s, -cw / 2, cw / 2, y0 + 0.75, y0 + 0.75 + ch, -hw - 1.0, -hw - 0.5, "Core")
-	if level >= 2 then
-		for _, x in ipairs({ -hw + 0.25, hw - 0.75 }) do
-			SK.Box(s, x, x + 0.5, bodyTop - 1.25, bodyTop - 0.75, -hw - 0.5, -hw, "Bolt")
-		end
+Plant.LOOK = {
+	Press1 = { Fruit = "Berry", Color = rgb(226, 58, 94) },
+	Press2 = { Fruit = "Carrot", Color = rgb(250, 140, 46) },
+	Press3 = { Fruit = "Melon", Color = rgb(150, 224, 176) },
+	Press4 = { Fruit = "Starfruit", Color = rgb(255, 212, 70) },
+}
+Plant.MAX_PARTS = 44 -- contract section 6: a plant <= 45 parts (the sparkle attachment adds none)
+Plant.CARROTS = { 2, 3, 4, 4, 5, 6, 6, 7, 8, 9 } -- carrots in the patch per level
+-- the patch's 3 x 3 cells in planting order (the last one, the middle, holds the giant carrot at level 10)
+Plant.CELLS = { { -1, 0 }, { 1, 0 }, { 0, 1 }, { 0, -1 }, { -1, 1 }, { 1, -1 }, { 1, 1 }, { -1, -1 }, { 0, 0 } }
+
+function Plant.palette(level)
+	local base, rim
+	if level >= 10 then
+		base, rim = C.GoldDark, P.Gold
+	elseif level >= 4 then
+		base, rim = C.StoneDark, C.Stone
+	else
+		base, rim = C.PlankDark, C.PlankLight
 	end
-	local dialY = y0 + 1.5 + ch
-	if dialY + 0.5 <= bodyTop - 0.5 then
-		SK.DiscZ(s, hw - 1.25, dialY, -hw - 0.5, -hw, 0.45, "Dial")
-		SK.Box(s, hw - 1.25, hw - 0.75, dialY, dialY + 0.5, -hw - 1.0, -hw - 0.5, "Needle")
-	end
-	-- level 5+: a brass gauge on the right side; level 9+: a glowing band across the front under the lid
-	if level >= 5 then
-		SK.Box(s, hw, hw + 0.5, y0 + 1.0, y0 + 2.0, -1.0, 0, "Copper")
-		SK.Box(s, hw + 0.5, hw + 1.0, y0 + 1.0, y0 + 1.5, -1.0, -0.5, "Bulb")
-	end
-	if level >= 9 then
-		SK.Box(s, -hw, hw, bodyTop - 1.0, bodyTop - 0.5, -hw - 0.5, -hw, "Crack")
-	end
-	-- storm press: a neon crackle across the lid's front edge
-	if st.Crackle then
-		local y1 = bodyTop - 1.0
-		SK.Box(s, -hw + 0.5, -0.5, y1, y1 + 0.5, -hw - 0.5, -hw, "Crack", true)
-		SK.Box(s, -0.5, 0, y1 - 0.5, y1 + 0.5, -hw - 0.5, -hw, "Crack", true)
-		SK.Box(s, 0, hw - 0.5, y1 - 0.5, y1, -hw - 0.5, -hw, "Crack", true)
-	end
-	-- the frame: two columns and the cross beam (thicker from level 7), caps on the columns
-	local plateTop = bodyTop + 1.0
-	local beamY0 = plateTop + rod
-	local beamTop = beamY0 + bt
-	local colW = (level >= 7) and 1.0 or 0.5
-	for _, sx in ipairs({ -1, 1 }) do
-		local xa = (sx < 0) and (-hw - colW) or hw
-		SK.Box(s, xa, xa + colW, y0, beamTop, -0.5, 0.5, "Frame")
-		SK.Box(s, xa - 0.25 + (sx < 0 and 0 or 0.25), xa + colW + (sx < 0 and 0 or 0.25) - 0.25 + 0.25, beamTop, beamTop + 0.5, -0.5, 0.5, "FrameCap")
-	end
-	SK.Box(s, -hw, hw, beamY0, beamTop, -0.5, 0.5, "Frame")
-	if level >= 6 then
-		for _, x in ipairs({ -hw + 0.5, hw - 1.0 }) do
-			SK.Box(s, x, x + 0.5, beamY0, beamTop, -1.0, -0.5, "Bulb")
-		end
-	end
-	-- copper pipes up the back corners into the hopper (3+, both sides from 7)
-	if level >= 3 then
-		local sides = (level >= 7) and { -1, 1 } or { 1 }
-		for _, sx in ipairs(sides) do
-			local px0 = (sx > 0) and hw or (-hw - 0.5)
-			SK.Box(s, px0, px0 + 0.5, y0, beamTop + 0.5, hw - 1.0, hw - 0.5, "Copper")
-			local hx0, hx1 = min(sx * 1.0, px0), max(sx * 1.0, px0 + 0.5)
-			SK.Box(s, hx0, hx1, beamTop + 0.5, beamTop + 1.0, hw - 1.0, hw - 0.5, "Copper")
-		end
-	end
-	-- the hopper funnel and the cloud reservoir on top (the cloud's underside a shade darker)
-	local hop = snap(0.5 + 0.5 * t)
-	local hopTop = beamTop + hop
-	SK.Oct(s, 0, 0, 0.75, beamTop, beamTop + hop / 2 + 0.25, "Hopper")
-	SK.Oct(s, 0, 0, 1.0 + 0.5 * t, beamTop + hop / 2 + 0.25, hopTop + 0.25, "Hopper")
-	local cr = 1.2 + 1.1 * t + extra * 0.2 * t
-	local cy = hopTop + cr * 0.55
-	puffCloud(s, 0, hopTop, 0, cr, level)
-	if st.Royal and level >= 3 then
-		-- the great sky press: little cloud wings on the hopper
+	return mergeTables(P, {
+		RimBase = base,
+		Rim = rim,
+		Soil = rgb(112, 80, 60),
+		Leaf = rgb(76, 164, 82),
+		Berry = rgb(226, 58, 94),
+		BerryBlue = rgb(104, 96, 218),
+		Blossom = rgb(252, 246, 240),
+		Carrot = rgb(250, 140, 46),
+		Greens = rgb(100, 190, 80),
+		GreensDark = rgb(70, 150, 70),
+		Melon = rgb(150, 224, 176),
+		Stripe = rgb(246, 250, 255),
+		Vine = rgb(74, 150, 82),
+		Curl = rgb(110, 186, 86),
+		Canopy = rgb(104, 196, 116),
+		Star = (level >= 8) and { Color = rgb(255, 222, 96), Material = MAT.Neon } or rgb(255, 210, 66),
+		StarDark = rgb(232, 170, 52),
+	})
+end
+
+-- the raised planter (half width h): a darker base layer, the rim on top and the soil inside
+function Plant.planter(s, h, level)
+	SK.Box(s, -h, h, 0, 0.5, -h, h, "RimBase")
+	SK.Box(s, -h, h, 0.5, 1.0, -h, h, "Rim")
+	SK.Box(s, -h + 0.5, h - 0.5, 0.5, 1.0, -h + 0.5, h - 0.5, "Soil")
+	if level >= 7 and level <= 9 then
 		for _, sx in ipairs({ -1, 1 }) do
-			SK.Oct(s, sx * (cr + 0.75), 0, 0.75, cy - 0.25, cy + 0.5, "Cloud")
-			SK.Oct(s, sx * (cr + 1.5), 0, 0.5, cy + 0.25, cy + 1.0, "Cloud")
+			for _, sz in ipairs({ -1, 1 }) do
+				local x0 = (sx < 0) and -h or (h - 1.0)
+				local z0 = (sz < 0) and -h or (h - 1.0)
+				SK.Box(s, x0, x0 + 1.0, 1.0, 1.5, z0, z0 + 1.0, "Gold")
+			end
 		end
 	end
-	if level >= 8 then
-		SK.Cone(s, 0, 0, cy + cr * 0.5, cy + cr * 0.72 + 1.2 + 0.4 * t, 0.55, 0, "Crack")
+end
+
+-- n points spread over an ellipsoid (golden-angle spiral), elevations from lo to hi (radians); each point also
+-- carries its outward direction in the ground plane ({ x, y, z, dx, dz })
+function Plant.spread(n, cx, cy, cz, rx, ry, rz, lo, hi, seed)
+	local out = {}
+	for i = 1, n do
+		local a = (i + (seed or 0)) * 2.39996
+		local f = (n > 1) and ((i - 1) / (n - 1)) or 0.5
+		local e = lo + (hi - lo) * f
+		local ca, sa = math.cos(a), math.sin(a)
+		out[i] = { cx + rx * math.cos(e) * ca, cy + ry * math.sin(e), cz + rz * math.cos(e) * sa, ca, sa }
 	end
+	return out
+end
+
+-- Berry Bush: a round, clumpy bush dotted with berries (red, some blue from 6) and white blossoms (3+)
+function Plant.Berry(s, level, t)
+	local h = (level >= 4) and 3.0 or 2.5
+	Plant.planter(s, h, level)
+	local rx = 1.5 + 1.25 * t
+	local ry = 1.25 + 1.5 * t
+	local cy = 1.0 + ry * 0.85
+	local f = s.Foliage
+	SK.Ell(f, 0, cy, 0, rx, ry, rx * 0.9, "Leaf")
+	SK.Ell(f, -rx * 0.55, cy - ry * 0.3, rx * 0.25, rx * 0.6, ry * 0.6, rx * 0.6, "Leaf")
+	SK.Ell(f, rx * 0.55, cy - ry * 0.35, -rx * 0.25, rx * 0.55, ry * 0.55, rx * 0.55, "Leaf")
+	if level >= 4 then
+		SK.Ell(f, rx * 0.15, cy + ry * 0.55, 0, rx * 0.5, ry * 0.45, rx * 0.5, "Leaf")
+	end
+	SK.Shade(f, { Only = { Leaf = true }, Smooth = 1, Seed = 5 })
+	for i, p in ipairs(Plant.spread(3 + level, 0, cy, 0, rx + 0.15, ry + 0.15, rx * 0.9 + 0.15, -0.2, 1.05, 1)) do
+		local bx, by, bz = snap(p[1]), snap(p[2]), snap(p[3])
+		local key = (level >= 6 and i % 3 == 0) and "BerryBlue" or "Berry"
+		SK.Box(s, bx - 0.5, bx + 0.5, by - 0.5, by + 0.5, bz - 0.5, bz + 0.5, key)
+	end
+	if level >= 3 then
+		for _, p in ipairs(Plant.spread(floor(level / 3) + 1, 0, cy, 0, rx + 0.1, ry + 0.1, rx * 0.9 + 0.1, 0.35, 1.2, 7)) do
+			local bx, by, bz = snap(p[1]), snap(p[2]), snap(p[3])
+			SK.Box(s, bx, bx + 0.5, by, by + 0.5, bz, bz + 0.5, "Blossom")
+		end
+	end
+	return cy + ry * 0.6, cy + ry
+end
+
+-- Carrot Patch: rows of carrots (orange shoulders out of the soil, leafy tops), more and taller with every level;
+-- a giant carrot in the middle at 10
+function Plant.Carrot(s, level, t)
+	local h = (level >= 4) and 3.0 or 2.5
+	Plant.planter(s, h, level)
+	local step = (h >= 3) and 2.0 or 1.5
+	local lh = snap(1.0 + 0.25 * level)
+	local top = 1.0
+	for i = 1, Plant.CARROTS[level] or 9 do
+		local c = Plant.CELLS[i]
+		local x, z = c[1] * step, c[2] * step
+		local giant = level >= 10 and i == 9
+		local w = giant and 1.0 or 0.5
+		local sh = giant and 1.5 or ((level >= 5) and 1.0 or 0.5)
+		SK.Box(s, x - w, x + w, top, top + sh, z - w, z + w, "Carrot")
+		local gy = top + sh
+		local gh = giant and (lh + 1.5) or lh
+		local key = (i % 2 == 0) and "GreensDark" or "Greens"
+		-- the leafy top: a stalk and a fan above it (alternating along X / Z)
+		SK.Box(s, x - 0.5, x + 0.5, gy, gy + gh, z - 0.5, z + 0.5, key)
+		local fy = gy + snap(gh * 0.45)
+		local fw = giant and 1.5 or 1.0
+		if i % 2 == 0 then
+			SK.Box(s, x - fw, x + fw, fy, gy + gh - 0.5, z - 0.5, z + 0.5, key)
+		else
+			SK.Box(s, x - 0.5, x + 0.5, fy, gy + gh - 0.5, z - fw, z + fw, key)
+		end
+	end
+	return top + lh * 0.6, top + lh + 2.5
+end
+
+-- Cloud Melons: plump mint melons with white cloud stripes on a vine bed; one melon at 1-3, two at 4-6, three at 7+
+function Plant.Melon(s, level, t)
+	local h = (level >= 4) and 3.0 or 2.5
+	Plant.planter(s, h, level)
+	-- vine leaves on the soil corners
+	for _, c in ipairs({ { -1, -1 }, { 1, 1 }, { -1, 1 }, { 1, -1 } }) do
+		local x0 = (c[1] < 0) and (-h + 0.5) or (h - 2.0)
+		local z0 = (c[2] < 0) and (-h + 0.5) or (h - 2.0)
+		SK.Box(s, x0, x0 + 1.5, 1.0, 1.5, z0, z0 + 1.5, "Vine")
+	end
+	local r = 0.9 + 0.11 * (level - 1)
+	local list = { { 0, 0, r } }
+	if level >= 4 then
+		list[1] = { 0.5, 0.5, r }
+		list[2] = { -1.25, -1.25, r * 0.62 }
+	end
+	if level >= 7 then
+		list[3] = { 1.25, -1.5, r * 0.55 }
+	end
+	local topY = 1.0
+	for i, m in ipairs(list) do
+		local mr = m[3]
+		local ry = mr * 0.85
+		local cy = 1.0 + ry * 0.8
+		SK.Ell(s, m[1], cy, m[2], mr, ry, mr, "Melon")
+		-- two white cloud stripes over the top (only on the melon's own voxels)
+		local cx, cz = snap(m[1]), snap(m[2])
+		local a, b = snap(cx - mr * 0.45), snap(cx + mr * 0.45)
+		SK.Paint(s, a, a + 0.5, cy - ry * 0.3, cy + ry + 0.5, cz - mr - 0.5, cz + mr + 0.5, "Stripe", { Melon = true })
+		SK.Paint(s, b - 0.5, b, cy - ry * 0.3, cy + ry + 0.5, cz - mr - 0.5, cz + mr + 0.5, "Stripe", { Melon = true })
+		-- a curly stem on top
+		SK.Box(s, cx - 0.5, cx, cy + ry - 0.25, cy + ry + 0.5, cz - 0.5, cz, "Curl")
+		if i == 1 then
+			topY = cy + ry
+		end
+	end
+	SK.Shade(s, { Only = { Melon = true }, Smooth = 1, Seed = 3 })
+	return topY * 0.8, topY + 0.5
+end
+
+-- Starfruit Tree: a sapling at 1 that grows into a big round tree hung with golden starfruit (glowing from 8)
+function Plant.Star(s, level, t)
+	local h = (level >= 4) and 3.0 or 2.5
+	Plant.planter(s, h, level)
+	local tw = (level >= 6) and 1.0 or 0.5
+	local th = snap(1.5 + 0.5 * level)
+	local y0 = 1.0
+	SK.Box(s, -tw, tw, y0, y0 + th, -tw, tw, "Bark")
+	if level >= 4 then
+		SK.Box(s, -tw - 0.5, tw + 0.5, y0, y0 + 0.5, -tw - 0.5, tw + 0.5, "Bark")
+	end
+	local cr = min(3.1, 1.25 + 0.2 * level)
+	local cy = y0 + th + cr * 0.45
+	if level >= 5 then
+		SK.Cap(s, { 0, y0 + th * 0.55, 0 }, { -cr * 0.65, cy - cr * 0.15, 0 }, 0.35, 0.3, "Bark")
+		SK.Cap(s, { 0, y0 + th * 0.7, 0 }, { cr * 0.65, cy - cr * 0.05, 0 }, 0.35, 0.3, "Bark")
+	end
+	SK.Ell(s, 0, cy, 0, cr, cr * 0.7, cr, "Canopy")
+	if level >= 3 then
+		SK.Ell(s, -cr * 0.6, cy - cr * 0.15, cr * 0.2, cr * 0.6, cr * 0.5, cr * 0.6, "Canopy")
+		SK.Ell(s, cr * 0.6, cy - cr * 0.1, -cr * 0.2, cr * 0.6, cr * 0.5, cr * 0.6, "Canopy")
+	end
+	if level >= 7 then
+		SK.Ell(s, 0, cy + cr * 0.55, 0, cr * 0.55, cr * 0.4, cr * 0.55, "Canopy")
+	end
+	SK.Shade(s, { Only = { Canopy = true }, Smooth = 1, Seed = 9 })
+	-- the starfruit: little five-point stars (a plus of voxels) hanging around the canopy
+	local n = 1 + math.ceil(level / 2)
+	for _, p in ipairs(Plant.spread(n, 0, cy, 0, cr + 0.3, cr * 0.7 + 0.3, cr + 0.3, -0.75, 0.25, 3)) do
+		local x, y, z = floor(p[1] / 0.5) * 0.5, floor(p[2] / 0.5) * 0.5, floor(p[3] / 0.5) * 0.5
+		if abs(p[4]) > abs(p[5]) then
+			SK.Box(s, x, x + 0.5, y, y + 0.5, z - 0.5, z + 1.0, "Star")
+			SK.Box(s, x, x + 0.5, y - 0.5, y + 1.0, z, z + 0.5, "Star")
+		else
+			SK.Box(s, x - 0.5, x + 1.0, y, y + 0.5, z, z + 0.5, "Star")
+			SK.Box(s, x, x + 0.5, y - 0.5, y + 1.0, z, z + 0.5, "Star")
+		end
+	end
+	return cy, cy + cr
+end
+
+function Art.Plant(def, level)
+	local look = Plant.LOOK[def.Id] or Plant.LOOK.Press1
+	local t = (level - 1) / max(1, (def.MaxLevel or 10) - 1)
+	local tpl = newTemplate("Plant")
+	local s = SK.New(0.5)
+	s.Foliage = SK.New(1.0)
+	local sculpt = Plant[look.Fruit] or Plant.Berry
+	if look.Fruit == "Starfruit" then
+		sculpt = Plant.Star
+	end
+	local fruitY, topY = sculpt(s, level, t)
+	local pal = Plant.palette(level)
+	local m = SK.Build(s, pal, { Name = "Body", Collide = "big" })
+	absorb(tpl.Model, m)
+	if s.Foliage.G.Count > 0 then
+		absorb(tpl.Model, SK.Build(s.Foliage, pal, { Name = "Foliage", Collide = "big", MaxParts = Plant.MAX_PARTS - #tpl.Model:GetChildren() }))
+	end
+	if level >= 10 then
+		local anchor = biggestPart(tpl.Model)
+		if anchor then
+			local att = Instance.new("Attachment")
+			att.Name = "Sparkle"
+			att.CFrame = anchor.CFrame:Inverse() * CFrame.new(0, topY, 0)
+			att.Parent = anchor
+			emitter(att, { Color = ColorSequence.new(C.TextGold), Rate = 3, SpreadAngle = Vector2.new(180, 180) })
+		end
+	end
+	tpl.Points.FruitPoint = Vector3.new(0, fruitY, 0)
+	tpl.Info.Fruit = look.Fruit
+	tpl.Info.FruitColor = look.Color
+	return tpl
+end
+
+----------------------------------------------------------------------
+-- Coin Magnet (the old Collector slot): a carved totem pole with a happy face on a round stone base, crowned by a
+-- big red horseshoe magnet holding a gold coin. The magnet is its own model `MagnetHead` (HomeFx spins it about
+-- the MagnetCenter point). Taller, gold trims (4+), more coins and sparks at the top level. <= 55 parts.
+----------------------------------------------------------------------
+function Art.Magnet(def, level)
+	local tpl = newTemplate("Magnet")
+	local s = SK.New(0.5)
+	local gold = level >= 4
+	local trim = gold and "Gold" or "Trim"
+	SK.Oct(s, 0, 0, 2.5, 0, 0.5, "Base")
+	SK.Oct(s, 0, 0, 2.0, 0.5, 1.0, trim)
+	local poleTop = snap(3.5 + 0.75 * level)
+	SK.Box(s, -1.0, 1.0, 1.0, poleTop, -1.0, 1.0, "Totem")
+	local y = 1.5
+	while y + 0.5 <= poleTop - 2.5 do
+		SK.Box(s, -1.0, 1.0, y, y + 0.5, -1.0, 1.0, "Band")
+		y = y + 1.5
+	end
+	-- the happy face on the front (-Z): two eyes and a smile, little wing ears from 2
+	local fy = poleTop - 1.5
+	SK.Box(s, -1.0, -0.5, fy, fy + 0.5, -1.0, -0.5, "Eye")
+	SK.Box(s, 0.5, 1.0, fy, fy + 0.5, -1.0, -0.5, "Eye")
+	SK.Box(s, -0.5, 0.5, fy - 1.0, fy - 0.5, -1.0, -0.5, "Smile")
+	if level >= 2 then
+		for _, sx in ipairs({ -1, 1 }) do
+			local x0 = (sx < 0) and -1.5 or 1.0
+			SK.Box(s, x0, x0 + 0.5, fy - 0.5, fy + 0.5, -0.5, 0.5, "Wing")
+			local x1 = x0 + sx * 0.5
+			SK.Box(s, x1, x1 + 0.5, fy, fy + 1.0, -0.5, 0.5, "Wing")
+		end
+	end
+	SK.Box(s, -1.5, 1.5, poleTop, poleTop + 0.5, -1.5, 1.5, trim)
+	SK.Box(s, -0.5, 0.5, poleTop + 0.5, poleTop + 1.0, -0.5, 0.5, trim)
+	-- coin stacks on the base (3+)
+	if level >= 3 then
+		for _, sx in ipairs({ -1, 1 }) do
+			local x0 = (sx < 0) and -2.5 or 1.5
+			SK.Box(s, x0, x0 + 1.0, 0.5, (level >= 5) and 2.0 or 1.5, -2.0, -1.0, "Coin")
+		end
+	end
+	local pal = mergeTables(P, {
+		Base = C.StoneDark,
+		Trim = rgb(124, 156, 210),
+		Totem = rgb(204, 150, 104),
+		Band = rgb(170, 112, 78),
+		Eye = rgb(40, 44, 64),
+		Smile = rgb(232, 94, 100),
+		Wing = rgb(122, 196, 236),
+		Coin = P.Gold,
+		Magnet = rgb(226, 62, 70),
+		Tip = rgb(226, 232, 244),
+		Spark = { Color = rgb(150, 236, 255), Material = MAT.Neon },
+	})
 	local body = SK.Build(s, pal, { Name = "Body", Collide = "big" })
 	absorb(tpl.Model, body)
 
-	-- the press head (plate + rod) is its own model: HomeFx bounces it every time a block is pressed
-	local h = SK.New(0.5)
-	local pw = W - 1
-	SK.Box(h, -pw / 2, pw / 2, bodyTop + 0.5, plateTop, -pw / 2, pw / 2, "Plate")
-	SK.Box(h, -0.5, 0.5, plateTop, beamY0, -0.5, 0.5, "Rod")
-	local head = SK.Build(h, pal, { Name = "PressHead" })
+	-- the magnet: a horseshoe (opening up) standing in the XY plane, facing the yard
+	local hs = SK.New(0.5)
+	local hw = (level >= 3) and 2.0 or 1.5
+	local y0 = poleTop + 1.0
+	local armH = (level >= 3) and 2.5 or 2.0
+	SK.Box(hs, -hw + 0.5, hw - 0.5, y0, y0 + 1.0, -0.5, 0.5, "Magnet")
+	SK.Box(hs, -hw, hw, y0 + 0.5, y0 + 1.0, -0.5, 0.5, "Magnet")
+	SK.Box(hs, -hw, -hw + 1.0, y0 + 1.0, y0 + 1.0 + armH, -0.5, 0.5, "Magnet")
+	SK.Box(hs, hw - 1.0, hw, y0 + 1.0, y0 + 1.0 + armH, -0.5, 0.5, "Magnet")
+	local ty = y0 + 1.0 + armH
+	SK.Box(hs, -hw, -hw + 1.0, ty, ty + 1.0, -0.5, 0.5, "Tip")
+	SK.Box(hs, hw - 1.0, hw, ty, ty + 1.0, -0.5, 0.5, "Tip")
+	if level >= 2 then
+		-- the gold coin it caught, between the arms
+		local cr = (level >= 3) and 0.9 or 0.5
+		SK.DiscZ(hs, 0, y0 + 1.0 + cr + 0.25, -0.5, 0.5, cr, "Coin")
+	end
+	if level >= 5 then
+		for _, sx in ipairs({ -1, 1 }) do
+			local x0 = (sx < 0) and (-hw) or (hw - 0.5)
+			SK.Box(hs, x0, x0 + 0.5, ty + 1.0, ty + 1.5, -0.5, 0, "Spark")
+		end
+	end
+	local head = SK.Build(hs, pal, { Name = "MagnetHead" })
+	local primary = biggestPart(head, "Magnet") or biggestPart(head)
+	if primary then
+		head.PrimaryPart = primary
+	end
 	head.Parent = tpl.Model
-
-	-- the puff point at the chute mouth (HomeFx emits the particles)
-	local mouth = biggestPart(tpl.Model, "Plinth") or biggestPart(tpl.Model)
-	if mouth then
-		local att = Instance.new("Attachment")
-		att.Name = "PuffPoint"
-		att.CFrame = mouth.CFrame:Inverse() * CFrame.new(0, 2.6, hw + 0.4)
-		att.Parent = mouth
-		emitter(att, {
-			Name = "Puff",
-			Texture = SMOKE,
-			Enabled = false,
-			Rate = 0,
-			Color = ColorSequence.new(st.Block),
-			LightEmission = 0.3,
-			Lifetime = NumberRange.new(0.6, 1.1),
-			Speed = NumberRange.new(1.5, 3),
-			SpreadAngle = Vector2.new(35, 35),
-			Size = NumberSequence.new({ NumberSequenceKeypoint.new(0, 0.4), NumberSequenceKeypoint.new(1, 1.6 + t) }),
-			Transparency = NumberSequence.new({ NumberSequenceKeypoint.new(0, 0.35), NumberSequenceKeypoint.new(1, 1) }),
-			Acceleration = Vector3.new(0, 2, 0),
-		})
-		if level >= 10 then
-			local spark = Instance.new("Attachment")
-			spark.Name = "Sparkle"
-			spark.CFrame = mouth.CFrame:Inverse() * CFrame.new(0, cy, 0)
-			spark.Parent = mouth
-			emitter(spark, { Color = ColorSequence.new(C.TextGold), Rate = 3, SpreadAngle = Vector2.new(180, 180) })
-		end
-	end
-	tpl.Points.Chute = Vector3.new(0, 2.0, hw + 0.25)
-	tpl.Points.Drop = Vector3.new(0, BELT_TOP, 6.0)
-	tpl.Info.BlockSize = snap(0.6 + 0.6 * t, 0.1)
-	tpl.Info.BlockColor = st.Block
-	tpl.Info.PuffInterval = lerp(2.6, 0.9, t)
-	return tpl
-end
-
-----------------------------------------------------------------------
--- The conveyor: a belt along the plot's -Z from `length` studs out to the Collector. Built in its own frame:
--- origin = the Collector end on the ground, the belt runs towards +Z. Cached per length.
-----------------------------------------------------------------------
-function Art.Conveyor(length)
-	local tpl = newTemplate("Conveyor")
-	local s = SK.New(0.5)
-	local L = snap(length, 1)
-	-- trestle legs every ~5 studs, the frame rails, the belt (two tones) and gold roller caps at both ends
-	local n = max(2, floor(L / 8) + 1)
-	for i = 0, n - 1 do
-		local z = snap(0.5 + (L - 1.5) * i / (n - 1))
-		SK.Box(s, -1.5, 1.5, 0, 1.0, z, z + 0.5, "Iron")
-	end
-	SK.Box(s, -1.5, -1.0, 1.0, 1.75, 0, L, "Rail")
-	SK.Box(s, 1.0, 1.5, 1.0, 1.75, 0, L, "Rail")
-	SK.Box(s, -1.0, 1.0, 1.0, BELT_TOP, 0, L, "Belt")
-	SK.Box(s, -0.5, 0.5, 1.0, BELT_TOP, 0, L, "BeltMid")
-	SK.Box(s, -1.5, 1.5, 1.0, 1.75, L - 0.5, L, "Gold")
-	local pal = mergeTables(P, { Rail = rgb(92, 104, 140), Belt = rgb(52, 56, 74), BeltMid = rgb(66, 72, 94) })
-	local m = SK.Build(s, pal, { Name = "Belt", Collide = true })
-	absorb(tpl.Model, m)
-	tpl.Points.Start = Vector3.new(0, BELT_TOP, L - 0.5)
-	tpl.Points.Finish = Vector3.new(0, BELT_TOP, 0)
-	return tpl
-end
-
-----------------------------------------------------------------------
--- Collector: front -Z (faces the yard), the belt enters on local +X near the back (local z ~ 5).
-----------------------------------------------------------------------
-function Art.Collector(def, level)
-	local tpl = newTemplate("Collector")
-	local gold = level >= 2
-	local trim = gold and "Gold" or "BodyTrim"
-	local pal = mergeTables(P, {
-		Body = rgb(66, 100, 154),
-		BodyTrim = rgb(124, 156, 210),
-		Base = C.StoneDark,
-		Mouth = rgb(30, 34, 50),
-		Glow = { Color = C.CashGlow, Material = MAT.Neon },
-		Cap = rgb(96, 128, 184),
-		Coin = P.Gold,
-		CoinMark = C.GoldDark,
-		Console = rgb(52, 78, 122),
-		Funnel = rgb(150, 172, 214),
-	})
-	local s = SK.New(0.5)
-	local hH = (level >= 3) and 3.5 or 3.0 -- the housing's top
-	-- stone plinth, the machine housing (a gold or blue trim band on top) and the intake housing with its dark
-	-- mouth and a glowing lip on the belt side (+X, toward the back)
-	SK.RBox(s, -4.5, 4.5, 0, 0.5, -4.5, 6.5, 0.5, "Base")
-	SK.RBox(s, -3.5, 3.5, 0.5, hH, -2.5, 6.0, 0.75, "Body")
-	SK.Box(s, -3.5, 3.5, hH - 0.5, hH, -2.5, 6.0, trim)
-	SK.RBox(s, 2.5, 4.5, 0.5, 4.0, 3.0, 6.5, 0.5, "Body")
-	SK.Box(s, 2.0, 4.5, 4.0, 4.5, 2.5, 6.5, trim)
-	SK.Box(s, 2.5, 4.0, 4.5, 5.0, 3.0, 6.0, "Funnel")
-	SK.Box(s, 4.0, 4.5, 1.5, 3.0, 3.5, 6.0, "Mouth")
-	SK.Box(s, 4.0, 4.5, 3.0, 3.5, 3.5, 6.0, "Glow")
-	-- the console in front that carries the cash screen (the Screen part is added below), lamps on top (3+)
-	SK.RBox(s, -3.0, 3.0, 0.5, 4.0, -4.0, -2.0, 0.5, "Console")
-	SK.Box(s, -3.0, 3.0, 3.5, 4.0, -4.0, -2.0, trim)
-	if level >= 3 then
-		for _, x in ipairs({ -3.0, 2.5 }) do
-			SK.Box(s, x, x + 0.5, 4.0, 4.5, -3.5, -3.0, "Lamp")
-		end
-	end
-	-- the glass tank (one part, below) grows with every level: a foot ring, a glowing floor, four corner posts,
-	-- a cap ring, a stepped lid and the big gold coin standing on top, facing the yard
-	local r = ({ 1.5, 1.5, 2.0, 2.0, 2.5 })[level] or 2.5
-	local th = ({ 3.0, 3.5, 4.0, 4.5, 5.0 })[level] or 5.0
-	local tz = 2.0
-	SK.Box(s, -r - 0.5, r + 0.5, hH, hH + 0.5, tz - r - 0.5, tz + r + 0.5, trim)
-	SK.Box(s, -r, r, hH + 0.5, hH + 1.0, tz - r, tz + r, "Glow")
-	for _, a in ipairs({ -1, 1 }) do
-		for _, b in ipairs({ -1, 1 }) do
-			local px = (a < 0) and (-r - 0.5) or r
-			local pz = tz + ((b < 0) and (-r - 0.5) or r)
-			SK.Box(s, px, px + 0.5, hH + 0.5, hH + 1.0 + th, pz, pz + 0.5, trim)
-		end
-	end
-	local capY = hH + 1.0 + th
-	SK.Box(s, -r - 0.5, r + 0.5, capY, capY + 0.5, tz - r - 0.5, tz + r + 0.5, trim)
-	SK.Box(s, -r, r, capY + 0.5, capY + 1.0, tz - r, tz + r, "Cap")
-	SK.Box(s, -r + 0.5, r - 0.5, capY + 1.0, capY + 1.5, tz - r + 0.5, tz + r - 0.5, "Cap")
-	local coinR = 1.0 + 0.25 * level
-	local coinY = capY + 2.0 + coinR
-	SK.Box(s, -0.5, 0.5, capY + 1.5, coinY - coinR + 0.5, tz - 0.5, tz + 0.5, trim)
-	SK.DiscZ(s, 0, coinY, tz - 0.5, tz + 0.5, coinR, "Coin")
-	if coinR >= 1.75 then
-		-- a darker inner ring with a raised bar (big coins only: small ones read better plain)
-		SK.DiscZ(s, 0, coinY, tz - 1.0, tz - 0.5, coinR - 0.5, "CoinMark")
-		SK.Box(s, -0.5, 0.5, coinY - coinR * 0.6, coinY + coinR * 0.6, tz - 1.0, tz - 0.5, "Coin")
-	else
-		SK.Box(s, -0.5, 0.5, coinY - coinR * 0.6, coinY + coinR * 0.6, tz - 1.0, tz - 0.5, "CoinMark")
-	end
-	-- stacks of gold coins on the plinth's front corners (4+), a crystal over the coin (5)
-	if level >= 4 then
-		for _, x in ipairs({ -4.0, 3.0 }) do
-			SK.Box(s, x, x + 1.0, 0.5, 1.0, -4.5, -3.5, "Coin")
-			SK.Box(s, x, x + 1.0, 1.0, 1.5, -4.5, -4.0, "CoinMark")
-		end
-	end
-	if level >= 5 then
-		SK.Box(s, -0.5, 0.5, coinY + coinR + 0.5, coinY + coinR + 1.5, tz - 0.5, tz + 0.5, "Crystal")
-	end
-	SK.Shade(s, { Only = { Body = true }, Smooth = 2, Dark = false, Seed = 7 })
-	local model = SK.Build(s, pal, { Name = "Body", Collide = "big" })
-	absorb(tpl.Model, model)
-
-	-- the glass tank and the cash fill inside it (HomeFx sizes the fill from CollectorCash / CollectorCap)
-	box(tpl.Model, "Tank", CFrame.new(0, hH + 1.0 + th / 2, tz), Vector3.new(2 * r, th, 2 * r), rgb(206, 244, 222), { Material = MAT.Glass, Transparency = 0.6, Shadow = false })
-	local fillW = 2 * r - 0.4
-	local fill = box(tpl.Model, "CashFill", CFrame.new(0, hH + 1.0 + 0.25, tz), Vector3.new(fillW, 0.5, fillW), C.CashGlow, { Material = MAT.Neon, Shadow = false })
-	fill:SetAttribute("FillWidth", fillW)
-	tpl.Points.FillBottom = Vector3.new(0, hH + 1.0, tz)
-	tpl.Info.FillMax = th - 0.3
-	-- the screen: SurfaceGui on its front face (World text rule: 50 px per stud, 1.2 stud digits, 0.6 stud caption)
-	local screen = box(tpl.Model, "Screen", CFrame.new(0, 2.15, -4.1), Vector3.new(5.0, 2.5, 0.2), rgb(20, 40, 36), { Shadow = false })
-	local gui = surfaceGui(screen, Enum.NormalId.Front, "CashGui")
-	local panel = plainFrame(gui, "Panel", { Size = UDim2.fromScale(1, 1), BackgroundColor3 = rgb(18, 44, 36), BackgroundTransparency = 0 })
-	rounded(panel, 16)
-	outline(panel, C.Gold, 5, 0.1)
-	signText(panel, "$0", "Display", 60, C.TextGreen, "CashLabel", 0.03, 0.06, 0.94, 0.54)
-	signText(panel, "Collector", "Heading", 30, C.TextGold, "CapLabel", 0.03, 0.6, 0.94, 0.34)
-	-- the collect plate in front (touch to bank) with a glowing "$" + the owner-only prompt
-	local pad = box(tpl.Model, "CollectPad", CFrame.new(0, 0.12, -5.5), Vector3.new(6, 0.25, 2), C.Cash, { Collide = true, Touch = true, Shadow = false })
-	pad:SetAttribute("StationId", "Collector")
-	box(tpl.Model, "Glow", CFrame.new(0, 0.26, -5.5), Vector3.new(5.0, 0.05, 1.2), C.CashGlow, { Material = MAT.Neon, Shadow = false })
-	local prompt = Instance.new("ProximityPrompt")
-	prompt.Name = "CollectPrompt"
-	prompt.ActionText = "Collect"
-	prompt.ObjectText = "Collector"
-	prompt.KeyboardKeyCode = Enum.KeyCode.E
-	prompt.HoldDuration = 0
-	prompt.MaxActivationDistance = PROMPT_RANGE
-	prompt.RequiresLineOfSight = false
-	prompt:SetAttribute("StationId", "Collector")
-	prompt.Parent = pad
-	local glowAnchor = biggestPart(tpl.Model, "Glow")
-	if glowAnchor then
-		pointLight(glowAnchor, C.CashGlow, 0.6, 12)
-	end
-	if level >= 5 then
+	if level >= 5 and primary then
 		local att = Instance.new("Attachment")
 		att.Name = "Sparkle"
-		att.CFrame = fill.CFrame:Inverse() * CFrame.new(0, coinY, tz)
-		att.Parent = fill
-		emitter(att, { Color = ColorSequence.new(C.TextGold), Rate = 3, SpreadAngle = Vector2.new(180, 180) })
+		att.CFrame = primary.CFrame:Inverse() * CFrame.new(0, ty + 1.0, 0)
+		att.Parent = primary
+		emitter(att, { Color = ColorSequence.new(rgb(150, 236, 255), C.TextGold), Rate = 3, SpreadAngle = Vector2.new(180, 180) })
 	end
-	tpl.Points.Intake = Vector3.new(4.25, BELT_TOP, 4.75)
+	tpl.Points.MagnetCenter = Vector3.new(0, y0 + (armH + 2.0) / 2, 0)
 	return tpl
 end
 
 ----------------------------------------------------------------------
--- Garden: front -Z (faces the yard path), 8 pet places at Slot.Spots; level = open pet places.
+-- Garden (section 3.3): 12 pet places on a 3 x 4 grid (Slot.Spots), sand walks (Slot.Walkable) with the 3-stud
+-- entrance at the front middle (the pad faces it). Open places (`open`, from SetGarden: 3 + Prestige stars, not the
+-- Garden level) are flower beds with a soft cushion; the others are seedling beds with a small "Prestige to open"
+-- sign. Bowls, fruit, coins and heaps are CLIENT parts (HomeFx). The Garden level adds decor (birdhouse, hedges,
+-- the entrance arch, fruit trees, lanterns, gold). Every place has an Attachment Spot<i> (attributes Slot, Open) on
+-- its cushion; every open place a GardenSpotPrompt ("Put a pet here", E, attributes Slot / OwnerUserId) at the
+-- cushion's far edge (the edge farthest from the walks' centre lines), MaxActivationDistance 3, so it never pops up
+-- for a kid walking the walks. HomeBuilder.SetGarden enables it only on OPEN EMPTY places. <= 85 parts.
 ----------------------------------------------------------------------
-function Art.Garden(def, level)
+local Garden = {}
+
+Garden.PROMPT_RANGE = 3 -- studs (contract 3.3)
+Garden.PROMPT_LIFT = 2.0 -- the prompt point: half a stud over the cushion top (reachable from the cushion and the bed)
+Garden.CUSHION_TOP = 1.5
+
+function Garden.places(def)
+	return (def and def.Slot and type(def.Slot.Spots) == "table") and def.Slot.Spots or {}
+end
+
+function Garden.walks(def)
+	local w = def and def.Slot and def.Slot.Walkable
+	return (type(w) == "table") and w or {}
+end
+
+function Garden.defaultOpen()
+	local cat = catalog()
+	local p = cat and type(cat.Prestige) == "table" and cat.Prestige or nil
+	return (p and tonumber(p.GardenSlotsBase)) or 3
+end
+
+function Garden.clampOpen(open, places)
+	open = tonumber(open)
+	if not open or open ~= open then
+		open = Garden.defaultOpen()
+	end
+	return max(0, min(floor(open), places))
+end
+
+-- distance (ground plane) from q to a walk's centre line (its long axis, inset by half its width at both ends)
+function Garden.lineDistance(q, w)
+	local c, sz = w.Center, w.Size
+	if typeof(c) ~= "Vector3" or typeof(sz) ~= "Vector3" then
+		return huge
+	end
+	local ax, az
+	if sz.X >= sz.Z then
+		local half = max(0, sz.X / 2 - sz.Z / 2)
+		ax, az = max(c.X - half, min(c.X + half, q.X)), c.Z
+	else
+		local half = max(0, sz.Z / 2 - sz.X / 2)
+		ax, az = c.X, max(c.Z - half, min(c.Z + half, q.Z))
+	end
+	return math.sqrt((q.X - ax) ^ 2 + (q.Z - az) ^ 2)
+end
+
+-- the prompt point of place i (station frame): the cushion edge midpoint farthest from every walk's centre line
+function Garden.promptPoint(def, i)
+	local p = Garden.places(def)[i]
+	if typeof(p) ~= "Vector3" then
+		return nil
+	end
+	local best, bestD = nil, -1
+	for _, c in ipairs({ { 0, -1 }, { 0, 1 }, { -1, 0 }, { 1, 0 } }) do
+		local q = Vector3.new(p.X + c[1], Garden.PROMPT_LIFT, p.Z + c[2])
+		local d = huge
+		for _, w in ipairs(Garden.walks(def)) do
+			d = min(d, Garden.lineDistance(q, w))
+		end
+		if d > bestD + 1e-6 then
+			best, bestD = q, d
+		end
+	end
+	return best
+end
+
+-- the entrance walk's x half-width (the front-row beds beside it are trimmed to keep it clear)
+function Garden.entranceHalf(def)
+	for _, w in ipairs(Garden.walks(def)) do
+		if w.Name == "Entrance" and typeof(w.Size) == "Vector3" then
+			return w.Size.X / 2, w
+		end
+	end
+	return 1.5, nil
+end
+
+-- the "Prestige to open" placard of a seedling bed (World text rule: 50 px per stud, 0.6 stud letters)
+function Garden.closedSign(parent, x, z)
+	local board = box(parent, "ClosedSign", CFrame.new(x, 1.6, z - 1.3), Vector3.new(2.8, 1.4, 0.2), C.PlankLight, { Shadow = false })
+	local gui = surfaceGui(board, Enum.NormalId.Front, "ClosedGui")
+	local panel = plainFrame(gui, "Panel", { Size = UDim2.fromScale(1, 1), BackgroundColor3 = rgb(255, 255, 255), BackgroundTransparency = 0 })
+	vgradient(panel, C.Violet, C.Navy)
+	rounded(panel, 10)
+	outline(panel, C.TextGold, 4, 0.1)
+	signText(panel, "Prestige", "Heading", 30, C.TextGold, "Title", 0.02, 0.04, 0.96, 0.48)
+	signText(panel, "to open", "Body", 30, C.Text, "Info", 0.02, 0.5, 0.96, 0.46)
+	return board
+end
+
+function Art.Garden(def, level, open)
 	local tpl = newTemplate("Garden")
 	local fp = (def.Slot and def.Slot.Footprint) or Vector3.new(22, 4, 20)
 	local hx, hz = fp.X / 2, fp.Z / 2
-	local spots = (def.Slot and def.Slot.Spots) or {}
+	local spots = Garden.places(def)
+	open = Garden.clampOpen(open, #spots)
+	local ent, entWalk = Garden.entranceHalf(def)
+	local gold = level >= 8
 	local s = SK.New(0.5)
-	-- a soft lawn inside a low stone border with an opening at the front middle and two sandy walks
-	-- (every coordinate on the 0.5 grid: lawn and paths one layer, beds one layer up, cushions one more)
-	SK.Box(s, -hx, hx, 0, 0.5, -hz, hz, "Lawn")
-	SK.Box(s, -hx, hx, 0, 1.0, hz - 1.0, hz, "Border")
-	SK.Box(s, -hx, -hx + 1.0, 0, 1.0, -hz, hz - 1.0, "Border")
-	SK.Box(s, hx - 1.0, hx, 0, 1.0, -hz, hz - 1.0, "Border")
-	SK.Box(s, -hx + 1.0, -2.0, 0, 1.0, -hz, -hz + 1.0, "Border")
-	SK.Box(s, 2.0, hx - 1.0, 0, 1.0, -hz, -hz + 1.0, "Border")
-	-- pet places: an open place is a round flower bed with a soft cushion on top; a locked one a soil patch with a
-	-- little seedling (it grows into a place with the next Garden level)
+	-- a low stone rim (the back a hedge from 2); the front line sits half a stud in, leaving a grass verge
+	local fz = -hz + 0.5
+	SK.Box(s, -hx, -hx + 0.5, 0.5, 1.0, fz, hz, "Border")
+	SK.Box(s, hx - 0.5, hx, 0.5, 1.0, fz, hz, "Border")
+	SK.Box(s, -hx, -ent, 0.5, 1.0, fz, fz + 0.5, "Border")
+	SK.Box(s, ent, hx, 0.5, 1.0, fz, fz + 0.5, "Border")
+	if level >= 2 then
+		SK.Box(s, -hx + 0.5, hx - 0.5, 0.5, 2.0, hz - 1.0, hz, "Hedge")
+		SK.Box(s, -hx + 1.0, hx - 1.0, 2.0, 2.5, hz - 0.5, hz, "HedgeTop")
+	else
+		SK.Box(s, -hx, hx, 0.5, 1.0, hz - 0.5, hz, "Border")
+	end
+	-- the places: open = flower bed + cushion; closed = soil bed + seedling (the placard is added below)
+	local ez0 = entWalk and (entWalk.Center.Z - entWalk.Size.Z / 2) or -hz
+	local ez1 = entWalk and (entWalk.Center.Z + entWalk.Size.Z / 2) or -5
 	for i, p in ipairs(spots) do
 		local x, z = p.X, p.Z
-		if i <= level then
-			SK.Box(s, x - 1.5, x + 1.5, 0.5, 1.0, z - 1.5, z + 1.5, "Bloom" .. ((i - 1) % 3 + 1))
-			SK.Box(s, x - 1.0, x + 1.0, 1.0, 1.5, z - 1.0, z + 1.0, "Cushion")
+		local x0, x1 = x - 1.5, x + 1.5
+		if z + 1.5 > ez0 and z - 1.5 < ez1 then
+			if x < 0 then
+				x1 = min(x1, -ent)
+			else
+				x0 = max(x0, ent)
+			end
+		end
+		if i <= open then
+			SK.Box(s, x0, x1, 0.5, 1.0, z - 1.5, z + 1.5, "Bloom" .. ((i - 1) % 3 + 1))
+			SK.Box(s, x - 1.0, x + 1.0, 1.0, Garden.CUSHION_TOP, z - 1.0, z + 1.0, "Cushion")
 		else
-			SK.Box(s, x - 1.0, x + 1.0, 0.5, 1.0, z - 1.0, z + 1.0, "Soil")
-			SK.Box(s, x - 0.5, x, 1.0, 1.5, z - 0.5, z, "Stem")
-			SK.Box(s, x - 1.0, x + 0.5, 1.5, 2.0, z - 0.5, z, "Sprout")
+			SK.Box(s, x0, x1, 0.5, 1.0, z - 1.5, z + 1.5, "Soil")
+			SK.Box(s, x - 0.5, x + 0.5, 1.0, 2.0, z, z + 0.5, "Stem")
+			SK.Box(s, x - 1.0, x + 1.0, 2.0, 2.5, z, z + 0.5, "Sprout")
 		end
 	end
-	-- two round bushes by the entrance and a birdhouse on a post in the front-right corner (always)
-	for _, sx in ipairs({ -1, 1 }) do
-		SK.Box(s, sx * 3.5 - 0.5, sx * 3.5 + 0.5, 0.5, 1.5, -hz + 1.0, -hz + 2.0, "Hedge")
-	end
-	SK.Box(s, hx - 2.5, hx - 2.0, 0.5, 3.5, -hz + 2.0, -hz + 2.5, "PlankDark")
-	SK.Box(s, hx - 3.0, hx - 1.5, 3.5, 4.5, -hz + 1.5, -hz + 3.0, "Birdhouse")
-	SK.Box(s, hx - 3.5, hx - 1.0, 4.5, 5.0, -hz + 1.0, -hz + 3.5, "Roof")
-	SK.Box(s, hx - 2.5, hx - 2.0, 3.5, 4.0, -hz + 1.0, -hz + 1.5, "Dark")
-	-- a hedge along the back (2+), side hedges (4+), fruit trees in the back corners (5+), a bird bath (6+)
-	if level >= 2 then
-		SK.Box(s, -hx + 1.0, hx - 1.0, 0.5, 2.0, hz - 2.5, hz - 1.0, "Hedge")
-		SK.Box(s, -hx + 1.5, hx - 1.5, 2.0, 2.5, hz - 2.0, hz - 1.5, "HedgeTop")
+	-- the entrance: stone posts (1), an arch with leaves (3+), blossoms on it (4+), lanterns hanging under it (6+)
+	local postTop = (level >= 3) and 4.5 or 2.0
+	local postKey = gold and "Gold" or ((level >= 3) and "PlankLight" or "StoneLight")
+	SK.Box(s, -ent - 0.5, -ent, 0.5, postTop, fz, fz + 0.5, postKey)
+	SK.Box(s, ent, ent + 0.5, 0.5, postTop, fz, fz + 0.5, postKey)
+	if level >= 3 then
+		SK.Box(s, -ent - 1.0, ent + 1.0, postTop, postTop + 0.5, fz - 0.5, fz + 1.0, postKey)
+		SK.Box(s, -ent - 0.5, ent + 0.5, postTop + 0.5, postTop + 1.0, fz, fz + 0.5, "Leaf")
 	end
 	if level >= 4 then
-		SK.Box(s, -hx + 1.0, -hx + 2.0, 0.5, 2.0, -hz + 4.0, hz - 2.5, "Hedge")
-		SK.Box(s, hx - 2.0, hx - 1.0, 0.5, 2.0, -hz + 4.0, hz - 2.5, "Hedge")
-	end
-	if level >= 5 then
-		for _, sx in ipairs({ -1, 1 }) do
-			local x, z = sx * (hx - 3.0), hz - 3.0
-			SK.Box(s, x - 0.5, x + 0.5, 0.5, 3.5, z - 0.5, z + 0.5, "Bark")
-			SK.Box(s, x - 2.0, x + 2.0, 3.0, 4.5, z - 2.0, z + 2.0, "Leaf")
-			SK.Box(s, x - 1.5, x + 1.5, 4.5, 5.5, z - 1.5, z + 1.5, "LeafLight")
-			SK.Box(s, x - 1.0, x - 0.5, 3.5, 4.0, z - 2.5, z - 2.0, "Fruit")
-		end
+		SK.Box(s, -ent, -0.5, postTop + 1.0, postTop + 1.5, fz, fz + 0.5, "Bloom1")
+		SK.Box(s, 0.5, ent, postTop + 1.0, postTop + 1.5, fz, fz + 0.5, "Bloom2")
 	end
 	if level >= 6 then
-		SK.Box(s, -0.5, 0.5, 0.5, 1.5, -0.5, 0.5, "Stone")
-		SK.Box(s, -1.5, 1.5, 1.5, 2.0, -1.5, 1.5, "Stone")
+		for _, sx in ipairs({ -1, 1 }) do
+			local x0 = (sx < 0) and (-ent - 1.0) or ent
+			SK.Box(s, x0, x0 + 1.0, postTop - 1.0, postTop, fz, fz + 0.5, "Lamp")
+		end
 	end
-	-- the entrance arch with leaves and blossoms (3+), gold at the top level; lamps by the entrance (7+)
-	if level >= 3 then
-		local key = (level >= 8) and "Gold" or "PlankLight"
-		SK.Box(s, -2.5, -2.0, 1.0, 4.5, -hz, -hz + 0.5, key)
-		SK.Box(s, 2.0, 2.5, 1.0, 4.5, -hz, -hz + 0.5, key)
-		SK.Box(s, -3.0, 3.0, 4.5, 5.0, -hz - 0.5, -hz + 1.0, key)
-		SK.Box(s, -2.5, 2.5, 5.0, 5.5, -hz, -hz + 0.5, "Leaf")
-		SK.Box(s, -2.0, -0.5, 5.5, 6.0, -hz, -hz + 0.5, "Bloom1")
-		SK.Box(s, 0.5, 2.0, 5.5, 6.0, -hz, -hz + 0.5, "Bloom2")
+	-- the birdhouse on a post behind the back row's middle (always)
+	local bz = hz - 1.5
+	SK.Box(s, -0.5, 0.5, 0.5, 3.5, bz, bz + 0.5, "PlankDark")
+	SK.Box(s, -1.0, 1.0, 3.5, 5.0, bz - 0.5, bz + 1.0, "Birdhouse")
+	SK.Box(s, -1.5, 1.5, 5.0, 5.5, bz - 1.0, bz + 1.5, gold and "Gold" or "Roof")
+	-- round bushes in the front corners (4+); fruit trees in the back corners (5: left, 7: both)
+	if level >= 4 then
+		for _, sx in ipairs({ -1, 1 }) do
+			local x0 = (sx < 0) and (-hx + 0.5) or (hx - 2.0)
+			SK.Box(s, x0, x0 + 1.5, 0.5, 2.0, fz + 0.5, fz + 2.0, "Hedge")
+		end
 	end
+	if level >= 5 then
+		for _, sx in ipairs((level >= 7) and { -1, 1 } or { -1 }) do
+			-- trunk just outside the back corner bed, the crown kept inside the footprint (above the pets' heads)
+			local tx = sx * (hx - 1.5)
+			local tz = hz - 1.5
+			SK.Box(s, tx - 0.5, tx + 0.5, 0.5, 4.5, tz - 0.5, tz + 0.5, "Bark")
+			SK.Box(s, tx - 1.5, tx + 1.5, 4.5, 6.0, tz - 1.5, tz + 1.5, "Leaf")
+			SK.Box(s, tx - 1.0, tx + 1.0, 6.0, 7.0, tz - 1.0, tz + 1.0, "LeafLight")
+			SK.Box(s, tx - 0.5, tx, 4.0, 4.5, tz - 2.0, tz - 1.5, "Fruit")
+		end
+	end
+	-- a row of flowers along the front rim (7+)
 	if level >= 7 then
-		for _, sx in ipairs({ -1, 1 }) do
-			local x0 = (sx < 0) and -5.0 or 4.5
-			SK.Box(s, x0, x0 + 0.5, 1.0, 3.5, -hz, -hz + 0.5, "Iron")
-			SK.Box(s, x0 - 0.5, x0 + 1.0, 3.5, 4.5, -hz - 0.5, -hz + 1.0, "Lamp")
-		end
-	end
-	if level >= 8 then
-		for _, sx in ipairs({ -1, 1 }) do
-			local a, b = (sx < 0) and (-hx + 1.0) or 6.0, (sx < 0) and -6.0 or (hx - 1.0)
-			SK.Box(s, a, b, 0.5, 1.0, -hz + 1.0, -hz + 1.5, "Bloom3")
-		end
+		SK.Box(s, -hx + 1.0, -ent - 1.0, 1.0, 1.5, fz, fz + 0.5, "Bloom3")
+		SK.Box(s, ent + 1.0, hx - 1.0, 1.0, 1.5, fz, fz + 0.5, "Bloom3")
 	end
 	local pal = mergeTables(P, {
-		Lawn = rgb(128, 200, 98),
 		Border = C.StoneLight,
 		Birdhouse = rgb(250, 214, 140),
 		Roof = rgb(222, 104, 82),
-		Path = rgb(226, 210, 172),
 		Cushion = rgb(250, 228, 170),
+		Soil = rgb(118, 86, 64),
 		Stem = rgb(92, 160, 70),
 		Sprout = rgb(146, 216, 104),
 		Bloom1 = rgb(246, 150, 188),
@@ -1352,289 +1473,307 @@ function Art.Garden(def, level)
 	})
 	local m = SK.Build(s, pal, { Name = "Body", Collide = "big" })
 	absorb(tpl.Model, m)
-	-- sandy walks as thin plates on the lawn (the lawn stays one part) and the bird bath's water (6+)
-	local sand = rgb(226, 210, 172)
-	box(tpl.Model, "Path", CFrame.new(0, 0.55, (-hz - 0.5) / 2), Vector3.new(3, 0.1, hz - 0.5), sand, { Collide = true, Shadow = false })
-	box(tpl.Model, "Path", CFrame.new(0, 0.55, 0), Vector3.new(2 * hx - 2, 0.1, 1), sand, { Collide = true, Shadow = false })
-	if level >= 6 then
-		box(tpl.Model, "Water", CFrame.new(0, 2.05, 0), Vector3.new(2.2, 0.1, 2.2), C.Water, { Material = MAT.Glass, Transparency = 0.2, Shadow = false })
-	end
-	-- where pets stand: attachments Spot<i> (attribute Slot) on the lawn part
-	local lawn = biggestPart(tpl.Model, "Lawn") or biggestPart(tpl.Model)
-	for i, p in ipairs(spots) do
-		if i <= level and lawn then
-			local a = Instance.new("Attachment")
-			a.Name = "Spot" .. i
-			a.CFrame = lawn.CFrame:Inverse() * CFrame.new(p.X, 1.5, p.Z)
-			a:SetAttribute("Slot", i)
-			a.Parent = lawn
+	-- the lawn (one part) and the sand walks (thin plates on it, exactly the catalog's walks; the side joins stop at
+	-- the rim, the long walks between the joins, so no two plates overlap)
+	local lawn = box(tpl.Model, "Lawn", CFrame.new(0, 0.25, 0), Vector3.new(2 * hx, 0.5, 2 * hz), rgb(128, 200, 98), { Collide = true })
+	local sand = rgb(228, 212, 172)
+	local joinX = nil
+	for _, w in ipairs(Garden.walks(def)) do
+		if (w.Name == "WestJoin" or w.Name == "EastJoin") and typeof(w.Center) == "Vector3" then
+			joinX = abs(w.Center.X) - w.Size.X / 2
 		end
 	end
+	for _, w in ipairs(Garden.walks(def)) do
+		local c, sz = w.Center, w.Size
+		if typeof(c) == "Vector3" and typeof(sz) == "Vector3" then
+			local x0, x1 = c.X - sz.X / 2, c.X + sz.X / 2
+			local z0, z1 = c.Z - sz.Z / 2, c.Z + sz.Z / 2
+			x0, x1 = max(x0, -hx + 0.5), min(x1, hx - 0.5)
+			if sz.X > sz.Z and joinX then
+				x0, x1 = max(x0, -joinX), min(x1, joinX)
+			end
+			if w.Name == "Entrance" then
+				z0 = -hz
+			end
+			if x1 > x0 and z1 > z0 then
+				box(tpl.Model, tostring(w.Name or "Walk"), CFrame.new((x0 + x1) / 2, 0.55, (z0 + z1) / 2), Vector3.new(x1 - x0, 0.1, z1 - z0), sand, { Collide = true, Shadow = false })
+			end
+		end
+	end
+	-- the placards of the closed places
+	for i, p in ipairs(spots) do
+		if i > open then
+			Garden.closedSign(tpl.Model, p.X, p.Z)
+		end
+	end
+	if gold then
+		local att = Instance.new("Attachment")
+		att.Name = "Sparkle"
+		att.CFrame = lawn.CFrame:Inverse() * CFrame.new(0, postTop + 1.5, fz)
+		att.Parent = lawn
+		emitter(att, { Color = ColorSequence.new(C.TextGold), Rate = 3, SpreadAngle = Vector2.new(180, 180) })
+	end
+	-- where pets sit (Spot<i>, every place) and the GardenSpotPrompts (open places; SetGarden enables them)
+	for i, p in ipairs(spots) do
+		local a = Instance.new("Attachment")
+		a.Name = "Spot" .. i
+		a.CFrame = lawn.CFrame:Inverse() * CFrame.new(p.X, Garden.CUSHION_TOP, p.Z)
+		a:SetAttribute("Slot", i)
+		a:SetAttribute("Open", i <= open)
+		a.Parent = lawn
+		local q = (i <= open) and Garden.promptPoint(def, i) or nil
+		if q then
+			local pa = Instance.new("Attachment")
+			pa.Name = "PromptPoint" .. i
+			pa.CFrame = lawn.CFrame:Inverse() * CFrame.new(q)
+			pa:SetAttribute("Slot", i)
+			pa.Parent = lawn
+			local prompt = Instance.new("ProximityPrompt")
+			prompt.Name = "GardenSpotPrompt"
+			prompt.ActionText = "Put a pet here"
+			prompt.ObjectText = "Garden place " .. i
+			prompt.KeyboardKeyCode = Enum.KeyCode.E
+			prompt.HoldDuration = 0
+			prompt.MaxActivationDistance = Garden.PROMPT_RANGE
+			prompt.RequiresLineOfSight = false
+			prompt.Enabled = false
+			prompt:SetAttribute("Slot", i)
+			prompt:SetAttribute("StationId", "Garden")
+			prompt.Parent = pa
+		end
+	end
+	tpl.Info.Open = open
 	return tpl
 end
 
 ----------------------------------------------------------------------
--- Kitchen: front -Z (gate side). Level 1 a food stall under a striped awning ... level 5 a grand open kitchen
--- pavilion with a tiled roof, an oven, shelves of jars, a fridge and gold trims. The feeding bowl (FeedBowl) sits
--- at the front corner. Every coordinate is on the 0.5 grid.
+-- Food Machine (the old Kitchen slot, section 3.4): front -Z. A cheerful cabinet with a glass Hopper full of fruit
+-- on top (the part named `Hopper`: PetCareService puts the FeedPrompt on it), a dispenser mouth with a chute over a
+-- bowl tray, a big round FEED button and a food window. Lights (2+), a second side hopper (3+), a shelf of bowls
+-- (4+), gold trims and a star (5). HomeFx animates the food (points ChuteMouth, Tray, HopperTop). <= 55 parts.
 ----------------------------------------------------------------------
-function Art.Kitchen(def, level)
-	local tpl = newTemplate("Kitchen")
+function Art.FoodMachine(def, level)
+	local tpl = newTemplate("FoodMachine")
 	local s = SK.New(0.5)
-	local fp = (def.Slot and def.Slot.Footprint) or Vector3.new(16, 10, 10)
-	local hz = fp.Z / 2
-	local w = ({ 8, 11, 14, 16, 16 })[level] or 16
-	local hw = w / 2
-	local roofY = 6.5
-	local cz0, cz1 = hz - 3.0, hz - 1.0 -- the counter's depth
-	local czm = (cz0 + cz1) / 2
-	-- the floor: wooden boards (1-2), cream tiles (3+)
-	SK.Box(s, -hw, hw, 0, 0.5, -hz + 1.0, hz, (level >= 3) and "Tile" or "PlankLight")
-	-- the counter along the back (shorter from 3: the fridge stands at its right end), its top and door panels
-	local cx1 = (level >= 3) and (hw - 3.0) or (hw - 0.5)
-	SK.Box(s, -hw + 0.5, cx1, 0.5, 2.5, cz0, cz1, "Counter")
-	SK.Box(s, -hw + 0.5, cx1, 2.5, 3.0, cz0 - 0.5, cz1, "CounterTop")
-	SK.Box(s, -hw + 1.0, cx1 - 0.5, 1.0, 2.0, cz0 - 0.5, cz0, "CounterDoor")
-	-- the stove and the cooking pot (its soup is a separate plate, below)
-	local potX = (level >= 2) and 1.0 or 0
-	SK.Box(s, potX - 1.5, potX + 1.5, 3.0, 3.5, cz0, cz1, "Iron")
-	SK.Box(s, potX - 1.0, potX + 1.0, 3.5, 5.0, czm - 1.0, czm + 1.0, (level >= 5) and "Gold" or "Pot")
-	SK.Box(s, potX - 1.5, potX - 1.0, 4.5, 5.0, czm - 0.5, czm + 0.5, "Iron")
-	SK.Box(s, potX + 1.0, potX + 1.5, 4.5, 5.0, czm - 0.5, czm + 0.5, "Iron")
-	-- food on the counter: a loaf and apples (always), a layer cake (4+) with a second tier and a candle (5)
-	local fx = potX - 3.5
-	SK.Box(s, fx - 1.0, fx + 0.5, 3.0, 3.5, czm - 0.5, czm + 0.5, "Bread")
-	SK.Box(s, fx + 1.0, fx + 1.5, 3.0, 3.5, cz0, cz0 + 0.5, "Apple")
-	SK.Box(s, fx + 1.5, fx + 2.0, 3.0, 3.5, cz0 + 0.5, cz0 + 1.0, "Apple2")
-	if level >= 4 then
-		SK.Box(s, potX + 2.5, potX + 4.0, 3.0, 3.5, czm - 0.5, czm + 1.0, "Cake")
-		SK.Box(s, potX + 2.5, potX + 4.0, 3.5, 4.0, czm - 0.5, czm + 1.0, "Icing")
-		SK.Box(s, potX + 3.0, potX + 3.5, 4.0, 4.5, czm, czm + 0.5, "Apple")
+	local gold = level >= 5
+	local trim = gold and "Gold" or "Trim"
+	local hw = ({ 3.5, 3.5, 4.0, 4.5, 5.0 })[level] or 5.0
+	local top = ({ 4.5, 5.0, 5.0, 5.5, 6.0 })[level] or 6.0
+	local z0, z1 = -1.5, 2.5
+	local zc = (z0 + z1) / 2
+	SK.RBox(s, -hw - 0.5, hw + 0.5, 0, 0.5, z0 - 2.5, z1 + 0.5, 0.5, "Plinth")
+	SK.RBox(s, -hw, hw, 0.5, top, z0, z1, 0.75, "Body")
+	SK.Box(s, -hw, hw, top - 0.5, top, z0, z1, trim)
+	-- the front: a cream panel, the dark dispenser mouth, a two-step chute and the bowl tray below it
+	SK.Box(s, -hw + 0.5, hw - 0.5, 1.0, top - 1.0, z0 - 0.5, z0, "Panel")
+	SK.Box(s, -1.0, 1.0, 1.5, 3.0, z0 - 0.5, z0, "Mouth")
+	SK.Box(s, -1.0, 1.0, 2.0, 2.5, z0 - 1.0, z0 - 0.5, "Chute")
+	SK.Box(s, -1.0, 1.0, 1.5, 2.0, z0 - 1.5, z0 - 1.0, "Chute")
+	SK.Box(s, -1.5, 1.5, 0.5, 1.0, z0 - 2.5, z0 - 1.0, "Tray")
+	SK.Box(s, -1.0, 1.0, 1.0, 1.5, z0 - 2.0, z0 - 1.5, "Kibble")
+	-- the big FEED button (right) and the food window (left)
+	SK.DiscZ(s, hw - 1.25, 3.25, z0 - 0.5, z0, 0.95, gold and "Gold" or "ButtonRim")
+	SK.DiscZ(s, hw - 1.25, 3.25, z0 - 1.0, z0 - 0.5, 0.6, "Button")
+	SK.Box(s, -hw + 1.0, -1.5, 2.0, top - 1.5, z0 - 0.5, z0, "Window")
+	-- the hopper funnel and lid (the glass Hopper itself is one part, added below)
+	local gw = (level >= 4) and 4.0 or 3.0
+	local gh = snap(2.5 + 0.25 * level)
+	local gy0 = top + 0.5
+	SK.Oct(s, 0, zc, 1.0, top, gy0, "Funnel")
+	-- fruit inside the hopper: berry, carrot and melon layers with a heap of starfruit on top
+	local fi = gw / 2 - 0.5
+	SK.Box(s, -fi, fi, gy0, gy0 + 0.5, zc - fi, zc + fi, "FoodA")
+	SK.Box(s, -fi, fi, gy0 + 0.5, gy0 + 1.0, zc - fi, zc + fi, "FoodB")
+	SK.Box(s, -fi, fi, gy0 + 1.0, gy0 + 1.5, zc - fi, zc + fi, "FoodC")
+	SK.Box(s, -fi + 0.5, fi - 0.5, gy0 + 1.5, gy0 + 2.0, zc - fi + 0.5, zc + fi - 0.5, "FoodD")
+	SK.Box(s, -gw / 2 - 0.5, gw / 2 + 0.5, gy0 + gh, gy0 + gh + 0.5, zc - gw / 2 - 0.5, zc + gw / 2 + 0.5, trim)
+	SK.Box(s, -0.5, 0.5, gy0 + gh + 0.5, gy0 + gh + 1.0, zc - 0.5, zc + 0.5, gold and "Gold" or "Knob")
+	if gold then
+		-- a gold star on the lid
+		SK.Box(s, -1.0, 1.0, gy0 + gh + 1.5, gy0 + gh + 2.0, zc - 0.5, zc + 0.5, "Gold")
+		SK.Box(s, -0.5, 0.5, gy0 + gh + 1.0, gy0 + gh + 2.5, zc - 0.5, zc + 0.5, "Gold")
 	end
-	if level >= 5 then
-		-- a second tier with a gold candle on the cake
-		SK.Box(s, potX + 3.0, potX + 4.0, 4.0, 4.5, czm, czm + 1.0, "Cake")
-		SK.Box(s, potX + 3.0, potX + 3.5, 4.5, 5.0, czm, czm + 0.5, "Gold")
-	end
-	-- oven + chimney at the left end (2+)
+	-- 2+: two lamps on the front corners of the roof
 	if level >= 2 then
-		local ox0, ox1 = -hw + 0.5, -hw + 3.5
-		SK.Box(s, ox0, ox1, 0.5, 4.5, cz0 - 0.5, hz - 0.5, "Brick")
-		SK.Box(s, ox0 + 0.5, ox1 - 0.5, 4.5, 5.0, cz0, hz - 1.0, "Brick")
-		SK.Box(s, ox0 + 0.5, ox1 - 0.5, 1.5, 3.0, cz0 - 1.0, cz0 - 0.5, "Fire")
-		SK.Box(s, ox0 + 1.0, ox1 - 1.0, 5.0, roofY + 2.5, hz - 2.0, hz - 1.0, "Brick")
-		SK.Box(s, ox0 + 0.5, ox1 - 0.5, roofY + 2.5, roofY + 3.0, hz - 2.5, hz - 0.5, "StoneDark")
+		SK.Box(s, -hw + 0.5, -hw + 1.0, top, top + 1.0, z0 + 0.5, z0 + 1.0, "Bulb")
+		SK.Box(s, hw - 1.0, hw - 0.5, top, top + 1.0, z0 + 0.5, z0 + 1.0, "Bulb")
 	end
-	-- a back wall with a shelf of jars and hanging pans (3+), a fridge at the right end (3+)
+	-- 3+: a second, smaller hopper on a stand at the left with a pipe into the cabinet
+	local side = nil
 	if level >= 3 then
-		SK.Box(s, -hw, hw, 0.5, roofY, hz - 0.5, hz, "Wall")
-		SK.Box(s, -hw + 4.0, cx1, 4.5, 5.0, hz - 1.0, hz - 0.5, "Plank")
-		local jx = -hw + 4.0
-		for i = 1, 4 do
-			if jx + 0.5 <= cx1 then
-				SK.Box(s, jx, jx + 0.5, 5.0, 5.5, hz - 1.0, hz - 0.5, "Jar" .. i)
-			end
-			jx = jx + 1.5
-		end
-		SK.Box(s, hw - 2.5, hw - 0.5, 0.5, 5.0, hz - 3.0, hz - 0.5, "Fridge")
-		SK.Box(s, hw - 2.5, hw - 2.0, 2.5, 4.0, hz - 3.5, hz - 3.0, "Iron")
+		local sx = -hw - 1.5
+		SK.Box(s, sx - 1.0, sx + 1.0, 0.5, 2.5, zc - 1.0, zc + 1.0, "Stand")
+		SK.Box(s, sx - 0.5, sx + 0.5, 2.5, 3.0, zc - 0.5, zc + 0.5, "FoodB")
+		SK.Box(s, sx - 0.5, sx + 0.5, 3.0, 3.5, zc - 0.5, zc + 0.5, "FoodD")
+		SK.Box(s, sx - 1.5, sx + 1.5, 5.0, 5.5, zc - 1.5, zc + 1.5, trim)
+		SK.Box(s, sx + 1.0, -hw, 4.0, 4.5, zc - 0.5, zc + 0.5, "Pipe")
+		side = { X = sx, Y = 3.75, Z = zc }
 	end
-	-- the roof: a striped awning on four posts (1-3); a tiled gable roof over an open pavilion with short side
-	-- walls at the back (4-5)
-	for _, px in ipairs({ -hw, hw - 0.5 }) do
-		for _, pz in ipairs({ -hz + 1.0, hz - 0.5 }) do
-			SK.Box(s, px, px + 0.5, 0.5, roofY, pz, pz + 0.5, (level >= 4) and "Beam" or "PlankDark")
-		end
+	-- 4+: a shelf with stacked bowls on the right
+	if level >= 4 then
+		local bx = hw + 1.5
+		SK.Box(s, bx - 1.0, bx + 1.0, 0.5, 1.5, zc - 1.0, zc + 1.0, "Stand")
+		SK.Box(s, bx - 1.0, bx + 1.0, 1.5, 2.0, zc - 1.0, zc + 1.0, "Bowl1")
+		SK.Box(s, bx - 1.0, bx + 1.0, 2.0, 2.5, zc - 1.0, zc + 1.0, "Bowl2")
+		SK.Box(s, bx - 1.0, bx + 1.0, 2.5, 3.0, zc - 1.0, zc + 1.0, "Bowl3")
 	end
-	if level <= 3 then
-		local n = math.ceil(w / 2)
-		for i = 0, n - 1 do
-			local x0 = -hw + i * 2
-			local x1 = min(hw, x0 + 2)
-			local key = (i % 2 == 0) and "Stripe1" or "Stripe2"
-			SK.Box(s, x0, x1, roofY, roofY + 0.5, -hz + 0.5, hz, key)
-			SK.Box(s, x0, x1, roofY - 0.5, roofY, -hz + 0.5, -hz + 1.0, key)
-		end
-	else
-		for _, sx in ipairs({ -1, 1 }) do
-			local x0 = (sx < 0) and -hw or (hw - 0.5)
-			SK.Box(s, x0, x0 + 0.5, 0.5, roofY, 0, hz, "Wall")
-		end
-		SK.Box(s, -hw, hw, roofY - 0.5, roofY, -hz + 1.0, -hz + 1.5, "Beam")
-		SK.Box(s, -hw - 0.5, hw + 0.5, roofY, roofY + 0.5, -hz + 0.5, hz + 0.5, "Roof")
-		SK.Gable(s, -hw - 0.5, hw + 0.5, -hz + 0.5, hz + 0.5, roofY + 0.5, 0.5, "Roof", "X", "RoofTop", "Roof2")
-		if level >= 5 then
-			SK.Box(s, -hw - 0.5, hw + 0.5, roofY, roofY + 0.5, -hz, -hz + 0.5, "Gold")
-		end
-	end
-	-- the feeding bowl at the front corner
-	local bx, bz = hw - 1.5, -hz + 1.5
-	SK.Box(s, bx - 1.0, bx + 1.0, 0, 0.5, bz - 1.0, bz + 1.0, "Bowl")
-	SK.Box(s, bx - 0.5, bx + 0.5, 0.5, 1.0, bz - 0.5, bz + 0.5, "Kibble")
-
 	local pal = mergeTables(P, {
-		Tile = rgb(242, 236, 222),
-		Counter = rgb(232, 214, 186),
-		CounterTop = rgb(250, 248, 240),
-		CounterDoor = rgb(196, 160, 120),
-		Pot = rgb(78, 84, 108),
-		Bread = rgb(214, 160, 92),
-		Apple = rgb(224, 64, 72),
-		Apple2 = rgb(132, 200, 84),
-		Cake = rgb(246, 170, 196),
-		Icing = rgb(252, 248, 244),
-		Stripe1 = rgb(232, 96, 96),
-		Stripe2 = rgb(250, 244, 232),
-		Wall = rgb(250, 236, 214),
-		Beam = C.PlankDark,
-		Roof = rgb(214, 104, 82),
-		Roof2 = rgb(228, 124, 98),
-		RoofTop = rgb(186, 84, 70),
-		Brick = rgb(196, 112, 88),
-		Fire = { Color = rgb(255, 156, 72), Material = MAT.Neon },
-		Fridge = rgb(170, 220, 236),
-		Jar1 = rgb(246, 150, 188),
-		Jar2 = rgb(250, 214, 92),
-		Jar3 = rgb(132, 200, 120),
-		Jar4 = rgb(172, 142, 232),
-		Bowl = rgb(232, 96, 96),
-		Kibble = rgb(170, 112, 70),
+		Plinth = C.StoneDark,
+		Body = rgb(240, 112, 104),
+		Trim = rgb(118, 168, 236),
+		Panel = rgb(252, 240, 220),
+		Mouth = rgb(44, 40, 58),
+		Chute = C.IronLight,
+		Tray = rgb(92, 150, 230),
+		Kibble = rgb(250, 168, 72),
+		ButtonRim = rgb(246, 242, 232),
+		Button = { Color = rgb(255, 72, 84), Material = MAT.Neon },
+		Window = { Color = rgb(170, 226, 255), Material = MAT.Neon },
+		Funnel = C.IronLight,
+		FoodA = rgb(226, 58, 94),
+		FoodB = rgb(250, 140, 46),
+		FoodC = rgb(150, 224, 176),
+		FoodD = rgb(255, 212, 70),
+		Knob = rgb(240, 112, 104),
+		Bulb = { Color = C.Lamp, Material = MAT.Neon },
+		Stand = C.PlankDark,
+		Pipe = C.IronLight,
+		Bowl1 = rgb(246, 150, 188),
+		Bowl2 = rgb(250, 214, 92),
+		Bowl3 = rgb(150, 224, 176),
 	})
 	local m = SK.Build(s, pal, { Name = "Body", Collide = "big" })
 	absorb(tpl.Model, m)
-	for _, p in ipairs(tpl.Model:GetChildren()) do
-		if p:IsA("BasePart") and p.Name == "Bowl" then
-			p.Name = "FeedBowl"
+	-- the glass hopper (PetCareService's FeedPrompt sits on it) and the side hopper's glass
+	box(tpl.Model, "Hopper", CFrame.new(0, gy0 + gh / 2, zc), Vector3.new(gw, gh, gw), rgb(206, 236, 252), { Material = MAT.Glass, Transparency = 0.55, Shadow = false })
+	if side then
+		box(tpl.Model, "HopperSide", CFrame.new(side.X, side.Y, side.Z), Vector3.new(2, 2.5, 2), rgb(206, 236, 252), { Material = MAT.Glass, Transparency = 0.55, Shadow = false })
+	end
+	if gold then
+		local anchor = biggestPart(tpl.Model, "Body") or biggestPart(tpl.Model)
+		if anchor then
+			local att = Instance.new("Attachment")
+			att.Name = "Sparkle"
+			att.CFrame = anchor.CFrame:Inverse() * CFrame.new(0, gy0 + gh + 2.0, zc)
+			att.Parent = anchor
+			emitter(att, { Color = ColorSequence.new(C.TextGold), Rate = 3, SpreadAngle = Vector2.new(180, 180) })
 		end
 	end
-	-- the soup in the pot and a red rug in front of the counter (3+)
-	local soup = box(tpl.Model, "Soup", CFrame.new(potX, 5.05, czm), Vector3.new(1.6, 0.1, 1.6), rgb(250, 168, 92), { Shadow = false })
-	if level >= 3 then
-		box(tpl.Model, "Rug", CFrame.new(0, 0.55, (-hz + 2.0 + cz0 - 1.0) / 2), Vector3.new(w - 6, 0.1, cz0 - 1.0 + hz - 2.0), rgb(206, 84, 90), { Shadow = false })
-	end
-	-- steam from the pot
-	local att = Instance.new("Attachment")
-	att.Name = "Steam"
-	att.CFrame = soup.CFrame:Inverse() * CFrame.new(potX, 5.4, czm)
-	att.Parent = soup
-	emitter(att, {
-		Texture = SMOKE,
-		Color = ColorSequence.new(rgb(250, 250, 255)),
-		LightEmission = 0.1,
-		Rate = 2.5,
-		Lifetime = NumberRange.new(1.5, 2.5),
-		Speed = NumberRange.new(0.8, 1.5),
-		SpreadAngle = Vector2.new(15, 15),
-		Size = NumberSequence.new({ NumberSequenceKeypoint.new(0, 0.5), NumberSequenceKeypoint.new(1, 2) }),
-		Transparency = NumberSequence.new({ NumberSequenceKeypoint.new(0, 0.5), NumberSequenceKeypoint.new(1, 1) }),
-	})
+	tpl.Points.ChuteMouth = Vector3.new(0, 2.0, z0 - 1.25)
+	tpl.Points.Tray = Vector3.new(0, 1.5, z0 - 1.75)
+	tpl.Points.HopperTop = Vector3.new(0, gy0 + gh, zc)
 	return tpl
 end
 
 ----------------------------------------------------------------------
--- Gym: front -Z, training places at Slot.Spots (level = places).
+-- Training Place (the old Gym slot, section 3.7): front -Z. A wooden deck that grows from the left edge; one bright
+-- training mat per level at Slot.Spots (Attachments Spot1..5 on the deck, attribute Slot; HomeFx puts the training
+-- pet and its skill prop on it) and behind each mat its skill corner: weights (Physique, 1), hurdles (Attack Speed,
+-- 2), a glowing orb on a pedestal (Ability, 3), a shield wall (Defense, 4) and a scoreboard with a trophy (5, gold).
+-- The front stays open so the yard sees the training pets. <= 90 parts.
 ----------------------------------------------------------------------
-function Art.Gym(def, level)
-	local tpl = newTemplate("Gym")
+local TRAIN_MATS = { rgb(236, 92, 96), rgb(250, 204, 72), rgb(176, 120, 236), rgb(84, 140, 226), rgb(110, 200, 120) }
+
+function Art.Training(def, level)
+	local tpl = newTemplate("Training")
 	local s = SK.New(0.5)
 	local fp = (def.Slot and def.Slot.Footprint) or Vector3.new(18, 10, 9)
 	local hz = fp.Z / 2
 	local spots = (def.Slot and def.Slot.Spots) or {}
 	local w = ({ 9, 12, 15, 18, 18 })[level] or 18
-	-- the deck grows from the left edge, so the open places (Spots, left to right) are always on it
 	local x0 = -fp.X / 2
 	local x1 = x0 + w
-	local cx = (x0 + x1) / 2
 	local gold = level >= 5
-	-- a raised wooden deck with a darker plank border and a padded blue mat
 	SK.Box(s, x0, x1, 0, 0.5, -hz, hz, "Deck2")
 	SK.Box(s, x0 + 0.5, x1 - 0.5, 0.5, 1.0, -hz + 0.5, hz - 0.5, "Deck")
-	SK.Box(s, x0 + 1.0, x1 - 1.0, 1.0, 1.5, -hz + 1.0, hz - 3.0, "Mat")
-	-- a punching bag on a stand at the left end (back corner)
-	local bx = x0 + 1.0
-	local bz = hz - 2.0
-	SK.Box(s, bx, bx + 0.5, 1.0, 7.0, bz, bz + 0.5, "Iron")
-	SK.Box(s, bx, bx + 2.5, 6.5, 7.0, bz, bz + 0.5, "Iron")
-	SK.Box(s, bx + 1.5, bx + 3.0, 2.5, 5.5, bz - 0.5, bz + 1.0, "Bag")
-	SK.Box(s, bx + 1.5, bx + 3.0, 5.0, 5.5, bz - 0.5, bz + 1.0, "BagTop")
-	SK.Box(s, bx + 2.0, bx + 2.5, 5.5, 6.5, bz, bz + 0.5, "Iron")
-	-- a dumbbell rack at the right end (2+)
-	if level >= 2 then
-		local rx = x1 - 3.5
-		SK.Box(s, rx, rx + 3.0, 1.0, 2.5, hz - 2.0, hz - 0.5, "Rack")
-		SK.Box(s, rx, rx + 0.5, 2.5, 3.0, hz - 1.5, hz - 1.0, "Weight")
-		SK.Box(s, rx + 2.5, rx + 3.0, 2.5, 3.0, hz - 1.5, hz - 1.0, "Weight")
-		SK.Box(s, rx + 0.5, rx + 2.5, 2.5, 3.0, hz - 1.5, hz - 1.0, gold and "Gold" or "Iron")
+	if gold then
+		SK.Box(s, x0, x1, 0.5, 1.0, -hz, -hz + 0.5, "Gold")
 	end
-	-- corner posts and a striped canvas awning (3+), gold posts at the top level
+	local bz = 2.0 -- the skill corners stand behind the mats (z 2 .. hz - 0.5)
+	local function spotX(i)
+		local p = spots[i]
+		return (typeof(p) == "Vector3") and p.X or (x0 + 3 * i)
+	end
+	-- 1 Physique: a barbell on a rack
+	do
+		local cx = spotX(1)
+		SK.Box(s, cx - 1.5, cx + 1.5, 1.0, 2.0, bz, bz + 1.5, "Rack")
+		SK.Box(s, cx - 1.5, cx - 1.0, 2.0, 3.0, bz + 0.5, bz + 1.0, "Iron")
+		SK.Box(s, cx + 1.0, cx + 1.5, 2.0, 3.0, bz + 0.5, bz + 1.0, "Iron")
+		SK.Box(s, cx - 2.0, cx + 2.0, 3.0, 3.5, bz + 0.5, bz + 1.0, "Iron")
+		SK.Box(s, cx - 2.5, cx - 2.0, 2.5, 4.0, bz, bz + 1.5, "Weight")
+		SK.Box(s, cx + 2.0, cx + 2.5, 2.5, 4.0, bz, bz + 1.5, "Weight")
+	end
+	-- 2 Attack Speed: two striped hurdles
+	if level >= 2 then
+		local cx = spotX(2)
+		for _, hx in ipairs({ cx - 1.0, cx + 1.0 }) do
+			SK.Box(s, hx - 0.5, hx, 1.0, 2.5, bz, bz + 0.5, "Iron")
+			SK.Box(s, hx - 0.5, hx, 1.0, 2.5, bz + 2.0, bz + 2.5, "Iron")
+			SK.Box(s, hx - 0.5, hx, 2.5, 3.0, bz, bz + 2.5, "Hurdle")
+			SK.Box(s, hx - 0.5, hx, 2.5, 3.0, bz + 1.0, bz + 1.5, "HurdleStripe")
+		end
+	end
+	-- 3 Ability: a glowing orb on a stone pedestal
+	if level >= 3 then
+		local cx = spotX(3)
+		SK.Box(s, cx - 1.0, cx + 1.0, 1.0, 1.5, bz, bz + 2.0, "Stone")
+		SK.Box(s, cx - 0.5, cx + 0.5, 1.5, 3.0, bz + 0.5, bz + 1.5, "Stone")
+		SK.Box(s, cx - 1.0, cx + 1.0, 3.0, 3.5, bz, bz + 2.0, gold and "Gold" or "Stone")
+		SK.Ell(s, cx, 4.25, bz + 1.0, 0.8, 0.8, 0.8, "Orb")
+	end
+	-- 4 Defense: a wooden wall with a round shield
+	if level >= 4 then
+		local cx = spotX(4)
+		SK.Box(s, cx - 1.5, cx + 1.5, 1.0, 4.5, hz - 1.0, hz - 0.5, "Plank")
+		SK.Box(s, cx - 1.5, cx + 1.5, 4.5, 5.0, hz - 1.5, hz - 0.5, "PlankDark")
+		SK.DiscZ(s, cx, 2.75, hz - 1.5, hz - 1.0, 1.2, "Shield")
+		SK.DiscZ(s, cx, 2.75, hz - 2.0, hz - 1.5, 0.45, gold and "Gold" or "IronLight")
+	end
+	-- 5: a scoreboard with lights and a gold trophy on a little stand
+	if gold then
+		local cx = spotX(5)
+		SK.Box(s, cx - 2.0, cx - 1.5, 1.0, 5.5, hz - 1.0, hz - 0.5, "PlankDark")
+		SK.Box(s, cx + 1.5, cx + 2.0, 1.0, 5.5, hz - 1.0, hz - 0.5, "PlankDark")
+		SK.Box(s, cx - 2.0, cx + 2.0, 5.5, 7.5, hz - 1.0, hz - 0.5, "Board")
+		for i, key in ipairs({ "Light1", "Light2", "Light3" }) do
+			local lx = cx - 2.5 + i
+			SK.Box(s, lx, lx + 1.0, 6.0, 7.0, hz - 1.5, hz - 1.0, key)
+		end
+		SK.Box(s, cx - 0.5, cx + 0.5, 1.0, 2.0, bz, bz + 1.0, "Stone")
+		SK.Box(s, cx - 0.5, cx + 0.5, 2.0, 3.0, bz, bz + 1.0, "Gold")
+		SK.Box(s, cx - 1.0, cx + 1.0, 3.0, 3.5, bz, bz + 1.0, "Gold")
+	end
+	-- pennant posts at the deck's back corners (3+)
 	if level >= 3 then
 		for _, px in ipairs({ x0, x1 - 0.5 }) do
-			for _, pz in ipairs({ -hz, hz - 0.5 }) do
-				SK.Box(s, px, px + 0.5, 1.0, 8.0, pz, pz + 0.5, gold and "Gold" or "Post")
-			end
+			SK.Box(s, px, px + 0.5, 1.0, 6.0, hz - 0.5, hz, gold and "Gold" or "PlankDark")
+			local fx = (px < 0) and (px + 0.5) or (px - 1.5)
+			SK.Box(s, fx, fx + 1.5, 5.0, 6.0, hz - 0.5, hz, "Pennant")
 		end
-		local n = floor(w / 3)
-		local step = (w + 1) / n
-		for i = 0, n - 1 do
-			local a = snap(x0 - 0.5 + i * step)
-			local b = snap(x0 - 0.5 + (i + 1) * step)
-			SK.Box(s, a, b, 8.0, 8.5, -hz - 0.5, hz + 0.5, (i % 2 == 0) and "Canvas" or "Canvas2")
-			SK.Box(s, a, b, 7.5, 8.0, -hz - 0.5, -hz, (i % 2 == 0) and "Canvas" or "Canvas2")
-		end
-	end
-	-- boxing-ring ropes along the back and the sides (4+); the front stays open so the yard sees the training pets
-	if level >= 4 then
-		for _, rope in ipairs({ { 2.5, 3.0, "Rope" }, { 4.0, 4.5, "Rope2" } }) do
-			SK.Box(s, x0 + 0.5, x1 - 0.5, rope[1], rope[2], hz - 0.5, hz, rope[3])
-			SK.Box(s, x0, x0 + 0.5, rope[1], rope[2], -hz + 0.5, hz - 0.5, rope[3])
-			SK.Box(s, x1 - 0.5, x1, rope[1], rope[2], -hz + 0.5, hz - 0.5, rope[3])
-		end
-	end
-	-- the top level: a carnival high striker (a tall scale of lights up to a gold bell), a trophy and a banner
-	if gold then
-		local tx = x1 - 1.5
-		local tz = -hz + 1.5
-		SK.Box(s, tx - 1.0, tx + 0.5, 1.0, 1.5, tz - 0.5, tz + 1.0, "Iron")
-		SK.Box(s, tx - 0.5, tx, 1.5, 9.0, tz, tz + 0.5, "Post")
-		for i, key in ipairs({ "Light1", "Light2", "Light3", "Light4" }) do
-			local y = 2.0 + (i - 1) * 1.5
-			SK.Box(s, tx - 0.5, tx, y, y + 1.0, tz - 0.5, tz, key)
-		end
-		SK.Box(s, tx - 1.0, tx + 0.5, 9.0, 10.0, tz - 0.5, tz + 1.0, "Gold")
-		SK.Box(s, cx - 1.0, cx + 1.0, 1.5, 2.5, hz - 1.5, hz - 0.5, "Stone")
-		SK.Box(s, cx - 0.5, cx + 0.5, 2.5, 3.5, hz - 1.5, hz - 0.5, "Gold")
-		SK.Box(s, cx - 1.0, cx + 1.0, 3.5, 4.0, hz - 1.5, hz - 0.5, "Gold")
-		SK.Box(s, cx - 2.0, cx + 2.0, 4.5, 7.0, hz - 0.5, hz, "Banner")
-		SK.Box(s, cx - 1.0, cx + 1.0, 5.5, 6.0, hz - 1.0, hz - 0.5, "Gold")
 	end
 	local pal = mergeTables(P, {
 		Deck = C.PlankLight,
 		Deck2 = C.PlankDark,
-		Mat = rgb(84, 132, 206),
-		Ring = rgb(236, 92, 96),
-		RingIn = rgb(250, 244, 236),
-		Bag = rgb(214, 70, 74),
-		BagTop = rgb(172, 52, 60),
 		Rack = rgb(70, 76, 98),
 		Weight = rgb(46, 50, 64),
-		Post = C.PlankDark,
-		Canvas = rgb(250, 244, 232),
-		Canvas2 = rgb(86, 140, 214),
-		Rope = rgb(236, 86, 86),
-		Rope2 = rgb(250, 244, 236),
-		Banner = rgb(214, 70, 74),
+		Hurdle = rgb(236, 86, 86),
+		HurdleStripe = rgb(250, 244, 236),
+		Orb = { Color = rgb(186, 130, 255), Material = MAT.Neon },
+		Shield = rgb(84, 140, 226),
+		Board = rgb(40, 52, 88),
+		Pennant = rgb(236, 86, 86),
 		Light1 = { Color = rgb(120, 220, 120), Material = MAT.Neon },
 		Light2 = { Color = rgb(250, 214, 90), Material = MAT.Neon },
-		Light3 = { Color = rgb(255, 150, 80), Material = MAT.Neon },
-		Light4 = { Color = rgb(255, 90, 100), Material = MAT.Neon },
+		Light3 = { Color = rgb(255, 120, 110), Material = MAT.Neon },
 	})
 	local m = SK.Build(s, pal, { Name = "Body", Collide = "big" })
 	absorb(tpl.Model, m)
-	-- training places: thin red target plates with a white centre lying on the mat (the mat stays one part)
+	-- the training mats: a bright plate with a white inner square, lying on the deck (the deck stays one part)
 	for i, p in ipairs(spots) do
 		if i <= level then
-			box(tpl.Model, "Ring", CFrame.new(p.X, 1.55, p.Z), Vector3.new(2.5, 0.1, 2.5), rgb(236, 92, 96), { Shadow = false })
-			box(tpl.Model, "RingIn", CFrame.new(p.X, 1.6, p.Z), Vector3.new(1.0, 0.1, 1.0), rgb(250, 244, 236), { Shadow = false })
+			box(tpl.Model, "Mat", CFrame.new(p.X, 1.05, p.Z), Vector3.new(2.6, 0.1, 2.6), TRAIN_MATS[i] or TRAIN_MATS[1], { Shadow = false })
+			box(tpl.Model, "MatIn", CFrame.new(p.X, 1.1, p.Z), Vector3.new(1.4, 0.1, 1.4), rgb(250, 246, 238), { Shadow = false })
 		end
 	end
 	local deck = biggestPart(tpl.Model, "Deck") or biggestPart(tpl.Model)
@@ -1642,7 +1781,7 @@ function Art.Gym(def, level)
 		if i <= level and deck then
 			local a = Instance.new("Attachment")
 			a.Name = "Spot" .. i
-			a.CFrame = deck.CFrame:Inverse() * CFrame.new(p.X, 1.65, p.Z)
+			a.CFrame = deck.CFrame:Inverse() * CFrame.new(p.X, 1.15, p.Z)
 			a:SetAttribute("Slot", i)
 			a.Parent = deck
 		end
@@ -2534,22 +2673,28 @@ local function fallbackTemplate(def, level)
 end
 
 local ART_BY_KIND = {
-	Press = Art.Press,
-	Collector = Art.Collector,
+	Plant = Art.Plant,
+	Magnet = Art.Magnet,
 	Garden = Art.Garden,
-	Kitchen = Art.Kitchen,
-	Gym = Art.Gym,
+	FoodMachine = Art.FoodMachine,
+	Training = Art.Training,
 	Vault = Art.Vault,
 	House = Art.House,
 	Fusion = Art.Fusion,
 	Arena = Art.Arena,
 }
 
--- template for (def, level); extra = plot specifics that change the art (accent colour for banners)
-local function stationTemplate(def, level, accent)
+-- template for (def, level); extra = plot specifics that change the art (accent colour for banners, the Garden's open
+-- place count: its cache key is Garden:<level>:<open>)
+local function stationTemplate(def, level, accent, open)
 	local key = def.Id .. ":" .. level
 	if def.Id == "DecorBanners" and accent then
 		key = key .. ":" .. accent:ToHex()
+	end
+	local garden = def.Kind == "Garden"
+	if garden then
+		open = Garden.clampOpen(open, #Garden.places(def))
+		key = key .. ":" .. open
 	end
 	local tpl = templates[key]
 	if tpl then
@@ -2558,7 +2703,11 @@ local function stationTemplate(def, level, accent)
 	local fn = ART_BY_KIND[def.Kind] or Art[def.Id]
 	local ok, result = false, nil
 	if Voxel and fn then
-		ok, result = pcall(fn, def, level, TycoonCatalog and TycoonCatalog.PlotSize or 72, accent)
+		if garden then
+			ok, result = pcall(fn, def, level, open)
+		else
+			ok, result = pcall(fn, def, level, TycoonCatalog and TycoonCatalog.PlotSize or 72, accent)
+		end
 		if not ok then
 			warn("[HomeBuilder] art for " .. key .. " failed: " .. tostring(result))
 		end
@@ -2783,8 +2932,6 @@ function HomeBuilder.PreparePlot(spotInfo)
 	home:SetAttribute("PlotCFrame", cf)
 	home:SetAttribute("OwnerUserId", 0)
 	home:SetAttribute("OwnerName", "")
-	home:SetAttribute("CollectorCash", 0)
-	home:SetAttribute("CollectorCap", 0)
 	CollectionService:AddTag(home, HOME_TAG)
 	rec.Home = home
 	rec.PadFolder = newFolder(home, "Pads")
@@ -2955,56 +3102,6 @@ local function refreshLot(rec)
 end
 
 ----------------------------------------------------------------------
--- Conveyor (rebuilt whenever the presses change)
-----------------------------------------------------------------------
-local function refreshConveyor(rec)
-	local cat = catalog()
-	local conv = cat and cat.Layout and cat.Layout.Conveyor
-	local old = rec.Home:FindFirstChild("Conveyor")
-	local farZ = nil
-	for _, id in ipairs({ "Press1", "Press2", "Press3", "Press4" }) do
-		if (rec.Levels[id] or 0) > 0 then
-			local def = cat and cat.Get(id)
-			if def and def.Slot and def.Slot.CFrame then
-				local z = def.Slot.CFrame.Position.Z + 4.0
-				if not farZ or z > farZ then
-					farZ = z
-				end
-			end
-		end
-	end
-	if not conv or not farZ then
-		if old then
-			old:Destroy()
-		end
-		return
-	end
-	local finish = conv.Finish
-	farZ = min(farZ, conv.Start.Z)
-	local length = snap(farZ - finish.Z, 1)
-	if old and old:GetAttribute("Length") == length then
-		return
-	end
-	if old then
-		old:Destroy()
-	end
-	local key = "Conveyor:" .. length
-	local tpl = templates[key]
-	if not tpl then
-		tpl = Art.Conveyor(length)
-		templates[key] = tpl
-	end
-	local cf = rec.CF * CFrame.new(finish.X, 0, finish.Z)
-	local m = cloneAt(tpl, cf)
-	m.Name = "Conveyor"
-	m:SetAttribute("Length", length)
-	m:SetAttribute("Start", (cf * CFrame.new(tpl.Points.Start)).Position)
-	m:SetAttribute("Finish", (cf * CFrame.new(tpl.Points.Finish)).Position)
-	m:SetAttribute("Speed", BELT_SPEED)
-	m.Parent = rec.Home
-end
-
-----------------------------------------------------------------------
 -- Stations
 ----------------------------------------------------------------------
 local function stationDef(id)
@@ -3023,15 +3120,77 @@ local function applyOwnerAttr(rec, root)
 	local uid = ownerId(rec)
 	for _, d in ipairs(root:GetDescendants()) do
 		if d:IsA("ProximityPrompt") and d.Name ~= "ClaimPrompt" then
-			d:SetAttribute("OwnerUserId", uid)
-			if d.Name ~= "BuyPrompt" then
+			if d:GetAttribute("OwnerUserId") ~= uid then
+				d:SetAttribute("OwnerUserId", uid)
+			end
+			-- buy pads follow their lock; garden places follow SetGarden (Garden.applyPrompts)
+			if d.Name ~= "BuyPrompt" and d.Name ~= "GardenSpotPrompt" then
 				d.Enabled = uid ~= 0
 			end
-		elseif d.Name == "CollectPad" and d:IsA("BasePart") then
-			d:SetAttribute("OwnerUserId", uid)
 		end
 	end
 	root:SetAttribute("OwnerUserId", uid)
+end
+
+----------------------------------------------------------------------
+-- Garden places (SetGarden) and training mats (SetTraining): per-plot state re-applied to every rebuilt model
+----------------------------------------------------------------------
+function Garden.openOf(rec)
+	local g = rec.Garden
+	if g and g.Open then
+		return g.Open
+	end
+	return Garden.defaultOpen()
+end
+
+-- GardenSpotPrompt.Enabled = owned AND open AND empty; OwnerUserId on every one (written only on change)
+function Garden.applyPrompts(rec)
+	local model = rec.Stations.Garden
+	if not model then
+		return
+	end
+	local uid = ownerId(rec)
+	local open = Garden.openOf(rec)
+	local valid = (rec.Garden and rec.Garden.Valid) or {}
+	for _, d in ipairs(model:GetDescendants()) do
+		if d:IsA("ProximityPrompt") and d.Name == "GardenSpotPrompt" then
+			local slot = tonumber(d:GetAttribute("Slot")) or 0
+			local want = uid ~= 0 and slot >= 1 and slot <= open and valid[slot] == nil
+			if d.Enabled ~= want then
+				d.Enabled = want
+			end
+			if d:GetAttribute("OwnerUserId") ~= uid then
+				d:SetAttribute("OwnerUserId", uid)
+			end
+		end
+	end
+end
+
+-- the training mats show who trains on them: attributes Busy / Key / Stat / Ends on each Spot<i> (on change only)
+function Garden.applyTraining(rec)
+	local model = rec.Stations.Gym
+	if not model then
+		return
+	end
+	local pets = rec.Training or {}
+	for i = 1, 5 do
+		local att = model:FindFirstChild("Spot" .. i, true)
+		if att then
+			local job = pets[i]
+			local busy = job ~= nil
+			local values = {
+				Busy = busy,
+				Key = busy and job.Key or "",
+				Stat = busy and job.Stat or "",
+				Ends = busy and job.Ends or 0,
+			}
+			for name, v in pairs(values) do
+				if att:GetAttribute(name) ~= v then
+					att:SetAttribute(name, v)
+				end
+			end
+		end
+	end
 end
 
 local function removeGhost(rec, id)
@@ -3044,7 +3203,7 @@ end
 
 local function placeStation(rec, def, level)
 	local accent = (typeof(rec.Spot.Accent) == "Color3") and rec.Spot.Accent or nil
-	local tpl = stationTemplate(def, level, accent)
+	local tpl = stationTemplate(def, level, accent, (def.Kind == "Garden") and Garden.openOf(rec) or nil)
 	local slotCF = rec.CF * def.Slot.CFrame
 	local m = cloneAt(tpl, slotCF)
 	m.Name = "Station_" .. def.Id
@@ -3058,20 +3217,17 @@ local function placeStation(rec, def, level)
 	for name, v in pairs(tpl.Info) do
 		m:SetAttribute(name, v)
 	end
-	local fill = m:FindFirstChild("CashFill")
-	if fill and tpl.Points.FillBottom then
-		fill:SetAttribute("FillBottom", (slotCF * CFrame.new(tpl.Points.FillBottom)).Position)
-		fill:SetAttribute("FillMax", tpl.Info.FillMax or 3)
-	end
-	if def.Kind == "Collector" then
-		local cash = rec.Home:GetAttribute("CollectorCash") or 0
-		local label = m:FindFirstChild("CashLabel", true)
-		if label then
-			label.Text = formatCash(cash)
-		end
-	end
 	applyOwnerAttr(rec, m)
 	return m
+end
+
+-- after a station model is placed: the per-plot state that lives on it (garden prompts, training mats)
+local function afterPlace(rec, def)
+	if def.Kind == "Garden" then
+		Garden.applyPrompts(rec)
+	elseif def.Kind == "Training" then
+		Garden.applyTraining(rec)
+	end
 end
 
 function HomeBuilder.SetStation(spotInfo, stationId, level)
@@ -3097,9 +3253,6 @@ function HomeBuilder.SetStation(spotInfo, stationId, level)
 		end
 		rec.Stations[stationId] = nil
 		rec.Levels[stationId] = nil
-		if def.Kind == "Press" then
-			refreshConveyor(rec)
-		end
 		if def.Kind == "House" then
 			refreshLot(rec)
 		end
@@ -3123,9 +3276,7 @@ function HomeBuilder.SetStation(spotInfo, stationId, level)
 	model.Parent = rec.Home
 	rec.Stations[stationId] = model
 	rec.Levels[stationId] = level
-	if def.Kind == "Press" then
-		refreshConveyor(rec)
-	end
+	afterPlace(rec, def)
 	if def.Kind == "House" then
 		refreshLot(rec)
 	end
@@ -3381,6 +3532,7 @@ function HomeBuilder.SetOwner(spotInfo, player)
 	for _, model in pairs(rec.Stations) do
 		applyOwnerAttr(rec, model)
 	end
+	Garden.applyPrompts(rec)
 	for _, entry in pairs(rec.Pads) do
 		entry.Model:SetAttribute("OwnerUserId", uid)
 		entry.Prompt:SetAttribute("OwnerUserId", uid)
@@ -3391,26 +3543,78 @@ function HomeBuilder.SetOwner(spotInfo, player)
 	return true
 end
 
-function HomeBuilder.SetCollector(spotInfo, cash, cap)
+-- SetGarden(spotInfo, valid, open): the Garden's open place count (3 + Prestige stars, at most 12: TycoonService's
+-- GardenSlots, NOT the Garden level) and the placed keys valid = { [slot] = key }. A new open count rebuilds the
+-- Garden model (template Garden:<level>:<open>); the GardenSpotPrompts follow the empty open places. Kept per plot,
+-- so a Garden built later (or rebuilt with a new level) shows the same places.
+function HomeBuilder.SetGarden(spotInfo, valid, open)
+	local rec = recordOf(spotInfo)
+	if not rec then
+		HomeBuilder.PreparePlot(spotInfo)
+		rec = recordOf(spotInfo)
+	end
+	if not rec then
+		return false
+	end
+	local cat = catalog()
+	local def = stationDef("Garden")
+	local places = def and #Garden.places(def) or ((cat and cat.Prestige and tonumber(cat.Prestige.GardenSlotsMax)) or 12)
+	local slots = {}
+	if type(valid) == "table" then
+		for k, v in pairs(valid) do
+			local slot = tonumber(k)
+			if slot and slot == slot and slot >= 1 and slot <= places and slot == floor(slot) and type(v) == "string" and v ~= "" then
+				slots[slot] = v
+			end
+		end
+	end
+	local before = Garden.openOf(rec)
+	open = Garden.clampOpen((open == nil) and before or open, places)
+	rec.Garden = { Open = open, Valid = slots }
+	local model = rec.Stations.Garden
+	if def and model and model.Parent and open ~= before and (rec.Levels.Garden or 0) > 0 then
+		-- the places changed (a Prestige): rebuild the Garden with the new open count
+		local ok, fresh = pcall(placeStation, rec, def, rec.Levels.Garden)
+		if ok and fresh then
+			model:Destroy()
+			fresh.Parent = rec.Home
+			rec.Stations.Garden = fresh
+			if HomeBuilder.StationBuilt then
+				HomeBuilder.StationBuilt:Fire(rec.Spot, "Garden", fresh)
+			end
+		else
+			warn("[HomeBuilder] SetGarden rebuild failed: " .. tostring(fresh))
+		end
+	end
+	Garden.applyPrompts(rec)
+	if rec.Stations.Garden and rec.Stations.Garden:GetAttribute("Open") ~= open then
+		rec.Stations.Garden:SetAttribute("Open", open)
+	end
+	return true
+end
+
+-- SetTraining(spotInfo, pets): pets = { [mat] = { Key, Stat, Ends } } (PetCareService; HomeFx reads the plot's
+-- TrainingPets attribute). Only attributes on the mats' Spot<i> attachments: Busy, Key, Stat, Ends.
+function HomeBuilder.SetTraining(spotInfo, pets)
 	local rec = recordOf(spotInfo)
 	if not rec then
 		return false
 	end
-	cash = tonumber(cash) or 0
-	cap = tonumber(cap) or 0
-	if cash ~= cash or cash == math.huge or cash < 0 then
-		cash = 0
+	local map = {}
+	if type(pets) == "table" then
+		for k, v in pairs(pets) do
+			local mat = tonumber(k)
+			if mat and mat == mat and mat >= 1 and mat <= 5 and mat == floor(mat) and type(v) == "table" then
+				local ends = tonumber(v.Ends) or 0
+				if ends ~= ends or ends == huge or ends == -huge then
+					ends = 0
+				end
+				map[mat] = { Key = tostring(v.Key or ""), Stat = tostring(v.Stat or ""), Ends = floor(ends) }
+			end
+		end
 	end
-	if cap ~= cap or cap == math.huge or cap < 0 then
-		cap = 0
-	end
-	cash, cap = floor(cash), floor(cap)
-	if rec.Home:GetAttribute("CollectorCash") ~= cash then
-		rec.Home:SetAttribute("CollectorCash", cash)
-	end
-	if rec.Home:GetAttribute("CollectorCap") ~= cap then
-		rec.Home:SetAttribute("CollectorCap", cap)
-	end
+	rec.Training = map
+	Garden.applyTraining(rec)
 	return true
 end
 
@@ -3431,10 +3635,8 @@ function HomeBuilder.ClearPlot(spotInfo)
 	for id in pairs(rec.Ghosts) do
 		removeGhost(rec, id)
 	end
-	local conv = rec.Home:FindFirstChild("Conveyor")
-	if conv then
-		conv:Destroy()
-	end
+	rec.Garden = nil
+	rec.Training = nil
 	-- anything else a caller parented under Home (but keep the Pads folder)
 	for _, c in ipairs(rec.Home:GetChildren()) do
 		if c ~= rec.PadFolder and c.Name ~= "Paths" and c.Name ~= "HouseLot" then
@@ -3448,8 +3650,6 @@ function HomeBuilder.ClearPlot(spotInfo)
 		setPaths(rec, false)
 	end
 	refreshLot(rec)
-	rec.Home:SetAttribute("CollectorCash", 0)
-	rec.Home:SetAttribute("CollectorCap", 0)
 	return true
 end
 
@@ -3482,14 +3682,15 @@ function HomeBuilder.PartCount(spotInfo)
 	return rec and countParts(rec.Home) or 0
 end
 
--- a fresh copy of a station's model at the origin (front -Z), for renders and tests
-function HomeBuilder.BuildStationModel(id, level, accent)
+-- a fresh copy of a station's model at the origin (front -Z), for renders and tests; open = the Garden's open place
+-- count (default: Prestige.GardenSlotsBase)
+function HomeBuilder.BuildStationModel(id, level, accent, open)
 	local def = stationDef(id)
 	if not def then
 		return nil
 	end
 	level = max(1, min(floor(tonumber(level) or 1), def.MaxLevel or 1))
-	local tpl = stationTemplate(def, level, accent)
+	local tpl = stationTemplate(def, level, accent, open)
 	local m = cloneAt(tpl, CFrame.new())
 	m.Name = "Station_" .. id
 	m:SetAttribute("StationId", id)
@@ -3497,7 +3698,7 @@ function HomeBuilder.BuildStationModel(id, level, accent)
 	return m
 end
 
--- local fx points of a station level (Chute, Drop, Intake, FillBottom, SwirlCenter ...)
+-- local fx points of a station level (FruitPoint, MagnetCenter, ChuteMouth, Tray, HopperTop, SwirlCenter ...)
 function HomeBuilder.Points(id, level)
 	local def = stationDef(id)
 	if not def then
