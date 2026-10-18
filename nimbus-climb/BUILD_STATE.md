@@ -51,7 +51,7 @@ Request + approved decisions: scratchpad/phase5_request.md (player said "go!").
 | D | design: 4 designers (battle, dungeon Fable; home, world Opus) -> lead (Fable) contract in ARCHITECTURE_V3 "## Phase 5" -> judge (Opus) -> lead fix | DONE wf_9b76bb34-5d6: contract in ARCHITECTURE_V3 "## Phase 5" (sections 0-13; waves in 10, ownership 11, tests 12, owner checklist 10.6); designs scratchpad/p5design/design:*/ ; judge p5design/judge/review.md fixed |
 | R | show scratchpad/p5design/summary_for_player.md to the player, get OK | OK given ("go") |
 | W0 | lead (Fable): section 10.1 shared edits, fixtures, baseline log scratchpad/p5_w0_baseline.log | DONE wf_872fc5c9-bc1: baseline 9024/0; gate 9033/5 (known red for W1: p3battle_catalog x2 + p3fixsrv_trial1 = Rally/Haste in BattleCatalog, battlecore W1); StormAltar MAX_PARTS 500 done by lead. Notes scratchpad/p5_wave0_notes.md |
-| W1 | data F, battlecore F, economy+roam O, worldstyle O | RUNNING (args scratchpad/p5jobs/w1.json) |
+| W1 | data F, battlecore F, economy+roam O, worldstyle O | RUNNING wf_63badf7b-be9 (args scratchpad/p5jobs/w1.json; resume with the SAME args) |
 | W2 | battleservice F, tycoon+care F, worldlobby O, homeworld O, neonkit O | - |
 | W3 | dungeon F, battleclient O, homefx+pets O, careui O, menu O | - |
 | W4 | dungeonclient, tutorial, docs, flow, arenaart (all O) | - |
