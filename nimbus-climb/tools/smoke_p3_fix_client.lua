@@ -17,7 +17,10 @@
 --                              menu tiles step aside (the column frame keeps its place), nothing of the battle HUD
 --                              contains or sits in the screen centre, no card covers the top card, the commands, the
 --                              vitals or the hotbar; the tiles come back after the battle; a portrait phone keeps the
---                              row under the top card (tiles shown), 1920x1080 the team card at the bottom right
+--                              row under the top card (tiles shown), 1920x1080 the team card at the bottom right;
+--                              Phase 4: between two Champion Ring rounds the side card sits at the right edge (off the
+--                              centre, over no button / team card / vitals / hotbar / currency, texts >= 14 px), the
+--                              team keeps the left edge, the run's card replaces it and the tiles come back
 --   client_p3fixcli_devhelp    (extra) the two /devhelp toasts on an 844x390 screen: the one pushed out for room waits
 --                              and is shown (whole, readable, at the right edge) after the other one
 --   client_p3fixcli_tutorial   (extra) with a party panel up (a match is about to start) an opened tutorial card never
@@ -178,11 +181,11 @@ local function newDriver(opts)
 		return nil
 	end
 	local id = "fixcli_" .. tostring(opts.Mode) .. "_" .. tostring(math.random(100000, 999999))
-	local sim = Sim.new({ Mode = opts.Mode, Seed = opts.Seed or 5, Id = id, Teams = opts.Teams, Trial = opts.Trial, Boss = opts.Boss })
+	local sim = Sim.new({ Mode = opts.Mode, Seed = opts.Seed or 5, Id = id, Teams = opts.Teams, Trial = opts.Trial, Boss = opts.Boss, Round = opts.Round, Zone = opts.Zone, TimeLimit = opts.TimeLimit })
 	if not sim then
 		return nil
 	end
-	local d = setmetatable({ sim = sim, id = id, logIndex = #Mock.RemoteLog, events = {}, last = nil }, Driver)
+	local d = setmetatable({ sim = sim, id = id, logIndex = #Mock.RemoteLog, events = {}, last = nil, ring = opts.Ring }, Driver)
 	d.me = LocalPlayer.UserId
 	return d
 end
@@ -195,6 +198,7 @@ function Driver:start()
 	p.Side = 1
 	p.Spectator = false
 	p.T = self.sim:Time()
+	p.Ring = self.ring -- Phase 4: a Champion Ring round's Start.Ring
 	LocalPlayer:SetAttribute("InBattle", self.id)
 	KC.toClient("BattleState", "Start", p, self.id)
 end
@@ -643,6 +647,84 @@ local function landscapeChecks(BC, label, pets)
 	T.check(battleWarnings(outBefore) == nil and #Mock.Errors == errBefore, label .. ": no errors or warnings", tostring(battleWarnings(outBefore)))
 end
 
+-- Phase 4: between two Champion Ring rounds on an 844x390 screen the side card "Round n won! ... Round n+1 in 3" sits
+-- at the right edge (where the commands were), off the screen centre, over no button, team card, vitals or hotbar;
+-- the team grid keeps the left edge (the menu tiles stay aside) until the run's result card
+local function ringLandscape(BC, label)
+	local outBefore, errBefore = #Mock.Output, #Mock.Errors
+	local BCat = moduleAt("shared", "BattleCatalog")
+	if not (BCat and type(BCat.ChampionTeam) == "function") then
+		T.fail(label .. ": BattleCatalog.ChampionTeam missing")
+		return
+	end
+	Mock.SetViewport(844, 390)
+	step(4)
+	local tilesBefore = menuTilesShown()
+	local spec = BCat.ChampionTeam(6, 3)
+	local ch = spec.Champion or {}
+	local d = newDriver({ Mode = "Ring", Round = 6, Zone = { X = 44, Z = 44 }, TimeLimit = 90, Teams = { { Owner = LocalPlayer.UserId, Side = 1, Pets = catalogTeam(4, 30) }, spec },
+		Ring = { Round = 6, Best = 9, Start = 1, Champion = { PetId = ch.PetId, Level = ch.Level, Tier = ch.Tier, Boss = ch.Boss == true, Name = ch.Name } } })
+	if not d then
+		T.fail(label .. ": ring driver")
+		return
+	end
+	d:start()
+	for _ = 1, 8 do
+		d:step()
+	end
+	KC.toClient("BattleState", "End", { BattleId = d.id, Mode = "Ring", Outcome = "Win", Won = true, Spectator = false, Reason = "Wipe",
+		Rewards = { Won = true, Next = 7, Round = 6, Cash = 32, Xp = 56, Tokens = 0, Record = false } }, d.id)
+	step(4)
+	local b = BC.GetBattle()
+	local nr, nc = namedRect("NimbusBattle", "Root.NextRoundCard")
+	T.check(b and b.Next == 7 and nr ~= nil and b.TeamPlace == "Left" and menuTilesShown() == 0, label .. ": between rounds the side card shows, the team keeps the left edge, the tiles stay aside",
+		b and (tostring(b.Next) .. " " .. tostring(b.TeamPlace)) or "nil")
+	if nr then
+		local cx, cy = 844 / 2, 390 / 2
+		T.check(not (nr.x0 <= cx and cx <= nr.x1 and nr.y0 <= cy and cy <= nr.y1) and nr.x1 <= 845 and nr.y0 >= 0, label .. ": the side card stays off the screen centre and on the screen", rectText(nr))
+		local others = {}
+		for _, p in ipairs({ { "NimbusBattle", "Root.TopCard" }, { "NimbusBattle", "Root.Team" }, { "NimbusHud", "BottomLeft.Vitals" }, { "NimbusHotbar", "Hotbar" }, { "NimbusHud", "TopRight.Currency" } }) do
+			local r = namedRect(p[1], p[2])
+			if r then
+				others[#others + 1] = { p[1] .. "." .. p[2], r }
+			end
+		end
+		local pg = playerGui()
+		for _, g in ipairs(pg and pg:GetChildren() or {}) do
+			if g:IsA("ScreenGui") and g.Name ~= "NimbusBattle" and g.Enabled then
+				for _, o in ipairs(g:GetDescendants()) do
+					if o:IsA("GuiButton") and shown(o) and o.AbsoluteSize.X > 20 and o.AbsoluteSize.X < 300 then
+						others[#others + 1] = { o:GetFullName(), screenRect(o) }
+					end
+				end
+			end
+		end
+		local clash = nil
+		for _, o in ipairs(others) do
+			if overlap(nr, o[2]) then
+				clash = o[1]
+			end
+		end
+		T.check(#others >= 3 and clash == nil, label .. ": the side card covers no button, team card, vitals, hotbar or currency pill", tostring(clash))
+		local scale = nc and nc:FindFirstAncestorOfClass("ScreenGui") and nc:FindFirstAncestorOfClass("ScreenGui"):FindFirstChild("ReadScale", true)
+		local f = scale and scale.Scale or 1
+		local small = nil
+		for _, t in ipairs(nc:GetDescendants()) do
+			if (t:IsA("TextLabel") or t:IsA("TextButton")) and shown(t) and t.Text ~= "" and t.TextSize * f < 13.99 then
+				small = t.Name .. " " .. fmt(t.TextSize * f)
+			end
+		end
+		T.check(small == nil, label .. ": the side card's texts stay >= 14 px", tostring(small))
+	end
+	KC.toClient("BattleState", "End", { BattleId = d.id, Mode = "Ring", Outcome = "Left", Won = false, Spectator = false, Reason = "Forfeit", Round = 6,
+		Rewards = { Won = false, Final = true, Round = 6, Cash = 0, Xp = 0, Run = { Wins = 6, Cash = 210, Xp = 216, Tokens = 0, Round = 6, Start = 1, Best = 9 } } }, d.id)
+	step(4)
+	T.check(not shown(BC and find("Root.NextRoundCard")) and shown(find("Root.ResultCard")) and menuTilesShown() == tilesBefore, label .. ": the run's card replaces the side card and the menu tiles come back",
+		menuTilesShown() .. "/" .. tilesBefore)
+	cleanup(BC)
+	T.check(battleWarnings(outBefore) == nil and #Mock.Errors == errBefore, label .. ": no errors or warnings (ring)", tostring(battleWarnings(outBefore)))
+end
+
 S.client_p3fixcli_landscape = guarded("client_p3fixcli_landscape", function()
 	local BC = moduleAt("client", "Controllers/BattleController")
 	local Menu = moduleAt("client", "Controllers/MenuController")
@@ -651,6 +733,7 @@ S.client_p3fixcli_landscape = guarded("client_p3fixcli_landscape", function()
 		return
 	end
 	landscapeChecks(BC, "#9 844x390 window", 4)
+	ringLandscape(BC, "#9 844x390 window, Champion Ring")
 	-- a wide screen keeps the team card at the bottom right
 	Mock.SetViewport(1920, 1080)
 	step(4)
@@ -679,6 +762,7 @@ S.client_p3fixcli_mobile = guarded("client_p3fixcli_mobile", function()
 	end
 	landscapeChecks(BC, "#9 phone 844x390 (touch)", 4)
 	landscapeChecks(BC, "#9 phone 844x390, a 1-pet team", 1)
+	ringLandscape(BC, "#9 phone 844x390 (touch), Champion Ring")
 	Mock.SetViewport(390, 844)
 	step(4)
 	KC.flushErrors("client_p3fixcli_mobile")

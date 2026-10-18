@@ -13,7 +13,9 @@
 --                     folded into one flat colour: several shades per region, the Frost Wyrm's belly and frost patch,
 --                     the Hydra's belly, the Golem's ash), High <= 1000 parts and Low <= 760, Low keeps the accents
 --   client_p3visual   (client) a boss telegraph has a crisp rim in its saturated colour (16 neon segments round a
---                     circle) besides the pale area, and the rim goes with it after the hit; the Team picker tiles and
+--                     circle) besides the pale area, and the rim goes with it after the hit; Phase 4: every unit's
+--                     PetCard reads on the sand (solid dark plate, stroked Lv, green HP for mine / a teammate's, red for
+--                     enemies; the raid boss keeps its top-card bar); the Team picker tiles and
 --                     the Trial window's enemy cards write pet names in white on their rarity-tinted cards
 --   client_p3visual_mobile (phone world) the Trial window's enemy cards use the width of a portrait phone (two wide
 --                     columns instead of two narrow cards and a gap)
@@ -409,7 +411,11 @@ local function clientScenarios()
 			end
 		end
 		local id = "visual_raid_" .. tostring(math.random(100000, 999999))
-		local sim = Sim.new({ Mode = "Raid", Seed = 5, Id = id, Boss = "storm_titan", Teams = { { Owner = LocalPlayer.UserId, Side = 1, Pets = pets } } })
+		local mate = {}
+		for i, p in ipairs(pets) do
+			mate[i] = { Key = p.Key, PetId = p.PetId, Level = 8, Tier = "Normal", Slot = i }
+		end
+		local sim = Sim.new({ Mode = "Raid", Seed = 5, Id = id, Boss = "storm_titan", Teams = { { Owner = LocalPlayer.UserId, Side = 1, Pets = pets }, { Owner = 77, Side = 1, Pets = mate } } })
 		if not sim then
 			return nil
 		end
@@ -492,6 +498,40 @@ local function clientScenarios()
 					local sat = max(rimColor.R, rimColor.G, rimColor.B) - min(rimColor.R, rimColor.G, rimColor.B)
 					T.check(sat >= 0.3, "visual client: ...in the attack's saturated colour (it reads on the pale sand)", colorKey(rimColor))
 				end
+				-- Phase 4 (contract 3.9): the unit cards read on the pale sand: a solid dark plate, a stroked "Lv", green HP
+				-- for my pets and a teammate's, red for enemies; the raid boss keeps its top-card bar (no card)
+				local cards, solid, stroked, greens, bossCard = 0, 0, 0, 0, false
+				local modes = {}
+				for _, u in ipairs(d.sim.units or {}) do
+					local info = BC.GetUnit(u.id)
+					local card = info and info.Card
+					if card and card.Gui then
+						cards = cards + 1
+						modes[card.Mode] = true
+						local plate = card.Gui:FindFirstChild("Plate")
+						local c = plate and plate.BackgroundColor3
+						if c and plate.BackgroundTransparency <= 0.2 and (0.3 * c.R + 0.59 * c.G + 0.11 * c.B) < 0.35 then
+							solid = solid + 1
+						end
+						local lv = plate and plate:FindFirstChild("Level")
+						if lv and (lv:FindFirstChildOfClass("UIStroke") or lv.TextStrokeTransparency < 0.5) then
+							stroked = stroked + 1
+						end
+						local fill = plate and plate:FindFirstChild("Hp") and plate.Hp:FindFirstChild("Fill")
+						local fc = fill and fill.BackgroundColor3
+						if fc and u.side == 1 and fc.G > fc.R then
+							greens = greens + 1
+						elseif fc and u.side ~= 1 and fc.R > fc.G then
+							greens = greens + 1
+						end
+						if info.Kind == "Boss" then
+							bossCard = true
+						end
+					end
+				end
+				T.check(cards >= 6 and solid == cards and stroked == cards, "visual client: every unit card has a solid dark plate and a stroked Lv (reads on the sand)", solid .. "/" .. stroked .. " of " .. cards)
+				T.check(greens == cards and modes.Unit and modes.Ally, "visual client: HP rows are green for my pets (Unit) and a teammate's (Ally), red for enemies", greens .. " of " .. cards)
+				T.check(not bossCard, "visual client: the raid boss has no pet card (its HP bar is in the top card)")
 				-- after the hits the rims go with their telegraphs
 				for _ = 1, 60 do
 					d.step()

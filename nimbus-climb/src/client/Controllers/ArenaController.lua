@@ -1784,6 +1784,7 @@ function Ring.build()
 
 	local champ = inset(d, "Champion", { Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, LayoutOrder = 3 })
 	pad(champ, 14, 8, 14, 10)
+	ui.Champ = champ
 	listLayout(champ, Enum.FillDirection.Vertical, 6)
 	-- the title row (wide windows also carry the tags in it; narrow ones show them on their own row)
 	ui.ChampHead = makeFrame(champ, "Head", { Size = UDim2.new(1, 0, 0, 34), LayoutOrder = 1 })
@@ -1818,6 +1819,7 @@ function Ring.build()
 
 	local rewards = inset(d, "Rewards", { Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, LayoutOrder = 4 })
 	pad(rewards, 14, 8, 14, 10)
+	ui.Rewards = rewards
 	listLayout(rewards, Enum.FillDirection.Vertical, 4)
 	ui.NextWin = wrapText(rewards, "NextWin", "", "Heading", 22, WHITE, 1)
 	ui.RecordLine = wrapText(rewards, "Record", "", "Body", 19, C.Power, 2)
@@ -1910,6 +1912,11 @@ function Ring.build()
 		ui.EditButton.Size = UDim2.fromOffset(inner < 420 and 150 or 170, 54)
 		ui.Why.Size = UDim2.new(1, 0, 0, short and 26 or 44)
 		ui.WhyH = short and 26 or 44
+		-- landscape phones: "Next win" comes right under the picker, and the footer keeps clear of Roblox's jump
+		-- button (bottom right corner of the screen)
+		ui.Rewards.LayoutOrder = short and 3 or 4
+		ui.Champ.LayoutOrder = short and 4 or 3
+		ui.FooterInset = short and 120 or 28
 	end
 
 	win.Refresh = function()
@@ -2058,7 +2065,7 @@ function Ring.live(_win, ui)
 	ui.Why.Text = why or ""
 	ui.Why.Visible = why ~= nil
 	local footerH = why and (60 + (ui.WhyH or 44)) or 56
-	ui.Footer.Size = UDim2.new(1, -28, 0, footerH)
+	ui.Footer.Size = UDim2.new(1, -(ui.FooterInset or 28), 0, footerH)
 	ui.DetailScroll.Size = UDim2.new(1, -8, 1, -(footerH + 22))
 end
 
@@ -2147,6 +2154,28 @@ function Ring.teamLine()
 	label.Text = best > 0 and (G.Crown .. " Champion Ring best: Round " .. best .. " (" .. commas(runs) .. (runs == 1 and " run)" or " runs)"))
 		or (G.Crown .. " Champion Ring: no record yet (the portal is on the plaza)")
 	return label
+end
+
+-- the Champion Ring board in the Arena panel's Leaders tab: the best of this server (Portal_Ring's RingBoard) + the
+-- player's own record
+function Ring.leaderSection(parent, order)
+	local box = inset(parent, "RingBoard", { Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, LayoutOrder = order })
+	pad(box, 14, 10, 14, 12)
+	listLayout(box, Enum.FillDirection.Vertical, 4)
+	wrapText(box, "Title", G.Crown .. " Champion Ring: best in this server", "Heading", 21, WHITE, 1)
+	local board = Ring.board()
+	for i, entry in ipairs(board) do
+		local mine = LocalPlayer and entry.Name == LocalPlayer.Name
+		wrapText(box, "Row" .. i, i .. ". " .. entry.Name .. (mine and " (you)" or "") .. ": Round " .. entry.Round,
+			"Body", 19, mine and C.GoodText or WHITE, 1 + i)
+	end
+	if #board == 0 then
+		wrapText(box, "Empty", "No ring record in this server yet: be the first!", "Body", 19, MUTED, 2)
+	end
+	local best = Ring.record()
+	wrapText(box, "Mine", best > 0 and ("Your best: Round " .. best .. ". Beat it for triple Cash!")
+		or "Press E at the Champion Ring portal on the plaza to set your record.", "Body", 19, C.Power, 9)
+	return box
 end
 
 -- the Champion Ring numbers the window shows (tests / other controllers)
@@ -2828,6 +2857,7 @@ local function buildArena()
 		if not meShown and LocalPlayer then
 			wrapText(ui.LeaderScroll, "Mine", "You: " .. G.Trophy .. " " .. commas(battleData().Trophies or 0) .. " trophies. Win duels to climb the board!", "Heading", 20, C.Power, 20)
 		end
+		Ring.leaderSection(ui.LeaderScroll, 25)
 		local BC = catalog()
 		local rules = BC and type(BC.Trophies) == "table" and BC.Trophies or { Win = 20, Loss = -10 }
 		local note = inset(ui.LeaderScroll, "HowTo", { Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, LayoutOrder = 30 })

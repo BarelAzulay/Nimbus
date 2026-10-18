@@ -773,9 +773,14 @@ local function clientScenarios()
 		T.check(why and shown(why) and why.Text:find("Every ring is busy", 1, true) ~= nil and start.Text ~= "Starting...",
 			"p4ui ring: the server's refusal toast shows in the window's footer", why and why.Text)
 		-- my battle starts: the window steps aside
-		toClient("BattleState", "Start", { BattleId = "r1", Mode = "Ring", Side = 1, Units = {}, Zone = {}, Ring = { Round = 1, Best = 24, Start = 1 } })
+		toClient("BattleState", "Start", { BattleId = "r1", Mode = "Ring", Side = 1, Units = {}, Zone = {}, Ring = { Round = 1, Best = 24, Start = 1 } }, "r1")
 		advance(0.4)
 		T.check(AC.GetState().Window == nil, "p4ui ring: the ring battle's Start closes the window")
+		-- end that battle again so BattleController (and the scenarios after this one) are back in the lobby
+		toClient("BattleState", "End", { BattleId = "r1", Mode = "Ring", Outcome = "Lost", Reason = "Forfeit", Round = 1, Rewards = {} }, "r1")
+		advance(16)
+		toClient("BattleState", "Lobby", { Queue = { Queued = false, Waiting = 0 }, Invites = {} })
+		advance(0.4)
 		local small = smallTexts(win, 18)
 		T.check(#small == 0, "p4ui ring: every text of the ring window is >= 18 design px", table.concat(small, ", "))
 
@@ -788,6 +793,20 @@ local function clientScenarios()
 		T.check(line and line.Text:find("Champion Ring best: Round 24", 1, true) ~= nil, "p4ui team: the Team screen shows 'Champion Ring best: Round 24'",
 			line and line.Text)
 		MC.Close()
+		advance(0.4)
+
+		------------------------------------------------------------ the ring board in the Arena panel's Leaders tab
+		AC.OpenArena("Leaderboard")
+		advance(0.8)
+		local arenaWin = pg():FindFirstChild("NimbusArena") and pg():FindFirstChild("NimbusArena"):FindFirstChild("Window_Arena")
+		local ringBox = arenaWin and find(arenaWin, "RingBoard")
+		local lead1 = ringBox and ringBox:FindFirstChild("Row1")
+		local leadMine = ringBox and ringBox:FindFirstChild("Mine")
+		T.check(ringBox and shown(ringBox) and lead1 and lead1.Text == "1. Alex: Round 31" and ringBox:FindFirstChild("Row4") == nil,
+			"p4ui leaders: the Leaders tab shows the Champion Ring's best of this server (top 3)", lead1 and lead1.Text)
+		T.check(leadMine and leadMine.Text:find("Your best: Round 24", 1, true) ~= nil, "p4ui leaders: ...and the player's own ring record",
+			leadMine and leadMine.Text)
+		AC.Close()
 		advance(0.4)
 
 		------------------------------------------------------------ the safe-zone toast (contract 3.11)
@@ -862,6 +881,11 @@ local function clientScenarios()
 			local start = win and find(win, "Start")
 			local sbox = start and Mock.GuiBox(start)
 			T.check(sbox and sbox.y + sbox.h <= size[2] + 1 and sbox.x + sbox.w <= size[1] + 1, label .. ": START is on the screen")
+			if size[1] > size[2] then
+				-- landscape: the footer keeps clear of Roblox's jump button (bottom right, about 90 px wide)
+				T.check(sbox and sbox.x + sbox.w <= size[1] - 90, label .. ": START stays left of the touch jump button",
+					sbox and string.format("right=%.0f", sbox.x + sbox.w))
+			end
 			AC.Close()
 			advance(0.4)
 		end

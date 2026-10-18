@@ -21,7 +21,10 @@
 --   BattleController.ScreenPick(x, y) -> unitId | nil   the enemy a tap / click at viewport pixel (x, y) would focus
 --   BattleController.GetTelegraphs() -> { { Id, Shape, At, From, SafeAt, Late } }  (tests: the render-clock deadline)
 --   GetBattle() also reports Threat (a telegraph covers one of my pets), Cue ("Attack" | "Retreat" | nil: the
---   pulsing command), InterpDelay and TeamPlace ("Right" | "Top" | "Left": where the team cards sit)
+--   pulsing command), InterpDelay and TeamPlace ("Right" | "Top" | "Left": where the team cards sit); Phase 4: Round /
+--   Best (a Champion Ring round), Next (the round that follows a won one, until its Start) and Overtime (a duel)
+--   GetUnit(id) also reports Card = { Gui, Mode } (the unit's PetCard), Level, Evo, Xp, XpNext, Crowned and Writes
+--   (how many times its card's HP / SPECIAL were written: tests pin "only on change")
 --
 -- Messages (BattleState(kind, payload, battleId), sent by BattleService)
 --   "Start"    battle:Describe() + Zone = { CFrame (floor centre), Size, X, Z } + Names + Side (0 = spectator) + Spectator
@@ -55,8 +58,8 @@
 --     DEADLINE (the hit minus the render delay, the round trip of Player:GetNetworkPing and TELE_RUNOUT: a RETREAT
 --     pressed then still gets the pets out), then its rim flashes red until the hit; lingering pools (Zone "Linger")
 --     glow for their seconds. Spectators draw INTERP_DELAY_SPECTATOR behind (5 Hz snapshots).
---   * Small HP bars (pixel BillboardGuis, no text) above every unit: green = yours, blue = allies, red = enemies; a
---     bobbing voxel arrow marks the enemy your team focuses.
+--   * A PetCard above every pet unit (Phase 4, below; the Phase 3 bar only without PetCard); a bobbing voxel arrow
+--     marks the enemy your team focuses.
 --   * Spectators (a player near a duel ring / the raid floor) see the same battle from the stands, with only a slim
 --     top card (no controls).
 --
@@ -83,6 +86,26 @@
 --     re-placed on rotation; never centred): VICTORY / DEFEAT / DRAW, the reason, the rewards (tokens, gems,
 --     trophies, XP, first clear, raid tier + damage share, event pet, level-ups, double rewards), OK; it closes by
 --     itself after RESULT_SECONDS.
+-- Phase 4 (ARCHITECTURE_V3.md "Phase 4 build contract" 3.5 / 3.8 / 3.9):
+--   * Unit cards: every pet unit carries a PetCard (src/client/UI/PetCard.lua; the billboard keeps the Phase 3 name
+--     HpBar, its HP fill is Plate.Hp.Fill): mode "Unit" for my pets (Lv + HP + SPECIAL + XP from Start's xp / xpNext; a
+--     full XP bar at the cap, where the server leaves xpNext out), "Ally" for a teammate's (Lv + green HP), "Enemy" for
+--     enemies / NPCs (Lv + red HP), the evolution stars from unitInfo.evo. HP / SPECIAL are written only when a
+--     snapshot changed them (Cards.Live), never per frame; the fight's XP (End.Rewards.Xp) and the profile mirror
+--     (State.PetLevel, forward only) move my XP bars (the level-up toasts are the server's). The raid boss keeps its
+--     top-card bar. Evolved units are built with PetBuilder opts.Evolved at Low detail (petEvoLow / petEvo2Low).
+--   * Champion Ring (Mode "Ring", Start.Ring = { Round, Best, Start, Champion }): the top card reads "CHAMPION RING"
+--     ("RING" on a compact card) + "Round 8 - Best 12" + a pill row: the pay of a win ("Win: +$X +Y XP": BattleCatalog.
+--     RingRewards with the plot's IncomePerSecond, display only), "RECORD x3" past the best, "BOSS" on every 10th
+--     round. The champion is built wearing PetBuilder's voxel Crown accessory, with a 22 px "Champion <name>" tag
+--     above its card. A won round's End (Rewards.Next) shows no result card: the side card "Round 8 won! +$319 +68 XP
+--     / Round 9 in 3" (where the commands were on a wide screen, under the team cards on a tall phone, at the right
+--     edge in landscape), the top card and the team stay, the floor waits (Ring.LINGER) for the next Start, which
+--     takes my pets' models and cards over (same key and stage: nothing blinks); the old battle's folder is freed by
+--     its battle id. The run's final End (also one that names the won round's id after a Forfeit / leave between
+--     rounds) shows the result card: RUN OVER / NEW RECORD!, where it ended, "Rounds won: n", "+$X Cash", "+Y Pet XP",
+--     Tokens, "Best: round n".
+--   * Duels: the Overtime event (BattleCatalog.Damage.Overtime) puts "OVERTIME: hits +15% a second" in the top card.
 -- Keys 1-4 are bound through ContextActionService only while you fight (High priority, sunk), so the item hotbar does
 -- not also fire them; they are released when the battle ends.
 --
@@ -134,6 +157,14 @@ local PetKeys = optional(Shared, "PetKeys")
 local BattleCatalog = optional(Shared, "BattleCatalog")
 local BattleSim = optional(Shared, "BattleSim") -- constants only (States / Events); the client never simulates
 local BossBuilder = nil -- loaded on the first raid (lazyBoss)
+-- Phase 4 (optional too): the shared pet card (every unit's card), the local profile mirror (own pets' level / XP
+-- after a fight), the XP curve and the voxel kit (the champion's crown)
+local Mods = {
+	PetCard = optional(Client:FindFirstChild("UI") or Client:WaitForChild("UI", 10), "PetCard", 5),
+	State = optional(Client, "State", 5),
+	Tycoon = optional(Shared, "TycoonCatalog"),
+	Voxel = optional(Shared, "Voxel"),
+}
 
 local BattleController = {}
 
@@ -294,6 +325,8 @@ local Units = {} -- battle units
 local Tele = {} -- telegraphs and zones
 local Input = {} -- keys, gamepad, taps
 local Net = {} -- messages
+local Cards = {} -- Phase 4: the PetCard above every battle unit
+local Ring = {} -- Phase 4: the Champion Ring HUD (round / record / next-round side card / run card), duel overtime
 
 ----------------------------------------------------------------------
 -- Helpers
@@ -976,6 +1009,11 @@ local function newBattle(payload, battleId)
 		TimeLimit = num(payload.TimeLimit, 0),
 		Level = payload.Level,
 		BossId = payload.BossId,
+		-- Phase 4: the Champion Ring's "Start".Ring = { Round, Best, Start, Champion = { PetId, Level, Tier, Boss, Name } }
+		Ring = type(payload.Ring) == "table" and payload.Ring or nil,
+		Round = num(payload.Round or (type(payload.Ring) == "table" and payload.Ring.Round), 0),
+		overtime = false, -- a duel past Damage.Overtime.At (the Overtime event)
+		ringNext = nil, -- a won ring round: { Round, Next, Cash, Xp, Tokens, Record, At } until the next "Start"
 		units = {},
 		list = {},
 		mine = {},
@@ -1126,6 +1164,12 @@ function Units.Add(B, info)
 		special = type(info.special) == "table" and info.special or nil,
 		isBoss = info.kind == "Boss",
 		bossId = info.boss,
+		-- Phase 4: the stored evolution stage (the model and the card's stars), own pets' XP (the card's XP row), the
+		-- ring champion's crown
+		evo = clamp(floor(num(info.evo, 0)), 0, 2),
+		xp = tonumber(info.xp),
+		xpNext = tonumber(info.xpNext),
+		crowned = info.crowned == true,
 		mine = mine,
 		ally = ally,
 		x = 0,
@@ -1159,6 +1203,7 @@ function Units.Destroy(u)
 	if u.flash then
 		u.flash.hl.Adornee = nil
 	end
+	Cards.Free(u)
 	for _, key in ipairs({ "shieldPart", "icePart", "focusMark" }) do
 		local p = u[key]
 		if p then
@@ -1262,8 +1307,12 @@ local function buildUnit(B, u)
 	if not def then
 		error("no definition for unit " .. tostring(u.id))
 	end
-	local detail = u.mine and "High" or "Low"
-	local model = PetBuilder.Build(def, { Scale = K.PET_SCALE * u.scale, Detail = detail })
+	if u.crowned then
+		def = Ring.Crowned(def) -- the ring champion wears PetBuilder's voxel crown
+	end
+	-- evolved units use the Low evolved form (within the petEvoLow / petEvo2Low budgets), like evolved followers
+	local detail = (u.mine and u.evo == 0) and "High" or "Low"
+	local model = PetBuilder.Build(def, { Scale = K.PET_SCALE * u.scale, Detail = detail, Evolved = u.evo > 0 and u.evo or nil })
 	local root = model.PrimaryPart or model:FindFirstChild("Body")
 	if not root or not root:IsA("BasePart") then
 		model:Destroy()
@@ -1285,7 +1334,8 @@ local function buildUnit(B, u)
 	u.root = root
 	u.folder = B.folder
 	model.Name = "Unit_" .. tostring(u.id)
-	addBar(u, root, u.height / 2 + 0.9)
+	model:SetAttribute("BC_Evo", u.evo)
+	Cards.Add(B, u, root)
 	model.Parent = B.folder
 end
 
@@ -1373,6 +1423,9 @@ local function updateUnit(B, u, now, dt, sa, sb, alpha, animate)
 	if u.isBoss then
 		Units.UpdateBoss(B, u, now, down, dt)
 		return
+	end
+	if u.card and (u.cardHp ~= u.hp or u.cardMeter ~= u.meter) then
+		Cards.Live(u) -- only when the snapshot changed the HP / meter (at most 10 Hz), never a write per frame
 	end
 	-- downed pets: poof once, then park
 	if down then
@@ -2110,6 +2163,17 @@ Handlers[EV.End] = function(B)
 	B.simEnded = true
 end
 
+-- Phase 4 duel rule (BattleCatalog.Damage.Overtime): past `at` seconds every hit grows by `perSecond` per second; the
+-- top card says so (a red OVERTIME pill under the enemies) for the rest of the duel
+Handlers[EV.Overtime or "Overtime"] = function(B, ev)
+	if B.overtime then
+		return
+	end
+	B.overtime = true
+	B.overtimeRate = num(ev.perSecond, 0.15)
+	pcall(Hud.Rebuild)
+end
+
 function Net.PlayDue(B, now)
 	local q = B.evq
 	if #q == 0 then
@@ -2633,6 +2697,8 @@ function Hud.Rebuild()
 		return
 	end
 	local isFighting = B.Fighter and not B.ended
+	-- between two ring rounds the top card and the team stay (no flicker); only the commands go
+	local between = B.Fighter and B.ended and B.ringNext ~= nil
 	Hud.teamPlace = nil
 	local mine, enemies = Hud.Lists(B)
 	Hud.mineList = mine
@@ -2640,7 +2706,7 @@ function Hud.Rebuild()
 	-- top card ------------------------------------------------------------------------------
 	local top = Hud.top
 	local topW = m.Compact and min(K.TOP_W_COMPACT, m.W - 16) or K.TOP_W
-	top.Visible = not B.ended or not B.Fighter
+	top.Visible = not B.ended or not B.Fighter or between
 	top.Position = UDim2.new(0.5, 0, 0, 6)
 	if not Hud.topBuilt then
 		Hud.topBuilt = true
@@ -2658,6 +2724,7 @@ function Hud.Rebuild()
 			bar(top, "Side1", 22, COLORS.Ally, { TextSize = 15 }),
 			bar(top, "Side2", 22, COLORS.Enemy, { TextSize = 15 }),
 		}
+		Ring.BuildInfo(top)
 	end
 	local y = K.PAD
 	local pillSize = max(15, math.ceil(K.MIN_TEXT_PX / max(0.05, m.F)))
@@ -2685,7 +2752,7 @@ function Hud.Rebuild()
 		setText(Hud.bossElement, tostring(B.boss.element or "?"))
 		Hud.bossElement.BackgroundColor3 = elementColor(B.boss.element)
 		y = y + 28
-	elseif not isFighting then
+	elseif not isFighting and not between then
 		-- spectator of a duel / trial: one HP bar per side
 		for s = 1, 2 do
 			local sb = Hud.sideBars[s]
@@ -2712,12 +2779,13 @@ function Hud.Rebuild()
 		end
 		y = y + (n > 0 and 56 or 0)
 	end
+	y = Ring.LayoutInfo(B, topW, y)
 	top.Size = UDim2.fromOffset(topW, y + K.PAD - 4)
 	Hud.topH = y + K.PAD - 4
 	-- team + commands ---------------------------------------------------------------------------
-	Hud.team.Visible = isFighting
+	Hud.team.Visible = isFighting or between
 	Hud.cmd.Visible = isFighting
-	if isFighting then
+	if isFighting or between then
 		for i, u in ipairs(mine) do
 			local row = rowFor(i)
 			row.slot = u.slot
@@ -2831,7 +2899,9 @@ function Hud.Rebuild()
 		Hud.retreatKey.Visible = not m.Touch
 		Hud.Keys()
 	end
-	Hud.SetMenuHidden(isFighting and Hud.teamPlace == "Left")
+	Hud.cmd.Visible = isFighting
+	Hud.SetMenuHidden((isFighting or between) and Hud.teamPlace == "Left")
+	Ring.PlaceNext(B)
 	Hud.TrimButton(Hud.attack, m.Compact)
 	Hud.TrimButton(Hud.retreat, m.Compact)
 	Hud.FixText(Hud.root, m.F)
@@ -3089,6 +3159,9 @@ function Hud.ModeText(B)
 		text, color = "BOSS RAID", COLORS.Enemy
 	elseif B.Mode == "Trial" then
 		text, color = "TRIAL " .. tostring(B.Trial and B.Trial.Level or B.Level or ""), Color3.fromRGB(150, 110, 220)
+	elseif B.Mode == "Ring" then
+		-- a compact top card keeps the room for "Round 8 - Best 12"
+		text, color = (Hud.m and Hud.m.Compact) and "RING" or "CHAMPION RING", Ring.GOLD
 	else
 		text, color = "DUEL", COLORS.Ally
 	end
@@ -3112,6 +3185,9 @@ function Hud.SideName(B, side)
 	if B.Mode == "Trial" and side == 2 then
 		return (B.Trial and B.Trial.Name) or "Trial team"
 	end
+	if B.Mode == "Ring" and side == 2 then
+		return "The Champion"
+	end
 	return side == 1 and "Blue side" or "Red side"
 end
 
@@ -3124,6 +3200,8 @@ function Hud.TitleText(B)
 			return tostring(t.Name)
 		end
 		return "Trial " .. tostring(B.Level or "")
+	elseif B.Mode == "Ring" then
+		return Ring.TitleText(B)
 	end
 	if B.Spectator then
 		return Hud.SideName(B, 1) .. " vs " .. Hud.SideName(B, 2)
@@ -3174,6 +3252,8 @@ function Hud.ShowResult(B, payload)
 	local sub = reasons[tostring(payload.Reason)] or ""
 	if B.Mode == "Trial" then
 		sub = "Trial " .. tostring(B.Trial and B.Trial.Level or B.Level or "") .. (sub ~= "" and (" - " .. sub) or "")
+	elseif B.Mode == "Ring" then
+		titleText, color, sub = Ring.ResultTitle(B, payload, sub)
 	end
 	local w = m.Compact and min(K.RESULT_W, m.W - 16) or K.RESULT_W
 	if m.Compact and m.Landscape then
@@ -3195,7 +3275,7 @@ function Hud.ShowResult(B, payload)
 	local list = make("Frame", { Name = "Rewards", BackgroundTransparency = 1, Position = UDim2.fromOffset(K.PAD, y), Size = UDim2.fromOffset(w - 2 * K.PAD, 10), AutomaticSize = Enum.AutomaticSize.Y }, res)
 	make("UIGridLayout", { CellSize = UDim2.fromOffset(floor((w - 2 * K.PAD - 8) / 2), 30), CellPadding = UDim2.fromOffset(8, 6), SortOrder = Enum.SortOrder.LayoutOrder }, list)
 	local rw = type(payload.Rewards) == "table" and payload.Rewards or {}
-	local lines = Hud.RewardLines(B, rw)
+	local lines = (B.Mode == "Ring") and Ring.ResultLines(B, rw) or Hud.RewardLines(B, rw)
 	for i, line in ipairs(lines) do
 		local p = smallPill(list, line[1], line[2], { LayoutOrder = i, AutomaticSize = Enum.AutomaticSize.None, Size = UDim2.fromScale(1, 1) })
 		p.TextSize = 17
@@ -3231,6 +3311,7 @@ function Hud.ShowResult(B, payload)
 	end
 	res.Visible = true
 	Hud.FixText(res, m.F)
+	Ring.HideNext()
 	Hud.top.Visible = false
 	Hud.team.Visible = false
 	Hud.cmd.Visible = false
@@ -3345,6 +3426,608 @@ function Hud.SetMenuHidden(on)
 	elseif not on then
 		Hud.menuHidden = false
 	end
+end
+
+----------------------------------------------------------------------
+-- Phase 4: unit cards (src/client/UI/PetCard.lua; ARCHITECTURE_V3.md "Phase 4 build contract" 3.9)
+----------------------------------------------------------------------
+-- the card above every pet unit: own pets "Unit" (level + HP + SPECIAL + XP), a teammate's "Ally" (level + HP),
+-- enemies / NPCs "Enemy" (level + HP in red). The billboard keeps the Phase 3 name HpBar (its HP fill is
+-- Plate.Hp.Fill). Fills are written only when the snapshot changed a value (Cards.Live), never per frame.
+function Cards.ModeOf(u)
+	if u.mine then
+		return "Unit"
+	elseif u.ally then
+		return "Ally"
+	end
+	return "Enemy"
+end
+
+function Cards.Add(B, u, root)
+	local h = (u.height or 3) / 2 + 0.9
+	local ok, c = false, nil
+	if Mods.PetCard and type(Mods.PetCard.New) == "function" then
+		ok, c = pcall(Mods.PetCard.New, root, Cards.ModeOf(u), h, { Parent = u.model, Name = "HpBar" })
+	end
+	if not ok or type(c) ~= "table" then
+		if Mods.PetCard then
+			warnOnce("card", "PetCard.New failed: " .. tostring(c))
+		end
+		addBar(u, root, h) -- the Phase 3 bar (a build without PetCard)
+		return
+	end
+	u.card = c
+	u.cardWrites = 0
+	u.cardHp, u.cardMeter = nil, nil
+	Cards.Static(u)
+	Cards.Live(u)
+	if u.crowned then
+		pcall(Ring.Tag, B, u, root, h)
+	end
+end
+
+function Cards.Free(u)
+	if u.card then
+		pcall(u.card.Destroy, u.card)
+		u.card = nil
+	end
+end
+
+-- the XP curve (TycoonCatalog.XpToNext; nil past the cap) and the pet's cap (PetCatalog: 100 for every rarity)
+function Cards.Need(level)
+	local TC = Mods.Tycoon
+	if TC and type(TC.XpToNext) == "function" then
+		local ok, need = pcall(TC.XpToNext, level)
+		need = ok and tonumber(need) or nil
+		if need and need > 0 and need < math.huge then
+			return need
+		end
+	end
+	return nil
+end
+
+function Cards.Cap(u)
+	if PetCatalog then
+		if type(PetCatalog.LevelCap) == "function" then
+			local ok, cap = pcall(PetCatalog.LevelCap, u.info and u.info.petId)
+			if ok and tonumber(cap) then
+				return tonumber(cap)
+			end
+		end
+		if type(PetCatalog.MaxPetLevel) == "function" then
+			local ok, cap = pcall(PetCatalog.MaxPetLevel)
+			if ok and tonumber(cap) then
+				return tonumber(cap)
+			end
+		end
+		if tonumber(PetCatalog.MaxLevel) then
+			return tonumber(PetCatalog.MaxLevel)
+		end
+	end
+	return math.huge
+end
+
+-- XP bar: xp / xpNext; the server leaves xpNext out at the cap (a full bar); 0 when the XP is unknown
+function Cards.XpFrac(u)
+	if u.xp == nil then
+		return 0
+	end
+	local need = u.xpNext
+	if need == nil or need ~= need or need >= math.huge then
+		return 1
+	end
+	return clamp(u.xp / max(1, need), 0, 1)
+end
+
+-- level, stars and XP (on Start, after the rewards, on a State change)
+function Cards.Static(u)
+	local c = u.card
+	if not c then
+		return
+	end
+	c:SetLevel(u.level, u.evo, false)
+	if u.mine then
+		c:SetXp(Cards.XpFrac(u))
+	end
+end
+
+-- HP and SPECIAL from the latest snapshot values (called only when one of them changed)
+function Cards.Live(u)
+	local c = u.card
+	if not c then
+		return
+	end
+	if u.cardHp ~= u.hp then
+		u.cardHp = u.hp
+		c:SetHp(clamp(u.hp / u.maxHp, 0, 1))
+		u.cardWrites = (u.cardWrites or 0) + 1
+	end
+	if u.cardMeter ~= u.meter then
+		u.cardMeter = u.meter
+		if u.mine then
+			local frac = clamp(u.meter / METER_MAX, 0, 1)
+			c:SetSpecial(frac, frac >= 1 and u.special ~= nil)
+			u.cardWrites = (u.cardWrites or 0) + 1
+		end
+	end
+end
+
+-- a raid spectator who joins the fight: the card switches its mode with the side
+function Cards.Restyle(u)
+	if u.card then
+		u.card:SetMode(Cards.ModeOf(u))
+		u.cardHp, u.cardMeter = nil, nil
+		Cards.Static(u)
+		Cards.Live(u)
+	end
+end
+
+-- display only: the fight's XP (End.Rewards.Xp per team pet) moves my cards' XP bars (levels roll over on the curve);
+-- the next Start / the profile mirror bring the server's numbers
+function Cards.AddXp(u, xp)
+	if u.xp == nil or xp <= 0 then
+		return
+	end
+	u.xp = u.xp + xp
+	local cap, guard = Cards.Cap(u), 0
+	while u.xpNext and u.xpNext < math.huge and u.xp >= u.xpNext and guard < 200 do
+		u.xp = u.xp - u.xpNext
+		u.level = u.level + 1
+		guard = guard + 1
+		u.xpNext = (u.level < cap) and Cards.Need(u.level) or nil
+	end
+	Cards.Static(u)
+end
+
+function Cards.AfterFight(B, payload)
+	local rw = type(payload) == "table" and type(payload.Rewards) == "table" and payload.Rewards or nil
+	local xp = rw and num(rw.Xp, 0) or 0
+	if xp <= 0 or not B.Fighter or payload.Spectator == true then
+		return
+	end
+	for _, u in pairs(B.mine) do
+		Cards.AddXp(u, xp)
+	end
+end
+
+-- the profile mirror (State.PetLevel) only ever moves a card forward (a stale mirror never undoes the rewards)
+function Cards.FromState(B)
+	local S = Mods.State
+	if not B or not B.Fighter or not S or type(S.PetLevel) ~= "function" then
+		return
+	end
+	if type(S.IsLoaded) == "function" and not S.IsLoaded() then
+		return
+	end
+	for _, u in pairs(B.mine) do
+		local key = u.info and u.info.key
+		if type(key) == "string" and u.xp ~= nil then
+			local ok, lv, xp = pcall(S.PetLevel, key)
+			lv, xp = ok and tonumber(lv) or nil, ok and tonumber(xp) or nil
+			if lv and xp and (lv > u.level or (lv == u.level and xp > u.xp)) then
+				u.level, u.xp = lv, xp
+				u.xpNext = (lv < Cards.Cap(u)) and Cards.Need(lv) or nil
+				Cards.Static(u)
+			end
+		end
+	end
+end
+
+----------------------------------------------------------------------
+-- Phase 4: the Champion Ring HUD (contract 3.8) and duel overtime
+----------------------------------------------------------------------
+Ring.GOLD = Color3.fromRGB(250, 190, 56) -- the ring's champion gold (ArenaBuilder's Ring.Color)
+Ring.VIOLET = Color3.fromRGB(156, 96, 238)
+Ring.INTERMISSION = tonumber(BattleCatalog and type(BattleCatalog.Ring) == "table" and BattleCatalog.Ring.Intermission) or 3
+Ring.LINGER = 15 -- seconds a won round's floor waits for the next Start (BattleService sends it after INTERMISSION)
+
+function Ring.IsFinal(payload)
+	return type(payload) == "table" and type(payload.Rewards) == "table" and payload.Rewards.Final == true
+end
+
+-- a won round that the next one follows: End.Rewards.Next (never the run's final End)
+function Ring.IsNext(B, payload)
+	local rw = type(payload.Rewards) == "table" and payload.Rewards or nil
+	return B.Mode == "Ring" and rw ~= nil and rw.Next ~= nil and rw.Final ~= true
+		and (payload.Won == true or payload.Outcome == "Win" or rw.Won == true)
+end
+
+function Ring.Money(n)
+	return "$" .. Theme.ShortNumber(num(n, 0))
+end
+
+function Ring.TitleText(B)
+	local round = B.Round > 0 and B.Round or 1
+	local best = B.Ring and num(B.Ring.Best, 0) or 0
+	if best > 0 then
+		return "Round " .. round .. " - Best " .. best
+	end
+	return "Round " .. round
+end
+
+-- the champion is built wearing PetBuilder's voxel crown accessory (a copy of its definition, cached by look)
+function Ring.Crowned(def)
+	if type(def) ~= "table" or type(def.Look) ~= "table" then
+		return def
+	end
+	local copy = {}
+	for k, v in pairs(def) do
+		copy[k] = v
+	end
+	local look = {}
+	for k, v in pairs(def.Look) do
+		look[k] = v
+	end
+	look.Accessory = "Crown"
+	copy.Look = look
+	return copy
+end
+
+-- the champion's name tag: a pixel billboard above its card (same anchor; the tag sits at the top of a taller,
+-- transparent frame, so it keeps a fixed pixel gap above the card at any distance)
+function Ring.Tag(B, u, root, h)
+	local champ = B.Ring and type(B.Ring.Champion) == "table" and B.Ring.Champion or {}
+	local name = tostring(champ.Name or u.name or "Champion")
+	if not string.find(name, "^Champion") then
+		name = "Champion " .. name
+	end
+	local px = Theme.ScaledSize(22, 16)
+	local th = Theme.ScaledSize(32, 24)
+	local gap = Theme.ScaledSize(8, 5)
+	local cardH = (u.card and u.card.Gui and u.card.Gui.Size.Y.Offset) or th
+	local w = floor(min(Theme.ScaledSize(300, 220), textWidth(name, px) + Theme.ScaledSize(30, 22)))
+	local gui = make("BillboardGui", {
+		Name = "ChampionTag",
+		Adornee = root,
+		Size = UDim2.fromOffset(w, cardH + 2 * (th + gap)),
+		StudsOffset = Vector3.new(0, h, 0),
+		AlwaysOnTop = true,
+		LightInfluence = 0,
+		MaxDistance = K.BAR_DISTANCE,
+		ResetOnSpawn = false,
+	})
+	local plate = make("Frame", { Name = "Plate", BackgroundColor3 = COLORS.Navy, BackgroundTransparency = 0.08, BorderSizePixel = 0, Size = UDim2.new(1, 0, 0, th) }, gui)
+	Theme.Corner(plate, UDim.new(0, 9))
+	Theme.Stroke(plate, Ring.GOLD, 2, 0)
+	local l = label(plate, name, "Heading", px, { Name = "Name", Size = UDim2.fromScale(1, 1), TextXAlignment = Enum.TextXAlignment.Center, TextColor3 = Ring.GOLD })
+	l.TextStrokeColor3 = COLORS.Ink
+	gui.Parent = u.model
+	u.tag = gui
+end
+
+-- "Win: +$X +Y XP" (BattleCatalog.RingRewards with the plot's IncomePerSecond, display only: the server pays)
+function Ring.Income()
+	local index = LocalPlayer and LocalPlayer:GetAttribute(Config.Attr.SpotIndex or "SpotIndex")
+	if type(index) ~= "number" then
+		return 0
+	end
+	local folder = Ring.plot
+	if not (folder and folder.Parent and folder:GetAttribute("SpotIndex") == index) then
+		local lobby = workspace:FindFirstChild("NimbusLobby")
+		folder = lobby and lobby:FindFirstChild(string.format("Spot_%02d", index), true) or nil
+		Ring.plot = folder
+	end
+	local value = folder and folder:GetAttribute("IncomePerSecond")
+	return type(value) == "number" and value or 0
+end
+
+function Ring.Preview(B)
+	if B.ringPreview then
+		return B.ringPreview
+	end
+	local round = B.Round > 0 and B.Round or 1
+	local best = B.Ring and num(B.Ring.Best, 0) or 0
+	local cfg = BattleCatalog and type(BattleCatalog.Ring) == "table" and BattleCatalog.Ring or {}
+	local every = num(cfg.BossEvery, 10)
+	local champ = B.Ring and type(B.Ring.Champion) == "table" and B.Ring.Champion or {}
+	local p = { Round = round, Record = round > best, Boss = champ.Boss == true or (every > 0 and round % every == 0), Cash = 0, Xp = 0, Tokens = 0 }
+	if BattleCatalog and type(BattleCatalog.RingRewards) == "function" then
+		local ok, r = pcall(BattleCatalog.RingRewards, round, Ring.Income(), p.Record)
+		if ok and type(r) == "table" then
+			p.Cash, p.Xp, p.Tokens = num(r.Cash, 0), num(r.Xp, 0), num(r.Tokens, 0)
+		end
+	end
+	B.ringPreview = p
+	return p
+end
+
+-- the info row of the top card: ring (win pay, record, boss round) or duel overtime
+function Ring.BuildInfo(top)
+	local info = make("Frame", { Name = "RingInfo", BackgroundTransparency = 1, Visible = false }, top)
+	make("UIListLayout", { FillDirection = Enum.FillDirection.Horizontal, HorizontalAlignment = Enum.HorizontalAlignment.Center, Padding = UDim.new(0, 6), SortOrder = Enum.SortOrder.LayoutOrder, VerticalAlignment = Enum.VerticalAlignment.Center }, info)
+	Hud.info = info
+	Hud.infoWin = smallPill(info, "", Theme.Currency.Cash.Color, { Name = "WinPay", LayoutOrder = 1 })
+	Hud.infoRecord = smallPill(info, "RECORD x3", Ring.GOLD, { Name = "Record", LayoutOrder = 2, Visible = false })
+	Hud.infoBoss = smallPill(info, "BOSS", Ring.VIOLET, { Name = "Boss", LayoutOrder = 3, Visible = false })
+	Hud.infoOver = smallPill(info, "OVERTIME", COLORS.Enemy, { Name = "Overtime", LayoutOrder = 4, Visible = false })
+end
+
+function Ring.LayoutInfo(B, topW, y)
+	local info = Hud.info
+	if not info then
+		return y
+	end
+	local ring = B.Mode == "Ring" and B.Fighter
+	local over = B.overtime == true
+	if not ring and not over then
+		info.Visible = false
+		return y
+	end
+	info.Visible = true
+	Hud.infoWin.Visible = ring
+	Hud.infoRecord.Visible = false
+	Hud.infoBoss.Visible = false
+	if ring then
+		local p = Ring.Preview(B)
+		-- (a compact top card drops the "Win:" so the pills fit its width)
+		local compact = Hud.m and Hud.m.Compact
+		setText(Hud.infoWin, (compact and "+" or "Win: +") .. Ring.Money(p.Cash) .. "  +" .. Theme.ShortNumber(p.Xp) .. " XP")
+		Hud.infoRecord.Visible = p.Record and B.Round > 1
+		Hud.infoBoss.Visible = p.Boss
+	end
+	Hud.infoOver.Visible = over
+	if over then
+		setText(Hud.infoOver, "OVERTIME: hits +" .. floor(num(B.overtimeRate, 0.15) * 100 + 0.5) .. "% a second")
+	end
+	info.Position = UDim2.fromOffset(K.PAD, y)
+	info.Size = UDim2.fromOffset(topW - 2 * K.PAD, 26)
+	return y + 30
+end
+
+-- the side card between two rounds: "Round 8 won!" / "+$319  +68 XP" / "Round 9 in 3" (never the screen centre:
+-- where the commands were on a wide screen, under the team cards on a tall phone, at the right edge in landscape)
+function Ring.EnsureNext()
+	if Hud.next and Hud.next.Parent then
+		return Hud.next
+	end
+	if not Hud.root then
+		return nil
+	end
+	local f = card(Hud.root, "NextRoundCard", { Visible = false })
+	Hud.next = f
+	Hud.nextTitle = label(f, "", "Title", 28, { Name = "Title", TextXAlignment = Enum.TextXAlignment.Left, TextColor3 = Ring.GOLD })
+	Hud.nextTitle.TextStrokeColor3 = COLORS.Ink
+	Hud.nextLine = label(f, "", "Heading", 21, { Name = "Pay", TextXAlignment = Enum.TextXAlignment.Left })
+	Hud.nextExtra = label(f, "", "Label", 18, { Name = "Extra", TextXAlignment = Enum.TextXAlignment.Left, TextColor3 = COLORS.Mine })
+	Hud.nextCount = label(f, "", "Display", 24, { Name = "Countdown", TextXAlignment = Enum.TextXAlignment.Left, TextColor3 = COLORS.White })
+	Hud.nextBar = thinBar(f, "Timer", 8, Ring.GOLD)
+	return f
+end
+
+function Ring.ShowNext(B, payload)
+	local rw = payload.Rewards
+	local round = num(rw.Round, B.Round)
+	B.ringNext = {
+		Round = round,
+		Next = num(rw.Next, round + 1),
+		Cash = num(rw.Cash, 0),
+		Xp = num(rw.Xp, 0),
+		Tokens = num(rw.Tokens, 0),
+		Record = rw.Record == true,
+		At = os.clock(),
+		Seconds = Ring.INTERMISSION,
+	}
+	if rw.Record == true and B.Ring then
+		B.Ring.Best = max(num(B.Ring.Best, 0), round)
+	end
+	St.next = B.ringNext
+	St.result = nil
+	if Hud.result then
+		Hud.result.Visible = false
+	end
+	pcall(Hud.Rebuild) -- top card + team stay, the commands go, Ring.PlaceNext shows the side card
+	BattleController._wake()
+end
+
+function Ring.PlaceNext(B)
+	local nx = B and B.ringNext
+	if not nx then
+		if Hud.next then
+			Hud.next.Visible = false
+		end
+		return
+	end
+	local f = Ring.EnsureNext()
+	if not f then
+		return
+	end
+	local m = Hud.m or Hud.Metrics()
+	setText(Hud.nextTitle, "Round " .. nx.Round .. " won!")
+	setText(Hud.nextLine, "+" .. Ring.Money(nx.Cash) .. "   +" .. Theme.ShortNumber(nx.Xp) .. " XP")
+	local extra = {}
+	if nx.Record then
+		extra[#extra + 1] = "New record! Cash x3"
+	end
+	if nx.Tokens > 0 then
+		extra[#extra + 1] = "+" .. Theme.ShortNumber(nx.Tokens) .. " Tokens"
+	end
+	Hud.nextExtra.Visible = #extra > 0
+	setText(Hud.nextExtra, table.concat(extra, "  "))
+	local teamW, teamH = Hud.team.Size.X.Offset, Hud.team.Size.Y.Offset
+	local topW = Hud.top.Size.X.Offset
+	local w
+	if not m.Compact then
+		w = max(teamW, 380)
+		f.AnchorPoint = Vector2.new(1, 1)
+		f.Position = UDim2.new(1, -K.EDGE, 1, -K.EDGE - teamH - 14)
+	elseif m.Landscape then
+		-- under the currency pill, above the DASH / jump buttons (where the commands were)
+		w = max(240, min(340, floor((m.W - topW) / 2) - 16))
+		f.AnchorPoint = Vector2.new(1, 0)
+		f.Position = UDim2.fromOffset(m.W - 8, max(floor(m.H * 0.2), Ring.CurrencyBottom(m)))
+	else
+		-- under the team cards, right-aligned and clear of the menu column at the left edge
+		w = min(400, m.W - 16 - Ring.MenuRight(m))
+		f.AnchorPoint = Vector2.new(1, 0)
+		f.Position = UDim2.fromOffset(m.W - 8, 6 + (Hud.topH or 80) + 8 + teamH + 10)
+	end
+	local inner = w - 2 * K.PAD - 8
+	local y = K.PAD
+	Hud.nextTitle.Position = UDim2.fromOffset(K.PAD + 4, y)
+	Hud.nextTitle.Size = UDim2.fromOffset(inner, 32)
+	y = y + 34
+	Hud.nextLine.Position = UDim2.fromOffset(K.PAD + 4, y)
+	Hud.nextLine.Size = UDim2.fromOffset(inner, 26)
+	y = y + 28
+	if #extra > 0 then
+		Hud.nextExtra.Position = UDim2.fromOffset(K.PAD + 4, y)
+		Hud.nextExtra.Size = UDim2.fromOffset(inner, 22)
+		y = y + 26
+	end
+	Hud.nextCount.Position = UDim2.fromOffset(K.PAD + 4, y)
+	Hud.nextCount.Size = UDim2.fromOffset(inner, 30)
+	y = y + 32
+	Hud.nextBar.Root.Position = UDim2.fromOffset(K.PAD + 4, y)
+	Hud.nextBar.Root.Size = UDim2.fromOffset(inner, 8)
+	y = y + 8 + K.PAD
+	f.Size = UDim2.fromOffset(w, y)
+	f.Visible = true
+	Hud.FixText(f, m.F)
+	Ring.UpdateNext(os.clock())
+end
+
+-- the right edge of the menu column (MenuController's MenuColumn) in design px, 0 when it is hidden / missing
+function Ring.MenuRight(m)
+	local pg = LocalPlayer and LocalPlayer:FindFirstChild("PlayerGui")
+	local menu = pg and pg:FindFirstChild("NimbusMenu")
+	local col = menu and menu.Enabled ~= false and menu:FindFirstChild("MenuColumn", true)
+	if not col or Hud.menuHidden then
+		return 0
+	end
+	local right = col.AbsolutePosition.X + col.AbsoluteSize.X
+	return max(0, math.ceil(right / max(0.05, m.F)) + 4)
+end
+
+-- the bottom of the HUD's currency pills (NimbusHud TopRight.Currency; 1 to 3 pills) in design px + a gap, 0 if none
+function Ring.CurrencyBottom(m)
+	local pg = LocalPlayer and LocalPlayer:FindFirstChild("PlayerGui")
+	local hud = pg and pg:FindFirstChild("NimbusHud")
+	local top = hud and hud:FindFirstChild("TopRight", true)
+	local cur = top and top:FindFirstChild("Currency") or top
+	if not cur or not cur:IsA("GuiObject") or not cur.Visible then
+		return 0
+	end
+	local bottom = cur.AbsolutePosition.Y + cur.AbsoluteSize.Y
+	return max(0, math.ceil(bottom / max(0.05, m.F)) + 8)
+end
+
+-- the countdown (a text write only when the shown second changes)
+function Ring.UpdateNext(now)
+	local nx = St.next
+	if not nx then
+		return
+	end
+	local f = Hud.next
+	if not f or not f.Visible or not St.battle or St.battle.ringNext ~= nx then
+		Ring.HideNext()
+		return
+	end
+	local left = nx.Seconds - (now - nx.At)
+	local text = (left > 0.05) and ("Round " .. nx.Next .. " in " .. math.ceil(left - 0.05)) or ("Round " .. nx.Next .. "...")
+	setText(Hud.nextCount, text)
+	setThin(Hud.nextBar, clamp(left / max(0.1, nx.Seconds), 0, 1))
+end
+
+function Ring.HideNext()
+	St.next = nil
+	if Hud.next then
+		Hud.next.Visible = false
+	end
+end
+
+-- the run ended between two rounds (its final End names the last round's id): the result card replaces the side card
+function Ring.FinalAfterWin(B, payload)
+	B.ringNext = nil
+	Ring.HideNext()
+	B.linger = K.END_LINGER
+	B.endAt = os.clock()
+	Hud.ShowResult(B, payload)
+end
+
+-- my pets' models + cards out of a won round (to be handed to the next round's units of the same key)
+function Ring.TakeModels(B)
+	local out = {}
+	for _, u in pairs(B.mine) do
+		local key = u.info and u.info.key
+		if type(key) == "string" and u.model and not u.failed and out[key] == nil then
+			out[key] = { model = u.model, root = u.root, height = u.height, centerY = u.centerY, rigid = u.rigid, card = u.card, evo = u.evo, x = u.x, z = u.z, yaw = u.yaw }
+			u.model, u.root, u.card = nil, nil, nil
+			out[key].model.Parent = nil
+		end
+	end
+	return out
+end
+
+function Ring.GiveModels(B, carry)
+	for _, u in pairs(B.mine) do
+		local key = u.info and u.info.key
+		local c = type(key) == "string" and carry[key] or nil
+		if c and c.evo == u.evo and not u.model then
+			carry[key] = nil
+			u.model, u.root, u.height, u.centerY, u.rigid, u.card = c.model, c.root, c.height, c.centerY, c.rigid, c.card
+			u.x, u.z, u.yaw, u.seen = c.x, c.z, c.yaw, false
+			u.folder = B.folder
+			u.model.Name = "Unit_" .. tostring(u.id)
+			u.model.Parent = B.folder
+			u.cardWrites = 0
+			u.cardHp, u.cardMeter = nil, nil
+			u.carried = true
+			if u.card then
+				u.card:SetMode(Cards.ModeOf(u))
+				Cards.Static(u)
+				Cards.Live(u)
+			end
+		end
+	end
+	for _, c in pairs(carry) do
+		if c.card then
+			pcall(c.card.Destroy, c.card)
+		end
+		pcall(c.model.Destroy, c.model)
+	end
+end
+
+-- the result card of a run: RUN OVER / NEW RECORD!, where it ended
+function Ring.ResultTitle(B, payload, sub)
+	local rw = type(payload.Rewards) == "table" and payload.Rewards or {}
+	local run = type(rw.Run) == "table" and rw.Run or {}
+	local round = num(run.Round, num(rw.Round, B.Round))
+	local title = run.Record ~= nil and "NEW RECORD!" or "RUN OVER"
+	local why
+	if rw.Void == true then
+		why = "server restart: round " .. round .. " does not count"
+	elseif payload.Outcome == "Left" or payload.Reason == "Forfeit" or payload.Reason == "Left" then
+		why = "you left after round " .. round
+	elseif payload.Reason == "Timeout" then
+		why = "time ran out in round " .. round
+	else
+		why = "the champion won round " .. round
+	end
+	return title, Ring.GOLD, "Champion Ring: " .. why
+end
+
+-- the run's lines: Rounds won, Cash, XP, Tokens, the record
+function Ring.ResultLines(B, rw)
+	local run = type(rw.Run) == "table" and rw.Run or nil
+	if not run then
+		return Hud.RewardLines(B, rw)
+	end
+	local lines = {}
+	local wins = num(run.Wins, 0)
+	lines[#lines + 1] = { "Rounds won: " .. wins, COLORS.Gold }
+	lines[#lines + 1] = { "+" .. Ring.Money(run.Cash) .. " Cash", Theme.Currency.Cash.Color }
+	lines[#lines + 1] = { "+" .. Theme.ShortNumber(num(run.Xp, 0)) .. " Pet XP", COLORS.Ally }
+	local tokens = num(run.Tokens, 0)
+	if tokens > 0 then
+		lines[#lines + 1] = { "+" .. Theme.ShortNumber(tokens) .. " Tokens", Theme.Currency.Tokens.Color }
+	end
+	-- (level-ups are the server's toasts: the card stays short enough for a landscape phone)
+	if run.Record ~= nil then
+		lines[#lines + 1] = { "Best: round " .. tostring(run.Record) .. "!", COLORS.Mine }
+	elseif num(run.Best, 0) > 0 then
+		lines[#lines + 1] = { "Best: round " .. tostring(num(run.Best, 0)), COLORS.Weak }
+	end
+	return lines
 end
 
 ----------------------------------------------------------------------
@@ -3641,6 +4324,12 @@ function Net.Cleanup(B, immediate)
 	end
 	if St.battle == B then
 		St.battle = nil
+		if B.ringNext then
+			Ring.HideNext()
+		end
+		if B.Mode == "Ring" then
+			St.ringLast = B -- a run's final "End" may still come for this battle id (it ended between two rounds)
+		end
 		Input.Bind(false)
 		if not St.result then
 			Hud.SetVisible(false)
@@ -3683,6 +4372,7 @@ function Net.Start(payload, battleId)
 				if u.barFill then
 					u.barFill.BackgroundColor3 = u.mine and COLORS.Mine or (u.ally and COLORS.Ally or COLORS.Enemy)
 				end
+				Cards.Restyle(u)
 			end
 		end
 		for i = #B.list, 1, -1 do
@@ -3695,6 +4385,9 @@ function Net.Start(payload, battleId)
 		Hud.Rebuild()
 		return
 	end
+	-- the next Champion Ring round in the same pocket: my pets' models (and their cards) carry over, so nothing
+	-- blinks between End and Start
+	local carry = (B and B.ringNext and tostring(payload.Mode) == "Ring") and Ring.TakeModels(B) or nil
 	if B then
 		Net.Cleanup(B, false)
 	end
@@ -3705,6 +4398,11 @@ function Net.Start(payload, battleId)
 	for _, info in ipairs(type(payload.Units) == "table" and payload.Units or {}) do
 		Units.Add(B, info)
 	end
+	if carry then
+		Ring.GiveModels(B, carry)
+	end
+	Ring.HideNext()
+	St.ringLast = nil
 	-- spread the first positions from the static info until the first snapshot arrives
 	if B.Mode == "Raid" then
 		local BB = lazyBoss()
@@ -3802,10 +4500,18 @@ function Net.End(payload, battleId)
 		return
 	end
 	local id = payload.BattleId or battleId
+	if not B and St.ringLast and St.ringLast.Id == id and Ring.IsFinal(payload) then
+		Hud.ShowResult(St.ringLast, payload) -- the run's card after the last round's floor was already freed
+		St.ringLast = nil
+		return
+	end
 	if not B or (id ~= nil and id ~= B.Id) then
 		return
 	end
 	if B.ended then
+		if B.ringNext and Ring.IsFinal(payload) then
+			Ring.FinalAfterWin(B, payload) -- the run ended between two rounds (Forfeit, a leave, a shutdown...)
+		end
 		return
 	end
 	-- play what is still queued, so the last KO shows
@@ -3816,7 +4522,17 @@ function Net.End(payload, battleId)
 	B.endAt = os.clock()
 	Input.Bind(false)
 	local participant = payload.Spectator ~= true and B.Fighter
-	if participant then
+	Cards.AfterFight(B, payload)
+	if participant and Ring.IsNext(B, payload) then
+		-- a won Champion Ring round: the side card "Round 8 won! ... Round 9 in 3", the floor stays until the next Start
+		B.linger = Ring.LINGER
+		Ring.ShowNext(B, payload)
+		for _, u in ipairs(B.list) do
+			if u.ally and u.root and not u.parked then
+				u.hopAt = os.clock() + math.random() * 0.4
+			end
+		end
+	elseif participant then
 		B.linger = K.END_LINGER
 		Hud.ShowResult(B, payload)
 		-- winners cheer
@@ -4002,6 +4718,7 @@ local function onFrame(dt)
 	Fx.UpdateNumbers(now)
 	Fx.UpdateFlashes(now)
 	Hud.UpdateResult(now)
+	Ring.UpdateNext(now)
 	section("Effects", f0)
 	local ms = (perfClock() - p0) * 1000
 	local perf = St.perf
@@ -4012,7 +4729,7 @@ local function onFrame(dt)
 		perf.peak = ms
 	end
 	-- the loop sleeps when nothing is drawn
-	if not St.battle and #St.effects == 0 and #St.numbers == 0 and #St.flashes == 0 and not St.result then
+	if not St.battle and #St.effects == 0 and #St.numbers == 0 and #St.flashes == 0 and not St.result and not St.next then
 		if St.loop then
 			St.loop:Disconnect()
 			St.loop = nil
@@ -4069,6 +4786,11 @@ function BattleController.GetBattle()
 		end)(),
 		Threat = B.threat == true,
 		Cue = B.cue,
+		-- Phase 4: the ring round / record, the won round waiting for the next Start, duel overtime
+		Round = B.Round > 0 and B.Round or nil,
+		Best = B.Ring and num(B.Ring.Best, 0) or nil,
+		Next = B.ringNext and B.ringNext.Next or nil,
+		Overtime = B.overtime == true,
 		InterpDelay = interpDelay(B),
 		TeamPlace = Hud.teamPlace,
 	}
@@ -4094,6 +4816,10 @@ function BattleController.GetUnit(id)
 		Id = u.id, Side = u.side, Kind = u.kind, Name = u.name, Hp = u.hp, MaxHp = u.maxHp, State = u.state, Meter = u.meter,
 		Model = u.model, X = u.x, Z = u.z, Parked = u.parked == true, Mine = u.mine, Ally = u.ally,
 		World = u.model and unitCenter(B, u) or nil,
+		-- Phase 4: the unit's PetCard ({ Gui, Mode }), level, evolution stage, XP, the ring champion's crown
+		Card = u.card and { Gui = u.card.Gui, Mode = u.card.mode } or nil,
+		Level = u.level, Evo = u.evo, Xp = u.xp, XpNext = u.xpNext, Crowned = u.crowned,
+		Writes = u.cardWrites or 0,
 	}
 end
 
@@ -4171,7 +4897,11 @@ function BattleController.Stop()
 	Hud.teamBack = nil
 	Hud.rows = {}
 	Hud.chips = {}
+	Hud.next = nil
+	Hud.info = nil
 	St.result = nil
+	St.next = nil
+	St.ringLast = nil
 	for _, p in ipairs(St.pool) do
 		pcall(p.Destroy, p)
 	end
@@ -4214,6 +4944,17 @@ function BattleController.Init()
 	end)
 	if okGp and gpConn then
 		conns[#conns + 1] = gpConn
+	end
+	-- own pets' level / XP from the profile mirror (after a fight's rewards land: the cards follow)
+	local okS, sConn = pcall(function()
+		return Mods.State and Mods.State.Changed and Mods.State.Changed:Connect(function()
+			if St.battle then
+				pcall(Cards.FromState, St.battle)
+			end
+		end)
+	end)
+	if okS and sConn then
+		conns[#conns + 1] = sConn
 	end
 	local cam = workspace.CurrentCamera
 	if cam then
