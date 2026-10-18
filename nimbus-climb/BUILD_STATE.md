@@ -18,7 +18,7 @@ Updated: 2026-10-18 (after wave 2). Branch `v3-phase4`. Plan: `ARCHITECTURE_V3.m
 | 2 | tycoon, care, battleservice (Fable); homeworld, arenaworld, pets | DONE (297c9ae). Reports: scratchpad/p4_wave2_notes.md. Lead after: data-test fixes, contract.json (Piles, SetGarden/SetTraining) |
 | 3 | homefx, battleclient, careui, ui | DONE (70b04b6). Reports: scratchpad/p4_wave3_notes.md. Gate in worktree scratchpad/gate_w3 (log gate_w3.log) |
 | 4 | flow, fixer, docs | DONE (wf_07cbfb76-a84, notes scratchpad/p4_wave4_notes.md; leads applied: /petlevel Refresh, COMPAT deleted). Gate w4 GREEN: 8916 pass, 0 fail (b9d875f). |
-| 5 | review + verify + fix, full suite, place file, merge, send | review DONE (wf_a3116583-fae, notes scratchpad/p4_wave5_notes.md, fixes ab78ad4). NOW: LEAVE-button agent (BattleController + README). NEXT: gate, bash tools/run_checks.sh, rojo build play/NimbusClimb.rbxlx + verify_place.py, merge to main, send rbxlx + zip |
+| 5 | review + verify + fix, full suite, place file, merge, send | review DONE (wf_a3116583-fae, notes p4_wave5_notes.md, fixes ab78ad4); LEAVE button DONE (f7dd302, agent full quick 9024/0). NOW: bash tools/run_checks.sh (full) -> scratchpad/final_checks.log. NEXT: rojo build play/NimbusClimb.rbxlx + verify_place.py, merge to main, send rbxlx + zip. Known old layout nits (not fixed): 740x360 / 667x375 tiny phones: battle top card over currency pill, ATTACK over DASH |
 
 ## How to resume a wave
 `Workflow({scriptPath: "<scratchpad>/p4wN.js", resumeFromRunId: "<run id>"})` - done agents replay from cache. Do NOT edit the
