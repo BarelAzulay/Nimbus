@@ -561,7 +561,8 @@
         "Prestige",
         "IncomePerSecond",
         "GardenSet",
-        "GoHome"
+        "GoHome",
+        "Piles"
       ],
       "signals": [
         "HomeChanged",
@@ -636,15 +637,10 @@
         "SetPads",
         "SetOwner",
         "ClearPlot",
-        "GetStation"
-      ],
-      "pending": {
-        "_comment": "ARCHITECTURE_V3.md \"Phase 4 build contract\" section 5.4 (wave 2, homeworld engineer)",
-        "functions": [
-          "SetGarden",
-          "SetTraining"
-        ]
-      }
+        "GetStation",
+        "SetGarden",
+        "SetTraining"
+      ]
     },
     "server/Services/ArenaBuilder": {
       "optional": true,
