@@ -19,8 +19,11 @@
 --   pet changes. Replication rule: the server builds it standing still (every part Anchored) and tags it
 --   "NC_Showcase" (attributes PetId = the key, PetParts, HoverAmp, Ready); ShowcaseController on each CLIENT welds it
 --   locally and hovers / sways / animates it. The server never moves it.
--- * Remotes.GoToSpot -> Teleport (rate limited, refused during a match): home when the player has a plot, otherwise
---   in front of the gate of their last plot when it is free, else of the nearest free plot.
+-- * Remotes.GoToSpot (rate limited, refused during a match and in a battle: Phase 4 safe zones): opens the player's
+--   home portal (TycoonService.OpenHomePortal: it leads home when the player has a plot, otherwise to the gate of
+--   their last plot when it is free, else of the nearest free plot); without TycoonService it teleports directly.
+-- * Teleport(player) (TycoonService's portal, the Home tile): home when the player has a plot, otherwise in front of
+--   the suggested free gate. Refused during a match, in a battle or ring run (the InBattle attribute) and while dead.
 --
 -- Public API: Init(lobbyInfo, deps)  GetSpot(player) -> SpotInfo|nil (the CLAIMED plot)  Teleport(player) -> boolean
 -- Phase 2 (used by TycoonService; the plot data stays here):
@@ -79,6 +82,8 @@ local HEADSHOT_RETRY = 120 -- seconds before a failed headshot request may be tr
 local WELCOME_DELAY = 4 -- seconds after the profile loaded before the "press E at your gate" toast
 local GATE_OUTSIDE = 6 -- studs in front of the gate (street side) where GoToSpot puts a player without a plot
 local GATE_LIFT = 3 -- studs above the ground for that placement (the character's root height)
+local ATTR_IN_BATTLE = Config.Attr.InBattle or "InBattle" -- BattleService's player attribute (the battle id)
+local BATTLE_TEXT = "Finish your battle first!" -- the Arena Gate's refusal text (Phase 4 safe zones)
 
 local initialized = false
 local running = false
@@ -157,6 +162,30 @@ local function getProfile(player)
 		local ok, profile = pcall(dataService.GetProfile, player)
 		if ok and type(profile) == "table" then
 			return profile
+		end
+	end
+	return nil
+end
+
+-- Phase 4 safe zones: no teleport may pull a player out of a battle or a Champion Ring run (X18).
+local function inBattle(player)
+	local v = player:GetAttribute(ATTR_IN_BATTLE)
+	return v ~= nil and v ~= false and v ~= ""
+end
+
+-- TycoonService (a sibling module; it may be absent in a trimmed build): the home portal.
+local tycoonCache = nil
+local function tycoonService()
+	if tycoonCache ~= nil then
+		return tycoonCache or nil
+	end
+	tycoonCache = false
+	local module = script.Parent and script.Parent:FindFirstChild("TycoonService")
+	if module then
+		local ok, result = pcall(require, module)
+		if ok and type(result) == "table" then
+			tycoonCache = result
+			return result
 		end
 	end
 	return nil
@@ -996,12 +1025,16 @@ function SpotService.GetSpots()
 end
 
 -- Pivots the character home (claimed plot) or, without a plot, to the gate of the suggested free plot.
--- Ignored during a match. Returns true when the character was moved.
+-- Ignored during a match, in a battle or ring run (Phase 4 safe zones) and while dead. Returns true when the
+-- character was moved.
 function SpotService.Teleport(player)
 	if not player or not player.Parent then
 		return false
 	end
 	if player:GetAttribute(Config.Attr.InMatch) == true then
+		return false
+	end
+	if inBattle(player) then
 		return false
 	end
 	local humanoid = Util.GetHumanoid(player)
@@ -1030,9 +1063,22 @@ local function onGoToSpot(player)
 	if player:GetAttribute(Config.Attr.InMatch) == true then
 		return
 	end
+	if inBattle(player) then
+		notify(player, BATTLE_TEXT, "bad", 3)
+		return
+	end
 	if not spotOf[player] and not SpotService.SuggestSpot(player) then
 		notify(player, "Every home is taken right now.", "bad", 3)
 		return
+	end
+	-- Phase 4: the Home tile opens the home portal (home, or toward a free gate); it teleports only when the
+	-- owner walks in (TycoonService's 0.2 s loop). Without TycoonService the old direct teleport stays.
+	local tycoon = tycoonService()
+	if tycoon and type(tycoon.OpenHomePortal) == "function" then
+		local ok, opened = pcall(tycoon.OpenHomePortal, player)
+		if ok and opened ~= nil then
+			return
+		end
 	end
 	local moved = SpotService.Teleport(player)
 	if moved and not spotOf[player] then

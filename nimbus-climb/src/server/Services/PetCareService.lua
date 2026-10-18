@@ -1,125 +1,129 @@
--- PetCareService (Phase 2, care): the home's Kitchen, feeding and the Gym (ARCHITECTURE_V3.md "Phase 2: Tycoon homes"
--- items 3-4 and the PetCareService paragraph of the "Phase 2 build contract").
+-- PetCareService (Phase 4, care): the Food Machine, EVOLVE and the Training Place (ARCHITECTURE_V3.md "Phase 4 build
+-- contract" 3.4-3.7, 5.1-5.4). The Phase 2 Kitchen (cooking queue) and Gym (passive XP) that lived in this file are
+-- gone: "Cook" / "GymSet" requests answer one toast that says where the feature went.
 --
--- * Kitchen: Cook(foodId, qty) pays the food's Price in Cash (TycoonCatalog.Foods: Snack / Meal / Feast) and puts the
---   dishes in the Kitchen's cooking queue (at most TycoonCatalog Kitchen Effects[level].Queue dishes, cooking one
---   included). One dish cooks at a time, for TycoonCatalog.CookSecondsFor(foodId, kitchenLevel) seconds (better
---   Kitchens cook faster and unlock better recipes); a finished dish goes straight into the profile's Food
---   (DataService.AddFood). The queue lives on the server for the session and keeps cooking wherever the player is in
---   the server (a match, the lobby, ...). Ordering needs a claimed home with a Kitchen; the Cash check, the payment
---   and the queue write are one non-yielding step (an order for more than the Cash or the queue allows cooks what
---   fits). A player who leaves gets the Cash of the dishes that had not finished back, but only for dishes paid in
---   the current prestige run: a prestige resets Cash, so the dishes queued before it keep cooking into Food and are
---   no longer refundable (TycoonService.Prestiged voids their refund; each dish also remembers the prestige it was
---   paid in). Toasts: "Cooking ..." on order, a summary when the queue is done, and a progress toast at most every
---   30 s while a long queue cooks.
--- * Feeding: Feed(key, foodId) spends one food and gives that pet copy the food's Xp (DataService.AddPetXp). Pets
---   level along TycoonCatalog.XpToNext up to their LEVEL CAP (PetCatalog.LevelCap: by rarity, Common 20 ... Secret
---   50; TycoonCatalog may override the numbers). XP past the cap is not given and a capped pet is refused before any
---   food is used. A level-up answers with a side toast showing the new stats (PetCatalog.GetStats / StatsOf: Income
---   for Economy pets, Power / Health / Speed for Combat pets). Spending the food and writing the XP is one
---   non-yielding step: the food comes back if the XP could not be written.
--- * Gym: GymSet(slot, key|nil) puts a Combat pet copy in a Gym slot (slots unlock with the Gym level,
---   TycoonCatalog.GymSlots) or clears the slot. One slot per copy; a pet working in the Garden cannot train (and
---   TycoonService refuses Garden places for pets in the Gym). Training pets gain TycoonCatalog.GymXpPerMinute(home)
---   XP per minute each while the player is in the server with the home claimed (like the Collector's income),
---   granted every 10 s, up to their level cap; a pet that also sits in the Garden (old data) does not train.
--- * Kitchen prompts: on the player's own Station_Kitchen (HomeBuilder) this service adds one "Cook <food>"
---   ProximityPrompt per recipe the Kitchen can cook (CookPrompt, attributes FoodId / OwnerUserId; keys E / R / F,
---   hold 0.3 s) above the counter, and "Feed pets" (FeedPrompt) on its FeedBowl: every pet that follows the player
---   eats one food (the best food that does not overshoot its level cap). HomeFx disables other players' prompts
---   locally; the server checks the owner on every trigger. The prompts come back when the Kitchen is rebuilt.
--- * Replication: player attributes KitchenQueue ("Snack,Snack,Meal": the dish cooking first, "" when idle),
---   KitchenReadyAt (workspace:GetServerTimeNow() when the dish cooking now is done, 0 when idle) and
---   KitchenDishSeconds (that dish's cook time) for a Kitchen panel / progress bar; the plot folder gets GymPets
---   ("1=stormfang;2=cat@Golden": the pets training right now, like TycoonService's GardenPets) and
---   HomeBuilder.SetGym(spotInfo, { [slot] = key }) is called when HomeBuilder has such a function. Food, PetLevels
---   and Home.Gym reach the client through ProfileSync (DataService).
--- * Remote PetCare(action, a, b): "Cook" (foodId, qty = 1; or {FoodId =, Qty =}), "Feed" (key, foodId; or {Key =,
---   FoodId =}), "GymSet" (slot, key|nil; or {Slot =, Key =} / {slot, key}; slot nil / 0 with a key = the first free
---   slot; a key with no slot = take that pet out of the Gym). Types, lengths, ranges and NaN are checked; every
---   action has a cooldown plus a shared per-player burst budget; refusals answer with a side toast (repeated texts
---   are throttled). Nothing here moves parts (Replication rule).
+-- * Food Machine (station id Kitchen): Feed(key, opts) with opts nil = one machine feed, { Food = "Snack" | "Meal" |
+--   "Feast" } = one leftover from the old Kitchen (free), { Count = 1..10 } = "Level up" (several feeds in ONE
+--   request; a plain string in `b` is read as Food for old clients). One machine feed gives
+--   TycoonCatalog.FeedXp(level, machineLevel) XP (25-50% of the bar) for TycoonCatalog.FeedPrice(def, level) Cash; a
+--   batch prices every feed at the level it is eaten at (the sum is recomputed here feed by feed, X7). Leftovers are
+--   fed first and free (the biggest one that does not overshoot the cap, else the smallest), so a request only needs
+--   the machine when a paid feed happens. Refusals come before any Cash moves: no Food Machine ("Build the Food
+--   Machine at home first"), the cap (PetCatalog.LevelCap: 100 for every rarity), not owned, a provisional save, a
+--   key in a running battle (BattleService.KeysInBattle). The foods, the Cash and the XP write are one non-yielding
+--   step; everything comes back when the XP write gives 0. ONE toast per XP grant (a feed, a batch, a fight), never
+--   one per level: a level-up toast shows the new stats and "Ready to evolve!" at 20 / 50 (PetCatalog.CanEvolve).
+-- * EVOLVE: Evolve(key): owned, loaded and not provisional, level >= the next threshold (PetCatalog.EvolutionLevels
+--   20 / 50), stage < PetCatalog.MaxEvolution(def) (Common / Uncommon / Rare once, Epic and rarer twice), not in a
+--   running battle or ring run. Writes the stored stage (DataService.SetEvolution, only up), fires Evolved, toasts
+--   "<Pet> evolved! +25% to everything", refreshes the EquippedInfo attribute (PetService.Refresh) and sends
+--   OpenPanel("Evolve", { Key, Stage }) to that client only. Free. A training pet may evolve.
+-- * Training Place (station id Gym): Train(key, stat) with stat Speed | Physique | Ability | Defense: needs the
+--   station (TycoonCatalog.TrainingSlots(home) >= 1) and a free mat, an owned pet that is not training, a rank below
+--   10, no running battle, TycoonCatalog.TrainCost(def, rank) Cash; rank r takes TycoonCatalog.TrainSeconds(r)
+--   (r minutes). The Cash and the job (PetGrowth[key].Job = { Stat, Ends = os.time() + seconds, Rank = rank + 1, Slot =
+--   mat, From, Paid }, DataService.MutateGrowth) are one step; a failed job write gives the Cash back. Starting takes
+--   the pet off the player (PetService.UnequipKey, every copy) and out of the Garden (TycoonService.GardenSet) by
+--   itself and remembers where it was in Job.From ("Garden:<slot>" wins over "Follow", else "Free"). The lock is
+--   DataService.TrainingKeys (PetService.Equip, GardenSet, Fusion, teams and the ring read it). Completion is decided
+--   from os.time() >= Job.Ends by the 1 s tick and on profile load / rebase (provisional saves wait): the rank is a
+--   TARGET value (two servers completing one job give one rank), the pet goes back by itself ("Follow" -> re-equipped
+--   when a slot is free; "Garden:n" -> that place when open and empty, else the first free open place, else it stays
+--   in the list), TrainingDone fires. TrainStop(key) removes the job and refunds Job.Paid in the same step (a job
+--   that is already due finishes instead). Running jobs survive a Prestige. Toasts: "Rocky started Physique training
+--   (4:00)", "Rocky finished Physique training: Rank 3!", "Training done while you were away! ..." on load.
+-- * Home.Gym is retired: on every home load (ProfileLoaded / ProfileRebased, or the first readable tick) the old Gym
+--   slots are emptied (old Gym pets come back to the list) with one toast per session, also when DataService's
+--   one-time Phase 4 migration emptied them (DataService.MigratedNow(player, "P4").GymPets).
+-- * Prompts (owner only, HomeFx hides them from visitors): FeedPrompt "Feed pets" on the Food Machine's Hopper part
+--   (its biggest part while HomeBuilder has no Hopper yet) -> OpenPanel("Pets", { Action = "Feed" }); TrainPrompt
+--   "Train pets" on Station_Gym -> OpenPanel("Train"). Rebuilt when the station is rebuilt (the CareSig attribute
+--   carries a "p4:" marker so stale Kitchen prompts of a Phase 3 server never survive).
+-- * Replication: the plot folder attribute TrainingPets = "1=cat:Physique:1760000000;2=fox@Golden:Speed:1760000420"
+--   (mat=key:stat:Ends, written only on change; a hybrid key holds ":" itself, so readers split from the right) and
+--   HomeBuilder.SetTraining(spotInfo, { [mat] = { Key, Stat, Ends } }) when HomeBuilder has such a function. Levels,
+--   growth and food reach the owner through ProfileSync (DataService).
+-- * Remote PetCare(action, a, b): "Feed" (key, opts), "Evolve" (key), "Train" (key, stat), "TrainStop" (key); "Cook" /
+--   "GymSet" are retired (one toast). Types, lengths, ranges and NaN are checked; every action has a cooldown plus a
+--   shared per-player burst budget; refusals answer with a side toast (repeated texts are throttled). Nothing here
+--   moves parts (Replication rule).
 --
--- Public API (the contract): Init(deps)   deps = { DataService, PetService, TycoonService }
--- Extras (TutorialService / Phase 3 battles / the UI may use them):
---   Cook(player, foodId, qty) -> ok, dishesOrdered | reason
---   Feed(player, key, foodId) -> ok, { Xp, Levels, Level, Cap } | reason
---   GymSet(player, slot, key) -> ok, reason
---   GrantXp(player, key, xp, source) -> xpGiven, levelsGained, reason   (cap-aware XP for other services)
---   LevelCap(player, key) -> n | nil          GetQueue(player) -> { { FoodId, ReadyIn }... }
---   Signals Cooked(player, foodId, count), Fed(player, key, foodId, levelsGained), LevelUp(player, key, level, source),
---   GymChanged(player)
+-- Public API (the contract): Init(deps)   deps = { DataService, PetService, TycoonService, BattleService }
+--   Feed(player, key, opts) -> ok, { Xp, Levels, Level, Cap, Paid, Free, Count } | reason
+--   Evolve(player, key) -> ok, stage | reason
+--   Train(player, key, stat) -> ok, { Rank, Ends, Cost, Slot, From } | reason
+--   TrainStop(player, key) -> ok, refund | reason
+--   GrantXp(player, key, xp, source) -> xpGiven, levelsGained, reason   (cap-aware XP for other services, one toast)
+--   LevelCap(player, key) -> n | nil          ClearSessions(player) -> true   (developer reset)
+--   Signals Fed(player, key, foodId, levelsGained)  (foodId "Machine" for machine food), LevelUp(player, key, level,
+--   source), Evolved(player, key, stage), TrainingStarted(player, key, stat), TrainingDone(player, key, stat, rank)
 --
--- Plain Lua 5.1-compatible syntax only.
+-- Every Phase 4 helper lives in the table `Care` (Lua's 200-local limit). Plain Lua 5.1-compatible syntax only.
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local ProximityPromptService = game:GetService("ProximityPromptService")
-local Workspace = game:GetService("Workspace")
 
 local Shared = ReplicatedStorage:WaitForChild("Shared")
+local Config = require(Shared.Config)
 local Util = require(Shared.Util)
 local Remotes = require(Shared.Remotes)
 
 local PetCareService = {}
-PetCareService.Cooked = Util.Signal() -- Fire(player, foodId, count): dishes delivered into the profile's Food
-PetCareService.Fed = Util.Signal() -- Fire(player, key, foodId, levelsGained)
-PetCareService.LevelUp = Util.Signal() -- Fire(player, key, newLevel, source)  source "Feed" | "Gym" | GrantXp's
-PetCareService.GymChanged = Util.Signal() -- Fire(player)
+PetCareService.Fed = Util.Signal() -- Fire(player, key, foodId, levelsGained)  foodId "Machine" | "Snack" | "Meal" | "Feast"
+PetCareService.LevelUp = Util.Signal() -- Fire(player, key, newLevel, source)  source "Feed" | "Trial" | "Ring" | GrantXp's
+PetCareService.Evolved = Util.Signal() -- Fire(player, key, stage)
+PetCareService.TrainingStarted = Util.Signal() -- Fire(player, key, stat)
+PetCareService.TrainingDone = Util.Signal() -- Fire(player, key, stat, rank)
 
-local TICK = 1 -- seconds between kitchen / gym ticks
-local MAX_TICK_DT = 5 -- a stalled server never trains more than this many seconds in one tick
-local GYM_GRANT_EVERY = 10 -- seconds between Gym XP grants (each grant is one throttled profile sync)
-local MAX_QTY = 100 -- dishes in one Cook request (the queue takes what fits)
-local MAX_FOOD = 1000000 -- DataService keeps at most this many of one food
-local COOK_COOLDOWN = 0.25
+local TICK = 1 -- seconds between training ticks (completions, prompts, the TrainingPets attribute)
 local FEED_COOLDOWN = 0.1
-local GYM_COOLDOWN = 0.25
+local EVOLVE_COOLDOWN = 1
+local TRAIN_COOLDOWN = 0.25
 local PROMPT_COOLDOWN = 0.35
 local BURST_SIZE = 12 -- PetCare requests a player may send at once...
 local BURST_REFILL = 6 -- ...refilled at this many per second
 local TOAST_GAP = 1.5 -- the same refusal text is not repeated within this many seconds
-local KITCHEN_TOAST_GAP = 30 -- at most one progress toast this often while a long queue cooks
+local LOAD_TOAST_DELAY = 3 -- seconds after a player's session starts before the load toasts show (the client is ready)
 local MAX_TOAST_CHARS = 90 -- NotifyController shows up to 90 characters
 local MAX_NAME_CHARS = 28 -- "Rainbow Starlight Unicorn" fits; the longest toast stays under 90 characters
 local MAX_ACTION_LENGTH = 16
 local MAX_ID_LENGTH = 48
-local MAX_SLOT = 64
+local MAX_STAT_LENGTH = 24
+local MAX_FEEDS = 10 -- feeds in one "Level up" request
+local MAX_TRAIN_SLOTS = 5 -- Training Place mats (DataService P4.MAX_JOB_SLOT)
+local FALLBACK_MAX_RANK = 10
 local PROMPT_RANGE = 10
 local PROMPT_HOLD = 0.3
-local PROMPT_SPACING = 3 -- studs between the cook prompts along the counter
-local PROMPT_HEIGHT = 4.2 -- studs above the Kitchen's floor (the station origin) where the cook prompts float
-local PROMPT_DEPTH = 1.0 -- station-local Z of the cook prompts: just in front of the counter (the front is -Z)
-local FALLBACK_LEVEL_CAPS = { Common = 20, Uncommon = 25, Rare = 30, Epic = 35, Legendary = 40, Mythic = 45, Secret = 50 }
-local FALLBACK_MAX_LEVEL = 50
-local COOK_KEYS = {
-	{ Keyboard = Enum.KeyCode.E, Gamepad = Enum.KeyCode.ButtonX },
-	{ Keyboard = Enum.KeyCode.R, Gamepad = Enum.KeyCode.ButtonY },
-	{ Keyboard = Enum.KeyCode.F, Gamepad = Enum.KeyCode.ButtonB },
-}
-local ATTR_QUEUE = "KitchenQueue"
-local ATTR_READY = "KitchenReadyAt"
-local ATTR_DISH = "KitchenDishSeconds"
-local ATTR_GYM = "GymPets"
-local CARE_SIG = "CareSig" -- attribute on the Kitchen model: which prompts this service built on it
-local CARE_MARK = "CareMade" -- attribute on every attachment / prompt this service made
+local FALLBACK_LEVEL_CAPS = { Common = 100, Uncommon = 100, Rare = 100, Epic = 100, Legendary = 100, Mythic = 100, Secret = 100 }
+local FALLBACK_MAX_LEVEL = 100
+local PROMPT_KEYS = { Keyboard = Enum.KeyCode.E, Gamepad = Enum.KeyCode.ButtonX }
+local ATTR_TRAINING = "TrainingPets"
+local ATTR_IN_BATTLE = Config.Attr.InBattle or "InBattle"
+local ATTR_IN_MATCH = Config.Attr.InMatch or "InMatch"
+local CARE_SIG = "CareSig" -- attribute on a station model: which prompts this service built on it
+local CARE_MARK = "CareMade" -- attribute on every prompt this service made
+local SIG_PREFIX = "p4:" -- stale Phase 3 Kitchen prompts (sig "<level>:<userId>") never match a Phase 4 signature
+local LOADING = "Your save is still loading, try again in a moment"
+local STATS = { "Speed", "Physique", "Ability", "Defense" }
+local STAT_LABELS = { Speed = "Attack Speed", Physique = "Physique", Ability = "Ability", Defense = "Defense" }
+local STAT_BY_NAME = { speed = "Speed", attackspeed = "Speed", physique = "Physique", ability = "Ability", defense = "Defense", defence = "Defense" }
 
 local initialized = false
 local running = false
 local dataService = nil
 local petService = nil
 local tycoonService = nil
+local battleService = nil
 local catalog = nil -- TycoonCatalog
 local petKeys = nil -- PetKeys (optional)
 local petCatalog = nil -- PetCatalog (optional)
-local homeBuilder = nil -- HomeBuilder (optional: SetGym)
+local homeBuilder = nil -- HomeBuilder (optional: GetStation, SetTraining)
 local notifyRemote = nil
 local openPanelRemote = nil
 
-local kitchens = {} -- [Player] = { Queue = { { FoodId, Price, Base, Prestige, Started, Seconds }... }, Batch, BatchOrder, LastToast }
-local gyms = {} -- [Player] = { Pending = { [key] = xp }, LastTick, LastGrant, Capped = { [key] = true } }
-local gymShown = {} -- [Player] = { Folder = Instance, Text = string }
+local Care = {} -- every Phase 4 helper (see the header)
+local sessions = {} -- [Player] = { At, Pending = { { Text, Kind, Seconds }... }, Shown = { Folder, Info, Text } | nil, GymChecked, GymToast, MigrationSeen }
 local cooldowns = {} -- [Player] = { [key] = os.clock() }
 local budgets = {} -- [Player] = { Tokens, At }
 local toastAt = {} -- [Player] = { [text] = os.clock() }
@@ -233,16 +237,6 @@ local function spend(player)
 	return true
 end
 
-local function serverNow()
-	local ok, t = pcall(function()
-		return Workspace:GetServerTimeNow()
-	end)
-	if ok and isFinite(t) then
-		return t
-	end
-	return os.time()
-end
-
 local function setAttr(inst, name, value)
 	pcall(function()
 		if inst:GetAttribute(name) ~= value then
@@ -258,26 +252,6 @@ local function plural(name, n)
 		return name
 	end
 	return name .. "s"
-end
-
--- 6 -> "6s", 72 -> "1m 12s", 3900 -> "1h 5m"
-local function duration(seconds)
-	local s = math.max(0, math.ceil(tonumber(seconds) or 0))
-	if s < 60 then
-		return s .. "s"
-	end
-	if s < 3600 then
-		local m, r = math.floor(s / 60), s % 60
-		if r == 0 then
-			return m .. "m"
-		end
-		return m .. "m " .. r .. "s"
-	end
-	local h, m = math.floor(s / 3600), math.floor((s % 3600) / 60)
-	if m == 0 then
-		return h .. "h"
-	end
-	return h .. "h " .. m .. "m"
 end
 
 -- 1234 -> "1.2K" (stat numbers in toasts)
@@ -336,7 +310,7 @@ local function getHome(player)
 	return nil
 end
 
--- true while the save is a stand-in (DataService refuses XP writes then)
+-- true while the save is a stand-in (DataService refuses XP / growth writes then)
 local function isProvisional(player)
 	if dataService and type(dataService.IsProvisional) == "function" then
 		local ok, result = pcall(dataService.IsProvisional, player)
@@ -406,7 +380,7 @@ local function mutateHome(player, fn)
 end
 
 ----------------------------------------------------------------------
--- Catalog access (TycoonCatalog: foods, Kitchen / Gym effects, the XP curve)
+-- Catalog access (TycoonCatalog: the Food Machine, the Training Place, the XP curve)
 ----------------------------------------------------------------------
 
 local function money(n)
@@ -417,20 +391,6 @@ local function money(n)
 		end
 	end
 	return "$" .. tostring(math.floor(tonumber(n) or 0))
-end
-
--- income per second: "$12.5/s" (one decimal under 1000)
-local function rate(n)
-	n = tonumber(n) or 0
-	if not isFinite(n) or n < 0 then
-		n = 0
-	end
-	if n < 1000 then
-		local s = string.format("%.1f", math.floor(n * 10 + 0.5) / 10)
-		s = string.gsub(s, "%.0$", "")
-		return "$" .. s .. "/s"
-	end
-	return money(n) .. "/s"
 end
 
 local function foodDef(foodId)
@@ -447,7 +407,7 @@ local function foodDef(foodId)
 	if type(def) ~= "table" and type(catalog.FoodsById) == "table" then
 		def = catalog.FoodsById[foodId]
 	end
-	if type(def) ~= "table" or def.Id ~= foodId or not isFinite(def.Price) or def.Price < 0 or not isFinite(def.Xp) or def.Xp <= 0 then
+	if type(def) ~= "table" or def.Id ~= foodId or not isFinite(def.Xp) or def.Xp <= 0 then
 		return nil
 	end
 	return def
@@ -457,7 +417,7 @@ local function foodList()
 	local out = {}
 	if catalog and type(catalog.Foods) == "table" then
 		for _, f in ipairs(catalog.Foods) do
-			if foodDef(f.Id) then
+			if type(f) == "table" and foodDef(f.Id) then
 				out[#out + 1] = f
 			end
 		end
@@ -474,67 +434,6 @@ local function stationLevel(home, id)
 	end
 	local v = type(home) == "table" and type(home.Stations) == "table" and home.Stations[id]
 	return isFinite(v) and math.max(0, math.floor(v)) or 0
-end
-
--- prestige stars of a home (0 for none / junk)
-local function starsOf(home)
-	local v = type(home) == "table" and home.Prestige
-	if isFinite(v) and v > 0 then
-		return math.floor(v)
-	end
-	return 0
-end
-
-local function kitchenEffects(level)
-	if level < 1 or not catalog or type(catalog.EffectsOf) ~= "function" then
-		return nil
-	end
-	local ok, eff = pcall(catalog.EffectsOf, "Kitchen", level)
-	if ok and type(eff) == "table" then
-		return eff
-	end
-	return nil
-end
-
--- dishes the Kitchen's queue holds (the one cooking included)
-local function queueSize(level)
-	local eff = kitchenEffects(level)
-	local n = eff and (eff.Queue or eff.Slots)
-	if isFinite(n) and n >= 1 then
-		return math.floor(n)
-	end
-	return level >= 1 and 1 or 0
-end
-
-local function cookSeconds(foodId, level)
-	if not catalog or type(catalog.CookSecondsFor) ~= "function" then
-		return nil
-	end
-	local ok, s = pcall(catalog.CookSecondsFor, foodId, level)
-	if ok and isFinite(s) and s > 0 then
-		return s
-	end
-	return nil
-end
-
-local function gymSlots(home)
-	if catalog and type(catalog.GymSlots) == "function" then
-		local ok, n = pcall(catalog.GymSlots, home)
-		if ok and isFinite(n) and n > 0 then
-			return math.min(math.floor(n), MAX_SLOT)
-		end
-	end
-	return 0
-end
-
-local function gymXpPerMinute(home)
-	if catalog and type(catalog.GymXpPerMinute) == "function" then
-		local ok, n = pcall(catalog.GymXpPerMinute, home)
-		if ok and isFinite(n) and n > 0 then
-			return n
-		end
-	end
-	return 0
 end
 
 -- XP from `level` to level + 1 (the TycoonCatalog curve; DataService's own fallback curve without it)
@@ -624,7 +523,7 @@ local function petName(def, key)
 	return clip(name, MAX_NAME_CHARS)
 end
 
--- the level feeding / the Gym can raise this pet to (PetCatalog.LevelCap by rarity, never above the curve's top)
+-- the level feeding / fights can raise this pet to (PetCatalog.LevelCap: 100 for every rarity, never above the curve)
 local function levelCap(def)
 	local top = maxPetLevel()
 	local cap = nil
@@ -674,34 +573,257 @@ local function statsOf(def, level)
 	return nil
 end
 
--- "Income $12.5/s" (Economy) / "Power 312, Health 1.2K, Speed 98" (Combat)
-local function statsText(def, level)
+----------------------------------------------------------------------
+-- Care helpers: growth, the lock, battles, catalog numbers, texts
+----------------------------------------------------------------------
+
+-- { Evo, Speed, Physique, Ability, Defense, Job | nil } (zeros when unknown)
+function Care.growth(player, key)
+	local ok, g = dsCall("GetGrowth", player, key)
+	if ok and type(g) == "table" then
+		return g
+	end
+	local e = { Evo = 0 }
+	for _, stat in ipairs(STATS) do
+		e[stat] = 0
+	end
+	return e
+end
+
+function Care.growthMap(player)
+	local ok, map = dsCall("GetGrowthMap", player)
+	if ok and type(map) == "table" then
+		return map
+	end
+	return {}
+end
+
+function Care.mutateGrowth(player, fn)
+	local ok, result = dsCall("MutateGrowth", player, fn)
+	return ok and result == true
+end
+
+-- { [key] = true } of the keys in a running battle / ring run of this player, or nil when BattleService has no such
+-- function yet (then the whole battle counts: InBattle attribute)
+function Care.keysInBattle(player)
+	if battleService and type(battleService.KeysInBattle) == "function" then
+		local ok, set = pcall(battleService.KeysInBattle, player)
+		if ok and type(set) == "table" then
+			return set
+		end
+	end
+	return nil
+end
+
+function Care.inBattle(player)
+	local v = player:GetAttribute(ATTR_IN_BATTLE)
+	return v ~= nil and v ~= false
+end
+
+function Care.busyInBattle(player, key)
+	local set = Care.keysInBattle(player)
+	if set then
+		return set[key] == true
+	end
+	return Care.inBattle(player)
+end
+
+function Care.statOf(stat)
+	if type(stat) ~= "string" or stat == "" or #stat > MAX_STAT_LENGTH then
+		return nil
+	end
+	local s = string.lower((string.gsub(stat, "[%s_%-]", "")))
+	return STAT_BY_NAME[s]
+end
+
+function Care.statLabel(stat)
+	return STAT_LABELS[stat] or tostring(stat)
+end
+
+-- 130 -> "2:10", 3600 -> "60:00"
+function Care.clock(seconds)
+	local s = math.max(0, math.ceil(tonumber(seconds) or 0))
+	return string.format("%d:%02d", math.floor(s / 60), s % 60)
+end
+
+-- "x1.8" / "x19.3" / "x1.2K"
+function Care.factorText(n)
+	n = tonumber(n) or 0
+	if not isFinite(n) or n < 0 then
+		n = 0
+	end
+	if n < 100 then
+		local s = string.format("%.1f", math.floor(n * 10 + 0.5) / 10)
+		s = string.gsub(s, "%.0$", "")
+		return "x" .. s
+	end
+	return "x" .. compact(n)
+end
+
+function Care.feedXp(level, machineLevel)
+	if catalog and type(catalog.FeedXp) == "function" then
+		local ok, n = pcall(catalog.FeedXp, level, machineLevel)
+		if ok and isFinite(n) and n > 0 then
+			return math.floor(n)
+		end
+	end
+	return 0
+end
+
+function Care.feedPrice(def, level)
+	if catalog and type(catalog.FeedPrice) == "function" then
+		local ok, n = pcall(catalog.FeedPrice, def, level)
+		if ok and isFinite(n) and n >= 0 then
+			return math.floor(n)
+		end
+	end
+	return nil
+end
+
+function Care.trainCost(def, rank)
+	if catalog and type(catalog.TrainCost) == "function" then
+		local ok, n = pcall(catalog.TrainCost, def, rank)
+		if ok and isFinite(n) and n >= 0 then
+			return math.floor(n)
+		end
+	end
+	return nil
+end
+
+function Care.trainSeconds(rank)
+	if catalog and type(catalog.TrainSeconds) == "function" then
+		local ok, n = pcall(catalog.TrainSeconds, rank)
+		if ok and isFinite(n) and n > 0 then
+			return math.floor(n)
+		end
+	end
+	return nil
+end
+
+function Care.maxRank()
+	local t = catalog and type(catalog.Training) == "table" and catalog.Training or nil
+	local n = t and t.MaxRank
+	if isFinite(n) and n >= 1 then
+		return math.floor(n)
+	end
+	return FALLBACK_MAX_RANK
+end
+
+-- pets training at once (the Training Place level; 0 while it is not built)
+function Care.trainingSlots(home)
+	local n = nil
+	if catalog and type(catalog.TrainingSlots) == "function" then
+		local ok, v = pcall(catalog.TrainingSlots, home)
+		if ok and isFinite(v) then
+			n = v
+		end
+	end
+	if n == nil then
+		n = stationLevel(home, "Gym")
+	end
+	return math.max(0, math.min(math.floor(n), MAX_TRAIN_SLOTS))
+end
+
+function Care.gardenSlots(home)
+	if catalog and type(catalog.GardenSlots) == "function" then
+		local ok, n = pcall(catalog.GardenSlots, home)
+		if ok and isFinite(n) and n > 0 then
+			return math.floor(n)
+		end
+	end
+	return 0
+end
+
+-- the next stage the pet may evolve to, or nil
+function Care.canEvolve(def, level, stage)
+	if petCatalog and type(petCatalog.CanEvolve) == "function" then
+		local ok, nextStage = pcall(petCatalog.CanEvolve, def, level, stage)
+		if ok and isFinite(nextStage) then
+			return math.floor(nextStage)
+		end
+	end
+	return nil
+end
+
+function Care.maxEvolution(def)
+	if petCatalog and type(petCatalog.MaxEvolution) == "function" then
+		local ok, n = pcall(petCatalog.MaxEvolution, def)
+		if ok and isFinite(n) then
+			return math.floor(n)
+		end
+	end
+	return 1
+end
+
+-- "+25%" for stage 1, "+50%" for stage 2 (PetCatalog.EvolutionMultiplier)
+function Care.boostText(stage)
+	local m = 1
+	if petCatalog and type(petCatalog.EvolutionMultiplier) == "function" then
+		local ok, v = pcall(petCatalog.EvolutionMultiplier, stage)
+		if ok and isFinite(v) and v >= 1 then
+			m = v
+		end
+	elseif stage >= 2 then
+		m = 1.5
+	elseif stage >= 1 then
+		m = 1.25
+	end
+	return "+" .. tostring(math.floor((m - 1) * 100 + 0.5)) .. "%"
+end
+
+-- the garden coin power of a pet (TycoonCatalog.PetPower; stage = the stored evolution stage)
+function Care.coinsText(def, level, stage)
+	if catalog and type(catalog.PetPower) == "function" then
+		local ok, power = pcall(catalog.PetPower, def, level, nil, stage)
+		if ok and isFinite(power) and power > 0 then
+			return "Coins " .. Care.factorText(power)
+		end
+	end
+	return ""
+end
+
+-- "Coins x1.8" (Economy) / "Power 312, Health 1.2K, Speed 98" (Combat)
+function Care.statsText(def, level, stage)
+	if type(def) ~= "table" then
+		return ""
+	end
+	if def.Role == "Economy" then
+		return Care.coinsText(def, level, stage)
+	end
 	local stats = statsOf(def, level)
 	if not stats then
 		return ""
 	end
-	if def.Role == "Economy" then
-		return "Income " .. rate(stats.Income)
-	end
 	return "Power " .. compact(stats.Power) .. ", Health " .. compact(stats.Health) .. ", Speed " .. compact(stats.Speed)
 end
 
-local function levelUpText(def, key, level, cap, source)
-	local verb = (source == "Gym") and " trained to Lv " or " reached Lv "
-	local text = petName(def, key) .. verb .. level
+-- ONE level-up toast per XP grant: "Pebble Pup reached Lv 20: Ready to evolve! Power 312, Health 1.2K, Speed 98"
+local function levelUpText(def, key, level, cap, stage, ready)
+	local text = petName(def, key) .. " reached Lv " .. level
 	if level >= cap then
 		text = text .. " (max)"
 	end
-	local stats = statsText(def, level)
-	if stats ~= "" then
-		text = text .. "! " .. stats
+	if ready then
+		text = text .. ": Ready to evolve!"
 	else
 		text = text .. "!"
+	end
+	local stats = Care.statsText(def, level, stage)
+	if stats ~= "" then
+		text = text .. " " .. stats
 	end
 	return text
 end
 
--- Cap-aware XP. Returns xpGiven, levelsGained, reason (nil on success), and the new level / XP / cap / def.
+-- PetService republishes EquippedInfo (level:stage per equipped pet) after a level-up / evolution
+function Care.refreshInfo(player)
+	if petService and type(petService.Refresh) == "function" then
+		pcall(petService.Refresh, player)
+	end
+end
+
+-- Cap-aware XP. Returns xpGiven, levelsGained, reason (nil on success), the new level / XP / cap / def and whether the
+-- pet is now ready to evolve.
 local function grantXp(player, key, xp, source)
 	-- whole XP only: DataService reads XP back as whole points, so a fraction could never be seen to arrive
 	xp = isFinite(xp) and math.floor(xp) or 0
@@ -710,7 +832,7 @@ local function grantXp(player, key, xp, source)
 	end
 	local profile = getProfile(player)
 	if not profile or isProvisional(player) then
-		return 0, 0, "Your save is still loading..."
+		return 0, 0, LOADING
 	end
 	local def = defOf(key, profile)
 	if not def then
@@ -723,7 +845,7 @@ local function grantXp(player, key, xp, source)
 	local cap = levelCap(def)
 	local room = xpRoom(level, have, cap)
 	if room <= 0 then
-		return 0, 0, petName(def, key) .. " is at its max level (Lv " .. cap .. ")", level, have, cap, def
+		return 0, 0, petName(def, key) .. " is at max level (Lv " .. cap .. ")", level, have, cap, def
 	end
 	local give = math.min(xp, room)
 	local gained = addPetXp(player, key, give)
@@ -731,14 +853,17 @@ local function grantXp(player, key, xp, source)
 	if gained == 0 and level2 == level and have2 == have then
 		return 0, 0, "That pet cannot gain XP right now", level, have, cap, def
 	end
+	local stage = Care.growth(player, key).Evo
+	local ready = Care.canEvolve(def, level2, stage) ~= nil
 	if level2 > level then
 		PetCareService.LevelUp:Fire(player, key, level2, source)
+		Care.refreshInfo(player)
 	end
-	return give, math.max(0, level2 - level), nil, level2, have2, cap, def
+	return give, math.max(0, level2 - level), nil, level2, have2, cap, def, ready, stage
 end
 
 ----------------------------------------------------------------------
--- Plots (TycoonService) and the Kitchen model
+-- Plots (TycoonService) and station models (HomeBuilder)
 ----------------------------------------------------------------------
 
 local function plotOf(player)
@@ -751,23 +876,21 @@ local function plotOf(player)
 	return nil
 end
 
--- Ordering food and Gym training need the claimed home (without TycoonService there are no plots to claim).
-local function hasHome(player)
-	if not tycoonService or type(tycoonService.GetPlot) ~= "function" then
-		return true
-	end
-	return plotOf(player) ~= nil
-end
-
-local function kitchenModel(info)
+function Care.stationModel(info, id)
 	local folder = info and info.Folder
 	if typeof(folder) ~= "Instance" then
 		return nil
 	end
+	if homeBuilder and type(homeBuilder.GetStation) == "function" then
+		local ok, model = pcall(homeBuilder.GetStation, info, id)
+		if ok and typeof(model) == "Instance" and model.Parent and model:IsA("Model") then
+			return model
+		end
+	end
 	local homeFolder = folder:FindFirstChild("Home")
-	local model = homeFolder and homeFolder:FindFirstChild("Station_Kitchen") or nil
+	local model = homeFolder and homeFolder:FindFirstChild("Station_" .. id) or nil
 	if not model and not homeFolder then
-		model = folder:FindFirstChild("Station_Kitchen", true)
+		model = folder:FindFirstChild("Station_" .. id, true)
 	end
 	if model and model:IsA("Model") then
 		return model
@@ -776,387 +899,143 @@ local function kitchenModel(info)
 end
 
 ----------------------------------------------------------------------
--- Kitchen: the cooking queue
+-- Sessions (per player, this server only), deferred toasts, the TrainingPets attribute
 ----------------------------------------------------------------------
 
-local function kitchenOf(player)
-	local k = kitchens[player]
-	if not k then
-		k = { Queue = {}, Batch = {}, BatchOrder = {}, LastToast = -math.huge }
-		kitchens[player] = k
+function Care.session(player)
+	local s = sessions[player]
+	if not s then
+		s = { At = os.clock(), Pending = {}, Shown = nil, GymChecked = false, GymToast = false, MigrationSeen = false }
+		sessions[player] = s
 	end
-	return k
+	return s
 end
 
-local function queuedOf(k, foodId)
-	local n = 0
-	for _, dish in ipairs(k.Queue) do
-		if dish.FoodId == foodId then
-			n = n + 1
-		end
-	end
-	return n
+-- a toast that waits until the client is surely listening (load toasts: LOAD_TOAST_DELAY after the session started)
+function Care.queueToast(player, text, kind, seconds)
+	local s = Care.session(player)
+	s.Pending[#s.Pending + 1] = { Text = text, Kind = kind, Seconds = seconds }
 end
 
--- the dish starts cooking at `at`, at the CURRENT Kitchen level (an upgrade speeds up the dishes still waiting;
--- a Kitchen reset by a prestige keeps the speed the dish was ordered at)
-local function startDish(dish, at, level)
-	dish.Started = at
-	local s = (level and level >= 1) and cookSeconds(dish.FoodId, level) or nil
-	if not isFinite(s) or s <= 0 then
-		s = dish.Base
-	end
-	dish.Seconds = s
-end
-
--- seconds until every dish in the queue is done
-local function queueSeconds(k, now)
-	local total = 0
-	for i, dish in ipairs(k.Queue) do
-		if i == 1 and dish.Started then
-			total = total + math.max(0, dish.Started + dish.Seconds - now)
-		else
-			total = total + (dish.Seconds or dish.Base or 0)
-		end
-	end
-	return total
-end
-
-local function publishKitchen(player, k)
-	if not isPlayer(player) then
+function Care.flushToasts(player, s, now)
+	if #s.Pending == 0 or now - s.At < LOAD_TOAST_DELAY then
 		return
 	end
-	local ids = {}
-	for i, dish in ipairs(k.Queue) do
-		ids[i] = dish.FoodId
+	local list = s.Pending
+	s.Pending = {}
+	for _, t in ipairs(list) do
+		notify(player, t.Text, t.Kind, t.Seconds)
 	end
-	local head = k.Queue[1]
-	local readyAt, seconds = 0, 0
-	if head and head.Started then
-		seconds = math.floor(head.Seconds * 100 + 0.5) / 100
-		readyAt = serverNow() + math.max(0, head.Started + head.Seconds - os.clock())
-		readyAt = math.floor(readyAt * 100 + 0.5) / 100
-	end
-	setAttr(player, ATTR_QUEUE, table.concat(ids, ","))
-	setAttr(player, ATTR_READY, readyAt)
-	setAttr(player, ATTR_DISH, seconds)
 end
 
--- "3 Snacks, 1 Meal"
-local function batchText(k)
+function Care.clearShown(player)
+	local s = sessions[player]
+	local shown = s and s.Shown
+	if not shown then
+		return
+	end
+	s.Shown = nil
+	if typeof(shown.Folder) == "Instance" then
+		setAttr(shown.Folder, ATTR_TRAINING, nil)
+		if shown.Info and homeBuilder and type(homeBuilder.SetTraining) == "function" then
+			pcall(homeBuilder.SetTraining, shown.Info, {})
+		end
+	end
+end
+
+-- TrainingPets on the plot folder (+ HomeBuilder.SetTraining when it exists), written only when it changes
+function Care.publishTraining(player, map)
+	local s = Care.session(player)
+	local info = plotOf(player)
+	local folder = info and info.Folder
+	if typeof(folder) ~= "Instance" then
+		Care.clearShown(player)
+		return
+	end
+	if s.Shown and s.Shown.Folder ~= folder then
+		Care.clearShown(player)
+	end
+	map = map or Care.growthMap(player)
+	local rows = {}
+	for key, e in pairs(map) do
+		local job = type(e) == "table" and e.Job or nil
+		if type(job) == "table" then
+			local slot = isFinite(job.Slot) and math.floor(job.Slot) or 0
+			rows[#rows + 1] = { Slot = slot, Key = key, Job = job, Text = tostring(slot) .. "=" .. key .. ":" .. tostring(job.Stat) .. ":" .. tostring(math.floor(tonumber(job.Ends) or 0)) }
+		end
+	end
+	table.sort(rows, function(a, b)
+		if a.Slot == b.Slot then
+			return a.Key < b.Key
+		end
+		return a.Slot < b.Slot
+	end)
 	local parts = {}
-	for _, id in ipairs(k.BatchOrder) do
-		local n = k.Batch[id] or 0
-		if n > 0 then
-			local def = foodDef(id)
-			parts[#parts + 1] = n .. " " .. plural(def and def.Name or id, n)
-		end
+	for i, r in ipairs(rows) do
+		parts[i] = r.Text
 	end
-	return table.concat(parts, ", ")
-end
-
-local function tickKitchen(player, k, now)
-	if #k.Queue == 0 then
+	local text = table.concat(parts, ";")
+	if s.Shown and s.Shown.Folder == folder and s.Shown.Text == text then
 		return
 	end
-	local level = nil
-	local function kitchenLevel()
-		if level == nil then
-			local home = getHome(player)
-			level = home and stationLevel(home, "Kitchen") or 0
+	s.Shown = { Folder = folder, Info = info, Text = text }
+	setAttr(folder, ATTR_TRAINING, text)
+	if homeBuilder and type(homeBuilder.SetTraining) == "function" then
+		local pets = {}
+		for _, r in ipairs(rows) do
+			pets[r.Slot] = { Key = r.Key, Stat = r.Job.Stat, Ends = r.Job.Ends }
 		end
-		return level
-	end
-	if not k.Queue[1].Started then
-		startDish(k.Queue[1], now, kitchenLevel())
-	end
-	local done, order = {}, {}
-	local guard = 0
-	while k.Queue[1] and guard < 256 do
-		guard = guard + 1
-		local dish = k.Queue[1]
-		local finish = dish.Started + dish.Seconds
-		if now < finish then
-			break
-		end
-		if not addFood(player, dish.FoodId, 1) then
-			break -- the profile is busy: this dish waits for the next tick
-		end
-		table.remove(k.Queue, 1)
-		if not done[dish.FoodId] then
-			done[dish.FoodId] = 0
-			order[#order + 1] = dish.FoodId
-		end
-		done[dish.FoodId] = done[dish.FoodId] + 1
-		local nextDish = k.Queue[1]
-		if nextDish then
-			startDish(nextDish, finish, kitchenLevel()) -- back to back: it started when the last one finished
+		local ok, err = pcall(homeBuilder.SetTraining, info, pets)
+		if not ok then
+			warn("[PetCareService] HomeBuilder.SetTraining failed: " .. tostring(err))
 		end
 	end
-	if #order == 0 then
-		return
-	end
-	for _, id in ipairs(order) do
-		if not k.Batch[id] then
-			k.BatchOrder[#k.BatchOrder + 1] = id
-		end
-		k.Batch[id] = (k.Batch[id] or 0) + done[id]
-		PetCareService.Cooked:Fire(player, id, done[id])
-	end
-	publishKitchen(player, k)
-	if #k.Queue == 0 then
-		notify(player, "Kitchen: " .. batchText(k) .. " ready! Feed your pets", "good", 4)
-	elseif now - k.LastToast >= KITCHEN_TOAST_GAP then
-		notify(player, "Kitchen: " .. batchText(k) .. " ready (" .. #k.Queue .. " still cooking)", "info", 3)
-	else
-		return
-	end
-	k.Batch, k.BatchOrder, k.LastToast = {}, {}, now
-end
-
--- A prestige resets Cash: the dishes still queued keep cooking into Food (kept by design), but the Cash they were
--- paid with belonged to the reset run, so they are no longer refundable (leaving right after a prestige must not
--- carry that Cash over the reset).
-local function voidRefunds(player)
-	local k = kitchens[player]
-	if not k then
-		return
-	end
-	for _, dish in ipairs(k.Queue) do
-		dish.Price = 0
-	end
-end
-
--- dishes still in the queue are refunded; finished ones were delivered by the tick. Only dishes paid in the CURRENT
--- prestige run count: a dish ordered before a prestige (this server's, or one another server's save brought in)
--- was paid with Cash the prestige reset.
-local function refundKitchen(player)
-	local k = kitchens[player]
-	kitchens[player] = nil
-	if not k or #k.Queue == 0 then
-		return
-	end
-	-- only while the save is still in memory (DataService keeps it until the leave save is done; a change made now
-	-- travels with that save or with its retry)
-	local home = getHome(player)
-	if not home or not getProfile(player) then
-		return
-	end
-	local stars = starsOf(home)
-	local total = 0
-	for _, dish in ipairs(k.Queue) do
-		local price = dish.Price
-		if isFinite(price) and price > 0 and dish.Prestige == stars then
-			total = total + price
-		end
-	end
-	if total > 0 then
-		addCash(player, total)
-	end
-end
-
-local function wholeQty(qty)
-	if qty == nil then
-		return 1
-	end
-	if not isFinite(qty) or qty < 1 then
-		return nil
-	end
-	return math.min(math.floor(qty), MAX_QTY)
-end
-
-function PetCareService.Cook(player, foodId, qty)
-	if not initialized then
-		return false, "The Kitchen is not ready yet"
-	end
-	if not isPlayer(player) then
-		return false, "Not in the game"
-	end
-	local food = foodDef(foodId)
-	if not food then
-		return false, "Unknown food"
-	end
-	local wanted = wholeQty(qty)
-	if not wanted then
-		return false, "Pick how many to cook (1-" .. MAX_QTY .. ")"
-	end
-	local home = getHome(player)
-	if not home then
-		return false, "Your home is still loading..."
-	end
-	if not hasHome(player) then
-		return false, "Claim your home first: press E at a free gate"
-	end
-	local level = stationLevel(home, "Kitchen")
-	if level < 1 then
-		return false, "Build the Kitchen first"
-	end
-	local need = isFinite(food.KitchenLevel) and food.KitchenLevel or 1
-	if level < need then
-		return false, "Upgrade the Kitchen to Lv " .. need .. " to cook " .. plural(food.Name, 2)
-	end
-	local k = kitchenOf(player)
-	local size = queueSize(level)
-	local free = size - #k.Queue
-	if free <= 0 then
-		return false, "The Kitchen is busy (" .. #k.Queue .. "/" .. size .. " cooking)"
-	end
-	local count = math.min(wanted, free)
-	local limit = nil
-	if count < wanted then
-		limit = "Kitchen full"
-	end
-	local bag = getFood(player, food.Id) + queuedOf(k, food.Id)
-	if bag + count > MAX_FOOD then
-		count = MAX_FOOD - bag
-		limit = "food bag full"
-	end
-	if count < 1 then
-		return false, "Your food bag is full"
-	end
-	-- the Cash check, the payment and the queue write: one step, no yields in between
-	local price = math.max(0, math.floor(food.Price))
-	if price > 0 then
-		local afford = math.floor(getCash(player) / price)
-		if afford < count then
-			count = afford
-			limit = "not enough Cash for more"
-		end
-	end
-	if count < 1 then
-		return false, "Not enough Cash: a " .. food.Name .. " costs " .. money(price)
-	end
-	if not spendCash(player, price * count) then
-		return false, "Not enough Cash: a " .. food.Name .. " costs " .. money(price)
-	end
-	local base = cookSeconds(food.Id, level) or (isFinite(food.CookSeconds) and food.CookSeconds > 0 and food.CookSeconds) or 5
-	local stars = starsOf(home) -- the prestige run that paid for these dishes (refunds only within it)
-	for _ = 1, count do
-		k.Queue[#k.Queue + 1] = { FoodId = food.Id, Price = price, Base = base, Prestige = stars }
-	end
-	local now = os.clock()
-	if not k.Queue[1].Started then
-		startDish(k.Queue[1], now, level)
-	end
-	publishKitchen(player, k)
-	local text = "Cooking " .. count .. " " .. plural(food.Name, count)
-	if price > 0 then
-		text = text .. " for " .. money(price * count)
-	end
-	local wait = queueSeconds(k, now) -- new dishes go to the end of the queue: this is when the order is done
-	if count == 1 then
-		text = text .. ": ready in " .. duration(wait)
-	else
-		text = text .. ": all ready in " .. duration(wait)
-	end
-	if limit then
-		text = text .. " (" .. limit .. ")"
-	end
-	notify(player, text, "info", 3)
-	k.LastToast = now
-	return true, count
-end
-
--- { { FoodId, ReadyIn }... } (ReadyIn = seconds until that dish is done)
--- Developer tools ("Reset my data"): drops the player's cooking queue without paying anything back.
-function PetCareService.ClearKitchen(player)
-	local k = kitchens[player]
-	if not k then
-		return false
-	end
-	k.Queue = {}
-	k.Batch = {}
-	k.BatchOrder = {}
-	publishKitchen(player, k)
-	return true
-end
-
-function PetCareService.GetQueue(player)
-	local out = {}
-	local k = player and kitchens[player]
-	if not k then
-		return out
-	end
-	local now = os.clock()
-	local t = 0
-	for i, dish in ipairs(k.Queue) do
-		if i == 1 and dish.Started then
-			t = math.max(0, dish.Started + dish.Seconds - now)
-		else
-			t = t + (dish.Seconds or dish.Base or 0)
-		end
-		out[i] = { FoodId = dish.FoodId, ReadyIn = t }
-	end
-	return out
 end
 
 ----------------------------------------------------------------------
--- Feeding
+-- Feeding (the Food Machine and the leftovers)
 ----------------------------------------------------------------------
 
-local function feed(player, key, foodId)
-	if not initialized then
-		return false, "Feeding is not ready yet"
+-- opts -> { Food = id } | { Count = n } | {} (one machine feed), or nil, reason for junk
+function Care.parseOpts(opts)
+	if opts == nil then
+		return {}
 	end
-	if not isPlayer(player) then
-		return false, "Not in the game"
+	if type(opts) == "string" then
+		if not foodDef(opts) then
+			return nil, "Unknown food"
+		end
+		return { Food = opts }
 	end
-	if not validKeyString(key) then
-		return false, "Unknown pet"
+	if type(opts) ~= "table" then
+		return nil, "Unknown food"
 	end
-	local food = foodDef(foodId)
-	if not food then
-		return false, "Unknown food"
+	local food = opts.Food
+	if food == nil then
+		food = opts.FoodId
 	end
-	local profile = getProfile(player)
-	if not profile or isProvisional(player) then
-		return false, "Your save is still loading..."
+	if food ~= nil then
+		if type(food) ~= "string" or not foodDef(food) then
+			return nil, "Unknown food"
+		end
+		return { Food = food }
 	end
-	local def = defOf(key, profile)
-	if not def then
-		return false, "Unknown pet"
+	if opts.Count ~= nil then
+		local n = opts.Count
+		if not isFinite(n) or n ~= math.floor(n) or n < 1 or n > MAX_FEEDS then
+			return nil, "Pick how many feeds (1-" .. MAX_FEEDS .. ")"
+		end
+		return { Count = n }
 	end
-	if ownedCount(profile, key) < 1 then
-		return false, "You do not own that pet"
-	end
-	local level, have = petLevel(player, key)
-	local cap = levelCap(def)
-	if xpRoom(level, have, cap) <= 0 then
-		return false, petName(def, key) .. " is at its max level (Lv " .. cap .. ")"
-	end
-	if getFood(player, food.Id) < 1 then
-		return false, "You have no " .. plural(food.Name, 2) .. ": cook some in your Kitchen"
-	end
-	-- spend the food and write the XP in one step (no yields); the food comes back when the XP was refused
-	if not spendFood(player, food.Id, 1) then
-		return false, "You have no " .. plural(food.Name, 2) .. ": cook some in your Kitchen"
-	end
-	local given, levels, why, newLevel, newXp = grantXp(player, key, food.Xp, "Feed")
-	if given <= 0 then
-		addFood(player, food.Id, 1)
-		return false, why or "That pet cannot eat right now"
-	end
-	PetCareService.Fed:Fire(player, key, food.Id, levels)
-	if levels > 0 then
-		notify(player, levelUpText(def, key, newLevel, cap, "Feed"), "good", 5)
-	else
-		local need = xpToNext(newLevel)
-		local progress = isFinite(need) and (" (" .. math.floor(newXp) .. "/" .. need .. " to Lv " .. (newLevel + 1) .. ")") or ""
-		notify(player, petName(def, key) .. " ate a " .. food.Name .. ": +" .. math.floor(given) .. " XP" .. progress, "good", 3)
-	end
-	return true, { Xp = given, Levels = levels, Level = newLevel, Cap = cap }
+	return {}
 end
 
-function PetCareService.Feed(player, key, foodId)
-	return feed(player, key, foodId)
-end
-
--- the food a pet gets from the bowl: the best food the player has that does not overshoot the pet's cap (the
--- smallest one when every food would)
-local function bowlFood(player, room)
+-- the leftover a pet gets: the biggest food in `stock` that does not overshoot `room` (the smallest one when every
+-- food would), or nil without any leftover
+function Care.bowlFood(stock, room)
 	local best, smallest = nil, nil
 	for _, f in ipairs(foodList()) do
-		if getFood(player, f.Id) >= 1 then
+		if (stock[f.Id] or 0) >= 1 then
 			if f.Xp <= room and (not best or f.Xp > best.Xp) then
 				best = f
 			end
@@ -1168,403 +1047,671 @@ local function bowlFood(player, room)
 	return best or smallest
 end
 
-local function openPets(player)
-	openPanelRemote = openPanelRemote or remote("OpenPanel")
-	if openPanelRemote then
-		pcall(function()
-			openPanelRemote:FireClient(player, "Pets", { Tab = "Pets", Action = "Feed" })
-		end)
-	end
-end
-
--- the FeedBowl: every pet that follows the player eats one food
-local function feedFollowers(player)
-	local profile = getProfile(player)
-	if not profile then
-		return false, "Your save is still loading..."
-	end
-	local keys = nil
-	if petService and type(petService.GetEquipped) == "function" then
-		local ok, list = pcall(petService.GetEquipped, player)
-		if ok and type(list) == "table" then
-			keys = list
-		end
-	end
-	if not keys then
-		keys = type(profile.Equipped) == "table" and profile.Equipped or {}
-	end
-	if #keys == 0 then
-		openPets(player)
-		return false, "Equip a pet: the pets that follow you eat from the bowl"
-	end
-	local anyFood = false
+-- Plans the feeds of one request feed by feed along the XP curve: leftovers first (free), then machine feeds priced
+-- at the level each one is eaten at. Returns items { { Food = id, Name } | { Price = n }, Xp }..., the Cash sum, the
+-- free count and a reason when nothing can be fed.
+function Care.planFeeds(player, def, mode, level, have, cap, machineLevel)
+	local count = mode.Count or 1
+	local items, total, free = {}, 0, 0
+	local stock = {}
 	for _, f in ipairs(foodList()) do
-		if getFood(player, f.Id) >= 1 then
-			anyFood = true
+		stock[f.Id] = getFood(player, f.Id)
+	end
+	local lv, xp = level, have
+	local room = xpRoom(level, have, cap)
+	local why = nil
+	for _ = 1, count do
+		if room <= 0 then
 			break
 		end
-	end
-	if not anyFood then
-		return false, "No pet food yet: cook some at the Kitchen counter"
-	end
-	local fedCount, lastWhy = 0, nil
-	local seen = {}
-	for _, key in ipairs(keys) do
-		if type(key) == "string" and not seen[key] then
-			seen[key] = true
-			local def = defOf(key, profile)
-			if def then
-				local level, have = petLevel(player, key)
-				local room = xpRoom(level, have, levelCap(def))
-				local food = room > 0 and bowlFood(player, room) or nil
-				if food then
-					local ok, result = feed(player, key, food.Id)
-					if ok then
-						fedCount = fedCount + 1
-					else
-						lastWhy = result
-					end
-				elseif room <= 0 then
-					lastWhy = petName(def, key) .. " is at its max level (Lv " .. levelCap(def) .. ")"
-				end
+		local item = nil
+		local f = nil
+		if mode.Food then
+			f = foodDef(mode.Food)
+			if (stock[f.Id] or 0) < 1 then
+				why = "You have no " .. plural(f.Name, 2) .. " left"
+				break
 			end
+		else
+			f = Care.bowlFood(stock, room)
 		end
-	end
-	if fedCount == 0 then
-		return false, lastWhy or "Your pets cannot eat right now"
-	end
-	return true, fedCount
-end
-
-----------------------------------------------------------------------
--- Gym
-----------------------------------------------------------------------
-
-local function gymOf(player)
-	local g = gyms[player]
-	if not g then
-		g = { Pending = {}, Capped = {}, LastTick = nil, LastGrant = os.clock() }
-		gyms[player] = g
-	end
-	return g
-end
-
-local function wholeSlot(slot)
-	if type(slot) == "string" and #slot <= 3 and string.find(slot, "^%d+$") then
-		slot = tonumber(slot)
-	end
-	if not isFinite(slot) or slot ~= math.floor(slot) or slot < 1 or slot > MAX_SLOT then
-		return nil
-	end
-	return slot
-end
-
-local function gardenKeys(home)
-	local set = {}
-	if type(home) == "table" and type(home.Garden) == "table" then
-		for _, key in pairs(home.Garden) do
-			if type(key) == "string" then
-				set[key] = true
-			end
-		end
-	end
-	return set
-end
-
--- { [slot] = key } of the pets that really train: unlocked slots, owned Combat pets, once each, not in the Garden
-local function trainingPets(home, profile)
-	local out = {}
-	local gym = type(home) == "table" and home.Gym
-	if type(gym) ~= "table" then
-		return out
-	end
-	local inGarden = gardenKeys(home)
-	local seen = {}
-	for slot = 1, gymSlots(home) do
-		local key = gym[slot]
-		if type(key) == "string" and not seen[key] and not inGarden[key] then
-			seen[key] = true
-			local def = defOf(key, profile)
-			if def and def.Role == "Combat" and ownedCount(profile, key) >= 1 then
-				out[slot] = key
-			end
-		end
-	end
-	return out
-end
-
-local function slotText(map)
-	local slots = {}
-	for slot in pairs(map) do
-		slots[#slots + 1] = slot
-	end
-	table.sort(slots)
-	local parts = {}
-	for _, slot in ipairs(slots) do
-		parts[#parts + 1] = tostring(slot) .. "=" .. map[slot]
-	end
-	return table.concat(parts, ";")
-end
-
-local function clearGymShown(player)
-	local shown = gymShown[player]
-	gymShown[player] = nil
-	if shown and typeof(shown.Folder) == "Instance" then
-		setAttr(shown.Folder, ATTR_GYM, nil)
-		if shown.Info and homeBuilder and type(homeBuilder.SetGym) == "function" then
-			pcall(homeBuilder.SetGym, shown.Info, {})
-		end
-	end
-end
-
--- GymPets on the plot folder (+ HomeBuilder.SetGym when it exists), written only when it changes
-local function publishGym(player, home, profile)
-	local info = plotOf(player)
-	local folder = info and info.Folder
-	if typeof(folder) ~= "Instance" then
-		clearGymShown(player)
-		return
-	end
-	local shown = gymShown[player]
-	if shown and shown.Folder ~= folder then
-		clearGymShown(player)
-		shown = nil
-	end
-	home = home or getHome(player)
-	if not home then
-		return
-	end
-	local valid = trainingPets(home, profile or getProfile(player))
-	local text = slotText(valid)
-	if shown and shown.Text == text then
-		return
-	end
-	gymShown[player] = { Folder = folder, Info = info, Text = text }
-	setAttr(folder, ATTR_GYM, text)
-	if homeBuilder and type(homeBuilder.SetGym) == "function" then
-		local ok, err = pcall(homeBuilder.SetGym, info, valid)
-		if not ok then
-			warn("[PetCareService] HomeBuilder.SetGym failed: " .. tostring(err))
-		end
-	end
-end
-
--- pending Gym XP -> real XP (whole points; the fraction waits for the next grant)
-local function grantGym(player, g)
-	for key, pending in pairs(g.Pending) do
-		local whole = math.floor(pending)
-		if whole >= 1 then
-			local given, levels, why, newLevel, _, cap, def = grantXp(player, key, whole, "Gym")
-			if given > 0 then
-				g.Pending[key] = pending - given
-				if levels > 0 and def then
-					notify(player, levelUpText(def, key, newLevel, cap, "Gym"), "good", 5)
+		if f then
+			stock[f.Id] = stock[f.Id] - 1
+			item = { Food = f.Id, Name = f.Name, Xp = math.min(f.Xp, room) }
+			free = free + 1
+		else
+			if machineLevel < 1 then
+				if #items == 0 then
+					why = "Build the Food Machine at home first"
 				end
-				if def and newLevel and cap and newLevel >= cap and not g.Capped[key] then
-					g.Capped[key] = true
-					notify(player, petName(def, key) .. " is at its max level: free its Gym slot for another pet", "info", 5)
-				end
-			else
-				g.Pending[key] = nil
-				if def and newLevel and cap and newLevel >= cap and not g.Capped[key] then
-					g.Capped[key] = true
-					notify(player, petName(def, key) .. " is at its max level: free its Gym slot for another pet", "info", 5)
-				elseif why == "Your save is still loading..." then
-					g.Pending[key] = pending -- keep it until the save is readable again
-				end
+				break
 			end
+			local price = Care.feedPrice(def, lv)
+			local give = Care.feedXp(lv, machineLevel)
+			if not price or give < 1 then
+				break
+			end
+			item = { Price = price, Xp = math.min(give, room) }
+			total = total + price
+		end
+		items[#items + 1] = item
+		-- walk the curve: the next feed is priced at the level the pet has then
+		xp = xp + item.Xp
+		room = room - item.Xp
+		while lv < cap do
+			local need = xpToNext(lv)
+			if not isFinite(need) or xp < need then
+				break
+			end
+			xp = xp - need
+			lv = lv + 1
 		end
 	end
+	return items, total, free, why
 end
 
--- `claimed`: the home is claimed (training needs it, like the Collector's income); `home`: GetHome's copy or nil
-local function tickGym(player, now, claimed, home)
-	local g = gymOf(player)
-	local last = g.LastTick or now
-	local dt = math.max(0, math.min(now - last, MAX_TICK_DT))
-	g.LastTick = now
-	if claimed and dt > 0 then
-		local perMinute = home and gymXpPerMinute(home) or 0
-		if home and perMinute > 0 then
-			local profile = getProfile(player)
-			local valid = trainingPets(home, profile)
-			for _, key in pairs(valid) do
-				if not g.Capped[key] then
-					g.Pending[key] = (g.Pending[key] or 0) + perMinute / 60 * dt
-				end
-			end
-		end
-	end
-	if now - g.LastGrant >= GYM_GRANT_EVERY then
-		g.LastGrant = now
-		grantGym(player, g)
-	end
-end
-
-function PetCareService.GymSet(player, slot, key)
+local function feed(player, key, opts)
 	if not initialized then
-		return false, "The Gym is not ready yet"
+		return false, "Feeding is not ready yet"
 	end
 	if not isPlayer(player) then
 		return false, "Not in the game"
 	end
-	if key == "" or key == false then
-		key = nil
-	end
-	if key ~= nil and not validKeyString(key) then
+	if not validKeyString(key) then
 		return false, "Unknown pet"
 	end
-	local removeKey = nil
-	if type(slot) == "string" and not wholeSlot(slot) then
-		if key == nil and validKeyString(slot) then
-			removeKey = slot -- GymSet(key): take that pet out of the Gym
-			slot = nil
-		else
-			return false, "Unknown Gym slot"
-		end
-	end
-	local auto = false
-	if slot == nil or slot == 0 then
-		if key == nil and removeKey == nil then
-			return false, "Pick a pet to train"
-		end
-		auto = key ~= nil
-		slot = nil
-	else
-		slot = wholeSlot(slot)
-		if not slot then
-			return false, "Unknown Gym slot"
-		end
-	end
-	local home = getHome(player)
-	if not home then
-		return false, "Your home is still loading..."
+	local mode, bad = Care.parseOpts(opts)
+	if not mode then
+		return false, bad
 	end
 	local profile = getProfile(player)
-	local def = nil
-	if key ~= nil then
-		local slots = gymSlots(home)
-		if slots <= 0 then
-			return false, "Build the Gym first"
-		end
-		if slot and slot > slots then
-			return false, "Gym slot locked: upgrade the Gym"
-		end
-		def = defOf(key, profile)
-		if not def then
-			return false, "Unknown pet"
-		end
-		if def.Role ~= "Combat" then
-			return false, "Only Combat pets can train in the Gym"
-		end
-		if ownedCount(profile, key) < 1 then
-			return false, "You do not own that pet"
+	if not profile or isProvisional(player) then
+		return false, LOADING
+	end
+	local def = defOf(key, profile)
+	if not def then
+		return false, "Unknown pet"
+	end
+	if ownedCount(profile, key) < 1 then
+		return false, "You do not own that pet"
+	end
+	local name = petName(def, key)
+	local level, have = petLevel(player, key)
+	local cap = levelCap(def)
+	if xpRoom(level, have, cap) <= 0 then
+		return false, name .. " is at max level (Lv " .. cap .. ")"
+	end
+	if Care.busyInBattle(player, key) then
+		return false, "Finish your battle first"
+	end
+	local home = getHome(player)
+	local machineLevel = home and stationLevel(home, "Kitchen") or 0
+	local items, total, free, why = Care.planFeeds(player, def, mode, level, have, cap, machineLevel)
+	if #items == 0 then
+		return false, why or "That pet cannot eat right now"
+	end
+	-- the Cash check: paid feeds come after the free ones, so dropping them from the end keeps every price at its level
+	local firstPrice = nil
+	for _, item in ipairs(items) do
+		if item.Price and not firstPrice then
+			firstPrice = item.Price
 		end
 	end
+	local cash = getCash(player)
+	for i = #items, 1, -1 do
+		if total <= cash then
+			break
+		end
+		if items[i].Price then
+			total = total - items[i].Price
+			table.remove(items, i)
+		end
+	end
+	if #items == 0 then
+		return false, "Not enough Cash: a feed costs " .. money(firstPrice or 0)
+	end
+	local xpTotal, paidCount, firstFood = 0, 0, nil
+	for _, item in ipairs(items) do
+		xpTotal = xpTotal + item.Xp
+		if item.Price then
+			paidCount = paidCount + 1
+		elseif not firstFood then
+			firstFood = item
+		end
+	end
+	free = #items - paidCount
+	-- the foods, the Cash and the XP in one step (no yields); everything comes back when the XP was refused
+	local spent = {}
+	local function refundFood()
+		for id, n in pairs(spent) do
+			addFood(player, id, n)
+		end
+	end
+	for _, item in ipairs(items) do
+		if item.Food then
+			if not spendFood(player, item.Food, 1) then
+				refundFood()
+				return false, "You have no " .. plural(item.Name, 2) .. " left"
+			end
+			spent[item.Food] = (spent[item.Food] or 0) + 1
+		end
+	end
+	if total > 0 and not spendCash(player, total) then
+		refundFood()
+		return false, "Not enough Cash: a feed costs " .. money(firstPrice or total)
+	end
+	local given, levels, reason, newLevel, newXp, cap2, _, ready, stage = grantXp(player, key, xpTotal, "Feed")
+	if given <= 0 then
+		if total > 0 then
+			addCash(player, total)
+		end
+		refundFood()
+		return false, reason or "That pet cannot eat right now"
+	end
+	local foodId = (paidCount > 0 or not firstFood) and "Machine" or firstFood.Food
+	PetCareService.Fed:Fire(player, key, foodId, levels)
+	-- ONE toast per request
+	if levels > 0 then
+		notify(player, levelUpText(def, key, newLevel, cap2 or cap, stage, ready), "good", 5)
+	else
+		local need = xpToNext(newLevel)
+		local progress = isFinite(need) and (" (" .. math.floor(newXp) .. "/" .. need .. " to Lv " .. (newLevel + 1) .. ")") or ""
+		local what
+		if #items == 1 then
+			if firstFood and paidCount == 0 then
+				what = " ate a free " .. tostring(firstFood.Name)
+			else
+				what = " ate a meal"
+			end
+		else
+			what = " ate " .. #items .. " meals"
+			if free > 0 and paidCount > 0 then
+				what = what .. " (" .. free .. " free)"
+			elseif paidCount == 0 then
+				what = what .. " (free)"
+			end
+		end
+		notify(player, name .. what .. ": +" .. math.floor(given) .. " XP" .. progress, "good", 3)
+	end
+	return true, { Xp = given, Levels = levels, Level = newLevel, Cap = cap2 or cap, Paid = total, Free = free, Count = #items }
+end
 
-	local why, placed, removed, already = nil, nil, nil, false
-	local wrote = mutateHome(player, function(live)
-		if type(live.Gym) ~= "table" then
-			live.Gym = {}
-		end
-		local gym = live.Gym
-		if removeKey ~= nil then
-			local found = false
-			for s, k in pairs(gym) do
-				if k == removeKey then
-					gym[s] = nil
-					found = true
-				end
-			end
-			if not found then
-				why = "That pet is not in the Gym"
-				return false
-			end
-			removed = removeKey
-			return true
-		end
-		if key == nil then
-			if gym[slot] == nil then
-				return false -- already empty
-			end
-			removed = gym[slot]
-			gym[slot] = nil
-			return true
-		end
-		local liveSlots = gymSlots(live)
-		for _, k in pairs(type(live.Garden) == "table" and live.Garden or {}) do
-			if k == key then
-				why = "That pet is working in the Garden"
-				return false
-			end
-		end
-		local current = nil
-		for s, k in pairs(gym) do
-			if k == key then
-				current = s
-			end
-		end
-		local target = slot
-		if auto then
-			if current and type(current) == "number" and current <= liveSlots then
-				already = true
-				placed = current
-				return false
-			end
-			for s = 1, liveSlots do
-				if gym[s] == nil then
-					target = s
-					break
-				end
-			end
-			if not target then
-				why = "The Gym is full: upgrade it or free a slot"
-				return false
-			end
-		end
-		if target > liveSlots then
-			why = "Gym slot locked: upgrade the Gym"
-			return false
-		end
-		if gym[target] == key then
-			already = true
-			placed = target
-			return false
-		end
-		if current ~= nil then
-			gym[current] = nil -- one slot per pet: it moves
-		end
-		removed = gym[target]
-		gym[target] = key
-		placed = target
-		return true
-	end)
-	if not wrote then
-		if why then
-			return false, why
-		end
-		if already and def then
-			toastOnce(player, petName(def, key) .. " is already training", "info")
-		end
-		return true, nil -- nothing to change
-	end
-	local after = getHome(player)
-	publishGym(player, after, getProfile(player))
-	if key ~= nil then
-		local g = gyms[player]
-		if g then
-			g.Capped[key] = nil
-		end
-		notify(player, petName(def, key) .. " is training in the Gym!", "good", 3)
-	elseif removed then
-		notify(player, petName(defOf(removed, profile), removed) .. " left the Gym", "info", 3)
-	end
-	PetCareService.GymChanged:Fire(player)
-	return true, nil
+function PetCareService.Feed(player, key, opts)
+	return feed(player, key, opts)
 end
 
 ----------------------------------------------------------------------
--- Kitchen prompts (Cook <food> above the counter, Feed pets at the FeedBowl)
+-- EVOLVE
+----------------------------------------------------------------------
+
+function Care.openPanel(player, panelId, args)
+	openPanelRemote = openPanelRemote or remote("OpenPanel")
+	if openPanelRemote and isPlayer(player) then
+		pcall(function()
+			openPanelRemote:FireClient(player, panelId, args)
+		end)
+	end
+end
+
+function PetCareService.Evolve(player, key)
+	if not initialized then
+		return false, "Pet care is not ready yet"
+	end
+	if not isPlayer(player) then
+		return false, "Not in the game"
+	end
+	if not validKeyString(key) then
+		return false, "Unknown pet"
+	end
+	local profile = getProfile(player)
+	if not profile or isProvisional(player) then
+		return false, LOADING
+	end
+	local def = defOf(key, profile)
+	if not def then
+		return false, "Unknown pet"
+	end
+	if ownedCount(profile, key) < 1 then
+		return false, "You do not own that pet"
+	end
+	local name = petName(def, key)
+	if Care.inBattle(player) or Care.busyInBattle(player, key) then
+		return false, "Finish your battle first"
+	end
+	local level = petLevel(player, key)
+	local stage = Care.growth(player, key).Evo or 0
+	local nextStage = Care.canEvolve(def, level, stage)
+	if not nextStage then
+		if stage >= Care.maxEvolution(def) then
+			return false, name .. " is fully evolved"
+		end
+		local levels = petCatalog and type(petCatalog.EvolutionLevels) == "table" and petCatalog.EvolutionLevels or { 20, 50 }
+		local need = levels[stage + 1] or 20
+		return false, name .. " evolves at level " .. tostring(need) .. " (Lv " .. level .. " now)"
+	end
+	local ok, wrote = dsCall("SetEvolution", player, key, nextStage)
+	if not ok or wrote ~= true then
+		return false, "Could not evolve right now, try again"
+	end
+	PetCareService.Evolved:Fire(player, key, nextStage)
+	notify(player, name .. " evolved! " .. Care.boostText(nextStage) .. " to everything", "good", 6)
+	Care.refreshInfo(player)
+	Care.openPanel(player, "Evolve", { Key = key, Stage = nextStage })
+	return true, nextStage
+end
+
+----------------------------------------------------------------------
+-- Training (the Training Place): start, stop, completion, auto-remove / auto-return
+----------------------------------------------------------------------
+
+-- the mats in use and the running job count of a player (from the clean growth map)
+function Care.usedMats(player)
+	local map = Care.growthMap(player)
+	local used, n = {}, 0
+	for _, e in pairs(map) do
+		local job = type(e) == "table" and e.Job or nil
+		if type(job) == "table" then
+			n = n + 1
+			if isFinite(job.Slot) then
+				used[math.floor(job.Slot)] = true
+			end
+		end
+	end
+	return used, n, map
+end
+
+-- where the pet is now: "Garden:<slot>" (the smallest place holding it) | "Follow" | "Free"
+function Care.fromOf(profile, home, key)
+	local best = nil
+	if type(home) == "table" and type(home.Garden) == "table" then
+		for slot, k in pairs(home.Garden) do
+			if k == key and isFinite(slot) and (best == nil or slot < best) then
+				best = math.floor(slot)
+			end
+		end
+	end
+	if best then
+		return "Garden:" .. best
+	end
+	if type(profile) == "table" and type(profile.Equipped) == "table" then
+		for _, k in ipairs(profile.Equipped) do
+			if k == key then
+				return "Follow"
+			end
+		end
+	end
+	return "Free"
+end
+
+-- clears one Garden place (TycoonService.GardenSet, else straight into the saved Home)
+function Care.clearGarden(player, slot)
+	if tycoonService and type(tycoonService.GardenSet) == "function" then
+		local ok, done = pcall(tycoonService.GardenSet, player, slot, nil)
+		if ok and done == true then
+			return
+		end
+	end
+	mutateHome(player, function(live)
+		if type(live.Garden) ~= "table" or live.Garden[slot] == nil then
+			return false
+		end
+		live.Garden[slot] = nil
+		return true
+	end)
+end
+
+-- a training pet leaves the player (every equipped copy) and the Garden by itself
+function Care.removePet(player, key)
+	if petService then
+		if type(petService.UnequipKey) == "function" then
+			pcall(petService.UnequipKey, player, key)
+		elseif type(petService.Unequip) == "function" then
+			for _ = 1, 8 do
+				local ok, done = pcall(petService.Unequip, player, key)
+				if not (ok and done == true) then
+					break
+				end
+			end
+		end
+	end
+	local home = getHome(player)
+	if home and type(home.Garden) == "table" then
+		local slots = {}
+		for slot, k in pairs(home.Garden) do
+			if k == key then
+				slots[#slots + 1] = slot
+			end
+		end
+		for _, slot in ipairs(slots) do
+			Care.clearGarden(player, slot)
+		end
+	end
+end
+
+-- the pet comes back to where it was (Job.From): "Follow" -> re-equipped when a slot is free; "Garden:n" -> that
+-- place when open and empty, else the first free open place; else it stays in the list
+function Care.returnPet(player, key, from)
+	if type(from) ~= "string" or not isPlayer(player) then
+		return
+	end
+	if from == "Follow" then
+		if petService and type(petService.Equip) == "function" then
+			pcall(petService.Equip, player, key)
+		end
+		return
+	end
+	local slot = tonumber(string.match(from, "^Garden:(%d+)$"))
+	if not slot then
+		return
+	end
+	local home = getHome(player)
+	if not home or type(home.Garden) ~= "table" then
+		return
+	end
+	local open = Care.gardenSlots(home)
+	local target = nil
+	if slot <= open and home.Garden[slot] == nil then
+		target = slot
+	else
+		for s = 1, open do
+			if home.Garden[s] == nil then
+				target = s
+				break
+			end
+		end
+	end
+	if target and tycoonService and type(tycoonService.GardenSet) == "function" then
+		pcall(tycoonService.GardenSet, player, target, key)
+	end
+end
+
+-- Finishes a due job: the rank becomes the job's TARGET rank (two servers completing one job give one rank), the
+-- job goes, the pet comes back. Returns true when this server completed it.
+function Care.completeJob(player, key, job, atLoad)
+	local wrote = Care.mutateGrowth(player, function(g)
+		local e = g[key]
+		if type(e) ~= "table" or type(e.Job) ~= "table" or e.Job.Stat ~= job.Stat then
+			return false -- changed meanwhile (stopped, or another server's state): nothing to do here
+		end
+		local rank = e.Job.Rank
+		if (e[job.Stat] or 0) < rank then
+			e[job.Stat] = rank
+		end
+		e.Job = nil
+		return true
+	end)
+	if not wrote then
+		return false
+	end
+	local def = defOf(key, getProfile(player))
+	local name = petName(def, key)
+	local label = Care.statLabel(job.Stat)
+	pcall(Care.returnPet, player, key, job.From)
+	Care.publishTraining(player)
+	if atLoad then
+		Care.queueToast(player, "Training done while you were away! " .. name .. ": " .. label .. " Rank " .. tostring(job.Rank), "good", 6)
+	else
+		notify(player, name .. " finished " .. label .. " training: Rank " .. tostring(job.Rank) .. "!", "good", 5)
+	end
+	PetCareService.TrainingDone:Fire(player, key, job.Stat, job.Rank)
+	return true
+end
+
+-- completes every due job (os.time() >= Job.Ends) of a loaded, non-provisional player; returns how many, the map
+function Care.settleJobs(player, atLoad)
+	local profile = getProfile(player)
+	if not profile or isProvisional(player) then
+		return 0, nil
+	end
+	local map = Care.growthMap(player)
+	local now = os.time()
+	local done = 0
+	for key, e in pairs(map) do
+		local job = type(e) == "table" and e.Job or nil
+		if type(job) == "table" and isFinite(job.Ends) and now >= job.Ends then
+			if ownedCount(profile, key) < 1 then
+				Care.mutateGrowth(player, function(g)
+					g[key] = nil -- a job of a pet that is gone (fused away elsewhere)
+				end)
+				done = done + 1
+			elseif Care.completeJob(player, key, job, atLoad) then
+				done = done + 1
+			end
+		end
+	end
+	if done > 0 then
+		map = nil -- changed: let the caller re-read
+	end
+	return done, map
+end
+
+function PetCareService.Train(player, key, stat)
+	if not initialized then
+		return false, "Pet care is not ready yet"
+	end
+	if not isPlayer(player) then
+		return false, "Not in the game"
+	end
+	if not validKeyString(key) then
+		return false, "Unknown pet"
+	end
+	stat = Care.statOf(stat)
+	if not stat then
+		return false, "Pick a skill: Attack Speed, Physique, Ability or Defense"
+	end
+	local profile = getProfile(player)
+	if not profile or isProvisional(player) then
+		return false, LOADING
+	end
+	local def = defOf(key, profile)
+	if not def then
+		return false, "Unknown pet"
+	end
+	if ownedCount(profile, key) < 1 then
+		return false, "You do not own that pet"
+	end
+	local name = petName(def, key)
+	local label = Care.statLabel(stat)
+	local home = getHome(player)
+	if not home then
+		return false, LOADING
+	end
+	local slots = Care.trainingSlots(home)
+	if slots < 1 then
+		return false, "Build the Training Place at home first"
+	end
+	local growth = Care.growth(player, key)
+	if type(growth.Job) == "table" then
+		return false, name .. " is already training (" .. Care.clock((tonumber(growth.Job.Ends) or 0) - os.time()) .. " left)"
+	end
+	local rank = isFinite(growth[stat]) and math.floor(growth[stat]) or 0
+	local maxRank = Care.maxRank()
+	if rank >= maxRank then
+		return false, name .. "'s " .. label .. " is at Rank " .. maxRank .. " (max)"
+	end
+	local used, runningJobs = Care.usedMats(player)
+	local mat = nil
+	for s = 1, slots do
+		if not used[s] then
+			mat = s
+			break
+		end
+	end
+	if runningJobs >= slots or not mat then
+		return false, "The Training Place is full (" .. runningJobs .. "/" .. slots .. " training)"
+	end
+	if player:GetAttribute(ATTR_IN_MATCH) == true then
+		return false, "Finish your match first"
+	end
+	if Care.busyInBattle(player, key) then
+		return false, "Finish your battle first"
+	end
+	local cost = Care.trainCost(def, rank + 1)
+	local seconds = Care.trainSeconds(rank + 1)
+	if not cost or not seconds then
+		return false, "That pet cannot train right now"
+	end
+	local short = "Not enough Cash: Rank " .. (rank + 1) .. " " .. label .. " costs " .. money(cost)
+	if getCash(player) < cost then
+		return false, short
+	end
+	local from = Care.fromOf(profile, home, key)
+	-- the payment and the job in one step (no yields): a failed job write gives the Cash back
+	if cost > 0 and not spendCash(player, cost) then
+		return false, short
+	end
+	local ends = os.time() + seconds
+	local wrote = Care.mutateGrowth(player, function(g)
+		local e = g[key]
+		if type(e) ~= "table" then
+			e = {}
+			g[key] = e
+		end
+		if type(e.Job) == "table" then
+			return false
+		end
+		e.Job = { Stat = stat, Ends = ends, Rank = (isFinite(e[stat]) and math.floor(e[stat]) or 0) + 1, Slot = mat, From = from, Paid = cost }
+		return true
+	end)
+	if not wrote then
+		if cost > 0 then
+			addCash(player, cost)
+		end
+		return false, "Could not start training right now, try again"
+	end
+	-- the pet leaves the player and the Garden by itself (Job.From remembers where it was)
+	pcall(Care.removePet, player, key)
+	Care.publishTraining(player)
+	notify(player, name .. " started " .. label .. " training (" .. Care.clock(seconds) .. ")", "good", 4)
+	PetCareService.TrainingStarted:Fire(player, key, stat)
+	return true, { Rank = rank + 1, Ends = ends, Cost = cost, Slot = mat, From = from }
+end
+
+function PetCareService.TrainStop(player, key)
+	if not initialized then
+		return false, "Pet care is not ready yet"
+	end
+	if not isPlayer(player) then
+		return false, "Not in the game"
+	end
+	if not validKeyString(key) then
+		return false, "Unknown pet"
+	end
+	local profile = getProfile(player)
+	if not profile or isProvisional(player) then
+		return false, LOADING
+	end
+	local def = defOf(key, profile)
+	local name = petName(def, key)
+	local job = Care.growth(player, key).Job
+	if type(job) ~= "table" then
+		return false, name .. " is not training"
+	end
+	if isFinite(job.Ends) and os.time() >= job.Ends then
+		-- already done: it finishes instead (the rank is earned, nothing to refund)
+		Care.completeJob(player, key, job, false)
+		return true, 0
+	end
+	local paid = isFinite(job.Paid) and math.max(0, math.floor(job.Paid)) or 0
+	-- the job goes and the Cash comes back in the same step (they travel in the same save)
+	local wrote = Care.mutateGrowth(player, function(g)
+		local e = g[key]
+		if type(e) ~= "table" or type(e.Job) ~= "table" then
+			return false
+		end
+		e.Job = nil
+		return true
+	end)
+	if not wrote then
+		return false, "Could not stop training right now, try again"
+	end
+	if paid > 0 then
+		addCash(player, paid)
+	end
+	pcall(Care.returnPet, player, key, job.From)
+	Care.publishTraining(player)
+	if paid > 0 then
+		notify(player, name .. " stopped training: " .. money(paid) .. " back", "info", 3)
+	else
+		notify(player, name .. " stopped training", "info", 3)
+	end
+	return true, paid
+end
+
+----------------------------------------------------------------------
+-- Home load: the retired Gym, offline completions
+----------------------------------------------------------------------
+
+-- empties Home.Gym (the Gym is the Training Place now) once the home is readable; one toast per session, also when
+-- DataService's one-time migration freed the Gym pets this session
+function Care.freeOldGym(player)
+	local s = Care.session(player)
+	if s.GymChecked then
+		return
+	end
+	local home = getHome(player)
+	if not home then
+		return -- not loaded yet / provisional: ProfileRebased and the tick bring us back
+	end
+	s.GymChecked = true
+	local freed = 0
+	if type(home.Gym) == "table" and next(home.Gym) ~= nil then
+		local n = 0
+		local wrote = mutateHome(player, function(live)
+			if type(live.Gym) ~= "table" then
+				return false
+			end
+			local slots = {}
+			for slot, k in pairs(live.Gym) do
+				if type(k) == "string" then
+					n = n + 1
+				end
+				slots[#slots + 1] = slot
+			end
+			for _, slot in ipairs(slots) do
+				live.Gym[slot] = nil
+			end
+			return #slots > 0
+		end)
+		if wrote then
+			freed = freed + n
+		end
+	end
+	if not s.MigrationSeen then
+		local ok, info = dsCall("MigratedNow", player, "P4")
+		if ok and type(info) == "table" then
+			s.MigrationSeen = true
+			if isFinite(info.GymPets) and info.GymPets > 0 then
+				freed = freed + math.floor(info.GymPets)
+			end
+		end
+	end
+	if freed > 0 and not s.GymToast then
+		s.GymToast = true
+		Care.queueToast(player, "The Gym is now the Training Place: your gym pets are back with you", "info", 6)
+	end
+end
+
+-- ProfileLoaded / ProfileRebased (and players already here at Init): the old Gym, the jobs that ended meanwhile
+function Care.onProfileReady(player)
+	if not isPlayer(player) then
+		return
+	end
+	local s = Care.session(player)
+	s.GymChecked = false -- a rebased save may hold Gym pets again (a Phase 3 server during the rollout)
+	if not getProfile(player) or isProvisional(player) then
+		return
+	end
+	Care.freeOldGym(player)
+	local done, map = Care.settleJobs(player, true)
+	if done > 0 then
+		map = nil
+	end
+	Care.publishTraining(player, map)
+end
+
+----------------------------------------------------------------------
+-- Prompts (FeedPrompt on the Food Machine, TrainPrompt on the Training Place)
 ----------------------------------------------------------------------
 
 local function biggestPart(model)
@@ -1583,22 +1730,13 @@ local function biggestPart(model)
 	return best
 end
 
-local function stationFrame(info, model)
-	local def = catalog and type(catalog.Get) == "function" and catalog.Get("Kitchen") or nil
-	local slot = def and def.Slot
-	if typeof(info.PlotCFrame) == "CFrame" and slot and typeof(slot.CFrame) == "CFrame" then
-		return info.PlotCFrame * slot.CFrame
-	end
-	return model:GetPivot()
-end
-
-local function newPrompt(parent, name, action, object, keys, ownerId)
+local function newPrompt(parent, name, action, object, ownerId)
 	local prompt = Instance.new("ProximityPrompt")
 	prompt.Name = name
 	prompt.ActionText = action
 	prompt.ObjectText = object
-	prompt.KeyboardKeyCode = keys.Keyboard
-	prompt.GamepadKeyCode = keys.Gamepad
+	prompt.KeyboardKeyCode = PROMPT_KEYS.Keyboard
+	prompt.GamepadKeyCode = PROMPT_KEYS.Gamepad
 	prompt.HoldDuration = PROMPT_HOLD
 	prompt.MaxActivationDistance = PROMPT_RANGE
 	prompt.RequiresLineOfSight = false
@@ -1616,48 +1754,50 @@ local function clearCarePrompts(model)
 	end
 end
 
--- Puts the cook prompts (one per recipe of this Kitchen level) and the bowl prompt on the owner's Kitchen.
-local function ensurePrompts(player, info, home)
-	local model = kitchenModel(info)
+-- the part a prompt sits on: the named part (a part inside a named model) when the station has it, else its biggest
+function Care.anchorOf(model, anchorName)
+	if anchorName then
+		local found = model:FindFirstChild(anchorName, true)
+		if found then
+			if found:IsA("BasePart") then
+				return found
+			end
+			local inner = found:FindFirstChildWhichIsA("BasePart", true)
+			if inner then
+				return inner
+			end
+		end
+	end
+	return biggestPart(model)
+end
+
+-- one owner-only prompt per station (rebuilt when the station or its owner changes; the signature carries "p4:")
+function Care.ensurePrompt(player, info, home, stationId, promptName, action, object, anchorName)
+	local level = stationLevel(home, stationId)
+	if level < 1 then
+		return
+	end
+	local model = Care.stationModel(info, stationId)
 	if not model then
 		return
 	end
-	local level = stationLevel(home, "Kitchen")
-	local sig = tostring(level) .. ":" .. tostring(player.UserId)
+	local sig = SIG_PREFIX .. stationId .. ":" .. tostring(level) .. ":" .. tostring(player.UserId)
 	if model:GetAttribute(CARE_SIG) == sig then
 		return
 	end
 	clearCarePrompts(model)
-	local anchor = biggestPart(model)
+	local anchor = Care.anchorOf(model, anchorName)
 	if not anchor then
 		return
 	end
-	local frame = stationFrame(info, model)
-	local recipes = {}
-	for _, f in ipairs(foodList()) do
-		if level >= (isFinite(f.KitchenLevel) and f.KitchenLevel or 1) then
-			recipes[#recipes + 1] = f
-		end
-	end
-	local n = math.min(#recipes, #COOK_KEYS)
-	for i = 1, n do
-		local f = recipes[i]
-		local x = (i - (n + 1) / 2) * PROMPT_SPACING
-		local att = Instance.new("Attachment")
-		att.Name = "CookPoint_" .. f.Id
-		att.CFrame = anchor.CFrame:ToObjectSpace(frame * CFrame.new(x, PROMPT_HEIGHT, PROMPT_DEPTH))
-		att:SetAttribute(CARE_MARK, true)
-		att.Parent = anchor
-		local seconds = cookSeconds(f.Id, level) or f.CookSeconds or 0
-		local prompt = newPrompt(att, "CookPrompt", "Cook " .. tostring(f.Name), money(f.Price) .. " - " .. duration(seconds), COOK_KEYS[i], player.UserId)
-		prompt:SetAttribute("FoodId", f.Id)
-		prompt:SetAttribute("StationId", "Kitchen")
-	end
-	local bowl = model:FindFirstChild("FeedBowl", true)
-	if bowl and bowl:IsA("BasePart") then
-		newPrompt(bowl, "FeedPrompt", "Feed pets", "Feeding bowl", COOK_KEYS[1], player.UserId)
-	end
+	local prompt = newPrompt(anchor, promptName, action, object, player.UserId)
+	prompt:SetAttribute("StationId", stationId)
 	model:SetAttribute(CARE_SIG, sig)
+end
+
+function Care.ensurePrompts(player, info, home)
+	Care.ensurePrompt(player, info, home, "Kitchen", "FeedPrompt", "Feed pets", "Food Machine", "Hopper")
+	Care.ensurePrompt(player, info, home, "Gym", "TrainPrompt", "Train pets", "Training Place", nil)
 end
 
 local function onPromptTriggered(prompt, player)
@@ -1665,11 +1805,11 @@ local function onPromptTriggered(prompt, player)
 		return
 	end
 	local name = prompt.Name
-	if name ~= "CookPrompt" and name ~= "FeedPrompt" then
+	if name ~= "FeedPrompt" and name ~= "TrainPrompt" then
 		return
 	end
 	if prompt:GetAttribute(CARE_MARK) ~= true or prompt:GetAttribute("OwnerUserId") ~= player.UserId then
-		return -- someone else's Kitchen (their prompts are disabled locally; never trust a stray trigger)
+		return -- someone else's home (their prompts are disabled locally; never trust a stray trigger)
 	end
 	local info = plotOf(player)
 	if not info or typeof(info.Folder) ~= "Instance" or not prompt:IsDescendantOf(info.Folder) then
@@ -1678,14 +1818,10 @@ local function onPromptTriggered(prompt, player)
 	if not cooldown(player, "Prompt", PROMPT_COOLDOWN) or not spend(player) then
 		return
 	end
-	local ok, reason
-	if name == "CookPrompt" then
-		ok, reason = PetCareService.Cook(player, prompt:GetAttribute("FoodId"), 1)
+	if name == "FeedPrompt" then
+		Care.openPanel(player, "Pets", { Tab = "Pets", Action = "Feed" })
 	else
-		ok, reason = feedFollowers(player)
-	end
-	if not ok then
-		toastOnce(player, reason or "Not now", "bad")
+		Care.openPanel(player, "Train")
 	end
 end
 
@@ -1693,8 +1829,9 @@ end
 -- Extras
 ----------------------------------------------------------------------
 
--- Cap-aware XP for other services (battles in Phase 3): never past the pet's level cap. Returns xpGiven,
--- levelsGained, reason (nil when XP was given). A level-up fires LevelUp and shows the stats toast.
+-- Cap-aware XP for other services (battles, the Champion Ring): never past the pet's level cap. Returns xpGiven,
+-- levelsGained, reason (nil when XP was given). ONE toast per grant: the level-up toast with the new stats (and
+-- "Ready to evolve!" at 20 / 50), whatever the number of levels crossed.
 function PetCareService.GrantXp(player, key, xp, source)
 	if not initialized then
 		return 0, 0, "Pet care is not ready yet"
@@ -1702,9 +1839,9 @@ function PetCareService.GrantXp(player, key, xp, source)
 	if not isPlayer(player) or not validKeyString(key) then
 		return 0, 0, "Unknown pet"
 	end
-	local given, levels, why, newLevel, _, cap, def = grantXp(player, key, tonumber(xp), source or "Other")
+	local given, levels, why, newLevel, _, cap, def, ready, stage = grantXp(player, key, tonumber(xp), source or "Other")
 	if levels > 0 and def then
-		notify(player, levelUpText(def, key, newLevel, cap, source), "good", 5)
+		notify(player, levelUpText(def, key, newLevel, cap, stage, ready), "good", 5)
 	end
 	return given, levels, why
 end
@@ -1715,6 +1852,24 @@ function PetCareService.LevelCap(player, key)
 		return nil
 	end
 	return levelCap(def)
+end
+
+-- Developer tools ("Reset my data"): drops this server's session state of the player (deferred toasts, the published
+-- TrainingPets, the Gym check). The saved growth is wiped by DevService itself.
+function PetCareService.ClearSessions(player)
+	if not player then
+		return false
+	end
+	Care.clearShown(player)
+	local s = sessions[player]
+	if s then
+		s.Pending = {}
+		s.GymChecked = false
+		s.GymToast = false
+		s.MigrationSeen = false
+	end
+	cooldowns[player] = nil
+	return true
 end
 
 ----------------------------------------------------------------------
@@ -1728,66 +1883,86 @@ local function onPetCare(player, action, a, b)
 	if not spend(player) then
 		return
 	end
-	if action == "Cook" then
-		if not cooldown(player, "Cook", COOK_COOLDOWN) then
-			return
-		end
-		local foodId, qty = a, b
-		if type(a) == "table" then
-			foodId = a.FoodId
-			if foodId == nil then
-				foodId = a[1]
-			end
-			qty = a.Qty
-			if qty == nil then
-				qty = a.Count
-			end
-			if qty == nil then
-				qty = a[2]
-			end
-		end
-		local ok, reason = PetCareService.Cook(player, foodId, qty)
-		if not ok then
-			toastOnce(player, reason or "You cannot cook that now", "bad")
-		end
-	elseif action == "Feed" then
+	if action == "Feed" then
 		if not cooldown(player, "Feed", FEED_COOLDOWN) then
 			return
 		end
-		local key, foodId = a, b
+		local key, opts = a, b
 		if type(a) == "table" then
 			key = a.Key
 			if key == nil then
 				key = a[1]
 			end
-			foodId = a.FoodId
-			if foodId == nil then
-				foodId = a[2]
+			if opts == nil then
+				if a.Count ~= nil then
+					opts = { Count = a.Count }
+				elseif a.Food ~= nil or a.FoodId ~= nil then
+					opts = { Food = a.Food ~= nil and a.Food or a.FoodId }
+				elseif a[2] ~= nil then
+					opts = a[2]
+				end
 			end
 		end
-		local ok, reason = feed(player, key, foodId)
+		local ok, reason = feed(player, key, opts)
 		if not ok then
 			toastOnce(player, reason or "That pet cannot eat now", "bad")
 		end
-	elseif action == "GymSet" then
-		if not cooldown(player, "Gym", GYM_COOLDOWN) then
+	elseif action == "Evolve" then
+		if not cooldown(player, "Evolve", EVOLVE_COOLDOWN) then
 			return
 		end
-		local slot, key = a, b
+		local key = a
 		if type(a) == "table" then
-			slot = a.Slot
-			if slot == nil then
-				slot = a[1]
-			end
 			key = a.Key
 			if key == nil then
-				key = a[2]
+				key = a[1]
 			end
 		end
-		local ok, reason = PetCareService.GymSet(player, slot, key)
+		local ok, reason = PetCareService.Evolve(player, key)
+		if not ok then
+			toastOnce(player, reason or "That pet cannot evolve now", "bad")
+		end
+	elseif action == "Train" then
+		if not cooldown(player, "Train", TRAIN_COOLDOWN) then
+			return
+		end
+		local key, stat = a, b
+		if type(a) == "table" then
+			key = a.Key
+			if key == nil then
+				key = a[1]
+			end
+			stat = a.Stat
+			if stat == nil then
+				stat = a.Skill
+			end
+			if stat == nil then
+				stat = a[2]
+			end
+		end
+		local ok, reason = PetCareService.Train(player, key, stat)
 		if not ok then
 			toastOnce(player, reason or "That pet cannot train now", "bad")
 		end
+	elseif action == "TrainStop" then
+		if not cooldown(player, "Train", TRAIN_COOLDOWN) then
+			return
+		end
+		local key = a
+		if type(a) == "table" then
+			key = a.Key
+			if key == nil then
+				key = a[1]
+			end
+		end
+		local ok, reason = PetCareService.TrainStop(player, key)
+		if not ok then
+			toastOnce(player, reason or "That pet is not training", "bad")
+		end
+	elseif action == "Cook" then
+		toastOnce(player, "The Kitchen is now the Food Machine: press E at it to feed your pets", "info")
+	elseif action == "GymSet" then
+		toastOnce(player, "The Gym is now the Training Place: press E at it to train a pet", "info")
 	end
 end
 
@@ -1796,23 +1971,31 @@ end
 ----------------------------------------------------------------------
 
 local function tickPlayer(player, now)
-	local k = kitchens[player]
-	if k then
-		tickKitchen(player, k, now)
+	local s = Care.session(player)
+	local profile = getProfile(player)
+	local readable = profile ~= nil and not isProvisional(player)
+	local map = nil
+	if readable then
+		if not s.GymChecked then
+			Care.freeOldGym(player)
+		end
+		local done
+		done, map = Care.settleJobs(player, false)
+		if done > 0 then
+			map = nil
+		end
 	end
 	local info = plotOf(player)
-	local home = getHome(player) -- one copy per tick
-	tickGym(player, now, hasHome(player), home)
-	if info then
+	if info and readable then
+		local home = getHome(player)
 		if home then
-			if stationLevel(home, "Kitchen") >= 1 then
-				ensurePrompts(player, info, home)
-			end
-			publishGym(player, home, nil)
+			Care.ensurePrompts(player, info, home)
+			Care.publishTraining(player, map)
 		end
-	elseif gymShown[player] then
-		clearGymShown(player)
+	elseif s.Shown then
+		Care.clearShown(player)
 	end
+	Care.flushToasts(player, s, now)
 end
 
 local function tickAll()
@@ -1840,58 +2023,38 @@ local function tickLoop()
 	end
 end
 
-local function onPlayerRemoving(player)
-	departed[player] = true
-	-- dishes that finished are delivered first, the rest is refunded (the Cash they cost)
-	local k = kitchens[player]
-	if k and #k.Queue > 0 then
-		local ok, err = pcall(tickKitchen, player, k, os.clock())
+local function onPlayerAdded(player)
+	Care.session(player)
+	if getProfile(player) and not isProvisional(player) then
+		local ok, err = pcall(Care.onProfileReady, player)
 		if not ok then
-			warn("[PetCareService] last kitchen tick failed: " .. tostring(err))
+			warn("[PetCareService] load failed: " .. tostring(err))
 		end
 	end
-	local ok, err = pcall(refundKitchen, player)
-	if not ok then
-		warn("[PetCareService] kitchen refund failed: " .. tostring(err))
-	end
-	clearGymShown(player)
-	kitchens[player] = nil
-	gyms[player] = nil
+end
+
+local function onPlayerRemoving(player)
+	departed[player] = true
+	Care.clearShown(player)
+	sessions[player] = nil
 	cooldowns[player] = nil
 	budgets[player] = nil
 	toastAt[player] = nil
 end
 
--- Server shutdown: refund every queue right away, then save those players once more. (DataService's own close
--- handler is bound earlier and may already have taken its snapshot; its per-entry save lock orders the two saves.)
-local function onClose()
-	local touched = {}
-	for player, k in pairs(kitchens) do
-		if #k.Queue > 0 then
-			pcall(tickKitchen, player, k, os.clock())
-			touched[#touched + 1] = player
-		end
-	end
-	for _, player in ipairs(touched) do
-		local ok, err = pcall(refundKitchen, player)
-		if not ok then
-			warn("[PetCareService] kitchen refund failed: " .. tostring(err))
-		end
-	end
-	if #touched == 0 or not dataService or type(dataService.Save) ~= "function" then
-		return
-	end
-	local pending = #touched
-	for _, player in ipairs(touched) do
-		task.spawn(function()
-			pcall(dataService.Save, player)
-			pending = pending - 1
+local function connectSignal(signal, fn, what)
+	if type(signal) == "table" and type(signal.Connect) == "function" then
+		local ok, err = pcall(function()
+			signal:Connect(function(...)
+				local okCall, callErr = pcall(fn, ...)
+				if not okCall then
+					warn("[PetCareService] " .. what .. " handler failed: " .. tostring(callErr))
+				end
+			end)
 		end)
-	end
-	local waited = 0
-	while pending > 0 and waited < 20 do
-		task.wait(0.1)
-		waited = waited + 0.1
+		if not ok then
+			warn("[PetCareService] could not listen to " .. what .. ": " .. tostring(err))
+		end
 	end
 end
 
@@ -1908,16 +2071,20 @@ function PetCareService.Init(deps)
 	dataService = deps.DataService or requireModule(services, "DataService")
 	petService = deps.PetService
 	tycoonService = deps.TycoonService
+	battleService = deps.BattleService
 	catalog = requireModule(Shared, "TycoonCatalog")
 	petKeys = requireModule(Shared, "PetKeys")
 	petCatalog = requireModule(Shared, "PetCatalog")
 	if not catalog then
-		warn("[PetCareService] TycoonCatalog is missing: the Kitchen, feeding and the Gym are disabled")
+		warn("[PetCareService] TycoonCatalog is missing: the Food Machine, EVOLVE and the Training Place are disabled")
 		return
 	end
-	if not dataService or type(dataService.AddPetXp) ~= "function" or type(dataService.AddFood) ~= "function" then
-		warn("[PetCareService] DataService has no pet level / food API: the Kitchen, feeding and the Gym are disabled")
+	if not dataService or type(dataService.AddPetXp) ~= "function" then
+		warn("[PetCareService] DataService has no pet level API: the Food Machine, EVOLVE and the Training Place are disabled")
 		return
+	end
+	if type(dataService.MutateGrowth) ~= "function" then
+		warn("[PetCareService] DataService has no PetGrowth API: EVOLVE and training will refuse")
 	end
 	homeBuilder = services and services:FindFirstChild("HomeBuilder") and requireModule(services, "HomeBuilder") or nil
 	initialized = true
@@ -1929,27 +2096,15 @@ function PetCareService.Init(deps)
 		warn("[PetCareService] the PetCare remote is missing (Config.Remotes)")
 	end
 	ProximityPromptService.PromptTriggered:Connect(onPromptTriggered)
-	-- a prestige resets Cash: what is still cooking can no longer be refunded as Cash (see voidRefunds)
-	local prestiged = tycoonService and tycoonService.Prestiged
-	if type(prestiged) == "table" and type(prestiged.Connect) == "function" then
-		local okConn, connErr = pcall(function()
-			prestiged:Connect(function(player)
-				voidRefunds(player)
-			end)
-		end)
-		if not okConn then
-			warn("[PetCareService] could not listen to TycoonService.Prestiged: " .. tostring(connErr))
-		end
-	end
+	-- the old Gym is emptied and due jobs finish when a save becomes readable (load, rebase, dev reset)
+	connectSignal(dataService.ProfileLoaded, Care.onProfileReady, "DataService.ProfileLoaded")
+	connectSignal(dataService.ProfileRebased, Care.onProfileReady, "DataService.ProfileRebased")
+	Players.PlayerAdded:Connect(onPlayerAdded)
 	Players.PlayerRemoving:Connect(onPlayerRemoving)
-	local okClose, closeErr = pcall(function()
-		game:BindToClose(onClose)
-	end)
-	if not okClose then
-		warn("[PetCareService] BindToClose failed: " .. tostring(closeErr))
+	for _, player in ipairs(Players:GetPlayers()) do
+		onPlayerAdded(player)
 	end
 
-	-- players who joined before Init need nothing special: their kitchen / gym state starts on the first tick
 	running = true
 	task.spawn(tickLoop)
 end
