@@ -207,6 +207,7 @@ local P4K = {
 	DIVE_WINDOW = 0.5, -- s: a teleport this close to the portal closing is a portal trip
 	DIVE_NEAR = 8, -- studs: an owner this close to an open portal who teleports used it
 	PARK_DEFAULT = 4.6, -- s a follower stays parked by PlayEvolution when EvolutionFx cannot say
+	OVERRIDE_GRACE = 15, -- s after the park: a PlayEvolution stage State never confirmed is dropped (State wins)
 }
 
 -- Wing speed. PetBuilder.Animate beats the wings at FLAP_HZ * Flap * (1 + 1.25 * Excited) per second, so the
@@ -240,6 +241,7 @@ local warnedAt = {} -- [key] = os.clock() of the last warning (rate limit)
 local P4 = {
 	heights = {}, -- ["key|stage"] = measured model height (GetExtentsSize Y, Scale 1)
 	overrides = {}, -- [key] = stage passed to PlayEvolution (until State's PetGrowth catches up)
+	overrideUntil = {}, -- [key] = os.clock() after which an unconfirmed override is stale (park end + OVERRIDE_GRACE)
 	parks = {}, -- [key] = { Until = os.clock(), From = Vector3 | nil } while PlayEvolution parks that follower
 	nextGlobal = 0, -- os.clock() of the next card / evolved-model selection
 	stateConn = nil,
@@ -942,7 +944,8 @@ function P4.endDive(f)
 	end
 end
 
--- the stored evolution stage of an own pet (State), never below a stage PlayEvolution announced
+-- the stored evolution stage of an own pet (State), never below a stage PlayEvolution announced while that stage is
+-- fresh (the park + P4K.OVERRIDE_GRACE): an override State never confirmed is dropped then (State wins)
 function P4.ownStage(p, level)
 	local stored = 0
 	if State and type(State.PetGrowth) == "function" then
@@ -953,8 +956,12 @@ function P4.ownStage(p, level)
 	end
 	local over = P4.overrides[p.key]
 	if over then
-		if stored >= over then
+		-- State caught up, or never did long after the animation (a /reset, a pet that came back fresh): State wins
+		local untilAt = P4.overrideUntil[p.key]
+		local stale = untilAt ~= nil and os.clock() > untilAt and P4.parks[p.key] == nil
+		if stored >= over or stale then
 			P4.overrides[p.key] = nil
+			P4.overrideUntil[p.key] = nil
 		else
 			stored = over
 		end
@@ -1615,6 +1622,7 @@ function PetController.PlayEvolution(key, stage, opts)
 	end
 	seconds = math.min(seconds, 30)
 	P4.overrides[key] = math.max(P4.overrides[key] or 0, stage)
+	P4.overrideUntil[key] = os.clock() + seconds + P4K.OVERRIDE_GRACE
 	local park = { Until = os.clock() + seconds, From = from }
 	P4.parks[key] = park
 	if localFollower then
@@ -1686,6 +1694,7 @@ function PetController.Stop()
 	end
 	P4.parks = {}
 	P4.overrides = {}
+	P4.overrideUntil = {}
 	local list = {}
 	for player in pairs(followers) do
 		list[#list + 1] = player

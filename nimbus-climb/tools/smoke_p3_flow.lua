@@ -632,6 +632,17 @@ local function stepId(p)
 	return st.Id
 end
 
+-- chapter 3 is behind the player: the whole tutorial is done, or chapter 4 (Phase 4: train / ring / portal) runs
+local function chapter3Finished(st)
+	if type(st) ~= "table" then
+		return false
+	end
+	if st.Done == true then
+		return true
+	end
+	return st.Chapter == 4 and (st.Id == "train" or st.Id == "ring" or st.Id == "portal")
+end
+
 -- the total XP a pet copy holds (levels converted back to XP with the tycoon curve)
 local function totalXp(p, key)
 	local level, xp = DS().GetPetLevel(p, key)
@@ -1243,8 +1254,13 @@ S.p3flow_arrive = scenario("p3flow_arrive", function()
 		return #st.Leaderboard <= 10
 	end
 	local st = lastArenaState(ava, mark)
-	T.check(arenaShapeOk(st) and st.Next and st.Next.Kind == "BossRaid", "flow arrive: a joining player gets ArenaState { Next = { Kind, BossId, StartsIn }, Raid, Double, Leaderboard }",
-		st and plain(st.Next) or "none")
+	-- (the flows run late, when the game clock is large: Next is the soonest event of ANY kind, a scheduled Double
+	-- Rewards hour may come first; the raid's own countdown is NextRaid)
+	local nextOk = st and st.Next and (st.Next.Kind == "BossRaid" or st.Next.Kind == "DoubleRewards")
+	local raidNext = st and (st.NextRaid or (st.Next and st.Next.Kind == "BossRaid" and st.Next) or nil)
+	T.check(arenaShapeOk(st) and nextOk and (raidNext == nil or (type(raidNext.BossId) == "string" and type(raidNext.StartsIn) == "number")),
+		"flow arrive: a joining player gets ArenaState { Next = { Kind, StartsIn }, NextRaid = { BossId }, Raid, Double, Leaderboard }",
+		st and (plain(st.Next) .. " / NextRaid " .. plain(st.NextRaid)) or "none")
 
 	-- ProfileSync: Teams + Battle (Phase 3)
 	local sa = lastSync(ava, mark)
@@ -1963,16 +1979,18 @@ S.p3flow_raid = scenario("p3flow_raid", function()
 	T.check(stO and type(stO.Raid) == "table" and stO.Raid.Active == true and stO.Raid.BossId == bossId and stO.Raid.Joinable == true,
 		"flow raid: ArenaState.Raid = BattleService.GetRaidStatus()")
 	-- the tutorial: standing in the arena while a raid runs finishes chapter 3 (its reward once)
+	-- (Phase 4: chapter 4 follows at once; Cy's trainee passes 'train' right away, so he may already be at 'ring')
 	waitFor(function()
-		return stepId(cy) == "done!"
+		return chapter3Finished(tutorial(cy))
 	end, 4)
 	local stC = tutorial(cy)
 	local src = nil
 	local inst = K.moduleInstance("server/Services/TutorialService")
 	src = inst and inst.Source or ""
 	local reward = tonumber(src:match("local ARENA_FINISH_TOKENS = (%d+)")) or 500
-	T.check(stC and stC.Done == true and stC.Completed == true and tokens(cy) - cyTokens0 == reward,
-		"flow tutorial: Cy standing in the arena during the raid finishes the battle chapter (+" .. reward .. " tokens)", tostring(tokens(cy) - cyTokens0))
+	T.check(chapter3Finished(stC) and tokens(cy) - cyTokens0 == reward,
+		"flow tutorial: Cy standing in the arena during the raid finishes the battle chapter (+" .. reward .. " tokens; done, or on to chapter 4)",
+		tostring(tokens(cy) - cyTokens0) .. " / " .. (stC and (tostring(stC.Chapter) .. ":" .. tostring(stC.Id)) or "no state"))
 
 	-- joins through the remote
 	local fighters = { ava, bo, cy, dee, eli, gus }
@@ -2323,8 +2341,8 @@ S.p3flow_rejoin = scenario("p3flow_rejoin", function()
 		leave(cy)
 		cy = join("Cy")
 		local stc = tutorial(cy)
-		T.check((stc == nil or stc.Done == true) and tokens(cy) == tc0, "flow rejoin: Cy's finished battle chapter stays finished (no reward again)",
-			stc and tostring(stc.Id) or "no state")
+		T.check((stc == nil or chapter3Finished(stc)) and tokens(cy) == tc0, "flow rejoin: Cy's finished battle chapter stays finished (done or in chapter 4, no reward again)",
+			stc and (tostring(stc.Chapter) .. ":" .. tostring(stc.Id)) or "no state")
 		local trainee = F.facts.cyTrainee or TEAMS.Cy[4]
 		local growthC = data.GetGrowth(cy, trainee) or {}
 		T.check(data.GetTeams(cy).Slots == 4 and sameList(data.GetTeams(cy).Presets[1], TEAMS.Cy) and (data.TrainingKeys(cy)[trainee] == true or growthC.Physique == 1),

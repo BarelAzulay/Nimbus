@@ -49,8 +49,11 @@
 --                         | team4 (Prestige 1) | newteam | trials[:<level>] | duels | raid | leaders | side (the duel
 --                         invite card, the queue, the open raid card and the event countdown, no window)
 --   battle[:<mode>[:<phase>]]  the Phase 3 battle HUD (BattleController) fed by a real BattleSim stepped at 10 Hz:
---                         mode trial (default) | duel | raid | spectate, phase fight (default) | ready (two SPECIAL
---                         buttons lit) | retreat | result (victory card) | lost (defeat card)
+--                         mode trial (default) | duel | raid | spectate | ring, phase fight (default) | ready (two SPECIAL
+--                         buttons lit) | retreat | result (victory card) | lost (defeat card) | overtime (the duel
+--                         OVERTIME banner); Phase 4 ring phases end in the round number (default 8): fight<n> (the
+--                         ring HUD vs the round's champion team) | next<n> (the next-round card after a win) |
+--                         result<n> (the run's result card) | record<n> (the result card with a new best round)
 --   portal[:<Id>[:<n>[:<studs>]]]  no game HUD: the real LobbyBuilder + PortalService with n players (default 1) on
 --                         the portal pad (default Medium); its world GUIs mirrored flat into the ScreenGui
 --                         WorldMirror: the pixel billboard at its own size, the eye-level countdown face at the
@@ -1109,7 +1112,7 @@ end)
 
 -- Phase 3 battle HUD (BattleController): a real BattleSim (shared/BattleSim.lua) is stepped at 10 Hz here and its
 -- Start / Snapshot / Events / End go to the client through BattleState, the way BattleService sends them.
---   battle[:<trial|duel|raid|spectate>[:<fight|ready|retreat|result|lost>]]
+--   battle[:<trial|duel|raid|spectate>[:<fight|ready|retreat|result|lost|overtime>]], battle:ring:<fight|next|result|record><round>
 local function battleTeam(count, skip)
 	local PetCatalog = req("shared/PetCatalog", true)
 	local out, kinds = {}, {}
@@ -1160,8 +1163,10 @@ scenario("battle", function(mode, phase)
 	end
 	local me = LocalPlayer.UserId
 	local spectate = mode == "spectate"
-	local simMode = (mode == "raid") and "Raid" or ((mode == "duel" or spectate) and "Duel" or "Trial")
+	local simMode = (mode == "raid") and "Raid" or ((mode == "duel" or spectate) and "Duel" or (mode == "ring" and "Ring" or "Trial"))
 	local setup = { Mode = simMode, Seed = 11, Id = "dump_battle" }
+	local ringRound = tonumber(phase:match("(%d+)$")) or 8
+	phase = phase:gsub("%d+$", "")
 	local myPets = battleTeam(mode == "raid" and 4 or 3)
 	if simMode == "Duel" then
 		setup.Teams = {
@@ -1175,6 +1180,17 @@ scenario("battle", function(mode, phase)
 			{ Owner = 78, Side = 1, Pets = battleTeam(3, 4) },
 		}
 		setup.Boss = "storm_titan"
+	elseif simMode == "Ring" then
+		local BCat = req("shared/BattleCatalog", true)
+		local champ = BCat.ChampionTeam(ringRound, 7)
+		for _, p in ipairs(myPets) do
+			p.Level = p.Level + 12
+			p.Xp, p.XpNext = 300, 4000
+		end
+		myPets[2].Evo = 1
+		setup.Teams = { { Owner = me, Side = 1, Pets = myPets }, champ }
+		setup.Round, setup.Zone, setup.TimeLimit = ringRound, { X = 44, Z = 44 }, 90
+		setup.RingChamp = champ.Champion
 	else
 		setup.Teams = { { Owner = me, Side = 1, Pets = myPets } }
 		setup.Trial = 7
@@ -1195,6 +1211,10 @@ scenario("battle", function(mode, phase)
 	if simMode == "Trial" then
 		d.Trial = { Level = 7, Name = "Ember Ridge", Chapter = 2, MiniBoss = false }
 	end
+	if simMode == "Ring" then
+		local ch = setup.RingChamp or {}
+		d.Ring = { Round = ringRound, Best = 12, Start = 1, Champion = { PetId = ch.PetId, Level = ch.Level, Tier = ch.Tier, Boss = ch.Boss == true, Name = ch.Name } }
+	end
 	if spectate then
 		LocalPlayer:SetAttribute("InBattle", nil)
 	else
@@ -1202,6 +1222,9 @@ scenario("battle", function(mode, phase)
 	end
 	toClient("BattleState", "Start", d, id)
 	local seconds = ({ fight = 6, ready = 5, retreat = 5, result = 9, lost = 9 })[phase] or 6
+	if simMode == "Ring" then
+		seconds = (phase == "fight") and 1.5 or 3
+	end
 	if simMode == "Raid" then
 		seconds = seconds + 6
 	end
@@ -1233,6 +1256,30 @@ scenario("battle", function(mode, phase)
 			advance(0.1)
 		end
 		advance(0.2)
+	end
+	if simMode == "Ring" and (phase == "next" or phase == "result" or phase == "record") then
+		LocalPlayer:SetAttribute("InBattle", id)
+		toClient("BattleState", "End", { BattleId = id, Mode = "Ring", Outcome = "Win", Won = true, Spectator = false, Reason = "Wipe",
+			Rewards = { Won = true, Next = ringRound + 1, Round = ringRound, Cash = phase == "record" and 1284 or 428, Xp = 20 + 6 * ringRound, Tokens = 0, Record = phase == "record", LevelUps = 0 } }, id)
+		advance(phase == "next" and 0.9 or 0.5)
+		if phase == "result" or phase == "record" then
+			toClient("BattleState", "End", { BattleId = id, Mode = "Ring", Outcome = "Left", Won = false, Spectator = false, Reason = "Forfeit", Round = ringRound,
+				Rewards = { Won = false, Final = true, Round = ringRound, Cash = 0, Xp = 0, LevelUps = 2,
+					Run = { Wins = ringRound, Cash = 2571, Xp = 806, Tokens = phase == "record" and 100 or 0, Round = ringRound, Start = 1, Record = phase == "record" and ringRound or nil, Best = 12 } } }, id)
+			advance(0.8)
+		end
+		return
+	end
+	if phase == "overtime" then
+		toClient("BattleState", "Events", { { type = "Overtime", at = 75, perSecond = 0.15 } }, id)
+		for _ = 1, 5 do
+			local evs = sim:Step(0.1)
+			if #evs > 0 then
+				toClient("BattleState", "Events", evs, id)
+			end
+			toClient("BattleState", "Snapshot", denseSnapshot(sim, id), id)
+			advance(0.1)
+		end
 	end
 	if phase == "result" or phase == "lost" then
 		local won = phase == "result"

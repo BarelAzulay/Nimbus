@@ -263,7 +263,11 @@ S.client_p4pets_cards = guarded("client_p4pets_cards", function()
 		T.check(l1.Text == "Lv 12" and l1.TextSize >= 22 and stroked(l1), "own card: \"Lv 12\" (State.PetLevel) at >= 22 px with a stroke", l1.Text)
 		T.check(abs(fillOf(c1.Gui, "Xp") - math.floor(need / 4) / need) < 0.005, "...XP fill = xp / TycoonCatalog.XpToNext(level)", tostring(fillOf(c1.Gui, "Xp")))
 		T.check(c1.Shown and c1.Gui.Adornee ~= nil and c1.Gui.Adornee:IsDescendantOf(workspace), "...shown, floating over the follower")
-		T.check(c2.Gui.Evolve.Visible and not c1.Gui.Evolve.Visible, "level 20 and not evolved: the EVOLVE! pill shows (level 12 has none)")
+		local why = {}
+		for _, fi in ipairs(infoOf(LocalPlayer)) do
+			why[#why + 1] = fmt("%s Lv %s stage %s want %s", tostring(fi.Key), tostring(fi.Level), tostring(fi.Stage), tostring(fi.Want))
+		end
+		T.check(c2.Gui.Evolve.Visible and not c1.Gui.Evolve.Visible, "level 20 and not evolved: the EVOLVE! pill shows (level 12 has none)", table.concat(why, " | "))
 		-- a tap opens the Pets panel on that pet
 		local MC = KC.M.MenuController or moduleAt("client", "Controllers/MenuController")
 		local opened = nil
@@ -603,6 +607,20 @@ S.client_p4pets_evolution = guarded("client_p4pets_evolution", function()
 	T.check(get(COMMON2).Parked, "a park with a time limit ...")
 	advance(1.2)
 	T.check(not get(COMMON2).Parked and get(COMMON2).Model ~= nil, "...ends by itself")
+	-- a PlayEvolution stage State never confirms (a /reset, a pet that came back fresh) must not stick for the session:
+	-- the EVOLVE! pill and the plain model come back once the animation is long over (State wins)
+	sync({ [COMMON] = { Level = 20, Xp = 0 }, [COMMON2] = { Level = 20, Xp = 0 } }, { [COMMON] = { Evo = 1 } })
+	local _2 = pc.PlayEvolution(COMMON2, 1, 0.5)
+	advance(1.5)
+	local c2 = get(COMMON2)
+	T.check(c2 and not c2.Parked and c2.Want == 1, "an unconfirmed PlayEvolution stage shows right after the animation (State may lag)", c2 and tostring(c2.Want))
+	advance(20)
+	sync({ [COMMON] = { Level = 20, Xp = 0 }, [COMMON2] = { Level = 20, Xp = 0 } }, { [COMMON] = { Evo = 1 } })
+	advance(1.5)
+	c2 = get(COMMON2)
+	T.check(c2 and c2.Want == 0 and c2.Stage == 0 and c2.Card ~= nil and c2.Card.Evolve.Visible,
+		"...but State wins long after it: stage 0 again and the EVOLVE! pill is back (level 20, not evolved)",
+		c2 and fmt("want %s stage %s pill %s", tostring(c2.Want), tostring(c2.Stage), tostring(c2.Card and c2.Card.Evolve.Visible)))
 	resetLocal()
 	KC.flushErrors("p4pets evolution")
 	KC.flushWarnings("p4pets evolution")

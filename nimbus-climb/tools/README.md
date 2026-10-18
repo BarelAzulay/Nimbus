@@ -122,6 +122,14 @@ python3 tools/render_model.py module:server/Services/LobbyBuilder:Build -o any.p
   what the client drew (`workspace.ClientBattle`: unit models, boss, telegraphs, effects). `battle:raid:9` catches the
   boss's first telegraph filling; `:specials` fills the local team's meters and casts every special just before the
   dump, e.g. `python3 tools/render_model.py battle:raid:9:specials --views threequarter,top --size 1400 -o raid.png`.
+* Phase 4 targets (homes where pets make the money): `home:<StationId>[:<level>|all[:<open>]]` draws one home station
+  with HomeBuilder (`Press1`..`Press4` are the food plants Berry Bush / Carrot Patch / Cloud Melons / Starfruit Tree,
+  `Collector` the Coin Magnet, `Kitchen` the Food Machine, `Gym` the Training Place, `Garden` with `<open>` places),
+  `homerow:<StationId>[:<levels>]` puts several levels side by side, `homegardens[:<level>[:<opens>]]` several open
+  counts; `homegarden[:<open>[:<level>]]` and `hometrain[:<level>]` (client world) are the Pet Garden with a pet on
+  every open place and its coin piles, and the Training Place with a pet on every mat, drawn by the real `HomeFx`;
+  `pocket:ring` is the Champion Ring pocket (`ArenaBuilder.BuildPocket(1, "Ring")`) and `portal:home` the home portal
+  `HomePortalFx` draws, e.g. `python3 tools/render_model.py homegarden:12:8 --views threequarter,top -o garden.png`.
 * Views: `front` looks the model in the face (a pet's LookVector), `side` at its right flank (face to the right),
   `back`, `left`, `threequarter`, `top` (front at the bottom). All views of a sheet share one scale.
 * Output: the PNG (part count in the bottom-right corner) plus the part count and bounding box on stdout.
@@ -167,6 +175,14 @@ python3 tools/render_gui.py portal:Hard:2 -o portal.png              # a portal'
   `trials[:<level>]` (the Trial window on that level), `duels` / `raid` / `leaders` (the Arena panel's tabs, with two
   more players to challenge, a running raid, Double Rewards) or `side` (no window: the duel invite, the queue, the raid
   join card and the event countdown at the right edge); e.g. `python3 tools/render_gui.py arena:trials:12 --grid`.
+* Phase 4 scenarios (a shared care profile: Prestige 1, a Garden with 4 places, plants, the Food Machine and the
+  Training Place): `home[:coins]` (the Home window with its Pet Garden card; `:coins` = a home from before Phase 4
+  with kept places, old prices and a big pile of coins), `feed` (CareController's Food Machine list: garden pets first,
+  leftovers, a pet ready to EVOLVE, a level-100 pet), `garden[:<slot>]` (the garden picker), `train[:<key>]` (the
+  Training Place window with a running timer and Stop), `evolve` (the EVOLVE confirm), `ring[:new|record]` (the
+  Champion Ring window), `petcards` (the floating pet cards of every mode mirrored flat) and the ring HUD
+  `battle:ring:<fight|next|result|record><round>` (e.g. `battle:ring:next8` is the "Round 8 won! ... Round 9 in 3"
+  card). `menu:<Window>[:<Tab>[:<Action>[:<Key>]]]` passes an Action / Key along (e.g. `menu:Pets:Pets:Evolve:<key>`).
 * `arenaboards[:<countdown|raid|idle>]` (Phase 3, ArenaBuilder) draws the Battle Arena's world GUIs instead of the HUD,
   like `portal`: the real LobbyBuilder + ArenaBuilder build the arena (as the server), a sample ArenaState goes through
   `ApplyArenaState` (`countdown`: the next Boss Raid in 1:35 + Double Rewards, `raid`: a live raid with its HP bar,
@@ -193,3 +209,24 @@ python3 tools/render_gui.py portal:Hard:2 -o portal.png              # a portal'
   blob tinted by ImageColor3, so Index silhouettes come out black); animations are frozen at the moment of the dump.
 * `tools/smoke_polish_guitool.lua` (smoke scenario `client_gui_dump`) checks the dumper against the live client UI
   and the gallery.
+
+## Smoke test files
+
+`smoke.py` loads every `tools/smoke_*.lua` file it lists (it fails when a `smoke_*.lua` file is not wired in) and runs
+their scenarios in the server, client or phone world; `python3 tools/smoke.py --list` prints every scenario and
+`--only a,b` runs a few (handy while you work; a full `--quick` run takes about 16 minutes). The Phase 4 files:
+
+| File | What it checks |
+|---|---|
+| `smoke_p4_data.lua` | the save fields of Phase 4 (pet growth: evolutions, ranks, training jobs; the ring record; the kept garden places and prices), the one-time migration of Phase 3 saves, two-server merges, the Phase 3 -> Phase 4 rollout against the frozen `tools/fixtures/DataService_phase3.lua`, `/petlevel` |
+| `smoke_p4_economy.lua` | TycoonCatalog: the 18 stations (free Garden first, plants, Magnet, Food Machine, Training Place, Vault), star prices, coin values, Lucky coins, piles, feeding and training prices, and that `tools/sim_tycoon.py` uses the same numbers |
+| `smoke_p4_garden.lua` | the Pet Garden: placing pets, meals and coins, piles, naps, scooping (only the owner), the Welcome-back pile, offline coins; client half: the coin heaps, the "Zzz", the scoop pop and the cards of garden pets |
+| `smoke_p4_portal.lua` | the home portal: Go home, the refusals (match, battle, portal party), walking in, the arrival swirl; client half: HomePortalFx and the pets diving in |
+| `smoke_p4_care.lua` | the Food Machine (price, XP, Level up, leftovers, the level-100 cap), EVOLVE, the Training Place (cost, time, the training lock, Stop and its refund, auto-return), the old Gym emptied |
+| `smoke_p4_careui.lua` | CareController: the Food Machine list, the garden picker, the training window, the EVOLVE confirm and moment, the Pets panel and Home window, phone sizes |
+| `smoke_p4_ring.lua` | the Champion Ring: entry rules, chained rounds, rewards (Cash floor, record x3, the first boss clear), every way a run ends, the loss-XP rule of Trials |
+| `smoke_p4_pets_client.lua` | the pet cards (PetCard) and the follow-behind formation |
+| `smoke_p4_ui.lua` | the tutorial chapters 2 and 4, the NPC tips and the ring window (ArenaController) |
+| `smoke_p4_flow.lua` | end-to-end runs of several players through the Phase 4 home: garden, coins, Food Machine, EVOLVE, training, the ring, the portal, prestige, rejoin |
+| `smoke_p2_final.lua` | `README.md` against the game: the station and house tables, the Garden, Food Machine, Training Place, evolution, Vault, prestige, fusion, Champion Ring, NPC, developer-tool and tutorial numbers are read from the catalogs and must match the text |
+

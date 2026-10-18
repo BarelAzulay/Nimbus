@@ -706,6 +706,23 @@ S.p3arena_boards = guarded("p3arena_boards", function()
 	for i = 1, 12 do
 		list[i] = { UserId = 500 + i, Name = (i == 3) and string.rep("VeryLongPlayerName", 4) or ("Champ" .. i), Trophies = 5000 - i * 100 }
 	end
+	-- EventService redraws the boards with the live state on its own broadcasts (every few seconds, at a phase set by
+	-- whatever ran before): hold them while this state is checked, or the 5 s wait may show the real players / raid
+	local esInst = K.moduleInstance("server/Services/EventService")
+	local okES, ES = false, nil
+	if esInst then
+		okES, ES = pcall(require, esInst)
+	end
+	ES = (okES and type(ES) == "table") and ES or nil
+	local realBroadcast = ES and ES.Broadcast
+	if realBroadcast then
+		ES.Broadcast = function(player)
+			if player ~= nil then
+				return realBroadcast(player)
+			end
+			return nil
+		end
+	end
 	local ok = AB.ApplyArenaState({ Next = { Kind = "BossRaid", BossId = bossId, StartsIn = 120 }, Leaderboard = list })
 	T.check(ok == true, "boards: ApplyArenaState accepts a state")
 	local text = visibleText(board)
@@ -713,7 +730,13 @@ S.p3arena_boards = guarded("p3arena_boards", function()
 	if bossName then
 		T.check(text:find(bossName, 1, true) ~= nil, "boards: the next boss is named (" .. bossName .. ")", text)
 	end
-	advance(5.2)
+	local okWait, waitErr = pcall(advance, 5.2)
+	if realBroadcast then
+		ES.Broadcast = realBroadcast
+	end
+	if not okWait then
+		error(waitErr, 0)
+	end
 	text = visibleText(board)
 	T.check(text:find("1:5[4-6]") ~= nil, "boards: the countdown ticks down between two states (about 1:55 after 5 s)", text)
 	local lt = visibleText(leaders)

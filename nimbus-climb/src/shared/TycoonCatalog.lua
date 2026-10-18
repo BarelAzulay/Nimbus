@@ -59,8 +59,7 @@
 --       = Food / MealSeconds x Pets x Lucky x Multiplier, where Pets = the sum of PetPower over the OPEN places only
 --       (entries[1 .. GardenSlots(home)]: an array or a slot -> entry map; keys above the open count rest and do not
 --       eat), Lucky = the Lucky expected value 1 + (LuckyMult - 1) x LuckyChance(home), Multiplier = 1.25 ^ stars
---       (prestige or home.Prestige). No Collector condition. (Phase 3 compat keys in the table: Press = 0, Garden =
---       the total.)
+--       (prestige or home.Prestige). No Collector condition.
 --   TycoonCatalog.LuckyChance(home) -> 0..1             the chance that a coin is Lucky (Garden Effects.Lucky)
 --   TycoonCatalog.ScoopRadius(home) -> studs             Coin Magnet Radius (Coins.BaseRadius without a Magnet)
 --   TycoonCatalog.PileSeconds(home) -> seconds           Magnet PileSeconds (Coins.BasePileSeconds without) + Vault
@@ -127,10 +126,9 @@
 --   PrestigeGems, CanPrestige, EffectsOf, LuckyEV, CoinValue, HeapStage, FoodById, FusionCost, XpForLevel,
 --   PadLevelText, FormatCash, ReachablePads, FootprintRect, PadRect, LocalRect, TierMultiplier, Icons, FoodsById,
 --   PrestigePad, MaxPetLevel, StartCash, OfflineMinSeconds, PlotSize, Version.
--- Phase 3 compat (kept so the Phase 3 services and clients keep running until their wave-2/3 owners switch;
---   removed in wave 4): PetIncome, GardenIncome, PressIncome, CollectorCap, KitchenSpeed, CookSecondsFor, FoodsFor,
---   GymSlots, GymXpPerMinute, the Kitchen Effects' Queue / Recipes and the Gym Effects' XpPerMinute, and the
---   IncomePerSecond parts Press / Garden. See the "Phase 3 compat" block below.
+-- Phase 3 compat: all deleted in wave 4 (the Kitchen Effects' Queue, the Gym Effects' XpPerMinute, PetIncome,
+--   GardenIncome, PressIncome, CollectorCap, KitchenSpeed, CookSecondsFor, FoodsFor, GymSlots, GymXpPerMinute, the
+--   Kitchen Effects' Recipes and the IncomePerSecond parts Press / Garden.
 --
 -- Notes for the services: a Price of 0 is FREE (the Pet Garden: the first purchase right after claiming; Cash starts
 -- at 0), so skip SpendCash or call it with 0. Prestige keeps every station whose KeepOnPrestige is true (the decor:
@@ -239,8 +237,7 @@ TycoonCatalog.Coins = {
 
 ----------------------------------------------------------------------
 -- Leftover pet food (Phase 2 / 3 Kitchen dishes). Phase 4 cooks nothing: Profile.Food leftovers are fed first and for
--- free by the Food Machine (Xp 25 / 150 / 800). Price / CookSeconds / KitchenLevel are kept as data only (and for the
--- Phase 3 compat functions).
+-- free by the Food Machine (Xp 25 / 150 / 800). Price / CookSeconds / KitchenLevel are kept as data only.
 ----------------------------------------------------------------------
 TycoonCatalog.Foods = {
 	{ Id = "Snack", Name = "Snack", Price = 50, Xp = 25, CookSeconds = 6, KitchenLevel = 1, Blurb = "A crunchy cloud cookie." },
@@ -644,31 +641,6 @@ local PRESTIGE_PAD = {
 	Slot = { CFrame = at(-8, 18, 0), Footprint = V3(4, 1, 4), Walkable = true, Pad = padAt(-8, 12, -8, 18) },
 }
 TycoonCatalog.PrestigePad = PRESTIGE_PAD
-
-----------------------------------------------------------------------
--- Phase 3 compat, removed in wave 4: the Phase 3 PetCareService / NpcDialog still read the old Kitchen queue and
--- Gym XP from the effect tables. The numbers are Phase 3's; nothing of Phase 4 reads them.
-----------------------------------------------------------------------
-local COMPAT = {
-	KitchenQueue = { 3, 4, 6, 8, 10 }, -- Phase 3 compat, removed in wave 4
-	CookSpeed = { 1, 1.25, 1.5, 1.75, 2 }, -- Phase 3 compat, removed in wave 4
-	GymXpPerMinute = { 20, 30, 45, 60, 80 }, -- Phase 3 compat, removed in wave 4
-}
-do -- Phase 3 compat, removed in wave 4
-	for level, eff in ipairs(BY_ID.Kitchen.Effects) do
-		local recipes = {}
-		for _, f in ipairs(TycoonCatalog.Foods) do
-			if f.KitchenLevel <= level then
-				recipes[#recipes + 1] = f.Id
-			end
-		end
-		eff.Recipes = recipes
-		eff.Queue = COMPAT.KitchenQueue[level]
-	end
-	for level, eff in ipairs(BY_ID.Gym.Effects) do
-		eff.XpPerMinute = COMPAT.GymXpPerMinute[level]
-	end
-end
 
 ----------------------------------------------------------------------
 -- small helpers
@@ -1289,8 +1261,7 @@ function TycoonCatalog.IncomePerSecond(home, entries, prestige)
 	if not finite(total) or total < 0 then
 		total = 0
 	end
-	-- Press / Garden: Phase 3 compat, removed in wave 4 (the Phase 3 Home window splits press and garden income)
-	return total, { Food = food, Pets = pets, Lucky = lucky, Multiplier = mult, Press = 0, Garden = total }
+	return total, { Food = food, Pets = pets, Lucky = lucky, Multiplier = mult }
 end
 
 -- one plain (not Lucky) coin of a pet with `power`: Food x power x 1.25 ^ stars
@@ -1512,133 +1483,6 @@ function TycoonCatalog.FormatCash(n)
 		end
 	end
 	return sign .. "$" .. commas(a)
-end
-
-----------------------------------------------------------------------
--- Phase 3 compat, removed in wave 4. The Phase 3 TycoonService / PetCareService / MenuController / NpcDialog still
--- call these until their wave-2/3 owners switch to the Phase 4 API. They keep working on the Phase 4 data.
-----------------------------------------------------------------------
--- Phase 3 compat, removed in wave 4: the Phase 3 per-pet stat (Stats.Income x RarityScale x level x tier, the same
--- number as PetCatalog.GetStats(...).Income)
-local function phase3PetIncome(entry, level, tier)
-	if type(entry) == "number" then
-		if finite(entry) and entry > 0 then
-			return entry
-		end
-		return 0
-	end
-	local def = entry
-	if type(entry) == "string" then
-		local suffix
-		def, suffix = defOfKey(entry)
-		if not def then
-			return 0
-		end
-		tier = tier or suffix
-	end
-	if type(def) ~= "table" then
-		return 0
-	end
-	if type(def.Def) == "table" then
-		level = level or def.Level
-		tier = tier or def.Tier
-		def = def.Def
-	elseif type(def.Stats) ~= "table" and type(def.Income) == "number" then
-		local v = def.Income
-		if finite(v) and v > 0 then
-			return v
-		end
-		return 0
-	end
-	local stats = def.Stats
-	local base = type(stats) == "table" and tonumber(stats.Income) or nil
-	if not finite(base) or base <= 0 then
-		return 0
-	end
-	local lv = int(level or def.Level) or 1
-	lv = max(1, min(lv, TycoonCatalog.PetXp.MaxLevel))
-	local mult = tier
-	if mult == nil then
-		mult = def.StatMultiplier or def.Tier or (type(def.Look) == "table" and def.Look.Finish) or nil
-	end
-	return base * (rarityScaleOf(def.Rarity) or 1) * (1 + 0.1 * (lv - 1)) * tierMultiplier(mult)
-end
-
--- Phase 3 compat, removed in wave 4: with a home, PetPower x FoodOf(home) / MealSeconds (the pet's plain coins per
--- second, no Lucky, no stars); without one (every Phase 3 caller), the Phase 3 stat value above.
-function TycoonCatalog.PetIncome(entry, level, tier, home)
-	if type(home) == "table" then
-		return TycoonCatalog.PetPower(entry, level, tier) * TycoonCatalog.FoodOf(home) / TycoonCatalog.Coins.MealSeconds
-	end
-	return phase3PetIncome(entry, level, tier)
-end
-
--- Phase 3 compat, removed in wave 4: the garden's cash/s without stars (IncomePerSecond / Multiplier)
-function TycoonCatalog.GardenIncome(home, entries)
-	local total, parts = TycoonCatalog.IncomePerSecond(home, entries, 0)
-	return total, parts
-end
-
--- Phase 3 compat, removed in wave 4: no station makes money by itself any more
-function TycoonCatalog.PressIncome(home)
-	return 0
-end
-
--- Phase 3 compat, removed in wave 4: "the Collector holds" = PileSeconds x income (income = the larger of the given
--- one and the pets in home.Garden counted at level 1)
-function TycoonCatalog.CollectorCap(home, incomePerSecond)
-	local income = TycoonCatalog.IncomePerSecond(home, type(home) == "table" and home.Garden or nil)
-	local given = tonumber(incomePerSecond)
-	if finite(given) and given > income then
-		income = given
-	end
-	local cap = floor(TycoonCatalog.PileSeconds(home) * income)
-	return finite(cap) and cap or 0
-end
-
--- Phase 3 compat, removed in wave 4: the Phase 3 cooking speed by Kitchen (Food Machine) level
-function TycoonCatalog.KitchenSpeed(home)
-	local lv = levelOf(home, "Kitchen")
-	if lv < 1 then
-		return 0
-	end
-	return COMPAT.CookSpeed[lv] or 1
-end
-
--- Phase 3 compat, removed in wave 4: seconds to cook one `foodId` at `kitchenLevel` (nil if it cannot)
-function TycoonCatalog.CookSecondsFor(foodId, kitchenLevel)
-	local f = FOOD_BY_ID[foodId]
-	local lv = int(kitchenLevel) or 0
-	if not f or lv < f.KitchenLevel then
-		return nil
-	end
-	return f.CookSeconds / (COMPAT.CookSpeed[min(lv, #COMPAT.CookSpeed)] or 1)
-end
-
--- Phase 3 compat, removed in wave 4: the foods the Phase 3 Kitchen could cook at `kitchenLevel`
-function TycoonCatalog.FoodsFor(kitchenLevel)
-	local out = {}
-	local lv = int(kitchenLevel) or 0
-	for _, f in ipairs(TycoonCatalog.Foods) do
-		if lv >= f.KitchenLevel then
-			out[#out + 1] = f
-		end
-	end
-	return out
-end
-
--- Phase 3 compat, removed in wave 4: GymSlots -> TrainingSlots
-function TycoonCatalog.GymSlots(home)
-	return TycoonCatalog.TrainingSlots(home)
-end
-
--- Phase 3 compat, removed in wave 4: the Phase 3 Gym XP per minute by Gym (Training Place) level
-function TycoonCatalog.GymXpPerMinute(home)
-	local lv = levelOf(home, "Gym")
-	if lv < 1 then
-		return 0
-	end
-	return COMPAT.GymXpPerMinute[lv] or 0
 end
 
 ----------------------------------------------------------------------

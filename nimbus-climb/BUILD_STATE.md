@@ -17,7 +17,7 @@ Updated: 2026-10-18 (after wave 2). Branch `v3-phase4`. Plan: `ARCHITECTURE_V3.m
 | 1 | data (Fable), economy, battlecore | DONE (5a40987). Gate: 7466 pass, 102 known red |
 | 2 | tycoon, care, battleservice (Fable); homeworld, arenaworld, pets | DONE (297c9ae). Reports: scratchpad/p4_wave2_notes.md. Lead after: data-test fixes, contract.json (Piles, SetGarden/SetTraining) |
 | 3 | homefx, battleclient, careui, ui | DONE (70b04b6). Reports: scratchpad/p4_wave3_notes.md. Gate in worktree scratchpad/gate_w3 (log gate_w3.log) |
-| 4 | flow, fixer (flaky tests, ring dump_gui scenarios, compat aliases), docs | RUNNING wf_07cbfb76-a84 (args resume.fixer = gate note). Gate w3: 8567 pass / 59 fail (flow, docs, garden_coins, p3bs_raid, p3arena_boards, p4pets_cards). Resume: Workflow({scriptPath: scratchpad/p4w4.js, resumeFromRunId: "wf_07cbfb76-a84", args: same}) |
+| 4 | flow, fixer, docs | DONE (wf_07cbfb76-a84, notes scratchpad/p4_wave4_notes.md; leads applied: /petlevel Refresh, COMPAT deleted). Gate in scratchpad/gate_w4, log gate_w4.log |
 | 5 | review + verify + fix, full suite, place file, merge, send | not started |
 
 ## How to resume a wave

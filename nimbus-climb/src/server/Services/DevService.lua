@@ -3,8 +3,9 @@
 --
 --   DevService.Init(deps)                          deps = { DataService, PetService, TutorialService, IndexService,
 --                                                  BattleService, EventService } (Phase 3: the raid command)
---                                                  (PetService is not needed: pets are written into the profile the
---                                                  way PetService does it, and ProfileRebased refreshes its attributes)
+--                                                  (pets are written into the profile the way PetService does it, and
+--                                                  ProfileRebased refreshes its attributes; PetService.Refresh after
+--                                                  /petlevel republishes EquippedInfo)
 --   DevService.IsAllowed(player) -> bool           may yield ONCE per player for a group-owned game (group rank)
 --   DevService.Run(player, command, arg, source) -> ok, message
 --                                                  the ONE entry point of the DevCommand remote and of chat:
@@ -181,6 +182,7 @@ local TutorialService = nil
 local IndexService = nil
 local EventService = nil -- Phase 3: /raid
 local BattleService = nil
+local PetService = nil -- Phase 4: /petlevel republishes EquippedInfo
 
 local function hasFunction(module, name)
 	return type(module) == "table" and type(module[name]) == "function"
@@ -735,6 +737,9 @@ local function cmdPetLevel(player, profile, arg)
 	if set == 0 then
 		return false, "no equipped pet could be set to level " .. arg
 	end
+	if hasFunction(PetService, "Refresh") then
+		pcall(PetService.Refresh, player) -- the pet cards (EquippedInfo) show the new level
+	end
 	return true, set .. (set == 1 and " equipped pet is" or " equipped pets are") .. " level " .. arg .. " now", true
 end
 
@@ -1280,6 +1285,7 @@ function DevService.Init(deps)
 	IndexService = deps.IndexService
 	EventService = deps.EventService or loadModule(services, "EventService")
 	BattleService = deps.BattleService or loadModule(services, "BattleService")
+	PetService = deps.PetService
 	if not PetCatalog then
 		PetCatalog = loadModule(Shared, "PetCatalog")
 	end

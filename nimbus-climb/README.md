@@ -7,20 +7,62 @@ glowing **portals** with up to three friends, and get flown to a freshly generat
 as a team: dash over gaps, dodge spinning bars, lightning and swinging beams, share checkpoints and pick each
 other back up. Along the way you collect **Cloud Tokens**, and back home you spend them on **pets** (from
 roulettes) and **usable items**, fill your **Pet Index**, and build your own **tycoon home**: claim a plot at
-its gate, build cloud presses that make **Cash**, put your pets to work, cook for them, train them, fuse them
-and prestige. Then send your pet team into the **Battle Arena**: Trials against NPC teams, duels against other
-players and Boss Raids that the whole server fights together.
+its gate, put your pets in your **Pet Garden** where they make rainbow coins (that is your **Cash**), grow food
+plants, feed your pets at the Food Machine, **EVOLVE** them, train their battle skills, fuse them and prestige.
+Then send your pet team into the **Battle Arena**: Trials against NPC teams, duels against other players, Boss
+Raids that the whole server fights together and the endless **Champion Ring**.
 
 Version 3 turns Nimbus Climb into a multi-concept game: the **tycoon homes** are the main mode, **pet battles**
-are the second one, and the climb (obby) stays as a side mode. This build is **v3 phase 3**: phase 1 brought the
+are the second one, and the climb (obby) stays as a side mode. This build is **v3 phase 4**: phase 1 brought the
 new look, the pet collection and everything the later updates build on (see
 [What's new in v3](#whats-new-in-v3-phase-1)), phase 2 added the tycoon homes, Cash, Gems, prestige and the Fusion
-Machine (see [Tycoon homes](#tycoon-homes-phase-2)), and phase 3 adds the **Battle Arena**: Trials, duels and Boss
-Raids with your pet team (see [Pet battles](#pet-battles-phase-3)).
+Machine (see [Tycoon homes](#tycoon-homes)), phase 3 added the **Battle Arena**: Trials, duels and Boss Raids with
+your pet team (see [Pet battles](#pet-battles-phase-3)), and phase 4 makes your **pets make the money** (see
+[What's new in phase 4](#whats-new-in-phase-4-pets-make-the-money)).
 
 Everything is built in code from plain parts and particles (no toolbox models), and all text uses one small
 `Theme` module, so the whole game shares the same chunky, friendly look. The only asset id in the code is the
 owner's own Stormfang artwork (`Config.Art.StormfangImage`).
+
+## What's new in phase 4: pets make the money
+
+- **Your pets make the money.** Build your free **Pet Garden** and put pets in it (**3 places**, +1 every Prestige).
+  They eat from their bowls and pop out **rainbow coins**. Walk over the coins to scoop them: only YOU can scoop
+  yours. Economy pets make 60 % more than Combat pets; rarer, higher-level, Golden / Rainbow and evolved pets make
+  more. Garden pets can still follow you and fight.
+- **Your presses grew into food plants.** Berry Bush, Carrot Patch, Cloud Melons, Starfruit Tree: tastier food makes
+  every coin bigger. The Collector is now a **Coin Magnet**: coins fly to you from farther away and piles hold more.
+  Same pads, same levels, same Home Level: nobody loses a level.
+- **Coins wait for you.** A pile holds a few minutes of coins; when it is full the pet takes a nap (Zzz) until you
+  scoop. Coins left on the lawn are saved; the Vault adds offline coins; both wait in a big Welcome-back pile by
+  your garden gate. Sometimes a sparkly **Lucky coin** pops out (worth 5 coins): more often with a higher Garden
+  level.
+- **Food Machine** (the old Kitchen): press **E**, pick a pet and press **Feed**: it costs Cash and fills a quarter
+  of the pet's XP bar. Upgrade the machine for bigger meals (up to half a bar) for the same price. Leftover Snacks /
+  Meals / Feasts from the old Kitchen are fed first, for free.
+- **Every fight gives XP** (a win the full amount, a loss a third if your pets really fought). The Champion Ring is
+  the best free XP in the game.
+- **EVOLVE!** At level 20 a pet glows "Ready to evolve!": press **EVOLVE** and watch it change. Evolved pets are
+  25 % stronger and richer. Epic and rarer pets evolve again at level 50 (50 % in total). Every pet can reach
+  **level 100**; each level takes more XP than the one before.
+- **Training Place** (the old Gym): press **E**, pick a pet and a skill (Attack Speed, Physique, Ability, Defense).
+  Rank 3 takes 3 minutes. A training pet rests at home: it cannot follow you or fight until it is done, then it
+  comes back by itself. **Stop** gives the Cash back.
+- **Champion Ring:** the new portal on the plaza. You need a home and a pet. One champion at a time, each stronger
+  than the last; every 10th is a giant boss. Every win pays Cash and XP, a new record pays triple Cash, beating a
+  boss round for the first time pays 100 Tokens. Lose once and the run ends. Start from round 1 or from any boss
+  round you beat.
+- **Pet cards:** a small card above each of your pets shows its level and XP; in battles also health and SPECIAL.
+  Your pets now follow right **behind** you.
+- **Portal home:** **Go home** opens a small magic portal only you and your pets can use.
+- **Safe zones:** outside the Battle Arena and the battle rings, nothing can hurt you or your pets.
+- **Prestige:** Home Level 40 + Sky Castle. Stations and Cash reset (the Garden stays), +1 star: coins x1.25
+  forever, +1 garden place, Gems; prices go up by half after every Prestige (x1.5, x2.25, x3.38 ...). Pets, levels,
+  evolutions, training, decor and garden pets are kept. Players from before Phase 4 keep their extra garden places
+  and their old prices until their next Prestige (see [Homes from before Phase 4](#homes-from-before-phase-4)).
+- **And around it:** the tutorial's home chapter is rewritten for the garden and a fourth chapter teaches training,
+  the ring and the portal; new NPC tips; for the owner the `/petlevel` command and the steps to publish the update
+  safely (see [Publishing an update](#publishing-an-update-owner)).
 
 ## What's new in phase 3: pet battles
 
@@ -45,19 +87,17 @@ owner's own Stormfang artwork (`Config.Art.StormfangImage`).
 
 - **Claim a home.** The 16 plots on the outer ring are classic Roblox tycoons now: walk up to a free gate and
   press **E**. Your build is saved with your profile and comes back on whichever plot you claim next time.
-- **Buy pads.** Glowing pads on your yard build everything, step by step: **Cloud Presses** that make **Cash**,
-  the **Collector** that banks it, a **Pet Garden**, a **Kitchen**, a **Gym**, a **Vault**, your **House**
-  (Cottage, Villa, Manor, Sky Castle: a new house every 10 Home Levels) and decor.
-- **Pets at home.** Economy pets earn Cash in the Garden, Combat pets train in the Gym, and every pet levels up
-  when you feed it the food you cook in the Kitchen.
-- **Prestige.** At Home Level 40 with the Sky Castle you can start over for a star: x1.25 income forever, Gems,
-  and from the first star on the **Fusion Machine** (Golden and Rainbow pets, one-of-a-kind hybrids).
+- **Buy pads.** Glowing pads on your yard build everything, step by step: the money makers, a **Pet Garden**, a
+  **Vault**, your **House** (Cottage, Villa, Manor, Sky Castle: a new house every 10 Home Levels) and decor. (Phase 4
+  turned the old Cloud Presses into food plants, the Collector into the Coin Magnet, the Kitchen into the Food
+  Machine and the Gym into the Training Place.)
+- **Prestige.** At Home Level 40 with the Sky Castle you can start over for a star, Gems, and from the first star
+  on the **Fusion Machine** (Golden and Rainbow pets, one-of-a-kind hybrids).
 - **Gems.** The premium currency: earned by prestiging and bought with Robux (once the owner has created the gem
   packs), spent on cheap roulette spins and on the gems-only **Secret Roulette** at the Storm Altar, the only way
   to get Secret pets like Stormfang.
-- **And around it:** a second tutorial chapter with Nimbus, new NPC tips, a **Home** window, Feed / Place in
-  Garden / Train in Gym in the Pets window, a Gems tab in the Shop, a Fusions tab in the Pet Index, Cash and Gems
-  on the HUD, and +Cash / +Gems developer tools for testing.
+- **And around it:** a second tutorial chapter with Nimbus, new NPC tips, a **Home** window, a Gems tab in the
+  Shop, a Fusions tab in the Pet Index, Cash and Gems on the HUD, and +Cash / +Gems developer tools for testing.
 
 ## What's new in v3 (phase 1)
 
@@ -118,16 +158,17 @@ or the VS Code "Rojo" extension are the easy ways to get it).
 - **Max Players: 16 or less** (a place setting, in Studio's Game Settings or the place's settings on the Creator
   Hub). The village has exactly 16 home plots (`Config.Lobby.SpotCount`); a 17th player would still play but
   could not claim a home until a plot frees up.
-- **Saving needs a published place.** Tokens, Cash, Gems, pets (with their levels, Golden / Rainbow copies and
-  hybrids), food, items, stats, your home build, your battle teams, trophies, Trial progress and Boss Raid
-  pets, Pet Index progress and the tutorial step are saved in a DataStore, and DataStores only work in a place published to Roblox (File -> Publish to Roblox). In Studio also
-  turn on Game Settings -> Security -> **Enable Studio Access to API Services**. Without these the game still
-  runs, it just forgets everything when you stop. Saves happen on leave, every 90 s and at server shutdown (older
-  v1, v2 and v3 phase 1 saves are migrated automatically).
-- **After publishing an update, restart the live servers.** Once the game is published and people play it, every
-  time you publish a new version open the Creator Hub -> your experience -> **Servers** and choose **Shut Down All
-  Servers**. Old servers still running the previous version do not know the new save fields and could overwrite
-  them (for example replaying the tutorial rewards). Players simply rejoin into the new version.
+- **Saving needs a published place.** Tokens, Cash, Gems, pets (with their levels, evolutions, trained skills,
+  Golden / Rainbow copies and hybrids), leftover food, items, stats, your home build and the coins on your lawn,
+  your battle teams, trophies, Trial progress, your Champion Ring record and Boss Raid pets, Pet Index progress and
+  the tutorial step are saved in a DataStore, and DataStores only work in a place published to Roblox (File ->
+  Publish to Roblox). In Studio also turn on Game Settings -> Security -> **Enable Studio Access to API Services**.
+  Without these the game still runs, it just forgets everything when you stop. Saves happen on leave, every 90 s
+  and at server shutdown (older v1, v2 and v3 saves are migrated automatically, see
+  [Homes from before Phase 4](#homes-from-before-phase-4)).
+- **After publishing an update, move the live servers to it.** Once people play the game, every time you publish
+  a new version use **Migrate to Latest Update** on the Creator Hub (the steps are in
+  [Publishing an update](#publishing-an-update-owner)).
 - **Gem packs need Developer Products.** Until you create them (see
   [Selling Gems](#selling-gems-the-owners-setup)), the Shop's Gems tab says the packs open soon. Everything else
   works without them: players still earn Gems by prestiging.
@@ -147,13 +188,15 @@ or the VS Code "Rojo" extension are the easy ways to get it).
 | Run (drains stamina) | hold `Shift` | **RUN** button (tap to toggle) | `L3` (toggle) |
 | Dash (35 stamina, 1.6 s cooldown, works in the air) | `Q` | **DASH** button | `B` |
 | Use an item | `1` `2` `3` `4` (or click / tap a slot) | tap a slot | - |
-| Talk to an NPC pet, use the Storm Altar, claim a home, bank the Collector, feed at the bowl, use the Fusion Machine, the Arena Gate, the Trial Portal, a duel pad or the arena boards | `E` | tap the prompt | `X` |
+| Talk to an NPC pet, use the Storm Altar, claim a home, put a pet on a garden spot, use the Food Machine (*Feed pets*), the Training Place (*Train pets*), the Fusion Machine, the Arena Gate, the Trial Portal, the Champion Ring portal, a duel pad or the arena boards | `E` | tap the prompt | `X` |
 | Buy at a home pad (hold a moment) | hold `E` | hold the prompt | hold `X` |
-| Cook a Snack / Meal / Feast at your Kitchen counter | hold `E` / `R` / `F` | hold the prompt | hold `X` / `Y` / `B` |
+| Scoop your rainbow coins | walk over them | walk over them | walk over them |
+| Go home through your own portal | **Home** tile -> **Go home**, then walk into the portal | the same | the same |
 | Battle: **ATTACK** (your pets fight) | `F` | **ATTACK** button | `X` |
 | Battle: **RETREAT** (your pets run back to you) | `R` | **RETREAT** button | `Y` |
 | Battle: a pet's **SPECIAL** (when its card glows) | `1` `2` `3` `4` (or click its card) | tap its card | `LB` `RB` `LT` `RT` |
 | Battle: focus one enemy | click it (or its chip at the top) | tap it | - |
+| Open the Pets window on a pet that is ready to evolve | click its gold **EVOLVE!** pill | tap the pill | - |
 | Close a window | `Esc` or the red X | red X | `B` |
 
 ## First steps: the tutorial
@@ -161,13 +204,14 @@ or the VS Code "Rojo" extension are the easy ways to get it).
 New players meet **Nimbus**, the Cloudy Dragon, in a small card on the left of the screen (never in the middle).
 Nine short steps teach the basics: say hello, claim your home plot (follow the arrow to a free gate and press
 **E**), find the Cloud Shop, spin your first roulette (Nimbus gives you **50 Cloud Tokens** for it), equip your
-new pet, peek into the Pet Index, step into the Easy portal, play your first climb to the end, and collect
-**100 Cloud Tokens** at the end. A golden arrow, a sparkle trail and a distance sign point at places in the world;
-a pulsing ring points at menu tiles.
+new pet (it follows right behind you), peek into the Pet Index, step into the Easy portal, play your first climb to
+the end, and collect **100 Cloud Tokens** at the end. A golden arrow, a sparkle trail and a distance sign point at
+places in the world; a pulsing ring points at menu tiles.
 
-A second chapter teaches the tycoon home in five steps: claim your home (already done if you claimed it in the
-first chapter), build your first Cloud Press (free), build the Collector (free too) and step on it to bank your
-Cash, follow the arrow from pad to pad until you can build the Kitchen, then cook a Snack and feed a pet. Nimbus
+A second chapter teaches the tycoon home in five steps: *Claim Your Home* (already done if you claimed it in the
+first chapter), *Your Pet Garden* (build the free Pet Garden, then press **E** on a garden spot to put a pet in it),
+*Rainbow Coins!* (walk over your pet's coins to scoop them), *The Food Machine* (follow the arrow from pad to pad
+until you can build it) and *Snack Time!* (press **E** at the Food Machine, pick a pet and press **Feed**). Nimbus
 pays **1,000 Cash** at the end. Players who finished the phase 1 tutorial start right at this chapter.
 
 A third chapter teaches pet battles in four steps: follow the arrow over the bridge into the Battle Arena, tap
@@ -175,13 +219,19 @@ A third chapter teaches pet battles in four steps: follow the arrow over the bri
 any single level-1 pet wins it, even without pressing SPECIAL), then join or watch a Boss Raid. Nimbus pays
 **500 Cloud Tokens** at the end. Players who finished the first two chapters start right at this one.
 
+A fourth chapter teaches the phase 4 pet care in three steps: *Training Time* (start a training at your Training
+Place), *The Champion Ring* (press **E** at the Champion Ring portal on the plaza and win a round) and *Portal Home*
+(tap **Home**, then **Go home**, and hop into your portal). Nimbus pays **300 Cloud Tokens** at the end. Players who
+had finished the whole tutorial before phase 4 start right at this chapter.
+
 Tap Nimbus' portrait to fold the card into a small bubble (and again to open it). The **Skip tutorial** link
 ends it (it asks first). Your step is saved, so the tutorial continues where you left off.
 
 ## The village
 
 - **The plaza** in the middle, with the five difficulty **portals** on a ring around it, and next to them the
-  crimson **Trial Portal** with crossed swords (see [Trials](#trials-1-30-the-trial-portal)).
+  crimson **Trial Portal** with crossed swords (see [Trials](#trials-1-30-the-trial-portal)) and the golden
+  **Champion Ring** portal (see [the Champion Ring](#the-champion-ring)).
 - **The shop island** (follow the boardwalk): four roulette machines and the item counter.
 - **Six NPC pets** stand along the plaza and the paths. Each one has a name tag; walk up and press **E** to
   talk. They cycle through a few tips each (Next / Close):
@@ -189,16 +239,16 @@ ends it (it asks first). Your step is saved, so the tutorial continues where you
   | NPC | Talks about |
   |---|---|
   | **Sparky Fox**, Movement Trainer | running, dashing, dash-only gaps, items, the battle keys (ATTACK, RETREAT, SPECIAL) |
-  | **Captain Penguin**, Co-op Captain | parties, reviving teammates, Phoenix Feather, Boss Raids, dodging their glowing circles, the event board and Double Rewards |
-  | **Granny Owl**, Pet Expert | roulettes and their chances (also with Gems), the Pet Index, cooking in the Kitchen and feeding pets |
-  | **Coach Corgi**, Token Coach | earning more tokens (win bonus), training Combat pets in the Gym, the Trial Portal, your battle team, duels and trophies |
-  | **Mayor Panda**, Village Mayor | claiming a home, Cloud Presses and the Collector, Home Level and the house tiers, Prestige, the Garden, the Home window |
-  | **Professor Axolotl**, Element Scholar | elements, elements and team synergy in battle, the Fusion Machine, Gems and the Secret pets of the Storm Altar |
+  | **Captain Penguin**, Co-op Captain | parties, reviving teammates, Phoenix Feather, Boss Raids, the safe zone outside the Battle Arena and RETREAT out of glowing circles |
+  | **Granny Owl**, Pet Expert | roulettes and their chances (also with Gems), the Pet Index, the Food Machine (Feed) and the EVOLVE button |
+  | **Coach Corgi**, Token Coach | keeping every token of a climb, the Trial Portal, the Training Place, the Champion Ring and beating your record, your battle Team, duels and trophies |
+  | **Mayor Panda**, Village Mayor | claiming a home at a free gate (press E), the Pet Garden and its rainbow coins, the Berry Bush and the other food plants, Economy pets, Home Level, Prestige, the Home window and the home portal |
+  | **Professor Axolotl**, Element Scholar | elements, elements in battles and team synergy, the Fusion Machine, Gems and the Secret pets of the Storm Altar |
 
 - **The Storm Altar** on its dark storm cloud at the village edge, with Stormfang prowling over the portal
   disc. Press **E** at the altar to open the gems-only **Secret Roulette** (see
   [Gems](#gems-and-the-secret-roulette)).
-- **The 16 home plots** on the big outer ring (see [Tycoon homes](#tycoon-homes-phase-2)).
+- **The 16 home plots** on the big outer ring (see [Tycoon homes](#tycoon-homes)).
 - **The Battle Arena** on its own cloud island beyond the homes, reached by a stone bridge from the village street
   (see [Pet battles](#pet-battles-phase-3)).
 - **The Sage Dragon** in the sky above it all.
@@ -229,15 +279,16 @@ the next checkpoint. If everybody is downed, or time runs out, the team loses; i
 finish pad, it wins. Falling into the void, or missing a jump onto a lower lap of a spiral, costs health and puts
 you back at the team checkpoint. Golden tokens (worth 5) sit on the riskiest steps.
 
-## Tycoon homes (phase 2)
+## Tycoon homes
 
 The 16 home plots on the village's outer ring are classic Roblox tycoons: claim one at its gate, then build it
-up pad by pad until a Sky Castle stands on it, and prestige for a star. What is saved is **your home build**, not a
-plot number: it is rebuilt on whichever plot you claim. All the numbers below live in
-`src/shared/TycoonCatalog.lua`, balanced with the progression simulation `tools/sim_tycoon.py` (an active player
-makes a first purchase within seconds, buys something new every 1-2 minutes early on, gets the Villa after about
-half an hour and the first Prestige after about 2.5 hours; the second run takes about 1 h 20 min, the third under
-an hour).
+up pad by pad until a Sky Castle stands on it, and prestige for a star. Since phase 4 **your pets make the money**:
+they eat in your Pet Garden and pop out rainbow coins. What is saved is **your home build**, not a plot number: it
+is rebuilt on whichever plot you claim. All the numbers below live in `src/shared/TycoonCatalog.lua`, balanced with
+the progression simulation `tools/sim_tycoon.py` (an active player buys the first paid pad within half a minute,
+something new every 1-3 minutes early on, gets the Villa after about half an hour, evolves a first pet after about
+1 h 20 min and reaches the first Prestige after about 2 h 25 min; the second run takes about an hour, the third a
+little less).
 
 ### Claiming a home
 
@@ -247,11 +298,19 @@ an hour).
   your save) and the gate offers *Claim Home* to someone else.
 - Coming back? If your last plot is free you get a side toast "Welcome back! Press E at your gate (#7)". Any other
   free plot works just as well: your whole build comes back on it.
-- The **Home** tile of the menu takes you to your gate (or the nearest free one) while you have no home; once you
-  have one it opens the [Home window](#the-home-window). Nimbus' arrow leads to a free gate too.
+- The **Home** tile of the menu opens a magic portal toward a free gate while you have no home; once you have one it
+  opens the [Home window](#the-home-window), whose **Go home** button opens your own portal home. Nimbus' arrow leads
+  to a free gate too.
 - The name tag over the mailbox shows your avatar, your name, your **Home Level** and one star per **Prestige**,
   and the podium by the gate shows a slowly turning copy of your best pet (rarest first, Rainbow and Golden copies
   before plain ones). With a home, you respawn there instead of on the plaza.
+
+### The home portal
+
+**Go home** (in the Home window) opens a small glowing portal on the ground a few steps in front of you, with your
+name over it. Walk into it within 10 seconds and you pop out at your home, your pets diving in after you. Only you
+and your pets can use your portal; other players just see it. It does not open during a climb, a battle or a
+Champion Ring run, or while you wait in a portal party.
 
 ### Buy pads and Home Level
 
@@ -260,113 +319,196 @@ Everything on the yard is built from a **buy pad**: a glowing pad with a floatin
 your own pads (other players' prompts stay off), and the server checks the owner, the price and the requirements
 of every purchase.
 
-- The station pops in with a little voxel animation, and new pads appear as your home grows (Cloud Press 2 after
-  Cloud Press 1 reaches level 2, the Garden and the Vault after Cloud Press 2 reaches level 2, the Kitchen after
-  the Garden ...), so the yard fills up step by step. The pad stays in front of a built station for its upgrades.
+- A brand-new home shows exactly one pad: the **free Pet Garden**. The station pops in with a little voxel
+  animation, and new pads appear as your home grows (the Berry Bush after the Garden, the Coin Magnet and the Food
+  Machine after the Berry Bush, the Carrot Patch when the Berry Bush reaches level 2 ...), so the yard fills up step
+  by step. The pad stays in front of a built station for its upgrades.
 - A locked pad says why: *Reach Home Level 10*, *Needs the Villa*, *Unlocks at Prestige 1* (with a blue
   hologram of what is coming) or *Coming soon*.
 - **Home Level** = every purchase and every upgrade you made: each one adds 1.
-- Your first Cloud Press and the Collector are free, so a brand-new home makes Cash within seconds.
+- The prices below are for a home without stars: after every Prestige the pads cost half as much again (see
+  [Prestige](#prestige)).
 
-### Cash: Cloud Presses and the Collector
+### Cash: your pets make it
 
-Cloud Presses puff glowing cloud blocks onto the conveyor and into the **Collector**; its screen shows the Cash
-waiting inside and how much it can hold. **Step on the Collector** (or press **E** at it, or *Collect* in the Home
-window) to bank it. A full Collector stops filling, so bank it now and then: Collector levels add +10 % to +40 %
-to the presses' income and hold more, and the Vault makes it bigger still. The server adds your income every
-second while you are in the game with your home claimed, also while you are on a climb. **Cash** is the tycoon
-currency; Cloud Tokens stay the climb currency.
+**Cash** is the tycoon currency (Cloud Tokens stay the climb currency). Pets in your **Pet Garden** eat and pop out
+rainbow coins, and you scoop the coins by walking over them (see [the Pet Garden](#the-pet-garden-and-rainbow-coins)).
+Champion Ring wins pay Cash too. The food plants make every coin bigger, the Coin Magnet and the Vault let the piles
+hold more, and the Vault adds coins while you are away.
 
 ### Every station
 
 | Station | What it does | Levels | Needs | Price (level 1 -> top) |
 |---|---|---|---|---|
-| **Cloud Press 1** | The first money machine: 5 -> 53 Cash/s | 10 | claiming | free -> 160,000 |
-| **Cloud Press 2** | A bigger press: 13 -> 138 Cash/s | 10 | Cloud Press 1 Lv 2 | 700 -> 400,000 |
-| **Cloud Press 3** | A storm press: 34 -> 360 Cash/s | 10 | Cloud Press 2 Lv 3 + the Villa | 18,000 -> 1,040,000 |
-| **Cloud Press 4** | The great sky press: 88 -> 930 Cash/s | 10 | Cloud Press 3 Lv 3 + the Manor | 95,000 -> 1,900,000 |
-| **Collector** | Banks the Cash; +0 % -> +40 % press income; holds 2,000 + 5 min of income -> 150,000 + 10 min | 5 | Cloud Press 1 | free -> 800,000 |
-| **House** | Cottage -> Villa -> Manor -> Sky Castle (see below) | 4 | the Collector | 300 -> 520,000 |
-| **Pet Garden** | 1 -> 8 places for Economy pets that earn Cash | 8 | Cloud Press 2 Lv 2 | 1,500 -> 1,440,000 |
-| **Vault** | A bigger Collector and offline earnings | 5 | Cloud Press 2 Lv 2 | 9,000 -> 1,200,000 |
-| **Kitchen** | Cooks pet food; a queue of 3 -> 10 dishes, up to 2x faster | 5 | the Pet Garden | 3,500 -> 1,100,000 |
-| **Gym** | 1 -> 5 places where Combat pets train: 20 -> 80 XP a minute each | 5 | the Kitchen | 14,000 -> 1,300,000 |
-| **Fusion Machine** | Golden / Rainbow upgrades and hybrids; -10 % / -20 % token costs at Lv 2 / 3 | 3 | the Kitchen + **Prestige 1** | 25,000 -> 800,000 |
-| **Arena Gate** | Opens the way to pet battles: press **E** at it to go straight to the Battle Arena | 1 | the Gym | 150,000 |
-| **Lanterns** | Decor along the path (wood, brass, crystal) | 3 | the Collector | 3,000 -> 210,000 |
-| **Garden Fence** | Decor around the yard (picket, hedge, cloudstone) | 3 | Cloud Press 2 Lv 2 | 7,000 -> 290,000 |
-| **Flower Beds** | Decor along the front fence (tulips, roses, starflowers) | 3 | the Pet Garden | 4,500 -> 240,000 |
-| **Fountain** | Decor in the middle of the yard (basin, tiered, sky) | 3 | the Kitchen + the Villa | 45,000 -> 880,000 |
-| **Banners** | Decor along the front fence (cloth, gold, royal) | 3 | the Vault | 12,000 -> 380,000 |
-| **Pet Podium** | Dresses up the podium of your best pet by the gate | 3 | the Pet Garden | 9,000 -> 340,000 |
+| **Pet Garden** | Your pets eat here and pop out rainbow coins (3 places + 1 per Prestige); Lucky coins 0 % -> 15 % | 8 | claiming | free -> 2,400,000 |
+| **Berry Bush** | The first food plant: +7 -> +76 food per meal | 10 | the Pet Garden | 15 -> 270,000 |
+| **Carrot Patch** | A bigger food plant: +19 -> +199 food per meal | 10 | Berry Bush Lv 2 | 420 -> 680,000 |
+| **Cloud Melons** | Juicy sky melons: +49 -> +518 food per meal | 10 | the Villa + Carrot Patch Lv 3 | 18,000 -> 1,800,000 |
+| **Starfruit Tree** | The best food plant: +127 -> +1,339 food per meal | 10 | the Manor + Cloud Melons Lv 3 | 160,000 -> 3,200,000 |
+| **Coin Magnet** | Coins fly to you: scoops from 9 -> 26 studs, piles hold 5 -> 10 min of coins | 5 | the Berry Bush | 90 -> 1,400,000 |
+| **Food Machine** | Turns Cash into pet XP: a feed fills 25 % -> 50 % of the XP bar | 5 | the Berry Bush | 240 -> 1,900,000 |
+| **Training Place** | Pets learn battle skills: 1 -> 5 pets train at once | 5 | the Food Machine | 3,000 -> 2,200,000 |
+| **Vault** | Bigger coin piles (piles +5 -> +30 min) and offline coins | 5 | Carrot Patch Lv 2 | 9,000 -> 2,000,000 |
+| **House** | Cottage -> Villa -> Manor -> Sky Castle (see below) | 4 | the Coin Magnet | 180 -> 880,000 |
+| **Fusion Machine** | Golden / Rainbow upgrades and hybrids; -10 % / -20 % token costs at Lv 2 / 3 | 3 | the Food Machine + **Prestige 1** | 25,000 -> 1,400,000 |
+| **Arena Gate** | Opens the way to pet battles: press **E** at it to go straight to the Battle Arena | 1 | the Training Place | 260,000 |
+| **Lanterns** | Decor along the path (wood, brass, crystal) | 3 | the Coin Magnet | 1,800 -> 360,000 |
+| **Garden Fence** | Decor around the yard (picket, hedge, cloudstone) | 3 | Carrot Patch Lv 2 | 7,000 -> 490,000 |
+| **Flower Beds** | Decor along the front fence (tulips, roses, starflowers) | 3 | the Pet Garden | 2,700 -> 410,000 |
+| **Fountain** | Decor in the middle of the yard (basin, tiered, sky) | 3 | the Villa + the Food Machine | 45,000 -> 1,500,000 |
+| **Banners** | Decor along the front fence (cloth, gold, royal) | 3 | the Vault | 12,000 -> 650,000 |
+| **Pet Podium** | Dresses up the podium of your best pet by the gate | 3 | the Pet Garden | 9,000 -> 580,000 |
 
 A pad shows up as soon as the stations it needs are built; until the rest is there too (a house tier, a Prestige
-star) its sign says what is missing. Every station grows visibly with its level (a level-1 press is small, a
-level-10 press big and shiny with gold). Decor is cheap, counts toward your Home Level like everything else and is
-**kept when you prestige**.
+star) its sign says what is missing. Every station grows visibly with its level (a level-1 Berry Bush is a small
+shrub, a level-10 one a big bush heavy with berries). Decor is cheap, counts toward your Home Level like everything
+else and is **kept when you prestige**.
 
 ### The house: a new tier every 10 Home Levels
 
-The House pad builds a **Cottage** (300 Cash). The next houses are deliberately hard to get: the **Villa** needs
-Home Level 10 (24,000 Cash), the **Manor** Home Level 20 (115,000) and the **Sky Castle** Home Level 30 (520,000);
+The House pad builds a **Cottage** (180 Cash). The next houses are deliberately hard to get: the **Villa** needs
+Home Level 10 (24,000 Cash), the **Manor** Home Level 20 (200,000) and the **Sky Castle** Home Level 30 (880,000);
 until then the House pad says *Reach Home Level N*. Every new house raises how far the other stations can level:
 
 | Max level with the ... | Cottage | Villa | Manor | Sky Castle |
 |---|---|---|---|---|
-| Cloud Press 1 and 2 | 6 | 8 | 9 | 10 |
-| Cloud Press 3 | - | 6 | 8 | 10 |
-| Cloud Press 4 | - | - | 8 | 10 |
-| Collector | 2 | 3 | 4 | 5 |
+| Berry Bush and Carrot Patch | 6 | 8 | 9 | 10 |
+| Cloud Melons | - | 6 | 8 | 10 |
+| Starfruit Tree | - | - | 8 | 10 |
+| Coin Magnet | 2 | 3 | 4 | 5 |
 | Pet Garden | 2 | 4 | 6 | 8 |
-| Kitchen, Gym, Vault | 1 | 2 | 4 | 5 |
+| Food Machine, Training Place, Vault | 1 | 2 | 4 | 5 |
 | Fusion Machine | 1 | 2 | 3 | 3 |
 | Decor | 1 | 2 | 3 | 3 |
 | Fountain | - | 1 | 2 | 3 |
 
-### The Pet Garden
+### The Pet Garden and rainbow coins
 
-Open **Pets**, pick an **Economy** pet and press **Place in Garden**: it moves into the next free place of your
-Garden (one copy per place; places unlock with the Garden level: 1 to 8) and you can see it there. Each placed
-pet adds Cash per second to the Collector: its Income stat x its rarity (Common x1 up to Secret x13) x its level
-(+10 % per level) x its tier (Golden x1.5, Rainbow x2.5) x your prestige multiplier. A pet in the Garden cannot
-train in the Gym at the same time.
+Your pets make the money here. Build the free **Pet Garden** (the first pad of every home), then press **E** on an
+empty garden spot (*Put a pet here*) and pick a pet, or open **Pets**, pick a pet and press **Garden**. The Garden
+has **3 places** at first and gets **+1 every Prestige** (up to 12 places). Any pet can work there, Economy or
+Combat, and garden pets can still follow you and fight at the same time. Only a pet in training cannot (see
+[the Training Place](#the-training-place)).
 
-### The Kitchen and feeding
+Every pet on an open place eats from its bowl, **one meal every 8 seconds**, and pops out a **rainbow coin**. A
+coin is worth the food of your home x the power of the pet x your Prestige bonus:
 
-The Kitchen cooks pet food with Cash. Stand at the counter and hold **E** (*Cook Snack*), **R** (*Cook Meal*) or
-**F** (*Cook Feast*), or use the Cook buttons of the Feed picker in the Pets window. Dishes wait in a queue
-(3 dishes at Kitchen level 1, up to 10) and cook one at a time, even while you are away on a climb; finished food
-goes to your inventory. Better Kitchens cook faster (x1.25 at level 2 up to x2 at level 5). If you leave before a
-dish is done, you get its Cash back (unless you prestiged since you ordered it).
+- **Food:** the grass of a built Garden gives 12 food, and every food plant adds its food (see the station table).
+  A new Garden with a level-1 Berry Bush has 19 food, so a level-1 Common Combat pet makes **$19 every 8 seconds**.
+- **The pet's power:** its rarity (Common x1 up to Secret x13) x its level (+10 % per level) x its tier (Golden
+  x1.5, Rainbow x2.5) x its role: **Economy pets x1.6**, they make 60 % more than Combat pets x its evolution (+25 %
+  after the first EVOLVE, +50 % after the second).
+- **Prestige:** x1.25 coins per star (see [Prestige](#prestige)).
+- Sometimes a sparkly **Lucky coin** pops out, worth x5. Your Garden level decides how often:
 
-| Food | Cost | XP | Base cook time | Needs Kitchen level |
-|---|---|---|---|---|
-| **Snack** | 50 Cash | 25 | 6 s | 1 |
-| **Meal** | 600 Cash | 150 | 20 s | 2 |
-| **Feast** | 6,000 Cash | 800 | 45 s | 4 |
+| Garden level | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 |
+|---|---|---|---|---|---|---|---|---|
+| Lucky coin chance | 0 % | 2 % | 4 % | 6 % | 8 % | 10 % | 12 % | 15 % |
 
-**Feeding:** open **Pets**, pick a pet, press **Feed** and choose a food; or press **E** at the feeding bowl next
-to the Kitchen, and every pet flying with you eats one food (the best one that does not waste XP). XP makes pets
-level up (level 1 -> 2 takes 20 XP, each later level takes more), and **every level adds 10 %** to the pet's stats:
-Income for Economy pets, Power / Health / Speed for Combat pets. Each pet copy has its own level, up to a cap by
-rarity: Common 100, Uncommon 100, Rare 100, Epic 100, Legendary 100, Mythic 100, Secret 100 (Phase 4: every pet reaches 100). A toast shows the new
-stats at every level-up.
+**Scooping:** each pet's coins pile up on the walk in front of it. Walk over them and they are yours, no button
+needed. **Only you can scoop your own coins**: other players see them dimmed, and the first time they come close a
+hint says "Only the owner can pick these up". Without a Coin Magnet you scoop the coins within 6 studs of you; the
+Magnet pulls them in from farther away (up to 26 studs at level 5).
 
-### The Gym
+**Piles and naps:** a pile holds a few minutes of its pet's coins: 4 minutes without a Coin Magnet, more with the
+Magnet and the Vault. When a pile is full the pet lies down for a nap (a little "Zzz") and eats nothing until you
+scoop it, so come back now and then. Coins left on your lawn are saved with your home and wait for you in the
+**Welcome-back pile** by your garden gate. A pet on a place that is not open any more (after a Prestige ended your
+old extra places, see [Homes from before Phase 4](#homes-from-before-phase-4)) sleeps on a closed bed and makes
+nothing until a place opens.
 
-Open **Pets**, pick a **Combat** pet and press **Train in Gym**. Every pet in the Gym gains XP by itself: 20 XP a
-minute at Gym level 1, up to 80 at level 5, with 1 to 5 places, while you are in the game with your home claimed
-(up to the pet's level cap). Get them strong for [pet battles](#pet-battles-phase-3).
+### The Food Machine and pet levels
 
-### The Vault and offline earnings
+The **Food Machine** (the old Kitchen) turns Cash into XP. Press **E** at it (*Feed pets*), or press **Feed** on a
+pet in the Pets window: a list of your pets opens (garden pets first, then the ones following you, then the rest).
+Every row shows the pet's level, its XP bar and two buttons:
 
-The Vault makes the Collector hold more (from +5,000 and 5 more minutes of income at level 1 to +400,000 and 30
-more minutes at level 5) and pays you **while you are away**: when you join again, a side toast "While you were
-away: +..." pays a share of your income for the time you were gone. Nothing is paid for absences under 2 minutes,
-and nothing without a Vault.
+- **Feed** fills a part of the pet's XP bar: 25 % of the XP bar at Food Machine level 1, up to 50 % at level 5.
+  Upgrading the machine gives bigger meals for the same price.
+- **Level up** buys all the feeds the next level needs (at most 10) in one go, for one price.
+
+A feed costs the XP the pet still needs for its next level x its rarity (Common x1 up to Secret x13) x 2 Cash,
+whatever the machine level: a level-1 Common pays **$40** for **5 XP**, a level-19 Common **$4,450** for **556 XP**.
+Rarer pets eat fancier food, and their coins grow just as much. A pet at the top level says *Max level*.
+
+**Leftover food** from the old Kitchen (Snacks, Meals and Feasts) is fed first, for free: the button says for
+example "Feed (free Feast, 3 left)".
+
+| Leftover food | XP |
+|---|---|
+| **Snack** | 25 |
+| **Meal** | 150 |
+| **Feast** | 800 |
+
+**Levels:** every pet can reach level **100**. **Every level adds 10 %** of the pet's level-1 stats (a level-50 pet
+has x5.9, a level-100 pet x10.9), and each level takes more XP than the one before:
+
+| Level up | XP needed |
+|---|---|
+| 1 -> 2 | 20 |
+| 10 -> 11 | 795 |
+| 19 -> 20 | 2,225 |
+| 49 -> 50 | 10,125 |
+| 99 -> 100 | 31,190 |
+
+That is 17,375 XP in total to reach level 20, 195,880 to reach level 50 and 1,203,340 to reach level 100. A toast
+tells you about every level-up (one toast, even when a big meal jumps several levels). Levels belong to the pet
+(every copy of the same pet and tier shares them) and are kept through Prestige.
+
+**Every fight gives XP** too, to every pet of your team:
+
+| Where | XP for every team pet |
+|---|---|
+| A Trial win | 20 + 6 x the level (26 up to 200) |
+| A lost Trial | a third of the win XP, when your pets really fought (20 seconds or more, or 20 % of the enemy team's health) |
+| A duel | 60 for a win, 25 for a draw or a loss |
+| A Boss Raid | 50 up to 400 by your tier (20 when the boss wins) |
+| A Champion Ring round | 20 + 6 x the round (the round that ends your run pays a third) |
+
+### Evolution: the EVOLVE button
+
+At level **20** every pet is "Ready to evolve!": the level-up toast says so, its card gets a pulsing gold
+**EVOLVE!** pill, and the Pets window and the Food Machine list show an **EVOLVE** button. Press it (and Yes): the
+menu slides away, the pet charges up in a pillar of light right in front of you and bursts into its evolved form,
+with confetti. An evolved pet is **+25 %** stronger in battle (power and health, so its special too) and makes 25 %
+bigger coins. **Epic, Legendary, Mythic and Secret** pets evolve a second time at level **50** (+50 % in total);
+Common, Uncommon and Rare pets evolve once. The bonus counts from the moment you press EVOLVE (never from the level
+alone), so every pet gets its own big moment. Evolutions are kept through Prestige and fusion, and a star on the
+pet's card shows them (★ / ★★). Not during a battle.
+
+### The Training Place
+
+The **Training Place** (the old Gym) teaches pets battle skills. Press **E** at it (*Train pets*) or press **Train**
+in the Pets window, pick a pet and one of four skills:
+
+| Skill | Each rank | At rank 10 |
+|---|---|---|
+| **Attack Speed** | +4% attacks per rank | +40 % |
+| **Physique** | +5% max health per rank | +50 % |
+| **Ability** | +4% special power and charge per rank | +40 % |
+| **Defense** | -3% damage taken per rank | -30 % |
+
+Every skill goes up to rank 10. Rank N costs **300 x N x N** Cash x the pet's rarity (a Common pays $300 for rank 1
+and $30,000 for rank 10, all 40 ranks together $462,000; a Legendary x5.5) and takes N minutes: **Rank 3 takes 3
+minutes**. Training prices never go up with Prestige. The Training Place level is how many pets train at once (1 to
+5).
+
+A training pet rests at home on its mat, with a purple timer on its card: it leaves the Garden and stops following
+you, and it cannot follow you, fight or be fused until it is done ("Rocky is training (2:10 left)"). Then it gets
+its rank and comes back by itself: to your side, or to its garden place. **Stop** ends a training early and gives
+all the Cash back (no rank). Training keeps going while you are away and through a Prestige: the rank is waiting
+when you come back ("Training done while you were away!"). Trained skills count in every battle.
+
+### The Vault and offline coins
+
+The Vault makes every coin pile bigger and pays offline coins: when you come back after a while, a share of what
+your pets make in that time waits in the big **Welcome-back pile** by your garden gate, together with the coins
+you left on the lawn, and a side toast says "Welcome back! Your pets made $X while you were away: scoop it in your
+garden!". Nothing is paid for absences under 2 minutes, and no offline coins without a Vault.
 
 | Vault level | 1 | 2 | 3 | 4 | 5 |
 |---|---|---|---|---|---|
+| Bigger piles | +5 min | +10 min | +15 min | +20 min | +30 min |
 | Share of your income | 10 % | 15 % | 20 % | 25 % | 30 % |
 | For up to | 1 h | 2 h | 3 h | 4 h | 4 h |
 
@@ -375,14 +517,40 @@ and nothing without a Vault.
 Prestige needs **Home Level 40 and the Sky Castle**. Once the Sky Castle stands, a star pad appears on your yard
 (it says *Reach Home Level 40* until you get there). Hold **E** on it (or press Prestige in the Home window): the
 Home window shows what starts over, what you keep and what you get, and nothing happens until you confirm there.
+Scoop your coins first!
 
-- **Starts over:** your Cash, every station except the decor, and the Collector's contents.
-- **You keep:** all your pets (with their levels, Golden / Rainbow copies and hybrids), your food, your decor
-  (it still counts toward your Home Level, so the next run starts ahead), your Garden and Gym picks (they work
-  again as soon as those stations are rebuilt), Cloud Tokens and Gems.
-- **You get:** a **Prestige star** on your name tag, **x1.25 income** per star forever (it multiplies: x1.56 at 2
-  stars, x1.95 at 3 ...), **Gems** (100 for the first prestige, 10 fewer for each later one, never under 25), and
-  at Prestige 1 the **Fusion Machine** pad (and the 4th slot of your battle team).
+- **Starts over:** your Cash, the coins on your lawn and every station except the decor and the Pet Garden (it
+  stays at level 1 with your pets in it, so the coins never stop).
+- **You keep:** all your pets (with their levels, evolutions, trained skills, Golden / Rainbow copies and hybrids),
+  your garden pets, your leftover food, your decor (it still counts toward your Home Level, so the next run starts
+  ahead), trainings that are still running, Cloud Tokens and Gems.
+- **You get:** a **Prestige star** on your name tag, **x1.25 coins** per star forever (it multiplies: x1.56 at 2
+  stars, x1.95 at 3 ...), **+1 garden place**, **Gems** (100 for the first prestige, 10 fewer for each later one,
+  never under 25), and at Prestige 1 the **Fusion Machine** pad (and the 4th slot of your battle team).
+- **Prices go up by half:** after every Prestige the stations cost half as much again: **x1.5** at 1 star, x2.25 at
+  2 stars, x3.38 at 3 stars ... Feeds, training and roulettes never cost more.
+
+### Homes from before Phase 4
+
+Nobody loses progress. The first time an older save loads in phase 4:
+
+- **Your presses grew into food plants** with the same levels: Cloud Press 1 is the Berry Bush, 2 the Carrot Patch,
+  3 the Cloud Melons and 4 the Starfruit Tree. The Collector is now the **Coin Magnet**, the Kitchen the **Food
+  Machine** and the Gym the **Training Place** (its level = training spots). Same pads, same levels, same Home Level
+  and house.
+- **Extra garden places:** an old Garden's level was its number of places (up to 8). If you had more than 3 + your
+  stars, you keep that many places until your next Prestige. The Home window says so: "Kept from your old home: 6
+  places and old prices until your next Prestige."
+- **Old prices:** if you had prestiged before phase 4, you pay the old prices (no x1.5 per star) until your next
+  Prestige.
+- **Leftover food:** your Snacks, Meals and Feasts are fed first and for free at the Food Machine.
+- **The Welcome-back pile:** the Cash that waited in your old Collector is now a coin pile by your garden gate: walk
+  over it to scoop it.
+- **Gym pets** are back with you (the XP they earned stays), and pets at level 20 or more are "Ready to evolve!".
+
+On your first claim a toast says: "Welcome to the new home! Your presses grew into food plants, the Collector is now
+a Coin Magnet, and your old Collector Cash waits in a coin pile by your garden. Put pets in your garden: they make
+the money now!"
 
 ### The Fusion Machine (after Prestige 1)
 
@@ -398,9 +566,10 @@ climb). It has two tabs:
   rarities, stats = their average x1.2, and a blended name (Penguin + Phoenix -> "Pengnix"). Hybrids cannot be
   mixed again or upgraded.
 
-Copies that are equipped, in the Garden or in the Gym are taken off first and the result takes over their place
-(the machine refuses only when the inputs are your only equipped pets). The machine's level 2 and 3 take 10 % and
-20 % off the token costs:
+Copies that are equipped or in the Garden are taken off first and the result takes over their place (the machine
+refuses only when the inputs are your only equipped pets); a pet in training cannot be fused. Fusing keeps your
+pet's evolution and training (a hybrid starts unevolved but keeps the better training of its parents). The
+machine's level 2 and 3 take 10 % and 20 % off the token costs:
 
 | Rarity | Upgrade to Golden | Golden to Rainbow | Mix |
 |---|---|---|---|
@@ -417,12 +586,11 @@ Rainbow and hybrid pets.
 
 ### The Home window
 
-The **Home** tile of the menu opens it (once you have a home): your house tier, Home Level and Prestige stars,
-your income per second (presses + Garden pets, with the prestige multiplier), the Collector's Cash with a
-**Collect** button, the prestige progress (Home Level x/40 and the Sky Castle) with the **Prestige** button,
-**Go home** (a teleport to your yard, not during a climb), and every station with its level, what the next level
-does, its price and a **Build** / **Upgrade** button, or why it is still locked. So you can upgrade from
-anywhere, without walking to the pad.
+The **Home** tile of the menu opens it (once you have a home): your house tier, Home Level and Prestige stars, the
+**Pet Garden** card (coins waiting on your lawn, coins per minute, open places), the prestige progress (Home Level
+x/40 and the Sky Castle) with the **Prestige** button, **Go home** (your [home portal](#the-home-portal)), and every
+station with its level, what the next level does, its price and a **Build** / **Upgrade** button, or why it is still
+locked. So you can upgrade from anywhere, without walking to the pad.
 
 ### Gems and the Secret Roulette
 
@@ -467,8 +635,8 @@ created the Gems tab says "Gem packs open soon!".
        -- (the rest of Config.Gems stays as it is)
    ```
 
-5. Rebuild the place file (or let Rojo sync it into Studio), publish, and **Shut Down All Servers** so every
-   server runs the new ids.
+5. Rebuild the place file (or let Rojo sync it into Studio), publish, then use **Migrate to Latest Update** so every
+   server runs the new ids (see [Publishing an update](#publishing-an-update-owner)).
 
 Good to know: use each product id for one pack only, and keep the products you sold alive on the Creator Hub.
 Every purchase is granted **exactly once**: the purchase id is saved with the Gems in the player's save before
@@ -482,11 +650,16 @@ another one.
 
 ## Pet battles (phase 3)
 
-Your pets can fight now. Battles happen in the **Battle Arena** and in the **Trials**. The server runs every fight
-and decides every hit; your pets move and attack by themselves, and you lead them with three kinds of buttons.
-Nobody ever loses a pet in a battle: a knocked-out pet just sits out until the fight is over. All the numbers below
-live in `src/shared/BattleCatalog.lua`, balanced with the battle simulation `tools/sim_battle.lua` (see
-`tools/README.md`).
+Your pets can fight. Battles happen in the **Battle Arena**, in the **Trials** and in the **Champion Ring**. The
+server runs every fight and decides every hit; your pets move and attack by themselves, and you lead them with
+three kinds of buttons. Nobody ever loses a pet in a battle: a knocked-out pet just sits out until the fight is
+over. All the numbers below live in `src/shared/BattleCatalog.lua`, balanced with the battle simulation
+`tools/sim_battle.lua` (see `tools/README.md`).
+
+**Safe zones:** pets fight only inside battle zones: the arena floor, the duel rings, the Trial pockets and the
+Champion Ring. Everywhere else (the plaza, homes, the shop, the paths, the arena's forum and stands) is a safe zone:
+no fights, no damage, and nobody can pull you into a battle. A side toast tells you when you walk into the Battle
+Arena ("Battle Arena: pets can battle here") and out again ("Safe zone").
 
 ### Getting to the Battle Arena
 
@@ -494,9 +667,10 @@ live in `src/shared/BattleCatalog.lua`, balanced with the battle simulation `too
   arch and walk across. The arena is a big colosseum on its own cloud island: the round **boss floor** inside, two
   **duel rings** on the square in front of it, the **event board** (next event and its countdown) and the **trophy
   leaderboard** next to the main gate.
-- **The Arena Gate at home:** build the **Arena Gate** pad on your yard (150,000 Cash, after the Gym) and press
-  **E** at the gate: it takes you straight to the arena (not during a climb or a battle).
-- **The Trial Portal** is not in the arena: it stands on the plaza next to the five climb portals.
+- **The Arena Gate at home:** build the **Arena Gate** pad on your yard (after the Training Place) and press **E**
+  at the gate: it takes you straight to the arena (not during a climb or a battle).
+- **The Trial Portal** and the **Champion Ring** portal are not in the arena: they stand on the plaza next to the
+  five climb portals.
 
 The battle buttons only work inside a battle; everywhere else your pets just follow you as usual.
 
@@ -505,9 +679,9 @@ The battle buttons only work inside a battle; everywhere else your pets just fol
 Tap the **Team** tile in the menu. You have **3 team slots** (a **4th slot opens at Prestige 1**) and up to
 **3 saved teams** (the tabs *Team 1* to *Team 3*); **Use this team** picks the one you fight with. Tap a slot, then a pet: every pet
 shows its element, level and battle stats. The screen shows your **team power** (compare it with a Trial's
-recommended power), the element bonuses your team gets right now and the element wheel. A pet that works in your
-Garden or trains in your Gym cannot fight at the same time (unless you own another copy). Pet levels count a lot:
-feed your pets and train them in the Gym.
+recommended power), the element bonuses your team gets right now and the element wheel. Garden pets can fight too
+(they keep earning at home); a pet in training sits out until it is done (its tile says *Training*). Pet levels
+count a lot: feed your pets at the Food Machine, evolve them and train their skills at the Training Place.
 
 ### In a battle: ATTACK, RETREAT, SPECIAL
 
@@ -529,8 +703,10 @@ feed your pets and train them in the Gym.
   cannot move or attack for a moment) and **Beam** (hits every enemy in a line).
 - **The screen:** the top card shows the fight (enemies or the boss, the time left); your team's cards with health
   and special meters and the ATTACK / RETREAT buttons sit at the bottom right on a computer and at the screen edges
-  on a phone. Nothing covers the middle of the screen. Damage numbers pop up above the pets in the world, and the
-  result card at the end lists everything you won.
+  on a phone. Nothing covers the middle of the screen. Above every pet in the battle floats its
+  [pet card](#pet-cards-and-following): yours with level, health, the gold SPECIAL bar and XP, the enemies with
+  level and health. Damage numbers pop up above the pets in the world, and the result card at the end lists
+  everything you won.
 
 ### Elements and team synergy in battle
 
@@ -560,8 +736,9 @@ Level 1 is a gentle start: one sleepy Pebble Pup that any single level-1 pet bea
 | 26-30 | Eclipse | Mythic and Secret pets (Stormfang waits at level 30) |
 
 **Rewards for every win:** 10 + 3 x the level Cloud Tokens (**13** at level 1 up to **100** at level 30) and
-20 + 6 x the level XP for every pet of your team (**26** up to **200**). **The first clear** of a level pays a big
-bonus on top: 40 x the level tokens (twice that on a mini-boss level), and Gems on the mini-boss levels:
+20 + 6 x the level XP for every pet of your team (**26** up to **200**). A lost Trial still pays a third of that XP
+when your pets really fought. **The first clear** of a level pays a big bonus on top: 40 x the level tokens (twice
+that on a mini-boss level), and Gems on the mini-boss levels:
 
 | First clear of level | 5 | 10 | 15 | 20 | 25 | 30 |
 |---|---|---|---|---|---|---|
@@ -576,7 +753,9 @@ Duel other players on the two **duel rings** in front of the colosseum. Both of 
   **Decline** (30 seconds). The duel starts on a free ring; you stand on its pad and watch your team fight theirs.
 - **Quick queue:** press **Find a match** on the Duels tab and the game pairs you with the waiting player whose
   trophies are closest. **Leave** on the queue card at the right edge takes you out of the queue.
-- A duel lasts up to **2 minutes**; then the team with more health left wins.
+- A duel lasts up to **2 minutes**; then the team with more health left wins. After **75 seconds** every hit grows
+  stronger (15 % more every second), so a duel never drags on; no single hit takes more than 60 % of a pet's health;
+  and when both last pets fall at the same moment, the team that dealt more damage wins.
 - **Trophies and rewards:**
 
   | Result | Trophies | Cloud Tokens | XP for every team pet |
@@ -637,6 +816,40 @@ Every **3 hours** a **Double Rewards** hour starts (announced 2 minutes before, 
 the countdown chip at the right edge): for **1 hour** every battle pays **x2 Cloud Tokens** (Trials, first clears,
 duels and Boss Raids).
 
+### The Champion Ring
+
+The golden **Champion Ring** portal stands on the plaza next to the Trial Portal. All you need is a home and one
+pet. Press **E** at it: the ring window shows your record, the best in this server, the pets that will fight and
+what the next win pays. Pick where to start (round 1, or any boss round you have beaten) and press **START**.
+
+- **One champion at a time**, each a little stronger than the last. Rounds 1-3 are sleepy little pets that any
+  single level-1 pet beats; then the champions get rarer and stronger, and **every 10th round is a giant boss**. You
+  have **90 seconds** for a round; lose once (or run out of time) and the run ends. Between two rounds you get 3
+  seconds and a side card ("Round 8 won! ... Round 9 in 3"). Your health comes back full every round.
+- **Every win pays Cash and XP:** the bigger of $20 + $2 x the round and what your garden makes in 1.5 + 0.1 x the
+  round seconds (at most 9 seconds), and 20 + 6 x the round XP for every pet of your team. A **new record** round
+  pays **x3 Cash**, and beating a boss round for the first time pays **100 Cloud Tokens**. The round that ends your
+  run pays a third of its XP when your pets really fought.
+- **Who fights:** your battle team; without one, the pets following you; without those, your strongest pets. Pets in
+  training stay home.
+- Your record is saved, and the portal's sign shows the best players in the server ("Best in this server").
+
+| Round | Champion | Cash per win (at least) | XP for every team pet |
+|---|---|---|---|
+| 1 | a sleepy Pebble Pup | $22 | 26 |
+| 2 | a sleepy Pip Penguin | $24 | 32 |
+| 3 | a sleepy Honey Bunny | $26 | 38 |
+| 5 | a Common pet | $30 | 50 |
+| 10 | **Boss:** a giant Common or Uncommon pet | $40 | 80 |
+| 20 | **Boss:** a giant Uncommon or Rare pet | $60 | 140 |
+| 30 | **Boss:** a giant Epic or Legendary pet | $80 | 200 |
+| 40 | **Boss:** a giant Legendary or Mythic pet | $100 | 260 |
+| 50 | **Boss:** a giant Mythic or Secret pet | $120 | 320 |
+
+The ring never ends: after round 50 the bosses just keep getting stronger. When a run is over the result card
+shows **RUN OVER** (or **NEW RECORD!**), the rounds you won and the Cash and XP of the whole run, and a few seconds
+later you are back at the portal.
+
 ### Testing battles in Studio (owner)
 
 - **Boss Raids:** press **Play**, then the DEV panel's **Start Boss Raid** button or type `/raid` in the chat (see
@@ -648,14 +861,15 @@ duels and Boss Raids).
   Then challenge the other player from a duel pad and accept in the other window, or press **Find a match** in
   both. Give
   both players similar teams: a team more than 3 times stronger makes it a practice duel without rewards.
-- **Trials** work in a normal **Play** test: press **E** at the Trial Portal on the plaza.
+- **Trials and the Champion Ring** work in a normal **Play** test: press **E** at the Trial Portal or the Champion
+  Ring portal on the plaza (the ring needs a claimed home and a pet).
 
 ## Pets and roulettes
 
-**33 pets** in seven rarities fly beside their owner, and everybody sees everybody's pets: Common 6, Uncommon 6,
-Rare 5, Epic 4, Legendary 3, Mythic 2 and **Secret 7** (Stormfang, Eclipse Dragon, Obsidian Phoenix, Phantom
-Kitsune, and the three Boss Raid pets Magma Cub, Rime Wyrmling and Hydralotl). Visit the **shop island** or press the **Shop** tile, pick a roulette and spin. Duplicates stack (up to
-99 per pet).
+**33 pets** in seven rarities follow right behind their owner, and everybody sees everybody's pets: Common 6,
+Uncommon 6, Rare 5, Epic 4, Legendary 3, Mythic 2 and **Secret 7** (Stormfang, Eclipse Dragon, Obsidian Phoenix,
+Phantom Kitsune, and the three Boss Raid pets Magma Cub, Rime Wyrmling and Hydralotl). Visit the **shop island** or
+press the **Shop** tile, pick a roulette and spin. Duplicates stack (up to 99 per pet).
 
 | Roulette | Price | Odds per spin (pets inside a rarity are equally likely) |
 |---|---|---|
@@ -669,18 +883,29 @@ Secret pets are in none of the token roulettes: Stormfang and the other three ro
 gems-only Secret Roulette at the Storm Altar (see [Gems](#gems-and-the-secret-roulette)), and the three Boss Raid
 pets only drop in Boss Raids.
 
-Equip up to **3** pets from the Pets window. Each pet has one or two perks: **Max Health**, **Cloud Tokens**
-(more tokens per pickup), **Stamina Regen** and **Checkpoint Heal**. Perks add up, with caps (+50 % health, +100 %
-tokens, +60 % stamina regen, +100 % checkpoint heal). Pets never change run speed or jump height, and your
-loadout is locked while a climb is running. The mascot is the Mythic **Cloudy Dragon**.
+Equip up to **3** pets from the Pets window (a pet in training cannot be equipped). Each pet has one or two perks:
+**Max Health**, **Cloud Tokens** (more tokens per pickup), **Stamina Regen** and **Checkpoint Heal**. Perks add up,
+with caps (+50 % health, +100 % tokens, +60 % stamina regen, +100 % checkpoint heal). Pets never change run speed or
+jump height, and your loadout is locked while a climb is running. The mascot is the Mythic **Cloudy Dragon**.
 
-Every pet also has a **role** (Economy pets earn Cash in your home's Garden, Combat pets train in your Gym; both
-can fight in [pet battles](#pet-battles-phase-3)), **stats** (Income, Power, Health, Speed; higher rarities are much stronger, and every
-level a pet gains adds 10 %) and a named **special attack** (for example Stormfang's *Storm Pounce* or the Cloudy
-Dragon's *Cloud Breath*). The Pet Index shows them all; in battle each pet uses its special when you press SPECIAL.
-Since phase 2 a pet can also be a **Golden** or **Rainbow** copy or a fused **hybrid** (see
-[the Fusion Machine](#the-fusion-machine-after-prestige-1)); the Pets window shows each copy with its tier badge,
-level and XP bar, and the Feed, Place in Garden and Train in Gym buttons.
+Every pet also has a **role** (Economy pets make 60 % more coins in your [Pet Garden](#the-pet-garden-and-rainbow-coins)
+than Combat pets; both can work there and both can fight in [pet battles](#pet-battles-phase-3)), **stats** (Income,
+Power, Health, Speed; higher rarities are much stronger, and every level a pet gains adds 10 %) and a named
+**special attack** (for example Stormfang's *Storm Pounce* or the Cloudy Dragon's *Cloud Breath*). The Pet Index
+shows them all; in battle each pet uses its special when you press SPECIAL. Since phase 2 a pet can also be a
+**Golden** or **Rainbow** copy or a fused **hybrid** (see [the Fusion Machine](#the-fusion-machine-after-prestige-1)),
+and since phase 4 it can [evolve](#evolution-the-evolve-button) and learn [battle skills](#the-training-place). The
+Pets window shows each copy with its tier badge, level (*Lv 12 / 100*), XP bar and evolution stars, and the Equip,
+Feed, Garden, Train and EVOLVE buttons.
+
+### Pet cards and following
+
+Your pets follow right behind you: one pet behind your back, two side by side, a third a little further back. A
+small card floats above each of your pets: **Lv 12** in big bold numbers, a star for each evolution (★ / ★★) and a
+blue XP bar. When a pet is ready to evolve, its card shows a pulsing gold **EVOLVE!** pill: click or tap it to open
+the Pets window on that pet. Garden pets at home show the same card, and a training pet shows a purple timer bar
+("2:10") instead. Other players' pets show just their level. In a battle the cards also show health (green for
+yours, red for enemies) and your pets' gold SPECIAL bar. The cards keep the same size on screen when you zoom out.
 
 ## Elements
 
@@ -737,15 +962,16 @@ never drops below 14 px on a phone.
   **health and stamina card**: a heart badge with a thick health bar (it flashes and shakes when you are hit and
   pulses when you are low), a lightning badge with the stamina bar, and the dash ring that sweeps while dash
   recharges. NPC dialogs open just above it.
-- **Right: toasts** stack at the top-right (purchases, level-ups, "While you were away" and the rest), and the
-  compact result card shows up at the right edge after a climb. **Bottom-centre:** the item hotbar (1-4).
+- **Right: toasts** stack at the top-right (purchases, level-ups, "Welcome back! Your pets made ..." and the
+  rest), and the compact result card shows up at the right edge after a climb. **Bottom-centre:** the item hotbar
+  (1-4).
 - On phones the HUD moves up to clear the thumbstick, and on short landscape screens the currency counters move
   to the top-right.
 - **In the Battle Arena:** duel invites, the raid card and the event countdown are small cards at the right edge.
-  **In a battle:** a slim card at the top centre (the enemies or the boss, the time), your team's cards and the
-  ATTACK / RETREAT buttons at the bottom right. On a phone the team cards sit under the top card (on a landscape
-  phone at the top-left, where the menu tiles step aside while you fight) and ATTACK / RETREAT become big buttons at
-  the right edge.
+  **In a battle:** a slim card at the top centre (the enemies or the boss, the time; in the ring "CHAMPION RING -
+  Round 8 - Best 12"), your team's cards and the ATTACK / RETREAT buttons at the bottom right. On a phone the team
+  cards sit under the top card (on a landscape phone at the top-left, where the menu tiles step aside while you
+  fight) and ATTACK / RETREAT become big buttons at the right edge.
 
 ## Developer tools (owner only)
 
@@ -774,7 +1000,7 @@ server checks the permission again on every single command, so other players can
 | **Evolve every pet** | Plays every pet's evolution animation one after another in front of you (`/evolve all`). |
 | **Show all pets** / **Show evolved pets** / **Show Evolved II pets** | Lines up every pet at that stage in front of you (`/pets`, `/pets 1`, `/pets 2`). |
 | **Clear pet show** | Removes the showcase pets and stops an evolution (`/clearpets`). |
-| **Reset my data** | Back to a brand-new player: tokens, Cash, Gems, pets (also Golden, Rainbow and fused ones), pet levels, food and the Kitchen queue, items, stats, your home build (stations, Garden, Gym, Collector) and Prestige stars, your battle teams and battle record (trophies, Trial clears, raid and duel counters, Boss Raid pets), Pet Index progress and rewards are wiped, and the tutorial starts again as for a new player. Tap once ("Are you sure?"), then tap again to confirm. Not during a climb or a battle. |
+| **Reset my data** | Back to a brand-new player: tokens, Cash, Gems, pets (also Golden, Rainbow and fused ones), pet levels, evolutions and training, leftover food, items, stats, your home build (stations, Garden, the coins on your lawn) and Prestige stars, your battle teams and battle record (trophies, Trial clears, raid and duel counters, Boss Raid pets, the Champion Ring record), Pet Index progress and rewards are wiped, and the tutorial starts again as for a new player. Tap once ("Are you sure?"), then tap again to confirm. Not during a climb or a battle. |
 
 Close it with the red X, `Esc` or gamepad B. Every change answers with a "DEV: ..." toast.
 
@@ -788,6 +1014,7 @@ runs Lua code and the game never sees what you type there.
 | `/tokens` or `/tokens 50000` | Adds tokens: 1,000,000 by default, or the amount you type (`50000`, `50,000`, `50k` and `1m` all work; at most 100,000,000 at once). |
 | `/cash` or `/cash 50000` | Adds Cash the same way: 1,000,000 by default (at most 100,000,000 at once). |
 | `/gems` or `/gems 500` | Adds Gems the same way: 1,000 by default. Gems added like this are only for testing: real players get Gems from prestiges and purchases. |
+| `/petlevel 20` | Sets every pet you have equipped to that level (1-100; its XP starts at 0), to try EVOLVE, the Food Machine and the high levels quickly. |
 | `/reset` | Same as Reset my data (no confirmation, so type it carefully). |
 | `/tutorial` | Same as Restart tutorial. |
 | `/skiptutorial` | Same as Skip tutorial. |
@@ -802,8 +1029,8 @@ runs Lua code and the game never sees what you type there.
 The pet showcase (`/pet`, `/pets`, `/evolve`, `/clearpets`) is built on your own screen only: other players do not
 see it, nothing is saved and your pets are not touched. The evolution animation is
 `src/client/Controllers/EvolutionFx.lua` (the pet charges up and spins in a pillar of light over a ring of runes,
-bursts into a flash and the evolved pet pops out; the second evolution gets a double ring and more sparks), ready for
-a real "evolve" button later.
+bursts into a flash and the evolved pet pops out; the second evolution gets a double ring and more sparks); the
+players' EVOLVE button plays the same animation, with confetti.
 
 At most 4 commands every 2 seconds. Every command is written to the Output window as `[NimbusClimb][Dev] ...`.
 Changes are saved like normal progress (a reset lasts), so use them on a test account or in Studio when you want
@@ -822,12 +1049,29 @@ to keep your real progress.
 | `GrantGems` | `1000` | Gems added by the button and by `/gems` without a number. |
 | `MaxTokensPerCommand` | `100000000` | The most one `/tokens`, `/cash` or `/gems` command can add. |
 
+## Publishing an update (owner)
+
+Do this every time you publish a new version, phase 4 included:
+
+1. **Rebuild the place file** (see [Rebuilding the place file](#rebuilding-the-place-file)) or let Rojo sync the code
+   into Studio, and give it a quick **Play** test.
+2. **Publish:** in Studio, File -> **Publish to Roblox**.
+3. **Migrate to Latest Update:** open the **Creator Hub** (create.roblox.com) -> **Creations**, open your
+   experience's **...** menu (or its **Places** list, then the place's **...** menu) and choose **Migrate to Latest
+   Update** (newer Creator Hub pages call it **Restart Servers for Updates**). Roblox then moves the players to new
+   servers running the new version a few at a time, so nobody gets kicked out of the game. If you cannot find it,
+   **Shut Down All Servers** works too: everyone is sent out and simply rejoins into the new version.
+
+For a few minutes old and new servers run side by side. That is safe for phase 4: an old server keeps the new save
+fields (evolutions, training, the ring record, the kept garden places and prices) untouched, a pet trained there
+still finishes its rank later, and no level is ever lost (at worst a pet above level 50 loses the half-filled XP
+toward its next level if it fights on an old server during those minutes). Players who log in on a new server for
+the first time get their home moved over by itself (see [Homes from before Phase 4](#homes-from-before-phase-4)).
+
 ## Coming next
 
 - **More arena events:** the event scheduler is ready for new kinds next to Boss Raids and Double Rewards (for
   example a King of the Ring).
-- **Evolving pets for real:** the evolved and second-evolution looks and the evolution animation are done (try them
-  with the developer pet showcase); an "evolve" button for players comes later.
 
 ## Rebuilding the place file
 
@@ -859,7 +1103,7 @@ in-game pet and the Storm Altar are based on is in `branding/stormfang-*.png` / 
 
 ```bash
 pip install lupa            # once (also needs Python 3 and Node 18+; npm packages install on first use)
-tools/run_checks.sh         # everything, about 20 minutes
+tools/run_checks.sh         # everything, about 25 minutes
 tools/run_checks.sh --quick # shorter smoke test (fewer layout seeds), a little faster
 tools/run_checks.sh --static   # only the fast checks
 ```
@@ -870,29 +1114,33 @@ The script exits non-zero if anything fails and runs three steps:
 2. **`tools/check.mjs`**: static analysis (undefined globals, deprecated APIs, raw fonts, bad `Instance.new`,
    missing `require`s, and the public API listed in `tools/contract.json`).
 3. **`tools/smoke.py`**: loads the real modules into a Roblox mock (`tools/robloxmock.lua`) and plays the game
-   (about 7,200 checks): 5 difficulties x 300 generated courses audited (reach, headroom, cannons, tokens), full
+   (about 8,500 checks): 5 difficulties x 300 generated courses audited (reach, headroom, cannons, tokens), full
    matches (victory, defeat, timeout, leaving, concurrent slots), portal lock-in, damage and the fall rule,
    hazards, pets, elements, roulettes, items, the Pet Index, the tutorial, NPCs, the Storm Altar, the
-   developer tools, saving (also during DataStore outages), the tycoon homes (claiming, every pad and station,
-   income, the Collector, offline earnings, house tiers, prestige, exploit attempts on every remote, the home art
-   and its part budget), the Kitchen, feeding and the Gym, the Fusion Machine, Gems (receipts granted once, the
-   policy check, the gem and Secret roulettes), an end-to-end run of three players from the first claim through
-   prestige, fusion and a rejoin, pet battles (the battle simulation, Trials, duels with their anti-farming rules,
-   Boss Raids with up to 16 players, events, teams, the arena and its world text, the battle HUD and every battle
-   window, an end-to-end run of several players), the evolved pets and the pet showcase, the whole client UI
-   including the readability rule and the "nothing in the middle of the screen" rule on desktop and phone sizes,
-   and even this README (its tycoon, gem, battle, developer-tool and tutorial numbers must match the game). Handy flags: `-v`, `--only match_victory,damage_rules`, `--list`,
-   `--seeds N`, `--strict`.
+   developer tools, saving (also during DataStore outages, two servers at once and the phase 3 -> phase 4 rollout),
+   the tycoon homes (claiming, every pad and station, star prices, house tiers, prestige, exploit attempts on every
+   remote, the home art and its part budget), the Pet Garden (coins, piles, naps, scooping only by the owner, the
+   Welcome-back pile, offline coins), the Food Machine, EVOLVE, the Training Place, the home portal, the Fusion
+   Machine, Gems (receipts granted once, the policy check, the gem and Secret roulettes), end-to-end runs of
+   several players from the first claim through the garden, prestige, fusion and a rejoin, pet battles (the battle
+   simulation, Trials, duels with their anti-farming rules, Boss Raids with up to 16 players, events, teams, the
+   arena and its world text, the Champion Ring, the battle HUD and every battle window), the pet cards and the
+   follow-behind formation, the evolved pets and the pet showcase, the whole client UI including the readability
+   rule and the "nothing in the middle of the screen" rule on desktop and phone sizes, and even this README (its
+   station table, garden, Food Machine, training, evolution, ring, gem, battle, NPC, developer-tool and tutorial
+   numbers must match the game). Handy flags: `-v`, `--only match_victory,damage_rules`, `--list`, `--seeds N`,
+   `--strict`.
 
 `python3 tools/sim_tycoon.py` replays the tycoon economy for many simulated players and checks the pacing targets
-(first purchase, purchase gaps, Villa, first and later prestiges, offline earnings); the smoke test fails when its
-numbers and `TycoonCatalog.lua` disagree. `tools/sim_battle.lua` does the same for battles (the Trial curve, fair
-duels, elements, Boss Raids with 1 / 3 / 8 players, dodging; see `tools/README.md` for how to run it).
+(first purchase, purchase gaps, Villa, first EVOLVE, first and later prestiges, offline coins); the smoke test fails
+when its numbers and `TycoonCatalog.lua` disagree. `tools/sim_battle.lua` does the same for battles (the Trial
+curve, fair duels, elements, Boss Raids with 1 / 3 / 8 players, dodging, training, the Champion Ring ladder; see
+`tools/README.md` for how to run it).
 
 The mock is not a physics engine (characters do not walk, moving platforms are not simulated), so test the feel
 in Studio too. To look at the art and the UI without Studio, `tools/render_model.py` draws any pet, the village,
-the Storm Altar or the sky dragon to a PNG, and `tools/render_gui.py` draws the real UI at any screen size (see
-`tools/README.md`).
+a home with its garden, the Storm Altar or the sky dragon to a PNG, and `tools/render_gui.py` draws the real UI at
+any screen size (see `tools/README.md`).
 
 ## Project layout
 
@@ -909,19 +1157,21 @@ src/shared   Config (every number)  TycoonCatalog (every tycoon number)  Theme  
 src/server   Main.server.lua; Services: Lighting, LobbyBuilder, StormAltar, Player, Data, Damage, Token, Hazard,
              Course (layout + builder), Match, Portal, Spot, Pet, Item, Index, Tutorial, Npc, Dev, Tycoon,
              HomeBuilder, PetCare, Fusion, Gem, ArenaBuilder, Battle, Event
-src/client   Main.client.lua; State; UI/CloudUI; Controllers: Movement, Hud, DamageFx, Notify, Menu, Hotbar,
-             Pet, TokenFx, Index, Tutorial, Npc, SkyDragon, Showcase, Dev, DevPetShow (pet showcase),
-             EvolutionFx (evolution animation), HomeFx, Fusion, Battle, Arena
+src/client   Main.client.lua; State; UI/CloudUI; UI/PetCard (the cards above pets); Controllers: Movement, Hud,
+             DamageFx, Notify, Menu, Hotbar, Pet, TokenFx, Index, Tutorial, Npc, SkyDragon, Showcase, Dev,
+             DevPetShow (pet showcase), EvolutionFx (evolution animation), Care (Food Machine, Garden, training and
+             EVOLVE windows), HomeFx, HomePortalFx (the home portal), Fusion, Battle, Arena
 ```
 
-The **server is authoritative** (health, tokens, Cash, Gems, pets, items, checkpoints, matches, home purchases
-and income, cooking, feeding, fusion, gem receipts, every battle and its rewards, the Pet Index, the tutorial,
-developer commands); clients only do input, movement feel, UI and purely visual animation (pets, tokens, NPCs, the
-sky dragon, the presses, the conveyor and the stations popping in, and the battles: the server simulates every
-fight at 10 Hz and sends small snapshots, each client builds and animates the battle pets and bosses itself). Behaviour is attached with `CollectionService` tags (`Config.Tags`). Every
-tunable number, including roulette prices and odds, gem prices, Index rewards, elements, difficulties and physics,
-lives in `src/shared/Config.lua`; the tycoon's prices, incomes, foods and fusion costs live in
-`src/shared/TycoonCatalog.lua`, and every battle number (Trials, bosses, rewards, trophies, events) in
-`src/shared/BattleCatalog.lua`.
+The **server is authoritative** (health, tokens, Cash, Gems, pets, items, checkpoints, matches, home purchases,
+garden coins and scooping, feeding, training, evolution, fusion, gem receipts, every battle and its rewards, the
+Pet Index, the tutorial, developer commands); clients only do input, movement feel, UI and purely visual animation
+(pets, tokens, NPCs, the sky dragon, the garden pets eating, the coin piles and the stations popping in, the home
+portal, the pet cards, and the battles: the server simulates every fight at 10 Hz and sends small snapshots, each
+client builds and animates the battle pets and bosses itself). Behaviour is attached with `CollectionService` tags
+(`Config.Tags`). Every tunable number, including roulette prices and odds, gem prices, Index rewards, elements,
+difficulties and physics, lives in `src/shared/Config.lua`; the tycoon's prices, foods, coins, feeding and training
+costs and fusion costs live in `src/shared/TycoonCatalog.lua`, and every battle number (Trials, bosses, rewards,
+trophies, events, training skills, the Champion Ring) in `src/shared/BattleCatalog.lua`.
 
 Have fun climbing, building and battling!

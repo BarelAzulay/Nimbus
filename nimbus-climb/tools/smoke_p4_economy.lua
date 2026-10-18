@@ -1077,34 +1077,21 @@ end
 local function compatChecks(TC, PC)
 	local ce = findPet(PC, "Common", "Economy")
 	local h = home({ Garden = 1, Press1 = 1, Collector = 1, Kitchen = 2, Gym = 3 })
-	-- Phase 3 compat, removed in wave 4: the old services and clients keep booting on these
-	local missing = {}
-	for _, name in ipairs({ "PetIncome", "GardenIncome", "PressIncome", "CollectorCap", "KitchenSpeed", "CookSecondsFor", "FoodsFor", "FoodById", "GymSlots", "GymXpPerMinute" }) do
-		if type(TC[name]) ~= "function" then
-			missing[#missing + 1] = name
+	-- wave 4 deleted the Phase 3 compat aliases nothing calls any more
+	local left = {}
+	for _, name in ipairs({ "PetIncome", "GardenIncome", "PressIncome", "CollectorCap", "KitchenSpeed", "CookSecondsFor", "FoodsFor", "GymSlots", "GymXpPerMinute" }) do
+		if TC[name] ~= nil then
+			left[#left + 1] = name
 		end
 	end
-	T.check(#missing == 0, "economy: the Phase 3 compat aliases exist until wave 4 (PetIncome, GardenIncome, PressIncome, CollectorCap, KitchenSpeed, CookSecondsFor, FoodsFor, FoodById, GymSlots, GymXpPerMinute)", table.concat(missing, ", "))
-	if #missing > 0 then
-		return
-	end
-	local stat = PC.GetStats(ce.Id, 5, "Golden").Income
-	T.check(near(TC.PetIncome({ Def = ce, Level = 5, Tier = "Golden" }), stat) and near(TC.PetIncome(ce.Id .. "@Golden", 5), stat),
-		"economy: compat PetIncome(entry) = the Phase 3 stat (GetStats Income: p2care_stats keeps pinning it)")
-	T.check(near(TC.PetIncome(ce, 1, nil, h), TC.PetPower(ce) * TC.FoodOf(h) / 8), "economy: compat PetIncome(entry, level, tier, home) = PetPower x FoodOf / 8 (contract 5.4)")
-	local inc, parts = TC.IncomePerSecond(h, { ce })
-	T.check(TC.PressIncome(h) == 0 and parts.Press == 0 and near(parts.Garden, inc) and near(TC.GardenIncome(h, { ce }), inc),
-		"economy: compat PressIncome = 0, IncomePerSecond parts Press 0 / Garden = the total, GardenIncome = the garden's cash/s")
-	T.eq(TC.CollectorCap(h, 10), floor(TC.PileSeconds(h) * 10), "economy: compat CollectorCap(home, income) = PileSeconds x income")
-	T.check(TC.CollectorCap(home({ Garden = 1, Press1 = 1 }, 0, { Garden = { [1] = ce.Id } })) > 0, "economy: ...counting the pets in home.Garden when no income is passed")
-	T.check(TC.GymSlots(h) == TC.TrainingSlots(h) and TC.GymSlots(h) == 3 and TC.GymXpPerMinute(h) > 0 and TC.GymXpPerMinute(home({})) == 0,
-		"economy: compat GymSlots = TrainingSlots, GymXpPerMinute keeps the Phase 3 numbers")
-	T.check(TC.KitchenSpeed(h) >= 1 and TC.CookSecondsFor("Snack", 1) == TC.FoodsById.Snack.CookSeconds and TC.CookSecondsFor("Feast", 1) == nil
-		and #TC.FoodsFor(2) == 2 and TC.FoodById("Feast") == TC.FoodsById.Feast,
-		"economy: compat KitchenSpeed / CookSecondsFor / FoodsFor / FoodById keep the Phase 3 cooking data")
+	local _, parts = TC.IncomePerSecond(h, { ce })
+	T.check(#left == 0 and parts.Press == nil and parts.Garden == nil and TC.Get("Kitchen").Effects[3].Recipes == nil,
+		"economy: the Phase 3 compat aliases are gone (PetIncome, GardenIncome, PressIncome, CollectorCap, KitchenSpeed, CookSecondsFor, FoodsFor, GymSlots, GymXpPerMinute, Kitchen Recipes, IncomePerSecond parts Press / Garden)",
+		table.concat(left, ", "))
+	T.check(type(TC.FoodById) == "function" and TC.FoodById("Feast") == TC.FoodsById.Feast, "economy: FoodById finds a food")
 	local ke, ge = TC.Get("Kitchen").Effects[3], TC.Get("Gym").Effects[2]
-	T.check(type(ke.Queue) == "number" and type(ke.Recipes) == "table" and type(ge.XpPerMinute) == "number",
-		"economy: compat effect fields: the Food Machine's Queue / Recipes and the Training Place's XpPerMinute (Phase 3 PetCareService / NpcDialog)")
+	T.check(ke.Queue == nil and ge.XpPerMinute == nil,
+		"economy: the Phase 3 effect fields are gone (the Food Machine's Queue, the Training Place's XpPerMinute)")
 end
 
 local function junkChecks(TC)
@@ -1118,7 +1105,7 @@ local function junkChecks(TC)
 			function() return TC.HomeLevelOf(h) end,
 			function() return TC.IncomePerSecond(h, { "nope", false, { Def = 5 }, 0 / 0, -4, { Power = 1 / 0 } }, "q") end,
 			function() return TC.IncomePerSecond(h, "x", 0 / 0) end,
-			function() return TC.CollectorCap(h, "x") end,
+			function() return TC.TrainingSlots(h) end,
 			function() return TC.OfflineEarnings(h, 0 / 0, -1) end,
 			function() return TC.OfflineEarnings(h, 99999, 1 / 0) end,
 			function() return TC.CheckPurchase(h, 7) end,

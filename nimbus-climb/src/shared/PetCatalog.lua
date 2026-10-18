@@ -21,7 +21,7 @@
 --   PetCatalog.GetStats(petId, level, tier) -> { Income, Power, Health, Speed } | nil   (Phase 2: tier added)
 --                                            base * Config.PetStats.RarityScale[rarity] * (1 + 0.1 * (level - 1))
 --                                            * tier multiplier (Normal 1, Golden 1.5, Rainbow 2.5). The same numbers
---                                            as TycoonCatalog.PetIncome, so the Income shown is the Cash/s the Garden
+--                                            as TycoonCatalog.PetPower x FoodOf / MealSeconds, so the Income shown is the Cash/s the Garden
 --                                            pays (prestige not applied). petId may also be a pet key ("cat@Golden":
 --                                            the tier comes from the key unless `tier` is given) or a def table
 --                                            (PetKeys.DefOf: tier copies and fused hybrids). level defaults to 1 and
@@ -955,7 +955,7 @@ end
 ----------------------------------------------------------------------
 
 PetCatalog.MaxLevel = 100 -- top of the XP curve when TycoonCatalog does not name one (its PetXp.MaxLevel wins)
-PetCatalog.LevelBonus = 0.1 -- +10% of the level-1 stats per level (TycoonCatalog.PetIncome uses the same)
+PetCatalog.LevelBonus = 0.1 -- +10% of the level-1 stats per level (TycoonCatalog.PetPower uses the same)
 -- the highest level XP can raise a pet to, by rarity. Phase 4: every rarity reaches 100 (the player's rule; the
 -- evolutions come at 20 and 50: Common, Uncommon and Rare pets evolve once, Epic and rarer twice). TycoonCatalog may override these
 -- (PetXp.RarityCaps or PetLevelCaps); a rarity missing here is capped at MaxPetLevel().

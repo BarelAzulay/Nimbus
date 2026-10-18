@@ -874,8 +874,19 @@ S.p4garden_coins = guarded("p4garden_coins", function()
 	T.eq(Ty.PileSeconds(p), pileSeconds, "p4 garden: TycoonService.PileSeconds(player) = TycoonCatalog.PileSeconds(home) (" .. pileSeconds .. ")")
 	T.eq(Ty.CollectorCap(p), pileSeconds, "p4 garden: ...CollectorCap is its alias")
 	local cap = pileSeconds * coin8 / meal * Cat.LuckyEV(home)
-	advance(pileSeconds + 4 * meal)
+	-- the cap is set by the Lucky EV but the pile fills with the coins actually rolled (the session Rng is not seeded,
+	-- so the luck depends on what ran before): wait meal by meal up to the all-plain-coins worst case
+	local worstMeals = math.ceil(cap / coin8 - 1e-9) + 3
 	local full = pileOf(Ty, p, 1)
+	for _ = 1, worstMeals do
+		if full and full.Full then
+			break
+		end
+		advance(meal)
+		full = pileOf(Ty, p, 1)
+	end
+	advance(0.5)
+	full = pileOf(Ty, p, 1)
 	T.check(full ~= nil and full.Full == true and full.Value >= cap - 1e-6 and full.Value <= cap + Cat.Coins.LuckyMult * coin8 + 1e-6,
 		"p4 garden: the pile fills to PileSeconds x the pet's rate and is marked Full", full and string.format("%.1f of %.1f", full.Value, cap) or "no pile")
 	T.check((info.Folder:GetAttribute("CoinPiles") or ""):match("^1=5F%*?$") ~= nil, "p4 garden: CoinPiles '1=5F' (24+ coins, full)", tostring(info.Folder:GetAttribute("CoinPiles")))
