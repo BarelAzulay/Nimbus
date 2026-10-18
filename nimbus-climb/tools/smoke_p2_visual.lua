@@ -14,7 +14,7 @@
 --                   ForceField hologram (light, no collisions, no prompts, <= 12 parts); the Prestige pad's sign says
 --                   what the reset buys ("Reset: x1.25 income")
 --   client_p2visual (client) HomeFx shows the sign of one of the local player's LOCKED pads only up close (its
---                   unlocked pads keep their signs from afar), Garden pets stand bigger than Gym pets; the Fusion
+--                   unlocked pads keep their signs from afar), Garden pets stand bigger than Training Place pets; the Fusion
 --                   window's locked card is opaque with a teaser line, a Mix pick mark sits in the tile's top-left
 --                   corner clear of the pet; the Shop's Secret roulette hint is the short one-liner
 -- Plain Lua 5.1 syntax only.

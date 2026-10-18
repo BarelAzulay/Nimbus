@@ -10,11 +10,13 @@
 --   NpcDialog.Settings        shared numbers (scale, prompt / close distances, hover gap)
 --
 -- The tips quote the game's real numbers: prices, bonuses, odds and rewards are read from Config / ItemCatalog /
--- TycoonCatalog when this module loads, so they stay correct when those change. Phase 2 tips: claiming a home, the
--- presses + Collector, house tiers and Prestige (Mayor Panda), the Kitchen + feeding (Granny Owl), the Gym (Coach
--- Corgi), the Fusion Machine, Gems and the Secret roulette at the Storm Altar (Professor Axolotl). Phase 3 tips (pet
--- battles): the battle controls (Sparky Fox), Boss Raids and events (Captain Penguin), the Trial Portal and battle
--- teams (Coach Corgi), elements and team synergy in battle (Professor Axolotl), all quoting BattleCatalog. Nimbus the Cloudy Dragon is NOT an NPC: it is
+-- TycoonCatalog / PetCatalog / BattleCatalog when this module loads, so they stay correct when those change. Phase 4
+-- tips (pets make the money): claiming a home, the Pet Garden's rainbow coins, the food plants, Prestige and the home
+-- portal (Mayor Panda), the Food Machine, Feed and EVOLVE (Granny Owl), the Training Place and the Champion Ring
+-- (Coach Corgi), the Fusion Machine, Gems and the Secret roulette at the Storm Altar (Professor Axolotl). Phase 3 tips
+-- (pet battles): the battle controls (Sparky Fox), Boss Raids and the safe zones (Captain Penguin), the Trial Portal
+-- and battle teams (Coach Corgi), elements and team synergy in battle (Professor Axolotl), all quoting BattleCatalog.
+-- Nimbus the Cloudy Dragon is NOT an NPC: it is
 -- the tutorial guide. `Keywords` are phrases the dialog box highlights (numbers are highlighted automatically),
 -- `ColorWords` words it paints in their own colour (the element names).
 -- Lines never contain "<", ">" or "&" (the client renders them as rich text).
@@ -39,6 +41,18 @@ do
 	end)
 	if ok and type(mod) == "table" then
 		TycoonCatalog = mod
+	end
+end
+
+-- Phase 4: evolution levels and boosts, the Economy role bonus (PetCatalog); optional
+local PetCatalog = nil
+do
+	local module = script.Parent:FindFirstChild("PetCatalog")
+	if module then
+		local ok, mod = pcall(require, module)
+		if ok and type(mod) == "table" then
+			PetCatalog = mod
+		end
 	end
 end
 
@@ -138,18 +152,6 @@ local P = Config.Physics or {}
 local M = Config.Match or {}
 local T = Config.Tokens or {}
 local D = Config.Damage or {}
-
--- "Easy +10, Medium +20, ..."
-local function winBonusList()
-	local parts = {}
-	local bonus = M.TokenBonusOnWin or {}
-	for _, d in ipairs(Config.Difficulties or {}) do
-		if tonumber(bonus[d.Id]) then
-			parts[#parts + 1] = tostring(d.DisplayName or d.Id) .. " +" .. commas(bonus[d.Id])
-		end
-	end
-	return table.concat(parts, ", ")
-end
 
 -- "Cloud 50 ☁ up to Celestial 5,000 ☁": the cheapest and the priciest token roulette
 local function rouletteRange()
@@ -279,68 +281,16 @@ local weakMul = number((Config.Elements and Config.Elements.WeakMultiplier) or 0
 local TC = TycoonCatalog or {}
 local G = Config.Gems or {}
 
-local function stationEffect(id, level)
-	local get = type(TC.Get) == "function" and TC.Get or nil
-	local def = get and get(id) or nil
-	local effects = type(def) == "table" and def.Effects or nil
-	if type(effects) ~= "table" then
-		return nil, 0
-	end
-	if level == "max" then
-		level = #effects
-	end
-	return effects[level], #effects
+-- "each feed fills 25% of its XP bar" (the Food Machine at level 1: TycoonCatalog.FeedShare[1])
+local function feedLine()
+	local share = type(TC.FeedShare) == "table" and tonumber(TC.FeedShare[1]) or 0.25
+	return "Hungry pets grow! Press E at your Food Machine, pick a pet and press Feed: each feed fills "
+		.. percent(share) .. " of its XP bar."
 end
 
--- "a Snack gives 25 XP, a Meal 150 XP and a Feast 800 XP"
-local function foodLine()
-	local foods = type(TC.Foods) == "table" and TC.Foods or {}
-	local parts = {}
-	for i, f in ipairs(foods) do
-		if type(f) == "table" and tonumber(f.Xp) then
-			local name = tostring(f.Name or f.Id)
-			if i == 1 then
-				parts[#parts + 1] = "a " .. name .. " gives " .. commas(f.Xp) .. " XP"
-			else
-				parts[#parts + 1] = "a " .. name .. " " .. commas(f.Xp) .. " XP"
-			end
-		end
-	end
-	if #parts == 0 then
-		return "every dish gives XP"
-	end
-	return joinAnd(parts)
-end
-
-local function gymNumbers()
-	local first = stationEffect("Gym", 1)
-	local top, levels = stationEffect("Gym", "max")
-	local low = first and tonumber(first.XpPerMinute) or 20
-	local high = top and tonumber(top.XpPerMinute) or 80
-	local slots = top and tonumber(top.Slots) or 5
-	return low, high, slots, levels
-end
-
--- "Villa at Home Level 10, a Manor at 20 and the Sky Castle at 30"
-local function houseLine()
-	local tiers = type(TC.HouseTiers) == "table" and TC.HouseTiers or {}
-	local parts = {}
-	for i, t in ipairs(tiers) do
-		if i > 1 and type(t) == "table" and tonumber(t.HomeLevel) then
-			local name = tostring(t.Name or t.Id)
-			if #parts == 0 then
-				parts[#parts + 1] = "a " .. name .. " at Home Level " .. number(t.HomeLevel)
-			elseif i == #tiers then
-				parts[#parts + 1] = "the " .. name .. " at " .. number(t.HomeLevel)
-			else
-				parts[#parts + 1] = "a " .. name .. " at " .. number(t.HomeLevel)
-			end
-		end
-	end
-	if #parts == 0 then
-		return "a bigger house every 10 Home Levels"
-	end
-	return joinAnd(parts)
+-- "Attack Speed, Physique, Ability or Defense" (BattleCatalog.TrainingSkills, read below)
+local function trainLine(skills)
+	return "Your Training Place makes pets tougher: train " .. skills .. ". They rest at home while they train!"
 end
 
 local PR = type(TC.Prestige) == "table" and TC.Prestige or {}
@@ -363,7 +313,6 @@ local fusionWhen = "After your first Prestige"
 if tonumber(PR.FusionUnlock) and tonumber(PR.FusionUnlock) ~= 1 then
 	fusionWhen = "From Prestige " .. number(PR.FusionUnlock)
 end
-local levelBonus = percent(0.1)
 local secretRoulette = type(G.SecretRoulette) == "table" and G.SecretRoulette or {}
 local secretPrice = commas(secretRoulette.GemPrice or 1500)
 local cheapGemSpin = nil
@@ -375,12 +324,45 @@ do
 		end
 	end
 end
-local gymLow, gymHigh, gymSlots = gymNumbers()
+-- Phase 4 numbers (PetCatalog: evolution; TycoonCatalog: Prestige garden places; BattleCatalog: the ring record)
+local PC = PetCatalog or {}
+local evoLevels = type(PC.EvolutionLevels) == "table" and PC.EvolutionLevels or { 20, 50 }
+local evoBoost = type(PC.EvolutionBoost) == "table" and PC.EvolutionBoost or { 1.25, 1.5 }
+local roleMult = type(PC.RoleMult) == "table" and PC.RoleMult or { Economy = 1.6 }
+local economyBonus = percent((tonumber(roleMult.Economy) or 1.6) - 1)
+local evoBonus = percent((tonumber(evoBoost[1]) or 1.25) - 1)
+local placesPerStar = tonumber(PR.GardenSlotsPerStar) or 1
+local placeWord = placesPerStar == 1 and "one more garden place" or (number(placesPerStar) .. " more garden places")
 
 ----------------------------------------------------------------------
 -- Phase 3 numbers (BattleCatalog: raids, trials, trophies, synergy)
 ----------------------------------------------------------------------
 local BC = BattleCatalog or {}
+local skillNames = {}
+do
+	local list = type(BC.TrainingSkills) == "table" and BC.TrainingSkills or {}
+	for _, skill in ipairs(list) do
+		if type(skill) == "table" and type(skill.Name or skill.Id) == "string" then
+			skillNames[#skillNames + 1] = skill.Name or skill.Id
+		end
+	end
+	if #skillNames == 0 then
+		skillNames = { "Attack Speed", "Physique", "Ability", "Defense" }
+	end
+end
+local skillList = table.concat(skillNames, ", ", 1, math.max(1, #skillNames - 1))
+if #skillNames > 1 then
+	skillList = skillList .. " or " .. skillNames[#skillNames]
+end
+local recordWord = "triple"
+do
+	local mult = type(BC.Ring) == "table" and tonumber(BC.Ring.RecordMult) or 3
+	if mult == 2 then
+		recordWord = "double"
+	elseif mult ~= 3 then
+		recordWord = "x" .. number(mult)
+	end
+end
 local raidMinutes, trialCount, trophyWin, synergyPair = 20, 30, 20, "10%"
 do
 	local events = type(BC.Events) == "table" and BC.Events or {}
@@ -430,14 +412,14 @@ NpcDialog.Npcs = {
 		PetId = "frostling_penguin",
 		Species = "Penguin",
 		Accent = Color3.fromRGB(88, 148, 226),
-		Keywords = { "portal pad", "next checkpoint", "Phoenix Feather", "Boss Raid", "RETREAT", "event board", "Double Rewards" },
+		Keywords = { "portal pad", "next checkpoint", "Phoenix Feather", "Boss Raid", "RETREAT", "safe zone", "Battle Arena" },
 		Lines = {
 			"Ahoy! Step onto a portal pad together: up to " .. number(M.MaxPlayers or 4) .. " climbers can sail into the same course.",
 			"Teammate down? Keep climbing! Reaching the next checkpoint revives everyone who is down.",
 			"A Phoenix Feather (" .. tokens(itemPrice("phoenix_feather", 150))
 				.. ") revives the nearest downed teammate right away, with 50% health.",
 			"A Boss Raid starts every " .. raidMinutes .. " minutes in the arena: everyone fights one giant boss together!",
-			"Glowing circles mean a big hit: RETREAT out! The event board shows the next raid and Double Rewards.",
+			"Outside the Battle Arena and the battle rings it's a safe zone: no pet battles. In the arena, RETREAT out of glowing circles!",
 		},
 	},
 	{
@@ -447,15 +429,15 @@ NpcDialog.Npcs = {
 		PetId = "sleepy_owl",
 		Species = "Owl",
 		Accent = Color3.fromRGB(160, 126, 222),
-		Keywords = { "roulette machines", "shop island", "Mythic", "Pet Index", "Kitchen", "Feed", "Pets menu" },
+		Keywords = { "roulette", "shop island", "Mythic", "Pet Index", "Gems", "Food Machine", "Feed", "EVOLVE" },
 		Lines = {
 			"Hoo-hoo! New pets hatch from the roulettes on the shop island: " .. rouletteRange() .. ". Pricier means rarer!",
 			"Mythic pets only appear in the " .. mythicChances() .. " roulettes. "
 				.. (cheapGemSpin and ("Gems buy spins too: a " .. cheapGemSpin .. "!") or "The shop shows every chance."),
 			"Every pet you find fills the Pet Index. Complete a rarity group for a reward: " .. indexRewardRange() .. "!",
-			"Hungry pets grow! Build a Kitchen at home and cook pet food with Cash: " .. foodLine() .. ".",
-			"Then open the Pets menu, pick a buddy and press Feed. Every level makes a pet " .. levelBonus
-				.. " stronger, so spoil your favourites!",
+			feedLine(),
+			"At level " .. number(evoLevels[1] or 20) .. " a pet glows gold: press EVOLVE for +" .. evoBonus
+				.. " to everything! Epic and rarer pets evolve again at " .. number(evoLevels[2] or 50) .. ".",
 		},
 	},
 	{
@@ -465,13 +447,13 @@ NpcDialog.Npcs = {
 		PetId = "waffle_corgi",
 		Species = "Dog",
 		Accent = Color3.fromRGB(240, 174, 70),
-		Keywords = { "yours to keep", "Trial Portal", "first clear", "Gym", "Combat pets", "Train in Gym", "Team", "trophies" },
+		Keywords = { "yours to keep", "Trial Portal", "Training Place", "Champion Ring", "record", "Team", "trophies" },
 		Lines = {
 			"Woof! Every coin you grab on a climb is yours to keep, even when your team runs out of time!",
-			"Win a climb and every finisher gets a bonus: " .. winBonusList() .. " " .. TOKEN .. "!",
 			"The Trial Portal on the plaza has " .. trialCount .. " levels of pet teams. Every first clear pays a big token bonus!",
-			"Combat pets get tough in your home Gym: open Pets and press Train in Gym. Each one gains " .. number(gymLow)
-				.. " XP a minute while you play.",
+			trainLine(skillList),
+			"Try the Champion Ring on the plaza: one champion after another, each stronger. Beat your record for "
+				.. recordWord .. " Cash!",
 			"Tap Team to pick 3 battle pets (a 4th at Prestige 1). Duel friends on the rings: +" .. trophyWin .. " trophies a win!",
 		},
 	},
@@ -482,14 +464,14 @@ NpcDialog.Npcs = {
 		PetId = "bamboo_panda",
 		Species = "Panda",
 		Accent = Color3.fromRGB(100, 184, 112),
-		Keywords = { "free gate", "press E", "Cloud Press", "Collector", "Home Level", "Prestige", "Home", "Gems", "Economy pets", "Garden" },
+		Keywords = { "free gate", "press E", "Pet Garden", "rainbow coins", "Berry Bush", "Economy pets", "Home Level", "Prestige", "portal" },
 		Lines = {
 			"Welcome to Nimbus Village! Walk up to a free gate on the big ring and press E to claim your very own home.",
-			"Start with a Cloud Press and the Collector: they make Cash while you play. Step on the Collector to bank it!",
-			"Every purchase raises your Home Level. Build " .. houseLine() .. "!",
-			"Home Level " .. prestigeLevel .. " and a " .. castleName .. "? Prestige! You start over with a star: x"
-				.. prestigeMul .. " income forever and " .. prestigeGems .. " Gems.",
-			"Economy pets earn Cash in your Garden. Tap Home in the menu to see every station, your income and upgrades!",
+			"Your pets eat in your Pet Garden and pop out rainbow coins. Only you can scoop yours: just walk over them!",
+			"Grow a Berry Bush, a Carrot Patch and more: tastier food makes bigger coins. Economy pets make " .. economyBonus .. " more!",
+			"Home Level " .. prestigeLevel .. " and a " .. castleName .. "? Prestige! You get x" .. prestigeMul
+				.. " coins forever, " .. prestigeGems .. " Gems and " .. placeWord .. ".",
+			"Tap Home in the menu to see your stations. Go home opens a magic portal just for you and your pets!",
 		},
 	},
 	{

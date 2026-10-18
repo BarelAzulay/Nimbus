@@ -12,7 +12,8 @@
 --                       TycoonCatalog / Config.Gems; nobody talks about the Collector / Kitchen / Gym
 --   p2ui_tutorial       (server, booted) Phase 4 chapter 2 (contract section 9): a player who finished the basics
 --                       resumes at "claim": the arrow points at a free gate, E claims (-> "garden": the arrow points at
---                       the free Pet Garden pad, then at a place in the built Garden), a pet put in the Garden
+--                       the Shop without a pet, then at the free Pet Garden pad, then at a place in the built Garden), a
+--                       pet put in the Garden
 --                       (-> "coins": the arrow points at the coin pile its meals make), walking over the coins
 --                       (-> "machine": the arrow walks the pads on the way to the Food Machine, each one buyable),
 --                       the Food Machine (-> "feed": the arrow points at the machine), a feed ends the chapter: Done
@@ -317,6 +318,13 @@ local function serverScenarios()
 		T.eq(stepId(p), "garden", "p2ui tutorial: E at the gate completes 'claim'")
 		local info = SS.GetSpot(p)
 		st = state(p)
+		T.check(st and st.Target and st.Target.Kind == "Shop", "p2ui tutorial: without a pet the 'garden' arrow points at the Shop first",
+			st and st.Target and tostring(st.Target.Kind) .. " / " .. tostring(st.Hint))
+		local prof = DataS.GetProfile(p)
+		PK.Add(prof, "pebble_pup", 1)
+		DataS.MarkDirty(p)
+		advance(1.2)
+		st = state(p)
 		local gardenPad = info and padPosition(HB, TC, info, "Garden")
 		T.check(st and st.Target and st.Target.Kind == "Spot" and st.Target.SpotIndex == index and typeof(st.Target.Position) == "Vector3"
 			and gardenPad ~= nil and (st.Target.Position - gardenPad).Magnitude < 1,
@@ -333,10 +341,6 @@ local function serverScenarios()
 		T.check(st and st.Target and typeof(st.Target.Position) == "Vector3" and okPivot and gardenCf
 			and (st.Target.Position - gardenCf.Position).Magnitude < 16 and (st.Target.Position - gardenPad).Magnitude > 0.5,
 			"p2ui tutorial: ...then at a place in the built Garden", st and tostring(st.Hint))
-		local prof = DataS.GetProfile(p)
-		PK.Add(prof, "pebble_pup", 1)
-		DataS.MarkDirty(p)
-		advance(0.3)
 		local okPlace = Ty.GardenSet(p, 1, "pebble_pup")
 		advance(0.6)
 		T.check(okPlace == true, "p2ui tutorial: a pet is put in garden place 1")

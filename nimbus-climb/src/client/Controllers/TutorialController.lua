@@ -26,7 +26,8 @@
 --     the server's Target.Position as a fallback): a bouncing, spinning golden voxel arrow sculpted with
 --     shared/Voxel.lua, a ring of floating voxel sparkles on the ground, a floating name + distance sign and a
 --     dotted sparkle Beam from the HumanoidRootPart toward the target (workspace.ClientFx.TutorialGuide).
---   * Menu targets: a pulsing gold ring around MenuButton_<Id> and a small pixel-art arrow pointing at it
+--   * Menu targets: a pulsing gold ring around MenuButton_<Id> and a small pixel-art arrow pointing at it ("Home" rings
+--     the Home tile, MenuButton_Spot)
 --     (ScreenGui "NimbusTutorialPointer", display order 21, above the menu), on the first side of the button
 --     (right, above, below, left) that is clear of the other tiles and of the tutorial card; none free (the
 --     middle of the phone's 2 x 3 grid): the ring alone. The card / bubble keeps the arrow's spot free.
@@ -1782,6 +1783,10 @@ local function findMenuButton(id)
 		return nil
 	end
 	local names = { "MenuButton_" .. id, "Menu_" .. id }
+	if id == "Home" then
+		-- the Home tile keeps its v3 id "Spot" (MenuController): Phase 4's "Portal Home" step rings it as "Home"
+		table.insert(names, 1, "MenuButton_Spot")
+	end
 	for _, name in ipairs(names) do
 		for _, d in ipairs(pg:GetDescendants()) do
 			if d.Name == name and d:IsA("GuiObject") and d.AbsoluteSize.X > 0 then
@@ -2457,8 +2462,16 @@ local function sanitize(payload)
 	end
 	-- older servers: fill in what the shared step list knows
 	local Steps = mod("TutorialSteps")
-	local index = Steps and type(Steps.IndexOf) == "table" and Steps.IndexOf[st.Id]
-	local def = index and Steps.Steps[index]
+	-- the step at the payload's index first (Phase 4: chapter 4's "portal" shares its id with chapter 1's), else by id
+	local def = nil
+	if Steps and type(Steps.Steps) == "table" then
+		local atIndex = Steps.Steps[st.Step]
+		if type(atIndex) == "table" and atIndex.Id == st.Id then
+			def = atIndex
+		elseif type(Steps.IndexOf) == "table" and Steps.IndexOf[st.Id] then
+			def = Steps.Steps[Steps.IndexOf[st.Id]]
+		end
+	end
 	if type(def) == "table" then
 		st.CompleteOn = st.CompleteOn or def.CompleteOn
 		st.Hint = st.Hint or def.Hint

@@ -33,15 +33,18 @@
 --                   station blocks a pad or a stone path at walking height, no two stations overlap), the server never
 --                   moves a part and creates no Instance per coin (Replication rule), ClearPlot (the claim prompt stays)
 --   client_p2home   (client) HomeFx on plots HomeBuilder builds in the client world (standing in for replication):
---                   it finds every NC_Home, hides another player's BuyPrompts / CollectPrompt / pad signs and the
+--                   it finds every NC_Home, hides another player's BuyPrompts / GardenSpotPrompts / pad signs and the
 --                   claim prompts of other plots while the local player owns a home (and keeps hiding a prompt the
---                   server re-enables), the owner's prompts stay; a new station pops in and ends exactly where the
---                   server built it; the presses stamp (head moves, Puff emits) and pooled cloud blocks ride the belt
---                   into the Collector; the Collector screen shows CollectorCash / CollectorCap ("FULL") and the tank
---                   fills; the Fusion swirl turns; the Garden's pets (GardenPets) and the Gym's (GymPets) stand on
---                   their cushions / targets; the owner's pads dim when Cash cannot pay; far homes freeze and
---                   recycle their blocks; nothing is created per frame; ClearPlot / removing the home cleans up; no
---                   errors or warnings from HomeFx
+--                   server re-enables), the owner's prompts stay; CoinPiles draws a coin heap per pile on its
+--                   CoinPoint (growing with the stage, <= 40 parts, a Lucky sparkle) and the Welcome-back heap
+--                   (<= 60) at Garden.Slot.WelcomePile, a pile that goes takes its heap; a bowl with the best plant's
+--                   fruit in front of each open place; the Garden's pets (GardenPets) on their cushions, a place above
+--                   GardenSlots asleep (Zzz), a full pile ('F') napping, eating pets dip and pop pooled coins (<= 40),
+--                   the plants' fruit flies into the bowls (<= 24); the Training Place's pets (TrainingPets) on their
+--                   mats with a moving voxel prop of their skill; the Coin Magnet's head turns; the Fusion swirl
+--                   turns; a new station pops in and ends exactly where the server built it; the owner's pads dim
+--                   when Cash cannot pay; far homes freeze and put heaps, bowls, coins and pets away; nothing is
+--                   created per frame; ClearPlot / removing the home cleans up; no errors or warnings from HomeFx
 -- Plain Lua 5.1 syntax only.
 
 local T = SmokeCommon.T
