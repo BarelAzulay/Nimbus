@@ -1,53 +1,58 @@
 -- MenuController (client, v3 + Phase 2): the left menu of icon tiles and every window the player opens.
 --
 --   MenuController.Init()
---   MenuController.Open(panelId, args)   -- "Inventory" | "Pets" | "Index" | "Shop" | "Stats" | "Home" (what OpenPanel
---                                           does; args: Tab, RouletteId, Currency = "Gems", Action = "Feed", Key)
+--   MenuController.Open(panelId, args)   -- "Inventory" | "Pets" | "Index" | "Shop" | "Stats" | "Home" | "Team" (what
+--                                           OpenPanel does; args: Tab, RouletteId, Currency = "Gems", Action, Key).
+--                                           Phase 4: "Pets" with Action = "Feed" | "Garden", "Feed", "Train" and "Evolve"
+--                                           go to CareController (the Food Machine list, the garden picker, the Training
+--                                           Place window, the EVOLVE moment); Action = "Evolve" with a Key (the floating
+--                                           card's EVOLVE! pill) opens the Pets panel on that pet with the EVOLVE confirm
 --   MenuController.Close()               -- closes whatever window / overlay is open
 --   MenuController.WindowOpened          -- Util.Signal, Fire(windowId) whenever a window opens:
---                                           "Inventory", "Shop", "Stats", "Home" or "Index" (the tutorial listens)
+--                                           "Inventory", "Shop", "Stats", "Home", "Team" or "Index" (the tutorial listens)
 --   Extra: MenuController.GetButton(id) -> the MenuButton_<id> tile (or nil; "Home" is the Spot tile)
 --          MenuController.IsOpen() -> true while a window, the odds popup or the roulette stage is up
 --          MenuController.IsPrewarmed(petId) -> true once that pet was pre-sculpted for the roulette strip
---          MenuController.OpenFeed(key) -> opens Pets with the Feed picker of that pet copy
+--          MenuController.OpenFeed(key) -> the Food Machine list (CareController) with that pet copy first
+--          MenuController.Hint(text, kind) -> the side hint (CareController's local refusals use it)
 --          MenuController.SetColumnHidden(hidden) -> hides / shows the menu tiles (BattleController: the team cards
 --          take the left edge of a landscape phone during a battle; the column frame keeps its place)
 --
 -- Screen: ScreenGui "NimbusMenu" (display order 20, IgnoreGuiInset = false).
 --   * Menu column, left-centre (the reference style): square-ish rounded icon tiles with a big glyph and a
---     bold label under each - Inventory, Pets, Index, Shop, Home and Stats. Each tile is a TextButton named
---     MenuButton_<Id> (Ids Inventory, Pets, Index, Shop, Spot, Stats: the Home tile keeps the v3 id "Spot" so saved
---     tutorial targets keep working) inside a frame Entry_<Id> of the frame "MenuColumn". The open window's tile
+--     bold label under each - Inventory, Pets, Index, Shop, Home, Stats and Team. Each tile is a TextButton named
+--     MenuButton_<Id> (Ids Inventory, Pets, Index, Shop, Spot, Stats, Team: the Home tile keeps the v3 id "Spot" so
+--     saved tutorial targets keep working) inside a frame Entry_<Id> of the frame "MenuColumn". The open window's tile
 --     glows gold; a red "!" marks new pets and Pet Index rewards waiting to be claimed. On short screens (landscape
---     phones) the column becomes a 2 x 3 grid so it keeps a readable scale.
+--     phones) the column becomes a grid so it keeps a readable scale.
 --   * Windows (CloudUI.Panel, centred because the player asked for them, nudged right only when the menu
---     column would cover them): Inventory (tabs Pets + Items, pet detail card with Equip / Unequip, Feed and
---     Place in Garden / Train in Gym), Shop (tabs Roulettes + Items + Gems, odds popup), Stats and Home. The Pet
---     Index is IndexController's window: the Index tile and OpenPanel("Index") open it. One window at a time;
---     Esc / gamepad B / the red X / the tile again / a click outside closes it. Gamepad B is bound
---     (ContextActionService, High priority, sunk) only while something is open, so it does not also fire
---     MovementController's dash.
---   * Phase 2 (ARCHITECTURE_V3.md "Phase 2 build contract", UI):
---       Home tile: with a claimed home it opens the Home window; without one it walks the player to a free gate
---       (Remotes.GoToSpot: the last plot when free, else the nearest) with a side hint "press E at the gate".
---       Home window: the house tier, Home Level and prestige stars, income per second (presses + Garden pets, the
---       prestige multiplier), the Collector's cash / cap with Collect, the prestige progress (Home Level x/40 and
---       the Sky Castle) with a confirmed Prestige button, Go home, and every station of TycoonCatalog with its
---       level (pips), what it does now -> next, the next price and Build / Upgrade (or why it is locked: "Reach
---       Home Level 10", "Needs the Villa", "Needs Cloud Press 2 Lv 2", "Unlocks at Prestige 1", "Coming soon").
---       The live numbers come from the plot folder's attributes (CollectorCash, CollectorCap, IncomePerSecond)
---       and the Cash attribute; everything is re-checked by the server (HomeAction "Upgrade" / "Collect" /
---       "Prestige" / "GoHome").
---       Pets panel: one slot per pet COPY key (shared/PetKeys: Normal, Golden, Rainbow, fused hybrids) with tier /
---       hybrid badges; the detail card shows the level and an XP bar, the stats scaled by rarity, level and tier
---       (PetCatalog.StatsOf), the perks x the tier bonus, where the pet works, and the buttons Feed (a food picker:
---       Snack / Meal / Feast with their XP and counts, Cook shortcuts and the Kitchen queue -> PetCare "Feed" /
---       "Cook"), Place in Garden (Economy pets -> HomeAction "GardenSet") and Train in Gym (Combat pets ->
---       PetCare "GymSet").
---       Shop Gems tab: the Gem packs (developer products with an id: MarketplaceService:PromptProductPurchase; the
---       server grants them in ProcessReceipt), the gems-only Secret Roulette and every roulette with a gem price,
---       each with its odds popup (always shown); hidden with a note while the PaidRandomItemsRestricted attribute
---       is true. A gem spin sends BuyRoulette(id, "Gems").
+--     column would cover them): Inventory (tabs Pets + Items, pet detail card), Shop (tabs Roulettes + Items + Gems,
+--     odds popup), Stats, Home and Team. The Pet Index is IndexController's window: the Index tile and
+--     OpenPanel("Index") open it. One window at a time; Esc / gamepad B / the red X / the tile again / a click
+--     outside closes it. Gamepad B is bound (ContextActionService, High priority, sunk) only while something is open,
+--     so it does not also fire MovementController's dash.
+--   * Home window (Phase 4, "Phase 4 build contract" 3.1-3.3 / 8.1): the house tier, Home Level and prestige stars,
+--     income per second (the plot's IncomePerSecond attribute; food and the Lucky bonus under it, the prestige
+--     multiplier tag), the Pet Garden card (coins waiting = the plot's CollectorCash, coins per minute, places
+--     "N/12" = the plot's GardenSlots: 3 + 1 per prestige, the LegacySlots / LegacyPrices lines; no Collect: kids
+--     walk over their coins), the prestige progress (Home Level x/40 and the Sky Castle) with a confirmed Prestige
+--     (what starts over, what stays, the new star's coins / garden place / Gems), Go home (HomeAction "GoHome": the
+--     home portal) and every station of TycoonCatalog grouped Pets at home (Pet Garden, Food Machine, Training Place,
+--     Fusion Machine), Coin makers (the plants, Coin Magnet, Vault), House, Decor, each with its level (pips), what it
+--     does now -> next ("+7 -> +9 food", "Feeds fill 30% -> 35% of a bar", "2 pets train at once"), the next price
+--     and Build / Upgrade (or why it is locked: "Reach Home Level 10", "Needs the Villa", "Unlocks at Prestige 1").
+--     Everything is re-checked by the server (HomeAction "Upgrade" / "Prestige" / "GoHome").
+--   * Pets panel: one slot per pet COPY key (shared/PetKeys: Normal, Golden, Rainbow, fused hybrids) with tier /
+--     hybrid chips, "Lv n" + evolution stars and a Garden (seedling) / training (muscle) chip; the detail card shows
+--     "Lv 57 / 100" and the XP bar, the stats at its level with "Coins $x/s" (what it earns in the Garden), the
+--     evolution pill, where it works or trains ("Training Physique (2:10 left)"), "Ready to evolve!", and the buttons
+--     Equip / Unequip (Equip disabled while training), Feed (CareController's Food Machine list), Garden / Leave
+--     Garden (HomeAction "GardenSet", ANY role), Train (CareController's Training Place window) and EVOLVE! (when
+--     PetCatalog.CanEvolve: CareController's confirm -> PetCare "Evolve").
+--   * Shop Gems tab: the Gem packs (developer products with an id: MarketplaceService:PromptProductPurchase; the
+--     server grants them in ProcessReceipt), the gems-only Secret Roulette and every roulette with a gem price,
+--     each with its odds popup (always shown); hidden with a note while the PaidRandomItemsRestricted attribute
+--     is true. A gem spin sends BuyRoulette(id, "Gems").
 --   * Roulette stage: a scrolling strip of pet viewports that eases to the server result (RouletteResult),
 --     then a reveal card with a rarity glow, a NEW! flag and an Equip button (a landscape card on short screens).
 --   * v3 readability rule: everything is designed in 1080p pixels (body 18-19, captions >= 18, buttons 20+,
@@ -221,14 +226,10 @@ K.STATION_ROW_H_TALL = 132
 K.LIVE_GAP = 0.25 -- seconds between two live refreshes of the Home window (collector / income tick every second)
 K.GEM_PACK_H = 248
 K.GEM_ROW_H = 120
-K.FEED_W = 600
-K.FEED_H = 470
 K.INFO_CHARS = 34 -- a station row's "now -> next" line longer than this shows "Next: ..." only
 K.CONFIRM_W = 560 -- the prestige confirmation
 K.CONFIRM_H = 356
 K.RESTRICTED_ATTR = "PaidRandomItemsRestricted" -- GemService: true while gem roulettes are not allowed / unknown
-K.KITCHEN_QUEUE_ATTR = "KitchenQueue" -- PetCareService: "Snack,Meal" (cooking first), "" when idle
-K.KITCHEN_READY_ATTR = "KitchenReadyAt" -- workspace:GetServerTimeNow() when the current dish is done
 K.REVEAL = { TallW = 452, TallH = 640, WideW = 790, WideH = 372 } -- TallW: a 390 px phone keeps the 0.8 scale (18 px pills stay >= 14 px)
 K.STAGE = { W = 920, H = 380 }
 K.STRIP = { Cell = 150, W = 860, H = 190, Target = 34, MinCells = 42, Seconds = 5.6, Curve = 2.8 }
@@ -259,11 +260,11 @@ local C2 = {
 	Lock = Color3.fromRGB(255, 206, 120), -- amber: why something is locked (reads on the dark wells)
 	Secret = Color3.fromRGB(70, 90, 200),
 	Kind = {
-		Press = Color3.fromRGB(110, 170, 236),
-		Collector = Color3.fromRGB(96, 196, 108),
+		Plant = Color3.fromRGB(226, 96, 130), -- berries, carrots, melons, starfruit (Phase 4 kinds)
+		Magnet = Color3.fromRGB(110, 170, 236),
 		Garden = Color3.fromRGB(120, 196, 90),
-		Kitchen = Color3.fromRGB(240, 150, 80),
-		Gym = Color3.fromRGB(228, 104, 96),
+		FoodMachine = Color3.fromRGB(240, 150, 80),
+		Training = Color3.fromRGB(228, 104, 96),
 		Vault = Color3.fromRGB(150, 160, 190),
 		House = Color3.fromRGB(240, 186, 90),
 		Fusion = Color3.fromRGB(150, 110, 232),
@@ -327,7 +328,6 @@ local Entries = {} -- id -> menu tile widgets
 local Hint = { Frame = nil, Label = nil, Token = 0 }
 -- Phase 2: the Home window's live plot watch, the Feed picker, the shop's Gems tab
 local Home = { Folder = nil, Conns = {}, LiveAt = 0, LivePending = false }
-local Feed = { Gui = nil, Key = nil, Token = 0 }
 local Gems = { Prices = {}, PriceAsked = {} }
 
 -- Phase 3: the Team window's entry points (P3.BuildTeam(win), P3.Settle(), P3.Battle(), P3.Refresh(); set below)
@@ -335,7 +335,7 @@ local P3 = {}
 -- forward declarations
 local openWindow, closeWindow, toggleWindow, refreshOpenWindow, updateMenuActive
 local requestSpin, closeStage, skipSpin, closeOdds, openOdds, showHint, handleBack, beginStage
-local syncBackBinding, closeIndex, relayoutMenu, closeFeed, openFeed, refreshHomeLive
+local syncBackBinding, closeIndex, relayoutMenu, refreshHomeLive
 
 ----------------------------------------------------------------------
 -- Small helpers
@@ -1251,6 +1251,95 @@ function P2.stationDef(id)
 	return nil
 end
 
+-- Phase 4 (ARCHITECTURE_V3.md "Phase 4 build contract" 3.4-3.7): CareController (the Food Machine list, the garden
+-- picker, the Training Place window and the EVOLVE moment), loaded lazily; nil when the build has none.
+function P2.care()
+	if P2.CareTried then
+		return P2.Care
+	end
+	P2.CareTried = true
+	local module = script.Parent:FindFirstChild("CareController")
+	if module then
+		local ok, mod = pcall(require, module)
+		if ok and type(mod) == "table" and type(mod.Open) == "function" then
+			P2.Care = mod
+		end
+	end
+	return P2.Care
+end
+
+-- one pet's growth { Evo, Speed, Physique, Ability, Defense, Job | nil } (State.PetGrowth; zeros when absent)
+function P2.growth(key)
+	if type(State.PetGrowth) == "function" then
+		local ok, g = pcall(State.PetGrowth, key)
+		if ok and type(g) == "table" then
+			return g
+		end
+	end
+	return { Evo = 0 }
+end
+
+function P2.stage(key)
+	return math.max(0, math.floor(tonumber(P2.growth(key).Evo) or 0))
+end
+
+-- the running training job of a key or nil
+function P2.job(key)
+	local job = P2.growth(key).Job
+	return type(job) == "table" and job or nil
+end
+
+-- seconds left on a job ("2:10")
+function P2.jobLeft(job)
+	local now = os.time()
+	local ok, t = pcall(function()
+		return workspace:GetServerTimeNow()
+	end)
+	if ok and type(t) == "number" then
+		now = t
+	end
+	local left = math.max(0, math.ceil((tonumber(job and job.Ends) or 0) - now))
+	return string.format("%d:%02d", math.floor(left / 60), left % 60)
+end
+
+-- "Attack Speed" for "Speed"
+function P2.skillName(stat)
+	if stat == "Speed" then
+		return "Attack Speed"
+	end
+	return tostring(stat or "")
+end
+
+-- the next evolution stage when the pet can EVOLVE now (PetCatalog.CanEvolve), else nil
+function P2.canEvolve(key, def, level)
+	if type(PetCatalog.CanEvolve) ~= "function" then
+		return nil
+	end
+	local ok, nextStage = pcall(PetCatalog.CanEvolve, def or key, level, P2.stage(key))
+	if ok and type(nextStage) == "number" and nextStage >= 1 then
+		return nextStage
+	end
+	return nil
+end
+
+-- coins per second of a pet in this home's Garden (PetPower x food x stars / meal x the Lucky EV; the grass food
+-- before the Garden is built): the "Coins $/s" pill
+function P2.coinsPerSecond(key, def, home)
+	if not TycoonCatalog then
+		return 0
+	end
+	local level = P2.petLevel(key)
+	local power = P2.catalogCall("PetPower", { Def = def, Level = level, Stage = P2.stage(key), Key = key }) or 0
+	local coins = TycoonCatalog.Coins or {}
+	local food = P2.catalogCall("FoodOf", home) or 0
+	if food <= 0 then
+		food = tonumber(coins.GrassFood) or 12
+	end
+	local mult = P2.catalogCall("PrestigeMultiplier", math.floor(tonumber(home.Prestige) or 0)) or 1
+	local lucky = P2.catalogCall("LuckyEV", home) or 1
+	return power * food * mult * lucky / (tonumber(coins.MealSeconds) or 8)
+end
+
 ----------------------------------------------------------------------
 -- Remotes (sent at most every FIRE_GAP seconds each, the server rate-limits as well)
 ----------------------------------------------------------------------
@@ -1652,8 +1741,6 @@ function closeWindow(id, instant)
 	end
 	if id == "Shop" then
 		closeOdds()
-	elseif id == "Inventory" then
-		closeFeed()
 	end
 	if instant then
 		-- another window takes over right away (it keeps the backdrop; see hideBackdropNow)
@@ -1711,10 +1798,6 @@ function handleBack()
 	end
 	if Odds.Gui then
 		closeOdds()
-		return true
-	end
-	if Feed.Gui then
-		closeFeed()
 		return true
 	end
 	if openId then
@@ -2322,32 +2405,20 @@ do
 		return ColorSequence.new(keys)
 	end
 
-	-- where a pet copy can work: { Place = "Garden" | "Gym", Station, Slots, Placed = {slot...}, Map } or nil
+	-- the Garden places of a pet copy (Phase 4: ANY role works there): { Place = "Garden", Slots, Placed = {slot...}, Map }
 	local function workOf(key, def)
 		if type(def) ~= "table" then
 			return nil
 		end
 		local home = P2.homeData()
-		if def.Role == "Economy" then
-			local map = type(home.Garden) == "table" and home.Garden or {}
-			return {
-				Place = "Garden",
-				Station = "Garden",
-				Slots = P2.catalogCall("GardenSlots", home) or 0,
-				Placed = P2.slotsHolding(map, key),
-				Map = map,
-			}
-		elseif def.Role == "Combat" then
-			local map = type(home.Gym) == "table" and home.Gym or {}
-			return {
-				Place = "Gym",
-				Station = "Gym",
-				Slots = P2.catalogCall("GymSlots", home) or 0,
-				Placed = P2.slotsHolding(map, key),
-				Map = map,
-			}
-		end
-		return nil
+		local map = type(home.Garden) == "table" and home.Garden or {}
+		return {
+			Place = "Garden",
+			Station = "Garden",
+			Slots = P2.catalogCall("GardenSlots", home) or 0,
+			Placed = P2.slotsHolding(map, key),
+			Map = map,
+		}
 	end
 
 	local function usedSlots(map, slots)
@@ -2358,369 +2429,6 @@ do
 			end
 		end
 		return n
-	end
-
-	-- dishes waiting in the Kitchen ({ "Snack", "Meal" }, the one cooking first) and seconds left on the first
-	local function kitchenQueue()
-		local raw = LocalPlayer and LocalPlayer:GetAttribute(K.KITCHEN_QUEUE_ATTR)
-		local list = {}
-		if type(raw) == "string" then
-			for id in raw:gmatch("[^,]+") do
-				list[#list + 1] = id
-			end
-		end
-		local readyAt = LocalPlayer and LocalPlayer:GetAttribute(K.KITCHEN_READY_ATTR)
-		local left = nil
-		if type(readyAt) == "number" and readyAt > 0 then
-			local ok, now = pcall(function()
-				return workspace:GetServerTimeNow()
-			end)
-			if ok and type(now) == "number" then
-				left = math.max(0, readyAt - now)
-			end
-		end
-		return list, left
-	end
-
-	------------------------------------------------------------------
-	-- Feed picker (an overlay over the Pets page)
-	------------------------------------------------------------------
-	local function feedRefresh()
-		local F = Feed.Ui
-		local key = Feed.Key
-		if not F or not Feed.Gui or not key then
-			return
-		end
-		local def = P2.defOfKey(key)
-		if not def or State.OwnedCount(key) <= 0 then
-			closeFeed()
-			return
-		end
-		local level, xp = P2.petLevel(key)
-		local cap = P2.levelCap(key, def)
-		local need = P2.xpToNext(level)
-		local capped = level >= cap
-		F.Title.Text = "Feed " .. P2.displayName(key, def)
-		F.Title.TextColor3 = rarityText(def)
-		F.Level.Text = "Lv " .. level .. " / " .. cap
-		if capped then
-			F.Xp.SetFraction(1)
-			F.Xp.SetText("MAX LEVEL")
-			F.Xp.SetColor(GOLD)
-		else
-			F.Xp.SetFraction(need > 0 and need < math.huge and math.min(1, xp / need) or 0)
-			F.Xp.SetText(commas(math.floor(xp)) .. " / " .. commas(need) .. " XP")
-			F.Xp.SetColor(C2.Xp)
-		end
-		local home = P2.homeData()
-		local kitchen = P2.stationLevelOf(home, "Kitchen")
-		local cash = P2.cashBalance()
-		local queue, left = kitchenQueue()
-		local queueMax = 0
-		local kdef = P2.stationDef("Kitchen")
-		if kitchen >= 1 and kdef and type(kdef.Effects) == "table" then
-			local e = kdef.Effects[math.min(kitchen, #kdef.Effects)]
-			queueMax = tonumber(e and (e.Queue or e.Slots)) or 0
-		end
-		local anyFood = false
-		for _, row in ipairs(F.Rows) do
-			local food = row.Food
-			local count = P2.foodCount(food.Id)
-			anyFood = anyFood or count > 0
-			row.Count.Text = "You have " .. count
-			row.Count.TextColor3 = count > 0 and WHITE or MUTED
-			CloudUI.SetDisabled(row.Feed, count <= 0 or capped or inMatch())
-			local canCook = kitchen >= (tonumber(food.KitchenLevel) or 1)
-			row.Cook.Visible = canCook
-			row.CookLock.Visible = not canCook
-			if canCook then
-				row.Cook.Text = "Cook " .. P2.formatCash(food.Price)
-				CloudUI.SetDisabled(row.Cook, cash < (tonumber(food.Price) or 0) or #queue >= queueMax or not P2.hasHome() or inMatch())
-			else
-				row.CookLock.Text = G.Lock .. " Kitchen Lv " .. tostring(food.KitchenLevel or 1)
-				row.CookLock.TextWrapped = false
-			end
-		end
-		-- the Kitchen line
-		local text, color = nil, MUTED
-		if kitchen < 1 then
-			text = "Build the Kitchen at your home to cook pet food."
-			color = C2.Lock
-		elseif #queue > 0 then
-			text = "Cooking " .. tostring(queue[1])
-			if left then
-				text = text .. " (" .. math.ceil(left) .. " s)"
-			end
-			if #queue > 1 then
-				text = text .. "  " .. G.Bullet .. "  " .. (#queue - 1) .. " more queued"
-			end
-			color = Theme.Lighten(GOOD, 0.35)
-		elseif not P2.hasHome() then
-			text = "Claim your home to cook: press E at a free gate."
-			color = C2.Lock
-		else
-			text = "Kitchen ready: cook a dish for " .. (anyFood and "more " or "") .. "XP!"
-		end
-		if capped then
-			text = "This pet reached its max level (" .. cap .. " for a " .. tostring(def.Rarity) .. " pet)."
-			color = GOLD
-		end
-		F.Kitchen.Text = text
-		F.Kitchen.TextColor3 = color
-	end
-
-	function closeFeed()
-		Feed.Token = Feed.Token + 1
-		if Feed.Gui then
-			Feed.Gui.Visible = false
-		end
-		Feed.Gui = nil
-		Feed.Key = nil
-		syncBackBinding()
-	end
-
-	local function buildFeed(page)
-		local F = { Rows = {} }
-		local root = makeFrame(page, "FeedPicker", {
-			Size = UDim2.new(1, 0, 1, 0),
-			Visible = false,
-			ZIndex = 40,
-		})
-		F.Root = root
-		local dim = Util.Create("TextButton", {
-			Name = "Dim",
-			AutoButtonColor = false,
-			Text = "",
-			BorderSizePixel = 0,
-			BackgroundColor3 = Color3.fromRGB(8, 12, 32),
-			BackgroundTransparency = 0.4,
-			Size = UDim2.new(1, 0, 1, 0),
-			ZIndex = 40,
-			Parent = root,
-		})
-		corner(dim, 14)
-		dim.Activated:Connect(function()
-			closeFeed()
-		end)
-		local box = makeFrame(root, "Box", {
-			AnchorPoint = Vector2.new(0.5, 0.5),
-			Position = UDim2.new(0.5, 0, 0.5, 0),
-			Size = UDim2.fromOffset(K.FEED_W, K.FEED_H),
-			BackgroundTransparency = 0,
-			BackgroundColor3 = WHITE, -- the UIGradient below multiplies this colour
-			ZIndex = 41,
-		})
-		corner(box, 16)
-		stroke(box, NAVY, 4, 0)
-		Theme.Gradient(box, Colors.PanelLight, Colors.Panel, 90)
-		F.Box = box
-		F.Title = makeText(box, "Title", "Feed", "Title", 28, WHITE, {
-			Position = UDim2.fromOffset(18, 10),
-			Size = UDim2.new(1, -150, 0, 36),
-			TextXAlignment = Enum.TextXAlignment.Left,
-			TextScaled = true,
-			ZIndex = 42,
-		})
-		Util.Create("UITextSizeConstraint", { MaxTextSize = 28, MinTextSize = 20, Parent = F.Title })
-		local back = CloudUI.Button({
-			Name = "CloseFeed",
-			Text = "Done",
-			Style = "Blue",
-			AnchorPoint = Vector2.new(1, 0),
-			Position = UDim2.new(1, -14, 0, 10),
-			Size = UDim2.fromOffset(118, 44),
-			TextSize = 22,
-			Callback = function()
-				closeFeed()
-			end,
-			Parent = box,
-		})
-		back.ZIndex = 42
-		F.Level = makeText(box, "Level", "Lv 1", "Heading", 20, WHITE, {
-			Position = UDim2.fromOffset(18, 58),
-			Size = UDim2.fromOffset(110, 30),
-			TextXAlignment = Enum.TextXAlignment.Left,
-			ZIndex = 42,
-		})
-		F.Xp = CloudUI.Bar({
-			Name = "XpBar",
-			Position = UDim2.fromOffset(132, 58),
-			Size = UDim2.new(1, -150, 0, 30),
-			Height = 30,
-			TextSize = 20,
-			Color = C2.Xp,
-			Parent = box,
-		})
-		F.Xp.Root.ZIndex = 42
-		-- the dishes (a scrolling list: on short screens the box is shorter than its three rows)
-		local list = scroller(box, "Foods", {
-			Position = UDim2.fromOffset(14, 100),
-			Size = UDim2.new(1, -28, 0, 3 * 86 + 2 * 8),
-			ZIndex = 42,
-		})
-		list.ScrollBarThickness = 8
-		pad(list, 0, 0, 4, 0)
-		listLayout(list, Enum.FillDirection.Vertical, 8)
-		F.List = list
-		for index, food in ipairs(P2.foodList()) do
-			if index > 3 then
-				break
-			end
-			local row = { Food = food }
-			local frame = makeInset(list, "Food_" .. tostring(food.Id), {
-				Size = UDim2.new(1, 0, 0, 86),
-				LayoutOrder = index,
-				ZIndex = 42,
-			})
-			row.Frame = frame
-			local disc = makeFrame(frame, "Icon", {
-				AnchorPoint = Vector2.new(0, 0.5),
-				Position = UDim2.new(0, 10, 0.5, 0),
-				Size = UDim2.fromOffset(60, 60),
-				BackgroundTransparency = 0,
-				BackgroundColor3 = C2.Kind.Kitchen,
-				ZIndex = 43,
-			})
-			round(disc)
-			stroke(disc, NAVY, 3, 0)
-			Theme.Gradient(disc, Theme.Lighten(C2.Kind.Kitchen, 0.35), Theme.Darken(C2.Kind.Kitchen, 0.15), 90)
-			makeText(disc, "Glyph", P2.foodGlyph(food.Id), "Title", 32, WHITE, { Size = UDim2.new(1, 0, 1, 0), ZIndex = 44 })
-			row.Name = makeText(frame, "Name", tostring(food.Name or food.Id) .. "  +" .. commas(food.Xp) .. " XP", "Title", 22, WHITE, {
-				Position = UDim2.fromOffset(80, 10),
-				Size = UDim2.new(1, -360, 0, 30),
-				TextXAlignment = Enum.TextXAlignment.Left,
-				TextScaled = true,
-				ZIndex = 43,
-			})
-			Util.Create("UITextSizeConstraint", { MaxTextSize = 22, MinTextSize = 18, Parent = row.Name })
-			row.Count = makeText(frame, "Count", "", "Heading", 19, MUTED, {
-				Position = UDim2.fromOffset(80, 46),
-				Size = UDim2.new(1, -360, 0, 26),
-				TextXAlignment = Enum.TextXAlignment.Left,
-				ZIndex = 43,
-			})
-			local buttons = makeFrame(frame, "Buttons", {
-				AnchorPoint = Vector2.new(1, 0.5),
-				Position = UDim2.new(1, -10, 0.5, 0),
-				Size = UDim2.fromOffset(270, 52),
-				ZIndex = 43,
-			})
-			row.Buttons = buttons
-			row.Feed = CloudUI.Button({
-				Name = "Feed",
-				Text = "Feed",
-				Style = "Green",
-				Size = UDim2.fromOffset(104, 50),
-				TextSize = 22,
-				Callback = function()
-					local key = Feed.Key
-					if not key then
-						return
-					end
-					if P2.foodCount(food.Id) <= 0 then
-						showHint("No " .. tostring(food.Name) .. " left. Cook some at your Kitchen!", "info")
-						return
-					end
-					fireKeyed("PetCare:Feed", "PetCare", "Feed", key, food.Id)
-				end,
-				Parent = buttons,
-			})
-			row.Feed.ZIndex = 44
-			row.Cook = CloudUI.Button({
-				Name = "Cook",
-				Text = "Cook",
-				Style = "Gold",
-				AnchorPoint = Vector2.new(1, 0),
-				Position = UDim2.new(1, 0, 0, 0),
-				Size = UDim2.fromOffset(156, 50),
-				TextSize = 20,
-				Callback = function()
-					fireKeyed("PetCare:Cook", "PetCare", "Cook", food.Id, 1)
-				end,
-				Parent = buttons,
-			})
-			row.Cook.ZIndex = 44
-			row.CookLock = makeText(buttons, "CookLock", "", "Heading", 18, C2.Lock, {
-				AnchorPoint = Vector2.new(1, 0.5),
-				Position = UDim2.new(1, 0, 0.5, 0),
-				Size = UDim2.fromOffset(156, 50),
-				TextWrapped = true,
-				Visible = false,
-				ZIndex = 44,
-			})
-			F.Rows[#F.Rows + 1] = row
-		end
-		F.Kitchen = makeText(box, "Kitchen", "", "Body", 19, MUTED, {
-			AnchorPoint = Vector2.new(0, 1),
-			Position = UDim2.new(0, 18, 1, -12),
-			Size = UDim2.new(1, -36, 0, 48),
-			TextWrapped = true,
-			TextXAlignment = Enum.TextXAlignment.Left,
-			ZIndex = 42,
-		})
-		-- narrow pages (portrait phones): the buttons go under the food name; short pages (landscape phones): the box
-		-- fills the page height and the dishes scroll
-		function F.Layout(pageW, pageH)
-			local narrowBox = pageW < K.FEED_W + 20
-			local boxW = math.min(K.FEED_W, pageW - 16)
-			local rowH = narrowBox and 132 or 86
-			local listH = 3 * rowH + 2 * 8
-			local boxH = 100 + listH + 70
-			if pageH and pageH > 0 and boxH > pageH - 8 then
-				boxH = math.max(240, pageH - 8)
-				listH = boxH - 100 - 70
-			end
-			box.Size = UDim2.fromOffset(boxW, boxH)
-			list.Size = UDim2.new(1, -28, 0, listH)
-			for _, row in ipairs(F.Rows) do
-				row.Frame.Size = UDim2.new(1, 0, 0, rowH)
-				if narrowBox then
-					row.Name.Size = UDim2.new(1, -90, 0, 30)
-					row.Count.Size = UDim2.new(1, -90, 0, 26)
-					row.Buttons.AnchorPoint = Vector2.new(1, 1)
-					row.Buttons.Position = UDim2.new(1, -10, 1, -8)
-					row.Buttons.Size = UDim2.new(1, -90, 0, 50)
-				else
-					row.Name.Size = UDim2.new(1, -360, 0, 30)
-					row.Count.Size = UDim2.new(1, -360, 0, 26)
-					row.Buttons.AnchorPoint = Vector2.new(1, 0.5)
-					row.Buttons.Position = UDim2.new(1, -10, 0.5, 0)
-					row.Buttons.Size = UDim2.fromOffset(270, 52)
-				end
-			end
-		end
-		Feed.Ui = F
-		return F
-	end
-
-	function openFeed(key)
-		local F = Feed.Ui
-		if not F or type(key) ~= "string" or State.OwnedCount(key) <= 0 then
-			return false
-		end
-		Feed.Key = key
-		Feed.Gui = F.Root
-		Feed.Token = Feed.Token + 1
-		local mine = Feed.Token
-		if Feed.Relayout then
-			safe("feed layout", Feed.Relayout)
-		end
-		F.Root.Visible = true
-		syncBackBinding()
-		local pop = F.Box:FindFirstChild("Pop") or Util.Create("UIScale", { Name = "Pop", Scale = 1, Parent = F.Box })
-		pop.Scale = 0.9
-		tween(pop, 0.18, { Scale = 1 }, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
-		safe("feed refresh", feedRefresh)
-		-- the Kitchen countdown ticks while the picker is open
-		task.spawn(function()
-			while Feed.Token == mine and Feed.Gui do
-				task.wait(0.5)
-				if Feed.Token == mine and Feed.Gui then
-					safe("feed refresh", feedRefresh)
-				end
-			end
-		end)
-		return true
 	end
 
 	------------------------------------------------------------------
@@ -2756,9 +2464,6 @@ do
 			TextSize = 22,
 			OnSelect = function(name)
 				win.Tab = name
-				if name ~= "Pets" then
-					closeFeed()
-				end
 				updateMenuActive()
 			end,
 		})
@@ -2783,30 +2488,43 @@ do
 				return
 			end
 			if not work then
-				showHint("This pet has no job at home.", "info")
 				return
 			end
 			if #work.Placed > 0 then
-				if work.Place == "Garden" then
-					fireKeyed("HomeAction:Garden", "HomeAction", "GardenSet", { Slot = work.Placed[#work.Placed] })
-				else
-					fireKeyed("PetCare:Gym", "PetCare", "GymSet", key)
-				end
+				fireKeyed("HomeAction:Garden", "HomeAction", "GardenSet", { Slot = work.Placed[#work.Placed] })
+				return
+			end
+			if P2.job(key) then
+				showHint(P2.displayName(key, def) .. " is training (" .. P2.jobLeft(P2.job(key)) .. " left).", "info")
 				return
 			end
 			if work.Slots <= 0 then
-				showHint("Build the " .. (work.Place == "Garden" and "Pet Garden" or "Gym") .. " at your home first.", "info")
+				showHint("Build the Pet Garden at your home first.", "info")
 				return
 			end
 			local free = P2.firstFreeSlot(work.Map, work.Slots)
 			if not free then
-				showHint("Your " .. work.Place .. " is full (" .. work.Slots .. "/" .. work.Slots .. "). Upgrade it for more slots.", "info")
+				showHint("Your Garden is full (" .. work.Slots .. "/" .. work.Slots .. "). Prestige for one more place!", "info")
 				return
 			end
-			if work.Place == "Garden" then
-				fireKeyed("HomeAction:Garden", "HomeAction", "GardenSet", { Slot = free, Key = key })
+			fireKeyed("HomeAction:Garden", "HomeAction", "GardenSet", { Slot = free, Key = key })
+		end
+
+		-- Feed / Train / EVOLVE open CareController's windows (the Food Machine list, the Training Place, the confirm)
+		local function careOpen(panelId, key)
+			local care = P2.care()
+			if not care then
+				showHint("Pet care is getting ready. Try again in a moment!", "info")
+				return
+			end
+			if inMatch() then
+				showHint("Pets are busy climbing during a match.", "info")
+				return
+			end
+			if panelId == "Evolve" then
+				safe("evolve confirm", care.ConfirmEvolve, key)
 			else
-				fireKeyed("PetCare:Gym", "PetCare", "GymSet", 0, key)
+				safe("care open", care.Open, panelId, { Key = key })
 			end
 		end
 
@@ -2864,14 +2582,14 @@ do
 			local levelRow = makeFrame(scroll, "LevelRow", { Size = UDim2.new(1, 0, 0, 32), LayoutOrder = 5 })
 			W.LevelRow = levelRow
 			W.LevelText = makeText(levelRow, "Level", "Lv 1", "Heading", 20, WHITE, {
-				Size = UDim2.fromOffset(92, 32),
+				Size = UDim2.fromOffset(122, 32),
 				TextXAlignment = Enum.TextXAlignment.Left,
 			})
 			W.XpBar = CloudUI.Bar({
 				Name = "XpBar",
 				AnchorPoint = Vector2.new(1, 0.5),
 				Position = UDim2.new(1, 0, 0.5, 0),
-				Size = UDim2.new(1, -96, 0, 28),
+				Size = UDim2.new(1, -126, 0, 28),
 				Height = 28,
 				TextSize = 18,
 				Color = C2.Xp,
@@ -2910,18 +2628,18 @@ do
 				TextWrapped = true,
 				LayoutOrder = 10,
 			})
-			-- buttons pinned to the bottom of the card: Equip | Unequip, then Feed | Garden / Gym
+			-- buttons pinned to the bottom of the card: Equip | Unequip, Feed | Garden, Train | EVOLVE
 			local buttons = makeFrame(body, "Buttons", {
 				AnchorPoint = Vector2.new(0, 1),
 				Position = UDim2.new(0, 10, 1, -52),
-				Size = UDim2.new(1, -20, 0, 116),
+				Size = UDim2.new(1, -20, 0, 172),
 			})
 			W.Buttons = buttons
 			W.EquipBtn = CloudUI.Button({
 				Name = "Equip",
 				Text = "Equip",
 				Style = "Green",
-				Size = UDim2.new(0.5, -6, 0.5, -4),
+				Size = UDim2.new(0.5, -6, 1 / 3, -6),
 				TextSize = 22,
 				Callback = function()
 					if pets.Selected then
@@ -2934,7 +2652,7 @@ do
 				Name = "Unequip",
 				Text = "Unequip",
 				Style = "Pink",
-				Size = UDim2.new(0.5, -6, 0.5, -4),
+				Size = UDim2.new(0.5, -6, 1 / 3, -6),
 				AnchorPoint = Vector2.new(1, 0),
 				Position = UDim2.new(1, 0, 0, 0),
 				TextSize = 22,
@@ -2949,9 +2667,9 @@ do
 				Name = "FeedPet",
 				Text = "Feed",
 				Style = "Gold",
-				Size = UDim2.new(0.5, -6, 0.5, -4),
-				AnchorPoint = Vector2.new(0, 1),
-				Position = UDim2.new(0, 0, 1, 0),
+				Size = UDim2.new(0.5, -6, 1 / 3, -6),
+				AnchorPoint = Vector2.new(0, 0.5),
+				Position = UDim2.new(0, 0, 0.5, 0),
 				TextSize = 22,
 				Callback = function()
 					if inMatch() then
@@ -2959,27 +2677,75 @@ do
 						return
 					end
 					if pets.Selected then
-						openFeed(pets.Selected)
+						careOpen("Feed", pets.Selected)
 					end
 				end,
 				Parent = buttons,
 			})
 			W.WorkBtn = CloudUI.Button({
 				Name = "WorkPet",
-				Text = "Place in Garden",
+				Text = "Garden",
 				Style = "Blue",
-				Size = UDim2.new(0.5, -6, 0.5, -4),
-				AnchorPoint = Vector2.new(1, 1),
-				Position = UDim2.new(1, 0, 1, 0),
+				Size = UDim2.new(0.5, -6, 1 / 3, -6),
+				AnchorPoint = Vector2.new(1, 0.5),
+				Position = UDim2.new(1, 0, 0.5, 0),
 				TextSize = 20,
 				Callback = function()
 					doWork()
 				end,
 				Parent = buttons,
 			})
+			W.TrainBtn = CloudUI.Button({
+				Name = "TrainPet",
+				Text = "Train",
+				Style = "Red",
+				Size = UDim2.new(0.5, -6, 1 / 3, -6),
+				AnchorPoint = Vector2.new(0, 1),
+				Position = UDim2.new(0, 0, 1, 0),
+				TextSize = 22,
+				Callback = function()
+					if pets.Selected then
+						careOpen("Train", pets.Selected)
+					end
+				end,
+				Parent = buttons,
+			})
+			W.EvolveBtn = CloudUI.Button({
+				Name = "EvolvePet",
+				Text = "EVOLVE!",
+				Style = "Gold",
+				Size = UDim2.new(0.5, -6, 1 / 3, -6),
+				AnchorPoint = Vector2.new(1, 1),
+				Position = UDim2.new(1, 0, 1, 0),
+				TextSize = 22,
+				Callback = function()
+					if pets.Selected then
+						careOpen("Evolve", pets.Selected)
+					end
+				end,
+				Parent = buttons,
+			})
 			W.WorkBtn.TextScaled = true
 			W.WorkBtn.TextWrapped = true -- "Place in Garden" may take two lines on narrow cards (never under 18 design px)
 			Util.Create("UITextSizeConstraint", { MaxTextSize = 20, MinTextSize = 18, Parent = W.WorkBtn })
+			-- the six buttons: 3 rows x 2 (Train takes the whole last row while there is no EVOLVE), or on short cards
+			-- (landscape phones) 2 rows x 3
+			function W.PlaceButtons()
+				local list = { W.EquipBtn, W.UnequipBtn, W.FeedBtn, W.WorkBtn, W.TrainBtn, W.EvolveBtn }
+				local cols = W.Short and 3 or 2
+				local rows = W.Short and 2 or 3
+				for i, b in ipairs(list) do
+					local col = (i - 1) % cols
+					local row = math.floor((i - 1) / cols)
+					b.AnchorPoint = Vector2.new(0, 0)
+					b.Position = UDim2.new(col / cols, col > 0 and 3 or 0, row / rows, row > 0 and 3 or 0)
+					b.Size = UDim2.new(1 / cols, -6, 1 / rows, -6)
+					b.TextSize = W.Short and 18 or (b == W.WorkBtn and 20 or 22) -- (short = landscape phones: 18 x 0.8 >= 14 px)
+				end
+				if not W.Short and not W.Ready then
+					W.TrainBtn.Size = UDim2.new(1, 0, 1 / rows, -6)
+				end
+			end
 			W.Status = makeText(body, "Status", "", "Label", 18, MUTED, {
 				AnchorPoint = Vector2.new(0, 1),
 				Position = UDim2.new(0, 10, 1, -4),
@@ -3065,7 +2831,6 @@ do
 			})
 
 			buildDetailCard(page)
-			buildFeed(page)
 		end
 
 		-- the tier / hybrid chip (top-left) and the level tag (bottom-left) of a grid slot
@@ -3111,15 +2876,17 @@ do
 				slot.TierChip.Visible = false
 			end
 			local level = P2.petLevel(key)
-			slot.LevelTag.Visible = level > 1
-			slot.LevelTag.Text = "Lv " .. level
-			-- a pet working at home: a seedling (Garden) or muscle (Gym) chip beside the tier chip
+			local stage = P2.stage(key)
+			slot.LevelTag.Visible = level > 1 or stage > 0
+			slot.LevelTag.Text = "Lv " .. level .. (stage > 0 and (" " .. string.rep(G.Star, math.min(2, stage))) or "")
+			slot.LevelTag.Size = UDim2.fromOffset(stage > 0 and 92 or 60, 22)
+			-- a pet working at home: a seedling (Garden) or muscle (training) chip beside the tier chip
 			local home = P2.homeData()
 			local where = nil
-			if #P2.slotsHolding(home.Garden, key) > 0 then
-				where = "Garden"
-			elseif #P2.slotsHolding(home.Gym, key) > 0 then
+			if P2.job(key) then
 				where = "Gym"
+			elseif #P2.slotsHolding(home.Garden, key) > 0 then
+				where = "Garden"
 			end
 			if where and not slot.WorkChip then
 				local chip = makeFrame(slot.Button, "WorkBadge", {
@@ -3137,7 +2904,7 @@ do
 			if slot.WorkChip then
 				slot.WorkChip.Visible = where ~= nil
 				if where then
-					local color = where == "Garden" and C2.Kind.Garden or C2.Kind.Gym
+					local color = where == "Garden" and C2.Kind.Garden or PURPLE
 					slot.WorkGradient.Color = ColorSequence.new(Theme.Lighten(color, 0.3), Theme.Darken(color, 0.15))
 					slot.WorkText.Text = where == "Garden" and G.Seedling or G.Muscle
 					slot.WorkChip.Position = UDim2.fromOffset(slot.TierChip.Visible and 36 or 4, 4)
@@ -3171,9 +2938,10 @@ do
 		end
 
 		-- stat chips at the pet's level: the role's own stats bright, the others dimmer
-		local function setStats(def, level)
+		local function setStats(def, level, petKey)
 			local stats = P2.statsAt(def, level)
-			local key = tostring(def.Id) .. "|" .. level
+			local coins = P2.coinsPerSecond(petKey, def, P2.homeData())
+			local key = tostring(petKey) .. "|" .. level .. "|" .. P2.formatRate(coins)
 			if pets.StatKey == key then
 				return
 			end
@@ -3199,7 +2967,7 @@ do
 				local value = tonumber(stats[statKey]) or 0
 				local text
 				if statKey == "Income" then
-					text = "Income " .. P2.formatRate(value) .. "/s"
+					text = "Coins " .. P2.formatRate(coins) .. "/s"
 				else
 					text = statKey .. " " .. commas(math.floor(value + 0.5))
 				end
@@ -3227,15 +2995,20 @@ do
 			W.DetailEmpty.Visible = false
 
 			local color = rarityOf(def)
-			if pets.DetailPet ~= key then
+			local shownStage = P2.stage(key)
+			if pets.DetailPet ~= key or pets.DetailStage ~= shownStage then
 				if pets.DetailViewport then
 					pets.DetailViewport.Destroy()
 				end
+				-- (an evolved pet shows its evolved form: Low detail keeps the big Evolved II models cheap)
 				pets.DetailViewport = CloudUI.PetViewport(W.ViewportHolder, def, UDim2.new(1, 0, 1, 0), {
 					Spin = "spin",
 					ZIndex = 2,
+					Evolved = shownStage > 0 and shownStage or nil,
+					Detail = shownStage > 0 and "Low" or nil,
 				})
 				pets.DetailPet = key
+				pets.DetailStage = shownStage
 				pets.StatKey = nil
 			end
 			local tier = P2.tierOf(key, def)
@@ -3266,7 +3039,7 @@ do
 			local level, xp = P2.petLevel(key)
 			local cap = P2.levelCap(key, def)
 			local need = P2.xpToNext(level)
-			W.LevelText.Text = "Lv " .. level
+			W.LevelText.Text = "Lv " .. level .. " / " .. cap
 			if level >= cap then
 				W.XpBar.SetFraction(1)
 				W.XpBar.SetText("MAX LEVEL")
@@ -3276,17 +3049,22 @@ do
 				W.XpBar.SetText(commas(math.floor(xp)) .. " / " .. commas(need) .. " XP")
 				W.XpBar.SetColor(C2.Xp)
 			end
-			setStats(def, level)
+			setStats(def, level, key)
 
-			-- where it works
+			-- where it works / trains, and its evolution
 			local work = workOf(key, def)
+			local job = P2.job(key)
+			local stage = P2.stage(key)
+			local ready = P2.canEvolve(key, def, level)
 			local workText, workColor = "", Theme.Lighten(GOOD, 0.35)
-			if work and #work.Placed > 0 then
-				if work.Place == "Garden" then
-					workText = G.Seedling .. " Working in your Garden"
-				else
-					workText = G.Muscle .. " Training in your Gym"
-				end
+			if job then
+				workText = G.Muscle .. " Training " .. P2.skillName(job.Stat) .. " (" .. P2.jobLeft(job) .. " left)"
+				workColor = Theme.Lighten(PURPLE, 0.35)
+			elseif work and #work.Placed > 0 then
+				workText = G.Seedling .. " Working in your Garden"
+			end
+			if ready then
+				workText = (workText ~= "" and (workText .. "\n") or "") .. G.Sparkle .. " Ready to evolve!"
 			end
 			W.Work.Text = workText
 			W.Work.TextColor3 = workColor
@@ -3310,22 +3088,34 @@ do
 				W.Perks.Text = "No perks"
 			end
 
+			-- the evolution pill (star badge) beside the rarity
+			if W.EvoPill then
+				W.EvoPill:Destroy()
+				W.EvoPill = nil
+			end
+			if stage > 0 then
+				W.EvoPill = colorPill(W.MetaRow, "Evolution", string.rep(G.Star, math.min(2, stage)) .. (stage >= 2 and " Evolved II" or " Evolved"), GOLD, 18, 50)
+			end
+
 			-- buttons
 			local totalEquipped = #State.Get().Equipped
-			local canEquip = equipped < owned and totalEquipped < maxEquipped
+			local canEquip = equipped < owned and totalEquipped < maxEquipped and job == nil
 			CloudUI.SetDisabled(W.EquipBtn, not canEquip)
 			CloudUI.SetDisabled(W.UnequipBtn, equipped <= 0)
 			CloudUI.SetDisabled(W.FeedBtn, inMatch())
+			CloudUI.SetDisabled(W.TrainBtn, inMatch())
+			W.TrainBtn.Text = job and "Training" or "Train"
+			W.EvolveBtn.Visible = ready ~= nil
+			CloudUI.SetDisabled(W.EvolveBtn, inMatch())
+			-- no EVOLVE: Train takes the whole bottom row
+			W.Ready = ready ~= nil
+			W.PlaceButtons()
 			if work then
 				local placed = #work.Placed > 0
-				if work.Place == "Garden" then
-					W.WorkBtn.Text = placed and "Leave Garden" or "Place in Garden"
-				else
-					W.WorkBtn.Text = placed and "Stop training" or "Train in Gym"
-				end
+				W.WorkBtn.Text = placed and "Leave Garden" or "Garden"
 				CloudUI.SetStyle(W.WorkBtn, placed and "Pink" or "Blue")
 				local full = not placed and work.Slots > 0 and P2.firstFreeSlot(work.Map, work.Slots) == nil
-				CloudUI.SetDisabled(W.WorkBtn, inMatch() or (not placed and (work.Slots <= 0 or full)))
+				CloudUI.SetDisabled(W.WorkBtn, inMatch() or (not placed and (work.Slots <= 0 or full or job ~= nil)))
 				W.WorkBtn.Visible = true
 			else
 				W.WorkBtn.Visible = false
@@ -3333,10 +3123,12 @@ do
 			local status = ""
 			if inMatch() then
 				status = "Pets are locked during a match."
+			elseif job then
+				status = P2.displayName(key, def) .. " is training: it can't follow you until it's done."
 			elseif work and #work.Placed == 0 and work.Slots <= 0 then
-				status = "Build the " .. (work.Place == "Garden" and "Pet Garden" or "Gym") .. " at home to put it to work."
+				status = "Build the Pet Garden at home to put it to work."
 			elseif work and #work.Placed == 0 and P2.firstFreeSlot(work.Map, work.Slots) == nil then
-				status = "Your " .. work.Place .. " is full (" .. usedSlots(work.Map, work.Slots) .. "/" .. work.Slots .. ")."
+				status = "Your Garden is full (" .. usedSlots(work.Map, work.Slots) .. "/" .. work.Slots .. ")."
 			elseif equipped >= owned then
 				status = "All your copies are equipped."
 			elseif totalEquipped >= maxEquipped then
@@ -3623,9 +3415,6 @@ do
 			refreshPetsPage()
 			renderDetail()
 			refreshItemsPage()
-			if Feed.Gui then
-				safe("feed refresh", feedRefresh)
-			end
 		end
 
 		tabs.Add("Pets", buildPetsPage)
@@ -3640,36 +3429,23 @@ do
 			if type(args.Key) == "string" and State.OwnedCount(args.Key) > 0 then
 				pets.Selected = args.Key
 			end
-			if args.Action == "Feed" then
+			if args.Action == "Evolve" and type(args.Key) == "string" then
+				-- the floating card's EVOLVE! pill: the Pets panel on that pet, with the EVOLVE confirm on top
 				tabs.Select("Pets")
+				local key = args.Key
 				task.defer(function()
-					if win.Shown then
+					if win.Shown and State.OwnedCount(key) > 0 then
 						refreshInventory()
-						local key = pets.Selected
-						if key then
-							openFeed(key)
-						else
-							showHint("Hatch a pet first: spin a roulette in the Shop!", "info")
-						end
+						careOpen("Evolve", key)
 					end
 				end)
 			end
 		end
-		-- the Feed picker's size follows the Pets page (also called when the picker opens)
-		function Feed.Relayout(fallbackW, fallbackH)
-			if Feed.Ui and Feed.Ui.Layout and W.Page then
-				-- the page in design px (the window's fit scale and its pop-in scale undone)
-				local size = W.Page.AbsoluteSize
-				local scale = (win.Fit and win.Fit.Scale or 1) * (win.Pop and win.Pop.Scale or 1)
-				local designW = (size.X > 0 and scale > 0) and (size.X / scale) or (fallbackW or 800)
-				local designH = (size.Y > 0 and scale > 0) and (size.Y / scale) or (fallbackH or 500)
-				Feed.Ui.Layout(designW, designH)
-			end
-		end
 
 		win.OnLayout = function(w, h, narrow, short, tall)
-			local detailW = narrow and K.DETAIL_W_NARROW or K.DETAIL_W
-			local buttonsH = short and 94 or 116
+			local detailW = (narrow and not short) and K.DETAIL_W_NARROW or K.DETAIL_W
+			local buttonsH = short and 98 or 172
+			W.Short = short == true
 			if W.Detail then
 				if tall then
 					W.Detail.AnchorPoint = Vector2.new(0, 1)
@@ -3699,11 +3475,11 @@ do
 				W.View.Size = UDim2.new(1, 0, 0, compact and 96 or 150)
 				W.Glow.Size = compact and UDim2.fromOffset(86, 86) or UDim2.fromOffset(136, 136)
 				W.Buttons.Size = UDim2.new(1, -20, 0, buttonsH)
+				W.PlaceButtons()
 				W.Buttons.Position = UDim2.new(0, 10, 1, short and -8 or -52)
 				W.Status.Visible = not short
 				W.InfoScroll.Size = UDim2.new(1, -8, 1, -(buttonsH + (short and 16 or 60)))
 			end
-			Feed.Relayout(w - 48, h - 150)
 			-- item rows: narrow (portrait) rows stack the text and put the button under it
 			for _, row in pairs(itemRows) do
 				local P = row.Parts
@@ -5156,8 +4932,8 @@ end
 local buildHome -- (the window's helpers live in this do-block: Lua's 200-local limit of the main chunk)
 do
 	local HOME_SECTIONS = {
-		{ Id = "Money", Title = "Money makers", Kinds = { Press = true, Collector = true, Vault = true } },
-		{ Id = "Pets", Title = "Pets at home", Kinds = { Garden = true, Kitchen = true, Gym = true, Fusion = true } },
+		{ Id = "Pets", Title = "Pets at home", Kinds = { Garden = true, FoodMachine = true, Training = true, Fusion = true } },
+		{ Id = "Money", Title = "Coin makers", Kinds = { Plant = true, Magnet = true, Vault = true } },
 		{ Id = "House", Title = "House", Kinds = { House = true, Arena = true } },
 		{ Id = "Decor", Title = "Decor", Kinds = { Decor = true } },
 	}
@@ -5188,21 +4964,21 @@ do
 			return nil
 		end
 		local kind = def.Kind
-		if kind == "Press" then
-			return P2.formatRate(e.Income) .. "/s"
-		elseif kind == "Collector" then
-			if (tonumber(e.Bonus) or 0) > 0 then
-				return "+" .. shortPercent(e.Bonus) .. " press Cash"
-			end
-			return "Banks press Cash"
+		if kind == "Plant" then
+			return "+" .. shortNumber(e.Food) .. " food"
+		elseif kind == "Magnet" then
+			return "Scoop " .. shortNumber(e.Radius) .. " studs, piles " .. shortNumber((tonumber(e.PileSeconds) or 0) / 60) .. " min"
 		elseif kind == "Garden" then
+			local lucky = tonumber(e.Lucky) or 0
+			if lucky <= 0 then
+				return "Rainbow coins"
+			end
+			return shortPercent(lucky) .. " Lucky coins"
+		elseif kind == "FoodMachine" then
+			return "Feeds fill " .. shortPercent(e.FeedShare) .. " of a bar"
+		elseif kind == "Training" then
 			local slots = tonumber(e.Slots) or 0
-			return slots .. (slots == 1 and " pet slot" or " pet slots")
-		elseif kind == "Kitchen" then
-			return tostring(e.Queue or e.Slots or 0) .. " dishes, x" .. shortNumber(e.CookSpeed or 1) .. " speed"
-		elseif kind == "Gym" then
-			local slots = tonumber(e.Slots) or 0
-			return slots .. (slots == 1 and " slot, " or " slots, ") .. tostring(e.XpPerMinute or 0) .. " XP/min"
+			return slots .. (slots == 1 and " pet trains" or " pets train") .. " at once"
 		elseif kind == "Vault" then
 			return "Offline " .. shortPercent(e.OfflinePercent) .. " for " .. tostring(e.OfflineHours or 0) .. "h"
 		elseif kind == "House" then
@@ -5248,7 +5024,8 @@ do
 		return nil
 	end
 
-	-- the Garden pets that earn (Economy pets in unlocked slots), as TycoonCatalog.IncomePerSecond entries
+	-- the Garden pets that eat (any role, open places, not training), as a slot -> TycoonCatalog.IncomePerSecond entry
+	-- map (only places 1..GardenSlots count)
 	local function gardenEntries(home)
 		local entries = {}
 		local slots = P2.catalogCall("GardenSlots", home) or 0
@@ -5257,22 +5034,22 @@ do
 			local key = garden[slot]
 			if type(key) == "string" then
 				local def = P2.defOfKey(key)
-				if def and def.Role == "Economy" and State.OwnedCount(key) > 0 then
-					entries[#entries + 1] = { Def = def, Level = (P2.petLevel(key)) }
+				if def and State.OwnedCount(key) > 0 and not P2.job(key) then
+					entries[slot] = { Def = def, Level = (P2.petLevel(key)), Stage = P2.stage(key), Key = key }
 				end
 			end
 		end
 		return entries
 	end
 
-	-- cash/s, { Press, Garden, Multiplier } computed here (the plot's IncomePerSecond attribute wins when present)
+	-- cash/s, { Food, Pets, Lucky, Multiplier } computed here (the plot's IncomePerSecond attribute wins when present)
 	local function homeIncome(home)
 		local total, parts = P2.catalogCall("IncomePerSecond", home, gardenEntries(home))
 		if type(total) ~= "number" then
-			return 0, { Press = 0, Garden = 0, Multiplier = 1 }
+			return 0, { Food = 0, Pets = 0, Lucky = 1, Multiplier = 1 }
 		end
 		if type(parts) ~= "table" then
-			parts = { Press = total, Garden = 0, Multiplier = 1 }
+			parts = { Food = 0, Pets = 0, Lucky = 1, Multiplier = 1 }
 		end
 		return total, parts
 	end
@@ -5299,7 +5076,8 @@ do
 		return folder
 	end
 
-	-- collector cash, cap, income/s, income parts: the plot's live attributes, else computed from the synced home
+	-- coins waiting on the lawn, income/s, income parts, open garden places: the plot's live attributes (CollectorCash,
+	-- IncomePerSecond, GardenSlots), else computed from the synced home
 	local function homeLive(home)
 		local folder = plotFolder()
 		local localIncome, parts = homeIncome(home)
@@ -5311,11 +5089,11 @@ do
 		if type(cash) ~= "number" then
 			cash = tonumber(home.CollectorCash) or 0
 		end
-		local cap = folder and folder:GetAttribute("CollectorCap")
-		if type(cap) ~= "number" then
-			cap = P2.catalogCall("CollectorCap", home, income) or 0
+		local open = folder and folder:GetAttribute("GardenSlots")
+		if type(open) ~= "number" then
+			open = P2.catalogCall("GardenSlots", home) or 0
 		end
-		return cash, cap, income, parts
+		return cash, income, parts, open
 	end
 
 	function buildHome(win)
@@ -5414,44 +5192,39 @@ do
 			TextTruncate = Enum.TextTruncate.AtEnd,
 		})
 
-		-- the Collector: cash waiting / cap, Collect
-		local collector = card("CollectorCard", 3, 134)
-		makeText(collector, "Caption", "Collector", "Heading", 19, MUTED, {
+		-- the Pet Garden: coins waiting on the lawn, coins per minute, places, the legacy lines (no Collect: kids walk
+		-- over their coins)
+		local garden = card("GardenCard", 3, 168)
+		makeText(garden, "Caption", G.Seedling .. " Pet Garden", "Heading", 19, MUTED, {
 			Position = UDim2.fromOffset(14, 8),
-			Size = UDim2.new(0.5, -14, 0, 24),
+			Size = UDim2.new(0.6, -14, 0, 24),
 			TextXAlignment = Enum.TextXAlignment.Left,
 		})
-		H.CollectorCap = makeText(collector, "Cap", "", "Heading", 18, MUTED, {
+		H.Places = makeText(garden, "Places", "", "Heading", 18, Theme.Lighten(C2.Kind.Garden, 0.35), {
 			AnchorPoint = Vector2.new(1, 0),
 			Position = UDim2.new(1, -14, 0, 8),
-			Size = UDim2.new(0.6, 0, 0, 24),
+			Size = UDim2.new(0.45, 0, 0, 24),
 			TextXAlignment = Enum.TextXAlignment.Right,
 		})
-		H.CollectorBar = CloudUI.Bar({
-			Name = "CollectorBar",
-			Position = UDim2.fromOffset(14, 36),
-			Size = UDim2.new(1, -28, 0, 30),
-			Height = 30,
-			TextSize = 21,
-			Color = C2.Cash,
-			Parent = collector,
+		H.CoinsWaiting = makeText(garden, "CoinsWaiting", "", "Display", 28, C2.Cash, {
+			Position = UDim2.fromOffset(14, 34),
+			Size = UDim2.new(1, -28, 0, 34),
+			TextXAlignment = Enum.TextXAlignment.Left,
+			TextScaled = true,
 		})
-		H.CollectButton = CloudUI.Button({
-			Name = "Collect",
-			Text = "Collect",
-			Style = "Green",
-			AnchorPoint = Vector2.new(0.5, 1),
-			Position = UDim2.new(0.5, 0, 1, -10),
-			Size = UDim2.new(1, -28, 0, 50),
-			TextSize = 24,
-			Callback = function()
-				if not P2.hasHome() then
-					showHint("Claim a home first: press E at a free gate.", "info")
-					return
-				end
-				fireKeyed("HomeAction:Collect", "HomeAction", "Collect")
-			end,
-			Parent = collector,
+		Util.Create("UITextSizeConstraint", { MaxTextSize = 28, MinTextSize = 20, Parent = H.CoinsWaiting })
+		H.CoinsPerMin = makeText(garden, "CoinsPerMinute", "", "Heading", 18, WHITE, {
+			Position = UDim2.fromOffset(14, 70),
+			Size = UDim2.new(1, -28, 0, 24),
+			TextXAlignment = Enum.TextXAlignment.Left,
+			TextTruncate = Enum.TextTruncate.AtEnd,
+		})
+		H.GardenTip = makeText(garden, "Tip", "", "Body", 18, MUTED, {
+			Position = UDim2.fromOffset(14, 96),
+			Size = UDim2.new(1, -28, 0, 64),
+			TextWrapped = true,
+			TextXAlignment = Enum.TextXAlignment.Left,
+			TextYAlignment = Enum.TextYAlignment.Top,
 		})
 
 		-- prestige: stars, Home Level progress, the requirement, the reward, the button
@@ -5789,9 +5562,10 @@ do
 				local P = TycoonCatalog and TycoonCatalog.Prestige or {}
 				local gems = P2.catalogCall("PrestigeGems", stars + 1) or P.GemReward or 0
 				local mult = P2.catalogCall("PrestigeMultiplier", stars + 1) or ((P.IncomeMultiplier or 1.25) ^ (stars + 1))
-				H.ConfirmLines.Reset.Text = "Your Cash, the Collector and your stations"
-				H.ConfirmLines.Keep.Text = "Pets, levels, food, Garden pets and decor"
-				local gain = "Star " .. (stars + 1) .. ": x" .. shortNumber(math.floor(mult * 100 + 0.5) / 100) .. " income and " .. commas(gems) .. " Gems"
+				H.ConfirmLines.Reset.Text = "Your Cash, the coins on the lawn and your stations (the Garden stays)"
+				H.ConfirmLines.Keep.Text = "Pets, levels, evolutions, training, Garden pets, food and decor"
+				local places = math.min(tonumber(P.GardenSlotsMax) or 12, (tonumber(P.GardenSlotsBase) or 3) + (tonumber(P.GardenSlotsPerStar) or 1) * (stars + 1))
+				local gain = "Star " .. (stars + 1) .. ": x" .. shortNumber(math.floor(mult * 100 + 0.5) / 100) .. " coins, garden place " .. places .. " and " .. commas(gems) .. " Gems"
 				if stars + 1 == (tonumber(P.FusionUnlock) or 1) then
 					gain = gain .. ", the Fusion Machine"
 				end
@@ -5934,7 +5708,7 @@ do
 				H.PrestigeNeed.TextColor3 = C2.Lock
 			end
 			local gems = P2.catalogCall("PrestigeGems", stars + 1) or P.GemReward or 0
-			local reward = "Reward: x" .. shortNumber(P.IncomeMultiplier or 1.25) .. " income + " .. commas(gems) .. " Gems"
+			local reward = "Reward: x" .. shortNumber(P.IncomeMultiplier or 1.25) .. " coins forever, +1 garden place, " .. commas(gems) .. " Gems"
 			if stars + 1 == (tonumber(P.FusionUnlock) or 1) then
 				reward = reward .. " + the Fusion Machine"
 			end
@@ -5945,38 +5719,55 @@ do
 
 		function H.Live()
 			local home = P2.homeData()
-			local cash, cap, income, parts = homeLive(home)
+			local waiting, income, parts, open = homeLive(home)
 			H.Income.Text = P2.formatRate(income) .. "/s"
 			local bits = {}
 			local mult = 1
 			if type(parts) == "table" then
 				mult = tonumber(parts.Multiplier) or 1
-				local press, garden = tonumber(parts.Press) or 0, tonumber(parts.Garden) or 0
-				-- the server's live total wins: split it the way the local numbers split (the multiplier included)
-				if press + garden > 0 and income > 0 then
-					local k = income / (press + garden)
-					press, garden = press * k, garden * k
+				local food = tonumber(parts.Food) or 0
+				if food > 0 then
+					bits[#bits + 1] = "Food " .. shortNumber(food)
 				end
-				bits[#bits + 1] = "Presses " .. P2.formatRate(press)
-				bits[#bits + 1] = "Pets " .. P2.formatRate(garden)
+				local lucky = tonumber(parts.Lucky) or 1
+				if lucky > 1.0001 then
+					bits[#bits + 1] = "Lucky +" .. shortPercent(lucky - 1)
+				end
+			end
+			if #bits == 0 then
+				bits[1] = "Put pets in your Garden to earn coins"
 			end
 			H.IncomeParts.Text = table.concat(bits, "  " .. G.Bullet .. "  ")
 			-- the prestige multiplier tag (stars x1.25 each)
 			H.Multiplier.Visible = mult > 1.0001
 			H.Multiplier.Text = "x" .. shortNumber(math.floor(mult * 100 + 0.5) / 100)
-			cap = math.max(0, tonumber(cap) or 0)
-			cash = math.max(0, tonumber(cash) or 0)
-			H.CollectorBar.SetFraction(cap > 0 and math.min(1, cash / cap) or 0)
-			H.CollectorBar.SetText(P2.formatCash(cash))
-			if P2.stationLevelOf(home, "Collector") < 1 then
-				H.CollectorCap.Text = "Not built"
+			-- the Garden card
+			waiting = math.max(0, math.floor(tonumber(waiting) or 0))
+			local built = P2.stationLevelOf(home, "Garden") >= 1
+			local P = TycoonCatalog and TycoonCatalog.Prestige or {}
+			local maxPlaces = tonumber(P.GardenSlotsMax) or 12
+			H.CoinsWaiting.Text = P2.formatCash(waiting) .. " waiting"
+			H.CoinsWaiting.TextColor3 = waiting > 0 and C2.Cash or MUTED
+			H.CoinsPerMin.Text = "Coins " .. P2.formatCash(math.floor(income * 60 + 0.5)) .. "/min"
+			H.Places.Text = built and ("Places " .. math.floor(open) .. "/" .. maxPlaces) or "Not built"
+			local tips = {}
+			local legacySlots = tonumber(home.LegacySlots)
+			local kept = legacySlots and legacySlots > (tonumber(P.GardenSlotsBase) or 3) + math.floor(tonumber(home.Prestige) or 0)
+			if not built then
+				tips[1] = "Build your free Pet Garden: pets eat there and pop out rainbow coins."
+			elseif kept or home.LegacyPrices == true then
+				tips[1] = "Walk over your rainbow coins to scoop them!"
+				if kept and home.LegacyPrices == true then
+					tips[2] = "Kept from your old home: " .. math.floor(legacySlots) .. " places and old prices until your next Prestige."
+				elseif kept then
+					tips[2] = "Kept from your old garden: " .. math.floor(legacySlots) .. " places until your next Prestige."
+				else
+					tips[2] = "Old prices until your next Prestige."
+				end
 			else
-				H.CollectorCap.Text = "Max " .. P2.formatCash(cap)
+				tips[1] = "Walk over your rainbow coins to scoop them! " .. tostring(P.GardenSlotsBase or 3) .. " places + 1 per prestige."
 			end
-			local full = cap > 0 and cash >= cap
-			H.CollectorBar.SetColor(full and GOLD or C2.Cash)
-			CloudUI.SetDisabled(H.CollectButton, cash < 1 or not P2.hasHome() or inMatch())
-			H.CollectButton.Text = full and "Collect (full!)" or "Collect"
+			H.GardenTip.Text = table.concat(tips, " ")
 		end
 
 		function H.Refresh()
@@ -6076,7 +5867,7 @@ do
 			local folder = plotFolder()
 			if folder then
 				Home.Conns[#Home.Conns + 1] = folder.AttributeChanged:Connect(function(name)
-					if name == "CollectorCash" or name == "CollectorCap" or name == "IncomePerSecond" or name == "HomeLevel" or name == "Prestige" then
+					if name == "CollectorCash" or name == "GardenSlots" or name == "IncomePerSecond" or name == "HomeLevel" or name == "Prestige" then
 						refreshHomeLive()
 					end
 				end)
@@ -6118,7 +5909,7 @@ end
 -- Team window (Phase 3): three battle-team presets, slots 1-3 (+ slot 4 at Prestige 1), the pet picker with element
 -- badges, levels and battle stats, live synergy (BattleCatalog.SynergyBonus), the element wheel and the team power.
 -- Edits show at once (a local draft) and are sent as BattleRequest("TeamSet", preset, keys) after a short pause; the
--- server validates everything (owned, unique, not busy in the Garden / Gym, slot 4 rule) and ProfileSync brings the
+-- server validates everything (owned, unique, not in training, slot 4 rule) and ProfileSync brings the
 -- saved presets back. "Use this team" sends BattleRequest("TeamSelect", preset).
 ----------------------------------------------------------------------
 -- (defined inside a function, not a do-block: the main chunk is at Lua's 200-local limit)
@@ -6263,24 +6054,10 @@ P3.Define = function()
 		return a
 	end
 
-	-- copies of a key working in the Garden / Gym (a team needs a free copy)
-	local function placedCount(key)
-		local home = P2.homeData() or {}
-		local n = 0
-		for _, map in ipairs({ home.Garden, home.Gym }) do
-			if type(map) == "table" then
-				for _, k in pairs(map) do
-					if k == key then
-						n = n + 1
-					end
-				end
-			end
-		end
-		return n
-	end
-
+	-- Phase 4: garden pets join teams too; a pet in training stays in its preset but sits out the fights until it is
+	-- done (the server skips it at read time), so its tile only says "Training"
 	local function freeCopies(key)
-		return State.OwnedCount(key) - placedCount(key)
+		return State.OwnedCount(key)
 	end
 
 	local function entryOf(key)
@@ -6423,7 +6200,7 @@ P3.Define = function()
 			end
 		end
 		if freeCopies(key) < 1 then
-			showHint("That pet is busy in your Garden or Gym.", "info")
+			showHint("You have no free copy of that pet.", "info")
 			return
 		end
 		local slots = slotCount()
@@ -7216,20 +6993,13 @@ P3.Define = function()
 			end
 		end
 		ui.Order = {}
-		local home = P2.homeData() or {}
 		for index, row in ipairs(rows) do
 			local tile = ui.Tiles[row.Key] or buildTile(ui, row.Key)
 			tile.Button.LayoutOrder = index
 			ui.Order[index] = row.Key
 			local busy = nil
-			if freeCopies(row.Key) < 1 then
-				local inGym = false
-				for _, k in pairs(home.Gym or {}) do
-					if k == row.Key then
-						inGym = true
-					end
-				end
-				busy = inGym and "In the Gym" or "In the Garden"
+			if P2.job(row.Key) then
+				busy = "Training"
 			end
 			paintTile(tile, row.Entry, slotOf[row.Key], busy)
 		end
@@ -8245,12 +8015,39 @@ end
 -- Wiring
 ----------------------------------------------------------------------
 -- OpenPanel(panelId, args): the server opens windows (roulette / item shop prompts, the tutorial).
-local function onOpenPanel(panelId, args)
+local function onOpenPanel(panelId, args, fromRemote)
 	if type(panelId) ~= "string" then
 		return
 	end
 	args = type(args) == "table" and args or {}
 	local key = panelId:lower()
+	-- Phase 4: the Food Machine list, the garden picker, the Training Place and the EVOLVE moment are CareController's
+	-- windows (it hears the OpenPanel remote itself; calls made on the client are forwarded)
+	local careId = nil
+	if key == "feed" or (key == "pets" and args.Action == "Feed") then
+		careId = "Feed"
+	elseif key == "pets" and args.Action == "Garden" then
+		careId = "Garden"
+	elseif key == "train" or key == "training" then
+		careId = "Train"
+	elseif key == "evolve" then
+		careId = "Evolve"
+	end
+	if careId then
+		local care = P2.care()
+		if care then
+			if not fromRemote then
+				safe("care open", care.Open, careId, args)
+			end
+			return
+		end
+		if careId ~= "Feed" and careId ~= "Garden" then
+			return
+		end
+		-- (no CareController in this build: the Pets panel on that pet)
+		args = { Tab = "Pets", Key = args.Key }
+		key = "pets"
+	end
 	if key == "shop" then
 		if inMatch() then
 			return
@@ -8258,8 +8055,8 @@ local function onOpenPanel(panelId, args)
 		openWindow("Shop", args)
 	elseif key == "inventory" or key == "items" then
 		openWindow("Inventory", args)
-	elseif key == "pets" or key == "feed" then
-		openWindow("Inventory", { Tab = "Pets", Action = (key == "feed") and "Feed" or args.Action, Key = args.Key })
+	elseif key == "pets" then
+		openWindow("Inventory", { Tab = "Pets", Action = args.Action, Key = args.Key })
 	elseif key == "home" or key == "spot" then
 		if inMatch() then
 			return
@@ -8347,7 +8144,7 @@ local function connectRemotes()
 	local okOpen, openRemote = pcall(Remotes.Get, "OpenPanel")
 	if okOpen and openRemote then
 		openRemote.OnClientEvent:Connect(function(panelId, args)
-			safe("OpenPanel", onOpenPanel, panelId, args)
+			safe("OpenPanel", onOpenPanel, panelId, args, true)
 		end)
 	else
 		warn("[MenuController] OpenPanel remote is unavailable: " .. tostring(openRemote))
@@ -8411,10 +8208,17 @@ function MenuController.GetButton(id)
 	return entry and entry.Button or nil
 end
 
--- Opens Pets with the Feed picker of that pet copy (key; nil = the selected / first pet).
+-- Opens the Food Machine list (CareController) with that pet copy first (key; nil = the garden pets first).
 function MenuController.OpenFeed(key)
 	if initialized then
 		onOpenPanel("Pets", { Action = "Feed", Key = key })
+	end
+end
+
+-- The menu's side hint (CareController's local refusals use it too; never in the screen centre).
+function MenuController.Hint(text, kind)
+	if initialized and type(text) == "string" then
+		showHint(text, kind)
 	end
 end
 

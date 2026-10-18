@@ -25,8 +25,18 @@
 --                    Prestige mid-pile zeroes bank + piles, keeps the Garden at L1, opens place 4 and clears LegacySlots;
 --                    the one-time welcome toast of a migrated veteran (P4Veteran -> P4Welcome, never twice);
 --                    ClearCoins (the developer reset)
---   CLIENT (wave 3, homefx): client_p4garden_* scenarios are added to this file by the homefx engineer (heaps follow
---   CoinPiles, the zip and "+$" only for the owner and at the pile, others' piles dimmed, pools <= 40).
+--   CLIENT (wave 3, homefx): HomeFx draws the garden from the plot attributes (two built test homes, ours and a
+--   neighbour's, ARGS.context "client"):
+--   client_p4garden_heaps  the heap of a place follows CoinPiles (stage, '*' Lucky sparkle) at its CoinPoint and goes
+--                          with the pile; another player's heaps are dimmed and never move; 12 eating pets for 30 s
+--                          pop ~1 coin per meal each as pooled parts (<= 40 alive / made), nothing piles up; a visitor
+--                          at another player's pile sees "Only the owner can pick these up" once, at the pile
+--   client_p4garden_scoop  the owner's scooped pile (bank drop + Cash rise + pile gone): coins zip from it to the owner
+--                          and a pixel "+$1,234" label floats AT THE PILE (never over the head); out of reach, other
+--                          players' piles and a Prestige show no zip / no label; the scoop ring only in the own
+--                          garden; no ScreenGui added (nothing in the screen centre)
+--   client_p4garden_cards  PetCards: own garden pets mode Garden "Lv n" + stars (GardenInfo), own training pets the
+--                          purple timer counting down, others' garden pets level only (mode Other), only within 40 studs
 -- Plain Lua 5.1 syntax only.
 
 local T = SmokeCommon.T
@@ -36,9 +46,447 @@ local CONTEXT = (ARGS and ARGS.context) or "server"
 
 local abs, floor = math.abs, math.floor
 
+----------------------------------------------------------------------------------------------------
+-- CLIENT half (wave 3, homefx): HomeFx draws the garden from the plot attributes (contract 3.2 / 3.3 / 3.9 / 6)
+----------------------------------------------------------------------------------------------------
+local function clientScenarios()
+	local KC = _G.KC
+	local CS = {}
+	local Players = game:GetService("Players")
+	local LocalPlayer = Players.LocalPlayer
+	local max, min, huge = math.max, math.min, math.huge
+
+	local function advance(seconds)
+		KC.advance(seconds)
+	end
+
+	local function moduleAt(top, rest)
+		local inst = Mock.GetPath(ROOTS[top] .. "/" .. rest)
+		if not inst then
+			return nil
+		end
+		local ok, result = pcall(require, inst)
+		return ok and type(result) == "table" and result or nil
+	end
+
+	local function flat(a, b)
+		return (Vector3.new(a.X, 0, a.Z) - Vector3.new(b.X, 0, b.Z)).Magnitude
+	end
+
+	local function partsOf(root)
+		local out = {}
+		if root and root:IsA("BasePart") then
+			out[#out + 1] = root
+		end
+		for _, d in ipairs(root and root:GetDescendants() or {}) do
+			if d:IsA("BasePart") then
+				out[#out + 1] = d
+			end
+		end
+		return out
+	end
+
+	-- a test world: two built homes (ours and a neighbour's) far from everything, the camera and the local player
+	-- next to ours; returns a context table and a cleanup function
+	local function setup(tag, x)
+		local HF = KC.M.HomeFx or moduleAt("client", "Controllers/HomeFx")
+		local HB = moduleAt("server", "Services/HomeBuilder")
+		local TC = moduleAt("shared", "TycoonCatalog")
+		local PC = moduleAt("shared", "PetCatalog")
+		if not (HF and HB and TC and PC and type(HF.Garden) == "function") then
+			T.fail("p4 garden client: HomeFx (with HomeFx.Garden) / HomeBuilder / TycoonCatalog / PetCatalog load in the client world")
+			return nil
+		end
+		HF.Init()
+		local ids = {}
+		for _, d in ipairs(PC.Pets) do
+			if d.Role == "Economy" and not d.EventOnly and #ids < 12 then
+				ids[#ids + 1] = d.Id
+			end
+		end
+		for _, d in ipairs(PC.Pets) do
+			if d.Role ~= "Economy" and not d.EventOnly and #ids < 12 then
+				ids[#ids + 1] = d.Id
+			end
+		end
+		local root = Instance.new("Folder")
+		root.Name = "SmokeP4Garden" .. tag
+		root.Parent = workspace
+		local neighbour = Mock.AddPlayer("GardenNeighbour" .. tag, 8800 + #tag, { character = false })
+		local base = CFrame.new(x, 300, -7000)
+		local function makeSpot(index, cf, owner)
+			local f = Instance.new("Folder")
+			f.Name = string.format("Spot_%02d", index)
+			f.Parent = root
+			local spot = { Index = index, PlotCFrame = cf, PlotSize = TC.PlotSize, Center = cf.Position, Folder = f }
+			HB.PreparePlot(spot)
+			HB.SetOwner(spot, owner)
+			HB.BuildHome(spot, { Stations = { Press1 = 3, Collector = 1, House = 1, Garden = 2, Kitchen = 1, Gym = 2 }, Prestige = 9 })
+			if type(HB.SetGarden) == "function" then
+				HB.SetGarden(spot, {}, 12)
+			end
+			f:SetAttribute("GardenSlots", 12)
+			return spot
+		end
+		local mine = makeSpot(91, base, LocalPlayer)
+		local theirs = makeSpot(92, base * CFrame.new(80, 0, 0), neighbour)
+		local def = TC.Get("Garden")
+		local frame = base * def.Slot.CFrame
+		local frameTheirs = theirs.PlotCFrame * def.Slot.CFrame
+		local character = LocalPlayer.Character
+		local hrp = character and character:FindFirstChild("HumanoidRootPart")
+		local saved = { Hrp = hrp and hrp.CFrame, Anchored = hrp and hrp.Anchored, Cam = workspace.CurrentCamera and workspace.CurrentCamera.CFrame }
+		if hrp then
+			hrp.Anchored = true
+		end
+		local ctx = {
+			HF = HF, HB = HB, TC = TC, Ids = ids, Mine = mine, Theirs = theirs, Neighbour = neighbour, Hrp = hrp,
+			Pile = function(slot, other)
+				local cp = TC.CoinPoint(slot)
+				return ((other and frameTheirs) or frame):PointToWorldSpace(Vector3.new(cp.X, 0.62, cp.Z))
+			end,
+			Frame = frame,
+			Gym = base * TC.Get("Gym").Slot.CFrame,
+		}
+		function ctx.standAt(pos)
+			if hrp then
+				hrp.CFrame = CFrame.new(pos + Vector3.new(0, 3, 0))
+			end
+			local cam = workspace.CurrentCamera
+			if cam then
+				cam.CFrame = CFrame.lookAt(pos + Vector3.new(0, 18, -26), pos)
+			end
+		end
+		function ctx.g(spot)
+			return HF.Garden((spot or mine).Folder) or { Heaps = {}, Bowls = {}, Pets = {}, Training = {} }
+		end
+		local function cleanup()
+			if hrp and saved.Hrp then
+				hrp.CFrame = saved.Hrp
+				hrp.Anchored = saved.Anchored
+			end
+			if workspace.CurrentCamera and saved.Cam then
+				workspace.CurrentCamera.CFrame = saved.Cam
+			end
+			LocalPlayer:SetAttribute("Cash", nil)
+			root:Destroy()
+			Mock.RemovePlayer(neighbour)
+			advance(0.5)
+		end
+		ctx.standAt(mine.PlotCFrame * def.Slot.CFrame.Position)
+		advance(0.5)
+		return ctx, cleanup
+	end
+
+	local function noWarnings(label, outputBefore, errorsBefore)
+		local warned = nil
+		for i = outputBefore + 1, #Mock.Output do
+			local o = Mock.Output[i]
+			if o.kind == "warn" and (o.text:find("HomeFx", 1, true) or o.text:find("PetCard", 1, true)) then
+				warned = o.text
+			end
+		end
+		T.check(warned == nil and #Mock.Errors == errorsBefore, label .. ": no errors or warnings from HomeFx", tostring(warned))
+	end
+
+	-- heaps follow CoinPiles; another player's heaps are dimmed and still; pools stay small with 12 eating pets
+	CS.client_p4garden_heaps = guarded("client_p4garden_heaps", function()
+		local outputBefore, errorsBefore = #Mock.Output, #Mock.Errors
+		local ctx, cleanup = setup("Heaps", 9000)
+		if not ctx then
+			return
+		end
+		local ok, err = pcall(function()
+			local mine, theirs, HF = ctx.Mine, ctx.Theirs, ctx.HF
+			local seq = { { "1=1", 1, false }, { "1=3", 3, false }, { "1=5*", 5, true }, { "1=5F*", 5, true } }
+			local good = 0
+			for _, step in ipairs(seq) do
+				mine.Folder:SetAttribute("CoinPiles", step[1])
+				advance(0.15)
+				local h = ctx.g().Heaps[1]
+				if h and h.Stage == step[2] and h.Lucky == step[3] and flat(h.Point, ctx.Pile(1)) < 0.05 then
+					good = good + 1
+				end
+			end
+			T.check(good == #seq, "p4 garden client: the heap of a place follows CoinPiles (stage 1 -> 3 -> 5, '*' a Lucky sparkle) at its CoinPoint", good .. " of " .. #seq)
+			mine.Folder:SetAttribute("CoinPiles", "")
+			advance(0.15)
+			T.check(next(ctx.g().Heaps) == nil, "p4 garden client: ...and goes when the pile is gone")
+			-- another player's coins: dimmed, never moving
+			theirs.Folder:SetAttribute("CoinPiles", "1=4*;5=2;W=5")
+			advance(0.3)
+			local tg = ctx.g(theirs)
+			local dimOk = tg.Dim and tg.Heaps[1] and tg.Heaps[1].Dim and not tg.Heaps[1].Lucky and tg.Heaps.W ~= nil
+			local trans = huge
+			for _, p in ipairs(partsOf(tg.Heaps[1] and tg.Heaps[1].Model)) do
+				trans = min(trans, p.Transparency)
+			end
+			T.check(dimOk and trans >= 0.25, "p4 garden client: another player's heaps are drawn dimmed (no Lucky sparkle)", "min transparency " .. tostring(trans))
+			mine.Folder:SetAttribute("CoinPiles", "1=3")
+			advance(0.15)
+			local mh = ctx.g().Heaps[1]
+			local mtrans = huge
+			for _, p in ipairs(partsOf(mh and mh.Model)) do
+				mtrans = min(mtrans, p.Transparency)
+			end
+			T.check(mh and not mh.Dim and mtrans < 0.05, "p4 garden client: ...the local player's own heaps are not")
+			local before = {}
+			for _, p in ipairs(partsOf(tg.Heaps[1] and tg.Heaps[1].Model)) do
+				before[p] = p.CFrame.Position
+			end
+			advance(3)
+			local movedParts = 0
+			for p, pos in pairs(before) do
+				if (p.CFrame.Position - pos).Magnitude > 1e-4 then
+					movedParts = movedParts + 1
+				end
+			end
+			T.check(next(before) ~= nil and movedParts == 0, "p4 garden client: ...and they never move", movedParts .. " parts moved")
+			-- 12 eating pets in our garden for 30 s: flying coins pooled (<= 40), nothing created per frame
+			local list = {}
+			for i = 1, 12 do
+				list[#list + 1] = i .. "=" .. ctx.Ids[i]
+			end
+			mine.Folder:SetAttribute("GardenPets", table.concat(list, ";"))
+			advance(3)
+			local fx = workspace.ClientFx:FindFirstChild("HomeFx")
+			local st0 = HF.Stats()
+			local most, desc0, descMost = 0, Mock.CountDescendants(fx), 0
+			for _ = 1, 150 do
+				advance(0.2)
+				most = max(most, tonumber(HF.Stats().Coins) or 0)
+				descMost = max(descMost, Mock.CountDescendants(fx))
+			end
+			local st1 = HF.Stats()
+			local drops = (tonumber(st1.Drops) or 0) - (tonumber(st0.Drops) or 0)
+			T.check((tonumber(st1.GardenPets) or 0) >= 12, "p4 garden client: (12 garden pets stand in our garden)", tostring(st1.GardenPets))
+			T.check(drops >= 30 and drops <= 60, "p4 garden client: 12 eating pets pop about one coin per meal each (30 s)", drops .. " coins")
+			T.check(most <= 40 and (tonumber(st1.CoinPool) or 0) <= 40, "p4 garden client: ...as pooled coin parts (<= 40 alive, <= 40 ever made)",
+				"at most " .. most .. " flying, " .. tostring(st1.CoinPool) .. " made")
+			T.check(descMost - desc0 <= 120, "p4 garden client: ...nothing piles up in the effect folder (no Instance per coin)", desc0 .. " -> at most " .. descMost)
+			-- a visitor next to another player's pile: the one-time hint "Only the owner can pick these up", at the pile
+			ctx.standAt(ctx.Pile(1, true) + Vector3.new(1.5, 0, 0))
+			advance(1.2)
+			local st = HF.Stats()
+			T.check(st.Hint == "Only the owner can pick these up", "p4 garden client: a visitor at another player's pile sees the hint once", tostring(st.Hint))
+			local hint = nil
+			for _, d in ipairs(fx:GetDescendants()) do
+				if d:IsA("BillboardGui") and d.Name == "OwnerHint" and d.Parent and d.Parent.Parent == fx then
+					hint = d
+				end
+			end
+			local label = hint and hint:FindFirstChild("Text")
+			T.check(hint ~= nil and hint.Parent:IsA("BasePart") and flat(hint.Parent.Position, ctx.Pile(1, true)) < 0.5 and hint.Size.X.Scale == 0 and hint.Size.Y.Scale == 0
+				and label and label.TextSize >= 15, "p4 garden client: ...a pixel-sized label at the pile (never in the screen centre)")
+			ctx.standAt(ctx.Pile(1) + Vector3.new(0, 0, -30))
+			advance(1.0)
+			ctx.standAt(ctx.Pile(5, true) + Vector3.new(1, 0, 0))
+			advance(4.0)
+			local shownAgain = false
+			for _, d in ipairs(fx:GetDescendants()) do
+				if d:IsA("BillboardGui") and d.Name == "OwnerHint" and d.Parent and d.Parent.Parent == fx then
+					shownAgain = true
+				end
+			end
+			T.check(not shownAgain, "p4 garden client: ...and never again")
+		end)
+		cleanup()
+		if not ok then
+			T.fail("p4 garden client: heaps scenario raised an error", tostring(err))
+		end
+		noWarnings("p4 garden client heaps", outputBefore, errorsBefore)
+		KC.flushErrors("client_p4garden_heaps")
+	end)
+
+	-- the scoop: only the owner's piles zip to them, the "+$" label at the pile
+	CS.client_p4garden_scoop = guarded("client_p4garden_scoop", function()
+		local outputBefore, errorsBefore = #Mock.Output, #Mock.Errors
+		local ctx, cleanup = setup("Scoop", 9600)
+		if not ctx then
+			return
+		end
+		local ok, err = pcall(function()
+			local mine, theirs, HF, hrp = ctx.Mine, ctx.Theirs, ctx.HF, ctx.Hrp
+			local pg = LocalPlayer:FindFirstChildOfClass("PlayerGui")
+			local screens0 = 0
+			for _, c in ipairs(pg and pg:GetChildren() or {}) do
+				if c:IsA("ScreenGui") then
+					screens0 = screens0 + 1
+				end
+			end
+			LocalPlayer:SetAttribute("Cash", 100)
+			mine.Folder:SetAttribute("CollectorCash", 5000)
+			mine.Folder:SetAttribute("CoinPiles", "1=4;2=3;W=5")
+			-- stand 3 studs from pile 1 (inside the Coin Magnet's 9 studs), far from the Welcome-back pile
+			local p1 = ctx.Pile(1)
+			ctx.standAt(p1 + (ctx.Frame.RightVector * 0) + Vector3.new(0, 0, 0) + ctx.Frame.LookVector * 3)
+			advance(0.6)
+			local g = ctx.g()
+			T.check(g.Heaps[1] and g.Heaps[2] and g.Heaps.W and g.Radius == 9, "p4 garden client: (precondition) three heaps, Coin Magnet L1 radius 9", tostring(g.Radius))
+			T.check(HF.Stats().Ring == true, "p4 garden client: standing in their garden, the owner sees the faint scoop ring")
+			local st0 = HF.Stats()
+			-- the server scoops pile 1: the bank drops, the Cash rises, the pile is gone (any order, one moment)
+			LocalPlayer:SetAttribute("Cash", 1334)
+			mine.Folder:SetAttribute("CollectorCash", 3766)
+			mine.Folder:SetAttribute("CoinPiles", "2=3;W=5")
+			advance(0.05)
+			local st1 = HF.Stats()
+			T.check((tonumber(st1.Zips) or 0) == (tonumber(st0.Zips) or 0) + 1 and (tonumber(st1.Coins) or 0) >= 3,
+				"p4 garden client: the owner's scooped pile: coins zip from it", tostring(st1.Coins) .. " coins flying")
+			local fx = workspace.ClientFx:FindFirstChild("HomeFx")
+			local nearest = huge
+			for _ = 1, 4 do
+				advance(0.08)
+				for _, p in ipairs(fx:GetChildren()) do
+					if p:IsA("BasePart") and p.Name == "FlyingCoin" then
+						nearest = min(nearest, (p.Position - hrp.Position).Magnitude)
+					end
+				end
+			end
+			T.check(nearest < 1.5, "p4 garden client: ...to the owner", "closest " .. tostring(nearest))
+			T.check(st1.LastLabel == "+" .. ctx.TC.FormatCash(1234) and st1.LastLabelAt and flat(st1.LastLabelAt, p1) < 0.05,
+				"p4 garden client: ...and a \"+$1,234\" label (the bank's drop) at the pile", tostring(st1.LastLabel))
+			local pop = nil
+			for _, d in ipairs(fx:GetDescendants()) do
+				if d:IsA("BillboardGui") and d.Name == "ScoopPop" and d.Parent and d.Parent.Parent == fx then
+					pop = d
+				end
+			end
+			local text = pop and pop:FindFirstChild("Text")
+			T.check(pop ~= nil and flat(pop.Parent.Position, p1) < 0.1 and flat(pop.Parent.Position, hrp.Position) > 2 and pop.Parent.Position.Y < hrp.Position.Y + 1,
+				"p4 garden client: ...never over the player's head (in third person that is the screen centre)")
+			T.check(pop and pop.Size.X.Scale == 0 and pop.LightInfluence == 0 and text and text.TextSize >= 22 and (text.TextStrokeTransparency <= 0.5 or text:FindFirstChild("TextOutline") ~= nil),
+				"p4 garden client: ...a pixel-sized label, >= 22 px with a stroke (World text rule)", text and tostring(text.TextSize) or "no label")
+			advance(2)
+			-- a pile that vanishes out of reach (place 12, the far corner of the garden): no zip
+			mine.Folder:SetAttribute("CoinPiles", "2=3;12=3;W=5")
+			advance(1.0)
+			local st2 = HF.Stats()
+			LocalPlayer:SetAttribute("Cash", 2334)
+			mine.Folder:SetAttribute("CollectorCash", 2766)
+			mine.Folder:SetAttribute("CoinPiles", "2=3;W=5")
+			advance(0.3)
+			T.check((tonumber(HF.Stats().Zips) or 0) == (tonumber(st2.Zips) or 0) and HF.Stats().Labels == st2.Labels,
+				"p4 garden client: a pile out of the owner's reach vanishes without a zip or a label")
+			-- another player's piles never zip to the local player, even standing on them
+			theirs.Folder:SetAttribute("CollectorCash", 4000)
+			theirs.Folder:SetAttribute("CoinPiles", "1=4;2=4")
+			ctx.standAt(ctx.Pile(1, true) + Vector3.new(1, 0, 0))
+			advance(0.6)
+			T.check(HF.Stats().Ring == false, "p4 garden client: no scoop ring in another player's garden")
+			local st3 = HF.Stats()
+			LocalPlayer:SetAttribute("Cash", 3334)
+			theirs.Folder:SetAttribute("CollectorCash", 0)
+			theirs.Folder:SetAttribute("CoinPiles", "")
+			advance(0.3)
+			T.check(HF.Stats().Zips == st3.Zips and HF.Stats().Labels == st3.Labels, "p4 garden client: another player's piles never zip to the local player (only the owner's coins are collectable)")
+			-- a Prestige (bank and Cash to 0, every pile gone) while standing in the garden: no "+$" label
+			ctx.standAt(ctx.Pile(2) + ctx.Frame.LookVector * 2)
+			mine.Folder:SetAttribute("CollectorCash", 2766)
+			mine.Folder:SetAttribute("CoinPiles", "2=3;W=5")
+			advance(1.5)
+			local st4 = HF.Stats()
+			LocalPlayer:SetAttribute("Cash", 0)
+			mine.Folder:SetAttribute("CollectorCash", 0)
+			mine.Folder:SetAttribute("CoinPiles", "")
+			advance(0.5)
+			T.check(HF.Stats().Labels == st4.Labels, "p4 garden client: piles emptied by a Prestige (no Cash gained) show no \"+$\" label")
+			local screens1 = 0
+			for _, c in ipairs(pg and pg:GetChildren() or {}) do
+				if c:IsA("ScreenGui") then
+					screens1 = screens1 + 1
+				end
+			end
+			T.check(screens1 == screens0, "p4 garden client: HomeFx adds nothing to the screen (no ScreenGui: nothing in the screen centre)", screens0 .. " -> " .. screens1)
+			ctx.standAt(ctx.Pile(1) + Vector3.new(0, 0, -60))
+			advance(0.6)
+			T.check(HF.Stats().Ring == false, "p4 garden client: ...and the scoop ring goes when the owner leaves the garden")
+		end)
+		cleanup()
+		if not ok then
+			T.fail("p4 garden client: scoop scenario raised an error", tostring(err))
+		end
+		noWarnings("p4 garden client scoop", outputBefore, errorsBefore)
+		KC.flushErrors("client_p4garden_scoop")
+	end)
+
+	-- PetCards over garden / training pets (contract 3.9): own garden pets level + XP, others' level only, training timers
+	CS.client_p4garden_cards = guarded("client_p4garden_cards", function()
+		local outputBefore, errorsBefore = #Mock.Output, #Mock.Errors
+		local ctx, cleanup = setup("Cards", 10200)
+		if not ctx then
+			return
+		end
+		local ok, err = pcall(function()
+			local mine, theirs, HF = ctx.Mine, ctx.Theirs, ctx.HF
+			local key = ctx.Ids[12]
+			mine.Folder:SetAttribute("GardenPets", "1=" .. key .. ";9=" .. ctx.Ids[11])
+			mine.Folder:SetAttribute("GardenInfo", "1=12:1;9=3:0")
+			theirs.Folder:SetAttribute("GardenPets", "2=" .. ctx.Ids[10])
+			theirs.Folder:SetAttribute("GardenInfo", "2=7:0")
+			local ends = math.floor(workspace:GetServerTimeNow()) + 130
+			mine.Folder:SetAttribute("TrainingPets", "1=" .. ctx.Ids[9] .. ":Ability:" .. ends)
+			ctx.standAt(ctx.Pile(1))
+			advance(1.5)
+			local g = ctx.g()
+			local gp1 = g.Pets[1]
+			local card = g.Pets[1] and g.Pets[1].Card
+			local gui = card and card.Gui
+			local lv = gui and gui:FindFirstChild("Plate") and gui.Plate:FindFirstChild("Level")
+			T.check(card ~= nil and card.mode == "Garden" and lv and lv.Text == "Lv 12", "p4 garden client: an own garden pet carries a PetCard (mode Garden) with its level from GardenInfo",
+				lv and lv.Text or "no card")
+			T.check(lv and lv.TextSize >= 17 and gui.Size.X.Scale == 0 and gui.LightInfluence == 0, "p4 garden client: ...pixel-sized (World text rule)")
+			local stars = gui and gui:FindFirstChild("StarBadge")
+			T.check(stars ~= nil and stars.Visible ~= false, "p4 garden client: ...with the star of its evolution stage")
+			ctx.standAt(ctx.Gym.Position + ctx.Gym.LookVector * 6)
+			advance(1.2)
+			local tr = ctx.g().Training[1]
+			local tcard = tr and tr.Card
+			local ttext = tcard and tcard.Gui and tcard.Gui:FindFirstChild("Plate") and tcard.Gui.Plate:FindFirstChild("TimerText")
+			T.check(tcard ~= nil and tcard.mode == "Training" and ttext and string.match(ttext.Text, "^%d+:%d%d$") ~= nil,
+				"p4 garden client: an own training pet's card shows the purple timer (m:ss)", ttext and ttext.Text or "no timer")
+			local t0 = ttext and ttext.Text
+			advance(2.2)
+			T.check(ttext and ttext.Text ~= t0, "p4 garden client: ...counting down", tostring(t0) .. " -> " .. tostring(ttext and ttext.Text))
+			-- the far garden pet (place 9, back row) is too far from the player for a card? both are within 40 studs here
+			T.check(gp1 ~= nil and g.Pets[9] and g.Pets[9].Card ~= nil, "p4 garden client: every own garden pet within 40 studs has a card")
+			-- another player's garden pet: level only
+			ctx.standAt(ctx.Pile(2, true))
+			advance(1.2)
+			local og = ctx.g(theirs)
+			local ocard = og.Pets[2] and og.Pets[2].Card
+			local olv = ocard and ocard.Gui and ocard.Gui.Plate:FindFirstChild("Level")
+			local xpRow = ocard and ocard.Gui and ocard.Gui.Plate:FindFirstChild("Xp")
+			T.check(ocard ~= nil and ocard.mode == "Other" and olv and olv.Text == "Lv 7" and (xpRow == nil or not xpRow.Visible),
+				"p4 garden client: another player's garden pet: level only (mode Other)", olv and olv.Text or "no card")
+			local back = ctx.g().Pets[1]
+			T.check(back == nil or back.Card == nil, "p4 garden client: cards only within 40 studs of the player (ours are gone over there)")
+			ctx.standAt(ctx.Pile(1) + Vector3.new(0, 0, -400))
+			advance(1.2)
+			local left = 0
+			for _, spot in ipairs({ mine, theirs }) do
+				for _, e in pairs(ctx.g(spot).Pets) do
+					if e.Card then
+						left = left + 1
+					end
+				end
+			end
+			T.check(left == 0, "p4 garden client: ...and none far away", left .. " cards left")
+		end)
+		cleanup()
+		if not ok then
+			T.fail("p4 garden client: cards scenario raised an error", tostring(err))
+		end
+		noWarnings("p4 garden client cards", outputBefore, errorsBefore)
+		KC.flushErrors("client_p4garden_cards")
+	end)
+
+	return CS
+end
+
 local S = {}
 if CONTEXT ~= "server" then
-	return S -- the client half (client_p4garden_*) lands in wave 3
+	return clientScenarios()
 end
 
 local advance, config, mod = K.advance, K.config, K.mod

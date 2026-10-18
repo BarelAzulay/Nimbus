@@ -1146,7 +1146,7 @@ local function clientScenarios()
 				return d:IsA("ProximityPrompt") and names[d.Name]
 			end)
 		end
-		local ownerOnly = { BuyPrompt = true, CollectPrompt = true, FusionPrompt = true }
+		local ownerOnly = { BuyPrompt = true, GardenSpotPrompt = true, FusionPrompt = true }
 		local theirPrompts = prompts(theirHome, ownerOnly)
 		local enabledTheirs = 0
 		for _, p in ipairs(theirPrompts) do
@@ -1154,7 +1154,7 @@ local function clientScenarios()
 				enabledTheirs = enabledTheirs + 1
 			end
 		end
-		T.check(#theirPrompts >= 5 and enabledTheirs == 0, "HomeFx: every BuyPrompt / CollectPrompt / FusionPrompt of another player's home is disabled on this client",
+		T.check(#theirPrompts >= 5 and enabledTheirs == 0, "HomeFx: every BuyPrompt / GardenSpotPrompt / FusionPrompt of another player's home is disabled on this client",
 			enabledTheirs .. " of " .. #theirPrompts .. " still enabled")
 		local theirSigns = findAll(theirHome, function(d)
 			return d:IsA("BillboardGui") and d.Name == "PadSign"
@@ -1176,8 +1176,8 @@ local function clientScenarios()
 				mineOk = false
 			end
 		end
-		local myCollect = find(mineHome, "CollectPrompt", "ProximityPrompt")
-		T.check(myPads > 0 and mineOk and myCollect ~= nil and myCollect.Enabled, "HomeFx: the owner's own unlocked BuyPrompts and the CollectPrompt stay enabled")
+		local mySpot = find(mineHome, "GardenSpotPrompt", "ProximityPrompt")
+		T.check(myPads > 0 and mineOk and mySpot ~= nil and mySpot.Enabled, "HomeFx: the owner's own unlocked BuyPrompts and the open GardenSpotPrompts stay enabled")
 		-- the server enabling a hidden prompt again: HomeFx hides it again
 		local victim = theirPrompts[1]
 		if victim then
@@ -1188,68 +1188,163 @@ local function clientScenarios()
 		local st = stats()
 		T.check((tonumber(st.HiddenPrompts) or 0) >= #theirPrompts, "HomeFx: Stats() counts the hidden prompts", tostring(st.HiddenPrompts))
 
-		-- the collector screen and tank
-		mineHome:SetAttribute("CollectorCash", 1234)
-		mineHome:SetAttribute("CollectorCap", 5000)
-		advance(0.1)
-		local col = mineHome:FindFirstChild("Station_Collector")
-		local cashLabel = col and find(col, "CashLabel", "TextLabel")
-		local capLabel = col and find(col, "CapLabel", "TextLabel")
-		local fill = col and find(col, "CashFill", "BasePart")
-		local fmtCash = TC.FormatCash or function(n)
-			return "$" .. tostring(n)
-		end
-		T.check(cashLabel and cashLabel.Text == fmtCash(1234) and capLabel and capLabel.Text:find(fmtCash(5000), 1, true),
-			"HomeFx: the Collector screen shows the cash waiting (CollectorCash) and the cap", cashLabel and (cashLabel.Text .. " / " .. (capLabel and capLabel.Text or "?")) or "no labels")
-		local h0 = fill and fill.Size.Y
-		advance(1.5)
-		local h1 = fill and fill.Size.Y
-		local maxFill = fill and tonumber(fill:GetAttribute("FillMax")) or 3
-		T.check(fill and h1 > 0.2 and abs(h1 - maxFill * 1234 / 5000) < 0.3, "HomeFx: the tank's cash fill rises to CollectorCash / CollectorCap", fmt(h0) .. " -> " .. fmt(h1) .. " (max " .. fmt(maxFill) .. ")")
-		mineHome:SetAttribute("CollectorCash", 5000)
-		advance(0.2)
-		T.check(capLabel and capLabel.Text:upper():find("FULL", 1, true), "HomeFx: a full Collector says so", capLabel and capLabel.Text or "")
-
-		-- presses at work: the head stamps, the puff emits, blocks ride the belt into the collector
-		local press = mineHome:FindFirstChild("Station_Press1")
-		local head = press and press:FindFirstChild("PressHead")
-		local headPart = head and parts(head)[1]
-		local rest = headPart and headPart.Position
-		local emitted0 = Mock.Stats_ and Mock.Stats_.particlesEmitted or 0
-		local lowest, blocksSeen = 0, 0
-		local intake = col and col:GetAttribute("Intake")
-		local closest = huge
-		local fx = workspace:FindFirstChild("ClientFx") and workspace.ClientFx:FindFirstChild("HomeFx")
-		for _ = 1, 60 do
-			advance(0.1)
-			if headPart and rest then
-				lowest = max(lowest, rest.Y - headPart.Position.Y)
+		-- the Pet Garden (contract 3.2 / 3.3, client): heaps follow CoinPiles, bowls on the open places, pets eat
+		local PC = moduleAt("shared", "PetCatalog")
+		local petId = nil
+		for _, d in ipairs((PC and PC.Pets) or {}) do
+			if d.Role == "Economy" and not d.EventOnly then
+				petId = d.Id
+				break
 			end
-			fx = fx or (workspace:FindFirstChild("ClientFx") and workspace.ClientFx:FindFirstChild("HomeFx"))
-			if fx then
-				for _, b in ipairs(fx:GetChildren()) do
-					if b:IsA("BasePart") then
-						blocksSeen = max(blocksSeen, #fx:GetChildren())
-						if intake then
-							closest = min(closest, (b.Position - intake).Magnitude)
-						end
+		end
+		local garden = mineHome:FindFirstChild("Station_Garden")
+		local gdef = TC.Get("Garden")
+		local frame = base * gdef.Slot.CFrame
+		local function pileAt(slot)
+			return frame:PointToWorldSpace(Vector3.new(TC.CoinPoint(slot).X, 0, TC.CoinPoint(slot).Z))
+		end
+		local function gstate(folder)
+			return type(HF.Garden) == "function" and HF.Garden(folder) or nil
+		end
+		mine.Folder:SetAttribute("GardenSlots", 3)
+		mine.Folder:SetAttribute("CoinPiles", "1=2;2=5F*;W=5")
+		advance(0.3)
+		local g = gstate(mine.Folder)
+		T.check(type(HF.Garden) == "function" and g ~= nil, "HomeFx: HomeFx.Garden(plot) tells what the client draws in a garden")
+		g = g or { Heaps = {}, Bowls = {}, Pets = {}, Training = {} }
+		local h1, h2, hw = g.Heaps[1], g.Heaps[2], g.Heaps.W
+		local function flat(a, b)
+			return (Vector3.new(a.X, 0, a.Z) - Vector3.new(b.X, 0, b.Z)).Magnitude
+		end
+		T.check(h1 ~= nil and h2 ~= nil and hw ~= nil and h1.Stage == 2 and h2.Stage == 5, "HomeFx: CoinPiles draws a heap per pile (stage 2, stage 5) and the Welcome-back heap",
+			tostring(h1 and h1.Stage) .. " / " .. tostring(h2 and h2.Stage) .. " / " .. tostring(hw ~= nil))
+		T.check(h1 and flat(h1.Point, pileAt(1)) < 0.05 and h2 and flat(h2.Point, pileAt(2)) < 0.05,
+			"HomeFx: ...each heap lies on its TycoonCatalog.CoinPoint (on the walk)")
+		local wp = base:PointToWorldSpace(gdef.Slot.WelcomePile)
+		T.check(hw and flat(hw.Point, wp) < 0.05, "HomeFx: ...and the Welcome-back heap at Garden.Slot.WelcomePile")
+		T.check(h1 and h2 and hw and h1.Parts < h2.Parts and h2.Parts <= 40 and hw.Parts <= 60, "HomeFx: the heap grows with its stage (<= 40 parts, the Welcome-back heap <= 60)",
+			tostring(h1 and h1.Parts) .. " < " .. tostring(h2 and h2.Parts) .. ", W " .. tostring(hw and hw.Parts))
+		T.check(h2 and h2.Lucky and h1 and not h1.Lucky, "HomeFx: a Lucky coin ('*') sparkles on its heap")
+		local nb = 0
+		for slot, b in pairs(g.Bowls) do
+			nb = nb + 1
+			if slot > 3 or not (b.Dish.Parent and b.Food.Parent) then
+				nb = -100
+			end
+		end
+		T.check(nb == 3, "HomeFx: a food bowl (2 client parts) in front of each of the 3 open places", tostring(nb))
+		local food = g.Bowls[1] and g.Bowls[1].Food.Color
+		local carrot = mineHome:FindFirstChild("Station_Press2") and mineHome.Station_Press2:GetAttribute("FruitColor")
+		T.check(food ~= nil and carrot ~= nil and (food.R - carrot.R) ^ 2 + (food.G - carrot.G) ^ 2 + (food.B - carrot.B) ^ 2 < 1e-4,
+			"HomeFx: the bowls hold the fruit of the best plant built (the Carrot Patch here)")
+		local solid = 0
+		for _, pc in ipairs(parts(workspace.ClientFx.HomeFx)) do
+			if pc.CanCollide or pc.CanQuery or pc.CanTouch or not pc.Anchored then
+				solid = solid + 1
+			end
+		end
+		T.check(solid == 0, "HomeFx: heaps, bowls and coins are anchored and never collide, query or touch", solid .. " parts")
+		mine.Folder:SetAttribute("CoinPiles", "1=4;W=5")
+		advance(0.3)
+		g = gstate(mine.Folder) or g
+		T.check(g.Heaps[1] and g.Heaps[1].Stage == 4 and g.Heaps[2] == nil, "HomeFx: a pile that grows swaps its heap, a pile that is gone takes its heap away")
+		local fx = workspace:FindFirstChild("ClientFx") and workspace.ClientFx:FindFirstChild("HomeFx")
+		local homeDesc = Mock.CountDescendants(mineHome)
+
+		if petId then
+			-- garden pets: GardenPets puts Low-detail pets on the cushions; a place above GardenSlots sleeps on its closed bed
+			mine.Folder:SetAttribute("GardenPets", "1=" .. petId .. ";2=" .. petId .. "@Golden;7=" .. petId .. ";3=hyb:nobody")
+			advance(0.6)
+			g = gstate(mine.Folder) or g
+			local onCushion = 0
+			for slot = 1, 2 do
+				local e = g.Pets[slot]
+				local att = garden and garden:FindFirstChild("Spot" .. slot, true)
+				if e and att then
+					local pivot = e.Model:GetPivot()
+					local lo = huge
+					for _, part in ipairs(parts(e.Model)) do
+						lo = min(lo, part.Position.Y - part.Size.Y / 2)
+					end
+					if flat(pivot.Position, att.WorldPosition) < 0.6 and abs(lo - att.WorldPosition.Y) < 0.5 then
+						onCushion = onCushion + 1
 					end
 				end
 			end
+			T.check(onCushion == 2 and g.Pets[3] == nil and (tonumber(stats().GardenPets) or 0) == 3,
+				"HomeFx: the Garden's pets (GardenPets) stand on their cushions; hybrids without a record are skipped", onCushion .. " on a cushion, " .. tostring(stats().GardenPets) .. " pets")
+			T.check(g.Pets[7] and g.Pets[7].Sleep and g.Pets[7].Zzz ~= nil, "HomeFx: a pet on a place above GardenSlots sleeps on its closed bed (a voxel Zzz)")
+			mine.Folder:SetAttribute("CoinPiles", "1=4;2=3F;W=5")
+			advance(0.3)
+			g = gstate(mine.Folder) or g
+			T.check(g.Pets[2] and g.Pets[2].Sleep and g.Pets[2].Zzz ~= nil and #g.Pets[2].Zzz <= 6, "HomeFx: a full pile ('F'): its pet naps (lies down, Zzz)")
+			T.check(g.Pets[1] and not g.Pets[1].Sleep, "HomeFx: ...the pets of piles that are not full keep eating")
+			-- the meal rhythm: the pet dips into its bowl, a coin hops onto its pile (Stats().Drops)
+			local e1 = g.Pets[1]
+			local p0 = e1 and e1.Model:GetPivot()
+			local moved, drops0, maxCoins = 0, tonumber(stats().Drops) or 0, 0
+			for _ = 1, 100 do
+				advance(0.1)
+				local pv = e1 and e1.Model.Parent and e1.Model:GetPivot()
+				if pv and p0 then
+					moved = max(moved, (pv.Position - p0.Position).Magnitude)
+				end
+				maxCoins = max(maxCoins, tonumber(stats().Coins) or 0)
+			end
+			local drops = (tonumber(stats().Drops) or 0) - drops0
+			T.check(drops >= 1 and drops <= 4, "HomeFx: every meal (8 s) an eating pet pops a coin onto its pile (napping and sleeping pets do not)", drops .. " coins in 10 s")
+			T.check(moved > 0.1 and moved < 1.0, "HomeFx: ...after dipping into its bowl (a small move, back on its cushion)", fmt(moved) .. " studs")
+			T.check(maxCoins >= 1 and maxCoins <= 40, "HomeFx: the flying coins are pooled parts (<= 40)", tostring(maxCoins))
+			T.check((tonumber(stats().FruitFlights) or 0) >= 2, "HomeFx: the plants send their fruit into the bowls (~every 3 s per plant)", tostring(stats().FruitFlights))
+			T.check((tonumber(stats().Fruit) or 0) <= 24 and (tonumber(stats().FruitPool) or 0) <= 24, "HomeFx: ...pooled fruit parts (<= 24)", tostring(stats().FruitPool))
+			-- the Training Place: pets on their mats with a pooled voxel prop of their skill
+			local ends = math.floor(workspace:GetServerTimeNow()) + 130
+			mine.Folder:SetAttribute("TrainingPets", "1=" .. petId .. ":Physique:" .. ends .. ";2=" .. petId .. "@Golden:Speed:" .. ends .. ";4=" .. petId .. ":Defense:" .. ends)
+			advance(0.6)
+			g = gstate(mine.Folder) or g
+			local gym = mineHome:FindFirstChild("Station_Gym")
+			local onMat, propsOk = 0, 0
+			for slot = 1, 2 do
+				local e = g.Training[slot]
+				local att = gym and gym:FindFirstChild("Spot" .. slot, true)
+				if e and att and flat(e.Model:GetPivot().Position, att.WorldPosition) < 0.6 then
+					onMat = onMat + 1
+				end
+				if e and e.Prop and #e.Prop >= 3 and #e.Prop <= 12 then
+					propsOk = propsOk + 1
+				end
+			end
+			T.check(onMat == 2 and g.Training[4] == nil and (tonumber(stats().TrainingPets) or 0) == 2,
+				"HomeFx: the Training Place's pets (TrainingPets) stand on their mats (only the mats the level has)", onMat .. " on a mat, " .. tostring(stats().TrainingPets) .. " training")
+			T.check(propsOk == 2 and g.Training[1].Stat == "Physique" and g.Training[2].Stat == "Speed", "HomeFx: ...each with a voxel prop of its skill (<= 12 parts: dumbbell, treadmill)")
+			local bar = g.Training[1] and g.Training[1].Prop and g.Training[1].Prop[1]
+			local b0 = bar and bar.Position
+			advance(0.4)
+			T.check(bar and b0 and (bar.Position - b0).Magnitude > 0.02, "HomeFx: ...and the prop moves (the dumbbell goes up and down)")
+			mine.Folder:SetAttribute("TrainingPets", "")
+			advance(0.3)
+			T.check((tonumber(stats().TrainingPets) or 0) == 0 and (tonumber(stats().Props) or 0) == 0, "HomeFx: ...and pets and props leave when the training ends")
+			mine.Folder:SetAttribute("GardenPets", "")
+			advance(0.3)
+			local pf = workspace.ClientFx:FindFirstChild("HomePets")
+			T.check((not pf or #pf:GetChildren() == 0) and (tonumber(stats().GardenPets) or 0) == 0, "HomeFx: emptying the Garden removes its pets")
+			mine.Folder:SetAttribute("GardenPets", "1=" .. petId)
+			advance(0.3)
+		else
+			T.warn("HomeFx: no Economy pet in the catalog, garden pets skipped")
 		end
-		local emitted = (Mock.Stats_ and Mock.Stats_.particlesEmitted or 0) - emitted0
-		T.check(lowest >= 0.2, "HomeFx: the press heads stamp down", fmt(lowest) .. " studs")
-		T.check(emitted > 0, "HomeFx: each stamp puffs cloud (the press's Puff emitter emits)", emitted .. " particles")
-		T.check(blocksSeen > 0 and closest < 2.5, "HomeFx: glowing cloud blocks ride the conveyor into the Collector", blocksSeen .. " blocks, closest " .. fmt(closest) .. " studs from the intake")
-		T.check(headPart and rest and (headPart.Position - rest).Magnitude <= 0.6, "HomeFx: the press head only moves along its stroke")
-		-- nothing created per frame: the effect folder stays bounded
+		-- nothing created per frame: the effect folder stays bounded, nothing added to the home
 		local n1 = fx and Mock.CountDescendants(fx) or 0
-		local homeDesc = Mock.CountDescendants(mineHome)
 		advance(6)
 		local n2 = fx and Mock.CountDescendants(fx) or 0
-		st = stats()
-		T.check(n2 <= 64 and (tonumber(st.Pool) or 0) <= 64 and Mock.CountDescendants(mineHome) == homeDesc,
-			"HomeFx: the cloud blocks are pooled (<= 64, nothing else created per frame, nothing added to the home)", n1 .. " -> " .. n2 .. " blocks, pool " .. tostring(st.Pool))
+		T.check(n2 <= 260 and abs(n2 - n1) <= 60 and Mock.CountDescendants(mineHome) == homeDesc and (tonumber(stats().CoinPool) or 0) <= 40,
+			"HomeFx: heaps, bowls, coins and fruit are pooled client parts (nothing created per frame, nothing added to the home)", n1 .. " -> " .. n2 .. ", coin parts " .. tostring(stats().CoinPool))
+		-- the Coin Magnet's head turns
+		local magnet = mineHome:FindFirstChild("Station_Collector")
+		local headPart = magnet and magnet:FindFirstChild("MagnetHead") and parts(magnet.MagnetHead)[1]
+		local m0 = headPart and headPart.CFrame
+		advance(0.5)
+		T.check(headPart and m0 and (headPart.CFrame.LookVector - m0.LookVector).Magnitude > 0.01, "HomeFx: the Coin Magnet's head turns")
 
 		-- the fusion swirl turns
 		local fusion = mineHome:FindFirstChild("Station_FusionMachine")
@@ -1257,84 +1352,6 @@ local function clientScenarios()
 		local s0 = swirlPart and swirlPart.CFrame
 		advance(0.5)
 		T.check(swirlPart and (swirlPart.CFrame.Position - s0.Position).Magnitude > 0.01, "HomeFx: the Fusion Machine's cloud chamber swirls")
-
-		-- garden pets: the plot's GardenPets attribute puts Low-detail pets on the Garden's cushions (open slots only)
-		local PC = moduleAt("shared", "PetCatalog")
-		local petId = nil
-		for _, d in ipairs((PC and PC.Pets) or {}) do
-			if d.Role == "Economy" then
-				petId = d.Id
-				break
-			end
-		end
-		local petsFolder = function()
-			local cfx = workspace:FindFirstChild("ClientFx")
-			return cfx and cfx:FindFirstChild("HomePets")
-		end
-		if petId then
-			mine.Folder:SetAttribute("GardenPets", "1=" .. petId .. ";2=" .. petId .. "@Golden;7=" .. petId .. ";3=hyb:nobody")
-			advance(0.4)
-			local garden = mineHome:FindFirstChild("Station_Garden")
-			local pf = petsFolder()
-			local pets = pf and pf:GetChildren() or {}
-			local placed = 0
-			for slot = 1, 2 do
-				local att = garden and garden:FindFirstChild("Spot" .. slot, true)
-				for _, pet in ipairs(pets) do
-					local ok, pivot = pcall(function()
-						return pet:GetPivot()
-					end)
-					if ok and att and (Vector3.new(pivot.X, 0, pivot.Z) - Vector3.new(att.WorldPosition.X, 0, att.WorldPosition.Z)).Magnitude < 0.6 then
-						local lo = huge
-						for _, part in ipairs(parts(pet)) do
-							lo = min(lo, part.Position.Y - part.Size.Y / 2)
-						end
-						if abs(lo - att.WorldPosition.Y) < 0.4 then
-							placed = placed + 1
-						end
-					end
-				end
-			end
-			T.check(#pets == 2 and placed == 2 and (tonumber(stats().GardenPets) or 0) == 2,
-				"HomeFx: the Garden's pets (GardenPets) stand on their cushions; locked slots and hybrids without a record are skipped", #pets .. " pets, " .. placed .. " on a cushion")
-			local solid = 0
-			for _, pet in ipairs(pets) do
-				for _, part in ipairs(parts(pet)) do
-					if part.CanCollide or not part.Anchored then
-						solid = solid + 1
-					end
-				end
-			end
-			T.check(solid == 0, "HomeFx: garden pets are anchored and never collide", solid .. " parts")
-			mine.Folder:SetAttribute("GardenPets", "")
-			advance(0.3)
-			pf = petsFolder()
-			T.check((not pf or #pf:GetChildren() == 0) and (tonumber(stats().GardenPets) or 0) == 0, "HomeFx: emptying the Garden removes its pets")
-			-- the Gym's training pets (GymPets, PetCareService) stand on the Gym's targets
-			mine.Folder:SetAttribute("GymPets", "2=" .. petId .. ";4=" .. petId)
-			advance(0.4)
-			local gym = mineHome:FindFirstChild("Station_Gym")
-			local att2 = gym and gym:FindFirstChild("Spot2", true)
-			pf = petsFolder()
-			local onTarget = 0
-			for _, pet in ipairs(pf and pf:GetChildren() or {}) do
-				local ok, pivot = pcall(function()
-					return pet:GetPivot()
-				end)
-				if ok and att2 and (Vector3.new(pivot.X, 0, pivot.Z) - Vector3.new(att2.WorldPosition.X, 0, att2.WorldPosition.Z)).Magnitude < 0.6 then
-					onTarget = onTarget + 1
-				end
-			end
-			T.check(onTarget == 1 and (tonumber(stats().GymPets) or 0) == 1, "HomeFx: the Gym's training pets (GymPets) stand on their targets (only the open places)",
-				tostring(stats().GymPets) .. " gym pets, " .. onTarget .. " on target 2")
-			mine.Folder:SetAttribute("GymPets", nil)
-			advance(0.3)
-			T.check((tonumber(stats().GymPets) or 0) == 0, "HomeFx: ...and leave when the Gym empties")
-			mine.Folder:SetAttribute("GardenPets", "1=" .. petId)
-			advance(0.3)
-		else
-			T.warn("HomeFx: no Economy pet in the catalog, garden pets skipped")
-		end
 
 		-- pop-in: a new level assembles and ends exactly where the server built it
 		local before = mineHome:FindFirstChild("Station_Kitchen")
@@ -1401,25 +1418,23 @@ local function clientScenarios()
 			T.warn("HomeFx: no priced unlocked pad on the test home, affordability skipped")
 		end
 
-		-- far away: frozen, blocks recycled
+		-- far away: frozen, flying parts, heaps, bowls and pets put away
 		if cam then
 			cam.CFrame = CFrame.lookAt(base.Position + Vector3.new(0, 40, 2000), base.Position + Vector3.new(0, 0, 1900))
 		end
 		advance(1.5)
 		local live = 0
 		fx = workspace:FindFirstChild("ClientFx") and workspace.ClientFx:FindFirstChild("HomeFx")
-		if fx then
-			for _, b in ipairs(fx:GetChildren()) do
-				if b:IsA("BasePart") then
-					live = live + 1
-				end
+		for _, b in ipairs(fx and fx:GetChildren() or {}) do
+			if b:IsA("BasePart") or b:IsA("Model") then
+				live = live + 1
 			end
 		end
 		local headPos = headPart and headPart.Position
 		advance(1.0)
-		T.check(live == 0 and (not headPart or (headPart.Position - headPos).Magnitude < 1e-6), "HomeFx: homes far from the camera freeze and recycle their blocks", live .. " blocks left")
+		T.check(live == 0 and (not headPart or (headPart.Position - headPos).Magnitude < 1e-6), "HomeFx: homes far from the camera freeze and put their heaps, bowls and coins away", live .. " pieces left")
 		if petId then
-			local pf = petsFolder()
+			local pf = workspace.ClientFx:FindFirstChild("HomePets")
 			T.check((not pf or #pf:GetChildren() == 0) and (tonumber(stats().GardenPets) or 0) == 0, "HomeFx: ...and put their garden pets away")
 		end
 		if cam and savedCam then

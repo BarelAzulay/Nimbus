@@ -463,7 +463,7 @@ local function clientScenarios()
 			HB.SetStation(spot, "Gym", 1)
 			local petId = "pebble_pup"
 			folder:SetAttribute("GardenPets", "1=" .. petId)
-			folder:SetAttribute("GymPets", "1=" .. petId)
+			folder:SetAttribute("TrainingPets", "1=" .. petId .. ":Ability:" .. tostring(math.floor(workspace:GetServerTimeNow()) + 300))
 			local character = LocalPlayer.Character
 			local hrp = character and character:FindFirstChild("HumanoidRootPart")
 			local savedHrp = hrp and hrp.CFrame
@@ -540,7 +540,7 @@ local function clientScenarios()
 				advance(0.6)
 				T.check(not nearest.Gui.Enabled, "HomeFx: ...and walking away hides it again")
 			end
-			-- garden pets stand bigger than gym pets (5 studs between cushions, 3 between targets)
+			-- garden pets stand bigger than training pets (5 studs between cushions, 3 between mats)
 			standAt(base * Vector3.new(0, 4, -10))
 			advance(1.5)
 			local pets = workspace:FindFirstChild("ClientFx") and workspace.ClientFx:FindFirstChild("HomePets")
@@ -549,13 +549,13 @@ local function clientScenarios()
 				if m:GetAttribute("PetKey") == petId then
 					if m.Name == "GardenPet" then
 						gardenH = max(gardenH, height(m))
-					elseif m.Name == "GymPet" then
+					elseif m.Name == "TrainingPet" then
 						gymH = max(gymH, height(m))
 					end
 				end
 			end
-			T.check(gardenH > 0 and gymH > 0 and gardenH > gymH * 1.08, "HomeFx: Garden pets stand full size, Gym pets a little smaller (their places are closer)",
-				string.format("garden %.2f, gym %.2f", gardenH, gymH))
+			T.check(gardenH > 0 and gymH > 0 and gardenH > gymH * 1.08, "HomeFx: Garden pets stand full size, Training Place pets a little smaller (their mats are closer)",
+				string.format("garden %.2f, training %.2f", gardenH, gymH))
 			if hrp and savedHrp then
 				hrp.CFrame = savedHrp
 				hrp.Anchored = savedAnchored

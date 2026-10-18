@@ -12,8 +12,15 @@
 --                      a portal party (PortalLocked), while dead; an open portal closes without a teleport when the
 --                      owner enters a battle before walking in; SpotService.Teleport and the GoToSpot remote refuse
 --                      InBattle (safe zones: no teleport can pull a player out of a fight); junk arguments
---   CLIENT (wave 3, homefx): client_p4portal_* scenarios are added to this file by the homefx engineer (the ring
---   drawn from the attribute and removed, the followers' dive).
+--   CLIENT (wave 3, homefx), client/Controllers/HomePortalFx.lua:
+--   client_p4portal_ring  HomePortal draws the ring (<= 30 anchored client parts) on the floor point, across the
+--                         owner's yaw, with a 22 px "<name>'s portal" tag (pixel-sized, stroke) and a turning swirl;
+--                         another player's portal faded, one beyond 150 studs not drawn; cleared -> it shrinks away,
+--                         closesAt passed -> it goes by itself; junk draws nothing; PortalArrived plays the arrival
+--                         ring (<= 20 parts, 1.5 s); Stop() removes everything, Init() draws again
+--   client_p4portal_dive  the owner walks into their portal and is teleported home: the followers (PetController) dive
+--                         into the portal centre while it shrinks away, the arrival ring plays, the pets pop out
+--                         behind the owner
 -- Plain Lua 5.1 syntax only.
 
 local T = SmokeCommon.T
@@ -23,9 +30,259 @@ local CONTEXT = (ARGS and ARGS.context) or "server"
 
 local abs = math.abs
 
+----------------------------------------------------------------------------------------------------
+-- CLIENT half (wave 3, homefx): HomePortalFx draws the portals and the arrival ring (contract 3.10 / 6)
+----------------------------------------------------------------------------------------------------
+local function clientScenarios()
+	local KC = _G.KC
+	local CS = {}
+	local Players = game:GetService("Players")
+	local LocalPlayer = Players.LocalPlayer
+	local fmt = string.format
+
+	local function advance(seconds)
+		KC.advance(seconds)
+	end
+
+	local function moduleAt(top, rest)
+		local inst = Mock.GetPath(ROOTS[top] .. "/" .. rest)
+		if not inst then
+			return nil
+		end
+		local ok, result = pcall(require, inst)
+		return ok and type(result) == "table" and result or nil
+	end
+
+	local function portalText(pos, yaw, closesAt)
+		return fmt("%.2f,%.2f,%.2f,%.1f,%.3f", pos.X, pos.Y, pos.Z, yaw, closesAt)
+	end
+
+	local function partsOf(model)
+		local out = {}
+		for _, d in ipairs(model and model:GetDescendants() or {}) do
+			if d:IsA("BasePart") then
+				out[#out + 1] = d
+			end
+		end
+		return out
+	end
+
+	CS.client_p4portal_ring = guarded("client_p4portal_ring", function()
+		local outputBefore, errorsBefore = #Mock.Output, #Mock.Errors
+		local Fx = KC.M.HomePortalFx or moduleAt("client", "Controllers/HomePortalFx")
+		if not T.check(type(Fx) == "table" and type(Fx.Init) == "function" and type(Fx.Stop) == "function" and type(Fx.Portal) == "function",
+			"p4 portal client: client/Controllers/HomePortalFx.lua loads with Init / Stop / Portal") then
+			return
+		end
+		Fx.Init()
+		local other = Mock.AddPlayer("PortalNeighbour", 8701, { character = false })
+		local cam = workspace.CurrentCamera
+		local savedCam = cam and cam.CFrame
+		local ok, err = pcall(function()
+			local at = Vector3.new(4000, 300, 4000)
+			if cam then
+				cam.CFrame = CFrame.lookAt(at + Vector3.new(0, 8, -24), at)
+			end
+			LocalPlayer:SetAttribute("HomePortal", nil)
+			advance(0.6)
+			local now = workspace:GetServerTimeNow()
+			LocalPlayer:SetAttribute("HomePortal", portalText(at, 90, now + 10))
+			advance(0.6)
+			local info = Fx.Portal(LocalPlayer)
+			local parts = partsOf(info and info.Model)
+			T.check(info ~= nil and info.Model ~= nil and #parts >= 12 and #parts <= 30, "p4 portal client: the HomePortal attribute draws the portal ring (<= 30 voxel parts)",
+				tostring(#parts) .. " parts")
+			local solid = 0
+			for _, p in ipairs(parts) do
+				if p.CanCollide or p.CanQuery or p.CanTouch or not p.Anchored then
+					solid = solid + 1
+				end
+			end
+			T.check(#parts > 0 and solid == 0, "p4 portal client: ...client parts only, anchored, no collisions / touches / queries")
+			T.check(info and info.Center and (info.Center - (at + Vector3.new(0, 3, 0))).Magnitude < 0.05, "p4 portal client: ...standing on the floor point (its centre 3 studs above it)")
+			-- facing: the ring stands across the owner's heading (yaw 90: CFrame.Angles(0, rad(90), 0).LookVector)
+			local look = CFrame.Angles(0, math.rad(90), 0).LookVector
+			local spreadAlong, spreadAcross = 0, 0
+			for _, p in ipairs(parts) do
+				if p.Name == "Ring" then
+					local d = p.Position - info.Center
+					spreadAlong = math.max(spreadAlong, math.abs(d:Dot(look)))
+					spreadAcross = math.max(spreadAcross, math.abs(d:Dot(look:Cross(Vector3.new(0, 1, 0)))))
+				end
+			end
+			T.check(spreadAlong < 0.5 and spreadAcross > 2, "p4 portal client: ...facing the owner (the ring stands across the yaw)", fmt("%.2f along, %.2f across", spreadAlong, spreadAcross))
+			T.check(info and not info.Faded, "p4 portal client: ...the owner's own portal is not faded")
+			local gui = info and info.Gui
+			local label = gui and gui:FindFirstChild("Name", true)
+			local want = (LocalPlayer.DisplayName ~= nil and LocalPlayer.DisplayName ~= "" and LocalPlayer.DisplayName or LocalPlayer.Name) .. "'s portal"
+			T.check(label and label.Text == want, "p4 portal client: ...with a name tag \"" .. want .. "\"", label and label.Text or "no tag")
+			T.check(gui and gui:IsA("BillboardGui") and gui.Size.X.Scale == 0 and gui.LightInfluence == 0 and label.TextSize >= 22
+				and (label.TextStrokeTransparency <= 0.5 or label:FindFirstChild("TextOutline") ~= nil) and gui.MaxDistance >= 60,
+				"p4 portal client: ...a pixel-sized 22 px tag with a stroke (World text rule)", label and tostring(label.TextSize) or "")
+			local sw = nil
+			for _, p in ipairs(parts) do
+				if p.Name == "Swirl" then
+					sw = p
+				end
+			end
+			local c0 = sw and sw.CFrame
+			advance(0.3)
+			T.check(sw and c0 and (sw.CFrame.RightVector - c0.RightVector).Magnitude > 0.05, "p4 portal client: ...its swirl turns")
+			-- another player's portal: faded; a portal far from the camera: not drawn
+			other:SetAttribute("HomePortal", portalText(at + Vector3.new(10, 0, 0), 0, now + 10))
+			advance(0.6)
+			local oi = Fx.Portal(other)
+			local minT = 1
+			for _, p in ipairs(partsOf(oi and oi.Model)) do
+				if p.Name == "Ring" then
+					minT = math.min(minT, p.Transparency)
+				end
+			end
+			T.check(oi and oi.Model and oi.Faded and minT >= 0.5, "p4 portal client: another player's portal is drawn faded (only its owner can go through)", fmt("%.2f", minT))
+			other:SetAttribute("HomePortal", portalText(at + Vector3.new(400, 0, 0), 0, now + 10))
+			advance(0.6)
+			oi = Fx.Portal(other)
+			T.check(oi == nil or oi.Model == nil, "p4 portal client: a portal more than 150 studs from the camera is not drawn")
+			other:SetAttribute("HomePortal", nil)
+			-- used: the attribute is cleared -> it shrinks away
+			local model = info and info.Model
+			LocalPlayer:SetAttribute("HomePortal", nil)
+			advance(0.15)
+			local mid = Fx.Portal(LocalPlayer)
+			T.check(mid and mid.Closing and mid.Scale < 1 and mid.Scale > 0, "p4 portal client: used (the attribute cleared): the portal shrinks away...", mid and fmt("%.2f", mid.Scale) or "gone at once")
+			advance(0.5)
+			T.check(Fx.Portal(LocalPlayer) == nil and (model == nil or model.Parent == nil), "p4 portal client: ...and is gone")
+			-- expired: closesAt passes while the attribute is still there
+			now = workspace:GetServerTimeNow()
+			LocalPlayer:SetAttribute("HomePortal", portalText(at, 0, now + 0.6))
+			advance(0.4)
+			T.check(Fx.Portal(LocalPlayer) ~= nil, "p4 portal client: a new portal opens")
+			advance(1.4)
+			T.check(Fx.Portal(LocalPlayer) == nil, "p4 portal client: ...and goes by itself when closesAt has passed (expired)")
+			LocalPlayer:SetAttribute("HomePortal", nil)
+			-- junk
+			LocalPlayer:SetAttribute("HomePortal", "nan,1,2")
+			advance(0.3)
+			T.check(Fx.Portal(LocalPlayer) == nil, "p4 portal client: a junk HomePortal draws nothing")
+			LocalPlayer:SetAttribute("HomePortal", nil)
+			-- the arrival ring
+			local root = KC.root()
+			if root then
+				if cam then
+					cam.CFrame = CFrame.lookAt(root.Position + Vector3.new(0, 8, -24), root.Position)
+				end
+				LocalPlayer:SetAttribute("PortalArrived", workspace:GetServerTimeNow())
+				advance(0.1)
+				local st = Fx.Stats()
+				T.check(st.Rings == 1 and st.RingParts >= 8 and st.RingParts <= 20, "p4 portal client: PortalArrived plays the arrival ring (<= 20 parts) where the player stands",
+					tostring(st.Rings) .. " rings, " .. tostring(st.RingParts) .. " parts")
+				advance(1.6)
+				st = Fx.Stats()
+				T.check(st.Rings == 0 and st.RingParts == 0, "p4 portal client: ...for 1.5 s, then nothing is left")
+			else
+				T.warn("p4 portal client: no character in the client world, arrival ring skipped")
+			end
+			-- Stop removes everything, Init again works
+			LocalPlayer:SetAttribute("HomePortal", portalText(at, 0, workspace:GetServerTimeNow() + 10))
+			advance(0.3)
+			Fx.Stop()
+			T.check(workspace:FindFirstChild("HomePortalFx") == nil and Fx.Portal(LocalPlayer) == nil, "p4 portal client: HomePortalFx.Stop() removes every part")
+			Fx.Init()
+			advance(0.4)
+			T.check(Fx.Portal(LocalPlayer) ~= nil, "p4 portal client: ...and Init() draws the open portal again")
+			LocalPlayer:SetAttribute("HomePortal", nil)
+			advance(0.6)
+		end)
+		if cam and savedCam then
+			cam.CFrame = savedCam
+		end
+		Mock.RemovePlayer(other)
+		LocalPlayer:SetAttribute("HomePortal", nil)
+		advance(0.3)
+		if not ok then
+			T.fail("p4 portal client: ring scenario raised an error", tostring(err))
+		end
+		local warned = nil
+		for i = outputBefore + 1, #Mock.Output do
+			local o = Mock.Output[i]
+			if o.kind == "warn" and o.text:find("HomePortalFx", 1, true) then
+				warned = o.text
+			end
+		end
+		T.check(warned == nil and #Mock.Errors == errorsBefore, "p4 portal client: no errors or warnings from HomePortalFx", tostring(warned))
+		KC.flushErrors("client_p4portal_ring")
+	end)
+
+	-- the followers' dive (PetController, wave 2) with HomePortalFx drawing the same portal
+	CS.client_p4portal_dive = guarded("client_p4portal_dive", function()
+		local Fx = KC.M.HomePortalFx or moduleAt("client", "Controllers/HomePortalFx")
+		local PC = KC.M.PetController or moduleAt("client", "Controllers/PetController")
+		local Cat = moduleAt("shared", "PetCatalog")
+		if not (Fx and PC and Cat and type(PC.GetFollowerInfo) == "function") then
+			T.fail("p4 portal client: HomePortalFx / PetController.GetFollowerInfo load in the client world")
+			return
+		end
+		Fx.Init()
+		local ids = {}
+		for _, d in ipairs(Cat.Pets) do
+			if d.Rarity == "Common" and not d.EventOnly and #ids < 2 then
+				ids[#ids + 1] = d.Id
+			end
+		end
+		local owned = {}
+		for _, id in ipairs(ids) do
+			owned[id] = 1
+		end
+		KC.toClient("ProfileSync", { Tokens = 600, Pets = owned, Equipped = {}, Items = {}, Stats = { Matches = 0, Wins = 0, TokensEarned = 0, Spins = 0, BestTimes = {} },
+			SpotIndex = 1, Perks = {}, Discovered = owned, IndexClaimed = {}, Tutorial = { Step = 99, Done = true, Gifted = true }, PetLevels = {}, PetGrowth = {} })
+		Mock.Teleport(LocalPlayer, Vector3.new(0, 40, 0))
+		LocalPlayer:SetAttribute("EquippedPets", table.concat(ids, ","))
+		advance(3)
+		local root = KC.root()
+		local cam = workspace.CurrentCamera
+		if cam and root then
+			cam.CFrame = CFrame.lookAt(root.Position + Vector3.new(0, 10, -26), root.Position)
+		end
+		local portal = root.Position + Vector3.new(0, -3, -6)
+		LocalPlayer:SetAttribute("HomePortal", fmt("%.2f,%.2f,%.2f,0,%.3f", portal.X, portal.Y, portal.Z, workspace:GetServerTimeNow() + 10))
+		advance(0.4)
+		T.check(Fx.Portal(LocalPlayer) and Fx.Portal(LocalPlayer).Model ~= nil, "p4 portal client: (the owner's portal is drawn)")
+		local start = root.Position
+		for step = 1, 10 do
+			Mock.Teleport(LocalPlayer, start:Lerp(portal + Vector3.new(0, 3, 0), step / 10))
+			advance(0.05)
+		end
+		local home = Vector3.new(700, 40, 700)
+		Mock.Teleport(LocalPlayer, home)
+		LocalPlayer:SetAttribute("HomePortal", nil)
+		LocalPlayer:SetAttribute("PortalArrived", workspace:GetServerTimeNow())
+		advance(0.15)
+		local inf = PC.GetFollowerInfo(LocalPlayer) or {}
+		local diving = #inf >= 1
+		for _, i in ipairs(inf) do
+			diving = diving and i.Diving and i.Model ~= nil and (i.Model:GetPivot().Position - portal).Magnitude < 8
+		end
+		T.check(diving, "p4 portal client: the followers dive into the portal centre after the owner walked in", #inf .. " followers")
+		T.check(Fx.Portal(LocalPlayer) and Fx.Portal(LocalPlayer).Closing, "p4 portal client: ...while the used portal shrinks away")
+		T.check(Fx.Stats().Rings >= 1, "p4 portal client: ...and the arrival ring plays at home")
+		advance(2)
+		inf = PC.GetFollowerInfo(LocalPlayer) or {}
+		local back = #inf >= 1
+		for _, i in ipairs(inf) do
+			back = back and not i.Diving and i.Model ~= nil and (i.Model:GetPivot().Position - KC.root().Position).Magnitude < 9
+		end
+		T.check(back and Fx.Portal(LocalPlayer) == nil, "p4 portal client: ...then the pets pop out behind the owner and the portal is gone")
+		LocalPlayer:SetAttribute("EquippedPets", "")
+		advance(0.5)
+		KC.flushErrors("client_p4portal_dive")
+	end)
+
+	return CS
+end
+
 local S = {}
 if CONTEXT ~= "server" then
-	return S -- the client half (client_p4portal_*) lands in wave 3
+	return clientScenarios()
 end
 
 local advance, config, mod = K.advance, K.config, K.mod

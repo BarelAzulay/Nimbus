@@ -22,7 +22,8 @@
 --                       than the panel it scrolls (scroll bar, canvas covers the last button, scrolling down brings
 --                       "Reset my data" into view); "Start Boss Raid" sends DevCommand("raid"); the two /devhelp toasts
 --                       show whole (wrapped inside their cards, not truncated), readable, at the side
---   client_p3evo_lineup (client) DevPetShow builds the /pets 2 lineup with the three event pets in it (Low detail, name
+--   client_p3evo_lineup (client) EvolutionFx's Phase 4 confetti (opts.Confetti: 20-40 voxel bits at the reveal, all gone at
+--                       the end, none without it); DevPetShow builds the /pets 2 lineup with the three event pets in it (Low detail, name
 --                       tags) and spawns an event pet's Evolved II at High within its cap
 --   client_p3evo_panel_mobile (phone world, 390x844 + 844x390) the same panel and help toast checks on phones (14 px)
 -- Plain Lua 5.1 syntax only.
@@ -794,6 +795,43 @@ local function clientScenarios()
 		Show.Handle("Clear", {})
 		advance(0.3)
 		T.eq(Show.Count(), 0, "evolved lineup: Clear removes the showcase pets")
+
+		-- EvolutionFx (Phase 4, careui): the game's EVOLVE moment adds voxel confetti (opts.Confetti); the showcase keeps none
+		local okFx, Fx = pcall(require, Mock.GetPath(ROOTS["client"] .. "/Controllers/EvolutionFx"))
+		if T.check(okFx and type(Fx) == "table" and type(Fx.Play) == "function" and type(Fx.Duration) == "function", "evolved fx: EvolutionFx loads") then
+			local def = PC.Get("magma_cub")
+			local function play(confetti)
+				local holder = Instance.new("Folder")
+				holder.Name = "EvoFxTest"
+				holder.Parent = workspace
+				local a, b = PB.Build(def, { Detail = "Low" }), PB.Build(def, { Detail = "Low", Evolved = 1 })
+				local pose = CFrame.new(420, 330, 420)
+				a:PivotTo(pose)
+				a.Parent = holder
+				local doneModel = nil
+				local h = Fx.Play(a, b, pose, { Parent = holder, Stage = 1, Confetti = confetti, OnDone = function(model)
+					doneModel = model
+				end })
+				advance(2.0 + 0.38 + 0.3) -- charge + burst + a bit of the reveal
+				local bits = 0
+				for _, d in ipairs(holder:GetDescendants()) do
+					if d:IsA("BasePart") and d.Name == "EvolveConfetti" then
+						bits = bits + 1
+					end
+				end
+				advance(Fx.Duration(1))
+				local fxLeft = holder:FindFirstChild("EvolutionFx")
+				return bits, h, doneModel, fxLeft, holder
+			end
+			local bits, h, model, fxLeft, holder = play(true)
+			T.check(bits >= 20 and bits <= 40, "evolved fx: Confetti = true bursts 20-40 voxel confetti bits at the reveal", tostring(bits))
+			T.check(h.Done and model ~= nil and fxLeft == nil, "evolved fx: ...and every effect part is gone at the end (OnDone gets the evolved pet)")
+			holder:Destroy()
+			bits, h, model, fxLeft, holder = play(nil)
+			T.eq(bits, 0, "evolved fx: without Confetti (the developer showcase) there is none")
+			holder:Destroy()
+			T.eq(Fx.Count(), 0, "evolved fx: nothing left playing")
+		end
 		KC.flushErrors("p3evo lineup")
 		KC.flushWarnings("p3evo lineup")
 	end)
