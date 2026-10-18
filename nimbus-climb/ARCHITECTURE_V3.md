@@ -1742,3 +1742,1182 @@ field, forfeit XP farming (X15) and the coin-attribute bandwidth (`CoinPiles` st
 | `ring_proto.lua` | `cd nimbus-climb && FIRST=3.0 GROWTH=1.18 SEEDS=12 python3 -c "import lupa.luajit21 as L; r=L.LuaRuntime(); r.execute(open('<path>').read())"` | 3.8: rounds 1-3 24/24 for all 12 single level-1 pets; the single-pet slope; stage records 16 .. 51; the round table; output `ring_out.txt` |
 | `veteran_check.py` | `python3 veteran_check.py 300` | 3.12 / 4.3: 300 Phase 3 homes migrated; Home Level unchanged; income and pad-time ratios; output `veteran_out.txt` |
 | integration's `train_proto.lua`, `follow_proto.py`, `count_locals.py`, `npc_lines.py`, `tutorial_texts.py` (`scratchpad/p4design/integration/proto/`) | as documented there | the training multipliers (x1.33 / x1.73 / x2.5), the follow-behind filter numbers, the locals counts, the text lengths |
+
+## Phase 5: the Big Sky Update (asked for by the player after the first real playtest of Phase 4; four designs, one synthesis)
+
+Branch `v3-phase5`, cut from main after the Phase 4 release (Phases 1-4 shipped). Four area designs (battle, dungeon, home, world; in
+the lead's scratchpad `p5design/design:<area>/design.md` with their prototypes) were merged by the lead into this one contract. Every
+conflict between them is settled below (section 0); where the designs agree the contract repeats their names so the engineers can read
+either. The numbers were re-checked in `p5design/lead/proto_check.py` (ALL OK: the level formula table, the dungeon totals and the
+Trial -> floor mapping, the gate-court geometry, the stamina bar, the berry prices).
+
+The player's words are requirements. Everything else below was decided so a kid can repeat each rule in one sentence.
+
+### 1. What the player asked for -> what we build (the checklist; every item of `phase5_request.md` has a row)
+
+| # | The player's words / decision | What we build (section) |
+|---|---|---|
+| 1 | "When a pet is evolved, show the evolved version in ALL places" | ONE rule, `State.PetStage(key)` -> `opts.Evolved`, evolved models always Low, applied at the 14 call sites of 3.7 (Pets panel, Index, Team, Fusion, Food Machine / Training / Garden rows, roulette reveal, Ring cards, battle units + helper portraits, followers, home pets, Pet Podium) |
+| 2 | "a level-up gives +stats; the 1st evolution makes the level stat BONUS x1.50; the 2nd x1.25 more (x1.875 total)" | `PetCatalog.LevelFactor(level, stage) = 1 + 0.1 x (level - 1) x {1, 1.5, 1.875}[stage]`, applied ONCE in `StatsOf` / `GetStats(.., stage)`; the flat x1.25 / x1.5 is deleted everywhere (3.1) |
+| 3 | "Economy pets must be as useful as combat pets in fights: SUPPORTERS (~70% damage; heal / shield / damage boost / speed boost)" | Role **Support** in battle (`BattleCatalog.Roles.Support` Power x2.6 / Health x1.5 -> measured 0.71 of a Combat pet's DPS); each of the 15 Economy pets gets ONE of Heal / Shield / Rally / Haste as its special AND its helper buff (3.2) |
+| 4 | "replace the Trial portal with a DUNGEON game mode (anime dungeon style)" | **The Dungeon**: 12 floors x 4 rooms (3 wave rooms + a boss room), loot per room, first-clear Tokens + Gems, solo or a party of 4; Trial progress -> unlocked floors (`Best = min(10, floor(TrialBest / 3))`); everything "Trial" deleted (section 5, 4.2, 10) |
+| 5 | "ONE portal per game mode; the obby gets one portal with a level picker (all 5 levels kept); move the other portals close to each other" | `Portal_Obby` + `ObbyPick` remote + `shared/ObbyLevels.lua` (unlocks derived from `Stats.BestTimes`: no migration); six gates in one **Gate Court** (Home, Obby, Dungeon, Ring, Arena, Altar) built by one `WorldStyle.BuildGate` (6.1-6.3) |
+| 6 | "less cute, more high-quality, serious-game looking (still optimistic and happy)" | Art rules (real materials, plinth / body / cap, chamfers, muted big surfaces, neon inlays only), `Lighting.Technology = Future`, light budgets; rebuild order LightingService -> LobbyBuilder -> HomeBuilder (every station) -> ArenaBuilder (`arenaart`, W4); the obby courses and the Storm Altar keep their cloud look on purpose (6.4) |
+| 7 | "GUI: use the style of 21.png; GUIs must not blind the screen" | `NeonKit` (dark navy cards, neon borders, glossy icon orbs, GothamBlack with a stroke); every window is a right side panel <= 44% of the width (landscape) or a bottom sheet <= 56% tall (portrait); the five full-screen backdrops are deleted; measured coverage 40-56% on phones (was 78-85%) (6.6) |
+| 8 | "House: too many food options: make it clear and obvious" | ONE food (**berries**), ONE **Feed** button (spends berries, never Cash); the Berry Farm grows them for free, the Food Machine turns them into XP; a 4-tile flow strip in the Home window and three world signs say the whole loop (3.4) |
+| 9 | "Economy pets wander freely, go to eat, then poop Cloud Cash (the obby token look, animated)" | `shared/HomeRoam.lua`: a deterministic roam plan shared by server and clients; pets eat at the Food Bowl, walk out, poop **Cloud Cash** (`shared/TokenLook.lua`, the obby token geometry), idle, walk back; the server computes only poop times / points (3.5) |
+| 10 | "too many decor options: compact, cheaper; fewer things in the house but more detailed and meaningful" | 18 -> **11 stations**: 4 plants -> one 40-level **Berry Farm** (id `Press1`), the Coin Magnet folded into the Garden, decor 6 -> 3 at 40% of the old price; the removed levels come back as Home Level credit (`FoldLegacy`) so no Home Level drops (3.3, 4.3) |
+| 11 | "Big pets touch each other while following; follow without fusing, less attached to the player" | `PetController.FormationFor(widths)`: slots from the measured model width, a 1.2-stud camera channel, a V for 3, softer filter + a 2-pass separation (prototype: gaps >= 0.4 studs in every manoeuvre, never ahead) (3.8) |
+| 12 | "A sky like 23.png" | Blender skybox (6 x 1024 px, committed as `branding/sky/*.png`), the owner pastes 6 asset ids into `Config.Sky.Faces`; until then a tinted fallback (Atmosphere + pink Clouds + lavender ambient + 3000 stars) (6.5) |
+| 13 | "More stamina" | `Config.Physics`: MaxStamina 100 -> **150**, regen 22 -> **45**/s (the bar refills in 3.3 s instead of 4.5), 4 dashes from full, dash ticks on the HUD bar (3.9) |
+| 14 | "A bigger lobby" | Plaza radius 110 -> **150** (x1.81 area), homes ring 300 -> **340** (bridges keep 130), shop at 196 (6.2) |
+| 15 | "A loading screen" | `src/first/LoadingScreen.client.lua` (ReplicatedFirst): 5 real progress stages, tips, SKIP after 6 s (7.1) |
+| 16 | "A menu for the game (main menu before playing)" | The loading screen, then the main menu BEFORE the character spawns: the server keeps `CharacterAutoLoads = false` and spawns on the `MenuPlay` remote (90 s fallback); Scriptable camera over the Gate Court, PLAY / SETTINGS (music, sfx, graphics, shake, saved in `Profile.Settings`) / UPDATES; the tutorial waits for PLAY (7.2) |
+| 17 | "NEW BATTLE SYSTEM (24.png): team of 3, fight with 1 FIGHTER (attack / element / special / dash), 2 HELPERS with buffs; swap mid-fight; same system in Dungeon, Ring, duels, raids; the 4th team slot removed" | One `BattleSim` for every mode: the player's character is the fighter's body and moves at the fighter's battle speed (`MovementController.SetBattleSpeed`, so the server fighter always keeps up), server-authoritative hits with client-predicted motion, helpers = one BUFF button each + SWAP (10 s) + auto-swap on KO = 3 lives, NPC wind-ups the dash can dodge; HUD per 24.png; Teams = 3 keys (`P3.MAX_SLOTS 3`, the 4th key dropped from the preset, the pet stays owned) (section 4) |
+| 18 | "you decide which model and which effort; use the skills that improve this build" | Fable for the riskiest builders (battle core, BattleService, Dungeon server, save data, the coin ledger), Opus elsewhere, effort high (section 11); skills applied: roblox-architecture / security / performance / datastores / ui / new-system, design-critique on renders, Blender for the sky |
+
+### 2. The design in simple words (what the README will say)
+
+* **Fight with one pet, bring two helpers.** Your team is 3 pets. The first is your FIGHTER: you move it (at its own speed: fast pets are faster), you press ATTACK,
+  ELEMENT (cooldown), SPECIAL (when the energy bar is full) and DASH to dodge. Your two HELPERS float behind you: each has one
+  BUFF button (Support pets heal, shield, boost damage or speed; other pets give their element's buff, like Earth = stone skin).
+  SWAP puts a helper in as the fighter. If your fighter goes down, the next pet steps in: three lives. Same controls in the
+  Dungeon, the Champion Ring, duels and boss raids.
+* **Economy pets are Supporters.** They hit for about 70% of a Combat pet and their special heals, shields or boosts (the Pets panel shows their battle power). Best as
+  helpers, but they can fight.
+* **Levels and evolutions.** Every level adds +10% of the level-1 stats. After the first evolution that bonus grows x1.5 per
+  level, after the second x1.875. Nobody gets weaker: every evolved pet is a little stronger than before.
+* **The Dungeon** (where the Trial Portal was): 12 floors. A floor is 4 rooms: three rooms of enemy waves and a boss room.
+  Every room pays Cash, Tokens and XP to everyone who fought in it (standing still pays nothing); clearing a floor for the first time pays
+  big Tokens and Gems and unlocks the next floor. Go alone or with up to 3 friends (each with their own fighter and helpers). Your old Trial record already unlocked floors.
+* **One portal per mode, all together.** The Gate Court: Home, Obby (pick your level: beating one unlocks the next), Dungeon,
+  Champion Ring, Arena, Storm Altar. The lobby, the homes and the arena island are rebuilt from stone and wood under a pink-purple cloud sky with stars; the obby courses
+  and the Storm Altar keep their cloud look on purpose.
+* **Your home, simpler.** One Berry Farm (40 levels) instead of four plants; the Pet Garden also pulls your coins to you; three
+  decorations instead of six, much cheaper. Your garden pets roam the yard, eat at the Food Bowl and poop Cloud Cash: walk over
+  it to scoop. Extra berries fill your Berry Basket; at the Food Machine ONE button, Feed, turns berries into XP. No Cash for food.
+* **Evolved pets look evolved everywhere.** Followers, garden, Pets panel, Index, Team, Fusion, battles.
+* **Pets follow better.** They keep their distance from you and from each other, and stay out of the camera.
+* **More stamina**: 150, refills faster, 4 dashes from full.
+* **New look and feel.** Dark neon menus that never cover the whole screen, a loading screen, then a main menu with settings before your character appears.
+* **Nothing is lost.** Pets, levels, evolutions, Cash, Gems, Tokens, homes and records all carry over; old Trial clears become
+  dungeon floors; a 4th team pet goes back to your list.
+
+## Phase 5 build contract (the engineers code strictly to these names)
+
+Sections 1-2 above are the player-facing design; sections 0 and 3-12 are the contract. File:line anchors point at the Phase 4
+release (main at 7aa0df2) and drift as the waves land: search for the named function. The Phase 4 contract stays in force where
+this one is silent (the Champion Ring, the Food Machine's XP shares, training, the home portal, safe zones, the pet cards).
+
+### 0. Conflicts between the four designs and how the lead settled them (these rulings win over the design files)
+
+| # | Topic | Ruling |
+|---|---|---|
+| C1 | Dungeon combat API: battle proposed ONE open encounter per run with a moving zone (`SetEncounterZone`); dungeon proposed a fresh BattleSim per room | **One encounter per ROOM** (a fresh BattleSim, full HP, like the Ring's rounds; proven chaining). `SetEncounterZone` is not built. Names in 4.6: `OpenEncounter`, `SpawnWave`, `FinishEncounter`, `RemoveEncounterTeam`, `EncounterStatus`, `TeamSpec`; per-encounter callbacks in the spec (`OnEnd / OnWave / OnBossHp / OnDown / OnLeave`) instead of global signals |
+| C2 | Who pays dungeon XP (battle: BattleService at Finish via `DungeonXp`; dungeon: DungeonService per room) | **DungeonService pays everything** (Cash, Tokens, XP, Gems, chest) per room through `payOnce`-style marks; `PAY.Dungeon = nil`; `BattleCatalog.DungeonXp` is not built, `DungeonRewards` (5.2) is the formula; the loss third uses `BattleCatalog.RealLoss` |
+| C3 | Dungeon lighting: server `LightingService.Push / Pop` vs client `LightingStack` | **Client `LightingStack`** (`src/client/LightingStack.lua`, 6.4); the server never writes Lighting after boot |
+| C4 | Where the mode gates live and who builds them | All six gates stand in the Gate Court under `workspace.NimbusLobby.Gates` (lobby budget 8000) and are built with `WorldStyle.BuildGate`: LobbyBuilder (Home, Obby, Altar), ArenaBuilder (Ring, Arena), `DungeonBuilder.BuildPortal` (Dungeon). The arena island budget drops its portals |
+| C5 | Dungeon save record: battle wanted counters inside `Battle`; dungeon a new top-level `Dungeon` | **Top-level `Dungeon`** (the Phase 4 rollout rule: nothing new inside `Battle`) |
+| C6 | `PetCatalog` edits (battle: battlecore owns them) | **Lead, wave 0** (the Phase 4 ownership rule): `LevelFactor` / `EvolutionBonus` / `StatsOf` / `GetStats(.., stage)` / `EvolutionBonusOf`, `SpecialKinds` + the 15 Support specials, `Validate`. `EvolutionBoost` / `EvolutionMultiplier` stay as deprecated aliases (old values) until the lead deletes them in the wave-3 gate |
+| C7 | `MovementController` (battle: `SetDashKeys` + free battle dash; home: `EXHAUST_RESUME`) and `HudController` (home: dash ticks; world: pills / vitals) | MovementController -> **battleclient (W3)** does both; HudController -> **neonkit (W2)** does both (one owner per file per wave) |
+| C8 | `MenuController` (battle: Team 3 slots; home: Home strip / Pets / stage; dungeon: Stats line; world: tile grid + Dock) and `ArenaController` (battle: Trial window out + Practice; dungeon: deletions + prompt hand-off; home: Ring card stage; world: Dock) | MenuController -> **careui (W3)**, ArenaController -> **dungeonclient (W4)**; each does every area's lines (listed in 11.1). `NeonKit` / `CloudUI` / `Theme` land in **W2** so every window owner adopts them in W3-W4 |
+| C9 | Tutorial / NPC edits wanted by all four areas | ONE **tutorial** owner in W4 (TutorialService, TutorialSteps, TutorialController, NpcDialog) with the merged step table of section 8 |
+| C10 | Economy: battle raises late coins +15-20% (LevelFactor), dungeon adds +~8% Cash, home re-prices stations x1.25 | The home sim already carries LevelFactor; the economy engineer runs `sim_tycoon.py --ring 0.08 --dungeon 0.1` and must print ALL TARGETS MET (Gems <= 135/h: the sim shows 97); if it fails, `Dungeon.RoomSeconds` shrinks first, never the home prices |
+| C11 | `Config.Attr.InBattle` (BattleService notes it is missing from Config) | Added in W0: `InBattle = "InBattle"`; BattleService reads `Config.Attr.InBattle` with its own string as the fallback |
+| C12 | Ring portal location (Phase 4: `RingSite` beside `Portal_Trials`, parented to BattleArena) | `LobbyInfo.RingSite = GateSites.Ring`; `Portal_Ring` is still built by ArenaBuilder (`Ring.buildPortal` calls `WorldStyle.BuildGate` + its crown, <= 120 parts) but parented under `NimbusLobby.Gates`; `ArenaInfo.RingPortal` keeps pointing at its pad |
+| C13 | PetBuilder `Wild` look for dungeon enemies (optional in the dungeon design) | Built by **pets (W3)**: `opts.Wild = { Tint, Eyes }`; the dungeon works without it (unitInfo `wild = true` just picks a Low model) |
+| C14 | Berries attribute vs ProfileSync | `Profile.Berries` rides in ProfileSync like Cash (the player attribute `Berries` is the fast path, written only by DataService, <= 2 writes/s); a Berries-only change never triggers a sync |
+| C15 | Judge B1: the character (16 / 27 studs/s) outruns a server fighter capped at the pet's MoveSpeed x 1.6 (9-18): attacks refused, slow pets leashed out | **The character moves at the fighter's legal battle speed** (`Fighter.WalkOf` 12..20 walk, x1.3 run) via `MovementController.SetBattleSpeed`; the server cap is the legal run x `MoveSlack 1.25`; the leash measures the gap AFTER the legal step (4.3, 4.4; `p5design/lead-fix/leash_fix.py`: zero leashes, 0% time > 6 studs behind, for every species) |
+| C16 | Judge M2: BattleService must not require DungeonService (recursive require; `loadOptionalService` would nil one of them) | `BattleService.SetRunProvider({ KeysInRun, GetRun })` called last in `DungeonService.Init`; BattleService boots and works without it (4.4) |
+| C17 | Judge M7: the approved "menu BEFORE spawning" vs the client-only gate | The server holds the character: `CharacterAutoLoads` stays false, `MenuPlay` (or a 90 s fallback) spawns it; `PlayerService.lua` gets an owner (menu, W3); every ScreenGui except loading / menu / notify is gated (deny-list) (7.2) |
+| C18 | Judge M5: two owners per shared tool file in one wave | Named per-owner blocks created empty by the lead in W0 in `dump_gui.lua`, `dump_model.lua`, `smoke_p5_gui.lua`, `smoke_p3_ui.lua`, with the smoke.py "own block only, re-read before each edit" rule; `render_*.py` stay lead-owned (11) |
+
+### 3. Pets, stats and the home: exact rules and numbers
+
+#### 3.1 The level formula (PetCatalog, lead W0; the ONE source for battle, coins and UI)
+
+```
+PetCatalog.LevelBonus = 0.1
+PetCatalog.EvolutionBonus = { [0] = 1, [1] = 1.5, [2] = 1.875 }      -- multiplies the LEVEL BONUS, not the stat
+PetCatalog.LevelFactor(level, stage) = 1 + LevelBonus x (clampedLevel - 1) x EvolutionBonus[stage]   (stage nil -> 0)
+PetCatalog.StatsOf(def, level, tier, stage) / GetStats(subject, level, tier, stage)   -- stage 0..2 = the STORED stage,
+    cleaned by EvolutionStage(def, level, stored); the level alone never evolves a pet
+PetCatalog.EvolutionBonusOf(stage) -> 1 | 1.5 | 1.875      ("Level bonus x1.5" in texts)
+```
+Rarity 1 examples: L1 1.0 (unchanged), L20 evo1 3.85 (was 3.625, +6%), L50 evo2 10.19 (was 8.85, +15%), L100 evo2 19.56 (+20%);
+nobody gets weaker (`proto_check.py`). Every old flat-bonus site switches to `GetStats(.., stage)` / `LevelFactor`: `BattleCatalog`
+`P4.evoMult` (battlecore), `TycoonCatalog.PetPower = RarityScale x LevelFactor(level, stage) x TierMultiplier x RoleMult` and
+its `MIRROR.EvolutionBoost` (economy), `PetCareService` evolve toast "Level bonus x1.5!" / "x1.875!" (care), `CareController`
+:2422 text (careui), `NpcDialog` :330 (tutorial), `MenuController` Pets panel stats and `ArenaController` :1484 (`GetStats(key,
+level, nil, State.PetStage(key))`), `tools/sim_tycoon.py` (`EVOLUTION_BONUS = [1.5, 1.875]`). `PetGrowth[key].Evo` is untouched:
+no save migration (`p5data_evo_untouched`).
+
+#### 3.2 Roles and specials (battle 2.3-2.4; PetCatalog data by the lead, BattleCatalog by battlecore)
+
+* `BattleCatalog.Roles = { Combat = { Power 1, Health 1, Name "Fighter" }, Support = { Power 2.6, Health 1.5, Name "Support" } }`,
+  `BattleCatalog.RoleOf(def) -> "Support"` when `def.Role == "Economy"`. Applied in `UnitStats` only (measured DPS ratio 0.71,
+  HP 0.72-0.80: "about 70%"). Garden income is untouched (`RoleMult` Economy 1.6 stays).
+* `PetCatalog.SpecialKinds = { "Blast", "Heal", "Shield", "Storm", "Pounce", "Freeze", "Beam", "Rally", "Haste" }` (+ Rally:
+  fighter damage +35% for 8 s; Haste: attack + move speed +35% for 8 s). The 15 Economy pets (all of `Role = "Economy"`) get
+  exactly one Support kind, ids kept, names kept where they fit: **Heal** honey_bunny, sleepy_owl ("Drowsy Lullaby"), blossom_bunny,
+  cherry_panda, starlight_unicorn; **Shield** mochi_slime, pip_penguin ("Snow Wall"), sunbeam_bear, phantom_kitsune; **Rally**
+  waffle_corgi ("Sunny Bark"), shroomie_frog ("Spore Cloud"), hydralotl ("Void Fangs"); **Haste** pebble_pup ("Fetch Dash"),
+  candy_unicorn ("Sugar Rush"), nebula_axolotl ("Stardust Swirl"). Combat pets keep their specials (the three Combat Shield pets
+  keep Shield). `PetCatalog.Validate`: every Economy pet's kind in {Heal, Shield, Rally, Haste}; every pet has an Element.
+
+#### 3.3 Stations: 18 -> 11 (`TycoonCatalog.Version = 5`; home 2.1; economy W1)
+
+`TycoonCatalog.Kinds = { "Farm", "Garden", "FoodMachine", "Training", "Vault", "House", "Fusion", "Arena", "Decor" }`.
+
+| Id | Name | Kind | Max | Caps C/V/M/S | Requires | Base prices (level 1..max) | Effects |
+|---|---|---|---|---|---|---|---|
+| Press1 | Berry Farm | Farm | 40 | 10/22/37/40 | Garden 1 | `FARM_PRICE` (home 2.1: 15, 70, 160, 450, 520, 1400, 1500, 3100, 4400, 7500, 11000, 19000, 22000, 25000, 28000, 31000, 45000, 48000, 110000, 120000, 150000, 160000, 200000, 220000, 320000, 340000, 360000, 380000, 460000, 510000, 610000, 790000, 850000, 1000000, 1400000, 1500000, 1800000, 2200000, 2800000, 4000000) | `Food` = `FARM_FOOD` (7, 9, 12, 15, 19, 25, 32, 41, 54, 69, 77, 90, 105, 122, 143, 166, 194, 227, 264, 309, 360, 420, 444, 483, 526, 573, 624, 680, 740, 806, 878, 956, 1041, 1133, 1234, 1344, 1463, 1585, 1838, 2132) |
+| Garden | Pet Garden | Garden | 8 | 2/4/6/8 | (root) | 0, 15000, 38000, 140000, 360000, 750000, 1500000, 3000000 | `Lucky` 0 .02 .04 .06 .08 .10 .12 .15; **`Radius`** 8 10 12 14 16 19 22 26; **`PileSeconds`** 300 330 360 390 420 480 540 600; `ResetLevel = 1` |
+| Kitchen | Food Machine | FoodMachine | 5 | 1/2/4/5 | Press1 1 | 300, 44000, 400000, 850000, 2400000 | `FeedShare` .25 .30 .35 .42 .50 |
+| Gym | Training Place | Training | 5 | 1/2/4/5 | Kitchen 1 | 3800, 140000, 520000, 1200000, 2800000 | `Slots` 1..5 |
+| Vault | Vault | Vault | 5 | 1/2/4/5 | Press1 6 | 11000, 110000, 460000, 1000000, 2500000 | unchanged |
+| House | House | House | 4 | 4/4/4/4 | Press1 2 | 180, 24000, 200000, 880000 (NOT scaled) | Cottage / Villa (HL 10) / Manor (20) / Sky Castle (30) |
+| FusionMachine | Fusion Machine | Fusion | 3 | 1/2/3/3 | Kitchen 1, Prestige 1 | 31000, 420000, 1800000 | unchanged |
+| ArenaGate | Arena Gate | Arena | 1 | 1/1/1/1 | Gym 1 | 320000 | unchanged |
+| DecorFence | Yard Fence | Decor | 3 | 1/2/3/3 | Garden 1 | 2800, 19000, 200000 | picket + tulips / hedge + cloth banners / cloudstone + royal banners + starflowers |
+| DecorFountain | Fountain | Decor | 3 | 1/2/3/3 | Kitchen 1 | 18000, 200000, 600000 | basin + 4 wood lanterns / tiered + 6 brass / sky + 8 crystal |
+| DecorPodium | Pet Podium | Decor | 3 | 1/2/3/3 | Garden 1 | 3600, 38000, 230000 | unchanged looks |
+
+* Station prices are the Phase 4 prices x1.25 (feeding no longer costs Cash; the sim needs it to keep the 13 pacing targets);
+  House and decor are not scaled; decor = 0.4 x Phase 4. Tier-cap sums 24 / 45 / 72 / 80. `HomeLevelOf(home) = sum of station
+  levels + (home.DecorCredit or 0) + LegacyMagnetLevel(home)`. Prestige, stars (x1.5^stars), LegacyPrices, Gems: unchanged.
+* Layout (plot-local, 72 x 72, `PlotSize` unchanged; `TycoonCatalog.PlotSize` is read by LobbyBuilder, which may NOT change it):
+  Berry Farm `at(-26.5, 0.25, -90)` footprint `V3(36, 12, 7)` pad `padAt(-19, 0, -26.5, 0)` (the four press slots merged; the
+  `PressLane` path stays); **Kitchen and Gym swap places**: Food Machine `at(-24, 29, 0)` footprint `V3(16, 10, 10)` pad
+  `padAt(-19, 22.5, -24, 29)`; Training Place `at(25, 24, 0)` footprint `V3(18, 10, 9)` pad `padAt(19.5, 14.5, 25, 24)` (its
+  `Spot1..5` attachments move with it); Garden unchanged `at(24, -1, 90)` `V3(22, 4, 20)` with a new interior: `Garden.Slot.Bowl =
+  { Center = V3(0, 0, 0), Radius = 2.5 }` (the Food Bowl), `Garden.Slot.Beds` (12, nearest the entrance first): (-9, -6.5), (9, -6.5),
+  (-9, -2.5), (9, -2.5), (-9, 1.5), (9, 1.5), (-9, 5.5), (9, 5.5), (-6, 7.8), (6, 7.8), (-2, 7.8), (2, 7.8); `Garden.Slot.Fence` 0.6
+  studs on the footprint edge with `Garden.Slot.Entrance = { Center = V3(0, 0, -10), Width = 4 }`; `WelcomePile` V3(13.5, 0, 2.5)
+  unchanged. The Collector corner and the old decor strips become lawn. `Validate`: beds inside the footprint, >= 3 studs apart,
+  >= Radius + 1.5 from the bowl, off the entrance; the WelcomePile outside the fence and off every pad; `RoamLayout()` yields
+  >= 300 nodes with every bed and eat point reachable; the "no dead end" build-out from a fresh home and from stars 1-3.
+* **Pad signs** (`TycoonCatalog.SignedPads(pads, cash, maxSigns) -> {[id] = true}`, pure; `SignRules.MaxSigns = 3`): the Prestige
+  pad when unlocked; then the 3 cheapest not-Locked pads with `Price <= cash`; none affordable -> the single cheapest. Locked pads
+  never get a sign (their reason only within `K.LOCKED_SIGN_NEAR 6` studs). HomeFx hides every other `PadSign` (state "Unsigned").
+* Economy proof (home `sim_p5.py`, 120 players x 3 runs, with LevelFactor): first paid buy 0:27, Villa median 26:07, first Prestige
+  median 2:05 (p10 1:37, p90 2:29), runs 2-3 53 / 47 min, first EVOLVE median 1:17, Gems <= 97/h, Combat-only 2:16: ALL 13
+  TARGETS MET. `tools/sim_tycoon.py` becomes this model (constants block by id, `BERRY = [0.25, 30]`, `--migrate5`, `--dungeon`).
+
+#### 3.4 Berries: ONE food, ONE Feed button (home 3; economy W1 data, care W2 service, careui W3 window)
+
+```
+TycoonCatalog.Berries = { Share = 0.25, BasketMinutes = 30, BasketMin = 500, LegacyFood = { Snack = 200, Meal = 1200, Feast = 6400 } }
+every Cloud Cash poop of value V adds V x Share berries to Profile.Berries (whole berries; the fraction stays in the server ledger), clamped so the
+  poop never lifts Berries above BasketCap (TycoonService clamps the addition; a cap that drops below the berries, e.g. a pet taken out, removes NONE;
+  offline berries and the P5Home food conversion ignore the cap)
+BasketCap(home, incomePerSecond) = max(BasketMin, floor(incomePerSecond x Share x 60 x BasketMinutes))     -- 30 minutes of berries
+FeedBerries(def, level) = round(XpToNext(level) x RarityScale x FeedBase 2.0)   -- = the Phase 4 FeedPrice in Cash (1 berry = $1 of food)
+FeedXp(level, machineLevel) unchanged (25..50% of the bar);  Vault offline coins add offline x Share berries in the LastSeen step
+```
+* `PetCare("Feed", key)` -> `PetCareService.Feed(player, key) -> ok, { Xp, Levels, Level, Cap, Berries }`. Checks in order (each a
+  toast, nothing moves before the last): loaded and not provisional; owned; below the cap; not in a running battle or dungeon run
+  (`BattleService.KeysInBattle`); Food Machine built ("Build the Food Machine at home first"); berries >= cost
+  ("Not enough berries: a feed needs 340 (you have 120). Your garden pets grow more!"). Then ONE non-yielding step: spend
+  (`DataService.SpendBerries`; the old `Food` items were converted into berries ONCE by the P5Home step of 9.2, so there is no leftover path), `GrantXp`;
+  XP write 0 -> refund in the same step. A `{Count}` / `{Food}` second argument from an old client is ignored (one feed). Rate
+  limit unchanged. `Fed:Fire(player, key, "Berries", levels)`. Deleted: the Cash path (`spendCash` refunds), `{Count}` "Level up",
+  `{Food}` leftover mode, `Care.planFeeds` multi-feed branch, "Feed (free Feast, 3 left)".
+* Kid rule (README, Home strip, signs): "Your Berry Farm grows berries. Pets eat at the Food Bowl and poop Cloud Cash; the extra
+  berries fill your Berry Basket. At the Food Machine, Feed turns berries into XP." A full basket toasts "Basket full! Feed your
+  pets" (coins never stop). Berries survive Prestige. Pets panel "Feed" becomes "Food Machine" (opens the window on that pet).
+* World signs (HomeBuilder, World text rule): Berry Farm "Berry Farm Lv 13 / Grows berries for your pets" (MaxDistance 70);
+  Food Bowl "Food Bowl / Pets eat here, then poop Cloud Cash!" (40); Food Machine "Food Machine / Berries -> XP: press E" + a
+  basket line "1,240 / 3,000 berries" rewritten by HomeFx from the player attribute `Berries` and the plot attribute `BerryCap`.
+
+#### 3.5 Roaming pets and Cloud Cash (home 4; `shared/HomeRoam.lua` + `shared/TokenLook.lua` by economy+roam W1, ledger by tycoon W2, HomeFx W3)
+
+```
+HomeRoam.Version = 1;  Cycle 24 s = 3 meals;  EatSeconds 3;  PoopSeconds 1.5;  MinSpeed 4 / MaxSpeed 9 studs/s;  WalkBudget 16.5
+HomeRoam.Build()  (lazy, once per VM: a 2-stud grid over |x|,|z| <= 33 minus EVERY station footprint built or not (+1 stud), pads
+                   (+0.5), the garden fence (entrance open), bowl and beds, from TycoonCatalog.RoamLayout(); 8-neighbours in a FIXED order)
+HomeRoam.Plan(seed, slot, cycle) -> { Out = {{x,z}...}, Poop = {x,z}, PoopAt, Speed, OutLen, Idle }   -- Park-Miller PRNG seeded
+                   seed x 7919 + slot x 104729 + cycle x 1299709; eat [0,3) at the eat point (bowl centre + 5 studs at (slot-1) x 30 deg),
+                   walk out at clamp(2 x OutLen / 16.5, 4, 9), poop ON the path at arc fraction 0.35..0.7 (rounded to 0.1 stud, pulled
+                   back from the Welcome pile), stop 1.5 s, idle, walk back to arrive at 24 s; cache <= 3 cycles per (seed, slot)
+HomeRoam.At(seed, slot, epoch, now) -> x, z, state ("Settle"|"Eat"|"Walk"|"Poop"|"Idle"), dirX, dirZ
+HomeRoam.PoopTime(seed, slot, epoch, cycle);  HomeRoam.BedPoint(slot);  HomeRoam.EatPoint(slot)
+RoamSeed = (OwnerUserId % 2147483646) + 1;  epochs are workspace:GetServerTimeNow() values on both sides
+```
+* Server ledger (`TycoonService` `Coins` helper, 1 s tick, no motion): poop value = `CoinValue(home, PetPower, stars) x PoopMeals 3`
+  (Lucky x5 by `LuckyChance`); a NEW key in a slot gets `Epoch = now + SettleSeconds 20` (first poop >= 24 s later; churn-proof),
+  the same key back within one cycle keeps its epoch; a fresh ledger staggers `Epoch = now + Rng x 24`; at most 2 catch-up poops
+  per slot per tick; a slot whose lawn value >= `PileSeconds(home) x its coin rate` naps (`:N<cycle>`, no poop) and wakes after a
+  scoop below the cap (`Epoch = now + the back walk`); `DropsPerPet 3` then merge into the nearest drop; coins -> `CollectorCash`
+  and `value x Share` -> `Profile.Berries` in ONE `MutateHome` + `AddBerries` step per tick. Scoop (0.25 s loop) unchanged rules,
+  `ScoopRadius(home) = max(Garden Radius, LegacyMagnet radius)` (6 without a Garden), `PileSeconds(home) = max(Garden PileSeconds,
+  LegacyMagnet pile) + Vault`. Invariant every step: `sum(drops) + Welcome == Home.CollectorCash`. API: `TycoonService.Drops(player)
+  -> { {Slot, Cycle, Position, Value, Lucky} }`; `Piles` stays as per-slot sums; `Collect` / `CoinsWaiting` / `ClearCoins` unchanged.
+* Attributes (plot folder, written on change): `RoamSeed` (int), `RoamVersion` (= `HomeRoam.Version`; a mismatch parks pets on
+  their beds and hides coins), `Roam` = `"1=1760001234.5;3=1760001240.0:N812"` (slot = epoch [`:N<cycle>` napping]), `CoinDrops` =
+  `"1=812:1,813:2*;3=40:1;W=5"` (slot = cycle:stage[`*` Lucky], `W` the Welcome pile; <= 0.5 writes/s, <= 400 B; stages by poops
+  `DropStages {1, 2, 4, 8}`), `BerryCap` (whole; <= 1/s); player `Berries` (`Config.Attr.Berries`, whole berries, written ONLY by DataService inside `AddBerries` /
+  `SpendBerries`, throttled <= 2/s with a trailing write so the last value always lands; nobody else writes it). Removed: `CoinPiles`.
+* `TokenLook.Build(opts) -> Part` (the obby token geometry moved out of `TokenService.MakeTokenPart`, output unchanged; opts
+  `{ Position, Parent, Palette = "Cloud"|"Golden"|"Cash"|"GoldenCash", Scale, Light, Sparkles, Phase }`), `TokenLook.Palettes`,
+  `TokenLook.Motion = { Spin 2.0, GoldenSpin 2.6, Bob 0.45, GoldenBob 0.6, BobSpeed 2.2 }`; `MakeTokenPart` calls it, then adds its
+  attributes / tags / animation record as today (the `token` smoke targets do not change).
+* HomeFx (client): homes within `K.PET_NEAR 110` (every 2nd frame beyond 60): each garden pet posed every frame from `HomeRoam.At`
+  (yaw eased 7/s, `K.ROAM_SCALE 0.85`; Walk bob, Eat head dips at the bowl pushed out by half its width, Poop squat + a Cloud Cash
+  coin arcs 0.35 s onto the poop point with a 3-cube puff, Idle sniff, Nap lies down with "Zzz", Settle hops from its bed); a
+  client-only soft separation (<= 1.5 studs) from the same deterministic positions. Coins: pooled `TokenLook.Build({ Palette =
+  "Cash", Scale 0.8/1.0/1.15/1.3 by stage, Light = false })`, Lucky "GoldenCash" + sparkles; a coin spawned at PoopAt is pending
+  until `CoinDrops` lists (slot, cycle), fades after 2.5 s unconfirmed; others' coins dimmed and still; the zip + "+$" label at the
+  drop. Budgets per client: <= 24 posed pets (own home first, then the nearest homes), <= 36 coins x 6 parts, puffs / berries pooled <= 16, plans <= 0.5/s per home.
+* Deleted: `TycoonCatalog` `CoinPoint`, `Garden.Slot.CoinPoints / Spots`, `GARDEN_COIN_Z`, `GARDEN_WALKS`, `Foods` (-> `LegacyFood`
+  values), `HeapStages`, kinds `Plant` / `Magnet`, station defs `Press2-4`, `Collector`, `DecorLamps / Flowers / Banners`,
+  `Prestige.TeamSlotUnlock`, `MIRROR.EvolutionBoost`, `CollectorCap`; `TycoonService` `Coins.meals / applyDrops / pointOf /
+  pilesText`, the per-slot `Piles` state; `HomeBuilder` `Art.Plant` x4, `Art.Magnet`, `Station_Collector`, the three old decor
+  builders, cushion bowls, the sand walks; `HomeFx` heaps per CoinPoint (the Welcome heap stays), per-cushion bowls, fruit flights,
+  the dip animation, the Magnet spin, `K.EVO_MAX`.
+
+#### 3.6 HomeBuilder art (homeworld W2; home 9 + world 4.1)
+`Art.Farm(level)` (3 rows of bushes along the lane: L1-10 red berries, L11-22 a blue row, L23-37 golden trellis, L38-40 the glowing
+Starberry tree; crates + a little barn; Wood / Grass / Slate via Voxel; <= **150** parts), `Art.Garden(def, level, open)` (fence ring with
+the entrance, 12 beds: open = cushion + tiny roof, closed = seedling + "Prestige to open"; the Food Bowl + sign; <= **95**),
+`Art.Fence` / `Art.Fountain` with the absorbed looks (<= **90** / **80**), `Art.FoodMachine` + `Hopper` and `Art.Training` + `Spot1..5`
+on their swapped slots, the three signs of 3.4; **restyled as well** (judge M8): `Art.House` (4 tiers: Slate plinth, WoodPlanks / Brick walls,
+ClayRoofTiles, warm lanterns, <= 150), `Art.Vault` (Slate body, Metal door, a glass gem case, <= 80), `Art.Fusion` (Marble ring, Neon inlays, Metal
+pipes, <= 90), `Art.ArenaGate` (a half-size `WorldStyle.BuildGate` look in Red, <= 80); renders `home:House:1..4`, `home:Vault:3`,
+`home:FusionMachine:2`, `home:ArenaGate:1` at the W2 gate. Rules of 6.4 (materials, plinths, chamfers, muted big faces, `NC_Detail` tags on
+pure decor). Per-station BUDGET table: Farm 150, Garden 95, FoodMachine 55, Training 90, House 150, Fusion 90, Fence 90, Fountain 80,
+default 80; a fully built plot <= **950** parts (`render_model.py homeplot:SkyCastle:pads`). Prompts: `GardenSpotPrompt` on each open
+EMPTY bed (attrs `Slot`, `OwnerUserId`, MaxActivationDistance 3), `FeedPrompt` on the Hopper, `TrainPrompt` on `Station_Gym` (both
+move with the swap; `CARE_SIG` gains "p5:").
+
+#### 3.7 Evolved looks everywhere (home 5; the rule and its 14 sites)
+Rule: every place that draws a pet the player OWNS draws its stored stage; an evolved model is always built at **Low** (`petEvoLow
+380` / `petEvo2Low 520`). Helpers: `State.PetStage(key) -> 0..2` (= `PetCatalog.EvolutionStage(def, level, State.PetGrowth(key).Evo)`,
+hybrids via `PetKeys.DefOf`), `State.BestStage(petId)` (max over owned keys of that base id), `CloudUI.PetViewport(.., { Evolved = n })`
+forces Low and refits the camera, `CloudUI.Slot` passes `info.Evolved` (part of the keep-key), `PetBuilder.Build` sets the clone
+attribute `PB_Evolved = stage` (tests), server `DataService.GetEvolution(player, key)`. Sites (owner): followers (already; pets),
+garden / roaming pets evolved Low in EVERY home within `PET_NEAR` (own home first; once the posed-pet part budget `K.HOME_PET_PARTS 9000` is spent
+the farthest pets fall back to plain Low) (homefx), training pets (homefx), Pets grid
+`gridInfo` + detail (careui), Index tiles `BestStage` (careui), Team card + tiles (careui), Fusion tiles + result preview (careui),
+Food Machine / Training / Garden rows (careui), roulette reveal + gold "Evolved" ribbon (careui), Ring fighter cards (dungeonclient:
+ArenaController), battle units + helper portraits `u.evo` (battleclient), Pet Podium (tycoon: SpotService, rebuilt on
+`PetCareService.Evolved`). NPCs, showcases, shop strips, enemies: unchanged.
+
+#### 3.8 Followers (home 6; pets W3)
+```
+PetController.FormationFor(widths) -> { {side, back}... }   (pure, tested)   OwnerRadius 1.5, GapOwner 2.5, GapPet 1.0, Channel 1.2, Diag 0.35
+1 pet  { Channel + w/2, OwnerRadius + GapOwner + w/2 - Diag x w/2 }            (behind-right)
+2 pets the smaller left { -(Channel + wa/2), row }, the other { Channel + wb/2, row }, row = OwnerRadius + GapOwner + max(wa,wb)/2 - Diag x min(wa,wb)/2
+3 pets the two smallest as for 2; the biggest behind the right one { Channel + wc/2, row + wb/2 + GapPet + wc/2 }
+width = max(X, Z) of the built model (GetExtentsSize), cached P4.widths["key|stage"];  filter rateH = 4.2 + 0.6 x (slot-1), LEAD_H 0.10
+separation after the filter every frame (n <= 3): 2 passes; overlapping pets (d < ra + rb + 0.4) pushed apart half each; inside OwnerRadius + r + 0.4 -> on that circle
+```
+Prototype (`proto/follow_p5.py`): smallest gap pet-pet 0.40 and pet-owner 0.40 studs in every manoeuvre, never ahead, rest 5.8 (1 small)
+.. 17.2 studs (3 big). Smoke windows (size-aware): rest = |slot| +- 1.5, walking lag <= back + 9, settle <= back + 1, ahead <= 0.5 after
+0.6 s, gaps >= 0, channel >= 1.0. Deleted: `FORMATION`, the `slotOffsets` fan, `P4K.EVO_BACK_MAX` / `p.backMul`.
+
+#### 3.9 Stamina (lead W0 numbers; HUD by neonkit W2; MovementController by battleclient W3)
+`Config.Physics`: `MaxStamina = 150`, `StaminaRegen = 45`, `RunStaminaDrain = 14`, `DashStaminaCost = 35` (4 dashes from full).
+MovementController `EXHAUST_RESUME = 22` (15%). HudController `updateStamina`: unchanged maths + `floor(MaxStamina / DashStaminaCost)`
+thin dark ticks. Inside a battle zone a dash costs no stamina (`MovementController.SetFreeDash(true)` by BattleController; 4.4) and the character walks / runs at the
+fighter's battle speed (`SetBattleSpeed`, 4.4); running drains stamina as today.
+
+### 4. The battle system (battle design; battlecore W1 Fable, battleservice W2 Fable, battleclient W3)
+
+#### 4.1 Decisions in one screen
+| # | Decision | Why |
+|---|---|---|
+| B1 | The player's CHARACTER is the fighter's body: the fighter pet hovers at the shoulder; the player moves it with the normal controls (WASD / joystick / camera / DASH) **at the fighter's legal battle speed** (walk `Fighter.WalkOf(MoveSpeed)` = 12..20 studs/s, run x1.3 = 15.6..26; the obby run is 27); enemies hit the pet's HP, never the Humanoid | reuses MovementController, camera and joystick; the server fighter (cap = legal run x 1.25) always keeps up: `lead-fix/leash_fix.py` 20 seeds x 60 s + a circle at r 14 with 200 ms latency: 0% of the time more than 6 studs behind and zero leash-outs for every species (the judge's model: 12-49% and a leashed Slime) |
+| B2 | Server-authoritative hits, client-predicted motion: one small command per button; the server owns cooldowns, ranges, damage; the client plays the lunge at once and shows numbers only from server `Hit` events | roblox-security: never trust client damage |
+| B3 | Helpers are not units on the floor: client-only models behind the player; one BUFF button each (cooldown) + SWAP (10 s); a downed fighter auto-swaps to the next alive helper = 3 lives | "fights with only 1"; ~1 unit per player (16-raids stay cheap) |
+| B4 | NPC attacks wind up 0.45 s (`Winding`) so the 0.35 s dash i-frames can dodge them; bosses keep telegraphs | a dodge button needs something readable |
+| B5 | `TeamPower = KitFactor 1.5 x UnitPower(fighter) + HelperWeight 0.35 x (UnitPower(h1) + UnitPower(h2))` for the Ring solver, the duel gap, the dungeon ladder | a played fighter beats a passive NPC of up to ~1.5x its power (prototype) |
+
+#### 4.2 BattleCatalog (battlecore; data the clients read too)
+```
+BattleCatalog.Fighter = { AttackSlack 3.0 (studs of extra reach for latency: run 20 x 0.15 s), AttackTolerance 0.85 (an attack is accepted >= Interval x this
+  after the last), AutoRepeat true, ElementCooldown 7, ElementMult 2.4, ElementRange 14, SpecialMeterMax 100, MeterPerSecond 6, MeterOnHit 4,
+  MeterOnHurt 2, DashSeconds 0.35, DashCooldown 2.5, DashIFrames 0.35, SwapCooldown 10, SwapCastSeconds 0.6, BenchRegenPerSecond 0.03,
+  DownAutoSwap true, HelperCooldown 15, SupportCooldown 12, Windup 0.45, KitFactor 1.5, HelperWeight 0.35, Lives 3, WalkMult 1.15, WalkMin 12, WalkMax 20,
+  RunMult 1.3, MoveSlack 1.25 (the server fighter's cap OVER THE LEGAL RUN SPEED: latency + a cheat margin), Leash 10, LeashSeconds 3 }
+BattleCatalog.Fighter.WalkOf(moveSpeed) = clamp(moveSpeed x WalkMult, WalkMin, WalkMax);  Fighter.RunOf(walk) = walk x RunMult
+  (mochi_slime 12 / 15.6 .. stormfang 20 / 26 studs/s; speed buffs scale both: Haste x1.35, Slow x0.6; NPC units keep their MoveSpeed)
+BattleCatalog.ElementAttacks[element] (one per Config.Elements.Order): Water "Tide Burst" Cone{70, 14, Push 4}; Flame "Flare" Cone{60, 14,
+  Burn {3 s, 0.25}}; Frost "Frostbite" Cone{70, 14, Slow {4 s, 0.6}}; Nature "Thorn Lash" Cone{60, 14, Leech 0.3}; Earth "Quake" Circle{8,
+  Stun 0.5}; Storm "Bolt" Line{24, 4}; Celestial "Radiance" Circle{8, MeterGain 15}; Shadow "Void Rend" Cone{60, 14, Weaken {5 s, 0.85}}
+BattleCatalog.Buffs[kind] = { Name, Seconds, Value, Text }: Support (cooldown 12): Heal 0.30 max HP now; Shield 0.35 max HP 6 s; Rally damage
+  +0.35 8 s; Haste speed +0.35 8 s. Element (cooldown 15): Water "Tide Mend" regen 4%/s 5 s; Flame "Blaze" +25% dmg 8 s; Frost "Chill" hits
+  slow 40% 8 s; Nature "Bloom" regen 2%/s 10 s + meter 20; Earth "Stone Skin" taken -35% 8 s; Storm "Charge" attack speed +35% 8 s;
+  Celestial "Halo" shield 25% 6 s; Shadow "Leech" 30% lifesteal 8 s.   A helper's button = its Support kind, else its FIRST element's buff.
+BattleCatalog.Roles / RoleOf (3.2);  UnitStats(subject, level, tier, extras) uses GetStats(def, level, tier, extras.Evo) x Roles; `evoMult` gone
+Damage: HpScale 2.6, DamageScale 0.6, Variance 0.2, Crit, MinHit, MaxHit (duels 0.6), DoubleKoByDamage {Duel} kept; Overtime DELETED;
+  BossRules.GroupExponent 0.25 -> 0.2.  Training applies as today (Ability also x helper buff values by 1 + 0.04 x rank).
+Ring: ChampionTeam / RingRewards / RingTarget unchanged; the solver compares the champion's UnitPower with the player's TeamPower (4.1 B5);
+  `Ring.Growth` is re-tuned by sim_battle until the Phase 4 stage medians (S1 16 .. S10 51) hold within +-2 rounds.
+Duel: DUEL_POWER_GAP 3 -> 2 (practice duel beyond it); the quick queue pairs within QUEUE_GAP AND x1.6 TeamPower (+x0.1 per 10 s waiting,
+  cap x3); a challenge > x2 apart carries `Practice = true` in the invite.
+Raid: BossHp(bossId, teams) uses ExpectedDps(team) = fighter DPS x (1 + SpecialDpsShare) x KitFactor^0.5 (bench 0).
+Dungeon: section 5.1 data (`BattleCatalog.Dungeon`, `DungeonFloors`, `DungeonPower`, `DungeonWave`, `DungeonRewards`, `DungeonFirstClear`,
+  `DungeonChest`), Zones.Dungeon {44, 44}, Zones.DungeonBoss {56, 56}, TimeLimits.Dungeon 120 (the FALLBACK only: DungeonService always passes `TimeLimit` from
+  `Dungeon.RoomTime / Floor1RoomTime`), Modes + "Dungeon".
+TrialRewardRules -> LossRules { LossShare 1/3, LossMinSeconds 20, LossMinDamage 0.2 }; RealLoss / LossXp kept (ring, dungeon).
+Deleted: Trials, TrialCount, TrialCurve, TrialChapters, TRIAL_ROSTER, buildTrials, trialTeamPower, targetPower, TrialTeam, TrialRewards,
+  ChapterOf, Zones.Trial, TimeLimits.Trial, "Trial" in Modes, MaxTeamSize 4, SynergyRules.SameElement[4], P4.evoMult / EVO_FALLBACK.
+```
+
+#### 4.3 BattleSim (shared, pure, rewritten core; keeps the 2D floor, seeded RNG, elements, applyDamage, bosses, specials' shapes, the delta wire form)
+```
+BattleSim.new(setup) -> battle | nil, reason
+  setup = { Mode = "Duel"|"Raid"|"Ring"|"Dungeon", Seed, Id, Zone = {X, Z} | n, Teams = { team... }, Boss (Raid), Round (Ring),
+            TimeLimit (nil = BattleCatalog.TimeLimits[Mode]), Specials = false (harness) }
+  team  = { Owner, Side, Name, Npc, Auto, Pets = { entry x 1..3 } }   entry: Key, PetId, Def, Level, Tier, Slot, Evo, Train, Boost, Handicap,
+            Boss, Wild, Xp, XpNext, Crowned, NoSpecial.  Side 1 teams: Pets[1] = the fighter, 2-3 the bench.  Side 2 / Npc teams: every pet is
+            on the floor (a wave is a plain list; the Ring champion a one-pet team).  Mode Dungeon: side 2 may start empty.
+battle:Command(owner, action, arg) -> ok, reason
+  "Attack" (targetId|nil)   alive, not Casting / Stunned / Winding / Down, t >= nextAttack - Interval x (1 - AttackTolerance), reach = range +
+                            target.radius + AttackSlack, target = arg | lock | nearest in reach; nextAttack = max(nextAttack, t) + Interval
+  "Element" (id | {x, z} | nil)  cooldown ElementCooldown; shape ElementAttacks[fighter.elems[1]] from the SERVER fighter position
+  "Special" ()              meter >= MeterMax; offensive kinds as today; Heal / Shield / Rally / Haste act on the fighter
+  "Dash" ()                 cooldown DashCooldown -> state Dashing for DashSeconds, i-frames until t + DashIFrames
+  "Target" (unitId|nil)     lock-on; Attack / Element default to it
+  "Buff" (2|3)              that helper's buff; cooldown per helper (SupportCooldown / HelperCooldown)
+  "Swap" (2|3)              fighter <-> helper; SwapCooldown; the incoming pet arrives Casting for SwapCastSeconds; refused while Casting / Stunned
+  "Move" (x, z)             wanted floor point (fed by BattleService from the CHARACTER root every tick, never from a remote); a player fighter walks
+                            at <= legalRun x MoveSlack, legalRun = Fighter.RunOf(WalkOf(MoveSpeed)) x speed buffs (x Config.Physics.DashSpeed /
+                            RunSpeed while Dashing), clamped to the floor; NPC units walk at their MoveSpeed.  battle:SpeedOf(owner) -> { Walk, Run }
+                            (the current legal speeds; the client's SetBattleSpeed values); the `Speed` event fires whenever they change
+  "Forfeit" ()              as today (Raid / Dungeon: RemoveTeam)
+battle:Step(dt) -> events;  Snapshot();  SnapshotDelta(last);  BattleSim.DecodeSnapshot(payload, prev)
+battle:AddTeam(team) / RemoveTeam(owner);  battle:SpawnEnemies(list, opts) -> infos  (Dungeon / Raid minions: a side-2 Npc Auto team
+  { Owner = "wave:"..n }, opts = { Wave = n, Anchor = {x, z} (default the far +Z edge), Name });  battle:LivingEnemies() -> n;
+  battle:BossHp() -> 0..1 | nil (the side-2 unit with Boss = true);  battle:Finish(reason) (Dungeon: ends with Reason "Cleared" |
+  "Abandoned" | "Shutdown");  battle:TeamOf(owner) -> { Fighter, Bench = {id, id}, Lives, Speed = { Walk, Run }, Cooldowns = { Element, Dash, Swap, Buff = {[slot] = t} } }
+battle:Result() -> { Mode, Reason, WinnerSide, Winners, Losers, Draw, Forfeit, BossId, Round, Damage = {[owner] = n}, Shares, Duration,
+  Survivors = {[owner] = lives}, Hp = {[side] = share}, Kills, Waves, BossHp, BossMaxHp }
+BattleSim.States = { Idle 0, Moving 1, Attacking 2, Benched 3, Casting 4, Down 5, Stunned 6, Dashing 7 }   (Winding = Attacking + the windup bit)
+BattleSim.Events = { Hit, Special, KO, Telegraph, Spawn, Enrage, Order, Zone, Leave, End, Element, Dash, Buff, Swap, Windup, Wave, EnemiesDown, Speed }
+```
+Event shapes: `Element { unit, element, name, x, z, angle | tx, tz, targets }`, `Dash { unit }`, `Buff { owner, unit, kind, name, until,
+target }`, `Swap { owner, out, in, auto }`, `Speed { owner, walk, run }` (on Swap, Haste / Slow start and end), `Windup { unit, target, at }`, `Wave { index, units, left }`, `EnemiesDown { wave }` (the last
+enemy of a spawned wave fell), `Order { owner, order, target, rejected }` (a refused command echoes `rejected`), `Hit` + `miss` (dodged) /
+`burn` / `leech` / `element` / `buffDmg`. `unitInfo` + `role`, `buff = { Kind, Name, Seconds, Value, Cooldown }`, `elementAttack`, `bench`,
+`wild`, `boss`, `evo`. End rules: Duel / Ring: a side with no lives loses; Ring timeout = loss; Duel timeout (120 s) -> `DoubleKoByDamage`
+by damage dealt (no Overtime: a Heal is 30% per 12 s = 2.5%/s against >= 6%/s mirror DPS); Raid as today; Dungeon: side-1 wipe ->
+"Wipe", timeout -> "Timeout", never ends on an empty side 2 (`Finish` does). NPC AI: threat target (last hitter within 3 s) else nearest;
+melee orbit slots; `Windup` inside the interval (wave DPS = today's); a hit lands only if the target is still in reach and not Dashing, else
+`Hit { miss = true }`; statuses Slow x0.6, Weaken x0.85, Stun (as Freeze), Burn 3 ticks. Deleted: ATTACK / RETREAT orders, `Retreating`,
+`Damage.Retreat*`, `RetreatAutoResume`, `orderAttack / retreatStep / retreatSpot / resumeRetreats`, the per-slot Special command, `Trial`
+setup, `Auto` casting for player teams, `Overtime`, `Result.Level`, `Describe.Level`. Determinism: `Move` points are part of the command
+stream (the harness records them), so `sim_battle.lua` replays stay exact.
+
+#### 4.4 BattleService (command layer, modes, the encounter API; the Ring, duel and raid plumbing kept)
+* Validation ladder on every remote: `isPlayer` -> type (action string <= 16 chars; arg number / nil / {x, z} of two finite numbers) -> rate
+  bucket (`cmd` burst 12 refill 8/s; `req` burst 4 refill 1/s) -> a running battle, a live participant, `present` -> `Sim:Command` -> replicate.
+  Refusals silent except NotInZone / Charging / Cooldown / OutOfReach ("Too far!"; one throttled toast per 3 s per player); every refusal echoes an
+  `Order { rejected }` for the button shake.
+* Position authority: the 10 Hz `tickBattle` feeds `Command(owner, "Move", localX, localZ)` from `HumanoidRootPart.Position` for every live
+  participant; the server fighter walks toward it at <= legal run x `MoveSlack 1.25` (4.3). A legit character moves at exactly the legal speed (B1),
+  so it is never more than latency x run (<= 5.2 studs at 200 ms, prototype) ahead of the server fighter and the gap closes within a step. The leash
+  measures the gap AFTER that legal step: gap > `Fighter.Leash 10` for `LeashSeconds 3` = a leaver in Duel / Ring, a `RemoveTeam` in Raid / Dungeon
+  (that is a run-off or a teleport; an in-zone speed hack is NOT leashed and gains nothing: reach, hits and the drawn pet use the server fighter, Y2).
+  `present` keeps its pocket rules for Ring and uses the encounter's zone part + `ZONE_MARGIN` for Dungeon.
+* Speed: `Start.Team.Speed = { Walk, Run }` and the relayed `Speed` events; BattleController calls `MovementController.SetBattleSpeed(walk, run)` on
+  Start / Speed and `SetBattleSpeed(nil)` on End. `MovementController.SetBattleSpeed(walk, run | nil)` (battleclient): while set, the controller
+  writes `Humanoid.WalkSpeed = walk` as its base (the "server owns WalkSpeed" watch is suspended, except that a server write of 0 (Downed / frozen)
+  still wins) and the run target is `run` instead of `P.RunSpeed`; nil restores the server base. `p5svc_position_legit` (12.1) proves no legit leash.
+* Modes: Ring (`RingRun` as built; `teamOf(player, 1)` with Pets[1] the fighter; rewards unchanged), Duel (4.2 fair-play rules; `payDuel`
+  once), Raid (16 fighters + boss + minions = ~25 units; `BossHp` by the new ExpectedDps), Dungeon (4.6). Every mode branch that knows
+  Trial / Duel / Raid / Ring loses Trial and learns Dungeon: `present`, `forceRelease`, `finalizeBody`, `payOnce` (shutdown text), `monitorBattle`,
+  `Forfeit` (refused in a dungeon: "Use LEAVE"), `dropOut`, `onPlayerRemoving`, `Shutdown`, `GetBattle` (+ `Floor`, `Room`), `startPayload`
+  (`d.Dungeon = spec.Extra`, `d.Team = { Fighter, Bench, Cooldowns, Speed }`), `KeysInBattle` (ORs the run provider's `KeysInRun`).
+* Run provider (C16): `BattleService.SetRunProvider({ KeysInRun = fn(player) -> {[key] = true}, GetRun = fn(player) -> run | nil })`, called last in
+  `DungeonService.Init`; BattleService NEVER requires DungeonService and works with no provider. `canBattle` (:785) adds, after the InMatch check:
+  "Finish your dungeon run first" when `GetRun(player)` is set OR the player's `InBattle` attribute is a string starting with "D" (so raid / duel /
+  Ring starts and every `BattleRequest` are refused in the Hall, Corridor and Treasure states, judge M1).
+* Rewards paid once: unchanged `b.Paid[uid]` + `payOnce`; `PAY = { Duel = payDuel, Raid = payRaid, Ring = RingRun.pay }` (`Trial` gone,
+  `Dungeon` absent on purpose: C2). XP keys = the 3 team keys ("every pet that fought" = every team key, as the Ring pays today).
+* Deleted: `StartTrial`, `payTrial`, `finishTrial`, `forfeitTrial`, `trialPortalPosition`, `St.trialPortal`, `TRIAL_RANGE`, `REQUEST_COOLDOWNS.Trial`,
+  `b.TrialInfo` / `d.Trial`, the `"Trial"` dispatch, the header's Trial paragraphs; `TRIAL_RETURN_DELAY` -> `RETURN_DELAY`; `POCKET_LEASH` stays.
+* `MovementController` (battleclient): `SetDashKeys(keys | nil)` (in battle: Shift = DASH, Q = SPECIAL; nil restores the obby keys),
+  `SetFreeDash(bool)` (a battle dash costs no stamina; `Config.Physics` untouched), `SetBattleSpeed(walk, run | nil)` (above). BattleController calls
+  all three on Start / End (SetBattleSpeed again on `Speed`). `onRunAction` / `onDashAction` ignore input until `UiGate.HasPlayed()` (7.2).
+
+#### 4.5 Network (the three battle remotes stay; `BattleCommand` actions change)
+* `BattleCommand(action, a)`: "Attack" (id|nil), "Element" (id | {x, z} | nil), "Special", "Dash", "Target" (id|nil), "Buff" (2|3),
+  "Swap" (2|3), "Forfeit". A frantic player sends ~3/s; bucket 12 / 8 per s.
+* `BattleState(kind, payload, battleId)`: "Start" (Describe + Zone + Names + Side + T + `Ring` / `Dungeon` info + `Team` = { Fighter, Bench, Lives, Speed, Cooldowns }), "Snapshot" (delta
+  wire form, 10 Hz fighters / 5 Hz spectators), "Events" (batched per tick), "End", "Lobby". Wire form: `code = id x 128 + mask x 8 + state`,
+  mask bits 1 hp, 2 meter, 4 shield, 8 target; NPC units carry `windup` (0|1) in the meter field; a fighter's shield field packs `shield x 4 +
+  lives`. Cooldowns are not in snapshots: the client runs them from the `Element / Dash / Swap / Buff` events (`until`) and `Start.Team.Cooldowns`; speeds from `Speed` events.
+* Size: 25 units x ~12 B x 10 Hz = ~3 KB/s per client worst case + ~1 KB/s events; `p5battle_net16` asserts < 6 KB/s per client.
+
+#### 4.6 The encounter API (BattleService; the ONLY way DungeonService touches combat; C1 / C2)
+```
+BattleService.TeamSpec(player, keys | nil) -> spec | nil, reason        (teamOf exported; keys = the ring fallback; training keys skipped)
+BattleService.OpenEncounter(spec) -> battleId | nil, reason
+  spec = { Mode = "Dungeon", Zone = <NC_BattleZone part, Mode "Dungeon">, Seed, TimeLimit, Label, Teams = { { Player, Spec }... } (1..4),
+           Extra = { Floor, Room, Wave, Waves, Name, Boss }, KeepInBattle = true,
+           OnEnd = fn(battleId, result), OnWave = fn(battleId, waveIndex), OnBossHp = fn(battleId, frac), OnDown = fn(battleId, player, livesLeft),
+           OnLeave = fn(battleId, player, why) }
+  KeepInBattle: BattleService NEVER writes the InBattle attribute for such a participant, neither on add nor on ANY release path: `setInBattle` is
+  skipped when `part.KeepInBattle` in addParticipant (:877), releaseParticipant (:1670), the ring release (:3274), forceRelease, dropOut,
+  onPlayerRemoving, Shutdown and the Init sweep (:4365, which only clears ids that are not "D" strings). The dungeon RUN owns the attribute (its run
+  id, written before the teleport, released by endRun). addParticipant still sets St.battleOf[player] (Command / present / KeysInBattle work).
+  Everyone gets "Start" at once.
+BattleService.SpawnWave(battleId, entries, opts) -> infos | nil, reason    entries 1..12 of { PetId | Key | Def, Level, Tier, Evo, Train, Boost,
+  Handicap, Boss, Wild, Name }; opts { Wave, Anchor, Name }; -> Sim:SpawnEnemies + the Wave event
+BattleService.FinishEncounter(battleId, reason) -> result | nil    reason "Cleared" | "Abandoned" | "Shutdown"; idempotent (nil the 2nd time);
+  Wipe / Timeout end the sim by themselves. finalizeBody sends "End" with Rewards = { Dungeon = true, Extra } (no Cash / XP lines: the loot
+  card is DungeonController's), fires BattleEnded(battleId, result) with Mode "Dungeon", then calls spec.OnEnd(battleId, result); the zone /
+  pocket are left to the caller (no FreePocket, no return teleport).
+BattleService.RemoveEncounterTeam(battleId, player) -> ok   (Quit / leave / leash / disconnect: the others fight on; OnLeave fires)
+BattleService.EncounterStatus(battleId) -> { Enemies, Wave, BossHp, Players = { [userId] = { Lives, Hp, MaxHp, Down } } } | nil
+OnWave fires when EnemiesDown says the spawned wave is gone and the encounter is not finished; OnBossHp on every 5% step of BossHp;
+OnDown when a fighter's lives reach 0 (the team stays in the encounter as "Downed": no wipe while another team lives, the raid's sideAlive rule).
+Every spec callback (OnEnd / OnWave / OnBossHp / OnDown / OnLeave) runs through `pcall`; an error is warned once per encounter and never stops
+finalizeBody or the release of participants. Fail-safe: an encounter whose sim ended (Wipe / Timeout) and whose OnEnd did not call back within 10 s is
+finalized by BattleService itself ("Error" reason, nothing paid).  Result for Mode Dungeon: { Reason = "Cleared" | "Wipe" | "Timeout" | "Abandoned" | "Shutdown" | "Error",
+Duration, Fighters = { userId... } (participants not Left whose `Damage[userId]` >= `Dungeon.MinShare 0.05` x the party's total damage in this
+encounter; a solo team qualifies with any damage > 0; judge M4), Damage, Hp = {[side] = share}, Survivors, Waves, BossHp, Extra }.
+```
+
+#### 4.7 BattleController (client; the HUD of 24.png on NeonKit; Fx / units / cards / Ring cards kept)
+* Control map: Move = WASD / stick / joystick; ATTACK = left click / F / X / big round button (hold = auto-repeat at the interval);
+  ELEMENT = E / Y / medium button (cooldown ring); SPECIAL = Q / RB / medium button (fills gold at 100); DASH = Shift / B / the DASH button;
+  lock = Tab cycles, click an enemy or its row, T clears / RT, LT / tap a row; helper buff = 1, 2 / LB, D-up / tap the portrait; swap = hold
+  1 / 2 for 0.5 s or the SWAP chip / D-left, D-right / hold the portrait. Keys bound through ContextActionService at High priority ONLY in battle.
+* HUD (ScreenGui "NimbusBattle", 1080p px under `Theme.ScreenFactor()`, NeonKit cards, fonts via Theme roles, nothing in the centre):
+  top-left fighter card: name (`Heading` 26) + "Lv 34" pill + element badge + stars, HP 320x22 green with a red loss trail draining 0.4 s
+  behind (TweenService; HP writes only on change), ENERGY 320x14 blue ("ENERGY 72/100"), 3 hearts = lives; under it two 64 px round helper
+  portraits (`NeonKit.Orb` + ViewportFrame Low built once, stroke in the element colour) with "Lv n", a 68 px cooldown ring (`UIGradient`
+  rotation, written at 10 Hz), the buff name ("HEAL", "STONE SKIN"), the SWAP chip; KO greys the portrait. Right side: one 300x44 row per
+  living enemy (max 8 + "+n more"): icon disc, name, element stripe, red HP bar; the LOCKED row first with a gold bracket + "TARGET"; the
+  attacking enemy's icon flashes "!" during its wind-up; the boss bar stays top-centre under the Roblox bar. Bottom-right action cluster
+  (touch 88 / 64 px, key chips on desktop). Phone (`Layout = "Compact"`, width < 900 px or touch): fighter card 70%, portraits 52 px in a
+  column, enemy list 2 rows, the cluster a 2x2 grid above the jump button, menu column hidden; landscape 740x360: cards 0.8, nothing within
+  the centre 40% of the width. Result card: as today + "Lives left" + the dungeon's `Extra` lines; the per-battle cleanup stays keyed by
+  battle id (Ring chaining, dungeon rooms). Mode texts: "CHAMPION RING - Round 8 - Best 12", "DUNGEON - Floor 3 - Room 2" (purple), "DUEL".
+* Models: the fighter = the team pet (High) at the shoulder offset (1.8, 0.5, 0.6) of the SERVER fighter position (interpolated like the enemies),
+  blended toward the character root while the two are within 2 studs; beyond 2 studs the drawn pet follows the server position (lerp 0.35/frame),
+  so what looks in reach IS in reach; helpers (Low) at (-2, 1.2, 2) / (2, 1.2, 2), fly to the fighter on Buff (0.6 s), trade places on Swap (0.5 s);
+  enemies interpolated as today; `Winding` plays a crouch + a brief yellow Highlight; "DODGED!" (cyan) on `Hit.miss`; buff names float above
+  the fighter; every camera shake x `ClientSettings.Get("Shake") and 1 or 0`.
+* Prediction: press -> animation + the button's own ring + `St.pending[action] = t`; the matching event within 0.6 s clears it; a `rejected`
+  Order or a timeout resets the ring to the server's `until` and shakes the button. Never predicted: HP, numbers, kills, meter.
+* Deleted: the team-card row, ATTACK / RETREAT / per-pet SPECIAL buttons, the regroup countdown, `B.Trial`, "TRIAL n", the trial name / chips
+  branches, LEAVE for Trials (LEAVE stays Ring-only; the dungeon has its own LEAVE in DungeonController).
+
+#### 4.8 Teams of 3 (data W1; careui W3)
+`Teams = { Presets = { [1..3] = { key, key, key } }, Active }`, `GetTeams().Slots` = 3 always; `P3.MAX_SLOTS = 3`, `P3.SLOTS = 3`, `slotsOf()`
+returns 3, `P3.slotUnlock` deleted; `P3.cleanPreset` keeps the first 3 keys (the 4th key leaves the PRESET only: the pet copy, its level and
+growth stay). `SetTeam(player, preset, keys)` refuses > 3 keys ("Teams have 3 pets: a fighter and two helpers"). Team window: labels
+FIGHTER / HELPER / HELPER, a "Set as fighter" action that rotates the preset so the chosen key is slot 1; `MenuController` :6025 (the 4th slot
+branch) deleted; `TycoonCatalog.Prestige.TeamSlotUnlock` deleted; the prestige confirmation loses its "4th team slot" line.
+
+### 5. The Dungeon (dungeon design; battlecore W1 data, dungeon W3 Fable server, dungeonclient W4)
+
+#### 5.1 Floors, rooms, waves (`BattleCatalog.Dungeon`, pure, next to `ChampionTeam`; the same solver)
+```
+BattleCatalog.Dungeon = { Floors 12, Floor1Power 1.5, FirstPower 4, Growth 2.0 (floor f >= 2 targets FirstPower x Growth^(f-1) TeamPower per
+  player: floor 2 = 8 ... floor 10 = 2048 = the old Trial 30, floor 12 = 8192 = a maxed Rainbow team), RoomMult {0.8, 0.9, 1.0}, BossMult 1.3,
+  EscortMult 0.5, Waves {2, 2, 3}, Floor1Waves {1, 1, 1}, EnemiesPerWave 2 (+1 per extra player), Floor1EnemiesPerWave 1, PartyExp 0.85,
+  MinHandicap 0.3, EnemyMaxLevel 50, RoomTime 120, Floor1RoomTime 180, Zones { Room {44, 44}, Boss {56, 56} }, EscortAt 0.5, Intermission 2,
+  DoorTime 12, HallSeconds 10, TreasureSeconds 45, MinShare 0.05, LateJoinLastRoom 2, ReadyTimeout 30, RunMaxSeconds = 4 x RoomTime + 4 x DoorTime +
+  HallSeconds + TreasureSeconds + 120, Bands = { {1,2,{Common}}, {3,4,{Common,Uncommon}}, {5,6,{Uncommon,Rare}},
+  {7,8,{Rare,Epic}}, {9,10,{Epic,Legendary}}, {11,12,{Legendary,Mythic,Secret}} } }
+BattleCatalog.DungeonFloors = { {Name "Mossy Cellar", Element Nature, Kind Cellar}, {"Stone Halls", Earth, Hall}, {"Flooded Vaults", Water, Cave},
+  {"Frozen Crypt", Frost, Cellar}, {"Ember Forge", Flame, Hall}, {"Thunder Spire", Storm, Bridge}, {"Star Chapel", Celestial, Hall},
+  {"Shadow Keep", Shadow, Cave}, {"Magma Mines", Earth, Cave}, {"Howling Peak", Frost, Bridge}, {"Eclipse Sanctum", Celestial, Hall},
+  {"Abyss Throne", Shadow, Throne} }     -- every boss room uses the Throne set
+BattleCatalog.DungeonPower(floor, partySize) -> the party's target (x partySize^PartyExp)
+BattleCatalog.DungeonWave(floor, room, wave, partySize, seed) -> { Pets = { {PetId, Level, Tier, Boss, Boost, Handicap, Wild = true}... }, Boss }
+  enemies = catalog pets of the floor's element in the band (never EventOnly; < 2 candidates -> any element), solved like champions
+  (Handicap / level 1..50 / mini-boss / Boost); room 4 wave 1 = the boss alone (forced mini-boss form, handicapped on floors 1-2),
+  wave 2 = the escort at EscortMult; floor 1 = ONE handicapped enemy per wave. Deterministic for its arguments.
+BattleCatalog.DungeonRewards(floor, room, waves, incomePerSecond, double) -> { Cash, Tokens, Xp }  (5.2)
+BattleCatalog.DungeonFirstClear(floor) -> { Tokens = 300 x floor, Gems = {3,4,5,6,8,10,12,15,18,20,25,30}[floor] }  (totals 23,400 / 156)
+BattleCatalog.DungeonChest(floor, seed) -> { Kind = "Cash"|"Tokens"|"Gems", Amount }   (floors 1-2: Cash 70% / Tokens 30%, never Gems: a 1.5-minute
+  floor-1 farm would be ~10 Gems/h; floor >= 3: Cash 30 s of income 60%, Tokens 20 + 10f 30%, Gems 2 8%, Gems 5 2%)
+Validate: 12 floors with existing elements, power never drops, rewards grow, first-clear tables complete, every band has pets.
+```
+Measured (`dungeon_proto.lua` on the Phase 4 engine): floor 1 cleared by every one of the 12 rollable level-1 Commons / Uncommons alone (100%,
+0.2-1.6 min); the stage ladder S1 F2, S2 F3, S3-4 F4, S5 F5, S6 F6, S7 F7, S8 F8, S9 F9, S10 F11; a 4-party gains about one floor. The
+Phase 5 fighter engine changes fight lengths, not the ladder's shape: `sim_battle only=dungeon` re-measures it in W1 and moves `FirstPower` /
+`Growth` / `RoomMult` only.
+
+#### 5.2 Loot (paid by DungeonService, once per room per QUALIFYING member = `result.Fighters` of 4.6: >= 5% of the party's damage in that room, any
+damage solo; an AFK member or an idle alt gets nothing, the Phase 3 zero-damage-helper rule; C2)
+| Reward | Formula | Why |
+|---|---|---|
+| Cash | `max(20 + 10 x floor, IncomePerSecond(player) x RoomSeconds)`, `RoomSeconds = {3, 4, 5, 12}` by room | the Ring's rule: seconds of your OWN garden; a floor pays 7-17% of the garden time it takes |
+| Tokens | wave rooms `floor((6 + 4f) x waves / 2)`, boss room `(6 + 4f) x 2` (floor 10 run = 253); x2 under Double Rewards | roulettes keep their pace |
+| XP per team pet | `(25 + 10f) x waves` (the boss room counts 4) via `PetCareService.GrantXp(player, key, xp, "Dungeon")` (floor 10 = 1,375 per run) | below the Ring on purpose: the Ring stays the free XP machine |
+| Loss | the room that ends a run pays a third of its XP when `BattleCatalog.RealLoss(result)` (>= 20 s or >= 20% damage; never Quit / leave / disconnect / shutdown) | the Phase 4 rule |
+| Floor cleared | `DungeonFirstClear(floor)` once per player per floor, decided INSIDE `DataService.MutateDungeon` (paid only when it returned "first"); needs the member to be a qualifying fighter of the BOSS room AND of at least one earlier room of the same run (`Member.Qualified[room]`) | once per server session; two servers can pay it twice only when the same player clears the same floor on both before either saved (no session lock, DataService:69; a narrow window, and Gems stay under the 135/h clamp), see 9.1 |
+| Boss chest | one per member in the treasure alcove (E, `DungeonRequest("Chest")`), rolled server-side from seed + userId, once; an unopened chest is opened for its owner (same mark) when the 45 s exit fires | 0.26 gems expected: negligible; Gems kinds only from floor 3 |
+Economy: `sim_tycoon.py --dungeon 0.1` (a run every 10 min) +~8% Cash; combined with `--ring 0.08` it must print ALL TARGETS MET (C10).
+
+#### 5.3 Portal, party, run (player flow)
+* `Portal_Dungeon` = `DungeonBuilder.BuildPortal(gatesFolder, LobbyInfo.GateSites.Dungeon)`: `WorldStyle.BuildGate` (Purple, Glyph "torch",
+  title "The Dungeon", info "Rooms, waves and a boss. Solo or up to 4 friends", pill "Floors cleared here: Alex - 7" from the attribute
+  `DungeonBoard`) + two torches, <= 120 parts; prompt `DungeonPrompt` with `OpenPanel = "Dungeon"` (handled in ArenaController's
+  `onPromptTriggered` next to "Ring", which calls `DungeonController.Open`). Returns `DungeonInfo = { Portal, Pad, PromptPart, ReturnCFrame }`.
+* Window (DungeonController, NeonKit side panel 640x860 Purple): a 12-tile floor list (element icon, name, "Cleared" / "Recommended power
+  512" / "Clear floor 6 first") and the party panel: SOLO (start now) or PARTY (Create; open parties "Ava's party - Floor 3 - 2/4 - JOIN";
+  members with READY ticks and team power; a leader KICK (x) per member (`DungeonRequest("Kick", userId)`, leader only; the kicked member toasts "You
+  were removed from the party"); the leader's START enabled when all are ready and within 40 studs; START with unready members starts a
+  `ReadyTimeout 30` s clock (side card "Starting in 30 - press READY") after which the unready are dropped and the run starts; LEAVE). Countdown side card
+  "Dungeon in 5...". Entry checks (server, in order, each a toast): a pet owned ("You need a pet"); `TeamSpec` (team -> equipped -> best
+  owned, training skipped); `canBattle`; within 30 studs; loaded and not provisional; the floor unlocked for the LEADER (`Dungeon.Best >=
+  floor - 1`; members are carried and credited: `Best = max(Best, floor)`); no home needed.
+* Inside: Entrance Hall (`HallSeconds` 10, the floor banner) -> Room 1 (the fight starts when the first member crosses the `Threshold`; the
+  others are placed at the `Entrance`) -> waves (next wave 1.5 s after the last enemy falls; side card "Wave 2 / 3") -> cleared: loot card
+  "+$340 +24 tokens +70 XP", bars open after `Intermission` 2 s -> corridor (`DoorTime` 12 s, then stragglers are placed at the next
+  entrance) -> rooms 2, 3 -> Boss Room (escort at 50% HP) -> Treasure alcove (chests, exit portal "Back to the plaza", auto after 45 s: unopened chests are opened for their owners first).
+  Pets heal fully between rooms (a fresh encounter per room, C1); a member with 3 pets down is Downed for that room (spectates from the edge,
+  back at full next room); everybody down = the room is lost = the run ends (loot paid stays): "Floor 3: the Frozen Crypt got you in room 3.
+  Train your team and try again!", back at the portal after `RETURN_DELAY` 4. Per-room time limit 120 s (180 on floor 1) = a wipe.
+* Late join while `Run.State` is Hall or Corridor and `Run.Room <= Dungeon.LateJoinLastRoom 2` (joins close when room 3 starts; "in room 2 - JOIN"); during a fight the join is queued <= 20 s
+  ("Joining when the room is cleared"); earlier rooms pay the joiner nothing. LEAVE (two presses, `DungeonRequest("Quit")`), a disconnect, a
+  respawn elsewhere, an obby match or the room leash (80 studs from the room centre, 2 strikes) remove that member only (`RemoveEncounterTeam`,
+  return teleport, `Runs + 1`); the last one out ends the run. A shutdown ends every run void (loot paid stays).
+
+#### 5.4 DungeonService (`src/server/Services/DungeonService.lua`, new, Fable)
+`DungeonService.Init(deps)` (deps `{ DataService, PetCareService, TycoonService, BattleService, DungeonBuilder, DungeonInfo, LobbyInfo }`: wires
+`DungeonRequest`, starts the 0.5 s loop, and LAST calls `BattleService.SetRunProvider({ KeysInRun = DungeonService.KeysInRun, GetRun =
+DungeonService.GetRun })` (C16)). State in one `St`: `parties[leaderUserId]`, `partyOf[Player]`, `runs[runId]`, `runOf[Player]`,
+`pocketBusy[index]` (`MAX_DUNGEONS = 8` by default, 12 only after the owner's MicroProfiler check (judge M6): the 9th run gets "The dungeon is full,
+try again in a minute").
+```
+Party = { Leader, Floor, Members = { [userId] = { Player, Ready, Keys } }, Order, Countdown, Created, Run }
+Run = { Id = "D12", Floor, Seed, Pocket = { Index, Origin, Model }, State = "Hall"|"Fight"|"Corridor"|"Treasure"|"Ending", Room 1..4, Wave,
+        Members = { [userId] = Member }, Order, Battle = battleId | nil, Rooms = { [room] = RoomInfo }, Paid = { [room] = { [userId] = true } },
+        Loot = { [userId] = { Cash, Tokens, Xp, Gems } }, Started, Joinable, Chests = { [userId] = "Closed"|"Opened" }, Cleared }
+Member = { Player, Keys (fixed at the join), JoinedRoom, Downed, Left, Spec, Qualified = { [room] = true } (a qualifying fighter of that room) }
+RoomInfo = { Index, Kind, Model, Zone (NC_BattleZone), Entrance (CFrame), Threshold (part), Door = { Bars } }
+API: CreateParty(player, floor), JoinParty(player, leaderUserId), LeaveParty(player), SetReady(player, bool), SetFloor(player, floor) (leader),
+  KickMember(leader, userId) (leader; never during a run),
+  StartRun(party) -> ok, runId | reason, StartSolo(player, floor), Quit(player), OpenChest(player), GetRun(player) -> { RunId, Floor, Room,
+  State, Wave } | nil, KeysInRun(player) -> {[key] = true}, ListParties(), Shutdown() (BindToClose: every run void)
+Signals: RunEnded(runId, result = { Floor, Cleared, Members, Winners, Loot }) AFTER the payments; FloorCleared(player, floor)
+```
+Run machinery (one `Dg` helper table): `Dg.begin(party)` reserves the pocket index BEFORE any yield, `DungeonBuilder.BuildRun(index, floor,
+seed)`, `Member.Spec = BattleService.TeamSpec(player, keys)`, writes `InBattle = run.Id` for every member BEFORE the teleport (followers
+parked; GoHome / portals / obby refused as for a ring run), teleports to the hall pads, `DungeonState("Run")`. `Dg.enterRoom(run, room)`:
+build room `room + 1` + its corridor now, destroy room `room - 1`; place members at the Entrance; `run.Battle = BattleService.OpenEncounter({
+Mode = "Dungeon", Zone = RoomInfo.Zone, Seed, TimeLimit, Teams, Extra, KeepInBattle = true, OnEnd = Dg.onRoomEnd, OnWave = Dg.onWave,
+OnBossHp = Dg.onBossHp, OnDown, OnLeave })`; `SpawnWave(battleId, DungeonWave(...).Pets, { Wave = 1 })`. `Dg.onWave`: side card, next wave
+after 1.5 s; after the last wave `FinishEncounter(battleId, "Cleared")`; boss room: the escort spawns at `EscortAt`, cleared when boss AND escort
+are down. `Dg.onRoomEnd(run, result)`: Cleared -> `Member.Qualified[room] = true` and `Dg.payRoom` for every `result.Fighters` member (`run.Paid[room][uid] = true` written BEFORE
+`DataService.AddCash / AddTokens / PetCareService.GrantXp`, all non-yielding), `DungeonState("Loot")`, bars open, `State = "Corridor"`; room
+4 -> `Dg.clearFloor` (for every member with `Qualified[4]` and some `Qualified[r < 4]`: `MutateDungeon` raises `Best`, sets `Cleared[floor]`, `Clears +
+1`, returns first-clear -> `DungeonFirstClear` paid via `AddTokens` / `AddGems`; the others only get `Best = max(Best, floor)`), chests, `State = "Treasure"`; Wipe / Timeout -> the loss third, `Dg.endRun(run, false, reason)`. `Dg.endRun`:
+`State = "Ending"`, `DungeonState("End")`, `MutateDungeon` `Runs + 1`, return teleport to `DungeonInfo.ReturnCFrame` after 4 s, `InBattle`
+released, `DungeonBuilder.FreeRun(index)`, the party record removed, `RunEnded` once. `Dg.removeMember(run, player, why)` as in 5.3.
+**Watchdog** (the 0.5 s loop; judge M3): a run in "Fight" whose `run.Battle` is no longer running (`BattleService.GetBattle(id) == nil`) for more
+than 15 s, or any run older than `Dungeon.RunMaxSeconds`, gets `Dg.endRun(run, false, "Error")`. `Dg.endRun` is idempotent (`run.State == "Ending"`
+returns at once), runs each of its steps in its own pcall, and ALWAYS releases InBattle for every member, frees the pocket and fires `RunEnded`
+once, even when an earlier step errored. Every `Dg.on*` callback is pcall-ed by BattleService (4.6) and starts with `if run.State ~= "Fight" then
+return end`. Rate
+limits: `DungeonRequest` burst 6 refill 2 + per-action cooldowns (Create 2, Join 1, Ready 0.3, SetFloor 0.5, Start 1.5, Quit 1, Chest 0.5,
+Open 0.5, Kick 1); ladder type -> range (floor 1..12 whole, userId whole) -> permission (leader-only actions; a member of THAT party; not in a run
+for Create / Join) -> plausibility (30 / 40 studs, `canBattle`, floor unlocked, pocket free). Refusals: side toasts, throttled.
+
+#### 5.5 DungeonBuilder (`src/server/Services/DungeonBuilder.lua`, new; art per image 22, rules of 6.4)
+Mood: Slate / Cobblestone brick walls, Sandstone floors, wall torches (bracket + Neon flame + one `Fire` + `PointLight` range 18 amber),
+puddles, moss, barrels, crates, chains, pillars, arches, a portcullis, stairs to a dais, a throne under a purple carpet; caves with rock,
+stalagmites, a turquoise pool + waterfall wall; bridges over a dark chasm (an invisible floor below); a dark stone ceiling 16 studs up.
+* `DungeonBuilder.Build(lobbyInfo) -> DungeonInfo` (W3; the portal + the template folder); templates built ONCE by Voxel into
+  `ServerStorage.DungeonTemplates` (`Hall_1..3`, `Cellar_1..3`, `Cave_1..3`, `Bridge_1..2`, `Throne_1`, `Entrance_1`, `Corridor_Straight / Left /
+  Right`, `Treasure_1`) in a `task.spawn` after boot with `task.wait()` between sets (a run needing a missing set builds it synchronously,
+  ~0.1 s). Budgets per template: wave room <= **320**, boss room <= **420**, hall <= 140, corridor <= 70, treasure <= 90 (~4,000 total).
+  Each template carries `Accent` attributes on <= 40 recolourable parts and attachments `Entrance`, `Exit`, `Threshold`, `Spawn1..4`, `Dais`.
+* `BuildRun(index, floor, seed) -> Pocket` (origin `Vector3.new(9000 + col x 600, 160, 9000 + row x 600)`, holder `workspace.Dungeons.
+  Dungeon_<index>`; rooms chained along a seeded corridor path, never overlapping), `PlaceRoom(pocket, room)` (clone, recolour Accent parts
+  to `PetCatalog.Elements[el].Color`, add the `NC_BattleZone` part (`Mode "Dungeon"`, `ZoneId "Room"`, `Index`, `Room`), the Threshold, the
+  bars as two toggled states (CanCollide + Transparency; the client plays the slide on the `DoorOpen` attribute); floor 1 brightest, no abyss),
+  `FreeRun(index)` (holder destroyed, zones gone, the `Dungeons` folder removed with the last run). Live budget per run: hall + room k +
+  corridor + room k+1 <= **950** parts; 8 runs <= 7.6K (12 = 11.4K only after the owner's check). A room is assembled under `ServerStorage` and
+  parented into the pocket in ONE step (one replication burst, never part by part). StreamingEnabled is OFF in this game (`default.project.json`;
+  LightingService:140 leaves it alone), so there is NO `RequestStreamAroundAsync` step: every client replicates every live run, which is why the
+  client-total row of 10.3 exists (judge M6).
+  Renderer: `render_model.py dungeon[:<kind>[:<variant>]]`, `dungeon:run[:<floor>]`, `gates`.
+
+#### 5.6 Client (DungeonController new, W4; BattleController lines in W3)
+`DungeonState` payloads (5.7) drive the window, the run side cards ("Floor 3 - Room 2 / 4", wave pips, loot ticker, member chips, LEAVE,
+"Door opens in 7", the chest prompt), the result card; optimistic READY reverted by the next Lobby state; `FIRE_GAP 0.3` between requests.
+Lighting: `LightingStack.Push("Dungeon", preset, 1)` on Run / `Pop("Dungeon", 1)` on End or leaving the pocket (preset: ColorCorrection
+Brightness -0.12 Contrast 0.1 warm-grey tint, darker Ambient / OutdoorAmbient, Atmosphere density +0.15). BattleController: `Start.Dungeon`
+read like `Start.Ring`, mode text "DUNGEON - Floor 3 - Room 2", `wild` chips with the floor's element stripe, the boss chip crowned, no result
+card for a room (the dungeon's loot card instead). Wild look: `PetBuilder.Build(def, { Wild = { Tint, Eyes } })` (pets W3: body x0.75
+brightness -20% saturation, Neon eyes in the element colour); enemies Low, <= 5 on screen.
+
+#### 5.7 Remotes (Config, lead W0)
+* `DungeonRequest(action, a, b)` c->s: "Open", "Create" (floor), "Join" (leaderUserId), "Leave", "Ready" (bool), "SetFloor" (floor), "Start",
+  "Solo" (floor), "Quit", "Chest", "Kick" (userId; leader only, party state only).
+* `DungeonState(kind, payload)` s->c: "Lobby" `{ Parties = { {Leader, LeaderName, Floor, Count, Max = 4, Open, InRun, Room} }, Mine = { Leader,
+  Floor, Members = { {UserId, Name, Ready, Power} }, Countdown } | nil, Record = { Best, Cleared, Runs, Clears } }` (<= 1/s per client);
+  "Run" `{ RunId, Floor, Name, Element, Room, RoomCount = 4, Wave, Waves, State, Members = { {UserId, Name, Downed, Left} }, Joinable }` (<= 1 KB);
+  "Loot" `{ Room, Cash, Tokens, Xp, LevelUps }`; "Chest" `{ Kind, Amount }`; "End" `{ Floor, Cleared, Reason, Totals = { Cash, Tokens, Xp, Gems },
+  FirstClear | nil, Unlocked | nil, NewBest }`. `OpenPanel("Dungeon", { Floor })` from the server (tutorial, prompt).
+
+### 6. World, gates, obby, art, sky, GUI (world design; worldstyle W1, worldlobby W2, neonkit W2, ui owners W3-W4)
+
+#### 6.1 `Config.Lobby` (lead W0) and the Gate Court (LobbyBuilder, W2)
+```
+Config.Lobby = { Origin = Vector3.new(0, 300, 0), PlazaRadius = 150 (was 110), GateArcRadius = 118 (replaces PortalRingRadius 88),
+  GateStep = 14.5 (degrees: 29.8 studs), GateFacing = 90 (+Z; the spawn looks this way), SpotRingRadius = 340 (was 300: spoke bridges stay
+  130 studs), SpotCount = 16, PlotSize = 72 (unchanged, read by TycoonCatalog), ShopOffset = Vector3.new(0, 0, -196) (was -150), KillY = 100 }
+```
+Plaza (plaza-local, 0 = +X, 90 = +Z): spawn court r 0..34 (Slate tiles, Marble ring, a medallion with 6 arrows in the gate colours); the
+grand avenue to the court along 90 degrees (20 wide, Cobblestone, Brick kerbs, lamp posts every 16 studs, `Shadows = false`); the **Gate
+Court** sector 48..132 degrees, r 96..146, with a terrace (r 126..146), hedges, banners, two obelisks; gates left -> right **Home 53.75, Obby
+68.25, Dungeon 82.75, Ring 97.25, Arena 111.75, Altar 126.25** degrees, gate centre r 118, pad centre r 104, every gate faces the spawn; the
+shop boardwalk at 270 degrees; lawns at 0 / 180 with the 6 NPC spots on r 62..80 (>= 12 studs from any path centre); spokes unchanged
+(Cobblestone). Derived: `G.GardenR = 221`, the altar site, the arena distance (`SpotRingRadius + 40`). The six gates live in a Folder
+`workspace.NimbusLobby.Gates` (`LobbyInfo.GatesFolder`), built by their owners in `Build` order (C4). Removed: the portal promenade, the 5
+difficulty portals, the Trial / Ring patches, the rainbow arch (the welcome sign moves onto a stone arch over the avenue at r 40), the
+difficulty bunting; `L.PortalAngles / PortalStep / MidAngle / PromFrom / PromTo / TrialAngle / RingAngle`, `G.TrialHalf / PromIn / PromOut`,
+`buildPortal / fallbackPortal / portalTag / gateBoxes / gatePalette / buildArch / RAINBOW / MAX_STARS`.
+```
+LobbyInfo.GateSites = { Home, Obby, Dungeon, Ring, Arena, Altar }  -- ground CFrame of each gate centre, LookVector toward the plaza centre
+LobbyInfo.RingSite = GateSites.Ring;  LobbyInfo.DungeonSite = GateSites.Dungeon;  LobbyInfo.GatesFolder = workspace.NimbusLobby.Gates
+LobbyInfo.Portals = { Obby = PortalInfo }   (PortalInfo + PromptPart);  LobbyInfo.Gates = { Home = { Model, Pad, PromptPart }, Altar = {...}, Obby = {...} }
+LobbyInfo.ArenaAngle / ArenaDock / ArenaBridgeWidth kept;  LobbyInfo.TrialSite DELETED;  NimbusLobby.PartCount is written by Main.server AFTER DungeonBuilder.Build (the last gate builder; # of BasePart descendants), NOT by LobbyBuilder (m3)
+```
+
+#### 6.2 `shared/WorldStyle.lua` (new, worldstyle W1) and `GateService` (new, worldlobby W2)
+```
+WorldStyle.BuildGate(parent, siteCFrame, spec) -> model, pad, promptPart
+  spec = { Id, Title, Info, Color (Theme.Neon.*), Glyph = "house"|"cloud"|"torch"|"crown"|"swords"|"bolt", Pad = bool, Name = "Portal_<Id>" }
+  22 wide x 8 deep x 26 tall: two Marble columns on Slate plinths, a Slate lintel with a Marble keystone, a 0.4-stud Neon inlay ring, a Neon disc
+  (Transparency 0.35) + a ForceField disc, a 6x6 voxel emblem (<= 30 parts, one per Glyph, built once and cloned); Pad = a 14 x 0.6 x 14 Slate
+  slab with a Marble border and a Neon glyph (the PortalService zone part sits on it) else a 10 x 0.3 x 6 step; the pixel BillboardGui tag
+  (title 28 px, info 20 px, pill 18 px, stroke, MaxDistance 120, LightInfluence 0) 27 studs up; one PointLight (Range 14, Brightness 1.2,
+  Shadows = false) + sparkles (Rate 6); <= 90 parts, owners add <= 30 (crown, torches): every gate <= 120.
+WorldStyle.Palette, WorldStyle.Materials, WorldStyle.Plinth(parent, cf, size, mat), WorldStyle.Kerb(...), WorldStyle.Chamfer(...)   (on Voxel.Box)
+```
+Gates: Home (LobbyBuilder, Yellow, "house", no pad; `HomeGatePrompt` "Go home" / "My Home"), Obby (LobbyBuilder, Blue, "cloud", pad +
+`ObbyPrompt`), Dungeon (DungeonBuilder, 5.3), Ring (ArenaBuilder, Gold, "crown", `RingPrompt`, `ArenaInfo.RingPortal` = its pad), Arena
+(ArenaBuilder, Red, "swords", `ArenaPortalPrompt` -> `ArenaInfo.Spawn`; the bridge stays; the forum `Return` gate is always built and lands
+in front of `Portal_Arena`, `ArenaInfo.LobbyCFrame`), Altar (LobbyBuilder, Cyan, "bolt", `AltarGatePrompt` "Travel" / "Storm Altar").
+`GateService.Init(lobbyInfo, { SpotService, PortalService, StormAltar })`: prompts on `Gates.Home.PromptPart` / `Gates.Altar.PromptPart`
+(MaxActivationDistance 12, HoldDuration 0); on trigger: the prompt is one of the two; alive; `InMatch` false; `InBattle` nil; `PortalService.
+IsLocked(player)` false; within MaxActivationDistance + 4; 1.5 s cooldown; Home -> `SpotService.Teleport(player)` (no plot -> a free gate +
+"Press E at the gate to claim this home!"), Altar -> `StormAltar.GetLanding()` (new: a CFrame on the island deck at the bridge end, 3 studs up,
+facing the altar); `GateService.Teleported:Fire(player, "Home"|"Altar")`. Main.server: after `SpotService.Init` and `PortalService.Init`.
+
+#### 6.3 One obby portal (lead W0 `shared/ObbyLevels.lua`; worldlobby W2 PortalService; dungeonclient W4 `ObbyController`)
+```
+ObbyLevels.List() -> { "Easy", "Medium", "Hard", "Extreme", "Saint" }   (Config.Difficulties order)
+ObbyLevels.HighestUnlocked(bestTimes) -> 1..5   = min(5, 1 + max index i with bestTimes[Difficulties[i].Id] a positive number); 1 when none
+ObbyLevels.IsUnlocked(bestTimes, levelId) -> bool;  ObbyLevels.NextAfter(levelId) -> levelId | nil
+```
+No migration: `Stats.BestTimes` has every win since v2; a player who beat Medium has Hard on the first Phase 5 join; the highest beaten level
+decides; no win = Easy only (the approved rule). PortalService: ONE party slot keyed `"Obby"` (`lobbyInfo.Portals.Obby`; the per-difficulty
+loop deleted); `party.Diff` mutable, `party.Leader = party.Players[1]`; remote **`ObbyPick(levelId)`** -> `PortalService.PickLevel(player,
+levelId)`: string <= 16 chars, `Config.GetDifficulty`, 4/s burst 4, profile loaded, `IsUnlocked(profile.Stats.BestTimes, levelId)` (server
+copy) -> `player:SetAttribute(Config.Attr.ObbyLevel, levelId)`; a LEADER's pick before launch sets `party.Diff`, `party.Deadline = max(Deadline,
+now + 8)`, toast "Level: Hard" to the members; refusal "Beat Medium to unlock Hard"; junk dropped silently. Party creation: level = the
+`ObbyLevel` attribute if still unlocked, else the player's highest; anyone may JOIN whatever the level; launch `MatchService.StartMatch(party.
+Diff.Id, players)` unchanged. `ObbyPrompt` on `PortalInfo.PromptPart` ("Pick level" / "Sky Obby", attribute `OpenPanel = "Obby"`) created by
+PortalService. `PartyState` + `Level`, `Stars`, `LeaderUserId`, `PortalId = "Obby"`; model attribute `PartyLevel`. `ObbyController` (side
+panel 560x640 Blue): 5 level cards (stars, name, blurb, "Best 3:42", "+N tokens on a win", LOCKED "Beat Medium to unlock" / UNLOCKED /
+PICKED), footer "Step on the pad to start" or "Party on the pad: Hard 2/4 - step on to join"; opens on the prompt, `OpenPanel("Obby")`, the
+party panel's CHANGE chip (leader); closes > 40 studs away or on the pad; unlock toast "Extreme unlocked! Pick it at the Obby portal."
+after a `MatchResult` that raised `HighestUnlocked`. HudController party panel: a "Hard ★★★" row + CHANGE chip (leader).
+
+#### 6.4 Art rules (every builder; `p5world_style` checks them), lighting, `LightingStack`
+1. Materials from `WorldStyle.Materials` only (Slate, Cobblestone, Brick, Marble, WoodPlanks, Wood, Grass, LeafyGrass, Sand, ClayRoofTiles /
+   RoofShingles, Metal, Glass, Neon inlays, Fabric, the voxel cloud palette); no SmoothPlastic on a world part with a side > 2 studs (pets,
+   tokens, voxel clouds exempt by tag). 2. Large faces (> 16 studs^2): saturation <= 0.45, value 0.35..0.9; saturated colours only on pieces
+   <= 8 studs^3 or Neon inlays <= 0.5 thick; one accent hue per structure; +-6 RGB jitter per tile. 3. Plinth + body + cap on every structure;
+   kerbs 0.4 + a 0.3 lip on platform edges. 4. Chamfers on exposed corners >= 4 studs tall. 5. Ground tiles 4..6 studs, +-0.05 height
+   alternation. 6. A detail every ~12 studs of walkway, +-20% scale / 15-degree yaw variants, cloned. 7. Warm lanterns (255, 214, 170),
+   Brightness <= 1.5, Range <= 16; <= 12 shadow-casting lights in the lobby. 8. Budgets after the greedy merge: lobby <= **8000** (incl. the
+   six gates), each gate <= 120, arena <= **2800**, a max-tier plot <= 950 (3.6); parts < 4 studs `CastShadow = false`. 9. Clouds stay voxel,
+   shaded for the sky (tops 250,244,252; sides 226,214,240; undersides 186,172,222). 10. World text rule unchanged. Pure decor models are
+   tagged `NC_Detail` (the Low graphics setting hides them). Rebuild order: LightingService (W1) -> LobbyBuilder (W2) -> HomeBuilder (W2, every station incl.
+   House / Vault / Fusion / Arena Gate) -> ArenaBuilder art pass (**arenaart, W4**, not optional: island, colosseum, stands, Ring pocket in these
+   rules, budget 2800, renders `arena`, `arena:ring`, `pocket:ring` >= 3 rounds at the W4 gate). CourseBuilder and the StormAltar island keep their
+   voxel-cloud look ON PURPOSE (the sky world is the game's identity; the player summary says so).
+* `default.project.json` (lead W0): `Lighting.$properties.Technology = "Future"` (one-line revert) and `"ReplicatedFirst": { "$className":
+  "ReplicatedFirst", "First": { "$path": "src/first" } }`.
+* `LightingService.Look = { Custom = {...}, Fallback = {...} }` (replaces the Phase 4 `LOOK`); `Init()` picks Custom when all six
+  `Config.Sky.Faces` are set, else Fallback: ClockTime 14.5 / 16.6, Brightness 2.2 / 2.6, Exposure 0 / +0.1, Ambient (112,104,140) /
+  (118,104,140), OutdoorAmbient (150,138,176) / (160,140,180), ColorShift_Top (70,46,40) / (80,50,40), _Bottom (30,20,60) / (34,22,64),
+  EnvironmentDiffuse 0.7 / 0.6, Specular 0.45 / 0.35, Atmosphere Density 0.32 / 0.36, Offset 0.2, Color (226,188,232) / (220,176,232), Decay
+  (150,120,210) / (126,104,214), Glare 0.15 / 0.4, Haze 1.2 / 2.0, Sky StarCount 0 / 3000, SunSize 11 / 14, Clouds Cover 0.45 / 0.62, Density
+  0.55 / 0.7, Color (255,222,242) / (255,206,236); shared Bloom 0.25 / 24 / 1.35, ColorCorrection Contrast 0.12 Saturation 0.06 Tint
+  (255,246,252), SunRays 0.04 / 0.06. `Config.Sky = { Faces = { Bk = "", Dn = "", Ft = "", Lf = "", Rt = "", Up = "" } }`.
+* `src/client/LightingStack.lua` (new, worldstyle W1): `Push(id, preset, seconds)` (preset = `{ Lighting, Atmosphere, ColorCorrection, Bloom,
+  SunRays, Clouds }`, tweened), `Pop(id, seconds)` (restores what is under it; unknown id = no-op), `Top()`. The first Push snapshots the
+  replicated values as the base; the effective value = the topmost preset that sets it. Users: DungeonController ("Dungeon"),
+  GraphicsQuality ("GfxLow"). Nothing else on the client writes Lighting.
+
+#### 6.5 The sky (`blender/sky/render_sky.py` + `branding/sky/*.png`, worldstyle W1)
+A Cycles WORLD shader only (no geometry): a colour ramp by elevation (pink haze -> light blue horizon -> lavender -> violet -> deep blue
+zenith, the 23.png palette), clouds = fBm noise on the view direction squashed x1.8 in a band of -32..+32 degrees, lit from above, pinker toward
++X; stars = Voronoi cells, 14% lit, above 10 degrees. Every face samples ONE continuous function of direction (side seams measured 0.42..0.68 vs
+0.53 between inner columns: invisible); Up / Dn carry no clouds, so their rotation cannot show a seam. Convention: Ft = -Z, Bk = +Z, Rt = +X,
+Lf = -X. Output 6 x 1024 px PNG + a preview cross, committed so the owner never runs Blender. README owner checklist (10.6, step 2): Asset
+Manager -> Bulk Import the 6 PNGs -> Copy ID -> paste into `Config.Sky.Faces` (`Ft = "rbxassetid://..."`); Lf / Rt swapped = swap two ids.
+The builder may add one larger noise octave for rounder clouds (one node), nothing else.
+
+#### 6.6 The Neon kit and the window rule (neonkit W2: Theme, NeonKit, CloudUI, Hud, Hotbar, Notify; every window owner adopts it after)
+```
+Theme.Neon = { Orange (255,150,48), Blue (64,170,255), Purple (176,104,255), Red (255,76,100), Green (72,224,120), Yellow (255,210,64),
+  Cyan (64,226,236), Pink (255,112,200), Gold (255,196,64), Grey (150,166,204) }
+Theme.Category = { Pets Orange, Items Blue, Team Red, Index Purple, Shop Green, Home Yellow, Stats Cyan, Settings Grey, Obby Blue, Dungeon Purple,
+  Ring Gold, Arena Red, Altar Cyan, Care Green, Fusion Pink, Battle Red };  Theme.NeonColor(categoryOrColorName) -> Color3
+Theme.Colors.PanelTop (26,32,72), PanelBottom (12,15,38), PanelInk (8,10,28)  (old keys kept)
+Fonts: Title / Button / Toast -> GothamBlack; Display stays FredokaOne, Accent LuckiestGuy, Body / Label BuilderSansBold; sizes unchanged
+NeonKit.Card(props) -> { Root, Body, SetColor, SetGlow }   -- Size, Position, Color, Corner 14, Glow (outer frame +5 px, 5 px stroke at 0.62),
+  Floor (the colour fading up from the bottom 55%), Fill {PanelTop, PanelBottom}, a 3 px neon UIStroke, a 2 px white sheen line
+NeonKit.Tile(props) -> { Root, Icon, Label, SetBadge }   -- the 21.png tile: Card + Icon on an Orb (0.46 x size) + GothamBlack label (0.2 x size, 2.5 px stroke)
+NeonKit.Orb(parent, color, size);  NeonKit.Icon(parent, id, size)  -- emoji glyph; Config.Icons[id] = "rbxassetid://n" switches to an ImageLabel
+NeonKit.Pill(props) -> { Root, SetText };  NeonKit.Button(props) -> TextButton (Primary | Outline; hover 1.04 / press 0.95; disabled desaturated)
+NeonKit.SideRect(prefW, prefH, minW, minH) -> { x, y, w, h, scale, mode = "Side" | "Sheet" };  NeonKit.Dock(holder, uiScale, prefW, prefH, minW, minH)
+```
+Window rule (`SideRect`, f = `Theme.ScreenFactor()`, margin 12 f, inset 58): landscape = docked RIGHT, `maxW = 0.44 W`, scale f (or
+`max(0.85 desktop / 0.8 touch, maxW / prefW)`), vertically centred, left edge >= 0.56 W - m; portrait = a bottom SHEET, scale 0.8, w = W - 2m,
+h <= 0.56 H (the top 44% clear); small confirms (Evolve, prestige, odds, purchase) centred <= 30% of the area; HUD popups (results, NPC
+dialog, party panel, tutorial) <= 25% of a phone screen and never in the centre third; NO full-screen dimming (the five `Backdrop` buttons,
+`setBackdrop` / `H.setBackdrop` / `hideBackdropNow`, `MenuController.fitBox`, `K.BUMPS`, the four `fitWindow`s and CloudUI's cloud bumps are
+deleted); one side panel at a time; close = X / Esc / B / another window / walking away. While a panel is open the hotbar re-centres
+(`HotbarController.SetAvoidRight(x)`). Preferred sizes (design px): Inventory / Pets / Shop / Home / Team 820x900, Stats 640x760, Index 860x900,
+Care 600x820, Arena / Ring / Dungeon 640x860, Fusion 760x860, Obby 560x640, Settings 520x640 (content uses the existing narrow / tall
+layouts). Measured (`coverage.py`): Pets panel + HUD 40 / 45 / 56 / 48% at 1920x1080 / 1280x720 / 390x844 / 844x390 (today 48 / - / 83 / 79).
+Per file: `CloudUI.Panel` = a Neon card (accent = `props.Accent` or the category), GothamBlack 34 title + neon underline + red X; `Button /
+IconButton / Slot / Tabs / Bar / Pill` reskinned, API unchanged; `MenuController` left column -> a 2x3 tile grid (Pets, Items, Team, Index, Shop,
+Home: 84 / 66 / 54 px) + a small row (Stats, Settings gear), names `MenuButton_<Id>` kept, `fitBox` -> `NeonKit.Dock` (careui W3);
+`HudController`: currency pills bottom-left (landscape phone: top band right of Roblox's buttons, x >= 150), vitals card reskinned, party row +
+CHANGE chip, stamina ticks (3.9); `HotbarController` neon slots 64 / 54 / 46 + `SetAvoidRight`; `NotifyController` toasts as neon pills at the
+right edge; NPC dialog moves to the side on phones; the results card = one compact card top-right (<= 25%). `IndexController`, `CareController`,
+`ArenaController`, `FusionController`, `DungeonController`, `ObbyController`, `BattleController` use `NeonKit.Dock` / NeonKit cards (their owners).
+
+### 7. Loading screen, main menu, settings (world design 7-8; menu W3)
+
+#### 7.1 `src/first/LoadingScreen.client.lua` (ReplicatedFirst)
+Line 1: `ReplicatedFirst:RemoveDefaultLoadingScreen()`; ScreenGui `NimbusLoading` (DisplayOrder 100, IgnoreGuiInset, ResetOnSpawn false): a
+violet gradient (60,50,150) -> (190,110,200), no text until `Shared.Theme` arrives (fonts via Theme roles), then "NIMBUS CLIMB" (GothamBlack;
+two lines when W < 700), a Cyan neon bar `min(0.6 W, 640 f) x 26 f`, "Loading the sky... 64%", a tip rotating every 5 s from `UpdateNotes.Tips`,
+SKIP after `Config.Loading.SkipAfter = 6` s. Progress = weighted stages, forward only (tween 0.25 s): game loaded 0.30 (`game:IsLoaded()`),
+shared modules 0.10 (Config, Theme, Util, Voxel present), lobby replicated 0.30 (`BasePart` descendants of `NimbusLobby` vs its `PartCount`, polled 0.25 s),
+assets 0.15 (`ContentProvider:PreloadAsync` of the Sky + the gui), profile 0.15 (the player attribute `ProfileLoaded = true`, written by DataService when the profile is loaded or provisional; never a
+PlayerScripts module from ReplicatedFirst (boot order, m13), never the `CloudTokens` attribute).
+Finish at 100% or `Config.Loading.MaxSeconds = 25`: attribute `Done = true`; MainMenuController fades it (0.4 s) and destroys it; with the
+menu disabled the script fades itself after 2 s. One 0.25 s poll loop, no per-frame work.
+
+#### 7.2 Main menu (BEFORE spawning: the server holds the character until PLAY; the approved decision, judge M7)
+* `src/client/UiGate.lua` (new): `UiGate.Played` (signal), `HasPlayed()`, `WaitForPlay(timeout)`, `MarkPlayed()`, `UiGate.ALLOW = { "NimbusLoading",
+  "NimbusMainMenu", "NimbusNotify" }`: a DENY-list rule, every OTHER ScreenGui in PlayerGui (now and via `ChildAdded`) is `Enabled = false` until
+  played: NimbusHud, NimbusMenu, NimbusHotbar, NimbusTutorial, NimbusTutorialPointer, NimbusArena, NimbusArenaSide, NimbusCare, NimbusDungeon,
+  NimbusIndex, NimbusFusion, NimbusNpcDialog, NimbusBattle, NimbusDash, NimbusRun, NimbusDev and any future one.
+* `MainMenuController` (new; FIRST in `CONTROLLER_NAMES` after MovementController): until played every ScreenGui not in `UiGate.ALLOW` (now and via
+  `PlayerGui.ChildAdded`) is `Enabled = false`; there is NO character yet (below), so nothing to disable; MovementController's binds are inert until
+  `UiGate.HasPlayed()` (4.4); camera `Scriptable` orbiting the
+  Gate Court (centre = Origin + GateArcRadius at GateFacing; `Config.MainMenu = { Enabled = true, OrbitRadius = 90, OrbitHeight = 38,
+  OrbitPeriod = 60 }`; RenderStepped, no allocation). PLAY (Enter / A / tap): fires `MenuPlay` (c->s, no args, rate 1/s), waits for `LocalPlayer.CharacterAdded` (<= 5 s, then proceeds anyway),
+  0.35 s fade, camera Custom, guis on, `MarkPlayed()`. Shown once per session. Layout (NeonKit): logo NIMBUS / CLIMB, tag line, PLAY (Primary Green 76 f), SETTINGS (Blue outline),
+  UPDATES (Purple outline, "NEW" badge when `UpdateNotes.Latest > Settings.SeenNotes`), a left-to-right dark gradient, version chip.
+  TutorialController waits `UiGate.WaitForPlay(600)` before its first panel (TutorialService is event-driven, nothing advances). DevController
+  `/menu` reopens it (client-side only: the character stays).
+* Server half (**PlayerService.lua**, owner menu W3): Main.server's boot spawn gate (`holdSpawns` / `releaseSpawns`, :138-165) keeps
+  `Players.CharacterAutoLoads = false` for the server's life (`releaseSpawns` no longer re-enables it nor loads characters; LightingService:147 drops
+  its `CharacterAutoLoads = true` line). `PlayerService.setupPlayer` records `St.waiting[player] = true`; the remote **`MenuPlay`** (first per
+  session only, rate 1/s) or a `Config.MainMenu.FallbackSeconds = 90` timer calls `PlayerService.SpawnPlayer(player)` (= one `player:LoadCharacter()`,
+  idempotent, skipped when the player left or already has a character); after that first spawn `Humanoid.Died` -> `task.delay(Players.RespawnTime,
+  SpawnPlayer)` replaces Roblox's automatic respawn; `PlayerService.HasSpawned(player)`. With `Config.MainMenu.Enabled = false` the character spawns
+  at once on PlayerAdded (today's behaviour, and what every existing smoke scenario and the mock get unless a test sets Enabled). DataService still
+  loads on PlayerAdded, the tutorial is event-driven, and the plaza never shows an avatar before PLAY (Y13).
+* Settings: profile field `Settings = { Music 0..10, Sfx 0..10, Gfx "Auto"|"Low"|"High", Shake bool, SeenNotes int }`, defaults `{ 6, 8,
+  "Auto", true, 0 }`, left out of the save while default, always in ProfileSync; per-key defaults on load; the live session's values win on
+  merge; the dev reset leaves it alone. Remote **`SettingsSet(key, value)`** (DataService's remote section): 6/s burst 6, key in the 5 names,
+  Music / Sfx whole 0..10, Gfx one of 3, Shake boolean, SeenNotes whole 0..1000 and >= stored. API `DataService.GetSettings(player)`,
+  `SetSetting(player, key, value) -> ok`; `State.Settings()`, `State.SettingsChanged`. `SettingsPanel` (in MainMenuController, also from the
+  Settings gear): Music / Sound sliders (11 steps, -/+), Graphics chips, Camera shake chip; applied locally at once, sent with a 0.4 s debounce.
+* `src/client/ClientSettings.lua` (`Get(key)`, `Changed`), `src/client/SoundFx.lua` (`Play(name)` Click / Confirm / Error / Reward / Whoosh at
+  Sfx/10; `Music(context)` Lobby / Battle / Dungeon at Music/10, 1 s crossfade; `Config.Audio = { Music = { Lobby = "", Battle = "", Dungeon = "" },
+  Sfx = { Click = "", Confirm = "", Error = "", Reward = "", Whoosh = "" } }`: empty = silent, the README tells the owner to paste free Creator
+  Store ids), `src/client/GraphicsQuality.lua` (Auto: `SavedQualityLevel <= 3` = Low; Low pushes "GfxLow" (Bloom / SunRays / DoF off, Clouds
+  Density 0.4), reparents `NC_Detail` models to a local holder, disables their emitters, pauses SkyDragonController; High restores).
+* `src/shared/UpdateNotes.lua` (lead W0): `{ Latest = 5, Notes = { { Version = 5, Title = "The Big Sky Update", Lines = {...} }, ... }, Credits =
+  { "Game by <owner>", "Built with Claude" }, Tips = { 12 tips } }`; opening UPDATES sends `SettingsSet("SeenNotes", Latest)`.
+
+### 8. Tutorial and NPC tips (ONE owner: tutorial W4; C9). Indices never move: chapter 1 = 1-9, 2 = 10-14, 3 = 15-18, 4 = 19-21.
+
+| # | Id | Change (texts 97-125 bytes, checked by `p5ui_content`) | Target -> CompleteOn |
+|---|---|---|---|
+| ch.1 `equip` | kept | unchanged | |
+| ch.1 `portal` | kept | "Now the fun part! Step on the Obby portal pad - Easy is picked for you. Friends can hop in too." Hint "Stand on the Obby pad" | `{Kind = "Portal", Id = "Obby", Label = "Obby portal"}` (`lobbyPosition` reads `lobby.Portals.Obby`) -> MatchStarted |
+| 11 `garden` | text | "Your pets make the money! Build your free Pet Garden, then press E on a pet bed to put a pet in it." | the first empty open bed -> GardenPlaced |
+| 12 `coins` | text + target | "Garden pets roam your yard, eat at the Food Bowl and poop Cloud Cash. Only you can scoop it: walk over it!" | the biggest drop (`TycoonService.Drops`) -> CoinsScooped |
+| 13 `machine` | text + target | "Build the Berry Farm, then the Food Machine: the farm grows berries and the machine turns them into XP!" | the Farm pad until built, then the Kitchen pad -> Built Kitchen |
+| 14 `feed` | text | "Press E at the Food Machine and press Feed: your berries become XP. At level 20 your pet can EVOLVE!" | the machine -> Fed (ChapterEnd +$1,000 once) |
+| 15 `team` | text | adds "(a fighter + 2 helpers)" | unchanged |
+| 16 `trial` -> **`dungeon`** | id, text, target, event | Title "Into the Dungeon!", "Press E at the Dungeon portal and start Floor 1: the Mossy Cellar. Beat every room, then the boss. Your fighter attacks, your helpers buff!", Hint "Clear Dungeon floor 1" | `{Kind = "Arena", Place = "Dungeon", Label = "Dungeon portal"}` -> `positionOfInfo(deps.DungeonInfo.Pad)` -> **DungeonWon** (`DungeonService.FloorCleared(player, 1)`, or saved `Dungeon.Best >= 1`, or legacy `Battle.TrialCleared[1]`: veterans skip it) |
+| 17-18 `arena`, `raid` | kept | unchanged | |
+| 20 `ring` | kept | Place "Ring" -> `ArenaInfo.RingPortal` (its pad now in the Gate Court) | unchanged |
+TutorialService: `KNOWN_COMPLETE_ON` - `TrialWon` + `DungeonWon`; `trialOneCleared` -> `dungeonOneCleared`; the `BattleEnded` listener loses
+`Mode == "Trial"`; `impossible()`: DungeonWon needs `DungeonService.StartSolo`; deps + `DungeonInfo`, `DungeonService`; `homeTarget` learns
+the Farm pad and `Drops`; `payChapter` unchanged. TutorialController: `Portal_Obby` by name; waits `UiGate.WaitForPlay(600)` before the first
+panel. NpcDialog (<= 125 bytes, no `< > &`, numbers from the catalogs): Mayor Panda 2 "Your garden pets roam your yard, eat at the Food Bowl
+and poop Cloud Cash. Only you can scoop it: walk over it!", 3 "Level up your Berry Farm: bigger berries make bigger Cloud Cash, and more
+berries for the Food Machine!" (keywords Berry Farm, Food Bowl, Cloud Cash, Berry Basket replace Berry Bush, Carrot Patch, rainbow coins);
+Granny Owl 4 "Your farm fills the Berry Basket. Press E at the Food Machine, pick a pet and press Feed: berries become XP!", 5 reads
+`EvolutionBonus` ("evolved pets grow 50% faster per level"); Coach Corgi 2 "The Dungeon portal on the plaza has 12 floors of rooms, waves and
+bosses. Clear a floor for the first time: big token bonus and Gems!" (keyword "Trial Portal" -> "Dungeon"; `trialCount` -> `floorCount` from
+`BattleCatalog.Dungeon.Floors`), 5 "Your team is a fighter and two helpers: ATTACK, ELEMENT, SPECIAL and DASH; tap a helper for its buff!";
+Sparky Fox's battle line = the same controls; the p3ui needles (Coach Corgi "Team", "+20 trophies"; Granny Owl "Gems"; Professor Axolotl
+"Fusion Machine", "Storm Altar") stay.
+
+### 9. Data: schema, the migration of Phase 4 saves (nobody loses pets, levels, Cash, Gems, Tokens or progress), rollout (data W1 Fable)
+
+`PROFILE_VERSION` stays 2; every change is additive; new data lives in NEW TOP-LEVEL fields or new Home keys (the rollout rule of the Phase 4
+contract section 4: a Phase 4 server rebuilds `Battle`, `Teams`, `Tutorial`, `PetLevels` entries and slot values from the keys it knows and
+`keepForeign` restores unknown top-level / Home / Stats keys). One helper table `P5` (one new local; DataService is at 158).
+
+#### 9.1 Fields
+| Field | Shape | Default | Cross-server merge | Provisional | Dev reset |
+|---|---|---|---|---|---|
+| `Dungeon` (NEW top) | `{ Best 0..100, Cleared = dense booleans by floor, Runs, Clears }` | `{0, {}, 0, 0}` (left out while default) | Best max, Cleared union, Runs +/- delta, Clears +/- delta EXCEPT the migration's own `Clears = Best` which merges as max (two servers migrating the same save do not double it, m15); `P5.cleanDungeon` (whole numbers, Best >= highest cleared) | `Runs` only (`MutateDungeon` refuses a first clear: "Your save is still loading") | wiped |
+| `Berries` (NEW top) | whole number >= 0 | 0 (left out while 0) | +/- delta clamped at 0 (like Food) | `AddBerries` allowed, `SpendBerries` refused | 0 |
+| `Settings` (NEW top) | `{ Music, Sfx, Gfx, Shake, SeenNotes }` | the defaults of 7.2 (left out while default); per-key defaults on load | the live session wins (not progress) | allowed | kept |
+| `Migrations.P5Dungeon`, `Migrations.P5Home` | true | - | union | set in the same step as the migration | kept |
+| `Home.DecorCredit` (NEW Home key) | 0..18 | nil | with Home (per-key replace; a higher Prestige wins the whole Home, which CARRIES it) | - | with Home |
+| `Home.LegacyMagnet`, `Home.LegacyMagnetStar` (NEW Home keys) | 1..5, the Prestige it was folded at | nil | with Home; MutateHome's prestige path clears them with LegacySlots / LegacyPrices and NEVER clears DecorCredit | - | with Home |
+| `Home.Stations` | the 11 ids; `Press2-4`, `Collector`, `DecorLamps / Flowers / Banners` removed by the fold (removal travels as `false`) | | per-key replace | | |
+| `Teams` | 3 keys per preset (4.8); `Slots` 3 | | unchanged | | |
+| `Battle.TrialBest / TrialCleared` | kept in saves, sanitised by `P3.cleanBattle`, never written again; read by the migration and the tutorial | | unchanged | | zeroed as today |
+| `Food` | converted into berries ONCE by the P5Home step (Snack 200 / Meal 1200 / Feast 6400 each, `Berries.LegacyFood`) and zeroed; never written again (m16) | | delta | | |
+| `Stats.BestTimes` | unchanged; read by `ObbyLevels` | | | | |
+API: `GetDungeon(player)`, `MutateDungeon(player, fn) -> ok, first` (non-yielding; Best never down; Cleared only grows; `first` = this call set a
+new `Cleared[f]`), `GetBerries`, `AddBerries(player, n) -> ok`, `SpendBerries(player, n) -> ok` (check-then-subtract in one step), `GetSettings`,
+`SetSetting`, `IsMigrated / MarkMigrated` (exist). State: `State.Dungeon()`, `State.Berries()`, `State.Settings()` + `SettingsChanged`,
+`State.PetStage(key)`, `State.BestStage(petId)`, `State.Teams().Slots == 3`. DevService: reset wipes `Dungeon`, `Berries`; `/berries <n>`.
+ProfileSync: + `Dungeon` (<= 60 B), `Berries`, `Settings` (~60 B); Teams shrink; a Berries-only change never triggers a sync (C14).
+
+#### 9.2 The one-time Phase 5 migrations (`P5.migrateEntry`, inside the place `P4.migrateEntry` runs: ProfileLoaded / ProfileRebased of a loaded, non-provisional profile; idempotent; one non-yielding step each; a profile another server migrated is left alone)
+1. **Teams -> 3** (`P3.cleanPreset`, on every load, no marker needed): a 4-key preset keeps its first 3 keys; the 4th pet stays owned with its
+   level and growth; `TeamsChanged` fires once (`p5data_team3`: Cash / Gems / PetLevels / PetGrowth byte-equal before and after).
+2. **P5Dungeon**: `Dungeon.Best = min(10, floor(TrialBest / 3))`, `Cleared[f] = true for f <= Best`, `Clears = Best`, `Runs = 0`;
+   `Migrations.P5Dungeon = true`. Reason: `TrialCurve` (BattleCatalog:693) grows x1.186 per level, so a floor (x2) is about 4 Trials; `/ 3` rounds DOWN against the player by about one
+   floor in the middle (Trial 18 = 257 power maps to floor 6 while floor 7 = 256), so nobody skips a floor they could not win and the under-credited
+   first clears are simply earned again (never paid twice); Trial 30 (2000) = floor 10 (2048); Trials 1-2 map to nothing because floor 1 is the
+   one-minute tutorial floor (m1).
+3. **P5Home** (`TycoonCatalog.FoldLegacy(home, firstTime) -> changed`, pure, called in ONE `MutateHome`; `MarkMigrated("P5Home")` is written in that same
+   step and ONLY when the fold actually ran: without `TycoonCatalog.FoldLegacy` the whole step is skipped and retried on the next load, m14):
+   (a) Farm: `sum = Press1..Press4` (each clamped 0..10); if any of Press2-4 is present or `firstTime`: `Press1 = min(40, max(sum, the smallest L
+   with FARM_FOOD[L] >= the old plant food of Press1-4))` (the food floor runs on `firstTime` only), Press2-4 removed; (b) Magnet: `Collector > 0`
+   -> `LegacyMagnet = max(LegacyMagnet or 0, Collector)`, `LegacyMagnetStar = Prestige`, Collector removed (`LegacyMagnetLevel(home)` counts
+   while `LegacyMagnetStar == Prestige`, else 0); (c) Decor: `Fence = max(Fence, Flowers, Banners)`, `Fountain = max(Fountain, Lamps)`,
+   `DecorCredit += the levels that did not fit`, the three keys removed; (d) Food: `Berries += Snack x 200 + Meal x 1200 + Feast x 6400`
+   (`Berries.LegacyFood`) and `Food` zeroed, ignoring the basket cap (m16). No Cash or Gems are paid by any migration; the only berries a migration
+   adds are the player's own snacks converted. Toast on the first
+   claim: "Your home got simpler! Your 4 plants grew into one Berry Farm and your garden pets now roam your yard. Old snacks count as berries!"
+   Proof (`fold_check.py`, 300 Phase 4 homes): Home Level dropped in 0 (rose in 126, median +1, none newly at 40), food per meal never lower,
+   income x1.00-1.20, no dead end, pad time <= 1.00 in every tier / star bucket.
+4. **Obby** and **Settings**: no migration (derived from `Stats.BestTimes`; per-key defaults). **Evolution**: `PetGrowth[key].Evo` untouched.
+
+#### 9.3 Rollout (Phase 4 and Phase 5 servers alive together; "Publish, then Migrate to Latest Update")
+| Situation | What happens | Why it is safe |
+|---|---|---|
+| A Phase 5 save opened by a Phase 4 server | `Dungeon`, `Berries`, `Settings`, `Migrations.P5*`, `Home.DecorCredit / LegacyMagnet*` come back untouched | `keepForeign` |
+| ... its `Press1 = 13` | read as Berry Bush L10 (TycoonCatalog clamps to its MaxLevel, no write) | no crash; Phase 5 folds again on the next load |
+| A Phase 4 server sells a Carrot Patch / Magnet / old decor level meanwhile | the next Phase 5 load folds that key too (the level is kept) | `FoldLegacy` is idempotent on the keys present |
+| A Phase 4 Prestige on a folded home | `LegacyMagnet` goes stale; `LegacyMagnetStar` makes it inert | no Cash involved |
+| A Phase 4 server writes a 4-key preset | the next Phase 5 load keeps 3 | the pet stays owned |
+| A Phase 4 Trial clear after the migration | `TrialBest` grows; `Dungeon` is already migrated and not re-derived | a few minutes of a rollout; floors are earned in the dungeon |
+| A Phase 4 server pays a Cash feed | Cash spent there, XP written: consistent | Phase 5 never refunds Cash for food |
+Fixture tests: the lead freezes `tools/fixtures/DataService_phase4.lua` and `tools/fixtures/sim_tycoon_phase4.py` (byte copies) in W0;
+`p5home_rollout` / `p5dgn_migrate` load the frozen module as a second copy against the same mock store (the `p4data_rollout` pattern);
+`p4data_rollout` (Phase 3 fixture) keeps running unchanged.
+
+### 10. Config, remotes, attributes, Main wiring, budgets, exploits, deletions (lead W0 unless an owner is named)
+
+#### 10.1 Lead edits in wave 0 (the shared files only the lead touches)
+* `Config.Remotes` + `"DungeonRequest"`, `"DungeonState"`, `"ObbyPick"`, `"SettingsSet"`, `"MenuPlay"` (5.7, 6.3, 7.2); comments: `BattleCommand` "Attack /
+  Element / Special / Dash / Target / Buff / Swap / Forfeit", `BattleRequest` loses "Trial", `PetCare` "Feed (key)". `Config.Attr` + `InBattle =
+  "InBattle"` (C11), `Berries = "Berries"`, `ObbyLevel = "ObbyLevel"`. `Config.Physics` (3.9). `Config.Lobby` (6.1). `Config.Sky`, `Config.Audio`,
+  `Config.Icons = {}`, `Config.Loading = { SkipAfter = 6, MaxSeconds = 25 }`, `Config.MainMenu = { Enabled, OrbitRadius, OrbitHeight, OrbitPeriod, FallbackSeconds = 90 }` (7). A `Config.Movement` note: a battle dash costs no
+  stamina (`MovementController.SetFreeDash`).
+* `PetCatalog` (3.1, 3.2): `EvolutionBonus`, `LevelFactor(level, stage)`, `StatsOf / GetStats(.., stage)`, `EvolutionBonusOf`, `SpecialKinds` +
+  Rally / Haste, the 15 Support specials, `Validate`; `EvolutionBoost` / `EvolutionMultiplier` kept as deprecated aliases (old values) and
+  deleted by the lead in the W3 gate once no caller remains (`check.mjs` lists callers).
+* `default.project.json`: `Technology = "Future"`, the `ReplicatedFirst` mapping (6.4). New `src/shared/ObbyLevels.lua`, `src/shared/UpdateNotes.lua`.
+* `Main.server.lua` order: Remotes -> LightingService.Init -> LobbyBuilder.Build -> StormAltar.Build -> ArenaBuilder.Build(lobbyInfo) ->
+  **DungeonBuilder.Build(lobbyInfo) -> dungeonInfo -> `NimbusLobby.PartCount` written (m3)** -> Damage / Token / Data -> PetService / ItemService / SpotService -> PlayerService ->
+  MatchService -> PortalService -> **GateService.Init(lobbyInfo, { SpotService, PortalService, StormAltar })** -> Index / Npc -> TutorialService.Init
+  (deps + `DungeonInfo`, `DungeonService`) -> Tycoon / PetCare / Fusion / Gem -> BattleService.Init -> **DungeonService.Init({ DataService,
+  PetCareService, TycoonService, BattleService, DungeonBuilder, DungeonInfo, LobbyInfo })** -> EventService -> DevService. Optional services
+  (`loadOptionalService`) like the Phase 3 ones; the boot spawn gate stays closed for good (7.2: `releaseSpawns` keeps `CharacterAutoLoads = false`). `Main.client.lua` `CONTROLLER_NAMES`: `MovementController`, **`MainMenuController`**, HudController,
+  ..., + `DungeonController`, `ObbyController` (all three OPTIONAL).
+* `tools/contract.json`: groups `shared/HomeRoam`, `shared/TokenLook`, `shared/WorldStyle`, `shared/ObbyLevels`, `shared/UpdateNotes`,
+  `server/Services/DungeonService`, `server/Services/DungeonBuilder`, `server/Services/GateService`, `client/LightingStack`, `client/UiGate`,
+  `client/UI/NeonKit`, the new controllers, the new public functions of sections 3-7 (`TycoonCatalog.SignedPads / FoldLegacy / BasketCap /
+  FeedBerries / RoamLayout / LegacyMagnetLevel`, `DataService` Dungeon / Berries / Settings API, `BattleService` encounter API + `TeamSpec`,
+  `PetCatalog.LevelFactor / EvolutionBonusOf`, `PetController.FormationFor`, `TycoonService.Drops`, `StormAltar.GetLanding`, `PortalService.
+  PickLevel`, `MovementController.SetDashKeys / SetFreeDash / SetBattleSpeed`, `BattleService.SetRunProvider`, `PlayerService.SpawnPlayer / HasSpawned`,
+  `BattleCatalog.Fighter.WalkOf / RunOf`, `DungeonService.KickMember`, `HotbarController.SetAvoidRight`); removed: `BattleService.StartTrial`,
+  `ArenaBuilder.BuildPocket` Trial kind, `BattleCatalog.Trials*`; `partBudget`: `farm 150`, `garden 95`, `fence 90`, `fountain 80`, `gate 120`,
+  `lobby 8000`, `arena 2800`, `dungeonRoom 320`, `dungeonBoss 420`, `dungeonRun 950`, `petEvoLow / petEvo2Low` kept.
+* `tools/smoke.py`: registration lines for every new file of section 12 (placeholders that the owners fill); `tools/run_checks.sh` unchanged.
+  `tools/count_locals.py` (new, from the Phase 4 design prototype: column-0 `local` statements per file; m4) and the 10.3 locals row re-baselined
+  with it. The empty per-owner blocks of 11 in `dump_gui.lua`, `dump_model.lua`, `smoke_p5_gui.lua`, `smoke_p3_ui.lua` (C18). The `src/first`
+  LocalScripts added to the smoke client boot and to check.mjs's client side (m13).
+* Fixtures frozen: `tools/fixtures/DataService_phase4.lua`, `tools/fixtures/sim_tycoon_phase4.py` (byte copies, excluded from the game-code scans
+  like the Phase 3 ones; `tools/fixtures/README.md` lists them).
+
+#### 10.2 Attributes (written only on change)
+| On | Name | Format | Writer | Readers |
+|---|---|---|---|---|
+| Player | `InBattle` (now in Config.Attr) | battle id, or a dungeon RUN id "D12" for the whole run | BattleService / DungeonService | many |
+| Player | `Berries` | whole berries | DataService only, inside `AddBerries` / `SpendBerries` (<= 2/s, trailing write; m6) | HomeFx sign, CareController, MenuController |
+| Player | `ProfileLoaded` | true once the profile is loaded or provisional | DataService | LoadingScreen (ReplicatedFirst) |
+| Player | `ObbyLevel` | difficulty id | PortalService | HudController party row, ObbyController |
+| Plot | `RoamSeed`, `RoamVersion`, `Roam`, `CoinDrops`, `BerryCap` (3.5) | | TycoonService | HomeFx, tests |
+| Plot | `GardenPets`, `GardenInfo`, `GardenSlots`, `TrainingPets`, `IncomePerSecond`, `HomeLevel`, `Prestige`, `CollectorCash` | kept | | |
+| Portal_Dungeon | `DungeonBoard` | `"Alex|7;Sam|4"` | DungeonService | the gate's pill |
+| Portal_Ring | `RingBoard` | kept | | |
+| Portal_Obby | `PartyLevel` (+ the existing party attrs) | difficulty id | PortalService | billboard, ObbyController |
+| NimbusLobby | `PartCount` | number (BasePart descendants after the last gate) | Main.server, after `DungeonBuilder.Build` | LoadingScreen |
+| Room models | `DoorOpen` | bool | DungeonService | DungeonController (the bars' slide) |
+| NC_BattleZone | `Mode` + "Dungeon", `ZoneId "Room"`, `Index`, `Room` | | DungeonBuilder | BattleService.present |
+| Tag | `NC_Detail` | pure decor models | LobbyBuilder / HomeBuilder / ArenaBuilder / DungeonBuilder | GraphicsQuality |
+| Removed | plot `CoinPiles`; the per-difficulty portal attributes; `ArenaInfo.TrialPortal` | | | |
+
+#### 10.3 Budgets (held by)
+| Budget | Phase 5 | Held by |
+|---|---|---|
+| Lobby parts | <= 8000 incl. the six gates (<= 120 each), `PartCount` written | LobbyBuilder (`p5world_lobby`, `p5world_style`) |
+| Arena island | <= 2800 (its portals moved to the court) | ArenaBuilder (`smoke_p3_arenaworld`) |
+| Home plot | <= 950 fully built; Farm 150, Garden 95, Fence 90, Fountain 80 (3.6) | HomeBuilder (`smoke_p2_homeworld`) |
+| Dungeon | templates <= 4,000 in ServerStorage; <= 950 live parts per run; `MAX_DUNGEONS 8` (12 only after the owner's MicroProfiler check; wave rooms 320 -> 260 via `Voxel` `MaxParts` is the next knob); a room parented in ONE step | DungeonBuilder (`p5dgn_world`) |
+| Client total (streaming is OFF: every client holds everything) | <= **45,000** BaseParts in Workspace worst case: lobby 8,000 + NPCs 2,600 + arena 2,800 + 16 plots x 950 + 8 runs x 950 + 2 ring pockets x 600 + the live obby course + tokens / coins; `p5world_client_total` boots the server world, builds 16 Sky Castle plots, 2 ring pockets and 8 dungeon runs (8 x 950 stand-in parts until W3, real runs after) and asserts the count, printing the breakdown | lead (`smoke_p5_world.lua`, worldlobby adds it in W2) |
+| Client home | <= 12 roaming pets (own home evolved Low <= 380 / 520), <= 36 coins x 6 parts, puffs / berries <= 16 | HomeFx (`client_p5home_roam`) |
+| Battle units | own fighter High, helpers Low, enemies Low; raids ~25 units | BattleController |
+| Network | battle snapshots < 6 KB/s per client in a 16-raid (`p5battle_net16`); a 4-player dungeon room <= a 4-raid; `DungeonState` < 1 KB, <= 1/s; `CoinDrops` <= 0.5/s <= 400 B; `Berries` <= 2/s; ProfileSync <= 4/s | BattleService, DungeonService, TycoonService |
+| Server CPU | 1 s income tick (poops: <= 2 catch-ups per slot), 0.25 s scoop loop, 10 Hz `tickBattle` Move feed, 0.5 s dungeon loop, 2 Hz monitor; no per-frame server loops, no server tweens | |
+| Lights | <= 12 shadow-casting in the lobby; torches `Shadows = false`; parts < 4 studs `CastShadow = false` | world builders |
+| Lua locals (200) | baselines by `tools/count_locals.py` (column-0 `local` statements; the earlier numbers came from another count, m4): MenuController 181 (+2 max; new code in helper tables), ArenaBuilder 182 (+0: gate and art code in `Gates` / `Art` helper tables), BattleService 136 (`Enc`, `Cmd`, `Run` tables), HomeFx 141 (+2, `R`), DataService 158 + 1 (`P5`), TycoonService 128 + 2 (`Coins` grows), HudController 153 + 2, LobbyBuilder 142 (`Court`, `Gates`), PetController 105 + 1 (`F5`), PlayerService + 2, new files <= 120 | every engineer re-runs `python3 tools/count_locals.py <file>` before handing in; the W0 gate prints the table |
+| DataStore | + <= ~0.3 KB per profile (Dungeon, Berries, Settings, Home keys) | additive |
+
+#### 10.4 Exploits closed (new ones; X1-X24 of Phase 4 hold)
+| # | Attempt | Closed by |
+|---|---|---|
+| Y1 | Forge damage / hit from the client | the client sends only actions; reach, cooldowns, meter, lives and damage are decided by `BattleSim` on the server fighter position |
+| Y2 | Teleport / speed-hack the character in a battle | the server fighter walks toward the character at <= legal run x 1.25 (4.3); reach, hits and the drawn pet use the SERVER fighter, so running faster gains nothing; a gap > `Leash 10` for 3 s (a run-off / teleport) = out |
+| Y3 | Spam commands | bucket 12 / 8 per s; `DungeonRequest` 6 / 2 + per-action cooldowns; `ObbyPick` 4/s; `SettingsSet` 6/s; junk types dropped |
+| Y4 | Farm dungeon loot (replayed OnEnd, late join, two servers) | `run.Paid[room][uid]` marked BEFORE paying; rooms before a join pay nothing; first clear decided inside `MutateDungeon` (Cleared union); chest once per userId per run; only qualifying fighters (>= 5% of the room's party damage) are paid; the first clear needs the boss room + one earlier room; late join closes at room 3; an AFK alt earns nothing |
+| Y5 | Enter a locked floor | the LEADER's `Dungeon.Best` is checked server-side; members are carried on purpose |
+| Y6 | Quit-farm the loss XP | `RealLoss` gate; Quit / leave / disconnect / shutdown pay nothing |
+| Y7 | Move a Cloud Cash coin or hurry a pet | poop times / points come from the server plan on server time; no pickup remote; the owner's root is checked |
+| Y8 | Place / remove churn | `SettleSeconds 20`, first poop >= 24 s, the same key keeps its epoch within a cycle |
+| Y9 | Forge berries / double-spend | never from the client; `SpendBerries` check-then-subtract; delta merge clamped at 0 (a two-server race costs at most one feed) |
+| Y10 | Pick a locked obby level / spoof a party level | `IsUnlocked` on the server copy of `BestTimes`; only the leader's pick moves `party.Diff` |
+| Y11 | Junk settings | key whitelist, ranges, types; `SeenNotes` only up |
+| Y12 | Use a gate prompt from afar / in a match / in a battle | distance, `InMatch`, `InBattle`, `IsLocked` checks + 1.5 s cooldown in GateService |
+| Y13 | Never send `MenuPlay` / disable the menu to hide in the plaza | the server spawns the character on `MenuPlay` or after `FallbackSeconds 90` whatever the client does; the tutorial is event-driven; a client without the menu only sees the plaza from a camera until its character exists |
+
+#### 10.5 What is deleted (index; the areas' lists are the detail): BattleCatalog / BattleSim / BattleService / BattleController Trial + RETREAT
+machinery (4.2-4.4, 4.7); `ArenaBuilder` `Portal_Trials`, `buildTrialPortal` (-> `buildGatePortal` using `WorldStyle.BuildGate`), `TrialPrompt`,
+`ArenaInfo.TrialPortal`, the trial pocket template, `BuildPocket`'s Trial kind, `DEFAULT_ZONES / MAX_ZONE.Trial`, the zero-part fallback prompt,
+the `link == "Portal"` condition; `LobbyBuilder` (6.1); `PortalService` per-difficulty parties; `ArenaController` Trial window (`buildTrials`,
+`trials`, `trialCount`, `isCleared`, `highestCleared`, `trialPortal`, `TRIAL_RANGE`, `OpenTrials`, `SelectLevel`, `StartSelected`, `S.Level`,
+`S.AtPortal`, `Win.Trials`, `C.Trial`, the "Trials" cases); `MenuController` "Trial best: %d / 30" (-> "Dungeon: floor %d cleared, %d runs"),
+the 4th team slot branch; `TycoonCatalog` / `TycoonService` / `HomeBuilder` / `HomeFx` / `CareController` / `PetCareService` / `PetController`
+items of 3.3-3.8; `PetCatalog.EvolutionBoost / EvolutionMultiplier` (W3 gate); `DataService` `P3.MAX_SLOTS 4`, `P3.slotUnlock`; `LightingService`
+`LOOK`; CloudUI cloud bumps, the five Backdrops, `fitBox` / `fitWindow`s; `Config.Lobby.PortalRingRadius`; tests: `p3bs_trial`, `p3flow_trials`,
+`p3fixsrv_trial1`, `p3fixsrv_retreat`, `p4ring_trialxp` (-> `p4ring_lossxp`), the Trial checks of `smoke_p3_arenaworld / p3_ui / p3_battlecore /
+p3_battleclient / p3_visual`, `dump_gui` `arena:trials`, `render_*` `pocket` (trial), `sim_battle` `only=trials`.
+
+#### 10.6 Owner checklist (by hand, once; docs W4 writes it into README.md as "Phase 5: owner checklist", numbered like this; `smoke_p2_final.lua`
+`checkPhase5` asserts one needle per step, given in [brackets]; judge M9)
+0. Where things live: the game's numbers are in `src/shared/Config.lua` in the project folder on your PC. While `rojo serve` runs and Studio is
+   connected (the Rojo plugin's CONNECT button), a saved change in that file reaches Studio within a second; the committed `play/NimbusClimb.rbxlx`
+   is rebuilt by us (`rojo build`) and only matters when you open the place WITHOUT Rojo. [`rojo serve`]
+1. Publish and migrate: Studio -> File -> Publish to Roblox (Alt+P) -> your experience -> Publish. Then create.roblox.com -> Creations -> your
+   experience -> the three dots -> **Migrate to Latest Update** (also under Configure Experience -> Places -> Start Place -> Version History):
+   running servers move to the new version within a few minutes; until then Phase 4 and Phase 5 servers run together, which 9.3 makes safe.
+   [`Migrate to Latest Update`]
+2. The sky (6 images, ~5 min): Studio -> View -> Asset Manager -> Bulk Import -> the six PNGs in `branding/sky/` -> Upload. They are IMAGES (the
+   ids are Image ids, which is what `Sky` needs; a Decal id would NOT work). New images wait for moderation (minutes to an hour; a grey square in
+   Studio until approved). Right-click each -> Copy ID -> paste into `Config.Sky.Faces` as `Bk = "rbxassetid://123..."` (Bk Dn Ft Lf Rt Up by file
+   name). Until all six are set the game shows the built-in fallback: a pink-lavender haze, a Roblox cloud layer tinted pink and 3000 stars (no
+   seams, a little flatter than the painted sky). Left and right swapped -> swap the Lf and Rt ids. [`Bulk Import`]
+3. Music and sounds (optional): Studio -> Toolbox -> Marketplace -> Audio; search ("calm loop", "click"), keep only results that say the audio can
+   be used in any experience (Roblox-provided audio plays everywhere; another user's private upload stays silent in your game); click -> Copy
+   Asset ID -> paste into `Config.Audio.Music.Lobby / Battle / Dungeon` and `Config.Audio.Sfx.*` as `"rbxassetid://..."`. Empty = silent, nothing
+   breaks. [`Config.Audio`]
+4. Icons (optional): the menu tiles use emoji glyphs; a PNG you Bulk Import (step 2) pasted into `Config.Icons[id]` replaces one. [`Config.Icons`]
+5. Lighting on a slow PC or phone: `default.project.json`, the line `"Technology": "Future"` -> `"ShadowMap"` (one word), save, publish. Players
+   can also pick Graphics: Low in SETTINGS. [`ShadowMap`]
+6. Gems for Robux (open since Phase 4): create.roblox.com -> your experience -> Monetization -> Developer Products -> Create (one per pack: name,
+   Robux price) -> copy each Product ID into `Config.Gems.Products` (`{ Id = ..., Gems = 100, Name = "Pouch of Gems" }`); until then the Gems tab
+   shows "Coming soon". [`Developer Products`]
+7. After any change: Studio -> Play (F5) once, View -> Output: no red line starting with `[Config]` or `[LightingService]` = good. [`Output`]
+
+### 11. Ownership and the waves (one owner per file per wave; Fable for the riskiest builders, Opus elsewhere; effort high)
+
+Rules: engineers never edit `ARCHITECTURE_V3.md`, `Config.lua`, `PetCatalog.lua`, `Main.*.lua`, `default.project.json`, `tools/contract.json`,
+`tools/run_checks.sh` (deviations go to the lead in the report). In `tools/smoke.py` each engineer edits only their own registration lines
+(re-read right before each edit). The same rule ("your own block only, re-read right before each edit") applies to the shared tool files, each with
+NAMED per-owner blocks the lead creates empty in W0 (`-- [owner: <key>] begin` .. `-- [owner: <key>] end`; C18): `tools/dump_gui.lua` and
+`tools/dump_model.lua` (scene / target builders registered in a `SCENES` / the `BUILDERS` table from inside the block, so no block touches the
+dispatch), `tools/smoke_p5_gui.lua` (the `client_p5gui_cover` scene lists, one block per window owner), `tools/smoke_p3_ui.lua` (the arena / ring
+windows block -> dungeonclient, the chapter-3 block -> tutorial). `tools/render_gui.py` / `render_model.py` are lead-owned: owners name their new
+scenes / targets in the report and the lead adds any python-side entries (`--list`, view presets) at the gate. New helpers go into the file's helper table; a window gets its own controller. Every builder tests with
+`--only` while working and runs ONE full `--quick` at the end; the lead gates each wave with one full `--quick` in a worktree.
+
+#### 11.1 Ownership table
+| Role | Model | Wave | Source files (exclusive) | Test / tool files |
+|---|---|---|---|---|
+| lead | Fable | 0, gates, 6 | section 10.1 files | `smoke.py`, `contract.json`, `check.mjs` names, the two fixtures, `run_checks.sh` |
+| data | Fable | 1 | `DataService.lua` (Teams 3, `Dungeon`, `Berries`, `Settings` + `SettingsSet`, `P5` migrations incl. the `FoldLegacy` call guarded by `if TycoonCatalog.FoldLegacy`), `client/State.lua` (Dungeon / Berries / Settings / PetStage / BestStage / Slots 3), `DevService.lua` (reset, `/berries`) | `smoke_p5_data.lua` (new), `smoke_p4_data.lua`, `smoke_p3_data.lua`, `smoke_p2_data.lua`, `smoke_polish_data.lua`, `smoke_dev.lua` |
+| battlecore | Fable | 1 | `BattleCatalog.lua` (rewrite: 4.2 + 5.1 + Trial deletions), `BattleSim.lua` (rewrite 4.3) | `smoke_p5_battlecore.lua` (replaces `smoke_p3_battlecore.lua`), `tools/sim_battle.lua` (sections `fighter`, `support`, `duels`, `raids`, `ring`, `dungeon`, `training`; `trials` deleted) |
+| economy+roam | Opus | 1 | `TycoonCatalog.lua` (3.3-3.5 data, `FoldLegacy`, `SignedPads`, `RoamLayout`, `BasketCap`, `FeedBerries`, PetPower via LevelFactor, deletions), `shared/HomeRoam.lua` (new, from `proto/HomeRoam.lua`), `shared/TokenLook.lua` (new), `TokenService.lua` (`MakeTokenPart` uses TokenLook) | `smoke_p4_economy.lua`, `smoke_p5_home.lua` (catalog + roam-shared scenarios), `tools/sim_tycoon.py` (`sim_p5.py` port, `--migrate5`, `--dungeon`, `--check`) |
+| worldstyle | Opus | 1 | `shared/WorldStyle.lua` (new), `LightingService.lua`, `client/LightingStack.lua` (new), `blender/sky/render_sky.py` + `branding/sky/*.png` | `smoke_p5_world.lua` (`p5world_lighting`, `client_p5lightingstack`, `p5world_style` helpers), README sky steps (draft for docs) |
+| battleservice | Fable | 2 | `BattleService.lua` (4.4-4.6) | `smoke_p5_battleservice.lua` (new), `smoke_p4_ring.lua`, `smoke_p3_battleservice.lua`, `smoke_p3_fix_server.lua`, `smoke_p3_fixcheck.lua`, `smoke_p3_events.lua`, `smoke_fix_leave.lua`, `smoke_p4_fix_battle.lua`, `smoke_p3_flow.lua` (W2) |
+| tycoon+care | Fable | 2 | `TycoonService.lua` (3.5 ledger, Drops, old-id toasts, welcome toast, `BerryCap` / `Berries` attrs), `SpotService.lua` (podium stage), `PetCareService.lua` (3.4 Feed, prompts, evolve toast), `PetService.lua` (nothing new expected), `FusionService.lua` (stage carry kept) | `smoke_p4_garden.lua` (drops), `smoke_p4_portal.lua`, `smoke_p4_care.lua`, `smoke_p2_tycoon.lua`, `smoke_economy.lua`, `smoke_p2_fusion.lua`, `smoke_fix_server.lua`, `smoke_p5_home.lua` server scenarios |
+| worldlobby | Opus | 2 | `LobbyBuilder.lua` (6.1 rebuild), `GateService.lua` (new), `PortalService.lua` (6.3), `StormAltar.lua` (`GetLanding`), `ArenaBuilder.lua` (Trial deletions, `Portal_Ring` + `Portal_Arena` via BuildGate into `GatesFolder`, zones; the art pass is arenaart's in W4) | `smoke_p5_world.lua` (`p5world_lobby`, `p5world_gates`, `p5obby_levels`, `p5obby_migration`), `smoke_p3_arenaworld.lua`, `smoke_polish_portals.lua`, `smoke_server.lua` portal scenarios, `tools/dump_model.lua` / `render_model.py` (`lobby`, `gates`) |
+| homeworld | Opus | 2 | `HomeBuilder.lua` (3.6) | `smoke_p2_homeworld.lua`, `smoke_p2_visual.lua` (server halves), `dump_model.lua` / `render_model.py` home targets (`home:Press1:<1..40>`, `homegarden`) |
+| neonkit | Opus | 2 | `shared/Theme.lua`, `client/UI/NeonKit.lua` (new), `client/UI/CloudUI.lua`, `HudController.lua` (pills, vitals, party row + CHANGE, stamina ticks), `HotbarController.lua`, `NotifyController.lua` | `smoke_p5_gui.lua` (`client_p5neon`, `client_p5stamina`, the `coverage.py` port), `smoke_client_v2.lua` ui-kit / hud / hotbar / notify scenarios, `smoke_polish_vitals.lua`, `tools/dump_gui.lua` widget gallery |
+| dungeon | Fable | 3 | `DungeonService.lua` (new), `DungeonBuilder.lua` (new) | `smoke_p5_dungeon.lua` (server scenarios of 12), `dump_model.lua` / `render_model.py` `dungeon:*` |
+| battleclient | Opus | 3 | `BattleController.lua` (4.7 incl. the Dungeon mode lines), `MovementController.lua` (`SetDashKeys`, `SetFreeDash`, `EXHAUST_RESUME`), `client/UI/PetCard.lua` (lives pips) | `smoke_p5_battleclient.lua` (new), `smoke_p3_battleclient.lua`, `smoke_p3_fix_client.lua`, `smoke_p3_visual.lua` (client half), `dump_gui.lua` battle scenarios |
+| homefx+pets | Opus | 3 | `HomeFx.lua` (3.4 signs + flights + basket line, 3.5 roaming + coins, 3.7 evolved home pets), `PetController.lua` (3.8), `shared/PetBuilder.lua` (`PB_Evolved` attribute, `Wild` option), `HomePortalFx.lua` (if touched) | `smoke_p5_home.lua` client scenarios, `smoke_p5_follow.lua` (new), `smoke_p4_pets_client.lua`, `smoke_client_v2.lua` follow windows, `smoke_p2_fix_client.lua`, `smoke_p2_homeworld.lua` / `smoke_p2_visual.lua` client halves, `smoke_release_client.lua`, `smoke_polish_worldtext.lua` |
+| careui | Opus | 3 | `CareController.lua` (Feed window, stage viewports, Dock), `MenuController.lua` (tile grid + Dock, Home strip, Pets "Food Machine" + stage, Team 3 slots + FIGHTER / "Set as fighter", Stats dungeon line, reveal ribbon, prestige texts), `IndexController.lua` (BestStage tiles, Dock), `FusionController.lua` (stage tiles, Dock) | `smoke_p4_careui.lua`, `smoke_p5_looks.lua` (new), `smoke_p2_ui.lua` (Home / Pets rows), `smoke_p3_evolved.lua`, `dump_gui.lua` / `render_gui.py` menu / feed / garden / train / looks scenarios |
+| menu | Opus | 3 | `src/first/LoadingScreen.client.lua`, `client/UiGate.lua`, `Controllers/MainMenuController.lua`, `client/ClientSettings.lua`, `client/SoundFx.lua`, `client/GraphicsQuality.lua`, `DevController.lua` (`/menu`), `server/Services/PlayerService.lua` (the 7.2 spawn gate: `SpawnPlayer`, `HasSpawned`, `MenuPlay`, the fallback, the respawn) | `smoke_p5_menu.lua` (`p5menu_spawn`, `client_p5loading`, `client_p5menu`, `client_p5settings`), `dump_gui.lua` `mainmenu` / `loading` / `settings` |
+| dungeonclient | Opus | 4 | `Controllers/DungeonController.lua` (new), `ArenaController.lua` (Trial deletions, Dungeon prompt hand-off, Practice invite flag, Ring card stage, Dock), `Controllers/ObbyController.lua` (new) | `smoke_p5_dungeon.lua` client scenarios, `smoke_p5_world.lua` `client_p5obby`, `smoke_p3_ui.lua` (arena / ring windows), `dump_gui.lua` `arena:dungeon`, `obby`, `ring` |
+| tutorial | Opus | 4 | `TutorialService.lua`, `shared/TutorialSteps.lua`, `TutorialController.lua` (+ the UiGate wait), `shared/NpcDialog.lua` | `smoke_p4_ui.lua` (chapters 2 / 4), `smoke_p3_ui.lua` (chapter 3, needles), `smoke_p2_ui.lua` (chapter 2 ids / texts), `smoke_p5_tutorial.lua` (`p5ui_content`, `p5dgn_tutorial`, `p5ui_tutorial_ch2`) |
+| docs | Opus | 4 | `README.md`, `tools/README.md`, `tools/fixtures/README.md` | `smoke_p2_final.lua` (`checkPhase5`) |
+| flow | Opus | 4 | (none: reports bugs to the lead, who reopens the owner) | `smoke_p5_flow.lua` (new), `smoke_p4_flow.lua`, `smoke_p3_flow.lua` (W4), `smoke_p2_flow.lua` |
+| arenaart | Opus | 4 | `ArenaBuilder.lua` art pass (6.4 rules: island, colosseum, stands, Ring pocket; budget 2800; `Portal_Ring` / `Portal_Arena` untouched) | `smoke_p3_arenaworld.lua`, `smoke_p3_visual.lua` (arena half), its `dump_model.lua` block; renders `arena`, `arena:ring`, `pocket:ring` (>= 3 rounds) |
+Untouched on purpose: `Voxel.lua`, `BossBuilder.lua`, `EventService.lua` (verify it keeps ignoring non-Raid results),
+`DamageService.lua`, `MatchService.lua`, `GemService.lua`, `IndexService.lua`, `ItemService.lua`, `NpcService.lua`, `HazardService.lua`,
+`CourseBuilder.lua`, `CourseLayout.lua`, `DamageFx.lua`, `EvolutionFx.lua`, `TokenFx.lua`, `SkyDragonController.lua`, `ShowcaseController.lua`,
+`NpcController.lua`, `DevPetShow.lua`, `ItemCatalog.lua`, `PetKeys.lua`, `Util.lua`, `Remotes.lua`.
+
+Interfaces each pair codes against (fixed here): battlecore <-> battleservice / battleclient / dungeon (4.2-4.6, 5.1); battleservice <->
+dungeon (4.6, both Fable: the dungeon lands one wave AFTER the real BattleService); economy+roam <-> tycoon / homefx (3.3-3.5 names, the
+attribute formats); data <-> tycoon / care / dungeon / menu (9.1 API); worldstyle <-> worldlobby / homeworld / dungeon / arenaart
+(`WorldStyle.BuildGate`, pieces, `Materials`) and <-> dungeonclient / menu (`LightingStack`); worldlobby <-> dungeon (`GateSites.Dungeon`,
+`GatesFolder`) and <-> tutorial (`Portals.Obby`); neonkit <-> every window owner (`NeonKit`, `CloudUI.Panel`, `Dock`); menu <-> tutorial
+(`UiGate`); tycoon+care <-> homefx / careui (attributes, `PetCare("Feed", key)` answer, `OpenPanel` args).
+
+#### 11.2 The ordered build plan (each wave gated by `python3 tools/syntax.py`, `node tools/check.mjs`, one full `bash tools/run_checks.sh --quick`; the lead's "known red until wave N" list only shrinks)
+**Wave 0 - lead (Fable), contract freeze.** Baseline `--quick` on `v3-phase5` (green, keep the log); freeze the two fixtures; this contract;
+the shared edits of 10.1 (incl. `tools/count_locals.py`, the empty per-owner blocks, `PartCount` in Main, the spawn gate left closed with
+`Config.MainMenu.Enabled = false` until W3); smoke.py placeholders; gate green (the aliases keep Phase 4 code booting).
+**Wave 1 - foundations (4): data (Fable), battlecore (Fable), economy+roam (Opus), worldstyle (Opus).** Pure modules + the save layer. Gate:
+their scenarios; `sim_tycoon.py` ALL TARGETS MET with `--ring 0.08 --dungeon 0.1`, `--check`, `--migrate5`; `sim_battle` quick (`support` 0.65-
+0.75, `duels` 40-60% no timeouts, `raids` 100-240 s for 1 / 4 / 8 / 16, `ring` medians within +-2 of Phase 4 after re-tune, `dungeon` ladder
+floor 1 = 100% for the 12 single L1 pets and S10 >= F10); `render_sky` committed. Known red until W2: every booted scenario that reads the old
+catalog / BattleSim shapes (p2tycoon_*, p2home_*, p4garden_*, p4care_*, p3bs_*, p4ring_*, p3flow_*, the client battle / home scenarios).
+**Wave 2 - servers, worlds, the kit (5): battleservice (Fable), tycoon+care (Fable), worldlobby (Opus), homeworld (Opus), neonkit (Opus).**
+Gate: every server scenario green except the dungeon's, the flows and the client windows; renders (>= 3 rounds): the Berry Farm L1 / L10 /
+L22 / L40, the Garden with 12 beds + bowl, the Fence / Fountain levels, the House tiers / Vault / Fusion / Arena Gate, the plot at Sky Castle, the five gates + the reserved Dungeon site
+(the sixth gate and the lobby <= 8000 check run at the W3 gate, m3), the plaza top view; the Neon
+widget gallery at 4 sizes. Known red until W3 / W4: client battle and home scenarios, dungeon, the windows' Dock checks, flows, docs.
+**Wave 3 - the dungeon server and the clients (5): dungeon (Fable), battleclient (Opus), homefx+pets (Opus), careui (Opus), menu (Opus).**
+Gate: dungeon server scenarios, battle / home / care / menu client + phone scenarios green; renders: the battle HUD (`battle:fighter`,
+`battle:raid`, `battle:dungeon`) at 1920x1080 / 1366x768 / 1170x540 / 740x360, the Food Machine window, the Home strip, the Pets grid with
+evolved slots, the main menu, the loading screen, settings, the dungeon rooms (`dungeon:run:3`). The lead deletes `EvolutionBoost` /
+`EvolutionMultiplier` in this gate. Known red until W4: dungeon client, obby picker, arena / ring windows, tutorial, flows, docs.
+**Wave 4 - dungeon client, tutorial, docs, flows, arena art (5): dungeonclient (Opus), tutorial (Opus), docs (Opus), flow (Opus), arenaart (Opus).**
+Gate: everything green; renders of the Dungeon / Obby / Ring / Arena side panels at 4 sizes and of the arena island (`arena`, `arena:ring`,
+`pocket:ring`, >= 3 rounds); the README owner checklist (10.6) present with every needle; `client_p5gui_cover` <= 60% everywhere. Bugs found by flow go back to the
+owner (a short fix wave).
+**Wave 5 - review and fix (3 reviewers).** Lenses: save data and merges (incl. both rollout fixtures), money paid
+exactly once (dungeon rooms / first clears / chests, berries, coins, ring), battle lifecycle (encounters, every end path, InBattle gaps, leash,
+the loss gate), economy numbers (sim vs catalog vs README), client budgets and readability (coverage, centre, phone sizes, parts), tutorial /
+NPC / README accuracy. Release gate: full `bash tools/run_checks.sh`, `--smoke --strict`, the Rojo 7.7.1 rebuild of `play/NimbusClimb.rbxlx`,
+`tools/verify_place.py`, merge to main. Critical path: W0 -> data / battlecore (W1) -> battleservice / tycoon+care (W2) -> dungeon / careui (W3)
+-> dungeonclient / tutorial / flow (W4) -> W5. worldstyle, worldlobby, homeworld, neonkit, homefx+pets, menu have slack.
+
+### 12. Tests (every owner registers their own file in `tools/smoke.py`; smoke.py fails on an unwired `tools/smoke_*.lua`)
+
+#### 12.1 New smoke files
+| File | Worlds | Owner (wave) | Scenarios and what they assert |
+|---|---|---|---|
+| `smoke_p5_data.lua` | server | data (W1) | `p5data_team3` (a 4-key preset loads with 3, `TeamsChanged` once, Cash / Gems / PetLevels / PetGrowth byte-equal, `SetTeam` > 3 refused, merge of two sessions, ProfileSync shape), `p5data_evo_untouched`, `p5dgn_data` (Dungeon defaults / clean / merges Best max, Cleared union, Runs + Clears delta / provisional / sync / reset), `p5dgn_migrate` (frozen Phase 4 fixture `TrialBest 15` -> `Best 5`, `Cleared 1-5`, `Clears 5`, marker; every other field byte-identical; idempotent; `TrialBest 0 / 1 / 2 / 30` -> `0 / 0 / 0 / 10`; runs on `ProfileRebased`), `p5data_berries` (delta clamped at 0, provisional rules, no sync on a Berries-only change), `p5data_settings` (defaults per key, malformed keys, `SettingsSet` validation, session wins), `p5home_fold_data` (the P5Home step: `FoldLegacy` called once with `firstTime`, marker in the same step and ONLY when the fold ran (a missing `FoldLegacy` leaves the marker unset and the step retries on the next load), Food converted to berries once (one Feast = 6400) and zeroed; keys removed travel as `false`), `p5home_rollout` + `p5dgn_rollout` (the frozen Phase 4 DataService saves a Phase 5 profile: `Dungeon`, `Berries`, `Settings`, `DecorCredit`, `LegacyMagnet*` come back; `Press1 13` not clamped on return) |
+| `smoke_p5_battlecore.lua` (replaces `smoke_p3_battlecore.lua`) | pure | battlecore (W1) | `p5stats_formula` (LevelFactor table to 1e-9, stage vs none, hybrids, stage above MaxEvolution clamped), `p5roles` (Support x2.6 / x1.5, the 15 kinds, Validate, Combat bit-identical at stage 0), `p5sim_fighter` (attack timing / reach / lock; Element cooldown + every shape; Specials incl. Rally / Haste; Dash i-frames dodge a Winding hit and a telegraph; Swap cooldown / cast lock / bench regen / auto-swap / lives; Buff cooldowns; Move clamp at legal run x MoveSlack incl. Haste / Slow / Dashing, `SpeedOf`, the `Speed` event on Swap / Haste), `p5sim_ai` (threat, wind-up inside the interval, miss on i-frames, slow / weaken / burn / stun), `p5sim_modes` (Duel ends by lives or damage, no overtime; Ring timeout loss; Raid 1-16 fighters; Dungeon: empty side 2 runs, SpawnEnemies / EnemiesDown / BossHp / Wipe / Finish), `p5sim_wire` (round trip with the new codes, windup bit, lives packing, junk payloads, 25 units < 600 B), `p5sim_determinism`, `p5dgn_catalog` (12 floors, elements exist, power monotonic, floor 10 = 2048 +-1%, DungeonWave deterministic / never EventOnly / floor 1 one handicapped enemy / boss entry, rewards grow, first-clear totals 23,400 / 156, Validate), `p5battle_balance` (sim_battle subset: support 0.65-0.75, mirror duels 40-60%, kit factor 1.3-1.7, raids 100-240 s, the 2.4 wave rule >= 90% with helpers, ring medians +-2, floor 1 by one L1 pet, S10 >= F10) |
+| `smoke_p5_home.lua` | server + client | economy+roam (W1), tycoon+care (W2), homefx+pets (W3) | `p5home_catalog` (11 stations == the sim block, Kinds, decor 0.4x, caps 24/45/72/80, Validate, build-outs, `HomeLevelOf` with credits), `p5home_fold` (fixtures: fresh / Press1 6 + Press2 4 / all plants 10 / Collector 3 at Prestige 2 / all decor 3 / a Phase 4 Press2 after the marker: HL and food never drop, expected farm level, credits, idempotent), `p5home_signs`, `p5home_roam_shared` (two requires give identical plans for 3 seeds x 12 slots x 50 cycles; speeds 4-9; points inside the yard and off Blocked rects; continuity; cache <= 3), `p5home_berries` (poop adds 0.25 clamped at BasketCap, a cap that drops below the berries removes none, offline berries ignore the cap, cap + BasketMin, offline once, Feed spends FeedBerries and grants FeedXp, no Food path (converted by P5Home), the `Berries` attribute written only by DataService, every refusal, `{Count = 5}` = one feed, XP 0 refunds, provisional, `Berries` <= 2/s, no sync), `p5home_roam_server` (epoch + 20, first poop >= 24 s, points == Plan, 3 drops then merge, owner scoop radius 8 / visitor never, nap + wake, churn, invariant every step, `CoinDrops` format / rate, rebase -> Welcome once), `client_p5home_roam` (poses within 0.5 stud of `HomeRoam.At`, eat at the bowl, pending coin confirmed / faded, zip + "+$", others dimmed, budgets, parked beyond 110, RoamVersion mismatch), `client_p5home_flow_ui` (Home strip texts, one Feed button with the berry price, no "Level up", basket header, three signs, basket line follows attributes, Pets "Food Machine") |
+| `smoke_p5_world.lua` | server + client | worldstyle (W1), worldlobby (W2), dungeonclient (W4) | `p5world_lighting` (Fallback vs Custom by `Config.Sky.Faces`, one id missing -> fallback, `Init()` twice = same), `client_p5lightingstack` (Push A, B, Pop A -> B applied; Pop B -> base exact; unknown no-op; GfxLow + Dungeon), `p5world_lobby` (6 `GateSites` on r 118 +-1 within 50..130 deg, >= 26 apart, facing the centre; `Portals` = exactly Obby; no `Portal_Easy..Saint` / `Portal_Trials`; 16 spots on r 340 +-30; spawn looks at the court; gardens / altar between plaza and street; shop beyond; NPC spots >= 10 from pads / paths; lobby <= 8000 (from the W3 gate), `PartCount` written by Main after the last gate; arena clear of plots), `p5world_client_total` (10.3: the booted world + 16 Sky Castle plots + 2 ring pockets + 8 dungeon runs (stand-in 8 x 950 parts until W3) <= 45,000 BaseParts, breakdown printed), `p5world_style` (materials, no big SmoothPlastic, saturation, each gate <= 120 with a pixel billboard, <= 12 shadow lights, small parts CastShadow false), `p5world_gates` (Home prompt with / without a plot, refusals InMatch / InBattle / locked / far / cooldown; Altar -> within 6 of `GetLanding()` on ground; `Portal_Arena` -> `ArenaInfo.Spawn` and the Return gate; `Teleported` once), `p5obby_levels` (`HighestUnlocked` table, `ObbyPick` refusals leave the attribute, accepted sets it, first on the pad -> party level, joiner without the unlock joins, leader re-pick vs member pick, launch `StartMatch("Hard")`, unlock after a win, `PartyState` fields), `p5obby_migration` (Phase 4 fixture profiles: {Easy, Medium} -> Hard; {Extreme} -> all; {} -> Easy; record round-trips), `client_p5obby` |
+| `smoke_p5_gui.lua` | client + phone | neonkit (W2), then every window owner adds its scenes | `client_p5neon` (Card stroke + Glow, Tile fonts + stroke, `SideRect` == the prototype at 4 sizes), `client_p5stamina` (150, runs ~10.7 s, refills <= 3.5 s, 4 dashes, 4 ticks), `client_p5hud_pills`, `client_p5gui_cover` (for `menu:*`, `feed`, `garden`, `train`, `ring`, `arena:*`, `dungeon`, `obby`, `settings` at 4 sizes: union <= 60%, landscape left edge >= 0.5 W, portrait top >= 0.44 H, no `Backdrop`, smallest text >= the floor) |
+| `smoke_p5_battleservice.lua` | server | battleservice (W2) | `p5svc_commands` (ladder: junk types, NaN / huge aims, bucket, NotInZone, every refusal, toasts throttled), `p5svc_position` (character teleport -> the server fighter lags at legal run x 1.25; a gap > 10 for 3 s = leaver / RemoveTeam; `Start.Team.Speed` and `Speed` events on Swap / Haste), `p5svc_position_legit` (mochi_slime L1 and stormfang L50: the character replays `lead-fix/leash_fix.py`'s random-target run and the r 14 circle at exactly `RunOf(WalkOf(MoveSpeed))` with a 200 ms feed delay, 20 s each: zero leashes, every ATTACK on a target within the drawn reach accepted; a straight run-off past the zone edge IS leashed after 3 s), `p5svc_duel_fair` (gap 2 practice, queue band, Practice flag, MaxHit, no overtime, rewards once, leaver loses), `p5svc_raid` (16 fighters, boss HP by ExpectedDps, `p5battle_net16` < 6 KB/s, leavers, tiers once), `p5svc_ring` (rounds 1-3 won by one L1 pet pressing ATTACK once per second; XP once per round; every end path; `p4ring_lossxp`), `p5svc_encounter` (boots with NO run provider and `KeysInBattle` / `canBattle` work; OpenEncounter 1 and 4 teams with KeepInBattle: the attribute untouched after add, FinishEncounter, RemoveEncounterTeam, a KO wipe, forceRelease and Shutdown; `SetRunProvider` with a GetRun that returns a run -> raid join / duel accept / Ring start refused "Finish your dungeon run first"; an erroring OnEnd / OnWave is pcall-ed and finalizeBody still completes; `Result.Fighters` drops a 0-damage team of two and keeps a solo 1-damage team; SpawnWave; OnWave / OnBossHp / OnDown / OnLeave; FinishEncounter idempotent, "End" with `Rewards.Dungeon`, `BattleEnded` Mode Dungeon then OnEnd; RemoveEncounterTeam mid-fight; Wipe / Timeout end the sim; the 10 s fail-safe; nothing paid by BattleService), `p5svc_shutdown` (voids Duel / Ring, pays Raid shares, encounters end Shutdown, nothing twice) |
+| `smoke_p5_dungeon.lua` | server + client | dungeon (W3), dungeonclient (W4) | `p5dgn_party` (create / join / ready / SetFloor / leave; the leader's Kick removes a member with a toast, a non-leader Kick is refused; START with an unready member drops them after 30 s and starts; a join once room 3 started is refused), `p5dgn_exclusive` (in the Hall, a Corridor and the Treasure: a raid join, a duel accept, a Ring start, GoHome, the Home / Altar gates, the obby pad and the dev `/reset` are each refused and `InBattle` stays the run id), `p5dgn_run` (`BattleService.SetRunProvider` was called by Init; solo floor 1 with ONE L1 pet end to end through the remotes: hall -> room 1 Start with `Mode "Dungeon"` + `Start.Dungeon` -> waves -> loot once -> bars -> room 2 built while 1 fights, room 1 destroyed on entering 3 -> boss + escort at 50% -> chest -> exit; `InBattle` = run id from the teleport to the return; pocket freed; `workspace.Dungeons` gone; a 4-party: stragglers placed, enemies 2 + 3, leash), `p5dgn_loot` (once per room per fighter, replayed OnEnd pays nothing, Cash = income x seconds with the floor, Tokens x2 under Double Rewards (Cash / XP not), XP via GrantXp source "Dungeon", first clear once, an AFK member (0 damage) paid nothing and no first clear, a boss-only joiner paid the boss room when qualifying but never the first clear, a solo run with 1 damage paid, a late joiner unpaid for earlier rooms, chest once and auto-opened on the 45 s exit, no Gems chest on floors 1-2, loss third on a wipe >= 20 s, nothing on Quit), `p5dgn_ends` (wipe by timeout and KO, Quit mid-fight / in a corridor, leave the game, respawn elsewhere, obby match refused, leash, last member frees the pocket, Shutdown mid-fight and in a corridor, `RunEnded` once, fail-safe; watchdog: an injected error in `Dg.onRoomEnd` ends the run "Error" within 20 s with every member InBattle nil, the pocket free, `RunEnded` once and nothing paid twice; a run older than RunMaxSeconds ends), `p5dgn_world` (templates within budgets, `BuildRun` <= 950, no overlap over 20 seeds, attachments present, zones Mode Dungeon 44 / 56 inside the floor, Accent recoloured, `FreeRun` clean, the portal <= 120 with `OpenPanel "Dungeon"`, portal outside every zone), `p5dgn_net` (a 4-player room <= a 4-raid's bytes; `DungeonState` < 1 KB; junk `DungeonRequest` 60/s refused without errors), `client_p5dungeon` / `_mobile` (window from a Lobby payload at 4 sizes <= 60%, READY optimistic + revert, run cards from Run / Loot / End, result card, chest prompt, lighting pushed and popped, "DUNGEON - Floor 3 - Room 2" with wild chips) |
+| `smoke_p5_battleclient.lua` | client + phone | battleclient (W3) | `client_p5hud_fighter` (writes only on change, loss trail, energy, lives, portraits + rings from events, late-join cooldowns from Start), `client_p5hud_enemies` (rows, lock first, +n, windup flash, boss bar not centred), `client_p5input` (map bound only in battle, hold-to-attack cadence, swap hold, Tab cycle, predictions + rejected shake + timeout reset, `SetDashKeys` / `SetFreeDash` / `SetBattleSpeed(walk, run)` on Start / Speed / End (WalkSpeed written = walk, run target = run, nil restores the server base, a server 0 still wins), binds inert before `UiGate.HasPlayed()`), `client_p5models` (fighter at the shoulder of the server position, blended with the root within 2 studs, following the server beyond, helpers fly on Buff / Swap, Winding pose, DODGED, shake x Shake setting), `client_p5battle_mobile` / `_landscape` (nothing in the centre 40%, buttons >= 60 px, menu column hidden), `client_p5result`; renders `battle:fighter`, `battle:raid`, `battle:dungeon` |
+| `smoke_p5_follow.lua` | client | homefx+pets (W3) | `client_p5follow_formation` (`FormationFor` on 7 width mixes == 3.8 +-0.05), `client_p5follow_motion` (walk 16 / 24 / 27 straight, 90-degree turn, reverse: gaps >= 0, lag <= back + 9, settle <= back + 1, ahead <= 0.5 after 0.6 s, channel >= 1.0), `client_p5wild` (`PB_Evolved`, `Wild` tint + eyes) |
+| `smoke_p5_looks.lua` | client + server | careui (W3) | `client_p5looks` (keys at stage 1 and 2: Pets grid slot, detail, Index tile (BestStage), Team card + tiles, Fusion tile, Care rows, own garden pets all evolved (12), reveal of an evolved key + ribbon, Ring card, followers: each builds `PB_Evolved == stage` at Low), `p5looks_podium`, `client_p5support_power` (the Pets panel detail of an Economy pet shows "Battle power" from `BattleCatalog.UnitStats` with the Support role, never the raw Power 2-4; m17), `client_p5team3` (3 slots, FIGHTER / HELPER labels, "Set as fighter" rotates, no 4th slot), `client_p5menu_tiles` (2x3 grid, names kept, Dock, no backdrop) |
+| `smoke_p5_menu.lua` | server + client + phone | menu (W3) | `p5menu_spawn` (with `Config.MainMenu.Enabled`: a joining player has no Character until `MenuPlay`; a second `MenuPlay` does nothing; no remote -> the character appears after the 90 s fallback on the mock clock; death -> respawn after RespawnTime; a player leaving before PLAY leaves nothing behind; Enabled false -> the character spawns at once as every other scenario expects), `client_p5loading` (RemoveDefaultLoadingScreen, bar never backwards, SKIP after 6 s, Done at 100%, tips rotate, no text before Theme, gone after the fade), `client_p5menu` (every ScreenGui except NimbusLoading / NimbusMainMenu / NimbusNotify disabled until PLAY incl. one created later and NimbusDash / NimbusRun / NimbusIndex / NimbusNpcDialog / NimbusTutorialPointer by name; Shift / Q do nothing before PLAY; no character before PLAY; `MenuPlay` fired once; camera Scriptable then Custom, `Played` once, tutorial panel absent before / shown after, UPDATES badge), `client_p5settings` (slider -> one `SettingsSet` after the debounce with clamped ints; Gfx Low hides `NC_Detail` and pushes GfxLow, High restores; Shake OFF -> amplitude 0; SeenNotes sent on UPDATES) |
+| `smoke_p5_tutorial.lua` | server + client | tutorial (W4) | `p5ui_content` (every step id / text 97-125 bytes / target; NPC lines <= 125 bytes, needles from the catalogs: Berry Farm, Food Bowl, Cloud Cash, Berry Basket, Dungeon, fighter / helpers), `p5dgn_tutorial` (chapter 3 `team` -> `dungeon` with the arrow at the Dungeon pad -> floor 1 cleared marks DungeonWon -> `raid`; a veteran with `TrialCleared[1]` skips; `OpenPanel("Dungeon", { Floor = 1 })` once), `p5ui_tutorial_ch2` (steps 10-14 against a Phase 5 home: Farm pad then Kitchen pad, the biggest drop, Fed), `p5ui_portal_obby` (the chapter-1 portal step targets `Portals.Obby`), resume from every index 1-21 |
+| `smoke_p5_flow.lua` | server + client | flow (W4) | `p5flow_new` (a new player: menu PLAY -> tutorial -> Easy obby -> claim -> Garden -> a roaming pet poops -> scoop -> Farm -> Food Machine -> Feed with berries -> `/petlevel 20` + EVOLVE (looks evolved in the grid) -> team of 3 -> dungeon floor 1 solo -> ring rounds 1-3 -> prestige keeps berries and the Garden), `p5flow_migrate` (a Phase 4 save: 4 plants + Collector + 6 decor + a 4-key team + TrialBest 15 + leftover Feasts + BestTimes {Easy, Medium}: Home Level unchanged or up, Farm level, DecorCredit / LegacyMagnet, 3-key team with the 4th pet owned, floors 1-5 cleared, Hard unlocked, Feasts spent as berries, Ready to evolve), `p5flow_dungeon` (3 players: a party clears floors 1-2, one wipes solo on floor 4, a late join, Double Rewards, rejoin keeps `Dungeon`, the dev reset), `p5flow_rejoin` / `p5flow_merge` (two servers: berries, Dungeon (Cleared union, Clears not doubled by two migrations, a first clear paid on both servers before either saved lands once in Cleared), Settings, Teams) |
+
+#### 12.2 Existing tests that change (owner in brackets)
+`smoke_p4_economy` (economy: 11 stations, FoldLegacy / SignedPads / BasketCap / FeedBerries, PetPower with LevelFactor, the sim parity block);
+`smoke_p4_garden` (tycoon: piles -> drops, `CoinDrops`, roam epochs; homefx: client half); `smoke_p4_care` (tycoon+care: berries, no Count /
+Food modes, evolve toast text); `smoke_p2_tycoon`, `smoke_economy` (tycoon: old ids answer the toast, Kitchen / Gym slots swapped);
+`smoke_p2_homeworld`, `smoke_p2_visual`, `smoke_p2_fix_client` (homeworld / homefx: budgets, the swap, signs "Unsigned", 12 beds, bowl, no
+walks); `smoke_p4_careui`, `smoke_p2_ui`, `smoke_p3_evolved` (careui: Feed window, Home strip, Pets, Team 3, Dock); `smoke_p4_pets_client`,
+`smoke_client_v2`, `smoke_release_client`, `smoke_polish_worldtext` (homefx+pets: size-aware follow windows, cards, gate tags); `smoke_p4_ring`,
+`smoke_p3_battleservice`, `smoke_p3_fix_server`, `smoke_p3_fixcheck`, `smoke_p3_events`, `smoke_fix_leave`, `smoke_p4_fix_battle` (battleservice:
+Trial scenarios deleted, `TrialPortal` teleports -> `RingPortal`, the new command set, `Mode` names); `smoke_p3_battleclient`, `smoke_p3_fix_client`,
+`smoke_p3_visual` (battleclient: the new HUD, no RETREAT, Ring cards kept); `smoke_p3_arenaworld`, `smoke_polish_portals`, `smoke_server`
+portal scenarios (worldlobby: no Trial portal, Portal_Ring / Portal_Arena in the Gates folder, arena <= 2800, one obby portal, `Portals.Obby`);
+`smoke_p3_ui`, `smoke_p4_ui`, `smoke_p2_ui` chapter blocks (tutorial: section 8); `smoke_p3_data`, `smoke_p4_data`, `smoke_p2_data`,
+`smoke_polish_data`, `smoke_dev` (data: Slots 3, new fields, reset); `smoke_p3_flow`, `smoke_p4_flow`, `smoke_p2_flow` (flow: Trials ->
+dungeon, berries, 3-key teams); `smoke_p2_final` (docs: README tables incl. `checkPhase5`); `tools/dump_gui.lua`, `render_gui.py` (scenes
+`mainmenu`, `loading`, `settings`, `obby`, `arena:dungeon`, `battle:*`, `looks`, `home:strip`; `arena:trials` gone), `tools/dump_model.lua`,
+`render_model.py` (`lobby --views top`, `gates`, `dungeon:*`, `home:Press1:<n>`, `homegarden`; `pocket` trial gone). `smoke.py` (lead):
+the new registration lines; `p3battle_*` scenario names -> `p5battle_*`.
+
+#### 12.3 Sims
+`tools/sim_tycoon.py` (economy W1): the `sim_p5.py` model (12-station constants block, `PRICE_Press1` = FARM_PRICE, `PLANT_FOOD_Press1` =
+FARM_FOOD, `GARDEN_RADIUS`, `GARDEN_PILE_SECONDS`, `EVOLUTION_BONUS`, `BERRY = [0.25, 30]`), `power()` on LevelFactor, feeding spends berries,
+`--ring 0.08`, `--dungeon 0.1` (a run per 10 min: the 5.2 Cash), `--check` (tables, `FoldLegacy`, `SignedPads`, `BasketCap`, `FeedBerries`,
+`AvailablePads` with stars), `--migrate5` (= `fold_check.py` against the frozen `sim_tycoon_phase4.py`: 300 homes, HL never down, no dead end,
+pad time <= 1.0 per bucket). TARGETS: the 13 Phase 4 targets, unchanged; the run with both flags must print ALL TARGETS MET.
+`tools/sim_battle.lua` (battlecore W1): sections `fighter` (kit factor 1.3-1.7; mirror fights 8-45 s; no fight reaches the Ring's 90 s),
+`support` (DPS ratio 0.65-0.75; a Support fighter beats 2 x puddle_frog L8 in 10-60% of seeds), `duels` (mirror 40-60%, no draws, none at
+120 s), `raids` (100-240 s for 1 / 4 / 8 / 16 fighters at 70% dodges; no one-shots), `ring` (rounds 1-3 >= 95% for every single L1 rollable
+pet; stage medians S1 13-19 ... S10 48-54 after re-tuning `Growth`), `dungeon` (floor 1 100% for the 12 single L1 pets; the stage ladder
+monotonic; S10 >= F10; a 4-party +1 floor), `training` (kept), `move` (replays the B1 patterns, random targets + the r 14 circle, at the legal run speed with a 200 ms feed delay for
+mochi_slime L1 / sunbeam_bear L20 / stormfang L50: gap vs the reported position <= 0.5 stud after the catch-up, zero leashes; a straight run-off is
+leashed after 3 s); `trials` deleted. `SIM.Stages`, `SIM.team`, `SIM.Player` kept as the library
+`p5battle_balance` and `p5dgn_balance` call.
+
+### 13. Open risks (and the knob that absorbs each)
+| # | Risk | Mitigation |
+|---|---|---|
+| R1 | The real-time fighter changes fight lengths; the Ring and Dungeon ladders were measured on the Phase 4 engine | floors and rounds are data keyed on TeamPower; W1 re-measures with `sim_battle` and moves `Ring.Growth`, `Dungeon.FirstPower / Growth / RoomMult` only; the gates are the stage medians |
+| R2 | Character-as-body: playtests may want the pet to lead, or the camera to lock on | the `Move` command accepts any point (one client remote later); the camera stays default on purpose |
+| R3 | Latency > 250 ms rejects some attacks | `Fighter.AttackSlack` / `AttackTolerance` are catalog knobs |
+| R4 | BattleService surgery (encounter API + every mode branch) and the dungeon landing one wave later | the dungeon builds against the REAL BattleService (W3 after W2); one test per end path; the fail-safe; both Fable |
+| R5 | Economy: late coins +15-20%, dungeon +8%, prices x1.25, free feeding | the sim with both flags is the W1 gate; `Dungeon.RoomSeconds` shrinks first; veterans read "Feeding is free: berries!" in the welcome toast |
+| R6 | Berries as a second currency (a full basket wastes berries for an idle kid) | the 30-minute basket, "Basket full!" toast, berries from every poop by themselves |
+| R7 | HomeRoam determinism across server and clients | the same shared module and Luau doubles; `RoamVersion` parks pets and hides coins on a mismatch; the static graph never depends on what is built |
+| R8 | Up to 12 evolved pets in the owner's own home (~6.2K parts worst case) and 3 big followers 17 studs back | own home only; `GapPet` is one number |
+| R9 | `Future` lighting on cheap phones | the light budget, the Low setting, a one-line revert |
+| R10 | Skybox face order | Up / Dn are rotation-proof; Lf / Rt swapped = swap two ids |
+| R11 | LobbyBuilder (3655 lines) and ArenaBuilder near the local limit | new code in `Court` / `Gates` helper tables; `count_locals.py` before hand-in |
+| R12 | Windows shrink to 820 px on desktop: every window needs its narrow layout and new renders | the kit lands in W2; `client_p5gui_cover` at 4 sizes is the gate |
+| R13 | Players with no saved obby win start on Easy only | the approved rule; every past win is kept |
+| R14 | No music / sound / custom icons until the owner pastes ids | empty ids are silent / emoji; README steps |
+| R15 | Dungeon part budget on phones (streaming OFF: every client holds every run) | `MAX_DUNGEONS` 8 by default (12 after the owner's MicroProfiler check), wave rooms 320 -> 260 via `Voxel` `MaxParts`, the client-total row of 10.3 |
+| R16 | Test churn: 20 smoke files pin Trials, piles, 4-slot teams, the five portals | every file and owner is listed in 12.2; ids, remotes and chapter indices are kept |
+| R17 | Rollout minutes with Phase 4 servers alive | section 9.3; "Publish, then Migrate to Latest Update" in the README |
+| R18 | The server-held spawn: a client whose menu never fires `MenuPlay` (old client, script error) | the 90 s fallback spawn; `Config.MainMenu.Enabled = false` restores today's behaviour in one line |
+| R19 | Slow pets make the character slow in battle (a Slime walks at 12, runs at 15.6) | `WalkMin 12` keeps every fighter close to the obby walk; Haste and the speed stat make fast pets feel fast; `WalkMult / WalkMin / WalkMax` are catalog knobs |
+
+### Judge notes (second pass: what was rejected or changed on purpose)
+* B1: option 1 (the character at the fighter's legal speed) was chosen over "every player fighter at max(MoveSpeed, RunSpeed) x 1.15" so the speed
+  stat still matters; the leash is NOT meant to catch in-zone speed hacks (`leash_fix.py`: even x3 hackers reach their targets and stop before 3 s
+  of excess accumulate): it catches leaving; speed hacks gain nothing because reach, hits and the drawn pet use the server fighter.
+* M6: StreamingEnabled stays OFF. Turning it on is a game-wide change (every `workspace.X` client access needs WaitForChild / streaming signals)
+  that does not fit Phase 5; the client-total budget and `MAX_DUNGEONS 8` bound the cost instead.
+* M7: the server-held spawn was taken (the approved decision) instead of asking the player again; `PlayerService.lua` is owned by menu (W3).
+* m8: no session lock (a DataService redesign, out of scope); the claim is corrected and the window stated; the Gems clamp absorbs it.
+* m11: every pet within PET_NEAR is drawn evolved under a part budget rather than telling the player "a distance detail".
+* m16 was adopted (Food converted into berries once), which also removes m7's change path and the leftover branch of Feed.
+* M5: named per-owner blocks, not split files (the render_*.py loaders and the smoke boot stay unchanged).

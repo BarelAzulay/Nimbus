@@ -48,8 +48,8 @@ final_checks only as a cascade of those.
 Request + approved decisions: scratchpad/phase5_request.md (player said "go!").
 | Step | What | Status |
 |---|---|---|
-| D | design: 4 designers (battle, dungeon Fable; home, world Opus) -> lead (Fable) contract in ARCHITECTURE_V3 "## Phase 5" -> judge (Opus) -> lead fix | RUNNING wf_9b76bb34-5d6 (script scratchpad/p5design.js, out scratchpad/p5design/) |
-| R | show scratchpad/p5design/summary_for_player.md to the player, get OK | - |
+| D | design: 4 designers (battle, dungeon Fable; home, world Opus) -> lead (Fable) contract in ARCHITECTURE_V3 "## Phase 5" -> judge (Opus) -> lead fix | DONE wf_9b76bb34-5d6: contract in ARCHITECTURE_V3 "## Phase 5" (sections 0-13; waves in 10, ownership 11, tests 12, owner checklist 10.6); designs scratchpad/p5design/design:*/ ; judge p5design/judge/review.md fixed |
+| R | show scratchpad/p5design/summary_for_player.md to the player, get OK | WAITING for player |
 | W0.. | build waves per the contract | - |
 Resume design: Workflow({scriptPath: scratchpad/p5design.js, resumeFromRunId: "wf_9b76bb34-5d6"})
 Blender: bpy 5.2 at /tmp/claude-0/bpyenv/bin/python (re-install with pip in a venv if the container restarted). Pebble Pup script: nimbus-climb/blender/pebble_pup.py.
