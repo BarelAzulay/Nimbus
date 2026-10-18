@@ -1,6 +1,7 @@
 -- smoke_release_client.lua: regression checks for the release-quality review of the client (v3 Phase 1 release pass).
 -- tools/smoke.py runs (client world after smoke_client.lua / smoke_client_v2.lua, whose helpers it uses through KC):
---   client_release_pets         PetController in a busy lobby (6 players x 3 pets): every pet's static parts are welded
+--   client_release_pets         PetController in a busy lobby (6 players x 3 pets, with their Phase 4 pet cards: 3 own + at
+--                               most 12 others'; the cards add no part write): every pet's static parts are welded
 --                               to its anchored PrimaryPart (a pose is ONE root CFrame write, no PivotTo), only the
 --                               wing / tail parts stay anchored for PetBuilder.Animate, no part changes its CFrame
 --                               twice in a frame, welded parts follow the root, a pet whose Animate keeps failing gets
@@ -209,6 +210,22 @@ S.client_release_pets = guarded("client_release_pets", function()
 	advance(3)
 	local models = petModels()
 	T.check(#models == 3 * (#others + 1), "release pets: 6 players x 3 pets are drawn", #models .. " models")
+	-- Phase 4 pet cards (contract 3.9): own 3 + at most 12 other players' cards, all event-driven BillboardGuis
+	if type(PC.GetCards) == "function" then
+		local own, other, pixel = 0, 0, true
+		for _, c in ipairs(PC.GetCards()) do
+			if c.UserId == LocalPlayer.UserId then
+				own = own + 1
+			else
+				other = other + 1
+			end
+			pixel = pixel and c.Gui.Size.X.Scale == 0 and c.Gui.LightInfluence == 0 and not c.Gui:IsDescendantOf(workspace)
+		end
+		T.check(own == 3 and other <= 12 and other >= 1 and pixel, "release pets: pet cards on the busy lobby (3 own + at most 12 others', pixel billboards outside the pet models)",
+			fmt("%d own, %d others'", own, other))
+	else
+		T.fail("release pets: PetController.GetCards is missing (Phase 4 pet cards)")
+	end
 
 	-- structure: anchored root, static parts welded to it, animated parts anchored for Animate
 	local bad, statics, animated, parts = {}, 0, 0, 0

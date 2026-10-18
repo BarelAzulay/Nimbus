@@ -126,7 +126,7 @@
 --   caller's own team (the owner is always the caller), only in the caller's running battle, only while their character
 --   stands inside that battle's zone (Forfeit works anywhere), type-checked, token-bucket rate limited.
 -- BattleRequest (action, a, b): "TeamSet" (preset 1-3, {keys}), "TeamSelect" (preset) (DataService validates: owned,
---   unique, not busy in the Garden / Gym, slot 4 at Prestige 1), "Trial" (level), "Challenge" (userId),
+--   unique, not training (a garden pet may fight: Phase 4), slot 4 at Prestige 1), "Trial" (level), "Challenge" (userId),
 --   "ChallengeReply" (userId, accept), "Queue", "Unqueue", "JoinRaid", "LeaveRaid", "Ring" (startRound). Type-checked, a
 --   cooldown per action plus a shared burst bucket; refusals answer with a side toast (Notify, never centred; repeats
 --   throttled).
@@ -789,6 +789,11 @@ local function canBattle(player)
 	if not BattleSim or not BattleCatalog then
 		return false, "Battles are not ready yet"
 	end
+	if St.closing then
+		-- first: while the server closes nothing starts, whatever else the player is doing (a ring climber whose void
+		-- round just ended is still InBattle for TRIAL_RETURN_DELAY seconds)
+		return false, "The server is restarting: battles will be back in a moment"
+	end
 	if player:GetAttribute(Config.Attr.InMatch) == true then
 		return false, "Finish your obby match first"
 	end
@@ -798,9 +803,6 @@ local function canBattle(player)
 	end
 	if St.battleOf[player] or St.ringRuns[player] then
 		return false, "You are already in a battle"
-	end
-	if St.closing then
-		return false, "The server is restarting: battles will be back in a moment"
 	end
 	if not aliveRoot(player) then
 		return false, "Wait until you respawn"
@@ -3299,7 +3301,9 @@ end
 function RingRun.dropOut(b, part, why)
 	local run = b.Ring
 	if run and St.ringRuns[run.Player] == run and run.State == "Fighting" then
-		run.State = "Ending"
+		-- the run stays "Fighting" until its battle ends (finalizeBody -> afterBattle -> endRun does the cleanup);
+		-- only the record is closed now, so a leaver's Runs + 1 is in the profile before the leave save
+		run.Dropped = true
 		RingRun.closeRecord(run)
 	end
 	return forfeitTrial(b, part, why)

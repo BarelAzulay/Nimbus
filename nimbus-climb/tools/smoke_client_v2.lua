@@ -7,7 +7,8 @@
 --                      (IndexController: group tiles, ??? silhouettes, CLAIM -> IndexClaim, Unlocked: x/N, Stormfang art)
 --                      and, once the catalog has elements, the element badges (Index cards + detail with Strong vs /
 --                      Weak vs, the Elements help card, the Pets panel, the roulette odds list)
---   client_pets        PetController: followers of every player (High / Low detail), culling, snapping, clean-up;
+--   client_pets        PetController: followers of every player (High / Low detail) trailing BEHIND their owner (Phase 4),
+--                      never ahead while walking, culling, snapping, clean-up;
 --                      v3 NPC pets (NpcController idle + dialog through ProximityPromptService), the sky dragon and,
 --                      once the Storm Altar is built, the client-side hover / pulse of the Stormfang showcase
 --   client_hotbar      HotbarController: 4 slots, keys 1-4, dimmed in the lobby, UseItem remote, cooldown
@@ -1789,34 +1790,43 @@ S.client_pets = guarded("client_pets", function()
 			end
 		end
 		T.check(ok, "...PetBuilder models with wings, visual only (no collision / touch / query; anchored root, every other part anchored or welded to it)")
-		-- they hover beside the owner
+		-- Phase 4 (contract 3.9): they trail BEHIND the owner (the player's "follow from behind, not from the sides")
 		local root = myRoot()
 		advance(3)
 		local close = true
 		local detail = {}
+		local look = root.CFrame.LookVector
 		for _, m in ipairs(mine) do
 			local off = m:GetPivot().Position - root.Position
 			local horiz = math.sqrt(off.X * off.X + off.Z * off.Z)
-			detail[#detail + 1] = string.format("%.1f/%.1f", horiz, off.Y)
-			if horiz < 2 or horiz > 7 or off.Y < -1 or off.Y > 5 then
+			local along = off.X * look.X + off.Z * look.Z -- < 0: behind the owner
+			detail[#detail + 1] = string.format("%.1f/%.1f (along %.1f)", horiz, off.Y, along)
+			if horiz < 2 or horiz > 7 or off.Y < -1 or off.Y > 5 or along > -2 then
 				close = false
 			end
 		end
-		T.check(close, "followers hover 2-7 studs beside and up to 5 studs above the owner", table.concat(detail, " "))
+		T.check(close, "followers hover 2-7 studs behind and up to 5 studs above the owner", table.concat(detail, " "))
 		if #mine == 2 then
 			T.check((mine[1]:GetPivot().Position - mine[2]:GetPivot().Position).Magnitude > 1.5, "...each in its own slot (not on top of each other)")
 		end
 		-- motion: the owner walks, the pets follow with easing
 		local start = root.Position
+		local ahead = -1e9
 		for step = 1, 30 do
 			Mock.Teleport(LocalPlayer, start + Vector3.new(step * 1.2, 0, 0))
 			advance(0.05)
+			if step * 0.05 >= 0.5 then -- once the formation swung round to the travel direction (+X)
+				for _, m in ipairs(mine) do
+					ahead = math.max(ahead, m:GetPivot().Position.X - myRoot().Position.X)
+				end
+			end
 		end
+		T.check(ahead <= 0.5, "walking: the followers stay behind the owner along the travel direction (never ahead)", string.format("furthest ahead %.2f studs", ahead))
 		advance(0.1)
 		local lag = distanceTo(mine[1], myRoot())
 		T.check(lag < 12, "followers keep up with a walking owner", string.format("%.1f studs behind", lag))
 		advance(3)
-		T.check(distanceTo(mine[1], myRoot()) < 8, "...and settle beside the owner again", string.format("%.1f studs", distanceTo(mine[1], myRoot())))
+		T.check(distanceTo(mine[1], myRoot()) < 8, "...and settle behind the owner again", string.format("%.1f studs", distanceTo(mine[1], myRoot())))
 		-- teleport far: pets snap to the owner instead of flying across the map
 		Mock.Teleport(LocalPlayer, myRoot().Position + Vector3.new(400, 120, -300))
 		advance(0.4)
@@ -1855,30 +1865,52 @@ S.client_pets = guarded("client_pets", function()
 	T.check(mid <= 2, "...and never duplicated while the character was gone", tostring(mid))
 	local newRoot = myRoot()
 	local mineAfter = modelsOf(LocalPlayer)
-	T.check(#mineAfter == 2 and distanceTo(mineAfter[1], newRoot) < 12, "...beside the NEW character", mineAfter[1] and string.format("%.1f studs", distanceTo(mineAfter[1], newRoot)) or "no model")
+	T.check(#mineAfter == 2 and distanceTo(mineAfter[1], newRoot) < 12, "...behind the NEW character", mineAfter[1] and string.format("%.1f studs", distanceTo(mineAfter[1], newRoot)) or "no model")
 
 	-- other players: shown when near, culled when far, removed when they leave
 	local other = Mock.AddPlayer("Friend", 6001)
 	advance(1.0)
 	local friendRoot = Mock.GetRoot(other)
 	Mock.Teleport(other, myRoot().Position + Vector3.new(30, 0, 0))
+	other:SetAttribute("EquippedInfo", "8:0,31:1") -- Phase 4: level:stage per EquippedPets entry (PetService)
 	other:SetAttribute("EquippedPets", pup .. "," .. dragon)
 	advance(2.0)
 	T.eq(#modelsOf(other), 2, "another player's pets are drawn too (EquippedPets of every player)")
+	-- Phase 4 pet cards (contract 3.9): own followers "Lv n" + XP, other players' level only from EquippedInfo
+	do
+		local cards = type(PetController.GetCards) == "function" and PetController.GetCards() or {}
+		local own, theirs = 0, {}
+		for _, c in ipairs(cards) do
+			if c.UserId == LocalPlayer.UserId then
+				own = own + 1
+			elseif c.UserId == other.UserId then
+				local lv = c.Gui.Plate.Level
+				local stroke = lv:FindFirstChild("TextOutline")
+				theirs[c.Key] = { Text = lv.Text, Px = lv.TextSize, Stroke = stroke ~= nil and stroke.Thickness >= 1, Xp = c.Gui.Plate.Xp.Visible, Star = c.Gui.StarBadge.Visible }
+			end
+		end
+		T.eq(own, 2, "pet cards: each own follower has a card")
+		local a, b = theirs[pup], theirs[dragon]
+		T.check(a and b and a.Text == "Lv 8" and b.Text == "Lv 31" and b.Star and not a.Star and not a.Xp and not b.Xp,
+			"pet cards: another player's cards show the level (and stars) from EquippedInfo only", a and b and (a.Text .. " / " .. b.Text) or "missing")
+		T.check(a and a.Px >= 22 and a.Stroke, "pet cards: \"Lv\" at >= 22 px with a dark stroke", a and tostring(a.Px) or "missing")
+	end
 	-- v3 level of detail: your own pets are High detail, other players' followers Low (ARCHITECTURE_V3.md ART DIRECTION)
 	do
 		local lowOk, highOk, detail = true, true, {}
 		for _, m in ipairs(modelsOf(other)) do
 			local n = Mock.CountDescendants(m, "BasePart")
-			detail[#detail + 1] = "other " .. n
-			lowOk = lowOk and n <= CONTRACT.v3.partBudget.petLow
+			local stage = m:GetAttribute("PC_Stage") or 0
+			detail[#detail + 1] = "other " .. n .. (stage > 0 and " (evolved)" or "")
+			-- Phase 4: an evolved follower within 40 studs is the evolved Low model (contract.json petEvoLow)
+			lowOk = lowOk and m:GetAttribute("PB_Detail") == "Low" and n <= (stage > 0 and CONTRACT.v3.partBudget.petEvoLow or CONTRACT.v3.partBudget.petLow)
 		end
 		for _, m in ipairs(modelsOf(LocalPlayer)) do
 			local n = Mock.CountDescendants(m, "BasePart")
 			detail[#detail + 1] = "mine " .. n
 			highOk = highOk and n > CONTRACT.v3.partBudget.petLow and n <= CONTRACT.v3.partBudget.petHigh
 		end
-		T.check(lowOk, "other players' followers use PetBuilder Detail Low (<= " .. CONTRACT.v3.partBudget.petLow .. " parts each)", table.concat(detail, ", "))
+		T.check(lowOk, "other players' followers use PetBuilder Detail Low (<= " .. CONTRACT.v3.partBudget.petLow .. " parts each, evolved <= " .. CONTRACT.v3.partBudget.petEvoLow .. ")", table.concat(detail, ", "))
 		T.check(highOk, "the local player's own pets use Detail High (<= " .. CONTRACT.v3.partBudget.petHigh .. " parts)", table.concat(detail, ", "))
 	end
 	Mock.Teleport(other, myRoot().Position + Vector3.new(400, 0, 0))

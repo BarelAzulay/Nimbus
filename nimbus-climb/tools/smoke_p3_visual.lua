@@ -5,7 +5,10 @@
 --                     element marks, worn / warm stretches in the forum paving, sand drifts on every duel ring (under
 --                     its painted circle), drifts on a trial pocket's floor; the arena stays <= 2500 parts and a
 --                     pocket <= 250; the gate and arch sign titles fit their panels (World text rule sizes kept); the
---                     event board draws the live boss HP bar (and hides it without a raid)
+--                     event board draws the live boss HP bar (and hides it without a raid); Phase 4: Portal_Ring is a
+--                     crowned arch in champion gold and royal violet (<= 70 parts, a gold crown on top, no crossed
+--                     swords) and the Champion Ring pocket (<= 220) has a two-tone floor, a gold rim, four violet crown
+--                     gems and a cheering crowd of cloud puffs in soft colours facing the ring, outside the square
 --   p3visual_bosses   (server) every boss keeps its shading and its colour regions at High detail (the torso is not
 --                     folded into one flat colour: several shades per region, the Frost Wyrm's belly and frost patch,
 --                     the Hydra's belly, the Golem's ash), High <= 1000 parts and Low <= 760, Low keeps the accents
@@ -186,6 +189,98 @@ local function serverScenarios()
 			end
 			T.check(n <= 250 and dark > 0, "visual arena: the pocket's sand floor has drifts and the pocket stays <= 250 parts", n .. " parts, " .. dark .. " drift slabs")
 			AB.FreePocket(pocket)
+		end
+
+		-- Phase 4: the Champion Ring portal reads differently from the Trial Portal (a crowned arch in champion gold and
+		-- royal violet), within 70 parts, with shading on its stone (never one flat colour)
+		local ringPortal = model:FindFirstChild("Portal_Ring")
+		if T.check(ringPortal ~= nil, "visual ring: Portal_Ring is built") then
+			local rparts = partsOf(ringPortal)
+			local gold, violet, neon, colours = 0, 0, 0, {}
+			for _, p in ipairs(rparts) do
+				if p.Transparency < 1 then
+					colours[colorKey(p.Color)] = true
+					local c = p.Color
+					if c.R > 0.85 and c.G > 0.6 and c.B < 0.4 then
+						gold = gold + 1
+					elseif c.B > 0.75 and c.R > 0.45 and c.G < 0.6 then
+						violet = violet + 1
+					end
+					if p.Material == Enum.Material.Neon then
+						neon = neon + 1
+					end
+				end
+			end
+			local nColours = 0
+			for _ in pairs(colours) do
+				nColours = nColours + 1
+			end
+			T.check(#rparts <= 70, "visual ring: Portal_Ring stays within 70 parts", #rparts .. " parts")
+			T.check(gold >= 6 and violet >= 4 and neon >= 4 and nColours >= 6, "visual ring: champion gold trim + crown, royal violet glows and gems, shaded stone",
+				gold .. " gold, " .. violet .. " violet, " .. neon .. " neon, " .. nColours .. " colours")
+			local gate = ringPortal:FindFirstChild("Gate")
+			local top, crownGold = -huge, 0
+			for _, p in ipairs(partsOf(gate)) do
+				top = max(top, p.Position.Y + p.Size.Y / 2)
+			end
+			for _, p in ipairs(partsOf(gate)) do
+				if p.Position.Y + p.Size.Y / 2 > top - 5 and p.Color.R > 0.85 and p.Color.B < 0.4 then
+					crownGold = crownGold + 1
+				end
+			end
+			T.check(crownGold >= 3, "visual ring: a gold crown tops the gate (several gold blocks in its top 5 studs)", crownGold .. " blocks")
+			local trial = model:FindFirstChild("Portal_Trials")
+			T.check(trial ~= nil and trial:FindFirstChild("CrestBlade", true) ~= nil and ringPortal:FindFirstChild("CrestBlade", true) == nil, "visual ring: the crossed swords stay the Trial Portal's, the ring has its crown")
+		end
+
+		-- Phase 4: the Champion Ring pocket: a two-tone round floor inside a gold rim, four crown posts with violet gems,
+		-- the crowd: cloud puffs in at least four soft colours with faces looking at the ring, outside the battle square
+		local rp = AB.BuildPocket and AB.BuildPocket(62, "Ring")
+		if T.check(type(rp) == "table" and rp.Model and rp.Kind == "Ring", "visual ring: a Champion Ring pocket builds") then
+			local n = #partsOf(rp.Model)
+			local floorCols, rimGold, gems, tints, eyes, faceBad = {}, 0, 0, {}, 0, 0
+			for _, p in ipairs(partsOf(rp.Model)) do
+				local rel = rp.CFrame:PointToObjectSpace(p.Position)
+				if p.Name == "RingFloor" or p.Name == "RingCanvas" then
+					floorCols[colorKey(p.Color)] = true
+				elseif p.Name == "RingRim" and p.Color.R > 0.85 and p.Color.B < 0.4 then
+					rimGold = rimGold + 1
+				elseif p.Name == "CrownGem" and p.Material == Enum.Material.Neon then
+					gems = gems + 1
+				elseif p.Name == "PuffBody" then
+					tints[colorKey(p.Color)] = true
+					if abs(rel.X) < 22 and abs(rel.Z) < 22 then
+						faceBad = faceBad + 1
+					end
+				elseif p.Name == "PuffEye" then
+					eyes = eyes + 1
+					-- the eyes sit on the side that looks at the ring centre
+					local body = nil
+					for _, q in ipairs(p.Parent:GetChildren()) do
+						if q.Name == "PuffBody" and (q.Position - p.Position).Magnitude < 2.5 then
+							body = q
+						end
+					end
+					if body then
+						local toCentre = (rp.CFrame.Position - body.Position) * Vector3.new(1, 0, 1)
+						if (p.Position - body.Position):Dot(toCentre) <= 0 then
+							faceBad = faceBad + 1
+						end
+					end
+				end
+			end
+			local nFloor, nTints = 0, 0
+			for _ in pairs(floorCols) do
+				nFloor = nFloor + 1
+			end
+			for _ in pairs(tints) do
+				nTints = nTints + 1
+			end
+			T.check(n <= 220, "visual ring: the ring pocket stays within 220 parts", n .. " parts")
+			T.check(nFloor >= 2 and rimGold >= 8 and gems == 4, "visual ring: a two-tone floor, a gold rim and four violet crown gems", nFloor .. " floor colours, " .. rimGold .. " rim, " .. gems .. " gems")
+			T.check(nTints >= 4 and eyes >= 10 and faceBad == 0, "visual ring: a cheering crowd of cloud puffs in soft colours, every face turned to the ring, all outside the battle square",
+				nTints .. " colours, " .. eyes .. " eyes, " .. faceBad .. " wrong")
+			AB.FreePocket(rp)
 		end
 	end)
 

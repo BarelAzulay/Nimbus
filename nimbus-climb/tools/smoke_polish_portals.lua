@@ -18,6 +18,9 @@
 --                                  8-14 studs up, numeral >= 3 studs, within 30 deg of the view centre of a friend 4
 --                                  studs outside the walls (default camera, 10-20 deg pitch), hidden on an empty pad,
 --                                  same seconds as the billboard (written once per second), 'Waiting...', 'Full! 4/4'
+--                                  Phase 4: the Champion Ring portal's tag (ArenaBuilder's Portal_Ring) follows the
+--                                  same rule: one pixel-sized billboard, outlined Theme texts (title >= 22 px), a
+--                                  compact plate that holds the longest RingBoard pill, floating just above the crown
 --   client_polish_portals          (client, 1920x1080) the party panel: big red Leave button beside the title, readable
 --                                  countdown / hint / count, nothing overlaps, one LeaveParty per press, clear of the
 --                                  screen middle and of the vitals
@@ -434,6 +437,59 @@ local function serverScenarios()
 		idle:report()
 		walls:report()
 		enclose:report()
+
+		------------------------------------------------------------------------------------------
+		-- 1b. the Phase 4 Champion Ring portal on the plaza (ArenaBuilder's Portal_Ring): the same World text rule for
+		--     its tag (one pixel-sized billboard over the crowned gate, a compact plate that holds the longest pill)
+		------------------------------------------------------------------------------------------
+		local arena = workspace:FindFirstChild("BattleArena")
+		local ringModel = arena and arena:FindFirstChild("Portal_Ring")
+		if T.check(ringModel ~= nil, "ring portal: Portal_Ring stands in workspace.BattleArena") then
+			local guis = {}
+			for _, d in ipairs(ringModel:GetDescendants()) do
+				if d:IsA("BillboardGui") then
+					guis[#guis + 1] = d
+				end
+			end
+			local gui = guis[1]
+			T.check(#guis == 1 and gui.Size.X.Scale == 0 and gui.Size.Y.Scale == 0 and gui.Size.X.Offset > 0 and gui.LightInfluence == 0 and gui.AlwaysOnTop == false and gui.MaxDistance >= 60 and gui.MaxDistance <= 130,
+				"ring portal: one PIXEL-sized billboard (LightInfluence 0, not AlwaysOnTop, MaxDistance 60-130)", gui and (tostring(gui.Size) .. " " .. tostring(gui.MaxDistance)) or "none")
+			if gui then
+				local okText = true
+				local bad = {}
+				for _, d in ipairs(gui:GetDescendants()) do
+					if d:IsA("TextLabel") then
+						local min = (d.Name == "TitleLabel") and 22 or 18
+						local outlined = d:FindFirstChild("TextOutline") ~= nil or d:FindFirstChildOfClass("UIStroke") ~= nil or d.TextStrokeTransparency < 0.5
+						if d.TextScaled or d.TextSize < min or not outlined or fonts[d.Font] ~= true then
+							okText = false
+							bad[#bad + 1] = d.Name .. " " .. tostring(d.TextSize)
+						end
+					end
+				end
+				T.check(okText, "ring portal: tag texts are not TextScaled, outlined, Theme fonts, title >= 22 px, the rest >= 18 px", table.concat(bad, "; "))
+				-- the longest pill: a 12-letter name (longer ones are cut) and a three-digit round
+				ringModel:SetAttribute("RingBoard", "Abcdefghijklmnopqrstu|123")
+				advance(0.2)
+				local plate = gui:FindFirstChild("Plate")
+				local size = plate and plate.AbsoluteSize
+				T.check(plate ~= nil and plate.BackgroundTransparency <= 0.1 and plate.AutomaticSize == Enum.AutomaticSize.XY and size.X > 0 and size.X <= gui.Size.X.Offset and size.Y <= gui.Size.Y.Offset,
+					"ring portal: the plate is solid, auto-sized and holds the longest pill inside the container", plate and (fmt(size.X, 0) .. "x" .. fmt(size.Y, 0) .. " in " .. tostring(gui.Size)) or "no plate")
+				ringModel:SetAttribute("RingBoard", nil)
+				-- above the gate's crown, readable from the plaza
+				local crownTop = -1e9
+				for _, d in ipairs(ringModel:GetDescendants()) do
+					if d:IsA("BasePart") and d.Transparency < 1 and d.Name ~= "BillboardAnchor" then
+						crownTop = math.max(crownTop, d.Position.Y + d.Size.Y / 2)
+					end
+				end
+				local anchor = gui.Adornee
+				local bottom = anchor and anchor:IsA("BasePart") and (anchor.Position.Y + gui.StudsOffsetWorldSpace.Y) or nil
+				local padY = Config.Lobby.Origin.Y
+				T.check(bottom ~= nil and bottom >= crownTop - 0.5 and bottom - padY >= 8 and bottom - padY <= 40, "ring portal: the tag floats just above the crowned gate",
+					bottom and string.format("plate bottom %.1f, crown top %.1f, pad %.1f", bottom, crownTop, padY) or "no adornee")
+			end
+		end
 
 		------------------------------------------------------------------------------------------
 		-- 2. joining locks the player in (collision groups as Roblox would apply them)

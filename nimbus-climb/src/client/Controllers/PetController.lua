@@ -1,10 +1,21 @@
--- PetController (client): every player's equipped pets fly beside their owner, Bee-Swarm style.
+-- PetController (client): every player's equipped pets follow their owner from BEHIND, with a floating pet card.
 --
 --   PetController.Init()
 --   PetController.Stop()            -- tears everything down (tests / hot reload)
 --   PetController.GetPetCount()     -- number of pet models currently alive (debug helper)
 --   PetController.GetMoveStats()    -- { Rigid = n, Pivot = n }: pets posed in the last frame by one root write /
 --                                      by the PivotTo fallback (debug helper for the smoke tests)
+--   PetController.PlayEvolution(key, stage[, opts]) -> release()
+--                                      Phase 4 (contract 3.6): parks the local player's follower of `key` (model and
+--                                      card hidden) while CareController plays EvolutionFx on its own clones, then
+--                                      rebuilds it at `stage` (1 | 2) and lets it fly back into its slot. opts: a number
+--                                      (seconds to stay parked) or { Seconds = n, From = Vector3 (where the evolved
+--                                      clone stood: the follower starts from there) }; default EvolutionFx.Duration
+--                                      (stage) + 0.3 s. release(fromPosition?) ends the park early. The stage counts
+--                                      until State's PetGrowth catches up (never lower than the stored stage).
+--   PetController.GetCards()        -- debug: { { UserId, Key, Mode, Gui, Shown } } of every live pet card
+--   PetController.GetFollowerInfo(player) -- debug: { { Key, Model, Stage = built model stage, Want = card stage,
+--                                      Level, Card = BillboardGui | nil, Parked, Diving, Back = back multiplier } }
 --
 -- What it does
 --   * Reads the player attribute `EquippedPets` (csv of pet KEYS, Config.Attr.EquippedPets) of EVERY player
@@ -20,10 +31,25 @@
 --     CFrame write on the root: the engine carries the welded parts along. PetBuilder.Animate then re-poses only
 --     the wing / tail / halo parts from the root (they stay anchored). A model that cannot be welded falls back
 --     to PivotTo; a pet whose Animate keeps failing gets its animated parts welded too, so nothing trails behind.
---     Pets hover in a loose formation (left / right / behind, ~4 studs out, at head height), bob and sway
---     with their own phase, ease towards their slot with an exponential filter (so they trail and catch up
---     naturally), face the direction the owner travels, bank into turns, pitch forward when they speed up,
---     flap harder when the owner runs or is in the air, and fly a little ahead of the owner while running.
+--   * Phase 4 follow-behind (contract 3.9): pets trail in slots { side, up, back, ahead } BEHIND the owner (1 pet
+--     4.5 studs back; 2 pets side by side 4.2 back; 3 pets two in front, one 6.5 back; `ahead` is 0 everywhere, so a
+--     pet never runs ahead of a walking owner), at about head height, bob and sway with their own phase, ease
+--     towards their slot with an exponential filter (LEAD_H cancels most of the lag), face the direction the owner
+--     travels, bank into turns, pitch forward when they speed up and flap harder when the owner runs or is in the
+--     air. Evolved followers trail a little further back (back x min(1.4, height / 3), the measured model height).
+--   * Phase 4 evolved models (3.6): the stored evolution stage (State.PetGrowth(key).Evo for your own pets, the
+--     player attribute EquippedInfo "level:stage,..." for others) is passed to PetBuilder.Build through opts.Evolved
+--     only. Your own evolved followers are Low detail (<= petEvoLow 380 / petEvo2Low 520 parts); other players'
+--     evolved followers are drawn evolved only within 40 studs and at most 6 at a time (nearest first), else as the
+--     normal Low model (their card still shows the stars). Heights are measured once per key|stage (GetExtentsSize).
+--   * Phase 4 pet cards (3.9, client/UI/PetCard.lua): your own followers show "Lv n" + the XP bar (State.PetLevel +
+--     TycoonCatalog.XpToNext, refreshed on State.Changed) and the gold EVOLVE! pill when the pet is ready (a tap
+--     opens the Pets panel on that pet); other players' followers show the level (and stars) from EquippedInfo
+--     only, at most 12 cards at once (nearest first, MaxDistance 60). Cards hide while the owner is InBattle, while
+--     a follower is parked or diving, and with the model. Card writes happen on events and in a 2 Hz tick only.
+--   * Phase 4 home portal (3.10): when the owner's portal was just used (the player attribute HomePortal cleared /
+--     PortalArrived written, and a teleport > 35 studs within 0.5 s of it) the followers fly into the portal centre
+--     and shrink (0.4 s), then pop out of the arrival ring behind the owner (the fresh = 2 emerge path).
 --   * Phase 3: while the owner's player attribute `InBattle` is set (BattleService), the followers are parked: the
 --     battle team fights on the floor, drawn by BattleController. They snap back into formation afterwards.
 --   * Owners that are downed keep their pets close; owners that teleport (> 35 studs in one step) or
@@ -37,8 +63,8 @@
 --
 -- Performance: the per-frame code touches only numbers stored on long-lived tables, builds no tables or
 -- closures, and creates exactly one CFrame per pet per update (the rotation matrix is written out by hand).
--- Per pet and frame Lua writes one root CFrame plus the animated parts (no part is written twice).
--- Everything is wrapped in pcall so one broken pet can never stop the others.
+-- Per pet and frame Lua writes one root CFrame plus the animated parts (no part is written twice). Cards are
+-- never written per frame. Everything is wrapped in pcall so one broken pet can never stop the others.
 -- Plain Lua 5.1-compatible syntax only.
 
 local Players = game:GetService("Players")
@@ -60,6 +86,29 @@ do
 		end
 	end
 end
+
+-- optional modules: a build without one still draws the followers
+local function optionalModule(parent, name, waitSeconds)
+	if not parent then
+		return nil
+	end
+	local inst = parent:FindFirstChild(name)
+	if not inst and waitSeconds then
+		inst = parent:WaitForChild(name, waitSeconds)
+	end
+	if not inst then
+		return nil
+	end
+	local ok, result = pcall(require, inst)
+	if ok and type(result) == "table" then
+		return result
+	end
+	return nil
+end
+local Client = script.Parent and script.Parent.Parent
+local TycoonCatalog = optionalModule(Shared, "TycoonCatalog")
+local State = optionalModule(Client, "State")
+local PetCard = optionalModule(Client and Client:FindFirstChild("UI"), "PetCard")
 
 local PetController = {}
 
@@ -124,7 +173,7 @@ local DOWN_RATE = 4
 -- Pet motion
 local LEAD_H = 0.12 -- seconds of owner velocity added to the target (cancels most of the filter lag)
 local LEAD_V = 0.05
-local RUN_AHEAD = 4.0 -- studs the side pets move forward at full run speed
+local RUN_AHEAD = 4.0 -- Phase 3: studs the side pets moved forward at full run speed (unused: every `ahead` is 0)
 local RUN_RISE = 0.6 -- studs the pets rise at full run speed
 local FACE_RATE = 7 -- pet yaw easing (1/s)
 local TILT_RATE = 9 -- pitch / roll easing (1/s)
@@ -134,10 +183,30 @@ local PITCH_GAIN = 0.0125 -- radians of nose-down pitch per stud/second of forwa
 
 -- Slots: { side (+ = owner's right), up (above the HumanoidRootPart), back (behind the owner), ahead (0..1) }.
 -- The HumanoidRootPart is ~3 studs above the floor, so +2 puts a pet's body at head height.
+-- Phase 4 (contract 3.9, the player's "follow the player from behind"): trailing slots, `ahead` = 0 everywhere
+-- (prototyped through this file's filter math: 4.5 / 4.6 / 6.5 studs behind at rest, worst lag 7.7 studs at
+-- 24 studs/s, settles at 6.5, never ahead of the owner while moving).
 local FORMATION = {
-	[1] = { { 4.0, 2.3, 1.4, 1.0 } },
-	[2] = { { -4.0, 2.0, 1.3, 1.0 }, { 4.0, 2.6, 1.3, 1.0 } },
-	[3] = { { -4.2, 1.9, 0.6, 1.0 }, { 4.2, 2.5, 0.6, 1.0 }, { 0.0, 3.2, 4.0, 0.3 } },
+	[1] = { { 0.0, 2.3, 4.5, 0 } },
+	[2] = { { -1.8, 2.0, 4.2, 0 }, { 1.8, 2.6, 4.2, 0 } },
+	[3] = { { -2.2, 1.9, 4.0, 0 }, { 2.2, 2.5, 4.0, 0 }, { 0.0, 2.9, 6.5, 0 } },
+}
+
+-- Phase 4 tuning (cards, evolved models, the portal dive)
+local P4K = {
+	CARD_HEIGHT = 0.7, -- studs above the top of the pet
+	OTHER_CARDS = 12, -- other players' cards at once (nearest first) ...
+	OTHER_CARD_DIST = 60, -- ... within this distance (also the cards' MaxDistance)
+	OTHER_EVO_MAX = 6, -- other players' evolved models at once (nearest first) ...
+	OTHER_EVO_IN = 40, -- ... within this distance
+	OTHER_EVO_OUT = 46, -- an evolved model already shown keeps its look up to here (no flicker at the edge)
+	EVO_BACK_MAX = 1.4, -- evolved followers: back x min(1.4, height / 3)
+	EVO_GRACE = 0.6, -- s: a stage that rose without PlayEvolution waits this long (the animation may park it first)
+	GLOBAL_TICK = 0.5, -- s between card / evolved-model selections
+	DIVE_TIME = 0.4, -- s the followers take to fly into a used home portal
+	DIVE_WINDOW = 0.5, -- s: a teleport this close to the portal closing is a portal trip
+	DIVE_NEAR = 8, -- studs: an owner this close to an open portal who teleports used it
+	PARK_DEFAULT = 4.6, -- s a follower stays parked by PlayEvolution when EvolutionFx cannot say
 }
 
 -- Wing speed. PetBuilder.Animate beats the wings at FLAP_HZ * Flap * (1 + 1.25 * Excited) per second, so the
@@ -167,6 +236,15 @@ local movedRigid, movedPivot = 0, 0 -- pets posed in the current frame (root wri
 local lastRigid, lastPivot = 0, 0 -- ... in the last finished frame (GetMoveStats)
 local nextFolderCheck = 0
 local warnedAt = {} -- [key] = os.clock() of the last warning (rate limit)
+-- Phase 4: every new helper lives in this table (keeps the file's active locals low)
+local P4 = {
+	heights = {}, -- ["key|stage"] = measured model height (GetExtentsSize Y, Scale 1)
+	overrides = {}, -- [key] = stage passed to PlayEvolution (until State's PetGrowth catches up)
+	parks = {}, -- [key] = { Until = os.clock(), From = Vector3 | nil } while PlayEvolution parks that follower
+	nextGlobal = 0, -- os.clock() of the next card / evolved-model selection
+	stateConn = nil,
+	menu = nil, -- MenuController (lazy, for the EVOLVE! pill)
+}
 
 ----------------------------------------------------------------------
 -- Small helpers
@@ -219,12 +297,12 @@ local function slotOffsets(n, i)
 	if s then
 		return s[1], s[2], s[3], s[4]
 	end
+	-- Phase 4: a trailing fan behind the owner (contract 3.9), never ahead
 	local a = ((i - 0.5) / n - 0.5) * 2.4 -- -1.2 .. +1.2 radians
-	local side = sin(a) * 4.4
-	local back = 1.0 + (1 - cos(a)) * 3.0
+	local side = sin(a) * 2.4
+	local back = 4 + (1 - cos(a)) * 2.5
 	local up = 1.9 + (i % 3) * 0.55
-	local ahead = 0.3 + 0.7 * abs(sin(a))
-	return side, up, back, ahead
+	return side, up, back, 0
 end
 
 local function assignSlots(f)
@@ -249,8 +327,21 @@ local function newPetRecord(def, key)
 		side = 0,
 		up = 2,
 		back = 1,
-		ahead = 1,
+		ahead = 0,
 		lift = 0, -- extra hover for tall pets
+		-- Phase 4
+		key = key or def.Id,
+		infoIndex = 0, -- position of the key in EquippedPets (EquippedInfo uses the same order)
+		stage = 0, -- the stage the model was built at
+		want = 0, -- the stage the pet has (card stars; the model follows unless capped)
+		level = 1,
+		backMul = 1, -- evolved followers trail a little further back
+		height = 2.7,
+		card = nil, -- PetCard (own pets always, others' only when selected)
+		rebuildAt = nil, -- os.clock() when the model must be rebuilt at `want`
+		parked = false, -- PlayEvolution: hidden while the evolution plays
+		emergeFrom = nil, -- Vector3: the next fresh pose starts here (the evolved clone's spot)
+		diveStep = 0,
 		-- personality (so a group never moves in lockstep)
 		phase = rnd() * TAU,
 		phase2 = rnd() * TAU,
@@ -284,6 +375,10 @@ local function destroyPetModel(p)
 	p.model = nil
 	p.root = nil
 	p.rigid = false
+	if p.card then
+		pcall(p.card.Destroy, p.card)
+		p.card = nil
+	end
 	if model then
 		pcall(model.Destroy, model)
 	end
@@ -321,18 +416,42 @@ local function weldParts(model, root, all)
 end
 
 -- Builds the model of one pet (inside pcall: a broken definition must not take the controller down).
+-- Phase 4: the stage goes through opts.Evolved only (never on the shared def); own evolved pets are Low detail.
 local function buildModel(f, p)
-	local ok, model = pcall(PetBuilder.Build, p.def, { Scale = BUILD_OPTS.Scale, Detail = f.isLocal and "High" or "Low" }) -- v3 LOD: own pets High, others Low
+	local stage = P4.modelStage(f, p)
+	local detail = (f.isLocal and stage == 0) and "High" or "Low" -- v3 LOD: own pets High, others Low; evolved Low
+	local opts = { Scale = BUILD_OPTS.Scale, Detail = detail }
+	if stage > 0 then
+		opts.Evolved = stage
+	end
+	local ok, model = pcall(PetBuilder.Build, p.def, opts)
 	if not ok or typeof(model) ~= "Instance" then
 		p.retryAt = os.clock() + BUILD_RETRY
 		warnLimited("build_" .. tostring(p.id), "could not build pet " .. tostring(p.id) .. ": " .. tostring(model))
 		return
 	end
-	-- taller pets hover a little higher so every species sits at a similar height beside the owner
-	local okSize, size = pcall(model.GetExtentsSize, model)
-	if okSize and typeof(size) == "Vector3" then
-		p.lift = clamp((size.Y - 2.7) * 0.35, -0.4, 0.6)
+	p.stage = stage
+	p.rebuildAt = nil
+	-- the model's height, measured once per key|stage: taller pets hover a little higher, evolved ones trail
+	-- further back, and the card floats over the head
+	local hkey = tostring(p.key) .. "|" .. stage
+	local h = P4.heights[hkey]
+	if not h then
+		local okSize, size = pcall(model.GetExtentsSize, model)
+		if okSize and typeof(size) == "Vector3" then
+			h = size.Y
+			P4.heights[hkey] = h
+		end
 	end
+	h = h or 2.7
+	p.height = h
+	p.lift = clamp((h - 2.7) * 0.35, -0.4, 0.6)
+	p.backMul = 1
+	if stage > 0 then
+		p.backMul = clamp(h / 3, 1, P4K.EVO_BACK_MAX)
+	end
+	pcall(model.SetAttribute, model, "PC_Key", tostring(p.key))
+	pcall(model.SetAttribute, model, "PC_Stage", stage)
 	-- weld the static parts to the anchored root once: every later pose is a single root CFrame write
 	-- (followers live in workspace, where joints are solved; never do this inside a ViewportFrame)
 	local root = model.PrimaryPart
@@ -353,6 +472,9 @@ local function buildModel(f, p)
 	p.model = model
 	p.animFails = 0
 	model.Parent = f.folder
+	if f.isLocal or p.cardOk then
+		P4.ensureCard(f, p) -- a rebuilt model keeps its card (others' cards: chosen by P4.globalTick)
+	end
 end
 
 -- Animate gave up on this pet: weld its animated parts too (in their last pose), so they keep following.
@@ -402,6 +524,19 @@ local function newFollower(player)
 		airK = 0,
 		downK = 0,
 		headYaw = 0,
+		-- Phase 4
+		info = {}, -- EquippedInfo: [index] = { level, stage }
+		infoText = nil,
+		dist = 0, -- studs from the viewer (2 Hz)
+		portal = nil, -- the open home portal { x, y, z } (HomePortal attribute)
+		portalGone = nil, -- the portal that closed last ...
+		portalGoneAt = -1e9, -- ... and when (os.clock())
+		arrivedAt = -1e9, -- PortalArrived seen (os.clock())
+		dive = false, -- portal dive running
+		diveT0 = 0,
+		diveX = 0,
+		diveY = 0,
+		diveZ = 0,
 	}
 end
 
@@ -425,6 +560,7 @@ local function setVisible(f, visible)
 	else
 		f.folder.Parent = nil
 	end
+	P4.syncCards(f)
 end
 
 -- The owner has no character (died, respawning, left): pets are destroyed and rebuilt for the new one.
@@ -525,13 +661,16 @@ local function applyEquipped(f)
 	f.hyb = hyb
 
 	local hybridProfile = parseHybrids(hyb)
-	local wanted, wantedKeys = {}, {}
+	local wanted, wantedKeys, wantedIndex = {}, {}, {}
+	local index = 0
 	for token in string.gmatch(csv, "[^,]+") do
+		index = index + 1
 		local key = string.match(token, "^%s*(.-)%s*$")
 		local def = key ~= "" and defForKey(key, hybridProfile) or nil
 		if def and #wanted < MAX_EQUIPPED then
 			wanted[#wanted + 1] = def
 			wantedKeys[#wanted] = key
+			wantedIndex[#wanted] = index
 		end
 	end
 
@@ -557,6 +696,7 @@ local function applyEquipped(f)
 				found.fresh = 2
 			end
 		end
+		found.infoIndex = wantedIndex[i]
 		pets[i] = found
 	end
 	for j = 1, #old do
@@ -567,6 +707,7 @@ local function applyEquipped(f)
 	f.pets = pets
 	f.n = #pets
 	assignSlots(f)
+	P4.refreshFollower(f)
 end
 
 local function destroyFollower(f)
@@ -641,8 +782,453 @@ local function trackPlayer(player)
 		end
 	end)
 
+	-- Phase 4: levels / stages of the equipped pets, the home portal
+	conns[#conns + 1] = player:GetAttributeChangedSignal(P4.attr("EquippedInfo")):Connect(function()
+		P4.readInfo(f)
+		P4.refreshFollower(f)
+	end)
+	conns[#conns + 1] = player:GetAttributeChangedSignal(P4.attr("HomePortal")):Connect(function()
+		P4.readPortal(f)
+	end)
+	conns[#conns + 1] = player:GetAttributeChangedSignal(P4.attr("PortalArrived")):Connect(function()
+		f.arrivedAt = os.clock()
+	end)
+
 	f.downed = player:GetAttribute(ATTR.Downed) == true
+	P4.readInfo(f)
+	P4.readPortal(f)
 	applyEquipped(f)
+end
+
+----------------------------------------------------------------------
+-- Phase 4: levels, stages, pet cards, the evolution park and the portal dive (helpers live in P4)
+----------------------------------------------------------------------
+function P4.attr(name)
+	return (type(ATTR) == "table" and ATTR[name]) or name
+end
+
+-- EquippedInfo "23:1,5:0" -> f.info[i] = { level, stage } (the order of EquippedPets)
+function P4.readInfo(f)
+	local text = f.player:GetAttribute(P4.attr("EquippedInfo"))
+	if type(text) ~= "string" then
+		text = ""
+	end
+	if text == f.infoText then
+		return
+	end
+	f.infoText = text
+	local info = {}
+	local i = 0
+	for token in string.gmatch(text, "[^,]+") do
+		i = i + 1
+		local lv, st = string.match(token, "^%s*(%d+)%s*:%s*(%d+)%s*$")
+		if not lv then
+			lv = string.match(token, "^%s*(%d+)%s*$")
+		end
+		info[i] = { math.max(1, math.floor(tonumber(lv) or 1)), clamp(math.floor(tonumber(st) or 0), 0, 2) }
+	end
+	f.info = info
+end
+
+-- HomePortal "x,y,z,yaw,closesAt" -> f.portal { x, y, z }; a portal that closes is remembered for the dive
+function P4.readPortal(f)
+	local text = f.player:GetAttribute(P4.attr("HomePortal"))
+	local portal = nil
+	if type(text) == "string" then
+		local x, y, z = string.match(text, "^%s*([%-%d%.eE]+)%s*,%s*([%-%d%.eE]+)%s*,%s*([%-%d%.eE]+)")
+		x, y, z = tonumber(x), tonumber(y), tonumber(z)
+		if x and y and z and x == x and y == y and z == z then
+			portal = { x, y, z }
+		end
+	end
+	if not portal and f.portal then
+		f.portalGone = f.portal
+		f.portalGoneAt = os.clock()
+	end
+	f.portal = portal
+end
+
+-- the owner jumped > 35 studs: was it a trip through their home portal? (sets the dive centre)
+function P4.portalJustUsed(f, now)
+	local gone = f.portalGone
+	if gone and (now - f.portalGoneAt <= P4K.DIVE_WINDOW or now - f.arrivedAt <= P4K.DIVE_WINDOW) then
+		f.diveX, f.diveY, f.diveZ = gone[1], gone[2], gone[3]
+		return true
+	end
+	local open = f.portal
+	if open then
+		local dx, dy, dz = f.ox - open[1], f.oy - open[2], f.oz - open[3]
+		if dx * dx + dy * dy + dz * dz <= P4K.DIVE_NEAR * P4K.DIVE_NEAR then
+			f.diveX, f.diveY, f.diveZ = open[1], open[2], open[3]
+			return true
+		end
+	end
+	return false
+end
+
+function P4.startDive(f, now)
+	f.dive = true
+	f.diveT0 = now
+	f.diveY = f.diveY + 1.2 -- the swirl's centre stands above the ground point
+	f.portalGone = nil
+	for i = 1, f.n do
+		local p = f.pets[i]
+		p.diveStep = 0
+		if p.model and p.rigid and p.root then
+			-- everything follows the root now (the model is rebuilt when the dive ends)
+			pcall(weldParts, p.model, p.root, true)
+		end
+	end
+	P4.syncCards(f)
+end
+
+-- one frame of the dive: each pet flies into the portal centre (one root write) and shrinks in 3 steps
+function P4.stepDive(f, dt, now, px, py, pz)
+	f.ox, f.oy, f.oz = px, py, pz -- keep tracking the owner (no second teleport after the dive)
+	local t = (now - f.diveT0) / P4K.DIVE_TIME
+	if t >= 1 then
+		P4.endDive(f)
+		return
+	end
+	local remaining = math.max(0.02, (1 - t) * P4K.DIVE_TIME)
+	local k = clamp(dt / remaining, 0, 1)
+	local step = math.floor(t * 4)
+	for i = 1, f.n do
+		local p = f.pets[i]
+		local model = p.model
+		if model then
+			local nx = p.x + (f.diveX - p.x) * k
+			local ny = p.y + (f.diveY - p.y) * k
+			local nz = p.z + (f.diveZ - p.z) * k
+			p.x, p.y, p.z = nx, ny, nz
+			local syw, cyw = sin(p.yaw), cos(p.yaw)
+			local cf = CFrame.new(nx, ny, nz, cyw, 0, syw, 0, 1, 0, -syw, 0, cyw)
+			local root = p.root
+			if p.rigid and root and root.Parent == model then
+				if p.pivotInv then
+					root.CFrame = cf * p.pivotInv
+				else
+					root.CFrame = cf
+				end
+				movedRigid = movedRigid + 1
+			else
+				model:PivotTo(cf)
+				movedPivot = movedPivot + 1
+			end
+			if step > p.diveStep then
+				p.diveStep = step
+				pcall(model.ScaleTo, model, math.max(0.15, 1 - 0.27 * step))
+			end
+		end
+	end
+end
+
+-- the dive is over: fresh models pop out of the arrival ring behind the owner
+function P4.endDive(f)
+	f.dive = false
+	f.vx, f.vy, f.vz = 0, 0, 0
+	local root = f.root
+	if root and root.Parent then
+		local look = root.CFrame.LookVector
+		if look.X * look.X + look.Z * look.Z > 0.04 then
+			f.headYaw = atan2(-look.X, -look.Z)
+		end
+	end
+	for i = 1, f.n do
+		local p = f.pets[i]
+		destroyPetModel(p)
+		p.fresh = 2
+		p.retryAt = 0
+	end
+end
+
+-- the stored evolution stage of an own pet (State), never below a stage PlayEvolution announced
+function P4.ownStage(p, level)
+	local stored = 0
+	if State and type(State.PetGrowth) == "function" then
+		local ok, g = pcall(State.PetGrowth, p.key)
+		if ok and type(g) == "table" then
+			stored = tonumber(g.Evo) or 0
+		end
+	end
+	local over = P4.overrides[p.key]
+	if over then
+		if stored >= over then
+			P4.overrides[p.key] = nil
+		else
+			stored = over
+		end
+	end
+	local ok, stage = pcall(PetCatalog.EvolutionStage, p.def, level, stored)
+	if ok and type(stage) == "number" then
+		return stage
+	end
+	return clamp(math.floor(stored), 0, 2)
+end
+
+-- level, stage, XP fill (0..1) and EVOLVE readiness of one pet
+function P4.petInfo(f, p)
+	local entry = f.info[p.infoIndex]
+	local level, stage = entry and entry[1] or 1, entry and entry[2] or 0
+	if not f.isLocal then
+		local okMax, top = pcall(PetCatalog.MaxEvolution, p.def)
+		if okMax and type(top) == "number" and stage > top then
+			stage = top
+		end
+		return level, stage, 0, false
+	end
+	local xp = 0
+	if State and type(State.IsLoaded) == "function" and State.IsLoaded() then
+		local okL, lv, x = pcall(State.PetLevel, p.key)
+		if okL and type(lv) == "number" then
+			level, xp = lv, tonumber(x) or 0
+		end
+		stage = P4.ownStage(p, level)
+	else
+		local over = P4.overrides[p.key]
+		if over and over > stage then
+			stage = over
+		end
+	end
+	local frac = 1
+	local cap = nil
+	local okCap, c = pcall(PetCatalog.LevelCap, p.def)
+	if okCap and type(c) == "number" then
+		cap = c
+	end
+	local need = nil
+	if TycoonCatalog and type(TycoonCatalog.XpToNext) == "function" then
+		local okN, n = pcall(TycoonCatalog.XpToNext, level)
+		if okN and type(n) == "number" then
+			need = n
+		end
+	end
+	if not (cap and level >= cap) and need and need > 0 and need < math.huge then
+		frac = clamp(xp / need, 0, 1)
+	end
+	local okR, nextStage = pcall(PetCatalog.CanEvolve, p.def, level, stage)
+	return level, stage, frac, okR and nextStage ~= nil
+end
+
+-- the stage the model is built at: own pets always their stage, others' only when allowed (40 studs, 6 at most)
+function P4.modelStage(f, p)
+	if f.isLocal or p.evoOk then
+		return p.want
+	end
+	return 0
+end
+
+-- re-reads levels / stages of a follower's pets: cards, and a rebuild when the model's stage is out of date
+function P4.refreshFollower(f)
+	local now = os.clock()
+	for i = 1, f.n do
+		local p = f.pets[i]
+		local level, stage, frac, ready = P4.petInfo(f, p)
+		p.level, p.want = level, stage
+		if f.isLocal then
+			local parked = P4.parks[p.key] ~= nil
+			if parked and not p.parked then
+				p.parked = true
+				destroyPetModel(p)
+			end
+		end
+		local card = p.card
+		if card then
+			pcall(card.SetLevel, card, level, stage, ready)
+			if f.isLocal then
+				pcall(card.SetXp, card, frac)
+			end
+		end
+		if p.model and P4.modelStage(f, p) ~= p.stage then
+			-- a stage that rose by itself waits a moment: PlayEvolution may park the pet for the animation first
+			local wait = (f.isLocal and stage > p.stage) and P4K.EVO_GRACE or 0
+			if not p.rebuildAt or p.rebuildAt > now + wait then
+				p.rebuildAt = now + wait
+			end
+		elseif p.rebuildAt and p.model then
+			p.rebuildAt = nil
+		end
+	end
+end
+
+function P4.openPets(key)
+	if not P4.menu then
+		P4.menu = optionalModule(script.Parent, "MenuController")
+	end
+	local MC = P4.menu
+	if MC and type(MC.Open) == "function" then
+		local ok, err = pcall(MC.Open, "Pets", { Tab = "Pets", Key = key, Action = "Evolve" })
+		if not ok then
+			warnLimited("menu_open", "could not open the Pets panel: " .. tostring(err))
+		end
+	end
+end
+
+-- shows / hides one pet card with its follower (parked, diving, culled, in battle)
+function P4.syncCard(f, p)
+	local card = p.card
+	if card then
+		pcall(card.SetShown, card, f.visible and not f.dive and not p.parked and p.model ~= nil)
+	end
+end
+
+function P4.syncCards(f)
+	for i = 1, f.n do
+		P4.syncCard(f, f.pets[i])
+	end
+end
+
+-- creates (or re-adorns) the card of a pet whose model exists
+function P4.ensureCard(f, p)
+	local adornee = p.root or (p.model and p.model.PrimaryPart)
+	if not PetCard or not p.model or not adornee then
+		return
+	end
+	local height = p.height * 0.5 + P4K.CARD_HEIGHT
+	if p.card then
+		pcall(p.card.SetAdornee, p.card, adornee, height)
+	else
+		local key = p.key
+		local ok, card = pcall(PetCard.New, adornee, f.isLocal and "Follower" or "Other", height, {
+			OnEvolve = function()
+				P4.openPets(key)
+			end,
+		})
+		if not ok or type(card) ~= "table" then
+			warnLimited("card_" .. tostring(key), "could not build a pet card: " .. tostring(card))
+			return
+		end
+		p.card = card
+	end
+	local level, stage, frac, ready = P4.petInfo(f, p)
+	pcall(p.card.SetLevel, p.card, level, stage, ready)
+	if f.isLocal then
+		pcall(p.card.SetXp, p.card, frac)
+	end
+	P4.syncCard(f, p)
+end
+
+local function byDist(a, b)
+	return a.dist < b.dist
+end
+
+-- 2 Hz: other players' cards (nearest 12 within 60 studs) and evolved models (nearest 6 within 40 studs)
+function P4.globalTick(now, viewPos)
+	if now < P4.nextGlobal then
+		return
+	end
+	P4.nextGlobal = now + P4K.GLOBAL_TICK
+	local list = {}
+	for i = 1, followerCount do
+		local f = order[i]
+		if f and not f.isLocal then
+			local root = f.root
+			if f.visible and root and root.Parent and viewPos then
+				local d = root.Position - viewPos
+				f.dist = d.Magnitude
+				list[#list + 1] = f
+			else
+				f.dist = math.huge
+				for j = 1, f.n do
+					local p = f.pets[j]
+					p.evoOk = false
+					p.cardOk = false
+					if p.card then
+						pcall(p.card.Destroy, p.card)
+						p.card = nil
+					end
+				end
+			end
+		end
+	end
+	table.sort(list, byDist)
+	local cards, evos = 0, 0
+	for i = 1, #list do
+		local f = list[i]
+		for j = 1, f.n do
+			local p = f.pets[j]
+			-- evolved look: nearest first, at most 6, a shown one keeps it a little further out
+			local ok = false
+			if p.want > 0 and evos < P4K.OTHER_EVO_MAX then
+				local reach = (p.stage > 0) and P4K.OTHER_EVO_OUT or P4K.OTHER_EVO_IN
+				if f.dist <= reach then
+					ok = true
+					evos = evos + 1
+				end
+			end
+			p.evoOk = ok
+			if p.model and P4.modelStage(f, p) ~= p.stage and not p.rebuildAt then
+				p.rebuildAt = now
+			end
+			-- the level card: nearest first, at most 12
+			if not f.dive and cards < P4K.OTHER_CARDS and f.dist <= P4K.OTHER_CARD_DIST then
+				cards = cards + 1
+				p.cardOk = true
+				if p.model and not p.card then
+					P4.ensureCard(f, p)
+				end
+			else
+				p.cardOk = false
+				if p.card then
+					pcall(p.card.Destroy, p.card)
+					p.card = nil
+				end
+			end
+		end
+	end
+end
+
+-- per follower, a few times a second: parks that ran out
+function P4.slowFollower(f, now)
+	if not f.isLocal then
+		return
+	end
+	for i = 1, f.n do
+		local p = f.pets[i]
+		if p.parked then
+			local park = P4.parks[p.key]
+			if not park or now >= park.Until then
+				P4.parks[p.key] = nil
+				P4.unparkKey(p.key, park and park.From or nil)
+			end
+		end
+	end
+end
+
+function P4.unparkKey(key, from)
+	local f = localFollower
+	if not f then
+		return
+	end
+	for i = 1, f.n do
+		local p = f.pets[i]
+		if p.key == key and p.parked then
+			p.parked = false
+			p.fresh = 2
+			p.emergeFrom = from
+			p.retryAt = 0
+			p.rebuildAt = nil
+		end
+	end
+	P4.refreshFollower(f)
+end
+
+-- seconds the evolution animation lasts (EvolutionFx.Duration), else a safe default
+function P4.fxDuration(stage)
+	local Fx = optionalModule(script.Parent, "EvolutionFx")
+	if Fx and type(Fx.Duration) == "function" then
+		local ok, d = pcall(Fx.Duration, stage)
+		if ok and type(d) == "number" and d > 0 and d < 30 then
+			return d + 0.3
+		end
+	end
+	return P4K.PARK_DEFAULT
+end
+
+function P4.onStateChanged()
+	if localFollower then
+		P4.refreshFollower(localFollower)
+	end
 end
 
 ----------------------------------------------------------------------
@@ -677,12 +1263,25 @@ local function stepFollower(f, dt, now, viewPos)
 		if f.visible and f.folder.Parent ~= petsFolder then
 			f.folder.Parent = ensurePetsFolder()
 		end
+		P4.slowFollower(f, now)
 	end
 
 	local rootPos = root.Position
 	local px, py, pz = rootPos.X, rootPos.Y, rootPos.Z
 	if px ~= px or py ~= py or pz ~= pz then
 		return -- a broken (NaN) character position: wait for it to recover instead of poisoning the pets
+	end
+
+	-- 2b. Phase 4: the home portal dive (played out wherever the owner went, before any culling) ----------------
+	if not f.dive and f.visible and f.established then
+		local jx, jy, jz = px - f.ox, py - f.oy, pz - f.oz
+		if jx * jx + jy * jy + jz * jz > TELEPORT_STEP2 and P4.portalJustUsed(f, now) then
+			P4.startDive(f, now)
+		end
+	end
+	if f.dive then
+		P4.stepDive(f, dt, now, px, py, pz)
+		return
 	end
 
 	-- 3. culling + level of detail -------------------------------------------------------------
@@ -806,7 +1405,13 @@ local function stepFollower(f, dt, now, viewPos)
 	for i = 1, f.n do
 		local p = pets[i]
 		local model = p.model
-		if not model and now >= p.retryAt and buildsThisFrame < BUILD_MAX
+		if p.rebuildAt and now >= p.rebuildAt and not p.parked then
+			-- Phase 4: the stage changed (EVOLVE, EquippedInfo, the 40-stud rule): rebuild where the pet is
+			p.rebuildAt = nil
+			destroyPetModel(p)
+			model = nil
+		end
+		if not model and not p.parked and now >= p.retryAt and buildsThisFrame < BUILD_MAX
 			and (buildsThisFrame == 0 or os.clock() - buildStart < BUILD_BUDGET) then
 			if buildsThisFrame == 0 then
 				buildStart = os.clock()
@@ -820,14 +1425,18 @@ local function stepFollower(f, dt, now, viewPos)
 			local bob = sin(now * p.bobRate + p.phase) * p.bobAmp * (1 - 0.5 * downK)
 			local sway = sin(now * p.swayRate + p.phase2) * p.swayAmp
 			local side = p.side * compact + sway
-			local fwd = p.ahead * RUN_AHEAD * runK - p.back * compact
+			local fwd = p.ahead * RUN_AHEAD * runK - p.back * p.backMul * compact
 			local tx = px + rx * side + fx * fwd + leadX
 			local tz = pz + rz * side + fz * fwd + leadZ
 			local ty = py + p.up * (1 - 0.2 * downK) + p.lift + bob + (1.2 - p.ahead) * RUN_RISE * runK + leadY
 
 			if p.fresh ~= 0 then
-				if p.fresh == 2 then
-					p.x, p.y, p.z = px, py + 0.5, pz -- emerge from the owner's chest
+				local from = p.emergeFrom
+				if from then
+					p.x, p.y, p.z = from.X, from.Y, from.Z -- Phase 4: where the evolved clone stood
+					p.emergeFrom = nil
+				elseif p.fresh == 2 then
+					p.x, p.y, p.z = px, py + 0.5, pz -- emerge from the owner's chest (also out of the arrival ring)
 				else
 					p.x, p.y, p.z = tx, ty, tz
 				end
@@ -940,6 +1549,10 @@ local function onRender(dt)
 			viewPos = camera.CFrame.Position
 		end
 	end
+	local okTick, errTick = pcall(P4.globalTick, now, viewPos)
+	if not okTick then
+		warnLimited("global_tick", "card / model selection failed: " .. tostring(errTick))
+	end
 	for i = 1, count do
 		local f = order[i]
 		if f and not f.disabled then
@@ -980,6 +1593,78 @@ function PetController.GetMoveStats()
 	return { Rigid = lastRigid, Pivot = lastPivot }
 end
 
+-- Phase 4 (contract 3.6): parks the local follower of `key` while the evolution plays elsewhere, then rebuilds it
+-- at `stage`. Returns release(fromPosition?) to end the park early (CareController calls it from EvolutionFx's
+-- OnDone with the evolved clone's position).
+function PetController.PlayEvolution(key, stage, opts)
+	if type(key) ~= "string" or key == "" then
+		return function() end
+	end
+	stage = clamp(math.floor(tonumber(stage) or 1), 1, 2)
+	local seconds, from = nil, nil
+	if type(opts) == "number" then
+		seconds = opts
+	elseif type(opts) == "table" then
+		seconds = tonumber(opts.Seconds)
+		if typeof(opts.From) == "Vector3" then
+			from = opts.From
+		end
+	end
+	if not seconds or seconds ~= seconds or seconds < 0 then
+		seconds = P4.fxDuration(stage)
+	end
+	seconds = math.min(seconds, 30)
+	P4.overrides[key] = math.max(P4.overrides[key] or 0, stage)
+	local park = { Until = os.clock() + seconds, From = from }
+	P4.parks[key] = park
+	if localFollower then
+		P4.refreshFollower(localFollower)
+	end
+	local released = false
+	return function(fromPosition)
+		if released then
+			return
+		end
+		released = true
+		if P4.parks[key] == park then
+			P4.parks[key] = nil
+			P4.unparkKey(key, typeof(fromPosition) == "Vector3" and fromPosition or from)
+		end
+	end
+end
+
+-- debug helpers (smoke tests): every live pet card, and one owner's followers
+function PetController.GetCards()
+	local out = {}
+	for i = 1, followerCount do
+		local f = order[i]
+		for j = 1, f.n do
+			local p = f.pets[j]
+			local card = p.card
+			if card and card.Gui then
+				out[#out + 1] = { UserId = f.userId, Key = p.key, Mode = card.mode, Gui = card.Gui, Shown = card.Gui.Enabled == true }
+			end
+		end
+	end
+	return out
+end
+
+function PetController.GetFollowerInfo(player)
+	local f = followers[player]
+	local out = {}
+	if not f then
+		return out
+	end
+	for i = 1, f.n do
+		local p = f.pets[i]
+		out[i] = {
+			Key = p.key, Model = p.model, Stage = p.stage, Want = p.want, Level = p.level,
+			Card = p.card and p.card.Gui or nil, Parked = p.parked, Diving = f.dive, Back = p.backMul,
+		}
+	end
+	return out
+end
+
 function PetController.Stop()
 	if not initialized then
 		return
@@ -993,6 +1678,14 @@ function PetController.Stop()
 		playerConns[i]:Disconnect()
 	end
 	playerConns = {}
+	if P4.stateConn then
+		pcall(function()
+			P4.stateConn:Disconnect()
+		end)
+		P4.stateConn = nil
+	end
+	P4.parks = {}
+	P4.overrides = {}
 	local list = {}
 	for player in pairs(followers) do
 		list[#list + 1] = player
@@ -1027,6 +1720,21 @@ function PetController.Init()
 	playerConns[#playerConns + 1] = Players.PlayerRemoving:Connect(removeFollower)
 	for _, player in ipairs(Players:GetPlayers()) do
 		trackPlayer(player)
+	end
+
+	-- Phase 4: own pets' levels / XP / stages follow the profile snapshot
+	if State and type(State.Changed) == "table" and type(State.Changed.Connect) == "function" then
+		local ok, conn = pcall(function()
+			return State.Changed:Connect(function()
+				local okR, err = pcall(P4.onStateChanged)
+				if not okR then
+					warnLimited("state_changed", "pet card refresh failed: " .. tostring(err))
+				end
+			end)
+		end)
+		if ok then
+			P4.stateConn = conn
+		end
 	end
 
 	renderConn = RunService.RenderStepped:Connect(onRender)

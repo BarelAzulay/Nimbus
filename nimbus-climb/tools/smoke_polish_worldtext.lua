@@ -16,7 +16,9 @@
 --                             cached) or the silhouette when the request fails; back to free when the owner leaves;
 --                             readable from ~80 studs; the "No. N" gate signs; the podium tag of the best pet.
 --   client_polish_worldtext   (client, 1920x1080) the tutorial guide sign and the NPC nameplates as the client
---                             controllers show them (their UIScale included).
+--                             controllers show them (their UIScale included); the Phase 4 pet cards (PetCard, in the
+--                             PlayerGui): own and another player's follower cards and a ready card with its EVOLVE! pill,
+--                             "Lv" >= 22 px with a stroke, every text on a compact solid plate.
 -- The Storm Altar (another engineer's file, audited by smoke_storm.lua) and transient damage numbers are reported only.
 -- The mock has no Players:GetUserThumbnailAsync: this file adds a faithful stub (yields, returns content + isReady,
 -- errors for user ids listed in THUMB.fail) when it loads, before the boot.
@@ -814,6 +816,46 @@ local function clientScenarios()
 		if made then
 			made:Destroy()
 			advance(0.5)
+		end
+
+		-- Phase 4 pet cards (contract 3.9; PetCard BillboardGuis live in the PlayerGui so the EVOLVE! pill can be tapped):
+		-- own followers, another player's followers (level + stars from EquippedInfo) and a ready card with its pill
+		do
+			local PC = KC.M and KC.M.PetController
+			local cardMod = req("client/UI/PetCard")
+			local friend = Mock.AddPlayer("CardAudit", 7401)
+			advance(0.6)
+			local here = KC.root() and KC.root().Position or Vector3.new(0, 40, 0)
+			Mock.Teleport(friend, here + Vector3.new(16, 0, 0))
+			friend:SetAttribute("EquippedInfo", "12:1,57:2")
+			friend:SetAttribute("EquippedPets", "pebble_pup,cloudy_dragon")
+			LocalPlayer:SetAttribute("EquippedPets", "biscuit_bear")
+			advance(2.5)
+			local ready = cardMod and cardMod.New(nil, "Follower", 2) or nil
+			if ready then
+				ready:SetLevel(20, 1, true)
+				ready:SetXp(0.3)
+			end
+			local recs = {}
+			for _, c in ipairs(PC and PC.GetCards and PC.GetCards() or {}) do
+				recs[#recs + 1] = auditGui(c.Gui)
+			end
+			if ready then
+				recs[#recs + 1] = auditGui(ready.Gui)
+			end
+			if T.check(#recs >= 4, "pet cards exist in the client world (precondition: 1 own + 2 of another player + a ready card)", tostring(#recs)) then
+				local tl = T.tally("pet cards (PetCard): pixel-sized, \"Lv\" >= " .. NAME_MIN .. " px with a stroke, stars / EVOLVE! >= " .. INFO_MIN .. " px, compact solid plates, LightInfluence 0, MaxDistance 50-150")
+				for _, rec in ipairs(recs) do
+					tl:case(#rec.problems == 0 and rec.texts >= 1 and rec.maxPx >= NAME_MIN, rec.path .. ": " .. table.concat(rec.problems, "; ") .. " (max " .. tostring(rec.maxPx) .. " px)")
+				end
+				tl:report(#recs .. " cards")
+			end
+			if ready then
+				ready:Destroy()
+			end
+			LocalPlayer:SetAttribute("EquippedPets", "")
+			Mock.RemovePlayer(friend)
+			advance(0.8)
 		end
 
 		-- everything else with text in the client's workspace

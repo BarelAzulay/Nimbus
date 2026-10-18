@@ -928,7 +928,7 @@ local Plant = {}
 Plant.LOOK = {
 	Press1 = { Fruit = "Berry", Color = rgb(226, 58, 94) },
 	Press2 = { Fruit = "Carrot", Color = rgb(250, 140, 46) },
-	Press3 = { Fruit = "Melon", Color = rgb(150, 224, 176) },
+	Press3 = { Fruit = "Melon", Color = rgb(98, 178, 240) },
 	Press4 = { Fruit = "Starfruit", Color = rgb(255, 212, 70) },
 }
 Plant.MAX_PARTS = 44 -- contract section 6: a plant <= 45 parts (the sparkle attachment adds none)
@@ -954,10 +954,12 @@ function Plant.palette(level)
 		BerryBlue = rgb(104, 96, 218),
 		Blossom = rgb(252, 246, 240),
 		Carrot = rgb(250, 140, 46),
+		CarrotDark = rgb(214, 104, 34),
 		Greens = rgb(100, 190, 80),
 		GreensDark = rgb(70, 150, 70),
-		Melon = rgb(150, 224, 176),
-		Stripe = rgb(246, 250, 255),
+		Melon = rgb(98, 178, 240),
+		Stripe = rgb(248, 252, 255),
+		Post = C.PlankDark,
 		Vine = rgb(74, 150, 82),
 		Curl = rgb(110, 186, 86),
 		Canopy = rgb(104, 196, 116),
@@ -972,12 +974,10 @@ function Plant.planter(s, h, level)
 	SK.Box(s, -h, h, 0.5, 1.0, -h, h, "Rim")
 	SK.Box(s, -h + 0.5, h - 0.5, 0.5, 1.0, -h + 0.5, h - 0.5, "Soil")
 	if level >= 7 and level <= 9 then
+		-- gold caps on the two front corners (the back corners stay free for trellis posts)
 		for _, sx in ipairs({ -1, 1 }) do
-			for _, sz in ipairs({ -1, 1 }) do
-				local x0 = (sx < 0) and -h or (h - 1.0)
-				local z0 = (sz < 0) and -h or (h - 1.0)
-				SK.Box(s, x0, x0 + 1.0, 1.0, 1.5, z0, z0 + 1.0, "Gold")
-			end
+			local x0 = (sx < 0) and -h or (h - 1.0)
+			SK.Box(s, x0, x0 + 1.0, 1.0, 1.5, -h, -h + 1.0, "Gold")
 		end
 	end
 end
@@ -1025,78 +1025,98 @@ function Plant.Berry(s, level, t)
 	return cy + ry * 0.6, cy + ry
 end
 
--- Carrot Patch: rows of carrots (orange shoulders out of the soil, leafy tops), more and taller with every level;
--- a giant carrot in the middle at 10
+-- Carrot Patch: rows of fat orange carrots peeking out of the soil, each under a bushy green tuft (a stalk and a
+-- wider crown), more carrots and bigger tufts with every level; a giant carrot in the middle at 10
 function Plant.Carrot(s, level, t)
 	local h = (level >= 4) and 3.0 or 2.5
 	Plant.planter(s, h, level)
 	local step = (h >= 3) and 2.0 or 1.5
-	local lh = snap(1.0 + 0.25 * level)
+	local lh = snap(0.75 + 0.15 * level)
 	local top = 1.0
 	for i = 1, Plant.CARROTS[level] or 9 do
 		local c = Plant.CELLS[i]
 		local x, z = c[1] * step, c[2] * step
 		local giant = level >= 10 and i == 9
 		local w = giant and 1.0 or 0.5
-		local sh = giant and 1.5 or ((level >= 5) and 1.0 or 0.5)
+		local sh = giant and 2.5 or ((level >= 5) and 1.5 or 1.0)
 		SK.Box(s, x - w, x + w, top, top + sh, z - w, z + w, "Carrot")
+		if not giant then
+			-- the carrot's darker ring where it leaves the soil
+			SK.Box(s, x - w, x + w, top, top + 0.5, z - w, z + w, "CarrotDark")
+		end
 		local gy = top + sh
 		local gh = giant and (lh + 1.5) or lh
 		local key = (i % 2 == 0) and "GreensDark" or "Greens"
-		-- the leafy top: a stalk and a fan above it (alternating along X / Z)
-		SK.Box(s, x - 0.5, x + 0.5, gy, gy + gh, z - 0.5, z + 0.5, key)
-		local fy = gy + snap(gh * 0.45)
-		local fw = giant and 1.5 or 1.0
+		-- the tuft: a short stalk and a crown twice as wide (turned every other carrot), the crown's middle a step taller
+		local cw = giant and 1.5 or 1.0
+		SK.Box(s, x - 0.5, x + 0.5, gy, gy + gh + 0.5, z - 0.5, z + 0.5, key)
 		if i % 2 == 0 then
-			SK.Box(s, x - fw, x + fw, fy, gy + gh - 0.5, z - 0.5, z + 0.5, key)
+			SK.Box(s, x - cw, x + cw, gy + 0.5, gy + gh, z - 0.5, z + 0.5, key)
 		else
-			SK.Box(s, x - 0.5, x + 0.5, fy, gy + gh - 0.5, z - fw, z + fw, key)
+			SK.Box(s, x - 0.5, x + 0.5, gy + 0.5, gy + gh, z - cw, z + cw, key)
 		end
 	end
-	return top + lh * 0.6, top + lh + 2.5
+	return top + 1.5, top + lh + 4.5
 end
 
--- Cloud Melons: plump mint melons with white cloud stripes on a vine bed; one melon at 1-3, two at 4-6, three at 7+
+-- Cloud Melons: plump sky-blue melons with white cloud stripes on a green vine bed. The big melon swells with
+-- every level; a second melon joins at 4, a third at 7; from 5 a wooden vine trellis rises behind them (taller at 8+)
 function Plant.Melon(s, level, t)
 	local h = (level >= 4) and 3.0 or 2.5
 	Plant.planter(s, h, level)
-	-- vine leaves on the soil corners
+	-- vine leaves on the soil corners (the back ones sit under the trellis)
 	for _, c in ipairs({ { -1, -1 }, { 1, 1 }, { -1, 1 }, { 1, -1 } }) do
 		local x0 = (c[1] < 0) and (-h + 0.5) or (h - 2.0)
 		local z0 = (c[2] < 0) and (-h + 0.5) or (h - 2.0)
 		SK.Box(s, x0, x0 + 1.5, 1.0, 1.5, z0, z0 + 1.5, "Vine")
 	end
-	local r = 0.9 + 0.11 * (level - 1)
-	local list = { { 0, 0, r } }
+	local topY = 1.0
+	if level >= 5 then
+		-- the trellis: two posts at the back corners, a top bar and vine leaves climbing it
+		local th = (level >= 8) and 5.5 or 4.5
+		local zb = h - 1.0
+		SK.Box(s, -h + 0.5, -h + 1.0, 1.0, th, zb, zb + 0.5, "Post")
+		SK.Box(s, h - 1.0, h - 0.5, 1.0, th, zb, zb + 0.5, "Post")
+		SK.Box(s, -h + 0.5, h - 0.5, th, th + 0.5, zb, zb + 0.5, "Post")
+		SK.Box(s, -h + 1.0, -0.5, th - 1.0, th, zb - 0.5, zb + 0.5, "Vine")
+		SK.Box(s, 0.5, h - 1.0, th - 1.5, th - 0.5, zb - 0.5, zb + 0.5, "Curl")
+		if level >= 10 then
+			-- a little melon hanging from the trellis
+			SK.Box(s, -2.0, -1.0, th - 2.5, th - 1.0, zb - 0.5, zb + 0.5, "Melon")
+		end
+		topY = th + 0.5
+	end
+	local r = 1.1 + 0.1 * (level - 1)
+	local list = { { 0, -0.25, r } }
 	if level >= 4 then
-		list[1] = { 0.5, 0.5, r }
-		list[2] = { -1.25, -1.25, r * 0.62 }
+		list[1] = { 0.5, 0, r }
+		list[2] = { -1.5, -1.5, 0.75 }
 	end
 	if level >= 7 then
-		list[3] = { 1.25, -1.5, r * 0.55 }
+		list[3] = { 1.5, -1.75, 0.65 }
 	end
-	local topY = 1.0
+	local melonTop = 1.0
 	for i, m in ipairs(list) do
 		local mr = m[3]
 		local ry = mr * 0.85
 		local cy = 1.0 + ry * 0.8
 		SK.Ell(s, m[1], cy, m[2], mr, ry, mr, "Melon")
-		-- two white cloud stripes over the top (only on the melon's own voxels)
 		local cx, cz = snap(m[1]), snap(m[2])
-		local a, b = snap(cx - mr * 0.45), snap(cx + mr * 0.45)
-		SK.Paint(s, a, a + 0.5, cy - ry * 0.3, cy + ry + 0.5, cz - mr - 0.5, cz + mr + 0.5, "Stripe", { Melon = true })
-		SK.Paint(s, b - 0.5, b, cy - ry * 0.3, cy + ry + 0.5, cz - mr - 0.5, cz + mr + 0.5, "Stripe", { Melon = true })
-		-- a curly stem on top
-		SK.Box(s, cx - 0.5, cx, cy + ry - 0.25, cy + ry + 0.5, cz - 0.5, cz, "Curl")
 		if i == 1 then
-			topY = cy + ry
+			-- two white cloud stripes over the big melon (only on its own voxels) and a curly stem with a leaf
+			local a, b = snap(cx - mr * 0.45), snap(cx + mr * 0.45)
+			SK.Paint(s, a, a + 0.5, cy - ry * 0.3, cy + ry + 0.5, cz - mr - 0.5, cz + mr + 0.5, "Stripe", { Melon = true })
+			SK.Paint(s, b - 0.5, b, cy - ry * 0.3, cy + ry + 0.5, cz - mr - 0.5, cz + mr + 0.5, "Stripe", { Melon = true })
+			SK.Box(s, cx - 0.5, cx, cy + ry - 0.25, cy + ry + 0.5, cz - 0.5, cz, "Curl")
+			SK.Box(s, cx, cx + 1.0, cy + ry, cy + ry + 0.5, cz - 0.5, cz, "Vine")
+			melonTop = cy + ry
 		end
 	end
-	SK.Shade(s, { Only = { Melon = true }, Smooth = 1, Seed = 3 })
-	return topY * 0.8, topY + 0.5
+	return melonTop * 0.8, max(topY, melonTop + 0.5)
 end
 
--- Starfruit Tree: a sapling at 1 that grows into a big round tree hung with golden starfruit (glowing from 8)
+-- Starfruit Tree: a sapling at 1 that grows into a big round tree hung with golden starfruit (glowing from 8). The
+-- canopy is sculpted on a coarser grid (Foliage, 1 stud) so the tree stays inside the plant budget.
 function Plant.Star(s, level, t)
 	local h = (level >= 4) and 3.0 or 2.5
 	Plant.planter(s, h, level)
@@ -1105,26 +1125,32 @@ function Plant.Star(s, level, t)
 	local y0 = 1.0
 	SK.Box(s, -tw, tw, y0, y0 + th, -tw, tw, "Bark")
 	if level >= 4 then
+		-- root flare
 		SK.Box(s, -tw - 0.5, tw + 0.5, y0, y0 + 0.5, -tw - 0.5, tw + 0.5, "Bark")
 	end
-	local cr = min(3.1, 1.25 + 0.2 * level)
+	local cr = min(3.0, 1.25 + 0.2 * level)
 	local cy = y0 + th + cr * 0.45
 	if level >= 5 then
-		SK.Cap(s, { 0, y0 + th * 0.55, 0 }, { -cr * 0.65, cy - cr * 0.15, 0 }, 0.35, 0.3, "Bark")
-		SK.Cap(s, { 0, y0 + th * 0.7, 0 }, { cr * 0.65, cy - cr * 0.05, 0 }, 0.35, 0.3, "Bark")
+		-- two stepped branches reaching into the side crowns
+		local by = y0 + snap(th * 0.6)
+		SK.Box(s, -tw - 1.0, -tw, by, by + 0.5, -0.5, 0.5, "Bark")
+		SK.Box(s, -tw - 1.5, -tw - 0.5, by + 0.5, by + 1.0, -0.5, 0.5, "Bark")
+		SK.Box(s, tw, tw + 1.0, by + 0.5, by + 1.0, -0.5, 0.5, "Bark")
+		SK.Box(s, tw + 0.5, tw + 1.5, by + 1.0, by + 1.5, -0.5, 0.5, "Bark")
 	end
-	SK.Ell(s, 0, cy, 0, cr, cr * 0.7, cr, "Canopy")
+	local f = s.Foliage
+	SK.Ell(f, 0, cy, 0, cr, cr * 0.7, cr, "Canopy")
 	if level >= 3 then
-		SK.Ell(s, -cr * 0.6, cy - cr * 0.15, cr * 0.2, cr * 0.6, cr * 0.5, cr * 0.6, "Canopy")
-		SK.Ell(s, cr * 0.6, cy - cr * 0.1, -cr * 0.2, cr * 0.6, cr * 0.5, cr * 0.6, "Canopy")
+		SK.Ell(f, -cr * 0.6, cy - cr * 0.15, cr * 0.2, cr * 0.6, cr * 0.5, cr * 0.6, "Canopy")
+		SK.Ell(f, cr * 0.6, cy - cr * 0.1, -cr * 0.2, cr * 0.6, cr * 0.5, cr * 0.6, "Canopy")
 	end
 	if level >= 7 then
-		SK.Ell(s, 0, cy + cr * 0.55, 0, cr * 0.55, cr * 0.4, cr * 0.55, "Canopy")
+		SK.Ell(f, 0, cy + cr * 0.55, 0, cr * 0.55, cr * 0.4, cr * 0.55, "Canopy")
 	end
-	SK.Shade(s, { Only = { Canopy = true }, Smooth = 1, Seed = 9 })
+	SK.Shade(f, { Only = { Canopy = true }, Smooth = 1, Seed = 9 })
 	-- the starfruit: little five-point stars (a plus of voxels) hanging around the canopy
 	local n = 1 + math.ceil(level / 2)
-	for _, p in ipairs(Plant.spread(n, 0, cy, 0, cr + 0.3, cr * 0.7 + 0.3, cr + 0.3, -0.75, 0.25, 3)) do
+	for _, p in ipairs(Plant.spread(n, 0, cy, 0, cr + 0.4, cr * 0.7 + 0.4, cr + 0.4, -0.75, 0.25, 3)) do
 		local x, y, z = floor(p[1] / 0.5) * 0.5, floor(p[2] / 0.5) * 0.5, floor(p[3] / 0.5) * 0.5
 		if abs(p[4]) > abs(p[5]) then
 			SK.Box(s, x, x + 0.5, y, y + 0.5, z - 0.5, z + 1.0, "Star")
@@ -1149,7 +1175,7 @@ function Art.Plant(def, level)
 	end
 	local fruitY, topY = sculpt(s, level, t)
 	local pal = Plant.palette(level)
-	local m = SK.Build(s, pal, { Name = "Body", Collide = "big" })
+	local m = SK.Build(s, pal, { Name = "Body", Collide = "big", MaxParts = Plant.MAX_PARTS - 6 })
 	absorb(tpl.Model, m)
 	if s.Foliage.G.Count > 0 then
 		absorb(tpl.Model, SK.Build(s.Foliage, pal, { Name = "Foliage", Collide = "big", MaxParts = Plant.MAX_PARTS - #tpl.Model:GetChildren() }))
@@ -1353,16 +1379,23 @@ function Garden.entranceHalf(def)
 	return 1.5, nil
 end
 
--- the "Prestige to open" placard of a seedling bed (World text rule: 50 px per stud, 0.6 stud letters)
-function Garden.closedSign(parent, x, z)
-	local board = box(parent, "ClosedSign", CFrame.new(x, 1.6, z - 1.3), Vector3.new(2.8, 1.4, 0.2), C.PlankLight, { Shadow = false })
+-- the "Prestige to open" placard of a seedling bed (World text rule: 50 px per stud; a big gold star >= 0.95 stud,
+-- the words at 0.6 stud). 3.4 studs wide (the bed is 3): kept clear of the entrance walk (|x| >= ent)
+function Garden.closedSign(parent, x, z, ent)
+	local w = 3.4
+	local cx = x
+	if ent and abs(x) - w / 2 < ent then
+		cx = (x < 0) and -(ent + w / 2) or (ent + w / 2)
+	end
+	local board = box(parent, "ClosedSign", CFrame.new(cx, 1.6, z - 1.3), Vector3.new(w, 1.4, 0.2), C.PlankLight, { Shadow = false })
 	local gui = surfaceGui(board, Enum.NormalId.Front, "ClosedGui")
 	local panel = plainFrame(gui, "Panel", { Size = UDim2.fromScale(1, 1), BackgroundColor3 = rgb(255, 255, 255), BackgroundTransparency = 0 })
 	vgradient(panel, C.Violet, C.Navy)
 	rounded(panel, 10)
 	outline(panel, C.TextGold, 4, 0.1)
-	signText(panel, "Prestige", "Heading", 30, C.TextGold, "Title", 0.02, 0.04, 0.96, 0.48)
-	signText(panel, "to open", "Body", 30, C.Text, "Info", 0.02, 0.5, 0.96, 0.46)
+	signText(panel, GLYPH.Star, "Heading", 48, C.TextGold, "Star", 0.0, 0.0, 0.28, 1.0)
+	signText(panel, "Prestige", "Heading", 30, C.TextGold, "Title", 0.28, 0.02, 0.72, 0.48)
+	signText(panel, "to open", "Body", 30, C.Text, "Info", 0.28, 0.5, 0.72, 0.48)
 	return board
 end
 
@@ -1503,7 +1536,7 @@ function Art.Garden(def, level, open)
 	-- the placards of the closed places
 	for i, p in ipairs(spots) do
 		if i > open then
-			Garden.closedSign(tpl.Model, p.X, p.Z)
+			Garden.closedSign(tpl.Model, p.X, p.Z, ent)
 		end
 	end
 	if gold then
@@ -3695,6 +3728,10 @@ function HomeBuilder.BuildStationModel(id, level, accent, open)
 	m.Name = "Station_" .. id
 	m:SetAttribute("StationId", id)
 	m:SetAttribute("Level", level)
+	m:SetAttribute("Kind", def.Kind)
+	for name, v in pairs(tpl.Info) do
+		m:SetAttribute(name, v)
+	end
 	return m
 end
 

@@ -924,6 +924,7 @@ S.p4ring_rewards = scenario("p4ring_rewards", function()
 	local m2 = K.logSize()
 	local incomeD = Ty.IncomePerSecond(p)
 	local before = data.GetCash(p)
+	local bestBeforeD = ringOf(p).Best
 	local run2b = { wins = {} }
 	local t0 = Mock.Clock.now
 	while #run2b.wins == 0 and Mock.Clock.now - t0 < 120 do
@@ -936,8 +937,9 @@ S.p4ring_rewards = scenario("p4ring_rewards", function()
 	end
 	bs.SetDoubleRewards(nil)
 	local rwD = run2b.wins[1] and run2b.wins[1].Rewards
-	local wantD = rwD and bc.RingRewards(rwD.Round, incomeD, false)
-	T.check(rwD and wantD and rwD.Cash == wantD.Cash and rwD.Double ~= true and data.GetCash(p) - before == rwD.Cash, "p4 ring rewards: Double Rewards does not touch ring Cash (round " .. tostring(rwD and rwD.Round) .. ")", rwD and tostring(rwD.Cash) .. " vs " .. tostring(wantD and wantD.Cash) or "no round")
+	-- (the round right after the first run's best is a new record: x3 comes from the record, never from Double Rewards)
+	local wantD = rwD and bc.RingRewards(rwD.Round, incomeD, rwD.Round > bestBeforeD)
+	T.check(rwD and wantD and rwD.Cash == wantD.Cash and rwD.Record == (rwD.Round > bestBeforeD) and rwD.Double ~= true and data.GetCash(p) - before == rwD.Cash, "p4 ring rewards: Double Rewards does not touch ring Cash (round " .. tostring(rwD and rwD.Round) .. ")", rwD and tostring(rwD.Cash) .. " vs " .. tostring(wantD and wantD.Cash) or "no round")
 	bs.Forfeit(p)
 	advance(0.3)
 	bs.Forfeit(p)
@@ -977,8 +979,23 @@ S.p4ring_rewards = scenario("p4ring_rewards", function()
 	advance(0.3)
 	local portal = ringPortalInstance()
 	local board = portal and portal:GetAttribute("RingBoard")
-	local wantBoard = p.DisplayName .. "|" .. tostring(ring2.Best) .. ";" .. q.DisplayName .. "|" .. tostring(#runQ.wins)
-	T.check(type(board) == "string" and board == wantBoard, "p4 ring rewards: Portal_Ring's RingBoard attribute lists the best records in this server, best first ('Name|Best;Name|Best')", tostring(board) .. " vs " .. wantBoard)
+	-- "Name|Best;Name|Best": every climber of this server so far (earlier scenarios left records too), best first, at
+	-- most three entries; p leads, q's entry is its wins
+	local entries, sorted, posP, posQ = {}, true, nil, nil
+	for name, best in tostring(board):gmatch("([^|;]+)|(%d+)") do
+		entries[#entries + 1] = { Name = name, Best = tonumber(best) }
+		if #entries > 1 and entries[#entries - 1].Best < tonumber(best) then
+			sorted = false
+		end
+		if name == p.DisplayName then
+			posP = #entries
+		elseif name == q.DisplayName then
+			posQ = #entries
+		end
+	end
+	local wantBoard = p.DisplayName .. "|" .. tostring(ring2.Best) .. " ... " .. q.DisplayName .. "|" .. tostring(#runQ.wins)
+	T.check(type(board) == "string" and #entries >= 2 and #entries <= 3 and sorted and posP == 1 and entries[1].Best == ring2.Best and posQ ~= nil and entries[posQ].Best == #runQ.wins,
+		"p4 ring rewards: Portal_Ring's RingBoard attribute lists the best records in this server, best first ('Name|Best;Name|Best')", tostring(board) .. " vs " .. wantBoard)
 	advance(4.8)
 	K.flushErrors("p4ring_rewards")
 	K.flushWarnings("p4ring_rewards", ALLOWED_WARNINGS)
@@ -1075,11 +1092,12 @@ S.p4ring_ends = scenario("p4ring_ends", function()
 	advance(4)
 	T.eq(pocketCount(), 0, "p4 ring ends: ...the pocket is freed")
 
-	-- 5) a respawn elsewhere during a round: the run ends within ~1.5 s (the trial way), no loss XP
-	local s = newPlayer("RingEndS", STRONG, 12)
+	-- 5) a respawn elsewhere during a round: the run ends within ~1.5 s (the trial way), no loss XP. One level-1 pet:
+	-- its round 1 lasts seconds (a strong team wipes the champion before the presence check can notice the leaver)
+	local s = newPlayer("RingEndS", { WEAK[1] }, 1)
 	claimHome(s)
 	toRing(s)
-	local xpS = totalXp(s, STRONG[1])
+	local xpS = totalXp(s, WEAK[1])
 	local okS, idS = bs.StartRing(s, 1)
 	advance(0.2)
 	Mock.Kill(s)
@@ -1088,7 +1106,7 @@ S.p4ring_ends = scenario("p4ring_ends", function()
 	advance(1.6)
 	local rS = w.find(idS)
 	T.check(okS and rS ~= nil and rS.Won == false and contains(rS.Losers, s.UserId), "p4 ring ends: a respawn elsewhere during a round ends the run as a loss", rS and tostring(rS.Reason) or "still running")
-	T.eq(totalXp(s, STRONG[1]), xpS, "p4 ring ends: ...no loss XP (a leave is never a real loss)")
+	T.eq(totalXp(s, WEAK[1]), xpS, "p4 ring ends: ...no loss XP (a leave is never a real loss)")
 	advance(4.6)
 	T.check(s:GetAttribute("InBattle") == nil and ringOf(s).Runs == 1 and pocketCount() == 0, "p4 ring ends: ...free, Runs 1, the pocket freed")
 	-- a respawn BETWEEN rounds
@@ -1250,7 +1268,7 @@ S.p4ring_trialxp = scenario("p4ring_trialxp", function()
 		end
 		T.check(gained, "p4 trial xp: ...every team pet got exactly " .. want .. " XP (PetCareService.GrantXp)")
 		T.eq(data.GetTokens(p), tokens0, "p4 trial xp: ...no tokens, nothing cleared")
-		T.check(record(p) == nil or (data.GetBattle(p).TrialCleared or {})[1] ~= true, "p4 trial xp: ...Trial 1 is not cleared")
+		T.check(((data.GetBattle(p) or {}).TrialCleared or {})[1] ~= true, "p4 trial xp: ...Trial 1 is not cleared")
 		T.check((toasted(p, "your pets learned", mark)), "p4 trial xp: ...the toast says the pets learned", table.concat(toasts(p, mark), " | "))
 	end
 	advance(4.6)
@@ -1259,7 +1277,11 @@ S.p4ring_trialxp = scenario("p4ring_trialxp", function()
 	advance(1.6)
 	local xp1 = totalXp(p, MID[1])
 	local ok2, id2 = bs.StartTrial(p, 1)
-	advance(25)
+	local t1 = Mock.Clock.now
+	while ok2 and w.find(id2) == nil and Mock.Clock.now - t1 < 25 do
+		bs.Command(p, "Retreat") -- the same stalling team: the fight lasts the whole 25 s
+		advance(0.1)
+	end
 	bs.Forfeit(p)
 	advance(0.3)
 	local r2 = w.find(id2)

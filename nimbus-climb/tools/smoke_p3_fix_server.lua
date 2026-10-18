@@ -904,6 +904,11 @@ local function serverScenarios()
 		toPortal(e)
 		local okT, whyT = bs.StartTrial(e, 1)
 		T.check(okT == false and type(whyT) == "string" and whyT:find("restarting", 1, true) ~= nil, "leave: while closing, new battles are refused", tostring(whyT))
+		if type(bs.StartRing) == "function" then
+			local okR, whyR = bs.StartRing(e, 1)
+			T.check(okR == false and type(whyR) == "string" and (whyR:find("restarting", 1, true) ~= nil or whyR:find("home", 1, true) ~= nil),
+				"leave: ...and no Champion Ring run starts while closing (Phase 4; a player without a home is told so first)", tostring(whyR))
+		end
 		bs.SetClosing(false)
 		local okT2, idT2 = bs.StartTrial(e, 1)
 		T.check(okT2 == true, "leave: SetClosing(false) reopens battles (tests)", tostring(idT2))
