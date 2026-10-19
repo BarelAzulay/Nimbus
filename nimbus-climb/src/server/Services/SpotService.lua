@@ -460,17 +460,19 @@ end
 
 -- Builds + places the podium pet: `key` is the pet key (nil = empty podium), `def` its def (PetKeys.DefOf or the
 -- catalog). The model stands still on the server; the client animates it (SHOWCASE_TAG, see the header).
-local function setShowcasePet(index, key, def)
+local function setShowcasePet(index, key, def, stage)
 	local show = shows[index]
 	local info = spots[index]
 	if not show or not info then
 		return
 	end
-	if show.PetId == key then
+	stage = (type(stage) == "number" and stage == stage and stage >= 1) and math.floor(stage) or 0
+	if show.PetId == key and (show.Stage or 0) == stage then
 		return
 	end
 	clearShowModel(show)
 	show.PetId = key
+	show.Stage = stage
 	if not key or type(def) ~= "table" then
 		return
 	end
@@ -479,7 +481,13 @@ local function setShowcasePet(index, key, def)
 	if not builder or type(builder.Build) ~= "function" then
 		return
 	end
-	local okBuild, model = pcall(builder.Build, def, { Detail = "High", Scale = SHOWCASE_SCALE })
+	-- Phase 5 (3.7): the podium draws the pet's STORED evolution stage; an evolved model is always built at Low
+	local opts = { Detail = "High", Scale = SHOWCASE_SCALE }
+	if stage >= 1 then
+		opts.Detail = "Low"
+		opts.Evolved = (stage >= 2) and 2 or 1
+	end
+	local okBuild, model = pcall(builder.Build, def, opts)
 	if not okBuild or typeof(model) ~= "Instance" then
 		warn("[SpotService] PetBuilder.Build failed for " .. tostring(key) .. ": " .. tostring(model))
 		return
@@ -522,10 +530,12 @@ local function setShowcasePet(index, key, def)
 	model:PivotTo(CFrame.new(rest) * (podium - podium.Position))
 	model:SetAttribute("PetId", key)
 	model:SetAttribute("PetParts", parts)
+	model:SetAttribute("PB_Evolved", stage)
 	model:SetAttribute("HoverAmp", BOB_HEIGHT)
 	model:SetAttribute("Ready", true)
 	pcall(function()
 		CollectionService:AddTag(model, SHOWCASE_TAG)
+		CollectionService:AddTag(model, "NC_StyleExempt") -- a pet: WorldStyle.Tags.Exempt (the 6.4 material audit skips it)
 	end)
 	show.Model = model
 	model.Parent = info.Folder or workspace
@@ -681,14 +691,21 @@ local function refreshSpot(index)
 	local level, stars = homeStatsOf(profile)
 	local bestKey, bestDef = pickBestPet(profile)
 	local name = displayNameOf(owner)
+	local stage = 0
+	if bestKey and dataService and type(dataService.GetEvolution) == "function" then
+		local okE, e = pcall(dataService.GetEvolution, owner, bestKey)
+		if okE and type(e) == "number" and e == e and e >= 1 then
+			stage = math.floor(e)
+		end
+	end
 
-	local sig = name .. "|" .. tostring(level) .. "|" .. tostring(stars) .. "|" .. tostring(bestKey)
+	local sig = name .. "|" .. tostring(level) .. "|" .. tostring(stars) .. "|" .. tostring(bestKey) .. "|" .. tostring(stage)
 	if lastSig[index] == sig then
 		return
 	end
 	lastSig[index] = sig
 	setLabels(index, name, homeLine(level, stars))
-	setShowcasePet(index, bestKey, bestDef)
+	setShowcasePet(index, bestKey, bestDef, stage)
 end
 
 function SpotService.Refresh(player)
@@ -1131,6 +1148,19 @@ function SpotService.Init(lobbyInfo, deps)
 				queueRefresh(player)
 			end
 		end)
+	end
+	-- Phase 5 (3.7): an EVOLVE rebuilds the podium pet in its evolved look (PetCareService.Evolved; its signal exists at
+	-- module load, so the require here is safe before its Init)
+	local careModule = script.Parent and script.Parent:FindFirstChild("PetCareService")
+	if careModule then
+		local okCare, care = pcall(require, careModule)
+		if okCare and type(care) == "table" and care.Evolved and type(care.Evolved.Connect) == "function" then
+			care.Evolved:Connect(function(player)
+				if player and player.Parent then
+					queueRefresh(player)
+				end
+			end)
+		end
 	end
 
 	Players.PlayerAdded:Connect(onPlayerAdded)

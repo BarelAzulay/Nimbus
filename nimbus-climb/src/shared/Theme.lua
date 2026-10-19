@@ -13,6 +13,10 @@
 --   * Theme.Currency / Theme.ShortNumber(n)   currency glyphs + colours and "12.3K" style numbers
 -- Two ways to follow the rule: put widgets designed in 1080p pixels under a UIScale of Theme.ScreenFactor()
 -- (CloudUI.AutoScale does that), or give a loose label TextSize = Theme.ScaledSize(base). Never both.
+-- v5 (Phase 5, the Neon kit of client/UI/NeonKit.lua, ARCHITECTURE_V3.md "Phase 5 build contract" 6.6): the neon accent
+-- colours `Theme.Neon`, the colour of every menu / window category `Theme.Category`, `Theme.NeonColor(name)`, the dark
+-- navy card fill `Colors.PanelTop / PanelBottom / PanelInk`, and the "less cute" faces: Title / Button / Toast are
+-- GothamBlack now (Display stays FredokaOne for the big friendly numbers, Accent LuckiestGuy for damage numbers).
 -- Plain Lua 5.1-compatible syntax only. Safe to require on the server and on the client.
 
 local Theme = {}
@@ -37,7 +41,7 @@ end
 -- v3: Body and Label moved to the heavier Builder Sans cuts (far easier to read at small sizes on busy
 -- backgrounds); the chunky display faces stay.
 Theme.Fonts = {
-	Title = font("FredokaOne"), -- logo, banners, portal names, window titles
+	Title = font("GothamBlack", "GothamBold"), -- logo, banners, portal names, window titles (v5: GothamBlack)
 	Display = font("FredokaOne"), -- big numbers: timer, countdown, currency counts
 	Heading = font("GothamBlack", "GothamBold"), -- panel headers, captions, counts
 	Body = font("BuilderSansBold", "GothamBold"), -- descriptions, dialog text
@@ -45,8 +49,8 @@ Theme.Fonts = {
 	Accent = font("LuckiestGuy", "FredokaOne"), -- damage numbers, "GO!"
 	Script = font("Fondamento", "Nunito"), -- flavour text / taglines
 	-- v2 additions
-	Toast = font("LuckiestGuy", "FredokaOne"), -- side-of-screen system messages (cool, chunky)
-	Button = font("FredokaOne", "GothamBlack"), -- text on chunky buttons and tabs
+	Toast = font("GothamBlack", "GothamBold"), -- side-of-screen system messages (v5: GothamBlack neon pills)
+	Button = font("GothamBlack", "GothamBold"), -- text on buttons, tabs and tiles (v5: GothamBlack)
 }
 
 ----------------------------------------------------------------------
@@ -190,6 +194,45 @@ Theme.Colors = {
 	CashGlow = rgb(196, 240, 150),
 	Gem = rgb(84, 196, 246),
 	GemGlow = rgb(186, 236, 255),
+
+	-- v5 Neon kit (NeonKit.Card / CloudUI.Panel): the dark navy card fill (top -> bottom) and the darkest ink
+	PanelTop = rgb(26, 32, 72),
+	PanelBottom = rgb(12, 15, 38),
+	PanelInk = rgb(8, 10, 28),
+}
+
+-- v5 Neon kit: the glowing border / accent colours (image 21.png). One colour per category below.
+Theme.Neon = {
+	Orange = rgb(255, 150, 48),
+	Blue = rgb(64, 170, 255),
+	Purple = rgb(176, 104, 255),
+	Red = rgb(255, 76, 100),
+	Green = rgb(72, 224, 120),
+	Yellow = rgb(255, 210, 64),
+	Cyan = rgb(64, 226, 236),
+	Pink = rgb(255, 112, 200),
+	Gold = rgb(255, 196, 64),
+	Grey = rgb(150, 166, 204),
+}
+
+-- v5: the neon colour NAME of every menu tile / window / mode (Theme.NeonColor turns it into a Color3).
+Theme.Category = {
+	Pets = "Orange",
+	Items = "Blue",
+	Team = "Red",
+	Index = "Purple",
+	Shop = "Green",
+	Home = "Yellow",
+	Stats = "Cyan",
+	Settings = "Grey",
+	Obby = "Blue",
+	Dungeon = "Purple",
+	Ring = "Gold",
+	Arena = "Red",
+	Altar = "Cyan",
+	Care = "Green",
+	Fusion = "Pink",
+	Battle = "Red",
 }
 
 -- Base colours of the glossy button styles (CloudUI.Button / IconButton).
@@ -202,12 +245,12 @@ Theme.Buttons = {
 	Gray = rgb(144, 156, 180),
 }
 
--- Pill / toast colours by kind.
+-- Pill / toast colours by kind (v5: the neon Blue / Green / Red / Gold of the Neon kit).
 Theme.Kinds = {
-	info = rgb(90, 158, 234),
-	good = rgb(96, 196, 108),
-	bad = rgb(228, 90, 92),
-	token = rgb(240, 188, 66),
+	info = rgb(64, 170, 255),
+	good = rgb(72, 224, 120),
+	bad = rgb(255, 76, 100),
+	token = rgb(255, 196, 64),
 }
 
 -- Currencies (v3): glyph, attribute name (Config.Attr values) and the coin colours used by the HUD stack,
@@ -277,6 +320,40 @@ Theme.World = {
 		rgb(142, 118, 206),
 	},
 }
+
+-- v5: a neon colour by category ("Pets"), by neon name ("Orange", any case) or a Color3 passed through; anything
+-- else (nil, unknown) is the Blue neon.
+function Theme.NeonColor(categoryOrColorName)
+	if typeof(categoryOrColorName) == "Color3" then
+		return categoryOrColorName
+	end
+	if type(categoryOrColorName) ~= "string" or categoryOrColorName == "" then
+		return Theme.Neon.Blue
+	end
+	local name = categoryOrColorName
+	local category = Theme.Category[name]
+	if category then
+		return Theme.Neon[category]
+	end
+	if Theme.Neon[name] then
+		return Theme.Neon[name]
+	end
+	local lower = name:lower()
+	for key, value in pairs(Theme.Category) do
+		if key:lower() == lower then
+			return Theme.Neon[value]
+		end
+	end
+	for key, value in pairs(Theme.Neon) do
+		if key:lower() == lower then
+			return value
+		end
+	end
+	if lower == "gray" then
+		return Theme.Neon.Grey
+	end
+	return Theme.Neon.Blue
+end
 
 -- Colour for a health fraction 0..1 (green -> amber -> red).
 function Theme.HealthColor(fraction)

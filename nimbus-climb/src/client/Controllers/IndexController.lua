@@ -76,11 +76,10 @@ IndexController.Closed = Util.Signal()
 -- Tunables (design pixels of a 1080p screen)
 ----------------------------------------------------------------------
 local K = {
-	PREF_W = 1240,
-	PREF_H = 760,
+	PREF_W = 860, -- Phase 5 (6.6): docked right / a bottom sheet (NeonKit.Dock), 860 x 900 design px
+	PREF_H = 900,
 	MIN_W = 800,
 	MIN_H = 380,
-	BUMPS = 28, -- room the panel's cloud bumps like to have above its top edge
 	MARGIN = 12, -- screen px kept free around the window
 	NARROW = 1100, -- below this design width the side columns get narrower
 	SHORT = 560, -- below this design height the compact layout is used (landscape phones)
@@ -111,6 +110,12 @@ local K = {
 	TALL = 760,
 	STRIP_H = 64, -- the group strip of the tall layout (tiles + room for its scroll bar)
 	STRIP_TILE_W = 150,
+	STRIP_NAME_PAD = 34, -- a strip tile's name runs past the faint star art (the badge corner stays clear)
+	PANEL_INSET_W = 24, -- the Neon panel's content inset (left + right, design px)
+	REWARD_ROOMY_W = 480, -- a reward box narrower than this (design px) gets the 150 x 52 CLAIM button
+	REWARD_LABEL_W = 112, -- "Rewards:" (Heading 22) and its gap
+	REWARD_AMOUNT_W = 140, -- the widest amount (the Secret group's "☁ 10,000" in Display 30)
+	REWARD_SUB_MIN_W = 150, -- narrower than this, the line under the amount is left out (no 4-line wrap)
 	ELEMENTS_STRIP_W = 132,
 	ELEMENTS_BTN_H = 52,
 	ELEMENTS_BTN_H_SHORT = 44,
@@ -799,20 +804,6 @@ local function viewportHeight()
 	return guiSize().Y
 end
 
--- Right edge (gui px) of MenuController's column when it is on screen, else 0.
-local function menuColumnRight()
-	local pg = LocalPlayer and LocalPlayer:FindFirstChildOfClass("PlayerGui")
-	local menu = pg and pg:FindFirstChild("NimbusMenu")
-	local column = menu and menu:FindFirstChild("MenuColumn")
-	if column and column:IsA("GuiObject") and column.Visible and menu:IsA("ScreenGui") and menu.Enabled then
-		local right = column.AbsolutePosition.X + column.AbsoluteSize.X
-		if right > 0 and right < guiSize().X * 0.5 then
-			return right
-		end
-	end
-	return 0
-end
-
 local function renderFooter()
 	local total = totalPets()
 	local unlocked = unlockedCount()
@@ -824,64 +815,48 @@ local function renderFooter()
 	-- the compact layout has no footer: the title carries the count
 	if U.Panel then
 		if S.Short then
-			U.Panel.SetTitle(string.format("%s Pet Index   Unlocked: %d/%d", G.Book, unlocked, total))
+			if S.Tall then
+				U.Panel.SetTitle(string.format("%s Pet Index %d/%d", G.Book, unlocked, total))
+			else
+				U.Panel.SetTitle(string.format("%s Pet Index   Unlocked: %d/%d", G.Book, unlocked, total))
+			end
 		else
 			U.Panel.SetTitle(G.Book .. " Pet Index")
 		end
 	end
 end
 
--- Design size + scale + centre of the window. The window gets its preferred size when the screen has room
--- at the readability scale, shrinks towards its minimum size first and only then is scaled below the screen
--- factor; it keeps clear of the menu column unless covering the column buys a bigger (more readable) scale.
+-- Phase 5 (6.6): the window rule. NeonKit.Dock keeps the holder docked right (landscape) / a bottom sheet (portrait)
+-- and returns its design size; the hotbar re-centres left of a docked window.
 local function fitWindow()
-	local area = guiSize()
-	local factor = Theme.ScreenFactor(viewportHeight())
-	local freeH = area.Y - 2 * K.MARGIN
-	-- portrait: a narrow, tall window (the stacked layout) keeps the readability scale
-	local minW, prefH = K.MIN_W, K.PREF_H
-	if area.X < area.Y then
-		minW = math.min(minW, K.TALL_MIN_W)
-		prefH = math.max(prefH, K.TALL_MAX_H)
+	if not U.Dock then
+		U.Dock = U.Kit.Dock(U.Holder, U.Fit, K.PREF_W, K.PREF_H)
 	end
-	local function solve(left)
-		local freeW = area.X - left - 2 * K.MARGIN
-		local w = Util.Clamp(math.floor(freeW / factor), minW, K.PREF_W)
-		local h = Util.Clamp(math.floor((freeH - K.BUMPS * factor) / factor), K.MIN_H, prefH)
-		local scale = Util.Clamp(math.min(factor, freeW / w, freeH / h), 0.3, 1.25)
-		return w, h, scale
-	end
-	local left = menuColumnRight()
-	local w, h, scale = solve(left)
-	if left > 0 and scale < factor - 0.001 then
-		local w2, h2, scale2 = solve(0)
-		if scale2 > scale + 0.001 then
-			w, h, scale, left = w2, h2, scale2, 0
+	U.Dock.Refresh()
+	local r = U.Dock.Rect
+	if S.Open then
+		local hb = script.Parent:FindFirstChild("HotbarController")
+		local ok, mod = pcall(function()
+			return hb and require(hb)
+		end)
+		if ok and type(mod) == "table" and type(mod.SetAvoidRight) == "function" then
+			pcall(mod.SetAvoidRight, (r and r.mode == "Side") and r.x or nil)
 		end
 	end
-	local half = w * scale / 2
-	local x = math.max(area.X / 2, left + K.MARGIN + half)
-	x = math.min(x, area.X - K.MARGIN - half)
-	local halfH = h * scale / 2
-	local y = math.min(area.Y / 2 + K.BUMPS * scale / 2, area.Y - K.MARGIN / 2 - halfH)
-	y = math.max(y, halfH)
-	return w, h, scale, x, y
+	return math.floor(r.designW + 0.5), math.floor(r.designH + 0.5)
 end
 
 local function relayout()
 	if not S.Built then
 		return
 	end
-	local w, h, scale, x, y = fitWindow()
-	U.Holder.Size = UDim2.fromOffset(w, h)
-	U.Fit.Scale = scale
-	U.Holder.Position = UDim2.fromOffset(math.floor(x + 0.5), math.floor(y + 0.5))
+	local w, h = fitWindow()
 
 	-- narrow windows get narrower side columns, short ones the compact layout, tall ones (portrait phones) stack
 	-- the group strip, the grid and the detail card
 	local tall = w < K.TALL
 	local narrow = w < K.NARROW
-	local short = h < K.SHORT and not tall
+	local short = h < K.SHORT -- (Phase 5: a landscape-phone sheet is tall AND short: compact header, rewards, no footer)
 	S.Narrow, S.Short, S.Tall = narrow, short, tall
 	local groupW = narrow and K.GROUP_W_NARROW or K.GROUP_W
 	local detailW = narrow and K.DETAIL_W_NARROW or K.DETAIL_W
@@ -904,11 +879,15 @@ local function relayout()
 		U.GroupPad.PaddingTop = UDim.new(0, 0)
 		U.GroupPad.PaddingBottom = UDim.new(0, 12)
 		local centreTop = strip + 8
+		-- Phase 5: a docked sheet is shorter; the grid gets 2/3 of it, and a landscape-phone window (< 600 design px
+		-- tall) shows the grid only (the tiles carry name, rarity and element)
+		local frac = (h < 600) and 0 or 0.34
+		U.Detail.Visible = frac > 0
 		U.Centre.Position = UDim2.new(0, 0, 0, centreTop)
-		U.Centre.Size = UDim2.new(1, 0, 0.6, -centreTop)
+		U.Centre.Size = UDim2.new(1, 0, 1 - frac, -centreTop)
 		U.Detail.AnchorPoint = Vector2.new(0, 1)
 		U.Detail.Position = UDim2.new(0, 0, 1, 0)
-		U.Detail.Size = UDim2.new(1, 0, 0.4, -8)
+		U.Detail.Size = UDim2.new(1, 0, frac, -8)
 	else
 		U.Groups.Size = UDim2.new(0, groupW, 1, 0)
 		U.GroupLayout.FillDirection = Enum.FillDirection.Vertical
@@ -918,6 +897,7 @@ local function relayout()
 		U.GroupList.AutomaticCanvasSize = Enum.AutomaticSize.Y
 		U.GroupPad.PaddingTop = UDim.new(0, 6)
 		U.GroupPad.PaddingBottom = UDim.new(0, 6)
+		U.Detail.Visible = true
 		U.Detail.AnchorPoint = Vector2.new(1, 0)
 		U.Detail.Position = UDim2.new(1, 0, 0, 0)
 		U.Detail.Size = UDim2.new(0, detailW, 1, 0)
@@ -930,6 +910,13 @@ local function relayout()
 	U.Rewards.Size = UDim2.new(1, 0, 0, rewardH)
 	U.RewardSub.Visible = not short
 	U.RewardLabel.Visible = not (short and narrow)
+	-- (a landscape phone's grid well only has room for the empty Fusions card's title: no sparkle, no explanation)
+	for _, part in ipairs({ "Glyph", "Body" }) do
+		local child = U.FusionEmpty and U.FusionEmpty:FindFirstChild(part)
+		if child then
+			child.Visible = not short
+		end
+	end
 	if short then
 		U.RewardLabel.AnchorPoint = Vector2.new(0, 0.5)
 		U.RewardLabel.Position = UDim2.new(0, 14, 0.5, 0)
@@ -940,29 +927,48 @@ local function relayout()
 		U.ClaimGlow.Size = UDim2.fromOffset(150 + 14, 52 + 10)
 		U.ClaimGlow.Position = UDim2.new(1, -14 - 75, 0.5, 0)
 	else
-		-- the portrait layout's centre is narrow: a smaller CLAIM button leaves the text more room
-		local buttonW, buttonH = tall and 150 or 184, tall and 52 or 60
+		-- the reward box follows the centre's own width (a docked 1920x1080 window has a narrow centre between the
+		-- group column and the detail card, like a portrait phone): a narrow centre gets the smaller CLAIM button,
+		-- and when "Rewards:" and the amount do not both fit left of it the amount takes the label's place
+		-- (Main is the window less the panel's content inset and its own 20 px)
+		local mainW = w - K.PANEL_INSET_W - 20
+		local centreW = tall and mainW or (mainW - groupW - detailW - 2 * K.GAP)
+		local small = tall or centreW < K.REWARD_ROOMY_W
+		local buttonW, buttonH = small and 150 or 184, small and 52 or 60
+		local textW = math.max(0, centreW - 16 - (buttonW + 14 + 10)) -- the room left of the button
+		local withLabel = textW >= K.REWARD_LABEL_W + K.REWARD_AMOUNT_W
+		U.RewardLabel.Visible = withLabel
+		S.RewardLabelOk = withLabel
 		U.RewardLabel.AnchorPoint = Vector2.new(0, 0)
 		U.RewardLabel.Position = UDim2.fromOffset(16, 8)
 		U.RewardAmount.AnchorPoint = Vector2.new(0, 0)
-		U.RewardAmount.Position = UDim2.fromOffset(tall and 128 or 140, 6)
-		U.RewardAmount.Size = UDim2.new(1, -(buttonW + (tall and 150 or 166)), 0, 32)
+		U.RewardAmount.Position = UDim2.fromOffset(withLabel and (16 + K.REWARD_LABEL_W) or 16, 6)
+		U.RewardAmount.Size = UDim2.new(0, math.max(0, withLabel and (textW - K.REWARD_LABEL_W) or textW), 0, 32)
 		U.ClaimButton.Size = UDim2.fromOffset(buttonW, buttonH)
 		U.ClaimGlow.Size = UDim2.fromOffset(buttonW + 16, buttonH + 16)
 		U.ClaimGlow.Position = UDim2.new(1, -14 - buttonW / 2, 0.5, 0)
+		S.RewardTextW = textW
 	end
-	S.RewardSubW = tall and -(150 + 44) or -230
+	if short then
+		S.RewardLabelOk = not narrow
+		S.RewardTextW = nil
+	end
 	if U.ElementsCard then
 		U.ElementsCard.Size = UDim2.new(1, 0, 1, -(rewardH + 8))
 	end
 	U.View.Size = UDim2.new(1, 0, 0, (short or tall) and K.VIEW_H_SHORT or K.VIEW_H)
 	local tileH = short and K.GROUP_TILE_H_SHORT or K.GROUP_TILE_H
 	local tileSize = tall and UDim2.new(0, K.STRIP_TILE_W, 1, 0) or UDim2.new(1, -10, 0, tileH)
+	-- the strip's tiles are narrow: the name gets the star art's room too, so "Uncommon" / "Legendary" stay on one
+	-- line at the 18 px minimum (TextScaled wraps a word that does not fit, mid-word)
+	local nameSize = UDim2.new(1, -(tall and K.STRIP_NAME_PAD or 52), 0, 30)
 	for _, tile in pairs(S.GroupTiles) do
 		tile.Button.Size = tileSize
+		tile.Name.Size = nameSize
 	end
 	if S.FusionTile then
 		S.FusionTile.Button.Size = tileSize
+		S.FusionTile.Name.Size = nameSize
 	end
 	if U.ElementsButton then
 		if tall then
@@ -1268,8 +1274,9 @@ local function paintTile(tile)
 		if frame then
 			frame.ImageColor3 = discovered and Color3.new(1, 1, 1) or SILHOUETTE
 		end
-		if tile.BuiltDiscovered ~= discovered then
-			-- the pet was just discovered: rebuild with the discovered settings
+		local best = discovered and type(State.BestStage) == "function" and (tonumber(State.BestStage(def.Id)) or 0) or 0
+		if tile.BuiltDiscovered ~= discovered or (tile.BuiltStage ~= nil and tile.BuiltStage ~= best) then
+			-- the pet was just discovered (or evolved): rebuild with the new settings
 			destroyTileViewport(tile)
 		elseif discovered then
 			tile.Viewport.SetAnimated(selected or tile.Hover)
@@ -1308,11 +1315,16 @@ end
 local function buildTileViewport(tile)
 	local def = tile.Def
 	local discovered = State.IsDiscovered(def.Id)
+	-- Phase 5 (3.7): the best stage over the owned copies of this pet (undiscovered: 0); evolved = Low
+	local stage = discovered and type(State.BestStage) == "function" and (tonumber(State.BestStage(def.Id)) or 0) or 0
 	local handle = CloudUI.PetViewport(tile.Art, def, UDim2.new(1, 0, 1, 0), {
 		Animate = false,
 		Spin = discovered and "sway" or "none",
+		Evolved = stage >= 1 and stage or nil,
+		Detail = stage >= 1 and "Low" or nil,
 		ZIndex = 3,
 	})
+	tile.BuiltStage = stage
 	if not handle then
 		return
 	end
@@ -1514,6 +1526,10 @@ local function renderRewards()
 		local compact = S.Short or S.Tall
 		U.RewardSub.Position = UDim2.fromOffset(16, compact and 4 or 8)
 		U.RewardSub.Size = UDim2.new(1, -(compact and 182 or 230), 1, compact and -8 or -16)
+		if S.RewardTextW and not S.Short then
+			-- (the same room as the reward line: left of the button)
+			U.RewardSub.Size = UDim2.new(0, S.RewardTextW, 1, compact and -8 or -16)
+		end
 		if machine then
 			U.RewardSub.Text = "Fuse 3 copies into Golden (x1.5), 3 Golden into Rainbow (x2.5), or mix two pets into a hybrid!"
 		elseif stars >= 1 then
@@ -1539,10 +1555,12 @@ local function renderRewards()
 	end
 	-- back from the Fusions tab: the reward box's own layout
 	U.RewardAmount.Visible = true
-	U.RewardLabel.Visible = not (S.Short and S.Narrow)
-	U.RewardSub.Visible = not S.Short
+	U.RewardLabel.Visible = S.RewardLabelOk ~= false
+	-- (the line under the amount, two lines at most, only when it is wide enough to read)
+	local subW = S.RewardTextW
+	U.RewardSub.Visible = not S.Short and subW ~= nil and subW >= K.REWARD_SUB_MIN_W
 	U.RewardSub.Position = UDim2.fromOffset(16, 44)
-	U.RewardSub.Size = UDim2.new(1, S.RewardSubW or -230, 0, 44)
+	U.RewardSub.Size = UDim2.new(0, subW or 0, 0, 44)
 	local found, total, complete, claimed, claimable = groupStatus(group)
 	U.RewardAmount.Text = TOKEN_GLYPH .. " " .. commas(rewardTokens(group))
 	local button = U.ClaimButton
@@ -1620,7 +1638,8 @@ function renderDetail()
 	local accent = rarityAccent(def.Rarity)
 
 	-- viewport: spinning when discovered, a still black silhouette otherwise
-	local key = def.Id .. "|" .. tostring(discovered)
+	local best = discovered and type(State.BestStage) == "function" and (tonumber(State.BestStage(def.Id)) or 0) or 0
+	local key = def.Id .. "|" .. tostring(discovered) .. "|" .. best
 	if S.DetailKey ~= key then
 		if S.DetailViewport then
 			pcall(S.DetailViewport.Destroy)
@@ -1629,6 +1648,8 @@ function renderDetail()
 		local ok, handle = pcall(CloudUI.PetViewport, U.ViewHolder, def, UDim2.new(1, 0, 1, 0), {
 			Animate = discovered,
 			Spin = discovered and "spin" or "none",
+			Evolved = best >= 1 and best or nil, -- Phase 5 (3.7): your best copy's look
+			Detail = best >= 1 and "Low" or nil,
 			ZIndex = 4,
 		})
 		if ok and handle then
@@ -2426,8 +2447,6 @@ local function buildWindow()
 	end
 
 	local holder = makeFrame(U.Gui, "Window_Index", {
-		AnchorPoint = Vector2.new(0.5, 0.5),
-		Position = UDim2.new(0.5, 0, 0.5, 0),
 		Size = UDim2.fromOffset(K.PREF_W, K.PREF_H),
 		Visible = false,
 		ZIndex = 3,
@@ -2438,7 +2457,7 @@ local function buildWindow()
 		Name = "IndexPanel",
 		Title = G.Book .. " Pet Index",
 		Closable = true,
-		Accent = ACCENT,
+		Category = "Index",
 		Size = UDim2.new(1, 0, 1, 0),
 		Position = UDim2.new(0.5, 0, 0.5, 0),
 		AnchorPoint = Vector2.new(0.5, 0.5),
@@ -2541,25 +2560,19 @@ end
 ----------------------------------------------------------------------
 -- Open / close
 ----------------------------------------------------------------------
+-- (Phase 5: no backdrop; the hotbar stops avoiding the window when it closes)
 local function setBackdrop(on)
-	local backdrop = U.Backdrop
-	if not backdrop then
+	if on then
 		return
 	end
-	if on then
-		backdrop.Visible = true
-		tween(backdrop, 0.18, { BackgroundTransparency = 0.55 })
-	else
-		tween(backdrop, 0.15, { BackgroundTransparency = 1 })
-		local mine = S.Token
-		task.delay(0.17, function()
-			if S.Token == mine and not S.Open and backdrop.Parent then
-				backdrop.Visible = false
-			end
-		end)
+	local hb = script.Parent:FindFirstChild("HotbarController")
+	local ok, mod = pcall(function()
+		return hb and require(hb)
+	end)
+	if ok and type(mod) == "table" and type(mod.SetAvoidRight) == "function" then
+		pcall(mod.SetAvoidRight, nil)
 	end
 end
-
 function IndexController.IsOpen()
 	return S.Open
 end
@@ -2684,21 +2697,7 @@ function IndexController.Init()
 
 	local gui = CloudUI.NewScreenGui("NimbusIndex", K.DISPLAY_ORDER)
 	U.Gui = gui
-	U.Backdrop = Util.Create("TextButton", {
-		Name = "Backdrop",
-		AutoButtonColor = false,
-		Text = "",
-		BorderSizePixel = 0,
-		BackgroundColor3 = Color3.fromRGB(8, 12, 32),
-		BackgroundTransparency = 1,
-		Size = UDim2.new(1, 0, 1, 0),
-		Visible = false,
-		ZIndex = 1,
-		Parent = gui,
-	})
-	U.Backdrop.Activated:Connect(function()
-		IndexController.Close()
-	end)
+	U.Kit = require(Client:WaitForChild("UI"):WaitForChild("NeonKit"))
 
 	gui:GetPropertyChangedSignal("AbsoluteSize"):Connect(function()
 		if S.Built then

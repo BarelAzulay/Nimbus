@@ -20,8 +20,10 @@
 --                   fight (no loss XP), a leave during a round and between rounds (Runs + 1 in the saved profile), a
 --                   respawn elsewhere, a teleport away (the pocket leash), joining an obby match, Shutdown during a round
 --                   and between two rounds (the running round void, the wins stay paid); the pocket freed every time
---   p4ring_trialxp  the trial loss gate: a lost trial pays a third of its XP when it was a real loss (here a 90 s
---                   timeout: >= 20 s), a forfeited trial pays nothing; EventService ignores non-Raid results
+--   p4ring_lossxp   the real-loss gate on the ring (Phase 5: LossRules, the Trials are gone): a round lost by the 90 s
+--                   timeout pays a third of its XP, a forfeited round pays nothing, a won round the full XP; EventService
+--                   ignores non-Raid results
+-- Phase 5: the player's CHARACTER is the fighter's body: the harness drives it (drvTick: walk at the champion, ATTACK ~1/s).
 -- Plain Lua 5.1 syntax only.
 
 local K = _G.K
@@ -155,7 +157,7 @@ local function claimHome(p)
 	return index
 end
 
--- where the service accepts ring starts: ArenaInfo.RingPortal, else the Portal_Ring model, else the Trial Portal
+-- where the service accepts ring starts: ArenaInfo.RingPortal, else the Portal_Ring model
 local function positionOf(thing)
 	if type(thing) == "table" then
 		if typeof(thing.Position) == "Vector3" then
@@ -180,7 +182,7 @@ end
 
 local function ringPortalPos()
 	local info = arenaInfo()
-	return positionOf(info and info.RingPortal) or positionOf(workspace:FindFirstChild("Portal_Ring", true)) or (info and info.TrialPortal and info.TrialPortal.Position)
+	return positionOf(info and info.RingPortal) or positionOf(workspace:FindFirstChild("Portal_Ring", true))
 end
 
 local function ringPortalInstance()
@@ -210,7 +212,8 @@ local function ensurePortal()
 	base.Name = "Base"
 	base.Anchored = true
 	base.Size = Vector3.new(8, 1, 8)
-	base.CFrame = CFrame.new(info.TrialPortal.Position + Vector3.new(24, 0, 0))
+	local site = (typeof(info.RingSite) == "CFrame" and info.RingSite.Position) or (typeof(info.TrialPortal) == "Instance" and info.TrialPortal.Position) or info.Spawn.Position
+	base.CFrame = CFrame.new(site + Vector3.new(24, 0, 0))
 	base.Parent = model
 	model.PrimaryPart = base
 	model.Parent = holder
@@ -408,6 +411,141 @@ local function scenario(name, fn)
 	end
 end
 
+----------------------------------------------------------------------------------------------------
+-- [Phase 5 driver] the client-side picture of a battle (BattleSim.DecodeSnapshot of the player's own messages) and a
+-- fighter that walks its CHARACTER toward the nearest enemy at the legal run speed and presses ATTACK (B1: the
+-- character is the fighter's body; a passive player deals no damage any more)
+----------------------------------------------------------------------------------------------------
+local DRV_DOWN, DRV_BENCHED = 5, 3
+
+local function drvTracker(p, mark)
+	return { p = p, cursor = mark or K.logSize(), static = {}, units = {}, ends = {}, ticks = 0, zone = nil, side = nil, fighter = nil, id = nil, start = nil, speed = nil }
+end
+
+local function drvPump(tr)
+	local Sm = req("shared/BattleSim")
+	local log = Mock.RemoteLog
+	local uid = tr.p.UserId
+	for i = tr.cursor + 1, #log do
+		local e = log[i]
+		if e.remote == "BattleState" and e.kind == "client" and e.userId == uid then
+			local kind, payload = e.args[1], e.args[2]
+			if kind == "Start" and type(payload) == "table" and payload.Spectator ~= true then
+				tr.start, tr.id = payload, payload.BattleId
+				tr.zone = payload.Zone and payload.Zone.CFrame
+				tr.side = payload.Side
+				tr.static, tr.units = {}, {}
+				for _, u in ipairs(payload.Units or {}) do
+					tr.static[u.id] = u
+				end
+				tr.fighter = payload.Team and payload.Team.Fighter
+				tr.speed = payload.Team and payload.Team.Speed
+			elseif kind == "Snapshot" and type(payload) == "table" and payload.BattleId == tr.id and Sm then
+				tr.units = Sm.DecodeSnapshot(payload, tr.units)
+			elseif kind == "Events" and type(payload) == "table" and e.args[3] == tr.id then
+				for _, ev in ipairs(payload) do
+					if (ev.type == "Spawn" or ev.type == "Wave") and type(ev.units) == "table" then
+						for _, u in ipairs(ev.units) do
+							tr.static[u.id] = u
+						end
+					elseif ev.type == "Swap" and ev.owner == uid then
+						tr.fighter = ev["in"]
+					elseif ev.type == "Speed" and ev.owner == uid then
+						tr.speed = { Walk = ev.walk, Run = ev.run }
+					elseif ev.type == "Telegraph" then
+						tr.telegraphAt = Mock.Clock.now
+					end
+				end
+			elseif kind == "End" and type(payload) == "table" and payload.Spectator ~= true and payload.BattleId == tr.id then
+				tr.ends[#tr.ends + 1] = payload
+			end
+		end
+	end
+	tr.cursor = #log
+end
+
+local function drvMyPos(tr)
+	local u = tr.fighter and tr.units[tr.fighter]
+	if u then
+		return u.x, u.z
+	end
+	return nil
+end
+
+local function drvNearest(tr)
+	local fx, fz = drvMyPos(tr)
+	if not fx then
+		return nil
+	end
+	local best, bestD, bestS = nil, math.huge, nil
+	for id, u in pairs(tr.units) do
+		local s = tr.static[id]
+		if s and s.side ~= tr.side and u.state ~= DRV_DOWN and u.state ~= DRV_BENCHED and (u.hp == nil or u.hp > 0) then
+			local d = math.sqrt((u.x - fx) ^ 2 + (u.z - fz) ^ 2)
+			if d < bestD then
+				best, bestD, bestS = id, d, s
+			end
+		end
+	end
+	return best, bestD, bestS
+end
+
+-- one 0.1 s tick: walk toward the nearest enemy (stop inside the reach), press ATTACK every `every` ticks (3 = ~3/s),
+-- Element + Special once per second when opts.kit
+local function drvTick(tr, opts)
+	opts = opts or {}
+	local bs = BS()
+	drvPump(tr)
+	if not tr.id or not tr.p.Parent then
+		return nil
+	end
+	local id, dist, s = drvNearest(tr)
+	if not id then
+		return nil
+	end
+	tr.ticks = tr.ticks + 1
+	local run = (tr.speed and tr.speed.Run) or 16
+	local mine = tr.static[tr.fighter] or {}
+	local reach = (tonumber(mine.range) or 4.5) + (tonumber(s.radius) or 1) + 1
+	local u = tr.units[id]
+	local root = K.root(tr.p)
+	if opts.move ~= false and root and tr.zone and dist > reach - 1 then
+		local rel = tr.zone:PointToObjectSpace(root.Position)
+		local dx, dz = u.x - rel.X, u.z - rel.Z
+		local d = math.sqrt(dx * dx + dz * dz)
+		if d > 0.01 then
+			local travel = math.min(run * 0.1, d)
+			Mock.Teleport(tr.p, CFrame.new(tr.zone:PointToWorldSpace(Vector3.new(rel.X + dx / d * travel, 3, rel.Z + dz / d * travel))))
+		end
+	end
+	if opts.attack ~= false and tr.ticks % (opts.every or 3) == 0 then
+		bs.Command(tr.p, "Attack", id)
+	end
+	if tr.telegraphAt and Mock.Clock.now - tr.telegraphAt < 0.25 and opts.dodge ~= false then
+		bs.Command(tr.p, "Dash") -- a boss telegraph: the i-frames dodge it
+	end
+	if opts.kit ~= false and tr.ticks % 10 == 0 then
+		bs.Command(tr.p, "Element")
+		bs.Command(tr.p, "Special")
+	end
+	return id
+end
+
+-- plays every tracked fighter (a list of trackers) until `seconds` pass or stopFn(trs) is true; -> true when stopped early
+local function drvPlay(trs, seconds, stopFn, opts)
+	local t0 = Mock.Clock.now
+	while Mock.Clock.now - t0 < seconds do
+		advance(0.1)
+		for _, tr in ipairs(trs) do
+			drvTick(tr, opts)
+		end
+		if stopFn and stopFn(trs) then
+			return true
+		end
+	end
+	return false
+end
+
 -- Runs the ring for `p` from `startRound` and follows it message by message (0.1 s steps) until the run's final "End"
 -- (Rewards.Final) or opts.stop. out = { id, refused, starts = { Start payloads }, wins = { End payloads with Next },
 -- finalEnd, nilSamples (InBattle read nil while the run lived: a gap), ids = { [battleId] = true }, pocketsMax }.
@@ -436,9 +574,14 @@ local function runRing(p, startRound, opts)
 	end
 	out.id = id
 	out.ids[id] = true
+	-- Phase 5: the climber plays (the character walks at the champion, ATTACK about once per second) unless opts.play == false
+	local tr = drvTracker(p, out.mark)
 	local t0 = Mock.Clock.now
 	while Mock.Clock.now - t0 < (opts.maxSeconds or 900) do
 		advance(0.1)
+		if opts.play ~= false then
+			drvTick(tr, { every = opts.every or 3 }) -- the kit too (Element / Special): what sim_battle's ladder was measured with
+		end
 		local attr = p:GetAttribute("InBattle")
 		out.samples = out.samples + 1
 		if attr == nil then
@@ -566,8 +709,8 @@ S.p4ring_start = scenario("p4ring_start", function()
 	T.check(keys[WEAK[1]] == true and count(keys) == 1, "p4 ring: KeysInBattle = the run's fixed key list")
 	local ok2, why2 = bs.StartRing(p, 1)
 	T.check(ok2 == false and type(why2) == "string" and why2:find("already", 1, true) ~= nil, "p4 ring: one run at a time (a second StartRing is refused)", tostring(why2))
-	local okT, whyT = bs.StartTrial(p, 1)
-	T.check(okT == false and type(whyT) == "string" and whyT:find("already", 1, true) ~= nil, "p4 ring: ...and no trial during a run")
+	local okT, whyT = bs.Queue(p)
+	T.check(okT == false and type(whyT) == "string" and whyT:find("already", 1, true) ~= nil, "p4 ring: ...and no other battle during a run (Queue refused)")
 	T.eq(pocketCount(), 1, "p4 ring: one pocket from the shared pool")
 	local ringZone = g and g.Zone and g.Zone.CFrame
 	T.check(ringZone and (K.root(p).Position - ringZone.Position).Magnitude < 40 and (K.root(p).Position - ringPortalPos()).Magnitude > 300,
@@ -642,10 +785,9 @@ S.p4ring_start = scenario("p4ring_start", function()
 		"p4 ring: with nothing equipped the BEST owned pets fight (by UnitPower, the training one skipped)", table.concat(qKeys, ","))
 	bs.Forfeit(q)
 	advance(4.8)
-	-- the trial team refusal is untouched
-	local okTr, whyTr = bs.StartTrial(q, 1)
-	T.check(okTr == false and whyTr == "Pick your battle team first (Menu > Team)" or (okTr == false and type(whyTr) == "string" and whyTr:find("Trial Portal", 1, true) ~= nil),
-		"p4 ring: teamOf's empty-team refusal stays for trials", tostring(whyTr))
+	-- teamOf's empty-team refusal stays for the other modes (TeamSpec without the ring fallback)
+	local specTr, whyTr = bs.TeamSpec(q)
+	T.check(specTr == nil and whyTr == "Pick your battle team first (Menu > Team)", "p4 ring: teamOf's empty-team refusal stays for duels / raids / encounters (TeamSpec)", tostring(whyTr))
 
 	-- a provisional save: refused with its text, after the other checks (a stand-in profile from a DataStore outage)
 	local DSt = Mock.DataStore
@@ -926,9 +1068,11 @@ S.p4ring_rewards = scenario("p4ring_rewards", function()
 	local before = data.GetCash(p)
 	local bestBeforeD = ringOf(p).Best
 	local run2b = { wins = {} }
+	local trD = drvTracker(p, run2.mark)
 	local t0 = Mock.Clock.now
 	while #run2b.wins == 0 and Mock.Clock.now - t0 < 120 do
 		advance(0.1)
+		drvTick(trD, { every = 10, kit = false })
 		for _, e in ipairs(battleMsgs(p, m2, "End")) do
 			if e.args[2].Rewards and e.args[2].Rewards.Next then
 				run2b.wins[1] = e.args[2]
@@ -1223,81 +1367,79 @@ S.p4ring_ends = scenario("p4ring_ends", function()
 end)
 
 ----------------------------------------------------------------------------------------------------
--- p4ring_trialxp: the trial loss gate, EventService ignores non-Raid results
+-- p4ring_lossxp: the real-loss gate on the ring, EventService ignores non-Raid results
 ----------------------------------------------------------------------------------------------------
-S.p4ring_trialxp = scenario("p4ring_trialxp", function()
-	if not ready("p4ring_trialxp") then
+S.p4ring_lossxp = scenario("p4ring_lossxp", function()
+	if not ready("p4ring_lossxp") then
 		return
 	end
 	quietReplication()
 	local bs, data, bc = BS(), DS(), BC()
 	holdRaidSchedule(bs)
+	ensurePortal()
 	local w = watchEnded()
-	local info = arenaInfo()
-	local R = bc.TrialRewards(1, false)
-	T.check(bc.TrialRewardRules.LossShare and math.abs(bc.TrialRewardRules.LossShare - 1 / 3) < 1e-9 and bc.TrialRewardRules.LossMinSeconds == 20 and bc.TrialRewardRules.LossMinDamage == 0.2,
-		"p4 trial xp: TrialRewardRules.LossShare 1/3, LossMinSeconds 20, LossMinDamage 0.2")
-	-- a level-10 team that only RETREATs: Trial 1's handicapped pup never gets through (halved damage + regen) and the
-	-- pets never attack (RETREAT re-issued every 0.1 s): the trial times out = a REAL loss (>= 20 s)
-	local p = newPlayer("TrialLoser", MID, 10)
-	Mock.Teleport(p, CFrame.new(info.TrialPortal.Position + Vector3.new(0, 3, 6)))
-	advance(0.1)
+	local L = bc.LossRules or {}
+	T.check(L.LossShare and math.abs(L.LossShare - 1 / 3) < 1e-9 and L.LossMinSeconds == 20 and L.LossMinDamage == 0.2 and bc.TrialRewardRules == nil,
+		"p4 loss xp: LossRules.LossShare 1/3, LossMinSeconds 20, LossMinDamage 0.2 (TrialRewardRules gone)")
+	-- a passive climber (nobody presses ATTACK) loses round 1 by the 90 s timeout = a REAL loss (>= 20 s): a third of 20 + 6
+	local p = newPlayer("RingLoser", MID, 10)
+	claimHome(p)
+	toRing(p)
 	local xp0 = {}
 	for _, key in ipairs(MID) do
 		xp0[key] = totalXp(p, key)
 	end
-	local tokens0 = data.GetTokens(p)
+	local cash0 = data.GetCash(p)
 	local mark = K.logSize()
-	local ok, id = bs.StartTrial(p, 1)
-	local t0 = Mock.Clock.now
-	while ok and w.find(id) == nil and Mock.Clock.now - t0 < 130 do
-		bs.Command(p, "Retreat")
-		advance(0.1)
-	end
+	local ok, id = bs.StartRing(p, 1)
+	K.waitFor(function()
+		return w.find(id) ~= nil
+	end, 130)
 	local r = w.find(id)
 	local e = lastMsg(p, "End", mark)
-	if T.check(ok and r ~= nil and contains(r.Losers, p.UserId) and r.Forfeit == false and r.Duration >= bc.TrialRewardRules.LossMinSeconds, "p4 trial xp: a retreating team LOSES Trial 1 by timeout (a real loss: " .. tostring(r and r.Duration) .. " s)", r and tostring(r.Reason) or "no end") then
-		local want = math.floor(R.Xp / 3 + 0.5)
+	local winXp = bc.Ring.XpBase + bc.Ring.XpPerRound * 1
+	if T.check(ok and r ~= nil and contains(r.Losers, p.UserId) and r.Forfeit == false and r.Reason == "Timeout" and r.Duration >= L.LossMinSeconds,
+		"p4 loss xp: a passive climber LOSES round 1 by timeout (a real loss: " .. tostring(r and r.Duration) .. " s)", r and tostring(r.Reason) or "no end") then
+		local dealt = 1 - ((type(r.Hp) == "table" and r.Hp[2]) or 1)
+		local want = bc.LossXp(winXp, r.Duration, dealt)
 		local rw = r.Rewards[p.UserId]
-		T.check(rw and rw.Xp == want and rw.Tokens == 0 and e and e.Outcome == "Loss" and e.Rewards and e.Rewards.Xp == want, "p4 trial xp: the loss pays a third of the win XP (" .. want .. ") and no tokens", rw and tostring(rw.Xp) or "none")
+		T.check(want == math.floor(winXp / 3 + 0.5) and rw and rw.Xp == want and (rw.Cash or 0) == 0 and e and e.Outcome == "Loss" and e.Rewards and e.Rewards.Xp == want and e.Rewards.Final == true,
+			"p4 loss xp: the lost round pays a third of its XP (" .. tostring(want) .. ") and no Cash; the End is the run's final card", rw and tostring(rw.Xp) or "none")
 		local gained = true
 		for _, key in ipairs(MID) do
 			if totalXp(p, key) - xp0[key] ~= want then
 				gained = false
 			end
 		end
-		T.check(gained, "p4 trial xp: ...every team pet got exactly " .. want .. " XP (PetCareService.GrantXp)")
-		T.eq(data.GetTokens(p), tokens0, "p4 trial xp: ...no tokens, nothing cleared")
-		T.check(((data.GetBattle(p) or {}).TrialCleared or {})[1] ~= true, "p4 trial xp: ...Trial 1 is not cleared")
-		T.check((toasted(p, "your pets learned", mark)), "p4 trial xp: ...the toast says the pets learned", table.concat(toasts(p, mark), " | "))
+		T.check(gained, "p4 loss xp: ...every team pet got exactly " .. tostring(want) .. " XP (PetCareService.GrantXp)")
+		T.eq(data.GetCash(p), cash0, "p4 loss xp: ...no Cash")
+		T.check((toasted(p, "Run over after round 1", mark)), "p4 loss xp: ...the result card toast", table.concat(toasts(p, mark), " | "))
 	end
 	advance(4.6)
-	-- a forfeit pays nothing (X15)
-	Mock.Teleport(p, CFrame.new(info.TrialPortal.Position + Vector3.new(0, 3, 6)))
+	-- a forfeit pays nothing (X15), however long the round lasted
+	toRing(p)
 	advance(1.6)
 	local xp1 = totalXp(p, MID[1])
-	local ok2, id2 = bs.StartTrial(p, 1)
-	local t1 = Mock.Clock.now
-	while ok2 and w.find(id2) == nil and Mock.Clock.now - t1 < 25 do
-		bs.Command(p, "Retreat") -- the same stalling team: the fight lasts the whole 25 s
-		advance(0.1)
-	end
+	local ok2, id2 = bs.StartRing(p, 1)
+	advance(25)
 	bs.Forfeit(p)
 	advance(0.3)
 	local r2 = w.find(id2)
-	T.check(ok2 and r2 and r2.Forfeit == true and r2.Rewards[p.UserId] and r2.Rewards[p.UserId].Xp == 0 and totalXp(p, MID[1]) == xp1, "p4 trial xp: a forfeit after 25 s pays no XP (never for a forfeit, however long)")
+	T.check(ok2 and r2 and r2.Forfeit == true and r2.Rewards[p.UserId] and r2.Rewards[p.UserId].Xp == 0 and totalXp(p, MID[1]) == xp1, "p4 loss xp: a forfeit after 25 s pays no XP (never for a forfeit)")
 	advance(4.6)
-	-- a win still pays the full XP
-	Mock.Teleport(p, CFrame.new(info.TrialPortal.Position + Vector3.new(0, 3, 6)))
+	-- a won round pays the full XP (the climber plays)
+	toRing(p)
 	advance(1.6)
 	local xp2 = totalXp(p, MID[1])
-	local ok3, id3 = bs.StartTrial(p, 1)
-	K.waitFor(function()
-		return w.find(id3) ~= nil
-	end, 130)
-	local r3 = w.find(id3)
-	T.check(ok3 and r3 and contains(r3.Winners, p.UserId) and totalXp(p, MID[1]) - xp2 == R.Xp, "p4 trial xp: a win still pays the full Trial XP (" .. R.Xp .. ")")
-	advance(4.6)
+	local run = runRing(p, 1, {
+		maxSeconds = 120,
+		onWin = function(out)
+			out.stop = true
+		end,
+	})
+	T.check(run.id ~= nil and #run.wins == 1 and totalXp(p, MID[1]) - xp2 == winXp, "p4 loss xp: a won round still pays the full XP (" .. winXp .. ")", tostring(totalXp(p, MID[1]) - xp2))
+	bs.Forfeit(p)
+	advance(4.8)
 
 	-- EventService keeps ignoring non-Raid results (a ring result changes nothing it tracks)
 	local es = req("server/Services/EventService")
@@ -1309,13 +1451,13 @@ S.p4ring_trialxp = scenario("p4ring_trialxp", function()
 		advance(0.3)
 		local after = es.GetState().LastRaid
 		T.check(data.GetTokens(p) == tok0 and ((before == nil and after == nil) or (before ~= nil and after ~= nil and before.Won == after.Won and before.BossId == after.BossId)) and #K.remotesFor("Notify", p.UserId, mE) == 0,
-			"p4 trial xp: EventService ignores a Mode 'Ring' BattleEnded result (no raid toast, no payment, LastRaid untouched)")
+			"p4 loss xp: EventService ignores a Mode 'Ring' BattleEnded result (no raid toast, no payment, LastRaid untouched)")
 	else
 		T.info("*EventService not in this build: the non-Raid check was skipped")
 	end
 	dropStandIn()
-	K.flushErrors("p4ring_trialxp")
-	K.flushWarnings("p4ring_trialxp", ALLOWED_WARNINGS)
+	K.flushErrors("p4ring_lossxp")
+	K.flushWarnings("p4ring_lossxp", ALLOWED_WARNINGS)
 	w.stop()
 	cleanup({ p })
 end)

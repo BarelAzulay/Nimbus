@@ -3,6 +3,7 @@
 --
 --   DevController.Init()
 --   Extras (tests): DevController.Open(), DevController.Close(), DevController.IsOpen(), DevController.Relayout()
+--   Phase 5 (7.2): chat "/menu" (owner only) -> DevController.OpenMainMenu(); DevController.OnChat(message) (tests)
 --
 -- Everything here only exists while the LocalPlayer's PlayerGui has the attribute NC_Dev = true (DevService sets it
 -- for the game's owner, the Config.Dev.Admins and everyone testing in Studio; a PlayerGui only replicates to its own
@@ -1072,6 +1073,40 @@ local function watchHints()
 	guard("NC_Dev", refreshFlag)
 end
 
+-- Phase 5 (7.2): the owner shortcut /menu reopens the main menu (MainMenuController.Open: client-side only, the
+-- character stays and MenuPlay is never sent again). Only while NC_Dev is set; DevService ignores the word.
+function DevController.OpenMainMenu()
+	local module = script.Parent:FindFirstChild("MainMenuController")
+	local ok, menu = pcall(function()
+		return module and require(module)
+	end)
+	if ok and type(menu) == "table" and type(menu.Open) == "function" then
+		guard("menu", menu.Open)
+		return true
+	end
+	return false
+end
+
+function DevController.OnChat(message)
+	if type(message) ~= "string" or #message > 40 or not string.match(string.lower(message), "^%s*/menu%s*$") then
+		return false
+	end
+	if not (Hint.Gui and Hint.Gui:GetAttribute(K.ATTR) == true) then
+		return false
+	end
+	return DevController.OpenMainMenu()
+end
+
+local function watchChat()
+	LocalPlayer.Chatted:Connect(DevController.OnChat)
+	pcall(function()
+		local chat = game:GetService("TextChatService")
+		chat.SendingMessage:Connect(function(msg)
+			DevController.OnChat(msg and msg.Text)
+		end)
+	end)
+end
+
 function DevController.Init()
 	if initialized then
 		return
@@ -1093,6 +1128,7 @@ function DevController.Init()
 		end)
 	end
 	task.spawn(watchHints)
+	pcall(watchChat)
 end
 
 return DevController

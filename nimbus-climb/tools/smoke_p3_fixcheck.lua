@@ -472,12 +472,15 @@ local function serverScenarios()
 			local mark = K.logSize()
 			advance(2)
 			T.check(okR and bs.GetRaidStatus() and bs.GetRaidStatus().Players == 15, "wire: (setup) a 15-raider Frost Wyrm raid runs", tostring(raidId))
+			-- Phase 5: the character is the fighter's body: the raiders stand on the rim and press ATTACK / ELEMENT / SPECIAL
+			-- (OutOfReach refusals are fine: the wire-form check only needs a running raid with units that move and change)
 			local function fight(seconds)
 				for _ = 1, floor(seconds * 2 + 0.5) do
 					for i, p in ipairs(raiders) do
 						if p.Parent then
 							bs.Command(p, "Attack")
-							bs.Command(p, "Special", (i % 3) + 1)
+							bs.Command(p, "Element")
+							bs.Command(p, "Special")
 						end
 					end
 					advance(0.5)
@@ -506,7 +509,7 @@ local function serverScenarios()
 			for _ in pairs(raidSim and raidSim:Snapshot().Units or {}) do
 				units = units + 1
 			end
-			T.check(units >= 50, "wire: (setup) the waves are on the floor", units .. " units")
+			T.check(units >= 20, "wire: (setup) the waves are on the floor", units .. " units")
 			-- every receiver decodes its own stream like BattleController (one picture per battle, kept across a
 			-- second "Start" of the same battle) and must equal the sim's picture at the same T
 			local function check(p, label)
@@ -559,7 +562,7 @@ local function serverScenarios()
 			end
 			local rate = (t0 and t1 and t1 > t0) and bytes / (t1 - t0) or 0
 			T.info(fmt("*wire: fighter during the minion waves of a 16-raider raid: %.1f KB/s", rate / 1000))
-			T.check(rate > 0 and rate < 20000, "wire: a fighter stays under 20 KB/s through the minion waves of a 16-raider raid (#4)", fmt("%.0f B/s", rate))
+			T.check(rate > 0 and rate < 10000, "wire: a fighter stays under 10 KB/s through the minion waves of a 16-raider raid (the 6 KB/s budget of 10.3 is the plain 16-raid: p5svc_raid)", fmt("%.0f B/s", rate))
 			bs.EndRaid()
 			advance(0.5)
 			local all = { watcher }

@@ -1,139 +1,76 @@
--- TycoonCatalog: every number of the tycoon homes (ARCHITECTURE_V3.md "Phase 2 build contract" and the "Phase 4 build
--- contract" sections 3.1-3.5, 3.7, 3.12 and 5.4): the stations and their buy pads, prices (and the star price rule),
--- effects per level, house tiers, prestige, the rainbow coins of the Pet Garden, the Food Machine, the Training Place,
--- the leftover foods, fusion costs, the pet XP curve and where everything stands on the 72 x 72 stud yard.
+-- TycoonCatalog: every number of the tycoon homes (ARCHITECTURE_V3.md "Phase 4 build contract" 3.1-3.5, 3.7, 3.12,
+-- 5.4 and the "Phase 5 build contract" 3.1, 3.3-3.5, 9.2): the 11 stations and their buy pads, prices (and the star
+-- price rule), effects per level, house tiers, prestige, the Cloud Cash of the Pet Garden, berries, the Food Machine,
+-- the Training Place, fusion costs, the pet XP curve, the one-time Phase 5 fold of old homes and where everything
+-- stands on the 72 x 72 stud yard (+ the roaming layout HomeRoam builds its walk graph from).
 -- Pure data + pure functions: no Instances, no services, no yields; safe on the server and the client.
 -- Plain Lua 5.1-compatible syntax only.
 --
--- PHASE 4 IN ONE PARAGRAPH: pets make the money. Pets in the Pet Garden (the free first pad) eat one meal every
--- Coins.MealSeconds and pop out a rainbow coin worth Food(home) x PetPower(pet) x 1.25 ^ stars (a Lucky coin x5).
--- The four old Cloud Presses are FOOD PLANTS under the same ids (Press1 Berry Bush, Press2 Carrot Patch, Press3 Cloud
--- Melons, Press4 Starfruit Tree: Effects.Food), the Collector is the COIN MAGNET (scoop radius + bigger piles), the
--- Kitchen is the FOOD MACHINE (one feed fills FeedShare of the pet's XP bar for FeedPrice Cash), the Gym is the
--- TRAINING PLACE (Slots = pets training at once; TrainCost / TrainSeconds), the Vault makes piles bigger and pays
--- offline coins. The 18 ids, slots and tier caps are unchanged, so Home Level, house tiers and prestige are too.
+-- PHASE 5 IN ONE PARAGRAPH: the home got simpler. ONE Berry Farm (id Press1, 40 levels, Kind "Farm": Effects.Food)
+-- replaces the four plants; the Coin Magnet is merged into the Pet Garden (Effects.Radius / PileSeconds by Garden
+-- level); three decor stations (Yard Fence, Fountain, Pet Podium) at 0.4x the Phase 4 price. Garden pets roam the yard
+-- (shared/HomeRoam.lua builds its walk graph from RoamLayout()), eat at the Food Bowl and poop Cloud Cash worth
+-- CoinValue x Coins.PoopMeals; every coin also grows Berries.Share berries into the Berry Basket (BasketCap). Feeding
+-- at the Food Machine spends FeedBerries berries (no Cash). Station prices are the Phase 4 prices x1.25 (House and
+-- decor not scaled). FoldLegacy(home, firstTime) turns a Phase 4 home into a Phase 5 one (DataService P5Home step).
 --
--- BALANCE: the numbers below come from the progression simulation tools/sim_tycoon.py (an active player who buys the
--- best-value pad, scoops every ~20 s, spends a quarter of the coins on food for the pet closest to evolving, gets pets
--- from typical roulette luck; pets level up to 100). Change a number here -> change the same number in the constants
--- block of tools/sim_tycoon.py and re-run it (`python3 tools/sim_tycoon.py`, `--check`); the smoke check
--- (tools/smoke_p4_economy.lua, scenario p2_economy) fails while the two disagree. Targets proven by the sim (Monte
--- Carlo 120 players, 3 prestige runs each): the first paid pad within a minute, a purchase every 1-3 minutes early on,
--- the Villa after 25-40 min, the first Prestige after 2-3 h, later runs faster but never shorter than 12 min, prestige
--- Gems <= 135 an hour, never more than 6 minutes with nothing to buy, the first EVOLVE after 40-100 min.
+-- BALANCE: the numbers come from tools/sim_tycoon.py (the home design's sim_p5.py model: 120 Monte Carlo players, 3
+-- prestige runs each; `--ring 0.08 --dungeon 0.1` must print ALL TARGETS MET). Change a number here -> change the same
+-- number in the constants block of tools/sim_tycoon.py (`--check`); tools/smoke_p4_economy.lua fails while they differ.
 --
 -- API (the contract):
---   TycoonCatalog.Get(id) -> StationDef | nil            READ-ONLY (shared table). "Prestige" returns the prestige
---                                                        pseudo-station (Kind "Prestige", see below)
---   TycoonCatalog.PriceFor(id, level) -> cash | nil      BASE price of building / upgrading TO `level`
---   TycoonCatalog.PriceAt(id, level, home) -> cash | nil the price the home pays: floor(PriceFor x StarPriceMultiplier)
---   TycoonCatalog.StarPriceMultiplier(home) -> n         (1 + Prestige.PriceStep) ^ stars (x1.5, x2.25, x3.375 ...);
---                                                        1 for a home with LegacyPrices = true (a Phase 3 veteran, until
---                                                        the next Prestige). A plain number counts as a star count.
---   TycoonCatalog.AvailablePads(home) -> { pad... }      the pads to show on the yard, in station order:
---       pad = { StationId, NextLevel, Price (= PriceAt, the star price), BasePrice (= PriceFor), Locked = reason | nil,
---               Level (current), MaxLevel, Name, Title, Kind, Icon, LevelText ("Build" | "Lv 2 -> 3"), Prestige }
---       * a station shows a pad once its STATION prerequisites are built (the tree; a fresh home shows ONE pad: the
---         free Pet Garden); maxed stations show no pad
---       * Locked (shown on the sign) when the next level needs more: "Reach Home Level 10", "Needs the Villa",
---         "Unlocks at Prestige 1", "Coming soon". Price is always the real (star) price.
---       * once the Sky Castle is built the list also holds the PRESTIGE pad: { StationId = "Prestige",
---         Kind = "Prestige", Prestige = true, Price = 0, NextLevel = stars + 1, Locked = "Reach Home Level 40" | nil }.
---         TycoonService routes it to its Prestige() (never to a station purchase).
---   TycoonCatalog.CheckPurchase(home, stationId) -> ok, price, reason   (the pad's star price)
---   TycoonCatalog.HomeLevelOf(home) -> n                 sum of every station level (each purchase or upgrade = +1)
---   TycoonCatalog.StationsAfterPrestige(stations)        decor (KeepOnPrestige) kept, the Garden set to its ResetLevel
---                                                        (1: the coins never stop), everything else reset
---   Rainbow coins (section 3.2; constants in TycoonCatalog.Coins):
---   TycoonCatalog.FoodOf(home) -> food                   0 without a Garden; else Coins.GrassFood + the Effects.Food of
---                                                        every built plant (Press1-4)
---   TycoonCatalog.PetPower(entry, level, tier, stage) -> power   RarityScale x (1 + 0.1 x (level - 1)) x tier
---       (Normal 1 / Golden 1.5 / Rainbow 2.5) x RoleMult (Economy 1.6 / Combat 1) x EvolutionBoost[stage] (1 / 1.25 /
---       1.5; the STORED stage, cleaned by PetCatalog.EvolutionStage: a Common never counts stage 2). entry = a PetDef
---       (or a PetKeys.DefOf def: hybrids carry their role and rarity), { Def, Level, Tier, Stage } (Evo also read), a
---       pet key string ("cat", "cat@Golden"; hybrids "hyb:..." need their def -> 0), a number (already a power) or
---       { Power = n }. level / tier / stage arguments win over the entry's. Junk -> 0.
---   TycoonCatalog.GardenSlots(home) -> n                 the open garden places: 0 without a Garden, else
---       min(GardenSlotsMax 12, max(GardenSlotsBase 3 + GardenSlotsPerStar x stars, home.LegacySlots or 0))
---   TycoonCatalog.IncomePerSecond(home, entries, prestige) -> cash/s, { Food, Pets, Lucky, Multiplier }
---       = Food / MealSeconds x Pets x Lucky x Multiplier, where Pets = the sum of PetPower over the OPEN places only
---       (entries[1 .. GardenSlots(home)]: an array or a slot -> entry map; keys above the open count rest and do not
---       eat), Lucky = the Lucky expected value 1 + (LuckyMult - 1) x LuckyChance(home), Multiplier = 1.25 ^ stars
---       (prestige or home.Prestige). No Collector condition.
---   TycoonCatalog.LuckyChance(home) -> 0..1             the chance that a coin is Lucky (Garden Effects.Lucky)
---   TycoonCatalog.ScoopRadius(home) -> studs             Coin Magnet Radius (Coins.BaseRadius without a Magnet)
---   TycoonCatalog.PileSeconds(home) -> seconds           Magnet PileSeconds (Coins.BasePileSeconds without) + Vault
---                                                        PileSeconds: a place's pile holds this many seconds of coins
---   TycoonCatalog.CoinPoint(slot) -> Vector3 | nil       where garden place `slot`'s pile lies, in the Garden's station
---                                                        frame (Garden.Slot.CFrame); Garden.Slot.WelcomePile is the
---                                                        plot-local point of the Welcome-back pile
---   TycoonCatalog.OfflineEarnings(home, seconds, incomePerSecond) -> cash, { Seconds, Percent, MaxHours }
---       the Vault pays OfflinePercent of the income for up to OfflineHours (0 without a Vault, 0 for absences
---       shorter than OfflineMinSeconds). Phase 4 pays it INTO the Welcome-back pile (Home.CollectorCash).
---   Food Machine (section 3.4) and Training Place (section 3.7):
---   TycoonCatalog.FeedXp(level, machineLevel) -> xp      max(1, round(XpToNext(level) x FeedShare[machineLevel]));
---                                                        0 at the top level or without a machine (machineLevel < 1)
---   TycoonCatalog.FeedPrice(def, level) -> cash | nil    round(XpToNext(level) x RarityScale(def) x FeedBase): the
---                                                        same price at every machine level; nil at the top level or
---                                                        for an unknown pet. def = a def, a rarity id, a pet id / key
---   TycoonCatalog.TrainCost(def, rank) -> cash | nil     round(Training.CostBase x rank ^ 2 x RarityScale(def)), rank
---                                                        1..Training.MaxRank (never scaled by stars)
---   TycoonCatalog.TrainSeconds(rank) -> seconds | nil    rank x Training.MinutesPerRank x 60 ("Rank 3 takes 3 minutes")
---   TycoonCatalog.TrainingSlots(home) -> n               pets training at once (the Training Place level; 0 unbuilt)
---   TycoonCatalog.XpToNext(level) -> xp                  pet XP from `level` to level + 1; math.huge at PetXp.MaxLevel
---   TycoonCatalog.Validate() -> ok, { problem... }       data self-check (prices, caps, tree, no dead end, per-kind
---                                                        effects, the garden layout and coin points, slots inside the
---                                                        yard without overlaps, every pad reachable)
--- Data (the contract): Stations (array, display order) / ById / Order, HouseTiers, Prestige, Coins, FeedShare,
---   FeedBase, Training, Foods, Fusion, PetXp, Layout, Kinds. Stations, HouseTiers and Foods are ordered arrays that
---   also answer an id (Stations.Press1, HouseTiers.Villa, Foods.Snack); Fusion.Upgrade[rarity].Golden / .Rainbow,
---   Fusion.Mix[rarity] (also Fusion[rarity]).
---   Coins    = { MealSeconds 8, GrassFood 12, LuckyMult 5, BaseRadius 6, BasePileSeconds 240,
---                HeapStages {1, 3, 6, 12, 24} (CoinPiles heap stage 1..5 from that many coins) }
---   Prestige = { HomeLevel 40, House SkyCastle, IncomeMultiplier 1.25, GemReward 100 / Step 10 / Min 25,
---                FusionUnlock 1, TeamSlotUnlock 1, GardenSlotsBase 3, GardenSlotsPerStar 1, GardenSlotsMax 12,
---                PriceStep 0.5 }
---   FeedShare = { .25, .30, .35, .42, .50 } (by Food Machine level; = the Kitchen's Effects.FeedShare), FeedBase 2.0
---   Training  = { MaxRank 10, CostBase 300, MinutesPerRank 1 }
---   StationDef = { Id, Name, Kind, Icon, Blurb, MaxLevel,
---       Requires = { <stationId> = level, HomeLevel = n, House = tierId, Prestige = n },  -- station keys = the tree
---       LevelRequires = { [level] = { HomeLevel = n } },   -- per-level extra gate (the House: 10 / 20 / 30)
---       TierCaps = { Cottage = n, Villa = n, Manor = n, SkyCastle = n },  -- max level allowed by the house tier
---       Price = { [level] = cash }, Effects = { [level] = {...} },
---       Slot = { CFrame, Footprint, Pad, Walkable?, Perimeter?, Spots?, CoinPoints?, WelcomePile? },  -- see Layout
---       KeepOnPrestige = true | nil, ResetLevel = n | nil (the Garden: 1), ComingSoon = true | nil }
---   NOTE: `Requires.House` is the house TIER (id "Villa" or tier index 2), never the House station level.
--- Effects by Kind (TycoonCatalog.Kinds):
---   Plant       { Food }                (Press1-4)       Magnet   { Radius, PileSeconds }   (Collector)
---   Garden      { Lucky }               (Garden)         FoodMachine { FeedShare }          (Kitchen)
---   Training    { Slots }               (Gym)            Vault    { PileSeconds, OfflinePercent, OfflineHours }
---   House       { Tier, TierIndex, Name }                Fusion   { TokenDiscount }
---   Arena       { Battles = true }                       Decor    { Pieces, Style }  (build hints for HomeBuilder)
--- Slots (plot-local, studs): origin = centre of the yard ON the ground (SpotInfo.PlotCFrame), -Z = the gate /
---   street side (PlotCFrame.LookVector), +Z = the back fence, X across. A station model goes at
---   PlotCFrame * Slot.CFrame; its LookVector is the station's FRONT (the side its pad is on). Footprint =
---   Vector3(width along the front, height, depth) in the station's own axes. Slot.Pad = the buy pad (centre on the
---   ground, Layout.PadSize, LookVector toward the station). Walkable = true: a decor zone with small pieces the
---   player walks through (lamp posts beside the path); Perimeter = follows the fence line (DecorFence); Spots =
---   local positions (in the station frame) of the Garden / Training pet places.
---   The Garden (section 3.3, station frame, -Z = its front toward the pad): Spots = 12 places on a 3 x 4 grid
---   (X -7.5 / -2.5 / 2.5 / 7.5; Z -7 front row = places 1-4, 0 middle = 5-8, +7 back = 9-12); Walkable = the sand
---   walks { Name, Center, Size } (3 studs wide at Z -3.5 and +3.5, joined at both ends, and the 3-stud entrance gap
---   at X 0 between the front cushions); CoinPoints[slot] = the pile of each place (front row on the front walk at
---   Z -2.6, middle row at Z -4.4, back row on the back walk at Z +3.5); WelcomePile = plot-local (13.5, 0, 2.5)
---   beside the entrance, off the pad. Layout.Paths = stone paths that keep every pad reachable from the gate.
--- Extras (nothing depends on them): HouseTierOf, HouseTier, MaxLevelAt, StationLevel, PrestigeMultiplier,
---   PrestigeGems, CanPrestige, EffectsOf, LuckyEV, CoinValue, HeapStage, FoodById, FusionCost, XpForLevel,
---   PadLevelText, FormatCash, ReachablePads, FootprintRect, PadRect, LocalRect, TierMultiplier, Icons, FoodsById,
---   PrestigePad, MaxPetLevel, StartCash, OfflineMinSeconds, PlotSize, Version.
--- Phase 3 compat: all deleted in wave 4 (the Kitchen Effects' Queue, the Gym Effects' XpPerMinute, PetIncome,
---   GardenIncome, PressIncome, CollectorCap, KitchenSpeed, CookSecondsFor, FoodsFor, GymSlots, GymXpPerMinute, the
---   Kitchen Effects' Recipes and the IncomePerSecond parts Press / Garden.
+--   Get(id) -> StationDef | nil (READ-ONLY; "Prestige" = the prestige pseudo-station), PriceFor(id, level), PriceAt(id,
+--     level, home) = floor(PriceFor x StarPriceMultiplier), StarPriceMultiplier(home) = 1.5 ^ stars (1 with
+--     LegacyPrices), AvailablePads(home) -> { pad... } (pad = { StationId, NextLevel, Price, BasePrice, Locked, Level,
+--     MaxLevel, Name, Title, Kind, Icon, LevelText, Prestige }; a fresh home shows ONE pad, the free Pet Garden; the
+--     Prestige pad once the Sky Castle is built), CheckPurchase(home, id) -> ok, price, reason,
+--     StationsAfterPrestige(stations) (decor kept, the Garden at ResetLevel 1)
+--   HomeLevelOf(home) = sum of station levels + (home.DecorCredit or 0) + LegacyMagnetLevel(home)
+--   LegacyMagnetLevel(home) -> home.LegacyMagnet (1..5) while home.LegacyMagnetStar == home.Prestige, else 0
+--   SignedPads(pads, cash, maxSigns) -> { [stationId] = true }   the pads that show a sign (3.3): the Prestige pad when
+--     not Locked; then the maxSigns (SignRules.MaxSigns 3) cheapest not-Locked pads with Price <= cash; none affordable
+--     -> the single cheapest not-Locked pad. Locked pads never get a sign.
+--   FoldLegacy(home, firstTime) -> changed   (9.2 step 3; pure, mutates `home`): Press1-4 -> one Berry Farm (the food
+--     floor on firstTime), Collector -> LegacyMagnet / LegacyMagnetStar, old decor -> Fence / Fountain + DecorCredit
+--   Cloud Cash: FoodOf(home) (0 without a Garden, else Coins.GrassFood + the Farm's Food), PetPower(entry, level, tier,
+--     stage) = RarityScale x PetCatalog.LevelFactor(level, stage) x TierMultiplier x RoleMult (stage = the STORED stage
+--     cleaned by PetCatalog.EvolutionStage), GardenSlots(home), IncomePerSecond(home, entries, prestige) -> cash/s,
+--     parts, LuckyChance, LuckyEV, CoinValue(home, power, prestige), ScoopRadius(home) = max(Garden Radius,
+--     LegacyMagnet radius) (Coins.BaseRadius without a Garden), PileSeconds(home) = max(Garden PileSeconds, LegacyMagnet
+--     pile) + Vault, OfflineEarnings(home, seconds, incomePerSecond)
+--   Berries: BasketCap(home, incomePerSecond) = max(BasketMin, floor(ips x Share x 60 x BasketMinutes)),
+--     FeedBerries(def, level) = round(XpToNext(level) x RarityScale x FeedBase) (= FeedPrice: 1 berry = the old $1)
+--   Food Machine / training / XP: FeedXp(level, machineLevel), FeedPrice(def, level), TrainCost(def, rank),
+--     TrainSeconds(rank), TrainingSlots(home), XpToNext(level), XpForLevel(level)
+--   RoamLayout() -> { Half, Cell, Blocked = { {x0, z0, x1, z1, pad = n}... }, Beds = { {x, z}... }, Bowl = { X, Z, R },
+--     EatRing, Welcome = {x, z}, Entrance = { X, Z, Width } }   plot-local; EVERY station footprint (built or not) +1,
+--     every pad +0.5, the garden fence ring (entrance open), the bowl, the 12 beds: HomeRoam.Build() reads it
+--   Validate() -> ok, { problem... }
+-- Data: Stations (array in display order, also Stations.Press1) / ById / Order, Kinds, HouseTiers, Prestige, Coins,
+--   Berries, SignRules, LegacyMagnet, LegacyPlants, FeedShare, FeedBase, Training, Fusion, PetXp, Layout.
+--   Coins = { MealSeconds 8 (the income unit), GrassFood 12, LuckyMult 5, BaseRadius 6, BasePileSeconds 240,
+--             PoopMeals 3 (one poop = 3 meals), DropsPerPet 3, DropStages {1, 2, 4, 8} (a drop's stage by poops) }
+--   Berries = { Share 0.25, BasketMinutes 30, BasketMin 500, LegacyFood = { Snack 200, Meal 1200, Feast 6400 } }
+--   StationDef = { Id, Name, Kind, Icon, Blurb, MaxLevel, Requires = { <stationId> = level, HomeLevel, House, Prestige },
+--     LevelRequires = { [level] = { HomeLevel } }, TierCaps = { Cottage, Villa, Manor, SkyCastle }, Price, Effects,
+--     Slot = { CFrame, Footprint, Pad, Walkable?, Perimeter?, Spots? (Training), Bowl / Beds / Fence / Entrance /
+--     WelcomePile (Garden) }, KeepOnPrestige, ResetLevel, ComingSoon }
+--   Effects by Kind: Farm { Food }, Garden { Lucky, Radius, PileSeconds }, FoodMachine { FeedShare }, Training
+--     { Slots }, Vault { PileSeconds, OfflinePercent, OfflineHours }, House { Tier, TierIndex, Name }, Fusion
+--     { TokenDiscount }, Arena { Battles }, Decor { Pieces, Style, ... build hints for HomeBuilder }
+-- Slots (plot-local studs): origin = the yard centre on the ground (SpotInfo.PlotCFrame), -Z = the gate / street side,
+--   +Z = the back fence. A station model goes at PlotCFrame * Slot.CFrame; its LookVector is its FRONT (pad side);
+--   Footprint = (width along the front, height, depth). The Garden (station frame, -Z = its entrance / pad side):
+--   Bowl = { Center (0, 0, 0), Radius 2.5 } (the Food Bowl), Beds = 12 bed centres (slot order, nearest the entrance
+--   first), Fence = 0.6-stud ring on the footprint edge, Entrance = { Center (0, 0, -10), Width 4 }; WelcomePile =
+--   PLOT-local (13.5, 0, 2.5), outside the fence beside the entrance.
+-- Extras: HouseTierOf, HouseTier, MaxLevelAt, StationLevel, PrestigeMultiplier, PrestigeGems, CanPrestige, EffectsOf,
+--   PadLevelText, FormatCash, ReachablePads, FootprintRect, PadRect, LocalRect, TierMultiplier, Icons, PrestigePad,
+--   MaxPetLevel, StartCash, OfflineMinSeconds, PlotSize, Version (5).
 --
--- Notes for the services: a Price of 0 is FREE (the Pet Garden: the first purchase right after claiming; Cash starts
--- at 0), so skip SpendCash or call it with 0. Prestige keeps every station whose KeepOnPrestige is true (the decor:
--- "decor choices kept") and the Garden at its ResetLevel, resets the rest (StationsAfterPrestige does it). Food,
--- training and roulettes never scale with stars; station prices do (PriceAt).
+-- Notes for the services: a Price of 0 is FREE (the Pet Garden). Prestige keeps the decor (KeepOnPrestige) and the
+-- Garden at its ResetLevel, resets the rest (StationsAfterPrestige). Berries, training and roulettes never scale with
+-- stars; station prices do (PriceAt).
 
 local Shared = script.Parent
 local Config = require(Shared.Config)
@@ -145,11 +82,11 @@ local floor, max, min, huge = math.floor, math.max, math.min, math.huge
 local PLOT = (type(Config.Lobby) == "table" and tonumber(Config.Lobby.PlotSize)) or 72
 local HALF = PLOT / 2
 
-TycoonCatalog.Version = 4 -- Phase 4: pets make the money
+TycoonCatalog.Version = 5 -- Phase 5: one Berry Farm, roaming pets, berries
 TycoonCatalog.PlotSize = PLOT
 TycoonCatalog.StartCash = 0 -- Cash of a brand-new profile; the Pet Garden is free
 TycoonCatalog.OfflineMinSeconds = 120 -- shorter absences pay nothing (no rejoin farming)
-TycoonCatalog.Kinds = { "Plant", "Magnet", "Garden", "FoodMachine", "Training", "Vault", "House", "Fusion", "Arena", "Decor" }
+TycoonCatalog.Kinds = { "Farm", "Garden", "FoodMachine", "Training", "Vault", "House", "Fusion", "Arena", "Decor" }
 TycoonCatalog.TierMultiplier = { Normal = 1, Golden = 1.5, Rainbow = 2.5 } -- PetKeys.StatMultiplier
 
 -- Icons (UTF-8 emoji, drawn as text on pad signs and in the Home window).
@@ -201,7 +138,7 @@ setmetatable(TIERS, { __index = TIER_BY_ID }) -- HouseTiers.Villa works too
 ----------------------------------------------------------------------
 -- Prestige: at Home Level 40 with the Sky Castle. Resets Cash, the coins on the lawn and every station that is not
 -- KeepOnPrestige (the Garden stays at its ResetLevel 1). Gains +1 star: coins x1.25 per star (compounding), +1 garden
--- place (3 + stars, at most 12), a Gems reward, the Fusion Machine and the 4th battle-team slot at 1 star. After every
+-- place (3 + stars, at most 12), a Gems reward and the Fusion Machine at 1 star. After every
 -- Prestige station prices go up by half again: x(1 + PriceStep) ^ stars (LegacyPrices homes exempt for one run).
 ----------------------------------------------------------------------
 TycoonCatalog.Prestige = {
@@ -213,7 +150,6 @@ TycoonCatalog.Prestige = {
 	GemRewardStep = 10,
 	GemRewardMin = 25,
 	FusionUnlock = 1, -- the Fusion Machine pad unlocks at this many stars
-	TeamSlotUnlock = 1, -- the 4th battle-team slot (Phase 3)
 	GardenSlotsBase = 3, -- garden places without a star ("at the start you can put up to 3 pets")
 	GardenSlotsPerStar = 1, -- +1 place per star ("prestige 1 can put 4 and so on")
 	GardenSlotsMax = 12, -- the places drawn in the garden (Garden.Slot.Spots)
@@ -222,35 +158,40 @@ TycoonCatalog.Prestige = {
 }
 
 ----------------------------------------------------------------------
--- Rainbow coins (section 3.2). Every open garden place with a pet eats one meal every MealSeconds; a meal pops out
--- one coin worth Food(home) x PetPower(pet) x 1.25 ^ stars (a Lucky coin x LuckyMult). A place's pile holds
--- PileSeconds(home) of that pet's coins; the owner scoops piles within ScoopRadius(home).
+-- Cloud Cash (Phase 4 3.2, Phase 5 3.5). Every open garden place with a pet eats one meal every MealSeconds (the income
+-- unit: IncomePerSecond = Food / MealSeconds x Pets x LuckyEV x 1.25 ^ stars). A roaming pet poops one drop per
+-- HomeRoam cycle worth CoinValue x PoopMeals (a Lucky drop x LuckyMult); a slot keeps at most DropsPerPet drops on the
+-- lawn (more merge into the nearest); a drop's stage (CoinDrops attribute, HomeFx coin size) by its value in poops:
+-- 1 (1), 2 (2-3), 3 (4-7), 4 (8+). The lawn of a slot holds PileSeconds(home) of its coins; the owner scoops drops
+-- within ScoopRadius(home).
 ----------------------------------------------------------------------
 TycoonCatalog.Coins = {
-	MealSeconds = 8, -- one meal (= one coin) per open place every 8 s
-	GrassFood = 12, -- the Food of a built Garden before any plant
-	LuckyMult = 5, -- a Lucky coin is worth 5 coins
-	BaseRadius = 6, -- scoop radius (studs) without a Coin Magnet
-	BasePileSeconds = 240, -- a pile holds 4 minutes of coins without a Coin Magnet
-	HeapStages = { 1, 3, 6, 12, 24 }, -- the CoinPiles heap stage 1..5 starts at this many coins (0 coins = stage 0)
+	MealSeconds = 8, -- the income unit: one meal per open place every 8 s
+	GrassFood = 12, -- the Food of a built Garden before the Berry Farm
+	LuckyMult = 5, -- a Lucky drop is worth 5 drops
+	BaseRadius = 6, -- scoop radius (studs) without a Garden
+	BasePileSeconds = 240, -- a slot's lawn holds 4 minutes of coins without a Garden
+	PoopMeals = 3, -- one poop = 3 meals (HomeRoam.Cycle 24 s = 3 x MealSeconds)
+	DropsPerPet = 3, -- drops of one slot on the lawn; a 4th poop merges into the nearest drop
+	DropStages = { 1, 2, 4, 8 }, -- drop stage 1..4 from that many poops of value
 }
 
 ----------------------------------------------------------------------
--- Leftover pet food (Phase 2 / 3 Kitchen dishes). Phase 4 cooks nothing: Profile.Food leftovers are fed first and for
--- free by the Food Machine (Xp 25 / 150 / 800). Price / CookSeconds / KitchenLevel are kept as data only.
+-- Berries (Phase 5 3.4): ONE food. Every Cloud Cash poop of value V adds V x Share berries to Profile.Berries (the
+-- server ledger keeps the fraction), clamped so the poop never lifts the berries above BasketCap (30 minutes of
+-- berries, at least BasketMin). A feed at the Food Machine costs FeedBerries(def, level) berries (= the Phase 4
+-- FeedPrice in Cash: 1 berry = $1 of food). LegacyFood: the berries one leftover Phase 2-4 food is worth (the
+-- DataService P5Home step converts Profile.Food once).
 ----------------------------------------------------------------------
-TycoonCatalog.Foods = {
-	{ Id = "Snack", Name = "Snack", Price = 50, Xp = 25, CookSeconds = 6, KitchenLevel = 1, Blurb = "A crunchy cloud cookie." },
-	{ Id = "Meal", Name = "Meal", Price = 600, Xp = 150, CookSeconds = 20, KitchenLevel = 2, Blurb = "A warm bowl of sky stew." },
-	{ Id = "Feast", Name = "Feast", Price = 6000, Xp = 800, CookSeconds = 45, KitchenLevel = 4, Blurb = "A whole starfruit pie." },
+TycoonCatalog.Berries = {
+	Share = 0.25,
+	BasketMinutes = 30,
+	BasketMin = 500,
+	LegacyFood = { Snack = 200, Meal = 1200, Feast = 6400 },
 }
-local FOOD_BY_ID = {}
-for _, f in ipairs(TycoonCatalog.Foods) do
-	FOOD_BY_ID[f.Id] = f
-end
-TycoonCatalog.FoodsById = FOOD_BY_ID
--- Foods is an ordered array; Foods.Snack also works (read-only lookup, pairs / ipairs still see each food once)
-setmetatable(TycoonCatalog.Foods, { __index = FOOD_BY_ID })
+
+-- Pad signs (3.3): only the next affordable pads get a sign (SignedPads)
+TycoonCatalog.SignRules = { MaxSigns = 3 }
 
 ----------------------------------------------------------------------
 -- Pet XP curve: XpToNext(level) = round(Base * level ^ Exponent / Round) * Round, up to MaxLevel.
@@ -262,9 +203,9 @@ TycoonCatalog.PetXp = { MaxLevel = 100, Base = 20, Exponent = 1.6, Round = 5 }
 TycoonCatalog.MaxPetLevel = TycoonCatalog.PetXp.MaxLevel -- DataService.AddPetXp caps levels here
 
 ----------------------------------------------------------------------
--- The Food Machine (section 3.4): one feed fills FeedShare[machine level] of the pet's current XP bar (the Kitchen's
--- Effects.FeedShare, copied into TycoonCatalog.FeedShare below) and costs XpToNext(level) x RarityScale x FeedBase
--- Cash, the same at every machine level (the upgrade gives more XP for the same money).
+-- The Food Machine (Phase 4 3.4, Phase 5 3.4): one feed fills FeedShare[machine level] of the pet's current XP bar (the
+-- Kitchen's Effects.FeedShare, copied into TycoonCatalog.FeedShare below) and costs XpToNext(level) x RarityScale x
+-- FeedBase BERRIES (FeedBerries), the same at every machine level (the upgrade gives more XP for the same berries).
 ----------------------------------------------------------------------
 TycoonCatalog.FeedBase = 2.0
 
@@ -313,8 +254,8 @@ end
 
 ----------------------------------------------------------------------
 -- Layout of the yard (plot-local studs, see the header). The yard is PlotSize x PlotSize inside the lobby fence;
--- nothing is placed outside |x|, |z| <= HALF - 1.5 except along-the-fence decor. (Phase 4: the press conveyor is
--- gone; the PressLane path stays beside the food plants.)
+-- nothing is placed outside |x|, |z| <= HALF - 1.5 except along-the-fence decor. (Phase 5: the Berry Farm fills the
+-- four old press slots beside the PressLane path; the Coin Magnet corner and the old decor strips are lawn.)
 ----------------------------------------------------------------------
 local function V3(x, y, z)
 	return Vector3.new(x, y, z)
@@ -361,28 +302,47 @@ TycoonCatalog.Layout = {
 	GardenEntranceDepth = 6,
 }
 
--- The Garden's 12 places (section 3.3), in its station frame: X along the front, Z -7 = the front row (places 1-4,
--- next to the entrance), 0 = the middle row (5-8), +7 = the back row (9-12)
-local GARDEN_X = { -7.5, -2.5, 2.5, 7.5 }
-local GARDEN_ROWS = { -7, 0, 7 }
-local GARDEN_COIN_Z = { -4.4, -2.6, 3.5 } -- the pile of each row, 2.6 studs from its own cushion: front + middle rows on the front walk, back row on the back walk
-local GARDEN_SPOTS = {}
-local GARDEN_COINS = {}
-for row, z in ipairs(GARDEN_ROWS) do
-	for _, x in ipairs(GARDEN_X) do
-		GARDEN_SPOTS[#GARDEN_SPOTS + 1] = V3(x, 0, z)
-		GARDEN_COINS[#GARDEN_COINS + 1] = V3(x, 0, GARDEN_COIN_Z[row])
-	end
-end
--- the sand walks (station frame, Center + Size on the ground): two 3-stud walks joined at both ends, and the 3-stud
--- entrance gap between the front-row cushions at X = 0 (the Garden's pad faces it)
-local GARDEN_WALKS = {
-	{ Name = "FrontWalk", Center = V3(0, 0, -3.5), Size = V3(20, 0, 3) },
-	{ Name = "BackWalk", Center = V3(0, 0, 3.5), Size = V3(20, 0, 3) },
-	{ Name = "WestJoin", Center = V3(-10, 0, 0), Size = V3(2, 0, 10) },
-	{ Name = "EastJoin", Center = V3(10, 0, 0), Size = V3(2, 0, 10) },
-	{ Name = "Entrance", Center = V3(0, 0, -7.5), Size = V3(3, 0, 5) },
+-- The Pet Garden interior (Phase 5 3.3), in its station frame: X along the front, -Z = the entrance / pad side. The
+-- Food Bowl in the middle, 12 beds (slot order = nearest the entrance first) along the sides and the back, a 0.6-stud
+-- fence on the footprint edge with a 4-stud entrance at the front.
+local GARDEN_BOWL = { Center = V3(0, 0, 0), Radius = 2.5 }
+local GARDEN_BEDS = {
+	V3(-9, 0, -6.5), V3(9, 0, -6.5), V3(-9, 0, -2.5), V3(9, 0, -2.5), V3(-9, 0, 1.5), V3(9, 0, 1.5),
+	V3(-9, 0, 5.5), V3(9, 0, 5.5), V3(-6, 0, 7.8), V3(6, 0, 7.8), V3(-2, 0, 7.8), V3(2, 0, 7.8),
 }
+local GARDEN_BED_SIZE = 2.5 -- beds are 2.5 x 2.5 studs
+local GARDEN_FENCE = 0.6 -- fence thickness on the footprint edge
+local GARDEN_ENTRANCE = { Center = V3(0, 0, -10), Width = 4 }
+
+-- The Berry Farm (Phase 5 3.3, home design 2.1): price TO level 1..40 and the Food of every level (piecewise geometric
+-- through the old cumulative plant food at the tier-cap boundaries 10 / 22 / 37 / 40)
+local FARM_PRICE = {
+	15, 70, 160, 450, 520, 1400, 1500, 3100, 4400, 7500, 11000, 19000, 22000, 25000, 28000, 31000, 45000, 48000, 110000,
+	120000, 150000, 160000, 200000, 220000, 320000, 340000, 360000, 380000, 460000, 510000, 610000, 790000, 850000,
+	1000000, 1400000, 1500000, 1800000, 2200000, 2800000, 4000000,
+}
+local FARM_FOOD = {
+	7, 9, 12, 15, 19, 25, 32, 41, 54, 69, 77, 90, 105, 122, 143, 166, 194, 227, 264, 309, 360, 420, 444, 483, 526, 573,
+	624, 680, 740, 806, 878, 956, 1041, 1133, 1234, 1344, 1463, 1585, 1838, 2132,
+}
+
+-- The Phase 4 data the fold and the legacy magnet still need (READ-ONLY; no station uses it): the Food of the four old
+-- plants by level (FoldLegacy's food floor) and the old Coin Magnet's scoop radius / pile seconds by level (a folded
+-- Home.LegacyMagnet keeps them until the next Prestige).
+TycoonCatalog.LegacyPlants = {
+	Press1 = { 7, 9, 12, 16, 21, 27, 35, 45, 59, 76 },
+	Press2 = { 19, 24, 32, 42, 53, 69, 91, 118, 153, 199 },
+	Press3 = { 49, 63, 82, 107, 140, 180, 235, 302, 396, 518 },
+	Press4 = { 127, 164, 215, 278, 360, 468, 612, 792, 1030, 1339 },
+}
+TycoonCatalog.LegacyMagnet = {
+	MaxLevel = 5,
+	Radius = { 9, 12, 16, 20, 26 },
+	PileSeconds = { 300, 360, 420, 480, 600 },
+}
+-- old station ids FoldLegacy folds away (the decor ones by their new home)
+local LEGACY_PLANTS = { "Press2", "Press3", "Press4" }
+local LEGACY_DECOR = { DecorFence = { "DecorFlowers", "DecorBanners" }, DecorFountain = { "DecorLamps" } }
 
 ----------------------------------------------------------------------
 -- Stations. Price[level] = BASE Cash to build / upgrade TO that level (PriceAt adds the star price rule).
@@ -400,105 +360,77 @@ local function effectsOf(key, values)
 	return out
 end
 
-local function magnetEffects(radius, pile)
+local function gardenEffects(lucky, radius, pile)
 	local out = {}
-	for i = 1, #radius do
-		out[i] = { Radius = radius[i], PileSeconds = pile[i] }
+	for i = 1, #lucky do
+		out[i] = { Lucky = lucky[i], Radius = radius[i], PileSeconds = pile[i] }
 	end
 	return out
 end
 
 local STATIONS = {
-	----------------------------------------------------------------- the food plants (the old Cloud Presses)
+	----------------------------------------------------------------- the Berry Farm (the four old plants in one)
 	{
-		Id = "Press1", Name = "Berry Bush", Kind = "Plant", Icon = ICON.Berry,
-		Blurb = "Sweet berries for your garden pets: bigger coins.",
-		MaxLevel = 10, TierCaps = caps(6, 8, 9, 10),
+		Id = "Press1", Name = "Berry Farm", Kind = "Farm", Icon = ICON.Berry,
+		Blurb = "Grows berries for your pets: bigger Cloud Cash.",
+		MaxLevel = 40, TierCaps = caps(10, 22, 37, 40),
 		Requires = { Garden = 1 },
-		Price = { 15, 55, 130, 360, 1200, 3500, 9000, 20000, 100000, 270000 },
-		Effects = effectsOf("Food", { 7, 9, 12, 16, 21, 27, 35, 45, 59, 76 }),
-		Slot = { CFrame = at(-26.5, -14, -90), Footprint = V3(7, 10, 7), Pad = padAt(-19, -14, -26.5, -14) },
-	},
-	{
-		Id = "Press2", Name = "Carrot Patch", Kind = "Plant", Icon = ICON.Carrot,
-		Blurb = "Crunchy carrots make every coin bigger.",
-		MaxLevel = 10, TierCaps = caps(6, 8, 9, 10),
-		Requires = { Press1 = 2 },
-		Price = { 420, 1100, 2500, 6000, 15000, 22000, 38000, 120000, 260000, 680000 },
-		Effects = effectsOf("Food", { 19, 24, 32, 42, 53, 69, 91, 118, 153, 199 }),
-		Slot = { CFrame = at(-26.5, -4.5, -90), Footprint = V3(7, 11, 7), Pad = padAt(-19, -4.5, -26.5, -4.5) },
-	},
-	{
-		Id = "Press3", Name = "Cloud Melons", Kind = "Plant", Icon = ICON.Melon,
-		Blurb = "Juicy cloud melons: much bigger coins.",
-		MaxLevel = 10, TierCaps = caps(0, 6, 8, 10),
-		Requires = { Press2 = 3, House = "Villa" },
-		Price = { 18000, 25000, 36000, 88000, 130000, 180000, 290000, 410000, 1100000, 1800000 },
-		Effects = effectsOf("Food", { 49, 63, 82, 107, 140, 180, 235, 302, 396, 518 }),
-		Slot = { CFrame = at(-26.5, 5, -90), Footprint = V3(7, 12, 7), Pad = padAt(-19, 5, -26.5, 5) },
-	},
-	{
-		Id = "Press4", Name = "Starfruit Tree", Kind = "Plant", Icon = ICON.Tree,
-		Blurb = "The tastiest food in the sky: huge coins.",
-		MaxLevel = 10, TierCaps = caps(0, 0, 8, 10),
-		Requires = { Press3 = 3, House = "Manor" },
-		Price = { 160000, 300000, 370000, 490000, 630000, 820000, 1100000, 1400000, 2200000, 3200000 },
-		Effects = effectsOf("Food", { 127, 164, 215, 278, 360, 468, 612, 792, 1030, 1339 }),
-		Slot = { CFrame = at(-26.5, 14.5, -90), Footprint = V3(7, 13, 7), Pad = padAt(-19, 14.5, -26.5, 14.5) },
-	},
-	{
-		Id = "Collector", Name = "Coin Magnet", Kind = "Magnet", Icon = ICON.Magnet,
-		Blurb = "Coins fly to you from farther away, and piles hold more.",
-		MaxLevel = 5, TierCaps = caps(2, 3, 4, 5),
-		Requires = { Press1 = 1 },
-		Price = { 90, 6000, 45000, 410000, 1400000 },
-		Effects = magnetEffects({ 9, 12, 16, 20, 26 }, { 300, 360, 420, 480, 600 }),
-		Slot = { CFrame = at(-27.5, -26.5, -90), Footprint = V3(9, 8, 13), Pad = padAt(-17, -26.5, -27.5, -26.5) },
+		Price = FARM_PRICE,
+		Effects = effectsOf("Food", FARM_FOOD),
+		Slot = { CFrame = at(-26.5, 0.25, -90), Footprint = V3(36, 12, 7), Pad = padAt(-19, 0, -26.5, 0) },
 	},
 	----------------------------------------------------------------- pets at home
 	{
 		Id = "Garden", Name = "Pet Garden", Kind = "Garden", Icon = ICON.Seedling,
-		Blurb = "Your pets eat here and pop out rainbow coins.",
+		Blurb = "Your pets eat at the Food Bowl, roam the yard and poop Cloud Cash.",
 		MaxLevel = 8, TierCaps = caps(2, 4, 6, 8),
 		Requires = {},
 		ResetLevel = 1, -- Prestige keeps the Garden built (at this level): the coins never stop
-		Price = { 0, 12000, 30000, 110000, 290000, 600000, 1200000, 2400000 },
-		Effects = effectsOf("Lucky", { 0, 0.02, 0.04, 0.06, 0.08, 0.10, 0.12, 0.15 }),
+		Price = { 0, 15000, 38000, 140000, 360000, 750000, 1500000, 3000000 },
+		Effects = gardenEffects(
+			{ 0, 0.02, 0.04, 0.06, 0.08, 0.10, 0.12, 0.15 },
+			{ 8, 10, 12, 14, 16, 19, 22, 26 },
+			{ 300, 330, 360, 390, 420, 480, 540, 600 }
+		),
 		Slot = {
 			CFrame = at(24, -1, 90), Footprint = V3(22, 4, 20), Pad = padAt(10, -1, 24, -1),
-			Spots = GARDEN_SPOTS, -- 12 pet places (station frame: X along the front, -Z toward the front)
-			CoinPoints = GARDEN_COINS, -- the pile of each place (CoinPoint(slot))
-			Walkable = GARDEN_WALKS, -- the sand walks
+			Bowl = GARDEN_BOWL, -- the Food Bowl (station frame)
+			Beds = GARDEN_BEDS, -- 12 beds (station frame), slot order
+			BedSize = GARDEN_BED_SIZE,
+			Fence = GARDEN_FENCE, -- fence thickness on the footprint edge
+			Entrance = GARDEN_ENTRANCE, -- the gap in the fence (station frame)
 			WelcomePile = V3(13.5, 0, 2.5), -- PLOT-local: the Welcome-back pile beside the entrance, off the pad
 		},
 	},
 	{
 		Id = "Kitchen", Name = "Food Machine", Kind = "FoodMachine", Icon = ICON.Stew,
-		Blurb = "Feed your pets for XP. Upgrades give bigger meals.",
+		Blurb = "Feed berries to your pets for XP. Upgrades give bigger meals.",
 		MaxLevel = 5, TierCaps = caps(1, 2, 4, 5),
 		Requires = { Press1 = 1 },
-		Price = { 240, 35000, 320000, 680000, 1900000 },
+		Price = { 300, 44000, 400000, 850000, 2400000 },
 		Effects = effectsOf("FeedShare", { 0.25, 0.30, 0.35, 0.42, 0.50 }),
-		Slot = { CFrame = at(25, 24, 0), Footprint = V3(16, 10, 10), Pad = padAt(19.5, 14.5, 25, 24) },
+		-- the pad sits 1 stud nearer the gate than the contract's padAt(-19, 22.5): a 10-deep machine at z 29 starts
+		-- at z 24, and the 4-stud pad at 22.5 would reach into it (Validate "pad overlaps")
+		Slot = { CFrame = at(-24, 29, 0), Footprint = V3(16, 10, 10), Pad = padAt(-19, 21.5, -24, 29) },
 	},
 	{
 		Id = "Gym", Name = "Training Place", Kind = "Training", Icon = ICON.Muscle,
 		Blurb = "Train Attack Speed, Physique, Ability or Defense.",
 		MaxLevel = 5, TierCaps = caps(1, 2, 4, 5),
 		Requires = { Kitchen = 1 },
-		Price = { 3000, 110000, 420000, 920000, 2200000 },
+		Price = { 3800, 140000, 520000, 1200000, 2800000 },
 		Effects = effectsOf("Slots", { 1, 2, 3, 4, 5 }),
 		Slot = {
-			CFrame = at(-24, 29, 0), Footprint = V3(18, 10, 9), Pad = padAt(-19, 22.5, -24, 29),
+			CFrame = at(25, 24, 0), Footprint = V3(18, 10, 9), Pad = padAt(19.5, 14.5, 25, 24),
 			Spots = { V3(-6, 0, 0), V3(-3, 0, 0), V3(0, 0, 0), V3(3, 0, 0), V3(6, 0, 0) },
 		},
 	},
 	{
 		Id = "Vault", Name = "Vault", Kind = "Vault", Icon = ICON.Bank,
-		Blurb = "Bigger coin piles, and coins while you are away.",
+		Blurb = "Your lawn holds more Cloud Cash, and coins while you are away.",
 		MaxLevel = 5, TierCaps = caps(1, 2, 4, 5),
-		Requires = { Press2 = 2 },
-		Price = { 9000, 85000, 370000, 820000, 2000000 },
+		Requires = { Press1 = 6 },
+		Price = { 11000, 110000, 460000, 1000000, 2500000 },
 		Effects = {
 			{ PileSeconds = 300, OfflinePercent = 0.1, OfflineHours = 1 },
 			{ PileSeconds = 600, OfflinePercent = 0.15, OfflineHours = 2 },
@@ -512,9 +444,9 @@ local STATIONS = {
 		Id = "House", Name = "House", Kind = "House", Icon = ICON.House,
 		Blurb = "Your home. Each new house raises every station's max level.",
 		MaxLevel = 4, TierCaps = caps(4, 4, 4, 4),
-		Requires = { Collector = 1 },
+		Requires = { Press1 = 2 },
 		LevelRequires = { [2] = { HomeLevel = 10 }, [3] = { HomeLevel = 20 }, [4] = { HomeLevel = 30 } },
-		Price = { 180, 24000, 200000, 880000 },
+		Price = { 180, 24000, 200000, 880000 }, -- NOT scaled x1.25 (the Villa stays $24,000)
 		Effects = {
 			{ Tier = "Cottage", TierIndex = 1, Name = "Cottage" },
 			{ Tier = "Villa", TierIndex = 2, Name = "Villa" },
@@ -528,7 +460,7 @@ local STATIONS = {
 		Blurb = "Fuse 3 copies into Golden or Rainbow, or mix two pets.",
 		MaxLevel = 3, TierCaps = caps(1, 2, 3, 3),
 		Requires = { Kitchen = 1, Prestige = 1 },
-		Price = { 25000, 340000, 1400000 },
+		Price = { 31000, 420000, 1800000 },
 		Effects = { { TokenDiscount = 0 }, { TokenDiscount = 0.1 }, { TokenDiscount = 0.2 } },
 		Slot = { CFrame = at(11, -25, 180), Footprint = V3(10, 12, 10), Pad = padAt(11, -16, 11, -25) },
 	},
@@ -537,62 +469,43 @@ local STATIONS = {
 		Blurb = "Opens the way to pet battles.",
 		MaxLevel = 1, TierCaps = caps(1, 1, 1, 1),
 		Requires = { Gym = 1 },
-		Price = { 260000 },
+		Price = { 320000 },
 		Effects = { { Battles = true } },
 		Slot = { CFrame = at(32, 14.5, 90), Footprint = V3(7, 12, 4), Pad = padAt(27, 14.5, 32, 14.5) },
 	},
 	----------------------------------------------------------------- decor (kept on prestige, +1 Home Level each)
 	{
-		Id = "DecorLamps", Name = "Lanterns", Kind = "Decor", Icon = ICON.Lantern,
-		Blurb = "Warm lanterns along your path.",
+		Id = "DecorFence", Name = "Yard Fence", Kind = "Decor", Icon = ICON.Garden,
+		Blurb = "A prettier fence with flowers and banners around your yard.",
 		MaxLevel = 3, TierCaps = caps(1, 2, 3, 3), KeepOnPrestige = true,
-		Requires = { Collector = 1 },
-		Price = { 1800, 27000, 360000 },
-		Effects = { { Pieces = 4, Style = "Wood" }, { Pieces = 6, Style = "Brass" }, { Pieces = 8, Style = "Crystal" } },
-		Slot = { CFrame = at(0, -21, 0), Footprint = V3(9, 7, 26), Walkable = true, Pad = padAt(-8, -12, -3, -12) },
-	},
-	{
-		Id = "DecorFence", Name = "Garden Fence", Kind = "Decor", Icon = ICON.Garden,
-		Blurb = "A prettier fence around your whole yard.",
-		MaxLevel = 3, TierCaps = caps(1, 2, 3, 3), KeepOnPrestige = true,
-		Requires = { Press2 = 2 },
-		Price = { 7000, 48000, 490000 },
-		Effects = { { Pieces = 1, Style = "Picket" }, { Pieces = 2, Style = "Hedge" }, { Pieces = 3, Style = "Cloudstone" } },
+		Requires = { Garden = 1 },
+		Price = { 2800, 19000, 200000 },
+		Effects = {
+			{ Pieces = 1, Style = "Picket", Flowers = "Tulips" },
+			{ Pieces = 2, Style = "Hedge", Banners = "Cloth" },
+			{ Pieces = 3, Style = "Cloudstone", Banners = "Royal", Flowers = "Starflowers" },
+		},
 		Slot = { CFrame = at(0, 0, 0), Footprint = V3(PLOT, 4, PLOT), Perimeter = true, Pad = padAt(8, -10, 3, -10) },
 	},
 	{
-		Id = "DecorFlowers", Name = "Flower Beds", Kind = "Decor", Icon = ICON.Tulip,
-		Blurb = "Colourful flower beds along the front fence.",
-		MaxLevel = 3, TierCaps = caps(1, 2, 3, 3), KeepOnPrestige = true,
-		Requires = { Garden = 1 },
-		Price = { 2700, 36000, 410000 },
-		Effects = { { Pieces = 3, Style = "Tulips" }, { Pieces = 5, Style = "Roses" }, { Pieces = 7, Style = "Starflowers" } },
-		Slot = { CFrame = at(-25, -34.3, 180), Footprint = V3(18, 2, 2.2), Pad = padAt(-12.5, -33.3, -25, -34.3) },
-	},
-	{
 		Id = "DecorFountain", Name = "Fountain", Kind = "Decor", Icon = ICON.Fountain,
-		Blurb = "A splashing fountain in the middle of the yard.",
-		MaxLevel = 3, TierCaps = caps(0, 1, 2, 3), KeepOnPrestige = true,
-		Requires = { Kitchen = 1, House = "Villa" },
-		Price = { 45000, 490000, 1500000 },
-		Effects = { { Pieces = 1, Style = "Basin" }, { Pieces = 2, Style = "Tiered" }, { Pieces = 3, Style = "Sky" } },
-		Slot = { CFrame = at(0, -1, 0), Footprint = V3(9, 8, 9), Pad = padAt(-7, -1, 0, -1) },
-	},
-	{
-		Id = "DecorBanners", Name = "Banners", Kind = "Decor", Icon = ICON.Flag,
-		Blurb = "Banners in your colours along the front fence.",
+		Blurb = "A splashing fountain with lanterns in the middle of the yard.",
 		MaxLevel = 3, TierCaps = caps(1, 2, 3, 3), KeepOnPrestige = true,
-		Requires = { Vault = 1 },
-		Price = { 12000, 110000, 650000 },
-		Effects = { { Pieces = 2, Style = "Cloth" }, { Pieces = 4, Style = "Gold" }, { Pieces = 6, Style = "Royal" } },
-		Slot = { CFrame = at(25, -34.3, 180), Footprint = V3(18, 6, 2.2), Pad = padAt(12.5, -33.3, 25, -34.3) },
+		Requires = { Kitchen = 1 },
+		Price = { 18000, 200000, 600000 },
+		Effects = {
+			{ Pieces = 1, Style = "Basin", Lanterns = 4, LanternStyle = "Wood" },
+			{ Pieces = 2, Style = "Tiered", Lanterns = 6, LanternStyle = "Brass" },
+			{ Pieces = 3, Style = "Sky", Lanterns = 8, LanternStyle = "Crystal" },
+		},
+		Slot = { CFrame = at(0, -1, 0), Footprint = V3(9, 8, 9), Pad = padAt(-7, -1, 0, -1) },
 	},
 	{
 		Id = "DecorPodium", Name = "Pet Podium", Kind = "Decor", Icon = ICON.Trophy,
 		Blurb = "Shows off your favourite pet by the gate.",
 		MaxLevel = 3, TierCaps = caps(1, 2, 3, 3), KeepOnPrestige = true,
 		Requires = { Garden = 1 },
-		Price = { 9000, 95000, 580000 },
+		Price = { 3600, 38000, 230000 },
 		Effects = { { Pieces = 1, Style = "Stone" }, { Pieces = 2, Style = "Gold" }, { Pieces = 3, Style = "Crystal" } },
 		-- the lobby's podium (SpotInfo.PodiumCFrame, the pet faces the street) stands at (24, -26): this decor dresses
 		-- it up; its front (and pad) face the yard
@@ -742,13 +655,15 @@ local function getPetCatalog()
 	return petCatalog
 end
 
--- mirrors of PetCatalog's Phase 4 data (used only when PetCatalog cannot be loaded; the smoke test pins them equal)
+-- mirrors of PetCatalog's Phase 5 data (used only when PetCatalog cannot be loaded; the smoke test pins them equal)
 local MIRROR = {
 	LevelBonus = 0.1,
+	EvolutionBonus = { [0] = 1, [1] = 1.5, [2] = 1.875 }, -- multiplies the LEVEL BONUS (PetCatalog.EvolutionBonus)
 	RoleMult = { Economy = 1.6, Combat = 1 },
-	EvolutionBoost = { 1.25, 1.5 },
 	EvolveTwice = { Epic = true, Legendary = true, Mythic = true, Secret = true },
+	MaxLevel = 100,
 }
+TycoonCatalog.Mirror = MIRROR -- READ-ONLY (tests compare it with PetCatalog)
 
 local function rarityScaleOf(rarity)
 	local ps = Config.PetStats
@@ -813,37 +728,37 @@ local function roleMultiplier(def)
 	return finite(m) and m or 1
 end
 
--- the evolution multiplier of a def's STORED stage (1 / 1.25 / 1.5); a stage the rarity cannot reach is cut down
-local function evolutionMultiplier(def, level, stage)
+-- the STORED evolution stage that counts (0..MaxEvolution of the rarity); the level alone never evolves a pet
+local function evolutionStage(def, level, stage)
 	if stage == nil then
-		return 1
+		return 0
 	end
 	local pc = getPetCatalog()
-	if pc and type(pc.EvolutionStage) == "function" and type(pc.EvolutionMultiplier) == "function" then
+	if pc and type(pc.EvolutionStage) == "function" then
 		local ok, s = pcall(pc.EvolutionStage, def, level, stage)
-		if ok and finite(s) then
-			local ok2, m = pcall(pc.EvolutionMultiplier, s)
-			if ok2 and finite(m) and m > 0 then
-				return m
-			end
+		if ok and finite(s) and s >= 0 then
+			return floor(s)
 		end
-		return 1
+		return 0
 	end
 	local s = int(stage)
 	if not s or s < 1 then
-		return 1
+		return 0
 	end
-	local top = MIRROR.EvolveTwice[def.Rarity] and 2 or 1
-	return MIRROR.EvolutionBoost[min(s, top)] or 1
+	return min(s, MIRROR.EvolveTwice[def.Rarity] and 2 or 1)
 end
 
-local function levelBonus()
+-- PetCatalog.LevelFactor(level, stage) = 1 + LevelBonus x (level - 1) x EvolutionBonus[stage] (or the mirror)
+local function levelFactor(level, stage)
 	local pc = getPetCatalog()
-	local b = pc and tonumber(pc.LevelBonus)
-	if finite(b) and b >= 0 then
-		return b
+	if pc and type(pc.LevelFactor) == "function" then
+		local ok, f = pcall(pc.LevelFactor, level, stage)
+		if ok and finite(f) and f > 0 then
+			return f
+		end
 	end
-	return MIRROR.LevelBonus
+	local lv = max(1, min(int(level) or 1, MIRROR.MaxLevel))
+	return 1 + MIRROR.LevelBonus * (lv - 1) * (MIRROR.EvolutionBonus[stage] or 1)
 end
 
 ----------------------------------------------------------------------
@@ -902,12 +817,38 @@ function TycoonCatalog.StationLevel(home, id)
 	return levelOf(home, id)
 end
 
+-- the old Coin Magnet level a folded home keeps until its next Prestige (0 once the stars moved on)
+function TycoonCatalog.LegacyMagnetLevel(home)
+	if type(home) ~= "table" then
+		return 0
+	end
+	local lv = int(home.LegacyMagnet)
+	if not lv or lv < 1 then
+		return 0
+	end
+	if sanitizeStars(home.LegacyMagnetStar) ~= starsOf(home) or int(home.LegacyMagnetStar) == nil then
+		return 0
+	end
+	return min(lv, TycoonCatalog.LegacyMagnet.MaxLevel)
+end
+
+local MAX_DECOR_CREDIT = 18 -- Home.DecorCredit 0..18 (the old decor levels that did not fit, 9.1)
+
+local function decorCreditOf(home)
+	local c = int(type(home) == "table" and home.DecorCredit or nil)
+	if not c or c < 0 then
+		return 0
+	end
+	return min(c, MAX_DECOR_CREDIT)
+end
+
+-- sum of every station level + the folded credits (DecorCredit, the legacy magnet while its star holds)
 function TycoonCatalog.HomeLevelOf(home)
 	local total = 0
 	for _, def in ipairs(STATIONS) do
 		total = total + levelOf(home, def.Id)
 	end
-	return total
+	return total + decorCreditOf(home) + TycoonCatalog.LegacyMagnetLevel(home)
 end
 
 -- house tier index (1 = Cottage .. 4 = Sky Castle) and its def; a home without a House is a Cottage
@@ -1119,16 +1060,16 @@ function TycoonCatalog.StationsAfterPrestige(stations)
 end
 
 ----------------------------------------------------------------------
--- rainbow coins: food, pet power, garden places, income, piles, scoop radius, offline earnings
+-- Cloud Cash: food, pet power, garden places, income, piles, scoop radius, offline earnings
 ----------------------------------------------------------------------
--- the Food of every meal: 0 without a Garden, else GrassFood + the built plants' Effects.Food
+-- the Food of every meal: 0 without a Garden, else GrassFood + the Berry Farm's Effects.Food
 function TycoonCatalog.FoodOf(home)
 	if levelOf(home, "Garden") < 1 then
 		return 0
 	end
 	local total = TycoonCatalog.Coins.GrassFood
 	for _, def in ipairs(STATIONS) do
-		if def.Kind == "Plant" then
+		if def.Kind == "Farm" then
 			local lv = levelOf(home, def.Id)
 			if lv > 0 then
 				total = total + (def.Effects[lv].Food or 0)
@@ -1198,7 +1139,7 @@ function TycoonCatalog.PetPower(entry, level, tier, stage)
 	if stage == nil then
 		stage = def.Stage
 	end
-	local power = scale * (1 + levelBonus() * (lv - 1)) * tierMultiplier(mult) * roleMultiplier(def) * evolutionMultiplier(def, lv, stage)
+	local power = scale * levelFactor(lv, evolutionStage(def, lv, stage)) * tierMultiplier(mult) * roleMultiplier(def)
 	if not finite(power) or power < 0 then
 		return 0
 	end
@@ -1278,49 +1219,45 @@ function TycoonCatalog.CoinValue(home, power, prestige)
 	return finite(v) and v or 0
 end
 
--- the CoinPiles heap stage (0..5) of a pile holding `coins` coins (Coins.HeapStages)
-function TycoonCatalog.HeapStage(coins)
-	local n = tonumber(coins)
-	if not finite(n) or n < 1 then
-		return 0
-	end
-	local stage = 0
-	for i, need in ipairs(TycoonCatalog.Coins.HeapStages) do
-		if n >= need then
-			stage = i
-		end
-	end
-	return stage
-end
-
-function TycoonCatalog.ScoopRadius(home)
-	local lv = levelOf(home, "Collector")
+-- the old Coin Magnet's effect of a folded home (nil without one / after the next Prestige)
+local function legacyMagnetEffect(home, key)
+	local lv = TycoonCatalog.LegacyMagnetLevel(home)
 	if lv < 1 then
-		return TycoonCatalog.Coins.BaseRadius
+		return nil
 	end
-	return BY_ID.Collector.Effects[lv].Radius
+	return TycoonCatalog.LegacyMagnet[key][lv]
 end
 
+-- max(Garden Radius, LegacyMagnet radius); Coins.BaseRadius without a Garden
+function TycoonCatalog.ScoopRadius(home)
+	local lv = levelOf(home, "Garden")
+	local r = TycoonCatalog.Coins.BaseRadius
+	if lv >= 1 then
+		r = BY_ID.Garden.Effects[lv].Radius
+	end
+	local legacy = legacyMagnetEffect(home, "Radius")
+	if legacy and legacy > r then
+		r = legacy
+	end
+	return r
+end
+
+-- max(Garden PileSeconds, LegacyMagnet pile) + Vault PileSeconds: a slot's lawn holds this many seconds of its coins
 function TycoonCatalog.PileSeconds(home)
-	local lv = levelOf(home, "Collector")
+	local lv = levelOf(home, "Garden")
 	local s = TycoonCatalog.Coins.BasePileSeconds
 	if lv >= 1 then
-		s = BY_ID.Collector.Effects[lv].PileSeconds
+		s = BY_ID.Garden.Effects[lv].PileSeconds
+	end
+	local legacy = legacyMagnetEffect(home, "PileSeconds")
+	if legacy and legacy > s then
+		s = legacy
 	end
 	local vault = levelOf(home, "Vault")
 	if vault >= 1 then
 		s = s + (BY_ID.Vault.Effects[vault].PileSeconds or 0)
 	end
 	return s
-end
-
--- the pile point of garden place `slot` (1..12) in the Garden's station frame, or nil
-function TycoonCatalog.CoinPoint(slot)
-	local n = int(slot)
-	if not n or n ~= tonumber(slot) then
-		return nil
-	end
-	return GARDEN_COINS[n]
 end
 
 function TycoonCatalog.OfflineEarnings(home, seconds, incomePerSecond)
@@ -1420,8 +1357,222 @@ function TycoonCatalog.TrainingSlots(home)
 	return BY_ID.Gym.Effects[lv].Slots
 end
 
-function TycoonCatalog.FoodById(id)
-	return FOOD_BY_ID[id]
+----------------------------------------------------------------------
+-- Berries (Phase 5 3.4)
+----------------------------------------------------------------------
+-- the Berry Basket: max(BasketMin, floor(incomePerSecond x Share x 60 x BasketMinutes)) whole berries (30 minutes of
+-- the berries the garden grows); junk income counts as 0. `home` is accepted for symmetry (the cap needs no station).
+function TycoonCatalog.BasketCap(home, incomePerSecond)
+	local B = TycoonCatalog.Berries
+	local ips = tonumber(incomePerSecond)
+	if not finite(ips) or ips < 0 then
+		ips = 0
+	end
+	local cap = floor(ips * B.Share * 60 * B.BasketMinutes + 1e-9)
+	if not finite(cap) or cap > 1e15 then
+		cap = 1e15
+	end
+	return max(B.BasketMin, cap)
+end
+
+-- berries of one Food Machine feed for a pet (def / rarity / pet id / key) at `level`: round(XpToNext(level) x
+-- RarityScale x FeedBase), the Phase 4 FeedPrice; nil at the top level or for junk
+function TycoonCatalog.FeedBerries(def, level)
+	return TycoonCatalog.FeedPrice(def, level)
+end
+
+----------------------------------------------------------------------
+-- Pad signs (Phase 5 3.3): SignedPads(pads, cash, maxSigns) -> { [stationId] = true }
+----------------------------------------------------------------------
+function TycoonCatalog.SignedPads(pads, cash, maxSigns)
+	local out = {}
+	if type(pads) ~= "table" then
+		return out
+	end
+	local money = tonumber(cash)
+	if not finite(money) then
+		money = 0
+	end
+	local limit = int(maxSigns) or TycoonCatalog.SignRules.MaxSigns
+	if limit < 0 then
+		limit = 0
+	end
+	-- open (not Locked) station pads in pad order; the cheapest first, ties by pad order (deterministic)
+	local open = {}
+	for i, pad in ipairs(pads) do
+		if type(pad) == "table" and type(pad.StationId) == "string" and not pad.Locked then
+			if pad.Prestige or pad.StationId == PRESTIGE_PAD.Id then
+				out[pad.StationId] = true
+			else
+				local price = tonumber(pad.Price)
+				if finite(price) then
+					open[#open + 1] = { Id = pad.StationId, Price = price, Index = i }
+				end
+			end
+		end
+	end
+	table.sort(open, function(a, b)
+		if a.Price ~= b.Price then
+			return a.Price < b.Price
+		end
+		return a.Index < b.Index
+	end)
+	local signed = 0
+	for _, item in ipairs(open) do
+		if signed >= limit then
+			break
+		end
+		if item.Price <= money then
+			out[item.Id] = true
+			signed = signed + 1
+		end
+	end
+	if signed == 0 and open[1] then
+		out[open[1].Id] = true
+	end
+	return out
+end
+
+----------------------------------------------------------------------
+-- The one-time Phase 5 fold (9.2 step 3): FoldLegacy(home, firstTime) -> changed (pure; mutates `home`)
+----------------------------------------------------------------------
+-- a station level as a whole number in 0..top (junk -> 0)
+local function clampLevel(v, top)
+	local n = int(v)
+	if not n or n < 0 then
+		return 0
+	end
+	return min(n, top)
+end
+
+-- the food the four Phase 4 plants gave at these levels (FoldLegacy's food floor)
+local function legacyPlantFood(levels)
+	local total = 0
+	for _, id in ipairs({ "Press1", "Press2", "Press3", "Press4" }) do
+		local lv = levels[id] or 0
+		local table_ = TycoonCatalog.LegacyPlants[id]
+		if lv >= 1 and table_[lv] then
+			total = total + table_[lv]
+		end
+	end
+	return total
+end
+
+-- the smallest Berry Farm level whose Food reaches `food` (MaxLevel when none does)
+local function farmLevelForFood(food)
+	local def = BY_ID.Press1
+	for lv = 1, def.MaxLevel do
+		if (def.Effects[lv].Food or 0) >= food then
+			return lv
+		end
+	end
+	return def.MaxLevel
+end
+
+local function present(v)
+	return v ~= nil and v ~= false
+end
+
+-- (a) Farm: sum = Press1..Press4 (Press2-4 clamped 0..10; Press1 0..10 on the first fold, 0..40 after it: a folded
+-- farm keeps its level when a Phase 4 server sold a Carrot Patch meanwhile); if any of Press2-4 is present or
+-- firstTime: Press1 = min(40, max(sum, the smallest L whose Food >= the old plant food (firstTime only))), Press2-4
+-- removed. (b) Magnet: Collector > 0 -> LegacyMagnet = max(the live LegacyMagnet, Collector) clamped 1..5,
+-- LegacyMagnetStar = Prestige; Collector removed. (c) Decor: Fence = max(Fence, Flowers, Banners), Fountain =
+-- max(Fountain, Lamps), DecorCredit += the levels that did not fit (at most 18), the three keys removed. Returns true
+-- when the home changed. No Cash, Gems or berries (the Food -> berries step is DataService's).
+function TycoonCatalog.FoldLegacy(home, firstTime)
+	if type(home) ~= "table" then
+		return false
+	end
+	local st = home.Stations
+	if type(st) ~= "table" then
+		return false
+	end
+	local changed = false
+	local legacyTop = 10
+	local farmDef = BY_ID.Press1
+	-- (a) the Berry Farm
+	local anyOld = false
+	for _, id in ipairs(LEGACY_PLANTS) do
+		if present(st[id]) then
+			anyOld = true
+		end
+	end
+	if anyOld or firstTime then
+		local levels = { Press1 = clampLevel(st.Press1, firstTime and legacyTop or farmDef.MaxLevel) }
+		local sum = levels.Press1
+		for _, id in ipairs(LEGACY_PLANTS) do
+			levels[id] = clampLevel(st[id], legacyTop)
+			sum = sum + levels[id]
+			if st[id] ~= nil then
+				st[id] = nil
+				changed = true
+			end
+		end
+		local level = sum
+		if firstTime then
+			local food = legacyPlantFood(levels)
+			if food > 0 then
+				level = max(level, farmLevelForFood(food))
+			end
+		end
+		level = min(farmDef.MaxLevel, level)
+		local old = st.Press1
+		if level > 0 then
+			if old ~= level then
+				st.Press1 = level
+				changed = true
+			end
+		elseif old ~= nil and int(old) ~= nil and int(old) <= 0 then
+			st.Press1 = nil
+			changed = true
+		end
+	end
+	-- (b) the Coin Magnet -> the legacy magnet (counts + keeps its radius until the next Prestige)
+	if st.Collector ~= nil then
+		local lv = clampLevel(st.Collector, TycoonCatalog.LegacyMagnet.MaxLevel)
+		st.Collector = nil
+		changed = true
+		if lv > 0 then
+			local live = TycoonCatalog.LegacyMagnetLevel(home)
+			home.LegacyMagnet = max(live, lv)
+			home.LegacyMagnetStar = starsOf(home)
+		end
+	end
+	-- (c) the old decor -> the Yard Fence / the Fountain + DecorCredit
+	local credit = decorCreditOf(home)
+	local creditBefore = credit
+	for _, pair in ipairs({ { "DecorFence", LEGACY_DECOR.DecorFence }, { "DecorFountain", LEGACY_DECOR.DecorFountain } }) do
+		local target, sources = pair[1], pair[2]
+		local any = false
+		for _, id in ipairs(sources) do
+			if st[id] ~= nil then
+				any = true
+			end
+		end
+		if any then
+			local top = BY_ID[target].MaxLevel
+			local best = clampLevel(st[target], top)
+			local total = best
+			for _, id in ipairs(sources) do
+				local lv = clampLevel(st[id], 3)
+				total = total + lv
+				if lv > best then
+					best = lv
+				end
+				st[id] = nil
+			end
+			changed = true
+			credit = credit + (total - best)
+			if best > 0 then
+				st[target] = best
+			end
+		end
+	end
+	if credit ~= creditBefore then
+		home.DecorCredit = min(credit, MAX_DECOR_CREDIT)
+	end
+	return changed
 end
 
 -- cost table ({Tokens = n} or {Gems = n}) of a fusion, or nil.
@@ -1528,6 +1679,77 @@ end
 -- a walk-through zone (true) vs a solid station (the Garden's Walkable is a list of walks INSIDE its solid footprint)
 local function walkThrough(slot)
 	return slot.Walkable == true or slot.Perimeter == true
+end
+
+----------------------------------------------------------------------
+-- The roaming layout (Phase 5 3.5): what HomeRoam builds its walk graph from (plot-local rects; pure, a fresh table)
+----------------------------------------------------------------------
+TycoonCatalog.Roam = {
+	Half = 33, -- the walkable square |x|, |z| <= Half
+	Cell = 2, -- studs per grid cell
+	StationPad = 1, -- clearance around every station footprint
+	PadPad = 0.5, -- clearance around every buy pad
+	FencePad = 0.6, -- clearance around the garden fence and the bowl
+	BedPad = 0.3, -- clearance around the beds
+	EatRing = 5, -- the eat points: the bowl centre + EatRing studs at (slot - 1) x 30 degrees
+}
+
+local function rectOf(r, pad)
+	return { r[1], r[3], r[2], r[4], pad = pad } -- {x0, x1, z0, z1} -> {x0, z0, x1, z1}
+end
+
+function TycoonCatalog.RoamLayout()
+	local R = TycoonCatalog.Roam
+	local blocked = {}
+	-- every station footprint, built or not (the graph never depends on what is built); walk-through decor and the
+	-- yard fence decor (Perimeter) are not obstacles; the Garden is its fence + bowl + beds below
+	for _, def in ipairs(STATIONS) do
+		local slot = def.Slot
+		if def.Id ~= "Garden" and not walkThrough(slot) then
+			blocked[#blocked + 1] = rectOf(footprintRect(slot.CFrame, slot.Footprint), R.StationPad)
+		end
+	end
+	-- every buy pad (the Prestige pad too)
+	for _, def in ipairs(STATIONS) do
+		blocked[#blocked + 1] = rectOf(padRect(def.Slot.Pad), R.PadPad)
+	end
+	blocked[#blocked + 1] = rectOf(padRect(PRESTIGE_PAD.Slot.Pad), R.PadPad)
+	-- the garden fence: four sides on the footprint edge, the entrance side split around the gap
+	local g = BY_ID.Garden.Slot
+	local fp = g.Footprint
+	local hx, hz, t = fp.X / 2, fp.Z / 2, g.Fence
+	local e = g.Entrance
+	local function localRectOf(cx, cz, sx, sz, pad)
+		blocked[#blocked + 1] = rectOf(localRect(g.CFrame, V3(cx, 0, cz), V3(sx, 0, sz)), pad)
+	end
+	localRectOf(0, hz - t / 2, fp.X, t, R.FencePad) -- back
+	localRectOf(-hx + t / 2, 0, t, fp.Z, R.FencePad) -- left side
+	localRectOf(hx - t / 2, 0, t, fp.Z, R.FencePad) -- right side
+	local gap0, gap1 = e.Center.X - e.Width / 2, e.Center.X + e.Width / 2
+	localRectOf((-hx + gap0) / 2, -hz + t / 2, gap0 + hx, t, R.FencePad) -- front, left of the entrance
+	localRectOf((gap1 + hx) / 2, -hz + t / 2, hx - gap1, t, R.FencePad) -- front, right of the entrance
+	-- the Food Bowl and the beds
+	local b = g.Bowl
+	localRectOf(b.Center.X, b.Center.Z, 2 * b.Radius, 2 * b.Radius, R.FencePad)
+	local beds = {}
+	for i, v in ipairs(g.Beds) do
+		localRectOf(v.X, v.Z, g.BedSize, g.BedSize, R.BedPad)
+		local w = g.CFrame * v
+		beds[i] = { w.X, w.Z }
+	end
+	local bowl = g.CFrame * b.Center
+	local entrance = g.CFrame * e.Center
+	local wp = g.WelcomePile
+	return {
+		Half = R.Half,
+		Cell = R.Cell,
+		EatRing = R.EatRing,
+		Blocked = blocked,
+		Beds = beds,
+		Bowl = { X = bowl.X, Z = bowl.Z, R = b.Radius },
+		Welcome = { wp.X, wp.Z },
+		Entrance = { X = entrance.X, Z = entrance.Z, Width = e.Width },
+	}
 end
 
 -- Which pads can a player (about 2 studs wide) walk to from the gate? Returns { [padName] = true } for reachable
@@ -1655,7 +1877,7 @@ end
 local function checkKindEffects(def, bad)
 	local id, kind = def.Id, def.Kind
 	local C = TycoonCatalog.Coins
-	if kind == "Plant" then
+	if kind == "Farm" then
 		local food = effectValues(def, "Food")
 		if not food or food[1] <= 0 or not rising(food, true) then
 			bad(id .. ": Effects.Food must be positive and rising")
@@ -1665,15 +1887,14 @@ local function checkKindEffects(def, bad)
 		if not lucky or lucky[1] < 0 or lucky[#lucky] > 0.5 or not rising(lucky, false) then
 			bad(id .. ": Effects.Lucky must be a chance in 0..0.5 that never drops")
 		end
-		local spots = def.Slot and def.Slot.Spots
-		if type(spots) ~= "table" or #spots < TycoonCatalog.Prestige.GardenSlotsMax then
-			bad(id .. ": needs " .. TycoonCatalog.Prestige.GardenSlotsMax .. " Spots (Prestige.GardenSlotsMax)")
+		local beds = def.Slot and def.Slot.Beds
+		if type(beds) ~= "table" or #beds ~= TycoonCatalog.Prestige.GardenSlotsMax then
+			bad(id .. ": needs " .. TycoonCatalog.Prestige.GardenSlotsMax .. " Beds (Prestige.GardenSlotsMax)")
 		end
 		local reset = def.ResetLevel
 		if reset ~= nil and (int(reset) ~= reset or reset < 1 or reset > def.MaxLevel) then
 			bad(id .. ": ResetLevel must be a level of the station")
 		end
-	elseif kind == "Magnet" then
 		local radius = effectValues(def, "Radius")
 		local pile = effectValues(def, "PileSeconds")
 		if not radius or radius[1] <= C.BaseRadius or not rising(radius, true) then
@@ -1714,7 +1935,92 @@ local function checkKindEffects(def, bad)
 	end
 end
 
--- the garden layout of section 3.3: 12 places, the walks, the coin points and the Welcome-back pile
+-- the roaming graph check (a light copy of HomeRoam.Build: the same grid and obstacles, 4-neighbours): the number of
+-- walkable nodes and whether every bed and every eat point has a reachable node next to it
+local function roamReach(layout)
+	local half, cell = layout.Half, layout.Cell
+	local n = floor(2 * half / cell) + 1
+	local free = {}
+	local count = 0
+	local function pos(i)
+		return -half + (i - 1) * cell
+	end
+	for i = 1, n do
+		for j = 1, n do
+			local x, z = pos(i), pos(j)
+			local ok = z > -half + 2
+			if ok then
+				for _, r in ipairs(layout.Blocked) do
+					local pad = r.pad or 0
+					if x >= r[1] - pad and x <= r[3] + pad and z >= r[2] - pad and z <= r[4] + pad then
+						ok = false
+						break
+					end
+				end
+			end
+			if ok then
+				free[(i - 1) * n + j] = true
+				count = count + 1
+			end
+		end
+	end
+	local function nearest(x, z)
+		local best, bd = nil, huge
+		for key in pairs(free) do
+			local i = floor((key - 1) / n) + 1
+			local j = key - (i - 1) * n
+			local d = (pos(i) - x) ^ 2 + (pos(j) - z) ^ 2
+			if d < bd or (d == bd and key < best) then
+				best, bd = key, d
+			end
+		end
+		return best, bd
+	end
+	local b = layout.Bowl
+	local eat = {}
+	for slot = 1, 12 do
+		local a = math.rad((slot - 1) * 30)
+		eat[slot] = { b.X + math.cos(a) * layout.EatRing, b.Z + math.sin(a) * layout.EatRing }
+	end
+	local start = nearest(eat[1][1], eat[1][2])
+	local seen = {}
+	if start then
+		seen[start] = true
+		local queue, head = { start }, 1
+		while head <= #queue do
+			local key = queue[head]
+			head = head + 1
+			local i = floor((key - 1) / n) + 1
+			local j = key - (i - 1) * n
+			for _, d in ipairs({ { 1, 0 }, { -1, 0 }, { 0, 1 }, { 0, -1 } }) do
+				local a, c = i + d[1], j + d[2]
+				if a >= 1 and a <= n and c >= 1 and c <= n then
+					local k2 = (a - 1) * n + c
+					if free[k2] and not seen[k2] then
+						seen[k2] = true
+						queue[#queue + 1] = k2
+					end
+				end
+			end
+		end
+	end
+	local problems = {}
+	local function reached(what, x, z, within)
+		local key, d2 = nearest(x, z)
+		if not key or not seen[key] or d2 > within * within then
+			problems[#problems + 1] = what
+		end
+	end
+	for slot, p in ipairs(eat) do
+		reached("eat point " .. slot, p[1], p[2], 2.5)
+	end
+	for slot, p in ipairs(layout.Beds) do
+		reached("bed " .. slot, p[1], p[2], 4)
+	end
+	return count, problems
+end
+
+-- the garden of Phase 5 3.3: bowl, 12 beds, fence + entrance, the Welcome-back pile, the roaming graph
 local function checkGardenLayout(bad)
 	local garden = BY_ID.Garden
 	local slot = garden and garden.Slot
@@ -1724,136 +2030,60 @@ local function checkGardenLayout(bad)
 	end
 	local fp = slot.Footprint
 	local fr = footprintRect(slot.CFrame, fp)
-	-- the entrance strip: the band in front of the footprint (toward the Garden's pad)
-	local look = slot.CFrame.LookVector
-	local depth = TycoonCatalog.Layout.GardenEntranceDepth or 6
-	local strip = { fr[1], fr[2], fr[3], fr[4] }
-	if look.X < -0.7 then
-		strip = { fr[1] - depth, fr[1], fr[3], fr[4] }
-	elseif look.X > 0.7 then
-		strip = { fr[2], fr[2] + depth, fr[3], fr[4] }
-	elseif look.Z < -0.7 then
-		strip = { fr[1], fr[2], fr[3] - depth, fr[3] }
-	elseif look.Z > 0.7 then
-		strip = { fr[1], fr[2], fr[4], fr[4] + depth }
+	local bowl = slot.Bowl
+	local e = slot.Entrance
+	if type(bowl) ~= "table" or typeof(bowl.Center) ~= "Vector3" or not finite(bowl.Radius) then
+		bad("Garden: Slot.Bowl needs Center and Radius")
+		return
 	end
-	local pads = {}
-	for _, def in ipairs(STATIONS) do
-		pads[#pads + 1] = { def.Id, padRect(def.Slot.Pad) }
+	if type(e) ~= "table" or typeof(e.Center) ~= "Vector3" or not finite(e.Width) then
+		bad("Garden: Slot.Entrance needs Center and Width")
+		return
 	end
-	pads[#pads + 1] = { "Prestige", padRect(PRESTIGE_PAD.Slot.Pad) }
-	local function onPad(x, z)
-		for _, p in ipairs(pads) do
-			if inside(p[2], x, z, 0.25) then
-				return p[1]
-			end
+	if math.abs(math.abs(e.Center.Z) - fp.Z / 2) > 1e-6 or math.abs(e.Center.X) + e.Width / 2 > fp.X / 2 then
+		bad("Garden: the entrance must sit on the front fence")
+	end
+	if not finite(slot.Fence) or slot.Fence <= 0 or slot.Fence > 1 then
+		bad("Garden: Slot.Fence must be a thin ring (0..1 stud)")
+	end
+	local beds = slot.Beds or {}
+	local half = (slot.BedSize or 2.5) / 2
+	for i, v in ipairs(beds) do
+		if math.abs(v.X) + half > fp.X / 2 - (slot.Fence or 0) or math.abs(v.Z) + half > fp.Z / 2 - (slot.Fence or 0) then
+			bad("Garden: bed " .. i .. " leaves the footprint")
 		end
-		return nil
-	end
-	local function inYard(x, z)
-		return math.abs(x) <= HALF - 1 and math.abs(z) <= HALF - 1
-	end
-	-- the places: inside the footprint, apart, never on a walk
-	local spots = slot.Spots or {}
-	local walks = type(slot.Walkable) == "table" and slot.Walkable or {}
-	if #walks == 0 then
-		bad("Garden: Slot.Walkable must list the sand walks")
-	end
-	local walkRects = {}
-	for i, w in ipairs(walks) do
-		if type(w) ~= "table" or typeof(w.Center) ~= "Vector3" or typeof(w.Size) ~= "Vector3" then
-			bad("Garden: walk " .. i .. " needs Center and Size")
-		else
-			walkRects[#walkRects + 1] = localRect(slot.CFrame, w.Center, w.Size)
-			if math.abs(w.Center.X) + w.Size.X / 2 > fp.X / 2 + 1e-6 or math.abs(w.Center.Z) + w.Size.Z / 2 > fp.Z / 2 + 1e-6 then
-				bad("Garden: walk " .. tostring(w.Name or i) .. " leaves the footprint")
-			end
+		local dx, dz = v.X - bowl.Center.X, v.Z - bowl.Center.Z
+		if math.sqrt(dx * dx + dz * dz) < bowl.Radius + 1.5 then
+			bad("Garden: bed " .. i .. " is too close to the Food Bowl")
 		end
-	end
-	local function onWalk(x, z)
-		for _, r in ipairs(walkRects) do
-			if inside(r, x, z) then
-				return true
-			end
-		end
-		return false
-	end
-	local spotWorld = {}
-	for i, v in ipairs(spots) do
-		if math.abs(v.X) > fp.X / 2 - 1.5 or math.abs(v.Z) > fp.Z / 2 - 1.5 then
-			bad("Garden: place " .. i .. " leaves the footprint")
-		end
-		local w = slot.CFrame * v
-		spotWorld[i] = w
-		if onWalk(w.X, w.Z) then
-			bad("Garden: place " .. i .. " sits on a walk")
+		if math.abs(v.X - e.Center.X) < e.Width / 2 + half and math.abs(v.Z - e.Center.Z) < 3 then
+			bad("Garden: bed " .. i .. " blocks the entrance")
 		end
 		for j = 1, i - 1 do
-			if (spots[j] - v).Magnitude < 4 then
-				bad("Garden: places " .. j .. " and " .. i .. " are closer than 4 studs")
+			if (beds[j] - v).Magnitude < 3 then
+				bad("Garden: beds " .. j .. " and " .. i .. " are closer than 3 studs")
 			end
 		end
 	end
-	-- the coin points: one per place, inside the yard, >= 1.5 studs apart, on a walk inside the footprint, on no pad,
-	-- off every cushion bed
-	local coins = slot.CoinPoints or {}
-	if #coins < #spots then
-		bad("Garden: needs a coin point for every place")
-	end
-	local coinWorld = {}
-	for i = 1, #spots do
-		local v = TycoonCatalog.CoinPoint(i)
-		if typeof(v) ~= "Vector3" then
-			bad("Garden: CoinPoint(" .. i .. ") is missing")
-		else
-			local w = slot.CFrame * v
-			coinWorld[#coinWorld + 1] = w
-			if not inYard(w.X, w.Z) then
-				bad("Garden: coin point " .. i .. " leaves the yard")
-			end
-			if not (inside(fr, w.X, w.Z) or inside(strip, w.X, w.Z)) then
-				bad("Garden: coin point " .. i .. " lies outside the garden and its entrance")
-			end
-			if not onWalk(w.X, w.Z) then
-				bad("Garden: coin point " .. i .. " is not on a walk")
-			end
-			local padId = onPad(w.X, w.Z)
-			if padId then
-				bad("Garden: coin point " .. i .. " lies on the " .. padId .. " pad")
-			end
-			for j, s in ipairs(spotWorld) do
-				if math.abs(s.X - w.X) < 1.5 and math.abs(s.Z - w.Z) < 1.5 then
-					bad("Garden: coin point " .. i .. " lies on the bed of place " .. j)
-				end
-			end
-			for j = 1, #coinWorld - 1 do
-				if (coinWorld[j] - w).Magnitude < 1.5 then
-					bad("Garden: coin points " .. j .. " and " .. i .. " are closer than 1.5 studs")
-				end
-			end
-		end
-	end
-	if TycoonCatalog.CoinPoint(#spots + 1) ~= nil or TycoonCatalog.CoinPoint(0) ~= nil then
-		bad("Garden: CoinPoint answers only the places 1.." .. #spots)
-	end
-	-- the Welcome-back pile: plot-local, inside the yard and the entrance strip, off every pad, apart from the piles
+	-- the Welcome-back pile: plot-local, inside the yard, outside the garden fence, off every pad and station
 	local wp = slot.WelcomePile
 	if typeof(wp) ~= "Vector3" then
 		bad("Garden: Slot.WelcomePile is missing")
 	else
-		if not inYard(wp.X, wp.Z) then
+		if math.abs(wp.X) > HALF - 1 or math.abs(wp.Z) > HALF - 1 then
 			bad("Garden: the Welcome-back pile leaves the yard")
 		end
-		if not (inside(strip, wp.X, wp.Z) or inside(fr, wp.X, wp.Z)) then
-			bad("Garden: the Welcome-back pile is not beside the garden entrance")
+		if inside(fr, wp.X, wp.Z) then
+			bad("Garden: the Welcome-back pile lies inside the garden fence")
 		end
-		local padId = onPad(wp.X, wp.Z)
-		if padId then
-			bad("Garden: the Welcome-back pile lies on the " .. padId .. " pad")
+		local pads = {}
+		for _, def in ipairs(STATIONS) do
+			pads[#pads + 1] = { def.Id, padRect(def.Slot.Pad) }
 		end
-		for i, w in ipairs(coinWorld) do
-			if (w - wp).Magnitude < 1.5 then
-				bad("Garden: the Welcome-back pile touches coin point " .. i)
+		pads[#pads + 1] = { "Prestige", padRect(PRESTIGE_PAD.Slot.Pad) }
+		for _, p in ipairs(pads) do
+			if inside(p[2], wp.X, wp.Z, 0.25) then
+				bad("Garden: the Welcome-back pile lies on the " .. p[1] .. " pad")
 			end
 		end
 		for _, def in ipairs(STATIONS) do
@@ -1861,6 +2091,14 @@ local function checkGardenLayout(bad)
 				bad("Garden: the Welcome-back pile lies inside " .. def.Id)
 			end
 		end
+	end
+	-- the roaming graph: >= 300 walkable nodes, every bed and eat point reachable
+	local count, problems = roamReach(TycoonCatalog.RoamLayout())
+	if count < 300 then
+		bad("RoamLayout: only " .. count .. " walkable nodes (needs >= 300)")
+	end
+	for _, what in ipairs(problems) do
+		bad("RoamLayout: " .. what .. " cannot be reached")
 	end
 end
 
@@ -1874,8 +2112,8 @@ function TycoonCatalog.Validate()
 		kindSet[k] = true
 	end
 	local contractIds = {
-		"Press1", "Press2", "Press3", "Press4", "Collector", "Garden", "Kitchen", "Gym", "Vault", "House",
-		"FusionMachine", "ArenaGate", "DecorLamps", "DecorFence", "DecorFlowers", "DecorFountain", "DecorBanners", "DecorPodium",
+		"Press1", "Garden", "Kitchen", "Gym", "Vault", "House", "FusionMachine", "ArenaGate",
+		"DecorFence", "DecorFountain", "DecorPodium",
 	}
 	for _, id in ipairs(contractIds) do
 		if not BY_ID[id] then
@@ -2061,9 +2299,14 @@ function TycoonCatalog.Validate()
 	if not finite(C.LuckyMult) or C.LuckyMult <= 1 then
 		bad("Coins.LuckyMult must be above 1")
 	end
-	local hs = C.HeapStages
-	if type(hs) ~= "table" or #hs ~= 5 or hs[1] ~= 1 or not rising(hs, true) then
-		bad("Coins.HeapStages must be 5 rising coin counts starting at 1")
+	local ds = C.DropStages
+	if type(ds) ~= "table" or #ds ~= 4 or ds[1] ~= 1 or not rising(ds, true) then
+		bad("Coins.DropStages must be 4 rising poop counts starting at 1")
+	end
+	for _, k in ipairs({ "PoopMeals", "DropsPerPet" }) do
+		if int(C[k]) ~= C[k] or C[k] < 1 then
+			bad("Coins." .. k .. " must be a whole number >= 1")
+		end
 	end
 	local p = TycoonCatalog.Prestige
 	if int(p.GardenSlotsBase) ~= p.GardenSlotsBase or p.GardenSlotsBase < 1 then
@@ -2094,29 +2337,30 @@ function TycoonCatalog.Validate()
 		bad("Layout.Conveyor is gone in Phase 4 (no presses, no belt)")
 	end
 
-	-- leftover foods (fed for free by the Food Machine)
-	local lastXp = 0
-	for i, f in ipairs(TycoonCatalog.Foods) do
-		if type(f.Id) ~= "string" or type(f.Name) ~= "string" then
-			bad("Foods[" .. i .. "] needs Id and Name")
-		end
-		for _, k in ipairs({ "Price", "Xp", "CookSeconds", "KitchenLevel" }) do
-			if type(f[k]) ~= "number" or f[k] <= 0 then
-				bad("Foods[" .. i .. "]." .. k .. " must be positive")
+	-- berries (one food) and the pad signs
+	local B = TycoonCatalog.Berries
+	if type(B) ~= "table" or not finite(B.Share) or B.Share <= 0 or B.Share > 1 or not finite(B.BasketMinutes)
+		or B.BasketMinutes <= 0 or int(B.BasketMin) ~= B.BasketMin or B.BasketMin < 1 then
+		bad("Berries needs Share in 0..1, positive BasketMinutes and a whole BasketMin >= 1")
+	else
+		for _, id in ipairs({ "Snack", "Meal", "Feast" }) do
+			local v = type(B.LegacyFood) == "table" and B.LegacyFood[id]
+			if int(v) ~= v or v < 1 then
+				bad("Berries.LegacyFood." .. id .. " must be a whole number of berries")
 			end
 		end
-		if type(f.KitchenLevel) == "number" and BY_ID.Kitchen and f.KitchenLevel > BY_ID.Kitchen.MaxLevel then
-			bad("Foods[" .. i .. "] needs a Kitchen level that does not exist")
-		end
-		if type(f.Xp) == "number" and f.Xp <= lastXp then
-			bad("Foods: better food must give more XP")
-		end
-		lastXp = tonumber(f.Xp) or lastXp
 	end
-	for _, id in ipairs({ "Snack", "Meal", "Feast" }) do
-		if not FOOD_BY_ID[id] then
-			bad("missing food " .. id)
+	if int(TycoonCatalog.SignRules.MaxSigns) ~= TycoonCatalog.SignRules.MaxSigns or TycoonCatalog.SignRules.MaxSigns < 1 then
+		bad("SignRules.MaxSigns must be a whole number >= 1")
+	end
+	for id, food in pairs(TycoonCatalog.LegacyPlants) do
+		if #food ~= 10 or not rising(food, true) then
+			bad("LegacyPlants." .. id .. " must be the 10 rising Phase 4 food values")
 		end
+	end
+	local lm = TycoonCatalog.LegacyMagnet
+	if #lm.Radius ~= lm.MaxLevel or #lm.PileSeconds ~= lm.MaxLevel then
+		bad("LegacyMagnet needs a Radius and a PileSeconds per level")
 	end
 
 	-- XP curve

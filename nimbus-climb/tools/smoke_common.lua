@@ -110,3 +110,21 @@ end
 
 
 SmokeCommon = { T = T, guarded = guarded, add = add }
+
+-- Phase 5 (7.2): every smoke scenario runs with the main menu DISABLED ("what every existing smoke scenario and the mock
+-- get unless a test sets Enabled"): the character spawns at once on join and nothing is gated. Set here, in the common
+-- boot of every world (smoke.py loads this file right after mounting src/ and before any scenario file), so it does not
+-- depend on which scenario files load or in which order; smoke_p5_menu.lua turns it on only inside its menu scenarios.
+do
+	local okRs, rs = pcall(function()
+		return game:GetService("ReplicatedStorage")
+	end)
+	local shared = okRs and rs and rs:FindFirstChild("Shared")
+	local inst = shared and shared:FindFirstChild("Config")
+	if inst then
+		local ok, Config = pcall(require, inst)
+		if ok and type(Config) == "table" and type(Config.MainMenu) == "table" then
+			Config.MainMenu.Enabled = false
+		end
+	end
+end

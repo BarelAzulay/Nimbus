@@ -1,7 +1,6 @@
--- HomeBuilder (Phase 2 + Phase 4, homeworld): builds the tycoon home of a lobby plot in the DETAILED VOXEL style
--- (ARCHITECTURE_V3.md "Phase 2 build contract", "Phase 4 build contract" 3.1 / 3.3 / 3.7 / 5.2 / 5.4 / 6 + ART
--- DIRECTION), sculpted with shared/Voxel.lua. A server module: TycoonService requires it and decides WHAT is built;
--- HomeBuilder only draws.
+-- HomeBuilder (Phase 2 + 4 + 5, homeworld): builds the tycoon home of a lobby plot (ARCHITECTURE_V3.md "Phase 2 build
+-- contract", "Phase 4 build contract", "Phase 5 build contract" 3.3 / 3.4 / 3.6 / 6.4). A server module: TycoonService
+-- requires it and decides WHAT is built; HomeBuilder only draws.
 --
 -- Contract API:
 --   HomeBuilder.Init(lobbyInfo)                 remembers the lobby and prepares every plot in lobbyInfo.Spots
@@ -11,82 +10,79 @@
 --                                               Idempotent; returns the Home folder.
 --   HomeBuilder.SetOwner(spotInfo, player|nil)  attributes OwnerUserId / OwnerName on the Home folder, every pad and
 --                                               owner-only prompt; the claim prompt + signpost only while free; the
---                                               stone paths of the yard while owned (and the staked-out house lot
+--                                               cobble paths of the yard while owned (and the staked-out house lot
 --                                               while there is no House yet)
 --   HomeBuilder.SetStation(spotInfo, id, level) builds or replaces the station model `Station_<Id>` (attributes
 --                                               StationId, Level, BuiltAt = workspace:GetServerTimeNow(), Kind + the
 --                                               art's points / info) under the Home folder at PlotCFrame * Slot.CFrame;
 --                                               level 0 removes it; the same level again is a no-op. Returns the model.
---                                               The art is chosen by the station's Kind (TycoonCatalog.Kinds).
+--                                               The art is chosen by the station's Kind (TycoonCatalog.Kinds) or Id.
 --   HomeBuilder.SetPads(spotInfo, pads)         the buy pads `Pad_<StationId>` (Home/Pads) for TycoonCatalog.AvailablePads
---                                               entries: a glowing voxel pad + a pixel sign (icon, name, "Lv a -> b",
---                                               price or the lock reason) + ProximityPrompt `BuyPrompt` (ActionText "Buy",
---                                               HoldDuration 0.25, attributes StationId, OwnerUserId; disabled while
---                                               locked; the Prestige pad's says "Prestige" and needs a 1.5 s hold: it
---                                               opens the prestige confirmation, see TycoonService).
---                                               Pads missing from the list are removed, unchanged pads are kept
---                                               (only their texts / attributes update). Locked "Unlocks at Prestige" /
---                                               "Coming soon" stations show a blue hologram silhouette (`Ghost_<Id>`).
---   HomeBuilder.SetGarden(spotInfo, valid, open)  (Phase 4, TycoonService) the Garden's open places (3 + Prestige
---                                               stars, <= 12; NOT the Garden level) and the placed keys valid =
---                                               { [slot] = key }: a new open count rebuilds the Garden (template
---                                               Garden:<level>:<open>); the GardenSpotPrompt of every OPEN EMPTY place
---                                               is enabled, the others disabled. Remembered per plot.
---   HomeBuilder.SetTraining(spotInfo, pets)     (Phase 4, PetCareService, optional) pets = { [mat] = { Key, Stat, Ends } }:
+--                                               entries: a slate pad with a neon plate + a pixel sign `PadSign` (icon,
+--                                               name, "Lv a -> b", price or the lock reason; HomeFx hides the unsigned
+--                                               ones) + ProximityPrompt `BuyPrompt` (ActionText "Buy", HoldDuration 0.25,
+--                                               attributes StationId, OwnerUserId; disabled while locked; the Prestige
+--                                               pad's says "Prestige" and needs a 1.5 s hold). Pads missing from the list
+--                                               are removed, unchanged pads are kept. Locked "Unlocks at Prestige" /
+--                                               "Coming soon" stations show a hologram silhouette (`Ghost_<Id>`).
+--   HomeBuilder.SetGarden(spotInfo, valid, open)  (TycoonService) the Garden's open beds (3 + Prestige stars, <= 12;
+--                                               NOT the Garden level) and the placed keys valid = { [slot] = key }: a
+--                                               new open count rebuilds the Garden (template Garden:<level>:<open>);
+--                                               the GardenSpotPrompt of every OPEN EMPTY bed is enabled, the others
+--                                               disabled. Remembered per plot.
+--   HomeBuilder.SetTraining(spotInfo, pets)     (PetCareService, optional) pets = { [mat] = { Key, Stat, Ends } }:
 --                                               attributes Busy / Key / Stat / Ends on the Training Place's Spot<i>
---                                               (HomeFx reads the plot's TrainingPets attribute)
 --   HomeBuilder.ClearPlot(spotInfo)             removes every station, pad and ghost (the paths too when nobody owns
---                                               the plot; while owned the paths and the house lot stay); the claim
---                                               prompt stays; the remembered garden / training state is dropped
+--                                               the plot); the claim prompt stays; the remembered garden / training
+--                                               state is dropped
 -- Extras (nothing depends on them): GetHomeFolder(spotInfo), GetStation(spotInfo, id), GetPad(spotInfo, id),
 --   GetClaimPrompt(spotInfo), BuildHome(spotInfo, home) (every station of home.Stations, others removed),
 --   BuildStationModel(id, level, accent, open) -> a fresh clone at the origin (renders / tests; open = the Garden's
---   open place count), PartCount(spotInfo), StationBuilt = Util.Signal Fire(spotInfo, stationId, model|nil),
---   Points(id, level) (local fx points). Phase 4 removed SetCollector, the Collector screen / CollectPad / conveyor.
+--   open bed count), PartCount(spotInfo), StationBuilt = Util.Signal Fire(spotInfo, stationId, model|nil),
+--   Points(id, level) (local fx points), Art (the art functions, for tests).
 --
 -- Workspace layout (Spot_NN = spotInfo.Folder):
 --   Spot_NN/ClaimGate          ClaimSign (a two-part signpost, while free); ClaimAnchor (invisible, only when the lobby
---                              has no gate part) -- the ClaimPrompt rides the Attachment ClaimPoint in the gate opening,
---                              on the lobby's GateBeam when there is one (free plots add 2 parts to the lobby)
+--                              has no gate part) -- the ClaimPrompt rides the Attachment ClaimPoint in the gate opening
 --   Spot_NN/Home  (Folder, tag NC_Home; attributes SpotIndex, PlotCFrame, OwnerUserId, OwnerName)
---     Paths                    the yard's stone paths (TycoonCatalog.Layout.Paths), one merged voxel layer
+--     Paths                    the yard's cobble paths (TycoonCatalog.Layout.Paths), one merged voxel layer
 --     HouseLot                 stakes, a string, planks and bricks where the house will stand (owned, no House yet)
---     Station_<Id>             the station models (section 6 budgets: plant 45, Magnet 55, Garden 85, Food Machine 55,
---                              Training Place 90, House 150, Fusion 90, fence 60, others 80):
---                              * Plant (Press1..4: Berry Bush, Carrot Patch, Cloud Melons, Starfruit Tree): a planter
---                                that grows with the level; attributes FruitPoint (world point), Fruit, FruitColor
---                              * Magnet (Collector): the Coin Magnet totem; `MagnetHead` (a Model HomeFx spins) and the
---                                MagnetCenter attribute
---                              * Garden: 12 places (Slot.Spots, 3 x 4) with sand walks (parts named after
---                                Slot.Walkable), flower beds + cushions on the open places, seedling beds with a
---                                "Prestige to open" placard (ClosedSign / ClosedGui) on the others; Attachments
---                                Spot<i> (attributes Slot, Open) on every cushion; on every open place an Attachment
---                                PromptPoint<i> with the owner-only ProximityPrompt `GardenSpotPrompt` ("Put a pet
---                                here", E, attributes Slot / OwnerUserId / StationId, MaxActivationDistance 3,
---                                RequiresLineOfSight false) at the cushion's far edge; attribute Open on the model.
---                                Bowls, fruit, coins and heaps are CLIENT parts (HomeFx).
---                              * FoodMachine (Kitchen): the glass `Hopper` part (PetCareService's FeedPrompt sits on
---                                it), attributes ChuteMouth / Tray / HopperTop
---                              * Training (Gym): mats with Attachments Spot<i> (attribute Slot) on the deck
---                              * Fusion Machine: Swirl (a Model HomeFx spins) and `FusionPrompt` ("Fuse", owner only);
---                                Arena Gate: `ArenaGatePrompt` ("Go to Arena", owner only, attributes StationId /
---                                Teleport = "Arena": ArenaBuilder teleports the owner to the Battle Arena)
+--     Station_<Id>             the station models (contract 3.6 budgets: Farm 150, Garden 95, Food Machine 55,
+--                              Training Place 90, House 150, Fusion 90, Fence 90, Fountain 80, others 80; a fully
+--                              built plot <= 950 with its pads):
+--                              * Farm (Press1, Berry Farm, 40 levels): red-berry bushes 1-10, blue-berry bushes 11-22,
+--                                a golden trellis 23-37, the glowing Starberry tree 38-40, a barn + crates; the
+--                                BillboardGui `FarmSign` ("Berry Farm Lv N" / "Grows berries for your pets", 70 studs);
+--                                point BerryPoint (where HomeFx's berry flights start)
+--                              * Garden: the fence ring with the entrance, the Food Bowl (`FoodBowl` + `BowlSign`
+--                                "Food Bowl" / "Pets eat here, then poop Cloud Cash!", 40 studs; point BowlCenter),
+--                                12 beds at Slot.Beds: Attachments Spot<i> (attributes Slot, Open) on the lawn; an open
+--                                bed = bed + cushion + tiny roof with PromptPoint<i> -> `GardenSpotPrompt` ("Put a pet
+--                                here", E, attributes Slot / OwnerUserId / StationId, MaxActivationDistance 3, no line of
+--                                sight); a closed bed = soil + Stem + Sprout + `ClosedSign` ("Prestige to open"). The
+--                                lawn top is y 0.2; the interior stays clear for the roaming pets (HomeRoam)
+--                              * FoodMachine (Kitchen): the glass `Hopper` part (PetCareService's FeedPrompt), the
+--                                BillboardGui `MachineSign` (Title "Food Machine", Info "Berries -> XP: press E", the
+--                                TextLabel `BasketLine` HomeFx rewrites); points ChuteMouth / Tray / HopperTop / BasketTop
+--                              * Training (Gym): mats with Attachments Spot<i> (attribute Slot) on the `Deck`
+--                              * Fusion Machine: `Swirl` (a Model HomeFx spins) and `FusionPrompt` ("Fuse", owner
+--                                only); Arena Gate: `ArenaGatePrompt` ("Go to Arena", owner only, Teleport = "Arena")
+--                              * Decor: Yard Fence (Perimeter, plot frame), Fountain (lanterns 4 / 6 / 8), Pet Podium
 --     Pads/Pad_<StationId>     buy pads, 4 parts each (attributes StationId, OwnerUserId, NextLevel, Level, Price,
---                              Locked ("" when unlocked), Title, LevelText, Kind, BuiltAt): a stone Base (walkable; it
---                              carries the BuyPrompt and the BillboardGui `PadSign`), the state's neon Glow plate and a
---                              two-part neon Emblem ("+" build, arrow upgrade, padlock, star prestige)
+--                              Locked ("" when unlocked), Title, LevelText, Kind, BuiltAt)
 --     Ghost_<Id>               hologram silhouette (the 12 biggest blocks, ForceField) of a station that unlocks later
 --
--- Art: every station grows visibly with its level (a level-1 Berry Bush is a small bush in a wooden planter, level 10
--- a big berry-laden bush in a gold one; the House is a Cottage -> Villa -> Manor -> Sky Castle; the Fusion Machine has
--- two input pods, a swirling cloud chamber and an output pod). Each (station, level) is sculpted ONCE per server,
--- merged with the greedy voxel merge and kept as a template that is :Clone()d onto every plot. A fully built plot stays
--- <= 950 parts (pads included; tools/smoke_p2_homeworld.lua walks a whole greedy progression and checks it). No
--- server-side animation and no Instance per coin (Replication rule): HomeFx (client) pops stations in, spins the magnet
--- and the fusion swirl, draws the coins, bowls, fruit and pets, and hides other players' pads and prompts. The art is
--- sculpted on a 0.5 stud voxel grid (cell edges round half away from the model's axis, so the models stay symmetric).
--- Texts follow the World text rule (pixel-sized billboard tags, surface signs at 50 px per stud with >= 0.6 stud
--- letters). The only fonts are Theme roles. Plain Lua 5.1-compatible syntax only.
+-- Art (6.4 art rules): real materials only (WorldStyle.Materials: Slate, Cobblestone, Brick, Marble, WoodPlanks, Wood,
+-- Grass, LeafyGrass, Sand, ClayRoofTiles / RoofShingles, Metal, Glass, Neon inlays, Fabric), muted big faces with one
+-- accent hue per station, plinth + body + cap, inset corner posts on corners >= 4 studs tall, warm lanterns
+-- (Brightness <= 1.5, Range <= 16, no shadows), parts < 4 studs cast no shadow; pure decor sits in sub-models tagged
+-- NC_Detail (the Low graphics setting hides them), voxel clouds are tagged NC_StyleExempt. Every part is a Voxel.Box
+-- (or a ball / cylinder / wedge of the same kit); Kit.finish guards the rules on every template. Each (station,
+-- level) is built ONCE per server and kept as a template that is :Clone()d onto every plot. No server-side
+-- animation and no Instance per coin (Replication rule): HomeFx (client) pops stations in, spins the fusion swirl,
+-- poses the roaming pets, draws the coins and berries, and hides other players' pads and prompts. Texts follow the
+-- World text rule (pixel-sized billboard tags, surface signs at 50 px per stud with >= 0.6 stud letters). The only
+-- fonts are Theme roles. Plain Lua 5.1-compatible syntax only.
 
 local Workspace = game:GetService("Workspace")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -113,6 +109,7 @@ end
 
 local Voxel = loadShared("Voxel")
 local Util = loadShared("Util")
+local WorldStyle = loadShared("WorldStyle")
 local TycoonCatalog = nil -- resolved lazily (the economy agent's module may arrive later in a build)
 
 local function catalog()
@@ -193,77 +190,13 @@ local C = {
 	Ghost = rgb(120, 190, 255),
 }
 
-local FLOWERS = { rgb(246, 150, 188), rgb(250, 214, 92), rgb(244, 244, 248), rgb(172, 142, 232), rgb(236, 104, 108), rgb(112, 172, 240) }
-
--- Base palette shared by every sculpt (station palettes add their own keys; Voxel derives _Light / _Dark).
-local P = {
-	Stone = C.Stone,
-	StoneLight = C.StoneLight,
-	StoneDark = C.StoneDark,
-	StoneEdge = C.StoneEdge,
-	Marble = C.Marble,
-	Iron = C.Iron,
-	IronLight = C.IronLight,
-	IronDark = C.IronDark,
-	Gold = { Color = C.Gold, Reflectance = 0.05 },
-	GoldDark = C.GoldDark,
-	Copper = C.Copper,
-	Plank = C.Plank,
-	PlankLight = C.PlankLight,
-	PlankDark = C.PlankDark,
-	Bark = C.Bark,
-	Cloud = C.Cloud,
-	CloudShade = C.CloudShade,
-	Mist = C.Mist,
-	Glass = { Color = C.Glass, Material = MAT.Glass, Transparency = 0.45 },
-	Window = C.Window,
-	WarmWindow = { Color = C.WarmWindow, Material = MAT.Neon },
-	Lamp = { Color = C.Lamp, Material = MAT.Neon },
-	Cash = C.Cash,
-	CashGlow = { Color = C.CashGlow, Material = MAT.Neon },
-	Leaf = C.Leaf,
-	LeafDark = C.LeafDark,
-	Grass = C.Grass,
-	Soil = C.Soil,
-	Hedge = C.Hedge,
-	Water = { Color = C.Water, Material = MAT.Glass, Transparency = 0.3 },
-	Red = C.Red,
-	Rose = C.Rose,
-	Cream = C.Cream,
-	Navy = C.Navy,
-	Crystal = { Color = C.Crystal, Material = MAT.Neon },
-	Dark = rgb(40, 44, 64),
-	White = rgb(246, 246, 250),
-}
-for i, color in ipairs(FLOWERS) do
-	P["Flower" .. i] = color
-end
-
 ----------------------------------------------------------------------
 -- Small helpers
 ----------------------------------------------------------------------
 local floor, max, min, abs, huge = math.floor, math.max, math.min, math.abs, math.huge
 
-local function snap(v, step)
-	step = step or 0.5
-	return floor(v / step + 0.5) * step
-end
-
 local function lerp(a, b, t)
 	return a + (b - a) * t
-end
-
-local function mergeTables(a, b)
-	local out = {}
-	for k, v in pairs(a) do
-		out[k] = v
-	end
-	if b then
-		for k, v in pairs(b) do
-			out[k] = v
-		end
-	end
-	return out
 end
 
 local function serverNow()
@@ -283,16 +216,22 @@ local function newFolder(parent, name)
 	return f
 end
 
--- One anchored block. opts: Collide, Material, Transparency, Shadow, Reflectance, Touch, Query.
+-- One anchored block (Voxel.Box when the kit is there). opts: Collide, Material, Transparency, Shadow, Reflectance,
+-- Touch, Query.
 local function box(parent, name, cf, size, color, opts)
 	opts = opts or {}
-	local p = Instance.new("Part")
+	local p
+	if Voxel and Voxel.Box then
+		p = Voxel.Box(nil, cf, size, color, opts.Material or MAT.SmoothPlastic)
+	else
+		p = Instance.new("Part")
+		p.Anchored = true
+		p.Size = size
+		p.CFrame = cf
+		p.Color = color
+		p.Material = opts.Material or MAT.SmoothPlastic
+	end
 	p.Name = name
-	p.Anchored = true
-	p.Size = size
-	p.CFrame = cf
-	p.Color = color
-	p.Material = opts.Material or MAT.SmoothPlastic
 	p.Transparency = opts.Transparency or 0
 	if opts.Reflectance then
 		p.Reflectance = opts.Reflectance
@@ -537,344 +476,303 @@ local function formatCash(n)
 	return "$" .. tostring(n)
 end
 
+
 ----------------------------------------------------------------------
--- Sculpt kit (studs in, voxels out). Cell i covers [i * V, (i + 1) * V) on every axis, so a model built with
--- SK.Build sits exactly on y = 0 and whole-stud widths centred on 0 stay symmetric.
+-- The Phase 5 art kit (6.4 art rules): real materials only (WorldStyle.Materials), muted big faces, one accent hue
+-- per station, plinth + body + cap, inset corner posts on corners >= 4 studs tall, warm lanterns, parts < 4 studs
+-- cast no shadow. Every part goes through Voxel.Box (box above); WorldStyle gives the Plinth / Chamfer pieces.
 ----------------------------------------------------------------------
-local SK = {}
+local WM = (WorldStyle and WorldStyle.Materials) or {}
+local M = {
+	Slate = WM.Slate or MAT.Slate,
+	Cobble = WM.Cobblestone or MAT.Cobblestone,
+	Brick = WM.Brick or MAT.Brick,
+	Marble = WM.Marble or MAT.Marble,
+	Planks = WM.WoodPlanks or MAT.WoodPlanks,
+	Wood = WM.Wood or MAT.Wood,
+	Grass = WM.Grass or MAT.Grass,
+	Leafy = WM.LeafyGrass or MAT.LeafyGrass,
+	Sand = WM.Sand or MAT.Sand,
+	Clay = WM.ClayRoofTiles or MAT.ClayRoofTiles,
+	Shingles = WM.RoofShingles or MAT.RoofShingles,
+	Metal = WM.Metal or MAT.Metal,
+	Glass = WM.Glass or MAT.Glass,
+	Neon = WM.Neon or MAT.Neon,
+	Fabric = WM.Fabric or MAT.Fabric,
+	Force = WM.ForceField or MAT.ForceField,
+	Plastic = WM.SmoothPlastic or MAT.SmoothPlastic,
+}
 
-function SK.New(V)
-	return { G = Voxel.NewGrid(16), V = V or 0.5 }
-end
+-- the muted world palette (WorldStyle.Palette + the home's own woods, soils and foliage; big faces sat <= 0.45)
+local WP = (WorldStyle and WorldStyle.Palette) or {}
+local K = {
+	SlateDark = WP.SlateDark or rgb(82, 86, 104),
+	Slate = WP.Slate or rgb(108, 112, 130),
+	SlateLight = WP.SlateLight or rgb(140, 144, 160),
+	Marble = WP.Marble or rgb(222, 218, 228),
+	MarbleShade = WP.MarbleShade or rgb(196, 190, 210),
+	Cobble = WP.Cobble or rgb(152, 146, 156),
+	Brick = WP.Brick or rgb(156, 106, 96),
+	BrickDark = rgb(130, 90, 84),
+	Planks = WP.WoodPlanks or rgb(156, 118, 90),
+	PlanksLight = rgb(184, 150, 116),
+	PlanksDark = rgb(124, 92, 72),
+	Wood = WP.Wood or rgb(116, 88, 70),
+	WoodDark = rgb(86, 66, 56),
+	Whitewash = rgb(226, 220, 206),
+	Grass = WP.Grass or rgb(112, 152, 100),
+	GrassLight = rgb(130, 168, 110),
+	Leafy = WP.LeafyGrass or rgb(86, 130, 86),
+	LeafyDark = rgb(66, 108, 74),
+	LeafyTeal = rgb(66, 114, 108),
+	Soil = rgb(112, 86, 68),
+	SoilDark = rgb(94, 72, 60),
+	Sand = WP.Sand or rgb(214, 198, 164),
+	Roof = WP.Roof or rgb(148, 96, 90),
+	RoofDark = rgb(124, 82, 80),
+	Shingle = rgb(96, 92, 110),
+	BarnRed = rgb(150, 96, 86),
+	Gold = WP.Metal or rgb(200, 166, 98),
+	GoldBright = rgb(232, 188, 84),
+	Iron = rgb(92, 96, 112),
+	IronDark = rgb(64, 66, 80),
+	Copper = rgb(178, 122, 88),
+	Glass = WP.Glass or rgb(190, 210, 226),
+	WarmGlass = rgb(255, 226, 176),
+	Fabric = WP.Fabric or rgb(196, 176, 206),
+	Lantern = WP.Lantern or rgb(255, 214, 170),
+	BerryRed = rgb(200, 44, 66),
+	BerryRed2 = rgb(222, 70, 82),
+	BerryBlue = rgb(70, 92, 196),
+	BerryBlue2 = rgb(96, 118, 214),
+	BerryGold = rgb(236, 186, 70),
+	Star = rgb(255, 220, 130),
+	CloudTop = WP.CloudTop or rgb(250, 244, 252),
+	CloudSide = WP.CloudSide or rgb(226, 214, 240),
+	CloudUnder = WP.CloudUnder or rgb(186, 172, 222),
+}
+local LANTERN = K.Lantern
+local DETAIL_TAG = (WorldStyle and WorldStyle.Tags and WorldStyle.Tags.Detail) or "NC_Detail"
+local EXEMPT_TAG = (WorldStyle and WorldStyle.Tags and WorldStyle.Tags.Exempt) or "NC_StyleExempt"
+local PI = math.pi
+local rad = math.rad
 
--- grid lines are rounded half AWAY from zero, so a box from -a to +a always stays symmetric about the model's
--- axis (adjacent boxes still tile: the rounding only depends on the coordinate)
-local function gridLine(v)
-	if v >= 0 then
-		return floor(v + 0.5)
-	end
-	return -floor(-v + 0.5)
-end
+local Kit = {}
 
-local function cells(V, a, b)
-	if b < a then
-		a, b = b, a
-	end
-	return gridLine(a / V), gridLine(b / V) - 1
-end
-
--- fills [x0, x1) x [y0, y1) x [z0, z1); key nil clears; keep = only empty cells
-function SK.Box(s, x0, x1, y0, y1, z0, z1, key, keep)
-	local V, G = s.V, s.G
-	local a0, a1 = cells(V, x0, x1)
-	local b0, b1 = cells(V, y0, y1)
-	local c0, c1 = cells(V, z0, z1)
-	for i = a0, a1 do
-		for j = b0, b1 do
-			for k = c0, c1 do
-				if not keep or Voxel.Get(G, i, j, k) == nil then
-					Voxel.Set(G, i, j, k, key)
-				end
-			end
-		end
-	end
-end
-
--- recolours the existing cells of a box (only = { key = true } limits it)
-function SK.Paint(s, x0, x1, y0, y1, z0, z1, key, only)
-	local V, G = s.V, s.G
-	local a0, a1 = cells(V, x0, x1)
-	local b0, b1 = cells(V, y0, y1)
-	local c0, c1 = cells(V, z0, z1)
-	for i = a0, a1 do
-		for j = b0, b1 do
-			for k = c0, c1 do
-				local cur = Voxel.Get(G, i, j, k)
-				if cur ~= nil and (not only or only[cur]) then
-					Voxel.Set(G, i, j, k, key)
-				end
-			end
-		end
-	end
-end
-
-local function vp(s, x, y, z)
-	local V = s.V
-	return { x / V - 0.5, y / V - 0.5, z / V - 0.5 }
-end
-
-local function shape(s, sh, extra)
+-- one block in a world material; collide = true makes it solid (walkable / blocking)
+function Kit.p(parent, name, cf, size, color, mat, collide, extra)
+	local opts = { Material = mat or M.Slate, Collide = collide == true }
 	if extra then
 		for k, v in pairs(extra) do
-			sh[k] = v
+			opts[k] = v
 		end
 	end
-	Voxel.Shape(s.G, sh)
+	return box(parent, name, cf, size, color, opts)
 end
 
-function SK.Ell(s, x, y, z, rx, ry, rz, key, extra)
-	local V = s.V
-	shape(s, { Kind = "Ellipsoid", Center = vp(s, x, y, z), Radius = { rx / V, ry / V, rz / V }, Key = key }, extra)
+-- a ball (Shape Ball: always round) centred on pos
+function Kit.ball(parent, name, pos, d, color, mat, collide)
+	local part = Kit.p(parent, name, CFrame.new(pos), Vector3.new(d, d, d), color, mat, collide)
+	part.Shape = Enum.PartType.Ball
+	return part
 end
 
--- rounded box over [x0, x1) x [y0, y1) x [z0, z1), corner radius `round` (studs)
-function SK.RBox(s, x0, x1, y0, y1, z0, z1, round, key, extra)
-	local V = s.V
-	shape(s, {
-		Kind = "RoundBox",
-		Center = vp(s, (x0 + x1) / 2, (y0 + y1) / 2, (z0 + z1) / 2),
-		Size = { (x1 - x0) / V, (y1 - y0) / V, (z1 - z0) / V },
-		Round = (round or 1) / V,
-		Key = key,
-		Bias = 0,
-	}, extra)
+-- an upright cylinder standing on (x, y0, z): diameter d, height h
+function Kit.cyl(parent, name, x, y0, z, d, h, color, mat, collide)
+	local part = Kit.p(parent, name, CFrame.new(x, y0 + h / 2, z) * CFrame.Angles(0, 0, PI / 2), Vector3.new(h, d, d), color, mat, collide)
+	part.Shape = Enum.PartType.Cylinder
+	return part
 end
 
-function SK.Cone(s, x, z, y0, y1, r0, r1, key, extra)
-	local V = s.V
-	shape(s, { Kind = "Cone", A = vp(s, x, y0, z), B = vp(s, x, y1, z), Radius = r0 / V, RadiusB = (r1 or 0) / V, Key = key }, extra)
+-- a cylinder along an arbitrary CFrame's X axis (pipes, door wheels, medallions)
+function Kit.cylAt(parent, name, cf, length, d, color, mat, collide)
+	local part = Kit.p(parent, name, cf, Vector3.new(length, d, d), color, mat, collide)
+	part.Shape = Enum.PartType.Cylinder
+	return part
 end
 
-function SK.Cap(s, a, b, r, rb, key, extra)
-	local V = s.V
-	shape(s, { Kind = "Capsule", A = vp(s, a[1], a[2], a[3]), B = vp(s, b[1], b[2], b[3]), Radius = r / V, RadiusB = (rb or r) / V, Key = key }, extra)
+-- a WedgePart (full bottom and back faces; the slope falls toward local -Z)
+function Kit.wedge(parent, name, cf, size, color, mat, collide)
+	local w = Instance.new("WedgePart")
+	w.Name = name
+	w.Anchored = true
+	w.Size = size
+	w.CFrame = cf
+	w.Color = color
+	w.Material = mat or M.Planks
+	w.TopSurface = Enum.SurfaceType.Smooth
+	w.BottomSurface = Enum.SurfaceType.Smooth
+	w.CanCollide = collide == true
+	w.CanQuery = collide == true
+	w.CanTouch = false
+	w.CastShadow = max(size.X, size.Y, size.Z) >= 4
+	w.Parent = parent
+	return w
 end
 
-function SK.Curve(s, pts, r, rb, key, extra)
-	local V = s.V
-	local list = {}
-	for i, p in ipairs(pts) do
-		list[i] = vp(s, p[1], p[2], p[3])
-	end
-	shape(s, { Kind = "Curve", Points = list, Radius = r / V, RadiusB = (rb or r) / V, Smooth = true, Key = key }, extra)
+-- a round slab (a cylinder) of diameter w and height h standing on y0
+function Kit.oct(parent, name, x, y0, z, w, h, color, mat, collide)
+	return Kit.cyl(parent, name, x, y0, z, w, h, color, mat, collide)
 end
 
-function SK.Torus(s, x, y, z, R, r, key, extra)
-	local V = s.V
-	shape(s, { Kind = "Torus", Center = vp(s, x, y, z), Radius = R / V, Thickness = r / V, Key = key }, extra)
-end
-
--- vertical cylinder over [y0, y1): cells whose centre lies within r of (x, z)
-function SK.Cyl(s, x, z, r, y0, y1, key, keep, inner)
-	local V, G = s.V, s.G
-	local b0, b1 = cells(V, y0, y1)
-	local cx, cz = x / V - 0.5, z / V - 0.5
-	local rv = r / V + 0.25
-	local r2 = rv * rv
-	local in2 = inner and ((inner / V + 0.25) ^ 2) or -1
-	local ri = math.ceil(rv) + 1
-	for i = floor(cx) - ri, math.ceil(cx) + ri do
-		for k = floor(cz) - ri, math.ceil(cz) + ri do
-			local dx, dz = i - cx, k - cz
-			local d2 = dx * dx + dz * dz
-			if d2 <= r2 and d2 > in2 then
-				for j = b0, b1 do
-					if not keep or Voxel.Get(G, i, j, k) == nil then
-						Voxel.Set(G, i, j, k, key)
-					end
-				end
-			end
-		end
-	end
-end
-
--- a disc standing upright, facing -Z (normal along Z): radius r, centre (x, y), thickness [z0, z1)
-function SK.DiscZ(s, x, y, z0, z1, r, key, keep)
-	local V, G = s.V, s.G
-	local c0, c1 = cells(V, z0, z1)
-	local cx, cy = x / V - 0.5, y / V - 0.5
-	local rv = r / V + 0.25
-	local ri = math.ceil(rv) + 1
-	for i = floor(cx) - ri, math.ceil(cx) + ri do
-		for j = floor(cy) - ri, math.ceil(cy) + ri do
-			local dx, dy = i - cx, j - cy
-			if dx * dx + dy * dy <= rv * rv then
-				for k = c0, c1 do
-					if not keep or Voxel.Get(G, i, j, k) == nil then
-						Voxel.Set(G, i, j, k, key)
-					end
-				end
-			end
-		end
-	end
-end
-
--- same, facing +-X
-function SK.DiscX(s, z, y, x0, x1, r, key, keep)
-	local V, G = s.V, s.G
-	local a0, a1 = cells(V, x0, x1)
-	local cz, cy = z / V - 0.5, y / V - 0.5
-	local rv = r / V + 0.25
-	local ri = math.ceil(rv) + 1
-	for k = floor(cz) - ri, math.ceil(cz) + ri do
-		for j = floor(cy) - ri, math.ceil(cy) + ri do
-			local dz, dy = k - cz, j - cy
-			if dz * dz + dy * dy <= rv * rv then
-				for i = a0, a1 do
-					if not keep or Voxel.Get(G, i, j, k) == nil then
-						Voxel.Set(G, i, j, k, key)
-					end
-				end
-			end
-		end
-	end
-end
-
--- stepped gable roof over [x0, x1) x [z0, z1) starting at yBase; ridge along X (axis "X") or Z. altKey: every
--- other row of tiles in a second colour (reads as tile rows, costs nothing: a row is one box either way)
-function SK.Gable(s, x0, x1, z0, z1, yBase, step, key, axis, ridgeKey, altKey)
-	local V = s.V
-	step = step or V
-	local layer = 0
-	while true do
-		local inset = layer * step
-		local y = yBase + layer * V
-		local k = (altKey and layer % 2 == 1) and altKey or key
-		if axis == "Z" then
-			if x1 - x0 - 2 * inset < V * 0.99 then
-				break
-			end
-			if x1 - x0 - 2 * inset < 2 * step + V * 0.5 then
-				k = ridgeKey or k
-			end
-			SK.Box(s, x0 + inset, x1 - inset, y, y + V, z0, z1, k)
-		else
-			if z1 - z0 - 2 * inset < V * 0.99 then
-				break
-			end
-			if z1 - z0 - 2 * inset < 2 * step + V * 0.5 then
-				k = ridgeKey or k
-			end
-			SK.Box(s, x0, x1, y, y + V, z0 + inset, z1 - inset, k)
-		end
-		layer = layer + 1
-		if layer > 200 then
-			break
-		end
-	end
-	return yBase + layer * V
-end
-
--- stepped hip roof (shrinks on every side); altKey as in Gable
-function SK.Hip(s, x0, x1, z0, z1, yBase, step, key, topKey, altKey)
-	local V = s.V
-	step = step or V
-	local layer = 0
-	while true do
-		local inset = layer * step
-		if x1 - x0 - 2 * inset < V * 0.99 or z1 - z0 - 2 * inset < V * 0.99 then
-			break
-		end
-		local y = yBase + layer * V
-		local last = (x1 - x0 - 2 * inset < 2 * step + V * 0.5) or (z1 - z0 - 2 * inset < 2 * step + V * 0.5)
-		local k = (altKey and layer % 2 == 1) and altKey or key
-		SK.Box(s, x0 + inset, x1 - inset, y, y + V, z0 + inset, z1 - inset, last and (topKey or k) or k)
-		layer = layer + 1
-		if layer > 200 then
-			break
-		end
-	end
-	return yBase + layer * V
-end
-
--- a cheap round prism: two crossing boxes (an octagon-ish plus); `r` and the cut snap to the grid
-function SK.Oct(s, x, z, r, y0, y1, key, keep)
-	local V = s.V
-	r = max(V, snap(r, V))
-	local c = max(V, snap(r * 0.6, V))
-	SK.Box(s, x - r, x + r, y0, y1, z - c, z + c, key, keep)
-	if c < r then
-		SK.Box(s, x - c, x + c, y0, y1, z - r, z + r, key, keep)
-	end
-end
-
--- a stepped round spire: Oct layers shrinking from r0 to a point, `lh` studs per layer (alternating colours)
-function SK.Spire(s, x, z, r0, y0, y1, key, altKey, lh)
-	lh = lh or 1.0
-	local n = max(1, floor((y1 - y0) / lh + 0.5))
-	for i = 0, n - 1 do
-		local r = r0 * (1 - i / n)
-		local k = (altKey and i % 2 == 1) and altKey or key
-		SK.Oct(s, x, z, max(s.V, r), y0 + i * lh, y0 + (i + 1) * lh, k)
-	end
-	return y0 + n * lh
-end
-
-function SK.Shade(s, opts)
-	Voxel.Shade(s.G, opts or { Smooth = 1 })
-end
-
--- parts of one sculpt; opts: Name, Collide (true / "big"), MaxParts, Keep, CFrame, Shadow
-function SK.Build(s, pal, opts)
+-- a gable roof over a rectangle: cf = the centre of the wall tops (ridge along local X), len = ridge length,
+-- span = the width it covers (local Z), rise = ridge height. Two slabs + an optional ridge beam + gable wedges
+-- (gableColor / gableMat; nil = no gable ends). Returns the slabs.
+function Kit.gable(parent, name, cf, len, span, rise, color, mat, opts)
 	opts = opts or {}
-	local V = s.V
-	if s.G.Count == 0 then
-		local empty = Instance.new("Model")
-		empty.Name = opts.Name or "Voxels"
-		return empty
+	local ov = opts.Overhang or 0.6
+	local t = opts.Thick or 0.35
+	local half = span / 2
+	local a = math.atan(rise / half)
+	local slope = math.sqrt(half * half + rise * rise) + ov
+	local slabs = {}
+	for _, sgn in ipairs({ 1, -1 }) do
+		-- the slab runs from the ridge down to past the eave (ov beyond the wall line)
+		local th = sgn * a
+		local dirZ = sgn * math.cos(a)
+		local dirY = -math.sin(a)
+		local cz = sgn * half / 2 + dirZ * ov / 2 + sgn * math.sin(a) * t / 2
+		local cy = rise / 2 + dirY * ov / 2 + math.cos(a) * t / 2
+		slabs[#slabs + 1] = Kit.p(parent, name, cf * CFrame.new(0, cy, cz) * CFrame.Angles(th, 0, 0), Vector3.new(len + 2 * (opts.EndOverhang or 0.4), t, slope), color, mat, opts.Collide)
 	end
-	-- LOD may only fold shade variants back into their colour: distinct colours are never merged
-	local keep = opts.Keep
-	if not keep then
-		keep = {}
-		for _, v in pairs(s.G.Cells) do
-			local base, variant = Voxel.BaseKey(v)
-			if not variant then
-				keep[base] = true
-			end
+	if opts.Ridge then
+		Kit.p(parent, name .. "Ridge", cf * CFrame.new(0, rise + t * 0.7, 0), Vector3.new(len + 2 * (opts.EndOverhang or 0.4) + 0.1, 0.3, 0.45), opts.Ridge, M.Wood)
+	end
+	if opts.GableColor then
+		for _, sx in ipairs({ -1, 1 }) do
+			local x = sx * (len / 2 - 0.15)
+			Kit.wedge(parent, name .. "Gable", cf * CFrame.new(x, rise / 2, -half / 2), Vector3.new(0.3, rise, half), opts.GableColor, opts.GableMat or M.Planks)
+			Kit.wedge(parent, name .. "Gable", cf * CFrame.new(x, rise / 2, half / 2) * CFrame.Angles(0, PI, 0), Vector3.new(0.3, rise, half), opts.GableColor, opts.GableMat or M.Planks)
 		end
 	end
-	local model = Voxel.Build(s.G, {
-		VoxelSize = V,
-		Palette = pal or P,
-		Name = opts.Name or "Voxels",
-		CFrame = (opts.CFrame or CFrame.new()) * CFrame.new(V / 2, V / 2, V / 2),
-		MaxParts = opts.MaxParts,
-		Keep = keep,
-		CastShadow = opts.Shadow,
-	})
-	local collide = opts.Collide
-	if collide then
-		for _, p in ipairs(model:GetDescendants()) do
-			if p:IsA("BasePart") then
-				local big = max(p.Size.X, p.Size.Y, p.Size.Z) >= 1.5 and p.Transparency < 0.5
-				if collide == true or big then
-					p.CanCollide = true
-					p.CanQuery = true
-				end
-			end
-		end
-	end
-	return model
+	return slabs
 end
 
-local puffCloud -- defined with the art (stations share it)
-
--- moves every child of `from` into `to` (merging sculpts into one station model)
-local function absorb(to, from)
-	for _, c in ipairs(from:GetChildren()) do
-		c.Parent = to
+-- a window on a wall: cf = the window centre ON the wall surface, local -Z = outward. A wooden frame and warm glass
+-- set 0.08 proud of the wall, a sill below (3 parts)
+function Kit.window(parent, cf, w, h, frameColor, glassColor, opts)
+	opts = opts or {}
+	Kit.p(parent, "WindowFrame", cf * CFrame.new(0, 0, -0.06), Vector3.new(w + 0.3, h + 0.3, 0.12), frameColor or K.Whitewash, M.Wood)
+	Kit.p(parent, "Window", cf * CFrame.new(0, 0, -0.14), Vector3.new(w, h, 0.06), glassColor or K.WarmGlass, M.Glass, false, { Transparency = opts.Transparency or 0.1, Reflectance = 0.05 })
+	if opts.Sill ~= false then
+		Kit.p(parent, "Sill", cf * CFrame.new(0, -h / 2 - 0.2, -0.2), Vector3.new(w + 0.5, 0.18, 0.4), opts.SillColor or K.SlateLight, M.Slate)
 	end
-	from:Destroy()
 end
 
-local function biggestPart(model, nameFilter)
-	local best, bestVol = nil, -1
-	for _, p in ipairs(model:GetDescendants()) do
-		if p:IsA("BasePart") and p.Transparency < 1 and (not nameFilter or p.Name == nameFilter) then
-			local v = p.Size.X * p.Size.Y * p.Size.Z
-			if v > bestVol then
-				best, bestVol = p, v
-			end
+-- a wall lantern / post-top lantern: a dark iron cap and a glowing warm body; light = a PointLight (no shadows)
+function Kit.lantern(parent, pos, size, light, style)
+	size = size or 0.6
+	local cap = (style == "Brass") and K.Gold or ((style == "Crystal") and K.Marble or K.IronDark)
+	local body = Kit.p(parent, "Lantern", CFrame.new(pos), Vector3.new(size, size * 1.25, size), (style == "Crystal") and rgb(200, 236, 255) or LANTERN, M.Neon)
+	Kit.p(parent, "LanternCap", CFrame.new(pos + Vector3.new(0, size * 0.75, 0)), Vector3.new(size * 1.35, size * 0.25, size * 1.35), cap, (style == "Crystal") and M.Marble or M.Metal)
+	if light then
+		pointLight(body, (style == "Crystal") and rgb(214, 236, 255) or LANTERN, 1.2, 12)
+	end
+	return body
+end
+
+-- an inset corner post (6.4 rule 4: a 0.6-stud post on a corner >= 4 studs tall)
+function Kit.corner(parent, x, y0, z, h, color, mat)
+	return Kit.p(parent, "CornerPost", CFrame.new(x, y0 + h / 2, z), Vector3.new(0.6, h, 0.6), color or K.Whitewash, mat or M.Wood)
+end
+
+-- the four inset corner posts of a box [x0, x1] x [z0, z1]
+function Kit.corners(parent, x0, x1, z0, z1, y0, h, color, mat)
+	for _, x in ipairs({ x0, x1 }) do
+		for _, z in ipairs({ z0, z1 }) do
+			Kit.corner(parent, x, y0, z, h, color, mat)
 		end
 	end
-	return best
+end
+
+-- a sub-model of pure decoration (tagged NC_Detail: the Low graphics setting hides it)
+function Kit.detail(parent, name)
+	local d = Instance.new("Model")
+	d.Name = name or "Detail"
+	d.Parent = parent
+	CollectionService:AddTag(d, DETAIL_TAG)
+	return d
+end
+
+-- deterministic +-6 RGB jitter (6.4 rule 2) for repeated pieces
+function Kit.jit(color, seed)
+	if WorldStyle and WorldStyle.Jitter then
+		return WorldStyle.Jitter(color, seed, 6)
+	end
+	return color
+end
+
+-- a pixel billboard sign (World text rule): a title line and info lines on a navy plate; returns gui, labels
+function Kit.sign(adornee, name, lift, title, infos, maxDistance, edge)
+	local gui = newTag(adornee, name, 360, 120, maxDistance or 70)
+	gui.StudsOffsetWorldSpace = Vector3.new(0, lift or 3, 0)
+	local plate = tagPlate(gui, edge or C.TextGold)
+	local labels = {}
+	labels.Title = tagText(plate, "Title", title, "Title", TAG_NAME, C.Text, 1)
+	for i, info in ipairs(infos or {}) do
+		local key = info.Name or ("Info" .. i)
+		labels[key] = tagText(plate, key, info.Text, "Body", TAG_INFO, info.Color or C.TextGold, i + 1)
+	end
+	return gui, labels
 end
 
 ----------------------------------------------------------------------
--- Templates: every (station, level) is sculpted once per server and cloned onto the plots.
--- A template is { Model = Model at the origin (front = -Z, ground = y 0), Points = { name = local Vector3 },
--- Info = {...} }.
+-- The style finish (a guard after every template, 6.4 rules 1 / 2 / 8): a part in a material outside
+-- WorldStyle.Materials or SmoothPlastic with a side > 2 becomes Slate; a large face (> 16 studs^2) over saturation
+-- 0.45 or outside value 0.35..0.9 is pulled in (thin Neon inlays, ForceField and pieces <= 8 studs^3 stay);
+-- parts < 4 studs cast no shadow. Voxel clouds / pets / tokens (NC_StyleExempt) are skipped.
+----------------------------------------------------------------------
+local function exemptPart(p, root)
+	local cur = p
+	while cur and cur ~= root.Parent do
+		if CollectionService:HasTag(cur, EXEMPT_TAG) then
+			return true
+		end
+		cur = cur.Parent
+	end
+	return false
+end
+
+function Kit.finish(root)
+	for _, p in ipairs(root:GetDescendants()) do
+		if p:IsA("BasePart") then
+			local s = p.Size
+			local a, b, c = s.X, s.Y, s.Z
+			local big = max(a, b, c)
+			local small = min(a, b, c)
+			local face = big * (a + b + c - big - small)
+			if big < 4 then
+				p.CastShadow = false
+			end
+			if p.Transparency < 0.99 and not exemptPart(p, root) then
+				local isWorld = (not WorldStyle) or WorldStyle.IsWorldMaterial(p.Material)
+				if not isWorld or (p.Material == MAT.SmoothPlastic and big > 2) then
+					p.Material = M.Slate
+				end
+				if face > 16 and p.Material ~= MAT.ForceField and a * b * c > 8 and not (p.Material == MAT.Neon and small <= 0.5) then
+					local h, sat, v = p.Color:ToHSV()
+					local fix = false
+					if sat > 0.45 then
+						sat, fix = 0.45, true
+					end
+					if p.Material ~= MAT.Neon and p.Transparency < 0.3 then
+						if v < 0.36 then
+							v, fix = 0.36, true
+						elseif v > 0.89 then
+							v, fix = 0.89, true
+						end
+					end
+					if fix then
+						p.Color = Color3.fromHSV(h, sat, v)
+					end
+				end
+			end
+		end
+	end
+end
+----------------------------------------------------------------------
+-- Templates: every (station, level) is built once per server and cloned onto the plots. A template is
+-- { Model = Model at the origin (front = -Z, ground = y 0), Points = { name = local Vector3 }, Info = {...} }.
 ----------------------------------------------------------------------
 local templates = {}
 
@@ -898,424 +796,232 @@ local function cloneAt(tpl, cf)
 	return m
 end
 
+-- moves every child of `from` into `to` (merging sculpts into one model)
+local function absorb(to, from)
+	for _, c in ipairs(from:GetChildren()) do
+		c.Parent = to
+	end
+	from:Destroy()
+end
+
+local function biggestPart(model, nameFilter)
+	local best, bestVol = nil, -1
+	for _, p in ipairs(model:GetDescendants()) do
+		if p:IsA("BasePart") and p.Transparency < 1 and (not nameFilter or p.Name == nameFilter) then
+			local v = p.Size.X * p.Size.Y * p.Size.Z
+			if v > bestVol then
+				best, bestVol = p, v
+			end
+		end
+	end
+	return best
+end
+
+local function attach(part, name, localPos, attrs)
+	local a = Instance.new("Attachment")
+	a.Name = name
+	a.CFrame = part.CFrame:Inverse() * CFrame.new(localPos)
+	if attrs then
+		for k, v in pairs(attrs) do
+			a:SetAttribute(k, v)
+		end
+	end
+	a.Parent = part
+	return a
+end
+
+local function newPrompt(name, action, object, stationId)
+	local prompt = Instance.new("ProximityPrompt")
+	prompt.Name = name
+	prompt.ActionText = action
+	prompt.ObjectText = object
+	prompt.KeyboardKeyCode = Enum.KeyCode.E
+	prompt.HoldDuration = 0
+	prompt.MaxActivationDistance = PROMPT_RANGE
+	prompt.RequiresLineOfSight = false
+	prompt:SetAttribute("StationId", stationId)
+	return prompt
+end
+
 ----------------------------------------------------------------------
 -- ART: stations. Each Art.<Kind>(def, level) returns a template.
 ----------------------------------------------------------------------
 local Art = {}
 
--- a puffy voxel cloud sitting on y0: a shaded underside, a big round middle, a bright crown and a side puff.
--- r = the middle puff's radius (studs). Cheap: about 6 boxes.
-puffCloud = function(s, x, y0, z, r, seed)
-	local V = s.V
-	r = max(1.0, r)
-	local h = max(V, snap(r * 0.6, V))
-	SK.Oct(s, x, z, r - 0.25, y0, y0 + V, "CloudShade")
-	SK.Oct(s, x, z, r + 0.25, y0 + V, y0 + V + h, "Cloud")
-	SK.Box(s, x - snap(r * 0.5), x + snap(r * 0.5), y0 + V + h, y0 + V + h + h * 0.75, z - snap(r * 0.5), z + snap(r * 0.5), "CloudLight")
-	local side = ((seed or 1) % 2 == 0) and 1 or -1
-	local px = x + side * snap(r * 0.9)
-	SK.Box(s, px - snap(r * 0.45), px + snap(r * 0.45), y0 + V, y0 + V + h * 0.75, z - snap(r * 0.45), z + snap(r * 0.45), "Cloud", true)
-end
-
 ----------------------------------------------------------------------
--- Food plants (Phase 4: the four old Cloud Press slots, ids Press1..4 = Berry Bush, Carrot Patch, Cloud Melons,
--- Starfruit Tree). Front -Z faces the pad. Each grows in a raised planter (wood at 1-3, stone at 4-6, stone with gold
--- corner caps at 7-9, all gold at 10) and visibly GROWS with its level: taller, wider, more fruit. <= 45 parts.
--- HomeFx (client) reads the FruitPoint (world point) / Fruit / FruitColor attributes to fly fruit into the bowls.
+-- Berry Farm (Press1, Kind Farm, 40 levels; contract 3.6): a long terraced field beside the PressLane, front -Z
+-- toward the lane, local +X = the north end. Three wooden-framed soil rows rise toward the back: the front row
+-- grows red-berry bushes (one per level 1-10), the middle row blue-berry bushes (11-22), the back row a golden
+-- trellis (a vine with gold berries per level 23-37), and the glowing Starberry tree on its mound at the north end
+-- (38-40). Planted bushes keep growing for a few levels. A little red barn, berry crates and the farm sign stand
+-- at the south end. <= 150 parts (L40 ~ 145).
 ----------------------------------------------------------------------
-local Plant = {}
+local Farm = {}
+Farm.X0, Farm.X1 = -10.8, 13.2 -- the soil frame (local x)
+Farm.ROWS = { { Z = -2.25, Top = 0.75 }, { Z = 0.0, Top = 1.15 }, { Z = 2.25, Top = 1.55 } }
+Farm.RED, Farm.BLUE, Farm.VINES = 10, 12, 15 -- plants per row (levels 1-10, 11-22, 23-37)
+Farm.TREE_X = 15.7
 
-Plant.LOOK = {
-	Press1 = { Fruit = "Berry", Color = rgb(226, 58, 94) },
-	Press2 = { Fruit = "Carrot", Color = rgb(250, 140, 46) },
-	Press3 = { Fruit = "Melon", Color = rgb(98, 178, 240) },
-	Press4 = { Fruit = "Starfruit", Color = rgb(255, 212, 70) },
-}
-Plant.MAX_PARTS = 44 -- contract section 6: a plant <= 45 parts (the sparkle attachment adds none)
-Plant.CARROTS = { 2, 3, 4, 4, 5, 6, 6, 7, 8, 9 } -- carrots in the patch per level
--- the patch's 3 x 3 cells in planting order (the last one, the middle, holds the giant carrot at level 10)
-Plant.CELLS = { { -1, 0 }, { 1, 0 }, { 0, 1 }, { 0, -1 }, { -1, 1 }, { 1, -1 }, { 1, 1 }, { -1, -1 }, { 0, 0 } }
+-- how grown a plant planted at level `at` is at `level` (0 = just planted .. 1 = full)
+function Farm.age(level, at, span)
+	return max(0, min(1, (level - at) / (span or 6)))
+end
 
-function Plant.palette(level)
-	local base, rim
+-- a berry bush: a leafy ball with berries on its front (the yard side)
+function Farm.bush(parent, x, row, d, berry, berry2, n, seed)
+	local r = Farm.ROWS[row]
+	local cy = r.Top + d * 0.4
+	Kit.ball(parent, "Bush", Vector3.new(x, cy, r.Z), d, Kit.jit(row == 1 and K.Leafy or K.LeafyDark, seed), M.Leafy)
+	local spots = { { -0.28, 0.12 }, { 0.26, 0.26 }, { 0.04, -0.1 } }
+	for k = 1, n do
+		local o = spots[k]
+		Kit.ball(parent, "Berry", Vector3.new(x + o[1] * d, cy + o[2] * d, r.Z - d * 0.4), 0.42 + 0.04 * k, (k % 2 == 0) and berry2 or berry, M.Plastic)
+	end
+end
+
+function Art.Farm(def, level)
+	local tpl = newTemplate("BerryFarm")
+	local m = tpl.Model
+	level = max(1, min(floor(level), (def and def.MaxLevel) or 40))
+	local x0, x1 = Farm.X0, Farm.X1
+	local len = x1 - x0
+	local cx = (x0 + x1) / 2
+	-- the field: a slate plinth, three soil rows stepping up toward the back (grass where a row is not planted yet)
+	Kit.p(m, "Plinth", CFrame.new(cx + 2.4, 0.15, 0), Vector3.new(len + 4.8, 0.3, 7.0), K.SlateDark, M.Slate, true)
+	for i, r in ipairs(Farm.ROWS) do
+		local planted = (i == 1) or (i == 2 and level > Farm.RED) or (i == 3 and level > Farm.RED + Farm.BLUE)
+		local top = r.Top -- an unplanted row is a grassed-over bed, ready for its bushes
+		Kit.p(m, planted and "Soil" or "Grass", CFrame.new(cx, (0.3 + top) / 2, r.Z), Vector3.new(len - 0.3, top - 0.3, 2.15),
+			planted and Kit.jit(K.Soil, i) or K.Grass, planted and M.Sand or M.Grass, true)
+	end
+	-- the wooden frame: the front board, two step boards between the rows, the back board and the two ends
+	local fz = { -3.35, -1.12, 1.12, 3.35 }
+	local fh = { 0.85, 1.25, 1.65, 1.65 }
+	for i, z in ipairs(fz) do
+		Kit.p(m, "Frame", CFrame.new(cx, fh[i] / 2, z), Vector3.new(len + 0.3, fh[i], 0.3), Kit.jit(K.Planks, 10 + i), M.Planks, i == 1 or i == 4)
+	end
+	for _, x in ipairs({ x0, x1 }) do
+		Kit.p(m, "FrameEnd", CFrame.new(x, 0.85, 0), Vector3.new(0.3, 1.7, 7.0), K.PlanksDark, M.Planks, true)
+	end
+	-- the north mound where the Starberry tree grows
+	Kit.cyl(m, "Mound", Farm.TREE_X, 0.3, 0, 4.4, 0.5, K.Grass, M.Grass, true)
+	-- row 1: red berries (levels 1-10)
+	local span = len - 1.2
+	for i = 1, min(level, Farm.RED) do
+		local x = x0 + 0.6 + (i - 0.5) * span / Farm.RED
+		local g = Farm.age(level, i, 6)
+		Farm.bush(m, x, 1, 1.45 + 0.5 * g, K.BerryRed, K.BerryRed2, (g >= 0.5) and 2 or 1, i)
+	end
+	-- row 2: blue berries (levels 11-22)
+	for i = 1, min(level - Farm.RED, Farm.BLUE) do
+		local x = x0 + 0.6 + (i - 0.5) * span / Farm.BLUE
+		local g = Farm.age(level, Farm.RED + i, 6)
+		Farm.bush(m, x, 2, 1.35 + 0.45 * g, K.BerryBlue, K.BerryBlue2, (g >= 0.5) and 2 or 1, 20 + i)
+	end
+	-- row 3: the golden trellis (levels 23-37): six posts and a top rail, then one vine with gold berries per level
+	local vines = min(level - Farm.RED - Farm.BLUE, Farm.VINES)
+	if vines > 0 then
+		local r = Farm.ROWS[3]
+		for k = 0, 5 do
+			local px = x0 + 0.5 + k * (len - 1.0) / 5
+			Kit.p(m, "TrellisPost", CFrame.new(px, r.Top + 1.75, r.Z + 0.35), Vector3.new(0.3, 3.5, 0.3), K.Wood, M.Wood)
+		end
+		Kit.p(m, "TrellisRail", CFrame.new(cx, r.Top + 3.4, r.Z + 0.35), Vector3.new(len - 0.6, 0.25, 0.25), K.Wood, M.Wood)
+		local vspan = len - 1.4
+		for j = 1, vines do
+			local x = x0 + 0.7 + (j - 0.5) * vspan / Farm.VINES
+			local g = Farm.age(level, Farm.RED + Farm.BLUE + j, 5)
+			local h = ((j % 2 == 0) and 1.7 or 2.2) + 1.0 * g
+			Kit.p(m, "Vine", CFrame.new(x, r.Top + h / 2, r.Z + 0.1), Vector3.new(0.85, h, 0.45), Kit.jit((j % 2 == 0) and K.Leafy or K.LeafyDark, 40 + j), M.Leafy)
+			Kit.ball(m, "GoldBerry", Vector3.new(x + ((j % 2 == 0) and 0.25 or -0.25), r.Top + h * 0.62, r.Z - 0.3), 0.5 + 0.12 * g, K.BerryGold, M.Metal)
+		end
+	end
+	-- a young sapling on the mound foreshadows the Starberry tree (30-37)
+	if level >= 30 and level < 38 then
+		Kit.cyl(m, "Sapling", Farm.TREE_X, 0.8, 0, 0.35, 1.6, K.Wood, M.Wood)
+		Kit.ball(m, "SaplingLeaves", Vector3.new(Farm.TREE_X, 2.7, 0), 1.5, K.LeafyTeal, M.Leafy)
+	end
+	-- the Starberry tree (levels 38-40): a trunk, a teal crown of three puffs and glowing star fruit
+	if level >= 38 then
+		local t = level - 37 -- 1..3
+		local trunkH = 2.6 + 0.7 * t
+		local crown = 3.0 + 0.55 * t
+		local tx = Farm.TREE_X
+		Kit.cyl(m, "Trunk", tx, 0.8, 0, 0.9, trunkH, K.Wood, M.Wood)
+		local cy = 0.8 + trunkH + crown * 0.3
+		Kit.ball(m, "Crown", Vector3.new(tx, cy, 0), crown, K.LeafyTeal, M.Leafy)
+		Kit.ball(m, "Crown", Vector3.new(tx - crown * 0.32, cy - crown * 0.22, -0.3), crown * 0.66, Kit.jit(K.LeafyTeal, 7), M.Leafy)
+		Kit.ball(m, "Crown", Vector3.new(tx + crown * 0.32, cy - crown * 0.18, 0.3), crown * 0.62, Kit.jit(K.LeafyTeal, 9), M.Leafy)
+		local stars = { { -0.35, -0.05, -0.5 }, { 0.3, 0.2, -0.48 }, { 0.0, 0.42, -0.36 }, { 0.42, -0.25, -0.3 } }
+		for k = 1, min(#stars, t + 1) do
+			local o = stars[k]
+			local sp = Kit.p(m, "Starberry", CFrame.new(tx + o[1] * crown, cy + o[2] * crown, o[3] * crown) * CFrame.Angles(rad(45), rad(30), rad(45)),
+				Vector3.new(0.55, 0.55, 0.55), K.Star, M.Neon)
+			if k == 1 and t >= 3 then
+				pointLight(sp, LANTERN, 1.2, 12)
+				local att = Instance.new("Attachment")
+				att.Name = "Sparkle"
+				att.Parent = sp
+				emitter(att, { Color = ColorSequence.new(C.TextGold), Rate = 3, SpreadAngle = Vector2.new(180, 180) })
+			end
+		end
+	end
+	-- the little red barn at the south end (its door faces the lane)
+	local bx = -15.6
+	local bw, bd, bh = 4.8, 5.4, 3.4
+	local bz = 0.6
+	Kit.p(m, "BarnPlinth", CFrame.new(bx, 0.25, bz), Vector3.new(bw + 0.5, 0.5, bd + 0.5), K.SlateDark, M.Slate, true)
+	Kit.p(m, "Barn", CFrame.new(bx, 0.5 + bh / 2, bz), Vector3.new(bw, bh, bd), K.BarnRed, M.Planks, true)
+	for _, sx in ipairs({ -1, 1 }) do
+		Kit.corner(m, bx + sx * (bw / 2 - 0.15), 0.5, bz - bd / 2 + 0.15, bh, K.Whitewash, M.Wood)
+	end
+	-- the roof: its ridge runs front to back, so the gable (with the hay-loft door) faces the lane
+	local roofCF = CFrame.new(bx, 0.5 + bh, bz) * CFrame.Angles(0, PI / 2, 0)
+	local slabs = Kit.gable(m, "BarnRoof", roofCF, bd, bw, 2.0, K.Shingle, M.Shingles, { Overhang = 0.45, Ridge = K.WoodDark, GableColor = K.BarnRed })
+	slabs[1].Name = "BarnRoof"
+	Kit.p(m, "BarnDoor", CFrame.new(bx, 0.5 + 1.25, bz - bd / 2 - 0.06), Vector3.new(2.0, 2.5, 0.14), K.WoodDark, M.Wood)
+	Kit.p(m, "DoorBrace", CFrame.new(bx, 0.5 + 1.25, bz - bd / 2 - 0.15) * CFrame.Angles(0, 0, math.atan(2.5 / 2.0)), Vector3.new(3.0, 0.22, 0.06), K.Whitewash, M.Wood)
+	Kit.p(m, "LoftDoor", CFrame.new(bx, 0.5 + bh + 0.65, bz - bd / 2 - 0.2), Vector3.new(1.0, 0.9, 0.12), K.WoodDark, M.Wood)
+	local sign = Kit.p(m, "SignBoard", CFrame.new(bx, 0.5 + bh - 0.45, bz - bd / 2 - 0.1), Vector3.new(2.8, 0.55, 0.12), K.Whitewash, M.Wood)
 	if level >= 10 then
-		base, rim = C.GoldDark, P.Gold
-	elseif level >= 4 then
-		base, rim = C.StoneDark, C.Stone
-	else
-		base, rim = C.PlankDark, C.PlankLight
+		Kit.lantern(m, Vector3.new(bx + 1.55, 0.5 + 2.6, bz - bd / 2 - 0.35), 0.45, true)
 	end
-	return mergeTables(P, {
-		RimBase = base,
-		Rim = rim,
-		Soil = rgb(112, 80, 60),
-		Leaf = rgb(76, 164, 82),
-		Berry = rgb(226, 58, 94),
-		BerryBlue = rgb(104, 96, 218),
-		Blossom = rgb(252, 246, 240),
-		Carrot = rgb(250, 140, 46),
-		CarrotDark = rgb(214, 104, 34),
-		Greens = rgb(100, 190, 80),
-		GreensDark = rgb(70, 150, 70),
-		Melon = rgb(98, 178, 240),
-		Stripe = rgb(248, 252, 255),
-		Post = C.PlankDark,
-		Vine = rgb(74, 150, 82),
-		Curl = rgb(110, 186, 86),
-		Canopy = rgb(104, 196, 116),
-		Star = (level >= 8) and { Color = rgb(255, 222, 96), Material = MAT.Neon } or rgb(255, 210, 66),
-		StarDark = rgb(232, 170, 52),
-	})
-end
-
--- the raised planter (half width h): a darker base layer, the rim on top and the soil inside
-function Plant.planter(s, h, level)
-	SK.Box(s, -h, h, 0, 0.5, -h, h, "RimBase")
-	SK.Box(s, -h, h, 0.5, 1.0, -h, h, "Rim")
-	SK.Box(s, -h + 0.5, h - 0.5, 0.5, 1.0, -h + 0.5, h - 0.5, "Soil")
-	if level >= 7 and level <= 9 then
-		-- gold caps on the two front corners (the back corners stay free for trellis posts)
-		for _, sx in ipairs({ -1, 1 }) do
-			local x0 = (sx < 0) and -h or (h - 1.0)
-			SK.Box(s, x0, x0 + 1.0, 1.0, 1.5, -h, -h + 1.0, "Gold")
-		end
+	-- berry crates by the barn (pure decor)
+	local d = Kit.detail(m, "Crates")
+	local crates = { { -12.25, 0.55, -2.6, K.BerryRed }, { -12.25, 0.55, -1.3, K.BerryBlue }, { -12.25, 1.65, -1.95, K.BerryGold } }
+	local nCrates = (level >= 23) and 3 or ((level >= 11) and 2 or 1)
+	for i = 1, nCrates do
+		local c = crates[i]
+		Kit.p(d, "Crate", CFrame.new(c[1], c[2], c[3]) * CFrame.Angles(0, rad((i - 2) * 6), 0), Vector3.new(1.15, 1.1, 1.15), Kit.jit(K.PlanksLight, i), M.Planks)
+		Kit.p(d, "CrateBerries", CFrame.new(c[1], c[2] + 0.6, c[3]) * CFrame.Angles(0, rad((i - 2) * 6), 0), Vector3.new(0.95, 0.18, 0.95), c[4], M.Plastic)
 	end
-end
-
--- n points spread over an ellipsoid (golden-angle spiral), elevations from lo to hi (radians); each point also
--- carries its outward direction in the ground plane ({ x, y, z, dx, dz })
-function Plant.spread(n, cx, cy, cz, rx, ry, rz, lo, hi, seed)
-	local out = {}
-	for i = 1, n do
-		local a = (i + (seed or 0)) * 2.39996
-		local f = (n > 1) and ((i - 1) / (n - 1)) or 0.5
-		local e = lo + (hi - lo) * f
-		local ca, sa = math.cos(a), math.sin(a)
-		out[i] = { cx + rx * math.cos(e) * ca, cy + ry * math.sin(e), cz + rz * math.cos(e) * sa, ca, sa }
-	end
-	return out
-end
-
--- Berry Bush: a round, clumpy bush dotted with berries (red, some blue from 6) and white blossoms (3+)
-function Plant.Berry(s, level, t)
-	local h = (level >= 4) and 3.0 or 2.5
-	Plant.planter(s, h, level)
-	local rx = 1.5 + 1.25 * t
-	local ry = 1.25 + 1.5 * t
-	local cy = 1.0 + ry * 0.85
-	local f = s.Foliage
-	SK.Ell(f, 0, cy, 0, rx, ry, rx * 0.9, "Leaf")
-	SK.Ell(f, -rx * 0.55, cy - ry * 0.3, rx * 0.25, rx * 0.6, ry * 0.6, rx * 0.6, "Leaf")
-	SK.Ell(f, rx * 0.55, cy - ry * 0.35, -rx * 0.25, rx * 0.55, ry * 0.55, rx * 0.55, "Leaf")
-	if level >= 4 then
-		SK.Ell(f, rx * 0.15, cy + ry * 0.55, 0, rx * 0.5, ry * 0.45, rx * 0.5, "Leaf")
-	end
-	SK.Shade(f, { Only = { Leaf = true }, Smooth = 1, Seed = 5 })
-	for i, p in ipairs(Plant.spread(3 + level, 0, cy, 0, rx + 0.15, ry + 0.15, rx * 0.9 + 0.15, -0.2, 1.05, 1)) do
-		local bx, by, bz = snap(p[1]), snap(p[2]), snap(p[3])
-		local key = (level >= 6 and i % 3 == 0) and "BerryBlue" or "Berry"
-		SK.Box(s, bx - 0.5, bx + 0.5, by - 0.5, by + 0.5, bz - 0.5, bz + 0.5, key)
-	end
-	if level >= 3 then
-		for _, p in ipairs(Plant.spread(floor(level / 3) + 1, 0, cy, 0, rx + 0.1, ry + 0.1, rx * 0.9 + 0.1, 0.35, 1.2, 7)) do
-			local bx, by, bz = snap(p[1]), snap(p[2]), snap(p[3])
-			SK.Box(s, bx, bx + 0.5, by, by + 0.5, bz, bz + 0.5, "Blossom")
-		end
-	end
-	return cy + ry * 0.6, cy + ry
-end
-
--- Carrot Patch: rows of fat orange carrots peeking out of the soil, each under a bushy green tuft (a stalk and a
--- wider crown), more carrots and bigger tufts with every level; a giant carrot in the middle at 10
-function Plant.Carrot(s, level, t)
-	local h = (level >= 4) and 3.0 or 2.5
-	Plant.planter(s, h, level)
-	local step = (h >= 3) and 2.0 or 1.5
-	local lh = snap(0.75 + 0.15 * level)
-	local top = 1.0
-	for i = 1, Plant.CARROTS[level] or 9 do
-		local c = Plant.CELLS[i]
-		local x, z = c[1] * step, c[2] * step
-		local giant = level >= 10 and i == 9
-		local w = giant and 1.0 or 0.5
-		local sh = giant and 2.5 or ((level >= 5) and 1.5 or 1.0)
-		SK.Box(s, x - w, x + w, top, top + sh, z - w, z + w, "Carrot")
-		if not giant then
-			-- the carrot's darker ring where it leaves the soil
-			SK.Box(s, x - w, x + w, top, top + 0.5, z - w, z + w, "CarrotDark")
-		end
-		local gy = top + sh
-		local gh = giant and (lh + 1.5) or lh
-		local key = (i % 2 == 0) and "GreensDark" or "Greens"
-		-- the tuft: a short stalk and a crown twice as wide (turned every other carrot), the crown's middle a step taller
-		local cw = giant and 1.5 or 1.0
-		SK.Box(s, x - 0.5, x + 0.5, gy, gy + gh + 0.5, z - 0.5, z + 0.5, key)
-		if i % 2 == 0 then
-			SK.Box(s, x - cw, x + cw, gy + 0.5, gy + gh, z - 0.5, z + 0.5, key)
-		else
-			SK.Box(s, x - 0.5, x + 0.5, gy + 0.5, gy + gh, z - cw, z + cw, key)
-		end
-	end
-	return top + 1.5, top + lh + 4.5
-end
-
--- Cloud Melons: plump sky-blue melons with white cloud stripes on a green vine bed. The big melon swells with
--- every level; a second melon joins at 4, a third at 7; from 5 a wooden vine trellis rises behind them (taller at 8+)
-function Plant.Melon(s, level, t)
-	local h = (level >= 4) and 3.0 or 2.5
-	Plant.planter(s, h, level)
-	-- vine leaves on the soil corners (the back ones sit under the trellis)
-	for _, c in ipairs({ { -1, -1 }, { 1, 1 }, { -1, 1 }, { 1, -1 } }) do
-		local x0 = (c[1] < 0) and (-h + 0.5) or (h - 2.0)
-		local z0 = (c[2] < 0) and (-h + 0.5) or (h - 2.0)
-		SK.Box(s, x0, x0 + 1.5, 1.0, 1.5, z0, z0 + 1.5, "Vine")
-	end
-	local topY = 1.0
-	if level >= 5 then
-		-- the trellis: two posts at the back corners, a top bar and vine leaves climbing it
-		local th = (level >= 8) and 5.5 or 4.5
-		local zb = h - 1.0
-		SK.Box(s, -h + 0.5, -h + 1.0, 1.0, th, zb, zb + 0.5, "Post")
-		SK.Box(s, h - 1.0, h - 0.5, 1.0, th, zb, zb + 0.5, "Post")
-		SK.Box(s, -h + 0.5, h - 0.5, th, th + 0.5, zb, zb + 0.5, "Post")
-		SK.Box(s, -h + 1.0, -0.5, th - 1.0, th, zb - 0.5, zb + 0.5, "Vine")
-		SK.Box(s, 0.5, h - 1.0, th - 1.5, th - 0.5, zb - 0.5, zb + 0.5, "Curl")
-		if level >= 10 then
-			-- a little melon hanging from the trellis
-			SK.Box(s, -2.0, -1.0, th - 2.5, th - 1.0, zb - 0.5, zb + 0.5, "Melon")
-		end
-		topY = th + 0.5
-	end
-	local r = 1.1 + 0.1 * (level - 1)
-	local list = { { 0, -0.25, r } }
-	if level >= 4 then
-		list[1] = { 0.5, 0, r }
-		list[2] = { -1.5, -1.5, 0.75 }
-	end
-	if level >= 7 then
-		list[3] = { 1.5, -1.75, 0.65 }
-	end
-	local melonTop = 1.0
-	for i, m in ipairs(list) do
-		local mr = m[3]
-		local ry = mr * 0.85
-		local cy = 1.0 + ry * 0.8
-		SK.Ell(s, m[1], cy, m[2], mr, ry, mr, "Melon")
-		local cx, cz = snap(m[1]), snap(m[2])
-		if i == 1 then
-			-- two white cloud stripes over the big melon (only on its own voxels) and a curly stem with a leaf
-			local a, b = snap(cx - mr * 0.45), snap(cx + mr * 0.45)
-			SK.Paint(s, a, a + 0.5, cy - ry * 0.3, cy + ry + 0.5, cz - mr - 0.5, cz + mr + 0.5, "Stripe", { Melon = true })
-			SK.Paint(s, b - 0.5, b, cy - ry * 0.3, cy + ry + 0.5, cz - mr - 0.5, cz + mr + 0.5, "Stripe", { Melon = true })
-			SK.Box(s, cx - 0.5, cx, cy + ry - 0.25, cy + ry + 0.5, cz - 0.5, cz, "Curl")
-			SK.Box(s, cx, cx + 1.0, cy + ry, cy + ry + 0.5, cz - 0.5, cz, "Vine")
-			melonTop = cy + ry
-		end
-	end
-	return melonTop * 0.8, max(topY, melonTop + 0.5)
-end
-
--- Starfruit Tree: a sapling at 1 that grows into a big round tree hung with golden starfruit (glowing from 8). The
--- canopy is sculpted on a coarser grid (Foliage, 1 stud) so the tree stays inside the plant budget.
-function Plant.Star(s, level, t)
-	local h = (level >= 4) and 3.0 or 2.5
-	Plant.planter(s, h, level)
-	local tw = (level >= 6) and 1.0 or 0.5
-	local th = snap(1.5 + 0.5 * level)
-	local y0 = 1.0
-	SK.Box(s, -tw, tw, y0, y0 + th, -tw, tw, "Bark")
-	if level >= 4 then
-		-- root flare
-		SK.Box(s, -tw - 0.5, tw + 0.5, y0, y0 + 0.5, -tw - 0.5, tw + 0.5, "Bark")
-	end
-	local cr = min(3.0, 1.25 + 0.2 * level)
-	local cy = y0 + th + cr * 0.45
-	if level >= 5 then
-		-- two stepped branches reaching into the side crowns
-		local by = y0 + snap(th * 0.6)
-		SK.Box(s, -tw - 1.0, -tw, by, by + 0.5, -0.5, 0.5, "Bark")
-		SK.Box(s, -tw - 1.5, -tw - 0.5, by + 0.5, by + 1.0, -0.5, 0.5, "Bark")
-		SK.Box(s, tw, tw + 1.0, by + 0.5, by + 1.0, -0.5, 0.5, "Bark")
-		SK.Box(s, tw + 0.5, tw + 1.5, by + 1.0, by + 1.5, -0.5, 0.5, "Bark")
-	end
-	local f = s.Foliage
-	SK.Ell(f, 0, cy, 0, cr, cr * 0.7, cr, "Canopy")
-	if level >= 3 then
-		SK.Ell(f, -cr * 0.6, cy - cr * 0.15, cr * 0.2, cr * 0.6, cr * 0.5, cr * 0.6, "Canopy")
-		SK.Ell(f, cr * 0.6, cy - cr * 0.1, -cr * 0.2, cr * 0.6, cr * 0.5, cr * 0.6, "Canopy")
-	end
-	if level >= 7 then
-		SK.Ell(f, 0, cy + cr * 0.55, 0, cr * 0.55, cr * 0.4, cr * 0.55, "Canopy")
-	end
-	SK.Shade(f, { Only = { Canopy = true }, Smooth = 1, Seed = 9 })
-	-- the starfruit: little five-point stars (a plus of voxels) hanging around the canopy
-	local n = 1 + math.ceil(level / 2)
-	for _, p in ipairs(Plant.spread(n, 0, cy, 0, cr + 0.4, cr * 0.7 + 0.4, cr + 0.4, -0.75, 0.25, 3)) do
-		local x, y, z = floor(p[1] / 0.5) * 0.5, floor(p[2] / 0.5) * 0.5, floor(p[3] / 0.5) * 0.5
-		if abs(p[4]) > abs(p[5]) then
-			SK.Box(s, x, x + 0.5, y, y + 0.5, z - 0.5, z + 1.0, "Star")
-			SK.Box(s, x, x + 0.5, y - 0.5, y + 1.0, z, z + 0.5, "Star")
-		else
-			SK.Box(s, x - 0.5, x + 1.0, y, y + 0.5, z, z + 0.5, "Star")
-			SK.Box(s, x, x + 0.5, y - 0.5, y + 1.0, z, z + 0.5, "Star")
-		end
-	end
-	return cy, cy + cr
-end
-
-function Art.Plant(def, level)
-	local look = Plant.LOOK[def.Id] or Plant.LOOK.Press1
-	local t = (level - 1) / max(1, (def.MaxLevel or 10) - 1)
-	local tpl = newTemplate("Plant")
-	local s = SK.New(0.5)
-	s.Foliage = SK.New(1.0)
-	local sculpt = Plant[look.Fruit] or Plant.Berry
-	if look.Fruit == "Starfruit" then
-		sculpt = Plant.Star
-	end
-	local fruitY, topY = sculpt(s, level, t)
-	local pal = Plant.palette(level)
-	local m = SK.Build(s, pal, { Name = "Body", Collide = "big", MaxParts = Plant.MAX_PARTS - 6 })
-	absorb(tpl.Model, m)
-	if s.Foliage.G.Count > 0 then
-		absorb(tpl.Model, SK.Build(s.Foliage, pal, { Name = "Foliage", Collide = "big", MaxParts = Plant.MAX_PARTS - #tpl.Model:GetChildren() }))
-	end
-	if level >= 10 then
-		local anchor = biggestPart(tpl.Model)
-		if anchor then
-			local att = Instance.new("Attachment")
-			att.Name = "Sparkle"
-			att.CFrame = anchor.CFrame:Inverse() * CFrame.new(0, topY, 0)
-			att.Parent = anchor
-			emitter(att, { Color = ColorSequence.new(C.TextGold), Rate = 3, SpreadAngle = Vector2.new(180, 180) })
-		end
-	end
-	tpl.Points.FruitPoint = Vector3.new(0, fruitY, 0)
-	tpl.Info.Fruit = look.Fruit
-	tpl.Info.FruitColor = look.Color
+	-- the farm sign (World text rule, MaxDistance 70)
+	Kit.sign(sign, "FarmSign", 4.2, "Berry Farm Lv " .. level, { { Name = "Info", Text = "Grows berries for your pets", Color = C.TextGreen } }, 70, C.CashGlow)
+	-- where HomeFx's berry flights start: the top of the planted rows, in the middle of the field
+	local topRow = (vines > 0) and 3 or ((level > Farm.RED) and 2 or 1)
+	tpl.Points.BerryPoint = Vector3.new(cx, Farm.ROWS[topRow].Top + 2.2, Farm.ROWS[topRow].Z)
+	tpl.Info.Rows = topRow
 	return tpl
 end
 
 ----------------------------------------------------------------------
--- Coin Magnet (the old Collector slot): a carved totem pole with a happy face on a round stone base, crowned by a
--- big red horseshoe magnet holding a gold coin. The magnet is its own model `MagnetHead` (HomeFx spins it about
--- the MagnetCenter point). Taller, gold trims (4+), more coins and sparks at the top level. <= 55 parts.
-----------------------------------------------------------------------
-function Art.Magnet(def, level)
-	local tpl = newTemplate("Magnet")
-	local s = SK.New(0.5)
-	local gold = level >= 4
-	local trim = gold and "Gold" or "Trim"
-	SK.Oct(s, 0, 0, 2.5, 0, 0.5, "Base")
-	SK.Oct(s, 0, 0, 2.0, 0.5, 1.0, trim)
-	local poleTop = snap(3.5 + 0.75 * level)
-	SK.Box(s, -1.0, 1.0, 1.0, poleTop, -1.0, 1.0, "Totem")
-	local y = 1.5
-	while y + 0.5 <= poleTop - 2.5 do
-		SK.Box(s, -1.0, 1.0, y, y + 0.5, -1.0, 1.0, "Band")
-		y = y + 1.5
-	end
-	-- the happy face on the front (-Z): two eyes and a smile, little wing ears from 2
-	local fy = poleTop - 1.5
-	SK.Box(s, -1.0, -0.5, fy, fy + 0.5, -1.0, -0.5, "Eye")
-	SK.Box(s, 0.5, 1.0, fy, fy + 0.5, -1.0, -0.5, "Eye")
-	SK.Box(s, -0.5, 0.5, fy - 1.0, fy - 0.5, -1.0, -0.5, "Smile")
-	if level >= 2 then
-		for _, sx in ipairs({ -1, 1 }) do
-			local x0 = (sx < 0) and -1.5 or 1.0
-			SK.Box(s, x0, x0 + 0.5, fy - 0.5, fy + 0.5, -0.5, 0.5, "Wing")
-			local x1 = x0 + sx * 0.5
-			SK.Box(s, x1, x1 + 0.5, fy, fy + 1.0, -0.5, 0.5, "Wing")
-		end
-	end
-	SK.Box(s, -1.5, 1.5, poleTop, poleTop + 0.5, -1.5, 1.5, trim)
-	SK.Box(s, -0.5, 0.5, poleTop + 0.5, poleTop + 1.0, -0.5, 0.5, trim)
-	-- coin stacks on the base (3+)
-	if level >= 3 then
-		for _, sx in ipairs({ -1, 1 }) do
-			local x0 = (sx < 0) and -2.5 or 1.5
-			SK.Box(s, x0, x0 + 1.0, 0.5, (level >= 5) and 2.0 or 1.5, -2.0, -1.0, "Coin")
-		end
-	end
-	local pal = mergeTables(P, {
-		Base = C.StoneDark,
-		Trim = rgb(124, 156, 210),
-		Totem = rgb(204, 150, 104),
-		Band = rgb(170, 112, 78),
-		Eye = rgb(40, 44, 64),
-		Smile = rgb(232, 94, 100),
-		Wing = rgb(122, 196, 236),
-		Coin = P.Gold,
-		Magnet = rgb(226, 62, 70),
-		Tip = rgb(226, 232, 244),
-		Spark = { Color = rgb(150, 236, 255), Material = MAT.Neon },
-	})
-	local body = SK.Build(s, pal, { Name = "Body", Collide = "big" })
-	absorb(tpl.Model, body)
-
-	-- the magnet: a horseshoe (opening up) standing in the XY plane, facing the yard
-	local hs = SK.New(0.5)
-	local hw = (level >= 3) and 2.0 or 1.5
-	local y0 = poleTop + 1.0
-	local armH = (level >= 3) and 2.5 or 2.0
-	SK.Box(hs, -hw + 0.5, hw - 0.5, y0, y0 + 1.0, -0.5, 0.5, "Magnet")
-	SK.Box(hs, -hw, hw, y0 + 0.5, y0 + 1.0, -0.5, 0.5, "Magnet")
-	SK.Box(hs, -hw, -hw + 1.0, y0 + 1.0, y0 + 1.0 + armH, -0.5, 0.5, "Magnet")
-	SK.Box(hs, hw - 1.0, hw, y0 + 1.0, y0 + 1.0 + armH, -0.5, 0.5, "Magnet")
-	local ty = y0 + 1.0 + armH
-	SK.Box(hs, -hw, -hw + 1.0, ty, ty + 1.0, -0.5, 0.5, "Tip")
-	SK.Box(hs, hw - 1.0, hw, ty, ty + 1.0, -0.5, 0.5, "Tip")
-	if level >= 2 then
-		-- the gold coin it caught, between the arms
-		local cr = (level >= 3) and 0.9 or 0.5
-		SK.DiscZ(hs, 0, y0 + 1.0 + cr + 0.25, -0.5, 0.5, cr, "Coin")
-	end
-	if level >= 5 then
-		for _, sx in ipairs({ -1, 1 }) do
-			local x0 = (sx < 0) and (-hw) or (hw - 0.5)
-			SK.Box(hs, x0, x0 + 0.5, ty + 1.0, ty + 1.5, -0.5, 0, "Spark")
-		end
-	end
-	local head = SK.Build(hs, pal, { Name = "MagnetHead" })
-	local primary = biggestPart(head, "Magnet") or biggestPart(head)
-	if primary then
-		head.PrimaryPart = primary
-	end
-	head.Parent = tpl.Model
-	if level >= 5 and primary then
-		local att = Instance.new("Attachment")
-		att.Name = "Sparkle"
-		att.CFrame = primary.CFrame:Inverse() * CFrame.new(0, ty + 1.0, 0)
-		att.Parent = primary
-		emitter(att, { Color = ColorSequence.new(rgb(150, 236, 255), C.TextGold), Rate = 3, SpreadAngle = Vector2.new(180, 180) })
-	end
-	tpl.Points.MagnetCenter = Vector3.new(0, y0 + (armH + 2.0) / 2, 0)
-	return tpl
-end
-
-----------------------------------------------------------------------
--- Garden (section 3.3): 12 pet places on a 3 x 4 grid (Slot.Spots), sand walks (Slot.Walkable) with the 3-stud
--- entrance at the front middle (the pad faces it). Open places (`open`, from SetGarden: 3 + Prestige stars, not the
--- Garden level) are flower beds with a soft cushion; the others are seedling beds with a small "Prestige to open"
--- sign. Bowls, fruit, coins and heaps are CLIENT parts (HomeFx). The Garden level adds decor (birdhouse, hedges,
--- the entrance arch, fruit trees, lanterns, gold). Every place has an Attachment Spot<i> (attributes Slot, Open) on
--- its cushion; every open place a GardenSpotPrompt ("Put a pet here", E, attributes Slot / OwnerUserId) at the
--- cushion's far edge (the edge farthest from the walks' centre lines), MaxActivationDistance 3, so it never pops up
--- for a kid walking the walks. HomeBuilder.SetGarden enables it only on OPEN EMPTY places. <= 85 parts.
+-- Pet Garden (Kind Garden; contract 3.3 / 3.6): front -Z = the entrance (Slot.Entrance, 4 wide) toward its pad. A
+-- grass lawn inside a fence ring on the footprint edge (Slot.Fence 0.6: a cobble kerb, posts and a wooden rail),
+-- the Food Bowl in the middle (Slot.Bowl, filled with berries; its "Food Bowl" sign) and 12 beds (Slot.Beds):
+-- an OPEN bed = a wooden bed with a cushion under a tiny lean-to roof (Attachment Spot<i>, and a PromptPoint<i> with
+-- the owner-only GardenSpotPrompt on its yard side), a CLOSED bed = a soil bed with a seedling (Stem + Sprout) and a
+-- "Prestige to open" sign. The interior stays clear for the roaming pets (HomeRoam): every level's decor sits on the
+-- fence (flower strips, the entrance arch, lanterns, bunting, gold rails at 8). The lawn top is y 0.2. <= 95 parts.
 ----------------------------------------------------------------------
 local Garden = {}
 
-Garden.PROMPT_RANGE = 3 -- studs (contract 3.3)
-Garden.PROMPT_LIFT = 2.0 -- the prompt point: half a stud over the cushion top (reachable from the cushion and the bed)
-Garden.CUSHION_TOP = 1.5
+Garden.PROMPT_RANGE = 3 -- studs (contract 3.6)
+Garden.CUSHION_TOP = 0.95
+Garden.LAWN_TOP = 0.2
+Garden.CUSHIONS = { rgb(206, 150, 160), rgb(150, 176, 150), rgb(150, 164, 204), rgb(216, 190, 140) }
 
 function Garden.places(def)
-	return (def and def.Slot and type(def.Slot.Spots) == "table") and def.Slot.Spots or {}
-end
-
-function Garden.walks(def)
-	local w = def and def.Slot and def.Slot.Walkable
-	return (type(w) == "table") and w or {}
+	return (def and def.Slot and type(def.Slot.Beds) == "table") and def.Slot.Beds or {}
 end
 
 function Garden.defaultOpen()
@@ -1332,62 +1038,32 @@ function Garden.clampOpen(open, places)
 	return max(0, min(floor(open), places))
 end
 
--- distance (ground plane) from q to a walk's centre line (its long axis, inset by half its width at both ends)
-function Garden.lineDistance(q, w)
-	local c, sz = w.Center, w.Size
-	if typeof(c) ~= "Vector3" or typeof(sz) ~= "Vector3" then
-		return huge
-	end
-	local ax, az
-	if sz.X >= sz.Z then
-		local half = max(0, sz.X / 2 - sz.Z / 2)
-		ax, az = max(c.X - half, min(c.X + half, q.X)), c.Z
+-- the bed's frame: at the bed centre on the lawn, local -Z = toward the garden's interior, +Z = the fence behind it
+function Garden.bedFrame(def, v)
+	local hx = ((def.Slot.Footprint and def.Slot.Footprint.X) or 22) / 2
+	local out
+	if abs(v.X) >= hx - 3 then
+		out = Vector3.new((v.X > 0) and 1 or -1, 0, 0)
 	else
-		local half = max(0, sz.Z / 2 - sz.X / 2)
-		ax, az = c.X, max(c.Z - half, min(c.Z + half, q.Z))
+		out = Vector3.new(0, 0, 1)
 	end
-	return math.sqrt((q.X - ax) ^ 2 + (q.Z - az) ^ 2)
+	local pos = Vector3.new(v.X, Garden.LAWN_TOP, v.Z)
+	return CFrame.lookAt(pos, pos - out)
 end
 
--- the prompt point of place i (station frame): the cushion edge midpoint farthest from every walk's centre line
+-- the prompt point of bed i (station frame): on the bed's interior side, half a stud over the cushion
 function Garden.promptPoint(def, i)
-	local p = Garden.places(def)[i]
-	if typeof(p) ~= "Vector3" then
+	local v = Garden.places(def)[i]
+	if typeof(v) ~= "Vector3" then
 		return nil
 	end
-	local best, bestD = nil, -1
-	for _, c in ipairs({ { 0, -1 }, { 0, 1 }, { -1, 0 }, { 1, 0 } }) do
-		local q = Vector3.new(p.X + c[1], Garden.PROMPT_LIFT, p.Z + c[2])
-		local d = huge
-		for _, w in ipairs(Garden.walks(def)) do
-			d = min(d, Garden.lineDistance(q, w))
-		end
-		if d > bestD + 1e-6 then
-			best, bestD = q, d
-		end
-	end
-	return best
+	local size = def.Slot.BedSize or 2.5
+	return (Garden.bedFrame(def, v) * CFrame.new(0, 1.3, -(size / 2 + 0.35))).Position
 end
 
--- the entrance walk's x half-width (the front-row beds beside it are trimmed to keep it clear)
-function Garden.entranceHalf(def)
-	for _, w in ipairs(Garden.walks(def)) do
-		if w.Name == "Entrance" and typeof(w.Size) == "Vector3" then
-			return w.Size.X / 2, w
-		end
-	end
-	return 1.5, nil
-end
-
--- the "Prestige to open" placard of a seedling bed (World text rule: 50 px per stud; a big gold star >= 0.95 stud,
--- the words at 0.6 stud). 3.4 studs wide (the bed is 3): kept clear of the entrance walk (|x| >= ent)
-function Garden.closedSign(parent, x, z, ent)
-	local w = 3.4
-	local cx = x
-	if ent and abs(x) - w / 2 < ent then
-		cx = (x < 0) and -(ent + w / 2) or (ent + w / 2)
-	end
-	local board = box(parent, "ClosedSign", CFrame.new(cx, 1.6, z - 1.3), Vector3.new(w, 1.4, 0.2), C.PlankLight, { Shadow = false })
+-- the "Prestige to open" sign of a closed bed (World text rule: 50 px per stud, letters 0.6 stud)
+function Garden.closedSign(parent, bedCF, size)
+	local board = Kit.p(parent, "ClosedSign", bedCF * CFrame.new(0, 0.95, -(size / 2 + 0.05)), Vector3.new(3.4, 1.4, 0.15), K.PlanksLight, M.Planks)
 	local gui = surfaceGui(board, Enum.NormalId.Front, "ClosedGui")
 	local panel = plainFrame(gui, "Panel", { Size = UDim2.fromScale(1, 1), BackgroundColor3 = rgb(255, 255, 255), BackgroundTransparency = 0 })
 	vgradient(panel, C.Violet, C.Navy)
@@ -1395,931 +1071,487 @@ function Garden.closedSign(parent, x, z, ent)
 	outline(panel, C.TextGold, 4, 0.1)
 	signText(panel, GLYPH.Star, "Heading", 48, C.TextGold, "Star", 0.0, 0.0, 0.28, 1.0)
 	signText(panel, "Prestige", "Heading", 30, C.TextGold, "Title", 0.28, 0.02, 0.72, 0.48)
-	signText(panel, "to open", "Body", 30, C.Text, "Info", 0.28, 0.5, 0.72, 0.48)
+	signText(panel, "to open", "Heading", 30, C.Text, "Info", 0.28, 0.5, 0.72, 0.48)
 	return board
 end
 
 function Art.Garden(def, level, open)
 	local tpl = newTemplate("Garden")
-	local fp = (def.Slot and def.Slot.Footprint) or Vector3.new(22, 4, 20)
+	local m = tpl.Model
+	local slot = def.Slot
+	local fp = slot.Footprint or Vector3.new(22, 4, 20)
 	local hx, hz = fp.X / 2, fp.Z / 2
-	local spots = Garden.places(def)
-	open = Garden.clampOpen(open, #spots)
-	local ent, entWalk = Garden.entranceHalf(def)
+	local t = slot.Fence or 0.6
+	local beds = Garden.places(def)
+	local size = slot.BedSize or 2.5
+	open = Garden.clampOpen(open, #beds)
+	local ent = slot.Entrance or { Center = Vector3.new(0, 0, -hz), Width = 4 }
+	local g0, g1 = ent.Center.X - ent.Width / 2, ent.Center.X + ent.Width / 2
 	local gold = level >= 8
-	local s = SK.New(0.5)
-	-- a low stone rim (the back a hedge from 2); the front line sits half a stud in, leaving a grass verge
-	local fz = -hz + 0.5
-	SK.Box(s, -hx, -hx + 0.5, 0.5, 1.0, fz, hz, "Border")
-	SK.Box(s, hx - 0.5, hx, 0.5, 1.0, fz, hz, "Border")
-	SK.Box(s, -hx, -ent, 0.5, 1.0, fz, fz + 0.5, "Border")
-	SK.Box(s, ent, hx, 0.5, 1.0, fz, fz + 0.5, "Border")
-	if level >= 2 then
-		SK.Box(s, -hx + 0.5, hx - 0.5, 0.5, 2.0, hz - 1.0, hz, "Hedge")
-		SK.Box(s, -hx + 1.0, hx - 1.0, 2.0, 2.5, hz - 0.5, hz, "HedgeTop")
-	else
-		SK.Box(s, -hx, hx, 0.5, 1.0, hz - 0.5, hz, "Border")
+	-- the lawn
+	local lawn = Kit.p(m, "Lawn", CFrame.new(0, Garden.LAWN_TOP / 2, 0), Vector3.new(fp.X, Garden.LAWN_TOP, fp.Z), K.GrassLight, M.Grass, true)
+	-- the fence ring: kerb runs (the sides between the front and back runs), a rail on posts
+	local kh, railY = 0.7, 1.55
+	local runs = {
+		{ "Back", 0, hz - t / 2, fp.X, t },
+		{ "Left", -hx + t / 2, 0, t, fp.Z - 2 * t },
+		{ "Right", hx - t / 2, 0, t, fp.Z - 2 * t },
+		{ "FrontL", (-hx + g0) / 2, -hz + t / 2, g0 + hx, t },
+		{ "FrontR", (g1 + hx) / 2, -hz + t / 2, hx - g1, t },
+	}
+	local railColor = gold and K.Gold or K.Planks
+	local railMat = gold and M.Metal or M.Planks
+	for i, r in ipairs(runs) do
+		Kit.p(m, "Kerb", CFrame.new(r[2], Garden.LAWN_TOP + kh / 2, r[3]), Vector3.new(r[4], kh, r[5]), Kit.jit(K.Cobble, i), M.Cobble, true)
+		Kit.p(m, "Rail", CFrame.new(r[2], railY, r[3]), Vector3.new(r[4], 0.22, r[5] * 0.6), railColor, railMat, true)
 	end
-	-- the places: open = flower bed + cushion; closed = soil bed + seedling (the placard is added below)
-	local ez0 = entWalk and (entWalk.Center.Z - entWalk.Size.Z / 2) or -hz
-	local ez1 = entWalk and (entWalk.Center.Z + entWalk.Size.Z / 2) or -5
-	for i, p in ipairs(spots) do
-		local x, z = p.X, p.Z
-		local x0, x1 = x - 1.5, x + 1.5
-		if z + 1.5 > ez0 and z - 1.5 < ez1 then
-			if x < 0 then
-				x1 = min(x1, -ent)
-			else
-				x0 = max(x0, ent)
-			end
-		end
+	local postH = 1.85
+	local posts = {
+		{ -hx + t / 2, -hz + t / 2 }, { hx - t / 2, -hz + t / 2 }, { -hx + t / 2, hz - t / 2 }, { hx - t / 2, hz - t / 2 },
+		{ -hx + t / 2, 0 }, { hx - t / 2, 0 }, { 0, hz - t / 2 },
+	}
+	for i, p in ipairs(posts) do
+		Kit.p(m, "Post", CFrame.new(p[1], postH / 2, p[2]), Vector3.new(0.72, postH, 0.72), Kit.jit(K.Wood, 30 + i), M.Wood, true)
+	end
+	-- the entrance posts (taller from level 3: they carry the arch)
+	local arch = level >= 3
+	local eh = arch and 3.9 or postH + 0.2
+	for _, x in ipairs({ g0 - 0.45, g1 + 0.45 }) do
+		Kit.p(m, "EntrancePost", CFrame.new(x, eh / 2, -hz + t / 2), Vector3.new(0.75, eh, 0.75), K.Wood, M.Wood, true)
+	end
+	-- a cobble walk from the entrance to the bowl (flush with the lawn: pets and players walk over it)
+	local walkZ0, walkZ1 = -hz + t, (slot.Bowl and (slot.Bowl.Center.Z - slot.Bowl.Radius) or -2.5) + 0.2
+	Kit.p(m, "Walk", CFrame.new(ent.Center.X, Garden.LAWN_TOP + 0.03, (walkZ0 + walkZ1) / 2), Vector3.new(ent.Width - 0.6, 0.06, walkZ1 - walkZ0), K.Cobble, M.Cobble, true)
+	-- the Food Bowl: a slate basin with a marble rim, full of berries
+	local bowl = slot.Bowl or { Center = Vector3.new(0, 0, 0), Radius = 2.5 }
+	local bc, br = bowl.Center, bowl.Radius
+	local basin = Kit.cyl(m, "FoodBowl", bc.X, Garden.LAWN_TOP, bc.Z, 2 * br, 0.55, K.Slate, M.Slate, true)
+	Kit.cyl(m, "BowlRim", bc.X, Garden.LAWN_TOP + 0.55, bc.Z, 2 * br + 0.2, 0.18, K.Marble, M.Marble, true)
+	Kit.cyl(m, "BowlBerries", bc.X, Garden.LAWN_TOP + 0.73, bc.Z, 2 * br - 0.8, 0.16, rgb(150, 62, 86), M.Sand)
+	local heap = { { -0.55, 0.1, K.BerryRed2 }, { 0.5, -0.3, K.BerryBlue } }
+	for _, h in ipairs(heap) do
+		Kit.ball(m, "BowlBerry", Vector3.new(bc.X + h[1], Garden.LAWN_TOP + 1.05, bc.Z + h[2]), 0.85, h[3], M.Plastic)
+	end
+	Kit.sign(basin, "BowlSign", 3.4, "Food Bowl", { { Name = "Info", Text = "Pets eat here, then poop Cloud Cash!", Color = C.TextGreen } }, 40, C.CashGlow)
+	tpl.Points.BowlCenter = Vector3.new(bc.X, Garden.LAWN_TOP + 0.9, bc.Z)
+	-- the beds
+	for i, v in ipairs(beds) do
+		local cf = Garden.bedFrame(def, v)
 		if i <= open then
-			SK.Box(s, x0, x1, 0.5, 1.0, z - 1.5, z + 1.5, "Bloom" .. ((i - 1) % 3 + 1))
-			SK.Box(s, x - 1.0, x + 1.0, 1.0, Garden.CUSHION_TOP, z - 1.0, z + 1.0, "Cushion")
+			Kit.p(m, "Bed", cf * CFrame.new(0, 0.225, 0), Vector3.new(size, 0.45, size), Kit.jit(K.Planks, 50 + i), M.Planks, true)
+			Kit.p(m, "Cushion", cf * CFrame.new(0, 0.6, 0.05), Vector3.new(size - 0.5, 0.3, size - 0.55), Kit.jit(Garden.CUSHIONS[(i - 1) % 4 + 1], i), M.Fabric)
+			Kit.p(m, "Headboard", cf * CFrame.new(0, 1.05, size / 2 - 0.12), Vector3.new(size, 1.7, 0.24), Kit.jit(K.PlanksDark, 70 + i), M.Planks)
+			Kit.p(m, "BedRoof", cf * CFrame.new(0, 2.05, size / 2 - 0.55) * CFrame.Angles(rad(-22), 0, 0), Vector3.new(size + 0.4, 0.16, 1.5), Kit.jit(K.Roof, 60 + i), M.Clay)
 		else
-			SK.Box(s, x0, x1, 0.5, 1.0, z - 1.5, z + 1.5, "Soil")
-			SK.Box(s, x - 0.5, x + 0.5, 1.0, 2.0, z, z + 0.5, "Stem")
-			SK.Box(s, x - 1.0, x + 1.0, 2.0, 2.5, z, z + 0.5, "Sprout")
+			Kit.p(m, "SoilBed", cf * CFrame.new(0, 0.175, 0), Vector3.new(size, 0.35, size), K.SoilDark, M.Sand, true)
+			Kit.p(m, "Stem", cf * CFrame.new(0, 0.7, 0.3), Vector3.new(0.18, 0.7, 0.18), K.LeafyDark, M.Leafy)
+			Kit.p(m, "Sprout", cf * CFrame.new(0, 1.1, 0.3), Vector3.new(0.75, 0.22, 0.45), K.GrassLight, M.Leafy)
+			Garden.closedSign(m, cf, size)
 		end
 	end
-	-- the entrance: stone posts (1), an arch with leaves (3+), blossoms on it (4+), lanterns hanging under it (6+)
-	local postTop = (level >= 3) and 4.5 or 2.0
-	local postKey = gold and "Gold" or ((level >= 3) and "PlankLight" or "StoneLight")
-	SK.Box(s, -ent - 0.5, -ent, 0.5, postTop, fz, fz + 0.5, postKey)
-	SK.Box(s, ent, ent + 0.5, 0.5, postTop, fz, fz + 0.5, postKey)
-	if level >= 3 then
-		SK.Box(s, -ent - 1.0, ent + 1.0, postTop, postTop + 0.5, fz - 0.5, fz + 1.0, postKey)
-		SK.Box(s, -ent - 0.5, ent + 0.5, postTop + 0.5, postTop + 1.0, fz, fz + 0.5, "Leaf")
-	end
-	if level >= 4 then
-		SK.Box(s, -ent, -0.5, postTop + 1.0, postTop + 1.5, fz, fz + 0.5, "Bloom1")
-		SK.Box(s, 0.5, ent, postTop + 1.0, postTop + 1.5, fz, fz + 0.5, "Bloom2")
-	end
-	if level >= 6 then
-		for _, sx in ipairs({ -1, 1 }) do
-			local x0 = (sx < 0) and (-ent - 1.0) or ent
-			SK.Box(s, x0, x0 + 1.0, postTop - 1.0, postTop, fz, fz + 0.5, "Lamp")
+	-- the level decor, all on the fence ring or overhead (the interior stays clear for the roaming pets)
+	local d = Kit.detail(m, "GardenDecor")
+	if level >= 2 then
+		-- flower strips on the front kerb, both sides of the entrance
+		for _, r in ipairs({ runs[4], runs[5] }) do
+			Kit.p(d, "FlowerStrip", CFrame.new(r[2], Garden.LAWN_TOP + kh + 0.15, r[3]), Vector3.new(r[4] - 1.2, 0.3, 0.5), K.Leafy, M.Leafy)
+			Kit.p(d, "Blooms", CFrame.new(r[2], Garden.LAWN_TOP + kh + 0.36, r[3]), Vector3.new(r[4] - 1.6, 0.14, 0.34), rgb(214, 150, 172), M.Fabric)
 		end
 	end
-	-- the birdhouse on a post behind the back row's middle (always)
-	local bz = hz - 1.5
-	SK.Box(s, -0.5, 0.5, 0.5, 3.5, bz, bz + 0.5, "PlankDark")
-	SK.Box(s, -1.0, 1.0, 3.5, 5.0, bz - 0.5, bz + 1.0, "Birdhouse")
-	SK.Box(s, -1.5, 1.5, 5.0, 5.5, bz - 1.0, bz + 1.5, gold and "Gold" or "Roof")
-	-- round bushes in the front corners (4+); fruit trees in the back corners (5: left, 7: both)
+	if arch then
+		Kit.p(m, "Arch", CFrame.new(ent.Center.X, eh + 0.2, -hz + t / 2), Vector3.new(ent.Width + 2.0, 0.4, 0.9), K.Planks, M.Planks)
+		Kit.p(d, "Garland", CFrame.new(ent.Center.X, eh - 0.15, -hz + t / 2 - 0.1), Vector3.new(ent.Width + 0.8, 0.35, 0.6), K.Leafy, M.Leafy)
+	end
 	if level >= 4 then
-		for _, sx in ipairs({ -1, 1 }) do
-			local x0 = (sx < 0) and (-hx + 0.5) or (hx - 2.0)
-			SK.Box(s, x0, x0 + 1.5, 0.5, 2.0, fz + 0.5, fz + 2.0, "Hedge")
+		for _, x in ipairs({ g0 - 0.45, g1 + 0.45 }) do
+			Kit.lantern(d, Vector3.new(x, eh - 1.0, -hz + t / 2 - 0.62), 0.42, x > ent.Center.X)
 		end
 	end
 	if level >= 5 then
-		for _, sx in ipairs((level >= 7) and { -1, 1 } or { -1 }) do
-			-- trunk just outside the back corner bed, the crown kept inside the footprint (above the pets' heads)
-			local tx = sx * (hx - 1.5)
-			local tz = hz - 1.5
-			SK.Box(s, tx - 0.5, tx + 0.5, 0.5, 4.5, tz - 0.5, tz + 0.5, "Bark")
-			SK.Box(s, tx - 1.5, tx + 1.5, 4.5, 6.0, tz - 1.5, tz + 1.5, "Leaf")
-			SK.Box(s, tx - 1.0, tx + 1.0, 6.0, 7.0, tz - 1.0, tz + 1.0, "LeafLight")
-			SK.Box(s, tx - 0.5, tx, 4.0, 4.5, tz - 2.0, tz - 1.5, "Fruit")
+		for _, r in ipairs({ runs[2], runs[3] }) do
+			Kit.p(d, "FlowerStrip", CFrame.new(r[2], Garden.LAWN_TOP + kh + 0.15, r[3]), Vector3.new(0.5, 0.3, r[5] - 2.0), K.Leafy, M.Leafy)
+			Kit.p(d, "Blooms", CFrame.new(r[2], Garden.LAWN_TOP + kh + 0.36, r[3]), Vector3.new(0.34, 0.14, r[5] - 2.6), rgb(176, 160, 214), M.Fabric)
 		end
 	end
-	-- a row of flowers along the front rim (7+)
+	if level >= 6 then
+		for _, p in ipairs({ posts[3], posts[4] }) do
+			Kit.lantern(d, Vector3.new(p[1], postH + 0.45, p[2]), 0.5, false)
+		end
+	end
 	if level >= 7 then
-		SK.Box(s, -hx + 1.0, -ent - 1.0, 1.0, 1.5, fz, fz + 0.5, "Bloom3")
-		SK.Box(s, ent + 1.0, hx - 1.0, 1.0, 1.5, fz, fz + 0.5, "Bloom3")
-	end
-	local pal = mergeTables(P, {
-		Border = C.StoneLight,
-		Birdhouse = rgb(250, 214, 140),
-		Roof = rgb(222, 104, 82),
-		Cushion = rgb(250, 228, 170),
-		Soil = rgb(118, 86, 64),
-		Stem = rgb(92, 160, 70),
-		Sprout = rgb(146, 216, 104),
-		Bloom1 = rgb(246, 150, 188),
-		Bloom2 = rgb(250, 214, 92),
-		Bloom3 = rgb(172, 142, 232),
-		HedgeTop = rgb(98, 172, 90),
-		LeafLight = rgb(122, 196, 98),
-		Fruit = C.Red,
-	})
-	local m = SK.Build(s, pal, { Name = "Body", Collide = "big" })
-	absorb(tpl.Model, m)
-	-- the lawn (one part) and the sand walks (thin plates on it, exactly the catalog's walks; the side joins stop at
-	-- the rim, the long walks between the joins, so no two plates overlap)
-	local lawn = box(tpl.Model, "Lawn", CFrame.new(0, 0.25, 0), Vector3.new(2 * hx, 0.5, 2 * hz), rgb(128, 200, 98), { Collide = true })
-	local sand = rgb(228, 212, 172)
-	local joinX = nil
-	for _, w in ipairs(Garden.walks(def)) do
-		if (w.Name == "WestJoin" or w.Name == "EastJoin") and typeof(w.Center) == "Vector3" then
-			joinX = abs(w.Center.X) - w.Size.X / 2
-		end
-	end
-	for _, w in ipairs(Garden.walks(def)) do
-		local c, sz = w.Center, w.Size
-		if typeof(c) == "Vector3" and typeof(sz) == "Vector3" then
-			local x0, x1 = c.X - sz.X / 2, c.X + sz.X / 2
-			local z0, z1 = c.Z - sz.Z / 2, c.Z + sz.Z / 2
-			x0, x1 = max(x0, -hx + 0.5), min(x1, hx - 0.5)
-			if sz.X > sz.Z and joinX then
-				x0, x1 = max(x0, -joinX), min(x1, joinX)
-			end
-			if w.Name == "Entrance" then
-				z0 = -hz
-			end
-			if x1 > x0 and z1 > z0 then
-				box(tpl.Model, tostring(w.Name or "Walk"), CFrame.new((x0 + x1) / 2, 0.55, (z0 + z1) / 2), Vector3.new(x1 - x0, 0.1, z1 - z0), sand, { Collide = true, Shadow = false })
-			end
-		end
-	end
-	-- the placards of the closed places
-	for i, p in ipairs(spots) do
-		if i > open then
-			Garden.closedSign(tpl.Model, p.X, p.Z, ent)
-		end
+		Kit.p(d, "Bunting", CFrame.new(0, railY - 0.3, hz - t / 2 - 0.05), Vector3.new(fp.X - 2.0, 0.4, 0.06), rgb(210, 160, 120), M.Fabric)
+		Kit.p(d, "Bunting", CFrame.new(0, railY - 0.3, hz - t / 2 + 0.05), Vector3.new(fp.X - 2.4, 0.4, 0.06), rgb(150, 170, 206), M.Fabric)
 	end
 	if gold then
 		local att = Instance.new("Attachment")
 		att.Name = "Sparkle"
-		att.CFrame = lawn.CFrame:Inverse() * CFrame.new(0, postTop + 1.5, fz)
+		att.CFrame = lawn.CFrame:Inverse() * CFrame.new(ent.Center.X, eh + 0.6, -hz + t / 2)
 		att.Parent = lawn
 		emitter(att, { Color = ColorSequence.new(C.TextGold), Rate = 3, SpreadAngle = Vector2.new(180, 180) })
 	end
-	-- where pets sit (Spot<i>, every place) and the GardenSpotPrompts (open places; SetGarden enables them)
-	for i, p in ipairs(spots) do
-		local a = Instance.new("Attachment")
-		a.Name = "Spot" .. i
-		a.CFrame = lawn.CFrame:Inverse() * CFrame.new(p.X, Garden.CUSHION_TOP, p.Z)
-		a:SetAttribute("Slot", i)
-		a:SetAttribute("Open", i <= open)
-		a.Parent = lawn
-		local q = (i <= open) and Garden.promptPoint(def, i) or nil
-		if q then
-			local pa = Instance.new("Attachment")
-			pa.Name = "PromptPoint" .. i
-			pa.CFrame = lawn.CFrame:Inverse() * CFrame.new(q)
-			pa:SetAttribute("Slot", i)
-			pa.Parent = lawn
-			local prompt = Instance.new("ProximityPrompt")
-			prompt.Name = "GardenSpotPrompt"
-			prompt.ActionText = "Put a pet here"
-			prompt.ObjectText = "Garden place " .. i
-			prompt.KeyboardKeyCode = Enum.KeyCode.E
-			prompt.HoldDuration = 0
+	-- where pets sleep (Spot<i>, every bed) and the GardenSpotPrompts (open beds; SetGarden enables the empty ones)
+	for i, v in ipairs(beds) do
+		local cf = Garden.bedFrame(def, v)
+		attach(lawn, "Spot" .. i, (cf * CFrame.new(0, Garden.CUSHION_TOP - Garden.LAWN_TOP, 0)).Position, { Slot = i, Open = i <= open })
+		if i <= open then
+			local pa = attach(lawn, "PromptPoint" .. i, Garden.promptPoint(def, i), { Slot = i })
+			local prompt = newPrompt("GardenSpotPrompt", "Put a pet here", "Garden bed " .. i, "Garden")
 			prompt.MaxActivationDistance = Garden.PROMPT_RANGE
-			prompt.RequiresLineOfSight = false
 			prompt.Enabled = false
 			prompt:SetAttribute("Slot", i)
-			prompt:SetAttribute("StationId", "Garden")
 			prompt.Parent = pa
 		end
 	end
 	tpl.Info.Open = open
 	return tpl
 end
-
 ----------------------------------------------------------------------
--- Food Machine (the old Kitchen slot, section 3.4): front -Z. A cheerful cabinet with a glass Hopper full of fruit
--- on top (the part named `Hopper`: PetCareService puts the FeedPrompt on it), a dispenser mouth with a chute over a
--- bowl tray, a big round FEED button and a food window. Lights (2+), a second side hopper (3+), a shelf of bowls
--- (4+), gold trims and a star (5). HomeFx animates the food (points ChuteMouth, Tray, HopperTop). <= 55 parts.
+-- Food Machine (Kitchen, contract 3.4 / 3.6; the slot swapped with the Training Place): front -Z. A wooden cabinet
+-- with iron bands on a slate plinth, a glass `Hopper` full of berries on a copper funnel (PetCareService puts the
+-- FeedPrompt on it), a dispenser mouth with a chute over a tray, a big red FEED button, the Berry Basket beside it
+-- (HomeFx's berry flights land in it) and the machine's sign: "Food Machine" / "Berries -> XP: press E" + the basket
+-- line (TextLabel `BasketLine`, HomeFx rewrites it from the player attribute Berries and the plot's BerryCap).
+-- Lamps (2+), a berry press barrel (3+), a shelf of bowls (4+), brass trims and a bell (5). Points ChuteMouth,
+-- Tray, HopperTop, BasketTop. <= 55 parts.
 ----------------------------------------------------------------------
 function Art.FoodMachine(def, level)
 	local tpl = newTemplate("FoodMachine")
-	local s = SK.New(0.5)
+	local m = tpl.Model
 	local gold = level >= 5
-	local trim = gold and "Gold" or "Trim"
-	local hw = ({ 3.5, 3.5, 4.0, 4.5, 5.0 })[level] or 5.0
-	local top = ({ 4.5, 5.0, 5.0, 5.5, 6.0 })[level] or 6.0
-	local z0, z1 = -1.5, 2.5
+	local band = gold and K.Gold or K.IronDark
+	local hw = ({ 2.6, 2.8, 3.0, 3.2, 3.4 })[level] or 3.4
+	local top = ({ 4.2, 4.4, 4.6, 4.8, 5.0 })[level] or 5.0
+	local z0, z1 = -1.6, 2.2
 	local zc = (z0 + z1) / 2
-	SK.RBox(s, -hw - 0.5, hw + 0.5, 0, 0.5, z0 - 2.5, z1 + 0.5, 0.5, "Plinth")
-	SK.RBox(s, -hw, hw, 0.5, top, z0, z1, 0.75, "Body")
-	SK.Box(s, -hw, hw, top - 0.5, top, z0, z1, trim)
-	-- the front: a cream panel, the dark dispenser mouth, a two-step chute and the bowl tray below it
-	SK.Box(s, -hw + 0.5, hw - 0.5, 1.0, top - 1.0, z0 - 0.5, z0, "Panel")
-	SK.Box(s, -1.0, 1.0, 1.5, 3.0, z0 - 0.5, z0, "Mouth")
-	SK.Box(s, -1.0, 1.0, 2.0, 2.5, z0 - 1.0, z0 - 0.5, "Chute")
-	SK.Box(s, -1.0, 1.0, 1.5, 2.0, z0 - 1.5, z0 - 1.0, "Chute")
-	SK.Box(s, -1.5, 1.5, 0.5, 1.0, z0 - 2.5, z0 - 1.0, "Tray")
-	SK.Box(s, -1.0, 1.0, 1.0, 1.5, z0 - 2.0, z0 - 1.5, "Kibble")
-	-- the big FEED button (right) and the food window (left)
-	SK.DiscZ(s, hw - 1.25, 3.25, z0 - 0.5, z0, 0.95, gold and "Gold" or "ButtonRim")
-	SK.DiscZ(s, hw - 1.25, 3.25, z0 - 1.0, z0 - 0.5, 0.6, "Button")
-	SK.Box(s, -hw + 1.0, -1.5, 2.0, top - 1.5, z0 - 0.5, z0, "Window")
-	-- the hopper funnel and lid (the glass Hopper itself is one part, added below)
-	local gw = (level >= 4) and 4.0 or 3.0
-	local gh = snap(2.5 + 0.25 * level)
-	local gy0 = top + 0.5
-	SK.Oct(s, 0, zc, 1.0, top, gy0, "Funnel")
-	-- fruit inside the hopper: berry, carrot and melon layers with a heap of starfruit on top
-	local fi = gw / 2 - 0.5
-	SK.Box(s, -fi, fi, gy0, gy0 + 0.5, zc - fi, zc + fi, "FoodA")
-	SK.Box(s, -fi, fi, gy0 + 0.5, gy0 + 1.0, zc - fi, zc + fi, "FoodB")
-	SK.Box(s, -fi, fi, gy0 + 1.0, gy0 + 1.5, zc - fi, zc + fi, "FoodC")
-	SK.Box(s, -fi + 0.5, fi - 0.5, gy0 + 1.5, gy0 + 2.0, zc - fi + 0.5, zc + fi - 0.5, "FoodD")
-	SK.Box(s, -gw / 2 - 0.5, gw / 2 + 0.5, gy0 + gh, gy0 + gh + 0.5, zc - gw / 2 - 0.5, zc + gw / 2 + 0.5, trim)
-	SK.Box(s, -0.5, 0.5, gy0 + gh + 0.5, gy0 + gh + 1.0, zc - 0.5, zc + 0.5, gold and "Gold" or "Knob")
-	if gold then
-		-- a gold star on the lid
-		SK.Box(s, -1.0, 1.0, gy0 + gh + 1.5, gy0 + gh + 2.0, zc - 0.5, zc + 0.5, "Gold")
-		SK.Box(s, -0.5, 0.5, gy0 + gh + 1.0, gy0 + gh + 2.5, zc - 0.5, zc + 0.5, "Gold")
+	local dz = z1 - z0
+	Kit.p(m, "Plinth", CFrame.new(0, 0.25, zc - 0.6), Vector3.new(2 * hw + 1.4, 0.5, dz + 2.6), K.SlateDark, M.Slate, true)
+	local body = Kit.p(m, "Cabinet", CFrame.new(0, 0.5 + (top - 0.5) / 2, zc), Vector3.new(2 * hw, top - 0.5, dz), K.Planks, M.Planks, true)
+	Kit.corners(m, -hw + 0.2, hw - 0.2, z0 + 0.2, z1 - 0.2, 0.5, top - 0.5, K.WoodDark, M.Wood)
+	for _, y in ipairs({ 1.3, top - 0.9 }) do
+		Kit.p(m, "Band", CFrame.new(0, y, z0 - 0.04), Vector3.new(2 * hw + 0.1, 0.22, 0.1), band, M.Metal)
 	end
-	-- 2+: two lamps on the front corners of the roof
-	if level >= 2 then
-		SK.Box(s, -hw + 0.5, -hw + 1.0, top, top + 1.0, z0 + 0.5, z0 + 1.0, "Bulb")
-		SK.Box(s, hw - 1.0, hw - 0.5, top, top + 1.0, z0 + 0.5, z0 + 1.0, "Bulb")
-	end
-	-- 3+: a second, smaller hopper on a stand at the left with a pipe into the cabinet
-	local side = nil
-	if level >= 3 then
-		local sx = -hw - 1.5
-		SK.Box(s, sx - 1.0, sx + 1.0, 0.5, 2.5, zc - 1.0, zc + 1.0, "Stand")
-		SK.Box(s, sx - 0.5, sx + 0.5, 2.5, 3.0, zc - 0.5, zc + 0.5, "FoodB")
-		SK.Box(s, sx - 0.5, sx + 0.5, 3.0, 3.5, zc - 0.5, zc + 0.5, "FoodD")
-		SK.Box(s, sx - 1.5, sx + 1.5, 5.0, 5.5, zc - 1.5, zc + 1.5, trim)
-		SK.Box(s, sx + 1.0, -hw, 4.0, 4.5, zc - 0.5, zc + 0.5, "Pipe")
-		side = { X = sx, Y = 3.75, Z = zc }
-	end
-	-- 4+: a shelf with stacked bowls on the right
-	if level >= 4 then
-		local bx = hw + 1.5
-		SK.Box(s, bx - 1.0, bx + 1.0, 0.5, 1.5, zc - 1.0, zc + 1.0, "Stand")
-		SK.Box(s, bx - 1.0, bx + 1.0, 1.5, 2.0, zc - 1.0, zc + 1.0, "Bowl1")
-		SK.Box(s, bx - 1.0, bx + 1.0, 2.0, 2.5, zc - 1.0, zc + 1.0, "Bowl2")
-		SK.Box(s, bx - 1.0, bx + 1.0, 2.5, 3.0, zc - 1.0, zc + 1.0, "Bowl3")
-	end
-	local pal = mergeTables(P, {
-		Plinth = C.StoneDark,
-		Body = rgb(240, 112, 104),
-		Trim = rgb(118, 168, 236),
-		Panel = rgb(252, 240, 220),
-		Mouth = rgb(44, 40, 58),
-		Chute = C.IronLight,
-		Tray = rgb(92, 150, 230),
-		Kibble = rgb(250, 168, 72),
-		ButtonRim = rgb(246, 242, 232),
-		Button = { Color = rgb(255, 72, 84), Material = MAT.Neon },
-		Window = { Color = rgb(170, 226, 255), Material = MAT.Neon },
-		Funnel = C.IronLight,
-		FoodA = rgb(226, 58, 94),
-		FoodB = rgb(250, 140, 46),
-		FoodC = rgb(150, 224, 176),
-		FoodD = rgb(255, 212, 70),
-		Knob = rgb(240, 112, 104),
-		Bulb = { Color = C.Lamp, Material = MAT.Neon },
-		Stand = C.PlankDark,
-		Pipe = C.IronLight,
-		Bowl1 = rgb(246, 150, 188),
-		Bowl2 = rgb(250, 214, 92),
-		Bowl3 = rgb(150, 224, 176),
-	})
-	local m = SK.Build(s, pal, { Name = "Body", Collide = "big" })
-	absorb(tpl.Model, m)
-	-- the glass hopper (PetCareService's FeedPrompt sits on it) and the side hopper's glass
-	box(tpl.Model, "Hopper", CFrame.new(0, gy0 + gh / 2, zc), Vector3.new(gw, gh, gw), rgb(206, 236, 252), { Material = MAT.Glass, Transparency = 0.55, Shadow = false })
-	if side then
-		box(tpl.Model, "HopperSide", CFrame.new(side.X, side.Y, side.Z), Vector3.new(2, 2.5, 2), rgb(206, 236, 252), { Material = MAT.Glass, Transparency = 0.55, Shadow = false })
-	end
-	if gold then
-		local anchor = biggestPart(tpl.Model, "Body") or biggestPart(tpl.Model)
-		if anchor then
-			local att = Instance.new("Attachment")
-			att.Name = "Sparkle"
-			att.CFrame = anchor.CFrame:Inverse() * CFrame.new(0, gy0 + gh + 2.0, zc)
-			att.Parent = anchor
-			emitter(att, { Color = ColorSequence.new(C.TextGold), Rate = 3, SpreadAngle = Vector2.new(180, 180) })
+	Kit.p(m, "Cornice", CFrame.new(0, top + 0.17, zc), Vector3.new(2 * hw + 0.5, 0.35, dz + 0.5), K.WoodDark, M.Wood, true)
+	Kit.p(m, "Panel", CFrame.new(0, 0.5 + (top - 0.5) / 2, z0 - 0.02), Vector3.new(2 * hw - 0.9, top - 1.6, 0.06), K.Whitewash, M.Planks)
+	-- the dispenser: a slate mouth, a two-step copper chute, the tray with a few berries
+	Kit.p(m, "Mouth", CFrame.new(-0.6, 2.4, z0 - 0.06), Vector3.new(1.7, 1.4, 0.14), K.IronDark, M.Slate)
+	Kit.p(m, "Chute", CFrame.new(-0.6, 2.0, z0 - 0.45) * CFrame.Angles(rad(-25), 0, 0), Vector3.new(1.2, 0.18, 1.0), K.Copper, M.Metal)
+	Kit.p(m, "Tray", CFrame.new(-0.6, 0.75, z0 - 1.0), Vector3.new(2.2, 0.3, 1.3), K.Iron, M.Metal, true)
+	Kit.p(m, "TrayBerries", CFrame.new(-0.6, 0.95, z0 - 1.0), Vector3.new(1.6, 0.12, 0.8), K.BerryRed, M.Plastic)
+	-- the FEED button (the one accent: berry red)
+	Kit.cylAt(m, "ButtonRim", CFrame.new(hw - 1.0, 2.6, z0 - 0.06) * CFrame.Angles(0, PI / 2, 0), 0.12, 1.3, gold and K.Gold or K.Iron, M.Metal)
+	Kit.cylAt(m, "Button", CFrame.new(hw - 1.0, 2.6, z0 - 0.16) * CFrame.Angles(0, PI / 2, 0), 0.14, 0.85, rgb(232, 64, 80), M.Neon)
+	-- the hopper: a copper funnel, the glass Hopper (one part) with berry layers inside, a wooden lid with a knob
+	local gw = (level >= 3) and 2.8 or 2.4
+	local gh = 2.0 + 0.2 * level
+	local gy0 = top + 0.35 + 0.5
+	Kit.cyl(m, "Funnel", 0, top + 0.35, zc, 1.5, 0.5, K.Copper, M.Metal)
+	local hopper = Kit.p(m, "Hopper", CFrame.new(0, gy0 + gh / 2, zc), Vector3.new(gw, gh, gw), rgb(214, 234, 246), M.Glass, false, { Transparency = 0.55 })
+	hopper.CastShadow = false
+	Kit.p(m, "HopperBerries", CFrame.new(0, gy0 + 0.4, zc), Vector3.new(gw - 0.3, 0.8, gw - 0.3), K.BerryRed, M.Plastic)
+	Kit.p(m, "HopperBerries", CFrame.new(0, gy0 + 1.05, zc), Vector3.new(gw - 0.3, 0.5, gw - 0.3), K.BerryBlue, M.Plastic)
+	Kit.p(m, "Lid", CFrame.new(0, gy0 + gh + 0.15, zc), Vector3.new(gw + 0.4, 0.3, gw + 0.4), K.WoodDark, M.Wood)
+	for _, cx in ipairs({ -1, 1 }) do
+		for _, cz2 in ipairs({ -1, 1 }) do
+			Kit.p(m, "HopperRod", CFrame.new(cx * gw / 2, gy0 + gh / 2, zc + cz2 * gw / 2), Vector3.new(0.16, gh, 0.16), band, M.Metal)
 		end
 	end
-	tpl.Points.ChuteMouth = Vector3.new(0, 2.0, z0 - 1.25)
-	tpl.Points.Tray = Vector3.new(0, 1.5, z0 - 1.75)
+	Kit.p(m, "Knob", CFrame.new(0, gy0 + gh + 0.45, zc), Vector3.new(0.5, 0.3, 0.5), gold and K.Gold or K.Copper, M.Metal)
+	-- the Berry Basket on the plinth at the front right
+	local bx = hw + 0.05
+	Kit.cyl(m, "Basket", bx, 0.5, z0 - 1.05, 1.5, 0.75, K.PlanksLight, M.Planks)
+	Kit.ball(m, "BasketBerries", Vector3.new(bx, 1.2, z0 - 1.05), 1.15, K.BerryRed2, M.Plastic)
+	tpl.Points.BasketTop = Vector3.new(bx, 1.6, z0 - 1.05)
+	local d = Kit.detail(m, "MachineDecor")
+	if level >= 2 then
+		for _, sx in ipairs({ -1, 1 }) do
+			Kit.lantern(d, Vector3.new(sx * (hw + 0.1), top - 0.4, z0 - 0.35), 0.45, sx > 0)
+		end
+	end
+	if level >= 3 then
+		-- a berry press barrel on the left with a crank
+		local px = -hw - 1.25
+		Kit.cyl(m, "PressBarrel", px, 0.5, zc, 1.8, 1.9, K.Wood, M.Wood, true)
+		Kit.cyl(m, "Hoop", px, 0.85, zc, 1.88, 0.18, band, M.Metal)
+		Kit.cyl(m, "Hoop", px, 1.95, zc, 1.88, 0.18, band, M.Metal)
+		Kit.p(m, "Crank", CFrame.new(px, 2.75, zc), Vector3.new(0.25, 0.9, 0.25), K.Iron, M.Metal)
+		Kit.p(m, "PressPipe", CFrame.new((px - hw) / 2 + 0.2, 2.2, zc), Vector3.new(abs(px + hw) + 0.4, 0.35, 0.35), K.Copper, M.Metal)
+	end
+	if level >= 4 then
+		-- a shelf of bowls on the right side
+		local sx = hw + 1.0
+		Kit.p(m, "Shelf", CFrame.new(sx, 1.4, zc + 0.6), Vector3.new(1.4, 1.8, 1.6), K.PlanksDark, M.Planks, true)
+		local bowls = { K.BerryRed2, K.BerryBlue2, K.BerryGold }
+		for i, c in ipairs(bowls) do
+			Kit.cyl(d, "Bowl", sx, 2.3 + (i - 1) * 0.28, zc + 0.6, 1.2 - 0.12 * i, 0.26, c, M.Plastic)
+		end
+	end
+	if gold then
+		Kit.p(m, "Bell", CFrame.new(0, gy0 + gh + 0.95, zc), Vector3.new(0.7, 0.7, 0.7), K.GoldBright, M.Metal)
+		local att = Instance.new("Attachment")
+		att.Name = "Sparkle"
+		att.CFrame = body.CFrame:Inverse() * CFrame.new(0, gy0 + gh + 1.2, zc)
+		att.Parent = body
+		emitter(att, { Color = ColorSequence.new(C.TextGold), Rate = 3, SpreadAngle = Vector2.new(180, 180) })
+	end
+	-- the machine's sign (World text rule); HomeFx rewrites BasketLine for the owner
+	Kit.sign(body, "MachineSign", (gy0 + gh + 1.6) - (0.5 + (top - 0.5) / 2), "Food Machine", {
+		{ Name = "Info", Text = "Berries -> XP: press E", Color = C.TextGreen },
+		{ Name = "BasketLine", Text = "Berry Basket", Color = C.TextGold },
+	}, 60, C.CashGlow)
+	tpl.Points.ChuteMouth = Vector3.new(-0.6, 2.0, z0 - 0.5)
+	tpl.Points.Tray = Vector3.new(-0.6, 1.0, z0 - 1.0)
 	tpl.Points.HopperTop = Vector3.new(0, gy0 + gh, zc)
 	return tpl
 end
 
 ----------------------------------------------------------------------
--- Training Place (the old Gym slot, section 3.7): front -Z. A wooden deck that grows from the left edge; one bright
--- training mat per level at Slot.Spots (Attachments Spot1..5 on the deck, attribute Slot; HomeFx puts the training
--- pet and its skill prop on it) and behind each mat its skill corner: weights (Physique, 1), hurdles (Attack Speed,
--- 2), a glowing orb on a pedestal (Ability, 3), a shield wall (Defense, 4) and a scoreboard with a trophy (5, gold).
--- The front stays open so the yard sees the training pets. <= 90 parts.
+-- Training Place (Gym; its slot swapped with the Food Machine): front -Z, open toward the yard. A plank deck on a
+-- slate plinth that grows from the left edge; one fabric mat per level at Slot.Spots (Attachments Spot1..5 on the
+-- deck, attribute Slot; HomeFx puts the training pet and its skill prop on it) and behind each mat its skill corner:
+-- a barbell rack (Physique, 1), two hurdles (Attack Speed, 2), a marble pedestal with a glowing orb (Ability, 3), a
+-- shield wall (Defense, 4) and a scoreboard with a trophy (5). Pennant posts from 3. <= 90 parts.
 ----------------------------------------------------------------------
-local TRAIN_MATS = { rgb(236, 92, 96), rgb(250, 204, 72), rgb(176, 120, 236), rgb(84, 140, 226), rgb(110, 200, 120) }
+local TRAIN_MATS = { rgb(176, 104, 100), rgb(184, 160, 96), rgb(146, 116, 176), rgb(96, 128, 172), rgb(110, 156, 112) }
 
 function Art.Training(def, level)
 	local tpl = newTemplate("Training")
-	local s = SK.New(0.5)
+	local m = tpl.Model
 	local fp = (def.Slot and def.Slot.Footprint) or Vector3.new(18, 10, 9)
 	local hz = fp.Z / 2
 	local spots = (def.Slot and def.Slot.Spots) or {}
 	local w = ({ 9, 12, 15, 18, 18 })[level] or 18
 	local x0 = -fp.X / 2
 	local x1 = x0 + w
+	local cx = (x0 + x1) / 2
 	local gold = level >= 5
-	SK.Box(s, x0, x1, 0, 0.5, -hz, hz, "Deck2")
-	SK.Box(s, x0 + 0.5, x1 - 0.5, 0.5, 1.0, -hz + 0.5, hz - 0.5, "Deck")
-	if gold then
-		SK.Box(s, x0, x1, 0.5, 1.0, -hz, -hz + 0.5, "Gold")
-	end
-	local bz = 2.0 -- the skill corners stand behind the mats (z 2 .. hz - 0.5)
+	local deckTop = 0.8
+	Kit.p(m, "Plinth", CFrame.new(cx, 0.22, 0), Vector3.new(w, 0.44, fp.Z), K.SlateDark, M.Slate, true)
+	local deck = Kit.p(m, "Deck", CFrame.new(cx, 0.44 + (deckTop - 0.44) / 2, 0.15), Vector3.new(w - 0.5, deckTop - 0.44, fp.Z - 0.8), K.Planks, M.Planks, true)
+	Kit.p(m, "Kerb", CFrame.new(cx, 0.6, -hz + 0.2), Vector3.new(w, 0.32, 0.4), gold and K.Gold or K.Brick, gold and M.Metal or M.Brick, true)
+	Kit.p(m, "BackRail", CFrame.new(cx, deckTop + 0.5, hz - 0.15), Vector3.new(w - 0.2, 1.0, 0.3), K.PlanksDark, M.Planks, true)
+	local bz = 2.6 -- the skill corners stand behind the mats
 	local function spotX(i)
 		local p = spots[i]
 		return (typeof(p) == "Vector3") and p.X or (x0 + 3 * i)
 	end
+	local y = deckTop
 	-- 1 Physique: a barbell on a rack
 	do
-		local cx = spotX(1)
-		SK.Box(s, cx - 1.5, cx + 1.5, 1.0, 2.0, bz, bz + 1.5, "Rack")
-		SK.Box(s, cx - 1.5, cx - 1.0, 2.0, 3.0, bz + 0.5, bz + 1.0, "Iron")
-		SK.Box(s, cx + 1.0, cx + 1.5, 2.0, 3.0, bz + 0.5, bz + 1.0, "Iron")
-		SK.Box(s, cx - 2.0, cx + 2.0, 3.0, 3.5, bz + 0.5, bz + 1.0, "Iron")
-		SK.Box(s, cx - 2.5, cx - 2.0, 2.5, 4.0, bz, bz + 1.5, "Weight")
-		SK.Box(s, cx + 2.0, cx + 2.5, 2.5, 4.0, bz, bz + 1.5, "Weight")
+		local x = spotX(1)
+		Kit.p(m, "Rack", CFrame.new(x, y + 0.4, bz), Vector3.new(2.6, 0.8, 1.0), K.IronDark, M.Metal, true)
+		for _, sx in ipairs({ -1, 1 }) do
+			Kit.p(m, "RackPost", CFrame.new(x + sx * 1.0, y + 1.35, bz), Vector3.new(0.25, 1.1, 0.25), K.Iron, M.Metal)
+			Kit.cylAt(m, "Weight", CFrame.new(x + sx * 1.55, y + 1.9, bz), 0.3, 1.2, K.IronDark, M.Metal)
+		end
+		Kit.cylAt(m, "Bar", CFrame.new(x, y + 1.9, bz), 3.6, 0.2, K.Iron, M.Metal)
 	end
-	-- 2 Attack Speed: two striped hurdles
+	-- 2 Attack Speed: two hurdles with striped bars
 	if level >= 2 then
-		local cx = spotX(2)
-		for _, hx in ipairs({ cx - 1.0, cx + 1.0 }) do
-			SK.Box(s, hx - 0.5, hx, 1.0, 2.5, bz, bz + 0.5, "Iron")
-			SK.Box(s, hx - 0.5, hx, 1.0, 2.5, bz + 2.0, bz + 2.5, "Iron")
-			SK.Box(s, hx - 0.5, hx, 2.5, 3.0, bz, bz + 2.5, "Hurdle")
-			SK.Box(s, hx - 0.5, hx, 2.5, 3.0, bz + 1.0, bz + 1.5, "HurdleStripe")
+		local x = spotX(2)
+		for _, hx in ipairs({ x - 0.8, x + 0.8 }) do
+			for _, lz in ipairs({ bz - 0.9, bz + 0.9 }) do
+				Kit.p(m, "HurdleLeg", CFrame.new(hx, y + 0.65, lz), Vector3.new(0.2, 1.3, 0.2), K.Whitewash, M.Wood)
+			end
+			Kit.p(m, "Hurdle", CFrame.new(hx, y + 1.2, bz), Vector3.new(0.25, 0.3, 2.0), rgb(184, 92, 84), M.Wood)
 		end
 	end
-	-- 3 Ability: a glowing orb on a stone pedestal
+	-- 3 Ability: a marble pedestal with a glowing orb
 	if level >= 3 then
-		local cx = spotX(3)
-		SK.Box(s, cx - 1.0, cx + 1.0, 1.0, 1.5, bz, bz + 2.0, "Stone")
-		SK.Box(s, cx - 0.5, cx + 0.5, 1.5, 3.0, bz + 0.5, bz + 1.5, "Stone")
-		SK.Box(s, cx - 1.0, cx + 1.0, 3.0, 3.5, bz, bz + 2.0, gold and "Gold" or "Stone")
-		SK.Ell(s, cx, 4.25, bz + 1.0, 0.8, 0.8, 0.8, "Orb")
+		local x = spotX(3)
+		Kit.p(m, "Pedestal", CFrame.new(x, y + 0.2, bz), Vector3.new(1.6, 0.4, 1.6), K.MarbleShade, M.Marble, true)
+		Kit.cyl(m, "Pedestal", x, y + 0.4, bz, 0.9, 1.4, K.Marble, M.Marble, true)
+		Kit.p(m, "Pedestal", CFrame.new(x, y + 1.95, bz), Vector3.new(1.3, 0.3, 1.3), gold and K.Gold or K.MarbleShade, gold and M.Metal or M.Marble)
+		Kit.ball(m, "Orb", Vector3.new(x, y + 2.75, bz), 1.2, rgb(176, 130, 255), M.Neon)
 	end
-	-- 4 Defense: a wooden wall with a round shield
+	-- 4 Defense: a plank wall with a round shield
 	if level >= 4 then
-		local cx = spotX(4)
-		SK.Box(s, cx - 1.5, cx + 1.5, 1.0, 4.5, hz - 1.0, hz - 0.5, "Plank")
-		SK.Box(s, cx - 1.5, cx + 1.5, 4.5, 5.0, hz - 1.5, hz - 0.5, "PlankDark")
-		SK.DiscZ(s, cx, 2.75, hz - 1.5, hz - 1.0, 1.2, "Shield")
-		SK.DiscZ(s, cx, 2.75, hz - 2.0, hz - 1.5, 0.45, gold and "Gold" or "IronLight")
+		local x = spotX(4)
+		Kit.p(m, "ShieldWall", CFrame.new(x, y + 1.8, hz - 0.9), Vector3.new(2.8, 3.6, 0.4), K.PlanksDark, M.Planks, true)
+		Kit.p(m, "ShieldWallCap", CFrame.new(x, y + 3.75, hz - 0.9), Vector3.new(3.2, 0.3, 0.7), K.WoodDark, M.Wood)
+		Kit.cylAt(m, "Shield", CFrame.new(x, y + 1.9, hz - 1.18) * CFrame.Angles(0, PI / 2, 0), 0.16, 2.2, rgb(110, 128, 168), M.Metal)
+		Kit.cylAt(m, "ShieldBoss", CFrame.new(x, y + 1.9, hz - 1.3) * CFrame.Angles(0, PI / 2, 0), 0.14, 0.7, gold and K.Gold or K.Iron, M.Metal)
 	end
-	-- 5: a scoreboard with lights and a gold trophy on a little stand
+	-- 5: a scoreboard with three lights and a trophy on a little stand
 	if gold then
-		local cx = spotX(5)
-		SK.Box(s, cx - 2.0, cx - 1.5, 1.0, 5.5, hz - 1.0, hz - 0.5, "PlankDark")
-		SK.Box(s, cx + 1.5, cx + 2.0, 1.0, 5.5, hz - 1.0, hz - 0.5, "PlankDark")
-		SK.Box(s, cx - 2.0, cx + 2.0, 5.5, 7.5, hz - 1.0, hz - 0.5, "Board")
-		for i, key in ipairs({ "Light1", "Light2", "Light3" }) do
-			local lx = cx - 2.5 + i
-			SK.Box(s, lx, lx + 1.0, 6.0, 7.0, hz - 1.5, hz - 1.0, key)
+		local x = spotX(5)
+		for _, sx in ipairs({ -1, 1 }) do
+			Kit.p(m, "BoardPost", CFrame.new(x + sx * 1.8, y + 2.4, hz - 0.8), Vector3.new(0.35, 4.8, 0.35), K.WoodDark, M.Wood)
 		end
-		SK.Box(s, cx - 0.5, cx + 0.5, 1.0, 2.0, bz, bz + 1.0, "Stone")
-		SK.Box(s, cx - 0.5, cx + 0.5, 2.0, 3.0, bz, bz + 1.0, "Gold")
-		SK.Box(s, cx - 1.0, cx + 1.0, 3.0, 3.5, bz, bz + 1.0, "Gold")
+		Kit.p(m, "Board", CFrame.new(x, y + 4.0, hz - 0.8), Vector3.new(3.4, 1.6, 0.3), K.SlateDark, M.Slate)
+		local lights = { rgb(120, 220, 130), rgb(250, 214, 90), rgb(255, 120, 110) }
+		for i, c in ipairs(lights) do
+			Kit.p(m, "BoardLight", CFrame.new(x - 1.6 + 0.8 * i, y + 4.0, hz - 1.0), Vector3.new(0.5, 0.5, 0.12), c, M.Neon)
+		end
+		Kit.p(m, "TrophyStand", CFrame.new(x, y + 0.5, bz), Vector3.new(1.0, 1.0, 1.0), K.MarbleShade, M.Marble, true)
+		Kit.cyl(m, "Trophy", x, y + 1.0, bz, 0.5, 0.6, K.GoldBright, M.Metal)
+		Kit.cyl(m, "Trophy", x, y + 1.6, bz, 1.0, 0.55, K.GoldBright, M.Metal)
 	end
 	-- pennant posts at the deck's back corners (3+)
 	if level >= 3 then
-		for _, px in ipairs({ x0, x1 - 0.5 }) do
-			SK.Box(s, px, px + 0.5, 1.0, 6.0, hz - 0.5, hz, gold and "Gold" or "PlankDark")
-			local fx = (px < 0) and (px + 0.5) or (px - 1.5)
-			SK.Box(s, fx, fx + 1.5, 5.0, 6.0, hz - 0.5, hz, "Pennant")
+		local d = Kit.detail(m, "Pennants")
+		for _, px in ipairs({ x0 + 0.4, x1 - 0.4 }) do
+			Kit.p(d, "PennantPost", CFrame.new(px, y + 2.6, hz - 0.4), Vector3.new(0.3, 5.2, 0.3), gold and K.Gold or K.WoodDark, gold and M.Metal or M.Wood)
+			local fx = (px < cx) and (px + 0.85) or (px - 0.85)
+			Kit.p(d, "Pennant", CFrame.new(fx, y + 4.6, hz - 0.4), Vector3.new(1.4, 0.9, 0.06), rgb(186, 96, 90), M.Fabric)
 		end
 	end
-	local pal = mergeTables(P, {
-		Deck = C.PlankLight,
-		Deck2 = C.PlankDark,
-		Rack = rgb(70, 76, 98),
-		Weight = rgb(46, 50, 64),
-		Hurdle = rgb(236, 86, 86),
-		HurdleStripe = rgb(250, 244, 236),
-		Orb = { Color = rgb(186, 130, 255), Material = MAT.Neon },
-		Shield = rgb(84, 140, 226),
-		Board = rgb(40, 52, 88),
-		Pennant = rgb(236, 86, 86),
-		Light1 = { Color = rgb(120, 220, 120), Material = MAT.Neon },
-		Light2 = { Color = rgb(250, 214, 90), Material = MAT.Neon },
-		Light3 = { Color = rgb(255, 120, 110), Material = MAT.Neon },
-	})
-	local m = SK.Build(s, pal, { Name = "Body", Collide = "big" })
-	absorb(tpl.Model, m)
-	-- the training mats: a bright plate with a white inner square, lying on the deck (the deck stays one part)
+	-- the training mats (one per level) and their Spot<i> attachments on the deck
 	for i, p in ipairs(spots) do
 		if i <= level then
-			box(tpl.Model, "Mat", CFrame.new(p.X, 1.05, p.Z), Vector3.new(2.6, 0.1, 2.6), TRAIN_MATS[i] or TRAIN_MATS[1], { Shadow = false })
-			box(tpl.Model, "MatIn", CFrame.new(p.X, 1.1, p.Z), Vector3.new(1.4, 0.1, 1.4), rgb(250, 246, 238), { Shadow = false })
-		end
-	end
-	local deck = biggestPart(tpl.Model, "Deck") or biggestPart(tpl.Model)
-	for i, p in ipairs(spots) do
-		if i <= level and deck then
-			local a = Instance.new("Attachment")
-			a.Name = "Spot" .. i
-			a.CFrame = deck.CFrame:Inverse() * CFrame.new(p.X, 1.15, p.Z)
-			a:SetAttribute("Slot", i)
-			a.Parent = deck
+			Kit.p(m, "Mat", CFrame.new(p.X, y + 0.05, p.Z), Vector3.new(2.6, 0.1, 2.6), Kit.jit(TRAIN_MATS[i] or TRAIN_MATS[1], i), M.Fabric)
+			Kit.p(m, "MatIn", CFrame.new(p.X, y + 0.11, p.Z), Vector3.new(1.5, 0.04, 1.5), K.Whitewash, M.Fabric)
+			attach(deck, "Spot" .. i, Vector3.new(p.X, y + 0.15, p.Z), { Slot = i })
 		end
 	end
 	return tpl
 end
 
 ----------------------------------------------------------------------
--- Vault: front -Z. A small safe (1) ... a grand gold-domed vault (5).
+-- Vault: front -Z. A chamfered slate strongroom on a plinth with a marble cornice and a round metal door (1),
+-- marble pilasters and a brass band (2), a glass gem case on top (3), coin stacks and sconces (4), a gold crown (5).
+-- <= 80 parts.
 ----------------------------------------------------------------------
 function Art.Vault(def, level)
 	local tpl = newTemplate("Vault")
-	local s = SK.New(0.5)
-	-- { width, wall height }: the outer width (plinth, columns: width + 1) stays inside the footprint and clear of
-	-- the press lane beside it, so the top levels grow upward; heights keep the door's centre on a quarter stud so
-	-- its wheel stays symmetric
-	local sizes = { { 3, 3 }, { 4, 4 }, { 5, 5.5 }, { 5, 6.5 }, { 5, 7.5 } }
-	local sz = sizes[level] or sizes[5]
-	local w, h = sz[1], sz[2]
-	local hw = w / 2
-	local hd = min(w, 6) / 2
-	local cy = 0.5 + h / 2 -- the door's centre height
-	local wheel = nil -- { centre, radius } of the door wheel (parts added after the build)
-	SK.RBox(s, -hw - 0.5, hw + 0.5, 0, 0.5, -hd - 0.5, hd + 0.5, 0.5, "Plinth")
-	if level <= 2 then
-		-- a sturdy safe on little feet: a dark steel body, a lighter door panel, a dial and a gold handle
-		SK.RBox(s, -hw, hw, 1.0, 0.5 + h, -hd, hd, 0.5, "Safe")
-		for _, sx in ipairs({ -1, 1 }) do
-			local x0 = (sx < 0) and (-hw + 0.5) or (hw - 1.0)
-			SK.Box(s, x0, x0 + 0.5, 0.5, 1.0, -hd + 0.5, -hd + 1.0, "Safe")
-		end
-		SK.Box(s, -hw + 0.5, hw - 0.5, 1.5, h, -hd - 0.5, -hd, "Door")
-		SK.DiscZ(s, -0.25, cy, -hd - 1.0, -hd - 0.5, 0.55, "Steel")
-		SK.Box(s, hw - 1.0, hw - 0.5, cy - 0.5, cy + 0.5, -hd - 1.0, -hd - 0.5, "Gold")
-		if level >= 2 then
-			SK.Box(s, -hw, hw, 0.5 + h - 0.5, 0.5 + h, -hd - 0.5, hd, "Gold")
-		end
+	local m = tpl.Model
+	local w, d, h = 5.6, 6.0, 4.4
+	Kit.p(m, "Plinth", CFrame.new(0, 0.3, 0), Vector3.new(w + 1.0, 0.6, d + 1.0), K.SlateDark, M.Slate, true)
+	Kit.p(m, "Step", CFrame.new(0, 0.15, -d / 2 - 1.0), Vector3.new(3.2, 0.3, 1.2), K.Slate, M.Slate, true)
+	if WorldStyle and WorldStyle.Chamfer then
+		local body = WorldStyle.Chamfer(m, CFrame.new(0, 0.6 + h / 2, 0), Vector3.new(w, h, d), M.Slate, K.Slate, 0.6)
+		body.Name = "Vault"
 	else
-		-- a stone vault house: walls, marble corner columns, a cornice (gold from 4), a big round steel door with a
-		-- gold wheel, and a slate hip roof (3-4) or a stepped gold dome with a crystal (5)
-		SK.Box(s, -hw, hw, 0.5, 0.5 + h, -hd, hd, "Wall")
-		SK.Box(s, -hw - 0.5, hw + 0.5, 0.5 + h, 1.0 + h, -hd - 0.5, hd + 0.5, (level >= 4) and "Gold" or "StoneLight")
-		for _, sx in ipairs({ -1, 1 }) do
-			local x0 = (sx < 0) and (-hw - 0.5) or (hw - 0.5)
-			SK.Box(s, x0, x0 + 1.0, 0.5, 0.5 + h, -hd - 0.5, -hd + 0.5, "Column")
-		end
-		local dr = min(hw - 1.0, h / 2 - 0.5)
-		SK.DiscZ(s, 0, cy, -hd - 0.5, -hd, dr + 0.5, "Steel")
-		SK.DiscZ(s, 0, cy, -hd - 1.0, -hd - 0.5, dr, "Door")
-		wheel = { cy, dr }
-		if level >= 5 then
-			local y = 1.0 + h
-			SK.Box(s, -hw, hw, y, y + 0.5, -hd, hd, "Gold")
-			SK.Box(s, -hw + 0.5, hw - 0.5, y + 0.5, y + 1.5, -hd + 0.5, hd - 0.5, "Gold")
-			SK.Box(s, -hw + 1.5, hw - 1.5, y + 1.5, y + 2.5, -hd + 1.5, hd - 1.5, "Gold")
-			SK.Box(s, -0.5, 0.5, y + 2.5, y + 3.0, -0.5, 0.5, "Gold")
-		else
-			SK.Hip(s, -hw, hw, -hd, hd, 1.0 + h, 0.5, "Roof", "RoofTop", "Roof2")
-		end
+		Kit.p(m, "Vault", CFrame.new(0, 0.6 + h / 2, 0), Vector3.new(w, h, d), K.Slate, M.Slate, true)
 	end
-	-- coin piles on the plinth's front corner (2+), a stack of gold bars on the other (4+)
+	Kit.p(m, "Cornice", CFrame.new(0, 0.6 + h + 0.12, 0), Vector3.new(w + 0.6, 0.24, d + 0.6), K.MarbleShade, M.Marble, true)
+	Kit.p(m, "Roof", CFrame.new(0, 0.6 + h + 0.32, 0), Vector3.new(w - 0.4, 0.16, d - 0.4), K.SlateDark, M.Slate)
+	for _, y in ipairs({ 1.55, 3.95 }) do
+		Kit.p(m, "Course", CFrame.new(0, y, 0), Vector3.new(w + 0.12, 0.16, d - 1.2), K.SlateLight, M.Slate)
+		Kit.p(m, "Course", CFrame.new(0, y, 0), Vector3.new(w - 1.2, 0.16, d + 0.12), K.SlateLight, M.Slate)
+	end
+	Kit.p(m, "Keystone", CFrame.new(0, 4.55, -d / 2 - 0.1), Vector3.new(0.9, 0.7, 0.2), K.MarbleShade, M.Marble)
+	-- the round door: a metal disc, a hub, a three-spoke wheel
+	local dz = -d / 2 - 0.08
+	Kit.cylAt(m, "Door", CFrame.new(0, 2.6, dz) * CFrame.Angles(0, PI / 2, 0), 0.18, 3.0, K.Iron, M.Metal)
+	Kit.cylAt(m, "DoorRing", CFrame.new(0, 2.6, dz - 0.1) * CFrame.Angles(0, PI / 2, 0), 0.06, 2.5, K.IronDark, M.Metal)
+	Kit.cylAt(m, "Hub", CFrame.new(0, 2.6, dz - 0.18) * CFrame.Angles(0, PI / 2, 0), 0.16, 0.7, K.Gold, M.Metal)
+	for k = 0, 2 do
+		Kit.p(m, "Spoke", CFrame.new(0, 2.6, dz - 0.2) * CFrame.Angles(0, 0, rad(k * 60)), Vector3.new(1.9, 0.14, 0.08), K.Gold, M.Metal)
+	end
 	if level >= 2 then
-		SK.Box(s, hw - 0.5, hw + 0.5, 0.5, 1.0, -hd - 0.5, -hd + 0.5, "Coins")
-		SK.Box(s, hw - 0.5, hw, 1.0, 1.5, -hd - 0.5, -hd, "Coins")
+		for _, sx in ipairs({ -1, 1 }) do
+			Kit.p(m, "Pilaster", CFrame.new(sx * 2.15, 0.6 + h / 2, -d / 2 - 0.15), Vector3.new(0.6, h, 0.3), K.MarbleShade, M.Marble)
+		end
+		Kit.p(m, "Band", CFrame.new(0, 0.6 + h - 0.35, -d / 2 - 0.12), Vector3.new(w - 1.4, 0.25, 0.1), K.Gold, M.Metal)
+	end
+	local topY = 0.6 + h + 0.4
+	if level >= 3 then
+		-- a glass gem case on the roof
+		Kit.p(m, "CaseBase", CFrame.new(0, topY + 0.2, 0), Vector3.new(2.6, 0.4, 2.6), K.MarbleShade, M.Marble)
+		Kit.p(m, "GemCase", CFrame.new(0, topY + 1.3, 0), Vector3.new(2.2, 1.8, 2.2), rgb(214, 234, 246), M.Glass, false, { Transparency = 0.6 })
+		Kit.p(m, "CaseLid", CFrame.new(0, topY + 2.3, 0), Vector3.new(2.6, 0.2, 2.6), K.Gold, M.Metal)
+		local gems = { { -0.45, rgb(120, 220, 255) }, { 0.5, rgb(255, 130, 190) }, { 0.0, rgb(140, 240, 160) } }
+		for i, g in ipairs(gems) do
+			Kit.p(m, "Gem", CFrame.new(g[1], topY + 0.75 + 0.15 * i, (i - 2) * 0.3) * CFrame.Angles(rad(45), rad(35), 0), Vector3.new(0.55, 0.55, 0.55), g[2], M.Neon)
+		end
 	end
 	if level >= 4 then
-		SK.Box(s, -hw - 0.5, -hw + 1.0, 0.5, 1.0, -hd - 0.5, -hd + 0.5, "Gold")
-		SK.Box(s, -hw - 0.5, -hw + 0.5, 1.0, 1.5, -hd - 0.5, -hd, "GoldDark")
-	end
-	local pal = mergeTables(P, {
-		Plinth = C.StoneDark,
-		Safe = rgb(80, 92, 124),
-		Door = rgb(122, 134, 166),
-		Steel = rgb(170, 180, 204),
-		Wall = rgb(218, 212, 200),
-		Column = C.Marble,
-		Roof = rgb(84, 104, 150),
-		Roof2 = rgb(100, 122, 170),
-		RoofTop = rgb(68, 86, 136),
-		Coins = P.Gold,
-	})
-	SK.Shade(s, { Only = { Wall = true }, Smooth = 2, Light = false, Seed = 13 })
-	local m = SK.Build(s, pal, { Name = "Body", Collide = "big" })
-	absorb(tpl.Model, m)
-	-- the door wheel: a gold hub and two crossed spokes, and the crystal on the dome (5)
-	if wheel then
-		local c = CFrame.new(0, wheel[1], -hd - 1.15)
-		local len = wheel[2] * 2 - 0.6
-		box(tpl.Model, "Wheel", c * CFrame.Angles(0, 0, math.rad(45)), Vector3.new(len, 0.35, 0.3), C.Gold, { Shadow = false })
-		box(tpl.Model, "Wheel", c * CFrame.Angles(0, 0, math.rad(-45)), Vector3.new(len, 0.35, 0.3), C.Gold, { Shadow = false })
-		box(tpl.Model, "Wheel", c * CFrame.new(0, 0, -0.05), Vector3.new(0.8, 0.8, 0.4), C.GoldDark, { Shadow = false })
+		local deco = Kit.detail(m, "VaultDecor")
+		for _, sx in ipairs({ -1, 1 }) do
+			Kit.cyl(deco, "Coins", sx * 2.4, 0.6, -d / 2 - 0.9, 0.9, 0.5 + 0.15 * (sx + 1), K.GoldBright, M.Metal)
+			Kit.lantern(deco, Vector3.new(sx * 2.15, 3.9, -d / 2 - 0.55), 0.42, sx > 0)
+		end
 	end
 	if level >= 5 then
-		box(tpl.Model, "Crystal", CFrame.new(0, 1.0 + h + 3.7, 0) * CFrame.Angles(0, math.rad(45), 0), Vector3.new(0.9, 1.4, 0.9), C.Crystal, { Material = MAT.Neon, Shadow = false })
+		local cy = topY + ((level >= 3) and 2.4 or 0)
+		Kit.cyl(m, "Crown", 0, cy, 0, 1.8, 0.4, K.GoldBright, M.Metal)
+		for k = 0, 3 do
+			local a = k * PI / 2 + PI / 4
+			Kit.p(m, "CrownPoint", CFrame.new(math.cos(a) * 0.65, cy + 0.65, math.sin(a) * 0.65) * CFrame.Angles(0, -a, 0), Vector3.new(0.3, 0.6, 0.3), K.GoldBright, M.Metal)
+		end
+		local att = Instance.new("Attachment")
+		att.Name = "Sparkle"
+		local anchor = biggestPart(m, "Cornice") or biggestPart(m)
+		att.CFrame = anchor.CFrame:Inverse() * CFrame.new(0, cy + 1.0, 0)
+		att.Parent = anchor
+		emitter(att, { Color = ColorSequence.new(C.TextGold), Rate = 3, SpreadAngle = Vector2.new(180, 180) })
 	end
 	return tpl
 end
 
 ----------------------------------------------------------------------
--- House: Cottage (1) -> Villa (2) -> Manor (3) -> Sky Castle (4). Front -Z faces the gate.
-----------------------------------------------------------------------
-local HOUSE_PAL = mergeTables(P, {
-	Found = rgb(150, 144, 138),
-	Wall = rgb(250, 238, 214),
-	Timber = rgb(128, 88, 60),
-	Roof = rgb(222, 104, 82),
-	Roof2 = rgb(236, 124, 98),
-	RoofTop = rgb(190, 82, 68),
-	Door = rgb(150, 100, 66),
-	Shutter = rgb(98, 148, 226),
-	Sill = rgb(236, 226, 206),
-	Chimney = rgb(176, 112, 92),
-	VillaWall = rgb(250, 214, 196),
-	VillaTrim = rgb(252, 248, 240),
-	Rail = rgb(252, 248, 240),
-	Terracotta = rgb(220, 120, 80),
-	Terracotta2 = rgb(232, 140, 98),
-	ManorWall = rgb(232, 226, 240),
-	ManorTrim = rgb(252, 250, 246),
-	Slate = rgb(86, 106, 160),
-	Slate2 = rgb(102, 124, 178),
-	SlateTop = rgb(68, 86, 136),
-	Castle = rgb(240, 240, 246),
-	CastleShade = rgb(212, 216, 232),
-	Tower = rgb(232, 234, 244),
-	Spire = rgb(88, 136, 226),
-	Spire2 = rgb(110, 158, 238),
-	SpireTop = rgb(70, 112, 204),
-	Banner = rgb(236, 88, 110),
-	Bush = C.Hedge,
-	Bush2 = rgb(96, 170, 88),
-	CloudLight = rgb(252, 253, 255),
-})
-
--- a window as relief on a face: the frame block one voxel out of the wall and the glass one more
-local function windowZ(s, x, y, z, w, h, glassKey, frameKey, sillKey)
-	SK.Box(s, x - w / 2 - 0.25, x + w / 2 + 0.25, y - 0.25, y + h + 0.25, z - 0.5, z, frameKey or "Sill")
-	SK.Box(s, x - w / 2 + 0.25, x + w / 2 - 0.25, y + 0.25, y + h - 0.25, z - 1.0, z - 0.5, glassKey or "Window")
-	if sillKey then
-		SK.Box(s, x - w / 2 - 0.5, x + w / 2 + 0.5, y - 0.75, y - 0.25, z - 1.0, z, sillKey)
-	end
-end
-
-local function houseCottage(s)
-	-- a half-timbered cottage, 14 x 9, on a stone foundation; front at local z = -5
-	local x0, x1, z0, z1 = -7, 7, -5, 4
-	SK.Box(s, x0 - 0.5, x1 + 0.5, 0, 0.5, z0 - 0.5, z1 + 0.5, "Found")
-	SK.Box(s, x0, x1, 0.5, 6.0, z0, z1, "Wall")
-	for _, x in ipairs({ x0, -2.5, 2.0, x1 - 0.5 }) do
-		SK.Box(s, x, x + 0.5, 0.5, 6.0, z0 - 0.5, z0, "Timber")
-	end
-	SK.Box(s, x0, x1, 3.0, 3.5, z0 - 0.5, z0, "Timber")
-	SK.Box(s, x0 - 0.5, x1 + 0.5, 5.5, 6.0, z0 - 0.5, z1 + 0.5, "Timber")
-	-- door (round top) + step + a brass knob
-	SK.Box(s, -1.5, 1.5, 0, 0.5, z0 - 1.5, z0, "Found")
-	SK.Box(s, -1.0, 1.0, 0.5, 3.5, z0 - 0.5, z0, "Door")
-	SK.Box(s, -0.5, 0.5, 3.5, 4.0, z0 - 0.5, z0, "Door")
-	SK.Box(s, 0.5, 1.0, 1.75, 2.25, z0 - 1.0, z0 - 0.5, "Gold")
-	-- windows with blue shutters and flower boxes
-	for _, x in ipairs({ -4.75, 4.25 }) do
-		windowZ(s, x, 1.75, z0, 2.0, 1.75, "Window", "Sill")
-		SK.Box(s, x - 1.75, x - 1.25, 1.5, 3.75, z0 - 1.0, z0 - 0.5, "Shutter")
-		SK.Box(s, x + 1.25, x + 1.75, 1.5, 3.75, z0 - 1.0, z0 - 0.5, "Shutter")
-		SK.Box(s, x - 1.25, x + 1.25, 1.0, 1.5, z0 - 1.5, z0 - 0.5, "Plank")
-		SK.Box(s, x - 1.0, x, 1.5, 2.0, z0 - 1.5, z0 - 1.0, "Flower1")
-		SK.Box(s, x, x + 1.0, 1.5, 2.0, z0 - 1.5, z0 - 1.0, "Flower2")
-	end
-	-- gabled roof (ridge along X) in two tile tones, chimney, a round attic window in the side gable
-	local top = SK.Gable(s, x0 - 1.0, x1 + 1.0, z0 - 1.0, z1 + 1.0, 6.0, 0.5, "Roof", "X", "RoofTop", "Roof2")
-	SK.Box(s, 3.5, 5.0, 6.0, top + 1.0, 0.5, 2.0, "Chimney")
-	SK.Box(s, 3.25, 5.25, top + 1.0, top + 1.5, 0.25, 2.25, "StoneDark")
-	-- two round bushes by the door
-	for _, x in ipairs({ -2.75, 2.75 }) do
-		SK.Oct(s, x, z0 - 1.25, 0.75, 0, 1.5, "Bush")
-	end
-	return top
-end
-
-local function houseVilla(s)
-	-- a two-storey villa, 20 x 12, stucco + white trim, terracotta hip roof, a portico with a balcony
-	local x0, x1, z0, z1 = -10, 10, -6, 6
-	SK.Box(s, x0 - 0.5, x1 + 0.5, 0, 0.75, z0 - 0.5, z1 + 0.5, "Found")
-	SK.Box(s, x0, x1, 0.75, 11.0, z0, z1, "VillaWall")
-	SK.Box(s, x0 - 0.25, x1 + 0.25, 5.75, 6.25, z0 - 0.25, z1 + 0.25, "VillaTrim")
-	SK.Box(s, x0 - 0.5, x1 + 0.5, 10.75, 11.25, z0 - 0.5, z1 + 0.5, "VillaTrim")
-	for _, x in ipairs({ x0, x1 - 0.5 }) do
-		SK.Box(s, x, x + 0.5, 0.75, 11.0, z0 - 0.5, z0, "VillaTrim")
-	end
-	-- portico: columns, the balcony slab with a railing, the door
-	SK.Box(s, -3.5, 3.5, 0, 0.75, z0 - 3.5, z0, "Found")
-	for _, x in ipairs({ -3.0, 2.5 }) do
-		SK.Box(s, x, x + 0.5, 0.75, 6.0, z0 - 3.0, z0 - 2.5, "Marble")
-	end
-	SK.Box(s, -3.5, 3.5, 6.0, 6.5, z0 - 3.5, z0, "VillaTrim")
-	SK.Box(s, -3.5, 3.5, 6.5, 7.75, z0 - 3.5, z0 - 3.0, "Rail")
-	SK.Box(s, -1.25, 1.25, 0.75, 4.5, z0 - 0.5, z0, "Door")
-	SK.Box(s, -1.5, 1.5, 4.5, 5.0, z0 - 0.5, z0, "VillaTrim")
-	-- tall windows, two rows
-	for _, x in ipairs({ -7.5, -5.0, 5.0, 7.5 }) do
-		windowZ(s, x, 2.0, z0, 1.5, 2.5, "Window", "VillaTrim")
-		windowZ(s, x, 7.5, z0, 1.5, 2.5, "Window", "VillaTrim")
-	end
-	windowZ(s, 0, 7.5, z0, 2.0, 2.5, "Window", "VillaTrim")
-	-- terracotta hip roof in two tones, chimneys, potted bushes
-	local top = SK.Hip(s, x0 - 1.0, x1 + 1.0, z0 - 1.0, z1 + 1.0, 11.25, 0.75, "Terracotta", "RoofTop", "Terracotta2")
-	for _, x in ipairs({ -6.5, 6.0 }) do
-		SK.Box(s, x, x + 1.5, 11.0, top + 1.0, 1.0, 2.5, "Chimney")
-	end
-	for _, x in ipairs({ -5.5, 5.5 }) do
-		SK.Box(s, x - 0.5, x + 0.5, 0.75, 1.5, z0 - 2.0, z0 - 1.0, "Terracotta")
-		SK.Oct(s, x, z0 - 1.5, 0.75, 1.5, 3.0, "Bush")
-	end
-	return top
-end
-
-local function houseManor(s)
-	-- a manor: a three-storey centre block with a pediment and two lower wings, slate roofs, chimneys
-	local cx0, cx1, z0, z1 = -6, 6, -7, 7
-	SK.Box(s, -12.5, 12.5, 0, 1.0, z0 - 0.5, z1 + 0.5, "Found")
-	for _, sx in ipairs({ -1, 1 }) do
-		local wx0, wx1 = (sx < 0) and -12 or 6, (sx < 0) and -6 or 12
-		SK.Box(s, wx0, wx1, 1.0, 10.0, z0 + 1, z1, "ManorWall")
-		SK.Box(s, wx0 - 0.25, wx1 + 0.25, 9.75, 10.25, z0 + 0.75, z1 + 0.25, "ManorTrim")
-		SK.Hip(s, wx0 - 0.5, wx1 + 0.5, z0 + 0.5, z1 + 0.5, 10.25, 0.75, "Slate", "SlateTop", "Slate2")
-		for _, x in ipairs({ wx0 + 1.75, wx1 - 1.75 }) do
-			windowZ(s, x, 2.5, z0 + 1, 1.5, 2.5, "Window", "ManorTrim")
-			windowZ(s, x, 6.5, z0 + 1, 1.5, 2.5, "Window", "ManorTrim")
-		end
-	end
-	SK.Box(s, cx0, cx1, 1.0, 15.0, z0, z1, "ManorWall")
-	SK.Box(s, cx0 - 0.25, cx1 + 0.25, 14.75, 15.25, z0 - 0.25, z1 + 0.25, "ManorTrim")
-	for _, x in ipairs({ cx0, -2.5, 2.0, cx1 - 0.5 }) do
-		SK.Box(s, x, x + 0.5, 1.0, 15.0, z0 - 0.5, z0, "ManorTrim")
-	end
-	-- pediment over the centre front with a round window, the slate roof behind it
-	SK.Gable(s, cx0 - 0.5, cx1 + 0.5, z0 - 0.5, z0 + 1.0, 15.25, 0.5, "ManorTrim", "Z")
-	SK.DiscZ(s, 0, 16.75, z0 - 1.0, z0 - 0.5, 0.8, "Window")
-	local top = SK.Hip(s, cx0 - 0.5, cx1 + 0.5, z0 + 1.0, z1 + 0.5, 15.25, 0.75, "Slate", "SlateTop", "Slate2")
-	-- grand door with steps, lanterns, windows
-	SK.Box(s, -2.5, 2.5, 0, 1.0, z0 - 2.0, z0, "Marble")
-	SK.Box(s, -2.0, 2.0, 0, 0.5, z0 - 2.5, z0 - 2.0, "Marble")
-	SK.Box(s, -1.25, 1.25, 1.0, 5.0, z0 - 0.5, z0, "Door")
-	SK.Box(s, -1.75, 1.75, 5.0, 5.5, z0 - 1.0, z0, "Gold")
-	for _, x in ipairs({ -4.25, 4.25 }) do
-		windowZ(s, x, 2.5, z0, 1.5, 2.5, "Window", "ManorTrim")
-	end
-	for _, x in ipairs({ -4.25, 0, 4.25 }) do
-		windowZ(s, x, 6.75, z0, 1.5, 2.5, "Window", "ManorTrim")
-		windowZ(s, x, 10.75, z0, 1.5, 2.5, "Window", "ManorTrim")
-	end
-	for _, x in ipairs({ -10.5, 9.5 }) do
-		SK.Box(s, x, x + 1.0, 10.0, 15.0, 2.0, 3.5, "Chimney")
-	end
-	for _, x in ipairs({ -3.25, 2.75 }) do
-		SK.Box(s, x, x + 0.5, 2.5, 3.5, z0 - 1.0, z0 - 0.5, "Lamp")
-	end
-	-- topiary cones flanking the steps
-	for _, x in ipairs({ -4.0, 4.0 }) do
-		SK.Spire(s, x, z0 - 2.0, 1.0, 0, 3.0, "Bush", "Bush2", 1.0)
-	end
-	return top
-end
-
-local function houseCastle(s)
-	-- the Sky Castle: a keep with crenellations, four round towers with stepped blue spires, a gold gate,
-	-- banners and soft cloud puffs around the base
-	local x0, x1, z0, z1 = -9, 9, -6, 7
-	-- it floats on its own cloud: a soft two-tone cloud slab with puffs at the corners
-	SK.Box(s, -13.5, 13.5, 0, 0.5, -9.5, 9.5, "CloudShade")
-	SK.Box(s, -13, 13, 0.5, 1.0, -9, 9, "Cloud")
-	-- cloud puffs on the slab: two in front beside the gate, one on each side between the towers
-	for _, q in ipairs({ { -6.5, -9.0 }, { 6.5, -9.0 }, { -12.5, 0 }, { 12.5, 0 } }) do
-		SK.Oct(s, q[1], q[2], 1.5, 1.0, 2.0, "Cloud")
-		SK.Box(s, q[1] - 0.5, q[1] + 0.5, 2.0, 2.5, q[2] - 0.5, q[2] + 0.5, "CloudLight")
-	end
-	-- curtain walls between the towers, crenellated at the front
-	SK.Box(s, -10, 10, 1.0, 9.0, -8, -6.5, "Castle")
-	SK.Box(s, -10, 10, 1.0, 9.0, 7, 8.5, "Castle")
-	for x = -7.5, 7.0, 2.5 do
-		if abs(x + 0.5) > 3 then
-			SK.Box(s, x, x + 1, 9.0, 10.0, -8, -7, "Castle")
-		end
-	end
-	-- the keep: a cornice and merlons along the front
-	SK.Box(s, x0, x1, 1.0, 16.0, z0, z1, "Castle")
-	SK.Box(s, x0 - 0.5, x1 + 0.5, 15.5, 16.5, z0 - 0.5, z1 + 0.5, "CastleShade")
-	for x = x0 - 0.5, x1 - 0.5, 2 do
-		SK.Box(s, x, x + 1, 16.5, 17.5, z0 - 0.5, z0 + 0.5, "Castle")
-	end
-	-- the central tower and its spire with a pennant
-	SK.Box(s, -3, 3, 16.0, 21.0, -2, 4, "Tower")
-	SK.Box(s, -3.5, 3.5, 20.5, 21.0, -2.5, 4.5, "CastleShade")
-	local tip = SK.Spire(s, 0, 1, 4.0, 21.0, 28.0, "Spire", "Spire2", 1.0)
-	SK.Box(s, -0.5, 0.5, tip, tip + 2.0, 0.5, 1.5, "Gold")
-	SK.Box(s, 0.5, 2.5, tip + 1.0, tip + 2.0, 0.5, 1.5, "Banner")
-	windowZ(s, 0, 17.5, -2, 1.5, 2.0, "WarmWindow", "Gold")
-	-- four round towers with spires, finials and pennants
-	for _, sx in ipairs({ -1, 1 }) do
-		for _, sz in ipairs({ -1, 1 }) do
-			local tx, tz = sx * 10.5, sz * 6.5
-			SK.Oct(s, tx, tz, 2.75, 1.0, 13.5, "Tower")
-			local top = SK.Spire(s, tx, tz, 3.5, 13.5, 21.5, "Spire", "Spire2", 2.0)
-			SK.Box(s, tx - 0.5, tx + 0.5, top, top + 1.5, tz - 0.5, tz + 0.5, "Gold")
-			SK.Box(s, tx + sx * 0.5, tx + sx * 2.0, top + 0.5, top + 1.5, tz - 0.5, tz + 0.5, "Banner")
-			if sz < 0 then
-				windowZ(s, tx, 8.5, tz - 2.75, 1.0, 1.5, "WarmWindow", "CastleShade")
-			end
-		end
-	end
-	-- the gate: a gold door under an arch, banners and lit windows on the keep
-	SK.Box(s, -2.5, 2.5, 1.0, 7.0, -8.5, -8, "CastleShade")
-	SK.Box(s, -2.0, 2.0, 1.0, 6.0, -9, -8.5, "Door")
-	SK.Box(s, -1.5, 1.5, 6.0, 6.5, -9, -8.5, "Door")
-	SK.Box(s, -2.0, 2.0, 3.0, 3.5, -9.5, -9, "Gold")
-	SK.Box(s, -0.25, 0.25, 1.0, 6.0, -9.5, -9, "Gold")
-	for _, x in ipairs({ -6.0, 5.0 }) do
-		SK.Box(s, x, x + 1.0, 4.0, 8.5, -8.5, -8.0, "Banner")
-		windowZ(s, x + 0.5, 11.0, z0, 1.5, 2.5, "WarmWindow", "Gold")
-	end
-	-- a gold-framed rose window over the gate (the facade's centrepiece) and a gold band under the cornice
-	SK.DiscZ(s, 0, 12.0, z0 - 0.5, z0, 2.25, "Gold")
-	SK.DiscZ(s, 0, 12.0, z0 - 1.0, z0 - 0.5, 1.75, "WarmWindow")
-	SK.Box(s, -0.25, 0.25, 10.5, 13.5, z0 - 1.5, z0 - 1.0, "Gold")
-	SK.Box(s, -1.5, 1.5, 11.75, 12.25, z0 - 1.5, z0 - 1.0, "Gold")
-	SK.Box(s, x0, x1, 14.5, 15.0, z0 - 0.5, z0, "Gold")
-	return 29
-end
-
-function Art.House(def, level)
-	local tpl = newTemplate("House")
-	local s = SK.New(0.5)
-	local tierFn = ({ houseCottage, houseVilla, houseManor, houseCastle })[level] or houseCottage
-	tierFn(s)
-	local m = SK.Build(s, HOUSE_PAL, { Name = "Body", Collide = "big" })
-	absorb(tpl.Model, m)
-	if level >= 4 then
-		local spire = biggestPart(tpl.Model, "Spire")
-		if spire then
-			local att = Instance.new("Attachment")
-			att.Name = "Sparkle"
-			att.Parent = spire
-			emitter(att, { Color = ColorSequence.new(C.TextGold), Rate = 2, SpreadAngle = Vector2.new(180, 180), Lifetime = NumberRange.new(1.5, 2.5) })
-		end
-	end
-	return tpl
-end
-
-----------------------------------------------------------------------
--- Fusion Machine: two input pods, a swirling cloud chamber and an output pod. Front -Z.
--- A round two-step dais (an indigo foot, a violet deck with a gold rim at level 3, a lit front step). Left a cyan pod,
--- right a magenta pod: a round pedestal, a tinted glass capsule (one clean part) with a floating neon gem, a wider lid
--- with a beacon, and a curved pipe arching from the lid into the chamber. In the middle the tall glass chamber on a
--- round pedestal with a breathing neon seam, four ribs (gold at 3), the crown ring, a stepped dome and the fusion
--- crystal on top (tesla prongs from level 2); inside, puffy clouds and a glowing heart swirl (the Swirl model HomeFx
--- spins). In front the output pod (a lit pedestal under a small golden glass dome, where the FusionPrompt rides),
--- fed by two neon trails on the deck from the input pods. Level 3 adds crystal shards and rainbow gems around the
--- dais. Parts named "Glow" (neon) breathe on the client.
+-- Fusion Machine: front -Z. A slate-and-marble dais with a neon inlay line, two glass input pods on metal pedestals
+-- (cyan left, magenta right) piped into the marble-ringed glass chamber where the `Swirl` (a Model HomeFx spins: two
+-- cloud puffs around a glowing heart) turns, and a small output pod in front. Brass trims and lamps (2), crystal
+-- shards and sparkles (3). `FusionPrompt` ("Fuse", owner only) on PromptPoint, SwirlCenter, ChamberLight. <= 90.
 ----------------------------------------------------------------------
 function Art.Fusion(def, level)
 	local tpl = newTemplate("FusionMachine")
-	local s = SK.New(0.5)
+	local m = tpl.Model
 	local gold = level >= 2
-	local trim = gold and "Gold" or "Trim"
-	local cz = 1.0 -- the chamber's and the pods' centre line (local z); every coordinate sits on the 0.5 grid
-	-- the dais: an indigo foot, a violet deck (a gold rim at 3) and a lit step toward the output pod
-	SK.Oct(s, 0, 0.5, 5.0, 0, 0.5, "Base")
-	SK.Oct(s, 0, 0.5, 4.5, 0.5, 1.0, (level >= 3) and "Gold" or "Deck")
-	SK.Oct(s, 0, 0.5, 4.0, 0.5, 1.0, "Deck")
-	SK.Box(s, -1.5, 1.5, 0, 0.5, -5.5, -4.5, "Base")
-	SK.Box(s, -1.0, 1.0, 0, 0.5, -5.5, -4.5, "Walk")
-	-- the two input pods (left = cyan, right = magenta): a round pedestal, the glass capsule (one part, below) and a
-	-- wider lid with a beacon; a curved pipe arches from the lid into the chamber
+	local trim = gold and K.Gold or K.Iron
+	local cz = 1.0
+	local violet = rgb(170, 118, 255)
+	Kit.oct(m, "Base", 0, 0, 0.5, 9.4, 0.5, K.SlateDark, M.Slate, true)
+	local deckA = Kit.oct(m, "Deck", 0, 0.5, 0.5, 8.4, 0.45, K.MarbleShade, M.Marble, true)
+	deckA.Name = "Deck"
+	Kit.oct(m, "Inlay", 0, 0.62, 0.5, 8.6, 0.08, violet, M.Neon)
+	Kit.p(m, "Step", CFrame.new(0, 0.25, -4.7), Vector3.new(3.0, 0.5, 1.2), K.Slate, M.Slate, true)
+	Kit.p(m, "StepInlay", CFrame.new(0, 0.52, -4.7), Vector3.new(2.0, 0.04, 0.3), violet, M.Neon)
+	-- the input pods
 	for _, sx in ipairs({ -1, 1 }) do
-		local px = sx * 3.5
-		local glowKey = (sx < 0) and "GlowA" or "GlowB"
-		SK.Oct(s, px, cz, 1.5, 1.0, 1.5, "Metal")
-		SK.Oct(s, px, cz, 1.0, 1.5, 2.0, trim)
-		SK.Oct(s, px, cz, 1.5, 5.0, 5.5, trim)
-		SK.Oct(s, px, cz, 1.0, 5.5, 6.0, "Metal")
-		-- the pipe leaves the lid on its inner side (the beacon on top stays clear) and arches into the chamber
-		SK.Curve(s, {
-			{ px - sx * 0.75, 5.75, cz },
-			{ px - sx * 1.0, 7.5, cz },
-			{ sx * 2.25, 8.25, cz },
-			{ sx * 1.75, 8.25, cz },
-		}, 0.4, 0.4, "Pipe")
-		SK.Box(s, px - 0.5, px + 0.5, 6.0, 6.5, cz - 0.5, cz + 0.5, glowKey)
+		local px = sx * 3.0
+		local glow = (sx < 0) and rgb(110, 230, 240) or rgb(240, 120, 210)
+		Kit.cyl(m, "PodBase", px, 0.95, cz, 1.9, 0.6, trim, M.Metal, true)
+		Kit.cyl(m, "Pod", px, 1.55, cz, 1.5, 2.6, rgb(214, 234, 246), M.Glass).Transparency = 0.55
+		Kit.cyl(m, "PodCore", px, 1.75, cz, 0.6, 1.6, glow, M.Neon)
+		Kit.cyl(m, "PodLid", px, 4.15, cz, 1.9, 0.45, trim, M.Metal)
+		-- a pipe from the lid into the chamber
+		Kit.cylAt(m, "Pipe", CFrame.new(px * 0.62, 4.75, cz), abs(px) * 0.75, 0.4, K.Copper, M.Metal)
+		Kit.p(m, "PipeElbow", CFrame.new(px, 4.55, cz), Vector3.new(0.45, 0.6, 0.45), K.Copper, M.Metal)
 	end
-	-- the chamber: a round pedestal, a gold or lavender trim, the neon seam, four ribs, the crown ring and a stepped
-	-- dome with the fusion crystal's holder
-	SK.Oct(s, 0, cz, 2.5, 1.0, 2.0, "Metal")
-	SK.Oct(s, 0, cz, 3.0, 2.0, 2.5, trim)
-	SK.Oct(s, 0, cz, 2.5, 2.5, 3.0, "Glow")
-	for _, a in ipairs({ -1, 1 }) do
-		for _, b in ipairs({ -1, 1 }) do
-			local rx = (a < 0) and -2.5 or 2.0
-			local rz = cz + ((b < 0) and -2.5 or 2.0)
-			SK.Box(s, rx, rx + 0.5, 3.0, 9.0, rz, rz + 0.5, (level >= 3) and "Gold" or "Rib")
-		end
+	-- the chamber: a marble base ring and crown ring around a glass column, neon inlay bands and three marble ribs
+	Kit.cyl(m, "ChamberBase", 0, 0.95, cz, 3.4, 0.7, K.Marble, M.Marble, true)
+	Kit.cyl(m, "Chamber", 0, 1.65, cz, 2.8, 5.0, rgb(214, 226, 246), M.Glass).Transparency = 0.6
+	Kit.cyl(m, "ChamberCrown", 0, 6.65, cz, 3.4, 0.7, K.Marble, M.Marble)
+	Kit.cyl(m, "ChamberInlay", 0, 1.6, cz, 3.45, 0.12, violet, M.Neon)
+	Kit.cyl(m, "ChamberInlay", 0, 6.6, cz, 3.45, 0.12, violet, M.Neon)
+	for k = 0, 2 do
+		local a = rad(90 + k * 120)
+		Kit.p(m, "Rib", CFrame.new(math.cos(a) * 1.5, 4.15, cz + math.sin(a) * 1.5) * CFrame.Angles(0, -a, 0), Vector3.new(0.35, 5.0, 0.35), K.MarbleShade, M.Marble)
 	end
-	SK.Oct(s, 0, cz, 3.0, 9.0, 9.5, trim)
-	SK.Oct(s, 0, cz, 2.5, 9.5, 10.0, "Dome")
-	SK.Oct(s, 0, cz, 2.0, 10.0, 10.5, "DomeLight")
-	SK.Oct(s, 0, cz, 1.5, 10.5, 11.0, "Dome")
-	SK.Oct(s, 0, cz, 1.0, 11.0, 11.5, trim)
-	SK.Box(s, -0.5, 0.5, 11.5, 12.0, cz - 0.5, cz + 0.5, "Metal")
-	if level >= 2 then
-		-- tesla prongs on the dome with glowing tips
+	Kit.cyl(m, "ChamberCap", 0, 7.35, cz, 1.6, 0.5, trim, M.Metal)
+	local crystalColor = (level >= 3) and rgb(255, 226, 150) or rgb(200, 170, 255)
+	Kit.p(m, "Crystal", CFrame.new(0, 8.3, cz) * CFrame.Angles(rad(45), rad(45), 0), Vector3.new(0.7, 0.7, 0.7), crystalColor, M.Neon)
+	-- the output pod in front
+	Kit.cyl(m, "OutputBase", 0, 0.95, -2.6, 1.6, 0.5, trim, M.Metal, true)
+	Kit.ball(m, "OutputDome", Vector3.new(0, 1.55, -2.6), 1.3, rgb(214, 234, 246), M.Glass).Transparency = 0.5
+	if gold then
+		local deco = Kit.detail(m, "FusionDecor")
 		for _, sx in ipairs({ -1, 1 }) do
-			local x0 = (sx < 0) and -2.0 or 1.5
-			SK.Box(s, x0, x0 + 0.5, 10.0, 12.0, cz - 0.25, cz + 0.25, "Rib")
-			SK.Box(s, x0, x0 + 0.5, 12.0, 12.5, cz - 0.25, cz + 0.25, "Glow")
+			Kit.lantern(deco, Vector3.new(sx * 3.6, 1.35, -3.0), 0.4, false)
 		end
 	end
 	if level >= 3 then
-		-- crystal shards and rainbow gems around the dais
-		for i, q in ipairs({ { -4.0, -2.5 }, { 3.5, -2.5 }, { -2.5, 4.0 }, { 2.0, 4.0 } }) do
-			SK.Box(s, q[1], q[1] + 0.5, 1.0, 1.5, q[2], q[2] + 0.5, "Gem" .. i)
-		end
-	end
-	-- the output pod in front: a round pedestal with a glowing ring (the glass dome is a separate part)
-	SK.Oct(s, 0, -3.0, 1.5, 1.0, 1.5, "Metal")
-	SK.Oct(s, 0, -3.0, 1.0, 1.5, 2.0, "Glow")
-	local pal = mergeTables(P, {
-		Base = rgb(56, 50, 112),
-		Deck = rgb(120, 102, 198),
-		Walk = { Color = rgb(150, 210, 255), Material = MAT.Neon },
-		Metal = rgb(222, 224, 246),
-		Trim = rgb(176, 160, 236),
-		Rib = rgb(84, 72, 160),
-		Dome = rgb(150, 116, 226),
-		DomeLight = rgb(186, 160, 246),
-		Glow = { Color = rgb(206, 156, 255), Material = MAT.Neon },
-		GlowA = { Color = rgb(110, 228, 255), Material = MAT.Neon },
-		GlowB = { Color = rgb(255, 128, 222), Material = MAT.Neon },
-		Pipe = rgb(132, 96, 214),
-		Gem1 = { Color = rgb(255, 120, 140), Material = MAT.Neon },
-		Gem2 = { Color = rgb(255, 214, 110), Material = MAT.Neon },
-		Gem3 = { Color = rgb(120, 236, 160), Material = MAT.Neon },
-		Gem4 = { Color = rgb(130, 170, 255), Material = MAT.Neon },
-	})
-	SK.Shade(s, { Only = { Metal = true, Deck = true, Pipe = true }, Smooth = 2, Seed = 7 })
-	local m = SK.Build(s, pal, { Name = "Body", Collide = "big", MaxParts = 66 })
-	absorb(tpl.Model, m)
-	-- glass (one clean part each, so nothing inside splits it), the pods' floating gems and the fusion crystal
-	for _, sx in ipairs({ -1, 1 }) do
-		local px = sx * 3.5
-		local tint = (sx < 0) and rgb(168, 236, 255) or rgb(255, 194, 238)
-		box(tpl.Model, "PodGlass", CFrame.new(px, 3.5, cz), Vector3.new(2.0, 3.0, 2.0), tint, { Material = MAT.Glass, Transparency = 0.45, Shadow = false })
-		box(tpl.Model, "Glow", CFrame.new(px, 3.5, cz) * CFrame.Angles(math.rad(35), math.rad(45), 0), Vector3.new(0.8, 0.8, 0.8),
-			(sx < 0) and rgb(110, 228, 255) or rgb(255, 128, 222), { Material = MAT.Neon, Shadow = false })
-	end
-	box(tpl.Model, "Chamber", CFrame.new(0, 6.0, cz), Vector3.new(4.0, 6.0, 4.0), rgb(222, 212, 255), { Material = MAT.Glass, Transparency = 0.6, Shadow = false })
-	-- two neon trails on the deck from the input pods to the output pod (what goes in comes out in front)
-	for _, sx in ipairs({ -1, 1 }) do
-		local a, b = Vector3.new(sx * 2.7, 1.03, -0.3), Vector3.new(sx * 1.25, 1.03, -2.4)
-		box(tpl.Model, "Glow", CFrame.lookAt((a + b) / 2, b), Vector3.new(0.35, 0.06, (b - a).Magnitude), (sx < 0) and rgb(110, 228, 255) or rgb(255, 128, 222),
-			{ Material = MAT.Neon, Shadow = false })
-	end
-	box(tpl.Model, "PodGlass", CFrame.new(0, 2.65, -3.0), Vector3.new(1.8, 1.3, 1.8), rgb(255, 238, 196), { Material = MAT.Glass, Transparency = 0.45, Shadow = false })
-	local crystalColor = (level >= 3) and rgb(255, 214, 120) or rgb(150, 230, 255)
-	box(tpl.Model, "Crystal", CFrame.new(0, 12.9, cz) * CFrame.Angles(0, math.rad(45), 0), Vector3.new(0.9, 1.6, 0.9), crystalColor, { Material = MAT.Neon, Shadow = false })
-	box(tpl.Model, "Crystal", CFrame.new(0, 12.9, cz) * CFrame.Angles(0, math.rad(45), math.rad(45)) * CFrame.Angles(math.rad(45), 0, 0), Vector3.new(0.7, 0.7, 0.7), crystalColor,
-		{ Material = MAT.Neon, Shadow = false })
-	if level >= 3 then
-		-- crystal shards on the dais's back corners
 		for _, sx in ipairs({ -1, 1 }) do
-			box(tpl.Model, "Crystal", CFrame.new(sx * 3.6, 1.9, 4.0) * CFrame.Angles(0, math.rad(45), math.rad(sx * 12)), Vector3.new(0.7, 1.8, 0.7), rgb(150, 230, 255), { Material = MAT.Neon, Shadow = false })
+			Kit.p(m, "Shard", CFrame.new(sx * 3.4, 1.9, 3.6) * CFrame.Angles(0, rad(45), rad(sx * 12)), Vector3.new(0.6, 1.8, 0.6), rgb(150, 230, 255), M.Neon)
 		end
 	end
-	-- the swirl: three puffy clouds on a rising spiral around a glowing heart; HomeFx spins it inside the chamber
-	local w = SK.New(0.5)
-	SK.Box(w, 0.0, 1.5, 3.5, 4.5, cz - 0.5, cz + 1.0, "Cloud")
-	SK.Box(w, 0.5, 1.0, 4.5, 5.0, cz, cz + 0.5, "CloudLight")
-	SK.Box(w, -1.5, 0.0, 5.5, 6.5, cz - 1.0, cz + 0.5, "Cloud")
-	SK.Box(w, -1.0, -0.5, 6.5, 7.0, cz - 0.5, cz, "CloudLight")
-	SK.Box(w, 0.0, 1.5, 7.5, 8.5, cz - 1.0, cz + 0.5, "SwirlB")
-	SK.Box(w, -0.5, 0.5, 4.5, 7.5, cz - 0.5, cz + 0.5, "SwirlC")
-	local swirl = SK.Build(w, mergeTables(P, {
-		CloudLight = rgb(252, 253, 255),
-		SwirlB = rgb(226, 210, 255),
-		SwirlC = { Color = (level >= 3) and rgb(255, 230, 160) or rgb(214, 176, 255), Material = MAT.Neon, Transparency = 0.15 },
-	}), { Name = "Swirl" })
-	swirl.Parent = tpl.Model
-	tpl.Points.SwirlCenter = Vector3.new(0, 6.0, cz)
-	local prompt = Instance.new("ProximityPrompt")
-	prompt.Name = "FusionPrompt"
-	prompt.ActionText = "Fuse"
-	prompt.ObjectText = "Fusion Machine"
-	prompt.KeyboardKeyCode = Enum.KeyCode.E
-	prompt.HoldDuration = 0
-	prompt.MaxActivationDistance = PROMPT_RANGE
-	prompt.RequiresLineOfSight = false
-	prompt:SetAttribute("StationId", "FusionMachine")
-	local deck = biggestPart(tpl.Model, "Deck") or biggestPart(tpl.Model)
+	-- the swirl (HomeFx spins it): two cloud puffs on a rising spiral around a glowing heart (voxel-cloud palette)
+	local swirl = Instance.new("Model")
+	swirl.Name = "Swirl"
+	CollectionService:AddTag(swirl, EXEMPT_TAG)
+	Kit.ball(swirl, "Cloud", Vector3.new(0.7, 3.2, cz), 1.3, K.CloudTop, M.Plastic)
+	Kit.ball(swirl, "Cloud", Vector3.new(-0.7, 4.9, cz), 1.2, K.CloudSide, M.Plastic)
+	Kit.p(swirl, "Heart", CFrame.new(0, 4.0, cz), Vector3.new(0.5, 2.4, 0.5), (level >= 3) and rgb(255, 230, 160) or rgb(214, 176, 255), M.Neon, false, { Transparency = 0.15 })
+	swirl.Parent = m
+	tpl.Points.SwirlCenter = Vector3.new(0, 4.1, cz)
+	local prompt = newPrompt("FusionPrompt", "Fuse", "Fusion Machine", "FusionMachine")
+	local deck = biggestPart(m, "Deck") or biggestPart(m)
 	if deck then
-		local att = Instance.new("Attachment")
-		att.Name = "PromptPoint"
-		att.CFrame = deck.CFrame:Inverse() * CFrame.new(0, 2.5, -3.0)
-		att.Parent = deck
+		local att = attach(deck, "PromptPoint", Vector3.new(0, 2.5, -3.0))
 		prompt.Parent = att
-		local light = Instance.new("Attachment")
-		light.Name = "ChamberLight"
-		light.CFrame = deck.CFrame:Inverse() * CFrame.new(0, 6, cz)
-		light.Parent = deck
+		local light = attach(deck, "ChamberLight", Vector3.new(0, 4.0, cz))
 		pointLight(light, rgb(186, 120, 255), 1.2, 16)
 		if level >= 3 then
 			emitter(light, { Color = ColorSequence.new(rgb(214, 180, 255), C.TextGold), Rate = 4, SpreadAngle = Vector2.new(180, 180) })
@@ -2329,366 +1561,486 @@ function Art.Fusion(def, level)
 end
 
 ----------------------------------------------------------------------
--- Arena Gate: a stone arch with crossed swords and a portal surface. Front -Z.
+-- Arena Gate (Kind Arena): front -Z. A half-size WorldStyle gate in the Arena's red: two round marble columns on
+-- slate plinths, a slate lintel with a marble keystone medallion carrying crossed swords, a thin red neon inlay
+-- around the opening, a red neon disc + a ForceField shimmer, braziers on top and red banners. `ArenaGatePrompt`
+-- ("Go to Arena", owner only, attributes StationId / Teleport = "Arena"; ArenaBuilder teleports). <= 80 parts.
 ----------------------------------------------------------------------
-function Art.Arena(def, level)
+function Art.ArenaGate(def, level)
 	local tpl = newTemplate("ArenaGate")
-	local s = SK.New(0.5)
-	-- a stone gate: two pillars with capitals, a lintel with a cornice and a crest, braziers on top, red banners,
-	-- a red-and-gold shield over the portal (crossed swords added below) and the violet portal surface
-	SK.Box(s, -3.5, 3.5, 0, 0.5, -2.0, 2.0, "StoneDark")
-	for _, sx in ipairs({ -1, 1 }) do
-		local x0 = (sx < 0) and -3.5 or 2.0
-		SK.Box(s, x0, x0 + 1.5, 0.5, 9.0, -1.0, 1.0, "Stone")
-		SK.Box(s, x0 - 0.5, x0 + 2.0, 0.5, 1.0, -1.5, 1.5, "StoneLight")
-		SK.Box(s, x0 - 0.5, x0 + 2.0, 9.0, 9.5, -1.5, 1.5, "StoneLight")
-		SK.Box(s, x0, x0 + 1.5, 4.0, 8.0, -1.5, -1.0, "Banner")
-		SK.Box(s, x0 + 0.5, x0 + 1.0, 3.5, 4.0, -1.5, -1.0, "Banner")
-		SK.Box(s, x0, x0 + 1.5, 7.5, 8.0, -1.5, -1.0, "Gold")
-		local bx = (sx < 0) and -3.5 or 2.5
-		SK.Box(s, bx, bx + 1.0, 11.5, 12.0, -0.5, 0.5, "Iron")
-		SK.Box(s, bx, bx + 1.0, 12.0, 13.0, -0.5, 0.5, "Fire")
-	end
-	SK.Box(s, -3.5, 3.5, 9.5, 11.0, -1.0, 1.0, "Stone")
-	SK.Box(s, -4.0, 4.0, 11.0, 11.5, -1.5, 1.5, "StoneLight")
-	SK.Box(s, -1.0, 1.0, 11.5, 12.5, -0.5, 0.5, "StoneLight")
-	SK.Box(s, -2.0, 2.0, 0.5, 9.5, -0.5, 0.5, "Portal")
-	SK.Box(s, -1.0, 1.0, 9.0, 11.0, -1.5, -1.0, "Shield")
-	SK.Box(s, -0.5, 0.5, 8.5, 9.0, -1.5, -1.0, "Shield")
-	SK.Box(s, -1.0, 1.0, 10.5, 11.0, -2.0, -1.5, "Gold")
-	local pal = mergeTables(P, {
-		Portal = { Color = rgb(140, 96, 220), Material = MAT.Neon, Transparency = 0.45 },
-		Fire = { Color = rgb(255, 170, 80), Material = MAT.Neon },
-		Banner = rgb(214, 70, 74),
-		Shield = rgb(196, 58, 66),
-	})
-	SK.Shade(s, { Only = { Stone = true }, Smooth = 2, Light = false, Seed = 19 })
-	local m = SK.Build(s, pal, { Name = "Body", Collide = "big", MaxParts = 40 })
-	absorb(tpl.Model, m)
-	for _, p in ipairs(tpl.Model:GetDescendants()) do
-		if p:IsA("BasePart") and p.Name == "Portal" then
-			p.CanCollide = false
-			p.CanQuery = false
-		end
-	end
-	-- two swords crossed in front of the shield: steel blades, gold cross-guards and grips
-	for _, sx in ipairs({ -1, 1 }) do
-		local cf = CFrame.new(0, 9.9, -1.75 - (sx + 1) * 0.06) * CFrame.Angles(0, 0, math.rad(sx * 40))
-		box(tpl.Model, "Sword", cf * CFrame.new(0, 0.4, 0), Vector3.new(0.4, 3.6, 0.15), rgb(214, 222, 236), { Shadow = false })
-		box(tpl.Model, "Hilt", cf * CFrame.new(0, -1.5, 0), Vector3.new(1.2, 0.3, 0.3), C.Gold, { Shadow = false })
-		box(tpl.Model, "Hilt", cf * CFrame.new(0, -2.0, 0), Vector3.new(0.3, 0.8, 0.3), C.GoldDark, { Shadow = false })
-	end
-	-- Phase 3: the gate is a working teleport to the Battle Arena. ArenaBuilder handles `ArenaGatePrompt` (owner only,
-	-- near the gate, refused in a match or a battle); applyOwnerAttr writes OwnerUserId and enables it while owned.
-	local prompt = Instance.new("ProximityPrompt")
-	prompt.Name = "ArenaGatePrompt"
-	prompt.ActionText = "Go to Arena"
-	prompt.ObjectText = "Arena Gate"
-	prompt.KeyboardKeyCode = Enum.KeyCode.E
-	prompt.HoldDuration = 0
-	prompt.MaxActivationDistance = PROMPT_RANGE
-	prompt.RequiresLineOfSight = false
-	prompt:SetAttribute("StationId", "ArenaGate")
-	prompt:SetAttribute("Teleport", "Arena")
-	local portal = biggestPart(tpl.Model, "Portal") or biggestPart(tpl.Model)
-	if portal then
-		local att = Instance.new("Attachment")
-		att.Name = "PromptPoint"
-		att.CFrame = portal.CFrame:Inverse() * CFrame.new(0, 3.0, -1.5)
-		att.Parent = portal
-		prompt.Parent = att
-	end
-	return tpl
-end
-
-----------------------------------------------------------------------
--- Decor
-----------------------------------------------------------------------
--- lantern posts beside the main path (local z positions in the slot frame per pair count)
-local LAMP_Z = { { -8.5, 7 }, { -8.5, -3, 7 }, { -8.5, -3, 7, 12 } }
-
-local function lampPiece(style)
-	local key = "LampPiece" .. style
-	if templates[key] then
-		return templates[key]
-	end
-	local tpl = newTemplate("Lamp")
 	local m = tpl.Model
-	if style == "Wood" then
-		box(m, "Base", CFrame.new(0, 0.25, 0), Vector3.new(1, 0.5, 1), C.StoneDark, { Collide = true })
-		box(m, "Post", CFrame.new(0, 2.75, 0), Vector3.new(0.5, 4.5, 0.5), C.PlankDark, { Collide = true })
-		box(m, "Arm", CFrame.new(0.5, 4.85, 0), Vector3.new(1.5, 0.3, 0.3), C.PlankDark)
-		box(m, "Lantern", CFrame.new(1.0, 4.0, 0), Vector3.new(0.9, 1.1, 0.9), rgb(255, 190, 110), { Material = MAT.Neon })
-	elseif style == "Brass" then
-		box(m, "Base", CFrame.new(0, 0.25, 0), Vector3.new(1, 0.5, 1), C.StoneDark, { Collide = true })
-		box(m, "Post", CFrame.new(0, 2.6, 0), Vector3.new(0.45, 4.2, 0.45), C.Iron, { Collide = true })
-		box(m, "Lantern", CFrame.new(0, 5.2, 0), Vector3.new(0.85, 1.0, 0.85), C.Lamp, { Material = MAT.Neon })
-		box(m, "Cap", CFrame.new(0, 5.85, 0), Vector3.new(1.25, 0.3, 1.25), rgb(214, 170, 92))
-	else
-		box(m, "Base", CFrame.new(0, 0.3, 0), Vector3.new(1.2, 0.6, 1.2), C.Marble, { Collide = true })
-		box(m, "Post", CFrame.new(0, 2.3, 0), Vector3.new(0.7, 3.4, 0.7), C.Marble, { Collide = true })
-		box(m, "Collar", CFrame.new(0, 4.1, 0), Vector3.new(1.0, 0.25, 1.0), C.Gold)
-		box(m, "Crystal", CFrame.new(0, 5.0, 0) * CFrame.Angles(math.rad(45), 0, math.rad(35)), Vector3.new(0.8, 0.8, 0.8), C.Crystal, { Material = MAT.Neon })
-	end
-	templates[key] = tpl
-	return tpl
-end
-
-function Art.DecorLamps(def, level)
-	local tpl = newTemplate("DecorLamps")
-	local eff = def.Effects and def.Effects[level] or {}
-	local style = eff.Style or ({ "Wood", "Brass", "Crystal" })[level] or "Wood"
-	local pieces = eff.Pieces or (2 + level * 2)
-	local piece = lampPiece(style)
-	local zs = LAMP_Z[min(#LAMP_Z, max(1, floor(pieces / 2) - 1))] or LAMP_Z[1]
-	local n = 0
-	for _, z in ipairs(zs) do
-		for _, sx in ipairs({ -1, 1 }) do
-			if n < pieces then
-				n = n + 1
-				-- lanterns lean toward the path (their arm points at x = 0)
-				local cf = CFrame.new(sx * 4.25, 0, z) * CFrame.Angles(0, (sx > 0) and math.pi or 0, 0)
-				absorb(tpl.Model, cloneAt(piece, cf))
-			end
+	local accent = (WP.Accent and WP.Accent.Red) or rgb(255, 96, 110)
+	local cx = 2.55 -- column centres at +-cx
+	local colH = 7.4
+	for _, sx in ipairs({ -1, 1 }) do
+		local x = sx * cx
+		Kit.p(m, "Plinth", CFrame.new(x, 0.45, 0), Vector3.new(1.9, 0.9, 1.9), K.SlateDark, M.Slate, true)
+		Kit.p(m, "PlinthBand", CFrame.new(x, 0.95, 0), Vector3.new(2.05, 0.15, 2.05), K.MarbleShade, M.Marble)
+		Kit.cyl(m, "Column", x, 1.0, 0, 1.35, colH, K.Marble, M.Marble, true)
+		Kit.p(m, "Capital", CFrame.new(x, 1.0 + colH + 0.25, 0), Vector3.new(1.8, 0.5, 1.8), K.MarbleShade, M.Marble)
+		Kit.p(m, "Banner", CFrame.new(x, 5.0, -0.72), Vector3.new(0.9, 3.4, 0.06), rgb(176, 72, 78), M.Fabric)
+		Kit.p(m, "Brazier", CFrame.new(x, 11.05, 0), Vector3.new(0.9, 0.5, 0.9), K.IronDark, M.Metal)
+		local fire = Kit.p(m, "Fire", CFrame.new(x, 11.55, 0), Vector3.new(0.55, 0.6, 0.55), rgb(255, 170, 80), M.Neon)
+		if sx > 0 then
+			pointLight(fire, LANTERN, 1.2, 12)
 		end
 	end
+	local ly = 1.0 + colH + 0.5
+	Kit.p(m, "Lintel", CFrame.new(0, ly + 0.7, 0), Vector3.new(6.9, 1.4, 2.0), K.Slate, M.Slate, true)
+	Kit.p(m, "Cornice", CFrame.new(0, ly + 1.55, 0), Vector3.new(7.0, 0.3, 2.3), K.MarbleShade, M.Marble)
+	Kit.cylAt(m, "Medallion", CFrame.new(0, ly + 0.7, -1.05) * CFrame.Angles(0, PI / 2, 0), 0.2, 1.7, K.Marble, M.Marble)
+	for _, sx in ipairs({ -1, 1 }) do
+		local cf = CFrame.new(0, ly + 0.7, -1.2) * CFrame.Angles(0, 0, rad(sx * 40))
+		Kit.p(m, "Sword", cf, Vector3.new(0.22, 1.7, 0.06), rgb(120, 130, 150), M.Metal)
+		Kit.p(m, "Hilt", cf * CFrame.new(0, -0.7, 0), Vector3.new(0.7, 0.16, 0.08), K.GoldBright, M.Metal)
+	end
+	-- the opening: a neon inlay frame, the red disc and the ForceField shimmer (non-solid)
+	local ow, oh = 3.5, colH
+	Kit.p(m, "Inlay", CFrame.new(-ow / 2 - 0.12, 1.0 + oh / 2, -0.35), Vector3.new(0.18, oh, 0.18), accent, M.Neon)
+	Kit.p(m, "Inlay", CFrame.new(ow / 2 + 0.12, 1.0 + oh / 2, -0.35), Vector3.new(0.18, oh, 0.18), accent, M.Neon)
+	Kit.p(m, "Inlay", CFrame.new(0, ly - 0.05, -0.35), Vector3.new(ow + 0.42, 0.18, 0.18), accent, M.Neon)
+	Kit.p(m, "Portal", CFrame.new(0, 1.0 + oh / 2, 0), Vector3.new(ow, oh, 0.12), accent, M.Neon, false, { Transparency = 0.35 })
+	Kit.p(m, "Shimmer", CFrame.new(0, 1.0 + oh / 2, -0.1), Vector3.new(ow, oh, 0.05), rgb(255, 180, 190), M.Force, false, { Transparency = 0.2 })
+	Kit.p(m, "Threshold", CFrame.new(0, 0.3, 0), Vector3.new(ow + 0.6, 0.6, 2.6), K.Slate, M.Slate, true)
+	local prompt = newPrompt("ArenaGatePrompt", "Go to Arena", "Arena Gate", "ArenaGate")
+	prompt:SetAttribute("Teleport", "Arena")
+	local portal = biggestPart(m, "Portal") or biggestPart(m)
+	if portal then
+		prompt.Parent = attach(portal, "PromptPoint", Vector3.new(0, 3.0, -1.5))
+	end
+	return tpl
+end
+----------------------------------------------------------------------
+-- House (4 tiers, judge M8 restyle): front -Z toward the gate (the HouseWalk ends at local z -10). Slate plinths,
+-- WoodPlanks / Brick walls with inset corner posts, ClayRoofTiles gable roofs, warm-glass windows, warm lanterns.
+-- Cottage (a planked cottage, a chimney), Villa (two storeys: brick below, planks above, a porch, a cross gable),
+-- Manor (a brick hall with two gabled wings and a marble portico), Sky Castle (a marble keep, four round towers with
+-- tiled spires, banners, a rose window). <= 150 parts.
+----------------------------------------------------------------------
+local House = {}
+
+-- a walled block: a plinth band, the walls (centre cx, cz; w x d; from y0, h tall) and its four corner posts
+function House.block(m, name, cx, cz, w, d, y0, h, color, mat, postColor)
+	Kit.p(m, name, CFrame.new(cx, y0 + h / 2, cz), Vector3.new(w, h, d), color, mat, true)
+	Kit.corners(m, cx - w / 2 + 0.15, cx + w / 2 - 0.15, cz - d / 2 + 0.15, cz + d / 2 - 0.15, y0, h, postColor or K.WoodDark, M.Wood)
+end
+
+-- a row of windows on the front wall (z = the wall's front face)
+function House.windows(m, xs, y, z, w, h, frame)
+	for _, x in ipairs(xs) do
+		Kit.window(m, CFrame.new(x, y, z), w, h, frame)
+	end
+end
+
+function House.door(m, x, y0, z, w, h, frame)
+	Kit.p(m, "DoorFrame", CFrame.new(x, y0 + (h + 0.3) / 2, z - 0.06), Vector3.new(w + 0.5, h + 0.3, 0.12), frame or K.Whitewash, M.Wood)
+	Kit.p(m, "Door", CFrame.new(x, y0 + h / 2, z - 0.14), Vector3.new(w, h, 0.1), K.WoodDark, M.Wood)
+end
+
+function House.chimney(m, x, z, y0, h)
+	Kit.p(m, "Chimney", CFrame.new(x, y0 + h / 2, z), Vector3.new(1.3, h, 1.3), K.Brick, M.Brick, true)
+	Kit.p(m, "ChimneyCap", CFrame.new(x, y0 + h + 0.15, z), Vector3.new(1.6, 0.3, 1.6), K.SlateDark, M.Slate)
+end
+
+function House.cottage(m)
+	Kit.p(m, "Plinth", CFrame.new(0, 0.35, 0), Vector3.new(13.2, 0.7, 9.2), K.SlateDark, M.Slate, true)
+	House.block(m, "Walls", 0, 0, 12, 8, 0.7, 4.6, K.PlanksLight, M.Planks)
+	Kit.gable(m, "Roof", CFrame.new(0, 5.3, 0), 12, 8, 3.4, K.Roof, M.Clay, { Overhang = 0.8, Ridge = K.RoofDark, GableColor = K.PlanksLight })
+	House.door(m, 0, 0.7, -4, 1.8, 3.0)
+	House.windows(m, { -3.6, 3.6 }, 2.9, -4, 1.8, 1.5)
+	Kit.window(m, CFrame.new(6, 2.9, 0) * CFrame.Angles(0, -PI / 2, 0), 1.6, 1.4)
+	House.chimney(m, 3.8, 1.6, 6.0, 3.6)
+	Kit.p(m, "Step", CFrame.new(0, 0.2, -5.2), Vector3.new(3.0, 0.4, 1.4), K.Slate, M.Slate, true)
+	local d = Kit.detail(m, "HouseDecor")
+	for _, x in ipairs({ -1.6, 1.6 }) do
+		Kit.lantern(d, Vector3.new(x, 3.2, -4.35), 0.45, x > 0)
+	end
+	for _, x in ipairs({ -3.6, 3.6 }) do
+		Kit.p(d, "FlowerBox", CFrame.new(x, 1.75, -4.35), Vector3.new(1.9, 0.4, 0.5), K.PlanksDark, M.Planks)
+		Kit.p(d, "Flowers", CFrame.new(x, 2.05, -4.35), Vector3.new(1.7, 0.25, 0.4), rgb(206, 140, 160), M.Leafy)
+	end
+	return 9.6
+end
+
+function House.villa(m)
+	local w, d = 18, 11
+	Kit.p(m, "Plinth", CFrame.new(0, 0.35, 0.5), Vector3.new(w + 1.2, 0.7, d + 1.2), K.SlateDark, M.Slate, true)
+	House.block(m, "Walls", 0, 0.5, w, d, 0.7, 4.4, K.Brick, M.Brick, K.Whitewash)
+	Kit.p(m, "Band", CFrame.new(0, 5.25, 0.5), Vector3.new(w + 0.4, 0.3, d + 0.4), K.SlateLight, M.Slate)
+	House.block(m, "Upper", 0, 0.5, w - 0.4, d - 0.4, 5.4, 3.8, K.PlanksLight, M.Planks)
+	Kit.gable(m, "Roof", CFrame.new(0, 9.2, 0.5), w - 0.4, d - 0.4, 4.2, K.Roof, M.Clay, { Overhang = 0.9, Ridge = K.RoofDark, GableColor = K.PlanksLight })
+	-- the cross gable over the entrance
+	local fz = 0.5 - d / 2
+	Kit.p(m, "Bay", CFrame.new(0, 7.3, fz - 0.6), Vector3.new(5.4, 3.8, 1.2), K.PlanksLight, M.Planks, true)
+	Kit.gable(m, "BayRoof", CFrame.new(0, 9.2, fz - 0.2) * CFrame.Angles(0, PI / 2, 0), 2.4, 5.4, 2.4, K.Roof, M.Clay, { Overhang = 0.5, GableColor = K.PlanksLight })
+	House.door(m, 0, 0.7, fz, 2.4, 3.2)
+	House.windows(m, { -6.4, -3.4, 3.4, 6.4 }, 2.9, fz, 1.6, 1.6)
+	House.windows(m, { -6.4, -3.4, 3.4, 6.4 }, 7.2, fz + 0.2, 1.5, 1.5)
+	Kit.window(m, CFrame.new(0, 7.4, fz - 1.2), 2.2, 1.6)
+	-- the porch: a slate floor, two posts, a little roof
+	Kit.p(m, "Porch", CFrame.new(0, 0.3, fz - 1.5), Vector3.new(5.4, 0.6, 3.0), K.Slate, M.Slate, true)
+	for _, x in ipairs({ -2.4, 2.4 }) do
+		Kit.p(m, "PorchPost", CFrame.new(x, 2.3, fz - 2.6), Vector3.new(0.4, 3.4, 0.4), K.Whitewash, M.Wood)
+	end
+	Kit.p(m, "PorchRoof", CFrame.new(0, 4.15, fz - 1.6) * CFrame.Angles(rad(12), 0, 0), Vector3.new(6.0, 0.3, 3.0), K.RoofDark, M.Clay)
+	House.chimney(m, -5.6, 2.4, 9.6, 4.4)
+	House.chimney(m, 5.6, 2.4, 9.6, 4.4)
+	local deco = Kit.detail(m, "HouseDecor")
+	for _, x in ipairs({ -2.4, 2.4 }) do
+		Kit.lantern(deco, Vector3.new(x, 3.4, fz - 0.4), 0.45, x > 0)
+	end
+	return 14
+end
+
+function House.manor(m)
+	local cw, cd = 14, 12
+	Kit.p(m, "Plinth", CFrame.new(0, 0.4, 0.5), Vector3.new(25.2, 0.8, cd + 1.4), K.SlateDark, M.Slate, true)
+	House.block(m, "Walls", 0, 0.5, cw, cd, 0.8, 4.6, K.Brick, M.Brick, K.Marble)
+	Kit.p(m, "Band", CFrame.new(0, 5.55, 0.5), Vector3.new(cw + 0.4, 0.3, cd + 0.4), K.Marble, M.Marble)
+	House.block(m, "Upper", 0, 0.5, cw, cd, 5.7, 4.3, K.Brick, M.Brick, K.Marble)
+	Kit.p(m, "Cornice", CFrame.new(0, 10.15, 0.5), Vector3.new(cw + 0.6, 0.3, cd + 0.6), K.Marble, M.Marble)
+	Kit.gable(m, "Roof", CFrame.new(0, 10.3, 0.5), cw, cd, 5.6, K.Roof, M.Clay, { Overhang = 0.8, Ridge = K.RoofDark, GableColor = K.BrickDark, GableMat = M.Brick })
+	-- the wings (their gables face the yard)
+	for _, sx in ipairs({ -1, 1 }) do
+		local wx = sx * 9.6
+		House.block(m, "Wing", wx, 1.0, 5.0, 10, 0.8, 6.0, K.Brick, M.Brick, K.Marble)
+		Kit.gable(m, "WingRoof", CFrame.new(wx, 6.8, 1.0) * CFrame.Angles(0, PI / 2, 0), 10, 5.0, 3.0, K.Roof, M.Clay, { Overhang = 0.6, GableColor = K.BrickDark, GableMat = M.Brick })
+		Kit.window(m, CFrame.new(wx, 3.2, -4.0), 1.8, 2.0)
+		Kit.window(m, CFrame.new(wx, 7.6, -4.15), 1.0, 1.0, nil, nil, { Sill = false })
+	end
+	local fz = 0.5 - cd / 2
+	House.door(m, 0, 0.8, fz, 2.6, 3.4, K.Marble)
+	House.windows(m, { -4.6, -2.3, 2.3, 4.6 }, 3.1, fz, 1.4, 1.9, K.Marble)
+	House.windows(m, { -4.6, -2.3, 0, 2.3, 4.6 }, 7.8, fz, 1.4, 1.7, K.Marble)
+	-- the marble portico: two columns, an entablature, a pediment, two steps
+	for _, x in ipairs({ -2.2, 2.2 }) do
+		Kit.cyl(m, "Column", x, 0.8, fz - 1.9, 0.75, 4.6, K.Marble, M.Marble, true)
+	end
+	Kit.p(m, "Entablature", CFrame.new(0, 5.65, fz - 1.1), Vector3.new(5.6, 0.5, 2.4), K.MarbleShade, M.Marble)
+	Kit.gable(m, "Pediment", CFrame.new(0, 5.9, fz - 1.1) * CFrame.Angles(0, PI / 2, 0), 2.4, 5.6, 1.4, K.MarbleShade, M.Marble, { Overhang = 0.25, Thick = 0.25, EndOverhang = 0.1, GableColor = K.Marble, GableMat = M.Marble })
+	Kit.p(m, "Steps", CFrame.new(0, 0.5, fz - 1.5), Vector3.new(5.2, 1.0, 2.8), K.Slate, M.Slate, true)
+	Kit.p(m, "Steps", CFrame.new(0, 0.2, fz - 3.2), Vector3.new(4.6, 0.4, 1.0), K.SlateLight, M.Slate, true)
+	House.chimney(m, -4.2, 3.0, 11.0, 5.4)
+	House.chimney(m, 4.2, 3.0, 11.0, 5.4)
+	local deco = Kit.detail(m, "HouseDecor")
+	for _, x in ipairs({ -3.4, 3.4 }) do
+		Kit.lantern(deco, Vector3.new(x, 3.6, fz - 0.35), 0.5, x > 0)
+	end
+	for _, sx in ipairs({ -1, 1 }) do
+		Kit.lantern(deco, Vector3.new(sx * 9.6 + sx * 1.5, 3.4, -4.4), 0.45, false)
+	end
+	return 15
+end
+
+function House.castle(m)
+	local hw, hd, hh = 16, 12, 9.0
+	local cz = 0.5
+	Kit.p(m, "Plinth", CFrame.new(0, 0.45, cz), Vector3.new(hw + 2.0, 0.9, hd + 1.6), K.SlateDark, M.Slate, true)
+	House.block(m, "Keep", 0, cz, hw, hd, 0.9, hh, K.Marble, M.Marble, K.MarbleShade)
+	Kit.p(m, "Band", CFrame.new(0, 5.2, cz), Vector3.new(hw + 0.3, 0.3, hd + 0.3), K.SlateLight, M.Slate)
+	Kit.p(m, "Cornice", CFrame.new(0, 0.9 + hh + 0.2, cz), Vector3.new(hw + 0.6, 0.4, hd + 0.6), K.Slate, M.Slate)
+	-- battlements along the front and the back
+	local fz = cz - hd / 2
+	for k = 0, 5 do
+		local x = -hw / 2 + 1.0 + k * (hw - 2.0) / 5
+		for _, z in ipairs({ fz + 0.3, cz + hd / 2 - 0.3 }) do
+			Kit.p(m, "Merlon", CFrame.new(x, 0.9 + hh + 0.95, z), Vector3.new(1.2, 1.1, 0.6), K.MarbleShade, M.Marble)
+		end
+	end
+	-- the great door, the portcullis, the rose window
+	Kit.p(m, "GateArch", CFrame.new(0, 2.9, fz - 0.1), Vector3.new(4.4, 4.6, 0.3), K.Slate, M.Slate)
+	Kit.p(m, "Door", CFrame.new(0, 2.6, fz - 0.28), Vector3.new(3.2, 3.6, 0.12), K.WoodDark, M.Wood)
+	Kit.p(m, "Portcullis", CFrame.new(0, 4.25, fz - 0.36), Vector3.new(3.2, 0.5, 0.1), K.Iron, M.Metal)
+	Kit.cylAt(m, "RoseFrame", CFrame.new(0, 7.3, fz - 0.06) * CFrame.Angles(0, PI / 2, 0), 0.14, 2.9, K.SlateLight, M.Slate)
+	Kit.cylAt(m, "RoseWindow", CFrame.new(0, 7.3, fz - 0.16) * CFrame.Angles(0, PI / 2, 0), 0.08, 2.3, rgb(220, 186, 240), M.Glass)
+	House.windows(m, { -5.4, -2.8, 2.8, 5.4 }, 3.0, fz, 1.2, 2.0, K.MarbleShade)
+	House.windows(m, { -5.4, -2.8, 2.8, 5.4 }, 7.4, fz, 1.2, 1.8, K.MarbleShade)
+	-- the central tower behind the gate
+	Kit.cyl(m, "Tower", 0, 0.9 + hh, cz + 1.5, 5.2, 6.0, K.Marble, M.Marble, true)
+	Kit.cyl(m, "TowerBand", 0, 0.9 + hh + 6.0, cz + 1.5, 5.8, 0.45, K.SlateLight, M.Slate)
+	Kit.window(m, CFrame.new(0, 0.9 + hh + 3.2, cz + 1.5 - 2.62), 1.1, 1.8, K.MarbleShade, nil, { Sill = false })
+	local function spire(x, z, y0, d0, h)
+		local steps = { 1.0, 0.8, 0.6, 0.42, 0.26 }
+		for k, f in ipairs(steps) do
+			Kit.cyl(m, "Spire", x, y0 + (k - 1) * h * 0.17, z, d0 * f, h * 0.17, (k % 2 == 0) and K.RoofDark or K.Roof, M.Clay)
+		end
+		Kit.cyl(m, "SpireTip", x, y0 + h * 0.85, z, d0 * 0.1, h * 0.2, K.Gold, M.Metal)
+	end
+	spire(0, cz + 1.5, 0.9 + hh + 6.45, 5.6, 6.2)
+	-- four corner towers with spires, windows and banners
+	local towers = { { -10.4, cz - 4.6 }, { 10.4, cz - 4.6 }, { -10.4, cz + 4.4 }, { 10.4, cz + 4.4 } }
+	for i, t in ipairs(towers) do
+		local th = (i <= 2) and 12.5 or 11.0
+		Kit.cyl(m, "TowerBase", t[1], 0, t[2], 4.8, 0.9, K.SlateDark, M.Slate, true)
+		Kit.cyl(m, "CornerTower", t[1], 0.9, t[2], 4.2, th, Kit.jit(K.Marble, i), M.Marble, true)
+		Kit.cyl(m, "TowerBand", t[1], 0.9 + th, t[2], 4.7, 0.4, K.SlateLight, M.Slate)
+		spire(t[1], t[2], 0.9 + th + 0.4, 4.9, 5.2)
+		if i <= 2 then
+			Kit.window(m, CFrame.new(t[1], 8.0, t[2] - 2.12), 0.9, 1.6, K.MarbleShade, nil, { Sill = false })
+			Kit.p(m, "Banner", CFrame.new(t[1] + ((t[1] < 0) and 2.2 or -2.2), 6.4, fz - 0.12), Vector3.new(1.4, 3.6, 0.08), rgb(150, 116, 186), M.Fabric)
+		end
+	end
+	-- the bridge steps and lanterns
+	Kit.p(m, "Steps", CFrame.new(0, 0.45, fz - 1.0), Vector3.new(5.0, 0.9, 2.0), K.Slate, M.Slate, true)
+	Kit.p(m, "Steps", CFrame.new(0, 0.2, fz - 2.5), Vector3.new(4.4, 0.4, 1.2), K.SlateLight, M.Slate, true)
+	local deco = Kit.detail(m, "HouseDecor")
+	for _, x in ipairs({ -2.9, 2.9 }) do
+		Kit.lantern(deco, Vector3.new(x, 3.8, fz - 0.4), 0.5, true)
+	end
+	return 30
+end
+
+function Art.House(def, level)
+	local tpl = newTemplate("House")
+	local m = tpl.Model
+	level = max(1, min(4, floor(level)))
+	local top
+	if level == 1 then
+		top = House.cottage(m)
+	elseif level == 2 then
+		top = House.villa(m)
+	elseif level == 3 then
+		top = House.manor(m)
+	else
+		top = House.castle(m)
+	end
+	tpl.Info.Tier = level
+	tpl.Points.RoofTop = Vector3.new(0, top, 0)
 	return tpl
 end
 
--- the fence follows the yard's edge (Perimeter): built in the PLOT frame (the slot is the yard centre)
-function Art.DecorFence(def, level, plotSize)
-	local tpl = newTemplate("DecorFence")
-	local half = (plotSize or 72) / 2
-	local edge = half - 0.6
+----------------------------------------------------------------------
+-- Yard Fence (DecorFence, Perimeter: built in the PLOT frame just inside the lobby's fence, open at the gate),
+-- the looks of the old Flower Beds + Banners merged in: picket panels + tulip boxes (1), a hedge + cloth banners +
+-- the tulips (2), a cloudstone wall with cloud-capped pillars + royal banners + glowing starflowers (3). <= 90 parts.
+----------------------------------------------------------------------
+local Fence = {}
+
+-- the runs { x0, z0, x1, z1 } along the yard's edge, the front split at the gate
+function Fence.runs(half, inset)
+	local e = half - (inset or 0.6)
 	local gate = 8.6
-	local eff = def.Effects and def.Effects[level] or {}
-	local style = eff.Style or ({ "Picket", "Hedge", "Cloudstone" })[level] or "Picket"
-	-- runs { x0, z0, x1, z1 } along the edge, the front split at the gate
-	local runs = {
-		{ -edge, edge, edge, edge },
-		{ -edge, -edge, -edge, edge },
-		{ edge, -edge, edge, edge },
-		{ -edge, -edge, -gate, -edge },
-		{ gate, -edge, edge, -edge },
-	}
-	local function seg(name, r, y0, y1, thick, color, opts)
-		local dx, dz = r[3] - r[1], r[4] - r[2]
-		local len = math.sqrt(dx * dx + dz * dz)
-		local mid = Vector3.new((r[1] + r[3]) / 2, (y0 + y1) / 2, (r[2] + r[4]) / 2)
-		local size = (abs(dx) > abs(dz)) and Vector3.new(len + thick, y1 - y0, thick) or Vector3.new(thick, y1 - y0, len + thick)
-		return box(tpl.Model, name, CFrame.new(mid), size, color, opts)
-	end
-	-- calls fn(x, z, run) for evenly spaced points along the runs; a corner shared by two runs comes once
-	local function posts(every, fn, frontOnly)
-		local seen = {}
-		for i, r in ipairs(runs) do
-			if not frontOnly or i >= 4 then
-				local len = math.sqrt((r[3] - r[1]) ^ 2 + (r[4] - r[2]) ^ 2)
-				local n = max(1, floor(len / every + 0.5))
-				for k = 0, n do
-					local f = k / n
-					local x, z = lerp(r[1], r[3], f), lerp(r[2], r[4], f)
-					local key = floor(x * 2 + 0.5) .. ":" .. floor(z * 2 + 0.5)
-					if not seen[key] then
-						seen[key] = true
-						fn(x, z, i)
-					end
-				end
+	return {
+		{ -e, e, e, e },
+		{ -e, -e, -e, e },
+		{ e, -e, e, e },
+		{ -e, -e, -gate, -e },
+		{ gate, -e, e, -e },
+	}, e, gate
+end
+
+-- a box along a run: y0..y1 tall, `thick` across
+function Fence.seg(parent, name, r, y0, y1, thick, color, mat, collide, shrink)
+	local dx, dz = r[3] - r[1], r[4] - r[2]
+	local len = math.sqrt(dx * dx + dz * dz) - (shrink or 0)
+	local mid = Vector3.new((r[1] + r[3]) / 2, (y0 + y1) / 2, (r[2] + r[4]) / 2)
+	local size = (abs(dx) > abs(dz)) and Vector3.new(len + thick, y1 - y0, thick) or Vector3.new(thick, y1 - y0, len + thick)
+	return Kit.p(parent, name, CFrame.new(mid), size, color, mat, collide)
+end
+
+-- evenly spaced points along the runs (a corner shared by two runs comes once): fn(x, z, runIndex)
+function Fence.points(runs, every, fn)
+	local seen = {}
+	for i, r in ipairs(runs) do
+		local len = math.sqrt((r[3] - r[1]) ^ 2 + (r[4] - r[2]) ^ 2)
+		local n = max(1, floor(len / every + 0.5))
+		for k = 0, n do
+			local f = k / n
+			local x, z = lerp(r[1], r[3], f), lerp(r[2], r[4], f)
+			local key = floor(x * 2 + 0.5) .. ":" .. floor(z * 2 + 0.5)
+			if not seen[key] then
+				seen[key] = true
+				fn(x, z, i)
 			end
 		end
 	end
-	local white = rgb(248, 246, 240)
-	if style == "Picket" then
-		-- white rails all round, pickets along the street side, posts every 12 studs elsewhere
-		for _, r in ipairs(runs) do
-			seg("Rail", r, 0.9, 1.25, 0.3, white, { Collide = true })
-			seg("Rail", r, 2.0, 2.35, 0.3, white)
+end
+
+-- the flower boxes beside the gate (inside the yard, along the front runs): a planter, foliage and blooms
+function Fence.flowers(parent, e, gate, colors, glow)
+	local d = Kit.detail(parent, "Flowers")
+	for _, sx in ipairs({ -1, 1 }) do
+		local x0, x1 = sx * 16.2, sx * 25.2
+		local cx = (x0 + x1) / 2
+		local z = -e + 1.2
+		Kit.p(d, "Planter", CFrame.new(cx, 0.35, z), Vector3.new(9.0, 0.7, 0.9), K.PlanksDark, M.Planks)
+		Kit.p(d, "Foliage", CFrame.new(cx, 0.85, z), Vector3.new(8.6, 0.4, 0.6), K.Leafy, M.Leafy)
+		for k = 1, 5 do
+			local bx = cx - 3.6 + (k - 1) * 1.8
+			Kit.p(d, "Bloom", CFrame.new(bx, 1.25, z + ((k % 2 == 0) and 0.12 or -0.12)), Vector3.new(0.55, 0.55, 0.55), colors[(k % #colors) + 1], glow and M.Neon or M.Fabric)
 		end
-		posts(2.5, function(x, z)
-			box(tpl.Model, "Picket", CFrame.new(x, 1.45, z), Vector3.new(0.7, 2.9, 0.4), white, { Collide = true })
-		end, true)
-		posts(18, function(x, z, i)
-			if i <= 3 then
-				box(tpl.Model, "Post", CFrame.new(x, 1.6, z), Vector3.new(0.7, 3.2, 0.7), white, { Collide = true })
-			end
-		end)
-	elseif style == "Hedge" then
+	end
+end
+
+-- a banner on a pole: pole, crossbar, cloth (+ an emblem for the royal ones)
+function Fence.banner(parent, x, z, face, cloth, royal)
+	local d = Kit.detail(parent, "Banner")
+	local cf = CFrame.new(x, 0, z) * CFrame.Angles(0, face, 0)
+	Kit.p(d, "Pole", cf * CFrame.new(0, 3.3, 0), Vector3.new(0.35, 6.6, 0.35), royal and K.Gold or K.IronDark, M.Metal)
+	Kit.p(d, "Crossbar", cf * CFrame.new(0, 6.3, -0.25), Vector3.new(2.2, 0.22, 0.22), royal and K.Gold or K.Wood, royal and M.Metal or M.Wood)
+	Kit.p(d, "Cloth", cf * CFrame.new(0, 4.8, -0.3), Vector3.new(1.8, 2.8, 0.08), cloth, M.Fabric)
+	if royal then
+		Kit.p(d, "Emblem", cf * CFrame.new(0, 4.9, -0.36) * CFrame.Angles(0, 0, rad(45)), Vector3.new(0.7, 0.7, 0.06), K.GoldBright, M.Metal)
+	end
+end
+
+function Art.Fence(def, level, plotSize)
+	local tpl = newTemplate("DecorFence")
+	local m = tpl.Model
+	local half = (tonumber(plotSize) or 72) / 2
+	level = max(1, min(3, floor(level)))
+	-- the thicker looks step inward so they fit between the lobby's own fence posts (|x|, |z| >= 35.5) and the
+	-- stations along the edge (the Pet Garden ends at x 34)
+	local runs, e, gate = Fence.runs(half, ({ 0.6, 1.25, 1.25 })[level])
+	if level == 1 then
+		-- whitewashed picket panels between a top rail and posts every ~9 studs
 		for _, r in ipairs(runs) do
-			seg("Hedge", r, 0, 2.4, 1.4, C.Hedge, { Collide = true })
-			seg("HedgeTop", r, 2.4, 2.8, 1.0, rgb(104, 176, 92))
-			seg("Blooms", r, 1.5, 1.9, 1.5, rgb(246, 170, 196))
+			Fence.seg(m, "Pickets", r, 0, 1.9, 0.22, K.Whitewash, M.Planks, true)
+			Fence.seg(m, "Rail", r, 1.55, 1.8, 0.4, Kit.jit(K.Whitewash, 3), M.Wood)
 		end
-		posts(18, function(x, z)
-			box(tpl.Model, "Topiary", CFrame.new(x, 3.4, z), Vector3.new(1.6, 2.0, 1.6), rgb(98, 172, 90))
+		Fence.points(runs, 9, function(x, z, i)
+			Kit.p(m, "Post", CFrame.new(x, 1.15, z), Vector3.new(0.55, 2.3, 0.55), K.Whitewash, M.Wood, true)
 		end)
-	else
+		Fence.flowers(m, e, gate, { rgb(204, 92, 104), rgb(232, 196, 96), rgb(214, 150, 180) }, false)
+	elseif level == 2 then
+		-- a clipped hedge on a brick kerb, brick pillars, the tulips and cloth banners at the gate and the corners
 		for _, r in ipairs(runs) do
-			seg("Wall", r, 0, 1.8, 1.0, rgb(222, 218, 210), { Collide = true })
-			seg("WallCap", r, 1.8, 2.2, 1.3, rgb(244, 242, 236))
-			seg("Hedge", r, 0, 1.0, 1.8, C.Hedge)
+			Fence.seg(m, "Kerb", r, 0, 0.5, 1.2, K.Brick, M.Brick, true)
+			Fence.seg(m, "Hedge", r, 0.5, 2.3, 1.1, K.Leafy, M.Leafy, true)
+			Fence.seg(m, "HedgeTop", r, 2.3, 2.6, 0.8, K.GrassLight, M.Leafy)
 		end
-		posts(24, function(x, z)
-			box(tpl.Model, "Pillar", CFrame.new(x, 1.6, z), Vector3.new(1.6, 3.2, 1.6), rgb(232, 230, 224), { Collide = true })
-			box(tpl.Model, "Puff", CFrame.new(x, 3.55, z), Vector3.new(2.0, 0.9, 2.0), C.Cloud)
+		Fence.points(runs, 18, function(x, z)
+			Kit.p(m, "Pillar", CFrame.new(x, 1.45, z), Vector3.new(1.3, 2.9, 1.3), K.Brick, M.Brick, true)
+			Kit.p(m, "PillarCap", CFrame.new(x, 3.05, z), Vector3.new(1.5, 0.3, 1.5), K.SlateLight, M.Slate)
 		end)
+		Fence.flowers(m, e, gate, { rgb(204, 92, 104), rgb(232, 196, 96), rgb(214, 150, 180) }, false)
 		for _, sx in ipairs({ -1, 1 }) do
-			box(tpl.Model, "Lantern", CFrame.new(sx * gate, 4.75, -edge), Vector3.new(0.8, 0.9, 0.8), C.Lamp, { Material = MAT.Neon })
+			Fence.banner(m, sx * (gate + 0.4), -e, 0, rgb(176, 92, 104), false)
+			Fence.banner(m, sx * (e - 1.0), e - 1.0, PI, rgb(176, 92, 104), false)
+		end
+	else
+		-- a cloudstone wall: a slate base, marble wall and cap, pillars with cloud puffs, royal banners, starflowers
+		for _, r in ipairs(runs) do
+			Fence.seg(m, "WallBase", r, 0, 0.5, 1.1, K.SlateDark, M.Slate, true)
+			Fence.seg(m, "Wall", r, 0.5, 1.9, 0.9, K.Marble, M.Marble, true)
+			Fence.seg(m, "WallCap", r, 1.9, 2.2, 1.1, K.MarbleShade, M.Marble)
+		end
+		local clouds = Kit.detail(m, "CloudPuffs")
+		CollectionService:AddTag(clouds, EXEMPT_TAG)
+		Fence.points(runs, 18, function(x, z)
+			Kit.p(m, "Pillar", CFrame.new(x, 1.55, z), Vector3.new(1.3, 3.1, 1.3), K.Marble, M.Marble, true)
+			Kit.ball(clouds, "Puff", Vector3.new(x, 3.5, z), 1.5, K.CloudTop, M.Plastic)
+		end)
+		Fence.flowers(m, e, gate, { rgb(196, 156, 255), rgb(140, 226, 255), rgb(255, 222, 140) }, true)
+		for _, sx in ipairs({ -1, 1 }) do
+			Fence.banner(m, sx * (gate + 0.4), -e, 0, rgb(118, 92, 172), true)
+			Fence.banner(m, sx * (e - 1.0), e - 1.0, PI, rgb(118, 92, 172), true)
+			Kit.lantern(m, Vector3.new(sx * gate, 4.6, -e), 0.6, true, "Crystal")
 		end
 	end
 	return tpl
 end
 
-local FLOWER_STYLE = {
-	Tulips = { rgb(236, 96, 104), rgb(250, 210, 90), rgb(246, 150, 188) },
-	Roses = { rgb(214, 60, 84), rgb(246, 150, 188), rgb(250, 244, 246) },
-	Starflowers = { rgb(196, 156, 255), rgb(140, 226, 255), rgb(255, 222, 140) },
-}
-
-function Art.DecorFlowers(def, level)
-	local tpl = newTemplate("DecorFlowers")
-	local eff = def.Effects and def.Effects[level] or {}
-	local style = eff.Style or ({ "Tulips", "Roses", "Starflowers" })[level] or "Tulips"
-	local pieces = eff.Pieces or (1 + level * 2)
-	local colors = FLOWER_STYLE[style] or FLOWER_STYLE.Tulips
-	local glow = style == "Starflowers"
-	local fp = (def.Slot and def.Slot.Footprint) or Vector3.new(18, 2, 2.2)
-	local len = fp.X - 0.5
-	-- one long planter (front -Z faces the yard), soil, then flower clusters: a leafy mound and three blooms
-	-- (the planter stands 0.6 stud in from the slot centre, clear of every fence style along the edge)
-	local pz = -0.6
-	box(tpl.Model, "Planter", CFrame.new(0, 0.35, pz), Vector3.new(len, 0.7, 1.8), C.PlankDark, { Collide = true })
-	box(tpl.Model, "PlanterRim", CFrame.new(0, 0.75, pz), Vector3.new(len + 0.2, 0.15, 2.0), C.Plank)
-	box(tpl.Model, "Soil", CFrame.new(0, 0.78, pz), Vector3.new(len - 0.4, 0.12, 1.4), C.Soil)
-	for i = 1, pieces do
-		local x = -len / 2 + (i - 0.5) * len / pieces
-		box(tpl.Model, "Leaves", CFrame.new(x, 1.15, pz), Vector3.new(2.0, 0.7, 1.3), (i % 2 == 0) and C.Leaf or C.LeafDark, { Shadow = false })
-		for k = 1, 3 do
-			local c = colors[((i + k) % #colors) + 1]
-			local bx = x + (k - 2) * 0.65
-			local by = 1.85 + ((k == 2) and 0.35 or 0)
-			box(tpl.Model, "Bloom", CFrame.new(bx, by, pz + ((k % 2 == 0) and 0.15 or -0.15)), Vector3.new(0.65, 0.8, 0.65), c,
-				{ Shadow = false, Material = glow and MAT.Neon or MAT.SmoothPlastic })
-		end
-	end
-	return tpl
-end
-
-function Art.DecorFountain(def, level)
+----------------------------------------------------------------------
+-- Fountain (DecorFountain): the yard's centrepiece inside the ring of stone paths (radius <= 4.3), with the old
+-- Lanterns merged in: a marble basin + 4 wood lanterns (1), a second tier + a cobble kerb + 6 brass lanterns (2),
+-- a third tier with a cloud and a crystal + 8 crystal lanterns (3). The splash is a ParticleEmitter. <= 80 parts.
+----------------------------------------------------------------------
+function Art.Fountain(def, level)
 	local tpl = newTemplate("DecorFountain")
-	local s = SK.New(0.5)
-	-- an octagonal basin with water, a centre column; bowls stack up with the level, a cloud on top at 3
-	-- (radius 4: the basin stays inside the ring of stone paths around it)
-	SK.Oct(s, 0, 0, 4.0, 0, 0.5, "StoneDark")
-	SK.Oct(s, 0, 0, 3.5, 0.5, 1.5, "Stone")
-	SK.Oct(s, 0, 0, 3.0, 1.0, 1.5, "Pool")
-	SK.Oct(s, 0, 0, 0.75, 1.25, 3.0, "StoneLight")
-	local top = 3.0
+	local m = tpl.Model
+	level = max(1, min(3, floor(level)))
+	local eff = (def and def.Effects and def.Effects[level]) or {}
+	local style = eff.LanternStyle or ({ "Wood", "Brass", "Crystal" })[level]
+	local count = tonumber(eff.Lanterns) or (2 + 2 * level)
+	local water = rgb(120, 178, 214)
+	Kit.oct(m, "Plinth", 0, 0, 0, 7.4, 0.4, K.SlateDark, M.Slate, true)
+	local basin = Kit.cyl(m, "Basin", 0, 0.4, 0, 6.6, 1.0, K.Marble, M.Marble, true)
+	Kit.cyl(m, "BasinFoot", 0, 0.4, 0, 6.9, 0.3, K.MarbleShade, M.Marble, true)
+	Kit.cyl(m, "Water", 0, 1.4, 0, 5.9, 0.08, water, M.Glass, false).Transparency = 0.2
+	Kit.cyl(m, "Column", 0, 1.4, 0, 0.9, 2.2, K.MarbleShade, M.Marble, true)
+	Kit.cyl(m, "Bowl", 0, 3.6, 0, 2.6, 0.45, K.Marble, M.Marble)
+	Kit.cyl(m, "BowlWater", 0, 4.0, 0, 2.2, 0.1, water, M.Glass).Transparency = 0.25
+	local top = 4.1
 	if level >= 2 then
-		SK.Oct(s, 0, 0, 2.0, 3.0, 3.5, "Stone")
-		SK.Oct(s, 0, 0, 1.5, 3.5, 3.75, "Pool")
-		SK.Oct(s, 0, 0, 0.5, 3.75, 5.5, "StoneLight")
-		top = 5.5
+		Kit.oct(m, "Kerb", 0, 0, 0, 8.4, 0.25, K.Cobble, M.Cobble, true)
+		Kit.cyl(m, "Column", 0, 4.05, 0, 0.6, 1.6, K.MarbleShade, M.Marble)
+		Kit.cyl(m, "Bowl", 0, 5.65, 0, 1.6, 0.35, K.Marble, M.Marble)
+		Kit.cyl(m, "Trim", 0, 3.55, 0, 2.7, 0.12, K.Gold, M.Metal)
+		top = 6.0
 	end
 	if level >= 3 then
-		SK.Oct(s, 0, 0, 1.0, 5.5, 6.0, "Gold")
-		puffCloud(s, 0, 6.0, 0, 1.5, 3)
-		SK.Box(s, -0.25, 0.25, 8.25, 8.75, -0.25, 0.25, "Crystal")
-		top = 8.5
-	else
-		SK.Oct(s, 0, 0, 0.5, top, top + 0.75, "Gold")
+		local clouds = Kit.detail(m, "Cloud")
+		CollectionService:AddTag(clouds, EXEMPT_TAG)
+		Kit.ball(clouds, "Puff", Vector3.new(0, 6.6, 0), 1.6, K.CloudTop, M.Plastic)
+		Kit.ball(clouds, "Puff", Vector3.new(0.7, 6.3, 0.3), 1.1, K.CloudSide, M.Plastic)
+		Kit.ball(clouds, "Puff", Vector3.new(-0.7, 6.25, -0.2), 1.0, K.CloudSide, M.Plastic)
+		Kit.p(m, "Crystal", CFrame.new(0, 7.9, 0) * CFrame.Angles(rad(45), 0, rad(35)), Vector3.new(0.8, 0.8, 0.8), rgb(160, 226, 255), M.Neon)
+		top = 7.2
 	end
-	local pal = mergeTables(P, { CloudShade = rgb(212, 222, 244), CloudLight = rgb(252, 253, 255), Pool = { Color = rgb(96, 182, 238), Reflectance = 0.1 } })
-	local m = SK.Build(s, pal, { Name = "Body", Collide = "big" })
-	absorb(tpl.Model, m)
-	local col = biggestPart(tpl.Model, "StoneDark") or biggestPart(tpl.Model)
-	if col then
-		local att = Instance.new("Attachment")
-		att.Name = "Splash"
-		att.CFrame = col.CFrame:Inverse() * CFrame.new(0, top + 0.6, 0)
-		att.Parent = col
-		emitter(att, {
-			Color = ColorSequence.new(rgb(200, 236, 255)),
-			LightEmission = 0.2,
-			Rate = 10 + level * 4,
-			Lifetime = NumberRange.new(0.8, 1.3),
-			Speed = NumberRange.new(4, 6),
-			SpreadAngle = Vector2.new(18, 18),
-			Acceleration = Vector3.new(0, -14, 0),
-			Size = NumberSequence.new({ NumberSequenceKeypoint.new(0, 0.35), NumberSequenceKeypoint.new(1, 0.15) }),
-		})
+	-- the lanterns on an ellipse around the basin (clear of the paths), every other one lit
+	local d = Kit.detail(m, "Lanterns")
+	for i = 1, count do
+		local a = (i - 0.5) / count * 2 * PI + PI / 4
+		local x, z = math.cos(a) * 4.25, math.sin(a) * 3.65
+		local postColor = (style == "Crystal") and K.Marble or ((style == "Brass") and K.IronDark or K.WoodDark)
+		local postMat = (style == "Crystal") and M.Marble or ((style == "Brass") and M.Metal or M.Wood)
+		Kit.p(d, "LanternPost", CFrame.new(x, 1.1, z), Vector3.new(0.3, 2.2, 0.3), postColor, postMat)
+		Kit.lantern(d, Vector3.new(x, 2.45, z), 0.45, i % 2 == 1, style)
 	end
+	local att = Instance.new("Attachment")
+	att.Name = "Splash"
+	att.CFrame = basin.CFrame:Inverse() * CFrame.new(0, top + 0.4, 0)
+	att.Parent = basin
+	emitter(att, {
+		Color = ColorSequence.new(rgb(206, 232, 250)),
+		LightEmission = 0.2,
+		Rate = 10 + level * 4,
+		Lifetime = NumberRange.new(0.8, 1.3),
+		Speed = NumberRange.new(4, 6),
+		SpreadAngle = Vector2.new(18, 18),
+		Acceleration = Vector3.new(0, -14, 0),
+		Size = NumberSequence.new({ NumberSequenceKeypoint.new(0, 0.35), NumberSequenceKeypoint.new(1, 0.15) }),
+	})
 	return tpl
 end
 
-function Art.DecorBanners(def, level, plotSize, accent)
-	local tpl = newTemplate("DecorBanners")
-	local eff = def.Effects and def.Effects[level] or {}
-	local style = eff.Style or ({ "Cloth", "Gold", "Royal" })[level] or "Cloth"
-	local pieces = eff.Pieces or (level * 2)
-	local fp = (def.Slot and def.Slot.Footprint) or Vector3.new(18, 6, 2.2)
-	local len = fp.X - 1
-	local cloth = (style == "Royal") and rgb(118, 82, 196) or (accent or C.Rose)
-	for i = 1, pieces do
-		local x = -len / 2 + (i - 0.5) * len / pieces
-		local cf = CFrame.new(x, 0, -0.2)
-		box(tpl.Model, "Pole", cf * CFrame.new(0, 3.5, 0), Vector3.new(0.45, 7.0, 0.45), C.Iron, { Collide = true })
-		box(tpl.Model, "Finial", cf * CFrame.new(0, 7.3, 0), Vector3.new(0.7, 0.7, 0.7), C.Gold)
-		box(tpl.Model, "Bar", cf * CFrame.new(0, 6.6, -0.3), Vector3.new(2.6, 0.3, 0.3), (style == "Cloth") and C.Iron or C.Gold)
-		box(tpl.Model, "Cloth", cf * CFrame.new(0, 4.9, -0.35), Vector3.new(2.2, 3.2, 0.14), cloth, { Shadow = false })
-		if style == "Cloth" then
-			box(tpl.Model, "ClothTip", cf * CFrame.new(0, 3.05, -0.35), Vector3.new(1.1, 0.5, 0.14), cloth, { Shadow = false })
-		else
-			box(tpl.Model, "Emblem", cf * CFrame.new(0, 5.0, -0.44) * CFrame.Angles(0, 0, math.rad(45)), Vector3.new(0.9, 0.9, 0.1), (style == "Royal") and C.Gold or C.Cloud, { Shadow = false })
-		end
-	end
-	return tpl
-end
-
-function Art.DecorPodium(def, level)
+----------------------------------------------------------------------
+-- Pet Podium (DecorPodium): dresses up the lobby's own podium (6 x 6, 3 tall; the best pet stands on it): a slate
+-- stage with a marble step ring and corner posts: stone lanterns (1), marble pillars with gold caps + a carpet (2),
+-- crystal pillars (3). The looks are unchanged from Phase 4; the materials follow 6.4. <= 80 parts.
+----------------------------------------------------------------------
+function Art.Podium(def, level)
 	local tpl = newTemplate("DecorPodium")
-	local s = SK.New(0.5)
-	-- a stage around the lobby's own podium (6 x 6 base, 5.2 top, 3 tall; the best pet stands on it): a wide step,
-	-- a raised ring around the podium's foot (its middle left open, so no face is shared with the podium), and corner
-	-- posts that change with the level: stone lanterns (1), marble pillars with gold caps (2), crystal pillars (3)
-	SK.Box(s, -4, 4, 0, 0.5, -4, 4, "StoneLight")
-	SK.Box(s, -3.5, 3.5, 0.5, 1.0, -3.5, 3.5, "Stone")
-	SK.Box(s, -3.0, 3.0, 0.5, 1.0, -3.0, 3.0, nil)
+	local m = tpl.Model
+	level = max(1, min(3, floor(level)))
+	Kit.p(m, "Stage", CFrame.new(0, 0.25, 0), Vector3.new(8, 0.5, 8), K.Slate, M.Slate, true)
+	-- the step ring around the podium's foot (its middle left open: no face shared with the podium)
+	for _, s in ipairs({ { 0, 3.25, 7, 0.5 }, { 0, -3.25, 7, 0.5 }, { 3.25, 0, 0.5, 6 }, { -3.25, 0, 0.5, 6 } }) do
+		Kit.p(m, "Step", CFrame.new(s[1], 0.75, s[2]), Vector3.new(s[3], 0.5, s[4]), K.MarbleShade, M.Marble, true)
+	end
 	for _, sx in ipairs({ -1, 1 }) do
 		for _, sz in ipairs({ -1, 1 }) do
-			local x0 = (sx < 0) and -4.0 or 3.0
-			local z0 = (sz < 0) and -4.0 or 3.0
+			local x, z = sx * 3.5, sz * 3.5
 			if level == 1 then
-				SK.Box(s, x0, x0 + 1.0, 1.0, 2.5, z0, z0 + 1.0, "Stone")
-				SK.Box(s, x0, x0 + 1.0, 2.5, 3.0, z0, z0 + 1.0, "Lamp")
-				SK.Box(s, x0, x0 + 1.0, 3.0, 3.5, z0, z0 + 1.0, "StoneDark")
+				Kit.p(m, "Post", CFrame.new(x, 1.75, z), Vector3.new(0.9, 1.5, 0.9), K.SlateLight, M.Slate)
+				Kit.lantern(m, Vector3.new(x, 2.8, z), 0.55, false)
 			elseif level == 2 then
-				SK.Box(s, x0, x0 + 1.0, 1.0, 3.5, z0, z0 + 1.0, "Marble")
-				SK.Box(s, x0, x0 + 1.0, 3.5, 4.0, z0, z0 + 1.0, "Gold")
+				Kit.p(m, "Pillar", CFrame.new(x, 2.25, z), Vector3.new(0.9, 2.5, 0.9), K.Marble, M.Marble)
+				Kit.p(m, "Cap", CFrame.new(x, 3.65, z), Vector3.new(1.1, 0.3, 1.1), K.Gold, M.Metal)
 			else
-				SK.Box(s, x0, x0 + 1.0, 1.0, 2.5, z0, z0 + 1.0, "Marble")
-				SK.Box(s, x0, x0 + 1.0, 2.5, 3.0, z0, z0 + 1.0, "Gold")
+				Kit.p(m, "Pillar", CFrame.new(x, 1.75, z), Vector3.new(0.9, 1.5, 0.9), K.Marble, M.Marble)
+				Kit.p(m, "Cap", CFrame.new(x, 2.65, z), Vector3.new(1.1, 0.3, 1.1), K.Gold, M.Metal)
+				Kit.p(m, "Crystal", CFrame.new(x, 3.5, z) * CFrame.Angles(0, rad(45), 0), Vector3.new(0.7, 1.4, 0.7), rgb(150, 220, 255), M.Neon)
 			end
 		end
 	end
-	SK.Shade(s, { Only = { Stone = true }, Smooth = 1, Seed = 29 })
-	local m = SK.Build(s, P, { Name = "Body", Collide = "big", MaxParts = 30 })
-	absorb(tpl.Model, m)
-	-- a gold collar around the podium's top block (2+), glowing crystals on the pillars (3), a red carpet toward the
-	-- yard (2+)
 	if level >= 2 then
 		for _, sz in ipairs({ -1, 1 }) do
-			box(tpl.Model, "Collar", CFrame.new(0, 2.25, sz * 2.85), Vector3.new(6.2, 0.5, 0.5), C.Gold, { Shadow = false })
-			box(tpl.Model, "Collar", CFrame.new(sz * 2.85, 2.25, 0), Vector3.new(0.5, 0.5, 5.2), C.Gold, { Shadow = false })
+			Kit.p(m, "Collar", CFrame.new(0, 2.25, sz * 2.85), Vector3.new(6.2, 0.4, 0.4), K.Gold, M.Metal)
+			Kit.p(m, "Collar", CFrame.new(sz * 2.85, 2.25, 0), Vector3.new(0.4, 0.4, 5.3), K.Gold, M.Metal)
 		end
-		box(tpl.Model, "Carpet", CFrame.new(0, 0.05, -5.0), Vector3.new(2.4, 0.1, 2.0), rgb(196, 58, 72), { Shadow = false })
-	end
-	if level >= 3 then
-		for _, sx in ipairs({ -1, 1 }) do
-			for _, sz in ipairs({ -1, 1 }) do
-				box(tpl.Model, "Crystal", CFrame.new(sx * 3.5, 3.8, sz * 3.5) * CFrame.Angles(0, math.rad(45), 0), Vector3.new(0.8, 1.6, 0.8), C.Crystal,
-					{ Material = MAT.Neon, Shadow = false })
-			end
-		end
+		Kit.p(m, "Carpet", CFrame.new(0, 0.53, -4.35), Vector3.new(2.4, 0.06, 0.8), rgb(166, 72, 82), M.Fabric)
 	end
 	return tpl
 end
@@ -2697,33 +2049,33 @@ end
 -- Template lookup
 ----------------------------------------------------------------------
 local function fallbackTemplate(def, level)
-	-- plain stand-in when the voxel kit is missing: a coloured block of the footprint
+	-- plain stand-in when the art fails: a slate block of the footprint
 	local tpl = newTemplate(def.Id)
 	local fp = (def.Slot and def.Slot.Footprint) or Vector3.new(6, 6, 6)
 	local h = max(1, fp.Y * (0.5 + 0.5 * level / max(1, def.MaxLevel or 1)))
-	box(tpl.Model, "Body", CFrame.new(0, h / 2, 0), Vector3.new(min(fp.X, 30), h, min(fp.Z, 30)), C.Stone, { Collide = true })
+	Kit.p(tpl.Model, "Body", CFrame.new(0, h / 2, 0), Vector3.new(min(fp.X, 30), h, min(fp.Z, 30)), K.Slate, M.Slate, true)
 	return tpl
 end
 
 local ART_BY_KIND = {
-	Plant = Art.Plant,
-	Magnet = Art.Magnet,
+	Farm = Art.Farm,
 	Garden = Art.Garden,
 	FoodMachine = Art.FoodMachine,
 	Training = Art.Training,
 	Vault = Art.Vault,
 	House = Art.House,
 	Fusion = Art.Fusion,
-	Arena = Art.Arena,
+	Arena = Art.ArenaGate,
+}
+local ART_BY_ID = {
+	DecorFence = Art.Fence,
+	DecorFountain = Art.Fountain,
+	DecorPodium = Art.Podium,
 }
 
--- template for (def, level); extra = plot specifics that change the art (accent colour for banners, the Garden's open
--- place count: its cache key is Garden:<level>:<open>)
+-- template for (def, level); the Garden's open bed count changes its art (cache key Garden:<level>:<open>)
 local function stationTemplate(def, level, accent, open)
 	local key = def.Id .. ":" .. level
-	if def.Id == "DecorBanners" and accent then
-		key = key .. ":" .. accent:ToHex()
-	end
 	local garden = def.Kind == "Garden"
 	if garden then
 		open = Garden.clampOpen(open, #Garden.places(def))
@@ -2733,9 +2085,9 @@ local function stationTemplate(def, level, accent, open)
 	if tpl then
 		return tpl
 	end
-	local fn = ART_BY_KIND[def.Kind] or Art[def.Id]
+	local fn = ART_BY_ID[def.Id] or ART_BY_KIND[def.Kind]
 	local ok, result = false, nil
-	if Voxel and fn then
+	if fn then
 		if garden then
 			ok, result = pcall(fn, def, level, open)
 		else
@@ -2748,6 +2100,7 @@ local function stationTemplate(def, level, accent, open)
 	if not ok or type(result) ~= "table" then
 		result = fallbackTemplate(def, level)
 	end
+	Kit.finish(result.Model)
 	local primary = biggestPart(result.Model)
 	if primary then
 		result.Model.PrimaryPart = primary
@@ -2797,7 +2150,7 @@ local function padTemplate(state)
 		size = cat.Layout.PadSize
 	end
 	local w, d = size.X, size.Z
-	local base = box(m, "Base", CFrame.new(0, 0.2, 0), Vector3.new(w, 0.4, d), (state == "Locked") and C.StoneDark or C.StoneEdge, { Collide = true, Shadow = false })
+	local base = box(m, "Base", CFrame.new(0, 0.2, 0), Vector3.new(w, 0.4, d), (state == "Locked") and C.StoneDark or C.StoneEdge, { Collide = true, Shadow = false, Material = MAT.Slate })
 	box(m, "Glow", CFrame.new(0, 0.45, 0), Vector3.new(w - 0.7, 0.1, d - 0.7), glow, { Material = MAT.Neon, Shadow = false, Collide = true })
 	local ec = (state == "Locked") and rgb(214, 220, 236) or rgb(255, 255, 255)
 	local eo = { Material = MAT.Neon, Shadow = false }
@@ -2879,8 +2232,8 @@ local function buildClaimSign(rec)
 	-- live inside the lobby and count toward its part budget. (World text rule: 50 px per stud, 1.1 stud title,
 	-- 0.6 stud info, both fitting the 7 x 2.6 stud board; the GUI draws the board's frame.)
 	local base = cf * CFrame.new(11, 0, -half - 2) * CFrame.Angles(0, math.pi, 0)
-	box(m, "Post", base * CFrame.new(0, 1.6, 0), Vector3.new(0.6, 3.2, 0.6), C.PlankDark, { Collide = true })
-	local board = box(m, "Board", base * CFrame.new(0, 3.9, 0), Vector3.new(7.0, 2.6, 0.4), C.Plank, { Collide = true, Shadow = false })
+	box(m, "Post", base * CFrame.new(0, 1.6, 0), Vector3.new(0.6, 3.2, 0.6), C.PlankDark, { Collide = true, Material = MAT.Wood })
+	local board = box(m, "Board", base * CFrame.new(0, 3.9, 0), Vector3.new(7.0, 2.6, 0.4), C.Plank, { Collide = true, Shadow = false, Material = MAT.WoodPlanks })
 	local gui = surfaceGui(board, Enum.NormalId.Back, "ClaimGui")
 	local panel = plainFrame(gui, "Panel", { Size = UDim2.fromScale(1, 1), BackgroundColor3 = rgb(255, 255, 255), BackgroundTransparency = 0 })
 	vgradient(panel, C.Violet, C.Navy)
@@ -3054,12 +2407,12 @@ local function pathTemplate()
 				local half = (catalog() and catalog().PlotSize or 72) / 2 - 0.3
 				x0, x1 = max(x0, -half), min(x1, half)
 				z0, z1 = max(z0, -half), min(z1, half)
-				box(tpl.Model, "PathEdge", CFrame.new((x0 + x1) / 2, -0.02, (z0 + z1) / 2), Vector3.new(x1 - x0, 0.2, z1 - z0), rgb(176, 166, 152), { Collide = true, Shadow = false })
+				box(tpl.Model, "PathEdge", CFrame.new((x0 + x1) / 2, -0.02, (z0 + z1) / 2), Vector3.new(x1 - x0, 0.2, z1 - z0), rgb(150, 144, 150), { Collide = true, Shadow = false, Material = MAT.Slate })
 			end
 		end
 		local model = Voxel.Build(g, {
 			VoxelSize = 1,
-			Palette = { Path = rgb(214, 206, 188), PathLight = rgb(232, 226, 210), PathEdge = rgb(176, 166, 152) },
+			Palette = { Path = { Color = rgb(176, 170, 172), Material = MAT.Cobblestone }, PathEdge = { Color = rgb(150, 144, 150), Material = MAT.Slate } },
 			Name = "Paths",
 			CFrame = CFrame.new(0.5, -0.32, 0.5), -- one voxel layer whose top sits 0.18 stud over the lawn
 			CanCollide = true,
@@ -3099,7 +2452,8 @@ local function lotTemplate()
 	-- in the House slot's frame (front -Z, toward the yard); kept clear of the walk in front of the house
 	local x0, x1, z0, z1 = -12, 12, -6.5, 8
 	local rope = rgb(244, 238, 222)
-	local deco = { Shadow = false }
+	local deco = { Shadow = false, Material = MAT.Wood }
+	local plank = { Shadow = false, Material = MAT.WoodPlanks }
 	for _, x in ipairs({ x0, x1 }) do
 		for _, z in ipairs({ z0, z1 }) do
 			box(m, "Stake", CFrame.new(x, 0.8, z), Vector3.new(0.4, 1.6, 0.4), C.Plank, deco)
@@ -3110,10 +2464,10 @@ local function lotTemplate()
 	box(m, "String", CFrame.new(x0, 1.25, (z0 + z1) / 2), Vector3.new(0.12, 0.12, z1 - z0), rope, deco)
 	box(m, "String", CFrame.new(x1, 1.25, (z0 + z1) / 2), Vector3.new(0.12, 0.12, z1 - z0), rope, deco)
 	-- planks (two crossed layers) and bricks inside the lot
-	box(m, "Planks", CFrame.new(-6, 0.25, 1.5) * CFrame.Angles(0, math.rad(8), 0), Vector3.new(4.5, 0.5, 1.6), C.PlankLight, deco)
-	box(m, "Planks", CFrame.new(-6, 0.75, 1.6) * CFrame.Angles(0, math.rad(-6), 0), Vector3.new(4.0, 0.5, 1.4), C.Plank, deco)
-	box(m, "Bricks", CFrame.new(6, 0.5, 2.5), Vector3.new(2.4, 1.0, 1.6), rgb(206, 110, 92), deco)
-	box(m, "Bricks", CFrame.new(5.8, 1.25, 2.5) * CFrame.Angles(0, math.rad(10), 0), Vector3.new(1.6, 0.5, 1.2), rgb(222, 132, 108), deco)
+	box(m, "Planks", CFrame.new(-6, 0.25, 1.5) * CFrame.Angles(0, math.rad(8), 0), Vector3.new(4.5, 0.5, 1.6), C.PlankLight, plank)
+	box(m, "Planks", CFrame.new(-6, 0.75, 1.6) * CFrame.Angles(0, math.rad(-6), 0), Vector3.new(4.0, 0.5, 1.4), C.Plank, plank)
+	box(m, "Bricks", CFrame.new(6, 0.5, 2.5), Vector3.new(2.4, 1.0, 1.6), rgb(170, 112, 98), { Shadow = false, Material = MAT.Brick })
+	box(m, "Bricks", CFrame.new(5.8, 1.25, 2.5) * CFrame.Angles(0, math.rad(10), 0), Vector3.new(1.6, 0.5, 1.2), rgb(182, 124, 106), { Shadow = false, Material = MAT.Brick })
 	templates.HouseLot = tpl
 	return tpl
 end
@@ -3744,6 +3098,8 @@ function HomeBuilder.Points(id, level)
 	local tpl = stationTemplate(def, max(1, floor(tonumber(level) or 1)), nil)
 	return tpl.Points, tpl.Info
 end
+
+HomeBuilder.Art = Art
 
 function HomeBuilder.Init(info)
 	if type(info) == "table" then

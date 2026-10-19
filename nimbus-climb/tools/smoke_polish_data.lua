@@ -417,6 +417,9 @@ S.polish_data_fwdcompat = guarded("polish_data_fwdcompat", function()
 		-- future Home key)
 		Quests = { { "a", "b", "c" } },
 		Season = { Id = 7, Stars = { 1, 2 } },
+		-- (Phase 5: the one-time P5Dungeon / P5Home steps are marked done, so the save tested here is not reshaped by the
+		-- fold (Press1 food floor, Food -> berries; p5home_fold_data proves those); P4 stays unmarked: checked below)
+		Migrations = { P5Dungeon = true, P5Home = true },
 	}
 	DSt.Data[storeKey(ID)].Home.Weather = "sunny"
 	local p = Mock.AddPlayer("PhaseTwoSave", ID)

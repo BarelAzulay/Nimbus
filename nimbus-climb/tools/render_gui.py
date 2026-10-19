@@ -9,7 +9,10 @@
 Scenarios (see tools/dump_gui.lua): lobby, title, match[:hit], countdown, party, results,
 menu:<Inventory|Pets|Index|Shop|Stats>[:<Tab>], tutorial[:<step>], npc[:<n>], dev, toasts,
 portal[:<Id>[:<players>[:<studs>]]] (a portal's world GUIs mirrored flat: the pixel billboard and the eye-level
-countdown face as big as it looks from <studs> away), or a .json dump written earlier with --json.
+countdown face as big as it looks from <studs> away; Phase 5: portal:Obby), battle[:<mode>[:<phase>]]
+(battle:<fighter|raid|duel|spectate|dungeon|ring>), arena[:<view>] (arena:practice, arena:dungeon[:<view>]),
+dungeon:<lobby|party|leader|countdown|run|loot|treasure|end|wipe>, obby[:party|toast], team, mainmenu, loading,
+settings, or a .json dump written earlier with --json.
 
 How it works: tools/dump_gui.lua runs inside a lupa Lua world booted like tools/smoke.py boots its client world
 (tools/robloxmock.lua, src/ mounted per default.project.json, the viewport set to --size, a touch device when the
@@ -63,7 +66,15 @@ SCENARIOS = ["gallery", "lobby", "title", "match", "match:hit", "countdown", "pa
              "menu:Index", "menu:Shop", "menu:Stats", "tutorial", "npc", "dev", "toasts", "portal", "portal:Saint:4",
              # Phase 4 (careui): the Home window, the Food Machine list, the garden picker, the Training Place, the EVOLVE
              # confirm, the Champion Ring window and the floating pet cards
-             "home", "home:coins", "feed", "garden", "train", "evolve", "ring", "ring:new", "petcards"]
+             "home", "home:coins", "feed", "garden", "train", "evolve", "ring", "ring:new", "petcards",
+             # Phase 5: the fighter HUD (battleclient), the careui windows, the Neon kit (neonkit), the menu (menu)
+             "battle:fighter", "battle:raid", "battle:duel", "battle:spectate", "battle:dungeon", "team", "looks", "looks:epic",
+             "stats", "fusion", "fusion:mix", "neon", "neon:window", "neon:hud", "neon:party", "mainmenu", "loading", "settings",
+             # Phase 5 (dungeonclient): the Battle Arena window and its tabs, the Dungeon window / run card views, the
+             # Sky Obby picker, the one obby portal
+             "arena", "arena:duels", "arena:raid", "arena:leaders", "arena:practice", "arena:dungeon", "arena:dungeon:party",
+             "dungeon", "dungeon:lobby", "dungeon:party", "dungeon:leader", "dungeon:countdown", "dungeon:run", "dungeon:loot",
+             "dungeon:treasure", "dungeon:end", "dungeon:wipe", "obby", "obby:party", "obby:toast", "portal:Obby"]
 
 # ---------------------------------------------------------------------------------------------------
 # Lua world (booted the way tools/smoke.py boots its client world)
@@ -1361,7 +1372,10 @@ def main():
     ap.add_argument("scenario", nargs="?", help="lobby, title, match[:hit], countdown, party, results, menu:<Window>[:<Tab>], "
                     "tutorial[:<step>], npc[:<n>], dev, toasts, portal[:<Id>[:<players>[:<studs>]]], homepads[:<tier>], "
                     "home[:coins], feed, garden[:<slot>], train[:<key>], evolve, ring[:<new|record>], petcards, "
-                    "battle[:<mode>[:<phase>]] (battle:ring:<fight|next|result|record><round>, battle:duel:overtime), or a dump .json")
+                    "battle[:<mode>[:<phase>]] (battle:ring:<fight|next|result|record><round>, battle:duel:overtime, "
+                    "battle:<fighter|raid|duel|spectate|dungeon>), arena[:<view>] (arena:practice, arena:dungeon[:<view>]), "
+                    "dungeon:<lobby|party|leader|countdown|run|loot|treasure|end|wipe>, obby[:party|toast], portal:Obby, team, "
+                    "or a dump .json")
     ap.add_argument("-o", "--out", help="output PNG (default: gui_<scenario>_<W>x<H>.png in the current directory)")
     ap.add_argument("--size", type=parse_size, default=(1920, 1080), help="screen size WxH (default 1920x1080)")
     ap.add_argument("--grid", action="store_true", help="render 1920x1080, 1280x720, 390x844 and 844x390 into one sheet")

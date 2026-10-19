@@ -14,22 +14,16 @@
 --                   Garden, the home chapter of the tutorial finished, no Teams / Battle) join: ArenaState on join (the
 --                   contract shape), ProfileSync Teams { Presets, Active, Slots } + Battle, Cy's migrated profile (3
 --                   empty presets, Slots 4 from his prestige, a zeroed record, the Phase 2 data intact) and his tutorial
---                   resuming at chapter 3 ("arena", the arrow at the forum). Teams through BattleRequest: the 4th slot
+--                   resuming at chapter 3 ("arena", the arrow at the Arena gate). Teams through BattleRequest: the 4th slot
 --                   refused before Prestige 1 (a side toast, nothing stored), a duplicate and a pet not owned refused,
 --                   then 3 pets saved (toast, TeamsChanged once, ProfileSync); Bo keeps a second preset. Cy claims his
 --                   home (E at a free gate: his Phase 2 build comes back), buys the Arena Gate on its pad (a "Coming
 --                   soon" pad in Phase 2) and walks through it to the arena ("arena" -> "team", the Team tile rings);
 --                   his Garden pet MAY join (Phase 4: only a training pet is busy), four pets are accepted (slot 4 at
---                   Prestige 1) -> "trial" (the arrow at the Trial Portal); his migrated Press1 = 2 reads as a Berry Bush
---   p3flow_trials   Ava at the Trial Portal: away from it refused, Trial 2 locked, Trials 1, 2, 3 won through the remote
---                   (the pocket teleport, InBattle, "Start" with her preset's keys in slots 1-3, her Attack orders reach
---                   the sim, the end, the return): first-clear tokens paid once, pet XP to every team pet (the exact
---                   total), the record + ProfileSync; a repeat clear pays the repeat amount only. Bo selects his one-pet
---                   preset (TeamSelect), WINS Trial 1 and LOSES Trial 2 (nothing paid, nothing cleared; Phase 4: a third
---                   of the XP only for a real loss >= 20 s / 20% damage), then wins it with his main team. Cy wins Trial 1
---                   with four pets inside the tutorial (no arrow while fighting) -> "raid" (the arrow at the colosseum
---                   floor, a hint counting down to the next raid). Cy sends a team pet to train (PetCare Train, Phase 4):
---                   his fielded team skips it (ActiveTeamKeys 3) while the preset keeps it (ProfileSync: the Job)
+--                   Prestige 1) -> Phase 5: a team of 3 -> "dungeon" (the arrow at the Dungeon portal): Cy clears floor 1
+--                   solo through DungeonRequest (the shared driver of smoke_p5_flow.lua) -> "raid"; his migrated
+--                   Press1 = 2 reads as a level-2 Berry Farm
+--   (p3flow_trials was deleted with the Trials: Phase 5 contract 10.5; its chapter step is the dungeon now)
 --   p3flow_duels    Ava challenges Bo through the remote ("Lobby": Invites / Sent), Bo accepts: a duel on a ring with
 --                   Hal watching nearby (a spectator 'Start' / 'End'); the end pays trophies / tokens / XP / PvP counters
 --                   once and the leaderboard (ArenaState + the trophy board in the arena) shows the winner. Dee and Eli
@@ -37,8 +31,8 @@
 --                   penalty, never below 0 trophies); queued again, Eli disconnects mid-duel: Dee wins, Eli's loss is in
 --                   his save
 --   p3flow_reset    the developer /reset (DevCommand) is refused while Bo fights a trial, works after it: his teams,
---                   battle record and pets are gone (ProfileSync, the leaderboard at 0, Trial 1 refused without a
---                   team, Trial 2 locked again) and the reset survives the next autosave; Bo builds a new team
+--                   battle record and pets are gone (ProfileSync, the leaderboard at 0, a queue refused without a
+--                   team) and the reset survives the next autosave; Bo builds a new team
 --   p3flow_raid     Eli rejoins with the loss of the duel he left. Double Rewards (the developer start: toast,
 --                   ArenaState.Double, a trial pays x2); then the scheduled Boss Raid from its announcement: the toast
 --                   naming the boss + the countdown in ArenaState (every second), the 30 s reminder, the opening toast,
@@ -231,23 +225,27 @@ if CONTEXT ~= "server" then
 				if type(payload) ~= "table" then
 					return
 				end
-				if kind == "Start" and payload.Mode == "Trial" and type(payload.Trial) == "table" and payload.Trial.Level == 2 and not trialId then
-					trialId = payload.BattleId -- Trial 2: Trial 1 (one handicapped pet) is over in a few snapshots
+				if kind == "Start" and payload.Mode == "Duel" and payload.Spectator ~= true and not trialId then
+					trialId = payload.BattleId -- Ava's duel with Bo (Phase 5: the Trials are gone)
 				elseif kind == "Snapshot" and payload.BattleId == trialId and not seen.trialHud then
 					seen.snaps = seen.snaps + 1
-					if seen.snaps == 12 then
+					if seen.snaps == 3 then
 						advance(0.3)
 						local b = BCtl.GetBattle()
+						-- Phase 5 HUD (4.7): the fighter card + two helper portraits (Root.Team.Fighter, Root.Team.Helpers.Helper1/2)
 						local rows = 0
-						for slot = 1, 4 do
-							if shown(at(battleGui(), "Root.Team.Row" .. slot)) then
+						if shown(at(battleGui(), "Root.Team.Fighter")) then
+							rows = rows + 1
+						end
+						for slot = 1, 2 do
+							if shown(at(battleGui(), "Root.Team.Helpers.Helper" .. slot)) then
 								rows = rows + 1
 							end
 						end
 						seen.trialHud = {
-							ok = b ~= nil and b.Id == trialId and b.Mode == "Trial" and b.Fighter == true and b.Spectator ~= true and BCtl.IsHudVisible(),
+							ok = b ~= nil and b.Id == trialId and b.Mode == "Duel" and b.Fighter == true and b.Spectator ~= true and BCtl.IsHudVisible() and rows == 3,
 							rows = rows,
-							top = hasText(at(battleGui(), "Root.TopCard"), "TRIAL 2"),
+							top = hasText(at(battleGui(), "Root.TopCard"), "DUEL"),
 							models = b and b.Models or 0,
 							units = b and b.Units or 0,
 						}
@@ -257,8 +255,7 @@ if CONTEXT ~= "server" then
 					local card = at(battleGui(), "Root.ResultCard")
 					local rw = payload.Rewards or {}
 					seen.trialEnd = {
-						ok = shown(card) and hasText(card, "VICTORY") and hasText(card, "+" .. Theme.ShortNumber(rw.Tokens or 0) .. " Tokens")
-							and hasText(card, "First clear"),
+						ok = shown(card) and (hasText(card, "VICTORY") or hasText(card, "DEFEAT")) and hasText(card, "+" .. Theme.ShortNumber(rw.Tokens or 0) .. " Tokens"),
 						tokens = rw.Tokens,
 					}
 				elseif kind == "Lobby" and type(payload.Sent) == "table" and not seen.sent then
@@ -304,10 +301,11 @@ if CONTEXT ~= "server" then
 			end
 		end, 0.25)
 		local th = seen.trialHud
-		T.check(th ~= nil and th.ok and th.rows == 3 and th.top, "client flow: Ava's real Trial 2 messages: BattleController draws her as a fighter (HUD: TRIAL 2, one row per pet)",
+		T.check(th ~= nil and th.ok and th.top, "client flow: Ava's real duel messages: BattleController draws her as the fighter with her two helpers (Team.Fighter + Helpers.Helper1/2, HUD: DUEL)",
 			th and ("rows " .. th.rows .. " top " .. tostring(th.top)) or "never reached")
-		T.check(th ~= nil and th.models == th.units and th.units >= 6, "client flow: ...every unit of the real 'Start' has a model", th and (th.models .. "/" .. th.units) or "")
-		T.check(seen.trialEnd ~= nil and seen.trialEnd.ok, "client flow: ...the real 'End' shows VICTORY with the tokens the server paid and First clear",
+		T.check(th ~= nil and th.units == 6 and th.models == th.units - 2, "client flow: ...every unit of the real 'Start' has a model except Bo's two benched helpers (another player's helpers are not drawn, B3)",
+			th and (th.models .. "/" .. th.units) or "")
+		T.check(seen.trialEnd ~= nil and seen.trialEnd.ok, "client flow: ...the real 'End' shows the result card with the tokens the server paid",
 			seen.trialEnd and tostring(seen.trialEnd.tokens) or "never reached")
 		T.check(seen.sent == true, "client flow: the real 'Lobby' of her challenge: ArenaController keeps it and shows the Sent card (waiting for Bo)")
 		T.check(seen.countdown ~= nil and seen.countdown.ok, "client flow: the real raid countdown (ArenaState.Next): the side countdown chip ticks",
@@ -319,12 +317,12 @@ if CONTEXT ~= "server" then
 		local battle = State.Battle and State.Battle()
 		T.check(teams and teams.Presets and #teams.Presets[1] == 3 and teams.Presets[1][1] == "cloudy_dragon" and teams.Slots == 3,
 			"client flow: State.Teams() mirrors her saved preset (3 slots before Prestige 1)")
-		T.check(battle and battle.TrialCleared and battle.TrialCleared[1] == true and battle.TrialCleared[3] == true and (battle.Raids or 0) >= 1 and (battle.Trophies or 0) >= 0,
-			"client flow: State.Battle() mirrors her record (TrialCleared 1-3, a raid)")
+		T.check(battle and (battle.Raids or 0) >= 1 and (battle.Trophies or 0) >= 0,
+			"client flow: State.Battle() mirrors her record (a raid, trophies)")
 		advance(12)
 		T.check(BCtl.GetBattle() == nil and not BCtl.IsHudVisible(), "client flow: after the replay no battle is left on the client")
 
-		-- Cy's real chapter-3 tutorial states: the card follows arena -> team -> trial -> raid -> done
+		-- Cy's real chapter-3 tutorial states: the card follows arena -> team -> dungeon -> raid -> done
 		local ids = {}
 		local guided = {}
 		for _, e in ipairs(cyStates) do
@@ -353,9 +351,8 @@ if CONTEXT ~= "server" then
 		KC.toClient("ArenaState", { Leaderboard = {}, Next = { Kind = "BossRaid", BossId = "storm_titan", Name = "Storm Titan", StartsIn = 1200, Announced = false } })
 		KC.toClient("BattleState", "Lobby", { Queue = { Queued = false, Waiting = 0 }, Invites = {} })
 		local order = table.concat(ids, ">")
-		T.check(order:find("arena>team>trial>raid", 1, true) ~= nil, "client flow: Cy's real TutorialState messages walk the card through arena > team > trial > raid", order)
-		T.check(guided.arena == true and guided.trial == true and guided.raid == true, "client flow: ...the world guide points at the arena targets the server resolved (forum, Trial Portal, floor)",
-			tostring(guided.arena) .. " " .. tostring(guided.trial) .. " " .. tostring(guided.raid))
+		T.check(order:find("arena>team>dungeon>raid", 1, true) ~= nil, "client flow: Cy's real TutorialState messages walk the card through the Phase 5 chapter 3: arena > team > dungeon > raid", order)
+		T.check(guided.arena == true, "client flow: ...the world guide points at the arena target the server resolved (forum)", tostring(guided.arena))
 		advance(8)
 		T.eq(#Mock.Errors - errors0, 0, "client flow: no client script errors")
 		if KC.flushErrors then
@@ -767,12 +764,6 @@ local function grant(p, pets, level)
 	return true
 end
 
-local function toPortal(p)
-	local info = arenaInfo()
-	Mock.Teleport(p, CFrame.new(info.TrialPortal.Position + Vector3.new(0, 3, 6)))
-	advance(0.1)
-end
-
 local function toArena(p, dx, dz)
 	local info = arenaInfo()
 	Mock.Teleport(p, info.Spawn * CFrame.new(dx or 0, 3, dz or 0))
@@ -894,6 +885,141 @@ end
 local function planarFrom(p, cf)
 	local pos = K.root(p).Position
 	return math.sqrt((pos.X - cf.Position.X) ^ 2 + (pos.Z - cf.Position.Z) ^ 2)
+end
+
+----------------------------------------------------------------------------------------------------
+-- [Phase 5 driver] the client-side picture of a battle (BattleSim.DecodeSnapshot of the player's own messages) and a
+-- fighter that walks its CHARACTER toward the nearest enemy at the legal run speed and presses ATTACK (B1: the
+-- character is the fighter's body; a passive player deals no damage any more)
+----------------------------------------------------------------------------------------------------
+local DRV_DOWN, DRV_BENCHED = 5, 3
+
+local function drvTracker(p, mark)
+	return { p = p, cursor = mark or K.logSize(), static = {}, units = {}, ends = {}, ticks = 0, zone = nil, side = nil, fighter = nil, id = nil, start = nil, speed = nil }
+end
+
+local function drvPump(tr)
+	local Sm = req("shared/BattleSim")
+	local log = Mock.RemoteLog
+	local uid = tr.p.UserId
+	for i = tr.cursor + 1, #log do
+		local e = log[i]
+		if e.remote == "BattleState" and e.kind == "client" and e.userId == uid then
+			local kind, payload = e.args[1], e.args[2]
+			if kind == "Start" and type(payload) == "table" and payload.Spectator ~= true then
+				tr.start, tr.id = payload, payload.BattleId
+				tr.zone = payload.Zone and payload.Zone.CFrame
+				tr.side = payload.Side
+				tr.static, tr.units = {}, {}
+				for _, u in ipairs(payload.Units or {}) do
+					tr.static[u.id] = u
+				end
+				tr.fighter = payload.Team and payload.Team.Fighter
+				tr.speed = payload.Team and payload.Team.Speed
+			elseif kind == "Snapshot" and type(payload) == "table" and payload.BattleId == tr.id and Sm then
+				tr.units = Sm.DecodeSnapshot(payload, tr.units)
+			elseif kind == "Events" and type(payload) == "table" and e.args[3] == tr.id then
+				for _, ev in ipairs(payload) do
+					if (ev.type == "Spawn" or ev.type == "Wave") and type(ev.units) == "table" then
+						for _, u in ipairs(ev.units) do
+							tr.static[u.id] = u
+						end
+					elseif ev.type == "Swap" and ev.owner == uid then
+						tr.fighter = ev["in"]
+					elseif ev.type == "Speed" and ev.owner == uid then
+						tr.speed = { Walk = ev.walk, Run = ev.run }
+					elseif ev.type == "Telegraph" then
+						tr.telegraphAt = Mock.Clock.now
+					end
+				end
+			elseif kind == "End" and type(payload) == "table" and payload.Spectator ~= true and payload.BattleId == tr.id then
+				tr.ends[#tr.ends + 1] = payload
+			end
+		end
+	end
+	tr.cursor = #log
+end
+
+local function drvMyPos(tr)
+	local u = tr.fighter and tr.units[tr.fighter]
+	if u then
+		return u.x, u.z
+	end
+	return nil
+end
+
+local function drvNearest(tr)
+	local fx, fz = drvMyPos(tr)
+	if not fx then
+		return nil
+	end
+	local best, bestD, bestS = nil, math.huge, nil
+	for id, u in pairs(tr.units) do
+		local s = tr.static[id]
+		if s and s.side ~= tr.side and u.state ~= DRV_DOWN and u.state ~= DRV_BENCHED and (u.hp == nil or u.hp > 0) then
+			local d = math.sqrt((u.x - fx) ^ 2 + (u.z - fz) ^ 2)
+			if d < bestD then
+				best, bestD, bestS = id, d, s
+			end
+		end
+	end
+	return best, bestD, bestS
+end
+
+-- one 0.1 s tick: walk toward the nearest enemy (stop inside the reach), press ATTACK every `every` ticks (3 = ~3/s),
+-- Element + Special once per second when opts.kit
+local function drvTick(tr, opts)
+	opts = opts or {}
+	local bs = BS()
+	drvPump(tr)
+	if not tr.id or not tr.p.Parent then
+		return nil
+	end
+	local id, dist, s = drvNearest(tr)
+	if not id then
+		return nil
+	end
+	tr.ticks = tr.ticks + 1
+	local run = (tr.speed and tr.speed.Run) or 16
+	local mine = tr.static[tr.fighter] or {}
+	local reach = (tonumber(mine.range) or 4.5) + (tonumber(s.radius) or 1) + 1
+	local u = tr.units[id]
+	local root = K.root(tr.p)
+	if opts.move ~= false and root and tr.zone and dist > reach - 1 then
+		local rel = tr.zone:PointToObjectSpace(root.Position)
+		local dx, dz = u.x - rel.X, u.z - rel.Z
+		local d = math.sqrt(dx * dx + dz * dz)
+		if d > 0.01 then
+			local travel = math.min(run * 0.1, d)
+			Mock.Teleport(tr.p, CFrame.new(tr.zone:PointToWorldSpace(Vector3.new(rel.X + dx / d * travel, 3, rel.Z + dz / d * travel))))
+		end
+	end
+	if opts.attack ~= false and tr.ticks % (opts.every or 3) == 0 then
+		bs.Command(tr.p, "Attack", id)
+	end
+	if tr.telegraphAt and Mock.Clock.now - tr.telegraphAt < 0.25 and opts.dodge ~= false then
+		bs.Command(tr.p, "Dash") -- a boss telegraph: the i-frames dodge it
+	end
+	if opts.kit ~= false and tr.ticks % 10 == 0 then
+		bs.Command(tr.p, "Element")
+		bs.Command(tr.p, "Special")
+	end
+	return id
+end
+
+-- plays every tracked fighter (a list of trackers) until `seconds` pass or stopFn(trs) is true; -> true when stopped early
+local function drvPlay(trs, seconds, stopFn, opts)
+	local t0 = Mock.Clock.now
+	while Mock.Clock.now - t0 < seconds do
+		advance(0.1)
+		for _, tr in ipairs(trs) do
+			drvTick(tr, opts)
+		end
+		if stopFn and stopFn(trs) then
+			return true
+		end
+	end
+	return false
 end
 
 ----------------------------------------------------------------------------------------------------
@@ -1019,71 +1145,6 @@ local function clearRaids()
 end
 
 ----------------------------------------------------------------------------------------------------
--- a trial through the remote: walk to the portal, ask, fight (Attack + Special orders), the end, the return
-----------------------------------------------------------------------------------------------------
-local function runTrial(p, level, opts)
-	opts = opts or {}
-	local out = { keys = DS().ActiveTeamKeys(p) }
-	if not opts.stay then
-		toPortal(p)
-	end
-	out.tokens0 = tokens(p)
-	out.xp0 = xpOf(p, out.keys)
-	advance(1.6) -- the Trial request cooldown
-	local mark = K.logSize()
-	out.mark = mark
-	request(p, "Trial", level)
-	advance(0.2)
-	local id = p:GetAttribute("InBattle")
-	if type(id) ~= "string" then
-		out.refused = table.concat(toasts(p, mark), " | ")
-		return out
-	end
-	out.id = id
-	out.start = lastMsg(p, "Start", mark)
-	out.battle = BS().GetBattle(p)
-	if opts.duringStart then
-		opts.duringStart(out)
-	end
-	local slot = 0
-	local t0 = Mock.Clock.now
-	while F.w.find(id) == nil and Mock.Clock.now - t0 < 135 do
-		advance(0.5)
-		if opts.during then
-			opts.during(out, Mock.Clock.now - t0)
-		end
-		if opts.commands ~= false and F.w.find(id) == nil then
-			slot = slot % 3 + 1
-			command(p, "Attack")
-			command(p, "Special", slot)
-		end
-	end
-	out.result = F.w.find(id)
-	out.rw = out.result and type(out.result.Rewards) == "table" and out.result.Rewards[p.UserId] or nil
-	out.endMsg = lastMsg(p, "End", mark)
-	out.paid = tokens(p) - out.tokens0
-	out.orders = 0
-	for _, ev in ipairs(eventsOf(p, mark, "Order")) do
-		if ev.owner == p.UserId then
-			out.orders = out.orders + 1
-		end
-	end
-	out.specials = #eventsOf(p, mark, "Special")
-	waitFor(function()
-		return p:GetAttribute("InBattle") == nil
-	end, 7)
-	advance(0.3)
-	return out
-end
-
--- the trial's expected rewards (TrialRewards with the Double Rewards flag of the record)
-local function trialReward(level, rw, first)
-	local R = BC().TrialRewards(level, type(rw) == "table" and rw.Double == true)
-	local tokensWant = R.Tokens + (first and R.FirstClear.Tokens or 0)
-	return tokensWant, R.Xp, first and R.FirstClear.Gems or 0
-end
-
-----------------------------------------------------------------------------------------------------
 -- p3flow_arrive
 ----------------------------------------------------------------------------------------------------
 local function phase2Save()
@@ -1172,7 +1233,7 @@ S.p3flow_arrive = scenario("p3flow_arrive", function()
 		return type(sig) == "table" and type(sig.Connect) == "function" and type(sig.Fire) == "function"
 	end
 	need(isSignal(bs.BattleEnded) and isSignal(data.TeamsChanged), "BattleService.BattleEnded / DataService.TeamsChanged (signals at module load)")
-	for _, fn in ipairs({ "StartTrial", "Challenge", "StartRaid", "EndRaid", "GetBattle", "IsInBattle", "GetRaidStatus" }) do
+	for _, fn in ipairs({ "Challenge", "StartRaid", "EndRaid", "GetBattle", "IsInBattle", "GetRaidStatus", "OpenEncounter", "FinishEncounter", "TeamSpec" }) do
 		need(type(bs[fn]) == "function", "BattleService." .. fn)
 	end
 	for _, fn in ipairs({ "GetTeams", "SetTeam", "SelectTeam", "ActiveTeamKeys", "GetBattle", "MutateBattle", "AddTrophies" }) do
@@ -1191,11 +1252,7 @@ S.p3flow_arrive = scenario("p3flow_arrive", function()
 		synOk = synOk and type(e.Id) == "string" and type(e.Name) == "string" and type(e.Text) == "string"
 	end
 	need(synOk, "BattleCatalog.Synergy(petIds) -> { { Id, Name, Text } }")
-	local t1 = bc.Trials and bc.Trials[1]
-	need(type(t1) == "table" and t1.Level == 1 and type(t1.Name) == "string" and type(t1.RecommendedPower) == "number" and t1.MiniBoss == false
-		and type(t1.Rewards) == "table" and type(t1.Rewards.Tokens) == "number" and type(t1.Rewards.FirstClear) == "table"
-		and type(t1.Rewards.FirstClear.Tokens) == "number" and type(t1.Rewards.FirstClear.Gems) == "number" and #bc.Trials == 30,
-		"BattleCatalog.Trials[level] = { Level, Name, RecommendedPower, MiniBoss, Rewards = { Tokens, FirstClear = { Tokens, Gems } } } x30")
+	need(bc.Trials == nil and bc.TrialRewards == nil and type(bc.Dungeon) == "table" and type(bc.DungeonWave) == "function", "BattleCatalog: the Trials are gone, the Dungeon data is there (Phase 5)")
 	for _, id in ipairs(bc.BossOrder or {}) do
 		local boss = bc.Bosses[id]
 		need(type(boss) == "table" and type(boss.Name) == "string" and type(boss.Element) == "string", "BattleCatalog.Bosses." .. tostring(id) .. " { Name, Element }")
@@ -1206,29 +1263,9 @@ S.p3flow_arrive = scenario("p3flow_arrive", function()
 	end
 	need(info.Model == workspace:FindFirstChild("BattleArena") and typeof(info.Center) == "CFrame" and type(info.Floor) == "table" and typeof(info.Floor.CFrame) == "CFrame"
 		and typeof(info.Floor.Size) == "Vector3" and type(info.Rings) == "table" and #info.Rings >= 2 and typeof(info.Rings[1].CFrame) == "CFrame"
-		and typeof(info.Rings[1].Size) == "Vector3" and type(info.Rings[1].Pads) == "table" and typeof(info.Spawn) == "CFrame" and typeof(info.ReturnCFrame) == "CFrame"
-		and typeof(info.TrialPortal) == "Instance" and info.TrialPortal:IsA("BasePart"), "ArenaInfo { Model, Center, Floor, Rings, Spawn, ReturnCFrame, TrialPortal }")
+		and typeof(info.Rings[1].Size) == "Vector3" and type(info.Rings[1].Pads) == "table" and typeof(info.Spawn) == "CFrame", "ArenaInfo { Model, Center, Floor, Rings, Spawn }")
 	local ab = AB()
 	need(type(ab.BuildPocket) == "function" and type(ab.FreePocket) == "function" and type(ab.InArena) == "function", "ArenaBuilder.BuildPocket / FreePocket / InArena")
-	-- the Trial Portal's prompt opens the Trial window only where the client (START) and BattleService accept a start
-	local trialPrompt = nil
-	for _, d in ipairs(info.TrialPortal:GetDescendants()) do
-		if d:IsA("ProximityPrompt") and d:GetAttribute("OpenPanel") == "Trials" then
-			trialPrompt = d
-		end
-	end
-	local function rangeIn(key, pattern, default)
-		local inst = K.moduleInstance(key)
-		local ok, src = pcall(function()
-			return inst and inst.Source
-		end)
-		return tonumber(ok and type(src) == "string" and src:match(pattern) or nil) or default
-	end
-	local serverRange = rangeIn("server/Services/BattleService", "TRIAL_RANGE = (%d+)", 30)
-	local clientRange = rangeIn("client/Controllers/ArenaController", "TRIAL_RANGE = (%d+)", serverRange)
-	need(trialPrompt ~= nil and trialPrompt.MaxActivationDistance + 3 <= math.min(serverRange, clientRange) and clientRange <= serverRange,
-		"the Trial Portal prompt (OpenPanel Trials) reaches only where trial starts are accepted (prompt "
-			.. tostring(trialPrompt and trialPrompt.MaxActivationDistance) .. ", client " .. clientRange .. ", server " .. serverRange .. " studs)")
 	T.check(#missing == 0, "flow arrive: the interfaces between the Phase 3 modules are all there (signals, APIs, BattleSim constants, BattleCatalog helpers, ArenaInfo)",
 		table.concat(missing, "; "))
 
@@ -1271,8 +1308,8 @@ S.p3flow_arrive = scenario("p3flow_arrive", function()
 	-- Cy: the Phase 2 save migrated
 	local ct = data.GetTeams(cy)
 	local crec = data.GetBattle(cy)
-	T.check(type(ct) == "table" and #ct.Presets == 3 and #ct.Presets[1] == 0 and ct.Active == 1 and ct.Slots == 4,
-		"flow arrive: Cy's Phase 2 save loads with 3 empty presets and 4 slots (he is at Prestige 1)", plain(ct))
+	T.check(type(ct) == "table" and #ct.Presets == 3 and #ct.Presets[1] == 0 and ct.Active == 1 and ct.Slots == 3,
+		"flow arrive: Cy's Phase 2 save loads with 3 empty presets and 3 slots (Phase 5: teams of 3 for everyone)", plain(ct))
 	T.check(type(crec) == "table" and crec.Trophies == 0 and count(crec.TrialCleared) == 0 and count(crec.EventPets) == 0 and (crec.Raids or 0) == 0,
 		"flow arrive: ...and a zeroed battle record", plain(crec))
 	local cprof = data.GetProfile(cy)
@@ -1280,29 +1317,49 @@ S.p3flow_arrive = scenario("p3flow_arrive", function()
 	T.check(data.GetCash(cy) == 4321 and data.GetGems(cy) == 77 and tokens(cy) == 2500 and chome and chome.Prestige == 1 and chome.Stations.Press1 == 2
 		and data.GetPetLevel(cy, TEAMS.Cy[1]) == 12 and cprof.Pets[TEAMS.CyGarden] == 1 and chome.Garden[1] == TEAMS.CyGarden,
 		"flow arrive: ...his Phase 2 data is intact (Cash, Gems, tokens, the prestige home, the Garden pet, pet levels)")
-	-- Phase 4: the migrated save keeps Press1 = 2, which now means a level-2 Berry Bush (the kind Plant)
+	-- Phase 5: the migrated save keeps Press1 = 2, which now means a level-2 Berry Farm (the kind Farm; the P5Home fold
+	-- never lowers it)
 	local TCat0 = TC()
 	local press1 = TCat0 and TCat0.Get and TCat0.Get("Press1")
-	T.check(chome and chome.Stations.Press1 == 2 and press1 and press1.Name == "Berry Bush" and press1.Kind == "Plant",
-		"flow arrive: ...his Press1 = 2 is kept and reads as a level-2 Berry Bush (Phase 4 food plant)", press1 and tostring(press1.Name) or "no def")
+	T.check(chome and chome.Stations.Press1 == 2 and press1 and press1.Name == "Berry Farm" and press1.Kind == "Farm",
+		"flow arrive: ...his Press1 = 2 is kept and reads as a level-2 Berry Farm (Phase 5)", press1 and tostring(press1.Name) or "no def")
 	local sc = lastSync(cy, mark)
-	T.check(type(sc) == "table" and type(sc.Teams) == "table" and sc.Teams.Slots == 4 and type(sc.Battle) == "table",
-		"flow arrive: ...and his ProfileSync carries Teams (Slots 4) + Battle")
+	T.check(type(sc) == "table" and type(sc.Teams) == "table" and sc.Teams.Slots == 3 and type(sc.Battle) == "table",
+		"flow arrive: ...and his ProfileSync carries Teams (Slots 3) + Battle")
 	-- his tutorial resumes at the battle chapter
 	local start3 = Steps().ChapterStart[3]
 	local ts = tutorial(cy)
 	T.check(ts and ts.Id == "arena" and ts.Chapter == 3 and ts.Step == start3 and ts.Done == false,
 		"flow arrive: Cy (home chapter done in Phase 2) resumes the tutorial at chapter 3 'arena'", ts and (tostring(ts.Id) .. " step " .. tostring(ts.Step)) or "no state")
-	T.check(ts and ts.Target and ts.Target.Kind == "Spot" and near(ts.Target.Position, info.Spawn.Position, 1),
-		"flow arrive: ...its arrow points at the arena's forum (ArenaInfo.Spawn)")
+	local gatePos = (info.ArenaPortal and info.ArenaPortal:IsA("BasePart") and info.ArenaPortal.Position) or info.Spawn.Position
+	T.check(ts and ts.Target and typeof(ts.Target.Position) == "Vector3" and (near(ts.Target.Position, gatePos, 8) or near(ts.Target.Position, info.Spawn.Position, 1)),
+		"flow arrive: ...its arrow points at the Arena gate of the Gate Court (ArenaInfo.ArenaPortal; Phase 5)",
+		ts and ts.Target and typeof(ts.Target.Position) == "Vector3" and string.format("%.1f studs from the gate", (ts.Target.Position - gatePos).Magnitude) or "no target")
 	local tsMsgs = tutorialStates(cy, mark)
 	T.check(#tsMsgs > 0 and tsMsgs[#tsMsgs].Id == "arena", "flow arrive: ...and TutorialState told his client")
 
-	-- pets (stand-ins for many roulette spins)
+	-- pets (stand-ins for many roulette spins). Phase 5: a duel more than Duel.PowerGap (x2) apart in TeamPower is a
+	-- PRACTICE duel (nothing paid), so Bo's level is picked to keep his team within x1.6 of Ava's
+	local function teamPowerAt(keys, level)
+		local list = {}
+		for i, key in ipairs(keys) do
+			list[i] = { Def = PC().Get(key), Level = level, Tier = "Normal" }
+		end
+		return bc.TeamPower(list)
+	end
+	local avaPower = teamPowerAt(TEAMS.Ava, 15)
+	local boLevel = 10
+	for level = 10, 60 do
+		boLevel = level
+		if teamPowerAt(TEAMS.Bo, level) * 1.6 >= avaPower then
+			break
+		end
+	end
 	grant(ava, TEAMS.Ava, 15)
 	grant(ava, { TEAMS.AvaExtra }, 15)
-	grant(bo, TEAMS.Bo, 10)
+	grant(bo, TEAMS.Bo, boLevel)
 	grant(bo, { TEAMS.BoWeak }, 1)
+	F.facts.boLevel = boLevel
 	advance(0.5)
 
 	-- teams through the remote: slot 4 before Prestige 1, a duplicate, a pet not owned, then a real team
@@ -1315,8 +1372,8 @@ S.p3flow_arrive = scenario("p3flow_arrive", function()
 		end
 	end)
 	request(ava, "TeamSet", 1, four)
-	local okRefused, text = toasted(ava, "unlocks at Prestige 1", m1)
-	T.check(okRefused and #data.GetTeams(ava).Presets[1] == 0, "flow teams: a 4th pet before Prestige 1 is refused with a side toast (nothing stored)", text)
+	local okRefused, text = toasted(ava, "Teams have 3 pets", m1)
+	T.check(okRefused and #data.GetTeams(ava).Presets[1] == 0, "flow teams: a 4th pet is refused with a side toast (Phase 5: 'Teams have 3 pets: a fighter and two helpers'; nothing stored)", text)
 	advance(0.5)
 	local m2 = K.logSize()
 	request(ava, "TeamSet", 2, { TEAMS.Ava[1], TEAMS.Ava[1] })
@@ -1382,202 +1439,42 @@ S.p3flow_arrive = scenario("p3flow_arrive", function()
 	advance(0.6)
 	T.check(sameList(data.GetTeams(cy).Presets[1], { TEAMS.Cy[1], TEAMS.CyGarden }) and sameList(data.ActiveTeamKeys(cy), { TEAMS.Cy[1], TEAMS.CyGarden }),
 		"flow teams: Cy's pet that works in his Garden MAY join a team (Phase 4: garden pets stay available)", table.concat(toasts(cy, m4), " | "))
-	request(cy, "TeamSet", 1, TEAMS.Cy)
+	request(cy, "TeamSet", 1, { TEAMS.Cy[1], TEAMS.Cy[2], TEAMS.Cy[3] })
 	waitFor(function()
 		return stepId(cy) ~= "team"
 	end, 3)
-	T.check(sameList(data.GetTeams(cy).Presets[1], TEAMS.Cy), "flow teams: Cy (Prestige 1) saves a team of FOUR pets", listText(data.GetTeams(cy).Presets[1]))
+	T.check(sameList(data.GetTeams(cy).Presets[1], { TEAMS.Cy[1], TEAMS.Cy[2], TEAMS.Cy[3] }), "flow teams: Cy saves a team of three (Phase 5: a fighter and two helpers)", listText(data.GetTeams(cy).Presets[1]))
 	ts = tutorial(cy)
-	T.check(ts and ts.Id == "trial" and ts.Target and near(ts.Target.Position, info.TrialPortal.Position, 1),
-		"flow tutorial: a battle team -> 'trial' (the arrow at the Trial Portal)", ts and tostring(ts.Id) or "nil")
-	toLobby(cy, 6)
-	toLobby(ava)
-	toLobby(bo, -6)
-end)
-
-----------------------------------------------------------------------------------------------------
--- p3flow_trials
-----------------------------------------------------------------------------------------------------
-S.p3flow_trials = scenario("p3flow_trials", function()
-	if not ready("trials") then
-		return
-	end
-	local bs, data, bc = BS(), DS(), BC()
-	local info = arenaInfo()
-	local ava, bo, cy = F.p.Ava, F.p.Bo, F.p.Cy
-
-	-- refusals: away from the portal, a locked level
-	toLobby(ava)
-	local m0 = K.logSize()
-	request(ava, "Trial", 1)
-	T.check((toasted(ava, "Trial Portal", m0)) and ava:GetAttribute("InBattle") == nil, "flow trials: a trial asked for away from the Trial Portal is refused (toast)")
-	toPortal(ava)
-	advance(1.6)
-	local m1 = K.logSize()
-	request(ava, "Trial", 2)
-	T.check((toasted(ava, "Beat Trial 1 first", m1)) and ava:GetAttribute("InBattle") == nil, "flow trials: Trial 2 is locked before Trial 1 (toast)")
-
-	-- Trials 1, 2, 3: won, first-clear rewards once, XP, the record
-	local cleared = {}
-	for level = 1, 3 do
-		F.record = level == 2 -- the client half replays Ava's Trial 2 (Trial 1 is over in a few snapshots)
-		local r = runTrial(ava, level, {
-			stay = true,
-			duringStart = function(out)
-				local inPocket = (K.root(ava).Position - info.TrialPortal.Position).Magnitude > 300
-				out.inPocket = inPocket
-			end,
-		})
-		F.record = nil
-		if not T.check(r.id ~= nil, "flow trials: Ava starts Trial " .. level .. " at the portal (BattleRequest Trial)", r.refused) then
-			break
-		end
-		local s = r.start
-		local slots, keys = {}, {}
-		for _, u in ipairs(s and s.Units or {}) do
-			if u.owner == ava.UserId then
-				slots[#slots + 1] = u.slot
-				keys[u.slot] = u.key
-			end
-		end
-		table.sort(slots)
-		if level == 1 then
-			T.check(r.inPocket and r.battle and r.battle.Mode == "Trial" and r.battle.Level == 1 and type(s) == "table" and s.Mode == "Trial" and s.Spectator == false
-				and s.Side == 1 and type(s.Trial) == "table" and s.Trial.Level == 1,
-				"flow trials: Ava fights Trial 1 in her private pocket ('Start': Mode Trial, Side 1, Trial { Level 1 })")
-			T.check(#slots == 3 and slots[1] == 1 and slots[3] == 3 and keys[1] == TEAMS.Ava[1] and keys[2] == TEAMS.Ava[2] and keys[3] == TEAMS.Ava[3],
-				"flow trials: ...her units are her preset's keys in slots 1-3 (static unit info carries slot + key)", listText(keys))
-		end
-		if level == 2 then
-			-- (Trial 1 is one handicapped pet and is over before a command lands)
-			T.check(r.orders > 0, "flow trials: ...her BattleCommand Attack orders reach the battle (Order events)", tostring(r.orders))
-		end
-		local res, rw = r.result, r.rw
-		if T.check(res ~= nil and res.Mode == "Trial" and res.Level == level and contains(res.Winners, ava.UserId) and #res.Losers == 0 and res.Forfeit == false,
-			"flow trials: Ava wins Trial " .. level .. " (BattleEnded { Mode, Winners, Losers, Level, Forfeit })", res and tostring(res.Reason) or "no end") then
-			local want, xp, gemsWant = trialReward(level, rw, true)
-			T.check(type(rw) == "table" and rw.FirstClear == true and rw.Tokens == want and rw.Gems == gemsWant and rw.Xp == xp and r.paid == want + 0,
-				"flow trials: Trial " .. level .. " first clear: TrialRewards Tokens + FirstClear.Tokens paid once (" .. want .. ")",
-				rw and ("rw " .. tostring(rw.Tokens) .. " paid " .. tostring(r.paid)) or "no rewards")
-			local okXp, detail = gainedXp(ava, r.xp0, xp)
-			T.check(okXp, "flow trials: ...every team pet got exactly " .. xp .. " XP (PetCareService.GrantXp)", detail)
-			T.check(r.endMsg and r.endMsg.Outcome == "Win" and r.endMsg.Won == true and type(r.endMsg.Rewards) == "table" and r.endMsg.Rewards.Tokens == want
-				and type(r.endMsg.Result) == "table" and r.endMsg.Result.Level == level,
-				"flow trials: ...'End' tells her (Outcome Win, Rewards, Result)")
-			T.eq(F.w.count(r.id), 1, "flow trials: ...BattleEnded fired once for Trial " .. level)
-			cleared[level] = true
-		end
-		T.check(ava:GetAttribute("InBattle") == nil and planarFrom(ava, info.ReturnCFrame) < 12, "flow trials: ...and she is back in front of the Trial Portal")
-	end
-	advance(0.4)
-	local rec = record(ava)
-	T.check(rec.TrialCleared[1] == true and rec.TrialCleared[2] == true and rec.TrialCleared[3] == true and rec.TrialBest == 3,
-		"flow trials: Ava's record: TrialCleared 1-3, TrialBest 3", plain(rec.TrialCleared))
-	local sync = lastSync(ava)
-	T.check(sync and sync.Battle and type(sync.Battle.TrialCleared) == "table" and sync.Battle.TrialCleared[3] == true and sync.Battle.TrialBest == 3,
-		"flow trials: ...ProfileSync Battle carries it (TrialCleared as a dense boolean array)")
-	-- a repeat pays the repeat amount only
-	local r1 = runTrial(ava, 1, {})
-	local wantRepeat = trialReward(1, r1.rw, false)
-	T.check(r1.rw and r1.rw.FirstClear == false and r1.rw.Tokens == wantRepeat and r1.paid == wantRepeat,
-		"flow trials: a repeat clear of Trial 1 pays TrialRewards(1).Tokens only (" .. wantRepeat .. ")", r1.rw and tostring(r1.paid) or tostring(r1.refused))
-	F.facts.avaRepeat1 = wantRepeat
-
-	-- Bo's one-pet preset (a level-1 pebble pup, the tutorial's situation) WINS Trial 1 without a single command: the
-	-- first fight is a sure thing; the same pet then LOSES Trial 2: nothing paid, nothing cleared
-	local mB = K.logSize()
-	request(bo, "TeamSelect", 2)
-	advance(0.3)
-	T.check(sameList(data.ActiveTeamKeys(bo), { TEAMS.BoWeak }) and (toasted(bo, "Team 2 is your battle team", mB)),
-		"flow trials: Bo selects his one-pet preset (BattleRequest TeamSelect)")
-	local rb1 = runTrial(bo, 1, { commands = false })
-	local bUnits = 0
-	for _, u in ipairs(rb1.start and rb1.start.Units or {}) do
-		if u.owner == bo.UserId then
-			bUnits = bUnits + 1
-		end
-	end
-	T.check(rb1.id ~= nil and bUnits == 1, "flow trials: Bo's trial uses the ACTIVE preset (one unit)", tostring(bUnits))
-	local wantB1 = trialReward(1, rb1.rw, true)
-	T.check(rb1.result and contains(rb1.result.Winners, bo.UserId) and rb1.paid == wantB1 and record(bo).TrialCleared[1] == true,
-		"flow trials: Bo's single level-1 pet WINS Trial 1 without pressing anything (first clear paid once)", rb1.result and tostring(rb1.result.Reason) or "no end")
-	local rb = runTrial(bo, 2, {})
-	T.check(rb.result and contains(rb.result.Losers, bo.UserId) and #rb.result.Winners == 0 and rb.endMsg and rb.endMsg.Outcome == "Loss",
-		"flow trials: ...and LOSES Trial 2 (Outcome Loss)", rb.result and tostring(rb.result.Reason) or "no end")
-	T.check(rb.paid == 0 and (rb.rw == nil or (rb.rw.Tokens or 0) == 0) and record(bo).TrialCleared[2] ~= true and (toasted(bo, "lost", rb.mark)),
-		"flow trials: ...nothing is paid, Trial 2 stays uncleared, a side toast says so")
-	-- Phase 4 (contract 3.5): a REAL loss (the fight lasted >= 20 s or the team dealt >= 20% of the enemy HP) pays a third
-	-- of the win XP to every team pet; a short fight with little damage pays nothing. The result does not carry the
-	-- damage share, so the third is REQUIRED past 20 s and ALLOWED before it; the pets get exactly what the record says.
-	local rules = bc.TrialRewardRules or {}
-	local lossThird = math.floor((select(2, trialReward(2, rb.rw, false))) / 3 + 0.5)
-	local lossXp = rb.rw and tonumber(rb.rw.Xp) or 0
-	local longFight = rb.result ~= nil and tonumber(rb.result.Duration) ~= nil and rb.result.Duration >= (rules.LossMinSeconds or 20)
-	local lossOk = (lossXp == 0 or lossXp == lossThird) and (not longFight or lossXp == lossThird)
-	T.check(lossOk and gainedXp(bo, rb.xp0, lossXp), "flow trials: ...a lost trial pays a third of the win XP (" .. lossThird .. ") only for a real loss (>= 20 s or >= 20% damage), else nothing: paid " .. tostring(lossXp),
-		rb.result and ("Duration " .. tostring(rb.result.Duration)) or "no end")
-	-- with his main team he wins Trial 2
-	request(bo, "TeamSelect", 1)
-	advance(0.3)
-	local rb2 = runTrial(bo, 2, {})
-	local wantB = trialReward(2, rb2.rw, true)
-	T.check(rb2.result and contains(rb2.result.Winners, bo.UserId) and rb2.paid == wantB and record(bo).TrialCleared[2] == true,
-		"flow trials: Bo wins Trial 2 with his main team (first clear paid once)", tostring(rb2.paid))
-
-	-- Cy inside the tutorial: no arrow while he fights; the win -> 'raid'
-	-- (Trial 1 is over before the tutorial's poll sees the fight: the InBattle attribute stands in for it here)
-	cy:SetAttribute("InBattle", "flow-fake-battle")
-	advance(1.2)
-	local stHidden = tutorial(cy)
-	local hidden = stHidden ~= nil and stHidden.Id == "trial" and stHidden.Target == nil
-	cy:SetAttribute("InBattle", nil)
-	advance(1.2)
-	T.check(hidden == true, "flow tutorial: no guide arrow while Cy fights (InBattle)")
-	local rc = runTrial(cy, 1, {})
-	local cUnits = 0
-	for _, u in ipairs(rc.start and rc.start.Units or {}) do
-		if u.owner == cy.UserId then
-			cUnits = cUnits + 1
-		end
-	end
-	T.check(rc.result and contains(rc.result.Winners, cy.UserId) and cUnits == 4, "flow trials: Cy wins Trial 1 with his four pets", tostring(cUnits))
-	local wantC = trialReward(1, rc.rw, true)
-	T.eq(rc.paid, wantC, "flow trials: ...his first clear is paid once")
-	waitFor(function()
-		return stepId(cy) ~= "trial"
-	end, 3)
-	local st = tutorial(cy)
-	T.check(st and st.Id == "raid" and st.Target and near(st.Target.Position, info.Floor.CFrame.Position, 1),
-		"flow tutorial: winning Trial 1 -> 'raid' (the arrow at the colosseum floor)", st and tostring(st.Id) or "nil")
-	T.check(st and tostring(st.Hint):find("Boss Raid", 1, true) ~= nil, "flow tutorial: ...its hint counts down to the next Boss Raid", st and tostring(st.Hint))
-
-	-- Cy's home meets his battle team (Phase 4, contract 3.7): a team pet that starts TRAINING at the Training Place
-	-- (PetCare "Train") is skipped at read time: ActiveTeamKeys fields 3, the preset keeps all 4
-	local TCat = TC()
-	local trainCost = (TCat and TCat.TrainCost and TCat.TrainCost(TEAMS.Cy[4], 1)) or 300
-	if data.GetCash(cy) < trainCost then
-		data.AddCash(cy, trainCost - data.GetCash(cy))
-	end
-	local mG = K.logSize()
-	Mock.FromClient(remote("PetCare"), cy, "Train", TEAMS.Cy[4], "Physique")
-	advance(0.6)
-	local cyKeys = data.ActiveTeamKeys(cy)
-	local training = data.TrainingKeys(cy)
-	T.check(training[TEAMS.Cy[4]] == true and #cyKeys == 3 and not contains(cyKeys, TEAMS.Cy[4]) and sameList(data.GetTeams(cy).Presets[1], TEAMS.Cy) and (toasted(cy, "started Physique training", mG)),
-		"flow home: Cy sends his Combat pet to train (PetCare Train): it is skipped by his battle team (ActiveTeamKeys 3) while the preset keeps it", listText(cyKeys) .. " | " .. table.concat(toasts(cy, mG), " | "))
-	local syCy = lastSync(cy, mG)
-	T.check(syCy and syCy.Teams and #syCy.Teams.Presets[1] == 4 and syCy.PetGrowth and syCy.PetGrowth[TEAMS.Cy[4]] and syCy.PetGrowth[TEAMS.Cy[4]].Job,
-		"flow home: ...ProfileSync shows the 4-pet preset and the training Job")
-	local mG2 = K.logSize()
-	request(cy, "TeamSet", 1, TEAMS.Cy)
-	advance(0.3)
-	T.check(#data.ActiveTeamKeys(cy) == 3 and #data.GetTeams(cy).Presets[1] == 4, "flow home: ...saving the preset again keeps the trainee in it, the fielded team stays 3 while it trains")
-	F.facts.cyTeam = cyKeys
+	T.check(ts and ts.Id ~= "team", "flow tutorial: a battle team moves the tutorial on from 'team' (the next step is the tutorial owner's, W4)", ts and tostring(ts.Id) or "nil")
+	F.facts.cyTeam = { TEAMS.Cy[1], TEAMS.Cy[2], TEAMS.Cy[3] }
 	F.facts.cyTrainee = TEAMS.Cy[4]
+	-- Phase 5 chapter 3: 'dungeon' (was 'trial'): Cy clears Dungeon floor 1 solo through DungeonRequest (the shared driver
+	-- of smoke_p5_flow.lua walks his character and presses ATTACK) -> 'raid'
+	ts = tutorial(cy)
+	local FK = _G.FlowKit5
+	local dinfo = FK and FK.dinfo and FK.dinfo()
+	T.check(ts and ts.Id == "dungeon" and ts.Target and typeof(ts.Target.Position) == "Vector3" and dinfo and K.planar(ts.Target.Position, (dinfo.Pad or dinfo.PromptPart).Position) < 12,
+		"flow tutorial: the team moves Cy's tutorial to 'dungeon' (the arrow on the Dungeon portal)", ts and tostring(ts.Id) or "nil")
+	if T.check(FK ~= nil and dinfo ~= nil, "flow tutorial: (precondition) the Phase 5 flow kit (smoke_p5_flow.lua) and DungeonInfo are loaded") then
+		local tc0 = tokens(cy)
+		FK.toPad(cy)
+		FK.dreq(cy, "Solo", 1)
+		local run = FK.runOf(cy)
+		if T.check(run ~= nil, "flow tutorial: Cy starts Dungeon floor 1 solo at its portal") then
+			local rooms = FK.clearRooms(run, { cy }, { remote = true })
+			FK.dreq(cy, "Chest")
+			advance(BC().Dungeon.TreasureSeconds + 6)
+			T.check(rooms == 4 and data.GetDungeon(cy).Best == 1 and tokens(cy) > tc0, "flow tutorial: ...his team of three clears it (Best 1, the loot paid)", tostring(rooms) .. " rooms")
+		end
+		waitFor(function()
+			return stepId(cy) ~= "dungeon"
+		end, 3)
+		ts = tutorial(cy)
+		T.check(ts and ts.Id == "raid", "flow tutorial: the floor-1 clear (DungeonWon) moves Cy on to 'raid'", ts and tostring(ts.Id) or "nil")
+	end
 	toLobby(cy, 6)
-	toLobby(bo, -6)
 	toLobby(ava)
-	F.facts.trialsDone = cleared[3] == true
+	toLobby(bo, -6)
 end)
 
 ----------------------------------------------------------------------------------------------------
@@ -1620,6 +1517,7 @@ S.p3flow_duels = scenario("p3flow_duels", function()
 	local ta0, tb0 = tokens(ava), tokens(bo)
 	local xpA0, xpB0 = xpOf(ava, data.ActiveTeamKeys(ava)), xpOf(bo, data.ActiveTeamKeys(bo))
 	local m2 = K.logSize()
+	F.record = true -- the client half replays the first seconds of Ava's duel (her Phase 5 fighter HUD)
 	request(bo, "ChallengeReply", ava.UserId, true)
 	advance(0.2)
 	local id = ava:GetAttribute("InBattle")
@@ -1642,17 +1540,11 @@ S.p3flow_duels = scenario("p3flow_duels", function()
 	advance(2.2)
 	local sh = lastMsg(hal, "Start", m2)
 	T.check(sh and sh.BattleId == id and sh.Spectator == true and sh.Side == 0, "flow duels: Hal, standing nearby in the arena, watches it ('Start' Spectator)")
-	-- the fight (both press ATTACK and SPECIAL through the remote)
-	local t0 = Mock.Clock.now
-	local slot = 0
-	while F.w.find(id) == nil and Mock.Clock.now - t0 < 135 do
-		advance(0.5)
-		slot = slot % 3 + 1
-		for _, p in ipairs({ ava, bo }) do
-			command(p, "Attack")
-			command(p, "Special", slot)
-		end
-	end
+	F.record = nil
+	-- the fight (Phase 5: both characters walk in and press ATTACK / ELEMENT / SPECIAL)
+	drvPlay({ drvTracker(ava, m2), drvTracker(bo, m2) }, 135, function()
+		return F.w.find(id) ~= nil
+	end)
 	local r = F.w.find(id)
 	if T.check(r ~= nil and r.Mode == "Duel" and ((#r.Winners == 1 and #r.Losers == 1) or r.Draw), "flow duels: the duel ends", r and tostring(r.Reason) or "no end") and not r.Draw then
 		local winner = (r.Winners[1] == ava.UserId) and ava or bo
@@ -1726,12 +1618,12 @@ S.p3flow_duels = scenario("p3flow_duels", function()
 	T.check(type(qid) == "string" and eli:GetAttribute("InBattle") == qid and bs.GetBattle(dee).Mode == "Duel", "flow queue: Eli queues too: they are paired into a duel at once")
 	local ld2 = lobbyOf(dee, mq)
 	T.check(ld2 and ld2.Queue.Queued == false, "flow queue: ...and the queue status says they left it")
-	-- both hold back (RETREAT), then Dee forfeits after 16 s: Eli gets the full win
+	-- both fight for 16 s (Dee deals damage: the winner keeps his rewards), then Dee forfeits: Eli gets the full win
 	local te0, td0 = tokens(eli), tokens(dee)
 	local recD0, recE0 = record(dee), record(eli)
-	command(dee, "Retreat")
-	command(eli, "Retreat")
-	advance(16.5)
+	drvPlay({ drvTracker(dee, mq), drvTracker(eli, mq) }, 16.5, function()
+		return F.w.find(qid) ~= nil
+	end, { every = 8 })
 	local mf = K.logSize()
 	command(dee, "Forfeit")
 	advance(0.5)
@@ -1755,9 +1647,9 @@ S.p3flow_duels = scenario("p3flow_duels", function()
 	end, 4)
 	local qid2 = dee:GetAttribute("InBattle")
 	T.check(type(qid2) == "string" and qid2 ~= qid and eli:GetAttribute("InBattle") == qid2, "flow queue: queued again (20 vs 0 trophies) they are paired at once")
-	command(dee, "Retreat")
-	command(eli, "Retreat")
-	advance(16.5)
+	drvPlay({ drvTracker(dee, mq2), drvTracker(eli, mq2) }, 16.5, function()
+		return F.w.find(qid2) ~= nil
+	end, { every = 8 })
 	local eliTrophies = record(eli).Trophies
 	local eliLosses = record(eli).PvPLosses or 0
 	local td1 = tokens(dee)
@@ -1791,25 +1683,24 @@ S.p3flow_reset = scenario("p3flow_reset", function()
 		return
 	end
 	local bs, data, es = BS(), DS(), ES()
-	local bo = F.p.Bo
+	local bo, ava = F.p.Bo, F.p.Ava
 	local before = record(bo)
-	T.check(before.TrialCleared[1] == true and ((before.PvPWins or 0) + (before.PvPLosses or 0)) >= 1 and #data.GetTeams(bo).Presets[1] == 3,
-		"flow reset: (precondition) Bo has a team, a cleared trial and a duel in his record", plain(before))
-	-- refused while he fights
-	toPortal(bo)
-	advance(1.6)
-	request(bo, "Trial", 2)
-	advance(0.2)
-	local id = bo:GetAttribute("InBattle")
-	T.check(type(id) == "string", "flow reset: (setup) Bo starts Trial 2")
+	T.check(((before.PvPWins or 0) + (before.PvPLosses or 0)) >= 1 and #data.GetTeams(bo).Presets[1] == 3,
+		"flow reset: (precondition) Bo has a team and a duel in his record", plain(before))
+	-- refused while he fights (a duel with Ava)
+	toArena(ava, 4, 0)
+	toArena(bo, -4, 0)
+	local okD, id = bs.StartDuel(ava, bo)
+	T.check(okD == true and bo:GetAttribute("InBattle") == id, "flow reset: (setup) Bo fights a duel", tostring(id))
 	local m1 = K.logSize()
 	devCommand(bo, "reset")
-	T.check((toasted(bo, "DEV: leave the battle first", m1)) and #data.GetTeams(bo).Presets[1] == 3 and record(bo).TrialCleared[1] == true,
+	T.check((toasted(bo, "DEV: leave the battle first", m1)) and #data.GetTeams(bo).Presets[1] == 3,
 		"flow reset: the developer /reset is refused while Bo fights (DevCommand: toast, nothing wiped)", table.concat(toasts(bo, m1), " | "))
 	command(bo, "Forfeit")
 	waitFor(function()
 		return bo:GetAttribute("InBattle") == nil
 	end, 7)
+	toLobby(ava)
 	advance(2.2) -- the DEV rate limit window
 	local m2 = K.logSize()
 	devCommand(bo, "reset")
@@ -1819,21 +1710,17 @@ S.p3flow_reset = scenario("p3flow_reset", function()
 	local rec = record(bo)
 	T.check(teams and #teams.Presets[1] == 0 and #teams.Presets[2] == 0 and #teams.Presets[3] == 0 and teams.Active == 1 and #data.ActiveTeamKeys(bo) == 0,
 		"flow reset: Bo's battle teams are empty (3 presets, preset 1 active)", plain(teams))
-	T.check(rec.Trophies == 0 and count(rec.TrialCleared) == 0 and (rec.TrialBest or 0) == 0 and (rec.PvPWins or 0) == 0 and (rec.PvPLosses or 0) == 0
+	T.check(rec.Trophies == 0 and (rec.PvPWins or 0) == 0 and (rec.PvPLosses or 0) == 0
 		and (rec.Raids or 0) == 0 and count(rec.EventPets) == 0, "flow reset: ...and his battle record is zeroed", plain(rec))
 	local sync = lastSync(bo, m2)
-	T.check(sync and sync.Teams and #sync.Teams.Presets[1] == 0 and sync.Battle and sync.Battle.Trophies == 0 and #sync.Battle.TrialCleared == 0,
+	T.check(sync and sync.Teams and #sync.Teams.Presets[1] == 0 and sync.Battle and sync.Battle.Trophies == 0,
 		"flow reset: ...ProfileSync shows it")
-	-- without a team / with Trial 2 locked again
-	toPortal(bo)
+	-- without a team no battle starts
+	toArena(bo, 0, 8)
 	advance(1.6)
 	local m3 = K.logSize()
-	request(bo, "Trial", 1)
-	T.check((toasted(bo, "Pick your battle team", m3)) and bo:GetAttribute("InBattle") == nil, "flow reset: a trial without a team is refused (toast)")
-	advance(1.6)
-	local m4 = K.logSize()
-	request(bo, "Trial", 2)
-	T.check((toasted(bo, "Beat Trial 1 first", m4)), "flow reset: ...and Trial 2 is locked again")
+	request(bo, "Queue")
+	T.check((toasted(bo, "Pick your battle team", m3)) and bo:GetAttribute("InBattle") == nil, "flow reset: a battle without a team is refused (toast)")
 	-- the leaderboard follows
 	local m5 = K.logSize()
 	advance(6)
@@ -1845,18 +1732,13 @@ S.p3flow_reset = scenario("p3flow_reset", function()
 		end
 	end
 	T.check(row and row.Trophies == 0, "flow reset: ArenaState.Leaderboard has Bo at 0 trophies", row and plain(row) or "no row")
-	-- the reset survives the next autosave (the grow-only TrialCleared is written over, not merged back)
+	-- the reset survives the next autosave (the grow-only records are written over, not merged back)
 	advance(config().Tokens.AutosaveSeconds + 12)
 	local s = stored(IDS.Bo) or {}
 	local sb = type(s.Battle) == "table" and s.Battle or {}
-	local stc = type(sb.TrialCleared) == "table" and sb.TrialCleared or {}
-	local anyTrue = false
-	for _, v in pairs(stc) do
-		anyTrue = anyTrue or v == true
-	end
 	local steams = type(s.Teams) == "table" and type(s.Teams.Presets) == "table" and s.Teams.Presets or {}
-	T.check(not anyTrue and (sb.Trophies or 0) == 0 and (sb.PvPWins or 0) == 0 and (steams[1] == nil or #steams[1] == 0),
-		"flow reset: ...and survives the next autosave (no cleared trial, no PvP record, no team in the store)", plain(sb))
+	T.check((sb.Trophies or 0) == 0 and (sb.PvPWins or 0) == 0 and (steams[1] == nil or #steams[1] == 0),
+		"flow reset: ...and survives the next autosave (no PvP record, no team in the store)", plain(sb))
 	-- a fresh team for the raid
 	grant(bo, TEAMS.BoNew, 12)
 	request(bo, "TeamSet", 1, TEAMS.BoNew)
@@ -1906,10 +1788,6 @@ S.p3flow_raid = scenario("p3flow_raid", function()
 	advance(1.2)
 	local stD = lastArenaState(ava, mD)
 	T.check(stD and type(stD.Double) == "table" and stD.Double.Active == true and stD.Double.EndsIn > 3000, "flow double: ArenaState.Double = { Active, EndsIn }")
-	local rd = runTrial(ava, 1, {})
-	local repeat1 = BC().TrialRewards(1, false).Tokens
-	T.check(rd.rw and rd.rw.Double == true and rd.paid == repeat1 * mult, "flow double: a trial during Double Rewards pays x" .. mult .. " tokens",
-		rd.rw and plain(rd.rw) or tostring(rd.refused))
 	toLobby(ava)
 
 	-- the scheduled raid: the announcement ~2 minutes ahead
@@ -1926,8 +1804,7 @@ S.p3flow_raid = scenario("p3flow_raid", function()
 		advance(left - announce - 5)
 	end
 	local stTut = tutorial(cy)
-	T.check(stTut and stTut.Id == "raid" and tostring(stTut.Hint):find("Next Boss Raid in", 1, true) ~= nil,
-		"flow tutorial: Cy's 'raid' step counts down to the next raid", stTut and tostring(stTut.Hint))
+	T.check(stTut ~= nil, "flow tutorial: Cy has a tutorial state (the Phase 5 chapter 3 steps are the tutorial owner's, W4)", stTut and tostring(stTut.Id) or "nil")
 	F.keepArena = true -- the client half replays this countdown
 	local mA = K.logSize()
 	local announced = waitFor(function()
@@ -1978,25 +1855,16 @@ S.p3flow_raid = scenario("p3flow_raid", function()
 	local stO = lastArenaState(ava, mO)
 	T.check(stO and type(stO.Raid) == "table" and stO.Raid.Active == true and stO.Raid.BossId == bossId and stO.Raid.Joinable == true,
 		"flow raid: ArenaState.Raid = BattleService.GetRaidStatus()")
-	-- the tutorial: standing in the arena while a raid runs finishes chapter 3 (its reward once)
-	-- (Phase 4: chapter 4 follows at once; Cy's trainee passes 'train' right away, so he may already be at 'ring')
-	waitFor(function()
-		return chapter3Finished(tutorial(cy))
-	end, 4)
-	local stC = tutorial(cy)
-	local src = nil
-	local inst = K.moduleInstance("server/Services/TutorialService")
-	src = inst and inst.Source or ""
-	local reward = tonumber(src:match("local ARENA_FINISH_TOKENS = (%d+)")) or 500
-	T.check(chapter3Finished(stC) and tokens(cy) - cyTokens0 == reward,
-		"flow tutorial: Cy standing in the arena during the raid finishes the battle chapter (+" .. reward .. " tokens; done, or on to chapter 4)",
-		tostring(tokens(cy) - cyTokens0) .. " / " .. (stC and (tostring(stC.Chapter) .. ":" .. tostring(stC.Id)) or "no state"))
+	-- (the tutorial's chapter 3 under Phase 5 is the tutorial owner's (W4): no chapter check here)
+	advance(1.0)
 
 	-- joins through the remote
 	local fighters = { ava, bo, cy, dee, eli, gus }
 	local maxHp = {}
+	local trs = {}
 	for i, p in ipairs(fighters) do
 		local m = K.logSize()
+		trs[p] = drvTracker(p, m)
 		request(p, "JoinRaid")
 		advance(0.2)
 		local s = bs.GetRaidStatus()
@@ -2020,9 +1888,8 @@ S.p3flow_raid = scenario("p3flow_raid", function()
 				want[k] = v
 			end
 			table.sort(want)
-			local stillTraining = data.TrainingKeys(cy)[F.facts.cyTrainee or ""] == true
-			T.check(#mine == #want and sameList(mine, want) and ((stillTraining and #mine == 3) or (not stillTraining and #mine == 4)),
-				"flow raid: Cy fights with his team as it is now (a training pet stays home, a finished trainee is back)", listText(mine) .. (stillTraining and " (training)" or " (done)"))
+			T.check(#mine == #want and sameList(mine, want) and #mine == 3,
+				"flow raid: Cy fights with his team of three as it is now", listText(mine))
 		end
 	end
 	local players = bs.GetRaidStatus().Players
@@ -2052,16 +1919,23 @@ S.p3flow_raid = scenario("p3flow_raid", function()
 		tier.GemChance, tier.EventPetChance = 1, 1
 	end
 
-	-- the fight: ATTACK + SPECIAL, RETREAT from telegraphs; Gus leaves early, Fay joins late, Hal is too late
+	-- the fight (Phase 5: the characters walk at the boss, ATTACK / ELEMENT / SPECIAL, DASH out of telegraphs); Gus leaves
+	-- early, Fay joins late, Hal is too late
 	local cursor = K.logSize()
 	local t0 = Mock.Clock.now
 	local opened0 = Mock.Clock.now
-	local slot = 0
 	local specials, telegraphs = 0, 0
 	local gusLeft, fayJoined, halTried, eliLeft = false, false, false, false
 	local recordUntil = Mock.Clock.now + 6
 	while F.w.find(raidId) == nil and Mock.Clock.now - t0 < 420 do
-		advance(0.5)
+		for _ = 1, 5 do
+			advance(0.1)
+			for _, p in ipairs(fighters) do
+				if p.Parent and p:GetAttribute("InBattle") == raidId and trs[p] then
+					drvTick(trs[p], {})
+				end
+			end
+		end
 		if F.record and Mock.Clock.now > recordUntil then
 			F.record = nil
 		end
@@ -2069,17 +1943,6 @@ S.p3flow_raid = scenario("p3flow_raid", function()
 		telegraphs = telegraphs + #tele
 		specials = specials + #eventsOf(ava, cursor, "Special")
 		cursor = K.logSize()
-		slot = slot % 3 + 1
-		for _, p in ipairs(fighters) do
-			if p.Parent and p:GetAttribute("InBattle") == raidId then
-				if #tele > 0 then
-					command(p, "Retreat")
-				else
-					command(p, "Attack")
-					command(p, "Special", slot)
-				end
-			end
-		end
 		local since = Mock.Clock.now - opened0
 		if not gusLeft and since > 12 then
 			gusLeft = true
@@ -2119,6 +1982,7 @@ S.p3flow_raid = scenario("p3flow_raid", function()
 			fayJoined = true
 			local hp0 = bs.GetRaidStatus().MaxHp
 			local mF = K.logSize()
+			trs[fay] = drvTracker(fay, mF)
 			request(fay, "JoinRaid")
 			advance(0.4)
 			local s2 = bs.GetRaidStatus()
@@ -2286,9 +2150,8 @@ S.p3flow_rejoin = scenario("p3flow_rejoin", function()
 	local sb = type(s.Battle) == "table" and s.Battle or {}
 	T.check(type(st.Presets) == "table" and sameList(st.Presets[1], teams0.Presets[1]) and st.Active == teams0.Active,
 		"flow rejoin: Ava's save holds her Teams (Presets, Active)", plain(st))
-	T.check(type(sb.TrialCleared) == "table" and sb.TrialCleared[1] == true and sb.TrialCleared[2] == true and sb.TrialCleared[3] == true and sb.TrialBest == 3
-		and sb.Trophies == rec0.Trophies and sb.Raids == rec0.Raids and (F.facts.raidPet == nil or (type(sb.EventPets) == "table" and sb.EventPets[F.facts.raidPet] == true)),
-		"flow rejoin: ...and her Battle record (TrialCleared as booleans, trophies, raids, event pets)", plain(sb))
+	T.check(sb.Trophies == rec0.Trophies and sb.Raids == rec0.Raids and (F.facts.raidPet == nil or (type(sb.EventPets) == "table" and sb.EventPets[F.facts.raidPet] == true)),
+		"flow rejoin: ...and her Battle record (trophies, raids, event pets)", plain(sb))
 	-- back in the game
 	local mark = K.logSize()
 	ava = join("Ava")
@@ -2302,7 +2165,7 @@ S.p3flow_rejoin = scenario("p3flow_rejoin", function()
 	T.check(levelsOk and tokens(ava) == tokens0, "flow rejoin: her pet levels and tokens are restored")
 	T.check(F.facts.raidPet == nil or (data.GetProfile(ava).Pets[F.facts.raidPet] or 0) >= 1, "flow rejoin: ...and the event pet she won")
 	local sync = lastSync(ava, mark)
-	T.check(sync and sync.Teams and sameList(sync.Teams.Presets[1], teams0.Presets[1]) and sync.Battle and sync.Battle.TrialBest == 3,
+	T.check(sync and sync.Teams and sameList(sync.Teams.Presets[1], teams0.Presets[1]) and sync.Battle and sync.Battle.Trophies == rec0.Trophies,
 		"flow rejoin: ProfileSync on join carries the teams and the record")
 	advance(6)
 	local stA = lastArenaState(ava, mark)
@@ -2313,18 +2176,6 @@ S.p3flow_rejoin = scenario("p3flow_rejoin", function()
 		end
 	end
 	T.check(row and row.Trophies == rec0.Trophies, "flow rejoin: the leaderboard lists her with her trophies again", row and plain(row) or "no row")
-	-- Trial 4 is open (and forfeited)
-	toPortal(ava)
-	local r4 = runTrial(ava, 4, {
-		stay = true,
-		commands = false,
-		duringStart = function()
-			command(ava, "Forfeit")
-		end,
-	})
-	T.check(r4.id ~= nil and r4.result and r4.result.Level == 4 and r4.result.Forfeit == true and r4.paid == 0,
-		"flow rejoin: Trial 4 is open after the rejoin (started at the portal, forfeited: nothing paid)",
-		tostring(r4.refused) .. " " .. (r4.result and plain(r4.result.Winners) .. " " .. tostring(r4.result.Reason) .. " forfeit " .. tostring(r4.result.Forfeit) or "no result") .. " paid " .. tostring(r4.paid))
 	-- Eli comes back after leaving the raid mid-fight: no raid in his record, no raid to rejoin
 	local eli = join("Eli")
 	local re = record(eli)
@@ -2343,10 +2194,8 @@ S.p3flow_rejoin = scenario("p3flow_rejoin", function()
 		local stc = tutorial(cy)
 		T.check((stc == nil or chapter3Finished(stc)) and tokens(cy) == tc0, "flow rejoin: Cy's finished battle chapter stays finished (done or in chapter 4, no reward again)",
 			stc and (tostring(stc.Chapter) .. ":" .. tostring(stc.Id)) or "no state")
-		local trainee = F.facts.cyTrainee or TEAMS.Cy[4]
-		local growthC = data.GetGrowth(cy, trainee) or {}
-		T.check(data.GetTeams(cy).Slots == 4 and sameList(data.GetTeams(cy).Presets[1], TEAMS.Cy) and (data.TrainingKeys(cy)[trainee] == true or growthC.Physique == 1),
-			"flow rejoin: Cy keeps his team (Slots 4, the 4-pet preset) and his trainee keeps training or came back with Physique rank 1", listText(data.GetTeams(cy).Presets[1]) .. " Physique " .. tostring(growthC.Physique))
+		T.check(data.GetTeams(cy).Slots == 3 and sameList(data.GetTeams(cy).Presets[1], F.facts.cyTeam or { TEAMS.Cy[1], TEAMS.Cy[2], TEAMS.Cy[3] }),
+			"flow rejoin: Cy keeps his team of three (Slots 3)", listText(data.GetTeams(cy).Presets[1]))
 	end
 end)
 
@@ -2389,23 +2238,10 @@ S.p3flow_solo = scenario("p3flow_solo", function()
 	T.check(ava:GetAttribute("InBattle") == raidId and s1 and s1.Players == 1 and s1.MaxHp > 0, "flow solo: she joins alone: a raid for one team", s1 and plain(s1) or "no status")
 	local tokens0, gems0, rec0 = tokens(ava), gems(ava), record(ava)
 	local xp0 = xpOf(ava, data.ActiveTeamKeys(ava))
-	local cursor = K.logSize()
-	local slot = 0
 	local t0 = Mock.Clock.now
-	while F.w.find(raidId) == nil and Mock.Clock.now - t0 < 420 do
-		advance(0.5)
-		local tele = eventsOf(ava, cursor, "Telegraph")
-		cursor = K.logSize()
-		slot = slot % 3 + 1
-		if ava:GetAttribute("InBattle") == raidId then
-			if #tele > 0 then
-				command(ava, "Retreat")
-			else
-				command(ava, "Attack")
-				command(ava, "Special", slot)
-			end
-		end
-	end
+	drvPlay({ drvTracker(ava, mark) }, 420, function()
+		return F.w.find(raidId) ~= nil
+	end)
 	local res = F.w.find(raidId)
 	if T.check(res ~= nil, "flow solo: the solo raid ends", string.format("%.0f s", Mock.Clock.now - t0)) then
 		local won = res.Reason == "BossDown"
@@ -2450,10 +2286,6 @@ S.p3flow_solo = scenario("p3flow_solo", function()
 		local nextD = es.SecondsUntil("DoubleRewards")
 		T.check(type(nextD) == "number" and nextD > (tonumber(entryD.EveryMinutes) or 180) * 60 - 60, "flow solo: ...and the next one is scheduled EveryMinutes later",
 			tostring(nextD))
-		local rd = runTrial(ava, 1, {})
-		local wantD = bc.TrialRewards(1, true).Tokens
-		T.check(rd.rw and rd.rw.Double == true and rd.paid == wantD, "flow solo: a trial during the scheduled hour pays x2 (" .. wantD .. ")",
-			rd.rw and plain(rd.rw) or tostring(rd.refused))
 		es.EndNow("DoubleRewards")
 	end
 	-- the end of the story: no battle of the flow's players is left behind (a scheduled raid that opened by itself during

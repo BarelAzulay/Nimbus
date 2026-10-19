@@ -1,123 +1,88 @@
--- BattleController (client, Phase 3, battleclient): draws every pet battle the server simulates and gives the local
--- player the battle controls (ARCHITECTURE_V3.md "Phase 3: Pet battles", "Phase 3 build contract", "Interfaces between
--- the Phase 3 modules"). The server simulates, the clients draw: nothing here is authoritative. Battle units are built
--- locally (PetBuilder for pets with their keys / looks, BossBuilder for raid bosses) and animated between the server's
--- 10 Hz snapshots (Replication rule).
+-- BattleController (client; Phase 3 battleclient, Phase 5 rewrite of the HUD + controls): draws every pet battle the
+-- server simulates and gives the local player the fighter's controls (ARCHITECTURE_V3.md "Phase 5 build contract" 4.7
+-- and 3.9; the drawing / effects / unit cards / Ring cards of Phases 3-4 are kept). The server simulates, the clients
+-- draw: nothing here is authoritative (Y1). Battle units are built locally (PetBuilder for pets, BossBuilder for raid
+-- bosses) and animated between the server's 10 Hz snapshots (Replication rule).
 --
 -- API
 --   BattleController.Init()                 connects BattleState, the frame loop and the input (once)
 --   BattleController.Stop()                 tears everything down (tests / hot reload)
 --   BattleController.HandleState(kind, payload, battleId)   what the BattleState remote does (tests / dump_gui)
---   BattleController.Command(action, arg) -> bool   sends BattleCommand ("Attack" (unitId|nil), "Retreat",
---                                           "Special" (slot), "Forfeit") with a local throttle; false when refused here
---   BattleController.Focus(unitId)          focus an enemy (= Command("Attack", unitId)); nil clears the focus
---   BattleController.GetBattle() -> { Id, Mode, Side, Spectator, Fighter, Ended, Units = n, Models = n, Focus,
---                                     Order, Hud = bool, Layout = "Wide" | "Compact" } | nil
---   BattleController.GetUnit(id) -> { Id, Side, Kind, Name, Hp, MaxHp, State, Meter, Model, X, Z, World (Vector3) } | nil
---   BattleController.GetStats() -> { Frames, AvgMs, PeakMs, LastMs, Units, Models, FxParts, Numbers, Flashes,
---                                     Telegraphs, Builds }  (cost of the frame loop, measured with os.clock, or with
---                                     BattleController.PerfClock when a test sets one; ResetStats() starts over)
---   BattleController.IsHudVisible() -> bool
---   BattleController.ScreenPick(x, y) -> unitId | nil   the enemy a tap / click at viewport pixel (x, y) would focus
---   BattleController.GetTelegraphs() -> { { Id, Shape, At, From, SafeAt, Late } }  (tests: the render-clock deadline)
---   GetBattle() also reports Threat (a telegraph covers one of my pets), Cue ("Attack" | "Retreat" | nil: the
---   pulsing command), InterpDelay and TeamPlace ("Right" | "Top" | "Left": where the team cards sit); Phase 4: Round /
---   Best (a Champion Ring round), Next (the round that follows a won one, until its Start) and Overtime (a duel)
---   GetUnit(id) also reports Card = { Gui, Mode } (the unit's PetCard), Level, Evo, Xp, XpNext, Crowned and Writes
---   (how many times its card's HP / SPECIAL were written: tests pin "only on change")
+--   BattleController.Command(action, arg) -> bool   sends BattleCommand: "Attack" (unitId|nil), "Element", "Special",
+--                                           "Dash", "Target" (unitId|nil), "Buff" (slot), "Swap" (slot), "Forfeit",
+--                                           with a local throttle and local checks (a refused press shakes its
+--                                           button); false when refused here
+--   BattleController.Focus(unitId)          lock an enemy (= Command("Target", unitId)); nil clears the lock
+--   BattleController.GetBattle() -> { Id, Mode, Side, Spectator, Fighter, Ended, Units, Models, Lock, Focus (= Lock),
+--                                     FighterId, Lives, Hud, Layout = "Wide" | "Compact", Cooldowns = { Element, Dash,
+--                                     Swap, Buff = { [slot] = s } } (seconds left), Pending = { [action] = true },
+--                                     Speed = { Walk, Run }, Dungeon, Threat, Cue ("Dash" | nil), InterpDelay, TeamPlace,
+--                                     Round, Best, Next, ... } | nil
+--   BattleController.GetUnit(id) -> { Id, Side, Kind, Name, Hp, MaxHp, State, Meter, Model, X, Z, World, Card, Level,
+--                                     Evo, Xp, XpNext, Crowned, Writes, Benched, Windup, Drawn (the drawn root position) }
+--   BattleController.GetStats() / ResetStats() / IsHudVisible() / ScreenPick(x, y) / GetTelegraphs()   (as Phase 3)
 --
 -- Messages (BattleState(kind, payload, battleId), sent by BattleService)
---   "Start"    battle:Describe() + Zone = { CFrame (floor centre), Size, X, Z } + Names + Side (0 = spectator) + Spectator
---              + T (+ Trial = { Level, Name, Chapter, MiniBoss }). A second "Start" for the same battle (a raid
---              spectator who joins) refreshes the units and the controls without rebuilding the models it keeps.
---   "Snapshot" { BattleId, T, U = { number... } }: BattleSim:SnapshotDelta's wire form (only the units whose picture
---              changed, as flat numbers); BattleSim.DecodeSnapshot turns it into { [id] = { x, z, hp, state, target?,
---              meter, shield } } against the previous picture. The older { BattleId, T, Units = { [id] = {...} } }
---              form (the tools' drivers feed it) is taken as it is.
---   "Events"   a list of BattleSim events (Hit, Special, KO, Telegraph, Spawn, Enrage, Order, Zone, Leave, End)
---   "End"      { BattleId, Mode, Result, Rewards, Outcome, Won, Spectator, Reason }
+--   "Start"    battle:Describe() + Zone + Names + Side (0 = spectator) + Spectator + T + Ring / Dungeon (= the encounter's
+--              Extra { Floor, Room, Wave, Waves, Name, Boss }) + Team = { Fighter, Bench, Lives, Speed = { Walk, Run },
+--              Cooldowns = { Element, Dash, Swap, Buff = { ["2"] = s, ["3"] = s } } } (seconds left; the Buff keys are
+--              STRINGS on the wire). A second "Start" for the same battle (a raid spectator who joins) refreshes it.
+--   "Snapshot" { BattleId, T, U = { number... } }: BattleSim:SnapshotDelta's wire form (lives + the windup bit packed in
+--              the code); the older { BattleId, T, Units } form (the tools' drivers) is taken as it is.
+--   "Events"   BattleSim events (Hit, Special, KO, Telegraph, Spawn, Enrage, Order, Zone, Leave, End, Element, Dash,
+--              Buff, Swap, Windup, Wave, EnemiesDown, Speed); a rejected Order reaches only its owner (the shake).
+--   "End"      { BattleId, Mode, Result, Rewards, Outcome, Won, Spectator, Reason } (Rewards.Dungeon = true + Extra in
+--              the dungeon: no result card for a cleared room, DungeonController shows the loot)
 --
--- Drawing
---   * Snapshots are buffered and drawn INTERP_DELAY seconds behind the estimated server clock (smooth at 10 Hz,
---     no extrapolation overshoot); events are queued with their arrival time and played on that same delayed clock,
---     so lunges, numbers and telegraph impacts line up with the positions.
---   * Pets hover over the floor (zone-local x / z from the zone CFrame), face their target or their path, bob, flap
---     (PetBuilder.Animate), lunge on melee hits, recoil and shoot voxel bolts on ranged hits, hop on a Pounce. Static
---     parts are welded to the anchored root once per build, so a pose is one root CFrame write (like PetController).
---     Your own pets are built at High detail, everyone else's at Low; builds run under a per-frame time budget.
---   * The raid boss: BossBuilder model + BossBuilder.Animate poses (Idle, Windup during a telegraph, Attack at the hit,
---     Basic on its plain attacks, Enrage, Down) facing its target; SetEnraged on the Enrage event.
---   * Hit flashes (a pooled Highlight per hit victim), floating damage numbers (pooled pixel-sized BillboardGuis
---     above the victim in the world, never a screen-centre overlay: crits bigger and gold, strong / weak element hits
---     tinted, shield blocks light blue, heals green), KO poofs (voxel bursts; the downed pet is parked until the fight
---     ends), special callouts above the caster, and VFX per Special.Kind in the special's / element's colour: Blast
---     (voxel shock ring + burst), Heal (rising voxel sparks), Shield (a translucent force-field cube on every shielded
---     ally while the snapshot reports a shield), Storm (a voxel storm cloud with lightning over its zone), Pounce
---     (a dash trail + hop), Freeze (ice crystals on every stunned unit), Beam (a long neon beam).
---   * Boss telegraphs: a glowing floor circle / line in BossBuilder.TelegraphColor that FILLS UP until the dodge
---     DEADLINE (the hit minus the render delay, the round trip of Player:GetNetworkPing and TELE_RUNOUT: a RETREAT
---     pressed then still gets the pets out), then its rim flashes red until the hit; lingering pools (Zone "Linger")
---     glow for their seconds. Spectators draw INTERP_DELAY_SPECTATOR behind (5 Hz snapshots).
---   * A PetCard above every pet unit (Phase 4, below; the Phase 3 bar only without PetCard); a bobbing voxel arrow
---     marks the enemy your team focuses.
---   * Spectators (a player near a duel ring / the raid floor) see the same battle from the stands, with only a slim
---     top card (no controls).
+-- Drawing (kept from Phases 3-4; the Phase 5 lines marked *)
+--   * Snapshots are buffered and drawn INTERP_DELAY seconds behind the estimated server clock; events are queued with
+--     their arrival time and played on that delayed clock (lunges, numbers and telegraph impacts line up).
+--   * Pets hover over the floor, face their target or path, bob, flap, lunge / shoot bolts, hop on a Pounce; static
+--     parts welded to the anchored root once per build (a pose is one root CFrame write); raid boss poses; telegraphs
+--     that fill until the dodge deadline then flash; hit flashes, pooled world damage numbers (never screen-centre),
+--     KO poofs, special VFX; a PetCard above every pet unit (Phase 4, with the fighter's lives pips *).
+--   * The player's CHARACTER is the fighter's body (B1): my fighter (High) is drawn at the shoulder offset (1.8, 0.5,
+--     0.6) of the SERVER fighter position, blended toward the character root while the two are within 2 studs and
+--     following the server position beyond (lerp 0.35 per 60 Hz frame), so what looks in reach is in reach. My two
+--     helpers (Low) hover behind me at (-2, 1.2, 2) / (2, 1.2, 2), fly to the fighter on a Buff (0.6 s) and trade
+--     places with it on a Swap (0.5 s). Other players' helpers are not drawn (~1 unit per player in a 16-raid).
+--   * Enemies wind up visibly: Winding plays a crouch + a brief yellow Highlight (the dash cue), their list row flashes
+--     "!"; "DODGED!" (cyan) on Hit.miss; buff names float above the fighter in the buff's colour; element attacks draw
+--     their cone / circle / line; camera shakes x ClientSettings.Get("Shake") (Humanoid.CameraOffset, tiny, rare).
 --
--- The battle HUD (only while the local player fights; ScreenGui "NimbusBattle", designed in 1080p pixels under one
--- UIScale of Theme.ScreenFactor()): never in the screen centre.
---   * Top card (top centre, under the Roblox bar): the mode, the opponent / trial / boss, the time left; the boss HP
---     bar with its element and ENRAGED / minion pills in raids; one chip per enemy (name, element stripe, HP) in trials
---     and duels: tap / click a chip to focus that enemy.
---   * Team card (bottom right on wide screens): one row per team pet: slot key, name, level, element badge, HP bar,
---     special meter, and its SPECIAL button (lights up gold and pulses when the meter is full, shows KO when down).
---   * ATTACK / RETREAT above it (key hints F / R; gamepad X / Y; specials 1-4, gamepad LB / RB / LT / RT). ATTACK
---     shows the regroup countdown after a RETREAT, then reads ATTACK! with a pulsing ring while the team rests, and
---     RETREAT counts "RESTING n" down to BattleSim's auto resume (Damage.RetreatAutoResume; the Order { Attack, auto }
---     event puts the HUD back). A full SPECIAL waits while resting and says so ("RESTING" / "ATTACK first"; compact
---     "ATTACK 1st"). RETREAT reads RETREAT! with a pulsing ring while a telegraph that has not hit covers one of my
---     pets. The header names the focused enemy (tap it to clear the focus).
---   * Compact layout (touch screens and small windows): the team as a row of cards under the top card (tap a card =
---     its special); when that row would reach the middle of the screen (a landscape phone) the cards form a 2-column
---     grid at the top-left edge instead and the menu tiles step aside (MenuController.SetColumnHidden) until the
---     battle HUD goes; ATTACK / RETREAT as big touch buttons at the right edge, clear of the RUN / DASH buttons.
---   * LEAVE (Champion Ring and Trials only, never duels or raids): beside ATTACK / RETREAT (wide: left of them;
---     portrait phone: above ATTACK; landscape phone: under the team grid) and on the ring's next-round card; two
---     presses ("Sure? Tap again" for 3 s first) send BattleCommand "Forfeit", which Command also lets through between
---     two ring rounds (the won round has ended, the next Start has not come yet).
---   * Tap / click an enemy in the world to focus it (a short tap that is not a camera drag; the nearest enemy on the
---     screen within reach of the tap).
---   * Result card at the end (bottom right; compact: top centre on a tall phone, top right on a landscape phone,
---     re-placed on rotation; never centred): VICTORY / DEFEAT / DRAW, the reason, the rewards (tokens, gems,
---     trophies, XP, first clear, raid tier + damage share, event pet, level-ups, double rewards), OK; it closes by
---     itself after RESULT_SECONDS.
--- Phase 4 (ARCHITECTURE_V3.md "Phase 4 build contract" 3.5 / 3.8 / 3.9):
---   * Unit cards: every pet unit carries a PetCard (src/client/UI/PetCard.lua; the billboard keeps the Phase 3 name
---     HpBar, its HP fill is Plate.Hp.Fill): mode "Unit" for my pets (Lv + HP + SPECIAL + XP from Start's xp / xpNext; a
---     full XP bar at the cap, where the server leaves xpNext out), "Ally" for a teammate's (Lv + green HP), "Enemy" for
---     enemies / NPCs (Lv + red HP), the evolution stars from unitInfo.evo. HP / SPECIAL are written only when a
---     snapshot changed them (Cards.Live), never per frame; the fight's XP (End.Rewards.Xp) and the profile mirror
---     (State.PetLevel, forward only) move my XP bars (the level-up toasts are the server's). The raid boss keeps its
---     top-card bar. Evolved units are built with PetBuilder opts.Evolved at Low detail (petEvoLow / petEvo2Low).
---   * Champion Ring (Mode "Ring", Start.Ring = { Round, Best, Start, Champion }): the top card reads "CHAMPION RING"
---     ("RING" on a compact card) + "Round 8 - Best 12" + a pill row: the pay of a win ("Win: +$X +Y XP": BattleCatalog.
---     RingRewards with the plot's IncomePerSecond, display only), "RECORD x3" past the best, "BOSS" on every 10th
---     round. The champion is built wearing PetBuilder's voxel Crown accessory, with a 22 px "Champion <name>" tag
---     above its card. A won round's End (Rewards.Next) shows no result card: the side card "Round 8 won! +$319 +68 XP
---     / Round 9 in 3" (where the commands were on a wide screen, under the team cards on a tall phone, at the right
---     edge in landscape), the top card and the team stay, the floor waits (Ring.LINGER) for the next Start, which
---     takes my pets' models and cards over (same key and stage: nothing blinks); the old battle's folder is freed by
---     its battle id. The run's final End (also one that names the won round's id after a Forfeit / leave between
---     rounds) shows the result card: RUN OVER / NEW RECORD!, where it ended, "Rounds won: n", "+$X Cash", "+Y Pet XP",
---     Tokens, "Best: round n".
---   * Duels: the Overtime event (BattleCatalog.Damage.Overtime) puts "OVERTIME: hits +15% a second" in the top card.
--- Keys 1-4 are bound through ContextActionService only while you fight (High priority, sunk), so the item hotbar does
--- not also fire them; they are released when the battle ends.
+-- * The battle HUD (only while the local player fights; ScreenGui "NimbusBattle", designed in 1080p px under one
+--   UIScale of Theme.ScreenFactor(), NeonKit cards, fonts via Theme roles, nothing in the screen centre):
+--   * Team (top left): the FIGHTER card: name (Heading 26) + "Lv 34" pill + element badge + stars; HP 320 x 22 green
+--     with a red loss trail draining 0.4 s behind (TweenService; HP written only on change); ENERGY 320 x 14 blue
+--     ("ENERGY 72/100", gold at 100); 3 hearts = lives. Under it the two HELPER portraits (a round PetBuilder Low
+--     picture in a ViewportFrame built once, a stroke in the pet's element colour) with "Lv n", the buff cooldown
+--     ring (a two-half-disc UIGradient pie, written at 10 Hz), the buff name ("HEAL", "STONE SKIN") and the SWAP chip;
+--     KO greys the portrait. Tap a portrait / key 1 / 2 = its buff, hold 0.5 s = swap.
+--   * Enemies (right): one 300 x 44 row per living enemy (max 8 + "+n more"): icon disc, name, element stripe, red HP
+--     bar; the LOCKED row first with a gold bracket + "TARGET"; a winding enemy's icon flashes "!"; rows reorder only
+--     on a KO / a spawn / a lock change.
+--   * TopCard (top centre, under the Roblox bar): the mode line "CHAMPION RING - Round 8 - Best 12", "DUNGEON - Floor
+--     3 - Room 2" (purple), "DUEL - vs Sam", "BOSS RAID" + the timer; the boss bar (raid boss / dungeon mini-boss) with
+--     its element / ENRAGED / minions / players / wave pills; the ring's pay pills.
+--   * Commands (bottom right): ATTACK (88), ELEMENT, SPECIAL, DASH (64) round buttons with cooldown rings (SPECIAL =
+--     the energy, gold at 100) and key chips on desktop; captions under them on wide screens.
+--   * Compact layout (touch, or a screen under 900 x 600 px): a smaller fighter card, the portraits in a column, the
+--     enemy list 2 rows, the mode line under the list when the top is full, the cluster a 2 x 2 grid above the jump /
+--     RUN buttons (portrait) or left of the jump button (landscape); the menu column hides while fighting.
+--   * LEAVE (Champion Ring only; two presses -> "Forfeit"), the ring's next-round side card, the result card (bottom
+--     right; top right on phones) with "Lives left" and the dungeon's lines.
+-- * Prediction: a press starts its button's ring at once and records St.pending; the matching event within 0.6 s
+--   confirms it, a rejected Order (owner-only) or the timeout puts the ring back and shakes the button. HP, numbers,
+--   kills and the meter are never predicted. Late joiners get their cooldowns from Start.Team.Cooldowns.
+-- * MovementController (3.9 / 4.4): on Start SetDashKeys({ Shift, B }), SetFreeDash(true, DashCooldown),
+--   SetBattleSpeed(walk, run) (again on every Speed event) and a dash listener that sends "Dash"; all reset on End.
+-- Keys (ContextActionService, High priority, sunk, bound ONLY while fighting and inert before UiGate.HasPlayed()):
+-- F / X attack, E / Y element, Q / RB special, Tab / T / RT / LT lock, 1 / 2 (LB / D-up) buff (hold = swap), D-left /
+-- D-right swap; the item hotbar keeps 1-4 outside battles.
 --
 -- Cost: one RenderStepped connection, alive only while a battle is drawn or effects play. Per frame: one root CFrame
--- write + PetBuilder.Animate per visible pet (other players' / enemy pets are drawn every 2nd frame in a crowd, every
--- 3rd beyond ANIM_MID studs from the camera, every 4th beyond ANIM_FAR; your own pets every frame), one
--- BossBuilder.Animate, the live effect parts (pooled, capped at MAX_FX_PARTS), the live numbers (capped) and HUD
--- writes only when a shown value changes. GetStats() reports the measured milliseconds.
+-- write + PetBuilder.Animate per visible pet (strided for far / crowded ones), one BossBuilder.Animate, the pooled
+-- effects, HUD writes only when a shown value changes, the rings at 10 Hz. GetStats() reports the measured ms.
 -- Plain Lua 5.1-compatible syntax only. Every font comes from a Theme role. No asset ids.
 
 local Players = game:GetService("Players")
@@ -154,7 +119,6 @@ local function optional(parent, name, waitSeconds)
 	return nil
 end
 
-local CloudUI = optional(Client:FindFirstChild("UI") or Client:WaitForChild("UI", 10), "CloudUI", 10)
 local PetBuilder = optional(Shared, "PetBuilder", 5)
 local PetCatalog = optional(Shared, "PetCatalog", 5)
 local PetKeys = optional(Shared, "PetKeys")
@@ -165,12 +129,18 @@ local BossBuilder = nil -- loaded on the first raid (lazyBoss)
 -- after a fight), the XP curve and the voxel kit (the champion's crown)
 local Mods = {
 	PetCard = optional(Client:FindFirstChild("UI") or Client:WaitForChild("UI", 10), "PetCard", 5),
+	NeonKit = optional(Client:FindFirstChild("UI") or Client:WaitForChild("UI", 10), "NeonKit", 5), -- Phase 5: the HUD's kit
+	Movement = nil, -- MovementController (lazy: Hud.Movement)
+	UiGate = nil, -- client/UiGate (lazy: Input.GateOpen)
+	Settings = nil, -- client/ClientSettings (lazy: Me.ShakeScale)
 	State = optional(Client, "State", 5),
 	Tycoon = optional(Shared, "TycoonCatalog"),
 	Voxel = optional(Shared, "Voxel"),
 }
 
 local BattleController = {}
+-- test hooks (smoke tests only): Gate() -> bool replaces UiGate.HasPlayed, Shake() -> bool replaces the Shake setting
+BattleController.Hooks = {}
 
 local LocalPlayer = Players.LocalPlayer
 local sin, cos, sqrt, abs, floor, max, min, exp, pi = math.sin, math.cos, math.sqrt, math.abs, math.floor, math.max, math.min, math.exp, math.pi
@@ -233,51 +203,72 @@ local K = {
 	TAP_MOVE = 14, -- px
 	TAP_REACH = 64, -- px (1080p, scaled) around an enemy's centre on the screen
 	ACTION_ATTACK = "NimbusBattleAttack",
-	ACTION_RETREAT = "NimbusBattleRetreat",
+	ACTION_ELEMENT = "NimbusBattleElement",
 	ACTION_SPECIAL = "NimbusBattleSpecial",
+	ACTION_TARGET = "NimbusBattleTarget",
+	ACTION_HELPER = "NimbusBattleHelper",
+	ATTACK_GAP = 0.2, -- local throttle of ATTACK (the hold repeats at the fighter's interval)
+	CD_SLACK = 0.15, -- a press this close to the end of a cooldown is sent (the server's clock decides)
+	PENDING_TIMEOUT = 0.6, -- seconds a prediction waits for its event
+	SWAP_HOLD = 0.5, -- hold a helper key / portrait this long = swap
+	RING_DT = 0.1, -- the rings / countdowns are written at 10 Hz
+	LOSS_TIME = 0.4, -- the red HP loss trail drains this long behind a loss
+	-- the drawn fighter / helpers (B1, 4.7)
+	SHOULDER = Vector3.new(1.8, 0.5, 0.6), -- the fighter's offset from the character (right, up, back)
+	BLEND_DIST = 2, -- within this many studs the drawn fighter blends toward the character root
+	FOLLOW_LERP = 0.35, -- per 60 Hz frame toward the server position beyond BLEND_DIST
+	HELPER_A = Vector3.new(-2, 1.2, 2),
+	HELPER_B = Vector3.new(2, 1.2, 2),
+	BUFF_FLY = 0.6, -- a helper flies to the fighter and back on its Buff
+	SWAP_TIME = 0.5, -- fighter and helper trade places
+	WINDUP_FLASH = 0.35, -- the yellow Highlight of a wind-up
+	SHAKE_MAX = 0.35, -- studs of camera shake at most (x ClientSettings Shake)
 	-- HUD geometry (design px at 1080p)
-	TEAM_W = 470,
-	ROW_H = 70,
-	ROW_GAP = 6,
-	HEAD_H = 34,
+	COMPACT_W = 900, -- screen px: narrower (or touch) = the compact phone layout
+	COMPACT_H = 600,
+	EDGE = 12,
 	PAD = 10,
-	CMD_H = 62,
-	TOP_W = 600,
-	TOP_W_COMPACT = 460,
-	CARD_W = 124,
-	CARD_H = 100,
-	TOUCH_W = 112, -- compact ATTACK / RETREAT buttons (design px)
-	TOUCH_H = 72,
-	WAIT_COMPACT = "ATTACK 1st", -- a compact card's SPECIAL with a full meter while the team rests
-	ROW_MAX_Y = 0.42, -- a compact team row whose bottom passes this share of the screen height moves to the left edge
-	SIDE_X = 12, -- design px: the left-edge team grid of a landscape phone
+	FC_W = 352, -- the fighter card (bars 320)
+	FC_H = 130,
+	FC_W_COMPACT = 252, -- (bars 232)
+	PORTRAIT = 64,
+	PORTRAIT_COMPACT = 48,
+	RING = 74,
+	HELPER_W = 122,
+	HELPER_W_COMPACT = 150,
+	ROW_W = 300,
+	ROW_H = 44,
+	ROW_W_COMPACT = 210,
+	ROW_H_COMPACT = 40,
+	ROW_GAP = 6,
+	ROWS_MAX = 8,
+	ROWS_COMPACT = 2,
+	TOP_W = 470,
+	TOP_W_COMPACT = 300,
+	MODE_H = 40,
+	ATTACK_D = 88,
+	ACTION_D = 64,
 	MIN_TEXT_PX = 14, -- no HUD text is ever drawn smaller on the screen (Readability rule)
-	EDGE = 16,
 	RESULT_W = 440,
-	-- LEAVE (Ring / Trial only): the first press arms it for LEAVE_CONFIRM seconds, the second sends "Forfeit"
+	-- LEAVE (Ring only): the first press arms it for LEAVE_CONFIRM seconds, the second sends "Forfeit"
 	LEAVE_CONFIRM = 3,
-	LEAVE_W = 150, -- wide screens: left of ATTACK / RETREAT, CMD_H tall
-	LEAVE_H = 56, -- compact: above ATTACK (portrait) / under ATTACK; the next-round card's button
-	LEAVE_W_GRID = 200, -- a landscape phone: under the left-edge team grid, one line
-	LEAVE_H_GRID = 48,
-	LEAVE_W_MIN = 100, -- the narrowest LEAVE (two lines when armed)
-	LEAVE_TAB_W = 116, -- a landscape phone's next-round card: beside its bottom-left corner (DASH / RUN sit below it)
-	LEAVE_CARD_W = 230, -- the next-round card's bottom row (wide screens / portrait phones)
+	LEAVE_W = 150,
+	LEAVE_H = 52,
+	LEAVE_W_COMPACT = 150,
+	LEAVE_W_TOP = 100, -- a landscape phone: right of the mode card
+	LEAVE_H_COMPACT = 46,
+	LEAVE_CARD_W = 230,
 }
 
-local STATES = (BattleSim and BattleSim.States) or { Idle = 0, Moving = 1, Attacking = 2, Retreating = 3, Casting = 4, Down = 5, Stunned = 6 }
-local S_DOWN, S_STUNNED, S_RETREATING, S_CASTING, S_ATTACKING = STATES.Down, STATES.Stunned, STATES.Retreating, STATES.Casting, STATES.Attacking
+local STATES = (BattleSim and BattleSim.States) or { Idle = 0, Moving = 1, Attacking = 2, Benched = 3, Casting = 4, Down = 5, Stunned = 6, Dashing = 7 }
+local S_DOWN, S_STUNNED, S_CASTING, S_ATTACKING = STATES.Down, STATES.Stunned, STATES.Casting, STATES.Attacking
+local S_BENCHED, S_DASHING, S_MOVING = STATES.Benched or 3, STATES.Dashing or 7, STATES.Moving or 1
 local EV = (BattleSim and BattleSim.Events) or {
 	Hit = "Hit", Special = "Special", KO = "KO", Telegraph = "Telegraph", Spawn = "Spawn", Enrage = "Enrage",
 	Order = "Order", Zone = "Zone", Leave = "Leave", End = "End",
 }
 
-local DMG = (BattleCatalog and BattleCatalog.Damage) or {}
-local METER_MAX = tonumber(DMG.MeterMax) or 100
-local RETREAT_LOCK = tonumber(DMG.RetreatLock) or 1.5
--- a retreating player team goes back to ATTACK by itself this long after the regroup lock (BattleSim; only once
--- every pet is parked at its spot and no telegraph covers one): the HUD's "RESTING" countdown
-local AUTO_RESUME = tonumber(DMG.RetreatAutoResume) or 3
+local METER_MAX = tonumber(BattleCatalog and type(BattleCatalog.Fighter) == "table" and BattleCatalog.Fighter.SpecialMeterMax) or 100
 local SPECIALS = (BattleCatalog and BattleCatalog.Specials) or {}
 
 local COLORS = {
@@ -301,6 +292,24 @@ local COLORS = {
 	LateRim = Color3.fromRGB(255, 70, 60), -- a telegraph past its dodge deadline flashes in this
 	Wait = Color3.fromRGB(150, 132, 84), -- a SPECIAL with a full meter that waits for ATTACK
 	StormLight = Color3.fromRGB(112, 118, 150),
+	-- Phase 5 HUD (the Neon kit colours)
+	HpGreen = Theme.Neon and Theme.Neon.Green or Color3.fromRGB(72, 224, 120),
+	Loss = Color3.fromRGB(236, 60, 72),
+	Energy = Theme.Neon and Theme.Neon.Blue or Color3.fromRGB(64, 170, 255),
+	EnergyText = Color3.fromRGB(150, 206, 255),
+	Life = Color3.fromRGB(255, 86, 112),
+	LifeLost = Color3.fromRGB(70, 76, 108),
+	LevelPill = Color3.fromRGB(44, 60, 120),
+	SwapEdge = Theme.Neon and Theme.Neon.Cyan or Color3.fromRGB(64, 226, 236),
+	Alert = Color3.fromRGB(255, 226, 90),
+	Dodge = Color3.fromRGB(110, 236, 255),
+	Windup = Color3.fromRGB(255, 220, 60),
+	Action = {
+		Attack = Theme.Neon and Theme.Neon.Red or Color3.fromRGB(255, 76, 100),
+		Element = Theme.Neon and Theme.Neon.Blue or Color3.fromRGB(64, 170, 255),
+		Special = Theme.Neon and Theme.Neon.Gold or Color3.fromRGB(255, 196, 64),
+		Dash = Theme.Neon and Theme.Neon.Cyan or Color3.fromRGB(64, 226, 236),
+	},
 }
 
 ----------------------------------------------------------------------
@@ -330,6 +339,10 @@ local St = {
 	warned = {},
 	remoteCmd = nil,
 	result = nil, -- result card timer
+	attackHeld = nil, -- { next } while ATTACK is held (auto-repeat)
+	holds = {}, -- [key] = { index, t, fired }: a helper key / portrait held (0.5 s = swap)
+	movementOn = false, -- MovementController's battle switches are set
+	shake = nil, -- { t0, dur, amp } camera shake
 }
 
 local Hud = {} -- the battle HUD (built once, lazily)
@@ -339,8 +352,9 @@ local Tele = {} -- telegraphs and zones
 local Input = {} -- keys, gamepad, taps
 local Net = {} -- messages
 local Cards = {} -- Phase 4: the PetCard above every battle unit
-local Ring = {} -- Phase 4: the Champion Ring HUD (round / record / next-round side card / run card), duel overtime
-local Leave = {} -- LEAVE (two presses -> BattleCommand "Forfeit"): Champion Ring runs and Trials only
+local Ring = {} -- Phase 4: the Champion Ring HUD (round / record / next-round side card / run card)
+local Leave = {} -- LEAVE (two presses -> BattleCommand "Forfeit"): Champion Ring runs only
+local Me = {} -- Phase 5: my fighter at the character's shoulder, my helpers behind me, the camera shake
 
 ----------------------------------------------------------------------
 -- Helpers
@@ -938,7 +952,7 @@ function Fx.UpdateNumbers(now)
 end
 
 -- a short white (or tinted) flash on a model (a pooled Highlight)
-function Fx.Flash(u, color)
+function Fx.Flash(u, color, dur)
 	if not u or not u.model or u.parked then
 		return
 	end
@@ -965,6 +979,7 @@ function Fx.Flash(u, color)
 		f.unit = u
 	end
 	f.t0 = os.clock()
+	f.dur = dur or K.FLASH_TIME
 	f.hl.FillColor = color or COLORS.White
 	f.hl.Adornee = u.model
 	f.hl.FillTransparency = 0.25
@@ -977,7 +992,7 @@ function Fx.UpdateFlashes(now)
 	local i = 1
 	while i <= #list do
 		local f = list[i]
-		local p = (now - f.t0) / K.FLASH_TIME
+		local p = (now - f.t0) / (f.dur or K.FLASH_TIME)
 		if p >= 1 or not f.hl.Adornee then
 			f.hl.Enabled = false
 			f.hl.Adornee = nil
@@ -1019,14 +1034,14 @@ local function newBattle(payload, battleId)
 		ZoneX = zx,
 		ZoneZ = zz,
 		Names = type(payload.Names) == "table" and payload.Names or {},
-		Trial = type(payload.Trial) == "table" and payload.Trial or nil,
+		-- Phase 5: the dungeon room's Extra { Floor, Room, Wave, Waves, Name, Boss }
+		Dungeon = type(payload.Dungeon) == "table" and payload.Dungeon or nil,
 		TimeLimit = num(payload.TimeLimit, 0),
 		Level = payload.Level,
 		BossId = payload.BossId,
 		-- Phase 4: the Champion Ring's "Start".Ring = { Round, Best, Start, Champion = { PetId, Level, Tier, Boss, Name } }
 		Ring = type(payload.Ring) == "table" and payload.Ring or nil,
 		Round = num(payload.Round or (type(payload.Ring) == "table" and payload.Ring.Round), 0),
-		overtime = false, -- a duel past Damage.Overtime.At (the Overtime event)
 		ringNext = nil, -- a won ring round: { Round, Next, Cash, Xp, Tokens, Record, At } until the next "Start"
 		units = {},
 		list = {},
@@ -1038,9 +1053,14 @@ local function newBattle(payload, battleId)
 		evq = {},
 		teles = {},
 		buildQueue = {},
-		focus = nil,
-		order = "Attack",
-		retreatAt = -math.huge,
+		-- Phase 5: my team (Start.Team), the lock, the cooldowns (os.clock ready times) and the predictions
+		fighterId = nil,
+		lives = nil,
+		speed = nil, -- { Walk, Run }
+		lock = nil,
+		cd = { Element = 0, Dash = 0, Swap = 0, Buff = {} },
+		cdLen = { Element = 7, Dash = 2.5, Swap = 10, Buff = {} },
+		pending = {},
 		ended = false,
 		simEnded = false,
 		enraged = false,
@@ -1184,6 +1204,12 @@ function Units.Add(B, info)
 		xp = tonumber(info.xp),
 		xpNext = tonumber(info.xpNext),
 		crowned = info.crowned == true,
+		-- Phase 5: a player team's bench (the static slot of a helper), its role, buff and element attack
+		bench = tonumber(info.bench),
+		benched = tonumber(info.bench) ~= nil,
+		role = info.role,
+		lives = nil,
+		windup = false,
 		mine = mine,
 		ally = ally,
 		x = 0,
@@ -1324,8 +1350,9 @@ local function buildUnit(B, u)
 	if u.crowned then
 		def = Ring.Crowned(def) -- the ring champion wears PetBuilder's voxel crown
 	end
-	-- evolved units use the Low evolved form (within the petEvoLow / petEvo2Low budgets), like evolved followers
-	local detail = (u.mine and u.evo == 0) and "High" or "Low"
+	-- evolved units use the Low evolved form (within the petEvoLow / petEvo2Low budgets), like evolved followers;
+	-- Phase 5 (10.3): my fighter High, my helpers Low (a helper swapped in is rebuilt at High: Units.Rebuild)
+	local detail = (u.mine and u.evo == 0 and not u.benched) and "High" or "Low"
 	local model = PetBuilder.Build(def, { Scale = K.PET_SCALE * u.scale, Detail = detail, Evolved = u.evo > 0 and u.evo or nil })
 	local root = model.PrimaryPart or model:FindFirstChild("Body")
 	if not root or not root:IsA("BasePart") then
@@ -1344,13 +1371,38 @@ local function buildUnit(B, u)
 	else
 		pcall(model.PivotTo, model, cf)
 	end
+	local old = u.model
 	u.model = model
 	u.root = root
 	u.folder = B.folder
+	u.detail = detail
 	model.Name = "Unit_" .. tostring(u.id)
 	model:SetAttribute("BC_Evo", u.evo)
-	Cards.Add(B, u, root)
+	model:SetAttribute("BC_Detail", detail)
+	if old then
+		-- a rebuild (a helper that became my fighter): the card moves over, the old model goes
+		u.rebuild = nil
+		if u.card and u.card.Gui then
+			u.card.Gui.Parent = model
+			pcall(u.card.SetAdornee, u.card, root, (u.height or 3) / 2 + 0.9)
+		end
+		if u.flash then
+			u.flash.hl.Adornee = nil
+		end
+		pcall(old.Destroy, old)
+		u.parked = false
+	else
+		Cards.Add(B, u, root)
+	end
 	model.Parent = B.folder
+end
+
+-- my new fighter (a swap) is drawn at High detail: rebuilt by the build queue under its time budget
+function Units.Rebuild(B, u)
+	if u and u.model and u.detail == "Low" and u.evo == 0 and not u.isBoss and not u.rebuild then
+		u.rebuild = true
+		B.buildQueue[#B.buildQueue + 1] = u
+	end
 end
 
 function Units.BuildPending(B)
@@ -1365,7 +1417,9 @@ function Units.BuildPending(B)
 			break
 		end
 		local u = table.remove(q, 1)
-		if not u.gone and not u.model then
+		if u.benched and not u.mine and not u.isBoss then
+			u.needBuild = true -- another player's helper: not drawn while it sits on the bench
+		elseif not u.gone and (not u.model or u.rebuild) then
 			local ok, err = pcall(buildUnit, B, u)
 			if not ok then
 				warnOnce("build_" .. tostring(u.kind) .. tostring(u.info and (u.info.key or u.info.boss)), "could not build unit " .. tostring(u.name) .. ": " .. tostring(err))
@@ -1402,6 +1456,10 @@ end
 
 -- per-frame update of one unit (position from the snapshots, facing, lunge / hop, animation)
 local function updateUnit(B, u, now, dt, sa, sb, alpha, animate)
+	return Units.Update(B, u, now, dt, sa, sb, alpha, animate)
+end
+
+function Units.Update(B, u, now, dt, sa, sb, alpha, animate)
 	local a = sa and sa.Units[u.id]
 	local b = sb and sb.Units[u.id]
 	local x, z = u.x, u.z
@@ -1420,6 +1478,26 @@ local function updateUnit(B, u, now, dt, sa, sb, alpha, animate)
 		u.target = d.target
 		u.meter = num(d.meter, 0)
 		u.shield = num(d.shield, 0)
+		-- Phase 5: the team's lives, the wind-up bit, the bench
+		if d.lives ~= nil then
+			u.lives = num(d.lives, u.lives)
+		end
+		local winding = d.windup == true
+		if winding and not u.windup and not u.ally then
+			Fx.Flash(u, COLORS.Windup, K.WINDUP_FLASH) -- the dash cue
+		end
+		u.windup = winding
+		local benched = u.state == S_BENCHED
+		if benched ~= u.benched then
+			u.benched = benched
+			if not benched and not u.model and u.needBuild and not u.failed then
+				u.needBuild = nil
+				B.buildQueue[#B.buildQueue + 1] = u
+			end
+		end
+		if u.mine and d.lives ~= nil and B.Fighter and not benched and (B.fighterId == nil or u.id == B.fighterId) then
+			B.lives = u.lives -- (only the fighter's record carries the team's lives)
+		end
 	end
 	x, z = num(x, u.x), num(z, u.z)
 	local mx, mz = x - u.x, z - u.z
@@ -1433,12 +1511,16 @@ local function updateUnit(B, u, now, dt, sa, sb, alpha, animate)
 	if not u.model then
 		return
 	end
+	if u.benched and not u.mine and not u.isBoss then
+		parkUnit(u, true) -- another player's helper is not drawn (B3)
+		return
+	end
 	local down = u.state == S_DOWN or u.hp <= 0
 	if u.isBoss then
 		Units.UpdateBoss(B, u, now, down, dt)
 		return
 	end
-	if u.card and (u.cardHp ~= u.hp or u.cardMeter ~= u.meter) then
+	if u.card and (u.cardHp ~= u.hp or u.cardMeter ~= u.meter or u.cardLives ~= u.lives) then
 		Cards.Live(u) -- only when the snapshot changed the HP / meter (at most 10 Hz), never a write per frame
 	end
 	-- downed pets: poof once, then park
@@ -1460,6 +1542,10 @@ local function updateUnit(B, u, now, dt, sa, sb, alpha, animate)
 		parkUnit(u, false)
 	end
 	u.accDt = (u.accDt or 0) + dt
+	if u.mine and B.Fighter and not B.ended then
+		u.accDt = 0
+		return Me.Draw(B, u, now, dt, x, z) -- my fighter at my shoulder, my helpers behind me
+	end
 	if u.parked or not animate then
 		return
 	end
@@ -1469,7 +1555,7 @@ local function updateUnit(B, u, now, dt, sa, sb, alpha, animate)
 	-- facing: the target while fighting, else the way it moves
 	local want = nil
 	local tgt = u.target and B.units[u.target]
-	if tgt and (u.state == S_ATTACKING or u.state == S_CASTING or (u.state ~= S_RETREATING and mx * mx + mz * mz < 0.0004)) then
+	if tgt and (u.state == S_ATTACKING or u.state == S_CASTING or mx * mx + mz * mz < 0.0004) then
 		want = yawToward(tgt.x - x, tgt.z - z)
 	elseif mx * mx + mz * mz > 0.0004 then
 		want = yawToward(mx, mz)
@@ -1511,6 +1597,9 @@ local function updateUnit(B, u, now, dt, sa, sb, alpha, animate)
 	if not stunned then
 		bob = sin(now * 3.1 + u.phase) * K.BOB
 	end
+	if u.windup then
+		oy = oy - 0.35 -- the wind-up crouch (Winding: the dash cue)
+	end
 	local cf = worldFrame(B, x + ox, (u.centerY or 1.5) + bob + oy, z + oz, u.yaw)
 	if u.rigid then
 		u.root.CFrame = cf
@@ -1519,8 +1608,8 @@ local function updateUnit(B, u, now, dt, sa, sb, alpha, animate)
 	end
 	if PetBuilder and not u.animBroken then
 		local opts = u.animOpts
-		opts.Flap = stunned and 0 or ((u.state == S_RETREATING or mx * mx + mz * mz > 0.0004) and 1.8 or 1)
-		opts.Excited = (u.state == S_ATTACKING or u.state == S_CASTING) and 0.6 or 0
+		opts.Flap = stunned and 0 or ((u.state == S_DASHING or mx * mx + mz * mz > 0.0004) and 1.8 or 1)
+		opts.Excited = u.windup and 1 or ((u.state == S_ATTACKING or u.state == S_CASTING) and 0.6 or 0)
 		local ok = pcall(PetBuilder.Animate, u.model, now + u.phase, opts)
 		if not ok then
 			u.animBroken = true
@@ -1643,8 +1732,247 @@ end
 
 -- the world point of a unit's body centre (effects, numbers)
 local function unitCenter(B, u)
+	if u.mine and u.drawn and B.Fighter and not u.parked then
+		return u.drawn -- my fighter / helpers are drawn at my character, not at the server spot
+	end
 	local y = u.isBoss and (u.height or 20) * 0.55 or (u.centerY or 1.5)
 	return worldPoint(B, u.x, y, u.z)
+end
+
+----------------------------------------------------------------------
+-- Phase 5 (4.7 Models): my fighter at my character's shoulder, my helpers behind me, the camera shake
+----------------------------------------------------------------------
+-- the character's HumanoidRootPart (nil without one)
+function Me.Root()
+	local char = LocalPlayer and LocalPlayer.Character
+	local root = char and char:FindFirstChild("HumanoidRootPart")
+	if root and root:IsA("BasePart") and root.Parent then
+		return root
+	end
+	return nil
+end
+
+-- a zone-local direction (x, z) as a world vector (the zone's rotation)
+local function zoneDir(B, x, z)
+	local b = B.basis
+	return Vector3.new(b[4] * x + b[6] * z, b[7] * x + b[9] * z, b[10] * x + b[12] * z)
+end
+
+-- the frame-rate independent share of a per-60-Hz-frame lerp
+local function lerpShare(perFrame, dt)
+	return 1 - (1 - perFrame) ^ (clamp(dt, 0, 0.25) * 60)
+end
+
+-- where my fighter is drawn: the shoulder of the SERVER fighter position (x, z), blended toward the character root
+-- while the two are within BLEND_DIST studs (so what looks in reach IS in reach); returns the target and the share
+function Me.FighterTarget(B, u, x, z)
+	local server = worldPoint(B, x, u.centerY or 1.5, z)
+	local root = Me.Root()
+	if not root then
+		return server, K.FOLLOW_LERP, nil
+	end
+	local rcf = root.CFrame
+	local rp = rcf.Position
+	local dx, dz = rp.X - server.X, rp.Z - server.Z
+	local d = sqrt(dx * dx + dz * dz)
+	local ax, az, share = server.X, server.Z, K.FOLLOW_LERP
+	if d <= K.BLEND_DIST then
+		local k = 1 - d / K.BLEND_DIST
+		ax, az = server.X + dx * k, server.Z + dz * k
+		share = 0.6
+	end
+	local off = rcf:VectorToWorldSpace(K.SHOULDER)
+	return Vector3.new(ax + off.X, rp.Y + off.Y, az + off.Z), share, rcf
+end
+
+-- a helper's spot behind me (index 1 / 2 = HELPER_A / HELPER_B); without a character behind the drawn fighter
+function Me.HelperSpot(B, index)
+	local off = (index == 2) and K.HELPER_B or K.HELPER_A
+	local root = Me.Root()
+	if root then
+		return root.CFrame:PointToWorldSpace(off)
+	end
+	local f = B.fighterId and B.units[B.fighterId]
+	local base = (f and f.drawn) or worldPoint(B, 0, 2, 0)
+	return base + Vector3.new(off.X, off.Y - 0.5, off.Z)
+end
+
+-- the bench index (1 / 2) of my helper u, in slot order
+function Me.HelperIndex(B, u)
+	local i = 0
+	for slot = 1, 4 do
+		local h = B.mine[slot]
+		if h and h.id ~= B.fighterId then
+			i = i + 1
+			if h == u then
+				return i
+			end
+		end
+	end
+	return 1
+end
+
+-- per frame: my fighter / my helpers (positions + facing + bob + animation; the server never moves these parts)
+function Me.Draw(B, u, now, dt, x, z)
+	if u.parked then
+		return
+	end
+	local isFighter = u.id == B.fighterId or (B.fighterId == nil and not u.benched)
+	local target, share, rcf
+	if isFighter then
+		target, share, rcf = Me.FighterTarget(B, u, x, z)
+	else
+		target, share = Me.HelperSpot(B, Me.HelperIndex(B, u)), 0.25
+		-- a Buff: fly to the fighter and back (BUFF_FLY)
+		if u.flyAt then
+			local p = (now - u.flyAt) / K.BUFF_FLY
+			local f = B.fighterId and B.units[B.fighterId]
+			if p >= 1 or not f or not f.drawn then
+				u.flyAt = nil
+			else
+				local k = sin(p * pi)
+				target = target:Lerp(f.drawn + Vector3.new(0, 1.2, 0), k)
+				share = 1
+			end
+		end
+	end
+	-- a swap: the two trade places along a little arc (SWAP_TIME)
+	if u.swapAt and u.swapFrom then
+		local p = (now - u.swapAt) / K.SWAP_TIME
+		if p >= 1 then
+			u.swapAt, u.swapFrom = nil, nil
+		else
+			local e = p * p * (3 - 2 * p)
+			target = u.swapFrom:Lerp(target, e) + Vector3.new(0, sin(p * pi) * 1.6, 0)
+			share = 1
+		end
+	end
+	if not u.drawn then
+		u.drawn = target
+	else
+		u.drawn = u.drawn:Lerp(target, lerpShare(share, dt))
+	end
+	-- facing: my fighter faces the enemy it fights (else where I look); helpers face where I look
+	local want = nil
+	local tgt = isFighter and ((u.target and B.units[u.target]) or (B.lock and B.units[B.lock])) or nil
+	if tgt and tgt.model and not tgt.parked then
+		local tp = unitCenter(B, tgt)
+		local dx, dz = tp.X - u.drawn.X, tp.Z - u.drawn.Z
+		if dx * dx + dz * dz > 0.01 then
+			want = atan2(-dx, -dz)
+		end
+	end
+	if not want then
+		local look = (rcf or (Me.Root() and Me.Root().CFrame))
+		if look then
+			local lv = look.LookVector
+			want = atan2(-lv.X, -lv.Z)
+		end
+	end
+	u.wyaw = u.wyaw or (want or 0)
+	if want and u.state ~= S_STUNNED then
+		u.wyaw = u.wyaw + wrapAngle(want - u.wyaw) * (1 - exp(-K.FACE_RATE * dt))
+	end
+	-- the predicted swing (a press lunges at once), the server's lunges / hops / recoils (zone-local -> world)
+	local off = Vector3.new(0, 0, 0)
+	local swing = u.swingAt and (now - u.swingAt) / K.LUNGE_TIME or 1
+	if swing < 1 then
+		local amt = sin(swing * pi) * (u.ranged and -K.RECOIL_DIST or K.LUNGE_DIST)
+		off = off + Vector3.new(-sin(u.wyaw), 0, -cos(u.wyaw)) * amt
+	elseif u.lungeAt then
+		local p = (now - u.lungeAt) / K.LUNGE_TIME
+		if p >= 1 then
+			u.lungeAt = nil
+		else
+			off = off + zoneDir(B, u.lungeX or 0, u.lungeZ or 0) * (sin(p * pi) * (u.ranged and -K.RECOIL_DIST or K.LUNGE_DIST))
+		end
+	end
+	if u.hopAt then
+		local p = (now - u.hopAt) / K.HOP_TIME
+		if p >= 1 then
+			u.hopAt = nil
+		elseif p > 0 then
+			off = off + Vector3.new(0, sin(p * pi) * K.HOP_HEIGHT, 0)
+		end
+	end
+	if u.hurtAt then
+		local p = (now - u.hurtAt) / 0.18
+		if p >= 1 then
+			u.hurtAt = nil
+		else
+			off = off + zoneDir(B, u.hurtX or 0, u.hurtZ or 0) * (sin(p * pi) * 0.3)
+		end
+	end
+	local stunned = u.state == S_STUNNED
+	local bob = stunned and 0 or sin(now * 3.1 + u.phase) * K.BOB
+	local p = u.drawn + off + Vector3.new(0, bob, 0)
+	local cf = CFrame.new(p) * CFrame.Angles(0, u.wyaw, 0)
+	if u.rigid then
+		u.root.CFrame = cf
+	else
+		pcall(u.model.PivotTo, u.model, cf)
+	end
+	u.posed = true
+	if PetBuilder and not u.animBroken then
+		local opts = u.animOpts
+		local moving = rcf ~= nil and isFighter and u.state == S_MOVING
+		opts.Flap = stunned and 0 or ((u.state == S_DASHING or moving or u.flyAt) and 1.8 or 1)
+		opts.Excited = (u.state == S_ATTACKING or u.state == S_CASTING or swing < 1) and 0.6 or 0
+		local ok = pcall(PetBuilder.Animate, u.model, now + u.phase, opts)
+		if not ok then
+			u.animBroken = true
+		end
+	end
+	Units.UpdateStatus(B, u, now, cf)
+end
+
+-- the camera shake scale: ClientSettings.Get("Shake") (menu W3); 1 when the module is missing
+function Me.ShakeScale()
+	local hook = BattleController.Hooks.Shake
+	if type(hook) == "function" then
+		return hook() and 1 or 0
+	end
+	if Mods.Settings == nil then
+		Mods.Settings = optional(Client, "ClientSettings") or false
+	end
+	local cs = Mods.Settings
+	if cs and type(cs.Get) == "function" then
+		local ok, v = pcall(cs.Get, "Shake")
+		if ok then
+			return v and 1 or 0
+		end
+	end
+	return 1
+end
+
+-- a tiny, rare camera shake (my fighter hit hard / knocked out): Humanoid.CameraOffset, never the camera itself
+function Me.Shake(amount, dur)
+	local scale = Me.ShakeScale()
+	St.shakeCount = (St.shakeCount or 0) + 1
+	if scale <= 0 then
+		return
+	end
+	St.shake = { t0 = os.clock(), dur = dur or 0.18, amp = min(K.SHAKE_MAX, (amount or 0.2) * scale) }
+	BattleController._wake()
+end
+
+function Me.UpdateShake(now)
+	local sh = St.shake
+	if not sh then
+		return
+	end
+	local char = LocalPlayer and LocalPlayer.Character
+	local hum = char and char:FindFirstChildOfClass("Humanoid")
+	local p = (now - sh.t0) / sh.dur
+	if p >= 1 or not hum then
+		St.shake = nil
+		if hum then
+			hum.CameraOffset = Vector3.new(0, 0, 0)
+		end
+		return
+	end
+	local a = sh.amp * (1 - p)
+	hum.CameraOffset = Vector3.new(sin(now * 71) * a, cos(now * 63) * a * 0.6, 0)
 end
 
 ----------------------------------------------------------------------
@@ -1794,11 +2122,11 @@ function Tele.Covers(tl, x, z, pad)
 	return dx * dx + dz * dz <= (tl.r + pad) * (tl.r + pad)
 end
 
--- one of my living pets stands in a telegraph that has not hit yet (the HUD's RETREAT! cue)
+-- my fighter stands in a telegraph that has not hit yet (the HUD's DASH cue: dash through it)
 local function threatened(B, tl)
 	for slot = 1, 4 do
 		local u = B.mine[slot]
-		if u and u.hp > 0 and u.state ~= S_DOWN and Tele.Covers(tl, u.x, u.z, K.THREAT_PAD) then
+		if u and u.hp > 0 and u.state ~= S_DOWN and u.state ~= S_BENCHED and Tele.Covers(tl, u.x, u.z, K.THREAT_PAD) then
 			return true
 		end
 	end
@@ -1930,8 +2258,24 @@ Handlers[EV.Hit] = function(B, ev)
 		return
 	end
 	local dmg = num(ev.dmg, 0)
-	-- attacker motion: plain attacks lunge (melee) or shoot a bolt (ranged)
-	if attacker and not ev.special and not ev.zone and not ev.tele then
+	-- Phase 5: a dodged hit (dash i-frames / out of reach at the impact)
+	if ev.miss then
+		if victim.root and not victim.parked then
+			Fx.Number(victim.root, numberHeight(victim) + 0.4, "DODGED!", COLORS.Dodge, K.CALLOUT_PX, 0.9)
+		end
+		if attacker and not attacker.isBoss then
+			local dx, dz = victim.x - attacker.x, victim.z - attacker.z
+			local d = sqrt(dx * dx + dz * dz)
+			if d > 0.01 then
+				attacker.lungeAt = os.clock()
+				attacker.lungeX, attacker.lungeZ = dx / d, dz / d
+			end
+		end
+		return
+	end
+	-- attacker motion: plain attacks lunge (melee) or shoot a bolt (ranged); my fighter already swung on the press
+	local predicted = attacker and attacker.swingAt and os.clock() - attacker.swingAt < 0.6
+	if attacker and not ev.special and not ev.zone and not ev.tele and not ev.element and not predicted then
 		if attacker.isBoss then
 			if attacker.pose ~= "Windup" and attacker.pose ~= "Attack" and attacker.pose ~= "Enrage" then
 				Units.SetPose(attacker, "Basic", 0.6, ev.attack)
@@ -1949,6 +2293,12 @@ Handlers[EV.Hit] = function(B, ev)
 				Fx.Bolt(unitCenter(B, attacker), unitCenter(B, victim), elementColor(attacker.element), 0.42, 0.24)
 			end
 		end
+	elseif predicted and attacker.ranged and attacker.model and not attacker.parked and not ev.special then
+		Fx.Bolt(unitCenter(B, attacker), unitCenter(B, victim), elementColor(attacker.element), 0.42, 0.24)
+	end
+	-- my fighter hit hard: a tiny camera shake (x the Shake setting)
+	if victim.mine and B.Fighter and victim.id == B.fighterId and dmg >= victim.maxHp * 0.12 then
+		Me.Shake(0.18, 0.16)
 	end
 	-- victim feedback
 	if not victim.isBoss and attacker then
@@ -1984,6 +2334,11 @@ Handlers[EV.Hit] = function(B, ev)
 	if ev.special and attacker then
 		color = specialColor(attacker):Lerp(COLORS.White, 0.35)
 		px = max(px, K.NUMBER_PX + 2)
+	elseif ev.element and attacker then
+		color = elementColor(attacker.element):Lerp(COLORS.White, 0.3)
+		px = max(px, K.NUMBER_PX + 2)
+	elseif ev.burn then
+		text, color, px = "BURN " .. text, COLORS.Strong, K.NUMBER_PX - 4
 	end
 	if dmg > 0 then
 		Fx.Number(adornee, numberHeight(victim), text, color, px)
@@ -2060,6 +2415,10 @@ Handlers[EV.Special] = function(B, ev)
 		local cf = worldFrame(B, sx + dx * length / 2, 1.6, sz + dz * length / 2, yawToward(dx, dz))
 		Fx.Beam(cf, length, width * 0.7, color, 0.5)
 		Fx.Burst(worldPoint(B, sx + dx * length, 1.6, sz + dz * length), color, 8, 8, 0.4, 0.45, { up = 0.5 })
+	elseif kind == "Rally" or kind == "Haste" then
+		if u and u.model and not u.parked then
+			Fx.Rise(unitCenter(B, u), kind == "Haste" and COLORS.Dodge or COLORS.Gold, 12, 0.34, 0.9, 1.8)
+		end
 	elseif kind == "Storm" then
 		-- the Zone event that follows draws the cloud
 		Fx.Burst(worldPoint(B, tx, 5, tz), COLORS.StormLight, 6, 5, 0.6, 0.5, { up = 0.3, gravity = 2 })
@@ -2104,8 +2463,12 @@ Handlers[EV.KO] = function(B, ev)
 	end
 	u.hp = 0
 	u.state = S_DOWN
-	if B.focus == u.id then
-		B.focus = nil
+	if B.lock == u.id then
+		B.lock = nil
+	end
+	Hud.enemyDirty = true
+	if u.mine and u.id == B.fighterId then
+		Me.Shake(0.3, 0.3)
 	end
 end
 
@@ -2146,18 +2509,8 @@ Handlers[EV.Enrage] = function(B, ev)
 	end
 end
 
-Handlers[EV.Order] = function(B, ev)
-	if ev.owner ~= myUserId() then
-		return
-	end
-	if ev.order == "Retreat" then
-		B.order = "Retreat"
-		B.retreatAt = os.clock()
-		B.focus = nil
-	elseif ev.order == "Attack" then
-		B.order = "Attack"
-		B.focus = tonumber(ev.target)
-	end
+Handlers[EV.Order] = function()
+	-- (handled on arrival: Net.Pre)
 end
 
 Handlers[EV.Leave] = function(B, ev)
@@ -2177,15 +2530,107 @@ Handlers[EV.End] = function(B)
 	B.simEnded = true
 end
 
--- Phase 4 duel rule (BattleCatalog.Damage.Overtime): past `at` seconds every hit grows by `perSecond` per second; the
--- top card says so (a red OVERTIME pill under the enemies) for the rest of the duel
-Handlers[EV.Overtime or "Overtime"] = function(B, ev)
-	if B.overtime then
-		return
+-- Phase 5 events (the visuals, on the render clock; the HUD / prediction side runs on arrival in Net.Pre)
+local function calloutAbove(u, text, color, px, life)
+	if u and u.root and not u.parked then
+		Fx.Number(u.root, numberHeight(u) + 0.8, text, color, px or K.CALLOUT_PX, life or 1.1)
 	end
-	B.overtime = true
-	B.overtimeRate = num(ev.perSecond, 0.15)
-	pcall(Hud.Rebuild)
+end
+
+Handlers[EV.Element or "Element"] = function(B, ev)
+	local u = B.units[tonumber(ev.unit) or -1]
+	local color = elementColor(ev.element or (u and u.element))
+	local sx, sz = num(ev.x, u and u.x or 0), num(ev.z, u and u.z or 0)
+	local angle = num(ev.angle, 0)
+	local shape = tostring(ev.shape or "Cone")
+	calloutAbove(u, string.upper(tostring(ev.name or ev.element or "")) .. "!", color:Lerp(COLORS.White, 0.25))
+	if u and u.id ~= B.fighterId then
+		u.hopAt = os.clock()
+	end
+	local dx, dz = cos(angle), sin(angle)
+	if shape == "Circle" then
+		local c = worldPoint(B, sx, 0.6, sz)
+		Fx.Ring(c, 8, color, 22, 0.8, 0.5, 0.05)
+		Fx.Burst(c + Vector3.new(0, 0.8, 0), color, 14, 11, 0.55, 0.55, { color2 = COLORS.White, up = 0.8 })
+	elseif shape == "Line" then
+		local length = 24
+		local cf = worldFrame(B, sx + dx * length / 2, 1.6, sz + dz * length / 2, yawToward(dx, dz))
+		Fx.Beam(cf, length, 3, color, 0.45)
+	else
+		-- a cone: bursts fanned out in front of the caster
+		for i = -2, 2 do
+			local a = angle + i * 0.22
+			local r = 9 + abs(i) * 0.8
+			Fx.Burst(worldPoint(B, sx + cos(a) * r, 1.2, sz + sin(a) * r), color, 5, 7, 0.45, 0.45, { up = 0.6, color2 = COLORS.White })
+		end
+		Fx.Trail(worldPoint(B, sx, 1.3, sz), worldPoint(B, sx + dx * 11, 1.3, sz + dz * 11), color, 8, 0.4)
+	end
+end
+
+Handlers[EV.Dash or "Dash"] = function(B, ev)
+	local u = B.units[tonumber(ev.unit) or -1]
+	if u and u.model and not u.parked and not u.mine then
+		local c = unitCenter(B, u)
+		Fx.Burst(c, COLORS.Dodge, 8, 9, 0.4, 0.35, { up = 0.2, alpha = 0.2 })
+	end
+end
+
+Handlers[EV.Buff or "Buff"] = function(B, ev)
+	local helper = B.units[tonumber(ev.unit) or -1]
+	local fighter = B.units[tonumber(ev.target) or -1]
+	local color = (helper and elementColor(helper.element)) or COLORS.Heal
+	if helper and helper.mine then
+		helper.flyAt = os.clock() -- fly to the fighter and back
+	end
+	if fighter then
+		calloutAbove(fighter, string.upper(tostring(ev.name or ev.kind or "BUFF")), color:Lerp(COLORS.White, 0.2), K.CALLOUT_PX, 1.4)
+		if fighter.model and not fighter.parked then
+			Fx.Rise(unitCenter(B, fighter), color, 10, 0.32, 0.9, 1.6)
+		end
+	end
+end
+
+Handlers[EV.Swap or "Swap"] = function(B, ev)
+	local incoming = B.units[tonumber(ev["in"]) or -1]
+	local out = B.units[tonumber(ev.out) or -1]
+	if incoming and incoming.model and not incoming.parked then
+		calloutAbove(incoming, ev.auto and "GO!" or "SWAP!", COLORS.Dodge, K.CALLOUT_PX, 1)
+		Fx.Burst(unitCenter(B, incoming), elementColor(incoming.element), 10, 8, 0.45, 0.45, { up = 0.7, color2 = COLORS.White })
+	end
+	local now = os.clock()
+	for _, u in ipairs({ incoming, out }) do
+		if u and u.mine and u.drawn then
+			u.swapFrom = u.drawn
+			u.swapAt = now
+		end
+	end
+end
+
+Handlers[EV.Windup or "Windup"] = function(B, ev)
+	local u = B.units[tonumber(ev.unit) or -1]
+	if u then
+		-- the list row's "!" until the hit lands (at = sim time of the hit)
+		u.windupUntil = os.clock() + max(0.2, num(ev.at, B.renderT + 0.45) - B.renderT) + 0.1
+	end
+end
+
+Handlers[EV.Wave or "Wave"] = function(B, ev)
+	B.wave = num(ev.index, B.wave or 0)
+	if B.Dungeon then
+		B.Dungeon.Wave = B.wave
+	end
+	local f = B.fighterId and B.units[B.fighterId]
+	calloutAbove(f, "WAVE " .. tostring(B.wave) .. "!", Theme.Neon and Theme.Neon.Purple or COLORS.Gold, K.CRIT_PX, 1.4)
+	Hud.enemyDirty = true
+end
+
+Handlers[EV.EnemiesDown or "EnemiesDown"] = function(B)
+	local f = B.fighterId and B.units[B.fighterId]
+	calloutAbove(f, "WAVE CLEARED!", COLORS.Mine, K.CALLOUT_PX, 1.2)
+end
+
+Handlers[EV.Speed or "Speed"] = function()
+	-- (handled on arrival: Net.Pre)
 end
 
 function Net.PlayDue(B, now)
@@ -2212,7 +2657,7 @@ function Net.PlayDue(B, now)
 end
 
 ----------------------------------------------------------------------
--- HUD
+-- HUD (Phase 5, contract 4.7: the battle HUD of image 24.png on the Neon kit)
 ----------------------------------------------------------------------
 local function label(parent, text, role, size, props)
 	local l = Theme.Label(text, role, { Size = size, Stroke = 0.15, Outline = 2 })
@@ -2224,13 +2669,6 @@ local function label(parent, text, role, size, props)
 	end
 	l.Parent = parent
 	return l
-end
-
-local function card(parent, name, props)
-	local f = Theme.Panel(props)
-	f.Name = name
-	f.Parent = parent
-	return f
 end
 
 local function smallPill(parent, text, color, props)
@@ -2255,72 +2693,16 @@ local function smallPill(parent, text, color, props)
 	return l
 end
 
-local function bar(parent, name, height, color, props)
-	if CloudUI and type(CloudUI.Bar) == "function" then
-		local b = CloudUI.Bar({ Name = name, Height = height, Color = color, Parent = parent, TextSize = props and props.TextSize })
-		if props then
-			if props.Size then
-				b.Root.Size = props.Size
-			end
-			if props.Position then
-				b.Root.Position = props.Position
-			end
-			if props.AnchorPoint then
-				b.Root.AnchorPoint = props.AnchorPoint
-			end
-		end
-		return b
-	end
-	-- fallback without CloudUI
-	local root = make("Frame", { Name = name, BackgroundColor3 = COLORS.Track, BorderSizePixel = 0, Size = UDim2.new(1, 0, 0, height) }, parent)
-	if props then
-		for key, value in pairs(props) do
-			if key ~= "TextSize" then
-				root[key] = value
-			end
-		end
-	end
-	Theme.Corner(root, UDim.new(0, 6))
-	local fill = make("Frame", { Name = "Fill", BackgroundColor3 = color, BorderSizePixel = 0, Size = UDim2.fromScale(1, 1) }, root)
-	Theme.Corner(fill, UDim.new(0, 6))
-	local text = label(root, "", "Heading", 15, { Size = UDim2.fromScale(1, 1), ZIndex = 3 })
-	return {
-		Root = root,
-		Fill = fill,
-		Label = text,
-		SetFraction = function(f)
-			fill.Size = UDim2.fromScale(clamp(f, 0, 1), 1)
-		end,
-		SetText = function(t)
-			text.Text = tostring(t or "")
-		end,
-		SetColor = function(c)
-			fill.BackgroundColor3 = c
-		end,
-	}
-end
-
--- a thin bar without text (the special meter, enemy chips): returns { Root, Fill }
+-- a thin bar without text (timers): returns { Root, Fill }
 local function thinBar(parent, name, height, color, props)
-	local root = make("Frame", {
-		Name = name,
-		BackgroundColor3 = COLORS.Track,
-		BorderSizePixel = 0,
-		Size = UDim2.new(1, 0, 0, height),
-	}, parent)
+	local root = make("Frame", { Name = name, BackgroundColor3 = COLORS.Track, BorderSizePixel = 0, Size = UDim2.new(1, 0, 0, height) }, parent)
 	if props then
 		for key, value in pairs(props) do
 			root[key] = value
 		end
 	end
 	Theme.Corner(root, UDim.new(0, max(2, floor(height / 2))))
-	Theme.Stroke(root, COLORS.Navy, 2, 0)
-	local fill = make("Frame", {
-		Name = "Fill",
-		BackgroundColor3 = color,
-		BorderSizePixel = 0,
-		Size = UDim2.fromScale(1, 1),
-	}, root)
+	local fill = make("Frame", { Name = "Fill", BackgroundColor3 = color, BorderSizePixel = 0, Size = UDim2.fromScale(1, 1) }, root)
 	Theme.Corner(fill, UDim.new(0, max(2, floor(height / 2))))
 	return { Root = root, Fill = fill, frac = 1 }
 end
@@ -2345,38 +2727,48 @@ local function setText(lbl, text)
 	end
 end
 
+local function setVisible(obj, on)
+	if obj and obj.Visible ~= (on == true) then
+		obj.Visible = on == true
+	end
+end
+
+-- a NeonKit card (a Theme panel when the kit is missing): { Root, Body, SetColor }
+local function neonCard(parent, name, color, props)
+	local c
+	if Mods.NeonKit and type(Mods.NeonKit.Card) == "function" then
+		local ok, result = pcall(Mods.NeonKit.Card, { Name = name, Color = color, Parent = parent, Size = props and props.Size, Glow = props and props.Glow, Floor = props and props.Floor, Class = props and props.Class })
+		if ok and type(result) == "table" then
+			c = result
+		end
+	end
+	if not c then
+		local f = Theme.Panel({ Name = name })
+		f.Parent = parent
+		c = { Root = f, Body = f, SetColor = function() end }
+	end
+	if props then
+		for key, value in pairs(props) do
+			if key ~= "Size" and key ~= "Glow" and key ~= "Floor" and key ~= "Class" then
+				c.Root[key] = value
+			end
+		end
+	end
+	return c
+end
+
+-- the key hint chip (desktop / gamepad)
 local function keyChip(parent, text, props)
-	local chip = make("Frame", {
-		Name = "Key",
-		BackgroundColor3 = COLORS.Navy,
-		BorderSizePixel = 0,
-		Size = UDim2.fromOffset(30, 26),
-		ZIndex = 6,
-	}, parent)
+	local chip = make("Frame", { Name = "Key", BackgroundColor3 = Theme.Colors.PanelInk or COLORS.Navy, BorderSizePixel = 0, Size = UDim2.fromOffset(30, 24), ZIndex = 8 }, parent)
 	Theme.Corner(chip, UDim.new(0, 7))
-	Theme.Stroke(chip, COLORS.White, 1.5, 0.35)
-	local l = label(chip, text, "Heading", 15, { Name = "Text", Size = UDim2.fromScale(1, 1), ZIndex = 7, TextXAlignment = Enum.TextXAlignment.Center })
+	Theme.Stroke(chip, COLORS.White, 1.5, 0.3)
+	local l = label(chip, text, "Heading", 15, { Name = "Text", Size = UDim2.fromScale(1, 1), ZIndex = 9, TextXAlignment = Enum.TextXAlignment.Center })
 	if props then
 		for key, value in pairs(props) do
 			chip[key] = value
 		end
 	end
 	return chip, l
-end
-
-local function button(parent, name, text, style, size, callback)
-	local b
-	if CloudUI and type(CloudUI.Button) == "function" then
-		b = CloudUI.Button({ Name = name, Text = text, Style = style, Size = size, TextSize = 22, Parent = parent, Callback = callback })
-	else
-		b = make("TextButton", { Name = name, Text = text, Size = size, BackgroundColor3 = Theme.Buttons[style] or COLORS.Ally, AutoButtonColor = true }, parent)
-		Theme.Style(b, "Button", { Size = 22 })
-		Theme.Corner(b, UDim.new(0, 12))
-		b.Activated:Connect(function()
-			callback(b)
-		end)
-	end
-	return b
 end
 
 -- every HUD text stays >= MIN_TEXT_PX on the screen: design sizes grow to MIN_TEXT_PX / factor on small screens
@@ -2404,6 +2796,91 @@ local function setDisabled(b, disabled)
 	end
 end
 
+-- a round progress ring (a pie of two clipped half discs with a hard-edged UIGradient each; no asset ids): the
+-- `frac` share of the circle from 12 o'clock clockwise in `color`, the rest the dark track. setPie writes only when
+-- the shown share moves by a 5 degree step.
+local SWEEP = NumberSequence.new({
+	NumberSequenceKeypoint.new(0, 0),
+	NumberSequenceKeypoint.new(0.5, 0),
+	NumberSequenceKeypoint.new(0.501, 1),
+	NumberSequenceKeypoint.new(1, 1),
+})
+
+local function newPie(parent, name, size, color, z)
+	local root = make("Frame", {
+		Name = name,
+		BackgroundTransparency = 1,
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		Position = UDim2.fromScale(0.5, 0.5),
+		Size = UDim2.fromOffset(size, size),
+		ZIndex = z or 2,
+	}, parent)
+	local track = make("Frame", { Name = "Track", BackgroundColor3 = COLORS.Track, BorderSizePixel = 0, Size = UDim2.fromScale(1, 1), ZIndex = z or 2 }, root)
+	Theme.Corner(track, UDim.new(0.5, 0))
+	local pie = { Root = root, Track = track, frac = -1, color = color }
+	for _, side in ipairs({ "R", "L" }) do
+		local clip = make("Frame", {
+			Name = side,
+			BackgroundTransparency = 1,
+			ClipsDescendants = true,
+			Position = UDim2.fromScale(side == "R" and 0.5 or 0, 0),
+			Size = UDim2.fromScale(0.5, 1),
+			ZIndex = z or 2,
+		}, root)
+		local disc = make("Frame", {
+			Name = "Disc",
+			BackgroundColor3 = color,
+			BorderSizePixel = 0,
+			Position = UDim2.fromScale(side == "R" and -1 or 0, 0),
+			Size = UDim2.fromScale(2, 1),
+			Visible = false,
+			ZIndex = z or 2,
+		}, clip)
+		Theme.Corner(disc, UDim.new(0.5, 0))
+		local g = make("UIGradient", { Name = "Sweep", Transparency = SWEEP, Rotation = 0 }, disc)
+		pie[side] = { clip = clip, disc = disc, g = g }
+	end
+	return pie
+end
+
+local function setPie(pie, frac, color)
+	if color and pie.color ~= color then
+		pie.color = color
+		pie.R.disc.BackgroundColor3 = color
+		pie.L.disc.BackgroundColor3 = color
+	end
+	local q = floor(clamp(frac, 0, 1) * 72 + 0.5) / 72
+	if q == pie.frac then
+		return
+	end
+	pie.frac = q
+	local a = q * 360
+	pie.R.disc.Visible = a > 0
+	pie.R.g.Rotation = min(a, 180)
+	pie.L.disc.Visible = a > 180
+	pie.L.g.Rotation = max(0, a - 180) + 180
+	St.ringWrites = (St.ringWrites or 0) + 1
+end
+
+local ELEMENT_GLYPH = {
+	Water = "\240\159\146\167", -- droplet
+	Flame = "\240\159\148\165", -- fire
+	Frost = "\226\157\132", -- snowflake
+	Nature = "\240\159\141\131", -- leaf
+	Earth = "\226\155\176", -- mountain
+	Storm = "\226\154\161", -- lightning
+	Celestial = "\226\156\168", -- sparkles
+	Shadow = "\240\159\140\153", -- moon
+}
+local GLYPH = {
+	Attack = "\226\154\148", -- crossed swords
+	Special = "\226\152\133", -- star
+	Dash = "\240\159\146\168", -- dash
+	Swap = "\226\135\132", -- left-right arrows
+	Heart = "\226\153\165", -- heart
+	Crown = "\240\159\145\145",
+	Star = "\226\152\133",
+}
 
 function Hud.Ensure()
 	if Hud.gui and Hud.gui.Parent then
@@ -2428,17 +2905,22 @@ function Hud.Ensure()
 	local root = make("Frame", { Name = "Root", BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1) }, gui)
 	Hud.scale = make("UIScale", { Name = "ReadScale", Scale = 1 }, root)
 	Hud.gui, Hud.root = gui, root
-	Hud.top = card(root, "TopCard", { Visible = false, AnchorPoint = Vector2.new(0.5, 0) })
 	Hud.team = make("Frame", { Name = "Team", BackgroundTransparency = 1, Visible = false }, root)
-	Hud.cmd = make("Frame", { Name = "Commands", BackgroundTransparency = 1, Visible = false }, root)
-	Hud.result = card(root, "ResultCard", { Visible = false })
+	Hud.enemies = make("Frame", { Name = "Enemies", BackgroundTransparency = 1, Visible = false }, root)
+	Hud.top = make("Frame", { Name = "TopCard", BackgroundTransparency = 1, Visible = false, AnchorPoint = Vector2.new(0.5, 0) }, root)
+	Hud.cmd = make("Frame", { Name = "Commands", BackgroundTransparency = 1, Visible = false, AnchorPoint = Vector2.new(1, 1) }, root)
+	Hud.resultCard = neonCard(root, "ResultCard", "Gold", { Visible = false, Size = UDim2.fromOffset(K.RESULT_W, 200), Floor = false })
+	Hud.result = Hud.resultCard.Root
 	Hud.rows = {}
-	Hud.chips = {}
-	Hud.BuildCommands()
+	Hud.helpers = {}
+	Hud.buttons = {}
+	Hud.BuildFighter()
+	Hud.BuildActions()
+	Hud.BuildTop()
 	return true
 end
 
--- the screen in design pixels + the layout kind
+-- the screen in design pixels + the layout kind (Compact = a phone: touch, or a screen under 900 px wide / 600 high)
 function Hud.Metrics()
 	local cam = workspace.CurrentCamera
 	local vp = cam and cam.ViewportSize or Vector2.new(1920, 1080)
@@ -2453,427 +2935,495 @@ function Hud.Metrics()
 	local w = vp.X / f
 	local h = max(200, vp.Y - inset) / f
 	local touch = UserInputService.TouchEnabled and not UserInputService.KeyboardEnabled
-	local compact = touch or w < 1150 or h < 640
-	return { W = w, H = h, F = f, Compact = compact, Touch = touch, Landscape = w / h > 1.3, VX = vp.X, VY = vp.Y, Inset = inset }
+	local compact = touch or vp.X < K.COMPACT_W or vp.Y < K.COMPACT_H
+	return { W = w, H = h, F = f, Compact = compact, Touch = touch, Landscape = vp.X > vp.Y, VX = vp.X, VY = vp.Y, Inset = inset }
 end
 
-function Hud.KeyText(kind, slot)
+-- the key hints (keyboard / gamepad)
+function Hud.KeyText(kind, index)
 	if St.gamepad then
-		if kind == "Attack" then
-			return "X"
-		elseif kind == "Retreat" then
-			return "Y"
-		end
-		return ({ "LB", "RB", "LT", "RT" })[slot] or ""
+		return ({ Attack = "X", Element = "Y", Special = "RB", Dash = "B", Buff = (index == 2) and "\226\134\145" or "LB", Swap = (index == 2) and "\226\134\146" or "\226\134\144" })[kind] or ""
 	end
-	if kind == "Attack" then
-		return "F"
-	elseif kind == "Retreat" then
-		return "R"
-	end
-	return tostring(slot)
+	return ({ Attack = "F", Element = "E", Special = "Q", Dash = "\226\135\167", Buff = tostring(index or 1), Swap = "hold " .. tostring(index or 1) })[kind] or ""
 end
 
 ----------------------------------------------------------------------
--- LEAVE: stops a Champion Ring run or a Trial (BattleCommand "Forfeit"; the server ends the run cleanly and the
--- climber comes back at the portal). Never in duels (a forfeit costs trophies) or raids. Two presses, like
--- HudController's match Leave: the first turns it into "Sure? Tap again" for LEAVE_CONFIRM seconds, the second
--- sends it. One button beside the commands (a child of Commands, so it goes wherever they go) and one on the ring's
--- next-round card; both share the confirm state. Repainted only on a press / its timeout (task.delay), never per frame.
+-- the fighter card (top left) + the two helper portraits under it
 ----------------------------------------------------------------------
-Leave.armedUntil = 0
-Leave.sentUntil = 0
-Leave.buttons = {}
-
-function Leave.Allowed(B)
-	return B ~= nil and B.Fighter == true and (B.Mode == "Ring" or B.Mode == "Trial")
+local function heart(parent, i)
+	local l = label(parent, GLYPH.Heart, "Display", 20, { Name = "Heart" .. i, Size = UDim2.fromOffset(22, 22), TextXAlignment = Enum.TextXAlignment.Center, TextColor3 = COLORS.Life })
+	return l
 end
 
-function Leave.Make(parent, textSize)
-	local b = button(parent, "LeaveButton", "LEAVE", "Pink", UDim2.fromOffset(K.LEAVE_W, K.CMD_H), function()
-		Leave.Press()
-	end)
-	b.TextWrapped = true
-	b.TextSize = textSize
-	b:SetAttribute("BaseText", textSize)
-	b:SetAttribute("LeaveStyle", "Pink")
-	Leave.buttons[#Leave.buttons + 1] = b
-	return b
-end
-
--- the shown text + style for the current confirm state
-function Leave.State(now)
-	if now < Leave.sentUntil then
-		return "Leaving...", "Gray"
-	elseif now < Leave.armedUntil then
-		return "Sure? Tap again", "Red"
+function Hud.BuildFighter()
+	local team = Hud.team
+	local card = neonCard(team, "Fighter", "Green", { Size = UDim2.fromOffset(K.FC_W, K.FC_H), Floor = true })
+	Hud.fighterCard = card
+	local body = card.Body
+	local F = {}
+	F.Name = label(body, "", "Heading", 26, { Name = "PetName", TextXAlignment = Enum.TextXAlignment.Left, TextTruncate = Enum.TextTruncate.AtEnd })
+	F.Level = smallPill(body, "Lv 1", COLORS.LevelPill, { Name = "Level", AutomaticSize = Enum.AutomaticSize.None })
+	F.Level.TextSize = 17
+	F.Element = make("Frame", { Name = "Element", BackgroundColor3 = COLORS.Ally, BorderSizePixel = 0 }, body)
+	Theme.Corner(F.Element, UDim.new(0.5, 0))
+	Theme.Stroke(F.Element, COLORS.White, 1.5, 0.25)
+	F.ElementGlyph = label(F.Element, "", "Display", 16, { Name = "Glyph", Size = UDim2.fromScale(1, 1), TextXAlignment = Enum.TextXAlignment.Center })
+	F.Stars = label(body, "", "Heading", 18, { Name = "Stars", TextXAlignment = Enum.TextXAlignment.Left, TextColor3 = COLORS.Gold })
+	-- HP: track, the red loss trail, the green fill, the numbers
+	F.Hp = make("Frame", { Name = "Hp", BackgroundColor3 = COLORS.Track, BorderSizePixel = 0 }, body)
+	Theme.Corner(F.Hp, UDim.new(0, 7))
+	Theme.Stroke(F.Hp, Theme.Colors.PanelInk or COLORS.Navy, 2, 0)
+	F.HpLoss = make("Frame", { Name = "Loss", BackgroundColor3 = COLORS.Loss, BorderSizePixel = 0, Size = UDim2.fromScale(1, 1) }, F.Hp)
+	Theme.Corner(F.HpLoss, UDim.new(0, 7))
+	F.HpFill = make("Frame", { Name = "Fill", BackgroundColor3 = COLORS.HpGreen, BorderSizePixel = 0, Size = UDim2.fromScale(1, 1) }, F.Hp)
+	Theme.Corner(F.HpFill, UDim.new(0, 7))
+	make("UIGradient", { Name = "Shine", Rotation = 90, Color = ColorSequence.new(Color3.fromRGB(255, 255, 255), Color3.fromRGB(190, 200, 190)) }, F.HpFill)
+	F.HpTag = label(F.Hp, "HP", "Heading", 16, { Name = "Tag", ZIndex = 3, TextXAlignment = Enum.TextXAlignment.Left })
+	F.HpText = label(F.Hp, "", "Heading", 16, { Name = "Text", ZIndex = 3, TextXAlignment = Enum.TextXAlignment.Right })
+	-- ENERGY (the special meter)
+	F.Energy = make("Frame", { Name = "Energy", BackgroundColor3 = COLORS.Track, BorderSizePixel = 0 }, body)
+	Theme.Corner(F.Energy, UDim.new(0, 5))
+	Theme.Stroke(F.Energy, Theme.Colors.PanelInk or COLORS.Navy, 2, 0)
+	F.EnergyFill = make("Frame", { Name = "Fill", BackgroundColor3 = COLORS.Energy, BorderSizePixel = 0, Size = UDim2.fromScale(0, 1) }, F.Energy)
+	Theme.Corner(F.EnergyFill, UDim.new(0, 5))
+	F.EnergyText = label(body, "ENERGY 0/100", "Label", 15, { Name = "EnergyText", TextXAlignment = Enum.TextXAlignment.Left, TextColor3 = COLORS.EnergyText })
+	F.Lives = make("Frame", { Name = "Lives", BackgroundTransparency = 1 }, body)
+	F.Hearts = {}
+	for i = 1, 3 do
+		F.Hearts[i] = heart(F.Lives, i)
 	end
-	return "LEAVE", "Pink"
+	Hud.F = F
+	-- the helpers: a portrait each (round pet picture in a ViewportFrame, the buff cooldown ring around it, Lv,
+	-- the buff name, the SWAP chip, the key hint); tap = buff, hold 0.5 s = swap
+	Hud.helperHolder = make("Frame", { Name = "Helpers", BackgroundTransparency = 1 }, team)
+	for i = 1, 2 do
+		Hud.helpers[i] = Hud.BuildHelper(i)
+	end
 end
 
-function Leave.Paint()
-	local text, style = Leave.State(os.clock())
-	local live = {}
-	for _, b in ipairs(Leave.buttons) do
-		if b.Parent then
-			live[#live + 1] = b
-			setText(b, text)
-			if b:GetAttribute("LeaveStyle") ~= style then
-				b:SetAttribute("LeaveStyle", style)
-				if CloudUI and type(CloudUI.SetStyle) == "function" then
-					CloudUI.SetStyle(b, style)
-				else
-					b.BackgroundColor3 = Theme.Buttons[style] or COLORS.Ally
-				end
-			end
+function Hud.BuildHelper(i)
+	local H = { index = i }
+	local cell = make("Frame", { Name = "Helper" .. i, BackgroundTransparency = 1 }, Hud.helperHolder)
+	H.Cell = cell
+	H.Disc = make("Frame", { Name = "Disc", BackgroundTransparency = 1 }, cell)
+	H.Ring = newPie(H.Disc, "Ring", K.RING, COLORS.Ally, 2)
+	local face = make("TextButton", {
+		Name = "Portrait",
+		Text = "",
+		AutoButtonColor = false,
+		BackgroundColor3 = Theme.Colors.PanelTop or COLORS.Navy,
+		BorderSizePixel = 0,
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		Position = UDim2.fromScale(0.5, 0.5),
+		ZIndex = 4,
+	}, H.Disc)
+	Theme.Corner(face, UDim.new(0.5, 0))
+	H.FaceStroke = Theme.Stroke(face, COLORS.Ally, 3, 0)
+	H.Face = face
+	H.View = make("ViewportFrame", {
+		Name = "View",
+		BackgroundTransparency = 1,
+		Size = UDim2.fromScale(1, 1),
+		ZIndex = 5,
+		Ambient = Color3.fromRGB(200, 205, 220),
+		LightColor = Color3.fromRGB(255, 250, 235),
+	}, face)
+	H.Initial = label(face, "", "Display", 26, { Name = "Initial", Size = UDim2.fromScale(1, 1), ZIndex = 6, TextXAlignment = Enum.TextXAlignment.Center })
+	H.KO = label(face, "KO", "Title", 22, { Name = "KO", Size = UDim2.fromScale(1, 1), ZIndex = 7, Visible = false, TextColor3 = COLORS.White, BackgroundTransparency = 0.35, BackgroundColor3 = Color3.fromRGB(40, 44, 60) })
+	Theme.Corner(H.KO, UDim.new(0.5, 0))
+	H.Count = label(face, "", "Display", 24, { Name = "Count", Size = UDim2.fromScale(1, 1), ZIndex = 7, Visible = false, TextXAlignment = Enum.TextXAlignment.Center })
+	H.Level = smallPill(cell, "Lv 1", COLORS.LevelPill, { Name = "Level", AutomaticSize = Enum.AutomaticSize.None, ZIndex = 8 })
+	H.Level.TextSize = 16
+	H.Buff = label(cell, "", "Heading", 15, { Name = "Buff", TextXAlignment = Enum.TextXAlignment.Center, TextTruncate = Enum.TextTruncate.AtEnd })
+	H.Swap = make("TextButton", { Name = "Swap", Text = GLYPH.Swap .. " SWAP", AutoButtonColor = true, BackgroundColor3 = Color3.fromRGB(40, 60, 120), BorderSizePixel = 0, ZIndex = 6 }, cell)
+	Theme.Style(H.Swap, "Button", { Size = 15, Stroke = 0.2, Outline = 1.5 })
+	Theme.Corner(H.Swap, UDim.new(0, 10))
+	H.SwapStroke = Theme.Stroke(H.Swap, COLORS.SwapEdge, 2, 0)
+	H.SwapFill = make("Frame", { Name = "HoldFill", BackgroundColor3 = COLORS.White, BackgroundTransparency = 0.7, BorderSizePixel = 0, Size = UDim2.fromScale(0, 1), ZIndex = 7, Visible = false }, H.Swap)
+	Theme.Corner(H.SwapFill, UDim.new(0, 10))
+	H.Key = keyChip(cell, "1", { Name = "Key" })
+	local index = i
+	face.InputBegan:Connect(function(input)
+		local t = input.UserInputType
+		if t == Enum.UserInputType.Touch or t == Enum.UserInputType.MouseButton1 then
+			Input.HoldStart("portrait" .. index, index, os.clock())
 		end
-	end
-	Leave.buttons = live
+	end)
+	face.InputEnded:Connect(function(input)
+		local t = input.UserInputType
+		if t == Enum.UserInputType.Touch or t == Enum.UserInputType.MouseButton1 then
+			Input.HoldEnd("portrait" .. index)
+		end
+	end)
+	H.Swap.Activated:Connect(function()
+		Input.Helper("Swap", index)
+	end)
+	return H
 end
 
-function Leave.Press()
-	local now = os.clock()
-	if now < Leave.sentUntil or not Leave.Allowed(St.battle) then
+-- the round pet picture of a helper (PetBuilder Low in the ViewportFrame, built once per unit)
+function Hud.Portrait(H, u)
+	if H.unitId == u.id and H.built then
 		return
 	end
-	if now < Leave.armedUntil then
-		Leave.armedUntil = 0
-		if BattleController.Command("Forfeit") then
-			Leave.sentUntil = now + K.LEAVE_CONFIRM -- the run's End normally closes the HUD long before this
-		end
-	else
-		Leave.armedUntil = now + K.LEAVE_CONFIRM
+	H.unitId = u.id
+	H.built = true
+	for _, c in ipairs(H.View:GetChildren()) do
+		c:Destroy()
 	end
-	Leave.Paint()
-	task.delay(K.LEAVE_CONFIRM + 0.05, Leave.Paint) -- back to LEAVE when nobody pressed again
-end
-
--- a new battle (a ring round too) and the step from a fight to the next-round card start unarmed
-function Leave.Track(B)
-	local phase = B and B.ended and "next" or "fight"
-	if Leave.battle ~= B or Leave.phase ~= phase then
-		Leave.battle = B
-		Leave.phase = phase
-		Leave.armedUntil = 0
-		Leave.sentUntil = 0
-		Leave.Paint()
-	end
-end
-
--- the HUD's vitals card (NimbusHud BottomLeft.Vitals) in design px: left, top, right, bottom (nil when not shown;
--- like Ring.CurrencyBottom: both GUIs are laid out below the top bar)
-function Leave.Vitals(m)
-	local pg = LocalPlayer and LocalPlayer:FindFirstChild("PlayerGui")
-	local hud = pg and pg:FindFirstChild("NimbusHud")
-	local v = hud and hud:FindFirstChild("Vitals", true)
-	if not v or not v:IsA("GuiObject") or not v.Visible or v.AbsoluteSize.X <= 0 then
-		return nil
-	end
-	local f = max(0.05, m.F)
-	local p, size = v.AbsolutePosition, v.AbsoluteSize
-	return floor(p.X / f), floor(p.Y / f), math.ceil((p.X + size.X) / f), math.ceil((p.Y + size.Y) / f)
-end
-
-local function leaveSize(b, w, h, text)
-	b.Size = UDim2.fromOffset(w, h)
-	b.TextSize = text
-	b:SetAttribute("BaseText", text)
-end
-
--- the commands' LEAVE: wide = left of ATTACK / RETREAT; compact portrait = above ATTACK in the right-edge column;
--- a landscape phone = under the left-edge team grid (the commands row has the currency pill above it and DASH under
--- RETREAT); a landscape screen with the team on top = under ATTACK. Positions are relative to the Commands frame.
-function Leave.Place(m, B, isFighting)
-	Leave.Track(B)
-	local b = Hud.leave
-	if not b then
+	setText(H.Initial, string.upper(string.sub(u.name or "?", 1, 1)))
+	H.Initial.Visible = true
+	if not PetBuilder then
 		return
 	end
-	b.Visible = isFighting == true and Leave.Allowed(B)
-	if not b.Visible then
-		return
-	end
-	local cw, ch = Hud.cmd.Size.X.Offset, Hud.cmd.Size.Y.Offset
-	if not m.Compact then
-		leaveSize(b, K.LEAVE_W, K.CMD_H, 22)
-		b.Position = UDim2.fromOffset(-K.LEAVE_W - 12, 0)
-	elseif not m.Landscape then
-		leaveSize(b, cw, K.LEAVE_H, 18)
-		b.Position = UDim2.fromOffset(0, -K.LEAVE_H - 12)
-	elseif Hud.teamPlace == "Left" then
-		-- as wide as the grid, but never into the vitals card (a short phone puts it right next to the grid)
-		local left = Hud.cmd.Position.X.Offset - cw -- Commands is anchored at its top-right corner
-		local y = 6 + Hud.team.Size.Y.Offset + 10
-		local w = min(Hud.team.Size.X.Offset, K.LEAVE_W_GRID)
-		local vl, _, _, vb = Leave.Vitals(m)
-		if vl and vb > y then
-			w = max(K.LEAVE_W_MIN, min(w, vl - 10 - K.SIDE_X))
+	local ok = pcall(function()
+		local def = Units.Def(u.info)
+		if not def then
+			return
 		end
-		leaveSize(b, w, (w >= K.LEAVE_W_GRID - 10) and K.LEAVE_H_GRID or K.LEAVE_H, 18) -- narrower: "Sure? Tap again" takes two lines
-		b.Position = UDim2.fromOffset(K.SIDE_X - left, y - Hud.cmd.Position.Y.Offset)
-	else
-		leaveSize(b, K.TOUCH_W, K.LEAVE_H, 18)
-		b.Position = UDim2.fromOffset(0, ch + 10)
+		local model = PetBuilder.Build(def, { Detail = "Low", Evolved = u.evo > 0 and u.evo or nil })
+		local okBox, cf, size = pcall(model.GetBoundingBox, model)
+		if not okBox or typeof(cf) ~= "CFrame" then
+			cf, size = CFrame.new(), Vector3.new(3, 3, 3)
+		end
+		model.Parent = H.View
+		local cam = make("Camera", { Name = "PortraitCamera", FieldOfView = 30 }, H.View)
+		local r = max(size.X, size.Y, size.Z)
+		local dist = r * 1.9 + 1
+		local c = cf.Position + Vector3.new(0, size.Y * 0.08, 0)
+		cam.CFrame = CFrame.new(c + Vector3.new(dist * 0.42, dist * 0.18, -dist * 0.9), c)
+		H.View.CurrentCamera = cam
+		H.Initial.Visible = false
+	end)
+	if not ok then
+		H.Initial.Visible = true
 	end
-	Hud.TrimButton(b, m.Compact)
-	Leave.Paint()
 end
 
--- the next-round card's LEAVE: a row at the bottom of the card (returns the card's new height); on a landscape phone
--- beside the card's bottom-left corner, under the top card (no room inside or below: the currency pill is above the
--- card, DASH / RUN below it)
-function Leave.PlaceOnCard(m, B, w, y)
-	local b = Hud.nextLeave
-	if not b then
-		return y
-	end
-	Leave.Track(B)
-	b.Visible = Leave.Allowed(B)
-	if not b.Visible then
-		return y
-	end
-	Hud.TrimButton(b, m.Compact)
-	Leave.Paint()
-	if m.Compact and m.Landscape then
-		leaveSize(b, K.LEAVE_TAB_W, K.LEAVE_H, 18)
-		local cardTop = Hud.next.Position.Y.Offset -- the card is anchored at its top-right corner here
-		local below = 6 + (Hud.topH or 80) + 8 - cardTop -- the top card's bottom + a gap, card-relative
-		local at = y - K.LEAVE_H -- level with the card's bottom ...
-		local vl, vt, vr = Leave.Vitals(m)
-		local x1 = Hud.next.Position.X.Offset - w - 8 -- (the card's left edge - the gap)
-		if vl and vr > x1 - K.LEAVE_TAB_W and vl < x1 then
-			at = min(at, vt - cardTop - 8 - K.LEAVE_H) -- ... but above the vitals card when it reaches under it
-		end
-		b.AnchorPoint = Vector2.new(1, 0)
-		b.Position = UDim2.fromOffset(-8, max(at, below))
-		return y
-	end
-	leaveSize(b, min(w - 2 * K.PAD - 8, K.LEAVE_CARD_W), K.LEAVE_H - 4, m.Compact and 18 or 22) -- one line, also armed
-	b.AnchorPoint = Vector2.new(1, 0)
-	b.Position = UDim2.new(1, -K.PAD - 4, 0, y)
-	return y + K.LEAVE_H - 4 + K.PAD
-end
+----------------------------------------------------------------------
+-- the action cluster (bottom right): ATTACK (big), ELEMENT, SPECIAL, DASH; cooldown rings, key chips on desktop
+----------------------------------------------------------------------
+local ACTIONS = { "Attack", "Element", "Special", "Dash" }
 
-function Hud.BuildCommands()
-	local cmd = Hud.cmd
-	Hud.attack = button(cmd, "AttackButton", "ATTACK", "Red", UDim2.fromOffset(215, K.CMD_H), function()
-		BattleController.Command("Attack", nil)
-	end)
-	Hud.retreat = button(cmd, "RetreatButton", "RETREAT", "Blue", UDim2.fromOffset(215, K.CMD_H), function()
-		BattleController.Command("Retreat")
-	end)
-	Hud.leave = Leave.Make(cmd, 20)
-	Hud.attackKey = keyChip(Hud.attack, "F", { Position = UDim2.fromOffset(-6, -8) })
-	Hud.retreatKey = keyChip(Hud.retreat, "R", { Position = UDim2.fromOffset(-6, -8) })
-	for _, b in ipairs({ Hud.attack, Hud.retreat }) do
-		local ring = make("Frame", {
-			Name = "ActiveRing",
+function Hud.BuildActions()
+	for _, kind in ipairs(ACTIONS) do
+		local A = { kind = kind }
+		local b = make("TextButton", {
+			Name = kind .. "Button",
+			Text = "",
+			AutoButtonColor = false,
 			BackgroundTransparency = 1,
-			Size = UDim2.new(1, 10, 1, 10),
-			Position = UDim2.fromOffset(-5, -5),
-			Visible = false,
-			ZIndex = 0,
-		}, b)
-		Theme.Corner(ring, UDim.new(0, 16))
-		Theme.Stroke(ring, COLORS.Gold, 3, 0)
+			AnchorPoint = Vector2.new(0.5, 0.5),
+			ZIndex = 2,
+		}, Hud.cmd)
+		A.Button = b
+		A.Glow = make("Frame", { Name = "Glow", BackgroundColor3 = COLORS.Gold, BackgroundTransparency = 1, BorderSizePixel = 0, AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5), Size = UDim2.new(1, 14, 1, 14), ZIndex = 1 }, b)
+		Theme.Corner(A.Glow, UDim.new(0.5, 0))
+		A.Ring = newPie(b, "Ring", 10, COLORS.Action[kind], 2)
+		A.Ring.Root.Size = UDim2.new(1, 0, 1, 0)
+		local face = make("Frame", { Name = "Face", BackgroundColor3 = Color3.fromRGB(255, 255, 255), BorderSizePixel = 0, AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5), Size = UDim2.new(1, -10, 1, -10), ZIndex = 3 }, b)
+		Theme.Corner(face, UDim.new(0.5, 0))
+		local base = COLORS.Action[kind]
+		A.FaceGradient = make("UIGradient", { Name = "Fill", Rotation = 90, Color = ColorSequence.new(Theme.Darken(base, 0.35), Theme.Darken(base, 0.72)) }, face)
+		A.FaceStroke = Theme.Stroke(face, Theme.Lighten(base, 0.25), 2.5, 0)
+		A.Face = face
+		A.Glyph = label(face, GLYPH[kind] or "", "Display", 30, { Name = "Glyph", Size = UDim2.fromScale(1, 1), ZIndex = 4, TextXAlignment = Enum.TextXAlignment.Center })
+		A.Count = label(face, "", "Display", 26, { Name = "Count", Size = UDim2.fromScale(1, 1), ZIndex = 5, Visible = false, TextXAlignment = Enum.TextXAlignment.Center })
+		A.Caption = label(b, string.upper(kind), "Heading", 15, { Name = "Caption", AnchorPoint = Vector2.new(0.5, 0), ZIndex = 6, TextXAlignment = Enum.TextXAlignment.Center })
+		A.Key = keyChip(b, Hud.KeyText(kind), { Name = "Key", AnchorPoint = Vector2.new(0.5, 0.5) })
+		Hud.buttons[kind] = A
+		local action = kind
+		b.InputBegan:Connect(function(input)
+			local t = input.UserInputType
+			if t == Enum.UserInputType.Touch or t == Enum.UserInputType.MouseButton1 then
+				Input.Press(action, true)
+			end
+		end)
+		b.InputEnded:Connect(function(input)
+			local t = input.UserInputType
+			if t == Enum.UserInputType.Touch or t == Enum.UserInputType.MouseButton1 then
+				Input.Press(action, false)
+			end
+		end)
 	end
+	Hud.attack = Hud.buttons.Attack.Button
+	Hud.leave = Leave.Make(Hud.root, 20)
 end
 
+----------------------------------------------------------------------
+-- the top card (top centre, under the Roblox bar): the mode line + timer; in raids / boss rooms the boss bar
+----------------------------------------------------------------------
+function Hud.BuildTop()
+	local top = Hud.top
+	local mode = neonCard(top, "ModeCard", "Blue", { Size = UDim2.fromOffset(K.TOP_W, K.MODE_H), Floor = false })
+	Hud.modeCard = mode
+	Hud.mode = label(mode.Body, "", "Heading", 20, { Name = "Mode", TextXAlignment = Enum.TextXAlignment.Left, TextTruncate = Enum.TextTruncate.AtEnd })
+	Hud.timer = label(mode.Body, "", "Display", 24, { Name = "Timer", TextXAlignment = Enum.TextXAlignment.Right })
+	local boss = make("Frame", { Name = "BossBar", BackgroundTransparency = 1, Visible = false }, top)
+	Hud.boss = boss
+	Hud.bossName = label(boss, "", "Heading", 18, { Name = "BossName", TextXAlignment = Enum.TextXAlignment.Left, TextTruncate = Enum.TextTruncate.AtEnd })
+	Hud.bossTrack = make("Frame", { Name = "Hp", BackgroundColor3 = COLORS.Track, BorderSizePixel = 0 }, boss)
+	Theme.Corner(Hud.bossTrack, UDim.new(0, 8))
+	Theme.Stroke(Hud.bossTrack, Theme.Colors.PanelInk or COLORS.Navy, 2.5, 0)
+	Hud.bossFill = make("Frame", { Name = "Fill", BackgroundColor3 = COLORS.Enemy, BorderSizePixel = 0, Size = UDim2.fromScale(1, 1) }, Hud.bossTrack)
+	Theme.Corner(Hud.bossFill, UDim.new(0, 8))
+	Hud.bossText = label(Hud.bossTrack, "", "Heading", 16, { Name = "Text", Position = UDim2.fromOffset(8, 0), Size = UDim2.new(1, -16, 1, 0), ZIndex = 3, TextXAlignment = Enum.TextXAlignment.Center, TextTruncate = Enum.TextTruncate.AtEnd })
+	Hud.pills = make("Frame", { Name = "Pills", BackgroundTransparency = 1 }, top)
+	make("UIListLayout", { FillDirection = Enum.FillDirection.Horizontal, HorizontalAlignment = Enum.HorizontalAlignment.Center, Padding = UDim.new(0, 6), SortOrder = Enum.SortOrder.LayoutOrder, VerticalAlignment = Enum.VerticalAlignment.Center }, Hud.pills)
+	Hud.bossElement = smallPill(Hud.pills, "", COLORS.Enemy, { Name = "Element", LayoutOrder = 1 })
+	Hud.enragePill = smallPill(Hud.pills, "ENRAGED", COLORS.Enemy, { Name = "Enraged", LayoutOrder = 2, Visible = false })
+	Hud.minionPill = smallPill(Hud.pills, "", Color3.fromRGB(150, 110, 220), { Name = "Minions", LayoutOrder = 3, Visible = false })
+	Hud.playersPill = smallPill(Hud.pills, "", COLORS.Ally, { Name = "Players", LayoutOrder = 4, Visible = false })
+	Hud.wavePill = smallPill(Hud.pills, "", Theme.Neon.Purple or COLORS.Ally, { Name = "Wave", LayoutOrder = 5, Visible = false })
+	Ring.BuildInfo(top)
+end
+
+----------------------------------------------------------------------
+-- the enemy list (right side): one row per living enemy, the LOCKED one first with a gold bracket + "TARGET"
+----------------------------------------------------------------------
 local function rowFor(i)
 	local row = Hud.rows[i]
 	if row then
 		return row
 	end
 	row = {}
-	local f = make("Frame", { Name = "Row" .. i, BackgroundColor3 = COLORS.Panel, BackgroundTransparency = 0.15, BorderSizePixel = 0 }, Hud.team)
+	local f = make("TextButton", { Name = "Row" .. i, Text = "", AutoButtonColor = false, BackgroundColor3 = Theme.Colors.PanelTop or COLORS.Panel, BackgroundTransparency = 0.12, BorderSizePixel = 0 }, Hud.enemies)
 	Theme.Corner(f, UDim.new(0, 12))
-	Theme.Stroke(f, COLORS.Navy, 2, 0)
+	row.Stroke = Theme.Stroke(f, Theme.Colors.PanelInk or COLORS.Navy, 2, 0)
+	make("UIGradient", { Name = "Fill", Rotation = 90, Color = ColorSequence.new(Color3.fromRGB(255, 255, 255), Color3.fromRGB(150, 156, 186)) }, f)
 	row.Frame = f
-	-- slot chip (element coloured, with the key)
-	local chip = make("Frame", { Name = "Slot", BackgroundColor3 = COLORS.Ally, BorderSizePixel = 0 }, f)
-	Theme.Corner(chip, UDim.new(0, 10))
-	Theme.Stroke(chip, COLORS.Navy, 2, 0)
-	row.Chip = chip
-	row.ChipText = label(chip, tostring(i), "Display", 24, { Name = "Text", Size = UDim2.fromScale(1, 1), TextXAlignment = Enum.TextXAlignment.Center })
-	row.Name = label(f, "", "Body", 18, { Name = "PetName", RichText = true, TextXAlignment = Enum.TextXAlignment.Left, TextTruncate = Enum.TextTruncate.AtEnd })
-	row.Level = label(f, "", "Label", 16, { Name = "Level", TextXAlignment = Enum.TextXAlignment.Right, TextColor3 = COLORS.Muted })
-	row.Element = smallPill(f, "", COLORS.Ally, { Name = "Element" })
-	row.Hp = bar(f, "Hp", 22, COLORS.Mine, { TextSize = 15 })
-	row.Meter = thinBar(f, "Meter", 8, COLORS.Gold)
-	-- the special button
-	row.Glow = make("Frame", { Name = "Glow", BackgroundColor3 = COLORS.Gold, BackgroundTransparency = 1, BorderSizePixel = 0, ZIndex = 1 }, f)
-	Theme.Corner(row.Glow, UDim.new(0, 16))
-	local sb = make("TextButton", { Name = "Special", Text = "", AutoButtonColor = false, BackgroundColor3 = Color3.fromRGB(110, 120, 150), BorderSizePixel = 0, ZIndex = 2 }, f)
-	Theme.Corner(sb, UDim.new(0, 12))
-	row.SpecialStroke = Theme.Stroke(sb, COLORS.Navy, 3, 0)
-	row.SpecialTop = label(sb, "SPECIAL", "Button", 20, { Name = "Top", TextXAlignment = Enum.TextXAlignment.Center })
-	row.SpecialSub = label(sb, "", "Label", 15, { Name = "Sub", TextXAlignment = Enum.TextXAlignment.Center, TextTruncate = Enum.TextTruncate.AtEnd })
-	row.Special = sb
-	-- the compact card: the whole card is the special button
-	row.CardHit = make("TextButton", { Name = "CardHit", Text = "", BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1), ZIndex = 8, Visible = false }, f)
-	local slot = i
-	sb.Activated:Connect(function()
-		BattleController.Command("Special", Hud.SlotOfRow(slot))
-	end)
-	row.CardHit.Activated:Connect(function()
-		BattleController.Command("Special", Hud.SlotOfRow(slot))
+	row.Stripe = make("Frame", { Name = "Element", BorderSizePixel = 0, BackgroundColor3 = COLORS.Ally }, f)
+	Theme.Corner(row.Stripe, UDim.new(0, 3))
+	row.Icon = make("Frame", { Name = "Icon", BorderSizePixel = 0, BackgroundColor3 = COLORS.Enemy, ZIndex = 2 }, f)
+	Theme.Corner(row.Icon, UDim.new(0.5, 0))
+	row.IconStroke = Theme.Stroke(row.Icon, COLORS.White, 2, 0.2)
+	row.IconText = label(row.Icon, "", "Display", 20, { Name = "Glyph", Size = UDim2.fromScale(1, 1), ZIndex = 3, TextXAlignment = Enum.TextXAlignment.Center })
+	row.Alert = label(row.Icon, "!", "Title", 24, { Name = "Alert", Size = UDim2.fromScale(1, 1), ZIndex = 4, Visible = false, TextColor3 = COLORS.Alert, BackgroundTransparency = 0, BackgroundColor3 = Color3.fromRGB(120, 30, 40) })
+	Theme.Corner(row.Alert, UDim.new(0.5, 0))
+	row.Name = label(f, "", "Body", 18, { Name = "PetName", TextXAlignment = Enum.TextXAlignment.Left, TextTruncate = Enum.TextTruncate.AtEnd, ZIndex = 2 })
+	row.Hp = thinBar(f, "Hp", 9, COLORS.Enemy, { ZIndex = 2 })
+	row.Bracket = make("Frame", { Name = "Bracket", BackgroundTransparency = 1, Size = UDim2.new(1, 8, 1, 8), Position = UDim2.fromOffset(-4, -4), Visible = false, ZIndex = 1 }, f)
+	Theme.Corner(row.Bracket, UDim.new(0, 15))
+	Theme.Stroke(row.Bracket, COLORS.Gold, 3, 0)
+	row.Target = smallPill(f, "TARGET", COLORS.Gold, { Name = "Target", Visible = false, ZIndex = 5 })
+	row.Target.TextColor3 = Theme.Colors.PanelInk or COLORS.Navy
+	local index = i
+	f.Activated:Connect(function()
+		local id = row.unitId
+		if id then
+			local B = St.battle
+			if B and B.lock == id and (UserInputService.TouchEnabled and not UserInputService.KeyboardEnabled) then
+				BattleController.Focus(nil) -- tap the locked row again: clear
+			else
+				BattleController.Focus(id)
+			end
+		end
+		return index
 	end)
 	Hud.rows[i] = row
 	return row
 end
 
-function Hud.SlotOfRow(i)
-	local row = Hud.rows[i]
-	return row and row.slot or i
+-- the enemies the list shows, the locked one first (the rest in id order: rows reorder only on a KO / lock change)
+function Hud.EnemyList(B)
+	local out, locked = {}, nil
+	for _, u in ipairs(B.list) do
+		if not u.ally and not u.isBoss and u.hp > 0 and u.state ~= S_DOWN and u.state ~= S_BENCHED then
+			if B.lock == u.id then
+				locked = u
+			else
+				out[#out + 1] = u
+			end
+		end
+	end
+	table.sort(out, function(a, b)
+		return a.id < b.id
+	end)
+	if locked then
+		table.insert(out, 1, locked)
+	end
+	return out
 end
 
--- lays the team rows out (wide: rows; compact: cards in a row, or a grid of `cols` columns no wider than maxW)
-function Hud.LayoutTeam(m, units, cols, maxW)
-	local n = #units
+-- lays the rows out (on Rebuild and when the set / the lock changed); returns the list's height
+function Hud.LayoutEnemies(B, m)
+	local list = Hud.EnemyList(B)
+	Hud.enemyList = list
+	local key = tostring(B.lock or 0)
+	for _, u in ipairs(list) do
+		key = key .. "," .. u.id
+	end
+	Hud.enemyKey = key
+	local maxRows = m.Compact and K.ROWS_COMPACT or K.ROWS_MAX
+	local n = min(#list, maxRows)
+	local w, h = m.Compact and K.ROW_W_COMPACT or K.ROW_W, m.Compact and K.ROW_H_COMPACT or K.ROW_H
+	local y = 0
 	for i = 1, max(n, #Hud.rows) do
 		local row = (i <= n) and rowFor(i) or Hud.rows[i]
 		if row then
 			row.Frame.Visible = i <= n
 		end
-	end
-	if n == 0 then
-		return 0, 0
-	end
-	if not m.Compact then
-		local w = K.TEAM_W
-		local y = K.PAD + K.HEAD_H
-		for i = 1, n do
-			local row = Hud.rows[i]
-			local f = row.Frame
-			f.Size = UDim2.fromOffset(w - 2 * K.PAD, K.ROW_H)
-			f.Position = UDim2.fromOffset(K.PAD, y)
-			row.Chip.Size = UDim2.fromOffset(40, 40)
-			row.Chip.Position = UDim2.fromOffset(8, 15)
-			row.Chip.Visible = true
-			row.ChipText.TextSize = 24
-			row.ChipText:SetAttribute("BaseText", 24)
-			local mid = (w - 2 * K.PAD) - 144 - 8 - 56 -- the middle column between the slot chip and the button
-			local pillW = 22 + textWidth(units[i].element or "?", max(15, math.ceil(K.MIN_TEXT_PX / max(0.05, m.F))))
-			row.Name.Position = UDim2.fromOffset(56, 5)
-			row.Name.Size = UDim2.fromOffset(max(60, mid - pillW - 8), 24)
-			row.Name.TextSize = 18
-			row.Name:SetAttribute("BaseText", 18)
-			row.Level.Visible = false
-			row.Element.Visible = true
-			row.Element.AnchorPoint = Vector2.new(1, 0)
-			row.Element.Position = UDim2.fromOffset(56 + mid, 6)
-			row.Hp.Root.Visible = true
-			row.Hp.Root.Position = UDim2.fromOffset(56, 32)
-			row.Hp.Root.Size = UDim2.fromOffset(mid, 22)
-			row.Meter.Root.Position = UDim2.fromOffset(56, 58)
-			row.Meter.Root.Size = UDim2.fromOffset(mid, 8)
-			row.Special.Visible = true
-			row.Special.Size = UDim2.fromOffset(136, 56)
-			row.Special.Position = UDim2.new(1, -144, 0, 7)
-			row.Glow.Size = UDim2.fromOffset(146, 66)
-			row.Glow.Position = UDim2.new(1, -149, 0, 2)
-			row.SpecialTop.TextSize = 20
-			row.SpecialTop:SetAttribute("BaseText", 20)
-			row.SpecialTop.Position = UDim2.fromOffset(0, 5)
-			row.SpecialTop.Size = UDim2.new(1, 0, 0, 24)
-			row.SpecialSub.Visible = true
-			row.SpecialSub.Position = UDim2.fromOffset(6, 30)
-			row.SpecialSub.Size = UDim2.new(1, -12, 0, 20)
-			row.CardHit.Visible = false
-			y = y + K.ROW_H + K.ROW_GAP
+		if i <= n then
+			local u = list[i]
+			local locked = B.lock == u.id
+			row.unitId = u.id
+			row.Frame.Size = UDim2.fromOffset(w, h)
+			row.Frame.Position = UDim2.fromOffset(0, y)
+			row.Stripe.Size = UDim2.fromOffset(5, h - 14)
+			row.Stripe.Position = UDim2.fromOffset(6, 7)
+			row.Stripe.BackgroundColor3 = elementColor(u.element)
+			local icon = h - 10
+			row.Icon.Size = UDim2.fromOffset(icon, icon)
+			row.Icon.Position = UDim2.fromOffset(16, 5)
+			row.Icon.BackgroundColor3 = elementColor(u.element):Lerp(COLORS.Navy, 0.25)
+			local boss = u.kind == "MiniBoss" or u.info.boss ~= nil
+			setText(row.IconText, boss and GLYPH.Crown or string.upper(string.sub(u.name, 1, 1)))
+			row.IconText.TextSize = boss and (icon * 0.55) or (icon * 0.6)
+			row.IconText:SetAttribute("BaseText", row.IconText.TextSize)
+			local x = 16 + icon + 8
+			row.Name.Position = UDim2.fromOffset(x, 3)
+			row.Name.Size = UDim2.fromOffset(w - x - 10, h - 18)
+			row.Name.TextSize = m.Compact and 16 or 18
+			row.Name:SetAttribute("BaseText", row.Name.TextSize)
+			setText(row.Name, (u.info.wild and not boss) and ("Wild " .. u.name) or u.name)
+			row.Hp.Root.Position = UDim2.fromOffset(x, h - 15)
+			row.Hp.Root.Size = UDim2.fromOffset(w - x - 10, 9)
+			row.Bracket.Visible = locked
+			-- "TARGET": a gold tab on the locked row's top edge (wide screens; a phone keeps the bracket only)
+			row.Target.Visible = locked and not m.Compact
+			row.Target.AnchorPoint = Vector2.new(1, 0.5)
+			row.Target.Position = UDim2.new(1, -10, 0, -2)
+			row.Target.Size = UDim2.fromOffset(78, 20)
+			row.Target.AutomaticSize = Enum.AutomaticSize.None
+			row.Target.TextSize = 15
+			row.Stroke.Color = locked and COLORS.Gold or (boss and COLORS.Gold:Lerp(COLORS.Navy, 0.45) or (Theme.Colors.PanelInk or COLORS.Navy))
+			row.hpKey = nil
+			y = y + h + K.ROW_GAP
 		end
-		return w, y - K.ROW_GAP + K.PAD
 	end
-	-- compact cards in a row (or a grid at the left edge of a landscape phone)
-	cols = min(n, cols or n)
-	local avail = maxW or (m.W - 16)
-	if m.Landscape and not maxW then
-		avail = avail - (2 * K.TOUCH_W + 30)
+	local more = #list - n
+	if not Hud.more then
+		Hud.more = label(Hud.enemies, "", "Heading", 16, { Name = "More", TextXAlignment = Enum.TextXAlignment.Right })
 	end
-	local cw = min(K.CARD_W, floor((avail - (cols - 1) * 8) / cols))
-	for i = 1, n do
-		local row = Hud.rows[i]
-		local f = row.Frame
-		local col, line = (i - 1) % cols, floor((i - 1) / cols)
-		f.Size = UDim2.fromOffset(cw, K.CARD_H)
-		f.Position = UDim2.fromOffset(col * (cw + 8), line * (K.CARD_H + 8))
-		row.Chip.Visible = true
-		row.Chip.Size = UDim2.fromOffset(26, 26)
-		row.Chip.Position = UDim2.fromOffset(4, 4)
-		row.ChipText.TextSize = 18
-		row.ChipText:SetAttribute("BaseText", 18)
-		row.Name.Position = UDim2.fromOffset(34, 6)
-		row.Name.Size = UDim2.fromOffset(cw - 38, 22)
-		row.Name.TextSize = 16
-		row.Name:SetAttribute("BaseText", 16)
-		row.Level.Visible = false
-		row.Element.Visible = false
-		row.Hp.Root.Visible = true
-		row.Hp.Root.Position = UDim2.fromOffset(5, 32)
-		row.Hp.Root.Size = UDim2.fromOffset(cw - 10, 21)
-		row.Meter.Root.Position = UDim2.fromOffset(5, 57)
-		row.Meter.Root.Size = UDim2.fromOffset(cw - 10, 8)
-		row.Special.Visible = true
-		row.Special.Size = UDim2.fromOffset(cw - 10, 28)
-		row.Special.Position = UDim2.fromOffset(5, 68)
-		row.Glow.Size = UDim2.fromOffset(cw - 2, 36)
-		row.Glow.Position = UDim2.fromOffset(1, 64)
-		row.SpecialTop.TextSize = 17
-		row.SpecialTop:SetAttribute("BaseText", 17)
-		row.SpecialTop.Position = UDim2.fromOffset(0, 2)
-		row.SpecialTop.Size = UDim2.new(1, 0, 1, -4)
-		row.SpecialSub.Visible = false
-		row.CardHit.Visible = true
+	Hud.more.Visible = more > 0
+	if more > 0 then
+		setText(Hud.more, "+" .. more .. " more")
+		Hud.more.Position = UDim2.fromOffset(0, y)
+		Hud.more.Size = UDim2.fromOffset(w, 22)
+		y = y + 24
 	end
-	local lines = math.ceil(n / cols)
-	return cols * cw + (cols - 1) * 8, lines * K.CARD_H + (lines - 1) * 8
+	Hud.enemies.Size = UDim2.fromOffset(w, max(0, y - K.ROW_GAP))
+	return y
 end
 
--- the enemy chips of the top card (trials and duels)
-local function chipFor(i)
-	local chip = Hud.chips[i]
-	if chip then
-		return chip
+----------------------------------------------------------------------
+-- placement around the other GUIs (measured, not guessed)
+----------------------------------------------------------------------
+-- the bottom of the HUD's currency pills when they sit at the TOP (a landscape phone's top band / the top right),
+-- in design px of our root (gui area below the top bar); 0 when they are elsewhere
+function Hud.CurrencyTop(m)
+	local pg = LocalPlayer and LocalPlayer:FindFirstChild("PlayerGui")
+	local hud = pg and pg:FindFirstChild("NimbusHud")
+	local cur = hud and hud:FindFirstChild("Currency", true)
+	if not cur or not cur:IsA("GuiObject") or not cur.Visible or cur.AbsoluteSize.X <= 0 then
+		return 0, 0, 0
 	end
-	chip = {}
-	local f = make("TextButton", { Name = "Enemy" .. i, Text = "", AutoButtonColor = false, BackgroundColor3 = COLORS.Panel, BackgroundTransparency = 0.05, BorderSizePixel = 0 }, Hud.top)
-	Theme.Corner(f, UDim.new(0, 10))
-	chip.Stroke = Theme.Stroke(f, COLORS.Navy, 2, 0)
-	chip.Stripe = make("Frame", { Name = "Element", BorderSizePixel = 0, Size = UDim2.new(1, -12, 0, 4), Position = UDim2.fromOffset(6, 3) }, f)
-	Theme.Corner(chip.Stripe, UDim.new(0, 2))
-	chip.Name = label(f, "", "Label", 15, { Name = "PetName", Position = UDim2.fromOffset(6, 8), Size = UDim2.new(1, -12, 0, 20), TextXAlignment = Enum.TextXAlignment.Center, TextTruncate = Enum.TextTruncate.AtEnd })
-	chip.Hp = thinBar(f, "Hp", 12, COLORS.Enemy, { Position = UDim2.fromOffset(6, 32), Size = UDim2.new(1, -12, 0, 12) })
-	chip.Frame = f
-	local index = i
-	f.Activated:Connect(function()
-		local id = chip.unitId
-		if id then
-			BattleController.Focus(id)
-		end
-		return index
-	end)
-	Hud.chips[i] = chip
-	return chip
+	local p, s = cur.AbsolutePosition, cur.AbsoluteSize
+	local f = max(0.05, m.F)
+	if p.Y > m.VY * 0.3 then
+		return 0, 0, 0 -- bottom left: not in our way at the top
+	end
+	return max(0, math.ceil((p.Y + s.Y) / f)), floor(p.X / f), math.ceil((p.X + s.X) / f)
 end
 
--- lists the units the HUD shows: my team by slot, enemies (non-boss) in id order
-function Hud.Lists(B)
-	local mine = {}
-	for slot = 1, 4 do
-		if B.mine[slot] then
-			mine[#mine + 1] = B.mine[slot]
-		end
+-- the right edge (design px) of MenuController's tile column (NimbusMenu.MenuColumn; its frame keeps its place while
+-- the tiles step aside), 0 when there is none
+function Hud.MenuRight(m)
+	local pg = LocalPlayer and LocalPlayer:FindFirstChild("PlayerGui")
+	local menu = pg and pg:FindFirstChild("NimbusMenu")
+	local col = menu and menu:IsA("ScreenGui") and menu.Enabled and menu:FindFirstChild("MenuColumn", true)
+	if not col or not col:IsA("GuiObject") or not col.Visible or col.AbsoluteSize.X <= 0 then
+		return 0
 	end
-	local enemies = {}
-	for _, u in ipairs(B.list) do
-		if not u.ally and not u.isBoss and u.kind ~= "Minion" then
-			enemies[#enemies + 1] = u
-		end
+	local right = (col.AbsolutePosition.X + col.AbsoluteSize.X) / max(0.05, m.F)
+	if right > m.W * 0.3 then
+		return 0 -- not a left column
 	end
-	return mine, enemies
+	return math.ceil(right)
 end
 
+-- Roblox's touch jump button + MovementController's RUN button (screen px, from the left / BOTTOM edge)
+function Hud.TouchRects(m)
+	local small = min(m.VX, m.VY) <= 500
+	local jump = small and 70 or 120
+	local jb = small and 20 or jump * 0.75
+	local rects = { jump = { m.VX - jump * 1.5 - 10, jb, m.VX - jump * 0.5 - 10, jb + jump } }
+	local mc = Hud.Movement()
+	if mc and type(mc.MobileLayout) == "function" then
+		local ok, l = pcall(mc.MobileLayout)
+		if ok and type(l) == "table" and type(l.run) == "table" then
+			rects.run = l.run
+		end
+	end
+	if not rects.run then
+		local d = small and 66 or 84
+		local right = max(14, jump + 10 - d * 0.5)
+		local bottom = jb + jump + 10
+		rects.run = { m.VX - right - d, bottom, m.VX - right, bottom + d }
+	end
+	return rects
+end
+
+-- the action buttons' centres + diameters (design px, Commands-local; Commands is anchored at its bottom-right
+-- corner = the gui area's bottom-right corner) and the cluster's size. Touch phones: around Roblox's jump button and
+-- the RUN button (MovementController puts RUN straight above the jump button in a battle), clear of the centre 40%.
+function Hud.ClusterLayout(m)
+	local big, small = K.ATTACK_D, K.ACTION_D
+	local out = {}
+	if not (m.Compact and m.Touch) then
+		out.Attack = { -74, -98, big }
+		out.Special = { -74 - big / 2 - 26 - small / 2, -90, small }
+		out.Element = { -74, -98 - big / 2 - 36 - small / 2, small }
+		out.Dash = { -74 - big / 2 - 26 - small / 2, -98 - big / 2 - 28 - small / 2, small }
+		out.w, out.h = 236, 270
+		return out
+	end
+	local f = max(0.05, m.F)
+	local r = Hud.TouchRects(m)
+	local gap = 7 * f
+	local bigPx, smallPx = big * f, small * f
+	local vx = m.VX
+	-- screen px (x from the left, yb from the bottom) -> Commands-local design px
+	local function at(cx, cyb, d)
+		return { (cx - vx) / f, -cyb / f, d }
+	end
+	if m.VY >= m.VX then
+		-- portrait: up the right edge above the RUN button: ATTACK, then [SPECIAL][ELEMENT], then DASH
+		local right = vx - 10 * f
+		local base = max(r.jump[4], r.run[4]) + gap + 2
+		out.Attack = at(right - bigPx / 2 - 4 * f, base + bigPx / 2, big)
+		local row2 = base + bigPx + gap
+		out.Element = at(right - smallPx / 2, row2 + smallPx / 2, small)
+		out.Special = at(right - smallPx - gap - smallPx / 2, row2 + smallPx / 2, small)
+		local row3 = row2 + smallPx + gap
+		out.Dash = at(right - smallPx / 2, row3 + smallPx / 2, small)
+	else
+		-- landscape: [SPECIAL][ATTACK] left of the jump button (the bottom strip), ELEMENT then DASH above ATTACK
+		local left = r.jump[1] - gap
+		local base = r.jump[2]
+		out.Attack = at(left - bigPx / 2, base + bigPx / 2, big)
+		out.Special = at(left - bigPx - gap - smallPx / 2, base + smallPx / 2, small)
+		local row2 = base + bigPx + gap
+		out.Element = at(left - bigPx / 2, row2 + smallPx / 2, small)
+		out.Dash = at(left - bigPx / 2, row2 + smallPx + gap + smallPx / 2, small)
+	end
+	out.w, out.h = 10, 10
+	return out
+end
+
+----------------------------------------------------------------------
 -- (re)builds the HUD for the drawn battle and lays it out for the screen
+----------------------------------------------------------------------
 function Hud.Rebuild()
 	local B = St.battle
 	if not Hud.Ensure() then
@@ -2887,271 +3437,448 @@ function Hud.Rebuild()
 		Hud.top.Visible = false
 		Hud.team.Visible = false
 		Hud.cmd.Visible = false
-		Hud.teamPlace = nil
+		Hud.enemies.Visible = false
 		Hud.SetMenuHidden(false)
+		Leave.Place(m, nil, false)
 		return
 	end
 	local isFighting = B.Fighter and not B.ended
-	-- between two ring rounds the top card and the team stay (no flicker); only the commands go
+	-- between two ring rounds the top card and the fighter card stay (no flicker); the commands go
 	local between = B.Fighter and B.ended and B.ringNext ~= nil
-	Hud.teamPlace = nil
-	local mine, enemies = Hud.Lists(B)
-	Hud.mineList = mine
-	Hud.enemyList = enemies
-	-- top card ------------------------------------------------------------------------------
-	local top = Hud.top
-	local topW = m.Compact and min(K.TOP_W_COMPACT, m.W - 16) or K.TOP_W
-	top.Visible = not B.ended or not B.Fighter or between
-	top.Position = UDim2.new(0.5, 0, 0, 6)
-	if not Hud.topBuilt then
-		Hud.topBuilt = true
-		Hud.mode = smallPill(top, "", COLORS.Ally, { Name = "Mode", Position = UDim2.fromOffset(K.PAD, 10) })
-		Hud.title = label(top, "", "Heading", 22, { Name = "Title", TextXAlignment = Enum.TextXAlignment.Left, TextTruncate = Enum.TextTruncate.AtEnd })
-		Hud.timer = label(top, "", "Display", 26, { Name = "Timer", TextXAlignment = Enum.TextXAlignment.Right })
-		Hud.bossBar = bar(top, "BossHp", 28, COLORS.Enemy, { TextSize = 18 })
-		Hud.pills = make("Frame", { Name = "Pills", BackgroundTransparency = 1 }, top)
-		make("UIListLayout", { FillDirection = Enum.FillDirection.Horizontal, Padding = UDim.new(0, 6), SortOrder = Enum.SortOrder.LayoutOrder, VerticalAlignment = Enum.VerticalAlignment.Center }, Hud.pills)
-		Hud.bossElement = smallPill(Hud.pills, "", COLORS.Enemy, { Name = "Element", LayoutOrder = 1 })
-		Hud.enragePill = smallPill(Hud.pills, "ENRAGED", COLORS.Enemy, { Name = "Enraged", LayoutOrder = 2, Visible = false })
-		Hud.minionPill = smallPill(Hud.pills, "", Color3.fromRGB(150, 110, 220), { Name = "Minions", LayoutOrder = 3, Visible = false })
-		Hud.playersPill = smallPill(Hud.pills, "", COLORS.Ally, { Name = "Players", LayoutOrder = 4, Visible = false })
-		Hud.sideBars = {
-			bar(top, "Side1", 22, COLORS.Ally, { TextSize = 15 }),
-			bar(top, "Side2", 22, COLORS.Enemy, { TextSize = 15 }),
-		}
-		Ring.BuildInfo(top)
+	local curBottom, curLeft, curRight = Hud.CurrencyTop(m)
+	local topY = K.EDGE
+	-- (a landscape phone's currency pills sit in the top band: stay below them where they reach down)
+	local cardW = m.Compact and K.FC_W_COMPACT or K.FC_W
+	Hud.fcW = nil
+	if m.Compact and curBottom > 0 and curLeft >= K.EDGE + 208 and curLeft < K.EDGE + cardW + 8 then
+		-- (a phone with the currency pills at the top right: a narrower fighter card fits beside them)
+		Hud.fcW = curLeft - K.EDGE - 8
+		cardW = Hud.fcW
 	end
-	local y = K.PAD
-	local pillSize = max(15, math.ceil(K.MIN_TEXT_PX / max(0.05, m.F)))
-	local modeW = 30 + textWidth(Hud.ModeText(B), pillSize) * 1.2
-	Hud.title.Position = UDim2.fromOffset(K.PAD + modeW + 10, y)
-	Hud.title.Size = UDim2.fromOffset(topW - 2 * K.PAD - modeW - 10 - 84, 26)
-	Hud.timer.Position = UDim2.new(1, -K.PAD - 80, 0, y - 2)
-	Hud.timer.Size = UDim2.fromOffset(80, 30)
-	y = y + 34
-	local raid = B.Mode == "Raid" and B.boss ~= nil
-	Hud.bossBar.Root.Visible = raid
-	Hud.pills.Visible = raid
-	Hud.sideBars[1].Root.Visible = false
-	Hud.sideBars[2].Root.Visible = false
-	for _, chip in ipairs(Hud.chips) do
-		chip.Frame.Visible = false
-	end
-	if raid then
-		Hud.bossBar.Root.Position = UDim2.fromOffset(K.PAD, y)
-		Hud.bossBar.Root.Size = UDim2.fromOffset(topW - 2 * K.PAD, 28)
-		Hud.bossBar.SetColor(elementColor(B.boss.element))
-		y = y + 34
-		Hud.pills.Position = UDim2.fromOffset(K.PAD, y)
-		Hud.pills.Size = UDim2.fromOffset(topW - 2 * K.PAD, 24)
-		setText(Hud.bossElement, tostring(B.boss.element or "?"))
-		Hud.bossElement.BackgroundColor3 = elementColor(B.boss.element)
-		y = y + 28
-	elseif not isFighting and not between then
-		-- spectator of a duel / trial: one HP bar per side
-		for s = 1, 2 do
-			local sb = Hud.sideBars[s]
-			sb.Root.Visible = true
-			sb.Root.Position = UDim2.fromOffset(K.PAD + (s - 1) * ((topW - 2 * K.PAD) / 2 + 4), y)
-			sb.Root.Size = UDim2.fromOffset((topW - 2 * K.PAD) / 2 - 4, 22)
-		end
-		y = y + 28
-	else
-		local n = min(#enemies, 6)
-		local gap = 6
-		local cw = min(150, floor((topW - 2 * K.PAD - (n - 1) * gap) / max(1, n)))
-		local x0 = floor((topW - (n * cw + (n - 1) * gap)) / 2)
-		for i = 1, n do
-			local chip = chipFor(i)
-			local u = enemies[i]
-			chip.unitId = u.id
-			chip.Frame.Visible = true
-			chip.Frame.Size = UDim2.fromOffset(cw, 50)
-			chip.Frame.Position = UDim2.fromOffset(x0 + (i - 1) * (cw + gap), y)
-			chip.Stripe.BackgroundColor3 = elementColor(u.element)
-			setText(chip.Name, u.name)
-			chip.boss = u.kind == "MiniBoss"
-		end
-		y = y + (n > 0 and 56 or 0)
-	end
-	y = Ring.LayoutInfo(B, topW, y)
-	top.Size = UDim2.fromOffset(topW, y + K.PAD - 4)
-	Hud.topH = y + K.PAD - 4
-	-- team + commands ---------------------------------------------------------------------------
+	local leftY = (curBottom > 0 and curLeft < K.EDGE + cardW + 8) and (curBottom + 6) or topY
+	-- fighter card + helpers (top left) ----------------------------------------------------------
 	Hud.team.Visible = isFighting or between
-	Hud.cmd.Visible = isFighting
+	local teamW, teamH = 0, 0
 	if isFighting or between then
-		for i, u in ipairs(mine) do
-			local row = rowFor(i)
-			row.slot = u.slot
-			row.unitId = u.id
-			row.Chip.BackgroundColor3 = elementColor(u.element)
-			setText(row.ChipText, Hud.KeyText("Special", u.slot))
-			if m.Compact then
-				setText(row.Name, u.name)
-			else
-				-- the level first (muted), so a long name is what gets cut
-				setText(row.Name, '<font color="#C9D6F2">Lv ' .. tostring(floor(u.level)) .. "</font> " .. u.name)
-			end
-			setText(row.Level, "Lv " .. tostring(floor(u.level)))
-			setText(row.Element, tostring(u.element or "?"))
-			row.Element.BackgroundColor3 = elementColor(u.element)
-			local special = u.special
-			row.kind = special and special.Kind or nil
-			row.subText = special and tostring(special.Name or special.Kind) or "No special"
-			setText(row.SpecialSub, row.subText)
-			row.stateKey = nil
-			row.last = nil
-		end
-		-- where the compact cards go: a row under the top card, unless that row would reach the middle of the screen
-		-- (a landscape phone): then a 2-column grid at the top-left edge, where the menu column steps aside
-		local place = m.Compact and "Top" or "Right"
-		local gridW = nil
-		if m.Compact and m.Landscape then
-			local rowBottom = m.Inset + (6 + Hud.topH + 8 + K.CARD_H) * m.F
-			if rowBottom > m.VY * K.ROW_MAX_Y then
-				place = "Left"
-				gridW = floor((m.W - topW) / 2) - K.SIDE_X - 10
-			end
-		end
-		Hud.teamPlace = place
-		local tw, th = Hud.LayoutTeam(m, mine, place == "Left" and 2 or nil, gridW)
+		teamW, teamH = Hud.LayoutFighter(B, m)
+		-- a wide screen keeps the menu tiles (left centre): the fighter block starts right of their column
+		local teamX = K.EDGE
 		if not m.Compact then
-			-- the team card: a panel behind the rows, bottom right
-			if not Hud.teamBack then
-				Hud.teamBack = card(Hud.team, "Back", { ZIndex = 0 })
-				Hud.teamTitle = label(Hud.team, "YOUR TEAM", "Heading", 20, { Name = "Header", Position = UDim2.fromOffset(K.PAD + 4, K.PAD), Size = UDim2.fromOffset(160, 26), TextXAlignment = Enum.TextXAlignment.Left })
-				Hud.focusPill = make("TextButton", { Name = "Focus", Text = "", AutoButtonColor = false, BackgroundColor3 = COLORS.Enemy, BorderSizePixel = 0, AutomaticSize = Enum.AutomaticSize.X, Size = UDim2.fromOffset(0, 26), AnchorPoint = Vector2.new(1, 0) }, Hud.team)
-				Theme.Corner(Hud.focusPill, UDim.new(0, 13))
-				Theme.Stroke(Hud.focusPill, COLORS.Navy, 2, 0)
-				make("UIPadding", { PaddingLeft = UDim.new(0, 10), PaddingRight = UDim.new(0, 10) }, Hud.focusPill)
-				Hud.focusText = label(Hud.focusPill, "", "Heading", 15, { Name = "Text", AutomaticSize = Enum.AutomaticSize.X, Size = UDim2.fromOffset(0, 26) })
-				Hud.focusPill.Activated:Connect(function()
-					BattleController.Focus(nil)
-				end)
-			end
-			Hud.teamBack.Visible = true
-			Hud.teamTitle.Visible = true
-			Hud.teamBack.Size = UDim2.fromScale(1, 1)
-			Hud.team.AnchorPoint = Vector2.new(1, 1)
-			Hud.team.Size = UDim2.fromOffset(tw, th)
-			Hud.team.Position = UDim2.new(1, -K.EDGE, 1, -K.EDGE)
-			Hud.focusPill.Position = UDim2.new(1, -K.PAD - 2, 0, K.PAD)
-			-- commands above the team card
-			Hud.cmd.AnchorPoint = Vector2.new(1, 1)
-			Hud.cmd.Size = UDim2.fromOffset(tw, K.CMD_H)
-			Hud.cmd.Position = UDim2.new(1, -K.EDGE, 1, -K.EDGE - th - 14)
-			local bw = floor((tw - 12) / 2)
-			Hud.attack.Size = UDim2.fromOffset(bw, K.CMD_H)
-			Hud.attack.Position = UDim2.fromOffset(0, 0)
-			Hud.retreat.Size = UDim2.fromOffset(bw, K.CMD_H)
-			Hud.retreat.Position = UDim2.fromOffset(bw + 12, 0)
-			Hud.attack.TextSize = 24
-			Hud.retreat.TextSize = 24
-			Hud.attack:SetAttribute("BaseText", 24)
-			Hud.retreat:SetAttribute("BaseText", 24)
-		else
-			if Hud.teamBack then
-				Hud.teamBack.Visible = false
-				Hud.teamTitle.Visible = false
-				Hud.focusPill.Visible = false
-			end
-			Hud.team.AnchorPoint = Vector2.new(0.5, 0)
-			Hud.team.Size = UDim2.fromOffset(tw, th)
-			local teamY = 6 + Hud.topH + 8
-			local bw, bh = K.TOUCH_W, K.TOUCH_H
-			local cx = m.W / 2
-			if m.Landscape and cx + tw / 2 > m.W - (2 * bw + 30) then
-				cx = (m.W - (2 * bw + 30)) / 2
-			end
-			if place == "Left" then
-				Hud.team.AnchorPoint = Vector2.new(0, 0)
-				Hud.team.Position = UDim2.fromOffset(K.SIDE_X, 6)
-			else
-				Hud.team.Position = UDim2.fromOffset(cx, teamY)
-			end
-			-- big touch buttons at the right edge, between the currency pill (top right) and RUN / DASH (bottom right)
-			Hud.cmd.AnchorPoint = Vector2.new(1, 0)
-			if m.Landscape then
-				Hud.cmd.Size = UDim2.fromOffset(2 * bw + 10, bh)
-				Hud.cmd.Position = UDim2.fromOffset(m.W - 8, floor(m.H * 0.3))
-				Hud.attack.Position = UDim2.fromOffset(0, 0)
-				Hud.retreat.Position = UDim2.fromOffset(bw + 10, 0)
-			else
-				Hud.cmd.Size = UDim2.fromOffset(bw, 2 * bh + 12)
-				Hud.cmd.Position = UDim2.fromOffset(m.W - 8, floor(m.H * 0.47))
-				Hud.attack.Position = UDim2.fromOffset(0, 0)
-				Hud.retreat.Position = UDim2.fromOffset(0, bh + 12)
-			end
-			Hud.attack.Size = UDim2.fromOffset(bw, bh)
-			Hud.retreat.Size = UDim2.fromOffset(bw, bh)
-			Hud.attack.TextSize = 20
-			Hud.retreat.TextSize = 20
-			Hud.attack:SetAttribute("BaseText", 20)
-			Hud.retreat:SetAttribute("BaseText", 20)
+			teamX = max(K.EDGE, Hud.MenuRight(m) + 10)
 		end
-		Hud.attackKey.Visible = not m.Touch
-		Hud.retreatKey.Visible = not m.Touch
+		Hud.team.Position = UDim2.fromOffset(teamX, leftY)
+		Hud.team.Size = UDim2.fromOffset(teamW, teamH)
+		Hud.FillFighter(B)
+	end
+	Hud.teamPlace = (isFighting or between) and "TopLeft" or nil
+	-- enemy list (right) -----------------------------------------------------------------------------
+	local rightY = (curBottom > 0 and curRight > m.W * m.F - (K.ROW_W + 40) * m.F) and (curBottom + 6) or topY
+	Hud.enemies.Visible = isFighting
+	local listH = 0
+	if isFighting then
+		listH = Hud.LayoutEnemies(B, m)
+		Hud.enemies.AnchorPoint = Vector2.new(1, 0)
+		Hud.enemies.Position = UDim2.fromOffset(m.W - K.EDGE, rightY)
+	end
+	-- top card (mode line / boss bar) -------------------------------------------------------------
+	Hud.LayoutTop(B, m, teamW, listH, rightY, isFighting or between)
+	-- action cluster ---------------------------------------------------------------------------------
+	Hud.cmd.Visible = isFighting
+	if isFighting then
+		local L = Hud.ClusterLayout(m)
+		Hud.cmd.Size = UDim2.fromOffset(L.w, L.h)
+		Hud.cmd.Position = UDim2.fromOffset(m.W, m.H)
+		for _, kind in ipairs(ACTIONS) do
+			local A = Hud.buttons[kind]
+			local spec = L[kind]
+			local d = spec[3]
+			A.Button.Size = UDim2.fromOffset(d, d)
+			A.Button.Position = UDim2.new(1, spec[1], 1, spec[2])
+			A.Glyph.TextSize = floor(d * 0.4)
+			A.Glyph:SetAttribute("BaseText", A.Glyph.TextSize)
+			A.Count.TextSize = floor(d * 0.36)
+			A.Count:SetAttribute("BaseText", A.Count.TextSize)
+			A.Caption.Visible = not m.Touch
+			A.Caption.Position = UDim2.new(0.5, 0, 1, 2)
+			A.Caption.Size = UDim2.fromOffset(d + 24, 20)
+			A.Caption.TextTruncate = Enum.TextTruncate.AtEnd
+			A.Key.Visible = not m.Touch
+			A.Key.Position = UDim2.new(0.15, 0, 0.15, 0)
+		end
+		Hud.Captions(B)
 		Hud.Keys()
 	end
-	Hud.cmd.Visible = isFighting
-	Hud.SetMenuHidden((isFighting or between) and Hud.teamPlace == "Left")
+	Hud.SetMenuHidden((isFighting or between) and m.Compact) -- a phone: the menu column steps aside (wide screens keep it)
 	Leave.Place(m, B, isFighting)
 	Ring.PlaceNext(B)
-	Hud.TrimButton(Hud.attack, m.Compact)
-	Hud.TrimButton(Hud.retreat, m.Compact)
 	Hud.FixText(Hud.root, m.F)
 	Hud.last = {}
+	Hud.enemyDirty = false
 	Hud.Update(B, os.clock(), true)
 end
 
--- compact buttons: less side padding (CloudUI pads 10 px), so ATTACK / RETREAT fit at a readable size
-function Hud.TrimButton(b, compact)
-	local pad = b and b:FindFirstChildOfClass("UIPadding")
-	if pad then
-		pad.PaddingLeft = UDim.new(0, compact and 3 or 10)
-		pad.PaddingRight = UDim.new(0, compact and 3 or 10)
+-- the fighter card + helper cells (sizes + positions; Team-local); returns the Team block's size
+function Hud.LayoutFighter(B, m)
+	local F = Hud.F
+	local compact = m.Compact
+	local w = compact and (Hud.fcW or K.FC_W_COMPACT) or K.FC_W
+	local pad = compact and 10 or 16
+	local barW = w - 2 * pad
+	local y = compact and 8 or 12
+	local nameSize = compact and 20 or 26
+	local nameH = compact and 26 or 32
+	F.Name.TextSize = nameSize
+	F.Name:SetAttribute("BaseText", nameSize)
+	local minSize = math.ceil(K.MIN_TEXT_PX / max(0.05, m.F))
+	local lvSize = max(compact and 15 or 17, minSize)
+	local lvW = floor(textWidth("Lv 100", lvSize) * 0.9) + 14
+	local badge = compact and 22 or 26
+	local starsW = (B.fighterEvo or 0) > 0 and (compact and 30 or 38) or 0
+	local nameW = barW - lvW - badge - starsW - 16
+	F.Name.Position = UDim2.fromOffset(pad, y)
+	F.Name.Size = UDim2.fromOffset(nameW, nameH)
+	F.Level.Size = UDim2.fromOffset(lvW, compact and 22 or 26)
+	F.Level.Position = UDim2.fromOffset(pad + nameW + 6, y + (nameH - (compact and 22 or 26)) / 2)
+	F.Level.TextSize = lvSize
+	F.Level:SetAttribute("BaseText", lvSize)
+	F.Element.Size = UDim2.fromOffset(badge, badge)
+	F.Element.Position = UDim2.fromOffset(pad + nameW + 6 + lvW + 5, y + (nameH - badge) / 2)
+	F.ElementGlyph.TextSize = floor(badge * 0.6)
+	F.ElementGlyph:SetAttribute("BaseText", F.ElementGlyph.TextSize)
+	F.Stars.Position = UDim2.fromOffset(pad + nameW + 6 + lvW + 5 + badge + 4, y)
+	F.Stars.Size = UDim2.fromOffset(starsW, nameH)
+	F.Stars.Visible = starsW > 0
+	y = y + nameH + (compact and 4 or 6)
+	local hpH = compact and 18 or 22
+	F.Hp.Position = UDim2.fromOffset(pad, y)
+	F.Hp.Size = UDim2.fromOffset(barW, hpH)
+	local hpText = compact and 14 or 16
+	F.HpTag.TextSize = hpText
+	F.HpText.TextSize = hpText
+	F.HpTag:SetAttribute("BaseText", hpText)
+	F.HpText:SetAttribute("BaseText", hpText)
+	F.HpTag.Position = UDim2.fromOffset(8, 0)
+	F.HpTag.Size = UDim2.new(0, 40, 1, 0)
+	F.HpText.Position = UDim2.fromOffset(40, 0)
+	F.HpText.Size = UDim2.new(1, -48, 1, 0)
+	y = y + hpH + (compact and 5 or 7)
+	local enH = compact and 10 or 14
+	F.Energy.Position = UDim2.fromOffset(pad, y)
+	F.Energy.Size = UDim2.fromOffset(barW, enH)
+	y = y + enH + 3
+	local capH = compact and 18 or 22
+	local hs = compact and 18 or 22
+	-- the caption ends where the lives hearts (anchored right) begin; a narrow card (a phone with the currency
+	-- pills top right) drops the "ENERGY" word, so "98/100" never runs under the hearts
+	local capW = max(0, barW - (3 * hs + 4) - 6)
+	local capSize = compact and 14 or 15
+	F.EnergyText.Position = UDim2.fromOffset(pad, y)
+	F.EnergyText.Size = UDim2.fromOffset(capW, capH)
+	F.EnergyText.TextSize = capSize
+	F.EnergyText.TextTruncate = Enum.TextTruncate.AtEnd
+	F.EnergyText:SetAttribute("BaseText", capSize)
+	Hud.energyShort = textWidth("ENERGY " .. METER_MAX .. "/" .. METER_MAX, max(capSize, minSize)) > capW
+	F.Lives.AnchorPoint = Vector2.new(1, 0)
+	F.Lives.Position = UDim2.fromOffset(pad + barW, y + (capH - hs) / 2)
+	F.Lives.Size = UDim2.fromOffset(3 * hs + 4, hs)
+	for i, h in ipairs(F.Hearts) do
+		h.Size = UDim2.fromOffset(hs, hs)
+		h.Position = UDim2.fromOffset((i - 1) * (hs + 2), 0)
+		h.TextSize = hs - 2
+		h:SetAttribute("BaseText", hs - 2)
+	end
+	y = y + capH + (compact and 6 or 10)
+	local cardH = y
+	Hud.fighterCard.Root.Size = UDim2.fromOffset(w, cardH)
+	Hud.fighterCard.Root.Position = UDim2.fromOffset(0, 0)
+	-- helpers: side by side under the card (wide) / a column (compact)
+	local disc = compact and K.PORTRAIT_COMPACT or K.PORTRAIT
+	local ringD = disc + (compact and 8 or 10)
+	local cellW = compact and K.HELPER_W_COMPACT or K.HELPER_W
+	if compact then
+		cellW = max(ringD + 70, min(cellW, floor(m.W * 0.3) - K.EDGE)) -- (a phone: the column ends before the centre 40%)
+	end
+	Hud.helperCellW = cellW
+	local cellH = compact and max(ringD + 4, 56) or (ringD + 70)
+	local hy = cardH + (compact and 8 or 10)
+	Hud.helperHolder.Position = UDim2.fromOffset(0, hy)
+	local shown = 0
+	for i, H in ipairs(Hud.helpers) do
+		local cell = H.Cell
+		cell.Size = UDim2.fromOffset(cellW, cellH)
+		if compact then
+			-- [portrait] [buff name / SWAP chip]: a narrow column (clear of the vitals card on a landscape phone)
+			cell.Position = UDim2.fromOffset(0, (i - 1) * (cellH + 6))
+			H.Disc.Position = UDim2.fromOffset(0, 2)
+			H.Disc.Size = UDim2.fromOffset(ringD, ringD)
+			H.Level.Position = UDim2.fromOffset(ringD / 2 - 24, ringD - 14)
+			H.Level.Size = UDim2.fromOffset(48, 18)
+			H.Buff.Font = Theme.Fonts.Label
+			H.Buff.Position = UDim2.fromOffset(ringD + 6, 0)
+			H.Buff.Size = UDim2.fromOffset(cellW - ringD - 6, 22)
+			H.Buff.TextXAlignment = Enum.TextXAlignment.Left
+			H.Swap.Position = UDim2.fromOffset(ringD + 6, 24)
+			H.Swap.Size = UDim2.fromOffset(cellW - ringD - 6, 30)
+			H.Key.Position = UDim2.fromOffset(-4, -2)
+		else
+			cell.Position = UDim2.fromOffset((i - 1) * (cellW + 12), 0)
+			H.Disc.Position = UDim2.fromOffset((cellW - ringD) / 2, 0)
+			H.Disc.Size = UDim2.fromOffset(ringD, ringD)
+			H.Level.Position = UDim2.fromOffset(cellW / 2 - 28, ringD - 12)
+			H.Level.Size = UDim2.fromOffset(56, 20)
+			H.Buff.Font = Theme.Fonts.Heading
+			H.Buff.Position = UDim2.fromOffset(0, ringD + 12)
+			H.Buff.Size = UDim2.fromOffset(cellW, 20)
+			H.Buff.TextXAlignment = Enum.TextXAlignment.Center
+			H.Swap.Position = UDim2.fromOffset((cellW - 104) / 2, ringD + 36)
+			H.Swap.Size = UDim2.fromOffset(104, 28)
+			H.Key.Position = UDim2.fromOffset((cellW - ringD) / 2 - 6, -4)
+		end
+		H.Ring.Root.Size = UDim2.fromOffset(ringD, ringD)
+		H.Face.Size = UDim2.fromOffset(disc, disc)
+		H.Initial.TextSize = floor(disc * 0.45)
+		H.Initial:SetAttribute("BaseText", H.Initial.TextSize)
+		H.Count.TextSize = floor(disc * 0.42)
+		H.Count:SetAttribute("BaseText", H.Count.TextSize)
+		H.Key.Visible = not m.Touch
+		if cell.Visible then
+			shown = shown + 1
+		end
+	end
+	local helpersH = compact and (2 * cellH + 6) or cellH
+	Hud.helperHolder.Size = UDim2.fromOffset(compact and cellW or (2 * cellW + 12), helpersH)
+	return max(w, compact and cellW or (2 * cellW + 12)), hy + helpersH
+end
+
+-- the fighter card's static texts (name, level, element, stars) and the helper cells' pets (on Start / Swap)
+function Hud.FillFighter(B)
+	local F = Hud.F
+	local f = B.fighterId and B.units[B.fighterId]
+	if f then
+		setText(F.Name, f.name)
+		setText(F.Level, "Lv " .. tostring(floor(f.level)))
+		F.Element.BackgroundColor3 = elementColor(f.element)
+		setText(F.ElementGlyph, ELEMENT_GLYPH[f.element] or "")
+		setText(F.Stars, string.rep(GLYPH.Star, clamp(f.evo or 0, 0, 2)))
+		if Hud.fighterCard.SetColor then
+			pcall(Hud.fighterCard.SetColor, elementColor(f.element):Lerp(Theme.Neon.Green or COLORS.Mine, 0.55))
+		end
+	end
+	local bench = Hud.Bench(B)
+	for i, H in ipairs(Hud.helpers) do
+		local u = bench[i]
+		H.unit = u
+		H.Cell.Visible = u ~= nil
+		if u then
+			H.slot = u.slot
+			setText(H.Level, "Lv " .. tostring(floor(u.level)))
+			local buff = type(u.info.buff) == "table" and u.info.buff or nil
+			H.buffName = buff and string.upper(tostring(buff.Name or buff.Kind or "BUFF")) or "BUFF"
+			setText(H.Buff, H.buffName)
+			local c = elementColor(u.element)
+			H.FaceStroke.Color = c
+			setPie(H.Ring, H.Ring.frac >= 0 and H.Ring.frac or 1, c)
+			Hud.Portrait(H, u)
+		end
+		H.stateKey = nil
 	end
 end
 
-function Hud.Keys()
-	if not Hud.attackKey then
-		return
+-- my two helpers (benched units, by slot), as the portraits show them
+function Hud.Bench(B)
+	local out = {}
+	for slot = 1, 4 do
+		local u = B.mine[slot]
+		if u and u.id ~= B.fighterId then
+			out[#out + 1] = u
+		end
 	end
-	local a = Hud.attackKey:FindFirstChild("Text")
-	if a then
-		setText(a, Hud.KeyText("Attack"))
-	end
-	local r = Hud.retreatKey:FindFirstChild("Text")
-	if r then
-		setText(r, Hud.KeyText("Retreat"))
-	end
-	-- the slot chip of a team row is the key of its SPECIAL (1-4, or LB / RB / LT / RT on a gamepad)
-	for _, row in ipairs(Hud.rows) do
-		if row.ChipText and row.slot then
-			setText(row.ChipText, Hud.KeyText("Special", row.slot))
+	return out
+end
+
+-- the action captions: the element attack's name, the fighter's special
+function Hud.Captions(B)
+	local f = B.fighterId and B.units[B.fighterId]
+	local ea = f and type(f.info.elementAttack) == "table" and f.info.elementAttack or nil
+	local caps = {
+		Attack = "ATTACK",
+		Element = ea and string.upper(tostring(ea.Name)) or "ELEMENT",
+		Special = "SPECIAL",
+		Dash = "DASH",
+	}
+	for kind, A in pairs(Hud.buttons) do
+		setText(A.Caption, caps[kind] or kind)
+		if kind == "Element" and f then
+			setText(A.Glyph, ELEMENT_GLYPH[f.element] or GLYPH.Special)
+			local c = elementColor(f.element)
+			A.FaceGradient.Color = ColorSequence.new(Theme.Darken(c, 0.3), Theme.Darken(c, 0.7))
+			A.FaceStroke.Color = Theme.Lighten(c, 0.25)
+			setPie(A.Ring, A.Ring.frac >= 0 and A.Ring.frac or 1, c)
 		end
 	end
 end
 
--- per-frame HUD values (writes only on change)
+-- the top card: the mode line + timer (+ the boss bar in raids / boss rooms, the ring pills); returns nothing
+function Hud.LayoutTop(B, m, teamW, listH, rightY, show)
+	local top = Hud.top
+	local spectator = not B.Fighter
+	top.Visible = show or spectator
+	if not top.Visible then
+		return
+	end
+	local bossUnit = Hud.BossUnit(B)
+	local w = m.Compact and K.TOP_W_COMPACT or K.TOP_W
+	local x, y, anchor = m.W / 2, K.EDGE, 0.5
+	local underList, leftTop = false, false
+	local curBottom, curLeft, curRight = Hud.CurrencyTop(m)
+	if m.Compact then
+		-- between the fighter card and the enemy list when there is room, else under the enemy list (right)
+		local free = m.W - (K.EDGE + teamW + 12) - (K.ROW_W_COMPACT + K.EDGE + 12)
+		if free >= w then
+			x = K.EDGE + teamW + 12 + free / 2
+			if m.Landscape and Leave.Allowed(B) and free >= w + 8 + K.LEAVE_W_TOP then
+				x = K.EDGE + teamW + 12 + (free - 8 - K.LEAVE_W_TOP) / 2 -- room for LEAVE on its right
+			end
+		elseif spectator then
+			w = min(w, m.W - 2 * K.EDGE)
+		else
+			-- a tall phone: under the enemy list at the right edge, clear of the helper column on the left
+			w = min(w, m.W - K.EDGE - K.HELPER_W_COMPACT - 24)
+			x, anchor = m.W - K.EDGE, 1
+			y = rightY + listH + 10
+			underList = listH > 0
+			local guess = K.MODE_H + 6 + (bossUnit and 32 or 0) + ((B.Mode == "Ring") and 30 or 0)
+			if underList and not m.Landscape and Hud.team.Visible and Hud.fighterCard and y + guess > m.H * 0.3 - 4 then
+				-- (the right column starts low - currency pills up there - and would reach the centre band: the top
+				-- card goes under the fighter card instead, the helper column moves down under it)
+				leftTop = true
+				w = min(w, m.W - K.EDGE - K.ROW_W_COMPACT - 8 - K.EDGE)
+				x, anchor = Hud.team.Position.X.Offset, 0
+				y = Hud.team.Position.Y.Offset + Hud.fighterCard.Root.Size.Y.Offset + 8
+				underList = false
+			end
+			if listH <= 0 and Hud.team.Visible and Hud.fighterCard then
+				-- (between two ring rounds the enemy list is gone: stay under the fighter card, beside the helpers)
+				y = max(y, Hud.team.Position.Y.Offset + Hud.fighterCard.Root.Size.Y.Offset + 8)
+			end
+		end
+	end
+	-- (a landscape phone's currency pills in the top band: stay under them where they overlap)
+	if curBottom > 0 and anchor == 0.5 and curRight > x - w / 2 and curLeft < x + w / 2 then
+		y = max(y, curBottom + 4)
+	end
+	top.AnchorPoint = Vector2.new(anchor, 0)
+	top.Position = UDim2.fromOffset(x, y)
+	local modeText, modeColor = Hud.ModeText(B)
+	Hud.modeColor = modeColor
+	if Hud.modeCard.SetColor then
+		pcall(Hud.modeCard.SetColor, modeColor)
+	end
+	local mh = K.MODE_H
+	Hud.modeCard.Root.Size = UDim2.fromOffset(w, mh)
+	Hud.mode.Position = UDim2.fromOffset(14, 0)
+	Hud.mode.Size = UDim2.fromOffset(w - 14 - 76, mh)
+	Hud.mode.TextColor3 = COLORS.White
+	Hud.timer.Position = UDim2.new(1, -78, 0, 0)
+	Hud.timer.Size = UDim2.fromOffset(66, mh)
+	local yy = mh + 6
+	local compact = m.Compact
+	Hud.boss.Visible = bossUnit ~= nil
+	-- (a phone keeps the top card short: the boss's name goes into its bar, only the wave / ENRAGED pills stay)
+	Hud.pills.Visible = not compact and (bossUnit ~= nil or B.Mode == "Dungeon")
+	Hud.compactTop = compact
+	local nameH = compact and 0 or 24
+	if bossUnit then
+		Hud.boss.Position = UDim2.fromOffset(0, yy)
+		Hud.boss.Size = UDim2.fromOffset(w, nameH + 28)
+		Hud.bossName.Visible = not compact
+		Hud.bossName.Position = UDim2.fromOffset(4, 0)
+		Hud.bossName.Size = UDim2.fromOffset(w - 8, 22)
+		Hud.bossTrack.Position = UDim2.fromOffset(0, nameH)
+		Hud.bossTrack.Size = UDim2.fromOffset(w, 26)
+		Hud.bossFill.BackgroundColor3 = elementColor(bossUnit.element):Lerp(COLORS.Enemy, 0.5)
+		setText(Hud.bossName, (bossUnit.kind == "MiniBoss" and (GLYPH.Crown .. " ") or "") .. bossUnit.name)
+		setText(Hud.bossElement, tostring(bossUnit.element or "?"))
+		Hud.bossElement.BackgroundColor3 = elementColor(bossUnit.element)
+		yy = yy + nameH + 32
+	end
+	if Hud.pills.Visible then
+		Hud.pills.Position = UDim2.fromOffset(0, yy)
+		Hud.pills.Size = UDim2.fromOffset(w, 24)
+		Hud.bossElement.Visible = bossUnit ~= nil and not compact
+		yy = yy + 28
+	end
+	yy = Ring.LayoutInfo(B, w, yy)
+	top.Size = UDim2.fromOffset(w, yy)
+	if leftTop then
+		local fcH = Hud.fighterCard.Root.Size.Y.Offset
+		Hud.helperHolder.Position = UDim2.fromOffset(0, fcH + 8 + yy + 8)
+	end
+	if underList and y + yy > m.H * 0.3 - 4 then
+		-- (a tall phone whose right column starts low: the top card first, the enemy list under it, both above
+		-- the centre band)
+		y = rightY
+		top.Position = UDim2.fromOffset(x, y)
+		Hud.enemies.Position = UDim2.fromOffset(m.W - K.EDGE, y + yy + 8)
+	end
+	Hud.topH = yy
+	Hud.topRect = { x - anchor * w, y, x - anchor * w + w, y + yy }
+end
+
+-- the boss the top card shows: the raid boss, else a dungeon / wave mini-boss that is still up
+function Hud.BossUnit(B)
+	if B.boss then
+		return B.boss
+	end
+	for _, u in ipairs(B.list) do
+		if not u.ally and u.kind == "MiniBoss" and u.hp > 0 and u.state ~= S_DOWN then
+			return u
+		end
+	end
+	return nil
+end
+
+function Hud.Keys()
+	for kind, A in pairs(Hud.buttons or {}) do
+		local t = A.Key and A.Key:FindFirstChild("Text")
+		if t then
+			setText(t, Hud.KeyText(kind))
+		end
+	end
+	for i, H in ipairs(Hud.helpers or {}) do
+		local t = H.Key and H.Key:FindFirstChild("Text")
+		if t then
+			setText(t, Hud.KeyText("Buff", i))
+		end
+	end
+end
+
+-- seconds left of a cooldown (B.cd[kind], or the buff of helper slot), clamped >= 0
+local function cdLeft(B, kind, slot, now)
+	local cd = B.cd
+	local readyAt = (kind == "Buff") and (cd.Buff[slot] or 0) or (cd[kind] or 0)
+	return max(0, readyAt - now)
+end
+
+local function cdLen(B, kind, slot)
+	local cd = B.cdLen
+	if kind == "Buff" then
+		return max(0.1, cd.Buff[slot] or 15)
+	end
+	return max(0.1, cd[kind] or 1)
+end
+
+-- per-frame HUD values: bars / texts only when they change, rings at 10 Hz
 function Hud.Update(B, now, force)
 	if not Hud.gui or not B then
 		return
 	end
 	local last = Hud.last or {}
 	Hud.last = last
-	-- top card
-	local modeText, modeColor = Hud.ModeText(B)
+	local modeText = Hud.ModeText(B)
 	if last.mode ~= modeText then
 		last.mode = modeText
 		Hud.mode.Text = modeText
-		Hud.mode.BackgroundColor3 = modeColor
-	end
-	local title = Hud.TitleText(B)
-	if last.title ~= title then
-		last.title = title
-		Hud.title.Text = title
 	end
 	local left = B.TimeLimit > 0 and (B.TimeLimit - B.renderT) or 0
 	local timerText = B.TimeLimit > 0 and fmtTime(left) or ""
@@ -3160,23 +3887,26 @@ function Hud.Update(B, now, force)
 		Hud.timer.Text = timerText
 		Hud.timer.TextColor3 = (left < 15 and B.TimeLimit > 0) and COLORS.Enemy:Lerp(COLORS.White, 0.25) or COLORS.White
 	end
-	if B.Mode == "Raid" and B.boss then
-		local boss = B.boss
-		local frac = clamp(boss.hp / boss.maxHp, 0, 1)
-		if force or last.bossHp ~= boss.hp or last.bossMax ~= boss.maxHp then
-			last.bossHp, last.bossMax = boss.hp, boss.maxHp
-			Hud.bossBar.SetFraction(frac, false)
-			Hud.bossBar.SetText(Theme.ShortNumber(clamp(boss.hp, 0, boss.maxHp)) .. " / " .. Theme.ShortNumber(boss.maxHp))
+	local bossUnit = Hud.boss.Visible and Hud.BossUnit(B) or nil
+	if bossUnit then
+		if force or last.bossHp ~= bossUnit.hp or last.bossMax ~= bossUnit.maxHp then
+			last.bossHp, last.bossMax = bossUnit.hp, bossUnit.maxHp
+			Hud.bossFill.Size = UDim2.fromScale(max(0.002, clamp(bossUnit.hp / bossUnit.maxHp, 0, 1)), 1)
+			local fb = Hud.compactTop and 1000 or nil
+			local numbers = Theme.ShortNumber(clamp(bossUnit.hp, 0, bossUnit.maxHp), fb) .. " / " .. Theme.ShortNumber(bossUnit.maxHp, fb)
+			Hud.bossText.Text = Hud.compactTop and (bossUnit.name .. "  " .. Theme.ShortNumber(clamp(bossUnit.hp, 0, bossUnit.maxHp), fb)) or numbers
 		end
+	end
+	if Hud.pills.Visible then
 		if last.enraged ~= B.enraged then
 			last.enraged = B.enraged
-			Hud.enragePill.Visible = B.enraged
+			Hud.enragePill.Visible = B.enraged == true
 		end
 		local minions, players = 0, {}
 		for _, u in ipairs(B.list) do
 			if u.kind == "Minion" and u.hp > 0 and u.state ~= S_DOWN then
 				minions = minions + 1
-			elseif u.kind == "Pet" and u.side == 1 and u.owner ~= nil then
+			elseif u.side == 1 and u.owner ~= nil and u.kind ~= "Minion" then
 				players[u.owner] = true
 			end
 		end
@@ -3186,166 +3916,165 @@ function Hud.Update(B, now, force)
 		end
 		if last.minions ~= minions then
 			last.minions = minions
-			Hud.minionPill.Visible = minions > 0
+			Hud.minionPill.Visible = minions > 0 and not Hud.compactTop
 			Hud.minionPill.Text = "Minions x" .. minions
 		end
+		local showPlayers = (B.Mode == "Raid" or (B.Mode == "Dungeon" and pc > 1)) and not Hud.compactTop
 		if last.players ~= pc then
 			last.players = pc
-			Hud.playersPill.Visible = pc > 0
+			Hud.playersPill.Visible = showPlayers and pc > 0
 			Hud.playersPill.Text = pc == 1 and "1 player" or (pc .. " players")
 		end
-	elseif B.Spectator or (B.ended and B.Fighter) then
-		local hp, maxHp = { 0, 0 }, { 0, 0 }
-		for _, u in ipairs(B.list) do
-			local s = (u.side == 1) and 1 or 2
-			hp[s] = hp[s] + max(0, u.hp)
-			maxHp[s] = maxHp[s] + u.maxHp
+		local d = B.Dungeon
+		local waveText = ""
+		if d and num(d.Waves, 0) > 0 then
+			waveText = "Wave " .. clamp(max(num(d.Wave, 1), B.wave or 0), 1, num(d.Waves, 1)) .. "/" .. num(d.Waves, 1)
 		end
-		for s = 1, 2 do
-			local key = "side" .. s
-			local value = floor(hp[s])
-			if force or last[key] ~= value then
-				last[key] = value
-				local sb = Hud.sideBars[s]
-				sb.SetFraction(maxHp[s] > 0 and hp[s] / maxHp[s] or 0, false)
-				sb.SetText(Hud.SideName(B, s))
-			end
-		end
-	else
-		for i, u in ipairs(Hud.enemyList or {}) do
-			local chip = Hud.chips[i]
-			if chip and chip.Frame.Visible then
-				local frac = clamp(u.hp / u.maxHp, 0, 1)
-				local down = u.hp <= 0 or u.state == S_DOWN
-				setThin(chip.Hp, frac)
-				local focused = B.focus == u.id
-				local key = (down and "d" or "a") .. (focused and "f" or "")
-				if force or chip.key ~= key then
-					chip.key = key
-					chip.Frame.BackgroundColor3 = down and Color3.fromRGB(70, 74, 92) or COLORS.Panel
-					chip.Stroke.Color = focused and COLORS.Gold or (chip.boss and COLORS.Gold:Lerp(COLORS.Navy, 0.4) or COLORS.Navy)
-					chip.Stroke.Thickness = focused and 3 or 2
-					chip.Name.TextColor3 = down and COLORS.Weak or COLORS.White
-					if down then
-						chip.Name.Text = "KO"
-					else
-						chip.Name.Text = u.name
-					end
-				end
-			end
+		if last.wave ~= waveText then
+			last.wave = waveText
+			Hud.wavePill.Visible = waveText ~= ""
+			Hud.wavePill.Text = waveText
 		end
 	end
-	if not B.Fighter or B.ended then
+	if not B.Fighter then
 		return
 	end
-	-- team rows
-	local pulse = 0.5 + 0.5 * sin(now * 6)
-	for i, u in ipairs(Hud.mineList or {}) do
-		local row = Hud.rows[i]
-		if row then
-			local down = u.hp <= 0 or u.state == S_DOWN
-			local frac = clamp(u.hp / u.maxHp, 0, 1)
-			local hpKey = floor(u.hp)
-			if force or row.hp ~= hpKey then
-				row.hp = hpKey
-				row.Hp.SetFraction(frac, false)
-				row.Hp.SetText(down and "KO" or (Theme.ShortNumber(clamp(u.hp, 0, u.maxHp)) .. " / " .. Theme.ShortNumber(u.maxHp)))
-				row.Hp.SetColor(Theme.HealthColor(frac))
+	-- the fighter card ----------------------------------------------------------------------------------
+	local F = Hud.F
+	local f = B.fighterId and B.units[B.fighterId]
+	if f and Hud.team.Visible then
+		local hp = max(0, f.hp)
+		local frac = clamp(hp / f.maxHp, 0, 1)
+		if force or last.hp ~= hp or last.maxHp ~= f.maxHp or last.fid ~= f.id then
+			local prev = (last.fid == f.id) and last.hpFrac or nil
+			last.hp, last.maxHp, last.fid, last.hpFrac = hp, f.maxHp, f.id, frac
+			F.HpFill.Size = UDim2.fromScale(max(frac, 0.001), 1)
+			F.HpFill.Visible = frac > 0.002
+			F.HpText.Text = Theme.ShortNumber(floor(hp + 0.5)) .. " / " .. Theme.ShortNumber(floor(f.maxHp + 0.5))
+			Hud.hpWrites = (Hud.hpWrites or 0) + 1
+			-- the red loss trail drains 0.4 s behind a loss; a heal moves it at once
+			if Hud.lossTween then
+				pcall(Hud.lossTween.Cancel, Hud.lossTween)
+				Hud.lossTween = nil
 			end
-			setThin(row.Meter, u.meter / METER_MAX)
-			local full = not down and row.kind ~= nil and u.meter >= METER_MAX and u.state ~= S_STUNNED
-			local ready = full and B.order ~= "Retreat"
-			-- a full meter while the team rests: the card says why it waits (specials need ATTACK first)
-			local waiting = full and B.order == "Retreat"
-			local stateKey = down and "down" or (ready and "ready" or (waiting and "wait" or (row.kind and "charge" or "none")))
-			if force or row.stateKey ~= stateKey then
-				row.stateKey = stateKey
-				local sb = row.Special
-				if stateKey == "ready" then
-					sb.BackgroundColor3 = COLORS.Gold
-					row.SpecialTop.TextColor3 = COLORS.White
-				elseif stateKey == "wait" then
-					sb.BackgroundColor3 = COLORS.Wait
-				elseif stateKey == "down" then
-					sb.BackgroundColor3 = Color3.fromRGB(80, 84, 104)
-				else
-					sb.BackgroundColor3 = Color3.fromRGB(96, 106, 140)
+			if prev and frac < prev then
+				Hud.lossFrom = prev
+				local okT, tween = pcall(Util.Tween, F.HpLoss, K.LOSS_TIME, { Size = UDim2.fromScale(max(frac, 0.001), 1) }, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
+				Hud.lossTween = okT and tween or nil
+				if not okT then
+					F.HpLoss.Size = UDim2.fromScale(max(frac, 0.001), 1)
 				end
-				row.Frame.BackgroundTransparency = down and 0.45 or 0.15
-				row.Meter.Fill.BackgroundColor3 = (ready or waiting) and COLORS.Gold or Color3.fromRGB(226, 186, 92)
-				setText(row.SpecialSub, waiting and "ATTACK first" or (row.subText or ""))
-			end
-			local top
-			if stateKey == "ready" then
-				top = "SPECIAL!"
-			elseif stateKey == "wait" then
-				top = (Hud.m and Hud.m.Compact) and K.WAIT_COMPACT or "RESTING"
-			elseif stateKey == "down" then
-				top = "KO"
-			elseif stateKey == "none" then
-				top = "-"
 			else
-				top = tostring(floor(clamp(u.meter / METER_MAX, 0, 1) * 100)) .. "%"
-			end
-			setText(row.SpecialTop, top)
-			if stateKey == "ready" then
-				row.Glow.BackgroundTransparency = 0.35 + 0.45 * pulse
-				row.SpecialStroke.Color = COLORS.White
-			elseif row.Glow.BackgroundTransparency ~= 1 then
-				row.Glow.BackgroundTransparency = 1
-				row.SpecialStroke.Color = COLORS.Navy
+				F.HpLoss.Size = UDim2.fromScale(max(frac, 0.001), 1)
 			end
 		end
-	end
-	-- commands: the regroup countdown on ATTACK, then ATTACK! pulses while the team rests (RETREAT counts down to
-	-- the server's auto resume); RETREAT! pulses while a telegraph that has not hit yet covers one of my pets
-	local compact = Hud.m and Hud.m.Compact
-	local retreating = B.order == "Retreat"
-	local since = retreating and (now - B.retreatAt) or 0
-	local lockLeft = retreating and (RETREAT_LOCK - since) or 0
-	local attackText, retreatText = "ATTACK", "RETREAT"
-	local callAttack, callRetreat = false, false
-	if retreating and lockLeft > 0.05 then
-		attackText = compact and string.format("%.1f", lockLeft) or string.format("ATTACK %.1f", lockLeft)
-		retreatText = compact and "RETREAT" or "RETREATING"
-	elseif retreating then
-		attackText = "ATTACK!"
-		callAttack = true
-		local resumeLeft = RETREAT_LOCK + AUTO_RESUME - since
-		retreatText = resumeLeft > 0.05 and ("RESTING " .. tostring(math.ceil(resumeLeft - 0.05))) or "RESTING"
-	elseif B.threat then
-		retreatText = "RETREAT!"
-		callRetreat = true
-	end
-	setText(Hud.attack, attackText)
-	setDisabled(Hud.attack, lockLeft > 0.05)
-	setText(Hud.retreat, retreatText)
-	B.cue = callAttack and "Attack" or (callRetreat and "Retreat" or nil)
-	local blink = 0.6 * (0.5 + 0.5 * sin(now * 9))
-	Hud.SetRing(Hud.attack:FindFirstChild("ActiveRing"), callAttack or (B.order == "Attack" and B.focus ~= nil), callAttack and blink or 0)
-	Hud.SetRing(Hud.retreat:FindFirstChild("ActiveRing"), retreating or callRetreat, callRetreat and blink or 0)
-	if Hud.focusPill and not (Hud.m and Hud.m.Compact) then
-		local f = B.focus and B.units[B.focus]
-		local text = f and ("TARGET: " .. f.name .. "  X") or ""
-		if last.focus ~= text then
-			last.focus = text
-			Hud.focusPill.Visible = f ~= nil
-			Hud.focusText.Text = text
+		local meter = clamp(floor(f.meter + 0.5), 0, METER_MAX)
+		if force or last.meter ~= meter then
+			last.meter = meter
+			F.EnergyFill.Size = UDim2.fromScale(meter / METER_MAX, 1)
+			F.EnergyFill.BackgroundColor3 = (meter >= METER_MAX) and COLORS.Gold or COLORS.Energy
+			F.EnergyText.Text = (Hud.energyShort and "" or "ENERGY ") .. meter .. "/" .. METER_MAX
+			F.EnergyText.TextColor3 = (meter >= METER_MAX) and COLORS.Gold or COLORS.EnergyText
 		end
 	end
-end
-
--- shows / hides an ActiveRing; a calling ring pulses (stroke transparency)
-function Hud.SetRing(ring, on, transparency)
-	if not ring then
+	local lives = B.lives or 3
+	if force or last.lives ~= lives then
+		last.lives = lives
+		for i, h in ipairs(F.Hearts) do
+			h.TextColor3 = (i <= lives) and COLORS.Life or COLORS.LifeLost
+			h.TextTransparency = (i <= lives) and 0 or 0.25
+		end
+	end
+	if B.ended then
 		return
 	end
-	if ring.Visible ~= on then
-		ring.Visible = on
+	-- rows of the enemy list: HP fills on change, the wind-up "!" while an enemy winds up -----------------
+	if Hud.enemyDirty then
+		Hud.enemyDirty = false
+		local list = Hud.EnemyList(B)
+		local key = tostring(B.lock or 0)
+		for _, u in ipairs(list) do
+			key = key .. "," .. u.id
+		end
+		if key ~= Hud.enemyKey and Hud.m then
+			Hud.LayoutEnemies(B, Hud.m)
+			Hud.FixText(Hud.enemies, Hud.m.F)
+		end
 	end
-	local stroke = ring:FindFirstChildOfClass("UIStroke")
-	if stroke and abs(stroke.Transparency - transparency) > 0.02 then
-		stroke.Transparency = transparency
+	for i, u in ipairs(Hud.enemyList or {}) do
+		local row = Hud.rows[i]
+		if row and row.Frame.Visible and row.unitId == u.id then
+			setThin(row.Hp, clamp(u.hp / u.maxHp, 0, 1))
+			setVisible(row.Alert, u.windupUntil ~= nil and now < u.windupUntil)
+		end
+	end
+	-- 10 Hz: the rings, the countdowns, the helper states -------------------------------------------------
+	if not force and now - (Hud.ringAt or 0) < K.RING_DT then
+		return
+	end
+	Hud.ringAt = now
+	Input.CheckPending(B, now)
+	for kind, A in pairs(Hud.buttons) do
+		local frac, color, countText = 1, COLORS.Action[kind], ""
+		if kind == "Element" or kind == "Dash" then
+			local leftS = cdLeft(B, kind, nil, now)
+			frac = 1 - leftS / cdLen(B, kind)
+			if leftS > 0.05 then
+				countText = tostring(math.ceil(leftS - 0.05))
+			end
+			if kind == "Element" and f then
+				color = elementColor(f.element)
+			end
+		elseif kind == "Special" then
+			frac = f and clamp(f.meter / METER_MAX, 0, 1) or 0
+			color = frac >= 1 and COLORS.Gold or COLORS.Action.Special
+		end
+		setPie(A.Ring, frac, color)
+		setText(A.Count, countText)
+		setVisible(A.Count, countText ~= "")
+		local ready = frac >= 1
+		A.Glyph.TextTransparency = (countText ~= "") and 0.7 or 0
+		local cue = (kind == "Dash" and B.cue == "Dash") or (kind == "Special" and ready and f ~= nil and f.special ~= nil)
+		local glow = cue and (0.45 + 0.35 * (0.5 + 0.5 * sin(now * 8))) or 1
+		if abs(A.Glow.BackgroundTransparency - glow) > 0.02 then
+			A.Glow.BackgroundTransparency = glow
+			A.Glow.BackgroundColor3 = (kind == "Dash") and COLORS.Dodge or COLORS.Gold
+		end
+		setDisabled(A.Button, kind == "Special" and not ready)
+	end
+	local swapLeft = cdLeft(B, "Swap", nil, now)
+	for i, H in ipairs(Hud.helpers) do
+		local u = H.unit
+		if u and H.Cell.Visible then
+			local down = u.hp <= 0 or u.state == S_DOWN
+			local leftS = cdLeft(B, "Buff", u.slot, now)
+			setPie(H.Ring, down and 0 or (1 - leftS / cdLen(B, "Buff", u.slot)), down and COLORS.Weak or elementColor(u.element))
+			local countText = (not down and leftS > 0.05) and tostring(math.ceil(leftS - 0.05)) or ""
+			setText(H.Count, countText)
+			setVisible(H.Count, countText ~= "")
+			local stateKey = (down and "d" or "a") .. ((swapLeft > 0.05) and "s" or "")
+			if H.stateKey ~= stateKey then
+				H.stateKey = stateKey
+				setVisible(H.KO, down)
+				H.View.ImageTransparency = down and 0.6 or 0
+				H.View.ImageColor3 = down and Color3.fromRGB(120, 124, 140) or Color3.fromRGB(255, 255, 255)
+				H.Buff.TextColor3 = down and COLORS.Weak or COLORS.White
+				setDisabled(H.Swap, down or swapLeft > 0.05)
+				H.Swap.BackgroundColor3 = (down or swapLeft > 0.05) and Color3.fromRGB(60, 66, 92) or Color3.fromRGB(40, 70, 150)
+				H.Swap.TextTransparency = (down or swapLeft > 0.05) and 0.45 or 0
+			end
+			local hold = Input.HoldFrac(i, now)
+			setVisible(H.SwapFill, hold > 0)
+			if hold > 0 then
+				H.SwapFill.Size = UDim2.fromScale(hold, 1)
+			end
+			if swapLeft > 0.05 and not down then
+				setText(H.Swap, GLYPH.Swap .. " " .. math.ceil(swapLeft - 0.05))
+			else
+				setText(H.Swap, GLYPH.Swap .. " SWAP")
+			end
+		end
+		H.index = i
 	end
 end
 
@@ -3353,16 +4082,32 @@ function Hud.ModeText(B)
 	local text, color
 	if B.Mode == "Raid" then
 		text, color = "BOSS RAID", COLORS.Enemy
-	elseif B.Mode == "Trial" then
-		text, color = "TRIAL " .. tostring(B.Trial and B.Trial.Level or B.Level or ""), Color3.fromRGB(150, 110, 220)
+	elseif B.Mode == "Dungeon" then
+		local d = B.Dungeon or {}
+		local compact = Hud.m and Hud.m.Compact
+		text, color = "DUNGEON - Floor " .. tostring(num(d.Floor, 1)) .. " - Room " .. tostring(num(d.Room, 1)), Theme.Neon.Purple or COLORS.Ally
+		if compact then
+			-- (a phone's line is short: the room + the wave; DungeonController's side card shows the floor)
+			local waves = num(d.Waves, 0)
+			if waves > 1 then
+				text = "Room " .. tostring(num(d.Room, 1)) .. " - Wave " .. clamp(max(num(d.Wave, 1), B.wave or 0), 1, waves) .. "/" .. waves
+			else
+				text = "Floor " .. tostring(num(d.Floor, 1)) .. " - Room " .. tostring(num(d.Room, 1))
+			end
+		end
+		if d.Boss == true and num(d.Room, 0) >= 3 then
+			text = text .. " (BOSS)"
+		end
 	elseif B.Mode == "Ring" then
-		-- a compact top card keeps the room for "Round 8 - Best 12"
-		text, color = (Hud.m and Hud.m.Compact) and "RING" or "CHAMPION RING", Ring.GOLD
+		text, color = Ring.TitleText(B), Ring.GOLD
 	else
 		text, color = "DUEL", COLORS.Ally
+		if B.Fighter then
+			text = "DUEL - vs " .. Hud.SideName(B, B.Side == 1 and 2 or 1)
+		end
 	end
 	if B.Spectator then
-		text = "WATCHING"
+		text = "WATCHING - " .. ((B.Mode == "Duel") and (Hud.SideName(B, 1) .. " vs " .. Hud.SideName(B, 2)) or text)
 	end
 	return text, color
 end
@@ -3378,9 +4123,6 @@ function Hud.SideName(B, side)
 	if #names > 0 then
 		return table.concat(names, ", ")
 	end
-	if B.Mode == "Trial" and side == 2 then
-		return (B.Trial and B.Trial.Name) or "Trial team"
-	end
 	if B.Mode == "Ring" and side == 2 then
 		return "The Champion"
 	end
@@ -3388,32 +4130,51 @@ function Hud.SideName(B, side)
 end
 
 function Hud.TitleText(B)
-	if B.Mode == "Raid" then
-		return (B.boss and B.boss.name) or "Boss Raid"
-	elseif B.Mode == "Trial" then
-		local t = B.Trial
-		if t and t.Name then
-			return tostring(t.Name)
-		end
-		return "Trial " .. tostring(B.Level or "")
-	elseif B.Mode == "Ring" then
-		return Ring.TitleText(B)
-	end
-	if B.Spectator then
-		return Hud.SideName(B, 1) .. " vs " .. Hud.SideName(B, 2)
-	end
-	return "vs " .. Hud.SideName(B, B.Side == 1 and 2 or 1)
+	return (Hud.ModeText(B))
 end
 
--- the result card at the end (bottom right; compact: top centre on a tall phone, top right on a landscape phone)
+-- a short "not yet" wiggle (rotation only, so the layout is never disturbed)
+function Hud.Shake(obj)
+	if not obj or not obj.Parent then
+		return
+	end
+	Hud.shakes = (Hud.shakes or 0) + 1
+	obj:SetAttribute("Shakes", (obj:GetAttribute("Shakes") or 0) + 1)
+	pcall(function()
+		obj.Rotation = 7
+		Util.Tween(obj, 0.06, { Rotation = -7 })
+		task.delay(0.06, function()
+			Util.Tween(obj, 0.1, { Rotation = 0 })
+		end)
+	end)
+end
+
+-- the button of an action (shakes on a refusal)
+function Hud.ButtonOf(action, slot)
+	if action == "Buff" or action == "Swap" then
+		for _, H in ipairs(Hud.helpers or {}) do
+			if H.unit and H.unit.slot == slot then
+				return action == "Swap" and H.Swap or H.Face
+			end
+		end
+		return nil
+	end
+	local A = Hud.buttons and Hud.buttons[action]
+	return A and A.Button or nil
+end
+
+----------------------------------------------------------------------
+-- the result card (bottom right; compact: top right; never centred)
+----------------------------------------------------------------------
 function Hud.ShowResult(B, payload)
 	if not Hud.Ensure() then
 		return
 	end
 	local m = Hud.Metrics()
 	local res = Hud.result
-	for _, c in ipairs(res:GetChildren()) do
-		if not c:IsA("UICorner") and not c:IsA("UIStroke") and not c:IsA("UIGradient") then
+	local body = res:FindFirstChild("Body") or res
+	for _, c in ipairs(body:GetChildren()) do
+		if c:GetAttribute("ResultPart") then
 			c:Destroy()
 		end
 	end
@@ -3439,68 +4200,123 @@ function Hud.ShowResult(B, payload)
 		Timeout = "Time is up.",
 		Forfeit = (outcome == "Win") and "Your opponent gave up." or "You gave up.",
 		Left = "You left the battle.",
-		Abandoned = "Everyone left the raid.",
+		Abandoned = "Everyone left.",
 		Ended = "The raid has ended.",
 		Error = "The battle was cancelled. No rewards were lost.",
 		Void = "Both players left: this duel does not count.",
 		Shutdown = raid and "The server is restarting: your damage so far still counts." or "The server is restarting: this battle does not count.",
+		Cleared = "Room cleared!",
 	}
 	local sub = reasons[tostring(payload.Reason)] or ""
-	if B.Mode == "Trial" then
-		sub = "Trial " .. tostring(B.Trial and B.Trial.Level or B.Level or "") .. (sub ~= "" and (" - " .. sub) or "")
-	elseif B.Mode == "Ring" then
+	if B.Mode == "Ring" then
 		titleText, color, sub = Ring.ResultTitle(B, payload, sub)
+	elseif B.Mode == "Dungeon" and outcome ~= "Win" then
+		titleText, color = "KNOCKED OUT", Theme.Neon.Purple or COLORS.Enemy
+	end
+	local card = Hud.resultCard
+	if card and card.SetColor then
+		pcall(card.SetColor, color)
 	end
 	local w = m.Compact and min(K.RESULT_W, m.W - 16) or K.RESULT_W
 	if m.Compact and m.Landscape then
-		w = max(300, min(w, floor(m.W / 2) - 16)) -- top right, clear of the screen centre
+		w = max(300, min(w, floor(m.W * 0.36)))
 	end
-	local y = K.PAD + 2
-	-- a landscape phone: OK next to the title and a slim timer at the bottom (the card stays above the jump / dash
-	-- buttons); an opaque card, since it sits over the currency pill in the top right
+	local y = K.PAD + 4
+	local function part(inst)
+		inst:SetAttribute("ResultPart", true)
+		return inst
+	end
 	local short = m.Compact and m.Landscape
-	res.BackgroundTransparency = short and 0 or res.BackgroundTransparency
-	local titleW = w - 2 * K.PAD - 8 - (short and 112 or 0)
-	local title = label(res, titleText, "Title", short and 32 or 36, { Name = "Title", Position = UDim2.fromOffset(K.PAD + 4, y), Size = UDim2.fromOffset(titleW, 42), TextXAlignment = Enum.TextXAlignment.Left, TextColor3 = color })
+	-- (a short landscape screen: the OK button shares the title's line, long titles step down a size)
+	local titleW = w - 2 * K.PAD - 8 - (short and 100 or 0)
+	local titleSize = short and (#titleText > 9 and 25 or 30) or 34
+	local title = part(label(body, titleText, "Title", titleSize, { Name = "Title", Position = UDim2.fromOffset(K.PAD + 4, y), Size = UDim2.fromOffset(titleW, 40), TextXAlignment = Enum.TextXAlignment.Left, TextColor3 = color, TextTruncate = Enum.TextTruncate.AtEnd }))
 	title.TextStrokeColor3 = COLORS.Ink
-	y = y + 44
+	y = y + 42
+	local plain = { Wipe = true, KO = true, Cleared = true, BossDown = true }
+	local floorLine = false
+	if short and plain[tostring(payload.Reason)] then
+		sub = "" -- (the title says it; a short screen keeps the card clear of the buttons under it)
+		if B.Mode == "Dungeon" then
+			local ex, dg = type(payload.Rewards) == "table" and type(payload.Rewards.Extra) == "table" and payload.Rewards.Extra or {}, B.Dungeon or {}
+			sub = "Floor " .. tostring(num(ex.Floor, num(dg.Floor, 1))) .. " - Room " .. tostring(num(ex.Room, num(dg.Room, 1)))
+			floorLine = true -- (a full-width line instead of a truncated pill)
+		end
+	elseif short and B.Mode == "Ring" then
+		sub = (sub:gsub("^Champion Ring: (%l)", string.upper)) -- "You left after round 8": one line
+	end
 	if sub ~= "" then
-		label(res, sub, "Body", 18, { Name = "Reason", Position = UDim2.fromOffset(K.PAD + 4, y), Size = UDim2.fromOffset(w - 2 * K.PAD - 8, 24), TextXAlignment = Enum.TextXAlignment.Left, TextWrapped = true, TextColor3 = COLORS.Muted })
+		part(label(body, sub, "Body", 18, { Name = "Reason", Position = UDim2.fromOffset(K.PAD + 4, y), Size = UDim2.fromOffset(w - 2 * K.PAD - 8, 24), TextXAlignment = Enum.TextXAlignment.Left, TextWrapped = true, TextColor3 = COLORS.Muted }))
 		y = y + 28
 	end
-	local list = make("Frame", { Name = "Rewards", BackgroundTransparency = 1, Position = UDim2.fromOffset(K.PAD, y), Size = UDim2.fromOffset(w - 2 * K.PAD, 10), AutomaticSize = Enum.AutomaticSize.Y }, res)
-	make("UIGridLayout", { CellSize = UDim2.fromOffset(floor((w - 2 * K.PAD - 8) / 2), 30), CellPadding = UDim2.fromOffset(8, 6), SortOrder = Enum.SortOrder.LayoutOrder }, list)
+	local list = part(make("Frame", { Name = "Rewards", BackgroundTransparency = 1, Position = UDim2.fromOffset(K.PAD, y), Size = UDim2.fromOffset(w - 2 * K.PAD, 10) }, body))
+	local cols = 2
+	local cellW = floor((w - 2 * K.PAD - 8) / cols)
+	make("UIGridLayout", { CellSize = UDim2.fromOffset(cellW, 30), CellPadding = UDim2.fromOffset(8, 6), SortOrder = Enum.SortOrder.LayoutOrder }, list)
 	local rw = type(payload.Rewards) == "table" and payload.Rewards or {}
 	local lines = (B.Mode == "Ring") and Ring.ResultLines(B, rw) or Hud.RewardLines(B, rw)
+	-- Phase 5: the lives left, the dungeon's lines
+	if B.Fighter and B.Mode ~= "Ring" then
+		local lives = B.lives or 0
+		lines[#lines + 1] = { "Lives left: " .. lives, lives > 0 and COLORS.Life or COLORS.Weak }
+	end
+	if B.Mode == "Dungeon" then
+		-- End.Rewards.Extra first, Start.Dungeon for what it leaves out
+		local extra = type(rw.Extra) == "table" and rw.Extra or {}
+		local dg = B.Dungeon or {}
+		if not floorLine then
+			lines[#lines + 1] = { "Floor " .. tostring(num(extra.Floor, num(dg.Floor, 1))) .. " - Room " .. tostring(num(extra.Room, num(dg.Room, 1))), Theme.Neon.Purple or COLORS.Ally }
+		end
+		local name = extra.Name or dg.Name
+		if name then
+			lines[#lines + 1] = { tostring(name), Theme.Neon.Purple or COLORS.Ally }
+		end
+	end
 	for i, line in ipairs(lines) do
 		local p = smallPill(list, line[1], line[2], { LayoutOrder = i, AutomaticSize = Enum.AutomaticSize.None, Size = UDim2.fromScale(1, 1) })
-		p.TextSize = 17
+		p.TextSize = short and 14 or 16
+		p.TextTruncate = Enum.TextTruncate.AtEnd
 	end
-	local rowsN = math.ceil(#lines / 2)
+	local rowsN = math.ceil(#lines / cols)
+	list.Size = UDim2.fromOffset(w - 2 * K.PAD, max(0, rowsN * 36 - 6))
 	y = y + rowsN * 36 + (rowsN > 0 and 4 or 0)
+	local function okButton(size)
+		local b
+		if Mods.NeonKit and type(Mods.NeonKit.Button) == "function" then
+			local okB, nb = pcall(Mods.NeonKit.Button, { Name = "OkButton", Text = "OK", Color = "Green", Size = size, TextSize = 22, Parent = body, Callback = function()
+				Hud.HideResult()
+			end })
+			b = okB and nb or nil
+		end
+		if not b then
+			b = make("TextButton", { Name = "OkButton", Text = "OK", Size = size, BackgroundColor3 = Theme.Buttons.Green, AutoButtonColor = true }, body)
+			Theme.Style(b, "Button", { Size = 22 })
+			Theme.Corner(b, UDim.new(0, 12))
+			b.Activated:Connect(function()
+				Hud.HideResult()
+			end)
+		end
+		return part(b)
+	end
 	if short then
-		local ok = button(res, "OkButton", "OK", "Green", UDim2.fromOffset(100, 44), function()
-			Hud.HideResult()
-		end)
-		ok.Position = UDim2.new(1, -K.PAD - 100, 0, K.PAD)
-		Hud.resultTimer = thinBar(res, "Timer", 6, COLORS.Muted, { Position = UDim2.fromOffset(K.PAD + 4, y), Size = UDim2.fromOffset(w - 2 * K.PAD - 8, 6) })
+		local ok = okButton(UDim2.fromOffset(88, 44))
+		ok.Position = UDim2.new(1, -K.PAD - 88, 0, K.PAD)
+		Hud.resultTimer = thinBar(body, "Timer", 6, COLORS.Muted, { Position = UDim2.fromOffset(K.PAD + 4, y), Size = UDim2.fromOffset(w - 2 * K.PAD - 8, 6) })
+		part(Hud.resultTimer.Root)
 		y = y + 6 + K.PAD
 	else
-		local ok = button(res, "OkButton", "OK", "Green", UDim2.fromOffset(120, 46), function()
-			Hud.HideResult()
-		end)
+		local ok = okButton(UDim2.fromOffset(120, 46))
 		ok.Position = UDim2.new(1, -K.PAD - 120, 0, y)
-		Hud.resultTimer = thinBar(res, "Timer", 8, COLORS.Muted, { Position = UDim2.fromOffset(K.PAD + 4, y + 19), Size = UDim2.fromOffset(w - 2 * K.PAD - 140, 8) })
+		Hud.resultTimer = thinBar(body, "Timer", 8, COLORS.Muted, { Position = UDim2.fromOffset(K.PAD + 4, y + 19), Size = UDim2.fromOffset(w - 2 * K.PAD - 140, 8) })
+		part(Hud.resultTimer.Root)
 		y = y + 46 + K.PAD
 	end
 	res.Size = UDim2.fromOffset(w, y)
-	if m.Compact and m.Landscape then
-		-- a landscape phone is short: a top-centre card would cover the screen centre, so it sits top right
+	if m.Compact then
+		-- a phone: top right, under the enemy list's place, never over the screen centre
+		local curBottom = Hud.CurrencyTop(m)
 		res.AnchorPoint = Vector2.new(1, 0)
-		res.Position = UDim2.new(1, -8, 0, 6)
-	elseif m.Compact then
-		res.AnchorPoint = Vector2.new(0.5, 0)
-		res.Position = UDim2.new(0.5, 0, 0, 6)
+		res.Position = UDim2.new(1, -8, 0, max(6, curBottom > 0 and (curBottom + 6) or 6))
 	else
 		res.AnchorPoint = Vector2.new(1, 1)
 		res.Position = UDim2.new(1, -K.EDGE, 1, -K.EDGE)
@@ -3511,8 +4327,10 @@ function Hud.ShowResult(B, payload)
 	Hud.top.Visible = false
 	Hud.team.Visible = false
 	Hud.cmd.Visible = false
+	Hud.enemies.Visible = false
 	Hud.teamPlace = nil
 	Hud.SetMenuHidden(false)
+	Leave.Place(m, nil, false)
 	local keep = St.result and St.result.payload == payload and St.result.t0 -- a relayout (rotation) keeps the timer
 	St.result = { t0 = keep or os.clock(), dur = K.RESULT_SECONDS, battle = B, payload = payload }
 	BattleController._wake()
@@ -3527,6 +4345,10 @@ function Hud.RewardLines(B, rw)
 	local gems = num(rw.Gems, 0)
 	if gems > 0 then
 		lines[#lines + 1] = { "+" .. Theme.ShortNumber(gems) .. " Gems", Theme.Currency.Gems.Color }
+	end
+	local cash = num(rw.Cash, 0)
+	if cash > 0 then
+		lines[#lines + 1] = { "+$" .. Theme.ShortNumber(cash) .. " Cash", Theme.Currency.Cash and Theme.Currency.Cash.Color or COLORS.Mine }
 	end
 	if rw.Practice == true then
 		lines[#lines + 1] = { "Practice duel: no rewards", COLORS.Weak }
@@ -3602,12 +4424,16 @@ function Hud.SetVisible(on)
 		Hud.top.Visible = false
 		Hud.team.Visible = false
 		Hud.cmd.Visible = false
+		Hud.enemies.Visible = false
 		Hud.teamPlace = nil
 		Hud.SetMenuHidden(false)
+		if Hud.leave then
+			Hud.leave.Visible = false
+		end
 	end
 end
 
--- the menu column (MenuController) steps aside while the team cards use the left edge of a landscape phone
+-- the menu column (MenuController) steps aside while the battle HUD holds the left edge
 function Hud.SetMenuHidden(on)
 	on = on == true
 	if (Hud.menuHidden == true) == on then
@@ -3622,6 +4448,159 @@ function Hud.SetMenuHidden(on)
 	elseif not on then
 		Hud.menuHidden = false
 	end
+end
+
+-- MovementController (the battle dash keys, free dash, battle speed); nil when missing
+function Hud.Movement()
+	if Mods.Movement == nil then
+		Mods.Movement = optional(script.Parent, "MovementController") or false
+	end
+	return Mods.Movement or nil
+end
+
+----------------------------------------------------------------------
+-- LEAVE: stops a Champion Ring run (BattleCommand "Forfeit"; the server ends the run cleanly and the climber comes
+-- back at the portal). Never in duels (a forfeit costs trophies), raids or the dungeon (DungeonController's LEAVE).
+-- Two presses: the first turns it into "Sure? Tap again" for LEAVE_CONFIRM seconds, the second sends it. One button
+-- beside the action cluster and one on the ring's next-round card; both share the confirm state.
+----------------------------------------------------------------------
+Leave.armedUntil = 0
+Leave.sentUntil = 0
+Leave.buttons = {}
+
+function Leave.Allowed(B)
+	return B ~= nil and B.Fighter == true and B.Mode == "Ring"
+end
+
+function Leave.Make(parent, textSize)
+	local b = make("TextButton", { Name = "LeaveButton", Text = "LEAVE", AutoButtonColor = true, BackgroundColor3 = Theme.Buttons.Pink, BorderSizePixel = 0, Size = UDim2.fromOffset(K.LEAVE_W, K.LEAVE_H), Visible = false, ZIndex = 4 }, parent)
+	Theme.Style(b, "Button", { Size = textSize, Stroke = 0.2, Outline = 2 })
+	Theme.Corner(b, UDim.new(0, 12))
+	Theme.Stroke(b, Theme.Colors.PanelInk or COLORS.Navy, 3, 0)
+	b.TextWrapped = true
+	b:SetAttribute("BaseText", textSize)
+	b:SetAttribute("LeaveStyle", "Pink")
+	b.Activated:Connect(function()
+		Leave.Press()
+	end)
+	Leave.buttons[#Leave.buttons + 1] = b
+	return b
+end
+
+function Leave.State(now)
+	if now < Leave.sentUntil then
+		return "Leaving...", "Gray"
+	elseif now < Leave.armedUntil then
+		return "Sure? Tap again", "Red"
+	end
+	return "LEAVE", "Pink"
+end
+
+function Leave.Paint()
+	local text, style = Leave.State(os.clock())
+	local live = {}
+	for _, b in ipairs(Leave.buttons) do
+		if b.Parent then
+			live[#live + 1] = b
+			setText(b, text)
+			if b:GetAttribute("LeaveStyle") ~= style then
+				b:SetAttribute("LeaveStyle", style)
+				b.BackgroundColor3 = Theme.Buttons[style] or COLORS.Ally
+			end
+		end
+	end
+	Leave.buttons = live
+end
+
+function Leave.Press()
+	local now = os.clock()
+	if now < Leave.sentUntil or not Leave.Allowed(St.battle) then
+		return
+	end
+	if now < Leave.armedUntil then
+		Leave.armedUntil = 0
+		if BattleController.Command("Forfeit") then
+			Leave.sentUntil = now + K.LEAVE_CONFIRM -- the run's End normally closes the HUD long before this
+		end
+	else
+		Leave.armedUntil = now + K.LEAVE_CONFIRM
+	end
+	Leave.Paint()
+	task.delay(K.LEAVE_CONFIRM + 0.05, Leave.Paint) -- back to LEAVE when nobody pressed again
+end
+
+-- a new battle (a ring round too) and the step from a fight to the next-round card start unarmed
+function Leave.Track(B)
+	local phase = B and B.ended and "next" or "fight"
+	if Leave.battle ~= B or Leave.phase ~= phase then
+		Leave.battle = B
+		Leave.phase = phase
+		Leave.armedUntil = 0
+		Leave.sentUntil = 0
+		Leave.Paint()
+	end
+end
+
+-- the fight's LEAVE: wide = left of the action cluster at the bottom; compact = above the cluster, right edge
+function Leave.Place(m, B, isFighting)
+	local b = Hud.leave
+	if not b then
+		return
+	end
+	if B then
+		Leave.Track(B)
+	end
+	b.Visible = B ~= nil and isFighting == true and Leave.Allowed(B)
+	if not b.Visible then
+		return
+	end
+	b.AnchorPoint = Vector2.new(1, 1)
+	if not m.Compact then
+		b.Size = UDim2.fromOffset(K.LEAVE_W, K.LEAVE_H)
+		b.Position = UDim2.fromOffset(m.W - K.EDGE - 300, m.H - K.EDGE - 8)
+	elseif m.Landscape and Hud.topRect and Hud.top.Visible and Hud.topRect[3] + 8 + K.LEAVE_W_TOP <= m.W - K.EDGE - K.ROW_W_COMPACT - 8 then
+		-- a landscape phone: right of the mode card in the top strip (the cluster needs the right edge)
+		b.AnchorPoint = Vector2.new(0, 0)
+		b.Size = UDim2.fromOffset(K.LEAVE_W_TOP, K.MODE_H)
+		b.Position = UDim2.fromOffset(Hud.topRect[3] + 8, Hud.topRect[2])
+	else
+		-- above the cluster's top row, at the right edge
+		local L = Hud.ClusterLayout(m)
+		local topY = 0
+		for _, kind in ipairs(ACTIONS) do
+			local s = L[kind]
+			topY = min(topY, s[2] - s[3] / 2)
+		end
+		b.Size = UDim2.fromOffset(K.LEAVE_W_COMPACT, K.LEAVE_H_COMPACT)
+		b.Position = UDim2.fromOffset(m.W - 8, m.H + topY - 10)
+	end
+	b.TextSize = 20
+	Leave.Paint()
+end
+
+-- the next-round card's LEAVE: a row at the bottom of the card (returns the card's new height)
+function Leave.PlaceOnCard(m, B, w, y, inline)
+	local b = Hud.nextLeave
+	if not b then
+		return y
+	end
+	Leave.Track(B)
+	b.Visible = Leave.Allowed(B)
+	if not b.Visible then
+		return y
+	end
+	Leave.Paint()
+	if inline then
+		-- beside the countdown (a landscape phone)
+		b.Size = UDim2.fromOffset(92, 38)
+		b.AnchorPoint = Vector2.new(1, 0)
+		b.Position = UDim2.new(1, -K.PAD - 4, 0, y)
+		return y
+	end
+	b.Size = UDim2.fromOffset(min(w - 2 * K.PAD - 8, K.LEAVE_CARD_W), K.LEAVE_H_COMPACT)
+	b.AnchorPoint = Vector2.new(1, 0)
+	b.Position = UDim2.new(1, -K.PAD - 4, 0, y)
+	return y + K.LEAVE_H_COMPACT + K.PAD
 end
 
 ----------------------------------------------------------------------
@@ -3654,7 +4633,7 @@ function Cards.Add(B, u, root)
 	end
 	u.card = c
 	u.cardWrites = 0
-	u.cardHp, u.cardMeter = nil, nil
+	u.cardHp, u.cardMeter, u.cardLives = nil, nil, -1
 	Cards.Static(u)
 	Cards.Live(u)
 	if u.crowned then
@@ -3746,6 +4725,16 @@ function Cards.Live(u)
 			u.cardWrites = (u.cardWrites or 0) + 1
 		end
 	end
+	-- Phase 5: a player fighter's lives as pips (PetCard:SetLives); NPC units have none
+	if u.cardLives ~= u.lives then
+		u.cardLives = u.lives
+		local player = u.owner ~= nil and St.battle ~= nil and St.battle.Names[tostring(u.owner)] ~= nil
+		if type(c.SetLives) == "function" and player and not u.benched then
+			pcall(c.SetLives, c, u.lives, max(3, u.lives or 0))
+		elseif type(c.SetLives) == "function" then
+			pcall(c.SetLives, c, nil)
+		end
+	end
 end
 
 -- a raid spectator who joins the fight: the card switches its mode with the side
@@ -3810,7 +4799,7 @@ function Cards.FromState(B)
 end
 
 ----------------------------------------------------------------------
--- Phase 4: the Champion Ring HUD (contract 3.8) and duel overtime
+-- Phase 4: the Champion Ring HUD (contract 3.8)
 ----------------------------------------------------------------------
 Ring.GOLD = Color3.fromRGB(250, 190, 56) -- the ring's champion gold (ArenaBuilder's Ring.Color)
 Ring.VIOLET = Color3.fromRGB(156, 96, 238)
@@ -3835,10 +4824,14 @@ end
 function Ring.TitleText(B)
 	local round = B.Round > 0 and B.Round or 1
 	local best = B.Ring and num(B.Ring.Best, 0) or 0
-	if best > 0 then
-		return "Round " .. round .. " - Best " .. best
+	if Hud.m and Hud.m.Compact then
+		-- (a phone's mode line is short: the gold card says it is the ring)
+		return best > 0 and ("Round " .. round .. " - Best " .. best) or ("Ring - Round " .. round)
 	end
-	return "Round " .. round
+	if best > 0 then
+		return "CHAMPION RING - Round " .. round .. " - Best " .. best
+	end
+	return "CHAMPION RING - Round " .. round
 end
 
 -- the champion is built wearing PetBuilder's voxel crown accessory (a copy of its definition, cached by look)
@@ -3927,7 +4920,7 @@ function Ring.Preview(B)
 	return p
 end
 
--- the info row of the top card: ring (win pay, record, boss round) or duel overtime
+-- the info row of the top card: ring (win pay, record, boss round)
 function Ring.BuildInfo(top)
 	local info = make("Frame", { Name = "RingInfo", BackgroundTransparency = 1, Visible = false }, top)
 	make("UIListLayout", { FillDirection = Enum.FillDirection.Horizontal, HorizontalAlignment = Enum.HorizontalAlignment.Center, Padding = UDim.new(0, 6), SortOrder = Enum.SortOrder.LayoutOrder, VerticalAlignment = Enum.VerticalAlignment.Center }, info)
@@ -3935,7 +4928,6 @@ function Ring.BuildInfo(top)
 	Hud.infoWin = smallPill(info, "", Theme.Currency.Cash.Color, { Name = "WinPay", LayoutOrder = 1 })
 	Hud.infoRecord = smallPill(info, "RECORD x3", Ring.GOLD, { Name = "Record", LayoutOrder = 2, Visible = false })
 	Hud.infoBoss = smallPill(info, "BOSS", Ring.VIOLET, { Name = "Boss", LayoutOrder = 3, Visible = false })
-	Hud.infoOver = smallPill(info, "OVERTIME", COLORS.Enemy, { Name = "Overtime", LayoutOrder = 4, Visible = false })
 end
 
 function Ring.LayoutInfo(B, topW, y)
@@ -3944,8 +4936,7 @@ function Ring.LayoutInfo(B, topW, y)
 		return y
 	end
 	local ring = B.Mode == "Ring" and B.Fighter
-	local over = B.overtime == true
-	if not ring and not over then
+	if not ring then
 		info.Visible = false
 		return y
 	end
@@ -3961,10 +4952,6 @@ function Ring.LayoutInfo(B, topW, y)
 		Hud.infoRecord.Visible = p.Record and B.Round > 1
 		Hud.infoBoss.Visible = p.Boss
 	end
-	Hud.infoOver.Visible = over
-	if over then
-		setText(Hud.infoOver, "OVERTIME: hits +" .. floor(num(B.overtimeRate, 0.15) * 100 + 0.5) .. "% a second")
-	end
 	info.Position = UDim2.fromOffset(K.PAD, y)
 	info.Size = UDim2.fromOffset(topW - 2 * K.PAD, 26)
 	return y + 30
@@ -3979,7 +4966,7 @@ function Ring.EnsureNext()
 	if not Hud.root then
 		return nil
 	end
-	local f = card(Hud.root, "NextRoundCard", { Visible = false })
+	local f = neonCard(Hud.root, "NextRoundCard", Ring.GOLD, { Visible = false, Floor = false }).Root
 	Hud.next = f
 	Hud.nextTitle = label(f, "", "Title", 28, { Name = "Title", TextXAlignment = Enum.TextXAlignment.Left, TextColor3 = Ring.GOLD })
 	Hud.nextTitle.TextStrokeColor3 = COLORS.Ink
@@ -4040,23 +5027,53 @@ function Ring.PlaceNext(B)
 	end
 	Hud.nextExtra.Visible = #extra > 0
 	setText(Hud.nextExtra, table.concat(extra, "  "))
-	local teamW, teamH = Hud.team.Size.X.Offset, Hud.team.Size.Y.Offset
-	local topW = Hud.top.Size.X.Offset
 	local w
+	local portraitTop = nil
 	if not m.Compact then
-		w = max(teamW, 380)
+		-- where the action cluster was (bottom right)
+		w = 380
 		f.AnchorPoint = Vector2.new(1, 1)
-		f.Position = UDim2.new(1, -K.EDGE, 1, -K.EDGE - teamH - 14)
-	elseif m.Landscape then
-		-- under the currency pill, above the DASH / jump buttons (where the commands were)
-		w = max(240, min(340, floor((m.W - topW) / 2) - 16))
-		f.AnchorPoint = Vector2.new(1, 0)
-		f.Position = UDim2.fromOffset(m.W - 8, max(floor(m.H * 0.2), Ring.CurrencyBottom(m)))
+		f.Position = UDim2.new(1, -K.EDGE, 1, -K.EDGE)
 	else
-		-- under the team cards, right-aligned and clear of the menu column at the left edge
-		w = min(400, m.W - 16 - Ring.MenuRight(m))
-		f.AnchorPoint = Vector2.new(1, 0)
-		f.Position = UDim2.fromOffset(m.W - 8, 6 + (Hud.topH or 80) + 8 + teamH + 10)
+		-- the right edge, under the currency pills / the top card when they reach there; never the screen centre
+		w = m.Landscape and max(240, min(320, floor(m.W * 0.3) - 16)) or min(340, m.W - 24)
+		local y0 = 6
+		local cb = Hud.CurrencyTop(m)
+		if cb > 0 then
+			y0 = cb + 6
+		end
+		local tr = Hud.topRect
+		if tr and Hud.top.Visible and tr[3] > m.W - w - 20 then
+			-- a landscape phone: narrow the card to stay beside the top card (below it would reach the DASH button)
+			local w2 = m.W - 8 - (tr[3] + 10)
+			if m.Landscape and w2 >= 220 then
+				w = w2
+			else
+				y0 = max(y0, tr[4] + 8)
+			end
+		end
+		if m.Landscape then
+			f.AnchorPoint = Vector2.new(1, 0)
+			f.Position = UDim2.fromOffset(m.W - 8, y0)
+		else
+			-- a tall phone: under the top card at the right (clear of the fighter block), above the screen centre;
+			-- else the lower right above the jump / RUN buttons (placed once the card's height is known)
+			portraitTop = (tr and Hud.top.Visible) and (tr[4] + 8) or y0
+			if Hud.team.Visible then
+				local teamRight = Hud.team.Position.X.Offset + Hud.team.Size.X.Offset
+				local teamBottom = Hud.team.Position.Y.Offset + Hud.team.Size.Y.Offset
+				if Hud.fighterCard and portraitTop >= Hud.team.Position.Y.Offset + Hud.fighterCard.Root.Size.Y.Offset then
+					teamRight = Hud.team.Position.X.Offset + (Hud.helperCellW or 0) -- (only the helper column reaches down here)
+				end
+				if teamBottom > portraitTop then
+					w = min(w, m.W - 8 - teamRight - 8)
+				end
+			end
+			if w < 240 then
+				w = min(340, m.W - 24)
+				portraitTop = nil
+			end
+		end
 	end
 	local inner = w - 2 * K.PAD - 8
 	local y = K.PAD
@@ -4071,42 +5088,37 @@ function Ring.PlaceNext(B)
 		Hud.nextExtra.Size = UDim2.fromOffset(inner, 22)
 		y = y + 26
 	end
-	Hud.nextCount.Position = UDim2.fromOffset(K.PAD + 4, y)
-	Hud.nextCount.Size = UDim2.fromOffset(inner, 30)
-	y = y + 32
+	-- a landscape phone: LEAVE shares the countdown's row (the card stays clear of the DASH / RUN buttons under it)
+	local inline = m.Compact and m.Landscape and Leave.Allowed(B)
+	local countW = inline and (inner - 92 - 6) or inner
+	Hud.nextShort = countW < 150 -- ("Next in 3" when the row is short)
+	Hud.nextCount.Position = UDim2.fromOffset(K.PAD + 4, y + (inline and 4 or 0))
+	Hud.nextCount.Size = UDim2.fromOffset(countW, 30)
+	local countY = y
+	y = y + (inline and 42 or 32)
 	Hud.nextBar.Root.Position = UDim2.fromOffset(K.PAD + 4, y)
 	Hud.nextBar.Root.Size = UDim2.fromOffset(inner, 8)
 	y = y + 8 + K.PAD
-	y = Leave.PlaceOnCard(m, B, w, y)
+	if inline then
+		Leave.PlaceOnCard(m, B, w, countY, true)
+	else
+		y = Leave.PlaceOnCard(m, B, w, y)
+	end
 	f.Size = UDim2.fromOffset(w, y)
+	if m.Compact and not m.Landscape then
+		if portraitTop and portraitTop + y <= m.H * 0.5 - 4 then
+			f.AnchorPoint = Vector2.new(1, 0)
+			f.Position = UDim2.fromOffset(m.W - 8, portraitTop)
+		else
+			local r = Hud.TouchRects(m)
+			local above = (max(r.jump[4], r.run[4]) + 12) / max(0.05, m.F)
+			f.AnchorPoint = Vector2.new(1, 1)
+			f.Position = UDim2.fromOffset(m.W - 8, m.H - above)
+		end
+	end
 	f.Visible = true
 	Hud.FixText(f, m.F)
 	Ring.UpdateNext(os.clock())
-end
-
--- the right edge of the menu column (MenuController's MenuColumn) in design px, 0 when it is hidden / missing
-function Ring.MenuRight(m)
-	local pg = LocalPlayer and LocalPlayer:FindFirstChild("PlayerGui")
-	local menu = pg and pg:FindFirstChild("NimbusMenu")
-	local col = menu and menu.Enabled ~= false and menu:FindFirstChild("MenuColumn", true)
-	if not col or Hud.menuHidden then
-		return 0
-	end
-	local right = col.AbsolutePosition.X + col.AbsoluteSize.X
-	return max(0, math.ceil(right / max(0.05, m.F)) + 4)
-end
-
--- the bottom of the HUD's currency pills (NimbusHud TopRight.Currency; 1 to 3 pills) in design px + a gap, 0 if none
-function Ring.CurrencyBottom(m)
-	local pg = LocalPlayer and LocalPlayer:FindFirstChild("PlayerGui")
-	local hud = pg and pg:FindFirstChild("NimbusHud")
-	local top = hud and hud:FindFirstChild("TopRight", true)
-	local cur = top and top:FindFirstChild("Currency") or top
-	if not cur or not cur:IsA("GuiObject") or not cur.Visible then
-		return 0
-	end
-	local bottom = cur.AbsolutePosition.Y + cur.AbsoluteSize.Y
-	return max(0, math.ceil(bottom / max(0.05, m.F)) + 8)
 end
 
 -- the countdown (a text write only when the shown second changes)
@@ -4121,7 +5133,8 @@ function Ring.UpdateNext(now)
 		return
 	end
 	local left = nx.Seconds - (now - nx.At)
-	local text = (left > 0.05) and ("Round " .. nx.Next .. " in " .. math.ceil(left - 0.05)) or ("Round " .. nx.Next .. "...")
+	local label = Hud.nextShort and "Next" or ("Round " .. nx.Next)
+	local text = (left > 0.05) and (label .. " in " .. math.ceil(left - 0.05)) or (label .. "...")
 	setText(Hud.nextCount, text)
 	setThin(Hud.nextBar, clamp(left / max(0.1, nx.Seconds), 0, 1))
 end
@@ -4229,21 +5242,25 @@ function Ring.ResultLines(B, rw)
 end
 
 ----------------------------------------------------------------------
--- Input
+-- Input (contract 4.7 control map; bound through ContextActionService at High priority ONLY while fighting)
+--   ATTACK  left click / F / X / the big round button (hold = auto-repeat at the fighter's interval)
+--   ELEMENT E / Y / its button (cooldown ring)      SPECIAL Q / RB / its button (lights gold at 100)
+--   DASH    Shift / B / its button (MovementController's dash: SetDashKeys; the dash sends "Dash")
+--   lock    Tab cycles (nearest first), click / tap an enemy or its row; T clears; RT cycles, LT clears
+--   helpers 1 / 2 (LB / D-up) tap = its buff, hold 0.5 s = swap; the SWAP chip; D-left / D-right swap; the portrait
+--           (tap = buff, hold = swap)
 ----------------------------------------------------------------------
-local SPECIAL_KEYS = {
+local KEY_HELPER = {
 	[Enum.KeyCode.One] = 1,
 	[Enum.KeyCode.Two] = 2,
-	[Enum.KeyCode.Three] = 3,
-	[Enum.KeyCode.Four] = 4,
 	[Enum.KeyCode.KeypadOne] = 1,
 	[Enum.KeyCode.KeypadTwo] = 2,
-	[Enum.KeyCode.KeypadThree] = 3,
-	[Enum.KeyCode.KeypadFour] = 4,
 	[Enum.KeyCode.ButtonL1] = 1,
-	[Enum.KeyCode.ButtonR1] = 2,
-	[Enum.KeyCode.ButtonL2] = 3,
-	[Enum.KeyCode.ButtonR2] = 4,
+	[Enum.KeyCode.DPadUp] = 2,
+}
+local KEY_SWAP = {
+	[Enum.KeyCode.DPadLeft] = 1,
+	[Enum.KeyCode.DPadRight] = 2,
 }
 
 local function sink()
@@ -4265,21 +5282,65 @@ local function fighting()
 	return B ~= nil and B.Fighter and not B.ended
 end
 
+-- the main menu is gone (UiGate.HasPlayed, 7.2); no UiGate module = always
+function Input.GateOpen()
+	local hook = BattleController.Hooks.Gate
+	if type(hook) == "function" then
+		return hook() ~= false
+	end
+	if Mods.UiGate == nil then
+		Mods.UiGate = optional(Client, "UiGate") or false
+	end
+	local g = Mods.UiGate
+	if g and type(g.HasPlayed) == "function" then
+		local ok, played = pcall(g.HasPlayed)
+		return (not ok) or played ~= false
+	end
+	return true
+end
+
 function Input.OnAction(name, state, input)
-	if not fighting() then
+	if not fighting() or not Input.GateOpen() then
 		return pass()
 	end
-	if state ~= Enum.UserInputState.Begin then
-		return sink()
-	end
+	local began = state == Enum.UserInputState.Begin
+	local ended = state == Enum.UserInputState.End or state == Enum.UserInputState.Cancel
+	local key = input and input.KeyCode
 	if name == K.ACTION_ATTACK then
-		BattleController.Command("Attack", nil)
-	elseif name == K.ACTION_RETREAT then
-		BattleController.Command("Retreat")
+		if began then
+			Input.Press("Attack", true)
+		elseif ended then
+			Input.Press("Attack", false)
+		end
+	elseif name == K.ACTION_ELEMENT then
+		if began then
+			Input.Press("Element", true)
+		end
 	elseif name == K.ACTION_SPECIAL then
-		local slot = input and SPECIAL_KEYS[input.KeyCode]
-		if slot then
-			BattleController.Command("Special", slot)
+		if began then
+			Input.Press("Special", true)
+		end
+	elseif name == K.ACTION_TARGET then
+		if began then
+			if key == Enum.KeyCode.T or key == Enum.KeyCode.ButtonL2 then
+				BattleController.Focus(nil)
+			else
+				Input.CycleTarget()
+			end
+		end
+	elseif name == K.ACTION_HELPER then
+		local index = key and KEY_HELPER[key]
+		local swapIndex = key and KEY_SWAP[key]
+		if swapIndex then
+			if began then
+				Input.Helper("Swap", swapIndex)
+			end
+		elseif index then
+			if began then
+				Input.HoldStart("key" .. index, index, os.clock())
+			elseif ended then
+				Input.HoldEnd("key" .. index)
+			end
 		end
 	end
 	return sink()
@@ -4297,24 +5358,221 @@ function Input.Bind(on)
 		end)
 		pcall(function()
 			ContextActionService:BindActionAtPriority(K.ACTION_ATTACK, Input.OnAction, false, priority, Enum.KeyCode.F, Enum.KeyCode.ButtonX)
-			ContextActionService:BindActionAtPriority(K.ACTION_RETREAT, Input.OnAction, false, priority, Enum.KeyCode.R, Enum.KeyCode.ButtonY)
+			ContextActionService:BindActionAtPriority(K.ACTION_ELEMENT, Input.OnAction, false, priority, Enum.KeyCode.E, Enum.KeyCode.ButtonY)
+			ContextActionService:BindActionAtPriority(K.ACTION_SPECIAL, Input.OnAction, false, priority, Enum.KeyCode.Q, Enum.KeyCode.ButtonR1)
+			ContextActionService:BindActionAtPriority(K.ACTION_TARGET, Input.OnAction, false, priority, Enum.KeyCode.Tab, Enum.KeyCode.T, Enum.KeyCode.ButtonR2, Enum.KeyCode.ButtonL2)
 			ContextActionService:BindActionAtPriority(
-				K.ACTION_SPECIAL, Input.OnAction, false, priority,
-				Enum.KeyCode.One, Enum.KeyCode.Two, Enum.KeyCode.Three, Enum.KeyCode.Four,
-				Enum.KeyCode.KeypadOne, Enum.KeyCode.KeypadTwo, Enum.KeyCode.KeypadThree, Enum.KeyCode.KeypadFour,
-				Enum.KeyCode.ButtonL1, Enum.KeyCode.ButtonR1, Enum.KeyCode.ButtonL2, Enum.KeyCode.ButtonR2
+				K.ACTION_HELPER, Input.OnAction, false, priority,
+				Enum.KeyCode.One, Enum.KeyCode.Two, Enum.KeyCode.KeypadOne, Enum.KeyCode.KeypadTwo,
+				Enum.KeyCode.ButtonL1, Enum.KeyCode.DPadUp, Enum.KeyCode.DPadLeft, Enum.KeyCode.DPadRight
 			)
 		end)
 	else
-		for _, name in ipairs({ K.ACTION_ATTACK, K.ACTION_RETREAT, K.ACTION_SPECIAL }) do
+		for _, name in ipairs({ K.ACTION_ATTACK, K.ACTION_ELEMENT, K.ACTION_SPECIAL, K.ACTION_TARGET, K.ACTION_HELPER }) do
 			pcall(function()
 				ContextActionService:UnbindAction(name)
 			end)
 		end
+		St.attackHeld = nil
+		St.holds = {}
 	end
 end
 
--- the enemy a tap at viewport pixel (x, y) focuses (nearest projected enemy within reach), or nil
+-- MovementController's battle switches (contract 3.9 / 4.4): Shift dashes, a dash is free, the battle speeds
+function Input.Movement(B, on)
+	local mc = Hud.Movement()
+	if not mc then
+		return
+	end
+	if on then
+		local F = BattleCatalog and BattleCatalog.Fighter or {}
+		pcall(mc.SetDashKeys, { Enum.KeyCode.LeftShift, Enum.KeyCode.RightShift, Enum.KeyCode.ButtonB })
+		pcall(mc.SetFreeDash, true, num(F.DashCooldown, 2.5))
+		if type(mc.SetDashListener) == "function" then
+			pcall(mc.SetDashListener, function()
+				BattleController.Command("Dash")
+			end)
+		end
+		local sp = B and B.speed
+		if sp then
+			pcall(mc.SetBattleSpeed, sp.Walk, sp.Run)
+		end
+		St.movementOn = true
+	elseif St.movementOn then
+		St.movementOn = false
+		pcall(mc.SetDashKeys, nil)
+		pcall(mc.SetFreeDash, false)
+		pcall(mc.SetBattleSpeed, nil)
+		if type(mc.SetDashListener) == "function" then
+			pcall(mc.SetDashListener, nil)
+		end
+	end
+end
+
+-- a button press / release of an action (keys, the round buttons, the mouse)
+function Input.Press(kind, down)
+	if not fighting() then
+		St.attackHeld = nil
+		return
+	end
+	if kind == "Attack" then
+		if down then
+			St.attackHeld = { next = 0 }
+			Input.Tick(St.battle, os.clock())
+		else
+			St.attackHeld = nil
+		end
+		return
+	end
+	if not down then
+		return
+	end
+	if kind == "Dash" then
+		-- the character dashes (MovementController); its listener sends "Dash" (free in battle)
+		local mc = Hud.Movement()
+		if mc and type(mc.TryDash) == "function" and St.movementOn then
+			local ok, done = pcall(mc.TryDash)
+			if ok and done then
+				return
+			end
+			if ok then
+				Hud.Shake(Hud.ButtonOf("Dash"))
+				return
+			end
+		end
+		BattleController.Command("Dash")
+		return
+	end
+	BattleController.Command(kind)
+end
+
+-- my fighter's attack interval (the hold-to-attack cadence): BattleCatalog.UnitStats, else 1 s
+function Input.AttackInterval(B)
+	local f = B.fighterId and B.units[B.fighterId]
+	if not f then
+		return 1
+	end
+	if f.interval == nil then
+		f.interval = 1
+		if BattleCatalog and type(BattleCatalog.UnitStats) == "function" then
+			local ok, us = pcall(BattleCatalog.UnitStats, f.info.key or f.info.petId, f.level, f.tier, { Evo = f.evo })
+			if not ok or type(us) ~= "table" then
+				ok, us = pcall(BattleCatalog.UnitStats, f.info.petId, f.level, f.tier, { Evo = f.evo })
+			end
+			if ok and type(us) == "table" and num(us.Interval, 0) > 0 then
+				f.interval = us.Interval
+			end
+		end
+	end
+	return max(K.ATTACK_GAP, f.interval)
+end
+
+-- per frame: the held ATTACK repeats at the interval; a helper key / portrait held 0.5 s swaps
+function Input.Tick(B, now)
+	if not B or not fighting() then
+		St.attackHeld = nil
+		return
+	end
+	local held = St.attackHeld
+	if held and now >= held.next then
+		held.next = now + Input.AttackInterval(B)
+		BattleController.Command("Attack", nil, true)
+	end
+	for key, h in pairs(St.holds or {}) do
+		if not h.fired and now - h.t >= K.SWAP_HOLD then
+			h.fired = true
+			Input.Helper("Swap", h.index)
+		end
+	end
+end
+
+function Input.HoldStart(key, index, t)
+	if not fighting() or not Input.GateOpen() then
+		return
+	end
+	St.holds = St.holds or {}
+	St.holds[key] = { index = index, t = t, fired = false }
+	BattleController._wake()
+end
+
+function Input.HoldEnd(key)
+	local h = St.holds and St.holds[key]
+	if not h then
+		return
+	end
+	St.holds[key] = nil
+	if not h.fired then
+		Input.Helper("Buff", h.index)
+	end
+end
+
+-- 0..1 of a running swap hold on helper `index` (the SWAP chip fills; nothing for a short tap)
+function Input.HoldFrac(index, now)
+	local best = 0
+	for _, h in pairs(St.holds or {}) do
+		if h.index == index and not h.fired then
+			local p = (now - h.t - 0.1) / (K.SWAP_HOLD - 0.1)
+			if p > best then
+				best = min(1, p)
+			end
+		end
+	end
+	return best
+end
+
+-- "Buff" / "Swap" for the helper shown in portrait `index` (its team slot goes to the server)
+function Input.Helper(action, index)
+	local B = St.battle
+	if not B or not fighting() then
+		return false
+	end
+	local H = Hud.helpers and Hud.helpers[index]
+	local u = H and H.unit
+	if not u then
+		local bench = Hud.Bench(B)
+		u = bench[index]
+	end
+	if not u then
+		return false
+	end
+	return BattleController.Command(action, u.slot)
+end
+
+-- Tab / RT: lock the next enemy, nearest to my fighter first
+function Input.CycleTarget()
+	local B = St.battle
+	if not B then
+		return
+	end
+	local f = B.fighterId and B.units[B.fighterId]
+	local fx, fz = f and f.x or 0, f and f.z or 0
+	local list = {}
+	for _, u in ipairs(B.list) do
+		if not u.ally and u.hp > 0 and u.state ~= S_DOWN and u.state ~= S_BENCHED and (u.model or u.isBoss) then
+			local dx, dz = u.x - fx, u.z - fz
+			list[#list + 1] = { u = u, d = dx * dx + dz * dz }
+		end
+	end
+	if #list == 0 then
+		return
+	end
+	table.sort(list, function(a, b)
+		if a.d ~= b.d then
+			return a.d < b.d
+		end
+		return a.u.id < b.u.id
+	end)
+	local pick = list[1].u
+	for i, e in ipairs(list) do
+		if e.u.id == B.lock then
+			pick = list[(i % #list) + 1].u
+			break
+		end
+	end
+	BattleController.Focus(pick.id)
+end
+
+-- the enemy a tap / click at viewport pixel (x, y) picks (nearest projected enemy within reach), or nil
 function BattleController.ScreenPick(x, y)
 	local B = St.battle
 	local cam = workspace.CurrentCamera
@@ -4344,6 +5602,17 @@ function BattleController.ScreenPick(x, y)
 	return best
 end
 
+local function guiInset()
+	local inset = 36
+	local ok, a = pcall(function()
+		return GuiService:GetGuiInset()
+	end)
+	if ok and typeof(a) == "Vector2" then
+		inset = a.Y
+	end
+	return inset
+end
+
 function Input.OnBegan(input, processed)
 	local t = input.UserInputType
 	if t == Enum.UserInputType.Gamepad1 or t == Enum.UserInputType.Gamepad2 then
@@ -4357,21 +5626,31 @@ function Input.OnBegan(input, processed)
 			Hud.Keys()
 		end
 	end
-	if processed or not fighting() then
+	if processed or not fighting() or not Input.GateOpen() then
 		return
 	end
-	if t == Enum.UserInputType.MouseButton1 or t == Enum.UserInputType.Touch then
+	if t == Enum.UserInputType.Touch then
 		St.tap = { x = input.Position.X, y = input.Position.Y, t = os.clock(), input = input }
+	elseif t == Enum.UserInputType.MouseButton1 then
+		-- a click on an enemy locks it (and attacks it); anywhere else attacks (hold = repeat)
+		local id = BattleController.ScreenPick(input.Position.X, input.Position.Y + guiInset())
+		if id then
+			BattleController.Focus(id)
+		end
+		St.mouseAttack = true
+		Input.Press("Attack", true)
 	end
 end
 
 function Input.OnEnded(input)
-	local tap = St.tap
-	if not tap then
+	local t = input.UserInputType
+	if t == Enum.UserInputType.MouseButton1 and St.mouseAttack then
+		St.mouseAttack = nil
+		Input.Press("Attack", false)
 		return
 	end
-	local t = input.UserInputType
-	if t ~= Enum.UserInputType.MouseButton1 and t ~= Enum.UserInputType.Touch then
+	local tap = St.tap
+	if not tap or t ~= Enum.UserInputType.Touch then
 		return
 	end
 	St.tap = nil
@@ -4383,22 +5662,17 @@ function Input.OnEnded(input)
 		return
 	end
 	-- input positions are in GUI space (below the top bar); the camera projects into the full viewport
-	local inset = 36
-	local ok, a = pcall(function()
-		return GuiService:GetGuiInset()
-	end)
-	if ok and typeof(a) == "Vector2" then
-		inset = a.Y
-	end
-	local id = BattleController.ScreenPick(input.Position.X, input.Position.Y + inset)
+	local id = BattleController.ScreenPick(input.Position.X, input.Position.Y + guiInset())
 	if id then
 		BattleController.Focus(id)
 	end
 end
 
 ----------------------------------------------------------------------
--- Commands
+-- Commands (BattleCommand(action, arg)); the server decides everything, the client predicts only the button's ring
 ----------------------------------------------------------------------
+local VALID_ACTIONS = { Attack = true, Element = true, Special = true, Dash = true, Target = true, Buff = true, Swap = true, Forfeit = true }
+
 local function commandRemote()
 	if St.remoteCmd and St.remoteCmd.Parent then
 		return St.remoteCmd
@@ -4409,7 +5683,33 @@ local function commandRemote()
 	return r
 end
 
-function BattleController.Command(action, arg)
+-- the cooldown lengths of my team (BattleCatalog.Fighter; a helper's own Cooldown from its unit info)
+function Input.CooldownLengths(B)
+	local F = BattleCatalog and BattleCatalog.Fighter or {}
+	B.cdLen = {
+		Element = num(F.ElementCooldown, 7),
+		Dash = num(F.DashCooldown, 2.5),
+		Swap = num(F.SwapCooldown, 10),
+		Buff = {},
+	}
+	for slot = 1, 4 do
+		local u = B.mine[slot]
+		if u then
+			local buff = type(u.info.buff) == "table" and u.info.buff or nil
+			local default = (u.info.role == "Support") and num(F.SupportCooldown, 12) or num(F.HelperCooldown, 15)
+			B.cdLen.Buff[slot] = num(buff and buff.Cooldown, default)
+		end
+	end
+end
+
+-- a local refusal: the button shakes, nothing is sent
+local function refuse(action, slot)
+	Hud.Shake(Hud.ButtonOf(action, slot))
+	return false
+end
+
+-- auto = true: the held ATTACK's repeat (never shakes)
+function BattleController.Command(action, arg, auto)
 	local B = St.battle
 	if not B or not B.Fighter then
 		return false
@@ -4418,45 +5718,40 @@ function BattleController.Command(action, arg)
 	if B.ended and not (action == "Forfeit" and B.Mode == "Ring" and B.ringNext ~= nil) then
 		return false
 	end
-	if action ~= "Attack" and action ~= "Retreat" and action ~= "Special" and action ~= "Forfeit" then
+	if not VALID_ACTIONS[action] then
 		return false
 	end
 	local key = action .. tostring(arg)
 	local now = os.clock()
-	if St.lastCmd[key] and now - St.lastCmd[key] < K.CMD_GAP then
+	local gap = (action == "Attack") and K.ATTACK_GAP or K.CMD_GAP
+	if St.lastCmd[key] and now - St.lastCmd[key] < gap then
 		return false
 	end
-	-- local checks (the server decides; these only avoid pointless traffic and give instant feedback)
-	if action == "Attack" then
-		if B.order == "Retreat" and now - B.retreatAt < RETREAT_LOCK then
-			return false
+	-- local checks: instant feedback, no pointless traffic (the server decides)
+	local f = B.fighterId and B.units[B.fighterId]
+	if action == "Element" or action == "Dash" or action == "Swap" then
+		if cdLeft(B, action, nil, now) > K.CD_SLACK then
+			return refuse(action)
 		end
-		if arg ~= nil then
-			local u = B.units[arg]
-			if not u or u.ally or u.hp <= 0 then
-				return false
+		if action == "Swap" then
+			local u = B.mine[tonumber(arg) or 0]
+			if not u or u.id == B.fighterId or u.hp <= 0 or u.state == S_DOWN then
+				return refuse(action, tonumber(arg))
 			end
 		end
-	elseif action == "Retreat" then
-		if B.order == "Retreat" then
-			return false
+	elseif action == "Buff" then
+		local slot = tonumber(arg) or 0
+		local u = B.mine[slot]
+		if not u or u.id == B.fighterId or u.hp <= 0 or u.state == S_DOWN or cdLeft(B, "Buff", slot, now) > K.CD_SLACK then
+			return refuse(action, slot)
 		end
 	elseif action == "Special" then
-		local u = B.mine[tonumber(arg) or 0]
-		local row = nil
-		for _, r in ipairs(Hud.rows) do
-			if r.slot == arg then
-				row = r
-			end
+		if not f or not f.special or f.meter < METER_MAX then
+			return refuse(action)
 		end
-		if not u or u.hp <= 0 or not u.special or u.meter < METER_MAX or B.order == "Retreat" then
-			if row and row.Special then
-				row.shakeAt = now
-				Hud.Shake(row.Special)
-			end
-			if u and u.hp > 0 and u.special and u.meter >= METER_MAX and B.order == "Retreat" then
-				Hud.Shake(Hud.attack) -- a full special waits for ATTACK: point at it
-			end
+	elseif (action == "Attack" or action == "Target") and arg ~= nil then
+		local u = B.units[arg]
+		if not u or u.ally or u.hp <= 0 then
 			return false
 		end
 	end
@@ -4475,39 +5770,126 @@ function BattleController.Command(action, arg)
 	if not ok then
 		return false
 	end
+	St.sent = (St.sent or 0) + 1
 	if action == "Forfeit" then
-		return true -- the run's / trial's End does the rest
+		return true -- the run's End does the rest
 	end
-	-- optimistic feedback (the Order event confirms)
-	if action == "Retreat" then
-		B.order = "Retreat"
-		B.retreatAt = now
-		B.focus = nil
-	elseif action == "Attack" then
-		B.order = "Attack"
-		B.focus = arg
-	end
-	Hud.Update(B, now)
+	Input.Predict(B, action, arg, now, auto)
 	return true
 end
 
+-- lock-on: Target(id) (nil clears); the server echoes the lock (Order "Target")
 function BattleController.Focus(unitId)
-	return BattleController.Command("Attack", unitId)
+	local B = St.battle
+	if not B or not B.Fighter or B.ended then
+		return false
+	end
+	if unitId == nil and B.lock == nil then
+		return false
+	end
+	return BattleController.Command("Target", unitId)
 end
 
--- a short "not yet" wiggle (rotation only, so the layout is never disturbed)
-function Hud.Shake(obj)
+-- prediction: the button's own ring starts at once; the matching event (Element / Dash / Buff / Swap / Hit /
+-- Special / Order) within PENDING_TIMEOUT confirms it, a rejected Order or the timeout puts the old ring back
+function Input.Predict(B, action, arg, now, auto)
+	local pend = B.pending
+	local cd = B.cd
+	if action == "Element" or action == "Dash" or action == "Swap" then
+		pend[action] = { t = now, prev = cd[action] or 0 }
+		cd[action] = now + (B.cdLen[action] or 1)
+	elseif action == "Buff" then
+		local slot = tonumber(arg) or 0
+		pend.Buff = { t = now, slot = slot, prev = cd.Buff[slot] or 0 }
+		cd.Buff[slot] = now + (B.cdLen.Buff[slot] or 15)
+		local H = nil
+		for _, h in ipairs(Hud.helpers or {}) do
+			if h.unit and h.unit.slot == slot then
+				H = h
+			end
+		end
+		if H then
+			Hud.Pop(H.Face)
+		end
+	elseif action == "Target" then
+		pend.Target = { t = now, prev = B.lock }
+		B.lock = arg
+		Hud.enemyDirty = true
+	elseif action == "Attack" then
+		pend.Attack = { t = now, auto = auto == true }
+		local f = B.fighterId and B.units[B.fighterId]
+		if f then
+			f.swingAt = os.clock() -- the drawn fighter swings at once (the number waits for the server's Hit)
+		end
+	elseif action == "Special" then
+		pend.Special = { t = now }
+	end
+	if action ~= "Target" then
+		Hud.Pop(Hud.ButtonOf(action, tonumber(arg)))
+	end
+	Hud.ringAt = 0 -- repaint the rings on the next frame
+end
+
+-- the server confirmed `action` (its event arrived)
+function Input.Confirm(B, action, slot)
+	local p = B.pending[action]
+	if p and (action ~= "Buff" or slot == nil or p.slot == slot) then
+		B.pending[action] = nil
+		return true
+	end
+	return false
+end
+
+-- a refusal or a timeout: the ring goes back to what it showed before the press, the button shakes
+function Input.Revert(B, action, shake)
+	local p = B.pending[action]
+	if not p then
+		return
+	end
+	B.pending[action] = nil
+	if action == "Element" or action == "Dash" or action == "Swap" then
+		B.cd[action] = p.prev or 0
+	elseif action == "Buff" then
+		B.cd.Buff[p.slot] = p.prev or 0
+	elseif action == "Target" then
+		B.lock = p.prev
+		Hud.enemyDirty = true
+	end
+	if shake then
+		Hud.Shake(Hud.ButtonOf(action, p.slot))
+	end
+	Hud.ringAt = 0
+end
+
+-- predictions that no event confirmed in time (10 Hz from Hud.Update)
+function Input.CheckPending(B, now)
+	for action, p in pairs(B.pending) do
+		if now - p.t > K.PENDING_TIMEOUT then
+			if action == "Attack" or action == "Special" or action == "Target" then
+				B.pending[action] = nil -- nothing to put back (a Target that never echoed keeps the lock)
+			else
+				Input.Revert(B, action, true)
+				St.timeouts = (St.timeouts or 0) + 1
+			end
+		end
+	end
+end
+
+-- a small press pop (scale) on a button
+function Hud.Pop(obj)
 	if not obj or not obj.Parent then
 		return
 	end
+	local s = obj:FindFirstChild("PopScale")
+	if not s then
+		s = make("UIScale", { Name = "PopScale", Scale = 1 }, obj)
+	end
 	pcall(function()
-		obj.Rotation = 5
-		Util.Tween(obj, 0.06, { Rotation = -5 })
-		task.delay(0.06, function()
-			Util.Tween(obj, 0.08, { Rotation = 0 })
-		end)
+		s.Scale = 0.9
+		Util.Tween(s, 0.16, { Scale = 1 }, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
 	end)
 end
+
 
 ----------------------------------------------------------------------
 -- Messages
@@ -4536,6 +5918,7 @@ function Net.Cleanup(B, immediate)
 			St.ringLast = B -- a run's final "End" may still come for this battle id (it ended between two rounds)
 		end
 		Input.Bind(false)
+		Input.Movement(B, false)
 		if not St.result then
 			Hud.SetVisible(false)
 		end
@@ -4586,13 +5969,16 @@ function Net.Start(payload, battleId)
 				Units.Remove(B, u.id)
 			end
 		end
+		Net.Team(B, payload)
 		Input.Bind(B.Fighter)
+		Input.Movement(B, B.Fighter)
 		Hud.Rebuild()
 		return
 	end
-	-- the next Champion Ring round in the same pocket: my pets' models (and their cards) carry over, so nothing
-	-- blinks between End and Start
-	local carry = (B and B.ringNext and tostring(payload.Mode) == "Ring") and Ring.TakeModels(B) or nil
+	-- the next Champion Ring round in the same pocket / the next dungeon room: my pets' models (and their cards)
+	-- carry over, so nothing blinks between End and Start
+	local chain = B and ((B.ringNext and tostring(payload.Mode) == "Ring") or (B.ended and B.Fighter and B.Mode == "Dungeon" and tostring(payload.Mode) == "Dungeon"))
+	local carry = chain and Ring.TakeModels(B) or nil
 	if B then
 		Net.Cleanup(B, false)
 	end
@@ -4603,6 +5989,7 @@ function Net.Start(payload, battleId)
 	for _, info in ipairs(type(payload.Units) == "table" and payload.Units or {}) do
 		Units.Add(B, info)
 	end
+	Net.Team(B, payload)
 	if carry then
 		Ring.GiveModels(B, carry)
 	end
@@ -4620,8 +6007,142 @@ function Net.Start(payload, battleId)
 		Hud.result.Visible = false
 	end
 	Input.Bind(B.Fighter)
+	Input.Movement(B, B.Fighter)
 	Hud.Rebuild()
 	BattleController._wake()
+end
+
+-- Phase 5: my team from "Start".Team = { Fighter, Bench, Lives, Speed = { Walk, Run }, Cooldowns } (a late joiner
+-- gets the running cooldowns: seconds left; Buff keyed by slot STRINGS on the wire)
+function Net.Team(B, payload)
+	Input.CooldownLengths(B)
+	local team = type(payload.Team) == "table" and payload.Team or nil
+	if not B.Fighter then
+		return
+	end
+	local now = os.clock()
+	if team then
+		B.fighterId = tonumber(team.Fighter) or B.fighterId
+		B.lives = tonumber(team.Lives) or B.lives
+		if type(team.Speed) == "table" and tonumber(team.Speed.Walk) then
+			B.speed = { Walk = tonumber(team.Speed.Walk), Run = tonumber(team.Speed.Run) }
+		end
+		local cds = type(team.Cooldowns) == "table" and team.Cooldowns or {}
+		for _, kind in ipairs({ "Element", "Dash", "Swap" }) do
+			local left = num(cds[kind], 0)
+			B.cd[kind] = left > 0 and (now + left) or 0
+		end
+		if type(cds.Buff) == "table" then
+			for key, left in pairs(cds.Buff) do
+				local slot = tonumber(key)
+				if slot then
+					B.cd.Buff[slot] = num(left, 0) > 0 and (now + num(left, 0)) or 0
+				end
+			end
+		end
+	end
+	if not B.fighterId then
+		-- (an older Start without Team: my slot-1 pet)
+		local u = B.mine[1]
+		B.fighterId = u and u.id or nil
+	end
+	for slot = 1, 4 do
+		local u = B.mine[slot]
+		if u then
+			u.benched = u.id ~= B.fighterId
+		end
+	end
+	local f = B.fighterId and B.units[B.fighterId]
+	B.fighterEvo = f and f.evo or 0
+	if not B.speed and f then
+		local walk, run = tonumber(f.info.walk), tonumber(f.info.run)
+		if walk then
+			B.speed = { Walk = walk, Run = run }
+		end
+	end
+end
+
+-- Phase 5: what an event changes for MY HUD, on arrival (the visuals play later on the render clock): predictions
+-- confirmed / refused, cooldowns started, the lock, the fighter after a swap, the battle speed
+function Net.Pre(B, ev)
+	if not B.Fighter or B.ended then
+		return
+	end
+	local me = myUserId()
+	local t = ev.type
+	local now = os.clock()
+	if t == EV.Order then
+		if ev.owner ~= me then
+			return
+		end
+		local action = tostring(ev.order or "")
+		if ev.rejected ~= nil then
+			St.rejected = (St.rejected or 0) + 1
+			local p = B.pending[action]
+			if p then
+				Input.Revert(B, action, not (action == "Attack" and p.auto))
+			elseif action ~= "Attack" and action ~= "Target" then
+				Hud.Shake(Hud.ButtonOf(action, tonumber(ev.target)))
+			end
+		elseif action == "Target" then
+			B.lock = tonumber(ev.target)
+			B.pending.Target = nil
+			Hud.enemyDirty = true
+		end
+	elseif t == EV.Element or t == EV.Dash then
+		if B.fighterId and tonumber(ev.unit) == B.fighterId then
+			local kind = (t == EV.Element) and "Element" or "Dash"
+			if not Input.Confirm(B, kind) then
+				B.cd[kind] = now + (B.cdLen[kind] or 1)
+			end
+			Hud.ringAt = 0
+		end
+	elseif t == EV.Buff then
+		if ev.owner == me then
+			local h = B.units[tonumber(ev.unit) or -1]
+			local slot = h and h.slot
+			if slot and not Input.Confirm(B, "Buff", slot) then
+				B.cd.Buff[slot] = now + (B.cdLen.Buff[slot] or 15)
+			end
+			Hud.ringAt = 0
+		end
+	elseif t == EV.Swap then
+		if ev.owner == me then
+			local predicted = Input.Confirm(B, "Swap")
+			if not predicted and not ev.auto then
+				B.cd.Swap = now + (B.cdLen.Swap or 10)
+			end
+			local old = B.fighterId
+			B.fighterId = tonumber(ev["in"]) or B.fighterId
+			local incoming = B.units[B.fighterId]
+			if incoming then
+				incoming.benched = false
+				B.fighterEvo = incoming.evo or 0
+				Units.Rebuild(B, incoming)
+			end
+			local out = old and B.units[old]
+			if out and out ~= incoming then
+				out.benched = true
+			end
+			pcall(Hud.Rebuild)
+		end
+	elseif t == EV.Hit then
+		if B.fighterId and tonumber(ev.from) == B.fighterId and not ev.special and not ev.element and not ev.zone then
+			Input.Confirm(B, "Attack")
+		end
+	elseif t == EV.Special then
+		if B.fighterId and tonumber(ev.unit) == B.fighterId then
+			Input.Confirm(B, "Special")
+		end
+	elseif t == EV.Speed then
+		if ev.owner == me and tonumber(ev.walk) then
+			B.speed = { Walk = tonumber(ev.walk), Run = tonumber(ev.run) }
+			local mc = Hud.Movement()
+			if mc and St.movementOn then
+				pcall(mc.SetBattleSpeed, B.speed.Walk, B.speed.Run)
+			end
+		end
+	end
 end
 
 function Net.Snapshot(payload, battleId)
@@ -4688,6 +6209,10 @@ function Net.Events(list, battleId)
 	local t = B.haveOffset and (os.clock() + B.offset) or B.renderT
 	for _, ev in ipairs(list) do
 		if type(ev) == "table" and type(ev.type) == "string" then
+			local okPre, errPre = pcall(Net.Pre, B, ev)
+			if not okPre then
+				warnOnce("pre_" .. ev.type, "event " .. ev.type .. " (HUD) failed: " .. tostring(errPre))
+			end
 			-- telegraphs start at once (their fill must complete at the hit), the rest on the render clock
 			if ev.type == EV.Telegraph then
 				local fn = Handlers[ev.type]
@@ -4726,9 +6251,21 @@ function Net.End(payload, battleId)
 	B.ended = true
 	B.endAt = os.clock()
 	Input.Bind(false)
+	Input.Movement(B, false)
+	B.pending = {}
 	local participant = payload.Spectator ~= true and B.Fighter
 	Cards.AfterFight(B, payload)
-	if participant and Ring.IsNext(B, payload) then
+	local rw = type(payload.Rewards) == "table" and payload.Rewards or nil
+	if participant and B.Mode == "Dungeon" and (payload.Outcome == "Win" or payload.Won == true or (rw and rw.Dungeon == true and payload.Reason == "Cleared")) then
+		-- a cleared dungeon room: no result card (DungeonController shows the loot); the floor waits for the next room
+		B.linger = K.END_LINGER
+		Hud.SetVisible(false)
+		for _, u in ipairs(B.list) do
+			if u.ally and u.root and not u.parked then
+				u.hopAt = os.clock() + math.random() * 0.4
+			end
+		end
+	elseif participant and Ring.IsNext(B, payload) then
 		-- a won Champion Ring round: the side card "Round 8 won! ... Round 9 in 3", the floor stays until the next Start
 		B.linger = Ring.LINGER
 		Ring.ShowNext(B, payload)
@@ -4856,6 +6393,8 @@ local function stepBattle(B, now, dt)
 	s0 = section("Units", s0)
 	Tele.Update(B, now)
 	Units.UpdateFocus(B, now)
+	B.cue = B.threat and "Dash" or nil
+	Input.Tick(B, now)
 	s0 = section("Telegraphs", s0)
 	if Hud.gui then
 		local ok, err = pcall(Hud.Update, B, now)
@@ -4866,9 +6405,9 @@ local function stepBattle(B, now, dt)
 	section("Hud", s0)
 end
 
--- a bobbing voxel arrow over the enemy the team focuses
+-- a bobbing voxel arrow over the enemy I locked
 function Units.UpdateFocus(B, now)
-	local u = B.focus and B.units[B.focus]
+	local u = B.lock and B.units[B.lock]
 	local mark = B.focusMark
 	if not u or not u.model or u.parked or u.hp <= 0 or B.ended then
 		if mark then
@@ -4924,6 +6463,7 @@ local function onFrame(dt)
 	Fx.UpdateFlashes(now)
 	Hud.UpdateResult(now)
 	Ring.UpdateNext(now)
+	Me.UpdateShake(now)
 	section("Effects", f0)
 	local ms = (perfClock() - p0) * 1000
 	local perf = St.perf
@@ -4934,7 +6474,7 @@ local function onFrame(dt)
 		perf.peak = ms
 	end
 	-- the loop sleeps when nothing is drawn
-	if not St.battle and #St.effects == 0 and #St.numbers == 0 and #St.flashes == 0 and not St.result and not St.next then
+	if not St.battle and #St.effects == 0 and #St.numbers == 0 and #St.flashes == 0 and not St.result and not St.next and not St.shake then
 		if St.loop then
 			St.loop:Disconnect()
 			St.loop = nil
@@ -4977,8 +6517,32 @@ function BattleController.GetBattle()
 		Ended = B.ended,
 		Units = #B.list,
 		Models = models,
-		Focus = B.focus,
-		Order = B.order,
+		Focus = B.lock,
+		Lock = B.lock,
+		FighterId = B.fighterId,
+		Lives = B.lives,
+		Speed = B.speed and { Walk = B.speed.Walk, Run = B.speed.Run } or nil,
+		Dungeon = B.Dungeon,
+		Wave = B.wave,
+		MenuHidden = Hud.menuHidden == true,
+		Cooldowns = (function()
+			local now = os.clock()
+			local out = { Buff = {} }
+			for _, kind in ipairs({ "Element", "Dash", "Swap" }) do
+				out[kind] = max(0, (B.cd[kind] or 0) - now)
+			end
+			for slot, t in pairs(B.cd.Buff) do
+				out.Buff[slot] = max(0, t - now)
+			end
+			return out
+		end)(),
+		Pending = (function()
+			local out = {}
+			for k in pairs(B.pending) do
+				out[k] = true
+			end
+			return out
+		end)(),
 		Hud = BattleController.IsHudVisible(),
 		Layout = (Hud.m and Hud.m.Compact) and "Compact" or "Wide",
 		RenderT = B.renderT,
@@ -4995,7 +6559,6 @@ function BattleController.GetBattle()
 		Round = B.Round > 0 and B.Round or nil,
 		Best = B.Ring and num(B.Ring.Best, 0) or nil,
 		Next = B.ringNext and B.ringNext.Next or nil,
-		Overtime = B.overtime == true,
 		InterpDelay = interpDelay(B),
 		TeamPlace = Hud.teamPlace,
 	}
@@ -5025,6 +6588,9 @@ function BattleController.GetUnit(id)
 		Card = u.card and { Gui = u.card.Gui, Mode = u.card.mode } or nil,
 		Level = u.level, Evo = u.evo, Xp = u.xp, XpNext = u.xpNext, Crowned = u.crowned,
 		Writes = u.cardWrites or 0,
+		-- Phase 5: the bench, the wind-up, the drawn root position (my fighter / helpers), the team's lives, detail
+		Benched = u.benched == true, Windup = u.windup == true, Lives = u.lives, Detail = u.detail,
+		Drawn = u.root and u.root.Position or nil, FlyAt = u.flyAt, SwapAt = u.swapAt,
 	}
 end
 
@@ -5059,6 +6625,13 @@ function BattleController.GetStats()
 		Telegraphs = teles,
 		Builds = perf.builds,
 		Bound = St.bound,
+		HpWrites = Hud.hpWrites or 0,
+		RingWrites = St.ringWrites or 0,
+		Shakes = Hud.shakes or 0,
+		CameraShakes = St.shakeCount or 0,
+		Sent = St.sent or 0,
+		Rejected = St.rejected or 0,
+		Timeouts = St.timeouts or 0,
 		Split = (function()
 			local out = {}
 			for k, v in pairs(perf.split or {}) do
@@ -5074,7 +6647,7 @@ function BattleController.ResetStats()
 end
 
 function BattleController.IsHudVisible()
-	return Hud.gui ~= nil and Hud.gui.Parent ~= nil and ((Hud.team and Hud.team.Visible) or (Hud.result and Hud.result.Visible)) == true
+	return Hud.gui ~= nil and Hud.gui.Parent ~= nil and ((Hud.team and Hud.team.Visible) or (Hud.cmd and Hud.cmd.Visible) or (Hud.result and Hud.result.Visible)) == true
 end
 
 function BattleController.Stop()
@@ -5083,6 +6656,8 @@ function BattleController.Stop()
 	end
 	Fx.ClearAll()
 	Input.Bind(false)
+	Input.Movement(nil, false)
+	St.shake = nil
 	for _, c in ipairs(St.conns) do
 		pcall(function()
 			c:Disconnect()
@@ -5098,12 +6673,14 @@ function BattleController.Stop()
 		Hud.gui:Destroy()
 	end
 	Hud.gui = nil
-	Hud.topBuilt = false
-	Hud.teamBack = nil
 	Hud.rows = {}
-	Hud.chips = {}
+	Hud.helpers = {}
+	Hud.buttons = {}
+	Hud.more = nil
 	Hud.next = nil
 	Hud.info = nil
+	Hud.leave = nil
+	Leave.buttons = {}
 	St.result = nil
 	St.next = nil
 	St.ringLast = nil

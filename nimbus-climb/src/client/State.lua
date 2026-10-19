@@ -37,7 +37,18 @@
 --                             training job (Ends = server os.time(); display only)
 --   State.Ring() -> { Best, Runs }   the Champion Ring record (Best = the highest round won, Runs = finished runs)
 --
+--   Phase 5 (ARCHITECTURE_V3.md "Phase 5 build contract" 9.1 / 3.7 / 4.8):
+--   State.Dungeon() -> { Best = 0..100, Cleared = {[floor]=true}, Runs, Clears }   (Cleared arrives as a dense array)
+--   State.Berries() -> whole berries (reads the Berries attribute, falls back to the snapshot)
+--   State.Settings() -> { Music 0..10, Sfx 0..10, Gfx "Auto"|"Low"|"High", Shake, SeenNotes }  (per-key defaults)
+--   State.SettingsChanged        Util.Signal; Fire(settings) after a ProfileSync that changed a setting
+--   State.PetStage(key) -> 0..2  the stored evolution stage that counts (PetCatalog.EvolutionStage(def, level, Evo))
+--   State.BestStage(petId) -> 0..2   the highest stage over the owned keys of that base pet (tier copies too)
+--   State.Teams().Slots == 3     always (a fighter and two helpers)
+--   Home gains DecorCredit = 1..18 | nil, LegacyMagnet = 1..5 | nil, LegacyMagnetStar = n | nil (the fold)
+--
 -- Extras (not part of the cross-module contract): State.IsLoaded(), State.Perks(), State.Stats(),
+-- State.BerriesChanged (Signal, Fire(berries) when the Berries attribute changes),
 -- State.EquippedList(), State.TokensChanged (Signal, Fire(tokens) when the CloudTokens attribute changes),
 -- State.DiscoveredCount(petIdList|nil), State.Tutorial() -> { Step, Done, Gifted }, State.Tiers(), State.Hybrids(),
 -- State.IsTraining(key) (true while the key has a training Job), State.TrainingKeys() -> {[key] = true},
@@ -69,6 +80,9 @@ State.Changed = Util.Signal()
 State.TokensChanged = Util.Signal()
 State.CashChanged = Util.Signal()
 State.GemsChanged = Util.Signal()
+-- Phase 5
+State.SettingsChanged = Util.Signal()
+State.BerriesChanged = Util.Signal()
 
 local PERK_KEYS = { "MaxHealth", "TokenBonus", "StaminaRegen", "CheckpointHeal" }
 local STAT_KEYS = { "Matches", "Wins", "TokensEarned", "Spins" }
@@ -188,7 +202,10 @@ local function slotMap(raw)
 end
 
 local function newHome()
-	return { Level = 0, Prestige = 0, Stations = {}, Garden = {}, Gym = {}, CollectorCash = 0, LegacySlots = nil, LegacyPrices = nil }
+	return {
+		Level = 0, Prestige = 0, Stations = {}, Garden = {}, Gym = {}, CollectorCash = 0, LegacySlots = nil, LegacyPrices = nil,
+		DecorCredit = nil, LegacyMagnet = nil, LegacyMagnetStar = nil, -- Phase 5 (the fold)
+	}
 end
 
 local function cleanHome(raw)
@@ -209,6 +226,16 @@ local function cleanHome(raw)
 	end
 	if raw.LegacyPrices == true then
 		h.LegacyPrices = true
+	end
+	-- Phase 5 (the fold): DecorCredit 1..18 or nil; LegacyMagnet 1..5 with the Prestige it was folded at, or nil
+	local credit = wholeNumber(raw.DecorCredit)
+	if credit >= 1 then
+		h.DecorCredit = math.min(credit, 18)
+	end
+	local magnet = wholeNumber(raw.LegacyMagnet)
+	if magnet >= 1 then
+		h.LegacyMagnet = math.min(magnet, 5)
+		h.LegacyMagnetStar = wholeNumber(raw.LegacyMagnetStar)
 	end
 	return h
 end
@@ -276,6 +303,81 @@ local function cleanRing(raw)
 		r.Runs = wholeNumber(raw.Runs)
 	end
 	return r
+end
+
+-- Phase 5: the Dungeon record. Cleared arrives as a dense boolean array (or a set) -> { [floor] = true }.
+local MAX_FLOOR = 100
+
+local function newDungeon()
+	return { Best = 0, Cleared = {}, Runs = 0, Clears = 0 }
+end
+
+local function cleanDungeon(raw)
+	local d = newDungeon()
+	if type(raw) ~= "table" then
+		return d
+	end
+	d.Best = math.min(wholeNumber(raw.Best), MAX_FLOOR)
+	d.Runs = wholeNumber(raw.Runs)
+	d.Clears = wholeNumber(raw.Clears)
+	if type(raw.Cleared) == "table" then
+		for key, value in pairs(raw.Cleared) do
+			local floor = tonumber(key)
+			if value == true and floor and floor >= 1 and floor <= MAX_FLOOR and floor == math.floor(floor) then
+				d.Cleared[floor] = true
+				if floor > d.Best then
+					d.Best = floor
+				end
+			end
+		end
+	end
+	return d
+end
+
+-- Phase 5: the settings with per-key defaults (7.2); a malformed value falls back to its default.
+local SETTING_KEYS = { "Music", "Sfx", "Gfx", "Shake", "SeenNotes" }
+local SETTING_DEFAULTS = { Music = 6, Sfx = 8, Gfx = "Auto", Shake = true, SeenNotes = 0 }
+local GFX_LEVELS = { Auto = true, Low = true, High = true }
+
+local function newSettings()
+	local s = {}
+	for _, key in ipairs(SETTING_KEYS) do
+		s[key] = SETTING_DEFAULTS[key]
+	end
+	return s
+end
+
+local function cleanSettings(raw)
+	local s = newSettings()
+	if type(raw) ~= "table" then
+		return s
+	end
+	for _, key in ipairs({ "Music", "Sfx" }) do
+		local v = raw[key]
+		if type(v) == "number" and v == v and v >= 0 and v <= 10 and v == math.floor(v) then
+			s[key] = v
+		end
+	end
+	if type(raw.Gfx) == "string" and GFX_LEVELS[raw.Gfx] then
+		s.Gfx = raw.Gfx
+	end
+	if type(raw.Shake) == "boolean" then
+		s.Shake = raw.Shake
+	end
+	local notes = raw.SeenNotes
+	if type(notes) == "number" and notes == notes and notes >= 0 and notes <= 1000 and notes == math.floor(notes) then
+		s.SeenNotes = notes
+	end
+	return s
+end
+
+local function settingsEqual(a, b)
+	for _, key in ipairs(SETTING_KEYS) do
+		if a[key] ~= b[key] then
+			return false
+		end
+	end
+	return true
 end
 
 local function cleanTiers(raw)
@@ -366,9 +468,7 @@ local function cleanTeams(raw)
 	if type(raw) ~= "table" then
 		return t
 	end
-	if num(raw.Slots, 3) >= 4 then
-		t.Slots = 4
-	end
+	-- Phase 5 (4.8): Slots is 3 always (slot 1 = the fighter); a longer preset from an old snapshot keeps its first 3
 	if type(raw.Presets) == "table" then
 		for i = 1, TEAM_PRESETS do
 			local list = raw.Presets[i]
@@ -468,6 +568,10 @@ local function newSnapshot()
 		-- Phase 4
 		PetGrowth = {},
 		Ring = newRing(),
+		-- Phase 5
+		Dungeon = newDungeon(),
+		Berries = 0,
+		Settings = newSettings(),
 	}
 end
 
@@ -529,6 +633,10 @@ local function normalise(raw)
 	-- Phase 4
 	snap.PetGrowth = cleanGrowth(raw.PetGrowth)
 	snap.Ring = cleanRing(raw.Ring)
+	-- Phase 5
+	snap.Dungeon = cleanDungeon(raw.Dungeon)
+	snap.Berries = wholeNumber(raw.Berries)
+	snap.Settings = cleanSettings(raw.Settings)
 	for id in pairs(snap.Tiers) do
 		snap.Discovered[id] = true -- a tier copy counts for its base pet
 	end
@@ -786,6 +894,74 @@ function State.Ring()
 	return current.Ring
 end
 
+-- Phase 5: the Dungeon record { Best, Cleared = {[floor]=true}, Runs, Clears } (read-only).
+function State.Dungeon()
+	return current.Dungeon
+end
+
+-- Phase 5: the settings { Music, Sfx, Gfx, Shake, SeenNotes } (read-only; every key present).
+function State.Settings()
+	return current.Settings
+end
+
+-- Phase 5 (3.7): the evolution stage that counts for an owned key: PetCatalog.EvolutionStage(def, level, Evo) with
+-- the stored stage (hybrids through PetKeys.DefOf). 0 for an unknown key or without the catalog.
+local petCatalog = nil
+local function getPetCatalog()
+	if petCatalog == nil then
+		petCatalog = false
+		local module = Shared:FindFirstChild("PetCatalog")
+		if module then
+			local ok, result = pcall(require, module)
+			if ok and type(result) == "table" then
+				petCatalog = result
+			end
+		end
+	end
+	return petCatalog or nil
+end
+
+function State.PetStage(key)
+	if type(key) ~= "string" then
+		return 0
+	end
+	local entry = current.PetGrowth[key]
+	local stored = entry and entry.Evo or 0
+	if stored < 1 then
+		return 0
+	end
+	local catalog = getPetCatalog()
+	local def = State.DefOf(key)
+	if catalog and type(catalog.EvolutionStage) == "function" and def then
+		local level = State.PetLevel(key)
+		local ok, stage = pcall(catalog.EvolutionStage, def, level, stored)
+		if ok and type(stage) == "number" then
+			return stage
+		end
+	end
+	return math.min(stored, MAX_EVO)
+end
+
+-- Phase 5 (3.7): the highest stage over the owned keys of a base pet id (its Normal / Golden / Rainbow copies).
+function State.BestStage(petId)
+	if type(petId) ~= "string" then
+		return 0
+	end
+	local best = 0
+	for key, entry in pairs(current.PetGrowth) do
+		if entry.Evo and entry.Evo > best then
+			local base = string.match(key, "^(.-)@[%w]+$") or key
+			if base == petId and State.OwnedCount(key) > 0 then
+				local stage = State.PetStage(key)
+				if stage > best then
+					best = stage
+				end
+			end
+		end
+	end
+	return best
+end
+
 local function attributeNumber(name)
 	local player = Players.LocalPlayer
 	if not player or not name then
@@ -814,6 +990,15 @@ function State.Gems()
 	return current.Gems or 0
 end
 
+-- Phase 5: whole berries (the Berries attribute is written by DataService <= 2/s; the snapshot is the fallback)
+function State.Berries()
+	local berries = attributeNumber(Config.Attr.Berries)
+	if berries ~= nil then
+		return math.max(0, math.floor(berries))
+	end
+	return current.Berries or 0
+end
+
 ----------------------------------------------------------------------
 -- Server traffic
 ----------------------------------------------------------------------
@@ -821,9 +1006,14 @@ local function apply(raw)
 	if type(raw) ~= "table" then
 		return
 	end
+	local previous = current
 	current = normalise(raw)
 	loaded = true
 	State.Changed:Fire(State.Get())
+	-- Phase 5: a setting changed on the server (another device, a merge) -> SettingsChanged(settings)
+	if not settingsEqual(previous.Settings, current.Settings) then
+		State.SettingsChanged:Fire(current.Settings)
+	end
 end
 
 local function request()
@@ -866,6 +1056,11 @@ function State.Init()
 		if Config.Attr.Gems then
 			player:GetAttributeChangedSignal(Config.Attr.Gems):Connect(function()
 				State.GemsChanged:Fire(State.Gems())
+			end)
+		end
+		if Config.Attr.Berries then
+			player:GetAttributeChangedSignal(Config.Attr.Berries):Connect(function()
+				State.BerriesChanged:Fire(State.Berries())
 			end)
 		end
 	end

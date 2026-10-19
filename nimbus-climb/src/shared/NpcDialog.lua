@@ -16,6 +16,11 @@
 -- (Coach Corgi), the Fusion Machine, Gems and the Secret roulette at the Storm Altar (Professor Axolotl). Phase 3 tips
 -- (pet battles): the battle controls (Sparky Fox), Boss Raids and the safe zones (Captain Penguin), the Trial Portal
 -- and battle teams (Coach Corgi), elements and team synergy in battle (Professor Axolotl), all quoting BattleCatalog.
+-- Phase 5 ("Phase 5 build contract" 8): the Berry Farm, the Food Bowl, Cloud Cash and the Berry Basket (Mayor Panda,
+-- Granny Owl), evolved pets growing faster and looking evolved (Granny Owl, PetCatalog.EvolutionBonusOf), the Dungeon
+-- (Coach Corgi, BattleCatalog.Dungeon.Floors), the team of a fighter + 2 helpers and the battle keys (Coach Corgi,
+-- Sparky Fox), the ONE Obby portal with its level picker and DASH out of telegraphs (Captain Penguin). No Trial, no
+-- four plants, no Coin Magnet, no RETREAT.
 -- Nimbus the Cloudy Dragon is NOT an NPC: it is
 -- the tutorial guide. `Keywords` are phrases the dialog box highlights (numbers are highlighted automatically),
 -- `ColorWords` words it paints in their own colour (the element names).
@@ -281,13 +286,6 @@ local weakMul = number((Config.Elements and Config.Elements.WeakMultiplier) or 0
 local TC = TycoonCatalog or {}
 local G = Config.Gems or {}
 
--- "each feed fills 25% of its XP bar" (the Food Machine at level 1: TycoonCatalog.FeedShare[1])
-local function feedLine()
-	local share = type(TC.FeedShare) == "table" and tonumber(TC.FeedShare[1]) or 0.25
-	return "Hungry pets grow! Press E at your Food Machine, pick a pet and press Feed: each feed fills "
-		.. percent(share) .. " of its XP bar."
-end
-
 -- "Attack Speed, Physique, Ability or Defense" (BattleCatalog.TrainingSkills, read below)
 local function trainLine(skills)
 	return "Your Training Place makes pets tougher: train " .. skills .. ". They rest at home while they train!"
@@ -327,10 +325,10 @@ end
 -- Phase 4 numbers (PetCatalog: evolution; TycoonCatalog: Prestige garden places; BattleCatalog: the ring record)
 local PC = PetCatalog or {}
 local evoLevels = type(PC.EvolutionLevels) == "table" and PC.EvolutionLevels or { 20, 50 }
-local evoBoost = type(PC.EvolutionBoost) == "table" and PC.EvolutionBoost or { 1.25, 1.5 }
-local roleMult = type(PC.RoleMult) == "table" and PC.RoleMult or { Economy = 1.6 }
-local economyBonus = percent((tonumber(roleMult.Economy) or 1.6) - 1)
-local evoBonus = percent((tonumber(evoBoost[1]) or 1.25) - 1)
+-- Phase 5 (3.1): EVOLVE multiplies the level bonus (PetCatalog.EvolutionBonusOf: x1.5 / x1.875)
+local evoBonusOf = type(PC.EvolutionBonusOf) == "function" and tonumber(PC.EvolutionBonusOf(1)) or 1.5
+-- "50%": how much faster an evolved pet's level bonus grows (EvolutionBonusOf(1) = 1.5 -> 50%)
+local evoFaster = percent(math.max(0, evoBonusOf - 1))
 local placesPerStar = tonumber(PR.GardenSlotsPerStar) or 1
 local placeWord = placesPerStar == 1 and "one more garden place" or (number(placesPerStar) .. " more garden places")
 
@@ -363,15 +361,19 @@ do
 		recordWord = "x" .. number(mult)
 	end
 end
-local raidMinutes, trialCount, trophyWin, synergyPair = 20, 30, 20, "10%"
+local raidMinutes, floorCount, trophyWin, synergyPair = 20, 12, 20, "10%"
 do
 	local events = type(BC.Events) == "table" and BC.Events or {}
 	local first = type(events.Schedule) == "table" and events.Schedule[1] or nil
 	if type(first) == "table" and tonumber(first.EveryMinutes) then
 		raidMinutes = math.floor(tonumber(first.EveryMinutes))
 	end
-	if tonumber(BC.TrialCount) then
-		trialCount = math.floor(tonumber(BC.TrialCount))
+	-- Phase 5: the Dungeon's floors (BattleCatalog.Dungeon.Floors, a count; DungeonFloors as a fallback)
+	local dungeon = type(BC.Dungeon) == "table" and BC.Dungeon or {}
+	if tonumber(dungeon.Floors) then
+		floorCount = math.floor(tonumber(dungeon.Floors))
+	elseif type(BC.DungeonFloors) == "table" and #BC.DungeonFloors > 0 then
+		floorCount = #BC.DungeonFloors
 	end
 	if type(BC.Trophies) == "table" and tonumber(BC.Trophies.Win) then
 		trophyWin = math.floor(tonumber(BC.Trophies.Win))
@@ -394,7 +396,7 @@ NpcDialog.Npcs = {
 		PetId = "aurora_fox",
 		Species = "Fox",
 		Accent = Color3.fromRGB(64, 188, 192),
-		Keywords = { "Shift", "RUN", "DASH!", "DASH", "Q", "1 to 4", "Heal Cloud", "ATTACK", "RETREAT", "SPECIAL" },
+		Keywords = { "Shift", "RUN", "DASH!", "DASH", "Q", "1 to 4", "Heal Cloud", "ATTACK", "ELEMENT", "SPECIAL", "helper", "SWAP" },
 		Lines = {
 			"Zap! Hold Shift to run (the RUN button on phones). Running drains stamina, walking refills it.",
 			"Press Q to dash (DASH on phones). It costs " .. number(P.DashStaminaCost or 35) .. " stamina, recharges in "
@@ -402,7 +404,7 @@ NpcDialog.Npcs = {
 			"See a DASH! sign? That gap is too wide for a jump alone: jump first, then dash while you are in the air.",
 			"Keys 1 to 4 use your hotbar items during a climb. A Heal Cloud (" .. tokens(itemPrice("heal_cloud", 30))
 				.. ") restores 40% of your health.",
-			"In a pet battle: F = ATTACK (tap an enemy to focus it), R = RETREAT to heal, 1 to 4 = SPECIAL when it glows!",
+			"In a battle: F = ATTACK, E = ELEMENT, Q = SPECIAL, Shift = DASH. Press 1 or 2 for a helper's buff, hold it to SWAP!",
 		},
 	},
 	{
@@ -412,14 +414,14 @@ NpcDialog.Npcs = {
 		PetId = "frostling_penguin",
 		Species = "Penguin",
 		Accent = Color3.fromRGB(88, 148, 226),
-		Keywords = { "portal pad", "next checkpoint", "Phoenix Feather", "Boss Raid", "RETREAT", "safe zone", "Battle Arena" },
+		Keywords = { "Obby portal", "level", "next checkpoint", "Phoenix Feather", "Boss Raid", "DASH", "safe zone", "Battle Arena", "Dungeon" },
 		Lines = {
-			"Ahoy! Step onto a portal pad together: up to " .. number(M.MaxPlayers or 4) .. " climbers can sail into the same course.",
+			"Ahoy! Hop on the Obby portal pad together: up to " .. number(M.MaxPlayers or 4) .. " climbers sail one course. Beat a level to unlock the next!",
 			"Teammate down? Keep climbing! Reaching the next checkpoint revives everyone who is down.",
 			"A Phoenix Feather (" .. tokens(itemPrice("phoenix_feather", 150))
 				.. ") revives the nearest downed teammate right away, with 50% health.",
 			"A Boss Raid starts every " .. raidMinutes .. " minutes in the arena: everyone fights one giant boss together!",
-			"Outside the Battle Arena and the battle rings it's a safe zone: no pet battles. In the arena, RETREAT out of glowing circles!",
+			"Outside the Battle Arena, the rings and the Dungeon it's a safe zone: no battles. In a fight, DASH out of glowing circles!",
 		},
 	},
 	{
@@ -429,15 +431,15 @@ NpcDialog.Npcs = {
 		PetId = "sleepy_owl",
 		Species = "Owl",
 		Accent = Color3.fromRGB(160, 126, 222),
-		Keywords = { "roulette", "shop island", "Mythic", "Pet Index", "Gems", "Food Machine", "Feed", "EVOLVE" },
+		Keywords = { "roulette", "shop island", "Mythic", "Pet Index", "Gems", "Berry Basket", "Food Machine", "Feed", "EVOLVE", "evolved" },
 		Lines = {
 			"Hoo-hoo! New pets hatch from the roulettes on the shop island: " .. rouletteRange() .. ". Pricier means rarer!",
 			"Mythic pets only appear in the " .. mythicChances() .. " roulettes. "
 				.. (cheapGemSpin and ("Gems buy spins too: a " .. cheapGemSpin .. "!") or "The shop shows every chance."),
 			"Every pet you find fills the Pet Index. Complete a rarity group for a reward: " .. indexRewardRange() .. "!",
-			feedLine(),
-			"At level " .. number(evoLevels[1] or 20) .. " a pet glows gold: press EVOLVE for +" .. evoBonus
-				.. " to everything! Epic and rarer pets evolve again at " .. number(evoLevels[2] or 50) .. ".",
+			"Your farm fills the Berry Basket. Press E at the Food Machine, pick a pet and press Feed: berries become XP!",
+			"At level " .. number(evoLevels[1] or 20) .. " press EVOLVE for a new look! Evolved pets grow " .. evoFaster
+				.. " faster per level. Epic+ evolve again at " .. number(evoLevels[2] or 50) .. ".",
 		},
 	},
 	{
@@ -447,14 +449,14 @@ NpcDialog.Npcs = {
 		PetId = "waffle_corgi",
 		Species = "Dog",
 		Accent = Color3.fromRGB(240, 174, 70),
-		Keywords = { "yours to keep", "Trial Portal", "Training Place", "Champion Ring", "record", "Team", "trophies" },
+		Keywords = { "yours to keep", "Dungeon", "Training Place", "Champion Ring", "record", "Team", "trophies", "fighter", "helpers" },
 		Lines = {
-			"Woof! Every coin you grab on a climb is yours to keep, even when your team runs out of time!",
-			"The Trial Portal on the plaza has " .. trialCount .. " levels of pet teams. Every first clear pays a big token bonus!",
+			"Woof! Coins you grab on a climb are yours to keep. Tap Team, then duel friends in the arena: +" .. trophyWin .. " trophies a win!",
+			"The Dungeon portal on the plaza has " .. floorCount .. " floors of rooms, waves and bosses. Every first clear pays big token bonuses and Gems!",
 			trainLine(skillList),
 			"Try the Champion Ring on the plaza: one champion after another, each stronger. Beat your record for "
 				.. recordWord .. " Cash!",
-			"Tap Team to pick 3 battle pets (a 4th at Prestige 1). Duel friends on the rings: +" .. trophyWin .. " trophies a win!",
+			"Your team is a fighter and two helpers: ATTACK, ELEMENT, SPECIAL and DASH; tap a helper for its buff!",
 		},
 	},
 	{
@@ -464,11 +466,11 @@ NpcDialog.Npcs = {
 		PetId = "bamboo_panda",
 		Species = "Panda",
 		Accent = Color3.fromRGB(100, 184, 112),
-		Keywords = { "free gate", "press E", "Pet Garden", "rainbow coins", "Berry Bush", "Economy pets", "Home Level", "Prestige", "portal" },
+		Keywords = { "free gate", "press E", "Food Bowl", "Cloud Cash", "Berry Farm", "Food Machine", "Home Level", "Prestige", "portal" },
 		Lines = {
 			"Welcome to Nimbus Village! Walk up to a free gate on the big ring and press E to claim your very own home.",
-			"Your pets eat in your Pet Garden and pop out rainbow coins. Only you can scoop yours: just walk over them!",
-			"Grow a Berry Bush, a Carrot Patch and more: tastier food makes bigger coins. Economy pets make " .. economyBonus .. " more!",
+			"Your garden pets roam your yard, eat at the Food Bowl and poop Cloud Cash. Only you can scoop it: walk over it!",
+			"Level up your Berry Farm: bigger berries make bigger Cloud Cash, and more berries for the Food Machine!",
 			"Home Level " .. prestigeLevel .. " and a " .. castleName .. "? Prestige! You get x" .. prestigeMul
 				.. " coins forever, " .. prestigeGems .. " Gems and " .. placeWord .. ".",
 			"Tap Home in the menu to see your stations. Go home opens a magic portal just for you and your pets!",

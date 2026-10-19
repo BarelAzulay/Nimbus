@@ -36,6 +36,18 @@
 --                   /petlevel, the owner's "Publish, then Migrate to Latest Update" and no stale Phase 2-3 wording.
 --                   The Phase 2 checks follow the Phase 4 catalog (food plants, Coin Magnet, Food Machine, Training
 --                   Place, the Vault's bigger piles, star prices and the Welcome-back toast quoted from TycoonService).
+--                 * Phase 5 (the Big Sky Update): checkPhase5 reads the "## Phase 5: the Big Sky Update" bullets (teams of 3
+--                   and the battle keys F / E / Q / Tab / Shift + 1 / 2 for the helpers, Supporters, the Dungeon's floors
+--                   and party size, the Gate Court and the obby level picker, the Berry Farm / berries / Feed, roaming
+--                   pets and Cloud Cash, 11 stations, evolved looks, followers, the sky, stamina from Config.Physics, the
+--                   loading screen / main menu / settings), the owner checklist "## Phase 5: owner checklist" numbered
+--                   0-7 exactly like ARCHITECTURE_V3.md 10.6 with one needle per step (rojo serve, Migrate to Latest
+--                   Update, Bulk Import, Config.Audio, Config.Icons, ShadowMap, Developer Products, Output) plus the
+--                   six Config.Sky.Faces keys and the branding/sky images, the /berries [n] and /menu rows, and that no
+--                   "4th slot opens at Prestige" line is left. The Phase 2-4 checks follow the Phase 5 catalogs: 11
+--                   stations (TycoonCatalog Version 5), the Berry Farm house caps, Cloud Cash and berries in the garden
+--                   and Food Machine texts, the fighter / helper battle rules and keys (BattleController's bindings),
+--                   the Dungeon (floors, loot, first clears) instead of the Trials, homes from older versions.
 --                 A failure says what the README states and what the game has: update README.md (or the module).
 -- README.md, DevService.lua, TutorialService.lua, TycoonService.lua, PetCareService.lua, HomeFx.lua, MenuController.lua,
 -- BattleService.lua and BattleController.lua are read as text from the working directory (smoke.py /
@@ -94,6 +106,13 @@ local function commas(n)
 end
 
 -- 6.5 -> "6.5", 1.25 -> "1.25", 40 -> "40", 1000 -> "1,000" (two decimals at most)
+-- PetCatalog.EvolutionBonusOf(stage) as text: 1.5 -> "1.5", 1.875 -> "1.875"
+local function bonusText(PC, stage)
+	local v = type(PC.EvolutionBonusOf) == "function" and tonumber(PC.EvolutionBonusOf(stage)) or 1
+	local s = string.format("%.3f", v):gsub("0+$", ""):gsub("%.$", "")
+	return s
+end
+
 local function num(v)
 	v = floor((tonumber(v) or 0) * 100 + 0.5) / 100
 	if v == floor(v) then
@@ -261,13 +280,14 @@ local TOPICS = {
 	{ "buy pads", { "buy pad", "hold **E**", "Only you see and use your own pads", "free Pet Garden" } },
 	{ "Home Level", { "Home Level" } },
 	{ "house tiers every 10 Home Levels", { "every 10 Home Levels", "Cottage", "Villa", "Manor", "Sky Castle" } },
-	{ "the Pet Garden and its rainbow coins", { "Pet Garden", "Put a pet here", "Economy", "rainbow coin", "Only you can scoop" } },
-	{ "the Food Machine and feeding", { "Food Machine", "*Feed pets*", "**Feed**", "**Level up**" } },
+	{ "the Pet Garden and its Cloud Cash", { "Pet Garden", "Put a pet here", "Economy", "Cloud Cash", "Food Bowl", "Only you can scoop" } },
+	{ "the Berry Farm and the Berry Basket", { "Berry Farm", "Berry Basket", "berries" } },
+	{ "the Food Machine and feeding", { "Food Machine", "*Feed pets*", "**Feed**" } },
 	{ "evolution", { "EVOLVE", "Ready to evolve!" } },
 	{ "the Training Place", { "Training Place", "*Train pets*", "**Stop**" } },
 	{ "the Vault and offline coins", { "Vault", "Welcome-back pile" } },
 	{ "prestige", { "Prestige", "Starts over", "You keep", "You get" } },
-	{ "homes from before Phase 4", { "Homes from before Phase 4", "until your next Prestige" } },
+	{ "homes from older versions", { "Homes from older versions", "until your next Prestige" } },
 	{ "fusion after Prestige 1", { "Fusion Machine", "Unlocks at Prestige 1", "UPGRADE", "MIX", "Golden", "Rainbow", "hybrid" } },
 	{ "the Home window and the home portal", { "Home window", "Go home", "portal" } },
 	{ "Gems", { "Gems", "Gem packs", "Robux" } },
@@ -331,14 +351,18 @@ end
 local function expectedEffects(TC, def)
 	local e1, eN = def.Effects[1] or {}, def.Effects[def.MaxLevel] or {}
 	local out = {}
-	if def.Kind == "Plant" then
+	if def.Kind == "Farm" or def.Kind == "Plant" then
 		out[#out + 1] = "+" .. num(e1.Food) .. " -> +" .. num(eN.Food) .. " food per meal"
-	elseif def.Kind == "Magnet" then
-		out[#out + 1] = "scoops from " .. num(e1.Radius) .. " -> " .. num(eN.Radius) .. " studs"
-		out[#out + 1] = "piles hold " .. num((e1.PileSeconds or 0) / 60) .. " -> " .. num((eN.PileSeconds or 0) / 60) .. " min of coins"
 	elseif def.Kind == "Garden" then
 		local P = TC.Prestige or {}
 		out[#out + 1] = "(" .. num(P.GardenSlotsBase) .. " places + " .. num(P.GardenSlotsPerStar) .. " per Prestige"
+		-- Phase 5 (3.3): the Coin Magnet's reach and pile time live in the Garden's levels
+		if e1.Radius and eN.Radius then
+			out[#out + 1] = "scoops from " .. num(e1.Radius) .. " -> " .. num(eN.Radius) .. " studs"
+		end
+		if e1.PileSeconds and eN.PileSeconds then
+			out[#out + 1] = "the lawn holds " .. num(e1.PileSeconds / 60) .. " -> " .. num(eN.PileSeconds / 60) .. " min of coins"
+		end
 		out[#out + 1] = "Lucky coins " .. num((e1.Lucky or 0) * 100) .. " % -> " .. num((eN.Lucky or 0) * 100) .. " %"
 	elseif def.Kind == "FoodMachine" then
 		out[#out + 1] = "a feed fills " .. num((e1.FeedShare or 0) * 100) .. " % -> " .. num((eN.FeedShare or 0) * 100) .. " % of the XP bar"
@@ -408,16 +432,13 @@ end
 ----------------------------------------------------------------------------------------------------
 -- house tiers
 ----------------------------------------------------------------------------------------------------
+-- Phase 5 (3.3, TycoonCatalog Version 5): 11 stations; the Arena Gate and the House have no row
 local TIER_ROWS = {
-	{ "Berry Bush and Carrot Patch", { "Press1", "Press2" } },
-	{ "Cloud Melons", { "Press3" } },
-	{ "Starfruit Tree", { "Press4" } },
-	{ "Coin Magnet", { "Collector" } },
+	{ "Berry Farm", { "Press1" } },
 	{ "Pet Garden", { "Garden" } },
 	{ "Food Machine, Training Place, Vault", { "Kitchen", "Gym", "Vault" } },
 	{ "Fusion Machine", { "FusionMachine" } },
-	{ "Decor", { "DecorLamps", "DecorFence", "DecorFlowers", "DecorBanners", "DecorPodium" } },
-	{ "Fountain", { "DecorFountain" } },
+	{ "Yard Fence, Fountain, Pet Podium", { "DecorFence", "DecorFountain", "DecorPodium" } },
 }
 
 local function checkTiers(TC, lines, houseText)
@@ -495,7 +516,12 @@ local function checkVault(TC, lines, vaultText, tycoonSource)
 	t:case(has(f, minText), "the Vault text should say " .. show(minText))
 	t:case(has(f, "**Welcome-back pile**"), "the Vault text should name the **Welcome-back pile**")
 	-- the toast is quoted with $X where TycoonService puts the amount
-	local pre, post = (tycoonSource or ""):match('"(Welcome back! Your pets made )"%s*%.%.%s*[%w_%.]+%b()%s*%.%.%s*"([^"]*)"')
+	local src = tycoonSource or ""
+	local pre, post = src:match('"(Welcome back! Your pets made )"%s*%.%.%s*[%w_%.]+%b()%s*%.%.%s*"([^"]*)"')
+	if not pre then
+		-- Phase 5: "... made $X" .. extra .. " while you were away ..." (extra = " and N berries" or "")
+		pre, post = src:match('"(Welcome back! Your pets made )"%s*%.%.%s*[%w_%.]+%b()%s*%.%.%s*[%w_]+%s*%.%.%s*"([^"]*)"')
+	end
 	if t:case(pre ~= nil, "TycoonService.lua has the 'Welcome back! Your pets made ...' toast") then
 		local quote = pre .. "$X" .. post
 		t:case(has(f, quote), "the Vault text should quote the toast " .. show(quote))
@@ -663,7 +689,7 @@ local function checkDev(Config, Theme, lines, devSource)
 	local rows = tableRows(lines, "| Setting | Default | Meaning |")
 	if t:case(rows ~= nil, "no developer settings table") then
 		local byName = rowsByName(rows)
-		for _, key in ipairs({ "Enabled", "AllowInStudio", "StudioAutoGrant", "GrantTokens", "GrantCash", "GrantGems", "MaxTokensPerCommand" }) do
+		for _, key in ipairs({ "Enabled", "AllowInStudio", "StudioAutoGrant", "GrantTokens", "GrantCash", "GrantGems", "GrantBerries", "MaxTokensPerCommand" }) do
 			local row = byName[key]
 			if D[key] ~= nil and t:case(row ~= nil, "no settings row for " .. key) then
 				t:case(plain(row[2]) == tostring(D[key]), key .. ": the README says " .. show(row[2]) .. ", Config " .. tostring(D[key]))
@@ -740,7 +766,7 @@ local function scriptNames()
 	if type(Mock) ~= "table" or type(Mock.GetPath) ~= "function" or type(ROOTS) ~= "table" then
 		return names
 	end
-	for _, top in ipairs({ "shared", "server", "client" }) do
+	for _, top in ipairs({ "shared", "server", "client", "first" }) do
 		local path = ROOTS[top]
 		local root = path and Mock.GetPath(path)
 		if root then
@@ -810,14 +836,15 @@ end
 -- Phase 3: pet battles (the "## Pet battles" section and the battle bits of the rest of the README)
 ----------------------------------------------------------------------------------------------------
 local TOPICS3 = {
-	{ "getting to the arena: the bridge and the home Arena Gate", { "Battle Arena", "bridge", "BATTLE ARENA", "**Arena Gate**", "press **E**" } },
-	{ "the Team screen", { "**Team**", "Use this team", "team power" } },
-	{ "the battle buttons and keys", { "**ATTACK**", "**RETREAT**", "**SPECIAL**", "`F`", "`R`", "`1`-`4`", "Phone", "tap the pet's card" } },
-	{ "what RETREAT does", { "less damage", "go back to fighting by themselves", "short rest", "RESTING" } },
-	{ "Trials at the Trial Portal", { "Trial Portal", "mini-boss", "first clear", "START" } },
+	{ "getting to the arena: the Arena gate, the bridge and the home Arena Gate", { "Battle Arena", "Arena gate", "bridge", "BATTLE ARENA", "**Arena Gate**", "press **E**" } },
+	{ "the Team screen (a fighter and two helpers)", { "**Team**", "Use this team", "team power", "**FIGHTER**", "**HELPERS**", "Set as fighter" } },
+	{ "the battle buttons and keys", { "**ATTACK**", "**ELEMENT**", "**SPECIAL**", "**DASH**", "**SWAP**", "`F`", "`E`", "`Q`", "`Shift`", "`Tab`", "`1` / `2`", "Phone", "ENERGY" } },
+	{ "lives and the bench", { "3 lives", "steps in by itself" } },
+	{ "helpers and Supporters", { "Helper buff", "**Support**", "Who gives it" } },
+	{ "the Dungeon", { "Dungeon", "**SOLO**", "**PARTY**", "**READY**", "**START**", "boss room", "first clear", "chest", "LEAVE" } },
 	{ "duels: challenge, the quick queue, practice duels", { "duel rings", "Challenge", "Accept", "Find a match", "practice duel" } },
 	{ "trophies and the leaderboard", { "Trophies", "leaderboard", "top 10" } },
-	{ "Boss Raids: joining and dodging", { "Boss Raid", "JOIN RAID", "circle or line", "RETREAT** before it is full", "minion waves", "enraged" } },
+	{ "Boss Raids: joining and dodging", { "Boss Raid", "JOIN RAID", "circle or line", "**DASH** out of it", "minion waves", "enraged" } },
 	{ "Double Rewards", { "Double Rewards" } },
 	{ "elements and team synergy in battle", { "synergy", "Balanced" } },
 	{ "the developer raid tools", { "/raid", "Start Boss Raid" } },
@@ -876,28 +903,80 @@ local function checkBattleTopics(p3)
 	t:report()
 end
 
+-- sorted keys of a table (deterministic messages; never depend on pairs() order)
+local function sortedKeys(tbl)
+	local out = {}
+	for k in pairs(tbl or {}) do
+		out[#out + 1] = k
+	end
+	table.sort(out, function(a, b)
+		return tostring(a) < tostring(b)
+	end)
+	return out
+end
+
+-- Phase 5 (4.1-4.8): a team of 3 (a fighter + two helpers), the fighter's kit, helper buffs, Supporters, specials,
+-- element attacks, synergy and the keys BattleController binds
 local function checkBattleRules(BC, Config, TC, p3, text, controllerSource)
-	local t = T.tally("docs: teams, RETREAT, specials, elements and synergy match BattleCatalog / Config / TycoonCatalog", 6)
+	local t = T.tally("docs: the fighter, helpers, buffs, specials, elements, synergy and battle keys match BattleCatalog / BattleController", 6)
 	local f = flat(p3)
-	local D = BC.Damage or {}
+	local F = BC.Fighter or {}
 	-- the team
-	t:case(has(f, "**" .. tostring(BC.BaseTeamSize) .. " team slots**"), "the team has " .. tostring(BC.BaseTeamSize) .. " slots ('**N team slots**')")
-	local unlock = (TC.Prestige or {}).TeamSlotUnlock
-	t:case(unlock ~= nil and has(f, "**" .. tostring(BC.MaxTeamSize) .. "th slot opens at Prestige " .. tostring(unlock) .. "**"),
-		"slot " .. tostring(BC.MaxTeamSize) .. " opens at Prestige " .. tostring(unlock))
-	-- RETREAT
-	local less = "**" .. num((1 - (tonumber(D.RetreatDamageTaken) or 1)) * 100) .. " % less damage**"
-	t:case(has(f, less), "RETREAT: the section should say " .. show(less))
-	local regen = "**" .. num((tonumber(D.RetreatRegenPerSecond) or 0) * 100) .. " % of their health every second**"
-	t:case(has(f, regen), "RETREAT: the section should say " .. show(regen))
-	local lock = "ATTACK works again after **" .. num(D.RetreatLock) .. " s**"
-	t:case(has(f, lock), "RETREAT: the section should say " .. show(lock))
-	local rest = "short rest of " .. num(D.RetreatAutoResume) .. " s"
-	t:case(D.RetreatAutoResume ~= nil and has(f, rest), "RETREAT: the auto resume should read " .. show(rest))
-	-- specials
-	for _, kind in ipairs(BC.SpecialKinds or {}) do
+	t:case(has(f, "A team is **" .. tostring(BC.TeamSize) .. " pets**"), "a team is " .. tostring(BC.TeamSize) .. " pets ('A team is **N pets**')")
+	t:case(BC.TeamSize == 3 and BC.MaxTeamSize == nil and (TC.Prestige or {}).TeamSlotUnlock == nil,
+		"BattleCatalog.TeamSize 3, no MaxTeamSize and no TycoonCatalog.Prestige.TeamSlotUnlock (the 4th slot is gone)")
+	for _, stale in ipairs({ "4th slot", "slot opens at Prestige", "slot 4 opens" }) do
+		t:case(not has(text, stale), "the README still says " .. show(stale) .. " (teams have 3 pets since phase 5)")
+	end
+	-- the fighter's kit
+	t:case(has(f, "**" .. num(F.Lives) .. " lives:**"), "the fighter has " .. tostring(F.Lives) .. " lives")
+	t:case(has(f, "then a **" .. num(F.ElementCooldown) .. " s** cooldown"), "ELEMENT cools down " .. tostring(F.ElementCooldown) .. " s")
+	t:case(has(f, "one dash every **" .. num(F.DashCooldown) .. " s**"), "a battle dash every " .. tostring(F.DashCooldown) .. " s")
+	t:case(has(f, "(every **" .. num(F.SwapCooldown) .. " s**)"), "SWAP every " .. tostring(F.SwapCooldown) .. " s")
+	t:case(has(f, "**ENERGY** bar is full (" .. num(F.SpecialMeterMax) .. ")"), "SPECIAL at a full ENERGY bar (" .. tostring(F.SpecialMeterMax) .. ")")
+	t:case(has(f, "(up to " .. num((F.BenchRegenCap or 0) * 100) .. " % of their health)"), "benched helpers heal up to "
+		.. num((F.BenchRegenCap or 0) * 100) .. " %")
+	t:case(has(f, "(**" .. num(F.SupportCooldown) .. " s** for a Support pet's buff, **" .. num(F.HelperCooldown) .. " s** for an element buff)"),
+		"buff cooldowns " .. tostring(F.SupportCooldown) .. " s (Support) / " .. tostring(F.HelperCooldown) .. " s (element)")
+	-- Supporters
+	local S = (BC.Roles or {}).Support or {}
+	t:case(has(f, "it hits with x" .. num(S.Power) .. " power and x" .. num(S.Health) .. " health"), "Support pets: x" .. num(S.Power)
+		.. " power and x" .. num(S.Health) .. " health")
+	for _, kind in ipairs(BC.SupportKinds or {}) do
+		t:case(has(f, "**" .. kind .. "**"), "the Support kind " .. kind .. " is not named")
+	end
+	-- the buff table: one row per BattleCatalog.Buffs entry, its name, giver and text
+	local rows = rowsByName(tableRows(splitLines(p3), "| Buff | Who gives it |"))
+	local supports = {}
+	for _, kind in ipairs(BC.SupportKinds or {}) do
+		supports[kind] = true
+	end
+	local count = 0
+	for _, id in ipairs(sortedKeys(BC.Buffs)) do
+		local buff = BC.Buffs[id]
+		count = count + 1
+		local row = rows[buff.Name]
+		local who = supports[id] and ("Support pets with " .. id) or (id .. " pets")
+		if t:case(row ~= nil, "no buff row " .. show(buff.Name) .. " (BattleCatalog.Buffs." .. id .. ")") then
+			t:case(row[2] == who and row[3] == buff.Text, buff.Name .. ": the README says " .. show(row[2]) .. " / " .. show(row[3])
+				.. ", BattleCatalog " .. show(who) .. " / " .. show(buff.Text))
+		end
+	end
+	local n = 0
+	for _ in pairs(rows) do
+		n = n + 1
+	end
+	t:case(n == count, "the buff table has " .. n .. " rows, BattleCatalog.Buffs " .. count)
+	-- element attacks and specials
+	for _, el in ipairs(sortedKeys(BC.ElementAttacks)) do
+		local a = BC.ElementAttacks[el]
+		t:case(has(f, "**" .. tostring(a.Name) .. "** (" .. el), "the ELEMENT attack " .. tostring(a.Name) .. " (" .. el .. ") is not named")
+	end
+	local kinds = BC.SpecialKinds or {}
+	for _, kind in ipairs(kinds) do
 		t:case(has(f, "**" .. kind .. "**"), "the special kind " .. kind .. " is not named")
 	end
+	t:case(NUMBER_WORDS[#kinds] ~= nil and has(f, "The " .. NUMBER_WORDS[#kinds]:lower() .. " kinds"), "the section counts " .. #kinds .. " special kinds")
 	-- elements and synergy
 	local E = Config.Elements or {}
 	t:case(has(f, "**x" .. num(E.StrongMultiplier) .. "**") and has(f, "**x" .. num(E.WeakMultiplier) .. "**"),
@@ -905,78 +984,118 @@ local function checkBattleRules(BC, Config, TC, p3, text, controllerSource)
 	local R = BC.SynergyRules or {}
 	local same = R.SameElement or {}
 	t:case(has(f, "**+" .. num((same[2] or 0) * 100) .. " % Power**"), "synergy: 2 of one element give +" .. num((same[2] or 0) * 100) .. " % Power")
-	for n = 3, 4 do
-		local want = "**" .. n .. " of one element +" .. num((same[n] or 0) * 100) .. " %"
-		t:case(same[n] ~= nil and has(f, want), "synergy: the section should say " .. show(want))
+	for k = 3, BC.TeamSize or 3 do
+		local want = "**" .. k .. " of one element +" .. num((same[k] or 0) * 100) .. " %"
+		t:case(same[k] ~= nil and has(f, want), "synergy: the section should say " .. show(want))
 	end
+	t:case(same[(BC.TeamSize or 3) + 1] == nil and not has(f, "4 of one element"), "synergy: no '4 of one element' line in a team of 3")
 	local balanced = "**" .. tostring(R.BalancedElements) .. " or more different elements:**"
 	t:case(has(f, balanced), "synergy: the section should say " .. show(balanced))
 	t:case(has(f, "**+" .. num((R.BalancedHealth or 0) * 100) .. " % Health**"), "synergy: Balanced gives +" .. num((R.BalancedHealth or 0) * 100) .. " % Health")
-	-- the keys: the controls table and the section quote what BattleController binds
+	-- the keys: the controls table and the section quote what BattleController binds (4.7)
+	local src = controllerSource or ""
 	local function bound(action, key)
-		return controllerSource ~= nil and controllerSource:find("K%." .. action .. ",[^\n]*Enum%.KeyCode%." .. key .. "[,%)]") ~= nil
+		return src:find("BindActionAtPriority%(K%." .. action .. ",[^\n]*Enum%.KeyCode%." .. key .. "[,%)]") ~= nil
 	end
-	local controls = rowsByName(tableRows(splitLines(text), "| Action | PC |"))
-	for _, spec in ipairs({ { "ACTION_ATTACK", "F", "ButtonX", "X", "Battle: ATTACK (your pets fight)" }, { "ACTION_RETREAT", "R", "ButtonY", "Y", "Battle: RETREAT (your pets run back to you)" } }) do
+	local controls = tableRows(splitLines(text), "| Action | PC |") or {}
+	local function controlRow(prefix)
+		for _, row in ipairs(controls) do
+			if row[1]:sub(1, #prefix) == prefix then
+				return row
+			end
+		end
+		return nil
+	end
+	for _, spec in ipairs({
+		{ "ACTION_ATTACK", "F", "ButtonX", "X", "Battle: **ATTACK**" },
+		{ "ACTION_ELEMENT", "E", "ButtonY", "Y", "Battle: **ELEMENT**" },
+		{ "ACTION_SPECIAL", "Q", "ButtonR1", "RB", "Battle: **SPECIAL**" },
+		{ "ACTION_TARGET", "Tab", "ButtonR2", "RT", "Battle: pick the next enemy" },
+	}) do
 		t:case(bound(spec[1], spec[2]) and bound(spec[1], spec[3]), "BattleController binds " .. spec[1] .. " to " .. spec[2] .. " and " .. spec[3])
-		local row = controls[spec[5]]
-		t:case(row ~= nil and row[2] == "`" .. spec[2] .. "`" and row[4] == "`" .. spec[4] .. "`", "the controls table row " .. show(spec[5])
-			.. " should read `" .. spec[2] .. "` / `" .. spec[4] .. "`")
+		local row = controlRow(spec[5])
+		t:case(row ~= nil and row[2]:sub(1, #spec[2] + 2) == "`" .. spec[2] .. "`" and row[4]:sub(1, #spec[4] + 2) == "`" .. spec[4] .. "`",
+			"the controls table row " .. show(spec[5]) .. " should start with `" .. spec[2] .. "` / `" .. spec[4] .. "`")
+		t:case(has(f, "`" .. spec[2] .. "`"), "the battle section names the key `" .. spec[2] .. "`")
 	end
-	for i, key in ipairs({ "One", "Two", "Three", "Four" }) do
-		t:case(controllerSource ~= nil and controllerSource:find("%[Enum%.KeyCode%." .. key .. "%]%s*=%s*" .. i) ~= nil, "BattleController maps key " .. i .. " to slot " .. i)
+	for i, key in ipairs({ "One", "Two" }) do
+		t:case(src:find("%[Enum%.KeyCode%." .. key .. "%]%s*=%s*" .. i) ~= nil, "BattleController maps key " .. i .. " to helper " .. i)
 	end
+	local helperRow = controlRow("Battle: a helper's buff")
+	t:case(helperRow ~= nil and helperRow[2] == "`1` / `2`", "the controls table's helper row reads `1` / `2`")
+	t:case(src:find("SetDashKeys, { Enum%.KeyCode%.LeftShift") ~= nil, "BattleController makes Shift the battle dash (SetDashKeys)")
+	local dashRow = controlRow("Battle: **DASH**")
+	t:case(dashRow ~= nil and dashRow[2] == "`Shift`", "the controls table's battle DASH row reads `Shift`")
+	t:case(not src:find("ACTION_RETREAT", 1, true) and not has(f, "RETREAT"), "RETREAT is gone (BattleController and the battle section)")
 	t:report()
 end
 
-local function checkTrials(BC, lines, trialText)
-	local t = T.tally("docs: the Trials (levels, chapters, rewards, time) match BattleCatalog", 6)
-	local f = flat(trialText)
-	t:case(has(f, "**" .. tostring(BC.TrialCount) .. " levels**"), "the Trial count " .. tostring(BC.TrialCount))
-	local step = nil
-	for lv = 1, BC.TrialCount or 0 do
-		if BC.Trials[lv] and BC.Trials[lv].MiniBoss then
-			step = lv
-			break
-		end
-	end
-	t:case(step ~= nil and has(f, "**mini-boss** (one big pet) on every " .. step .. "th level"), "the mini-boss comes every " .. tostring(step) .. "th level")
-	t:case(has(f, "You have **" .. minutesText((BC.TimeLimits or {}).Trial) .. "** to win"), "a Trial lasts " .. minutesText((BC.TimeLimits or {}).Trial))
-	local rows = tableRows(lines, "| Levels | Chapter |")
-	if t:case(rows ~= nil, "no Trial chapter table (| Levels | Chapter | Enemy pets |)") then
-		t:case(#rows == #(BC.TrialChapters or {}), "the chapter table has " .. #rows .. " rows, BattleCatalog " .. #(BC.TrialChapters or {}))
-		for i, ch in ipairs(BC.TrialChapters or {}) do
+-- Phase 5 (5.1-5.3): the Dungeon replaces the Trials
+local function checkDungeon(BC, lines, dText, serviceSource, dataSource)
+	local t = T.tally("docs: the Dungeon (floors, party, rooms, loot, first clears, chests, the Trial credit) matches BattleCatalog / DungeonService", 6)
+	local f = flat(dText)
+	local D = BC.Dungeon or {}
+	t:case(has(f, "**" .. tostring(D.Floors) .. " floors**"), "the Dungeon has " .. tostring(D.Floors) .. " floors")
+	t:case(has(f, "A floor is **" .. #(D.RoomSeconds or {}) .. " rooms**"), "a floor is " .. #(D.RoomSeconds or {}) .. " rooms")
+	local maxParty = sourceNumber(serviceSource, "MAX_PARTY")
+	t:case(maxParty ~= nil and has(f, "a party for up to **" .. num(maxParty) .. "** players"), "a party of up to " .. tostring(maxParty) .. " (DungeonService MAX_PARTY)")
+	t:case(has(f, "Unready members get " .. num(D.ReadyTimeout) .. " seconds") and has(serviceSource, "press READY"),
+		"the READY clock is " .. tostring(D.ReadyTimeout) .. " seconds")
+	t:case(has(f, "You have **" .. minutesText(D.RoomTime) .. "** per room (**" .. minutesText(D.Floor1RoomTime) .. "** on floor 1)"),
+		"a room lasts " .. minutesText(D.RoomTime) .. " (" .. minutesText(D.Floor1RoomTime) .. " on floor 1)")
+	t:case(has(f, "(at least " .. num((D.MinShare or 0) * 100) .. " % of the party's damage"), "loot needs " .. num((D.MinShare or 0) * 100) .. " % of the damage")
+	t:case(has(f, "\"Clear floor 6 first\"") and has(serviceSource, '"Clear floor " .. '), "the unlock toast 'Clear floor N first'")
+	t:case(has(f, "Train your team and try again!") and has(serviceSource, "Train your team and try again!"), "the wipe toast is quoted")
+	-- the floor table
+	local rows = tableRows(lines, "| Floor | Name | Element |")
+	if t:case(rows ~= nil, "no floor table (| Floor | Name | Element |)") then
+		t:case(#rows == #(BC.DungeonFloors or {}) and #rows == D.Floors, "the floor table has " .. #rows .. " rows, BattleCatalog " .. tostring(D.Floors))
+		for i, fl in ipairs(BC.DungeonFloors or {}) do
 			local row = rows[i] or {}
-			t:case(row[1] == ch.From .. "-" .. ch.To and row[2] == ch.Name, "chapter " .. i .. ": the README says " .. show(row[1]) .. " " .. show(row[2])
-				.. ", BattleCatalog " .. ch.From .. "-" .. ch.To .. " " .. ch.Name)
+			t:case(row[1] == tostring(i) and row[2] == fl.Name and row[3] == fl.Element, "floor " .. i .. ": the README says " .. show(row[2]) .. " "
+				.. show(row[3]) .. ", BattleCatalog " .. tostring(fl.Name) .. " " .. tostring(fl.Element))
 		end
 	end
-	local R = BC.TrialRewardRules or {}
-	local first, last = BC.TrialRewards(1), BC.TrialRewards(BC.TrialCount)
-	local tokens = R.Tokens.Base .. " + " .. R.Tokens.PerLevel .. " x the level Cloud Tokens (**" .. first.Tokens .. "** at level 1 up to **"
-		.. last.Tokens .. "** at level " .. BC.TrialCount .. ")"
-	t:case(has(f, tokens), "the win tokens should read " .. show(tokens))
-	local xp = R.Xp.Base .. " + " .. R.Xp.PerLevel .. " x the level XP for every pet of your team (**" .. first.Xp .. "** up to **" .. last.Xp .. "**)"
-	t:case(has(f, xp), "the win XP should read " .. show(xp))
-	local fc = R.FirstClearTokens or {}
-	t:case(has(f, fc.PerLevel .. " x the level tokens") and fc.BossMult == 2 and has(f, "twice that on a mini-boss level"),
-		"the first clear pays " .. tostring(fc.PerLevel) .. " x the level tokens, x" .. tostring(fc.BossMult) .. " on mini-boss levels")
-	t:case(first.FirstClear.Tokens == fc.PerLevel and BC.TrialRewards(5).FirstClear.Tokens == fc.PerLevel * 5 * fc.BossMult,
-		"TrialRewards follows FirstClearTokens as documented")
-	local gemRows, header = tableRows(lines, "| First clear of level |")
-	if t:case(gemRows ~= nil and gemRows[1] ~= nil, "no first-clear Gems table (| First clear of level | 5 | 10 | ...)") then
-		local levels = {}
-		for lv in pairs(R.FirstClearGems or {}) do
-			levels[#levels + 1] = lv
-		end
-		table.sort(levels)
-		t:case(#header == #levels + 1, "the Gems table has " .. (#header - 1) .. " levels, BattleCatalog " .. #levels)
-		for i, lv in ipairs(levels) do
-			t:case(header[i + 1] == tostring(lv) and gemRows[1][i + 1] == num(R.FirstClearGems[lv]), "first clear of level " .. lv .. ": the README says "
-				.. show(header[i + 1]) .. " -> " .. show(gemRows[1][i + 1]) .. ", BattleCatalog " .. num(R.FirstClearGems[lv]) .. " Gems")
-			t:case(BC.TrialRewards(lv).FirstClear.Gems == R.FirstClearGems[lv], "TrialRewards(" .. lv .. ") pays the documented Gems")
+	-- loot per room: the formulas, cross-checked against DungeonRewards
+	local loot = rowsByName(tableRows(lines, "| Reward | Every room |"))
+	local secs = D.RoomSeconds or {}
+	local cash = "the bigger of $" .. num(D.CashBase) .. " + $" .. num(D.CashPerFloor) .. " x the floor and what your garden makes in "
+		.. num(secs[1]) .. " / " .. num(secs[2]) .. " / " .. num(secs[3]) .. " seconds (rooms 1-3) or " .. num(secs[4]) .. " seconds (the boss room)"
+	t:case((loot.Cash or {})[2] == cash, "the Cash row should read " .. show(cash))
+	local tb = "(" .. num(D.TokenBase) .. " + " .. num(D.TokenPerFloor) .. " x the floor)"
+	local tokens = tb .. " x the waves / 2; the boss room " .. tb .. " x 2 (x2 during Double Rewards)"
+	t:case((loot["Cloud Tokens"] or {})[2] == tokens, "the Tokens row should read " .. show(tokens))
+	local xp = num(D.XpBase) .. " + " .. num(D.XpPerFloor) .. " x the floor for every wave (the boss room counts " .. num(D.BossRoomWaves) .. ")"
+	t:case((loot["XP for every team pet"] or {})[2] == xp, "the XP row should read " .. show(xp))
+	if type(BC.DungeonRewards) == "function" then
+		local r1, r4 = BC.DungeonRewards(3, 1, 2, 0, false), BC.DungeonRewards(3, 4, 1, 1000, true)
+		local base = D.TokenBase + D.TokenPerFloor * 3
+		t:case(r1.Cash == D.CashBase + D.CashPerFloor * 3 and r1.Tokens == floor(base * 2 / 2) and r1.Xp == (D.XpBase + D.XpPerFloor * 3) * 2,
+			"DungeonRewards(floor 3, room 1, 2 waves) follows the documented formulas")
+		t:case(r4.Cash == 1000 * secs[4] and r4.Tokens == base * 2 * 2 and r4.Xp == (D.XpBase + D.XpPerFloor * 3) * D.BossRoomWaves,
+			"DungeonRewards(floor 3, the boss room, Double Rewards) follows the documented formulas")
+	end
+	-- first clears
+	t:case(has(f, "**" .. num(D.FirstClearTokens) .. " x the floor Cloud Tokens**"), "a first clear pays " .. tostring(D.FirstClearTokens) .. " x the floor tokens")
+	local gemRows, header = tableRows(lines, "| First clear of floor |")
+	if t:case(gemRows ~= nil and gemRows[1] ~= nil, "no first-clear Gems table (| First clear of floor | 1 | 2 | ...)") then
+		t:case(#header == D.Floors + 1, "the first-clear table has " .. (#header - 1) .. " floors, BattleCatalog " .. tostring(D.Floors))
+		for fl = 1, D.Floors do
+			local fc = BC.DungeonFirstClear(fl)
+			t:case(header[fl + 1] == tostring(fl) and gemRows[1][fl + 1] == num(fc.Gems) and fc.Tokens == D.FirstClearTokens * fl,
+				"first clear of floor " .. fl .. ": the README says " .. show(gemRows[1][fl + 1]) .. ", BattleCatalog " .. num(fc.Gems) .. " Gems")
 		end
 	end
+	-- the treasure
+	t:case(has(f, "from floor " .. num((D.ChestLowFloors or 2) + 1) .. " on sometimes Gems"), "chests give Gems from floor " .. num((D.ChestLowFloors or 2) + 1))
+	t:case(has(f, "wait " .. num(D.TreasureSeconds) .. " seconds"), "the treasure room closes after " .. tostring(D.TreasureSeconds) .. " seconds")
+	-- the Trial credit (9.2 step 2, DataService's P5 constants)
+	local per, top = sourceNumber(dataSource, "TRIALS_PER_FLOOR"), sourceNumber(dataSource, "MIGRATE_MAX_FLOOR")
+	if t:case(per ~= nil and top ~= nil, "DataService's TRIALS_PER_FLOOR / MIGRATE_MAX_FLOOR are readable") then
+		t:case(has(f, "every " .. num(per) .. " Trial levels you cleared before phase 5 unlocked one floor (up to floor " .. num(top) .. ")"),
+			"the Trial credit: every " .. num(per) .. " Trial levels one floor, up to floor " .. num(top))
+	end
+	t:case(BC.TrialRewards == nil and BC.TrialCount == nil, "BattleCatalog has no Trials any more (TrialRewards / TrialCount)")
 	t:report()
 end
 
@@ -1006,6 +1125,10 @@ local function checkDuels(BC, lines, duelText, serviceSource)
 	t:case(has(f, "A duel lasts up to **" .. minutesText((BC.TimeLimits or {}).Duel) .. "**"), "a duel lasts " .. minutesText((BC.TimeLimits or {}).Duel))
 	local pairLimit, pairWindow = sourceNumber(serviceSource, "PAIR_LIMIT"), sourceNumber(serviceSource, "PAIR_WINDOW")
 	local early, gap = sourceNumber(serviceSource, "FORFEIT_MIN_SECONDS"), sourceNumber(serviceSource, "DUEL_POWER_GAP")
+	-- Phase 5 (4.2): BattleService takes the practice gap from BattleCatalog.Duel.PowerGap when it is there
+	if type(BC.Duel) == "table" and type(BC.Duel.PowerGap) == "number" then
+		gap = BC.Duel.PowerGap
+	end
 	local invite = sourceNumber(serviceSource, "CHALLENGE_TIMEOUT")
 	if t:case(pairLimit and pairWindow and early and gap and invite, "BattleService's PAIR_LIMIT / PAIR_WINDOW / FORFEIT_MIN_SECONDS / DUEL_POWER_GAP / CHALLENGE_TIMEOUT are readable") then
 		local pairText = "**" .. num(pairLimit) .. " duels every " .. num(pairWindow / 60) .. " minutes**"
@@ -1088,24 +1211,28 @@ local function checkRaids(BC, PC, Config, lines, raidText, doubleText)
 end
 
 local function checkBattleDrift(Config, PC, Steps, text, tutorialText, tutorialSource)
-	local t = T.tally("docs: the rest of the README knows Phase 3 (tutorial chapter 3, Index count, no 'coming' battles)", 6)
+	local t = T.tally("docs: the rest of the README knows Phase 5 (tutorial chapter 3, Index count, no Trials or RETREAT in the battle rules)", 6)
 	local f = flat(text)
-	for _, stale in ipairs({ "coming Pet Battles", "in the next update", "come in the next update", "Coming soon* until phase 3", "This build is **v3 phase 2**", "This build is **v3 phase 3**" }) do
-		t:case(not has(f, stale), "the README still says " .. show(stale))
+	for _, stale in ipairs({ "coming Pet Battles", "in the next update", "come in the next update", "Coming soon* until phase 3", "This build is **v3 phase 2**",
+		"This build is **v3 phase 3**", "This build is **v3 phase 4**", "## Pet battles (phase 3)", "### Trials 1-30", "## The five portals" }) do
+		t:case(not has(text, stale), "the README still says " .. show(stale))
 	end
-	t:case(has(f, "This build is **v3 phase 4**"), "the intro names this build v3 phase 4")
+	t:case(has(f, "This build is **v3 phase 5**"), "the intro names this build v3 phase 5")
 	if type(PC.TotalCount) == "function" then
 		t:case(has(f, "\"Unlocked: x/" .. PC.TotalCount() .. "\""), "the Pet Index footer counts " .. PC.TotalCount() .. " pets")
 	end
-	local counts = 0
+	local counts, ids = 0, {}
 	for _, step in ipairs((type(Steps) == "table" and Steps.Steps) or {}) do
 		if step.Chapter == 3 then
 			counts = counts + 1
+			ids[step.Id] = true
 		end
 	end
 	local tf = flat(tutorialText)
 	t:case(counts > 0 and has(tf, "third chapter teaches pet battles in " .. string.lower(NUMBER_WORDS[counts] or "?") .. " steps"),
 		"tutorial chapter 3 has " .. counts .. " steps")
+	t:case(ids.dungeon == true and ids.trial == nil and has(tf, "press **E** at the Dungeon gate and clear floor 1"),
+		"tutorial chapter 3 clears Dungeon floor 1 (TutorialSteps id 'dungeon', no 'trial')")
 	local tokens = tutorialSource and tonumber(tutorialSource:match("local ARENA_FINISH_TOKENS = (%d+)"))
 	if t:case(tokens ~= nil, "TutorialService.lua has ARENA_FINISH_TOKENS") then
 		t:case(has(tf, "**" .. commas(tokens) .. " Cloud Tokens** at the end. Players who finished the first two chapters"),
@@ -1125,7 +1252,7 @@ local function checkPhase3(Config, PC, TC, Steps, lines, text, sub)
 	end
 	checkBattleTopics(p3)
 	checkBattleRules(BC, Config, TC, p3, text, (readFile("src/client/Controllers/BattleController.lua")))
-	checkTrials(BC, lines, sub("### Trials 1-30"))
+	checkDungeon(BC, lines, sub("### The Dungeon"), (readFile("src/server/Services/DungeonService.lua")), (readFile("src/server/Services/DataService.lua")))
 	checkDuels(BC, lines, sub("### Duels and trophies"), (readFile("src/server/Services/BattleService.lua")))
 	checkRaids(BC, PC, Config, lines, sub("### Boss Raids"), sub("### Double Rewards"))
 	checkBattleDrift(Config, PC, Steps, text, sub("## First steps"), (readFile("src/server/Services/TutorialService.lua")))
@@ -1184,23 +1311,37 @@ local function checkTopics4(whatsNew)
 end
 
 local function checkGarden(TC, PC, Config, lines, gardenText, homeFxSource)
-	local t = T.tally("docs: the Pet Garden (places, meals, coin value, Economy x1.6, Lucky coins, piles, scooping) matches TycoonCatalog / PetCatalog", 6)
+	local t = T.tally("docs: the Pet Garden (places, roaming, Cloud Cash value, Economy x1.6, Lucky coins, the lawn, scooping, berries) matches TycoonCatalog / PetCatalog / HomeRoam", 6)
 	local f = flat(gardenText)
-	local P, C = TC.Prestige or {}, TC.Coins or {}
+	local P, C, B = TC.Prestige or {}, TC.Coins or {}, TC.Berries or {}
 	t:case(has(f, "**" .. num(P.GardenSlotsBase) .. " places**"), "the Garden starts with " .. tostring(P.GardenSlotsBase) .. " places")
 	t:case(has(f, "**+" .. num(P.GardenSlotsPerStar) .. " every Prestige**"), "+" .. tostring(P.GardenSlotsPerStar) .. " place every Prestige")
 	t:case(has(f, "(up to " .. num(P.GardenSlotsMax) .. " places)"), "at most " .. tostring(P.GardenSlotsMax) .. " places")
 	t:case(has(f, "**one meal every " .. num(C.MealSeconds) .. " seconds**"), "a meal every " .. tostring(C.MealSeconds) .. " seconds")
+	-- roaming (3.5): one poop per HomeRoam cycle, worth PoopMeals meals
+	local HR = requireModule("shared/HomeRoam")
+	local cycle = HR and tonumber(HR.Cycle)
+	t:case(cycle ~= nil and has(f, "one poop every **" .. num(cycle) .. " seconds** is worth **" .. num(C.PoopMeals) .. " meals**")
+		and math.abs(cycle - (C.PoopMeals or 0) * (C.MealSeconds or 0)) < 1e-9, "one poop every " .. tostring(cycle) .. " seconds = "
+		.. tostring(C.PoopMeals) .. " meals (HomeRoam.Cycle, Coins.PoopMeals)")
+	for _, word in ipairs({ "**Food Bowl**", "poops **Cloud Cash**" }) do
+		t:case(has(f, word), "the Garden text should say " .. show(word))
+	end
 	t:case(has(f, "gives " .. num(C.GrassFood) .. " food"), "the grass gives " .. tostring(C.GrassFood) .. " food")
-	-- the worked example: a new Garden with a level-1 Berry Bush and a level-1 Common Combat pet
+	-- the worked example: a new Garden with a level-1 Berry Farm and a level-1 Common Combat pet
 	local home = { Stations = { Garden = 1, Press1 = 1 }, Prestige = 0 }
 	local food = TC.FoodOf(home)
-	t:case(has(f, "has " .. num(food) .. " food"), "a Garden + Berry Bush Lv 1 has " .. num(food) .. " food")
+	t:case(has(f, "has " .. num(food) .. " food"), "a Garden + Berry Farm Lv 1 has " .. num(food) .. " food")
 	local def = samplePet(PC, rarityIds(Config)[1], "Combat")
 	if t:case(def ~= nil, "PetCatalog has a Common Combat pet for the example") then
 		local coin = TC.CoinValue(home, TC.PetPower(def, 1, "Normal", 0), 0)
 		local want = "**$" .. commas(coin) .. " every " .. num(C.MealSeconds) .. " seconds**"
 		t:case(has(f, want), "the example coin should read " .. show(want))
+		local poop = "one Cloud Cash poop of $" .. commas(coin * (C.PoopMeals or 0)) .. " every " .. num(cycle) .. " seconds"
+		t:case(has(f, poop), "the example poop should read " .. show(poop))
+		local berries = floor(coin * (C.PoopMeals or 0) * (B.Share or 0))
+		t:case(has(f, "(a $" .. commas(coin * (C.PoopMeals or 0)) .. " poop gives " .. commas(berries) .. " berries"), "the berry example: a $"
+			.. commas(coin * (C.PoopMeals or 0)) .. " poop gives " .. commas(berries) .. " berries")
 	end
 	t:case(has(f, rarityRange(Config)), "the Garden text should say " .. show(rarityRange(Config)))
 	local mult = TC.TierMultiplier or {}
@@ -1211,9 +1352,9 @@ local function checkGarden(TC, PC, Config, lines, gardenText, homeFxSource)
 	local eco = (PC.RoleMult or {}).Economy or 1
 	t:case(has(f, "**Economy pets x" .. num(eco) .. "**") and has(f, num((eco - 1) * 100) .. " % more than Combat pets"),
 		"Economy pets x" .. num(eco) .. " (" .. num((eco - 1) * 100) .. " % more)")
-	local b = PC.EvolutionBoost or {}
-	local evo = "(+" .. num(((b[1] or 1) - 1) * 100) .. " % after the first EVOLVE, +" .. num(((b[2] or 1) - 1) * 100) .. " % after the second)"
-	t:case(has(f, evo), "the Garden text should say " .. show(evo))
+	-- Phase 5 (3.1): EVOLVE multiplies the level bonus (EvolutionBonusOf); the old flat boost table is gone
+	local evo = "Level bonus x" .. bonusText(PC, 1) .. " after the first EVOLVE, x" .. bonusText(PC, 2) .. " after the second"
+	t:case(PC.EvolutionBoost == nil and has(f, evo), "the Garden text should say " .. show(evo) .. " (and PetCatalog.EvolutionBoost is gone)")
 	t:case(has(f, "x" .. num(P.IncomeMultiplier) .. " coins per star"), "x" .. num(P.IncomeMultiplier) .. " coins per star")
 	t:case(has(f, "**Lucky coin** pops out, worth x" .. num(C.LuckyMult)), "a Lucky coin is worth x" .. tostring(C.LuckyMult))
 	local garden = TC.ById.Garden
@@ -1226,50 +1367,57 @@ local function checkGarden(TC, PC, Config, lines, gardenText, homeFxSource)
 			t:case(header[lv + 1] == tostring(lv) and rows[1][lv + 1] == want, "Garden " .. lv .. ": Lucky " .. show(rows[1][lv + 1]) .. " vs " .. want)
 		end
 	end
-	local magnet = TC.ById.Collector
-	t:case(has(f, "within " .. num(C.BaseRadius) .. " studs"), "without a Magnet you scoop within " .. tostring(C.BaseRadius) .. " studs")
-	t:case(has(f, "(up to " .. num(magnet.Effects[magnet.MaxLevel].Radius) .. " studs at level " .. magnet.MaxLevel .. ")"),
-		"the Magnet reaches " .. tostring(magnet.Effects[magnet.MaxLevel].Radius) .. " studs")
-	t:case(has(f, num((C.BasePileSeconds or 0) / 60) .. " minutes without a Coin Magnet"), "a pile holds "
-		.. num((C.BasePileSeconds or 0) / 60) .. " minutes without a Magnet")
-	t:case(TC.PileSeconds({ Stations = { Garden = 1 } }) == C.BasePileSeconds, "PileSeconds without a Magnet = Coins.BasePileSeconds")
-	t:case(has(f, "**Only you can scoop your own coins**") and has(f, "\"Zzz\""), "scooping is owner-only and full piles nap (Zzz)")
+	-- scooping and the lawn: the Garden's own Radius / PileSeconds (the Coin Magnet folded into it, 3.3)
+	local e1, eN = garden.Effects[1] or {}, garden.Effects[garden.MaxLevel] or {}
+	t:case(has(f, "within " .. num(C.BaseRadius) .. " studs"), "without a Garden you scoop within " .. tostring(C.BaseRadius) .. " studs")
+	t:case(has(f, "(" .. num(e1.Radius) .. " studs at level 1, up to " .. num(eN.Radius) .. " studs at level " .. garden.MaxLevel .. ")"),
+		"the Garden reaches " .. tostring(e1.Radius) .. " -> " .. tostring(eN.Radius) .. " studs")
+	t:case(TC.ScoopRadius({ Stations = { Garden = garden.MaxLevel } }) == eN.Radius, "ScoopRadius follows the Garden level as documented")
+	t:case(has(f, num((e1.PileSeconds or 0) / 60) .. " minutes at Garden level 1, up to " .. num((eN.PileSeconds or 0) / 60) .. " minutes at level "
+		.. garden.MaxLevel), "a pet's coins hold " .. num((e1.PileSeconds or 0) / 60) .. " -> " .. num((eN.PileSeconds or 0) / 60) .. " minutes")
+	t:case(TC.PileSeconds({ Stations = { Garden = 1 } }) == e1.PileSeconds, "PileSeconds at Garden 1 = Garden.Effects[1].PileSeconds")
+	t:case(has(f, "**at most " .. num(C.DropsPerPet) .. " coins**"), "each pet keeps at most " .. tostring(C.DropsPerPet) .. " coins on the lawn")
+	t:case(TC.ById.Collector == nil and not has(f, "Coin Magnet pulls"), "the Coin Magnet station is gone")
+	t:case(has(f, "**Only you can scoop your own coins**") and has(f, "\"Zzz\""), "scooping is owner-only and full lawns nap (Zzz)")
 	local hint = "Only the owner can pick these up"
 	t:case(has(f, hint) and has(homeFxSource, hint), "the README and HomeFx share the hint " .. show(hint))
+	-- berries (3.4)
+	t:case(has(f, "**" .. num((B.Share or 0) * 100) .. " % of its value in berries**"), "a poop adds " .. num((B.Share or 0) * 100) .. " % of its value in berries")
+	t:case(has(f, "**" .. num(B.BasketMinutes) .. " minutes** of berries (at least **" .. commas(B.BasketMin or 0) .. "**)")
+		and TC.BasketCap(nil, 0) == B.BasketMin, "the Berry Basket holds " .. tostring(B.BasketMinutes) .. " minutes (at least " .. tostring(B.BasketMin) .. ")")
+	t:case(has(f, "\"Basket full! Feed your pets\""), "the full-basket toast is quoted")
 	t:report()
 end
 
 local function checkFoodMachine(TC, PC, BC, Config, lines, fmText, careSource)
-	local t = T.tally("docs: the Food Machine, leftovers, levels to 100, the XP curve and XP from fights match the catalogs", 6)
+	local t = T.tally("docs: the Food Machine (berries, one Feed button), levels to 100, the XP curve and XP from fights match the catalogs", 6)
 	local f = flat(fmText)
 	local share = TC.FeedShare or {}
 	local machine = TC.ById.Kitchen
 	local shareText = num((share[1] or 0) * 100) .. " % of the XP bar at Food Machine level 1, up to " .. num((share[machine.MaxLevel] or 0) * 100)
 		.. " % at level " .. machine.MaxLevel
 	t:case(has(f, shareText), "the Food Machine text should say " .. show(shareText))
-	local maxFeeds = careSource and tonumber(careSource:match("local MAX_FEEDS = (%d+)"))
-	if t:case(maxFeeds ~= nil, "PetCareService.lua has MAX_FEEDS") then
-		t:case(has(f, "(at most " .. maxFeeds .. ")"), "Level up buys at most " .. maxFeeds .. " feeds")
-	end
-	local priceRule = "x its rarity " .. rarityRange(Config) .. " x " .. num(TC.FeedBase) .. " Cash"
-	t:case(has(f, priceRule), "the price rule should read " .. show(priceRule))
+	local priceRule = "x its rarity " .. rarityRange(Config) .. " x " .. num(TC.FeedBase) .. " berries"
+	t:case(has(f, priceRule), "the berry rule should read " .. show(priceRule))
 	local common = samplePet(PC, rarityIds(Config)[1])
-	if t:case(common ~= nil, "PetCatalog has a Common pet") then
+	if t:case(common ~= nil and type(TC.FeedBerries) == "function", "PetCatalog has a Common pet and TycoonCatalog.FeedBerries exists") then
 		for i, lv in ipairs({ 1, (PC.EvolutionLevels or {})[1] - 1 }) do
-			local want = "level-" .. lv .. " Common " .. (i == 1 and "pays " or "") .. "**$" .. commas(TC.FeedPrice(common, lv)) .. "** for **"
+			local want = "level-" .. lv .. " Common " .. (i == 1 and "eats " or "") .. "**" .. commas(TC.FeedBerries(common, lv)) .. " berries** for **"
 				.. commas(TC.FeedXp(lv, 1)) .. " XP**"
 			t:case(has(f, want), "the feed example should read " .. show(want))
 		end
 	end
-	local rows = tableRows(lines, "| Leftover food | XP |")
-	if t:case(rows ~= nil, "no leftover table (| Leftover food | XP |)") then
-		local byName = rowsByName(rows)
-		t:case(#rows == #TC.Foods, "the leftover table has " .. #rows .. " rows, TycoonCatalog " .. #TC.Foods .. " foods")
-		for _, food in ipairs(TC.Foods) do
-			local row = byName[food.Name]
-			t:case(row ~= nil and row[2] == num(food.Xp), food.Name .. ": XP " .. show(row and row[2]) .. " vs " .. num(food.Xp))
-		end
+	for _, word in ipairs({ "ONE button", "**Feed** spends berries", "**Food never costs Cash**", "**Berry Basket**", "Your garden pets grow more!" }) do
+		t:case(has(f, word), "the Food Machine text should say " .. show(word))
 	end
+	t:case(has(careSource, "Your garden pets grow more!"), "PetCareService has the 'Not enough berries ... Your garden pets grow more!' toast")
+	for _, stale in ipairs({ "**Level up**", "Leftover food", "free Feast", "MAX_FEEDS" }) do
+		t:case(not has(f, stale), "the Food Machine text still says " .. show(stale) .. " (one Feed button since phase 5)")
+	end
+	t:case(TC.Foods == nil or #TC.Foods == 0, "TycoonCatalog has no Foods any more (berries are the one food)")
+	local legacy = (TC.Berries or {}).LegacyFood or {}
+	local old = "a Snack " .. commas(legacy.Snack or 0) .. ", a Meal " .. commas(legacy.Meal or 0) .. " and a Feast " .. commas(legacy.Feast or 0) .. " berries"
+	t:case(has(f, old), "the old food conversion should read " .. show(old))
 	-- levels
 	local cap = PC.MaxPetLevel
 	if type(cap) == "function" then
@@ -1285,6 +1433,9 @@ local function checkFoodMachine(TC, PC, BC, Config, lines, fmText, careSource)
 	local evoLv = PC.EvolutionLevels or {}
 	local factors = "(a level-" .. evoLv[2] .. " pet has x" .. num(PC.LevelFactor(evoLv[2])) .. ", a level-" .. cap .. " pet x" .. num(PC.LevelFactor(cap)) .. ")"
 	t:case(has(f, factors), "the level factors should read " .. show(factors))
+	local twice = "x" .. bonusText(PC, 1) .. " of the bonus after the first EVOLVE, x" .. bonusText(PC, 2) .. " after the second (a level-" .. cap
+		.. " pet evolved twice has x" .. num(PC.LevelFactor(cap, 2)) .. ")"
+	t:case(has(f, twice), "the evolved level factors should read " .. show(twice))
 	local curve = tableRows(lines, "| Level up | XP needed |")
 	if t:case(curve ~= nil and #curve >= 4, "no XP curve table (| Level up | XP needed |)") then
 		local last = 0
@@ -1301,19 +1452,18 @@ local function checkFoodMachine(TC, PC, BC, Config, lines, fmText, careSource)
 	local totals = commas(TC.XpForLevel(evoLv[1])) .. " XP in total to reach level " .. evoLv[1] .. ", " .. commas(TC.XpForLevel(evoLv[2]))
 		.. " to reach level " .. evoLv[2] .. " and " .. commas(TC.XpForLevel(cap)) .. " to reach level " .. cap
 	t:case(has(f, totals), "the XP totals should read " .. show(totals))
-	-- XP from every fight
-	local R = BC.TrialRewardRules or {}
+	-- XP from every fight (Phase 5: Dungeon rooms instead of Trials)
+	local D, L = BC.Dungeon or {}, BC.LossRules or {}
 	local TR, Raid, Ring = BC.Trophies or {}, BC.Raid or {}, BC.Ring or {}
 	local src = rowsByName(tableRows(lines, "| Where | XP for every team pet |"))
 	local function cell(name)
 		return (src[name] or {})[2] or ""
 	end
-	local first, last = BC.TrialRewards(1), BC.TrialRewards(BC.TrialCount)
-	t:case(cell("A Trial win") == R.Xp.Base .. " + " .. R.Xp.PerLevel .. " x the level (" .. first.Xp .. " up to " .. last.Xp .. ")",
-		"Trial win XP " .. show(cell("A Trial win")))
-	t:case(math.abs((tonumber(R.LossShare) or 0) - 1 / 3) < 1e-6 and has(cell("A lost Trial"), "a third of the win XP")
-		and has(cell("A lost Trial"), num(R.LossMinSeconds) .. " seconds or more") and has(cell("A lost Trial"), num((R.LossMinDamage or 0) * 100) .. " %"),
-		"lost Trial XP " .. show(cell("A lost Trial")))
+	local room = num(D.XpBase) .. " + " .. num(D.XpPerFloor) .. " x the floor for every wave (the boss room counts " .. num(D.BossRoomWaves) .. ")"
+	t:case(cell("A Dungeon room") == room, "Dungeon room XP " .. show(cell("A Dungeon room")) .. " vs " .. show(room))
+	t:case(math.abs((tonumber(L.LossShare) or 0) - 1 / 3) < 1e-6 and has(cell("A lost Dungeon room"), "a third of its XP")
+		and has(cell("A lost Dungeon room"), num(L.LossMinSeconds) .. " seconds or more") and has(cell("A lost Dungeon room"), num((L.LossMinDamage or 0) * 100) .. " %"),
+		"lost room XP " .. show(cell("A lost Dungeon room")))
 	t:case(cell("A duel") == num(TR.Xp.Win) .. " for a win, " .. num(TR.Xp.Loss) .. " for a draw or a loss", "duel XP " .. show(cell("A duel")))
 	local lo, hi = math.huge, 0
 	for _, tier in ipairs(Raid.Tiers or {}) do
@@ -1322,18 +1472,20 @@ local function checkFoodMachine(TC, PC, BC, Config, lines, fmText, careSource)
 	t:case(cell("A Boss Raid") == num(lo) .. " up to " .. num(hi) .. " by your tier (" .. num(Raid.LossXp) .. " when the boss wins)", "raid XP " .. show(cell("A Boss Raid")))
 	t:case(has(cell("A Champion Ring round"), Ring.XpBase .. " + " .. Ring.XpPerRound .. " x the round") and has(cell("A Champion Ring round"), "pays a third"),
 		"ring XP " .. show(cell("A Champion Ring round")))
+	t:case(src["A Trial win"] == nil and src["A lost Trial"] == nil, "the XP table has no Trial rows any more")
 	t:report()
 end
 
 local function checkEvolution(PC, Config, evoText)
 	local t = T.tally("docs: evolution (levels, boosts, which rarities evolve twice) matches PetCatalog", 6)
 	local f = flat(evoText)
-	local lv, b = PC.EvolutionLevels or {}, PC.EvolutionBoost or {}
+	local lv = PC.EvolutionLevels or {}
+	local b1, b2 = bonusText(PC, 1), bonusText(PC, 2)
 	t:case(has(f, "At level **" .. tostring(lv[1]) .. "** every pet is \"Ready to evolve!\""), "the first evolution at level " .. tostring(lv[1]))
 	t:case(has(f, "**EVOLVE!**") and has(f, "**EVOLVE**"), "the EVOLVE! pill and the EVOLVE button are named")
-	t:case(has(f, "**+" .. num(((b[1] or 1) - 1) * 100) .. " %** stronger"), "evolved pets +" .. num(((b[1] or 1) - 1) * 100) .. " %")
-	t:case(has(f, "at level **" .. tostring(lv[2]) .. "** (+" .. num(((b[2] or 1) - 1) * 100) .. " % in total)"),
-		"the second evolution at level " .. tostring(lv[2]) .. " (+" .. num(((b[2] or 1) - 1) * 100) .. " %)")
+	t:case(PC.EvolutionBoost == nil and PC.EvolutionMultiplier == nil and has(f, "Level bonus x" .. b1), "evolved pets: Level bonus x" .. b1 .. " (the old flat boost is gone)")
+	t:case(has(f, "at level **" .. tostring(lv[2]) .. "**") and has(f, "x" .. b2),
+		"the second evolution at level " .. tostring(lv[2]) .. " (Level bonus x" .. b2 .. ")")
 	local twice, once = {}, {}
 	for _, id in ipairs(rarityIds(Config)) do
 		if (PC.MaxEvolution({ Rarity = id }) or 0) >= 2 then
@@ -1393,24 +1545,30 @@ local function checkTraining(TC, BC, PC, Config, lines, trainText)
 end
 
 local function checkLegacy(TC, legacyText, tycoonSource, menuSource)
-	local t = T.tally("docs: 'Homes from before Phase 4' (plants, kept places and prices, leftovers, the Welcome pile) matches the game", 6)
+	local t = T.tally("docs: 'Homes from older versions' (the Phase 5 fold, berries, teams, floors, the Phase 4 kept places) matches the game", 6)
 	local f = flat(legacyText)
-	local names = {}
-	for i = 1, 4 do
-		names[i] = (TC.ById["Press" .. i] or {}).Name or "?"
-	end
-	local map = "Cloud Press 1 is the " .. names[1] .. ", 2 the " .. names[2] .. ", 3 the " .. names[3] .. " and 4 the " .. names[4]
-	t:case(has(f, map), "the presses -> plants map should read " .. show(map))
-	for _, word in ipairs({ "**Coin Magnet**", "**Food Machine**", "**Training Place**", "**Extra garden places:**", "**Old prices:**",
-		"**Leftover food:**", "**The Welcome-back pile:**", "until your next Prestige", "\"Ready to evolve!\"" }) do
+	-- the Phase 5 fold (9.2 step 3, TycoonCatalog.FoldLegacy)
+	t:case(type(TC.FoldLegacy) == "function" and (TC.ById.Press2 == nil and TC.ById.Collector == nil and TC.ById.DecorLamps == nil),
+		"TycoonCatalog folds the old plants, the Coin Magnet and the old decor (FoldLegacy; no Press2 / Collector / DecorLamps)")
+	for _, word in ipairs({ "one **Berry Farm**", "the sum of your old plant levels", "**The Coin Magnet**", "until your next Prestige",
+		"**your Home Level never drops**", "**Teams of 3:**", "**Trials became Dungeon floors:**", "**From before phase 4:**" }) do
 		t:case(has(f, word), "the section should say " .. show(word))
 	end
-	t:case(has(f, "(up to " .. TC.ById.Garden.MaxLevel .. ")") and has(f, "more than " .. num((TC.Prestige or {}).GardenSlotsBase) .. " + your stars"),
-		"old Garden levels (up to " .. TC.ById.Garden.MaxLevel .. ") above " .. tostring((TC.Prestige or {}).GardenSlotsBase) .. " + stars are kept")
-	local toast = (tycoonSource or ""):match('"(Welcome to the new home![^"]*)"')
-	if t:case(toast ~= nil, "TycoonService.lua has the 'Welcome to the new home!' toast") then
+	local legacy = (TC.Berries or {}).LegacyFood or {}
+	local food = "(a Snack " .. commas(legacy.Snack or 0) .. ", a Meal " .. commas(legacy.Meal or 0) .. ", a Feast " .. commas(legacy.Feast or 0) .. ")"
+	t:case(has(f, food), "the section should say " .. show(food))
+	local names = {}
+	for _, id in ipairs({ "DecorFence", "DecorFountain" }) do
+		names[#names + 1] = (TC.ById[id] or {}).Name or "?"
+	end
+	t:case(has(f, "went into the " .. names[1] .. ", the Lanterns into the " .. names[2]), "the old decor went into the " .. names[1] .. " and the " .. names[2])
+	local toast = (tycoonSource or ""):match('"(Your home got simpler![^"]*)"')
+	if t:case(toast ~= nil, "TycoonService.lua has the 'Your home got simpler!' toast") then
 		t:case(has(f, toast), "the section should quote the toast " .. show(toast))
 	end
+	-- the Phase 4 kept places and prices (still shown by the Home window)
+	t:case(has(f, "(up to " .. TC.ById.Garden.MaxLevel .. ")") and has(f, "more than " .. num((TC.Prestige or {}).GardenSlotsBase) .. " + your"),
+		"old Garden levels (up to " .. TC.ById.Garden.MaxLevel .. ") above " .. tostring((TC.Prestige or {}).GardenSlotsBase) .. " + stars are kept")
 	t:case(has(menuSource, '"Kept from your old home: "') and has(menuSource, '" places and old prices until your next Prestige."')
 		and has(f, "\"Kept from your old home: 6 places and old prices until your next Prestige.\""), "the Home window's kept-places tip is quoted as MenuController writes it")
 	t:report()
@@ -1466,7 +1624,7 @@ local function checkRing(BC, PC, lines, ringText)
 end
 
 local function checkNpcs(lines)
-	local t = T.tally("docs: the NPC table names every NpcDialog NPC and its Phase 4 topics", 6)
+	local t = T.tally("docs: the NPC table names every NpcDialog NPC and its Phase 4-5 topics", 6)
 	local N, err = requireModule("shared/NpcDialog")
 	if not t:case(N ~= nil and type(N.Npcs) == "table", "shared/NpcDialog loads: " .. tostring(err)) then
 		return t:report()
@@ -1478,8 +1636,8 @@ local function checkNpcs(lines)
 		for _, row in ipairs(rows) do
 			byName[row[1]] = row
 		end
-		local phase4 = { "Pet Garden", "rainbow coins", "Berry Bush", "Economy pets", "Food Machine", "Feed", "EVOLVE", "Training Place",
-			"Champion Ring", "record", "safe zone", "portal" }
+		local phase4 = { "Pet Garden", "Economy pets", "Food Machine", "Feed", "EVOLVE", "Training Place", "Champion Ring", "record", "safe zone",
+			"portal", "Berry Farm", "Food Bowl", "Cloud Cash", "Berry Basket", "Dungeon", "fighter", "helpers", "ELEMENT", "SWAP", "Obby portal" }
 		for _, npc in ipairs(N.Npcs) do
 			local row = byName["**" .. npc.Name .. "**, " .. npc.Title]
 			if t:case(row ~= nil, "no NPC row '**" .. npc.Name .. "**, " .. npc.Title .. "'") then
@@ -1527,14 +1685,17 @@ local function checkOwner4(TC, text, lines, petCardText, devSource)
 		all[#all + 1] = table.concat(row, " | ")
 	end
 	local c = table.concat(all, "\n")
-	for _, word in ipairs({ "put a pet on a garden spot", "the Food Machine (*Feed pets*)", "the Training Place (*Train pets*)", "the Champion Ring portal",
-		"Scoop your rainbow coins | walk over them", "**Go home**", "**EVOLVE!** pill" }) do
+	for _, word in ipairs({ "put a pet on a pet bed", "the Food Machine (*Feed pets*)", "the Training Place (*Train pets*)", "the Champion Ring",
+		"a gate of the Gate Court", "the Obby level picker", "a dungeon chest", "Scoop your Cloud Cash | walk over it", "**Go home**", "**EVOLVE!** pill",
+		"**PLAY**" }) do
 		t:case(has(c, word), "the controls table should say " .. show(word))
 	end
-	t:case(not has(c, "Cook") and not has(c, "Collector"), "the controls table no longer cooks or banks the Collector")
+	t:case(not has(c, "Cook") and not has(c, "Collector") and not has(c, "RETREAT") and not has(c, "Trial Portal"),
+		"the controls table no longer cooks, banks the Collector, RETREATs or opens the Trial Portal")
 	-- pet cards
 	local p = flat(petCardText)
-	for _, word in ipairs({ "right behind you", "**Lv 12**", "(★ / ★★)", "blue XP bar", "**EVOLVE!** pill", "purple timer bar", "SPECIAL bar" }) do
+	for _, word in ipairs({ "keeping its distance from you and from the others", "Big pets keep further back", "**Lv 12**", "(★ / ★★)", "blue XP bar",
+		"**EVOLVE!** pill", "purple timer bar", "SPECIAL bar" }) do
 		t:case(has(p, word), "the pet card text should say " .. show(word))
 	end
 	-- /petlevel
@@ -1548,7 +1709,7 @@ local function checkOwner4(TC, text, lines, petCardText, devSource)
 	end
 	-- stale wording from Phase 2 / 3 (and nothing about any website)
 	for _, stale in ipairs({ "While you were away:", "Train in Gym", "Cook Snack", "Place in Garden", "fly beside", "flies beside", "bank the Collector",
-		"Cloud Presses puff", "button for players comes later", "level 50 cap" }) do
+		"Cloud Presses puff", "button for players comes later", "level 50 cap", "Scoop your rainbow coins", "Level up** buys", "Leftover food |" }) do
 		t:case(not has(f, stale), "the README still says " .. show(stale))
 	end
 	t:case(not lowerHas(text, "etsemiq"), "the README never names the Etsemiq website (the game has nothing to do with it)")
@@ -1566,11 +1727,161 @@ local function checkPhase4(Config, PC, TC, Steps, lines, text, sub)
 	checkFoodMachine(TC, PC, BC, Config, lines, sub("### The Food Machine"), (readFile("src/server/Services/PetCareService.lua")))
 	checkEvolution(PC, Config, sub("### Evolution"))
 	checkTraining(TC, BC, PC, Config, lines, sub("### The Training Place"))
-	checkLegacy(TC, sub("### Homes from before Phase 4"), tycoonSource, (readFile("src/client/Controllers/MenuController.lua")))
+	checkLegacy(TC, sub("### Homes from older versions"), tycoonSource, (readFile("src/client/Controllers/MenuController.lua")))
 	checkRing(BC, PC, lines, sub("### The Champion Ring"))
 	checkNpcs(lines)
 	checkTutorial4(Steps, sub("## First steps"), (readFile("src/server/Services/TutorialService.lua")))
 	checkOwner4(TC, text, lines, sub("### Pet cards and following"), (readFile("src/server/Services/DevService.lua")))
+end
+
+----------------------------------------------------------------------------------------------------
+-- Phase 5: the Big Sky Update (the "## Phase 5: the Big Sky Update" bullets with the catalogs' numbers) and the owner
+-- checklist "## Phase 5: owner checklist" (ARCHITECTURE_V3.md 10.6: steps 0-7, one needle per step; judge M9)
+----------------------------------------------------------------------------------------------------
+local TOPICS5 = {
+	{ "teams of 3: a fighter and two helpers", { "**FIGHTER**", "**HELPERS**", "**buff**", "**SWAP**", "three lives", "RETREAT is gone" } },
+	{ "the new battle controls (keys and touch)", { "**ATTACK**", "**ELEMENT**", "**SPECIAL**", "**DASH**", "`F`", "`E`", "`Q`", "`Shift`", "`Tab`", "`1` / `2`", "big touch buttons" } },
+	{ "helpers / Supporters", { "Supporters", "**Heal**", "**Shield**", "**Rally**", "**Haste**", "about 70 %", "battle power" } },
+	{ "levels and evolutions", { "+10 %", "EVOLVE", "Nobody gets weaker" } },
+	{ "the Dungeon (floors, party, loot)", { "**The Dungeon**", "boss room", "loot", "first time pays big Tokens and Gems", "Trial record" } },
+	{ "one obby portal with a level picker", { "**level picker**", "Easy, Medium, Hard, Extreme or Saint", "beating a level unlocks the next" } },
+	{ "the Gate Court", { "Gate Court", "Home, Obby, Dungeon, Champion Ring, Arena and Storm Altar" } },
+	{ "the Berry Farm, one food and Feed", { "**Berry Farm**", "**Berry Basket**", "ONE button, **Feed**", "never costs Cash" } },
+	{ "roaming pets pooping Cloud Cash", { "roam the yard", "Food Bowl", "poop **Cloud Cash**", "only you can" } },
+	{ "fewer, cheaper decor", { "three decorations", "Yard Fence", "Fountain", "Pet Podium", "much cheaper" } },
+	{ "evolved looks everywhere", { "**Evolved pets look evolved everywhere:**" } },
+	{ "followers spaced", { "**Pets follow better.**", "keeps its distance", "out of the camera's way" } },
+	{ "the sky and the new look", { "pink-purple cloud sky with stars", "bigger plaza", "never cover the whole screen" } },
+	{ "loading screen, main menu, settings", { "loading screen", "main menu", "**PLAY**", "**SETTINGS**", "**UPDATES**", "camera shake" } },
+	{ "nothing is lost", { "**Nothing is lost.**", "Berry Farm, old snacks became berries", "4th team pet" } },
+	{ "the owner's new tools", { "`/berries [n]`", "`/menu`", "owner checklist" } },
+}
+
+-- 10.6: the step number, its needle (in the step's own text) and the extra words the step must give
+local CHECKLIST = {
+	{ 0, "rojo serve", { "src/shared/Config.lua", "play/NimbusClimb.rbxlx", "Connect", "rojo build" } },
+	{ 1, "Migrate to Latest Update", { "Publish to Roblox", "create.roblox.com", "phase 4 and phase 5 servers run together" } },
+	{ 2, "Bulk Import", { "Asset Manager", "branding/sky/", "IMAGES", "a Decal id would NOT work", "moderation", "Copy ID", "Config.Sky.Faces", "Swap the `Lf` and `Rt` ids" } },
+	{ 3, "Config.Audio", { "Toolbox", "Copy Asset ID", "Empty = silent" } },
+	{ 4, "Config.Icons", { "emoji" } },
+	{ 5, "ShadowMap", { "default.project.json", "\"Technology\": \"Future\"", "Graphics: **Low**" } },
+	{ 6, "Developer Products", { "Config.Gems.Products", "Product ID" } },
+	{ 7, "Output", { "[Config]", "[LightingService]" } },
+}
+
+local function checkTopics5(p5)
+	local f = flat(p5)
+	local t = T.tally("docs: the README's 'Phase 5: the Big Sky Update' covers every part the player asked for", 6)
+	for _, topic in ipairs(TOPICS5) do
+		for _, word in ipairs(topic[2]) do
+			t:case(has(f, word), topic[1] .. ": the section never says " .. show(word))
+		end
+	end
+	t:report()
+end
+
+local function checkFacts5(Config, PC, TC, BC, p5, text, lines)
+	local t = T.tally("docs: the Phase 5 numbers (team, stamina, Dungeon, stations, evolution) and owner rows match Config / the catalogs / the services", 6)
+	local f = flat(p5)
+	t:case(BC ~= nil and has(f, "Your battle team is **" .. tostring(BC.TeamSize) .. " pets**"), "the team is " .. tostring(BC and BC.TeamSize) .. " pets")
+	local lives = BC and (BC.Fighter or {}).Lives
+	t:case(lives ~= nil and NUMBER_WORDS[lives] ~= nil and has(f, NUMBER_WORDS[lives]:lower() .. " lives"), "the fighter has " .. tostring(lives) .. " lives")
+	local P = Config.Physics or {}
+	local dashes = floor((P.MaxStamina or 0) / (P.DashStaminaCost or 1))
+	t:case(has(f, "**More stamina:** **" .. num(P.MaxStamina) .. "**") and has(f, dashes .. " dashes from full"),
+		"stamina " .. tostring(P.MaxStamina) .. ", " .. dashes .. " dashes from full (Config.Physics)")
+	local refill = string.format("%.1f", (P.MaxStamina or 0) / (P.StaminaRegen or 1))
+	t:case(has(f, "refills in about " .. refill .. " seconds"), "the bar refills in about " .. refill .. " seconds")
+	local D = (BC and BC.Dungeon) or {}
+	t:case(has(f, "**" .. tostring(D.Floors) .. " floors**"), "the Dungeon has " .. tostring(D.Floors) .. " floors")
+	local maxParty = sourceNumber((readFile("src/server/Services/DungeonService.lua")), "MAX_PARTY")
+	t:case(maxParty ~= nil and has(f, "a party of up to **" .. num(maxParty) .. "** players"), "a party of up to " .. tostring(maxParty) .. " players")
+	t:case(TC.Version == 5 and has(f, "**" .. #TC.Stations .. " stations**") and has(text, "A home has **" .. #TC.Stations .. " stations**"),
+		"TycoonCatalog Version 5 with " .. #TC.Stations .. " stations ('**N stations**')")
+	t:case(has(f, "grows x" .. bonusText(PC, 1) .. ", after the second x" .. bonusText(PC, 2)), "the level bonus grows x" .. bonusText(PC, 1) .. " / x" .. bonusText(PC, 2))
+	local S = (BC and (BC.Roles or {}).Support) or {}
+	local ratio = (S.Power or 0) > 0 and has(f, "about 70 %")
+	t:case(ratio, "Support pets hit for about 70 % (BattleCatalog.Roles.Support)")
+	-- the developer rows
+	local cmds = rowsByName(tableRows(lines, "| Command | What it does |"))
+	t:case(cmds["/berries [n]"] ~= nil and has(text, "`/berries [n]`"), "the chat command table has a '/berries [n]' row")
+	local devController = readFile("src/client/Controllers/DevController.lua")
+	t:case(cmds["/menu"] ~= nil and has(devController, "/menu"), "the chat command table has a '/menu' row (DevController's /menu)")
+	t:case(not has(text, "4th slot") and not has(text, "slot 4 opens") and not has(text, "slot opens at Prestige"), "no 'slot 4 opens at Prestige 1' line")
+	-- the main menu and settings: what the README names exists
+	local U = requireModule("shared/UpdateNotes")
+	t:case(U ~= nil and tonumber(U.Latest) == 5, "UpdateNotes.Latest is 5 (the Big Sky Update)")
+	t:case((Config.Loading or {}).SkipAfter ~= nil and has(flat(text), "**SKIP** appears after " .. num((Config.Loading or {}).SkipAfter) .. " seconds"),
+		"the loading screen's SKIP after " .. tostring((Config.Loading or {}).SkipAfter) .. " seconds (Config.Loading.SkipAfter)")
+	t:report()
+end
+
+local function checkChecklist5(Config, ownerText)
+	local t = T.tally("docs: 'Phase 5: owner checklist' is numbered 0-7 like ARCHITECTURE_V3.md 10.6, one needle per step", 6)
+	-- the numbered steps (a line "N. ..." at column 0) and their text up to the next step
+	local steps, order = {}, {}
+	local cur = nil
+	for _, line in ipairs(splitLines(ownerText or "")) do
+		local n = line:match("^(%d+)%. ")
+		if n then
+			cur = tonumber(n)
+			order[#order + 1] = cur
+			steps[cur] = line
+		elseif cur ~= nil and line:match("^%s+%S") then
+			steps[cur] = steps[cur] .. " " .. line
+		elseif line:match("^%S") then
+			cur = nil
+		end
+	end
+	t:case(#order == #CHECKLIST, "the checklist has " .. #order .. " numbered steps, 10.6 has " .. #CHECKLIST)
+	for i, spec in ipairs(CHECKLIST) do
+		local step = steps[spec[1]]
+		if t:case(order[i] == spec[1] and step ~= nil, "step " .. spec[1] .. " is the checklist's step number " .. i .. " (got " .. tostring(order[i]) .. ")") then
+			local fs = flat(step)
+			t:case(has(fs, spec[2]), "step " .. spec[1] .. " has its needle " .. show(spec[2]))
+			for _, word in ipairs(spec[3]) do
+				t:case(has(fs, word), "step " .. spec[1] .. " should say " .. show(word))
+			end
+		end
+	end
+	-- step 2: the six face keys of Config.Sky.Faces, the images in branding/sky/
+	local faces = sortedKeys((Config.Sky or {}).Faces)
+	local s2 = flat(steps[2] or "")
+	t:case(#faces == 6 and has(s2, "(" .. table.concat(faces, " ") .. ")"), "step 2 names the six Config.Sky.Faces keys (" .. table.concat(faces, " ") .. ")")
+	for _, key in ipairs(faces) do
+		local png = readFile("branding/sky/Skybox" .. key .. ".png")
+		t:case(png ~= nil and #png > 1000 and has(s2, "`Skybox" .. key .. "`"), "branding/sky/Skybox" .. key .. ".png exists and step 2 names it")
+	end
+	-- step 3: every music and sound name of Config.Audio
+	local A = Config.Audio or {}
+	local s3 = flat(steps[3] or "")
+	for _, group in ipairs({ "Music", "Sfx" }) do
+		for _, key in ipairs(sortedKeys(A[group])) do
+			t:case(has(s3, "`" .. key .. "`") or has(s3, "." .. key .. "`"), "step 3 names Config.Audio." .. group .. "." .. key)
+		end
+	end
+	t:case(type(Config.Icons) == "table", "Config.Icons exists (step 4)")
+	-- step 5: the project file still says Future (the line the owner changes)
+	local project = readFile("default.project.json")
+	t:case(has(project, "\"Technology\": \"Future\""), "default.project.json has the line '\"Technology\": \"Future\"' that step 5 changes")
+	-- step 6: the sample is the first Config.Gems.Products pack
+	local first = ((Config.Gems or {}).Products or {})[1] or {}
+	t:case(has(flat(steps[6] or ""), "{ Id = ..., Gems = " .. tostring(first.Gems) .. ", Name = \"" .. tostring(first.Name) .. "\" }"),
+		"step 6 quotes the first Config.Gems.Products pack")
+	t:report()
+end
+
+local function checkPhase5(Config, PC, TC, lines, text, sub)
+	local BC = requireModule("shared/BattleCatalog")
+	local p5 = sub("## Phase 5: the Big Sky Update")
+	if p5 ~= "" then
+		checkTopics5(p5)
+		checkFacts5(Config, PC, TC, BC, p5, text, lines)
+	end
+	local owner = sub("## Phase 5: owner checklist")
+	if owner ~= "" then
+		checkChecklist5(Config, owner)
+	end
 end
 
 ----------------------------------------------------------------------------------------------------
@@ -1616,6 +1927,7 @@ S.p2final_docs = guarded("p2final_docs", function()
 	checkAnchors(lines, fences, text)
 	checkPhase3(Config, PC, TC, Steps, lines, text, sub)
 	checkPhase4(Config, PC, TC, Steps, lines, text, sub)
+	checkPhase5(Config, PC, TC, lines, text, sub)
 	T.eq(#game:GetDescendants(), before, "docs: the checks are pure (no Instances created)")
 	K.flushErrors("p2final_docs")
 end)

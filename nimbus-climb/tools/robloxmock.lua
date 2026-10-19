@@ -3167,6 +3167,12 @@ function IM.Clone(self)
 		for k, v in pairs(nst.props) do
 			cst.props[k] = v
 		end
+		-- a cloned text object keeps the Font its original was given (Roblox copies every property; the font audit
+		-- tracks the assignment beside the props)
+		if nst.fontAssigned then
+			cst.fontAssigned = true
+			cst.fontValue = nst.fontValue
+		end
 		for k, v in pairs(nst.attrs) do
 			cst.attrs[k] = v
 		end
@@ -3431,15 +3437,21 @@ local function applyCFrame(part, st, v, propagate)
 	firePropChanged(part, st, "CFrame")
 	firePropChanged(part, st, "Position")
 	if propagate then
-		local delta = v * old:Inverse()
-		local moved = weldPartners(part)
+		-- most writes move one jointless part (every BulkMoveTo of an anchored voxel model, per frame): then nothing
+		-- else follows, so no partner search tables and no delta CFrame are allocated (Roblox pays nothing for it either)
+		local moved = Mock._welds[part] and weldPartners(part) or nil
 		if isCharacterRoot(part, st) then
+			moved = moved or {}
 			for _, sib in ipairs(st.parent[STATE].children) do
 				if sib ~= part and sib[STATE].class.isA.BasePart then
 					moved[#moved + 1] = sib
 				end
 			end
 		end
+		if not moved or #moved == 0 then
+			return
+		end
+		local delta = v * old:Inverse()
 		for _, other in ipairs(moved) do
 			local ost = other[STATE]
 			applyCFrame(other, ost, delta * currentCFrame(ost), false)
@@ -5764,7 +5776,7 @@ for _, n in ipairs({ "ReplicatedStorage", "ReplicatedFirst", "ServerScriptServic
 	service(n, {})
 end
 -- TextChatService: the default chat of new places (no TextChatCommand class here: commands that need one are skipped)
-service("TextChatService", { props = { ChatVersion = T.enum("ChatVersion", "TextChatService"), CreateDefaultCommands = T.bool(true), CreateDefaultTextChannels = T.bool(true) } })
+service("TextChatService", { props = { ChatVersion = T.enum("ChatVersion", "TextChatService"), CreateDefaultCommands = T.bool(true), CreateDefaultTextChannels = T.bool(true) }, events = { "SendingMessage", "MessageReceived" } })
 service("StarterPlayer", { props = { CharacterWalkSpeed = T.num(16), CharacterJumpPower = T.num(50), CharacterJumpHeight = T.num(7.2), CharacterUseJumpPower = T.bool(false), CharacterMaxHealth = T.num(100), CameraMaxZoomDistance = T.num(128), CameraMinZoomDistance = T.num(0.5), AutoJumpEnabled = T.bool(true) } })
 service("StarterGui", {
 	props = { ScreenOrientation = T.any(nil), ShowDevelopmentGui = T.bool(true), ResetPlayerGuiOnSpawn = T.bool(true) },

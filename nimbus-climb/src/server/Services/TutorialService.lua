@@ -2,11 +2,17 @@
 -- Phase 2 "Tutorial" paragraph, rewritten by Phase 4 "Phase 4 build contract" section 9: claim a home, put a pet in the
 -- Pet Garden, scoop its rainbow coins, build the Food Machine, feed a pet; the Phase 3 chapter: go to the Battle Arena,
 -- set a battle team, win Trial 1, see a Boss Raid; and the Phase 4 chapter: train a pet, win a Champion Ring round, walk
--- through the home portal).
+-- through the home portal). Phase 5 ("Phase 5 build contract" 8; indices never move): the portal step points at the ONE
+-- Obby portal (lobby.Portals.Obby), chapter 2 runs on the Phase 5 home (roaming pets poop Cloud Cash: the arrow finds the
+-- biggest drop, TycoonService.Drops; the Berry Farm pad before the Food Machine pad; entering the feed step tops the
+-- berries up to FEED_BERRIES once so the first feed works), chapter 3's step 17 is the Dungeon (DungeonWon: floor 1
+-- cleared; the arrow at DungeonInfo.Pad; standing on that pad opens the Dungeon window on floor 1 once).
 --
 --   TutorialService.Init(lobbyInfo, deps)     deps = { DataService, PetService, MatchService, SpotService, IndexService,
---                                                      TycoonService, PetCareService, BattleService, ArenaInfo }
---                                                      (missing ones are looked up; ArenaInfo = ArenaBuilder.Build's)
+--                                                      TycoonService, PetCareService, BattleService, ArenaInfo,
+--                                                      DungeonInfo, DungeonService }
+--                                                      (missing ones are looked up; ArenaInfo = ArenaBuilder.Build's,
+--                                                      DungeonInfo = DungeonBuilder.Build's { Portal, Pad, PromptPart })
 --   TutorialService.GetState(player) -> payload | nil       (the TutorialState payload below, a fresh copy)
 --   TutorialService.HandleEvent(player, eventName) -> ok, reason      (what the TutorialEvent remote does)
 --   TutorialService.Reload(player, opts) -> ok   drops the running tutorial and reads it again from the profile
@@ -50,8 +56,9 @@
 --   TeamSet       the active battle team holds the player's pets: DataService.ActiveTeamKeys has at least
 --                 min(3, the pets that can join a team: DataService.FieldableKeys) entries, so a player with one pet
 --                 passes with that one pet and a player with many must field three (DataService.TeamsChanged + the poll)
---   TrialWon      Trial level 1 is cleared: BattleService.BattleEnded (a Trial the player won) or the saved
---                 Battle.TrialCleared / TrialBest (DataService.GetBattle)
+--   DungeonWon    (Phase 5, replaces TrialWon) Dungeon floor 1 is cleared: DungeonService.FloorCleared(player, floor),
+--                 or the saved Dungeon.Best >= 1 / Cleared[1] (DataService.GetDungeon), or a legacy Battle.TrialCleared[1] /
+--                 TrialBest >= 1 (DataService.GetBattle): a Phase 4 veteran does not redo the step
 --   RaidSeen      the player joined a Boss Raid (BattleService.RaidJoined / a Raid BattleEnded naming them), has a raid
 --                 in the record (Battle.Raids), or stands in the arena while BattleService.GetRaidStatus() is not nil
 --   Next / ShopOpened / IndexOpened: client reports through the TutorialEvent remote, accepted only when they
@@ -70,9 +77,10 @@
 -- { Kind = "Spot", Position, SpotIndex, Label } (or { Kind = "Menu", Id = "Pets" }) with a matching Hint, and the
 -- poll re-sends the state whenever the target or the hint changes. Phase 3 targets { Kind = "Arena", Place } are
 -- resolved from ArenaInfo the same way (sent as Kind "Spot" + Position: the client draws its guide arrow for those):
--- "Gate" = ArenaInfo.Spawn (the forum), "Trials" = ArenaInfo.TrialPortal, "Floor" = the colosseum floor, "Ring" = the
--- Champion Ring portal (ArenaInfo.RingPortal; the gate of a free home first while the player has none); no arrow while
--- the player fights (attribute InBattle). The raid step's hint counts down to the next raid in minutes
+-- "Gate" = the Arena gate of the Gate Court (ArenaInfo.ArenaPortal; else ArenaInfo.Spawn, the forum), "Floor" = the
+-- colosseum floor, "Ring" = the Champion Ring portal (ArenaInfo.RingPortal; the gate of a free home first while the
+-- player has none), "Dungeon" = the Dungeon gate's pad (DungeonInfo.Pad); no arrow while the player fights (attribute
+-- InBattle) or runs the Dungeon (DungeonService.GetRun). The raid step's hint counts down to the next raid in minutes
 -- (EventService.SecondsUntil) or says that one is running.
 --
 -- TutorialState payload (server -> that player, on join, on every change, on "Sync"):
@@ -108,6 +116,11 @@ local HOME_FINISH_CASH = 1000
 local ARENA_FINISH_TOKENS = 500
 -- Not in Config (lead-owned): the Phase 4 chapter's reward ("Pets tutorial complete!"), paid once by its last step.
 local RING_FINISH_TOKENS = 300
+-- Phase 5: the first feed costs berries ("a feed needs 40"): entering the feed step tops the berries up to this many
+-- (DataService.AddBerries of the difference; nothing when the player already has them). A top-up, not a payment: the
+-- step completes on the first feed, so rejoining never adds more than one feed's worth of free berries.
+local FEED_BERRIES = 500
+local DUNGEON_PAD_RADIUS = 12 -- studs (horizontal) around DungeonInfo.Pad: standing there opens the Dungeon window once
 local ARENA_RADIUS = 160 -- studs around ArenaInfo.Center that count as the arena when ArenaBuilder.InArena is missing
 local ATTR_IN_BATTLE = "InBattle" -- BattleService's attribute (the battle id while the player fights)
 local STATION_FRONT_GAP = 2.5 -- studs in front of a station's footprint where its guide arrow stands
@@ -138,7 +151,6 @@ local KNOWN_COMPLETE_ON = {
 	-- Phase 3 (the pet-battle chapter)
 	ArenaReached = true,
 	TeamSet = true,
-	TrialWon = true,
 	RaidSeen = true,
 	-- Phase 4 (chapter 2 rewritten + chapter 4)
 	GardenPlaced = true,
@@ -146,6 +158,8 @@ local KNOWN_COMPLETE_ON = {
 	TrainingStarted = true,
 	RingWon = true,
 	PortalUsed = true,
+	-- Phase 5 (chapter 3's step 17)
+	DungeonWon = true,
 }
 
 ----------------------------------------------------------------------
@@ -183,6 +197,9 @@ local ArenaBuilder = nil -- read-only: InArena(position)
 local EventService = nil -- read-only: SecondsUntil("BossRaid")
 local BattleCatalog = nil
 local arenaInfo = nil
+-- Phase 5 (the Dungeon step): every use is guarded
+local DungeonService = nil
+local dungeonInfo = nil
 
 local function hasSignal(module, name)
 	return type(module) == "table" and type(module[name]) == "table" and type(module[name].Connect) == "function"
@@ -473,7 +490,7 @@ local function lobbyPosition(player, target)
 		end
 	elseif kind == "Portal" then
 		local portals = lobby and lobby.Portals
-		local info = type(portals) == "table" and portals[target.Id or "Easy"]
+		local info = type(portals) == "table" and portals[target.Id or "Obby"]
 		if type(info) == "table" and typeof(info.Center) == "Vector3" then
 			return info.Center
 		end
@@ -740,29 +757,60 @@ function Garden.target(player, spot, home, index, step)
 	end
 	if stationLevel(home, "Garden") < 1 then
 		return { Kind = "Spot", SpotIndex = index, Position = padPosition(spot, "Garden"), Label = "Pet Garden pad" },
-			"Build your free Pet Garden (press E on its pad)"
+			"Press E on the Pet Garden pad"
 	end
 	for slot = 1, Garden.open(home) do
 		if not Garden.keyAt(home, slot) then
 			local at = Garden.placePosition(spot, slot)
 			if at then
 				return { Kind = "Spot", SpotIndex = index, Position = at, Label = step.Target.Label or "Pet Garden" },
-					"Press E on a garden spot to put a pet in it"
+					"Press E on a pet bed"
 			end
 		end
 	end
 	return { Kind = "Menu", Id = "Pets", Label = "Pets" }, "Open Pets and press Garden"
 end
 
--- the "coins" step: the fullest pile, else the Garden while its pets make the first coins
+-- Phase 5: the biggest Cloud Cash drop of the yard (TycoonService.Drops: { Slot, Cycle, Position, Value, Poops, ... }
+-- sorted slot then cycle; the first of equal values wins, so the pick is stable). A leftover fraction (Poops 0, under
+-- $1) is invisible on the client and never picked. nil when the yard has none (or Drops is missing).
+function Garden.biggestDrop(player)
+	if not hasFunction(TycoonService, "Drops") then
+		return nil
+	end
+	local ok, drops = pcall(TycoonService.Drops, player)
+	if not ok or type(drops) ~= "table" then
+		return nil
+	end
+	local best, bestValue = nil, 0
+	for _, drop in ipairs(drops) do
+		if type(drop) == "table" and typeof(drop.Position) == "Vector3" then
+			local value = tonumber(drop.Value) or 0
+			local poops = tonumber(drop.Poops)
+			if value >= 1 and (poops == nil or poops >= 1) and value > bestValue then
+				best, bestValue = drop, value
+			end
+		end
+	end
+	return best
+end
+
+-- the "coins" step: the biggest drop (the fullest pile on a server without Drops), else the Garden while its pets
+-- roam toward their first poop
 function Garden.coinsTarget(player, spot, index, step)
-	local pile = Garden.fullestPile(player)
-	if pile then
-		return { Kind = "Spot", SpotIndex = index, Position = pile.Pos, Label = step.Target.Label or "Your coins" },
-			"Walk over your rainbow coins"
+	local label = step.Target.Label or "Cloud Cash"
+	local drop = Garden.biggestDrop(player)
+	if drop then
+		return { Kind = "Spot", SpotIndex = index, Position = drop.Position, Label = label }, "Walk over your Cloud Cash"
+	end
+	if not hasFunction(TycoonService, "Drops") then
+		local pile = Garden.fullestPile(player)
+		if pile then
+			return { Kind = "Spot", SpotIndex = index, Position = pile.Pos, Label = label }, "Walk over your Cloud Cash"
+		end
 	end
 	return { Kind = "Spot", SpotIndex = index, Position = stationPosition(spot, "Garden"), Label = "Pet Garden" },
-		"Your garden pets are making coins: wait a moment"
+		"Pets are roaming: wait a moment"
 end
 
 -- true when the player trains (or has trained) a pet: any Job or any rank in PetGrowth
@@ -886,12 +934,12 @@ local function homeTarget(player, track, step)
 			return target, step.Hint
 		end
 		track.NoFree = true
-		return nil, "Every home is taken: wait for a free gate"
+		return nil, "Wait for a free home"
 	end
 	local spot = getSpot(player)
 	if not spot then
 		-- every other home step happens on the player's own plot: claim one first
-		return gateTarget(player, track), "Claim a home first: press E at a free gate"
+		return gateTarget(player, track), "Claim a home first"
 	end
 	local home = getHome(player) or {}
 	local index = spotIndexOf(spot)
@@ -905,7 +953,7 @@ local function homeTarget(player, track, step)
 		local machine = t.Station or "Kitchen"
 		if stationLevel(home, machine) >= 1 then
 			return { Kind = "Spot", SpotIndex = index, Position = stationPosition(spot, machine), Label = t.Label or "Food Machine" },
-				"Press E at the Food Machine, then Feed"
+				"Press E at the Food Machine"
 		end
 		local byId = padsById(home)
 		local pad = padToward(home, byId, machine, 0, {}) or cheapestPad(byId)
@@ -919,7 +967,7 @@ local function homeTarget(player, track, step)
 	if stationId and stationLevel(home, stationId) >= 1 then
 		local hint = step.Hint
 		if stationId == "Gym" then
-			hint = "Press E at the Training Place: pick a pet and a skill"
+			hint = "Press E at the Training Place"
 		end
 		return { Kind = "Spot", SpotIndex = index, Position = stationPosition(spot, stationId), Label = t.Label or stationId }, hint
 	end
@@ -1064,7 +1112,22 @@ local function battleRecord(player)
 	return nil
 end
 
-local function trialOneCleared(player)
+-- true when Dungeon floor 1 is behind the player: the saved Dungeon record (Best >= 1 or Cleared[1]), or a legacy
+-- Phase 4 Trial 1 clear (Battle.TrialCleared[1] / TrialBest >= 1; P5Dungeon maps Trials 1-2 to no floor, but a
+-- veteran who beat a Trial knows the fights and skips the tutorial floor)
+local function dungeonOneCleared(player)
+	if hasFunction(DataService, "GetDungeon") then
+		local ok, record = pcall(DataService.GetDungeon, player)
+		if ok and type(record) == "table" then
+			if (tonumber(record.Best) or 0) >= 1 then
+				return true
+			end
+			local cleared = record.Cleared
+			if type(cleared) == "table" and (cleared[1] == true or cleared["1"] == true) then
+				return true
+			end
+		end
+	end
 	local record = battleRecord(player)
 	if not record then
 		return false
@@ -1073,6 +1136,24 @@ local function trialOneCleared(player)
 		return true
 	end
 	return (tonumber(record.TrialBest) or 0) >= 1
+end
+
+-- true while the player is inside a Dungeon run (DungeonService.GetRun)
+local function inDungeonRun(player)
+	if not hasFunction(DungeonService, "GetRun") then
+		return false
+	end
+	local ok, run = pcall(DungeonService.GetRun, player)
+	return ok and run ~= nil and run ~= false
+end
+
+-- the Dungeon gate's pad (DungeonInfo.Pad, else its prompt part / portal model), or nil
+local function dungeonPadPosition()
+	local info = type(dungeonInfo) == "table" and dungeonInfo or nil
+	if not info then
+		return nil
+	end
+	return positionOfInfo(info.Pad) or positionOfInfo(info.PromptPart) or positionOfInfo(info.Portal)
 end
 
 local function raidStatus()
@@ -1107,22 +1188,29 @@ end
 
 -- { Kind = "Spot", Position, Label } for an Arena target (the client draws world arrows for Spot targets), or nil
 local function arenaTarget(player, target)
-	if inBattle(player) then
+	if inBattle(player) or inDungeonRun(player) then
 		return nil
+	end
+	local position = nil
+	if target.Place == "Dungeon" then
+		-- Phase 5: the Dungeon gate in the Gate Court (no ArenaInfo needed)
+		position = dungeonPadPosition()
+		if typeof(position) ~= "Vector3" then
+			return nil
+		end
+		return { Kind = "Spot", Position = position, Label = target.Label or "Dungeon portal", Arena = "Dungeon" }
 	end
 	local info = getArenaInfo()
 	if not info then
 		return nil
 	end
-	local position = nil
-	if target.Place == "Trials" then
-		position = positionOfInfo(info.TrialPortal)
-	elseif target.Place == "Floor" then
+	if target.Place == "Floor" then
 		position = positionOfInfo(info.Floor) or positionOfInfo(info.Center)
 	elseif target.Place == "Ring" then
-		position = positionOfInfo(info.RingPortal) or positionOfInfo(info.RingSite) or positionOfInfo(info.TrialPortal)
+		position = positionOfInfo(info.RingPortal) or positionOfInfo(info.RingSite)
 	else
-		position = positionOfInfo(info.Spawn) or positionOfInfo(info.Center)
+		-- "Gate": the Arena gate of the Gate Court (Phase 5), else the arrival forum
+		position = positionOfInfo(info.ArenaPortal) or positionOfInfo(info.Spawn) or positionOfInfo(info.Center)
 	end
 	if typeof(position) ~= "Vector3" then
 		return nil
@@ -1144,7 +1232,7 @@ local function resolveStep(player, track, step)
 		if target.Place == "Ring" and TycoonService ~= nil and getSpot(player) == nil and not inBattle(player) then
 			-- the Champion Ring needs a claimed home: the gate of a free one first
 			local okGate, gate = pcall(gateTarget, player, track)
-			return okGate and gate or nil, "Claim your home first: press E at a free gate"
+			return okGate and gate or nil, "Claim a home first"
 		end
 		local ok, out = pcall(arenaTarget, player, target)
 		return ok and out or nil, hint
@@ -1274,6 +1362,27 @@ local function addCash(player, amount)
 	return result ~= false
 end
 
+-- Phase 5: the feed step needs berries (PetCareService.Feed: "a feed needs 40"). Tops the player's berries up to
+-- FEED_BERRIES (DataService.AddBerries of the difference) and returns the berries added (0 when they have enough).
+-- Server-decided and bounded: it only fills a gap below FEED_BERRIES, and the step it serves ends on the first feed.
+local function topUpBerries(player)
+	if not hasFunction(DataService, "GetBerries") or not hasFunction(DataService, "AddBerries") then
+		return 0
+	end
+	local okGet, have = pcall(DataService.GetBerries, player)
+	have = okGet and tonumber(have) or nil
+	if not have or have ~= have or have >= FEED_BERRIES then
+		return 0
+	end
+	local amount = FEED_BERRIES - math.max(0, math.floor(have))
+	local ok, added = pcall(DataService.AddBerries, player, amount)
+	if not ok or added == false then
+		return 0
+	end
+	notify(player, "Nimbus filled your Berry Basket: " .. commas(amount) .. " berries for your first feed!", "good", 5)
+	return amount
+end
+
 -- Pays the reward of a finished chapter (the progress is already stored). Returns the tokens paid (for the payload).
 local function payChapter(player, track, chapter)
 	if track.Replay then
@@ -1323,12 +1432,16 @@ local function enterStep(player, track)
 	track.NoSpotTime = 0
 	track.NoFreeTime = 0
 	track.TargetSig = nil
-	track.TrialWon = false
+	track.DungeonWon = false
+	track.DungeonPanel = false
 	track.RaidSeen = false
 	track.CoinsScooped = false
 	track.TrainingStarted = false
 	track.RingWon = false
 	track.PortalUsed = false
+	if step.CompleteOn == "Fed" then
+		topUpBerries(player)
+	end
 	if step.Gift and not track.Gifted then
 		local amount = giftTokens()
 		track.Gifted = true
@@ -1428,8 +1541,8 @@ local function impossible(player, track, step)
 		return not arenaKnown()
 	elseif kind == "TeamSet" then
 		return not hasFunction(DataService, "ActiveTeamKeys")
-	elseif kind == "TrialWon" then
-		return BattleService == nil or not (hasSignal(BattleService, "BattleEnded") or hasFunction(DataService, "GetBattle"))
+	elseif kind == "DungeonWon" then
+		return not hasFunction(DungeonService, "StartSolo")
 	elseif kind == "RaidSeen" then
 		return BattleService == nil or not (hasFunction(BattleService, "GetRaidStatus") or hasSignal(BattleService, "BattleEnded"))
 	end
@@ -1477,8 +1590,8 @@ local function satisfied(player, track, step)
 		return not inMatch(player) and inArena(player)
 	elseif kind == "TeamSet" then
 		return teamFilled(player)
-	elseif kind == "TrialWon" then
-		return track.TrialWon == true or trialOneCleared(player)
+	elseif kind == "DungeonWon" then
+		return track.DungeonWon == true or dungeonOneCleared(player)
 	elseif kind == "RaidSeen" then
 		if track.RaidSeen == true then
 			return true
@@ -1790,6 +1903,27 @@ end
 -- Poll loop (2 Hz): level checks, grace timers, home targets, profiles that loaded without a signal
 ----------------------------------------------------------------------
 
+-- Phase 5: a player on the Dungeon step who stands on the Dungeon gate's pad gets the Dungeon window opened on floor 1
+-- (OpenPanel("Dungeon", { Floor = 1 })), once per step entry; never in a fight or a run.
+local function dungeonDoorstep(player, track)
+	local step = currentStep(track)
+	if not step or step.CompleteOn ~= "DungeonWon" or track.DungeonPanel then
+		return false
+	end
+	local pad = dungeonPadPosition()
+	local root = rootOf(player)
+	if not pad or not root or inBattle(player) or inDungeonRun(player) then
+		return false
+	end
+	local offset = root.Position - pad
+	if Vector3.new(offset.X, 0, offset.Z).Magnitude > DUNGEON_PAD_RADIUS or math.abs(offset.Y) > NEAR_SPOT_HEIGHT then
+		return false
+	end
+	track.DungeonPanel = true
+	fireClient("OpenPanel", player, "Dungeon", { Floor = 1 })
+	return true
+end
+
 local function pollPlayer(player, dt)
 	local track = tracks[player]
 	if not track then
@@ -1817,6 +1951,7 @@ local function pollPlayer(player, dt)
 	track = tracks[player]
 	if track and currentStep(track) and not inMatch(player) then
 		refreshTarget(player, track)
+		dungeonDoorstep(player, track)
 	end
 end
 
@@ -1879,6 +2014,9 @@ function TutorialService.Init(lobbyInfo, deps)
 	ArenaBuilder = loadModule(services, "ArenaBuilder")
 	EventService = deps.EventService or loadModule(services, "EventService")
 	BattleCatalog = loadModule(Shared, "BattleCatalog")
+	-- Phase 5 (the Dungeon step; Main passes DungeonBuilder.Build's info and the module table, its Init runs later)
+	DungeonService = deps.DungeonService or loadModule(services, "DungeonService")
+	dungeonInfo = type(deps.DungeonInfo) == "table" and deps.DungeonInfo or nil
 
 	buildSteps()
 	if #steps == 0 then
@@ -1983,9 +2121,7 @@ function TutorialService.Init(lobbyInfo, deps)
 			end
 			local mark = nil
 			local list = nil
-			if result.Mode == "Trial" then
-				mark, list = "TrialWon", result.Winners
-			elseif result.Mode == "Raid" then
+			if result.Mode == "Raid" then
 				mark, list = "RaidSeen", result.Participants or result.Winners
 			elseif result.Mode == "Ring" and result.Won == true then
 				mark, list = "RingWon", result.Winners
@@ -2001,6 +2137,17 @@ function TutorialService.Init(lobbyInfo, deps)
 					track[mark] = true
 					nudge(player)
 				end
+			end
+		end)
+	end
+	-- Phase 5: a cleared Dungeon floor (DungeonService fires it for every qualifying member, after the payments)
+	if hasSignal(DungeonService, "FloorCleared") then
+		DungeonService.FloorCleared:Connect(function(player, floor)
+			local track = typeof(player) == "Instance" and tracks[player] or nil
+			local step = currentStep(track)
+			if step and step.CompleteOn == "DungeonWon" and type(floor) == "number" and floor >= 1 then
+				track.DungeonWon = true
+				nudge(player)
 			end
 		end)
 	end

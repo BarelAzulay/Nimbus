@@ -15,7 +15,7 @@
 --                                      until State's PetGrowth catches up (never lower than the stored stage).
 --   PetController.GetCards()        -- debug: { { UserId, Key, Mode, Gui, Shown } } of every live pet card
 --   PetController.GetFollowerInfo(player) -- debug: { { Key, Model, Stage = built model stage, Want = card stage,
---                                      Level, Card = BillboardGui | nil, Parked, Diving, Back = back multiplier } }
+--                                      Level, Card = BillboardGui | nil, Parked, Diving, Back / Side = the slot (studs), Width, Slot } }
 --
 -- What it does
 --   * Reads the player attribute `EquippedPets` (csv of pet KEYS, Config.Attr.EquippedPets) of EVERY player
@@ -31,12 +31,14 @@
 --     CFrame write on the root: the engine carries the welded parts along. PetBuilder.Animate then re-poses only
 --     the wing / tail / halo parts from the root (they stay anchored). A model that cannot be welded falls back
 --     to PivotTo; a pet whose Animate keeps failing gets its animated parts welded too, so nothing trails behind.
---   * Phase 4 follow-behind (contract 3.9): pets trail in slots { side, up, back, ahead } BEHIND the owner (1 pet
---     4.5 studs back; 2 pets side by side 4.2 back; 3 pets two in front, one 6.5 back; `ahead` is 0 everywhere, so a
---     pet never runs ahead of a walking owner), at about head height, bob and sway with their own phase, ease
---     towards their slot with an exponential filter (LEAD_H cancels most of the lag), face the direction the owner
---     travels, bank into turns, pitch forward when they speed up and flap harder when the owner runs or is in the
---     air. Evolved followers trail a little further back (back x min(1.4, height / 3), the measured model height).
+--   * Phase 5 follow-behind (contract 3.8): pets trail in slots BEHIND the owner chosen from their measured widths
+--     (PetController.FormationFor: 1 pet behind-right, 2 side by side with the smaller on the left, 3 as a V with the
+--     biggest behind the right one; a 1.2-stud camera channel keeps the owner's centre line free), at about head
+--     height, bob and sway a little with their own phase, ease towards their slot with a looser exponential filter
+--     (rateH 4.2 + 0.6 per slot, LEAD_H 0.10), then a 2-pass separation pushes overlapping pets apart (and off the
+--     owner) so big pets never touch or fuse; they face the direction the owner travels, bank into turns, pitch
+--     forward when they speed up and flap harder when the owner runs or is in the air.
+--   PetController.FormationFor(widths) -> { { side, back }, ... }   (pure; slots in the owner's frame, studs)
 --   * Phase 4 evolved models (3.6): the stored evolution stage (State.PetGrowth(key).Evo for your own pets, the
 --     player attribute EquippedInfo "level:stage,..." for others) is passed to PetBuilder.Build through opts.Evolved
 --     only. Your own evolved followers are Low detail (<= petEvoLow 380 / petEvo2Low 520 parts); other players'
@@ -171,9 +173,8 @@ local AIR_RATE = 8
 local DOWN_RATE = 4
 
 -- Pet motion
-local LEAD_H = 0.12 -- seconds of owner velocity added to the target (cancels most of the filter lag)
+local LEAD_H = 0.10 -- seconds of owner velocity added to the target (cancels most of the filter lag)
 local LEAD_V = 0.05
-local RUN_AHEAD = 4.0 -- Phase 3: studs the side pets moved forward at full run speed (unused: every `ahead` is 0)
 local RUN_RISE = 0.6 -- studs the pets rise at full run speed
 local FACE_RATE = 7 -- pet yaw easing (1/s)
 local TILT_RATE = 9 -- pitch / roll easing (1/s)
@@ -181,15 +182,24 @@ local BANK_GAIN = 0.1 -- radians of roll per radian/second of yaw rate
 local BANK_MAX = 0.55
 local PITCH_GAIN = 0.0125 -- radians of nose-down pitch per stud/second of forward speed
 
--- Slots: { side (+ = owner's right), up (above the HumanoidRootPart), back (behind the owner), ahead (0..1) }.
--- The HumanoidRootPart is ~3 studs above the floor, so +2 puts a pet's body at head height.
--- Phase 4 (contract 3.9, the player's "follow the player from behind"): trailing slots, `ahead` = 0 everywhere
--- (prototyped through this file's filter math: 4.5 / 4.6 / 6.5 studs behind at rest, worst lag 7.7 studs at
--- 24 studs/s, settles at 6.5, never ahead of the owner while moving).
-local FORMATION = {
-	[1] = { { 0.0, 2.3, 4.5, 0 } },
-	[2] = { { -1.8, 2.0, 4.2, 0 }, { 1.8, 2.6, 4.2, 0 } },
-	[3] = { { -2.2, 1.9, 4.0, 0 }, { 2.2, 2.5, 4.0, 0 }, { 0.0, 2.9, 6.5, 0 } },
+-- Phase 5 formation (contract 3.8, the player's "big pets touch each other; follow without fusing, less attached"):
+-- slots come from the measured model widths (PetController.FormationFor), a camera channel keeps every pet off the
+-- owner's centre line, and a 2-pass separation after the filter keeps pets apart from each other and the owner.
+local F5 = {
+	OWNER_R = 1.5, -- the owner as a horizontal circle (studs)
+	GAP_OWNER = 2.5, -- studs between the owner circle and the front row
+	GAP_PET = 1.0, -- studs between the right-hand pet and the one behind it
+	CHANNEL = 1.2, -- no pet within this many studs of the owner's centre line (the camera sees the player)
+	DIAG = 0.35, -- the front row tucks in by this share of the smaller half width
+	SEP_GAP = 0.4, -- studs the separation keeps between two pets / a pet and the owner
+	DEFAULT_W = 3.2, -- width of a pet whose model is not measured yet (the stage-0 median)
+	UP = { -- studs above the HumanoidRootPart per slot (n pets): about head height, the back pet a little higher
+		[1] = { 2.3 },
+		[2] = { 2.0, 2.6 },
+		[3] = { 1.9, 2.5, 2.9 },
+	},
+	RATE_H = 4.2, -- horizontal filter rate of slot 1 (1/s), +RATE_STEP per further slot (looser than Phase 4)
+	RATE_STEP = 0.6,
 }
 
 -- Phase 4 tuning (cards, evolved models, the portal dive)
@@ -200,7 +210,6 @@ local P4K = {
 	OTHER_EVO_MAX = 6, -- other players' evolved models at once (nearest first) ...
 	OTHER_EVO_IN = 40, -- ... within this distance
 	OTHER_EVO_OUT = 46, -- an evolved model already shown keeps its look up to here (no flicker at the edge)
-	EVO_BACK_MAX = 1.4, -- evolved followers: back x min(1.4, height / 3)
 	EVO_GRACE = 0.6, -- s: a stage that rose without PlayEvolution waits this long (the animation may park it first)
 	GLOBAL_TICK = 0.5, -- s between card / evolved-model selections
 	DIVE_TIME = 0.4, -- s the followers take to fly into a used home portal
@@ -240,6 +249,7 @@ local warnedAt = {} -- [key] = os.clock() of the last warning (rate limit)
 -- Phase 4: every new helper lives in this table (keeps the file's active locals low)
 local P4 = {
 	heights = {}, -- ["key|stage"] = measured model height (GetExtentsSize Y, Scale 1)
+	widths = {}, -- ["key|stage"] = measured model width (max of GetExtentsSize X / Z, Scale 1; FormationFor)
 	overrides = {}, -- [key] = stage passed to PlayEvolution (until State's PetGrowth catches up)
 	overrideUntil = {}, -- [key] = os.clock() after which an unconfirmed override is stale (park end + OVERRIDE_GRACE)
 	parks = {}, -- [key] = { Until = os.clock(), From = Vector3 | nil } while PlayEvolution parks that follower
@@ -293,26 +303,85 @@ end
 -- Slots
 ----------------------------------------------------------------------
 -- side, up, back, ahead for pet `i` of `n` (a generic fan for unusual MaxEquipped values).
-local function slotOffsets(n, i)
-	local set = FORMATION[n]
-	local s = set and set[i]
-	if s then
-		return s[1], s[2], s[3], s[4]
+-- PetController.FormationFor(widths) -> { { side, back }, ... } (pure; contract 3.8): the slot of each pet (same order
+-- as `widths`, studs in the owner's frame: side + = right, back = behind the root) from the pets' widths.
+--   1 pet:  behind-right { Channel + w/2, OwnerRadius + GapOwner + w/2 - Diag x w/2 }
+--   2 pets: the smaller left { -(Channel + wa/2), row }, the other right { Channel + wb/2, row },
+--           row = OwnerRadius + GapOwner + max(wa, wb)/2 - Diag x min(wa, wb)/2
+--   3 pets: the two smallest as for 2; the biggest behind the right one { Channel + wc/2, row + wb/2 + GapPet + wc/2 }
+--   n > 3 (never with a team of 3): the V goes on, every further pet behind the last one of its side
+-- Ties keep the input order. Junk widths count as F5.DEFAULT_W.
+local function formationFor(widths)
+	local out = {}
+	if type(widths) ~= "table" then
+		return out
 	end
-	-- Phase 4: a trailing fan behind the owner (contract 3.9), never ahead
-	local a = ((i - 0.5) / n - 0.5) * 2.4 -- -1.2 .. +1.2 radians
-	local side = sin(a) * 2.4
-	local back = 4 + (1 - cos(a)) * 2.5
-	local up = 1.9 + (i % 3) * 0.55
-	return side, up, back, 0
+	local n = #widths
+	if n == 0 then
+		return out
+	end
+	local w = {}
+	local order = {}
+	for i = 1, n do
+		local v = tonumber(widths[i])
+		if not v or v ~= v or v <= 0 or v == math.huge then
+			v = F5.DEFAULT_W
+		end
+		w[i] = v
+		order[i] = i
+	end
+	table.sort(order, function(a, b)
+		if w[a] ~= w[b] then
+			return w[a] < w[b]
+		end
+		return a < b
+	end)
+	local C, R, G, D = F5.CHANNEL, F5.OWNER_R, F5.GAP_OWNER, F5.DIAG
+	if n == 1 then
+		local x = w[1]
+		out[1] = { C + x / 2, R + G + x / 2 - D * x / 2 }
+		return out
+	end
+	local a, b = order[1], order[2]
+	local wa, wb = w[a], w[b]
+	local row = R + G + math.max(wa, wb) / 2 - D * math.min(wa, wb) / 2
+	out[a] = { -(C + wa / 2), row }
+	out[b] = { C + wb / 2, row }
+	-- the rest: behind the last pet of the right side, then the left, and so on (3 pets: the biggest behind the right one)
+	local lastR, lastL = { b, row }, { a, row }
+	for k = 3, n do
+		local c = order[k]
+		local wc = w[c]
+		local right = (k % 2) == 1
+		local last = right and lastR or lastL
+		local back = last[2] + w[last[1]] / 2 + F5.GAP_PET + wc / 2
+		out[c] = { (right and 1 or -1) * (C + wc / 2), back }
+		if right then
+			lastR = { c, back }
+		else
+			lastL = { c, back }
+		end
+	end
+	return out
 end
 
+-- the slots of every pet of one follower from their measured widths (unmeasured: F5.DEFAULT_W)
 local function assignSlots(f)
 	local n = f.n
+	local widths = {}
+	for i = 1, n do
+		widths[i] = f.pets[i].width or F5.DEFAULT_W
+	end
+	local slots = formationFor(widths)
+	local ups = F5.UP[n]
 	for i = 1, n do
 		local p = f.pets[i]
+		local s = slots[i]
 		p.slot = i
-		p.side, p.up, p.back, p.ahead = slotOffsets(n, i)
+		p.side, p.back, p.ahead = s[1], s[2], 0
+		p.up = (ups and ups[i]) or (1.9 + (i % 3) * 0.5)
+		p.r = (p.width or F5.DEFAULT_W) / 2
+		p.rateH = F5.RATE_H + F5.RATE_STEP * (i - 1)
 	end
 end
 
@@ -337,7 +406,8 @@ local function newPetRecord(def, key)
 		stage = 0, -- the stage the model was built at
 		want = 0, -- the stage the pet has (card stars; the model follows unless capped)
 		level = 1,
-		backMul = 1, -- evolved followers trail a little further back
+		width = nil, -- the measured model width (studs, FormationFor); nil until the model is built
+		r = F5.DEFAULT_W / 2, -- half the width: the pet's circle for the separation
 		height = 2.7,
 		card = nil, -- PetCard (own pets always, others' only when selected)
 		rebuildAt = nil, -- os.clock() when the model must be rebuilt at `want`
@@ -350,8 +420,8 @@ local function newPetRecord(def, key)
 		bobRate = 2.3 + rnd() * 1.1,
 		bobAmp = 0.34 + rnd() * 0.16,
 		swayRate = 0.8 + rnd() * 0.6,
-		swayAmp = 0.35 + rnd() * 0.3,
-		rateH = 5.6 + rnd() * 2.0,
+		swayAmp = 0.1 + rnd() * 0.08, -- small: the camera channel and the gaps hold while it sways
+		rateH = F5.RATE_H, -- set by assignSlots from the slot
 		rateV = 7.5 + rnd() * 2.5,
 		flapVar = 0.9 + rnd() * 0.25,
 		yawBias = (rnd() - 0.5) * 0.3,
@@ -434,23 +504,26 @@ local function buildModel(f, p)
 	end
 	p.stage = stage
 	p.rebuildAt = nil
-	-- the model's height, measured once per key|stage: taller pets hover a little higher, evolved ones trail
-	-- further back, and the card floats over the head
+	-- the model's height and width, measured once per key|stage: taller pets hover a little higher, the card
+	-- floats over the head, and the width decides the pet's slot (FormationFor) and its separation circle
 	local hkey = tostring(p.key) .. "|" .. stage
-	local h = P4.heights[hkey]
-	if not h then
+	local h, wd = P4.heights[hkey], P4.widths[hkey]
+	if not h or not wd then
 		local okSize, size = pcall(model.GetExtentsSize, model)
 		if okSize and typeof(size) == "Vector3" then
 			h = size.Y
+			wd = math.max(size.X, size.Z)
 			P4.heights[hkey] = h
+			P4.widths[hkey] = wd
 		end
 	end
 	h = h or 2.7
 	p.height = h
 	p.lift = clamp((h - 2.7) * 0.35, -0.4, 0.6)
-	p.backMul = 1
-	if stage > 0 then
-		p.backMul = clamp(h / 3, 1, P4K.EVO_BACK_MAX)
+	wd = wd or F5.DEFAULT_W
+	if p.width ~= wd then
+		p.width = wd
+		assignSlots(f) -- a new width moves every slot of this follower (the filter eases the pets there)
 	end
 	pcall(model.SetAttribute, model, "PC_Key", tostring(p.key))
 	pcall(model.SetAttribute, model, "PC_Stage", stage)
@@ -1407,11 +1480,13 @@ local function stepFollower(f, dt, now, viewPos)
 	local rx, rz = ch, -sh -- owner's right (horizontal)
 	local fx, fz = -sh, -ch -- owner's forward (horizontal)
 
-	-- 5. pets ----------------------------------------------------------------------------------------
+	-- 5. pets: (a) build + the filter toward the slot, (b) the separation, (c) facing + the pose write --------
 	local pets = f.pets
-	for i = 1, f.n do
+	local n = f.n
+	for i = 1, n do
 		local p = pets[i]
 		local model = p.model
+		p.live = false
 		if p.rebuildAt and now >= p.rebuildAt and not p.parked then
 			-- Phase 4: the stage changed (EVOLVE, EquippedInfo, the 40-stud rule): rebuild where the pet is
 			p.rebuildAt = nil
@@ -1432,10 +1507,10 @@ local function stepFollower(f, dt, now, viewPos)
 			local bob = sin(now * p.bobRate + p.phase) * p.bobAmp * (1 - 0.5 * downK)
 			local sway = sin(now * p.swayRate + p.phase2) * p.swayAmp
 			local side = p.side * compact + sway
-			local fwd = p.ahead * RUN_AHEAD * runK - p.back * p.backMul * compact
+			local fwd = -p.back * compact
 			local tx = px + rx * side + fx * fwd + leadX
 			local tz = pz + rz * side + fz * fwd + leadZ
-			local ty = py + p.up * (1 - 0.2 * downK) + p.lift + bob + (1.2 - p.ahead) * RUN_RISE * runK + leadY
+			local ty = py + p.up * (1 - 0.2 * downK) + p.lift + bob + 1.2 * RUN_RISE * runK + leadY
 
 			if p.fresh ~= 0 then
 				local from = p.emergeFrom
@@ -1461,11 +1536,66 @@ local function stepFollower(f, dt, now, viewPos)
 			end
 			local kh = 1 - exp(-p.rateH * dt)
 			local kvv = 1 - exp(-p.rateV * dt)
-			local nx, ny, nz = ox + ex * kh, oy + ey * kvv, oz + ez * kh
-			p.x, p.y, p.z = nx, ny, nz
-			local pvx, pvz = (nx - ox) / dt, (nz - oz) / dt
+			p.x, p.y, p.z = ox + ex * kh, oy + ey * kvv, oz + ez * kh
+			p.lastX, p.lastZ = ox, oz
+			p.live = true
+		end
+	end
 
-			-- facing, banking, pitch
+	-- (b) Phase 5 separation (contract 3.8): 2 passes over the pets of this owner (n <= 3, so <= 3 pairs); two
+	-- overlapping circles (centre distance < ra + rb + gap) are pushed apart half each, then a pet inside the
+	-- owner's circle (OwnerRadius + r + gap) is put on it. Horizontal only; no tables, no allocations.
+	local gap = F5.SEP_GAP
+	for _ = 1, 2 do
+		for i = 1, n - 1 do
+			local a = pets[i]
+			if a.live then
+				for j = i + 1, n do
+					local b = pets[j]
+					if b.live then
+						local ddx, ddz = b.x - a.x, b.z - a.z
+						local d = sqrt(ddx * ddx + ddz * ddz)
+						local need = a.r + b.r + gap
+						if d < need then
+							local ux, uz
+							if d > 1e-4 then
+								ux, uz = ddx / d, ddz / d
+							else
+								ux, uz = rx, rz -- exactly on top of each other: apart along the owner's right
+							end
+							local push = (need - d) / 2
+							a.x, a.z = a.x - ux * push, a.z - uz * push
+							b.x, b.z = b.x + ux * push, b.z + uz * push
+						end
+					end
+				end
+			end
+		end
+		for i = 1, n do
+			local q = pets[i]
+			if q.live then
+				local ddx, ddz = q.x - px, q.z - pz
+				local d = sqrt(ddx * ddx + ddz * ddz)
+				local need = F5.OWNER_R + q.r + gap
+				if d < need then
+					if d > 1e-4 then
+						q.x, q.z = px + ddx / d * need, pz + ddz / d * need
+					else
+						q.x, q.z = px - fx * need, pz - fz * need -- on the owner: straight behind
+					end
+				end
+			end
+		end
+	end
+
+	-- (c) facing, banking, pitch and the one pose write per pet
+	for i = 1, n do
+		local p = pets[i]
+		local model = p.model
+		if p.live and model then
+			local nx, ny, nz = p.x, p.y, p.z
+			local pvx, pvz = (nx - p.lastX) / dt, (nz - p.lastZ) / dt
+
 			local yawOld = p.yaw
 			local wobble = 0.1 * sin(now * 0.9 + p.phase2)
 			local yawStep = wrapAngle(face + p.yawBias + wobble - yawOld) * (1 - exp(-FACE_RATE * dt))
@@ -1582,6 +1712,11 @@ end
 ----------------------------------------------------------------------
 -- Public API
 ----------------------------------------------------------------------
+-- the formation slots for pets of these widths (pure; contract 3.8; see formationFor)
+function PetController.FormationFor(widths)
+	return formationFor(widths)
+end
+
 function PetController.GetPetCount()
 	local total = 0
 	for i = 1, followerCount do
@@ -1667,7 +1802,8 @@ function PetController.GetFollowerInfo(player)
 		local p = f.pets[i]
 		out[i] = {
 			Key = p.key, Model = p.model, Stage = p.stage, Want = p.want, Level = p.level,
-			Card = p.card and p.card.Gui or nil, Parked = p.parked, Diving = f.dive, Back = p.backMul,
+			Card = p.card and p.card.Gui or nil, Parked = p.parked, Diving = f.dive, Back = p.back,
+			Side = p.side, Width = p.width, Slot = p.slot,
 		}
 	end
 	return out

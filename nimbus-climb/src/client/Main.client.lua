@@ -7,10 +7,12 @@
 -- slow, broken or missing controller must never delay or take down the others. A failure only logs a
 -- warning. Threads are started in the order listed here, and task.spawn runs a new thread immediately until
 -- it first yields, so State.Init() has already registered itself before the first controller starts.
+-- The loading screen (src/first/LoadingScreen.client.lua) runs from ReplicatedFirst before this script.
 -- Plain Lua 5.1-compatible syntax only.
 
 local CONTROLLER_NAMES = {
 	"MovementController",
+	"MainMenuController", -- Phase 5 (7.2): gates every other ScreenGui until PLAY; the server holds the character meanwhile
 	"HudController",
 	"DamageFx",
 	"NotifyController",
@@ -35,6 +37,9 @@ local CONTROLLER_NAMES = {
 	-- Phase 4 (ARCHITECTURE_V3.md "Phase 4 build contract")
 	"CareController", -- Food Machine feed list, garden picker, Training Place window, the EVOLVE moment
 	"HomePortalFx", -- the home portal and the arrival ring
+	-- Phase 5 (ARCHITECTURE_V3.md "Phase 5 build contract" 5.6, 6.3)
+	"DungeonController", -- the Dungeon window, run cards, chest prompt, the dungeon lighting preset
+	"ObbyController", -- the obby level picker at the Obby gate
 }
 
 local TAG = "[NimbusClimb] "
@@ -44,7 +49,8 @@ local OPTIONAL = { SkyDragonController = true, IndexController = true, NpcContro
 	ShowcaseController = true, DevController = true, DevPetShow = true,
 	HomeFx = true, FusionController = true,
 	BattleController = true, ArenaController = true,
-	CareController = true, HomePortalFx = true }
+	CareController = true, HomePortalFx = true,
+	MainMenuController = true, DungeonController = true, ObbyController = true }
 
 local client = script.Parent
 

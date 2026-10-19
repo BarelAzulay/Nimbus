@@ -34,7 +34,7 @@ local abs, floor, max = math.abs, math.floor, math.max
 local advance, config, mod = K.advance, K.config, K.mod
 local ALLOWED_WARNINGS = { "[DataService]", "[GemService]" }
 -- a Sky Castle home at Home Level 52 with a Lv 5 Training Place: ready to prestige
-local PRESTIGE_READY = { Press1 = 10, Press2 = 10, Collector = 5, Garden = 8, Kitchen = 5, Gym = 5, Vault = 5, House = 4 }
+local PRESTIGE_READY = { Press1 = 15, Garden = 8, Kitchen = 5, Gym = 5, Vault = 5, House = 4 } -- Phase 5 ids (HL 42)
 
 ----------------------------------------------------------------------------------------------------
 -- helpers
@@ -696,7 +696,7 @@ S.fixsrv_prestige_pad = guarded("fixsrv_prestige_pad", function()
 		local info = spots()[index]
 
 		-- a Sky Castle below Home Level 40: the pad stands locked; pressing it anyway (an exploit) only explains why
-		setStations(p, { House = 4, Press1 = 1, Collector = 1 })
+		setStations(p, { House = 4, Press1 = 1, Garden = 1 })
 		local locked = buyPrompt(info, "Prestige")
 		if T.check(locked ~= nil, "prestige pad: (precondition) the Prestige pad stands next to the Sky Castle") then
 			T.check(not locked.Enabled, "prestige pad: below Home Level 40 its prompt is disabled")
@@ -715,7 +715,7 @@ S.fixsrv_prestige_pad = guarded("fixsrv_prestige_pad", function()
 		end
 		T.check(prompt.ActionText == "Prestige" and prompt.HoldDuration >= 1 and prompt.KeyboardKeyCode == Enum.KeyCode.E and prompt.Enabled,
 			"prestige pad: its prompt says 'Prestige' (not 'Buy') and needs a long hold (>= 1 s)", prompt.ActionText .. " / " .. tostring(prompt.HoldDuration))
-		local press = buyPrompt(info, "Press3") or buyPrompt(info, "Press1")
+		local press = buyPrompt(info, "Press1") or buyPrompt(info, "Kitchen")
 		T.check(press == nil or (press.ActionText == "Buy" and abs(press.HoldDuration - 0.25) < 1e-6), "prestige pad: the station pads keep 'Buy' (0.25 s)")
 		D.AddCash(p, 123456)
 		local cash0 = D.GetCash(p)

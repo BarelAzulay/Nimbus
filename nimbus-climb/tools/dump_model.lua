@@ -722,7 +722,8 @@ BUILDERS.homefree = function()
 end
 
 -- homegarden[:<open>[:<level>]] / hometrain[:<level>] (homegym)  (client world) the Pet Garden (default: 12 open
---            places, its top level) with a pet on every open place and a coin pile at each (CoinPiles), or the Training
+--            places, its top level) with a pet roaming from every open bed and Cloud Cash drops (RoamSeed / Roam /
+--            CoinDrops, like TycoonService writes them), or the Training
 --            Place (default: its top level) with a pet on every mat (TrainingPets): HomeBuilder builds the plot, the
 --            plot attributes name the pets and the real HomeFx draws them (PetBuilder Low)
 local function homePetsView(stationId, level, open)
@@ -739,6 +740,10 @@ local function homePetsView(stationId, level, open)
 	local spot = { Index = 99, PlotCFrame = cf, PlotSize = TC.PlotSize, Center = cf.Position, Folder = folder }
 	Fx.Init()
 	HB.PreparePlot(spot)
+	local lp = game:GetService("Players").LocalPlayer
+	if lp and type(HB.SetOwner) == "function" then
+		HB.SetOwner(spot, lp) -- the owner's own home: HomeFx draws full-strength coins
+	end
 	local ids = {}
 	for _, d in ipairs(PC.Pets) do
 		if #ids < 12 and not d.EventOnly then
@@ -747,15 +752,18 @@ local function homePetsView(stationId, level, open)
 	end
 	local count = level
 	if stationId == "Garden" then
-		count = math.max(1, math.min(#def.Slot.Spots, tonumber(open) or #def.Slot.Spots))
+		local beds = #(def.Slot.Beds or {})
+		count = math.max(1, math.min(beds, tonumber(open) or beds))
 	end
-	local list, valid, piles = {}, {}, {}
+	local list, valid, roam, drops = {}, {}, {}, {}
+	local now = Workspace:GetServerTimeNow()
 	for i = 1, count do
 		local key = ids[((i - 1) % #ids) + 1] .. ((i % 3 == 0) and "@Golden" or "")
 		valid[i] = key
 		if stationId == "Garden" then
 			list[#list + 1] = i .. "=" .. key
-			piles[#piles + 1] = i .. "=" .. tostring((i % 5) + 1) .. ((i % 4 == 0) and "F" or "") .. ((i % 6 == 0) and "*" or "")
+			roam[#roam + 1] = string.format("%d=%.1f", i, now - 200 - i * 2.7)
+			drops[#drops + 1] = i .. "=1:" .. tostring((i % 4) + 1) .. ((i % 6 == 0) and "*" or "")
 		else
 			list[#list + 1] = i .. "=" .. key .. ":" .. ({ "Speed", "Physique", "Ability", "Defense" })[((i - 1) % 4) + 1] .. ":" .. tostring(os.time() + 60 * i)
 		end
@@ -766,7 +774,12 @@ local function homePetsView(stationId, level, open)
 		end
 		folder:SetAttribute("GardenSlots", count)
 		folder:SetAttribute("GardenPets", table.concat(list, ";"))
-		folder:SetAttribute("CoinPiles", table.concat(piles, ";") .. ";W=5")
+		local HR = req("shared/HomeRoam")
+		local uid = (lp and lp.UserId) or 1
+		folder:SetAttribute("RoamSeed", (uid % 2147483646) + 1)
+		folder:SetAttribute("RoamVersion", HR.Version)
+		folder:SetAttribute("Roam", table.concat(roam, ";"))
+		folder:SetAttribute("CoinDrops", table.concat(drops, ";") .. ";W=5")
 	else
 		folder:SetAttribute("TrainingPets", table.concat(list, ";"))
 		folder:SetAttribute("GymPets", table.concat(list, ";"))
@@ -806,6 +819,148 @@ BUILDERS.hometrain = function(level)
 	return homePetsView("Gym", level)
 end
 BUILDERS.homegym = BUILDERS.hometrain
+
+-- homeroam[:t]  (client world, homefx W3) = a Sky Castle plot with 12 roaming pets + Cloud Cash,
+-- followers[:walk] = another player's 3 followers (small, evolved, second evolution)
+BUILDERS.homeroam = function(tsec)
+	local HB = homeBuilder()
+	local TC = req("shared/TycoonCatalog")
+	local PC = req("shared/PetCatalog")
+	local HR = req("shared/HomeRoam")
+	local Fx = req("client/Controllers/HomeFx")
+	local lp = game:GetService("Players").LocalPlayer
+	local folder = Instance.new("Folder")
+	folder.Name = "Spot_98"
+	folder.Parent = Workspace
+	local cf = CFrame.new(0, 0, 0)
+	local spot = { Index = 98, PlotCFrame = cf, PlotSize = TC.PlotSize, Center = cf.Position, Folder = folder }
+	Fx.Init()
+	HB.PreparePlot(spot)
+	HB.SetOwner(spot, lp)
+	local home = { Stations = {}, Prestige = 1 }
+	for _, def in ipairs(TC.Stations) do
+		local cap = def.TierCaps and def.TierCaps.SkyCastle or def.MaxLevel
+		if def.Id == "House" then
+			cap = 4
+		end
+		if cap and cap > 0 and not def.ComingSoon then
+			home.Stations[def.Id] = math.min(cap, def.MaxLevel)
+		end
+	end
+	HB.BuildHome(spot, home)
+	local ids = {}
+	for _, d in ipairs(PC.Pets) do
+		if #ids < 12 and not d.EventOnly then
+			ids[#ids + 1] = d.Id
+		end
+	end
+	local list, info, valid = {}, {}, {}
+	for i = 1, 12 do
+		local key = ids[i] .. ((i % 4 == 0) and "@Golden" or "")
+		valid[i] = key
+		list[#list + 1] = i .. "=" .. key
+		info[#info + 1] = i .. "=" .. (10 + i * 3) .. ":" .. ((i % 3 == 0) and 1 or 0)
+	end
+	HB.SetGarden(spot, valid, 12)
+	local seed = (lp.UserId % 2147483646) + 1
+	local now = Workspace:GetServerTimeNow() + (tonumber(tsec) or 0)
+	folder:SetAttribute("GardenSlots", 12)
+	folder:SetAttribute("GardenPets", table.concat(list, ";"))
+	folder:SetAttribute("GardenInfo", table.concat(info, ";"))
+	folder:SetAttribute("RoamSeed", seed)
+	folder:SetAttribute("RoamVersion", HR.Version)
+	local roam, drops = {}, {}
+	for i = 1, 12 do
+		roam[#roam + 1] = string.format("%d=%.1f", i, now - 200 - i * 1.93 * (1 + (i % 3)))
+		local stage = (i % 4) + 1
+		drops[#drops + 1] = i .. "=1:" .. stage .. ((i % 5 == 0) and "*" or "") .. ((i % 2 == 0) and (",2:" .. ((i + 1) % 4 + 1)) or "")
+	end
+	folder:SetAttribute("Roam", table.concat(roam, ";"))
+	folder:SetAttribute("CoinDrops", table.concat(drops, ";") .. ";W=5")
+	folder:SetAttribute("BerryCap", 3000)
+	lp:SetAttribute("Berries", 1240)
+	local cam = Workspace.CurrentCamera
+	if cam then
+		cam.CFrame = CFrame.lookAt(Vector3.new(20, 30, -40), Vector3.new(20, 0, 0))
+	end
+	for _ = 1, 90 do
+		Mock.Advance(1 / 30)
+	end
+	local view = Instance.new("Model")
+	view.Name = "HomeRoamView"
+	folder:Clone().Parent = view
+	local n = 0
+	local fx = Workspace:FindFirstChild("ClientFx")
+	if fx then
+		for _, sub in ipairs(fx:GetChildren()) do
+			for _, p in ipairs(sub:GetChildren()) do
+				p:Clone().Parent = view
+				n = n + 1
+			end
+		end
+	end
+	view.Parent = Workspace
+	local st = Fx.Stats()
+	return { { root = view, label = "Sky Castle yard: 12 roaming pets + Cloud Cash", sub = string.format("%d pets, %d coins, %d client pieces", st.GardenPets or 0, st.Coins or 0, n), facing = { 0, 0, -1 } } }
+end
+
+BUILDERS.followers = function(mode)
+	local PCtl = req("client/Controllers/PetController")
+	local PC = req("shared/PetCatalog")
+	local Players = game:GetService("Players")
+	local lp = Players.LocalPlayer
+	local function first(r, skip)
+		for _, d in ipairs(PC.Pets) do
+			if d.Rarity == r and not d.EventOnly and d.Id ~= skip then
+				return d.Id
+			end
+		end
+	end
+	local small, mid, big = first("Common"), first("Legendary"), first("Epic")
+	local other = Mock.AddPlayer("Walker", 880011)
+	Mock.Advance(0.5)
+	PCtl.Init()
+	local start = Vector3.new(0, 20, 0)
+	Mock.Teleport(other, start)
+	Mock.Teleport(lp, start + Vector3.new(30, 0, 30))
+	local cam = Workspace.CurrentCamera
+	if cam then
+		cam.CFrame = CFrame.lookAt(start + Vector3.new(0, 15, 30), start)
+	end
+	other:SetAttribute("EquippedPets", table.concat({ small, mid, big }, ","))
+	other:SetAttribute("EquippedInfo", "5:0,30:1,60:2")
+	for _ = 1, 120 do
+		Mock.Advance(1 / 30)
+	end
+	if mode == "walk" then
+		local pos = start
+		for _ = 1, 30 do
+			pos = pos + Vector3.new(0, 0, -24 / 30)
+			Mock.Teleport(other, pos)
+			Mock.Advance(1 / 30)
+		end
+	end
+	local view = Instance.new("Model")
+	view.Name = "FollowersView"
+	local char = other.Character
+	if char then
+		char:Clone().Parent = view
+	end
+	local pf = Workspace:FindFirstChild("ClientPets")
+	local f = pf and pf:FindFirstChild(tostring(other.UserId))
+	if f then
+		f:Clone().Parent = view
+	end
+	local g = Instance.new("Part")
+	g.Name = "Ground"
+	g.Anchored = true
+	g.Size = Vector3.new(40, 1, 50)
+	g.Color = Color3.fromRGB(120, 170, 100)
+	g.Position = Vector3.new(0, 16.5, -5)
+	g.Parent = view
+	view.Parent = Workspace
+	return { { root = view, label = "Followers: small, evolved, 2nd evolution" .. (mode == "walk" and " (walking 24 studs/s)" or " (rest)"), sub = "PetController 3.8", facing = { 0, 0, -1 } } }
+end
 
 -- portal:home  (client world) the home portal HomePortalFx (wave 3) draws from the local player's HomePortal attribute
 --              ("x,y,z,yaw,closesAt"): everything new in the Workspace after a few frames
@@ -981,8 +1136,8 @@ BUILDERS.battle = function(mode, seconds, extra)
 	end
 	local Players = game:GetService("Players")
 	local me = Players.LocalPlayer and Players.LocalPlayer.UserId or 4242
-	mode = (mode and mode ~= "") and mode:lower() or "trial"
-	local simMode = (mode == "raid") and "Raid" or ((mode == "duel") and "Duel" or "Trial")
+	mode = (mode and mode ~= "") and mode:lower() or "raid"
+	local simMode = (mode == "duel") and "Duel" or "Raid" -- (Trial was deleted in Phase 5)
 	local setup = { Mode = simMode, Seed = 5, Id = "dump_battle" }
 	if simMode == "Duel" then
 		setup.Teams = { { Owner = me, Side = 1, Pets = battleTeamOf(PC, 4) }, { Owner = 78, Side = 2, Pets = battleTeamOf(PC, 3, 3) } }
@@ -1061,6 +1216,315 @@ BUILDERS["storm_altar"] = BUILDERS["storm-altar"]
 BUILDERS.stormaltar = BUILDERS["storm-altar"]
 BUILDERS.npc = BUILDERS.npcs
 BUILDERS.dragon = BUILDERS.skydragon
+
+----------------------------------------------------------------------
+-- Phase 5 per-owner target blocks (ARCHITECTURE_V3.md "Phase 5 build contract" 11, C18). Each owner adds its targets
+-- to BUILDERS (BUILDERS.<kind> = function(a, b, c) ... return { { root, label, sub, facing } } end) from INSIDE its own
+-- block only (own block only; re-read the file right before each edit; never touch another block or the dispatch
+-- below). New helpers go into the owner's block too. The lead adds the python-side entries of tools/render_model.py
+-- (--list, view presets such as `lobby --views top`) at the gate from the owners' reports.
+----------------------------------------------------------------------
+
+-- [owner: worldlobby] begin
+-- (lobby with the Gate Court: `lobby` keeps its name; `gates` = the six gates + the court; `gate:<Home|Obby|Dungeon|Ring|Arena|Altar>`)
+--   lobby                 LobbyBuilder.Build() + the Gate Court gates of ArenaBuilder (Ring, Arena) and, once it exists,
+--                         DungeonBuilder (Dungeon): the whole lobby folder (crop with DUMP.box; render `--views top`)
+--   gates                 the Gate Court alone: every gate of LobbyInfo.GatesFolder + the court tiles, terrace, rims and
+--                         its dressing (cloned into one folder), facing the plaza
+--   gate:<Id>             one gate (Home, Obby, Dungeon, Ring, Arena, Altar) and its pad, facing the plaza
+local function worldlobbyLobby()
+	local info = ensureLobby()
+	if not info._p5GatesBuilt then
+		info._p5GatesBuilt = true
+		local okA, AB = pcall(req, "server/Services/ArenaBuilder")
+		if okA and type(AB) == "table" and type(AB.Build) == "function" then
+			pcall(AB.Build, info)
+		end
+		local okD, DB = pcall(req, "server/Services/DungeonBuilder")
+		if okD and type(DB) == "table" and type(DB.Build) == "function" then
+			pcall(DB.Build, info)
+		end
+		Mock.Advance(0.2)
+	end
+	return info
+end
+
+BUILDERS.lobby = function()
+	local info = worldlobbyLobby()
+	return { { root = info.Folder, label = "Lobby", sub = "LobbyBuilder.Build() + the Gate Court gates", facing = { 0, 0, -1 } } }
+end
+
+BUILDERS.gates = function()
+	local info = worldlobbyLobby()
+	local holder = Instance.new("Folder")
+	holder.Name = "GateCourt"
+	local plaza = info.Folder:FindFirstChild("Plaza")
+	local pieces = { info.GatesFolder }
+	if plaza then
+		for _, name in ipairs({ "Courts", "GateCourtDecor" }) do
+			pieces[#pieces + 1] = plaza:FindFirstChild(name)
+		end
+	end
+	for _, piece in ipairs(pieces) do
+		if piece then
+			local copy = piece:Clone()
+			-- the court only: the spawn court's rings stay out of the picture
+			for _, d in ipairs(copy:GetChildren()) do
+				if d.Name == "SpawnTile" or d.Name == "SpawnRing" then
+					d:Destroy()
+				end
+			end
+			copy.Parent = holder
+		end
+	end
+	local look = info.GateSites and info.GateSites.Ring and info.GateSites.Ring.LookVector or Vector3.new(0, 0, -1)
+	return { { root = holder, label = "Gate Court", sub = "the six gates + the court (LobbyInfo.GatesFolder)", facing = { look.X, 0, look.Z } } }
+end
+
+BUILDERS.gate = function(id)
+	local info = worldlobbyLobby()
+	id = tostring(id or "Obby")
+	local model = info.GatesFolder and info.GatesFolder:FindFirstChild("Portal_" .. id)
+	if not model then
+		fail("no Portal_" .. id .. " in the Gate Court")
+	end
+	local site = info.GateSites and info.GateSites[id]
+	local look = site and site.LookVector or Vector3.new(0, 0, -1)
+	return { { root = model, label = "Portal_" .. id, sub = "WorldStyle.BuildGate (" .. id .. ")", facing = { look.X, 0, look.Z } } }
+end
+-- [owner: worldlobby] end
+
+-- [owner: homeworld] begin
+-- (home:Press1:<1..40> = the Berry Farm levels and home:<Id>:<level> every other station, through the generic `home`
+--  target; homerow:House:1,2,3,4 / homerow:DecorFountain:1,2,3 / homerow:DecorFence:1,2,3 the tiers side by side;
+--  homeplot:SkyCastle:pads the whole plot. homegarden[:<open>[:<level>]] = the Pet Garden with its 12 beds (default all
+--  open) and the Food Bowl: HomeFx's roaming pets on top when the client HomeFx can draw them, else the HomeBuilder model
+--  alone, so the target works before and after the W3 HomeFx rewrite)
+do
+	local petsView = BUILDERS.homegarden
+	BUILDERS.homegarden = function(open, level)
+		local HB = homeBuilder()
+		local TC = req("shared/TycoonCatalog")
+		local def = TC.Get("Garden")
+		local beds = (def.Slot and (def.Slot.Beds or def.Slot.Spots)) or {}
+		open = math.max(0, math.min(#beds, tonumber(open) or #beds))
+		level = math.max(1, math.min(def.MaxLevel, tonumber(level) or def.MaxLevel))
+		local ok, out = false, "no HomeFx view"
+		if type(petsView) == "function" then
+			ok, out = pcall(petsView, open, level)
+		end
+		if ok and type(out) == "table" then
+			return out
+		end
+		local m = HB.BuildStationModel("Garden", level, nil, open)
+		if not m then
+			fail("HomeBuilder.BuildStationModel(Garden, " .. level .. ") returned nothing")
+		end
+		m.Parent = Workspace
+		return { {
+			root = m,
+			label = def.Name .. " Lv " .. level .. "  " .. open .. " open beds + the Food Bowl",
+			sub = "HomeBuilder (no HomeFx pets yet)",
+			facing = { 0, 0, -1 },
+		} }
+	end
+end
+-- [owner: homeworld] end
+
+-- [owner: dungeon] begin
+-- (dungeon[:<kind>[:<variant>]] = one template (Hall / Cellar / Cave / Bridge / Throne / Entrance / Corridor / Treasure;
+--  dungeon alone = Hall_1); dungeon:boss = Throne_1; dungeon:room:<kind>[:<variant>] the same by kind;
+--  dungeon:run[:<floor>[:<seed>]] = a built run as DungeonService places it (hall + corridor + room 1 + corridor + room 2);
+--  dungeon:floor[:<floor>] = every piece of the run chain placed at once; dungeon:portal = the gate alone)
+do
+	local function dungeonBuilder()
+		local DB = req("server/Services/DungeonBuilder")
+		if type(DB) ~= "table" then
+			fail("DungeonBuilder did not load")
+		end
+		return DB
+	end
+	local KIND_NAMES = { hall = "Hall", cellar = "Cellar", cave = "Cave", bridge = "Bridge", throne = "Throne", boss = "Throne", entrance = "Entrance", corridor = "Corridor", treasure = "Treasure" }
+	local function templateName(kind, variant)
+		local k = KIND_NAMES[tostring(kind or "hall"):lower()] or "Hall"
+		if k == "Corridor" then
+			local v = tostring(variant or "Straight")
+			v = v:sub(1, 1):upper() .. v:sub(2):lower()
+			return "Corridor_" .. v
+		end
+		local n = tonumber(variant) or 1
+		return k .. "_" .. n
+	end
+	-- a render cut-away: the ceiling and the two walls nearest the 3/4 camera (facing +Z: the +Z and -X sides) go, so
+	-- the interior shows (the live game keeps every part)
+	local function cutaway(root)
+		local pieces = {}
+		if root:GetAttribute("Width") then
+			pieces[#pieces + 1] = root
+		end
+		for _, d in ipairs(root:GetDescendants()) do
+			if d:IsA("Model") and d:GetAttribute("Width") then
+				pieces[#pieces + 1] = d
+			end
+		end
+		for _, piece in ipairs(pieces) do
+			local base = piece.PrimaryPart or piece:FindFirstChild("Base")
+			local w, dz = piece:GetAttribute("Width"), piece:GetAttribute("Depth")
+			if base and w and dz then
+				local origin = base.CFrame * CFrame.new(0, 1.5, 0)
+				for _, part in ipairs(piece:GetDescendants()) do
+					if part:IsA("BasePart") then
+						local rel = origin:PointToObjectSpace(part.Position)
+						local wallish = part.Name == "Ceiling" or part.Name == "Beam"
+						if rel.Y > 0.9 and (rel.Z > dz / 2 - 2.6 or rel.X < -w / 2 + 2.6) then
+							wallish = true
+						end
+						if wallish then
+							part:Destroy()
+						end
+					end
+				end
+			end
+		end
+	end
+	local function templateEntry(name)
+		local DB = dungeonBuilder()
+		local model = DB.Template(name)
+		if not model then
+			fail("no dungeon template " .. tostring(name))
+		end
+		local copy = model:Clone()
+		copy.Parent = Workspace
+		local n = DB.CountParts(copy)
+		cutaway(copy)
+		Mock.Advance(0.1)
+		return { root = copy, label = name, sub = "DungeonBuilder template (" .. n .. " parts; render cut-away)", facing = { 0, 0, 1 } }
+	end
+	BUILDERS.dungeon = function(kind, variant, extra)
+		local k = tostring(kind or "hall"):lower()
+		if k == "run" or k == "floor" then
+			local DB = dungeonBuilder()
+			local floorIndex = tonumber(variant) or 3
+			local seed = tonumber(extra) or 7
+			local pocket = DB.GetPocket(9) and (DB.FreeRun(9) and nil) or nil
+			pocket = DB.BuildRun(9, floorIndex, seed)
+			if not pocket then
+				fail("DungeonBuilder.BuildRun failed")
+			end
+			if k == "run" then
+				DB.PlaceRoom(pocket, 2)
+			else
+				for room = 2, 5 do
+					DB.PlaceRoom(pocket, room)
+				end
+			end
+			local live = DB.LiveParts(pocket)
+			cutaway(pocket.Model)
+			Mock.Advance(0.2)
+			return { {
+				root = pocket.Model,
+				label = (k == "run" and "Dungeon run floor " or "Dungeon floor ") .. floorIndex .. " (" .. tostring(pocket.Name) .. ")",
+				sub = "DungeonBuilder.BuildRun + PlaceRoom (" .. live .. " live parts; render cut-away)",
+				facing = { 0, 0, 1 },
+			} }
+		elseif k == "portal" then
+			local info = ensureLobby()
+			local DB = dungeonBuilder()
+			local gates = info.GatesFolder
+			local model = gates and gates:FindFirstChild("Portal_Dungeon")
+			if not model then
+				local built = DB.Build(info)
+				model = built and built.Portal
+			end
+			if not model then
+				fail("no Portal_Dungeon")
+			end
+			local site = info.GateSites and info.GateSites.Dungeon
+			local look = site and site.LookVector or Vector3.new(0, 0, -1)
+			return { { root = model, label = "Portal_Dungeon", sub = "DungeonBuilder.BuildPortal (" .. DB.CountParts(model) .. " parts)", facing = { look.X, 0, look.Z } } }
+		elseif k == "room" then
+			return { templateEntry(templateName(variant, extra)) }
+		end
+		return { templateEntry(templateName(kind, variant)) }
+	end
+end
+-- [owner: dungeon] end
+
+-- [owner: arenaart] begin
+-- Phase 5 art pass (6.4): views of the Battle Arena's parts (the trial pocket is gone; pocket:ring stays above)
+--   arena                 the whole Battle Arena (island, colosseum, rings, boards, bridge, the forum's Return gate)
+--   arena:island          the island without the bridge (frames the colosseum and the forum)
+--   arena:ring[:<n>]      duel ring n (default 1) on its apron
+--   arena:colosseum       the colosseum (floor, stands, columns, main gate sign)
+--   arena:forum           the forum: ground, decor, duel rings, boards, the Return gate (no colosseum, no bridge)
+--   arena:bridge          the bridge with its entrance arch
+do
+	local function arenaView(info, keep, label)
+		local holder = Instance.new("Folder")
+		holder.Name = label
+		for _, child in ipairs(info.Model:GetChildren()) do
+			if keep(child.Name) then
+				child:Clone().Parent = holder
+			end
+		end
+		holder.Parent = Workspace
+		return holder
+	end
+	BUILDERS.arena = function(sub, n)
+		local info = ensureArena()
+		local look = typeof(info.Center) == "CFrame" and info.Center.LookVector or Vector3.new(0, 0, -1)
+		local facing = { look.X, 0, look.Z }
+		local m = info.Model
+		sub = sub and tostring(sub):lower() or ""
+		if sub == "" then
+			return { { root = m, label = "Battle Arena", sub = "ArenaBuilder.Build(lobbyInfo) (" .. tostring(info.Link) .. " link)", facing = facing } }
+		elseif sub == "ring" then
+			local i = tonumber(n) or 1
+			local ring = m:FindFirstChild("DuelRing_" .. i)
+			if not ring then
+				fail("no DuelRing_" .. i)
+			end
+			local apron = arenaView(info, function()
+				return false
+			end, "DuelRing")
+			ring:Clone().Parent = apron
+			local forum = m:FindFirstChild("Forum")
+			local centre = info.Rings and info.Rings[i] and info.Rings[i].CFrame
+			if forum and centre then
+				-- the ring's apron tiles and the lawn / torches within 48 studs of its centre
+				for _, d in ipairs(forum:GetDescendants()) do
+					if d:IsA("BasePart") and (d.Position - centre.Position).Magnitude < 46 and math.max(d.Size.X, d.Size.Z) < 30 then
+						d:Clone().Parent = apron
+					end
+				end
+			end
+			return { { root = apron, label = "Duel Ring " .. i, sub = "ArenaBuilder (art pass 6.4)", facing = facing } }
+		elseif sub == "colosseum" then
+			local v = arenaView(info, function(name)
+				return name == "Colosseum" or name == "GateSign" or name == "GateSignFrame"
+			end, "Colosseum")
+			return { { root = v, label = "Colosseum", sub = "ArenaBuilder (art pass 6.4)", facing = facing } }
+		elseif sub == "forum" then
+			local v = arenaView(info, function(name)
+				return name == "Forum" or name == "ForumDecor" or name:sub(1, 9) == "DuelRing_" or name == "EventBoard" or name == "Leaderboard" or name == "Portal_Return"
+			end, "Forum")
+			return { { root = v, label = "Forum", sub = "ArenaBuilder (art pass 6.4)", facing = facing } }
+		elseif sub == "bridge" then
+			local b = m:FindFirstChild("ArenaBridge")
+			if not b then
+				fail("no ArenaBridge (link " .. tostring(info.Link) .. ")")
+			end
+			return { { root = b, label = "Arena bridge", sub = "ArenaBuilder (art pass 6.4)", facing = facing } }
+		elseif sub == "island" then
+			local v = arenaView(info, function(name)
+				return name ~= "ArenaBridge"
+			end, "Island")
+			return { { root = v, label = "Battle Arena island", sub = "ArenaBuilder (art pass 6.4, no bridge)", facing = facing } }
+		end
+		fail("arena:<island|ring[:n]|colosseum|forum|bridge>")
+	end
+end
+-- [owner: arenaart] end
 
 ----------------------------------------------------------------------
 -- main

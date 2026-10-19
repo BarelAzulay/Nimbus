@@ -1,16 +1,13 @@
--- smoke_p4_care.lua: Phase 4 pet care (ARCHITECTURE_V3.md "Phase 4 build contract" 3.4-3.7, 4.5, 5.1-5.4, 7, 8.1):
--- server/Services/PetCareService.lua (the Food Machine, EVOLVE, the Training Place), PetService (the training lock,
--- UnequipKey, EquippedInfo). Replaces the kitchen / gym / shutdown scenarios of smoke_p2_care.lua (p2care_feed and
--- p2care_exploits moved here). Loaded by tools/smoke.py in the SERVER world (booted):
+-- smoke_p4_care.lua: pet care on the server (ARCHITECTURE_V3.md "Phase 4 build contract" 3.4-3.7, 5.1-5.4, 7; Phase 5
+-- contract 3.4: ONE feed paid in berries). Loaded by tools/smoke.py in the SERVER world (booted game):
 --   p4care_feed      the API (the retired Cook / GymSet / GetQueue / ClearKitchen / Cooked / GymChanged are gone);
---                    the Food Machine: refused before any Cash moves without a machine, price = FeedPrice(def, level)
---                    and XP = FeedXp(level, machineLevel) per feed (a Lv 3 machine gives more XP for the same price),
---                    "Level up" (Count) priced per feed at the level each one is eaten at, leftovers first and free
---                    (nil opts, { Food = }, a plain string for old clients), the cap (100) refused, a failed XP write
---                    refunds Cash and food, Fed fires ("Machine" / the leftover id), ONE toast per grant (a feed, a
---                    batch, a fight crossing many levels) with "Ready to evolve!" at 20, Cook / GymSet answer one
---                    toast, the FeedPrompt on the Food Machine (owner only, "p4:" signature) opens the Pets panel on
---                    Feed, the TrainPrompt opens Train; refusals: not owned, in a battle, provisional
+--                    the Food Machine: refused without a machine, then without berries ("Not enough berries: a feed
+--                    needs N (you have M). Your garden pets grow more!"), FeedBerries(def, level) berries (= the old
+--                    FeedPrice) for FeedXp(level, machineLevel) XP, Fed(.., "Berries", levels), the answer
+--                    { Xp, Levels, Level, Cap, Berries }, old clients' { Count } / { Food } / string = ONE feed, every
+--                    feed priced at the level it is eaten at, the cap, a failed XP write refunds the berries, ONE toast
+--                    per XP grant with "Ready to evolve!", the Cash never moves; Cook / GymSet answer one toast; the
+--                    FeedPrompt / TrainPrompt ("p5:" CareSig)
 --   p4care_evolve    Evolve at 19 / 20 / 49 / 50 for Common / Rare / Epic / Legendary (Common never stage 2), the
 --                    stored stage (DataService.GetEvolution), Evolved fires, the toast, OpenPanel("Evolve") to that
 --                    client only, EquippedInfo "level:stage", refusals (battle, provisional, unowned, junk), a training
@@ -380,9 +377,11 @@ end
 local function hookedSignals()
 	local out = { game:GetService("Players").PlayerRemoving }
 	local folder = K.remoteFolder and K.remoteFolder()
-	local r = folder and folder:FindFirstChild("RequestProfile")
-	if r then
-		out[#out + 1] = r.OnServerEvent
+	for _, name in ipairs({ "RequestProfile", "SettingsSet" }) do
+		local r = folder and folder:FindFirstChild(name)
+		if r then
+			out[#out + 1] = r.OnServerEvent
+		end
 	end
 	return out
 end
@@ -506,128 +505,115 @@ S.p4care_feed = guarded("p4care_feed", function()
 		end
 	end)
 
-	-- no Food Machine: refused before any Cash moves
-	local cash0 = cashOf(p)
+	-- Phase 5 (3.4): ONE feed, paid in berries. The Cash never moves in this scenario.
+	local cashAll = cashOf(p)
+	local function berriesOf(pl)
+		return DataS.GetBerries(pl)
+	end
+	if berriesOf(p) > 0 then
+		DataS.SpendBerries(p, berriesOf(p)) -- (a new profile's converted starter food): start from an empty basket
+	end
+
+	-- no Food Machine: refused before anything moves (the machine check comes before the berries check)
 	local mark = K.logSize()
 	care(p, "Feed", eco.Id)
 	advance(0.15)
-	T.check(cashOf(p) == cash0 and totalXp(p, eco.Id) == 0 and toasted(p, "Build the Food Machine at home first", "bad", mark),
-		"care feed: without a Food Machine a feed is refused ('Build the Food Machine at home first') and no Cash moves", toastsSince(p, mark))
+	T.check(berriesOf(p) == 0 and totalXp(p, eco.Id) == 0 and toasted(p, "Build the Food Machine at home first", "bad", mark),
+		"care feed: without a Food Machine a feed is refused ('Build the Food Machine at home first'), nothing moves", toastsSince(p, mark))
 	local okNo, whyNo = Care.Feed(p, eco.Id)
 	T.check(okNo == false and whyNo == "Build the Food Machine at home first", "care feed: ...the API answers false, reason")
 
-	-- one machine feed: FeedPrice(def, level) Cash for FeedXp(level, machineLevel) XP
+	-- the catalog: FeedBerries(def, level) = the Phase 4 FeedPrice (1 berry = $1 of food), FeedXp unchanged
 	setStations(p, { Garden = 1, Press1 = 1, Kitchen = 1 })
-	local price1 = Cat.FeedPrice(eco, 1)
+	local cost1 = Cat.FeedBerries(eco, 1)
 	local xp1 = Cat.FeedXp(1, 1)
-	T.check(price1 == Cat.XpToNext(1) * (Config.PetStats.RarityScale.Common or 1) * Cat.FeedBase and xp1 == math.max(1, floor(Cat.XpToNext(1) * Cat.FeedShare[1] + 0.5)),
-		"care feed: (catalog) a Common's Lv 1 feed costs XpToNext x RarityScale x FeedBase = $" .. tostring(price1) .. " for 25% of the bar = " .. tostring(xp1) .. " XP")
+	T.check(cost1 == Cat.XpToNext(1) * (Config.PetStats.RarityScale.Common or 1) * Cat.FeedBase and cost1 == Cat.FeedPrice(eco, 1) and xp1 == math.max(1, floor(Cat.XpToNext(1) * Cat.FeedShare[1] + 0.5)),
+		"care feed: (catalog) a Common's Lv 1 feed needs XpToNext x RarityScale x FeedBase = " .. tostring(cost1) .. " berries (= the old FeedPrice) for 25% of the bar = " .. tostring(xp1) .. " XP")
+
+	-- no berries: refused with the exact toast, nothing moves
 	mark = K.logSize()
-	cash0 = cashOf(p)
+	care(p, "Feed", eco.Id)
+	advance(0.15)
+	local shortText = "Not enough berries: a feed needs " .. cost1 .. " (you have 0). Your garden pets grow more!"
+	T.check(berriesOf(p) == 0 and totalXp(p, eco.Id) == 0 and toasted(p, shortText, "bad", mark),
+		"care feed: without berries: refused ('" .. shortText .. "'), nothing moves", toastsSince(p, mark))
+	local okShort, whyShort = Care.Feed(p, eco.Id)
+	T.check(okShort == false and whyShort == shortText, "care feed: ...the API answers the same text")
+	T.eq(DataS.AddBerries(p, cost1 - 1), true, "care feed: (precondition) cost - 1 berries")
+	local okShort2, whyShort2 = Care.Feed(p, eco.Id)
+	T.check(okShort2 == false and whyShort2 == "Not enough berries: a feed needs " .. cost1 .. " (you have " .. (cost1 - 1) .. "). Your garden pets grow more!" and berriesOf(p) == cost1 - 1,
+		"care feed: one berry short: refused, the toast names both numbers, the berries stay", tostring(whyShort2))
+	DataS.AddBerries(p, 1000000)
+
+	-- one feed: cost1 berries -> xp1 XP; Fed(player, key, 'Berries', 0); one toast with the progress
+	mark = K.logSize()
+	local b0 = berriesOf(p)
 	care(p, "Feed", eco.Id)
 	advance(0.15)
 	local total, lv, xp = totalXp(p, eco.Id)
-	T.check(cash0 - cashOf(p) == price1 and total == xp1, "care feed: one machine feed (opts nil) costs $" .. price1 .. " and gives " .. xp1 .. " XP", "cash -" .. (cash0 - cashOf(p)) .. ", xp " .. total)
-	T.check(#fed == 1 and fed[1][1] == eco.Id and fed[1][2] == "Machine" and fed[1][3] == 0, "care feed: Fed fired (player, key, 'Machine', levelsGained 0)")
-	T.check(toasted(p, eco.Name .. " ate a meal: +" .. xp1 .. " XP (" .. xp .. "/" .. Cat.XpToNext(1) .. " to Lv 2)", "good", mark),
-		"care feed: a feed without a level-up toasts the XP and the progress", toastsSince(p, mark))
+	T.check(b0 - berriesOf(p) == cost1 and total == xp1 and cashOf(p) == cashAll, "care feed: one feed costs " .. cost1 .. " berries and gives " .. xp1 .. " XP (no Cash moves)", "berries -" .. (b0 - berriesOf(p)) .. ", xp " .. total)
+	T.check(#fed == 1 and fed[1][1] == eco.Id and fed[1][2] == "Berries" and fed[1][3] == 0, "care feed: Fed fired (player, key, 'Berries', levelsGained 0)")
+	T.check(toasted(p, eco.Name .. " ate " .. cost1 .. " berries: +" .. xp1 .. " XP (" .. xp .. "/" .. Cat.XpToNext(1) .. " to Lv 2)", "good", mark),
+		"care feed: a feed without a level-up toasts the berries, the XP and the progress", toastsSince(p, mark))
 	T.eq(toasts(p, nil, nil, mark), 1, "care feed: ...exactly one toast")
+	advance(0.6) -- the trailing attribute write (<= 2 / s)
+	T.check(tonumber(p:GetAttribute(Config.Attr.Berries or "Berries")) == berriesOf(p), "care feed: the player attribute Berries follows (written by DataService)")
 
-	-- a Lv 3 machine: more XP for the same price
+	-- a Lv 3 machine: more XP for the same cost; the answer shape { Xp, Levels, Level, Cap, Berries }
 	setStations(p, { Garden = 1, Press1 = 1, Kitchen = 3 })
 	local before = totalXp(p, eco.Id)
-	cash0 = cashOf(p)
+	b0 = berriesOf(p)
 	local okF, info = Care.Feed(p, eco.Id)
 	local xp3 = Cat.FeedXp(lv, 3)
-	T.check(okF and type(info) == "table" and info.Xp == xp3 and info.Paid == Cat.FeedPrice(eco, lv) and info.Free == 0 and info.Count == 1 and cash0 - cashOf(p) == info.Paid and totalXp(p, eco.Id) == before + xp3 and xp3 > Cat.FeedXp(lv, 1),
-		"care feed: a Lv 3 Food Machine gives FeedXp(level, 3) = " .. xp3 .. " XP (more than Lv 1's " .. Cat.FeedXp(lv, 1) .. ") for the same price; Feed answers { Xp, Paid, Free, Count }",
-		okF and (tostring(info.Xp) .. "/" .. tostring(info.Paid)) or tostring(info))
+	T.check(okF and type(info) == "table" and info.Xp == xp3 and info.Levels == 0 and info.Level == lv and info.Cap == cap and info.Berries == berriesOf(p)
+		and b0 - berriesOf(p) == Cat.FeedBerries(eco, lv) and totalXp(p, eco.Id) == before + xp3 and xp3 > Cat.FeedXp(lv, 1) and info.Paid == nil and info.Count == nil and info.Free == nil,
+		"care feed: a Lv 3 Food Machine gives FeedXp(level, 3) = " .. xp3 .. " XP (more than Lv 1's " .. Cat.FeedXp(lv, 1) .. ") for the same berries; Feed answers { Xp, Levels, Level, Cap, Berries }",
+		okF and (tostring(info.Xp) .. "/" .. tostring(info.Berries)) or tostring(info))
 
-	-- "Level up": Count feeds in one request, each priced at the level it is eaten at
+	-- old clients: a { Count = 5 } / { Food = 'Snack' } / 'Snack' second argument = exactly ONE feed each
 	setStations(p, { Garden = 1, Press1 = 1, Kitchen = 1 })
+	for _, old in ipairs({ { { Count = 5 }, "{ Count = 5 }" }, { { Food = "Snack" }, "{ Food = 'Snack' }" }, { "Snack", "'Snack'" }, { { Count = 0 / 0 }, "{ Count = NaN }" } }) do
+		local _, lvO = totalXp(p, eco.Id)
+		local bO, xO, nFed = berriesOf(p), totalXp(p, eco.Id), #fed
+		care(p, "Feed", eco.Id, old[1])
+		advance(1.2)
+		T.check(bO - berriesOf(p) == Cat.FeedBerries(eco, lvO) and totalXp(p, eco.Id) == xO + Cat.FeedXp(lvO, 1) and #fed == nFed + 1,
+			"care feed: an old client's " .. old[2] .. " second argument is ignored: exactly one feed", "berries -" .. (bO - berriesOf(p)) .. ", fed +" .. (#fed - nFed))
+	end
+
+	-- a level-up: ONE toast per feed naming the new level and the pet's coin power
 	local _, lvA, xpA = totalXp(p, eco.Id)
 	local missing = Cat.XpToNext(lvA) - xpA
 	local n = ceil(missing / Cat.FeedXp(lvA, 1))
-	local wantCash, wantXp, wantLv = planBatch(eco, lvA, xpA, n, 1, cap)
-	cash0 = cashOf(p)
-	mark = K.logSize()
-	care(p, "Feed", eco.Id, { Count = n })
-	advance(0.15)
+	local spent = 0
+	for i = 1, n do
+		mark = K.logSize()
+		local bN = berriesOf(p)
+		local okN = Care.Feed(p, eco.Id)
+		spent = spent + (bN - berriesOf(p))
+		if i < n then
+			T.check(okN == true and toasts(p, nil, nil, mark) == 1 and not toasted(p, "reached Lv", nil, mark), "care feed: feed " .. i .. " of " .. n .. ": one progress toast, no level-up yet")
+		end
+	end
 	local totalB, lvB = totalXp(p, eco.Id)
-	T.check(cash0 - cashOf(p) == wantCash and totalB == Cat.XpForLevel(lvA) + xpA + wantXp and lvB == wantLv and lvB == lvA + 1,
-		"care feed: 'Level up' { Count = " .. n .. " } feeds " .. n .. " times in ONE request for the sum of the per-feed prices ($" .. wantCash .. ") and reaches Lv " .. (lvA + 1),
-		"cash -" .. (cash0 - cashOf(p)) .. ", Lv " .. lvB)
-	T.eq(toasts(p, nil, nil, mark), 1, "care feed: ...ONE toast for the whole batch")
+	T.check(spent == n * Cat.FeedBerries(eco, lvA) and lvB == lvA + 1, "care feed: " .. n .. " feeds priced at Lv " .. lvA .. " (" .. spent .. " berries) reach Lv " .. (lvA + 1))
+	T.eq(toasts(p, nil, nil, mark), 1, "care feed: ...ONE toast for the level-up feed")
 	T.check(toasted(p, eco.Name .. " reached Lv " .. lvB .. "!", "good", mark) and toasted(p, "Coins x", "good", mark),
 		"care feed: ...the level-up toast names the new level and the pet's coin power ('Coins x1.1' for an Economy pet)", toastsSince(p, mark))
 	T.check(#ups >= 1 and ups[#ups][1] == eco.Id and ups[#ups][2] == lvB and ups[#ups][3] == "Feed", "care feed: LevelUp fired (player, key, " .. lvB .. ", 'Feed')")
-	-- a batch that crosses a level pays the higher price for the feeds after the level-up
-	local _, lvC, xpC = totalXp(p, eco.Id)
-	local n2 = 10
-	local wantCash2, wantXp2, wantLv2 = planBatch(eco, lvC, xpC, n2, 1, cap)
-	local flat = n2 * Cat.FeedPrice(eco, lvC)
-	cash0 = cashOf(p)
-	local okB, infoB = Care.Feed(p, eco.Id, { Count = n2 })
-	local totalD, lvD = totalXp(p, eco.Id)
-	T.check(okB and cash0 - cashOf(p) == wantCash2 and wantCash2 > flat and totalD == Cat.XpForLevel(lvC) + xpC + wantXp2 and lvD == wantLv2 and infoB.Count == n2 and infoB.Paid == wantCash2,
-		"care feed: a batch of 10 that crosses a level is priced feed by feed ($" .. wantCash2 .. ", not 10 x the first price $" .. flat .. "): X7",
-		"cash -" .. (cash0 - cashOf(p)) .. ", Lv " .. lvD)
-	-- Count junk
-	for _, bad in ipairs({ 0, 11, 2.5, -1, 0 / 0, 1 / 0, "3" }) do
-		local c0 = cashOf(p)
-		local x0 = totalXp(p, eco.Id)
-		local okJ = Care.Feed(p, eco.Id, { Count = bad })
-		T.check(okJ == false and cashOf(p) == c0 and totalXp(p, eco.Id) == x0, "care feed: Count " .. tostring(bad) .. " is refused (whole 1..10), nothing moves")
-	end
-	-- not enough Cash: refused before anything moves
-	DataS.SpendCash(p, cashOf(p))
-	DataS.AddCash(p, 5)
-	mark = K.logSize()
-	local x0 = totalXp(p, eco.Id)
-	care(p, "Feed", eco.Id)
-	advance(0.15)
-	T.check(cashOf(p) == 5 and totalXp(p, eco.Id) == x0 and toasted(p, "Not enough Cash", "bad", mark), "care feed: short of Cash: refused, nothing moves", toastsSince(p, mark))
-	DataS.AddCash(p, 1000000)
-
-	-- leftovers (old Kitchen food) are fed first and free: the biggest that does not overshoot the cap
-	setLevel(p, eco.Id, 40) -- far from the next level: no level-up toast gets in the way
-	DataS.AddFood(p, "Snack", 2)
-	DataS.AddFood(p, "Meal", 1)
-	local snack, meal = Cat.Foods.Snack, Cat.Foods.Meal
-	cash0 = cashOf(p)
-	x0 = totalXp(p, eco.Id)
-	mark = K.logSize()
-	local nFed = #fed
-	care(p, "Feed", eco.Id)
-	advance(0.15)
-	T.check(cashOf(p) == cash0 and totalXp(p, eco.Id) == x0 + meal.Xp and foodOf(p, "Meal") == 0 and foodOf(p, "Snack") == 2,
-		"care feed: with leftovers a plain feed eats the biggest leftover (a Meal, " .. meal.Xp .. " XP) for free: no Cash moves", "cash " .. (cashOf(p) - cash0) .. ", xp +" .. (totalXp(p, eco.Id) - x0))
-	T.check(#fed == nFed + 1 and fed[#fed][2] == "Meal", "care feed: ...Fed carries the leftover's id ('Meal')")
-	T.check(toasted(p, "ate a free Meal", "good", mark), "care feed: ...the toast says it was free", toastsSince(p, mark))
-	x0 = totalXp(p, eco.Id)
-	care(p, "Feed", eco.Id, { Food = "Snack" })
-	advance(0.15)
-	care(p, "Feed", eco.Id, "Snack") -- an old client sends the food id as a plain string
-	advance(0.15)
-	T.check(cashOf(p) == cash0 and totalXp(p, eco.Id) == x0 + 2 * snack.Xp and foodOf(p, "Snack") == 0,
-		"care feed: { Food = 'Snack' } and a plain 'Snack' (old clients) each eat one Snack for free")
-	mark = K.logSize()
-	care(p, "Feed", eco.Id, { Food = "Snack" })
-	advance(0.15)
-	T.check(toasted(p, "You have no Snacks left", "bad", mark) and cashOf(p) == cash0, "care feed: a leftover the player has none of is refused (no machine feed in its place)", toastsSince(p, mark))
-	-- a batch mixes free leftovers and paid feeds
-	DataS.AddFood(p, "Snack", 2)
-	local _, lvE, xpE = totalXp(p, eco.Id)
-	cash0 = cashOf(p)
-	local okM, infoM = Care.Feed(p, eco.Id, { Count = 3 })
-	T.check(okM and infoM.Free == 2 and infoM.Count == 3 and infoM.Paid > 0 and cash0 - cashOf(p) == infoM.Paid and foodOf(p, "Snack") == 0,
-		"care feed: a 'Level up' of 3 eats the 2 leftover Snacks first (free) and pays one machine feed", okM and (tostring(infoM.Free) .. "/" .. tostring(infoM.Paid)) or tostring(infoM))
+	T.check(fed[#fed][3] == 1, "care feed: ...Fed carries levelsGained 1")
+	-- the next feed is priced at the new level (X7: every feed at the level it is eaten at)
+	b0 = berriesOf(p)
+	Care.Feed(p, eco.Id)
+	T.check(b0 - berriesOf(p) == Cat.FeedBerries(eco, lvB) and Cat.FeedBerries(eco, lvB) > Cat.FeedBerries(eco, lvA), "care feed: the feed after a level-up costs FeedBerries at the new level (X7)")
 
 	-- Combat pets: the level-up toast shows Power / Health / Speed
 	setLevel(p, combat.Id, 1)
 	mark = K.logSize()
 	local n3 = ceil(Cat.XpToNext(1) / Cat.FeedXp(1, 1))
-	Care.Feed(p, combat.Id, { Count = n3 })
+	for _ = 1, n3 do
+		Care.Feed(p, combat.Id)
+	end
 	local cs = PCat.GetStats(combat.Id, 2)
 	T.check(toasted(p, combat.Name .. " reached Lv 2! Power " .. compactText(cs.Power) .. ", Health " .. compactText(cs.Health) .. ", Speed " .. compactText(cs.Speed), "good", mark),
 		"care feed: a Combat pet's level-up toast shows Power, Health and Speed", toastsSince(p, mark))
@@ -654,58 +640,57 @@ S.p4care_feed = guarded("p4care_feed", function()
 	local g2 = Care.GrantXp(p, combat.Id, 0 / 0, "Trial")
 	T.check(g0 == 0 and g1 == 0 and g2 == 0, "care feed: GrantXp of 0 / negative / NaN gives nothing")
 
-	-- the cap: refused before any Cash moves, GrantXp never passes it
+	-- the cap: refused before any berries move, GrantXp never passes it, the last feed is cut at the cap
 	setLevel(p, eco.Id, cap)
-	cash0 = cashOf(p)
-	DataS.AddFood(p, "Feast", 1)
+	b0 = berriesOf(p)
 	mark = K.logSize()
 	care(p, "Feed", eco.Id)
 	advance(0.15)
-	T.check(cashOf(p) == cash0 and foodOf(p, "Feast") == 1 and DataS.GetPetLevel(p, eco.Id) == cap and toasted(p, eco.Name .. " is at max level (Lv " .. cap .. ")", "bad", mark),
-		"care caps: a pet at the cap (Lv " .. cap .. ") is refused before any Cash or food is used ('... is at max level')", toastsSince(p, mark))
+	T.check(berriesOf(p) == b0 and DataS.GetPetLevel(p, eco.Id) == cap and toasted(p, eco.Name .. " is at max level (Lv " .. cap .. ")", "bad", mark),
+		"care caps: a pet at the cap (Lv " .. cap .. ") is refused before any berry is used ('... is at max level')", toastsSince(p, mark))
 	local gc, lc, whyC = Care.GrantXp(p, eco.Id, 5000, "Ring")
 	T.check(gc == 0 and lc == 0 and type(whyC) == "string" and DataS.GetPetLevel(p, eco.Id) == cap, "care caps: GrantXp (fights) never passes the cap either")
-	DataS.SpendFood(p, "Feast", 1)
 	setLevel(p, eco.Id, cap - 1)
 	local room = Cat.XpToNext(cap - 1)
-	local okCap, infoCap = Care.Feed(p, eco.Id, { Count = 10 })
+	local okCap, infoCap = Care.Feed(p, eco.Id)
 	local lvF, xpF = DataS.GetPetLevel(p, eco.Id)
-	T.check(okCap and lvF == cap and xpF == 0 and infoCap.Xp == room and infoCap.Count == ceil(room / Cat.FeedXp(cap - 1, 1)) and infoCap.Count < 10,
-		"care caps: a batch stops exactly at the cap (only the feeds needed are eaten and paid, the last one partly used)", okCap and (tostring(infoCap.Xp) .. "/" .. tostring(infoCap.Count)) or tostring(infoCap))
-	T.check(Cat.FeedXp(cap, 1) == 0 and Cat.FeedPrice(eco, cap) == nil, "care caps: (catalog) FeedXp / FeedPrice at the cap are 0 / nil")
+	local wantXp = math.min(room, Cat.FeedXp(cap - 1, 1))
+	T.check(okCap and infoCap.Xp == wantXp and ((wantXp == room and lvF == cap and xpF == 0) or (wantXp < room and lvF == cap - 1)),
+		"care caps: a feed one level below the cap gives at most the room left (" .. tostring(wantXp) .. " XP)", okCap and (tostring(infoCap.Xp) .. " lv " .. tostring(lvF)) or tostring(infoCap))
+	T.check(Cat.FeedXp(cap, 1) == 0 and Cat.FeedBerries(eco, cap) == nil, "care caps: (catalog) FeedXp / FeedBerries at the cap are 0 / nil")
 
-	-- a failed XP write refunds the Cash and the food (X7)
+	-- a failed XP write refunds the berries in the same step (X7 / Y9)
 	setLevel(p, eco.Id, 5)
-	DataS.AddFood(p, "Snack", 1)
 	local realAdd = DataS.AddPetXp
 	DataS.AddPetXp = function()
 		return 0
 	end
-	cash0 = cashOf(p)
-	x0 = totalXp(p, eco.Id)
-	local okR, whyR = Care.Feed(p, eco.Id, { Count = 3 })
+	b0 = berriesOf(p)
+	local x0 = totalXp(p, eco.Id)
+	local okR, whyR = Care.Feed(p, eco.Id)
 	DataS.AddPetXp = realAdd
-	T.check(okR == false and type(whyR) == "string" and cashOf(p) == cash0 and foodOf(p, "Snack") == 1 and totalXp(p, eco.Id) == x0,
-		"care feed: when the XP write gives 0 the Cash and the leftover come back (nothing is lost)", tostring(whyR) .. " cash " .. (cashOf(p) - cash0) .. " snacks " .. foodOf(p, "Snack"))
-	DataS.SpendFood(p, "Snack", 1)
+	T.check(okR == false and type(whyR) == "string" and berriesOf(p) == b0 and totalXp(p, eco.Id) == x0,
+		"care feed: when the XP write gives 0 the berries come back (nothing is lost)", tostring(whyR) .. " berries " .. (berriesOf(p) - b0))
 
-	-- refusals: not owned, junk, a battle
+	-- refusals: not owned, junk, a battle; each before anything moves
 	local other = pickPet("Economy", nil, eco.Id)
-	for _, r in ipairs({ { other.Id, nil, "You do not own that pet", "a pet the player does not own" }, { "!!", nil, "Unknown pet", "a junk key" }, { eco.Id, "Cake", "Unknown food", "an unknown food" }, { eco.Id, { Food = "Cake" }, "Unknown food", "an unknown food table" } }) do
-		cash0 = cashOf(p)
+	for _, r in ipairs({ { other.Id, "You do not own that pet", "a pet the player does not own" }, { "!!", "Unknown pet", "a junk key" }, { 42, "Unknown pet", "a number" } }) do
+		b0 = berriesOf(p)
 		x0 = totalXp(p, eco.Id)
 		mark = K.logSize()
 		advance(1.6) -- past the repeat-toast throttle (the same refusal text is shown once per 1.5 s)
-		care(p, "Feed", r[1], r[2])
+		care(p, "Feed", r[1])
 		advance(0.15)
-		T.check(cashOf(p) == cash0 and totalXp(p, eco.Id) == x0 and toasted(p, r[3], "bad", mark), "care feed: feeding " .. r[4] .. " is refused ('" .. r[3] .. "'), nothing moves", toastsSince(p, mark))
+		T.check(berriesOf(p) == b0 and totalXp(p, eco.Id) == x0 and toasted(p, r[2], "bad", mark), "care feed: feeding " .. r[3] .. " is refused ('" .. r[2] .. "'), nothing moves", toastsSince(p, mark))
 	end
 	local stop = startFakeBattle(p, eco.Id)
-	cash0 = cashOf(p)
+	b0 = berriesOf(p)
 	x0 = totalXp(p, eco.Id)
 	local okBt, whyBt = Care.Feed(p, eco.Id)
 	stop()
-	T.check(okBt == false and whyBt == "Finish your battle first" and cashOf(p) == cash0 and totalXp(p, eco.Id) == x0, "care feed: a key in a running battle is refused ('Finish your battle first'), nothing moves", tostring(whyBt))
+	T.check(okBt == false and whyBt == "Finish your battle first" and berriesOf(p) == b0 and totalXp(p, eco.Id) == x0, "care feed: a key in a running battle is refused ('Finish your battle first'), nothing moves", tostring(whyBt))
+	T.eq(cashOf(p), cashAll, "care feed: the Cash never moved: feeding is paid in berries only (no Cash path left)")
+	T.check(Care.Feed(p, eco.Id, { Count = 3 }) == true, "care feed: the API's third argument is ignored too (one feed)")
 
 	-- Cook / GymSet are retired: one toast each
 	mark = K.logSize()
@@ -727,7 +712,7 @@ S.p4care_feed = guarded("p4care_feed", function()
 		"care prompts: the Food Machine carries a FeedPrompt 'Feed pets' (CareMade, OwnerUserId)")
 	T.check(kitchen ~= nil and promptIn(kitchen, "CookPrompt") == nil, "care prompts: ...and no CookPrompt")
 	local sig = kitchen and kitchen:GetAttribute("CareSig")
-	T.check(type(sig) == "string" and string.sub(sig, 1, 3) == "p4:", "care prompts: the station's CareSig carries the 'p4:' marker (stale Phase 3 Kitchen prompts rebuild)", tostring(sig))
+	T.check(type(sig) == "string" and string.sub(sig, 1, 3) == "p5:", "care prompts: the station's CareSig carries the 'p5:' marker (stale Phase 3 / 4 prompts rebuild: the stations moved)", tostring(sig))
 	if kitchen and feedPrompt then
 		local hopper = kitchen:FindFirstChild("Hopper", true)
 		if hopper then
@@ -828,7 +813,7 @@ S.p4care_evolve = guarded("p4care_evolve", function()
 			cases[#cases + 1] = def
 		end
 	end
-	local tally = T.tally("care evolve: at 19 refused / 20 -> stage 1 / 20 again refused / 49 refused / 50 -> stage 2 only for Epic and rarer (Common / Uncommon / Rare stay at 1), the stage is stored")
+	local tally = T.tally("care evolve: at 19 refused / 20 -> stage 1 ('Level bonus x1.5!') / 20 again refused / 49 refused / 50 -> stage 2 ('x1.875!') only for Epic and rarer (Common / Uncommon / Rare stay at 1), the stage is stored")
 	for _, def in ipairs(cases) do
 		givePet(p, def.Id)
 		local maxEvo = PCat.MaxEvolution(def)
@@ -836,14 +821,14 @@ S.p4care_evolve = guarded("p4care_evolve", function()
 		tally:case(ok19 == false and tostring(why19):find("evolves at level 20", 1, true) ~= nil and DataS.GetEvolution(p, def.Id) == 0, def.Id .. " @19: " .. tostring(why19))
 		local ok20, st20, mark20 = tryEvolve(def.Id, 20)
 		tally:case(ok20 == true and st20 == 1 and DataS.GetEvolution(p, def.Id) == 1, def.Id .. " @20 -> " .. tostring(st20))
-		tally:case(toasted(p, def.Name .. " evolved! +25% to everything", "good", mark20), def.Id .. " toast: " .. toastsSince(p, mark20))
+		tally:case(toasted(p, def.Name .. " evolved! Level bonus x1.5!", "good", mark20), def.Id .. " toast: " .. toastsSince(p, mark20))
 		local okAgain, whyAgain = tryEvolve(def.Id, 20)
 		tally:case(okAgain == false and DataS.GetEvolution(p, def.Id) == 1, def.Id .. " @20 again: " .. tostring(whyAgain))
 		local ok49, why49 = tryEvolve(def.Id, 49)
 		tally:case(ok49 == false and DataS.GetEvolution(p, def.Id) == 1, def.Id .. " @49: " .. tostring(why49))
 		local ok50, st50, mark50 = tryEvolve(def.Id, 50)
 		if maxEvo >= 2 then
-			tally:case(ok50 == true and st50 == 2 and DataS.GetEvolution(p, def.Id) == 2 and toasted(p, def.Name .. " evolved! +50% to everything", "good", mark50), def.Id .. " @50 -> " .. tostring(st50) .. " (" .. def.Rarity .. ")")
+			tally:case(ok50 == true and st50 == 2 and DataS.GetEvolution(p, def.Id) == 2 and toasted(p, def.Name .. " evolved! Level bonus x1.875!", "good", mark50), def.Id .. " @50 -> " .. tostring(st50) .. " (" .. def.Rarity .. ")")
 			local okMax, whyMax = tryEvolve(def.Id, 100)
 			tally:case(okMax == false and tostring(whyMax):find("fully evolved", 1, true) ~= nil and DataS.GetEvolution(p, def.Id) == 2, def.Id .. " @100: " .. tostring(whyMax))
 		else
@@ -876,7 +861,7 @@ S.p4care_evolve = guarded("p4care_evolve", function()
 	-- the boost is NOT in GetStats (the pure level formula), it is in TycoonCatalog.PetPower / BattleCatalog.UnitStats
 	local s1 = PCat.GetStats(extra.Id, 23)
 	T.check(near(s1.Power, extra.Stats.Power * (Config.PetStats.RarityScale[extra.Rarity] or 1) * (1 + 0.1 * 22), 1e-6 * s1.Power), "care evolve: PetCatalog.GetStats keeps the pure level formula (no evolution boost)")
-	T.check(near(Cat.PetPower(extra, 23, "Normal", 1) / Cat.PetPower(extra, 23, "Normal", 0), 1.25, 1e-9), "care evolve: TycoonCatalog.PetPower with the stored stage 1 is x1.25 (coins)")
+	T.check(near(Cat.PetPower(extra, 23, "Normal", 1) / Cat.PetPower(extra, 23, "Normal", 0), PCat.LevelFactor(23, 1) / PCat.LevelFactor(23, 0), 1e-9), "care evolve: TycoonCatalog.PetPower with the stored stage 1 follows LevelFactor(23, 1) / LevelFactor(23, 0) (coins)")
 
 	-- refusals: junk, unowned, a battle; a training pet MAY evolve
 	local okJ1 = Care.Evolve(p, "!!")
@@ -1296,7 +1281,7 @@ S.p4care_load = guarded("p4care_load", function()
 	end
 
 	-- 3) a prestige keeps the running job; the station reset blocks new jobs until it is rebuilt
-	local PRESTIGE_READY = { Press1 = 10, Press2 = 10, Collector = 5, Garden = 8, Kitchen = 5, Gym = 5, Vault = 5, House = 4 }
+	local PRESTIGE_READY = { Press1 = 15, Garden = 8, Kitchen = 5, Gym = 5, Vault = 5, House = 4 } -- Phase 5 ids (HL 42)
 	local pp = join("CarePrestige")
 	local idx3 = claimFree(pp)
 	if T.check(idx3 ~= nil, "care load: (precondition) a plot for the prestige case") then
@@ -1398,20 +1383,17 @@ S.p4care_exploits = guarded("p4care_exploits", function()
 	local combat = pickPet("Combat", "Common")
 	givePet(p, combat.Id)
 	DataS.AddCash(p, 5000)
-	DataS.AddFood(p, "Snack", 200)
+	DataS.AddBerries(p, 200000)
 	advance(0.5)
-	local cash0, snack0, xp0 = cashOf(p), foodOf(p, "Snack"), totalXp(p, combat.Id)
+	local cash0, berries0, xp0 = cashOf(p), DataS.GetBerries(p), totalXp(p, combat.Id)
 	local errors0 = #Mock.Errors
 	local nan, inf = 0 / 0, 1 / 0
 	local long = string.rep("S", 5000)
 	local junk = {
 		{}, { 123 }, { nil, "Snack" }, { long }, { "feed", combat.Id }, { "Prestige" }, { "Collect" }, { "Cook" },
-		{ "Feed" }, { "Feed", nil, "Snack" }, { "Feed", 42, "Snack" }, { "Feed", combat.Id, 7 }, { "Feed", {}, {} },
+		{ "Feed" }, { "Feed", nil, "Snack" }, { "Feed", 42, "Snack" }, { "Feed", {}, {} },
 		{ "Feed", long, "Snack" }, { "Feed", "hyb:nope", "Snack" }, { "Feed", combat.Id .. "@Diamond", "Snack" },
-		{ "Feed", combat.Id .. "@Normal", "Snack" }, { "Feed", combat.Id, long }, { "Feed", { Key = {}, FoodId = 1 } },
-		{ "Feed", combat.Id, { Count = nan } }, { "Feed", combat.Id, { Count = inf } }, { "Feed", combat.Id, { Count = -inf } }, { "Feed", combat.Id, { Count = 0 } },
-		{ "Feed", combat.Id, { Count = 11 } }, { "Feed", combat.Id, { Count = 1e9 } }, { "Feed", combat.Id, { Count = "5" } }, { "Feed", combat.Id, { Food = {} } },
-		{ "Feed", combat.Id, { Food = "snack" } }, { "Feed", combat.Id, { Count = 2, Food = "Cake" } },
+		{ "Feed", combat.Id .. "@Normal", "Snack" }, { "Feed", { Key = {}, FoodId = 1 } }, { "Feed", { Key = 7 } }, { "Feed", { combat.Id .. "@Diamond" } },
 		{ "Evolve" }, { "Evolve", 5 }, { "Evolve", {} }, { "Evolve", long }, { "Evolve", combat.Id }, { "Evolve", { Key = combat.Id, Stage = 2 } },
 		{ "Train" }, { "Train", combat.Id }, { "Train", combat.Id, 5 }, { "Train", combat.Id, {} }, { "Train", combat.Id, long }, { "Train", combat.Id, "Luck" },
 		{ "Train", 5, "Speed" }, { "Train", long, "Speed" }, { "Train", { Key = {}, Stat = {} } }, { "Train", "hyb:nope", "Speed" },
@@ -1423,27 +1405,40 @@ S.p4care_exploits = guarded("p4care_exploits", function()
 		advance(1.1) -- past every cooldown: each junk request is really evaluated
 	end
 	local h = homeOf(p)
-	T.check(cashOf(p) == cash0 and foodOf(p, "Snack") == snack0 and totalXp(p, combat.Id) == xp0 and DataS.GetEvolution(p, combat.Id) == 0 and count(DataS.GetGrowthMap(p)) == 0 and next(h.Gym) == nil,
-		"care exploits: " .. #junk .. " junk / NaN / inf / negative / wrong-type / oversized PetCare requests change nothing (Cash, Food, XP, stage, growth, Gym)",
-		"cash " .. cashOf(p) .. " food " .. foodOf(p, "Snack") .. " xp " .. totalXp(p, combat.Id))
+	T.check(cashOf(p) == cash0 and DataS.GetBerries(p) == berries0 and totalXp(p, combat.Id) == xp0 and DataS.GetEvolution(p, combat.Id) == 0 and count(DataS.GetGrowthMap(p)) == 0 and next(h.Gym) == nil,
+		"care exploits: " .. #junk .. " junk / NaN / inf / negative / wrong-type / oversized PetCare requests change nothing (Cash, berries, XP, stage, growth, Gym)",
+		"cash " .. cashOf(p) .. " berries " .. DataS.GetBerries(p) .. " xp " .. totalXp(p, combat.Id))
 	T.eq(#Mock.Errors, errors0, "care exploits: ...and raise no script error")
+	-- a valid key with a junk second argument (old clients' Count / Food modes, numbers, NaN) is ONE feed, never more
+	local junkOpts = { 7, long, { Count = nan }, { Count = inf }, { Count = -inf }, { Count = 0 }, { Count = 11 }, { Count = 1e9 }, { Count = "5" }, { Food = {} }, { Food = "snack" }, { Count = 2, Food = "Cake" } }
+	local oneOk = true
+	for _, opts in ipairs(junkOpts) do
+		local bJ, xJ = DataS.GetBerries(p), totalXp(p, combat.Id)
+		local lvJ = DataS.GetPetLevel(p, combat.Id)
+		care(p, "Feed", combat.Id, opts)
+		advance(1.1)
+		if bJ - DataS.GetBerries(p) ~= Cat.FeedBerries(combat, lvJ) or totalXp(p, combat.Id) - xJ ~= Cat.FeedXp(lvJ, 2) then
+			oneOk = false
+		end
+	end
+	T.check(oneOk and cashOf(p) == cash0, "care exploits: " .. #junkOpts .. " junk second arguments (Count / Food / numbers / NaN) each make exactly ONE berry feed (never a batch, never free)")
+	T.eq(#Mock.Errors, errors0, "care exploits: ...without a script error")
 
 	-- spam: one Feed per cooldown, the burst budget, every paid feed gives exactly its XP
-	DataS.SpendFood(p, "Snack", foodOf(p, "Snack"))
-	DataS.AddCash(p, 10000000)
+	DataS.AddBerries(p, 10000000)
 	advance(2)
-	local c = cashOf(p)
+	local c = DataS.GetBerries(p)
 	local x = totalXp(p, combat.Id)
 	local lv = DataS.GetPetLevel(p, combat.Id)
 	for _ = 1, 40 do
 		care(p, "Feed", combat.Id)
 	end
 	advance(0.05)
-	T.check(c - cashOf(p) == Cat.FeedPrice(combat, lv) and totalXp(p, combat.Id) - x == Cat.FeedXp(lv, 2), "care exploits: 40 Feed requests in one frame feed exactly once (cooldown)", "cash -" .. (c - cashOf(p)))
+	T.check(c - DataS.GetBerries(p) == Cat.FeedBerries(combat, lv) and totalXp(p, combat.Id) - x == Cat.FeedXp(lv, 2), "care exploits: 40 Feed requests in one frame feed exactly once (cooldown)", "berries -" .. (c - DataS.GetBerries(p)))
 	advance(3) -- refill the budget
 	local sent, t0 = 0, os.clock()
 	local before, startLevel, startXp = totalXp(p, combat.Id)
-	local cashBefore = cashOf(p)
+	local cashBefore = DataS.GetBerries(p)
 	local fedN = 0
 	local conn = Care.Fed:Connect(function(pl, key)
 		if pl == p and key == combat.Id then
@@ -1458,10 +1453,10 @@ S.p4care_exploits = guarded("p4care_exploits", function()
 	conn:Disconnect()
 	local elapsed = os.clock() - t0
 	T.check(fedN >= 1 and fedN < sent and fedN <= 12 + 6 * elapsed + 1, "care exploits: a steady flood of Feed requests is held to the burst budget (" .. fedN .. " of " .. sent .. " in " .. string.format("%.1f", elapsed) .. " s)")
-	-- replay the accepted feeds along the curve: the Cash and XP taken equal the sum of the per-feed prices / XP
+	-- replay the accepted feeds along the curve: the berries and XP taken equal the sum of the per-feed costs / XP
 	local cashW, xpW = planBatch(combat, startLevel, startXp, fedN, 2, 100)
-	T.check(cashBefore - cashOf(p) == cashW and totalXp(p, combat.Id) - before == xpW, "care exploits: every accepted feed was paid at the level it was eaten at and gave exactly its XP (no XP for free, no Cash lost)",
-		"cash -" .. (cashBefore - cashOf(p)) .. " want " .. cashW .. ", xp +" .. (totalXp(p, combat.Id) - before) .. " want " .. xpW)
+	T.check(cashBefore - DataS.GetBerries(p) == cashW and totalXp(p, combat.Id) - before == xpW and cashOf(p) == cash0, "care exploits: every accepted feed was paid in berries at the level it was eaten at and gave exactly its XP (no XP for free, no berries lost, no Cash)",
+		"berries -" .. (cashBefore - DataS.GetBerries(p)) .. " want " .. cashW .. ", xp +" .. (totalXp(p, combat.Id) - before) .. " want " .. xpW)
 
 	-- someone else's pets, prompts and plot
 	local q = join("CareHack2")

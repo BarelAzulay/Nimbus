@@ -32,8 +32,10 @@
 --   reset           back to a brand-new player: tokens, pets, equipped pets, items, stats, Pet Index progress and
 --                   rewards, Cash, Gems, home, pet levels, the battle teams (3 empty presets, preset 1 active),
 --                   the battle record (trophies, trial clears, raid and PvP counters, event pets), the Phase 4 pet
---                   growth (evolution stages, training ranks and jobs) and the Champion Ring record (Best 0, Runs 0;
---                   the Migrations markers stay: a reset player is not migrated again); the lobby spot
+--                   growth (evolution stages, training ranks and jobs), the Champion Ring record (Best 0, Runs 0),
+--                   the Phase 5 Dungeon record (Best 0, no clears, Runs 0, Clears 0) and the berries (0; Settings
+--                   stay: they are not progress; the Migrations markers stay: a reset player is not migrated
+--                   again); the lobby spot
 --                   stays assigned for this session. PetCareService.ClearSessions(player) (the live training /
 --                   feeding sessions) and TycoonService.ClearCoins(player) (the coin piles) are called when those
 --                   functions exist (PetCareService.ClearKitchen while the old Kitchen is still in the build).
@@ -53,6 +55,8 @@
 --   skiptutorial    mark the tutorial done without the finish reward (TutorialService.HandleEvent(player, "Skip"))
 --   raid            Phase 3: start a Boss Raid in the arena right now (EventService.StartNow("BossRaid"); without an
 --                   EventService, BattleService.StartRaid()). Touches no profile data; refused while a raid runs.
+--   berries [n]     Phase 5: DataService.AddBerries(n): n defaults to Config.Dev.GrantBerries (5000 without it),
+--                   whole numbers only, clamped like tokens; the Berries attribute follows (allowed while provisional)
 --   petlevel <n>    Phase 4: sets every EQUIPPED pet's level to n (1..the curve's max level, 100; XP 0) through
 --                   DataService.SetPetLevel, to try "Ready to evolve!" / EVOLVE at 20 and 50 quickly. Refused with
 --                   no pet equipped, a level out of range, a provisional profile. Levels only: evolution stages and
@@ -114,7 +118,7 @@ local Remotes = require(Shared.Remotes)
 local DevService = {}
 
 DevService.Commands = {
-	"allpets", "tokens", "cash", "gems", "petlevel", "reset", "tutorial", "skiptutorial", "raid", "pet", "pets", "evolve",
+	"allpets", "tokens", "cash", "gems", "berries", "petlevel", "reset", "tutorial", "skiptutorial", "raid", "pet", "pets", "evolve",
 	"clearpets", "devhelp",
 }
 
@@ -137,16 +141,16 @@ for _, name in ipairs(DevService.Commands) do
 end
 -- the commands that still run while the profile is provisional (see the persistence note)
 local PROVISIONAL_OK = {
-	tokens = true, cash = true, gems = true, raid = true, devhelp = true, pet = true, pets = true, evolve = true,
+	tokens = true, cash = true, gems = true, berries = true, raid = true, devhelp = true, pet = true, pets = true, evolve = true,
 	clearpets = true,
 }
 -- the pet showcase never touches the profile, so it does not wait for it
 local NO_PROFILE = { pet = true, pets = true, evolve = true, clearpets = true }
 -- the commands that take a whole-number amount
-local NUMERIC = { tokens = true, cash = true, gems = true, petlevel = true }
--- the commands that take a value, and its type (tokens / cash / gems / petlevel: a number; the showcase: the rest of
--- the chat line)
-local ARG_KIND = { tokens = "number", cash = "number", gems = "number", petlevel = "number", pet = "string", pets = "string", evolve = "string" }
+local NUMERIC = { tokens = true, cash = true, gems = true, berries = true, petlevel = true }
+-- the commands that take a value, and its type (tokens / cash / gems / berries / petlevel: a number; the showcase: the
+-- rest of the chat line)
+local ARG_KIND = { tokens = "number", cash = "number", gems = "number", berries = "number", petlevel = "number", pet = "string", pets = "string", evolve = "string" }
 -- the example value a refusal toast shows for a numeric command (50000 for the currencies)
 local ARG_EXAMPLE = { petlevel = "20" }
 local MAX_ARG_LENGTH = 48
@@ -549,6 +553,11 @@ local function cmdGems(player, profile, arg)
 	return grantCurrency(player, arg, "Gems", "GrantGems", 1000, "AddGems")
 end
 
+-- Phase 5: /berries <n> adds whole berries through DataService.AddBerries (Config.Dev.GrantBerries, else 5000)
+local function cmdBerries(player, profile, arg)
+	return grantCurrency(player, arg, "Berries", "GrantBerries", 5000, "AddBerries")
+end
+
 local function cmdReset(player, profile)
 	if player:GetAttribute(Config.Attr.InMatch) == true then
 		return false, "leave the match first, then reset"
@@ -592,6 +601,14 @@ local function cmdReset(player, profile)
 	local ring = tableField(profile, "Ring")
 	wipe(ring)
 	ring.Best, ring.Runs = 0, 0
+	-- Phase 5: the Dungeon record starts over and the berries go (Settings stay: they are not progress)
+	local dungeon = tableField(profile, "Dungeon")
+	wipe(dungeon)
+	dungeon.Best, dungeon.Cleared, dungeon.Runs, dungeon.Clears = 0, {}, 0, 0
+	profile.Berries = 0
+	if Config.Attr.Berries and player:GetAttribute(Config.Attr.Berries) ~= nil then
+		player:SetAttribute(Config.Attr.Berries, 0)
+	end
 	-- the live session state of the other services: training / feeding sessions (Phase 4 PetCareService.ClearSessions;
 	-- the old Kitchen's ClearKitchen while that build is still here) and the coin piles (TycoonService.ClearCoins)
 	local care = loadModule(script.Parent, "PetCareService")
@@ -643,6 +660,8 @@ local function cmdReset(player, profile)
 		-- Phase 4: evolution stages, training ranks and the ring record only rise in the merge (Migrations are kept)
 		PetGrowth = true,
 		Ring = true,
+		-- Phase 5: Dungeon Best / Cleared only grow in the merge (Berries travel as a delta, Settings stay)
+		Dungeon = true,
 	})
 	if rewound then
 		rewindTutorial(player, profile, reload, true)
@@ -958,7 +977,7 @@ end
 -- fits a 390 px phone card whole): the pet showcase commands first, then the others (/petlevel among them since
 -- Phase 4; the numeric commands take a number, which their refusal toasts spell out: "like /tokens 50000").
 local function cmdHelp(player)
-	notify(player, "DEV: /pet <name> [0-2]  /pets [0-2]  /evolve <name|all> [1-2]  /clearpets", "info", HELP_SECONDS)
+	notify(player, "DEV: /pet <name> [0-2]  /pets [0-2]  /evolve <name|all> [1-2]  /clearpets  /berries [n]", "info", HELP_SECONDS)
 	if tutorialReloader() then
 		return true, "/allpets /tokens /cash /gems /petlevel /reset /tutorial /skiptutorial /raid /devhelp", false
 	end
@@ -970,6 +989,7 @@ local HANDLERS = {
 	tokens = cmdTokens,
 	cash = cmdCash,
 	gems = cmdGems,
+	berries = cmdBerries,
 	petlevel = cmdPetLevel,
 	reset = cmdReset,
 	tutorial = cmdTutorial,

@@ -20,7 +20,7 @@ local floor = math.floor
 local advance, config, mod = K.advance, K.config, K.mod
 local ALLOWED_WARNINGS = { "[DataService]" }
 -- a Sky Castle home at Home Level 52 with a Lv 5 Training Place: ready to prestige
-local PRESTIGE_READY = { Press1 = 10, Press2 = 10, Collector = 5, Garden = 8, Kitchen = 5, Gym = 5, Vault = 5, House = 4 }
+local PRESTIGE_READY = { Press1 = 15, Garden = 8, Kitchen = 5, Gym = 5, Vault = 5, House = 4 } -- Phase 5: 11 stations (Berry Farm)
 
 ----------------------------------------------------------------------------------------------------
 -- helpers

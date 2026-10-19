@@ -4,6 +4,9 @@
 --
 -- API (ARCHITECTURE_V2.md section 2 + ARCHITECTURE_V3.md)
 --   PetBuilder.Build(petDef, opts) -> Model   opts: { Scale = 1, Detail = "High" (default) | "Low", Evolved = false }
+--                                             Wild = { Tint = Color3, Eyes = Color3 } (Phase 5 dungeon enemies: a darker
+--                                             tinted body, Neon eyes; model attribute PB_Wild). Every model carries PB_Evolved
+--                                             = the stage it was built at (0, 1, 2)
 --                                             Evolved = true (or 1): the pet's evolved form (bigger, four-legged, fan
 --                                             wings, gold jewellery; see "Evolved forms" below): High <= ~1560 parts,
 --                                             Low <= ~380. Evolved = 2: the second evolution, Epic pets and up only
@@ -6733,6 +6736,36 @@ local function addFinishSparkles(model, look, rate, scale)
 	emitter.Parent = root
 end
 
+-- Phase 5 (contract C13): the Wild look of dungeon enemies, applied to the clone only (the cached templates and
+-- every owned pet stay untouched): the body darker (x0.75 brightness, -20% saturation) and pulled a quarter toward
+-- opts.Wild.Tint, the irises / pupils / eye rings Neon in opts.Wild.Eyes (the floor's element colour). The white eye
+-- highlights stay so the face still reads. The model carries PB_Wild = true.
+local applyWild
+local WILD_EYES = { EyeIris = true, EyePupil = true, EyeRing = true }
+local WILD_KEEP = { EyeShine = true, EyeGlint = true, Spark = true, AuraA = true, AuraB = true, AuraC = true, HaloGlow = true }
+
+applyWild = function(model, wild)
+	local tint = typeof(wild.Tint) == "Color3" and wild.Tint or nil
+	local eyes = typeof(wild.Eyes) == "Color3" and wild.Eyes or rgb(255, 72, 72)
+	for _, part in ipairs(model:GetDescendants()) do
+		if part:IsA("BasePart") and part.Transparency < 1 then
+			local base = string.match(part.Name, "^(%a+)") or part.Name
+			if WILD_EYES[base] then
+				part.Color = eyes
+				part.Material = Enum.Material.Neon
+			elseif not WILD_KEEP[base] then
+				local h, sat, v = part.Color:ToHSV()
+				local c = Color3.fromHSV(h, sat * 0.8, v * 0.75)
+				if tint then
+					c = c:Lerp(tint, 0.25)
+				end
+				part.Color = c
+			end
+		end
+	end
+	model:SetAttribute("PB_Wild", true)
+end
+
 ----------------------------------------------------------------------
 -- Public API
 ----------------------------------------------------------------------
@@ -6762,6 +6795,11 @@ function PetBuilder.Build(petDef, opts)
 	end
 	if look.Finish then
 		addFinishSparkles(model, look, FINISH_SPARKLE_RATE[detail] or 3, scale)
+	end
+	-- Phase 5 (contract 3.7): the stage this model was built at, for the tests of the "evolved looks everywhere" rule
+	model:SetAttribute("PB_Evolved", look.Evolved == 2 and 2 or (look.Evolved and 1 or 0))
+	if type(opts.Wild) == "table" then
+		applyWild(model, opts.Wild)
 	end
 	return model
 end

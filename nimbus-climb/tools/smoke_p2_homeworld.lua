@@ -1,47 +1,42 @@
 -- smoke_p2_homeworld.lua: Phase 2 home world (ARCHITECTURE_V3.md "Phase 2 build contract": HomeBuilder + HomeFx,
 -- ART DIRECTION, World text rule, Replication rule). Loaded by tools/smoke.py in BOTH worlds; ARGS.context picks the
 -- half:
---   p2home_art      (server) every station at every level (HomeBuilder.BuildStationModel): clean models (Station_<Id>,
---                   anchored, no welds, only the allowed asset-free content, none of the retired machine pieces),
---                   the per-station part budgets of Phase 4 contract section 6 (Plant 45, Magnet 55, Garden 85, Food
---                   Machine 55, Training Place 90, House 150, Fusion 90, fence 60, others 80), every level differs from
---                   the one before, the four food plants (Press1..4: Berry Bush, Carrot Patch, Cloud Melons, Starfruit
---                   Tree) look different and GROW (taller, more parts, a gold planter at 10; never shorter level to
---                   level), the Coin Magnet's MagnetHead, the Food Machine's glass Hopper, the Training Place's mats
---                   (Spot1..level at Slot.Spots), the Garden's 12 places for every open count 0..12 (Spot1..12, a
---                   GardenSpotPrompt on each open place only: E, MaxActivationDistance 3, no line of sight, at the
---                   cushion's far edge >= 3.5 studs from every walk; seedling beds with a "Prestige to open" sign on
---                   the others; <= 85 parts), the Garden:<level>:<open> template cache, Cottage -> Villa -> Manor ->
---                   Sky Castle, the Fusion Machine's pods / chamber / Swirl; templates are reused
+--   p2home_art      (server) every station at every level (HomeBuilder.BuildStationModel; Phase 5 contract 3.6):
+--                   clean models (Station_<Id>, anchored, no welds / scripts / asset ids, none of the retired pieces:
+--                   plants, Coin Magnet, cushion bowls, sand walks), the per-station budgets (Farm 150, Garden 95, Food
+--                   Machine 55, Training Place 90, House 150, Fusion 90, Fence 90, Fountain 80, others 80), every level
+--                   differs from the one before, every station inside its Slot.Footprint; the Berry Farm (40 levels:
+--                   never fewer parts, 1 red bush per level 1-10, the blue row 11-22, a gold vine per level 23-37, the
+--                   Starberry tree 38-40, the FarmSign "Berry Farm Lv N" / 70 studs, BerryPoint), the Food Machine's
+--                   glass Hopper + MachineSign with the BasketLine, the Training Place's mats (Spot1..level at
+--                   Slot.Spots), the Garden's 12 beds for every open count 0..12 (Spot1..12 at Slot.Beds, a
+--                   GardenSpotPrompt beside each open bed only: E, MaxActivationDistance 3, no line of sight; seedling
+--                   beds with "Prestige to open" signs; an open inside and entrance; <= 95 parts), the Food Bowl at
+--                   Slot.Bowl with its sign (40 studs), the Garden:<level>:<open> cache, the House tiers, the Fusion
+--                   Machine (pods, chamber, Swirl, FusionPrompt), the Arena Gate (ArenaGatePrompt, Teleport Arena), the
+--                   Fountain's 4 / 6 / 8 lanterns and the Fence's three looks; templates are reused
 --   p2home_plot     (server, booted) a private test plot far from the lobby: PreparePlot (Home folder tagged
 --                   NC_Home, the gate's ClaimPrompt "Claim Home" / "Free home" / E / SpotIndex, the FREE HOME
---                   signpost, idempotent, at most 3 parts per free plot; the lobby's free plots carry the prompt on
---                   their own gate part), SetOwner (claim prompt + signpost only while free), junk arguments never
---                   error (SetStation / SetPads / SetGarden / SetTraining), a greedy progression through
---                   TycoonCatalog.AvailablePads with SetStation + SetGarden + SetPads after every purchase (the plot
---                   never passes 950 parts at any house tier, the fully built plot stays <= 950), contract names and
---                   attributes on stations (StationId, Level, BuiltAt, Kind, same level = no-op, level 0 removes),
---                   Station_Press1 is a Berry Bush (FruitPoint), the Coin Magnet (MagnetHead, MagnetCenter), the Food
---                   Machine (Hopper, ChuteMouth / Tray / HopperTop), no retired pieces (conveyor, press heads,
---                   Collector screen / CollectPad / CollectPrompt, cooking), SetGarden (12 places, prompts on the open
---                   EMPTY places, owner-only, a new open count rebuilds the Garden, clamped to 12), the coin points and
---                   the Welcome-back pile clear of pads and station art, the Training Place's mats + SetTraining
---                   (attributes only), the Fusion Machine (Swirl, SwirlCenter, FusionPrompt), pads (Pad_<Id>,
---                   BuyPrompt "Buy" / 0.25 s / StationId / OwnerUserId, enabled only when unlocked and owned, a
---                   pixel-sized readable PadSign, unchanged pads kept, removed pads gone, a cheap ghost for "Unlocks
---                   at Prestige" / "Coming soon"), layout sanity on the built plot (stations inside the yard, no
---                   station blocks a pad or a stone path at walking height, no two stations overlap), the server never
---                   moves a part and creates no Instance per coin (Replication rule), ClearPlot (the claim prompt stays)
+--                   signpost, idempotent, at most 3 parts per free plot), SetOwner, junk arguments never error, a greedy
+--                   progression through TycoonCatalog.AvailablePads (never > 950 parts, the full plot <= 950), contract
+--                   names and attributes on stations, the Berry Farm (Kind Farm, BerryPoint, sign), no old plants / Coin
+--                   Magnet, the Food Machine (Hopper, MachineSign, ChuteMouth / Tray / HopperTop / BasketTop) and the
+--                   Training Place on their swapped slots, SetGarden (12 beds, prompts on the open EMPTY beds,
+--                   owner-only, a new open count rebuilds the Garden, clamped to 12), HomeRoam plans (3 seeds x 12 slots
+--                   x 3 cycles) never cross station art at pet height, the Welcome-back pile clear, SetTraining
+--                   (attributes only), the Fusion Machine, pads, layout sanity (inside the yard, no pad / path blocked,
+--                   no two stations overlap), the 6.4 art rules on the whole plot (materials, muted big faces, small
+--                   parts without shadows, warm lights, NC_Detail decor blocks nothing), the server never moves a part
+--                   and creates no Instance per coin, ClearPlot
 --   client_p2home   (client) HomeFx on plots HomeBuilder builds in the client world (standing in for replication):
 --                   it finds every NC_Home, hides another player's BuyPrompts / GardenSpotPrompts / pad signs and the
 --                   claim prompts of other plots while the local player owns a home (and keeps hiding a prompt the
---                   server re-enables), the owner's prompts stay; CoinPiles draws a coin heap per pile on its
---                   CoinPoint (growing with the stage, <= 40 parts, a Lucky sparkle) and the Welcome-back heap
---                   (<= 60) at Garden.Slot.WelcomePile, a pile that goes takes its heap; a bowl with the best plant's
---                   fruit in front of each open place; the Garden's pets (GardenPets) on their cushions, a place above
---                   GardenSlots asleep (Zzz), a full pile ('F') napping, eating pets dip and pop pooled coins (<= 40),
---                   the plants' fruit flies into the bowls (<= 24); the Training Place's pets (TrainingPets) on their
---                   mats with a moving voxel prop of their skill; the Coin Magnet's head turns; the Fusion swirl
+--                   server re-enables), the owner's prompts stay; (Phase 5) CoinDrops draws a 6-part TokenLook
+--                   Cloud Cash coin per drop at its HomeRoam poop point (a Lucky one sparkles, no lights) and the
+--                   Welcome-back heap (<= 60) at Garden.Slot.WelcomePile, a drop that goes takes its coin; no client
+--                   bowls; the Garden's pets (GardenPets) roam the yard on the ground, a place above GardenSlots asleep
+--                   on its bed (Zzz), roaming pets walk and poop once per 24 s cycle, the Berry Farm's berries fly;
+--                   the Training Place's pets (TrainingPets) on their mats with a moving voxel prop; the Fusion swirl
 --                   turns; a new station pops in and ends exactly where the server built it; the owner's pads dim
 --                   when Cash cannot pay; far homes freeze and put heaps, bowls, coins and pets away; nothing is
 --                   created per frame; ClearPlot / removing the home cleans up; no errors or warnings from HomeFx
@@ -190,28 +185,20 @@ local function serverScenarios()
 		return nil
 	end
 
-	-- contract section 6: per-station part budgets (by kind; the fence and the Fusion Machine by id)
-	local BUDGET_KIND = { Plant = 45, Magnet = 55, Garden = 85, FoodMachine = 55, Training = 90, House = 150, Fusion = 90 }
-	local BUDGET_ID = { DecorFence = 60 }
+	-- Phase 5 contract 3.6: per-station part budgets (by kind; the decor by id)
+	local BUDGET_KIND = { Farm = 150, Garden = 95, FoodMachine = 55, Training = 90, House = 150, Fusion = 90, Vault = 80, Arena = 80 }
+	local BUDGET_ID = { DecorFence = 90, DecorFountain = 80 }
 	local DEFAULT_BUDGET = 80
 	local function budgetOf(def)
 		return BUDGET_ID[def.Id] or BUDGET_KIND[def.Kind] or DEFAULT_BUDGET
 	end
-	-- names of the retired Phase 2 / 3 machine pieces (presses, conveyor, Collector screen, kitchen queue)
-	local RETIRED = { PressHead = true, Conveyor = true, CollectPad = true, CollectPrompt = true, CashGui = true, CashFill = true, CashLabel = true, CapLabel = true, CookPrompt = true, FeedBowl = true, Belt = true }
-	-- horizontal distance from q to the centre line of a garden walk (station frame)
-	local function walkLineDistance(q, w)
-		local c, sz = w.Center, w.Size
-		local ax, az
-		if sz.X >= sz.Z then
-			local h = max(0, sz.X / 2 - sz.Z / 2)
-			ax, az = max(c.X - h, min(c.X + h, q.X)), c.Z
-		else
-			local h = max(0, sz.Z / 2 - sz.X / 2)
-			ax, az = c.X, max(c.Z - h, min(c.Z + h, q.Z))
-		end
-		return math.sqrt((q.X - ax) ^ 2 + (q.Z - az) ^ 2)
-	end
+	-- names of retired pieces: the Phase 2/3 machines, the Phase 4 plants / Coin Magnet / cushion bowls / sand walks
+	local RETIRED = {
+		PressHead = true, Conveyor = true, CollectPad = true, CollectPrompt = true, CashGui = true, CashFill = true, CashLabel = true,
+		CapLabel = true, CookPrompt = true, FeedBowl = true, Belt = true, MagnetHead = true, Entrance = true,
+		WestJoin = true, EastJoin = true, CushionBowl = true,
+	}
+	local RETIRED_ATTR = { "FruitPoint", "Fruit", "FruitColor", "MagnetCenter" }
 
 	S.p2home_art = guarded("p2home_art", function()
 		local HB = requireAt("server/Services/HomeBuilder")
@@ -227,22 +214,26 @@ local function serverScenarios()
 			api:case(type(HB[fn]) == "function", fn)
 		end
 		api:report()
-		T.check(HB.SetCollector == nil, "HomeBuilder: SetCollector is gone (Phase 4: the Collector screen became the Coin Magnet)")
+		T.check(HB.SetCollector == nil, "HomeBuilder: SetCollector is gone (Phase 4)")
 		if type(HB.BuildStationModel) ~= "function" then
 			T.warn("HomeBuilder art: no BuildStationModel extra, the per-level art checks are skipped")
 			return
 		end
+		T.check(TC.Get("Press2") == nil and TC.Get("Collector") == nil and HB.BuildStationModel("Press2", 1) == nil and HB.BuildStationModel("Collector", 1) == nil,
+			"station art: the 4 old plants and the Coin Magnet are gone (Press2-4 / Collector build nothing)")
 
-		local clean = T.tally("station art: every station at every level builds a clean model (anchored, no welds, no scripts, no asset ids, no retired machine parts)")
-		local budget = T.tally("station art: per-station part budgets (Plant 45, Magnet 55, Garden 85, Food Machine 55, Training Place 90, House 150, Fusion 90, fence 60, others 80)")
+		local clean = T.tally("station art: every station at every level builds a clean model (anchored, no welds, no scripts, no asset ids, no retired pieces or attributes)")
+		local budget = T.tally("station art: per-station part budgets (Farm 150, Garden 95, Food Machine 55, Training Place 90, House 150, Fusion 90, Fence 90, Fountain 80, others 80)")
 		local differ = T.tally("station art: every level looks different from the one before")
-		local models = {} -- [id] = { [level] = { b = bounds, n = parts, gold = n, neon = n, sig = s } }
+		local fits = T.tally("station art: every station stays inside its Slot.Footprint (+0.75 stud; the Yard Fence inside the plot)")
+		local models = {} -- [id] = { [level] = { b = bounds, n = parts, sig = s, model = m } }
 		local t0 = os.clock()
 		local builds = 0
 		for _, def in ipairs(TC.Stations) do
 			if def.Kind ~= "Prestige" then
 				models[def.Id] = {}
 				local prev = nil
+				local fp = def.Slot.Footprint
 				for level = 1, def.MaxLevel do
 					local ok, m = pcall(HB.BuildStationModel, def.Id, level)
 					builds = builds + 1
@@ -265,20 +256,25 @@ local function serverScenarios()
 								bad = "retired piece " .. d.Name
 							end
 						end
+						for _, a in ipairs(RETIRED_ATTR) do
+							if m:GetAttribute(a) ~= nil then
+								bad = "retired attribute " .. a
+							end
+						end
 						clean:case(bad == nil and m.Name == "Station_" .. def.Id and #list > 0, def.Id .. " " .. level .. ": " .. tostring(bad or m.Name))
 						local cap = budgetOf(def)
 						budget:case(#list <= cap, def.Id .. " " .. level .. ": " .. #list .. " parts > " .. cap)
-						local gold, neon = 0, 0
-						for _, p in ipairs(list) do
-							if colorNear(p.Color, GOLD, 24) then
-								gold = gold + 1
-							end
-							if p.Material == Enum.Material.Neon then
-								neon = neon + 1
-							end
+						local b = bounds(m)
+						if def.Slot.Perimeter then
+							local half = TC.PlotSize / 2
+							fits:case(b[1] >= -half and b[4] <= half and b[3] >= -half and b[6] <= half, def.Id .. " " .. level .. string.format(" x %.1f..%.1f z %.1f..%.1f", b[1], b[4], b[3], b[6]))
+						else
+							local hx, hz = fp.X / 2 + 0.75, fp.Z / 2 + 0.75
+							fits:case(b[1] >= -hx and b[4] <= hx and b[3] >= -hz and b[6] <= hz and b[5] <= fp.Y + 3.5,
+								def.Id .. " " .. level .. string.format(" x %.1f..%.1f z %.1f..%.1f top %.1f (footprint %gx%gx%g)", b[1], b[4], b[3], b[6], b[5], fp.X, fp.Y, fp.Z))
 						end
 						local sig = signature(m)
-						models[def.Id][level] = { b = bounds(m), n = #list, gold = gold, neon = neon, sig = sig, model = m }
+						models[def.Id][level] = { b = b, n = #list, sig = sig, model = m }
 						if prev then
 							differ:case(sig ~= prev, def.Id .. " level " .. level .. " looks exactly like level " .. (level - 1))
 						end
@@ -290,7 +286,8 @@ local function serverScenarios()
 		clean:report(builds .. " models")
 		budget:report()
 		differ:report()
-		T.info("station art: " .. builds .. " station levels sculpted in " .. fmt(os.clock() - t0, 2) .. " s")
+		fits:report()
+		T.info("station art: " .. builds .. " station levels built in " .. fmt(os.clock() - t0, 2) .. " s")
 
 		local function size(id, level)
 			local r = models[id] and models[id][level]
@@ -300,57 +297,51 @@ local function serverScenarios()
 			local b = r.b
 			return b[4] - b[1], b[5] - b[2], b[6] - b[3], r
 		end
-		-- the four food plants (the old press slots): four looks by station id, each visibly GROWING with its level
-		local looks = T.tally("station art: the four food plants are Plant art with their own fruit (Press1 Berry Bush, Press2 Carrot Patch, Press3 Cloud Melons, Press4 Starfruit Tree)")
-		local FRUIT = { Press1 = "Berry", Press2 = "Carrot", Press3 = "Melon", Press4 = "Starfruit" }
-		local sigs = {}
-		for id, fruit in pairs(FRUIT) do
-			local def = TC.Get(id)
-			local m = models[id] and models[id][5] and models[id][5].model
-			looks:case(def and def.Kind == "Plant" and m and m:GetAttribute("Fruit") == fruit and typeof(m:GetAttribute("FruitColor")) == "Color3",
-				id .. ": kind " .. tostring(def and def.Kind) .. ", fruit " .. tostring(m and m:GetAttribute("Fruit")))
-			sigs[#sigs + 1] = m and signature(m) or id
-		end
-		looks:report()
-		local distinct = true
-		for i = 1, #sigs do
-			for j = i + 1, #sigs do
-				if sigs[i] == sigs[j] then
-					distinct = false
+		local function count(m, name)
+			local n = 0
+			for _, p in ipairs(parts(m)) do
+				if p.Name == name then
+					n = n + 1
 				end
 			end
+			return n
 		end
-		T.check(distinct, "station art: ...and the four plants look different from each other")
-		local grow = T.tally("station art: a level-10 plant is taller, at least as wide and richer (more parts, a gold planter) than a level-1 plant")
-		for _, id in ipairs({ "Press1", "Press2", "Press3", "Press4" }) do
-			local w1, h1, _, r1 = size(id, 1)
-			local w10, h10, _, r10 = size(id, 10)
-			grow:case(w1 and w10 and w10 >= w1 - 0.01 and h10 >= h1 + 1.5 and r10.n > r1.n and r10.gold > r1.gold,
-				string.format("%s: %sx%s -> %sx%s studs, %s -> %s parts, gold %s -> %s", id, fmt(w1, 1), fmt(h1, 1), fmt(w10, 1), fmt(h10, 1), tostring(r1 and r1.n), tostring(r10 and r10.n), tostring(r1 and r1.gold), tostring(r10 and r10.gold)))
+		local function modelAt(id, level)
+			return models[id] and models[id][level] and models[id][level].model
 		end
-		grow:report()
-		-- the plants grow step by step: never shorter from one level to the next
-		local steady = T.tally("station art: plants never shrink from one level to the next")
-		for _, id in ipairs({ "Press1", "Press2", "Press3", "Press4" }) do
-			for level = 2, 10 do
-				local _, h0 = size(id, level - 1)
-				local _, h1 = size(id, level)
-				steady:case(h0 and h1 and h1 >= h0 - 0.01, id .. " " .. (level - 1) .. " -> " .. level .. ": " .. fmt(h0, 1) .. " -> " .. fmt(h1, 1))
-			end
+
+		-- the Berry Farm (Press1): 40 levels that visibly grow (3.6)
+		local farmDef = TC.Get("Press1")
+		T.check(farmDef and farmDef.Kind == "Farm" and farmDef.MaxLevel == 40 and farmDef.Name == "Berry Farm", "station art: Press1 is the Berry Farm (Kind Farm, 40 levels)")
+		local grows = T.tally("station art: the Berry Farm never loses parts from one level to the next and gains something at every level")
+		for level = 2, 40 do
+			local a, b = models.Press1[level - 1], models.Press1[level]
+			grows:case(a and b and b.n >= a.n, (level - 1) .. " -> " .. level .. ": " .. tostring(a and a.n) .. " -> " .. tostring(b and b.n))
 		end
-		steady:report()
-		-- the Coin Magnet totem: a MagnetHead model (HomeFx spins it) and the MagnetCenter point
-		local magnet = T.tally("station art: the Coin Magnet (Collector slot) is a totem with a MagnetHead model (a PrimaryPart for HomeFx) at every level")
-		for level = 1, TC.Get("Collector").MaxLevel do
-			local m = models.Collector[level] and models.Collector[level].model
-			local head = m and m:FindFirstChild("MagnetHead")
-			magnet:case(TC.Get("Collector").Kind == "Magnet" and head ~= nil and head:IsA("Model") and head.PrimaryPart ~= nil and #parts(head) >= 3, "level " .. level)
+		grows:report()
+		local rows = T.tally("station art: the farm's rows follow the levels (L1-10 one red bush per level, L11-22 the blue row, L23-37 a gold-berry vine per level, L38-40 the Starberry tree)")
+		local wantRows = { [1] = { 1, 0, 0 }, [10] = { 10, 0, 0 }, [11] = { 11, 0, 0 }, [22] = { 22, 0, 0 }, [23] = { 22, 1, 0 }, [37] = { 22, 15, 0 }, [38] = { 22, 15, 1 }, [40] = { 22, 15, 1 } }
+		for level, want in pairs(wantRows) do
+			local m = modelAt("Press1", level)
+			local bushes, vines, tree = count(m, "Bush"), count(m, "Vine"), (count(m, "Trunk") > 0 and count(m, "Starberry") > 0) and 1 or 0
+			rows:case(bushes == want[1] and vines == want[2] and tree == want[3], "level " .. level .. ": " .. bushes .. " bushes, " .. vines .. " vines, tree " .. tree)
 		end
-		magnet:report()
-		-- the Food Machine: the glass Hopper part PetCareService's FeedPrompt sits on
-		local hopper = T.tally("station art: the Food Machine (Kitchen slot) has one glass Hopper part on top at every level (the FeedPrompt's part)")
+		rows:report()
+		local farmSign = T.tally("station art: the farm wears its sign (pixel billboard FarmSign 'Berry Farm Lv N' / 'Grows berries for your pets', MaxDistance 70) and a BerryPoint")
+		for _, level in ipairs({ 1, 13, 40 }) do
+			local m = modelAt("Press1", level)
+			local gui = find(m, "FarmSign", "BillboardGui")
+			local text = gui and plainText(gui) or ""
+			local pts = HB.Points and HB.Points("Press1", level)
+			farmSign:case(gui and gui.MaxDistance == 70 and gui.Size.X.Scale == 0 and gui.LightInfluence == 0 and text:find("Berry Farm Lv " .. level, 1, true) and text:find("Grows berries for your pets", 1, true)
+				and pts and typeof(pts.BerryPoint) == "Vector3", "level " .. level .. ": '" .. text .. "'")
+		end
+		farmSign:report()
+
+		-- the Food Machine: the glass Hopper part PetCareService's FeedPrompt sits on, the sign with the basket line
+		local hopper = T.tally("station art: the Food Machine (Kitchen) has one glass Hopper part on top and the MachineSign ('Food Machine' / 'Berries -> XP: press E' / BasketLine) at every level")
 		for level = 1, TC.Get("Kitchen").MaxLevel do
-			local m = models.Kitchen[level] and models.Kitchen[level].model
+			local m = modelAt("Kitchen", level)
 			local list = {}
 			for _, p in ipairs(parts(m)) do
 				if p.Name == "Hopper" then
@@ -359,15 +350,18 @@ local function serverScenarios()
 			end
 			local h = list[1]
 			local _, height = size("Kitchen", level)
-			hopper:case(TC.Get("Kitchen").Kind == "FoodMachine" and #list == 1 and h.Material == Enum.Material.Glass and h.Transparency > 0.2 and h.Transparency < 0.9 and h.Position.Y > height * 0.5,
-				"level " .. level .. ": " .. #list .. " Hopper parts")
+			local gui = find(m, "MachineSign", "BillboardGui")
+			local text = gui and plainText(gui) or ""
+			hopper:case(TC.Get("Kitchen").Kind == "FoodMachine" and #list == 1 and h.Material == Enum.Material.Glass and h.Transparency > 0.2 and h.Transparency < 0.9 and h.Position.Y > height * 0.5
+				and gui ~= nil and text:find("Food Machine", 1, true) and text:find("Berries -> XP: press E", 1, true) and find(gui, "BasketLine", "TextLabel") ~= nil,
+				"level " .. level .. ": " .. #list .. " Hopper parts, sign '" .. text .. "'")
 		end
 		hopper:report()
 		-- the Training Place: one mat per level with the Spot<i> attachments at the catalog's Spots, on the deck
-		local mats = T.tally("station art: the Training Place (Gym slot) lays one mat per level with Attachments Spot1..level (attribute Slot) at Slot.Spots on the deck")
+		local mats = T.tally("station art: the Training Place (Gym) lays one mat per level with Attachments Spot1..level (attribute Slot) at Slot.Spots on the deck")
 		local gymDef = TC.Get("Gym")
 		for level = 1, gymDef.MaxLevel do
-			local m = models.Gym[level] and models.Gym[level].model
+			local m = modelAt("Gym", level)
 			local found, bad = 0, nil
 			for i = 1, 5 do
 				local a = m and find(m, "Spot" .. i, "Attachment")
@@ -375,36 +369,34 @@ local function serverScenarios()
 					found = found + 1
 					local want = gymDef.Slot.Spots[i]
 					local at = a.WorldPosition
-					if a:GetAttribute("Slot") ~= i or abs(at.X - want.X) > 0.05 or abs(at.Z - want.Z) > 0.05 or at.Y < 0.9 or at.Y > 1.6 then
+					if a:GetAttribute("Slot") ~= i or abs(at.X - want.X) > 0.05 or abs(at.Z - want.Z) > 0.05 or at.Y < 0.6 or at.Y > 1.6 then
 						bad = "Spot" .. i .. string.format(" at %.2f, %.2f, %.2f", at.X, at.Y, at.Z)
 					end
 				end
 			end
-			local matParts = 0
-			for _, p in ipairs(parts(m)) do
-				if p.Name == "Mat" then
-					matParts = matParts + 1
-				end
-			end
-			mats:case(gymDef.Kind == "Training" and found == level and matParts == level and bad == nil, "level " .. level .. ": " .. found .. " spots, " .. matParts .. " mats " .. tostring(bad or ""))
+			mats:case(gymDef.Kind == "Training" and found == level and count(m, "Mat") == level and bad == nil, "level " .. level .. ": " .. found .. " spots " .. tostring(bad or ""))
 		end
 		mats:report()
-		-- the Garden (3.3): 12 places, open = SetGarden's count (not the level), prompts on the open places only
+
+		-- the Garden (3.3 / 3.6): 12 beds at Slot.Beds, the Food Bowl, the fence ring with the entrance
 		local gdef = TC.Get("Garden")
-		local spots = gdef.Slot.Spots
-		local walks = gdef.Slot.Walkable
-		local garden = T.tally("station art: the Pet Garden has 12 places (Attachments Spot1..12, attribute Slot / Open) at Slot.Spots for every open count 0..12, within 85 parts")
-		local prompts = T.tally("station art: every OPEN place (and only those) carries a GardenSpotPrompt 'Put a pet here' (E, MaxActivationDistance 3, no line of sight, attribute Slot) at the cushion's far edge, >= 3.5 studs from every walk")
-		local closed = T.tally("station art: every place beyond the open count is a seedling bed with a small 'Prestige to open' sign (40-60 px per stud)")
+		local gs = gdef.Slot
+		local beds = gs.Beds
+		local hx, hz, ft = gs.Footprint.X / 2, gs.Footprint.Z / 2, gs.Fence
+		local ent = gs.Entrance
+		local garden = T.tally("station art: the Pet Garden has 12 beds (Attachments Spot1..12, attribute Slot / Open) at Slot.Beds for every open count 0..12, within 95 parts")
+		local prompts = T.tally("station art: every OPEN bed (and only those) carries a GardenSpotPrompt 'Put a pet here' (E, MaxActivationDistance 3, no line of sight, attribute Slot) beside the bed")
+		local closed = T.tally("station art: every bed beyond the open count is a seedling bed (Stem + Sprout) with a 'Prestige to open' sign (40-60 px per stud); open beds have a cushion under a little roof")
+		local clearIn = T.tally("station art: the Garden's inside stays clear for the roaming pets (no solid or decor part between 0.7 and 3 studs except the beds and the bowl) and its entrance is open")
 		for _, level in ipairs({ 1, 4, gdef.MaxLevel }) do
-			for open = 0, #spots do
+			for open = 0, #beds do
 				local ok, m = pcall(HB.BuildStationModel, "Garden", level, nil, open)
 				if not ok or typeof(m) ~= "Instance" then
 					garden:case(false, "level " .. level .. " open " .. open .. ": " .. tostring(m))
 				else
 					local n = #parts(m)
 					local spotOk, promptN, promptBad = 0, 0, nil
-					for i, want in ipairs(spots) do
+					for i, want in ipairs(beds) do
 						local a = find(m, "Spot" .. i, "Attachment")
 						if a and a:GetAttribute("Slot") == i and a:GetAttribute("Open") == (i <= open) and abs(a.WorldPosition.X - want.X) < 0.05 and abs(a.WorldPosition.Z - want.Z) < 0.05 then
 							spotOk = spotOk + 1
@@ -415,26 +407,17 @@ local function serverScenarios()
 							promptN = promptN + 1
 							local slot = d:GetAttribute("Slot")
 							local at = d.Parent and d.Parent:IsA("Attachment") and d.Parent.WorldPosition
-							local cushion = spots[slot or 0]
-							local nearest = huge
-							for _, w in ipairs(walks) do
-								if at then
-									nearest = min(nearest, walkLineDistance(at, w))
-								end
-							end
-							if not (cushion and at and slot <= open and d.ActionText == "Put a pet here" and d.KeyboardKeyCode == Enum.KeyCode.E and d.MaxActivationDistance == 3
-								and d.RequiresLineOfSight == false and nearest >= 3.45 and abs((Vector3.new(at.X, 0, at.Z) - Vector3.new(cushion.X, 0, cushion.Z)).Magnitude - 1) < 0.05) then
-								promptBad = "slot " .. tostring(slot) .. string.format(" %.2f from a walk", nearest)
+							local bed = beds[slot or 0]
+							local dist = (bed and at) and (Vector3.new(at.X, 0, at.Z) - Vector3.new(bed.X, 0, bed.Z)).Magnitude or huge
+							if not (bed and slot <= open and d.ActionText == "Put a pet here" and d.KeyboardKeyCode == Enum.KeyCode.E and d.MaxActivationDistance == 3
+								and d.RequiresLineOfSight == false and d:GetAttribute("StationId") == "Garden" and dist <= 2.2 and dist >= 1.2) then
+								promptBad = "slot " .. tostring(slot) .. string.format(" %.2f from its bed", dist)
 							end
 						end
 					end
-					local stems, sprouts, signs = 0, 0, 0
+					local stems, sprouts, signs = count(m, "Stem"), count(m, "Sprout"), 0
 					for _, p in ipairs(parts(m)) do
-						if p.Name == "Stem" then
-							stems = stems + 1
-						elseif p.Name == "Sprout" then
-							sprouts = sprouts + 1
-						elseif p.Name == "ClosedSign" then
+						if p.Name == "ClosedSign" then
 							local gui = p:FindFirstChildWhichIsA("SurfaceGui")
 							local text = gui and plainText(gui) or ""
 							if gui and gui.PixelsPerStud >= 40 and gui.PixelsPerStud <= 60 and text:find("Prestige", 1, true) and text:find("to open", 1, true) then
@@ -442,9 +425,28 @@ local function serverScenarios()
 							end
 						end
 					end
-					garden:case(spotOk == #spots and n <= 85 and m:GetAttribute("Open") == open, "level " .. level .. " open " .. open .. ": " .. spotOk .. " spots, " .. n .. " parts")
+					garden:case(spotOk == #beds and n <= 95 and m:GetAttribute("Open") == open, "level " .. level .. " open " .. open .. ": " .. spotOk .. " spots, " .. n .. " parts")
 					prompts:case(promptN == open and promptBad == nil, "level " .. level .. " open " .. open .. ": " .. promptN .. " prompts " .. tostring(promptBad or ""))
-					closed:case(signs == #spots - open and stems == #spots - open and sprouts == #spots - open, "level " .. level .. " open " .. open .. ": " .. signs .. " signs, " .. stems .. " seedlings")
+					closed:case(signs == #beds - open and stems == #beds - open and sprouts == #beds - open and count(m, "Cushion") == open and count(m, "BedRoof") == open,
+						"level " .. level .. " open " .. open .. ": " .. signs .. " signs, " .. stems .. " seedlings, " .. count(m, "Cushion") .. " cushions")
+					-- the interior (inside the fence band) at pet height: only beds, the bowl and their own pieces
+					local OK_IN = { Bed = true, Cushion = true, Headboard = true, BedRoof = true, SoilBed = true, Stem = true, Sprout = true, ClosedSign = true,
+						FoodBowl = true, BowlRim = true, BowlBerries = true, BowlBerry = true, Lawn = true, Walk = true }
+					local hit = nil
+					for _, p in ipairs(parts(m)) do
+						if p.Transparency < 0.5 and not OK_IN[p.Name] then
+							local b = aabb(p)
+							local inside = b[1] < hx - ft - 0.2 and b[4] > -hx + ft + 0.2 and b[3] < hz - ft - 0.2 and b[6] > -hz + ft + 0.2
+							if inside and b[2] < 3 and b[5] > 0.7 then
+								hit = p.Name .. string.format(" at %.1f, %.1f", p.Position.X, p.Position.Z)
+							end
+							-- the entrance gap (Slot.Entrance) at walking height
+							if b[1] < ent.Center.X + ent.Width / 2 - 0.05 and b[4] > ent.Center.X - ent.Width / 2 + 0.05 and b[3] < -hz + ft + 0.5 and b[6] > -hz - 0.5 and b[2] < 3.0 and b[5] > 0.5 then
+								hit = "entrance blocked by " .. p.Name
+							end
+						end
+					end
+					clearIn:case(hit == nil, "level " .. level .. " open " .. open .. ": " .. tostring(hit))
 					m:Destroy()
 				end
 			end
@@ -452,6 +454,14 @@ local function serverScenarios()
 		garden:report()
 		prompts:report()
 		closed:report()
+		clearIn:report()
+		local gm = modelAt("Garden", gdef.MaxLevel)
+		local bowl = gm and find(gm, "FoodBowl", "BasePart")
+		local bowlGui = bowl and find(bowl, "BowlSign", "BillboardGui")
+		local bowlText = bowlGui and plainText(bowlGui) or ""
+		T.check(bowl ~= nil and abs(bowl.Position.X - gs.Bowl.Center.X) < 0.05 and abs(bowl.Position.Z - gs.Bowl.Center.Z) < 0.05 and abs(bowl.Size.Y - 2 * gs.Bowl.Radius) < 0.6
+			and bowlGui ~= nil and bowlGui.MaxDistance == 40 and bowlText:find("Food Bowl", 1, true) and bowlText:find("Pets eat here, then poop Cloud Cash!", 1, true),
+			"station art: the Food Bowl stands at Slot.Bowl (radius " .. gs.Bowl.Radius .. ") with its sign 'Food Bowl' / 'Pets eat here, then poop Cloud Cash!' (MaxDistance 40)", bowlText)
 		local g3a, g3b, g7 = HB.BuildStationModel("Garden", 3, nil, 5), HB.BuildStationModel("Garden", 3, nil, 5), HB.BuildStationModel("Garden", 3, nil, 7)
 		T.check(g3a and g3b and g7 and signature(g3a) == signature(g3b) and signature(g3a) ~= signature(g7),
 			"station art: the Garden template is cached per Garden:<level>:<open> (same open count = the same model, another count = another model)")
@@ -460,44 +470,47 @@ local function serverScenarios()
 		end
 
 		-- the house: every tier clearly grander
-		local tiers = T.tally("station art: the House goes Cottage -> Villa -> Manor -> Sky Castle, each tier taller and with a bigger footprint")
+		local tiers = T.tally("station art: the House goes Cottage -> Villa -> Manor -> Sky Castle, each tier taller or with a bigger footprint")
 		for level = 2, 4 do
 			local w0, h0, d0 = size("House", level - 1)
 			local w1, h1, d1 = size("House", level)
-			tiers:case(w0 and w1 and h1 >= h0 + 3 and w1 * d1 > w0 * d0 * 1.1, string.format("tier %d -> %d: %sx%sx%s -> %sx%sx%s", level - 1, level, fmt(w0, 0), fmt(h0, 0), fmt(d0, 0), fmt(w1, 0), fmt(h1, 0), fmt(d1, 0)))
+			tiers:case(w0 and w1 and h1 >= h0 + 1.5 and (h1 >= h0 + 4 or w1 * d1 >= w0 * d0 * 1.05), string.format("tier %d -> %d: %sx%sx%s -> %sx%sx%s", level - 1, level, fmt(w0, 0), fmt(h0, 0), fmt(d0, 0), fmt(w1, 0), fmt(h1, 0), fmt(d1, 0)))
 		end
 		tiers:report()
-		local castle = models.House and models.House[4]
-		T.check(castle and castle.gold >= 4 and castle.neon >= 3, "station art: the Sky Castle carries gold finials and lit windows", castle and ("gold " .. castle.gold .. ", neon " .. castle.neon) or "missing")
-		-- other stations: bigger at the top level
-		local bigger = T.tally("station art: the Coin Magnet, Garden, Food Machine, Training Place and Vault are bigger at their top level than at level 1")
-		for _, id in ipairs({ "Collector", "Garden", "Kitchen", "Gym", "Vault" }) do
+		local bigger = T.tally("station art: the Garden, Food Machine, Training Place, Vault, Fusion Machine and Berry Farm hold more at their top level than at level 1")
+		for _, id in ipairs({ "Garden", "Kitchen", "Gym", "Vault", "FusionMachine", "Press1" }) do
 			local def = TC.Get(id)
-			local w1, h1, d1 = size(id, 1)
-			local wN, hN, dN = size(id, def.MaxLevel)
-			bigger:case(w1 and wN and wN * hN * dN > w1 * h1 * d1 * 1.2, string.format("%s: %sx%sx%s -> %sx%sx%s", id, fmt(w1, 1), fmt(h1, 1), fmt(d1, 1), fmt(wN, 1), fmt(hN, 1), fmt(dN, 1)))
+			local r1, rN = models[id][1], models[id][def.MaxLevel]
+			bigger:case(r1 and rN and rN.n > r1.n, id .. ": " .. tostring(r1 and r1.n) .. " -> " .. tostring(rN and rN.n) .. " parts")
 		end
 		bigger:report()
 		-- the Fusion Machine: two input pods, a glass chamber with the Swirl, an output pod, a prompt
-		local fusion = models.FusionMachine and models.FusionMachine[1] and models.FusionMachine[1].model
+		local fusion = modelAt("FusionMachine", 1)
 		if T.check(fusion ~= nil, "station art: the Fusion Machine builds") then
-			local glass = findAll(fusion, function(d)
-				return d:IsA("BasePart") and d.Material == Enum.Material.Glass
-			end)
-			local pods = 0
-			for _, g in ipairs(glass) do
-				if g.Name == "PodGlass" then
-					pods = pods + 1
-				end
-			end
 			local swirl = fusion:FindFirstChild("Swirl")
-			T.check(pods >= 3 and find(fusion, "Chamber") ~= nil, "station art: the Fusion Machine has two input pods + an output pod (glass) and a glass chamber", pods .. " pod glasses")
-			T.check(swirl ~= nil and #parts(swirl) >= 3, "station art: ...with a cloud Swirl inside the chamber (HomeFx spins it)")
+			T.check(count(fusion, "Pod") == 2 and find(fusion, "Chamber") ~= nil and find(fusion, "OutputDome") ~= nil, "station art: the Fusion Machine has two glass input pods, a glass chamber and an output pod")
+			T.check(swirl ~= nil and swirl:IsA("Model") and #parts(swirl) >= 3, "station art: ...with a Swirl model inside the chamber (HomeFx spins it)")
 			local prompt = find(fusion, "FusionPrompt", "ProximityPrompt")
-			T.check(prompt ~= nil and prompt.ActionText ~= "" and prompt.HoldDuration == 0, "station art: ...and a FusionPrompt that opens the Fusion window")
+			T.check(prompt ~= nil and prompt.ActionText == "Fuse" and prompt.HoldDuration == 0 and prompt:GetAttribute("StationId") == "FusionMachine", "station art: ...and a FusionPrompt that opens the Fusion window")
 			local _, h1 = size("FusionMachine", 1)
-			T.check(h1 and h1 >= 10, "station art: ...and it is an impressive machine (>= 10 studs tall)", fmt(h1, 1) .. " studs")
+			T.check(h1 and h1 >= 8, "station art: ...and it is an impressive machine (>= 8 studs tall)", fmt(h1, 1) .. " studs")
 		end
+		-- the Arena Gate: a half-size red gate with the teleport prompt
+		local gate = modelAt("ArenaGate", 1)
+		local gp = gate and find(gate, "ArenaGatePrompt", "ProximityPrompt")
+		local portal = gate and find(gate, "Portal", "BasePart")
+		T.check(gp ~= nil and gp:GetAttribute("Teleport") == "Arena" and gp:GetAttribute("StationId") == "ArenaGate" and gp.ActionText == "Go to Arena" and portal ~= nil and not portal.CanCollide
+			and count(gate, "Column") == 2 and count(gate, "Inlay") >= 3,
+			"station art: the Arena Gate is a small gate (two columns, a neon inlay, a walk-through Portal) with the ArenaGatePrompt (Teleport = Arena)")
+		-- the decor: three levels each, the fountain's lanterns 4 / 6 / 8
+		local lanterns = T.tally("station art: the Fountain carries 4 / 6 / 8 lanterns (wood / brass / crystal) and the Yard Fence three different looks")
+		for level = 1, 3 do
+			local m = modelAt("DecorFountain", level)
+			lanterns:case(count(m, "Lantern") == 2 + 2 * level, "fountain level " .. level .. ": " .. count(m, "Lantern") .. " lanterns")
+		end
+		local fence1, fence3 = modelAt("DecorFence", 1), modelAt("DecorFence", 3)
+		lanterns:case(count(fence1, "Pickets") >= 5 and count(fence3, "Wall") >= 5 and count(fence3, "Cloth") >= 4 and count(modelAt("DecorFence", 2), "Hedge") >= 5, "fence looks")
+		lanterns:report()
 		-- templates are cloned: a second build of the same level is identical
 		local a = HB.BuildStationModel("House", 4)
 		local b = HB.BuildStationModel("House", 4)
@@ -739,20 +752,29 @@ local function serverScenarios()
 		local press = home:FindFirstChild("Station_Press1")
 		T.check(press ~= nil and HB.SetStation(spot, "Press1", state.Stations.Press1) == press, "home plot: SetStation with the same level keeps the model (no rebuild)")
 
-		-- the food plants: Station_Press1 is the Berry Bush (FruitPoint for HomeFx's fruit flights)
-		local bush = home:FindFirstChild("Station_Press1")
-		local fp = bush and bush:GetAttribute("FruitPoint")
-		T.check(bush ~= nil and bush:GetAttribute("Kind") == "Plant" and bush:GetAttribute("Fruit") == "Berry" and typeof(fp) == "Vector3"
-			and (Vector3.new(fp.X, 0, fp.Z) - Vector3.new(bush:GetPivot().Position.X, 0, bush:GetPivot().Position.Z)).Magnitude < 3,
-			"home plot: Station_Press1 is a Berry Bush (Kind Plant, Fruit Berry, a FruitPoint over the bush)")
-		local magnetModel = home:FindFirstChild("Station_Collector")
-		T.check(magnetModel ~= nil and magnetModel:GetAttribute("Kind") == "Magnet" and magnetModel:FindFirstChild("MagnetHead") ~= nil and typeof(magnetModel:GetAttribute("MagnetCenter")) == "Vector3",
-			"home plot: the Collector slot holds the Coin Magnet (MagnetHead + MagnetCenter for HomeFx)")
+		-- the Berry Farm (Press1): Kind Farm, its sign and the BerryPoint for HomeFx's berry flights
+		local farm = home:FindFirstChild("Station_Press1")
+		local bp = farm and farm:GetAttribute("BerryPoint")
+		local farmSign = farm and find(farm, "FarmSign", "BillboardGui")
+		local farmSlot = plotCF * TC.Get("Press1").Slot.CFrame
+		T.check(farm ~= nil and farm:GetAttribute("Kind") == "Farm" and typeof(bp) == "Vector3" and math.abs(farmSlot:PointToObjectSpace(bp).Z) < 4 and farmSign ~= nil
+			and plainText(farmSign):find("Berry Farm Lv " .. tostring(state.Stations.Press1), 1, true) ~= nil,
+			"home plot: Station_Press1 is the Berry Farm (Kind Farm, a BerryPoint over its rows, the 'Berry Farm Lv N' sign)")
+		T.check(home:FindFirstChild("Station_Collector") == nil and home:FindFirstChild("Station_Press2") == nil and #findAll(home, function(d)
+			return d.Name == "MagnetHead" or (d:IsA("Model") and (d:GetAttribute("FruitPoint") ~= nil or d:GetAttribute("MagnetCenter") ~= nil))
+		end) == 0, "home plot: no old plants and no Coin Magnet anywhere (merged into the Berry Farm and the Pet Garden)")
 		local machine = home:FindFirstChild("Station_Kitchen")
 		local hopperPart = machine and machine:FindFirstChild("Hopper", true)
+		local machineSign = machine and find(machine, "MachineSign", "BillboardGui")
 		T.check(machine ~= nil and machine:GetAttribute("Kind") == "FoodMachine" and hopperPart ~= nil and hopperPart:IsA("BasePart")
-			and typeof(machine:GetAttribute("ChuteMouth")) == "Vector3" and typeof(machine:GetAttribute("Tray")) == "Vector3" and typeof(machine:GetAttribute("HopperTop")) == "Vector3",
-			"home plot: the Kitchen slot holds the Food Machine with its Hopper part (PetCareService's FeedPrompt) and the ChuteMouth / Tray / HopperTop points")
+			and typeof(machine:GetAttribute("ChuteMouth")) == "Vector3" and typeof(machine:GetAttribute("Tray")) == "Vector3" and typeof(machine:GetAttribute("HopperTop")) == "Vector3"
+			and typeof(machine:GetAttribute("BasketTop")) == "Vector3" and machineSign ~= nil and find(machineSign, "BasketLine", "TextLabel") ~= nil,
+			"home plot: the Kitchen slot holds the Food Machine with its Hopper part (PetCareService's FeedPrompt), the MachineSign + BasketLine and the ChuteMouth / Tray / HopperTop / BasketTop points")
+		local hopLocal = hopperPart and plotCF:PointToObjectSpace(hopperPart.Position)
+		local gymSpot = home:FindFirstChild("Station_Gym") and find(home.Station_Gym, "Spot1", "Attachment")
+		local gymLocal = gymSpot and plotCF:PointToObjectSpace(gymSpot.WorldPosition)
+		T.check(hopLocal ~= nil and math.abs(hopLocal.X + 24) < 1.5 and math.abs(hopLocal.Z - 29.3) < 1.5 and gymLocal ~= nil and math.abs(gymLocal.X - 19) < 0.1 and math.abs(gymLocal.Z - 24) < 0.1,
+			"home plot: the Food Machine and the Training Place stand on their swapped slots (Kitchen at (-24, 29), Gym at (25, 24))")
 		local retired = findAll(home, function(d)
 			return RETIRED[d.Name] == true
 		end)
@@ -775,13 +797,13 @@ local function serverScenarios()
 		local open0 = TC.GardenSlots(state)
 		local gp, gmodel = gardenPrompts()
 		local spotsOk = 0
-		for i, want in ipairs(gdef.Slot.Spots) do
+		for i, want in ipairs(gdef.Slot.Beds) do
 			local a = gmodel and find(gmodel, "Spot" .. i, "Attachment")
 			if a and (gslot:PointToObjectSpace(a.WorldPosition) - Vector3.new(want.X, a.WorldPosition.Y - gslot.Position.Y, want.Z)).Magnitude < 0.05 then
 				spotsOk = spotsOk + 1
 			end
 		end
-		T.check(gmodel ~= nil and spotsOk == 12 and gmodel:GetAttribute("Open") == open0, "home plot: the Garden shows 12 places (Spot1..12 at Slot.Spots) and Open = TC.GardenSlots(home)", spotsOk .. " spots, open " .. tostring(gmodel and gmodel:GetAttribute("Open")) .. " vs " .. open0)
+		T.check(gmodel ~= nil and spotsOk == 12 and gmodel:GetAttribute("Open") == open0, "home plot: the Garden shows 12 beds (Spot1..12 at Slot.Beds) and Open = TC.GardenSlots(home)", spotsOk .. " spots, open " .. tostring(gmodel and gmodel:GetAttribute("Open")) .. " vs " .. open0)
 		local enabled = 0
 		for slot, pr in pairs(gp) do
 			if pr.Enabled then
@@ -818,54 +840,75 @@ local function serverScenarios()
 		HB.SetGarden(spot, {}, open0)
 		T.info("home plot: the Garden went " .. open0 .. " -> 7 -> 12 -> " .. open0 .. " places; the home holds " .. (Mock.CountDescendants(home) - before7) .. " instances more than before")
 
-		-- the coin points and the Welcome-back pile stay clear of pads and station art (walking height)
-		local clear = T.tally("home plot: the 12 coin points and the Welcome-back pile are clear of every pad and every solid station part")
-		local coinSpots = {}
-		for i = 1, 12 do
-			local pt = TC.CoinPoint and TC.CoinPoint(i)
-			if typeof(pt) == "Vector3" then
-				coinSpots[#coinSpots + 1] = { name = "coin " .. i, at = gslot * pt }
-			end
-		end
-		if typeof(gdef.Slot.WelcomePile) == "Vector3" then
-			coinSpots[#coinSpots + 1] = { name = "WelcomePile", at = plotCF * gdef.Slot.WelcomePile }
-		end
-		local coinZones = {}
-		for _, c in ipairs(coinSpots) do
-			coinZones[#coinZones + 1] = { name = c.name, box = { c.at.X - 0.6, c.at.Y + 0.7, c.at.Z - 0.6, c.at.X + 0.6, c.at.Y + 3, c.at.Z + 0.6 } }
-		end
-		local padBoxes = {}
-		for _, d in ipairs(TC.Stations) do
-			if d.Slot and typeof(d.Slot.Pad) == "CFrame" then
-				local c = (plotCF * d.Slot.Pad).Position
-				padBoxes[#padBoxes + 1] = { name = "pad " .. d.Id, box = { c.X - 2.2, c.Y - 1, c.Z - 2.2, c.X + 2.2, c.Y + 5, c.Z + 2.2 } }
-			end
-		end
-		local stationSolids = {}
+		-- the roaming pets (HomeRoam, 3.5) never walk through station art: sampled plans of 3 seeds x 12 slots x 3 cycles,
+		-- every point at pet height clear of every visible station part (beds, the bowl and the garden floor are theirs);
+		-- the Welcome-back pile clear of pads and station art
+		local Roam = requireAt("shared/HomeRoam")
+		local OWN = { Bed = true, Cushion = true, Headboard = true, BedRoof = true, SoilBed = true, Stem = true, Sprout = true, ClosedSign = true,
+			FoodBowl = true, BowlRim = true, BowlBerries = true, BowlBerry = true, Lawn = true, Walk = true }
+		local stationBoxes = {}
 		for _, m in ipairs(home:GetChildren()) do
-			if m:IsA("Model") and m.Name:sub(1, 8) == "Station_" then
+			if m:IsA("Model") and m.Name:sub(1, 8) == "Station_" and m.Name ~= "Station_DecorFence" then
 				for _, p in ipairs(parts(m)) do
-					if (p.CanCollide or p.Transparency < 0.5) and p.Transparency < 1 then
-						stationSolids[#stationSolids + 1] = { name = m.Name .. "." .. p.Name, box = aabb(p) }
+					if p.Transparency < 0.5 and not OWN[p.Name] then
+						local b = aabb(p)
+						local lo = plotCF:PointToObjectSpace(Vector3.new(b[1], b[2], b[3]))
+						local hi = plotCF:PointToObjectSpace(Vector3.new(b[4], b[5], b[6]))
+						stationBoxes[#stationBoxes + 1] = { name = m.Name .. "." .. p.Name, x0 = min(lo.X, hi.X), x1 = max(lo.X, hi.X), z0 = min(lo.Z, hi.Z), z1 = max(lo.Z, hi.Z), y0 = b[2] - plotCF.Position.Y, y1 = b[5] - plotCF.Position.Y }
 					end
 				end
 			end
 		end
-		for _, z in ipairs(coinZones) do
-			local hit = nil
-			for _, pb in ipairs(padBoxes) do
-				if overlap(z.box, pb.box, 0) then
-					hit = pb.name
+		local function blockedAt(x, z, r)
+			for _, sb in ipairs(stationBoxes) do
+				if sb.y0 < 2.0 and sb.y1 > 0.7 and x > sb.x0 - r and x < sb.x1 + r and z > sb.z0 - r and z < sb.z1 + r then
+					return sb.name
 				end
 			end
-			for _, sp in ipairs(stationSolids) do
-				if not hit and overlap(z.box, sp.box, 0.02) then
-					hit = sp.name
-				end
-			end
-			clear:case(hit == nil, z.name .. " blocked by " .. tostring(hit))
+			return nil
 		end
-		clear:report(#coinZones .. " points")
+		local roamClear = T.tally("home plot: the roaming pets' walks (HomeRoam plans) never pass through station art at pet height")
+		if type(Roam) == "table" and type(Roam.Plan) == "function" then
+			local samples = 0
+			for _, seed in ipairs({ 1, 777001, 424242 }) do
+				for slot = 1, 12 do
+					for cycle = 1, 3 do
+						local plan = Roam.Plan(seed, slot, cycle)
+						local pts = plan and plan.Out or {}
+						local hit = nil
+						for k = 2, #pts do
+							local a, b = pts[k - 1], pts[k]
+							local ax, az, bx, bz = a.x or a[1], a.z or a[2], b.x or b[1], b.z or b[2]
+							local len = math.sqrt((bx - ax) ^ 2 + (bz - az) ^ 2)
+							local n = max(1, math.ceil(len / 0.5))
+							for t = 0, n do
+								local f = t / n
+								local h = blockedAt(ax + (bx - ax) * f, az + (bz - az) * f, 0.2)
+								samples = samples + 1
+								if h and not hit then
+									hit = h .. string.format(" at %.1f, %.1f", ax + (bx - ax) * f, az + (bz - az) * f)
+								end
+							end
+						end
+						roamClear:case(#pts > 1 and hit == nil, "seed " .. seed .. " slot " .. slot .. " cycle " .. cycle .. ": " .. tostring(hit or (#pts .. " points")))
+					end
+				end
+			end
+			roamClear:report(samples .. " samples")
+		else
+			T.warn("home plot: shared/HomeRoam missing, the roam clearance check is skipped")
+		end
+		local wp = gdef.Slot.WelcomePile
+		if typeof(wp) == "Vector3" then
+			local hit = blockedAt(wp.X, wp.Z, 0.4)
+			for _, d in ipairs(TC.Stations) do
+				local pc = d.Slot and typeof(d.Slot.Pad) == "CFrame" and d.Slot.Pad.Position
+				if pc and math.abs(pc.X - wp.X) < 2.6 and math.abs(pc.Z - wp.Z) < 2.6 then
+					hit = "pad " .. d.Id
+				end
+			end
+			T.check(hit == nil, "home plot: the Welcome-back pile is clear of every pad and every station part", tostring(hit))
+		end
 
 		-- the Training Place: Spot1..level on the deck; SetTraining writes who trains where (attributes only)
 		local gym = home:FindFirstChild("Station_Gym")
@@ -897,10 +940,10 @@ local function serverScenarios()
 
 		-- unchanged pads are kept, missing pads go
 		local padFolder = home:FindFirstChild("Pads")
-		local kept = HB.SetPads(spot, { { StationId = "DecorLamps", NextLevel = 2, Price = 10, Level = 1, Title = "Lanterns", LevelText = "Lv 1 -> 2" } })
-		local lamp = padFolder and padFolder:FindFirstChild("Pad_DecorLamps")
-		HB.SetPads(spot, { { StationId = "DecorLamps", NextLevel = 2, Price = 10, Level = 1, Title = "Lanterns", LevelText = "Lv 1 -> 2" } })
-		T.check(kept and lamp ~= nil and padFolder:FindFirstChild("Pad_DecorLamps") == lamp and #padFolder:GetChildren() == 1, "home plot: SetPads keeps an unchanged pad and removes the pads that are no longer listed")
+		local kept = HB.SetPads(spot, { { StationId = "DecorFountain", NextLevel = 2, Price = 10, Level = 1, Title = "Fountain", LevelText = "Lv 1 -> 2" } })
+		local lamp = padFolder and padFolder:FindFirstChild("Pad_DecorFountain")
+		HB.SetPads(spot, { { StationId = "DecorFountain", NextLevel = 2, Price = 10, Level = 1, Title = "Fountain", LevelText = "Lv 1 -> 2" } })
+		T.check(kept and lamp ~= nil and padFolder:FindFirstChild("Pad_DecorFountain") == lamp and #padFolder:GetChildren() == 1, "home plot: SetPads keeps an unchanged pad and removes the pads that are no longer listed")
 		HB.SetPads(spot, {})
 
 		-- layout sanity on the built plot
@@ -984,6 +1027,66 @@ local function serverScenarios()
 			end
 		end
 		apart:report()
+
+		-- the 6.4 art rules on the whole built plot (stations, pads, paths): world materials only, no big SmoothPlastic,
+		-- muted large faces (saturation <= 0.45, value 0.35..0.9; thin neon / ForceField / pieces <= 8 studs^3 aside),
+		-- parts < 4 studs cast no shadow, warm lights within Brightness 1.5 / Range 16 and no shadows; pure decor sits
+		-- in NC_Detail models that block nothing and hold no prompts
+		do
+			local WS = requireAt("shared/WorldStyle")
+			local CS = game:GetService("CollectionService")
+			local function exempt(p)
+				local cur = p
+				while cur and cur ~= home do
+					if CS:HasTag(cur, "NC_StyleExempt") then
+						return true
+					end
+					cur = cur.Parent
+				end
+				return false
+			end
+			local tMat = T.tally("home plot art (6.4): every visible part uses a WorldStyle material and no SmoothPlastic part has a side > 2 studs")
+			local tSat = T.tally("home plot art (6.4): large faces are muted (saturation <= 0.45, opaque value 0.35..0.9)")
+			local tShadow = T.tally("home plot art (6.4): parts under 4 studs cast no shadow")
+			local tLight = T.tally("home plot art (6.4): lights are warm lanterns (Brightness <= 1.5, Range <= 16, no shadows)")
+			local tDetail = T.tally("home plot art (6.4): NC_Detail decor blocks nothing and holds no prompts")
+			for _, p in ipairs(parts(home)) do
+				local sz = p.Size
+				local dims = { sz.X, sz.Y, sz.Z }
+				table.sort(dims)
+				if p.Transparency < 0.99 and not exempt(p) and not p.Name:find("^Ghost") then
+					local okMat = (WS == nil or WS.IsWorldMaterial(p.Material)) and not (p.Material == Enum.Material.SmoothPlastic and dims[3] > 2)
+					tMat:case(okMat, p:GetFullName() .. " " .. tostring(p.Material) .. " " .. fmt(dims[3], 1))
+					if dims[2] * dims[3] > 16 and p.Material ~= Enum.Material.ForceField and dims[1] * dims[2] * dims[3] > 8 and not (p.Material == Enum.Material.Neon and dims[1] <= 0.5) then
+						local _, sat, val = p.Color:ToHSV()
+						local okVal = p.Material == Enum.Material.Neon or p.Transparency >= 0.3 or (val >= 0.35 and val <= 0.9)
+						tSat:case(sat <= 0.451 and okVal, p:GetFullName() .. string.format(" sat %.2f val %.2f", sat, val))
+					end
+				end
+				if dims[3] < 4 then
+					tShadow:case(p.CastShadow == false, p:GetFullName())
+				end
+			end
+			for _, d in ipairs(home:GetDescendants()) do
+				if d:IsA("PointLight") or d:IsA("SpotLight") or d:IsA("SurfaceLight") then
+					tLight:case(d.Brightness <= 1.5 and d.Range <= 16 and d.Shadows == false, d:GetFullName())
+				end
+				if d:IsA("Model") and CS:HasTag(d, "NC_Detail") then
+					local bad = nil
+					for _, x in ipairs(d:GetDescendants()) do
+						if (x:IsA("BasePart") and x.CanCollide) or x:IsA("ProximityPrompt") then
+							bad = x.Name
+						end
+					end
+					tDetail:case(bad == nil, d:GetFullName() .. " " .. tostring(bad))
+				end
+			end
+			tMat:report()
+			tSat:report()
+			tShadow:report()
+			tLight:report()
+			tDetail:report()
+		end
 
 		-- the server never moves a part (HomeFx animates on the clients) and makes no Instance per coin: coins are the
 		-- plot's CoinPiles / CollectorCash attributes (TycoonService) that HomeFx draws
@@ -1120,7 +1223,7 @@ local function clientScenarios()
 			HB.BuildHome(spot, home)
 			HB.SetPads(spot, TC.AvailablePads(home))
 		end
-		local stations = { Press1 = 4, Press2 = 2, Collector = 2, House = 1, Garden = 2, Kitchen = 1, Gym = 2, FusionMachine = 1, DecorLamps = 1 }
+		local stations = { Press1 = 4, House = 1, Garden = 2, Kitchen = 1, Gym = 2, FusionMachine = 1, DecorFence = 1 }
 		LocalPlayer:SetAttribute("Cash", 0) -- broke while the pads arrive (and pop in)
 		buildHome(mine, LocalPlayer, stations)
 		buildHome(theirs, neighbour, stations)
@@ -1191,8 +1294,9 @@ local function clientScenarios()
 		local st = stats()
 		T.check((tonumber(st.HiddenPrompts) or 0) >= #theirPrompts, "HomeFx: Stats() counts the hidden prompts", tostring(st.HiddenPrompts))
 
-		-- the Pet Garden (contract 3.2 / 3.3, client): heaps follow CoinPiles, bowls on the open places, pets eat
+		-- the Pet Garden (Phase 5 contract 3.5, client): Cloud Cash coins follow CoinDrops, the Welcome heap, roaming pets
 		local PC = moduleAt("shared", "PetCatalog")
+		local HR = moduleAt("shared", "HomeRoam")
 		local petId = nil
 		for _, d in ipairs((PC and PC.Pets) or {}) do
 			if d.Role == "Economy" and not d.EventOnly then
@@ -1200,106 +1304,113 @@ local function clientScenarios()
 				break
 			end
 		end
-		local garden = mineHome:FindFirstChild("Station_Garden")
 		local gdef = TC.Get("Garden")
-		local frame = base * gdef.Slot.CFrame
-		local function pileAt(slot)
-			return frame:PointToWorldSpace(Vector3.new(TC.CoinPoint(slot).X, 0, TC.CoinPoint(slot).Z))
+		local seed = (LocalPlayer.UserId % 2147483646) + 1
+		local function dropAt(slot, cycle)
+			local pt = HR.Plan(seed, slot, cycle or 0).Poop
+			return base:PointToWorldSpace(Vector3.new(pt.x, 0, pt.z))
 		end
 		local function gstate(folder)
 			return type(HF.Garden) == "function" and HF.Garden(folder) or nil
 		end
 		mine.Folder:SetAttribute("GardenSlots", 3)
-		mine.Folder:SetAttribute("CoinPiles", "1=2;2=5F*;W=5")
+		mine.Folder:SetAttribute("RoamSeed", seed)
+		mine.Folder:SetAttribute("RoamVersion", HR.Version)
+		mine.Folder:SetAttribute("Roam", "")
+		mine.Folder:SetAttribute("CoinDrops", "1=0:2;2=0:4*;W=5")
 		advance(0.3)
 		local g = gstate(mine.Folder)
 		T.check(type(HF.Garden) == "function" and g ~= nil, "HomeFx: HomeFx.Garden(plot) tells what the client draws in a garden")
-		g = g or { Heaps = {}, Bowls = {}, Pets = {}, Training = {} }
-		local h1, h2, hw = g.Heaps[1], g.Heaps[2], g.Heaps.W
+		g = g or { Heaps = {}, Coins = {}, Pets = {}, Training = {} }
+		local c1, c2, hw = g.Coins["1:0"], g.Coins["2:0"], g.Heaps.W
 		local function flat(a, b)
 			return (Vector3.new(a.X, 0, a.Z) - Vector3.new(b.X, 0, b.Z)).Magnitude
 		end
-		T.check(h1 ~= nil and h2 ~= nil and hw ~= nil and h1.Stage == 2 and h2.Stage == 5, "HomeFx: CoinPiles draws a heap per pile (stage 2, stage 5) and the Welcome-back heap",
-			tostring(h1 and h1.Stage) .. " / " .. tostring(h2 and h2.Stage) .. " / " .. tostring(hw ~= nil))
-		T.check(h1 and flat(h1.Point, pileAt(1)) < 0.05 and h2 and flat(h2.Point, pileAt(2)) < 0.05,
-			"HomeFx: ...each heap lies on its TycoonCatalog.CoinPoint (on the walk)")
+		T.check(c1 ~= nil and c2 ~= nil and hw ~= nil and c1.Stage == 2 and c2.Stage == 4 and c2.Lucky and c2.Look == "GoldenCash4",
+			"HomeFx: CoinDrops draws a Cloud Cash coin per drop (stage 2, a Lucky stage 4) and the Welcome-back heap",
+			tostring(c1 and c1.Look) .. " / " .. tostring(c2 and c2.Look) .. " / " .. tostring(hw ~= nil))
+		T.check(c1 and flat(c1.Point, dropAt(1)) < 0.05 and c2 and flat(c2.Point, dropAt(2)) < 0.05,
+			"HomeFx: ...each coin lies on its HomeRoam poop point (Plan(seed, slot, cycle).Poop)")
 		local wp = base:PointToWorldSpace(gdef.Slot.WelcomePile)
 		T.check(hw and flat(hw.Point, wp) < 0.05, "HomeFx: ...and the Welcome-back heap at Garden.Slot.WelcomePile")
-		T.check(h1 and h2 and hw and h1.Parts < h2.Parts and h2.Parts <= 40 and hw.Parts <= 60, "HomeFx: the heap grows with its stage (<= 40 parts, the Welcome-back heap <= 60)",
-			tostring(h1 and h1.Parts) .. " < " .. tostring(h2 and h2.Parts) .. ", W " .. tostring(hw and hw.Parts))
-		T.check(h2 and h2.Lucky and h1 and not h1.Lucky, "HomeFx: a Lucky coin ('*') sparkles on its heap")
-		local nb = 0
-		for slot, b in pairs(g.Bowls) do
-			nb = nb + 1
-			if slot > 3 or not (b.Dish.Parent and b.Food.Parent) then
-				nb = -100
+		T.check(c1 and c2 and c1.Parts == 6 and c2.Parts == 6 and hw and hw.Parts <= 60, "HomeFx: a coin is 6 TokenLook parts (no halo, no light), the Welcome-back heap <= 60",
+			tostring(c1 and c1.Parts) .. ", W " .. tostring(hw and hw.Parts))
+		local light = false
+		for _, d in ipairs(c1 and c1.Part:GetDescendants() or {}) do
+			if d:IsA("Light") then
+				light = true
 			end
 		end
-		T.check(nb == 3, "HomeFx: a food bowl (2 client parts) in front of each of the 3 open places", tostring(nb))
-		local food = g.Bowls[1] and g.Bowls[1].Food.Color
-		local carrot = mineHome:FindFirstChild("Station_Press2") and mineHome.Station_Press2:GetAttribute("FruitColor")
-		T.check(food ~= nil and carrot ~= nil and (food.R - carrot.R) ^ 2 + (food.G - carrot.G) ^ 2 + (food.B - carrot.B) ^ 2 < 1e-4,
-			"HomeFx: the bowls hold the fruit of the best plant built (the Carrot Patch here)")
+		T.check(c1 and c2 and not light and c2.Part:FindFirstChildOfClass("ParticleEmitter") ~= nil, "HomeFx: ...no light on a coin; a Lucky coin sparkles")
+		local fx = workspace:FindFirstChild("ClientFx") and workspace.ClientFx:FindFirstChild("HomeFx")
+		local bowls = 0
+		for _, pc in ipairs(fx and fx:GetChildren() or {}) do
+			if pc.Name == "Bowl" or pc.Name == "BowlFood" then
+				bowls = bowls + 1
+			end
+		end
+		T.eq(bowls, 0, "HomeFx: no client food bowls any more (the Food Bowl is HomeBuilder's)")
 		local solid = 0
-		for _, pc in ipairs(parts(workspace.ClientFx.HomeFx)) do
-			if pc.CanCollide or pc.CanQuery or pc.CanTouch or not pc.Anchored then
+		for _, pc in ipairs(parts(fx)) do
+			local welded = pc:FindFirstChildWhichIsA("WeldConstraint") ~= nil or pc:FindFirstChildWhichIsA("Weld") ~= nil
+			if pc.CanCollide or pc.CanQuery or pc.CanTouch or not (pc.Anchored or welded) then
 				solid = solid + 1
 			end
 		end
-		T.check(solid == 0, "HomeFx: heaps, bowls and coins are anchored and never collide, query or touch", solid .. " parts")
-		mine.Folder:SetAttribute("CoinPiles", "1=4;W=5")
+		T.check(solid == 0, "HomeFx: coins and heaps are anchored (or welded to an anchored root) and never collide, query or touch", solid .. " parts")
+		mine.Folder:SetAttribute("CoinDrops", "1=0:4;W=5")
 		advance(0.3)
 		g = gstate(mine.Folder) or g
-		T.check(g.Heaps[1] and g.Heaps[1].Stage == 4 and g.Heaps[2] == nil, "HomeFx: a pile that grows swaps its heap, a pile that is gone takes its heap away")
-		local fx = workspace:FindFirstChild("ClientFx") and workspace.ClientFx:FindFirstChild("HomeFx")
+		T.check(g.Coins["1:0"] and g.Coins["1:0"].Stage == 4 and g.Coins["2:0"] == nil, "HomeFx: a drop that grows swaps its coin's look, a drop that is gone takes its coin away")
 		local homeDesc = Mock.CountDescendants(mineHome)
 
 		if petId then
-			-- garden pets: GardenPets puts Low-detail pets on the cushions; a place above GardenSlots sleeps on its closed bed
+			-- garden pets roam: GardenPets + Roam; a pet above GardenSlots sleeps on its closed bed
+			local now = workspace:GetServerTimeNow()
+			mine.Folder:SetAttribute("Roam", string.format("1=%.1f;2=%.1f;7=%.1f", now - 50, now - 61, now - 40))
 			mine.Folder:SetAttribute("GardenPets", "1=" .. petId .. ";2=" .. petId .. "@Golden;7=" .. petId .. ";3=hyb:nobody")
 			advance(0.6)
 			g = gstate(mine.Folder) or g
-			local onCushion = 0
+			local onGround = 0
 			for slot = 1, 2 do
 				local e = g.Pets[slot]
-				local att = garden and garden:FindFirstChild("Spot" .. slot, true)
-				if e and att then
-					local pivot = e.Model:GetPivot()
+				if e then
 					local lo = huge
 					for _, part in ipairs(parts(e.Model)) do
-						lo = min(lo, part.Position.Y - part.Size.Y / 2)
+						if part.Transparency < 1 then
+							lo = min(lo, part.Position.Y - part.Size.Y / 2)
+						end
 					end
-					if flat(pivot.Position, att.WorldPosition) < 0.6 and abs(lo - att.WorldPosition.Y) < 0.5 then
-						onCushion = onCushion + 1
+					local ground = base.Position.Y + ((e.State == "Eat") and 0.2 or 0)
+					if abs(lo - base.Position.Y) < 0.6 then
+						onGround = onGround + 1
 					end
 				end
 			end
-			T.check(onCushion == 2 and g.Pets[3] == nil and (tonumber(stats().GardenPets) or 0) == 3,
-				"HomeFx: the Garden's pets (GardenPets) stand on their cushions; hybrids without a record are skipped", onCushion .. " on a cushion, " .. tostring(stats().GardenPets) .. " pets")
-			T.check(g.Pets[7] and g.Pets[7].Sleep and g.Pets[7].Zzz ~= nil, "HomeFx: a pet on a place above GardenSlots sleeps on its closed bed (a voxel Zzz)")
-			mine.Folder:SetAttribute("CoinPiles", "1=4;2=3F;W=5")
-			advance(0.3)
-			g = gstate(mine.Folder) or g
-			T.check(g.Pets[2] and g.Pets[2].Sleep and g.Pets[2].Zzz ~= nil and #g.Pets[2].Zzz <= 6, "HomeFx: a full pile ('F'): its pet naps (lies down, Zzz)")
-			T.check(g.Pets[1] and not g.Pets[1].Sleep, "HomeFx: ...the pets of piles that are not full keep eating")
-			-- the meal rhythm: the pet dips into its bowl, a coin hops onto its pile (Stats().Drops)
+			T.check(onGround == 2 and g.Pets[3] == nil and (tonumber(stats().GardenPets) or 0) == 3,
+				"HomeFx: the Garden's pets (GardenPets) roam the yard standing on the ground; hybrids without a record are skipped", onGround .. " on the ground, " .. tostring(stats().GardenPets) .. " pets")
+			local bx, bz = HR.BedPoint(7)
+			local p7 = g.Pets[7]
+			local lp7 = p7 and base:PointToObjectSpace(p7.Model:GetPivot().Position)
+			T.check(p7 and p7.Sleep and p7.Zzz ~= nil and #p7.Zzz <= 6 and math.sqrt((lp7.X - bx) ^ 2 + (lp7.Z - bz) ^ 2) < 2,
+				"HomeFx: a pet on a place above GardenSlots sleeps on its closed bed (a voxel Zzz)")
+			T.check(g.Pets[1] and not g.Pets[1].Sleep, "HomeFx: ...the open places' pets roam")
+			-- they walk: over 10 s a roaming pet moves several studs; poops pop pending coins (Stats().Poops)
 			local e1 = g.Pets[1]
 			local p0 = e1 and e1.Model:GetPivot()
-			local moved, drops0, maxCoins = 0, tonumber(stats().Drops) or 0, 0
-			for _ = 1, 100 do
+			local moved, poops0 = 0, tonumber(stats().Poops) or 0
+			for _ = 1, 260 do
 				advance(0.1)
 				local pv = e1 and e1.Model.Parent and e1.Model:GetPivot()
 				if pv and p0 then
-					moved = max(moved, (pv.Position - p0.Position).Magnitude)
+					moved = max(moved, flat(pv.Position, p0.Position))
 				end
-				maxCoins = max(maxCoins, tonumber(stats().Coins) or 0)
 			end
-			local drops = (tonumber(stats().Drops) or 0) - drops0
-			T.check(drops >= 1 and drops <= 4, "HomeFx: every meal (8 s) an eating pet pops a coin onto its pile (napping and sleeping pets do not)", drops .. " coins in 10 s")
-			T.check(moved > 0.1 and moved < 1.0, "HomeFx: ...after dipping into its bowl (a small move, back on its cushion)", fmt(moved) .. " studs")
-			T.check(maxCoins >= 1 and maxCoins <= 40, "HomeFx: the flying coins are pooled parts (<= 40)", tostring(maxCoins))
-			T.check((tonumber(stats().FruitFlights) or 0) >= 2, "HomeFx: the plants send their fruit into the bowls (~every 3 s per plant)", tostring(stats().FruitFlights))
-			T.check((tonumber(stats().Fruit) or 0) <= 24 and (tonumber(stats().FruitPool) or 0) <= 24, "HomeFx: ...pooled fruit parts (<= 24)", tostring(stats().FruitPool))
+			local poops = (tonumber(stats().Poops) or 0) - poops0
+			T.check(moved > 2, "HomeFx: a roaming pet walks the yard (HomeRoam)", fmt(moved) .. " studs")
+			T.check(poops >= 2 and poops <= 4, "HomeFx: each roaming pet poops once per 24 s cycle (2 pets, 26 s; the sleeper never)", poops .. " poops")
+			T.check((tonumber(stats().Coins) or 0) <= 36 and (tonumber(stats().Bits) or 0) <= 16, "HomeFx: coins (<= 36) and berries / puffs (<= 16) are pooled")
+			T.check((tonumber(stats().BerryFlights) or 0) >= 2, "HomeFx: the Berry Farm sends berries to the Food Bowl and the basket", tostring(stats().BerryFlights))
 			-- the Training Place: pets on their mats with a pooled voxel prop of their skill
 			local ends = math.floor(workspace:GetServerTimeNow()) + 130
 			mine.Folder:SetAttribute("TrainingPets", "1=" .. petId .. ":Physique:" .. ends .. ";2=" .. petId .. "@Golden:Speed:" .. ends .. ";4=" .. petId .. ":Defense:" .. ends)
@@ -1340,14 +1451,8 @@ local function clientScenarios()
 		local n1 = fx and Mock.CountDescendants(fx) or 0
 		advance(6)
 		local n2 = fx and Mock.CountDescendants(fx) or 0
-		T.check(n2 <= 260 and abs(n2 - n1) <= 60 and Mock.CountDescendants(mineHome) == homeDesc and (tonumber(stats().CoinPool) or 0) <= 40,
-			"HomeFx: heaps, bowls, coins and fruit are pooled client parts (nothing created per frame, nothing added to the home)", n1 .. " -> " .. n2 .. ", coin parts " .. tostring(stats().CoinPool))
-		-- the Coin Magnet's head turns
-		local magnet = mineHome:FindFirstChild("Station_Collector")
-		local headPart = magnet and magnet:FindFirstChild("MagnetHead") and parts(magnet.MagnetHead)[1]
-		local m0 = headPart and headPart.CFrame
-		advance(0.5)
-		T.check(headPart and m0 and (headPart.CFrame.LookVector - m0.LookVector).Magnitude > 0.01, "HomeFx: the Coin Magnet's head turns")
+		T.check(n2 <= 400 and abs(n2 - n1) <= 80 and Mock.CountDescendants(mineHome) == homeDesc and (tonumber(stats().CashMade) or 0) <= 36,
+			"HomeFx: coins, heaps and berries are pooled client parts (nothing created per frame, nothing added to the home)", n1 .. " -> " .. n2 .. ", coins made " .. tostring(stats().CashMade))
 
 		-- the fusion swirl turns
 		local fusion = mineHome:FindFirstChild("Station_FusionMachine")

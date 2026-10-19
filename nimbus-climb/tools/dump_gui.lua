@@ -55,7 +55,8 @@
 --                         ring HUD vs the round's champion team) | next<n> (the next-round card after a win) |
 --                         result<n> (the run's result card) | record<n> (the result card with a new best round)
 --   portal[:<Id>[:<n>[:<studs>]]]  no game HUD: the real LobbyBuilder + PortalService with n players (default 1) on
---                         the portal pad (default Medium); its world GUIs mirrored flat into the ScreenGui
+--                         the ONE obby pad (Id 'Obby' = lobby.Portals.Obby, or a level id: Easy .. Saint picks that
+--                         party level; Phase 5 6.3); its world GUIs mirrored flat into the ScreenGui
 --                         WorldMirror: the pixel billboard at its own size, the eye-level countdown face at the
 --                         size it has on this screen from <studs> away (default 36, a friend outside the lock
 --                         walls) over a sketch of the swirl, and the face's canvas at 1:1
@@ -909,7 +910,8 @@ end)
 scenario("party", function()
 	local medium = difficulty("Medium")
 	toClient("PartyState", {
-		PortalId = medium.Id,
+		PortalId = "Obby", -- Phase 5 (6.3): the one obby portal; the level travels separately
+		Level = medium.Id,
 		DifficultyName = medium.DisplayName,
 		Color = medium.Color,
 		Players = { { UserId = LocalPlayer.UserId, Name = LocalPlayer.Name }, { UserId = 77, Name = "Buddy" } },
@@ -1650,15 +1652,21 @@ local function portalScene(id, members, distance, width, height)
 	local PortalService = req("server/Services/PortalService")
 	local lobby = LobbyBuilder.Build()
 	local portals = (type(lobby) == "table" and lobby.Portals) or {}
+	-- Phase 5 (6.3): ONE obby portal, lobby.Portals.Obby (PortalId 'Obby'); an old difficulty id picks that level
+	local level = nil
 	if not id or id == "" then
-		id = "Medium"
+		id = "Obby"
+	elseif id ~= "Obby" and Config.GetDifficulty and Config.GetDifficulty(id) then
+		level = id
+		id = "Obby"
 	end
 	if not portals[id] then
 		Mock.Context = context
 		local known = {}
-		for _, d in ipairs(Config.Difficulties) do
-			known[#known + 1] = d.Id
+		for k in pairs(portals) do
+			known[#known + 1] = tostring(k)
 		end
+		table.sort(known)
 		fail("no portal '" .. tostring(id) .. "'. Known: " .. table.concat(known, ", "))
 	end
 	-- no matches here: a launch just fails quietly
@@ -1678,6 +1686,11 @@ local function portalScene(id, members, distance, width, height)
 		list[i] = Mock.AddPlayer("Buddy" .. i, 9100 + i)
 	end
 	advance(0.3)
+	if level then
+		-- the first player on the pad sets the party's level (their ObbyLevel when it is unlocked for them)
+		list[1]:SetAttribute(Config.Attr.ObbyLevel or "ObbyLevel", level)
+		pcall(PortalService.PickLevel, list[1], level)
+	end
 	Mock.Teleport(LocalPlayer, (Config.Lobby.Origin or Vector3.new(0, 300, 0)) + Vector3.new(0, 4, 0))
 	for i = 1, count do
 		Mock.Teleport(list[i], zone.CFrame * CFrame.new((i - 1) * 2.6 - 3.9, 0, 1))
@@ -1718,7 +1731,7 @@ local function portalScene(id, members, distance, width, height)
 		local w, h = canvasOf(face)
 		local caption = fmt("Face from %d studs (x%.2f)%s", d, s, face.Enabled and "" or ", hidden")
 		local px, py = place(w * s, h * s, caption)
-		swirlSketch(screen, px, py, w, h, s, face.PixelsPerStud, (info.Model and info.Model:FindFirstChild("SwirlCore") and info.Model.SwirlCore.Color) or difficulty(id).Color)
+		swirlSketch(screen, px, py, w, h, s, face.PixelsPerStud, (info.Model and info.Model:FindFirstChild("SwirlCore") and info.Model.SwirlCore.Color) or difficulty(level or "Easy").Color)
 		mirrorCell(screen, face, px, py, s, caption)
 		caption = fmt("Face canvas (%d px per stud)", floor(face.PixelsPerStud))
 		px, py = place(w, h, caption)
@@ -2212,6 +2225,786 @@ scenario("petcards", function()
 	petCardsScene()
 end)
 
+----------------------------------------------------------------------
+-- Phase 5 per-owner scene blocks (ARCHITECTURE_V3.md "Phase 5 build contract" 11, C18). Each owner registers its
+-- scenes with scenario(name, fn) from INSIDE its own block only (own block only; re-read the file right before each
+-- edit; never touch another block or the dispatch below). New helpers go into the owner's block too. The lead adds
+-- the python-side entries of tools/render_gui.py (--list, view presets) at the gate from the owners' reports.
+----------------------------------------------------------------------
+
+-- [owner: neonkit] begin
+-- The Neon kit (Phase 5, 6.6): `neon[:<view>]`
+--   gallery (default)  no game UI: the 21.png tile grid (2 x 3 + Stats / Settings), NeonKit pills / buttons / card, the
+--                      re-skinned CloudUI widgets (buttons, pills, bar, slots)
+--   window             the lobby HUD + a CloudUI.Panel (Category "Pets", 820 x 900) docked by NeonKit.Dock (the window
+--                      rule: right side panel / bottom sheet) with tabs and a slot grid; the hotbar avoids it
+--   hud                the lobby HUD with Cash / Gems / Tokens, stamina at 60% (the 4 dash ticks) and a dash cooling
+--   party              the HUD with the Obby portal party panel (level row "Hard" + stars, CHANGE chip: you lead)
+local NK = {}
+function NK.hideGame()
+	for _, g in ipairs(LocalPlayer.PlayerGui:GetChildren()) do
+		if g:IsA("ScreenGui") then
+			g.Enabled = false
+		end
+	end
+end
+function NK.newGui(name)
+	local CloudUI = req("client/UI/CloudUI")
+	local g = CloudUI.NewScreenGui(name, 30)
+	local root = Instance.new("Frame")
+	root.Name = "Root"
+	root.BackgroundTransparency = 1
+	root.Size = UDim2.fromScale(1, 1)
+	root.Parent = g
+	return g, root, CloudUI
+end
+function NK.gallery()
+	local NeonKit = req("client/UI/NeonKit")
+	local Theme = req("shared/Theme")
+	NK.hideGame()
+	local g, root, CloudUI = NK.newGui("NeonGallery")
+	local vp = Mock.Viewport
+	local portrait = vp.Y > vp.X
+	local phone = math.min(vp.X, vp.Y) <= 500
+	local f = Theme.ScreenFactor(vp.Y)
+	local T = phone and math.floor((portrait and 66 or 54) / f + 0.5) or 84 -- the contract's on-screen tile px
+	-- the tile grid (MenuController's future left column, careui W3)
+	local grid = Instance.new("Frame")
+	grid.Name = "TileGrid"
+	grid.BackgroundTransparency = 1
+	grid.Position = UDim2.fromOffset(16, 16)
+	grid.Size = UDim2.fromOffset(2 * T + 12, 3 * (T + 12) + T * 0.62)
+	grid.Parent = root
+	local s = Instance.new("UIScale")
+	s.Scale = f
+	s.Parent = grid
+	local tiles = { { "Pets", "Pets" }, { "Items", "Items" }, { "Team", "Team" }, { "Index", "Index" }, { "Shop", "Shop" }, { "Home", "Home" } }
+	for i, t in ipairs(tiles) do
+		NeonKit.Tile({
+			Name = "Tile_" .. t[1], Size = T, Color = t[2], Icon = t[1], Label = t[1], Badge = (t[1] == "Index"),
+			Position = UDim2.fromOffset(((i - 1) % 2) * (T + 12), math.floor((i - 1) / 2) * (T + 12)), Parent = grid,
+		})
+	end
+	local small = math.floor(T * 0.62 + 0.5)
+	for j, t in ipairs({ "Stats", "Settings" }) do
+		NeonKit.Tile({ Name = "Small_" .. t, Size = small, Color = t, Icon = t, Position = UDim2.fromOffset((j - 1) * (small + 10), 3 * (T + 12)), Parent = grid })
+	end
+	-- the samples column (right of the grid in landscape, under it in portrait)
+	local col = Instance.new("Frame")
+	col.Name = "Samples"
+	col.BackgroundTransparency = 1
+	local gx = 16 + (2 * T + 12) * f + 24
+	if portrait then
+		col.Position = UDim2.fromOffset(16, 16 + (3 * (T + 12) + small) * f + 20)
+		col.Size = UDim2.fromOffset((vp.X - 32) / 0.56, 1400)
+	else
+		col.Position = UDim2.fromOffset(gx, 16)
+		col.Size = UDim2.fromOffset(math.min(980, (vp.X - gx - 16) / f), 1200)
+	end
+	col.Parent = root
+	local cs = Instance.new("UIScale")
+	cs.Scale = portrait and 0.56 or f
+	cs.Parent = col
+	local list = Instance.new("UIListLayout")
+	list.Padding = UDim.new(0, 14)
+	list.SortOrder = Enum.SortOrder.LayoutOrder
+	list.Parent = col
+	local function row(name, order, h)
+		local r = Instance.new("Frame")
+		r.Name = name
+		r.BackgroundTransparency = 1
+		r.LayoutOrder = order
+		r.Size = UDim2.new(1, 0, 0, h)
+		r.Parent = col
+		local l = Instance.new("UIListLayout")
+		l.FillDirection = Enum.FillDirection.Horizontal
+		l.Padding = UDim.new(0, 18)
+		l.VerticalAlignment = Enum.VerticalAlignment.Center
+		l.SortOrder = Enum.SortOrder.LayoutOrder
+		l.Parent = r
+		return r
+	end
+	local r1 = row("Pills", 1, 52)
+	NeonKit.Pill({ Name = "Pill_Cash", Text = "12.4K", Glyph = "$", Color = "Green", Size = 200, LayoutOrder = 1, Parent = r1 })
+	NeonKit.Pill({ Name = "Pill_Tokens", Text = "1,250", Glyph = "\226\152\129", Color = "Gold", Size = 200, LayoutOrder = 2, Parent = r1 })
+	NeonKit.Pill({ Name = "Pill_Gems", Text = "85", Glyph = "\226\151\134", Color = "Cyan", Size = 200, LayoutOrder = 3, Parent = r1 })
+	local r2 = row("NeonButtons", 2, 66)
+	NeonKit.Button({ Name = "Play", Text = "\226\150\182  PLAY", Color = "Green", Size = UDim2.fromOffset(240, 64), TextSize = 30, LayoutOrder = 1, Parent = r2 })
+	NeonKit.Button({ Name = "Settings", Text = "SETTINGS", Variant = "Outline", Color = "Blue", Size = UDim2.fromOffset(220, 52), LayoutOrder = 2, Parent = r2 })
+	local locked = NeonKit.Button({ Name = "Locked", Text = "LOCKED", Color = "Purple", Size = UDim2.fromOffset(180, 52), LayoutOrder = 3, Parent = r2 })
+	locked:SetAttribute("Disabled", true)
+	local r3 = row("CloudButtons", 3, 52)
+	for i, st in ipairs({ "Green", "Blue", "Red", "Gold", "Pink" }) do
+		CloudUI.Button({ Text = st, Style = st, Size = UDim2.fromOffset(130, 46), LayoutOrder = i, Parent = r3 })
+	end
+	local r4 = row("CloudPills", 4, 34)
+	for i, k in ipairs(portrait and { "info", "good", "bad", "Epic" } or { "info", "good", "bad", "token", "Epic", "Legendary" }) do
+		local pill = CloudUI.Pill(k, k, r4)
+		pill.LayoutOrder = i
+	end
+	local r5 = row("Slots", 5, 84)
+	local Config = req("shared/Config")
+	local infos = {
+		nil,
+		{ Glyph = "\240\159\141\147", Name = "Berry", RarityColor = Config.Rarities[1].Color },
+		{ Glyph = "\226\156\168", Name = "Spark", RarityColor = Config.Rarities[4].Color },
+		{ Glyph = "\240\159\155\161\239\184\143", Name = "Shield", RarityColor = Config.Rarities[5].Color },
+	}
+	for i = 1, 4 do
+		local slot = CloudUI.Slot({ Size = UDim2.fromOffset(78, 78), Hotkey = tostring(i), LayoutOrder = i, Parent = r5 })
+		slot.SetContent(infos[i])
+		if i == 3 then
+			slot.SetCount(3)
+		end
+		if i == 4 then
+			slot.SetSelected(true)
+		end
+	end
+	local bar = CloudUI.Bar({ Size = UDim2.fromOffset(240, 26), Color = Theme.Neon.Green, Label = "65 / 100", LayoutOrder = 6, Parent = r5 })
+	bar.SetFraction(0.65)
+	local r6 = row("Cards", 6, 130)
+	local card = NeonKit.Card({ Name = "SampleCard", Size = UDim2.fromOffset(300, 116), Color = "Purple", LayoutOrder = 1, Parent = r6 })
+	local title = Theme.Label("Neon Card", "Title", { Size = 28, Outline = 2.5, OutlineColor = Theme.Colors.PanelInk,
+		Props = { Position = UDim2.fromOffset(18, 12), Size = UDim2.new(1, -36, 0, 34), TextXAlignment = Enum.TextXAlignment.Left } })
+	title.Parent = card.Body
+	local body = Theme.Label("Dark navy, a glowing border, a soft floor glow.", "Body", { Size = 18, Color = Theme.Colors.Muted,
+		Props = { Position = UDim2.fromOffset(18, 50), Size = UDim2.new(1, -36, 0, 52), TextWrapped = true, TextXAlignment = Enum.TextXAlignment.Left, TextYAlignment = Enum.TextYAlignment.Top } })
+	body.Parent = card.Body
+	for i, c in ipairs({ "Orange", "Cyan", "Pink" }) do
+		local holder = NeonKit.Card({ Name = "Orb_" .. c, Size = UDim2.fromOffset(96, 116), Color = c, LayoutOrder = 1 + i, Parent = r6 })
+		NeonKit.Orb(holder.Body, c, 64).Position = UDim2.fromScale(0.5, 0.5)
+		NeonKit.Icon(holder.Body, ({ "Fusion", "Altar", "Ring" })[i], 40)
+	end
+	advance(0.5)
+end
+function NK.window()
+	local NeonKit = req("client/UI/NeonKit")
+	local Theme = req("shared/Theme")
+	LocalPlayer:SetAttribute(Config.Attr.Cash, 12400)
+	LocalPlayer:SetAttribute(Config.Attr.Gems, 85)
+	advance(0.6)
+	local g, root, CloudUI = NK.newGui("NeonWindow")
+	g.DisplayOrder = 20
+	local panel = CloudUI.Panel({ Name = "PetsPanel", Title = "PETS", Category = "Pets", Closable = true, Size = UDim2.fromOffset(820, 900), Parent = root })
+	local dock = NeonKit.Dock(panel.Root, nil, 820, 900, 520, 420)
+	local sub = Theme.Label("Equipped 3 / 3   \226\128\162   Team power 1,284", "Label", { Size = 18, Color = Theme.Colors.Muted,
+		Props = { Position = UDim2.fromOffset(14, 8), Size = UDim2.new(1, -28, 0, 24), TextXAlignment = Enum.TextXAlignment.Left } })
+	sub.Parent = panel.Content
+	local tabs = CloudUI.Tabs({ Position = UDim2.fromOffset(12, 40), Size = UDim2.new(1, -24, 1, -52), Color = "Pets", Parent = panel.Content })
+	local Config2 = req("shared/Config")
+	tabs.Add("Pets", function(page)
+		local gridFrame = CloudUI.Grid(page, 118, 12)
+		for i = 1, 14 do
+			local r = Config2.Rarities[((i - 1) % #Config2.Rarities) + 1]
+			local slot = CloudUI.Slot({ Size = UDim2.fromOffset(118, 118), LayoutOrder = i, Parent = gridFrame })
+			slot.SetContent({ Glyph = ({ "\240\159\144\182", "\240\159\144\177", "\240\159\144\137", "\240\159\144\178" })[(i - 1) % 4 + 1], Name = "Pet " .. i, RarityColor = r.Color })
+			if i <= 3 then
+				slot.SetMarker("\226\152\133")
+			end
+		end
+	end)
+	tabs.Add("Items", function() end)
+	tabs.Add("Index", function() end)
+	local hotbar = req("client/Controllers/HotbarController", true)
+	if hotbar and type(hotbar.SetAvoidRight) == "function" and dock.Rect and dock.Rect.mode == "Side" then
+		hotbar.SetAvoidRight(dock.Rect.x)
+	end
+	advance(0.8)
+end
+function NK.hud()
+	LocalPlayer:SetAttribute(Config.Attr.Cash, 12400)
+	LocalPlayer:SetAttribute(Config.Attr.Gems, 85)
+	advance(0.5)
+	local maxSt = (Config.Physics and Config.Physics.MaxStamina) or 150
+	LocalPlayer:SetAttribute(Config.Attr.Stamina, maxSt * 0.6)
+	advance(1.5)
+end
+function NK.party()
+	local hard = Config.GetDifficulty and Config.GetDifficulty("Hard") or nil
+	toClient("PartyState", {
+		PortalId = "Obby", Level = "Hard", Stars = hard and hard.Stars or 3, LeaderUserId = LocalPlayer.UserId,
+		DifficultyName = hard and hard.DisplayName or "Hard", Color = hard and hard.Color or nil,
+		Players = { { UserId = LocalPlayer.UserId, Name = LocalPlayer.Name }, { UserId = 77, Name = "Buddy" } },
+		Max = 4, Countdown = 12, Locked = true,
+	})
+	advance(1.2)
+end
+scenario("neon", function(view)
+	view = (view and view ~= "") and view or "gallery"
+	local fn = NK[view]
+	if type(fn) ~= "function" or view == "hideGame" or view == "newGui" then
+		fail("usage: neon[:gallery|window|hud|party]")
+	end
+	fn()
+end)
+-- [owner: neonkit] end
+
+-- [owner: battleclient] begin
+-- Phase 5 battle HUD (BattleController, contract 4.7): a real BattleSim stepped at 10 Hz, its Start (with the receiver's
+-- Team like BattleService.startPayload) / Snapshot / Events / End sent through BattleState. My team plays Auto (the
+-- engine's AI presses the kit), so HP, energy, cooldowns and the lock move like in a real fight. This "battle" replaces
+-- the Phase 3/4 one above (same name, registered later):
+--   battle[:fighter|raid|dungeon|duel|spectate|ring[:<phase>]]
+--     fighter (default)  a Champion Ring round (CHAMPION RING - Round 8 - Best 12) vs a 3-pet wild pack
+--     raid               a boss raid with two other players and minions (the boss bar, ENRAGED / minions pills)
+--     dungeon            DUNGEON - Floor 3 - Room 2: a wave of wild pets + a crowned mini-boss
+--     duel / spectate    a duel as a fighter / from the stands
+--     ring               the Phase 4 ring phases: fight<n> | next<n> | result<n> | record<n>
+--   phases: fight (default) | ready (a full energy bar, a buff cooling, a swap cooling) | result | lost | cleared
+--           (dungeon: the room cleared, no result card) | next<n> / result<n> / record<n> (ring)
+local BCDUMP = {}
+
+function BCDUMP.team(count, skip, level)
+	local out = battleTeam(count, skip)
+	for i, p in ipairs(out) do
+		p.Level = (level or 30) + i * 2
+	end
+	return out
+end
+
+function BCDUMP.startPayload(sim, id, me, side, extra)
+	local d = sim:Describe()
+	d.BattleId = id
+	d.Zone = { CFrame = CFrame.new(0, 300, 0), Size = Vector3.new(d.Zone.X, 30, d.Zone.Z), X = d.Zone.X, Z = d.Zone.Z }
+	d.Names = { [tostring(me)] = LocalPlayer.Name, ["77"] = "Buddy", ["78"] = "Rival" }
+	d.Side = side
+	d.Spectator = side == 0
+	d.T = sim:Time()
+	for k, v in pairs(extra or {}) do
+		d[k] = v
+	end
+	if side ~= 0 then
+		local team = sim:TeamOf(me)
+		if team then
+			local buff = {}
+			for slot, secs in pairs(team.Cooldowns.Buff or {}) do
+				buff[tostring(slot)] = secs
+			end
+			d.Team = { Fighter = team.Fighter, Bench = team.Bench, Lives = team.Lives, Speed = team.Speed,
+				Cooldowns = { Element = team.Cooldowns.Element, Dash = team.Cooldowns.Dash, Swap = team.Cooldowns.Swap, Buff = buff } }
+		end
+	end
+	return d
+end
+
+function BCDUMP.run(sim, id, seconds, each)
+	for i = 1, floor(seconds / 0.1 + 0.5) do
+		if each then
+			each(i)
+		end
+		local evs = sim:Step(0.1)
+		if #evs > 0 then
+			toClient("BattleState", "Events", evs, id)
+		end
+		toClient("BattleState", "Snapshot", denseSnapshot(sim, id), id)
+		advance(0.1)
+		if sim:IsFinished() then
+			break
+		end
+	end
+end
+
+scenario("battle", function(mode, phase)
+	mode = (mode and mode ~= "") and mode:lower() or "fighter"
+	phase = (phase and phase ~= "") and phase:lower() or "fight"
+	local BC = req("client/Controllers/BattleController", true)
+	local Sim = req("shared/BattleSim", true)
+	local BCat = req("shared/BattleCatalog", true)
+	if not BC or not Sim then
+		fail("BattleController / BattleSim missing")
+	end
+	local me = LocalPlayer.UserId
+	local id = "dump_battle"
+	local ringRound = tonumber(phase:match("(%d+)$")) or 8
+	phase = phase:gsub("%d+$", "")
+	local spectate = mode == "spectate"
+	local myPets = BCDUMP.team(3, 0, 30)
+	myPets[2].Evo = 1
+	local mine = { Owner = me, Side = 1, Pets = myPets, Auto = not spectate }
+	local setup = { Seed = 11, Id = id }
+	local extra = {}
+	local wave = nil
+	if mode == "raid" then
+		setup.Mode = "Raid"
+		setup.Boss = "storm_titan"
+		setup.Teams = { mine, { Owner = 77, Side = 1, Pets = BCDUMP.team(3, 2, 26), Auto = true }, { Owner = 78, Side = 1, Pets = BCDUMP.team(3, 4, 28), Auto = true } }
+	elseif mode == "dungeon" then
+		setup.Mode = "Dungeon"
+		setup.Zone = { X = 44, Z = 44 }
+		setup.TimeLimit = 90
+		setup.Teams = { mine }
+		extra.Dungeon = { Floor = 3, Room = 2, Wave = 1, Waves = 3, Name = "Ember Hall", Boss = false }
+		wave = BCDUMP.team(4, 3, 24)
+		for _, p in ipairs(wave) do
+			p.Wild = true
+		end
+		wave[4].Boss = true
+	elseif mode == "duel" or spectate then
+		setup.Mode = "Duel"
+		setup.Teams = { spectate and { Owner = 77, Side = 1, Pets = BCDUMP.team(3, 2, 26), Auto = true } or mine, { Owner = 78, Side = 2, Pets = BCDUMP.team(3, 3, 30), Auto = true } }
+	else
+		-- fighter / ring: a Champion Ring round
+		setup.Mode = "Ring"
+		setup.Round, setup.Zone, setup.TimeLimit = ringRound, { X = 44, Z = 44 }, 90
+		local champ = BCat.ChampionTeam(ringRound, 7)
+		setup.Teams = { mine, champ }
+		local ch = champ.Champion or {}
+		extra.Ring = { Round = ringRound, Best = 12, Start = 1, Champion = { PetId = ch.PetId, Level = ch.Level, Tier = ch.Tier, Boss = ch.Boss == true, Name = ch.Name } }
+		if mode == "fighter" then
+			-- 24.png: a pack of three on the right list
+			setup.Mode = "Dungeon"
+			setup.Teams = { mine }
+			extra = { Ring = nil }
+			wave = BCDUMP.team(3, 3, 30)
+			for _, p in ipairs(wave) do
+				p.Wild = true
+			end
+		end
+	end
+	local sim, why = Sim.new(setup)
+	if not sim then
+		fail("BattleSim.new failed: " .. tostring(why))
+	end
+	if wave then
+		sim:SpawnEnemies(wave, { Wave = 1, Anchor = { 0, 12 } })
+	end
+	LocalPlayer:SetAttribute("InBattle", spectate and nil or id)
+	local d = BCDUMP.startPayload(sim, id, me, spectate and 0 or 1, extra)
+	if mode == "fighter" then
+		d.Mode = "Ring" -- drawn as a Champion Ring round (the mode line) with the pack on the list
+		d.Ring = { Round = ringRound, Best = 12, Start = 1, Champion = {} }
+	end
+	toClient("BattleState", "Start", d, id)
+	local seconds = (mode == "raid") and 9 or 5
+	BCDUMP.run(sim, id, seconds, function(i)
+		if i == 8 and not spectate then
+			local enemies = {}
+			for _, u in ipairs(sim.units or {}) do
+				if u.side ~= 1 and u.alive and not u.gone then
+					enemies[#enemies + 1] = u.id
+				end
+			end
+			if enemies[2] then
+				sim:Command(me, "Target", enemies[2])
+			end
+		end
+	end)
+	if phase == "ready" and not spectate then
+		-- white-box: a full energy bar, a helper buff and a swap cooling down
+		for _, u in ipairs(sim.units or {}) do
+			if u.owner == me and not u.benched then
+				u.meter = 100
+			end
+		end
+		sim:Command(me, "Buff", 2)
+		BCDUMP.run(sim, id, 0.6)
+	end
+	if phase == "next" or phase == "result" or phase == "record" then
+		LocalPlayer:SetAttribute("InBattle", id)
+		toClient("BattleState", "End", { BattleId = id, Mode = "Ring", Outcome = "Win", Won = true, Spectator = false, Reason = "Wipe",
+			Rewards = { Won = true, Next = ringRound + 1, Round = ringRound, Cash = phase == "record" and 1284 or 428, Xp = 20 + 6 * ringRound, Tokens = 0, Record = phase == "record", LevelUps = 0 } }, id)
+		advance(phase == "next" and 0.9 or 0.5)
+		if phase == "result" or phase == "record" then
+			toClient("BattleState", "End", { BattleId = id, Mode = "Ring", Outcome = "Left", Won = false, Spectator = false, Reason = "Forfeit", Round = ringRound,
+				Rewards = { Won = false, Final = true, Round = ringRound, Cash = 0, Xp = 0, LevelUps = 2,
+					Run = { Wins = ringRound, Cash = 2571, Xp = 806, Tokens = phase == "record" and 100 or 0, Round = ringRound, Start = 1, Record = phase == "record" and ringRound or nil, Best = 12 } } }, id)
+			advance(0.8)
+		end
+		return
+	end
+	if phase == "won" or phase == "lost" or phase == "cleared" then
+		local won = phase ~= "lost"
+		local rewards
+		if mode == "raid" then
+			rewards = { Tokens = 420, Gems = won and 5 or 0, Xp = 180, LevelUps = 2, Tier = won and "Gold" or "Bronze", Share = 0.34, Damage = 5120 }
+		elseif mode == "dungeon" then
+			rewards = { Dungeon = true, Extra = extra.Dungeon }
+		else
+			rewards = { Tokens = won and 60 or 20, Gems = 0, Xp = 50, Trophies = won and 25 or -15, LevelUps = 0 }
+		end
+		LocalPlayer:SetAttribute("InBattle", nil)
+		toClient("BattleState", "End", {
+			BattleId = id, Mode = sim.mode or setup.Mode, Outcome = won and "Win" or "Loss", Won = won, Spectator = false,
+			Reason = won and (mode == "raid" and "BossDown" or (mode == "dungeon" and "Cleared" or "Wipe")) or (mode == "raid" and "Timeout" or "Wipe"),
+			Rewards = rewards,
+		}, id)
+		advance(0.8)
+	end
+end)
+-- [owner: battleclient] end
+
+-- [owner: careui] begin
+-- Phase 5 care windows on the Neon kit (careui W3). A Phase 5 home (Berry Farm Lv 13, Garden, Food Machine, Gym,
+-- Vault, House Villa, Yard Fence), 1,240 / 3,000 berries, two evolved pets (Epic stage 1, Legend stage 2) and a
+-- team of 3. These scenes replace the Phase 4 ones of the same name (registered later):
+--   home        the Home window: the flow strip, house + income, the 11 stations, prestige last
+--   feed        the Food Machine window (berries, ONE Feed button per pet)
+--   garden      the garden picker;  train  the Training Place
+--   team        the Team window: FIGHTER + 2 HELPERS, "Set as fighter"
+--   looks       the Pets panel on an Evolved II pet (the grid's evolved slots)
+local CAREUI = {}
+
+function CAREUI.profile()
+	local ids = CARE.ids()
+	local snap = snapshot()
+	for _, id in pairs(ids) do
+		snap.Pets[id] = math.max(snap.Pets[id] or 0, 1)
+	end
+	snap.Equipped = { ids.Epic, ids.Follower }
+	snap.Home = {
+		Level = 21,
+		Prestige = 1,
+		Stations = { Garden = 3, Press1 = 13, Kitchen = 2, Gym = 2, Vault = 1, House = 2, DecorFence = 1, FusionMachine = 1 },
+		Garden = { ids.Garden1, ids.Garden2, ids.Epic, "" },
+		Gym = {},
+	}
+	snap.Cash = 48250
+	snap.Gems = 320
+	snap.Berries = 1240
+	snap.PetLevels = {
+		[ids.Garden1] = { Level = 12, Xp = 300 },
+		[ids.Garden2] = { Level = 9, Xp = 40 },
+		[ids.Ready] = { Level = 20, Xp = 120 },
+		[ids.Epic] = { Level = 57, Xp = 9000 },
+		[ids.Training] = { Level = 7, Xp = 0 },
+		[ids.Legend] = { Level = 100, Xp = 0 },
+		[ids.Follower] = { Level = 4, Xp = 10 },
+	}
+	snap.PetGrowth = {
+		[ids.Epic] = { Evo = 1, Speed = 2, Physique = 3 },
+		[ids.Training] = { Physique = 2, Job = { Stat = "Physique", Ends = os.time() + 130, Rank = 3, Slot = 1, From = "Follow", Paid = 2700 } },
+		[ids.Legend] = { Evo = 2, Speed = 10, Physique = 6, Ability = 4, Defense = 1 },
+	}
+	snap.Teams = { Presets = { { ids.Legend, ids.Epic, ids.Garden1 }, { ids.Ready }, {} }, Active = 1, Slots = 3 }
+	snap.Dungeon = { Best = 4, Cleared = { [1] = true, [2] = true, [3] = true, [4] = true }, Runs = 9, Clears = 6 }
+	snap.Ring = { Best = 24, Runs = 9 }
+	snap.Tutorial = { Step = 22, Done = true, Gifted = true }
+	LocalPlayer:SetAttribute(Config.Attr.Cash, snap.Cash)
+	LocalPlayer:SetAttribute(Config.Attr.Gems, snap.Gems)
+	LocalPlayer:SetAttribute(Config.Attr.Berries or "Berries", snap.Berries)
+	CARE.plot({ IncomePerSecond = 38.5, GardenSlots = 4, HomeLevel = snap.Home.Level, Prestige = 1, BerryCap = 3000 })
+	toClient("ProfileSync", snap)
+	advance(0.5)
+	return ids, snap
+end
+CAREUI.ProfileFn = CAREUI.profile
+
+scenario("home", function()
+	CAREUI.profile()
+	toClient("OpenPanel", "Home", {})
+	advance(2.5)
+end)
+
+scenario("feed", function(key)
+	local ids = CAREUI.profile()
+	toClient("OpenPanel", "Feed", { Key = (key and key ~= "") and key or ids.Garden1 })
+	advance(3)
+end)
+
+scenario("garden", function(slot)
+	CAREUI.profile()
+	toClient("OpenPanel", "Pets", { Action = "Garden", Slot = tonumber(slot) or 4 })
+	advance(3)
+end)
+
+scenario("train", function(key)
+	local ids = CAREUI.profile()
+	toClient("OpenPanel", "Train", { Key = (key and key ~= "") and key or ids.Training })
+	advance(3)
+end)
+
+scenario("team", function()
+	CAREUI.profile()
+	toClient("OpenPanel", "Team", {})
+	advance(3)
+end)
+
+scenario("looks", function(which)
+	local ids = CAREUI.profile()
+	toClient("OpenPanel", "Pets", { Tab = "Pets", Key = (which == "epic") and ids.Epic or ids.Legend })
+	advance(3)
+end)
+
+scenario("stats", function()
+	CAREUI.profile()
+	toClient("OpenPanel", "Stats", {})
+	advance(2.5)
+end)
+
+-- fusion[:mix]: the Fusion Machine on the evolved Epic copy (its stage carries into the Golden result)
+scenario("fusion", function(tab)
+	local ids, snap = CAREUI.profile()
+	snap.Pets[ids.Epic] = 3
+	toClient("ProfileSync", snap)
+	advance(0.3)
+	toClient("OpenPanel", "Fusion", { Tab = (tab == "mix") and "Mix" or "Upgrade", Key = ids.Epic })
+	advance(3)
+end)
+-- [owner: careui] end
+
+-- [owner: menu] begin
+-- Phase 5 loading screen + main menu + settings (7.1-7.3):
+--   mainmenu[:<window>]  Config.MainMenu.Enabled: the menu before PLAY (logo, PLAY, SETTINGS, UPDATES + NEW badge,
+--                        CREDITS chip) over the orbiting world; window updates | credits opens that window over it
+--   loading              the ReplicatedFirst loading screen 8 s in: the profile not loaded yet (85%), SKIP showing
+--   settings[:hud]       the SETTINGS window over the menu (Music 6 / Sound 8 / Graphics Auto / Shake ON); ":hud" =
+--                        after PLAY, opened from the menu gear over the game HUD (the window rule)
+-- Every OTHER scenario boots like the smoke worlds: the menu disabled and the profile loaded (DataService's
+-- ProfileLoaded attribute), so the loading screen is gone after ~2.3 s and nothing is gated.
+local MM = { Scene = tostring(ARGS.scenario or "lobby"):lower():match("^[^:]*") or "lobby" }
+do
+	local cfg = req("shared/Config")
+	if type(cfg.MainMenu) == "table" then
+		cfg.MainMenu.Enabled = (MM.Scene == "mainmenu" or MM.Scene == "settings")
+	end
+	-- the mock has no ReplicatedFirst:RemoveDefaultLoadingScreen (the script pcalls it anyway)
+	local rf = Mock.Classes and Mock.Classes.ReplicatedFirst
+	if rf then
+		for _, t in ipairs({ rf.methods or false, rf.own or false }) do
+			if t then
+				if t == rf.own then
+					t.methods = t.methods or {}
+					t = t.methods
+				end
+				t.RemoveDefaultLoadingScreen = t.RemoveDefaultLoadingScreen or function() end
+			end
+		end
+	end
+	if LocalPlayer and MM.Scene ~= "loading" then
+		LocalPlayer:SetAttribute((cfg.Attr and cfg.Attr.ProfileLoaded) or "ProfileLoaded", true)
+	end
+end
+function MM.controller()
+	return req("client/Controllers/MainMenuController")
+end
+scenario("mainmenu", function(window)
+	advance(1.5)
+	local MMC = MM.controller()
+	if window == "updates" then
+		MMC.OpenUpdates()
+	elseif window == "credits" then
+		MMC.OpenCredits()
+	end
+	advance(0.6)
+end)
+scenario("loading", function() end)
+scenario("settings", function(where)
+	local MMC = MM.controller()
+	advance(0.5)
+	if where == "hud" then
+		MMC.Play()
+		advance(6)
+	end
+	MMC.OpenSettings()
+	advance(0.6)
+end)
+-- [owner: menu] end
+
+-- [owner: dungeonclient] begin
+-- Phase 5 side panels of dungeonclient (W4): the Dungeon window + run card + End card (DungeonController), the obby
+-- level picker (ObbyController), the Champion Ring and Arena windows (ArenaController, docked; arena:trials is gone).
+--   arena[:<view>]          team | team4 | newteam (MenuController, unchanged) | duels | raid | leaders | side | practice
+--                           (a practice invite on the side card) | dungeon[:<dview>] (= dungeon:<dview>)
+--   dungeon[:<dview>]       lobby (default: the window, two open parties) | party (a member, READY not pressed) |
+--                           leader (the leader: KICK, START, the 30 s READY clock) | countdown (window closed: the side
+--                           card "Dungeon in 5...") | run (the battle HUD + the run card, a party of 2, one downed) |
+--                           loot (the room-cleared toast) | treasure (the chest) | end (floor cleared: totals, first
+--                           clear, unlock) | wipe (the End card of a lost run)
+--   obby[:<oview>]          picker (default: Hard picked, Extreme open, Saint locked) | party (on the pad as the leader:
+--                           CHANGE opens the picker) | toast (the "Extreme unlocked!" toast after a won match)
+--   ring[:new|record]       the Champion Ring window with the evolved team (EVO badges)
+local DGC = {}
+
+function DGC.profile(extra)
+	if CAREUI and CAREUI.profile then
+		CAREUI.profile()
+	end
+	local St = req("client/State", true)
+	local snap = St and St.Get and St.Get() or nil
+	if type(snap) ~= "table" or next(snap.Pets or {}) == nil then
+		snap = snapshot()
+	end
+	local copy = {}
+	for k, v in pairs(snap) do
+		copy[k] = v
+	end
+	copy.Stats = { Matches = 30, Wins = 14, TokensEarned = 2400, Spins = 9, BestTimes = { Easy = 212.4, Medium = 265.1, Hard = 402.8 } }
+	copy.Dungeon = { Best = 4, Cleared = { true, true, true, true, false, false, false, false, false, false, false, false }, Runs = 12, Clears = 7 }
+	for k, v in pairs(extra or {}) do
+		copy[k] = v
+	end
+	toClient("ProfileSync", copy)
+	advance(0.4)
+end
+
+function DGC.me()
+	return LocalPlayer.UserId, LocalPlayer.Name
+end
+
+function DGC.parties()
+	return {
+		{ Leader = 501, LeaderName = "StormChaser", Floor = 3, Count = 2, Max = 4, Open = true, InRun = false },
+		{ Leader = 502, LeaderName = "CloudyKnight", Floor = 5, Count = 3, Max = 4, Open = true, InRun = true, Room = 2 },
+		{ Leader = 503, LeaderName = "PuddleFan", Floor = 2, Count = 4, Max = 4, Open = false, InRun = false },
+	}
+end
+
+function DGC.record()
+	return { Best = 4, Cleared = { true, true, true, true, false, false, false, false, false, false, false, false }, Runs = 12, Clears = 7 }
+end
+
+function DGC.dungeon(view)
+	view = tostring(view or "lobby"):lower()
+	DGC.profile()
+	local me, myName = DGC.me()
+	if type(Mock.AddPlayer) == "function" then
+		pcall(Mock.AddPlayer, "StormChaser", 501)
+		pcall(Mock.AddPlayer, "CloudyKnight", 502)
+	end
+	local lobby = { Parties = DGC.parties(), Mine = nil, Record = DGC.record() }
+	if view == "party" then
+		lobby.Mine = { Leader = 501, Floor = 3, Members = {
+			{ UserId = 501, Name = "StormChaser", Ready = true, Power = 420 },
+			{ UserId = me, Name = myName, Ready = false, Power = 310 },
+		} }
+	elseif view == "leader" or view == "countdown" then
+		lobby.Mine = { Leader = me, Floor = 4, Countdown = (view == "countdown") and 5 or 24, Members = {
+			{ UserId = me, Name = myName, Ready = true, Power = 310 },
+			{ UserId = 501, Name = "StormChaser", Ready = true, Power = 420 },
+			{ UserId = 502, Name = "CloudyKnight", Ready = view == "countdown", Power = 188 },
+		} }
+	end
+	toClient("DungeonState", "Lobby", lobby)
+	advance(0.3)
+	if view == "lobby" or view == "party" or view == "leader" then
+		toClient("OpenPanel", "Dungeon", { Floor = 3 })
+		advance(1.5)
+		return
+	end
+	if view == "countdown" then
+		advance(1.2)
+		return
+	end
+	-- inside a run: the battle HUD of the room fight (battleclient's scene), the run id in InBattle
+	local runPayload = { RunId = "D7", Floor = 3, Name = "Flooded Vaults", Element = "Water", Room = 2, RoomCount = 4, Wave = 2, Waves = 2,
+		State = "Fight", Members = { { UserId = me, Name = myName, Downed = false, Left = false }, { UserId = 501, Name = "StormChaser", Downed = true, Left = false } },
+		Joinable = true }
+	if view == "run" or view == "loot" then
+		if SCENARIOS.battle then
+			try("battle scene", SCENARIOS.battle, "dungeon", "fight")
+		end
+	end
+	LocalPlayer:SetAttribute(Config.Attr.InBattle or "InBattle", "D7")
+	if view == "treasure" or view == "end" or view == "wipe" then
+		runPayload.State = "Treasure"
+		runPayload.Room = 4
+		runPayload.Wave = 2
+	end
+	if view == "loot" then
+		runPayload.State = "Corridor"
+		runPayload.Phase = "Walk"
+	end
+	toClient("DungeonState", "Run", runPayload)
+	advance(0.3)
+	if view == "loot" or view == "treasure" or view == "end" then
+		toClient("DungeonState", "Loot", { Room = 1, Cash = 340, Tokens = 24, Xp = 70, LevelUps = 0 })
+		toClient("DungeonState", "Loot", { Room = 2, Cash = 380, Tokens = 24, Xp = 70, LevelUps = 1 })
+	end
+	if view == "treasure" or view == "end" then
+		toClient("DungeonState", "Loot", { Room = 4, Cash = 910, Tokens = 72, Xp = 220, LevelUps = 0 })
+		toClient("DungeonState", "Chest", { Kind = "Tokens", Amount = 50 })
+	end
+	if view == "end" then
+		toClient("DungeonState", "End", { Floor = 3, Name = "Flooded Vaults", Cleared = true, Reason = "Cleared", Room = 4,
+			Totals = { Cash = 1630, Tokens = 170, Xp = 360, Gems = 0 }, FirstClear = { Tokens = 900, Gems = 5 }, Unlocked = 4, NewBest = 3 })
+		LocalPlayer:SetAttribute(Config.Attr.InBattle or "InBattle", nil)
+	elseif view == "wipe" then
+		toClient("DungeonState", "End", { Floor = 5, Name = "Ember Forge", Cleared = false, Reason = "Wipe", Room = 3,
+			Totals = { Cash = 520, Tokens = 52, Xp = 160, Gems = 0 } })
+		LocalPlayer:SetAttribute(Config.Attr.InBattle or "InBattle", nil)
+	end
+	advance(0.8)
+end
+
+do
+	local phase3Arena = SCENARIOS.arena
+	scenario("arena", function(view, arg)
+		view = tostring(view or "team"):lower()
+		if view == "dungeon" then
+			DGC.dungeon(arg)
+			return
+		end
+		if view == "trials" then
+			note("arena:trials is gone (Phase 5): showing arena:dungeon")
+			DGC.dungeon("lobby")
+			return
+		end
+		if view == "practice" then
+			DGC.profile()
+			toClient("BattleState", "Lobby", {
+				Queue = { Queued = false },
+				Invites = { { FromUserId = 501, FromName = "StormChaser", Trophies = 1210, Power = 2380, ExpiresIn = 24, Practice = true } },
+			})
+			advance(1.2)
+			return
+		end
+		if phase3Arena then
+			phase3Arena(view, arg)
+		end
+	end)
+end
+
+scenario("dungeon", function(view)
+	DGC.dungeon(view)
+end)
+
+scenario("obby", function(view)
+	view = tostring(view or "picker"):lower()
+	DGC.profile()
+	local me, myName = DGC.me()
+	LocalPlayer:SetAttribute(Config.Attr.ObbyLevel or "ObbyLevel", "Hard")
+	if view == "party" then
+		toClient("PartyState", { PortalId = "Obby", Level = "Hard", Stars = 3, LeaderUserId = me, DifficultyName = "Hard", Color = difficulty("Hard").Color,
+			Players = { { UserId = me, Name = myName }, { UserId = 77, Name = "Buddy" } }, Max = 4, Countdown = 12, Locked = true })
+		LocalPlayer:SetAttribute("PortalLocked", "Obby")
+		advance(0.6)
+		local Hud = req("client/Controllers/HudController", true)
+		if Hud and Hud._onChangeLevel then
+			try("CHANGE", Hud._onChangeLevel)
+		else
+			toClient("OpenPanel", "Obby", {})
+		end
+		advance(1.2)
+		return
+	end
+	if view == "toast" then
+		toClient("MatchResult", { Won = true, Reason = "Finished", Seconds = 380, MatchTokens = 40, Bonus = 35, DifficultyId = "Hard", DifficultyName = "Hard", Stars = 3, TotalTokens = 60, Members = {} })
+		advance(1.0)
+		return
+	end
+	toClient("OpenPanel", "Obby", {})
+	advance(1.2)
+end)
+
+scenario("ring", function(view)
+	if CAREUI and CAREUI.profile then
+		CAREUI.profile()
+	elseif careProfile then
+		careProfile(view == "new" and "new" or nil)
+	end
+	toClient("OpenPanel", "Ring", {})
+	advance(2.5)
+end)
+-- [owner: dungeonclient] end
+
+-- [owner: homefx+pets] begin
+-- (follow windows, home signs / basket line if a scene is wanted)
+-- [owner: homefx+pets] end
+
+-- [owner: tutorial] begin
+-- (tutorial panel + pointer scenes for chapters 2-4)
+-- [owner: tutorial] end
+
 local function boot(width, height, touch, keepTitle)
 	Config = req("shared/Config")
 	local okMetrics, why = installMetrics()
@@ -2229,6 +3022,15 @@ local function boot(width, height, touch, keepTitle)
 	local main = Mock.GetPath(ROOTS["client"] .. "/Main")
 	if not main or not main:IsA("LocalScript") then
 		fail("client/Main.client.lua was not mounted")
+	end
+	-- Phase 5 (7.1, m13): the ReplicatedFirst LocalScripts (src/first: the loading screen) run before Main, like Roblox
+	local firstFolder = ROOTS["first"] and Mock.GetPath(ROOTS["first"]) or nil
+	if firstFolder then
+		for _, inst in ipairs(firstFolder:GetDescendants()) do
+			if inst:IsA("LocalScript") then
+				Mock.RunScript(inst)
+			end
+		end
 	end
 	Mock.RunScript(main)
 	advance(0.8)

@@ -7,7 +7,11 @@
 -- the arena (chapter 3, Phase 3: go to the Battle Arena, set a battle team, win Trial 1, see a Boss Raid) and Phase 4
 -- appends chapter 4 (pets make the money: train a pet, win a Champion Ring round, use the home portal). Phase 4 also
 -- rewrote chapter 2 IN PLACE (claim, garden, coins, machine, feed: still five steps at indices 10-14, so a saved
--- index keeps its place). A player who finished an earlier chapter resumes at the first step of the next one when it
+-- index keeps its place). Phase 5 (ARCHITECTURE_V3.md "Phase 5 build contract" 8) rewrites texts and targets IN PLACE
+-- again, indices never move (chapter 1 = 1-9, 2 = 10-14, 3 = 15-18, 4 = 19-21): the portal step points at the ONE Obby
+-- portal, chapter 2 speaks of the Berry Farm, Cloud Cash and berries, chapter 3's step 17 "trial" became "dungeon"
+-- (clear floor 1 of the Dungeon; a saved Step 17 lands on it, a veteran with Trial 1 cleared skips it). Every text is
+-- 97-125 bytes once its placeholders are filled (p5ui_content). A player who finished an earlier chapter resumes at the first step of the next one when it
 -- ships (TutorialService: a stored Done tutorial whose Step points into a later chapter carries on from there; a
 -- finished Phase 3 tutorial stored Step 19 = chapter 4's first step).
 --
@@ -35,17 +39,19 @@
 --                 { Kind = "Spot", Pad = "Garden", Station = "Garden", GardenSpot = true }   no pet: the Shop; the free
 --                                                       Pet Garden pad until it is built; then the first empty open
 --                                                       garden place (else the Pets menu button)
---                 { Kind = "Spot", Station = "Garden", Coins = true }   the fullest rainbow-coin pile of the garden
---                                                       (TycoonService.Piles), else the Garden itself
+--                 { Kind = "Spot", Station = "Garden", Coins = true }   the biggest Cloud Cash drop of the yard
+--                                                       (TycoonService.Drops; Piles as a fallback), else the Garden
 --                 { Kind = "Shop" }                     the roulette machines (Roulette_<first roulette id>)
 --                 { Kind = "Roulette", Id = "Cloud" }   model Roulette_<Id> under workspace.NimbusLobby
---                 { Kind = "Portal", Id = "Easy" }      model Portal_<Id> under workspace.NimbusLobby
+--                 { Kind = "Portal", Id = "Obby" }      model Portal_<Id> under workspace.NimbusLobby (Phase 5: the ONE
+--                                                       Obby portal in the Gate Court; lobby.Portals.Obby on the server)
 --                 { Kind = "Menu", Id = "Pets" }        the menu button MenuButton_<Id> ("Team": the battle team tile)
 --                 { Kind = "Arena", Place = "Gate" }    Phase 3, resolved by TutorialService from ArenaInfo and sent as
---                                                       { Kind = "Spot", Position, Label }: "Gate" = the arena's arrival
---                                                       forum (ArenaInfo.Spawn), "Trials" = the Trial Portal
---                                                       (ArenaInfo.TrialPortal), "Floor" = the colosseum floor (raids),
---                                                       "Ring" = the Champion Ring portal (ArenaInfo.RingPortal)
+--                                                       { Kind = "Spot", Position, Label }: "Gate" = the Arena gate of the
+--                                                       Gate Court (ArenaInfo.ArenaPortal; else the forum, ArenaInfo.Spawn),
+--                                                       "Floor" = the colosseum floor (raids), "Ring" = the Champion Ring
+--                                                       portal (ArenaInfo.RingPortal), "Dungeon" (Phase 5) = the Dungeon
+--                                                       gate's pad (DungeonInfo.Pad)
 --               Label (optional) names the target on the floating sign above the arrow. TutorialService resolves
 --               the home targets on the server and sends Kind "Spot" + Position (or Kind "Menu") to the client.
 --   CompleteOn  "Next"         the player presses Next (client event)
@@ -63,10 +69,11 @@
 --               "ArenaReached" the player stands in the Battle Arena (ArenaBuilder.InArena, server poll)
 --               "TeamSet"      the active battle team holds the player's pets: min(3, pets that can join a team)
 --                              (DataService.TeamsChanged / ActiveTeamKeys / FieldableKeys)
---               "TrialWon"     Trial level 1 is cleared (BattleService.BattleEnded / Battle.TrialCleared)
+--               "DungeonWon"   (Phase 5, replaces TrialWon) Dungeon floor 1 is cleared (DungeonService.FloorCleared, or the
+--                              saved Dungeon.Best >= 1, or a legacy Battle.TrialCleared[1]: veterans skip it)
 --               "RaidSeen"     the player joined a Boss Raid, or stood in the arena while one was running
 --               "GardenPlaced" (Phase 4) a pet sits in an open place of the Pet Garden (Home.Garden)
---               "CoinsScooped" the player scooped rainbow coins (TycoonService.CoinsScooped; a home that already has
+--               "CoinsScooped" the player scooped Cloud Cash (TycoonService.CoinsScooped; a home that already has
 --                              the Food Machine passes at once)
 --               "TrainingStarted" a pet trains or has trained (PetCareService.TrainingStarted / PetGrowth job or rank)
 --               "RingWon"      a Champion Ring round was won (BattleService.BattleEnded Mode "Ring", or Ring.Best >= 1)
@@ -94,8 +101,10 @@ do
 	end
 end
 
--- minutes between two Boss Raids for the chapter 3 text (BattleCatalog.Events; data read once, 20 without it)
+-- minutes between two Boss Raids for the chapter 3 text (BattleCatalog.Events; data read once, 20 without it) and the
+-- name of Dungeon floor 1 (BattleCatalog.DungeonFloors[1].Name; "Mossy Cellar" without it)
 local RAID_MINUTES = 20
+local FLOOR_ONE = "Mossy Cellar"
 do
 	local module = script.Parent:FindFirstChild("BattleCatalog")
 	if module then
@@ -104,6 +113,11 @@ do
 		local first = type(events) == "table" and type(events.Schedule) == "table" and events.Schedule[1] or nil
 		if type(first) == "table" and tonumber(first.EveryMinutes) then
 			RAID_MINUTES = math.floor(tonumber(first.EveryMinutes))
+		end
+		local floors = ok and type(catalog) == "table" and catalog.DungeonFloors or nil
+		local one = type(floors) == "table" and floors[1] or nil
+		if type(one) == "table" and type(one.Name) == "string" and one.Name ~= "" then
+			FLOOR_ONE = one.Name
 		end
 	end
 end
@@ -148,7 +162,7 @@ TutorialSteps.Steps = {
 		Id = "spin",
 		Chapter = 1,
 		Title = "Your First Pet",
-		Text = "Here are {GiftTokens} Cloud Tokens, my treat! Spin the Cloud Roulette to hatch your very first pet buddy.",
+		Text = "Here are {GiftTokens} Cloud Tokens, my treat! Spin the Cloud Roulette to hatch your very first pet buddy. Good luck!",
 		Target = { Kind = "Roulette", Id = "Cloud", Label = "Cloud Roulette" },
 		CompleteOn = "Rolled",
 		Gift = true,
@@ -176,10 +190,11 @@ TutorialSteps.Steps = {
 		Id = "portal",
 		Chapter = 1,
 		Title = "Time to Climb!",
-		Text = "Now the fun part! Step into the Easy portal and wait for the countdown. Friends can hop in with you.",
-		Target = { Kind = "Portal", Id = "Easy", Label = "Easy Portal" },
+		-- (Phase 5: the ONE Obby portal of the Gate Court; the first player on its pad picks the level, Easy for a newcomer)
+		Text = "Now the fun part! Step on the Obby portal pad - Easy is picked for you. Friends can hop in with you.",
+		Target = { Kind = "Portal", Id = "Obby", Label = "Obby portal" },
 		CompleteOn = "MatchStarted",
-		Hint = "Stand in the Easy portal",
+		Hint = "Stand on the Obby pad",
 	},
 	{
 		Id = "finish",
@@ -195,7 +210,7 @@ TutorialSteps.Steps = {
 		Chapter = 1,
 		ChapterEnd = true,
 		Title = "You're a Natural!",
-		Text = "That's the basics, climber! Here are {FinishTokens} Cloud Tokens to celebrate. Next up: your very own home!",
+		Text = "That's the basics, climber! Here are {FinishTokens} Cloud Tokens to celebrate. Next up: your very own home in the sky!",
 		Target = nil,
 		CompleteOn = "Next",
 		Button = "Collect!",
@@ -215,39 +230,41 @@ TutorialSteps.Steps = {
 		Id = "garden",
 		Chapter = 2,
 		Title = "Your Pet Garden",
-		Text = "Your pets make the money! Build your free Pet Garden, then press E on a garden spot to put a pet in it.",
+		Text = "Your pets make the money! Build your free Pet Garden, then press E on a pet bed to put a pet in it.",
 		Target = { Kind = "Spot", Pad = "Garden", Station = "Garden", GardenSpot = true, Label = "Pet Garden" },
 		CompleteOn = "GardenPlaced",
 		Hint = "Put a pet in your Pet Garden",
 	},
 	{
-		-- (Phase 4: was "collect", the Collector)
+		-- (Phase 4: was "collect", the Collector; Phase 5: roaming pets poop Cloud Cash, the arrow finds the biggest drop)
 		Id = "coins",
 		Chapter = 2,
-		Title = "Rainbow Coins!",
-		Text = "Garden pets eat and pop out rainbow coins. Only you can scoop yours: just walk over them!",
-		Target = { Kind = "Spot", Station = "Garden", Coins = true, Label = "Your coins" },
+		Title = "Cloud Cash!",
+		Text = "Garden pets roam your yard, eat at the Food Bowl and poop Cloud Cash. Only you can scoop it: walk over it!",
+		Target = { Kind = "Spot", Station = "Garden", Coins = true, Label = "Cloud Cash" },
 		CompleteOn = "CoinsScooped",
-		Hint = "Walk over your rainbow coins",
+		Hint = "Walk over your Cloud Cash",
 	},
 	{
-		-- (Phase 4: was "kitchen"; the station id stays Kitchen, its name is the Food Machine)
+		-- (Phase 4: was "kitchen"; the station id stays Kitchen, its name is the Food Machine. Phase 5: the Path walks the
+		-- Berry Farm pad (Press1, the Food Machine's prerequisite) until it is built, then the Food Machine pad)
 		Id = "machine",
 		Chapter = 2,
-		Title = "The Food Machine",
-		Text = "Spend coins on the glowing pads: plants make bigger coins! Follow my arrow and build the Food Machine.",
+		Title = "Berries for XP!",
+		Text = "Build the Berry Farm, then the Food Machine: the farm grows berries and the machine turns them into XP!",
 		Target = { Kind = "Spot", Pad = "Kitchen", Path = true, Label = "Food Machine pad" },
 		CompleteOn = "Built",
 		Station = "Kitchen",
-		Hint = "Build the Food Machine",
+		Hint = "Berry Farm, then Food Machine",
 	},
 	{
 		Id = "feed",
 		Chapter = 2,
 		ChapterEnd = true,
 		Title = "Snack Time!",
-		Text = "Press E at the Food Machine, pick a pet and press Feed. Fed pets level up, and at level " .. EVOLVE_LEVEL
-			.. " they EVOLVE!",
+		-- (Phase 5: feeding costs berries; entering this step tops the player's berries up for the first feed)
+		Text = "Press E at the Food Machine and press Feed: your berries become XP. At level " .. EVOLVE_LEVEL
+			.. " your pet can EVOLVE!",
 		Target = { Kind = "Spot", Station = "Kitchen", Food = true, Label = "Food Machine" },
 		CompleteOn = "Fed",
 		Hint = "Feed a pet at the Food Machine",
@@ -257,28 +274,30 @@ TutorialSteps.Steps = {
 		Id = "arena",
 		Chapter = 3,
 		Title = "The Battle Arena",
-		Text = "Your pets are strong enough to battle now! Follow my arrow over the bridge to the Battle Arena.",
+		Text = "Your pets are strong enough to battle now! Follow my arrow to the Arena gate and press E to visit the Battle Arena.",
 		Target = { Kind = "Arena", Place = "Gate", Label = "Battle Arena" },
 		CompleteOn = "ArenaReached",
-		Hint = "Walk into the Battle Arena",
+		Hint = "Go to the Battle Arena",
 	},
 	{
 		Id = "team",
 		Chapter = 3,
 		Title = "Pick Your Team",
-		Text = "Battles need a team! Tap Team and put your pets in your team (up to 3; a 4th slot opens at Prestige 1). Same-element pets power each other up!",
+		Text = "Battles need a team of 3 (a fighter + 2 helpers)! Tap Team and put your pets in. Same-element pets power each other up!",
 		Target = { Kind = "Menu", Id = "Team" },
 		CompleteOn = "TeamSet",
-		Hint = "Tap the glowing Team button and put your pets in your team",
+		Hint = "Tap Team and put in 3 pets",
 	},
 	{
-		Id = "trial",
+		-- (Phase 5: was "trial", Trial 1 at the Trial Portal; the index stays 17)
+		Id = "dungeon",
 		Chapter = 3,
-		Title = "Your First Trial",
-		Text = "Press E at the Trial Portal and start Level 1. Tap ATTACK, RETREAT when it gets rough, SPECIAL when its gold bar is full!",
-		Target = { Kind = "Arena", Place = "Trials", Label = "Trial Portal" },
-		CompleteOn = "TrialWon",
-		Hint = "Win Trial level 1",
+		Title = "Into the Dungeon!",
+		Text = "Press E at the Dungeon portal, start Floor 1: the " .. FLOOR_ONE
+			.. ". Beat every room and the boss. Fighter attacks, helpers buff!",
+		Target = { Kind = "Arena", Place = "Dungeon", Label = "Dungeon portal" },
+		CompleteOn = "DungeonWon",
+		Hint = "Clear Dungeon floor 1",
 	},
 	{
 		Id = "raid",
@@ -314,7 +333,7 @@ TutorialSteps.Steps = {
 		Chapter = 4,
 		ChapterEnd = true,
 		Title = "Portal Home",
-		Text = "Tap Home, then Go home: a magic portal opens just for you and your pets. Hop in!",
+		Text = "Tap Home, then Go home: a magic portal opens just for you and your pets. Hop in and you're home in a blink!",
 		Target = { Kind = "Menu", Id = "Home", Label = "Home" },
 		CompleteOn = "PortalUsed",
 		Hint = "Tap Home, then Go home",

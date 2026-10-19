@@ -910,7 +910,7 @@ S.config_shape = guarded("config_shape", function()
 	T.eq(Config.Tokens.LegacyDataStoreName, "NimbusClimb_v1", "the legacy (v1) DataStore name")
 	T.check(Config.Course.MaxRadius > 100 and Config.Course.Clearance >= 6, "Config.Course.MaxRadius / Clearance")
 	T.eq(Config.Lobby.SpotCount, 16, "16 lobby spots")
-	T.check(Config.Lobby.SpotRingRadius > Config.Lobby.PortalRingRadius and Config.Lobby.PortalRingRadius < Config.Lobby.PlazaRadius, "lobby rings: portals inside the plaza, spots outside")
+	T.check(Config.Lobby.SpotRingRadius > Config.Lobby.GateArcRadius and Config.Lobby.GateArcRadius < Config.Lobby.PlazaRadius, "lobby rings: gates inside the plaza, spots outside")
 
 	-- v3 (ARCHITECTURE_V3.md): currencies, remotes, home plots, Pet Index, tutorial, pet stats, elements, art
 	for _, name in ipairs(CONTRACT.v3.tutorialRemotes) do

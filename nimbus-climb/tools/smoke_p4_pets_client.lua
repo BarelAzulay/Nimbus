@@ -9,10 +9,10 @@
 --                            and stars from EquippedInfo only (no XP bar, MaxDistance 60), every card hidden while its
 --                            owner is InBattle and back afterwards, no card write while nothing changes, 6 players x 3
 --                            pets: at most 12 other players' cards (nearest first), one root write per pet unchanged
---   client_p4pets_follow     the trailing formation: 1 / 2 / 3 pets 2-7 studs behind at rest (never beside or ahead),
---                            walking (24 studs/s) along and across the facing direction: every pet behind the owner
---                            along the travel direction (offset <= +0.5 studs once the formation swung round), lag < 12,
---                            settles < 8
+--   client_p4pets_follow     the trailing formation (Phase 5 size-aware windows, 3.8): 1 / 2 / 3 pets at their slot
+--                            (|slot| +- 1.5) behind at rest (never beside or ahead), walking (24 studs/s) along and across
+--                            the facing direction: every pet behind the owner along the travel direction (offset <= +0.5
+--                            studs once the formation swung round), lag <= back + 9, settles <= |slot| + 1
 --   client_p4pets_evolved    evolved followers: own evolved pets are Low detail within contract.json petEvoLow 380 /
 --                            petEvo2Low 520 (stage passed through opts.Evolved: the model is measured and trails further
 --                            back), other players' evolved models only within 40 studs and at most 6 (nearest first), the
@@ -416,16 +416,26 @@ S.client_p4pets_follow = guarded("client_p4pets_follow", function()
 		local mine = modelsOf(LocalPlayer)
 		local r = root().Position
 		local ok, detail = #mine == n, {}
+		-- Phase 5 (3.8): size-aware windows: each pet rests at its slot |slot| +- 1.5 (FormationFor of the measured widths)
+		local slotDist = {}
+		for _, i in ipairs(infoOf(LocalPlayer)) do
+			if i.Model then
+				slotDist[i.Model] = sqrt((i.Side or 0) ^ 2 + (i.Back or 0) ^ 2)
+			end
+		end
+		local backMax = 0
 		for _, m in ipairs(mine) do
 			local off = m:GetPivot().Position - r
 			local horiz = sqrt(off.X * off.X + off.Z * off.Z)
-			detail[#detail + 1] = fmt("%.1f back %.1f up %.1f", horiz, off.Z, off.Y)
+			local want = slotDist[m] or 5
+			backMax = max(backMax, want)
+			detail[#detail + 1] = fmt("%.1f (slot %.1f) back %.1f up %.1f", horiz, want, off.Z, off.Y)
 			-- behind = +Z for an owner facing -Z; never beside (|side| < back)
-			if horiz < 2 or horiz > 7 or off.Y < -1 or off.Y > 5 or off.Z < 2 or abs(off.X) > off.Z then
+			if abs(horiz - want) > 1.5 or off.Y < -1 or off.Y > 5 or off.Z < 2 or abs(off.X) > off.Z then
 				ok = false
 			end
 		end
-		T.check(ok, n .. " pet(s) at rest: 2-7 studs BEHIND the owner (not beside), up to 5 above", table.concat(detail, "; "))
+		T.check(ok, n .. " pet(s) at rest: at their slot (|slot| +- 1.5) BEHIND the owner (not beside), up to 5 above", table.concat(detail, "; "))
 		-- walk along the facing direction, then across it
 		local worst, lag = -1e9, 0
 		for _, dir in ipairs({ Vector3.new(0, 0, -1), Vector3.new(1, 0, 0) }) do
@@ -448,12 +458,13 @@ S.client_p4pets_follow = guarded("client_p4pets_follow", function()
 			advance(3)
 		end
 		T.check(worst <= 0.5, n .. " pet(s) walking: never ahead of the owner along the travel direction (<= +0.5 studs)", fmt("furthest ahead %.2f studs", worst))
-		T.check(lag < 12, n .. " pet(s): keep up with a walking owner (< 12 studs)", fmt("%.1f studs", lag))
+		T.check(lag <= backMax + 9, n .. " pet(s): keep up with a walking owner (lag <= back + 9)", fmt("%.1f studs (slot %.1f)", lag, backMax))
 		local settle = 0
 		for _, m in ipairs(mine) do
-			settle = max(settle, (m:GetPivot().Position - root().Position).Magnitude)
+			local off = m:GetPivot().Position - root().Position
+			settle = max(settle, sqrt(off.X * off.X + off.Z * off.Z) - (slotDist[m] or 5))
 		end
-		T.check(settle < 8, n .. " pet(s): settle behind the owner again (< 8 studs)", fmt("%.1f studs", settle))
+		T.check(settle <= 1, n .. " pet(s): settle back at their slots (<= |slot| + 1)", fmt("%.1f studs past the slot", settle))
 	end
 	resetLocal()
 	KC.flushErrors("p4pets follow")
@@ -487,7 +498,10 @@ S.client_p4pets_evolved = guarded("client_p4pets_evolved", function()
 		T.check(e2.Stage == 2 and e2.Model:GetAttribute("PB_Detail") == "Low" and p2 <= budget.petEvo2Low,
 			"own second evolution (stage 2, Epic): Low detail within petEvo2Low " .. budget.petEvo2Low, fmt("stage %s, %d parts", tostring(e2.Stage), p2))
 		T.check(n0.Stage == 0 and n0.Model:GetAttribute("PB_Detail") == "High" and p0 <= budget.petHigh, "an own pet that never evolved stays High detail", fmt("%d parts", p0))
-		T.check(e1.Back > 1 and e1.Back <= 1.4 + 1e-6 and n0.Back == 1, "evolved followers trail further back (back x min(1.4, height / 3))", fmt("x%.2f / x%.2f", e1.Back, n0.Back))
+		-- Phase 5 (3.8): the slots come from the measured widths (FormationFor): a wider evolved pet stands further out
+		T.check((e1.Width or 0) > (n0.Width or 0) and (e2.Width or 0) > (n0.Width or 0) and e2.Back > n0.Back and math.abs(e1.Side or 0) > math.abs(n0.Side or 0) - 1e-6,
+			"evolved followers are measured wider and get roomier slots (FormationFor: the biggest behind the right one)",
+			fmt("widths %.1f / %.1f / %.1f, back %.1f / %.1f / %.1f", e1.Width or 0, e2.Width or 0, n0.Width or 0, e1.Back or 0, e2.Back or 0, n0.Back or 0))
 		local total = p1 + p2 + p0
 		T.check(total <= budget.petEvoLow + budget.petEvo2Low + budget.petHigh, "own followers' parts stay within the evolved budgets", total .. " parts")
 		-- a stage 2 for a Common is capped at its first evolution

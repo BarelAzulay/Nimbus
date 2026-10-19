@@ -140,7 +140,7 @@ local function rigOf(model)
 		return nil
 	end
 	local base = root.CFrame
-	local rig = { Model = model, Root = root, Parts = {}, Pos = {}, Rot = {}, Size = {}, Scale = 1 }
+	local rig = { Model = model, Root = root, Parts = {}, Pos = {}, Rot = {}, Size = {}, Scale = 1, Buf = {}, Posed = nil }
 	for _, d in ipairs(model:GetDescendants()) do
 		if d:IsA("BasePart") then
 			local rel = base:ToObjectSpace(d.CFrame)
@@ -160,7 +160,10 @@ local function poseRig(rig, cf, s)
 		return
 	end
 	local resize = s ~= rig.Scale
-	local list = {}
+	if not resize and rig.Posed == cf then
+		return -- already there (the settle phase holds the pose): nothing to move this frame
+	end
+	local list = rig.Buf -- reused every frame: no table per frame
 	for i, part in ipairs(rig.Parts) do
 		if resize then
 			part.Size = rig.Size[i] * s
@@ -168,6 +171,7 @@ local function poseRig(rig, cf, s)
 		list[i] = cf * CFrame.new(rig.Pos[i] * s) * rig.Rot[i]
 	end
 	rig.Scale = s
+	rig.Posed = cf
 	Workspace:BulkMoveTo(rig.Parts, list, Enum.BulkMoveMode.FireCFrameChanged)
 end
 

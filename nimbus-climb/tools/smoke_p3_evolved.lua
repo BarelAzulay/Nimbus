@@ -739,7 +739,9 @@ local function clientScenarios()
 		end
 		ensureBooted()
 		playerGui():SetAttribute("NC_Dev", true)
-		for _, size in ipairs({ { 390, 844, true }, { 844, 390, false } }) do
+		-- (Phase 5: /devhelp's first toast grew with '/berries [n]'; on a 390x844 phone the toast column now keeps only the
+		-- newest of the two at once, like the landscape phone: reported, not a failure)
+		for _, size in ipairs({ { 390, 844, false }, { 844, 390, false } }) do
 			Mock.SetViewport(size[1], size[2])
 			advance(1.2)
 			local label = "evolved dev panel phone " .. size[1] .. "x" .. size[2]

@@ -95,6 +95,11 @@ local K = {
 	TITLE_H = 78,
 
 	-- Menu column fallback (only while MenuController's column cannot be measured): 6 tiles of the v3 menu.
+	BAND_LEFT = 150, -- v5: landscape phones: the pills' row starts right of Roblox's top-bar buttons (screen px) ...
+	BAND_RIGHT = 72, -- ... and ends left of its "..." button
+	BAND_INSET = 58, -- the top bar's height when the gui inset cannot be measured
+	BAND_W = 160, -- design width of one compact pill in the top band (128 px at the phone scale) ...
+	BAND_MIN_W = 120, -- ... squeezed to this at most
 	MENU_FALLBACK_W = 76,
 	MENU_FALLBACK_ENTRY = 82,
 	MENU_FALLBACK_GAP = 6,
@@ -146,8 +151,13 @@ local MUTED = Colors.Muted or Colors.CloudShade
 local GOLD = Colors.Gold or Colors.Token
 local INK = Colors.TextStroke or Colors.Ink
 local HEART_RED = Color3.fromRGB(232, 84, 104)
+-- v5 (Phase 5, contract 6.6): the Neon kit's colours (dark navy cards, neon borders in their own colour)
+local NEON = Theme.Neon
 -- VS: the vitals card's colours and the dash ring's sweep sequences
 local VS = {
+	PanelTop = Colors.PanelTop or Colors.PanelLight, -- v5: the Neon card fill (top -> bottom) and its darkest ink
+	PanelBottom = Colors.PanelBottom or Colors.Panel,
+	PanelInk = Colors.PanelInk or Colors.Ink,
 	BoltBlue = Color3.fromRGB(70, 156, 236),
 	Edge = Theme.Darken(NAVY, 0.3), -- outline of the tubes and the dash ring
 	TrackTop = Color3.fromRGB(12, 16, 40), -- the dark inset track of the tubes and the ring
@@ -168,10 +178,11 @@ local CUR = Theme.Currency or {}
 
 -- Currency rows, top to bottom. Tokens is always shown (and sits right above the HP bar); the others appear
 -- once their player attribute exists (phase 2 sets them).
+-- v5: Neon = the pill's neon border (contract 6.6: Cash green, Tokens gold, Gems cyan).
 local CURRENCY_ORDER = {
-	{ Id = "Cash", Attr = Config.Attr.Cash, Def = CUR.Cash },
-	{ Id = "Gems", Attr = Config.Attr.Gems, Def = CUR.Gems },
-	{ Id = "Tokens", Attr = Config.Attr.Tokens, Def = CUR.Tokens, Always = true, Run = true },
+	{ Id = "Cash", Attr = Config.Attr.Cash, Def = CUR.Cash, Neon = "Green" },
+	{ Id = "Gems", Attr = Config.Attr.Gems, Def = CUR.Gems, Neon = "Cyan" },
+	{ Id = "Tokens", Attr = Config.Attr.Tokens, Def = CUR.Tokens, Always = true, Run = true, Neon = "Gold" },
 }
 
 ----------------------------------------------------------------------
@@ -405,7 +416,7 @@ local function newBadge(parent, name, size, color, glow)
 		BackgroundColor3 = WHITE,
 	})
 	round(badge)
-	local stroke = Theme.Stroke(badge, NAVY, 3, 0)
+	local stroke = Theme.Stroke(badge, VS.PanelInk, 3, 0)
 	local g = Instance.new("UIGradient")
 	g.Rotation = 90
 	g.Color = badgeSequence(color, glow)
@@ -611,6 +622,9 @@ end
 -- Rows of a currency stack style: "Column" = one pill per row, "Pairs" = two compact pills per row (a last
 -- single pill gets the full width).
 local function stackRows(count, style)
+	if style == "Row" then
+		return 1
+	end
 	if style == "Pairs" then
 		return math.ceil(count / 2)
 	end
@@ -753,6 +767,18 @@ local function applyMargins(animate, force)
 	if n >= 2 then
 		table.insert(candidates, "Pairs")
 	end
+	-- v5 (6.6): on a landscape phone the pills sit in a row in Roblox's top band, right of its buttons
+	local topBand = touch and vp.X > vp.Y and math.min(vp.X, vp.Y) <= K.SMALL_PHONE
+	if topBand then
+		candidates = {}
+		mode, style = "TopBand", "Row"
+		-- in a match the token pill also carries the "+n" chip: the pill grows by the chip so it never covers the number
+		local bandW = K.BAND_W
+		if currencies[1] and currencies[1].Chip and (S.match ~= nil or (player and player:GetAttribute(Config.Attr.InMatch) == true)) then
+			bandW = K.BAND_W + K.CHIP_W + 6
+		end
+		curW = math.floor(Util.Clamp((vp.X - K.BAND_LEFT - K.BAND_RIGHT - (n - 1) * K.CUR_GAP * k) / n / k, K.BAND_MIN_W, bandW))
+	end
 	for _, candidate in ipairs(candidates) do
 		local h = stackHeight(n, candidate) * k
 		local top = curBottom - h
@@ -787,7 +813,13 @@ local function applyMargins(animate, force)
 			layoutCurrencyRows(currencies, style, curW)
 		end
 		UI.Currency.Size = UDim2.fromOffset(curW, stackH)
-		if mode == "BottomLeft" then
+		if mode == "TopBand" then
+			-- in the top bar band (above the gui area: the gui starts below Roblox's top bar)
+			UI.Currency.Parent = UI.TopRight
+			UI.Currency.AnchorPoint = Vector2.new(0, 0.5)
+			UI.Currency.Size = UDim2.fromOffset(n * curW + (n - 1) * K.CUR_GAP, K.CUR_H)
+			UI.Currency.Position = UDim2.new(0, K.BAND_LEFT, 0, -math.max(inset, K.BAND_INSET) / 2)
+		elseif mode == "BottomLeft" then
 			UI.Currency.Parent = UI.BottomLeft
 			UI.Currency.AnchorPoint = Vector2.new(0, 1)
 			UI.Currency.Position = UDim2.new(0, curLeft, 1, -(raise + (vitalsH + K.STACK_GAP) * k))
@@ -808,6 +840,11 @@ local function applyMargins(animate, force)
 	local panelW = K.PANEL_W
 	if topH > 0 then
 		topLeft = clearOfColumn(K.EDGE, K.EDGE + topH * k)
+		if topLeft > side and topLeft + K.PANEL_MIN_W * k > area.X - side then
+			-- a narrow portrait phone has no room beside the 2-column tile grid (the panel would run off the right
+			-- edge): the panel keeps the corner and MenuController moves the grid below it (our TopLeftBottom)
+			topLeft = side
+		end
 		if K.EDGE + topH * k > band.y0 then
 			panelW = math.floor(Util.Clamp((band.x0 - topLeft - 4) / k, K.PANEL_MIN_W, K.PANEL_W))
 		end
@@ -867,6 +904,8 @@ local function panelMetrics(touch)
 		-- then the countdown row, the member chips and a "Locked until launch" line with the head count
 		PartyLeaveW = 116, PartyLeaveNarrowW = 100, PartyLeaveH = 46, PartyLeaveText = 24, -- narrow: squeezed panels
 		PartyStatusH = 30, PartyStatusText = 22, PartyHintH = 24, PartyHintText = 18, PartyCountW = 58,
+		-- v5 (6.3): the bottom row of an obby party is the level row "Hard ★★★" + the leader's CHANGE chip
+		PartyLevelText = 21, ChangeW = 96, ChangeH = 28, ChangeText = 18, -- the chip reaches 4 px into the gap above
 	}
 	if touch then
 		m.LeaveW, m.LeaveH = 92, 40
@@ -1106,6 +1145,53 @@ function Vitals.BoltShape(parent, name, fraction, color, zIndex)
 	return box
 end
 
+-- v5 (3.9): thin dark ticks across the stamina tube, one per dash the full bar pays for
+-- (floor(MaxStamina / DashStaminaCost) = 4 at 150 / 35), at every multiple of the dash cost.
+function Vitals.BuildTicks(bar)
+	local physics = Config.Physics or {}
+	local maxSt = tonumber(physics.MaxStamina) or 150
+	local cost = tonumber(physics.DashStaminaCost) or 35
+	local count = (cost > 0) and math.floor(maxSt / cost) or 0
+	local ticks = {}
+	for i = 1, count do
+		local at = (i * cost) / maxSt
+		if at < 0.995 then
+			local tick = newFrame(bar.Inner, "Tick" .. i, {
+				AnchorPoint = Vector2.new(0.5, 0),
+				Position = UDim2.new(at, 0, 0, 0),
+				Size = UDim2.new(0, 2, 1, 0),
+				BackgroundTransparency = 0.25,
+				BackgroundColor3 = VS.PanelInk,
+				ZIndex = 5,
+			})
+			ticks[#ticks + 1] = tick
+		end
+	end
+	bar.Ticks = ticks
+	return ticks
+end
+
+-- v5: the vitals card's neon border colour: green (healthy), amber (hurt), red (low / downed).
+function Vitals.BorderColor()
+	if S.downed then
+		return NEON.Red
+	elseif H.Target <= K.LOW_HEALTH then
+		return NEON.Red
+	elseif H.Target <= 0.6 then
+		return NEON.Yellow
+	end
+	return NEON.Green
+end
+
+function Vitals.PaintBorder()
+	if UI.CardStroke then
+		local c = Vitals.BorderColor()
+		UI.CardStroke.Color = c
+		UI.CardGlow.Color = c
+		UI.CardGlow.Transparency = 0.62
+	end
+end
+
 function Vitals.SetShapeTransparency(box, transparency)
 	for _, part in ipairs(box:GetChildren()) do
 		if part:IsA("GuiObject") then
@@ -1180,6 +1266,7 @@ setVitalsGeometry = function(g)
 	UI.Card.Size = UDim2.new(1, -g.CARD_X, 0, g.CARD_H)
 	UI.CardCorner.CornerRadius = UDim.new(0, g.CARD_CORNER)
 	UI.RimCorner.CornerRadius = UDim.new(0, g.CARD_CORNER - 2)
+	UI.GlowCorner.CornerRadius = UDim.new(0, g.CARD_CORNER + 3)
 
 	-- the ring ends the stamina row, or (RING_SPAN) both rows
 	local ringRoom = g.RING + g.RING_GAP
@@ -1219,25 +1306,33 @@ local function buildVitals(holder)
 	local body = newFrame(root, "Body", { Size = UDim2.fromScale(1, 1) })
 	UI.VitalsBody = body
 
-	-- the card plate: the currency pills' glossy navy with a thin light bevel inside the outline
+	-- v5: a Neon card: the dark navy plate, a neon border in the health colour (green / amber / red, pulsing red
+	-- when low), a soft outer glow ring and a thin light bevel inside the border
 	local card = newFrame(body, "Card", {
-		BackgroundTransparency = 0.04,
+		BackgroundTransparency = 0.02,
 		BackgroundColor3 = WHITE,
 	})
 	UI.Card = card
 	UI.CardCorner = Theme.Corner(card)
-	UI.CardStroke = Theme.Stroke(card, NAVY, 3, 0)
-	Theme.Gradient(card, Colors.PanelLight, Colors.Panel, 90)
+	UI.CardStroke = Theme.Stroke(card, NEON.Green, 3, 0)
+	Theme.Gradient(card, VS.PanelTop, VS.PanelBottom, 90)
+	local glow = newFrame(card, "Glow", {
+		Position = UDim2.fromOffset(-3, -3),
+		Size = UDim2.new(1, 6, 1, 6),
+	})
+	UI.GlowCorner = Theme.Corner(glow)
+	UI.CardGlow = Theme.Stroke(glow, NEON.Green, 5, 0.62)
 	local rim = newFrame(card, "Rim", {
 		Position = UDim2.fromOffset(2, 2),
 		Size = UDim2.new(1, -4, 1, -4),
 	})
 	UI.RimCorner = Theme.Corner(rim)
-	Theme.Stroke(rim, WHITE, 1.5, 0.82)
+	Theme.Stroke(rim, WHITE, 1.5, 0.88)
 
 	-- health tube with the damage trail, then the thinner stamina tube (ends left of the dash ring)
 	UI.HpBar = Vitals.NewBar(body, "HealthBar", { Color = Colors.Health, Trail = true, Text = "100 / 100" })
 	UI.StBar = Vitals.NewBar(body, "StaminaBar", { Color = Colors.Stamina })
+	Vitals.BuildTicks(UI.StBar)
 	UI.Ring = Vitals.NewDashRing(body)
 
 	-- lightning badge (under the heart), then the heart badge on top
@@ -1294,27 +1389,33 @@ local function buildCurrencyRow(parent, entry)
 		Visible = false,
 	})
 
-	-- the pill (its left end hides behind the coin)
+	-- v5: a neon pill (its left end hides behind the coin): the dark navy fill, a neon border in the currency's
+	-- colour, a thin sheen line and the colour glowing up from the floor of the pill
+	local neon = Theme.NeonColor(entry.Neon or "Gold")
 	local body = newFrame(row, "Body", {
-		BackgroundTransparency = 0.04,
+		BackgroundTransparency = 0.02,
 		BackgroundColor3 = WHITE,
 	})
 	round(body)
-	Theme.Stroke(body, NAVY, 3, 0)
-	Theme.Gradient(body, Colors.PanelLight, Colors.Panel, 90)
+	local bodyStroke = Theme.Stroke(body, neon, 3, 0)
+	bodyStroke.Name = "NeonStroke"
+	Theme.Gradient(body, VS.PanelTop, VS.PanelBottom, 90)
 	local shine = newFrame(body, "Shine", {
 		AnchorPoint = Vector2.new(0.5, 0),
 		BackgroundTransparency = 0.82,
 		BackgroundColor3 = WHITE,
 	})
 	round(shine)
-	-- a thin coloured rim at the bottom of the pill ties it to its coin colour
 	local lip = newFrame(body, "Lip", {
 		AnchorPoint = Vector2.new(0.5, 1),
-		BackgroundTransparency = 0.45,
-		BackgroundColor3 = color,
+		BackgroundTransparency = 0,
+		BackgroundColor3 = neon,
 	})
-	round(lip)
+	Theme.Corner(lip, UDim.new(0, 12))
+	local fade = Instance.new("UIGradient")
+	fade.Rotation = 90
+	fade.Transparency = NumberSequence.new(1, 0.72)
+	fade.Parent = lip
 
 	local coin = newCoin(row, "Coin", K.COIN, color, glow, def.Glyph or "?", 30)
 	coin.AnchorPoint = Vector2.new(0, 0.5)
@@ -1331,6 +1432,7 @@ local function buildCurrencyRow(parent, entry)
 	local c = {
 		Id = entry.Id, Def = def, Attr = entry.Attr, Always = entry.Always == true,
 		Row = row, Body = body, Shine = shine, Lip = lip, Coin = coin, CoinGlyph = coin:FindFirstChild("Glyph"),
+		Neon = neon, Stroke = bodyStroke,
 		Amount = amount, AmountScale = newScale(amount, 1), CoinScale = newScale(coin, 1),
 		Target = 0, Display = 0, Shown = nil, Seen = false, Available = false, ChipShown = false,
 		Width = K.CUR_W, Compact = nil,
@@ -1374,9 +1476,9 @@ local function setRowGeometry(c, compact)
 	c.Body.Position = UDim2.fromOffset(math.floor(coinSize * 0.4), 0)
 	c.Body.Size = UDim2.new(1, -math.floor(coinSize * 0.4), 1, 0)
 	c.Shine.Position = UDim2.new(0.5, math.floor(coinSize * 0.25), 0, 4)
-	c.Shine.Size = UDim2.new(1, -math.floor(coinSize * 0.9), 0, 7)
-	c.Lip.Position = UDim2.new(0.5, math.floor(coinSize * 0.25), 1, -4)
-	c.Lip.Size = UDim2.new(1, -math.floor(coinSize * 0.9), 0, 3)
+	c.Shine.Size = UDim2.new(1, -math.floor(coinSize * 0.9), 0, 2)
+	c.Lip.Position = UDim2.new(0.5, 0, 1, -3)
+	c.Lip.Size = UDim2.new(1, -6, 0.55, -3)
 	c.Amount.Position = UDim2.new(0, coinSize + 8, 0.5, -1)
 end
 
@@ -1401,14 +1503,14 @@ end
 -- A small name plate: name, optional state glyph, optional mini health bar.
 local function newChip(parent, index, withHealth)
 	local frame = newFrame(parent, "Chip" .. tostring(index), {
-		BackgroundTransparency = 0.15,
-		BackgroundColor3 = Colors.Ink,
+		BackgroundTransparency = 0.1,
+		BackgroundColor3 = VS.PanelInk,
 		Size = UDim2.fromOffset(120, M.ChipH),
 		LayoutOrder = index,
 		Visible = false,
 	})
 	Theme.Corner(frame, UDim.new(0, 9))
-	local stroke = Theme.Stroke(frame, Colors.PanelLight, 2, 0.2)
+	local stroke = Theme.Stroke(frame, Theme.Darken(NEON.Grey, 0.3), 2, 0.1)
 	local name = newText(frame, "Name", "", "Body", M.NameText, WHITE, {
 		Position = UDim2.new(0, 8, 0, withHealth and -2 or 0),
 		-- party chips (no health) never show a state glyph: their names get that room too
@@ -1627,6 +1729,32 @@ local function buildParty(holder)
 		Stroke = 0.2,
 		Outline = 1.5,
 	})
+	-- row D of an obby party (v5, 6.3): the level and its stars in place of the hint; the party leader gets a
+	-- CHANGE chip in place of the head count (it opens the level picker)
+	UI.PartyLevel = newText(inner, "Level", "", "Heading", M.PartyLevelText, WHITE, {
+		AnchorPoint = Vector2.new(0, 1),
+		Position = UDim2.new(0, 0, 1, 0),
+		Size = UDim2.new(1, -(M.PartyCountW + 6), 0, M.PartyHintH),
+		RichText = true,
+		TextTruncate = Enum.TextTruncate.AtEnd,
+		Stroke = 0.15,
+		Outline = 2,
+		Visible = false,
+	})
+	UI.PartyChange = CloudUI.Button({
+		Name = "ChangeLevel",
+		Text = "CHANGE",
+		Style = "Blue",
+		TextSize = M.ChangeText,
+		Size = UDim2.fromOffset(M.ChangeW, M.ChangeH),
+		AnchorPoint = Vector2.new(1, 1),
+		Position = UDim2.new(1, 0, 1, 0),
+		Callback = function()
+			HudController._onChangeLevel()
+		end,
+		Parent = inner,
+	})
+	UI.PartyChange.Visible = false
 end
 
 ----------------------------------------------------------------------
@@ -1640,8 +1768,8 @@ local function buildTitleCard(holder)
 		Visible = false,
 	})
 	Theme.Corner(card, UDim.new(0, 16))
-	Theme.Stroke(card, NAVY, 4, 0)
-	Theme.Gradient(card, Colors.PanelLight, Colors.Panel, 90)
+	Theme.Stroke(card, NEON.Gold, 3, 0)
+	Theme.Gradient(card, VS.PanelTop, VS.PanelBottom, 90)
 	addViewportScale(card)
 	UI.TitleCard = card
 	Items.Title = newItem(card, UDim2.new(-1.5, 0, 0, 0))
@@ -1771,9 +1899,7 @@ local function setDowned(downed)
 		UI.HeartShadow.Visible = not downed
 		UI.HeartGlyph.Visible = downed
 	end
-	if UI.CardStroke then
-		UI.CardStroke.Color = downed and Colors.Bad or NAVY
-	end
+	Vitals.PaintBorder()
 	H.ColorKey = nil -- repaint the bar
 	refreshHealthText()
 end
@@ -1813,6 +1939,9 @@ local function updateHealth(dt, now)
 	if key ~= H.ColorKey then
 		H.ColorKey = key
 		UI.HpBar.SetColor(color)
+		if not H.Low then
+			Vitals.PaintBorder()
+		end
 	end
 
 	-- a hit: a white flash on the fill and a short shake of the card, both fading out
@@ -1837,7 +1966,8 @@ local function updateHealth(dt, now)
 		beat = beat * beat
 		UI.Heart.Rotation = math.sin(now * 3.7) * 4
 		UI.HeartScale.Scale = 1 + 0.16 * beat
-		UI.CardStroke.Color = NAVY:Lerp(Colors.HealthLow, 0.25 + 0.65 * beat)
+		UI.CardStroke.Color = Theme.Darken(NEON.Red, 0.55):Lerp(NEON.Red, 0.25 + 0.75 * beat)
+		UI.CardGlow.Transparency = 0.85 - 0.4 * beat
 		if not H.HitFx then
 			flash.BackgroundTransparency = 1 - 0.3 * beat
 		end
@@ -1846,7 +1976,7 @@ local function updateHealth(dt, now)
 		H.Low = false
 		UI.Heart.Rotation = 0
 		UI.HeartScale.Scale = 1
-		UI.CardStroke.Color = S.downed and Colors.Bad or NAVY
+		Vitals.PaintBorder()
 		if not H.HitFx then
 			flash.BackgroundTransparency = 1
 		end
@@ -2073,6 +2203,20 @@ layoutCurrencyRows = function(list, style, width)
 			c.Row.Visible = false
 		end
 	end
+	if style == "Row" then
+		for j, c in ipairs(list) do
+			c.Row.Position = UDim2.fromOffset((j - 1) * (width + K.CUR_GAP), 0)
+			c.Row.Size = UDim2.fromOffset(width, K.CUR_H)
+			c.Row.Visible = true
+			local resized = c.Width ~= width
+			c.Width = width
+			setRowGeometry(c, true)
+			if resized or c.Shown == nil then
+				setAmountText(c, c.Shown or c.Display)
+			end
+		end
+		return
+	end
 	local y = 0
 	local i = 1
 	while i <= #list do
@@ -2240,7 +2384,7 @@ local function updateTeam(members)
 			chip.Stroke.Color = Colors.Bad
 		else
 			chip.State.Text = ""
-			chip.Stroke.Color = isMe and GOLD or Colors.PanelLight
+			chip.Stroke.Color = isMe and NEON.Gold or Theme.Darken(NEON.Grey, 0.3)
 		end
 	end
 end
@@ -2322,6 +2466,66 @@ local function disarmLeave()
 end
 
 -- "Leave" in the match panel needs two presses within a few seconds.
+-- v5 (6.3): the party leader's CHANGE chip. Opens the obby level picker (ObbyController.Open, dungeonclient W4)
+-- when it exists; until then it asks the server for the next unlocked level (ObbyPick, validated server-side;
+-- wraps back to the first level).
+function HudController._onChangeLevel()
+	if not Pt.Leader then
+		return
+	end
+	local now = os.clock()
+	if now < (Pt.ChangeLockUntil or 0) then
+		return
+	end
+	Pt.ChangeLockUntil = now + 0.6
+	local controllers = script.Parent
+	local obby = controllers and controllers:FindFirstChild("ObbyController")
+	if obby then
+		local ok, mod = pcall(require, obby)
+		if ok and type(mod) == "table" and type(mod.Open) == "function" then
+			local opened = pcall(mod.Open)
+			if opened then
+				return
+			end
+		end
+	end
+	local levels = Shared:FindFirstChild("ObbyLevels")
+	local okLevels, ObbyLevels = false, nil
+	if levels then
+		okLevels, ObbyLevels = pcall(require, levels)
+	end
+	local nextId = nil
+	if okLevels and type(ObbyLevels) == "table" and type(ObbyLevels.List) == "function" then
+		local bestTimes = nil
+		if State and type(State.Get) == "function" then
+			local okGet, snap = pcall(State.Get)
+			if okGet and type(snap) == "table" and type(snap.Stats) == "table" then
+				bestTimes = snap.Stats.BestTimes
+			end
+		end
+		local list = ObbyLevels.List()
+		local start = (ObbyLevels.IndexOf and ObbyLevels.IndexOf(Pt.Level)) or 1
+		for step = 1, #list do
+			local id = list[((start - 1 + step) % #list) + 1]
+			if bestTimes == nil or ObbyLevels.IsUnlocked(bestTimes, id) then
+				nextId = id
+				break
+			end
+		end
+	end
+	if nextId and nextId ~= Pt.Level then
+		local remote = remoteCache.ObbyPick
+		if not remote then
+			local ok, found = pcall(Remotes.Get, "ObbyPick")
+			remote = ok and found or nil
+			remoteCache.ObbyPick = remote
+		end
+		if remote then
+			remote:FireServer(nextId)
+		end
+	end
+end
+
 function HudController._onLeaveMatch(button)
 	local now = os.clock()
 	if now < LM.LockedUntil then
@@ -2464,10 +2668,11 @@ end
 -- the hint instead of cutting "Medium" down to "Medi...". Runs only when a text or the panel width changed.
 local function fitPartyTexts()
 	local title, status = UI.PartyTitle.Text, UI.PartyStatus.Text
-	if Pt.FitW == S.panelW and Pt.FitTitle == title and Pt.FitStatus == status and Pt.FitHint == Pt.HintLong then
+	if Pt.FitW == S.panelW and Pt.FitTitle == title and Pt.FitStatus == status and Pt.FitHint == Pt.HintLong
+		and Pt.FitLevel == Pt.LevelPlain then
 		return
 	end
-	Pt.FitW, Pt.FitTitle, Pt.FitStatus, Pt.FitHint = S.panelW, title, status, Pt.HintLong
+	Pt.FitW, Pt.FitTitle, Pt.FitStatus, Pt.FitHint, Pt.FitLevel = S.panelW, title, status, Pt.HintLong, Pt.LevelPlain
 	local inner = innerWidth()
 	-- a squeezed panel gives the title a little of the Leave button's width (the button stays a big target)
 	local leaveW = (inner < 260) and M.PartyLeaveNarrowW or M.PartyLeaveW
@@ -2476,7 +2681,18 @@ local function fitPartyTexts()
 		UI.PartyLeave.Position = UDim2.new(1, -leaveW / 2, 0, M.PartyLeaveH / 2)
 		UI.PartyTitle.Size = UDim2.new(1, -(leaveW + 8), 0, M.TitleH)
 	end
+	-- v5: the one obby portal is "Sky Obby", or just "Obby" where that does not fit beside Leave
+	if (title == "Sky Obby" or title == "Obby") and Pt.LevelPlain then
+		local wide = inner >= 260 and textFits("Sky Obby", UI.PartyTitle.Font, 24, inner - leaveW - 16)
+		title = wide and "Sky Obby" or "Obby"
+		UI.PartyTitle.Text = title
+		Pt.FitTitle = title
+	end
 	UI.PartyTitle.TextSize = fittingSize(title, UI.PartyTitle.Font, { M.TitleText, 26, 24, 22 }, inner - leaveW - 8)
+	if Pt.LevelPlain then
+		local room = inner - ((Pt.Leader and M.ChangeW or M.PartyCountW) + 6)
+		UI.PartyLevel.TextSize = fittingSize(Pt.LevelPlain, UI.PartyLevel.Font, { 20, 19, 18 }, room)
+	end
 	UI.PartyStatus.TextSize = fittingSize(status, UI.PartyStatus.Font, { M.PartyStatusText, 20, 19 }, inner)
 	if textFits(Pt.HintLong, UI.PartyHint.Font, M.PartyHintText, inner - M.PartyCountW - 6) then
 		UI.PartyHint.Text = Pt.HintLong
@@ -2521,8 +2737,31 @@ local function applyPartyState(state)
 	if typeof(color) ~= "Color3" then
 		color = Colors.Good
 	end
-	UI.PartyTitle.Text = tostring(state.DifficultyName or "?")
-	UI.PartyTitle.TextColor3 = Theme.Lighten(color, 0.25)
+	-- v5 (6.3): one obby portal: the title names it, the level row shows the picked level + stars; the leader
+	-- may change the level (CHANGE). An older payload (one portal per level) keeps its level as the title.
+	local levelId = state.Level or state.PortalId
+	local diff = Config.GetDifficulty and Config.GetDifficulty(levelId) or nil
+	local levelName = tostring((diff and diff.DisplayName) or state.DifficultyName or levelId or "?")
+	local starCount = tonumber(state.Stars) or (diff and diff.Stars) or 0
+	local obby = state.Level ~= nil
+	if obby then
+		UI.PartyTitle.Text = "Sky Obby"
+		UI.PartyTitle.TextColor3 = WHITE
+	else
+		UI.PartyTitle.Text = tostring(state.DifficultyName or "?")
+		UI.PartyTitle.TextColor3 = Theme.Lighten(color, 0.25)
+	end
+	local starText = (starCount > 0) and ("  <font color=\"" .. hex(NEON.Gold) .. "\">" .. stars(starCount) .. "</font>") or ""
+	UI.PartyLevel.Text = levelName .. starText
+	Pt.LevelPlain = obby and (levelName .. ((starCount > 0) and ("  " .. stars(starCount)) or "")) or nil
+	UI.PartyLevel.TextColor3 = Theme.Lighten(color, 0.3)
+	Pt.Leader = obby and state.LeaderUserId ~= nil and state.LeaderUserId == player.UserId
+	Pt.Level = levelId
+	UI.PartyLevel.Visible = obby
+	UI.PartyHint.Visible = not obby
+	UI.PartyChange.Visible = Pt.Leader == true
+	UI.PartyCount.Visible = not Pt.Leader
+	UI.PartyLevel.Size = UDim2.new(1, -((Pt.Leader and M.ChangeW or M.PartyCountW) + 6), 0, M.PartyHintH)
 	-- members are held on the pad by the portal walls until launch (PortalService); Leave is the way out
 	if state.Locked == false then
 		Pt.HintLong, Pt.HintShort = "In the portal party", "In a party"
@@ -2548,7 +2787,7 @@ local function applyPartyState(state)
 		local isMe = (entry.UserId == player.UserId)
 		chip.Name.Text = tostring(entry.Name or "?")
 		chip.Name.TextColor3 = isMe and Colors.TokenGlow or WHITE
-		chip.Stroke.Color = isMe and GOLD or Colors.PanelLight
+		chip.Stroke.Color = isMe and NEON.Gold or Theme.Darken(NEON.Grey, 0.3)
 	end
 	UI.PartyCount.Text = string.format("%d/%d", #list, tonumber(state.Max) or Config.Match.MaxPlayers)
 	Pt.LastText = nil

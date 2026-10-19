@@ -6,19 +6,21 @@
 -- DataService.AddCash (a stand-in for hours of garden income). Every scenario sets up and cleans up its own players.
 -- Loaded by tools/smoke.py in BOTH worlds (ARGS.context picks the half). Server scenarios (booted):
 --   p4flow_new       Nia, a brand-new player (who is also the game's owner, for /petlevel), and Rex, a visitor: claim ->
---                    the free Pet Garden (the only pad) -> a pet in place 1 -> a coin after one meal, Rex walking over it
---                    scoops nothing, Nia's walk scoops it once -> the Berry Bush + the Food Machine -> the owner-only
---                    FeedPrompt and one machine feed -> Champion Ring rounds 1-3 with her one level-1 pet (no InBattle
---                    gap, paid once, Ring.Best / Runs) -> /petlevel 20 + EVOLVE (stage 1, x1.25 coins, a Common never
+--                    the free Pet Garden (the only pad) -> a pet in place 1 -> (Phase 5) it roams and poops a Cloud Cash
+--                    coin, Rex walking over it scoops nothing, Nia's walk scoops it once -> the Berry Farm + the Food
+--                    Machine -> the owner-only FeedPrompt and one machine feed paid in berries -> Champion Ring rounds
+--                    1-3 with her one level-1 pet, driven by the shared Phase 5 driver (no InBattle gap, paid once,
+--                    Ring.Best / Runs) -> /petlevel 20 + EVOLVE (stage 1, the LevelFactor x1.5 bonus, a Common never
 --                    stage 2) -> the Training Place: Train with the lock (no equip, no garden place) and the automatic
 --                    return to place 1 with the rank -> Prestige: garden place 4 opens, the Garden stays built at Lv 1,
 --                    the pet keeps its level / stage / rank; a skipped tutorial never shows chapter 4.
 --   p4flow_migrate   Vic, a Phase 3 save (Prestige 1, presses, Collector Cash, leftover Feasts, two Gym pets, a 6-pet
---                    Garden L6, the Phase 3 tutorial finished): the one-time P4 migration (Home Level and tier unchanged,
---                    LegacySlots 6, LegacyPrices, the Gym emptied with its toast), the claim (plants built, the welcome
---                    toast once, the Welcome-back pile scooped exactly once), old prices this run, a leftover Feast fed
---                    for free ("Ready to evolve!"), an EVOLVE, then tutorial chapter 4: train -> ring -> portal (+300
---                    Tokens once).
+--                    Garden L6, the Phase 3 tutorial finished): the P4 + P5 migrations in ONE load (Home Level never
+--                    down, the Manor kept, the presses folded into one Berry Farm, the Collector into LegacyMagnet,
+--                    LegacySlots 6, LegacyPrices, the Gym emptied with its toast, the Feasts converted into berries), the
+--                    claim (stations built, the welcome toast once, the Welcome-back heap scooped exactly once), old
+--                    prices this run, a berry feed ("Ready to evolve!"), an EVOLVE, then tutorial chapter 4: train ->
+--                    ring -> portal (+300 Tokens once).
 --   p4flow_rejoin    Moe leaves mid-training (the job is saved, still locked after a quick rejoin, finished while he is
 --                    away: the toast, the rank, the pet back with him) and mid-ring-run (Runs + 1 in the leave save,
 --                    the pocket freed, no battle after the rejoin, nothing counted twice).
@@ -579,11 +581,14 @@ end
 
 -- starts the ring through the BattleRequest remote and follows it in 0.1 s steps until the run's final "End"
 -- (Rewards.Final), opts.stopAfterWins won rounds, or opts.maxSeconds. out = { id, refused, starts, wins, finalEnd,
--- nilSamples (InBattle read nil while the run lived), ids }
+-- nilSamples (InBattle read nil while the run lived), ids }. Phase 5: a passive fighter deals no damage, so the
+-- player is driven (the shared driver of smoke_p5_flow.lua: walk at the legal run toward the champion, ATTACK)
 local function runRing(p, startRound, opts)
 	opts = opts or {}
 	local out = { starts = {}, wins = {}, nilSamples = 0, ids = {} }
 	local cursor = K.logSize()
+	local FK = _G.FlowKit5
+	local drv = FK and FK.tracker(p, cursor) or nil
 	Mock.FromClient(remote("BattleRequest"), p, "Ring", startRound)
 	advance(0.1)
 	local id = p:GetAttribute("InBattle")
@@ -596,6 +601,9 @@ local function runRing(p, startRound, opts)
 	local t0 = Mock.Clock.now
 	while Mock.Clock.now - t0 < (opts.maxSeconds or 900) do
 		advance(0.1)
+		if drv and opts.passive ~= true then
+			FK.tick(drv, { remote = true })
+		end
 		local attr = p:GetAttribute("InBattle")
 		if attr == nil then
 			out.nilSamples = out.nilSamples + 1
@@ -698,11 +706,19 @@ S.p4flow_new = scenario("p4flow_new", function(players)
 		advance(0.4)
 		T.check(home(nia).Garden[4] == nil and toasted(nia, "Garden place locked: Prestige to open it", mark), "p4 flow new: place 4 is locked before the first Prestige (3 places)")
 
-		-- coins: one per meal; only the owner scoops them, exactly once
-		advance(TC.Coins.MealSeconds + 1.5)
-		local piles = Ty.Piles(nia)
-		local pile = piles and piles[1]
-		if T.check(pile ~= nil and pile.Coins >= 1, "p4 flow new: one meal later a coin waits in the pile of place 1", pile and tostring(pile.Coins) or "no pile") then
+		-- coins (Phase 5: the pet roams and poops Cloud Cash, the first poop one roam cycle after it was placed); only the
+		-- owner scoops them, exactly once
+		local pile = nil
+		local tw = Mock.Clock.now
+		while not pile and Mock.Clock.now - tw < 60 do
+			for _, d in ipairs(Ty.Drops(nia) or {}) do
+				if (d.Poops or 0) >= 1 and not pile then
+					pile = { Coins = d.Poops, Pos = d.Position }
+				end
+			end
+			advance(1)
+		end
+		if T.check(pile ~= nil and pile.Coins >= 1, "p4 flow new: within one roam cycle her pet poops a Cloud Cash coin (TycoonService.Drops)", pile and tostring(pile.Coins) or "no drop") then
 			local bank0, rexCash = home(nia).CollectorCash, cash(rex)
 			standAt(rex, pile.Pos)
 			advance(0.6)
@@ -715,18 +731,18 @@ S.p4flow_new = scenario("p4flow_new", function(players)
 			local gained = cash(nia) - c0
 			T.check(gained >= 1 and gained == ledger.of(nia) and ledger.calls(nia) >= 1, "p4 flow new: Nia walking over her pile scoops it (+$" .. gained .. ", CoinsScooped)")
 			local total1 = cash(nia) + home(nia).CollectorCash
-			local oneCoin = (TC.Coins.LuckyMult + 1) * Ty.IncomePerSecond(nia) * TC.Coins.MealSeconds
+			local oneCoin = (TC.Coins.LuckyMult + 1) * Ty.IncomePerSecond(nia) * TC.Coins.MealSeconds * TC.Coins.PoopMeals
 			T.check(total1 >= total0 - 1e-6 and total1 <= total0 + oneCoin + 1e-6 and home(nia).CollectorCash < bank0,
 				"p4 flow new: ...paid once: Cash + the coins on the lawn stay the same (only a new coin may add)", total0 .. " -> " .. total1)
 		end
 
-		-- the Berry Bush and the Food Machine (pads with E), the owner-only FeedPrompt, one machine feed
+		-- the Berry Farm and the Food Machine (pads with E), the owner-only FeedPrompt, one machine feed (Phase 5: berries)
 		fund(nia, TC.PriceFor("Press1", 1))
 		pressPad(nia, info, "Press1")
 		fund(nia, TC.PriceFor("Kitchen", 1))
 		pressPad(nia, info, "Kitchen")
 		away(nia)
-		T.check(level(nia, "Press1") == 1 and level(nia, "Kitchen") == 1 and stationModel(info, "Kitchen") ~= nil, "p4 flow new: the Berry Bush, then the Food Machine")
+		T.check(level(nia, "Press1") == 1 and level(nia, "Kitchen") == 1 and stationModel(info, "Kitchen") ~= nil, "p4 flow new: the Berry Farm, then the Food Machine")
 		advance(1.2)
 		local feedPrompt = carePrompt(info, "Kitchen", "FeedPrompt")
 		if T.check(feedPrompt ~= nil and feedPrompt:GetAttribute("OwnerUserId") == nia.UserId, "p4 flow new: the Food Machine has Nia's FeedPrompt") then
@@ -745,8 +761,10 @@ S.p4flow_new = scenario("p4flow_new", function(players)
 			T.check(#K.remotesFor("OpenPanel", rex.UserId, mark) == 0 and op ~= nil and op.args[1] == "Pets" and type(op.args[2]) == "table" and op.args[2].Action == "Feed",
 				"p4 flow new: E opens the feed list for Nia only (OpenPanel 'Pets' / Feed)")
 		end
-		local price, xpGain = TC.FeedPrice(petDef, 1), TC.FeedXp(1, 1)
-		fund(nia, price)
+		local price, xpGain = TC.FeedBerries(petDef, 1), TC.FeedXp(1, 1)
+		DataS.SpendBerries(nia, DataS.GetBerries(nia))
+		DataS.AddBerries(nia, price) -- (a stand-in for the berries her garden grows)
+		advance(0.6)
 		local c1, xp1 = cash(nia), totalXp(nia, petId)
 		local fed = nil
 		local fedConn = X.Care.Fed:Connect(function(player, key, foodId)
@@ -757,9 +775,9 @@ S.p4flow_new = scenario("p4flow_new", function(players)
 		Mock.FromClient(remote("PetCare"), nia, "Feed", petId)
 		advance(0.4)
 		fedConn:Disconnect()
-		T.check(c1 - cash(nia) == price and totalXp(nia, petId) - xp1 == xpGain and (DataS.GetPetLevel(nia, petId)) == 1,
-			"p4 flow new: one machine feed: $" .. price .. " for +" .. xpGain .. " XP (still level 1)", (c1 - cash(nia)) .. " / " .. (totalXp(nia, petId) - xp1))
-		T.check(fed ~= nil and fed[1] == petId and fed[2] == "Machine", "p4 flow new: ...PetCareService.Fed fires (a machine feed)")
+		T.check(cash(nia) == c1 and DataS.GetBerries(nia) == 0 and totalXp(nia, petId) - xp1 == xpGain and (DataS.GetPetLevel(nia, petId)) == 1,
+			"p4 flow new: one machine feed: " .. price .. " berries (no Cash) for +" .. xpGain .. " XP (still level 1)", (c1 - cash(nia)) .. " / " .. (totalXp(nia, petId) - xp1))
+		T.check(fed ~= nil and fed[1] == petId and fed[2] == "Berries", "p4 flow new: ...PetCareService.Fed fires (a berry feed)")
 
 		-- the Champion Ring: rounds 1-3 with one level-1 pet
 		local runs0 = DataS.GetRing(nia)
@@ -806,7 +824,7 @@ S.p4flow_new = scenario("p4flow_new", function(players)
 		Mock.FromClient(remote("PetCare"), nia, "Evolve", petId)
 		advance(0.6)
 		T.eq(DataS.GetEvolution(nia, petId), 1, "p4 flow new: EVOLVE at level 20: stage 1")
-		T.check(toasted(nia, "evolved!", mark), "p4 flow new: ...'evolved! +25% to everything' toast")
+		T.check(toasted(nia, "evolved!", mark), "p4 flow new: ...'<pet> evolved! Level bonus x1.5!' toast")
 		local evo = nil
 		for _, e in ipairs(K.remotesFor("OpenPanel", nia.UserId, mark)) do
 			if e.args[1] == "Evolve" then
@@ -816,7 +834,8 @@ S.p4flow_new = scenario("p4flow_new", function(players)
 		T.check(type(evo) == "table" and evo.Key == petId and evo.Stage == 1, "p4 flow new: ...OpenPanel('Evolve', {Key, Stage = 1}) for her EVOLVE moment")
 		advance(1.2)
 		T.eq(nia:GetAttribute(Config.Attr.EquippedInfo), "20:1", "p4 flow new: ...EquippedInfo '20:1'")
-		T.check(abs(Ty.IncomePerSecond(nia) / income0 - 1.25) < 1e-6, "p4 flow new: ...its coins grow x1.25", income0 .. " -> " .. Ty.IncomePerSecond(nia))
+		local evoGain = PC.LevelFactor(20, 1) / PC.LevelFactor(20, 0)
+		T.check(abs(Ty.IncomePerSecond(nia) / income0 - evoGain) < 1e-6, "p4 flow new: ...its coins grow x" .. string.format("%.3f", evoGain) .. " (Phase 5: the level bonus x1.5)", income0 .. " -> " .. Ty.IncomePerSecond(nia))
 		mark = K.logSize()
 		advance(1.2)
 		Mock.FromClient(remote("PetCare"), nia, "Evolve", petId)
@@ -974,11 +993,15 @@ S.p4flow_migrate = scenario("p4flow_migrate", function(players)
 		local info0 = DataS.MigratedNow(vic, "P4")
 		T.check(DataS.IsMigrated(vic, "P4") == true and type(info0) == "table" and info0.Veteran == true and info0.GymPets == 2,
 			"p4 flow migrate: his first Phase 4 load runs the one-time migration (Migrations.P4, a veteran, 2 Gym pets freed)")
-		T.check(h.Level == homeLevel and TC.HomeLevelOf(h) == homeLevel and TC.HouseTierOf(h) == 3 and (h.Stations.Press1 or 0) == 8 and (h.Stations.Collector or 0) == 3,
-			"p4 flow migrate: Home Level " .. homeLevel .. " and the Manor unchanged, the presses and the Collector keep their levels", tostring(h.Level))
+		-- (Phase 5: the same load also runs P5Home: the three presses fold into one Berry Farm, the Collector into the
+		-- Garden's LegacyMagnet; the Home Level never drops)
+		T.check(TC.HomeLevelOf(h) >= homeLevel and TC.HouseTierOf(h) == 3 and (h.Stations.Press1 or 0) >= 8 + 5 + 3 and h.Stations.Press2 == nil
+			and h.Stations.Collector == nil and h.LegacyMagnet == 3, "p4 flow migrate: Home Level " .. homeLevel .. " or more and the Manor kept; the presses fold into a Berry Farm (Lv "
+			.. tostring(h.Stations.Press1) .. "), the Collector into LegacyMagnet 3", tostring(h.Level) .. " HL " .. tostring(TC.HomeLevelOf(h)) .. " tier " .. tostring(TC.HouseTierOf(h)) .. " magnet " .. tostring(h.LegacyMagnet))
 		T.check(h.LegacySlots == 6 and h.LegacyPrices == true and TC.GardenSlots(h) == 6, "p4 flow migrate: his 6-place Garden keeps 6 places this run (LegacySlots) and the old prices (LegacyPrices)")
 		T.check(next(h.Gym or {}) == nil and toasted(vic, "The Gym is now the Training Place", mark0), "p4 flow migrate: the old Gym is emptied with its toast (the pets are back with him)")
-		T.check(h.CollectorCash == 1234 and DataS.GetFood(vic, "Feast") == 2 and (DataS.GetPetLevel(vic, ecos[1])) == 22, "p4 flow migrate: Collector Cash, leftover Feasts and pet levels are kept")
+		T.check(h.CollectorCash == 1234 and DataS.GetFood(vic, "Feast") == 0 and DataS.GetBerries(vic) == 2 * TC.Berries.LegacyFood.Feast and (DataS.GetPetLevel(vic, ecos[1])) == 22,
+			"p4 flow migrate: Collector Cash and pet levels are kept; the 2 leftover Feasts became " .. (2 * TC.Berries.LegacyFood.Feast) .. " berries", tostring(DataS.GetBerries(vic)))
 		local st = X.TSv.GetState(vic)
 		T.check(st and st.Done == false and st.Chapter == 4 and st.Id == "train" and st.Step == X.Steps.ChapterStart[4],
 			"p4 flow migrate: his finished Phase 3 tutorial resumes at chapter 4 ('train')", st and (tostring(st.Chapter) .. ":" .. tostring(st.Id)) or "no state")
@@ -993,14 +1016,16 @@ S.p4flow_migrate = scenario("p4flow_migrate", function(players)
 		away(vic)
 		advance(1.5)
 		T.eq(#toasts(vic, "Welcome to the new home!", mark), 1, "p4 flow migrate: one welcome toast ('Your presses grew into food plants...')")
+		T.check(home(vic).Level == TC.HomeLevelOf(home(vic)) and home(vic).Level >= homeLevel, "p4 flow migrate: after the claim the stored Home Level mirrors the folded stations (never lower)",
+			tostring(home(vic).Level))
 		local wrong = {}
-		for id, lv in pairs(savedStations) do
+		for id, lv in pairs(home(vic).Stations) do
 			local m = stationModel(info, id)
 			if not m or m:GetAttribute("Level") ~= lv then
 				wrong[#wrong + 1] = id
 			end
 		end
-		T.check(#wrong == 0, "p4 flow migrate: every station stands at its level (the presses are food plants now)", table.concat(wrong, ","))
+		T.check(#wrong == 0 and stationModel(info, "Press2") == nil and stationModel(info, "Collector") == nil, "p4 flow migrate: every (folded) station stands at its level, no old one", table.concat(wrong, ","))
 		T.eq(info.Folder:GetAttribute("GardenSlots"), 6, "p4 flow migrate: GardenSlots 6 on the plot")
 		local gp = tostring(info.Folder:GetAttribute("GardenPets"))
 		local placed = 0
@@ -1010,8 +1035,8 @@ S.p4flow_migrate = scenario("p4flow_migrate", function(players)
 		T.eq(placed, 6, "p4 flow migrate: all six garden pets work (GardenPets)")
 		local piles = Ty.Piles(vic)
 		local w = piles and piles.W
-		if T.check(w ~= nil and abs(w.Value - 1234) < 1e-6 and tostring(info.Folder:GetAttribute("CoinPiles")):find("W=", 1, true) ~= nil,
-			"p4 flow migrate: his old Collector Cash waits in the Welcome-back pile ($1,234, CoinPiles 'W=')", w and tostring(w.Value) or "no pile") then
+		if T.check(w ~= nil and abs(w.Value - 1234) < 1e-6 and tostring(info.Folder:GetAttribute("CoinDrops")):find("W=", 1, true) ~= nil,
+			"p4 flow migrate: his old Collector Cash waits in the Welcome-back heap ($1,234, CoinDrops 'W=')", w and tostring(w.Value) or "no pile") then
 			local rexCash = cash(rex)
 			standAt(rex, w.Pos)
 			advance(0.6)
@@ -1035,17 +1060,18 @@ S.p4flow_migrate = scenario("p4flow_migrate", function(players)
 			T.check(again == ledger.of(vic) - l2 and again < 1234, "p4 flow migrate: ...a second walk finds no old Cash again (only new coins)", again .. " / " .. (ledger.of(vic) - l2))
 		end
 		-- old prices this run: no star multiplier until his next Prestige
+		local farmLv = level(vic, "Press1")
 		local okBuy, price = TC.CheckPurchase(home(vic), "Press1")
-		T.check(okBuy == true and price == TC.PriceFor("Press1", 9), "p4 flow migrate: the Berry Bush's next level costs the old price this run ($" .. tostring(price) .. ")")
+		T.check(okBuy == true and price == TC.PriceFor("Press1", farmLv + 1), "p4 flow migrate: the Berry Farm's next level costs the old (no-star) price this run ($" .. tostring(price) .. ")")
 
-		-- a leftover Feast, fed first and free, makes a Gym pet 'Ready to evolve!'
+		-- the Feasts' berries feed a Gym pet to 'Ready to evolve!' (Phase 5: Feed spends berries, never Cash)
 		local gymPet = combats[2]
-		local c1 = cash(vic)
+		local c1, b1 = cash(vic), DataS.GetBerries(vic)
 		mark = K.logSize()
 		Mock.FromClient(remote("PetCare"), vic, "Feed", gymPet)
 		advance(0.6)
 		local lv = DataS.GetPetLevel(vic, gymPet)
-		T.check(DataS.GetFood(vic, "Feast") == 1 and cash(vic) == c1 and lv >= 20, "p4 flow migrate: Feed eats a leftover Feast first and free (the old Gym pet reaches Lv " .. tostring(lv) .. ")")
+		T.check(DataS.GetBerries(vic) < b1 and cash(vic) == c1 and lv >= 20, "p4 flow migrate: one Feed of the Feasts' berries (no Cash) takes the old Gym pet to Lv " .. tostring(lv))
 		T.check(toasted(vic, "Ready to evolve!", mark), "p4 flow migrate: ...'Ready to evolve!'", table.concat(toasts(vic, nil, mark), " | "))
 		-- the level-22 garden pet evolves
 		local inc0 = Ty.IncomePerSecond(vic)

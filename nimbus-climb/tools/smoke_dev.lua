@@ -297,6 +297,25 @@ local function serverScenarios()
 		t0 = tokens()
 		send(owner, "tokens", -5)
 		T.eq(tokens() - t0, 1, "DEV tokens -5: clamped up to 1")
+		-- Phase 5: /berries <n> (DataService.AddBerries; the Berries attribute follows; no number -> Config.Dev.GrantBerries or 5000)
+		if type(DataS.GetBerries) == "function" then
+			local b0 = DataS.GetBerries(owner)
+			mark = send(owner, "berries", 1234)
+			T.eq(DataS.GetBerries(owner) - b0, 1234, "DEV berries 1234: adds exactly 1,234 berries")
+			toast = lastToast(owner, mark)
+			T.check(toast.kind == "good" and toast.text:find("1,234", 1, true) ~= nil, "DEV berries: toast 'DEV: +1,234 Berries' (good)", toast.text)
+			advance(0.6)
+			T.eq(owner:GetAttribute("Berries"), DataS.GetBerries(owner), "DEV berries: the Berries attribute follows")
+			b0 = DataS.GetBerries(owner)
+			send(owner, "berries")
+			T.eq(DataS.GetBerries(owner) - b0, Config.Dev.GrantBerries or 5000, "DEV berries: no number -> Config.Dev.GrantBerries (5000 without it)")
+			b0 = DataS.GetBerries(owner)
+			mark = send(owner, "berries", "lots")
+			T.check(DataS.GetBerries(owner) == b0 and lastToast(owner, mark).kind == "bad", "DEV berries 'lots': refused with a 'bad' toast")
+			b0 = DataS.GetBerries(owner)
+			chat(owner, "/berries 10")
+			T.eq(DataS.GetBerries(owner) - b0, 10, "DEV chat: '/berries 10' adds 10")
+		end
 		t0 = tokens()
 		send(owner, "tokens", 1e12)
 		T.eq(tokens() - t0, cap, "DEV tokens 1e12: clamped to Config.Dev.MaxTokensPerCommand (" .. tostring(cap) .. ")")
@@ -419,6 +438,20 @@ local function serverScenarios()
 		if itemId then
 			prof.Items[itemId] = 2
 		end
+		-- Phase 5 progress the reset must take too (the Dungeon record, the berries) and the Settings it must keep: through
+		-- the API, BEFORE the raw stats edit below (MutateDungeon syncs; a snapshot with Wins > Matches fails final_checks)
+		if type(DataS.MutateDungeon) == "function" and type(DataS.AddBerries) == "function" and type(DataS.SetSetting) == "function" then
+			local okDg = DataS.MutateDungeon(owner, function(rec)
+				rec.Cleared[1] = true
+				rec.Cleared[2] = true
+				rec.Clears = 2
+				rec.Runs = 3
+			end)
+			T.check(okDg == true and DataS.AddBerries(owner, 250) == true and DataS.SetSetting(owner, "Music", 2) == true and DataS.SetSetting(owner, "Gfx", "Low") == true
+				and DataS.GetDungeon(owner).Best == 2 and DataS.GetBerries(owner) >= 250, "DEV reset: (precondition) the dungeon record, berries and two settings are set",
+				tostring(okDg) .. "/" .. tostring(DataS.GetBerries(owner)))
+			advance(0.6)
+		end
 		prof.Stats.Wins = 3
 		prof.Stats.BestTimes.Easy = 99
 		prof.IndexClaimed.Common = true
@@ -506,6 +539,14 @@ local function serverScenarios()
 			local ring = DataS.GetRing(owner) or {}
 			expect(type(prof.Ring) == "table" and prof.Ring.Best == 0 and prof.Ring.Runs == 0 and ring.Best == 0 and ring.Runs == 0, "ring record")
 			expect(type(prof.Migrations) == "table" and prof.Migrations.P4 == true, "migration markers kept")
+		end
+		-- Phase 5: the Dungeon record and the berries go too; the Settings stay (they are not progress)
+		if type(DataS.GetDungeon) == "function" and type(DataS.GetBerries) == "function" then
+			local dg = DataS.GetDungeon(owner) or {}
+			expect(type(prof.Dungeon) == "table" and prof.Dungeon.Best == 0 and next(prof.Dungeon.Cleared or {}) == nil and prof.Dungeon.Runs == 0 and prof.Dungeon.Clears == 0
+				and dg.Best == 0 and dg.Clears == 0, "dungeon record")
+			expect(prof.Berries == 0 and DataS.GetBerries(owner) == 0 and owner:GetAttribute("Berries") == 0, "berries (+ attribute)")
+			expect(type(prof.Settings) == "table" and DataS.GetSettings(owner).Music == 2 and DataS.GetSettings(owner).Gfx == "Low", "settings kept (Music 2, Gfx Low)")
 		end
 		T.check(#left == 0 and toast.kind == "good", "DEV reset: back to a brand-new player (tokens, pets, equipped, items, stats, Index, cash, gems, home, battle teams + record)", table.concat(left, ", ") .. " / " .. toast.text)
 		T.eq(owner:GetAttribute(Config.Attr.SpotIndex), spot, "DEV reset: ...the lobby spot stays assigned")

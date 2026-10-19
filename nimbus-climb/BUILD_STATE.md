@@ -18,7 +18,7 @@ Updated: 2026-10-18 (after wave 2). Branch `v3-phase4`. Plan: `ARCHITECTURE_V3.m
 | 2 | tycoon, care, battleservice (Fable); homeworld, arenaworld, pets | DONE (297c9ae). Reports: scratchpad/p4_wave2_notes.md. Lead after: data-test fixes, contract.json (Piles, SetGarden/SetTraining) |
 | 3 | homefx, battleclient, careui, ui | DONE (70b04b6). Reports: scratchpad/p4_wave3_notes.md. Gate in worktree scratchpad/gate_w3 (log gate_w3.log) |
 | 4 | flow, fixer, docs | DONE (wf_07cbfb76-a84, notes scratchpad/p4_wave4_notes.md; leads applied: /petlevel Refresh, COMPAT deleted). Gate w4 GREEN: 8916 pass, 0 fail (b9d875f). |
-| 5 | review + verify + fix, full suite, place file, merge, send | review DONE (wf_a3116583-fae, notes p4_wave5_notes.md, fixes ab78ad4); LEAVE button DONE (f7dd302, agent full quick 9024/0). NOW: bash tools/run_checks.sh (full) -> scratchpad/final_checks.log. NEXT: rojo build play/NimbusClimb.rbxlx + verify_place.py, merge to main, send rbxlx + zip. Known old layout nits (not fixed): 740x360 / 667x375 tiny phones: battle top card over currency pill, ATTACK over DASH |
+| 5 | review + verify + fix, full suite, place file, merge, send | DONE. run_checks.sh full: 9024/0. rbxlx rebuilt + verified. Merged to main (7aa0df2). Files sent from scratchpad/release_p4. Open: Gem product IDs -> Config.Gems.Products when the user sends them; tiny-phone (740x360) battle HUD overlaps (old). |
 
 ## How to resume a wave
 `Workflow({scriptPath: "<scratchpad>/p4wN.js", resumeFromRunId: "<run id>"})` - done agents replay from cache. Do NOT edit the
@@ -43,3 +43,22 @@ final_checks only as a cascade of those.
 - Builders: test with `--only` while working, ONE full `--quick` run at the end; read only the contract sections they need.
 - Lead gate: one full run per wave in a worktree; read only the failure summary.
 - Smaller review in wave 5 (about 3 reviewers).
+
+# PHASE 5 (branch v3-phase5, from v3-phase4)
+Request + approved decisions: scratchpad/phase5_request.md (player said "go!").
+| Step | What | Status |
+|---|---|---|
+| D | design: 4 designers (battle, dungeon Fable; home, world Opus) -> lead (Fable) contract in ARCHITECTURE_V3 "## Phase 5" -> judge (Opus) -> lead fix | DONE wf_9b76bb34-5d6: contract in ARCHITECTURE_V3 "## Phase 5" (sections 0-13; waves in 10, ownership 11, tests 12, owner checklist 10.6); designs scratchpad/p5design/design:*/ ; judge p5design/judge/review.md fixed |
+| R | show scratchpad/p5design/summary_for_player.md to the player, get OK | OK given ("go") |
+| W0 | lead (Fable): section 10.1 shared edits, fixtures, baseline log scratchpad/p5_w0_baseline.log | DONE wf_872fc5c9-bc1: baseline 9024/0; gate 9033/5 (known red for W1: p3battle_catalog x2 + p3fixsrv_trial1 = Rally/Haste in BattleCatalog, battlecore W1); StormAltar MAX_PARTS 500 done by lead. Notes scratchpad/p5_wave0_notes.md |
+| W1 | data F, battlecore F, economy+roam O, worldstyle O | DONE wf_63badf7b-be9 (resumed after a container restart). sim_battle 36/36, sim_tycoon ALL MET (C10 floor 115 for ring+dungeon), sky in branding/sky. Notes scratchpad/p5_wave1_notes.md; carry list scratchpad/p5jobs/carry.md |
+| W2 | battleservice F, tycoon+care F, worldlobby O, homeworld O, neonkit O | DONE wf_2a964f3d-aa8; lead fixes applied (PortalRingRadius gone, prestige test, storm audit, showcase exempt). Notes scratchpad/p5_wave2_notes.md; carry list scratchpad/p5jobs/carry.md |
+| W3 | dungeon F, battleclient O, homefx+pets O, careui O, menu O | DONE wf_1462dd08-eb9. Notes scratchpad/p5_wave3_notes.md. W3 gate DONE: fixer 13/15 (aliases deleted, MainMenu.Enabled=true, contract pending groups flipped, CoinPoint/HeapStage gone, mock Clone font flag); full 10396/86 (W4-owned + client_mobile x2 + client_replay timeout -> side fixer) |
+| W4 | dungeonclient, tutorial, docs, flow, arenaart (all O) | DONE wf_ad0c5701-086 (flow full run 11177/14). Notes scratchpad/p5_wave4_notes.md. W4 gate DONE: berries dup fixed (BerriesMigrated), flakes isolated, menu touch zones; full 11311/1 (that 1 fixed after: userId collision) |
+| W5 | review (3 lenses) + fix + release gate + rbxlx + merge + send | DONE: 14 review findings fixed; release run_checks full 11372/0 (scratchpad/p5_release2.log); rbxlx rebuilt + verify_place 87/87; merged to main; sent to player (scratchpad/release_p5) |
+Wave script: scratchpad/p5wave.js takes args {wave, jobs:[{key, model, files, task}], resume:{key: note}}. Notes after each wave: scratchpad/p5_wave<N>_notes.md.
+Resume design: Workflow({scriptPath: scratchpad/p5design.js, resumeFromRunId: "wf_9b76bb34-5d6"})
+Blender: bpy 5.2 at /tmp/claude-0/bpyenv/bin/python (re-install with pip in a venv if the container restarted). Pebble Pup script: nimbus-climb/blender/pebble_pup.py.
+PLAYER IS AFK: player said "if this wave ends i allow you to continue the build without stops without asking ... until the end of the phase". So: run W0..W5 + ship with NO questions. Job args for each wave: scratchpad/p5jobs/w<N>.json (pass as Workflow args).
+Preview sent to player: scratchpad/release_p5_preview (W3 gate 56c2f71 + side fixes Hud/Menu/EvolutionFx). Not merged.
+W5 review script ready: scratchpad/p5review.js (launch after the W4 gate fixer; review reads v3-phase4..HEAD)

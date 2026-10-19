@@ -36,6 +36,8 @@
 -- "ShopOpened" / "IndexOpened" / "PetsOpened" (MenuController.WindowOpened / IndexController.WindowOpened, the
 -- OpenPanel remote and clicks on the matching menu button) and "Sync" (asks for the state again).
 -- Per-frame work runs in ONE RenderStepped connection, only while something is shown.
+-- Phase 5: nothing shows before the player pressed PLAY on the main menu (UiGate.WaitForPlay(600) before the first panel);
+-- the portal step's world target is Portal_Obby (the ONE Obby portal of the Gate Court).
 -- Plain Lua 5.1-compatible syntax only. All fonts come from Theme roles.
 
 local Players = game:GetService("Players")
@@ -2305,7 +2307,7 @@ local function resolveTarget(target)
 		local id = target.Id
 		if kind == "Portal" then
 			radius = 7
-			id = id or "Easy"
+			id = id or "Obby" -- Phase 5: the ONE Obby portal (Portal_Obby in the Gate Court)
 			model = lobby and lobby:FindFirstChild("Portal_" .. tostring(id), true)
 			if not name then
 				local diff = Config.GetDifficulty and Config.GetDifficulty(id)
@@ -2707,6 +2709,12 @@ function TutorialController.Init()
 	end)
 
 	task.spawn(function()
+		-- Phase 5 (7.2): the main menu comes first. No panel, arrow or menu pointer before PLAY (or 600 s); the state
+		-- the server pushed meanwhile is asked for again with "Sync" below
+		local gate = loadModule(Client, "UiGate")
+		if gate and type(gate.WaitForPlay) == "function" then
+			pcall(gate.WaitForPlay, 600)
+		end
 		R.event = getRemote("TutorialEvent")
 		local stateRemote = getRemote("TutorialState")
 		if stateRemote then

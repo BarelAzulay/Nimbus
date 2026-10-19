@@ -1,45 +1,33 @@
 -- smoke_p3_arenaworld.lua: Phase 3 "arenaworld" (ARCHITECTURE_V3.md "Phase 3: Pet battles", "Phase 3 build contract":
 -- ArenaBuilder + its "Interfaces between the Phase 3 modules" (ArenaInfo, BuildPocket / FreePocket, OpenPanel prompts),
--- ART DIRECTION, World text rule, Replication rule): server/Services/ArenaBuilder.lua, the Trial Portal on the plaza,
--- the arena link and the home Arena Gate (HomeBuilder's ArenaGatePrompt, TycoonCatalog without ComingSoon). Server world
--- only (listed in server_files of tools/smoke.py):
+-- ART DIRECTION, World text rule, Replication rule) as changed by Phase 5 (6.1 / 6.2 / 10.3 / 10.5: the Trials are gone,
+-- Portal_Ring and Portal_Arena stand in the plaza's Gate Court, arena <= 2800 parts): server/Services/ArenaBuilder.lua,
+-- the arena link and the home Arena Gate. Server world only (listed in server_files of tools/smoke.py):
 --   p3arena_world     (booted) the API; workspace.BattleArena is ArenaInfo.Model and the info has the contract shape
---                     (Center, Floor {CFrame, Size}, Rings {CFrame, Size, Pads}, Spawn, ReturnCFrame, TrialPortal);
---                     the part budget (<= 2500), anchored, no scripts / welds / decals, no big neon; battle zones
---                     tagged NC_BattleZone with Mode / Size (= BattleCatalog.Zones) for the boss floor and 2+ duel
---                     rings, ZoneAt / InArena; the battle squares fit the floors at ANY rotation (solid floor at the
---                     floor height under every corner, nothing collidable standing in them at walking height); duel
---                     pads carry a "Duel" prompt with OpenPanel = "Arena"; Portal_Trials on the plaza near the
---                     difficulty portals with OpenPanel = "Trials"; the arena never touches the lobby (no lobby part,
---                     home plot, the Storm Altar or a portal inside its outline) and stays well below the sky dragon;
---                     the link (Bridge: walkable without gaps or obstacles from the street to the forum; Portal: both
---                     portal prompts); readable world text (SurfaceGuis 40-60 px per stud with letters >= 0.6 stud,
---                     pixel-sized BillboardGuis >= 18 px with LightInfluence 0 and a sane MaxDistance, Theme fonts)
---   p3arena_boards    (booted) ApplyArenaState draws the event board (next boss + a countdown that ticks down, the
---                     live raid with HP and fighters, Double Rewards) and the trophy leaderboard (10 rows, long names
---                     cut, empty rows hidden); junk states never error; without EventService the boards fill
---                     themselves in (schedule + the server's trophies)
---   p3arena_pockets   (booted) BuildPocket(index): contract shape, Size = BattleCatalog.Zones.Trial, <= 250 parts, far
---                     out in the sky (away from the lobby, the obby match slots and each other), the trial square
---                     fits its (axis-aligned) floor, a Trial zone; the same index returns the same pocket; FreePocket removes
---                     it (and its zone); junk indices / zones never error
---                     Phase 4 (contract 3.8 / 3.11 / 5.2 / 5.3): the arena stays <= 2500 parts WITH Portal_Ring; Portal_Ring
---                     (<= 70 parts, parented to BattleArena, ArenaInfo.RingPortal = its pad at LobbyInfo.RingSite on the
---                     portal ring, facing the centre, >= 30 degrees from the Trial Portal / every difficulty portal / the
---                     shop, on a stone patch with no tree / lamp / bench / NPC spot on it, RingPrompt with OpenPanel =
---                     "Ring", the tag "Champion Ring" / "Beat the champion, meet a stronger one" and the pill drawn from
---                     the RingBoard attribute on the model or the pad, junk boards, a crown on the pad); safe zones: every
---                     NC_BattleZone lives in the arena or a pocket, the plaza and the portals have none
---                     In p3arena_pockets: BuildPocket(index, "Ring") (Kind, Size = Zones.Ring 44 x 44, 100..250 and <= 220
---                     parts, a Ring zone with ZoneId "Ring" found by ZoneAt, the square fits at any rotation, the spawn
---                     in the zone on the -Z side, a gold rim / four crown posts / a crowd of cloud puffs outside the
---                     square, the shared pool rebuilds an index as the other kind, unknown kinds -> trial, FreePocket)
---   p3arena_teleport  (booted) the home Arena Gate: TycoonCatalog has no ComingSoon on ArenaGate (its pad opens with the
---                     Gym), HomeBuilder's gate model carries ArenaGatePrompt (StationId / Teleport = "Arena"); the
---                     owner standing at the gate lands on the arena's Spawn (on solid ground) and the server fires
---                     ArenaBuilder.Teleported; refused for another player, from far away, in a match, in a battle
---                     (with a side toast), and during the cooldown; Trial / duel / board prompts never teleport or
---                     error on the server; the server never moves a part of the arena (Replication rule)
+--                     (Center, Floor {CFrame, Size}, Rings {CFrame, Size, Pads}, Spawn, ReturnCFrame, RingPortal,
+--                     LobbyCFrame; no TrialPortal); the part budget (<= 2800), anchored, no scripts / welds / decals, no
+--                     big neon; battle zones tagged NC_BattleZone with Mode / Size (= BattleCatalog.Zones) for the boss
+--                     floor and 2+ duel rings, ZoneAt / InArena; the battle squares fit the floors at ANY rotation;
+--                     duel pads carry a "Duel" prompt with OpenPanel = "Arena"; no Portal_Trials anywhere; Portal_Ring and
+--                     Portal_Arena are WorldStyle gates (<= 120 parts each, a pixel tag) in LobbyInfo.GatesFolder at
+--                     GateSites.Ring / .Arena (RingPrompt OpenPanel = "Ring" on the pad, ArenaPortalPrompt), the RingBoard
+--                     pill; the forum's Return gate; the arena never touches the lobby and stays below the sky dragon;
+--                     the bridge link; readable world text
+--   p3arena_boards    (booted) ApplyArenaState draws the event board and the trophy leaderboard; junk never errors
+--   p3arena_pockets   (booted) BuildPocket(index[, "Ring"]): the Champion Ring pocket only (Phase 5: nil / unknown kinds
+--                     build it too): contract shape, Size = BattleCatalog.Zones.Ring 44 x 44, 100..250 parts, far out
+--                     in the sky, a Ring zone found by ZoneAt, the square fits at any rotation, the spawn on the -Z side,
+--                     a gold rim / four crown posts / a crowd of cloud puffs; the same index returns the same pocket;
+--                     FreePocket removes it (and its zone); junk indices / zones never error
+--   p3arena_art       (booted; Phase 5 arenaart, 6.4) the art rules on the island and the Champion Ring pocket:
+--                     WorldStyle materials, no big SmoothPlastic, muted big faces, warm lanterns, no small-part shadows,
+--                     round tall posts, a kerb + lip round the edge (open at the bridge), the avenue's 4..6-stud tiles
+--                     (+-0.05, jittered), mown lawn stripes, NC_Detail decor every ~12 studs, sky-shaded exempt clouds,
+--                     <= 2800 / <= 250 parts, the safety net idle (ArtFixes = 0)
+--   p3arena_teleport  (booted) the home Arena Gate: the owner standing at the gate lands on the arena's Spawn; refused
+--                     for another player, from far away, in a match, in a battle, and during the cooldown; Phase 5:
+--                     Portal_Arena's ArenaPortalPrompt -> Spawn, the Return gate -> LobbyCFrame in front of Portal_Arena;
+--                     panel / duel / board prompts never teleport; the server never moves a part of the arena
 -- Plain Lua 5.1 syntax only.
 
 local K = _G.K
@@ -217,7 +205,8 @@ S.p3arena_world = guarded("p3arena_world", function()
 	T.check(type(info.Floor) == "table" and typeof(info.Floor.CFrame) == "CFrame" and typeof(info.Floor.Size) == "Vector3", "arena: ArenaInfo.Floor = { CFrame, Size }")
 	T.check(type(info.Rings) == "table" and #info.Rings >= 2, "arena: ArenaInfo.Rings holds 2+ duel rings", type(info.Rings) == "table" and (#info.Rings .. " rings") or "none")
 	T.check(typeof(info.Spawn) == "CFrame" and typeof(info.ReturnCFrame) == "CFrame", "arena: ArenaInfo.Spawn and ReturnCFrame are CFrames")
-	T.check(typeof(info.TrialPortal) == "Instance" and info.TrialPortal:IsA("BasePart"), "arena: ArenaInfo.TrialPortal is a BasePart")
+	T.check(info.TrialPortal == nil, "arena: ArenaInfo.TrialPortal is gone (Phase 5: no Trials)")
+	T.check(typeof(info.LobbyCFrame) == "CFrame", "arena: ArenaInfo.LobbyCFrame is a CFrame (in front of Portal_Arena)")
 	local rx, rz = zoneSize("Raid")
 	local dx, dz = zoneSize("Duel")
 	if type(info.Floor) == "table" and typeof(info.Floor.Size) == "Vector3" then
@@ -227,7 +216,7 @@ S.p3arena_world = guarded("p3arena_world", function()
 
 	-- budget and hygiene
 	local parts = partsOf(model)
-	T.check(#parts <= 2500, "arena: the Battle Arena (island, bridge, Trial Portal, Champion Ring portal) stays <= 2500 parts", #parts .. " parts")
+	T.check(#parts <= 2800, "arena: the Battle Arena (island, bridge, the forum's Return gate) stays <= 2800 parts (10.3)", #parts .. " parts")
 	T.check(#parts >= 800, "arena: the arena is detailed (more than 800 parts)", #parts .. " parts")
 	T.info("*arena: " .. #parts .. " parts, link " .. tostring(info.Link) .. ", " .. Mock.CountDescendants(model, "PointLight") .. " lights, " .. Mock.CountDescendants(model, "ParticleEmitter") .. " emitters")
 	local loose, junk = 0, {}
@@ -285,7 +274,7 @@ S.p3arena_world = guarded("p3arena_world", function()
 	end
 	T.check(#stray == 0, "safe zones: every NC_BattleZone is in the Battle Arena or a battle pocket", table.concat(stray, "; "))
 	local plazaOrigin = config().Lobby.Origin
-	T.check(AB.ZoneAt(plazaOrigin + Vector3.new(0, 3, 0)) == nil and AB.ZoneAt(info.TrialPortal.Position + Vector3.new(0, 2, 0)) == nil, "safe zones: the plaza and the Trial Portal are outside every battle zone")
+	T.check(AB.ZoneAt(plazaOrigin + Vector3.new(0, 3, 0)) == nil, "safe zones: the plaza is outside every battle zone")
 	T.check(AB.InArena(info.Spawn.Position) == true and AB.InArena(info.Floor.CFrame.Position) == true, "arena: InArena is true on the forum and the floor")
 	T.check(AB.InArena(config().Lobby.Origin) == false, "arena: InArena is false on the plaza")
 	T.check(AB.InArena(nil) == false and AB.InArena("x") == false and AB.ZoneAt({}) == nil, "arena: InArena / ZoneAt refuse junk")
@@ -327,144 +316,50 @@ S.p3arena_world = guarded("p3arena_world", function()
 
 	-- every prompt: sane, panel prompts carry a known panel id
 	local prompts = promptsUnder(model)
-	local promptOk = T.tally("arena: every prompt has an action, a range <= 14 and (when it opens a window) OpenPanel Arena / Trials / Ring")
+	local promptOk = T.tally("arena: every prompt has an action, a range <= 14 and (when it opens a window) OpenPanel Arena / Ring")
 	for _, pr in ipairs(prompts) do
 		local panel = pr:GetAttribute("OpenPanel")
-		promptOk:case(pr.ActionText ~= "" and pr.MaxActivationDistance <= 14 and (panel == nil or panel == "Arena" or panel == "Trials" or panel == "Ring"), pr:GetFullName())
+		promptOk:case(pr.ActionText ~= "" and pr.MaxActivationDistance <= 14 and (panel == nil or panel == "Arena" or panel == "Ring"), pr:GetFullName())
 	end
 	promptOk:report()
 
-	-- the Trial Portal on the plaza, next to the difficulty portals
-	local portal = model:FindFirstChild("Portal_Trials", true)
-	T.check(portal ~= nil and portal:IsA("Model"), "trial portal: a Portal_Trials model exists")
+	-- Phase 5 (6.1 / 6.2 / 10.5): no Trial Portal anywhere; Portal_Ring and Portal_Arena are WorldStyle gates in the Gate
+	-- Court (LobbyInfo.GatesFolder) at their GateSites
 	local Config = config()
 	local origin = Config.Lobby.Origin
-	if typeof(info.TrialPortal) == "Instance" then
-		local tp = info.TrialPortal
-		T.check(portal ~= nil and tp:IsDescendantOf(portal), "trial portal: ArenaInfo.TrialPortal belongs to Portal_Trials")
-		local trialPrompt = nil
-		for _, pr in ipairs(promptsUnder(portal or tp)) do
-			if pr:GetAttribute("OpenPanel") == "Trials" then
-				trialPrompt = pr
-			end
-		end
-		T.check(trialPrompt ~= nil and trialPrompt.Enabled, "trial portal: its prompt carries OpenPanel = \"Trials\"")
-		local r = hdist(tp.Position, origin)
-		local ringR = Config.Lobby.PortalRingRadius or 88
-		T.check(abs(r - ringR) <= 14, "trial portal: it stands on the plaza's portal ring", "r = " .. fmt(r, 1) .. " (ring " .. ringR .. ")")
-		T.check(abs(tp.Position.Y - origin.Y) <= 3, "trial portal: at plaza height", "y = " .. fmt(tp.Position.Y, 1))
-		local hit = surfaceBelow(tp.Position + Vector3.new(0, 1, 0), 8)
-		T.check(hit ~= nil, "trial portal: its pad stands on solid ground")
-		-- near the difficulty portals, never on top of one
-		local lobby = workspace:FindFirstChild("NimbusLobby")
-		local nearest = huge
-		if lobby then
-			for _, d in ipairs(lobby:GetDescendants()) do
-				if d:IsA("Model") and d.Name:sub(1, 7) == "Portal_" then
-					local ok, pivot = pcall(function()
-						return d:GetPivot().Position
-					end)
-					if ok then
-						nearest = min(nearest, hdist(pivot, tp.Position))
-					end
-				end
-			end
-		end
-		T.check(nearest > 16 and nearest < 70, "trial portal: next to the difficulty portals (16..70 studs from the nearest)", fmt(nearest, 1) .. " studs")
-		-- ReturnCFrame: on the plaza in front of the Trial Portal, on solid ground
-		local ret = info.ReturnCFrame.Position
-		T.check(hdist(ret, tp.Position) < 25 and hdist(ret, origin) < (Config.Lobby.PlazaRadius or 130), "trial portal: ReturnCFrame is on the plaza in front of the portal")
-		T.check(surfaceBelow(ret, 10) ~= nil, "trial portal: ReturnCFrame stands on solid ground")
-	end
-
-	-- Phase 4: the Champion Ring portal on the plaza (contract 3.8 / 5.2 / 5.3)
+	local lobbyM = workspace:FindFirstChild("NimbusLobby")
+	T.check(model:FindFirstChild("Portal_Trials", true) == nil and (lobbyM == nil or lobbyM:FindFirstChild("Portal_Trials", true) == nil), "trial portal: Portal_Trials is gone")
 	local lobbyInfo0 = K.W and K.W.lobbyInfo
+	local gatesFolder = type(lobbyInfo0) == "table" and lobbyInfo0.GatesFolder or nil
+	local sites = type(lobbyInfo0) == "table" and type(lobbyInfo0.GateSites) == "table" and lobbyInfo0.GateSites or {}
+	T.check(typeof(gatesFolder) == "Instance" and gatesFolder.Name == "Gates" and gatesFolder.Parent == lobbyM, "gates: LobbyInfo.GatesFolder is workspace.NimbusLobby.Gates")
 	local ringSite = type(lobbyInfo0) == "table" and lobbyInfo0.RingSite or nil
-	T.check(typeof(ringSite) == "CFrame", "ring portal: the lobby reserved LobbyInfo.RingSite (a CFrame)")
-	local ringPortal = model:FindFirstChild("Portal_Ring", true)
-	T.check(ringPortal ~= nil and ringPortal:IsA("Model") and ringPortal.Parent == model, "ring portal: a Portal_Ring model, parented to workspace.BattleArena")
+	T.check(typeof(ringSite) == "CFrame" and typeof(sites.Ring) == "CFrame" and ringSite == sites.Ring, "ring portal: LobbyInfo.RingSite = GateSites.Ring (C12)")
+	local ringPortal = typeof(gatesFolder) == "Instance" and gatesFolder:FindFirstChild("Portal_Ring") or nil
+	T.check(ringPortal ~= nil and ringPortal:IsA("Model") and model:FindFirstChild("Portal_Ring", true) == nil, "ring portal: Portal_Ring stands in the Gates folder (not in workspace.BattleArena)")
 	local rp = info.RingPortal
-	T.check(typeof(rp) == "Instance" and rp:IsA("BasePart") and ringPortal ~= nil and rp:IsDescendantOf(ringPortal), "ring portal: ArenaInfo.RingPortal is a BasePart of Portal_Ring")
-	if ringPortal and typeof(rp) == "Instance" then
+	T.check(typeof(rp) == "Instance" and rp:IsA("BasePart") and ringPortal ~= nil and rp:IsDescendantOf(ringPortal), "ring portal: ArenaInfo.RingPortal is a BasePart of Portal_Ring (its pad)")
+	T.check(typeof(info.RingSite) == "CFrame" and typeof(ringSite) == "CFrame" and (info.RingSite.Position - ringSite.Position).Magnitude < 0.01, "ring portal: ArenaInfo.RingSite = LobbyInfo.RingSite")
+	if ringPortal and typeof(rp) == "Instance" and typeof(ringSite) == "CFrame" then
 		local nRing = #partsOf(ringPortal)
-		T.check(nRing <= 70 and nRing >= 25, "ring portal: Portal_Ring is detailed and within 70 parts", nRing .. " parts")
-		T.check(#parts - nRing <= 2430, "ring portal: the arena without Portal_Ring stays near its Phase 3 size (2419)", (#parts - nRing) .. " parts")
+		T.check(nRing <= 120 and nRing >= 60, "ring portal: Portal_Ring is detailed and within 120 parts (6.2)", nRing .. " parts")
+		T.eq(ringPortal:GetAttribute("GateId"), "Ring", "ring portal: a WorldStyle gate (GateId = Ring)")
 		local ringPrompt = rp:FindFirstChild("RingPrompt")
 		T.check(ringPrompt ~= nil and ringPrompt:IsA("ProximityPrompt") and ringPrompt.Enabled and ringPrompt:GetAttribute("OpenPanel") == "Ring" and ringPrompt.ActionText ~= "",
 			"ring portal: its pad carries RingPrompt (enabled, OpenPanel = \"Ring\")")
 		T.check(ringPrompt ~= nil and ringPrompt.MaxActivationDistance >= 8 and ringPrompt.MaxActivationDistance <= 14 and ringPrompt.HoldDuration == 0,
 			"ring portal: RingPrompt is a quick E within 8-14 studs", ringPrompt and tostring(ringPrompt.MaxActivationDistance) or "")
-		local r = hdist(rp.Position, origin)
-		local ringR = Config.Lobby.PortalRingRadius or 88
-		T.check(abs(r - ringR) <= 14 and abs(rp.Position.Y - origin.Y) <= 3, "ring portal: on the plaza's portal ring at plaza height", "r = " .. fmt(r, 1) .. ", y = " .. fmt(rp.Position.Y, 1))
-		if typeof(ringSite) == "CFrame" then
-			T.check(hdist(rp.Position, ringSite.Position) < 1, "ring portal: it stands at LobbyInfo.RingSite")
-			local toCentre = Vector3.new(origin.X - ringSite.Position.X, 0, origin.Z - ringSite.Position.Z).Unit
-			T.check(ringSite.LookVector:Dot(toCentre) > 0.98, "ring portal: RingSite looks at the plaza centre")
-		end
+		local padFront = (ringSite.Position + ringSite.LookVector * 14)
+		T.check(hdist(rp.Position, padFront) < 1 and abs(rp.Position.Y - origin.Y) <= 1.5, "ring portal: the pad lies 14 studs in front of the gate, at plaza height", "off " .. fmt(hdist(rp.Position, padFront), 2))
+		local toCentre = Vector3.new(origin.X - ringSite.Position.X, 0, origin.Z - ringSite.Position.Z).Unit
+		T.check(ringSite.LookVector:Dot(toCentre) > 0.98, "ring portal: RingSite looks at the plaza centre")
 		T.check(surfaceBelow(rp.Position + Vector3.new(0, 1, 0), 8) ~= nil, "ring portal: its pad stands on solid ground")
-		if typeof(info.TrialPortal) == "Instance" then
-			local a1 = math.deg(math.atan2(rp.Position.Z - origin.Z, rp.Position.X - origin.X))
-			local a2 = math.deg(math.atan2(info.TrialPortal.Position.Z - origin.Z, info.TrialPortal.Position.X - origin.X))
-			local d = abs((a1 - a2 + 180) % 360 - 180)
-			T.check(d >= 30, "ring portal: its own gate of the fan, >= 30 degrees from the Trial Portal", fmt(d, 1) .. " degrees")
-		end
-		-- a free gate of the fan: >= 30 degrees from every difficulty portal and from the shop
-		local lobbyM = workspace:FindFirstChild("NimbusLobby")
-		local worst = 360
-		local rAng = math.deg(math.atan2(rp.Position.Z - origin.Z, rp.Position.X - origin.X))
-		for _, pinfo in pairs(type(lobbyInfo0) == "table" and type(lobbyInfo0.Portals) == "table" and lobbyInfo0.Portals or {}) do
-			local m = type(pinfo) == "table" and pinfo.Model
-			if typeof(m) == "Instance" then
-				local okP, pv = pcall(function()
-					return m:GetPivot().Position
-				end)
-				if okP then
-					local a = math.deg(math.atan2(pv.Z - origin.Z, pv.X - origin.X))
-					worst = min(worst, abs((rAng - a + 180) % 360 - 180))
-				end
-			end
-		end
-		T.check(worst >= 29.5, "ring portal: >= 30 degrees from every difficulty portal", fmt(worst, 1) .. " degrees")
-		local shopOff = Config.Lobby.ShopOffset or Vector3.new(0, 0, -150)
-		local shopAng = math.deg(math.atan2(shopOff.Z, shopOff.X))
-		T.check(abs((rAng - shopAng + 180) % 360 - 180) >= 29.5, "ring portal: >= 30 degrees from the shop boardwalk")
-		-- the plaza keeps the site free: no tree, lamp, bench or NPC spot on the gate
-		local clutter = {}
-		if lobbyM then
-			for _, d in ipairs(lobbyM:GetDescendants()) do
-				if d:IsA("Model") and (d.Name:find("Tree") or d.Name:find("Lamp") or d.Name == "Bench" or d.Name == "FlowerBed") then
-					local okP, pv = pcall(function()
-						return d:GetPivot().Position
-					end)
-					if okP and hdist(pv, rp.Position) < 16 then
-						clutter[#clutter + 1] = d.Name
-					end
-				end
-			end
-		end
-		for _, npc in ipairs(type(lobbyInfo0) == "table" and type(lobbyInfo0.NpcSpots) == "table" and lobbyInfo0.NpcSpots or {}) do
-			if typeof(npc) == "CFrame" and hdist(npc.Position, rp.Position) < 16 then
-				clutter[#clutter + 1] = "an NPC spot"
-			end
-		end
-		T.check(#clutter == 0, "ring portal: no tree, lamp, bench, flower bed or NPC spot within 16 studs of the gate", table.concat(clutter, ", "))
-		-- the stone patch: the ground under the gate and the pad is paved (stone), not lawn
-		local lawnUnder = 0
-		for _, off in ipairs({ { 0, 0 }, { 0, 9.5 }, { -6, 9.5 }, { 6, 9.5 } }) do
-			local site = typeof(ringSite) == "CFrame" and ringSite or CFrame.lookAt(rp.Position, origin)
-			local p = (site * CFrame.new(off[1], 0, off[2])).Position
-			local hit = surfaceBelow(Vector3.new(p.X, origin.Y + 0.5, p.Z), 6)
-			if hit and hit.Instance and lobbyM and hit.Instance:IsDescendantOf(lobbyM) and hit.Instance.Material == Enum.Material.Grass then
-				lawnUnder = lawnUnder + 1
-			end
-		end
-		T.check(lawnUnder == 0, "ring portal: it stands on a stone patch like the Trial Portal's (no lawn under the pad and the gate)", lawnUnder .. " lawn hits")
 		-- the tag: title, info and the RingBoard pill
-		local bill = ringPortal:FindFirstChild("PortalBillboard", true)
-		local title = bill and bill:FindFirstChild("TitleLabel", true)
-		local infoL = bill and bill:FindFirstChild("InfoLabel", true)
-		local pill = bill and bill:FindFirstChild("StatusPillLabel", true)
+		local bill = ringPortal:FindFirstChild("GateTag", true)
+		local title = bill and bill:FindFirstChild("Title", true)
+		local infoL = bill and bill:FindFirstChild("Info", true)
+		local pillF = bill and bill:FindFirstChild("Pill", true)
+		local pill = pillF and (pillF:FindFirstChild("Label") or pillF:FindFirstChild("PillLabel"))
 		T.check(title ~= nil and title.Text == "Champion Ring" and infoL ~= nil and infoL.Text == "Beat the champion, meet a stronger one", "ring portal: the tag reads 'Champion Ring' / 'Beat the champion, meet a stronger one'",
 			(title and title.Text or "?") .. " / " .. (infoL and infoL.Text or "?"))
 		-- (BattleService may already have written a board in this server: keep it and put it back afterwards)
@@ -472,7 +367,7 @@ S.p3arena_world = guarded("p3arena_world", function()
 		ringPortal:SetAttribute("RingBoard", nil)
 		rp:SetAttribute("RingBoard", nil)
 		advance(0.1)
-		T.check(pill ~= nil and pill.Text ~= "" and not pill.Text:find("Round"), "ring portal: without a RingBoard the pill invites a first record", pill and pill.Text or "no pill")
+		T.check(pill ~= nil and pill.Text ~= "" and not pill.Text:find("Round") and pillF.Visible, "ring portal: without a RingBoard the pill invites a first record", pill and pill.Text or "no pill")
 		if pill then
 			ringPortal:SetAttribute("RingBoard", "Alex|31;Sam|24;Kim|20")
 			advance(0.1)
@@ -499,15 +394,39 @@ S.p3arena_world = guarded("p3arena_world", function()
 		end
 		rp:SetAttribute("RingBoard", savedPad)
 		ringPortal:SetAttribute("RingBoard", savedModel)
-		-- a crown motif (reads differently from the Trial Portal's crossed swords): the crowned gate and the pad crown
+		-- the crown motif: the crown glyph and two crowned pedestals (no crossed swords)
 		local crown = 0
 		for _, d in ipairs(ringPortal:GetDescendants()) do
-			if d:IsA("BasePart") and d.Name == "PadCrown" then
+			if d:IsA("BasePart") and (d.Name == "CrownBand" or d.Name == "CrownPoint") then
 				crown = crown + 1
 			end
 		end
-		T.check(crown >= 3 and ringPortal:FindFirstChild("CrestBlade", true) == nil, "ring portal: a crown on its pad (no crossed swords)", crown .. " crown parts")
+		T.check(crown >= 6 and ringPortal:GetAttribute("Glyph") == "crown", "ring portal: the crown glyph and crowned pedestals", crown .. " crown parts")
 		T.check(AB.ZoneAt(rp.Position + Vector3.new(0, 2, 0)) == nil, "ring portal: the portal is a safe zone (no battle zone on the plaza)")
+	end
+	-- Portal_Arena: always built, ArenaPortalPrompt -> Spawn; the forum's Return gate -> in front of Portal_Arena
+	local arenaPortal = typeof(gatesFolder) == "Instance" and gatesFolder:FindFirstChild("Portal_Arena") or nil
+	if T.check(arenaPortal ~= nil and arenaPortal:IsA("Model") and typeof(sites.Arena) == "CFrame", "arena portal: Portal_Arena stands in the Gates folder (always, 6.2)") then
+		local n = #partsOf(arenaPortal)
+		T.check(n <= 120 and n >= 40, "arena portal: within 120 parts", n .. " parts")
+		T.check(hdist(arenaPortal:GetPivot().Position, sites.Arena.Position) < 1, "arena portal: at GateSites.Arena")
+		local found = nil
+		for _, pr in ipairs(promptsUnder(arenaPortal)) do
+			if pr.Name == "ArenaPortalPrompt" then
+				found = pr
+			end
+		end
+		T.check(found ~= nil and found.Enabled and found.MaxActivationDistance <= 14 and found:GetAttribute("OpenPanel") == nil, "arena portal: it carries ArenaPortalPrompt (a travel prompt, no panel)")
+		T.check(typeof(info.LobbyCFrame) == "CFrame" and hdist(info.LobbyCFrame.Position, sites.Arena.Position) < 16 and surfaceBelow(info.LobbyCFrame.Position, 10) ~= nil, "arena portal: LobbyCFrame stands on the court in front of Portal_Arena")
+		T.check(typeof(info.LobbyCFrame) == "CFrame" and info.LobbyCFrame.LookVector:Dot(sites.Arena.LookVector) > 0.9, "arena portal: LobbyCFrame looks at the plaza")
+	end
+	local returnGate = model:FindFirstChild("Portal_Return", true)
+	local returnPrompt = returnGate and returnGate:FindFirstChild("ArenaReturnPrompt", true)
+	T.check(returnGate ~= nil and returnPrompt ~= nil and AB.InArena(returnGate:GetPivot().Position), "arena: the forum's Return gate carries ArenaReturnPrompt")
+	-- ReturnCFrame: in front of Portal_Ring, on solid ground (ring climbers come back there)
+	if typeof(ringSite) == "CFrame" then
+		local ret = info.ReturnCFrame.Position
+		T.check(hdist(ret, ringSite.Position + ringSite.LookVector * 12) < 2 and surfaceBelow(ret, 10) ~= nil, "ring portal: ReturnCFrame stands on the court in front of Portal_Ring")
 	end
 
 	-- placement: nothing of the lobby inside the island's outline, plots / altar / portals clear, below the dragon
@@ -555,7 +474,7 @@ S.p3arena_world = guarded("p3arena_world", function()
 	local centreR = hdist(info.Center.Position, origin)
 	T.check(centreR > (Config.Lobby.SpotRingRadius or 300), "arena placement: beyond the ring of home plots", fmt(centreR, 0) .. " studs out")
 
-	-- the link
+	-- the link (the bridge stays when its corridor is clear; Portal_Arena links it always)
 	T.check(info.Link == "Bridge" or info.Link == "Portal", "arena link: Bridge or Portal", tostring(info.Link))
 	if info.Link == "Bridge" then
 		local dock = type(lobbyInfo) == "table" and lobbyInfo.ArenaDock
@@ -588,7 +507,7 @@ S.p3arena_world = guarded("p3arena_world", function()
 		for _, pr in ipairs(prompts) do
 			names[pr.Name] = true
 		end
-		T.check(names.ArenaPortalPrompt and names.ArenaReturnPrompt, "arena link: an Arena Portal on the plaza and a Return Portal on the forum")
+		T.check(names.ArenaReturnPrompt == true, "arena link: the forum's Return gate (Portal_Arena is in the Gate Court)")
 	end
 	T.check(surfaceBelow(info.Spawn.Position, 10) ~= nil, "arena: the arrival point (Spawn) stands on solid ground")
 
@@ -688,8 +607,10 @@ S.p3arena_boards = guarded("p3arena_boards", function()
 	end
 	advance(2)
 	local idle = visibleText(board)
-	-- EventService draws its next raid (NEXT: BOSS RAID, the boss, a countdown); without it the board shows the schedule
-	T.check(idle:find("NEXT: BOSS RAID", 1, true) ~= nil or idle:find("Every %d+ minutes") ~= nil or idle:find("BOSS RAIDS") ~= nil,
+	-- EventService draws its next raid (NEXT: BOSS RAID, the boss, a countdown); without it the board shows the schedule;
+	-- a scheduled raid that happens to be running when this scenario starts (the shared game clock of a full run) shows
+	-- BOSS RAID LIVE, which is right too
+	T.check(idle:find("NEXT: BOSS RAID", 1, true) ~= nil or idle:find("Every %d+ minutes") ~= nil or idle:find("BOSS RAIDS") ~= nil or idle:find("BOSS RAID LIVE", 1, true) ~= nil,
 		"boards: the event board shows when the next Boss Raid comes (EventService's state, or the schedule without it)", idle)
 
 	local BC = battleCatalog()
@@ -789,14 +710,14 @@ S.p3arena_pockets = guarded("p3arena_pockets", function()
 		return
 	end
 	local Config = config()
-	local tx, tz = zoneSize("Trial")
+	local tx, tz = zoneSize("Ring")
 	local p1 = AB.BuildPocket(1)
 	T.check(type(p1) == "table" and typeof(p1.Model) == "Instance" and typeof(p1.CFrame) == "CFrame" and typeof(p1.Size) == "Vector3" and typeof(p1.Spawn) == "CFrame", "pockets: BuildPocket(1) -> { Model, CFrame, Size, Spawn }")
 	if type(p1) ~= "table" or typeof(p1.Model) ~= "Instance" then
 		return
 	end
 	T.check(p1.Model:IsDescendantOf(workspace), "pockets: the pocket is in the workspace")
-	T.check(abs(p1.Size.X - tx) < 0.01 and abs(p1.Size.Z - tz) < 0.01, "pockets: Size is BattleCatalog.Zones.Trial", tostring(p1.Size))
+	T.check(abs(p1.Size.X - tx) < 0.01 and abs(p1.Size.Z - tz) < 0.01 and p1.Kind == "Ring", "pockets: BuildPocket(1) builds the Champion Ring pocket (Phase 5: the only kind; Size = BattleCatalog.Zones.Ring)", tostring(p1.Size))
 	local n = #partsOf(p1.Model)
 	T.check(n <= 250 and n >= 100, "pockets: a detailed pocket within 250 parts", n .. " parts")
 	T.check(AB.BuildPocket(1) == p1, "pockets: building an existing index returns the same pocket")
@@ -806,9 +727,9 @@ S.p3arena_pockets = guarded("p3arena_pockets", function()
 	T.check((p1.CFrame.Position - arenaOrigin).Magnitude > 1500, "pockets: far from the obby match slots")
 	T.check(abs(p1.CFrame.UpVector.Y - 1) < 1e-3, "pockets: the floor CFrame is level")
 	local z = AB.ZoneAt(p1.CFrame.Position + Vector3.new(0, 2, 0))
-	T.check(z ~= nil and z:GetAttribute("Mode") == "Trial" and z:IsDescendantOf(p1.Model), "pockets: a Trial zone (NC_BattleZone) covers the floor")
+	T.check(z ~= nil and z:GetAttribute("Mode") == "Ring" and z:IsDescendantOf(p1.Model), "pockets: a Ring zone (NC_BattleZone) covers the floor")
 	T.check(z ~= nil and CollectionService:HasTag(z, "NC_BattleZone"), "pockets: the zone is tagged NC_BattleZone")
-	squareFits("pocket 1", p1.CFrame, tx, tz, false)
+	squareFits("pocket 1", p1.CFrame, tx, tz, true)
 	T.check(surfaceBelow(p1.Spawn.Position, 10) ~= nil and AB.ZoneAt(p1.Spawn.Position) == z, "pockets: Spawn stands on the floor inside the zone")
 	local pockets = { p1 }
 	for i = 2, 10 do
@@ -840,7 +761,7 @@ S.p3arena_pockets = guarded("p3arena_pockets", function()
 		T.check(abs(ring.Size.X - gx) < 0.01 and abs(ring.Size.Z - gz) < 0.01 and abs(gx - 44) < 0.01, "ring pocket: Size is BattleCatalog.Zones.Ring (44 x 44)", tostring(ring.Size))
 		local nr = #partsOf(ring.Model)
 		T.check(nr >= 100 and nr <= 250, "ring pocket: a detailed pocket within the 100..250 window", nr .. " parts")
-		T.check(nr <= 220, "ring pocket: within its 220-part budget (contract 3.8)", nr .. " parts")
+		T.check(nr <= 250, "ring pocket: within its budget (Phase 5 art pass: 250; 10.3 counts 600 per pocket)", nr .. " parts")
 		local rzone = AB.ZoneAt(ring.CFrame.Position + Vector3.new(0, 2, 0))
 		T.check(rzone ~= nil and rzone:IsDescendantOf(ring.Model) and rzone:GetAttribute("Mode") == "Ring" and rzone:GetAttribute("ZoneId") == "Ring" and CollectionService:HasTag(rzone, "NC_BattleZone"),
 			"ring pocket: ZoneAt(its centre) is its NC_BattleZone with Mode = \"Ring\", ZoneId = \"Ring\"", rzone and (tostring(rzone:GetAttribute("Mode")) .. "/" .. tostring(rzone:GetAttribute("ZoneId"))) or "none")
@@ -879,14 +800,12 @@ S.p3arena_pockets = guarded("p3arena_pockets", function()
 		end
 		T.check(rim >= 8 and posts == 4 and puffs >= 5, "ring pocket: a gold rim, four crown posts and a crowd of cloud puffs", rim .. " rim, " .. posts .. " posts, " .. puffs .. " puffs")
 		T.check(#inside == 0, "ring pocket: nothing collidable stands in the 44 x 44 square", table.concat(inside, ", "))
-		-- the kinds share the pool: the same index rebuilds as the other kind
+		-- Phase 5: the Trial kind is gone: nil / "Trial" / unknown kinds return the same ring pocket
 		local m11 = ring.Model
-		local asTrial = AB.BuildPocket(11)
-		T.check(type(asTrial) == "table" and asTrial.Kind == "Trial" and m11.Parent == nil and asTrial.Zone:GetAttribute("Mode") == "Trial", "ring pocket: BuildPocket(11) on a ring index rebuilds it as a trial pocket")
-		local again = AB.BuildPocket(11, "Ring")
-		T.check(type(again) == "table" and again.Kind == "Ring" and again.Zone:GetAttribute("Mode") == "Ring", "ring pocket: ...and BuildPocket(11, \"Ring\") makes it a ring again")
+		T.check(AB.BuildPocket(11) == ring and AB.BuildPocket(11, "Trial") == ring and m11.Parent ~= nil, "ring pocket: BuildPocket(11) / (11, \"Trial\") keep the ring pocket (no Trial kind)")
+		local again = ring
 		local okJunk, junkKind = pcall(AB.BuildPocket, 12, "Banana")
-		T.check(okJunk and type(junkKind) == "table" and junkKind.Kind == "Trial", "ring pocket: an unknown kind builds the default trial pocket")
+		T.check(okJunk and type(junkKind) == "table" and junkKind.Kind == "Ring", "ring pocket: an unknown kind builds the ring pocket")
 		AB.FreePocket(12)
 		local zr = again.Zone
 		T.check(AB.FreePocket(again) == true and again.Model.Parent == nil and zr.Parent == nil, "ring pocket: FreePocket removes the ring pocket and its zone")
@@ -1065,7 +984,7 @@ S.p3arena_teleport = guarded("p3arena_teleport", function()
 		end
 	end
 	advance(0.5)
-	T.check(okAll and hdist(K.root(owner).Position, spawnPos) < 12, "teleport: OpenPanel prompts (Trials / Arena) never teleport on the server")
+	T.check(okAll and hdist(K.root(owner).Position, spawnPos) < 12, "teleport: OpenPanel prompts (Arena / Ring) never teleport on the server")
 	-- the Replication rule: no arena part moved
 	local moved = 0
 	for p, cf in pairs(arenaCFrames) do
@@ -1083,6 +1002,272 @@ S.p3arena_teleport = guarded("p3arena_teleport", function()
 	K.removePlayers(players)
 	K.flushErrors("p3arena_teleport")
 	K.flushWarnings("p3arena_teleport")
+end)
+
+----------------------------------------------------------------------------------------------------
+-- scenario: the Phase 5 art pass (arenaart, 6.4) on the island and the Champion Ring pocket
+----------------------------------------------------------------------------------------------------
+-- The 6.4 audit of one model: rules 1 (WorldStyle materials, no big SmoothPlastic), 2 (big faces: saturation <= 0.45
+-- unless a thin Neon inlay / a piece <= 8 studs^3; value 0.35..0.9), 7 (lights warm, Brightness <= 1.5, Range <= 16,
+-- no shadows) and 8 (parts < 4 studs cast no shadow); the voxel clouds / the crowd are skipped by the exempt tag.
+local function artAudit(root, label, WS)
+	local exemptTag = (WS and WS.Tags and WS.Tags.Exempt) or "NC_StyleExempt"
+	local function exempt(p)
+		local cur = p
+		while cur and cur ~= game do
+			if CollectionService:HasTag(cur, exemptTag) then
+				return true
+			end
+			cur = cur.Parent
+		end
+		return false
+	end
+	local function hsv(c)
+		local hi, lo = max(c.R, c.G, c.B), min(c.R, c.G, c.B)
+		return hi > 0 and (hi - lo) / hi or 0, hi
+	end
+	local tMat = T.tally(label .. ": every part uses a WorldStyle.Materials material (6.4 rule 1)")
+	local tPlastic = T.tally(label .. ": no SmoothPlastic part with a side > 2 studs (rule 1)")
+	local tSat = T.tally(label .. ": big faces (> 16 studs^2) have saturation <= 0.45 unless a thin Neon inlay / a piece <= 8 studs^3 (rule 2)")
+	local tVal = T.tally(label .. ": big opaque faces have value 0.35..0.9 (rule 2)")
+	local tShadow = T.tally(label .. ": parts < 4 studs cast no shadow (rule 8)")
+	local n, skipped = 0, 0
+	for _, p in ipairs(partsOf(root)) do
+		local s = p.Size
+		local dims = { s.X, s.Y, s.Z }
+		table.sort(dims)
+		if dims[3] < 4 then
+			tShadow:case(p.CastShadow == false, p:GetFullName())
+		end
+		if p.Transparency < 0.99 then
+			if exempt(p) then
+				skipped = skipped + 1
+			else
+				n = n + 1
+				local face, vol = dims[2] * dims[3], s.X * s.Y * s.Z
+				local neon = p.Material == Enum.Material.Neon
+				tMat:case(WS == nil or WS.IsWorldMaterial(p.Material), p:GetFullName() .. " " .. tostring(p.Material))
+				tPlastic:case(not (p.Material == Enum.Material.SmoothPlastic and dims[3] > 2), p:GetFullName() .. " " .. fmt(dims[3], 1))
+				if face > 16 then
+					local sat, val = hsv(p.Color)
+					tSat:case(sat <= 0.45 + 1e-3 or (neon and dims[1] <= 0.5) or vol <= 8 or p.Material == Enum.Material.ForceField, p:GetFullName() .. " sat " .. fmt(sat, 2))
+					if not neon and p.Material ~= Enum.Material.ForceField and p.Transparency < 0.3 then
+						tVal:case(val >= 0.35 - 1e-3 and val <= 0.9 + 1e-3, p:GetFullName() .. " value " .. fmt(val, 2))
+					end
+				end
+			end
+		end
+	end
+	tMat:report()
+	tPlastic:report()
+	tSat:report()
+	tVal:report()
+	tShadow:report()
+	local lights = T.tally(label .. ": every light is a lantern light: Brightness <= 1.5, Range <= 16, no shadows; warm outside the gates (rule 7)")
+	for _, d in ipairs(root:GetDescendants()) do
+		if d:IsA("PointLight") or d:IsA("SpotLight") or d:IsA("SurfaceLight") then
+			local inGate = d:FindFirstAncestor("Portal_Return") ~= nil
+			local c = d.Color
+			local warm = inGate or (c.R >= c.G and c.G >= c.B and c.R > 0.9)
+			lights:case(d.Brightness <= 1.5 and d.Range <= 16 and not d.Shadows and warm, d:GetFullName())
+		end
+	end
+	lights:report()
+	return n, skipped
+end
+
+S.p3arena_art = guarded("p3arena_art", function()
+	if not K.needBoot() then
+		return
+	end
+	local AB = arenaBuilder()
+	local info = AB and AB.GetInfo and AB.GetInfo()
+	local model = workspace:FindFirstChild("BattleArena")
+	if not T.check(type(info) == "table" and model ~= nil, "arena art: the Battle Arena is built") then
+		return
+	end
+	local wsInst = K.moduleInstance("shared/WorldStyle")
+	local okW, WS = pcall(require, wsInst)
+	WS = okW and type(WS) == "table" and WS or nil
+	T.check(WS ~= nil, "arena art: shared/WorldStyle loads (the art kit)")
+	local exemptTag = (WS and WS.Tags and WS.Tags.Exempt) or "NC_StyleExempt"
+	local detailTag = (WS and WS.Tags and WS.Tags.Detail) or "NC_Detail"
+
+	-- budget (10.3) and the safety net: the builder's own choices already follow the rules
+	local parts = partsOf(model)
+	T.check(#parts <= 2800, "arena art: the island + bridge stay <= 2800 parts (10.3)", #parts .. " parts")
+	T.check(#parts >= 1800, "arena art: still detailed (>= 1800 parts)", #parts .. " parts")
+	T.eq(model:GetAttribute("ArtFixes"), 0, "arena art: the 6.4 safety net had nothing to fix (every piece is built in the rules)")
+
+	-- rules 1, 2, 7, 8 over the whole island (the clouds are exempt by tag)
+	local audited, skipped = artAudit(model, "arena art", WS)
+	T.info("*arena art: " .. audited .. " parts audited, " .. skipped .. " exempt (voxel clouds)")
+	local cloud = model:FindFirstChild("IslandCloud")
+	T.check(cloud ~= nil and CollectionService:HasTag(cloud, exemptTag), "arena art: the island's voxel cloud is tagged " .. exemptTag)
+	-- rule 9: the clouds are shaded for the sky (lavender: blue >= green on every part, light tops ~250,244,252, the
+	-- undersides down to ~186,172,222, nothing pure white)
+	local light, dark, cool, white = false, false, 0, 0
+	for _, p in ipairs(partsOf(cloud)) do
+		local c = p.Color
+		if c.R >= 0.94 then
+			light = true
+		end
+		if c.R <= 0.8 then
+			dark = true
+		end
+		if c.B + 1e-3 < c.G then
+			cool = cool + 1
+		end
+		if c.R >= 0.99 and c.G >= 0.99 and c.B >= 0.99 then
+			white = white + 1
+		end
+	end
+	T.check(light and dark and cool == 0 and white == 0, "arena art: the cloud is shaded for the pink sky (light lavender tops, violet undersides, no pure white)",
+		tostring(light) .. "/" .. tostring(dark) .. ", " .. cool .. " not lavender, " .. white .. " white")
+
+	-- the main materials are there (stone, brick, wood, grass, marble, sand)
+	local mats = {}
+	for _, p in ipairs(parts) do
+		mats[p.Material] = (mats[p.Material] or 0) + 1
+	end
+	for _, m in ipairs({ "Brick", "Slate", "Cobblestone", "Marble", "Grass", "LeafyGrass", "Sand", "Wood", "Metal", "Fabric" }) do
+		T.check((mats[Enum.Material[m]] or 0) > 0, "arena art: the island uses " .. m, tostring(mats[Enum.Material[m]] or 0) .. " parts")
+	end
+	-- the colosseum: Brick walls, Marble pilasters / cornices, Fabric seats in muted element colours
+	local col = model:FindFirstChild("Colosseum")
+	local wall, seat, marble = 0, 0, 0
+	for _, p in ipairs(partsOf(col)) do
+		if p.Name == "Wall" and p.Material == Enum.Material.Brick then
+			wall = wall + 1
+		elseif p.Name == "Seat" and p.Material == Enum.Material.Fabric then
+			seat = seat + 1
+		elseif (p.Name == "Cornice" or p.Name == "Pilaster") and p.Material == Enum.Material.Marble then
+			marble = marble + 1
+		end
+	end
+	T.check(wall >= 16 and seat >= 16 and marble >= 32, "arena art: Brick walls, Marble trims and Fabric seats on the colosseum", wall .. " walls, " .. marble .. " marble, " .. seat .. " seats")
+
+	-- rule 4: free-standing posts / columns >= 4 studs tall are round (no sharp tall corners)
+	local postNames = { Post = true, Pillar = true, ArchPillar = true, TorchPole = true, Pole = true, LanternPost = true, Trunk = true }
+	local round = T.tally("arena art: every free-standing post / column >= 4 studs tall is round (rule 4)")
+	for _, p in ipairs(parts) do
+		if postNames[p.Name] and p:IsA("Part") and max(p.Size.X, p.Size.Y, p.Size.Z) >= 4 and not p:FindFirstAncestor("Portal_Return") then
+			round:case(p.Shape == Enum.PartType.Cylinder, p:GetFullName())
+		end
+	end
+	round:report()
+
+	-- rule 3: kerbs + lips along the island's edge (open where the bridge lands)
+	local kerbs = model:FindFirstChild("Kerbs", true)
+	local nKerb, nLip, kerbLen = 0, 0, 0
+	for _, p in ipairs(partsOf(kerbs)) do
+		if p.Name == "Kerb" then
+			nKerb = nKerb + 1
+			kerbLen = kerbLen + max(p.Size.X, p.Size.Z)
+			T.check(abs(p.Size.Y - 0.4) < 0.01, "arena art: a kerb is 0.4 tall", tostring(p.Size.Y))
+		elseif p.Name == "KerbLip" then
+			nLip = nLip + 1
+		end
+	end
+	T.check(nKerb >= 20 and nLip == nKerb and kerbLen > 900, "arena art: a kerb + lip runs round the island's edge (rule 3)", nKerb .. " kerbs, " .. nLip .. " lips, " .. fmt(kerbLen, 0) .. " studs")
+	if info.Link == "Bridge" then
+		local A = info.Center
+		local blocked = false
+		for _, p in ipairs(partsOf(kerbs)) do
+			local rel = A:PointToObjectSpace(p.Position)
+			if p.Name == "Kerb" and abs(rel.X) < 6 and rel.Z < -195 then
+				blocked = true
+			end
+		end
+		T.check(not blocked, "arena art: no kerb across the bridge's landing")
+	end
+
+	-- rule 5: the avenue's tiles are 4..6 studs, alternate +-0.05 in height and are jittered (+-6 RGB)
+	local A = info.Center
+	local tops, colours, sizesOk, nTiles = {}, {}, true, 0
+	for _, p in ipairs(partsOf(model:FindFirstChild("Forum"))) do
+		if p.Name == "AvenueTile" then
+			nTiles = nTiles + 1
+			local rel = A:PointToObjectSpace(p.Position + Vector3.new(0, p.Size.Y / 2, 0))
+			tops[string.format("%.2f", rel.Y)] = true
+			colours[string.format("%d,%d,%d", p.Color.R * 255 + 0.5, p.Color.G * 255 + 0.5, p.Color.B * 255 + 0.5)] = true
+			if p.Size.X < 4 - 1e-3 or p.Size.X > 6 + 1e-3 or p.Size.Z < 4 - 1e-3 or p.Size.Z > 6 + 1e-3 then
+				sizesOk = false
+			end
+		end
+	end
+	local nTops, nCols = 0, 0
+	local lo, hi = huge, -huge
+	for k in pairs(tops) do
+		nTops = nTops + 1
+		lo, hi = min(lo, tonumber(k)), max(hi, tonumber(k))
+	end
+	for _ in pairs(colours) do
+		nCols = nCols + 1
+	end
+	T.check(nTiles >= 40 and sizesOk, "arena art: the avenue is paved with 4..6-stud tiles (rule 5)", nTiles .. " tiles")
+	T.check(nTops == 2 and abs((hi - lo) - 0.05) < 0.011, "arena art: the tiles alternate by 0.05 in height (rule 5)", nTops .. " levels, " .. fmt(hi - lo, 3))
+	T.check(nCols >= 6, "arena art: the tiles are jittered (never one flat colour)", nCols .. " colours")
+	-- the lawn is mown in stripes of two shades (Grass)
+	local lawnCols = {}
+	for _, p in ipairs(partsOf(model:FindFirstChild("Lawn", true))) do
+		if p.Material == Enum.Material.Grass then
+			lawnCols[string.format("%.2f", p.Color.G)] = true
+		end
+	end
+	local nLawn = 0
+	for _ in pairs(lawnCols) do
+		nLawn = nLawn + 1
+	end
+	T.check(nLawn >= 2, "arena art: the forum lawn has mown stripes (Grass in 2+ shades)", nLawn .. " shades")
+
+	-- rule 6: a detail every ~12 studs along the avenue (torches, hedge boxes, banners, lanterns: NC_Detail)
+	local details = {}
+	for _, d in ipairs(CollectionService:GetTagged(detailTag)) do
+		if d:IsDescendantOf(model) and (d:IsA("Model") or d:IsA("BasePart")) then
+			local ok, pivot = pcall(function()
+				return d:GetPivot().Position
+			end)
+			if ok then
+				details[#details + 1] = A:PointToObjectSpace(pivot)
+			end
+		end
+	end
+	T.check(#details >= 30, "arena art: pure decor is tagged " .. detailTag .. " (the Low setting hides it)", #details .. " tagged")
+	local gaps = {}
+	for z = -200, -152, 12 do
+		local found = false
+		for _, rel in ipairs(details) do
+			if rel.Z >= z and rel.Z < z + 12 and abs(rel.X) < 22 then
+				found = true
+			end
+		end
+		if not found then
+			gaps[#gaps + 1] = tostring(z)
+		end
+	end
+	T.check(#gaps == 0, "arena art: a detail every ~12 studs along the avenue (rule 6)", "gaps at z " .. table.concat(gaps, ", "))
+
+	-- the Champion Ring pocket follows the same rules (its cloud and its cheering crowd are exempt)
+	local rp = AB.BuildPocket(63, "Ring")
+	if T.check(type(rp) == "table" and rp.Model, "arena art: a Champion Ring pocket builds") then
+		local n = #partsOf(rp.Model)
+		T.check(n <= 250, "arena art: the ring pocket stays <= 250 parts", n .. " parts")
+		T.eq(rp.Model:GetAttribute("ArtFixes"), 0, "arena art: the pocket needed no safety-net fixes")
+		artAudit(rp.Model, "ring pocket art", WS)
+		local crowd = rp.Model:FindFirstChild("CrowdPuffs", true)
+		T.check(crowd ~= nil and CollectionService:HasTag(crowd, exemptTag), "ring pocket art: the cheering cloud puffs are characters (tagged exempt)")
+		local pk = 0
+		for _, p in ipairs(partsOf(rp.Model)) do
+			if p.Name == "Kerb" then
+				pk = pk + 1
+			end
+		end
+		T.check(pk >= 16, "ring pocket art: a kerb + lip round its stone deck (rule 3)", pk .. " kerbs")
+		AB.FreePocket(rp)
+	end
+	K.flushErrors("p3arena_art")
+	K.flushWarnings("p3arena_art")
 end)
 
 return S

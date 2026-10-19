@@ -274,10 +274,11 @@ S.p3data_teams = guarded("p3data_teams", function()
 		end
 	end
 	T.check(#bad == 0 and #DataS.GetTeams(p).Presets[2] == 0, "p3 teams: SetTeam refuses junk lists (" .. #junkLists .. " shapes) with a reason; nothing is stored", table.concat(bad, ", "))
+	-- Phase 5 (4.8): teams have 3 pets always (a fighter and two helpers); the Phase 3 prestige unlock of slot 4 is gone
 	ok, why = DataS.SetTeam(p, 2, { a, b, c, d })
-	T.check(ok == false and type(why) == "string" and why:find("Prestige", 1, true) ~= nil, "p3 teams: a 4th pet is refused before Prestige 1 (the reason names the unlock)", tostring(why))
+	T.check(ok == false and why == "Teams have 3 pets: a fighter and two helpers", "p3 teams: a 4th pet is refused ('Teams have 3 pets: a fighter and two helpers')", tostring(why))
 	ok, why = DataS.SetTeam(p, 2, { a, "", "", d })
-	T.check(ok == false and type(why) == "string" and why:find("Prestige", 1, true) ~= nil, "p3 teams: ...also alone in slot 4 (the empty slots before it do not move it up)", tostring(why))
+	T.check(ok == false and why == "Teams have 3 pets: a fighter and two helpers", "p3 teams: ...also alone in slot 4 (the empty slots before it do not move it up)", tostring(why))
 	ok, why = DataS.SetTeam(p, 2, { a, a })
 	T.check(ok == false and type(why) == "string" and why:find("once", 1, true) ~= nil, "p3 teams: the same key twice is refused", tostring(why))
 	ok, why = DataS.SetTeam(p, 2, { a, "no_such_pet" })
@@ -348,34 +349,36 @@ S.p3data_teams = guarded("p3data_teams", function()
 	T.check(DataS.SetTeam(nil, 1, { a }) == false and DataS.SelectTeam(nil, 1) == false and DataS.GetTeams(nil) == nil and #DataS.ActiveTeamKeys(nil) == 0,
 		"p3 teams: the API refuses a nil player")
 
-	-- slot 4 from Prestige 1
+	-- Phase 5: a Prestige unlocks no 4th slot any more (Slots stays 3; a 4th key is still refused)
 	T.check(DataS.MutateHome(p, function(home)
 		home.Prestige = 1
 	end) == true, "p3 teams: (precondition) the home prestiges")
-	T.eq(DataS.GetTeams(p).Slots, 4, "p3 teams: at Prestige 1 a team has 4 slots")
+	T.eq(DataS.GetTeams(p).Slots, 3, "p3 teams: at Prestige 1 a team still has 3 slots (Phase 5)")
 	mark = K.logSize()
 	ok, why = DataS.SetTeam(p, 1, { a, b, c, f })
-	T.check(ok == true and sameList(DataS.GetTeams(p).Presets[1], { a, b, c, f }), "p3 teams: ...and takes a 4th pet", tostring(why))
+	T.check(ok == false and type(why) == "string" and why:find("3 pets", 1, true) ~= nil, "p3 teams: ...and a 4th pet is still refused", tostring(why))
+	ok, why = DataS.SetTeam(p, 1, { a, b, f })
+	T.check(ok == true and sameList(DataS.GetTeams(p).Presets[1], { a, b, f }), "p3 teams: ...3 pets are taken", tostring(why))
 	advance(0.5)
 	snap = lastSnapshot(p, mark)
-	T.check(type(snap) == "table" and snap.Teams.Slots == 4 and sameList(snap.Teams.Presets[1], { a, b, c, f }) and snap.Teams.Active == 3,
-		"p3 teams: ProfileSync shows Slots = 4 and the new preset")
+	T.check(type(snap) == "table" and snap.Teams.Slots == 3 and sameList(snap.Teams.Presets[1], { a, b, f }) and snap.Teams.Active == 3,
+		"p3 teams: ProfileSync shows Slots = 3 and the new preset")
 
 	-- pruning: a copy vanishes (released, consumed elsewhere): the next Sync drops the key everywhere
 	local m2 = watch.mark()
 	mark = K.logSize()
 	prof.Pets[b] = nil
 	DataS.Sync(p)
-	T.check(sameList(DataS.GetTeams(p).Presets[1], { a, c, f }) and sameList(prof.Teams.Presets[1], { a, c, f }),
+	T.check(sameList(DataS.GetTeams(p).Presets[1], { a, f }) and sameList(prof.Teams.Presets[1], { a, f }),
 		"p3 teams: a key whose copy is gone leaves the presets at the next Sync (the live profile too); the pets behind move up", listText(prof.Teams.Presets[1]))
 	T.check(watch.since(p, m2) >= 1, "p3 teams: ...TeamsChanged fires")
 	snap = lastSnapshot(p, mark)
-	T.check(type(snap) == "table" and sameList(snap.Teams.Presets[1], { a, c, f }), "p3 teams: ...and that very snapshot is pruned")
+	T.check(type(snap) == "table" and sameList(snap.Teams.Presets[1], { a, f }), "p3 teams: ...and that very snapshot is pruned")
 	-- Phase 4: the last free copy going to the Garden prunes NOTHING (garden pets fight); the Gym still does
 	DataS.MutateHome(p, function(home)
 		home.Garden[2] = c
 	end)
-	T.check(sameList(DataS.GetTeams(p).Presets[1], { a, c, f }) and sameList(DataS.GetTeams(p).Presets[3], { a .. "@Golden", "hyb:p3h", a }),
+	T.check(sameList(DataS.GetTeams(p).Presets[1], { a, f }) and sameList(DataS.GetTeams(p).Presets[3], { a .. "@Golden", "hyb:p3h", a }),
 		"p3 teams: a pet whose last free copy goes to the Garden STAYS in its team (Phase 4: P3.placedCopies counts Home.Gym only)",
 		listText(DataS.GetTeams(p).Presets[1]) .. " / " .. listText(DataS.GetTeams(p).Presets[3]))
 	ok = DataS.SetTeam(p, 2, { e, f })
@@ -715,13 +718,14 @@ S.p3data_save = guarded("p3data_save", function()
 		Teams = { Presets = { { a, b, c, d } }, Active = 1 },
 	}
 	local s4 = join("P3Slots", P4)
-	T.check(sameList(DataS.GetTeams(s4).Presets[1], { a, b, c, d }) and DataS.GetTeams(s4).Slots == 4, "p3 save: a stored 4-pet team loads whole at Prestige 1")
+	T.check(sameList(DataS.GetTeams(s4).Presets[1], { a, b, c }) and DataS.GetTeams(s4).Slots == 3 and DataS.GetProfile(s4).Pets[d] == 1,
+		"p3 save: a stored 4-pet team loads with its first 3 keys at Prestige 1 too (Phase 5: Slots 3 always; the 4th pet stays owned)", listText(DataS.GetTeams(s4).Presets[1]))
 	K.removePlayers({ s4 })
 	advance(2)
 	data[storeKey(P4)].Home = homeOf(0, { "", b })
 	s4 = join("P3Slots", P4)
 	T.check(sameList(DataS.GetTeams(s4).Presets[1], { a, b, c }) and DataS.GetTeams(s4).Slots == 3,
-		"p3 save: ...without the prestige only 3 pets stay (slot 4 dropped); a pet working in the stored Garden ('' = empty slot) STAYS (Phase 4: garden pets fight)", listText(DataS.GetTeams(s4).Presets[1]))
+		"p3 save: ...without the prestige the same 3 pets stay; a pet working in the stored Garden ('' = empty slot) STAYS (Phase 4: garden pets fight)", listText(DataS.GetTeams(s4).Presets[1]))
 	K.removePlayers({ s4 })
 	advance(2)
 

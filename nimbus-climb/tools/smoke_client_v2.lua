@@ -233,17 +233,28 @@ S.client_ui_kit = guarded("client_ui_kit", function()
 	local stroke = body and body:FindFirstChildOfClass("UIStroke")
 	T.check(stroke ~= nil and stroke.Thickness >= 3 and stroke.Thickness <= 4, "panels have a thick (3-4 px) outline", stroke and tostring(stroke.Thickness) or "no UIStroke")
 	if stroke then
+		-- v5 (Phase 5, 6.6): the Neon kit: the border glows in the panel's accent colour (Blue by default)
 		local c = stroke.Color
-		T.check(c.R + c.G + c.B < 1.2 and c.B >= c.R, "...in a dark navy", tostring(c))
+		T.check(c == Theme.Neon.Blue, "...in the neon accent colour (Blue without Accent / Category)", tostring(c))
+		local glow = body:FindFirstChild("Glow")
+		local glowStroke = glow and glow:FindFirstChildOfClass("UIStroke")
+		T.check(glowStroke ~= nil and glowStroke.Color == c and glowStroke.Transparency > 0.4, "...with a soft outer glow ring in that colour")
 	end
 	local corner = body and body:FindFirstChildOfClass("UICorner")
 	T.check(corner ~= nil and corner.CornerRadius.Offset >= 14 and corner.CornerRadius.Offset <= 18, "...with 14-18 px rounded corners", corner and tostring(corner.CornerRadius) or "no UICorner")
 	local grad = body and body:FindFirstChildOfClass("UIGradient")
-	T.check(grad ~= nil, "...a soft gradient fill")
-	local puffs = panel.Root:FindFirstChild("CloudPuffs")
-	T.check(puffs ~= nil and #puffs:GetChildren() >= 5, "...and cloud bumps along the top edge", puffs and (#puffs:GetChildren() .. " bumps") or "none")
+	T.check(grad ~= nil and grad.Color.Keypoints[1].Value == Theme.Colors.PanelTop, "...a dark navy gradient fill (PanelTop -> PanelBottom)")
+	T.check(panel.Root:FindFirstChild("CloudPuffs") == nil, "...and no cloud bumps any more (v5: 'less cute')")
+	T.check(panel.TitleLabel.Font == Theme.Fonts.Title and Theme.Fonts.Title == Enum.Font.GothamBlack and panel.TitleLabel.TextSize == 34, "...a GothamBlack 34 title", tostring(panel.TitleLabel.Font) .. " " .. tostring(panel.TitleLabel.TextSize))
+	local underline = panel.Root:FindFirstChild("Underline", true)
+	T.check(underline ~= nil and underline.BackgroundColor3 == Theme.Neon.Blue, "...over a neon underline")
+	local pets = CloudUI.Panel({ Name = "CatPanel", Category = "Pets", Title = "Pets", Size = UDim2.fromOffset(300, 200), Parent = g })
+	local petsStroke = pets.Body:FindFirstChildOfClass("UIStroke")
+	T.check(petsStroke and petsStroke.Color == Theme.Neon.Orange, "Panel{ Category = 'Pets' } glows in the Pets colour (Orange)")
+	pets.SetAccent("Purple")
+	T.check(petsStroke and petsStroke.Color == Theme.Neon.Purple, "SetAccent takes a neon name too")
 	local plain = CloudUI.Panel({ Name = "NoClouds", Clouds = false, Size = UDim2.fromOffset(200, 100), Parent = g })
-	T.check(plain.Root:FindFirstChild("CloudPuffs") == nil and plain.TitleLabel == nil and plain.Root:FindFirstChild("Close", true) == nil, "Clouds = false / no title / not closable: no bumps, ribbon or red X")
+	T.check(plain.Root:FindFirstChild("CloudPuffs") == nil and plain.TitleLabel == nil and plain.Root:FindFirstChild("Close", true) == nil, "no title / not closable: no title, underline or red X")
 	local x = panel.Root:FindFirstChild("Close", true)
 	if T.check(x ~= nil and x:IsA("TextButton") and x.Text == "X", "a closable panel has a red X button") then
 		local c = x.BackgroundColor3
@@ -736,6 +747,87 @@ local function indexWindowChecks(PetCatalog)
 	claim = descendantNamed(window, "Claim")
 	T.check(claim ~= nil and isShown(claim) and tostring(claim.Text):upper():find("CLAIM") ~= nil, "Pet Index: a complete group offers CLAIM", claim and claim.Text or "no button")
 	T.check(hasNumber(window, Config.Index.Rewards.Common.Tokens), "Pet Index: the rewards box shows the Config.Index reward (" .. Config.Index.Rewards.Common.Tokens .. ")")
+	-- wave 5 (client-ux-2 / client-ux-5) at 1920x1080 / 1280x720 / 390x844 / 844x390: the reward amount has room left
+	-- of CLAIM for the widest reward, the line under it wraps to two lines at most inside the box, and every group
+	-- tile's name fits one line at the 18 px minimum (glyph estimates: 0.6 of the size for the amount's digits; the
+	-- black-weight group names per letter: m / w 1.0, narrow letters 0.35, capitals 0.75, the rest 0.62)
+	do
+		local old = { Mock.Viewport.X, Mock.Viewport.Y, UserInputService.TouchEnabled, UserInputService.KeyboardEnabled, UserInputService.MouseEnabled }
+		local function rect(o)
+			local p, z = o.AbsolutePosition, o.AbsoluteSize
+			return { x0 = p.X, y0 = p.Y, x1 = p.X + z.X, y1 = p.Y + z.Y }
+		end
+		local function overlap(a, b)
+			return a.x0 < b.x1 - 1 and b.x0 < a.x1 - 1 and a.y0 < b.y1 - 1 and b.y0 < a.y1 - 1
+		end
+		local function nameW(text, size)
+			local units = 0
+			for ch in text:gmatch(".") do
+				if ch:find("[mwMW]") then
+					units = units + 1
+				elseif ch:find("[iljtfr ]") then
+					units = units + 0.35
+				elseif ch:find("%u") then
+					units = units + 0.75
+				else
+					units = units + 0.62
+				end
+			end
+			return units * size
+		end
+		local widest = 0
+		for _, r in pairs(Config.Index.Rewards) do
+			widest = math.max(widest, tonumber(r.Tokens) or 0)
+		end
+		local widestText = "# " .. tostring(widest):reverse():gsub("(%d%d%d)", "%1,"):reverse():gsub("^,", "")
+		local bad = {}
+		for _, size in ipairs({ { 1920, 1080, false }, { 1280, 720, false }, { 390, 844, true }, { 844, 390, true } }) do
+			UserInputService.TouchEnabled, UserInputService.KeyboardEnabled, UserInputService.MouseEnabled = size[3], not size[3], not size[3]
+			Mock.SetViewport(size[1], size[2])
+			advance(0.3)
+			Index.Open("Common")
+			advance(0.6)
+			local label = size[1] .. "x" .. size[2]
+			local rewards = descendantNamed(window, "Rewards")
+			local amount = rewards and rewards:FindFirstChild("Amount")
+			local sub = rewards and rewards:FindFirstChild("Sub")
+			local button = rewards and rewards:FindFirstChild("Claim")
+			if not (amount and sub and button) then
+				bad[#bad + 1] = label .. ": no reward box"
+			else
+				local k = button.Size.X.Offset > 0 and button.AbsoluteSize.X / button.Size.X.Offset or 1
+				local br, ar, rr = rect(button), rect(amount), rect(rewards)
+				local need = #widestText * amount.TextSize * k * 0.6
+				if amount.Visible and (ar.x1 - ar.x0 < need or overlap(ar, br)) then
+					bad[#bad + 1] = string.format("%s: the amount has %.0f px left of CLAIM, '%s' needs ~%.0f", label, ar.x1 - ar.x0, widestText, need)
+				end
+				if sub.Visible and sub.Text ~= "" then
+					local tb = sub.TextBounds
+					local sr = rect(sub)
+					if overlap(sr, br) or tb.Y > 2.6 * sub.TextSize * k or sr.y0 + tb.Y > rr.y1 + 1 then
+						bad[#bad + 1] = string.format("%s: '%s' runs %.0f px tall in %.0f px (box ends %.0f)", label, sub.Text, tb.Y, sr.x1 - sr.x0, rr.y1)
+					end
+				end
+				for _, d in ipairs(window:GetDescendants()) do
+					if d.Name == "GroupName" and d:IsA("TextLabel") and d.Text ~= "" then
+						local w = d.AbsoluteSize.X
+						local wantW = nameW(d.Text, 18 * k)
+						if w < wantW then
+							bad[#bad + 1] = string.format("%s: group tile '%s' %.0f px wide, needs ~%.0f at 18 px (wraps mid-word)", label, d.Text, w, wantW)
+						end
+					end
+				end
+			end
+		end
+		T.check(#bad == 0, "Pet Index: at 4 sizes the reward amount, its line and the group tile names fit (nothing under CLAIM, no 4-line wrap, no mid-word break)",
+			table.concat(bad, "; ", 1, math.min(#bad, 5)))
+		UserInputService.TouchEnabled, UserInputService.KeyboardEnabled, UserInputService.MouseEnabled = old[3], old[4], old[5]
+		Mock.SetViewport(old[1], old[2])
+		advance(0.3)
+		Index.Open("Common")
+		advance(0.6)
+		claim = descendantNamed(window, "Claim")
+	end
 	advance(0.7)
 	if claim then
 		Mock.Click(claim)
@@ -925,13 +1017,46 @@ S.client_menu = guarded("client_menu", function()
 		end
 		T.check(present == #names and extra == #names, "...with six entries: " .. table.concat(names, ", "), present .. " of " .. #names .. " found, " .. extra .. " entries in total")
 		T.check(buttonsOk, "...each tile is a TextButton named MenuButton_<Id> (the tutorial rings it)")
-		local ordered = true
-		for i = 2, #names do
-			if entries[names[i]] and entries[names[i - 1]] and entries[names[i]].AbsolutePosition.Y <= entries[names[i - 1]].AbsolutePosition.Y then
-				ordered = false
+		-- Phase 5 (6.6): a 2 x 3 grid of tiles in menu order (row = floor((i-1)/2): Y rises by row, X by column) and a
+		-- small row (Stats + the gear) under it
+		local grid, small = {}, {}
+		for _, n in ipairs(names) do
+			local e = entries[n]
+			if e then
+				if e.AbsoluteSize.X < (entries.Pets or e).AbsoluteSize.X - 1 then
+					small[#small + 1] = e
+				else
+					grid[#grid + 1] = e
+				end
 			end
 		end
-		T.check(ordered, "...stacked top to bottom in that order")
+		table.sort(grid, function(a, b)
+			return a.LayoutOrder < b.LayoutOrder
+		end)
+		local ordered, why = #grid == 6, (#grid .. " grid tiles")
+		for i = 1, #grid do
+			for j = i + 1, #grid do
+				local a, b = grid[i], grid[j]
+				local ra, rb = math.floor((i - 1) / 2), math.floor((j - 1) / 2)
+				local ay, by = a.AbsolutePosition.Y, b.AbsolutePosition.Y
+				local ax, bx = a.AbsolutePosition.X, b.AbsolutePosition.X
+				if ra < rb and not (ay < by - 1) then
+					ordered, why = false, a.Name .. " is not above " .. b.Name
+				elseif ra == rb and not (abs(ay - by) <= 1 and ax < bx - 1) then
+					ordered, why = false, a.Name .. " / " .. b.Name .. " are not side by side in order"
+				end
+			end
+		end
+		local lowest = -math.huge
+		for _, e in ipairs(grid) do
+			lowest = math.max(lowest, e.AbsolutePosition.Y + e.AbsoluteSize.Y)
+		end
+		for _, e in ipairs(small) do
+			if e.AbsolutePosition.Y < lowest - 1 then
+				ordered, why = false, e.Name .. " (small row) is not under the grid"
+			end
+		end
+		T.check(ordered, "...laid out as a 2-column grid in menu order (the small row under it)", why)
 		local cx = column.AbsolutePosition.X + column.AbsoluteSize.X / 2
 		local cy = column.AbsolutePosition.Y + column.AbsoluteSize.Y / 2
 		T.check(cx < vp.X * 0.12, "the column is on the left edge", string.format("centre x %.2f of the screen", cx / vp.X))
@@ -952,11 +1077,12 @@ S.client_menu = guarded("client_menu", function()
 			local small, measured = KC.smallTexts(15)
 			T.check(#small == 0 and measured > 0, "Inventory window: every text on screen is readable (>= 15 px at 1920x1080)", #small .. " of " .. measured .. " too small: " .. table.concat(small, "; ", 1, math.min(#small, 6)))
 		end
-		local cxw = inv.AbsolutePosition.X + inv.AbsoluteSize.X / 2
-		local cyw = inv.AbsolutePosition.Y + inv.AbsoluteSize.Y / 2
-		T.check(abs(cxw - vp.X / 2) < vp.X * 0.05 and abs(cyw - vp.Y / 2) < vp.Y * 0.1, "windows open centred on the screen", string.format("centre %.2f,%.2f", cxw / vp.X, cyw / vp.Y))
+		-- Phase 5 (6.6, the window rule): windows dock RIGHT on landscape screens (NeonKit.Dock's DockMode 'Side')
+		local rightEdge = inv.AbsolutePosition.X + inv.AbsoluteSize.X
+		T.check(inv:GetAttribute("DockMode") == "Side" and rightEdge <= vp.X + 1 and vp.X - rightEdge <= vp.X * 0.05,
+			"windows open docked right (DockMode Side, the right edge within the margin)", string.format("DockMode %s, right edge %.0f of %d", tostring(inv:GetAttribute("DockMode")), rightEdge, vp.X))
 		T.check(findText("equipped 2/3", inv) ~= nil, "the Pets tab shows 'Equipped 2/3'", allShownText())
-		T.check(findText("inventory", inv) ~= nil, "...in a window titled Inventory")
+		T.check(findText("pets", inv) ~= nil, "...in a window titled Pets (the title follows the tab)")
 		local tabsFound = findText("^pets$", inv, true) ~= nil and findText("^items$", inv, true) ~= nil
 		T.check(tabsFound, "...with the tabs Pets and Items")
 		local grid = descendantNamed(inv, "CloudGrid")

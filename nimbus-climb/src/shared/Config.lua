@@ -18,10 +18,10 @@ local P = {
 	DashSpeed = 85,
 	DashDuration = 0.18,
 	DashCooldown = 1.6,
-	DashStaminaCost = 35,
-	MaxStamina = 100,
-	StaminaRegen = 22, -- per second while not running
-	RunStaminaDrain = 14, -- per second while running
+	DashStaminaCost = 35, -- Phase 5 (3.9): 4 dashes from full
+	MaxStamina = 150, -- Phase 5 (3.9): was 100
+	StaminaRegen = 45, -- per second while not running (Phase 5: was 22; a full refill takes ~3.3 s)
+	RunStaminaDrain = 14, -- per second while running (~10.7 s of running from full)
 }
 -- Derived numbers the course generator relies on (studs).
 P.JumpHeight = (P.JumpPower * P.JumpPower) / (2 * P.Gravity) -- ~6.9
@@ -30,6 +30,14 @@ P.MaxRunGap = P.RunSpeed * P.AirTime -- ~14.3 theoretical
 P.DashBonus = (P.DashSpeed - P.RunSpeed) * P.DashDuration -- ~10.4 extra
 P.MaxDashGap = P.MaxRunGap + P.DashBonus -- ~24.7 theoretical
 Config.Physics = P
+
+-- Phase 5 (contract 3.9 / 4.4): inside a battle zone a dash costs no stamina and the character walks / runs at the
+-- fighter's legal battle speed. BattleController calls MovementController.SetFreeDash(true) / SetBattleSpeed(walk, run)
+-- on Start and resets them on End; MovementController's EXHAUST_RESUME is 22 (15% of MaxStamina).
+Config.Movement = {
+	FreeDashInBattle = true, -- MovementController.SetFreeDash(true) while a battle runs
+	ExhaustResume = 22, -- stamina needed to run again after hitting 0 (15% of MaxStamina)
+}
 
 ----------------------------------------------------------------------
 -- Names shared by server + client
@@ -70,6 +78,11 @@ Config.Attr = {
 	EquippedInfo = "EquippedInfo", -- "23:1,5:0" level:evolution stage per EquippedPets entry (PetService writes)
 	HomePortal = "HomePortal", -- "x,y,z,yaw,closesAt" while the owner's home portal is open, absent when closed (TycoonService)
 	PortalArrived = "PortalArrived", -- server time of the last arrival through the home portal (TycoonService)
+	-- Phase 5 (ARCHITECTURE_V3.md "Phase 5 build contract", section 10.2)
+	InBattle = "InBattle", -- battle id, or a dungeon RUN id ("D12") for the whole run (BattleService / DungeonService write; C11)
+	Berries = "Berries", -- whole berries (DataService only, inside AddBerries / SpendBerries, <= 2 writes/s)
+	ObbyLevel = "ObbyLevel", -- the obby difficulty id the player picked at the Obby gate (PortalService writes)
+	ProfileLoaded = "ProfileLoaded", -- true once the profile is loaded or provisional (DataService writes; the loading screen reads it)
 }
 
 Config.Remotes = {
@@ -102,13 +115,19 @@ Config.Remotes = {
 	"DevCommand", -- (command:string, arg:any)  developer tools; the server only obeys allowed players (Config.Dev)
 	-- Phase 2 (ARCHITECTURE_V3.md "Phase 2 build contract")
 	"HomeAction", -- (action:string, arg:any)  Upgrade / GardenSet / Collect / Prestige / GoHome (Phase 4: GoHome opens the home portal)
-	"PetCare", -- (action:string, a:any, b:any)  Phase 4: Feed (key, opts) / Evolve (key) / Train (key, stat) / TrainStop (key); Cook / GymSet are retired (one toast)
+	"PetCare", -- (action:string, a:any, b:any)  Phase 5: Feed (key) spends berries; Evolve (key) / Train (key, stat) / TrainStop (key); Cook / GymSet are retired (one toast)
 	"Fusion", -- (action:string, a:any, b:any)  Upgrade / Mix
 	-- Phase 3 (ARCHITECTURE_V3.md "Phase 3 build contract")
 	"BattleState", -- server -> client (kind:string, payload:table)  Start / Snapshot / Events / End
-	"BattleCommand", -- (action:string, a:any)  Attack / Retreat / Special / Forfeit
-	"BattleRequest", -- (action:string, a:any, b:any)  TeamSet / TeamSelect / Trial / Challenge / ChallengeReply / Queue / Unqueue / JoinRaid / LeaveRaid / Ring (Phase 4: startRound)
+	"BattleCommand", -- (action:string, a:any, b:any)  Phase 5: Attack / Element / Special / Dash / Target / Buff / Swap / Forfeit (Retreat is gone)
+	"BattleRequest", -- (action:string, a:any, b:any)  TeamSet / TeamSelect / Challenge / ChallengeReply / Queue / Unqueue / JoinRaid / LeaveRaid / Ring (Phase 4: startRound); Phase 5: Trial is gone
 	"ArenaState", -- server -> client (state:table)  next event, countdown, raid status, leaderboard
+	-- Phase 5 (ARCHITECTURE_V3.md "Phase 5 build contract" 5.7, 6.3, 7.2)
+	"DungeonRequest", -- (action:string, a:any, b:any)  Open / Create (floor) / Join (leaderUserId) / Leave / Ready (bool) / SetFloor (floor) / Start / Solo (floor) / Quit / Chest / Kick (userId)
+	"DungeonState", -- server -> client (kind:string, payload:table)  Lobby / Run / Loot / Chest / End (<= 1 KB, <= 1/s per client)
+	"ObbyPick", -- (levelId:string)  pick an obby level at the Obby gate (PortalService.PickLevel; unlocked levels only)
+	"SettingsSet", -- (key:string, value:any)  Music / Sfx 0..10, Gfx "Auto"|"Low"|"High", Shake bool, SeenNotes int (DataService)
+	"MenuPlay", -- ()  the main menu's PLAY: the server spawns the character (PlayerService.SpawnPlayer; first per session, 1/s)
 }
 
 ----------------------------------------------------------------------
@@ -126,14 +145,19 @@ Config.Damage = {
 ----------------------------------------------------------------------
 -- Lobby (a big floating cloud village high in the sky)
 ----------------------------------------------------------------------
+-- Phase 5 (ARCHITECTURE_V3.md "Phase 5 build contract" 6.1): a bigger plaza with the Gate Court (the six mode gates on
+-- one arc: Home, Obby, Dungeon, Ring, Arena, Altar, left to right at GateFacing - 2.5 .. + 2.5 steps). Plaza-local
+-- angles: 0 = +X, 90 = +Z.
 Config.Lobby = {
 	Origin = Vector3.new(0, 300, 0), -- centre of the main plaza surface
-	PlazaRadius = 110,
-	PortalRingRadius = 88, -- the five portal gates stand on this ring
-	SpotRingRadius = 300, -- v3: the player home plots stand on this ring (bigger, for the tycoon homes)
+	PlazaRadius = 150, -- was 110
+	GateArcRadius = 118, -- the six gates stand on this arc (replaces PortalRingRadius 88); pad centres at r 104
+	GateStep = 14.5, -- degrees between gates (29.8 studs)
+	GateFacing = 90, -- degrees: the arc's middle (+Z); the spawn looks this way
+	SpotRingRadius = 340, -- was 300: the player home plots stand on this ring (spoke bridges stay 130 studs)
 	SpotCount = 16, -- one saved spot per player; set the place's Max Players to <= this
-	PlotSize = 72, -- v3: flat square buildable area (studs) of each home plot; the phase-2 home is built on it
-	ShopOffset = Vector3.new(0, 0, -150), -- shop island centre relative to Origin
+	PlotSize = 72, -- flat square buildable area (studs) of each home plot (read by TycoonCatalog)
+	ShopOffset = Vector3.new(0, 0, -196), -- shop island centre relative to Origin (was -150)
 	KillY = 100, -- fall below this -> teleport back to the plaza
 }
 
@@ -445,6 +469,7 @@ Config.Dev = {
 	GrantTokens = 1000000, -- tokens added by the "+ tokens" button and by StudioAutoGrant
 	GrantCash = 1000000, -- Phase 2: Cash added by the "+ Cash" button (/cash n)
 	GrantGems = 1000, -- Phase 2: Gems added by the "+ Gems" button (/gems n)
+	GrantBerries = 5000, -- Phase 5: Berries added by the "+ Berries" button (/berries n)
 	MaxTokensPerCommand = 100000000,
 }
 
@@ -457,6 +482,46 @@ Config.Art = {
 Config.Items = {
 	MaxCarry = 5, -- per item type
 	HotbarSlots = 4, -- keys 1-4
+}
+
+----------------------------------------------------------------------
+-- Phase 5 (ARCHITECTURE_V3.md "Phase 5 build contract" 6.4-6.5, 7): sky, audio, icons, loading screen, main menu
+----------------------------------------------------------------------
+-- The painted sky: six Image ids (NOT Decal ids) from branding/sky/*.png, uploaded by the owner through Studio's Asset
+-- Manager -> Bulk Import, then pasted here as "rbxassetid://<id>" (Bk Dn Ft Lf Rt Up by file name; left and right swapped =
+-- swap the Lf and Rt ids). While any of the six is empty LightingService shows its built-in fallback sky (a pink-lavender
+-- haze, a tinted cloud layer and 3000 stars). README "Phase 5: owner checklist", step 2.
+Config.Sky = {
+	Faces = { Bk = "", Dn = "", Ft = "", Lf = "", Rt = "", Up = "" },
+}
+
+-- Music and sounds (optional): free Creator Store audio ids as "rbxassetid://<id>". Empty = silent, nothing breaks.
+-- SoundFx.Music(context) crossfades Lobby / Battle / Dungeon at the player's Music setting; Play(name) at the Sfx setting.
+Config.Audio = {
+	Music = { Lobby = "", Battle = "", Dungeon = "" },
+	Sfx = { Click = "", Confirm = "", Error = "", Reward = "", Whoosh = "" },
+}
+
+-- Menu icons (optional): the tiles use emoji glyphs; Config.Icons[tileId] = "rbxassetid://<id>" replaces one with an
+-- image (NeonKit.Icon). Empty table = glyphs everywhere.
+Config.Icons = {}
+
+-- The loading screen (src/first/LoadingScreen.client.lua, ReplicatedFirst): SKIP appears after SkipAfter seconds, the
+-- screen finishes by itself at 100% or after MaxSeconds.
+Config.Loading = {
+	SkipAfter = 6,
+	MaxSeconds = 25,
+}
+
+-- The main menu BEFORE spawning (7.2, judge M7): the server holds the character until the client's PLAY (remote MenuPlay)
+-- or FallbackSeconds; the camera orbits the Gate Court meanwhile. Enabled = false restores today's behaviour in one line
+-- (the character spawns at once on join). On since the wave-3 gate (the smoke worlds switch it off in their common boot).
+Config.MainMenu = {
+	Enabled = true,
+	OrbitRadius = 90,
+	OrbitHeight = 38,
+	OrbitPeriod = 60, -- seconds per orbit
+	FallbackSeconds = 90, -- the server spawns the character after this even without MenuPlay (Y13)
 }
 
 return Config

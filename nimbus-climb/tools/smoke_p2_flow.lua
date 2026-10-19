@@ -1,6 +1,7 @@
 -- smoke_p2_flow.lua: the END-TO-END home flow (ARCHITECTURE_V3.md "Phase 2: Tycoon homes" + "Phase 2 build contract",
--- rewritten for the "Phase 4 build contract": presses -> food plants, Collector -> Coin Magnet, Kitchen -> Food
--- Machine, Gym -> Training Place, rainbow coins): three simulated players play the homes together on the booted game,
+-- rewritten for the "Phase 4 build contract" (Kitchen -> Food Machine, Gym -> Training Place) and the "Phase 5 build
+-- contract" (11 stations: one Berry Farm, the Garden pulls coins; roaming pets poop Cloud Cash; berries are the ONE food,
+-- Feed spends berries, never Cash): three simulated players play the homes together on the booted game,
 -- through the same doors a client uses (ProximityPrompts, the HomeAction / PetCare / Fusion / BuyRoulette /
 -- TutorialEvent / EquipPet / GoToSpot remotes, walking over coins, the home portal, MarketplaceService.ProcessReceipt)
 -- while TycoonService, PetCareService, FusionService, GemService, TutorialService, SpotService, HomeBuilder, PetService
@@ -19,13 +20,13 @@
 --                        tutorial, claims a plot and can neither claim Ann's plot nor use her pads.
 --   p2flow_build         Ann's home chapter: the free Pet Garden pad (the only pad of a fresh home), a pet in garden
 --                        place 1 (HomeAction GardenSet, what the GardenSpotPrompt's picker sends) -> 'coins'; Ben's
---                        own Garden with a Combat pet (1/1.6 of the coins); a coin after one meal, Ben walking over
+--                        own Garden with a Combat pet (1/1.6 of the coins); a pooped Cloud Cash coin, Ben walking over
 --                        Ann's pile scoops nothing, Ann's walk scoops it -> 'machine'; the arrow pad by pad (the
---                        Berry Bush makes bigger coins) to the Food Machine -> 'feed'; the locked Fusion Machine pad;
+--                        Berry Farm makes bigger coins) to the Food Machine -> 'feed'; the locked Fusion Machine pad;
 --                        the owner-only FeedPrompt opens the feed list, a 'Level up' batch levels the pet (one toast,
 --                        the chapter's Cash reward once); the Training Place: TrainPrompt, a Combat pet in the Garden,
 --                        Train (PetCare) with the lock (no equip, no garden place) and the automatic return to its
---                        place with rank 1. Ben levels his Berry Bush to the Cottage cap. Cid builds his Garden from
+--                        place with rank 1. Ben levels his Berry Farm to the Cottage cap. Cid builds his Garden from
 --                        the Home window, places a pet and leaves: his save is a Phase 4 home.
 --   p2flow_prestige      Ann builds the home up pad by pad: the next house is refused below its Home Level, Villa /
 --                        Manor / Sky Castle, until the Prestige pad unlocks; E on it only opens the confirmation;
@@ -586,6 +587,20 @@ local function scoopLedger()
 	}
 end
 
+-- Phase 5: waits (1 s steps, simulated) for a player's first Cloud Cash drop; -> { Coins = poops, Pos, Value } | nil
+local function firstDrop(Ty, p, seconds)
+	local t0 = Mock.Clock.now
+	while Mock.Clock.now - t0 < (seconds or 60) do
+		for _, d in ipairs(Ty.Drops and Ty.Drops(p) or {}) do
+			if (d.Poops or 0) >= 1 and typeof(d.Position) == "Vector3" then
+				return { Coins = d.Poops, Pos = d.Position, Value = d.Value, Slot = d.Slot }
+			end
+		end
+		advance(1)
+	end
+	return nil
+end
+
 local function givePet(p, key, n)
 	local DataS = mod("DataService")
 	local PK = requireAt("shared/PetKeys")
@@ -969,15 +984,15 @@ S.p2flow_build = guarded("p2flow_build", function()
 		T.check(incA > 0 and incB > 0 and abs(incA / incB - 1.6) < 1e-6, "flow build: ...a Combat pet makes 1/1.6 of the coins of an Economy pet of the same rarity and level",
 			incA .. " / " .. incB)
 
-		-- rainbow coins: one per meal, only the owner scoops them: 'coins'
+		-- Phase 5 Cloud Cash: the pet roams, eats at the Food Bowl and poops a coin (the first one 24-36 s after it was
+		-- placed: HomeRoam.SettleSeconds + one cycle); only the owner scoops them: 'coins'
 		away(ann)
 		away(ben)
-		advance(meal + 1.5)
-		local piles = Ty.Piles(ann)
-		local pile = piles and piles[1]
-		T.check(pile ~= nil and pile.Coins >= 1 and typeof(pile.Pos) == "Vector3", "flow build: after one meal (" .. meal .. " s) Ann's pet popped a coin into its pile",
-			pile and tostring(pile.Coins) or "no pile")
-		T.check(tostring(annInfo.Folder:GetAttribute("CoinPiles")):match("^1=%d") ~= nil, "flow build: ...shown on the plot (CoinPiles)", tostring(annInfo.Folder:GetAttribute("CoinPiles")))
+		local pile = firstDrop(Ty, ann, 60)
+		T.check(pile ~= nil and pile.Coins >= 1 and typeof(pile.Pos) == "Vector3", "flow build: Ann's roaming pet pooped its first Cloud Cash coin (TycoonService.Drops) within one roam cycle",
+			pile and tostring(pile.Coins) or "no drop")
+		T.check(tostring(annInfo.Folder:GetAttribute("CoinDrops")):match("^1=%d+:%d") ~= nil and annInfo.Folder:GetAttribute("CoinPiles") == nil,
+			"flow build: ...shown on the plot (CoinDrops 'slot=cycle:stage'; no CoinPiles)", tostring(annInfo.Folder:GetAttribute("CoinDrops")))
 		if pile then
 			advance(1.2)
 			local stC = tut(ann)
@@ -999,7 +1014,7 @@ S.p2flow_build = guarded("p2flow_build", function()
 			T.eq(stepOf(ann), "machine", "flow build: scooping completes 'coins'")
 		end
 
-		-- the 'machine' arrow, pad by pad: the Berry Bush on the way (plants make bigger coins), then the Food Machine
+		-- the 'machine' arrow, pad by pad: the Berry Farm on the way (bigger berries, bigger Cloud Cash), then the Food Machine
 		local path, lost, foodUp = {}, nil, nil
 		for _ = 1, 30 do
 			if stepOf(ann) ~= "machine" then
@@ -1032,7 +1047,7 @@ S.p2flow_build = guarded("p2flow_build", function()
 		end
 		away(ann)
 		T.check(lost == nil and path[#path] == "Kitchen", "flow build: following the 'machine' arrow pad by pad builds the Food Machine", table.concat(path, " > ") .. (lost and (" (lost: " .. lost .. ")") or ""))
-		T.check(foodUp == true, "flow build: ...with the Berry Bush on the way (every coin bigger: IncomePerSecond up)")
+		T.check(foodUp == true, "flow build: ...with the Berry Farm on the way (every coin bigger: IncomePerSecond up)")
 		waitStep(ann, "feed", 3)
 		T.eq(stepOf(ann), "feed", "flow build: the Food Machine completes 'machine'")
 
@@ -1080,30 +1095,37 @@ S.p2flow_build = guarded("p2flow_build", function()
 			T.check(stF and stF.Target and typeof(stF.Target.Position) == "Vector3" and machineAt ~= nil and K.planar(stF.Target.Position, machineAt.Position) <= 16,
 				"flow build: 'feed' points at the Food Machine (its front)", stF and stF.Target and machineAt and string.format("%.1f studs", K.planar(stF.Target.Position, machineAt.Position)) or "")
 		end
-		-- a 'Level up' batch: machine feeds until Lv 2, each priced at the level it is eaten at (no leftovers yet)
+		-- Phase 5: ONE food (berries), ONE Feed: each PetCare Feed is one machine feed paid in berries (never Cash); feeds
+		-- until Lv 2, each priced at the level it is eaten at. The berries stand in for the ones her garden grows.
 		local ecoDef = X.PC.Get(F.eco)
 		local lv0, xp0 = DataS.GetPetLevel(ann, F.eco)
 		local machineLevel = level(ann, "Kitchen")
 		local feeds, price, xp = 0, 0, xp0 or 0
-		while feeds < 10 and xp < TC.XpToNext(lv0) do
+		while feeds < 12 and xp < TC.XpToNext(lv0) do
 			xp = xp + TC.FeedXp(lv0, machineLevel)
-			price = price + TC.FeedPrice(ecoDef, lv0)
+			price = price + TC.FeedBerries(ecoDef, lv0)
 			feeds = feeds + 1
 		end
-		fund(ann, price)
-		local c1 = cash(ann)
+		DataS.AddBerries(ann, price + 5)
+		advance(0.6)
+		local c1, b1 = cash(ann), DataS.GetBerries(ann)
 		local income1 = Ty.IncomePerSecond(ann)
 		mark = K.logSize()
-		Mock.FromClient(remote("PetCare"), ann, "Feed", F.eco, { Count = feeds })
+		for _ = 1, feeds do
+			Mock.FromClient(remote("PetCare"), ann, "Feed", F.eco, { Count = feeds }) -- (the 2nd argument is ignored: one feed)
+			advance(0.4)
+		end
 		advance(0.6)
 		local lv = DataS.GetPetLevel(ann, F.eco)
-		T.check(lv0 == 1 and lv == 2, "flow build: a 'Level up' batch of " .. feeds .. " machine feeds levels the pet to 2", tostring(lv0) .. " -> " .. tostring(lv))
+		T.check(lv0 == 1 and lv == 2, "flow build: " .. feeds .. " machine feeds (one per Feed press) level the pet to 2", tostring(lv0) .. " -> " .. tostring(lv))
 		T.eq(#toasts(ann, "reached Lv 2", mark), 1, "flow build: ...with one level-up toast")
 		local stDone = tut(ann)
 		-- (Phase 3 appends the pet-battle chapter: the home chapter's end moves on to it instead of finishing everything)
 		T.check(stDone and ((stDone.Done == true and stDone.Completed == true) or (stDone.Chapter or 0) >= 3),
 			"flow build: feeding a pet ends the home chapter (the tutorial is done, or on to the battle chapter)")
-		T.eq(cash(ann), c1 - price + 1000, "flow build: ...the feeds cost $" .. price .. " and the home chapter pays its Cash reward (once)")
+		local spent = b1 - DataS.GetBerries(ann)
+		T.check(spent >= price, "flow build: ...the feeds cost " .. price .. " berries", tostring(spent))
+		T.eq(cash(ann), c1 + 1000, "flow build: ...no Cash for food, and the home chapter pays its $1,000 Cash reward (once)")
 		advance(1.2)
 		T.check(Ty.IncomePerSecond(ann) > income1, "flow build: the garden coins follow the pet's level", income1 .. " -> " .. Ty.IncomePerSecond(ann))
 
@@ -1181,7 +1203,7 @@ S.p2flow_build = guarded("p2flow_build", function()
 		-- Ben's home ran on its own the whole time
 		T.check(home(ben).CollectorCash > 0 and ledger.of(ben) == 0 and level(ben, "Kitchen") == 0, "flow build: Ben's garden made his own coins meanwhile (nothing of Ann's)",
 			tostring(home(ben).CollectorCash))
-		-- the house tier caps the plants: Ben's Cottage takes the Berry Bush to Lv 6, the 7th level needs the Villa
+		-- the house tier caps the Berry Farm: Ben's Cottage takes it to its cap (MaxLevelAt), the next level needs the Villa
 		local cap = TC.MaxLevelAt("Press1", home(ben))
 		local upTo = {}
 		for _ = level(ben, "Press1") + 1, cap do
@@ -1190,7 +1212,7 @@ S.p2flow_build = guarded("p2flow_build", function()
 			pressPad(ben, benInfo, "Press1")
 			upTo[#upTo + 1] = level(ben, "Press1")
 		end
-		T.check(cap == 6 and level(ben, "Press1") == cap, "flow build: Ben levels his Berry Bush to the Cottage's cap (Lv " .. tostring(cap) .. ") with E", table.concat(upTo, ","))
+		T.check(cap >= 2 and cap < 40 and level(ben, "Press1") == cap, "flow build: Ben levels his Berry Farm to the Cottage's cap (Lv " .. tostring(cap) .. ") with E", table.concat(upTo, ","))
 		local benPadModel = X.HB and X.HB.GetPad and X.HB.GetPad(benInfo, "Press1") or nil
 		T.check(benPadModel ~= nil and benPadModel:GetAttribute("Locked") == "Needs the Villa" and buyPrompt(benInfo, "Press1").Enabled == false,
 			"flow build: ...then its pad reads 'Needs the Villa' (prompt off)", benPadModel and tostring(benPadModel:GetAttribute("Locked")) or "no pad")
@@ -1455,7 +1477,7 @@ S.p2flow_fusion_gems = guarded("p2flow_fusion_gems", function()
 		end
 	end
 	away(ann)
-	T.check(#missed == 0, "flow fusion: Ann rebuilds the Berry Bush and the Food Machine", table.concat(missed, ","))
+	T.check(#missed == 0, "flow fusion: Ann rebuilds the Berry Farm and the Food Machine", table.concat(missed, ","))
 	advance(1.2)
 	local base = Ty.IncomePerSecond(ann)
 	local _, parts = Ty.IncomePerSecond(ann)
@@ -1823,29 +1845,29 @@ S.p2flow_rejoin = guarded("p2flow_rejoin", function()
 		local brec = stored(ben.UserId)
 		if T.check(type(brec) == "table" and type(brec.Home) == "table" and brec.Home.Prestige == 0, "flow merge 2: (precondition) Ben's save is at Prestige 0") then
 			local b0 = brec.Cash or 0
-			brec.Home = { Level = 6, Prestige = 1, Stations = { Garden = 1, Press1 = 3, Collector = 1, DecorLamps = 1 }, Garden = {}, Gym = {}, CollectorCash = 0, LastSeen = os.time() }
+			brec.Home = { Level = 5, Prestige = 1, Stations = { Garden = 1, Press1 = 3, DecorFence = 1 }, Garden = {}, Gym = {}, CollectorCash = 0, LastSeen = os.time() }
 			brec.Cash = b0 + 777
-			fund(ben, TC.PriceFor("Collector", 1))
-			pressPad(ben, benInfo, "Collector")
+			fund(ben, TC.PriceFor("Kitchen", 1))
+			pressPad(ben, benInfo, "Kitchen")
 			fund(ben, TC.PriceFor("House", 1))
 			pressPad(ben, benInfo, "House")
 			away(ben)
-			T.eq(level(ben, "House"), 1, "flow merge 2: (here) Ben builds his Coin Magnet and his Cottage at Prestige 0")
+			T.eq(level(ben, "House"), 1, "flow merge 2: (here) Ben builds his Food Machine and his Cottage at Prestige 0")
 			local cashNow = cash(ben) -- the session's Cash change since the save is b0 -> cashNow
 			local mk = K.logSize()
 			DataS.Save(ben)
 			local s = stored(ben.UserId) or {}
 			local sh = type(s.Home) == "table" and s.Home or {}
-			T.check(sh.Prestige == 1 and type(sh.Stations) == "table" and sh.Stations.Press1 == 3 and sh.Stations.DecorLamps == 1 and sh.Stations.House == nil and sh.Stations.Garden == 1,
+			T.check(sh.Prestige == 1 and type(sh.Stations) == "table" and sh.Stations.Press1 == 3 and sh.Stations.DecorFence == 1 and sh.Stations.House == nil and sh.Stations.Kitchen == nil and sh.Stations.Garden == 1,
 				"flow merge 2: the stored higher prestige wins the whole Home (this server's Cottage is void)", mapText(sh.Stations))
 			T.eq(s.Cash, (b0 + 777) + (cashNow - b0), "flow merge 2: Cash still merges as a delta (+777 from the other server, this server's change on top)")
 			advance(2.5)
 			T.eq(cash(ben), s.Cash, "flow merge 2: ...and the live balance adopts it")
 			local bh = home(ben)
-			T.check(bh and bh.Prestige == 1 and bh.Stations.Press1 == 3 and bh.Stations.DecorLamps == 1 and bh.Stations.House == nil, "flow merge 2: Ben's live Home adopts it")
+			T.check(bh and bh.Prestige == 1 and bh.Stations.Press1 == 3 and bh.Stations.DecorFence == 1 and bh.Stations.House == nil, "flow merge 2: Ben's live Home adopts it")
 			local p1 = stationModel(benInfo, "Press1")
-			T.check(p1 ~= nil and p1:GetAttribute("Level") == 3 and stationModel(benInfo, "DecorLamps") ~= nil and stationModel(benInfo, "House") == nil,
-				"flow merge 2: ...the plot in the world follows (the Berry Bush at Lv 3, the lanterns, no Cottage)")
+			T.check(p1 ~= nil and p1:GetAttribute("Level") == 3 and stationModel(benInfo, "DecorFence") ~= nil and stationModel(benInfo, "House") == nil,
+				"flow merge 2: ...the plot in the world follows (the Berry Farm at Lv 3, the Yard Fence, no Cottage)")
 			T.check(benInfo.Folder:GetAttribute("Prestige") == 1 and benInfo.SubLabel.Text:find(STAR, 1, true) ~= nil, "flow merge 2: ...the star on his nameplate", benInfo.SubLabel.Text)
 			T.check(#K.remotesFor("ProfileSync", ben.UserId, mk) >= 1, "flow merge 2: ...and his client gets the new snapshot")
 			T.check(tut(ben) and tut(ben).Done == true, "flow merge 2: ...his skipped tutorial stays skipped")

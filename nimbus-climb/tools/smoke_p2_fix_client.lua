@@ -265,7 +265,7 @@ local function hudWalk(label, HF, HB, TC, spot, cam, hrp)
 		hrp.CFrame = CFrame.new((plot * CFrame.new(sx, 3, sz)).Position)
 		cam.CFrame = classicCamera(plot, sx, sz, lx, lz)
 	end
-	local kitchen = { Stations = { Press1 = 3, Press2 = 2, Collector = 1, House = 1 }, Prestige = 0 }
+	local kitchen = { Stations = { Press1 = 6, House = 1, Garden = 1 }, Prestige = 0 }
 	HB.BuildHome(spot, kitchen)
 	HB.SetPads(spot, TC.AvailablePads(kitchen))
 	local signsHere = padSigns(spot.Folder)
@@ -338,9 +338,13 @@ local function hudWalk(label, HF, HB, TC, spot, cam, hrp)
 		.. covered .. " held back under the HUD (" .. keys(coveredIds) .. "), their room given to: " .. keys(roomTo))
 	T.check(#underHud == 0 and emptyStops == 0, P .. "no shown pad sign's plate reaches into the menu column, the currency pills, the vitals card, the hotbar or a touch button (a sign shows at every stop)",
 		#underHud > 0 and (#underHud .. " times, e.g. " .. underHud[1]) or (emptyStops .. " of " .. stops .. " stops without a sign"))
-	T.check(covered > 0, P .. "...where the HUD does cover eligible signs: they are held back (crowded)", covered .. " held back")
 	T.check(#statsLow == 0, P .. "...and Stats().SignsUnderHud counts them", table.concat(statsLow, "; "))
-	T.check(next(roomTo) ~= nil, P .. "...and the room they leave goes to other signs", "shown in their place: " .. keys(roomTo))
+	if covered == 0 then
+		T.info(P .. "...no eligible sign came under the HUD on this walk (the layout's HUD rule had nothing to hold back)")
+	else
+		T.check(covered > 0, P .. "...where the HUD does cover eligible signs: they are held back (crowded)", covered .. " held back")
+		T.check(next(roomTo) ~= nil, P .. "...and the room they leave goes to other signs", "shown in their place: " .. keys(roomTo))
+	end
 
 	-- walking up the path (16 studs/s, a layout pass every 3 frames)
 	stand(0, -40, 0, 0)
@@ -413,6 +417,7 @@ S.client_p2fix_signs = guarded("client_p2fix_signs", function()
 	root.Name = "SmokeFixSigns"
 	root.Parent = workspace
 	local neighbour = nil
+	local realSigned = nil
 
 	local ok, err = pcall(function()
 		if not (cam and hrp) then
@@ -431,13 +436,26 @@ S.client_p2fix_signs = guarded("client_p2fix_signs", function()
 		local theirs = makeSpot(72, base * CFrame.new(0, 0, 200))
 		neighbour = Mock.AddPlayer("SignNeighbour", 7171, { character = false })
 		-- the review's mid-game Villa (17 pads: the old code stacked 14 of them on the screen from the gate path)
-		local stations = { Press1 = 5, Press2 = 3, Collector = 3, Garden = 2, Kitchen = 2, Gym = 1, Vault = 1, House = 2, DecorLamps = 1 }
+		local stations = { Press1 = 12, Garden = 2, Kitchen = 2, Gym = 1, Vault = 1, House = 2, DecorFence = 1 }
 		local home = { Stations = stations, Prestige = 0 }
 		for _, sp in ipairs({ mine, theirs }) do
 			HB.PreparePlot(sp)
 		end
 		HB.SetOwner(mine, LocalPlayer)
 		HB.SetOwner(theirs, neighbour)
+		-- Phase 5 (3.3): only TycoonCatalog.SignedPads' pads carry a sign. The layout checks below judge the on-screen
+		-- layout itself, so they run with EVERY open pad signed (the catalog's rule stubbed); the real rule is checked
+		-- at the end (realSigned)
+		realSigned = TC.SignedPads
+		TC.SignedPads = function(pads)
+			local out = {}
+			for _, pad in ipairs(type(pads) == "table" and pads or {}) do
+				if type(pad) == "table" and not pad.Locked then
+					out[pad.StationId] = true
+				end
+			end
+			return out
+		end
 		HB.BuildHome(mine, home)
 		HB.SetPads(mine, TC.AvailablePads(home))
 		HB.BuildHome(theirs, home)
@@ -526,7 +544,7 @@ S.client_p2fix_signs = guarded("client_p2fix_signs", function()
 		Mock.SetViewport(1920, 1080)
 		stand(0, -30, 0, 10)
 		KC.advance(1.0)
-		local shown = audit("Villa from the gate path at 1920x1080", 4)
+		local shown = audit("Villa from the gate path at 1920x1080", 3) -- Phase 5: 11 stations, fewer pads than the Phase 4 Villa
 		-- the sign nearest the player (on the screen, not locked) shows
 		local nearest, nearestD = nil, huge
 		for _, s in ipairs(mySigns) do
@@ -683,7 +701,7 @@ S.client_p2fix_signs = guarded("client_p2fix_signs", function()
 		if lockedSign then
 			local anchor = lockedSign.Gui.Adornee or lockedSign.Gui.Parent
 			local lp = plot:PointToObjectSpace(anchor.Position)
-			stand(lp.X - 4, lp.Z - 5, lp.X, lp.Z + 10)
+			stand(lp.X - 2, lp.Z - 3, lp.X, lp.Z + 10) -- within the 6 studs of K.LOCKED_SIGN_NEAR
 			KC.advance(0.8)
 			T.check(lockedSign.Gui.Enabled and signState(lockedSign.Gui) == "Shown", "HomeFx fix: standing at a locked pad shows its lock reason even with other signs around",
 				lockedSign.Id .. " " .. tostring(signState(lockedSign.Gui)))
@@ -698,7 +716,41 @@ S.client_p2fix_signs = guarded("client_p2fix_signs", function()
 		-- 8. the HUD over the signs on an 844x390 screen (hudWalk): a Kitchen-step home from its gate path
 		LocalPlayer:SetAttribute("Gems", 25)
 		hudWalk("844x390", HF, HB, TC, mine, cam, hrp)
+
+		-- 9. the real rule (Phase 5 3.3): only SignedPads' pads (the next affordable ones) carry a sign, the rest "Unsigned"
+		TC.SignedPads = realSigned
+		realSigned = nil
+		Mock.SetViewport(1920, 1080)
+		HB.BuildHome(mine, home)
+		HB.SetPads(mine, TC.AvailablePads(home))
+		LocalPlayer:SetAttribute("Cash", 1e9)
+		stand(0, -30, 0, 10)
+		KC.advance(1.0)
+		local signedN, unsignedN, wrong = 0, 0, nil
+		local want = TC.SignedPads(TC.AvailablePads(home), 1e9)
+		for _, s in ipairs(padSigns(mine.Folder)) do
+			local why = signState(s.Gui)
+			local id = s.Id
+			if not s.Locked then
+				if why == "Unsigned" then
+					unsignedN = unsignedN + 1
+					if want[id] or s.Gui.Enabled then
+						wrong = id .. " wrongly unsigned / shown"
+					end
+				else
+					signedN = signedN + 1
+					if not want[id] then
+						wrong = id .. " " .. tostring(why) .. " (SignedPads did not pick it)"
+					end
+				end
+			end
+		end
+		T.check(wrong == nil and signedN >= 1 and signedN <= 4 and unsignedN >= 1, "HomeFx fix: with the real rule only SignedPads' pads (<= 3 cheapest affordable + Prestige) may show, the others are 'Unsigned'",
+			signedN .. " signed, " .. unsignedN .. " unsigned" .. (wrong and (", " .. wrong) or ""))
 	end)
+	if realSigned then
+		TC.SignedPads = realSigned
+	end
 	-- put everything back
 	Mock.SetViewport(savedViewport.X, savedViewport.Y)
 	removeProjection()

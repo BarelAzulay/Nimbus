@@ -1,12 +1,16 @@
--- Main (Script): boots every server service in the order defined in ARCHITECTURE.md / V2.
+-- Main (Script): boots every server service in the order defined in ARCHITECTURE.md / V2 / V3.
 -- Each step runs under pcall + warn so one failing service can never brick the whole server.
 -- Plain Lua 5.1-compatible syntax only.
 --
--- Boot order (v2):
---   Remotes -> Lighting -> Lobby -> Damage -> Token -> Data (autosave / BindToClose)
+-- Boot order (Phase 5, ARCHITECTURE_V3.md "Phase 5 build contract" 10.1):
+--   Remotes -> Lighting -> Lobby -> Storm Altar -> Arena -> Dungeon world (DungeonBuilder.Build -> NimbusLobby.PartCount)
+--   -> Damage -> Token -> Data (autosave / BindToClose)
 --   -> Pet / Item / Spot services (they subscribe to profile events)
 --   -> Player service (this is what starts loading profiles, so it comes after the subscribers)
---   -> Match -> Portals -> Dash relay
+--   -> Match -> Portals -> Gates -> Index / Npc -> Tutorial -> Tycoon / PetCare / Fusion / Gem
+--   -> Battle -> Dungeon -> Events -> Dev -> Dash relay
+-- Every Phase 3+ service is optional (loadOptionalService): a module that is not in the build is skipped quietly, so the
+-- game boots at every wave of the build.
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -122,6 +126,22 @@ local function normaliseLobbyInfo(info)
 	return info
 end
 
+-- Phase 5 (10.1 / 10.2, judge m3): NimbusLobby.PartCount = the number of BaseParts under the lobby folder AFTER the last
+-- gate builder (DungeonBuilder.Build). The loading screen (ReplicatedFirst) compares the replicated count with it.
+local function writePartCount(info)
+	local folder = type(info) == "table" and info.Folder or nil
+	if typeof(folder) ~= "Instance" then
+		return
+	end
+	local count = folder:IsA("BasePart") and 1 or 0
+	for _, inst in ipairs(folder:GetDescendants()) do
+		if inst:IsA("BasePart") then
+			count = count + 1
+		end
+	end
+	folder:SetAttribute("PartCount", count)
+end
+
 -- Global world rules. LightingService applies them too; this copy makes sure they hold even if
 -- that service failed to load.
 local function applyWorldRules()
@@ -135,10 +155,15 @@ end
 
 -- Spawn gate. Building the lobby takes a moment; a player who joins meanwhile would spawn at the
 -- world origin, far below the village, and fall into the void. So characters are held back until
--- the lobby, PlayerService and the spawn providers are ready, then released (CharacterAutoLoads
--- ends up true, as the contract says; players who joined in the meantime get their character now).
+-- the lobby, PlayerService and the spawn providers are ready, then released.
+--
+-- Phase 5 (7.2, judge M7 / C17): once PlayerService owns the spawn (PlayerService.SpawnPlayer exists: the main menu
+-- lands in wave 3), CharacterAutoLoads stays false for the server's life and PlayerService spawns every character
+-- itself (on MenuPlay, after Config.MainMenu.FallbackSeconds, or at once when Config.MainMenu.Enabled is false).
+-- Until then (Phase 4 PlayerService) the release re-enables CharacterAutoLoads like before.
 local spawnsReleased = false
 local releaseTimer = nil -- safety net: releases the gate even if a boot step stalls
+local playerServiceSpawns = false -- set once PlayerService is loaded and has SpawnPlayer
 
 local function holdSpawns()
 	if spawnsReleased then
@@ -157,6 +182,9 @@ local function releaseSpawns()
 	if releaseTimer then
 		pcall(task.cancel, releaseTimer)
 		releaseTimer = nil
+	end
+	if playerServiceSpawns then
+		return -- the gate stays closed for good: PlayerService.SpawnPlayer loads every character (7.2)
 	end
 	pcall(function()
 		Players.CharacterAutoLoads = true
@@ -221,15 +249,21 @@ local ArenaBuilder = loadOptionalService("ArenaBuilder")
 local BattleService = loadOptionalService("BattleService")
 local EventService = loadOptionalService("EventService")
 local StormAltar = loadOptionalService("StormAltar") -- the player's Stormfang landmark (ARCHITECTURE_V3.md section 10)
+-- Phase 5 services (ARCHITECTURE_V3.md "Phase 5 build contract" 5.4, 5.5, 6.2)
+local DungeonBuilder = loadOptionalService("DungeonBuilder") -- the dungeon gate, templates and runs (dungeon, W3)
+local DungeonService = loadOptionalService("DungeonService") -- parties, runs, loot (dungeon, W3)
+local GateService = loadOptionalService("GateService") -- the Gate Court prompts (worldlobby, W2)
+
+playerServiceSpawns = type(PlayerService) == "table" and type(PlayerService.SpawnPlayer) == "function"
 
 ----------------------------------------------------------------------
--- 2. World: lighting, lobby, damage, tokens, persistence
+-- 2. World: lighting, lobby, altar, arena, dungeon gate, damage, tokens, persistence
 ----------------------------------------------------------------------
 
 call("LightingService.Init", LightingService, "Init")
 step("World rules", applyWorldRules)
 
--- LightingService re-enables CharacterAutoLoads (contract); keep the gate closed until the end.
+-- The Phase 4 LightingService re-enables CharacterAutoLoads; keep the gate closed until the end.
 step("Hold spawns", holdSpawns)
 
 local lobbyInfo = call("LobbyBuilder.Build", LobbyBuilder, "Build")
@@ -241,6 +275,14 @@ local arenaInfo = nil
 if ArenaBuilder then
 	arenaInfo = call("ArenaBuilder.Build", ArenaBuilder, "Build", lobbyInfo)
 end
+-- Phase 5: the Dungeon gate is the last gate built in the Gate Court; PartCount is written right after it (m3)
+local dungeonInfo = nil
+if DungeonBuilder then
+	dungeonInfo = call("DungeonBuilder.Build", DungeonBuilder, "Build", lobbyInfo)
+end
+step("NimbusLobby.PartCount", function()
+	writePartCount(lobbyInfo)
+end)
 
 call("DamageService.Init", DamageService, "Init")
 call("TokenService.Init", TokenService, "Init")
@@ -310,7 +352,7 @@ end
 call("PlayerService.Init", PlayerService, "Init", lobbyInfo)
 
 ----------------------------------------------------------------------
--- 5. Match flow
+-- 5. Match flow, portals, gates
 ----------------------------------------------------------------------
 
 call("MatchService.Init", MatchService, "Init", {
@@ -329,6 +371,16 @@ end
 
 call("PortalService.Init", PortalService, "Init", lobbyInfo, MatchService)
 
+-- Phase 5 (6.2): the Gate Court prompts (Home / Altar / Arena gates; the Obby and Dungeon gates are their services')
+if GateService then call("GateService.Init", GateService, "Init", lobbyInfo, {
+	SpotService = SpotService,
+	PortalService = PortalService,
+	StormAltar = StormAltar,
+	ArenaInfo = arenaInfo, -- the Arena gate teleports to ArenaInfo.Spawn
+	MatchService = MatchService,
+	DataService = DataService,
+}) end
+
 -- v3: Pet Index rewards, lobby NPC pets, new-player tutorial (each handles players who joined before Init).
 if IndexService then call("IndexService.Init", IndexService, "Init", { DataService = DataService, PetService = PetService }) end
 if NpcService then call("NpcService.Init", NpcService, "Init", lobbyInfo, {}) end
@@ -340,6 +392,8 @@ if TutorialService then call("TutorialService.Init", TutorialService, "Init", lo
 	IndexService = IndexService,
 	BattleService = BattleService, -- Phase 3: tutorial chapter 3 listens to BattleService.BattleEnded
 	ArenaInfo = arenaInfo,
+	DungeonInfo = dungeonInfo, -- Phase 5: chapter 3 points at the Dungeon gate (the module tables below Init later)
+	DungeonService = DungeonService,
 }) end
 -- Phase 4: TycoonService (the home portal), PetCareService (feeding / evolving / training) and FusionService refuse
 -- pets in a running battle or Champion Ring run: they get BattleService's module table now (its Init runs below).
@@ -373,6 +427,18 @@ if BattleService then call("BattleService.Init", BattleService, "Init", {
 	ArenaBuilder = ArenaBuilder,
 	ArenaInfo = arenaInfo,
 }) end
+-- Phase 5 (5.4, C16): the dungeon lands AFTER BattleService and registers itself with BattleService.SetRunProvider
+-- inside its own Init; BattleService never requires DungeonService.
+if DungeonService then call("DungeonService.Init", DungeonService, "Init", {
+	DataService = DataService,
+	PetCareService = PetCareService,
+	TycoonService = TycoonService,
+	BattleService = BattleService,
+	DungeonBuilder = DungeonBuilder,
+	DungeonInfo = dungeonInfo,
+	LobbyInfo = lobbyInfo,
+	PetService = PetService,
+}) end
 if EventService then call("EventService.Init", EventService, "Init", {
 	DataService = DataService,
 	BattleService = BattleService,
@@ -386,6 +452,7 @@ if DevService then call("DevService.Init", DevService, "Init", {
 	IndexService = IndexService,
 	BattleService = BattleService, -- Phase 3: /raid and the DEV panel's raid button
 	EventService = EventService,
+	DungeonService = DungeonService, -- Phase 5: /reset is refused during a dungeon run
 }) end
 
 ----------------------------------------------------------------------
@@ -422,7 +489,8 @@ step("Dash remote", function()
 	end)
 end)
 
--- Everything is wired: let characters spawn (providers are set, the lobby exists).
+-- Everything is wired: let characters spawn (providers are set, the lobby exists). With a Phase 5 PlayerService the
+-- gate stays closed and PlayerService spawns the characters itself (7.2).
 step("Release spawns", releaseSpawns)
 
 print(TAG .. "ready")

@@ -504,7 +504,11 @@ S.p3events_raid = guarded("p3events_raid", function()
 	T.check(bs.GetRaidStatus() == nil, "raid: ...no raid afterwards")
 	T.check(select(1, es.StartNow("Nonsense")) == false and select(1, es.EndNow("Nonsense")) == false, "raid: unknown event kinds are refused")
 
-	-- Double Rewards
+	-- Double Rewards (a scheduled hour may be running this late in a run: end it first)
+	if es.IsDoubleRewards() then
+		es.EndNow("DoubleRewards")
+		advance(0.3)
+	end
 	T.eq(es.RewardMultiplier(), 1, "double: RewardMultiplier() is 1 outside Double Rewards")
 	mark = K.logSize()
 	local okD = es.StartNow("DoubleRewards")

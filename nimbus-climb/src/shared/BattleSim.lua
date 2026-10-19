@@ -1,111 +1,88 @@
--- BattleSim: the PURE pet battle engine of Phase 3 (ARCHITECTURE_V3.md "Phase 3 build contract" +
--- "Interfaces between the Phase 3 modules"). No Instances, no services, no yields, no wall clock: the server
--- steps it at 10 Hz and sends compact snapshots, every client draws and interpolates (Replication rule).
--- Deterministic for a seed: the same setup + the same commands at the same steps replay the same battle.
--- Plain Lua 5.1-compatible syntax only.
+-- BattleSim: the PURE pet battle engine (ARCHITECTURE_V3.md "Phase 5 build contract" 4.3, rewritten core on the Phase 3
+-- floor). No Instances, no services, no yields, no wall clock: the server steps it at 10 Hz and sends compact snapshots,
+-- every client draws and interpolates. Deterministic for a seed: the same setup + the same commands (Move points
+-- included) at the same steps replay the same battle. Plain Lua 5.1-compatible syntax only.
 --
--- The floor is a 2D rectangle (x, z) in studs, centred on the zone centre of the "Start" payload (BattleService
--- adds the Zone CFrame; the floor is at the CFrame's height). Units move, pick the nearest enemy (or the focus the
--- owner tapped), attack in range (melee or ranged by species), use their special when commanded and the meter is
--- full, retreat to their owner's anchor (half damage taken, slow regen, ATTACK locked for a moment), go down and
--- stay down until the battle ends. Bosses stand on the stage and run their attack patterns: every pattern attack
--- is TELEGRAPHED (an event with the shape and the hit time) so a team can RETREAT out of it; minion waves spawn at
--- HP thresholds; an enrage timer doubles the boss's damage. Every number lives in BattleCatalog / PetCatalog.
+-- The floor is a 2D rectangle (x, z) in studs, centred on the zone centre. Phase 5: every PLAYER team is ONE FIGHTER
+-- unit on the floor (the player's character is its body: BattleService feeds "Move" from the character every step)
+-- plus two BENCHED helpers (not on the floor: lives, buff buttons, swaps). The player presses Attack / Element /
+-- Special / Dash / Buff / Swap; the server owns reach, cooldowns, meter, lives and damage (Y1). NPC teams (side 2,
+-- enemy waves, the Ring champion, raid minions) have every pet on the floor, driven by the AI: threat target, melee
+-- orbit, a WIND-UP (Winding, 0.45 s) before every hit so the 0.35 s dash i-frames can dodge it. Bosses keep their
+-- telegraphed patterns, minion waves and enrage. Every number lives in BattleCatalog / PetCatalog.
 --
 -- API (the contract):
 --   BattleSim.new(setup) -> battle | nil, reason
---     setup = {
---       Mode = "Trial" | "Duel" | "Raid" | "Ring",   -- default "Duel"; "Ring" (Phase 4, the Champion Ring) plays like a
---                                                     Trial: a timeout is a loss (side 2 wins)
---       Seed = n,                                     -- RNG seed (default 1)
---       Id = any,                                     -- optional battle id, echoed in Snapshot / Describe
---       Zone = n | { X = w, Z = d } | { w, d },       -- floor size in studs (default BattleCatalog.Zones[Mode])
---       Teams = { team... },                          -- see AddTeam
---       Trial = level,                                -- adds BattleCatalog.TrialTeam(level) on side 2
---       Boss = bossId,                                -- adds the boss (BattleCatalog.Bosses) on side 2 (Mode "Raid")
---       Round = n,                                    -- Ring: the round number, echoed in Describe / Result
---       TimeLimit = seconds,                          -- default BattleCatalog.TimeLimits[Mode] (Raid: the boss's)
---       Specials = false,                             -- harness: nobody can cast specials
---     }
---     team = { Owner = userId | string, Side = 1 | 2, Name, Anchor = { x, z } | nil, Npc = bool, Auto = bool,
---              Specials = false (harness: this team never casts), Pets = { { Key, PetId, Def, Level, Tier, Slot,
---              NoSpecial = true (harness: this pet never casts), Boss, Handicap,
---              Evo = 0..2, Train = { Speed, Physique, Ability, Defense }, Boost = > 1, Xp, XpNext, Crowned }... } }
---       Phase 4 entry fields: Evo (the stored evolution stage), Train (training ranks) and Boost (ring champions) go to
---       BattleCatalog.UnitStats (evolution / training / Boost numbers; Defense cuts every hit the pet takes after the
---       RETREAT halving and before MinHit / shields; Ability speeds up every meter gain); Xp / XpNext (the owner's own
---       pets: the XP bar) and Crowned (the ring champion) only go to the static unit info. NPC teams pass none of them.
---       Def may be a PetKeys.DefOf def (hybrids need it); otherwise Key / PetId is resolved through PetCatalog and
---       PetKeys. Npc / Auto teams cast their specials on their own (NPC trial teams, the harness); a player's team
---       casts only on the owner's "Special" command.
---   battle:Command(owner, action, arg) -> ok, reason
---       "Attack" (targetUnitId | nil: focus), "Retreat", "Special" (team slot 1-4), "Forfeit"
---   battle:Step(dt) -> events      advance dt seconds (clamped 0.02..0.5; the server uses 0.1) and return the
---       events of this step: { type = BattleSim.Events.X, ... } (Hit, Special, KO, Telegraph, Spawn, Enrage, Order,
---       Zone, Leave, End); an empty table while finished.
---   battle:Snapshot() -> { BattleId?, T, Units = { [id] = { x, z, hp, state, target?, meter, shield? } } }
---       compact numbers: x / z to 0.1 stud, hp / meter / shield integers, state = BattleSim.States code
---   battle:SnapshotDelta(last) -> { BattleId?, T, U = { number... } }    the WIRE form BattleService sends: only the
---       units whose picture changed since `last` (the receiver's previous picture, { [id] = { x, z, hp, state, meter,
---       shield, target } }, updated in place; pass {} for a full snapshot), each as the numbers
---         code, pos [, hp] [, meter] [, shield] [, target]
---       code = id x 128 + mask x 8 + state (mask bits: 1 hp, 2 meter, 4 shield, 8 target; target 0 = none),
---       pos = (x + 200) x 10 x 4096 + (z + 200) x 10 (0.1 stud steps; a floor is at most 400 studs). A unit missing
---       from U is unchanged (down units are sent once, then left out), so a 16-team raid stays a few KB/s per client.
---   BattleSim.DecodeSnapshot(payload, previous) -> Units    the client side: the full picture { [id] = { x, z, hp,
---       state, meter, shield, target } } from a SnapshotDelta payload and the previous picture (nil at the start);
---       untouched units keep their previous table. Junk payloads decode to the previous picture.
---   battle:Abort(reason) -> ok, events   ends a running battle now with no winner (Reason = reason, e.g. "Shutdown"):
---       the result still carries Damage / Shares / Survivors; the events hold the End event
---   battle:Result() -> nil while running, else { Mode, Reason, WinnerSide, Winners = { owner... },
---       Losers = { owner... }, Draw, Forfeit, Level (Trial), BossId (Raid), Round (Ring), Damage = { [owner] = n },
---       Shares = { [owner] = 0..1 }, Duration, Survivors = { [owner] = n }, Hp = { [side] = HP share left }, BossHp,
---       BossMaxHp }   (the loss-XP gate: the share a team dealt = 1 - Hp[the other side])
---       Phase 4 duel rules (BattleCatalog.Damage): Overtime (past At seconds every hit grows), MaxHit (no single pet hit
---       takes more than Share of a pet's max HP) and DoubleKoByDamage (both last pets down in one step: the team that
---       dealt more damage wins, Reason "Wipe"; forfeits stay a Draw). Trials, raids and the ring keep the Phase 3 rules.
---   battle:Describe() -> the static "Start" payload: { BattleId?, Mode, Seed, Zone = { X, Z }, TimeLimit, Level,
---       BossId, Round (Ring), Sides = { [side] = { owner... } }, Units = { unitInfo... } }
---   battle:StaticUnits() -> { unitInfo... }     unitInfo = { id, side, owner, slot, kind = "Pet" | "MiniBoss" |
---       "Boss" | "Minion", key, petId, boss (bossId; true for a pet in the mini-boss form), name, species, look
---       (PetBuilder Look), element, elements, maxHp, level, tier, scale, ranged, range, radius, special = { Id, Name,
---       Kind, Color }, evo (0..2), xp / xpNext (when the entry carries them), crowned (the ring champion) }
---   battle:AddTeam(team) -> infos | nil, reason    (raids: a player joins; queues a Spawn event)
---   battle:RemoveTeam(owner) -> ok                 (raids: a player leaves; queues a Leave event)
---   battle:SetAnchor(owner, x, z) -> ok            (where the team retreats to; clamped to the floor)
---   battle:BossStatus() -> { BossId, Hp, MaxHp, Enraged, EndsIn, Players } | nil
---   battle:Time(), battle:IsFinished(), battle:Owners(), battle:TeamOf(owner) (read-only summary)
---   BattleSim.States  = { Idle = 0, Moving = 1, Attacking = 2, Retreating = 3, Casting = 4, Down = 5, Stunned = 6 }
---   BattleSim.StateNames[code] -> "Idle" ...
---   BattleSim.Events  = { Hit, Special, KO, Telegraph, Spawn, Enrage, Order, Zone, Leave, End, Overtime }  (strings)
---   BattleSim.LineOvershoot = 6     a Line telegraph ends this far past the pet it is aimed at (never the whole floor)
--- RETREAT (Damage.RetreatLock / RetreatAutoResume / TelegraphMargin): the pets run to their spots beside the owner's
--- anchor and stand there; a pet inside an active Line telegraph first steps out sideways (the shortest way out), and
--- a spot covered by an active telegraph moves out of it, so every telegraph can be escaped by a timely RETREAT, even
--- one aimed at a team already parked. A PLAYER team (not Npc / Auto) parked at its spots with no telegraph on it goes
--- back to ATTACK by itself RetreatLock + RetreatAutoResume seconds after the RETREAT (Order event with auto = true).
+--     setup = { Mode = "Duel" | "Raid" | "Ring" | "Dungeon" (default Duel), Seed, Id, Zone = n | { X, Z } | { w, d },
+--               Teams = { team... }, Boss = bossId (Raid), Round (Ring), TimeLimit (nil = BattleCatalog.TimeLimits[Mode]),
+--               Specials = false (harness: nobody casts) }
+--     team  = { Owner, Side = 1 | 2, Name, Npc = bool, Auto = bool, Anchor = { x, z }, Specials = false, Wave = n,
+--               Pets = { entry x 1..3 } }   entry: Key, PetId, Def, Level, Tier, Slot, Evo, Train, Boost, Handicap, Boss,
+--               Wild, Xp, XpNext, Crowned, NoSpecial.  A PLAYER team (not Npc): Pets[1] = the fighter, 2-3 the bench
+--               (3 lives). Npc teams: every pet is on the floor. Auto (harness): the AI plays the fighter's kit.
+--               Mode Dungeon: side 2 may start empty (SpawnEnemies fills it).
+--   battle:Command(owner, action, arg) -> ok, reason, extra
+--     "Attack" (targetId | nil)       alive, not Casting / Stunned / Winding / Down, t >= nextAttack - Interval x (1 - AttackTolerance);
+--                                     reach = range + target.radius + AttackSlack; target = arg | lock | nearest in reach; hits NOW;
+--                                     nextAttack = max(nextAttack, t) + Interval
+--     "Element" (id | { x, z } | nil) cooldown Fighter.ElementCooldown; the shape of ElementAttacks[fighter.elems[1]] from the SERVER
+--                                     fighter position toward the target / aim / lock / facing
+--     "Special" ()                    meter >= SpecialMeterMax; offensive kinds as before; Heal / Shield / Rally / Haste act on the fighter
+--     "Dash" ()                       cooldown DashCooldown -> Dashing for DashSeconds, i-frames until t + DashIFrames
+--     "Target" (unitId | nil)         lock-on; Attack / Element default to it
+--     "Buff" (2 | 3)                  that helper's buff on the fighter; cooldown per helper (SupportCooldown / HelperCooldown)
+--     "Swap" (2 | 3)                  fighter <-> helper; SwapCooldown; the incoming pet arrives Casting for SwapCastSeconds; refused
+--                                     while Casting / Stunned
+--     "Move" (x, z)                   the fighter's wanted floor point (the CHARACTER position; never from a remote): the fighter walks
+--                                     toward it at <= legal run x MoveSlack (x DashSpeed / RunSpeed while Dashing), clamped to the floor
+--     "Forfeit" ()                    Duel / Ring: the team is knocked out; Raid / Dungeon: RemoveTeam
+--   battle:Step(dt) -> events;  battle:Snapshot();  battle:SnapshotDelta(last);  BattleSim.DecodeSnapshot(payload, prev)
+--   battle:AddTeam(team) -> infos | nil, reason;  battle:RemoveTeam(owner) -> ok
+--   battle:SpawnEnemies(list, opts) -> infos | nil, reason    (Dungeon / Raid: a side-2 Npc Auto team { Owner = "wave:"..n }; opts =
+--                                     { Wave = n, Anchor = { x, z } (default the far +Z edge), Name, Owner })
+--   battle:LivingEnemies() -> n;  battle:BossHp() -> 0..1 | nil;  battle:Finish(reason) -> ok, events  ("Cleared" = side 1 wins,
+--                                     "Abandoned" / "Shutdown" / ... = no winner);  battle:Abort(reason) = Finish
+--   battle:TeamOf(owner) -> { Owner, Side, Fighter = id, Bench = { id, id }, Lives, Speed = { Walk, Run }, Cooldowns = { Element, Dash,
+--                                     Swap, Buff = { [slot] = seconds } }, Lock, Damage, Kills, Left, Forfeited, Units = { {id, slot, hp,
+--                                     maxHp, meter, state, alive, bench}... } }
+--   battle:SpeedOf(owner) -> { Walk, Run }   the fighter's current legal speeds (speed buffs / slows included)
+--   battle:Result() -> nil while running, else { Mode, Reason, WinnerSide, Winners, Losers, Draw, Forfeit, BossId, Round, Damage =
+--                                     { [owner] = n }, Shares, Duration, Survivors = { [owner] = lives }, Hp = { [side] = share }, Kills =
+--                                     { [owner] = n }, Waves, BossHp, BossMaxHp }
+--   battle:Describe() -> { BattleId, Mode, Seed, Zone = { X, Z }, TimeLimit, BossId, Round, Sides, Units = { unitInfo... } }
+--   battle:StaticUnits() -> { unitInfo... }   unitInfo = { id, side, owner, slot, kind, key, petId, boss, name, species, look,
+--                                     element, elements, maxHp, level, tier, scale, ranged, range, radius, special, evo, xp, xpNext,
+--                                     crowned, role ("Fighter" | "Support"), buff = { Kind, Name, Seconds, Value, Cooldown },
+--                                     elementAttack = { Name, Shape, Element }, bench = 2 | 3 | nil, wild, walk, run }
+--   battle:Time(), IsFinished(), Owners(), BossStatus(), SetAnchor(owner, x, z)
+--   BattleSim.States = { Idle 0, Moving 1, Attacking 2, Benched 3, Casting 4, Down 5, Stunned 6, Dashing 7 }  (Winding = Attacking + windup bit)
+--   BattleSim.Events = { Hit, Special, KO, Telegraph, Spawn, Enrage, Order, Zone, Leave, End, Element, Dash, Buff, Swap, Windup, Wave,
+--                        EnemiesDown, Speed }
 -- Event shapes:
---   Hit       { from, to, dmg, elem (1.5 / 0.75 when not neutral), special (kind), tele (telegraph id), zone = true,
---               absorbed (shield), retreat = true }
---   Special   { unit, kind, name, x, z, tx, tz, targets = { id... }, heals = { { id, amount }... }, shields = { id... },
---               stunned = { id... } }
---   KO        { unit, by, forfeit = true }
---   Telegraph { id, boss, name, attack, shape = "Circle" | "Line", x, z, r | angle (radians) + length + width,
---               at (battle time of the hit), hits (seconds until it), freeze, linger }
---   Spawn     { units = { unitInfo... }, wave, boss, owner }
---   Enrage    { unit }
---   Order     { owner, order = "Attack" | "Retreat" | "Forfeit", target, auto = true (the retreat ended by itself) }
---   Zone      { unit, kind, x, z, r, seconds, side }
---   Leave     { owner, units = { id... } }
---   End       { reason, winnerSide }
---   Overtime  { at, perSecond }   once per duel at Damage.Overtime.At seconds: every hit grows by perSecond per second
---               past `at` (Phase 4: trained Shield / Heal mirrors would otherwise stall to the time limit)
+--   Hit        { from, to, dmg, elem, crit, absorbed, miss = true (dodged), burn = true, leech = n, element = name, special = kind,
+--                tele, zone, attack, buffDmg = true }
+--   Special    { unit, kind, name, x, z, tx, tz, target, targets, heals, shields, stunned, angle }
+--   KO         { unit, by, forfeit }          Telegraph { id, boss, name, attack, shape, x, z, r | angle + length + width, at, hits, freeze, linger }
+--   Spawn      { units, wave, boss, owner }   Enrage { unit }      Zone { unit, kind, x, z, r, seconds, side }     Leave { owner, units }
+--   Order      { owner, order, target, rejected }   (every refused command echoes `rejected`; Target / Forfeit echo when accepted)
+--   Element    { unit, element, name, x, z, angle | tx, tz, targets }      Dash { unit }
+--   Buff       { owner, unit (the helper), kind, name, until, target (the fighter) }     Swap { owner, out, in, auto }
+--   Speed      { owner, walk, run }   (whenever the fighter's legal speeds change: Swap, Haste / Slow start and end)
+--   Windup     { unit, target, at }   Wave { index, units, left }   EnemiesDown { wave }   End { reason, winnerSide }
+-- Wire form (SnapshotDelta / DecodeSnapshot): per changed unit the numbers  code, pos [, hp] [, meter] [, shield] [, target]
+--   code = id x 1024 + lives x 256 + windup x 128 + mask x 8 + state (mask bits: 1 hp, 2 meter, 4 shield, 8 target; lives 0..3 =
+--   the fighter's team lives; windup 1 while Winding), pos = (x + 200) x 10 x 4096 + (z + 200) x 10 (0.1 stud steps).
+-- End rules: Duel: a side with no lives loses; both at once or the 120 s timeout -> DoubleKoByDamage (more damage dealt wins;
+--   equal = Draw). Ring: no lives = loss, timeout = loss. Raid: BossDown / Wipe / Timeout / Abandoned. Dungeon: side-1 wipe ->
+--   "Wipe", timeout -> "Timeout", never ends on an empty side 2 (Finish does).
+-- Deleted (10.5): ATTACK / RETREAT orders, Retreating, Damage.Retreat*, the per-slot Special command, the Trial setup, Overtime,
+--   Result.Level, Describe.Level.
 
 local Shared = script.Parent
 
 local BattleSim = {}
 BattleSim.__index = BattleSim
-BattleSim.Version = 1
+BattleSim.Version = 5
 
 local floor, ceil, sqrt, max, min, huge, abs = math.floor, math.ceil, math.sqrt, math.max, math.min, math.huge, math.abs
 local cos, sin, atan2, pi = math.cos, math.sin, math.atan2, math.pi
@@ -113,7 +90,7 @@ local cos, sin, atan2, pi = math.cos, math.sin, math.atan2, math.pi
 ----------------------------------------------------------------------
 -- Constants
 ----------------------------------------------------------------------
-BattleSim.States = { Idle = 0, Moving = 1, Attacking = 2, Retreating = 3, Casting = 4, Down = 5, Stunned = 6 }
+BattleSim.States = { Idle = 0, Moving = 1, Attacking = 2, Benched = 3, Casting = 4, Down = 5, Stunned = 6, Dashing = 7 }
 BattleSim.StateNames = {}
 for name, code in pairs(BattleSim.States) do
 	BattleSim.StateNames[code] = name
@@ -129,29 +106,36 @@ BattleSim.Events = {
 	Zone = "Zone",
 	Leave = "Leave",
 	End = "End",
-	Overtime = "Overtime", -- Phase 4: a duel past Damage.Overtime.At (every hit grows from now on)
+	Element = "Element",
+	Dash = "Dash",
+	Buff = "Buff",
+	Swap = "Swap",
+	Windup = "Windup",
+	Wave = "Wave",
+	EnemiesDown = "EnemiesDown",
+	Speed = "Speed",
 }
-BattleSim.Orders = { Attack = "Attack", Retreat = "Retreat" }
-BattleSim.Modes = { "Trial", "Duel", "Raid", "Ring" }
+BattleSim.Actions = { "Attack", "Element", "Special", "Dash", "Target", "Buff", "Swap", "Move", "Forfeit" }
+BattleSim.Modes = { "Duel", "Raid", "Ring", "Dungeon" }
 local MODE_OK = {}
 for _, m in ipairs(BattleSim.Modes) do
 	MODE_OK[m] = true
 end
 BattleSim.LineOvershoot = 6 -- studs a Line telegraph runs past the pet it is aimed at
 
-local S_IDLE, S_MOVING, S_ATTACKING, S_RETREATING, S_CASTING, S_DOWN, S_STUNNED =
-	BattleSim.States.Idle, BattleSim.States.Moving, BattleSim.States.Attacking, BattleSim.States.Retreating,
-	BattleSim.States.Casting, BattleSim.States.Down, BattleSim.States.Stunned
+local S_IDLE, S_MOVING, S_ATTACKING, S_BENCHED, S_CASTING, S_DOWN, S_STUNNED, S_DASHING =
+	BattleSim.States.Idle, BattleSim.States.Moving, BattleSim.States.Attacking, BattleSim.States.Benched,
+	BattleSim.States.Casting, BattleSim.States.Down, BattleSim.States.Stunned, BattleSim.States.Dashing
 local EV = BattleSim.Events
-local ORDER_ATTACK, ORDER_RETREAT = "Attack", "Retreat"
 
-local MAX_UNITS = 128 -- a raid of 8 teams x 4 pets + boss + waves stays far below this
+local MAX_UNITS = 127 -- the wire code packs the id below 128 (a 16-raid is ~16 x 3 + boss + waves)
 local MIN_DT, MAX_DT = 0.02, 0.5
-local ZONE_TICK = 0.5 -- zones (Storm clouds, lingering pools) hurt every enemy inside them this often (few events)
-local HOME_RADIUS = 1.0 -- a retreating pet this close to its spot counts as parked (the auto resume waits for all)
--- the wire snapshot (SnapshotDelta / DecodeSnapshot): positions at 0.1 stud over a floor of at most 400 studs
+local ZONE_TICK = 0.5
+local ATTACK_POSE = 0.3 -- seconds a fighter shows Attacking after a hit
+-- the wire snapshot: positions at 0.1 stud over a floor of at most 400 studs
 local POS_OFFSET, POS_STEPS, POS_BASE = 200, 10, 4096
 local MASK_HP, MASK_METER, MASK_SHIELD, MASK_TARGET = 1, 2, 4, 8
+local CODE_WINDUP, CODE_LIVES, CODE_ID = 128, 256, 1024
 
 ----------------------------------------------------------------------
 -- Lazy modules
@@ -193,6 +177,13 @@ local function r1(n)
 	return floor(n * 10 + 0.5) / 10
 end
 
+local function num(v, default)
+	if finite(v) then
+		return v
+	end
+	return default
+end
+
 ----------------------------------------------------------------------
 -- Deterministic RNG (Lehmer / Park-Miller: exact in doubles, the same on every platform)
 ----------------------------------------------------------------------
@@ -205,7 +196,6 @@ local function seedState(seed)
 		s = 1
 	end
 	s = floor(abs(s)) % (RNG_M - 1) + 1
-	-- a few warm-up rounds so neighbouring seeds diverge quickly
 	for _ = 1, 4 do
 		s = (s * RNG_A) % RNG_M
 	end
@@ -226,11 +216,16 @@ end
 -- Catalog access with safe fallbacks (the engine must never error at runtime)
 ----------------------------------------------------------------------
 local FALLBACK_DAMAGE = {
-	HpScale = 3, DamageScale = 0.6, Variance = 0.12, MinHit = 1,
-	RetreatDamageTaken = 0.5, RetreatRegenPerSecond = 0.02, RetreatLock = 1.5, RetreatAutoResume = 3, TelegraphMargin = 1.5,
+	HpScale = 2.6, DamageScale = 0.6, Variance = 0.2, MinHit = 1, TargetSticky = 1.6, TargetSpread = 1.35, ThreatSeconds = 3,
 	MeterMax = 100, MeterStart = { 20, 50 }, MeterOnHit = 4, MeterOnHurt = 2, MeterPerSecond = 2,
-	CastSeconds = 0.5, SpecialScale = 1, SeparationRadius = 2.6, RetargetSeconds = 0.5, EngageSlack = 0.6,
-	NpcSpecialDelay = { 0.4, 1.4 }, KoMeterLoss = true,
+	CastSeconds = 0.5, SpecialScale = 1, SeparationRadius = 3.2, RetargetSeconds = 0.5, EngageSlack = 0.6,
+	NpcSpecialDelay = { 0.4, 1.4 }, KoMeterLoss = true, Slow = 0.6, Weaken = 0.85, BurnTicks = 3,
+}
+local FALLBACK_FIGHTER = {
+	AttackSlack = 3.0, AttackTolerance = 0.85, ElementCooldown = 7, ElementMult = 2.4, ElementRange = 14, SpecialMeterMax = 100,
+	MeterPerSecond = 6, MeterOnHit = 4, MeterOnHurt = 2, DashSeconds = 0.35, DashCooldown = 2.5, DashIFrames = 0.35, SwapCooldown = 10,
+	SwapCastSeconds = 0.6, BenchRegenPerSecond = 0.03, DownAutoSwap = true, HelperCooldown = 15, SupportCooldown = 12, Windup = 0.45,
+	KitFactor = 1.5, HelperWeight = 0.35, Lives = 3, WalkMult = 1.15, WalkMin = 12, WalkMax = 20, RunMult = 1.3, MoveSlack = 1.25,
 }
 
 local function damageRules()
@@ -242,11 +237,22 @@ local function damageRules()
 	return FALLBACK_DAMAGE
 end
 
-local function num(v, default)
-	if finite(v) then
-		return v
+local function fighterRules()
+	local bc = catalog()
+	local f = bc and bc.Fighter
+	if type(f) == "table" then
+		return f
 	end
-	return default
+	return FALLBACK_FIGHTER
+end
+
+local function dashSpeedFactor()
+	local cfg = lazy("Config")
+	local phys = cfg and cfg.Physics
+	if type(phys) == "table" and finite(phys.DashSpeed) and finite(phys.RunSpeed) and phys.RunSpeed > 0 then
+		return max(1, phys.DashSpeed / phys.RunSpeed)
+	end
+	return 85 / 27
 end
 
 local function resolveDef(entry)
@@ -258,8 +264,8 @@ local function resolveDef(entry)
 	end
 	local pc = petCatalog()
 	local pk = petKeys()
-	local candidates = { entry.Key, entry.PetId, entry.Id }
-	for _, c in ipairs(candidates) do
+	for k = 1, 3 do
+		local c = (k == 1 and entry.Key) or (k == 2 and entry.PetId) or (k == 3 and entry.Id) or nil
 		if type(c) == "string" then
 			if pc and pc.Get then
 				local def = pc.Get(c)
@@ -306,14 +312,17 @@ local function clampToFloor(self, u)
 	end
 end
 
--- a body of radius `radius` at (px, pz) touches the circle (x, z, r)
+local function clampPoint(self, x, z, margin)
+	local hx, hz = max(0.5, self.zone.HalfX - (margin or 1)), max(0.5, self.zone.HalfZ - (margin or 1))
+	return max(-hx, min(hx, x)), max(-hz, min(hz, z))
+end
+
 local function pointInCircle(px, pz, radius, x, z, r)
 	local dx, dz = px - x, pz - z
 	local reach = r + radius
 	return dx * dx + dz * dz <= reach * reach
 end
 
--- ... touches the line segment from (x, z) along angle for `length`, half width + body radius
 local function pointInLine(px, pz, radius, x, z, angle, length, width)
 	local dx, dz = px - x, pz - z
 	local dirX, dirZ = cos(angle), sin(angle)
@@ -325,32 +334,34 @@ local function pointInLine(px, pz, radius, x, z, angle, length, width)
 	return perp <= width / 2 + radius
 end
 
--- inside a circle (unit body counts)
 local function inCircle(u, x, z, r)
 	return pointInCircle(u.x, u.z, u.radius, x, z, r)
 end
 
--- inside a line segment from (x, z) along angle for `length`, half width + body radius
 local function inLine(u, x, z, angle, length, width)
 	return pointInLine(u.x, u.z, u.radius, x, z, angle, length, width)
 end
 
--- the active telegraph (of the other side) that a body of `radius` at (x, z) is inside, or nil
-local function telegraphAt(self, side, x, z, radius)
-	local list = self.telegraphs
-	for i = 1, #list do
-		local tele = list[i]
-		if tele.boss.side ~= side then
-			if tele.shape == "Line" then
-				if pointInLine(x, z, radius, tele.x, tele.z, tele.angle, tele.length, tele.width) then
-					return tele
-				end
-			elseif pointInCircle(x, z, radius, tele.x, tele.z, tele.r) then
-				return tele
-			end
-		end
+-- a body inside a cone from (x, z) along `angle`, half-angle `half` (radians), `length` studs
+local function inCone(u, x, z, angle, half, length)
+	local dx, dz = u.x - x, u.z - z
+	local d = sqrt(dx * dx + dz * dz)
+	if d > length + u.radius then
+		return false
 	end
-	return nil
+	if d <= u.radius + 0.5 then
+		return true
+	end
+	local a = atan2(dz, dx) - angle
+	while a > pi do
+		a = a - 2 * pi
+	end
+	while a < -pi do
+		a = a + 2 * pi
+	end
+	-- the body's radius widens the cone a little at its distance
+	local extra = (d > 0.01) and (u.radius / d) or 0
+	return abs(a) <= half + extra
 end
 
 ----------------------------------------------------------------------
@@ -358,7 +369,7 @@ end
 ----------------------------------------------------------------------
 local function parseZone(mode, zone)
 	local bc = catalog()
-	local default = (bc and type(bc.Zones) == "table" and bc.Zones[mode]) or { X = 56, Z = 56 }
+	local default = (bc and type(bc.Zones) == "table" and bc.Zones[mode]) or { X = 44, Z = 44 }
 	local x, z = default.X, default.Z
 	if finite(zone) and zone > 0 then
 		x, z = zone, zone
@@ -390,24 +401,36 @@ local function newTeamRecord(self, spec, side)
 		name = type(spec.Name) == "string" and spec.Name or nil,
 		npc = spec.Npc == true,
 		auto = spec.Npc == true or spec.Auto == true,
-		noSpecials = spec.Specials == false, -- harness: this team never casts
+		player = spec.Npc ~= true, -- a fighter + bench team
+		noSpecials = spec.Specials == false,
 		units = {},
 		bySlot = {},
-		order = ORDER_ATTACK,
-		focus = nil,
-		retreatAt = -huge,
+		fighter = nil,
+		lock = nil,
+		wantX = nil,
+		wantZ = nil,
+		faceX = 0,
+		faceZ = 1,
 		anchorX = 0,
 		anchorZ = 0,
 		damage = 0,
+		kills = 0,
 		forfeited = false,
 		left = false,
 		index = #self.teams + 1,
 		powerMult = {},
 		healthMult = 1,
+		elementReadyAt = 0,
+		dashReadyAt = 0,
+		swapReadyAt = 0,
+		lastWalk = nil,
+		lastRun = nil,
+		wave = finite(spec.Wave) and floor(spec.Wave) or nil,
+		alive = 0,
 	}
 end
 
--- anchor positions: duel / trial sides face each other across z; raid teams stand around the boss
+-- anchor positions: duel / ring sides face each other across z; raid teams stand around the boss; dungeon waves at +Z
 local function placeAnchor(self, team, spec)
 	local hx, hz = self.zone.HalfX, self.zone.HalfZ
 	if type(spec.Anchor) == "table" then
@@ -419,7 +442,7 @@ local function placeAnchor(self, team, spec)
 			return
 		end
 	end
-	if self.mode == "Raid" then
+	if self.mode == "Raid" and team.side == 1 then
 		local slots = 8
 		local k = (self.raidSlots or 0)
 		self.raidSlots = k + 1
@@ -429,7 +452,6 @@ local function placeAnchor(self, team, spec)
 		team.anchorZ = sin(angle) * r
 		return
 	end
-	-- several teams on one side spread along x
 	local sideTeams = 0
 	for _, t in ipairs(self.teams) do
 		if t.side == team.side and t ~= team then
@@ -445,7 +467,6 @@ local function placeAnchor(self, team, spec)
 	end
 end
 
--- Damage.MeterStart: a number, or { lo, hi } rolled per pet with the battle's RNG
 local function meterStart(self, D)
 	local ms = D.MeterStart
 	if type(ms) == "table" then
@@ -455,9 +476,8 @@ local function meterStart(self, D)
 	return num(ms, 0)
 end
 
-local function unitFromDef(self, team, def, entry, slot, kind, powerMult)
+local function unitFromDef(self, team, def, entry, slot, kind)
 	local bc = catalog()
-	-- the entry doubles as the UnitStats extras: Evo, Train and Boost (Phase 4) are read from it
 	local us = bc and bc.UnitStats and bc.UnitStats(def, entry.Level, entry.Tier, entry)
 	if not us then
 		return nil
@@ -479,13 +499,16 @@ local function unitFromDef(self, team, def, entry, slot, kind, powerMult)
 		radius = radius * 1.4
 		scale = mb.Scale
 	end
-	-- a handicapped NPC pet (the tutorial's Trial 1): HP, hits and its special scaled down together
 	if finite(entry.Handicap) and entry.Handicap > 0 and entry.Handicap < 1 then
 		maxHp = maxHp * entry.Handicap
 		hit = hit * entry.Handicap
 		specialPower = specialPower * entry.Handicap
 	end
 	local special = type(def.Special) == "table" and def.Special or nil
+	local buffKind, buffDef = nil, nil
+	if bc and bc.BuffOf then
+		buffKind, buffDef = bc.BuffOf(def)
+	end
 	local u = {
 		id = id,
 		side = team.side,
@@ -499,23 +522,28 @@ local function unitFromDef(self, team, def, entry, slot, kind, powerMult)
 		name = def.DisplayName or def.Name or tostring(def.Id),
 		species = us.Species,
 		elems = us.Elements,
+		role = us.Role or "Combat",
 		maxHp = maxHp,
 		hp = maxHp,
 		hit = hit,
 		interval = us.Interval,
 		moveSpeed = us.MoveSpeed,
+		walk = us.Walk,
+		run = us.Run,
 		range = us.Range,
 		ranged = us.Ranged,
 		radius = radius,
 		specialPower = specialPower,
 		specialFactor = min(1, num(us.SpecialFactor, 1)),
-		specialKind = (special and not entry.NoSpecial) and special.Kind or nil, -- NoSpecial: harness only
+		specialKind = (special and not entry.NoSpecial) and special.Kind or nil,
 		special = special,
-		powerMult = powerMult or 1,
+		specialBoost = num(us.SpecialBoost, 1),
+		buffKind = buffKind,
+		buffDef = buffDef,
+		powerMult = team.powerMult[slot] or 1,
 		level = num(entry.Level, 1),
 		tier = entry.Tier or def.Tier or "Normal",
 		scale = scale,
-		-- Phase 4: evolution / training / ring Boost (already inside maxHp / hit / interval / specialPower via UnitStats)
 		evo = num(us.Evo, 0),
 		train = us.Train,
 		boost = (finite(us.Boost) and us.Boost > 1) and us.Boost or nil,
@@ -524,13 +552,14 @@ local function unitFromDef(self, team, def, entry, slot, kind, powerMult)
 		xp = (finite(entry.Xp) and entry.Xp >= 0) and floor(entry.Xp) or nil,
 		xpNext = (finite(entry.XpNext) and entry.XpNext >= 0) and floor(entry.XpNext) or nil,
 		crowned = entry.Crowned == true or nil,
+		wild = entry.Wild == true or nil,
 		x = 0,
 		z = 0,
 		px = 0,
 		pz = 0,
 		state = S_IDLE,
 		target = nil,
-		nextAttack = self.t + rand(self) * us.Interval * 0.6, -- desynchronised swings: no lockstep first-strike edge
+		nextAttack = self.t + rand(self) * us.Interval * 0.6,
 		retargetAt = 0,
 		meter = meterStart(self, D),
 		shield = 0,
@@ -540,30 +569,63 @@ local function unitFromDef(self, team, def, entry, slot, kind, powerMult)
 		autoCastAt = nil,
 		alive = true,
 		gone = false,
+		benched = false,
 		damage = 0,
-		atHome = false, -- retreating: parked at its spot
+		kills = 0,
+		-- the fighter kit
+		attackUntil = 0,
+		dashUntil = 0,
+		iframesUntil = 0,
+		buffReadyAt = 0,
+		-- statuses
+		slowUntil = 0,
+		weakenUntil = 0,
+		burnLeft = 0,
+		burnAmount = 0,
+		burnNextAt = 0,
+		burnFrom = nil,
+		dmgBuffUntil = 0,
+		dmgBuffMult = 1,
+		speedBuffUntil = 0,
+		speedBuffMult = 1,
+		atkSpeedUntil = 0,
+		atkSpeedMult = 1,
+		takenUntil = 0,
+		takenMult = 1,
+		regenUntil = 0,
+		regenRate = 0,
+		chillUntil = 0,
+		chillValue = 0,
+		leechUntil = 0,
+		leechValue = 0,
+		-- NPC wind-up
+		windAt = nil,
+		windTarget = nil,
+		threat = nil,
+		threatAt = -huge,
 	}
 	self.units[id] = u
 	return u
 end
 
--- pets stand near their anchor, offset per slot toward the floor centre
+-- NPC pets stand near their anchor, offset per slot toward the floor centre; a player's fighter stands at its anchor
 local function placeTeamUnits(self, team)
 	local cx, cz = -team.anchorX, -team.anchorZ
 	local len = sqrt(cx * cx + cz * cz)
 	if len < 0.01 then
 		cx, cz, len = 0, 1, 1
 	end
-	cx, cz = cx / len, cz / len -- toward the centre
-	local px, pz = -cz, cx -- perpendicular
+	cx, cz = cx / len, cz / len
+	local px, pz = -cz, cx
 	local n = #team.units
 	for i, u in ipairs(team.units) do
-		local spread = (i - (n + 1) / 2) * 2.6
+		local spread = team.player and 0 or (i - (n + 1) / 2) * 2.6
 		u.x = team.anchorX + cx * 3 + px * spread
 		u.z = team.anchorZ + cz * 3 + pz * spread
 		clampToFloor(self, u)
 		u.px, u.pz = u.x, u.z
 	end
+	team.faceX, team.faceZ = cx, cz
 end
 
 local function unitInfo(u)
@@ -587,11 +649,14 @@ local function unitInfo(u)
 		ranged = u.ranged,
 		range = u.range,
 		radius = u.radius,
+		role = (u.role == "Support") and "Support" or "Fighter",
+		walk = u.walk,
+		run = u.run,
 	}
 	if u.boss then
 		info.boss = u.boss.Id
 	elseif u.kind == "MiniBoss" then
-		info.boss = true -- a pet in the mini-boss form (a trial's boss pet, a giant ring champion)
+		info.boss = true
 	end
 	info.evo = u.evo or 0
 	if u.xp then
@@ -601,13 +666,42 @@ local function unitInfo(u)
 	if u.crowned then
 		info.crowned = true
 	end
+	if u.wild then
+		info.wild = true
+	end
+	if u.team and u.team.player and u.slot and u.slot >= 2 then
+		info.bench = u.slot
+	end
 	if u.special then
 		info.special = { Id = u.special.Id, Name = u.special.Name, Kind = u.special.Kind, Color = u.special.Color }
+	end
+	if u.buffDef then
+		info.buff = { Kind = u.buffKind, Name = u.buffDef.Name, Seconds = u.buffDef.Seconds, Value = u.buffDef.Value, Cooldown = u.buffDef.Cooldown }
+	end
+	local bc = catalog()
+	local ea = bc and type(bc.ElementAttacks) == "table" and u.elems[1] and bc.ElementAttacks[u.elems[1]]
+	if ea then
+		info.elementAttack = { Name = ea.Name, Shape = ea.Shape, Element = u.elems[1] }
 	end
 	return info
 end
 
--- Adds a team (also used by new). Returns the unit infos, or nil + reason.
+-- the lives of a team = its living pets (fighter + bench; NPC: every pet still up)
+local function teamLives(team)
+	local n = 0
+	for _, u in ipairs(team.units) do
+		if u.alive and not u.gone then
+			n = n + 1
+		end
+	end
+	return n
+end
+
+local function onFloor(u)
+	return u.alive and not u.gone and not u.benched
+end
+
+-- Adds a team (also used by new / SpawnEnemies). Returns the unit infos, or nil + reason.
 function BattleSim:AddTeam(spec)
 	if self.result then
 		return nil, "Finished"
@@ -623,9 +717,9 @@ function BattleSim:AddTeam(spec)
 		side = 1
 	end
 	local bc = catalog()
-	local maxSize = (bc and bc.MaxTeamSize) or 4
+	local player = spec.Npc ~= true
+	local maxSize = player and ((bc and bc.TeamSize) or 3) or 12
 	local pets = type(spec.Pets) == "table" and spec.Pets or {}
-	-- resolve defs first (synergy needs them all)
 	local defs, entries = {}, {}
 	for i = 1, min(#pets, maxSize) do
 		local entry = pets[i]
@@ -639,7 +733,7 @@ function BattleSim:AddTeam(spec)
 		return nil, "NoPets"
 	end
 	local team = newTeamRecord(self, spec, side)
-	local synPower = {} -- by def index (slots may be out of order)
+	local synPower = {}
 	if bc and bc.SynergyBonus then
 		local syn = bc.SynergyBonus(defs)
 		team.healthMult = syn.HealthMult or 1
@@ -654,28 +748,41 @@ function BattleSim:AddTeam(spec)
 	for i, def in ipairs(defs) do
 		local entry = entries[i]
 		local slot = i
-		if finite(entry.Slot) and entry.Slot >= 1 and entry.Slot <= maxSize and not team.bySlot[floor(entry.Slot)] then
+		if player then
+			slot = i -- a player's slots are the list order: 1 = the fighter, 2-3 the bench
+		elseif finite(entry.Slot) and entry.Slot >= 1 and entry.Slot <= maxSize and not team.bySlot[floor(entry.Slot)] then
 			slot = floor(entry.Slot)
 		end
 		team.powerMult[slot] = synPower[i] or 1
 		local kind = entry.Boss and "MiniBoss" or "Pet"
-		local u = unitFromDef(self, team, def, entry, slot, kind, synPower[i])
+		local u = unitFromDef(self, team, def, entry, slot, kind)
 		if u then
 			team.units[#team.units + 1] = u
 			team.bySlot[slot] = u
 			infos[#infos + 1] = u
+			if player then
+				if i == 1 then
+					team.fighter = u
+				else
+					u.benched = true
+					u.state = S_BENCHED
+				end
+			end
 		end
 	end
 	if #team.units == 0 then
-		-- roll back
 		self.teams[#self.teams] = nil
 		self.teamByOwner[spec.Owner] = nil
 		return nil, "NoPets"
 	end
 	placeTeamUnits(self, team)
-	-- expected DPS / average hp bookkeeping (raids scale the boss with it)
+	if player and team.fighter then
+		for _, u in ipairs(team.units) do
+			u.x, u.z, u.px, u.pz = team.fighter.x, team.fighter.z, team.fighter.x, team.fighter.z
+		end
+	end
 	if bc and bc.ExpectedDps then
-		team.dps = bc.ExpectedDps({ Pets = entries })
+		team.dps = player and bc.ExpectedDps({ Pets = entries }) or 0
 	else
 		team.dps = 0
 	end
@@ -683,27 +790,51 @@ function BattleSim:AddTeam(spec)
 	for i, u in ipairs(infos) do
 		out[i] = unitInfo(u)
 	end
+	if team.wave then
+		self.waveCount = max(self.waveCount or 0, team.wave)
+	end
 	if self.started then
 		local boss = self.boss
-		if boss and boss.alive and not team.npc and side == 1 then
-			-- the boss grows by what the newcomer brings (BattleCatalog.BossHp over everyone still in); the damage dealt
-			-- so far stays dealt
+		if boss and boss.alive and player and side == 1 then
 			local before = boss.maxHp
 			boss.maxHp = self:_bossMaxHp()
 			boss.hp = max(1, boss.hp + (boss.maxHp - before))
 		end
 		self:_refreshRaidScale()
-		self.pending[#self.pending + 1] = { type = EV.Spawn, units = out, owner = spec.Owner }
+		if team.wave then
+			local left = 0
+			for _, v in ipairs(self.units) do
+				if v.side == 2 and onFloor(v) then
+					left = left + 1
+				end
+			end
+			self.pending[#self.pending + 1] = { type = EV.Wave, index = team.wave, units = out, left = left, owner = spec.Owner }
+		else
+			self.pending[#self.pending + 1] = { type = EV.Spawn, units = out, owner = spec.Owner }
+		end
 	end
 	return out
 end
 
--- BattleCatalog.BossHp over the player teams still in the raid (their current pets)
+-- Dungeon / Raid: an enemy wave as a side-2 Npc Auto team
+function BattleSim:SpawnEnemies(list, opts)
+	opts = type(opts) == "table" and opts or {}
+	local index = finite(opts.Wave) and floor(opts.Wave) or ((self.waveCount or 0) + 1)
+	local anchor = opts.Anchor
+	if type(anchor) ~= "table" then
+		anchor = { 0, self.zone.HalfZ - 5 }
+	end
+	local pets = type(list) == "table" and (list.Pets or list) or {}
+	local owner = opts.Owner or ("wave:" .. index)
+	return self:AddTeam({ Owner = owner, Side = 2, Npc = true, Auto = true, Name = opts.Name or ("Wave " .. index), Anchor = anchor, Wave = index, Pets = pets })
+end
+
+-- BattleCatalog.BossHp over the player teams still in the raid
 function BattleSim:_bossMaxHp()
 	local bc = catalog()
 	local specs = {}
 	for _, t in ipairs(self.teams) do
-		if t.side == 1 and not t.npc and not t.left then
+		if t.side == 1 and t.player and not t.left then
 			local pets = {}
 			for j, u in ipairs(t.units) do
 				pets[j] = { Def = u.def, Level = u.level, Tier = u.tier, Evo = u.evo, Train = u.train, Boost = u.boost }
@@ -720,23 +851,20 @@ function BattleSim:_bossMaxHp()
 	return 1000
 end
 
--- player teams still in the raid (side 1, not NPC, not left)
 function BattleSim:_playerTeams()
 	local n = 0
 	for _, team in ipairs(self.teams) do
-		if team.side == 1 and not team.npc and not team.left then
+		if team.side == 1 and team.player and not team.left then
 			n = n + 1
 		end
 	end
 	return n
 end
 
--- the same head count WEIGHTED by what each team brings (BattleCatalog.WeightedTeams: min(1, dps / the strongest
--- team's dps)), the number behind the boss's HP group factor and its damage scaling; `excluding` leaves one team out
 function BattleSim:_effectiveTeams(excluding)
 	local dpsList = {}
 	for _, team in ipairs(self.teams) do
-		if team.side == 1 and not team.npc and not team.left and team ~= excluding then
+		if team.side == 1 and team.player and not team.left and team ~= excluding then
 			dpsList[#dpsList + 1] = num(team.dps, 0)
 		end
 	end
@@ -747,15 +875,15 @@ function BattleSim:_effectiveTeams(excluding)
 	return #dpsList
 end
 
-local bossBasis -- defined with the boss patterns below
+local bossBasis
 
--- The boss's damage yardstick: the average pet MaxHp (and level) over the player teams
+-- The boss's damage yardstick: the average FIGHTER MaxHp (and level) over the player teams
 function BattleSim:_refreshRaidScale()
 	local total, n, levels = 0, 0, 0
 	for _, team in ipairs(self.teams) do
 		if team.side == 1 and not team.left then
 			for _, u in ipairs(team.units) do
-				if u.kind == "Pet" or u.kind == "MiniBoss" then
+				if (u.kind == "Pet" or u.kind == "MiniBoss") and (not team.player or u == team.fighter) then
 					total = total + u.maxHp
 					levels = levels + (u.level or 1)
 					n = n + 1
@@ -772,7 +900,6 @@ function BattleSim:_refreshRaidScale()
 		self.avgPetLevel = 1
 	end
 	self.playerTeamCount = self:_effectiveTeams()
-	-- minions scale with the participants (the same head-count factor as the boss: bossBasis of an average pet)
 	for _, u in ipairs(self.units) do
 		if u.kind == "Minion" and u.alive then
 			local rules = (catalog() and catalog().BossRules) or {}
@@ -788,33 +915,15 @@ local function makeBoss(self, bossId)
 		return nil, "UnknownBoss"
 	end
 	local id = #self.units + 1
-	local team = {
-		owner = "boss",
-		side = 2,
-		name = def.Name,
-		npc = true,
-		auto = true,
-		units = {},
-		bySlot = {},
-		order = ORDER_ATTACK,
-		retreatAt = -huge,
-		anchorX = 0,
-		anchorZ = 0,
-		damage = 0,
-		forfeited = false,
-		left = false,
-		index = #self.teams + 1,
-		powerMult = {},
-		healthMult = 1,
-		dps = 0,
-	}
+	local team = newTeamRecord(self, { Owner = "boss", Name = def.Name, Npc = true, Auto = true }, 2)
+	team.dps = 0
 	self.teams[#self.teams + 1] = team
 	self.teamByOwner["boss"] = team
 	self.bossId = bossId
 	local hp = self:_bossMaxHp()
 	local attacks = {}
 	for i, a in ipairs(def.Attacks or {}) do
-		attacks[i] = { def = a, nextAt = num(a.First, 6 + i * 6) } -- the first telegraph a few seconds in, then on cooldown
+		attacks[i] = { def = a, nextAt = num(a.First, 6 + i * 6) }
 	end
 	local u = {
 		id = id,
@@ -830,6 +939,7 @@ local function makeBoss(self, bossId)
 		name = def.Name,
 		species = nil,
 		elems = { def.Element },
+		role = "Combat",
 		maxHp = hp,
 		hp = hp,
 		hit = 0,
@@ -859,18 +969,43 @@ local function makeBoss(self, bossId)
 		castUntil = 0,
 		alive = true,
 		gone = false,
+		benched = false,
 		damage = 0,
+		kills = 0,
 		attacks = attacks,
 		wavesDone = {},
 		enraged = false,
 		damageMult = 1,
 		cooldownMult = 1,
+		attackUntil = 0,
+		dashUntil = 0,
+		iframesUntil = 0,
+		buffReadyAt = 0,
+		slowUntil = 0,
+		weakenUntil = 0,
+		burnLeft = 0,
+		burnAmount = 0,
+		burnNextAt = 0,
+		dmgBuffUntil = 0,
+		dmgBuffMult = 1,
+		speedBuffUntil = 0,
+		speedBuffMult = 1,
+		atkSpeedUntil = 0,
+		atkSpeedMult = 1,
+		takenUntil = 0,
+		takenMult = 1,
+		regenUntil = 0,
+		regenRate = 0,
+		chillUntil = 0,
+		chillValue = 0,
+		leechUntil = 0,
+		leechValue = 0,
+		threatAt = -huge,
 	}
 	self.units[id] = u
 	team.units[1] = u
 	team.bySlot[1] = u
 	self.boss = u
-	self.bossId = bossId
 	return u
 end
 
@@ -880,7 +1015,7 @@ function BattleSim.new(setup)
 	end
 	local mode = setup.Mode
 	if not MODE_OK[mode] then
-		mode = (setup.Boss ~= nil and "Raid") or (setup.Trial ~= nil and "Trial") or "Duel"
+		mode = (setup.Boss ~= nil and "Raid") or "Duel"
 	end
 	local bc = catalog()
 	local self = setmetatable({}, BattleSim)
@@ -897,8 +1032,8 @@ function BattleSim.new(setup)
 	self.telegraphs = {}
 	self.zones = {}
 	self.pending = {}
-	self.order = {} -- scratch: the shuffled unit order of the current step
-	self.order2 = {} -- scratch: target candidates
+	self.order = {}
+	self.order2 = {}
 	self.result = nil
 	self.started = false
 	self.specialsEnabled = setup.Specials ~= false
@@ -906,23 +1041,16 @@ function BattleSim.new(setup)
 	self.nextTelegraphId = 1
 	self.avgPetHp = 150
 	self.avgPetLevel = 1
-	local limits = (bc and bc.TimeLimits) or { Trial = 90, Duel = 120, Raid = 330, Ring = 90 }
+	self.waveCount = 0
+	local limits = (bc and bc.TimeLimits) or { Duel = 120, Raid = 330, Ring = 90, Dungeon = 120 }
 	self.timeLimit = num(setup.TimeLimit, limits[mode] or 120)
 	if mode == "Ring" and finite(setup.Round) then
 		self.round = floor(setup.Round)
 	end
-	-- overtime (Damage.Overtime): duels only; nil = never
-	local ot = damageRules().Overtime
-	if type(ot) == "table" and type(ot.Modes) == "table" and ot.Modes[mode] and finite(ot.At) and finite(ot.PerSecond) and ot.PerSecond > 0 then
-		self.overtimeAt = ot.At
-		self.overtimeRate = ot.PerSecond
-	end
-	-- no one-shots in PvP (Damage.MaxHit): a single pet hit takes at most Share of the victim's max HP
 	local mh = damageRules().MaxHit
 	if type(mh) == "table" and type(mh.Modes) == "table" and mh.Modes[mode] and finite(mh.Share) and mh.Share > 0 then
 		self.maxHitShare = mh.Share
 	end
-
 	local teams = type(setup.Teams) == "table" and setup.Teams or {}
 	for _, spec in ipairs(teams) do
 		if type(spec) == "table" then
@@ -930,22 +1058,6 @@ function BattleSim.new(setup)
 			if not infos and reason == "DuplicateOwner" then
 				return nil, reason
 			end
-		end
-	end
-	if setup.Trial ~= nil then
-		local level = tonumber(setup.Trial)
-		local npc = bc and bc.TrialTeam and bc.TrialTeam(level)
-		if not npc then
-			return nil, "UnknownTrial"
-		end
-		self.level = level
-		local trial = bc.Trials[level]
-		if trial and finite(trial.TimeLimit) and setup.TimeLimit == nil then
-			self.timeLimit = trial.TimeLimit
-		end
-		local infos, reason = self:AddTeam(npc)
-		if not infos then
-			return nil, reason or "BadTrial"
 		end
 	end
 	if setup.Boss ~= nil then
@@ -957,7 +1069,6 @@ function BattleSim.new(setup)
 			self.timeLimit = boss.boss.TimeLimit
 		end
 	end
-	-- both sides must exist
 	local side1, side2 = 0, 0
 	for _, team in ipairs(self.teams) do
 		if team.side == 1 then
@@ -969,7 +1080,7 @@ function BattleSim.new(setup)
 	if side1 == 0 then
 		return nil, "NoTeam"
 	end
-	if side2 == 0 then
+	if side2 == 0 and mode ~= "Dungeon" then
 		return nil, "NoOpponent"
 	end
 	self:_refreshRaidScale()
@@ -988,7 +1099,6 @@ function BattleSim:IsFinished()
 	return self.result ~= nil
 end
 
--- nil while the battle runs; afterwards the result table (the same table every call)
 function BattleSim:Result()
 	return self.result
 end
@@ -996,7 +1106,7 @@ end
 function BattleSim:Owners()
 	local out = {}
 	for _, team in ipairs(self.teams) do
-		if not team.npc and not team.left then
+		if team.player and not team.left then
 			out[#out + 1] = team.owner
 		end
 	end
@@ -1027,7 +1137,6 @@ function BattleSim:Describe()
 		Seed = self.seed,
 		Zone = { X = self.zone.X, Z = self.zone.Z },
 		TimeLimit = self.timeLimit,
-		Level = self.level,
 		BossId = self.bossId,
 		Round = self.round,
 		Sides = sides,
@@ -1035,22 +1144,64 @@ function BattleSim:Describe()
 	}
 end
 
+-- the fighter's current legal speeds (walk, run) with Haste / Slow applied
+local function legalSpeeds(self, team)
+	local f = team.fighter
+	if not f then
+		return 0, 0
+	end
+	local mult = 1
+	if self.t < f.speedBuffUntil then
+		mult = mult * f.speedBuffMult
+	end
+	if self.t < f.slowUntil then
+		mult = mult * num(damageRules().Slow, 0.6)
+	end
+	return num(f.walk, 12) * mult, num(f.run, 15.6) * mult
+end
+
+function BattleSim:SpeedOf(owner)
+	local team = self.teamByOwner[owner]
+	if not team or not team.fighter then
+		return nil
+	end
+	local walk, run = legalSpeeds(self, team)
+	return { Walk = walk, Run = run }
+end
+
 function BattleSim:TeamOf(owner)
 	local team = self.teamByOwner[owner]
 	if not team then
 		return nil
 	end
+	local t = self.t
 	local units = {}
+	local bench = {}
+	local buffs = {}
 	for i, u in ipairs(team.units) do
-		units[i] = { id = u.id, slot = u.slot, hp = u.hp, maxHp = u.maxHp, meter = u.meter, state = u.state, alive = u.alive }
+		units[i] = { id = u.id, slot = u.slot, hp = u.hp, maxHp = u.maxHp, meter = u.meter, state = u.state, alive = u.alive, bench = u.benched or nil }
+		if team.player and u ~= team.fighter then
+			bench[#bench + 1] = u.id
+			buffs[u.slot] = max(0, u.buffReadyAt - t)
+		end
 	end
+	local walk, run = legalSpeeds(self, team)
 	return {
 		Owner = team.owner,
 		Side = team.side,
-		Order = team.order,
-		Focus = team.focus and team.focus.id or nil,
-		Anchor = { x = team.anchorX, z = team.anchorZ },
+		Fighter = team.fighter and team.fighter.id or nil,
+		Bench = bench,
+		Lives = teamLives(team),
+		Speed = { Walk = walk, Run = run },
+		Cooldowns = {
+			Element = max(0, team.elementReadyAt - t),
+			Dash = max(0, team.dashReadyAt - t),
+			Swap = max(0, team.swapReadyAt - t),
+			Buff = buffs,
+		},
+		Lock = team.lock and team.lock.id or nil,
 		Damage = team.damage,
+		Kills = team.kills,
 		Left = team.left,
 		Forfeited = team.forfeited,
 		Units = units,
@@ -1062,12 +1213,6 @@ function BattleSim:BossStatus()
 	if not b then
 		return nil
 	end
-	local players = 0
-	for _, team in ipairs(self.teams) do
-		if team.side == 1 and not team.npc and not team.left then
-			players = players + 1
-		end
-	end
 	return {
 		BossId = self.bossId,
 		Name = b.name,
@@ -1075,8 +1220,35 @@ function BattleSim:BossStatus()
 		MaxHp = floor(b.maxHp + 0.5),
 		Enraged = b.enraged,
 		EndsIn = max(0, self.timeLimit - self.t),
-		Players = players,
+		Players = self:_playerTeams(),
 	}
+end
+
+-- the side-2 boss's HP share (the raid boss, else a side-2 unit in the mini-boss form), nil without one
+function BattleSim:BossHp()
+	local b = self.boss
+	if not b then
+		for _, u in ipairs(self.units) do
+			if u.side == 2 and u.kind == "MiniBoss" and not u.gone then
+				b = u
+				break
+			end
+		end
+	end
+	if not b or b.maxHp <= 0 then
+		return nil
+	end
+	return max(0, min(1, b.hp / b.maxHp))
+end
+
+function BattleSim:LivingEnemies()
+	local n = 0
+	for _, u in ipairs(self.units) do
+		if u.side == 2 and onFloor(u) then
+			n = n + 1
+		end
+	end
+	return n
 end
 
 function BattleSim:SetAnchor(owner, x, z)
@@ -1093,6 +1265,17 @@ end
 ----------------------------------------------------------------------
 -- Snapshot
 ----------------------------------------------------------------------
+local function unitLives(u)
+	if u.team and u.team.player and u == u.team.fighter then
+		return min(3, teamLives(u.team))
+	end
+	return 0
+end
+
+local function isWinding(self, u)
+	return u.windAt ~= nil and self.t < u.windAt
+end
+
 function BattleSim:Snapshot()
 	local units = {}
 	local list = self.units
@@ -1106,7 +1289,7 @@ function BattleSim:Snapshot()
 					hp = 1
 				end
 			end
-			local s = { x = r1(u.x), z = r1(u.z), hp = hp, state = u.state, meter = floor(u.meter + 0.5) }
+			local s = { x = r1(u.x), z = r1(u.z), hp = hp, state = u.state, meter = floor(u.meter + 0.5), lives = unitLives(u) }
 			local tgt = u.target
 			if tgt and tgt.alive and not tgt.gone then
 				s.target = tgt.id
@@ -1114,13 +1297,15 @@ function BattleSim:Snapshot()
 			if u.shield > 0 then
 				s.shield = floor(u.shield + 0.5)
 			end
+			if isWinding(self, u) then
+				s.windup = true
+			end
 			units[u.id] = s
 		end
 	end
 	return { BattleId = self.id, T = r1(self.t), Units = units }
 end
 
--- the wire form (see the header): the units whose picture changed since `last`, as flat numbers
 function BattleSim:SnapshotDelta(last)
 	if type(last) ~= "table" then
 		last = {}
@@ -1143,6 +1328,8 @@ function BattleSim:SnapshotDelta(last)
 			local shield = u.shield > 0 and floor(u.shield + 0.5) or 0
 			local tgt = u.target
 			local target = (tgt and tgt.alive and not tgt.gone) and tgt.id or 0
+			local lives = unitLives(u)
+			local windup = isWinding(self, u) and 1 or 0
 			local l = last[u.id]
 			local mask = 0
 			if not l then
@@ -1163,12 +1350,13 @@ function BattleSim:SnapshotDelta(last)
 					mask = mask + MASK_TARGET
 				end
 			end
-			if mask > 0 or l.x ~= x or l.z ~= z or l.state ~= u.state then
-				l.x, l.z, l.hp, l.state, l.meter, l.shield = x, z, hp, u.state, meter, shield
+			if mask > 0 or l.x ~= x or l.z ~= z or l.state ~= u.state or (l.lives or 0) ~= lives or ((l.windup and 1 or 0) ~= windup) then
+				l.x, l.z, l.hp, l.state, l.meter, l.shield, l.lives = x, z, hp, u.state, meter, shield, lives
+				l.windup = (windup == 1) or nil
 				l.target = (target ~= 0) and target or nil
 				local xi = floor((max(-POS_OFFSET, min(POS_OFFSET, x)) + POS_OFFSET) * POS_STEPS + 0.5)
 				local zi = floor((max(-POS_OFFSET, min(POS_OFFSET, z)) + POS_OFFSET) * POS_STEPS + 0.5)
-				U[n + 1] = u.id * 128 + mask * 8 + u.state
+				U[n + 1] = u.id * CODE_ID + lives * CODE_LIVES + windup * CODE_WINDUP + mask * 8 + u.state
 				U[n + 2] = xi * POS_BASE + zi
 				n = n + 2
 				if mask % (MASK_HP * 2) >= MASK_HP then
@@ -1193,7 +1381,6 @@ function BattleSim:SnapshotDelta(last)
 	return { BattleId = self.id, T = r1(self.t), U = U }
 end
 
--- the client side of SnapshotDelta: the full picture from the payload and the previous picture (see the header)
 function BattleSim.DecodeSnapshot(payload, previous)
 	local out = {}
 	if type(previous) == "table" then
@@ -1209,12 +1396,14 @@ function BattleSim.DecodeSnapshot(payload, previous)
 	local n = #U
 	while i + 1 <= n do
 		local code, pos = U[i], U[i + 1]
-		if not finite(code) or not finite(pos) or code ~= floor(code) or code < 128 or pos ~= floor(pos) or pos < 0 then
-			break -- junk: keep what decoded so far
+		if not finite(code) or not finite(pos) or code ~= floor(code) or code < CODE_ID or pos ~= floor(pos) or pos < 0 then
+			break
 		end
 		local state = code % 8
 		local mask = floor(code / 8) % 16
-		local id = floor(code / 128)
+		local windup = floor(code / CODE_WINDUP) % 2
+		local lives = floor(code / CODE_LIVES) % 4
+		local id = floor(code / CODE_ID)
 		local xi = floor(pos / POS_BASE)
 		local zi = pos % POS_BASE
 		local prev = out[id]
@@ -1222,6 +1411,8 @@ function BattleSim.DecodeSnapshot(payload, previous)
 			x = xi / POS_STEPS - POS_OFFSET,
 			z = zi / POS_STEPS - POS_OFFSET,
 			state = state,
+			lives = lives,
+			windup = (windup == 1) or nil,
 			hp = prev and prev.hp or nil,
 			meter = prev and prev.meter or 0,
 			shield = prev and prev.shield or 0,
@@ -1246,7 +1437,7 @@ function BattleSim.DecodeSnapshot(payload, previous)
 			i = i + 1
 		end
 		if i > n + 1 then
-			break -- a record cut short
+			break
 		end
 		out[id] = rec
 	end
@@ -1257,7 +1448,7 @@ end
 -- Damage
 ----------------------------------------------------------------------
 local function elemMult(self, attacker, victim)
-	local key = attacker.id * MAX_UNITS + victim.id
+	local key = attacker.id * 256 + victim.id
 	local m = self.elemCache[key]
 	if m == nil then
 		m = 1
@@ -1273,57 +1464,95 @@ local function elemMult(self, attacker, victim)
 	return m
 end
 
+local swapIn -- forward (the auto-swap on a fighter's KO)
+
 local function knockOut(self, u, by, events, forfeit)
 	u.alive = false
 	u.hp = 0
 	u.state = S_DOWN
 	u.target = nil
 	u.shield = 0
+	u.windAt = nil
+	u.windTarget = nil
+	u.burnLeft = 0
 	if damageRules().KoMeterLoss then
 		u.meter = 0
+	end
+	if by and by.alive then
+		by.kills = by.kills + 1
+		by.team.kills = by.team.kills + 1
 	end
 	local ev = { type = EV.KO, unit = u.id, by = by and by.id or nil }
 	if forfeit then
 		ev.forfeit = true
 	end
 	events[#events + 1] = ev
+	local team = u.team
+	-- a downed fighter is replaced by the next alive helper at once (3 lives)
+	if team.player and u == team.fighter and not forfeit and fighterRules().DownAutoSwap ~= false then
+		for _, v in ipairs(team.units) do
+			if v.alive and not v.gone and v.benched then
+				swapIn(self, team, v, events, true)
+				break
+			end
+		end
+	end
+	-- the last enemy of a spawned wave fell
+	if team.wave and not team.left then
+		local left = 0
+		for _, v in ipairs(team.units) do
+			if v.alive and not v.gone then
+				left = left + 1
+			end
+		end
+		if left == 0 then
+			events[#events + 1] = { type = EV.EnemiesDown, wave = team.wave, owner = team.owner }
+		end
+	end
 end
 
--- Applies `amount` of damage from `attacker` (may be nil for zones / telegraphs with a source unit in `by`) to `victim`.
--- Returns the damage dealt (after retreat reduction and shields). `extra` fields are copied into the Hit event.
+-- the attacker's damage multiplier from its buffs / statuses (Rally / Blaze, Weaken)
+local function attackMult(self, attacker)
+	local m = 1
+	if attacker.dmgBuffUntil and self.t < attacker.dmgBuffUntil then
+		m = m * attacker.dmgBuffMult
+	end
+	if attacker.weakenUntil and self.t < attacker.weakenUntil then
+		m = m * num(damageRules().Weaken, 0.85)
+	end
+	return m
+end
+
+-- Applies `amount` of damage from `attacker` (may be nil for zones) to `victim`. Returns the damage dealt (after
+-- shields). `extra` fields are copied into the Hit event; extra == nil marks a plain attack (crits, meter, chill, leech).
 local function applyDamage(self, attacker, victim, amount, events, extra, noVariance)
 	if not victim.alive or victim.gone or amount <= 0 then
 		return 0
 	end
 	local D = damageRules()
+	local F = fighterRules()
 	local dmg = amount
-	if self.overtimeMult then
-		dmg = dmg * self.overtimeMult
-	end
 	local mult = 1
 	if attacker then
 		mult = elemMult(self, attacker, victim)
-		dmg = dmg * mult * (attacker.powerMult or 1)
+		dmg = dmg * mult * (attacker.powerMult or 1) * attackMult(self, attacker)
 	end
 	local crit = false
 	if not noVariance then
 		local v = D.Variance
 		dmg = dmg * (1 - v + 2 * v * rand(self))
-		-- plain pet attacks (not specials, bosses or zones) land critical hits now and then: a visible swing
 		local critRules = D.Crit
 		if attacker and attacker.kind ~= "Boss" and extra == nil and type(critRules) == "table" and rand(self) < num(critRules.Chance, 0) then
 			dmg = dmg * num(critRules.Mult, 1.5)
 			crit = true
 		end
 	end
-	local retreating = victim.team.order == ORDER_RETREAT and victim.kind ~= "Boss"
-	if retreating then
-		dmg = dmg * D.RetreatDamageTaken
-	end
-	-- Phase 4 training: Defense blocks a share of every hit (after the RETREAT halving, before MinHit / shields)
 	local defense = victim.defense
 	if defense and defense > 0 then
 		dmg = dmg * (1 - defense)
+	end
+	if victim.takenUntil and self.t < victim.takenUntil then
+		dmg = dmg * victim.takenMult
 	end
 	local cap = self.maxHitShare
 	if cap and attacker and attacker.kind ~= "Boss" and dmg > victim.maxHp * cap then
@@ -1339,18 +1568,47 @@ local function applyDamage(self, attacker, victim, amount, events, extra, noVari
 		dmg = dmg - absorbed
 	end
 	victim.hp = victim.hp - dmg
+	local ev = { type = EV.Hit, from = attacker and attacker.id or nil, to = victim.id, dmg = floor(dmg + 0.5) }
 	if attacker then
 		attacker.damage = attacker.damage + dmg
 		attacker.team.damage = attacker.team.damage + dmg
-		-- only plain attacks build the meter (a special's own hits, zones and telegraphs never refund it)
+		local isFighter = attacker.team.player and attacker == attacker.team.fighter
 		if attacker.kind ~= "Boss" and attacker.alive and extra == nil then
-			attacker.meter = min(D.MeterMax, attacker.meter + D.MeterOnHit * (attacker.meterRate or 1))
+			local gain = isFighter and num(F.MeterOnHit, 4) or num(D.MeterOnHit, 4)
+			local top = isFighter and num(F.SpecialMeterMax, 100) or num(D.MeterMax, 100)
+			attacker.meter = min(top, attacker.meter + gain * (attacker.meterRate or 1))
+			-- Chill: the fighter's plain hits slow its enemies
+			if attacker.chillUntil and self.t < attacker.chillUntil and victim.kind ~= "Boss" then
+				victim.slowUntil = max(victim.slowUntil or 0, self.t + 2)
+				ev.slow = true
+			end
 		end
+		-- Leech / Thorn Lash lifesteal
+		local leech = 0
+		if attacker.leechUntil and self.t < attacker.leechUntil then
+			leech = attacker.leechValue
+		end
+		if extra and finite(extra.leech) then
+			leech = leech + extra.leech
+		end
+		if leech > 0 and attacker.alive and attacker.hp < attacker.maxHp then
+			local heal = min(dmg * leech, attacker.maxHp - attacker.hp)
+			attacker.hp = attacker.hp + heal
+			ev.leech = floor(heal + 0.5)
+		end
+		if attacker.dmgBuffUntil and self.t < attacker.dmgBuffUntil then
+			ev.buffDmg = true
+		end
+		-- threat: an NPC chases who hit it last
+		victim.threat = attacker
+		victim.threatAt = self.t
 	end
 	if victim.kind ~= "Boss" then
-		victim.meter = min(D.MeterMax, victim.meter + D.MeterOnHurt * (victim.meterRate or 1))
+		local isFighter = victim.team.player and victim == victim.team.fighter
+		local gain = isFighter and num(F.MeterOnHurt, 2) or num(D.MeterOnHurt, 2)
+		local top = isFighter and num(F.SpecialMeterMax, 100) or num(D.MeterMax, 100)
+		victim.meter = min(top, victim.meter + gain * (victim.meterRate or 1))
 	end
-	local ev = { type = EV.Hit, from = attacker and attacker.id or nil, to = victim.id, dmg = floor(dmg + 0.5) }
 	if mult ~= 1 then
 		ev.elem = mult
 	end
@@ -1360,12 +1618,11 @@ local function applyDamage(self, attacker, victim, amount, events, extra, noVari
 	if absorbed > 0 then
 		ev.absorbed = floor(absorbed + 0.5)
 	end
-	if retreating then
-		ev.retreat = true
-	end
 	if extra then
 		for k, v in pairs(extra) do
-			ev[k] = v
+			if k ~= "leech" then
+				ev[k] = v
+			end
 		end
 	end
 	events[#events + 1] = ev
@@ -1375,18 +1632,61 @@ local function applyDamage(self, attacker, victim, amount, events, extra, noVari
 	return dmg + absorbed
 end
 
+-- a hit that lands on a unit inside its dash i-frames: a miss (DODGED)
+local function missEvent(self, attacker, victim, events, extra)
+	local ev = { type = EV.Hit, from = attacker and attacker.id or nil, to = victim.id, dmg = 0, miss = true }
+	if extra then
+		for k, v in pairs(extra) do
+			ev[k] = v
+		end
+	end
+	events[#events + 1] = ev
+end
+
+local function inIFrames(self, u)
+	return self.t < (u.iframesUntil or 0)
+end
+
+----------------------------------------------------------------------
+-- Statuses
+----------------------------------------------------------------------
+local function applyStun(self, e, seconds)
+	if e.kind == "Boss" or seconds <= 0 then
+		return false
+	end
+	local untilT = self.t + seconds
+	if e.stunUntil < untilT then
+		e.stunUntil = untilT
+	end
+	e.state = S_STUNNED
+	e.windAt = nil
+	e.windTarget = nil
+	return true
+end
+
+local function applyBurn(self, from, e, total, seconds)
+	if e.kind == "Boss" or total <= 0 then
+		return
+	end
+	local ticks = max(1, floor(num(damageRules().BurnTicks, 3)))
+	e.burnLeft = ticks
+	e.burnAmount = total / ticks
+	e.burnNextAt = self.t + seconds / ticks
+	e.burnStep = seconds / ticks
+	e.burnFrom = from
+end
+
 ----------------------------------------------------------------------
 -- Targeting
 ----------------------------------------------------------------------
--- nearest living enemy, judged on start-of-step positions (px / pz) so every unit picks from the same picture of
--- the floor whatever its place in the update order
+-- nearest living enemy on the floor, judged on start-of-step positions (px / pz)
 local function nearestEnemy(self, u, maxDist)
 	local best, bestD2 = nil, (maxDist and maxDist * maxDist) or huge
 	local list = self.units
 	local side = u.side
 	for i = 1, #list do
 		local e = list[i]
-		if e.side ~= side and e.alive and not e.gone then
+		if e.side ~= side and e.alive and not e.gone and not e.benched then
 			local dx, dz = e.px - u.px, e.pz - u.pz
 			local d2 = dx * dx + dz * dz
 			if d2 < bestD2 then
@@ -1397,22 +1697,20 @@ local function nearestEnemy(self, u, maxDist)
 	return best, bestD2
 end
 
--- A pet keeps its current target while that one is still close to the nearest enemy (sticky), otherwise it picks
--- at random among the enemies about as near as the nearest: who gets focused and who is spared varies from fight
--- to fight, so a small edge in power is not a certain win (the owner's focus command overrides all of this).
+-- the NPC target: the threat (who hit it within ThreatSeconds), else sticky nearest / a random near one
 local function pickTarget(self, u)
-	local focus = u.team.focus
-	if focus and focus.alive and not focus.gone and focus.side ~= u.side then
-		return focus
+	local D = damageRules()
+	local threat = u.threat
+	if threat and threat.alive and not threat.gone and not threat.benched and threat.side ~= u.side and self.t - u.threatAt <= num(D.ThreatSeconds, 3) then
+		return threat
 	end
 	local nearest, dmin2 = nearestEnemy(self, u)
 	if not nearest then
 		return nil
 	end
-	local D = damageRules()
 	local sticky = num(D.TargetSticky, 1.6)
 	local cur = u.target
-	if cur and cur.alive and not cur.gone and cur.side ~= u.side then
+	if cur and cur.alive and not cur.gone and not cur.benched and cur.side ~= u.side then
 		local dx, dz = cur.px - u.px, cur.pz - u.pz
 		if dx * dx + dz * dz <= dmin2 * sticky * sticky then
 			return cur
@@ -1425,7 +1723,7 @@ local function pickTarget(self, u)
 	local side = u.side
 	for i = 1, #list do
 		local e = list[i]
-		if e.side ~= side and e.alive and not e.gone then
+		if e.side ~= side and e.alive and not e.gone and not e.benched then
 			local dx, dz = e.px - u.px, e.pz - u.pz
 			if dx * dx + dz * dz <= limit then
 				count = count + 1
@@ -1444,11 +1742,72 @@ local function livingEnemies(self, side)
 	local list = self.units
 	for i = 1, #list do
 		local e = list[i]
-		if e.side ~= side and e.alive and not e.gone then
+		if e.side ~= side and e.alive and not e.gone and not e.benched then
 			out[#out + 1] = e
 		end
 	end
 	return out
+end
+
+-- a player team's current lock, if still a living enemy on the floor
+local function lockOf(team)
+	local l = team.lock
+	if l and l.alive and not l.gone and not l.benched and l.side ~= team.side then
+		return l
+	end
+	team.lock = nil
+	return nil
+end
+
+----------------------------------------------------------------------
+-- Buffs (helper buttons, Rally / Haste specials)
+----------------------------------------------------------------------
+-- applies a buff table to `target`; value x `mult` (Ability training of the caster); returns the until time
+local function applyBuff(self, target, buff, mult, events, ev)
+	local t = self.t
+	local value = num(buff.Value, 0) * num(mult, 1)
+	local seconds = num(buff.Seconds, 0)
+	local untilT = t + seconds
+	local effect = buff.Effect
+	if effect == "Heal" then
+		local amount = min(target.maxHp * value, max(0, target.maxHp - target.hp))
+		target.hp = target.hp + amount
+		ev.amount = floor(amount + 0.5)
+	elseif effect == "Shield" then
+		local amount = target.maxHp * value
+		if target.shield < amount then
+			target.shield = amount
+		end
+		target.shieldUntil = max(target.shieldUntil, untilT)
+		ev.amount = floor(amount + 0.5)
+	elseif effect == "Damage" then
+		target.dmgBuffMult = 1 + value
+		target.dmgBuffUntil = untilT
+	elseif effect == "Speed" then
+		target.speedBuffMult = 1 + value
+		target.speedBuffUntil = untilT
+	elseif effect == "Regen" then
+		target.regenRate = value
+		target.regenUntil = untilT
+	elseif effect == "Chill" then
+		target.chillValue = value
+		target.chillUntil = untilT
+	elseif effect == "Taken" then
+		target.takenMult = max(0.1, 1 - value)
+		target.takenUntil = untilT
+	elseif effect == "AttackSpeed" then
+		target.atkSpeedMult = 1 + value
+		target.atkSpeedUntil = untilT
+	elseif effect == "Lifesteal" then
+		target.leechValue = value
+		target.leechUntil = untilT
+	end
+	if finite(buff.Meter) and buff.Meter > 0 then
+		local top = num(fighterRules().SpecialMeterMax, 100)
+		target.meter = min(top, target.meter + buff.Meter)
+	end
+	ev["until"] = r1(untilT)
+	return untilT
 end
 
 ----------------------------------------------------------------------
@@ -1470,16 +1829,20 @@ local function castSpecial(self, u, events)
 		return false, "NoSpecial"
 	end
 	local D = damageRules()
+	local team = u.team
+	local isFighter = team.player and u == team.fighter
 	local base = u.specialPower * D.DamageScale * num(S.Scale, 1) * num(D.SpecialScale, 1)
-	local offensive = kind ~= "Heal" and kind ~= "Shield"
+	local offensive = kind ~= "Heal" and kind ~= "Shield" and kind ~= "Rally" and kind ~= "Haste"
 	local target = nil
 	if offensive then
-		target = pickTarget(self, u)
+		target = isFighter and lockOf(team) or nil
+		if not target then
+			target = pickTarget(self, u)
+		end
 		if not target then
 			return false, "NoTarget"
 		end
 		if kind == "Pounce" and dist(u.x, u.z, target.x, target.z) > num(S.Range, 30) + target.radius then
-			-- too far for the dash: pounce the nearest instead
 			target = nearestEnemy(self, u, num(S.Range, 30) + 3)
 			if not target then
 				return false, "TooFar"
@@ -1489,6 +1852,8 @@ local function castSpecial(self, u, events)
 	u.meter = 0
 	u.castUntil = self.t + D.CastSeconds
 	u.state = S_CASTING
+	u.windAt = nil
+	u.windTarget = nil
 	if u.nextAttack < u.castUntil then
 		u.nextAttack = u.castUntil
 	end
@@ -1498,41 +1863,51 @@ local function castSpecial(self, u, events)
 		ev.tx, ev.tz = r1(target.x), r1(target.z)
 		ev.target = target.id
 	end
-	local position = #events + 1 -- the Special event goes before the hits it causes
+	local position = #events + 1
 	local extra = { special = kind }
 	if kind == "Blast" then
 		local r = num(S.Radius, 7)
-		local hits = {}
+		ev.targets = {}
 		for _, e in ipairs(livingEnemies(self, u.side)) do
 			if inCircle(e, target.x, target.z, r) then
-				hits[#hits + 1] = e
+				ev.targets[#ev.targets + 1] = e.id
+				applyDamage(self, u, e, base, events, extra)
 			end
-		end
-		ev.targets = {}
-		for _, e in ipairs(hits) do
-			ev.targets[#ev.targets + 1] = e.id
-			applyDamage(self, u, e, base, events, extra)
 		end
 	elseif kind == "Heal" then
 		ev.heals = {}
-		for _, a in ipairs(u.team.units) do
-			if a.alive and not a.gone and a.hp < a.maxHp then
-				local amount = min(base, a.maxHp - a.hp)
-				a.hp = a.hp + amount
-				ev.heals[#ev.heals + 1] = { a.id, floor(amount + 0.5) }
+		local amount = base
+		if isFighter then
+			amount = base * num(S.Solo, 3) -- the whole-team heal lands on the one fighter
+		end
+		for _, a in ipairs(team.units) do
+			if a.alive and not a.gone and a.hp < a.maxHp and (not isFighter or a == u) and (isFighter or not a.benched) then
+				local got = min(amount, a.maxHp - a.hp)
+				a.hp = a.hp + got
+				ev.heals[#ev.heals + 1] = { a.id, floor(got + 0.5) }
 			end
 		end
 	elseif kind == "Shield" then
 		ev.shields = {}
-		for _, a in ipairs(u.team.units) do
-			if a.alive and not a.gone then
-				if a.shield < base then
-					a.shield = base
+		local amount = base
+		if isFighter then
+			amount = base * num(S.Solo, 3)
+		end
+		for _, a in ipairs(team.units) do
+			if a.alive and not a.gone and (not isFighter or a == u) and (isFighter or not a.benched) then
+				if a.shield < amount then
+					a.shield = amount
 				end
-				a.shieldUntil = self.t + num(S.Seconds, 8)
+				a.shieldUntil = self.t + num(S.Seconds, 6)
 				ev.shields[#ev.shields + 1] = a.id
 			end
 		end
+	elseif kind == "Rally" or kind == "Haste" then
+		local bc = catalog()
+		local buff = bc and type(bc.Buffs) == "table" and bc.Buffs[kind] or { Effect = (kind == "Rally") and "Damage" or "Speed", Value = num(S.Value, 0.35), Seconds = num(S.Seconds, 8) }
+		local b = { Effect = buff.Effect, Value = num(S.Value, buff.Value), Seconds = num(S.Seconds, buff.Seconds) }
+		applyBuff(self, u, b, u.specialBoost, events, ev)
+		ev.targets = { u.id }
 	elseif kind == "Storm" then
 		local seconds = num(S.Seconds, 4)
 		local zone = {
@@ -1549,17 +1924,20 @@ local function castSpecial(self, u, events)
 		self.zones[#self.zones + 1] = zone
 		events[#events + 1] = { type = EV.Zone, unit = u.id, kind = kind, x = r1(zone.x), z = r1(zone.z), r = zone.r, seconds = seconds, side = u.side }
 	elseif kind == "Pounce" then
-		-- dash next to the target and strike
 		local dx, dz = target.x - u.x, target.z - u.z
 		local d = sqrt(dx * dx + dz * dz)
 		local stop = target.radius + u.radius + 0.5
-		if d > stop then
+		if d > stop and not isFighter then
 			u.x = target.x - dx / d * stop
 			u.z = target.z - dz / d * stop
 			clampToFloor(self, u)
 		end
 		ev.targets = { target.id }
-		applyDamage(self, u, target, base, events, extra)
+		if inIFrames(self, target) then
+			missEvent(self, u, target, events, extra)
+		else
+			applyDamage(self, u, target, base, events, extra)
+		end
 	elseif kind == "Freeze" then
 		local r = num(S.Radius, 7)
 		local stun = num(S.Stun, 2) * (u.specialFactor or 1)
@@ -1567,15 +1945,14 @@ local function castSpecial(self, u, events)
 		for _, e in ipairs(livingEnemies(self, u.side)) do
 			if inCircle(e, target.x, target.z, r) then
 				ev.targets[#ev.targets + 1] = e.id
-				if e.kind ~= "Boss" then
-					local untilT = self.t + stun
-					if e.stunUntil < untilT then
-						e.stunUntil = untilT
+				if inIFrames(self, e) then
+					missEvent(self, u, e, events, extra)
+				else
+					if applyStun(self, e, stun) then
+						ev.stunned[#ev.stunned + 1] = e.id
 					end
-					e.state = S_STUNNED
-					ev.stunned[#ev.stunned + 1] = e.id
+					applyDamage(self, u, e, base, events, extra)
 				end
-				applyDamage(self, u, e, base, events, extra)
 			end
 		end
 	elseif kind == "Beam" then
@@ -1589,11 +1966,14 @@ local function castSpecial(self, u, events)
 		for _, e in ipairs(livingEnemies(self, u.side)) do
 			if inLine(e, u.x, u.z, angle, num(S.Length, 26), num(S.Width, 4)) then
 				ev.targets[#ev.targets + 1] = e.id
-				applyDamage(self, u, e, base, events, extra)
+				if inIFrames(self, e) then
+					missEvent(self, u, e, events, extra)
+				else
+					applyDamage(self, u, e, base, events, extra)
+				end
 			end
 		end
 	else
-		-- unknown kind: a plain strong hit
 		ev.targets = { target.id }
 		applyDamage(self, u, target, base, events, extra)
 	end
@@ -1606,14 +1986,14 @@ local function autoSpecialWanted(self, u)
 	local kind = u.specialKind
 	if kind == "Heal" then
 		for _, a in ipairs(u.team.units) do
-			if a.alive and a.hp < a.maxHp * 0.8 then
+			if a.alive and not a.benched and a.hp < a.maxHp * 0.8 then
 				return true
 			end
 		end
 		return false
 	elseif kind == "Shield" then
 		for _, a in ipairs(u.team.units) do
-			if a.alive and a.hp < a.maxHp * 0.95 and a.shield <= 0 then
+			if a.alive and not a.benched and a.hp < a.maxHp * 0.95 and a.shield <= 0 then
 				return true
 			end
 		end
@@ -1623,10 +2003,154 @@ local function autoSpecialWanted(self, u)
 end
 
 ----------------------------------------------------------------------
--- Boss patterns
+-- The element attack
 ----------------------------------------------------------------------
--- the boss's damage yardstick for one victim: a blend of its own max HP and the raid's average, scaled by the
--- head count (BossRules.DamageGroup: a lone team faces a gentler boss, a full arena the real thing)
+-- aim: a unit (target) or a point; returns angle, tx, tz
+local function aimOf(self, team, u, arg)
+	local target = nil
+	local tx, tz = nil, nil
+	if type(arg) == "table" then
+		local ax = arg.x or arg.X or arg[1]
+		local az = arg.z or arg.Z or arg[2]
+		if finite(ax) and finite(az) then
+			tx, tz = clampPoint(self, ax, az, 0)
+		end
+	elseif arg ~= nil then
+		local id = tonumber(arg)
+		local unit = id and self.units[id]
+		if unit and onFloor(unit) and unit.side ~= u.side then
+			target = unit
+		end
+	end
+	if not target and not tx then
+		target = lockOf(team)
+	end
+	if not target and not tx then
+		target = nearestEnemy(self, u)
+	end
+	if target then
+		tx, tz = target.x, target.z
+	end
+	if not tx then
+		tx, tz = u.x + team.faceX * 5, u.z + team.faceZ * 5
+	end
+	local dx, dz = tx - u.x, tz - u.z
+	local angle = (dx == 0 and dz == 0) and atan2(team.faceZ, team.faceX) or atan2(dz, dx)
+	return angle, tx, tz, target
+end
+
+local function castElement(self, team, u, arg, events)
+	local bc = catalog()
+	local F = fighterRules()
+	local element = u.elems[1]
+	local a = bc and type(bc.ElementAttacks) == "table" and element and bc.ElementAttacks[element]
+	if not a then
+		return false, "NoElement"
+	end
+	local angle, tx, tz = aimOf(self, team, u, arg)
+	local ev = { type = EV.Element, unit = u.id, element = element, name = a.Name, x = r1(u.x), z = r1(u.z), angle = floor(angle * 1000 + 0.5) / 1000, tx = r1(tx), tz = r1(tz), shape = a.Shape, targets = {} }
+	local hits = {}
+	local enemies = livingEnemies(self, u.side)
+	-- a ranged fighter reaches out to its own range at least (the design's "ranged pets use max(Range, 14)")
+	local reachOut = u.ranged and num(u.range, 0) or 0
+	if a.Shape == "Cone" then
+		local half = num(a.Angle, 60) * pi / 360
+		local length = max(num(a.Length, num(F.ElementRange, 14)), reachOut)
+		for _, e in ipairs(enemies) do
+			if inCone(e, u.x, u.z, angle, half, length) then
+				hits[#hits + 1] = e
+			end
+		end
+	elseif a.Shape == "Line" then
+		for _, e in ipairs(enemies) do
+			if inLine(e, u.x, u.z, angle, max(num(a.Length, 24), reachOut), num(a.Width, 4)) then
+				hits[#hits + 1] = e
+			end
+		end
+	else
+		local r = max(num(a.Radius, 8), reachOut)
+		for _, e in ipairs(enemies) do
+			if inCircle(e, u.x, u.z, r) then
+				hits[#hits + 1] = e
+			end
+		end
+	end
+	team.elementReadyAt = self.t + num(F.ElementCooldown, 7)
+	team.faceX, team.faceZ = cos(angle), sin(angle)
+	u.attackUntil = self.t + ATTACK_POSE
+	events[#events + 1] = ev
+	local dmg = u.hit * num(F.ElementMult, 2.4)
+	local extra = { element = a.Name }
+	if finite(a.Leech) then
+		extra.leech = a.Leech
+	end
+	for _, e in ipairs(hits) do
+		ev.targets[#ev.targets + 1] = e.id
+		if inIFrames(self, e) then
+			missEvent(self, u, e, events, { element = a.Name })
+		else
+			local dealt = applyDamage(self, u, e, dmg, events, extra)
+			if e.alive then
+				if finite(a.Push) and e.kind ~= "Boss" then
+					local dx, dz = e.x - u.x, e.z - u.z
+					local d = sqrt(dx * dx + dz * dz)
+					if d > 0.01 then
+						e.x, e.z = e.x + dx / d * a.Push, e.z + dz / d * a.Push
+						clampToFloor(self, e)
+					end
+				end
+				if type(a.Burn) == "table" then
+					applyBurn(self, u, e, dealt * num(a.Burn.Share, 0.25), num(a.Burn.Seconds, 3))
+				end
+				if type(a.Slow) == "table" and e.kind ~= "Boss" then
+					e.slowUntil = max(e.slowUntil, self.t + num(a.Slow.Seconds, 4))
+				end
+				if type(a.Weaken) == "table" then
+					e.weakenUntil = max(e.weakenUntil, self.t + num(a.Weaken.Seconds, 5))
+				end
+				if finite(a.Stun) then
+					applyStun(self, e, a.Stun)
+				end
+			end
+		end
+	end
+	if finite(a.MeterGain) then
+		u.meter = min(num(F.SpecialMeterMax, 100), u.meter + a.MeterGain)
+	end
+	return true, a.Name
+end
+
+----------------------------------------------------------------------
+-- Swaps
+----------------------------------------------------------------------
+-- `incoming` (a benched, alive unit) takes the floor; the fighter (if alive) goes to the bench
+function swapIn(self, team, incoming, events, auto)
+	local F = fighterRules()
+	local out = team.fighter
+	local x, z = team.anchorX, team.anchorZ
+	if out then
+		x, z = out.x, out.z
+		if out.alive then
+			out.benched = true
+			out.state = S_BENCHED
+		end
+		out.target = nil
+		out.windAt = nil
+	end
+	incoming.benched = false
+	incoming.x, incoming.z, incoming.px, incoming.pz = x, z, x, z
+	incoming.castUntil = self.t + num(F.SwapCastSeconds, 0.6)
+	incoming.state = S_CASTING
+	incoming.nextAttack = max(incoming.nextAttack, incoming.castUntil)
+	incoming.iframesUntil = 0
+	incoming.dashUntil = 0
+	team.fighter = incoming
+	events[#events + 1] = { type = EV.Swap, owner = team.owner, out = out and out.id or nil, ["in"] = incoming.id, auto = auto or nil }
+end
+
+----------------------------------------------------------------------
+-- Boss patterns (Phase 3, kept; the dash i-frames dodge a telegraph)
+----------------------------------------------------------------------
 function bossBasis(self, victim)
 	local rules = (catalog() and catalog().BossRules) or {}
 	local basis = type(rules.DamageBasis) == "table" and rules.DamageBasis or { Own = 0.6, Average = 0.4 }
@@ -1641,27 +2165,6 @@ function bossBasis(self, victim)
 	return (num(basis.Own, 0.6) * victim.maxHp + num(basis.Average, 0.4) * self.avgPetHp) * factor
 end
 
--- the point where the most enemy pets stand (within r of one of them)
-local function clusterPoint(self, boss, r)
-	local enemies = livingEnemies(self, boss.side)
-	local best, bestCount = nil, -1
-	for _, p in ipairs(enemies) do
-		local count = 0
-		for _, q in ipairs(enemies) do
-			local dx, dz = q.x - p.x, q.z - p.z
-			if dx * dx + dz * dz <= r * r then
-				count = count + 1
-			end
-		end
-		if count > bestCount then
-			best, bestCount = p, count
-		end
-	end
-	return best
-end
-
--- the points an attack lands on. Circles: one per CirclesPerTeams player teams (max MaxCircles), each on a different
--- cluster / random pet, so big raids keep everyone busy; lines always aim at one point (Count fans them).
 local function telegraphPoints(self, boss, a)
 	local mode = a.Target or "Cluster"
 	if mode == "Self" then
@@ -1686,7 +2189,6 @@ local function telegraphPoints(self, boss, a)
 	local points = {}
 	local covered = {}
 	for _ = 1, count do
-		-- candidates not yet inside an earlier circle
 		local pool = {}
 		for _, e in ipairs(enemies) do
 			if not covered[e] then
@@ -1752,7 +2254,6 @@ local function startTelegraph(self, boss, entry, events)
 			dz = 1
 		end
 		local baseAngle = atan2(dz, dx)
-		-- the line ends a little past the pet it is aimed at: a team running home leaves it instead of running along it
 		local length = min(num(a.Length, 40), sqrt(dx * dx + dz * dz) + BattleSim.LineOvershoot)
 		for k = 1, count do
 			shapes[#shapes + 1] = { x = boss.x, z = boss.z, angle = baseAngle + (k - (count + 1) / 2) * spread, length = r1(length), width = num(a.Width, 5) }
@@ -1813,15 +2314,16 @@ local function resolveTelegraph(self, tele, events)
 			inside = inCircle(e, tele.x, tele.z, tele.r)
 		end
 		if inside then
-			if finite(a.Freeze) and e.kind ~= "Boss" then
-				local untilT = self.t + a.Freeze
-				if e.stunUntil < untilT then
-					e.stunUntil = untilT
+			if inIFrames(self, e) then
+				missEvent(self, boss, e, events, extra)
+			else
+				if finite(a.Freeze) then
+					if applyStun(self, e, a.Freeze) then
+						extra.freeze = a.Freeze
+					end
 				end
-				e.state = S_STUNNED
-				extra.freeze = a.Freeze
+				applyDamage(self, boss, e, fraction * bossBasis(self, e), events, extra)
 			end
-			applyDamage(self, boss, e, fraction * bossBasis(self, e), events, extra)
 		end
 	end
 	if finite(a.Linger) and tele.shape ~= "Line" then
@@ -1845,12 +2347,7 @@ local function spawnMinions(self, boss, wave, waveIndex, events)
 	local bc = catalog()
 	local def = boss.boss
 	local rules = (bc and bc.BossRules) or {}
-	local players = 0
-	for _, team in ipairs(self.teams) do
-		if team.side == 1 and not team.left then
-			players = players + 1
-		end
-	end
+	local players = self:_playerTeams()
 	local count = ceil(num(wave.PerPlayer, 0.5) * players)
 	count = max(num(rules.WaveMin, 2), min(num(rules.WaveMax, 8), count))
 	local pc = petCatalog()
@@ -1864,62 +2361,29 @@ local function spawnMinions(self, boss, wave, waveIndex, events)
 		if id > MAX_UNITS then
 			break
 		end
-		local us = bc and bc.UnitStats and bc.UnitStats(petDef, self.avgPetLevel, "Normal")
-		if not us then
+		local u = unitFromDef(self, boss.team, petDef, { Level = self.avgPetLevel, Tier = "Normal", NoSpecial = true }, 0, "Pet")
+		if not u then
 			break
 		end
 		local angle = (k - 1) * (2 * pi / count) + self.t * 0.1
 		local r = boss.radius + 3.5
-		local u = {
-			id = id,
-			side = boss.side,
-			team = boss.team,
-			owner = boss.team.owner,
-			slot = 0,
-			kind = "Minion",
-			def = petDef,
-			key = petDef.Id,
-			petId = petDef.Id,
-			name = (def.Minions and def.Minions.Name) or petDef.Name,
-			species = us.Species,
-			elems = us.Elements,
-			maxHp = num(rules.MinionHp, 0.9) * self.avgPetHp,
-			hp = 0,
-			hit = num(rules.MinionDamage, 0.05) * bossBasis(self, { maxHp = self.avgPetHp }),
-			interval = num(rules.MinionInterval, 1.4),
-			moveSpeed = us.MoveSpeed,
-			range = us.Range,
-			ranged = us.Ranged,
-			radius = us.Radius,
-			specialPower = 0,
-			specialKind = nil,
-			special = nil,
-			powerMult = 1,
-			level = self.avgPetLevel,
-			minion = true,
-			tier = "Normal",
-			scale = 1,
-			x = boss.x + cos(angle) * r,
-			z = boss.z + sin(angle) * r,
-			px = 0,
-			pz = 0,
-			state = S_IDLE,
-			target = nil,
-			nextAttack = self.t + 1 + rand(self) * 0.8,
-			retargetAt = 0,
-			meter = 0,
-			shield = 0,
-			shieldUntil = 0,
-			stunUntil = 0,
-			castUntil = 0,
-			alive = true,
-			gone = false,
-			damage = 0,
-		}
+		u.kind = "Minion"
+		u.minion = true
+		u.name = (def.Minions and def.Minions.Name) or petDef.Name
+		u.maxHp = num(rules.MinionHp, 0.9) * self.avgPetHp
 		u.hp = u.maxHp
+		u.hit = num(rules.MinionDamage, 0.05) * bossBasis(self, { maxHp = self.avgPetHp })
+		u.interval = num(rules.MinionInterval, 1.4)
+		u.specialPower = 0
+		u.specialKind = nil
+		u.special = nil
+		u.powerMult = 1
+		u.x = boss.x + cos(angle) * r
+		u.z = boss.z + sin(angle) * r
 		clampToFloor(self, u)
 		u.px, u.pz = u.x, u.z
-		self.units[id] = u
+		u.nextAttack = self.t + 1 + rand(self) * 0.8
+		u.meter = 0
 		boss.team.units[#boss.team.units + 1] = u
 		infos[#infos + 1] = unitInfo(u)
 	end
@@ -1934,7 +2398,6 @@ local function bossStep(self, boss, events)
 	end
 	local def = boss.boss
 	local t = self.t
-	-- enrage
 	if not boss.enraged and finite(def.EnrageAt) and t >= def.EnrageAt then
 		local rules = (catalog() and catalog().BossRules) or {}
 		local en = type(rules.Enrage) == "table" and rules.Enrage or { Damage = 2, Cooldown = 0.7 }
@@ -1943,7 +2406,6 @@ local function bossStep(self, boss, events)
 		boss.cooldownMult = num(en.Cooldown, 0.7)
 		events[#events + 1] = { type = EV.Enrage, unit = boss.id }
 	end
-	-- minion waves at HP thresholds
 	local waves = def.Minions and def.Minions.Waves
 	if type(waves) == "table" then
 		local frac = boss.hp / boss.maxHp
@@ -1954,14 +2416,18 @@ local function bossStep(self, boss, events)
 			end
 		end
 	end
-	-- basic attack on the nearest pet in range
+	-- the basic attack on the nearest fighter in range (a dash dodges it)
 	if t >= boss.nextAttack then
 		local target = nearestEnemy(self, boss, boss.range + boss.radius)
 		if target then
 			local basic = def.Basic or {}
 			boss.target = target
 			boss.state = S_ATTACKING
-			applyDamage(self, boss, target, num(basic.Damage, 0.08) * boss.damageMult * bossBasis(self, target), events, { attack = basic.Name or "Basic" })
+			if inIFrames(self, target) then
+				missEvent(self, boss, target, events, { attack = basic.Name or "Basic" })
+			else
+				applyDamage(self, boss, target, num(basic.Damage, 0.08) * boss.damageMult * bossBasis(self, target), events, { attack = basic.Name or "Basic" })
+			end
 			boss.nextAttack = t + boss.interval * boss.cooldownMult
 		else
 			boss.state = S_IDLE
@@ -1969,7 +2435,6 @@ local function bossStep(self, boss, events)
 			boss.nextAttack = t + 0.5
 		end
 	end
-	-- pattern attacks: one telegraph at a time per boss
 	local pendingForBoss = false
 	for _, tele in ipairs(self.telegraphs) do
 		if tele.boss == boss then
@@ -2008,7 +2473,7 @@ local function tickZones(self, events)
 				local list = self.units
 				for k = 1, #list do
 					local e = list[k]
-					if e.side ~= zone.side and e.alive and not e.gone and inCircle(e, zone.x, zone.z, zone.r) then
+					if e.side ~= zone.side and onFloor(e) and inCircle(e, zone.x, zone.z, zone.r) and not inIFrames(self, e) then
 						applyDamage(self, zone.from, e, amount, events, { zone = true, kind = zone.kind }, true)
 					end
 				end
@@ -2044,177 +2509,80 @@ local function moveToward(u, tx, tz, step, stop)
 	return d - travel
 end
 
--- a unit's place in its team (1..n) and the team size
 local function teamIndex(team, u)
-	local idx = 1
-	for i, v in ipairs(team.units) do
-		if v == u then
-			idx = i
-		end
-	end
-	return idx, #team.units
-end
-
--- which side of a line (x, z, angle) the point (px, pz) is on: 1 / -1 (0 exactly on its axis)
-local function lineSide(px, pz, x, z, angle)
-	local cross = (px - x) * sin(angle) - (pz - z) * cos(angle)
-	if cross > 0 then
-		return 1
-	elseif cross < 0 then
-		return -1
-	end
-	return 0
-end
-
--- The retreat spot of a pet: beside its owner's anchor (spread along the perpendicular), nudged out of any active
--- telegraph that covers it (sideways out of a Line, radially out of a Circle), kept on the floor.
-local function retreatSpot(self, team, u)
-	local idx, n = teamIndex(team, u)
-	local cx, cz = -team.anchorX, -team.anchorZ
-	local len = sqrt(cx * cx + cz * cz)
-	if len < 0.01 then
-		cx, cz, len = 0, 1, 1
-	end
-	local px, pz = -cz / len, cx / len
-	local spread = (idx - (n + 1) / 2) * 2.4
-	local x, z = team.anchorX + px * spread, team.anchorZ + pz * spread
-	local margin = num(damageRules().TelegraphMargin, 1.5)
-	for _ = 1, 2 do -- stepping out of one shape may land in another
-		local tele = telegraphAt(self, u.side, x, z, u.radius)
-		if not tele then
-			break
-		end
-		if tele.shape == "Line" then
-			-- out to the side the pet itself is on (retreatStep sends the pet toward this spot: one direction for both)
-			local side = lineSide(u.x, u.z, tele.x, tele.z, tele.angle)
-			if side == 0 then
-				side = lineSide(x, z, tele.x, tele.z, tele.angle)
-			end
-			if side == 0 then
-				side = (idx % 2 == 0) and 1 or -1
-			end
-			local dirX, dirZ = cos(tele.angle), sin(tele.angle)
-			local perp = abs((x - tele.x) * dirZ - (z - tele.z) * dirX)
-			local need = tele.width / 2 + u.radius + margin - perp
-			x, z = x + side * need * dirZ, z - side * need * dirX
-		else
-			local dx, dz = x - tele.x, z - tele.z
-			local d = sqrt(dx * dx + dz * dz)
-			if d < 0.01 then
-				dx, dz, d = -cx, -cz, len -- away from the floor centre
-			end
-			local need = tele.r + u.radius + margin
-			x, z = tele.x + dx / d * need, tele.z + dz / d * need
-		end
-	end
-	local hx, hz = max(0.5, self.zone.HalfX - u.radius), max(0.5, self.zone.HalfZ - u.radius)
-	return max(-hx, min(hx, x)), max(-hz, min(hz, z))
-end
-
--- one retreating pet: step sideways out of a Line telegraph it stands in, else run to its spot; regenerate
-local function retreatStep(self, u, dt)
-	local D = damageRules()
-	local team = u.team
-	if u.hp < u.maxHp then
-		u.hp = min(u.maxHp, u.hp + u.maxHp * D.RetreatRegenPerSecond * dt)
-	end
-	local sx, sz = retreatSpot(self, team, u)
-	local tele = telegraphAt(self, u.side, u.x, u.z, u.radius)
-	if tele and tele.shape == "Line" then
-		-- the shortest way out: past the line's end (lines stop just behind the pet they aim at; the same way out of
-		-- every line of a fan) when that stays on the floor, else sideways
-		local margin = num(D.TelegraphMargin, 1.5)
-		local dirX, dirZ = cos(tele.angle), sin(tele.angle)
-		local dx, dz = u.x - tele.x, u.z - tele.z
-		local along = dx * dirX + dz * dirZ
-		local perp = abs(dx * dirZ - dz * dirX)
-		local outEnd = tele.length + u.radius + margin - along
-		local outSide = tele.width / 2 + u.radius + margin - perp
-		local step = u.moveSpeed * dt
-		local ex, ez = tele.x + dirX * (along + outEnd), tele.z + dirZ * (along + outEnd)
-		if outEnd < outSide and abs(ex) <= self.zone.HalfX - u.radius and abs(ez) <= self.zone.HalfZ - u.radius then
-			u.x, u.z = u.x + dirX * step, u.z + dirZ * step
-		else
-			-- toward the side the spot lies on (the spot was moved out of this line on the pet's own side)
-			local side = lineSide(sx, sz, tele.x, tele.z, tele.angle)
-			if side == 0 then
-				side = lineSide(u.x, u.z, tele.x, tele.z, tele.angle)
-			end
-			if side == 0 then
-				side = (u.id % 2 == 0) and 1 or -1
-			end
-			u.x, u.z = u.x + side * dirZ * step, u.z - side * dirX * step
-		end
-		u.atHome = false
-	else
-		local left = moveToward(u, sx, sz, u.moveSpeed * dt, 0.3)
-		u.atHome = left <= HOME_RADIUS
-	end
-	u.state = S_RETREATING
-	u.target = nil
-end
-
--- the ATTACK order (a command, or the end of a retreat): every living pet re-picks its target
-local function orderAttack(self, team, focus)
-	team.focus = focus
-	team.order = ORDER_ATTACK
-	for _, u in ipairs(team.units) do
-		if u.alive then
-			u.retargetAt = 0
-			u.atHome = false
-			if u.state == S_RETREATING then
-				u.state = S_IDLE
+	local idx, n = 1, 0
+	for _, v in ipairs(team.units) do
+		if onFloor(v) then
+			n = n + 1
+			if v == u then
+				idx = n
 			end
 		end
 	end
+	return idx, max(1, n)
 end
 
--- A retreating PLAYER team whose living pets are all parked, with no telegraph on any of them, goes back to attacking
--- RetreatLock + RetreatAutoResume seconds after the RETREAT (Npc / Auto teams keep their order until told otherwise).
-local function resumeRetreats(self, events)
-	local D = damageRules()
-	local wait = num(D.RetreatLock, 1.5) + num(D.RetreatAutoResume, 3)
-	for _, team in ipairs(self.teams) do
-		if team.order == ORDER_RETREAT and not team.auto and not team.left and not team.forfeited and self.t >= team.retreatAt + wait then
-			local ready = true
-			for _, u in ipairs(team.units) do
-				if u.alive and not u.gone and (not u.atHome or telegraphAt(self, u.side, u.x, u.z, u.radius)) then
-					ready = false
-					break
-				end
-			end
-			if ready then
-				orderAttack(self, team, nil)
-				events[#events + 1] = { type = EV.Order, owner = team.owner, order = "Attack", auto = true }
-			end
-		end
-	end
-end
-
-local function unitStep(self, u, dt, events)
-	local D = damageRules()
+-- timers and statuses shared by every unit: shields, burn ticks, regen, meter, the Speed event bookkeeping
+local function tickStatuses(self, u, dt, events)
 	local t = self.t
-	local team = u.team
-	-- timers
 	if u.shield > 0 and t >= u.shieldUntil then
 		u.shield = 0
 	end
-	if u.kind ~= "Boss" then
-		u.meter = min(D.MeterMax, u.meter + D.MeterPerSecond * dt * (u.meterRate or 1))
+	if u.burnLeft > 0 and t >= u.burnNextAt then
+		u.burnLeft = u.burnLeft - 1
+		u.burnNextAt = t + (u.burnStep or 1)
+		local from = u.burnFrom
+		if from and from.gone then
+			from = nil
+		end
+		applyDamage(self, from, u, u.burnAmount, events, { burn = true }, true)
+		if not u.alive then
+			return
+		end
 	end
+	if u.regenUntil > t and u.regenRate > 0 and u.hp < u.maxHp then
+		u.hp = min(u.maxHp, u.hp + u.maxHp * u.regenRate * dt)
+	end
+end
+
+-- the NPC pet / minion AI: threat target, melee orbit, a wind-up before every hit
+local function npcStep(self, u, dt, events)
+	local D = damageRules()
+	local F = fighterRules()
+	local t = self.t
+	local team = u.team
+	u.meter = min(D.MeterMax, u.meter + D.MeterPerSecond * dt * (u.meterRate or 1))
 	if t < u.stunUntil then
 		u.state = S_STUNNED
+		u.windAt = nil
 		return
 	end
 	if t < u.castUntil then
 		u.state = S_CASTING
 		return
 	end
-	if team.order == ORDER_RETREAT then
-		retreatStep(self, u, dt)
-		return
+	local slow = (t < u.slowUntil) and num(D.Slow, 0.6) or 1
+	-- a wind-up in progress: the hit lands at windAt if the target is still in reach and not dodging
+	if u.windAt then
+		if t >= u.windAt then
+			local target = u.windTarget
+			u.windAt = nil
+			u.windTarget = nil
+			if target and target.alive and not target.gone and not target.benched then
+				local reach = u.range + target.radius + D.EngageSlack + 1.0
+				if dist(u.x, u.z, target.x, target.z) <= reach and not inIFrames(self, target) then
+					applyDamage(self, u, target, u.hit, events)
+				else
+					missEvent(self, u, target, events)
+				end
+			end
+			u.state = S_ATTACKING
+		else
+			u.state = S_ATTACKING
+			return
+		end
 	end
-	-- auto specials (NPC / harness teams)
+	-- auto specials (never while winding)
 	if team.auto and self.specialsEnabled and not team.noSpecials and u.specialKind and u.meter >= D.MeterMax and u.kind ~= "Minion" then
 		if u.autoCastAt == nil then
 			local lo, hi = D.NpcSpecialDelay[1] or 0.4, D.NpcSpecialDelay[2] or 1.4
@@ -2231,9 +2599,8 @@ local function unitStep(self, u, dt, events)
 			end
 		end
 	end
-	-- targeting
 	local target = u.target
-	if not target or not target.alive or target.gone or t >= u.retargetAt or (team.focus and team.focus.alive and target ~= team.focus) then
+	if not target or not target.alive or target.gone or target.benched or t >= u.retargetAt then
 		target = pickTarget(self, u)
 		u.target = target
 		u.retargetAt = t + D.RetargetSeconds
@@ -2242,67 +2609,165 @@ local function unitStep(self, u, dt, events)
 		u.state = S_IDLE
 		return
 	end
-	-- movement aims at where the target stood at the START of this step (px / pz), so the order in which units are
-	-- updated gives nobody a head start; the reach test afterwards uses the real positions of both
 	local reach = u.range + target.radius
 	local tx, tz = target.px, target.pz
 	local d = dist(u.x, u.z, tx, tz)
+	local moved = false
 	if d > reach then
-		if target.kind == "Boss" then
-			-- orbit slot: every pet of a team approaches the boss on its own angle, so one telegraph cannot catch the
-			-- whole team and the pets surround the boss instead of queueing on one line
-			local ax, az = team.anchorX - tx, team.anchorZ - tz
+		local step = u.moveSpeed * slow * dt
+		if target.kind == "Boss" or not u.ranged then
+			-- orbit slot: every pet of a wave approaches on its own angle (surround, not a queue)
+			local idx, n = teamIndex(team, u)
+			local ax, az = u.x - tx, u.z - tz
 			local base = atan2(az, ax)
 			if ax == 0 and az == 0 then
 				base = 0
 			end
-			local idx, n = teamIndex(team, u)
-			local angle = base + (idx - (n + 1) / 2) * (pi / 4)
+			local angle = base + (idx - (n + 1) / 2) * (pi / 6) * ((d > reach * 2) and 1 or 0)
 			local r = reach - 0.5
-			moveToward(u, tx + cos(angle) * r, tz + sin(angle) * r, u.moveSpeed * dt, 0.2)
+			moveToward(u, tx + cos(angle) * r, tz + sin(angle) * r, step, 0.2)
 		else
-			moveToward(u, tx, tz, u.moveSpeed * dt, reach - 0.3)
+			moveToward(u, tx, tz, step, reach - 0.3)
 		end
-		u.state = S_MOVING
+		moved = true
 		d = dist(u.x, u.z, tx, tz)
 	end
-	-- the reach test also uses the target's start-of-step position: both sides judge range against where the
-	-- other stood when the step began, so neither side swings a step earlier because it was updated later
 	if d <= reach + D.EngageSlack then
 		u.state = S_ATTACKING
 		if t >= u.nextAttack then
-			u.pendingTarget = target -- resolved with everyone else's attack after the movement phase (no first-strike bias)
+			-- the wind-up is INSIDE the interval: nextAttack counts from its start
+			local windup = num(F.Windup, 0.45)
+			u.windAt = t + windup
+			u.windTarget = target
+			u.nextAttack = t + u.interval / slow * (0.9 + 0.2 * rand(self))
+			events[#events + 1] = { type = EV.Windup, unit = u.id, target = target.id, at = r1(u.windAt) }
 		end
-	elseif t >= u.nextAttack then
-		-- on the way to a far target (a focus order, a kiting enemy) a ready pet still strikes whatever stands in reach
-		local near, nd2 = nearestEnemy(self, u, u.range + 2.5 + D.EngageSlack)
-		if near and nd2 <= (u.range + near.radius + D.EngageSlack) ^ 2 then
-			u.pendingTarget = near
+	elseif moved then
+		u.state = S_MOVING
+	else
+		u.state = S_IDLE
+	end
+end
+
+-- the fighter of a player team: Move toward the character's point at the legal cap; timers; the Auto kit
+local autoFighter
+
+local function fighterStep(self, team, dt, events)
+	local f = team.fighter
+	if not f or not f.alive or f.gone or f.benched then
+		return
+	end
+	local F = fighterRules()
+	local D = damageRules()
+	local t = self.t
+	f.meter = min(num(F.SpecialMeterMax, 100), f.meter + num(F.MeterPerSecond, 6) * dt * (f.meterRate or 1))
+	if team.auto and not team.npc then
+		autoFighter(self, team, f, dt, events)
+	end
+	-- movement toward the wanted point at <= legal run x MoveSlack (x the dash factor while Dashing)
+	if team.wantX ~= nil then
+		local _, run = legalSpeeds(self, team)
+		local cap = run * num(F.MoveSlack, 1.25)
+		if t < f.dashUntil then
+			cap = cap * dashSpeedFactor()
+		end
+		if t < f.stunUntil then
+			cap = 0
+		end
+		if cap > 0 then
+			local dx, dz = team.wantX - f.x, team.wantZ - f.z
+			local d = sqrt(dx * dx + dz * dz)
+			if d > 0.01 then
+				local travel = min(cap * dt, d)
+				f.x = f.x + dx / d * travel
+				f.z = f.z + dz / d * travel
+				team.faceX, team.faceZ = dx / d, dz / d
+				f.moving = travel > 0.05
+			else
+				f.moving = false
+			end
+		end
+	end
+	clampToFloor(self, f)
+	-- the state
+	if t < f.stunUntil then
+		f.state = S_STUNNED
+	elseif t < f.castUntil then
+		f.state = S_CASTING
+	elseif t < f.dashUntil then
+		f.state = S_DASHING
+	elseif t < f.attackUntil then
+		f.state = S_ATTACKING
+	elseif f.moving then
+		f.state = S_MOVING
+	else
+		f.state = S_IDLE
+	end
+	-- the lock is the drawn target
+	f.target = lockOf(team)
+	-- the bench regenerates
+	local cap = num(F.BenchRegenCap, 1)
+	for _, u in ipairs(team.units) do
+		if u.benched and u.alive and u.hp < u.maxHp * cap then
+			u.hp = min(u.maxHp * cap, u.hp + u.maxHp * num(F.BenchRegenPerSecond, 0.03) * dt)
 		end
 	end
 end
 
--- every attack that is ready lands at once, based on the positions after the whole movement phase, so neither side
--- gains from being updated first
-local function resolveAttacks(self, events)
-	local list = self.units
+local doCommand -- forward
+
+-- the harness / Auto fighter: approaches its target at the legal run speed and presses the kit (no dodging: the
+-- scripted player of tools/sim_battle.lua does that)
+function autoFighter(self, team, f, dt, events)
+	local target = lockOf(team) or nearestEnemy(self, f)
+	if not target then
+		return
+	end
+	local _, run = legalSpeeds(self, team)
+	local reach = f.range + target.radius
+	local dx, dz = target.x - f.x, target.z - f.z
+	local d = sqrt(dx * dx + dz * dz)
+	local wantX, wantZ = f.x, f.z
+	if d > reach - 0.5 and d > 0.01 then
+		local travel = min(run * dt, d - (reach - 0.5))
+		wantX, wantZ = f.x + dx / d * travel, f.z + dz / d * travel
+	end
+	team.wantX, team.wantZ = clampPoint(self, wantX, wantZ, f.radius)
 	local t = self.t
-	for i = 1, #list do
-		local u = list[i]
-		local target = u.pendingTarget
-		if target then
-			u.pendingTarget = nil
-			if not u.gone and target.alive and not target.gone then
-				applyDamage(self, u, target, u.hit, events)
-				-- swings drift +-10% so two equal units never stay in lockstep (the one updated first would
-				-- otherwise land every killing blow a step early)
-				u.nextAttack = t + u.interval * (0.9 + 0.2 * rand(self))
+	if t >= f.castUntil and t >= f.stunUntil then
+		if f.meter >= num(fighterRules().SpecialMeterMax, 100) then
+			doCommand(self, team, "Special", nil, events)
+		end
+		if d <= reach + fighterRules().AttackSlack then
+			doCommand(self, team, "Attack", target.id, events)
+		end
+		if t >= team.elementReadyAt and d <= num(fighterRules().ElementRange, 14) + target.radius then
+			doCommand(self, team, "Element", target.id, events)
+		end
+		for _, u in ipairs(team.units) do
+			if u.benched and u.alive and t >= u.buffReadyAt then
+				local kind = u.buffKind
+				local wanted = true
+				if kind == "Heal" or (u.buffDef and u.buffDef.Effect == "Regen") then
+					wanted = f.hp < f.maxHp * 0.6
+				end
+				if wanted then
+					doCommand(self, team, "Buff", u.slot, events)
+				end
+			end
+		end
+		if f.hp < f.maxHp * 0.2 and t >= team.swapReadyAt then
+			for _, u in ipairs(team.units) do
+				if u.benched and u.alive and u.hp > u.maxHp * 0.5 then
+					doCommand(self, team, "Swap", u.slot, events)
+					break
+				end
 			end
 		end
 	end
 end
 
--- push same-side units apart so they do not stack on one spot
+-- same-side NPC units are pushed apart so they do not stack
 local function separate(self)
 	local D = damageRules()
 	local r = D.SeparationRadius
@@ -2311,22 +2776,18 @@ local function separate(self)
 	local n = #list
 	for i = 1, n - 1 do
 		local a = list[i]
-		if a.alive and not a.gone and a.kind ~= "Boss" then
+		if onFloor(a) and a.kind ~= "Boss" and not (a.team.player and a == a.team.fighter) then
 			for j = i + 1, n do
 				local b = list[j]
-				if b.alive and not b.gone and b.kind ~= "Boss" and b.side == a.side then
+				if onFloor(b) and b.kind ~= "Boss" and b.side == a.side and not (b.team.player and b == b.team.fighter) then
 					local dx, dz = b.x - a.x, b.z - a.z
 					local d2 = dx * dx + dz * dz
 					if d2 < r2 then
 						local d = sqrt(d2)
-						local push
 						if d < 0.001 then
 							dx, dz, d = ((i % 2 == 0) and 1 or -1), 0.3, 1
 						end
-						push = (r - d) * 0.5
-						if push > 0.6 then
-							push = 0.6
-						end
+						local push = min(0.6, (r - d) * 0.5)
 						dx, dz = dx / d, dz / d
 						a.x, a.z = a.x - dx * push, a.z - dz * push
 						b.x, b.z = b.x + dx * push, b.z + dz * push
@@ -2337,13 +2798,12 @@ local function separate(self)
 	end
 end
 
-local function sideAlive(self, side)
+-- living pets of a side (bench included: the lives)
+local function sideLives(self, side)
 	local count = 0
-	local list = self.units
-	for i = 1, #list do
-		local u = list[i]
-		if u.side == side and u.alive and not u.gone then
-			count = count + 1
+	for _, team in ipairs(self.teams) do
+		if team.side == side and not team.left then
+			count = count + teamLives(team)
 		end
 	end
 	return count
@@ -2363,6 +2823,16 @@ local function sideHpFraction(self, side)
 	return hp / maxHp
 end
 
+local function sideDamage(self, side)
+	local d = 0
+	for _, team in ipairs(self.teams) do
+		if team.side == side then
+			d = d + team.damage
+		end
+	end
+	return d
+end
+
 local function finish(self, winnerSide, reason, events)
 	local result = {
 		Mode = self.mode,
@@ -2372,29 +2842,25 @@ local function finish(self, winnerSide, reason, events)
 		Losers = {},
 		Draw = winnerSide == nil,
 		Forfeit = self.forfeitSeen == true,
-		Level = self.level,
 		BossId = self.bossId,
 		Round = self.round,
 		Damage = {},
 		Shares = {},
 		Duration = r1(self.t),
 		Survivors = {},
+		Kills = {},
+		Waves = self.waveCount or 0,
 		Hp = { [1] = sideHpFraction(self, 1), [2] = sideHpFraction(self, 2) },
 	}
 	local total = 0
 	for _, team in ipairs(self.teams) do
-		if not team.npc then
+		if team.player then
 			result.Damage[team.owner] = floor(team.damage + 0.5)
+			result.Kills[team.owner] = team.kills
 			if team.side == 1 then
 				total = total + team.damage
 			end
-			local alive = 0
-			for _, u in ipairs(team.units) do
-				if u.alive and not u.gone then
-					alive = alive + 1
-				end
-			end
-			result.Survivors[team.owner] = alive
+			result.Survivors[team.owner] = teamLives(team)
 			if not team.left then
 				if winnerSide ~= nil and team.side == winnerSide and not team.forfeited then
 					result.Winners[#result.Winners + 1] = team.owner
@@ -2405,7 +2871,7 @@ local function finish(self, winnerSide, reason, events)
 		end
 	end
 	for _, team in ipairs(self.teams) do
-		if not team.npc and team.side == 1 then
+		if team.player and team.side == 1 then
 			result.Shares[team.owner] = (total > 0) and (team.damage / total) or 0
 		end
 	end
@@ -2417,10 +2883,20 @@ local function finish(self, winnerSide, reason, events)
 	events[#events + 1] = { type = EV.End, reason = reason, winnerSide = winnerSide }
 end
 
+local function byDamage(self)
+	local d1, d2 = sideDamage(self, 1), sideDamage(self, 2)
+	if d1 > d2 then
+		return 1
+	elseif d2 > d1 then
+		return 2
+	end
+	return nil
+end
+
 local function checkEnd(self, events)
-	local alive1 = sideAlive(self, 1)
-	local alive2 = sideAlive(self, 2)
-	if self.mode == "Raid" then
+	local lives1 = sideLives(self, 1)
+	local mode = self.mode
+	if mode == "Raid" then
 		local boss = self.boss
 		if boss and not boss.alive then
 			finish(self, 1, "BossDown", events)
@@ -2434,69 +2910,90 @@ local function checkEnd(self, events)
 		end
 		if activeTeams == 0 then
 			finish(self, nil, "Abandoned", events)
-			return
-		end
-		if alive1 == 0 then
+		elseif lives1 == 0 then
 			finish(self, 2, "Wipe", events)
-			return
-		end
-		if self.t >= self.timeLimit then
+		elseif self.t >= self.timeLimit then
 			finish(self, 2, "Timeout", events)
-			return
 		end
 		return
 	end
-	if alive1 == 0 and alive2 == 0 then
-		-- Phase 4 (Damage.DoubleKoByDamage): a duel's double knock-out goes to the team that dealt more damage
+	if mode == "Dungeon" then
+		local activeTeams = 0
+		for _, team in ipairs(self.teams) do
+			if team.side == 1 and not team.left then
+				activeTeams = activeTeams + 1
+			end
+		end
+		if activeTeams == 0 then
+			finish(self, nil, "Abandoned", events)
+		elseif lives1 == 0 then
+			finish(self, 2, "Wipe", events)
+		elseif self.t >= self.timeLimit then
+			finish(self, 2, "Timeout", events)
+		end
+		return
+	end
+	local lives2 = sideLives(self, 2)
+	if lives1 == 0 and lives2 == 0 then
 		local rule = damageRules().DoubleKoByDamage
 		local winner = nil
-		if type(rule) == "table" and rule[self.mode] and not self.forfeitSeen then
-			local d1, d2 = 0, 0
-			for _, team in ipairs(self.teams) do
-				if team.side == 1 then
-					d1 = d1 + team.damage
-				else
-					d2 = d2 + team.damage
-				end
-			end
-			if d1 > d2 then
-				winner = 1
-			elseif d2 > d1 then
-				winner = 2
-			end
+		if type(rule) == "table" and rule[mode] and not self.forfeitSeen then
+			winner = byDamage(self)
 		end
 		if winner then
 			finish(self, winner, "Wipe", events)
 		else
 			finish(self, nil, "Draw", events)
 		end
-	elseif alive1 == 0 then
+	elseif lives1 == 0 then
 		finish(self, 2, self.forfeitSeen and "Forfeit" or "Wipe", events)
-	elseif alive2 == 0 then
+	elseif lives2 == 0 then
 		finish(self, 1, self.forfeitSeen and "Forfeit" or "Wipe", events)
 	elseif self.t >= self.timeLimit then
-		if self.mode == "Trial" or self.mode == "Ring" then
+		if mode == "Ring" then
 			finish(self, 2, "Timeout", events)
 		else
-			local f1, f2 = sideHpFraction(self, 1), sideHpFraction(self, 2)
-			if abs(f1 - f2) < 0.001 then
-				finish(self, nil, "Timeout", events)
+			local rule = damageRules().DoubleKoByDamage
+			local winner = nil
+			if type(rule) == "table" and rule[mode] then
+				winner = byDamage(self)
 			else
-				finish(self, (f1 > f2) and 1 or 2, "Timeout", events)
+				local f1, f2 = sideHpFraction(self, 1), sideHpFraction(self, 2)
+				if abs(f1 - f2) >= 0.001 then
+					winner = (f1 > f2) and 1 or 2
+				end
 			end
+			finish(self, winner, "Timeout", events)
 		end
 	end
 end
 
--- ends a running battle now with no winner (a server shutdown): the result keeps every team's damage and shares.
--- Returns ok and the End event (Step returns nothing more once finished).
-function BattleSim:Abort(reason)
+-- ends a running battle now: "Cleared" = side 1 wins (the dungeon's last room), anything else = no winner
+function BattleSim:Finish(reason)
 	if self.result then
 		return false
 	end
 	local events = {}
-	finish(self, nil, type(reason) == "string" and reason or "Aborted", events)
+	reason = type(reason) == "string" and reason or "Aborted"
+	finish(self, (reason == "Cleared") and 1 or nil, reason, events)
 	return true, events
+end
+
+function BattleSim:Abort(reason)
+	return self:Finish(reason)
+end
+
+-- the Speed event when a fighter's legal speeds change
+local function checkSpeeds(self, team, events)
+	if not team.player or not team.fighter or team.left then
+		return
+	end
+	local walk, run = legalSpeeds(self, team)
+	walk, run = r1(walk), r1(run)
+	if team.lastWalk ~= walk or team.lastRun ~= run then
+		team.lastWalk, team.lastRun = walk, run
+		events[#events + 1] = { type = EV.Speed, owner = team.owner, walk = walk, run = run }
+	end
 end
 
 function BattleSim:Step(dt)
@@ -2512,28 +3009,17 @@ function BattleSim:Step(dt)
 	end
 	self.t = self.t + dt
 	self.stepCount = self.stepCount + 1
-	-- overtime: every hit grows past overtimeAt (one Overtime event when it starts)
-	if self.overtimeAt and self.t >= self.overtimeAt then
-		if not self.overtimeMult then
-			events[#events + 1] = { type = EV.Overtime, at = r1(self.overtimeAt), perSecond = self.overtimeRate }
-		end
-		self.overtimeMult = 1 + self.overtimeRate * (self.t - self.overtimeAt)
-	end
-	-- queued events (joins / leaves between steps)
 	if #self.pending > 0 then
 		for _, ev in ipairs(self.pending) do
 			events[#events + 1] = ev
 		end
 		self.pending = {}
 	end
-	-- boss: patterns, basic attack, waves, enrage; then telegraphs that land now
 	if self.boss then
 		bossStep(self, self.boss, events)
 	end
 	resolveTelegraphs(self, events)
 	tickZones(self, events)
-	-- every other unit: timers, retreat, specials, targeting, movement (against start-of-step positions), in a
-	-- seeded random order each step so no side profits from being updated first
 	local list = self.units
 	local n = #list
 	local order = self.order
@@ -2549,17 +3035,26 @@ function BattleSim:Step(dt)
 	for i = 1, n do
 		local u = list[order[i]]
 		if u.alive and not u.gone and u.kind ~= "Boss" then
-			unitStep(self, u, dt, events)
+			tickStatuses(self, u, dt, events)
+			if u.alive and not u.benched and not (u.team.player and u == u.team.fighter) then
+				npcStep(self, u, dt, events)
+			end
 		end
 	end
-	resolveAttacks(self, events)
-	resumeRetreats(self, events)
+	for _, team in ipairs(self.teams) do
+		if team.player and not team.left then
+			fighterStep(self, team, dt, events)
+		end
+	end
 	separate(self)
 	for i = 1, #list do
 		local u = list[i]
-		if u.alive and not u.gone then
+		if onFloor(u) then
 			clampToFloor(self, u)
 		end
+	end
+	for _, team in ipairs(self.teams) do
+		checkSpeeds(self, team, events)
 	end
 	checkEnd(self, events)
 	return events
@@ -2568,7 +3063,208 @@ end
 ----------------------------------------------------------------------
 -- Commands
 ----------------------------------------------------------------------
-function BattleSim:Command(owner, action, arg)
+local function unitArg(self, team, arg)
+	local id = tonumber(arg)
+	if not id or id ~= floor(id) then
+		return nil
+	end
+	local unit = self.units[id]
+	if not unit or not onFloor(unit) or unit.side == team.side then
+		return nil
+	end
+	return unit
+end
+
+-- the body of Command; `events` collects what the command causes (the caller queues them)
+function doCommand(self, team, action, arg, events)
+	local F = fighterRules()
+	local t = self.t
+	local f = team.fighter
+	if action == "Forfeit" then
+		if self.mode == "Raid" or self.mode == "Dungeon" then
+			self:RemoveTeam(team.owner)
+			return true
+		end
+		team.forfeited = true
+		self.forfeitSeen = true
+		for _, u in ipairs(team.units) do
+			if u.alive then
+				knockOut(self, u, nil, events, true)
+			end
+		end
+		events[#events + 1] = { type = EV.Order, owner = team.owner, order = "Forfeit" }
+		return true
+	end
+	if not team.player then
+		return false, "NotPlayer"
+	end
+	if not f or not f.alive then
+		return false, "Down"
+	end
+	if action == "Target" then
+		if arg == nil then
+			team.lock = nil
+			events[#events + 1] = { type = EV.Order, owner = team.owner, order = "Target" }
+			return true
+		end
+		local unit = unitArg(self, team, arg)
+		if not unit then
+			return false, "BadTarget"
+		end
+		team.lock = unit
+		events[#events + 1] = { type = EV.Order, owner = team.owner, order = "Target", target = unit.id }
+		return true
+	end
+	local busy = nil
+	if t < f.stunUntil then
+		busy = "Stunned"
+	elseif t < f.castUntil then
+		busy = "Casting"
+	end
+	if action == "Attack" then
+		if busy then
+			return false, busy
+		end
+		local tolerance = num(F.AttackTolerance, 0.85)
+		local interval = f.interval
+		if t < f.atkSpeedUntil then
+			interval = interval / f.atkSpeedMult
+		end
+		if t < f.speedBuffUntil then
+			interval = interval / f.speedBuffMult
+		end
+		if t < f.slowUntil then
+			interval = interval / num(damageRules().Slow, 0.6)
+		end
+		local ready = f.nextAttack - interval * (1 - tolerance)
+		if t < ready then
+			return false, "Cooldown", r1(f.nextAttack - t)
+		end
+		local target = nil
+		if arg ~= nil then
+			target = unitArg(self, team, arg)
+			if not target then
+				return false, "BadTarget"
+			end
+		end
+		target = target or lockOf(team)
+		local slack = num(F.AttackSlack, 3)
+		if target then
+			if dist(f.x, f.z, target.x, target.z) > f.range + target.radius + slack then
+				return false, "OutOfReach"
+			end
+		else
+			local near, nd2 = nearestEnemy(self, f, f.range + slack + 3)
+			if not near or nd2 > (f.range + near.radius + slack) ^ 2 then
+				return false, "NoTarget"
+			end
+			target = near
+		end
+		f.nextAttack = max(f.nextAttack, t) + interval
+		f.attackUntil = t + ATTACK_POSE
+		local dx, dz = target.x - f.x, target.z - f.z
+		local d = sqrt(dx * dx + dz * dz)
+		if d > 0.01 then
+			team.faceX, team.faceZ = dx / d, dz / d
+		end
+		if inIFrames(self, target) then
+			missEvent(self, f, target, events)
+		else
+			applyDamage(self, f, target, f.hit, events)
+		end
+		return true, target.id
+	elseif action == "Element" then
+		if busy then
+			return false, busy
+		end
+		if t < team.elementReadyAt then
+			return false, "Cooldown", r1(team.elementReadyAt - t)
+		end
+		return castElement(self, team, f, arg, events)
+	elseif action == "Special" then
+		if not self.specialsEnabled or team.noSpecials then
+			return false, "Disabled"
+		end
+		if busy then
+			return false, busy
+		end
+		if not f.specialKind then
+			return false, "NoSpecial"
+		end
+		if f.meter < num(F.SpecialMeterMax, 100) then
+			return false, "Charging", floor(f.meter + 0.5)
+		end
+		return castSpecial(self, f, events)
+	elseif action == "Dash" then
+		if t < f.stunUntil then
+			return false, "Stunned"
+		end
+		if t < team.dashReadyAt then
+			return false, "Cooldown", r1(team.dashReadyAt - t)
+		end
+		f.dashUntil = t + num(F.DashSeconds, 0.35)
+		f.iframesUntil = t + num(F.DashIFrames, 0.35)
+		team.dashReadyAt = t + num(F.DashCooldown, 2.5)
+		f.state = S_DASHING
+		events[#events + 1] = { type = EV.Dash, unit = f.id }
+		return true
+	elseif action == "Buff" then
+		local slot = tonumber(arg)
+		if not slot or slot ~= floor(slot) or slot < 1 then
+			return false, "BadSlot"
+		end
+		local helper = team.bySlot[slot]
+		if not helper then
+			return false, "BadSlot"
+		end
+		if not helper.alive then
+			return false, "Down"
+		end
+		if not helper.benched then
+			return false, "BadSlot"
+		end
+		if not helper.buffDef then
+			return false, "NoBuff"
+		end
+		if t < helper.buffReadyAt then
+			return false, "Cooldown", r1(helper.buffReadyAt - t)
+		end
+		local buff = helper.buffDef
+		local cooldown = (helper.role == "Support") and num(F.SupportCooldown, 12) or num(F.HelperCooldown, 15)
+		helper.buffReadyAt = t + cooldown
+		local ev = { type = EV.Buff, owner = team.owner, unit = helper.id, kind = helper.buffKind, name = buff.Name, target = f.id }
+		applyBuff(self, f, buff, helper.specialBoost, events, ev)
+		events[#events + 1] = ev
+		return true, helper.buffKind
+	elseif action == "Swap" then
+		local slot = tonumber(arg)
+		if not slot or slot ~= floor(slot) or slot < 1 then
+			return false, "BadSlot"
+		end
+		local helper = team.bySlot[slot]
+		if not helper then
+			return false, "BadSlot"
+		end
+		if not helper.alive then
+			return false, "Down"
+		end
+		if not helper.benched then
+			return false, "BadSlot"
+		end
+		if busy then
+			return false, busy
+		end
+		if t < team.swapReadyAt then
+			return false, "Cooldown", r1(team.swapReadyAt - t)
+		end
+		team.swapReadyAt = t + num(F.SwapCooldown, 10)
+		swapIn(self, team, helper, events, false)
+		return true, helper.id
+	end
+	return false, "UnknownAction"
+end
+
+function BattleSim:Command(owner, action, arg, arg2)
 	if self.result then
 		return false, "Finished"
 	end
@@ -2582,114 +3278,47 @@ function BattleSim:Command(owner, action, arg)
 	if team.forfeited then
 		return false, "Forfeited"
 	end
-	local D = damageRules()
-	local t = self.t
-	if action == "Attack" then
-		if team.order == ORDER_RETREAT then
-			local ready = team.retreatAt + D.RetreatLock
-			if t < ready then
-				return false, "Regrouping", r1(ready - t)
-			end
+	if action == "Move" then
+		if not team.player then
+			return false, "NotPlayer"
 		end
-		local focus = nil
-		if arg ~= nil then
-			local id = tonumber(arg)
-			if not id or id ~= floor(id) then
-				return false, "BadTarget"
-			end
-			local unit = self.units[id]
-			if not unit or unit.gone or not unit.alive or unit.side == team.side then
-				return false, "BadTarget"
-			end
-			focus = unit
+		local x, z = arg, arg2
+		if type(arg) == "table" then
+			x, z = arg.x or arg.X or arg[1], arg.z or arg.Z or arg[2]
 		end
-		orderAttack(self, team, focus)
-		self.pending[#self.pending + 1] = { type = EV.Order, owner = owner, order = "Attack", target = focus and focus.id or nil }
-		return true
-	elseif action == "Retreat" then
-		if team.order == ORDER_RETREAT then
-			return false, "AlreadyRetreating"
+		if not finite(x) or not finite(z) then
+			return false, "BadPoint"
 		end
-		team.order = ORDER_RETREAT
-		team.retreatAt = t
-		team.focus = nil
-		for _, u in ipairs(team.units) do
-			if u.alive then
-				u.target = nil
-				u.autoCastAt = nil
-				u.atHome = false
-				if u.state ~= S_STUNNED and u.state ~= S_CASTING then
-					u.state = S_RETREATING
-				end
-			end
-		end
-		self.pending[#self.pending + 1] = { type = EV.Order, owner = owner, order = "Retreat" }
-		return true
-	elseif action == "Special" then
-		if not self.specialsEnabled or team.noSpecials then
-			return false, "Disabled"
-		end
-		local slot = tonumber(arg)
-		if not slot or slot ~= floor(slot) then
-			return false, "BadSlot"
-		end
-		local u = team.bySlot[slot]
-		if not u then
-			return false, "BadSlot"
-		end
-		if not u.alive then
-			return false, "Down"
-		end
-		if not u.specialKind then
-			return false, "NoSpecial"
-		end
-		if u.meter < D.MeterMax then
-			return false, "Charging", floor(u.meter + 0.5)
-		end
-		if t < u.stunUntil then
-			return false, "Stunned"
-		end
-		if t < u.castUntil then
-			return false, "Casting"
-		end
-		if team.order == ORDER_RETREAT then
-			return false, "Retreating"
-		end
-		local events = {}
-		local ok, reason = castSpecial(self, u, events)
-		if not ok then
-			return false, reason
-		end
-		for _, ev in ipairs(events) do
-			self.pending[#self.pending + 1] = ev
-		end
-		return true, reason
-	elseif action == "Forfeit" then
-		if self.mode == "Raid" then
-			self:RemoveTeam(owner)
-			return true
-		end
-		team.forfeited = true
-		self.forfeitSeen = true
-		local events = {}
-		for _, u in ipairs(team.units) do
-			if u.alive then
-				knockOut(self, u, nil, events, true)
-			end
-		end
-		self.pending[#self.pending + 1] = { type = EV.Order, owner = owner, order = "Forfeit" }
-		for _, ev in ipairs(events) do
-			self.pending[#self.pending + 1] = ev
-		end
+		local f = team.fighter
+		team.wantX, team.wantZ = clampPoint(self, x, z, f and f.radius or 1)
 		return true
 	end
-	return false, "UnknownAction"
+	if type(action) ~= "string" then
+		return false, "UnknownAction"
+	end
+	local events = {}
+	local ok, reason, extra = doCommand(self, team, action, arg, events)
+	if not ok then
+		if reason == "UnknownAction" then
+			return false, reason
+		end
+		-- one rejected echo per team per step (a held ATTACK button must not flood the clients)
+		if team.rejectStep ~= self.stepCount then
+			team.rejectStep = self.stepCount
+			self.pending[#self.pending + 1] = { type = EV.Order, owner = owner, order = action, target = tonumber(arg), rejected = reason }
+		end
+		return false, reason, extra
+	end
+	for _, ev in ipairs(events) do
+		self.pending[#self.pending + 1] = ev
+	end
+	return true, reason, extra
 end
 
--- A team leaves (raids: LeaveRaid / disconnect). Its units vanish and the boss sheds their HP share.
+-- A team leaves (raids / dungeons: leave / disconnect). Its units vanish and the boss sheds their HP share.
 function BattleSim:RemoveTeam(owner)
 	local team = self.teamByOwner[owner]
-	if not team or team.left or team.npc then
+	if not team or team.left then
 		return false
 	end
 	team.left = true
@@ -2700,16 +3329,15 @@ function BattleSim:RemoveTeam(owner)
 		u.gone = true
 		u.state = S_DOWN
 		u.target = nil
+		u.windAt = nil
 	end
-	-- other teams focusing one of these retarget
 	for _, other in ipairs(self.teams) do
-		if other.focus and other.focus.gone then
-			other.focus = nil
+		if other.lock and other.lock.gone then
+			other.lock = nil
 		end
 	end
 	local boss = self.boss
-	if boss and boss.alive and team.side == 1 then
-		-- the leaver's share goes, at the boss's current HP fraction (BattleCatalog.BossHp over everyone still in)
+	if boss and boss.alive and team.side == 1 and team.player then
 		local frac = boss.hp / boss.maxHp
 		boss.maxHp = max(1, self:_bossMaxHp())
 		boss.hp = max(1, min(frac * boss.maxHp, boss.maxHp))

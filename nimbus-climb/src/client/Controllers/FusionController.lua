@@ -79,17 +79,16 @@ FusionController.Closed = Util.Signal()
 -- Tunables (design pixels of a 1080p screen)
 ----------------------------------------------------------------------
 local K = {
-	PREF_W = 1080,
-	PREF_H = 700,
+	PREF_W = 760, -- Phase 5 (6.6): docked right / a bottom sheet (NeonKit.Dock), 760 x 860 design px
+	PREF_H = 860,
 	MIN_W = 800,
 	MIN_H = 390,
-	BUMPS = 28,
 	MARGIN = 12,
 	SHORT = 560, -- below this design height the compact layout is used (landscape phones)
 	TOP_H = 54,
 	TOP_H_SHORT = 44,
 	-- portrait phones: the preview on top, the picker below (used when less than TALL_W design px are free)
-	TALL_W = 700,
+	TALL_W = 800, -- (every docked Fusion window is one column: the preview on top, the picker below)
 	PREF_W_TALL = 560,
 	MIN_W_TALL = 360,
 	PREF_H_TALL = 1000,
@@ -110,6 +109,11 @@ local K = {
 	RESULT_SHORT = 92,
 	INPUT = 108,
 	INPUT_SHORT = 68,
+	RESULT_MIN = 72, -- the smallest result card a cramped portrait preview shrinks to
+	RESULT_FULL_MIN = 100, -- the full preview (title + pills) shrinks its cards down to this before it goes compact
+	RESULT_SIDE = 84, -- landscape phones: the cards beside the name column
+	INPUT_SIDE = 60,
+	NOTE_MIN = 24, -- one line of notes (18 px text) under the name / pills
 	TILE_BUDGET = 0.004, -- seconds of pet viewport building per frame (at least one per frame)
 	TILES_MAX = 3,
 	FUSE_TIMEOUT = 6, -- seconds the FUSE button waits for the server before it resets
@@ -599,6 +603,8 @@ local function computePlan()
 	plan.CanAfford = have >= plan.Cost.Amount
 	if not plan.CanAfford then
 		plan.Reason = "Not enough " .. ((plan.Cost.Currency == "Gems") and "Gems" or "Cloud Tokens") .. " (you have " .. commas(have) .. ")"
+		-- (the compact layouts: the red cost line already says how much, the HUD shows the balance)
+		plan.ReasonShort = "Not enough " .. ((plan.Cost.Currency == "Gems") and "Gems" or "Cloud Tokens")
 		return plan
 	end
 	if State.Get() and LocalPlayer and LocalPlayer:GetAttribute(Config.Attr.InMatch) == true then
@@ -686,24 +692,28 @@ local function viewportHeight()
 	return guiSize().Y
 end
 
+-- Phase 5 (6.6): NeonKit.Dock keeps the window docked right / a bottom sheet; returns its design size and "tall"
+-- (one column); the hotbar re-centres left of the docked window
 local function fitWindow()
-	local area = guiSize()
-	local factor = Theme.ScreenFactor(viewportHeight())
-	local freeW = area.X - 2 * K.MARGIN
-	local freeH = area.Y - 2 * K.MARGIN
-	-- a screen too narrow for the side-by-side window (portrait phones) gets the tall layout
-	local tall = freeW / factor < K.TALL_W and freeH > freeW
-	local minW, prefW = K.MIN_W, K.PREF_W
-	local minH, prefH = K.MIN_H, K.PREF_H
-	if tall then
-		minW, prefW = K.MIN_W_TALL, K.PREF_W_TALL
-		minH, prefH = K.MIN_H_TALL, K.PREF_H_TALL
+	if not U.Dock then
+		U.Kit = U.Kit or require(script.Parent.Parent:WaitForChild("UI"):WaitForChild("NeonKit"))
+		U.Dock = U.Kit.Dock(U.Holder, U.Fit, K.PREF_W, K.PREF_H)
 	end
-	local w = Util.Clamp(math.floor(freeW / factor), minW, prefW)
-	local h = Util.Clamp(math.floor((freeH - K.BUMPS * factor) / factor), minH, prefH)
-	local scale = Util.Clamp(math.min(factor, freeW / w, freeH / h), 0.3, 1.25)
-	local y = math.min(area.Y / 2 + K.BUMPS * scale / 2, area.Y - K.MARGIN / 2 - h * scale / 2)
-	return w, h, scale, area.X / 2, math.max(y, h * scale / 2), tall
+	U.Dock.Refresh()
+	local r = U.Dock.Rect
+	local w, h = math.floor(r.designW + 0.5), math.floor(r.designH + 0.5)
+	return w, h, w < K.TALL_W, r
+end
+
+-- HotbarController.SetAvoidRight(x | nil) (6.6)
+local function avoidRight(x)
+	local hb = script.Parent:FindFirstChild("HotbarController")
+	local ok, mod = pcall(function()
+		return hb and require(hb)
+	end)
+	if ok and type(mod) == "table" and type(mod.SetAvoidRight) == "function" then
+		pcall(mod.SetAvoidRight, x)
+	end
 end
 
 local layoutPreview -- defined below
@@ -712,12 +722,12 @@ local function relayout()
 	if not S.Built then
 		return
 	end
-	local w, h, scale, x, y, tall = fitWindow()
-	U.Holder.Size = UDim2.fromOffset(w, h)
-	U.Fit.Scale = scale
-	U.Holder.Position = UDim2.fromOffset(math.floor(x + 0.5), math.floor(y + 0.5))
+	local w, h, tall, rect = fitWindow()
+	if S.Open then
+		avoidRight(rect.mode == "Side" and rect.x or nil)
+	end
 	S.Tall = tall
-	local short = h < K.SHORT and not tall
+	local short = h < K.SHORT
 	S.Short = short
 	S.Narrow = w < K.NARROW
 	local pickerW = S.Narrow and K.PICKER_W_NARROW or K.PICKER_W
@@ -745,11 +755,15 @@ local function relayout()
 	U.Body.Position = UDim2.fromOffset(10, topH + (short and 12 or 16))
 	U.Body.Size = UDim2.new(1, -20, 1, -(topH + (short and 18 or 26)))
 	if tall then
+		-- (a short sheet gives the preview a bit more than half its body)
+		local previewH = math.min(K.PREVIEW_TALL_H, math.floor((h - 90) * 0.58))
+		S.PreviewH = previewH
 		U.Preview.Position = UDim2.new(0, 0, 0, 0)
-		U.Preview.Size = UDim2.new(1, 0, 0, K.PREVIEW_TALL_H)
-		U.Picker.Position = UDim2.new(0, 0, 0, K.PREVIEW_TALL_H + K.GAP)
-		U.Picker.Size = UDim2.new(1, 0, 1, -(K.PREVIEW_TALL_H + K.GAP))
+		U.Preview.Size = UDim2.new(1, 0, 0, previewH)
+		U.Picker.Position = UDim2.new(0, 0, 0, previewH + K.GAP)
+		U.Picker.Size = UDim2.new(1, 0, 1, -(previewH + K.GAP))
 	else
+		S.PreviewH = nil
 		U.Picker.Position = UDim2.new(0, 0, 0, 0)
 		U.Picker.Size = UDim2.new(0, pickerW, 1, 0)
 		U.Preview.Position = UDim2.new(0, pickerW + K.GAP, 0, 0)
@@ -848,7 +862,10 @@ local function buildTileViewport(tile)
 	if not def then
 		return
 	end
-	tile.Viewport = CloudUI.PetViewport(tile.View, def, UDim2.new(1, 0, 1, 0), { Detail = "Low", Spin = "sway" })
+	-- Phase 5 (3.7): the copy's stored stage (evolved = Low)
+	local stage = (type(State.PetStage) == "function" and tonumber(State.PetStage(tile.Key))) or 0
+	tile.Stage = stage
+	tile.Viewport = CloudUI.PetViewport(tile.View, def, UDim2.new(1, 0, 1, 0), { Detail = "Low", Spin = "sway", Evolved = stage >= 1 and stage or nil })
 end
 
 local function onTileClicked(key)
@@ -999,6 +1016,10 @@ local function refreshTiles()
 	for i, entry in ipairs(list) do
 		wanted[entry.Key] = true
 		local tile = S.Tiles[entry.Key] or newTile(entry.Key)
+		-- a copy that evolved meanwhile rebuilds its viewport (the per-frame builder picks it up again)
+		if tile.Viewport and tile.Stage ~= ((type(State.PetStage) == "function" and tonumber(State.PetStage(entry.Key))) or 0) then
+			destroyTileViewport(tile)
+		end
 		paintTile(tile, i, entry.Ready)
 	end
 	for key, tile in pairs(S.Tiles) do
@@ -1061,10 +1082,12 @@ local function slotFrame(parent, name, size)
 	return { Frame = holder, View = view, Stroke = s, Placeholder = q, Scale = scale, Viewport = nil, Def = nil }
 end
 
-local function setSlotPet(slot, def, detail)
-	if slot.Def == def and slot.Viewport then
+local function setSlotPet(slot, def, detail, stage)
+	stage = math.floor(tonumber(stage) or 0)
+	if slot.Def == def and slot.Viewport and slot.Stage == stage then
 		return
 	end
+	slot.Stage = stage
 	if slot.Viewport then
 		pcall(slot.Viewport.Destroy)
 		slot.Viewport = nil
@@ -1072,7 +1095,12 @@ local function setSlotPet(slot, def, detail)
 	slot.Def = def
 	slot.Placeholder.Visible = def == nil
 	if def then
-		local ok, handle = pcall(CloudUI.PetViewport, slot.View, def, UDim2.new(1, 0, 1, 0), { Detail = detail or "High", Spin = "spin", ZIndex = 4 })
+		local ok, handle = pcall(CloudUI.PetViewport, slot.View, def, UDim2.new(1, 0, 1, 0), {
+			Detail = stage >= 1 and "Low" or (detail or "High"),
+			Evolved = stage >= 1 and stage or nil, -- Phase 5 (3.7)
+			Spin = "spin",
+			ZIndex = 4,
+		})
 		if ok then
 			slot.Viewport = handle
 		end
@@ -1084,31 +1112,90 @@ layoutPreview = function()
 		return
 	end
 	local short = S.Short
+	local tall = S.Tall
+	local mix = S.Tab == "Mix"
 	local result = short and K.RESULT_SHORT or K.RESULT
 	local input = short and K.INPUT_SHORT or K.INPUT
-	if S.Tall then
+	if tall and not short then
 		result, input = K.RESULT_TALL, K.INPUT_TALL
 	end
-	local mix = S.Tab == "Mix"
-	U.PreviewTitle.Visible = not short
-	local rowY = short and 4 or (S.Tall and 54 or 66)
-	local rowH = result + ((mix or not short) and 26 or 8)
+	local bottomH = short and 52 or 64
+	-- the room above the cost / FUSE row (design px; only the one-column window knows its preview height)
+	local avail = S.PreviewH and (S.PreviewH - bottomH - (short and 6 or 12) - 4) or nil
+	-- landscape phones (a short one-column sheet): the cards on the left, the name and the one-line note beside them
+	local side = short and tall and avail ~= nil
+	-- portrait phones: when the full stack (title, big cards, name, pills, one line of notes) does not fit above the
+	-- FUSE row, the title steps aside (the tab says it) and the cards shrink until a line of notes fits again
+	local tight = false
+	local pills = not short
+	local block = 78 -- name 36 + 2, pills 32 + 8
+	if tall and not short and avail then
+		local fitFull = avail - (54 + 26 + 2 + block + K.NOTE_MIN)
+		if fitFull < result and fitFull >= K.RESULT_FULL_MIN then
+			-- (a little short: slightly smaller cards keep the full stack)
+			result = fitFull
+			input = math.floor(result * K.INPUT_TALL / K.RESULT_TALL + 0.5)
+		elseif fitFull < result then
+			tight = true
+			block = 66 -- name 30 + 2, pills 30 + 4
+			local extra = mix and 26 or 8
+			local fit = avail - 4 - extra - 2 - block - K.NOTE_MIN
+			if fit < K.RESULT_MIN then
+				-- not even the smallest cards leave room: the pills go, the name keeps its line
+				pills = false
+				block = 32
+				fit = avail - 4 - extra - 2 - block - K.NOTE_MIN
+			end
+			result = math.max(K.RESULT_MIN, math.min(K.RESULT_TALL, fit))
+			input = math.floor(result * K.INPUT_TALL / K.RESULT_TALL + 0.5)
+		end
+	end
+	if side then
+		result, input = K.RESULT_SIDE, K.INPUT_SIDE
+		if mix then
+			-- (two cards side by side: a little smaller, so the name column keeps its width)
+			result, input = result - 4, input - 6
+		end
+	end
+	S.PreviewMode = side and "Side" or (tight and "Tight" or (short and "Short" or "Full"))
+	local compactRow = short or tight
+	U.PreviewTitle.Visible = not compactRow
+	local rowY = compactRow and 4 or (tall and 54 or 66)
+	local rowH = result + ((mix or not compactRow) and 26 or 8)
+	-- where the inputs, the arrow and the result sit (fractions of the slot row)
+	local xIn, xArrow, xRes = 0.25, 0.53, 0.76
 	U.SlotRow.Position = UDim2.new(0, 0, 0, rowY)
 	U.SlotRow.Size = UDim2.new(1, 0, 0, rowH)
+	local rowW = 0
+	if side then
+		-- the slot row only as wide as its cards (design px), the rest is the name column
+		local mid, arrowX, resX
+		if mix then
+			local gap = input * 0.62
+			mid = 10 + input / 2 + gap
+			arrowX = mid + gap + input / 2 + 16
+		else
+			mid = 6 + input / 2 + 11 -- (the fanned stack spreads 8 px and tilts a little)
+			arrowX = mid + input / 2 + 26
+		end
+		resX = arrowX + 18 + result / 2
+		rowW = math.floor(resX + result / 2 + 4)
+		xIn, xArrow, xRes = mid / rowW, arrowX / rowW, resX / rowW
+		U.SlotRow.Size = UDim2.new(0, rowW, 0, rowH)
+	end
 	local cy = result / 2 + 4
-	-- result on the right third, inputs on the left
 	U.ResultSlot.Frame.Size = UDim2.fromOffset(result, result)
-	U.ResultSlot.Frame.Position = UDim2.new(0.76, 0, 0, cy)
-	U.Arrow.Position = UDim2.new(0.53, 0, 0, cy)
+	U.ResultSlot.Frame.Position = UDim2.new(xRes, 0, 0, cy)
+	U.Arrow.Position = UDim2.new(xArrow, 0, 0, cy)
 	for _, slot in ipairs(U.InSlots) do
 		slot.Frame.Size = UDim2.fromOffset(input, input)
 	end
 	if not mix then
 		-- three copies fanned out like a stack of cards
-		local fan = short and 10 or 16
-		U.InSlots[1].Frame.Position = UDim2.new(0.25, -fan, 0, cy - fan * 0.75)
-		U.InSlots[2].Frame.Position = UDim2.new(0.25, 0, 0, cy)
-		U.InSlots[3].Frame.Position = UDim2.new(0.25, fan, 0, cy + fan * 0.75)
+		local fan = compactRow and (side and 8 or 10) or 16
+		U.InSlots[1].Frame.Position = UDim2.new(xIn, -fan, 0, cy - fan * 0.75)
+		U.InSlots[2].Frame.Position = UDim2.new(xIn, 0, 0, cy)
+		U.InSlots[3].Frame.Position = UDim2.new(xIn, fan, 0, cy + fan * 0.75)
 		U.InSlots[1].Frame.Rotation = -6
 		U.InSlots[3].Frame.Rotation = 6
 		U.InSlots[2].Frame.Rotation = 0
@@ -1120,23 +1207,45 @@ layoutPreview = function()
 		U.Swap.Visible = false
 	else
 		local gap = input * 0.62
-		U.InSlots[1].Frame.Position = UDim2.new(0.25, -gap, 0, cy)
-		U.InSlots[2].Frame.Position = UDim2.new(0.25, gap, 0, cy)
+		U.InSlots[1].Frame.Position = UDim2.new(xIn, -gap, 0, cy)
+		U.InSlots[2].Frame.Position = UDim2.new(xIn, gap, 0, cy)
 		U.InSlots[1].Frame.Rotation = 0
 		U.InSlots[2].Frame.Rotation = 0
 		U.InSlots[3].Frame.Visible = false
 		U.InSlots[1].Frame.Visible = true
-		U.Plus.Visible = true
-		U.Plus.Position = UDim2.new(0.25, 0, 0, cy)
 		U.CaptionA.Visible = true
 		U.CaptionB.Visible = true
-		U.CaptionA.Position = UDim2.new(0.25, -gap, 0, cy + input / 2 + 2)
-		U.CaptionB.Position = UDim2.new(0.25, gap, 0, cy + input / 2 + 2)
-		U.Swap.Visible = S.MixA ~= nil and S.MixB ~= nil
-		U.Swap.Position = UDim2.new(0.25, 0, 0, cy - input / 2 - 2)
+		-- ("Body" / "Style" under small cards: a caption no wider than its card's column)
+		local capW = math.min(110, input + 12)
+		U.CaptionA.Size = UDim2.fromOffset(capW, 24)
+		U.CaptionB.Size = UDim2.fromOffset(capW, 24)
+		U.CaptionA.Position = UDim2.new(xIn, -gap, 0, cy + input / 2 + 2)
+		U.CaptionB.Position = UDim2.new(xIn, gap, 0, cy + input / 2 + 2)
+		local swap = S.MixA ~= nil and S.MixB ~= nil
+		U.Swap.Visible = swap
+		if compactRow then
+			-- no room above the cards: the swap button takes the plus sign's place between them
+			U.Plus.Visible = not swap
+			U.Swap.Position = UDim2.new(xIn, 0, 0, cy + 18)
+		else
+			U.Plus.Visible = true
+			U.Swap.Position = UDim2.new(xIn, 0, 0, cy - input / 2 - 2)
+		end
+		U.Plus.Position = UDim2.new(xIn, 0, 0, cy)
 	end
 	local y = rowY + rowH + 2
-	if short then
+	-- (in the side column the name is the first line of the details list, the note stacks right under it)
+	U.ResultName.Parent = side and U.Details or U.Preview
+	U.ResultName.LayoutOrder = 0
+	if side then
+		-- a column right of the cards: the name (one line, cut with "...") over the note
+		U.Pills.Visible = false
+		U.ResultName.Position = UDim2.new(0, 0, 0, 0)
+		U.ResultName.Size = UDim2.new(1, 0, 0, 26)
+		U.ResultName.TextSize = 20
+		U.Details.Position = UDim2.new(0, rowW + 4, 0, 6)
+		U.Details.Size = UDim2.new(1, -(rowW + 18), 0, math.max(0, avail - 6))
+	elseif short or not pills then
 		-- no room for the pills: the name (in its rarity colour) and a summary line instead
 		U.ResultName.Position = UDim2.new(0, 14, 0, y)
 		U.ResultName.Size = UDim2.new(1, -28, 0, 30)
@@ -1146,16 +1255,15 @@ layoutPreview = function()
 	else
 		U.Pills.Visible = true
 		U.ResultName.Position = UDim2.new(0, 14, 0, y)
-		U.ResultName.Size = UDim2.new(1, -28, 0, 36)
-		U.ResultName.TextSize = 28
-		y = y + 38
+		U.ResultName.Size = UDim2.new(1, -28, 0, tight and 30 or 36)
+		U.ResultName.TextSize = tight and 24 or 28
+		y = y + (tight and 32 or 38)
 		U.Pills.Position = UDim2.new(0, 14, 0, y)
-		U.Pills.Size = UDim2.new(1, -28, 0, 32)
+		U.Pills.Size = UDim2.new(1, -28, 0, tight and 30 or 32)
 		U.PillsLayout.HorizontalAlignment = Enum.HorizontalAlignment.Left
-		y = y + 40
+		y = y + (tight and 34 or 40)
 	end
 	local compact = short or S.Tall
-	local bottomH = short and 52 or 64
 	U.Bottom.Size = UDim2.new(1, -28, 0, bottomH)
 	U.Bottom.Position = UDim2.new(0, 14, 1, short and -6 or -12)
 	U.Cost.TextSize = compact and 24 or 28
@@ -1172,8 +1280,18 @@ layoutPreview = function()
 	U.Cost.Position = leftFuse and UDim2.new(0, fuseW + 14, 0.5, 0) or UDim2.new(0, 0, 0.5, 0)
 	U.Cost.TextXAlignment = Enum.TextXAlignment.Left
 	U.Cost.Size = UDim2.new(1, -(fuseW + 14), 0, 40)
-	U.Details.Position = UDim2.new(0, 14, 0, y)
-	U.Details.Size = UDim2.new(1, -28, 1, -(y + bottomH + (short and 8 or 20)))
+	-- a note with room for one line only stays on one line ("..." when long; the compact layouts use the notes'
+	-- short forms), so it is never cut through the middle; the side column wraps it under the name
+	local oneLine = not side and (short or tight or (avail ~= nil and avail - y < 2 * K.NOTE_MIN))
+	U.Info.TextWrapped = not oneLine
+	U.Info.TextTruncate = oneLine and Enum.TextTruncate.AtEnd or Enum.TextTruncate.None
+	if not side then
+		U.Details.Position = UDim2.new(0, 14, 0, y)
+		U.Details.Size = UDim2.new(1, -28, 0, math.max(0, avail and (avail - y) or 0))
+		if not avail then
+			U.Details.Size = UDim2.new(1, -28, 1, -(y + bottomH + (short and 8 or 20)))
+		end
+	end
 	U.ServerNote.Position = UDim2.new(0, 14, 1, -(bottomH + (short and 10 or 18)))
 	-- the locked card: a smaller crystal and no teaser line on short screens
 	if U.LockedSub then
@@ -1188,7 +1306,7 @@ end
 
 local function setNotes(plan)
 	for _, child in ipairs(U.Details:GetChildren()) do
-		if child:IsA("TextLabel") and child ~= U.Info then
+		if child:IsA("TextLabel") and child ~= U.Info and child ~= U.ResultName then
 			child:Destroy()
 		end
 	end
@@ -1220,7 +1338,7 @@ local function setNotes(plan)
 		-- one line only: the most important note replaces the summary / explanation
 		local first = lines[1]
 		if first then
-			U.Info.Text = (S.Short and first.Short) or first.Text
+			U.Info.Text = ((S.Short or S.PreviewMode == "Tight") and first.Short) or first.Text
 			U.Info.TextColor3 = first.Color or MUTED
 		end
 		return
@@ -1304,8 +1422,9 @@ local function summaryText(plan)
 end
 
 local function infoText(plan)
-	if S.Short then
-		if plan.ResultDef then
+	-- (the compact previews have one line here: the pills' summary when they are hidden, else a short hint)
+	if S.Short or S.PreviewMode == "Tight" then
+		if plan.ResultDef and not U.Pills.Visible then
 			return summaryText(plan)
 		end
 		return (S.Tab == "Upgrade") and "3 copies fuse into the next finish" or "Two different pets make a new hybrid"
@@ -1342,16 +1461,29 @@ local function renderPreview(plan)
 		inputs[2] = S.MixB and defOf(S.MixB) or nil
 		U.InCount.Visible = false
 	end
-	for i, slot in ipairs(U.InSlots) do
-		setSlotPet(slot, inputs[i], (S.Tab == "Upgrade" and i ~= 2) and "Low" or "High")
+	local function stageOf(key)
+		return (key and type(State.PetStage) == "function" and tonumber(State.PetStage(key))) or 0
 	end
-	-- result
+	local inStage = {}
+	if S.Tab == "Upgrade" then
+		inStage = { stageOf(S.UpKey), stageOf(S.UpKey), stageOf(S.UpKey) }
+	else
+		inStage = { stageOf(S.MixA), stageOf(S.MixB) }
+	end
+	for i, slot in ipairs(U.InSlots) do
+		setSlotPet(slot, inputs[i], (S.Tab == "Upgrade" and i ~= 2) and "Low" or "High", inStage[i])
+	end
+	-- result: the stage the fusion keeps (an Upgrade carries the copy's stage; a new Mix starts plain)
 	if not S.Animating then
-		setSlotPet(U.ResultSlot, plan.ResultDef, "High")
+		local keep = 0
+		if S.Tab == "Upgrade" and plan.ResultKey then
+			keep = math.max(stageOf(S.UpKey), stageOf(plan.ResultKey))
+		end
+		setSlotPet(U.ResultSlot, plan.ResultDef, "High", keep)
 		U.ResultSlot.Stroke.Color = plan.Rarity and rarityAccent(plan.Rarity) or NAVY
 	end
 	U.ResultName.Text = plan.ResultName or ((S.Tab == "Upgrade") and "Pick a pet" or "Pick two pets")
-	U.ResultName.TextColor3 = plan.ResultDef and (S.Short and plan.Rarity and Theme.Lighten(rarityAccent(plan.Rarity), 0.35) or WHITE) or MUTED
+	U.ResultName.TextColor3 = plan.ResultDef and ((S.Short or not U.Pills.Visible) and plan.Rarity and Theme.Lighten(rarityAccent(plan.Rarity), 0.35) or WHITE) or MUTED
 	renderPills(plan)
 	U.Info.Text = infoText(plan)
 	U.Info.TextColor3 = MUTED
@@ -1542,7 +1674,7 @@ local function playFusion(resultKey, rarity)
 		-- 3) the new pet pops in
 		local def = defOf(resultKey)
 		if def then
-			setSlotPet(U.ResultSlot, def, "High")
+			setSlotPet(U.ResultSlot, def, "High", (type(State.PetStage) == "function" and tonumber(State.PetStage(resultKey))) or 0)
 		end
 		U.ResultSlot.Scale.Scale = 0.4
 		tween(U.ResultSlot.Scale, 0.35, { Scale = 1 }, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
@@ -2021,8 +2153,6 @@ local function buildWindow()
 		return true
 	end
 	local holder = makeFrame(U.Gui, "Window_Fusion", {
-		AnchorPoint = Vector2.new(0.5, 0.5),
-		Position = UDim2.new(0.5, 0, 0.5, 0),
 		Size = UDim2.fromOffset(K.PREF_W, K.PREF_H),
 		Visible = false,
 		ZIndex = 3,
@@ -2033,7 +2163,7 @@ local function buildWindow()
 		Name = "FusionPanel",
 		Title = G.Crystal .. " Fusion Machine",
 		Closable = true,
-		Accent = ACCENT,
+		Category = "Fusion",
 		Size = UDim2.new(1, 0, 1, 0),
 		Position = UDim2.new(0.5, 0, 0.5, 0),
 		AnchorPoint = Vector2.new(0.5, 0.5),
@@ -2057,25 +2187,12 @@ local function buildWindow()
 	return true
 end
 
+-- (Phase 5: no backdrop; the hotbar stops avoiding the window when it closes)
 local function setBackdrop(on)
-	local backdrop = U.Backdrop
-	if not backdrop then
-		return
-	end
-	if on then
-		backdrop.Visible = true
-		tween(backdrop, 0.18, { BackgroundTransparency = 0.55 })
-	else
-		tween(backdrop, 0.15, { BackgroundTransparency = 1 })
-		local mine = S.Token
-		task.delay(0.17, function()
-			if S.Token == mine and not S.Open and backdrop.Parent then
-				backdrop.Visible = false
-			end
-		end)
+	if not on then
+		avoidRight(nil)
 	end
 end
-
 -- the menu windows and the Pet Index share the screen: one window at a time
 local function closeOthers()
 	local controllers = script.Parent
@@ -2226,21 +2343,6 @@ function FusionController.Init()
 
 	local gui = CloudUI.NewScreenGui("NimbusFusion", K.DISPLAY_ORDER)
 	U.Gui = gui
-	U.Backdrop = Util.Create("TextButton", {
-		Name = "Backdrop",
-		AutoButtonColor = false,
-		Text = "",
-		BorderSizePixel = 0,
-		BackgroundColor3 = Color3.fromRGB(8, 12, 32),
-		BackgroundTransparency = 1,
-		Size = UDim2.new(1, 0, 1, 0),
-		Visible = false,
-		ZIndex = 1,
-		Parent = gui,
-	})
-	U.Backdrop.Activated:Connect(function()
-		FusionController.Close()
-	end)
 	gui:GetPropertyChangedSignal("AbsoluteSize"):Connect(function()
 		if S.Built then
 			safe("relayout", relayout)

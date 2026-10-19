@@ -19,68 +19,82 @@ python3 tools/verify_place.py                     # or: python3 tools/verify_pla
 
 ## Tycoon economy simulation
 
-`sim_tycoon.py` replays the Phase 4 tycoon homes (pets make the money: rainbow coins from the Pet Garden, the food
-plants, the Coin Magnet, the Food Machine, EVOLVE at 20 / 50, pets growing to level 100, prestige with x1.5 prices
-per star, the Vault's offline coins) for an active player and 120 typical ones (3 prestige runs each), prints when
-each milestone is reached (first paid pad, Villa, first prestige, first EVOLVE, later runs, prestige Gems per hour)
-and checks the pacing targets of ARCHITECTURE_V3.md "Phase 4 build contract" 3.12 / 8.3: it must print
+`sim_tycoon.py` replays the Phase 5 tycoon homes (11 stations, TycoonCatalog Version 5: roaming garden pets that poop
+Cloud Cash, the 40-level Berry Farm, berries and the Berry Basket, feeding that spends berries, EVOLVE at 20 / 50 with
+the level bonus x1.5 / x1.875, pets growing to level 100, prestige with x1.5 prices per star, the Vault's offline
+coins) for an active player and 120 typical ones (3 prestige runs each), prints when each milestone is reached (first
+paid pad, Villa, first prestige, first EVOLVE, later runs, prestige Gems per hour) and checks the 13 pacing targets of
+ARCHITECTURE_V3.md "Phase 4 build contract" 3.12 / 8.3 (kept by "Phase 5 build contract" 12.3): it must print
 `ALL TARGETS MET`. Its constants block mirrors `src/shared/TycoonCatalog.lua` (and the pet data of `PetCatalog` /
 `Config`): change both together (the smoke test `p2_economy`, `tools/smoke_p4_economy.lua`, fails while they
 disagree).
 
 ```sh
-python3 tools/sim_tycoon.py                 # timeline of one player + Monte Carlo + targets (~20 s)
-python3 tools/sim_tycoon.py --quiet         # summary only
-python3 tools/sim_tycoon.py --ring 0.08     # a kid who climbs the Champion Ring regularly (+8% Cash)
-python3 tools/sim_tycoon.py --feed 0.5      # a heavy feeder (half the coins go to the Food Machine)
-python3 tools/sim_tycoon.py --mode combat   # the timeline player only gets Combat pets
-python3 tools/sim_tycoon.py --check         # catalog == sim: effect tables, pads with star prices, income, feeding (lupa)
-python3 tools/sim_tycoon.py --migrate       # 300 Phase 3 homes on their first Phase 4 login (Home Level, dead ends, pad time)
-python3 tools/sim_tycoon.py --plan yard.png # the yard from above: stations, pads, garden walks, coin piles (lupa + Pillow)
+python3 tools/sim_tycoon.py                          # timeline of one player + Monte Carlo + targets (~20 s)
+python3 tools/sim_tycoon.py --quiet                  # summary only
+python3 tools/sim_tycoon.py --ring 0.08              # a kid who climbs the Champion Ring regularly (+8% Cash)
+python3 tools/sim_tycoon.py --dungeon 0.1            # a Dungeon run every 10 minutes (the room Cash + the chest)
+python3 tools/sim_tycoon.py --ring 0.08 --dungeon 0.1   # the Phase 5 gate run: must print ALL TARGETS MET (C10)
+python3 tools/sim_tycoon.py --mode combat            # the timeline player only gets Combat pets
+python3 tools/sim_tycoon.py --check                  # catalog == sim: tables, pads, income, berries, the fold (lupa)
+python3 tools/sim_tycoon.py --migrate5               # 300 Phase 4 homes on their first Phase 5 load (the fold)
+python3 tools/sim_tycoon.py --plan yard.png          # the yard from above: stations, pads, the garden (lupa + Pillow)
 ```
 
+* `--ring R`: Champion Ring Cash as a share of garden income (0 by default). `--dungeon N`: Dungeon runs per minute
+  of play (0.1 = one every 10 minutes; a run takes 3 minutes + 15 s per floor away from the yard and pays the room
+  Cash of 5.2 plus the expected chest). Both start at minute 30, after the tutorial's home chapter. The C10 floor of
+  the first Prestige is 115 minutes for the player who runs both (120 otherwise). `--feed` is kept for old command
+  lines but unused since Phase 5 (feeding spends berries, not Cash).
 * `--check` loads the real catalog (and PetCatalog) with lupa and compares every constant, `AvailablePads` (incl.
-  `PriceAt` with stars and `LegacyPrices`), `FoodOf`, `GardenSlots`, `IncomePerSecond`, `PileSeconds`, `ScoopRadius`,
-  `OfflineEarnings` and `StationsAfterPrestige` on 400 random homes, `FeedXp` / `FeedPrice` / `TrainCost` /
-  `TrainSeconds` at every level and rank, and runs `Validate()`.
-* `--migrate` imports the frozen Phase 3 sim (`tools/fixtures/sim_tycoon_phase3.py`) by path, stops 300 old homes at
-  random moments, applies the one-time migration (LegacySlots, LegacyPrices) and gates on: Home Level unchanged in
-  every home, no dead end, and a median time-to-the-next-pad ratio <= 1.0 in every house tier / star bucket.
-* Exit status 1 when a target is missed (or `--check` / `--migrate` finds a problem).
+  `PriceAt` with stars and `LegacyPrices`), `SignedPads`, `FoodOf`, `GardenSlots`, `IncomePerSecond`, `PileSeconds`,
+  `ScoopRadius`, `BasketCap`, `FeedBerries`, `OfflineEarnings`, `FoldLegacy` and `StationsAfterPrestige` on random
+  homes, `FeedXp` / `TrainCost` / `TrainSeconds` at every level and rank, and runs `Validate()`.
+* `--migrate5` imports the frozen Phase 4 sim (`tools/fixtures/sim_tycoon_phase4.py`) by path, stops 300 Phase 4 homes
+  (18 stations) at random moments, folds them with the Phase 5 rules (plants -> Berry Farm with the food floor, the
+  Coin Magnet -> LegacyMagnet, old decor -> DecorCredit) and gates on: Home Level never down, no dead end, and a median
+  time-to-the-next-pad ratio <= 1.0 in every house tier / star bucket. (The Phase 3 `--migrate` is gone.)
+* Exit status 1 when a target is missed (or `--check` / `--migrate5` finds a problem).
 
-## Battle balance simulation (Phase 3 + Phase 4)
+## Battle balance simulation (Phase 5)
 
 `sim_battle.lua` runs the **real** battle engine (`src/shared/BattleSim.lua` on the numbers of
 `src/shared/BattleCatalog.lua`, with PetCatalog / PetKeys / TycoonCatalog) inside the Roblox mock under lupa, like
-`smoke.py`, and prints a balance report with `TARGET ok / MISS` lines: the Trial curve 1-30 against typical teams along
-the tycoon progression (early players clear ~1-8, mid game ~10-20, prestiged players reach 30), equal-power fights
-being fair, mirror duels at ~50%, one element-counter pet at ~60-65%, boss raids with 1 / 3 / 8 scripted players who
-RETREAT out of telegraphs (won in 100-240 s, non-dodgers see several telegraphs), every special useful but none an
-auto-win, no one-shots, no unkillable sustain teams, no stalls, and the step cost of a full raid. It boots the mock by
+`smoke.py`, and prints a balance report with `TARGET ok / MISS` lines for the Phase 5 battle system (one fighter you
+steer, two helpers with buffs, three lives; ARCHITECTURE_V3.md "Phase 5 build contract" 12.3). It boots the mock by
 itself (run it from the repo root), so no Python wrapper is needed beyond lupa:
 
 ```sh
 python3 -c "import lupa.luajit21 as L; L.LuaRuntime().execute(open('tools/sim_battle.lua').read())"
-SIM_BATTLE="quick only=trials,raids" python3 -c "import lupa.luajit21 as L; L.LuaRuntime().execute(open('tools/sim_battle.lua').read())"
+SIM_BATTLE="quick only=duels,raids" python3 -c "import lupa.luajit21 as L; L.LuaRuntime().execute(open('tools/sim_battle.lua').read())"
 ```
 
-* `SIM_BATTLE` options: `quick` (32 seeds per matchup, ~20 s) or `full` (100 seeds, the default), `seeds=N`,
-  `only=roster,duels,elements,trials,raids,dodge,specials,extremes,perf,training,ring,level100,progression`,
-  `verbose` (section timings).
-* Phase 4 sections (`ARCHITECTURE_V3.md` "Phase 4 build contract" 8.3): `training` (TeamPower with all four skills at
-  rank 5 x1.25-1.4 and rank 10 x1.6-1.85, Evolved I / II x1.25 / x1.5, trained mirror duels 35-65% with no draws or
-  timeouts, a trained + evolved team still needs 100-240 s for a raid with dodging players), `ring` (the Champion Ring:
-  rounds 1-3 won >= 95% by every single level-1 rollable Common / Uncommon, the single-pet average >= 85% at rounds 4-5
-  and >= 50% at round 8, the median record per stage S1 13-19 / S3 20-26 / S5 25-31 / S7 33-39 / S9 41-47 / S10 48-54,
-  fights 4-40 s, the champion's power never dropping to round 120, Boost from rounds 40-50, the round table with its
-  rewards), `level100` (the player's level-100 rule: the S10 pets at level 100, Evolved II, every skill at rank 10 ->
-  raids 100-240 s, no duel hit above `Damage.MaxHit` (no one-shots), fair mirrors, the duel practice gap
-  `DUEL_POWER_GAP` read from BattleService catches the maxed L100 team vs an L50 team) and `progression` (the XP behind
-  each stage and its Food Machine price, `TycoonCatalog.FeedPrice`). `SIM.Stages` are the Phase 3 stages, unchanged.
-* Change a number in `BattleCatalog` -> re-run the sim. The smoke scenario `p3battle_balance`
-  (`tools/smoke_p3_battlecore.lua`) loads this file as a library (`SIM_BATTLE_LIBRARY = true`) and runs a short subset.
-* The scripted player (`SIM.Player`) presses SPECIAL when a meter is full, focuses a wounded enemy and retreats out of
-  telegraph shapes after a human-ish 0.4-0.9 s reaction; `Auto = true` teams cast on their own like NPC teams.
+* `SIM_BATTLE` options: `quick` (fewer seeds, ~20 s per section) or `full` (the default), `seeds=N`, `only=a,b`,
+  `verbose` (section timings). The sections:
+
+  | Section | What it measures (targets) |
+  |---|---|
+  | `roster` | every pet's battle numbers (UnitStats, role, walk / run speed, buff, element attack) |
+  | `fighter` | the played kit against a passive NPC of k x its power (kit factor 1.25-1.7); mirror fights 6-45 s, none at the Ring's 90 s |
+  | `support` | Support (Economy) pets: DPS ratio 0.65-0.75 of Combat pets; a Support fighter beats 2 x puddle_frog L8 in 10-60 % of seeds |
+  | `duels` | mirror duels per stage with scripted players on both sides: fair (40-60 % overall, 30-70 % per stage), no draws |
+  | `raids` | 1 / 4 / 8 / 16 dodging fighters finish every boss in 100-240 s; no one-shots; joins / leaves; idle alts |
+  | `ring` | rounds 1-3 >= 95 % for every single level-1 rollable pet; the stage medians S1 16 .. S10 51 (+-2) |
+  | `dungeon` | floor 1 for the 12 single level-1 pets (100 %); the stage ladder (monotonic, S10 >= floor 10); a 4-party gains a floor |
+  | `training` | trained / evolved TeamPower ratios; trained mirror duels fair; trained raids 100-240 s |
+  | `move` | the character patterns (random targets + an r 14 circle) at the legal run speed with a 200 ms feed delay for mochi_slime L1 / sunbeam_bear L20 / stormfang L50: the server fighter keeps up (gap <= 0.5 stud, zero leashes); a straight run-off is leashed after 3 s |
+  | `perf` | a 16-fighter raid with minion waves steps in well under 1 ms |
+  | `progression` | the XP and Cash behind each stage, `Validate()` |
+
+* Change a number in `BattleCatalog` -> re-run the sim. The smoke scenario `p5battle_balance`
+  (`tools/smoke_p5_battlecore.lua`) loads this file as a library (`SIM_BATTLE_LIBRARY = true`) and runs a short
+  subset; `p5dgn_balance` (`tools/smoke_p5_dungeon.lua`) uses `SIM.Stages`, `SIM.team`, `SIM.Player` and
+  `SIM.dungeonFloor`.
+* The scripted player (`SIM.Player`) moves a simulated character at the fighter's legal run speed (`SpeedOf`), feeds
+  `Move`, presses ATTACK / ELEMENT / SPECIAL / the buffs, swaps and dashes out of wind-ups and telegraphs after a
+  human-ish delay (options: dodge share, delay steps, buffs, swap, element). `Auto = true` teams are driven by the
+  engine's own AI (tests only; BattleService never sets it). The Phase 3 / 4 sections (`trials`, `dodge`, `specials`,
+  `extremes`, `elements`, `level100`) are gone with the Trials and RETREAT.
 
 ## Model renderer: see the voxel art without Studio
 
@@ -112,12 +126,12 @@ python3 tools/render_model.py module:server/Services/LobbyBuilder:Build -o any.p
   `token[:golden]`, `module:<path>:<func>[:lobby]`, several joined with `+`, or a `.json` dump from `--json`
   (`storm-altar` needs `server/Services/StormAltar.lua`; `npcs` and `storm-altar` build the lobby first).
 * Phase 3 targets: `arena` (workspace.BattleArena from `ArenaBuilder.Build(lobbyInfo)`: island, colosseum, duel rings,
-  boards, the bridge and the Trial Portal; `lobby+arena` with `--box` shows the plaza link) and `pocket[:<index>]`
-  (one private trial pocket from `ArenaBuilder.BuildPocket`).
+  boards and the bridge (since Phase 5 the Ring and Arena gates stand in the Gate Court); `lobby+arena` with `--box`
+  shows the plaza link) and `pocket[:<index>]` (one private battle pocket from `ArenaBuilder.BuildPocket`).
 * Phase 3 bosses (`shared/BossBuilder.lua`): `boss:<bossId>[:<pose>[:High|Low]]` (pose Idle | Windup | Attack |
   Basic | Enrage | Hurt | Down at its strongest moment; `Windup/chain` picks the attack id, a trailing `!` shows it
   enraged, e.g. `boss:storm_titan:Attack/slam`, `boss:lava_golem:Enrage!`) and `bosses[:<pose>[:Low]]` (the roster).
-* Phase 3 battles (`client/Controllers/BattleController.lua`, client world): `battle[:<trial|duel|raid>[:<seconds>[:specials]]]`
+* Phase 3 battles (`client/Controllers/BattleController.lua`, client world): `battle[:<duel|raid>[:<seconds>[:specials]]]`
   steps a real BattleSim at 10 Hz and feeds it to the real BattleController the way BattleService sends it, then dumps
   what the client drew (`workspace.ClientBattle`: unit models, boss, telegraphs, effects). `battle:raid:9` catches the
   boss's first telegraph filling; `:specials` fills the local team's meters and casts every special just before the
@@ -130,6 +144,20 @@ python3 tools/render_model.py module:server/Services/LobbyBuilder:Build -o any.p
   every open place and its coin piles, and the Training Place with a pet on every mat, drawn by the real `HomeFx`;
   `pocket:ring` is the Champion Ring pocket (`ArenaBuilder.BuildPocket(1, "Ring")`) and `portal:home` the home portal
   `HomePortalFx` draws, e.g. `python3 tools/render_model.py homegarden:12:8 --views threequarter,top -o garden.png`.
+* Phase 5 targets: `lobby` is the whole lobby with the **Gate Court** (render it `--views top`), `gates` the six gates
+  and the court alone, `gate:<Home|Obby|Dungeon|Ring|Arena|Altar>` one gate with its pad (`WorldStyle.BuildGate`);
+  `home:Press1:<1..40>` the Berry Farm at a level (and `home:<Id>:<level>` every other station), `homerow:House:1,2,3,4` /
+  `homerow:DecorFountain:1,2,3` / `homerow:DecorFence:1,2,3` the tiers side by side, `homeplot:SkyCastle:pads` the whole
+  plot, `homegarden[:<open>[:<level>]]` the Pet Garden with its 12 beds and the Food Bowl; `homeroam[:<t>]` (client world)
+  a Sky Castle plot with 12 roaming pets and their Cloud Cash at time `t`, `followers[:walk]` another player's three
+  followers (small, evolved, second evolution); the Dungeon (`DungeonBuilder`): `dungeon[:<kind>[:<variant>]]` one room
+  template (Hall / Cellar / Cave / Bridge / Throne / Entrance / Corridor / Treasure), `dungeon:room:<kind>`,
+  `dungeon:boss`, `dungeon:run[:<floor>[:<seed>]]` a built run as DungeonService places it (hall + corridors + rooms 1-2),
+  `dungeon:floor[:<floor>]` every piece of a run at once and `dungeon:portal` the Dungeon gate; the renders cut away the
+  ceiling and the two camera-side walls, e.g. `python3 tools/render_model.py dungeon:run:3 --views threequarter,top`.
+  `pocket:ring` stays; the Trial pocket is gone. The sky itself is painted in Blender:
+  `/tmp/claude-0/bpyenv/bin/python blender/sky/render_sky.py` (bpy 5.2, about 2 minutes) writes `branding/sky/*.png` and
+  `blender/sky/preview_cross.png`.
 * Views: `front` looks the model in the face (a pet's LookVector), `side` at its right flank (face to the right),
   `back`, `left`, `threequarter`, `top` (front at the bottom). All views of a sheet share one scale.
 * Output: the PNG (part count in the bottom-right corner) plus the part count and bounding box on stdout.
@@ -166,28 +194,40 @@ python3 tools/render_gui.py portal:Hard:2 -o portal.png              # a portal'
   `party` (portal party panel), `results`, `menu:<Window>[:<Tab or Index group>]`, `tutorial[:<step>]`, `npc[:<n>]`,
   `dev` (owner panel), `toasts`, `gallery`, `portal[:<Id>[:<players>[:<studs>]]]`, or a `.json` dump written earlier
   with `--json`. `--list` prints them.
-* `battle[:<trial|duel|raid|spectate>[:<fight|ready|retreat|result|lost>]]` (Phase 3, BattleController): the battle
-  HUD fed by a real BattleSim stepped at 10 Hz through BattleState: top card, team rows with SPECIAL buttons (`ready`
-  lights two of them), ATTACK / RETREAT (`retreat` shows the regroup countdown), the result card (`result` / `lost`),
-  or the slim WATCHING card of a spectator; e.g. `python3 tools/render_gui.py battle:raid:ready --grid -o raid.png`.
+* `battle[:<mode>[:<phase>]]` (BattleController): the battle HUD fed by a real BattleSim stepped at 10 Hz through
+  BattleState. Since Phase 5 this is the fighter / helpers HUD (see the Phase 5 scenarios below); the Phase 3 team rows,
+  ATTACK / RETREAT and the regroup countdown are gone. e.g. `python3 tools/render_gui.py battle:raid:ready --grid -o raid.png`.
 * `arena[:<view>[:<arg>]]` (Phase 3 UI: MenuController's Team window, ArenaController): a profile with a battle team,
-  trophies and trials 1-6 cleared, then `team` (default), `team4` (Prestige 1: four slots), `newteam` (empty presets),
-  `trials[:<level>]` (the Trial window on that level), `duels` / `raid` / `leaders` (the Arena panel's tabs, with two
+  trophies and a few Dungeon floors cleared, then `team` (default), `newteam` (empty presets),
+  `duels` / `raid` / `leaders` (the Arena panel's tabs, with two
   more players to challenge, a running raid, Double Rewards) or `side` (no window: the duel invite, the queue, the raid
-  join card and the event countdown at the right edge); e.g. `python3 tools/render_gui.py arena:trials:12 --grid`.
+  join card and the event countdown at the right edge); e.g. `python3 tools/render_gui.py arena:duels --grid`.
 * Phase 4 scenarios (a shared care profile: Prestige 1, a Garden with 4 places, plants, the Food Machine and the
   Training Place): `home[:coins]` (the Home window with its Pet Garden card; `:coins` = a home from before Phase 4
   with kept places, old prices and a big pile of coins), `feed` (CareController's Food Machine list: garden pets first,
-  leftovers, a pet ready to EVOLVE, a level-100 pet), `garden[:<slot>]` (the garden picker), `train[:<key>]` (the
+  the Berry Basket, a pet ready to EVOLVE, a level-100 pet), `garden[:<slot>]` (the garden picker), `train[:<key>]` (the
   Training Place window with a running timer and Stop), `evolve` (the EVOLVE confirm), `ring[:new|record]` (the
   Champion Ring window), `petcards` (the floating pet cards of every mode mirrored flat) and the ring HUD
   `battle:ring:<fight|next|result|record><round>` (e.g. `battle:ring:next8` is the "Round 8 won! ... Round 9 in 3"
   card). `menu:<Window>[:<Tab>[:<Action>[:<Key>]]]` passes an Action / Key along (e.g. `menu:Pets:Pets:Evolve:<key>`).
+* Phase 5 scenarios (`dump_gui.lua`, one named block per owner): `neon[:window|hud|party]` (the Neon kit gallery; a
+  docked side panel; the HUD with the stamina ticks; the obby party panel with the level row and CHANGE), the battle HUD
+  `battle[:fighter|raid|dungeon|duel|spectate|ring[:<phase>]]` with the phases `fight` / `ready` / `result` / `lost` /
+  `cleared` (fighter card, helper portraits, enemy rows, the action cluster), `home` / `feed` / `garden` / `train` /
+  `team` / `looks[:epic]` / `stats` / `fusion[:mix]` (the care windows on NeonKit: the Home strip, the one-button Food
+  Machine with the Berry Basket, the Team of 3 with FIGHTER / HELPER, evolved looks), `mainmenu[:updates|credits]`,
+  `loading` and `settings[:hud]` (the loading screen, the main menu before PLAY and the settings window),
+  `dungeon[:lobby|party|leader|countdown|run|loot|treasure|end|wipe]` (DungeonController's window, run card and end
+  card), `obby[:picker|party|toast]` (ObbyController's level picker) and `arena[:team|duels|raid|leaders|side|practice|dungeon]`
+  (the docked Arena windows; `arena:trials` is gone), e.g. `python3 tools/render_gui.py dungeon:leader --grid`. Render
+  every window at 1920x1080, 1280x720, 390x844 and 844x390 (`--grid`): `client_p5gui_cover` fails any window that
+  covers more than 60 % of the screen. Scenarios the lead has not added to `render_gui.py --list` yet still render
+  by name.
 * `arenaboards[:<countdown|raid|idle>]` (Phase 3, ArenaBuilder) draws the Battle Arena's world GUIs instead of the HUD,
   like `portal`: the real LobbyBuilder + ArenaBuilder build the arena (as the server), a sample ArenaState goes through
   `ApplyArenaState` (`countdown`: the next Boss Raid in 1:35 + Double Rewards, `raid`: a live raid with its HP bar,
   `idle`: the next raid 20 minutes away), then every SurfaceGui (event board, trophy leaderboard, gate and arch signs,
-  both faces) is drawn at its on-screen size from 30 studs and every BillboardGui (duel pad tags, the Trial Portal) at
+  both faces) is drawn at its on-screen size from 30 studs and every BillboardGui (duel pad tags) at
   its pixel size, one copy of each; e.g. `python3 tools/render_gui.py arenaboards:raid -o boards.png`.
 * `portal` draws world GUIs instead of the HUD: the real LobbyBuilder + PortalService run (as the server) with
   `players` members on the pad (default 1 on Medium), and the portal's GUIs are mirrored flat into a ScreenGui: the
@@ -214,19 +254,37 @@ python3 tools/render_gui.py portal:Hard:2 -o portal.png              # a portal'
 
 `smoke.py` loads every `tools/smoke_*.lua` file it lists (it fails when a `smoke_*.lua` file is not wired in) and runs
 their scenarios in the server, client or phone world; `python3 tools/smoke.py --list` prints every scenario and
-`--only a,b` runs a few (handy while you work; a full `--quick` run takes about 16 minutes). The Phase 4 files:
+`--only a,b` runs a few (handy while you work; a full `--quick` run takes about 20-30 minutes). The Phase 5 files
+(ARCHITECTURE_V3.md "Phase 5 build contract" 12.1; each owner registers its own line in `smoke.py`):
+
+| File | What it checks |
+|---|---|
+| `smoke_p5_data.lua` | the Phase 5 save: teams of 3 (a 4-key preset loads with 3), the Dungeon record (merge, the one-time Trial -> floor migration), berries, settings, the home fold's data step, the Phase 4 -> 5 rollout against the frozen `tools/fixtures/DataService_phase4.lua` |
+| `smoke_p5_battlecore.lua` (replaces `smoke_p3_battlecore.lua`) | the level formula, roles (Support x2.6 / x1.5), the fighter engine (attack, ELEMENT shapes, specials, dash i-frames, swap, buffs, lives, the move clamp), the NPC AI, every mode, the wire format, determinism, the Dungeon catalog and `p5battle_balance` (a short `sim_battle.lua` run) |
+| `smoke_p5_home.lua` | the 11 stations, the fold of Phase 4 homes (Home Level and food never drop), pad signs, HomeRoam (the same plan on server and client), berries and the Berry Basket, the Cloud Cash ledger; client half: roaming pets, the coins and the home window strip |
+| `smoke_p5_world.lua` | LightingService (painted sky vs the fallback), LightingStack, the art rules (`p5world_style`), the lobby and the Gate Court, GateService, the one obby portal and its level picker |
+| `smoke_p5_gui.lua` | the Neon kit, stamina 150 with its dash ticks, the HUD pills and `client_p5gui_cover`: every window at four screen sizes covers at most 60 % (one named block per window owner) |
+| `smoke_p5_battleservice.lua` | BattleService's command ladder, the server fighter that follows the character (the leash), fair duels, raids, the ring, the encounter API the Dungeon uses, shutdown |
+| `smoke_p5_dungeon.lua` | parties (create, join, ready, kick), runs (rooms, waves, doors, the treasure), loot paid once per room and member, first clears once, every way a run ends, the world, the net; client half: the Dungeon window, run card and end card |
+| `smoke_p5_battleclient.lua` | the battle HUD (fighter card, helpers, enemy rows), input (keys bound only in battle, hold to attack, swap hold, Tab), the models, the result card, phone and landscape layouts |
+| `smoke_p5_follow.lua` | the follow formation (`FormationFor`), the motion (gaps, lag, never ahead) and the Wild look of dungeon enemies |
+| `smoke_p5_looks.lua` | evolved looks at every site (Pets, Index, Team, Fusion, Care rows, garden, reveal, Ring card, followers), the Pet Podium, Support battle power, the Team of 3 |
+| `smoke_p5_menu.lua` | the server-held spawn (`MenuPlay`, the 90 s fallback), the loading screen, the main menu, settings, the UI gate |
+| `smoke_p5_tutorial.lua` | tutorial texts and targets, chapter 3's Dungeon step, chapter 2 against a Phase 5 home, the obby portal step, NPC lines |
+| `smoke_p5_flow.lua` | end-to-end runs: a new player from PLAY to the Dungeon and the ring, a Phase 4 save migrating, a Dungeon party, rejoin, merges |
+| `smoke_p2_final.lua` | `README.md` against the game: the station and house tables, the Garden / berries / Food Machine, training, evolution, Vault, prestige, fusion, the fighter / helper rules and keys, the Dungeon, duels, raids, the Champion Ring, NPC, developer-tool and tutorial numbers, the "Phase 5: the Big Sky Update" section and the numbered "Phase 5: owner checklist" (`checkPhase5`) are read from the catalogs and must match the text |
+
+The Phase 4 files (still run, updated for Phase 5 where 12.2 says so):
 
 | File | What it checks |
 |---|---|
 | `smoke_p4_data.lua` | the save fields of Phase 4 (pet growth: evolutions, ranks, training jobs; the ring record; the kept garden places and prices), the one-time migration of Phase 3 saves, two-server merges, the Phase 3 -> Phase 4 rollout against the frozen `tools/fixtures/DataService_phase3.lua`, `/petlevel` |
-| `smoke_p4_economy.lua` | TycoonCatalog: the 18 stations (free Garden first, plants, Magnet, Food Machine, Training Place, Vault), star prices, coin values, Lucky coins, piles, feeding and training prices, and that `tools/sim_tycoon.py` uses the same numbers |
-| `smoke_p4_garden.lua` | the Pet Garden: placing pets, meals and coins, piles, naps, scooping (only the owner), the Welcome-back pile, offline coins; client half: the coin heaps, the "Zzz", the scoop pop and the cards of garden pets |
+| `smoke_p4_economy.lua` | TycoonCatalog: the stations, star prices, coin values, Lucky coins, the lawn, feeding (berries) and training prices, and that `tools/sim_tycoon.py` uses the same numbers |
+| `smoke_p4_garden.lua` | the Pet Garden: placing pets, meals and coins, the lawn, naps, scooping (only the owner), the Welcome-back pile, offline coins; client half: the coins, the "Zzz", the scoop pop and the cards of garden pets |
 | `smoke_p4_portal.lua` | the home portal: Go home, the refusals (match, battle, portal party), walking in, the arrival swirl; client half: HomePortalFx and the pets diving in |
-| `smoke_p4_care.lua` | the Food Machine (price, XP, Level up, leftovers, the level-100 cap), EVOLVE, the Training Place (cost, time, the training lock, Stop and its refund, auto-return), the old Gym emptied |
+| `smoke_p4_care.lua` | the Food Machine (berries, XP, the level-100 cap), EVOLVE, the Training Place (cost, time, the training lock, Stop and its refund, auto-return), the old Gym emptied |
 | `smoke_p4_careui.lua` | CareController: the Food Machine list, the garden picker, the training window, the EVOLVE confirm and moment, the Pets panel and Home window, phone sizes |
-| `smoke_p4_ring.lua` | the Champion Ring: entry rules, chained rounds, rewards (Cash floor, record x3, the first boss clear), every way a run ends, the loss-XP rule of Trials |
-| `smoke_p4_pets_client.lua` | the pet cards (PetCard) and the follow-behind formation |
+| `smoke_p4_ring.lua` | the Champion Ring: entry rules, chained rounds, rewards (Cash floor, record x3, the first boss clear), every way a run ends |
+| `smoke_p4_pets_client.lua` | the pet cards (PetCard) and the followers |
 | `smoke_p4_ui.lua` | the tutorial chapters 2 and 4, the NPC tips and the ring window (ArenaController) |
-| `smoke_p4_flow.lua` | end-to-end runs of several players through the Phase 4 home: garden, coins, Food Machine, EVOLVE, training, the ring, the portal, prestige, rejoin |
-| `smoke_p2_final.lua` | `README.md` against the game: the station and house tables, the Garden, Food Machine, Training Place, evolution, Vault, prestige, fusion, Champion Ring, NPC, developer-tool and tutorial numbers are read from the catalogs and must match the text |
-
+| `smoke_p4_flow.lua` | end-to-end runs of several players through the home: garden, coins, Food Machine, EVOLVE, training, the ring, the portal, prestige, rejoin |

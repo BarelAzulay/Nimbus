@@ -1,183 +1,200 @@
--- BattleService (Phase 3, battleservice): runs every pet battle on the server (ARCHITECTURE_V3.md "Phase 3: Pet
--- battles", "Phase 3 build contract" and its "Interfaces between the Phase 3 modules"). The server simulates, the
--- clients draw: every battle is a pure BattleSim stepped at a FIXED dt of 0.1 s (10 Hz, deterministic for its seed);
--- the participants and the spectators within range get compact BattleState messages; nothing here moves a part every
--- frame (Replication rule): characters are only placed when a battle starts / ends (teleports).
+-- BattleService (Phase 5 "the Big Sky Update", battleservice; ARCHITECTURE_V3.md "Phase 5 build contract" 4.4-4.6, 4.8,
+-- 10.3-10.5; the Phase 3 / 4 contract where this one is silent): runs every pet battle on the server as the COMMAND LAYER
+-- on the Phase 5 BattleSim. The server simulates, the clients draw: every battle is a pure BattleSim stepped at a FIXED dt
+-- of 0.1 s (10 Hz, deterministic for its seed); the participants and the spectators within range get compact BattleState
+-- messages; nothing here moves a part every frame (Replication rule): characters are only placed when a battle starts /
+-- ends (teleports). The player's CHARACTER is the fighter's body (B1): every tick the character root position becomes the
+-- fighter's "Move" command, the server fighter walks toward it at <= the legal battle run speed x Fighter.MoveSlack, and
+-- reach, cooldowns, meter, lives and damage are decided by BattleSim on the SERVER fighter position (Y1 / Y2).
 --
 -- Contract API
 --   BattleService.Init(deps)      deps = { DataService, PetService, PetCareService, TycoonService, ArenaBuilder,
 --                                 ArenaInfo } (every dep optional; players already in the game are handled)
---   BattleService.StartTrial(player, level) -> ok, battleId | reason
 --   BattleService.Challenge(a, b) -> ok, reason          a challenges b to a duel (b answers with ChallengeReply)
 --   BattleService.StartRaid(bossId|nil) -> ok, raidId | reason       EventService: opens a Boss Raid on the arena floor
 --   BattleService.EndRaid() -> ok                         EventService: ends it (a running fight ends as a timeout)
 --   BattleService.GetRaidStatus() -> { Active, BossId, Name, Hp, MaxHp, Players, EndsIn, Enraged, Joinable, JoinEndsIn,
 --                                 Waiting, BattleId } | nil                       (ArenaState.Raid)
 --   BattleService.StartRing(player, startRound) -> ok, battleId | reason     Phase 4: the Champion Ring (see "Modes")
---   BattleService.KeysInBattle(player) -> { [key] = true }   the pet keys in the player's running battle or ring run
---                                 (PetCareService Feed / Train / Evolve, FusionService and GardenSet refuse them)
---   BattleService.GetBattle(player) -> { BattleId, Mode, Side, Level, BossId, Round (Ring), State, Zone = { CFrame,
---                                 Size } } | nil   (a ring run between two rounds reads State "Intermission")
+--   BattleService.KeysInBattle(player) -> { [key] = true }   the pet keys in the player's running battle or ring run, OR-ed
+--                                 with the run provider's KeysInRun (a dungeon run between two rooms)
+--   BattleService.GetBattle(player) -> { BattleId, Mode, Side, BossId, Round (Ring), Floor / Room (Dungeon), State, T,
+--                                 Zone = { CFrame, Size } } | nil   (a ring run between two rounds reads State "Intermission")
 --   BattleService.IsInBattle(player) -> bool
 --   BattleService.BattleEnded     Util.Signal (exists at module load): Fire(battleId, result), once per battle,
 --                                 AFTER the rewards were paid. result = { Mode, Winners = {userId...}, Losers =
---                                 {userId...}, Level (Trial), BossId (Raid), Round + Won (Ring), Damage = {[userId] =
---                                 n}, Forfeit = bool } plus the extras BattleId, Reason, Draw, WinnerSide, Duration,
---                                 Shares = {[userId] = 0..1}, Participants = {userId...} (everyone who ever joined),
---                                 Fighters = {userId...} (the participants still in at the end: raid leavers are
---                                 not), Rewards = {[userId] = rewards}, RewardsPaid = true, BossHp, BossMaxHp.
+--                                 {userId...}, BossId (Raid), Round + Won (Ring), Damage = {[userId] = n}, Forfeit = bool }
+--                                 plus BattleId, Reason, Draw, WinnerSide, Duration, Shares = {[userId] = 0..1},
+--                                 Participants = {userId...} (everyone who ever joined), Fighters = {userId...} (the
+--                                 participants still in at the end; a dungeon encounter: the QUALIFYING members, 4.6),
+--                                 Rewards = {[userId] = rewards}, RewardsPaid = true, BossHp, BossMaxHp, Survivors, Hp,
+--                                 Waves, Extra (Dungeon).
+--   The encounter API (4.6; the ONLY way DungeonService touches combat; this module NEVER requires DungeonService, C16):
+--   BattleService.TeamSpec(player, keys | nil) -> spec | nil, reason     (teamOf: keys = the ring fallback; training keys skipped)
+--   BattleService.OpenEncounter(spec) -> battleId | nil, reason
+--     spec = { Mode = "Dungeon", Zone = <NC_BattleZone part> | { CFrame, Size }, Seed, TimeLimit, Label, Teams = { { Player,
+--              Spec }... } (1..4), Extra = { Floor, Room, Wave, Waves, Name, Boss }, KeepInBattle = true, OnEnd = fn(battleId,
+--              result), OnWave = fn(battleId, waveIndex), OnBossHp = fn(battleId, frac), OnDown = fn(battleId, player,
+--              livesLeft), OnLeave = fn(battleId, player, why) }
+--     KeepInBattle: this service never writes the InBattle attribute for such a participant (the dungeon RUN owns it: its
+--     run id "D<n>"); St.battleOf is still set (Command / present / KeysInBattle work). Everyone gets "Start" at once.
+--   BattleService.SpawnWave(battleId, entries, opts) -> infos | nil, reason     entries 1..12 of { PetId | Key | Def, Level,
+--     Tier, Evo, Train, Boost, Handicap, Boss, Wild, Name }; opts { Wave, Anchor, Name } -> Sim:SpawnEnemies + the Wave event
+--   BattleService.FinishEncounter(battleId, reason) -> result | nil     reason "Cleared" | "Abandoned" | "Shutdown";
+--     idempotent (nil the 2nd time); Wipe / Timeout end the sim by themselves. The end sends "End" with Rewards = { Dungeon
+--     = true, Extra } (no Cash / XP: the loot card is DungeonController's; this service pays NOTHING for a dungeon, C2), fires
+--     BattleEnded(battleId, result) with Mode "Dungeon", then calls spec.OnEnd(battleId, result). The zone and the pocket
+--     are left to the caller (no FreePocket, no return teleport).
+--   BattleService.RemoveEncounterTeam(battleId, player) -> ok   (Quit / leave / leash / disconnect: the others fight on; OnLeave)
+--   BattleService.EncounterStatus(battleId) -> { Enemies, Wave, BossHp, Players = { [userId] = { Lives, Hp, MaxHp, Down } } } | nil
+--   BattleService.SetRunProvider({ KeysInRun = fn(player) -> {[key] = true}, GetRun = fn(player) -> run | nil })   called last
+--     in DungeonService.Init; the service boots and works without it. canBattle refuses "Finish your dungeon run first" when
+--     GetRun(player) is set or the player's InBattle attribute is a string starting with "D".
+--   OnWave fires when the spawned wave is gone (EnemiesDown) and the encounter is not finished; OnBossHp on every 5% step
+--   of BossHp; OnDown when a fighter's lives reach 0 (the team stays as "Downed": no wipe while another team lives). Every
+--   spec callback runs through pcall (an error is warned once per encounter and callback) and never stops the end or the
+--   release of participants. Fail-safe: an encounter whose sim ended and whose end did not complete within 10 s is finalized
+--   by this service itself (Reason "Error", nothing paid). Result (Mode Dungeon): { Reason = "Cleared" | "Wipe" | "Timeout" |
+--   "Abandoned" | "Shutdown" | "Error", Duration, Fighters = { userId... } (participants not Left whose Damage >= Dungeon.MinShare
+--   x the party's total damage; a solo team qualifies with any damage > 0), Damage, Hp, Survivors, Waves, BossHp, Extra }.
 -- Extras: StartDuel(a, b) -> ok, battleId | reason, ReplyChallenge(player, fromUserId, accept) -> ok, reason,
 --   Queue(player) / Unqueue(player) -> ok, reason, JoinRaid(player) / LeaveRaid(player) -> ok, reason,
---   Command(player, action, arg) -> ok, reason (what BattleCommand does), Forfeit(player) -> ok,
+--   Command(player, action, arg) -> ok, reason, extra (what BattleCommand does), Forfeit(player) -> ok,
 --   SetDoubleRewards(active, seconds|nil) (EventService may push the Double Rewards hour; it is also read from
 --   EventService itself), IsDoubleRewards(), SetArena(arenaInfo, arenaBuilder), GetNetStats(), EstimateBytes(value),
 --   ListBattles() -> { summary... }, signals BattleStarted(battleId, info) and RaidJoined(player, battleId),
 --   flag BattleService.PayRaidRewards (default true: this service pays the raid tiers; see "Rewards"),
 --   Shutdown() (what game:BindToClose runs; tests call it: every running battle ends void with Reason "Shutdown", new
 --   battles are refused), SetClosing(bool) (tests: reopen after a Shutdown),
---   BattleService.Debug = nil | { FailEnd = n } (tests: the next n battle ends fail, to exercise the fail-safe that
---   frees the players, ring / pocket / raid, sends "End" and fires BattleEnded with Reason "Error" exactly once).
+--   BattleService.Debug = nil | { FailEnd = n, HoldEnd = bool } (tests: the next n battle ends fail, to exercise the fail-safe
+--   that frees the players, ring / pocket / raid, sends "End" and fires BattleEnded with Reason "Error" exactly once;
+--   HoldEnd leaves a finished dungeon sim un-finalized so the 10 s fail-safe shows).
 --
--- Modes
---   * Trial: BattleRequest("Trial", level) near Portal_Trials (ArenaInfo.TrialPortal, TRIAL_RANGE studs). Level 1 is
---     always open; level N needs level N-1 cleared (Battle.TrialCleared / TrialBest). The fight runs in a private
---     pocket (ArenaBuilder.BuildPocket(index), one free index per trial, FreePocket afterwards): the player is
---     teleported to the pocket's Spawn and, TRIAL_RETURN_DELAY seconds after the end, back to ArenaInfo.ReturnCFrame (in
---     front of the Trial Portal). One battle at a time per player; refused in an obby match (InMatch), while locked in
---     a portal party (PortalLocked), during another battle, without a team, while the profile loads (GetBattle nil).
+-- Modes (every mode runs the same engine: a player team = Pets[1] the FIGHTER on the floor + Pets[2..3] the bench)
 --   * Duel: both players inside the Battle Arena (ArenaBuilder.InArena). "Challenge" (userId) -> an invite that expires
 --     after CHALLENGE_TIMEOUT seconds -> "ChallengeReply" (userId, true) starts it (a challenge back to someone who
 --     already challenged you accepts it). Or the quick "Queue": every second the queue pairs the two closest trophy
---     counts within an allowance that grows with the wait (QUEUE_GAP_BASE + QUEUE_GAP_PER_SECOND x seconds). The
---     duel runs on a free arena ring (ArenaInfo.Rings, the ring's zone): the challenger fights from side 1 (the ring's
---     -Z pad), the other from side 2 (+Z). Status: BattleState("Lobby", { Queue = { Queued, Waiting (players in the
---     queue), Seconds (my wait) }, Invites = { { FromUserId, FromName, Trophies, Power, ExpiresIn }... }, Sent =
---     { ToUserId, ToName, ExpiresIn } | nil }) to every player whose duel / queue status changed.
+--     counts within an allowance that grows with the wait (QUEUE_GAP_BASE + QUEUE_GAP_PER_SECOND x seconds) AND within
+--     BattleCatalog.Duel.QueueGap x TeamPower (+ QueueGapPerWait per QueueWaitStep seconds, cap QueueGapMax). The duel runs
+--     on a free arena ring (ArenaInfo.Rings, the ring's zone): the challenger fights from side 1 (the ring's -Z pad), the
+--     other from side 2 (+Z). Fair play (4.2): a TeamPower gap above Duel.PowerGap (2) makes it a PRACTICE duel (nothing
+--     paid, nothing counted); a challenge more than Duel.PracticeInvite (2) apart carries Practice = true in the invite.
+--     Status: BattleState("Lobby", { Queue = { Queued, Waiting, Seconds }, Invites = { { FromUserId, FromName, Trophies,
+--     Power, ExpiresIn, Practice }... }, Sent = { ToUserId, ToName, ExpiresIn } | nil }) to every player whose status changed.
 --   * Raid: EventService calls StartRaid(bossId); for BattleCatalog.Events.JoinWindowSeconds players inside the arena
 --     may "JoinRaid" (the first joiner creates the BattleSim with the boss, later ones AddTeam: the boss HP grows per
---     participant, BattleCatalog.BossHp / GroupFactor); a joiner is placed on the floor's rim at their team's place.
---     "LeaveRaid" / leaving the arena / a disconnect removes the team (RemoveTeam: the boss sheds that share). The raid
---     ends when the sim ends (boss down, wipe, the boss's time limit, everybody left) or on EndRaid(); a raid nobody
---     joined closes at the end of the join window. ArenaState.Raid = GetRaidStatus().
---   * Ring (Phase 4, ARCHITECTURE_V3.md "Phase 4 build contract" 3.8 / 3.11 / 5.1-5.4; every helper lives in the
---     RingRun table): BattleRequest("Ring", startRound) near Portal_Ring (ArenaInfo.RingPortal, else the Portal_Ring
---     model, else the Trial Portal as the zero-part fallback; RING_RANGE studs) -> StartRing. The entry checks, in
---     this order with their toasts: a home claimed this session (TycoonService.GetPlot, "Claim your home first"), at
---     least one owned pet ("You need a pet"), the fighters (the active team with training pets skipped, else the
---     equipped keys, else the best owned pets by UnitPower, up to GetTeams().Slots), canBattle, within RING_RANGE of
---     the portal ("Walk to the Champion Ring portal"), the profile loaded and not provisional ("Your save is still
---     loading, try again in a moment"), the start round (1, or a boss round 10k with Ring.Best >= 10k). One RingRun per
---     player: { Id, Player, UserId, Name, Pocket, PocketIndex, Zone, Round, Start, Seed, Keys (fixed at the start; the
---     spec is rebuilt from them every round, so levels won meanwhile count), Wins, Cash, Xp, Tokens, Record, Best0,
---     State = "Fighting" | "Intermission" | "Ending" | "Ended" }. The run's pocket comes from the shared pool
---     (St.pocketBusy) via ArenaBuilder.BuildPocket(index, "Ring") (pcall; the trial pocket is the fallback). Every
---     round is a fresh BattleSim (Mode "Ring", Zone 44 x 44, Teams = { the player's spec, BattleCatalog.ChampionTeam
---     (round, seed) }, TimeLimit 90: a timeout is a loss). A WIN pays once (payOnce / RingRun.pay: Cash =
---     BattleCatalog.RingRewards(round, TycoonService.IncomePerSecond(player), isRecord) with the record x3 and the first
---     boss clear's Tokens decided inside ONE DataService.MutateRing; XP 20 + 6r per team pet through
---     PetCareService.GrantXp source "Ring"), sends "End" with Rewards.Next / Cash / Record / Tokens, keeps the
---     participant (the new InBattle id is written by the next round's addParticipant BEFORE the old one is let go:
---     no gap, followers stay parked, GoHome / portals stay refused), waits Ring.Intermission seconds and starts the
---     next round in the same pocket. A loss, a timeout, Forfeit, leaving the pocket, a respawn elsewhere, an obby
---     match, a disconnect or a shutdown ends the run the trial way (the return teleport TRIAL_RETURN_DELAY later,
---     release, FreePocket, Ring.Runs + 1 written at once: on a leave it travels with the leave save) and the round
---     that ends the run pays a third of its XP under the trial-loss gate (BattleCatalog.LossXp; never for a forfeit,
---     a leave, a disconnect or a shutdown). The final "End" carries Rewards.Final = true and Rewards.Run = { Wins,
---     Cash, Xp, Tokens, Round, Start, Record, Best } (the result card). Forfeit during an intermission ends the run
---     cleanly (the last round kept). "Start" carries Ring = { Round, Best, Start, Champion = { PetId, Level, Tier,
---     Boss, Name } }; BattleEnded fires with Mode "Ring", Round and Won. When a run ends the Portal_Ring attribute
---     RingBoard = "Alex|31;Sam|24;Kim|20" (the best records in this server) is rewritten.
+--     participant, BattleCatalog.BossHp with the new ExpectedDps); a joiner is placed on the floor's rim at their team's
+--     place. "LeaveRaid" / leaving the arena / a disconnect / the leash removes the team (RemoteTeam: the boss sheds that
+--     share). The raid ends when the sim ends (boss down, wipe, the boss's time limit, everybody left) or on EndRaid(); a
+--     raid nobody joined closes at the end of the join window. ArenaState.Raid = GetRaidStatus().
+--   * Ring (Phase 4 contract 3.8 / 3.11 / 5.1-5.4; every helper lives in the RingRun table): BattleRequest("Ring",
+--     startRound) near Portal_Ring (ArenaInfo.RingPortal, else the Portal_Ring model; RING_RANGE studs) -> StartRing. The
+--     entry checks, in this order with their toasts: a home claimed this session (TycoonService.GetPlot, "Claim your home
+--     first"), at least one owned pet ("You need a pet"), the fighters (the active team with training pets skipped, else
+--     the equipped keys, else the best owned pets by UnitPower, up to GetTeams().Slots = 3; Pets[1] is the fighter),
+--     canBattle, within RING_RANGE of the portal ("Walk to the Champion Ring portal"), the profile loaded and not
+--     provisional, the start round (1, or a boss round 10k with Ring.Best >= 10k). One RingRun per player: { Id, Player,
+--     UserId, Name, Pocket, PocketIndex, Zone, Round, Start, Seed, Keys (fixed at the start), Wins, Cash, Xp, Tokens,
+--     Record, Best0, State = "Fighting" | "Intermission" | "Ending" | "Ended" }. The run's pocket comes from the shared pool
+--     (St.pocketBusy) via ArenaBuilder.BuildPocket(index, "Ring"). Every round is a fresh BattleSim (Mode "Ring", Zone
+--     44 x 44, Teams = { the player's spec, BattleCatalog.ChampionTeam(round, seed) }, TimeLimit 90: a timeout is a loss).
+--     A WIN pays once (payOnce / RingRun.pay: Cash = BattleCatalog.RingRewards(round, TycoonService.IncomePerSecond(player),
+--     isRecord) with the record x3 and the first boss clear's Tokens decided inside ONE DataService.MutateRing; XP 20 + 6r
+--     per team pet through PetCareService.GrantXp source "Ring"), sends "End" with Rewards.Next / Cash / Record / Tokens,
+--     keeps the participant (the new InBattle id is written by the next round's addParticipant BEFORE the old one is let
+--     go: no gap), waits Ring.Intermission seconds and starts the next round in the same pocket. A loss, a timeout,
+--     Forfeit, leaving the pocket, the leash, a respawn elsewhere, an obby match, a disconnect or a shutdown ends the run
+--     (the return teleport RETURN_DELAY later, release, FreePocket, Ring.Runs + 1 written at once) and the round that ends
+--     the run pays a third of its XP under the real-loss gate (BattleCatalog.LossXp; never for a forfeit, a leave, a
+--     disconnect or a shutdown). The final "End" carries Rewards.Final = true and Rewards.Run = { Wins, Cash, Xp, Tokens,
+--     Round, Start, Record, Best }. "Start" carries Ring = { Round, Best, Start, Champion = { PetId, Level, Tier, Boss, Name } };
+--     BattleEnded fires with Mode "Ring", Round and Won. When a run ends the Portal_Ring attribute RingBoard =
+--     "Alex|31;Sam|24;Kim|20" (the best records in this server) is rewritten.
+--   * Dungeon: the encounter API above (one encounter per ROOM, a fresh BattleSim with full HP, C1). Forfeit is refused in a
+--     dungeon ("Use LEAVE": DungeonService's Quit calls RemoveEncounterTeam); `present` = inside the encounter's zone part
+--     (+ ZONE_MARGIN); a leaver / leash / disconnect = RemoveEncounterTeam (the others fight on).
 --
--- The loop: on Heartbeat every running battle runs the fixed 0.1 s steps that are due against the wall clock (a
--- stalled server catches up at most MAX_CATCHUP steps per frame, merging their events into one message). After each
--- step: "Events" (the Step() events) to the receivers that already have the battle, "Start" to new receivers, then
--- "Snapshot". Messages (BattleState(kind, payload, battleId): the battle id rides along as a third argument, so a
--- client can route a bare "Events" list too):
+-- The loop: on Heartbeat every running battle runs the fixed 0.1 s steps that are due against the wall clock (a stalled
+-- server catches up at most MAX_CATCHUP steps per frame, merging their events into one message). Before the steps of a
+-- tick every live participant's character root (zone-local) is fed as Command(owner, "Move", x, z); after them the LEASH
+-- measures the gap between the character and the server fighter: a gap > Fighter.Leash (10) for Fighter.LeashSeconds (3)
+-- = a leaver in Duel / Ring, a RemoveTeam in Raid / Dungeon (a run-off or a teleport; an in-zone speed hack is not leashed
+-- and gains nothing). After each step: "Events" (the Step() events) to the receivers that already have the battle,
+-- "Start" to new receivers, then "Snapshot". Messages (BattleState(kind, payload, battleId)):
 --   "Start"    battle:Describe() + Zone = { CFrame (floor centre), Size (Vector3: X, height, Z), X, Z } + Names =
---              { [tostring(userId)] = name } + Side (the receiver's side, 0 for a spectator) + Spectator + T (+ Trial =
---              { Level, Name, Chapter } for trials). Unit static info carries slot (the owner's team slot 1-4).
+--              { [tostring(userId)] = name } + Side (the receiver's side, 0 for a spectator) + Spectator + T + Ring (ring
+--              info) / Dungeon (= spec.Extra) + Team = { Fighter, Bench, Lives, Speed = { Walk, Run }, Cooldowns } (the
+--              receiver's own team: BattleController calls MovementController.SetBattleSpeed(walk, run) from Speed).
 --   "Snapshot" battle:SnapshotDelta(last) = { BattleId, T, U = { number... } }: the units whose picture changed since the
---              receiver's previous snapshot, as flat numbers (code, pos [, hp] [, meter] [, shield] [, target] per unit;
---              BattleSim.DecodeSnapshot turns it back into { [id] = { x, z, hp, state, target, meter, shield } }); x / z
---              are studs relative to the zone centre (floor at the zone CFrame's height). Down units are sent once and
---              then left out, hp / meter / shield / target only when they change. Fighters get a snapshot every step
---              (10 Hz), spectators every other step (5 Hz); a new receiver gets a full snapshot right after its "Start".
---   "Events"   the list of Step() events ({ type = "Hit" | "Special" | "KO" | "Telegraph" | "Spawn" | "Enrage" |
---              "Order" | "Zone" | "Leave" | "End", ... }), only when the step produced any.
+--              receiver's previous snapshot, as flat numbers (BattleSim.DecodeSnapshot decodes; code = id x 1024 + lives x 256
+--              + windup x 128 + mask x 8 + state). Fighters get a snapshot every step (10 Hz), spectators every other step.
+--   "Events"   the list of Step() events (Hit / Special / KO / Telegraph / Spawn / Enrage / Order / Zone / Leave / End /
+--              Element / Dash / Buff / Swap / Windup / Wave / EnemiesDown / Speed), only when the step produced any; a
+--              refusal of a command BEFORE the sim (NotInZone, junk) also echoes Order { owner, order, rejected }.
 --   "End"      { BattleId, Mode, Result (the public result: owner maps keyed by tostring(userId)), Rewards (the
 --              receiver's own, nil for spectators), Outcome = "Win" | "Loss" | "Draw" | "Left" | nil, Won, Spectator,
---              Reason }. A spectator who walks out of range (or switches to a nearer battle) also gets an "End" with
---              Spectator = true and Reason = "OutOfRange" (it frees the client's models).
---   Spectators: a player who is in no battle watches the NEAREST running battle within SPECTATE_MARGIN studs of its
---   zone (one battle per client at a time; refreshed once a second). Bandwidth: EstimateBytes approximates the
---   remote encoding; GetNetStats() reports bytes per second per client over the last window. Measured by
---   tools/smoke_p3_battleservice.lua and tools/smoke_p3_fix_server.lua (estimate per client): a trial or a duel a few
---   KB/s, an 8-player raid well under 20 KB/s and a full 16-player raid under ~20 KB/s (the delta snapshots).
+--              Reason }. A spectator who walks out of range also gets an "End" with Spectator = true, Reason "OutOfRange".
+--   "Lobby"    the duel lobby status (above).
+--   Spectators: a player who is in no battle watches the NEAREST running battle within SPECTATE_MARGIN studs of its zone
+--   (one at a time; refreshed once a second). Bandwidth: EstimateBytes approximates the remote encoding; GetNetStats()
+--   reports bytes per second per client; a 16-raid stays under 6 KB/s per client (p5battle_net16).
 --
--- Teams: the active preset (DataService.ActiveTeamKeys, at most GetTeams().Slots pets: the 4th at Prestige 1), each key
---   as { Key, PetId, Def = PetKeys.DefOf(key, profile), Level = DataService.GetPetLevel, Tier, Slot, Evo, Train = {
---   Speed, Physique, Ability, Defense }, Xp, XpNext } (hybrids and tier copies keep their own stats; Phase 4: the
---   stored evolution stage and training ranks from DataService.GetGrowth ride as the UnitStats extras, so evolution and
---   training count in trials, duels, raids and the ring; training keys are skipped: DataService.TrainingKeys); the team
---   is fixed for the whole battle (a ring run rebuilds it from its fixed key list every round).
--- Owners and anchors: a team's owner is the player's UserId. Twice a second every participant's position (zone-local)
---   becomes their team's anchor (battle:SetAnchor), so RETREAT means "back to me".
--- BattleCommand (action, a): "Attack" (target unit id | nil), "Retreat", "Special" (team slot 1-4), "Forfeit". Only the
---   caller's own team (the owner is always the caller), only in the caller's running battle, only while their character
---   stands inside that battle's zone (Forfeit works anywhere), type-checked, token-bucket rate limited.
+-- BattleCommand (action, a) (4.5): "Attack" (unit id | nil), "Element" (unit id | { x, z } | nil), "Special", "Dash",
+--   "Target" (unit id | nil), "Buff" (2 | 3), "Swap" (2 | 3), "Forfeit". The validation ladder, in order: isPlayer -> type
+--   (action string <= 16 chars; arg number / nil / { x, z } of two finite numbers) -> the rate bucket (cmd: burst 12, refill
+--   8/s) -> a running battle, a live participant, inside the zone (present) -> Sim:Command (reach, cooldowns, meter, lives)
+--   -> replicate. Refusals are silent except NotInZone / Charging / Cooldown / OutOfReach ("Too far!"): one throttled toast
+--   per REFUSAL_TOAST_GAP (3 s) per player; every refusal echoes an Order { rejected } for the button shake. Only the
+--   caller's own team (the owner is always the caller). Forfeit works anywhere (refused in a dungeon).
 -- BattleRequest (action, a, b): "TeamSet" (preset 1-3, {keys}), "TeamSelect" (preset) (DataService validates: owned,
---   unique, not training (a garden pet may fight: Phase 4), slot 4 at Prestige 1), "Trial" (level), "Challenge" (userId),
+--   unique, not training, at most 3 keys: "Teams have 3 pets: a fighter and two helpers"), "Challenge" (userId),
 --   "ChallengeReply" (userId, accept), "Queue", "Unqueue", "JoinRaid", "LeaveRaid", "Ring" (startRound). Type-checked, a
---   cooldown per action plus a shared burst bucket; refusals answer with a side toast (Notify, never centred; repeats
---   throttled).
+--   cooldown per action plus a shared bucket (req: burst 4, refill 1/s); refusals answer with a side toast (never centred).
+--
+-- Teams (4.8): the active preset (DataService.ActiveTeamKeys, at most GetTeams().Slots = 3 pets: slot 1 = the fighter), each
+--   key as { Key, PetId, Def = PetKeys.DefOf(key, profile), Level, Tier, Slot, Evo, Train, Xp, XpNext } (hybrids and tier
+--   copies keep their own stats; the stored evolution stage and training ranks ride as the UnitStats extras); training keys
+--   are skipped (DataService.TrainingKeys); the team is fixed for the whole battle (a ring run rebuilds it from its fixed key
+--   list every round). XP keys = the 3 team keys ("every pet that fought" = every team key, as the Ring pays).
 --
 -- Leaving, forfeits, tricks ("nobody loses pets": no pet is ever taken)
---   * A trial player who forfeits, leaves the game, respawns elsewhere or ends up away from the pocket (teleported,
---     an exploit) loses the trial (no reward); the pocket is freed. Falling off the pocket puts them back on its spawn.
---   * A duel player who forfeits, leaves the game, leaves the arena or joins an obby match loses the duel at once: the
---     forfeit penalty (BattleCatalog.Trophies.Forfeit, a PvP loss) is written right away (before their profile is
---     saved on leave); the opponent wins. When BOTH duellists leave together (a server shutdown, "migrate to the
---     latest update", two friends quitting) the duel is void: nobody is penalised (a penalty already written to the
---     first leaver is given back while DataService still holds the profile).
---   * Duel rewards are gated against farming (payDuel): the winner's trophies, tokens and XP are withheld for a forfeit
---     before FORFEIT_MIN_SECONDS and for a loser who dealt no damage (an alt that quits at once or never fights; the
---     win still counts in PvPWins); the same two players earn from at most PAIR_LIMIT duels per PAIR_WINDOW seconds
---     (in this server's memory); a duel between teams more than DUEL_POWER_GAP apart in TeamPower is a PRACTICE duel
---     (a clear side toast: no trophies, tokens, XP or PvP counters for either side).
---   * A raid player who leaves the arena / the game is removed from the raid (no reward); a raider whose pets never hit
---     the boss (damage 0) gets no reward either (BattleCatalog.RaidTier nil); any hit earns at least the Helper tier.
---   * game:BindToClose -> Shutdown(): every running battle ends void (Reason "Shutdown"): duels and trials pay nothing
---     and penalise nobody, raids pay the tier of each fighter's current share (no event-pet roll); meanwhile new
---     battles are refused and leaving players are not treated as forfeiting.
---   * The player attribute InBattle holds the battle id (a string) while the player takes part (nil otherwise); trials
---     keep it until the player is back at the Trial Portal. ArenaBuilder's teleports and DevService refuse during it.
+--   * A duel player who forfeits, leaves the game, leaves the arena, is leashed or joins an obby match loses the duel at
+--     once: the forfeit penalty (BattleCatalog.Trophies.Forfeit, a PvP loss) is written right away (before their profile
+--     is saved on leave); the opponent wins. When BOTH duellists leave together the duel is void: nobody is penalised.
+--   * Duel rewards are gated against farming (payDuel): withheld for a forfeit before FORFEIT_MIN_SECONDS and for a loser
+--     who dealt no damage; the same two players earn from at most PAIR_LIMIT duels per PAIR_WINDOW seconds; a practice
+--     duel (Duel.PowerGap) pays nothing and counts for nothing.
+--   * A raid player who leaves the arena / the game / is leashed is removed from the raid (no reward); a raider whose
+--     fighter never hit the boss (damage 0) gets no reward either; any hit earns at least the Helper tier.
+--   * A dungeon participant who leaves / is leashed / disconnects is removed (RemoveEncounterTeam, OnLeave); nothing is paid
+--     by this service in a dungeon, ever (DungeonService pays per room with its own pay-once marks, Y4 / Y6).
+--   * game:BindToClose -> Shutdown(): every running battle ends void (Reason "Shutdown"): duels and ring rounds pay
+--     nothing and penalise nobody, raids pay the tier of each fighter's current share (no event-pet roll), encounters end
+--     with Reason "Shutdown" (OnEnd fires, nothing paid); meanwhile new battles are refused.
+--   * The player attribute InBattle (Config.Attr.InBattle) holds the battle id (a string) while the player takes part (nil
+--     otherwise); ring runs keep it until the player is back at the portal; dungeon participants (KeepInBattle) are never
+--     touched: the RUN owns it. ArenaBuilder's teleports, the gates and DevService refuse during it.
 -- Rewards (paid exactly once per player per battle: the record is marked before anything is paid, every payment is a
---   non-yielding DataService call; BattleEnded fires afterwards with RewardsPaid = true):
---   * Trial win: BattleCatalog.TrialRewards(level, double).Tokens (+ FirstClear.Tokens / Gems on the first clear, decided
---     inside DataService.MutateBattle and paid only when it returned true) and Xp to every team pet. A trial LOSS pays
---     a third of that XP when it was a real loss (BattleCatalog.LossXp: the fight lasted >= 20 s or the team dealt >= 20%
---     of the enemy team's HP; never a forfeit, a leave, a disconnect or a shutdown).
+--   non-yielding DataService call; BattleEnded fires afterwards with RewardsPaid = true): PAY = { Duel = payDuel, Raid =
+--   payRaid, Ring = RingRun.pay }; Dungeon is absent on purpose (C2).
 --   * Ring round won: Cash (seconds of the climber's own garden income, floor 20 + 2r, x3 on a new record), XP 20 + 6r
 --     per team pet, +100 Tokens for the first clear of a boss round; the run's last round: the loss third (see "Modes").
 --   * Duel: BattleCatalog.Trophies (Win / Loss / Draw / Forfeit, Tokens, Xp); PvPWins / PvPLosses.
 --   * Raid (only to the teams still in it at the end, when BattleService.PayRaidRewards is true): the tier of the
 --     player's damage share, BattleCatalog.RaidTier(share, won): Tokens, Xp, a GemChance of Gems and an EventPetChance
---     of an event pet (BattleCatalog.EventPets(), one the player has not won yet: Battle.EventPets + a Normal copy);
---     Raids + 1, RaidBestDamage.
+--     of an event pet; Raids + 1, RaidBestDamage.
 --   * Double Rewards (EventService's hour) doubles the Tokens (BattleCatalog.Events.DoubleRewardsMultiplier).
 --   * Pet XP goes through PetCareService.GrantXp (level caps, level-up toasts); DataService.AddPetXp without it.
--- EventService integration (what EventService can rely on):
---   * StartRaid(bossId) opens the raid at once (no countdown here: announce it before calling); GetRaidStatus() is
---     non-nil from then until the raid is over (Waiting = true until the first player joins, Joinable while the join
---     window is open); BattleEnded fires once for the raid id (Mode "Raid", Reason "BossDown" | "Wipe" | "Timeout" |
---     "Abandoned" | "NoPlayers" | "Ended") after the rewards were paid: result.Rewards[userId] holds each fighter's tier,
---     tokens, gems and event pet, result.RewardsPaid = true. Do not pay the tiers again (or set
---     BattleService.PayRaidRewards = false before the raid ends to pay them yourself).
---   * The fight runs on the boss's own clock (its TimeLimit counts from the first join): let it end by itself (wait for
---     GetRaidStatus() == nil). EndRaid() ends a running fight at once as a timeout (the Loss tier for the fighters).
---   * Double Rewards: call SetDoubleRewards(true, seconds) / SetDoubleRewards(false) when the hour starts / ends, or
---     expose EventService.IsDoubleRewards() -> bool (also read: IsDoubleActive, DoubleRewardsActive, IsDouble,
---     GetDouble() -> { Active }, EventService.Double = { Active }), or set the workspace attribute DoubleRewards.
+-- EventService integration: StartRaid(bossId) opens the raid at once (announce it before calling); GetRaidStatus() is
+--   non-nil until the raid is over; BattleEnded fires once for the raid id (Mode "Raid", Reason "BossDown" | "Wipe" |
+--   "Timeout" | "Abandoned" | "NoPlayers" | "Ended") after the rewards were paid: result.Rewards[userId] holds each
+--   fighter's tier (do not pay the tiers again, or set BattleService.PayRaidRewards = false). The fight runs on the boss's
+--   own clock; EndRaid() ends a running fight at once as a timeout. Double Rewards: SetDoubleRewards(true, seconds) /
+--   SetDoubleRewards(false), or EventService.IsDoubleRewards() -> bool (also IsDoubleActive, DoubleRewardsActive, IsDouble,
+--   GetDouble() -> { Active }, EventService.Double = { Active }), or the workspace attribute DoubleRewards.
+-- Deleted (10.5): StartTrial, payTrial, finishTrial, forfeitTrial, trialPortalPosition, St.trialPortal, TRIAL_RANGE,
+--   REQUEST_COOLDOWNS.Trial, b.TrialInfo / d.Trial, the "Trial" dispatch, "Retreat" and the per-slot "Special" command;
+--   TRIAL_RETURN_DELAY -> RETURN_DELAY (POCKET_LEASH stays).
 -- Plain Lua 5.1-compatible syntax only.
 
 local Players = game:GetService("Players")
@@ -223,21 +240,21 @@ local TycoonCatalog = loadShared("TycoonCatalog") -- Phase 4: XpToNext for the p
 -- Tunables (Config.Battle does not exist: local constants, listed as a deviation)
 ----------------------------------------------------------------------
 local C = {
-	ATTR_IN_BATTLE = "InBattle", -- Config.Attr.InBattle is missing (lead-owned): the attribute name from the contract
+	ATTR_IN_BATTLE = (type(Config.Attr) == "table" and Config.Attr.InBattle) or "InBattle", -- C11: Config.Attr.InBattle, own string as the fallback
 	ATTR_PORTAL_LOCKED = "PortalLocked", -- PortalService: the player is locked on a portal pad for a party countdown
 	STEP = 0.1, -- fixed simulation step (BattleCatalog.StepSeconds)
 	MAX_CATCHUP = 3, -- steps one loop tick may run for a battle that fell behind
 	MONITOR_PERIOD = 0.5, -- presence checks + anchors
 	HOUSEKEEPING_PERIOD = 1, -- invites, queue pairing, spectators, raid window
 	OUT_STRIKES = 2, -- consecutive failed presence checks before a forfeit / leave (1 s)
-	TRIAL_RANGE = 30, -- studs from the Trial Portal where a trial may start
 	RING_RANGE = 30, -- studs from Portal_Ring where a Champion Ring run may start (Phase 4 contract 3.8)
-	TRIAL_RETURN_DELAY = 4, -- seconds between a trial's (or a ring run's) end and the teleport back
-	POCKET_LEASH = 140, -- studs (horizontal) from the pocket centre before a trial player counts as gone
+	RETURN_DELAY = 4, -- seconds between a ring run's end and the teleport back
+	POCKET_LEASH = 140, -- studs (horizontal) from the pocket centre before a ring climber counts as gone
 	POCKET_FALL = 25, -- studs under the pocket floor where a falling player is put back on the spawn
 	MAX_POCKETS = 64,
 	RING_COOLDOWN = 4, -- a ring stays reserved this long after its duel (the result fx play out)
 	ZONE_MARGIN = 8, -- studs of slack around a zone part for commands
+	STUN_CATCHUP_MAX = 20, -- seconds after a stun during which the leash stays off (the server fighter catches up)
 	ZONE_FALLBACK_MARGIN = 16, -- ... around the floor rectangle when there is no zone part
 	SPECTATE_MARGIN = 80, -- studs beyond the zone's half diagonal where spectators receive a battle
 	SPECTATE_SWITCH = 10, -- a nearer battle must be this much nearer to switch
@@ -255,18 +272,22 @@ local C = {
 	ZONE_HEIGHT = 30, -- Size.Y of the zone in "Start"
 	SPECTATOR_SNAPSHOT_EVERY = 2, -- spectators get every 2nd snapshot (5 Hz)
 	TOAST_GAP = 1.5, -- the same toast text is not repeated within this many seconds
-	COMMAND_BURST = 10, -- BattleCommand token bucket
-	COMMAND_REFILL = 5, -- per second
-	REQUEST_BURST = 6, -- BattleRequest token bucket
-	REQUEST_REFILL = 2,
+	REFUSAL_TOAST_GAP = 3, -- one command-refusal toast (NotInZone / Charging / Cooldown / OutOfReach) per this many seconds per player
+	COMMAND_BURST = 12, -- BattleCommand token bucket (4.4: burst 12, refill 8/s; a frantic player sends ~3/s)
+	COMMAND_REFILL = 8, -- per second
+	REQUEST_BURST = 4, -- BattleRequest token bucket (burst 4, refill 1/s)
+	REQUEST_REFILL = 1,
 	MAX_ACTION_LENGTH = 16,
 	MAX_KEY_LENGTH = 48,
-	MAX_UNIT_ID = 256,
+	MAX_UNIT_ID = 127, -- BattleSim MAX_UNITS (ids stay < 128 on the wire)
+	MAX_ENCOUNTER_TEAMS = 4, -- OpenEncounter: 1..4 player teams
+	MAX_WAVE_ENTRIES = 12, -- SpawnWave: 1..12 enemies
+	ENCOUNTER_FAILSAFE = 10, -- seconds a finished encounter sim may wait for its end before the service finalizes it ("Error")
+	BOSS_HP_STEP = 0.05, -- OnBossHp fires on every 5% step
 	NET_WINDOW = 5, -- seconds per bandwidth window
 	REQUEST_COOLDOWNS = {
 		TeamSet = 0.4,
 		TeamSelect = 0.3,
-		Trial = 1.5,
 		Challenge = 2,
 		ChallengeReply = 0.5,
 		Queue = 1,
@@ -278,6 +299,10 @@ local C = {
 }
 if BattleCatalog and type(BattleCatalog.StepSeconds) == "number" and BattleCatalog.StepSeconds > 0 then
 	C.STEP = BattleCatalog.StepSeconds
+end
+-- the duel fair-play numbers live in BattleCatalog.Duel (4.2): PowerGap 2 (practice beyond it), the queue's power band
+if BattleCatalog and type(BattleCatalog.Duel) == "table" and type(BattleCatalog.Duel.PowerGap) == "number" then
+	C.DUEL_POWER_GAP = BattleCatalog.Duel.PowerGap
 end
 
 ----------------------------------------------------------------------
@@ -317,10 +342,15 @@ local St = {
 	ringBoard = {}, -- [userId] = { Name, Best }: the best records seen in this server (the Portal_Ring RingBoard attribute)
 	ringBoardText = nil,
 	ringPortal = nil, -- the Portal_Ring model found in the workspace (cached)
+	runProvider = nil, -- SetRunProvider({ KeysInRun, GetRun }): DungeonService's hooks (C16); nil = no dungeon in this build
+	encSeq = 0,
 }
 
 -- Phase 4 Champion Ring helpers (one table: Lua's 200-locals limit; ARCHITECTURE_V3.md "Phase 4 build contract" 6)
 local RingRun = {}
+-- Phase 5 encounter API helpers (4.6) and the command / position layer (4.4-4.5): tables, not locals (the 200-locals limit)
+local Enc = {}
+local Cmd = {}
 
 ----------------------------------------------------------------------
 -- Small helpers
@@ -600,34 +630,12 @@ local function playerInArena(player)
 	return root ~= nil and inArena(root.Position)
 end
 
--- where trial starts are accepted: the Trial Portal's pad (ArenaInfo.TrialPortal), else the Portal_Trials model
-local function trialPortalPosition()
-	local info = arena()
-	local pad = info and info.TrialPortal
-	if typeof(pad) == "Instance" and pad:IsA("BasePart") and pad:IsDescendantOf(Workspace) then
-		return pad.Position
-	end
-	local model = St.trialPortal
-	if not (typeof(model) == "Instance" and model:IsDescendantOf(Workspace)) then
-		model = Workspace:FindFirstChild("Portal_Trials", true)
-		St.trialPortal = model
-	end
-	if model then
-		if model:IsA("BasePart") then
-			return model.Position
-		end
-		local ok, cf = pcall(function()
-			return model:GetPivot()
-		end)
-		if ok and typeof(cf) == "CFrame" then
-			return cf.Position
-		end
-	end
-	return nil
-end
-
 -- { CFrame (floor centre), X, Z (floor size), Part (the NC_BattleZone part) }
 local function zoneFrom(cf, size, part)
+	if typeof(cf) == "Instance" and cf:IsA("BasePart") then
+		-- an encounter's NC_BattleZone part stands for the whole zone
+		return zoneFrom(cf.CFrame, cf.Size, cf)
+	end
 	local x, z = 44, 44
 	if typeof(size) == "Vector3" then
 		x, z = size.X, size.Z
@@ -791,11 +799,15 @@ local function canBattle(player)
 	end
 	if St.closing then
 		-- first: while the server closes nothing starts, whatever else the player is doing (a ring climber whose void
-		-- round just ended is still InBattle for TRIAL_RETURN_DELAY seconds)
+		-- round just ended is still InBattle for RETURN_DELAY seconds)
 		return false, "The server is restarting: battles will be back in a moment"
 	end
 	if player:GetAttribute(Config.Attr.InMatch) == true then
 		return false, "Finish your obby match first"
+	end
+	if Enc.inRun(player) then
+		-- a dungeon run (its Hall, Corridor and Treasure states included) refuses every other battle (judge M1)
+		return false, "Finish your dungeon run first"
 	end
 	local locked = player:GetAttribute(C.ATTR_PORTAL_LOCKED)
 	if locked ~= nil and locked ~= false and locked ~= "" then
@@ -892,12 +904,18 @@ local function addParticipant(b, player, side, spec)
 		Power = powerOf(spec),
 		Forfeited = false,
 		Left = false,
+		KeepInBattle = b.Enc ~= nil and b.Enc.KeepInBattle == true, -- the dungeon RUN owns the attribute (4.6)
+		LeashT = 0, -- seconds the character has been more than Fighter.Leash studs from the server fighter
+		LeashGraceUntil = 0, -- sim time until which a stun's catch-up keeps the leash off (Cmd.stunned)
+		Lives = nil, -- the fighter's lives at the last tick (OnDown)
 	}
 	b.Parts[player.UserId] = part
 	b.PartList[#b.PartList + 1] = part
 	b.Names[tostring(player.UserId)] = nameOf(player)
 	St.battleOf[player] = b
-	setInBattle(player, b.Id)
+	if not part.KeepInBattle then
+		setInBattle(player, b.Id)
+	end
 	return part
 end
 
@@ -918,11 +936,30 @@ local function startPayload(b, player, spectator)
 	d.Side = (part and not part.Left and part.Side) or 0
 	d.Spectator = spectator == true
 	d.T = b.Sim:Time()
-	if b.TrialInfo then
-		d.Trial = b.TrialInfo
-	end
 	if b.Mode == "Ring" then
 		d.Ring = RingRun.startInfo(b)
+	end
+	if b.Mode == "Dungeon" then
+		d.Dungeon = b.Extra or {}
+	end
+	if part and not part.Left then
+		-- the receiver's own team: fighter / bench ids, lives, the legal speeds (SetBattleSpeed) and the cooldowns
+		local okT, team = pcall(b.Sim.TeamOf, b.Sim, part.UserId)
+		if okT and type(team) == "table" then
+			-- (Cooldowns.Buff is keyed by slot 2 / 3: string keys on the wire, like Names; a sparse array would not survive the remote)
+			local cds = type(team.Cooldowns) == "table" and team.Cooldowns or {}
+			local buff = {}
+			for slot, secs in pairs(type(cds.Buff) == "table" and cds.Buff or {}) do
+				buff[tostring(slot)] = secs
+			end
+			d.Team = {
+				Fighter = team.Fighter,
+				Bench = team.Bench,
+				Lives = team.Lives,
+				Speed = team.Speed,
+				Cooldowns = { Element = cds.Element, Dash = cds.Dash, Swap = cds.Swap, Buff = buff },
+			}
+		end
 	end
 	return d
 end
@@ -968,7 +1005,33 @@ local function flush(b)
 	if #b.EventBuf > 0 then
 		local list = b.EventBuf
 		b.EventBuf = {}
-		broadcast(b, "Events", list)
+		-- a rejected Order is the owner's button shake only: it goes to that player alone (16 hammering raiders would
+		-- otherwise cost every client ~7 KB/s of echoes); everything else is broadcast
+		local public, mine = {}, nil
+		for _, ev in ipairs(list) do
+			if ev.type == "Order" and ev.rejected ~= nil then
+				local part = b.Parts[ev.owner]
+				if part and not part.Left and isPlayer(part.Player) and b.Receivers[part.Player] then
+					mine = mine or {}
+					local own = mine[part.Player]
+					if not own then
+						own = {}
+						mine[part.Player] = own
+					end
+					own[#own + 1] = ev
+				end
+			else
+				public[#public + 1] = ev
+			end
+		end
+		if #public > 0 then
+			broadcast(b, "Events", public)
+		end
+		if mine then
+			for player, own in pairs(mine) do
+				send(player, "Events", own, b.Id)
+			end
+		end
 	end
 	local pending = {}
 	for player in pairs(b.Pending) do
@@ -1211,71 +1274,6 @@ local function emptyRewards()
 	return { Tokens = 0, Gems = 0, Xp = 0, Trophies = 0, LevelUps = 0, Double = false }
 end
 
-local function payTrial(b, part, res)
-	local player = part.Player
-	local level = b.Level
-	local rw = emptyRewards()
-	rw.Level = level
-	rw.FirstClear = false
-	if res.WinnerSide ~= 1 or part.Forfeited then
-		-- Phase 4 (3.5): a REAL loss (>= 20 s or >= 20% of the enemy HP dealt; never a forfeit / leave / disconnect /
-		-- shutdown, which all arrive as part.Forfeited or Reason "Shutdown") pays a third of the win XP
-		local xp = 0
-		if not part.Forfeited and not part.Left and res.Reason ~= "Shutdown" and res.Reason ~= "Error" and type(BattleCatalog.LossXp) == "function" then
-			local okL, lossXp = pcall(BattleCatalog.LossXp, tonumber(BattleCatalog.TrialRewards(level, false).Xp) or 0, res.Duration, RingRun.dealtShare(res))
-			if okL and finite(lossXp) and lossXp > 0 then
-				xp = floor(lossXp)
-			end
-		end
-		if xp > 0 then
-			rw.LevelUps = grantXp(player, part.Keys, xp, "Trial")
-			rw.Xp = xp
-			notify(player, "Trial " .. tostring(level) .. " lost, but your pets learned: +" .. xp .. " XP each", "info", 4)
-		else
-			notify(player, "Trial " .. tostring(level) .. " lost. Train your team and try again!", "bad", 4)
-		end
-		return rw
-	end
-	local double = BattleService.IsDoubleRewards()
-	local R = BattleCatalog.TrialRewards(level, double)
-	local first = false
-	local okM = try(dataService(), "MutateBattle", player, function(rec)
-		if type(rec.TrialCleared) ~= "table" then
-			rec.TrialCleared = {}
-		end
-		if rec.TrialCleared[level] ~= true then
-			rec.TrialCleared[level] = true
-			first = true
-		end
-		if (tonumber(rec.TrialBest) or 0) < level then
-			rec.TrialBest = level
-		end
-	end)
-	first = okM == true and first
-	local tokens = tonumber(R.Tokens) or 0
-	local gems = 0
-	if first and type(R.FirstClear) == "table" then
-		tokens = tokens + (tonumber(R.FirstClear.Tokens) or 0)
-		gems = tonumber(R.FirstClear.Gems) or 0
-	end
-	grantTokens(player, tokens)
-	if gems > 0 and not grantGems(player, gems) then
-		gems = 0
-	end
-	local xp = tonumber(R.Xp) or 0
-	rw.LevelUps = grantXp(player, part.Keys, xp, "Trial")
-	rw.Tokens, rw.Gems, rw.Xp, rw.FirstClear, rw.Double = tokens, gems, xp, first, double
-	local text = "Trial " .. level .. " cleared! +" .. tokens .. " tokens"
-	if gems > 0 then
-		text = text .. ", +" .. gems .. " gems"
-	end
-	if first then
-		text = text .. " (first clear!)"
-	end
-	notify(player, text, "good", 5)
-	return rw
-end
-
 -- the forfeit penalty of a duel (written the moment the player forfeits / leaves). Only while DataService still holds
 -- the profile: on a leave it is in memory until the leave save is done (a change made now travels with that save or
 -- its retry); once released, a write would only create a stray cache entry.
@@ -1478,8 +1476,8 @@ local function payRaid(b, part, res)
 	return rw
 end
 
+-- Dungeon is absent on purpose (C2: DungeonService pays everything per room; payOnce records { Dungeon = true, Extra })
 local PAY = {
-	Trial = payTrial,
 	Duel = payDuel,
 	Raid = payRaid,
 	Ring = function(b, part, res) -- Phase 4 (defined below with the other Champion Ring helpers)
@@ -1504,14 +1502,24 @@ local function payOnce(b, part, res)
 			rw.Round = b.Round
 			rw.Run = RingRun.summary(b.Ring, b.Round)
 		end
+		if b.Mode == "Dungeon" then
+			rw.Dungeon = true
+			rw.Extra = b.Extra
+		end
 		b.Paid[uid] = rw
-		if res.Reason == "Shutdown" then
-			local what = (b.Mode == "Duel" and "duel") or (b.Mode == "Ring" and "ring round") or "trial"
+		if res.Reason == "Shutdown" and b.Mode ~= "Dungeon" then
+			local what = (b.Mode == "Duel" and "duel") or "ring round"
 			notify(part.Player, "The server is restarting: this " .. what .. " does not count.", "info", 5)
 		end
 		return rw
 	end
 	local fn = PAY[b.Mode]
+	if not fn then
+		-- a dungeon encounter: nothing is paid here, ever (the loot card is DungeonController's; DungeonService pays once per room)
+		local rw = { Dungeon = true, Extra = b.Extra }
+		b.Paid[uid] = rw
+		return rw
+	end
 	local ok, rw = pcall(fn, b, part, res)
 	if not ok then
 		warn("[BattleService] rewards for " .. tostring(uid) .. " in " .. b.Id .. " failed: " .. tostring(rw))
@@ -1671,7 +1679,9 @@ local function releaseParticipant(b, part)
 	local player = part.Player
 	if St.battleOf[player] == b then
 		St.battleOf[player] = nil
-		setInBattle(player, nil)
+		if not part.KeepInBattle then
+			setInBattle(player, nil)
+		end
 	end
 	if isPlayer(player) then
 		St.watchCooldown[player] = { [b.Id] = now() + C.SPECTATE_COOLDOWN }
@@ -1682,7 +1692,7 @@ local function returnCFrame(part, mode)
 	local info = arena()
 	if mode == "Ring" then
 		-- ring climbers come back in front of the Champion Ring portal (built like ReturnCFrame from the trial site),
-		-- else where they pressed START (within RING_RANGE of it); an older lobby without RingSite: the Trial Portal
+		-- else where they pressed START (within RING_RANGE of it); an older lobby without RingSite: where they pressed START
 		local site = info and info.RingSite
 		if typeof(site) == "CFrame" then
 			local cfr = CFrame.lookAt(site.Position + site.LookVector * 12 + Vector3.new(0, 3, 0),
@@ -1700,8 +1710,8 @@ local function returnCFrame(part, mode)
 	return part.Origin
 end
 
--- trials: back to the Trial Portal (only a player still at the pocket), then the pocket goes
-local function finishTrial(b)
+-- a pocket battle that lost its ring run record (never in a healthy run): everyone back to the portal, the pocket freed
+local function finishPocket(b)
 	for _, part in ipairs(b.PartList) do
 		local player = part.Player
 		if isPlayer(player) and St.battleOf[player] == b then
@@ -1709,7 +1719,7 @@ local function finishTrial(b)
 			if root then
 				local x, _, z = zoneLocal(b.Zone, root.Position)
 				if sqrt(x * x + z * z) <= C.POCKET_LEASH + 40 then
-					teleport(player, returnCFrame(part))
+					teleport(player, returnCFrame(part, b.Mode))
 				end
 			end
 		end
@@ -1732,7 +1742,7 @@ local function forceRelease(b)
 		pcall(RingRun.abandon, b.Ring)
 	end
 	for _, part in ipairs(b.PartList) do
-		if (b.Mode == "Trial" or b.Mode == "Ring") and isPlayer(part.Player) and St.battleOf[part.Player] == b then
+		if b.Mode == "Ring" and isPlayer(part.Player) and St.battleOf[part.Player] == b then
 			-- nobody stays stranded in a pocket far out in the sky
 			pcall(function()
 				local root = aliveRoot(part.Player)
@@ -1780,15 +1790,15 @@ local function forceRelease(b)
 				send(part.Player, "End", { BattleId = b.Id, Mode = b.Mode, Spectator = false, Reason = "Error" }, b.Id)
 			end
 		end
-		BattleService.BattleEnded:Fire(b.Id, {
+		local result = {
 			BattleId = b.Id,
 			Mode = b.Mode,
 			Reason = "Error",
 			Winners = {},
 			Losers = {},
+			Fighters = {},
 			Draw = true,
 			Forfeit = false,
-			Level = b.Level,
 			BossId = b.BossId,
 			Round = b.Round,
 			Won = (b.Mode == "Ring") and false or nil,
@@ -1797,7 +1807,13 @@ local function forceRelease(b)
 			Participants = participants,
 			Rewards = rewards,
 			RewardsPaid = true,
-		})
+			Extra = b.Extra,
+		}
+		BattleService.BattleEnded:Fire(b.Id, result)
+		if b.Enc then
+			-- the dungeon learns that its encounter is over (nothing paid: Reason "Error")
+			Enc.call(b, "OnEnd", b.Id, result)
+		end
 	end
 end
 
@@ -1835,7 +1851,6 @@ local function finalizeBody(b, forcedReason)
 		Forfeit = res.Forfeit == true,
 		Winners = {},
 		Losers = {},
-		Level = b.Level,
 		BossId = b.BossId,
 		Round = b.Round,
 		Damage = {},
@@ -1843,10 +1858,20 @@ local function finalizeBody(b, forcedReason)
 		Duration = res.Duration,
 		BossHp = res.BossHp,
 		BossMaxHp = res.BossMaxHp,
+		Survivors = type(res.Survivors) == "table" and res.Survivors or {},
+		Hp = type(res.Hp) == "table" and res.Hp or {},
+		Kills = type(res.Kills) == "table" and res.Kills or {},
+		Waves = res.Waves,
+		Extra = b.Extra,
 		Participants = {},
 		Rewards = {},
 		RewardsPaid = true,
 	}
+	if b.Mode == "Dungeon" then
+		-- the boss's HP share (0..1) for the dungeon's result card; the raw raid numbers stay for raids
+		local okH, frac = pcall(b.Sim.BossHp, b.Sim)
+		result.BossHp = (okH and finite(frac)) and frac or nil
+	end
 	for _, owner in ipairs(type(res.Winners) == "table" and res.Winners or {}) do
 		if type(owner) == "number" then
 			result.Winners[#result.Winners + 1] = owner
@@ -1884,11 +1909,12 @@ local function finalizeBody(b, forcedReason)
 		local part = climber and b.Parts[climber]
 		result.Won = climber ~= nil and contains(result.Winners, climber) and part ~= nil and not part.Forfeited and not part.Left and res.Reason ~= "Shutdown"
 	end
-	-- rewards: every participant still in the battle, once (a duel leaver was settled when they left)
+	-- rewards: every participant still in the battle, once (a duel leaver was settled when they left); Fighters = the
+	-- participants still in (a dungeon encounter: the QUALIFYING members by damage share, 4.6 / judge M4)
 	result.Fighters = {}
 	for _, part in ipairs(b.PartList) do
 		result.Participants[#result.Participants + 1] = part.UserId
-		if not part.Left then
+		if not part.Left and (b.Mode ~= "Dungeon" or Enc.qualifies(b, part, result)) then
 			result.Fighters[#result.Fighters + 1] = part.UserId
 		end
 		local rw = nil
@@ -1941,16 +1967,9 @@ local function finalizeBody(b, forcedReason)
 	end
 	b.Receivers, b.Pending, b.Spectators = {}, {}, {}
 	releaseZone(b)
-	-- the participants are free again (trials: once they are back at the portal; a ring WIN keeps the participant and
-	-- chains the next round, a ring loss ends the run the trial way)
-	if b.Mode == "Trial" then
-		task.delay(C.TRIAL_RETURN_DELAY, function()
-			local ok, err = pcall(finishTrial, b)
-			if not ok then
-				warn("[BattleService] trial cleanup failed: " .. tostring(err))
-			end
-		end)
-	elseif b.Mode == "Ring" then
+	-- the participants are free again (a ring WIN keeps the participant and chains the next round, a ring loss ends the
+	-- run with the return teleport; a dungeon encounter leaves the zone / pocket / attribute to DungeonService)
+	if b.Mode == "Ring" then
 		RingRun.afterBattle(b, result)
 	else
 		for _, part in ipairs(b.PartList) do
@@ -1966,6 +1985,9 @@ local function finalizeBody(b, forcedReason)
 	end
 	b.EndedFired = true
 	BattleService.BattleEnded:Fire(b.Id, result)
+	if b.Enc then
+		Enc.call(b, "OnEnd", b.Id, result)
+	end
 end
 
 local function finalize(b, forcedReason)
@@ -1986,6 +2008,10 @@ local function tickBattle(b, t)
 		return
 	end
 	local due = floor((t - b.Clock0) / C.STEP + 1e-6)
+	if b.Steps >= due then
+		return
+	end
+	Cmd.feedMoves(b) -- the characters' positions become the fighters' wanted points (B1 / Y2)
 	local n = 0
 	while b.Steps < due and n < C.MAX_CATCHUP and b.State == "Running" do
 		stepOnce(b)
@@ -1998,8 +2024,15 @@ local function tickBattle(b, t)
 		b.Clock0 = t - b.Steps * C.STEP -- a long stall is forgiven, never fast-forwarded
 	end
 	if n > 0 then
+		local finished = simFinished(b)
+		Cmd.afterSteps(b, n, finished) -- the leash (measured AFTER the legal step), OnDown / OnWave / OnBossHp
 		flush(b)
-		if simFinished(b) then
+		if finished then
+			if b.Mode == "Dungeon" and type(BattleService.Debug) == "table" and BattleService.Debug.HoldEnd == true then
+				-- tests: the end is held back; Enc.watch finalizes it after ENCOUNTER_FAILSAFE seconds (Reason "Error")
+				b.SimEndedAt = b.SimEndedAt or now()
+				return
+			end
 			finalize(b, b.Broken >= 5 and "Error" or nil)
 		end
 	end
@@ -2008,7 +2041,8 @@ end
 ----------------------------------------------------------------------
 -- Forfeits and leaving
 ----------------------------------------------------------------------
-local function forfeitTrial(b, part, why)
+-- a solo (ring) round: the player's team is knocked out (BattleSim "Forfeit"), the round is lost
+local function forfeitSolo(b, part, why)
 	if part.Forfeited or part.Left or b.State ~= "Running" then
 		return false
 	end
@@ -2095,8 +2129,10 @@ local function dropOut(b, part, why)
 		return forfeitDuel(b, part, why)
 	elseif b.Mode == "Ring" then
 		return RingRun.dropOut(b, part, why)
+	elseif b.Mode == "Dungeon" then
+		return Enc.leave(b, part, why, nil)
 	end
-	return forfeitTrial(b, part, why)
+	return forfeitSolo(b, part, why)
 end
 
 ----------------------------------------------------------------------
@@ -2123,6 +2159,7 @@ local function lobbyPayload(player)
 					FromName = inv.FromName,
 					Trophies = inv.Trophies,
 					Power = inv.Power,
+					Practice = inv.Practice or nil,
 					ExpiresIn = max(0, floor(inv.Expires - t + 0.5)),
 				}
 			end
@@ -2293,7 +2330,7 @@ local function beginBattle(b)
 			sendStart(b, part.Player, false)
 		end
 	end
-	BattleService.BattleStarted:Fire(b.Id, { Mode = b.Mode, Players = players, Level = b.Level, BossId = b.BossId, Round = b.Round })
+	BattleService.BattleStarted:Fire(b.Id, { Mode = b.Mode, Players = players, BossId = b.BossId, Round = b.Round, Extra = b.Extra })
 end
 
 -- ok, battleId | reason, culprit (the player the refusal is about; nil = no free ring / no arena)
@@ -2358,8 +2395,8 @@ local function startDuel(pa, pb)
 	beginBattle(b)
 	sendLobby(pa)
 	sendLobby(pb)
-	notify(pa, "Duel vs " .. shortName(pb) .. "! F = attack, R = retreat, 1-4 = specials", "info", 4)
-	notify(pb, "Duel vs " .. shortName(pa) .. "! F = attack, R = retreat, 1-4 = specials", "info", 4)
+	notify(pa, "Duel vs " .. shortName(pb) .. "! F = attack, E = element, Q = special, Shift = dash", "info", 4)
+	notify(pb, "Duel vs " .. shortName(pa) .. "! F = attack, E = element, Q = special, Shift = dash", "info", 4)
 	if b.Practice then
 		local strong = (powerA >= powerB) and pa or pb
 		local text = "Practice duel: " .. shortName(strong) .. "'s team is far stronger. No trophies or rewards."
@@ -2443,6 +2480,17 @@ function BattleService.Challenge(a, b)
 	if not spec then
 		return false, reason
 	end
+	-- 4.2: a challenge to a team more than Duel.PracticeInvite apart in TeamPower says so in the invite
+	local practice = nil
+	local specB = teamOf(b, 2)
+	if specB then
+		local pa, pb = powerOf(spec), powerOf(specB)
+		local D = (BattleCatalog and type(BattleCatalog.Duel) == "table") and BattleCatalog.Duel or {}
+		local gap = tonumber(D.PracticeInvite) or 2
+		if max(pa, pb) > max(1, min(pa, pb)) * gap then
+			practice = true
+		end
+	end
 	local t = now()
 	-- b already challenged a: this counts as a yes
 	local back = St.invitesTo[a.UserId] and St.invitesTo[a.UserId][b.UserId]
@@ -2473,6 +2521,7 @@ function BattleService.Challenge(a, b)
 		ToName = nameOf(b),
 		Trophies = trophiesOf(a),
 		Power = powerOf(spec),
+		Practice = practice,
 		Expires = t + C.CHALLENGE_TIMEOUT,
 	}
 	St.invitesFrom[a.UserId] = inv
@@ -2480,7 +2529,7 @@ function BattleService.Challenge(a, b)
 	St.invitesTo[b.UserId][a.UserId] = inv
 	sendLobby(a)
 	sendLobby(b)
-	notify(b, shortName(a) .. " challenges you to a duel! Answer in the Arena panel.", "info", 6)
+	notify(b, shortName(a) .. (practice and " challenges you to a practice duel (no trophies)! Answer in the Arena panel." or " challenges you to a duel! Answer in the Arena panel."), "info", 6)
 	notify(a, "Challenge sent to " .. shortName(b) .. ".", "info", 3)
 	return true
 end
@@ -2500,7 +2549,7 @@ function BattleService.Queue(player)
 	if St.queue[player] then
 		return false, "You are already in the queue"
 	end
-	St.queue[player] = { Since = now(), Trophies = trophiesOf(player) }
+	St.queue[player] = { Since = now(), Trophies = trophiesOf(player), Power = powerOf(spec) }
 	sendLobbyToQueue()
 	notify(player, "Looking for an opponent...", "info", 3)
 	return true
@@ -2569,7 +2618,7 @@ local function pairQueue()
 				if j ~= i and not used[other.p] then
 					local gap = abs(a.q.Trophies - other.q.Trophies)
 					local waited = max(t - a.q.Since, t - other.q.Since)
-					if gap <= C.QUEUE_GAP_BASE + C.QUEUE_GAP_PER_SECOND * waited and gap < bestGap then
+					if gap <= C.QUEUE_GAP_BASE + C.QUEUE_GAP_PER_SECOND * waited and gap < bestGap and Cmd.queuePowerOk(a.q, other.q, waited) then
 						best, bestGap = other, gap
 					end
 				end
@@ -2594,97 +2643,6 @@ local function pairQueue()
 	if changed then
 		sendLobbyToQueue()
 	end
-end
-
-----------------------------------------------------------------------
--- Trials (private pockets)
-----------------------------------------------------------------------
-function BattleService.StartTrial(player, level)
-	local ok, why = canBattle(player)
-	if not ok then
-		return false, why
-	end
-	if not isInteger(level) then
-		return false, "Pick a trial level"
-	end
-	local count = tonumber(BattleCatalog.TrialCount) or #(BattleCatalog.Trials or {})
-	if level < 1 or level > count or type(BattleCatalog.Trials) ~= "table" or not BattleCatalog.Trials[level] then
-		return false, "That trial does not exist"
-	end
-	local rec = battleRecord(player)
-	if not rec then
-		return false, "Your data is still loading"
-	end
-	if level > 1 then
-		local cleared = type(rec.TrialCleared) == "table" and rec.TrialCleared[level - 1] == true
-		if not cleared and (tonumber(rec.TrialBest) or 0) < level - 1 then
-			return false, "Beat Trial " .. (level - 1) .. " first"
-		end
-	end
-	local portal = trialPortalPosition()
-	if not portal then
-		return false, "The Trial Portal is closed"
-	end
-	local root = aliveRoot(player)
-	if (root.Position - portal).Magnitude > C.TRIAL_RANGE then
-		return false, "Go to the Trial Portal to start a trial"
-	end
-	local spec, reason = teamOf(player, 1)
-	if not spec then
-		return false, reason
-	end
-	local builder = St.arenaBuilder
-	if not hasFn(builder, "BuildPocket") then
-		return false, "The trial arenas are closed"
-	end
-	local index = nil
-	for i = 1, C.MAX_POCKETS do
-		if not St.pocketBusy[i] then
-			index = i
-			break
-		end
-	end
-	if not index then
-		return false, "Every trial arena is busy. Try again soon!"
-	end
-	local okP, pocket = pcall(builder.BuildPocket, index)
-	if not okP or type(pocket) ~= "table" or typeof(pocket.CFrame) ~= "CFrame" then
-		warn("[BattleService] BuildPocket(" .. index .. ") failed: " .. tostring(pocket))
-		return false, "The trial arena could not open"
-	end
-	local zone = zoneFrom(pocket.CFrame, pocket.Size, pocket.Zone)
-	zone.Spawn = pocket.Spawn
-	if typeof(zone.Spawn) ~= "CFrame" then
-		zone.Spawn = lookFrom((pocket.CFrame * CFrame.new(0, 3, -(zone.Z / 2 - 5))).Position, pocket.CFrame.Position)
-	end
-	zone.Pocket = pocket
-	zone.PocketIndex = index
-	local id = newBattleId()
-	local okS, sim, simWhy = pcall(BattleSim.new, {
-		Mode = "Trial",
-		Id = id,
-		Seed = newSeed(),
-		Zone = { X = zone.X, Z = zone.Z },
-		Teams = { spec },
-		Trial = level,
-	})
-	if not okS or type(sim) ~= "table" then
-		warn("[BattleService] trial setup failed: " .. tostring(okS and simWhy or sim))
-		pcall(builder.FreePocket, pocket)
-		return false, "The trial could not start"
-	end
-	St.pocketBusy[index] = id
-	stopWatching(player, "Joined")
-	leaveLobby(player)
-	local b = newBattle(id, "Trial", sim, zone)
-	b.Level = level
-	local trial = BattleCatalog.Trials[level]
-	b.TrialInfo = { Level = level, Name = trial.Name, Chapter = trial.Chapter, MiniBoss = trial.MiniBoss == true }
-	addParticipant(b, player, 1, spec)
-	teleport(player, zone.Spawn)
-	beginBattle(b)
-	notify(player, "Trial " .. level .. ": " .. tostring(trial.Name) .. "! F = attack, R = retreat", "info", 4)
-	return true, id
 end
 
 ----------------------------------------------------------------------
@@ -2747,19 +2705,15 @@ function RingRun.portalModel()
 	return model
 end
 
--- where ring starts are accepted: ArenaInfo.RingPortal, else the Portal_Ring model, else the Trial Portal (the
--- contract's zero-part fallback: the Ring prompt sits on Portal_Trials)
+-- where ring starts are accepted: ArenaInfo.RingPortal (its pad), else the Portal_Ring model (C12: the gate stands in the
+-- Gate Court under NimbusLobby.Gates; ArenaInfo.RingPortal keeps pointing at its pad)
 function RingRun.portalPosition()
 	local info = arena()
 	local pos = info and RingRun.positionOf(info.RingPortal)
 	if pos then
 		return pos
 	end
-	pos = RingRun.positionOf(RingRun.portalModel())
-	if pos then
-		return pos
-	end
-	return trialPortalPosition()
+	return RingRun.positionOf(RingRun.portalModel())
 end
 
 -- the instances that carry the RingBoard attribute (Portal_Ring and ArenaInfo.RingPortal's part / model)
@@ -3191,8 +3145,8 @@ end
 function RingRun.afterBattle(b, result)
 	local run = b.Ring
 	if not run then
-		task.delay(C.TRIAL_RETURN_DELAY, function()
-			pcall(finishTrial, b)
+		task.delay(C.RETURN_DELAY, function()
+			pcall(finishPocket, b)
 		end)
 		return
 	end
@@ -3218,7 +3172,7 @@ function RingRun.afterBattle(b, result)
 end
 
 -- the run is over (b = its last battle, nil when it ended between two rounds): Ring.Runs + 1 and the RingBoard now,
--- the final "End" when no battle carried it, the return teleport + release + FreePocket TRIAL_RETURN_DELAY later
+-- the final "End" when no battle carried it, the return teleport + release + FreePocket RETURN_DELAY later
 function RingRun.endRun(run, b, reason)
 	if run.State == "Ending" or run.State == "Ended" then
 		return
@@ -3244,7 +3198,7 @@ function RingRun.endRun(run, b, reason)
 			notify(player, RingRun.cardText(run, round), "info", 6)
 		end
 	end
-	task.delay(C.TRIAL_RETURN_DELAY, function()
+	task.delay(C.RETURN_DELAY, function()
 		local ok, err = pcall(RingRun.finish, run, b)
 		if not ok then
 			warn("[BattleService] ring cleanup failed: " .. tostring(err))
@@ -3319,7 +3273,7 @@ function RingRun.dropOut(b, part, why)
 		run.Dropped = true
 		RingRun.closeRecord(run)
 	end
-	return forfeitTrial(b, part, why)
+	return forfeitSolo(b, part, why)
 end
 
 -- PlayerRemoving: a run between two rounds ends now (a run mid-round was closed by dropOut and ends with its battle)
@@ -3490,7 +3444,7 @@ function BattleService.StartRing(player, startRound)
 	end
 	local champion = type(spec) == "table" and St.battles[idOrWhy] and St.battles[idOrWhy].Champion or nil
 	local who = (type(champion) == "table" and champion.Name) and (": " .. tostring(champion.Name)) or ""
-	notify(player, "Champion Ring, round " .. first .. who .. "! F = attack, R = retreat, 1-4 = specials", "info", 4)
+	notify(player, "Champion Ring, round " .. first .. who .. "! F = attack, E = element, Q = special, Shift = dash", "info", 4)
 	return true, idOrWhy
 end
 
@@ -3512,6 +3466,18 @@ function BattleService.KeysInBattle(player)
 		if part and not part.Left then
 			for _, key in ipairs(part.Keys) do
 				set[key] = true
+			end
+		end
+	end
+	-- a dungeon run between two rooms (C16: the run provider's KeysInRun, when DungeonService registered one)
+	local provider = St.runProvider
+	if type(provider) == "table" and type(provider.KeysInRun) == "function" then
+		local ok, keys = pcall(provider.KeysInRun, player)
+		if ok and type(keys) == "table" then
+			for key, v in pairs(keys) do
+				if v and type(key) == "string" then
+					set[key] = true
+				end
 			end
 		end
 	end
@@ -3574,10 +3540,10 @@ end
 
 -- where a raid team stands: on the floor's rim at its anchor's angle, looking at the boss
 local function raidStand(b, uid)
-	local okT, team = pcall(b.Sim.TeamOf, b.Sim, uid)
+	local team = Cmd.simTeam(b, uid)
 	local ax, az = 0, -1
-	if okT and type(team) == "table" and type(team.Anchor) == "table" then
-		ax, az = tonumber(team.Anchor.x) or 0, tonumber(team.Anchor.z) or -1
+	if team and finite(team.anchorX) and finite(team.anchorZ) then
+		ax, az = team.anchorX, team.anchorZ
 	end
 	local len = sqrt(ax * ax + az * az)
 	if len < 0.01 then
@@ -3659,7 +3625,7 @@ function BattleService.JoinRaid(player)
 	end
 	leaveLobby(player)
 	BattleService.RaidJoined:Fire(player, b.Id)
-	notify(player, "You joined the raid on " .. bossName(raid.BossId) .. "! RETREAT from glowing circles and lines.", "info", 4)
+	notify(player, "You joined the raid on " .. bossName(raid.BossId) .. "! DASH out of glowing circles and lines.", "info", 4)
 	return true, b.Id
 end
 
@@ -3754,6 +3720,623 @@ function BattleService.GetRaidStatus()
 end
 
 ----------------------------------------------------------------------
+-- The command / position layer (4.4-4.5): argument hygiene, the Move feed, the leash, the refusal echoes
+----------------------------------------------------------------------
+-- action -> the argument shape: "unit" (id | nil), "aim" (id | { x, z } | nil), "none", "slot" (2 | 3)
+Cmd.ACTIONS = { Attack = "unit", Element = "aim", Special = "none", Dash = "none", Target = "unit", Buff = "slot", Swap = "slot" }
+-- the refusals that get a (throttled) toast; everything else is silent (the Order { rejected } echo shakes the button)
+Cmd.TOASTS = {
+	NotInZone = "Step into the battle zone to fight.",
+	Charging = "SPECIAL is still charging.",
+	Cooldown = "Not ready yet.",
+	OutOfReach = "Too far!",
+}
+
+-- the remote's type gate: nil, a finite number or a table of exactly two finite numbers ({ x, z } / { X, Z } / { a, b })
+function Cmd.argTypeOk(a)
+	if a == nil or finite(a) then
+		return true
+	end
+	if type(a) ~= "table" then
+		return false
+	end
+	local n = 0
+	for _, v in pairs(a) do
+		n = n + 1
+		if n > 2 or not finite(v) then
+			return false
+		end
+	end
+	return n == 2
+end
+
+-- the aim point of a table argument, or nil
+function Cmd.pointOf(a)
+	local x = a.x or a.X or a[1]
+	local z = a.z or a.Z or a[2]
+	if finite(x) and finite(z) and abs(x) <= 400 and abs(z) <= 400 then
+		return { x = x, z = z }
+	end
+	return nil
+end
+
+-- the sim argument for an action, or nil + the refusal reason
+function Cmd.cleanArg(shape, arg)
+	if shape == "none" then
+		return nil
+	end
+	if shape == "slot" then
+		-- a TEAM slot 1..3 (fixed for the fight): after a Swap the original fighter sits on the bench as slot 1 and may be
+		-- buffed / swapped back; the sim refuses the active fighter's own slot and a missing one (BadSlot)
+		if arg == 1 or arg == 2 or arg == 3 then
+			return arg
+		end
+		return nil, "BadSlot"
+	end
+	if arg == nil then
+		return nil
+	end
+	if isInteger(arg) then
+		if arg >= 1 and arg <= C.MAX_UNIT_ID then
+			return arg
+		end
+		return nil, "BadTarget"
+	end
+	if shape == "aim" and type(arg) == "table" then
+		local point = Cmd.pointOf(arg)
+		if point then
+			return point
+		end
+		return nil, "BadPoint"
+	end
+	return nil, "BadTarget"
+end
+
+-- a refusal before the sim echoes one Order { rejected } per participant per step (the button shake), like the sim's own
+function Cmd.reject(b, part, action, reason)
+	if part.RejectStep == b.Steps then
+		return
+	end
+	part.RejectStep = b.Steps
+	b.EventBuf[#b.EventBuf + 1] = { type = "Order", owner = part.UserId, order = action, rejected = reason }
+end
+
+-- the sim's team record of an owner (white-box, read-only: anchors, the fighter's position and lives), nil without one
+function Cmd.simTeam(b, uid)
+	local sim = b.Sim
+	local map = type(sim) == "table" and sim.teamByOwner
+	if type(map) ~= "table" then
+		return nil
+	end
+	local team = map[uid]
+	return type(team) == "table" and team or nil
+end
+
+-- the server fighter: x, z (zone-local), onFloor (alive and fighting)
+function Cmd.fighterOf(b, uid)
+	local team = Cmd.simTeam(b, uid)
+	local f = team and team.fighter
+	if type(f) ~= "table" or not finite(f.x) or not finite(f.z) then
+		return nil
+	end
+	return f.x, f.z, f.alive == true and not f.gone and not f.benched
+end
+
+-- the team's lives (units alive), nil without a team
+function Cmd.livesOf(b, uid)
+	local team = Cmd.simTeam(b, uid)
+	if not team or type(team.units) ~= "table" then
+		return nil
+	end
+	local n = 0
+	for _, u in ipairs(team.units) do
+		if u.alive and not u.gone then
+			n = n + 1
+		end
+	end
+	return n
+end
+
+-- before the steps of a tick: every live participant's character root becomes their fighter's wanted point (never from a
+-- remote: B1 / Y2). A participant without a living character feeds nothing (the fighter stands).
+function Cmd.feedMoves(b)
+	local sim = b.Sim
+	for _, part in ipairs(b.PartList) do
+		if not part.Left and not part.Forfeited then
+			local root = isPlayer(part.Player) and aliveRoot(part.Player)
+			if root then
+				local x, _, z = zoneLocal(b.Zone, root.Position)
+				part.CharX, part.CharZ = x, z
+				pcall(sim.Command, sim, part.UserId, "Move", x, z)
+			else
+				part.CharX, part.CharZ = nil, nil
+			end
+		end
+	end
+end
+
+-- the fighter is stunned (white-box: the sim unit's stunUntil), or the stun ended less than its catch-up ago: the time
+-- the server fighter needs to close the gap it was left with at run x (MoveSlack - 1), capped at STUN_CATCHUP_MAX
+function Cmd.stunned(b, part, gap, F)
+	local team = Cmd.simTeam(b, part.UserId)
+	local f = team and team.fighter
+	if type(f) ~= "table" or not finite(f.stunUntil) then
+		return false
+	end
+	local okT, t = pcall(b.Sim.Time, b.Sim)
+	if not okT or not finite(t) then
+		return false
+	end
+	if t < f.stunUntil then
+		local run = finite(f.run) and f.run > 0 and f.run or 15.6
+		local closing = max(2, run * ((tonumber(F.MoveSlack) or 1.25) - 1))
+		local catchUp = min(C.STUN_CATCHUP_MAX, gap / closing)
+		part.LeashGraceUntil = max(part.LeashGraceUntil or 0, f.stunUntil + catchUp)
+		return true
+	end
+	return (part.LeashGraceUntil or 0) > t
+end
+
+-- the leash: the gap between the character and the server fighter AFTER the legal step, > Fighter.Leash for
+-- Fighter.LeashSeconds = a run-off / teleport (a leaver in Duel / Ring, a RemoveTeam in Raid / Dungeon)
+function Cmd.leash(b, part, dt)
+	if part.CharX == nil then
+		part.LeashT = 0
+		return false
+	end
+	local fx, fz, onFloor = Cmd.fighterOf(b, part.UserId)
+	if not fx or not onFloor then
+		part.LeashT = 0
+		return false
+	end
+	local F = (BattleCatalog and type(BattleCatalog.Fighter) == "table") and BattleCatalog.Fighter or {}
+	local leash = tonumber(F.Leash) or 10
+	local seconds = tonumber(F.LeashSeconds) or 3
+	local dx, dz = part.CharX - fx, part.CharZ - fz
+	local gap = sqrt(dx * dx + dz * dz)
+	-- a stunned / frozen fighter stands (the sim caps its move at 0) while the character keeps running: no leash while
+	-- the stun lasts, nor during the catch-up after it (the gap closes at legal run x (MoveSlack - 1)); B1 / C15: a legit
+	-- raider frozen by a boss is never leashed. The presence check (the zone + its margin) still applies.
+	if Cmd.stunned(b, part, gap, F) then
+		part.LeashT = 0
+		return false
+	end
+	if gap > leash then
+		part.LeashT = (part.LeashT or 0) + dt
+	else
+		part.LeashT = 0
+	end
+	if part.LeashT < seconds then
+		return false
+	end
+	part.LeashT = 0
+	if b.Mode == "Duel" then
+		forfeitDuel(b, part, "You ran off: the duel is lost.")
+	elseif b.Mode == "Ring" then
+		RingRun.dropOut(b, part, "You ran off: the run is over.")
+	elseif b.Mode == "Raid" then
+		leaveRaid(b, part, "You ran off: you are out of the raid.")
+	else
+		Enc.leave(b, part, "You ran off: you are out of this fight.", "Leash")
+	end
+	return true
+end
+
+-- after the steps of a tick: the leash (not when the sim just ended) and OnDown per participant, then the encounter's
+-- events (OnWave / OnBossHp only while the encounter goes on)
+function Cmd.afterSteps(b, n, finished)
+	local dt = n * C.STEP
+	for _, part in ipairs(b.PartList) do
+		if b.State ~= "Running" then
+			return
+		end
+		if not part.Left and not part.Forfeited then
+			if (finished or not Cmd.leash(b, part, dt)) and b.Enc then
+				local lives = Cmd.livesOf(b, part.UserId)
+				if lives ~= nil then
+					local before = part.Lives
+					part.Lives = lives
+					if before ~= nil and before > 0 and lives == 0 then
+						Enc.call(b, "OnDown", b.Id, part.Player, 0)
+					end
+				end
+			end
+		end
+	end
+	if b.Enc and b.State == "Running" and not finished then
+		Enc.afterSteps(b)
+	end
+end
+
+-- the quick queue's TeamPower band (4.2): within Duel.QueueGap x (+ QueueGapPerWait per QueueWaitStep seconds, cap QueueGapMax)
+function Cmd.queuePowerOk(qa, qb, waited)
+	local D = (BattleCatalog and type(BattleCatalog.Duel) == "table") and BattleCatalog.Duel or {}
+	local pa, pb = tonumber(qa.Power) or 0, tonumber(qb.Power) or 0
+	if pa <= 0 or pb <= 0 then
+		return true
+	end
+	local step = tonumber(D.QueueWaitStep) or 10
+	local allowed = (tonumber(D.QueueGap) or 1.6) + (tonumber(D.QueueGapPerWait) or 0.1) * floor(max(0, waited) / max(1, step))
+	allowed = min(allowed, tonumber(D.QueueGapMax) or 3)
+	return max(pa, pb) <= min(pa, pb) * allowed
+end
+
+----------------------------------------------------------------------
+-- The encounter API (4.6): Mode "Dungeon" battles opened by DungeonService through OpenEncounter; this module never
+-- requires DungeonService (C16: SetRunProvider hands over KeysInRun / GetRun). Nothing is paid here (C2).
+----------------------------------------------------------------------
+Enc.REASONS = { Cleared = true, Abandoned = true, Shutdown = true }
+
+-- a dungeon RUN id in the InBattle attribute ("D12")
+function Enc.isRunId(v)
+	return type(v) == "string" and v:sub(1, 1) == "D"
+end
+
+-- true while the player is in a dungeon run (the run provider's GetRun, or the run id in InBattle)
+function Enc.inRun(player)
+	local provider = St.runProvider
+	if type(provider) == "table" and type(provider.GetRun) == "function" then
+		local ok, run = pcall(provider.GetRun, player)
+		if ok and run ~= nil and run ~= false then
+			return true
+		end
+	end
+	return Enc.isRunId(player:GetAttribute(C.ATTR_IN_BATTLE))
+end
+
+-- a spec callback under pcall; an error is warned once per encounter and callback and never stops the caller
+function Enc.call(b, name, ...)
+	local spec = b.Enc
+	local fn = type(spec) == "table" and spec[name]
+	if type(fn) ~= "function" then
+		return
+	end
+	local ok, err = pcall(fn, ...)
+	if not ok then
+		b.EncWarned = b.EncWarned or {}
+		if not b.EncWarned[name] then
+			b.EncWarned[name] = true
+			warn("[BattleService] encounter " .. tostring(b.Id) .. " " .. name .. " failed: " .. tostring(err))
+		end
+	end
+end
+
+-- result.Fighters of a dungeon encounter: a participant not Left whose damage is >= Dungeon.MinShare of the party's total
+-- damage in this encounter; a solo team qualifies with any damage > 0 (judge M4: an AFK alt earns nothing)
+function Enc.qualifies(b, part, result)
+	local damage = tonumber(result.Damage[part.UserId]) or 0
+	if damage <= 0 then
+		return false
+	end
+	local total, inside = 0, 0
+	for _, other in ipairs(b.PartList) do
+		total = total + (tonumber(result.Damage[other.UserId]) or 0)
+		if not other.Left then
+			inside = inside + 1
+		end
+	end
+	if inside <= 1 then
+		return true
+	end
+	local D = (BattleCatalog and type(BattleCatalog.Dungeon) == "table") and BattleCatalog.Dungeon or {}
+	local share = tonumber(D.MinShare) or 0.05
+	return damage >= share * total - 1e-9
+end
+
+-- a participant leaves an encounter (Quit / leave / leash / disconnect): the others fight on; OnLeave fires
+function Enc.leave(b, part, why, cause)
+	if part.Left then
+		return false
+	end
+	part.Left = true
+	pcall(b.Sim.RemoveTeam, b.Sim, part.UserId)
+	local player = part.Player
+	b.Receivers[player] = nil
+	b.Pending[player] = nil
+	b.Spectators[player] = nil
+	if isPlayer(player) then
+		send(player, "End", { BattleId = b.Id, Mode = "Dungeon", Outcome = "Left", Won = false, Spectator = false, Reason = "Left" }, b.Id)
+	end
+	releaseParticipant(b, part)
+	if why then
+		notify(player, why, "info", 4)
+	end
+	Enc.call(b, "OnLeave", b.Id, player, cause or ((part.Disconnected or not isPlayer(player)) and "Disconnect" or "Left"))
+	return true
+end
+
+-- after a tick's steps (the encounter still runs): OnWave when a spawned wave is gone, OnBossHp on every 5% step
+function Enc.afterSteps(b)
+	for _, ev in ipairs(b.EventBuf) do
+		if ev.type == "EnemiesDown" then
+			Enc.call(b, "OnWave", b.Id, tonumber(ev.wave) or b.WaveIndex or 0)
+		end
+	end
+	local okH, frac = pcall(b.Sim.BossHp, b.Sim)
+	if okH and finite(frac) then
+		local step = floor(frac / C.BOSS_HP_STEP + 1e-9)
+		if b.BossStep == nil then
+			b.BossStep = step -- the boss just appeared: no step yet
+		elseif step ~= b.BossStep then
+			b.BossStep = step
+			Enc.call(b, "OnBossHp", b.Id, frac)
+		end
+	end
+end
+
+-- the fail-safe (monitorTick): a battle whose sim ended but whose end never completed within ENCOUNTER_FAILSAFE seconds
+-- is force-released (Reason "Error", nothing paid; OnEnd still fires for an encounter)
+function Enc.watch()
+	local t = now()
+	for _, id in ipairs(St.order) do
+		local b = St.battles[id]
+		if b and b.State == "Running" and simFinished(b) then
+			b.SimEndedAt = b.SimEndedAt or t
+			if t - b.SimEndedAt >= C.ENCOUNTER_FAILSAFE then
+				warn("[BattleService] " .. b.Id .. " ended " .. C.ENCOUNTER_FAILSAFE .. " s ago and was never finalized: released")
+				forceRelease(b)
+			end
+		end
+	end
+end
+
+-- the whitelisted enemy entry of SpawnWave (BattleSim resolves PetId | Key | Def)
+function Enc.cleanEntry(e)
+	if type(e) ~= "table" then
+		return nil
+	end
+	local out = {}
+	if type(e.PetId) == "string" then
+		out.PetId = e.PetId
+	end
+	if type(e.Key) == "string" then
+		out.Key = e.Key
+	end
+	if type(e.Def) == "table" then
+		out.Def = e.Def
+	end
+	if not out.PetId and not out.Key and not out.Def then
+		return nil
+	end
+	out.Level = (isInteger(e.Level) and e.Level >= 1) and e.Level or 1
+	out.Tier = type(e.Tier) == "string" and e.Tier or "Normal"
+	out.Slot = isInteger(e.Slot) and e.Slot or nil
+	out.Evo = isInteger(e.Evo) and e.Evo or nil
+	out.Train = type(e.Train) == "table" and e.Train or nil
+	out.Boost = finite(e.Boost) and e.Boost or nil
+	out.Handicap = finite(e.Handicap) and e.Handicap or nil
+	out.Boss = e.Boss == true or nil
+	out.Wild = e.Wild == true or nil
+	out.Name = type(e.Name) == "string" and e.Name:sub(1, 32) or nil
+	out.NoSpecial = e.NoSpecial == true or nil
+	return out
+end
+
+-- the running dungeon battle of an id, or nil
+function Enc.battle(battleId)
+	local b = type(battleId) == "string" and St.battles[battleId]
+	if b and b.Mode == "Dungeon" then
+		return b
+	end
+	return nil
+end
+
+-- BattleService.TeamSpec(player, keys | nil) -> spec | nil, reason  (teamOf exported: keys = the ring fallback)
+function BattleService.TeamSpec(player, keys)
+	if not isPlayer(player) then
+		return nil, "That player is not here"
+	end
+	return teamOf(player, 1, type(keys) == "table" and keys or nil)
+end
+
+-- SetRunProvider({ KeysInRun = fn(player) -> {[key] = true}, GetRun = fn(player) -> run | nil }): DungeonService's hooks
+function BattleService.SetRunProvider(provider)
+	if provider == nil then
+		St.runProvider = nil
+		return true
+	end
+	if type(provider) ~= "table" then
+		return false
+	end
+	St.runProvider = provider
+	return true
+end
+
+-- OpenEncounter(spec) -> battleId | nil, reason (see the header for the spec)
+function BattleService.OpenEncounter(spec)
+	if not BattleSim or not BattleCatalog then
+		return nil, "Battles are not ready yet"
+	end
+	if St.closing then
+		return nil, "The server is restarting: battles will be back in a moment"
+	end
+	if type(spec) ~= "table" or (spec.Mode ~= nil and spec.Mode ~= "Dungeon") then
+		return nil, "BadSpec"
+	end
+	local zone
+	if typeof(spec.Zone) == "Instance" and spec.Zone:IsA("BasePart") then
+		zone = zoneFrom(spec.Zone)
+	elseif type(spec.Zone) == "table" and typeof(spec.Zone.CFrame) == "CFrame" then
+		zone = zoneFrom(spec.Zone.CFrame, spec.Zone.Size, spec.Zone.Part)
+	else
+		return nil, "BadZone"
+	end
+	local teams = type(spec.Teams) == "table" and spec.Teams or {}
+	if #teams < 1 or #teams > C.MAX_ENCOUNTER_TEAMS then
+		return nil, "BadTeams"
+	end
+	local entries, seen = {}, {}
+	for _, entry in ipairs(teams) do
+		local player = type(entry) == "table" and entry.Player or nil
+		if not isPlayer(player) then
+			return nil, "That player is not here"
+		end
+		if seen[player] then
+			return nil, "DuplicatePlayer"
+		end
+		seen[player] = true
+		if St.battleOf[player] then
+			return nil, shortName(player) .. " is already in a battle"
+		end
+		local teamSpec = type(entry) == "table" and entry.Spec or nil
+		if type(teamSpec) ~= "table" then
+			local why
+			teamSpec, why = teamOf(player, 1)
+			if not teamSpec then
+				return nil, why
+			end
+		end
+		if teamSpec.Owner ~= player.UserId or type(teamSpec.Pets) ~= "table" or #teamSpec.Pets == 0 then
+			return nil, "BadTeamSpec"
+		end
+		teamSpec.Side = 1
+		entries[#entries + 1] = { Player = player, Spec = teamSpec }
+	end
+	local id = newBattleId()
+	local simTeams = {}
+	for i, entry in ipairs(entries) do
+		simTeams[i] = entry.Spec
+	end
+	local okS, sim, why = pcall(BattleSim.new, {
+		Mode = "Dungeon",
+		Id = id,
+		Seed = finite(spec.Seed) and floor(spec.Seed) or newSeed(),
+		Zone = { X = zone.X, Z = zone.Z },
+		Teams = simTeams,
+		TimeLimit = (finite(spec.TimeLimit) and spec.TimeLimit > 0) and spec.TimeLimit or nil,
+	})
+	if not okS or type(sim) ~= "table" then
+		warn("[BattleService] encounter setup failed: " .. tostring(okS and why or sim))
+		return nil, "The encounter could not start"
+	end
+	local b = newBattle(id, "Dungeon", sim, zone)
+	b.Enc = spec
+	b.Extra = type(spec.Extra) == "table" and spec.Extra or {}
+	b.Label = spec.Label
+	b.WaveIndex = 0
+	St.encSeq = St.encSeq + 1
+	for _, entry in ipairs(entries) do
+		stopWatching(entry.Player, "Joined")
+		leaveLobby(entry.Player)
+		local part = addParticipant(b, entry.Player, 1, entry.Spec)
+		part.Lives = Cmd.livesOf(b, entry.Player.UserId)
+	end
+	beginBattle(b)
+	return id
+end
+
+-- SpawnWave(battleId, entries, opts) -> infos | nil, reason
+function BattleService.SpawnWave(battleId, entries, opts)
+	local b = Enc.battle(battleId)
+	if not b or b.State ~= "Running" then
+		return nil, "NoEncounter"
+	end
+	if simFinished(b) then
+		return nil, "Finished"
+	end
+	if type(entries) ~= "table" then
+		return nil, "BadEntries"
+	end
+	local list = type(entries.Pets) == "table" and entries.Pets or entries
+	local clean = {}
+	for _, e in ipairs(list) do
+		local c = Enc.cleanEntry(e)
+		if c then
+			clean[#clean + 1] = c
+		end
+	end
+	if #clean < 1 or #clean > C.MAX_WAVE_ENTRIES then
+		return nil, "BadEntries"
+	end
+	opts = type(opts) == "table" and opts or {}
+	local wave = isInteger(opts.Wave) and opts.Wave >= 1 and opts.Wave or ((b.WaveIndex or 0) + 1)
+	local anchor = nil
+	if type(opts.Anchor) == "table" then
+		anchor = Cmd.pointOf(opts.Anchor)
+	end
+	local ok, infos, why = pcall(b.Sim.SpawnEnemies, b.Sim, clean, {
+		Wave = wave,
+		Anchor = anchor,
+		Name = type(opts.Name) == "string" and opts.Name:sub(1, 32) or nil,
+	})
+	if not ok or type(infos) ~= "table" then
+		warn("[BattleService] SpawnWave failed: " .. tostring(ok and why or infos))
+		return nil, type(why) == "string" and why or "SpawnFailed"
+	end
+	b.WaveIndex = wave
+	return infos
+end
+
+-- FinishEncounter(battleId, reason) -> result | nil   ("Cleared" | "Abandoned" | "Shutdown"; idempotent)
+function BattleService.FinishEncounter(battleId, reason)
+	local b = Enc.battle(battleId)
+	if not b or b.State ~= "Running" then
+		return nil
+	end
+	if not Enc.REASONS[reason] then
+		reason = "Abandoned"
+	end
+	if not simFinished(b) then
+		local ok, _, events = pcall(b.Sim.Finish, b.Sim, reason)
+		if ok and type(events) == "table" then
+			for _, ev in ipairs(events) do
+				b.EventBuf[#b.EventBuf + 1] = ev
+			end
+		end
+	end
+	flush(b)
+	finalize(b)
+	return b.Result
+end
+
+-- RemoveEncounterTeam(battleId, player) -> ok   (the others fight on; the last team out ends the sim "Abandoned")
+function BattleService.RemoveEncounterTeam(battleId, player)
+	local b = Enc.battle(battleId)
+	if not b or b.State ~= "Running" or typeof(player) ~= "Instance" then
+		return false
+	end
+	local part = b.Parts[player.UserId]
+	if not part or part.Left then
+		return false
+	end
+	return Enc.leave(b, part, nil, "Quit")
+end
+
+-- EncounterStatus(battleId) -> { Enemies, Wave, BossHp, Players = { [userId] = { Lives, Hp, MaxHp, Down } } } | nil
+function BattleService.EncounterStatus(battleId)
+	local b = Enc.battle(battleId)
+	if not b then
+		return nil
+	end
+	local okE, enemies = pcall(b.Sim.LivingEnemies, b.Sim)
+	local okH, frac = pcall(b.Sim.BossHp, b.Sim)
+	local players = {}
+	for _, part in ipairs(b.PartList) do
+		if not part.Left then
+			local lives, hp, maxHp = 0, 0, 0
+			local okT, team = pcall(b.Sim.TeamOf, b.Sim, part.UserId)
+			if okT and type(team) == "table" then
+				lives = tonumber(team.Lives) or 0
+				for _, u in ipairs(type(team.Units) == "table" and team.Units or {}) do
+					if u.id == team.Fighter then
+						hp, maxHp = tonumber(u.hp) or 0, tonumber(u.maxHp) or 0
+					end
+				end
+			end
+			players[part.UserId] = { Lives = lives, Hp = hp, MaxHp = maxHp, Down = lives <= 0 }
+		end
+	end
+	return {
+		BattleId = b.Id,
+		State = b.State,
+		Enemies = (okE and tonumber(enemies)) or 0,
+		Wave = b.WaveIndex or 0,
+		BossHp = (okH and finite(frac)) and frac or nil,
+		Players = players,
+	}
+end
+
+----------------------------------------------------------------------
 -- Reads
 ----------------------------------------------------------------------
 function BattleService.IsInBattle(player)
@@ -3772,13 +4355,15 @@ function BattleService.GetBattle(player)
 	if run and run.State == "Intermission" then
 		state = "Intermission" -- a ring run between two rounds (the next Start comes by itself)
 	end
+	local extra = type(b.Extra) == "table" and b.Extra or {}
 	return {
 		BattleId = b.Id,
 		Mode = b.Mode,
 		Side = part and part.Side or 0,
-		Level = b.Level,
 		BossId = b.BossId,
 		Round = (run and run.Round) or b.Round,
+		Floor = extra.Floor,
+		Room = extra.Room,
 		State = state,
 		T = okT and t or 0,
 		Zone = { CFrame = b.Zone.CFrame, Size = Vector3.new(b.Zone.X, C.ZONE_HEIGHT, b.Zone.Z) },
@@ -3807,9 +4392,10 @@ function BattleService.ListBattles()
 				Steps = b.Steps,
 				T = okT and t or 0,
 				Receivers = receivers,
-				Level = b.Level,
 				BossId = b.BossId,
 				Round = b.Round,
+				Floor = type(b.Extra) == "table" and b.Extra.Floor or nil,
+				Room = type(b.Extra) == "table" and b.Extra.Room or nil,
 				RingIndex = b.RingIndex,
 				PocketIndex = b.Zone.PocketIndex,
 			}
@@ -3868,6 +4454,11 @@ function BattleService.Forfeit(player)
 	if not part or part.Left or part.Forfeited then
 		return false, "NoBattle"
 	end
+	if b.Mode == "Dungeon" then
+		-- the dungeon has its own LEAVE (DungeonService's Quit -> RemoveEncounterTeam)
+		notify(player, "Use LEAVE to quit the dungeon.", "info", 3)
+		return false, "Use LEAVE"
+	end
 	if b.Mode == "Raid" then
 		leaveRaid(b, part, "You left the raid.")
 	elseif b.Mode == "Duel" then
@@ -3875,20 +4466,27 @@ function BattleService.Forfeit(player)
 	elseif b.Mode == "Ring" then
 		RingRun.dropOut(b, part, "You left the Champion Ring.")
 	else
-		forfeitTrial(b, part, "You left the trial.")
+		forfeitSolo(b, part, "You left the battle.")
 	end
 	return true
 end
 
--- what BattleCommand does: only the caller's own team (the owner is always the caller), only in their running battle,
--- only from inside its zone (Forfeit works anywhere)
+-- what BattleCommand does (4.4 / 4.5): only the caller's own team (the owner is always the caller), only in their running
+-- battle, only from inside its zone (Forfeit works anywhere); arg = a unit id, nil or { x, z } (Element). -> ok, reason, extra
 function BattleService.Command(player, action, arg)
 	if not isPlayer(player) then
 		return false, "NoPlayer"
 	end
+	if type(action) ~= "string" or #action > C.MAX_ACTION_LENGTH then
+		return false, "UnknownAction"
+	end
 	-- Forfeit first: between two ring rounds the won round's battle is already Ended, and Forfeit does its own checks
 	if action == "Forfeit" then
 		return BattleService.Forfeit(player)
+	end
+	local spec = Cmd.ACTIONS[action]
+	if not spec then
+		return false, "UnknownAction"
 	end
 	local b = St.battleOf[player]
 	if not b or b.State ~= "Running" then
@@ -3898,26 +4496,15 @@ function BattleService.Command(player, action, arg)
 	if not part or part.Left or part.Forfeited then
 		return false, "NoBattle"
 	end
-	if action ~= "Attack" and action ~= "Retreat" and action ~= "Special" then
-		return false, "UnknownAction"
+	local value, bad = Cmd.cleanArg(spec, arg)
+	if bad then
+		Cmd.reject(b, part, action, bad)
+		return false, bad
 	end
 	local root = aliveRoot(player)
-	if not root or not insideZone(b.Zone, root.Position) then
+	if not root or not Cmd.present(b, part, root) then
+		Cmd.reject(b, part, action, "NotInZone")
 		return false, "NotInZone"
-	end
-	local value = nil
-	if action == "Attack" then
-		if arg ~= nil then
-			if not isInteger(arg) or arg < 1 or arg > C.MAX_UNIT_ID then
-				return false, "BadTarget"
-			end
-			value = arg
-		end
-	elseif action == "Special" then
-		if not isInteger(arg) or arg < 1 or arg > 4 then
-			return false, "BadSlot"
-		end
-		value = arg
 	end
 	local ok, accepted, reason, extra = pcall(b.Sim.Command, b.Sim, player.UserId, action, value)
 	if not ok then
@@ -3930,10 +4517,11 @@ end
 ----------------------------------------------------------------------
 -- Presence monitor (twice a second): participants stay where their battle is; anchors follow the owners
 ----------------------------------------------------------------------
--- true while the participant is where they belong (trial: at their pocket; duel / raid: inside the arena)
+-- true while the participant is where they belong (ring: at their pocket; duel / raid: inside the arena; dungeon: inside
+-- the encounter's zone part + ZONE_MARGIN). Commands need `insideZone` on top for duels / raids (the arena is bigger).
 local function present(b, part, root)
 	local pos = root.Position
-	if b.Mode == "Trial" or b.Mode == "Ring" then
+	if b.Mode == "Ring" then
 		local x, y, z = zoneLocal(b.Zone, pos)
 		if sqrt(x * x + z * z) > C.POCKET_LEASH or y > 220 then
 			return false
@@ -3943,7 +4531,18 @@ local function present(b, part, root)
 		end
 		return true
 	end
+	if b.Mode == "Dungeon" then
+		return insideZone(b.Zone, pos)
+	end
 	return inArena(pos)
+end
+
+-- the command ladder's "present": inside the battle zone (its part + ZONE_MARGIN, else the floor rectangle + 16)
+function Cmd.present(b, part, root)
+	if b.Mode == "Dungeon" then
+		return present(b, part, root)
+	end
+	return insideZone(b.Zone, root.Position)
 end
 
 local function monitorBattle(b)
@@ -3974,7 +4573,7 @@ local function monitorBattle(b)
 						elseif b.Mode == "Ring" then
 							why = "You left the ring: the run is over."
 						else
-							why = "You left the trial: it is lost."
+							why = "You left the room: you are out of this fight."
 						end
 						dropOut(b, part, why)
 					end
@@ -3991,6 +4590,7 @@ local function monitorTick()
 			warn("[BattleService] monitor failed for " .. b.Id .. ": " .. tostring(err))
 		end
 	end
+	Enc.watch() -- the encounter fail-safe (a finished sim whose end never completed)
 	-- ring runs between two rounds (no battle runs): the climber must stay at the pocket, alive and out of matches
 	local runs = {}
 	for _, run in pairs(St.ringRuns) do
@@ -4062,19 +4662,26 @@ local function cooldown(player, action, seconds)
 	return true
 end
 
+-- the remote ladder (4.4): isPlayer -> type -> the rate bucket -> Command (battle, participant, present, the sim). Refusals
+-- are silent except NotInZone / Charging / Cooldown / OutOfReach: one throttled toast per REFUSAL_TOAST_GAP per player
 local function onCommand(player, action, a)
 	if not isPlayer(player) or type(action) ~= "string" or #action > C.MAX_ACTION_LENGTH then
+		return
+	end
+	if not Cmd.argTypeOk(a) then
 		return
 	end
 	if not takeToken(player, "cmd", C.COMMAND_BURST, C.COMMAND_REFILL) then
 		return
 	end
-	local ok, reason = BattleService.Command(player, action, a)
-	if not ok then
-		if reason == "NotInZone" then
-			notify(player, "Step into the battle zone to command your pets.", "bad", 3)
-		elseif reason == "Regrouping" then
-			notify(player, "Your pets are regrouping...", "info", 2)
+	local ok, reason, extra = BattleService.Command(player, action, a)
+	if not ok and type(reason) == "string" then
+		local text = Cmd.TOASTS[reason]
+		if reason == "Cooldown" and finite(extra) and extra > 0 then
+			text = string.format("Not ready: %.1f s", extra)
+		end
+		if text and cooldown(player, "refusalToast", C.REFUSAL_TOAST_GAP) then
+			notify(player, text, reason == "NotInZone" and "bad" or "info", 2)
 		end
 	end
 end
@@ -4152,12 +4759,6 @@ local function onRequest(player, action, a, b)
 		ok, why = teamSet(player, a, b)
 	elseif action == "TeamSelect" then
 		ok, why = teamSelect(player, a)
-	elseif action == "Trial" then
-		if isInteger(a) then
-			ok, why = BattleService.StartTrial(player, a)
-		else
-			why = "Pick a trial level"
-		end
 	elseif action == "Challenge" then
 		local target = playerById(a)
 		if target then
@@ -4194,6 +4795,7 @@ local function onPlayerRemoving(player)
 		local part = b.Parts[player.UserId]
 		if part and not part.Left and not part.Forfeited then
 			-- a duel leaver's loss (and a ring run's Runs + 1) is written right now, before their profile is saved
+			part.Disconnected = true
 			dropOut(b, part, nil)
 		end
 	end
@@ -4359,9 +4961,11 @@ function BattleService.Init(deps)
 	if not okClose then
 		warn("[BattleService] BindToClose failed: " .. tostring(closeErr))
 	end
-	-- players already in the game (Init runs after PlayerService): nobody starts in a battle
+	-- players already in the game (Init runs after PlayerService): nobody starts in a battle (a dungeon RUN id "D<n>" is
+	-- DungeonService's and stays)
 	for _, player in ipairs(Players:GetPlayers()) do
-		if player:GetAttribute(C.ATTR_IN_BATTLE) ~= nil then
+		local v = player:GetAttribute(C.ATTR_IN_BATTLE)
+		if v ~= nil and not Enc.isRunId(v) then
 			setInBattle(player, nil)
 		end
 	end

@@ -1,75 +1,79 @@
--- HomeFx (client, Phase 2 homeworld + Phase 4 "pets make the money"): brings the tycoon homes that
--- server/Services/HomeBuilder builds to life on THIS client only (ARCHITECTURE_V3.md "Phase 4 build contract" 3.1-3.3,
--- 3.7, 3.9, 6; Replication rule: the server never animates and creates no Instance per coin).
+-- HomeFx (client, Phase 2 homeworld + Phase 4 "pets make the money" + Phase 5 "the Big Sky Update"): brings the tycoon
+-- homes that server/Services/HomeBuilder builds to life on THIS client only (ARCHITECTURE_V3.md "Phase 5 build contract"
+-- 3.4, 3.5, 3.7; the Phase 4 contract 3.7 / 3.9 / 6 where Phase 5 is silent; Replication rule: the server never
+-- animates and creates no Instance per coin).
 --
 --   HomeFx.Init()
 --   HomeFx.Count() -> number of home plots tracked
---   HomeFx.Stats() -> { Homes, Near, Stations, Plants, Pops, HiddenPrompts, HiddenSigns, SignsShown, SignsCrowded,
---                       SignsUnderHud, SignsAway, GardenPets, TrainingPets (GymPets: the same), Sleeping, Props, Heaps,
---                       HeapParts, HeapsMade, Bowls, Coins, CoinPool, Fruit, FruitPool, FruitFlights, Drops, Zips,
---                       Labels, LastLabel, LastLabelAt, Hint, Ring, Cards, PetBuilds, PetColdBuilds, PetPoolHits,
---                       PetPool, PetFrameMost }   (Coins / Fruit: flying now, CoinPool / FruitPool: parts ever made;
---                       Drops / Zips / Labels: coins popped by eating pets, scooped piles, "+$" labels so far;
---                       Pet*: models built / first-time builds / taken from the pool, models waiting in the pool now,
---                       the most garden / training pets placed in one frame)
---   HomeFx.Garden(plotOrHomeFolder) -> { Heaps = { [slot | "W"] = { Model, Point, Stage, Dim, Lucky, Parts } },
---                       Bowls, Pets = { [slot] = { Key, Model, Sleep, Zzz, Card, Stage, Seat } }, Training =
---                       { [mat] = { Key, Model, Stat, Prop, Card, Seat } }, Open, Dim, Radius }   (tests / debugging)
---   HomeFx.SignState(padSign) -> "Shown" | "Crowded" | "Away" | "Pending" | "Locked" | "Other" | nil (see SignState)
+--   HomeFx.Stats() -> { Homes, Near, Stations, Pops, HiddenPrompts, HiddenSigns, SignsShown, SignsCrowded, SignsUnderHud,
+--                       SignsAway, SignsUnsigned, GardenPets, TrainingPets (GymPets: the same), Sleeping, Props, Heaps,
+--                       HeapParts, HeapsMade, Coins, CoinParts, CashMade, Pending, Poops, Confirmed, Faded, Flying, Bits,
+--                       BitsMade, BerryFlights, Puffs, Posed, PetParts, Zips, Labels, LastLabel, LastLabelAt, Hint, Ring,
+--                       Cards, PetBuilds, PetColdBuilds, PetPoolHits, PetPool, PetFrameMost }
+--                       (Coins: Cloud Cash coins drawn now; Pending: popped by a pet, not in CoinDrops yet; Poops /
+--                       Confirmed / Faded: so far; Flying: zip coins now; Bits: berries in flight + puff cubes now;
+--                       Posed / PetParts: what the posed-pet budget allows; Pet*: models built / first-time builds /
+--                       taken from the pool, models waiting in the pool now, the most pets placed in one frame)
+--   HomeFx.Garden(plotOrHomeFolder) -> { Heaps = { W = { Model, Point, Stage, Dim, Parts } }, Coins = { ["slot:cycle"] =
+--                       { Part, Slot, Cycle, Stage, Lucky, Pending, Dim, Point, Look, Parts, Flying } }, Pets = { [slot] =
+--                       { Key, Model, Sleep, Zzz, Card, Stage, Seat, State, X, Z, SepX, SepZ, Cycle, Hw, Yaw } }, Training
+--                       = { [mat] = { Key, Model, Stat, Prop, Card, Seat, Stage } }, Open, Dim, Radius, RoamOk, Seed,
+--                       Epochs, Naps }   (tests / debugging; X / Z: plot-local HomeRoam point before the separation)
+--   HomeFx.SignState(padSign) -> "Shown" | "Crowded" | "Away" | "Pending" | "Unsigned" | "Locked" | "Other" | nil
 --
 -- Every Folder tagged "NC_Home" (HomeBuilder's per-plot `Home` folder; the plot folder above it carries TycoonService's
--- attributes GardenPets, GardenInfo, GardenSlots, CoinPiles, CollectorCash and PetCareService's TrainingPets) gets:
+-- attributes GardenPets, GardenInfo, GardenSlots, RoamSeed, RoamVersion, Roam, CoinDrops, BerryCap, CollectorCash and
+-- PetCareService's TrainingPets) gets:
 --   * a voxel pop-in when a `Station_*` (or a buy pad `Pad_*`) appears while the game runs: its blocks spring up from
 --     the ground bottom-to-top in under a second, then everything is put back exactly where the server built it
---   * the Pet Garden (contract 3.2 / 3.3): the pets of GardenPets on their cushions (Spot<n>), each looking at a food
---     bowl (2 client parts per open place, toward its pile); twice per meal (TycoonCatalog.Coins.MealSeconds) an eating
---     pet dips into the bowl, a rainbow coin pops out and hops onto its pile, the pet wiggles. The piles are heaps of
---     rainbow coins at TycoonCatalog.CoinPoint(n) (the Welcome-back pile "W" at Garden.Slot.WelcomePile) that follow
---     CoinPiles: heap stage 1-5 (<= 35 parts, the Welcome-back heap <= 53), '*' a turning golden Lucky star, 'F' = the
---     pet naps (lies down, a voxel "Zzz"); a pet on a place above GardenSlots sleeps on its closed bed. Another
---     player's heaps are dimmed and never move. Fruit of every built plant (FruitPoint / FruitColor) flies into a
---     bowl every ~3 s, the Food Machine drops one from its chute (ChuteMouth -> Tray), the Coin Magnet's head
---     (MagnetHead about MagnetCenter) turns.
---   * the scoop (only the owner's coins are ever collectable): when the local player's own piles vanish from
---     CoinPiles while they stand within the Magnet's radius (TycoonCatalog.ScoopRadius), coins zip from each pile to
---     them, and when the bank (CollectorCash) dropped and their Cash rose in the same moment, a "+$1,234" pixel label
---     floats up AT THE PILE (never over the player's head: in third person that is the screen centre). A faint ring
---     of the scoop radius follows the owner while they stand in their garden. A visitor next to another player's pile
---     sees the hint "Only the owner can pick these up" once (at the pile).
---   * the Training Place (3.7): the pets of TrainingPets ("mat=key:Stat:Ends") on their mats (Spot<mat>), each with a
+--   * roaming garden pets (3.5): the pets of GardenPets walk the yard by shared/HomeRoam, the SAME deterministic plan
+--     the server's ledger poops from (RoamSeed, the slot's epoch in Roam, workspace:GetServerTimeNow()): posed every
+--     frame (every 2nd frame beyond K.ROAM_HALF_NEAR) at HomeRoam.At, yaw eased toward the travel; Walk trots, Eat dips
+--     its head at the Food Bowl (pushed out by half its width), Poop squats + wiggles and pops a Cloud Cash coin that
+--     arcs 0.35 s onto the poop point with a 3-cube puff, Idle sniffs, Settle hops on its bed, a napping slot (`:N`)
+--     lies down at the far point of that cycle with a voxel "Zzz" (and walks back on waking); a client-only soft
+--     separation (<= 1.5 studs) keeps pets of one home from overlapping; a RoamVersion mismatch parks them on their beds
+--     and hides the coins; a pet on a bed above GardenSlots sleeps there. Own pets show their stage (State.PetStage),
+--     everyone's evolved pets are Low (3.7) while the posed-pet part budget lasts (K.HOME_PET_PARTS), at most
+--     K.ROAM_MAX_PETS posed pets over every home (own home first, then the nearest homes).
+--   * Cloud Cash (3.5): every drop of CoinDrops ("slot=cycle:stage[*]") is a pooled TokenLook coin ("Cash", Scale
+--     0.8 / 1.0 / 1.15 / 1.3 by stage, no light; Lucky "GoldenCash" + sparkles) at HomeRoam.Plan(seed, slot, cycle).Poop
+--     that bobs and spins (TokenLook.Motion); a coin a pet popped is pending until CoinDrops lists it and fades after
+--     2.5 s unconfirmed; other players' coins are dimmed and still; the Welcome-back pile ("W") is a heap of rainbow
+--     coins at Garden.Slot.WelcomePile. The scoop (only the owner's coins are ever collectable, the server ledger
+--     decides): when the local player's own drops vanish from CoinDrops while they stand within the scoop radius
+--     (TycoonCatalog.ScoopRadius), coins zip from each drop to them, and when the bank (CollectorCash) dropped and
+--     their Cash rose in the same moment, a "+$1,234" pixel label floats up AT THE DROP. A faint ring of the scoop
+--     radius follows the owner in their yard. A visitor next to another player's coin sees "Only the owner can pick
+--     these up" once.
+--   * berries (3.4): a berry hops from the Berry Farm's top row (Station_Press1 BerryPoint) into the Food Bowl every
+--     3 s and into the Food Machine's basket every 4 s (pooled with the puffs, <= K.MAX_BITS); the owner's Food Machine
+--     sign shows "1,240 / 3,000 berries" (player attribute Berries, plot attribute BerryCap).
+--   * the Training Place: the pets of TrainingPets ("mat=key:Stat:Ends") on their mats (Spot<mat>), each with a
 --     pooled voxel prop of its skill (Speed: treadmill, Physique: dumbbell, Ability: orb, Defense: shield dummy;
---     <= 8 parts) and a pose (running, lifting, floating, bumping the dummy).
---   * pet cards (3.9, client/UI/PetCard): own garden pets "Lv n" + XP (+ the EVOLVE! pill, which opens the Pets
---     panel), own training pets + the purple timer "2:10", other players' garden pets the level only (GardenInfo);
---     only pets within K.CARD_NEAR studs of the local player carry one; values written only on change.
+--     <= 8 parts) and a pose (running, lifting, floating, bumping the dummy); own pets at their stage.
+--   * pet cards (client/UI/PetCard): own garden pets "Lv n" + XP (+ the EVOLVE! pill, which opens the Pets panel), own
+--     training pets + the purple timer "2:10", other players' garden pets the level only (GardenInfo); only pets within
+--     K.CARD_NEAR studs of the local player carry one; values written only on change.
 --   * owner-only prompts: every ProximityPrompt inside a home that is not the local player's (BuyPrompt,
 --     GardenSpotPrompt, FusionPrompt, ... by their OwnerUserId attribute, else the home's) is disabled locally, and the
 --     pad signs (`PadSign`) of other players' pads are hidden; the "Claim Home" prompts of other plots are disabled
---     while the local player owns a home (one home per player). The server still checks everything. The signs of
---     the player's own LOCKED pads (their lock reason) only show within K.LOCKED_SIGN_NEAR studs, so the yard is not
---     a field of lock signs: from afar it shows what can be bought now, like a classic tycoon.
---   * readable pad signs (World text rule): the pad signs are pixel-sized billboards, so from the gate path a full
---     yard used to stack them into a pile nobody could read (worse on phones). Every K.SIGN_CHECK the local player's
---     own signs are laid out on the screen: projected through the camera (Camera:WorldToViewportPoint of the
---     adornee + studs offsets, plate size from the sign's Plate), taken nearest-to-the-player first (lock reasons
---     after what can be bought now, unless the player stands at that pad), and a sign whose plate would reach into
---     the text of a sign already shown is hidden ("Crowded") until there is room for it again; signs Roblox does not
---     draw or that are mostly off the screen take no room. The HUD is drawn OVER every billboard, so where this
---     game's own HUD covers the screen (the menu column, the currency pills and the rest of NimbusHud, the hotbar,
---     the touch buttons, the tutorial card) counts as signs already shown: a sign that would land under it is hidden
---     the same way and its room goes to another sign (measured every K.SIGN_HUD_CHECK seconds and when the screen
---     size changes, see measureHud). The pads keep their glow and pulse. A sign the layout has
---     not placed yet starts hidden (one frame), a rebuilt sign keeps its pad's last answer, and hysteresis
---     (K.SIGN_CLEAR px, K.SIGN_KEEP studs, K.SIGN_HOLD seconds) keeps signs from flickering while the camera moves.
+--     while the local player owns a home (one home per player). The server still checks everything.
+--   * pad signs (3.3): only the pads TycoonCatalog.SignedPads picks show a sign (the open Prestige pad, the 3 cheapest
+--     affordable, else the single cheapest; the others "Unsigned"), re-evaluated every K.SIGN_CHECK and on the Cash
+--     attribute; a locked pad's sign (its reason) shows only within K.LOCKED_SIGN_NEAR studs. The shown signs are laid
+--     out on the screen (World text rule): projected through the camera, nearest first, a sign whose plate would reach
+--     into another shown sign or this game's HUD is hidden ("Crowded") until there is room again (hysteresis
+--     K.SIGN_CLEAR px, K.SIGN_KEEP studs, K.SIGN_HOLD seconds; the HUD measured every K.SIGN_HUD_CHECK seconds).
 --   * the local player's own pads glow when the Cash attribute can pay their Price and dim (price in red) when not.
--- Budgets (contract 6): pets, heaps, bowls, props and cards only for homes within K.PET_NEAR studs of the camera;
--- the 12 garden + 5 training pets of a home are built under a per-frame budget like every other pet builder (at most
--- K.PET_BUILD_MAX per frame and only while the frame has spent under K.PET_BUILD_BUDGET seconds building; a
--- first-time build alone in its frame); pets that leave wait unparented in a small pool (K.PET_POOL) for the way back;
--- heaps are clones of one template per look (at most K.HEAP_BUILD_MAX a frame) and pooled; flying coins (<= 40) and
--- fruit (<= 24) are pooled parts; poses are written at most 20 times a second and only when they changed.
--- Cheap: one RenderStepped connection; homes farther than K.NEAR studs from the camera are frozen; no collisions,
--- queries, touches or shadows on anything HomeFx makes. Plain Lua 5.1-compatible syntax only.
+-- Budgets (contract 10.3): pets, coins, heaps and props only for homes within K.PET_NEAR studs of the camera; <= 24
+-- posed garden pets, <= 36 coins x 6 parts, berries + puffs <= 16, the pets built under a per-frame budget (at most
+-- K.PET_BUILD_MAX per frame and only while the frame has spent under K.PET_BUILD_BUDGET seconds; a first-time build
+-- alone in its frame); pets that leave wait unparented in a small pool (K.PET_POOL); a pet's static parts are welded to
+-- its root once, so a roaming pose is one CFrame write (+ PetBuilder.Animate's wings / tail). Plans come from
+-- HomeRoam's cache (one new plan per slot per 24 s cycle). Cheap: one RenderStepped connection; homes farther than
+-- K.NEAR studs from the camera are frozen; no collisions, queries, touches or shadows on anything HomeFx makes.
+-- Plain Lua 5.1-compatible syntax only.
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -99,11 +103,12 @@ local PetBuilder = optionalShared("PetBuilder")
 local PetKeys = optionalShared("PetKeys")
 local PetCatalog = optionalShared("PetCatalog")
 local Theme = optionalShared("Theme")
+local HomeRoam, TokenLook = optionalShared("HomeRoam"), optionalShared("TokenLook") -- Phase 5 roaming + Cloud Cash
 
 local HomeFx = {}
 
 local HOME_TAG = "NC_Home"
-local CASH_ATTR = (Config.Attr and Config.Attr.Cash) or "Cash"
+local CASH_ATTR, BERRY_ATTR = (Config.Attr and Config.Attr.Cash) or "Cash", (Config.Attr and Config.Attr.Berries) or "Berries"
 
 local K = {
 	NEAR = 230, -- studs from the camera: homes farther away are frozen (no coins, fruit, swirls)
@@ -121,8 +126,10 @@ local K = {
 	SWIRL_BOB = 0.25,
 	PAD_PULSE = 3.2,
 	PAD_DIM = 0.6, -- glow transparency of a pad the local player cannot pay for yet
-	LOCKED_SIGN_NEAR = 30, -- studs: the sign of one of the local player's LOCKED pads (its lock reason) shows only
-	LOCKED_SIGN_FAR = 34, -- this close (hidden again beyond FAR), so from afar the yard shows what can be bought now
+	LOCKED_SIGN_NEAR = 6, -- studs: the sign of one of the local player's LOCKED pads (its lock reason) shows only
+	LOCKED_SIGN_FAR = 8, -- this close (hidden again beyond FAR); the other open pads show a sign only when
+	--                      TycoonCatalog.SignedPads picks them (the next affordable ones, contract 3.3): "Unsigned"
+	SIGNED_MAX = 3, -- TycoonCatalog.SignRules.MaxSigns wins
 	SIGN_CHECK = 0.1, -- seconds between two sign passes (those distance checks + the on-screen layout)
 	SIGN_INSET_X = 8, -- px two plates may overlap side by side (only padding: HomeBuilder pads the text 14 px)...
 	SIGN_INSET_Y = 2, -- ...and above / below each other (6 px top padding, 8 px bottom, a 3.5 px edge)
@@ -142,41 +149,60 @@ local K = {
 	--                      as the camera turns (0.5 degrees = ~7 px at 1080p), so K.SIGN_CLEAR is not enough there
 	SIGN_HUD_CHECK = 1, -- seconds between two measurements of where the HUD is (not every pass: it rarely moves)...
 	SIGN_HUD_SETTLE = 0.25, -- ...and after a screen size change, once more this soon (the HUD lays itself out again)
-	PET_NEAR = 110, -- garden / training pets, heaps, bowls and props are shown for homes this close (hysteresis +20)
+	PET_NEAR = 110, -- garden / training pets, coins and props are shown for homes this close (hysteresis +20)
 	PET_SCALE = 0.85,
-	PET_ANIM_STEP = 0.125, -- seconds between two PetBuilder.Animate calls of the garden / training pets
-	PET_ANIM_NEAR = 80, -- ...only this close (also the eating dips, the coins they pop out and the props' motion)
-	PET_HOVER = 0.08, -- studs between a pet's lowest block and its cushion
+	PET_ANIM_STEP = 0.125, -- seconds between two PetBuilder.Animate calls of the training pets
+	PET_ANIM_NEAR = 80, -- ...only this close (also the props' motion and the coins' bob and spin)
+	PET_HOVER = 0.08, -- studs between a pet's lowest block and the ground
 	MAX_GARDEN_SLOTS = 12, -- the Pet Garden's places (contract 3.3)
 	MAX_TRAIN_SLOTS = 5, -- the Training Place's mats (contract 3.7)
 	PET_BUILD_MAX = 3, -- garden / training pet models built (or taken from the pool) in one frame at most...
 	PET_BUILD_BUDGET = 0.004, -- ...and only while the frame has spent less than this building (the first always runs)
 	PET_POOL = 20, -- pet models of homes gone out of range kept for the way back (oldest destroyed first)
-	EVO_MAX = 6, -- evolved garden models of the local player's own home at most (the rest: the plain look + stars)
-	MOTION_STEP = 0.05, -- seconds between two pose writes of a dipping / training pet (20 Hz, never per frame)
-	MEAL = 8, -- seconds of one meal (TycoonCatalog.Coins.MealSeconds wins)
-	DIP_START = 6.2, -- phase of the meal when the pet dips into its bowl (twice, DIP_TIME seconds)...
-	DIP_TIME = 1.1,
-	POP_AT = 7.35, -- ...a coin pops out onto the pile...
-	WIGGLE_TIME = 0.45, -- ...and the pet wiggles
-	COIN_FLIGHT = 0.55, -- seconds of a coin's hop from the pet onto its pile
-	MAX_COINS = 40, -- flying coins alive at once over all homes (pooled parts)
-	ZIP_COINS = 8, -- coins that zip from one scooped pile to the owner
+	MOTION_STEP = 0.05, -- seconds between two pose writes of a training pet (20 Hz, never per frame)
+	-- Phase 5 roaming (contract 3.5): every garden pet posed every frame from HomeRoam.At
+	ROAM_SCALE = 0.85, -- the roaming pets' model scale
+	ROAM_YAW_RATE = 7, -- 1/s: the yaw eases toward the travel direction
+	ROAM_BOB = 0.25, -- studs of the walk's trot
+	ROAM_DIP = 0.436, -- radians (25 degrees) the head dips while eating (2 Hz)
+	ROAM_SQUAT = 0.4, -- studs a pooping pet squats
+	ROAM_SEP_MAX = 1.5, -- studs the client-only soft separation may push a pet
+	ROAM_HALF_NEAR = 60, -- homes farther than this pose their pets every 2nd frame
+	ROAM_MAX_PETS = 24, -- posed garden pets over every home (own home first, then the nearest)
+	ROAM_WALK_ANIM = { Flap = 1, Excited = 0 },
+	ROAM_REST_ANIM = { Flap = 0.6, Excited = 0 },
+	HOME_PET_PARTS = 9000, -- the posed pets' part budget: evolved Low models while it lasts (3.7), then plain Low
+	PET_PARTS_EST = { [0] = 250, 380, 520 }, -- parts of a Low model by stage until one was built and counted
+	BUDGET_CHECK = 0.5, -- seconds between two budget passes
+	LAWN_TOP = 0.2, -- studs: the Garden's lawn above the yard
+	YARD_HALF = 36, -- studs: the owner stands in their own yard (the scoop ring shows)
+	POOP_LATE = 0.5, -- seconds: a pet that crossed PoopAt this recently pops its coin (else CoinDrops draws it)
+	POOP_ARC = 0.35, -- seconds of the coin's arc onto the poop point
+	PUFF_TIME = 0.45, -- seconds of the 3-cube puff
+	PENDING_FADE = 2.5, -- seconds a pending coin waits for CoinDrops before it fades...
+	PENDING_OUT = 0.4, -- ...over this long
+	MAX_CASH = 36, -- Cloud Cash coins alive over all homes (x 6 parts, no lights)
+	CASH_POOL = 8, -- idle coins kept per look
+	CASH_HOVER = 0.25, -- studs between a coin's rim and the ground
+	CASH_SCALE = 0.5, -- the home coins' size against the obby token (x the stage scale 0.8 / 1.0 / 1.15 / 1.3): a stage-2
+	--                   coin stands 1.75 studs tall, about a garden pet's height, instead of the token's 3.5
+	MAX_BITS = 16, -- berries in flight + puff cubes alive at once (pooled parts)
+	BERRY_BOWL_EVERY = 3, -- seconds between two berries from the farm into the Food Bowl...
+	BERRY_BASKET_EVERY = 4, -- ...and into the Food Machine's basket
+	SCOOP_SLACK = 2.5, -- studs past the scoop radius a vanished drop still counts as scooped by the owner
+	COIN_FLIGHT = 0.55, -- seconds of a zip coin's hop
+	MAX_COINS = 40, -- zip coins alive at once over all homes (pooled parts)
+	ZIP_COINS = 8, -- coins that zip from one scooped drop to the owner
 	ZIP_TIME = 0.42,
-	MAX_FRUIT = 24, -- flying fruit alive at once (pooled parts)
-	FRUIT_EVERY = 3, -- seconds (+-0.5) between two fruits of one plant
-	MACHINE_EVERY = 4, -- seconds between two fruits out of the Food Machine's chute
-	HEAP_BUILD_MAX = 2, -- heaps cloned in one frame at most (the rest the next frames)
-	HEAP_POOL = 6, -- idle heap models kept per look
+	HEAP_POOL = 2, -- idle Welcome heap models kept per look
 	CARD_NEAR = 40, -- studs: garden / training pets this close to the local player carry a PetCard (hysteresis +6)
 	CARD_CHECK = 0.5, -- seconds between two card passes (the timers tick in whole seconds)
-	LABEL_TIME = 1.5, -- seconds the "+$1,234" label floats above a scooped pile
+	LABEL_TIME = 1.5, -- seconds the "+$1,234" label floats above a scooped drop
 	MAX_LABELS = 3,
-	LABEL_PAIR = 0.5, -- seconds: a CollectorCash drop and the piles that vanished belong to one scoop
-	HINT_NEAR = 4.5, -- studs from another player's pile: the one-time hint "Only the owner can pick these up"
+	LABEL_PAIR = 0.5, -- seconds: a CollectorCash drop and the drops that vanished belong to one scoop
+	HINT_NEAR = 4.5, -- studs from another player's coin: the one-time hint "Only the owner can pick these up"
 	HINT_TIME = 3.5,
-	RING_SEGMENTS = 16, -- the owner's scoop ring (the Coin Magnet's radius) while standing in the garden
-	MAGNET_SPIN = 1.1, -- radians per second of the Coin Magnet's head (x3 for a moment after a scoop)
+	RING_SEGMENTS = 16, -- the owner's scoop ring while standing in their yard
 }
 
 local COLORS = {
@@ -184,19 +210,18 @@ local COLORS = {
 	PriceShort = Color3.fromRGB(255, 132, 120),
 	Gold = Color3.fromRGB(255, 206, 84),
 	GoldDark = Color3.fromRGB(214, 150, 46),
-	Grass = Color3.fromRGB(150, 214, 104), -- the food in the bowls before any plant is built
+	Puff = Color3.fromRGB(246, 248, 255), -- the poop puff
 	Ring = Color3.fromRGB(150, 236, 255),
 	Zzz = Color3.fromRGB(236, 240, 255),
 	ZzzEdge = Color3.fromRGB(120, 132, 200),
-	Coins = { -- the rainbow coins
-		Color3.fromRGB(255, 104, 120),
-		Color3.fromRGB(255, 164, 72),
-		Color3.fromRGB(255, 218, 74),
-		Color3.fromRGB(112, 216, 120),
-		Color3.fromRGB(92, 172, 255),
-		Color3.fromRGB(178, 124, 255),
+	Coins = { -- the Cloud Cash colours (TokenLook "Cash": mint rim, gold face) of the zip coins and the Welcome heap
+		Color3.fromRGB(112, 204, 98),
+		Color3.fromRGB(232, 168, 48),
+		Color3.fromRGB(196, 240, 150),
+		Color3.fromRGB(255, 206, 84),
+		Color3.fromRGB(140, 222, 118),
+		Color3.fromRGB(246, 190, 70),
 	},
-	Bowls = { Color3.fromRGB(246, 140, 170), Color3.fromRGB(120, 190, 246), Color3.fromRGB(250, 214, 110) },
 }
 
 local localPlayer = Players.LocalPlayer
@@ -208,10 +233,12 @@ local popParts = 0
 local fxFolder = nil
 local petFolder = nil
 local petLows = {} -- [key|scale|stage] = height of the pet's lowest block under its pivot (studs), or false (cannot build)
-local petDims = {} -- [key|scale|stage] = { Hw = half width, Hi = top above the pivot } (studs)
+-- [key|scale|stage] = { Hw = half width, Hi = top above the pivot } (studs); [key|scale|stage] = parts of the built
+-- model (the posed-pet part budget, 3.7)
+local petDims, petParts = {}, {}
 -- the stations whose pets HomeFx shows, by Kind: the plot attribute that lists them, how lively they look, how big
 local PET_STATIONS = {
-	Garden = { Attr = "GardenPets", Anim = { Flap = 0.6 }, Scale = 1, Slots = K.MAX_GARDEN_SLOTS }, -- 5 studs apart
+	Garden = { Attr = "GardenPets", Anim = { Flap = 0.6 }, Scale = K.ROAM_SCALE, Slots = K.MAX_GARDEN_SLOTS }, -- roaming
 	Training = { Attr = "TrainingPets", Anim = { Flap = 1.4, Excited = 1 }, Scale = 0.85, Slots = K.MAX_TRAIN_SLOTS }, -- 3 studs apart
 }
 local overrides = setmetatable({}, { __mode = "k" }) -- [ProximityPrompt] = state
@@ -243,20 +270,14 @@ local ownsHome = false
 
 -- the garden / training helpers and their pools (one table keeps the file under the locals limit), see "Garden"
 local G = {
-	coinPool = {}, -- idle flying coin parts
+	coinPool = {}, -- idle zip coin parts
 	coinsAlive = 0,
 	coinsMade = 0,
-	fruitPool = {}, -- idle fruit parts
-	fruitAlive = 0,
-	fruitMade = 0,
-	flying = {}, -- { Part, Rec, A, B, T, Dur, Arc, Pool = "coin" | "fruit", Spin }
-	heapTpl = {}, -- [look] = template model (built once, cloned)
+	flying = {}, -- { Part, Rec, A, B, T, Dur, Arc, Pool = "coin" | "berry", Spin }
+	heapTpl = {}, -- [look] = the Welcome heap template ("W" | "Wd", built once, cloned)
 	heapPool = {}, -- [look] = { idle models }
 	heapsMade = 0,
-	heapFrame = 0, -- heaps cloned in this frame
-	sparkPool = {}, -- idle Lucky sparkles (2 parts)
 	zzzPool = {}, -- idle "Zzz" (2 voxel letters, 6 parts)
-	bowlPool = {}, -- idle bowls { Dish, Food }
 	propPool = {}, -- [stat] = { idle training props }
 	labels = {}, -- live "+$" labels { Anchor, Gui, Text, T, From }
 	labelPool = {},
@@ -265,10 +286,26 @@ local G = {
 	hinted = false, -- the one-time "Only the owner can pick these up" hint was shown
 	nextCards = 0,
 	cardCount = 0,
-	stats = { Drops = 0, Zips = 0, Fruit = 0, Labels = 0, LastLabel = nil, LastLabelAt = nil, Hint = nil },
+	stats = { Zips = 0, Labels = 0, LastLabel = nil, LastLabelAt = nil, Hint = nil },
 	PetCard = nil, -- client/UI/PetCard (lazy)
 	State = nil, -- client/State (lazy)
 	Menu = nil, -- MenuController (lazy, for the EVOLVE! pill)
+}
+
+-- Phase 5 roaming, Cloud Cash and berries (contract 3.4 / 3.5), see "Roaming"
+local R = {
+	cashPool = {}, -- [look] = { idle coin records { Part, Pieces, Alpha, Look, Half } }
+	cashAlive = 0,
+	cashMade = 0,
+	bitPool = {}, -- idle berry / puff cubes
+	bitsAlive = 0,
+	bitsMade = 0,
+	puffs = {}, -- live puff cubes { Part, Rec, From, DX, DZ, T }
+	list = {}, -- reused: the posed pets of one home in this frame
+	frame = 0,
+	nextBudget = 0,
+	EMPTY = {},
+	stats = { Poops = 0, Confirmed = 0, Faded = 0, Berries = 0, Puffs = 0, Posed = 0, PetParts = 0 },
 }
 
 local floor, max, min, abs, sin, pi = math.floor, math.max, math.min, math.abs, math.sin, math.pi
@@ -538,18 +575,70 @@ local function signKey(gui, rec)
 	return key
 end
 
--- why a sign may not show at all: "Other" (not one of the local player's pads), "Locked" (one of their locked pads,
--- far away) or nil (it may show: the on-screen layout decides)
+-- why a sign may not show at all: "Other" (not one of the local player's pads), "Unsigned" (an open pad that
+-- TycoonCatalog.SignedPads did not pick: only the next affordable pads show a sign, contract 3.3), "Locked" (one of
+-- their locked pads, far away) or nil (it may show: the on-screen layout decides)
 local function signBlock(gui, rec)
 	local holder = ancestorWith(gui.Parent, "OwnerUserId", rec.Folder)
 	local uid = holder and tonumber(holder:GetAttribute("OwnerUserId")) or homeOwner(rec)
 	if uid ~= localUid or uid == 0 then
 		return "Other"
 	end
+	local pad = ancestorWith(gui.Parent, "Locked", rec.Folder)
+	local locked = pad and pad:GetAttribute("Locked")
+	if locked == nil or locked == "" then
+		if rec.Signed == nil then
+			R.signed(rec)
+		end
+		local key = signKey(gui, rec)
+		if rec.Signed and key and not rec.Signed[key] then
+			return "Unsigned"
+		end
+	end
 	if lockedAndFar(gui, rec) then
 		return "Locked"
 	end
 	return nil
+end
+
+-- the local player's pads that show a sign: TycoonCatalog.SignedPads over the pads' attributes in catalog order
+-- (the Prestige pad when open, then the K.SIGNED_MAX cheapest affordable, else the single cheapest); false when the
+-- catalog cannot say (every open pad may show then)
+function R.signed(rec)
+	if not (TycoonCatalog and type(TycoonCatalog.SignedPads) == "function") then
+		rec.Signed = false
+		return
+	end
+	local list = {}
+	for model in pairs(rec.Pads) do
+		if model.Parent then
+			local id = model:GetAttribute("StationId")
+			if id == nil or id == "" then
+				id = string.sub(model.Name, 5)
+			end
+			id = tostring(id)
+			local locked = model:GetAttribute("Locked")
+			local order = 999
+			if type(TycoonCatalog.Get) == "function" then
+				local ok, def = pcall(TycoonCatalog.Get, id)
+				if ok and type(def) == "table" and tonumber(def.Order) then
+					order = def.Order
+				end
+			end
+			list[#list + 1] = { StationId = id, Price = numAttr(model, "Price", 0), Locked = (locked ~= nil and locked ~= "") or nil,
+				Prestige = (id == "Prestige") or nil, Order = order }
+		end
+	end
+	table.sort(list, function(a, b)
+		if a.Order ~= b.Order then
+			return a.Order < b.Order
+		end
+		return a.StationId < b.StationId
+	end)
+	local rules = TycoonCatalog.SignRules
+	local cash = tonumber(localPlayer and localPlayer:GetAttribute(CASH_ATTR)) or math.huge
+	local ok, set = pcall(TycoonCatalog.SignedPads, list, cash, (rules and rules.MaxSigns) or K.SIGNED_MAX)
+	rec.Signed = (ok and type(set) == "table") and set or false
 end
 
 local function setSign(gui, show)
@@ -977,6 +1066,11 @@ local function stepSigns()
 		return
 	end
 	signFocus = focusPos()
+	for _, rec in ipairs(homeList) do
+		if homeOwner(rec) == localUid then
+			R.signed(rec) -- re-evaluated every pass (and on the Cash attribute)
+		end
+	end
 	local list = {}
 	for gui, rec in pairs(signs) do
 		if gui.Parent and homeOwner(rec) == localUid then
@@ -1217,9 +1311,13 @@ local function registerPad(rec, model)
 	rec.Pads[model] = pad
 	model:GetAttributeChangedSignal("Price"):Connect(function()
 		refreshPad(rec, pad)
+		rec.Signed = nil
+		nextSignCheck = min(nextSignCheck, clock)
 	end)
 	model:GetAttributeChangedSignal("Locked"):Connect(function()
 		refreshPad(rec, pad)
+		rec.Signed = nil
+		nextSignCheck = min(nextSignCheck, clock)
 		local sign = model:FindFirstChild("PadSign", true)
 		if sign then
 			applySign(sign)
@@ -1351,7 +1449,52 @@ local function buildPet(key, scale, stage)
 		petLows[lowKey] = lo
 		petDims[lowKey] = { Hi = hi, Hw = min(hw, 2.5), LieLo = lieLo }
 	end
+	petParts[lowKey] = #list
+	G.weld(model)
 	return model, lo
+end
+
+-- welds every static part of a pet model to its anchored PrimaryPart once (like PetController): a roaming pose is
+-- then ONE root CFrame write; PetBuilder.Animate keeps posing the wings / tail / halo from the root
+function G.weld(model)
+	local root = model.PrimaryPart
+	if not root or not root:IsA("BasePart") then
+		return
+	end
+	local inv = root.CFrame:Inverse()
+	for _, part in ipairs(model:GetDescendants()) do
+		if part:IsA("BasePart") and part ~= root then
+			local spec = part:GetAttribute("PB_G")
+			local animated = type(spec) == "string" and type(part:GetAttribute("PB_Base")) == "string"
+				and string.match(spec, "^[^:]*:([^:]*)") ~= "lid"
+			if not animated then
+				local w = Instance.new("Weld")
+				w.Name = "HomePetWeld"
+				w.Part0 = root
+				w.Part1 = part
+				w.C0 = inv * part.CFrame
+				w.Parent = part
+				part.Anchored = false
+			end
+		end
+	end
+	root.Anchored = true
+end
+
+-- the welded root of a placed pet model and the inverse of its pivot offset (nil when the pivot is the root)
+function G.rootOf(model)
+	local root = model.PrimaryPart
+	if not root or not root:IsA("BasePart") or not root.Anchored then
+		return nil, nil
+	end
+	local ok, off = pcall(function()
+		return root.PivotOffset
+	end)
+	if ok and typeof(off) == "CFrame" and (off.Position.Magnitude > 1e-6 or off.LookVector:Dot(Vector3.new(0, 0, -1)) < 0.999999
+		or off.UpVector:Dot(Vector3.new(0, 1, 0)) < 0.999999) then
+		return root, off:Inverse()
+	end
+	return root, nil
 end
 
 -- puts a pet model away (unparented) for the way back; the oldest beyond K.PET_POOL are destroyed
@@ -1460,10 +1603,11 @@ local function syncPets(rec, kind)
 	for slot = 1, info.Slots do
 		local key = want[slot]
 		if key and not pk.Pets[slot] then
-			local att = st.Model:FindFirstChild("Spot" .. slot, true)
+			local att = (kind == "Garden") and st.Model or st.Model:FindFirstChild("Spot" .. slot, true)
 			local stage = stages[slot] or 0
 			local lowKey = key .. "|" .. scale .. "|" .. stage
-			if att and att:IsA("Attachment") and petLows[lowKey] ~= false then
+			local canSit = (kind == "Garden") and (R.plot(rec) ~= nil) or (att ~= nil and att:IsA("Attachment"))
+			if canSit and petLows[lowKey] ~= false then
 				local cold = petLows[lowKey] == nil and pooledPet(lowKey) == nil
 				if not petBudget(cold) then
 					pk.Dirty = true
@@ -1478,7 +1622,10 @@ local function syncPets(rec, kind)
 				if model then
 					model.Name = kind .. "Pet"
 					local dims = petDims[lk] or {}
+					local proot, pinv = G.rootOf(model)
 					local entry = {
+						Root = proot,
+						PivotInv = pinv,
 						Key = key,
 						Model = model,
 						Station = st.Model,
@@ -1492,7 +1639,6 @@ local function syncPets(rec, kind)
 						Hi = dims.Hi or 1.6,
 						Pose = G.poseId(rec, kind, slot),
 						Slot = slot,
-						Phase = G.noise(slot, clock + #homeList) * G.mealSeconds(),
 					}
 					entry.Lie = lo - (dims.LieLo or lo)
 					entry.Top = K.PET_HOVER - lo + entry.Hi -- the pet's top above its seat
@@ -1529,12 +1675,10 @@ local function stepPetStations(rec)
 		return
 	end
 	rec.PetAnimAt = clock + K.PET_ANIM_STEP
-	for kind, pk in pairs(rec.Pet) do
-		local anim = PET_STATIONS[kind].Anim
-		for _, entry in pairs(pk.Pets) do
-			if entry.Model.Parent then
-				pcall(PetBuilder.Animate, entry.Model, clock, entry.Sleep and G.SLEEP_ANIM or anim)
-			end
+	local anim = PET_STATIONS.Training.Anim
+	for _, entry in pairs(rec.Pet.Training.Pets) do
+		if entry.Model.Parent then
+			pcall(PetBuilder.Animate, entry.Model, clock, anim)
 		end
 	end
 end
@@ -1545,32 +1689,18 @@ local function anyPetsDirty(rec)
 			return true
 		end
 	end
-	return rec.Garden.HeapsDirty or rec.Garden.BowlsDirty
+	return rec.Garden.HeapsDirty or rec.Roam.CoinsDirty
 end
 
 ----------------------------------------------------------------------
--- Garden (contract 3.2 / 3.3 / 3.7 / 6): coin heaps from CoinPiles, bowls, eating pets, fruit, the Coin Magnet,
--- the scoop zip + "+$" label, the Training Place props, the pet cards. Every part here is a CLIENT part: pooled,
--- built only for homes within K.PET_NEAR, nothing created per coin or per frame, fills / texts written on change.
+-- Garden (Phase 5 contract 3.4 / 3.5 / 3.7): roaming pets (shared/HomeRoam, the server's plan on the server clock),
+-- Cloud Cash coins (shared/TokenLook) from CoinDrops, the Welcome-back heap, berry flights, the Berry Basket line, the
+-- scoop zip + "+$" label, the Training Place props, the pet cards. Every part here is a CLIENT part: pooled, built only
+-- for homes within K.PET_NEAR, nothing created per coin or per frame beyond the pools, texts written on change.
 ----------------------------------------------------------------------
-G.HEAP_Y = 0.62 -- the sand walks' top in the Garden's station frame (the piles lie on the walks)
 G.SLEEP_ANIM = { Flap = 0.15 }
 G.LIE_ANGLE = 1.35 -- radians a napping pet rolls onto its side
--- coins / mound radius / height per heap stage (CoinPiles 1..5) and the Welcome-back pile ("W"): <= 40 / 60 parts
-G.HEAP = {
-	{ N = 3, R = 0.34, H = 0.22 },
-	{ N = 7, R = 0.48, H = 0.42 },
-	{ N = 13, R = 0.6, H = 0.66 },
-	{ N = 22, R = 0.72, H = 0.95 },
-	{ N = 33, R = 0.84, H = 1.25 },
-	W = { N = 46, R = 1.0, H = 1.6 },
-}
-G.FRUIT = { -- the flying fruit of each plant look (HomeBuilder's Fruit attribute)
-	Berry = Vector3.new(0.42, 0.42, 0.42),
-	Carrot = Vector3.new(0.3, 0.66, 0.3),
-	Melon = Vector3.new(0.66, 0.56, 0.66),
-	Starfruit = Vector3.new(0.6, 0.6, 0.18),
-}
+G.HEAP_W = { N = 46, R = 1.0, H = 1.6 } -- the Welcome-back heap of rainbow coins (<= 48 parts)
 G.GREY = Color3.fromRGB(118, 122, 140)
 
 function G.mix(a, b, t)
@@ -1601,27 +1731,11 @@ function G.part(name, size, color, material)
 	return p
 end
 
-function G.mealSeconds()
-	local c = TycoonCatalog and TycoonCatalog.Coins
-	local v = c and tonumber(c.MealSeconds)
-	return (v and v > 0) and v or K.MEAL
-end
-
 function G.gardenDef()
 	if TycoonCatalog and type(TycoonCatalog.Get) == "function" then
 		local ok, def = pcall(TycoonCatalog.Get, "Garden")
 		if ok and type(def) == "table" then
 			return def
-		end
-	end
-	return nil
-end
-
-function G.coinPoint(slot)
-	if TycoonCatalog and type(TycoonCatalog.CoinPoint) == "function" then
-		local ok, p = pcall(TycoonCatalog.CoinPoint, slot)
-		if ok and typeof(p) == "Vector3" then
-			return p
 		end
 	end
 	return nil
@@ -1653,23 +1767,6 @@ function G.ownRec()
 		end
 	end
 	return nil
-end
-
--- "1=3;2=5F;4=2*;W=5" -> { [slot] = { Stage, Full, Lucky }, W = { Stage } } (TycoonService's CoinPiles)
-function G.parsePiles(text)
-	local out = {}
-	if type(text) ~= "string" then
-		return out
-	end
-	for slot, stage, flags in string.gmatch(text, "(%w+)=(%d+)([F%*]*)") do
-		local n = tonumber(stage)
-		local key = (slot == "W") and "W" or tonumber(slot)
-		local okKey = key == "W" or (key ~= nil and key >= 1 and key <= K.MAX_GARDEN_SLOTS and key == floor(key))
-		if okKey and n and n >= 1 then
-			out[key] = { Stage = min(5, floor(n)), Full = string.find(flags, "F", 1, true) ~= nil, Lucky = string.find(flags, "*", 1, true) ~= nil }
-		end
-	end
-	return out
 end
 
 -- "1=12:0;3=20:1" -> { [slot] = { Level, Stage } } (GardenInfo)
@@ -1717,55 +1814,23 @@ function G.openCount(rec)
 	return max(0, min(K.MAX_GARDEN_SLOTS, floor(v or 3)))
 end
 
--- the Garden's station frame (its Lawn sits on it), re-read when the Garden is rebuilt
-function G.frame(rec)
-	local gd = rec.Garden
-	local st = rec.Pet.Garden.Station
-	if not st or not st.Model.Parent then
-		return nil
+-- the Welcome-back pile's world point (TycoonCatalog Garden.Slot.WelcomePile, plot-local)
+function G.welcomePoint(rec)
+	local plot = R.plot(rec)
+	local def = G.gardenDef()
+	local w = def and def.Slot and def.Slot.WelcomePile
+	if plot and typeof(w) == "Vector3" then
+		return plot:PointToWorldSpace(Vector3.new(w.X, R.ground(w.X, w.Z) + 0.02, w.Z))
 	end
-	if gd.FrameModel ~= st.Model then
-		gd.FrameModel = st.Model
-		gd.Frame = nil
-		-- the plot frame first: the Lawn may be mid pop-in (its blocks spring up from below)
-		local plot = rec.Folder:GetAttribute("PlotCFrame")
-		local def = G.gardenDef()
-		local lawn = st.Model:FindFirstChild("Lawn")
-		if typeof(plot) == "CFrame" and def and def.Slot and typeof(def.Slot.CFrame) == "CFrame" then
-			gd.Frame = plot * def.Slot.CFrame
-		elseif lawn and lawn:IsA("BasePart") and not (st.Popping and not st.Popping.Done) then
-			gd.Frame = lawn.CFrame * CFrame.new(0, -lawn.Size.Y / 2, 0)
-		else
-			gd.FrameModel = nil -- try again next time
-		end
-	end
-	return gd.Frame
+	return nil
 end
 
--- the world point a pile lies on: place n -> its CoinPoint on the walk; "W" -> the Welcome-back pile (plot-local)
-function G.pilePoint(rec, slot)
-	if slot == "W" then
-		local plot = rec.Folder:GetAttribute("PlotCFrame")
-		local def = G.gardenDef()
-		local w = def and def.Slot and def.Slot.WelcomePile
-		if typeof(plot) == "CFrame" and typeof(w) == "Vector3" then
-			return plot:PointToWorldSpace(Vector3.new(w.X, w.Y + 0.02, w.Z))
-		end
-		return nil
-	end
-	local frame = G.frame(rec)
-	local cp = G.coinPoint(slot)
-	if not frame or not cp then
-		return nil
-	end
-	return frame:PointToWorldSpace(Vector3.new(cp.X, G.HEAP_Y, cp.Z))
-end
-
--- the scoop radius of a home: TycoonCatalog.ScoopRadius from the Coin Magnet's level (6 studs without one)
+-- the scoop radius of a home: TycoonCatalog.ScoopRadius from the Pet Garden's level (6 studs without one)
 function G.scoopRadius(rec)
-	local lv = rec.Magnet and rec.Magnet.Level or 0
+	local st = rec.Pet.Garden.Station
+	local lv = st and st.Model.Parent and numAttr(st.Model, "Level", 0) or 0
 	if TycoonCatalog and type(TycoonCatalog.ScoopRadius) == "function" then
-		local ok, r = pcall(TycoonCatalog.ScoopRadius, { Stations = { Collector = lv } })
+		local ok, r = pcall(TycoonCatalog.ScoopRadius, { Stations = { Garden = lv } })
 		if ok and type(r) == "number" and r > 0 then
 			return r
 		end
@@ -1773,21 +1838,8 @@ function G.scoopRadius(rec)
 	return 6
 end
 
--- the food in the bowls: the fruit of the best plant built (Starfruit > Melons > Carrots > Berries), else grass
-function G.foodColor(rec)
-	local best, color = -1, COLORS.Grass
-	for _, st in ipairs(rec.Plants) do
-		local n = tonumber(string.match(st.Id, "%d+")) or 0
-		local c = st.Model:GetAttribute("FruitColor")
-		if n > best and typeof(c) == "Color3" then
-			best, color = n, c
-		end
-	end
-	return color
-end
-
 ----------------------------------------------------------------------
--- pools: flying coins (<= K.MAX_COINS), fruit (<= K.MAX_FRUIT), heaps (cloned templates), sparkles, Zzz, bowls
+-- pools: zip coins (<= K.MAX_COINS), the Welcome heap (cloned template), Zzz
 ----------------------------------------------------------------------
 function G.takeCoin(i)
 	if G.coinsAlive >= K.MAX_COINS then
@@ -1809,27 +1861,6 @@ function G.giveCoin(p)
 	G.coinPool[#G.coinPool + 1] = p
 end
 
-function G.takeFruit(look, color)
-	if G.fruitAlive >= K.MAX_FRUIT then
-		return nil
-	end
-	local p = table.remove(G.fruitPool)
-	if not p then
-		p = G.part("FlyingFruit", Vector3.new(0.4, 0.4, 0.4), COLORS.Grass)
-		G.fruitMade = G.fruitMade + 1
-	end
-	p.Size = G.FRUIT[look] or G.FRUIT.Berry
-	p.Color = color or COLORS.Grass
-	G.fruitAlive = G.fruitAlive + 1
-	return p
-end
-
-function G.giveFruit(p)
-	G.fruitAlive = max(0, G.fruitAlive - 1)
-	p.Parent = nil
-	G.fruitPool[#G.fruitPool + 1] = p
-end
-
 -- a part flying from a to b (b follows `follow` when given) in an arc, back to its pool when it lands
 function G.fly(rec, part, a, b, dur, arc, poolName, follow)
 	part.CFrame = CFrame.new(a)
@@ -1839,8 +1870,8 @@ function G.fly(rec, part, a, b, dur, arc, poolName, follow)
 end
 
 function G.land(f)
-	if f.Pool == "fruit" then
-		G.giveFruit(f.Part)
+	if f.Pool == "berry" then
+		R.giveBit(f.Part)
 	else
 		G.giveCoin(f.Part)
 	end
@@ -1879,21 +1910,14 @@ function G.recycle(rec)
 	end
 end
 
-function G.lookOf(slot, stage, dim)
-	return ((slot == "W") and "W" or tostring(stage)) .. (dim and "d" or "")
-end
-
--- a heap of rainbow coins: a golden core with coins piled into a dome (golden-angle spiral), built at the origin
-function G.buildHeap(look)
-	local stage, d = string.match(look, "^(%w)(d?)$")
-	local spec = (stage == "W") and G.HEAP.W or G.HEAP[tonumber(stage) or 1] or G.HEAP[1]
-	local dim = d == "d"
+-- the Welcome-back heap: a golden core with rainbow coins piled into a dome (golden-angle spiral), at the origin
+function G.buildHeap(dim)
+	local spec = G.HEAP_W
 	local model = Instance.new("Model")
-	model.Name = (stage == "W") and "WelcomeHeap" or "CoinHeap"
+	model.Name = "WelcomeHeap"
 	local function tone(c)
 		return dim and G.mix(c, G.GREY, 0.55) or c
 	end
-	-- the golden mass under the coins: a wide low block and a narrower tall one (a dome in two steps)
 	local lowH, topH = max(0.08, spec.H * 0.42), max(0.1, spec.H * 0.8)
 	local core = G.part("Core", Vector3.new(spec.R * 1.55, lowH, spec.R * 1.55), tone(COLORS.GoldDark))
 	core.CFrame = CFrame.new(0, lowH / 2, 0)
@@ -1909,7 +1933,6 @@ function G.buildHeap(look)
 		local y = spec.H * (1 - u) ^ 0.75 + 0.03
 		local c = (i % 4 == 0) and COLORS.Gold or COLORS.Coins[(i % #COLORS.Coins) + 1]
 		local coin = G.part("Coin", Vector3.new(0.56, 0.13, 0.56), tone(c))
-		-- flat coins with a small tilt down the slope of the pile, every one turned a little
 		coin.CFrame = CFrame.new(math.cos(a) * r, y, math.sin(a) * r) * CFrame.Angles(0, -a, 0) * CFrame.Angles(0, 0, 0.08 + 0.22 * u)
 			* CFrame.Angles(0, G.noise(i, 2) * 1.5, 0)
 		if dim then
@@ -1931,13 +1954,9 @@ function G.takeHeap(look)
 	if list and #list > 0 then
 		return table.remove(list)
 	end
-	if G.heapFrame >= K.HEAP_BUILD_MAX then
-		return nil
-	end
-	G.heapFrame = G.heapFrame + 1
 	local tpl = G.heapTpl[look]
 	if not tpl then
-		tpl = G.buildHeap(look)
+		tpl = G.buildHeap(look == "Wd")
 		G.heapTpl[look] = tpl
 	end
 	G.heapsMade = G.heapsMade + 1
@@ -1956,24 +1975,6 @@ function G.giveHeap(look, model)
 	else
 		model:Destroy()
 	end
-end
-
--- the Lucky coin's sparkle: a golden four-point star (2 neon bars) that turns above the heap
-function G.takeSpark()
-	local s = table.remove(G.sparkPool)
-	if not s then
-		local a = G.part("LuckyStar", Vector3.new(0.7, 0.16, 0.16), COLORS.Gold, Enum.Material.Neon)
-		local b = G.part("LuckyStar", Vector3.new(0.16, 0.7, 0.16), COLORS.Gold, Enum.Material.Neon)
-		s = { a, b }
-	end
-	return s
-end
-
-function G.giveSpark(s)
-	for _, p in ipairs(s) do
-		p.Parent = nil
-	end
-	G.sparkPool[#G.sparkPool + 1] = s
 end
 
 -- "Zzz": two voxel Z letters (3 bars each) over a napping pet
@@ -2005,148 +2006,36 @@ function G.giveZzz(z)
 	G.zzzPool[#G.zzzPool + 1] = z
 end
 
--- a food bowl: a pastel dish and the food in it (2 parts)
-function G.takeBowl()
-	local b = table.remove(G.bowlPool)
-	if not b then
-		b = {
-			Dish = G.part("Bowl", Vector3.new(0.8, 0.3, 0.8), COLORS.Bowls[1]),
-			Food = G.part("BowlFood", Vector3.new(0.56, 0.12, 0.56), COLORS.Grass),
-		}
-	end
-	return b
-end
-
-function G.giveBowl(b)
-	b.Dish.Parent = nil
-	b.Food.Parent = nil
-	G.bowlPool[#G.bowlPool + 1] = b
-end
-
-----------------------------------------------------------------------
--- heaps and bowls of one home
-----------------------------------------------------------------------
-function G.dropHeap(gd, slot)
-	local h = gd.Heaps[slot]
-	if not h then
-		return
-	end
-	gd.Heaps[slot] = nil
-	if h.Spark then
-		G.giveSpark(h.Spark)
-	end
-	G.giveHeap(h.Look, h.Model)
-end
-
--- the heaps follow CoinPiles (stage -> look; '*' -> the sparkle); others' heaps dimmed and still
+-- the Welcome-back heap follows CoinDrops' "W" (dimmed in other players' homes)
 function G.syncHeaps(rec)
 	local gd = rec.Garden
 	gd.HeapsDirty = false
-	local want = {}
-	if rec.PetsNear and G.frame(rec) then
-		want = gd.Piles
-	end
+	local ro = rec.Roam
+	local want = rec.PetsNear and ro.Ok and ro.W ~= nil
 	local dim = G.dimmed(rec)
-	for slot, h in pairs(gd.Heaps) do
-		local p = want[slot]
-		if not p or h.Look ~= G.lookOf(slot, p.Stage, dim) or h.Frame ~= gd.Frame or not h.Model.Parent then
-			G.dropHeap(gd, slot)
-		end
+	local look = dim and "Wd" or "W"
+	local h = gd.Heaps.W
+	if h and (not want or h.Look ~= look or not h.Model.Parent) then
+		gd.Heaps.W = nil
+		G.giveHeap(h.Look, h.Model)
+		h = nil
 	end
-	for slot, p in pairs(want) do
-		local h = gd.Heaps[slot]
-		if not h then
-			local point = G.pilePoint(rec, slot)
-			local look = G.lookOf(slot, p.Stage, dim)
-			local model = point and G.takeHeap(look) or nil
-			if point and not model then
-				gd.HeapsDirty = true -- over this frame's budget: the next frame
-			elseif model then
-				local lift = tonumber(model:GetAttribute("Lift")) or 0
-				local seed = (slot == "W") and 13 or slot
-				model:PivotTo(CFrame.new(point + Vector3.new(0, lift, 0)) * CFrame.Angles(0, G.noise(seed, 5) * 6.28, 0))
-				model.Parent = ensureFolder()
-				h = { Look = look, Model = model, Point = point, Frame = gd.Frame, Top = tonumber(model:GetAttribute("Top")) or 0.5, Dim = dim, Stage = p.Stage }
-				gd.Heaps[slot] = h
-			end
+	if want and not h then
+		local point = G.welcomePoint(rec)
+		if point then
+			local model = G.takeHeap(look)
+			local lift = tonumber(model:GetAttribute("Lift")) or 0
+			model:PivotTo(CFrame.new(point + Vector3.new(0, lift, 0)) * CFrame.Angles(0, G.noise(13, 5) * 6.28, 0))
+			model.Parent = ensureFolder()
+			gd.Heaps.W = { Look = look, Model = model, Point = point, Top = tonumber(model:GetAttribute("Top")) or 0.5, Dim = dim, Stage = ro.W }
 		end
-		if h then
-			local lucky = p.Lucky and not dim
-			if lucky and not h.Spark then
-				h.Spark = G.takeSpark()
-				for _, part in ipairs(h.Spark) do
-					part.CFrame = CFrame.new(h.Point + Vector3.new(0, h.Top + 0.45, 0))
-					part.Parent = ensureFolder()
-				end
-			elseif not lucky and h.Spark then
-				G.giveSpark(h.Spark)
-				h.Spark = nil
-			end
-		end
+	elseif h then
+		h.Stage = ro.W
 	end
-end
-
--- a bowl in front of every open place, toward its pile (the walk); the food is the best plant's fruit
-function G.syncBowls(rec)
-	local gd = rec.Garden
-	gd.BowlsDirty = false
-	local frame = rec.PetsNear and G.frame(rec) or nil
-	local def = G.gardenDef()
-	local spots = def and def.Slot and def.Slot.Spots
-	local open = (frame and spots) and min(gd.Open, #spots) or 0
-	if gd.BowlFrame ~= frame then
-		for slot, b in pairs(gd.Bowls) do
-			G.giveBowl(b)
-			gd.Bowls[slot] = nil
-		end
-		gd.BowlFrame = frame
-	end
-	for slot, b in pairs(gd.Bowls) do
-		if slot > open then
-			G.giveBowl(b)
-			gd.Bowls[slot] = nil
-		end
-	end
-	local color = G.foodColor(rec)
-	for slot = 1, open do
-		local b = gd.Bowls[slot]
-		if not b then
-			local p = spots[slot]
-			local cp = G.coinPoint(slot) or p
-			local dir = (cp.Z > p.Z) and 1 or -1
-			local c = frame * CFrame.new(p.X, 1.0, p.Z + dir * 1.25)
-			b = G.takeBowl()
-			b.Dish.CFrame = c * CFrame.new(0, 0.15, 0)
-			b.Food.CFrame = c * CFrame.new(0, 0.36, 0)
-			b.Dish.Color = COLORS.Bowls[(slot - 1) % #COLORS.Bowls + 1]
-			b.Top = c.Position + Vector3.new(0, 0.45, 0)
-			b.Dish.Parent = ensureFolder()
-			b.Food.Parent = ensureFolder()
-			gd.Bowls[slot] = b
-		end
-		b.Food.Color = color
-	end
-end
-
--- a bowl for a fruit: one of a pet's (random), else any
-function G.pickBowl(rec)
-	local gd = rec.Garden
-	local withPet, any = {}, {}
-	for slot, b in pairs(gd.Bowls) do
-		any[#any + 1] = b
-		if rec.Pet.Garden.Pets[slot] then
-			withPet[#withPet + 1] = b
-		end
-	end
-	local list = (#withPet > 0) and withPet or any
-	if #list == 0 then
-		return nil
-	end
-	return list[math.random(1, #list)]
 end
 
 ----------------------------------------------------------------------
--- pets: seats, poses, eating, napping, training props
+-- pets: poses, napping, training props
 ----------------------------------------------------------------------
 -- what a placed pet depends on besides its key (a training pet's skill decides its seat and prop)
 function G.poseId(rec, kind, slot)
@@ -2157,24 +2046,50 @@ function G.poseId(rec, kind, slot)
 	return ""
 end
 
+-- the stage a pet of the local player shows (State.PetStage, contract 3.7), else the plot's GardenInfo stage
+function G.ownStage(key, fallback)
+	local S = G.lazy("State", { "..", "State" })
+	if S and type(S.PetStage) == "function" then
+		local ok, st = pcall(S.PetStage, key)
+		if ok and tonumber(st) then
+			return max(fallback or 0, min(2, floor(st)))
+		end
+	end
+	return fallback or 0
+end
+
+-- the pets one station shows: keys by slot + the evolved stage each may draw (3.7: evolved Low in EVERY home within
+-- K.PET_NEAR, own home first; once the posed-pet part budget is spent the farthest fall back to plain Low; the posed
+-- pets themselves are capped too, see R.budget)
 function G.wantPets(rec, kind)
 	local stages = {}
+	local own = localUid ~= 0 and homeOwner(rec) == localUid
 	if kind == "Training" then
 		local keys, jobs = G.parseTraining(slotText(rec, "TrainingPets"))
 		rec.Train.Jobs = jobs
+		if own then
+			for slot, key in pairs(keys) do
+				local st = G.ownStage(key, 0)
+				local lk = key .. "|" .. PET_STATIONS.Training.Scale .. "|" .. st
+				if st > 0 and petLows[lk] ~= false then
+					stages[slot] = st
+				end
+			end
+		end
 		return keys, stages
 	end
-	local keys = parseSlots(slotText(rec, "GardenPets"), K.MAX_GARDEN_SLOTS)
-	if localUid ~= 0 and homeOwner(rec) == localUid then
-		-- the local player's own evolved garden pets show their evolved form (at most K.EVO_MAX of them)
-		local n = 0
-		for slot = 1, K.MAX_GARDEN_SLOTS do
-			local info = rec.Garden.Info[slot]
-			if keys[slot] and info and info.Stage > 0 and n < K.EVO_MAX then
-				local lk = keys[slot] .. "|" .. PET_STATIONS.Garden.Scale .. "|" .. info.Stage
+	local all = parseSlots(slotText(rec, "GardenPets"), K.MAX_GARDEN_SLOTS)
+	local keys = {}
+	local allow = rec.Roam.Allow
+	for slot = 1, K.MAX_GARDEN_SLOTS do
+		local key = all[slot]
+		local a = allow[slot]
+		if key and a then
+			keys[slot] = key
+			if a > 0 then
+				local lk = key .. "|" .. PET_STATIONS.Garden.Scale .. "|" .. a
 				if petLows[lk] ~= false then
-					stages[slot] = info.Stage
-					n = n + 1
+					stages[slot] = a
 				end
 			end
 		end
@@ -2182,19 +2097,13 @@ function G.wantPets(rec, kind)
 	return keys, stages
 end
 
--- the CFrame a pet sits on: garden pets look at their bowl, training pets by skill (a treadmill lifts them, the
--- shield dummy stands beside them)
+-- the CFrame a pet is first placed on: garden pets where they roam now, training pets by skill (a treadmill lifts
+-- them, the shield dummy stands beside them)
 function G.seat(rec, kind, slot, att)
-	local cf = att.WorldCFrame
 	if kind == "Garden" then
-		local def = G.gardenDef()
-		local spot = def and def.Slot and def.Slot.Spots and def.Slot.Spots[slot]
-		local cp = G.coinPoint(slot)
-		if spot and cp and cp.Z > spot.Z then
-			cf = cf * CFrame.Angles(0, pi, 0)
-		end
-		return cf
+		return R.seatOf(rec, slot)
 	end
+	local cf = att.WorldCFrame
 	local job = rec.Train.Jobs[slot]
 	local stat = job and job.Stat
 	if stat == "Speed" then
@@ -2205,7 +2114,17 @@ function G.seat(rec, kind, slot, att)
 	return cf
 end
 
--- writes a pet's pose only when it changed (dip into the bowl, wiggle, lift, a push forward)
+-- one pose write: the welded root when the model has one (one CFrame write), else PivotTo
+function G.write(entry, cf)
+	local root = entry.Root
+	if root and root.Parent == entry.Model then
+		root.CFrame = entry.PivotInv and (cf * entry.PivotInv) or cf
+	else
+		entry.Model:PivotTo(cf)
+	end
+end
+
+-- writes a training pet's pose only when it changed (lift, a push forward)
 function G.pose(entry, dip, wig, lift, push)
 	local qd = floor(dip * 20 + 0.5)
 	local qw = floor(wig * 50 + 0.5)
@@ -2226,29 +2145,7 @@ function G.pose(entry, dip, wig, lift, push)
 	if ql ~= 0 or qp ~= 0 then
 		cf = cf * CFrame.new(0, lift or 0, -(push or 0))
 	end
-	entry.Model:PivotTo(cf)
-end
-
--- napping (a full pile, or a place above the open count): the pet lies on its side with a "Zzz"
-function G.setSleep(entry, sleep)
-	entry.PoseKey = nil
-	entry.Sleep = sleep
-	if sleep then
-		entry.Model:PivotTo(entry.Base * CFrame.new(0, entry.Lie or 0, 0) * CFrame.Angles(0, 0, G.LIE_ANGLE))
-		if not entry.Zzz then
-			entry.Zzz = G.takeZzz()
-			for _, p in ipairs(entry.Zzz.Parts) do
-				p.Parent = ensureFolder()
-			end
-			G.stepZzz(entry, true)
-		end
-	else
-		entry.Model:PivotTo(entry.Base)
-		if entry.Zzz then
-			G.giveZzz(entry.Zzz)
-			entry.Zzz = nil
-		end
-	end
+	G.write(entry, cf)
 end
 
 function G.stepZzz(entry, force)
@@ -2271,12 +2168,27 @@ function G.stepZzz(entry, force)
 	end
 end
 
--- a pet just placed: a training pet gets its prop
+function G.setZzz(entry, on)
+	if on and not entry.Zzz then
+		entry.Zzz = G.takeZzz()
+		for _, p in ipairs(entry.Zzz.Parts) do
+			p.Parent = ensureFolder()
+		end
+		G.stepZzz(entry, true)
+	elseif not on and entry.Zzz then
+		G.giveZzz(entry.Zzz)
+		entry.Zzz = nil
+	end
+end
+
+-- a pet just placed: a training pet gets its prop, a garden pet its first roaming pose
 function G.placed(rec, kind, slot, entry)
 	if kind == "Training" then
 		local job = rec.Train.Jobs[slot]
 		entry.Stat = job and job.Stat or "Speed"
 		G.attachProp(entry)
+	else
+		R.posePet(rec, slot, entry, serverNow(), 0, true)
 	end
 end
 
@@ -2296,81 +2208,932 @@ function G.releaseEntry(entry)
 	end
 end
 
--- one coin hops from an eating pet onto its pile (only while the home is near: purely a look)
-function G.dropCoin(rec, slot, entry)
-	local h = rec.Garden.Heaps[slot]
-	local target = (h and (h.Point + Vector3.new(0, h.Top, 0))) or G.pilePoint(rec, slot)
-	if not target then
-		return
+----------------------------------------------------------------------
+-- Roaming (contract 3.5): the garden pets walk the plan of shared/HomeRoam on the server clock (the very plan the
+-- server's ledger poops from), eat at the Food Bowl and poop Cloud Cash; the coins come from CoinDrops
+----------------------------------------------------------------------
+-- the plot frame of a home (HomeBuilder's PlotCFrame on the Home folder)
+function R.plot(rec)
+	local cf = rec.Folder:GetAttribute("PlotCFrame")
+	if typeof(cf) == "CFrame" then
+		return cf
 	end
-	local part = G.takeCoin(slot)
-	if not part then
-		return
-	end
-	local from = (entry.Base * CFrame.new(0, (entry.Hi or 1.6) * 0.6, 0)).Position
-	G.fly(rec, part, from, target, K.COIN_FLIGHT, 1.8, "coin")
-	G.stats.Drops = G.stats.Drops + 1
+	return nil
 end
 
--- every garden pet: the meal rhythm (dip, dip, a coin pops out, a wiggle), naps on a full pile or a closed bed
-function G.stepGarden(rec, dt)
-	local gd = rec.Garden
+-- the lawn inside the Garden fence is 0.2 studs above the yard (HomeBuilder Garden.LAWN_TOP)
+function R.ground(x, z)
+	if R.lawn == nil then
+		R.lawn = false
+		local def = G.gardenDef()
+		local slot = def and def.Slot
+		if slot and typeof(slot.CFrame) == "CFrame" and typeof(slot.Footprint) == "Vector3" then
+			R.lawn = { Inv = slot.CFrame:Inverse(), Hx = slot.Footprint.X / 2, Hz = slot.Footprint.Z / 2 }
+		end
+	end
+	local l = R.lawn
+	if l then
+		local p = l.Inv * Vector3.new(x, 0, z)
+		if abs(p.X) <= l.Hx and abs(p.Z) <= l.Hz then
+			return K.LAWN_TOP
+		end
+	end
+	return 0
+end
+
+-- the Food Bowl's centre (plot-local) for the eat pose
+function R.bowl()
+	if R.bowlXZ == nil then
+		R.bowlXZ = false
+		if TycoonCatalog and type(TycoonCatalog.RoamLayout) == "function" then
+			local ok, lay = pcall(TycoonCatalog.RoamLayout)
+			if ok and type(lay) == "table" and type(lay.Bowl) == "table" then
+				R.bowlXZ = { X = tonumber(lay.Bowl.X) or 0, Z = tonumber(lay.Bowl.Z) or 0 }
+			end
+		end
+	end
+	return R.bowlXZ or nil
+end
+
+-- "1=1760001234.5;3=1760001240.0:N812" -> epochs { [slot] = epoch }, naps { [slot] = cycle }
+function R.parseRoam(text)
+	local epochs, naps = {}, {}
+	if type(text) ~= "string" then
+		return epochs, naps
+	end
+	for item in string.gmatch(text, "[^;]+") do
+		local slot, epoch, nap = string.match(item, "^%s*(%d+)=([%d%.%-]+)(.-)%s*$")
+		local n, e = tonumber(slot), tonumber(epoch)
+		if n and e and n >= 1 and n <= K.MAX_GARDEN_SLOTS and e == e then
+			epochs[n] = e
+			local c = tonumber(string.match(nap or "", "^:N(%d+)$"))
+			if c then
+				naps[n] = c
+			end
+		end
+	end
+	return epochs, naps
+end
+
+-- "1=812:1,813:2*;3=40:1;W=5" -> drops { ["slot:cycle"] = { Slot, Cycle, Stage, Lucky } }, the Welcome stage
+function R.parseDrops(text)
+	local drops, w = {}, nil
+	if type(text) ~= "string" then
+		return drops, w
+	end
+	for item in string.gmatch(text, "[^;]+") do
+		local slot, list = string.match(item, "^%s*(%w+)=(.-)%s*$")
+		if slot == "W" then
+			local s = tonumber(list)
+			if s and s >= 1 then
+				w = s
+			end
+		else
+			local n = tonumber(slot)
+			if n and n >= 1 and n <= K.MAX_GARDEN_SLOTS and list then
+				for cycle, stage, lucky in string.gmatch(list, "(%d+):(%d+)(%*?)") do
+					local c, s = tonumber(cycle), tonumber(stage)
+					if c and s and s >= 1 then
+						drops[n .. ":" .. c] = { Slot = n, Cycle = c, Stage = min(4, s), Lucky = lucky == "*" }
+					end
+				end
+			end
+		end
+	end
+	return drops, w
+end
+
+-- the plot attributes of the roam (RoamSeed, RoamVersion, Roam) changed
+function R.onRoam(rec)
+	local ro = rec.Roam
+	local seed = tonumber(slotText(rec, "RoamSeed"))
+	local version = tonumber(slotText(rec, "RoamVersion"))
+	ro.Seed = seed
+	ro.Ok = HomeRoam ~= nil and seed ~= nil and version == HomeRoam.Version
+	local oldNaps = ro.Naps
+	ro.Epochs, ro.Naps = R.parseRoam(slotText(rec, "Roam"))
+	-- a slot that woke from a nap walks back from its far point to the bowl before its new epoch
+	local now = serverNow()
+	for slot, cycle in pairs(oldNaps) do
+		local e = ro.Epochs[slot]
+		if not ro.Naps[slot] and e and e > now and ro.Ok then
+			local okP, plan = pcall(HomeRoam.Plan, seed, slot, cycle)
+			if okP and type(plan) == "table" and plan.Out and #plan.Out >= 2 then
+				ro.Wake[slot] = { Plan = plan, Until = e }
+			end
+		end
+	end
+	ro.CoinsDirty = true
+	G.syncCoinsSoon(rec)
+end
+
+function G.syncCoinsSoon(rec)
+	rec.Roam.CoinsDirty = true
+	rec.Garden.HeapsDirty = true
+end
+
+-- a point `dist` studs along a polyline of plan points (from its first point), with the travel direction
+function R.along(pts, dist, reverse)
+	local n = #pts
+	local i0, i1, step = 1, n, 1
+	if reverse then
+		i0, i1, step = n, 1, -1
+	end
+	local left = max(0, dist)
+	local i = i0
+	while i ~= i1 do
+		local a, b = pts[i], pts[i + step]
+		local dx, dz = b.x - a.x, b.z - a.z
+		local len = math.sqrt(dx * dx + dz * dz)
+		if left <= len and len > 0 then
+			local q = left / len
+			return a.x + dx * q, a.z + dz * q, dx / len, dz / len
+		end
+		left = left - len
+		i = i + step
+	end
+	local last, prev = pts[i1], pts[i1 - step] or pts[i1]
+	local dx, dz = last.x - prev.x, last.z - prev.z
+	local len = math.sqrt(dx * dx + dz * dz)
+	if len > 0 then
+		return last.x, last.z, dx / len, dz / len
+	end
+	return last.x, last.z, 0, -1
+end
+
+-- where a garden pet of this home is now: x, z (plot-local), state, dirX, dirZ, cycle
+--   "Park" (no plan: RoamVersion mismatch / no epoch / a closed bed: on its bed), "Nap" (`:N<cycle>`: lying at the
+--   far point of that cycle), "Settle" | "Eat" | "Walk" | "Poop" | "Idle" (HomeRoam.At)
+function R.where(rec, slot, now)
+	local ro = rec.Roam
+	local epoch = ro.Epochs[slot]
+	if not ro.Ok or not epoch or slot > rec.Garden.Open then
+		local bx, bz = nil, nil
+		if HomeRoam then
+			bx, bz = HomeRoam.BedPoint(slot)
+		end
+		local b = R.bowl()
+		local dx, dz = 0, -1
+		if bx and b then
+			local ex, ez = b.X - bx, b.Z - bz
+			local l = math.sqrt(ex * ex + ez * ez)
+			if l > 0 then
+				dx, dz = ex / l, ez / l
+			end
+		end
+		return bx or 0, bz or 0, "Park", dx, dz, -1
+	end
+	local seed = ro.Seed
+	local cycleLen = HomeRoam.Cycle
+	local cycle = floor((now - epoch) / cycleLen)
+	local nap = ro.Naps[slot]
+	if nap then
+		local okP, plan = pcall(HomeRoam.Plan, seed, slot, nap)
+		if okP and type(plan) == "table" and plan.Out and #plan.Out >= 1 then
+			local tIdle = epoch + nap * cycleLen + HomeRoam.EatSeconds + (plan.OutLen or 0) / max(0.1, plan.Speed or 4) + HomeRoam.PoopSeconds
+			if now >= tIdle or cycle > nap then
+				local pR = plan.Out[#plan.Out]
+				return pR.x, pR.z, "Nap", 0, 0, nap
+			end
+		end
+	end
+	local wake = ro.Wake[slot]
+	if wake then
+		if now < wake.Until and epoch == wake.Until then
+			local plan = wake.Plan
+			local speed = max(0.1, plan.Speed or 4)
+			local walked = (plan.OutLen or 0) - (wake.Until - now) * speed
+			local x, z, dx, dz = R.along(plan.Out, (plan.OutLen or 0) - max(0, walked), false)
+			return x, z, "Walk", -dx, -dz, -1
+		end
+		ro.Wake[slot] = nil
+	end
+	local x, z, state, dx, dz = HomeRoam.At(seed, slot, epoch, now)
+	if x == nil then
+		local bx, bz = HomeRoam.BedPoint(slot)
+		return bx or 0, bz or 0, "Park", 0, -1, -1
+	end
+	if state == "Poop" and nap == cycle then
+		state = "Idle" -- the napping cycle: no poop (the server's ledger skips it too)
+	end
+	return x, z, state, dx or 0, dz or 0, cycle
+end
+
+-- the world CFrame of a garden pet's resting pose at its current roam point (its first placement)
+function R.seatOf(rec, slot)
+	local plot = R.plot(rec)
+	if not plot then
+		return CFrame.new()
+	end
+	local x, z, _, dx, dz = R.where(rec, slot, serverNow())
+	local yaw = (dx ~= 0 or dz ~= 0) and math.atan2(-dx, -dz) or 0
+	return plot * CFrame.new(x, R.ground(x, z), z) * CFrame.Angles(0, yaw, 0)
+end
+
+-- wraps an angle into -pi..pi
+function R.wrap(a)
+	return (a + pi) % (2 * pi) - pi
+end
+
+-- one garden pet, one frame: position from R.where (+ the soft separation), yaw eased toward its travel, the pose of
+-- its state, the poop coin at PoopAt; `snap` places it without easing
+function R.posePet(rec, slot, entry, now, dt, snap)
+	local plot = R.plot(rec)
+	if not plot then
+		return
+	end
+	local x, z, state, dx, dz, cycle = R.where(rec, slot, now)
+	entry.State = state
+	entry.Cycle = cycle
+	entry.RX, entry.RZ = x, z
+	local sx, sz = entry.SepX or 0, entry.SepZ or 0
+	local hw = entry.Hw or 0.8
+	if state == "Eat" then
+		-- at the eat point, pushed out from the bowl by half its width (a big pet never stands in the bowl)
+		local b = R.bowl()
+		if b then
+			local ex, ez = x - b.X, z - b.Z
+			local l = math.sqrt(ex * ex + ez * ez)
+			if l > 0.01 then
+				x, z = x + ex / l * hw, z + ez / l * hw
+			end
+		end
+	end
+	x, z = x + sx, z + sz
+	-- yaw: eased toward the travel direction (7 / s)
+	local want = entry.Yaw or 0
+	if dx ~= 0 or dz ~= 0 then
+		want = math.atan2(-dx, -dz)
+	end
+	if snap or entry.Yaw == nil then
+		entry.Yaw = want
+	else
+		entry.Yaw = R.wrap(entry.Yaw + R.wrap(want - entry.Yaw) * (1 - math.exp(-K.ROAM_YAW_RATE * dt)))
+	end
+	-- the walk's trot rate from the distance actually covered
+	if not snap and dt > 0 and entry.LX then
+		local mx, mz = x - entry.LX, z - entry.LZ
+		local v = math.sqrt(mx * mx + mz * mz) / dt
+		entry.Speed = (entry.Speed or 0) + (min(v, 12) - (entry.Speed or 0)) * min(1, dt * 6)
+	end
+	entry.LX, entry.LZ = x, z
+	local t = clock + slot * 0.61
+	local lift, pitch, roll, yawOff, sink = 0, 0, 0, 0, 0
+	local lie = false
+	if state == "Walk" then
+		local hz = max(1.5, min(4.5, (entry.Speed or 4) / 2))
+		entry.Trot = (entry.Trot or 0) + dt * hz
+		lift = K.ROAM_BOB * abs(sin(entry.Trot * pi))
+		pitch = -0.06
+	elseif state == "Eat" then
+		local d = 0.5 - 0.5 * math.cos(t * 2 * pi * 2)
+		pitch = -K.ROAM_DIP * d
+		sink = 0.12 * d
+	elseif state == "Poop" then
+		sink = K.ROAM_SQUAT
+		yawOff = 0.18 * sin(t * 2 * pi * 4)
+		pitch = 0.12
+	elseif state == "Idle" then
+		yawOff = 0.26 * sin(t * 2 * pi * 0.5)
+		pitch = -0.08 * (0.5 + 0.5 * sin(t * 2 * pi * 1.3))
+	elseif state == "Settle" then
+		local h = sin(t * 2 * pi * 0.7)
+		lift = (h > 0.6) and (h - 0.6) * 0.75 or 0
+	elseif state == "Nap" then
+		lie = true
+	elseif state == "Park" then
+		lie = rec.Roam.Ok and slot > rec.Garden.Open
+	end
+	local y = R.ground(x, z) + K.PET_HOVER - (entry.Lo or 0) + lift - sink
+	local cf = plot * CFrame.new(x, y, z) * CFrame.Angles(0, entry.Yaw + yawOff, 0)
+	if lie then
+		cf = cf * CFrame.new(0, entry.Lie or 0, 0) * CFrame.Angles(0, 0, G.LIE_ANGLE)
+	elseif pitch ~= 0 or roll ~= 0 then
+		cf = cf * CFrame.Angles(pitch, 0, roll)
+	end
+	entry.Base = cf
+	entry.Seat = plot * CFrame.new(x, R.ground(x, z), z)
+	G.write(entry, cf)
+	entry.Sleep = lie
+	G.setZzz(entry, lie)
+	if lie and entry.Zzz then
+		G.stepZzz(entry)
+	end
+	-- the poop: at PoopAt a Cloud Cash coin pops from the pet's rear and arcs onto the poop point (pending until the
+	-- server's CoinDrops lists it). Only the frames that cross PoopAt (a home coming into range mid-cycle never
+	-- invents a coin: the drops already listed are drawn from CoinDrops)
+	if state == "Poop" and cycle >= 0 and entry.PoopCycle ~= cycle and not snap then
+		entry.PoopCycle = cycle
+		local epoch = rec.Roam.Epochs[slot]
+		local okT, at = pcall(HomeRoam.PoopTime, rec.Roam.Seed, slot, epoch, cycle)
+		if okT and type(at) == "number" and now - at < K.POOP_LATE then
+			local rear = cf * CFrame.new(0, (entry.Hi or 1.6) * 0.35, hw * 0.9)
+			R.spawnPending(rec, slot, cycle, rear.Position)
+		end
+	elseif state ~= "Poop" and entry.PoopCycle ~= nil and entry.PoopCycle ~= cycle then
+		entry.PoopCycle = nil
+	end
+	-- the Food Bowl's sign: the pet's look (wings, tail, blinks) follows the body
+	if PetBuilder then
+		pcall(PetBuilder.Animate, entry.Model, clock, lie and G.SLEEP_ANIM or (state == "Walk" and K.ROAM_WALK_ANIM or K.ROAM_REST_ANIM))
+	end
+end
+
+-- the client-only soft separation (<= K.ROAM_SEP_MAX studs): two pets of one home closer than their half widths are
+-- pushed apart sideways, from the same deterministic positions (every client draws the same)
+function R.separate(rec, list, n)
+	for i = 1, n do
+		local e = list[i]
+		e.SepX, e.SepZ = 0, 0
+	end
+	for i = 1, n - 1 do
+		local a = list[i]
+		for j = i + 1, n do
+			local b = list[j]
+			local ddx, ddz = b.RX - a.RX, b.RZ - a.RZ
+			local d = math.sqrt(ddx * ddx + ddz * ddz)
+			local need = (a.Hw or 0.8) + (b.Hw or 0.8)
+			if d < need then
+				local ux, uz
+				if d > 1e-3 then
+					ux, uz = ddx / d, ddz / d
+				else
+					ux, uz = 1, 0
+				end
+				local push = (need - d) / 2
+				a.SepX, a.SepZ = a.SepX - ux * push, a.SepZ - uz * push
+				b.SepX, b.SepZ = b.SepX + ux * push, b.SepZ + uz * push
+			end
+		end
+	end
+	for i = 1, n do
+		local e = list[i]
+		local l = math.sqrt(e.SepX * e.SepX + e.SepZ * e.SepZ)
+		if l > K.ROAM_SEP_MAX then
+			e.SepX, e.SepZ = e.SepX / l * K.ROAM_SEP_MAX, e.SepZ / l * K.ROAM_SEP_MAX
+		end
+	end
+end
+
+-- every garden pet of one home, every frame (every 2nd frame beyond K.ROAM_HALF_NEAR studs)
+function R.stepPets(rec, dt)
 	local pk = rec.Pet.Garden
-	local meal = G.mealSeconds()
-	local motion = clock >= (gd.MotionAt or 0)
-	if motion then
-		gd.MotionAt = clock + K.MOTION_STEP
+	rec.Roam.Acc = (rec.Roam.Acc or 0) + dt
+	if (rec.Dist or 0) > K.ROAM_HALF_NEAR and (R.frame + (rec.Index or 0)) % 2 == 1 then
+		return
 	end
-	for slot, entry in pairs(pk.Pets) do
-		if entry.Model.Parent then
-			local pile = gd.Piles[slot]
-			local sleep = slot > gd.Open or (pile ~= nil and pile.Full)
-			if sleep ~= (entry.Sleep == true) then
-				G.setSleep(entry, sleep)
+	local step = min(rec.Roam.Acc, 0.2)
+	rec.Roam.Acc = 0
+	local now = serverNow()
+	local list, n = R.list, 0
+	for slot = 1, K.MAX_GARDEN_SLOTS do
+		local entry = pk.Pets[slot]
+		if entry and entry.Model.Parent then
+			n = n + 1
+			list[n] = entry
+			-- the separation reads where each pet stands now (before this frame's offsets)
+			local x, z = R.where(rec, slot, now)
+			entry.RX, entry.RZ = x, z
+		end
+	end
+	for i = n + 1, #list do
+		list[i] = nil
+	end
+	R.separate(rec, list, n)
+	for i = 1, n do
+		local entry = list[i]
+		R.posePet(rec, entry.Slot, entry, now, step, false)
+	end
+end
+
+----------------------------------------------------------------------
+-- Cloud Cash coins (TokenLook "Cash" / "GoldenCash"): pooled per look, <= K.MAX_CASH coins over all homes
+----------------------------------------------------------------------
+R.STAGE_SCALE = { 0.8, 1.0, 1.15, 1.3 }
+
+function R.coinLook(stage, lucky, dim)
+	return (lucky and "GoldenCash" or "Cash") .. tostring(stage) .. (dim and "d" or "")
+end
+
+-- a coin part of that look (from the pool or built by TokenLook), with its pieces listed for the fades
+function R.takeCash(look)
+	if R.cashAlive >= K.MAX_CASH then
+		return nil
+	end
+	local list = R.cashPool[look]
+	local c = list and table.remove(list)
+	if not c then
+		if not TokenLook then
+			return nil
+		end
+		local palette, stage, d = string.match(look, "^(%a-)(%d)(d?)$")
+		local dim = d == "d"
+		local lucky = palette == "GoldenCash"
+		local ok, part = pcall(TokenLook.Build, {
+			Palette = palette,
+			Scale = (R.STAGE_SCALE[tonumber(stage) or 1] or 1) * K.CASH_SCALE,
+			Light = false,
+			Sparkles = lucky and not dim,
+		})
+		if not ok or typeof(part) ~= "Instance" then
+			return nil
+		end
+		part.CanTouch = false
+		local pieces = { part }
+		for _, d2 in ipairs(part:GetDescendants()) do
+			if d2:IsA("BasePart") then
+				pieces[#pieces + 1] = d2
 			end
-			if sleep then
-				if motion and rec.PetsAnimate then
-					G.stepZzz(entry)
+		end
+		local base = {}
+		for i, p in ipairs(pieces) do
+			if dim then
+				p.Color = G.mix(p.Color, G.GREY, 0.5)
+				p.Transparency = max(p.Transparency, 0.3)
+			end
+			base[i] = p.Transparency
+		end
+		-- Half: the root is 9 voxels tall, the rim bands 11: half the coin's full height
+		c = { Part = part, Pieces = pieces, Alpha = base, Look = look, Half = part.Size.Y / 2 * 11 / 9 }
+		R.cashMade = R.cashMade + 1
+	end
+	R.cashAlive = R.cashAlive + 1
+	return c
+end
+
+function R.giveCash(c)
+	R.cashAlive = max(0, R.cashAlive - 1)
+	c.Part.Parent = nil
+	R.fade(c, 0)
+	local list = R.cashPool[c.Look]
+	if not list then
+		list = {}
+		R.cashPool[c.Look] = list
+	end
+	if #list < K.CASH_POOL then
+		list[#list + 1] = c
+	else
+		pcall(c.Part.Destroy, c.Part)
+	end
+end
+
+-- 0 = the coin's own look, 1 = invisible
+function R.fade(c, q)
+	if c.Faded == q then
+		return
+	end
+	c.Faded = q
+	for i, p in ipairs(c.Pieces) do
+		p.Transparency = c.Alpha[i] + (1 - c.Alpha[i]) * q
+	end
+end
+
+-- the world point of the drop of (slot, cycle): HomeRoam's poop point of that cycle, on the ground
+function R.dropPoint(rec, slot, cycle)
+	local plot = R.plot(rec)
+	local ro = rec.Roam
+	if not plot or not ro.Ok then
+		return nil
+	end
+	local ok, plan = pcall(HomeRoam.Plan, ro.Seed, slot, cycle)
+	if not ok or type(plan) ~= "table" or type(plan.Poop) ~= "table" then
+		return nil
+	end
+	local x, z = plan.Poop.x, plan.Poop.z
+	return plot:PointToWorldSpace(Vector3.new(x, R.ground(x, z), z))
+end
+
+-- places a coin record at its rest point (bob / spin when it moves)
+function R.placeCash(c, moving)
+	local base = c.Point + Vector3.new(0, c.Half + K.CASH_HOVER, 0)
+	if moving then
+		local m = TokenLook and TokenLook.Motion or {}
+		local lucky = c.Lucky
+		local spin = (lucky and m.GoldenSpin or m.Spin) or 2
+		local bob = (lucky and m.GoldenBob or m.Bob) or 0.45
+		local speed = m.BobSpeed or 2.2
+		local yaw = c.Phase + clock * spin
+		base = base + Vector3.new(0, bob * 0.5 * (1 + sin(clock * speed + c.Phase)), 0)
+		c.Part.CFrame = CFrame.new(base) * CFrame.Angles(0, yaw, 0)
+	elseif not c.Still then
+		c.Part.CFrame = CFrame.new(base) * CFrame.Angles(0, c.Phase, 0)
+		c.Still = true
+	end
+end
+
+-- a coin record for the drop `key` (nil when the pools are full)
+function R.newCash(rec, key, slot, cycle, stage, lucky, pending)
+	local dim = G.dimmed(rec)
+	local point = R.dropPoint(rec, slot, cycle)
+	if not point then
+		return nil
+	end
+	local c = R.takeCash(R.coinLook(stage, lucky, dim))
+	if not c then
+		return nil
+	end
+	c.Key, c.Slot, c.Cycle, c.Stage, c.Lucky, c.Dim = key, slot, cycle, stage, lucky, dim
+	c.Point = point
+	c.Pending = pending
+	c.Born = clock
+	c.Arc = nil
+	c.Still = false
+	c.Phase = G.noise(slot, cycle) * 6.28
+	R.fade(c, 0)
+	R.placeCash(c, not dim)
+	c.Part.Parent = ensureFolder()
+	rec.Roam.Coins[key] = c
+	return c
+end
+
+-- the poop of (slot, cycle) seen on this client: a pending coin arcs from the pet onto the poop point
+function R.spawnPending(rec, slot, cycle, from)
+	local ro = rec.Roam
+	local key = slot .. ":" .. cycle
+	R.stats.Poops = R.stats.Poops + 1
+	local c = ro.Coins[key]
+	if c then
+		return -- CoinDrops was faster than the pet: the coin is there already
+	end
+	local d = ro.Drops[key]
+	c = R.newCash(rec, key, slot, cycle, d and d.Stage or 1, d and d.Lucky or false, d == nil)
+	if c and not c.Dim then
+		c.Arc = { From = from, T = 0 }
+		c.Part.CFrame = CFrame.new(from)
+	end
+end
+
+-- a white 3-cube puff where a coin lands (shared pool with the berries, <= K.MAX_BITS)
+function R.takeBit(color, size)
+	if R.bitsAlive >= K.MAX_BITS then
+		return nil
+	end
+	local p = table.remove(R.bitPool)
+	if not p then
+		p = G.part("HomeBit", Vector3.new(0.4, 0.4, 0.4), COLORS.Puff)
+		R.bitsMade = R.bitsMade + 1
+	end
+	p.Color = color or COLORS.Puff
+	p.Size = size or Vector3.new(0.4, 0.4, 0.4)
+	p.Transparency = 0
+	p.Material = Enum.Material.SmoothPlastic
+	R.bitsAlive = R.bitsAlive + 1
+	return p
+end
+
+function R.giveBit(p)
+	R.bitsAlive = max(0, R.bitsAlive - 1)
+	p.Parent = nil
+	R.bitPool[#R.bitPool + 1] = p
+end
+
+function R.puff(rec, point)
+	for i = 1, 3 do
+		local p = R.takeBit(COLORS.Puff, Vector3.new(0.34, 0.34, 0.34))
+		if not p then
+			return
+		end
+		local a = (i - 1) * 2.094 + G.noise(i, clock) * 0.6
+		p.CFrame = CFrame.new(point + Vector3.new(0, 0.25, 0))
+		p.Parent = ensureFolder()
+		R.puffs[#R.puffs + 1] = { Part = p, Rec = rec, From = point + Vector3.new(0, 0.25, 0), DX = math.cos(a), DZ = sin(a), T = 0 }
+	end
+	R.stats.Puffs = R.stats.Puffs + 1
+end
+
+function R.stepPuffs(dt)
+	local list = R.puffs
+	local i = 1
+	while i <= #list do
+		local f = list[i]
+		f.T = f.T + dt
+		local q = f.T / K.PUFF_TIME
+		if q >= 1 then
+			R.giveBit(f.Part)
+			table.remove(list, i)
+		else
+			local s = 0.34 + 0.4 * q
+			f.Part.Size = Vector3.new(s, s, s)
+			f.Part.Transparency = q
+			f.Part.CFrame = CFrame.new(f.From + Vector3.new(f.DX * 0.9 * q, 0.5 * q, f.DZ * 0.9 * q)) * CFrame.Angles(q, q * 2, 0)
+			i = i + 1
+		end
+	end
+end
+
+-- the coins follow CoinDrops (confirm the pending ones, a merged drop changes its look, vanished ones go away);
+-- nothing while the home is far or its RoamVersion differs
+function R.syncCoins(rec)
+	local ro = rec.Roam
+	ro.CoinsDirty = false
+	local want = (rec.PetsNear and ro.Ok) and ro.Drops or R.EMPTY
+	for key, c in pairs(ro.Coins) do
+		local d = want[key]
+		if d then
+			if c.Pending then
+				c.Pending = false
+				R.stats.Confirmed = R.stats.Confirmed + 1
+				R.fade(c, 0)
+			end
+			if c.Stage ~= d.Stage or c.Lucky ~= d.Lucky or c.Dim ~= G.dimmed(rec) then
+				-- a merge (bigger stage) or a Lucky: the same place, the new look
+				ro.Coins[key] = nil
+				local arc = c.Arc
+				R.giveCash(c)
+				local n2 = R.newCash(rec, key, d.Slot, d.Cycle, d.Stage, d.Lucky, false)
+				if n2 then
+					n2.Arc = arc
+				else
+					ro.CoinsDirty = true
 				end
+			end
+		elseif not c.Pending or not rec.PetsNear or not ro.Ok then
+			ro.Coins[key] = nil
+			R.giveCash(c)
+		end
+	end
+	for key, d in pairs(want) do
+		if not ro.Coins[key] then
+			if not R.newCash(rec, key, d.Slot, d.Cycle, d.Stage, d.Lucky, false) then
+				ro.CoinsDirty = true -- the pools are full (another home's coins may leave): try again later
+				break
+			end
+		end
+	end
+end
+
+-- the coins of one home, every frame: the poop arc + puff, bob and spin (own coins only), pending ones fade
+function R.stepCoins(rec, dt)
+	local ro = rec.Roam
+	for key, c in pairs(ro.Coins) do
+		if c.Arc then
+			local a = c.Arc
+			a.T = a.T + dt
+			local q = a.T / K.POOP_ARC
+			local rest = c.Point + Vector3.new(0, c.Half + K.CASH_HOVER, 0)
+			if q >= 1 then
+				c.Arc = nil
+				R.puff(rec, c.Point)
+				R.placeCash(c, not c.Dim)
 			else
-				local prev = entry.Phase or 0
-				local ph = prev + dt
-				local dip, wig = 0, 0
-				if rec.PetsAnimate then
-					if ph >= K.DIP_START and ph < K.DIP_START + K.DIP_TIME then
-						local s = sin((ph - K.DIP_START) / K.DIP_TIME * 2 * pi)
-						dip = s * s
-					elseif ph >= K.POP_AT and ph < K.POP_AT + K.WIGGLE_TIME then
-						wig = 0.18 * sin((ph - K.POP_AT) / K.WIGGLE_TIME * pi * 4)
-					end
-					if prev < K.POP_AT and ph >= K.POP_AT then
-						G.dropCoin(rec, slot, entry)
-					end
-				end
-				if ph >= meal then
-					ph = ph - meal
-				end
-				entry.Phase = ph
-				if motion then
-					G.pose(entry, dip, wig)
+				local pos = a.From:Lerp(rest, q) + Vector3.new(0, 1.4 * 4 * q * (1 - q), 0)
+				c.Part.CFrame = CFrame.new(pos) * CFrame.Angles(0, c.Phase + q * 8, 0)
+			end
+		elseif not c.Dim and rec.PetsAnimate then
+			R.placeCash(c, true)
+		else
+			R.placeCash(c, false)
+		end
+		if c.Pending then
+			local age = clock - c.Born
+			if age > K.PENDING_FADE then
+				local q = (age - K.PENDING_FADE) / K.PENDING_OUT
+				if q >= 1 then
+					ro.Coins[key] = nil
+					R.giveCash(c)
+					R.stats.Faded = R.stats.Faded + 1
+				else
+					R.fade(c, q)
 				end
 			end
 		end
 	end
-	if gd.HeapsDirty then
-		G.syncHeaps(rec)
+	if ro.CoinsDirty then
+		R.syncCoins(rec)
 	end
-	if gd.BowlsDirty then
-		G.syncBowls(rec)
+end
+
+-- CoinDrops changed: the owner's vanished drops near them were scooped (coins zip to the player, the "+$" label at
+-- the drop once the bank and the Cash pair up); then the coins follow
+function R.onDrops(rec)
+	local ro = rec.Roam
+	local old, oldW = ro.Drops, ro.W
+	ro.Drops, ro.W = R.parseDrops(slotText(rec, "CoinDrops"))
+	ro.CoinsDirty = true
+	rec.Garden.HeapsDirty = true
+	if localUid == 0 or homeOwner(rec) ~= localUid or not rec.PetsNear then
+		return
 	end
-	if motion and rec.PetsAnimate then
-		for _, h in pairs(gd.Heaps) do
-			if h.Spark then
-				local cf = CFrame.new(h.Point + Vector3.new(0, h.Top + 0.45 + 0.12 * sin(clock * 2.5), 0)) * CFrame.Angles(0, clock * 2, 0)
-				h.Spark[1].CFrame = cf
-				h.Spark[2].CFrame = cf
+	local root = G.localRoot()
+	if not root then
+		return
+	end
+	local reach = G.scoopRadius(rec) + K.SCOOP_SLACK
+	local any = false
+	local function near(pt)
+		local d = root.Position - pt
+		return Vector3.new(d.X, 0, d.Z).Magnitude <= reach and abs(d.Y) <= 12
+	end
+	for key, d in pairs(old) do
+		local now = ro.Drops[key]
+		if not now or now.Stage < d.Stage then
+			local c = ro.Coins[key]
+			local pt = (c and c.Point) or R.dropPoint(rec, d.Slot, d.Cycle)
+			if pt and near(pt) then
+				G.zip(rec, key, pt + Vector3.new(0, 0.8, 0), d.Stage)
+				any = true
 			end
 		end
+	end
+	if oldW and not ro.W then
+		local h = rec.Garden.Heaps.W
+		local pt = (h and h.Point) or G.welcomePoint(rec)
+		if pt and near(pt) then
+			G.zip(rec, "W", pt, 5)
+			any = true
+		end
+	end
+	if any then
+		G.pairLabel(rec)
+	end
+end
+
+-- every coin of one home goes away (frozen, far, removed)
+function R.clearCoins(rec)
+	local ro = rec.Roam
+	for key, c in pairs(ro.Coins) do
+		ro.Coins[key] = nil
+		R.giveCash(c)
+	end
+	for i = #R.puffs, 1, -1 do
+		if R.puffs[i].Rec == rec then
+			R.giveBit(R.puffs[i].Part)
+			table.remove(R.puffs, i)
+		end
+	end
+	ro.CoinsDirty = true
+end
+
+----------------------------------------------------------------------
+-- the budget (contract 3.5 / 3.7 / 10.3): <= K.ROAM_MAX_PETS posed garden pets over every home within K.PET_NEAR
+-- (the own home first, then the nearest homes), evolved Low while the posed-pet part budget K.HOME_PET_PARTS lasts,
+-- the farthest fall back to plain Low
+----------------------------------------------------------------------
+function R.partsOf(key, stage)
+	local lk = key .. "|" .. PET_STATIONS.Garden.Scale .. "|" .. stage
+	local n = petParts[lk]
+	if n then
+		return n
+	end
+	return K.PET_PARTS_EST[stage] or K.PET_PARTS_EST[0]
+end
+
+function R.budget()
+	if clock < R.nextBudget then
+		return
+	end
+	R.nextBudget = clock + K.BUDGET_CHECK
+	local near = {}
+	for _, rec in ipairs(homeList) do
+		if rec.PetsNear and rec.Folder.Parent then
+			near[#near + 1] = rec
+		end
+	end
+	table.sort(near, function(a, b)
+		local oa, ob = homeOwner(a) == localUid and localUid ~= 0, homeOwner(b) == localUid and localUid ~= 0
+		if oa ~= ob then
+			return oa
+		end
+		if (a.Dist or 0) ~= (b.Dist or 0) then
+			return (a.Dist or 0) < (b.Dist or 0)
+		end
+		return (a.Index or 0) < (b.Index or 0)
+	end)
+	local posed, parts = 0, 0
+	local plans = {}
+	for _, rec in ipairs(near) do
+		local keys = parseSlots(slotText(rec, "GardenPets"), K.MAX_GARDEN_SLOTS)
+		local own = localUid ~= 0 and homeOwner(rec) == localUid
+		local info = rec.Garden.Info
+		local allow = {}
+		for slot = 1, K.MAX_GARDEN_SLOTS do
+			local key = keys[slot]
+			if key and posed < K.ROAM_MAX_PETS then
+				local stage = info[slot] and info[slot].Stage or 0
+				if own then
+					stage = G.ownStage(key, stage)
+				end
+				local cost = R.partsOf(key, stage)
+				if stage > 0 and parts + cost > K.HOME_PET_PARTS then
+					stage = 0
+					cost = R.partsOf(key, 0)
+				end
+				allow[slot] = stage
+				posed = posed + 1
+				parts = parts + cost
+			end
+		end
+		plans[rec] = allow
+	end
+	for _, rec in ipairs(homeList) do
+		local allow = plans[rec] or R.EMPTY
+		local old = rec.Roam.Allow
+		local changed = false
+		for slot = 1, K.MAX_GARDEN_SLOTS do
+			if old[slot] ~= allow[slot] then
+				changed = true
+				break
+			end
+		end
+		if changed then
+			local copy = {}
+			for slot, v in pairs(allow) do
+				copy[slot] = v
+			end
+			rec.Roam.Allow = copy
+			rec.Pet.Garden.Dirty = true
+		end
+	end
+	R.stats.Posed, R.stats.PetParts = posed, parts
+end
+
+----------------------------------------------------------------------
+-- berries (3.4): from the Berry Farm's top row a berry hops into the Food Bowl every 3 s and into the Food Machine's
+-- basket every 4 s (pooled with the puffs, <= K.MAX_BITS), and the basket line on the Food Machine's sign
+----------------------------------------------------------------------
+R.BERRY_COLORS = {
+	{ 10, Color3.fromRGB(226, 56, 84) }, -- L1-10 red berries
+	{ 22, Color3.fromRGB(92, 120, 236) }, -- L11-22 the blue row
+	{ 37, Color3.fromRGB(255, 196, 64) }, -- L23-37 golden trellis
+	{ 40, Color3.fromRGB(255, 240, 150) }, -- L38-40 the Starberry tree
+}
+
+function R.berryColor(level)
+	for _, row in ipairs(R.BERRY_COLORS) do
+		if level <= row[1] then
+			return row[2]
+		end
+	end
+	return R.BERRY_COLORS[#R.BERRY_COLORS][2]
+end
+
+function R.stepBerries(rec)
+	local farm = rec.Farm
+	if not farm or not farm.Model.Parent or (farm.Popping and not farm.Popping.Done) then
+		return
+	end
+	local from = vecAttr(farm.Model, "BerryPoint")
+	if not from then
+		return
+	end
+	local color = R.berryColor(numAttr(farm.Model, "Level", 1))
+	local gst = rec.Pet.Garden.Station
+	if gst and gst.Model.Parent and clock >= (farm.NextBowl or 0) then
+		farm.NextBowl = clock + K.BERRY_BOWL_EVERY
+		local bowl = vecAttr(gst.Model, "BowlCenter")
+		if bowl then
+			local p = R.takeBit(color, Vector3.new(0.42, 0.42, 0.42))
+			if p then
+				local to = bowl + Vector3.new(0, 0.7, 0)
+				local d = (to - from).Magnitude
+				G.fly(rec, p, from, to, 0.9 + d / 32, 2.5 + d * 0.15, "berry")
+				R.stats.Berries = R.stats.Berries + 1
+			end
+		end
+	end
+	local m = rec.Machine
+	if m and m.Model.Parent and not (m.Popping and not m.Popping.Done) and clock >= (farm.NextBasket or 0) then
+		farm.NextBasket = clock + K.BERRY_BASKET_EVERY
+		local basket = vecAttr(m.Model, "BasketTop") or vecAttr(m.Model, "HopperTop")
+		if basket then
+			local p = R.takeBit(color, Vector3.new(0.42, 0.42, 0.42))
+			if p then
+				local d = (basket - from).Magnitude
+				G.fly(rec, p, from, basket + Vector3.new(0, 0.3, 0), 0.9 + d / 32, 2.5 + d * 0.15, "berry")
+				R.stats.Berries = R.stats.Berries + 1
+			end
+		end
+	end
+end
+
+-- the basket line on the Food Machine's sign: "1,240 / 3,000 berries" for the owner (player attribute Berries, plot
+-- attribute BerryCap); visitors keep HomeBuilder's static line
+function R.basket(rec)
+	local m = rec.Machine
+	if not m or not m.Model.Parent then
+		return
+	end
+	local label = m.BasketLine
+	if not label or not label.Parent then
+		label = m.Model:FindFirstChild("BasketLine", true)
+		m.BasketLine = label
+	end
+	if not label or not label:IsA("TextLabel") then
+		return
+	end
+	if localUid == 0 or homeOwner(rec) ~= localUid then
+		return
+	end
+	local berries = localPlayer and tonumber(localPlayer:GetAttribute(BERRY_ATTR)) or 0
+	local cap = tonumber(slotText(rec, "BerryCap"))
+	local text
+	if cap and cap > 0 then
+		text = commas(floor(berries)) .. " / " .. commas(floor(cap)) .. " berries"
+	else
+		text = commas(floor(berries)) .. " berries"
+	end
+	if label.Text ~= text then
+		label.Text = text
 	end
 end
 
@@ -2534,90 +3297,16 @@ function G.stepTraining(rec)
 end
 
 ----------------------------------------------------------------------
--- plants, the Food Machine and the Coin Magnet
+-- the owner's scoop ring: a faint circle of the scoop radius around the owner while they stand in their own yard
 ----------------------------------------------------------------------
--- every plant sends its fruit into a bowl every ~3 s; the Food Machine drops one from its chute onto the tray
-function G.stepPlants(rec)
-	if not rec.PetsNear then
-		return
-	end
-	for i, st in ipairs(rec.Plants) do
-		if clock >= (st.NextFruit or 0) then
-			st.NextFruit = clock + K.FRUIT_EVERY + (G.noise(clock, i) - 0.5)
-			local bowl = G.pickBowl(rec)
-			local from = vecAttr(st.Model, "FruitPoint")
-			if bowl and from and st.Model.Parent and not (st.Popping and not st.Popping.Done) then
-				local c = st.Model:GetAttribute("FruitColor")
-				local part = G.takeFruit(st.Model:GetAttribute("Fruit"), typeof(c) == "Color3" and c or nil)
-				if part then
-					local d = (bowl.Top - from).Magnitude
-					G.fly(rec, part, from, bowl.Top, 0.9 + d / 32, 2.5 + d * 0.2, "fruit")
-					G.stats.Fruit = G.stats.Fruit + 1
-				end
-			end
-		end
-	end
-	local m = rec.Machine
-	if m and m.Model.Parent and not (m.Popping and not m.Popping.Done) and clock >= (m.NextFruit or 0) then
-		m.NextFruit = clock + K.MACHINE_EVERY
-		local a, b = vecAttr(m.Model, "ChuteMouth"), vecAttr(m.Model, "Tray")
-		if a and b then
-			local part = G.takeFruit("Berry", G.foodColor(rec))
-			if part then
-				G.fly(rec, part, a, b + Vector3.new(0, 0.2, 0), 0.45, 0.4, "fruit")
-			end
-		end
-	end
-end
-
-function G.addMagnet(rec, st)
-	local head = st.Model:FindFirstChild("MagnetHead")
-	local center = vecAttr(st.Model, "MagnetCenter")
-	st.Parts, st.Local, st.Angle, st.Boost = {}, {}, 0, 0
-	if head and center then
-		local inv = CFrame.new(center):Inverse()
-		for i, p in ipairs(collectParts(head)) do
-			st.Parts[i] = p
-			st.Local[i] = inv * p.CFrame
-		end
-		st.Center = center
-	end
-	rec.Magnet = st
-end
-
--- the Coin Magnet's head turns (faster for a moment after a scoop)
-function G.stepMagnet(rec, dt)
-	local st = rec.Magnet
-	if not st or not st.Center or #st.Parts == 0 or not st.Model.Parent then
-		return
-	end
-	if st.Popping then
-		if st.Popping.Done then
-			st.Popping = nil
-		else
-			return
-		end
-	end
-	local speed = K.MAGNET_SPIN * ((st.Boost > 0) and 3 or 1)
-	st.Boost = max(0, st.Boost - dt)
-	st.Angle = (st.Angle + dt * speed) % (2 * pi)
-	local rot = CFrame.new(st.Center) * CFrame.Angles(0, st.Angle, 0)
-	for i, p in ipairs(st.Parts) do
-		if p.Parent then
-			p.CFrame = rot * st.Local[i]
-		end
-	end
-end
-
--- the owner's scoop ring: a faint circle of the Magnet's radius around the owner while they stand in the garden
 function G.stepRing(rec)
-	local show, root, frame = false, nil, nil
+	local show, root, plot = false, nil, nil
 	if rec and rec.Near and rec.PetsNear then
-		frame = G.frame(rec)
+		plot = R.plot(rec)
 		root = G.localRoot()
-		if frame and root then
-			local lp = frame:PointToObjectSpace(root.Position)
-			show = abs(lp.X) <= 12 and abs(lp.Z) <= 11 and lp.Y > -2 and lp.Y < 9
+		if plot and root then
+			local lp = plot:PointToObjectSpace(root.Position)
+			show = abs(lp.X) <= K.YARD_HALF and abs(lp.Z) <= K.YARD_HALF and lp.Y > -2 and lp.Y < 9
 		end
 	end
 	if not show then
@@ -2638,8 +3327,9 @@ function G.stepRing(rec)
 		end
 	end
 	local r = G.scoopRadius(rec)
-	local y = frame:PointToWorldSpace(Vector3.new(0, G.HEAP_Y + 0.05, 0)).Y
 	local c = root.Position
+	local lp = plot:PointToObjectSpace(c)
+	local y = plot:PointToWorldSpace(Vector3.new(lp.X, R.ground(lp.X, lp.Z) + 0.05, lp.Z)).Y
 	local len = 2 * pi * r / K.RING_SEGMENTS * 0.8
 	for i, p in ipairs(G.ring) do
 		local a = (i - 0.5) / K.RING_SEGMENTS * 2 * pi
@@ -2656,9 +3346,9 @@ function G.stepRing(rec)
 end
 
 ----------------------------------------------------------------------
--- the scoop: coins zip from the piles to the owner, a "+$1,234" label at the pile (never over the player's head)
+-- the scoop: coins zip from the drops to the owner, a "+$1,234" label at the drop (never over the player's head)
 ----------------------------------------------------------------------
-function G.zip(rec, slot, point, stage)
+function G.zip(rec, key, point, stage)
 	local root = G.localRoot()
 	if not root then
 		return
@@ -2678,12 +3368,9 @@ function G.zip(rec, slot, point, stage)
 		gd.ZipPoint, gd.ZipStage = point, stage or 0
 	end
 	gd.ZipAt = clock
-	if rec.Magnet then
-		rec.Magnet.Boost = 1
-	end
 end
 
--- a scoop is the piles that vanished near the owner + the bank (CollectorCash) dropping + the owner's Cash rising,
+-- a scoop is the drops that vanished near the owner + the bank (CollectorCash) dropping + the owner's Cash rising,
 -- all within K.LABEL_PAIR seconds (the attributes may arrive in any order): then the label shows the drop
 function G.pairLabel(rec)
 	local gd = rec.Garden
@@ -2703,39 +3390,6 @@ function G.pairLabel(rec)
 	G.stats.LastLabel, G.stats.LastLabelAt = text, gd.ZipPoint
 	gd.DropAt, gd.Drop, gd.ZipAt, gd.ZipPoint, gd.ZipStage = nil, nil, nil, nil, nil
 	G.gainAt = nil
-end
-
-function G.onPiles(rec)
-	local gd = rec.Garden
-	local old = gd.Piles
-	gd.Piles = G.parsePiles(slotText(rec, "CoinPiles"))
-	gd.HeapsDirty = true
-	if localUid == 0 or homeOwner(rec) ~= localUid or not rec.PetsNear then
-		return
-	end
-	local root = G.localRoot()
-	if not root then
-		return
-	end
-	local reach = G.scoopRadius(rec) + 2.5
-	local any = false
-	for slot, p in pairs(old) do
-		local q = gd.Piles[slot]
-		if not q or q.Stage < p.Stage then
-			local h = gd.Heaps[slot]
-			local pt = (h and h.Point) or G.pilePoint(rec, slot)
-			if pt then
-				local d = root.Position - pt
-				if Vector3.new(d.X, 0, d.Z).Magnitude <= reach and abs(d.Y) <= 12 then
-					G.zip(rec, slot, pt, p.Stage)
-					any = true
-				end
-			end
-		end
-	end
-	if any then
-		G.pairLabel(rec)
-	end
 end
 
 function G.onCash(rec)
@@ -2785,7 +3439,7 @@ function G.newLabel()
 	return { Anchor = anchor, Gui = gui, Text = text }
 end
 
--- a pixel-sized label floating up from a pile: "+$1,234" (gold, 30 px at 1080p) or the visitor hint (20 px)
+-- a pixel-sized label floating up from a drop: "+$1,234" (gold, 30 px at 1080p) or the visitor hint (20 px)
 function G.showLabel(point, text, style)
 	if not point then
 		return
@@ -2839,19 +3493,29 @@ function G.stepLabels(dt)
 	end
 end
 
--- the one-time visitor hint at another player's pile
+-- the one-time visitor hint at another player's Cloud Cash
 function G.checkHint(rec, focus)
 	if G.hinted or not focus or not rec.PetsNear or not G.dimmed(rec) then
 		return
 	end
-	for _, h in pairs(rec.Garden.Heaps) do
-		local d = h.Point - focus
+	local function check(point)
+		local d = point - focus
 		if Vector3.new(d.X, 0, d.Z).Magnitude <= K.HINT_NEAR and abs(d.Y) < 8 then
 			G.hinted = true
 			G.stats.Hint = "Only the owner can pick these up"
-			G.showLabel(h.Point, G.stats.Hint, "hint")
+			G.showLabel(point, G.stats.Hint, "hint")
+			return true
+		end
+		return false
+	end
+	for _, c in pairs(rec.Roam.Coins) do
+		if check(c.Point) then
 			return
 		end
+	end
+	local h = rec.Garden.Heaps.W
+	if h then
+		check(h.Point)
 	end
 end
 
@@ -3040,6 +3704,7 @@ end
 function G.onInfo(rec)
 	rec.Garden.Info = G.parseInfo(slotText(rec, "GardenInfo"))
 	rec.Pet.Garden.Dirty = true
+	R.nextBudget = 0
 	G.nextCards = 0
 end
 
@@ -3047,7 +3712,7 @@ function G.onOpen(rec)
 	local open = G.openCount(rec)
 	if open ~= rec.Garden.Open then
 		rec.Garden.Open = open
-		rec.Garden.BowlsDirty = true
+		rec.Pet.Garden.Dirty = true
 	end
 end
 
@@ -3055,23 +3720,24 @@ end
 function G.clearHome(rec)
 	G.recycle(rec)
 	local gd = rec.Garden
-	for slot in pairs(gd.Heaps) do
-		G.dropHeap(gd, slot)
+	local h = gd.Heaps.W
+	if h then
+		gd.Heaps.W = nil
+		G.giveHeap(h.Look, h.Model)
 	end
-	for slot, b in pairs(gd.Bowls) do
-		G.giveBowl(b)
-		gd.Bowls[slot] = nil
-	end
+	R.clearCoins(rec)
 	gd.HeapsDirty = true
-	gd.BowlsDirty = true
 end
 
 function G.stepHome(rec, dt)
-	G.stepGarden(rec, dt)
+	if rec.PetsNear then
+		R.stepPets(rec, dt)
+		R.stepCoins(rec, dt)
+		R.stepBerries(rec)
+	end
 	G.stepTraining(rec)
-	G.stepPlants(rec)
-	if rec.PetsAnimate then
-		G.stepMagnet(rec, dt)
+	if rec.Garden.HeapsDirty then
+		G.syncHeaps(rec)
 	end
 end
 
@@ -3104,7 +3770,7 @@ local function stepSwirl(sw, dt)
 end
 
 -- the station kind (HomeBuilder writes Kind; older builds only the id)
-local STATION_KINDS = { Collector = "Magnet", Kitchen = "FoodMachine", Gym = "Training", Garden = "Garden", FusionMachine = "Fusion" }
+local STATION_KINDS = { Press1 = "Farm", Kitchen = "FoodMachine", Gym = "Training", Garden = "Garden", FusionMachine = "Fusion" }
 
 local function registerStation(rec, model)
 	if rec.Stations[model] then
@@ -3113,25 +3779,22 @@ local function registerStation(rec, model)
 	local id = tostring(model:GetAttribute("StationId") or string.sub(model.Name, 9))
 	local kind = model:GetAttribute("Kind")
 	if kind == nil or kind == "Gym" then
-		kind = STATION_KINDS[id] or ((string.sub(id, 1, 5) == "Press") and "Plant" or kind)
+		kind = STATION_KINDS[id] or kind
 	end
 	local st = { Model = model, Id = id, Kind = kind, Level = numAttr(model, "Level", 1) }
 	rec.Stations[model] = st
-	if kind == "Plant" then
-		rec.Plants[#rec.Plants + 1] = st
-		rec.Garden.BowlsDirty = true -- the food colour
-	elseif kind == "Magnet" then
-		G.addMagnet(rec, st)
+	if kind == "Farm" then
+		rec.Farm = st
 	elseif kind == "FoodMachine" then
 		rec.Machine = st
+		R.basket(rec)
 	elseif PET_STATIONS[kind] then
 		local pk = rec.Pet[kind]
 		pk.Station = st
 		pk.Dirty = true
 		if kind == "Garden" then
-			rec.Garden.FrameModel = nil
 			rec.Garden.HeapsDirty = true
-			rec.Garden.BowlsDirty = true
+			rec.Roam.CoinsDirty = true
 			G.onOpen(rec)
 		end
 	elseif kind == "Fusion" then
@@ -3173,9 +3836,8 @@ local function unregisterStation(rec, model)
 	end
 	rec.Stations[model] = nil
 	removeFrom(rec.Swirls, st)
-	removeFrom(rec.Plants, st)
-	if rec.Magnet == st then
-		rec.Magnet = nil
+	if rec.Farm == st then
+		rec.Farm = nil
 	end
 	if rec.Machine == st then
 		rec.Machine = nil
@@ -3186,7 +3848,7 @@ local function unregisterStation(rec, model)
 			pk.Dirty = true
 			if kind == "Garden" then
 				rec.Garden.HeapsDirty = true
-				rec.Garden.BowlsDirty = true
+				rec.Roam.CoinsDirty = true
 			end
 		end
 	end
@@ -3264,6 +3926,7 @@ end
 local HOME_ATTRS = {
 	GardenPets = function(rec)
 		rec.Pet.Garden.Dirty = true
+		R.nextBudget = 0
 	end,
 	TrainingPets = function(rec)
 		rec.Pet.Training.Dirty = true
@@ -3275,8 +3938,20 @@ local HOME_ATTRS = {
 	GardenSlots = function(rec)
 		G.onOpen(rec)
 	end,
-	CoinPiles = function(rec)
-		G.onPiles(rec)
+	CoinDrops = function(rec)
+		R.onDrops(rec)
+	end,
+	Roam = function(rec)
+		R.onRoam(rec)
+	end,
+	RoamSeed = function(rec)
+		R.onRoam(rec)
+	end,
+	RoamVersion = function(rec)
+		R.onRoam(rec)
+	end,
+	BerryCap = function(rec)
+		R.basket(rec)
 	end,
 	CollectorCash = function(rec)
 		G.onCash(rec)
@@ -3295,9 +3970,8 @@ local function addHome(folder)
 		NextNear = 0,
 		Stations = {},
 		Swirls = {},
-		Plants = {},
-		Magnet = nil,
-		Machine = nil,
+		Farm = nil, -- the Berry Farm (Station_Press1, Kind "Farm"): BerryPoint, its berry flights
+		Machine = nil, -- the Food Machine (Station_Kitchen): BasketTop, the basket line
 		Pads = {},
 		Conns = {},
 		SignMemo = {}, -- [StationId] = the layout's last answer for that pad's sign (a rebuilt sign starts with it)
@@ -3305,15 +3979,19 @@ local function addHome(folder)
 			Garden = { Station = nil, Pets = {}, Dirty = false },
 			Training = { Station = nil, Pets = {}, Dirty = false },
 		},
-		-- CoinPiles / GardenInfo parsed, the client heaps / bowls, the scoop pairing (see "Garden")
-		Garden = { Piles = {}, Info = {}, Heaps = {}, Bowls = {}, Open = 3, HeapsDirty = true, BowlsDirty = true },
+		-- GardenInfo parsed, the Welcome heap, the scoop pairing (see "Garden")
+		Garden = { Info = {}, Heaps = {}, Open = 3, HeapsDirty = true },
+		-- the roam (RoamSeed / RoamVersion / Roam), CoinDrops parsed, the Cloud Cash coins (see "Roaming")
+		Roam = { Seed = nil, Ok = false, Epochs = {}, Naps = {}, Wake = {}, Drops = {}, W = nil, Coins = {}, Allow = {}, CoinsDirty = true },
 		Train = { Jobs = {} },
 		PetsNear = false,
 		PetsAnimate = false,
 	}
 	homes[folder] = rec
 	homeList[#homeList + 1] = rec
-	rec.Garden.Piles = G.parsePiles(slotText(rec, "CoinPiles"))
+	rec.Index = #homeList
+	R.onRoam(rec)
+	rec.Roam.Drops, rec.Roam.W = R.parseDrops(slotText(rec, "CoinDrops"))
 	rec.Garden.Info = G.parseInfo(slotText(rec, "GardenInfo"))
 	rec.Garden.Cash = tonumber(slotText(rec, "CollectorCash"))
 	for _, child in ipairs(folder:GetChildren()) do
@@ -3341,9 +4019,13 @@ local function addHome(folder)
 			refreshPad(rec, pad)
 		end
 		refreshOwnership()
-		-- the owner changed: the heaps' look (dimmed or not), the evolved forms and the cards follow
+		-- the owner changed: the coins' look (dimmed or not), the evolved forms, the basket line and the cards follow
 		rec.Garden.HeapsDirty = true
+		rec.Roam.CoinsDirty = true
+		rec.Signed = nil
 		rec.Pet.Garden.Dirty = true
+		R.nextBudget = 0
+		R.basket(rec)
 		G.nextCards = 0
 	end)
 	rec.Conns[#rec.Conns + 1] = folder:GetAttributeChangedSignal("PlotCFrame"):Connect(function()
@@ -3437,6 +4119,7 @@ local function updateNear(rec, eye)
 		end
 	end
 	local dist = (rec.Center ~= nil and eye ~= nil) and (rec.Center - eye).Magnitude or 0
+	rec.Dist = dist
 	local near = rec.Center ~= nil and dist <= K.NEAR
 	local petsNear = near and dist <= (rec.PetsNear and (K.PET_NEAR + 20) or K.PET_NEAR)
 	rec.PetsAnimate = petsNear and dist <= K.PET_ANIM_NEAR
@@ -3446,9 +4129,11 @@ local function updateNear(rec, eye)
 			pk.Dirty = true
 		end
 		rec.Garden.HeapsDirty = true
-		rec.Garden.BowlsDirty = true
+		rec.Roam.CoinsDirty = true
+		R.nextBudget = 0
 		if not petsNear then
 			G.recycle(rec)
+			R.clearCoins(rec)
 		end
 	end
 	if near ~= rec.Near then
@@ -3463,12 +4148,13 @@ local function step(dt)
 	dt = min(tonumber(dt) or 0, 0.1)
 	clock = clock + dt
 	petFrameBuilds, petFramePlaced = 0, 0
-	G.heapFrame = 0
+	R.frame = R.frame + 1
 	if #pops > 0 then
 		stepPops()
 	end
 	local eye = cameraPos()
 	stepSigns()
+	R.budget()
 	for _, rec in ipairs(homeList) do
 		if rec.Folder.Parent then
 			updateNear(rec, eye)
@@ -3482,7 +4168,7 @@ local function step(dt)
 			elseif anyPetsDirty(rec) then
 				syncAllPets(rec)
 				G.syncHeaps(rec)
-				G.syncBowls(rec)
+				R.syncCoins(rec)
 			end
 		end
 	end
@@ -3491,6 +4177,9 @@ local function step(dt)
 	end
 	if #G.labels > 0 then
 		G.stepLabels(dt)
+	end
+	if #R.puffs > 0 then
+		R.stepPuffs(dt)
 	end
 	G.stepRing(G.ownRec())
 	G.stepCards()
@@ -3513,7 +4202,8 @@ end
 
 function HomeFx.Stats()
 	local stations, near, hidden, hiddenSigns, pets, trainPets = 0, 0, 0, 0, 0, 0
-	local heaps, heapParts, bowls, props, sleeping, plants = 0, 0, 0, 0, 0, 0
+	local heaps, heapParts, props, sleeping, coins, pending = 0, 0, 0, 0, 0, 0
+	local unsigned = 0
 	for _, rec in ipairs(homeList) do
 		for _, entry in pairs(rec.Pet.Garden.Pets) do
 			pets = pets + 1
@@ -3532,12 +4222,14 @@ function HomeFx.Stats()
 		end
 		for _, h in pairs(rec.Garden.Heaps) do
 			heaps = heaps + 1
-			heapParts = heapParts + #h.Model:GetChildren() + (h.Spark and 2 or 0)
+			heapParts = heapParts + #h.Model:GetChildren()
 		end
-		for _ in pairs(rec.Garden.Bowls) do
-			bowls = bowls + 1
+		for _, c in pairs(rec.Roam.Coins) do
+			coins = coins + 1
+			if c.Pending then
+				pending = pending + 1
+			end
 		end
-		plants = plants + #rec.Plants
 		if rec.Near then
 			near = near + 1
 		end
@@ -3563,6 +4255,8 @@ function HomeFx.Stats()
 				end
 			elseif why == "Away" then
 				away = away + 1
+			elseif why == "Unsigned" then
+				unsigned = unsigned + 1
 			end
 		end
 	end
@@ -3570,7 +4264,6 @@ function HomeFx.Stats()
 		Homes = #homeList,
 		Near = near,
 		Stations = stations,
-		Plants = plants,
 		Pops = #pops,
 		HiddenPrompts = hidden,
 		HiddenSigns = hiddenSigns,
@@ -3578,21 +4271,29 @@ function HomeFx.Stats()
 		SignsCrowded = crowded,
 		SignsUnderHud = underHud,
 		SignsAway = away,
+		SignsUnsigned = unsigned,
 		GardenPets = pets,
 		TrainingPets = trainPets,
 		GymPets = trainPets, -- the Phase 3 name of TrainingPets
 		Sleeping = sleeping,
 		Props = props,
-		Heaps = heaps,
+		Heaps = heaps, -- the Welcome-back heaps
 		HeapParts = heapParts,
 		HeapsMade = G.heapsMade,
-		Bowls = bowls,
-		Coins = G.coinsAlive, -- flying coins now (pool cap K.MAX_COINS)
-		CoinPool = G.coinsMade, -- coin parts ever made
-		Fruit = G.fruitAlive,
-		FruitPool = G.fruitMade,
-		FruitFlights = G.stats.Fruit,
-		Drops = G.stats.Drops,
+		Coins = coins, -- Cloud Cash coins drawn now (<= K.MAX_CASH)...
+		CoinParts = R.cashAlive * 6, -- ...x 6 parts (TokenLook "Cash": no halo, no light)
+		CashMade = R.cashMade, -- coin parts ever built (pooled per look)
+		Pending = pending, -- coins popped by a pet, waiting for CoinDrops
+		Poops = R.stats.Poops,
+		Confirmed = R.stats.Confirmed,
+		Faded = R.stats.Faded,
+		Flying = G.coinsAlive, -- zip coins flying now (pool cap K.MAX_COINS)
+		Bits = R.bitsAlive, -- berries in flight + puff cubes now (<= K.MAX_BITS)
+		BitsMade = R.bitsMade,
+		BerryFlights = R.stats.Berries,
+		Puffs = R.stats.Puffs,
+		Posed = R.stats.Posed, -- garden pets the budget lets pose (<= K.ROAM_MAX_PETS)
+		PetParts = R.stats.PetParts, -- their parts (evolved while <= K.HOME_PET_PARTS)
 		Zips = G.stats.Zips,
 		Labels = G.stats.Labels,
 		LastLabel = G.stats.LastLabel,
@@ -3608,24 +4309,30 @@ function HomeFx.Stats()
 	}
 end
 
--- one home's client garden (tests / debugging): heaps by pile, bowls, pets and their poses, training pets + props
+-- one home's client garden (tests / debugging): the Welcome heap, the Cloud Cash coins, the roaming pets and their
+-- states, the training pets + props
 function HomeFx.Garden(folder)
 	local rec = typeof(folder) == "Instance" and (homes[folder] or homes[folder:FindFirstChild("Home") or folder]) or nil
 	if not rec then
 		return nil
 	end
-	local out = { Heaps = {}, Bowls = {}, Pets = {}, Training = {}, Open = rec.Garden.Open, Dim = G.dimmed(rec), Radius = G.scoopRadius(rec) }
+	local ro = rec.Roam
+	local out = { Heaps = {}, Coins = {}, Pets = {}, Training = {}, Open = rec.Garden.Open, Dim = G.dimmed(rec), Radius = G.scoopRadius(rec),
+		RoamOk = ro.Ok, Seed = ro.Seed, Epochs = ro.Epochs, Naps = ro.Naps }
 	for slot, h in pairs(rec.Garden.Heaps) do
-		out.Heaps[slot] = { Model = h.Model, Point = h.Point, Stage = h.Stage, Dim = h.Dim, Lucky = h.Spark ~= nil, Parts = #h.Model:GetChildren() }
+		out.Heaps[slot] = { Model = h.Model, Point = h.Point, Stage = h.Stage, Dim = h.Dim, Parts = #h.Model:GetChildren() }
 	end
-	for slot, b in pairs(rec.Garden.Bowls) do
-		out.Bowls[slot] = { Dish = b.Dish, Food = b.Food }
+	for key, c in pairs(ro.Coins) do
+		out.Coins[key] = { Part = c.Part, Slot = c.Slot, Cycle = c.Cycle, Stage = c.Stage, Lucky = c.Lucky, Pending = c.Pending,
+			Dim = c.Dim, Point = c.Point, Look = c.Look, Parts = #c.Pieces, Flying = c.Arc ~= nil }
 	end
 	for slot, e in pairs(rec.Pet.Garden.Pets) do
-		out.Pets[slot] = { Key = e.Key, Model = e.Model, Sleep = e.Sleep == true, Zzz = e.Zzz and e.Zzz.Parts or nil, Card = e.Card, Stage = e.Stage, Seat = e.Seat }
+		out.Pets[slot] = { Key = e.Key, Model = e.Model, Sleep = e.Sleep == true, Zzz = e.Zzz and e.Zzz.Parts or nil, Card = e.Card,
+			Stage = e.Stage, Seat = e.Seat, State = e.State, X = e.RX, Z = e.RZ, SepX = e.SepX or 0, SepZ = e.SepZ or 0,
+			Cycle = e.Cycle, Hw = e.Hw, Yaw = e.Yaw }
 	end
 	for slot, e in pairs(rec.Pet.Training.Pets) do
-		out.Training[slot] = { Key = e.Key, Model = e.Model, Stat = e.Stat, Prop = e.Prop and e.Prop.Parts or nil, Card = e.Card, Seat = e.Seat }
+		out.Training[slot] = { Key = e.Key, Model = e.Model, Stat = e.Stat, Prop = e.Prop and e.Prop.Parts or nil, Card = e.Card, Seat = e.Seat, Stage = e.Stage }
 	end
 	return out
 end
@@ -3669,9 +4376,18 @@ function HomeFx.Init()
 					for _, pad in pairs(rec.Pads) do
 						refreshPad(rec, pad)
 					end
+					rec.Signed = nil
 				end
 			end
+			nextSignCheck = min(nextSignCheck, clock) -- the signed pads follow the Cash at once
 			G.onLocalCash()
+		end)
+		-- the Berry Basket line on the own Food Machine follows the Berries attribute
+		localPlayer:GetAttributeChangedSignal(BERRY_ATTR):Connect(function()
+			local rec = G.ownRec()
+			if rec then
+				R.basket(rec)
+			end
 		end)
 	end
 	-- own pets' levels / XP / evolutions: the cards (and an evolved garden pet's form) follow State
@@ -3683,7 +4399,9 @@ function HomeFx.Init()
 				local rec = G.ownRec()
 				if rec then
 					rec.Pet.Garden.Dirty = true
+					rec.Pet.Training.Dirty = true
 				end
+				R.nextBudget = 0 -- an evolution changes the posed-pet part budget
 			end)
 		end
 	end)
