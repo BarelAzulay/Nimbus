@@ -22,7 +22,8 @@
 --                    in the Welcome-back pile (W=5) and pay once (the fresh ledger staggers the epochs); the Vault's
 --                    offline coins go INTO the bank with LastSeen and offline x Share berries into the basket, once;
 --                    ProfileRebased rebuilds the ledger from the merged bank; a provisional profile claims nothing;
---                    a DataStore outage never loses or doubles Cash; Prestige mid-lawn (bank + drops to 0, Garden L1
+--                    a DataStore outage never loses or doubles Cash (the rejoin reads the store once the departed
+--                    entry is released; a rejoin during the outage picks up the session still in memory); Prestige mid-lawn (bank + drops to 0, Garden L1
 --                    kept, +1 place, LegacySlots gone, pets and berries kept, x1.25 poops), star prices / LegacyPrices;
 --                    old station ids (Press2, Collector, old decor) answer "That station is now part of the ..." and
 --                    build nothing; ClearCoins; the veteran welcome toast once; no Phase 5 toast for a new player
@@ -1593,6 +1594,10 @@ S.p4garden_ledger = guarded("p4garden_ledger", function()
 	away(p)
 	advance(0.5)
 	local cashLeave, bankLeave2 = cashOf(p), bankOf(p)
+	local function ledgerDetail(player, wantCash, wantBank)
+		return "cash " .. tostring(cashOf(player)) .. " vs " .. tostring(wantCash) .. " / bank " .. tostring(bankOf(player)) .. " vs " .. tostring(wantBank)
+	end
+	local gone = p
 	leave(p)
 	advance(1.0)
 	Mock.DataStore.Fail = false
@@ -1604,10 +1609,43 @@ S.p4garden_ledger = guarded("p4garden_ledger", function()
 	T.check(written and rec and rec.Cash == cashLeave and abs((rec.Home.CollectorCash or 0) - bankLeave2) < 1,
 		"p4 garden ledger: the orphan save after the outage carries the scooped Cash and the remaining bank (nothing lost, nothing doubled)",
 		rec and (tostring(rec.Cash) .. " / " .. tostring(rec.Home.CollectorCash) .. " vs " .. tostring(cashLeave) .. " / " .. tostring(bankLeave2)) or "no save")
+	-- The write that landed may have been the autosave walk's (whenever its 90 s period falls on the leave: it holds the
+	-- entry lock, the deferred leave save waits for it and only then releases the entry, a few frames later) or the leave
+	-- save's own (released at once). Wait for the release, so the rejoin below reads the STORE (whole bank) and not the
+	-- session still in memory (the live bank keeps its fraction: that path is checked on its own further down).
+	local released = K.waitFor(function()
+		return DataS.GetProfile(gone) == nil
+	end, 30)
+	T.check(released, "p4 garden ledger: ...and the departed entry is released once the store holds it")
+	rec = Mock.DataStore.Data[storeKey]
 	rec.Home.LastSeen = os.time()
 	p = rejoin(name, userId)
 	advance(2)
-	T.check(cashOf(p) == cashLeave and near(bankOf(p), rec.Home.CollectorCash, 1e-6), "p4 garden ledger: ...and the rejoin sees exactly them")
+	T.check(cashOf(p) == cashLeave and near(bankOf(p), rec.Home.CollectorCash, 1e-6), "p4 garden ledger: ...and the rejoin reads exactly them from the store",
+		ledgerDetail(p, cashLeave, rec.Home.CollectorCash))
+
+	-- a rejoin DURING an outage (the leave save cannot land, the dirty entry stays in memory): the new session picks up
+	-- the live profile with exactly the Cash and the bank it had; the old session's Release skips it; the store gets
+	-- them once when it is back
+	DataS.AddCash(p, 1) -- something unsaved, so the failed leave save keeps the entry (a clean one is dropped at once)
+	local cashQ, bankQ = cashOf(p), bankOf(p)
+	Mock.DataStore.Fail = true
+	gone = p
+	leave(p)
+	p = rejoin(name, userId)
+	advance(2)
+	T.check(DataS.GetProfile(gone) ~= nil and not DataS.IsProvisional(p) and cashOf(p) == cashQ and near(bankOf(p), bankQ, 1e-6),
+		"p4 garden ledger: a rejoin during an outage picks up the session still in memory: Cash and bank exact", ledgerDetail(p, cashQ, bankQ))
+	Mock.DataStore.Fail = false
+	written = K.waitFor(function()
+		local r = Mock.DataStore.Data[storeKey]
+		return r ~= nil and r.Cash == cashQ
+	end, 120)
+	rec = Mock.DataStore.Data[storeKey]
+	T.check(written and rec and rec.Cash == cashQ and near(rec.Home.CollectorCash, floor(bankQ), 1e-6) and DataS.GetProfile(p) ~= nil
+		and cashOf(p) == cashQ and near(bankOf(p), bankQ, 1e-6),
+		"p4 garden ledger: ...the store gets them once when it is back and the live session keeps them (the old session's Release skipped it)",
+		rec and (tostring(rec.Cash) .. " / " .. tostring(rec.Home.CollectorCash) .. "; " .. ledgerDetail(p, cashQ, bankQ)) or "no save")
 
 	-- Prestige mid-lawn: bank + drops to 0, the Garden stays at L1, +1 place, LegacySlots cleared, pets kept, berries kept
 	claim(p, freeIndex())
