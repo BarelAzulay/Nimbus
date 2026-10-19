@@ -339,6 +339,7 @@ end
 -- character walks toward the nearest enemy at the legal run speed and presses ATTACK.
 ----------------------------------------------------------------------------------------------------
 local DOWN = 5
+local BENCHED = 3
 
 local function tracker(p)
 	return { p = p, cursor = K.logSize(), static = {}, units = {}, zone = nil, side = nil, fighter = nil, id = nil, start = nil, ends = {}, events = {}, speed = nil }
@@ -405,7 +406,7 @@ local function nearestEnemy(tr)
 	local best, bestD, bestS = nil, math.huge, nil
 	for id, u in pairs(tr.units) do
 		local s = tr.static[id]
-		if s and s.side ~= tr.side and u.state ~= DOWN and (u.hp == nil or u.hp > 0) then
+		if s and s.side ~= tr.side and u.state ~= DOWN and u.state ~= BENCHED and (u.hp == nil or u.hp > 0) then
 			local d = math.sqrt((u.x - fx) ^ 2 + (u.z - fz) ^ 2)
 			if d < bestD then
 				best, bestD, bestS = id, d, s
@@ -467,14 +468,16 @@ local function playTick(tr, opts)
 				moveChar(tr, u.x, u.z, run * dt)
 			end
 		end
-		if opts.attack ~= false then
+		tr.ticks = (tr.ticks or 0) + 1
+		local every = opts.every or 3 -- ticks between ATTACK presses (3 = a frantic ~3 per second)
+		if opts.attack ~= false and tr.ticks % every == 0 then
 			local ok, why = bs.Command(tr.p, "Attack", id)
 			tr.lastAttack = { ok = ok, why = why, dist = dist, reach = reach }
 			if opts.onAttack then
 				opts.onAttack(ok, why, dist, reach)
 			end
 		end
-		if opts.kit then
+		if opts.kit and tr.ticks % 10 == 0 then
 			bs.Command(tr.p, "Element")
 			bs.Command(tr.p, "Special")
 		end
@@ -1036,9 +1039,12 @@ S.p5svc_position_legit = scenario("p5svc_position_legit", function()
 			end
 		end
 		local e = lastMsg(p, "End", m2)
-		T.check(e and e.Outcome == "Left" and leftAt and leftAt <= 22 / run + F.LeashSeconds + 10 / (run * F.MoveSlack) + 1.5 and #calls.OnLeave == 1 and calls.OnLeave[1][3] == "Leash",
-			"p5 legit: " .. petId .. ": a straight run-off past the zone edge is leashed ~3 s after the gap opens (End Outcome Left, OnLeave 'Leash')",
-			string.format("after %.1f s", leftAt or -1))
+		-- (in a dungeon room the presence check (zone part + 8 studs, 2 strikes) and the leash (gap > 10 for 3 s) both watch
+		-- the run-off; whichever fires first puts the player out: the duel / raid leash is proven by p5svc_position)
+		T.check(e and e.Outcome == "Left" and leftAt and leftAt >= 22 / run and leftAt <= 22 / run + F.LeashSeconds + 10 / (run * F.MoveSlack) + 1.5 and #calls.OnLeave == 1
+			and (calls.OnLeave[1][3] == "Leash" or calls.OnLeave[1][3] == "Left"),
+			"p5 legit: " .. petId .. ": a straight run-off past the zone edge puts the player out within ~3 s (End Outcome Left, OnLeave)",
+			string.format("after %.1f s (%s)", leftAt or -1, tostring(calls.OnLeave[1] and calls.OnLeave[1][3])))
 		advance(0.5)
 		T.check(#calls.OnEnd == 1 and calls.OnEnd[1][2].Reason == "Abandoned", "p5 legit: " .. petId .. ": the last team out ends the encounter 'Abandoned' (OnEnd once)",
 			calls.OnEnd[1] and tostring(calls.OnEnd[1][2].Reason) or "no OnEnd")
@@ -1101,7 +1107,22 @@ S.p5svc_duel_fair = scenario("p5svc_duel_fair", function()
 	T.check(maxHitShare > 0 and maxHitShare <= (bc.Damage.MaxHit.Share or 0.6) + 0.02, "p5 duel fair: no duel hit above MaxHit 0.6 of the victim's HP", string.format("max %.2f", maxHitShare))
 	advance(4.5)
 	-- the queue's power band: equal trophies, powers ~x2.5 apart: not paired within QueueGap, paired once the band grew
-	local q1 = newPlayer("FairQ", MID, 30)
+	local function midPower(level)
+		local list = {}
+		for i, key in ipairs(MID) do
+			list[i] = { Def = PC().Get(key), Level = level, Tier = "Normal" }
+		end
+		return bc.TeamPower(list)
+	end
+	local base = midPower(1)
+	local pick = 2
+	for level = 2, 60 do
+		pick = level
+		if midPower(level) / base >= D.QueueGap + 0.4 then
+			break
+		end
+	end
+	local q1 = newPlayer("FairQ", MID, pick)
 	local q2 = newPlayer("FairQ", MID, 1)
 	toArena(q1, 0, 6)
 	toArena(q2, 0, 9)
@@ -1188,16 +1209,22 @@ S.p5svc_raid = scenario("p5svc_raid", function()
 	local want = bc.BossHp("lava_golem", specs)
 	T.check(ok and st and st.Players == 16 and math.abs(st.MaxHp - want) <= math.max(2, want * 0.005), "p5 raid: 16 raiders joined; the boss HP = BattleCatalog.BossHp(bossId, teams) (ExpectedDps of the fighters)",
 		st and string.format("%d vs %d", st.MaxHp, want) or "no status")
-	local start1 = lastMsg(raiders[1], "Start", mark)
-	local unitsN = start1 and #(start1.Units or {}) or 0
-	T.check(unitsN >= 17 and unitsN <= 20, "p5 raid: ~17 units on the floor (16 fighters + the boss; the bench is not on the floor)", tostring(unitsN))
-	-- everybody plays for 10 s: bytes per client under 6 KB/s (p5battle_net16)
 	local trs = {}
 	for i = 1, 16 do
 		trs[i] = tracker(raiders[i])
 		trs[i].cursor = mark
 	end
 	advance(0.5)
+	pump(trs[16])
+	local onFloor, total = 0, 0
+	for id, u in pairs(trs[16].units) do
+		total = total + 1
+		if u.state ~= BENCHED and u.state ~= DOWN then
+			onFloor = onFloor + 1
+		end
+	end
+	T.check(onFloor >= 17 and onFloor <= 21 and total == 49, "p5 raid: 17 units on the floor (16 fighters + the boss; the 32 helpers are benched)", onFloor .. " of " .. total)
+	-- everybody plays for 10 s: bytes per client under 6 KB/s (p5battle_net16)
 	local m2 = K.logSize()
 	local t0 = Mock.Clock.now
 	for _ = 1, 100 do
@@ -1207,20 +1234,26 @@ S.p5svc_raid = scenario("p5svc_raid", function()
 		end
 	end
 	local seconds = Mock.Clock.now - t0
-	local worst, worstHz = 0, 0
+	local worst, worstHz, worstSnap, worstEv = 0, 0, 0, 0
 	for i = 1, 16 do
-		local bytes, snaps = 0, 0
+		local bytes, snaps, snapBytes, evBytes = 0, 0, 0, 0
 		for _, e in ipairs(battleMsgs(raiders[i], m2)) do
-			bytes = bytes + bs.EstimateBytes(e.args[2]) + 4 + #tostring(e.args[1]) + #tostring(e.args[3] or "")
+			local n = bs.EstimateBytes(e.args[2]) + 4 + #tostring(e.args[1]) + #tostring(e.args[3] or "")
+			bytes = bytes + n
 			if e.args[1] == "Snapshot" then
 				snaps = snaps + 1
+				snapBytes = snapBytes + n
+			elseif e.args[1] == "Events" then
+				evBytes = evBytes + n
 			end
 		end
-		worst = math.max(worst, bytes / seconds)
+		if bytes / seconds > worst then
+			worst, worstSnap, worstEv = bytes / seconds, snapBytes / seconds, evBytes / seconds
+		end
 		worstHz = math.max(worstHz, snaps / seconds)
 	end
 	local st2 = bs.GetRaidStatus()
-	T.info(string.format("*16-raid traffic: worst client %.0f B/s over %.1f s, %.1f snapshots/s, boss %d/%d", worst, seconds, worstHz, st2 and st2.Hp or -1, st2 and st2.MaxHp or -1))
+	T.info(string.format("*16-raid traffic: worst client %.0f B/s (snapshots %.0f, events %.0f) over %.1f s, %.1f snapshots/s, boss %d/%d", worst, worstSnap, worstEv, seconds, worstHz, st2 and st2.Hp or -1, st2 and st2.MaxHp or -1))
 	T.check(worst > 0 and worst < 6000, "p5 raid: every client stays under 6 KB/s in a 16-fighter raid (p5battle_net16)", string.format("%.0f B/s", worst))
 	T.check(st2 and st2.Hp < st2.MaxHp, "p5 raid: the played fighters damage the boss")
 	-- a leaver (arena) is removed; a disconnect too
@@ -1350,6 +1383,7 @@ S.p5svc_ring = scenario("p5svc_ring", function()
 	-- rounds 1-3: walk toward the champion, ATTACK once per second
 	local wins, rounds = 0, {}
 	local lastEnd = nil
+	local seenEnds = 0
 	local t0 = Mock.Clock.now
 	local sinceAttack = 1
 	while Mock.Clock.now - t0 < 400 do
@@ -1370,15 +1404,15 @@ S.p5svc_ring = scenario("p5svc_ring", function()
 				bs.Command(p, "Attack", eid)
 			end
 		end
-		for i = #tr.ends, 1, -1 do
+		for i = seenEnds + 1, #tr.ends do
 			local e = tr.ends[i]
-			if e ~= lastEnd and type(e.Rewards) == "table" then
+			seenEnds = i
+			if type(e.Rewards) == "table" then
 				lastEnd = e
 				if e.Rewards.Next then
 					wins = wins + 1
 					rounds[wins] = e
 				end
-				break
 			end
 		end
 		if wins >= 3 or (lastEnd and lastEnd.Rewards and lastEnd.Rewards.Final) then
@@ -1624,9 +1658,10 @@ S.p5svc_encounter = scenario("p5svc_encounter", function()
 	T.check(resD and resD.Reason == "Abandoned" and #resD.Fighters == 0 and #callsD.OnEnd == 1, "p5 enc: a team of two with 0 damage: Fighters empty (Reason Abandoned)")
 	placeOnZone(zone, { party[1] })
 	local specS, callsS = encounterSpec(zone, { party[1] }, { Floor = 1, Room = 3 })
+	local trS = tracker(party[1])
 	local idS = bs.OpenEncounter(specS)
 	bs.SpawnWave(idS, wave({ { "cloudy_dragon", 30, nil, true } }), { Wave = 1 })
-	local trS = tracker(party[1])
+	advance(0.2)
 	pump(trS)
 	local hitOnce = false
 	local t2 = Mock.Clock.now
@@ -1647,9 +1682,9 @@ S.p5svc_encounter = scenario("p5svc_encounter", function()
 	local victim = newPlayer("EncWipe", WEAK, 1)
 	placeOnZone(zone, { victim })
 	local specW, callsW = encounterSpec(zone, { victim }, { Floor = 9, Room = 4 })
+	local trW = tracker(victim)
 	local idW = bs.OpenEncounter(specW)
 	bs.SpawnWave(idW, wave({ { "cloudy_dragon", 50, nil, true }, { "ember_phoenix", 50 } }), { Wave = 1 })
-	local trW = tracker(victim)
 	local endW = playUntilEnd(trW, 90, { move = false, attack = false })
 	local resW = w.find(idW)
 	T.check(endW and endW.Outcome == "Loss" and resW and resW.Reason == "Wipe" and #callsW.OnEnd == 1 and callsW.OnEnd[1][2].Reason == "Wipe" and #callsW.OnDown == 1
@@ -1720,6 +1755,7 @@ S.p5svc_encounter = scenario("p5svc_encounter", function()
 	-- SetRunProvider: GetRun -> every other battle refused "Finish your dungeon run first"; KeysInRun OR-ed into KeysInBattle
 	local runner = party[1]
 	local other = party[2]
+	claimHome(runner) -- StartRing checks the home before canBattle (Phase 4 order): a homeless runner would stop there
 	bs.SetRunProvider({
 		KeysInRun = function(pl)
 			if pl == runner then
@@ -1787,8 +1823,8 @@ S.p5svc_shutdown = scenario("p5svc_shutdown", function()
 	local r1 = newPlayer("ShutR", STRONG, 20)
 	toArena(r1, 0, 8)
 	startRaid("frost_wyrm")
-	local okJ, raidId = bs.JoinRaid(r1)
 	local tr1 = tracker(r1)
+	local okJ, raidId = bs.JoinRaid(r1)
 	for _ = 1, 40 do
 		advance(0.1)
 		playTick(tr1, {})

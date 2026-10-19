@@ -648,6 +648,7 @@ function Coins.reset(player, bank)
 	st.Keys = {}
 	st.Left = {}
 	st.Fresh = true
+	st.DropsAt = nil -- a rebuilt ledger replicates its drops at once (a rare event, not a stream)
 	return st
 end
 

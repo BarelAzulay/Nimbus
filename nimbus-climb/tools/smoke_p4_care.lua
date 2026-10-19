@@ -510,6 +510,9 @@ S.p4care_feed = guarded("p4care_feed", function()
 	local function berriesOf(pl)
 		return DataS.GetBerries(pl)
 	end
+	if berriesOf(p) > 0 then
+		DataS.SpendBerries(p, berriesOf(p)) -- (a new profile's converted starter food): start from an empty basket
+	end
 
 	-- no Food Machine: refused before anything moves (the machine check comes before the berries check)
 	local mark = K.logSize()
@@ -553,6 +556,7 @@ S.p4care_feed = guarded("p4care_feed", function()
 	T.check(toasted(p, eco.Name .. " ate " .. cost1 .. " berries: +" .. xp1 .. " XP (" .. xp .. "/" .. Cat.XpToNext(1) .. " to Lv 2)", "good", mark),
 		"care feed: a feed without a level-up toasts the berries, the XP and the progress", toastsSince(p, mark))
 	T.eq(toasts(p, nil, nil, mark), 1, "care feed: ...exactly one toast")
+	advance(0.6) -- the trailing attribute write (<= 2 / s)
 	T.check(tonumber(p:GetAttribute(Config.Attr.Berries or "Berries")) == berriesOf(p), "care feed: the player attribute Berries follows (written by DataService)")
 
 	-- a Lv 3 machine: more XP for the same cost; the answer shape { Xp, Levels, Level, Cap, Berries }

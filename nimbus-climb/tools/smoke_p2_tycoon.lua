@@ -568,14 +568,22 @@ S.p2tycoon_progress = guarded("p2tycoon_progress", function()
 	-- scoop: the owner walks over the pile (HomeAction 'Collect' = scoop in range, kept for old clients)
 	local pile = Ty.Piles(p) and Ty.Piles(p)[1]
 	local before = cashOf(p)
-	local onLawn = floor(home.CollectorCash)
+	local radius = Cat.ScoopRadius(home)
+	local onLawn = 0
+	for _, d in ipairs(Ty.Drops(p) or {}) do
+		if K.planar(d.Position, pile.Pos) <= radius then
+			onLawn = onLawn + d.Value
+		end
+	end
+	onLawn = floor(onLawn + 1e-6)
+	local bankBefore = home.CollectorCash
 	local mark = K.logSize()
 	Mock.Teleport(p, CFrame.new(pile.Pos + Vector3.new(0, 3, 0)))
 	homeAction(p, "Collect")
 	advance(0.1)
 	home = Ty.GetHome(p)
-	T.eq(cashOf(p) - before, onLawn, "tycoon progress: walking over the pile scoops its whole Cash (HomeAction 'Collect' = scoop in range)")
-	T.check(home.CollectorCash < 1 + poop + 1e-6, "tycoon progress: ...the lawn is empty afterwards (at most the fraction and one new poop)", tostring(home.CollectorCash))
+	T.eq(cashOf(p) - before, onLawn, "tycoon progress: walking over the drops scoops the whole Cash within ScoopRadius (HomeAction 'Collect' = scoop in range)")
+	T.check(home.CollectorCash >= bankBefore - onLawn - 1e-6 and home.CollectorCash <= bankBefore - onLawn + poop + 1e-6, "tycoon progress: ...the scooped drops are gone (the bank keeps the drops out of reach, the fraction and at most one new poop)", tostring(home.CollectorCash))
 	T.check(K.notified(p, "scooped", "good", mark), "tycoon progress: ...with a 'scooped' side toast")
 
 	-- the lawn cap: PileSeconds (Garden L1: 300 s) of the pet's coins, then the pet naps (Roam ':N<cycle>')

@@ -991,7 +991,33 @@ local function flush(b)
 	if #b.EventBuf > 0 then
 		local list = b.EventBuf
 		b.EventBuf = {}
-		broadcast(b, "Events", list)
+		-- a rejected Order is the owner's button shake only: it goes to that player alone (16 hammering raiders would
+		-- otherwise cost every client ~7 KB/s of echoes); everything else is broadcast
+		local public, mine = {}, nil
+		for _, ev in ipairs(list) do
+			if ev.type == "Order" and ev.rejected ~= nil then
+				local part = b.Parts[ev.owner]
+				if part and not part.Left and isPlayer(part.Player) and b.Receivers[part.Player] then
+					mine = mine or {}
+					local own = mine[part.Player]
+					if not own then
+						own = {}
+						mine[part.Player] = own
+					end
+					own[#own + 1] = ev
+				end
+			else
+				public[#public + 1] = ev
+			end
+		end
+		if #public > 0 then
+			broadcast(b, "Events", public)
+		end
+		if mine then
+			for player, own in pairs(mine) do
+				send(player, "Events", own, b.Id)
+			end
+		end
 	end
 	local pending = {}
 	for player in pairs(b.Pending) do
@@ -1985,9 +2011,7 @@ local function tickBattle(b, t)
 	end
 	if n > 0 then
 		local finished = simFinished(b)
-		if not finished then
-			Cmd.afterSteps(b, n) -- the leash (measured AFTER the legal step), OnDown / OnWave / OnBossHp
-		end
+		Cmd.afterSteps(b, n, finished) -- the leash (measured AFTER the legal step), OnDown / OnWave / OnBossHp
 		flush(b)
 		if finished then
 			if b.Mode == "Dungeon" and type(BattleService.Debug) == "table" and BattleService.Debug.HoldEnd == true then
@@ -2092,7 +2116,7 @@ local function dropOut(b, part, why)
 	elseif b.Mode == "Ring" then
 		return RingRun.dropOut(b, part, why)
 	elseif b.Mode == "Dungeon" then
-		return Enc.leave(b, part, why, "Left")
+		return Enc.leave(b, part, why, nil)
 	end
 	return forfeitSolo(b, part, why)
 end
@@ -3852,15 +3876,16 @@ function Cmd.leash(b, part, dt)
 	return true
 end
 
--- after the steps of a tick (the battle still runs): the leash and OnDown per participant, then the encounter's events
-function Cmd.afterSteps(b, n)
+-- after the steps of a tick: the leash (not when the sim just ended) and OnDown per participant, then the encounter's
+-- events (OnWave / OnBossHp only while the encounter goes on)
+function Cmd.afterSteps(b, n, finished)
 	local dt = n * C.STEP
 	for _, part in ipairs(b.PartList) do
 		if b.State ~= "Running" then
 			return
 		end
 		if not part.Left and not part.Forfeited then
-			if not Cmd.leash(b, part, dt) and b.Enc then
+			if (finished or not Cmd.leash(b, part, dt)) and b.Enc then
 				local lives = Cmd.livesOf(b, part.UserId)
 				if lives ~= nil then
 					local before = part.Lives
@@ -3872,7 +3897,7 @@ function Cmd.afterSteps(b, n)
 			end
 		end
 	end
-	if b.Enc and b.State == "Running" then
+	if b.Enc and b.State == "Running" and not finished then
 		Enc.afterSteps(b)
 	end
 end
@@ -3970,7 +3995,7 @@ function Enc.leave(b, part, why, cause)
 	if why then
 		notify(player, why, "info", 4)
 	end
-	Enc.call(b, "OnLeave", b.Id, player, cause or (isPlayer(player) and "Left" or "Disconnect"))
+	Enc.call(b, "OnLeave", b.Id, player, cause or ((part.Disconnected or not isPlayer(player)) and "Disconnect" or "Left"))
 	return true
 end
 
@@ -4724,6 +4749,7 @@ local function onPlayerRemoving(player)
 		local part = b.Parts[player.UserId]
 		if part and not part.Left and not part.Forfeited then
 			-- a duel leaver's loss (and a ring run's Runs + 1) is written right now, before their profile is saved
+			part.Disconnected = true
 			dropOut(b, part, nil)
 		end
 	end
