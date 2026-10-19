@@ -1177,7 +1177,122 @@ end
 -- [owner: homeworld] end
 
 -- [owner: dungeon] begin
--- (dungeon:portal, dungeon:room:<kind>, dungeon:boss, dungeon:run:<floor> = a built run of 4 rooms)
+-- (dungeon[:<kind>[:<variant>]] = one template (Hall / Cellar / Cave / Bridge / Throne / Entrance / Corridor / Treasure;
+--  dungeon alone = Hall_1); dungeon:boss = Throne_1; dungeon:room:<kind>[:<variant>] the same by kind;
+--  dungeon:run[:<floor>[:<seed>]] = a built run as DungeonService places it (hall + corridor + room 1 + corridor + room 2);
+--  dungeon:floor[:<floor>] = every piece of the run chain placed at once; dungeon:portal = the gate alone)
+do
+	local function dungeonBuilder()
+		local DB = req("server/Services/DungeonBuilder")
+		if type(DB) ~= "table" then
+			fail("DungeonBuilder did not load")
+		end
+		return DB
+	end
+	local KIND_NAMES = { hall = "Hall", cellar = "Cellar", cave = "Cave", bridge = "Bridge", throne = "Throne", boss = "Throne", entrance = "Entrance", corridor = "Corridor", treasure = "Treasure" }
+	local function templateName(kind, variant)
+		local k = KIND_NAMES[tostring(kind or "hall"):lower()] or "Hall"
+		if k == "Corridor" then
+			local v = tostring(variant or "Straight")
+			v = v:sub(1, 1):upper() .. v:sub(2):lower()
+			return "Corridor_" .. v
+		end
+		local n = tonumber(variant) or 1
+		return k .. "_" .. n
+	end
+	-- a render cut-away: the ceiling and the two walls nearest the 3/4 camera (facing +Z: the +Z and -X sides) go, so
+	-- the interior shows (the live game keeps every part)
+	local function cutaway(root)
+		local pieces = {}
+		if root:GetAttribute("Width") then
+			pieces[#pieces + 1] = root
+		end
+		for _, d in ipairs(root:GetDescendants()) do
+			if d:IsA("Model") and d:GetAttribute("Width") then
+				pieces[#pieces + 1] = d
+			end
+		end
+		for _, piece in ipairs(pieces) do
+			local base = piece.PrimaryPart or piece:FindFirstChild("Base")
+			local w, dz = piece:GetAttribute("Width"), piece:GetAttribute("Depth")
+			if base and w and dz then
+				local origin = base.CFrame * CFrame.new(0, 1.5, 0)
+				for _, part in ipairs(piece:GetDescendants()) do
+					if part:IsA("BasePart") then
+						local rel = origin:PointToObjectSpace(part.Position)
+						local wallish = part.Name == "Ceiling" or part.Name == "Beam"
+						if rel.Y > 0.9 and (rel.Z > dz / 2 - 2.6 or rel.X < -w / 2 + 2.6) then
+							wallish = true
+						end
+						if wallish then
+							part:Destroy()
+						end
+					end
+				end
+			end
+		end
+	end
+	local function templateEntry(name)
+		local DB = dungeonBuilder()
+		local model = DB.Template(name)
+		if not model then
+			fail("no dungeon template " .. tostring(name))
+		end
+		local copy = model:Clone()
+		copy.Parent = Workspace
+		local n = DB.CountParts(copy)
+		cutaway(copy)
+		Mock.Advance(0.1)
+		return { root = copy, label = name, sub = "DungeonBuilder template (" .. n .. " parts; render cut-away)", facing = { 0, 0, 1 } }
+	end
+	BUILDERS.dungeon = function(kind, variant, extra)
+		local k = tostring(kind or "hall"):lower()
+		if k == "run" or k == "floor" then
+			local DB = dungeonBuilder()
+			local floorIndex = tonumber(variant) or 3
+			local seed = tonumber(extra) or 7
+			local pocket = DB.GetPocket(9) and (DB.FreeRun(9) and nil) or nil
+			pocket = DB.BuildRun(9, floorIndex, seed)
+			if not pocket then
+				fail("DungeonBuilder.BuildRun failed")
+			end
+			if k == "run" then
+				DB.PlaceRoom(pocket, 2)
+			else
+				for room = 2, 5 do
+					DB.PlaceRoom(pocket, room)
+				end
+			end
+			local live = DB.LiveParts(pocket)
+			cutaway(pocket.Model)
+			Mock.Advance(0.2)
+			return { {
+				root = pocket.Model,
+				label = (k == "run" and "Dungeon run floor " or "Dungeon floor ") .. floorIndex .. " (" .. tostring(pocket.Name) .. ")",
+				sub = "DungeonBuilder.BuildRun + PlaceRoom (" .. live .. " live parts; render cut-away)",
+				facing = { 0, 0, 1 },
+			} }
+		elseif k == "portal" then
+			local info = ensureLobby()
+			local DB = dungeonBuilder()
+			local gates = info.GatesFolder
+			local model = gates and gates:FindFirstChild("Portal_Dungeon")
+			if not model then
+				local built = DB.Build(info)
+				model = built and built.Portal
+			end
+			if not model then
+				fail("no Portal_Dungeon")
+			end
+			local site = info.GateSites and info.GateSites.Dungeon
+			local look = site and site.LookVector or Vector3.new(0, 0, -1)
+			return { { root = model, label = "Portal_Dungeon", sub = "DungeonBuilder.BuildPortal (" .. DB.CountParts(model) .. " parts)", facing = { look.X, 0, look.Z } } }
+		elseif k == "room" then
+			return { templateEntry(templateName(variant, extra)) }
+		end
+		return { templateEntry(templateName(kind, variant)) }
+	end
+end
 -- [owner: dungeon] end
 
 -- [owner: arenaart] begin

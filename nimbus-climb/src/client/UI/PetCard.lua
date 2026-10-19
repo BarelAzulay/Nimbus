@@ -14,6 +14,8 @@
 --   card:SetHp(frac)                     HP bar fill 0..1 (green on own / ally pets, red on enemies)
 --   card:SetSpecial(frac, ready)         SPECIAL bar fill 0..1 (gold; brighter when ready)
 --   card:SetTimer(frac, text)            training timer bar (purple) + its text, e.g. (0.4, "2:10")
+--   card:SetLives(n, max)                Phase 5 (battle fighters): `max` small pips right of the level, `n` of them
+--                                        lit (red hearts' colour), the rest dark; SetLives(nil) hides them
 --   card:SetMode(mode)                   switches the rows / distance of the card (same instance, laid out again)
 --   card:Destroy()                       removes the card (safe to call twice)
 --   Extras (general helpers for the callers):
@@ -78,6 +80,8 @@ local K = {
 	PILL_GAP = 4,
 	FILL_EPS = 0.004,
 	PULSE = 0.55, -- seconds per half pulse of the EVOLVE! pill
+	PIP = 9, -- Phase 5: a lives pip (px at 1080p)
+	PIP_GAP = 3,
 }
 
 local C = {
@@ -95,6 +99,8 @@ local C = {
 	PillGlow = Color3.fromRGB(255, 232, 150),
 	Text = Theme.Colors.White,
 	Stroke = Theme.Colors.TextStroke or Color3.fromRGB(16, 22, 50),
+	Life = Color3.fromRGB(255, 86, 112), -- a lit lives pip
+	LifeLost = Color3.fromRGB(58, 64, 96),
 }
 
 local STAR = "\226\152\133" -- U+2605 BLACK STAR
@@ -184,6 +190,7 @@ function PetCard.New(adornee, mode, heightStuds, opts)
 	self.height = tonumber(heightStuds) or 2.2
 	self.level, self.stage, self.ready = nil, 0, false
 	self.timerText = nil
+	self.lives, self.livesMax = nil, 0
 	self.onEvolve = opts.OnEvolve
 	self.destroyed = false
 
@@ -219,6 +226,9 @@ function PetCard.New(adornee, mode, heightStuds, opts)
 	Theme.Style(level, "Display", { Color = C.Text, Stroke = 0.2, StrokeColor = C.Stroke })
 	Theme.TextOutline(level, 2, C.Stroke, 0)
 	self.levelLabel = level
+	-- Phase 5: the lives pips (frames, no text) right of the level; hidden until SetLives
+	local pips = make("Frame", { Name = "Lives", BackgroundTransparency = 1, Visible = false }, plate)
+	self.pipsFrame, self.pips = pips, {}
 
 	-- the evolution stars: a small badge straddling the plate's top-right corner (the level keeps the full width)
 	local badge = make("Frame", {
@@ -316,6 +326,34 @@ function PetCard:_layout()
 	self.levelLabel.TextSize = levelPx
 	self.levelLabel.Position = UDim2.fromOffset(pad, y)
 	self.levelLabel.Size = UDim2.fromOffset(inner, rowH)
+	-- Phase 5 lives pips: the level takes the left part of the row, the pips the right
+	local nPips = self.lives ~= nil and self.livesMax or 0
+	self.pipsFrame.Visible = nPips > 0
+	if nPips > 0 then
+		local pip, pgap = px(K.PIP, 5), px(K.PIP_GAP, 2)
+		local pw = nPips * pip + (nPips - 1) * pgap
+		self.levelLabel.Size = UDim2.fromOffset(inner - pw - gap, rowH)
+		self.pipsFrame.Position = UDim2.fromOffset(pad + inner - pw, y + math.floor((rowH - pip) / 2))
+		self.pipsFrame.Size = UDim2.fromOffset(pw, pip)
+		for i = 1, math.max(nPips, #self.pips) do
+			local p = self.pips[i]
+			if i <= nPips then
+				if not p then
+					p = make("Frame", { Name = "Pip" .. i, BorderSizePixel = 0, BackgroundColor3 = C.Life }, self.pipsFrame)
+					Theme.Corner(p, UDim.new(0.5, 0))
+					local edge = Theme.Stroke(p, C.Stroke, 1.5, 0)
+					edge.Name = "Edge"
+					self.pips[i] = p
+				end
+				p.Visible = true
+				p.Size = UDim2.fromOffset(pip, pip)
+				p.Position = UDim2.fromOffset((i - 1) * (pip + pgap), 0)
+				p.BackgroundColor3 = (i <= self.lives) and C.Life or C.LifeLost
+			elseif p then
+				p.Visible = false
+			end
+		end
+	end
 	y = y + rowH + gap
 
 	local bars = self.bars
@@ -465,6 +503,32 @@ function PetCard:SetTimer(frac, text)
 	if text ~= self.timerText then
 		self.timerText = text
 		self.timerLabel.Text = text
+	end
+end
+
+-- Phase 5: a fighter's lives (pips right of the level); n = nil hides them. Re-lays out only when they change.
+function PetCard:SetLives(n, maxN)
+	if self.destroyed then
+		return
+	end
+	n = tonumber(n)
+	if n ~= nil then
+		n = math.max(0, math.floor(n))
+		maxN = math.max(n, math.min(5, math.floor(tonumber(maxN) or 3)))
+	else
+		maxN = 0
+	end
+	if n == self.lives and maxN == self.livesMax then
+		return
+	end
+	local relayout = maxN ~= self.livesMax or (n == nil) ~= (self.lives == nil)
+	self.lives, self.livesMax = n, maxN
+	if relayout then
+		self:_layout()
+	elseif n ~= nil then
+		for i, p in ipairs(self.pips) do
+			p.BackgroundColor3 = (i <= n) and C.Life or C.LifeLost
+		end
 	end
 end
 

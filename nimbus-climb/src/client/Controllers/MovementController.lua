@@ -15,6 +15,22 @@
 --     HumanoidRootPart is re-asserted every physics step while the vertical velocity is left alone.
 --   * v2: stamina regenerates (1 + player attribute PerkStaminaRegen) times as fast (pet perk), and the mobile
 --     RUN / DASH buttons are laid out around Roblox's jump button, the hotbar and the raised HP bar.
+--   * Phase 5 (ARCHITECTURE_V3.md "Phase 5 build contract" 3.9 / 4.4; battleclient): BattleController drives three
+--     battle switches on Start / Speed / End:
+--       MovementController.SetDashKeys(keys | nil)   in battle Shift = DASH (keys = { LeftShift, RightShift, ButtonB }),
+--                                                    Q is left to BattleController's SPECIAL; while Shift dashes, RUN
+--                                                    moves to Ctrl (+ L3 / the mobile RUN button) and the mobile DASH
+--                                                    button hides (the battle cluster has its own); nil restores Q / B
+--       MovementController.SetFreeDash(on, cooldown) a dash costs no stamina while on (cooldown = the battle's
+--                                                    DashCooldown; Config.Physics is never touched)
+--       MovementController.SetBattleSpeed(walk, run | nil)  the character walks at `walk` (written as the base speed:
+--                                                    the "server owns WalkSpeed" watch is suspended, except that a
+--                                                    server write of 0 (Downed / frozen) still wins) and runs at `run`
+--                                                    (default walk x 1.3) instead of Config.Physics.RunSpeed;
+--                                                    SetBattleSpeed(nil) gives the server's base back at once
+--     plus MovementController.TryDash() -> bool (the battle DASH button), SetDashListener(fn | nil) (called after every
+--     dash: BattleController sends BattleCommand "Dash") and GetSpeedState() (tests). EXHAUST_RESUME is 22 (15% of the
+--     150 MaxStamina). Run / dash input is ignored until UiGate.HasPlayed() (the main menu, 7.2; no UiGate = played).
 -- Plain Lua 5.1-compatible syntax only.
 
 local Players = game:GetService("Players")
@@ -52,7 +68,7 @@ local PUNCH_TOTAL = 0.5 -- seconds until the punch has fully relaxed
 
 local ZOOM_MAX = 40 -- LocalPlayer.CameraMaxZoomDistance
 
-local EXHAUST_RESUME = 15 -- stamina needed to run again after hitting 0
+local EXHAUST_RESUME = 22 -- stamina needed to run again after hitting 0 (Phase 5: 15% of MaxStamina, Config.Movement.ExhaustResume)
 local RUN_RAMP_UP = 9 -- exponential smoothing rates (1/s)
 local RUN_RAMP_DOWN = 7
 local RUN_REGEN_DELAY = 0.25 -- seconds after running before stamina regenerates
@@ -85,8 +101,17 @@ local shiftHeld = false -- physical Shift key
 local runToggled = false -- mobile button / gamepad L3
 local runBlend = 0 -- 0 = walk speed .. 1 = full run speed
 
-local baseSpeed = P.WalkSpeed -- WalkSpeed as set by the server
+local baseSpeed = P.WalkSpeed -- the walk speed we build on: the server's, or the battle walk (Phase 5)
+local serverSpeed = P.WalkSpeed -- WalkSpeed as set by the server (the last value we did not write)
 local lastWritten = nil -- the WalkSpeed value WE last wrote (nil = we are not overriding)
+-- Phase 5 battle switches (BattleController)
+local battleSpeed = nil -- { walk = n, run = n } while a battle sets the character's legal speeds
+local freeDash = false -- a dash costs no stamina
+local dashLength = P.DashCooldown -- the cooldown of the current / last dash (the battle's DashCooldown while free)
+local freeDashCooldown = nil
+local dashKeys = nil -- the battle's dash keys (nil = the obby keys Q / B)
+local dashListener = nil -- called after every dash (BattleController: BattleCommand "Dash")
+local uiGate = nil -- client/UiGate (menu W3), loaded lazily; false when missing
 local regenBlockedUntil = 0
 
 local cooldownEnd = 0
@@ -109,6 +134,26 @@ local function isLocked()
 		return true
 	end
 	return baseSpeed < FROZEN_SPEED
+end
+
+-- Phase 5 (7.2): run / dash input waits for PLAY on the main menu (no UiGate module = always open)
+local function gateOpen()
+	if uiGate == nil then
+		uiGate = false
+		local client = script.Parent and script.Parent.Parent
+		local inst = client and client:FindFirstChild("UiGate")
+		if inst then
+			local ok, mod = pcall(require, inst)
+			if ok and type(mod) == "table" then
+				uiGate = mod
+			end
+		end
+	end
+	if uiGate and type(uiGate.HasPlayed) == "function" then
+		local ok, played = pcall(uiGate.HasPlayed)
+		return (not ok) or played ~= false
+	end
+	return true
 end
 
 -- Mirror stamina into the player attribute the HUD reads; throttled to avoid attribute spam.
@@ -409,8 +454,23 @@ local function layoutMobileControls(m)
 	local dashBottom = jumpTop + 10
 	local dashRect = { w - dashRight - dashSize, dashBottom, w - dashRight, dashBottom + dashSize }
 
-	-- RUN: first candidate that touches nothing wins
+	-- RUN: first candidate that touches nothing wins; in a battle (the battle cluster has its own DASH, so the
+	-- mobile DASH hides) RUN takes the DASH spot straight above the jump button and the cluster goes around it
 	local runSize = small and 58 or 72
+	if dashKeys then
+		local runRight = math.max(14, jump + 10 - runSize * 0.5)
+		local runBottom = jumpTop + 10
+		m.run.Button.Size = UDim2.fromOffset(runSize, runSize)
+		m.run.Label.TextSize = math.floor(runSize * 0.26)
+		m.run.Button.Position = UDim2.new(1, -runRight, 1, -runBottom)
+		m.dash.Button.Visible = false
+		m.rects = {
+			jump = { jumpRect[1] + 4, jumpRect[2] + 4, jumpRect[3] - 4, jumpRect[4] - 4 },
+			run = { w - runRight - runSize, runBottom, w - runRight, runBottom + runSize },
+		}
+		return
+	end
+	m.dash.Button.Visible = true
 	local candidates = {
 		{ jumpLeft + 12, jumpBottom + 4 }, -- beside the jump button
 		{ dashRight + dashSize + 12, jumpTop + 6 }, -- diagonal: above-left of the jump button
@@ -437,6 +497,11 @@ local function layoutMobileControls(m)
 	m.run.Button.Size = UDim2.fromOffset(runSize, runSize)
 	m.run.Label.TextSize = math.floor(runSize * 0.26)
 	m.run.Button.Position = UDim2.new(1, -runRight, 1, -runBottom)
+	m.rects = {
+		jump = { jumpRect[1] + 4, jumpRect[2] + 4, jumpRect[3] - 4, jumpRect[4] - 4 },
+		run = { w - runRight - runSize, runBottom, w - runRight, runBottom + runSize },
+		dash = dashRect,
+	}
 end
 
 local function buildMobileControls(playerGui)
@@ -518,7 +583,7 @@ local function updateMobileUi(locked)
 		end
 	end
 
-	local lowStamina = stamina < P.DashStaminaCost
+	local lowStamina = (not freeDash) and stamina < P.DashStaminaCost
 	if m.lowStamina ~= lowStamina then
 		m.lowStamina = lowStamina
 		if lowStamina then
@@ -747,7 +812,7 @@ local function dashBlockedReason()
 	if os.clock() < cooldownEnd then
 		return "cooldown"
 	end
-	if stamina < P.DashStaminaCost then
+	if not freeDash and stamina < P.DashStaminaCost then
 		return "stamina"
 	end
 	return nil
@@ -804,7 +869,7 @@ function tryDash()
 	if reason == "cooldown" then
 		-- queue a press that arrives just before the cooldown ends so it still feels instant
 		local now = os.clock()
-		if cooldownEnd - now <= DASH_BUFFER and stamina >= P.DashStaminaCost then
+		if cooldownEnd - now <= DASH_BUFFER and (freeDash or stamina >= P.DashStaminaCost) then
 			dashBufferUntil = now + DASH_BUFFER
 		end
 		return false
@@ -821,14 +886,17 @@ function tryDash()
 	local now = os.clock()
 	local dir, steering = computeDashDirection(humanoid, root)
 
-	stamina = stamina - P.DashStaminaCost
-	if stamina <= 0 then
-		stamina = 0
-		exhausted = true
-		runToggled = false
+	if not freeDash then
+		stamina = stamina - P.DashStaminaCost
+		if stamina <= 0 then
+			stamina = 0
+			exhausted = true
+			runToggled = false
+		end
+		regenBlockedUntil = now + DASH_REGEN_DELAY
 	end
-	regenBlockedUntil = now + DASH_REGEN_DELAY
-	cooldownEnd = now + P.DashCooldown
+	dashLength = (freeDash and freeDashCooldown) or P.DashCooldown
+	cooldownEnd = now + dashLength
 	dashBufferUntil = 0
 	dash = { dir = dir, startTime = now, endTime = now + P.DashDuration }
 	punchStart = now
@@ -848,6 +916,12 @@ function tryDash()
 		pcall(function()
 			dashRemote:FireServer()
 		end)
+	end
+	if dashListener then
+		local ok, err = pcall(dashListener)
+		if not ok then
+			warn("[MovementController] dash listener failed: " .. tostring(err))
+		end
 	end
 	return true
 end
@@ -905,11 +979,16 @@ local function step(dt)
 	local now = os.clock()
 	dt = Util.Clamp(dt, 0, 0.1)
 
-	-- 1. Whatever WalkSpeed we did not write ourselves belongs to the server (freeze, revive...).
+	-- 1. Whatever WalkSpeed we did not write ourselves belongs to the server (freeze, revive...). In a battle the
+	--    battle walk is the base instead, but a server freeze (0) still wins.
 	local current = humanoid.WalkSpeed
 	if lastWritten == nil or math.abs(current - lastWritten) > SPEED_EPS then
-		baseSpeed = current
+		serverSpeed = current
 		lastWritten = nil
+	end
+	baseSpeed = serverSpeed
+	if battleSpeed and serverSpeed >= FROZEN_SPEED then
+		baseSpeed = battleSpeed.walk
 	end
 
 	-- 2. Lockout: Downed or frozen players cannot run or dash.
@@ -963,12 +1042,15 @@ local function step(dt)
 		end
 	end
 
-	-- 5. Write WalkSpeed: server base speed + run boost. Stop touching it when not running.
-	if baseSpeed >= FROZEN_SPEED and runBlend > 0.001 then
-		local runTarget = math.max(baseSpeed, P.RunSpeed)
+	-- 5. Write WalkSpeed: base speed + run boost (the battle run instead of RunSpeed in a battle). Outside a battle
+	--    it stops touching it when not running; in a battle the walk itself is ours to write.
+	if baseSpeed >= FROZEN_SPEED and (runBlend > 0.001 or battleSpeed ~= nil) then
+		local runTarget = battleSpeed and battleSpeed.run or math.max(baseSpeed, P.RunSpeed)
 		local speed = baseSpeed + (runTarget - baseSpeed) * runBlend
-		humanoid.WalkSpeed = speed
-		lastWritten = speed
+		if lastWritten == nil or math.abs(speed - lastWritten) > 0.001 or math.abs(current - speed) > SPEED_EPS then
+			humanoid.WalkSpeed = speed
+			lastWritten = speed
+		end
 	elseif lastWritten ~= nil then
 		humanoid.WalkSpeed = baseSpeed
 		lastWritten = nil
@@ -1046,7 +1128,7 @@ function unbindCharacter()
 	if lastWritten ~= nil then
 		pcall(function()
 			if c.humanoid.Parent then
-				c.humanoid.WalkSpeed = baseSpeed
+				c.humanoid.WalkSpeed = serverSpeed
 			end
 		end)
 	end
@@ -1089,7 +1171,11 @@ local function bindCharacter(char)
 	exhausted = false
 	runToggled = false
 	runBlend = 0
-	baseSpeed = humanoid.WalkSpeed
+	serverSpeed = humanoid.WalkSpeed
+	baseSpeed = serverSpeed
+	if battleSpeed and serverSpeed >= FROZEN_SPEED then
+		baseSpeed = battleSpeed.walk
+	end
 	lastWritten = nil
 	regenBlockedUntil = 0
 	dashBufferUntil = 0
@@ -1138,6 +1224,9 @@ local function onRunAction(_name, state, input)
 		if UserInputService:GetFocusedTextBox() ~= nil then
 			return Enum.ContextActionResult.Pass
 		end
+		if not gateOpen() then
+			return Enum.ContextActionResult.Pass -- the main menu is still up (7.2)
+		end
 		if isToggleKey then
 			toggleRun()
 		else
@@ -1153,6 +1242,9 @@ end
 
 local function onDashAction(_name, state)
 	if state == Enum.UserInputState.Begin then
+		if not gateOpen() then
+			return Enum.ContextActionResult.Pass -- the main menu is still up (7.2)
+		end
 		if UserInputService:GetFocusedTextBox() == nil then
 			tryDash()
 		end
@@ -1160,25 +1252,48 @@ local function onDashAction(_name, state)
 	return Enum.ContextActionResult.Sink
 end
 
-local function bindInput()
+local unpackList = table.unpack or unpack
+
+local DEFAULT_RUN_KEYS = { Enum.KeyCode.LeftShift, Enum.KeyCode.RightShift, Enum.KeyCode.ButtonL3 }
+local DEFAULT_DASH_KEYS = { Enum.KeyCode.Q, Enum.KeyCode.ButtonB }
+
+-- the run keys that do not dash (Shift dashes in a battle: RUN moves to Ctrl there)
+local function runKeys()
+	if not dashKeys then
+		return DEFAULT_RUN_KEYS
+	end
+	local taken = {}
+	for _, k in ipairs(dashKeys) do
+		taken[k] = true
+	end
+	local out = {}
+	for _, k in ipairs(DEFAULT_RUN_KEYS) do
+		if not taken[k] then
+			out[#out + 1] = k
+		end
+	end
+	if taken[Enum.KeyCode.LeftShift] or taken[Enum.KeyCode.RightShift] then
+		out[#out + 1] = Enum.KeyCode.LeftControl
+	end
+	return out
+end
+
+local function bindKeys()
+	pcall(function()
+		ContextActionService:UnbindAction("NimbusRun")
+	end)
+	pcall(function()
+		ContextActionService:UnbindAction("NimbusDash")
+	end)
 	-- High priority beats Roblox's shift-lock (Medium), so Shift is ours alone.
-	ContextActionService:BindActionAtPriority(
-		"NimbusRun",
-		onRunAction,
-		false,
-		Enum.ContextActionPriority.High.Value,
-		Enum.KeyCode.LeftShift,
-		Enum.KeyCode.RightShift,
-		Enum.KeyCode.ButtonL3
-	)
-	ContextActionService:BindActionAtPriority(
-		"NimbusDash",
-		onDashAction,
-		false,
-		Enum.ContextActionPriority.Default.Value,
-		Enum.KeyCode.Q,
-		Enum.KeyCode.ButtonB
-	)
+	ContextActionService:BindActionAtPriority("NimbusRun", onRunAction, false, Enum.ContextActionPriority.High.Value, unpackList(runKeys()))
+	-- a battle's dash keys (Shift) need the High priority too (the run action had them before)
+	local priority = dashKeys and Enum.ContextActionPriority.High.Value or Enum.ContextActionPriority.Default.Value
+	ContextActionService:BindActionAtPriority("NimbusDash", onDashAction, false, priority, unpackList(dashKeys or DEFAULT_DASH_KEYS))
+end
+
+local function bindInput()
+	bindKeys()
 
 	-- never leave Shift "stuck" when focus moves away from the game
 	UserInputService.WindowFocusReleased:Connect(function()
@@ -1197,7 +1312,130 @@ function MovementController.GetDashCooldownFraction()
 	if remaining <= 0 then
 		return 0
 	end
-	return Util.Clamp(remaining / P.DashCooldown, 0, 1)
+	return Util.Clamp(remaining / math.max(0.05, dashLength), 0, 1)
+end
+
+----------------------------------------------------------------------
+-- Phase 5 battle switches (BattleController; contract 3.9 / 4.4)
+----------------------------------------------------------------------
+local function finite(v)
+	return type(v) == "number" and v == v and v > -math.huge and v < math.huge
+end
+
+-- keys: a list of Enum.KeyCode (in battle { LeftShift, RightShift, ButtonB }); nil restores the obby keys (Q / B)
+function MovementController.SetDashKeys(keys)
+	local list = nil
+	if type(keys) == "table" then
+		list = {}
+		for _, k in ipairs(keys) do
+			if typeof(k) == "EnumItem" then
+				list[#list + 1] = k
+			end
+		end
+		if #list == 0 then
+			list = nil
+		end
+	end
+	dashKeys = list
+	shiftHeld = false -- Shift may have just changed hands
+	if initialized then
+		pcall(bindKeys)
+	end
+	-- the battle cluster has its own DASH button: the mobile one steps aside while a battle owns the dash keys and
+	-- RUN takes its spot above the jump button (layoutMobileControls)
+	local m = ui and ui.mobile
+	if m and m.dash and m.dash.Button then
+		m.dash.Button.Visible = dashKeys == nil
+		pcall(layoutMobileControls, m)
+	end
+end
+
+-- the touch buttons in screen px { left, bottom, right, top } (from the left / BOTTOM edge): jump (Roblox's), run,
+-- dash (nil in a battle); nil without the mobile controls
+function MovementController.MobileLayout()
+	local m = ui and ui.mobile
+	return m and m.rects or nil
+end
+
+-- on: a dash costs no stamina (and never exhausts); cooldown: the dash cooldown meanwhile (the battle's DashCooldown)
+function MovementController.SetFreeDash(on, cooldown)
+	freeDash = on == true
+	freeDashCooldown = (freeDash and finite(cooldown) and cooldown > 0) and math.min(cooldown, 30) or nil
+end
+
+-- walk / run: the fighter's legal battle speeds (BattleCatalog.Fighter.WalkOf / RunOf, the Speed events); nil clears
+function MovementController.SetBattleSpeed(walk, run)
+	if not finite(walk) or walk <= 0 then
+		battleSpeed = nil
+	else
+		walk = Util.Clamp(walk, 1, 100)
+		if not finite(run) or run <= 0 then
+			run = walk * 1.3
+		end
+		battleSpeed = { walk = walk, run = Util.Clamp(math.max(run, walk), 1, 100) }
+	end
+	-- apply at once (no frame of the old speed)
+	local c = ctx
+	if not c or not c.humanoid or not c.humanoid.Parent then
+		return
+	end
+	local humanoid = c.humanoid
+	local current = humanoid.WalkSpeed
+	if lastWritten == nil or math.abs(current - lastWritten) > SPEED_EPS then
+		serverSpeed = current -- a server write since our last one
+		lastWritten = nil
+	end
+	if serverSpeed < FROZEN_SPEED then
+		return -- frozen / Downed: the server's 0 wins
+	end
+	if battleSpeed then
+		baseSpeed = battleSpeed.walk
+		local speed = baseSpeed + (battleSpeed.run - baseSpeed) * runBlend
+		humanoid.WalkSpeed = speed
+		lastWritten = speed
+	else
+		baseSpeed = serverSpeed
+		if lastWritten ~= nil then
+			local speed = baseSpeed
+			if runBlend > 0.001 then
+				speed = baseSpeed + (math.max(baseSpeed, P.RunSpeed) - baseSpeed) * runBlend
+				lastWritten = speed
+			else
+				lastWritten = nil
+			end
+			humanoid.WalkSpeed = speed
+		end
+	end
+end
+
+-- the battle DASH button: the same dash as the dash key (-> bool)
+function MovementController.TryDash()
+	if not gateOpen() then
+		return false
+	end
+	return tryDash() == true
+end
+
+-- fn() runs after every dash (nil clears it)
+function MovementController.SetDashListener(fn)
+	dashListener = type(fn) == "function" and fn or nil
+end
+
+-- tests / tools: the speed ownership state
+function MovementController.GetSpeedState()
+	return {
+		Server = serverSpeed,
+		Base = baseSpeed,
+		Walk = battleSpeed and battleSpeed.walk or nil,
+		Run = battleSpeed and battleSpeed.run or nil,
+		RunTarget = battleSpeed and battleSpeed.run or math.max(baseSpeed, P.RunSpeed),
+		FreeDash = freeDash,
+		DashCooldown = (freeDash and freeDashCooldown) or P.DashCooldown,
+		DashKeys = dashKeys,
+		Stamina = stamina,
+		ExhaustResume = EXHAUST_RESUME,
+		Written = lastWritten,
+	}
 end
 
 function MovementController.Init()

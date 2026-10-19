@@ -2427,7 +2427,197 @@ end)
 -- [owner: neonkit] end
 
 -- [owner: battleclient] begin
--- (battle:fighter, battle:raid, battle:dungeon: the 4.7 HUD on NeonKit; replaces the Phase 3/4 battle scenes above when it lands)
+-- Phase 5 battle HUD (BattleController, contract 4.7): a real BattleSim stepped at 10 Hz, its Start (with the receiver's
+-- Team like BattleService.startPayload) / Snapshot / Events / End sent through BattleState. My team plays Auto (the
+-- engine's AI presses the kit), so HP, energy, cooldowns and the lock move like in a real fight. This "battle" replaces
+-- the Phase 3/4 one above (same name, registered later):
+--   battle[:fighter|raid|dungeon|duel|spectate|ring[:<phase>]]
+--     fighter (default)  a Champion Ring round (CHAMPION RING - Round 8 - Best 12) vs a 3-pet wild pack
+--     raid               a boss raid with two other players and minions (the boss bar, ENRAGED / minions pills)
+--     dungeon            DUNGEON - Floor 3 - Room 2: a wave of wild pets + a crowned mini-boss
+--     duel / spectate    a duel as a fighter / from the stands
+--     ring               the Phase 4 ring phases: fight<n> | next<n> | result<n> | record<n>
+--   phases: fight (default) | ready (a full energy bar, a buff cooling, a swap cooling) | result | lost | cleared
+--           (dungeon: the room cleared, no result card) | next<n> / result<n> / record<n> (ring)
+local BCDUMP = {}
+
+function BCDUMP.team(count, skip, level)
+	local out = battleTeam(count, skip)
+	for i, p in ipairs(out) do
+		p.Level = (level or 30) + i * 2
+	end
+	return out
+end
+
+function BCDUMP.startPayload(sim, id, me, side, extra)
+	local d = sim:Describe()
+	d.BattleId = id
+	d.Zone = { CFrame = CFrame.new(0, 300, 0), Size = Vector3.new(d.Zone.X, 30, d.Zone.Z), X = d.Zone.X, Z = d.Zone.Z }
+	d.Names = { [tostring(me)] = LocalPlayer.Name, ["77"] = "Buddy", ["78"] = "Rival" }
+	d.Side = side
+	d.Spectator = side == 0
+	d.T = sim:Time()
+	for k, v in pairs(extra or {}) do
+		d[k] = v
+	end
+	if side ~= 0 then
+		local team = sim:TeamOf(me)
+		if team then
+			local buff = {}
+			for slot, secs in pairs(team.Cooldowns.Buff or {}) do
+				buff[tostring(slot)] = secs
+			end
+			d.Team = { Fighter = team.Fighter, Bench = team.Bench, Lives = team.Lives, Speed = team.Speed,
+				Cooldowns = { Element = team.Cooldowns.Element, Dash = team.Cooldowns.Dash, Swap = team.Cooldowns.Swap, Buff = buff } }
+		end
+	end
+	return d
+end
+
+function BCDUMP.run(sim, id, seconds, each)
+	for i = 1, floor(seconds / 0.1 + 0.5) do
+		if each then
+			each(i)
+		end
+		local evs = sim:Step(0.1)
+		if #evs > 0 then
+			toClient("BattleState", "Events", evs, id)
+		end
+		toClient("BattleState", "Snapshot", denseSnapshot(sim, id), id)
+		advance(0.1)
+		if sim:IsFinished() then
+			break
+		end
+	end
+end
+
+scenario("battle", function(mode, phase)
+	mode = (mode and mode ~= "") and mode:lower() or "fighter"
+	phase = (phase and phase ~= "") and phase:lower() or "fight"
+	local BC = req("client/Controllers/BattleController", true)
+	local Sim = req("shared/BattleSim", true)
+	local BCat = req("shared/BattleCatalog", true)
+	if not BC or not Sim then
+		fail("BattleController / BattleSim missing")
+	end
+	local me = LocalPlayer.UserId
+	local id = "dump_battle"
+	local ringRound = tonumber(phase:match("(%d+)$")) or 8
+	phase = phase:gsub("%d+$", "")
+	local spectate = mode == "spectate"
+	local myPets = BCDUMP.team(3, 0, 30)
+	myPets[2].Evo = 1
+	local mine = { Owner = me, Side = 1, Pets = myPets, Auto = not spectate }
+	local setup = { Seed = 11, Id = id }
+	local extra = {}
+	local wave = nil
+	if mode == "raid" then
+		setup.Mode = "Raid"
+		setup.Boss = "storm_titan"
+		setup.Teams = { mine, { Owner = 77, Side = 1, Pets = BCDUMP.team(3, 2, 26), Auto = true }, { Owner = 78, Side = 1, Pets = BCDUMP.team(3, 4, 28), Auto = true } }
+	elseif mode == "dungeon" then
+		setup.Mode = "Dungeon"
+		setup.Zone = { X = 44, Z = 44 }
+		setup.TimeLimit = 90
+		setup.Teams = { mine }
+		extra.Dungeon = { Floor = 3, Room = 2, Wave = 1, Waves = 3, Name = "Ember Hall", Boss = false }
+		wave = BCDUMP.team(4, 3, 24)
+		for _, p in ipairs(wave) do
+			p.Wild = true
+		end
+		wave[4].Boss = true
+	elseif mode == "duel" or spectate then
+		setup.Mode = "Duel"
+		setup.Teams = { spectate and { Owner = 77, Side = 1, Pets = BCDUMP.team(3, 2, 26), Auto = true } or mine, { Owner = 78, Side = 2, Pets = BCDUMP.team(3, 3, 30), Auto = true } }
+	else
+		-- fighter / ring: a Champion Ring round
+		setup.Mode = "Ring"
+		setup.Round, setup.Zone, setup.TimeLimit = ringRound, { X = 44, Z = 44 }, 90
+		local champ = BCat.ChampionTeam(ringRound, 7)
+		setup.Teams = { mine, champ }
+		local ch = champ.Champion or {}
+		extra.Ring = { Round = ringRound, Best = 12, Start = 1, Champion = { PetId = ch.PetId, Level = ch.Level, Tier = ch.Tier, Boss = ch.Boss == true, Name = ch.Name } }
+		if mode == "fighter" then
+			-- 24.png: a pack of three on the right list
+			setup.Mode = "Dungeon"
+			setup.Teams = { mine }
+			extra = { Ring = nil }
+			wave = BCDUMP.team(3, 3, 30)
+			for _, p in ipairs(wave) do
+				p.Wild = true
+			end
+		end
+	end
+	local sim, why = Sim.new(setup)
+	if not sim then
+		fail("BattleSim.new failed: " .. tostring(why))
+	end
+	if wave then
+		sim:SpawnEnemies(wave, { Wave = 1, Anchor = { 0, 12 } })
+	end
+	LocalPlayer:SetAttribute("InBattle", spectate and nil or id)
+	local d = BCDUMP.startPayload(sim, id, me, spectate and 0 or 1, extra)
+	if mode == "fighter" then
+		d.Mode = "Ring" -- drawn as a Champion Ring round (the mode line) with the pack on the list
+		d.Ring = { Round = ringRound, Best = 12, Start = 1, Champion = {} }
+	end
+	toClient("BattleState", "Start", d, id)
+	local seconds = (mode == "raid") and 9 or 5
+	BCDUMP.run(sim, id, seconds, function(i)
+		if i == 8 and not spectate then
+			local enemies = {}
+			for _, u in ipairs(sim.units or {}) do
+				if u.side ~= 1 and u.alive and not u.gone then
+					enemies[#enemies + 1] = u.id
+				end
+			end
+			if enemies[2] then
+				sim:Command(me, "Target", enemies[2])
+			end
+		end
+	end)
+	if phase == "ready" and not spectate then
+		-- white-box: a full energy bar, a helper buff and a swap cooling down
+		for _, u in ipairs(sim.units or {}) do
+			if u.owner == me and not u.benched then
+				u.meter = 100
+			end
+		end
+		sim:Command(me, "Buff", 2)
+		BCDUMP.run(sim, id, 0.6)
+	end
+	if phase == "next" or phase == "result" or phase == "record" then
+		LocalPlayer:SetAttribute("InBattle", id)
+		toClient("BattleState", "End", { BattleId = id, Mode = "Ring", Outcome = "Win", Won = true, Spectator = false, Reason = "Wipe",
+			Rewards = { Won = true, Next = ringRound + 1, Round = ringRound, Cash = phase == "record" and 1284 or 428, Xp = 20 + 6 * ringRound, Tokens = 0, Record = phase == "record", LevelUps = 0 } }, id)
+		advance(phase == "next" and 0.9 or 0.5)
+		if phase == "result" or phase == "record" then
+			toClient("BattleState", "End", { BattleId = id, Mode = "Ring", Outcome = "Left", Won = false, Spectator = false, Reason = "Forfeit", Round = ringRound,
+				Rewards = { Won = false, Final = true, Round = ringRound, Cash = 0, Xp = 0, LevelUps = 2,
+					Run = { Wins = ringRound, Cash = 2571, Xp = 806, Tokens = phase == "record" and 100 or 0, Round = ringRound, Start = 1, Record = phase == "record" and ringRound or nil, Best = 12 } } }, id)
+			advance(0.8)
+		end
+		return
+	end
+	if phase == "won" or phase == "lost" or phase == "cleared" then
+		local won = phase ~= "lost"
+		local rewards
+		if mode == "raid" then
+			rewards = { Tokens = 420, Gems = won and 5 or 0, Xp = 180, LevelUps = 2, Tier = won and "Gold" or "Bronze", Share = 0.34, Damage = 5120 }
+		elseif mode == "dungeon" then
+			rewards = { Dungeon = true, Extra = extra.Dungeon }
+		else
+			rewards = { Tokens = won and 60 or 20, Gems = 0, Xp = 50, Trophies = won and 25 or -15, LevelUps = 0 }
+		end
+		LocalPlayer:SetAttribute("InBattle", nil)
+		toClient("BattleState", "End", {
+			BattleId = id, Mode = sim.mode or setup.Mode, Outcome = won and "Win" or "Loss", Won = won, Spectator = false,
+			Reason = won and (mode == "raid" and "BossDown" or (mode == "dungeon" and "Cleared" or "Wipe")) or (mode == "raid" and "Timeout" or "Wipe"),
+			Rewards = rewards,
+		}, id)
+		advance(0.8)
+	end
+end)
 -- [owner: battleclient] end
 
 -- [owner: careui] begin
