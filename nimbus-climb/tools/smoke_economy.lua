@@ -335,9 +335,10 @@ local function tutorialFlow()
 	send(p, "IndexOpened")
 	T.eq(stepId(p), "portal", "Tutorial: the client's IndexOpened completes 'index'")
 	local portalTarget = TS.GetState(p) and TS.GetState(p).Target
-	local easy = W.lobbyInfo and W.lobbyInfo.Portals and W.lobbyInfo.Portals.Easy
-	T.check(type(portalTarget) == "table" and portalTarget.Kind == "Portal" and portalTarget.Id == "Easy" and easy ~= nil and typeof(portalTarget.Position) == "Vector3" and (portalTarget.Position - easy.Center).Magnitude < 1,
-		"Tutorial: the 'portal' target carries the Easy portal's position for the guide arrow")
+	-- (Phase 5: the ONE Obby portal of the Gate Court, lobby.Portals.Obby; owner: tutorial W4)
+	local obby = W.lobbyInfo and W.lobbyInfo.Portals and W.lobbyInfo.Portals.Obby
+	T.check(type(portalTarget) == "table" and portalTarget.Kind == "Portal" and portalTarget.Id == "Obby" and obby ~= nil and typeof(portalTarget.Position) == "Vector3" and (portalTarget.Position - obby.Center).Magnitude < 1,
+		"Tutorial: the 'portal' target carries the Obby portal's position for the guide arrow")
 	-- portal / finish: InMatch true, then false
 	local m = startMatch("Easy", { p })
 	waitFor(function()

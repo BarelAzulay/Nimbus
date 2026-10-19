@@ -2,6 +2,8 @@
 -- chapter 2 and the appended chapter 4 (shared/TutorialSteps.lua, server/Services/TutorialService.lua), the Phase 4 NPC
 -- tips (shared/NpcDialog.lua) and ArenaController's Champion Ring window + the safe-zone toast
 -- (client/Controllers/ArenaController.lua). Loaded by tools/smoke.py in BOTH worlds; ARGS.context picks the half:
+-- (Phase 5, owner tutorial W4: chapter 3's step 17 is "dungeon", chapter 2 speaks of Cloud Cash / the Berry Farm /
+-- berries, the NPC needles follow the Phase 5 lines; the feed step tops the berries up so the first feed works)
 --   p4ui_content        (server, content) the index rule (chapters start at 10 / 15 / 19, chapter 2 keeps five steps
 --                       claim, garden, coins, machine, feed; chapter 3 arena, team, trial, raid; chapter 4 train, ring,
 --                       portal), each chapter ends on one ChapterEnd step, the targets and CompleteOn of the new steps,
@@ -96,7 +98,7 @@ local function serverScenarios()
 		end
 		T.eq(ids(10, 14), "claim,garden,coins,machine,feed", "p4ui: chapter 2 is rewritten in place: claim, garden, coins, machine, feed")
 		T.eq(Steps.Steps[11] and Steps.Steps[11].Id, "garden", "p4ui: Steps[11].Id is 'garden' (smoke_economy reads it)")
-		T.eq(ids(15, 18), "arena,team,trial,raid", "p4ui: chapter 3 keeps indices 15-18")
+		T.eq(ids(15, 18), "arena,team,dungeon,raid", "p4ui: chapter 3 keeps indices 15-18 (Phase 5: 17 'trial' -> 'dungeon')")
 		T.eq(ids(19, 21), "train,ring,portal", "p4ui: chapter 4 is appended at 19-21: train, ring, portal")
 		local bad, ends = {}, {}
 		for i, step in ipairs(Steps.Steps) do
@@ -138,17 +140,18 @@ local function serverScenarios()
 			all = all .. " " .. s[i].Text
 		end
 		local missing = {}
-		for _, needle in ipairs({ "Pet Garden", "rainbow coins", "Food Machine", "Feed", "EVOLVE", "Training Place", "Champion Ring" }) do
+		for _, needle in ipairs({ "Pet Garden", "Cloud Cash", "Berry Farm", "berries", "Food Machine", "Feed", "EVOLVE", "Dungeon", "Training Place", "Champion Ring" }) do
 			if not all:find(needle, 1, true) then
 				missing[#missing + 1] = needle
 			end
 		end
-		T.check(#missing == 0, "p4ui: the new chapters name the Pet Garden, rainbow coins, the Food Machine, Feed, EVOLVE, the Training Place and the Champion Ring",
+		T.check(#missing == 0, "p4ui: the chapters name the Pet Garden, Cloud Cash, the Berry Farm, berries, the Food Machine, Feed, EVOLVE, the Dungeon, the Training Place and the Champion Ring",
 			table.concat(missing, ", "))
 		local evoLevel = PC and PC.EvolutionLevels and PC.EvolutionLevels[1] or 20
 		T.check(s[14].Text:find("level " .. tostring(evoLevel), 1, true) ~= nil, "p4ui: 'feed' quotes the first evolution level (" .. tostring(evoLevel) .. ")")
-		T.check(s[5].Text:find("follows right behind you", 1, true) ~= nil and s[17].Text:find("gold bar is full", 1, true) ~= nil,
-			"p4ui: the 'equip' and 'trial' texts follow Phase 4 (pets follow behind; SPECIAL when its gold bar is full)")
+		T.check(s[5].Text:find("follows right behind you", 1, true) ~= nil and s[17].Text:find("Floor 1", 1, true) ~= nil
+			and not (s[17].Text:find("RETREAT", 1, true) or s[17].Text:find("Trial", 1, true)),
+			"p4ui: the 'equip' and 'dungeon' texts follow Phase 5 (pets follow behind; Floor 1, no Trial / RETREAT)")
 		local src = sourceOf("server/Services/TutorialService") or ""
 		for _, kind in ipairs({ "GardenPlaced", "CoinsScooped", "TrainingStarted", "RingWon", "PortalUsed" }) do
 			T.check(src:find(kind .. " = true", 1, true) ~= nil, "p4ui: TutorialService knows CompleteOn " .. kind)
@@ -186,25 +189,24 @@ local function serverScenarios()
 		local function pct(x)
 			return tostring(math.floor(x * 100 + 0.5)) .. "%"
 		end
-		local share = pct(TC and TC.FeedShare and TC.FeedShare[1] or 0.25)
 		-- Phase 5 (3.1): EVOLVE multiplies the level bonus (EvolutionBonusOf); the old flat boost table is gone
 		local bonus1 = PC and type(PC.EvolutionBonusOf) == "function" and tonumber(PC.EvolutionBonusOf(1)) or 1.5
-		local boost = (string.format("%.3f", bonus1):gsub("0+$", ""):gsub("%.$", ""))
+		local faster = pct(bonus1 - 1)
 		T.check(PC ~= nil and PC.EvolutionBoost == nil and PC.EvolutionMultiplier == nil, "p4ui: PetCatalog.EvolutionBoost / EvolutionMultiplier are gone (W3 gate)")
 		local levels = PC and PC.EvolutionLevels or { 20, 50 }
-		local economy = pct(((PC and PC.RoleMult and PC.RoleMult.Economy) or 1.6) - 1)
 		local P = TC and TC.Prestige or {}
-		local ok1, why1 = says("granny_owl", "Food Machine", "Feed", "EVOLVE", share .. " of its XP bar", "level bonus x" .. boost, "level " .. levels[1], "at " .. levels[2], "Gems")
-		T.check(ok1, "p4ui: Granny Owl explains the Food Machine (" .. share .. "), EVOLVE (level bonus x" .. boost .. ", levels " .. levels[1] .. " / " .. levels[2] .. ") and Gem spins", why1)
-		local ok2, why2 = says("mayor_panda", "free gate", "Pet Garden", "rainbow coins", "Economy pets make " .. economy .. " more",
+		local ok1, why1 = says("granny_owl", "Berry Basket", "Food Machine", "Feed", "berries become XP", "EVOLVE", "new look",
+			"grow " .. faster .. " faster per level", "level " .. levels[1], "at " .. levels[2], "Gems")
+		T.check(ok1, "p4ui: Granny Owl explains the Berry Basket, the Food Machine, EVOLVE (a new look, " .. faster .. " faster, levels " .. levels[1] .. " / " .. levels[2] .. ") and Gem spins", why1)
+		local ok2, why2 = says("mayor_panda", "free gate", "Food Bowl", "Cloud Cash", "Berry Farm", "Food Machine",
 			"Home Level " .. tostring(P.HomeLevel or 40), "x" .. tostring(P.IncomeMultiplier or 1.25) .. " coins", tostring(P.GemReward or 100) .. " Gems",
 			"one more garden place", "portal")
-		T.check(ok2, "p4ui: Mayor Panda explains the Pet Garden's rainbow coins, Economy pets (+" .. economy .. "), Prestige and the home portal", why2)
+		T.check(ok2, "p4ui: Mayor Panda explains the Food Bowl, Cloud Cash, the Berry Farm, Prestige and the home portal", why2)
 		local mult = BC and BC.Ring and BC.Ring.RecordMult or 3
 		local ok3, why3 = says("coach_corgi", "Training Place", "Attack Speed", "Physique", "Ability", "Defense", "Champion Ring",
-			(mult == 3 and "triple" or "x" .. tostring(mult)) .. " Cash", "Trial Portal", tostring(BC and BC.TrialCount or 30) .. " levels", "Team", "trophies")
-		T.check(ok3, "p4ui: Coach Corgi explains the Training Place (4 skills), the Champion Ring (record x" .. tostring(mult) .. ") and keeps the Trial Portal / Team tips", why3)
-		local ok4, why4 = says("captain_penguin", "safe zone", "RETREAT", "Boss Raid")
+			(mult == 3 and "triple" or "x" .. tostring(mult)) .. " Cash", "Dungeon", tostring(BC and BC.Dungeon and BC.Dungeon.Floors or 12) .. " floors", "Team", "trophies")
+		T.check(ok3, "p4ui: Coach Corgi explains the Training Place (4 skills), the Champion Ring (record x" .. tostring(mult) .. "), the Dungeon and the Team tips", why3)
+		local ok4, why4 = says("captain_penguin", "safe zone", "DASH", "Boss Raid", "Obby portal", "level")
 		T.check(ok4, "p4ui: Captain Penguin explains the safe zones", why4)
 		local npcAll = ""
 		for _, text in pairs(said) do
@@ -212,6 +214,13 @@ local function serverScenarios()
 		end
 		T.check(not npcAll:find("Collector", 1, true) and not npcAll:find("Kitchen", 1, true) and not npcAll:find("Gym", 1, true)
 			and not npcAll:find("Cloud Press", 1, true), "p4ui: no NPC talks about the Collector, the Kitchen, the Gym or the Cloud Press")
+		local stale = {}
+		for _, word in ipairs({ "Trial", "RETREAT", "rainbow coins", "Berry Bush", "Carrot Patch", "Magnet", "4th", "Economy pets" }) do
+			if npcAll:find(word, 1, true) then
+				stale[#stale + 1] = word
+			end
+		end
+		T.check(#stale == 0, "p4ui: Phase 5: no NPC talks about Trials, RETREAT, rainbow coins, the four plants, the Coin Magnet or a 4th team pet", table.concat(stale, ", "))
 	end)
 
 	------------------------------------------------------------------------------------------------
@@ -356,6 +365,8 @@ local function serverScenarios()
 		local hopper = kitchen and kitchen:FindFirstChild("Hopper", true)
 		T.check(st and st.Target and st.Target.Kind == "Spot" and hopper and (st.Target.Position - hopper.Position).Magnitude < 0.5,
 			"p4ui tutorial: 'feed' points at the Food Machine's Hopper", st and tostring(st.Hint))
+		-- (Phase 5: feeding costs berries; entering 'feed' topped the berries up for the first feed)
+		T.check((DataS.GetBerries(v) or 0) >= 40, "p4ui tutorial: entering 'feed' tops the berries up for the first feed", tostring(DataS.GetBerries(v)))
 		local cash0 = DataS.GetCash(v)
 		DataS.AddCash(v, 100000)
 		advance(0.3)

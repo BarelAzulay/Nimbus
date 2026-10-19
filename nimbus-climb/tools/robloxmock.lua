@@ -3437,15 +3437,21 @@ local function applyCFrame(part, st, v, propagate)
 	firePropChanged(part, st, "CFrame")
 	firePropChanged(part, st, "Position")
 	if propagate then
-		local delta = v * old:Inverse()
-		local moved = weldPartners(part)
+		-- most writes move one jointless part (every BulkMoveTo of an anchored voxel model, per frame): then nothing
+		-- else follows, so no partner search tables and no delta CFrame are allocated (Roblox pays nothing for it either)
+		local moved = Mock._welds[part] and weldPartners(part) or nil
 		if isCharacterRoot(part, st) then
+			moved = moved or {}
 			for _, sib in ipairs(st.parent[STATE].children) do
 				if sib ~= part and sib[STATE].class.isA.BasePart then
 					moved[#moved + 1] = sib
 				end
 			end
 		end
+		if not moved or #moved == 0 then
+			return
+		end
+		local delta = v * old:Inverse()
 		for _, other in ipairs(moved) do
 			local ost = other[STATE]
 			applyCFrame(other, ost, delta * currentCFrame(ost), false)

@@ -3,7 +3,9 @@
 -- Trial window / Arena panel / side cards of client/Controllers/ArenaController.lua, tutorial chapter 3
 -- (shared/TutorialSteps.lua, server/Services/TutorialService.lua) and the battle tips of shared/NpcDialog.lua. Loaded by
 -- tools/smoke.py in BOTH worlds; ARGS.context picks the half:
---   p3ui_content        (server, content) chapter 3 is appended after the home chapter (arena, team, trial, raid; chapter
+--   (Phase 5, owner tutorial W4: step 17 "trial" became "dungeon", DungeonWon, the Dungeon gate's pad; the Arena step
+--   points at the Gate Court's Arena gate; the NPC needles follow the Phase 5 lines: DASH instead of RETREAT, the Dungeon)
+--   p3ui_content        (server, content) chapter 3 is appended after the home chapter (arena, team, dungeon, raid; chapter
 --                       3 up to ChapterStart[4] - 1, the raid step ends it, known CompleteOn, Arena targets with a Place, short texts, the raid
 --                       minutes placeholder); NPC tips: every NPC keeps 3-5 lines that fit the dialog, and the battle
 --                       controls (Sparky Fox), Boss Raids with the real schedule (Captain Penguin), the Trial Portal,
@@ -93,13 +95,13 @@ local function serverScenarios()
 		for i = start, last do
 			ids[#ids + 1] = Steps.Steps[i].Id
 		end
-		T.eq(table.concat(ids, ","), "arena,team,trial,raid", "p3ui: chapter 3 = go to the Arena, set your team, win Trial 1, see a Boss Raid")
+		T.eq(table.concat(ids, ","), "arena,team,dungeon,raid", "p3ui: chapter 3 = go to the Arena, set your team, clear Dungeon floor 1, see a Boss Raid")
 		local byId = {}
 		for _, step in ipairs(Steps.Steps) do
 			byId[step.Id] = step
 		end
 		local bad = {}
-		local placed = { Gate = true, Trials = true, Floor = true }
+		local placed = { Gate = true, Dungeon = true, Floor = true }
 		for i = start, last do
 			local step = Steps.Steps[i]
 			if step.Chapter ~= 3 then
@@ -121,8 +123,9 @@ local function serverScenarios()
 			and byId.arena.Target.Place == "Gate", "p3ui: 'arena' points at the arena (Place Gate) and completes on ArenaReached")
 		T.check(byId.team and byId.team.CompleteOn == "TeamSet" and byId.team.Target and byId.team.Target.Kind == "Menu" and byId.team.Target.Id == "Team",
 			"p3ui: 'team' rings the Team menu tile and completes on TeamSet")
-		T.check(byId.trial and byId.trial.CompleteOn == "TrialWon" and byId.trial.Target and byId.trial.Target.Place == "Trials",
-			"p3ui: 'trial' points at the Trial Portal and completes on TrialWon")
+		T.check(byId.trial == nil and byId.dungeon and byId.dungeon.CompleteOn == "DungeonWon" and byId.dungeon.Target
+			and byId.dungeon.Target.Place == "Dungeon" and Steps.IndexOf.dungeon == 17,
+			"p3ui: step 17 'trial' became 'dungeon': the Dungeon portal, completes on DungeonWon")
 		local minutes = BC and BC.Events and BC.Events.Schedule and BC.Events.Schedule[1] and BC.Events.Schedule[1].EveryMinutes or 20
 		T.check(byId.raid and byId.raid.CompleteOn == "RaidSeen" and byId.raid.ChapterEnd == true and byId.raid.Target and byId.raid.Target.Place == "Floor"
 			and tostring(byId.raid.Text):find("Every " .. tostring(minutes) .. " minutes", 1, true) ~= nil and not tostring(byId.raid.Text):find("{", 1, true),
@@ -136,7 +139,7 @@ local function serverScenarios()
 		T.eq(ends, 1, "p3ui: chapter 3 has exactly one ChapterEnd step")
 		local src = sourceOf("server/Services/TutorialService")
 		if type(src) == "string" then
-			for _, kind in ipairs({ "ArenaReached", "TeamSet", "TrialWon", "RaidSeen" }) do
+			for _, kind in ipairs({ "ArenaReached", "TeamSet", "DungeonWon", "RaidSeen" }) do
 				T.check(src:find(kind .. " = true", 1, true) ~= nil, "p3ui: TutorialService knows CompleteOn " .. kind)
 			end
 		end
@@ -168,17 +171,18 @@ local function serverScenarios()
 			return true
 		end
 		local raidMinutes = BC and BC.Events and BC.Events.Schedule and BC.Events.Schedule[1] and BC.Events.Schedule[1].EveryMinutes or 20
-		local trials = BC and BC.TrialCount or 30
+		local floors = BC and BC.Dungeon and BC.Dungeon.Floors or 12
 		local win = BC and BC.Trophies and BC.Trophies.Win or 20
-		T.check(says("sparky_fox", "ATTACK", "RETREAT", "SPECIAL", "F = ", "R = "), "p3ui: Sparky Fox explains the battle controls (F ATTACK, R RETREAT, SPECIAL)")
-		T.check(says("captain_penguin", "Boss Raid", "every " .. tostring(raidMinutes) .. " minutes", "RETREAT"),
-			"p3ui: Captain Penguin explains Boss Raids (every " .. tostring(raidMinutes) .. " minutes) and dodging telegraphs")
-		T.check(says("coach_corgi", "Trial Portal", tostring(trials) .. " levels", "Team", "+" .. tostring(win) .. " trophies"),
-			"p3ui: Coach Corgi explains the Trial Portal, battle teams and trophies (+" .. tostring(win) .. ")")
+		T.check(says("sparky_fox", "ATTACK", "ELEMENT", "SPECIAL", "DASH", "F = ", "E = ", "Q = ") and not says("sparky_fox", "RETREAT"),
+			"p3ui: Sparky Fox explains the Phase 5 battle keys (F ATTACK, E ELEMENT, Q SPECIAL, DASH; no RETREAT)")
+		T.check(says("captain_penguin", "Boss Raid", "every " .. tostring(raidMinutes) .. " minutes", "DASH") and not says("captain_penguin", "RETREAT"),
+			"p3ui: Captain Penguin explains Boss Raids (every " .. tostring(raidMinutes) .. " minutes) and dashing out of telegraphs")
+		T.check(says("coach_corgi", "Dungeon", tostring(floors) .. " floors", "Team", "+" .. tostring(win) .. " trophies", "fighter", "two helpers"),
+			"p3ui: Coach Corgi explains the Dungeon (" .. tostring(floors) .. " floors), the team of a fighter + 2 helpers and trophies (+" .. tostring(win) .. ")")
 		local strong = Config.Elements and Config.Elements.StrongMultiplier or 1.5
 		T.check(says("professor_axolotl", "battles", "x" .. tostring(strong), "Power"), "p3ui: Professor Axolotl explains elements and synergy in battle")
 		-- the home tips (Phase 4 names: the Training Place, the Food Machine) and the Phase 2 Fusion / Gems tips stay
-		T.check(says("coach_corgi", "Training Place", "Trial Portal") and says("granny_owl", "Food Machine", "Feed", "Gems")
+		T.check(says("coach_corgi", "Training Place", "Dungeon") and says("granny_owl", "Food Machine", "Feed", "Gems")
 			and says("professor_axolotl", "Fusion Machine", "Storm Altar"),
 			"p3ui: the home tips (Training Place, Food Machine, Fusion, Storm Altar) are still there")
 	end)
@@ -241,8 +245,9 @@ local function serverScenarios()
 		T.eq(stepId(p), "arena", "p3ui tutorial: a finished home chapter resumes at 'arena'")
 		local st = state(p)
 		T.check(st and st.Chapter == 3 and st.Step == start and st.Total == #Steps.Steps, "p3ui tutorial: ...as chapter 3, step " .. start .. "/" .. #Steps.Steps)
-		T.check(st and st.Target and st.Target.Kind == "Spot" and near(st.Target.Position, info.Spawn.Position),
-			"p3ui tutorial: the 'arena' arrow points at the arena's forum (ArenaInfo.Spawn, sent as a Spot target)")
+		local arenaGate = info.ArenaPortal and info.ArenaPortal.Position or info.Spawn.Position
+		T.check(st and st.Target and st.Target.Kind == "Spot" and near(st.Target.Position, arenaGate),
+			"p3ui tutorial: the 'arena' arrow points at the Arena gate of the Gate Court (ArenaInfo.ArenaPortal, sent as a Spot target)")
 
 		-- walking in
 		Mock.Teleport(p, info.Spawn * CFrame.new(0, 3, 0))
@@ -259,31 +264,40 @@ local function serverScenarios()
 		local okTeam = DataS.SetTeam(p, 1, { "pebble_pup", "honey_bunny" })
 		advance(0.6)
 		T.check(okTeam == true, "p3ui tutorial: (setup) the team is saved")
-		T.eq(stepId(p), "trial", "p3ui tutorial: a battle team completes 'team' (DataService.TeamsChanged)")
+		T.eq(stepId(p), "dungeon", "p3ui tutorial: a battle team completes 'team' (DataService.TeamsChanged)")
 		st = state(p)
-		T.check(st and st.Target and st.Target.Kind == "Spot" and near(st.Target.Position, info.TrialPortal.Position),
-			"p3ui tutorial: 'trial' points at the Trial Portal (ArenaInfo.TrialPortal)")
+		local DB = requireAt("server/Services/DungeonBuilder")
+		local dInfo = DB and DB.GetInfo and DB.GetInfo() or nil
+		local padPart = type(dInfo) == "table" and dInfo.Pad or nil
+		if not padPart then
+			local gates = workspace:FindFirstChild("NimbusLobby") and workspace.NimbusLobby:FindFirstChild("Gates", true)
+			local portal = gates and gates:FindFirstChild("Portal_Dungeon")
+			padPart = portal and portal:FindFirstChild("Pad", true)
+		end
+		T.check(st and st.Target and st.Target.Kind == "Spot" and padPart ~= nil and near(st.Target.Position, padPart.Position),
+			"p3ui tutorial: 'dungeon' points at the Dungeon gate's pad (DungeonInfo.Pad)", tostring(DB ~= nil))
 		p:SetAttribute("InBattle", "test-battle")
 		advance(1.2)
 		st = state(p)
-		T.check(st and st.Id == "trial" and st.Target == nil, "p3ui tutorial: no guide arrow while the player fights (InBattle)")
+		T.check(st and st.Id == "dungeon" and st.Target == nil, "p3ui tutorial: no guide arrow while the player fights (InBattle)")
 		p:SetAttribute("InBattle", nil)
 		advance(1.2)
 		st = state(p)
 		T.check(st and st.Target ~= nil, "p3ui tutorial: ...and it comes back after the battle")
 
-		-- Trial 1 cleared (the saved record, as BattleService writes it before BattleEnded)
-		DataS.MutateBattle(p, function(b)
-			b.TrialCleared = b.TrialCleared or {}
-			b.TrialCleared[1] = true
-			if (b.TrialBest or 0) < 1 then
-				b.TrialBest = 1
+		-- Dungeon floor 1 cleared (the saved record, as DungeonService writes it before FloorCleared)
+		local okFirst = DataS.MutateDungeon(p, function(d)
+			d.Cleared = d.Cleared or {}
+			d.Cleared[1] = true
+			if (d.Best or 0) < 1 then
+				d.Best = 1
 			end
 		end)
+		T.check(okFirst == true, "p3ui tutorial: (setup) floor 1 is stored as cleared")
 		waitFor(function()
-			return stepId(p) ~= "trial"
+			return stepId(p) ~= "dungeon"
 		end, 3)
-		T.eq(stepId(p), "raid", "p3ui tutorial: clearing Trial 1 completes 'trial'")
+		T.eq(stepId(p), "raid", "p3ui tutorial: clearing Dungeon floor 1 completes 'dungeon'")
 		st = state(p)
 		T.check(st and st.Target and near(st.Target.Position, info.Floor.CFrame.Position), "p3ui tutorial: 'raid' points at the colosseum floor")
 		T.check(st and tostring(st.Hint):find("Boss Raid", 1, true) ~= nil, "p3ui tutorial: 'raid' hints at the next Boss Raid", st and tostring(st.Hint))
@@ -317,16 +331,22 @@ local function serverScenarios()
 		end, 20)
 		leave(p)
 
-		-- a trial win reported by BattleService completes 'trial' even before the record is read
-		local q = join("TrialTut")
+		-- a cleared floor reported by DungeonService completes 'dungeon' even before the record is read
+		local q = join("DungeonTut")
 		DataS.SetTeam(q, 1, {})
-		DataS.SetTutorial(q, { Step = Steps.IndexOf.trial, Done = true, Gifted = true })
+		DataS.SetTutorial(q, { Step = Steps.IndexOf.dungeon, Done = true, Gifted = true })
 		TSv.Reload(q)
 		advance(0.4)
-		T.eq(stepId(q), "trial", "p3ui tutorial: (setup) a player on 'trial'")
+		T.eq(stepId(q), "dungeon", "p3ui tutorial: (setup) a player on 'dungeon'")
 		BS.BattleEnded:Fire("ui-test", { Mode = "Trial", Winners = { q.UserId }, Losers = {}, Level = 1 })
 		advance(0.6)
-		T.eq(stepId(q), "raid", "p3ui tutorial: BattleService.BattleEnded (a trial the player won) completes 'trial'")
+		T.eq(stepId(q), "dungeon", "p3ui tutorial: an old Mode 'Trial' BattleEnded no longer completes anything")
+		local DGS = requireAt("server/Services/DungeonService")
+		if DGS and DGS.FloorCleared then
+			DGS.FloorCleared:Fire(q, 1)
+		end
+		advance(0.6)
+		T.eq(stepId(q), "raid", "p3ui tutorial: DungeonService.FloorCleared(player, 1) completes 'dungeon'")
 		BS.BattleEnded:Fire("ui-test-2", { Mode = "Raid", Winners = {}, Losers = {}, Participants = { q.UserId } })
 		advance(0.6)
 		T.eq(stepId(q), Steps.ChapterStart[4] and Steps.Steps[Steps.ChapterStart[4]].Id or "done!", "p3ui tutorial: a raid the player fought in completes 'raid'")
@@ -545,8 +565,8 @@ local function clientScenarios()
 		local AC = (KC and KC.M and KC.M.ArenaController) or moduleAt("client", "Controllers/ArenaController")
 		local Config = moduleAt("shared", "Config")
 		local PC = moduleAt("shared", "PetCatalog")
-		if not T.check(type(MC) == "table" and type(MC.Open) == "function" and type(AC) == "table" and type(AC.OpenTrials) == "function",
-			"p3ui: MenuController and ArenaController (OpenTrials / OpenArena / Close) load") then
+		if not T.check(type(MC) == "table" and type(MC.Open) == "function" and type(AC) == "table" and type(AC.OpenRing) == "function",
+			"p3ui: MenuController and ArenaController (OpenRing / OpenArena / Close) load") then
 			return
 		end
 		MC.Init()
@@ -690,62 +710,21 @@ local function clientScenarios()
 		MC.Close()
 		advance(0.4)
 
-		------------------------------------------------------------ the Trial window
+		------------------------------------------------------------ the Trial window is gone (Phase 5 10.5; dungeonclient W4)
 		local arena = pg():FindFirstChild("NimbusArena")
 		T.check(arena ~= nil, "p3ui arena: ArenaController builds the ScreenGui NimbusArena")
 		toClient("OpenPanel", "Trials", { Level = 3 })
 		advance(0.8)
-		local trialsWin = arena and arena:FindFirstChild("Window_Trials")
-		if not T.check(trialsWin and shown(trialsWin) and AC.IsOpen(), "p3ui trials: OpenPanel('Trials') opens the Trial window") then
-			return
-		end
-		local tiles = 0
-		for level = 1, 30 do
-			if find(trialsWin, "Level" .. level) then
-				tiles = tiles + 1
-			end
-		end
-		T.eq(tiles, 30, "p3ui trials: 30 level tiles")
-		local function tilePart(level, part)
-			local t = find(trialsWin, "Level" .. level)
-			local p = t and t:FindFirstChild(part)
-			return p and shown(p)
-		end
-		T.check(tilePart(1, "Cleared") and tilePart(6, "Cleared") and not tilePart(7, "Cleared"), "p3ui trials: cleared levels carry the first-clear check (1-6)")
-		T.check(not tilePart(7, "Lock") and tilePart(8, "Lock") and tilePart(30, "Lock"), "p3ui trials: the next level is open, later ones locked")
-		T.check(tilePart(5, "Boss") and tilePart(10, "Boss") and not tilePart(7, "Boss"), "p3ui trials: mini-boss levels are tagged BOSS")
-		local levelLabel = find(trialsWin, "Level")
-		T.check(levelLabel and levelLabel.Text == "LEVEL 3", "p3ui trials: OpenPanel's Level selects it", levelLabel and levelLabel.Text)
-		local enemies = find(trialsWin, "Enemies")
-		local enemyCount = 0
-		for _, c in ipairs(enemies and enemies:GetChildren() or {}) do
-			if c:IsA("Frame") then
-				enemyCount = enemyCount + 1
-			end
-		end
-		T.check(enemyCount >= 3, "p3ui trials: the enemy team is shown", tostring(enemyCount))
-		T.check(find(trialsWin, "RecValue") and find(trialsWin, "TeamValue") and find(trialsWin, "Verdict").Text ~= "", "p3ui trials: recommended power vs. the team's power, with a verdict")
-		local start = find(trialsWin, "Start")
-		mark = #Mock.RemoteLog
-		AC.SelectLevel(8)
-		advance(0.3)
-		T.check(disabled(start) and find(trialsWin, "Why").Text:find("level 7", 1, true), "p3ui trials: START is off for a locked level (beat level 7 first)", find(trialsWin, "Why").Text)
-		Mock.Click(start)
+		T.check(arena and arena:FindFirstChild("Window_Trials") == nil and type(AC.OpenTrials) ~= "function" and not AC.IsOpen(),
+			"p3ui arena (Phase 5): no Trial window any more (OpenPanel('Trials') opens nothing, no OpenTrials)")
+		T.check(arena and arena:FindFirstChild("Backdrop") == nil, "p3ui arena (Phase 5): no full-screen Backdrop in NimbusArena")
+		-- one window at a time (the Ring window and a menu window)
+		AC.OpenRing()
 		advance(0.6)
-		T.check(lastRequest(mark, "Trial") == nil, "p3ui trials: ...and sends nothing")
-		AC.SelectLevel(7)
-		advance(0.3)
-		T.check(not disabled(start), "p3ui trials: START is on for the next level")
-		Mock.Click(start)
-		advance(0.6)
-		r = lastRequest(mark, "Trial")
-		T.check(r and r[2] == 7, "p3ui trials: START sends BattleRequest('Trial', 7)")
-		local small2 = smallTexts(trialsWin, 18)
-		T.check(#small2 == 0, "p3ui trials: every text of the Trial window is >= 18 design px", table.concat(small2, ", "))
-		-- one window at a time
+		T.check(AC.IsOpen(), "p3ui arena: OpenRing opens the Champion Ring window")
 		MC.Open("Team")
 		advance(0.5)
-		T.check(not AC.IsOpen(), "p3ui arena: a menu window closes the Trial window")
+		T.check(not AC.IsOpen(), "p3ui arena: a menu window closes the Ring window")
 		MC.Close()
 		advance(0.4)
 
@@ -890,10 +869,10 @@ local function clientScenarios()
 		check("the Team window", pg():FindFirstChild("NimbusMenu"):FindFirstChild("Window_Team"))
 		MC.Close()
 		advance(0.3)
-		AC.OpenTrials(12)
+		AC.OpenRing()
 		advance(0.8)
 		local arena = pg():FindFirstChild("NimbusArena")
-		check("the Trial window", arena and arena:FindFirstChild("Window_Trials"))
+		check("the Champion Ring window", arena and arena:FindFirstChild("Window_Ring"))
 		for _, tab in ipairs({ "Duels", "Raid", "Leaderboard" }) do
 			AC.OpenArena(tab)
 			advance(0.6)
@@ -957,6 +936,137 @@ local function clientScenarios()
 	-- (the Dungeon prompt hand-off, Practice invite flag, Ring card stage and Dock take their place) and any new client
 	-- scenario is written INSIDE this block (own block only; re-read the file right before each edit).
 	-- [owner: dungeonclient] begin
+	-- Phase 5 arena / ring windows (dungeonclient W4): after client_p3ui's own checks the same booted client runs these:
+	-- the Dungeon prompt hand-off (OpenPanel = "Dungeon" -> DungeonController's side panel), the Dock (Side on a
+	-- 1920x1080 screen right of the middle, a bottom Sheet on a 390x844 phone; no Backdrop), the Practice invite flag
+	-- (side card + Duels tab) and the Ring fighter cards drawing the stored evolution stage (Stage + EVO badge).
+	local P5A = {}
+	function P5A.sends(mark, remote)
+		local out = {}
+		for i = (mark or 0) + 1, #Mock.RemoteLog do
+			local e = Mock.RemoteLog[i]
+			if e.kind == "server" and e.remote == remote then
+				out[#out + 1] = e.args or {}
+			end
+		end
+		return out
+	end
+	function P5A.run()
+		local AC = (KC and KC.M and KC.M.ArenaController) or moduleAt("client", "Controllers/ArenaController")
+		local DC = (KC and KC.M and KC.M.DungeonController) or moduleAt("client", "Controllers/DungeonController")
+		local MC = (KC and KC.M and KC.M.MenuController) or moduleAt("client", "Controllers/MenuController")
+		if not T.check(type(AC) == "table" and type(DC) == "table" and type(DC.Open) == "function", "p5arena: ArenaController and DungeonController load") then
+			return
+		end
+		pcall(DC.Init)
+		pcall(MC.Close)
+		Mock.SetViewport(1920, 1080)
+		advance(0.6)
+		-- the Dungeon prompt hand-off (contract 5.3: handled next to "Ring" in ArenaController's onPromptTriggered)
+		local holder = Instance.new("Part")
+		holder.Anchored = true
+		holder.Name = "DungeonPadTest"
+		holder.Parent = workspace
+		local prompt = Instance.new("ProximityPrompt")
+		prompt.Name = "DungeonPrompt"
+		prompt:SetAttribute("OpenPanel", "Dungeon")
+		prompt.Parent = holder
+		local mark = #Mock.RemoteLog
+		Mock.Trigger(prompt, LocalPlayer)
+		advance(0.8)
+		local dgui = pg():FindFirstChild("NimbusDungeon")
+		local dwin = dgui and dgui:FindFirstChild("Window_Dungeon")
+		T.check(DC.IsOpen() and dwin and shown(dwin) and not AC.IsOpen(), "p5arena: the DungeonPrompt (OpenPanel 'Dungeon') opens DungeonController's window, not an Arena window")
+		local opens = 0
+		for _, args in ipairs(P5A.sends(mark, "DungeonRequest")) do
+			if args[1] == "Open" then
+				opens = opens + 1
+			end
+		end
+		T.eq(opens, 1, "p5arena: opening the Dungeon window asks the server once for the Lobby payload (DungeonRequest 'Open')")
+		AC.OpenRing()
+		advance(0.6)
+		T.check(AC.IsOpen() and not DC.IsOpen(), "p5arena: one side panel at a time (the Ring window closes the Dungeon window)")
+		-- the Dock: 1920x1080 -> Side, right of the middle
+		local arena = pg():FindFirstChild("NimbusArena")
+		local ring = arena and arena:FindFirstChild("Window_Ring")
+		T.check(ring and ring:GetAttribute("DockMode") == "Side" and (ring:GetAttribute("DockLeft") or 0) >= 0.5 * 1920,
+			"p5arena dock: the Ring window docks right on 1920x1080 (DockMode Side, left edge >= 0.5 W)", ring and tostring(ring:GetAttribute("DockLeft")))
+		T.check(arena and arena:FindFirstChild("Backdrop") == nil, "p5arena dock: no Backdrop behind the window")
+		-- the Ring fighter cards draw the stored stage (3.7): an Evolved II team fighter
+		local snap = snapshot(0)
+		snap.PetLevels.biscuit_bear = { Level = 60, Xp = 0 }
+		snap.PetGrowth.biscuit_bear = { Evo = 2 }
+		toClient("ProfileSync", snap)
+		advance(0.8)
+		AC.OpenRing()
+		advance(0.6)
+		local staged, badge = nil, nil
+		for _, d in ipairs(ring and ring:GetDescendants() or {}) do
+			if d.Name:match("^Fighter%d") and d:GetAttribute("Stage") ~= nil then
+				if (d:GetAttribute("Stage") or 0) >= 1 then
+					staged = d
+					badge = d:FindFirstChild("StageBadge")
+				end
+			end
+		end
+		local St = moduleAt("client", "State")
+		local want = St and St.PetStage and St.PetStage("biscuit_bear") or 0
+		T.check(want >= 1 and staged ~= nil and staged:GetAttribute("Stage") == want and badge ~= nil and badge.Text == ((want >= 2) and "EVO II" or "EVO I"),
+			"p5arena ring: the evolved fighter's card carries its stored stage (State.PetStage) and an EVO badge", staged and tostring(staged:GetAttribute("Stage")) .. " vs " .. tostring(want))
+		-- the Arena panel docks too
+		AC.OpenArena("Duels")
+		advance(0.6)
+		local arenaWin = arena and arena:FindFirstChild("Window_Arena")
+		T.check(arenaWin and arenaWin:GetAttribute("DockMode") == "Side", "p5arena dock: the Arena panel is a docked side panel")
+		-- the Practice invite flag (4.2): in the Duels tab and on the side card
+		toClient("BattleState", "Lobby", { Queue = { Queued = false, Waiting = 0 },
+			Invites = { { FromUserId = 501, FromName = "StormChaser", Trophies = 1210, Power = 2400, ExpiresIn = 25, Practice = true } } })
+		advance(0.6)
+		local row = arenaWin and find(arenaWin, "Invite1")
+		T.check(row and row:GetAttribute("Practice") == true and find(row, "PracticeFlag") ~= nil and shown(find(row, "PracticeFlag")),
+			"p5arena practice: the Duels tab flags a practice invite ('Practice duel - no trophies or rewards')")
+		AC.Close()
+		advance(0.6)
+		local side = pg():FindFirstChild("NimbusArenaSide")
+		local stack = side and side:FindFirstChild("SideStack")
+		local card = stack and stack:FindFirstChild("Invite1")
+		local flag = card and find(card, "PracticeFlag")
+		T.check(card and card:GetAttribute("Practice") == true and flag and shown(flag) and find(card, "Title").Text:find("Practice", 1, true),
+			"p5arena practice: the side card reads 'Practice duel' + 'No trophies or rewards'")
+		toClient("BattleState", "Lobby", { Queue = { Queued = false, Waiting = 0 },
+			Invites = { { FromUserId = 502, FromName = "Mochi", Trophies = 300, Power = 320, ExpiresIn = 25 } } })
+		advance(0.6)
+		card = stack and stack:FindFirstChild("Invite1")
+		T.check(card and card:GetAttribute("Practice") == false and find(card, "PracticeFlag") == nil, "p5arena practice: a fair invite has no practice flag")
+		toClient("BattleState", "Lobby", { Queue = { Queued = false, Waiting = 0 }, Invites = {} })
+		-- a portrait phone: the Ring window is a bottom sheet
+		Mock.SetViewport(390, 844)
+		advance(0.6)
+		AC.OpenRing()
+		advance(0.8)
+		local okInset, inset = pcall(function()
+			return game:GetService("GuiService"):GetGuiInset().Y
+		end)
+		local top = (ring and ring.AbsolutePosition.Y or 0) + ((okInset and tonumber(inset)) or 0)
+		T.check(ring and ring:GetAttribute("DockMode") == "Sheet" and top >= 0.44 * 844 - 1, "p5arena dock: on 390x844 the Ring window is a bottom sheet (top >= 0.44 H)", tostring(top))
+		AC.Close()
+		Mock.SetViewport(1920, 1080)
+		advance(0.6)
+		holder:Destroy()
+		if KC and KC.flushErrors then
+			KC.flushErrors("client_p3ui p5arena")
+		end
+	end
+	do
+		local base = S.client_p3ui
+		S.client_p3ui = function(...)
+			if base then
+				base(...)
+			end
+			guarded("client_p3ui p5arena", P5A.run)()
+		end
+	end
 	-- [owner: dungeonclient] end
 
 	return S

@@ -1582,16 +1582,421 @@ local function clientScenarios()
 	local KC = _G.KC
 	local S = {}
 	local T = KC and KC.T or _G.K.T
+	local guarded = (KC and KC.guarded) or SmokeCommon.guarded
 
-	-- [W4 dungeonclient] replace these placeholder bodies (keep the names: tools/smoke.py lists them): the window from a
-	-- Lobby payload at 4 sizes (<= 60% cover), READY optimistic + revert, the run cards from Run / Loot / End, the result
-	-- card, the chest prompt, LightingStack pushed and popped, "DUNGEON - Floor 3 - Room 2" with wild chips.
-	S.client_p5dungeon = function()
-		T.info("client_p5dungeon: placeholder until dungeonclient (W4) lands DungeonController")
+	-- [W4 dungeonclient] client_p5dungeon (1920x1080 + 1280x720) and client_p5dungeon_mobile (390x844 + 844x390): the
+	-- window from a Lobby payload (floors, locks, SOLO / PARTY / JOIN, <= 60% cover, docked right / a bottom sheet), READY
+	-- optimistic + revert, KICK / START, the countdown card, the run card from Run / Loot / Chest / End (LEAVE twice ->
+	-- one Quit, CHEST), the End card (first clear, unlock), LightingStack "Dungeon" pushed on Run and popped on End, the
+	-- door slide, nothing in the screen's centre.
+	local C5 = {}
+	function C5.req(key)
+		local inst = Mock.GetPath(ROOTS[key:match("^(%a+)/")] .. "/" .. key:gsub("^%a+/", ""))
+		local ok, mod = pcall(require, inst)
+		return ok and type(mod) == "table" and mod or nil
 	end
-	S.client_p5dungeon_mobile = function()
-		T.info("client_p5dungeon_mobile: placeholder until dungeonclient (W4) lands DungeonController")
+	function C5.pg()
+		return game:GetService("Players").LocalPlayer:FindFirstChild("PlayerGui")
 	end
+	function C5.find(root, name)
+		for _, d in ipairs(root and root:GetDescendants() or {}) do
+			if d.Name == name then
+				return d
+			end
+		end
+		return nil
+	end
+	function C5.shown(obj)
+		return obj ~= nil and KC.isShown(obj)
+	end
+	function C5.sends(mark, action)
+		local out = {}
+		for _, e in ipairs(KC.serverCalls("DungeonRequest", mark)) do
+			local args = e.args or {}
+			if action == nil or args[1] == action then
+				out[#out + 1] = args
+			end
+		end
+		return out
+	end
+	function C5.screen(W, H, touch)
+		local UIS = game:GetService("UserInputService")
+		UIS.TouchEnabled = touch and true or false
+		UIS.KeyboardEnabled = not touch
+		UIS.MouseEnabled = not touch
+		Mock.SetViewport(W, H)
+		KC.advance(0.6)
+	end
+	function C5.rect(obj)
+		local gui = obj:FindFirstAncestorOfClass("ScreenGui")
+		local dy = (gui and not gui.IgnoreGuiInset) and (Mock.TopInset or 0) or 0
+		local p, sz = obj.AbsolutePosition, obj.AbsoluteSize
+		return { x0 = p.X, y0 = p.Y + dy, x1 = p.X + sz.X, y1 = p.Y + dy + sz.Y }
+	end
+	-- % of the screen under opaque GUI of every enabled ScreenGui (4 px grid; the coverage.py rule)
+	function C5.coverage()
+		local W, H = Mock.Viewport.X, Mock.Viewport.Y
+		local cols, rows = math.floor(W / 4) + 1, math.floor(H / 4) + 1
+		local mask, covered = {}, 0
+		for _, g in ipairs(C5.pg():GetChildren()) do
+			if g:IsA("ScreenGui") and g.Enabled then
+				for _, d in ipairs(g:GetDescendants()) do
+					if d:IsA("GuiObject") and C5.shown(d) and (d.BackgroundTransparency < 0.5 or d:IsA("ImageLabel") or d:IsA("ViewportFrame")) then
+						local r = C5.rect(d)
+						for y = math.max(0, math.floor(r.y0 / 4)), math.min(rows, math.floor(r.y1 / 4)) - 1 do
+							for x = math.max(0, math.floor(r.x0 / 4)), math.min(cols, math.floor(r.x1 / 4)) - 1 do
+								local k = y * cols + x
+								if not mask[k] then
+									mask[k] = true
+									covered = covered + 1
+								end
+							end
+						end
+					end
+				end
+			end
+		end
+		return 100 * covered / (cols * rows)
+	end
+	function C5.lobby(mine)
+		local cleared = {}
+		for f = 1, 12 do
+			cleared[f] = f <= 4
+		end
+		return {
+			Parties = { { Leader = 501, LeaderName = "Ava", Floor = 3, Count = 2, Max = 4, Open = true, InRun = false },
+				{ Leader = 502, LeaderName = "Sam", Floor = 5, Count = 3, Max = 4, Open = true, InRun = true, Room = 2 } },
+			Mine = mine,
+			Record = { Best = 4, Cleared = cleared, Runs = 12, Clears = 7 },
+		}
+	end
+	function C5.setup()
+		-- a phone world run on its own boots the client first (like client_p3ui_mobile)
+		local RS = game:GetService("ReplicatedStorage")
+		if not RS:FindFirstChild("Remotes") then
+			local Config = C5.req("shared/Config")
+			local folder = Instance.new("Folder")
+			folder.Name = "Remotes"
+			for _, n in ipairs(Config.Remotes) do
+				local r = Instance.new("RemoteEvent")
+				r.Name = n
+				r.Parent = folder
+			end
+			folder.Parent = RS
+		end
+		if not (C5.pg() and C5.pg():FindFirstChild("NimbusMenu")) then
+			Mock.RunScript(Mock.GetPath(ROOTS["client"] .. "/Main"))
+			KC.advance(3)
+		end
+		local DC = (KC.M and KC.M.DungeonController) or C5.req("client/Controllers/DungeonController")
+		if not DC then
+			return nil
+		end
+		pcall(DC.Init)
+		local LP = game:GetService("Players").LocalPlayer
+		LP:SetAttribute("InBattle", nil)
+		LP:SetAttribute("InMatch", false)
+		KC.toClient("MatchState", nil)
+		KC.toClient("PartyState", nil)
+		for _, name in ipairs({ "MenuController", "ArenaController", "CareController", "ObbyController" }) do
+			local m = KC.M and KC.M[name]
+			if m and type(m.Close) == "function" then
+				pcall(m.Close)
+			end
+		end
+		pcall(DC.Close)
+		KC.advance(0.5)
+		return DC, LP
+	end
+	-- the window at one screen size: docked rule + cover + the smallest text
+	function C5.windowAt(DC, W, H, touch, tag)
+		C5.screen(W, H, touch)
+		KC.toClient("DungeonState", "Lobby", C5.lobby(nil))
+		DC.Open(3)
+		KC.advance(1.2)
+		local win = C5.pg():FindFirstChild("NimbusDungeon") and C5.pg().NimbusDungeon:FindFirstChild("Window_Dungeon")
+		local label = string.format("p5dgn client %s %dx%d", tag, W, H)
+		if not T.check(win and C5.shown(win), label .. ": the Dungeon window opens") then
+			return nil
+		end
+		local r = C5.rect(win)
+		if W >= H then
+			T.check(r.x0 >= 0.5 * W - 0.5, label .. ": docked right of the middle (left edge >= 0.5 W)", string.format("%.0f", r.x0))
+		else
+			T.check(r.y0 >= 0.44 * H - 0.5, label .. ": a bottom sheet (top >= 0.44 H)", string.format("%.0f", r.y0))
+		end
+		local pct = C5.coverage()
+		T.check(pct <= 60, label .. ": the GUI covers <= 60% of the screen", string.format("%.1f%%", pct))
+		local floorPx = (H >= 1000) and 15 or 14
+		local small = KC.smallTexts and KC.smallTexts(floorPx) or {}
+		local mine = {}
+		for _, item in ipairs(type(small) == "table" and small or {}) do
+			if tostring(item):find("Dungeon", 1, true) then
+				mine[#mine + 1] = tostring(item)
+			end
+		end
+		T.check(#mine == 0, label .. ": every Dungeon text >= " .. floorPx .. " px", table.concat(mine, ", "))
+		T.check(C5.find(C5.pg():FindFirstChild("NimbusDungeon"), "Backdrop") == nil, label .. ": no Backdrop")
+		return win
+	end
+
+	function C5.desktop()
+		local DC, LP = C5.setup()
+		if not T.check(DC ~= nil, "p5dgn client: DungeonController loads") then
+			return
+		end
+		local mark = #Mock.RemoteLog
+		local win = C5.windowAt(DC, 1280, 720, false, "window")
+		win = C5.windowAt(DC, 1920, 1080, false, "window")
+		if not win then
+			return
+		end
+		T.check(#C5.sends(mark, "Open") >= 1, "p5dgn client: opening sends DungeonRequest('Open')")
+		-- floors: 12 rows, cleared / next / locked from the Record
+		local rows = 0
+		for f = 1, 12 do
+			if C5.find(win, "Floor" .. f) then
+				rows = rows + 1
+			end
+		end
+		T.eq(rows, 12, "p5dgn client: 12 floor rows")
+		local f4, f5, f6 = C5.find(win, "Floor4"), C5.find(win, "Floor5"), C5.find(win, "Floor6")
+		T.check(f4:GetAttribute("Cleared") == true and f5:GetAttribute("Unlocked") == true and f6:GetAttribute("Unlocked") == false,
+			"p5dgn client: floor 4 cleared, floor 5 open (Best 4), floor 6 locked")
+		T.check(C5.find(f5, "Text") and C5.find(f5, "Text").Text == "NEXT" and C5.find(f6, "Status").Text:find("Clear floor 5 first", 1, true),
+			"p5dgn client: floor 5 is NEXT, floor 6 reads 'Clear floor 5 first'")
+		T.check(C5.find(win, "Floor3"):GetAttribute("Selected") == true, "p5dgn client: Open(3) selects floor 3")
+		Mock.Click(f6)
+		KC.advance(0.3)
+		T.check(f6:GetAttribute("Selected") ~= true, "p5dgn client: a locked floor cannot be selected")
+		Mock.Click(f5)
+		KC.advance(0.3)
+		T.check(f5:GetAttribute("Selected") == true, "p5dgn client: tapping floor 5 selects it")
+		mark = #Mock.RemoteLog
+		Mock.Click(C5.find(win, "SoloButton"))
+		KC.advance(0.4)
+		local solo = C5.sends(mark, "Solo")
+		T.check(#solo == 1 and solo[1][2] == 5, "p5dgn client: SOLO sends DungeonRequest('Solo', 5)")
+		Mock.Click(C5.find(win, "PartyButton"))
+		KC.advance(0.4)
+		local create = C5.sends(mark, "Create")
+		T.check(#create == 1 and create[1][2] == 5, "p5dgn client: PARTY sends DungeonRequest('Create', 5)")
+		local joins = {}
+		for _, d in ipairs(win:GetDescendants()) do
+			if d.Name == "JoinButton" then
+				joins[#joins + 1] = d
+			end
+		end
+		T.check(#joins == 2, "p5dgn client: one JOIN per open party", tostring(#joins))
+		if joins[1] then
+			Mock.Click(joins[1])
+			KC.advance(0.4)
+			local j = C5.sends(mark, "Join")
+			T.check(#j == 1 and (j[1][2] == 501 or j[1][2] == 502), "p5dgn client: JOIN sends DungeonRequest('Join', leaderUserId)")
+		end
+		-- a member: READY optimistic, reverted by the next Lobby payload
+		local me = LP.UserId
+		local member = { Leader = 501, Floor = 3, Members = { { UserId = 501, Name = "Ava", Ready = true, Power = 40 }, { UserId = me, Name = LP.Name, Ready = false, Power = 30 } } }
+		KC.toClient("DungeonState", "Lobby", C5.lobby(member))
+		KC.advance(0.6)
+		local ready = C5.find(win, "ReadyButton")
+		T.check(ready and C5.shown(ready) and ready.Text == "READY", "p5dgn client: a member gets READY")
+		mark = #Mock.RemoteLog
+		Mock.Click(ready)
+		KC.advance(0.3)
+		local rs = C5.sends(mark, "Ready")
+		T.check(#rs == 1 and rs[1][2] == true, "p5dgn client: READY sends DungeonRequest('Ready', true)")
+		local function myRow()
+			for _, d in ipairs(win:GetDescendants()) do
+				if d.Name:match("^Member%d") and d:GetAttribute("UserId") == me then
+					return d
+				end
+			end
+		end
+		T.check(DC.GetState().Ready == true and myRow() and myRow():GetAttribute("Ready") == true, "p5dgn client: READY shows at once (optimistic)")
+		KC.toClient("DungeonState", "Lobby", C5.lobby(member))
+		KC.advance(0.4)
+		T.check(DC.GetState().Ready == nil and myRow() and myRow():GetAttribute("Ready") == false, "p5dgn client: the next Lobby payload (still not ready) reverts it")
+		-- the leader: KICK per member, START
+		local leader = { Leader = me, Floor = 4, Members = { { UserId = me, Name = LP.Name, Ready = true, Power = 30 }, { UserId = 501, Name = "Ava", Ready = false, Power = 40 } } }
+		KC.toClient("DungeonState", "Lobby", C5.lobby(leader))
+		KC.advance(0.6)
+		local kick = C5.find(win, "KickButton")
+		T.check(kick and kick:GetAttribute("UserId") == 501, "p5dgn client: the leader sees KICK on the other member only")
+		mark = #Mock.RemoteLog
+		Mock.Click(kick)
+		KC.advance(0.4)
+		local ks = C5.sends(mark, "Kick")
+		T.check(#ks == 1 and ks[1][2] == 501, "p5dgn client: KICK sends DungeonRequest('Kick', 501)")
+		Mock.Click(C5.find(win, "StartButton"))
+		KC.advance(0.4)
+		T.check(#C5.sends(mark, "Start") == 1, "p5dgn client: START sends DungeonRequest('Start')")
+		-- the countdown card while the window is closed
+		DC.Close()
+		leader.Countdown = 5
+		leader.Members[2].Ready = true
+		KC.toClient("DungeonState", "Lobby", C5.lobby(leader))
+		KC.advance(0.6)
+		local rg = C5.pg():FindFirstChild("NimbusDungeonRun")
+		local card = rg and rg:FindFirstChild("RunCard")
+		T.check(card and C5.shown(card) and card:GetAttribute("View") == "Countdown" and C5.find(card, "Room").Text:find("Dungeon in", 1, true),
+			"p5dgn client: a party countdown shows the side card 'Dungeon in 5...'", card and C5.find(card, "Room").Text)
+		C5.run(DC, LP, false)
+	end
+
+	-- the run (both screens): Run / Loot / Chest / End, LEAVE, CHEST, lighting, doors
+	function C5.run(DC, LP, phone)
+		local tag = phone and "phone" or "desktop"
+		local LS = C5.req("client/LightingStack")
+		local rg = C5.pg():FindFirstChild("NimbusDungeonRun")
+		local card = rg and rg:FindFirstChild(phone and "RunChip" or "RunCard")
+		KC.toClient("DungeonState", "Lobby", C5.lobby(nil))
+		-- a pocket with a room and its exit door near the player (the door slide)
+		local rootPart = KC.root and KC.root()
+		local folder = Instance.new("Folder")
+		folder.Name = "Dungeons"
+		local holder = Instance.new("Model")
+		holder.Name = "Dungeon_1"
+		local room = Instance.new("Model")
+		room.Name = "Room_2"
+		local door = Instance.new("Model")
+		door.Name = "Door_Exit"
+		local at = rootPart and rootPart.Position or Vector3.new(0, 10, 0)
+		for i = 1, 3 do
+			local bar = Instance.new("Part")
+			bar.Name = "Bar"
+			bar.Anchored = true
+			bar.Size = Vector3.new(0.6, 8, 0.6)
+			bar.CFrame = CFrame.new(at + Vector3.new(i * 2, 4, 20))
+			bar.Parent = door
+		end
+		door.Parent = room
+		room.Parent = holder
+		local entrance = Instance.new("Part")
+		entrance.Name = "Entrance_1"
+		entrance.Anchored = true
+		entrance.CFrame = CFrame.new(at + Vector3.new(0, 0, 10))
+		entrance.Parent = holder
+		holder.Parent = folder
+		folder.Parent = workspace
+		LP:SetAttribute("InBattle", "D9")
+		local run = { RunId = "D9", Floor = 3, Name = "Flooded Vaults", Element = "Water", Room = 2, RoomCount = 4, Wave = 1, Waves = 2, State = "Fight",
+			Members = { { UserId = LP.UserId, Name = LP.Name, Downed = false, Left = false }, { UserId = 501, Name = "Ava", Downed = true, Left = false } }, Joinable = true }
+		DC.Open(2)
+		KC.advance(0.3)
+		KC.toClient("DungeonState", "Run", run)
+		KC.advance(0.6)
+		T.check(not DC.IsOpen(), "p5dgn " .. tag .. ": a Run payload closes the window")
+		T.check(LS and LS.Top and LS.Top() == "Dungeon", "p5dgn " .. tag .. ": LightingStack.Push('Dungeon') on Run", LS and tostring(LS.Top()))
+		T.check(card and C5.shown(card) and card:GetAttribute("View") == "Run", "p5dgn " .. tag .. ": the run " .. (phone and "chip" or "card") .. " shows inside a run")
+		if not phone then
+			T.check(C5.find(card, "Title").Text == "Floor 3 " .. "\194\183" .. " Flooded Vaults" and C5.find(card, "Room").Text:find("Room 2 / 4", 1, true),
+				"p5dgn desktop: 'Floor 3 - Flooded Vaults' and 'Room 2 / 4'", C5.find(card, "Room").Text)
+			local downed = C5.find(card, "Member2")
+			T.check(downed and downed:GetAttribute("Downed") == true, "p5dgn desktop: member chips show who is Downed")
+		else
+			T.check(C5.find(card, "Text").Text:find("Room 2/4", 1, true), "p5dgn phone: the chip reads 'Room 2/4'", C5.find(card, "Text").Text)
+			local r = C5.rect(card)
+			T.check(r.y1 <= 60, "p5dgn phone: the chip sits in Roblox's top band (bottom <= 60 px)", string.format("%.0f", r.y1))
+		end
+		local r = C5.rect(card)
+		local W, H = Mock.Viewport.X, Mock.Viewport.Y
+		local cx, cy = (r.x0 + r.x1) / 2, (r.y0 + r.y1) / 2
+		T.check(not (cx > W / 3 and cx < 2 * W / 3 and cy > H / 3 and cy < 2 * H / 3), "p5dgn " .. tag .. ": the run card is not in the screen's centre third")
+		-- loot toast + totals
+		KC.toClient("DungeonState", "Loot", { Room = 2, Cash = 340, Tokens = 24, Xp = 70, LevelUps = 0 })
+		KC.advance(0.4)
+		T.check(DC.GetState().Totals.Cash == 340 and DC.GetState().Totals.Tokens == 24, "p5dgn " .. tag .. ": Loot adds to the run's totals")
+		if not phone then
+			local toast = C5.find(card, "LootToast")
+			T.check(toast and C5.shown(toast) and C5.find(toast, "Text").Text:find("+$340", 1, true), "p5dgn desktop: the loot toast 'Room 2 cleared! +$340 ...'")
+		else
+			T.check(C5.find(card, "Text").Text:find("+$340", 1, true), "p5dgn phone: the chip flashes the loot", C5.find(card, "Text").Text)
+		end
+		-- the door slide (the exit bars of the player's pocket)
+		if rootPart then
+			local before = 0
+			for _, c in ipairs(workspace:GetChildren()) do
+				if c.Name == "BarSlide" then
+					before = before + 1
+				end
+			end
+			room:SetAttribute("DoorOpen", true)
+			KC.advance(0.2)
+			local after = 0
+			for _, c in ipairs(workspace:GetChildren()) do
+				if c.Name == "BarSlide" then
+					after = after + 1
+				end
+			end
+			T.check(after - before == 3, "p5dgn " .. tag .. ": DoorOpen plays the bars' slide (3 local copies)", tostring(after - before))
+			KC.advance(1.0)
+		else
+			T.info("p5dgn " .. tag .. ": no character root: door slide not measured")
+		end
+		-- LEAVE twice -> one Quit
+		local mark = #Mock.RemoteLog
+		local leave = C5.find(card, "LeaveButton")
+		Mock.Click(leave)
+		KC.advance(0.3)
+		T.eq(#C5.sends(mark, "Quit"), 0, "p5dgn " .. tag .. ": the first LEAVE only arms it")
+		Mock.Click(leave)
+		KC.advance(0.3)
+		T.eq(#C5.sends(mark, "Quit"), 1, "p5dgn " .. tag .. ": the second LEAVE sends DungeonRequest('Quit') once")
+		-- the treasure alcove: CHEST
+		run.State, run.Room, run.Wave = "Treasure", 4, 2
+		KC.toClient("DungeonState", "Run", run)
+		KC.advance(0.6)
+		mark = #Mock.RemoteLog
+		local chest = phone and C5.find(card, "LeaveButton") or C5.find(card, "ChestButton")
+		T.check(chest and C5.shown(chest) and (not phone or chest.Text == "CHEST"), "p5dgn " .. tag .. ": the treasure alcove offers CHEST")
+		Mock.Click(chest)
+		KC.advance(0.3)
+		T.eq(#C5.sends(mark, "Chest"), 1, "p5dgn " .. tag .. ": CHEST sends DungeonRequest('Chest')")
+		KC.toClient("DungeonState", "Chest", { Kind = "Gems", Amount = 2 })
+		KC.advance(0.3)
+		T.check(DC.GetState().Totals.Gems == 2, "p5dgn " .. tag .. ": the chest's Gems join the totals")
+		-- the End card; the light is popped
+		LP:SetAttribute("InBattle", nil)
+		KC.toClient("DungeonState", "End", { Floor = 3, Name = "Flooded Vaults", Cleared = true, Reason = "Cleared", Room = 4,
+			Totals = { Cash = 1630, Tokens = 170, Xp = 360, Gems = 2 }, FirstClear = { Tokens = 900, Gems = 5 }, Unlocked = 4, NewBest = 3 })
+		KC.advance(0.6)
+		local endCard = rg and rg:FindFirstChild("EndCard")
+		T.check(endCard and C5.shown(endCard) and C5.find(endCard, "Title").Text == "Floor 3 cleared!" and C5.find(endCard, "FirstClear").Text:find("+900", 1, true)
+			and C5.find(endCard, "Unlocked").Text:find("Floor 4 unlocked", 1, true), "p5dgn " .. tag .. ": the End card: cleared, first clear +900, floor 4 unlocked")
+		T.check(not C5.shown(card), "p5dgn " .. tag .. ": the run card hides after End")
+		T.check(LS and LS.Top and LS.Top() ~= "Dungeon", "p5dgn " .. tag .. ": LightingStack.Pop('Dungeon') on End", LS and tostring(LS.Top()))
+		local er = C5.rect(endCard)
+		local ecx, ecy = (er.x0 + er.x1) / 2, (er.y0 + er.y1) / 2
+		T.check(not (ecx > W / 3 and ecx < 2 * W / 3 and ecy > H / 3 and ecy < 2 * H / 3), "p5dgn " .. tag .. ": the End card is not in the screen's centre third")
+		if phone then
+			T.check((er.x1 - er.x0) * (er.y1 - er.y0) <= 0.25 * W * H, "p5dgn phone: the End card covers <= 25% of the screen")
+		end
+		Mock.Click(C5.find(endCard, "OkButton"))
+		KC.advance(0.4)
+		T.check(not C5.shown(endCard) and DC.GetState().End == nil, "p5dgn " .. tag .. ": OK closes the End card")
+		folder:Destroy()
+		KC.flushErrors("client_p5dungeon")
+	end
+
+	S.client_p5dungeon = guarded("client_p5dungeon", function()
+		C5.desktop()
+		C5.screen(1920, 1080, false)
+	end)
+	S.client_p5dungeon_mobile = guarded("client_p5dungeon_mobile", function()
+		local DC, LP = C5.setup()
+		if not T.check(DC ~= nil, "p5dgn phone: DungeonController loads") then
+			return
+		end
+		C5.windowAt(DC, 844, 390, true, "window")
+		C5.windowAt(DC, 390, 844, true, "window")
+		DC.Close()
+		KC.advance(0.4)
+		C5.run(DC, LP, true)
+		C5.screen(844, 390, true)
+		C5.run(DC, LP, true)
+		C5.screen(390, 844, true)
+	end)
 	return S
 end
 

@@ -2122,9 +2122,38 @@ function P5.sheetUp()
 	return false
 end
 
+-- The bottom (gui px; both guis keep Roblox's inset) of HudController's top-left panels, 0 when none is shown.
+function P5.hudTopLeftBottom()
+	local hud = P5.Hud
+	if not (hud and hud.Parent and hud.Enabled) then
+		return 0
+	end
+	return tonumber(hud:GetAttribute("TopLeftBottom")) or 0
+end
+
+-- relayout as soon as the HUD's top-left panels appear / go (the portrait grid steps below them)
+function P5.watchHud()
+	if P5.Hud and P5.Hud.Parent then
+		return
+	end
+	local pg = LocalPlayer and LocalPlayer:FindFirstChildOfClass("PlayerGui")
+	local hud = pg and pg:FindFirstChild("NimbusHud")
+	if hud and hud:IsA("ScreenGui") then
+		P5.Hud = hud
+		hud:GetAttributeChangedSignal("TopLeftBottom"):Connect(function()
+			safe("hud panels", relayoutMenu)
+		end)
+		hud:GetPropertyChangedSignal("Enabled"):Connect(function()
+			safe("hud panels", relayoutMenu)
+		end)
+		safe("hud panels", relayoutMenu)
+	end
+end
+
 function P5.watchSheets()
 	task.spawn(function()
 		while gui and gui.Parent do
+			P5.watchHud()
 			local area = guiSize()
 			local hide = area.X < area.Y and P5.sheetUp()
 			if U.Column and hide ~= (U.SheetHidden == true) then
@@ -2162,6 +2191,13 @@ function relayoutMenu()
 		local inset = P5.inset()
 		local bottom = (area.Y + inset) * 0.44 - inset - margin -- the bottom sheet's top edge (0.44 of the SCREEN)
 		local first = margin + 80 * factor -- under the HUD's top-left corner
+		local hudBottom = P5.hudTopLeftBottom()
+		if hudBottom > 0 and hudBottom + margin > first then
+			-- a party / match panel is up: there is no room for it beside the grid on a phone this narrow, so the
+			-- panel keeps the top-left corner and the grid steps below it (no sheet is up: the grid hides for one)
+			first = hudBottom + margin
+			bottom = math.max(bottom, first + h * scale)
+		end
 		local avail = math.max(60, bottom - first)
 		scale = math.min(scale, avail / h)
 		top = first + math.max(0, (avail - h * scale) / 2)

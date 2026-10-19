@@ -1,56 +1,51 @@
--- ArenaController (client, Phase 3, ui): the battle windows and side cards of the Battle Arena (ARCHITECTURE_V3.md
--- "Phase 3: Pet battles", the "Phase 3 build contract" and its "Interfaces between the Phase 3 modules").
+-- ArenaController (client, Phase 3, ui; Phase 5 dungeonclient W4): the battle windows and side cards of the Battle Arena
+-- (ARCHITECTURE_V3.md "Phase 3: Pet battles", the "Phase 3 build contract", Phase 4 3.8 and the "Phase 5 build contract"
+-- 3.7, 4.2, 5.3, 6.6, 10.5).
 --
 --   ArenaController.Init()
---   ArenaController.OpenTrials(level|nil)     the Trial window (the Trial Portal's prompt, OpenPanel("Trials", {Level}))
 --   ArenaController.OpenArena(tab|nil)        the Arena panel: tab "Duels" | "Raid" | "Leaderboard" (OpenPanel("Arena",
 --                                             {Tab}), the duel pads, the event board, the trophy board, the main gate)
 --   ArenaController.OpenRing(start|nil, portal|nil)  Phase 4: the Champion Ring window (Portal_Ring's RingPrompt,
 --                                             OpenPanel("Ring", {Start}))
 --   ArenaController.Close()
 --   Extras: ArenaController.IsOpen() -> bool, ArenaController.GetState() -> { Arena = last ArenaState, Lobby = last
---           BattleState "Lobby", Window = "Trials" | "Arena" | nil, Tab, Level }, ArenaController.SelectLevel(n),
---           ArenaController.Opened / Closed (Util.Signal), ArenaController.Request(action, a, b) (sends BattleRequest
---           like the buttons do: client-side spacing, the server validates everything), ArenaController.StartRing()
---           (the ring window's START), ArenaController.RingInfo() -> { Best, Runs, Start, Starts, Board, Fighters,
---           Source, Preview, Why } (what the ring window shows)
+--           BattleState "Lobby", Window = "Arena" | "Ring" | nil, Tab, RingStart }, ArenaController.Opened / Closed
+--           (Util.Signal), ArenaController.Request(action, a, b) (sends BattleRequest like the buttons do: client-side
+--           spacing, the server validates everything), ArenaController.StartRing() (the ring window's START),
+--           ArenaController.RingInfo() -> { Best, Runs, Start, Starts, Board, Fighters, Source, Preview, Why }
+--
+-- Phase 5: the Trial window is gone (the Dungeon replaced it). Portal_Dungeon's DungeonPrompt (OpenPanel = "Dungeon") is
+-- handed over to DungeonController.Open here, next to "Ring". Both windows are NeonKit side panels (640 x 860 design px,
+-- NeonKit.Dock: docked right on landscape screens, a bottom sheet on portrait phones, no full-screen dimming; the hotbar
+-- re-centres with HotbarController.SetAvoidRight). A challenge more than Duel.PracticeInvite apart carries
+-- Practice = true: the invite says "Practice duel - no trophies or rewards". The Ring's fighter cards draw each pet's
+-- stored evolution stage (State.PetStage -> CloudUI.PetViewport { Evolved }, a STAGE badge).
 --
 -- What the player sees
---   * Trial window (Portal_Trials, prompt attribute OpenPanel = "Trials"): the 30 levels of BattleCatalog.Trials in
---     their chapters (locked levels greyed with a lock, cleared ones with a green first-clear check, mini-boss levels
---     with a BOSS tag, the next level to beat highlighted); the selected level's enemy team (pet viewports, levels,
---     element badges), its recommended power against the power of the player's active team (a bar and a verdict),
---     the rewards (per win and the first-clear bonus, or "Cleared"), Edit team (the Team window) and START, which
---     sends BattleRequest("Trial", level). Start is refused here when the level is locked, the team is empty, the
---     player is in a battle or away from the portal (the server checks all of it again).
 --   * Arena panel (OpenPanel = "Arena", OpenPanelTab = "Events" | "Leaderboard" | "Raid"; the duel pads carry
 --     RingIndex / PadIndex): DUELS (the quick queue: Queue / Unqueue + the wait; challenge a player in the server:
---     Challenge(userId); incoming invites with Accept / Decline; the player's trophies and duel record), BOSS RAID
---     (the running raid: boss, element, HP, fighters, time left, JOIN / LEAVE; the next event with its countdown;
---     Double Rewards; which elements beat the boss; the reward tiers) and LEADERS (ArenaState.Leaderboard, top 10,
---     the player's own row highlighted).
---   * Champion Ring window (Phase 4, Portal_Ring's prompt, OpenPanel = "Ring"; the fallback prompt on the Trial Portal
---     carries OpenPanelTab = "Ring"): the record "Best: Round N" and the runs, the best of this server (Portal_Ring's
---     RingBoard attribute, top 3), the start picker (round 1 or a boss round 10, 20 ... already beaten), the start
---     round's champion (BOSS tag, rarity band, its power about vs. the fighters'), "Next win: +$X +Y XP" (BattleCatalog.
---     RingRewards with the plot's IncomePerSecond; x3 for a new record, the boss Tokens), the fighters the server will
---     field (the battle team, else the equipped pets, else the strongest pets; training pets skipped) and START /
---     CONTINUE -> BattleRequest("Ring", start). The server's refusal toasts ("Claim your home first", "You need a
---     pet", "Walk to the Champion Ring portal" ...) also show in the footer. The Team screen gets a "Champion Ring
---     best: Round N" line from here (MenuController's window Team). A side toast when the player crosses the arena's
---     edge: "Battle Arena: pets can battle here" / "Safe zone: no pet battles here" (contract 3.11).
+--     Challenge(userId); incoming invites with Accept / Decline (the practice flag); the player's trophies and duel
+--     record), BOSS RAID (the running raid: boss, element, HP, fighters, time left, JOIN / LEAVE; the next event with its
+--     countdown; Double Rewards; which elements beat the boss; the reward tiers) and LEADERS (ArenaState.Leaderboard,
+--     top 10, the player's own row highlighted).
+--   * Champion Ring window (Portal_Ring's prompt, OpenPanel = "Ring"): the record "Best: Round N" and the runs, the best
+--     of this server (Portal_Ring's RingBoard attribute, top 3), the start picker (round 1 or a boss round 10, 20 ...
+--     already beaten), the start round's champion, "Next win: +$X +Y XP", the fighters the server will field (the battle
+--     team, else the equipped pets, else the strongest pets; training pets skipped; evolved looks) and START / CONTINUE
+--     -> BattleRequest("Ring", start). The server's refusal toasts also show in the footer. The Team screen gets a
+--     "Champion Ring best: Round N" line from here. A side toast when the player crosses the arena's edge: "Battle
+--     Arena: pets can battle here" / "Safe zone: no pet battles here".
 --   * Side cards (right edge, above the hotbar, never in the screen centre; ScreenGui "NimbusArenaSide"): a duel
 --     invite (BattleState "Lobby".Invites) with Accept / Decline and a draining timer, the invite the player sent,
---     the quick-queue status with Leave, the raid join card while a raid can be joined (JOIN inside the arena, a
---     "head to the arena" line elsewhere) and the event countdown chip ("Boss Raid in 1:45", "2x Rewards 29:12")
---     while an event is announced or running. Countdowns tick locally between two ArenaState messages. All of it
+--     the quick-queue status with Leave, the raid join card while a raid can be joined and the event countdown chip
+--     ("Boss Raid in 1:45", "2x Rewards 29:12"). Countdowns tick locally between two ArenaState messages. All of it
 --     hides in an obby match and while the player fights (attribute InBattle).
 -- Remotes: BattleState ("Lobby" in), ArenaState (in), OpenPanel (in), Notify (in: ring refusals), BattleRequest (out:
--- Trial, Ring, Challenge, ChallengeReply, Queue, Unqueue, JoinRaid, LeaveRaid). Every request is spaced on the client too (K.FIRE_GAP).
--- One window at a time: opening one closes the menu windows, the Pet Index and the Fusion window, and their opening
--- closes this one. Esc / gamepad B / the red X / a click outside close it; walking away from the Trial Portal
--- closes the Trial window. Readability rule: everything is designed in 1080p pixels (body 19, captions >= 18,
--- buttons 22, titles 26-34) under ONE UIScale (the screen factor, or less to fit), so phones keep >= 14 px.
+-- Ring, Challenge, ChallengeReply, Queue, Unqueue, JoinRaid, LeaveRaid). Every request is spaced on the client too (K.FIRE_GAP).
+-- One side panel at a time: opening one closes the menu windows, the Pet Index, the Fusion / Care windows, the Dungeon
+-- window and the obby picker, and their opening closes this one. Esc / gamepad B / the red X close it; walking away from
+-- the Ring portal closes the Ring window. Readability rule: everything is designed in 1080p pixels (body 19, captions
+-- >= 18, buttons 22, titles 26-34) under ONE UIScale, so phones keep >= 14 px.
 -- Plain Lua 5.1-compatible syntax only. All fonts come from Theme roles; no asset ids.
 
 local Players = game:GetService("Players")
@@ -69,6 +64,7 @@ local Remotes = require(Shared:WaitForChild("Remotes"))
 
 local Client = script.Parent.Parent
 local CloudUI = require(Client:WaitForChild("UI"):WaitForChild("CloudUI"))
+local NeonKit = require(Client:WaitForChild("UI"):WaitForChild("NeonKit"))
 local State = require(Client:WaitForChild("State"))
 
 -- other engineers' shared modules: optional, every use is guarded
@@ -99,27 +95,17 @@ ArenaController.Closed = Util.Signal()
 local K = {
 	DISPLAY_ORDER = 23, -- above NimbusMenu (20), the Pet Index (21) and the Fusion window (22)
 	SIDE_ORDER = 12, -- side cards: above the HUD (10) and the hotbar (11), below the windows
-	PREF_W = 1120,
-	PREF_H = 720,
-	MIN_W = 800,
-	MIN_H = 380, -- (a landscape phone's 332 px gui area keeps the 0.8 scale)
-	TALL_MIN_W = 420, -- portrait phones: a single column that keeps the 0.8 scale
-	TALL_MAX_H = 1100,
-	TALL = 760, -- windows narrower than this use the single-column layout
+	PREF_W = 640, -- Phase 5 (6.6): the Arena / Ring windows are NeonKit side panels of 640 x 860 design px
+	PREF_H = 860,
+	TALL = 760, -- windows narrower than this use the single-column layout (every docked window)
 	NARROW = 1000,
-	SHORT = 560,
-	MARGIN = 12, -- screen px kept free around the window
-	BUMPS = 28, -- room for the panel's cloud bumps
+	SHORT = 560, -- docked lower than this (landscape phones): the compact rows
 	INSET_X = 24, -- the panel frame around Panel.Content (CloudUI.ContentInset)
 	INSET_Y = 82,
 	FIRE_GAP = 0.5, -- seconds between two sends of the same request
-	TRIAL_RANGE = 28, -- studs from the Trial Portal where START works (the server allows 30)
 	RING_RANGE = 28, -- studs from the Champion Ring portal where START works (the server allows 30)
-	WALK_AWAY = 70, -- studs from the portal that close a Trial window opened there
+	WALK_AWAY = 70, -- studs from the portal that close a Ring window opened there
 	ARENA_SLACK = 12, -- studs around the arena's bounding box that still count as "in the arena"
-	LEVEL_TILE = 92,
-	LEVEL_TILE_NARROW = 80,
-	LEVEL_GAP = 8,
 	SIDE_W = 340, -- side cards
 	SIDE_BOTTOM = 112, -- design px above the bottom edge (clear of the hotbar's corner and the HUD)
 	SIDE_BOTTOM_TOUCH = 210, -- touch screens: above Roblox's jump button
@@ -143,8 +129,8 @@ local BAD = Colors.Bad
 local BUTTONS = Theme.Buttons or {}
 local INSET = Color3.fromRGB(20, 30, 70)
 local C = {
-	Arena = Color3.fromRGB(214, 92, 96), -- the panels' accent (crimson, like the Trial Portal)
-	Trial = Color3.fromRGB(196, 74, 92),
+	Arena = Color3.fromRGB(214, 92, 96), -- the panels' accent (crimson)
+	Practice = Color3.fromRGB(120, 196, 255), -- a practice duel (no trophies, no rewards)
 	Power = Color3.fromRGB(255, 214, 110),
 	GoodText = Color3.fromRGB(150, 236, 170),
 	WarnText = Color3.fromRGB(255, 206, 120),
@@ -185,15 +171,13 @@ local LocalPlayer = nil
 local initialized = false
 local U = {} -- gui references
 local S = {
-	Open = nil, -- "Trials" | "Arena" | "Ring" | nil
+	Open = nil, -- "Arena" | "Ring" | nil
 	Token = 0,
 	Tab = "Duels",
-	Level = nil, -- the selected trial level
 	Arena = nil, -- last ArenaState
 	ArenaAt = 0, -- os.clock() when it arrived
 	Lobby = nil, -- last BattleState "Lobby"
 	LobbyAt = 0,
-	AtPortal = nil, -- the portal part when the Trial window was opened there
 	RingAt = nil, -- the portal part when the Champion Ring window was opened there
 	BackBound = false,
 	LastFire = {},
@@ -204,7 +188,7 @@ local S = {
 	Warned = {},
 	ArenaBox = nil, -- { CFrame, Size } of workspace.BattleArena (static, measured once)
 }
-local Win = {} -- per-window widget tables: Win.Trials, Win.Arena
+local Win = {} -- per-window widget tables: Win.Arena, Win.Ring
 
 local refreshOpen, refreshSide, screenFactor -- forward declarations
 
@@ -456,7 +440,7 @@ local function battleData()
 			return b
 		end
 	end
-	return { Trophies = 0, TrialBest = 0, TrialCleared = {}, PvPWins = 0, PvPLosses = 0, Raids = 0 }
+	return { Trophies = 0, PvPWins = 0, PvPLosses = 0, Raids = 0 }
 end
 
 local function teamsData()
@@ -508,39 +492,6 @@ local function teamPower(entries)
 	return ok and tonumber(p) or 0
 end
 
-local function trials()
-	local BC = catalog()
-	return BC and type(BC.Trials) == "table" and BC.Trials or {}
-end
-
-local function trialCount()
-	local BC = catalog()
-	return (BC and tonumber(BC.TrialCount)) or #trials()
-end
-
-local function cleared(level)
-	local b = battleData()
-	return type(b.TrialCleared) == "table" and b.TrialCleared[level] == true
-end
-
-local function bestLevel()
-	local b = battleData()
-	local best = math.floor(tonumber(b.TrialBest) or 0)
-	if type(b.TrialCleared) == "table" then
-		for level in pairs(b.TrialCleared) do
-			if type(level) == "number" and level > best then
-				best = level
-			end
-		end
-	end
-	return best
-end
-
--- level 1 is always open; level N needs N-1 cleared
-local function unlocked(level)
-	return level <= 1 or cleared(level - 1) or level <= bestLevel() + 1
-end
-
 local function petDef(petId, tier)
 	if PetKeys and type(PetKeys.DefOf) == "function" and type(PetKeys.Make) == "function" and tier and tier ~= "Normal" then
 		local ok, def = pcall(function()
@@ -586,16 +537,6 @@ local function arenaModel()
 	return Workspace:FindFirstChild("BattleArena")
 end
 
-local function trialPortal()
-	local arena = arenaModel()
-	local portal = arena and arena:FindFirstChild("Portal_Trials", true)
-	if not portal then
-		local lobby = Workspace:FindFirstChild("NimbusLobby")
-		portal = lobby and lobby:FindFirstChild("Portal_Trials", true)
-	end
-	return portal
-end
-
 local function positionOf(inst)
 	if not inst then
 		return nil
@@ -613,18 +554,6 @@ local function positionOf(inst)
 	end
 	local part = inst:FindFirstChildWhichIsA("BasePart", true)
 	return part and part.Position or nil
-end
-
--- studs from the Trial Portal (nil when unknown: no portal or no character)
-local function portalDistance()
-	local pos = rootPosition()
-	local portal = S.AtPortal or trialPortal()
-	local at = positionOf(portal)
-	if not pos or not at then
-		return nil
-	end
-	local d = pos - at
-	return Vector3.new(d.X, 0, d.Z).Magnitude
 end
 
 -- true / false when the arena is known, nil when it cannot be told (the server decides then)
@@ -737,32 +666,16 @@ function screenFactor()
 	return Theme.ScreenFactor(guiArea().Y)
 end
 
--- w, h (design px), scale, x, y (centre, gui px), tall
-local function fitWindow()
-	local area = guiArea()
-	local factor = screenFactor()
-	local tall = area.X < area.Y
-	local minW = tall and K.TALL_MIN_W or K.MIN_W
-	local prefH = tall and K.TALL_MAX_H or K.PREF_H
-	local freeW = area.X - 2 * K.MARGIN
-	local freeH = area.Y - 2 * K.MARGIN
-	local w = Util.Clamp(math.floor(freeW / factor), minW, K.PREF_W)
-	local h = Util.Clamp(math.floor((freeH - K.BUMPS * factor) / factor), K.MIN_H, prefH)
-	local scale = Util.Clamp(math.min(factor, freeW / w, freeH / h), 0.3, 1.25)
-	local y = math.min(area.Y / 2 + K.BUMPS * scale / 2, area.Y - K.MARGIN / 2 - h * scale / 2)
-	return w, h, scale, area.X / 2, math.max(y, h * scale / 2), tall or w < K.TALL
-end
-
 local function newWindow(id, title)
 	local win = { Id = id }
 	win.Holder = makeFrame(U.Gui, "Window_" .. id, {
-		AnchorPoint = Vector2.new(0.5, 0.5),
-		Position = UDim2.new(0.5, 0, 0.5, 0),
 		Size = UDim2.fromOffset(K.PREF_W, K.PREF_H),
 		Visible = false,
 		ZIndex = 3,
 	})
 	win.Fit = Util.Create("UIScale", { Name = "Fit", Scale = 1, Parent = win.Holder })
+	-- Phase 5 (6.6): docked right on landscape screens, a bottom sheet on portrait phones (NeonKit.Dock), no dimming
+	win.Dock = NeonKit.Dock(win.Holder, win.Fit, K.PREF_W, K.PREF_H)
 	win.Panel = CloudUI.Panel({
 		Name = id .. "Panel",
 		Size = UDim2.new(1, 0, 1, 0),
@@ -770,7 +683,7 @@ local function newWindow(id, title)
 		AnchorPoint = Vector2.new(0.5, 0.5),
 		Title = title,
 		Closable = true,
-		Accent = C.Arena,
+		Category = (id == "Ring") and "Ring" or "Arena",
 		OnClose = function()
 			ArenaController.Close()
 		end,
@@ -781,553 +694,34 @@ local function newWindow(id, title)
 	return win
 end
 
+-- the hotbar re-centres left of a docked window (HotbarController.SetAvoidRight; nil = no window)
+local function avoidRight(x)
+	local hb = otherController("HotbarController")
+	if hb and type(hb.SetAvoidRight) == "function" then
+		pcall(hb.SetAvoidRight, x)
+	end
+end
+
+-- the docked size (design px) -> the window's own layout: every docked window is narrow ("tall" = one column);
+-- "short" = a landscape phone (the window is lower than K.SHORT)
 local function layoutWindow(win)
-	local w, h, scale, x, y, tall = fitWindow()
-	win.Holder.Size = UDim2.fromOffset(w, h)
-	win.Holder.Position = UDim2.fromOffset(math.floor(x + 0.5), math.floor(y + 0.5))
-	win.Fit.Scale = scale
+	if win.Dock and win.Dock.Refresh then
+		win.Dock.Refresh()
+	end
+	local rect = win.Dock and win.Dock.Rect
+	local w = rect and math.floor(rect.designW + 0.5) or K.PREF_W
+	local h = rect and math.floor(rect.designH + 0.5) or K.PREF_H
+	local tall = w < K.TALL
 	S.Tall = tall
 	S.Narrow = w < K.NARROW
-	S.Short = h < K.SHORT and not tall
+	S.Short = h < K.SHORT
+	if S.Open == win.Id then
+		avoidRight(rect and rect.mode == "Side" and rect.x or nil)
+	end
 	if win.OnLayout and (win.W ~= w or win.H ~= h) then
 		win.W, win.H = w, h
 		safe("layout " .. win.Id, win.OnLayout, w, h, S.Narrow, S.Short, tall)
 	end
-end
-
-----------------------------------------------------------------------
--- Trial window
-----------------------------------------------------------------------
-local function buildTrials()
-	local win = newWindow("Trials", "Trial Portal")
-	local content = win.Panel.Content
-	local ui = { Tiles = {}, Chapters = {}, Enemy = {} }
-	win.Ui = ui
-
-	-- level list (left), grouped by chapter
-	ui.List = scroller(content, "Levels", {})
-	pad(ui.List, 4, 4, 14, 8)
-	listLayout(ui.List, Enum.FillDirection.Vertical, 10)
-	local BC = catalog()
-	local chapters = (BC and BC.TrialChapters) or { { Name = "Trials", From = 1, To = trialCount() } }
-	for index, chapter in ipairs(chapters) do
-		local block = makeFrame(ui.List, "Chapter" .. index, {
-			Size = UDim2.new(1, 0, 0, 0),
-			AutomaticSize = Enum.AutomaticSize.Y,
-			LayoutOrder = index,
-		})
-		listLayout(block, Enum.FillDirection.Vertical, 6)
-		local head = makeFrame(block, "Head", { Size = UDim2.new(1, 0, 0, 30), LayoutOrder = 1 })
-		makeText(head, "Name", tostring(chapter.Name), "Title", 24, WHITE, {
-			Size = UDim2.new(0.62, 0, 1, 0),
-			TextXAlignment = Enum.TextXAlignment.Left,
-			TextTruncate = Enum.TextTruncate.AtEnd,
-		})
-		local progress = makeText(head, "Progress", "", "Heading", 19, MUTED, {
-			AnchorPoint = Vector2.new(1, 0),
-			Position = UDim2.new(1, -4, 0, 0),
-			Size = UDim2.new(0.38, 0, 1, 0),
-			TextXAlignment = Enum.TextXAlignment.Right,
-		})
-		local grid = makeFrame(block, "Grid", {
-			Size = UDim2.new(1, 0, 0, 0),
-			AutomaticSize = Enum.AutomaticSize.Y,
-			LayoutOrder = 2,
-		})
-		local layout = Util.Create("UIGridLayout", {
-			CellSize = UDim2.fromOffset(K.LEVEL_TILE, K.LEVEL_TILE),
-			CellPadding = UDim2.fromOffset(K.LEVEL_GAP, K.LEVEL_GAP),
-			SortOrder = Enum.SortOrder.LayoutOrder,
-			Parent = grid,
-		})
-		ui.Chapters[index] = { Chapter = chapter, Progress = progress, Layout = layout }
-		for level = chapter.From, chapter.To do
-			local tile = {}
-			tile.Button = Util.Create("TextButton", {
-				Name = "Level" .. level,
-				AutoButtonColor = false,
-				BorderSizePixel = 0,
-				Text = "",
-				BackgroundColor3 = WHITE,
-				LayoutOrder = level,
-				Parent = grid,
-			})
-			corner(tile.Button, 14)
-			tile.Stroke = stroke(tile.Button, NAVY, 3, 0)
-			tile.Gradient = Util.Create("UIGradient", { Rotation = 90, Parent = tile.Button })
-			tile.Number = makeText(tile.Button, "Number", tostring(level), "Display", 36, WHITE, {
-				AnchorPoint = Vector2.new(0.5, 0.5),
-				Position = UDim2.new(0.5, 0, 0.5, 2),
-				Size = UDim2.new(1, 0, 0, 40),
-				ZIndex = 3,
-			})
-			tile.Tag = colorPill(tile.Button, "Boss", "BOSS", C.Boss, 18, 0)
-			tile.Tag.AnchorPoint = Vector2.new(0.5, 0)
-			tile.Tag.Position = UDim2.new(0.5, 0, 0, -10)
-			tile.Tag.ZIndex = 5
-			tile.Tag.Visible = false
-			tile.Check = makeFrame(tile.Button, "Cleared", {
-				BackgroundTransparency = 0,
-				BackgroundColor3 = C.Cleared,
-				AnchorPoint = Vector2.new(1, 1),
-				Position = UDim2.new(1, -4, 1, -4),
-				Size = UDim2.fromOffset(30, 30),
-				Visible = false,
-				ZIndex = 5,
-			})
-			round(tile.Check)
-			stroke(tile.Check, NAVY, 2.5, 0)
-			makeText(tile.Check, "Mark", G.Check, "Heading", 20, WHITE, { Size = UDim2.new(1, 0, 1, 0), ZIndex = 6 })
-			tile.Lock = makeText(tile.Button, "Lock", G.Lock, "Title", 22, WHITE, {
-				AnchorPoint = Vector2.new(1, 1),
-				Position = UDim2.new(1, -2, 1, -2),
-				Size = UDim2.fromOffset(32, 30),
-				Visible = false,
-				ZIndex = 5,
-			})
-			tile.Button.Activated:Connect(function()
-				S.Level = level
-				refreshOpen()
-			end)
-			CloudUI.Tooltip(tile.Button, function()
-				local t = trials()[level]
-				if not t then
-					return nil
-				end
-				local text = "Level " .. level .. ": " .. tostring(t.Name)
-				if not unlocked(level) then
-					text = text .. "\nBeat level " .. (level - 1) .. " to unlock it"
-				elseif cleared(level) then
-					text = text .. "\nCleared " .. G.Check
-				end
-				return text
-			end)
-			ui.Tiles[level] = tile
-		end
-	end
-
-	-- detail (right)
-	ui.Detail = inset(content, "Detail", {})
-	ui.DetailScroll = scroller(ui.Detail, "Scroll", { Position = UDim2.fromOffset(4, 4), Size = UDim2.new(1, -8, 1, -8) })
-	pad(ui.DetailScroll, 14, 10, 16, 12)
-	listLayout(ui.DetailScroll, Enum.FillDirection.Vertical, 10)
-	local d = ui.DetailScroll
-
-	local head = makeFrame(d, "Head", { Size = UDim2.new(1, 0, 0, 40), LayoutOrder = 1 })
-	ui.Head = head
-	ui.HeadLayout = listLayout(head, Enum.FillDirection.Horizontal, 10, Enum.HorizontalAlignment.Left, Enum.VerticalAlignment.Center)
-	ui.LevelLabel = autoText(head, "Level", "LEVEL 1", "Title", 32, GOLD, 1)
-	ui.NameLabel = autoText(head, "Name", "", "Title", 28, WHITE, 2)
-	local tags = makeFrame(d, "Tags", { Size = UDim2.new(1, 0, 0, 30), LayoutOrder = 2 })
-	listLayout(tags, Enum.FillDirection.Horizontal, 8, Enum.HorizontalAlignment.Left, Enum.VerticalAlignment.Center)
-	ui.Tags = tags
-
-	ui.EnemyTitle = makeText(d, "EnemyTitle", "Enemy team", "Heading", 20, MUTED, {
-		Size = UDim2.new(1, 0, 0, 26),
-		TextXAlignment = Enum.TextXAlignment.Left,
-		LayoutOrder = 3,
-	})
-	ui.EnemyRow = makeFrame(d, "Enemies", { Size = UDim2.new(1, 0, 0, 150), LayoutOrder = 4 })
-	ui.EnemyLayout = Util.Create("UIGridLayout", {
-		CellSize = UDim2.fromOffset(118, 150),
-		CellPadding = UDim2.fromOffset(8, 8),
-		SortOrder = Enum.SortOrder.LayoutOrder,
-		Parent = ui.EnemyRow,
-	})
-
-	-- power: recommended vs. the active team
-	local power = inset(d, "Power", { Size = UDim2.new(1, 0, 0, 120), LayoutOrder = 5 })
-	ui.Power = power
-	makeText(power, "RecCaption", "Recommended", "Heading", 19, MUTED, {
-		Position = UDim2.fromOffset(14, 8),
-		Size = UDim2.new(0.5, -14, 0, 24),
-		TextXAlignment = Enum.TextXAlignment.Left,
-	})
-	ui.RecValue = makeText(power, "RecValue", "", "Display", 32, C.Power, {
-		Position = UDim2.fromOffset(14, 32),
-		Size = UDim2.new(0.5, -14, 0, 38),
-		TextXAlignment = Enum.TextXAlignment.Left,
-	})
-	makeText(power, "TeamCaption", "Your team", "Heading", 19, MUTED, {
-		AnchorPoint = Vector2.new(1, 0),
-		Position = UDim2.new(1, -14, 0, 8),
-		Size = UDim2.new(0.5, -14, 0, 24),
-		TextXAlignment = Enum.TextXAlignment.Right,
-	})
-	ui.TeamValue = makeText(power, "TeamValue", "", "Display", 32, WHITE, {
-		AnchorPoint = Vector2.new(1, 0),
-		Position = UDim2.new(1, -14, 0, 32),
-		Size = UDim2.new(0.5, -14, 0, 38),
-		TextXAlignment = Enum.TextXAlignment.Right,
-	})
-	local track = makeFrame(power, "Bar", {
-		BackgroundTransparency = 0,
-		BackgroundColor3 = Color3.fromRGB(14, 20, 48),
-		Position = UDim2.fromOffset(14, 74),
-		Size = UDim2.new(1, -28, 0, 12),
-	})
-	round(track)
-	ui.BarFill = makeFrame(track, "Fill", {
-		BackgroundTransparency = 0,
-		BackgroundColor3 = GOOD,
-		Size = UDim2.new(0.5, 0, 1, 0),
-	})
-	round(ui.BarFill)
-	ui.BarMark = makeFrame(track, "Recommended", {
-		BackgroundTransparency = 0,
-		BackgroundColor3 = WHITE,
-		AnchorPoint = Vector2.new(0.5, 0.5),
-		Position = UDim2.new(0.5, 0, 0.5, 0),
-		Size = UDim2.fromOffset(4, 20),
-		ZIndex = 3,
-	})
-	ui.Verdict = makeText(power, "Verdict", "", "Body", 19, C.GoodText, {
-		Position = UDim2.fromOffset(14, 90),
-		Size = UDim2.new(1, -28, 0, 26),
-		TextXAlignment = Enum.TextXAlignment.Left,
-		TextTruncate = Enum.TextTruncate.AtEnd,
-	})
-
-	-- rewards
-	local rewards = inset(d, "Rewards", { Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, LayoutOrder = 6 })
-	ui.Rewards = rewards
-	pad(rewards, 14, 8, 14, 10)
-	listLayout(rewards, Enum.FillDirection.Vertical, 4)
-	makeText(rewards, "Title", "Rewards", "Heading", 20, WHITE, {
-		Size = UDim2.new(1, 0, 0, 26),
-		TextXAlignment = Enum.TextXAlignment.Left,
-		LayoutOrder = 1,
-	})
-	ui.WinLine = wrapText(rewards, "Win", "", "Body", 19, WHITE, 2)
-	local firstRow = makeFrame(rewards, "First", {
-		Size = UDim2.new(1, 0, 0, 0),
-		AutomaticSize = Enum.AutomaticSize.Y,
-		LayoutOrder = 3,
-	})
-	listLayout(firstRow, Enum.FillDirection.Horizontal, 8, Enum.HorizontalAlignment.Left, Enum.VerticalAlignment.Center)
-	ui.FirstBadge = colorPill(firstRow, "Badge", "FIRST CLEAR", Color3.fromRGB(226, 160, 54), 18, 1)
-	ui.FirstLine = makeText(firstRow, "Text", "", "Body", 19, C.Power, {
-		Size = UDim2.fromOffset(0, 28),
-		AutomaticSize = Enum.AutomaticSize.X,
-		LayoutOrder = 2,
-	})
-
-	-- footer (always in view, under the scrolling detail): why START is off, Edit team, START
-	ui.Footer = makeFrame(ui.Detail, "Footer", {
-		AnchorPoint = Vector2.new(0, 1),
-		Position = UDim2.new(0, 14, 1, -10),
-		Size = UDim2.new(1, -28, 0, 56),
-	})
-	local actions = makeFrame(ui.Footer, "Actions", {
-		AnchorPoint = Vector2.new(0, 1),
-		Position = UDim2.new(0, 0, 1, 0),
-		Size = UDim2.new(1, 0, 0, 56),
-	})
-	ui.EditButton = CloudUI.Button({
-		Name = "EditTeam",
-		Text = "Edit team",
-		Size = UDim2.fromOffset(170, 54),
-		Style = "Blue",
-		TextSize = 22,
-		Parent = actions,
-		Callback = function()
-			openTeamWindow()
-		end,
-	})
-	ui.StartButton = CloudUI.Button({
-		Name = "Start",
-		Text = "START",
-		AnchorPoint = Vector2.new(1, 0),
-		Position = UDim2.new(1, 0, 0, 0),
-		Size = UDim2.fromOffset(200, 54),
-		Style = "Green",
-		TextSize = 26,
-		Parent = actions,
-		Callback = function()
-			safe("start trial", ArenaController.StartSelected)
-		end,
-	})
-	ui.Why = makeText(ui.Footer, "Why", "", "Body", 19, C.WarnText, {
-		Position = UDim2.fromOffset(0, 0),
-		Size = UDim2.new(1, 0, 0, 44),
-		TextWrapped = true,
-		TextXAlignment = Enum.TextXAlignment.Right,
-		TextYAlignment = Enum.TextYAlignment.Bottom,
-	})
-
-	win.OnLayout = function(w, h, narrow, short, tall)
-		local cw = w - K.INSET_X
-		local tile = narrow and K.LEVEL_TILE_NARROW or K.LEVEL_TILE
-		local cols = 5
-		local listW = cols * tile + (cols - 1) * K.LEVEL_GAP + 4 + 14 + 12
-		for _, ch in ipairs(ui.Chapters) do
-			ch.Layout.CellSize = UDim2.fromOffset(tile, tile)
-		end
-		local detailW
-		if tall then
-			-- one column: the detail first, the levels below it
-			local detailH = 600
-			ui.Detail.Position = UDim2.fromOffset(12, 10)
-			ui.Detail.Size = UDim2.new(1, -24, 0, math.min(detailH, h - K.INSET_Y - 260))
-			ui.List.Position = UDim2.new(0, 12, 0, 10 + math.min(detailH, h - K.INSET_Y - 260) + 10)
-			ui.List.Size = UDim2.new(1, -24, 1, -(30 + math.min(detailH, h - K.INSET_Y - 260)))
-			detailW = cw - 24
-			local fit = math.floor((cw - 24 - 30 - 4 * K.LEVEL_GAP) / 5)
-			for _, ch in ipairs(ui.Chapters) do
-				ch.Layout.CellSize = UDim2.fromOffset(math.min(tile, fit), math.min(tile, fit))
-			end
-		else
-			ui.List.Position = UDim2.fromOffset(12, 10)
-			ui.List.Size = UDim2.new(0, listW, 1, -20)
-			ui.Detail.Position = UDim2.fromOffset(12 + listW + 12, 10)
-			ui.Detail.Size = UDim2.new(1, -(listW + 36), 1, -20)
-			detailW = cw - listW - 36
-		end
-		local inner = detailW - 8 - 30
-		local enemyCols = inner >= 4 * 112 + 3 * 8 and 4 or 2
-		-- two columns (portrait phones) use the width they have instead of leaving a gap on the right
-		local cardW = math.min(enemyCols == 2 and 190 or 130, math.floor((inner - (enemyCols - 1) * 8) / enemyCols))
-		ui.EnemyLayout.CellSize = UDim2.fromOffset(cardW, 150)
-		ui.EnemyCols = enemyCols
-		ui.StartButton.Size = UDim2.fromOffset(inner < 420 and 170 or 200, 54)
-		-- narrow details stack the level number over its name
-		-- (not on short landscape phones: there the height is what is missing, and "LEVEL 12 Storm Chasers" fits a line)
-		local stack = inner < 440 and not short
-		ui.HeadLayout.FillDirection = stack and Enum.FillDirection.Vertical or Enum.FillDirection.Horizontal
-		ui.HeadLayout.Padding = UDim.new(0, stack and 0 or 10)
-		ui.Head.Size = UDim2.new(1, 0, 0, stack and 76 or 40)
-		ui.Why.Size = UDim2.new(1, 0, 0, short and 26 or 44)
-		-- short windows (landscape phones): the power check and the rewards come before the enemy team
-		ui.Power.LayoutOrder = short and 3 or 5
-		ui.Rewards.LayoutOrder = short and 4 or 6
-		ui.EnemyTitle.LayoutOrder = short and 5 or 3
-		ui.EnemyRow.LayoutOrder = short and 6 or 4
-		ui.WhyH = short and 26 or 44
-	end
-
-	local function verdictOf(mine, rec)
-		if rec <= 0 then
-			return "", C.GoodText
-		end
-		local ratio = mine / rec
-		if mine <= 0 then
-			return "Pick your battle team first!", C.WarnText
-		elseif ratio >= 1.15 then
-			return "Your team looks ready for this one!", C.GoodText
-		elseif ratio >= 0.9 then
-			return "A close fight: use your specials well.", C.WarnText
-		elseif ratio >= 0.7 then
-			return "Tough fight! Level up or add synergy.", C.WarnText
-		end
-		return "Too strong for now: train your pets first.", C.BadText
-	end
-
-	local function enemyCard(entry, order)
-		local def = petDef(entry.PetId, entry.Tier)
-		local card = makeFrame(ui.EnemyRow, "Enemy" .. order, {
-			BackgroundTransparency = 0,
-			BackgroundColor3 = WHITE,
-			LayoutOrder = order,
-		})
-		corner(card, 12)
-		stroke(card, entry.Boss and C.Boss or NAVY, entry.Boss and 4 or 3, 0)
-		local tint = rarityColor(def)
-		Theme.Gradient(card, Theme.Lighten(INSET, 0.3):Lerp(tint, 0.4), Theme.Darken(INSET, 0.05):Lerp(tint, 0.2), 90)
-		local view = makeFrame(card, "ViewHolder", {
-			AnchorPoint = Vector2.new(0.5, 0),
-			Position = UDim2.new(0.5, 0, 0, 4),
-			Size = UDim2.new(1, -10, 0, 70),
-			ZIndex = 2,
-		})
-		if def then
-			pcall(function()
-				local handle = CloudUI.PetViewport(view, def, UDim2.new(1, 0, 1, 0), {
-					Spin = "sway",
-					Animate = entry.Boss == true,
-					Detail = "Low",
-					ZIndex = 2,
-				})
-				table.insert(ui.Enemy, handle)
-			end)
-		end
-		if entry.Boss then
-			local crown = colorPill(card, "BossTag", G.Crown .. " BOSS", C.Boss, 18, 0)
-			crown.AnchorPoint = Vector2.new(0.5, 0)
-			crown.Position = UDim2.new(0.5, 0, 0, 2)
-			crown.ZIndex = 5
-		end
-		-- white on the rarity-tinted card (the tint and the border carry the rarity; a same-hue name lost contrast)
-		makeText(card, "PetName", def and tostring(def.Name) or tostring(entry.PetId), "Body", 18, WHITE, {
-			Position = UDim2.fromOffset(4, 74),
-			Size = UDim2.new(1, -8, 0, 40),
-			TextWrapped = true,
-			TextTruncate = Enum.TextTruncate.AtEnd,
-			ZIndex = 3,
-		})
-		local row = makeFrame(card, "Row", { Position = UDim2.fromOffset(4, 116), Size = UDim2.new(1, -8, 0, 28), ZIndex = 3 })
-		listLayout(row, Enum.FillDirection.Horizontal, 5, Enum.HorizontalAlignment.Center, Enum.VerticalAlignment.Center)
-		autoText(row, "Level", "Lv " .. tostring(entry.Level or 1), "Heading", 18, WHITE, 0)
-		local elements = elementsOf(def)
-		if elements[1] then
-			elementPill(row, elements[1], 18, 1)
-		end
-		return card
-	end
-
-	win.Refresh = function()
-		local count = math.max(1, trialCount())
-		local list = trials()
-		if not S.Level or not list[S.Level] then
-			S.Level = math.min(count, bestLevel() + 1)
-		end
-		local level = S.Level
-		local nextLevel = math.min(count, bestLevel() + 1)
-		-- tiles
-		for n, tile in pairs(ui.Tiles) do
-			local open = unlocked(n)
-			local done = cleared(n)
-			local t = list[n]
-			local selected = n == level
-			local base = done and Color3.fromRGB(70, 140, 96) or (open and C.Next or Color3.fromRGB(70, 78, 104))
-			if t and t.MiniBoss and open and not done then
-				base = C.Trial
-			end
-			tile.Gradient.Color = ColorSequence.new(Theme.Lighten(base, 0.22), Theme.Darken(base, 0.18))
-			tile.Stroke.Color = selected and GOLD or NAVY
-			tile.Stroke.Thickness = selected and 4.5 or 3
-			tile.Number.TextColor3 = open and WHITE or Color3.fromRGB(176, 184, 206)
-			tile.Tag.Visible = t ~= nil and t.MiniBoss == true
-			tile.Check.Visible = done
-			tile.Lock.Visible = not open
-			if n == nextLevel and open and not done then
-				tile.Stroke.Color = selected and GOLD or Theme.Lighten(C.Next, 0.5)
-			end
-		end
-		for _, ch in ipairs(ui.Chapters) do
-			local n, total = 0, 0
-			for lv = ch.Chapter.From, ch.Chapter.To do
-				total = total + 1
-				if cleared(lv) then
-					n = n + 1
-				end
-			end
-			ch.Progress.Text = (n >= total and (G.Check .. " ") or "") .. n .. " / " .. total
-			ch.Progress.TextColor3 = n >= total and C.GoodText or MUTED
-		end
-		-- detail
-		local t = list[level]
-		ui.LevelLabel.Text = "LEVEL " .. level
-		ui.NameLabel.Text = t and tostring(t.Name) or "?"
-		clearChildren(ui.Tags)
-		if t then
-			colorPill(ui.Tags, "Chapter", tostring(t.Chapter or ""), Color3.fromRGB(90, 120, 190), 18, 1)
-			if t.MiniBoss then
-				colorPill(ui.Tags, "MiniBoss", G.Crown .. " Mini-boss", C.Boss, 18, 2)
-			end
-			if cleared(level) then
-				colorPill(ui.Tags, "Cleared", G.Check .. " Cleared", C.Cleared, 18, 3)
-			elseif not unlocked(level) then
-				colorPill(ui.Tags, "Locked", G.Lock .. " Locked", Color3.fromRGB(110, 118, 146), 18, 3)
-			end
-		end
-		-- enemy team (rebuilt only when the level changes)
-		if ui.EnemyLevel ~= level then
-			ui.EnemyLevel = level
-			for _, handle in ipairs(ui.Enemy) do
-				pcall(handle.Destroy)
-			end
-			ui.Enemy = {}
-			clearChildren(ui.EnemyRow)
-			for i, entry in ipairs((t and t.Team) or {}) do
-				enemyCard(entry, i)
-			end
-		end
-		local enemies = t and t.Team and #t.Team or 0
-		local rows = math.max(1, math.ceil(enemies / math.max(1, ui.EnemyCols or 4)))
-		ui.EnemyRow.Size = UDim2.new(1, 0, 0, rows * 150 + (rows - 1) * 8)
-		-- power
-		local rec = t and tonumber(t.RecommendedPower) or 0
-		local team = activeTeam()
-		local mine = teamPower(team)
-		ui.RecValue.Text = G.Swords .. " " .. commas(rec)
-		ui.TeamValue.Text = G.Swords .. " " .. commas(mine)
-		local ratio = rec > 0 and mine / rec or 1
-		ui.TeamValue.TextColor3 = ratio >= 1 and C.GoodText or (ratio >= 0.8 and C.WarnText or C.BadText)
-		local top = math.max(rec, mine) * 1.15
-		local fill = top > 0 and mine / top or 0
-		ui.BarFill.Size = UDim2.new(Util.Clamp(fill, 0.02, 1), 0, 1, 0)
-		ui.BarFill.BackgroundColor3 = ratio >= 1 and GOOD or (ratio >= 0.8 and Color3.fromRGB(240, 186, 70) or BAD)
-		ui.BarMark.Position = UDim2.new(top > 0 and rec / top or 0.5, 0, 0.5, 0)
-		local verdict, verdictColor = verdictOf(mine, rec)
-		ui.Verdict.Text = verdict
-		ui.Verdict.TextColor3 = verdictColor
-		-- rewards
-		local r = t and t.Rewards or {}
-		local double = S.Arena and type(S.Arena.Double) == "table" and S.Arena.Double.Active == true
-		local mult = double and 2 or 1
-		ui.WinLine.Text = "Each win: " .. G.Cloud .. " " .. commas((tonumber(r.Tokens) or 0) * mult) .. " Cloud Tokens + "
-			.. commas(r.Xp or 0) .. " XP per pet" .. (double and "  (2x now!)" or "")
-		local first = type(r.FirstClear) == "table" and r.FirstClear or {}
-		if cleared(level) then
-			ui.FirstBadge.Text = G.Check .. " CLAIMED"
-			ui.FirstBadge.BackgroundColor3 = C.Cleared
-			ui.FirstLine.Text = "First-clear bonus collected"
-			ui.FirstLine.TextColor3 = MUTED
-		else
-			ui.FirstBadge.Text = "FIRST CLEAR"
-			ui.FirstBadge.BackgroundColor3 = Color3.fromRGB(226, 160, 54)
-			local text = "+" .. G.Cloud .. " " .. commas((tonumber(first.Tokens) or 0) * mult)
-			if (tonumber(first.Gems) or 0) > 0 then
-				text = text .. "   +" .. G.Gem .. " " .. commas(first.Gems) .. " Gems"
-			end
-			ui.FirstLine.Text = text
-			ui.FirstLine.TextColor3 = C.Power
-		end
-		-- start
-		local why = nil
-		if not unlocked(level) then
-			why = "Beat level " .. (level - 1) .. " to unlock this one."
-		elseif #team == 0 then
-			why = "Pick your battle team first (Edit team)."
-		elseif battleId() then
-			why = "Finish your current battle first."
-		elseif inMatch() then
-			why = "Finish your climb first."
-		else
-			local d2 = portalDistance()
-			if d2 and d2 > K.TRIAL_RANGE then
-				why = "Walk to the Trial Portal to start."
-			end
-		end
-		CloudUI.SetDisabled(ui.StartButton, why ~= nil)
-		ui.StartButton.Text = "START"
-		ui.Why.Text = why or ""
-		ui.Why.Visible = why ~= nil
-		local footerH = why and (60 + (ui.WhyH or 44)) or 56
-		ui.Footer.Size = UDim2.new(1, -28, 0, footerH)
-		ui.DetailScroll.Size = UDim2.new(1, -8, 1, -(footerH + 22))
-	end
-	return win
-end
-
-function ArenaController.StartSelected()
-	local level = S.Level
-	if type(level) ~= "number" or not unlocked(level) then
-		return false
-	end
-	if #activeTeam() == 0 then
-		toast("Pick your battle team first!", "info")
-		return false
-	end
-	if request("Trial", level) then
-		local win = Win.Trials
-		if win and win.Ui and win.Ui.StartButton then
-			win.Ui.StartButton.Text = "Starting..."
-			CloudUI.SetDisabled(win.Ui.StartButton, true)
-		end
-		return true
-	end
-	return false
 end
 
 ----------------------------------------------------------------------
@@ -1637,10 +1031,27 @@ function Ring.fighterCard(parent, entry, order, handles)
 		Size = UDim2.new(1, -10, 0, 54),
 		ZIndex = 2,
 	})
+	-- Phase 5 (3.7): the stored evolution stage (an evolved model is always built Low)
+	local stage = 0
+	if type(State.PetStage) == "function" and entry.Key then
+		local okStage, n = pcall(State.PetStage, entry.Key)
+		stage = okStage and tonumber(n) or 0
+	end
+	card:SetAttribute("Stage", stage)
 	pcall(function()
-		local handle = CloudUI.PetViewport(view, def, UDim2.new(1, 0, 1, 0), { Spin = "sway", Detail = "Low", ZIndex = 2 })
+		local handle = CloudUI.PetViewport(view, def, UDim2.new(1, 0, 1, 0), { Spin = "sway", Detail = "Low", ZIndex = 2, Evolved = stage > 0 and stage or nil })
 		table.insert(handles, handle)
 	end)
+	if stage > 0 then
+		local badge = makeText(card, "StageBadge", (stage >= 2) and "EVO II" or "EVO I", "Button", 18, WHITE, {
+			BackgroundTransparency = 0,
+			BackgroundColor3 = Theme.Darken(GOLD, 0.35),
+			Position = UDim2.fromOffset(4, 4),
+			Size = UDim2.fromOffset(62, 22),
+			ZIndex = 4,
+		})
+		corner(badge, 8)
+	end
 	makeText(card, "PetName", tostring(def.DisplayName or def.Name or entry.Key), "Body", 18, WHITE, {
 		Position = UDim2.fromOffset(4, 58),
 		Size = UDim2.new(1, -8, 0, 24),
@@ -1885,14 +1296,18 @@ function Ring.build()
 		local sideW = narrow and 300 or 340
 		local detailW
 		if tall then
-			-- one column: the detail first, the record and the board below it
-			local detailH = math.min(640, h - K.INSET_Y - 200)
+			-- one column (every docked window): the detail first, the record and the board below it; a landscape
+			-- phone's short window shows the detail only (the record is on the Team screen too)
+			local sideH = short and 0 or math.min(230, math.floor((h - K.INSET_Y) * 0.3))
+			local detailH = h - K.INSET_Y - 20 - (short and 0 or (sideH + 10))
+			ui.Side.Visible = not short
 			ui.Detail.Position = UDim2.fromOffset(12, 10)
 			ui.Detail.Size = UDim2.new(1, -24, 0, detailH)
 			ui.Side.Position = UDim2.fromOffset(12, 10 + detailH + 10)
-			ui.Side.Size = UDim2.new(1, -24, 1, -(30 + detailH))
+			ui.Side.Size = UDim2.new(1, -24, 0, sideH)
 			detailW = cw - 24
 		else
+			ui.Side.Visible = true
 			ui.Side.Position = UDim2.fromOffset(12, 10)
 			ui.Side.Size = UDim2.new(0, sideW, 1, -20)
 			ui.Detail.Position = UDim2.fromOffset(12 + sideW + 12, 10)
@@ -1908,8 +1323,9 @@ function Ring.build()
 		local tileCols = math.max(3, math.min(8, math.floor((inner + 8) / (96 + 8))))
 		local tileW = math.min(112, math.floor((inner - (tileCols - 1) * 8) / tileCols))
 		ui.PickerLayout.CellSize = UDim2.fromOffset(tileW, Ring.TILE_H)
-		ui.StartButton.Size = UDim2.fromOffset(inner < 420 and 190 or 240, 54)
-		ui.EditButton.Size = UDim2.fromOffset(inner < 420 and 150 or 170, 54)
+		-- a landscape phone's footer keeps 120 px clear of Roblox's jump button: smaller buttons there
+		ui.StartButton.Size = UDim2.fromOffset(short and 160 or (inner < 420 and 190 or 240), 54)
+		ui.EditButton.Size = UDim2.fromOffset(short and 124 or (inner < 420 and 150 or 170), 54)
 		ui.Why.Size = UDim2.new(1, 0, 0, short and 26 or 44)
 		ui.WhyH = short and 26 or 44
 		-- landscape phones: "Next win" comes right under the picker, and the footer keeps clear of Roblox's jump
@@ -2507,13 +1923,25 @@ local function buildArena()
 			LayoutOrder = order,
 		})
 		corner(row, 12)
-		stroke(row, C.Arena, 3, 0)
-		makeText(row, "Name", G.Swords .. " " .. tostring(invite.FromName or "Someone") .. " challenges you!", "Heading", 20, WHITE, {
+		local practice = invite.Practice == true
+		stroke(row, practice and C.Practice or C.Arena, 3, 0)
+		row:SetAttribute("Practice", practice)
+		makeText(row, "Name", G.Swords .. " " .. tostring(invite.FromName or "Someone") .. (practice and " wants a practice duel" or " challenges you!"), "Heading", 20, WHITE, {
 			Position = UDim2.fromOffset(12, 6),
 			Size = UDim2.new(1, -24, 0, 28),
 			TextXAlignment = Enum.TextXAlignment.Left,
 			TextTruncate = Enum.TextTruncate.AtEnd,
 		})
+		if practice then
+			-- Phase 5 (4.2): the two teams are far apart in power: the duel is practice (no trophies, no rewards)
+			row.Size = UDim2.new(1, 0, 0, 130)
+			makeText(row, "PracticeFlag", "Practice duel - no trophies or rewards", "Heading", 18, C.Practice, {
+				Position = UDim2.fromOffset(12, 100),
+				Size = UDim2.new(1, -24, 0, 24),
+				TextXAlignment = Enum.TextXAlignment.Left,
+				TextTruncate = Enum.TextTruncate.AtEnd,
+			})
+		end
 		makeText(row, "Info", G.Trophy .. " " .. commas(invite.Trophies or 0) .. "    " .. G.Swords .. " " .. commas(invite.Power or 0)
 			.. "    " .. clock(lobbySeconds(invite.ExpiresIn) or 0), "Body", 19, MUTED, {
 			Position = UDim2.fromOffset(12, 34),
@@ -2656,7 +2084,7 @@ local function buildArena()
 			playerRow(p, i, sent and sent.ToUserId == p.UserId and sent or nil)
 		end
 		if #others == 0 then
-			wrapText(ui.ChallengeList, "Empty", "Nobody else is in this server yet. Invite a friend, or beat the Trial Portal's levels meanwhile!", "Body", 19, MUTED, 1)
+			wrapText(ui.ChallengeList, "Empty", "Nobody else is in this server yet. Invite a friend, or try the Dungeon meanwhile!", "Body", 19, MUTED, 1)
 		end
 	end
 
@@ -2966,7 +2394,7 @@ end
 
 -- true while a menu window, the Pet Index or the Fusion window covers the screen (the side cards step back)
 local function otherWindowOpen()
-	for _, name in ipairs({ "MenuController", "IndexController", "FusionController" }) do
+	for _, name in ipairs({ "MenuController", "IndexController", "FusionController", "CareController", "DungeonController", "ObbyController" }) do
 		local mod = otherController(name)
 		if mod and type(mod.IsOpen) == "function" then
 			local ok, open = pcall(mod.IsOpen)
@@ -3033,12 +2461,22 @@ function refreshSide()
 		for i, invite in ipairs(type(lobby.Invites) == "table" and lobby.Invites or {}) do
 			if type(invite) == "table" and count < maxCards then
 				count = count + 1
-				local card = sideCard("Invite" .. i, C.Arena, 10 + i)
-				makeText(card, "Title", G.Swords .. " Duel challenge!", "Heading", 21, Theme.Lighten(C.Arena, 0.4), {
+				local practice = invite.Practice == true
+				local card = sideCard("Invite" .. i, practice and C.Practice or C.Arena, 10 + i)
+				card.Parent:SetAttribute("Practice", practice)
+				makeText(card, "Title", G.Swords .. (practice and " Practice duel" or " Duel challenge!"), "Heading", 21, practice and C.Practice or Theme.Lighten(C.Arena, 0.4), {
 					Size = UDim2.new(1, 0, 0, 28),
 					TextXAlignment = Enum.TextXAlignment.Left,
 					LayoutOrder = 1,
 				})
+				if practice then
+					-- Phase 5 (4.2): a challenge more than Duel.PracticeInvite apart in TeamPower
+					makeText(card, "PracticeFlag", "No trophies or rewards", "Body", 18, C.Practice, {
+						Size = UDim2.new(1, 0, 0, 22),
+						TextXAlignment = Enum.TextXAlignment.Left,
+						LayoutOrder = 2,
+					})
+				end
 				makeText(card, "Name", tostring(invite.FromName or "Someone") .. " wants to battle", "Body", 19, WHITE, {
 					Size = UDim2.new(1, 0, 0, 24),
 					TextXAlignment = Enum.TextXAlignment.Left,
@@ -3260,27 +2698,8 @@ local function syncBackBinding()
 	end
 end
 
-local function setBackdrop(on)
-	local backdrop = U.Backdrop
-	if not backdrop then
-		return
-	end
-	if on then
-		backdrop.Visible = true
-		tween(backdrop, 0.18, { BackgroundTransparency = 0.55 })
-	else
-		tween(backdrop, 0.15, { BackgroundTransparency = 1 })
-		local mine = S.Token
-		task.delay(0.17, function()
-			if S.Token == mine and not S.Open and backdrop.Parent then
-				backdrop.Visible = false
-			end
-		end)
-	end
-end
-
 local function closeOthers()
-	for _, name in ipairs({ "MenuController", "IndexController", "FusionController" }) do
+	for _, name in ipairs({ "MenuController", "IndexController", "FusionController", "CareController", "DungeonController", "ObbyController" }) do
 		local mod = otherController(name)
 		if mod and type(mod.Close) == "function" then
 			pcall(mod.Close)
@@ -3302,9 +2721,7 @@ local function ensureWindow(id)
 	end
 	S.Built[id] = true
 	local ok, result
-	if id == "Trials" then
-		ok, result = pcall(buildTrials)
-	elseif id == "Ring" then
+	if id == "Ring" then
 		ok, result = pcall(Ring.build)
 	else
 		ok, result = pcall(buildArena)
@@ -3344,9 +2761,6 @@ local function open(id)
 		win.Pop.Scale = 0.86
 		tween(win.Pop, 0.22, { Scale = 1 }, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
 	end
-	if not was then
-		setBackdrop(true)
-	end
 	refreshOpen()
 	if was ~= id then
 		ArenaController.Opened:Fire(id)
@@ -3354,20 +2768,8 @@ local function open(id)
 	return true
 end
 
-function ArenaController.OpenTrials(level, portal)
-	local n = tonumber(level)
-	if n and catalog() and trials()[math.floor(n)] then
-		S.Level = math.floor(n)
-	elseif S.Open ~= "Trials" then
-		S.Level = nil -- the next level to beat
-	end
-	S.AtPortal = (typeof(portal) == "Instance") and portal or nil
-	return open("Trials")
-end
-
 function ArenaController.OpenArena(tab)
 	S.Tab = normalizeTab(tab) or S.Tab or "Duels"
-	S.AtPortal = nil
 	return open("Arena")
 end
 
@@ -3392,16 +2794,6 @@ function ArenaController.OpenRing(start, portal)
 	return open("Ring")
 end
 
-function ArenaController.SelectLevel(level)
-	local n = tonumber(level)
-	if n and trials()[math.floor(n)] then
-		S.Level = math.floor(n)
-		if S.Open == "Trials" then
-			refreshOpen()
-		end
-	end
-end
-
 function ArenaController.Close()
 	if not S.Open then
 		return
@@ -3409,7 +2801,6 @@ function ArenaController.Close()
 	local id = S.Open
 	local win = Win[id]
 	S.Open = nil
-	S.AtPortal = nil
 	S.RingAt = nil
 	Ring.Pending = false
 	S.Token = S.Token + 1
@@ -3423,7 +2814,7 @@ function ArenaController.Close()
 			end
 		end)
 	end
-	setBackdrop(false)
+	avoidRight(nil)
 	refreshSide()
 	ArenaController.Closed:Fire(id)
 end
@@ -3433,7 +2824,7 @@ function ArenaController.IsOpen()
 end
 
 function ArenaController.GetState()
-	return { Arena = S.Arena, Lobby = S.Lobby, Window = S.Open, Tab = S.Tab, Level = S.Level, RingStart = Ring.Start }
+	return { Arena = S.Arena, Lobby = S.Lobby, Window = S.Open, Tab = S.Tab, RingStart = Ring.Start }
 end
 
 function ArenaController.Request(action, a, b)
@@ -3480,10 +2871,15 @@ local function onPromptTriggered(prompt)
 	end
 	local panel = prompt:GetAttribute("OpenPanel")
 	if panel == "Ring" or prompt:GetAttribute("OpenPanelTab") == "Ring" then
-		-- Portal_Ring's RingPrompt (or its fallback on the Trial Portal: OpenPanel "Ring", OpenPanelTab "Ring")
+		-- Portal_Ring's RingPrompt
 		ArenaController.OpenRing(nil, prompt.Parent)
-	elseif panel == "Trials" then
-		ArenaController.OpenTrials(nil, prompt.Parent)
+	elseif panel == "Dungeon" then
+		-- Phase 5 (5.3): Portal_Dungeon's DungeonPrompt is handed to DungeonController (the Dungeon side panel)
+		local dungeon = otherController("DungeonController")
+		if dungeon and type(dungeon.Open) == "function" then
+			ArenaController.Close()
+			dungeon.Open(nil, prompt.Parent)
+		end
 	elseif panel == "Arena" then
 		local tab = prompt:GetAttribute("OpenPanelTab")
 		if tab == nil and prompt:GetAttribute("RingIndex") ~= nil then
@@ -3499,7 +2895,7 @@ local function connectOthers()
 		local signal = mod and mod[signalName]
 		if type(signal) == "table" and type(signal.Connect) == "function" then
 			signal:Connect(function(windowId)
-				if windowId ~= nil and (windowId == "Trials" or windowId == "Arena" or windowId == "Ring") then
+				if windowId ~= nil and (windowId == "Arena" or windowId == "Ring") then
 					return
 				end
 				ArenaController.Close()
@@ -3515,6 +2911,9 @@ local function connectOthers()
 	hook("MenuController", "WindowOpened")
 	hook("IndexController", "Opened")
 	hook("FusionController", "Opened")
+	hook("CareController", "Opened")
+	hook("DungeonController", "Opened")
+	hook("ObbyController", "Opened")
 end
 
 ----------------------------------------------------------------------
@@ -3530,21 +2929,6 @@ function ArenaController.Init()
 
 	local gui = CloudUI.NewScreenGui("NimbusArena", K.DISPLAY_ORDER)
 	U.Gui = gui
-	U.Backdrop = Util.Create("TextButton", {
-		Name = "Backdrop",
-		AutoButtonColor = false,
-		Text = "",
-		BorderSizePixel = 0,
-		BackgroundColor3 = Color3.fromRGB(8, 12, 32),
-		BackgroundTransparency = 1,
-		Size = UDim2.new(1, 0, 1, 0),
-		Visible = false,
-		ZIndex = 1,
-		Parent = gui,
-	})
-	U.Backdrop.Activated:Connect(function()
-		ArenaController.Close()
-	end)
 	buildSide()
 	relayoutSide()
 	-- the hint (right edge, a third down: clear of the toasts at the top and the side cards at the bottom)
@@ -3627,9 +3011,7 @@ function ArenaController.Init()
 				end
 				args = type(args) == "table" and args or {}
 				local key = panelId:lower()
-				if key == "trials" or key == "trial" then
-					safe("OpenPanel", ArenaController.OpenTrials, args.Level)
-				elseif key == "ring" then
+				if key == "ring" then
 					safe("OpenPanel", ArenaController.OpenRing, args.Start)
 				elseif key == "arena" or key == "duels" or key == "raid" or key == "leaderboard" then
 					local tab = args.Tab or ((key ~= "arena") and panelId or nil)
@@ -3668,13 +3050,6 @@ function ArenaController.Init()
 			return
 		end
 		nextTick = now + K.TICK
-		if S.Open == "Trials" and S.AtPortal then
-			local d = portalDistance()
-			if d and d > K.WALK_AWAY then
-				ArenaController.Close()
-				return
-			end
-		end
 		if S.Open == "Ring" and S.RingAt then
 			local d = Ring.distance()
 			if d and d > K.WALK_AWAY then

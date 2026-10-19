@@ -3,6 +3,9 @@
 -- Gems tab, the Index Fusions tab (client/Controllers/MenuController.lua, IndexController.lua), the appended home
 -- chapter of the tutorial (shared/TutorialSteps.lua, server/Services/TutorialService.lua) and the NPC tips
 -- (shared/NpcDialog.lua). Loaded by tools/smoke.py in BOTH worlds; ARGS.context picks the half:
+-- (Phase 5, owner tutorial W4 for the chapter-2 ids / texts and the p2ui_tutorial flow: roaming pets poop Cloud Cash,
+-- the arrow finds the biggest drop (TycoonService.Drops), the Berry Farm pad comes before the Food Machine pad, the
+-- feed step tops the berries up; Mayor Panda / Granny Owl speak of Cloud Cash, the Food Bowl and the Berry Basket)
 --   p2ui_content        (server, content) the home chapter follows the nine basics (Phase 4 ids claim, garden, coins,
 --                       machine, feed; chapters, ChapterEnd, known CompleteOn incl. the Phase 4 ones, Station of every
 --                       "Built" step, home targets, no Collector / Kitchen / cooking left); NPC tips: every NPC has 3-5
@@ -88,7 +91,7 @@ local function serverScenarios()
 		T.eq(start, 10, "p2ui: chapter 2 starts at step 10 (a finished Phase 1 tutorial stored Step = 10)")
 		local known = { Next = true, NearSpot = true, ShopOpened = true, Rolled = true, Equipped = true, IndexOpened = true,
 			MatchStarted = true, MatchEnded = true, Claimed = true, Built = true, Collected = true, Fed = true,
-			ArenaReached = true, TeamSet = true, TrialWon = true, RaidSeen = true, -- (Phase 3, chapter 3)
+			ArenaReached = true, TeamSet = true, DungeonWon = true, RaidSeen = true, -- (Phase 3, chapter 3; Phase 5 DungeonWon)
 			GardenPlaced = true, CoinsScooped = true, TrainingStarted = true, RingWon = true, PortalUsed = true } -- (Phase 4)
 		local bad, ends = {}, {}
 		for i, step in ipairs(Steps.Steps) do
@@ -169,15 +172,13 @@ local function serverScenarios()
 			return true
 		end
 		-- Phase 4 tips (contract section 9): numbers read from the catalogs
-		local share = TC and TC.FeedShare and TC.FeedShare[1]
-		local sharePct = share and (tostring(math.floor(share * 100 + 0.5)) .. "%") or "%"
-		T.check(says("granny_owl", "Food Machine", "Feed", "EVOLVE", sharePct),
-			"p2ui: Granny Owl explains the Food Machine, feeding (" .. sharePct .. " of the bar) and EVOLVE")
+		T.check(says("granny_owl", "Berry Basket", "Food Machine", "Feed", "EVOLVE"),
+			"p2ui: Granny Owl explains the Berry Basket, the Food Machine, feeding and EVOLVE")
 		T.check(says("coach_corgi", "Training Place", "Champion Ring"), "p2ui: Coach Corgi explains the Training Place and the Champion Ring")
 		local P = TC and TC.Prestige or {}
-		T.check(says("mayor_panda", "free gate", "Pet Garden", "rainbow coins", "Prestige", "Home Level " .. tostring(P.HomeLevel or 40),
+		T.check(says("mayor_panda", "free gate", "Food Bowl", "Cloud Cash", "Berry Farm", "Prestige", "Home Level " .. tostring(P.HomeLevel or 40),
 			tostring(P.GemReward or 100) .. " Gems"),
-			"p2ui: Mayor Panda explains claiming a home, the Pet Garden's rainbow coins and Prestige (Home Level " .. tostring(P.HomeLevel) .. ", the Gems reward)")
+			"p2ui: Mayor Panda explains claiming a home, the Food Bowl's Cloud Cash, the Berry Farm and Prestige (Home Level " .. tostring(P.HomeLevel) .. ", the Gems reward)")
 		local npcAll = ""
 		for _, t in pairs(all) do
 			npcAll = npcAll .. t
@@ -345,16 +346,28 @@ local function serverScenarios()
 		advance(0.6)
 		T.check(okPlace == true, "p2ui tutorial: a pet is put in garden place 1")
 		T.eq(stepId(p), "coins", "p2ui tutorial: a pet in the Garden completes 'garden'")
-		-- coins: the pet eats and pops out coins; walking over them scoops them
-		advance(20)
-		local piles = Ty.Piles and Ty.Piles(p)
-		local pile = piles and piles[1]
-		T.check(pile and (tonumber(pile.Coins) or 0) >= 1 and typeof(pile.Pos) == "Vector3", "p2ui tutorial: the garden pet popped out coins")
+		-- coins (Phase 5): the pet roams, eats at the Food Bowl and poops Cloud Cash (the first poop lands 23-35 s after
+		-- the placement); walking over it scoops it
 		st = state(p)
-		T.check(st and st.Id == "coins" and st.Target and typeof(st.Target.Position) == "Vector3" and pile and (st.Target.Position - pile.Pos).Magnitude < 4,
-			"p2ui tutorial: the 'coins' arrow points at the coin pile", st and tostring(st.Hint))
-		if pile then
-			Mock.Teleport(p, CFrame.new(pile.Pos + Vector3.new(0, 3, 0)))
+		T.check(st and st.Id == "coins" and st.Target and typeof(st.Target.Position) == "Vector3",
+			"p2ui tutorial: before the first poop the 'coins' arrow points at the Pet Garden", st and tostring(st.Hint))
+		local drop = nil
+		waitFor(function()
+			local drops = Ty.Drops and Ty.Drops(p) or {}
+			for _, d in ipairs(drops) do
+				if (tonumber(d.Value) or 0) >= 1 and (d.Poops == nil or d.Poops >= 1) and (not drop or d.Value > drop.Value) then
+					drop = d
+				end
+			end
+			return drop ~= nil
+		end, 45)
+		T.check(drop ~= nil and typeof(drop.Position) == "Vector3", "p2ui tutorial: the garden pet pooped Cloud Cash (TycoonService.Drops)")
+		advance(0.6)
+		st = state(p)
+		T.check(st and st.Id == "coins" and st.Target and typeof(st.Target.Position) == "Vector3" and drop and (st.Target.Position - drop.Position).Magnitude < 1,
+			"p2ui tutorial: the 'coins' arrow points at the biggest drop", st and tostring(st.Hint))
+		if drop then
+			Mock.Teleport(p, CFrame.new(drop.Position + Vector3.new(0, 3, 0)))
 		end
 		waitFor(function()
 			return stepId(p) ~= "coins"
@@ -402,6 +415,7 @@ local function serverScenarios()
 		T.check(st and st.Target and st.Target.Kind == "Spot" and typeof(st.Target.Position) == "Vector3" and machinePos
 			and (st.Target.Position - machinePos).Magnitude < 12,
 			"p2ui tutorial: 'feed' points at the Food Machine", st and tostring(st.Hint))
+		T.check((DataS.GetBerries(p) or 0) >= 40, "p2ui tutorial: entering 'feed' tops the berries up for the first feed", tostring(DataS.GetBerries(p)))
 		local cash0 = DataS.GetCash(p)
 		local okFeed, fed = Care.Feed(p, "pebble_pup", nil)
 		advance(0.6)

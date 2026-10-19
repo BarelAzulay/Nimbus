@@ -323,7 +323,77 @@ COVER[#COVER + 1] = {
 -- [owner: battleclient] end
 
 -- [owner: dungeonclient] begin
--- (ring, arena:*, dungeon, obby)
+-- dungeonclient (W4): the Ring / Arena windows (ArenaController), the Dungeon window with a Lobby payload (DungeonController)
+-- and the obby picker (ObbyController), each through its real controller.
+local DGC = {}
+function DGC.mod(name)
+	return (NK.KC().M and NK.KC().M[name]) or NK.req("client/Controllers/" .. name)
+end
+function DGC.closeAll()
+	for _, name in ipairs({ "ArenaController", "DungeonController", "ObbyController", "MenuController" }) do
+		local m = DGC.mod(name)
+		if m and type(m.Close) == "function" then
+			pcall(m.Close)
+		end
+	end
+end
+function DGC.arenaWindow(id)
+	local g = NK.pg():FindFirstChild("NimbusArena")
+	return g and g:FindFirstChild("Window_" .. id)
+end
+COVER[#COVER + 1] = {
+	Scene = "ring",
+	Open = function()
+		pcall(DGC.mod("ArenaController").OpenRing)
+	end,
+	Close = DGC.closeAll,
+	Window = function()
+		return DGC.arenaWindow("Ring")
+	end,
+}
+for _, tab in ipairs({ "Duels", "Raid", "Leaderboard" }) do
+	COVER[#COVER + 1] = {
+		Scene = "arena:" .. tab:lower(),
+		Open = function()
+			pcall(DGC.mod("ArenaController").OpenArena, tab)
+		end,
+		Close = DGC.closeAll,
+		Window = function()
+			return DGC.arenaWindow("Arena")
+		end,
+	}
+end
+COVER[#COVER + 1] = {
+	Scene = "arena:dungeon",
+	Open = function()
+		local cleared = {}
+		for f = 1, 12 do
+			cleared[f] = f <= 4
+		end
+		NK.KC().toClient("DungeonState", "Lobby", {
+			Parties = { { Leader = 501, LeaderName = "Ava", Floor = 3, Count = 2, Max = 4, Open = true, InRun = false },
+				{ Leader = 502, LeaderName = "Sam", Floor = 5, Count = 3, Max = 4, Open = true, InRun = true, Room = 2 } },
+			Record = { Best = 4, Cleared = cleared, Runs = 12, Clears = 7 },
+		})
+		pcall(DGC.mod("DungeonController").Open, 3)
+	end,
+	Close = DGC.closeAll,
+	Window = function()
+		local g = NK.pg():FindFirstChild("NimbusDungeon")
+		return g and g:FindFirstChild("Window_Dungeon")
+	end,
+}
+COVER[#COVER + 1] = {
+	Scene = "obby",
+	Open = function()
+		pcall(DGC.mod("ObbyController").Open)
+	end,
+	Close = DGC.closeAll,
+	Window = function()
+		local g = NK.pg():FindFirstChild("NimbusObby")
+		return g and g:FindFirstChild("Window_Obby")
+	end,
+}
 -- [owner: dungeonclient] end
 
 -- [owner: homefx+pets] begin

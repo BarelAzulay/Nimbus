@@ -1364,7 +1364,197 @@ local function clientScenarios()
 		end
 	end)
 
-	-- [W4 dungeonclient] S.client_p5obby goes here (and its name back on this file's line in tools/smoke.py).
+	-- [W4 dungeonclient] client_p5obby: the ONE obby portal's level picker (ObbyController, contract 6.3): five cards with
+	-- locks from Stats.BestTimes (ObbyLevels), ObbyPick only for an open level (optimistic PICKED, the ObbyLevel attribute
+	-- wins), the gate's party footer, a member cannot pick, the leader's CHANGE chip opens it (HudController.
+	-- _onChangeLevel), the ObbyPrompt opens it, stepping onto the pad / walking 40 studs away closes it, the unlock toast
+	-- after a won match, docked right / a bottom sheet.
+	S.client_p5obby = guarded("client_p5obby", function()
+		local LP = game:GetService("Players").LocalPlayer
+		local RS = game:GetService("ReplicatedStorage")
+		local function req(key)
+			local inst = Mock.GetPath(ROOTS[key:match("^(%a+)/")] .. "/" .. key:gsub("^%a+/", ""))
+			local ok, mod = pcall(require, inst)
+			return ok and type(mod) == "table" and mod or nil
+		end
+		local pg = LP:FindFirstChild("PlayerGui") or LP:WaitForChild("PlayerGui")
+		if not RS:FindFirstChild("Remotes") or not pg:FindFirstChild("NimbusMenu") then
+			if not RS:FindFirstChild("Remotes") then
+				local Config = req("shared/Config")
+				local folder = Instance.new("Folder")
+				folder.Name = "Remotes"
+				for _, n in ipairs(Config.Remotes) do
+					local r = Instance.new("RemoteEvent")
+					r.Name = n
+					r.Parent = folder
+				end
+				folder.Parent = RS
+			end
+			Mock.RunScript(Mock.GetPath(ROOTS["client"] .. "/Main"))
+			Mock.Advance(3)
+		end
+		local OC = (KC and KC.M and KC.M.ObbyController) or req("client/Controllers/ObbyController")
+		local Hud = (KC and KC.M and KC.M.HudController) or req("client/Controllers/HudController")
+		if not T.check(type(OC) == "table" and type(OC.Open) == "function", "p5obby client: ObbyController loads with a public Open()") then
+			return
+		end
+		pcall(OC.Init)
+		local function toClient(name, ...)
+			Mock.ToClient(RS.Remotes:FindFirstChild(name), ...)
+		end
+		local function find(root, name)
+			for _, d in ipairs(root and root:GetDescendants() or {}) do
+				if d.Name == name then
+					return d
+				end
+			end
+			return nil
+		end
+		local function picks(mark)
+			local out = {}
+			for i = mark + 1, #Mock.RemoteLog do
+				local e = Mock.RemoteLog[i]
+				if e.kind == "server" and e.remote == "ObbyPick" then
+					out[#out + 1] = (e.args or {})[1]
+				end
+			end
+			return out
+		end
+		LP:SetAttribute("InMatch", false)
+		LP:SetAttribute("PortalLocked", nil)
+		LP:SetAttribute("ObbyLevel", nil)
+		toClient("PartyState", nil)
+		local snap = { Tokens = 100, Pets = {}, Equipped = {}, Items = {}, Discovered = {}, IndexClaimed = {},
+			Stats = { Matches = 4, Wins = 2, TokensEarned = 40, Spins = 0, BestTimes = { Easy = 200.5, Medium = 301 } },
+			Perks = { MaxHealth = 0, TokenBonus = 0, StaminaRegen = 0, CheckpointHeal = 0 }, Tutorial = { Step = 99, Done = true, Gifted = true } }
+		toClient("ProfileSync", snap)
+		Mock.Advance(0.5)
+		Mock.SetViewport(1920, 1080)
+		Mock.Advance(0.3)
+		OC.Open()
+		Mock.Advance(0.6)
+		local gui = pg:FindFirstChild("NimbusObby")
+		local win = gui and gui:FindFirstChild("Window_Obby")
+		if not T.check(win and KC.isShown(win) and OC.IsOpen(), "p5obby client: Open() shows the picker") then
+			return
+		end
+		local cards = {}
+		for _, id in ipairs({ "Easy", "Medium", "Hard", "Extreme", "Saint" }) do
+			cards[id] = find(win, "Level_" .. id)
+		end
+		T.check(cards.Easy and cards.Saint and cards.Hard, "p5obby client: five level cards Easy .. Saint")
+		T.check(cards.Easy:GetAttribute("Unlocked") and cards.Medium:GetAttribute("Unlocked") and cards.Hard:GetAttribute("Unlocked")
+			and not cards.Extreme:GetAttribute("Unlocked") and not cards.Saint:GetAttribute("Unlocked"), "p5obby client: a Medium win opens Hard; Extreme / Saint locked")
+		T.check(cards.Hard:GetAttribute("Picked") == true, "p5obby client: with no ObbyLevel the highest open level (Hard) is picked")
+		T.check(find(cards.Extreme, "Info").Text:find("Beat Hard to unlock", 1, true), "p5obby client: a locked card says 'Beat Hard to unlock'", find(cards.Extreme, "Info").Text)
+		T.check(find(cards.Easy, "Info").Text:find("Best 3:21", 1, true), "p5obby client: an open card shows the best time", find(cards.Easy, "Info").Text)
+		T.check(win:GetAttribute("DockMode") == "Side" and (win:GetAttribute("DockLeft") or 0) >= 960, "p5obby client: docked right on 1920x1080")
+		local mark = #Mock.RemoteLog
+		Mock.Click(cards.Extreme)
+		Mock.Advance(0.4)
+		T.eq(#picks(mark), 0, "p5obby client: a locked level sends no ObbyPick")
+		Mock.Click(cards.Medium)
+		Mock.Advance(0.2)
+		local p = picks(mark)
+		T.check(#p == 1 and p[1] == "Medium" and cards.Medium:GetAttribute("Picked") == true, "p5obby client: PICK sends ObbyPick('Medium') and shows it PICKED")
+		LP:SetAttribute("ObbyLevel", "Easy")
+		Mock.Advance(0.3)
+		T.check(cards.Easy:GetAttribute("Picked") == true and cards.Medium:GetAttribute("Picked") ~= true, "p5obby client: the server's ObbyLevel attribute wins")
+		-- the gate's party footer
+		local lobby = workspace:FindFirstChild("NimbusLobby") or Instance.new("Folder")
+		lobby.Name = "NimbusLobby"
+		lobby.Parent = workspace
+		local gates = lobby:FindFirstChild("Gates") or Instance.new("Folder")
+		gates.Name = "Gates"
+		gates.Parent = lobby
+		local portal = Instance.new("Model")
+		portal.Name = "Portal_Obby"
+		local padPart = Instance.new("Part")
+		padPart.Anchored = true
+		padPart.Name = "Pad"
+		local rootPart = KC.root and KC.root()
+		padPart.CFrame = CFrame.new((rootPart and rootPart.Position or Vector3.new()) + Vector3.new(6, 0, 0))
+		padPart.Parent = portal
+		portal:SetAttribute("PartyCount", 2)
+		portal:SetAttribute("PartyMax", 4)
+		portal:SetAttribute("PartyLevel", "Hard")
+		portal.Parent = gates
+		Mock.Advance(3.2) -- (the locked-card hint of the tap above lasts 3 s)
+		local footer = find(win, "Footer")
+		T.check(footer and footer.Text == "Party on the pad: Hard 2/4 - step on to join", "p5obby client: the footer reads the gate's party", footer and footer.Text)
+		-- a member on the pad cannot pick
+		toClient("PartyState", { PortalId = "Obby", Level = "Hard", Stars = 3, LeaderUserId = 77, Players = { { UserId = 77, Name = "Buddy" }, { UserId = LP.UserId, Name = LP.Name } }, Max = 4, Countdown = 10 })
+		Mock.Advance(0.3)
+		mark = #Mock.RemoteLog
+		Mock.Click(cards.Medium)
+		Mock.Advance(0.3)
+		T.eq(#picks(mark), 0, "p5obby client: a party member's tap sends nothing (the leader picks)")
+		-- the leader's CHANGE chip opens the picker (HudController._onChangeLevel -> ObbyController.Open)
+		OC.Close()
+		Mock.Advance(0.3)
+		toClient("PartyState", { PortalId = "Obby", Level = "Hard", Stars = 3, LeaderUserId = LP.UserId, Players = { { UserId = LP.UserId, Name = LP.Name } }, Max = 4, Countdown = 10 })
+		LP:SetAttribute("PortalLocked", "Obby")
+		Mock.Advance(0.5)
+		if Hud and type(Hud._onChangeLevel) == "function" then
+			Hud._onChangeLevel()
+			Mock.Advance(0.4)
+			T.check(OC.IsOpen(), "p5obby client: the party panel's CHANGE (leader) opens the picker")
+		else
+			T.info("p5obby client: HudController._onChangeLevel missing")
+		end
+		OC.Close()
+		LP:SetAttribute("PortalLocked", nil)
+		toClient("PartyState", nil)
+		Mock.Advance(0.4)
+		-- the gate's ObbyPrompt opens it; stepping onto the pad closes it
+		local prompt = Instance.new("ProximityPrompt")
+		prompt.Name = "ObbyPrompt"
+		prompt:SetAttribute("OpenPanel", "Obby")
+		prompt.Parent = padPart
+		Mock.Trigger(prompt, LP)
+		Mock.Advance(0.5)
+		T.check(OC.IsOpen(), "p5obby client: the gate's ObbyPrompt (OpenPanel 'Obby') opens the picker")
+		LP:SetAttribute("PortalLocked", "Obby")
+		Mock.Advance(0.3)
+		T.check(not OC.IsOpen(), "p5obby client: stepping onto the pad closes a picker opened at the gate")
+		LP:SetAttribute("PortalLocked", nil)
+		-- walking away (> 40 studs from the gate) closes it
+		if rootPart then
+			Mock.Trigger(prompt, LP)
+			Mock.Advance(0.4)
+			local home = rootPart.CFrame
+			Mock.Teleport(LP, home * CFrame.new(0, 0, 80))
+			Mock.Advance(0.6)
+			T.check(not OC.IsOpen(), "p5obby client: walking 40+ studs away closes it")
+			Mock.Teleport(LP, home)
+		else
+			T.info("p5obby client: no character root: walk-away not measured")
+		end
+		-- a portrait phone: a bottom sheet
+		Mock.SetViewport(390, 844)
+		Mock.Advance(0.4)
+		OC.Open()
+		Mock.Advance(0.6)
+		T.check(win:GetAttribute("DockMode") == "Sheet", "p5obby client: a bottom sheet on 390x844")
+		OC.Close()
+		Mock.SetViewport(1920, 1080)
+		Mock.Advance(0.4)
+		-- the unlock toast after a won match that raised the highest open level
+		toClient("MatchResult", { Won = true, Reason = "Finished", Seconds = 380, MatchTokens = 30, Bonus = 35, DifficultyId = "Hard", DifficultyName = "Hard", Stars = 3, TotalTokens = 40, Members = {} })
+		Mock.Advance(0.3)
+		local tg = pg:FindFirstChild("NimbusObbyToast")
+		local toast = tg and tg:FindFirstChild("UnlockToast")
+		T.check(toast and KC.isShown(toast) and find(toast, "Text").Text == "Extreme unlocked! Pick it at the Obby portal.", "p5obby client: 'Extreme unlocked! Pick it at the Obby portal.' after a Hard win",
+			toast and find(toast, "Text").Text)
+		toClient("MatchResult", { Won = true, DifficultyId = "Easy", Members = {} })
+		Mock.Advance(7)
+		T.check(toast and not KC.isShown(toast), "p5obby client: no toast for a win that unlocks nothing (and the toast fades)")
+		portal:Destroy()
+		LP:SetAttribute("ObbyLevel", nil)
+		if KC and KC.flushErrors then
+			KC.flushErrors("client_p5obby")
+		end
+	end)
 
 	return S
 end

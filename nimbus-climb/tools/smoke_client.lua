@@ -1010,15 +1010,28 @@ end)
 -- (every gap between two replayed messages is advanced, up to 4 s): only the latest state matters to the client, so a
 -- broadcast is replayed at most every ARENA_STATE_GAP seconds of server time (client_p3ui / client_p3flow cover the
 -- arena side cards and countdowns).
+-- Phase 5: the server run keeps growing (25,000 s of server time by wave 4), so a fixed gap still replayed ~250
+-- broadcasts per player, each followed by a 4 s idle advance: 5 players x ~1,000 s of client frames that only
+-- watched the arena status (the scenario hit the 600 s limit). The gap now stretches with the run so each player
+-- gets at most ARENA_STATE_MAX broadcasts, still spread over the whole run.
 local ARENA_STATE_GAP = 60
+local ARENA_STATE_MAX = 60
 local function replayFor(userId)
 	local picked = {}
 	local lastArenaState = -math.huge
+	local first, last = math.huge, -math.huge
+	for i = 1, #REPLICATION do
+		local e = REPLICATION[i]
+		if e.kind == "remote" and e.target == "all" and e.remote == "ArenaState" then
+			first, last = math.min(first, e.time), math.max(last, e.time)
+		end
+	end
+	local gap = math.max(ARENA_STATE_GAP, (last - first) / ARENA_STATE_MAX)
 	for i = 1, #REPLICATION do
 		local e = REPLICATION[i]
 		if e.kind == "remote" then
 			if e.target == "all" and e.remote == "ArenaState" then
-				if e.time - lastArenaState >= ARENA_STATE_GAP then
+				if e.time - lastArenaState >= gap then
 					lastArenaState = e.time
 					picked[#picked + 1] = e
 				end

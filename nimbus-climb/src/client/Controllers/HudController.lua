@@ -772,7 +772,12 @@ local function applyMargins(animate, force)
 	if topBand then
 		candidates = {}
 		mode, style = "TopBand", "Row"
-		curW = math.floor(Util.Clamp((vp.X - K.BAND_LEFT - K.BAND_RIGHT - (n - 1) * K.CUR_GAP * k) / n / k, K.BAND_MIN_W, K.BAND_W))
+		-- in a match the token pill also carries the "+n" chip: the pill grows by the chip so it never covers the number
+		local bandW = K.BAND_W
+		if currencies[1] and currencies[1].Chip and (S.match ~= nil or (player and player:GetAttribute(Config.Attr.InMatch) == true)) then
+			bandW = K.BAND_W + K.CHIP_W + 6
+		end
+		curW = math.floor(Util.Clamp((vp.X - K.BAND_LEFT - K.BAND_RIGHT - (n - 1) * K.CUR_GAP * k) / n / k, K.BAND_MIN_W, bandW))
 	end
 	for _, candidate in ipairs(candidates) do
 		local h = stackHeight(n, candidate) * k
@@ -835,6 +840,11 @@ local function applyMargins(animate, force)
 	local panelW = K.PANEL_W
 	if topH > 0 then
 		topLeft = clearOfColumn(K.EDGE, K.EDGE + topH * k)
+		if topLeft > side and topLeft + K.PANEL_MIN_W * k > area.X - side then
+			-- a narrow portrait phone has no room beside the 2-column tile grid (the panel would run off the right
+			-- edge): the panel keeps the corner and MenuController moves the grid below it (our TopLeftBottom)
+			topLeft = side
+		end
 		if K.EDGE + topH * k > band.y0 then
 			panelW = math.floor(Util.Clamp((band.x0 - topLeft - 4) / k, K.PANEL_MIN_W, K.PANEL_W))
 		end

@@ -55,7 +55,8 @@
 --                         ring HUD vs the round's champion team) | next<n> (the next-round card after a win) |
 --                         result<n> (the run's result card) | record<n> (the result card with a new best round)
 --   portal[:<Id>[:<n>[:<studs>]]]  no game HUD: the real LobbyBuilder + PortalService with n players (default 1) on
---                         the portal pad (default Medium); its world GUIs mirrored flat into the ScreenGui
+--                         the ONE obby pad (Id 'Obby' = lobby.Portals.Obby, or a level id: Easy .. Saint picks that
+--                         party level; Phase 5 6.3); its world GUIs mirrored flat into the ScreenGui
 --                         WorldMirror: the pixel billboard at its own size, the eye-level countdown face at the
 --                         size it has on this screen from <studs> away (default 36, a friend outside the lock
 --                         walls) over a sketch of the swirl, and the face's canvas at 1:1
@@ -1650,15 +1651,21 @@ local function portalScene(id, members, distance, width, height)
 	local PortalService = req("server/Services/PortalService")
 	local lobby = LobbyBuilder.Build()
 	local portals = (type(lobby) == "table" and lobby.Portals) or {}
+	-- Phase 5 (6.3): ONE obby portal, lobby.Portals.Obby (PortalId 'Obby'); an old difficulty id picks that level
+	local level = nil
 	if not id or id == "" then
-		id = "Medium"
+		id = "Obby"
+	elseif id ~= "Obby" and Config.GetDifficulty and Config.GetDifficulty(id) then
+		level = id
+		id = "Obby"
 	end
 	if not portals[id] then
 		Mock.Context = context
 		local known = {}
-		for _, d in ipairs(Config.Difficulties) do
-			known[#known + 1] = d.Id
+		for k in pairs(portals) do
+			known[#known + 1] = tostring(k)
 		end
+		table.sort(known)
 		fail("no portal '" .. tostring(id) .. "'. Known: " .. table.concat(known, ", "))
 	end
 	-- no matches here: a launch just fails quietly
@@ -1678,6 +1685,11 @@ local function portalScene(id, members, distance, width, height)
 		list[i] = Mock.AddPlayer("Buddy" .. i, 9100 + i)
 	end
 	advance(0.3)
+	if level then
+		-- the first player on the pad sets the party's level (their ObbyLevel when it is unlocked for them)
+		list[1]:SetAttribute(Config.Attr.ObbyLevel or "ObbyLevel", level)
+		pcall(PortalService.PickLevel, list[1], level)
+	end
 	Mock.Teleport(LocalPlayer, (Config.Lobby.Origin or Vector3.new(0, 300, 0)) + Vector3.new(0, 4, 0))
 	for i = 1, count do
 		Mock.Teleport(list[i], zone.CFrame * CFrame.new((i - 1) * 2.6 - 3.9, 0, 1))
@@ -1718,7 +1730,7 @@ local function portalScene(id, members, distance, width, height)
 		local w, h = canvasOf(face)
 		local caption = fmt("Face from %d studs (x%.2f)%s", d, s, face.Enabled and "" or ", hidden")
 		local px, py = place(w * s, h * s, caption)
-		swirlSketch(screen, px, py, w, h, s, face.PixelsPerStud, (info.Model and info.Model:FindFirstChild("SwirlCore") and info.Model.SwirlCore.Color) or difficulty(id).Color)
+		swirlSketch(screen, px, py, w, h, s, face.PixelsPerStud, (info.Model and info.Model:FindFirstChild("SwirlCore") and info.Model.SwirlCore.Color) or difficulty(level or "Easy").Color)
 		mirrorCell(screen, face, px, py, s, caption)
 		caption = fmt("Face canvas (%d px per stud)", floor(face.PixelsPerStud))
 		px, py = place(w, h, caption)
@@ -2788,7 +2800,200 @@ end)
 -- [owner: menu] end
 
 -- [owner: dungeonclient] begin
--- (arena:dungeon, obby, ring: the Dungeon / Obby / Ring / Arena side panels; arena:trials is gone)
+-- Phase 5 side panels of dungeonclient (W4): the Dungeon window + run card + End card (DungeonController), the obby
+-- level picker (ObbyController), the Champion Ring and Arena windows (ArenaController, docked; arena:trials is gone).
+--   arena[:<view>]          team | team4 | newteam (MenuController, unchanged) | duels | raid | leaders | side | practice
+--                           (a practice invite on the side card) | dungeon[:<dview>] (= dungeon:<dview>)
+--   dungeon[:<dview>]       lobby (default: the window, two open parties) | party (a member, READY not pressed) |
+--                           leader (the leader: KICK, START, the 30 s READY clock) | countdown (window closed: the side
+--                           card "Dungeon in 5...") | run (the battle HUD + the run card, a party of 2, one downed) |
+--                           loot (the room-cleared toast) | treasure (the chest) | end (floor cleared: totals, first
+--                           clear, unlock) | wipe (the End card of a lost run)
+--   obby[:<oview>]          picker (default: Hard picked, Extreme open, Saint locked) | party (on the pad as the leader:
+--                           CHANGE opens the picker) | toast (the "Extreme unlocked!" toast after a won match)
+--   ring[:new|record]       the Champion Ring window with the evolved team (EVO badges)
+local DGC = {}
+
+function DGC.profile(extra)
+	if CAREUI and CAREUI.profile then
+		CAREUI.profile()
+	end
+	local St = req("client/State", true)
+	local snap = St and St.Get and St.Get() or nil
+	if type(snap) ~= "table" or next(snap.Pets or {}) == nil then
+		snap = snapshot()
+	end
+	local copy = {}
+	for k, v in pairs(snap) do
+		copy[k] = v
+	end
+	copy.Stats = { Matches = 30, Wins = 14, TokensEarned = 2400, Spins = 9, BestTimes = { Easy = 212.4, Medium = 265.1, Hard = 402.8 } }
+	copy.Dungeon = { Best = 4, Cleared = { true, true, true, true, false, false, false, false, false, false, false, false }, Runs = 12, Clears = 7 }
+	for k, v in pairs(extra or {}) do
+		copy[k] = v
+	end
+	toClient("ProfileSync", copy)
+	advance(0.4)
+end
+
+function DGC.me()
+	return LocalPlayer.UserId, LocalPlayer.Name
+end
+
+function DGC.parties()
+	return {
+		{ Leader = 501, LeaderName = "StormChaser", Floor = 3, Count = 2, Max = 4, Open = true, InRun = false },
+		{ Leader = 502, LeaderName = "CloudyKnight", Floor = 5, Count = 3, Max = 4, Open = true, InRun = true, Room = 2 },
+		{ Leader = 503, LeaderName = "PuddleFan", Floor = 2, Count = 4, Max = 4, Open = false, InRun = false },
+	}
+end
+
+function DGC.record()
+	return { Best = 4, Cleared = { true, true, true, true, false, false, false, false, false, false, false, false }, Runs = 12, Clears = 7 }
+end
+
+function DGC.dungeon(view)
+	view = tostring(view or "lobby"):lower()
+	DGC.profile()
+	local me, myName = DGC.me()
+	if type(Mock.AddPlayer) == "function" then
+		pcall(Mock.AddPlayer, "StormChaser", 501)
+		pcall(Mock.AddPlayer, "CloudyKnight", 502)
+	end
+	local lobby = { Parties = DGC.parties(), Mine = nil, Record = DGC.record() }
+	if view == "party" then
+		lobby.Mine = { Leader = 501, Floor = 3, Members = {
+			{ UserId = 501, Name = "StormChaser", Ready = true, Power = 420 },
+			{ UserId = me, Name = myName, Ready = false, Power = 310 },
+		} }
+	elseif view == "leader" or view == "countdown" then
+		lobby.Mine = { Leader = me, Floor = 4, Countdown = (view == "countdown") and 5 or 24, Members = {
+			{ UserId = me, Name = myName, Ready = true, Power = 310 },
+			{ UserId = 501, Name = "StormChaser", Ready = true, Power = 420 },
+			{ UserId = 502, Name = "CloudyKnight", Ready = view == "countdown", Power = 188 },
+		} }
+	end
+	toClient("DungeonState", "Lobby", lobby)
+	advance(0.3)
+	if view == "lobby" or view == "party" or view == "leader" then
+		toClient("OpenPanel", "Dungeon", { Floor = 3 })
+		advance(1.5)
+		return
+	end
+	if view == "countdown" then
+		advance(1.2)
+		return
+	end
+	-- inside a run: the battle HUD of the room fight (battleclient's scene), the run id in InBattle
+	local runPayload = { RunId = "D7", Floor = 3, Name = "Flooded Vaults", Element = "Water", Room = 2, RoomCount = 4, Wave = 2, Waves = 2,
+		State = "Fight", Members = { { UserId = me, Name = myName, Downed = false, Left = false }, { UserId = 501, Name = "StormChaser", Downed = true, Left = false } },
+		Joinable = true }
+	if view == "run" or view == "loot" then
+		if SCENARIOS.battle then
+			try("battle scene", SCENARIOS.battle, "dungeon", "fight")
+		end
+	end
+	LocalPlayer:SetAttribute(Config.Attr.InBattle or "InBattle", "D7")
+	if view == "treasure" or view == "end" or view == "wipe" then
+		runPayload.State = "Treasure"
+		runPayload.Room = 4
+		runPayload.Wave = 2
+	end
+	if view == "loot" then
+		runPayload.State = "Corridor"
+		runPayload.Phase = "Walk"
+	end
+	toClient("DungeonState", "Run", runPayload)
+	advance(0.3)
+	if view == "loot" or view == "treasure" or view == "end" then
+		toClient("DungeonState", "Loot", { Room = 1, Cash = 340, Tokens = 24, Xp = 70, LevelUps = 0 })
+		toClient("DungeonState", "Loot", { Room = 2, Cash = 380, Tokens = 24, Xp = 70, LevelUps = 1 })
+	end
+	if view == "treasure" or view == "end" then
+		toClient("DungeonState", "Loot", { Room = 4, Cash = 910, Tokens = 72, Xp = 220, LevelUps = 0 })
+		toClient("DungeonState", "Chest", { Kind = "Tokens", Amount = 50 })
+	end
+	if view == "end" then
+		toClient("DungeonState", "End", { Floor = 3, Name = "Flooded Vaults", Cleared = true, Reason = "Cleared", Room = 4,
+			Totals = { Cash = 1630, Tokens = 170, Xp = 360, Gems = 0 }, FirstClear = { Tokens = 900, Gems = 5 }, Unlocked = 4, NewBest = 3 })
+		LocalPlayer:SetAttribute(Config.Attr.InBattle or "InBattle", nil)
+	elseif view == "wipe" then
+		toClient("DungeonState", "End", { Floor = 5, Name = "Ember Forge", Cleared = false, Reason = "Wipe", Room = 3,
+			Totals = { Cash = 520, Tokens = 52, Xp = 160, Gems = 0 } })
+		LocalPlayer:SetAttribute(Config.Attr.InBattle or "InBattle", nil)
+	end
+	advance(0.8)
+end
+
+do
+	local phase3Arena = SCENARIOS.arena
+	scenario("arena", function(view, arg)
+		view = tostring(view or "team"):lower()
+		if view == "dungeon" then
+			DGC.dungeon(arg)
+			return
+		end
+		if view == "trials" then
+			note("arena:trials is gone (Phase 5): showing arena:dungeon")
+			DGC.dungeon("lobby")
+			return
+		end
+		if view == "practice" then
+			DGC.profile()
+			toClient("BattleState", "Lobby", {
+				Queue = { Queued = false },
+				Invites = { { FromUserId = 501, FromName = "StormChaser", Trophies = 1210, Power = 2380, ExpiresIn = 24, Practice = true } },
+			})
+			advance(1.2)
+			return
+		end
+		if phase3Arena then
+			phase3Arena(view, arg)
+		end
+	end)
+end
+
+scenario("dungeon", function(view)
+	DGC.dungeon(view)
+end)
+
+scenario("obby", function(view)
+	view = tostring(view or "picker"):lower()
+	DGC.profile()
+	local me, myName = DGC.me()
+	LocalPlayer:SetAttribute(Config.Attr.ObbyLevel or "ObbyLevel", "Hard")
+	if view == "party" then
+		toClient("PartyState", { PortalId = "Obby", Level = "Hard", Stars = 3, LeaderUserId = me, DifficultyName = "Hard", Color = difficulty("Hard").Color,
+			Players = { { UserId = me, Name = myName }, { UserId = 77, Name = "Buddy" } }, Max = 4, Countdown = 12, Locked = true })
+		LocalPlayer:SetAttribute("PortalLocked", "Obby")
+		advance(0.6)
+		local Hud = req("client/Controllers/HudController", true)
+		if Hud and Hud._onChangeLevel then
+			try("CHANGE", Hud._onChangeLevel)
+		else
+			toClient("OpenPanel", "Obby", {})
+		end
+		advance(1.2)
+		return
+	end
+	if view == "toast" then
+		toClient("MatchResult", { Won = true, Reason = "Finished", Seconds = 380, MatchTokens = 40, Bonus = 35, DifficultyId = "Hard", DifficultyName = "Hard", Stars = 3, TotalTokens = 60, Members = {} })
+		advance(1.0)
+		return
+	end
+	toClient("OpenPanel", "Obby", {})
+	advance(1.2)
+end)
+
+scenario("ring", function(view)
+	if CAREUI and CAREUI.profile then
+		CAREUI.profile()
+	elseif careProfile then
+		careProfile(view == "new" and "new" or nil)
+	end
+	toClient("OpenPanel", "Ring", {})
+	advance(2.5)
+end)
 -- [owner: dungeonclient] end
 
 -- [owner: homefx+pets] begin
