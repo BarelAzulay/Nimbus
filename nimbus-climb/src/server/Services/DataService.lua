@@ -26,9 +26,19 @@
 --     PetGrowth = { [key] = { Evo = 0..2, Speed, Physique, Ability, Defense = 0..10,
 --                            Job = { Stat, Ends, Rank, Slot, From, Paid } | nil } },
 --     Ring = { Best = 0..100000, Runs },
---     Migrations = { P4 = true } }
---   Battle teams: a preset lists up to 3 UNIQUE keys in slot order (slot 4 once Home.Prestige reaches
---   TycoonCatalog.Prestige.TeamSlotUnlock, 1); every key needs a FREE copy: owned (PetKeys.Count) more often than it
+--     Migrations = { P4 = true, P5Dungeon = true, P5Home = true },
+--     -- Phase 5 (ARCHITECTURE_V3.md "Phase 5 build contract" section 9; new TOP-LEVEL fields + new Home keys again, so
+--     -- a Phase 4 server still running during the rollout writes them back untouched through keepForeign)
+--     Dungeon = { Best = 0..100, Cleared = {[floor]=true} (a dense boolean array in the store), Runs, Clears },
+--     Berries = whole number >= 0 (left out while 0),
+--     Settings = { Music 0..10, Sfx 0..10, Gfx "Auto"|"Low"|"High", Shake bool, SeenNotes 0..1000 } (left out while default),
+--     Home.DecorCredit = 1..18 | nil, Home.LegacyMagnet = 1..5 | nil, Home.LegacyMagnetStar = the Prestige it was folded at }
+--   Phase 5 rules: Teams hold 3 keys per preset (slot 1 = the fighter; a stored 4th key leaves the preset only, the pet
+--   stays owned); Dungeon merges Best max / Cleared union / Runs delta / Clears delta (the P5Dungeon migration's own
+--   Clears as a max, so two servers migrating one save do not double it); Berries merge as a +/- delta clamped at 0; the
+--   live session's Settings win; Food was converted into berries ONCE by the P5Home step and is never written again.
+--   Battle teams: a preset lists up to 3 UNIQUE keys in slot order (Phase 5: 3 always, slot 1 = the fighter; the
+--   Phase 3 prestige unlock of a 4th slot is gone); every key needs a FREE copy: owned (PetKeys.Count) more often than it
 --   works in the Gym (Phase 4: a Garden pet keeps earning at home while it follows you and fights, so only Home.Gym
 --   copies count, and Phase 4 empties the Gym on its one-time migration). A key that loses its free copy (fused away,
 --   released, a developer reset, its last copy placed in the Gym) is dropped from every preset ("pruned", the pets
@@ -300,6 +310,7 @@ local OVERWRITABLE = {
 	Home = true, Tiers = true, Hybrids = true, PetLevels = true,
 	Teams = true, Battle = true, -- Phase 3: the battle record's sets only grow and its best values only rise
 	PetGrowth = true, Ring = true, Migrations = true, -- Phase 4: ranks / stages / Best only rise, Migrations only grow
+	Dungeon = true, -- Phase 5: Best max / Cleared union would bring a reset record back
 }
 -- Stored keys this version owns. Anything else in a stored profile belongs to a newer phase and is written back
 -- untouched by every save (see keepForeign).
@@ -308,12 +319,14 @@ local KNOWN_TOP = {
 	Discovered = true, IndexClaimed = true, Tutorial = true, Cash = true, Gems = true, Home = true, PetLevels = true,
 	Food = true, Tiers = true, Hybrids = true, GemReceipts = true, Teams = true, Battle = true,
 	PetGrowth = true, Ring = true, Migrations = true, -- Phase 4
+	Dungeon = true, Berries = true, Settings = true, -- Phase 5
 	UpdatedAt = true,
 }
 local KNOWN_HOME = {
 	Level = true, Rooms = true, Prestige = true, Stations = true, Garden = true, Gym = true, CollectorCash = true,
 	LastSeen = true,
 	LegacySlots = true, LegacyPrices = true, -- Phase 4
+	DecorCredit = true, LegacyMagnet = true, LegacyMagnetStar = true, -- Phase 5
 }
 local KNOWN_STATS = { Matches = true, Wins = true, TokensEarned = true, Spins = true, BestTimes = true }
 
@@ -573,6 +586,10 @@ local function newHome()
 		LastSeen = 0,
 		LegacySlots = nil,
 		LegacyPrices = nil,
+		-- Phase 5 (nil unless the P5Home fold wrote them)
+		DecorCredit = nil,
+		LegacyMagnet = nil,
+		LegacyMagnetStar = nil,
 	}
 end
 
@@ -580,9 +597,8 @@ end
 -- module is close to Lua's limit of 200 local variables. None of the values below is in Config (local constants).
 local P3 = {
 	PRESETS = 3, -- saved team presets (Teams.Presets[1..3])
-	SLOTS = 3, -- pets in a team...
-	MAX_SLOTS = 4, -- ...and the 4th slot once Home.Prestige reaches the unlock
-	SLOT_UNLOCK = 1, -- prestige stars that unlock slot 4 when TycoonCatalog.Prestige.TeamSlotUnlock is missing
+	SLOTS = 3, -- pets in a team: a fighter and two helpers (Phase 5, 4.8: the 4th slot is gone; a stored 4-key preset
+	MAX_SLOTS = 3, -- keeps its first 3 keys, the 4th pet stays owned with its level and growth)
 	MAX_TRIAL_LEVEL = 200, -- sanity cap for TrialBest / TrialCleared levels (the trials go up to 30)
 	COUNTERS = { "Trophies", "Raids", "PvPWins", "PvPLosses" }, -- merge as +/- deltas (never below 0)
 	BESTS = { "TrialBest", "RaidBestDamage" }, -- merge as the higher value
@@ -608,6 +624,224 @@ local P4 = {
 	GARDEN_SLOTS_BASE = 3, -- 3 + Prestige garden places when TycoonCatalog.Prestige.GardenSlotsBase is missing
 	GARDEN_SLOTS_PER_STAR = 1,
 }
+
+-- Phase 5 (the Dungeon record, Berries, Settings, the P5 migrations and the folded Home keys; ARCHITECTURE_V3.md
+-- "Phase 5 build contract" section 9). ONE table again (the one new top-level local of Phase 5). Save-format
+-- constants only; the game rules (floors, berry prices, the fold) live in BattleCatalog / TycoonCatalog.
+local P5 = {
+	MAX_FLOOR = 100, -- Dungeon.Best / Cleared floors 1..100 (the dungeon has 10 floors + endless)
+	MIGRATE_MAX_FLOOR = 10, -- the P5Dungeon migration credits at most floor 10
+	TRIALS_PER_FLOOR = 3, -- Best = min(10, floor(TrialBest / 3)) (9.2 step 2)
+	DUNGEON_MARK = "P5Dungeon", -- Migrations[name] of the one-time dungeon migration
+	HOME_MARK = "P5Home", -- Migrations[name] of the one-time home fold (TycoonCatalog.FoldLegacy + the Food -> berries step)
+	LEGACY_FOOD = { Snack = 200, Meal = 1200, Feast = 6400 }, -- berries per old food when TycoonCatalog.Berries.LegacyFood is missing
+	MAX_BERRIES = 1000000000, -- sanity cap (whole berries)
+	BERRIES_GAP = 0.5, -- seconds: the Berries attribute is written at most twice a second (trailing write; 10.2 m6)
+	SETTING_KEYS = { "Music", "Sfx", "Gfx", "Shake", "SeenNotes" },
+	SETTING_DEFAULTS = { Music = 6, Sfx = 8, Gfx = "Auto", Shake = true, SeenNotes = 0 }, -- 7.2
+	GFX = { Auto = true, Low = true, High = true },
+	MAX_VOLUME = 10, -- Music / Sfx 0..10
+	MAX_NOTES = 1000, -- SeenNotes 0..1000 (UpdateNotes.Latest is a small version number)
+	SETTINGS_RATE = 6, -- SettingsSet: 6 per second...
+	SETTINGS_BURST = 6, -- ...with a burst of 6
+	MAX_DECOR_CREDIT = 18, -- Home.DecorCredit 0..18 (the old decor levels that did not fit into Fence / Fountain)
+	MAX_MAGNET = 5, -- Home.LegacyMagnet 1..5 (the old Coin Magnet level)
+	buckets = {}, -- [userId] = { tokens, last } SettingsSet rate limit (cleared when the player leaves)
+	pushes = {}, -- [userId] = { last = os.clock(), queued = bool } Berries attribute throttle
+}
+
+-- The Dungeon record: Best = the highest floor cleared (0 = none), Cleared = { [floor] = true } in the live profile
+-- (a dense boolean array in the store and the snapshot, like Battle.TrialCleared), Runs = finished runs, Clears =
+-- first clears (counter).
+function P5.newDungeon()
+	return { Best = 0, Cleared = {}, Runs = 0, Clears = 0 }
+end
+
+-- A floor number: a whole number 1..MAX_FLOOR (a numeric string too), or nil.
+function P5.floorOf(value)
+	local n = value
+	if type(value) == "string" and string.find(value, "^%d+$") then
+		n = tonumber(value)
+	end
+	if isFinite(n) and n >= 1 and n <= P5.MAX_FLOOR and n == math.floor(n) then
+		return n
+	end
+	return nil
+end
+
+-- Untrusted Dungeon -> a clean record (whole numbers >= 0; Cleared as a set; Best >= the highest cleared floor).
+function P5.cleanDungeon(raw)
+	local r = tableOr(raw)
+	local d = P5.newDungeon()
+	d.Best = clampCount(r.Best, P5.MAX_FLOOR)
+	d.Runs = sanitize(r.Runs)
+	d.Clears = sanitize(r.Clears)
+	for key, value in pairs(tableOr(r.Cleared)) do
+		local floor = nil
+		if value == true then
+			floor = P5.floorOf(key)
+		elseif type(key) == "number" and type(value) == "number" then
+			floor = P5.floorOf(value)
+		end
+		if floor then
+			d.Cleared[floor] = true
+		end
+	end
+	for floor in pairs(d.Cleared) do
+		if floor > d.Best then
+			d.Best = floor
+		end
+	end
+	return d
+end
+
+function P5.isDefaultDungeon(d)
+	return d.Best == 0 and d.Runs == 0 and d.Clears == 0 and next(d.Cleared) == nil
+end
+
+-- Clean record -> the stored / synced form (Cleared as a dense boolean array; no sparse array for the DataStore).
+function P5.encodeDungeon(d)
+	local cleared, top = {}, 0
+	for floor in pairs(d.Cleared) do
+		if floor > top then
+			top = floor
+		end
+	end
+	for floor = 1, top do
+		cleared[floor] = d.Cleared[floor] == true
+	end
+	return { Best = d.Best, Cleared = cleared, Runs = d.Runs, Clears = d.Clears }
+end
+
+-- The Dungeon delta (both clean), or nil: Best as a candidate when it rose, Cleared = the floors the session added
+-- (a union), Runs as a +/- delta, Clears as a +/- delta EXCEPT the part the session's own P5Dungeon migration wrote
+-- (`migrated` = that Clears value): it travels as ClearsFloor and merges as a max, so two servers migrating the same
+-- save do not double it (9.1 m15).
+function P5.diffDungeon(live, base, migrated)
+	local d, any = { Best = nil, Cleared = {}, Runs = nil, Clears = nil, ClearsFloor = nil }, false
+	if live.Best > base.Best then
+		d.Best = live.Best
+		any = true
+	end
+	for floor in pairs(live.Cleared) do
+		if not base.Cleared[floor] then
+			d.Cleared[floor] = true
+			any = true
+		end
+	end
+	if live.Runs ~= base.Runs then
+		d.Runs = live.Runs - base.Runs
+		any = true
+	end
+	local floorClears = isFinite(migrated) and migrated > 0 and math.floor(migrated) or 0
+	local clearsDelta = live.Clears - base.Clears - floorClears
+	if clearsDelta ~= 0 then
+		d.Clears = clearsDelta
+		any = true
+	end
+	if floorClears > 0 then
+		d.ClearsFloor = floorClears
+		any = true
+	end
+	if not any then
+		return nil
+	end
+	return d
+end
+
+function P5.applyDungeon(out, dd)
+	if not dd then
+		return
+	end
+	local d = out.Dungeon
+	if isFinite(dd.Best) and dd.Best > d.Best then
+		d.Best = clampCount(dd.Best, P5.MAX_FLOOR)
+	end
+	for key, value in pairs(tableOr(dd.Cleared)) do
+		local floor = value == true and P5.floorOf(key) or nil
+		if floor then
+			d.Cleared[floor] = true
+			if floor > d.Best then
+				d.Best = floor
+			end
+		end
+	end
+	if isFinite(dd.Runs) then
+		d.Runs = sanitize(d.Runs + dd.Runs) -- never below 0
+	end
+	if isFinite(dd.ClearsFloor) and dd.ClearsFloor > d.Clears then
+		d.Clears = clampCount(dd.ClearsFloor, P5.MAX_FLOOR)
+	end
+	if isFinite(dd.Clears) then
+		d.Clears = sanitize(d.Clears + dd.Clears)
+	end
+end
+
+-- Berries: a whole number 0..MAX_BERRIES.
+function P5.cleanBerries(raw)
+	return clampCount(raw, P5.MAX_BERRIES)
+end
+
+function P5.newSettings()
+	local s = {}
+	for _, key in ipairs(P5.SETTING_KEYS) do
+		s[key] = P5.SETTING_DEFAULTS[key]
+	end
+	return s
+end
+
+-- One setting's clean value, or nil when `value` is not acceptable for `key` (type -> range; 7.2).
+function P5.settingValue(key, value)
+	if key == "Music" or key == "Sfx" then
+		if isFinite(value) and value >= 0 and value <= P5.MAX_VOLUME and value == math.floor(value) then
+			return value
+		end
+	elseif key == "Gfx" then
+		if type(value) == "string" and P5.GFX[value] then
+			return value
+		end
+	elseif key == "Shake" then
+		if type(value) == "boolean" then
+			return value
+		end
+	elseif key == "SeenNotes" then
+		if isFinite(value) and value >= 0 and value <= P5.MAX_NOTES and value == math.floor(value) then
+			return value
+		end
+	end
+	return nil
+end
+
+-- Untrusted Settings -> a clean table with every key (per-key defaults for a missing or malformed value).
+function P5.cleanSettings(raw)
+	local r = tableOr(raw)
+	local s = P5.newSettings()
+	for _, key in ipairs(P5.SETTING_KEYS) do
+		local value = P5.settingValue(key, r[key])
+		if value ~= nil then
+			s[key] = value
+		end
+	end
+	return s
+end
+
+function P5.isDefaultSettings(s)
+	for _, key in ipairs(P5.SETTING_KEYS) do
+		if s[key] ~= P5.SETTING_DEFAULTS[key] then
+			return false
+		end
+	end
+	return true
+end
+
+function P5.settingsEqual(a, b)
+	for _, key in ipairs(P5.SETTING_KEYS) do
+		if a[key] ~= b[key] then
+			return false
+		end
+	end
+	return true
+end
 
 -- 3 empty presets, preset 1 active
 function P3.newTeams()
@@ -660,6 +894,10 @@ local function newProfile()
 		PetGrowth = {},
 		Ring = { Best = 0, Runs = 0 },
 		Migrations = {},
+		-- Phase 5 (ARCHITECTURE_V3.md "Phase 5 build contract" section 9)
+		Dungeon = P5.newDungeon(),
+		Berries = 0,
+		Settings = P5.newSettings(),
 	}
 end
 
@@ -824,6 +1062,16 @@ local function cleanHome(raw, migrate)
 	if h.LegacyPrices == true then
 		home.LegacyPrices = true
 	end
+	-- Phase 5 (the fold): DecorCredit 1..18 or nil; LegacyMagnet 1..5 with the Prestige it was folded at, or nil
+	local credit = h.DecorCredit
+	if isFinite(credit) and credit >= 1 then
+		home.DecorCredit = math.min(math.floor(credit), P5.MAX_DECOR_CREDIT)
+	end
+	local magnet = h.LegacyMagnet
+	if isFinite(magnet) and magnet >= 1 then
+		home.LegacyMagnet = math.min(math.floor(magnet), P5.MAX_MAGNET)
+		home.LegacyMagnetStar = clampCount(h.LegacyMagnetStar, MAX_LEVEL)
+	end
 	return home
 end
 
@@ -834,6 +1082,9 @@ local function homesEqual(a, b)
 		and a.LastSeen == b.LastSeen
 		and a.LegacySlots == b.LegacySlots
 		and a.LegacyPrices == b.LegacyPrices
+		and a.DecorCredit == b.DecorCredit
+		and a.LegacyMagnet == b.LegacyMagnet
+		and a.LegacyMagnetStar == b.LegacyMagnetStar
 		and mapsEqual(a.Stations, b.Stations)
 		and mapsEqual(a.Garden, b.Garden)
 		and mapsEqual(a.Gym, b.Gym)
@@ -1103,24 +1354,9 @@ function P3.cleanTeams(raw)
 	return teams
 end
 
--- Prestige stars that unlock team slot 4 (TycoonCatalog.Prestige.TeamSlotUnlock: resolved at load, so this is pure)
-function P3.slotUnlock()
-	local catalog = getTycoonCatalog()
-	local prestige = catalog and type(catalog.Prestige) == "table" and catalog.Prestige or nil
-	local unlock = prestige and prestige.TeamSlotUnlock
-	if isFinite(unlock) and unlock >= 0 then
-		return unlock
-	end
-	return P3.SLOT_UNLOCK
-end
-
--- Team slots of any profile-like table: MAX_SLOTS once Home.Prestige reaches the unlock, SLOTS before.
-function P3.slotsOf(profile)
-	local home = type(profile) == "table" and profile.Home or nil
-	local stars = type(home) == "table" and home.Prestige or 0
-	if isFinite(stars) and stars >= P3.slotUnlock() then
-		return P3.MAX_SLOTS
-	end
+-- Team slots of any profile-like table: 3 always (Phase 5, 4.8: slot 1 = the fighter, 2-3 = the helpers; the Phase 3
+-- prestige unlock of a 4th slot is gone).
+function P3.slotsOf(_)
 	return P3.SLOTS
 end
 
@@ -1566,6 +1802,10 @@ local function copyProfile(p)
 	out.PetGrowth = P4.cleanGrowth(p.PetGrowth)
 	out.Ring = P4.cleanRing(p.Ring)
 	out.Migrations = cleanSet(p.Migrations)
+	-- Phase 5
+	out.Dungeon = P5.cleanDungeon(p.Dungeon)
+	out.Berries = P5.cleanBerries(p.Berries)
+	out.Settings = P5.cleanSettings(p.Settings)
 	-- Phase 3 (the copies, the Home and its prestige are final above: the presets are pruned against them)
 	out.Teams = P3.cleanTeams(p.Teams)
 	P3.prune(out, out.Teams)
@@ -1635,6 +1875,10 @@ local function normalizeProfile(raw)
 	p.PetGrowth = P4.cleanGrowth(raw.PetGrowth)
 	p.Ring = P4.cleanRing(raw.Ring)
 	p.Migrations = cleanSet(raw.Migrations)
+	-- Phase 5 (absent in older saves: the defaults stay; the P5 migrations run on the live profile after the load)
+	p.Dungeon = P5.cleanDungeon(raw.Dungeon)
+	p.Berries = P5.cleanBerries(raw.Berries)
+	p.Settings = P5.cleanSettings(raw.Settings)
 	normalizeEquipped(p)
 	-- v3 fields (absent in v2 saves: the defaults from newProfile stay)
 	p.Discovered = cleanSet(raw.Discovered)
@@ -1696,6 +1940,10 @@ local function profilesEqual(a, b)
 		and deepEqual(a.PetGrowth, b.PetGrowth)
 		and deepEqual(a.Ring, b.Ring)
 		and mapsEqual(a.Migrations, b.Migrations)
+		-- Phase 5
+		and deepEqual(a.Dungeon, b.Dungeon)
+		and a.Berries == b.Berries
+		and P5.settingsEqual(a.Settings, b.Settings)
 end
 
 ----------------------------------------------------------------------
@@ -1811,6 +2059,10 @@ local function overwriteValues(live, overwrite)
 	end
 	if overwrite.Migrations then
 		out.Migrations = cleanSet(live.Migrations)
+	end
+	-- Phase 5 (the dev reset: Best max / Cleared union would bring the record back)
+	if overwrite.Dungeon then
+		out.Dungeon = P5.cleanDungeon(live.Dungeon)
 	end
 	if next(out) == nil then
 		return nil
@@ -1933,6 +2185,10 @@ local function diffHome(liveRaw, baseRaw)
 		-- Phase 4 (per-key replace): the new value, false when the session cleared it, nil when untouched
 		LegacySlots = nil,
 		LegacyPrices = nil,
+		-- Phase 5 (per-key replace too): DecorCredit, LegacyMagnet (+ LegacyMagnetStar travels with it)
+		DecorCredit = nil,
+		LegacyMagnet = nil,
+		LegacyMagnetStar = nil,
 	}
 	if live.Level ~= base.Level then
 		d.Level = live.Level
@@ -1945,6 +2201,13 @@ local function diffHome(liveRaw, baseRaw)
 	end
 	if live.LegacyPrices ~= base.LegacyPrices then
 		d.LegacyPrices = live.LegacyPrices or false
+	end
+	if live.DecorCredit ~= base.DecorCredit then
+		d.DecorCredit = live.DecorCredit or false
+	end
+	if live.LegacyMagnet ~= base.LegacyMagnet or live.LegacyMagnetStar ~= base.LegacyMagnetStar then
+		d.LegacyMagnet = live.LegacyMagnet or false
+		d.LegacyMagnetStar = live.LegacyMagnetStar
 	end
 	return d
 end
@@ -2008,6 +2271,11 @@ local function diffProfiles(live, base, overwrite, opts)
 		PetGrowth = P4.diffGrowth(P4.cleanGrowth(live.PetGrowth), P4.cleanGrowth(base.PetGrowth)),
 		Ring = P4.diffRing(P4.cleanRing(live.Ring), P4.cleanRing(base.Ring)),
 		Migrations = diffSet(live.Migrations, base.Migrations),
+		-- Phase 5: the dungeon record (Best candidate, Cleared union, Runs / Clears deltas, the migration's Clears as
+		-- a floor), berries as a +/- delta, the settings whole when the session changed them (the live session wins)
+		Dungeon = P5.diffDungeon(P5.cleanDungeon(live.Dungeon), P5.cleanDungeon(base.Dungeon), opts.DungeonMigrated),
+		Berries = P5.cleanBerries(live.Berries) - P5.cleanBerries(base.Berries),
+		Settings = nil,
 		Overwrite = overwriteValues(live, overwrite),
 		-- the prestige rule for Cash and the star rewards (applyDelta); receipt gems (no double grant)
 		BasePrestige = baseStars,
@@ -2041,6 +2309,10 @@ local function diffProfiles(live, base, overwrite, opts)
 	local liveTutorial = cleanTutorial(live.Tutorial)
 	if not tutorialsEqual(liveTutorial, cleanTutorial(base.Tutorial)) then
 		d.Tutorial = liveTutorial
+	end
+	local liveSettings = P5.cleanSettings(live.Settings)
+	if not P5.settingsEqual(liveSettings, P5.cleanSettings(base.Settings)) then
+		d.Settings = liveSettings
 	end
 	local baseReceipts = cleanReceipts(base.GemReceipts)
 	local receiptGems = type(opts.ReceiptGems) == "table" and opts.ReceiptGems or {}
@@ -2080,6 +2352,9 @@ local function isEmptyDelta(d)
 		and d.PetGrowth == nil
 		and d.Ring == nil
 		and next(d.Migrations) == nil
+		and d.Dungeon == nil
+		and d.Berries == 0
+		and d.Settings == nil
 		and d.Overwrite == nil
 end
 
@@ -2157,6 +2432,20 @@ local function applyHome(out, dh)
 	elseif dh.LegacyPrices == true then
 		stored.LegacyPrices = true
 	end
+	-- Phase 5: the folded Home keys merge per key the same way (a higher Prestige won the whole Home above and
+	-- CARRIES its DecorCredit; the magnet keys are cleared by that prestige)
+	if dh.DecorCredit == false then
+		stored.DecorCredit = nil
+	elseif isFinite(dh.DecorCredit) and dh.DecorCredit >= 1 then
+		stored.DecorCredit = math.min(math.floor(dh.DecorCredit), P5.MAX_DECOR_CREDIT)
+	end
+	if dh.LegacyMagnet == false then
+		stored.LegacyMagnet = nil
+		stored.LegacyMagnetStar = nil
+	elseif isFinite(dh.LegacyMagnet) and dh.LegacyMagnet >= 1 then
+		stored.LegacyMagnet = math.min(math.floor(dh.LegacyMagnet), P5.MAX_MAGNET)
+		stored.LegacyMagnetStar = clampCount(dh.LegacyMagnetStar, MAX_LEVEL)
+	end
 end
 
 -- stored profile + delta -> new profile. Pure (runs inside UpdateAsync, which may retry it).
@@ -2204,6 +2493,9 @@ local function applyDelta(stored, d)
 		end
 		if o.Migrations then
 			out.Migrations = cleanSet(o.Migrations)
+		end
+		if o.Dungeon then
+			out.Dungeon = P5.cleanDungeon(o.Dungeon)
 		end
 	end
 	out.Tokens = sanitize(out.Tokens + d.Tokens)
@@ -2314,6 +2606,17 @@ local function applyDelta(stored, d)
 			out.Migrations[name] = true
 		end
 	end
+	-- Phase 5: the dungeon record by its rules (an overwritten record already is the session's whole value), berries
+	-- as a delta clamped at 0 (a two-server race costs at most one feed, Y9), the settings of the live session
+	if not (o and o.Dungeon) then
+		P5.applyDungeon(out, d.Dungeon)
+	end
+	if isFinite(d.Berries) then
+		out.Berries = P5.cleanBerries(out.Berries + d.Berries)
+	end
+	if type(d.Settings) == "table" then
+		out.Settings = P5.cleanSettings(d.Settings)
+	end
 	-- last: the owned copies (Pets, Tiers, Hybrids), the Home and the growth map (the training lock) are final now
 	normalizeEquipped(out)
 	discoverOwned(out)
@@ -2351,6 +2654,9 @@ local function toStored(p)
 			LastSeen = h.LastSeen,
 			LegacySlots = h.LegacySlots, -- Phase 4: absent unless the migration wrote them
 			LegacyPrices = h.LegacyPrices,
+			DecorCredit = h.DecorCredit, -- Phase 5: absent unless the fold wrote them
+			LegacyMagnet = h.LegacyMagnet,
+			LegacyMagnetStar = h.LegacyMagnetStar,
 		},
 		PetLevels = deepCopy(p.PetLevels),
 	}
@@ -2382,6 +2688,16 @@ local function toStored(p)
 	end
 	if next(p.Migrations) ~= nil then
 		rec.Migrations = copyMap(p.Migrations)
+	end
+	-- Phase 5: left out while default / 0 (Cleared as a dense boolean array)
+	if not P5.isDefaultDungeon(p.Dungeon) then
+		rec.Dungeon = P5.encodeDungeon(p.Dungeon)
+	end
+	if p.Berries > 0 then
+		rec.Berries = p.Berries
+	end
+	if not P5.isDefaultSettings(p.Settings) then
+		rec.Settings = copyMap(p.Settings)
 	end
 	return rec
 end
@@ -2452,6 +2768,9 @@ local function writeHome(target, src)
 	target.LastSeen = src.LastSeen
 	target.LegacySlots = src.LegacySlots -- Phase 4 (nil clears)
 	target.LegacyPrices = src.LegacyPrices
+	target.DecorCredit = src.DecorCredit -- Phase 5 (nil clears)
+	target.LegacyMagnet = src.LegacyMagnet
+	target.LegacyMagnetStar = src.LegacyMagnetStar
 end
 
 -- Overwrites the fields of `target` with `src` IN PLACE (other modules may hold the table).
@@ -2489,6 +2808,10 @@ local function replaceContents(target, src)
 	refill(ensureTable(target, "PetGrowth"), src.PetGrowth)
 	refill(ensureTable(target, "Ring"), src.Ring)
 	refill(ensureTable(target, "Migrations"), src.Migrations)
+	-- Phase 5 (in place too)
+	refill(ensureTable(target, "Dungeon"), src.Dungeon)
+	target.Berries = src.Berries
+	refill(ensureTable(target, "Settings"), src.Settings)
 end
 
 -- Prunes the LIVE presets in place (keys that lost their free copy: fused away, released, placed in the Garden / Gym;
@@ -2511,6 +2834,8 @@ local function deltaOpts(entry)
 	return {
 		ReceiptGems = entry.ReceiptGems,
 		StandIn = entry.LoadFailed == true or entry.Loaded ~= true,
+		-- Phase 5: the Clears the session's own P5Dungeon migration wrote (merge as a max until the store holds them)
+		DungeonMigrated = entry.DungeonMigrated,
 	}
 end
 
@@ -2573,9 +2898,46 @@ local function pushCurrencies(player, profile)
 	end
 end
 
+-- Phase 5: mirrors the whole berries onto the player (Config.Attr.Berries) at most twice a second per player: the
+-- first write goes out at once, later ones wait for the end of the BERRIES_GAP window (a trailing write; a Berries-only
+-- change never triggers a ProfileSync, C14). `now` forces the write (load, leave).
+function P5.pushBerries(player, now)
+	if not player or not player.Parent or not Config.Attr.Berries then
+		return
+	end
+	local userId = player.UserId
+	local entry = cache[userId]
+	if not entry then
+		return
+	end
+	local push = P5.pushes[userId]
+	if not push then
+		push = { last = -math.huge, queued = false }
+		P5.pushes[userId] = push
+	end
+	local clock = os.clock()
+	if now or clock - push.last >= P5.BERRIES_GAP then
+		push.last = clock
+		player:SetAttribute(Config.Attr.Berries, P5.cleanBerries(entry.Profile.Berries))
+		return
+	end
+	if push.queued then
+		return
+	end
+	push.queued = true
+	task.delay(P5.BERRIES_GAP - (clock - push.last), function()
+		push.queued = false
+		if cache[userId] == entry and player.Parent then
+			push.last = os.clock()
+			player:SetAttribute(Config.Attr.Berries, P5.cleanBerries(entry.Profile.Berries))
+		end
+	end)
+end
+
 local function pushAll(player, profile)
 	pushToPlayer(player, profile.Tokens)
 	pushCurrencies(player, profile)
+	P5.pushBerries(player, true)
 end
 
 local function getRemote(name)
@@ -2705,6 +3067,9 @@ local function homeSnapshot(rawHome)
 		CollectorCash = h.CollectorCash,
 		LegacySlots = h.LegacySlots, -- Phase 4 (absent for most homes)
 		LegacyPrices = h.LegacyPrices,
+		DecorCredit = h.DecorCredit, -- Phase 5 (the fold; absent for most homes)
+		LegacyMagnet = h.LegacyMagnet,
+		LegacyMagnetStar = h.LegacyMagnetStar,
 	}
 end
 
@@ -2750,6 +3115,10 @@ local function buildSnapshot(profile)
 		-- Phase 4 (growth entries without their zero numbers; the ring record always whole)
 		PetGrowth = P4.encodeGrowth(P4.cleanGrowth(profile.PetGrowth)),
 		Ring = P4.cleanRing(profile.Ring),
+		-- Phase 5 (<= 60 B dungeon record with a dense Cleared array, the berries, the five settings always)
+		Dungeon = P5.encodeDungeon(P5.cleanDungeon(profile.Dungeon)),
+		Berries = P5.cleanBerries(profile.Berries),
+		Settings = P5.cleanSettings(profile.Settings),
 	}
 end
 
@@ -2853,7 +3222,8 @@ local function fetchProfile(userId)
 		return false, nil, false
 	end
 	if raw ~= nil then
-		return true, normalizeProfile(raw), false
+		-- the 4th value: the raw record held a preset longer than 3 keys (Phase 5, 4.8: Load fires TeamsChanged once)
+		return true, normalizeProfile(raw), false, P5.hadLongPreset(raw)
 	end
 	-- Nothing in v2: look for a v1 save to migrate.
 	local legacy = getLegacyStore()
@@ -2935,10 +3305,10 @@ local function loadEntry(player)
 	end
 
 	entry.Loading = true
-	local fetched, stored, migrated = false, nil, false
-	local pok, a, b, c = pcall(fetchProfile, userId)
+	local fetched, stored, migrated, trimmed = false, nil, false, false
+	local pok, a, b, c, d = pcall(fetchProfile, userId)
 	if pok then
-		fetched, stored, migrated = a, b, c
+		fetched, stored, migrated, trimmed = a, b, c, d == true
 	else
 		warn("[DataService] fetch errored: " .. tostring(a))
 	end
@@ -2952,6 +3322,9 @@ local function loadEntry(player)
 		end
 		rebase(entry, entry.Base, source, newBase)
 		entry.LoadFailed = false
+		if trimmed then
+			entry.TeamsTrimmed = true -- Phase 5 (4.8): a stored 4-key preset loads with 3; Load fires TeamsChanged once
+		end
 	else
 		entry.LoadFailed = true -- play on with defaults; saves/recovery merge with the real data later
 	end
@@ -2970,10 +3343,13 @@ local function announceRebase(userId, entry)
 	-- Phase 4: the one-time migration of a profile that arrives here from a recovered (provisional) load, before the
 	-- snapshot and the signals (idempotent: a profile another server already migrated is left alone)
 	local migrated = P4.migrateEntry(entry, player)
+	local migrated5 = P5.migrateEntry(entry, player) -- Phase 5: after a recovered load too (idempotent)
+	entry.TeamsTrimmed = nil
 	DataService.Sync(player)
 	DataService.ProfileRebased:Fire(player, entry.Profile)
 	DataService.TeamsChanged:Fire(player) -- the presets may have come from another server
 	P4.announceMigration(player, migrated)
+	P5.announceMigration(player, migrated5)
 end
 
 -- Re-reads the store for an entry whose load failed and merges the session on top of it.
@@ -3064,6 +3440,7 @@ local function writeEntry(entry, userId)
 			if delta.Overwrite and entry.OverwriteGen == overwriteGen then
 				entry.Overwrite = nil -- written; a ResetFields during the write stays pending for the next save
 			end
+			entry.DungeonMigrated = nil -- Phase 5: the store holds the migration's Clears now (the Base adopts them below)
 			if type(result) == "table" then
 				local confirmed = normalizeProfile(result)
 				if profilesEqual(confirmed, snapshot) then
@@ -3230,6 +3607,9 @@ local function onPlayerRemoving(player)
 		DataService.Save(player)
 		DataService.Release(player)
 	end)
+	-- Phase 5: the per-player SettingsSet bucket and the berries push state go with the player
+	P5.buckets[player.UserId] = nil
+	P5.pushes[player.UserId] = nil
 end
 
 local function hook()
@@ -3250,6 +3630,33 @@ local function hook()
 				end
 				lastRequest[userId] = now
 				DataService.Sync(player)
+			end)
+		end
+	end
+	-- Phase 5 (7.2): SettingsSet(key, value) from the client: 6/s with a burst of 6 per player, then SetSetting's
+	-- whitelist / types / ranges (junk is dropped silently, Y11); the client applied the value locally already
+	if not P5.settingsHooked then
+		local remote = getRemote("SettingsSet")
+		if remote then
+			P5.settingsHooked = true
+			remote.OnServerEvent:Connect(function(player, key, value)
+				if not player or type(key) ~= "string" then
+					return
+				end
+				local userId = player.UserId
+				local now = os.clock()
+				local b = P5.buckets[userId]
+				if not b then
+					b = { tokens = P5.SETTINGS_BURST, last = now }
+					P5.buckets[userId] = b
+				end
+				b.tokens = math.min(P5.SETTINGS_BURST, b.tokens + (now - b.last) * P5.SETTINGS_RATE)
+				b.last = now
+				if b.tokens < 1 then
+					return
+				end
+				b.tokens = b.tokens - 1
+				DataService.SetSetting(player, key, value)
 			end)
 		end
 	end
@@ -3293,9 +3700,16 @@ function DataService.Load(player)
 		-- load, so TycoonService's ProfileLoaded handler already sees the migrated Home (a provisional profile is
 		-- migrated after its recovery, on ProfileRebased)
 		local migrated = P4.migrateEntry(entry, player)
+		-- Phase 5: the dungeon record from the old Trials and the home fold (section 9.2), in the same step
+		local migrated5 = P5.migrateEntry(entry, player)
 		DataService.Sync(player)
 		DataService.ProfileLoaded:Fire(player, entry.Profile)
+		if entry.TeamsTrimmed then
+			entry.TeamsTrimmed = nil
+			DataService.TeamsChanged:Fire(player) -- a stored 4-key preset loaded with 3 (4.8): once
+		end
 		P4.announceMigration(player, migrated)
+		P5.announceMigration(player, migrated5)
 	end
 	return entry.Profile
 end
@@ -3927,9 +4341,12 @@ function DataService.MutateHome(player, fn)
 	local after = cleanHome(home, false)
 	-- Phase 4: a prestige ends the veteran extras of the one-time migration (the old garden places and the old prices
 	-- last "until your next Prestige"; the merge agrees: a higher Prestige wins the whole Home, which has them cleared)
-	if after.Prestige > before.Prestige and (after.LegacySlots ~= nil or after.LegacyPrices ~= nil) then
+	-- Phase 5: the folded Coin Magnet ends with it too (LegacyMagnet / LegacyMagnetStar); DecorCredit is NEVER cleared
+	if after.Prestige > before.Prestige and (after.LegacySlots ~= nil or after.LegacyPrices ~= nil or after.LegacyMagnet ~= nil) then
 		home.LegacySlots = nil
 		home.LegacyPrices = nil
+		home.LegacyMagnet = nil
+		home.LegacyMagnetStar = nil
 		after = cleanHome(home, false)
 	end
 	local visible = not homeVisiblyEqual(before, after)
@@ -4015,12 +4432,14 @@ function P3.checkTeam(profile, keys)
 	if type(keys) ~= "table" then
 		return false, "That team is not valid"
 	end
-	for index in pairs(keys) do
-		if type(index) ~= "number" or index ~= math.floor(index) or index < 1 or index > P3.MAX_SLOTS then
+	for index, key in pairs(keys) do
+		if type(index) ~= "number" or index ~= math.floor(index) or index < 1 then
 			return false, "That team is not valid"
 		end
+		if index > P3.MAX_SLOTS and key ~= nil and key ~= "" and key ~= false then
+			return false, "Teams have 3 pets: a fighter and two helpers" -- Phase 5 (4.8): more than 3 keys
+		end
 	end
-	local slots = P3.slotsOf(profile)
 	local placed = P3.placedCopies(profile)
 	local list, seen = {}, {}
 	for i = 1, P3.MAX_SLOTS do
@@ -4028,9 +4447,6 @@ function P3.checkTeam(profile, keys)
 		if key ~= nil and key ~= "" and key ~= false then
 			if not P3.teamKey(key) then
 				return false, "That team is not valid"
-			end
-			if i > slots then
-				return false, "Team slot " .. i .. " unlocks at Prestige " .. tostring(P3.slotUnlock())
 			end
 			if seen[key] then
 				return false, "A pet can join a team only once"
@@ -4629,6 +5045,346 @@ end
 function P4.announceMigration(player, info)
 	if type(info) == "table" and player then
 		DataService.Migrated:Fire(player, P4.MIGRATION, deepCopy(info))
+	end
+end
+
+----------------------------------------------------------------------
+-- Phase 5: the Dungeon record, Berries, Settings (ARCHITECTURE_V3.md "Phase 5 build contract" 9.1) and the one-time
+-- P5 migrations (9.2). API in the same shape as the Ring / Food / Migrations API above.
+----------------------------------------------------------------------
+
+-- The live Dungeon table of a profile (created when missing; Cleared is a table).
+function P5.liveDungeon(profile)
+	local d = ensureTable(profile, "Dungeon")
+	ensureTable(d, "Cleared")
+	return d
+end
+
+-- { Best, Cleared = { [floor] = true }, Runs, Clears } (a clean copy), or nil until loaded / while provisional.
+function DataService.GetDungeon(player)
+	local entry = P3.realEntry(player)
+	if not entry then
+		return nil
+	end
+	return P5.cleanDungeon(entry.Profile.Dungeon)
+end
+
+-- fn(dungeon) edits the live record { Best, Cleared = { [floor] = true }, Runs, Clears } (no yields). Returns ok, first:
+-- `first` = this call set a new Cleared[floor] (pay the first clear ONLY when ok and first are both true). An error, or
+-- fn returning false, restores the record (-> false). Afterwards: whole numbers, Best never goes down and is >= the
+-- highest cleared floor, Cleared only grows (both merge that way in the store), Runs / Clears travel as +/- deltas. While
+-- the profile is provisional only Runs may change: a first clear / a higher Best is refused with "Your save is still
+-- loading" (nothing changes). A change is synced (throttled).
+function DataService.MutateDungeon(player, fn)
+	if not player or type(fn) ~= "function" then
+		return false, "That is not valid"
+	end
+	local entry = cache[player.UserId]
+	if not entry or not entry.Loaded then
+		return false, "Your save is still loading"
+	end
+	local profile = entry.Profile
+	local live = P5.liveDungeon(profile)
+	local before = P5.cleanDungeon(live)
+	refill(live, before) -- fn sees the clean shape (Cleared as a set)
+	local ok, result = pcall(fn, live)
+	profile.Dungeon = live -- the record stays this table even if fn replaced the field
+	if not ok then
+		warn("[DataService] MutateDungeon callback errored (record restored): " .. tostring(result))
+		refill(live, before)
+		return false, "That is not valid"
+	end
+	if result == false then
+		refill(live, before)
+		return false, "That is not valid"
+	end
+	local after = P5.cleanDungeon(live)
+	if after.Best < before.Best then
+		after.Best = before.Best
+	end
+	local first = false
+	for floor in pairs(before.Cleared) do
+		after.Cleared[floor] = true
+	end
+	for floor in pairs(after.Cleared) do
+		if not before.Cleared[floor] then
+			first = true
+		end
+		if floor > after.Best then
+			after.Best = floor
+		end
+	end
+	local progress = first or after.Best ~= before.Best or after.Clears ~= before.Clears
+	if progress and isProvisional(entry) then
+		refill(live, before)
+		return false, "Your save is still loading"
+	end
+	refill(live, after)
+	if progress or after.Runs ~= before.Runs then
+		entry.Dirty = true
+		DataService.SyncSoon(player)
+	end
+	return true, first
+end
+
+-- Whole berries (0 before the profile loaded).
+function DataService.GetBerries(player)
+	local entry = player and cache[player.UserId]
+	if not entry then
+		return 0
+	end
+	return P5.cleanBerries(entry.Profile.Berries)
+end
+
+-- Adds n whole berries (n >= 1 after flooring; the caller keeps its own fractions). Allowed while provisional (a +
+-- delta merges safely). The Berries attribute follows (<= 2 writes/s); no ProfileSync (C14). false for junk / early.
+function DataService.AddBerries(player, n)
+	if not player or not isFinite(n) then
+		return false
+	end
+	local amount = math.floor(n)
+	if amount < 1 then
+		return false
+	end
+	local entry = cache[player.UserId]
+	if not entry or not entry.Loaded then
+		return false
+	end
+	local profile = entry.Profile
+	profile.Berries = P5.cleanBerries(P5.cleanBerries(profile.Berries) + amount)
+	entry.Dirty = true
+	P5.pushBerries(player, false)
+	return true
+end
+
+-- Takes n whole berries in ONE step (check, then subtract; no yield in between). false (nothing taken) when fewer are
+-- owned, for junk amounts, before the load and while provisional (Y9: never from the client, never a double spend).
+function DataService.SpendBerries(player, n)
+	if not player or not isFinite(n) then
+		return false
+	end
+	local amount = math.floor(n)
+	if amount < 1 then
+		return false
+	end
+	local entry = P3.realEntry(player)
+	if not entry then
+		return false
+	end
+	local profile = entry.Profile
+	local have = P5.cleanBerries(profile.Berries)
+	if have < amount then
+		return false
+	end
+	profile.Berries = have - amount
+	entry.Dirty = true
+	P5.pushBerries(player, false)
+	return true
+end
+
+-- { Music, Sfx, Gfx, Shake, SeenNotes } (a clean copy with per-key defaults; the defaults before the load).
+function DataService.GetSettings(player)
+	local entry = player and cache[player.UserId]
+	if not entry then
+		return P5.newSettings()
+	end
+	return P5.cleanSettings(entry.Profile.Settings)
+end
+
+-- Stores one setting: key one of the five, value of its type and range (7.2; SeenNotes never goes down). Allowed
+-- while provisional (the live session's settings win the merge). Not synced: the client applied it already. -> ok
+function DataService.SetSetting(player, key, value)
+	if not player or type(key) ~= "string" or P5.SETTING_DEFAULTS[key] == nil then
+		return false
+	end
+	local clean = P5.settingValue(key, value)
+	if clean == nil then
+		return false
+	end
+	local entry = cache[player.UserId]
+	if not entry or not entry.Loaded then
+		return false
+	end
+	local settings = ensureTable(entry.Profile, "Settings")
+	local current = P5.settingValue(key, settings[key])
+	if current == nil then
+		current = P5.SETTING_DEFAULTS[key]
+	end
+	if key == "SeenNotes" and clean < current then
+		return false
+	end
+	if settings[key] ~= clean then
+		settings[key] = clean
+		entry.Dirty = true
+	end
+	return true
+end
+
+-- true when a stored record holds a preset with more than 3 keys (a Phase 4 save: the 4th slot), read leniently.
+function P5.hadLongPreset(stored)
+	local teams = type(stored) == "table" and stored.Teams or nil
+	local presets = type(teams) == "table" and teams.Presets or nil
+	if type(presets) ~= "table" then
+		return false
+	end
+	for i = 1, P3.PRESETS do
+		local list = presets[i]
+		if list == nil then
+			list = presets[tostring(i)]
+		end
+		if type(list) == "table" and (list[P3.MAX_SLOTS + 1] ~= nil or #list > P3.MAX_SLOTS) then
+			return true
+		end
+	end
+	return false
+end
+
+-- berries per old food id (TycoonCatalog.Berries.LegacyFood, else the local table)
+function P5.legacyFood(catalog)
+	local berries = catalog and type(catalog.Berries) == "table" and catalog.Berries or nil
+	local legacy = berries and type(berries.LegacyFood) == "table" and berries.LegacyFood or nil
+	return legacy or P5.LEGACY_FOOD
+end
+
+-- 9.2 step 2 (P5Dungeon) on a LIVE profile: Best = min(10, floor(TrialBest / 3)), Cleared[1..Best], Clears = Best
+-- (only when the record held no clears yet), Runs untouched (0 for a Phase 4 save); the marker. Returns the info
+-- { TrialBest, Best, Clears = the Clears this step wrote (the merge floor) }. No Cash, Gems or berries.
+function P5.migrateDungeon(profile)
+	local battle = P3.cleanBattle(profile.Battle)
+	local best = math.min(P5.MIGRATE_MAX_FLOOR, math.floor(battle.TrialBest / P5.TRIALS_PER_FLOOR))
+	local live = P5.liveDungeon(profile)
+	local d = P5.cleanDungeon(live)
+	local wrote = 0
+	if best > d.Best then
+		d.Best = best
+	end
+	for floor = 1, best do
+		d.Cleared[floor] = true
+	end
+	if best > 0 and d.Clears == 0 then
+		d.Clears = best
+		wrote = best
+	end
+	refill(live, d)
+	ensureTable(profile, "Migrations")[P5.DUNGEON_MARK] = true
+	return { TrialBest = battle.TrialBest, Best = best, Clears = wrote }
+end
+
+-- 9.2 step 3 (P5Home): TycoonCatalog.FoldLegacy(home, firstTime) inside ONE MutateHome; on the first time the Food ->
+-- berries step (Snack / Meal / Feast x LegacyFood, the basket cap ignored, Food zeroed) and MarkMigrated("P5Home") in
+-- the same non-yielding step, ONLY when the fold ran (without TycoonCatalog.FoldLegacy the whole step is skipped and
+-- retried on the next load, m14). After the marker the fold runs again only when it has something to fold (a key a
+-- Phase 4 server sold during the rollout, 9.3). Returns the info, or nil when nothing ran.
+function P5.migrateHome(entry, player)
+	local catalog = getTycoonCatalog()
+	local fold = catalog and type(catalog.FoldLegacy) == "function" and catalog.FoldLegacy or nil
+	if not fold then
+		return nil
+	end
+	local profile = entry.Profile
+	local marked = tableOr(profile.Migrations)[P5.HOME_MARK] == true
+	local firstTime = not marked
+	-- a dry run on a clean copy: nothing to fold on a marked home -> no MutateHome, no dirty save
+	local probe = cleanHome(liveHome(profile), false)
+	local okProbe, changes = pcall(fold, probe, firstTime)
+	if not okProbe then
+		warn("[DataService] TycoonCatalog.FoldLegacy failed (the P5Home step runs again on the next load): " .. tostring(changes))
+		return nil
+	end
+	if marked and changes ~= true then
+		return nil
+	end
+	local before = cleanHome(liveHome(profile), false)
+	local info = {
+		FirstTime = firstTime,
+		Folded = false,
+		Veteran = before.Level > 0 or before.Prestige > 0 or next(before.Stations) ~= nil,
+		Berries = 0,
+		Food = {},
+	}
+	local ok = DataService.MutateHome(player, function(home)
+		info.Folded = fold(home, firstTime) == true -- an error here restores the home: nothing is marked
+		if marked and not info.Folded then
+			return false
+		end
+		return true
+	end)
+	if not ok then
+		return nil
+	end
+	if firstTime then
+		local legacy = P5.legacyFood(catalog)
+		local berries = 0
+		for id, count in pairs(cleanCounts(profile.Food, MAX_FOOD)) do
+			info.Food[id] = count
+			local each = legacy[id]
+			if isFinite(each) and each > 0 then
+				berries = berries + count * math.floor(each)
+			end
+		end
+		if berries > 0 then
+			profile.Berries = P5.cleanBerries(P5.cleanBerries(profile.Berries) + berries)
+			info.Berries = berries
+		end
+		refill(ensureTable(profile, "Food"), {}) -- converted once; never written again (m16)
+		ensureTable(profile, "Migrations")[P5.HOME_MARK] = true
+		entry.Dirty = true
+		P5.pushBerries(player, true)
+	end
+	return info
+end
+
+-- Runs the Phase 5 migrations on a cache entry when they are due (loaded, not provisional; each one idempotent through
+-- its marker, a profile another server migrated is left alone). Returns { Dungeon = info | nil, Home = info | nil } or nil.
+function P5.migrateEntry(entry, player)
+	if not entry or not entry.Loaded or isProvisional(entry) then
+		return nil
+	end
+	local profile = entry.Profile
+	local out = nil
+	if tableOr(profile.Migrations)[P5.DUNGEON_MARK] ~= true then
+		local ok, info = pcall(P5.migrateDungeon, profile)
+		if ok then
+			entry.Dirty = true
+			if info.Clears > 0 then
+				entry.DungeonMigrated = info.Clears -- merges as a max until the store holds it (m15)
+			end
+			out = { Dungeon = info }
+		else
+			warn("[DataService] Phase 5 dungeon migration failed (it runs again on the next load): " .. tostring(info))
+		end
+	end
+	local okHome, home = pcall(P5.migrateHome, entry, player)
+	if not okHome then
+		warn("[DataService] Phase 5 home migration failed (it runs again on the next load): " .. tostring(home))
+	elseif home then
+		out = out or {}
+		out.Home = home
+	end
+	if out then
+		if type(entry.MigratedNow) ~= "table" then
+			entry.MigratedNow = {}
+		end
+		if out.Dungeon then
+			entry.MigratedNow[P5.DUNGEON_MARK] = out.Dungeon
+		end
+		if out.Home and out.Home.FirstTime then
+			entry.MigratedNow[P5.HOME_MARK] = out.Home
+		end
+	end
+	return out
+end
+
+-- Fires Migrated(player, "P5Dungeon" / "P5Home", info) right after the ProfileLoaded / ProfileRebased that ran them.
+function P5.announceMigration(player, out)
+	if type(out) ~= "table" or not player then
+		return
+	end
+	if type(out.Dungeon) == "table" then
+		DataService.Migrated:Fire(player, P5.DUNGEON_MARK, deepCopy(out.Dungeon))
+	end
+	if type(out.Home) == "table" then
+		DataService.Migrated:Fire(player, P5.HOME_MARK, deepCopy(out.Home))
 	end
 end
 

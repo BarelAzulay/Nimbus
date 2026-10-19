@@ -208,9 +208,11 @@ end
 local function hookedSignals()
 	local out = { game:GetService("Players").PlayerRemoving }
 	local folder = K.remoteFolder and K.remoteFolder()
-	local remote = folder and folder:FindFirstChild("RequestProfile")
-	if remote then
-		out[#out + 1] = remote.OnServerEvent
+	for _, name in ipairs({ "RequestProfile", "SettingsSet" }) do -- (Phase 5: DataService.hook also connects SettingsSet)
+		local remote = folder and folder:FindFirstChild(name)
+		if remote then
+			out[#out + 1] = remote.OnServerEvent
+		end
 	end
 	return out
 end
@@ -279,7 +281,7 @@ local function migratedWatcher(DataS)
 		since = function(p, mark)
 			local out = {}
 			for i = mark + 1, #fired do
-				if fired[i].who == p then
+				if fired[i].who == p and fired[i].name == "P4" then -- (Phase 5 fires "P5Dungeon" / "P5Home" on the same loads)
 					out[#out + 1] = fired[i]
 				end
 			end
@@ -690,7 +692,13 @@ S.p4data_save = guarded("p4data_save", function()
 	T.check(DataS.GetGrowthMap(j)[c] == nil and DataS.GetGrowthMap(j)[""] == nil and DataS.GetGrowth(j, d).Job ~= nil and DataS.GetGrowth(j, d).Job.Rank == 2,
 		"p4 save: an all-zero entry and a junk key are dropped; a sane Job (Physique 1 -> 2) is kept")
 	T.check(DataS.GetRing(j).Best == 100000 and DataS.GetRing(j).Runs == 0, "p4 save: Ring.Best is capped at 100000 and Runs never below 0")
-	T.check(DataS.IsMigrated(j, "P4") == true and DataS.IsMigrated(j, "ListEntry") == true and DataS.IsMigrated(j, "Bad") == false and count(DataS.GetProfile(j).Migrations) == 2,
+	local nonP5 = 0
+	for name in pairs(DataS.GetProfile(j).Migrations or {}) do
+		if string.sub(tostring(name), 1, 2) ~= "P5" then -- (Phase 5 adds its own P5Dungeon / P5Home markers on the load)
+			nonP5 = nonP5 + 1
+		end
+	end
+	T.check(DataS.IsMigrated(j, "P4") == true and DataS.IsMigrated(j, "ListEntry") == true and DataS.IsMigrated(j, "Bad") == false and nonP5 == 2,
 		"p4 save: Migrations reads as a set (a list entry counts, junk values do not)")
 	K.removePlayers({ j })
 	advance(2)

@@ -7,6 +7,9 @@
 -- unwelded child of the coin root, so it bobs but never has to spin). With the flag false a cheap server-side
 -- driver poses only the coins next to a player (see "Shared animation driver").
 --
+-- Phase 5: the geometry lives in shared/TokenLook.lua (TokenLook.Build, palettes Cloud / Golden; the home's Cloud
+-- Cash uses its Cash palettes); MakeTokenPart calls it and adds the attributes, tags and the animation record.
+--
 -- The voxel coin (v3, ARCHITECTURE_V3.md "ART DIRECTION"): every piece is a block on one lattice (u studs per
 -- voxel, 11 voxels across). The round silhouette is three overlapping centred blocks (11x5, 9x9, 5x11 voxels: a
 -- clean stepped circle) in a lighter glowing gold, the gold face sits half a voxel proud of the rim on both sides
@@ -31,12 +34,7 @@ local Workspace = game:GetService("Workspace")
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Config = require(Shared.Config)
 local Util = require(Shared.Util)
-
--- Theme is only used for its in-world palette; a broken UI kit must never take the tokens down.
-local themeOk, Theme = pcall(require, Shared.Theme)
-if not themeOk or type(Theme) ~= "table" then
-	Theme = {}
-end
+local TokenLook = require(Shared.TokenLook) -- the coin geometry (Phase 5 3.5: shared with the home's Cloud Cash)
 
 local TokenService = {}
 
@@ -44,14 +42,11 @@ local TOKEN_TAG = Config.Tags.CloudToken
 local GOLDEN_TAG = Config.Tags.GoldenToken
 local DEFAULT_VALUE = Config.Tokens.DefaultValue
 local GOLDEN_VALUE = Config.Tokens.GoldenValue
-local SPARKLE_TEXTURE = "rbxasset://textures/particles/sparkles_main.dds"
+local SPARKLE_TEXTURE = "rbxasset://textures/particles/sparkles_main.dds" -- the collect burst
 
 ----------------------------------------------------------------------
 -- Tunables
 ----------------------------------------------------------------------
-local VOXEL = 0.32 -- studs per coin voxel (normal coin: 11 voxels = 3.5 studs across)
-local HALO_DIAMETER = 5.4
-
 local ANIM_STEP = 1 / 15 -- the driver poses tokens at 15 Hz: a slow spin does not need more
 local CULL_DISTANCE = 65 -- tokens farther than this from every player are left alone (not even looked at)
 local PLAYER_REFRESH = 0.5 -- how often the driver re-reads player positions and re-picks the tokens to pose
@@ -62,59 +57,15 @@ local GOLDEN_PICKUP_RADIUS = 4.4 -- golden tokens are bigger, so they are easier
 local COLLECT_FADE = 0.3
 
 ----------------------------------------------------------------------
--- Palette (warm, calm golds; nothing is pure white)
+-- Palette: the token looks live in TokenLook (Palettes Cloud / Golden); the collect effect reuses their colours
 ----------------------------------------------------------------------
-local WORLD = Theme.World or {}
+local LOOKS = { normal = TokenLook.Palettes.Cloud, golden = TokenLook.Palettes.Golden }
+local GOLD = LOOKS.normal.Face
+local GLOW = LOOKS.normal.Glow
+local GOLDEN_GLOW = LOOKS.golden.Glow
+local GOLDEN_RIM = LOOKS.golden.Face
 
-local function colorOr(value, fallback)
-	if typeof(value) == "Color3" then
-		return value
-	end
-	return fallback
-end
-
-local GOLD = colorOr(WORLD.Token, Color3.fromRGB(232, 168, 48))
-local GLOW = GOLD:Lerp(Color3.fromRGB(255, 240, 190), 0.45)
-
--- Everything that differs between a normal and a golden token.
-local LOOKS = {
-	normal = {
-		scale = 1,
-		rim = Color3.fromRGB(255, 206, 92), -- the glowing outer ring (Neon)
-		face = GOLD, -- the coin face
-		cloud = Color3.fromRGB(255, 244, 218), -- the cloud emblem in relief
-		glow = GLOW,
-		haloScale = 1,
-		haloTransparency = 0.86,
-		lightBrightness = 1.0,
-		lightRange = 11,
-		sparkleRate = 5,
-		sparkleSize = 0.55,
-		sparkleLife = NumberRange.new(0.9, 1.6),
-		spin = 2.0, -- radians per second around the vertical axis
-		bob = 0.45, -- bob amplitude in studs
-	},
-	golden = {
-		scale = 1.5,
-		rim = Color3.fromRGB(255, 236, 156),
-		face = Color3.fromRGB(255, 212, 92),
-		cloud = Color3.fromRGB(255, 250, 238),
-		glow = Color3.fromRGB(255, 230, 150),
-		haloScale = 1.2,
-		haloTransparency = 0.82,
-		lightBrightness = 2.0,
-		lightRange = 17,
-		sparkleRate = 16,
-		sparkleSize = 0.95,
-		sparkleLife = NumberRange.new(1.1, 2.0),
-		spin = 2.6,
-		bob = 0.6,
-	},
-}
-local GOLDEN_GLOW = LOOKS.golden.glow
-local GOLDEN_RIM = LOOKS.golden.face
-
-local BOB_SPEED = 2.2 -- radians per second of the up/down sine
+local BOB_SPEED = TokenLook.Motion.BobSpeed -- radians per second of the up/down sine
 
 ----------------------------------------------------------------------
 -- Shared animation driver
@@ -242,43 +193,6 @@ end
 ----------------------------------------------------------------------
 -- The token visual
 ----------------------------------------------------------------------
--- A non-colliding block welded to the token root, positioned by `offset` (relative to the root). Welded children
--- follow every CFrame change of the anchored root.
--- static = true: the piece is anchored and NOT welded, so it stays where it is when the root is posed (only for
--- shapes that look the same whatever the coin does: the spherical halo, which TokenFx bobs along with the coin).
-local function addPiece(token, name, shape, size, offset, color, material, transparency, static)
-	local piece = Instance.new("Part")
-	piece.Name = name
-	piece.Shape = shape
-	piece.Size = size
-	piece.Material = material
-	piece.Color = color
-	piece.Transparency = transparency or 0
-	piece.Anchored = static == true
-	piece.Massless = true
-	piece.CanCollide = false
-	piece.CanTouch = false
-	piece.CanQuery = false
-	piece.CastShadow = false
-	piece.TopSurface = Enum.SurfaceType.Smooth
-	piece.BottomSurface = Enum.SurfaceType.Smooth
-	piece.CFrame = token.CFrame * offset
-	piece.Parent = token
-	if not static then
-		local weld = Instance.new("WeldConstraint")
-		weld.Part0 = token
-		weld.Part1 = piece
-		weld.Parent = piece
-	end
-	return piece
-end
-
--- One block of the coin lattice: centre (y, z) and size (thickness x height x width) in voxels.
-local function addBlock(token, name, u, y, z, thick, height, width, color, material)
-	return addPiece(token, name, Enum.PartType.Block, Vector3.new(thick * u, height * u, width * u),
-		CFrame.new(0, y * u, z * u), color, material, 0)
-end
-
 -- True when `value` makes a token golden.
 local function isGoldenValue(value)
 	return type(value) == "number" and value >= GOLDEN_VALUE
@@ -287,8 +201,9 @@ end
 -- THE visual cloud token. position: world Vector3 (centre of the coin). parent: Instance or nil.
 -- value: how many tokens it is worth (attribute "Value", default Config.Tokens.DefaultValue).
 -- value >= Config.Tokens.GoldenValue makes a golden token (also tagged GoldenToken).
--- The returned Part is the coin (its 9x9 voxel core block): Anchored, CanCollide=false, tagged CloudToken.
--- The coin stands on its edge facing local X, so spinning it around the world Y axis shows both faces.
+-- The returned Part is the coin (its 9x9 voxel core block, built by TokenLook.Build): Anchored, CanCollide=false,
+-- tagged CloudToken. The coin stands on its edge facing local X, so spinning it around the world Y axis shows both
+-- faces. TokenLook builds the parts; this adds the attributes, the tags and the server animation record.
 function TokenService.MakeTokenPart(position, parent, value)
 	ensureDriver()
 	if type(value) ~= "number" or value ~= value then
@@ -296,87 +211,19 @@ function TokenService.MakeTokenPart(position, parent, value)
 	end
 	local golden = isGoldenValue(value)
 	local look = golden and LOOKS.golden or LOOKS.normal
-	local u = VOXEL * look.scale
 	local phase = phaseRng:NextNumber(0, math.pi * 2)
-	local neon = Enum.Material.Neon
-	local smooth = Enum.Material.SmoothPlastic
-
-	-- the root: the 9x9 core of the rim silhouette (2 voxels thick)
-	local token = Instance.new("Part")
-	token.Name = golden and "GoldenCloudToken" or "CloudToken"
-	token.Shape = Enum.PartType.Block
-	token.Size = Vector3.new(2 * u, 9 * u, 9 * u)
-	token.Material = neon
-	token.Color = look.rim
-	token.Anchored = true
-	token.CanCollide = false
-	token.CanTouch = true
-	token.CanQuery = false
-	token.CastShadow = false
-	token.TopSurface = Enum.SurfaceType.Smooth
-	token.BottomSurface = Enum.SurfaceType.Smooth
-	token.CFrame = CFrame.new(position) * CFrame.Angles(0, phase, 0)
+	local token = TokenLook.Build({
+		Position = position,
+		Palette = golden and "Golden" or "Cloud",
+		Phase = phase,
+		Light = true,
+		Sparkles = true,
+		Halo = true,
+	})
 	token:SetAttribute("Value", value)
 	if golden then
 		token:SetAttribute("Golden", true)
 	end
-
-	-- the rest of the stepped round silhouette: a wide and a tall band (11x5 and 5x11 voxels)
-	addBlock(token, "RimWide", u, 0, 0, 2, 5, 11, look.rim, neon)
-	addBlock(token, "RimTall", u, 0, 0, 2, 11, 5, look.rim, neon)
-
-	-- the gold face, half a voxel proud of the rim on both sides: a 7x7 plate, or an octagon of two plates on
-	-- golden coins
-	if golden then
-		addBlock(token, "FaceWide", u, 0, 0, 3, 5, 7, look.face, smooth)
-		addBlock(token, "FaceTall", u, 0, 0, 3, 7, 5, look.face, smooth)
-	else
-		addBlock(token, "Face", u, 0, 0, 3, 7, 7, look.face, smooth)
-	end
-
-	-- the cloud emblem in relief (both sides): a 5x2 base under a centred 3x1 dome
-	addBlock(token, "CloudBase", u, -0.5, 0, 4, 2, 5, look.cloud, smooth)
-	addBlock(token, "CloudPuff", u, 1, 0, 4, 1, 3, look.cloud, smooth)
-
-	-- soft translucent halo so tokens read from far away. A sphere looks the same however the coin turns, so it
-	-- is not welded (TokenFx bobs it along with the coin; it never spins).
-	local haloSize = HALO_DIAMETER * look.haloScale * look.scale
-	addPiece(token, "Halo", Enum.PartType.Ball, Vector3.new(haloSize, haloSize, haloSize),
-		CFrame.new(0, 0, 0), look.glow, neon, look.haloTransparency, true)
-
-	local light = Instance.new("PointLight")
-	light.Name = "TokenLight"
-	light.Color = look.face
-	light.Brightness = look.lightBrightness
-	light.Range = look.lightRange
-	light.Shadows = false
-	light.Parent = token
-
-	local sparkles = Instance.new("ParticleEmitter")
-	sparkles.Name = "Sparkles"
-	sparkles.Texture = SPARKLE_TEXTURE
-	sparkles.Color = ColorSequence.new(look.glow, look.face)
-	sparkles.LightEmission = 1
-	sparkles.LightInfluence = 0
-	sparkles.Rate = look.sparkleRate
-	sparkles.Lifetime = look.sparkleLife
-	sparkles.Speed = NumberRange.new(0.4, golden and 2.2 or 1.2)
-	sparkles.SpreadAngle = Vector2.new(180, 180)
-	sparkles.Rotation = NumberRange.new(0, 360)
-	sparkles.RotSpeed = NumberRange.new(-60, 60)
-	sparkles.Acceleration = Vector3.new(0, 0.8, 0)
-	sparkles.Size = NumberSequence.new({
-		NumberSequenceKeypoint.new(0, 0),
-		NumberSequenceKeypoint.new(0.3, look.sparkleSize),
-		NumberSequenceKeypoint.new(1, 0),
-	})
-	sparkles.Transparency = NumberSequence.new({
-		NumberSequenceKeypoint.new(0, 1),
-		NumberSequenceKeypoint.new(0.2, golden and 0.05 or 0.15),
-		NumberSequenceKeypoint.new(1, 1),
-	})
-	sparkles.Parent = token
-
 	CollectionService:AddTag(token, TOKEN_TAG)
 	if golden then
 		CollectionService:AddTag(token, GOLDEN_TAG)
@@ -387,8 +234,8 @@ function TokenService.MakeTokenPart(position, parent, value)
 			lastPos = position,
 			phase = phase,
 			parented = false,
-			spin = look.spin,
-			bob = look.bob,
+			spin = look.Spin,
+			bob = look.Bob,
 		}
 	end
 	token.Parent = parent
