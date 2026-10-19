@@ -52,13 +52,16 @@ CLOUD_SHADE = [
     (0.60, (248, 192, 236)),  # light pink
     (0.90, (255, 238, 250)),  # sunlit tops: pale pink-white
 ]
-CLOUD_SCALE = 1.25        # the fBm (detail) octave
+CLOUD_SCALE = 1.4         # the fBm (detail) octave
 CLOUD_BIG_SCALE = 0.9    # the larger octave: rounder, bigger heaps
-CLOUD_BIG_WEIGHT = 0.6   # its share of the density
+CLOUD_BIG_WEIGHT = 0.65  # its share of the density
+CLOUD_DETAIL = 6           # fBm octaves of the detail noise (crisper puff edges)
+CLOUD_ROUGHNESS = 0.5
+CLOUD_LIGHT_CONTRAST = 4.0  # top-lit vs shaded: low = soft, no dark bruises
 CLOUD_SQUASH = 1.8        # clouds are wider than tall
-CLOUD_THRESHOLD = 0.465    # higher = fewer clouds
+CLOUD_THRESHOLD = 0.43    # higher = fewer clouds
 CLOUD_LOW_BONUS = 0.05    # more cover toward the horizon
-CLOUD_SOFTNESS = 10.0      # edge sharpness of the puffs
+CLOUD_SOFTNESS = 6.0      # edge sharpness of the puffs
 BAND = math.radians(32)   # clouds only between -32 and +32 degrees
 STAR_SCALE_PER_PX = 0.11  # Voronoi cells per pixel of face width (small stars at every resolution)
 STAR_FRACTION = 0.14      # share of the cells that hold a star
@@ -192,8 +195,8 @@ squash = node("ShaderNodeMapping")
 L.new(D, squash.inputs["Vector"])
 squash.inputs["Scale"].default_value = (1.0, 1.0, CLOUD_SQUASH)
 V = squash.outputs[0]
-fine = noise(V, CLOUD_SCALE, 4, 0.45)
-fine_up = noise(V, CLOUD_SCALE, 4, 0.45, offset=(0.0, 0.0, 0.09))   # sampled toward the light: the puffs are lit from above
+fine = noise(V, CLOUD_SCALE, CLOUD_DETAIL, CLOUD_ROUGHNESS)
+fine_up = noise(V, CLOUD_SCALE, CLOUD_DETAIL, CLOUD_ROUGHNESS, offset=(0.0, 0.0, 0.09))   # sampled toward the light: the puffs are lit from above
 big = noise(V, CLOUD_BIG_SCALE, 1, 0.5, offset=(3.1, 1.7, 0.0))      # the one larger octave (rounder heaps)
 base = op("ADD", op("MULTIPLY", fine, 1.0 - CLOUD_BIG_WEIGHT), op("MULTIPLY", big, CLOUD_BIG_WEIGHT))
 sinBand = math.sin(BAND)
@@ -207,7 +210,7 @@ bot = smooth(Z, -sinBand, -sinBand * 0.55)
 dens = op("MULTIPLY", op("MULTIPLY", dens, top), bot)
 # lighting: >0 where a puff's top faces the light; thicker cloud slightly darker
 shade = op("SUBTRACT", fine, fine_up)
-shade = op("ADD", op("MULTIPLY", shade, 7.0), 0.52)
+shade = op("ADD", op("MULTIPLY", shade, CLOUD_LIGHT_CONTRAST), 0.52)
 shade = op("ADD", shade, op("MULTIPLY", op("SUBTRACT", base, CLOUD_THRESHOLD + 0.1), -0.6))
 shade = op("MINIMUM", op("MAXIMUM", shade, 0.0), 1.0)
 CLOUD = ramp(shade, CLOUD_SHADE)

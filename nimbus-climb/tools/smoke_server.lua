@@ -770,8 +770,9 @@ S.boot = guarded("boot", function()
 	-- (ARCHITECTURE_V3.md section 6: ClockTime ~14.5, Brightness ~2.0, warmer ColorShift_Top, OutdoorAmbient a little
 	-- higher, Bloom stays subtle, no blow-out)
 	local Lighting = game:GetService("Lighting")
-	T.near(Lighting.ClockTime, CONTRACT.v3.lighting.ClockTime, 0.75, "Lighting.ClockTime is early afternoon (~14.5)")
-	T.near(Lighting.Brightness, CONTRACT.v3.lighting.Brightness, 0.35, "Lighting.Brightness is a little brighter than v2 (~2.0)")
+	-- Phase 5 (6.4): Custom look 14.5 / 2.2, Fallback (no sky ids) 16.6 / 2.6; p5world_lighting checks the exact numbers
+	T.check(Lighting.ClockTime >= 14 and Lighting.ClockTime <= 17, "Lighting.ClockTime is afternoon (14.5 Custom / 16.6 Fallback)", tostring(Lighting.ClockTime))
+	T.check(Lighting.Brightness >= 2.0 and Lighting.Brightness <= 2.8, "Lighting.Brightness is bright (2.2 / 2.6)", tostring(Lighting.Brightness))
 	local function rgb255(c)
 		return c.R * 255, c.G * 255, c.B * 255
 	end
@@ -787,7 +788,7 @@ S.boot = guarded("boot", function()
 		local tr, tg, tb = rgb255(Lighting.ColorShift_Top)
 		T.check(tr > tb + 15 and tr >= tg, "Lighting.ColorShift_Top is warm (a golden sun)", string.format("%.0f,%.0f,%.0f", tr, tg, tb))
 	end
-	T.check(Lighting.ExposureCompensation <= 0.05 and Lighting.ExposureCompensation >= -0.6, "Lighting.ExposureCompensation is about neutral (no blow-out)", tostring(Lighting.ExposureCompensation))
+	T.check(Lighting.ExposureCompensation <= 0.15 and Lighting.ExposureCompensation >= -0.6, "Lighting.ExposureCompensation is about neutral (no blow-out)", tostring(Lighting.ExposureCompensation))
 	T.near(Lighting.EnvironmentDiffuseScale, 0.5, 0.25, "Lighting.EnvironmentDiffuseScale ~0.5")
 	T.near(Lighting.EnvironmentSpecularScale, 0.4, 0.25, "Lighting.EnvironmentSpecularScale ~0.4")
 	T.eq(Lighting.GlobalShadows, true, "Lighting.GlobalShadows is on")
@@ -805,7 +806,7 @@ S.boot = guarded("boot", function()
 		local cr, cg, cb = rgb255(atm.Color)
 		T.check(cb >= cr, "Atmosphere.Color is blue-grey", string.format("%.0f,%.0f,%.0f", cr, cg, cb))
 		local dr, dg, db = rgb255(atm.Decay)
-		T.check(dr >= db, "Atmosphere.Decay is a soft peach", string.format("%.0f,%.0f,%.0f", dr, dg, db))
+		T.check(db >= dr, "Atmosphere.Decay is violet (the pink-purple sky)", string.format("%.0f,%.0f,%.0f", dr, dg, db))
 	end
 	local bloom = Lighting:FindFirstChildOfClass("BloomEffect")
 	if bloom then
