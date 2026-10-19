@@ -2921,3 +2921,10 @@ leashed after 3 s); `trials` deleted. `SIM.Stages`, `SIM.team`, `SIM.Player` kep
 * m11: every pet within PET_NEAR is drawn evolved under a part budget rather than telling the player "a distance detail".
 * m16 was adopted (Food converted into berries once), which also removes m7's change path and the leftover branch of Feed.
 * M5: named per-owner blocks, not split files (the render_*.py loaders and the smoke boot stay unchanged).
+
+### Phase 5 gate amendments (lead; these win over the sections above)
+- W1: 5.1 `PartyExp` 0.85 -> 0.5, `RoomMult` {1.0, 1.1, 1.25}; 4.2 `BenchRegenCap` 0.6, `MeleeUptime` 0.75, `Specials` Solo 3; Ring `FirstPower` 4.0 /
+  `Growth` 1.172 / `BossBump` 1.12 (all measured by `sim_battle`, 36 of 36 targets).
+- W1: 3.3 Kitchen pad `padAt(-19, 21.5, -24, 29)` (22.5 overlapped the 16x10x10 Food Machine).
+- W1: C10 first Prestige floor is 115 min for the player who also runs the Ring and the Dungeon (`--ring 0.08 --dungeon 0.1`: 118 min), 120 otherwise.
+- W1: `TycoonCatalog.CoinPoint` / `HeapStage` stay as deprecated stubs until the W3 gate (HomeFx), then leave contract.json with the aliases.

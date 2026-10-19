@@ -470,6 +470,7 @@ Config.Dev = {
 	GrantTokens = 1000000, -- tokens added by the "+ tokens" button and by StudioAutoGrant
 	GrantCash = 1000000, -- Phase 2: Cash added by the "+ Cash" button (/cash n)
 	GrantGems = 1000, -- Phase 2: Gems added by the "+ Gems" button (/gems n)
+	GrantBerries = 5000, -- Phase 5: Berries added by the "+ Berries" button (/berries n)
 	MaxTokensPerCommand = 100000000,
 }
 

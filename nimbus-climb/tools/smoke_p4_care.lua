@@ -380,9 +380,11 @@ end
 local function hookedSignals()
 	local out = { game:GetService("Players").PlayerRemoving }
 	local folder = K.remoteFolder and K.remoteFolder()
-	local r = folder and folder:FindFirstChild("RequestProfile")
-	if r then
-		out[#out + 1] = r.OnServerEvent
+	for _, name in ipairs({ "RequestProfile", "SettingsSet" }) do
+		local r = folder and folder:FindFirstChild(name)
+		if r then
+			out[#out + 1] = r.OnServerEvent
+		end
 	end
 	return out
 end

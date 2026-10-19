@@ -909,7 +909,9 @@ def run_report(args):
     v = pct(ms.get("Villa0", [1e9]), .5) / 60
     check(TARGETS["villa"][0] <= v <= TARGETS["villa"][1], "Villa at %d-%d min (median %.1f)" % (TARGETS["villa"] + (v,)))
     p1 = pct(ms.get("run1", [1e9]), .5) / 60
-    check(TARGETS["p1"][0] <= p1 <= TARGETS["p1"][1], "first Prestige after 2-3 h (median %.0f min)" % p1)
+    # C10 (lead, W1 gate): a player who also runs the Ring and the Dungeon may prestige a little sooner (floor 115)
+    p1_lo = 115 if (ring > 0 and dng > 0) else TARGETS["p1"][0]
+    check(p1_lo <= p1 <= TARGETS["p1"][1], "first Prestige after 2-3 h (median %.0f min, floor %d)" % (p1, p1_lo))
     r2, r3 = pct(ms.get("run2", [1e9]), .5) / 60, pct(ms.get("run3", [1e9]), .5) / 60
     check(r2 < p1 and r3 < r2, "later prestiges faster (%.0f -> %.0f -> %.0f min)" % (p1, r2, r3))
     check(len(runs) == 10 and min(runs) >= TARGETS["run_floor_min"],
