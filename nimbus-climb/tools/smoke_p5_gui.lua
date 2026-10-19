@@ -180,11 +180,142 @@ COVER[#COVER + 1] = {
 -- [owner: neonkit] end
 
 -- [owner: careui] begin
--- (menu:*, feed, garden, train, looks, home:strip)
+-- careui (W3): every menu / care window docked by the window rule. A Phase 5 profile (a home, berries, evolved pets,
+-- a team of 3) is synced once; each scene opens its window through the real controller and closes it again.
+local CUI = {}
+function CUI.profile()
+	if CUI.Synced then
+		return
+	end
+	CUI.Synced = true
+	local PetCatalog = NK.req("shared/PetCatalog")
+	local Config = NK.req("shared/Config")
+	local ids = {}
+	for _, def in ipairs(PetCatalog.Pets) do
+		if not def.EventOnly and def.Rarity ~= "Secret" and #ids < 6 then
+			ids[#ids + 1] = def.Id
+		end
+	end
+	local pets, levels = {}, {}
+	for i, id in ipairs(ids) do
+		pets[id] = 1
+		levels[id] = { Level = 10 + i * 5, Xp = 10 }
+	end
+	local LocalPlayer = game:GetService("Players").LocalPlayer
+	local lobby = workspace:FindFirstChild("NimbusLobby") or Instance.new("Folder")
+	lobby.Name = "NimbusLobby"
+	lobby.Parent = workspace
+	local plot = lobby:FindFirstChild("Spot_09") or Instance.new("Folder")
+	plot.Name = "Spot_09"
+	plot:SetAttribute("SpotIndex", 9)
+	plot:SetAttribute("IncomePerSecond", 38.5)
+	plot:SetAttribute("GardenSlots", 4)
+	plot:SetAttribute("BerryCap", 3000)
+	plot.Parent = lobby
+	LocalPlayer:SetAttribute(Config.Attr.SpotIndex, 9)
+	LocalPlayer:SetAttribute(Config.Attr.Berries or "Berries", 1240)
+	NK.KC().toClient("ProfileSync", {
+		Tokens = 900, Pets = pets, Equipped = { ids[1] }, Items = {}, Discovered = pets, IndexClaimed = {},
+		Stats = { Matches = 3, Wins = 1, TokensEarned = 40, Spins = 2, BestTimes = {} },
+		Perks = { MaxHealth = 0, TokenBonus = 0, StaminaRegen = 0, CheckpointHeal = 0 },
+		Tutorial = { Step = 99, Done = true, Gifted = true }, Cash = 12400, Gems = 85, Berries = 1240,
+		Home = { Level = 21, Prestige = 1, Stations = { Garden = 3, Press1 = 13, Kitchen = 2, Gym = 2, Vault = 1, House = 2, FusionMachine = 1 },
+			Garden = { ids[2], ids[3], "", "" }, Gym = {} },
+		PetLevels = levels, PetGrowth = { [ids[4]] = { Evo = 1 }, [ids[5]] = { Evo = 2 } },
+		Teams = { Presets = { { ids[5], ids[4], ids[1] }, {}, {} }, Active = 1, Slots = 3 },
+	})
+	NK.advance(0.5)
+end
+function CUI.menu()
+	return NK.KC().M and NK.KC().M.MenuController
+end
+function CUI.menuWindow(id)
+	local g = NK.pg():FindFirstChild("NimbusMenu")
+	return g and g:FindFirstChild("Window_" .. id)
+end
+function CUI.closeAll()
+	local KC = NK.KC()
+	for _, name in ipairs({ "MenuController", "CareController", "IndexController", "FusionController" }) do
+		local m = (KC.M and KC.M[name]) or NK.req("client/Controllers/" .. name)
+		if m and type(m.Close) == "function" then
+			pcall(m.Close)
+		end
+	end
+end
+for _, spec in ipairs({ { "menu:Pets", "Pets", "Inventory" }, { "menu:Home", "Home", "Home" }, { "menu:Team", "Team", "Team" },
+	{ "menu:Shop", "Shop", "Shop" }, { "menu:Stats", "Stats", "Stats" } }) do
+	COVER[#COVER + 1] = {
+		Scene = spec[1],
+		Open = function()
+			CUI.profile()
+			pcall(CUI.menu().Open, spec[2], {})
+		end,
+		Close = CUI.closeAll,
+		Window = function()
+			return CUI.menuWindow(spec[3])
+		end,
+	}
+end
+for _, spec in ipairs({ { "feed", "Feed" }, { "garden", "Garden" }, { "train", "Train" } }) do
+	COVER[#COVER + 1] = {
+		Scene = spec[1],
+		Open = function()
+			CUI.profile()
+			local care = (NK.KC().M and NK.KC().M.CareController) or NK.req("client/Controllers/CareController")
+			pcall(care.Open, spec[2], { Slot = 4 })
+		end,
+		Close = CUI.closeAll,
+		Window = function()
+			local g = NK.pg():FindFirstChild("NimbusCare")
+			return g and g:FindFirstChild("Window_Care")
+		end,
+	}
+end
+COVER[#COVER + 1] = {
+	Scene = "menu:Index",
+	Open = function()
+		CUI.profile()
+		pcall(CUI.menu().Open, "Index", {})
+	end,
+	Close = CUI.closeAll,
+	Window = function()
+		local g = NK.pg():FindFirstChild("NimbusIndex")
+		return g and g:FindFirstChild("Window_Index")
+	end,
+}
+COVER[#COVER + 1] = {
+	Scene = "fusion",
+	Open = function()
+		CUI.profile()
+		local f = (NK.KC().M and NK.KC().M.FusionController) or NK.req("client/Controllers/FusionController")
+		pcall(f.Open, "Upgrade", {})
+	end,
+	Close = CUI.closeAll,
+	Window = function()
+		local g = NK.pg():FindFirstChild("NimbusFusion")
+		return g and g:FindFirstChild("Window_Fusion")
+	end,
+}
 -- [owner: careui] end
 
 -- [owner: menu] begin
--- (mainmenu, loading, settings)
+-- the SETTINGS window after PLAY (opened by the menu gear: MainMenuController.OpenSettings), docked by the window rule
+COVER[#COVER + 1] = {
+	Scene = "settings",
+	Open = function()
+		local mm = NK.req("client/Controllers/MainMenuController")
+		pcall(mm.OpenSettings)
+	end,
+	Close = function()
+		local mm = NK.req("client/Controllers/MainMenuController")
+		pcall(mm.CloseWindows)
+	end,
+	Window = function()
+		local mm = NK.req("client/Controllers/MainMenuController")
+		local holder = mm.Window()
+		return holder
+	end,
+}
 -- [owner: menu] end
 
 -- [owner: battleclient] begin

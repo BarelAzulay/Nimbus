@@ -2621,11 +2621,170 @@ end)
 -- [owner: battleclient] end
 
 -- [owner: careui] begin
--- (menu:* tile grid + Dock, feed = the Food Machine window, garden, train, looks, home:strip)
+-- Phase 5 care windows on the Neon kit (careui W3). A Phase 5 home (Berry Farm Lv 13, Garden, Food Machine, Gym,
+-- Vault, House Villa, Yard Fence), 1,240 / 3,000 berries, two evolved pets (Epic stage 1, Legend stage 2) and a
+-- team of 3. These scenes replace the Phase 4 ones of the same name (registered later):
+--   home        the Home window: the flow strip, house + income, the 11 stations, prestige last
+--   feed        the Food Machine window (berries, ONE Feed button per pet)
+--   garden      the garden picker;  train  the Training Place
+--   team        the Team window: FIGHTER + 2 HELPERS, "Set as fighter"
+--   looks       the Pets panel on an Evolved II pet (the grid's evolved slots)
+local CAREUI = {}
+
+function CAREUI.profile()
+	local ids = CARE.ids()
+	local snap = snapshot()
+	for _, id in pairs(ids) do
+		snap.Pets[id] = math.max(snap.Pets[id] or 0, 1)
+	end
+	snap.Equipped = { ids.Epic, ids.Follower }
+	snap.Home = {
+		Level = 21,
+		Prestige = 1,
+		Stations = { Garden = 3, Press1 = 13, Kitchen = 2, Gym = 2, Vault = 1, House = 2, DecorFence = 1, FusionMachine = 1 },
+		Garden = { ids.Garden1, ids.Garden2, ids.Epic, "" },
+		Gym = {},
+	}
+	snap.Cash = 48250
+	snap.Gems = 320
+	snap.Berries = 1240
+	snap.PetLevels = {
+		[ids.Garden1] = { Level = 12, Xp = 300 },
+		[ids.Garden2] = { Level = 9, Xp = 40 },
+		[ids.Ready] = { Level = 20, Xp = 120 },
+		[ids.Epic] = { Level = 57, Xp = 9000 },
+		[ids.Training] = { Level = 7, Xp = 0 },
+		[ids.Legend] = { Level = 100, Xp = 0 },
+		[ids.Follower] = { Level = 4, Xp = 10 },
+	}
+	snap.PetGrowth = {
+		[ids.Epic] = { Evo = 1, Speed = 2, Physique = 3 },
+		[ids.Training] = { Physique = 2, Job = { Stat = "Physique", Ends = os.time() + 130, Rank = 3, Slot = 1, From = "Follow", Paid = 2700 } },
+		[ids.Legend] = { Evo = 2, Speed = 10, Physique = 6, Ability = 4, Defense = 1 },
+	}
+	snap.Teams = { Presets = { { ids.Legend, ids.Epic, ids.Garden1 }, { ids.Ready }, {} }, Active = 1, Slots = 3 }
+	snap.Dungeon = { Best = 4, Cleared = { [1] = true, [2] = true, [3] = true, [4] = true }, Runs = 9, Clears = 6 }
+	snap.Ring = { Best = 24, Runs = 9 }
+	snap.Tutorial = { Step = 22, Done = true, Gifted = true }
+	LocalPlayer:SetAttribute(Config.Attr.Cash, snap.Cash)
+	LocalPlayer:SetAttribute(Config.Attr.Gems, snap.Gems)
+	LocalPlayer:SetAttribute(Config.Attr.Berries or "Berries", snap.Berries)
+	CARE.plot({ IncomePerSecond = 38.5, GardenSlots = 4, HomeLevel = snap.Home.Level, Prestige = 1, BerryCap = 3000 })
+	toClient("ProfileSync", snap)
+	advance(0.5)
+	return ids, snap
+end
+CAREUI.ProfileFn = CAREUI.profile
+
+scenario("home", function()
+	CAREUI.profile()
+	toClient("OpenPanel", "Home", {})
+	advance(2.5)
+end)
+
+scenario("feed", function(key)
+	local ids = CAREUI.profile()
+	toClient("OpenPanel", "Feed", { Key = (key and key ~= "") and key or ids.Garden1 })
+	advance(3)
+end)
+
+scenario("garden", function(slot)
+	CAREUI.profile()
+	toClient("OpenPanel", "Pets", { Action = "Garden", Slot = tonumber(slot) or 4 })
+	advance(3)
+end)
+
+scenario("train", function(key)
+	local ids = CAREUI.profile()
+	toClient("OpenPanel", "Train", { Key = (key and key ~= "") and key or ids.Training })
+	advance(3)
+end)
+
+scenario("team", function()
+	CAREUI.profile()
+	toClient("OpenPanel", "Team", {})
+	advance(3)
+end)
+
+scenario("looks", function(which)
+	local ids = CAREUI.profile()
+	toClient("OpenPanel", "Pets", { Tab = "Pets", Key = (which == "epic") and ids.Epic or ids.Legend })
+	advance(3)
+end)
+
+scenario("stats", function()
+	CAREUI.profile()
+	toClient("OpenPanel", "Stats", {})
+	advance(2.5)
+end)
+
+-- fusion[:mix]: the Fusion Machine on the evolved Epic copy (its stage carries into the Golden result)
+scenario("fusion", function(tab)
+	local ids, snap = CAREUI.profile()
+	snap.Pets[ids.Epic] = 3
+	toClient("ProfileSync", snap)
+	advance(0.3)
+	toClient("OpenPanel", "Fusion", { Tab = (tab == "mix") and "Mix" or "Upgrade", Key = ids.Epic })
+	advance(3)
+end)
 -- [owner: careui] end
 
 -- [owner: menu] begin
--- (mainmenu, loading, settings)
+-- Phase 5 loading screen + main menu + settings (7.1-7.3):
+--   mainmenu[:<window>]  Config.MainMenu.Enabled: the menu before PLAY (logo, PLAY, SETTINGS, UPDATES + NEW badge,
+--                        CREDITS chip) over the orbiting world; window updates | credits opens that window over it
+--   loading              the ReplicatedFirst loading screen 8 s in: the profile not loaded yet (85%), SKIP showing
+--   settings[:hud]       the SETTINGS window over the menu (Music 6 / Sound 8 / Graphics Auto / Shake ON); ":hud" =
+--                        after PLAY, opened from the menu gear over the game HUD (the window rule)
+-- Every OTHER scenario boots like the smoke worlds: the menu disabled and the profile loaded (DataService's
+-- ProfileLoaded attribute), so the loading screen is gone after ~2.3 s and nothing is gated.
+local MM = { Scene = tostring(ARGS.scenario or "lobby"):lower():match("^[^:]*") or "lobby" }
+do
+	local cfg = req("shared/Config")
+	if type(cfg.MainMenu) == "table" then
+		cfg.MainMenu.Enabled = (MM.Scene == "mainmenu" or MM.Scene == "settings")
+	end
+	-- the mock has no ReplicatedFirst:RemoveDefaultLoadingScreen (the script pcalls it anyway)
+	local rf = Mock.Classes and Mock.Classes.ReplicatedFirst
+	if rf then
+		for _, t in ipairs({ rf.methods or false, rf.own or false }) do
+			if t then
+				if t == rf.own then
+					t.methods = t.methods or {}
+					t = t.methods
+				end
+				t.RemoveDefaultLoadingScreen = t.RemoveDefaultLoadingScreen or function() end
+			end
+		end
+	end
+	if LocalPlayer and MM.Scene ~= "loading" then
+		LocalPlayer:SetAttribute((cfg.Attr and cfg.Attr.ProfileLoaded) or "ProfileLoaded", true)
+	end
+end
+function MM.controller()
+	return req("client/Controllers/MainMenuController")
+end
+scenario("mainmenu", function(window)
+	advance(1.5)
+	local MMC = MM.controller()
+	if window == "updates" then
+		MMC.OpenUpdates()
+	elseif window == "credits" then
+		MMC.OpenCredits()
+	end
+	advance(0.6)
+end)
+scenario("loading", function() end)
+scenario("settings", function(where)
+	local MMC = MM.controller()
+	advance(0.5)
+	if where == "hud" then
+		MMC.Play()
+		advance(6)
+	end
+	MMC.OpenSettings()
+	advance(0.6)
+end)
 -- [owner: menu] end
 
 -- [owner: dungeonclient] begin

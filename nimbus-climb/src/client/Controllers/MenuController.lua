@@ -165,7 +165,6 @@ local K = {
 	GAP = 6, -- between two entries
 	LABEL_TEXT = 19,
 	MARGIN = 12, -- screen px kept free around a window
-	BUMPS = 28, -- room the panels' cloud bumps need above the top edge
 	NARROW = 1100, -- windows narrower than this (design px) use narrower side cards
 	SHORT = 560, -- windows lower than this (design px) use their compact layout
 	DETAIL_W = 340,
@@ -204,13 +203,15 @@ local K = {
 }
 
 -- Preferred / minimum design sizes of each window (W x H), the reveal card, the spin stage and its strip.
+-- Phase 5 (6.6, the window rule): windows dock RIGHT on landscape screens (NeonKit.SideRect, <= 0.44 W) and are a
+-- bottom sheet on portrait ones (the top 44% stays clear); no backdrop dims the game. Odds is a small centred confirm.
 K.WIN = {
-	Inventory = { 1180, 740, 800, 380 },
-	Shop = { 1180, 740, 800, 380 },
-	Stats = { 1080, 700, 800, 380 },
-	Home = { 1180, 740, 800, 380 },
-	Team = { 1180, 800, 800, 380 }, -- Phase 3: the battle team presets
-	Odds = { 780, 680, 600, 380 },
+	Inventory = { 820, 900 },
+	Shop = { 820, 900 },
+	Stats = { 640, 760 },
+	Home = { 820, 900 },
+	Team = { 820, 900 }, -- Phase 3: the battle team presets (Phase 5: 3 slots, FIGHTER + 2 helpers)
+	Odds = { 700, 640, 520, 380 },
 }
 -- Portrait screens (a phone held upright): a window may get as narrow as TALL_MIN_W design px (and as tall as
 -- TALL_MAX_H) so its text keeps the readability scale instead of shrinking to fit 800 px; windows narrower than
@@ -332,6 +333,8 @@ local Gems = { Prices = {}, PriceAsked = {} }
 
 -- Phase 3: the Team window's entry points (P3.BuildTeam(win), P3.Settle(), P3.Battle(), P3.Refresh(); set below)
 local P3 = {}
+-- Phase 5 helpers (one table: the main chunk stays under Lua's 200-local limit). Kit = NeonKit (Card, Tile, SideRect, Dock).
+local P5 = { Kit = require(Client:WaitForChild("UI"):WaitForChild("NeonKit")) }
 -- forward declarations
 local openWindow, closeWindow, toggleWindow, refreshOpenWindow, updateMenuActive
 local requestSpin, closeStage, skipSpin, closeOdds, openOdds, showHint, handleBack, beginStage
@@ -1279,8 +1282,72 @@ function P2.growth(key)
 	return { Evo = 0 }
 end
 
+-- Phase 5 (3.7): the stored stage the way every site draws it (State.PetStage: EvolutionStage of the stored Evo)
 function P2.stage(key)
+	if type(State.PetStage) == "function" then
+		local ok, stage = pcall(State.PetStage, key)
+		if ok and type(stage) == "number" then
+			return math.max(0, math.floor(stage))
+		end
+	end
 	return math.max(0, math.floor(tonumber(P2.growth(key).Evo) or 0))
+end
+
+-- Phase 5 (m17): BattleCatalog.UnitPower of a pet copy (a Support pet with its Support role multipliers), or nil
+function P5.battlePower(key, def, level)
+	if P5.Battle == nil then
+		P5.Battle = false
+		local module = Shared:FindFirstChild("BattleCatalog")
+		local ok, mod = pcall(function()
+			return module and require(module)
+		end)
+		if ok and type(mod) == "table" and type(mod.UnitPower) == "function" then
+			P5.Battle = mod
+		end
+	end
+	if not P5.Battle then
+		return nil
+	end
+	local growth = P2.growth(key)
+	local train = { Speed = growth.Speed, Physique = growth.Physique, Ability = growth.Ability, Defense = growth.Defense }
+	local entry = { Def = def, Key = key, Level = level, Tier = P2.tierOf(key, def), Evo = P2.stage(key), Train = train }
+	local ok, power = pcall(P5.Battle.UnitPower, entry)
+	if ok and type(power) == "number" then
+		return math.floor(power + 0.5)
+	end
+	return nil
+end
+
+-- Phase 5 (3.7): an owned pet copy's evolved look on a CloudUI.Slot (the slot draws the plain form only): a Low-detail
+-- evolved viewport over the slot ("EvolvedView", kept while the same pet + stage is shown); stage 0 removes it.
+function P5.evoSlot(slot, def, stage)
+	local cur = slot.P5Evo
+	stage = math.floor(tonumber(stage) or 0)
+	if stage < 1 or type(def) ~= "table" then
+		if cur then
+			pcall(cur.Handle.Destroy)
+			slot.P5Evo = nil
+		end
+		return false
+	end
+	if cur and cur.Id == def.Id and cur.Stage == stage and cur.Handle.Frame.Parent then
+		return true
+	end
+	if cur then
+		pcall(cur.Handle.Destroy)
+	end
+	local handle = CloudUI.PetViewport(slot.Button, def, UDim2.new(1, -8, 1, -8), {
+		Position = UDim2.new(0.5, 0, 0.5, 0),
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		Spin = "sway",
+		Animate = false,
+		Evolved = stage,
+		Detail = "Low",
+		ZIndex = 2,
+	})
+	handle.Frame.Name = "EvolvedView"
+	slot.P5Evo = { Id = def.Id, Stage = stage, Handle = handle }
+	return true
 end
 
 -- the running training job of a key or nil
@@ -1455,42 +1522,20 @@ local function portraitScreen()
 	return area.X < area.Y
 end
 
--- Size + scale + position for a design-pixel box: { w, h, scale, x, y } (x, y = centre in gui px).
--- The box gets its preferred size when the screen has room for it at the readability scale, shrinks
--- towards its minimum size first, and only then is scaled below the screen factor. It is centred on the
--- screen unless that would put it under the menu column; on small screens it may cover the column when
--- that buys a bigger (more readable) scale. `tallOk`: the box has a single-column layout, so on a portrait
--- screen it may get as narrow as K.TALL_MIN_W (and taller) instead of shrinking its text.
-local function fitBox(prefW, prefH, minW, minH, tallOk)
+-- Phase 5 (6.6): a small centred confirm (the odds popup): { w, h, scale, x, y } (x, y = centre in gui px). It covers
+-- at most 30% of the screen while its text keeps the 0.8 readability scale; where that cannot hold (phones) it becomes a
+-- window-rule panel instead (docked right / a bottom sheet: NeonKit.SideRect). (Replaces Phase 4's fitBox.)
+local function confirmBox(prefW, prefH, minW, minH)
 	local area = guiSize()
 	local factor = screenFactor()
-	if tallOk and area.X < area.Y then
-		minW = math.min(minW, K.TALL_MIN_W)
-		prefH = math.max(prefH, K.TALL_MAX_H)
+	local w = Util.Clamp(math.floor((area.X * 0.7) / factor), minW, prefW)
+	local h = Util.Clamp(math.floor((area.Y - 2 * K.MARGIN - 58) / factor), minH, prefH)
+	local scale = math.min(factor, math.sqrt(0.3 * area.X * area.Y / (w * h)))
+	if scale < 0.8 - 1e-3 then
+		local r = P5.Kit.SideRect(prefW, prefH)
+		return { w = math.floor(r.designW), h = math.floor(r.designH), scale = r.scale, x = math.floor(r.x + r.w / 2 + 0.5), y = math.floor(r.y + r.h / 2 - P5.inset() + 0.5) }
 	end
-	local freeH = area.Y - 2 * K.MARGIN
-	local function solve(left)
-		local freeW = area.X - left - 2 * K.MARGIN
-		local w = Util.Clamp(math.floor(freeW / factor), minW, prefW)
-		local h = Util.Clamp(math.floor((freeH - K.BUMPS * factor) / factor), minH, prefH)
-		local scale = Util.Clamp(math.min(factor, freeW / w, freeH / h), 0.3, 1.25)
-		return w, h, scale
-	end
-	local left = columnRight()
-	local w, h, scale = solve(left)
-	if left > 0 and scale < factor - 0.001 then
-		local w2, h2, scale2 = solve(0)
-		if scale2 > scale + 0.001 then
-			w, h, scale, left = w2, h2, scale2, 0
-		end
-	end
-	local half = w * scale / 2
-	local x = math.max(area.X / 2, left + K.MARGIN + half)
-	x = math.min(x, area.X - K.MARGIN - half)
-	local halfH = h * scale / 2
-	local y = math.min(area.Y / 2 + K.BUMPS * scale / 2, area.Y - K.MARGIN / 2 - halfH)
-	y = math.max(y, halfH)
-	return { w = w, h = h, scale = scale, x = math.floor(x + 0.5), y = math.floor(y + 0.5) }
+	return { w = w, h = h, scale = scale, x = math.floor(area.X / 2 + 0.5), y = math.floor(area.Y / 2 + 0.5) }
 end
 
 ----------------------------------------------------------------------
@@ -1556,56 +1601,60 @@ end
 -- window = { Id, Spec, Holder, Fit (UIScale), Pop (UIScale), Panel, Shown, Built, Dirty, Token, W, H,
 --            Tab, Refresh = fn(), OnOpen = fn(args), OnClose = fn(), OnLayout = fn(w, h, narrow) }
 ----------------------------------------------------------------------
-local function setBackdrop(on)
-	local backdrop = U.Backdrop
-	if not backdrop then
-		return
-	end
-	U.BackdropOn = on
-	if on then
-		backdrop.Visible = true
-		tween(backdrop, 0.18, { BackgroundTransparency = 0.55 })
-	else
-		tween(backdrop, 0.15, { BackgroundTransparency = 1 })
-		task.delay(0.17, function()
-			if not U.BackdropOn and backdrop.Parent then
-				backdrop.Visible = false
-			end
+-- Roblox's top bar height (gui px): our ScreenGui does not ignore it, SideRect measures from the screen top
+function P5.inset()
+	local inset = 58
+	pcall(function()
+		inset = game:GetService("GuiService"):GetGuiInset().Y
+	end)
+	return inset
+end
+
+-- HotbarController re-centres the hotbar left of a docked window (6.6); nil when nothing is docked right
+function P5.avoidRight(x)
+	if P5.Hotbar == nil then
+		P5.Hotbar = false
+		local module = script.Parent:FindFirstChild("HotbarController")
+		local ok, mod = pcall(function()
+			return module and require(module)
 		end)
+		if ok and type(mod) == "table" and type(mod.SetAvoidRight) == "function" then
+			P5.Hotbar = mod
+		end
+	end
+	if P5.Hotbar then
+		pcall(P5.Hotbar.SetAvoidRight, x)
 	end
 end
 
--- The Pet Index (its own gui) replaced our window: drop our backdrop at once.
-local function hideBackdropNow()
-	if openId then
+-- The window rule (6.6): NeonKit.Dock puts the holder on its SideRect (docked RIGHT on landscape screens, a bottom
+-- sheet on portrait ones) and keeps it there when the screen changes; the window re-lays its content when its
+-- design size changes.
+local function layoutWindow(win)
+	if not win.Dock then
+		local size = K.WIN[win.Id] or { 820, 900 }
+		win.Dock = P5.Kit.Dock(win.Holder, win.Fit, size[1], size[2])
+	end
+	win.Dock.Refresh()
+	local rect = win.Dock.Rect
+	if not rect then
 		return
 	end
-	U.BackdropOn = false
-	if U.Backdrop then
-		U.Backdrop.Visible = false
-		U.Backdrop.BackgroundTransparency = 1
+	local w, h = math.floor(rect.designW + 0.5), math.floor(rect.designH + 0.5)
+	local changed = win.W ~= w or win.H ~= h
+	win.W, win.H = w, h
+	if win.Shown then
+		P5.avoidRight(rect.mode == "Side" and rect.x or nil)
 	end
-end
-
-local function layoutWindow(win)
-	local size = K.WIN[win.Id] or { 1100, 700, 860, 420 }
-	local box = fitBox(size[1], size[2], size[3], size[4], win.Spec.Tall == true)
-	win.Holder.Size = UDim2.fromOffset(box.w, box.h)
-	win.Holder.Position = UDim2.fromOffset(box.x, box.y)
-	win.Fit.Scale = box.scale
-	local changed = win.W ~= box.w or win.H ~= box.h
-	win.W, win.H = box.w, box.h
 	if changed and win.Built and win.OnLayout then
-		safe("layout " .. win.Id, win.OnLayout, box.w, box.h, box.w < K.NARROW, box.h < K.SHORT, box.w < K.TALL)
+		safe("layout " .. win.Id, win.OnLayout, w, h, w < K.NARROW, h < K.SHORT, w < K.TALL)
 	end
 end
 
 local function createWindow(spec)
-	local size = K.WIN[spec.Id] or { 1100, 700, 860, 420 }
+	local size = K.WIN[spec.Id] or { 820, 900 }
 	local win = { Id = spec.Id, Spec = spec, Shown = false, Built = false, Dirty = true, Token = 0 }
 	win.Holder = makeFrame(gui, "Window_" .. spec.Id, {
-		AnchorPoint = Vector2.new(0.5, 0.5),
-		Position = UDim2.new(0.5, 0, 0.5, 14),
 		Size = UDim2.fromOffset(size[1], size[2]),
 		Visible = false,
 		ZIndex = 3,
@@ -1618,6 +1667,7 @@ local function createWindow(spec)
 		AnchorPoint = Vector2.new(0.5, 0.5),
 		Title = spec.Title,
 		Closable = true,
+		Category = spec.Category,
 		Accent = spec.Accent,
 		OnClose = function()
 			closeWindow(spec.Id)
@@ -1703,7 +1753,6 @@ function openWindow(id, args)
 		win.Pop.Scale = 0.86
 		tween(win.Pop, 0.22, { Scale = 1 }, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
 	end
-	setBackdrop(true)
 	if win.OnOpen then
 		safe("open " .. id, win.OnOpen, args)
 	end
@@ -1743,7 +1792,7 @@ function closeWindow(id, instant)
 		closeOdds()
 	end
 	if instant then
-		-- another window takes over right away (it keeps the backdrop; see hideBackdropNow)
+		-- another window takes over right away
 		win.Holder.Visible = false
 	else
 		tween(win.Pop, 0.12, { Scale = 0.9 }, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
@@ -1752,9 +1801,9 @@ function closeWindow(id, instant)
 				win.Holder.Visible = false
 			end
 		end)
-		if not openId then
-			setBackdrop(false)
-		end
+	end
+	if not openId then
+		P5.avoidRight(nil)
 	end
 	updateMenuActive()
 end
@@ -1892,7 +1941,6 @@ local function openIndex(groupId)
 	if openId then
 		closeWindow(openId, true)
 	end
-	hideBackdropNow()
 	safe("Index.Open", index.Open, groupId)
 end
 
@@ -1932,207 +1980,98 @@ local function menuActionStats()
 	toggleWindow("Stats")
 end
 
-local MENU = {
-	{ Id = "Inventory", Label = "Inventory", Glyph = G.Backpack, Color = BUTTONS.Blue, Action = menuActionInventory },
-	{ Id = "Pets", Label = "Pets", Glyph = G.Paw, Color = BUTTONS.Pink, Action = menuActionPets },
-	{ Id = "Team", Label = "Team", Glyph = G.Swords, Color = BUTTONS.Red, Action = function()
-		toggleWindow("Team") -- Phase 3: the battle team presets
-	end },
-	{ Id = "Index", Label = "Index", Glyph = G.Book, Color = TEAL, Action = menuActionIndex },
-	{ Id = "Shop", Label = "Shop", Glyph = G.Money, Color = BUTTONS.Gold, Action = menuActionShop },
-	{ Id = "Spot", Label = "Home", Glyph = G.House, Color = BUTTONS.Green, Action = menuActionSpot },
-	{ Id = "Stats", Label = "Stats", Glyph = G.Chart, Color = PURPLE, Action = menuActionStats },
-}
-
--- Glossy chunky face: light top, the colour, then a hard darker lip at the bottom.
-local function tileSequence(c)
-	return ColorSequence.new({
-		ColorSequenceKeypoint.new(0, Theme.Lighten(c, 0.34)),
-		ColorSequenceKeypoint.new(0.5, Theme.Lighten(c, 0.05)),
-		ColorSequenceKeypoint.new(0.78, Theme.Darken(c, 0.08)),
-		ColorSequenceKeypoint.new(0.8, Theme.Darken(c, 0.32)),
-		ColorSequenceKeypoint.new(1, Theme.Darken(c, 0.4)),
-	})
-end
-
-local function paintTile(entry)
-	local color = entry.Color
-	if entry.Disabled then
-		color = BUTTONS.Gray or MUTED
-	end
-	local face = color
-	if not entry.Disabled then
-		if entry.Pressing then
-			face = Theme.Darken(color, 0.08)
-		elseif entry.Hovering then
-			face = Theme.Lighten(color, 0.1)
+-- Phase 5 (6.6): the Settings gear opens MainMenuController's settings panel (menu W3); a hint until it exists
+function P5.openSettings()
+	local module = script.Parent:FindFirstChild("MainMenuController")
+	local ok, mod = pcall(function()
+		return module and require(module)
+	end)
+	if ok and type(mod) == "table" then
+		for _, name in ipairs({ "OpenSettings", "Settings", "ShowSettings" }) do
+			if type(mod[name]) == "function" then
+				closeEverything()
+				safe("settings", mod[name])
+				return
+			end
+		end
+		if type(mod.Open) == "function" then
+			closeEverything()
+			safe("settings", mod.Open, "Settings")
+			return
 		end
 	end
-	entry.Gradient.Color = tileSequence(face)
-	entry.Stroke.Color = entry.Active and GOLD or NAVY
-	entry.Glow.Visible = entry.Active == true
-	entry.Label.TextColor3 = entry.Active and Theme.Lighten(GOLD, 0.45) or WHITE
+	showHint("Settings are getting ready. Try again soon!", "info")
 end
 
-local function setTileFx(entry, target, seconds)
-	if entry.FxTween then
-		entry.FxTween:Cancel()
+-- The menu (6.6, image 21.png): a 2 x 3 grid of neon tiles (Pets, Items, Team / Index, Shop, Home) and a small row
+-- (Stats, the Settings gear). Each tile is a NeonKit.Tile whose root is the TextButton MenuButton_<Id> inside a
+-- frame Entry_<Id> of the frame "MenuColumn" (names kept: the tutorial rings them; the gear's frame is Gear_Settings).
+-- Tiles are designed at 66 px under one UIScale: 84 px on a 1080p screen, ~66 at 720p, ~53 on phones (labels >= 14 px).
+local MENU = {
+	{ Id = "Pets", Label = "Pets", Icon = "Pets", Color = "Orange", Action = menuActionPets },
+	{ Id = "Inventory", Label = "Items", Icon = "Items", Color = "Blue", Action = menuActionInventory },
+	{ Id = "Team", Label = "Team", Icon = "Team", Color = "Red", Action = function()
+		toggleWindow("Team") -- Phase 3: the battle team presets
+	end },
+	{ Id = "Index", Label = "Index", Icon = "Index", Color = "Purple", Action = menuActionIndex },
+	{ Id = "Shop", Label = "Shop", Icon = "Shop", Color = "Green", Action = menuActionShop },
+	{ Id = "Spot", Label = "Home", Icon = "Home", Color = "Yellow", Action = menuActionSpot },
+	{ Id = "Stats", Label = "Stats", Icon = "Stats", Color = "Cyan", Small = true, Action = menuActionStats },
+	{ Id = "Settings", Label = "Settings", Icon = "Settings", Color = "Grey", Small = true, Gear = true, Action = function()
+		P5.openSettings()
+	end },
+}
+P5.TILE = 66 -- design px of a grid tile
+P5.SMALL = 46 -- design px of a small-row tile (icon only)
+P5.GAP = 6
+
+-- active (its window is open): the gold glow ring + a gold label; disabled (in a match): grey
+local function paintTile(entry)
+	local tile = entry.Tile
+	if not tile then
+		return
 	end
-	entry.FxTween = tween(entry.Fx, seconds, { Scale = target })
+	local color = entry.Disabled and "Grey" or entry.Color
+	if entry.Painted ~= tostring(color) .. tostring(entry.Active) then
+		entry.Painted = tostring(color) .. tostring(entry.Active)
+		tile.SetColor(entry.Active and "Gold" or color)
+		tile.Card.SetGlow(entry.Active == true)
+		if tile.Label then
+			tile.Label.TextColor3 = entry.Active and Theme.Lighten(GOLD, 0.45) or WHITE
+		end
+	end
+	entry.Button:SetAttribute("Disabled", entry.Disabled == true)
 end
 
 local function buildTile(column, spec, index)
-	local entry = { Id = spec.Id, Color = spec.Color or BUTTONS.Blue or PURPLE }
-	entry.Root = makeFrame(column, "Entry_" .. spec.Id, {
-		Size = UDim2.fromOffset(K.ENTRY_W, K.ENTRY_H),
+	local size = spec.Small and P5.SMALL or P5.TILE
+	local entry = { Id = spec.Id, Color = spec.Color, Small = spec.Small }
+	entry.Root = makeFrame(column, (spec.Gear and "Gear_" or "Entry_") .. spec.Id, {
+		Size = UDim2.fromOffset(size, size),
 		LayoutOrder = index,
 		ZIndex = 2,
 	})
-	-- the square tile (the tutorial rings the MenuButton_<Id> button)
-	local button = Util.Create("TextButton", {
+	local tile = P5.Kit.Tile({
 		Name = "MenuButton_" .. spec.Id,
-		AutoButtonColor = false,
-		BorderSizePixel = 0,
-		Text = "",
-		BackgroundColor3 = WHITE,
-		AnchorPoint = Vector2.new(0.5, 0),
-		Position = UDim2.new(0.5, 0, 0, 0),
-		Size = UDim2.fromOffset(K.TILE, K.TILE),
-		ZIndex = 3,
+		Size = size,
+		Color = spec.Color,
+		Icon = spec.Icon,
+		Label = (not spec.Gear) and spec.Label or nil, -- the gear stays icon-only
+		Glow = false,
 		Parent = entry.Root,
+		Callback = function()
+			safe("menu " .. spec.Id, spec.Action)
+		end,
 	})
-	entry.Button = button
-	-- soft gold glow behind the tile of the open window (a sibling: children always draw above a parent)
-	entry.Glow = makeFrame(entry.Root, "ActiveGlow", {
-		AnchorPoint = Vector2.new(0.5, 0.5),
-		Position = UDim2.new(0.5, 0, 0, K.TILE / 2),
-		Size = UDim2.fromOffset(K.TILE + 14, K.TILE + 14),
-		BackgroundTransparency = 0.3,
-		BackgroundColor3 = GOLD,
-		Visible = false,
-		ZIndex = 2,
-	})
-	corner(entry.Glow, 24)
-	corner(button, 18)
-	entry.Stroke = stroke(button, NAVY, 4, 0)
-	entry.Gradient = Util.Create("UIGradient", { Rotation = 90, Parent = button })
-	local gloss = makeFrame(button, "Gloss", {
-		BackgroundColor3 = WHITE,
-		BackgroundTransparency = 0.72,
-		Position = UDim2.fromOffset(8, 6),
-		Size = UDim2.new(1, -16, 0.3, 0),
-		ZIndex = 3,
-	})
-	corner(gloss, 10)
-	-- two tiny pixel glints: a nod to the voxel world
-	for i, glint in ipairs({ { 10, 9, 6 }, { 18, 9, 4 } }) do
-		local pixel = makeFrame(button, "Glint" .. i, {
-			BackgroundColor3 = WHITE,
-			BackgroundTransparency = 0.15,
-			Position = UDim2.fromOffset(glint[1], glint[2]),
-			Size = UDim2.fromOffset(glint[3], glint[3]),
-			ZIndex = 4,
-		})
-		pixel.BorderSizePixel = 0
-	end
-	local disc = makeFrame(button, "GlyphDisc", {
-		AnchorPoint = Vector2.new(0.5, 0.5),
-		Position = UDim2.new(0.5, 0, 0.44, 0),
-		Size = UDim2.new(0.66, 0, 0.66, 0),
-		BackgroundColor3 = WHITE,
-		BackgroundTransparency = 0.8,
-		ZIndex = 3,
-	})
-	round(disc)
-	entry.Glyph = Theme.Label(spec.Glyph, "Title", {
-		Scaled = true,
-		Stroke = 1,
-		Props = {
-			Name = "Glyph",
-			AnchorPoint = Vector2.new(0.5, 0.5),
-			Position = UDim2.new(0.5, 0, 0.43, 0),
-			Size = UDim2.new(0.6, 0, 0.6, 0),
-			ZIndex = 5,
-		},
-	})
-	Util.Create("UITextSizeConstraint", { MaxTextSize = 48, MinTextSize = 14, Parent = entry.Glyph })
-	entry.Glyph.Parent = button
-	-- bold label sitting on the bottom edge of the tile
-	entry.Label = Theme.Label(spec.Label, "Button", {
-		Size = K.LABEL_TEXT,
-		Stroke = 0.1,
-		StrokeColor = INK,
-		Outline = 2.5,
-		OutlineColor = INK,
-		Props = {
-			Name = "Label",
-			AnchorPoint = Vector2.new(0.5, 0.5),
-			Position = UDim2.new(0.5, 0, 1, 2),
-			Size = UDim2.fromOffset(K.ENTRY_W + 4, 26),
-			TextScaled = true,
-			ZIndex = 6,
-		},
-	})
-	Util.Create("UITextSizeConstraint", { MaxTextSize = K.LABEL_TEXT, MinTextSize = 14, Parent = entry.Label })
-	entry.Label.Parent = button
-	-- little red "!" dot
-	entry.Badge = makeFrame(button, "Badge", {
-		AnchorPoint = Vector2.new(0.5, 0.5),
-		Position = UDim2.new(1, -6, 0, 6),
-		Size = UDim2.fromOffset(28, 28),
-		BackgroundTransparency = 0,
-		BackgroundColor3 = BUTTONS.Red or BAD,
-		Visible = false,
-		ZIndex = 7,
-	})
-	round(entry.Badge)
-	stroke(entry.Badge, NAVY, 2.5, 0)
-	entry.BadgeMark = makeText(entry.Badge, "Mark", "!", "Button", 19, WHITE, { Size = UDim2.new(1, 0, 1, 0), ZIndex = 8 })
-
-	entry.Fx = Util.Create("UIScale", { Name = "FxScale", Scale = 1, Parent = button })
-	button.MouseEnter:Connect(function()
-		entry.Hovering = true
-		setTileFx(entry, 1.07, 0.12)
-		entry.Glyph.Rotation = -10
-		tween(entry.Glyph, 0.35, { Rotation = 0 }, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
-		paintTile(entry)
-	end)
-	button.MouseLeave:Connect(function()
-		entry.Hovering = false
-		entry.Pressing = false
-		setTileFx(entry, 1, 0.14)
-		paintTile(entry)
-	end)
-	button.MouseButton1Down:Connect(function()
-		entry.Pressing = true
-		setTileFx(entry, 0.93, 0.07)
-		paintTile(entry)
-	end)
-	button.MouseButton1Up:Connect(function()
-		entry.Pressing = false
-		setTileFx(entry, entry.Hovering and 1.07 or 1, 0.12)
-		paintTile(entry)
-	end)
-	button.InputEnded:Connect(function(input)
-		if input.UserInputType == Enum.UserInputType.Touch then
-			entry.Hovering = false
-			entry.Pressing = false
-			setTileFx(entry, 1, 0.12)
-			paintTile(entry)
-		end
-	end)
-	button.Activated:Connect(function()
-		safe("menu " .. spec.Id, spec.Action)
-	end)
-	-- compact (icon-only) tiles name themselves on hover / long-press
-	CloudUI.Tooltip(button, function()
-		if entry.Label.Visible then
-			return nil
-		end
+	entry.Tile = tile
+	entry.Button = tile.Root
+	entry.Label = tile.Label
+	-- icon-only tiles (the small row) name themselves on hover / long-press
+	CloudUI.Tooltip(tile.Root, function()
 		return spec.Label
 	end)
 	function entry.SetBadge(on)
-		entry.Badge.Visible = on and true or false
+		tile.SetBadge(on)
 	end
 	paintTile(entry)
 	Entries[spec.Id] = entry
@@ -2146,78 +2085,59 @@ local function buildColumn()
 	local column = makeFrame(gui, "MenuColumn", {
 		AnchorPoint = Vector2.new(0, 0.5),
 		Position = UDim2.new(0, K.EDGE, 0.5, 0),
-		Size = UDim2.fromOffset(K.ENTRY_W, #MENU * K.ENTRY_H + (#MENU - 1) * K.GAP),
 		ZIndex = 2,
 	})
 	U.Column = column
 	U.ColumnScale = Util.Create("UIScale", { Name = "ViewportScale", Scale = 1, Parent = column })
+	local grid, n = 0, 0
 	for index, spec in ipairs(MENU) do
-		buildTile(column, spec, index)
+		local entry = buildTile(column, spec, index)
+		if spec.Small then
+			n = n + 1
+			entry.Root.Position = UDim2.fromOffset((n - 1) * (P5.SMALL + P5.GAP), 3 * (P5.TILE + P5.GAP) + 2)
+		else
+			entry.Root.Position = UDim2.fromOffset((grid % 2) * (P5.TILE + P5.GAP), math.floor(grid / 2) * (P5.TILE + P5.GAP))
+			grid = grid + 1
+		end
 	end
+	U.ColumnW = 2 * P5.TILE + P5.GAP
+	U.ColumnH = 3 * (P5.TILE + P5.GAP) + 2 + P5.SMALL
+	column.Size = UDim2.fromOffset(U.ColumnW, U.ColumnH)
 end
 
--- Column layouts: "Column" (labelled tiles, one column), "Grid" (labelled tiles, 2 x 3, short landscape
--- screens; the labels sit on the tiles' bottom edge so the rows pack tighter), "Compact" (icon-only tiles in one
--- column, narrow portrait screens: a second column would reach the middle of the screen there, and a labelled
--- column would collide with the HUD corners) or "CompactGrid" (icon-only tiles, 2 x 3: short touch screens where
--- the band above Roblox's thumbstick cannot hold labelled tiles at a readable size).
-local function setColumnLayout(mode)
-	local sizeKey = mode .. ":" .. tostring(mode == "SmallGrid" and U.SmallEntryH or 0)
-	if U.ColumnMode == sizeKey and U.ColumnLayout and U.ColumnLayout.Parent then
-		return
+-- Phase 5 (6.6): on a portrait phone a window is a bottom sheet; while ANY docked sheet is up (ours, the Care / Index /
+-- Fusion windows, the dungeon or arena side panels) the tile grid steps aside so the screen stays <= 60% covered.
+-- Checked 4 times a second, only on portrait screens: the ScreenGuis' window holders carry NeonKit.Dock's DockMode.
+function P5.sheetUp()
+	local pg = LocalPlayer and LocalPlayer:FindFirstChildOfClass("PlayerGui")
+	for _, g in ipairs(pg and pg:GetChildren() or {}) do
+		if g:IsA("ScreenGui") and g.Enabled then
+			for _, holder in ipairs(g:GetChildren()) do
+				if holder:IsA("GuiObject") and holder.Visible and holder:GetAttribute("DockMode") == "Sheet" then
+					return true
+				end
+			end
+		end
 	end
-	if U.ColumnLayout then
-		U.ColumnLayout:Destroy()
-	end
-	U.ColumnMode = sizeKey
-	local iconOnly = mode == "Compact" or mode == "CompactGrid"
-	local entryH = K.ENTRY_H
-	local tile = K.TILE
-	if iconOnly then
-		entryH = K.TILE
-	elseif mode == "Grid" then
-		entryH = K.GRID_ENTRY_H
-	elseif mode == "SmallGrid" then
-		entryH = U.SmallEntryH or (K.SMALL_TILE_MIN + K.SMALL_LABEL_SPARE)
-		tile = entryH - K.SMALL_LABEL_SPARE
-	end
-	local gridded = mode == "Grid" or mode == "SmallGrid"
-	for _, entry in pairs(Entries) do
-		entry.Root.Size = UDim2.fromOffset(K.ENTRY_W, entryH)
-		entry.Button.Size = UDim2.fromOffset(tile, tile)
-		entry.Glow.Position = UDim2.new(0.5, 0, 0, tile / 2)
-		entry.Glow.Size = UDim2.fromOffset(tile + 14, tile + 14)
-		entry.Label.Visible = not iconOnly
-		entry.Label.Position = UDim2.new(0.5, 0, 1, gridded and K.GRID_LABEL_Y or 2)
-	end
-	if gridded or mode == "CompactGrid" then
-		U.ColumnLayout = Util.Create("UIGridLayout", {
-			CellSize = UDim2.fromOffset(K.ENTRY_W, entryH),
-			CellPadding = UDim2.fromOffset((mode == "SmallGrid") and K.SMALL_COL_GAP or K.GAP, K.GAP),
-			FillDirection = Enum.FillDirection.Horizontal,
-			FillDirectionMaxCells = 2,
-			SortOrder = Enum.SortOrder.LayoutOrder,
-			HorizontalAlignment = Enum.HorizontalAlignment.Left,
-			VerticalAlignment = Enum.VerticalAlignment.Top,
-			Parent = U.Column,
-		})
-	else
-		U.ColumnLayout = listLayout(U.Column, Enum.FillDirection.Vertical, K.GAP, Enum.HorizontalAlignment.Center)
-	end
+	return false
 end
 
--- Top of the HUD's bottom-left block (vitals + currency pill) in gui px; on touch screens it is raised over
--- the thumbstick. Mirrors HudController's EDGE, TOUCH_RAISE_SMALL / LARGE, VITALS_H, STACK_GAP and CUR_H.
-local function bottomBlockTop(area, factor)
-	local raise = 12
-	if touchDevice then
-		local camera = workspace.CurrentCamera
-		local vp = camera and camera.ViewportSize or area
-		raise = (math.min(vp.X, vp.Y) <= 500) and 150 or 220
-	end
-	return area.Y - raise - (70 + 10 + 46 + 8) * factor
+function P5.watchSheets()
+	task.spawn(function()
+		while gui and gui.Parent do
+			local area = guiSize()
+			local hide = area.X < area.Y and P5.sheetUp()
+			if U.Column and hide ~= (U.SheetHidden == true) then
+				U.SheetHidden = hide
+				U.Column.Visible = not hide
+			end
+			task.wait(0.25)
+		end
+	end)
 end
 
+-- the tile grid's place and scale: left-centre on desktops; on touch landscape screens in the band between the top
+-- margin and Roblox's thumbstick; on portrait phones above the bottom sheet's top (0.44 H)
 function relayoutMenu()
 	if not gui or not U.Column then
 		return
@@ -2225,99 +2145,44 @@ function relayoutMenu()
 	local area = guiSize()
 	local factor = screenFactor()
 	local margin = screenMargin()
-	local n = #MENU
-	local mode, cols = "Column", 1
-	local scale = factor
-	local entryH = K.ENTRY_H
-	local columnTop = nil -- gui px of the column's top edge; nil = vertically centred on the screen
-	local gridRows = math.ceil(n / 2)
-	local gridH = gridRows * K.GRID_ENTRY_H + (gridRows - 1) * K.GAP
-	local columnH = n * K.ENTRY_H + (n - 1) * K.GAP
-	if area.X >= area.Y and touchDevice then
-		-- touch landscape: Roblox's thumbstick owns the bottom-left corner, and a tile on top of it would take the
-		-- thumb's touch (My Spot would teleport the player home). The column lives in the band between the top
-		-- margin and the stick: one labelled column when it fits at the screen factor, else the 2-column grid while
-		-- its labels stay >= MIN_LABEL_PX, else the same grid of smaller labelled tiles ("SmallGrid"), else icon-only
-		-- tiles in a 2-column grid.
+	local w, h = U.ColumnW or 140, U.ColumnH or 270
+	local scale = touchDevice and 0.8 or factor * (84 / P5.TILE)
+	local top -- gui px of the column's top edge
+	if area.X >= area.Y then
 		local camera = workspace.CurrentCamera
 		local vp = camera and camera.ViewportSize or area
-		local stickTop = area.Y - ((math.min(vp.X, vp.Y) <= 500) and K.STICK_TOP_SMALL or K.STICK_TOP_LARGE)
-		local top = K.EDGE
-		local avail = stickTop - K.STICK_GAP - top
-		local labelScale = K.MIN_LABEL_PX / K.LABEL_TEXT
-		-- the tallest SmallGrid row that still fits the band with readable labels
-		local smallE = math.floor((avail / labelScale - (gridRows - 1) * K.GAP) / gridRows)
-		smallE = math.min(smallE, K.GRID_ENTRY_H - 2)
-		local smallH = gridRows * smallE + (gridRows - 1) * K.GAP
-		local h
-		if columnH * factor <= avail then
-			h = columnH
-		elseif math.min(factor, avail / gridH) >= labelScale then
-			mode, cols, entryH = "Grid", 2, K.GRID_ENTRY_H
-			h = gridH
-			scale = math.min(factor, avail / gridH)
-		elseif smallE - K.SMALL_LABEL_SPARE >= K.SMALL_TILE_MIN and math.min(factor, avail / smallH) >= labelScale then
-			mode, cols, entryH = "SmallGrid", 2, smallE
-			U.SmallEntryH = smallE
-			h = smallH
-			scale = math.min(factor, avail / smallH)
-		else
-			mode, cols, entryH = "CompactGrid", 2, K.TILE
-			h = gridRows * K.TILE + (gridRows - 1) * K.GAP
-			scale = Util.Clamp(avail / h, 0.4, factor)
+		local bottom = area.Y - margin
+		if touchDevice then
+			bottom = area.Y - ((math.min(vp.X, vp.Y) <= 500) and K.STICK_TOP_SMALL or K.STICK_TOP_LARGE) - K.STICK_GAP
 		end
-		columnTop = top + math.max(0, (avail - h * scale) / 2)
-	elseif area.X >= area.Y then
-		-- landscape: the HUD has room to step aside, the column only has to fit on the screen
-		local avail = area.Y - 2 * margin
-		if columnH * factor > avail then
-			mode, cols, entryH = "Grid", 2, K.GRID_ENTRY_H
-			if gridH * scale > avail then
-				scale = math.max(0.4, avail / gridH)
-			end
-		end
+		local avail = bottom - margin
+		scale = math.min(scale, avail / h)
+		top = margin + math.max(0, (avail - h * scale) / 2)
 	else
-		-- portrait: stay between the HUD's top-left panel (the tallest is ~216 design px) and its
-		-- bottom-left block, vertically centred
-		local centre = area.Y / 2
-		local top = margin + 222 * factor
-		local half = math.min(centre - top, bottomBlockTop(area, factor) - 6 - centre)
-		if columnH * factor > 2 * half then
-			mode, entryH = "Compact", K.TILE
-			local compactH = n * K.TILE + (n - 1) * K.GAP
-			scale = Util.Clamp(2 * half / compactH, 0.4, factor)
-		end
+		local inset = P5.inset()
+		local bottom = (area.Y + inset) * 0.44 - inset - margin -- the bottom sheet's top edge (0.44 of the SCREEN)
+		local first = margin + 80 * factor -- under the HUD's top-left corner
+		local avail = math.max(60, bottom - first)
+		scale = math.min(scale, avail / h)
+		top = first + math.max(0, (avail - h * scale) / 2)
 	end
-	local rows = math.ceil(n / cols)
-	local w = cols * K.ENTRY_W + (cols - 1) * ((mode == "SmallGrid") and K.SMALL_COL_GAP or K.GAP)
-	local h = rows * entryH + (rows - 1) * K.GAP
-	setColumnLayout(mode)
-	U.Column.Size = UDim2.fromOffset(w, h)
 	U.ColumnScale.Scale = scale
-	-- the red "!" stays readable (>= 14 px) on the small icon-only tiles of phones
-	local badgeText = math.max(19, math.ceil(K.MIN_LABEL_PX / math.max(scale, 0.1)))
-	local badgeSize = math.max(28, badgeText + 9)
+	-- a squeezed grid (short landscape phones) grows its labels so they stay >= 14 screen px
+	local labelPx = math.min(26, math.max(18, math.ceil(14.5 / math.max(scale, 0.3))))
 	for _, entry in pairs(Entries) do
-		if entry.Badge and entry.BadgeMark then
-			entry.Badge.Size = UDim2.fromOffset(badgeSize, badgeSize)
-			entry.BadgeMark.TextSize = badgeText
+		if entry.Label then
+			entry.Label.TextSize = labelPx
+			entry.Label.Size = UDim2.new(1, 12, 0, labelPx + 2)
 		end
 	end
-	local hintY = UDim2.new(0, 0, 0.5, 0)
-	if columnTop then
-		U.Column.AnchorPoint = Vector2.new(0, 0)
-		U.Column.Position = UDim2.new(0, margin, 0, math.floor(columnTop + 0.5))
-		hintY = UDim2.new(0, 0, 0, math.floor(columnTop + h * scale / 2 + 0.5))
-	else
-		U.Column.AnchorPoint = Vector2.new(0, 0.5)
-		U.Column.Position = UDim2.new(0, margin, 0.5, 0)
-	end
+	U.Column.AnchorPoint = Vector2.new(0, 0)
+	U.Column.Position = UDim2.new(0, margin, 0, math.floor(top + 0.5))
 	if Hint.Frame then
 		-- next to the column, and never wide enough to reach the middle of the screen
 		local hintLeft = margin + w * scale + 10
 		local room = math.max(120, area.X * 0.34 - hintLeft - 28 * factor)
 		Hint.Scale.Scale = factor
-		Hint.Frame.Position = UDim2.new(0, hintLeft, hintY.Y.Scale, hintY.Y.Offset)
+		Hint.Frame.Position = UDim2.new(0, hintLeft, 0, math.floor(top + h * scale / 2 + 0.5))
 		Hint.MaxW = math.min(300, math.floor(room / factor))
 	end
 	for _, win in pairs(windows) do
@@ -2326,7 +2191,7 @@ function relayoutMenu()
 		end
 	end
 	if Odds.Holder and Odds.Fit then
-		local box = fitBox(K.WIN.Odds[1], K.WIN.Odds[2], K.WIN.Odds[3], K.WIN.Odds[4], true)
+		local box = confirmBox(K.WIN.Odds[1], K.WIN.Odds[2], K.WIN.Odds[3], K.WIN.Odds[4])
 		Odds.Holder.Size = UDim2.fromOffset(box.w, box.h)
 		Odds.Holder.Position = UDim2.fromOffset(box.x, box.y)
 		Odds.Fit.Scale = box.scale
@@ -2360,6 +2225,7 @@ function updateMenuActive()
 	setActive("Index", indexOpen())
 	setActive("Shop", windows.Shop ~= nil and windows.Shop.Shown)
 	setActive("Stats", windows.Stats ~= nil and windows.Stats.Shown)
+
 	setActive("Spot", windows.Home ~= nil and windows.Home.Shown)
 	setActive("Team", windows.Team ~= nil and windows.Team.Shown)
 	if invWin and invWin.Shown and Entries.Pets then
@@ -2393,6 +2259,131 @@ end
 -- Inventory window: tabs Pets + Items. Phase 2: one slot per pet COPY key (tier / hybrid badges, levels), the detail
 -- card with level + XP, scaled stats and the Feed / Place in Garden / Train in Gym actions, and the Feed picker.
 ----------------------------------------------------------------------
+-- Phase 5 (6.6): the Pets page in its three window shapes. "Wide" (a docked 820 px window): the grid left, a 300 px card
+-- right; "Tall" (720p / portrait sheets): the grid on top, the card below with the pet, its name, pills and level side
+-- by side and the six buttons in 2 rows of 3; "Short" (landscape phones, ~460 x 390): a 2-column grid left and a slim
+-- card right. The equipped header only shows in the wide shape (the grid's stars mark the equipped pets).
+function P5.petsLayout(W, w, h, narrow, short, tall)
+	if not (W.Detail and W.View) then
+		return
+	end
+	local mode = short and "Short" or (tall and "Tall" or "Wide")
+	W.Mode = mode
+	local pageH = h - 150
+	if W.Page and W.Page.AbsoluteSize.Y > 10 and W.Page.Parent then
+		local holder = W.Page:FindFirstAncestorWhichIsA("ScreenGui")
+		local sc = 1
+		local node = W.Page
+		while node and node ~= holder do
+			local u = node:FindFirstChildWhichIsA("UIScale")
+			if u then
+				sc = sc * u.Scale
+			end
+			node = node.Parent
+		end
+		pageH = W.Page.AbsoluteSize.Y / math.max(sc, 0.1)
+	end
+	local layout = W.Grid and W.Grid:FindFirstChild("Layout")
+	if layout then
+		local cell = (mode == "Short") and 80 or (mode == "Tall" and 96 or 104)
+		layout.CellSize = UDim2.fromOffset(cell, cell)
+	end
+	W.Header.Visible = mode == "Wide"
+	W.GridWell.Position = UDim2.fromOffset(0, mode == "Wide" and 84 or 0)
+	W.GridWell.Size = UDim2.new(1, 0, 1, mode == "Wide" and -84 or 0)
+	local scroll = W.InfoScroll
+	local compact = mode ~= "Wide"
+	if compact then
+		W.View.Parent = W.Top
+		W.Name.Parent = W.Top
+		W.MetaRow.Parent = W.Top
+		W.LevelRow.Parent = W.Top
+		W.Top.Visible = true
+		W.MetaRow.AutomaticSize = Enum.AutomaticSize.None
+		W.MetaRow.ClipsDescendants = true
+		W.LevelText.Size = UDim2.fromOffset(100, 32)
+		W.XpBar.Size = UDim2.new(1, -104, 0, 28)
+	else
+		W.View.Parent = scroll
+		W.Name.Parent = scroll
+		W.MetaRow.Parent = scroll
+		W.LevelRow.Parent = scroll
+		W.Top.Visible = false
+		W.MetaRow.AutomaticSize = Enum.AutomaticSize.Y
+		W.MetaRow.ClipsDescendants = false
+		W.MetaRow.Position = UDim2.new()
+		W.LevelText.Size = UDim2.fromOffset(122, 32)
+		W.XpBar.Size = UDim2.new(1, -126, 0, 28)
+	end
+	if mode == "Wide" then
+		local detailW = narrow and K.DETAIL_W_NARROW or K.DETAIL_W
+		W.Detail.AnchorPoint = Vector2.new(1, 0)
+		W.Detail.Position = UDim2.new(1, 0, 0, 0)
+		W.Detail.Size = UDim2.new(0, detailW, 1, 0)
+		W.Left.Size = UDim2.new(1, -(detailW + 12), 1, 0)
+		W.View.Size = UDim2.new(1, 0, 0, 150)
+		W.Glow.Size = UDim2.fromOffset(136, 136)
+		W.Name.Size = UDim2.new(1, 0, 0, 36)
+		W.LevelRow.Size = UDim2.new(1, 0, 0, 32)
+		W.Buttons.Size = UDim2.new(1, -20, 0, 180)
+		W.Buttons.Position = UDim2.new(0, 10, 1, -52)
+		W.Status.Visible = true
+		scroll.Visible = true
+		scroll.Position = UDim2.fromOffset(4, 4)
+		scroll.Size = UDim2.new(1, -8, 1, -240)
+	elseif mode == "Tall" then
+		local detailH = math.max(244, math.floor(pageH * 0.5))
+		W.Detail.AnchorPoint = Vector2.new(0, 1)
+		W.Detail.Position = UDim2.new(0, 0, 1, 0)
+		W.Detail.Size = UDim2.new(1, 0, 0, detailH)
+		W.Left.Size = UDim2.new(1, 0, 1, -(detailH + 8))
+		W.Top.Size = UDim2.new(1, -16, 0, 104)
+		W.View.Position = UDim2.fromOffset(0, 0)
+		W.View.Size = UDim2.fromOffset(100, 100)
+		W.Glow.Size = UDim2.fromOffset(88, 88)
+		W.Name.Position = UDim2.fromOffset(110, 0)
+		W.Name.Size = UDim2.new(1, -110, 0, 32)
+		W.MetaRow.Position = UDim2.fromOffset(110, 34)
+		W.MetaRow.Size = UDim2.new(1, -110, 0, 30)
+		W.LevelRow.Position = UDim2.fromOffset(110, 68)
+		W.LevelRow.Size = UDim2.new(1, -110, 0, 32)
+		W.Buttons.Size = UDim2.new(1, -20, 0, 104)
+		W.Buttons.Position = UDim2.new(0, 10, 1, -8)
+		W.Status.Visible = false
+		local room = detailH - 104 - 104 - 26
+		scroll.Visible = room >= 40
+		scroll.Position = UDim2.fromOffset(4, 114)
+		scroll.Size = UDim2.new(1, -8, 0, math.max(0, room))
+	else
+		local detailW = math.max(196, math.floor(w - 2 * 80 - 10 - 48 - 52))
+		W.Detail.AnchorPoint = Vector2.new(1, 0)
+		W.Detail.Position = UDim2.new(1, 0, 0, 0)
+		W.Detail.Size = UDim2.new(0, detailW, 1, 0)
+		W.Left.Size = UDim2.new(1, -(detailW + 8), 1, 0)
+		W.Top.Size = UDim2.new(1, -16, 0, 88)
+		W.View.Position = UDim2.fromOffset(0, 0)
+		W.View.Size = UDim2.fromOffset(54, 54)
+		W.Glow.Size = UDim2.fromOffset(50, 50)
+		W.Name.Position = UDim2.fromOffset(60, 0)
+		W.Name.Size = UDim2.new(1, -60, 0, 28)
+		W.MetaRow.Position = UDim2.fromOffset(60, 30)
+		W.MetaRow.Size = UDim2.new(1, -60, 0, 26)
+		W.LevelRow.Position = UDim2.fromOffset(0, 58)
+		W.LevelRow.Size = UDim2.new(1, 0, 0, 30)
+		W.LevelText.Size = UDim2.fromOffset(66, 32)
+		W.XpBar.Size = UDim2.new(1, -70, 0, 28)
+		W.Buttons.Size = UDim2.new(1, -12, 0, 114)
+		W.Buttons.Position = UDim2.new(0, 6, 1, -4)
+		W.Status.Visible = false
+		local room = pageH - 94 - 114 - 12
+		scroll.Visible = room >= 40
+		scroll.Position = UDim2.fromOffset(4, 94)
+		scroll.Size = UDim2.new(1, -8, 0, math.max(0, room))
+	end
+	W.NameFit.MaxTextSize = compact and 24 or 30
+	W.PlaceButtons()
+end
+
 local buildInventory -- (the window's helpers live in this do-block: Lua's 200-local limit of the main chunk)
 do
 	local RAINBOW = Colors.Rainbow or { Color3.fromRGB(232, 104, 120), Color3.fromRGB(98, 168, 232) }
@@ -2464,6 +2455,9 @@ do
 			TextSize = 22,
 			OnSelect = function(name)
 				win.Tab = name
+				-- Phase 5: one window, two faces (the Pets tile / the Items tile)
+				win.Panel.SetTitle(name == "Items" and "Items" or "Pets")
+				win.Panel.SetAccent(name == "Items" and "Blue" or "Orange")
 				updateMenuActive()
 			end,
 		})
@@ -2548,6 +2542,9 @@ do
 				Size = UDim2.new(1, -8, 1, -176),
 			})
 			W.InfoScroll = scroll
+			-- Phase 5: compact cards (tall / short windows) move the pet, its name, pills and level into this fixed
+			-- header beside each other; the wide card keeps them on top of the scrolling info (see P5.petsLayout)
+			W.Top = makeFrame(body, "Top", { Position = UDim2.fromOffset(8, 6), Size = UDim2.new(1, -16, 0, 104), Visible = false })
 			pad(scroll, 10, 6, 14, 8)
 			listLayout(scroll, Enum.FillDirection.Vertical, 6, Enum.HorizontalAlignment.Center)
 			local view = makeFrame(scroll, "View", { Size = UDim2.new(1, 0, 0, 150), LayoutOrder = 1 })
@@ -2566,7 +2563,7 @@ do
 				TextScaled = true,
 				LayoutOrder = 2,
 			})
-			Util.Create("UITextSizeConstraint", { MaxTextSize = 30, MinTextSize = 18, Parent = W.Name })
+			W.NameFit = Util.Create("UITextSizeConstraint", { MaxTextSize = 30, MinTextSize = 18, Parent = W.Name })
 			W.MetaRow = makeFrame(scroll, "Meta", {
 				Size = UDim2.new(1, 0, 0, 30),
 				AutomaticSize = Enum.AutomaticSize.Y,
@@ -2665,7 +2662,7 @@ do
 			})
 			W.FeedBtn = CloudUI.Button({
 				Name = "FeedPet",
-				Text = "Feed",
+				Text = "Food Machine", -- Phase 5 (3.4): opens the Food Machine window on this pet (not a second feed)
 				Style = "Gold",
 				Size = UDim2.new(0.5, -6, 1 / 3, -6),
 				AnchorPoint = Vector2.new(0, 0.5),
@@ -2725,25 +2722,31 @@ do
 				end,
 				Parent = buttons,
 			})
-			W.WorkBtn.TextScaled = true
-			W.WorkBtn.TextWrapped = true -- "Place in Garden" may take two lines on narrow cards (never under 18 design px)
-			Util.Create("UITextSizeConstraint", { MaxTextSize = 20, MinTextSize = 18, Parent = W.WorkBtn })
+			-- "Food Machine" / "Leave Garden" take two lines in narrow cells (never under 18 design px)
+			for _, b in ipairs({ W.WorkBtn, W.FeedBtn }) do
+				b.TextWrapped = true
+				b.TextTruncate = Enum.TextTruncate.None
+				b.LineHeight = 0.92
+			end
 			-- the six buttons: 3 rows x 2 (Train takes the whole last row while there is no EVOLVE), or on short cards
 			-- (landscape phones) 2 rows x 3
 			function W.PlaceButtons()
 				local list = { W.EquipBtn, W.UnequipBtn, W.FeedBtn, W.WorkBtn, W.TrainBtn, W.EvolveBtn }
-				local cols = W.Short and 3 or 2
-				local rows = W.Short and 2 or 3
+				local cols = W.Mode == "Tall" and 3 or 2
+				local rows = W.Mode == "Tall" and 2 or 3
+				local size = W.Mode == "Wide" and 20 or 18 -- (18 x 0.8 >= 14 px on phones)
 				for i, b in ipairs(list) do
 					local col = (i - 1) % cols
 					local row = math.floor((i - 1) / cols)
 					b.AnchorPoint = Vector2.new(0, 0)
 					b.Position = UDim2.new(col / cols, col > 0 and 3 or 0, row / rows, row > 0 and 3 or 0)
 					b.Size = UDim2.new(1 / cols, -6, 1 / rows, -6)
-					b.TextSize = W.Short and 18 or (b == W.WorkBtn and 20 or 22) -- (short = landscape phones: 18 x 0.8 >= 14 px)
+					b.TextSize = size
 				end
-				if not W.Short and not W.Ready then
-					W.TrainBtn.Size = UDim2.new(1, 0, 1 / rows, -6)
+				if not W.Ready then
+					-- no EVOLVE: Train takes the rest of its row
+					local col = 4 % cols
+					W.TrainBtn.Size = UDim2.new((cols - col) / cols, -6, 1 / rows, -6)
 				end
 			end
 			W.Status = makeText(body, "Status", "", "Label", 18, MUTED, {
@@ -2763,6 +2766,7 @@ do
 			local slotSize = 64
 			local equipWidth = maxEquipped * slotSize + (maxEquipped - 1) * 8
 			local header = makeFrame(left, "Header", { Size = UDim2.new(1, 0, 0, 76) })
+			W.Header = header
 			W.EquippedLabel = makeText(header, "EquippedLabel", "Equipped", "Heading", 24, WHITE, {
 				Position = UDim2.fromOffset(4, 0),
 				Size = UDim2.new(1, -(equipWidth + 12), 0, 30),
@@ -2877,9 +2881,22 @@ do
 			end
 			local level = P2.petLevel(key)
 			local stage = P2.stage(key)
-			slot.LevelTag.Visible = level > 1 or stage > 0
-			slot.LevelTag.Text = "Lv " .. level .. (stage > 0 and (" " .. string.rep(G.Star, math.min(2, stage))) or "")
-			slot.LevelTag.Size = UDim2.fromOffset(stage > 0 and 92 or 60, 22)
+			slot.LevelTag.Visible = level > 1
+			slot.LevelTag.Text = "Lv " .. level
+			slot.LevelTag.Size = UDim2.fromOffset(60, 22)
+			-- Phase 5: the evolution stars sit on the slot's top edge (the bottom row keeps "Lv n" and the count apart)
+			if stage > 0 and not slot.EvoTag then
+				slot.EvoTag = makeText(slot.Button, "EvoTag", "", "Title", 18, GOLD, {
+					AnchorPoint = Vector2.new(0.5, 0),
+					Position = UDim2.new(0.5, 0, 0, 2),
+					Size = UDim2.fromOffset(40, 22),
+					ZIndex = 8,
+				})
+			end
+			if slot.EvoTag then
+				slot.EvoTag.Visible = stage > 0
+				slot.EvoTag.Text = string.rep(G.Star, math.min(2, stage))
+			end
 			-- a pet working at home: a seedling (Garden) or muscle (training) chip beside the tier chip
 			local home = P2.homeData()
 			local where = nil
@@ -2968,6 +2985,10 @@ do
 				local text
 				if statKey == "Income" then
 					text = "Coins " .. P2.formatRate(coins) .. "/s"
+				elseif statKey == "Power" then
+					-- Phase 5 (m17): what the pet really brings to a battle (BattleCatalog.UnitPower: its role, level,
+					-- tier, evolution and training), never the raw Power 2-4 of an Economy pet
+					text = "Battle power " .. commas(P5.battlePower(petKey, def, level) or math.floor(value + 0.5))
 				else
 					text = statKey .. " " .. commas(math.floor(value + 0.5))
 				end
@@ -3039,7 +3060,7 @@ do
 			local level, xp = P2.petLevel(key)
 			local cap = P2.levelCap(key, def)
 			local need = P2.xpToNext(level)
-			W.LevelText.Text = "Lv " .. level .. " / " .. cap
+			W.LevelText.Text = (W.Mode == "Short") and ("Lv " .. level) or ("Lv " .. level .. " / " .. cap)
 			if level >= cap then
 				W.XpBar.SetFraction(1)
 				W.XpBar.SetText("MAX LEVEL")
@@ -3146,7 +3167,8 @@ do
 				Name = P2.displayName(key, def) .. " (" .. tostring(def.Rarity) .. ")",
 				Blurb = def.Blurb,
 			}
-			if withPet then
+			-- (an evolved copy draws its evolved form through P5.evoSlot instead of the slot's plain model)
+			if withPet and P2.stage(key) < 1 then
 				info.Pet = def
 			end
 			return info
@@ -3168,7 +3190,14 @@ do
 						end
 						pets.Ready[key] = true
 						slot.SetContent(gridInfo(key, def, true))
-						slot.SetCount(State.OwnedCount(key)) -- pet slots hide "x1": needs the Pet content to be set first
+						local evolved = P5.evoSlot(slot, def, P2.stage(key))
+						local n = State.OwnedCount(key)
+						-- pet slots hide "x1" (needs the Pet content; an evolved slot draws its own model: hide it here)
+						if evolved and n <= 1 then
+							slot.SetCount(nil)
+						else
+							slot.SetCount(n)
+						end
 						budget.Count = budget.Count + 1
 					end
 				end
@@ -3244,7 +3273,8 @@ do
 				local ready = pets.Ready[key] == true
 				local owned = State.OwnedCount(key)
 				slot.SetContent(gridInfo(key, def, ready))
-				if ready or owned > 1 then
+				local evolved = P5.evoSlot(slot, def, ready and P2.stage(key) or 0)
+				if owned > 1 or (ready and not evolved) then
 					slot.SetCount(owned)
 				else
 					slot.SetCount(nil) -- a tile without its pet yet would show "x1"
@@ -3443,43 +3473,7 @@ do
 		end
 
 		win.OnLayout = function(w, h, narrow, short, tall)
-			local detailW = (narrow and not short) and K.DETAIL_W_NARROW or K.DETAIL_W
-			local buttonsH = short and 98 or 172
-			W.Short = short == true
-			if W.Detail then
-				if tall then
-					W.Detail.AnchorPoint = Vector2.new(0, 1)
-					W.Detail.Position = UDim2.new(0, 0, 1, 0)
-					W.Detail.Size = UDim2.new(1, 0, 0.56, -6)
-				else
-					W.Detail.AnchorPoint = Vector2.new(1, 0)
-					W.Detail.Position = UDim2.new(1, 0, 0, 0)
-					W.Detail.Size = UDim2.new(0, detailW, 1, 0)
-				end
-			end
-			if W.Left then
-				if tall then
-					W.Left.Size = UDim2.new(1, 0, 0.44, -6)
-				else
-					W.Left.Size = UDim2.new(1, -(detailW + 12), 1, 0)
-				end
-			end
-			if W.PerksLabel then
-				-- the one-column layout has no room beside the equipped slots: each pet's card lists its perks
-				W.PerksLabel.Visible = not tall
-			end
-			if W.View then
-				-- compact cards (landscape phones, portrait pages): a smaller pet, slimmer buttons and no status line,
-				-- so the name stays in view above the pinned buttons
-				local compact = short or tall
-				W.View.Size = UDim2.new(1, 0, 0, compact and 96 or 150)
-				W.Glow.Size = compact and UDim2.fromOffset(86, 86) or UDim2.fromOffset(136, 136)
-				W.Buttons.Size = UDim2.new(1, -20, 0, buttonsH)
-				W.PlaceButtons()
-				W.Buttons.Position = UDim2.new(0, 10, 1, short and -8 or -52)
-				W.Status.Visible = not short
-				W.InfoScroll.Size = UDim2.new(1, -8, 1, -(buttonsH + (short and 16 or 60)))
-			end
+			safe("pets layout", P5.petsLayout, W, w, h, narrow, short, tall)
 			-- item rows: narrow (portrait) rows stack the text and put the button under it
 			for _, row in pairs(itemRows) do
 				local P = row.Parts
@@ -3535,21 +3529,8 @@ function openOdds(rouletteId)
 	local root = makeFrame(gui, "OddsPopup", { Size = UDim2.new(1, 0, 1, 0), ZIndex = 8 })
 	Odds.Gui = root
 	syncBackBinding()
-	local dim = Util.Create("TextButton", {
-		Name = "Backdrop",
-		AutoButtonColor = false,
-		Text = "",
-		BorderSizePixel = 0,
-		BackgroundColor3 = Color3.fromRGB(8, 12, 32),
-		BackgroundTransparency = 0.45,
-		Size = UDim2.new(1, 0, 1, 0),
-		Parent = root,
-	})
-	dim.Activated:Connect(function()
-		closeOdds()
-	end)
-
-	local box = fitBox(K.WIN.Odds[1], K.WIN.Odds[2], K.WIN.Odds[3], K.WIN.Odds[4], true)
+	-- (Phase 5: no dimming backdrop; the X, Esc / B or another window close it)
+	local box = confirmBox(K.WIN.Odds[1], K.WIN.Odds[2], K.WIN.Odds[3], K.WIN.Odds[4])
 	local holder = makeFrame(root, "Holder", {
 		AnchorPoint = Vector2.new(0.5, 0.5),
 		Position = UDim2.fromOffset(box.x, box.y),
@@ -4905,8 +4886,12 @@ local function buildStats(win)
 		end
 
 		local b = P3.Battle and P3.Battle() or {}
-		battleLabel.Text = string.format("\240\159\143\134 %s trophies     Trial best: %d / 30\nDuels: %s won, %s lost     Boss raids: %s",
-			commas(b.Trophies or 0), math.floor(tonumber(b.TrialBest) or 0), commas(b.PvPWins or 0), commas(b.PvPLosses or 0), commas(b.Raids or 0))
+		-- Phase 5 (10.5): the Trial ladder is gone; the dungeon line takes its place
+		local dungeon = type(State.Dungeon) == "function" and State.Dungeon() or nil
+		dungeon = type(dungeon) == "table" and dungeon or {}
+		battleLabel.Text = string.format("\240\159\143\134 %s trophies     Dungeon: floor %d cleared, %s runs\nDuels: %s won, %s lost     Boss raids: %s",
+			commas(b.Trophies or 0), math.floor(tonumber(dungeon.Best) or 0), commas(math.floor(tonumber(dungeon.Runs) or 0)),
+			commas(b.PvPWins or 0), commas(b.PvPLosses or 0), commas(b.Raids or 0))
 
 		local lines = {}
 		local order = PetCatalog.PerkOrder or { "MaxHealth", "TokenBonus", "StaminaRegen", "CheckpointHeal" }
@@ -4929,11 +4914,98 @@ end
 ----------------------------------------------------------------------
 -- Home window (Phase 2): the house, income, the Collector, prestige, and every station with its upgrade
 ----------------------------------------------------------------------
+-- Phase 5 (3.4): the Home window's flow strip, the first item of its list: four neon tiles that tell the home loop
+-- "Berry Farm Lv 13" -> "Pets eat & poop $3,000/min" -> "Berry Basket 1,240 / 3,000" -> "Food Machine: Feed = XP".
+P5.STRIP = {
+	{ Id = "Farm", Title = "Berry Farm", Glyph = "\240\159\141\147", Color = "Pink" },
+	{ Id = "Poop", Title = "Pets eat & poop", Glyph = "\240\159\146\169", Color = "Green" },
+	{ Id = "Basket", Title = "Berry Basket", Glyph = "\240\159\167\186", Color = "Purple" },
+	{ Id = "Machine", Title = "Food Machine", Glyph = "\240\159\141\178", Color = "Orange" },
+}
+function P5.buildStrip(H, _content)
+	local strip = makeFrame(H.List, "FlowStrip", { Size = UDim2.new(1, 0, 0, 84), LayoutOrder = -1000 })
+	H.Strip = strip
+	H.StripTiles = {}
+	H.StripArrows = {}
+	for i, spec in ipairs(P5.STRIP) do
+		local card = P5.Kit.Card({ Name = "Flow_" .. spec.Id, Size = UDim2.fromOffset(180, 76), Color = spec.Color, Glow = false, Parent = strip })
+		local icon = P5.Kit.Icon(card.Body, spec.Glyph, 24)
+		icon.Position = UDim2.fromOffset(20, 21)
+		local title = makeText(card.Body, "Title", spec.Title, "Heading", 18, WHITE, {
+			Position = UDim2.fromOffset(36, 6),
+			Size = UDim2.new(1, -40, 0, 30),
+			TextXAlignment = Enum.TextXAlignment.Left,
+			TextScaled = true,
+		})
+		Util.Create("UITextSizeConstraint", { MaxTextSize = 18, MinTextSize = 18, Parent = title })
+		local value = makeText(card.Body, "Value", "", "Display", 22, Theme.Lighten(P5.Kit.ColorOf(spec.Color), 0.35), {
+			Position = UDim2.fromOffset(10, 40),
+			Size = UDim2.new(1, -16, 0, 30),
+			TextXAlignment = Enum.TextXAlignment.Left,
+			TextScaled = true,
+		})
+		Util.Create("UITextSizeConstraint", { MaxTextSize = 22, MinTextSize = 18, Parent = value })
+		H.StripTiles[i] = { Card = card, Title = title, Value = value }
+		if i < #P5.STRIP then
+			H.StripArrows[i] = makeText(strip, "Arrow" .. i, "\226\150\182", "Title", 18, GOLD, { Size = UDim2.fromOffset(20, 76) })
+		end
+	end
+end
+
+-- 1 x 4 on wide windows, 2 x 2 on narrow ones (each tile keeps its title on one line); returns 0 (the strip scrolls
+-- with the list)
+function P5.layoutStrip(H, w)
+	if not H.Strip then
+		return 0
+	end
+	local inner = w - 62
+	local wide = inner >= 720
+	local cols = wide and 4 or 2
+	local arrowW = 22
+	local tileW = math.floor((inner - (cols - 1) * arrowW) / cols)
+	local tileH = 76
+	for i, tile in ipairs(H.StripTiles) do
+		local col = (i - 1) % cols
+		local row = math.floor((i - 1) / cols)
+		tile.Card.Root.Position = UDim2.fromOffset(col * (tileW + arrowW), row * (tileH + 8))
+		tile.Card.Root.Size = UDim2.fromOffset(tileW, tileH)
+		local arrow = H.StripArrows[i]
+		if arrow then
+			arrow.Visible = col < cols - 1
+			arrow.Position = UDim2.fromOffset(col * (tileW + arrowW) + tileW + 1, row * (tileH + 8))
+		end
+	end
+	local rows = math.ceil(#H.StripTiles / cols)
+	H.Strip.Size = UDim2.new(1, 0, 0, rows * tileH + (rows - 1) * 8 + 4)
+	return 0
+end
+
+function P5.paintStrip(H, home, income, open)
+	if not H.StripTiles then
+		return
+	end
+	local farm = P2.stationLevelOf(home, "Press1")
+	local tiles = H.StripTiles
+	tiles[1].Value.Text = farm >= 1 and ("Lv " .. farm) or "Build it!"
+	local perMin = math.floor((tonumber(income) or 0) * 60 + 0.5)
+	tiles[2].Value.Text = perMin > 0 and (P2.formatCash(perMin) .. " a minute") or "Garden pets"
+	local berries = type(State.Berries) == "function" and State.Berries() or 0
+	local folder = H.PlotFolder and H.PlotFolder() or nil
+	local cap = folder and folder:GetAttribute("BerryCap")
+	if type(cap) == "number" and cap > 0 then
+		tiles[3].Value.Text = commas(berries) .. " / " .. commas(math.floor(cap))
+	else
+		tiles[3].Value.Text = commas(berries) .. " berries"
+	end
+	tiles[4].Value.Text = P2.stationLevelOf(home, "Kitchen") >= 1 and "Feed = XP" or "Build it!"
+	H.StripOpen = open
+end
+
 local buildHome -- (the window's helpers live in this do-block: Lua's 200-local limit of the main chunk)
 do
 	local HOME_SECTIONS = {
 		{ Id = "Pets", Title = "Pets at home", Kinds = { Garden = true, FoodMachine = true, Training = true, Fusion = true } },
-		{ Id = "Money", Title = "Coin makers", Kinds = { Plant = true, Magnet = true, Vault = true } },
+		{ Id = "Money", Title = "Berries & Cloud Cash", Kinds = { Farm = true, Plant = true, Magnet = true, Vault = true } },
 		{ Id = "House", Title = "House", Kinds = { House = true, Arena = true } },
 		{ Id = "Decor", Title = "Decor", Kinds = { Decor = true } },
 	}
@@ -4964,7 +5036,9 @@ do
 			return nil
 		end
 		local kind = def.Kind
-		if kind == "Plant" then
+		if kind == "Farm" then
+			return "+" .. shortNumber(e.Food) .. " food, more berries"
+		elseif kind == "Plant" then
 			return "+" .. shortNumber(e.Food) .. " food"
 		elseif kind == "Magnet" then
 			return "Scoop " .. shortNumber(e.Radius) .. " studs, piles " .. shortNumber((tonumber(e.PileSeconds) or 0) / 60) .. " min"
@@ -5117,6 +5191,9 @@ do
 		pad(list, 2, 2, 14, 8)
 		listLayout(list, Enum.FillDirection.Vertical, 8)
 		H.List = list
+		-- Phase 5 (3.4): the flow strip on top (fixed, never scrolls): Berry Farm -> pets eat & poop -> Berry Basket ->
+		-- Food Machine. It tells the whole home loop in four tiles.
+		safe("home strip", P5.buildStrip, H, content)
 
 		------------------------------------------------------------------
 		-- summary cards
@@ -5562,8 +5639,8 @@ do
 				local P = TycoonCatalog and TycoonCatalog.Prestige or {}
 				local gems = P2.catalogCall("PrestigeGems", stars + 1) or P.GemReward or 0
 				local mult = P2.catalogCall("PrestigeMultiplier", stars + 1) or ((P.IncomeMultiplier or 1.25) ^ (stars + 1))
-				H.ConfirmLines.Reset.Text = "Your Cash, lawn coins and stations (not the Garden)"
-				H.ConfirmLines.Keep.Text = "Pets, levels, evolutions, training (no Cash back on Stop), food, decor"
+				H.ConfirmLines.Reset.Text = "Your Cash, the Cloud Cash on your lawn and your stations (not the Garden)"
+				H.ConfirmLines.Keep.Text = "Pets, levels, evolutions, training, your teams, berries, the Garden and decor"
 				local places = math.min(tonumber(P.GardenSlotsMax) or 12, (tonumber(P.GardenSlotsBase) or 3) + (tonumber(P.GardenSlotsPerStar) or 1) * (stars + 1))
 				local gain = "Star " .. (stars + 1) .. ": x" .. shortNumber(math.floor(mult * 100 + 0.5) / 100) .. " coins, garden place " .. places .. " and " .. commas(gems) .. " Gems"
 				if stars + 1 == (tonumber(P.FusionUnlock) or 1) then
@@ -5717,9 +5794,11 @@ do
 			CloudUI.SetDisabled(H.GoHome, inMatch())
 		end
 
+		H.PlotFolder = plotFolder
 		function H.Live()
 			local home = P2.homeData()
 			local waiting, income, parts, open = homeLive(home)
+			P5.paintStrip(H, home, income, open)
 			H.Income.Text = P2.formatRate(income) .. "/s"
 			local bits = {}
 			local mult = 1
@@ -5734,8 +5813,12 @@ do
 					bits[#bits + 1] = "Lucky +" .. shortPercent(lucky - 1)
 				end
 			end
+			if P2.stationLevelOf(home, "Garden") >= 1 then
+				local Pp = TycoonCatalog and TycoonCatalog.Prestige or {}
+				bits[#bits + 1] = "Garden " .. math.floor(tonumber(open) or 0) .. "/" .. (tonumber(Pp.GardenSlotsMax) or 12) .. " places"
+			end
 			if #bits == 0 then
-				bits[1] = "Put pets in your Garden to earn coins"
+				bits[1] = "Put pets in your Garden to earn Cloud Cash"
 			end
 			H.IncomeParts.Text = table.concat(bits, "  " .. G.Bullet .. "  ")
 			-- the prestige multiplier tag (stars x1.25 each)
@@ -5774,20 +5857,35 @@ do
 			local home = P2.homeData()
 			local cash = P2.cashBalance()
 			H.Pads = {}
-			for _, padInfo in ipairs(P2.catalogCall("AvailablePads", home) or {}) do
+			local padList = P2.catalogCall("AvailablePads", home) or {}
+			for _, padInfo in ipairs(padList) do
 				if type(padInfo) == "table" and type(padInfo.StationId) == "string" then
 					H.Pads[padInfo.StationId] = padInfo
 				end
 			end
+			-- Phase 5: the (at most 3) pads TycoonCatalog.SignedPads picks carry a "Next" tag, like their world signs
+			local signed = P2.catalogCall("SignedPads", padList, cash)
+			signed = type(signed) == "table" and signed or {}
 			for _, row in pairs(H.Rows) do
 				paintRow(row, home, cash)
+				local show = signed[row.Id] == true and row.Button.Visible
+				if show and not row.NextTag then
+					row.NextTag = colorPill(row.Frame, "NextTag", "Next", GOLD, 18, 0)
+					row.NextTag.AnchorPoint = Vector2.new(1, 0)
+					row.NextTag.Position = UDim2.new(1, -10, 0, 6)
+					row.NextTag.ZIndex = 6
+				end
+				if row.NextTag then
+					row.NextTag.Visible = show
+				end
 			end
 			paintSummary(home)
 			H.Live()
 		end
 
-		-- wide: summary column + list; tall (portrait): one scrolling column, summary first
-		function H.Layout(w, _h, narrow, short, tall)
+		-- Phase 5: ONE scrolling column under the flow strip (summary first, the prestige card last), every size
+		function H.Layout(w, _h, narrow, short, _tall)
+			local tall = true
 			local leftW = narrow and K.HOME_LEFT_W_NARROW or K.HOME_LEFT_W
 			if tall ~= H.Tall then
 				H.Tall = tall
@@ -5801,16 +5899,23 @@ do
 			H.GoHome.Size = UDim2.fromOffset(tall and 136 or 164, 40)
 			H.GoHome.Text = tall and "Go home" or (G.House .. " Go home")
 			if tall then
-				list.Position = UDim2.new(1, -10, 0, 10)
-				list.Size = UDim2.new(1, -20, 1, -20)
+				local stripH = P5.layoutStrip(H, w)
+				list.Position = UDim2.new(1, -10, 0, stripH + 16)
+				list.Size = UDim2.new(1, -20, 1, -(stripH + 26))
+				for i, c in ipairs(H.Cards) do
+					-- the house + income cards first, the prestige card after the stations; the old garden card is gone
+					-- (Phase 5: coins roam the yard; its places live in the income card)
+					c.LayoutOrder = (c.Name == "PrestigeCard") and 1000 or (i - 100)
+					c.Visible = c.Name ~= "GardenCard"
+				end
 			else
 				left.Size = UDim2.new(0, leftW, 1, -24)
 				list.Position = UDim2.new(1, -12, 0, 12)
 				list.Size = UDim2.new(1, -(leftW + 36), 1, -24)
 			end
 			-- a list column too slim for one-line rows (landscape phones and small windows) stacks the rows like portrait
-			local listW = w - (leftW + 36) - 24
-			local stacked = tall or listW < 640
+			local listW = tall and (w - 44) or (w - (leftW + 36) - 24)
+			local stacked = listW < 640
 			H.Stacked = stacked
 			local rowH = stacked and K.STATION_ROW_H_TALL or K.STATION_ROW_H
 			for _, row in pairs(H.Rows) do
@@ -5871,7 +5976,7 @@ do
 			local folder = plotFolder()
 			if folder then
 				Home.Conns[#Home.Conns + 1] = folder.AttributeChanged:Connect(function(name)
-					if name == "CollectorCash" or name == "GardenSlots" or name == "IncomePerSecond" or name == "HomeLevel" or name == "Prestige" then
+					if name == "CollectorCash" or name == "GardenSlots" or name == "IncomePerSecond" or name == "HomeLevel" or name == "Prestige" or name == "BerryCap" then
 						refreshHomeLive()
 					end
 				end)
@@ -5910,7 +6015,7 @@ do
 end
 
 ----------------------------------------------------------------------
--- Team window (Phase 3): three battle-team presets, slots 1-3 (+ slot 4 at Prestige 1), the pet picker with element
+-- Team window (Phase 3; Phase 5: 3 slots = FIGHTER + 2 HELPERs, "Set as fighter"): three battle-team presets, the pet picker with element
 -- badges, levels and battle stats, live synergy (BattleCatalog.SynergyBonus), the element wheel and the team power.
 -- Edits show at once (a local draft) and are sent as BattleRequest("TeamSet", preset, keys) after a short pause; the
 -- server validates everything (owned, unique, not in training, slot 4 rule) and ProfileSync brings the
@@ -5919,7 +6024,7 @@ end
 -- (defined inside a function, not a do-block: the main chunk is at Lua's 200-local limit)
 P3.Define = function()
 	local PRESETS = 3
-	local MAX_SLOTS = 4
+	local MAX_SLOTS = 3 -- Phase 5 (4.8): teams of 3, a FIGHTER and two HELPERs (no 4th slot)
 	local SEND_DELAY = 0.45 -- seconds of quiet before an edited preset is sent
 	local DRAFT_HOLD = 4 -- seconds a local edit wins over the synced presets (then the server's answer does)
 	local CARD_GAP = 10
@@ -6012,20 +6117,7 @@ P3.Define = function()
 	end
 
 	local function slotCount()
-		local n = tonumber(teamsData().Slots) or 3
-		if n >= MAX_SLOTS then
-			return MAX_SLOTS
-		end
-		return 3
-	end
-
-	local function slotUnlockText()
-		local stars = 1
-		local prestige = TycoonCatalog and TycoonCatalog.Prestige
-		if type(prestige) == "table" and tonumber(prestige.TeamSlotUnlock) then
-			stars = tonumber(prestige.TeamSlotUnlock)
-		end
-		return "Prestige " .. tostring(stars)
+		return MAX_SLOTS
 	end
 
 	local function serverKeys(preset)
@@ -6224,6 +6316,23 @@ P3.Define = function()
 		setDraft(preset, list)
 	end
 
+	-- Phase 5 (4.8): "Set as fighter" rotates the preset so this slot's pet leads ({a, b, c}, slot 3 -> {c, a, b})
+	local function setFighter(index)
+		local preset = T.Edit or activePreset()
+		local list = copyList(keysOf(preset))
+		if index <= 1 or not list[index] then
+			return
+		end
+		local rotated = {}
+		for i = 0, #list - 1 do
+			rotated[#rotated + 1] = list[((index - 1 + i) % #list) + 1]
+		end
+		T.Selected = nil
+		setDraft(preset, rotated)
+		showHint(P2.displayName(rotated[1], P2.defOfKey(rotated[1])) .. " is your fighter now!", "good")
+	end
+	P3.SetFighter = setFighter
+
 	local function removeSlot(index)
 		local preset = T.Edit or activePreset()
 		local list = copyList(keysOf(preset))
@@ -6304,15 +6413,32 @@ P3.Define = function()
 		corner(card.Button, 14)
 		card.Stroke = stroke(card.Button, NAVY, 3, 0)
 		card.Gradient = Util.Create("UIGradient", { Rotation = 90, Parent = card.Button })
-		card.Number = makeFrame(card.Button, "Number", {
+		-- Phase 5 (4.8): the slot's job: FIGHTER (slot 1, you control it) or HELPER (slots 2-3, their buff buttons)
+		local fighter = index == 1
+		card.Number = makeFrame(card.Button, "Role", {
 			BackgroundTransparency = 0,
-			BackgroundColor3 = NAVY,
+			BackgroundColor3 = fighter and Theme.Neon.Red or Theme.Neon.Blue,
 			Position = UDim2.fromOffset(8, 8),
-			Size = UDim2.fromOffset(32, 32),
+			Size = UDim2.fromOffset(fighter and 92 or 82, 26),
 			ZIndex = 4,
 		})
-		round(card.Number)
-		makeText(card.Number, "Text", tostring(index), "Button", 20, WHITE, { Size = UDim2.new(1, 0, 1, 0), ZIndex = 5 })
+		corner(card.Number, 8)
+		stroke(card.Number, NAVY, 2, 0)
+		card.RoleText = makeText(card.Number, "Text", fighter and "FIGHTER" or "HELPER", "Button", 18, WHITE, { Size = UDim2.new(1, 0, 1, 0), ZIndex = 5 })
+		if not fighter then
+			card.SetFighter = CloudUI.Button({
+				Name = "SetFighter",
+				Text = "Set as fighter",
+				Style = "Red",
+				Size = UDim2.fromOffset(150, 34),
+				TextSize = 18,
+				ZIndex = 6,
+				Callback = function()
+					safe("team fighter", setFighter, index)
+				end,
+				Parent = card.Button,
+			})
+		end
 		card.Remove = Util.Create("TextButton", {
 			Name = "Remove",
 			AutoButtonColor = false,
@@ -6368,10 +6494,6 @@ P3.Define = function()
 		})
 		card.Button.Activated:Connect(function()
 			safe("team slot", function()
-				if card.Locked then
-					showHint("The 4th team slot unlocks at " .. slotUnlockText() .. ".", "info")
-					return
-				end
 				if T.Selected == index then
 					T.Selected = nil
 				else
@@ -6408,10 +6530,19 @@ P3.Define = function()
 		if card.ShowSpecial then
 			put(card.Special, 23)
 		end
-		-- the number sits on the viewport's top-left corner, the remove button on its bottom-right one
+		-- the role sits on the viewport's top-left corner, the remove button on its bottom-right one, "Set as fighter"
+		-- on the card's bottom-right corner (helpers only)
 		card.Number.Position = UDim2.fromOffset(4, 4)
 		card.Remove.AnchorPoint = Vector2.new(1, 1)
 		card.Remove.Position = UDim2.new(0, 8 + view + 4, 1, -4)
+		if card.SetFighter then
+			-- beside the "Lv 57 - Epic" line (that line gives it room), never over the stats
+			local bw = 146
+			card.SetFighter.AnchorPoint = Vector2.new(1, 0)
+			card.SetFighter.Position = UDim2.new(1, -6, 0, card.Info.Position.Y.Offset - 2)
+			card.SetFighter.Size = UDim2.fromOffset(bw, 30)
+			card.Info.Size = UDim2.new(1, -(x + 14 + bw), 0, 23)
+		end
 	end
 
 	local function paintCard(card, key, entry, locked, selected)
@@ -6433,12 +6564,10 @@ P3.Define = function()
 			card[name].Visible = filled
 		end
 		card.View.Visible = filled
-		if locked then
-			card.EmptyGlyph.Text = G.Lock
-			card.EmptyText.Text = "Unlocks at " .. slotUnlockText()
-			card.EmptyText.TextColor3 = C2.Lock
-			card.Tip = "The 4th team slot unlocks at " .. slotUnlockText() .. "."
-		elseif not filled then
+		if card.SetFighter then
+			card.SetFighter.Visible = filled
+		end
+		if not filled then
 			card.EmptyGlyph.Text = GL.Plus
 			card.EmptyText.Text = selected and "Now tap a pet" or "Pick a pet"
 			card.EmptyText.TextColor3 = selected and GOLD or MUTED
@@ -6452,16 +6581,19 @@ P3.Define = function()
 			end
 			return
 		end
-		if card.ViewKey ~= key then
+		-- Phase 5 (3.7): the copy's stored stage; an evolved model is built at Low
+		local stage = P2.stage(key)
+		if card.ViewKey ~= key .. "|" .. stage then
 			if card.Viewport then
 				card.Viewport.Destroy()
 				card.Viewport = nil
 			end
-			card.ViewKey = key
+			card.ViewKey = key .. "|" .. stage
 			local ok, handle = pcall(CloudUI.PetViewport, card.View, def, UDim2.new(1, 0, 1, 0), {
 				Spin = "sway",
 				Animate = true,
-				Detail = "High",
+				Detail = stage >= 1 and "Low" or "High",
+				Evolved = stage >= 1 and stage or nil,
 				ZIndex = 2,
 			})
 			if ok then
@@ -6858,7 +6990,7 @@ P3.Define = function()
 		ui.ActiveLabel.Visible = isActive
 		CloudUI.SetDisabled(ui.ClearButton, #keys == 0)
 		if #keys == 0 then
-			ui.HelpText.Text = "Tap pets on the right to build this team."
+			ui.HelpText.Text = "Tap pets to build this team: the FIGHTER battles, two HELPERS back it up."
 		elseif T.Selected then
 			ui.HelpText.Text = "Now tap a pet to put it in slot " .. T.Selected .. "."
 		else
@@ -6951,7 +7083,7 @@ P3.Define = function()
 				return tostring(math.floor((tonumber(v) or 0) * 100 + 0.5)) .. "%"
 			end
 			local same = rules.SameElement
-			makeText(ui.SynergyList, "Rules", "Same element: 2 pets +" .. pct(same[2]) .. ", 3 +" .. pct(same[3]) .. ", 4 +" .. pct(same[4])
+			makeText(ui.SynergyList, "Rules", "Same element: 2 pets +" .. pct(same[2]) .. ", 3 +" .. pct(same[3])
 				.. " Power. " .. tostring(rules.BalancedElements or 3) .. "+ elements: +" .. pct(rules.BalancedHealth) .. " Health.", "Body", 18, MUTED, {
 				Size = UDim2.new(1, 0, 0, 0),
 				AutomaticSize = Enum.AutomaticSize.Y,
@@ -6999,6 +7131,11 @@ P3.Define = function()
 		ui.Order = {}
 		for index, row in ipairs(rows) do
 			local tile = ui.Tiles[row.Key] or buildTile(ui, row.Key)
+			if tile.Viewport and tile.ViewStage ~= P2.stage(row.Key) then
+				tile.Viewport.Destroy()
+				tile.Viewport = nil
+				ui.Ready[row.Key] = nil
+			end
 			tile.Button.LayoutOrder = index
 			ui.Order[index] = row.Key
 			local busy = nil
@@ -7187,14 +7324,17 @@ P3.Define = function()
 							ui.Ready[key] = true
 							local def = P2.defOfKey(key)
 							if def then
+								local stage = P2.stage(key)
 								local ok, handle = pcall(CloudUI.PetViewport, tile.View, def, UDim2.new(1, 0, 1, 0), {
 									Spin = "sway",
 									Animate = false,
 									Detail = "Low",
+									Evolved = stage >= 1 and stage or nil, -- Phase 5 (3.7)
 									ZIndex = 2,
 								})
 								if ok then
 									tile.Viewport = handle
+									tile.ViewStage = stage
 								end
 							end
 							budget.Count = budget.Count + 1
@@ -7402,7 +7542,7 @@ end
 local function revealLayout()
 	local factor = screenFactor()
 	local area = guiSize()
-	local tall = (area.Y - 2 * K.MARGIN) / factor >= K.REVEAL.TallH + K.BUMPS
+	local tall = (area.Y - 2 * K.MARGIN) / factor >= K.REVEAL.TallH + 28
 	if tall then
 		return {
 			Wide = false,
@@ -7802,6 +7942,10 @@ function beginStage(result)
 			round(glow)
 		end
 
+		-- Phase 5 (3.7): a new copy shares its key's stored stage: an evolved key reveals its evolved form (Low) and a
+		-- gold "Evolved" ribbon
+		local rolledKey = (type(result.Key) == "string" and result.Key) or def.Id
+		local evoStage = P2.stage(rolledKey)
 		stage.RevealViewport = CloudUI.PetViewport(c, def, UDim2.fromOffset(L.ViewSize, L.ViewSize), {
 			Position = L.View,
 			AnchorPoint = Vector2.new(0.5, 0.5),
@@ -7809,7 +7953,27 @@ function beginStage(result)
 			Excited = 1,
 			Flap = 1.5,
 			ZIndex = 3,
+			Evolved = evoStage >= 1 and evoStage or nil,
+			Detail = evoStage >= 1 and "Low" or nil,
 		})
+		if evoStage >= 1 then
+			local ribbon = makeFrame(c, "EvolvedRibbon", {
+				AnchorPoint = Vector2.new(1, 0),
+				Position = UDim2.new(1, -10, 0, 14),
+				Size = UDim2.fromOffset(evoStage >= 2 and 150 or 120, 36),
+				Rotation = 8,
+				BackgroundTransparency = 0,
+				BackgroundColor3 = GOLD,
+				ZIndex = 6,
+			})
+			corner(ribbon, 10)
+			stroke(ribbon, NAVY, 3, 0)
+			Theme.Gradient(ribbon, Theme.Lighten(GOLD, 0.3), Theme.Darken(GOLD, 0.12), 90)
+			makeText(ribbon, "Text", string.rep(G.Star, math.min(2, evoStage)) .. (evoStage >= 2 and " Evolved II" or " Evolved"), "Button", 20, WHITE, {
+				Size = UDim2.new(1, 0, 1, 0),
+				ZIndex = 7,
+			})
+		end
 
 		-- NEW! flag (or the stack size for a duplicate)
 		local isNew = result.IsNew == true
@@ -8175,8 +8339,7 @@ local function connectIndex()
 			if openId then
 				closeWindow(openId, true)
 			end
-			hideBackdropNow()
-			closeOdds()
+					closeOdds()
 			updateMenuActive()
 			MenuController.WindowOpened:Fire("Index")
 		end)
@@ -8260,32 +8423,13 @@ function MenuController.Init()
 
 	gui = CloudUI.NewScreenGui("NimbusMenu", 20)
 
-	-- click-outside layer behind the windows (the menu column stays above it)
-	U.Backdrop = Util.Create("TextButton", {
-		Name = "Backdrop",
-		AutoButtonColor = false,
-		Text = "",
-		BorderSizePixel = 0,
-		BackgroundColor3 = Color3.fromRGB(8, 12, 32),
-		BackgroundTransparency = 1,
-		Size = UDim2.new(1, 0, 1, 0),
-		Visible = false,
-		ZIndex = 1,
-		Parent = gui,
-	})
-	U.Backdrop.Activated:Connect(function()
-		if openId then
-			closeWindow(openId)
-		end
-	end)
-
 	buildHint()
 	buildColumn()
-	createWindow({ Id = "Inventory", Title = "Inventory", Accent = BUTTONS.Blue, Build = buildInventory, Tall = true })
-	createWindow({ Id = "Shop", Title = "Cloud Shop", Accent = BUTTONS.Gold, Build = buildShop, Tall = true })
-	createWindow({ Id = "Stats", Title = "Stats", Accent = PURPLE, Build = buildStats, Tall = true })
-	createWindow({ Id = "Home", Title = G.House .. " My Home", Accent = BUTTONS.Green, Build = buildHome, Tall = true })
-	createWindow({ Id = "Team", Title = "Battle Team", Accent = BUTTONS.Red, Build = P3.BuildTeam, Tall = true })
+	createWindow({ Id = "Inventory", Title = "Pets", Category = "Pets", Build = buildInventory, Tall = true })
+	createWindow({ Id = "Shop", Title = "Cloud Shop", Category = "Shop", Build = buildShop, Tall = true })
+	createWindow({ Id = "Stats", Title = "Stats", Category = "Stats", Build = buildStats, Tall = true })
+	createWindow({ Id = "Home", Title = "My Home", Category = "Home", Build = buildHome, Tall = true })
+	createWindow({ Id = "Team", Title = "Battle Team", Category = "Team", Build = P3.BuildTeam, Tall = true })
 	relayoutMenu()
 	updateMenuActive()
 
@@ -8302,6 +8446,11 @@ function MenuController.Init()
 		safe("InMatch", onMatchFlagChanged)
 	end)
 	-- Phase 2: Cash / Gems balances (prices turn red / green), the gem roulette policy, the claimed plot
+	if type(State.BerriesChanged) == "table" and type(State.BerriesChanged.Connect) == "function" then
+		State.BerriesChanged:Connect(function()
+			safe("berries", refreshHomeLive)
+		end)
+	end
 	for _, signalName in ipairs({ "CashChanged", "GemsChanged" }) do
 		local signal = State[signalName]
 		if type(signal) == "table" and type(signal.Connect) == "function" then
@@ -8328,6 +8477,7 @@ function MenuController.Init()
 
 	safe("connect index", connectIndex)
 	task.spawn(connectRemotes)
+	P5.watchSheets()
 end
 
 return MenuController

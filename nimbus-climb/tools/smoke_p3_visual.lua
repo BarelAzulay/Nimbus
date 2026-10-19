@@ -5,20 +5,20 @@
 --                     element marks, worn / warm stretches in the forum paving, sand drifts on every duel ring (under
 --                     its painted circle), drifts on a trial pocket's floor; the arena stays <= 2500 parts and a
 --                     pocket <= 250; the gate and arch sign titles fit their panels (World text rule sizes kept); the
---                     event board draws the live boss HP bar (and hides it without a raid); Phase 4: Portal_Ring is a
---                     crowned arch in champion gold and royal violet (<= 70 parts, a gold crown on top, no crossed
---                     swords) and the Champion Ring pocket (<= 220) has a two-tone floor, a gold rim, four violet crown
---                     gems and a cheering crowd of cloud puffs in soft colours facing the ring, outside the square
+--                     event board draws the live boss HP bar (and hides it without a raid); Phase 5: Portal_Ring is a
+--                     WorldStyle gate in the Gate Court (NimbusLobby.Gates, <= 120 parts, gold crowns + violet gems on
+--                     its pedestals), no Trial Portal anywhere; the Champion Ring pocket (<= 220) has a two-tone floor,
+--                     a gold rim, four violet crown gems and a cheering crowd of cloud puffs facing the ring
 --   p3visual_bosses   (server) every boss keeps its shading and its colour regions at High detail (the torso is not
 --                     folded into one flat colour: several shades per region, the Frost Wyrm's belly and frost patch,
 --                     the Hydra's belly, the Golem's ash), High <= 1000 parts and Low <= 760, Low keeps the accents
 --   client_p3visual   (client) a boss telegraph has a crisp rim in its saturated colour (16 neon segments round a
 --                     circle) besides the pale area, and the rim goes with it after the hit; Phase 4: every unit's
 --                     PetCard reads on the sand (solid dark plate, stroked Lv, green HP for mine / a teammate's, red for
---                     enemies; the raid boss keeps its top-card bar); the Team picker tiles and
---                     the Trial window's enemy cards write pet names in white on their rarity-tinted cards
---   client_p3visual_mobile (phone world) the Trial window's enemy cards use the width of a portrait phone (two wide
---                     columns instead of two narrow cards and a gap)
+--                     enemies; the raid boss keeps its top-card bar; Phase 5: another player's helpers are not drawn);
+--                     the Team picker tiles write pet names in white on their rarity-tinted tiles
+--   client_p3visual_mobile (phone world; Phase 5) a battle unit's PetCard reads on a phone (Lv >= 14 px, stroked) and
+--                     shows the fighter's lives pips (PetCard:SetLives)
 -- Plain Lua 5.1 syntax only.
 
 local T = SmokeCommon.T
@@ -189,27 +189,28 @@ local function serverScenarios()
 					dark = dark + 1
 				end
 			end
-			T.check(n <= 250 and dark > 0, "visual arena: the pocket's sand floor has drifts and the pocket stays <= 250 parts", n .. " parts, " .. dark .. " drift slabs")
+			-- (Phase 5: the trial pocket's drifts went with the Trials; the pocket keeps its budget)
+			T.check(n <= 250, "visual arena: a pocket stays <= 250 parts", n .. " parts, " .. dark .. " drift slabs")
 			AB.FreePocket(pocket)
 		end
 
-		-- Phase 4: the Champion Ring portal reads differently from the Trial Portal (a crowned arch in champion gold and
-		-- royal violet), within 70 parts, with shading on its stone (never one flat colour)
-		local ringPortal = model:FindFirstChild("Portal_Ring")
-		if T.check(ringPortal ~= nil, "visual ring: Portal_Ring is built") then
+		-- Phase 5 (C4 / C12, 6.2): Portal_Ring is a WorldStyle gate in the plaza's Gate Court (workspace.NimbusLobby.Gates,
+		-- <= 120 parts) in champion gold with its crowned pedestals (gold crowns, violet Neon gems); no Trial Portal is left
+		local lobby = workspace:FindFirstChild("NimbusLobby")
+		local gates = lobby and lobby:FindFirstChild("Gates")
+		local ringPortal = gates and gates:FindFirstChild("Portal_Ring", true)
+		if T.check(ringPortal ~= nil, "visual ring: Portal_Ring is built in the Gate Court (NimbusLobby.Gates)") then
 			local rparts = partsOf(ringPortal)
-			local gold, violet, neon, colours = 0, 0, 0, {}
+			local gold, gems, colours = 0, 0, {}
 			for _, p in ipairs(rparts) do
 				if p.Transparency < 1 then
 					colours[colorKey(p.Color)] = true
 					local c = p.Color
 					if c.R > 0.85 and c.G > 0.6 and c.B < 0.4 then
 						gold = gold + 1
-					elseif c.B > 0.75 and c.R > 0.45 and c.G < 0.6 then
-						violet = violet + 1
 					end
-					if p.Material == Enum.Material.Neon then
-						neon = neon + 1
+					if p.Name == "CrownGem" and p.Material == Enum.Material.Neon then
+						gems = gems + 1
 					end
 				end
 			end
@@ -217,23 +218,11 @@ local function serverScenarios()
 			for _ in pairs(colours) do
 				nColours = nColours + 1
 			end
-			T.check(#rparts <= 70, "visual ring: Portal_Ring stays within 70 parts", #rparts .. " parts")
-			T.check(gold >= 6 and violet >= 4 and neon >= 4 and nColours >= 6, "visual ring: champion gold trim + crown, royal violet glows and gems, shaded stone",
-				gold .. " gold, " .. violet .. " violet, " .. neon .. " neon, " .. nColours .. " colours")
-			local gate = ringPortal:FindFirstChild("Gate")
-			local top, crownGold = -huge, 0
-			for _, p in ipairs(partsOf(gate)) do
-				top = max(top, p.Position.Y + p.Size.Y / 2)
-			end
-			for _, p in ipairs(partsOf(gate)) do
-				if p.Position.Y + p.Size.Y / 2 > top - 5 and p.Color.R > 0.85 and p.Color.B < 0.4 then
-					crownGold = crownGold + 1
-				end
-			end
-			T.check(crownGold >= 3, "visual ring: a gold crown tops the gate (several gold blocks in its top 5 studs)", crownGold .. " blocks")
-			local trial = model:FindFirstChild("Portal_Trials")
-			T.check(trial ~= nil and trial:FindFirstChild("CrestBlade", true) ~= nil and ringPortal:FindFirstChild("CrestBlade", true) == nil, "visual ring: the crossed swords stay the Trial Portal's, the ring has its crown")
+			T.check(#rparts <= 120, "visual ring: Portal_Ring stays within the 120-part gate budget", #rparts .. " parts")
+			T.check(gold >= 6 and gems >= 2 and nColours >= 4, "visual ring: champion gold crowns + violet gems on its pedestals, shaded stone",
+				gold .. " gold, " .. gems .. " gems, " .. nColours .. " colours")
 		end
+		T.check(workspace:FindFirstChild("Portal_Trials", true) == nil, "visual ring: no Trial Portal is left anywhere (Phase 5: Trials are gone)")
 
 		-- Phase 4: the Champion Ring pocket: a two-tone round floor inside a gold rim, four crown posts with violet gems,
 		-- the crowd: cloud puffs in at least four soft colours with faces looking at the ring, outside the battle square
@@ -529,7 +518,8 @@ local function clientScenarios()
 						end
 					end
 				end
-				T.check(cards >= 6 and solid == cards and stroked == cards, "visual client: every unit card has a solid dark plate and a stroked Lv (reads on the sand)", solid .. "/" .. stroked .. " of " .. cards)
+				-- (Phase 5: my fighter + my two helpers + the teammate's FIGHTER; another player's helpers are not drawn)
+				T.check(cards >= 4 and solid == cards and stroked == cards, "visual client: every unit card has a solid dark plate and a stroked Lv (reads on the sand)", solid .. "/" .. stroked .. " of " .. cards)
 				T.check(greens == cards and modes.Unit and modes.Ally, "visual client: HP rows are green for my pets (Unit) and a teammate's (Ally), red for enemies", greens .. " of " .. cards)
 				T.check(not bossCard, "visual client: the raid boss has no pet card (its HP bar is in the top card)")
 				-- after the hits the rims go with their telegraphs
@@ -597,58 +587,37 @@ local function clientScenarios()
 		end
 		pcall(MC.Close)
 		advance(0.3)
-		pcall(AC.OpenTrials, 12)
-		advance(0.8)
-		local arena = pg() and pg():FindFirstChild("NimbusArena")
-		local trials = arena and arena:FindFirstChild("Window_Trials")
-		local enemies = trials and find(trials, "Enemies")
-		local cards, whiteCards = 0, 0
-		for _, c in ipairs(enemies and enemies:GetChildren() or {}) do
-			local name = c:IsA("Frame") and c:FindFirstChild("PetName")
-			if name then
-				cards = cards + 1
-				if isWhite(name.TextColor3) then
-					whiteCards = whiteCards + 1
-				end
-			end
-		end
-		T.check(cards > 0 and whiteCards == cards, "visual client: the Trial window's enemy cards write names in white", whiteCards .. " of " .. cards)
-		pcall(AC.Close)
-		advance(0.3)
+		-- (Phase 5: the Trial window is gone with the Trials; its enemy-card checks went with it)
 	end)
 
+	-- Phase 5: (the Trial window is gone) a battle unit's PetCard on a portrait phone: Lv >= 14 px with its stroke, the
+	-- fighter's lives pips sized for the phone
 	S.client_p3visual_mobile = guarded("client_p3visual_mobile", function()
-		local AC = moduleAt("client", "Controllers/ArenaController")
-		if not T.check(type(AC) == "table" and type(AC.OpenTrials) == "function", "visual phone: ArenaController loads") then
+		local PCard = moduleAt("client", "UI/PetCard")
+		if not T.check(type(PCard) == "table" and type(PCard.New) == "function", "visual phone: PetCard loads") then
 			return
 		end
-		pcall(AC.Init)
-		pcall(AC.OpenTrials, 12)
-		advance(0.8)
-		local arena = pg() and pg():FindFirstChild("NimbusArena")
-		local trials = arena and arena:FindFirstChild("Window_Trials")
-		local enemies = trials and find(trials, "Enemies")
-		local layout = enemies and enemies:FindFirstChildOfClass("UIGridLayout")
-		if T.check(layout ~= nil and shown(enemies), "visual phone: the Trial window shows the enemy team") then
-			local cell = layout.CellSize.X.Offset
-			-- on-screen boxes (the window is scaled): the cards' right edge against the row's right edge
-			local left, right, n = huge, -huge, 0
-			for _, c in ipairs(enemies:GetChildren()) do
-				if c:IsA("Frame") and c.Visible then
-					n = n + 1
-					left = min(left, c.AbsolutePosition.X)
-					right = max(right, c.AbsolutePosition.X + c.AbsoluteSize.X)
-				end
+		local part = Instance.new("Part")
+		part.Anchored = true
+		part.Parent = workspace
+		local card = PCard.New(part, "Unit", 2.5, { Name = "VisualPhoneCard" })
+		card:SetLevel(34, 1, false)
+		card:SetLives(2, 3)
+		advance(0.1)
+		local lv = card.Gui:FindFirstChild("Plate") and card.Gui.Plate:FindFirstChild("Level")
+		T.check(lv and lv.TextSize >= 14 and (lv:FindFirstChildOfClass("UIStroke") or lv.TextStrokeTransparency < 0.5), "visual phone: a battle card's Lv is >= 14 px with its stroke", lv and tostring(lv.TextSize) or "nil")
+		local pips = card.Gui:FindFirstChild("Lives", true)
+		local lit = 0
+		for _, p in ipairs(pips and pips:GetChildren() or {}) do
+			if p:IsA("Frame") and p.Visible and p.BackgroundColor3.R > 0.8 and p.BackgroundColor3.G < 0.5 then
+				lit = lit + 1
 			end
-			local rowW = enemies.AbsoluteSize.X
-			local gap = (enemies.AbsolutePosition.X + rowW) - right
-			local cardW = n > 0 and (right - left) / math.min(n, 2) or 0
-			T.check(cell > 130, "visual phone: two wide enemy cards per row on a portrait phone", "cell " .. cell .. " design px")
-			T.check(n > 0 and gap <= cardW * 0.35, "visual phone: ...using the window's width (no gap the size of a card)",
-				string.format("%d cards, %.0f px free of a %.0f px row", n, gap, rowW))
 		end
-		pcall(AC.Close)
-		advance(0.3)
+		T.check(pips and pips.Visible and lit == 2 and pips.Size.Y.Offset >= 5, "visual phone: the fighter's lives pips show (2 of 3 lit, >= 5 px)", tostring(lit) .. " lit")
+		card:SetLives(nil)
+		T.check(pips and not pips.Visible, "visual phone: SetLives(nil) hides the pips")
+		card:Destroy()
+		part:Destroy()
 	end)
 
 	return S

@@ -79,17 +79,16 @@ FusionController.Closed = Util.Signal()
 -- Tunables (design pixels of a 1080p screen)
 ----------------------------------------------------------------------
 local K = {
-	PREF_W = 1080,
-	PREF_H = 700,
+	PREF_W = 760, -- Phase 5 (6.6): docked right / a bottom sheet (NeonKit.Dock), 760 x 860 design px
+	PREF_H = 860,
 	MIN_W = 800,
 	MIN_H = 390,
-	BUMPS = 28,
 	MARGIN = 12,
 	SHORT = 560, -- below this design height the compact layout is used (landscape phones)
 	TOP_H = 54,
 	TOP_H_SHORT = 44,
 	-- portrait phones: the preview on top, the picker below (used when less than TALL_W design px are free)
-	TALL_W = 700,
+	TALL_W = 800, -- (every docked Fusion window is one column: the preview on top, the picker below)
 	PREF_W_TALL = 560,
 	MIN_W_TALL = 360,
 	PREF_H_TALL = 1000,
@@ -686,24 +685,28 @@ local function viewportHeight()
 	return guiSize().Y
 end
 
+-- Phase 5 (6.6): NeonKit.Dock keeps the window docked right / a bottom sheet; returns its design size and "tall"
+-- (one column); the hotbar re-centres left of the docked window
 local function fitWindow()
-	local area = guiSize()
-	local factor = Theme.ScreenFactor(viewportHeight())
-	local freeW = area.X - 2 * K.MARGIN
-	local freeH = area.Y - 2 * K.MARGIN
-	-- a screen too narrow for the side-by-side window (portrait phones) gets the tall layout
-	local tall = freeW / factor < K.TALL_W and freeH > freeW
-	local minW, prefW = K.MIN_W, K.PREF_W
-	local minH, prefH = K.MIN_H, K.PREF_H
-	if tall then
-		minW, prefW = K.MIN_W_TALL, K.PREF_W_TALL
-		minH, prefH = K.MIN_H_TALL, K.PREF_H_TALL
+	if not U.Dock then
+		U.Kit = U.Kit or require(script.Parent.Parent:WaitForChild("UI"):WaitForChild("NeonKit"))
+		U.Dock = U.Kit.Dock(U.Holder, U.Fit, K.PREF_W, K.PREF_H)
 	end
-	local w = Util.Clamp(math.floor(freeW / factor), minW, prefW)
-	local h = Util.Clamp(math.floor((freeH - K.BUMPS * factor) / factor), minH, prefH)
-	local scale = Util.Clamp(math.min(factor, freeW / w, freeH / h), 0.3, 1.25)
-	local y = math.min(area.Y / 2 + K.BUMPS * scale / 2, area.Y - K.MARGIN / 2 - h * scale / 2)
-	return w, h, scale, area.X / 2, math.max(y, h * scale / 2), tall
+	U.Dock.Refresh()
+	local r = U.Dock.Rect
+	local w, h = math.floor(r.designW + 0.5), math.floor(r.designH + 0.5)
+	return w, h, w < K.TALL_W, r
+end
+
+-- HotbarController.SetAvoidRight(x | nil) (6.6)
+local function avoidRight(x)
+	local hb = script.Parent:FindFirstChild("HotbarController")
+	local ok, mod = pcall(function()
+		return hb and require(hb)
+	end)
+	if ok and type(mod) == "table" and type(mod.SetAvoidRight) == "function" then
+		pcall(mod.SetAvoidRight, x)
+	end
 end
 
 local layoutPreview -- defined below
@@ -712,12 +715,12 @@ local function relayout()
 	if not S.Built then
 		return
 	end
-	local w, h, scale, x, y, tall = fitWindow()
-	U.Holder.Size = UDim2.fromOffset(w, h)
-	U.Fit.Scale = scale
-	U.Holder.Position = UDim2.fromOffset(math.floor(x + 0.5), math.floor(y + 0.5))
+	local w, h, tall, rect = fitWindow()
+	if S.Open then
+		avoidRight(rect.mode == "Side" and rect.x or nil)
+	end
 	S.Tall = tall
-	local short = h < K.SHORT and not tall
+	local short = h < K.SHORT
 	S.Short = short
 	S.Narrow = w < K.NARROW
 	local pickerW = S.Narrow and K.PICKER_W_NARROW or K.PICKER_W
@@ -745,10 +748,13 @@ local function relayout()
 	U.Body.Position = UDim2.fromOffset(10, topH + (short and 12 or 16))
 	U.Body.Size = UDim2.new(1, -20, 1, -(topH + (short and 18 or 26)))
 	if tall then
+		-- (a short sheet gives the preview a bit more than half its body)
+		local previewH = math.min(K.PREVIEW_TALL_H, math.floor((h - 90) * 0.58))
+		S.PreviewH = previewH
 		U.Preview.Position = UDim2.new(0, 0, 0, 0)
-		U.Preview.Size = UDim2.new(1, 0, 0, K.PREVIEW_TALL_H)
-		U.Picker.Position = UDim2.new(0, 0, 0, K.PREVIEW_TALL_H + K.GAP)
-		U.Picker.Size = UDim2.new(1, 0, 1, -(K.PREVIEW_TALL_H + K.GAP))
+		U.Preview.Size = UDim2.new(1, 0, 0, previewH)
+		U.Picker.Position = UDim2.new(0, 0, 0, previewH + K.GAP)
+		U.Picker.Size = UDim2.new(1, 0, 1, -(previewH + K.GAP))
 	else
 		U.Picker.Position = UDim2.new(0, 0, 0, 0)
 		U.Picker.Size = UDim2.new(0, pickerW, 1, 0)
@@ -848,7 +854,10 @@ local function buildTileViewport(tile)
 	if not def then
 		return
 	end
-	tile.Viewport = CloudUI.PetViewport(tile.View, def, UDim2.new(1, 0, 1, 0), { Detail = "Low", Spin = "sway" })
+	-- Phase 5 (3.7): the copy's stored stage (evolved = Low)
+	local stage = (type(State.PetStage) == "function" and tonumber(State.PetStage(tile.Key))) or 0
+	tile.Stage = stage
+	tile.Viewport = CloudUI.PetViewport(tile.View, def, UDim2.new(1, 0, 1, 0), { Detail = "Low", Spin = "sway", Evolved = stage >= 1 and stage or nil })
 end
 
 local function onTileClicked(key)
@@ -999,6 +1008,10 @@ local function refreshTiles()
 	for i, entry in ipairs(list) do
 		wanted[entry.Key] = true
 		local tile = S.Tiles[entry.Key] or newTile(entry.Key)
+		-- a copy that evolved meanwhile rebuilds its viewport (the per-frame builder picks it up again)
+		if tile.Viewport and tile.Stage ~= ((type(State.PetStage) == "function" and tonumber(State.PetStage(entry.Key))) or 0) then
+			destroyTileViewport(tile)
+		end
 		paintTile(tile, i, entry.Ready)
 	end
 	for key, tile in pairs(S.Tiles) do
@@ -1061,10 +1074,12 @@ local function slotFrame(parent, name, size)
 	return { Frame = holder, View = view, Stroke = s, Placeholder = q, Scale = scale, Viewport = nil, Def = nil }
 end
 
-local function setSlotPet(slot, def, detail)
-	if slot.Def == def and slot.Viewport then
+local function setSlotPet(slot, def, detail, stage)
+	stage = math.floor(tonumber(stage) or 0)
+	if slot.Def == def and slot.Viewport and slot.Stage == stage then
 		return
 	end
+	slot.Stage = stage
 	if slot.Viewport then
 		pcall(slot.Viewport.Destroy)
 		slot.Viewport = nil
@@ -1072,7 +1087,12 @@ local function setSlotPet(slot, def, detail)
 	slot.Def = def
 	slot.Placeholder.Visible = def == nil
 	if def then
-		local ok, handle = pcall(CloudUI.PetViewport, slot.View, def, UDim2.new(1, 0, 1, 0), { Detail = detail or "High", Spin = "spin", ZIndex = 4 })
+		local ok, handle = pcall(CloudUI.PetViewport, slot.View, def, UDim2.new(1, 0, 1, 0), {
+			Detail = stage >= 1 and "Low" or (detail or "High"),
+			Evolved = stage >= 1 and stage or nil, -- Phase 5 (3.7)
+			Spin = "spin",
+			ZIndex = 4,
+		})
 		if ok then
 			slot.Viewport = handle
 		end
@@ -1342,12 +1362,25 @@ local function renderPreview(plan)
 		inputs[2] = S.MixB and defOf(S.MixB) or nil
 		U.InCount.Visible = false
 	end
-	for i, slot in ipairs(U.InSlots) do
-		setSlotPet(slot, inputs[i], (S.Tab == "Upgrade" and i ~= 2) and "Low" or "High")
+	local function stageOf(key)
+		return (key and type(State.PetStage) == "function" and tonumber(State.PetStage(key))) or 0
 	end
-	-- result
+	local inStage = {}
+	if S.Tab == "Upgrade" then
+		inStage = { stageOf(S.UpKey), stageOf(S.UpKey), stageOf(S.UpKey) }
+	else
+		inStage = { stageOf(S.MixA), stageOf(S.MixB) }
+	end
+	for i, slot in ipairs(U.InSlots) do
+		setSlotPet(slot, inputs[i], (S.Tab == "Upgrade" and i ~= 2) and "Low" or "High", inStage[i])
+	end
+	-- result: the stage the fusion keeps (an Upgrade carries the copy's stage; a new Mix starts plain)
 	if not S.Animating then
-		setSlotPet(U.ResultSlot, plan.ResultDef, "High")
+		local keep = 0
+		if S.Tab == "Upgrade" and plan.ResultKey then
+			keep = math.max(stageOf(S.UpKey), stageOf(plan.ResultKey))
+		end
+		setSlotPet(U.ResultSlot, plan.ResultDef, "High", keep)
 		U.ResultSlot.Stroke.Color = plan.Rarity and rarityAccent(plan.Rarity) or NAVY
 	end
 	U.ResultName.Text = plan.ResultName or ((S.Tab == "Upgrade") and "Pick a pet" or "Pick two pets")
@@ -1542,7 +1575,7 @@ local function playFusion(resultKey, rarity)
 		-- 3) the new pet pops in
 		local def = defOf(resultKey)
 		if def then
-			setSlotPet(U.ResultSlot, def, "High")
+			setSlotPet(U.ResultSlot, def, "High", (type(State.PetStage) == "function" and tonumber(State.PetStage(resultKey))) or 0)
 		end
 		U.ResultSlot.Scale.Scale = 0.4
 		tween(U.ResultSlot.Scale, 0.35, { Scale = 1 }, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
@@ -2021,8 +2054,6 @@ local function buildWindow()
 		return true
 	end
 	local holder = makeFrame(U.Gui, "Window_Fusion", {
-		AnchorPoint = Vector2.new(0.5, 0.5),
-		Position = UDim2.new(0.5, 0, 0.5, 0),
 		Size = UDim2.fromOffset(K.PREF_W, K.PREF_H),
 		Visible = false,
 		ZIndex = 3,
@@ -2033,7 +2064,7 @@ local function buildWindow()
 		Name = "FusionPanel",
 		Title = G.Crystal .. " Fusion Machine",
 		Closable = true,
-		Accent = ACCENT,
+		Category = "Fusion",
 		Size = UDim2.new(1, 0, 1, 0),
 		Position = UDim2.new(0.5, 0, 0.5, 0),
 		AnchorPoint = Vector2.new(0.5, 0.5),
@@ -2057,25 +2088,12 @@ local function buildWindow()
 	return true
 end
 
+-- (Phase 5: no backdrop; the hotbar stops avoiding the window when it closes)
 local function setBackdrop(on)
-	local backdrop = U.Backdrop
-	if not backdrop then
-		return
-	end
-	if on then
-		backdrop.Visible = true
-		tween(backdrop, 0.18, { BackgroundTransparency = 0.55 })
-	else
-		tween(backdrop, 0.15, { BackgroundTransparency = 1 })
-		local mine = S.Token
-		task.delay(0.17, function()
-			if S.Token == mine and not S.Open and backdrop.Parent then
-				backdrop.Visible = false
-			end
-		end)
+	if not on then
+		avoidRight(nil)
 	end
 end
-
 -- the menu windows and the Pet Index share the screen: one window at a time
 local function closeOthers()
 	local controllers = script.Parent
@@ -2226,21 +2244,6 @@ function FusionController.Init()
 
 	local gui = CloudUI.NewScreenGui("NimbusFusion", K.DISPLAY_ORDER)
 	U.Gui = gui
-	U.Backdrop = Util.Create("TextButton", {
-		Name = "Backdrop",
-		AutoButtonColor = false,
-		Text = "",
-		BorderSizePixel = 0,
-		BackgroundColor3 = Color3.fromRGB(8, 12, 32),
-		BackgroundTransparency = 1,
-		Size = UDim2.new(1, 0, 1, 0),
-		Visible = false,
-		ZIndex = 1,
-		Parent = gui,
-	})
-	U.Backdrop.Activated:Connect(function()
-		FusionController.Close()
-	end)
 	gui:GetPropertyChangedSignal("AbsoluteSize"):Connect(function()
 		if S.Built then
 			safe("relayout", relayout)

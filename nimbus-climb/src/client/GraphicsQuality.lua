@@ -1,0 +1,239 @@
+-- GraphicsQuality: the Graphics setting (ARCHITECTURE_V3.md "Phase 5 build contract" 7.2 / 7.3, 6.4).
+--   "Auto"  Low when Roblox's own graphics slider (UserSettings().GameSettings.SavedQualityLevel) is at 1..3,
+--           High otherwise (its "Automatic" position counts as High: most players never touch the slider)
+--   "Low"   LightingStack.Push("GfxLow"): Bloom / SunRays / DepthOfField off, Terrain clouds Density 0.4; every model
+--           tagged NC_Detail (pure decor: LobbyBuilder / HomeBuilder / DungeonBuilder) is moved to a local holder
+--           folder outside the workspace (client-side only) with its particle emitters / beams / trails disabled, also
+--           decor that streams in later; the Sage Dragon (SkyDragonController) is paused by taking its model out of the
+--           workspace (its RenderStepped step skips a model without a parent)
+--   "High"  everything restored (the GfxLow preset popped, the decor and the dragon back where they were, emitters on
+--           again exactly where they were on)
+--
+--   GraphicsQuality.Init()          reads ClientSettings.Gfx and follows ClientSettings.Changed
+--   GraphicsQuality.Apply(setting)  "Auto" | "Low" | "High" (tests); -> the effective "Low" | "High"
+--   GraphicsQuality.Effective()     -> "Low" | "High"
+--   GraphicsQuality.Resolve(setting, savedLevel) -> "Low" | "High"  (pure; savedLevel = 0 Automatic, 1..10)
+--
+-- No per-frame work, no polling: CollectionService signals only. Plain Lua 5.1-compatible syntax only.
+
+local CollectionService = game:GetService("CollectionService")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+
+local Client = script.Parent
+local ClientSettings = require(Client:WaitForChild("ClientSettings"))
+local LightingStack = require(Client:WaitForChild("LightingStack"))
+
+local GraphicsQuality = {}
+
+local DETAIL_TAG = "NC_Detail"
+local PRESET_ID = "GfxLow"
+local PRESET = {
+	Bloom = { Enabled = false },
+	SunRays = { Enabled = false },
+	DepthOfField = { Enabled = false },
+	Clouds = { Density = 0.4 },
+}
+local FADE = 0.5 -- seconds of the lighting change
+local EMITTERS = { ParticleEmitter = true, Beam = true, Trail = true }
+
+local St = {
+	Mode = "High", -- the effective mode applied
+	Holder = nil, -- the local folder the hidden decor waits in
+	Hidden = {}, -- [model] = original parent
+	HiddenList = {}, -- models in the order they were hidden (restored in that order)
+	Emitters = {}, -- [emitter] = true (an emitter WE turned off)
+	Dragon = nil, -- { Model, Parent } while paused
+	Conns = {},
+	Started = false,
+}
+GraphicsQuality._St = St
+
+----------------------------------------------------------------------
+-- Auto
+----------------------------------------------------------------------
+
+function GraphicsQuality.Resolve(setting, savedLevel)
+	if setting == "Low" or setting == "High" then
+		return setting
+	end
+	local level = tonumber(savedLevel)
+	if level and level >= 1 and level <= 3 then
+		return "Low"
+	end
+	return "High"
+end
+
+local function savedQualityLevel()
+	local ok, level = pcall(function()
+		local value = UserSettings().GameSettings.SavedQualityLevel
+		if typeof(value) == "EnumItem" then
+			return value.Value
+		end
+		return tonumber(value)
+	end)
+	if ok and type(level) == "number" then
+		return level
+	end
+	return 0
+end
+
+----------------------------------------------------------------------
+-- Decor
+----------------------------------------------------------------------
+
+local function holder()
+	if St.Holder and St.Holder.Parent then
+		return St.Holder
+	end
+	local f = Instance.new("Folder")
+	f.Name = "NimbusGfxHidden"
+	f.Parent = ReplicatedStorage
+	St.Holder = f
+	return f
+end
+
+local function setEmitters(root, on)
+	local list = root:GetDescendants()
+	list[#list + 1] = root
+	for _, d in ipairs(list) do
+		if EMITTERS[d.ClassName] then
+			if on then
+				if St.Emitters[d] then
+					St.Emitters[d] = nil
+					d.Enabled = true
+				end
+			elseif d.Enabled then
+				St.Emitters[d] = true
+				d.Enabled = false
+			end
+		end
+	end
+end
+
+local function hide(inst)
+	if St.Hidden[inst] or not inst.Parent or inst:IsDescendantOf(holder()) then
+		return
+	end
+	-- a tagged part inside a tagged model moves with its model
+	local parent = inst.Parent
+	while parent and parent ~= game do
+		if St.Hidden[parent] or CollectionService:HasTag(parent, DETAIL_TAG) then
+			return
+		end
+		parent = parent.Parent
+	end
+	St.Hidden[inst] = inst.Parent
+	St.HiddenList[#St.HiddenList + 1] = inst
+	setEmitters(inst, false)
+	inst.Parent = holder()
+end
+
+local function showAll()
+	for _, inst in ipairs(St.HiddenList) do
+		local parent = St.Hidden[inst]
+		St.Hidden[inst] = nil
+		if parent and parent.Parent and inst.Parent == St.Holder then
+			inst.Parent = parent
+			setEmitters(inst, true)
+		end
+	end
+	St.HiddenList = {}
+	St.Emitters = {}
+end
+
+local function dragonModel()
+	local controllers = Client:FindFirstChild("Controllers")
+	local module = controllers and controllers:FindFirstChild("SkyDragonController")
+	if not module then
+		return nil
+	end
+	local ok, mod = pcall(require, module)
+	if ok and type(mod) == "table" and type(mod.GetModel) == "function" then
+		local okModel, model = pcall(mod.GetModel)
+		if okModel and typeof(model) == "Instance" then
+			return model
+		end
+	end
+	return nil
+end
+
+local function pauseDragon(on)
+	if on then
+		if St.Dragon then
+			return
+		end
+		local model = dragonModel()
+		if model and model.Parent then
+			St.Dragon = { Model = model, Parent = model.Parent }
+			model.Parent = nil
+		end
+	elseif St.Dragon then
+		local d = St.Dragon
+		St.Dragon = nil
+		if d.Parent and d.Parent.Parent and d.Model.Parent == nil then
+			d.Model.Parent = d.Parent
+		end
+	end
+end
+
+----------------------------------------------------------------------
+-- Apply
+----------------------------------------------------------------------
+
+function GraphicsQuality.Apply(setting)
+	local mode = GraphicsQuality.Resolve(setting, savedQualityLevel())
+	if mode == "Low" then
+		if St.Mode ~= "Low" then
+			pcall(LightingStack.Push, PRESET_ID, PRESET, FADE)
+		end
+		St.Mode = "Low"
+		for _, inst in ipairs(CollectionService:GetTagged(DETAIL_TAG)) do
+			hide(inst)
+		end
+		pauseDragon(true)
+		if not St.Conns.Added then
+			St.Conns.Added = CollectionService:GetInstanceAddedSignal(DETAIL_TAG):Connect(function(inst)
+				if St.Mode == "Low" then
+					task.defer(hide, inst)
+				end
+			end)
+		end
+		-- the dragon is built a moment after the boot: catch it once it exists
+		task.delay(3, function()
+			if St.Mode == "Low" then
+				pauseDragon(true)
+			end
+		end)
+	else
+		if St.Mode == "Low" then
+			pcall(LightingStack.Pop, PRESET_ID, FADE)
+		end
+		St.Mode = "High"
+		if St.Conns.Added then
+			St.Conns.Added:Disconnect()
+			St.Conns.Added = nil
+		end
+		showAll()
+		pauseDragon(false)
+	end
+	return St.Mode
+end
+
+function GraphicsQuality.Effective()
+	return St.Mode
+end
+
+function GraphicsQuality.Init()
+	if St.Started then
+		return
+	end
+	St.Started = true
+	ClientSettings.Changed:Connect(function(key, value)
+		if key == "Gfx" then
+			GraphicsQuality.Apply(value)
+		end
+	end)
+	GraphicsQuality.Apply(ClientSettings.Get("Gfx"))
+end
+
+return GraphicsQuality

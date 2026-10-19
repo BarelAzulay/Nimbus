@@ -139,6 +139,8 @@ local Mods = {
 }
 
 local BattleController = {}
+-- test hooks (smoke tests only): Gate() -> bool replaces UiGate.HasPlayed, Shake() -> bool replaces the Shake setting
+BattleController.Hooks = {}
 
 local LocalPlayer = Players.LocalPlayer
 local sin, cos, sqrt, abs, floor, max, min, exp, pi = math.sin, math.cos, math.sqrt, math.abs, math.floor, math.max, math.min, math.exp, math.pi
@@ -1926,6 +1928,10 @@ end
 
 -- the camera shake scale: ClientSettings.Get("Shake") (menu W3); 1 when the module is missing
 function Me.ShakeScale()
+	local hook = BattleController.Hooks.Shake
+	if type(hook) == "function" then
+		return hook() and 1 or 0
+	end
 	if Mods.Settings == nil then
 		Mods.Settings = optional(Client, "ClientSettings") or false
 	end
@@ -3161,7 +3167,7 @@ function Hud.BuildTop()
 	Theme.Stroke(Hud.bossTrack, Theme.Colors.PanelInk or COLORS.Navy, 2.5, 0)
 	Hud.bossFill = make("Frame", { Name = "Fill", BackgroundColor3 = COLORS.Enemy, BorderSizePixel = 0, Size = UDim2.fromScale(1, 1) }, Hud.bossTrack)
 	Theme.Corner(Hud.bossFill, UDim.new(0, 8))
-	Hud.bossText = label(Hud.bossTrack, "", "Heading", 16, { Name = "Text", Size = UDim2.fromScale(1, 1), ZIndex = 3, TextXAlignment = Enum.TextXAlignment.Center })
+	Hud.bossText = label(Hud.bossTrack, "", "Heading", 16, { Name = "Text", Position = UDim2.fromOffset(8, 0), Size = UDim2.new(1, -16, 1, 0), ZIndex = 3, TextXAlignment = Enum.TextXAlignment.Center, TextTruncate = Enum.TextTruncate.AtEnd })
 	Hud.pills = make("Frame", { Name = "Pills", BackgroundTransparency = 1 }, top)
 	make("UIListLayout", { FillDirection = Enum.FillDirection.Horizontal, HorizontalAlignment = Enum.HorizontalAlignment.Center, Padding = UDim.new(0, 6), SortOrder = Enum.SortOrder.LayoutOrder, VerticalAlignment = Enum.VerticalAlignment.Center }, Hud.pills)
 	Hud.bossElement = smallPill(Hud.pills, "", COLORS.Enemy, { Name = "Element", LayoutOrder = 1 })
@@ -3330,6 +3336,22 @@ function Hud.CurrencyTop(m)
 	return max(0, math.ceil((p.Y + s.Y) / f)), floor(p.X / f), math.ceil((p.X + s.X) / f)
 end
 
+-- the right edge (design px) of MenuController's tile column (NimbusMenu.MenuColumn; its frame keeps its place while
+-- the tiles step aside), 0 when there is none
+function Hud.MenuRight(m)
+	local pg = LocalPlayer and LocalPlayer:FindFirstChild("PlayerGui")
+	local menu = pg and pg:FindFirstChild("NimbusMenu")
+	local col = menu and menu:IsA("ScreenGui") and menu.Enabled and menu:FindFirstChild("MenuColumn", true)
+	if not col or not col:IsA("GuiObject") or not col.Visible or col.AbsoluteSize.X <= 0 then
+		return 0
+	end
+	local right = (col.AbsolutePosition.X + col.AbsoluteSize.X) / max(0.05, m.F)
+	if right > m.W * 0.3 then
+		return 0 -- not a left column
+	end
+	return math.ceil(right)
+end
+
 -- Roblox's touch jump button + MovementController's RUN button (screen px, from the left / BOTTOM edge)
 function Hud.TouchRects(m)
 	local small = min(m.VX, m.VY) <= 500
@@ -3426,13 +3448,25 @@ function Hud.Rebuild()
 	local curBottom, curLeft, curRight = Hud.CurrencyTop(m)
 	local topY = K.EDGE
 	-- (a landscape phone's currency pills sit in the top band: stay below them where they reach down)
-	local leftY = (curBottom > 0 and curLeft < K.FC_W + 40) and (curBottom + 6) or topY
+	local cardW = m.Compact and K.FC_W_COMPACT or K.FC_W
+	Hud.fcW = nil
+	if m.Compact and curBottom > 0 and curLeft >= K.EDGE + 208 and curLeft < K.EDGE + cardW + 8 then
+		-- (a phone with the currency pills at the top right: a narrower fighter card fits beside them)
+		Hud.fcW = curLeft - K.EDGE - 8
+		cardW = Hud.fcW
+	end
+	local leftY = (curBottom > 0 and curLeft < K.EDGE + cardW + 8) and (curBottom + 6) or topY
 	-- fighter card + helpers (top left) ----------------------------------------------------------
 	Hud.team.Visible = isFighting or between
 	local teamW, teamH = 0, 0
 	if isFighting or between then
 		teamW, teamH = Hud.LayoutFighter(B, m)
-		Hud.team.Position = UDim2.fromOffset(K.EDGE, leftY)
+		-- a wide screen keeps the menu tiles (left centre): the fighter block starts right of their column
+		local teamX = K.EDGE
+		if not m.Compact then
+			teamX = max(K.EDGE, Hud.MenuRight(m) + 10)
+		end
+		Hud.team.Position = UDim2.fromOffset(teamX, leftY)
 		Hud.team.Size = UDim2.fromOffset(teamW, teamH)
 		Hud.FillFighter(B)
 	end
@@ -3474,7 +3508,7 @@ function Hud.Rebuild()
 		Hud.Captions(B)
 		Hud.Keys()
 	end
-	Hud.SetMenuHidden(isFighting or between)
+	Hud.SetMenuHidden((isFighting or between) and m.Compact) -- a phone: the menu column steps aside (wide screens keep it)
 	Leave.Place(m, B, isFighting)
 	Ring.PlaceNext(B)
 	Hud.FixText(Hud.root, m.F)
@@ -3487,7 +3521,7 @@ end
 function Hud.LayoutFighter(B, m)
 	local F = Hud.F
 	local compact = m.Compact
-	local w = compact and K.FC_W_COMPACT or K.FC_W
+	local w = compact and (Hud.fcW or K.FC_W_COMPACT) or K.FC_W
 	local pad = compact and 10 or 16
 	local barW = w - 2 * pad
 	local y = compact and 8 or 12
@@ -3555,6 +3589,10 @@ function Hud.LayoutFighter(B, m)
 	local disc = compact and K.PORTRAIT_COMPACT or K.PORTRAIT
 	local ringD = disc + (compact and 8 or 10)
 	local cellW = compact and K.HELPER_W_COMPACT or K.HELPER_W
+	if compact then
+		cellW = max(ringD + 70, min(cellW, floor(m.W * 0.3) - K.EDGE)) -- (a phone: the column ends before the centre 40%)
+	end
+	Hud.helperCellW = cellW
 	local cellH = compact and max(ringD + 4, 56) or (ringD + 70)
 	local hy = cardH + (compact and 8 or 10)
 	Hud.helperHolder.Position = UDim2.fromOffset(0, hy)
@@ -3685,6 +3723,7 @@ function Hud.LayoutTop(B, m, teamW, listH, rightY, show)
 	local bossUnit = Hud.BossUnit(B)
 	local w = m.Compact and K.TOP_W_COMPACT or K.TOP_W
 	local x, y, anchor = m.W / 2, K.EDGE, 0.5
+	local underList, leftTop = false, false
 	local curBottom, curLeft, curRight = Hud.CurrencyTop(m)
 	if m.Compact then
 		-- between the fighter card and the enemy list when there is room, else under the enemy list (right)
@@ -3697,9 +3736,25 @@ function Hud.LayoutTop(B, m, teamW, listH, rightY, show)
 		elseif spectator then
 			w = min(w, m.W - 2 * K.EDGE)
 		else
-			w = K.ROW_W_COMPACT
+			-- a tall phone: under the enemy list at the right edge, clear of the helper column on the left
+			w = min(w, m.W - K.EDGE - K.HELPER_W_COMPACT - 24)
 			x, anchor = m.W - K.EDGE, 1
 			y = rightY + listH + 10
+			underList = listH > 0
+			local guess = K.MODE_H + 6 + (bossUnit and 32 or 0) + ((B.Mode == "Ring") and 30 or 0)
+			if underList and not m.Landscape and Hud.team.Visible and Hud.fighterCard and y + guess > m.H * 0.3 - 4 then
+				-- (the right column starts low - currency pills up there - and would reach the centre band: the top
+				-- card goes under the fighter card instead, the helper column moves down under it)
+				leftTop = true
+				w = min(w, m.W - K.EDGE - K.ROW_W_COMPACT - 8 - K.EDGE)
+				x, anchor = Hud.team.Position.X.Offset, 0
+				y = Hud.team.Position.Y.Offset + Hud.fighterCard.Root.Size.Y.Offset + 8
+				underList = false
+			end
+			if listH <= 0 and Hud.team.Visible and Hud.fighterCard then
+				-- (between two ring rounds the enemy list is gone: stay under the fighter card, beside the helpers)
+				y = max(y, Hud.team.Position.Y.Offset + Hud.fighterCard.Root.Size.Y.Offset + 8)
+			end
 		end
 	end
 	-- (a landscape phone's currency pills in the top band: stay under them where they overlap)
@@ -3724,7 +3779,7 @@ function Hud.LayoutTop(B, m, teamW, listH, rightY, show)
 	local compact = m.Compact
 	Hud.boss.Visible = bossUnit ~= nil
 	-- (a phone keeps the top card short: the boss's name goes into its bar, only the wave / ENRAGED pills stay)
-	Hud.pills.Visible = (bossUnit ~= nil and not compact) or B.Mode == "Dungeon"
+	Hud.pills.Visible = not compact and (bossUnit ~= nil or B.Mode == "Dungeon")
 	Hud.compactTop = compact
 	local nameH = compact and 0 or 24
 	if bossUnit then
@@ -3749,6 +3804,17 @@ function Hud.LayoutTop(B, m, teamW, listH, rightY, show)
 	end
 	yy = Ring.LayoutInfo(B, w, yy)
 	top.Size = UDim2.fromOffset(w, yy)
+	if leftTop then
+		local fcH = Hud.fighterCard.Root.Size.Y.Offset
+		Hud.helperHolder.Position = UDim2.fromOffset(0, fcH + 8 + yy + 8)
+	end
+	if underList and y + yy > m.H * 0.3 - 4 then
+		-- (a tall phone whose right column starts low: the top card first, the enemy list under it, both above
+		-- the centre band)
+		y = rightY
+		top.Position = UDim2.fromOffset(x, y)
+		Hud.enemies.Position = UDim2.fromOffset(m.W - K.EDGE, y + yy + 8)
+	end
 	Hud.topH = yy
 	Hud.topRect = { x - anchor * w, y, x - anchor * w + w, y + yy }
 end
@@ -3820,8 +3886,9 @@ function Hud.Update(B, now, force)
 		if force or last.bossHp ~= bossUnit.hp or last.bossMax ~= bossUnit.maxHp then
 			last.bossHp, last.bossMax = bossUnit.hp, bossUnit.maxHp
 			Hud.bossFill.Size = UDim2.fromScale(max(0.002, clamp(bossUnit.hp / bossUnit.maxHp, 0, 1)), 1)
-			local numbers = Theme.ShortNumber(clamp(bossUnit.hp, 0, bossUnit.maxHp)) .. " / " .. Theme.ShortNumber(bossUnit.maxHp)
-			Hud.bossText.Text = Hud.compactTop and (bossUnit.name .. "  " .. numbers) or numbers
+			local fb = Hud.compactTop and 1000 or nil
+			local numbers = Theme.ShortNumber(clamp(bossUnit.hp, 0, bossUnit.maxHp), fb) .. " / " .. Theme.ShortNumber(bossUnit.maxHp, fb)
+			Hud.bossText.Text = Hud.compactTop and (bossUnit.name .. "  " .. Theme.ShortNumber(clamp(bossUnit.hp, 0, bossUnit.maxHp), fb)) or numbers
 		end
 	end
 	if Hud.pills.Visible then
@@ -4012,7 +4079,16 @@ function Hud.ModeText(B)
 	elseif B.Mode == "Dungeon" then
 		local d = B.Dungeon or {}
 		local compact = Hud.m and Hud.m.Compact
-		text, color = (compact and "" or "DUNGEON - ") .. "Floor " .. tostring(num(d.Floor, 1)) .. " - Room " .. tostring(num(d.Room, 1)), Theme.Neon.Purple or COLORS.Ally
+		text, color = "DUNGEON - Floor " .. tostring(num(d.Floor, 1)) .. " - Room " .. tostring(num(d.Room, 1)), Theme.Neon.Purple or COLORS.Ally
+		if compact then
+			-- (a phone's line is short: the room + the wave; DungeonController's side card shows the floor)
+			local waves = num(d.Waves, 0)
+			if waves > 1 then
+				text = "Room " .. tostring(num(d.Room, 1)) .. " - Wave " .. clamp(max(num(d.Wave, 1), B.wave or 0), 1, waves) .. "/" .. waves
+			else
+				text = "Floor " .. tostring(num(d.Floor, 1)) .. " - Room " .. tostring(num(d.Room, 1))
+			end
+		end
 		if d.Boss == true and num(d.Room, 0) >= 3 then
 			text = text .. " (BOSS)"
 		end
@@ -4145,10 +4221,24 @@ function Hud.ShowResult(B, payload)
 		return inst
 	end
 	local short = m.Compact and m.Landscape
-	local titleW = w - 2 * K.PAD - 8 - (short and 112 or 0)
-	local title = part(label(body, titleText, "Title", short and 30 or 34, { Name = "Title", Position = UDim2.fromOffset(K.PAD + 4, y), Size = UDim2.fromOffset(titleW, 40), TextXAlignment = Enum.TextXAlignment.Left, TextColor3 = color, TextTruncate = Enum.TextTruncate.AtEnd }))
+	-- (a short landscape screen: the OK button shares the title's line, long titles step down a size)
+	local titleW = w - 2 * K.PAD - 8 - (short and 100 or 0)
+	local titleSize = short and (#titleText > 9 and 25 or 30) or 34
+	local title = part(label(body, titleText, "Title", titleSize, { Name = "Title", Position = UDim2.fromOffset(K.PAD + 4, y), Size = UDim2.fromOffset(titleW, 40), TextXAlignment = Enum.TextXAlignment.Left, TextColor3 = color, TextTruncate = Enum.TextTruncate.AtEnd }))
 	title.TextStrokeColor3 = COLORS.Ink
 	y = y + 42
+	local plain = { Wipe = true, KO = true, Cleared = true, BossDown = true }
+	local floorLine = false
+	if short and plain[tostring(payload.Reason)] then
+		sub = "" -- (the title says it; a short screen keeps the card clear of the buttons under it)
+		if B.Mode == "Dungeon" then
+			local ex, dg = type(payload.Rewards) == "table" and type(payload.Rewards.Extra) == "table" and payload.Rewards.Extra or {}, B.Dungeon or {}
+			sub = "Floor " .. tostring(num(ex.Floor, num(dg.Floor, 1))) .. " - Room " .. tostring(num(ex.Room, num(dg.Room, 1)))
+			floorLine = true -- (a full-width line instead of a truncated pill)
+		end
+	elseif short and B.Mode == "Ring" then
+		sub = (sub:gsub("^Champion Ring: (%l)", string.upper)) -- "You left after round 8": one line
+	end
 	if sub ~= "" then
 		part(label(body, sub, "Body", 18, { Name = "Reason", Position = UDim2.fromOffset(K.PAD + 4, y), Size = UDim2.fromOffset(w - 2 * K.PAD - 8, 24), TextXAlignment = Enum.TextXAlignment.Left, TextWrapped = true, TextColor3 = COLORS.Muted }))
 		y = y + 28
@@ -4164,16 +4254,21 @@ function Hud.ShowResult(B, payload)
 		local lives = B.lives or 0
 		lines[#lines + 1] = { "Lives left: " .. lives, lives > 0 and COLORS.Life or COLORS.Weak }
 	end
-	local extra = type(rw.Extra) == "table" and rw.Extra or (B.Mode == "Dungeon" and B.Dungeon) or nil
-	if extra and B.Mode == "Dungeon" then
-		lines[#lines + 1] = { "Floor " .. tostring(num(extra.Floor, 1)) .. " - Room " .. tostring(num(extra.Room, 1)), Theme.Neon.Purple or COLORS.Ally }
-		if extra.Name then
-			lines[#lines + 1] = { tostring(extra.Name), Theme.Neon.Purple or COLORS.Ally }
+	if B.Mode == "Dungeon" then
+		-- End.Rewards.Extra first, Start.Dungeon for what it leaves out
+		local extra = type(rw.Extra) == "table" and rw.Extra or {}
+		local dg = B.Dungeon or {}
+		if not floorLine then
+			lines[#lines + 1] = { "Floor " .. tostring(num(extra.Floor, num(dg.Floor, 1))) .. " - Room " .. tostring(num(extra.Room, num(dg.Room, 1))), Theme.Neon.Purple or COLORS.Ally }
+		end
+		local name = extra.Name or dg.Name
+		if name then
+			lines[#lines + 1] = { tostring(name), Theme.Neon.Purple or COLORS.Ally }
 		end
 	end
 	for i, line in ipairs(lines) do
 		local p = smallPill(list, line[1], line[2], { LayoutOrder = i, AutomaticSize = Enum.AutomaticSize.None, Size = UDim2.fromScale(1, 1) })
-		p.TextSize = 16
+		p.TextSize = short and 14 or 16
 		p.TextTruncate = Enum.TextTruncate.AtEnd
 	end
 	local rowsN = math.ceil(#lines / cols)
@@ -4198,8 +4293,8 @@ function Hud.ShowResult(B, payload)
 		return part(b)
 	end
 	if short then
-		local ok = okButton(UDim2.fromOffset(100, 44))
-		ok.Position = UDim2.new(1, -K.PAD - 100, 0, K.PAD)
+		local ok = okButton(UDim2.fromOffset(88, 44))
+		ok.Position = UDim2.new(1, -K.PAD - 88, 0, K.PAD)
 		Hud.resultTimer = thinBar(body, "Timer", 6, COLORS.Muted, { Position = UDim2.fromOffset(K.PAD + 4, y), Size = UDim2.fromOffset(w - 2 * K.PAD - 8, 6) })
 		part(Hud.resultTimer.Root)
 		y = y + 6 + K.PAD
@@ -4478,7 +4573,7 @@ function Leave.Place(m, B, isFighting)
 end
 
 -- the next-round card's LEAVE: a row at the bottom of the card (returns the card's new height)
-function Leave.PlaceOnCard(m, B, w, y)
+function Leave.PlaceOnCard(m, B, w, y, inline)
 	local b = Hud.nextLeave
 	if not b then
 		return y
@@ -4489,6 +4584,13 @@ function Leave.PlaceOnCard(m, B, w, y)
 		return y
 	end
 	Leave.Paint()
+	if inline then
+		-- beside the countdown (a landscape phone)
+		b.Size = UDim2.fromOffset(92, 38)
+		b.AnchorPoint = Vector2.new(1, 0)
+		b.Position = UDim2.new(1, -K.PAD - 4, 0, y)
+		return y
+	end
 	b.Size = UDim2.fromOffset(min(w - 2 * K.PAD - 8, K.LEAVE_CARD_W), K.LEAVE_H_COMPACT)
 	b.AnchorPoint = Vector2.new(1, 0)
 	b.Position = UDim2.new(1, -K.PAD - 4, 0, y)
@@ -4920,6 +5022,7 @@ function Ring.PlaceNext(B)
 	Hud.nextExtra.Visible = #extra > 0
 	setText(Hud.nextExtra, table.concat(extra, "  "))
 	local w
+	local portraitTop = nil
 	if not m.Compact then
 		-- where the action cluster was (bottom right)
 		w = 380
@@ -4935,17 +5038,35 @@ function Ring.PlaceNext(B)
 		end
 		local tr = Hud.topRect
 		if tr and Hud.top.Visible and tr[3] > m.W - w - 20 then
-			y0 = max(y0, tr[4] + 8)
+			-- a landscape phone: narrow the card to stay beside the top card (below it would reach the DASH button)
+			local w2 = m.W - 8 - (tr[3] + 10)
+			if m.Landscape and w2 >= 220 then
+				w = w2
+			else
+				y0 = max(y0, tr[4] + 8)
+			end
 		end
 		if m.Landscape then
 			f.AnchorPoint = Vector2.new(1, 0)
 			f.Position = UDim2.fromOffset(m.W - 8, y0)
 		else
-			-- a tall phone: the lower right, above the jump / RUN buttons (well under the screen centre)
-			local r = Hud.TouchRects(m)
-			local above = (max(r.jump[4], r.run[4]) + 12) / max(0.05, m.F)
-			f.AnchorPoint = Vector2.new(1, 1)
-			f.Position = UDim2.fromOffset(m.W - 8, m.H - above)
+			-- a tall phone: under the top card at the right (clear of the fighter block), above the screen centre;
+			-- else the lower right above the jump / RUN buttons (placed once the card's height is known)
+			portraitTop = (tr and Hud.top.Visible) and (tr[4] + 8) or y0
+			if Hud.team.Visible then
+				local teamRight = Hud.team.Position.X.Offset + Hud.team.Size.X.Offset
+				local teamBottom = Hud.team.Position.Y.Offset + Hud.team.Size.Y.Offset
+				if Hud.fighterCard and portraitTop >= Hud.team.Position.Y.Offset + Hud.fighterCard.Root.Size.Y.Offset then
+					teamRight = Hud.team.Position.X.Offset + (Hud.helperCellW or 0) -- (only the helper column reaches down here)
+				end
+				if teamBottom > portraitTop then
+					w = min(w, m.W - 8 - teamRight - 8)
+				end
+			end
+			if w < 240 then
+				w = min(340, m.W - 24)
+				portraitTop = nil
+			end
 		end
 	end
 	local inner = w - 2 * K.PAD - 8
@@ -4961,14 +5082,34 @@ function Ring.PlaceNext(B)
 		Hud.nextExtra.Size = UDim2.fromOffset(inner, 22)
 		y = y + 26
 	end
-	Hud.nextCount.Position = UDim2.fromOffset(K.PAD + 4, y)
-	Hud.nextCount.Size = UDim2.fromOffset(inner, 30)
-	y = y + 32
+	-- a landscape phone: LEAVE shares the countdown's row (the card stays clear of the DASH / RUN buttons under it)
+	local inline = m.Compact and m.Landscape and Leave.Allowed(B)
+	local countW = inline and (inner - 92 - 6) or inner
+	Hud.nextShort = countW < 150 -- ("Next in 3" when the row is short)
+	Hud.nextCount.Position = UDim2.fromOffset(K.PAD + 4, y + (inline and 4 or 0))
+	Hud.nextCount.Size = UDim2.fromOffset(countW, 30)
+	local countY = y
+	y = y + (inline and 42 or 32)
 	Hud.nextBar.Root.Position = UDim2.fromOffset(K.PAD + 4, y)
 	Hud.nextBar.Root.Size = UDim2.fromOffset(inner, 8)
 	y = y + 8 + K.PAD
-	y = Leave.PlaceOnCard(m, B, w, y)
+	if inline then
+		Leave.PlaceOnCard(m, B, w, countY, true)
+	else
+		y = Leave.PlaceOnCard(m, B, w, y)
+	end
 	f.Size = UDim2.fromOffset(w, y)
+	if m.Compact and not m.Landscape then
+		if portraitTop and portraitTop + y <= m.H * 0.5 - 4 then
+			f.AnchorPoint = Vector2.new(1, 0)
+			f.Position = UDim2.fromOffset(m.W - 8, portraitTop)
+		else
+			local r = Hud.TouchRects(m)
+			local above = (max(r.jump[4], r.run[4]) + 12) / max(0.05, m.F)
+			f.AnchorPoint = Vector2.new(1, 1)
+			f.Position = UDim2.fromOffset(m.W - 8, m.H - above)
+		end
+	end
 	f.Visible = true
 	Hud.FixText(f, m.F)
 	Ring.UpdateNext(os.clock())
@@ -4986,7 +5127,8 @@ function Ring.UpdateNext(now)
 		return
 	end
 	local left = nx.Seconds - (now - nx.At)
-	local text = (left > 0.05) and ("Round " .. nx.Next .. " in " .. math.ceil(left - 0.05)) or ("Round " .. nx.Next .. "...")
+	local label = Hud.nextShort and "Next" or ("Round " .. nx.Next)
+	local text = (left > 0.05) and (label .. " in " .. math.ceil(left - 0.05)) or (label .. "...")
 	setText(Hud.nextCount, text)
 	setThin(Hud.nextBar, clamp(left / max(0.1, nx.Seconds), 0, 1))
 end
@@ -5136,6 +5278,10 @@ end
 
 -- the main menu is gone (UiGate.HasPlayed, 7.2); no UiGate module = always
 function Input.GateOpen()
+	local hook = BattleController.Hooks.Gate
+	if type(hook) == "function" then
+		return hook() ~= false
+	end
 	if Mods.UiGate == nil then
 		Mods.UiGate = optional(Client, "UiGate") or false
 	end
@@ -6372,6 +6518,7 @@ function BattleController.GetBattle()
 		Speed = B.speed and { Walk = B.speed.Walk, Run = B.speed.Run } or nil,
 		Dungeon = B.Dungeon,
 		Wave = B.wave,
+		MenuHidden = Hud.menuHidden == true,
 		Cooldowns = (function()
 			local now = os.clock()
 			local out = { Buff = {} }

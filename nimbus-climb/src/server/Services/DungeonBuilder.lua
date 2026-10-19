@@ -98,7 +98,7 @@ local C = {
 	Puddle = rgb(140, 170, 190),
 	Carpet = rgb(132, 92, 150), -- plum: the big face stays under 0.45 saturation
 	Rock = rgb(112, 104, 100),
-	RockDark = rgb(90, 84, 82),
+	RockDark = rgb(98, 92, 90),
 	Abyss = rgb(92, 88, 100),
 	Bone = rgb(222, 214, 196),
 	Marble = rgb(206, 200, 210),
@@ -207,22 +207,23 @@ function Kit.wall(parent, cf, len, color, mat, seed, door, lite)
 	-- cap / cornice, the dado band and two mortar courses (the brick read of image 22)
 	Kit.part(parent, cf * CFrame.new(0, h + 0.4, -0.3), Vector3.new(len, 0.8, 1.6), C.StoneDark, M.Slate, { Name = "Cap" })
 	if lite then
-		Kit.part(parent, cf * CFrame.new(0, 7.2, -0.55), Vector3.new(len, 0.25, 0.1), C.StoneDark, M.Brick, { Name = "Course" })
+		Kit.part(parent, cf * CFrame.new(0, 7.2, -0.55), Vector3.new(len, 0.4, 0.12), C.StoneDark, M.Brick, { Name = "Course" })
 	elseif not door then
 		Kit.part(parent, cf * CFrame.new(0, 3.4, -0.6), Vector3.new(len, 0.5, 0.2), C.StoneDark, M.Brick, { Name = "Dado" })
-		Kit.part(parent, cf * CFrame.new(0, 7.2, -0.55), Vector3.new(len, 0.25, 0.1), C.StoneDark, M.Brick, { Name = "Course" })
-		Kit.part(parent, cf * CFrame.new(0, 11, -0.55), Vector3.new(len, 0.25, 0.1), C.StoneDark, M.Brick, { Name = "Course" })
+		Kit.part(parent, cf * CFrame.new(0, 7.2, -0.55), Vector3.new(len, 0.4, 0.12), C.StoneDark, M.Brick, { Name = "Course" })
+		Kit.part(parent, cf * CFrame.new(0, 11, -0.55), Vector3.new(len, 0.4, 0.12), C.StoneDark, M.Brick, { Name = "Course" })
 	else
-		Kit.part(parent, cf * CFrame.new(0, 11.4, -0.55), Vector3.new(len, 0.25, 0.1), C.StoneDark, M.Brick, { Name = "Course" })
+		Kit.part(parent, cf * CFrame.new(0, 11.4, -0.55), Vector3.new(len, 0.4, 0.12), C.StoneDark, M.Brick, { Name = "Course" })
 	end
 	-- protruding stones
-	local n = lite and 2 or max(3, floor(len / 5))
+	local n = lite and 2 or max(4, min(8, floor(len / 5)))
 	for i = 1, n do
 		local x = -len / 2 + 2 + r() * (len - 4)
 		local y = 1.6 + r() * (h - 4)
 		if not door or abs(x - (door.X or 0)) > (door.Width or 8) / 2 + 1.2 or y > 8.5 then
-			local sw = 1.6 + r() * 1.2
-			Kit.part(parent, cf * CFrame.new(x, y, -0.55), Vector3.new(sw, 0.9, 0.3), jitter(C.StoneLight, seed + i * 3), M.Slate, { Name = "Brick" })
+			local sw = 1.8 + r() * 1.4
+			local shade = (i % 3 == 0) and C.StoneDark or C.StoneLight
+			Kit.part(parent, cf * CFrame.new(x, y, -0.6), Vector3.new(sw, 1.0, 0.4), jitter(shade, seed + i * 3), M.Slate, { Name = "Brick" })
 		end
 	end
 end
@@ -267,7 +268,7 @@ function Kit.door(parent, cf, name, width)
 	Kit.part(door, cf * CFrame.new(-w / 2 - 0.5, h / 2, 0), Vector3.new(1, h, 1.6), C.StoneDark, M.Slate, { Name = "Jamb", Collide = true })
 	Kit.part(door, cf * CFrame.new(w / 2 + 0.5, h / 2, 0), Vector3.new(1, h, 1.6), C.StoneDark, M.Slate, { Name = "Jamb", Collide = true })
 	Kit.part(door, cf * CFrame.new(0, h + 0.5, 0), Vector3.new(w + 2, 1, 1.6), C.StoneDark, M.Slate, { Name = "Lintel", Collide = true })
-	local n = floor(w / 1.2)
+	local n = max(3, floor(w / 1.6))
 	local bars = {}
 	for i = 1, n do
 		local x = -w / 2 + (i - 0.5) * (w / n)
@@ -298,13 +299,14 @@ end
 
 -- props (pure decor sits in one NC_Detail model per room)
 function Kit.barrel(parent, cf)
-	Kit.part(parent, cf * CFrame.new(0, 1.3, 0), Vector3.new(2.6, 2.2, 2.2), C.Wood, M.Wood, { Name = "Barrel", Shape = Enum.PartType.Cylinder, Collide = true })
-	Kit.part(parent, cf * CFrame.new(0, 0.6, 0), Vector3.new(0.2, 2.35, 2.35), C.Iron, M.Metal, { Name = "Band", Shape = Enum.PartType.Cylinder })
-	Kit.part(parent, cf * CFrame.new(0, 2.0, 0), Vector3.new(0.2, 2.35, 2.35), C.Iron, M.Metal, { Name = "Band", Shape = Enum.PartType.Cylinder })
+	local up = CFrame.Angles(0, 0, PI / 2)
+	Kit.part(parent, cf * CFrame.new(0, 1.6, 0) * up, Vector3.new(3.2, 2.8, 2.8), C.Wood, M.Wood, { Name = "Barrel", Shape = Enum.PartType.Cylinder, Collide = true })
+	Kit.part(parent, cf * CFrame.new(0, 0.7, 0) * up, Vector3.new(0.25, 2.95, 2.95), C.Iron, M.Metal, { Name = "Band", Shape = Enum.PartType.Cylinder })
+	Kit.part(parent, cf * CFrame.new(0, 2.5, 0) * up, Vector3.new(0.25, 2.95, 2.95), C.Iron, M.Metal, { Name = "Band", Shape = Enum.PartType.Cylinder })
 end
 
 function Kit.crate(parent, cf, s)
-	s = s or 2.4
+	s = s or 3
 	Kit.part(parent, cf * CFrame.new(0, s / 2, 0), Vector3.new(s, s, s), C.Plank, M.WoodPlanks, { Name = "Crate", Collide = true })
 	Kit.part(parent, cf * CFrame.new(0, s / 2, s / 2 + 0.05), Vector3.new(s * 0.9, 0.3, 0.1), C.Wood, M.Wood, { Name = "Slat" })
 	Kit.part(parent, cf * CFrame.new(0, s / 2, -s / 2 - 0.05), Vector3.new(s * 0.9, 0.3, 0.1), C.Wood, M.Wood, { Name = "Slat" })
@@ -325,21 +327,22 @@ function Kit.moss(parent, cf, w, d)
 end
 
 function Kit.hay(parent, cf)
-	Kit.part(parent, cf * CFrame.new(0, 0.45, 0), Vector3.new(3.2, 0.9, 2.6), C.Hay, M.Sand, { Name = "Hay" })
-	Kit.part(parent, cf * CFrame.new(0.4, 1.05, -0.2), Vector3.new(1.8, 0.4, 1.4), C.Hay, M.Sand, { Name = "Hay" })
+	Kit.part(parent, cf * CFrame.new(0, 0.55, 0), Vector3.new(4.4, 1.1, 3.6), C.Hay, M.Sand, { Name = "Hay" })
+	Kit.part(parent, cf * CFrame.new(0.5, 1.35, -0.3) * CFrame.Angles(0, 0.4, 0), Vector3.new(2.6, 0.6, 2), C.Hay, M.Sand, { Name = "Hay" })
 end
 
 function Kit.table(parent, cf)
-	Kit.part(parent, cf * CFrame.new(0, 2.3, 0), Vector3.new(5, 0.4, 2.4), C.Plank, M.WoodPlanks, { Name = "TableTop", Collide = true })
-	Kit.part(parent, cf * CFrame.new(-2, 1.05, 0), Vector3.new(0.5, 2.1, 2), C.Wood, M.Wood, { Name = "TableLeg" })
-	Kit.part(parent, cf * CFrame.new(2, 1.05, 0), Vector3.new(0.5, 2.1, 2), C.Wood, M.Wood, { Name = "TableLeg" })
-	Kit.part(parent, cf * CFrame.new(-1.2, 2.75, 0.3), Vector3.new(0.9, 0.5, 0.9), C.Gold, M.Metal, { Name = "Cup" })
+	Kit.part(parent, cf * CFrame.new(0, 2.5, 0), Vector3.new(7, 0.45, 3), C.Plank, M.WoodPlanks, { Name = "TableTop", Collide = true })
+	Kit.part(parent, cf * CFrame.new(-2.8, 1.15, 0), Vector3.new(0.6, 2.3, 2.4), C.Wood, M.Wood, { Name = "TableLeg" })
+	Kit.part(parent, cf * CFrame.new(2.8, 1.15, 0), Vector3.new(0.6, 2.3, 2.4), C.Wood, M.Wood, { Name = "TableLeg" })
+	Kit.part(parent, cf * CFrame.new(-1.6, 3.0, 0.4), Vector3.new(0.9, 0.6, 0.9), C.Gold, M.Metal, { Name = "Cup" })
+	Kit.part(parent, cf * CFrame.new(1.4, 2.9, -0.5), Vector3.new(1.6, 0.3, 1.2), C.Bone, M.Marble, { Name = "Plate" })
 end
 
 function Kit.bench(parent, cf)
-	Kit.part(parent, cf * CFrame.new(0, 1.2, 0), Vector3.new(3.6, 0.35, 1.2), C.Plank, M.WoodPlanks, { Name = "Bench", Collide = true })
-	Kit.part(parent, cf * CFrame.new(-1.4, 0.55, 0), Vector3.new(0.4, 1.1, 1), C.Wood, M.Wood, { Name = "BenchLeg" })
-	Kit.part(parent, cf * CFrame.new(1.4, 0.55, 0), Vector3.new(0.4, 1.1, 1), C.Wood, M.Wood, { Name = "BenchLeg" })
+	Kit.part(parent, cf * CFrame.new(0, 1.3, 0), Vector3.new(6, 0.4, 1.4), C.Plank, M.WoodPlanks, { Name = "Bench", Collide = true })
+	Kit.part(parent, cf * CFrame.new(-2.4, 0.55, 0), Vector3.new(0.5, 1.1, 1.2), C.Wood, M.Wood, { Name = "BenchLeg" })
+	Kit.part(parent, cf * CFrame.new(2.4, 0.55, 0), Vector3.new(0.5, 1.1, 1.2), C.Wood, M.Wood, { Name = "BenchLeg" })
 end
 
 function Kit.bones(parent, cf)
@@ -378,8 +381,8 @@ end
 function Kit.brazier(parent, cf)
 	Kit.part(parent, cf * CFrame.new(0, 0.3, 0), Vector3.new(2, 0.6, 2), C.Iron, M.Metal, { Name = "BrazierFoot" })
 	Kit.part(parent, cf * CFrame.new(0, 1.6, 0), Vector3.new(0.5, 2, 0.5), C.Iron, M.Metal, { Name = "BrazierStem" })
-	Kit.part(parent, cf * CFrame.new(0, 2.9, 0), Vector3.new(0.9, 2.6, 2.6), C.Iron, M.Metal, { Name = "BrazierBowl", Shape = Enum.PartType.Cylinder })
-	local flame = Kit.part(parent, cf * CFrame.new(0, 3.9, 0), Vector3.new(1.4, 1.4, 1.4), C.Flame, M.Neon, { Name = "BrazierFlame" })
+	Kit.part(parent, cf * CFrame.new(0, 3.0, 0) * CFrame.Angles(0, 0, PI / 2), Vector3.new(1.1, 3.2, 3.2), C.Iron, M.Metal, { Name = "BrazierBowl", Shape = Enum.PartType.Cylinder })
+	local flame = Kit.part(parent, cf * CFrame.new(0, 4.3, 0), Vector3.new(1.8, 1.8, 1.8), C.Flame, M.Neon, { Name = "BrazierFlame" })
 	local light = Instance.new("PointLight")
 	light.Name = "BrazierLight"
 	light.Color = C.Light
@@ -391,14 +394,14 @@ end
 
 function Kit.rock(parent, cf, size, seed)
 	local r = rng(seed)
-	Kit.part(parent, cf * CFrame.Angles(0, (r() - 0.5) * 0.3, (r() - 0.5) * 0.15), size, jitter(C.Rock, seed), M.Slate, { Name = "Rock", Collide = true })
+	Kit.part(parent, cf * CFrame.Angles((r() - 0.5) * 0.4, (r() - 0.5) * 0.6, (r() - 0.5) * 0.4), size, jitter((r() > 0.5) and C.Rock or C.RockDark, seed), M.Slate, { Name = "Rock", Collide = true })
 end
 
 function Kit.stalagmite(parent, cf, h)
-	h = h or 3
-	Kit.part(parent, cf * CFrame.new(0, h * 0.2, 0), Vector3.new(1.8, h * 0.4, 1.8), C.RockDark, M.Slate, { Name = "Stalagmite" })
-	Kit.part(parent, cf * CFrame.new(0, h * 0.55, 0), Vector3.new(1.1, h * 0.35, 1.1), C.Rock, M.Slate, { Name = "Stalagmite" })
-	Kit.part(parent, cf * CFrame.new(0, h * 0.85, 0), Vector3.new(0.5, h * 0.3, 0.5), C.Rock, M.Slate, { Name = "Stalagmite" })
+	h = h or 4
+	Kit.part(parent, cf * CFrame.new(0, h * 0.2, 0) * CFrame.Angles(0, 0.4, 0), Vector3.new(2.6, h * 0.4, 2.6), C.RockDark, M.Slate, { Name = "Stalagmite", Collide = true })
+	Kit.part(parent, cf * CFrame.new(0, h * 0.55, 0) * CFrame.Angles(0, 0.8, 0), Vector3.new(1.6, h * 0.35, 1.6), C.Rock, M.Slate, { Name = "Stalagmite" })
+	Kit.part(parent, cf * CFrame.new(0, h * 0.85, 0), Vector3.new(0.7, h * 0.3, 0.7), C.Rock, M.Slate, { Name = "Stalagmite" })
 end
 
 -- a cobweb in a ceiling corner: cf = the corner at the ceiling, LookVector along one wall
@@ -432,9 +435,9 @@ function Kit.rack(parent, cf)
 end
 
 function Kit.cauldron(parent, cf)
-	Kit.part(parent, cf * CFrame.new(0, 0.3, 0), Vector3.new(0.6, 2.2, 2.2), C.Iron, M.Metal, { Name = "CauldronFoot", Shape = Enum.PartType.Cylinder })
-	Kit.part(parent, cf * CFrame.new(0, 1.4, 0), Vector3.new(2.6, 2.6, 2.6), C.Iron, M.Metal, { Name = "Cauldron", Shape = Enum.PartType.Ball, Collide = true })
-	Kit.part(parent, cf * CFrame.new(0, 2.5, 0), Vector3.new(0.3, 2.2, 2.2), C.Moss, M.Neon, { Name = "Brew", Shape = Enum.PartType.Cylinder, Accent = true })
+	Kit.part(parent, cf * CFrame.new(0, 0.3, 0) * CFrame.Angles(0, 0, PI / 2), Vector3.new(0.6, 2.4, 2.4), C.Iron, M.Metal, { Name = "CauldronFoot", Shape = Enum.PartType.Cylinder })
+	Kit.part(parent, cf * CFrame.new(0, 1.8, 0), Vector3.new(3.2, 3.2, 3.2), C.Iron, M.Metal, { Name = "Cauldron", Shape = Enum.PartType.Ball, Collide = true })
+	Kit.part(parent, cf * CFrame.new(0, 3.2, 0) * CFrame.Angles(0, 0, PI / 2), Vector3.new(0.3, 2.6, 2.6), C.Moss, M.Neon, { Name = "Brew", Shape = Enum.PartType.Cylinder, Accent = true })
 end
 
 -- a wall emblem: a shield with crossed bars (cf on the wall face, LookVector into the room)
@@ -459,6 +462,59 @@ function Kit.candles(parent, cf)
 	for i = -1, 1 do
 		Kit.part(parent, cf * CFrame.new(i * 0.7, 0.35, 0), Vector3.new(0.3, 0.7, 0.3), C.Marble, M.Marble, { Name = "Candle" })
 		Kit.part(parent, cf * CFrame.new(i * 0.7, 0.85, 0), Vector3.new(0.25, 0.3, 0.25), C.Flame, M.Neon, { Name = "CandleFlame" })
+	end
+end
+
+-- a chandelier hanging from the ceiling (cf = the ceiling point)
+function Kit.chandelier(parent, cf)
+	Kit.part(parent, cf * CFrame.new(0, -2.5, 0), Vector3.new(0.3, 5, 0.3), C.Iron, M.Metal, { Name = "ChandelierChain" })
+	Kit.part(parent, cf * CFrame.new(0, -5.2, 0) * CFrame.Angles(0, 0, PI / 2), Vector3.new(0.4, 5, 5), C.Iron, M.Metal, { Name = "ChandelierRing", Shape = Enum.PartType.Cylinder })
+	Kit.part(parent, cf * CFrame.new(0, -5.2, 0) * CFrame.Angles(0, 0, PI / 2), Vector3.new(0.5, 3.6, 3.6), C.StoneDark, M.Metal, { Name = "ChandelierHub", Shape = Enum.PartType.Cylinder })
+	for i = 0, 3 do
+		local a = i * PI / 2 + PI / 4
+		local x, z = math.cos(a) * 2.1, math.sin(a) * 2.1
+		Kit.part(parent, cf * CFrame.new(x, -4.6, z), Vector3.new(0.35, 0.8, 0.35), C.Marble, M.Marble, { Name = "Candle" })
+		Kit.part(parent, cf * CFrame.new(x, -4.0, z), Vector3.new(0.3, 0.4, 0.3), C.Flame, M.Neon, { Name = "CandleFlame" })
+	end
+	local light = Instance.new("PointLight")
+	light.Name = "ChandelierLight"
+	light.Color = C.Light
+	light.Brightness = 1.0
+	light.Range = 18
+	light.Shadows = false
+	light.Parent = parent:FindFirstChild("ChandelierHub")
+end
+
+-- a hearth in a wall (cf on the wall face at floor level, LookVector into the room)
+function Kit.hearth(parent, cf)
+	Kit.part(parent, cf * CFrame.new(-3.2, 2.6, -0.9), Vector3.new(1.4, 5.2, 1.8), C.StoneDark, M.Slate, { Name = "HearthSide", Collide = true })
+	Kit.part(parent, cf * CFrame.new(3.2, 2.6, -0.9), Vector3.new(1.4, 5.2, 1.8), C.StoneDark, M.Slate, { Name = "HearthSide", Collide = true })
+	Kit.part(parent, cf * CFrame.new(0, 5.6, -0.9), Vector3.new(7.8, 0.8, 2), C.StoneDark, M.Slate, { Name = "Mantle" })
+	Kit.part(parent, cf * CFrame.new(0, 2.6, -0.35), Vector3.new(5, 5.2, 0.5), C.Ceiling, M.Slate, { Name = "HearthBack" })
+	Kit.part(parent, cf * CFrame.new(0, 0.2, -1.2), Vector3.new(7.8, 0.4, 2.4), C.StoneDark, M.Slate, { Name = "HearthStone" })
+	Kit.part(parent, cf * CFrame.new(0, 0.7, -0.9), Vector3.new(2.6, 0.6, 1.2), C.Wood, M.Wood, { Name = "Log" })
+	local flame = Kit.part(parent, cf * CFrame.new(0, 1.6, -0.9), Vector3.new(2.2, 1.6, 1), C.Ember, M.Neon, { Name = "HearthFlame" })
+	local light = Instance.new("PointLight")
+	light.Name = "HearthLight"
+	light.Color = C.Light
+	light.Brightness = 1.4
+	light.Range = 18
+	light.Shadows = false
+	light.Parent = flame
+end
+
+function Kit.rug(parent, cf, w, d)
+	Kit.part(parent, cf * CFrame.new(0, 0.07, 0), Vector3.new(w or 8, 0.14, d or 6), C.Carpet, M.Fabric, { Name = "Rug" })
+	Kit.part(parent, cf * CFrame.new(0, 0.15, 0), Vector3.new((w or 8) - 1.6, 0.06, (d or 6) - 1.6), WorldStyle.Palette.Accent.Purple, M.Fabric, { Name = "RugInlay", Accent = true })
+end
+
+-- a wine rack against a wall (cf on the wall face, LookVector into the room)
+function Kit.wineRack(parent, cf)
+	Kit.part(parent, cf * CFrame.new(0, 2, -1), Vector3.new(5, 4, 1.8), C.Wood, M.Wood, { Name = "WineRack", Collide = true })
+	for i = -1, 1 do
+		for j = 0, 1 do
+			Kit.part(parent, cf * CFrame.new(i * 1.5, 1.1 + j * 1.8, -2.05) * CFrame.Angles(PI / 2, 0, 0), Vector3.new(0.6, 0.6, 0.6), C.Moss, M.Glass, { Name = "Bottle", Shape = Enum.PartType.Cylinder })
+		end
 	end
 end
 
@@ -506,6 +562,7 @@ local function newTemplate(name, w, d, entrance, exit)
 	base.CanTouch = false
 	base.Transparency = 1
 	base.Size = Vector3.new(1, 1, 1)
+	base.Material = Enum.Material.SmoothPlastic
 	base.CFrame = CFrame.new(0, -1.5, 0)
 	base.Parent = model
 	model.PrimaryPart = base
@@ -549,7 +606,7 @@ end
 
 local function roomPoints(base, w, d, exitX)
 	local hd = d / 2
-	attach(base, "Threshold", Vector3.new(0, 1.5, -hd + 8))
+	attach(base, "Threshold", Vector3.new(0, 1.5, -hd + 10))
 	for i = 1, 4 do
 		attach(base, "Spawn" .. i, Vector3.new(-6 + (i - 1) * 4, 1.5, -hd + 4))
 	end
@@ -580,6 +637,9 @@ function Rooms.Hall(variant)
 	end
 	Kit.shield(detail, CFrame.new(0, 9, 23.4))
 	Kit.rack(detail, CFrame.new(23.4, 0, -6) * CFrame.Angles(0, PI / 2, 0))
+	Kit.chandelier(model, CFrame.new(0, CEIL_Y, 0))
+	Kit.hearth(model, CFrame.new(23.4, 0, 10) * CFrame.Angles(0, PI / 2, 0))
+	Kit.rug(detail, CFrame.new(0, 0, -14), 10, 7)
 	Kit.skulls(detail, CFrame.new(-21, 0, -8))
 	Kit.rubble(detail, CFrame.new(12, 0, 20), seed + 7)
 	Kit.candles(detail, CFrame.new(-18, 2.5, 14))
@@ -626,8 +686,10 @@ function Rooms.Cellar(variant)
 	Kit.floorTiles(model, w, d, C.FlagDark, M.Cobblestone, seed)
 	roomShell(model, w, d, C.Brick, M.Brick, seed, 0, 3)
 	Kit.ceiling(model, w, d)
-	-- a beam across the ceiling
-	Kit.part(model, CFrame.new(0, CEIL_Y - 0.6, 0), Vector3.new(w, 1.2, 1.6), C.Wood, M.Wood, { Name = "Beam" })
+	-- beams across the ceiling, a wine rack
+	Kit.part(model, CFrame.new(0, CEIL_Y - 0.6, -8), Vector3.new(w, 1.2, 1.6), C.Wood, M.Wood, { Name = "Beam" })
+	Kit.part(model, CFrame.new(0, CEIL_Y - 0.6, 8), Vector3.new(w, 1.2, 1.6), C.Wood, M.Wood, { Name = "Beam" })
+	Kit.wineRack(detail, CFrame.new(23.4, 0, 12) * CFrame.Angles(0, PI / 2, 0))
 	-- a cell in one corner: bars on two sides
 	local cx, cz = 16, -14
 	for i = 0, 5 do
@@ -681,15 +743,15 @@ function Rooms.Cave(variant)
 	-- rock bulges along every wall (the cave read), boulders on the floor
 	for i = 1, 7 do
 		local z = -21 + (i - 1) * 7
-		Kit.rock(model, CFrame.new(-23 + 0.8 * r(), 2 + r() * 7, z), Vector3.new(3 + r() * 2, 4 + r() * 4, 4 + r() * 2), seed + i)
-		Kit.rock(model, CFrame.new(23 - 0.8 * r(), 2 + r() * 7, z + 3), Vector3.new(3 + r() * 2, 4 + r() * 4, 4 + r() * 2), seed + i + 20)
+		Kit.rock(model, CFrame.new(-23.5 + 0.8 * r(), 3 + r() * 6, z), Vector3.new(3 + r() * 2.5, 6 + r() * 5, 6 + r() * 2), seed + i)
+		Kit.rock(model, CFrame.new(23.5 - 0.8 * r(), 3 + r() * 6, z + 3), Vector3.new(3 + r() * 2.5, 6 + r() * 5, 6 + r() * 2), seed + i + 20)
 	end
 	for i = 1, 4 do
 		local x = -18 + (i - 1) * 12
 		if abs(x) > 6 then
-			Kit.rock(model, CFrame.new(x, 2 + r() * 6, -23 + 0.8 * r()), Vector3.new(4 + r() * 2, 4 + r() * 3, 3 + r()), seed + i + 40)
+			Kit.rock(model, CFrame.new(x, 3 + r() * 5, -23.5 + 0.8 * r()), Vector3.new(6 + r() * 2, 6 + r() * 4, 3 + r() * 2), seed + i + 40)
 		end
-		Kit.rock(model, CFrame.new(x + 3, 2 + r() * 6, 23 - 0.8 * r()), Vector3.new(4 + r() * 2, 4 + r() * 3, 3 + r()), seed + i + 60)
+		Kit.rock(model, CFrame.new(x + 3, 3 + r() * 5, 23.5 - 0.8 * r()), Vector3.new(6 + r() * 2, 6 + r() * 4, 3 + r() * 2), seed + i + 60)
 	end
 	for i = 1, 7 do
 		Kit.stalagmite(detail, CFrame.new(-18 + r() * 36, 0, -8 + r() * 26), 2.5 + r() * 2.5)
@@ -703,7 +765,7 @@ function Rooms.Cave(variant)
 	Kit.part(model, CFrame.new(px, 0.1, pz), Vector3.new(14, 0.2, 12), C.Water, M.Glass, { Name = "Pool", Transparency = 0.3 })
 	for i = 1, 6 do
 		local ang = (i / 6) * PI * 2
-		Kit.part(model, CFrame.new(px + math.cos(ang) * 7.6, 0.5, pz + math.sin(ang) * 6.6), Vector3.new(2.2, 1, 1.8), jitter(C.RockDark, seed + i), M.Slate, { Name = "PoolRim" })
+		Kit.part(model, CFrame.new(px + math.cos(ang) * 8.4, 0.6, pz + math.sin(ang) * 7.4) * CFrame.Angles(0, -ang, 0), Vector3.new(3.2, 1.2, 2), jitter(C.RockDark, seed + i), M.Slate, { Name = "PoolRim" })
 	end
 	Kit.part(model, CFrame.new(px + 4, 7, 23.2), Vector3.new(6, 13, 0.6), C.Water, M.Glass, { Name = "Waterfall", Transparency = 0.45 })
 	for i = 1, 3 do
@@ -795,8 +857,8 @@ function Rooms.Throne(variant)
 	Kit.ceiling(model, w, d)
 	-- three arches across the room
 	for _, z in ipairs({ -20, 4 }) do
-		Kit.arch(model, CFrame.new(-19, 0, z) * CFrame.Angles(0, PI / 2, 0), 9, 11.5)
-		Kit.arch(model, CFrame.new(19, 0, z) * CFrame.Angles(0, PI / 2, 0), 9, 11.5)
+		Kit.pillar(model, CFrame.new(-19, 0, z), WALL_H, C.StoneLight)
+		Kit.pillar(model, CFrame.new(19, 0, z), WALL_H, C.StoneLight)
 	end
 	-- the carpet (plum Fabric, big face under 0.45 saturation) and the Neon edge runes
 	Kit.part(model, CFrame.new(0, 0.1, -4), Vector3.new(8, 0.2, 56), C.Carpet, M.Fabric, { Name = "Carpet" })
@@ -844,7 +906,7 @@ function Rooms.Throne(variant)
 	Kit.moss(detail, CFrame.new(24, 0, -14), 4, 3)
 	Kit.hay(detail, CFrame.new(27, 0, 0))
 	-- points: the zone centre sits at z -8 (56 x 56 from -36 to 20, in front of the dais)
-	attach(base, "Threshold", Vector3.new(0, 1.5, -28))
+	attach(base, "Threshold", Vector3.new(0, 1.5, -26))
 	for i = 1, 4 do
 		attach(base, "Spawn" .. i, Vector3.new(-6 + (i - 1) * 4, 1.5, -32))
 	end
@@ -867,8 +929,7 @@ function Rooms.Entrance()
 	for _, sx in ipairs({ -1, 1 }) do
 		Kit.pillar(model, CFrame.new(sx * 12.6, 0, -10.6), WALL_H + 0.5, C.Stone)
 		Kit.pillar(model, CFrame.new(sx * 12.6, 0, 10.6), WALL_H + 0.5, C.Stone)
-		Kit.torch(model, CFrame.new(sx * 13.5, 6.5, -4) * CFrame.Angles(0, sx * PI / 2, 0))
-		Kit.torch(model, CFrame.new(sx * 13.5, 6.5, 6) * CFrame.Angles(0, sx * PI / 2, 0))
+		Kit.torch(model, CFrame.new(sx * 13.5, 6.5, 1) * CFrame.Angles(0, sx * PI / 2, 0))
 	end
 	Kit.torch(model, CFrame.new(-7, 7, 11.5))
 	Kit.torch(model, CFrame.new(7, 7, 11.5))
@@ -880,7 +941,6 @@ function Rooms.Entrance()
 	end
 	Kit.banner(detail, CFrame.new(-6, 11, -11.4) * CFrame.Angles(0, PI, 0))
 	Kit.banner(detail, CFrame.new(6, 11, -11.4) * CFrame.Angles(0, PI, 0))
-	Kit.rune(detail, CFrame.new(0, 0, 4), 12, 0.5)
 	Kit.barrel(detail, CFrame.new(-11, 0, 9))
 	Kit.crate(detail, CFrame.new(11, 0, 9), 2.2)
 	Kit.moss(detail, CFrame.new(10, 0, -9), 3, 2.4)
@@ -933,8 +993,10 @@ function Rooms.Corridor(kind)
 		Kit.torch(model, CFrame.new(jog - s * 4.5, 6.5, 5) * CFrame.Angles(0, -s * PI / 2, 0))
 	end
 	Kit.puddle(detail, CFrame.new(jog / 2, 0, 0), 3, 2.4)
-	Kit.chain(detail, CFrame.new(jog == 0 and -4.6 or (jog / 2), 11, jog == 0 and 4 or 0))
-	Kit.moss(detail, CFrame.new(jog, 0, 5.5), 2.4, 1.8)
+	if jog == 0 then
+		Kit.chain(detail, CFrame.new(-4.6, 11, 4))
+		Kit.moss(detail, CFrame.new(0, 0, 5.5), 2.4, 1.8)
+	end
 	return model
 end
 
@@ -959,7 +1021,7 @@ function Rooms.Treasure()
 	Kit.rune(detail, CFrame.new(0, 0, -3), 20, 0.5)
 	-- the exit portal: a Marble arch with a purple shimmer and the prompt part
 	Kit.arch(model, CFrame.new(0, 0, 9.4), 6, 9)
-	Kit.part(model, CFrame.new(0, 4.2, 9.4), Vector3.new(5.6, 8, 0.4), WorldStyle.Palette.Accent.Purple, M.ForceField, { Name = "ExitShimmer", Transparency = 0.4 })
+	Kit.part(model, CFrame.new(0, 4.2, 9.4), Vector3.new(5.6, 8, 0.15), WorldStyle.Palette.Accent.Purple, M.ForceField, { Name = "ExitShimmer", Transparency = 0.4 })
 	local exitPart = Kit.part(model, CFrame.new(0, 3, 7.4), Vector3.new(1, 1, 1), C.Stone, M.Slate, { Name = "ExitPrompt", Transparency = 1 })
 	exitPart:SetAttribute("DungeonAction", "Exit")
 	local exitPrompt = Instance.new("ProximityPrompt")
@@ -1299,6 +1361,7 @@ local function makeZone(model, pocket, room, size, centerCf)
 	zone.CanQuery = false
 	zone.CanTouch = false
 	zone.Transparency = 1
+	zone.Material = Enum.Material.SmoothPlastic
 	zone.CastShadow = false
 	zone.Size = Vector3.new(size.X, 16, size.Z)
 	zone.CFrame = centerCf * CFrame.new(0, 6, 0)
@@ -1323,6 +1386,9 @@ function DungeonBuilder.PlaceRoom(pocket, room)
 		return pocket.Rooms[room]
 	end
 	local entry = pocket.Layout.Rooms[room]
+	if not pocket.Model or pocket.Model.Parent == nil then
+		return nil, "Freed"
+	end
 	local staging = Instance.new("Model")
 	staging.Name = "Room_" .. room
 	staging.Parent = templateFolder() -- assembled out of the workspace
@@ -1359,10 +1425,10 @@ function DungeonBuilder.PlaceRoom(pocket, room)
 	local exitCf = worldPoint(model, "Exit")
 	local center = model.PrimaryPart.CFrame * CFrame.new(0, 1.5, 0)
 	info.Center = center.Position
-	info.Entrance = entranceCf and (entranceCf * CFrame.new(0, 1.5, 6)) or center
+	info.Entrance = entranceCf and (entranceCf * CFrame.new(0, 3, 3)) or center
 	for i = 1, 4 do
 		local sp = worldPoint(model, "Spawn" .. i)
-		info.Spawns[i] = sp and (sp * CFrame.new(0, 1.5, 0)) or info.Entrance
+		info.Spawns[i] = sp and (sp * CFrame.new(0, 3, 0)) or info.Entrance
 	end
 	local thresholdCf = worldPoint(model, "Threshold")
 	if thresholdCf then
@@ -1373,6 +1439,7 @@ function DungeonBuilder.PlaceRoom(pocket, room)
 		th.CanQuery = false
 		th.CanTouch = false
 		th.Transparency = 1
+		th.Material = Enum.Material.SmoothPlastic
 		th.CastShadow = false
 		th.Size = Vector3.new(12, 8, 4)
 		th.CFrame = thresholdCf * CFrame.new(0, 2.5, 0)
@@ -1494,7 +1561,7 @@ function DungeonBuilder.BuildRun(index, floorIndex, seed)
 		local spawns = {}
 		for i = 1, 4 do
 			local sp = worldPoint(hall, "Spawn" .. i)
-			spawns[i] = sp and (sp * CFrame.new(0, 1.5, 0)) or (hall.PrimaryPart.CFrame * CFrame.new(0, 3, 0))
+			spawns[i] = sp and (sp * CFrame.new(0, 3, 0)) or (hall.PrimaryPart.CFrame * CFrame.new(0, 4.5, 0))
 		end
 		local exitCf = worldPoint(hall, "Exit")
 		local door, bars = Kit.door(hall, CFrame.new(exitCf and (exitCf.Position - Vector3.new(0, 1.5, 0)) or hall.PrimaryPart.Position), "Door_Exit", 8)

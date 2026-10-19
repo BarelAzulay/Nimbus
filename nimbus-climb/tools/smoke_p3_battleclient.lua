@@ -1,39 +1,31 @@
--- smoke_p3_battleclient.lua: Phase 3 BattleController (client/Controllers/BattleController.lua) + the PetController
--- follower hiding. Loaded by tools/smoke.py in the client worlds (desktop 1920x1080 and the 390x844 touch phone).
--- A real BattleSim (shared/BattleSim.lua) is stepped at 10 Hz here and its Start / Events / Snapshot / End reach the
--- client through the BattleState remote exactly the way BattleService sends them (dense snapshot arrays, the battle id
--- as the third argument); the client's BattleCommand calls are forwarded into the sim (Order events come back).
---   client_p3battle_trial     the module + API, followers parked while InBattle and back afterwards, the HUD only
---                             while fighting (top card, one row per team pet, ATTACK / RETREAT), unit models built
---                             within a few frames, intact (static parts welded at the built pose: nothing left at the
---                             origin), smooth interpolation at 60 fps between 10 Hz snapshots (no frame jumps),
---                             damage numbers as pixel-sized world billboards (never a screen-centre text), F / R / 1-4
---                             through ContextActionService (only while fighting), the local throttle, the regroup lock
---                             after RETREAT, SPECIAL only with a full meter (key, button), focus by enemy chip and by a
---                             tap on an enemy in the world (a real perspective camera; a drag or an empty tap does
---                             nothing), Forfeit, the result card at the end (bottom right, rewards, OK, closes by
---                             itself), models freed after the end, no errors
---   client_p3battle_raid      the boss (BossBuilder) on the floor, telegraphs that fill up and vanish after the hit,
---                             the boss HP bar / ENRAGED / minions in the top card, minion waves and a leaving team,
---                             effect caps (pooled parts, numbers), the measured frame cost, BOSS DEFEATED card
---   client_p3battle_spectate  a duel watched from the stands: models but no controls / keys / commands, the slim
---                             WATCHING card, "End" OutOfRange frees everything at once; junk messages are ignored
---   client_p3battle_cards     (Phase 4, 3.9) a PetCard above every unit: own "Unit" (Lv >= 22 px + HP + SPECIAL + XP =
---                             xp / xpNext, full at the cap 100), enemies "Enemy" (Lv + HP only), evolved units built
---                             evolved within petEvoLow / petEvo2Low with their stars, no card write between snapshots
---                             and far fewer writes than frames, HP fill = hp / maxHp, a full meter fills SPECIAL,
---                             End.Rewards.Xp moves the XP bar, every card freed with the battle
---   client_p3battle_ring      (Phase 4, 3.8) a Champion Ring run: CHAMPION RING - Round 1 - Best 12 + the win pay pill,
---                             the crowned champion (gold voxel crown, 22 px tag), a won round's side card (no result
---                             card, Round 2 in 3 counting down, top card + team kept, commands gone, off the centre),
---                             the next Start in the same pocket keeps my pets' models, the old floor freed by battle id,
---                             the run's result card (RUN OVER, Rounds won, Cash, XP, Best), a record run ended between
---                             rounds (RECORD x3 pill, NEW RECORD!), the BOSS pill on round 20, duel OVERTIME
---   client_p3battle_ring_mobile (phone world) unit card Lv >= 14 px, the side card readable, off the centre and clear of
---                             the top / team cards at 390x844 and 844x390, the run's card off the centre
---   client_p3battle_mobile    (phone world) the compact HUD: touch-sized ATTACK / RETREAT, every battle text >= 14 px on
---                             the screen, nothing over the RUN / DASH buttons or in the screen centre, a tap on a team
---                             card casts its special
+-- smoke_p3_battleclient.lua: BattleController (client/Controllers/BattleController.lua) + the PetController follower
+-- hiding, brought to Phase 5 (ARCHITECTURE_V3.md 4.7: fighter + 2 helpers, the Neon battle HUD, dungeon rooms in place
+-- of the removed Trials). Loaded by tools/smoke.py in the client worlds (desktop 1920x1080 and the 390x844 phone).
+-- A real BattleSim (shared/BattleSim.lua) is stepped at 10 Hz here and its Start (+ Start.Team) / Events / Snapshot
+-- (SnapshotDelta wire form) / End reach the client through the BattleState remote the way BattleService sends them;
+-- the client's BattleCommand calls are forwarded into the sim (Order events come back).
+--   client_p3battle_trial     (now a dungeon room) the module + API, followers parked while InBattle and back after,
+--                             the HUD only while fighting (top card, fighter card + 2 helper portraits, ATTACK /
+--                             ELEMENT / SPECIAL / DASH), unit models within a second, intact and welded, an enemy drawn
+--                             at its snapshot position, smooth 60 fps interpolation, damage numbers as pixel-sized
+--                             world billboards, nothing centred, F / E / Q through ContextActionService (only while
+--                             fighting), the attack throttle, ELEMENT's cooldown (refused press = no traffic + shake),
+--                             SPECIAL only with a full meter, the lock by a TARGET row and by a tap on an enemy in the
+--                             world (a drag does nothing), Forfeit, the KNOCKED OUT card, models freed, follower back
+--   client_p3battle_raid      the boss (BossBuilder) on the floor, telegraphs that fill and vanish, the boss bar /
+--                             ENRAGED / minions in the top card, the fighter card + 2 portraits, minion waves and a
+--                             leaving team, effect caps, the measured frame cost, BOSS DEFEATED card
+--   client_p3battle_spectate  a duel watched from the stands: the two fighters drawn (benched helpers are not), no
+--                             controls / keys / commands, the WATCHING card, End OutOfRange frees at once; junk ignored
+--   client_p3battle_cards     (3.9) a PetCard above every unit: own "Unit" (Lv >= 22 px + HP + SPECIAL + XP, full at
+--                             the cap), enemies "Enemy" (Lv + HP), evolved helpers within petEvoLow / petEvo2Low with
+--                             stars, no card write between snapshots, HP fill = hp / maxHp, End.Rewards.Xp moves XP
+--   client_p3battle_ring      (3.8) a Champion Ring run: the top card, the crowned champion, a won round's side card,
+--                             models kept across rounds, the old floor freed, RUN OVER / NEW RECORD! cards, BOSS pill;
+--                             the removed duel Overtime event is ignored
+--   client_p3battle_ring_mobile (phone world) unit card Lv >= 14 px, the side card readable and clear at 390x844 / 844x390
+--   client_p3battle_mobile    (phone world) the compact HUD: touch-sized buttons, every text >= 14 px, nothing over
+--                             other buttons or in the centre, SPECIAL by tap, the KNOCKED OUT card at the top / top right
 -- Plain Lua 5.1 syntax only.
 
 local T = SmokeCommon.T
@@ -211,12 +203,17 @@ local function newDriver(opts)
 		return nil, "shared/BattleSim.lua missing"
 	end
 	local id = "smoke_" .. tostring(opts.Mode) .. "_" .. tostring(math.random(100000, 999999))
-	local sim, why = Sim.new({ Mode = opts.Mode, Seed = opts.Seed or 3, Id = id, Teams = opts.Teams, Trial = opts.Trial, Boss = opts.Boss, Specials = opts.Specials,
-		Round = opts.Round, Zone = opts.Zone, TimeLimit = opts.TimeLimit })
+	local dungeon = opts.Mode == "Dungeon"
+	local sim, why = Sim.new({ Mode = opts.Mode, Seed = opts.Seed or 3, Id = id, Teams = opts.Teams, Boss = opts.Boss, Specials = opts.Specials,
+		Round = opts.Round, Zone = opts.Zone or (dungeon and { X = 44, Z = 44 } or nil), TimeLimit = opts.TimeLimit or (dungeon and 120 or nil) })
 	if not sim then
 		return nil, why
 	end
-	local d = setmetatable({ sim = sim, id = id, zoneCF = opts.ZoneCF or CFrame.new(0, 200, 0), side = opts.Side or 1, logIndex = #Mock.RemoteLog, events = {}, stepped = 0, ring = opts.Ring }, Driver)
+	if opts.Wave then
+		sim:SpawnEnemies(opts.Wave, { Wave = 1, Anchor = { 0, 10 } })
+	end
+	local d = setmetatable({ sim = sim, id = id, zoneCF = opts.ZoneCF or CFrame.new(0, 200, 0), side = opts.Side or 1, logIndex = #Mock.RemoteLog, events = {}, stepped = 0, ring = opts.Ring,
+		dungeon = opts.Dungeon }, Driver)
 	d.me = LocalPlayer.UserId
 	return d
 end
@@ -230,6 +227,11 @@ function Driver:startPayload()
 	p.Spectator = self.side == 0
 	p.T = self.sim:Time()
 	p.Ring = self.ring -- Phase 4: BattleService's "Start".Ring for a Champion Ring round
+	p.Dungeon = self.dungeon -- Phase 5: the room's floor / room / waves
+	local team = self.side ~= 0 and self.sim:TeamOf(self.me) or nil -- Phase 5: the receiver's own team
+	if team then
+		p.Team = { Fighter = team.Fighter, Bench = team.Bench, Lives = team.Lives, Speed = team.Speed, Cooldowns = { Element = 0, Dash = 0, Swap = 0, Buff = {} } }
+	end
 	return p
 end
 
@@ -237,19 +239,14 @@ function Driver:start()
 	KC.toClient("BattleState", "Start", self:startPayload(), self.id)
 end
 
+-- the wire form (SnapshotDelta against this receiver's baseline, updated in place like BattleService)
 function Driver:snapshot()
-	local snap = self.sim:Snapshot()
+	self.last = self.last or {}
+	local snap = self.sim:SnapshotDelta(self.last)
+	if type(snap) ~= "table" then
+		snap = { T = self.sim:Time(), Units = {} }
+	end
 	snap.BattleId = self.id
-	local units, top = {}, 0
-	for k in pairs(snap.Units) do
-		if k > top then
-			top = k
-		end
-	end
-	for k = 1, top do
-		units[k] = snap.Units[k] or { x = 0, z = 0, hp = 0, state = 5, meter = 0 }
-	end
-	snap.Units = units
 	return snap
 end
 
@@ -310,6 +307,18 @@ function Driver:myUnits()
 	return out
 end
 
+-- my fighter's unit (Phase 5: one fighter + two benched helpers per team)
+function Driver:fighter(owner)
+	local team = self.sim:TeamOf(owner or self.me)
+	local fid = team and team.Fighter
+	for _, u in ipairs(self.sim.units or {}) do
+		if u.id == fid then
+			return u
+		end
+	end
+	return nil
+end
+
 function Driver:enemyIds()
 	local out = {}
 	for _, u in ipairs(self.sim.units or {}) do
@@ -318,6 +327,21 @@ function Driver:enemyIds()
 		end
 	end
 	return out
+end
+
+-- Phase 5: a dungeon room (my team vs a wave of wild pets) replaces the removed Trials
+local function roomDriver(team, n, level, extra)
+	local wave = {}
+	for i, e in ipairs(catalogTeam(n or 3, 6, level or 8)) do
+		e.Slot = nil
+		e.Wild = true
+		wave[i] = e
+	end
+	local opts = { Mode = "Dungeon", Seed = 4, Teams = { { Owner = LocalPlayer.UserId, Side = 1, Pets = team or catalogTeam(3, 0, 14) } }, Wave = wave, Dungeon = { Floor = 2, Room = 1, Wave = 1, Waves = 1 } }
+	for k, v in pairs(extra or {}) do
+		opts[k] = v
+	end
+	return newDriver(opts)
 end
 
 local function followerFolder()
@@ -341,7 +365,7 @@ local function strayParts(model, maxDist)
 end
 
 ----------------------------------------------------------------------------------------------------
--- scenario: a full trial on the desktop
+-- scenario: a dungeon room on the desktop (Phase 5: the Trials are gone)
 ----------------------------------------------------------------------------------------------------
 -- Phase 4 test helpers: the PetCard above a unit (its billboard keeps the Phase 3 name HpBar)
 local function cardOf(BC, id)
@@ -380,7 +404,8 @@ S.client_p3battle_trial = guarded("client_p3battle_trial", function()
 	KC.advance(0.5)
 	T.check(BC.GetBattle() == nil and not BC.IsHudVisible(), "BattleController: no battle and no battle HUD in the lobby")
 	T.check(not shown(find("Root.Team")) and not shown(find("Root.Commands")), "BattleController: battle controls hidden outside a battle")
-	T.check(Mock.BoundActions.NimbusBattleSpecial == nil and Mock.BoundActions.NimbusBattleAttack == nil, "BattleController: keys F / R / 1-4 are not bound outside a battle (the hotbar keeps 1-4)")
+	T.check(Mock.BoundActions.NimbusBattleSpecial == nil and Mock.BoundActions.NimbusBattleAttack == nil and Mock.BoundActions.NimbusBattleHelper == nil,
+		"BattleController: the battle keys (F / E / Q / 1-2) are not bound outside a battle (the hotbar keeps 1-4)")
 
 	-- a follower to hide
 	local PC = moduleAt("shared", "PetCatalog")
@@ -392,8 +417,8 @@ S.client_p3battle_trial = guarded("client_p3battle_trial", function()
 	local ff = followerFolder()
 	T.check(ff ~= nil and ff.Parent ~= nil, "PetController: the local follower is shown before the battle", tostring(ff))
 
-	local d, why = newDriver({ Mode = "Trial", Trial = 3, Teams = { { Owner = LocalPlayer.UserId, Side = 1, Pets = catalogTeam(3) } }, Specials = false })
-	T.check(d ~= nil, "battle driver: BattleSim trial created", tostring(why))
+	local d, why = roomDriver(catalogTeam(3, 0, 14), 3, 8)
+	T.check(d ~= nil, "battle driver: BattleSim dungeon room created", tostring(why))
 	if not d then
 		return
 	end
@@ -404,26 +429,32 @@ S.client_p3battle_trial = guarded("client_p3battle_trial", function()
 	d:step(30)
 	d:step(30)
 	local b = BC.GetBattle()
-	T.check(b ~= nil and b.Fighter and b.Mode == "Trial" and b.Id == d.id, "BattleController: Start draws the trial as a fighter", b and (tostring(b.Mode) .. " " .. tostring(b.Fighter)) or "nil")
+	T.check(b ~= nil and b.Fighter and b.Mode == "Dungeon" and b.Id == d.id, "BattleController: Start draws the dungeon room as a fighter", b and (tostring(b.Mode) .. " " .. tostring(b.Fighter)) or "nil")
 	T.check(BC.IsHudVisible(), "BattleController: the battle HUD shows while fighting")
-	T.check(shown(find("Root.TopCard")) and hasText(find("Root.TopCard"), "TRIAL 3"), "battle HUD: the top card names the trial")
-	local rows = 0
-	for i = 1, 4 do
-		if shown(find("Root.Team.Row" .. i)) then
-			rows = rows + 1
+	T.check(shown(find("Root.TopCard")) and hasText(find("Root.TopCard"), "DUNGEON %- Floor 2 %- Room 1"), "battle HUD: the top card names the floor and room")
+	local helpers = 0
+	for i = 1, 2 do
+		if shown(find("Root.Team.Helpers.Helper" .. i)) then
+			helpers = helpers + 1
 		end
 	end
-	T.eq(rows, 3, "battle HUD: one row per team pet")
-	T.check(shown(find("Root.Commands.AttackButton")) and shown(find("Root.Commands.RetreatButton")), "battle HUD: ATTACK and RETREAT buttons")
-	T.check(hasText(find("Root.Team"), "SPECIAL") or hasText(find("Root.Team"), "%%"), "battle HUD: every row has its SPECIAL button / meter")
-	T.check(Mock.BoundActions.NimbusBattleSpecial ~= nil and Mock.BoundActions.NimbusBattleAttack ~= nil and Mock.BoundActions.NimbusBattleRetreat ~= nil, "BattleController: F / R / 1-4 bound while fighting")
+	T.check(shown(find("Root.Team.Fighter")) and helpers == 2, "battle HUD: the fighter card + two helper portraits", helpers .. " helpers")
+	local buttons = 0
+	for _, k in ipairs({ "Attack", "Element", "Special", "Dash" }) do
+		if shown(find("Root.Commands." .. k .. "Button")) then
+			buttons = buttons + 1
+		end
+	end
+	T.eq(buttons, 4, "battle HUD: ATTACK / ELEMENT / SPECIAL / DASH buttons")
+	T.check(Mock.BoundActions.NimbusBattleSpecial ~= nil and Mock.BoundActions.NimbusBattleAttack ~= nil and Mock.BoundActions.NimbusBattleElement ~= nil and Mock.BoundActions.NimbusBattleTarget ~= nil,
+		"BattleController: F / E / Q / Tab bound while fighting")
 	ff = followerFolder()
 	T.check(ff == nil or ff.Parent == nil, "PetController: the follower is parked while InBattle (the team fights on the floor)")
 
 	-- models: built within a few frames, intact
 	d:run(1.0, 30)
 	b = BC.GetBattle()
-	T.check(b.Models == b.Units and b.Units == #d.sim.units, "BattleController: every unit has a model within a second", b.Models .. "/" .. b.Units)
+	T.check(b.Models == b.Units and b.Units == #d.sim.units, "BattleController: every unit has a model within a second (my helpers too)", b.Models .. "/" .. b.Units)
 	local stray, welded = 0, 0
 	for _, u in ipairs(d.sim.units) do
 		local info = BC.GetUnit(u.id)
@@ -439,16 +470,21 @@ S.client_p3battle_trial = guarded("client_p3battle_trial", function()
 	end
 	T.eq(stray, 0, "BattleController: unit models are intact (no part left behind at the built pose)")
 	T.check(welded == #d.sim.units, "BattleController: static parts welded to the root (a pose is one CFrame write)", welded .. "/" .. #d.sim.units)
-	-- position: the drawn unit is where the sim says (zone-local x / z on the zone CFrame)
-	local u1 = d.sim.units[1]
-	local info1 = BC.GetUnit(u1.id)
-	local want = d.zoneCF:PointToWorldSpace(Vector3.new(u1.x, 0, u1.z))
+	-- position: a drawn enemy is where the sim says (zone-local x / z on the zone CFrame); my fighter rides at my shoulder
+	local e1 = nil
+	for _, u in ipairs(d.sim.units) do
+		if u.side ~= 1 and u.alive and not e1 then
+			e1 = u
+		end
+	end
+	local info1 = e1 and BC.GetUnit(e1.id)
+	local want = e1 and d.zoneCF:PointToWorldSpace(Vector3.new(e1.x, 0, e1.z))
 	local got = info1 and info1.Model and (info1.Model.PrimaryPart or info1.Model:FindFirstChild("Body")).Position
-	local flat = got and Vector3.new(got.X - want.X, 0, got.Z - want.Z).Magnitude or 999
-	T.check(flat < 4, "BattleController: a unit is drawn at its zone-local snapshot position (within the interpolation lag)", fmt(flat) .. " studs")
+	local flat = (got and want) and Vector3.new(got.X - want.X, 0, got.Z - want.Z).Magnitude or 999
+	T.check(flat < 4, "BattleController: an enemy is drawn at its zone-local snapshot position (within the interpolation lag)", fmt(flat) .. " studs")
 	T.check(got ~= nil and got.Y > want.Y + 0.5 and got.Y < want.Y + 6, "BattleController: pets hover just above the floor", got and fmt(got.Y - want.Y) or "nil")
 
-	-- smoothness: 60 fps frames between 10 Hz snapshots, no jumps
+	-- smoothness: 60 fps frames between 10 Hz snapshots, no jumps (the enemies; mine follow my character)
 	local maxJump, worst = 0, ""
 	local last = {}
 	for _ = 1, 20 do
@@ -461,7 +497,7 @@ S.client_p3battle_trial = guarded("client_p3battle_trial", function()
 		for _ = 1, 6 do
 			Mock.Step(1 / 60)
 			for _, u in ipairs(d.sim.units) do
-				local inf = BC.GetUnit(u.id)
+				local inf = u.side ~= 1 and BC.GetUnit(u.id)
 				local m = inf and inf.Model
 				local r = m and not inf.Parked and (m.PrimaryPart or m:FindFirstChild("Body"))
 				if r then
@@ -506,76 +542,66 @@ S.client_p3battle_trial = guarded("client_p3battle_trial", function()
 	end
 	T.check(#centred == 0, "battle HUD: nothing in the screen centre", KC.describeCentred(centred))
 
-	-- commands: keys through ContextActionService, throttle, regroup lock, specials
+	-- commands: keys through ContextActionService, the attack throttle, ELEMENT's cooldown, SPECIAL's meter
 	local idx = #Mock.RemoteLog
 	d.logIndex = idx
 	Mock.TriggerAction("NimbusBattleAttack", "Begin", Mock.NewInput("F", "Keyboard", "Begin"))
 	local cmds = commandsSince(idx)
-	T.check(#cmds == 1 and cmds[1].action == "Attack" and cmds[1].arg == nil, "controls: F sends BattleCommand Attack", #cmds .. " calls")
+	T.check(#cmds == 1 and cmds[1].action == "Attack", "controls: F sends BattleCommand Attack", #cmds .. " calls")
 	Mock.TriggerAction("NimbusBattleAttack", "Begin", Mock.NewInput("F", "Keyboard", "Begin"))
 	T.eq(#commandsSince(idx), 1, "controls: a second ATTACK within the throttle is not sent")
+	Mock.TriggerAction("NimbusBattleAttack", "End", Mock.NewInput("F", "Keyboard", "End"))
 	d:step(30)
 	idx = #Mock.RemoteLog
-	Mock.TriggerAction("NimbusBattleRetreat", "Begin", Mock.NewInput("R", "Keyboard", "Begin"))
+	Mock.TriggerAction("NimbusBattleElement", "Begin", Mock.NewInput("E", "Keyboard", "Begin"))
 	cmds = commandsSince(idx)
-	T.check(#cmds == 1 and cmds[1].action == "Retreat", "controls: R sends BattleCommand Retreat")
+	T.check(#cmds == 1 and cmds[1].action == "Element", "controls: E sends BattleCommand Element")
 	d:step(30)
 	d:step(30)
-	b = BC.GetBattle()
-	T.eq(b.Order, "Retreat", "controls: the Order event confirms the retreat")
-	local attackBtn = find("Root.Commands.AttackButton")
-	T.check(attackBtn and tostring(attackBtn.Text):find("ATTACK %d") ~= nil and attackBtn:GetAttribute("Disabled") == true, "battle HUD: ATTACK shows the regroup countdown after RETREAT", attackBtn and attackBtn.Text or "nil")
+	d:step(30) -- (past the 0.25 s command throttle: a refused press is then held back by the cooldown itself)
+	local count = find("Root.Commands.ElementButton.Face.Count")
+	T.check(count and shown(count) and tonumber(count.Text) ~= nil, "battle HUD: ELEMENT counts its cooldown down", count and count.Text or "nil")
+	local elementBtn = find("Root.Commands.ElementButton")
+	local shakes0 = elementBtn and (elementBtn:GetAttribute("Shakes") or 0) or 0
 	idx = #Mock.RemoteLog
-	Mock.TriggerAction("NimbusBattleAttack", "Begin", Mock.NewInput("F", "Keyboard", "Begin"))
-	T.eq(#commandsSince(idx), 0, "controls: ATTACK is held back during the regroup lock")
-	d:run(1.6, 30)
-	idx = #Mock.RemoteLog
-	Mock.TriggerAction("NimbusBattleAttack", "Begin", Mock.NewInput("F", "Keyboard", "Begin"))
-	T.eq(#commandsSince(idx), 1, "controls: ATTACK works again after the lock")
-	-- special: refused while charging, sent with a full meter (key 1 and the button)
-	for _, u in ipairs(d:myUnits()) do
-		u.meter = 10
+	Mock.TriggerAction("NimbusBattleElement", "Begin", Mock.NewInput("E", "Keyboard", "Begin"))
+	T.check(#commandsSince(idx) == 0 and elementBtn and (elementBtn:GetAttribute("Shakes") or 0) > shakes0, "controls: E during the cooldown is held back and shakes ELEMENT")
+	-- special: refused while charging, sent with a full meter (key Q and the button)
+	local fighter = d:fighter()
+	if fighter then
+		fighter.meter = 10
 	end
 	d:step(30)
 	d:step(30)
 	idx = #Mock.RemoteLog
-	Mock.TriggerAction("NimbusBattleSpecial", "Begin", Mock.NewInput("One", "Keyboard", "Begin"))
+	Mock.TriggerAction("NimbusBattleSpecial", "Begin", Mock.NewInput("Q", "Keyboard", "Begin"))
 	T.eq(#commandsSince(idx), 0, "controls: SPECIAL is not sent while the meter charges")
-	local mine = d:myUnits()
-	for _, u in ipairs(mine) do
-		u.meter = 100
+	local special = find("Root.Commands.SpecialButton")
+	T.check(special and special:GetAttribute("Disabled") == true, "battle HUD: SPECIAL is dimmed while the meter charges")
+	if fighter then
+		fighter.meter = 100
 	end
-	d.sim.specialsEnabled = true
 	d:step(30)
 	d:step(30)
-	local row1 = find("Root.Team.Row1.Special")
-	T.check(row1 and hasText(row1, "SPECIAL"), "battle HUD: a full meter lights the SPECIAL button", row1 and tostring((row1:FindFirstChild("Top") or {}).Text) or "nil")
+	T.check(special and special:GetAttribute("Disabled") ~= true, "battle HUD: a full meter lights SPECIAL")
 	idx = #Mock.RemoteLog
-	Mock.TriggerAction("NimbusBattleSpecial", "Begin", Mock.NewInput("One", "Keyboard", "Begin"))
+	Mock.TriggerAction("NimbusBattleSpecial", "Begin", Mock.NewInput("Q", "Keyboard", "Begin"))
 	cmds = commandsSince(idx)
-	T.check(#cmds == 1 and cmds[1].action == "Special" and cmds[1].arg == 1, "controls: key 1 sends BattleCommand Special 1", #cmds > 0 and (tostring(cmds[1].action) .. " " .. tostring(cmds[1].arg)) or "none")
-	local row2 = find("Root.Team.Row2.Special")
-	idx = #Mock.RemoteLog
-	if row2 then
-		Mock.Click(row2)
-	end
-	cmds = commandsSince(idx)
-	T.check(#cmds == 1 and cmds[1].action == "Special" and cmds[1].arg == mine[2].slot, "controls: the SPECIAL button of row 2 sends Special 2")
-	Mock.TriggerAction("NimbusBattleSpecial", "Begin", Mock.NewInput("ButtonR1", "Gamepad1", "Begin"))
+	T.check(#cmds == 1 and cmds[1].action == "Special", "controls: Q sends BattleCommand Special", #cmds > 0 and tostring(cmds[1].action) or "none")
 	d:step(30)
 
-	-- focus: an enemy chip, then a tap on an enemy in the world
+	-- lock: a TARGET row, then a tap on an enemy in the world
 	local enemies = d:enemyIds()
-	local chip = find("Root.TopCard.Enemy1")
+	local row = find("Root.Enemies.Row1")
 	idx = #Mock.RemoteLog
-	if chip then
-		Mock.Click(chip)
+	if row then
+		Mock.Click(row)
 	end
 	cmds = commandsSince(idx)
-	T.check(#cmds == 1 and cmds[1].action == "Attack" and type(cmds[1].arg) == "number", "controls: clicking an enemy chip focuses it (Attack with its unit id)")
+	T.check(#cmds == 1 and cmds[1].action == "Target" and type(cmds[1].arg) == "number", "controls: clicking a TARGET row locks it (Target with its unit id)")
 	d:run(0.4, 30)
 	b = BC.GetBattle()
-	T.check(b.Focus ~= nil, "controls: the Order event sets the focus (the arrow marks it)", tostring(b.Focus))
+	T.check(b.Lock ~= nil, "controls: the Order echo sets the lock", tostring(b.Lock))
 	if installProjection() then
 		local cam = workspace.CurrentCamera
 		local target = BC.GetUnit(enemies[#enemies])
@@ -593,40 +619,51 @@ S.client_p3battle_trial = guarded("client_p3battle_trial", function()
 			Mock.Step(0.05)
 			Mock.FireSignal(UserInputService, "InputEnded", Mock.NewInput("Unknown", "Touch", "End", { Position = touchPos }), false)
 			cmds = commandsSince(idx)
-			T.check(#cmds == 1 and cmds[1].action == "Attack" and cmds[1].arg == target.Id, "controls: a tap on an enemy in the world focuses it", #cmds > 0 and tostring(cmds[1].arg) or "none")
+			T.check(#cmds == 1 and cmds[1].action == "Target" and cmds[1].arg == target.Id, "controls: a tap on an enemy in the world locks it", #cmds > 0 and tostring(cmds[1].arg) or "none")
 			Mock.Step(0.3)
 			idx = #Mock.RemoteLog
 			Mock.FireSignal(UserInputService, "InputBegan", Mock.NewInput("Unknown", "Touch", "Begin", { Position = touchPos }), false)
 			Mock.Step(0.05)
 			Mock.FireSignal(UserInputService, "InputEnded", Mock.NewInput("Unknown", "Touch", "End", { Position = touchPos + Vector3.new(60, 0, 0) }), false)
-			T.eq(#commandsSince(idx), 0, "controls: a camera drag does not focus anything")
+			T.eq(#commandsSince(idx), 0, "controls: a camera drag does not lock anything")
+			Mock.Step(0.3)
 			idx = #Mock.RemoteLog
 			local empty = Vector3.new(4, 4, 0)
 			Mock.FireSignal(UserInputService, "InputBegan", Mock.NewInput("Unknown", "MouseButton1", "Begin", { Position = empty }), false)
 			Mock.Step(0.05)
 			Mock.FireSignal(UserInputService, "InputEnded", Mock.NewInput("Unknown", "MouseButton1", "End", { Position = empty }), false)
-			T.eq(#commandsSince(idx), 0, "controls: a click on empty space sends nothing")
+			local targets = 0
+			for _, c in ipairs(commandsSince(idx)) do
+				if c.action == "Target" then
+					targets = targets + 1
+				end
+			end
+			T.eq(targets, 0, "controls: a click on empty space changes no lock (it only attacks)")
 		else
-			T.fail("controls: tap focus test could not set up the camera / target")
+			T.fail("controls: tap lock test could not set up the camera / target")
 		end
 		removeProjection()
 	end
 	idx = #Mock.RemoteLog
 	T.check(BC.Command("Forfeit") == true and commandsSince(idx)[1] and commandsSince(idx)[1].action == "Forfeit", "controls: Forfeit is sent")
-	d.logIndex = #Mock.RemoteLog -- (not forwarded: the trial goes on)
-	T.check(BC.Command("Bogus") == false and BC.Command("Special", 9) == false, "controls: unknown actions / slots are refused locally")
+	d.logIndex = #Mock.RemoteLog -- (not forwarded: the room goes on)
+	T.check(BC.Command("Bogus") == false and BC.Command("Swap", 9) == false and BC.Command("Buff", 9) == false, "controls: unknown actions / helper slots are refused locally")
 	local stats = BC.GetStats()
 	T.check(T.finite(stats.AvgMs) and stats.Frames > 0 and stats.AvgMs > 0, "BattleController: frame cost measured", fmt(stats.AvgMs) .. " ms avg, " .. fmt(stats.PeakMs) .. " ms peak over " .. stats.Frames .. " frames (lupa mock)")
-	T.info("BattleController trial frame cost (mock)", fmt(stats.AvgMs) .. " ms avg / " .. fmt(stats.PeakMs) .. " ms peak, " .. stats.Units .. " units")
+	T.info("BattleController dungeon room frame cost (mock)", fmt(stats.AvgMs) .. " ms avg / " .. fmt(stats.PeakMs) .. " ms peak, " .. stats.Units .. " units")
 
-	-- the end: result card, controls gone, models freed, follower back
-	d:finish({ Mode = "Trial", Outcome = "Win", Won = true, Spectator = false, Reason = "Wipe", Rewards = { Tokens = 150, Gems = 10, Xp = 90, Trophies = 0, LevelUps = 1, FirstClear = true, Level = 3 } })
+	-- the end (a wipe): the KNOCKED OUT card, controls gone, models freed, follower back
+	d:finish({ Mode = "Dungeon", Outcome = "Loss", Won = false, Spectator = false, Reason = "Wipe", Rewards = { Dungeon = true, Cash = 40, Xp = 30, Extra = {} } })
 	step(2)
 	local result = find("Root.ResultCard")
-	T.check(shown(result) and hasText(result, "VICTORY") and hasText(result, "150 Tokens") and hasText(result, "First clear"), "result card: VICTORY with the rewards")
+	local resultTexts = {}
+	for _, t in ipairs(result and shownTexts(result) or {}) do
+		resultTexts[#resultTexts + 1] = tostring(t.Text)
+	end
+	T.check(shown(result) and hasText(result, "KNOCKED OUT") and hasText(result, "Floor 2"), "result card: KNOCKED OUT with the floor / room", table.concat(resultTexts, " | "))
 	T.check(result and result.AnchorPoint.X == 1 and result.AnchorPoint.Y == 1, "result card: bottom right on a wide screen (never centred)")
-	T.check(not shown(find("Root.Commands")) and not shown(find("Root.Team")), "result card: the controls are gone at the end")
-	T.check(Mock.BoundActions.NimbusBattleSpecial == nil and Mock.BoundActions.NimbusBattleAttack == nil, "BattleController: F / R / 1-4 released at the end")
+	T.check(not shown(find("Root.Commands")), "result card: the controls are gone at the end")
+	T.check(Mock.BoundActions.NimbusBattleSpecial == nil and Mock.BoundActions.NimbusBattleAttack == nil, "BattleController: the battle keys are released at the end")
 	LocalPlayer:SetAttribute("InBattle", nil)
 	KC.advance(4)
 	T.check(BC.GetBattle() == nil, "BattleController: the battle is freed after the end linger")
@@ -640,13 +677,13 @@ S.client_p3battle_trial = guarded("client_p3battle_trial", function()
 	T.eq(left, 0, "BattleController: no battle models left behind")
 	ff = followerFolder()
 	T.check(ff ~= nil and ff.Parent ~= nil, "PetController: the follower is back after the battle")
-	local ok = find("Root.ResultCard.OkButton")
+	local ok = find("Root.ResultCard.Body.OkButton")
 	if ok then
 		Mock.Click(ok)
 	end
 	step(2)
 	T.check(not shown(find("Root.ResultCard")) and not BC.IsHudVisible(), "result card: OK closes it")
-	T.check(battleWarnings(outBefore) == nil and #Mock.Errors == errBefore, "BattleController: no errors or warnings (trial)", tostring(battleWarnings(outBefore)))
+	T.check(battleWarnings(outBefore) == nil and #Mock.Errors == errBefore, "BattleController: no errors or warnings (dungeon room)", tostring(battleWarnings(outBefore)))
 	KC.flushErrors("client_p3battle_trial")
 end)
 
@@ -666,8 +703,8 @@ S.client_p3battle_raid = guarded("client_p3battle_raid", function()
 		Mode = "Raid",
 		Boss = "storm_titan",
 		Teams = {
-			{ Owner = LocalPlayer.UserId, Side = 1, Pets = catalogTeam(4) },
-			{ Owner = 77, Side = 1, Pets = catalogTeam(3, 2) },
+			{ Owner = LocalPlayer.UserId, Side = 1, Pets = catalogTeam(3) },
+			{ Owner = 77, Side = 1, Pets = catalogTeam(3, 2), Auto = true },
 		},
 	})
 	T.check(d ~= nil, "battle driver: raid created", tostring(why))
@@ -736,16 +773,8 @@ S.client_p3battle_raid = guarded("client_p3battle_raid", function()
 	T.check(grows, "raid: a telegraph fills up before the hit", #fills > 0 and (fmt(fills[1]) .. " -> " .. fmt(peak) .. " studs") or "no samples")
 	T.check(teleGone, "raid: a telegraph vanishes after its hit")
 	T.check(hasText(find("Root.TopCard"), "Storm Titan") and hasText(find("Root.TopCard"), "BOSS RAID"), "raid HUD: the top card names the boss")
-	T.check(shown(find("Root.TopCard.BossHp")), "raid HUD: the boss HP bar")
-	T.eq(#(function()
-		local n = {}
-		for i = 1, 4 do
-			if shown(find("Root.Team.Row" .. i)) then
-				n[#n + 1] = i
-			end
-		end
-		return n
-	end)(), 4, "raid HUD: four team rows (slot 4)")
+	T.check(shown(find("Root.TopCard.BossBar")) and shown(find("Root.TopCard.BossBar.Hp.Fill")), "raid HUD: the boss bar at the top centre")
+	T.check(shown(find("Root.Team.Fighter")) and shown(find("Root.Team.Helpers.Helper1")) and shown(find("Root.Team.Helpers.Helper2")), "raid HUD: my fighter card + two helper portraits")
 	-- a minion wave + enrage + a leaving team
 	local unitsBefore = BC.GetBattle().Units
 	d.sim.boss.hp = d.sim.boss.maxHp * 0.6
@@ -796,7 +825,7 @@ S.client_p3battle_spectate = guarded("client_p3battle_spectate", function()
 		return
 	end
 	local outBefore, errBefore = #Mock.Output, #Mock.Errors
-	local d = newDriver({ Mode = "Duel", Side = 0, Teams = { { Owner = 77, Side = 1, Pets = catalogTeam(3) }, { Owner = 78, Side = 2, Pets = catalogTeam(3, 3) } } })
+	local d = newDriver({ Mode = "Duel", Side = 0, Teams = { { Owner = 77, Side = 1, Pets = catalogTeam(3), Auto = true }, { Owner = 78, Side = 2, Pets = catalogTeam(3, 3), Auto = true } } })
 	if not d then
 		T.fail("battle driver: duel")
 		return
@@ -805,7 +834,15 @@ S.client_p3battle_spectate = guarded("client_p3battle_spectate", function()
 	d:run(1.5, 30)
 	local b = BC.GetBattle()
 	T.check(b and b.Spectator and not b.Fighter, "spectate: a watched duel is drawn as a spectator")
-	T.check(b and b.Models == b.Units, "spectate: both teams are drawn from the stands", b and (b.Models .. "/" .. b.Units) or "nil")
+	local fighters = 0
+	for _, owner in ipairs({ 77, 78 }) do
+		local f = d:fighter(owner)
+		local info = f and BC.GetUnit(f.id)
+		if info and info.Model and not info.Parked then
+			fighters = fighters + 1
+		end
+	end
+	T.check(b and fighters == 2 and b.Models == 2, "spectate: both fighters are drawn from the stands (benched helpers are not)", b and (fighters .. " fighters, " .. b.Models .. " models / " .. b.Units .. " units") or "nil")
 	T.check(not BC.IsHudVisible() and not shown(find("Root.Commands")), "spectate: no battle controls for a spectator")
 	T.check(shown(find("Root.TopCard")) and hasText(find("Root.TopCard"), "WATCHING") and hasText(find("Root.TopCard"), "Buddy"), "spectate: the slim WATCHING card names the duellists")
 	T.check(Mock.BoundActions.NimbusBattleSpecial == nil, "spectate: no keys bound")
@@ -877,9 +914,9 @@ S.client_p3battle_mobile = guarded("client_p3battle_mobile", function()
 	end
 	bootPhone()
 	local outBefore, errBefore = #Mock.Output, #Mock.Errors
-	local d = newDriver({ Mode = "Trial", Trial = 2, Teams = { { Owner = LocalPlayer.UserId, Side = 1, Pets = catalogTeam(4) } } })
+	local d = roomDriver(catalogTeam(3, 0, 12), 3, 6)
 	if not d then
-		T.fail("battle driver: phone trial")
+		T.fail("battle driver: phone dungeon room")
 		return
 	end
 	LocalPlayer:SetAttribute("InBattle", d.id)
@@ -887,9 +924,15 @@ S.client_p3battle_mobile = guarded("client_p3battle_mobile", function()
 	d:run(1.5, 30)
 	local b = BC.GetBattle()
 	T.check(b and b.Layout == "Compact", "phone: the compact battle HUD", b and b.Layout or "nil")
-	local attack, retreat = find("Root.Commands.AttackButton"), find("Root.Commands.RetreatButton")
-	local ra, rr = attack and screenRect(attack), retreat and screenRect(retreat)
-	T.check(ra and (ra.x1 - ra.x0) >= 56 and (ra.y1 - ra.y0) >= 56 and rr and (rr.x1 - rr.x0) >= 56 and (rr.y1 - rr.y0) >= 56, "phone: ATTACK / RETREAT are touch-sized (>= 56 px)", ra and (fmt(ra.x1 - ra.x0, 0) .. "x" .. fmt(ra.y1 - ra.y0, 0)) or "nil")
+	local tiny = nil
+	for _, k in ipairs({ "Attack", "Element", "Special", "Dash" }) do
+		local btn = find("Root.Commands." .. k .. "Button")
+		local r = btn and shown(btn) and screenRect(btn)
+		if not r or (r.x1 - r.x0) < 48 or (r.y1 - r.y0) < 48 then
+			tiny = k .. " " .. (r and (fmt(r.x1 - r.x0, 0) .. "x" .. fmt(r.y1 - r.y0, 0)) or "missing")
+		end
+	end
+	T.check(tiny == nil, "phone: ATTACK / ELEMENT / SPECIAL / DASH are touch-sized (>= 48 px on the screen)", tostring(tiny))
 	-- every battle text >= 14 px on the screen
 	local scale = find("Root.ReadScale")
 	local f = scale and scale.Scale or 1
@@ -902,16 +945,10 @@ S.client_p3battle_mobile = guarded("client_p3battle_mobile", function()
 	T.check(small == nil, "phone: every battle HUD text is >= 14 px on the screen", tostring(small))
 	-- nothing over the RUN / DASH buttons, the vitals card or the menu column
 	local mine = {}
-	for _, path in ipairs({ "Root.TopCard", "Root.Commands.AttackButton", "Root.Commands.RetreatButton" }) do
+	for _, path in ipairs({ "Root.TopCard", "Root.Team.Fighter", "Root.Team.Helpers.Helper1", "Root.Team.Helpers.Helper2", "Root.Enemies", "Root.Commands.AttackButton", "Root.Commands.ElementButton", "Root.Commands.SpecialButton", "Root.Commands.DashButton" }) do
 		local o = find(path)
 		if o and shown(o) then
 			mine[#mine + 1] = { path, screenRect(o) }
-		end
-	end
-	for i = 1, 4 do
-		local o = find("Root.Team.Row" .. i)
-		if o and shown(o) then
-			mine[#mine + 1] = { "Row" .. i, screenRect(o) }
 		end
 	end
 	local clash = nil
@@ -938,23 +975,24 @@ S.client_p3battle_mobile = guarded("client_p3battle_mobile", function()
 		end
 	end
 	T.check(#centred == 0, "phone: nothing of the battle HUD in the screen centre", KC.describeCentred(centred))
-	-- a tap on a team card casts its special
-	for _, u in ipairs(d:myUnits()) do
-		u.meter = 100
+	-- a tap on SPECIAL (full meter) casts my fighter's special
+	local fighter = d:fighter()
+	if fighter then
+		fighter.meter = 100
 	end
 	d:step(30)
 	d:step(30)
-	local card = find("Root.Team.Row1.CardHit")
+	local special = find("Root.Commands.SpecialButton")
 	local idx = #Mock.RemoteLog
-	if card then
-		Mock.Click(card)
+	if special then
+		Mock.Click(special)
 	end
 	local cmds = commandsSince(idx)
-	T.check(#cmds == 1 and cmds[1].action == "Special" and cmds[1].arg == 1, "phone: tapping a team card casts its special")
-	d:finish({ Mode = "Trial", Outcome = "Loss", Won = false, Spectator = false, Reason = "Wipe", Rewards = { Tokens = 0, Gems = 0, Xp = 0, Trophies = 0, LevelUps = 0, Level = 2 } })
+	T.check(#cmds == 1 and cmds[1].action == "Special", "phone: tapping SPECIAL casts the fighter's special")
+	d:finish({ Mode = "Dungeon", Outcome = "Loss", Won = false, Spectator = false, Reason = "Wipe", Rewards = { Dungeon = true, Cash = 0, Xp = 0, Extra = {} } })
 	step(2)
 	local res = find("Root.ResultCard")
-	T.check(shown(res) and hasText(res, "DEFEAT") and res.AnchorPoint.Y == 0, "phone: the DEFEAT card sits at the top (not centred)")
+	T.check(shown(res) and hasText(res, "KNOCKED OUT") and res.AnchorPoint.Y == 0, "phone: the KNOCKED OUT card sits at the top (not centred)")
 	-- turned sideways (844x390): the short screen puts the card top right, clear of the screen centre
 	Mock.SetViewport(844, 390)
 	step(2)
@@ -1028,8 +1066,11 @@ S.client_p3battle_cards = guarded("client_p3battle_cards", function()
 	if epic then
 		team[3] = { Key = epic, PetId = epic, Level = 55, Tier = "Normal", Slot = 3, Evo = 2, Xp = 500, XpNext = TC.XpToNext(55) }
 	end
-	local d = newDriver({ Mode = "Trial", Trial = 5, Teams = { { Owner = LocalPlayer.UserId, Side = 1, Pets = team } }, Specials = false })
-	if not T.check(d ~= nil, "cards: battle driver (trial 5)") then
+	if not team[3] then
+		team[3] = catalogTeam(3, 0, 12)[3]
+	end
+	local d = roomDriver(team, 3, 8)
+	if not T.check(d ~= nil, "cards: battle driver (dungeon room)") then
 		return
 	end
 	LocalPlayer:SetAttribute("InBattle", d.id)
@@ -1091,7 +1132,7 @@ S.client_p3battle_cards = guarded("client_p3battle_cards", function()
 	local u2 = bySlot[2] and BC.GetUnit(bySlot[2].id)
 	local stars2 = g2 and g2:FindFirstChild("StarBadge")
 	T.check(u2 and u2.Evo == 1 and u2.Model and u2.Model:GetAttribute("BC_Evo") == 1 and partCount(u2.Model) <= (budgets.petEvoLow or 380) and stars2 and stars2.Visible,
-		"cards: an evolved unit is built evolved (Low, <= petEvoLow parts) with a star on its card", u2 and (tostring(u2.Evo) .. " / " .. partCount(u2.Model) .. " parts") or "nil")
+		"cards: an evolved helper is built evolved (Low, <= petEvoLow parts) with a star on its card", u2 and (tostring(u2.Evo) .. " / " .. partCount(u2.Model) .. " parts") or "nil")
 	if epic then
 		local u3 = bySlot[3] and BC.GetUnit(bySlot[3].id)
 		local g3 = bySlot[3] and cardOf(BC, bySlot[3].id)
@@ -1143,13 +1184,14 @@ S.client_p3battle_cards = guarded("client_p3battle_cards", function()
 	d:step(30)
 	T.near(fillOf(g1, "Special") or -1, 1, 0.001, "cards: a full meter fills the SPECIAL row")
 	-- the fight's XP (End.Rewards.Xp) moves the XP bars (3.5: the toasts come from the server)
-	d:finish({ Mode = "Trial", Outcome = "Win", Won = true, Spectator = false, Reason = "Wipe", Rewards = { Tokens = 100, Gems = 0, Xp = 90, Trophies = 0, LevelUps = 0, Level = 5 } })
+	d:finish({ Mode = "Dungeon", Outcome = "Win", Won = true, Spectator = false, Reason = "Cleared", Rewards = { Dungeon = true, Cash = 60, Xp = 90, Extra = {} } })
 	step(2)
+	T.check(not shown(find("Root.ResultCard")), "cards: a cleared dungeon room shows no result card (DungeonController shows the loot)")
 	T.near(fillOf(g1, "Xp") or -1, 1090 / need20, 0.01, "cards: End.Rewards.Xp moves the XP fill (level 20: 1000 + 90)")
 	T.near(fillOf(g2, "Xp") or -1, 1, 0.001, "cards: a capped pet's XP bar stays full")
 	LocalPlayer:SetAttribute("InBattle", nil)
 	KC.advance(4)
-	local hide = find("Root.ResultCard.OkButton")
+	local hide = find("Root.ResultCard.Body.OkButton")
 	if hide then
 		Mock.Click(hide)
 	end
@@ -1169,7 +1211,7 @@ local function ringDriver(round, best, start, team, seed)
 	local ch = spec.Champion or {}
 	return newDriver({
 		Mode = "Ring", Round = round, Seed = round, Zone = { X = 44, Z = 44 }, TimeLimit = 90,
-		Teams = { { Owner = LocalPlayer.UserId, Side = 1, Pets = team }, spec },
+		Teams = { { Owner = LocalPlayer.UserId, Side = 1, Pets = team, Auto = true }, spec }, -- (Auto: my team fights by itself here)
 		Ring = { Round = round, Best = best, Start = start, Champion = { PetId = ch.PetId, Level = ch.Level, Tier = ch.Tier, Boss = ch.Boss == true, Name = ch.Name } },
 	})
 end
@@ -1184,7 +1226,7 @@ local function champion(d)
 end
 
 local function ringTeam()
-	local team = catalogTeam(2, 0, 30)
+	local team = catalogTeam(3, 0, 30)
 	for _, p in ipairs(team) do
 		p.Xp, p.XpNext = 100, 6000
 	end
@@ -1238,7 +1280,8 @@ S.client_p3battle_ring = guarded("client_p3battle_ring", function()
 	T.check(shown(top) and hasText(top, "CHAMPION RING") and hasText(top, "Round 1 %- Best 12"), "ring HUD: the top card reads CHAMPION RING - Round 1 - Best 12")
 	T.check(hasText(find("Root.TopCard.RingInfo"), "Win: %+%$[%d,%.KMB]+  %+26 XP"), "ring HUD: the Cash and XP of a win (RingRewards: round 1 pays 26 XP)", tostring((find("Root.TopCard.RingInfo.WinPay") or {}).Text))
 	T.check(not shown(find("Root.TopCard.RingInfo.Record")) and not shown(find("Root.TopCard.RingInfo.Boss")), "ring HUD: no record / boss pill on round 1 (best 12)")
-	T.check(shown(find("Root.Commands.AttackButton")) and shown(find("Root.Commands.RetreatButton")) and (hasText(find("Root.Team"), "SPECIAL") or hasText(find("Root.Team"), "%%")), "ring HUD: the Phase 3 controls (ATTACK / RETREAT / SPECIAL) work in the ring")
+	T.check(shown(find("Root.Commands.AttackButton")) and shown(find("Root.Commands.ElementButton")) and shown(find("Root.Commands.SpecialButton")) and shown(find("Root.Commands.DashButton")) and shown(find("Root.Team.Fighter")),
+		"ring HUD: the Phase 5 controls (ATTACK / ELEMENT / SPECIAL / DASH + the fighter card) in the ring")
 	-- the champion: crowned, a name tag above its card
 	local ch = champion(d1)
 	local cu = ch and BC.GetUnit(ch.id)
@@ -1319,7 +1362,7 @@ S.client_p3battle_ring = guarded("client_p3battle_ring", function()
 	LocalPlayer:SetAttribute("InBattle", nil)
 	KC.advance(4)
 	T.check(BC.GetBattle() == nil, "ring: the battle is freed after the run")
-	local ok = find("Root.ResultCard.OkButton")
+	local ok = find("Root.ResultCard.Body.OkButton")
 	if ok then
 		Mock.Click(ok)
 	end
@@ -1341,7 +1384,7 @@ S.client_p3battle_ring = guarded("client_p3battle_ring", function()
 	T.check(not shown(find("Root.NextRoundCard")), "ring: the result card replaces the side card")
 	LocalPlayer:SetAttribute("InBattle", nil)
 	KC.advance(4)
-	ok = find("Root.ResultCard.OkButton")
+	ok = find("Root.ResultCard.Body.OkButton")
 	if ok then
 		Mock.Click(ok)
 	end
@@ -1358,34 +1401,33 @@ S.client_p3battle_ring = guarded("client_p3battle_ring", function()
 	step(2)
 	LocalPlayer:SetAttribute("InBattle", nil)
 	KC.advance(4)
-	ok = find("Root.ResultCard.OkButton")
+	ok = find("Root.ResultCard.Body.OkButton")
 	if ok then
 		Mock.Click(ok)
 	end
 	step(2)
-	-- duel overtime (BattleCatalog.Damage.Overtime): the top card says hits grow
-	local dd = newDriver({ Mode = "Duel", Teams = { { Owner = me, Side = 1, Pets = catalogTeam(2) }, { Owner = 78, Side = 2, Pets = catalogTeam(2, 2) } } })
+	-- a duel: the top card names the rival; the removed Overtime event (Phase 5) is ignored without a line or an error
+	local dd = newDriver({ Mode = "Duel", Teams = { { Owner = me, Side = 1, Pets = catalogTeam(3), Auto = true }, { Owner = 78, Side = 2, Pets = catalogTeam(3, 2), Auto = true } } })
 	LocalPlayer:SetAttribute("InBattle", dd.id)
 	dd:start()
 	dd:step(30)
-	T.check(not shown(find("Root.TopCard.RingInfo")), "duel: no overtime line before overtime")
+	T.check(hasText(find("Root.TopCard"), "DUEL %- vs Rival"), "duel: the top card reads DUEL - vs Rival")
 	KC.toClient("BattleState", "Events", { { type = "Overtime", at = 75, perSecond = 0.15 } }, dd.id)
 	for _ = 1, 4 do
 		dd:step(30)
 	end
-	b = BC.GetBattle()
-	T.check(b and b.Overtime and shown(find("Root.TopCard.RingInfo.Overtime")) and hasText(find("Root.TopCard.RingInfo"), "OVERTIME: hits %+15%% a second"), "duel: the Overtime event puts OVERTIME: hits +15% a second in the top card", b and tostring(b.Overtime) or "nil")
-	T.check(centreFree(find("Root.TopCard"), vp.X, vp.Y), "duel: the overtime line stays in the top card (off the screen centre)")
+	T.check(not hasText(find("Root.TopCard"), "OVERTIME"), "duel: no OVERTIME line (Phase 5 has no overtime)")
+	T.check(centreFree(find("Root.TopCard"), vp.X, vp.Y), "duel: the top card stays off the screen centre")
 	dd:finish({ Mode = "Duel", Outcome = "Win", Won = true, Spectator = false, Reason = "Wipe", Rewards = { Tokens = 60, Gems = 0, Xp = 60, Trophies = 25, LevelUps = 0 } })
 	step(2)
 	LocalPlayer:SetAttribute("InBattle", nil)
 	KC.advance(4)
-	ok = find("Root.ResultCard.OkButton")
+	ok = find("Root.ResultCard.Body.OkButton")
 	if ok then
 		Mock.Click(ok)
 	end
 	step(2)
-	T.check(BC.GetBattle() == nil and not BC.IsHudVisible(), "ring: everything freed afterwards")
+	T.check(BC.GetBattle() == nil and not BC.IsHudVisible(), "ring: everything freed afterwards", tostring(BC.GetBattle() ~= nil) .. " / team " .. tostring(shown(find("Root.Team"))) .. " cmd " .. tostring(shown(find("Root.Commands"))) .. " result " .. tostring(shown(find("Root.ResultCard"))))
 	T.check(battleWarnings(outBefore) == nil and #Mock.Errors == errBefore, "BattleController: no errors or warnings (ring)", tostring(battleWarnings(outBefore)))
 	KC.flushErrors("client_p3battle_ring")
 end)
@@ -1430,10 +1472,10 @@ S.client_p3battle_ring_mobile = guarded("client_p3battle_ring_mobile", function(
 		T.check(shown(nc) and small == nil, "phone " .. tagName .. ": the side card's texts are >= 14 px", tostring(small))
 		T.check(centreFree(nc, size[1], size[2]), "phone " .. tagName .. ": the side card is off the screen centre")
 		local clash = nil
-		for i = 1, 4 do
-			local row = find("Root.Team.Row" .. i)
-			if row and shown(row) and overlap(screenRect(row), screenRect(nc)) then
-				clash = "Row" .. i
+		for _, path in ipairs({ "Root.Team.Fighter", "Root.Team.Helpers.Helper1", "Root.Team.Helpers.Helper2" }) do
+			local o = find(path)
+			if o and shown(o) and overlap(screenRect(o), screenRect(nc)) then
+				clash = path
 			end
 		end
 		if shown(find("Root.TopCard")) and overlap(screenRect(find("Root.TopCard")), screenRect(nc)) then
@@ -1448,7 +1490,7 @@ S.client_p3battle_ring_mobile = guarded("client_p3battle_ring_mobile", function(
 		T.check(shown(rc) and centreFree(rc, size[1], size[2]) and hasText(rc, "Rounds won: 1"), "phone " .. tagName .. ": the run's card is off the screen centre")
 		LocalPlayer:SetAttribute("InBattle", nil)
 		KC.advance(4)
-		local ok = find("Root.ResultCard.OkButton")
+		local ok = find("Root.ResultCard.Body.OkButton")
 		if ok then
 			Mock.Click(ok)
 		end
@@ -1456,7 +1498,7 @@ S.client_p3battle_ring_mobile = guarded("client_p3battle_ring_mobile", function(
 	end
 	Mock.SetViewport(390, 844)
 	step(2)
-	T.check(BC.GetBattle() == nil and not BC.IsHudVisible(), "phone: the ring frees everything afterwards")
+	T.check(BC.GetBattle() == nil and not BC.IsHudVisible(), "phone: the ring frees everything afterwards", tostring(BC.GetBattle() ~= nil) .. " / team " .. tostring(shown(find("Root.Team"))) .. " cmd " .. tostring(shown(find("Root.Commands"))) .. " result " .. tostring(shown(find("Root.ResultCard"))))
 	T.check(battleWarnings(outBefore) == nil and #Mock.Errors == errBefore, "BattleController: no errors or warnings (phone ring)", tostring(battleWarnings(outBefore)))
 	KC.flushErrors("client_p3battle_ring_mobile")
 end)

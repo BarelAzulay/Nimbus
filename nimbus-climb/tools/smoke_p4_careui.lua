@@ -184,7 +184,7 @@ local function profile(opts)
 	local home = {
 		Level = 22,
 		Prestige = 1,
-		Stations = { Garden = 2, Press1 = 5, Press2 = 3, Collector = 2, Kitchen = 2, Gym = opts.Gym or 2, Vault = 1, House = opts.House or 3 },
+		Stations = { Garden = 2, Press1 = 5, Kitchen = 2, Gym = opts.Gym or 2, Vault = 1, House = opts.House or 3 },
 		Garden = { P.G1, P.G2, "", "" },
 		Gym = {},
 		CollectorCash = 1840,
@@ -209,7 +209,8 @@ local function profile(opts)
 		Cash = opts.Cash or 250000,
 		Gems = 50,
 		Home = home,
-		Food = opts.Food or {},
+		Food = {},
+		Berries = opts.Berries or 1240,
 		PetLevels = {
 			[P.G1] = { Level = 12, Xp = 300 },
 			[P.G2] = { Level = 9, Xp = 40 },
@@ -225,7 +226,8 @@ end
 
 local function sync(opts)
 	local snap = profile(opts)
-	setPlot({ CollectorCash = snap.Home.CollectorCash, IncomePerSecond = 38.5, GardenSlots = opts and opts.Legacy and 6 or 4, HomeLevel = 22, Prestige = 1 })
+	setPlot({ CollectorCash = snap.Home.CollectorCash, IncomePerSecond = 38.5, GardenSlots = opts and opts.Legacy and 6 or 4, HomeLevel = 22, Prestige = 1, BerryCap = 3000 })
+	LocalPlayer:SetAttribute(Config.Attr.Berries or "Berries", snap.Berries)
 	LocalPlayer:SetAttribute(Config.Attr.Cash, snap.Cash)
 	LocalPlayer:SetAttribute(Config.Attr.Gems, snap.Gems)
 	LocalPlayer:SetAttribute(Config.Attr.InMatch, false)
@@ -403,21 +405,38 @@ S.client_p4careui_feed = guarded("client_p4careui_feed", function()
 	T.check(r1 and find(r1, "Level").Text == "Lv 12 / 100", "careui feed: a row shows 'Lv 12 / 100' (the cap from PetCatalog)", r1 and find(r1, "Level").Text or "")
 	local barText = r1 and find(find(r1, "XpBar"), "Text")
 	T.check(barText and barText.Text == Util.Commas(300) .. " / " .. Util.Commas(TC.XpToNext(12)) .. " XP", "careui feed: ...and the XP bar (300 / XpToNext(12))", barText and barText.Text or "")
-	local wantFeed = "Feed " .. TC.FormatCash(TC.FeedPrice(def1, 12)) .. " (+" .. Util.Commas(TC.FeedXp(12, 2)) .. " XP)"
+	-- Phase 5 (3.4): ONE Feed button with the berry price; no "Level up"
+	local cost1 = TC.FeedBerries(def1, 12)
+	local wantFeed = "Feed  " .. Util.Commas(cost1) .. " berries  (+" .. Util.Commas(TC.FeedXp(12, 2)) .. " XP)"
 	local feedBtn = r1 and find(r1, "Feed")
-	T.eq(feedBtn and flat(feedBtn.Text), wantFeed, "careui feed: 'Feed $price (+xp XP)' from TycoonCatalog.FeedPrice / FeedXp at the machine's level")
-	local count, price = levelUpPlan(P.G1, 12, 300, 2)
-	local upBtn = r1 and find(r1, "LevelUp")
-	T.eq(upBtn and flat(upBtn.Text), "Level up " .. TC.FormatCash(price), "careui feed: 'Level up' = the feeds the next level needs, priced along the curve")
+	T.eq(feedBtn and feedBtn.Text, wantFeed, "careui feed: ONE Feed button 'Feed  N berries  (+xp XP)' from TycoonCatalog.FeedBerries / FeedXp")
+	local upBtn = nil
+	for _, d in ipairs(win and win:GetDescendants() or {}) do
+		if (d:IsA("TextButton") and (d.Name == "LevelUp" or d.Text:find("Level up", 1, true))) then
+			upBtn = d
+		end
+	end
+	T.check(upBtn == nil, "careui feed: no 'Level up' button (one feed per press)", upBtn and upBtn:GetFullName() or "")
+	local bar = win and find(win, "BerryBasket")
+	local barText = bar and find(bar, "Text")
+	T.check(barText and barText.Text == "Berry Basket 1,240 / 3,000" and shown(bar), "careui feed: the header is the Berry Basket bar (Berries / BerryCap)", barText and barText.Text or "none")
+	local rate = win and find(win, "BasketRate")
+	T.check(rate and rate.Text == "+" .. Util.Commas(math.floor(38.5 * TC.Berries.Share * 60 + 0.5)) .. " a minute", "careui feed: ...and the berries a minute (income x Share x 60)", rate and rate.Text or "")
+	local how = win and find(win, "Leftovers")
+	T.check(how and how.Text:find("Each Feed turns berries into XP", 1, true), "careui feed: the footer says how it works", how and how.Text or "")
+	-- a short basket: nothing is sent, the hint says why
 	local mark = #Mock.RemoteLog
 	Mock.Click(feedBtn)
 	advance(0.4)
-	Mock.Click(upBtn)
+	T.eq(#calls("PetCare", mark), cost1 > 1240 and 0 or 1, "careui feed: Feed with too few berries sends nothing (the hint says how many it needs)")
+	LocalPlayer:SetAttribute(Config.Attr.Berries or "Berries", cost1 + 500)
+	advance(0.6)
+	mark = #Mock.RemoteLog
+	Mock.Click(feedBtn)
 	advance(0.4)
 	local pc = calls("PetCare", mark)
-	T.check(#pc == 2 and pc[1].args[1] == "Feed" and pc[1].args[2] == P.G1 and pc[1].args[3] == nil
-		and pc[2].args[1] == "Feed" and pc[2].args[2] == P.G1 and type(pc[2].args[3]) == "table" and pc[2].args[3].Count == count,
-		"careui feed: Feed sends PetCare('Feed', key) and Level up PetCare('Feed', key, {Count = " .. count .. "})")
+	T.check(#pc == 1 and pc[1].args[1] == "Feed" and pc[1].args[2] == P.G1 and pc[1].args[3] == nil,
+		"careui feed: with enough berries Feed sends PetCare('Feed', key) (one feed, no second argument)")
 	-- EVOLVE only where CanEvolve
 	local evoReady = row(P.READY) and find(row(P.READY), "Evolve")
 	local evoNot = r1 and find(r1, "Evolve")
@@ -463,15 +482,6 @@ S.client_p4careui_feed = guarded("client_p4careui_feed", function()
 		T.check(pad and machine.Text:find(tostring(pad.Locked), 1, true) and not (upgrade and upgrade.Visible),
 			"careui feed: a locked next level says why (no Upgrade)", machine.Text)
 	end
-	-- leftovers first and free
-	sync({ Food = { Feast = 3 } })
-	advance(0.3)
-	r1 = row(P.G1)
-	T.eq(r1 and flat(find(r1, "Feed").Text), "Feed (free Feast, 3 left)", "careui feed: a leftover Feast is fed first and free")
-	local left = win and find(win, "Leftovers")
-	T.check(left and left.Text:find("3 Feasts", 1, true), "careui feed: the leftovers line lists them", left and left.Text or "")
-	local plan = C.FeedPlan and C.FeedPlan(P.G1, 1)
-	T.check(plan and plan.Free == 1 and plan.Price == 0 and plan.Food and plan.Food.Id == "Feast", "careui feed: FeedPlan mirrors the server's leftovers-first rule")
 	-- a menu window opening closes it
 	if M then
 		M.Open("Stats")
@@ -580,7 +590,7 @@ S.client_p4careui_train = guarded("client_p4careui_train", function()
 	-- the pet in training is selected first: its timer, Stop
 	local timer = find(win, "TrainTimer")
 	local timerText = timer and find(timer, "Text")
-	T.check(timer and shown(timer) and timerText and timerText.Text:find("Physique Rank 2: 2:", 1, true) and timerText.Text:find("left", 1, true),
+	T.check(timer and shown(timer) and timerText and timerText.Text:find("Rank 2: 2:", 1, true) and timerText.Text:find("left", 1, true),
 		"careui train: the pet in training shows its timer ('Physique Rank 2: 2:10 left')", timerText and timerText.Text or "")
 	T.check(disabled(find(find(win, "Skill_Speed"), "Train")) and find(find(win, "Skill_Physique"), "Train").Text == "Training",
 		"careui train: a training pet cannot start another skill")
@@ -739,8 +749,10 @@ S.client_p4careui_panels = guarded("client_p4careui_panels", function()
 			slot, tag = d, find(d, "LevelTag")
 		end
 	end
-	T.check(tag and tag.Text:find("Lv 57", 1, true) and tag.Text:find("\226\152\133", 1, true), "careui pets: the grid slot shows the level and the star",
-		tag and (tag.Text .. " visible=" .. tostring(tag.Visible)) or (slot and "no LevelTag" or "no slot"))
+	local evoTag = slot and find(slot, "EvoTag")
+	T.check(tag and tag.Text:find("Lv 57", 1, true) and evoTag and evoTag.Visible and evoTag.Text:find("\226\152\133", 1, true),
+		"careui pets: the grid slot shows the level (LevelTag) and the evolution star (EvoTag, Phase 5)",
+		tag and (tag.Text .. " visible=" .. tostring(tag.Visible) .. " evo=" .. tostring(evoTag and evoTag.Text)) or (slot and "no LevelTag" or "no slot"))
 	M.Open("Pets", { Key = P.COMBAT })
 	advance(0.3)
 	T.check(find(inv, "WorkPet").Text == "Garden" and not disabled(find(inv, "WorkPet")), "careui pets: Garden for a Combat pet (any role)")
@@ -767,27 +779,50 @@ S.client_p4careui_panels = guarded("client_p4careui_panels", function()
 	advance(0.6)
 	local win = menuGui:FindFirstChild("Window_Home")
 	T.check(win and win.Visible, "careui home: the Home window opens")
-	T.check(find(win, "CoinsWaiting").Text == "$1,840 waiting", "careui home: coins waiting (the plot's CollectorCash)", find(win, "CoinsWaiting").Text)
-	T.check(find(win, "CoinsPerMinute").Text == "Coins " .. TC.FormatCash(floor(38.5 * 60 + 0.5)) .. "/min", "careui home: coins per minute (IncomePerSecond x 60)", find(win, "CoinsPerMinute").Text)
-	T.check(find(win, "Places").Text == "Places 6/12", "careui home: places N/12 (the plot's GardenSlots)", find(win, "Places").Text)
-	local tip = find(win, "Tip").Text
-	T.check(tip:find("6 places and old prices until your next Prestige", 1, true),
-		"careui home: the legacy lines (kept places, old prices)", tip)
+	-- Phase 5 (3.4): the flow strip: Berry Farm -> pets eat & poop -> Berry Basket -> Food Machine
+	local strip = find(win, "FlowStrip")
+	local function tileText(id)
+		local t = strip and find(strip, "Flow_" .. id)
+		return t and (find(t, "Title").Text .. " | " .. find(t, "Value").Text) or "?"
+	end
+	T.check(strip and shown(strip), "careui home: the flow strip is on top of the Home window")
+	T.eq(tileText("Farm"), "Berry Farm | Lv 5", "careui home: strip 1 = the Berry Farm and its level")
+	T.eq(tileText("Poop"), "Pets eat & poop | " .. TC.FormatCash(floor(38.5 * 60 + 0.5)) .. " a minute", "careui home: strip 2 = Cloud Cash a minute (IncomePerSecond x 60)")
+	T.eq(tileText("Basket"), "Berry Basket | 1,240 / 3,000", "careui home: strip 3 = the Berry Basket (Berries / BerryCap)")
+	T.eq(tileText("Machine"), "Food Machine | Feed = XP", "careui home: strip 4 = the Food Machine")
+	local gardenCard = find(win, "GardenCard")
+	T.check(gardenCard == nil or not shown(gardenCard), "careui home: no old 'coins waiting' card (fewer things on screen)")
 	T.check(find(win, "Collect") == nil, "careui home: no Collect button")
+	local rows = 0
+	for _, d in ipairs(win:GetDescendants()) do
+		if d.Name:find("^Station_") then
+			rows = rows + 1
+		end
+	end
+	T.eq(rows, #TC.Stations, "careui home: one row per station of TycoonCatalog (11)")
 	local names = {}
-	for _, id in ipairs({ "Press1", "Collector", "Kitchen", "Gym", "Garden" }) do
+	for _, id in ipairs({ "Press1", "Kitchen", "Gym", "Garden", "DecorFence", "DecorFountain", "DecorPodium" }) do
 		local row = find(win, "Station_" .. id)
 		names[#names + 1] = row and find(row, "Name").Text or "?"
 	end
-	T.eq(table.concat(names, ","), "Berry Bush,Coin Magnet,Food Machine,Training Place,Pet Garden", "careui home: the Phase 4 station names")
+	T.eq(table.concat(names, ","), "Berry Farm,Food Machine,Training Place,Pet Garden,Yard Fence,Fountain,Pet Podium", "careui home: the Phase 5 station names (3 decor)")
 	local infoOf = function(id)
 		local row = find(win, "Station_" .. id)
 		return row and find(row, "Info").Text or ""
 	end
-	T.check(infoOf("Press1"):find("food", 1, true) and infoOf("Kitchen"):find("Feeds fill", 1, true) and infoOf("Gym"):find("train at once", 1, true)
-		and infoOf("Collector"):find("Scoop", 1, true),
-		"careui home: what each station does (food, feeds fill, pets train at once, scoop radius)",
-		infoOf("Press1") .. " | " .. infoOf("Kitchen") .. " | " .. infoOf("Gym") .. " | " .. infoOf("Collector"))
+	T.check(infoOf("Press1"):find("food", 1, true) and infoOf("Kitchen"):find("Feeds fill", 1, true) and infoOf("Gym"):find("train at once", 1, true),
+		"careui home: what each station does (food, feeds fill, pets train at once)",
+		infoOf("Press1") .. " | " .. infoOf("Kitchen") .. " | " .. infoOf("Gym"))
+	local signed = TC.SignedPads(TC.AvailablePads(profile().Home), 250000)
+	local tags, ok = 0, true
+	for _, d in ipairs(win:GetDescendants()) do
+		if d.Name == "NextTag" and shown(d) then
+			tags = tags + 1
+			local id = d.Parent.Name:gsub("^Station_", "")
+			ok = ok and signed[id] == true
+		end
+	end
+	T.check(ok and tags >= 1 and tags <= 4, "careui home: the pads SignedPads picks carry a 'Next' tag (at most 3 + Prestige)", tags .. " tags")
 	T.check(find(win, "Reward").Text:find("+1 garden place", 1, true), "careui home: the prestige reward names the garden place", find(win, "Reward").Text)
 	local mark = #Mock.RemoteLog
 	Mock.Click(find(win, "GoHome"))

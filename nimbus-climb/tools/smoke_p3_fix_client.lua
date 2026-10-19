@@ -5,22 +5,20 @@
 --   client_p3fixcli_telegraph  (#7) a boss telegraph's fill completes at the dodge DEADLINE on the render clock
 --                              (impact - render delay - round trip - run-out), not at the impact: SafeAt is that far
 --                              before At, the shape is not "late" before it and flashes ("late") between it and the
---                              impact; while a telegraph that has not hit covers one of my pets, RETREAT reads
---                              "RETREAT!" and pulses (Cue "Retreat"); every boss telegraph leaves >= 1 s of fill
---   client_p3fixcli_retreat    (#8) after RETREAT: the regroup countdown on ATTACK, then ATTACK! pulses (ring, Cue
---                              "Attack") and RETREAT counts "RESTING n" down to the server's auto resume; SPECIAL cards
---                              with a full meter say why they wait ("RESTING" / "ATTACK first", compact "ATTACK 1st",
---                              whole on the card) and a tap sends nothing; the sim's own Order { Attack, auto } puts
---                              the HUD back to ATTACK / RETREAT / SPECIAL! without any command; Practice / Tier None /
---                              Void results read as such
---   client_p3fixcli_landscape  (#9) an 844x390 window: the compact team cards sit in a grid at the left edge where the
---                              menu tiles step aside (the column frame keeps its place), nothing of the battle HUD
---                              contains or sits in the screen centre, no card covers the top card, the commands, the
---                              vitals or the hotbar; the tiles come back after the battle; a portrait phone keeps the
---                              row under the top card (tiles shown), 1920x1080 the team card at the bottom right;
---                              Phase 4: between two Champion Ring rounds the side card sits at the right edge (off the
---                              centre, over no button / team card / vitals / hotbar / currency, texts >= 14 px), the
---                              team keeps the left edge, the run's card replaces it and the tiles come back
+--                              impact; Phase 5: while a telegraph that has not hit covers my fighter, DASH glows (Cue
+--                              "Dash": dash through it) and the cue stops once it has hit; every boss telegraph leaves
+--                              >= 1 s of fill
+--   client_p3fixcli_retreat    (#8; Phase 5: RETREAT is gone) the SPECIAL button follows the energy: dim and refused
+--                              (a shake, nothing sent) while it charges, gold at 100, and the press sends Special; Practice
+--                              / Tier None / Void results read as such
+--   client_p3fixcli_landscape  (#9) an 844x390 window: the fighter card + helper portraits sit at the top-left edge
+--                              (TeamPlace TopLeft) where the menu tiles step aside (the column frame keeps its place),
+--                              nothing of the battle HUD contains or sits in the screen centre, the fighter block covers
+--                              no top card / action button / vitals / hotbar; the tiles come back after the battle; a
+--                              portrait phone hides them too, 1920x1080 keeps them; Phase 4: between two Champion Ring
+--                              rounds the side card sits at the right edge (off the centre, over no button / fighter
+--                              card / vitals / hotbar / currency, texts >= 14 px), the run's card replaces it and the
+--                              tiles come back
 --   client_p3fixcli_devhelp    (extra) the two /devhelp toasts on an 844x390 screen: the one pushed out for room waits
 --                              and is shown (whole, readable, at the right edge) after the other one
 --   client_p3fixcli_tutorial   (extra) with a party panel up (a match is about to start) an opened tutorial card never
@@ -181,9 +179,12 @@ local function newDriver(opts)
 		return nil
 	end
 	local id = "fixcli_" .. tostring(opts.Mode) .. "_" .. tostring(math.random(100000, 999999))
-	local sim = Sim.new({ Mode = opts.Mode, Seed = opts.Seed or 5, Id = id, Teams = opts.Teams, Trial = opts.Trial, Boss = opts.Boss, Round = opts.Round, Zone = opts.Zone, TimeLimit = opts.TimeLimit })
+	local sim = Sim.new({ Mode = opts.Mode, Seed = opts.Seed or 5, Id = id, Teams = opts.Teams, Boss = opts.Boss, Round = opts.Round, Zone = opts.Zone or (opts.Mode == "Dungeon" and { X = 44, Z = 44 } or nil), TimeLimit = opts.TimeLimit or (opts.Mode == "Dungeon" and 120 or nil) })
 	if not sim then
 		return nil
+	end
+	if opts.Wave then
+		sim:SpawnEnemies(opts.Wave, { Wave = 1, Anchor = { 0, 10 } })
 	end
 	local d = setmetatable({ sim = sim, id = id, logIndex = #Mock.RemoteLog, events = {}, last = nil, ring = opts.Ring }, Driver)
 	d.me = LocalPlayer.UserId
@@ -199,6 +200,10 @@ function Driver:start()
 	p.Spectator = false
 	p.T = self.sim:Time()
 	p.Ring = self.ring -- Phase 4: a Champion Ring round's Start.Ring
+	local team = self.sim:TeamOf(self.me) -- Phase 5: the receiver's own team (BattleService.startPayload)
+	if team then
+		p.Team = { Fighter = team.Fighter, Bench = team.Bench, Lives = team.Lives, Speed = team.Speed, Cooldowns = { Element = 0, Dash = 0, Swap = 0, Buff = {} } }
+	end
 	LocalPlayer:SetAttribute("InBattle", self.id)
 	KC.toClient("BattleState", "Start", p, self.id)
 end
@@ -245,6 +250,17 @@ function Driver:myUnits()
 		end
 	end
 	return out
+end
+
+-- Phase 5: a dungeon room (my team vs a wave of wild pets) replaces the Trials of these checks
+local function roomDriver(level, n)
+	local wave = {}
+	for i, e in ipairs(catalogTeam(n or 3, 6)) do
+		e.Slot = nil
+		e.Wild = true
+		wave[i] = e
+	end
+	return newDriver({ Mode = "Dungeon", Seed = 4, Teams = { { Owner = LocalPlayer.UserId, Side = 1, Pets = catalogTeam(3, level or 14) } }, Wave = wave })
 end
 
 local function cleanup(BC)
@@ -318,8 +334,8 @@ S.client_p3fixcli_telegraph = guarded("client_p3fixcli_telegraph", function()
 	T.check(tl.SafeAt - tl.From >= 1.0 and tl.SafeAt < tl.At, "#7: ...leaving >= 1 s of fill before the deadline", fmt(tl.SafeAt - tl.From) .. " s")
 	T.check(tl.Late == false, "#7: a fresh telegraph is not past its deadline")
 	-- step until the render clock passes the deadline (before the impact): the shape flashes
-	local sawLate, lateBeforeDeadline, threatSeen, retreatCue = false, false, false, false
-	local retreatTexts = {}
+	local sawLate, lateBeforeDeadline, threatSeen, dashCue = false, false, false, false
+	local cues = {}
 	for _ = 1, 40 do
 		d:step()
 		local bb = BC.GetBattle()
@@ -340,23 +356,34 @@ S.client_p3fixcli_telegraph = guarded("client_p3fixcli_telegraph", function()
 		end
 		if bb.Threat then
 			threatSeen = true
-			local rb = find("Root.Commands.RetreatButton")
-			retreatTexts[#retreatTexts + 1] = rb and rb.Text or "?"
-			if bb.Cue == "Retreat" and rb and rb.Text == "RETREAT!" then
-				local ring = rb:FindFirstChild("ActiveRing")
-				retreatCue = ring ~= nil and ring.Visible
+			local db = find("Root.Commands.DashButton")
+			local glow = db and db:FindFirstChild("Glow")
+			cues[#cues + 1] = tostring(bb.Cue)
+			if bb.Cue == "Dash" and glow and glow.BackgroundTransparency < 0.95 then
+				dashCue = true
 			end
 		end
 	end
 	T.check(sawLate and not lateBeforeDeadline, "#7: past the deadline the shape flashes until the impact (never before the deadline)")
-	-- a cluster slam aims at my pets: the HUD calls RETREAT while it covers them
-	T.check(threatSeen, "#7: the slam covers one of my pets (Threat)")
-	T.check(retreatCue, "#7: ...and RETREAT reads RETREAT! with its ring pulsing (Cue Retreat)", table.concat(retreatTexts, "|"))
-	-- RETREAT now: the cue goes away (the team is retreating)
-	BC.Command("Retreat")
-	d:step()
-	local rb = find("Root.Commands.RetreatButton")
-	T.check(BC.GetBattle().Cue ~= "Retreat" and rb and rb.Text ~= "RETREAT!", "#7: after RETREAT the RETREAT! cue stops", rb and rb.Text or "nil")
+	-- a cluster slam aims at my fighter: the HUD calls DASH (dash through it) while it covers it
+	T.check(threatSeen, "#7: the slam covers my fighter (Threat)")
+	T.check(dashCue, "#7: ...and DASH glows (Cue Dash)", table.concat(cues, "|"))
+	-- once the telegraph has hit, the cue goes away
+	local cleared = false
+	for _ = 1, 40 do
+		d:step()
+		local gone = true
+		for _, t in ipairs(BC.GetTelegraphs()) do
+			if t.Id == tele.id then
+				gone = false
+			end
+		end
+		if gone and BC.GetBattle() and BC.GetBattle().Cue == nil then
+			cleared = true
+			break
+		end
+	end
+	T.check(cleared, "#7: after the hit the DASH cue stops")
 	d:finish({ Mode = "Raid", Outcome = "Loss", Won = false, Spectator = false, Reason = "Ended", Rewards = {} })
 	T.check(cleanup(BC), "#7: everything freed afterwards")
 	T.check(battleWarnings(outBefore) == nil and #Mock.Errors == errBefore, "#7: no errors or warnings", tostring(battleWarnings(outBefore)))
@@ -376,104 +403,56 @@ end
 
 S.client_p3fixcli_retreat = guarded("client_p3fixcli_retreat", function()
 	local BC = moduleAt("client", "Controllers/BattleController")
-	local BCat = moduleAt("shared", "BattleCatalog")
-	if not (BC and BCat) then
+	if not BC then
 		T.fail("#8: modules missing")
 		return
 	end
-	local lock = BCat.Damage.RetreatLock or 1.5
-	local resume = BCat.Damage.RetreatAutoResume or 3
 	local outBefore, errBefore = #Mock.Output, #Mock.Errors
 	Mock.SetViewport(1920, 1080)
 	step(2)
-	local d = newDriver({ Mode = "Trial", Trial = 3, Seed = 4, Teams = { { Owner = LocalPlayer.UserId, Side = 1, Pets = catalogTeam(3, 14) } } })
+	local d = roomDriver(14, 3)
 	if not d then
 		T.fail("#8: battle driver")
 		return
 	end
 	d:start()
-	for _ = 1, 20 do
+	for _ = 1, 10 do
 		d:step()
 	end
-	local attack, retreat = find("Root.Commands.AttackButton"), find("Root.Commands.RetreatButton")
-	T.check(BC.Command("Retreat"), "#8: RETREAT is sent")
-	local t0 = os.clock()
-	d:step()
-	T.check(attack and attack.Text:find("ATTACK %d") ~= nil, "#8: during the regroup lock ATTACK shows the countdown", attack and attack.Text or "nil")
-	-- past the lock: ATTACK! pulses, RETREAT counts down to the auto resume
-	for _ = 1, floor(lock * 10) + 3 do
-		d:step()
-	end
-	local b = BC.GetBattle()
-	local ring = attack and attack:FindFirstChild("ActiveRing")
-	T.check(b.Order == "Retreat" and attack.Text == "ATTACK!" and b.Cue == "Attack" and ring and ring.Visible,
-		"#8: after the lock ATTACK reads ATTACK! with its ring pulsing (Cue Attack)", attack.Text .. " / " .. tostring(b.Cue))
-	local n = tonumber((retreat and retreat.Text or ""):match("^RESTING (%d)$"))
-	T.check(n ~= nil and n >= 1 and n <= math.ceil(resume), "#8: RETREAT counts the rest down (RESTING n, n <= the auto resume)", retreat and retreat.Text or "nil")
-	-- full meters while resting: the SPECIAL buttons say why they wait, a tap sends nothing
+	local special = find("Root.Commands.SpecialButton")
+	local fighter = BC.GetBattle() and BC.GetBattle().FighterId
+	local f = nil
 	for _, u in ipairs(d:myUnits()) do
-		u.meter = 100
+		if u.id == fighter then
+			f = u
+		end
 	end
+	if not T.check(special ~= nil and f ~= nil, "#8: the SPECIAL button and my fighter") then
+		return
+	end
+	f.meter = 20
 	d:step()
 	d:step()
-	local special = find("Root.Team.Row1.Special")
-	local top, sub = special and special:FindFirstChild("Top"), special and special:FindFirstChild("Sub")
-	T.check(top and top.Text == "RESTING" and sub and sub.Text == "ATTACK first", "#8: a full SPECIAL while resting reads RESTING / ATTACK first (wide)",
-		(top and top.Text or "nil") .. " / " .. (sub and sub.Text or "nil"))
+	T.check(special:GetAttribute("Disabled") == true, "#8: SPECIAL is dim while the energy charges")
 	local idx = #Mock.RemoteLog
-	if special then
-		Mock.Click(special)
-	end
-	T.check(#commandsSince(idx) == 0, "#8: ...and a tap on it sends nothing")
+	local shakes = special:GetAttribute("Shakes") or 0
+	Mock.Click(special)
+	T.check(#commandsSince(idx) == 0 and (special:GetAttribute("Shakes") or 0) > shakes, "#8: ...a press then sends nothing and shakes it")
 	d.logIndex = #Mock.RemoteLog
-	-- compact (an 844x390 window): the card's caption is whole
-	Mock.SetViewport(844, 390)
-	step(3)
+	f.meter = 100
 	d:step()
-	top = find("Root.Team.Row1.Special.Top")
-	local fits, how = textFits(top)
-	T.check(top and top.Text == "ATTACK 1st" and fits, "#8: compact cards read ATTACK 1st, whole on the card", (top and top.Text or "nil") .. " " .. how)
-	local rt = find("Root.Commands.RetreatButton")
-	fits, how = textFits(rt)
-	T.check(rt and rt.Text:find("^RESTING") ~= nil and fits, "#8: compact RETREAT reads RESTING n, whole", (rt and rt.Text or "nil") .. " " .. how)
-	Mock.SetViewport(1920, 1080)
-	step(3)
-	-- the sim returns the team to ATTACK by itself (Order { Attack, auto }); the HUD follows without a command
-	local autoEv, waited = nil, 0
-	for i = 1, 80 do
-		local evs = d:step()
-		for _, e in ipairs(evs) do
-			if e.type == "Order" and e.order == "Attack" and e.auto then
-				autoEv = e
-			end
-		end
-		if autoEv then
-			waited = i
-			break
-		end
-	end
-	for _ = 1, 4 do
-		d:step()
-	end
-	T.check(autoEv ~= nil, "#8: the sim resumes ATTACK by itself (Order auto)")
-	b = BC.GetBattle()
-	attack, retreat = find("Root.Commands.AttackButton"), find("Root.Commands.RetreatButton")
-	special = find("Root.Team.Row1.Special")
-	top = special and special:FindFirstChild("Top")
-	T.check(b.Order == "Attack" and attack.Text == "ATTACK" and retreat.Text == "RETREAT" and b.Cue == nil,
-		"#8: ...and the HUD is back to ATTACK / RETREAT with no cue", b.Order .. " " .. attack.Text .. " / " .. retreat.Text)
-	T.check(top and top.Text == "SPECIAL!", "#8: ...the full SPECIAL lights up again", top and top.Text or "nil")
-	local cmds = commandsSince(d.logIndex)
-	local attacks = 0
-	for _, c in ipairs(cmds) do
-		if c.action == "Attack" then
-			attacks = attacks + 1
-		end
-	end
-	T.check(attacks == 0, "#8: ...without the client sending ATTACK")
-	T.info("#8: auto resume after ~" .. fmt(lock + waited * 0.1 + 0.2, 1) .. " s of retreat (lock " .. lock .. " + " .. resume .. ")")
+	d:step()
+	step(4, 0.05)
+	local ring = find("Root.Commands.SpecialButton.Ring.R.Disc")
+	T.check(special:GetAttribute("Disabled") ~= true and ring and ring.BackgroundColor3.R > 0.9 and ring.BackgroundColor3.G > 0.6 and ring.BackgroundColor3.B < 0.4, "#8: at 100 SPECIAL lights up gold")
+	idx = #Mock.RemoteLog
+	Mock.Click(special)
+	local cmds = commandsSince(idx)
+	T.check(#cmds == 1 and cmds[1].action == "Special" and cmds[1].arg == nil, "#8: ...and the press sends Special", #cmds > 0 and cmds[1].action or "none")
+	d:step()
+	d:step()
 	-- result lines of the new reward records
-	d:finish({ Mode = "Trial", Outcome = "Win", Won = true, Spectator = false, Reason = "Wipe", Rewards = { Tokens = 10, Xp = 5, Trophies = 0 } })
+	d:finish({ Mode = "Dungeon", Outcome = "Loss", Won = false, Spectator = false, Reason = "Wipe", Rewards = { Dungeon = true } })
 	step(3)
 	T.check(cleanup(BC), "#8: everything freed afterwards")
 	local function resultFor(mode, payload, want, label)
@@ -545,7 +524,7 @@ local function landscapeChecks(BC, label, pets)
 	Mock.SetViewport(844, 390)
 	step(4)
 	local tilesBefore = menuTilesShown()
-	local d = newDriver({ Mode = "Raid", Boss = "storm_titan", Seed = 3, Teams = { { Owner = LocalPlayer.UserId, Side = 1, Pets = catalogTeam(pets, 10) } } })
+	local d = newDriver({ Mode = "Raid", Boss = "storm_titan", Seed = 3, Teams = { { Owner = LocalPlayer.UserId, Side = 1, Pets = catalogTeam(min(pets, 3), 10) } } })
 	if not d then
 		T.fail(label .. ": driver")
 		return
@@ -556,7 +535,7 @@ local function landscapeChecks(BC, label, pets)
 	end
 	KC.advance(1) -- the HUD / menu re-measure their neighbours
 	local b = BC.GetBattle()
-	T.check(b and b.Layout == "Compact" and b.TeamPlace == "Left", label .. ": the team cards go to the left edge (TeamPlace Left)", b and tostring(b.TeamPlace) or "nil")
+	T.check(b and b.Layout == "Compact" and b.TeamPlace == "TopLeft", label .. ": the fighter card + portraits go to the top-left edge (TeamPlace TopLeft)", b and tostring(b.TeamPlace) or "nil")
 	local team = find("Root.Team")
 	local tr = team and screenRect(team)
 	local cx, cy = 844 / 2, 390 / 2
@@ -567,7 +546,7 @@ local function landscapeChecks(BC, label, pets)
 	T.check(column ~= nil and shown(column) and column.AbsoluteSize.X > 0, label .. ": ...while the column frame keeps its place (the HUD measures it)")
 	-- no card on the top card, the commands, the vitals, the hotbar or any other button
 	local others = {}
-	for _, p in ipairs({ { "NimbusBattle", "Root.TopCard" }, { "NimbusBattle", "Root.Commands" }, { "NimbusHud", "BottomLeft.Vitals" }, { "NimbusHotbar", "Hotbar" }, { "NimbusHud", "TopRight.Currency" } }) do
+	for _, p in ipairs({ { "NimbusBattle", "Root.TopCard" }, { "NimbusBattle", "Root.Commands.AttackButton" }, { "NimbusBattle", "Root.Commands.SpecialButton" }, { "NimbusBattle", "Root.Commands.ElementButton" }, { "NimbusBattle", "Root.Commands.DashButton" }, { "NimbusHud", "BottomLeft.Vitals" }, { "NimbusHotbar", "Hotbar" }, { "NimbusHud", "TopRight.Currency" } }) do
 		local r = namedRect(p[1], p[2])
 		if r then
 			others[#others + 1] = { p[1] .. "." .. p[2], r }
@@ -584,18 +563,18 @@ local function landscapeChecks(BC, label, pets)
 		end
 	end
 	local clash = nil
-	for i = 1, pets do
-		local row = find("Root.Team.Row" .. i)
+	for _, path in ipairs({ "Root.Team.Fighter", "Root.Team.Helpers.Helper1", "Root.Team.Helpers.Helper2" }) do
+		local row = find(path)
 		if row and shown(row) then
 			local r = screenRect(row)
 			for _, o in ipairs(others) do
 				if overlap(r, o[2]) then
-					clash = "Row" .. i .. " over " .. o[1]
+					clash = path .. " over " .. o[1]
 				end
 			end
 		end
 	end
-	T.check(#others >= 4 and clash == nil, label .. ": no team card covers the top card, the commands, the vitals, the hotbar or a button", tostring(clash))
+	T.check(#others >= 4 and clash == nil, label .. ": the fighter block covers no top card, action button, vitals, hotbar or other button", tostring(clash))
 	local centred = {}
 	for _, c in ipairs(KC.centredTexts(0.1)) do
 		if c.path:find("NimbusBattle", 1, true) then
@@ -612,36 +591,36 @@ local function landscapeChecks(BC, label, pets)
 		end
 	end
 	T.check(small == nil, label .. ": team card texts stay >= 14 px", tostring(small))
-	-- a tap on a card still casts
+	-- the SPECIAL button casts with a full energy bar
 	for _, u in ipairs(d:myUnits()) do
 		u.meter = 100
 	end
 	d:step()
 	d:step()
 	local idx = #Mock.RemoteLog
-	local hit = find("Root.Team.Row1.CardHit")
+	local hit = find("Root.Commands.SpecialButton")
 	if hit then
 		Mock.Click(hit)
 	end
 	local cmds = commandsSince(idx)
-	T.check(#cmds == 1 and cmds[1].action == "Special", label .. ": tapping a card in the grid casts its special")
+	T.check(#cmds == 1 and cmds[1].action == "Special", label .. ": the SPECIAL button casts with a full energy bar")
 	-- the result card hides the team: the tiles come back
 	d:finish({ Mode = "Raid", Outcome = "Win", Won = true, Spectator = false, Reason = "BossDown", Rewards = { Tier = "Gold", Share = 0.5, Tokens = 50 } })
 	step(4)
 	T.check(menuTilesShown() == tilesBefore, label .. ": the menu tiles are back with the result card", menuTilesShown() .. "/" .. tilesBefore)
 	cleanup(BC)
-	-- portrait keeps the row under the top card, the tiles stay
+	-- a portrait phone: the fighter block at the top left too, the menu tiles step aside (contract 4.7)
 	Mock.SetViewport(390, 844)
 	step(4)
-	local d2 = newDriver({ Mode = "Trial", Trial = 2, Teams = { { Owner = LocalPlayer.UserId, Side = 1, Pets = catalogTeam(3) } } })
+	local d2 = roomDriver(10, 2)
 	if d2 then
 		d2:start()
 		for _ = 1, 8 do
 			d2:step()
 		end
 		b = BC.GetBattle()
-		T.check(b and b.TeamPlace == "Top" and menuTilesShown() > 0, label .. ": portrait keeps the row under the top card and the menu tiles", b and tostring(b.TeamPlace) or "nil")
-		d2:finish({ Mode = "Trial", Outcome = "Loss", Won = false, Spectator = false, Reason = "Wipe", Rewards = {} })
+		T.check(b and b.TeamPlace == "TopLeft" and menuTilesShown() == 0, label .. ": portrait keeps the fighter block top left, the menu tiles step aside", b and tostring(b.TeamPlace) or "nil")
+		d2:finish({ Mode = "Dungeon", Outcome = "Loss", Won = false, Spectator = false, Reason = "Wipe", Rewards = { Dungeon = true } })
 		cleanup(BC)
 	end
 	T.check(battleWarnings(outBefore) == nil and #Mock.Errors == errBefore, label .. ": no errors or warnings", tostring(battleWarnings(outBefore)))
@@ -662,7 +641,7 @@ local function ringLandscape(BC, label)
 	local tilesBefore = menuTilesShown()
 	local spec = BCat.ChampionTeam(6, 3)
 	local ch = spec.Champion or {}
-	local d = newDriver({ Mode = "Ring", Round = 6, Zone = { X = 44, Z = 44 }, TimeLimit = 90, Teams = { { Owner = LocalPlayer.UserId, Side = 1, Pets = catalogTeam(4, 30) }, spec },
+	local d = newDriver({ Mode = "Ring", Round = 6, Zone = { X = 44, Z = 44 }, TimeLimit = 90, Teams = { { Owner = LocalPlayer.UserId, Side = 1, Pets = catalogTeam(3, 30) }, spec },
 		Ring = { Round = 6, Best = 9, Start = 1, Champion = { PetId = ch.PetId, Level = ch.Level, Tier = ch.Tier, Boss = ch.Boss == true, Name = ch.Name } } })
 	if not d then
 		T.fail(label .. ": ring driver")
@@ -677,13 +656,13 @@ local function ringLandscape(BC, label)
 	step(4)
 	local b = BC.GetBattle()
 	local nr, nc = namedRect("NimbusBattle", "Root.NextRoundCard")
-	T.check(b and b.Next == 7 and nr ~= nil and b.TeamPlace == "Left" and menuTilesShown() == 0, label .. ": between rounds the side card shows, the team keeps the left edge, the tiles stay aside",
+	T.check(b and b.Next == 7 and nr ~= nil and b.TeamPlace == "TopLeft" and menuTilesShown() == 0, label .. ": between rounds the side card shows, the fighter block keeps the left edge, the tiles stay aside",
 		b and (tostring(b.Next) .. " " .. tostring(b.TeamPlace)) or "nil")
 	if nr then
 		local cx, cy = 844 / 2, 390 / 2
 		T.check(not (nr.x0 <= cx and cx <= nr.x1 and nr.y0 <= cy and cy <= nr.y1) and nr.x1 <= 845 and nr.y0 >= 0, label .. ": the side card stays off the screen centre and on the screen", rectText(nr))
 		local others = {}
-		for _, p in ipairs({ { "NimbusBattle", "Root.TopCard" }, { "NimbusBattle", "Root.Team" }, { "NimbusHud", "BottomLeft.Vitals" }, { "NimbusHotbar", "Hotbar" }, { "NimbusHud", "TopRight.Currency" } }) do
+		for _, p in ipairs({ { "NimbusBattle", "Root.TopCard" }, { "NimbusBattle", "Root.Team.Fighter" }, { "NimbusBattle", "Root.Team.Helpers" }, { "NimbusHud", "BottomLeft.Vitals" }, { "NimbusHotbar", "Hotbar" }, { "NimbusHud", "TopRight.Currency" } }) do
 			local r = namedRect(p[1], p[2])
 			if r then
 				others[#others + 1] = { p[1] .. "." .. p[2], r }
@@ -732,20 +711,32 @@ S.client_p3fixcli_landscape = guarded("client_p3fixcli_landscape", function()
 		T.fail("#9: BattleController / MenuController.SetColumnHidden missing")
 		return
 	end
-	landscapeChecks(BC, "#9 844x390 window", 4)
+	landscapeChecks(BC, "#9 844x390 window", 3)
 	ringLandscape(BC, "#9 844x390 window, Champion Ring")
-	-- a wide screen keeps the team card at the bottom right
+	-- a wide screen: the fighter card top left, the menu tiles stay
 	Mock.SetViewport(1920, 1080)
 	step(4)
-	local d = newDriver({ Mode = "Trial", Trial = 2, Teams = { { Owner = LocalPlayer.UserId, Side = 1, Pets = catalogTeam(3) } } })
+	local d = roomDriver(10, 2)
 	if d then
 		d:start()
 		for _ = 1, 8 do
 			d:step()
 		end
 		local b = BC.GetBattle()
-		T.check(b and b.Layout == "Wide" and b.TeamPlace == "Right" and menuTilesShown() > 0, "#9: 1920x1080 keeps the team card at the bottom right and the menu", b and tostring(b.TeamPlace) or "nil")
-		d:finish({ Mode = "Trial", Outcome = "Loss", Won = false, Spectator = false, Reason = "Wipe", Rewards = {} })
+		T.check(b and b.Layout == "Wide" and b.TeamPlace == "TopLeft" and menuTilesShown() > 0, "#9: 1920x1080: the fighter card top left, the menu tiles stay", b and tostring(b.TeamPlace) or "nil")
+		-- ...and the fighter card + portraits start right of the tile column (no portrait under a tile)
+		local _, column = menuTilesShown()
+		local covered = nil
+		for _, path in ipairs({ "Root.Team.Fighter", "Root.Team.Helpers.Helper1", "Root.Team.Helpers.Helper2" }) do
+			local r = namedRect("NimbusBattle", path)
+			for _, t in ipairs(column and column:GetDescendants() or {}) do
+				if r and t:IsA("GuiButton") and t.Name:find("^MenuButton_") and shown(t) and overlap(r, screenRect(t)) then
+					covered = path .. " over " .. t.Name
+				end
+			end
+		end
+		T.check(covered == nil, "#9: 1920x1080: the fighter card and portraits cover no menu tile", tostring(covered))
+		d:finish({ Mode = "Dungeon", Outcome = "Loss", Won = false, Spectator = false, Reason = "Wipe", Rewards = { Dungeon = true } })
 		cleanup(BC)
 	end
 	Mock.SetViewport(1920, 1080)
@@ -760,7 +751,7 @@ S.client_p3fixcli_mobile = guarded("client_p3fixcli_mobile", function()
 		T.fail("#9 phone: BattleController missing")
 		return
 	end
-	landscapeChecks(BC, "#9 phone 844x390 (touch)", 4)
+	landscapeChecks(BC, "#9 phone 844x390 (touch)", 3)
 	landscapeChecks(BC, "#9 phone 844x390, a 1-pet team", 1)
 	ringLandscape(BC, "#9 phone 844x390 (touch), Champion Ring")
 	Mock.SetViewport(390, 844)
@@ -903,7 +894,7 @@ S.client_p3fixcli_tutorial = guarded("client_p3fixcli_tutorial", function()
 		Mock.SetViewport(size[1], size[2])
 		KC.toClient("TutorialState", tutorialPayload(trialStep))
 		KC.advance(2)
-		local d = newDriver({ Mode = "Trial", Trial = 2, Teams = { { Owner = LocalPlayer.UserId, Side = 1, Pets = catalogTeam(3) } } })
+		local d = roomDriver(10, 2)
 		if d then
 			d:start()
 			for _ = 1, 12 do
@@ -921,7 +912,7 @@ S.client_p3fixcli_tutorial = guarded("client_p3fixcli_tutorial", function()
 				end
 			end
 			T.check(not anyShown, "tutorial " .. size[1] .. "x" .. size[2] .. ": the panel hides while compact battle cards hold the screen", tostring(root))
-			d:finish({ Mode = "Trial", Outcome = "Loss", Won = false, Spectator = false, Reason = "Wipe", Rewards = {} })
+			d:finish({ Mode = "Dungeon", Outcome = "Loss", Won = false, Spectator = false, Reason = "Wipe", Rewards = { Dungeon = true } })
 			step(3)
 			BC.GetBattle()
 			cleanup(BC)

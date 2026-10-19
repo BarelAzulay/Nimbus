@@ -558,13 +558,13 @@ local function clientScenarios()
 		if variant == "castle" then
 			home = {
 				Level = 41, Prestige = 1,
-				Stations = { Press1 = 10, Press2 = 10, Press3 = 8, Press4 = 6, Collector = 5, Garden = 5, Kitchen = 4, Gym = 4, Vault = 4, House = 4, FusionMachine = 1 },
+				Stations = { Press1 = 40, Garden = 8, Kitchen = 5, Gym = 5, Vault = 5, House = 4, FusionMachine = 3, ArenaGate = 1, DecorFence = 3, DecorFountain = 3, DecorPodium = 3 },
 				Garden = { "honey_bunny", "" }, Gym = {}, CollectorCash = 500,
 			}
 		else
 			home = {
 				Level = 20, Prestige = 1,
-				Stations = { Press1 = 5, Press2 = 3, Collector = 3, Garden = 2, Kitchen = 2, Gym = 1, Vault = 1, House = 2, DecorLamps = 1 },
+				Stations = { Press1 = 5, Garden = 2, Kitchen = 2, Gym = 1, Vault = 1, House = 2 },
 				Garden = { "honey_bunny", "" }, Gym = {}, CollectorCash = 1840,
 			}
 		end
@@ -580,7 +580,8 @@ local function clientScenarios()
 			Tutorial = { Step = 15, Done = true, Gifted = true },
 			Cash = 48250, Gems = 1820,
 			Home = home,
-			Food = { Snack = 4, Meal = 1 },
+			Food = {},
+			Berries = 99999,
 			Tiers = { pebble_pup = { Golden = 2 }, maple_fox = { Rainbow = 1 } },
 			Hybrids = { hc1 = { Body = "pip_penguin", Style = "maple_fox", Elements = { "Frost", "Flame" }, Name = "Pipfox", Rarity = "Uncommon", Tier = "Normal", Seed = 3 } },
 			PetLevels = { ["pebble_pup@Golden"] = { Level = 12, Xp = 300 }, cloudy_dragon = { Level = 18, Xp = 100 }, ["maple_fox@Rainbow"] = { Level = 20, Xp = 40 } },
@@ -613,6 +614,7 @@ local function clientScenarios()
 		LocalPlayer:SetAttribute(Config.Attr.SpotIndex, 7)
 		LocalPlayer:SetAttribute(Config.Attr.Cash, 48250)
 		LocalPlayer:SetAttribute(Config.Attr.Gems, 1820)
+		LocalPlayer:SetAttribute(Config.Attr.Berries or "Berries", 99999)
 		LocalPlayer:SetAttribute(Config.Attr.InMatch, false)
 		toClient("ProfileSync", snapshot(variant))
 		advance(0.4)
@@ -715,17 +717,19 @@ local function clientScenarios()
 		T.check(#missing == 0, "p2ui menu: the Home window lists every station of TycoonCatalog", table.concat(missing, ", "))
 		local houseName = find(win, "Tier")
 		local homeLevel = find(win, "HomeLevel")
-		T.check(houseName and houseName.Text == "Villa" and homeLevel and homeLevel.Text == "Home Level 20",
+		local wantLevel = TC.HomeLevelOf(snapshot("mid").Home)
+		T.check(houseName and houseName.Text == "Villa" and homeLevel and homeLevel.Text == "Home Level " .. wantLevel,
 			"p2ui menu: the house tier and the Home Level show", (houseName and houseName.Text or "?") .. " / " .. (homeLevel and homeLevel.Text or "?"))
+		-- Phase 5: income per second from the plot folder (live), the garden places in its parts line
 		local income = find(win, "PerSecond")
-		local waiting = find(win, "CoinsWaiting")
-		T.check(income and income.Text:find("38.5", 1, true) and waiting and waiting.Text:find("1,840", 1, true),
-			"p2ui menu: income per second and the coins waiting come from the plot folder", (income and income.Text or "?") .. " / " .. (waiting and waiting.Text or "?"))
-		plot:SetAttribute("CollectorCash", 2500)
+		T.check(income and income.Text:find("38.5", 1, true), "p2ui menu: income per second comes from the plot folder", income and income.Text or "?")
+		plot:SetAttribute("IncomePerSecond", 41.5)
 		advance(0.5)
-		T.check(waiting and waiting.Text:find("2,500", 1, true), "p2ui menu: ...and follow its live attributes", waiting and waiting.Text or "")
-		local places = find(win, "Places")
-		T.check(places and places.Text == "Places 4/12", "p2ui menu: the Pet Garden card shows its places (the plot's GardenSlots)", places and places.Text or "")
+		T.check(income and income.Text:find("41.5", 1, true), "p2ui menu: ...and follows its live attribute", income and income.Text or "")
+		local parts = find(win, "Parts")
+		T.check(parts and parts.Text:find("Garden 4/12 places", 1, true), "p2ui menu: the income card names the garden places (the plot's GardenSlots)", parts and parts.Text or "")
+		plot:SetAttribute("IncomePerSecond", 38.5)
+		advance(0.3)
 		local mult = find(win, "Multiplier")
 		T.check(mult and mult.Visible and mult.Text == "x1.25", "p2ui menu: the prestige multiplier tag shows x1.25 for one star")
 		-- Upgrade / Build / locks (Station_Press1 is the Berry Bush now)
@@ -741,13 +745,22 @@ local function clientScenarios()
 		end
 		local hc = calls("HomeAction", mark)
 		T.check(#hc == 1 and hc[1].args[1] == "Upgrade" and hc[1].args[2] == "Press1", "p2ui menu: Upgrade sends HomeAction('Upgrade', stationId)")
-		local press4 = find(win, "Station_Press4")
-		local lock = press4 and find(press4, "Locked")
-		T.check(lock and lock.Visible and lock.Text:find("Needs", 1, true) and not (find(press4, "Upgrade") and find(press4, "Upgrade").Visible),
+		-- (Phase 5: whichever stations are locked / too dear for this home)
+		local lock, lockedRow, dear = nil, nil, nil
+		for _, def in ipairs(TC.Stations) do
+			local row = find(win, "Station_" .. def.Id)
+			local l = row and find(row, "Locked")
+			local b = row and find(row, "Upgrade")
+			if not lock and l and l.Visible and l.Text ~= "" then
+				lock, lockedRow = l, row
+			end
+			if not dear and b and b.Visible and disabled(b) then
+				dear = b
+			end
+		end
+		T.check(lock and not (find(lockedRow, "Upgrade") and find(lockedRow, "Upgrade").Visible),
 			"p2ui menu: a locked station shows why instead of a button", lock and lock.Text or "")
-		local vault = find(win, "Station_Vault")
-		local vaultButton = vault and find(vault, "Upgrade")
-		T.check(vaultButton and disabled(vaultButton), "p2ui menu: an upgrade the player cannot afford is disabled")
+		T.check(dear ~= nil, "p2ui menu: an upgrade the player cannot afford is disabled")
 		T.check(find(win, "Collect") == nil and find(win, "CollectorCard") == nil, "p2ui menu: no Collect button and no Collector card (kids walk over their coins)")
 		local prestige = find(win, "Prestige")
 		T.check(prestige and disabled(prestige), "p2ui menu: Prestige is disabled before Home Level 40 + the Sky Castle")

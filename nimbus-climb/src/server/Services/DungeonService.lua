@@ -665,7 +665,7 @@ function Dg.begin(party, readyOnly)
 		for _, uid in ipairs(party.Order) do
 			local m = party.Members[uid]
 			if m then
-				notify(m.Player, "The dungeon is full, try again in a minute", "warn", 4)
+				notify(m.Player, "The dungeon is full, try again in a minute", "bad", 4)
 			end
 		end
 		return false, "The dungeon is full, try again in a minute"
@@ -709,7 +709,7 @@ function Dg.begin(party, readyOnly)
 				if ok then
 					newMember(run, pm.Player, specOrWhy, 1)
 				else
-					notify(pm.Player, tostring(specOrWhy), "warn", 4)
+					notify(pm.Player, tostring(specOrWhy), "bad", 4)
 					dropped[#dropped + 1] = pm.Player
 				end
 			end
@@ -720,7 +720,7 @@ function Dg.begin(party, readyOnly)
 		if uid ~= leader.UserId then
 			party.Members[uid] = nil
 			St.partyOf[p] = nil
-			notify(p, "You were dropped from the party", "warn", 4)
+			notify(p, "You were dropped from the party", "bad", 4)
 		end
 	end
 	if #run.Order == 0 or not run.Members[leader.UserId] then
@@ -738,7 +738,7 @@ function Dg.begin(party, readyOnly)
 	if not okB or type(pocket) ~= "table" then
 		St.pocketBusy[index] = nil
 		warn("[DungeonService] BuildRun failed: " .. tostring(okB and whyB or pocket))
-		notify(leader, "The dungeon could not open, try again", "warn", 4)
+		notify(leader, "The dungeon could not open, try again", "bad", 4)
 		return false, "The dungeon could not open"
 	end
 	run.Pocket = pocket
@@ -835,9 +835,15 @@ end
 
 -- the treasure alcove after the boss: chests closed per member, the exit after TreasureSeconds
 function Dg.enterTreasure(run)
+	if run.State == "Ending" then
+		return
+	end
 	local pocket = run.Pocket
 	local DB = St.deps.DungeonBuilder
 	local info = DB.PlaceRoom(pocket, 5)
+	if not info then
+		return Dg.endRun(run, false, "Error")
+	end
 	run.Room = 4
 	run.State = "Treasure"
 	run.Phase = nil
@@ -936,7 +942,7 @@ function Dg.startFight(run)
 	if not id then
 		warn("[DungeonService] OpenEncounter refused: " .. tostring(why))
 		for _, m in ipairs(liveMembers(run)) do
-			notify(m.Player, "The fight could not start: " .. tostring(why), "warn", 4)
+			notify(m.Player, "The fight could not start: " .. tostring(why), "bad", 4)
 		end
 		return Dg.endRun(run, false, "Error")
 	end
@@ -1203,7 +1209,7 @@ function Dg.onRoomEnd(run, result, battleId)
 	elseif reason == "Wipe" or reason == "Timeout" then
 		Dg.payLoss(run, room, result)
 		for _, m in ipairs(liveMembers(run)) do
-			notify(m.Player, "Floor " .. tostring(run.Floor) .. ": the " .. tostring(run.Name) .. " got you in room " .. tostring(room) .. ". Train your team and try again!", "warn", 6)
+			notify(m.Player, "Floor " .. tostring(run.Floor) .. ": the " .. tostring(run.Name) .. " got you in room " .. tostring(room) .. ". Train your team and try again!", "bad", 6)
 		end
 		Dg.endRun(run, false, reason)
 	elseif reason == "Abandoned" then
@@ -1643,7 +1649,7 @@ function DungeonService.KickMember(leader, userId)
 		end
 	end
 	St.partyOf[pm.Player] = nil
-	notify(pm.Player, "You were removed from the party", "warn", 4)
+	notify(pm.Player, "You were removed from the party", "bad", 4)
 	markLobbyDirty()
 	return true
 end
@@ -1867,7 +1873,7 @@ end
 
 local function refuse(player, why)
 	if type(why) == "string" and why ~= "" then
-		notify(player, why, "warn", 3)
+		notify(player, why, "bad", 3)
 	end
 	return false, why
 end
@@ -2099,7 +2105,7 @@ local function tickQueue(t)
 		if not isPlayer(player) or not run or run.State == "Ending" or St.parties[party.Leader.UserId] ~= party then
 			St.joinQueue[player] = nil
 			if isPlayer(player) then
-				notify(player, "That party moved on", "warn", 3)
+				notify(player, "That party moved on", "bad", 3)
 			end
 		elseif run.State == "Hall" or run.State == "Corridor" then
 			St.joinQueue[player] = nil
@@ -2110,12 +2116,12 @@ local function tickQueue(t)
 				party.Order[#party.Order + 1] = player.UserId
 				St.partyOf[player] = party
 			else
-				notify(player, tostring(why), "warn", 3)
+				notify(player, tostring(why), "bad", 3)
 			end
 			markLobbyDirty()
 		elseif t >= q.Deadline then
 			St.joinQueue[player] = nil
-			notify(player, "That party moved on", "warn", 3)
+			notify(player, "That party moved on", "bad", 3)
 		end
 	end
 end

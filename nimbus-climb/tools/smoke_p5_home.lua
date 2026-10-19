@@ -24,7 +24,14 @@
 --                         poops == due PoopTimes, <= 3 drops per slot then merging, stages, the invariant every tick,
 --                         CoinDrops format / <= 0.5 writes/s / <= 400 B, owner scoop radius 8 / visitor never, churn
 --                         keeps the epoch, nap at the cap + wake by a scoop (epoch = now + back walk), rebase -> Welcome once
---   homefx+pets (W3), client world: client_p5home_roam, client_p5home_flow_ui            (placeholders below: info only)
+--   homefx+pets (W3), client world:
+--     client_p5home_roam     12 roaming pets posed within 0.5 stud of HomeRoam.At (+ the soft separation <= 1.5), eating
+--                            at the Food Bowl, an evolved pet at Low, a poop pops a pending TokenLook coin at Plan().Poop,
+--                            CoinDrops confirms it / it fades after 2.5 s, a merge changes the look, the scoop zip +
+--                            '+$' at the drop, others' coins dimmed and still, budgets (24 pets, 36 coins x 6, 16
+--                            bits, 9000 parts), a nap at the far point + Zzz, RoamVersion mismatch parks, beyond 110
+--     client_p5home_flow_ui  the three signs, the basket line follows Berries / BerryCap, berry flights, SignedPads'
+--                            'Unsigned' pad signs, the Home window texts (careui) when MenuController is there
 -- Plain Lua 5.1 syntax only; deterministic (fixed seeds and epochs, no game clock).
 
 local T = SmokeCommon.T
@@ -1158,16 +1165,479 @@ S.p5home_roam_server = guarded("p5home_roam_server", function()
 end)
 
 ----------------------------------------------------------------------------------------------------
--- wave 3 (homefx+pets) - client scenarios: replace each placeholder with the real scenario
+-- wave 3 (homefx+pets) - client scenarios
 ----------------------------------------------------------------------------------------------------
 if CONTEXT == "client" then
+	local KC = _G.KC
+	local Players = game:GetService("Players")
+	local LocalPlayer = Players.LocalPlayer
+
+	local function req(path)
+		local inst = Mock.GetPath(ROOTS[string.match(path, "^(%a+)/")] .. "/" .. string.match(path, "^%a+/(.+)$"))
+		if not inst then
+			return nil
+		end
+		local ok, m = pcall(require, inst)
+		return ok and type(m) == "table" and m or nil
+	end
+
+	local function partsUnder(root)
+		local n = 0
+		for _, d in ipairs(root:GetDescendants()) do
+			if d:IsA("BasePart") then
+				n = n + 1
+			end
+		end
+		return n
+	end
+
+	-- a client test world: the local player's home (and optionally a neighbour's) with 12 roaming pets, the camera
+	-- and the character next to the Garden; every epoch / drop is written by the test (fixed seeds, the mock clock)
+	local C = {}
+	function C.setup(tag, x, opts)
+		opts = opts or {}
+		local HF = KC.M.HomeFx or req("client/Controllers/HomeFx")
+		local HB = req("server/Services/HomeBuilder")
+		local TC = req("shared/TycoonCatalog")
+		local PC = req("shared/PetCatalog")
+		local HR = req("shared/HomeRoam")
+		if not (HF and HB and TC and PC and HR and type(HF.Garden) == "function") then
+			T.fail("p5 home client: HomeFx / HomeBuilder / TycoonCatalog / PetCatalog / HomeRoam load in the client world")
+			return nil
+		end
+		HF.Init()
+		local ids = {}
+		for _, d in ipairs(PC.Pets) do
+			if not d.EventOnly and #ids < 12 then
+				ids[#ids + 1] = d.Id
+			end
+		end
+		local root = Instance.new("Folder")
+		root.Name = "SmokeP5Home" .. tag
+		root.Parent = workspace
+		local neighbour = nil
+		if opts.Neighbour then
+			neighbour = Mock.AddPlayer("RoamNeighbour" .. tag, 7700 + #tag, { character = false })
+		end
+		local base = CFrame.new(x, 300, -9000)
+		local function makeSpot(index, cf, owner)
+			local f = Instance.new("Folder")
+			f.Name = string.format("Spot_%02d", index)
+			f.Parent = root
+			local spot = { Index = index, PlotCFrame = cf, PlotSize = TC.PlotSize, Center = cf.Position, Folder = f }
+			HB.PreparePlot(spot)
+			HB.SetOwner(spot, owner)
+			HB.BuildHome(spot, { Stations = opts.Stations or { Press1 = 12, Garden = 8, Kitchen = 1, Gym = 1, House = 1 }, Prestige = 9 })
+			HB.SetGarden(spot, {}, 12)
+			f:SetAttribute("GardenSlots", 12)
+			return spot
+		end
+		local mine = makeSpot(81, base, LocalPlayer)
+		local theirs = neighbour and makeSpot(82, base * CFrame.new(80, 0, 0), neighbour) or nil
+		local character = LocalPlayer.Character
+		local hrp = character and character:FindFirstChild("HumanoidRootPart")
+		local saved = { Hrp = hrp and hrp.CFrame, Anchored = hrp and hrp.Anchored, Cam = workspace.CurrentCamera and workspace.CurrentCamera.CFrame }
+		if hrp then
+			hrp.Anchored = true
+		end
+		local ctx = { HF = HF, HB = HB, TC = TC, HR = HR, Ids = ids, Mine = mine, Theirs = theirs, Neighbour = neighbour, Hrp = hrp, Base = base }
+		function ctx.seedOf(uid)
+			return (uid % 2147483646) + 1
+		end
+		-- the roam of one plot: every slot's epoch is now - offset[slot] (one decimal, like the server)
+		function ctx.roam(spot, uid, offsets, naps, version)
+			local now = workspace:GetServerTimeNow()
+			local parts, epochs = {}, {}
+			for slot = 1, 12 do
+				local off = offsets[slot]
+				if off then
+					local e = math.floor((now - off) * 10 + 0.5) / 10
+					epochs[slot] = e
+					parts[#parts + 1] = string.format("%d=%.1f", slot, e) .. ((naps and naps[slot]) and (":N" .. naps[slot]) or "")
+				end
+			end
+			spot.Folder:SetAttribute("RoamSeed", ctx.seedOf(uid))
+			spot.Folder:SetAttribute("RoamVersion", version or HR.Version)
+			spot.Folder:SetAttribute("Roam", table.concat(parts, ";"))
+			return epochs
+		end
+		function ctx.pets(spot, n, infoStage)
+			local list, info, valid = {}, {}, {}
+			for i = 1, n do
+				local key = ids[((i - 1) % #ids) + 1]
+				valid[i] = key
+				list[#list + 1] = i .. "=" .. key
+				info[#info + 1] = i .. "=5:" .. tostring((infoStage and infoStage[i]) or 0)
+			end
+			HB.SetGarden(spot, valid, 12)
+			spot.Folder:SetAttribute("GardenPets", table.concat(list, ";"))
+			spot.Folder:SetAttribute("GardenInfo", table.concat(info, ";"))
+		end
+		function ctx.standAt(pos)
+			if hrp then
+				hrp.CFrame = CFrame.new(pos + Vector3.new(0, 3, 0))
+			end
+			local cam = workspace.CurrentCamera
+			if cam then
+				cam.CFrame = CFrame.lookAt(pos + Vector3.new(0, 18, -26), pos)
+			end
+		end
+		function ctx.g(spot)
+			return HF.Garden((spot or mine).Folder) or { Heaps = {}, Coins = {}, Pets = {}, Training = {} }
+		end
+		local function cleanup()
+			if hrp and saved.Hrp then
+				hrp.CFrame = saved.Hrp
+				hrp.Anchored = saved.Anchored
+			end
+			if workspace.CurrentCamera and saved.Cam then
+				workspace.CurrentCamera.CFrame = saved.Cam
+			end
+			LocalPlayer:SetAttribute("Cash", nil)
+			LocalPlayer:SetAttribute("Berries", nil)
+			root:Destroy()
+			if neighbour then
+				Mock.RemovePlayer(neighbour)
+			end
+			KC.advance(0.5)
+		end
+		ctx.standAt(mine.PlotCFrame * TC.Get("Garden").Slot.CFrame.Position)
+		KC.advance(0.3)
+		return ctx, cleanup
+	end
+
+	-- the cycle time t (0..24) of `slot` whose epoch makes it stand at t now
+	local function flatDist(a, b)
+		return (Vector3.new(a.X, 0, a.Z) - Vector3.new(b.X, 0, b.Z)).Magnitude
+	end
+
 	-- [W3 homefx+pets] client_p5home_roam: poses == HomeRoam.At, coins pending / confirmed, budgets, RoamVersion
 	S.client_p5home_roam = guarded("client_p5home_roam", function()
-		T.info("client_p5home_roam: pending (homefx+pets, wave 3)")
+		local ctx, cleanup = C.setup("roam", 9000, { Neighbour = true })
+		if not ctx then
+			return
+		end
+		local HF, HR, TC = ctx.HF, ctx.HR, ctx.TC
+		local mine, theirs = ctx.Mine, ctx.Theirs
+		local uid = LocalPlayer.UserId
+		local seed = ctx.seedOf(uid)
+		local outputBefore, errorsBefore = #Mock.Output, #Mock.Errors
+		ctx.pets(mine, 12, { [3] = 1 })
+		-- slot 1 eats (1 s into its cycle), slot 2 is 0.3 s before its poop, the rest spread over the cycle
+		local poopAt2 = HR.Plan(seed, 2, 5).PoopAt
+		local poopAt4 = HR.Plan(seed, 4, 5).PoopAt
+		local offsets = { [1] = 5 * 24 + 1.0, [2] = 5 * 24 + poopAt2 - 0.3, [4] = 5 * 24 + poopAt4 - 0.3 }
+		for slot = 1, 12 do
+			offsets[slot] = offsets[slot] or (5 * 24 + (slot * 1.9) % 24)
+		end
+		local epochs = ctx.roam(mine, uid, offsets)
+		mine.Folder:SetAttribute("CoinDrops", "")
+		for _ = 1, 20 do
+			KC.advance(0.05)
+		end
+		local g = ctx.g()
+		local placed, near, worst, worstSlot = 0, 0, 0, nil
+		local plot = mine.PlotCFrame
+		local now = workspace:GetServerTimeNow()
+		for slot = 1, 12 do
+			local p = g.Pets[slot]
+			if p and p.Model and p.Model.Parent then
+				placed = placed + 1
+				local x, z = HR.At(seed, slot, epochs[slot], now)
+				local lp = plot:PointToObjectSpace(p.Model:GetPivot().Position)
+				local ex, ez = x + p.SepX, z + p.SepZ
+				local slack = (p.State == "Eat") and (p.Hw or 1) + 0.05 or 0
+				local d = math.sqrt((lp.X - ex) ^ 2 + (lp.Z - ez) ^ 2) - slack
+				if d > worst then
+					worst, worstSlot = d, slot
+				end
+				if math.abs(p.SepX) + math.abs(p.SepZ) <= 1.5 * 1.42 then
+					near = near + 1
+				end
+			end
+		end
+		T.eq(placed, 12, "p5 roam client: 12 garden pets roam the own home (GardenPets, RoamSeed, Roam)")
+		T.check(worst <= 0.5, "p5 roam client: every pet stands within 0.5 stud of HomeRoam.At (+ its soft separation <= 1.5)", string.format("worst %.2f (slot %s)", worst, tostring(worstSlot)))
+		T.eq(near, placed, "p5 roam client: ...the separation never pushes more than 1.5 studs")
+		-- eating at the bowl
+		local e1 = g.Pets[1]
+		local bowl = TC.RoamLayout().Bowl
+		local lp1 = plot:PointToObjectSpace(e1.Model:GetPivot().Position)
+		local bd = math.sqrt((lp1.X - bowl.X) ^ 2 + (lp1.Z - bowl.Z) ^ 2)
+		T.check(e1.State == "Eat" and bd >= 4.5 and bd <= 5 + (e1.Hw or 1) + 1.6, "p5 roam client: slot 1 eats at the Food Bowl (eat ring 5 + half its width out)", string.format("%s %.2f", tostring(e1.State), bd))
+		-- evolved own pet (GardenInfo stage 1 -> PB_Evolved 1, Low)
+		local e3 = g.Pets[3]
+		T.check(e3 and e3.Model:GetAttribute("PB_Evolved") == 1 and e3.Model:GetAttribute("PB_Detail") == "Low", "p5 roam client: an evolved garden pet is built evolved at Low (3.7)",
+			e3 and tostring(e3.Model:GetAttribute("PB_Evolved")) or "no pet")
+		-- the pending coin of slot 2's poop: arcs, then CoinDrops confirms it
+		local st0 = HF.Stats()
+		for _ = 1, 8 do
+			KC.advance(0.05)
+		end
+		g = ctx.g()
+		local c2 = g.Coins["2:5"]
+		T.check(c2 ~= nil and c2.Pending == true, "p5 roam client: slot 2 crossed PoopAt -> a pending Cloud Cash coin '2:5'", c2 and tostring(c2.Pending) or "none")
+		local want2 = mine.PlotCFrame:PointToWorldSpace(Vector3.new(HR.Plan(seed, 2, 5).Poop.x, 0, HR.Plan(seed, 2, 5).Poop.z))
+		T.check(c2 and flatDist(c2.Point, want2) < 0.05 and c2.Look == "Cash1" and c2.Parts == 6, "p5 roam client: ...at Plan(seed, 2, 5).Poop, TokenLook Cash stage 1, 6 parts", c2 and c2.Look or "")
+		T.check(g.Coins["4:5"] ~= nil, "p5 roam client: slot 4's poop pops its own pending coin too")
+		mine.Folder:SetAttribute("CoinDrops", "2=5:1")
+		KC.advance(0.1)
+		g = ctx.g()
+		c2 = g.Coins["2:5"]
+		T.check(c2 and c2.Pending == false and HF.Stats().Confirmed > st0.Confirmed, "p5 roam client: CoinDrops '2=5:1' confirms the pending coin (same part, not pending)")
+		-- the coin moves (bob / spin) for the owner
+		local cfA = c2 and c2.Part.CFrame
+		KC.advance(0.2)
+		local cfB = c2 and c2.Part.CFrame
+		T.check(cfA and cfB and (cfA.Position - cfB.Position).Magnitude > 1e-4 or (cfA and cfA.LookVector:Dot(cfB.LookVector) < 0.9999), "p5 roam client: the own coin bobs and spins (TokenLook.Motion)")
+		-- slot 4's coin is never confirmed: it fades after 2.5 s
+		for _ = 1, 32 do
+			KC.advance(0.1)
+		end
+		g = ctx.g()
+		T.check(g.Coins["4:5"] == nil and g.Coins["2:5"] ~= nil and HF.Stats().Faded > st0.Faded, "p5 roam client: an unconfirmed pending coin fades after 2.5 s; the confirmed one stays")
+		-- a merged / Lucky drop changes its look in place
+		mine.Folder:SetAttribute("CoinDrops", "2=5:3*")
+		KC.advance(0.1)
+		g = ctx.g()
+		T.check(g.Coins["2:5"] and g.Coins["2:5"].Look == "GoldenCash3" and g.Coins["2:5"].Lucky, "p5 roam client: a merged Lucky drop '2=5:3*' becomes GoldenCash at stage 3", g.Coins["2:5"] and g.Coins["2:5"].Look or "")
+		-- the scoop: zip + "+$" at the drop
+		LocalPlayer:SetAttribute("Cash", 1000)
+		mine.Folder:SetAttribute("CollectorCash", 120)
+		KC.advance(0.1)
+		local dropPt = g.Coins["2:5"].Point
+		ctx.standAt(dropPt)
+		KC.advance(0.1)
+		local zips, labels = HF.Stats().Zips, HF.Stats().Labels
+		mine.Folder:SetAttribute("CoinDrops", "")
+		mine.Folder:SetAttribute("CollectorCash", 20)
+		LocalPlayer:SetAttribute("Cash", 1100)
+		KC.advance(0.1)
+		local st = HF.Stats()
+		T.check(st.Zips == zips + 1 and st.Labels == labels + 1 and st.LastLabel == "+$100", "p5 roam client: the scoop zips the coin to the owner and floats '+$100'", tostring(st.LastLabel))
+		T.check(st.LastLabelAt and flatDist(st.LastLabelAt, dropPt) < 1, "p5 roam client: ...the label at the drop, not over the player")
+		g = ctx.g()
+		T.check(g.Coins["2:5"] == nil, "p5 roam client: ...and the coin is gone")
+		-- the neighbour's coins: dimmed and still
+		ctx.pets(theirs, 12)
+		local nuid = ctx.Neighbour.UserId
+		local nseed = ctx.seedOf(nuid)
+		local noff = {}
+		for slot = 1, 12 do
+			noff[slot] = 3 * 24 + slot
+		end
+		ctx.roam(theirs, nuid, noff)
+		local drops = {}
+		for slot = 1, 12 do
+			drops[#drops + 1] = slot .. "=0:1,1:2,2:4"
+		end
+		theirs.Folder:SetAttribute("CoinDrops", table.concat(drops, ";") .. ";W=5")
+		local mdrops = {}
+		for slot = 1, 12 do
+			mdrops[#mdrops + 1] = slot .. "=1:1"
+		end
+		mine.Folder:SetAttribute("CoinDrops", table.concat(mdrops, ";"))
+		ctx.standAt(mine.PlotCFrame.Position + Vector3.new(40, 0, 0))
+		for _ = 1, 30 do
+			KC.advance(0.05)
+		end
+		local gt = ctx.g(theirs)
+		local dimAll, n, pt0 = true, 0, {}
+		for key, c in pairs(gt.Coins) do
+			n = n + 1
+			dimAll = dimAll and c.Dim and string.sub(c.Look, -1) == "d"
+			pt0[key] = c.Part.CFrame
+		end
+		KC.advance(0.3)
+		local still = true
+		for key, c in pairs(ctx.g(theirs).Coins) do
+			if pt0[key] and (pt0[key].Position - c.Part.CFrame.Position).Magnitude > 1e-6 then
+				still = false
+			end
+		end
+		T.check(n > 0 and dimAll and still, "p5 roam client: another player's coins are dimmed and still", n .. " coins")
+		T.check(gt.Heaps.W and gt.Heaps.W.Dim, "p5 roam client: ...their Welcome-back heap too")
+		st = HF.Stats()
+		T.check(st.Coins <= 36 and st.CoinParts <= 36 * 6, "p5 roam client: <= 36 Cloud Cash coins x 6 parts over every home (72 drops listed)", st.Coins .. " coins")
+		T.check(st.Posed <= 24 and st.GardenPets <= 24, "p5 roam client: <= 24 posed garden pets over every home (own home first)", st.Posed .. " posed, " .. st.GardenPets .. " placed")
+		local ownPlaced = 0
+		for _ in pairs(ctx.g().Pets) do
+			ownPlaced = ownPlaced + 1
+		end
+		T.eq(ownPlaced, 12, "p5 roam client: ...the own home keeps all 12")
+		T.check(st.PetParts <= 9000, "p5 roam client: the posed pets stay inside the part budget (HOME_PET_PARTS 9000)", tostring(st.PetParts))
+		T.check(st.Bits <= 16, "p5 roam client: berries + puffs <= 16 pooled parts", tostring(st.Bits))
+		-- a nap: slot 6 lies down at the far point of its napping cycle with a Zzz
+		local napOff = {}
+		for slot = 1, 12 do
+			napOff[slot] = offsets[slot] + 0.05 * 0
+		end
+		napOff[6] = 5 * 24 + 22
+		ctx.roam(mine, uid, napOff, { [6] = 5 })
+		ctx.standAt(mine.PlotCFrame * TC.Get("Garden").Slot.CFrame.Position)
+		KC.advance(0.2)
+		g = ctx.g()
+		local p6 = g.Pets[6]
+		local far6 = HR.Plan(seed, 6, 5).Out
+		far6 = far6[#far6]
+		local lp6 = p6 and plot:PointToObjectSpace(p6.Model:GetPivot().Position)
+		T.check(p6 and p6.State == "Nap" and p6.Sleep and p6.Zzz ~= nil and math.sqrt((lp6.X - far6.x - p6.SepX) ^ 2 + (lp6.Z - far6.z - p6.SepZ) ^ 2) < 1.6,
+			"p5 roam client: a napping slot (':N5') lies at that cycle's far point with a 'Zzz'", p6 and tostring(p6.State) or "none")
+		-- RoamVersion mismatch: pets parked on their beds, coins hidden
+		mine.Folder:SetAttribute("RoamVersion", HR.Version + 7)
+		KC.advance(0.2)
+		g = ctx.g()
+		local parked, coinsLeft = 0, 0
+		for slot, p in pairs(g.Pets) do
+			local bx, bz = HR.BedPoint(slot)
+			local lp = plot:PointToObjectSpace(p.Model:GetPivot().Position)
+			if p.State == "Park" and math.sqrt((lp.X - bx - p.SepX) ^ 2 + (lp.Z - bz - p.SepZ) ^ 2) < 0.6 then
+				parked = parked + 1
+			end
+		end
+		for _ in pairs(g.Coins) do
+			coinsLeft = coinsLeft + 1
+		end
+		T.check(parked == 12 and coinsLeft == 0 and not g.RoamOk, "p5 roam client: a RoamVersion mismatch parks every pet on its bed and hides the coins", parked .. " parked, " .. coinsLeft .. " coins")
+		mine.Folder:SetAttribute("RoamVersion", HR.Version)
+		-- parked beyond 110 studs: no pets, no coins for that home
+		ctx.standAt(mine.PlotCFrame.Position + Vector3.new(0, 0, 400))
+		local cam = workspace.CurrentCamera
+		if cam then
+			cam.CFrame = CFrame.lookAt(mine.PlotCFrame.Position + Vector3.new(0, 20, 200), mine.PlotCFrame.Position)
+		end
+		for _ = 1, 12 do
+			KC.advance(0.1)
+		end
+		g = ctx.g()
+		local left = 0
+		for _ in pairs(g.Pets) do
+			left = left + 1
+		end
+		for _ in pairs(g.Coins) do
+			left = left + 1
+		end
+		T.eq(left, 0, "p5 roam client: a home beyond 110 studs draws no pets and no coins")
+		local errs = #Mock.Errors - errorsBefore
+		local warned = nil
+		for i = outputBefore + 1, #Mock.Output do
+			local o = Mock.Output[i]
+			if o.kind == "warn" and o.text:find("HomeFx", 1, true) then
+				warned = o.text
+			end
+		end
+		T.check(errs == 0 and warned == nil, "p5 roam client: no errors or HomeFx warnings", tostring(warned))
+		cleanup()
+		KC.flushErrors("client_p5home_roam")
 	end)
-	-- [W3 homefx+pets / careui] client_p5home_flow_ui: Home strip texts, Feed button, basket line, three signs
+
+	-- [W3 homefx+pets / careui] client_p5home_flow_ui: three signs, the basket line follows the attributes, only the
+	-- next affordable pads carry a sign; the Home strip / Feed window (careui) when MenuController / CareController say
 	S.client_p5home_flow_ui = guarded("client_p5home_flow_ui", function()
-		T.info("client_p5home_flow_ui: pending (homefx+pets / careui, wave 3)")
+		local ctx, cleanup = C.setup("flow", 9400, { Stations = { Press1 = 13, Garden = 4, Kitchen = 2, House = 1 } })
+		if not ctx then
+			return
+		end
+		local HF, HB, TC = ctx.HF, ctx.HB, ctx.TC
+		local mine = ctx.Mine
+		local home = mine.Folder:FindFirstChild("Home")
+		local function textOf(gui, name)
+			local l = gui and gui:FindFirstChild(name, true)
+			return l and l:IsA("TextLabel") and l.Text or nil
+		end
+		local farm = home and home:FindFirstChild("FarmSign", true)
+		local bowl = home and home:FindFirstChild("BowlSign", true)
+		local machine = home and home:FindFirstChild("MachineSign", true)
+		T.check(farm and textOf(farm, "Title") == "Berry Farm Lv 13" and textOf(farm, "Info") == "Grows berries for your pets", "p5 flow ui: the Berry Farm sign 'Berry Farm Lv 13 / Grows berries for your pets'", farm and tostring(textOf(farm, "Title")) or "none")
+		T.check(bowl and textOf(bowl, "Title") == "Food Bowl" and textOf(bowl, "Info") == "Pets eat here, then poop Cloud Cash!", "p5 flow ui: the Food Bowl sign", bowl and tostring(textOf(bowl, "Info")) or "none")
+		T.check(machine and textOf(machine, "Title") == "Food Machine" and textOf(machine, "Info") == "Berries -> XP: press E", "p5 flow ui: the Food Machine sign", machine and tostring(textOf(machine, "Info")) or "none")
+		LocalPlayer:SetAttribute("Berries", 1240)
+		mine.Folder:SetAttribute("BerryCap", 3000)
+		KC.advance(0.2)
+		T.eq(textOf(machine, "BasketLine"), "1,240 / 3,000 berries", "p5 flow ui: the basket line follows Berries / BerryCap")
+		LocalPlayer:SetAttribute("Berries", 2999)
+		KC.advance(0.1)
+		T.eq(textOf(machine, "BasketLine"), "2,999 / 3,000 berries", "p5 flow ui: ...and the next change of the Berries attribute")
+		mine.Folder:SetAttribute("BerryCap", 4500)
+		KC.advance(0.1)
+		T.eq(textOf(machine, "BasketLine"), "2,999 / 4,500 berries", "p5 flow ui: ...and of the plot's BerryCap")
+		-- berry flights while the farm is built (pooled with the puffs)
+		local fl0 = HF.Stats().BerryFlights
+		for _ = 1, 50 do
+			KC.advance(0.1)
+		end
+		local st = HF.Stats()
+		T.check(st.BerryFlights >= fl0 + 2 and st.Bits <= 16, "p5 flow ui: berries hop from the farm to the bowl (3 s) and the basket (4 s), pooled <= 16", (st.BerryFlights - fl0) .. " flights")
+		-- the pad signs: only TycoonCatalog.SignedPads' pads show
+		local homeTable = { Stations = { Press1 = 13, Garden = 4, Kitchen = 2, House = 1 }, Prestige = 0 }
+		local pads = TC.AvailablePads(homeTable)
+		HB.SetPads(mine, pads)
+		LocalPlayer:SetAttribute("Cash", 2500)
+		KC.advance(0.4)
+		local want = TC.SignedPads(pads, 2500)
+		local okAll, shown, unsigned, bad = true, 0, 0, nil
+		for _, pad in ipairs(home.Pads:GetChildren()) do
+			local sign = pad:FindFirstChild("PadSign", true)
+			local id = pad:GetAttribute("StationId")
+			local locked = pad:GetAttribute("Locked")
+			local state = sign and HF.SignState(sign)
+			if sign and (locked == nil or locked == "") then
+				if want[id] then
+					if state == "Unsigned" then
+						okAll, bad = false, id .. " unsigned"
+					end
+				elseif state ~= "Unsigned" or sign.Enabled then
+					okAll, bad = false, id .. " " .. tostring(state)
+				else
+					unsigned = unsigned + 1
+				end
+				if state ~= "Unsigned" then
+					shown = shown + 1
+				end
+			end
+		end
+		T.check(okAll and unsigned > 0, "p5 flow ui: an open pad SignedPads did not pick is 'Unsigned' (hidden); the picked ones may show", tostring(bad) .. ", " .. unsigned .. " unsigned")
+		LocalPlayer:SetAttribute("Cash", 1e12)
+		KC.advance(0.3)
+		local want2 = TC.SignedPads(pads, 1e12)
+		local n2 = 0
+		for _ in pairs(want2) do
+			n2 = n2 + 1
+		end
+		local nShow = 0
+		for _, pad in ipairs(home.Pads:GetChildren()) do
+			local sign = pad:FindFirstChild("PadSign", true)
+			if sign and HF.SignState(sign) ~= "Unsigned" and HF.SignState(sign) ~= "Locked" then
+				nShow = nShow + 1
+			end
+		end
+		T.check(nShow <= n2 and n2 <= 4, "p5 flow ui: a rich player still sees at most the 3 cheapest affordable (+ Prestige) signs", nShow .. " / " .. n2)
+		-- the Home window / Food Machine window (careui, MenuController / CareController): read when they exist
+		local MC = KC.M.MenuController or req("client/Controllers/MenuController")
+		if MC and type(MC.Open) == "function" then
+			pcall(MC.Open, "Home")
+			KC.advance(0.5)
+			local pg = LocalPlayer:FindFirstChild("PlayerGui")
+			local texts = {}
+			for _, d in ipairs(pg and pg:GetDescendants() or {}) do
+				if d:IsA("TextLabel") or d:IsA("TextButton") then
+					texts[#texts + 1] = d.Text
+				end
+			end
+			local all = table.concat(texts, "\n")
+			if all:find("Berry Basket", 1, true) or all:find("poop", 1, true) then
+				-- careui's Phase 5 Home strip is there: the strip names the loop and no window offers "Level up"
+				T.check(all:find("Berry Farm", 1, true) ~= nil and all:find("Food Machine", 1, true) ~= nil, "p5 flow ui: the Home strip names the Berry Farm and the Food Machine (careui)")
+				T.check(all:find("Level up", 1, true) == nil, "p5 flow ui: no 'Level up' button anywhere (one Feed button)")
+			else
+				T.info("p5 flow ui: the Home window draws no Phase 5 flow strip in this world yet: careui's smoke_p4_careui / smoke_p5_looks check the strip and the Feed window")
+			end
+			pcall(MC.Close)
+		else
+			T.info("p5 flow ui: MenuController.Open not in this world: the Home strip is checked by careui's smoke_p4_careui")
+		end
+		cleanup()
+		KC.flushErrors("client_p5home_flow_ui")
 	end)
 end
 

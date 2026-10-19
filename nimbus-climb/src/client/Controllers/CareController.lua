@@ -51,6 +51,7 @@ local Remotes = require(Shared:WaitForChild("Remotes"))
 
 local Client = script.Parent.Parent
 local CloudUI = require(Client:WaitForChild("UI"):WaitForChild("CloudUI"))
+local NeonKit = require(Client:WaitForChild("UI"):WaitForChild("NeonKit"))
 local State = require(Client:WaitForChild("State"))
 
 local function safeRequire(name)
@@ -78,18 +79,11 @@ CareController.Closed = Util.Signal()
 local K = {
 	DISPLAY_ORDER = 23, -- above NimbusMenu (20), the Pet Index (21) and the Fusion Machine (22)
 	MARGIN = 12,
-	BUMPS = 28,
-	PREF_W = 1240,
-	PREF_H = 720,
-	MIN_W = 780,
-	MIN_H = 380,
+	PREF_W = 600, -- Phase 5 (6.6): the Care window is docked right / a bottom sheet (NeonKit.Dock), 600 x 820 design px
+	PREF_H = 820,
 	SHORT = 560, -- below this design height: the compact rows (landscape phones)
 	WIDE = 930, -- at least this wide: one-line rows (the buttons beside the bar)
 	TALL_W = 720, -- less than this free (design px) on a portrait screen: one column
-	PREF_W_TALL = 560,
-	MIN_W_TALL = 440,
-	PREF_H_TALL = 1060,
-	MIN_H_TALL = 600,
 	ROW_H = 112,
 	BUTTONS_W = 610, -- the one-line row's button block (Feed 276 + Level up 190 + EVOLVE 128 + gaps)
 	ROW_H_STACKED = 176,
@@ -151,6 +145,7 @@ local G = {
 	Bullet = "\194\183",
 	Clock = "\226\143\177", -- stopwatch
 	Sparkle = "\226\156\168",
+	Berry = "\240\159\141\147", -- strawberry (Phase 5 berries)
 }
 
 local TITLES = {
@@ -416,8 +411,46 @@ function H.growth(key)
 	return { Evo = 0, Speed = 0, Physique = 0, Ability = 0, Defense = 0 }
 end
 
+-- Phase 5 (3.7): the stored stage the way every site draws it (State.PetStage)
 function H.stage(key)
+	if type(State.PetStage) == "function" then
+		local ok, stage = pcall(State.PetStage, key)
+		if ok and type(stage) == "number" then
+			return math.max(0, math.floor(stage))
+		end
+	end
 	return math.max(0, math.floor(tonumber(H.growth(key).Evo) or 0))
+end
+
+-- Phase 5 (3.4): berries in the basket (the Berries attribute / State.Berries) and the basket size (plot BerryCap)
+function H.berries()
+	if type(State.Berries) == "function" then
+		local ok, n = pcall(State.Berries)
+		if ok and type(n) == "number" then
+			return math.max(0, math.floor(n))
+		end
+	end
+	return 0
+end
+
+function H.plot()
+	local index = LocalPlayer and LocalPlayer:GetAttribute(Config.Attr.SpotIndex)
+	local lobby = Workspace:FindFirstChild("NimbusLobby")
+	if type(index) ~= "number" or not lobby then
+		return nil
+	end
+	local named = lobby:FindFirstChild(string.format("Spot_%02d", index), true)
+	if named and named:GetAttribute("SpotIndex") == index then
+		return named
+	end
+	return nil
+end
+
+-- one Food Machine feed of a pet copy: { Cost = berries (TycoonCatalog.FeedBerries), Xp = TycoonCatalog.FeedXp }
+function H.berryFeed(key, def, level, machine)
+	local cost = tonumber(H.call(TycoonCatalog, "FeedBerries", def or key, level)) or 0
+	local xp = tonumber(H.call(TycoonCatalog, "FeedXp", level, math.max(1, machine))) or 0
+	return { Cost = math.floor(cost), Xp = math.floor(xp) }
 end
 
 -- the next stage when the pet can EVOLVE now, else nil
@@ -624,23 +657,6 @@ function H.whereText(key, home)
 	return nil, MUTED
 end
 
--- the leftover foods { {Id, Name, Xp, Count} } (biggest XP first)
-function H.leftovers()
-	local out = {}
-	local foods = TycoonCatalog and TycoonCatalog.Foods or {}
-	for _, f in ipairs(foods) do
-		local ok, n = pcall(State.FoodCount, f.Id)
-		n = ok and tonumber(n) or 0
-		if n > 0 then
-			out[#out + 1] = { Id = f.Id, Name = f.Name or f.Id, Xp = tonumber(f.Xp) or 0, Count = n }
-		end
-	end
-	table.sort(out, function(a, b)
-		return a.Xp > b.Xp
-	end)
-	return out
-end
-
 -- the room left below the level cap, in XP
 function H.room(level, xp, cap)
 	if level >= cap then
@@ -658,79 +674,6 @@ function H.room(level, xp, cap)
 		end
 	end
 	return math.max(0, room - xp)
-end
-
--- What `count` feeds would do (PetCareService.planFeeds, mirrored for display): leftovers first and free (the biggest
--- one that fits the room, else the smallest), then machine feeds priced at the level each one is eaten at. Stops at
--- the cap or when no food is left (machine not built). Returns { Count, Price, Xp, Free, Food, Levels, FirstPrice }.
-function H.plan(key, count, untilLevelUp)
-	local def = H.def(key)
-	local out = { Count = 0, Price = 0, Xp = 0, Free = 0, Levels = 0 }
-	if not def then
-		return out
-	end
-	local level, xp = H.level(key)
-	local cap = H.cap(def, key)
-	local room = H.room(level, xp, cap)
-	local machine = H.station(H.home(), "Kitchen")
-	local stock = {}
-	for _, f in ipairs(H.leftovers()) do
-		stock[#stock + 1] = { Id = f.Id, Name = f.Name, Xp = f.Xp, Count = f.Count }
-	end
-	local lv = level
-	for _ = 1, count do
-		if room <= 0 then
-			break
-		end
-		local pick, smallest = nil, nil
-		for _, f in ipairs(stock) do
-			if f.Count > 0 then
-				if f.Xp <= room and (not pick or f.Xp > pick.Xp) then
-					pick = f
-				end
-				if not smallest or f.Xp < smallest.Xp then
-					smallest = f
-				end
-			end
-		end
-		pick = pick or smallest
-		local give
-		if pick then
-			pick.Count = pick.Count - 1
-			give = math.min(pick.Xp, room)
-			out.Free = out.Free + 1
-			out.Food = out.Food or pick
-		else
-			if machine < 1 then
-				break
-			end
-			local price = H.call(TycoonCatalog, "FeedPrice", def, lv)
-			give = H.call(TycoonCatalog, "FeedXp", lv, machine) or 0
-			if type(price) ~= "number" or give < 1 then
-				break
-			end
-			give = math.min(give, room)
-			out.Price = out.Price + price
-			out.FirstPrice = out.FirstPrice or price
-		end
-		out.Count = out.Count + 1
-		out.Xp = out.Xp + give
-		room = room - give
-		xp = xp + give
-		while lv < cap do
-			local need = H.xpToNext(lv)
-			if need == math.huge or xp < need then
-				break
-			end
-			xp = xp - need
-			lv = lv + 1
-		end
-		if untilLevelUp and lv > level then
-			break
-		end
-	end
-	out.Levels = lv - level
-	return out
 end
 
 -- coins per second of a pet in this home's Garden (PetPower x food x stars / meal x the Lucky EV); a home without a
@@ -815,20 +758,16 @@ function H.viewportHeight()
 	return H.guiSize().Y
 end
 
-function H.fit(prefW, prefH, minW, minH, prefWT, prefHT, minWT, minHT)
+-- the small centred confirm (Train / Stop / EVOLVE): its preferred size at the screen factor, shrunk to fit
+function H.confirmFit(prefW, prefH, minW, minH)
 	local area = H.guiSize()
 	local factor = Theme.ScreenFactor(H.viewportHeight())
 	local freeW = area.X - 2 * K.MARGIN
 	local freeH = area.Y - 2 * K.MARGIN
-	local tall = freeW / factor < K.TALL_W and freeH > freeW
-	if tall then
-		prefW, prefH, minW, minH = prefWT, prefHT, minWT, minHT
-	end
 	local w = Util.Clamp(math.floor(freeW / factor), minW, prefW)
-	local h = Util.Clamp(math.floor((freeH - K.BUMPS * factor) / factor), minH, prefH)
+	local h = Util.Clamp(math.floor(freeH / factor), minH, prefH)
 	local scale = Util.Clamp(math.min(factor, freeW / w, freeH / h), 0.3, 1.25)
-	local y = math.min(area.Y / 2 + K.BUMPS * scale / 2, area.Y - K.MARGIN / 2 - h * scale / 2)
-	return w, h, scale, area.X / 2, math.max(y, h * scale / 2), tall
+	return w, h, scale, area.X / 2, area.Y / 2
 end
 
 ----------------------------------------------------------------------
@@ -1160,18 +1099,19 @@ function H.buildWindow()
 		return true
 	end
 	local holder = H.frame(U.Gui, "Window_Care", {
-		AnchorPoint = Vector2.new(0.5, 0.5),
-		Position = UDim2.new(0.5, 0, 0.5, 0),
 		Size = UDim2.fromOffset(K.PREF_W, K.PREF_H),
 		Visible = false,
 		ZIndex = 3,
 	})
 	U.Holder = holder
 	U.Fit = Util.Create("UIScale", { Name = "Fit", Scale = 1, Parent = holder })
+	-- Phase 5 (6.6): docked right on landscape screens, a bottom sheet on portrait ones; follows the screen
+	U.Dock = NeonKit.Dock(holder, U.Fit, K.PREF_W, K.PREF_H)
 	local panel = CloudUI.Panel({
 		Name = "CarePanel",
 		Title = TITLES.Feed,
 		Closable = true,
+		Category = "Care",
 		Accent = ACCENTS.Feed,
 		Size = UDim2.new(1, 0, 1, 0),
 		Position = UDim2.new(0.5, 0, 0.5, 0),
@@ -1190,6 +1130,29 @@ function H.buildWindow()
 		Size = UDim2.new(1, -220, 1, 0),
 		TextXAlignment = Enum.TextXAlignment.Left,
 		TextWrapped = true,
+	})
+	-- Phase 5 (3.4): the Food Machine's header is the Berry Basket: a bar "1,240 / 3,000 berries" + "+578 a minute"
+	U.Basket = CloudUI.Bar({
+		Name = "BerryBasket",
+		AnchorPoint = Vector2.new(0, 0.5),
+		Position = UDim2.new(0, 34, 0.5, 0),
+		Size = UDim2.new(1, -180, 0, 32),
+		Height = 32,
+		TextSize = 19,
+		Color = Color3.fromRGB(236, 84, 140),
+		Parent = U.Top,
+	})
+	U.BasketIcon = H.text(U.Top, "BasketIcon", G.Berry, "Title", 26, WHITE, {
+		AnchorPoint = Vector2.new(0, 0.5),
+		Position = UDim2.new(0, 0, 0.5, 0),
+		Size = UDim2.fromOffset(30, 32),
+	})
+	U.BasketRate = H.text(U.Top, "BasketRate", "", "Heading", 18, Color3.fromRGB(255, 196, 226), {
+		AnchorPoint = Vector2.new(1, 0.5),
+		Position = UDim2.new(1, 0, 0.5, 0),
+		Size = UDim2.fromOffset(140, 40),
+		TextWrapped = true,
+		TextXAlignment = Enum.TextXAlignment.Right,
 	})
 	U.CashChip = H.pill(U.Top, "Cash", "$0", Theme.Darken(CASH, 0.15), 22, 0)
 	U.CashChip.AnchorPoint = Vector2.new(1, 0.5)
@@ -1270,18 +1233,15 @@ function H.newFeedRow(key, def)
 	row.Buttons = buttons
 	H.list(buttons, Enum.FillDirection.Horizontal, 8, Enum.HorizontalAlignment.Right, Enum.VerticalAlignment.Center)
 	row.Feed = H.button(buttons, "Feed", "Feed", "Green", UDim2.fromOffset(240, 58), 20, function()
-		H.feed(key, nil)
+		H.feed(key)
 	end)
 	row.Feed.LayoutOrder = 1
-	row.LevelUp = H.button(buttons, "LevelUp", "Level up", "Blue", UDim2.fromOffset(178, 58), 20, function()
-		H.feed(key, "levelup")
-	end)
-	row.LevelUp.LayoutOrder = 2
+	-- (Phase 5: no "Level up" button: ONE Feed button = one feed)
 	row.Evolve = H.button(buttons, "Evolve", "EVOLVE!", "Gold", UDim2.fromOffset(122, 58), 20, function()
 		CareController.ConfirmEvolve(key)
 	end)
 	row.Evolve.LayoutOrder = 3
-	for _, b in ipairs({ row.Feed, row.LevelUp, row.Evolve }) do
+	for _, b in ipairs({ row.Feed, row.Evolve }) do
 		H.twoLine(b)
 	end
 	H.layoutFeedRow(row)
@@ -1332,14 +1292,14 @@ function H.layoutFeedRow(row)
 		row.Buttons.Position = UDim2.new(1, -10, 0.5, 0)
 		row.Buttons.Size = UDim2.fromOffset(K.BUTTONS_W, 60)
 	end
-	-- stacked rows share the width: Feed 42%, Level up 33%, EVOLVE 25%
+	-- stacked rows: the Feed button takes the row (70% beside EVOLVE when the pet is ready)
+	local bh = short and 50 or 58
 	if stacked then
-		row.Feed.Size = UDim2.new(0.38, -6, 0, 58)
-		row.LevelUp.Size = UDim2.new(0.32, -6, 0, 58)
-		row.Evolve.Size = UDim2.new(0.30, -6, 0, 58)
+		row.Feed.Size = UDim2.new(row.Ready and 0.68 or 1, row.Ready and -6 or 0, 0, bh)
+		row.Evolve.Size = UDim2.new(0.32, -4, 0, bh)
+		row.Buttons.Size = UDim2.new(1, -20, 0, bh + 2)
 	else
-		row.Feed.Size = UDim2.fromOffset(276, 58)
-		row.LevelUp.Size = UDim2.fromOffset(190, 58)
+		row.Feed.Size = UDim2.fromOffset(row.Ready and 300 or 430, 58)
 		row.Evolve.Size = UDim2.fromOffset(128, 58)
 	end
 end
@@ -1359,54 +1319,33 @@ function H.paintFeedRow(row, home, cash)
 		row.Bar.SetText(H.commas(xp) .. " / " .. H.commas(need) .. " XP")
 		row.Bar.SetColor(XP)
 	end
-	local sep = S.Stacked and "\n" or " "
-	local one = H.plan(key, 1)
+	-- Phase 5 (3.4): ONE Feed button: "Feed  340 berries  (+90 XP)"; grey (still says why when pressed) while the
+	-- basket is short or the machine is not built
 	local machine = H.station(home, "Kitchen")
 	local busy = H.inMatch()
-	-- Feed: a leftover first (free), else one machine feed
+	local one = H.berryFeed(key, def, level, machine)
+	row.Cost = one.Cost
 	if capped then
 		row.Feed.Text = "Max level"
+		CloudUI.SetStyle(row.Feed, "Gray")
 		CloudUI.SetDisabled(row.Feed, true)
-	elseif one.Free > 0 and one.Food then
-		local left = 0
-		for _, f in ipairs(H.leftovers()) do
-			if f.Id == one.Food.Id then
-				left = f.Count
-			end
-		end
-		if S.Stacked then
-			row.Feed.Text = "Free " .. tostring(one.Food.Name) .. "\n(" .. left .. " left)"
-		else
-			row.Feed.Text = "Feed (free " .. tostring(one.Food.Name) .. ", " .. left .. " left)"
-		end
-		CloudUI.SetDisabled(row.Feed, busy)
 	elseif machine < 1 then
-		row.Feed.Text = "Feed" .. sep .. "(no machine)"
-		CloudUI.SetDisabled(row.Feed, true)
+		row.Feed.Text = "Feed (build the Food Machine)"
+		CloudUI.SetStyle(row.Feed, "Gray")
+		CloudUI.SetDisabled(row.Feed, busy)
 	else
-		row.Feed.Text = "Feed " .. H.money(one.Price) .. sep .. "(+" .. H.commas(one.Xp) .. " XP)"
-		CloudUI.SetDisabled(row.Feed, busy or cash < one.Price)
-	end
-	-- Level up: as many feeds as the next level needs (at most 10), one request
-	local up = H.plan(key, K.MAX_FEEDS, true)
-	row.UpCount = up.Count
-	if capped or up.Count < 1 or (machine < 1 and up.Free == up.Count and up.Count <= 1) then
-		row.LevelUp.Visible = not capped
-		row.LevelUp.Text = "Level up"
-		CloudUI.SetDisabled(row.LevelUp, true)
-	else
-		row.LevelUp.Visible = true
-		if up.Price > 0 then
-			row.LevelUp.Text = "Level up" .. sep .. H.money(up.Price)
-		else
-			row.LevelUp.Text = "Level up" .. sep .. "(free)"
-		end
-		CloudUI.SetDisabled(row.LevelUp, busy or cash < (up.FirstPrice or 0))
+		row.Feed.Text = "Feed  " .. H.commas(one.Cost) .. " berries  (+" .. H.commas(one.Xp) .. " XP)"
+		CloudUI.SetStyle(row.Feed, H.berries() >= one.Cost and "Green" or "Gray")
+		CloudUI.SetDisabled(row.Feed, busy)
 	end
 	-- EVOLVE when ready
 	local nextStage = H.canEvolve(key, def, level)
 	row.Evolve.Visible = nextStage ~= nil
 	row.Evolve.Text = S.Tall and "EVOLVE" or "EVOLVE!"
+	if (row.Ready ~= nil) ~= (nextStage ~= nil) then
+		row.Ready = nextStage
+		H.layoutFeedRow(row)
+	end
 	row.Ready = nextStage
 	CloudUI.SetDisabled(row.Evolve, busy)
 	if row.Frame then
@@ -1447,7 +1386,7 @@ end
 function H.layoutSimpleRow(row)
 	local short = S.Short
 	local view = short and K.VIEW_SHORT or K.VIEW
-	local stacked = S.Tall
+	local stacked = S.Tall or S.Short
 	local h = short and K.ROW_H_SHORT or K.ROW_H
 	if stacked then
 		h = h + 52 + 34 -- the button under the pills, the pills on two lines
@@ -1645,17 +1584,8 @@ function H.refreshFeed(home, cash)
 	end
 	U.FeedEmpty.Visible = #keys == 0
 	U.FeedEmpty.Text = "No pets yet! Spin a roulette in the Shop to hatch one."
-	-- leftovers + the machine line
-	local left = H.leftovers()
-	if #left > 0 then
-		local parts = {}
-		for _, f in ipairs(left) do
-			parts[#parts + 1] = f.Count .. " " .. tostring(f.Name) .. (f.Count == 1 and "" or "s")
-		end
-		U.Leftovers.Text = "Leftover food: " .. table.concat(parts, ", ") .. ". Pets eat it first, free!"
-	else
-		U.Leftovers.Text = "No leftover food: the Food Machine makes every meal."
-	end
+	-- how it works (the kid rule, 3.4), always the same words
+	U.Leftovers.Text = G.Berry .. " Each Feed turns berries into XP. Your garden pets grow more berries!"
 	local level = H.station(home, "Kitchen")
 	local shares = TycoonCatalog and TycoonCatalog.FeedShare or {}
 	local def = H.call(TycoonCatalog, "Get", "Kitchen")
@@ -1680,12 +1610,30 @@ function H.refreshFeed(home, cash)
 			text = text .. " Lv " .. (level + 1) .. ": " .. tostring(pad.Locked)
 		end
 	end
+	if S.Short then
+		-- landscape phones: the short form (the footer has one line pair)
+		text = level < 1 and "Build the Food Machine first" or ("Food Machine Lv " .. level .. ": feeds fill " .. pct(level))
+	end
 	U.Machine.Text = text
 	local canBuy = pad ~= nil and not pad.Locked and level < maxLevel
 	U.Upgrade.Visible = canBuy
 	U.Upgrade.Text = level < 1 and "Build" or "Upgrade"
 	CloudUI.SetDisabled(U.Upgrade, not canBuy or cash < (tonumber(pad and pad.Price) or 0) or not H.hasHome() or H.inMatch())
-	U.Info.Text = "Feed your pets for XP. Every level makes them stronger and their coins bigger!"
+	-- the Berry Basket header: "1,240 / 3,000 berries" + "(+750 a minute)"
+	local berries = H.berries()
+	local plot = H.plot()
+	local cap = plot and plot:GetAttribute("BerryCap")
+	local income = plot and plot:GetAttribute("IncomePerSecond")
+	local share = (TycoonCatalog and type(TycoonCatalog.Berries) == "table" and tonumber(TycoonCatalog.Berries.Share)) or 0.25
+	if type(cap) == "number" and cap > 0 then
+		U.Basket.SetFraction(math.min(1, berries / cap))
+		U.Basket.SetText("Berry Basket " .. H.commas(berries) .. " / " .. H.commas(math.floor(cap)))
+	else
+		U.Basket.SetFraction(berries > 0 and 1 or 0)
+		U.Basket.SetText("Berry Basket " .. H.commas(berries))
+	end
+	U.BasketRate.Text = (type(income) == "number" and income > 0) and ("+" .. H.commas(math.floor(income * share * 60 + 0.5)) .. " a minute") or ""
+	U.Info.Text = ""
 end
 
 function H.kitchenPad(home)
@@ -1745,11 +1693,11 @@ function H.refreshGarden(home)
 	elseif slot and slot > open then
 		U.GardenNow.Text = G.Lock .. " This place opens with a Prestige."
 	else
-		U.GardenNow.Text = "Pick a pet: it eats here and pops out rainbow coins."
+		U.GardenNow.Text = "Pick a pet: it eats at the Food Bowl and poops Cloud Cash."
 	end
 	U.TakeOut.Visible = type(current) == "string"
 	CloudUI.SetDisabled(U.TakeOut, H.inMatch())
-	U.Info.Text = "Every pet can work here. Economy pets make 60% more coins!"
+	U.Info.Text = "Every pet can work here: it eats at the Food Bowl and poops Cloud Cash!"
 end
 
 function H.refreshTrain(home, cash)
@@ -1901,6 +1849,13 @@ function H.refresh()
 	local home = H.home()
 	local cash = H.cash()
 	U.CashChip.Text = H.money(cash)
+	U.Info.TextColor3 = MUTED
+	local feedMode = S.Mode == "Feed"
+	U.CashChip.Visible = not feedMode and not S.Tall
+	U.Info.Visible = not feedMode
+	U.Basket.Root.Visible = feedMode
+	U.BasketIcon.Visible = feedMode
+	U.BasketRate.Visible = feedMode
 	U.FeedPage.Visible = S.Mode == "Feed"
 	U.GardenPage.Visible = S.Mode == "Garden"
 	U.TrainPage.Visible = S.Mode == "Train"
@@ -1931,17 +1886,27 @@ function H.relayout()
 	if not S.Built then
 		return
 	end
-	local w, h, scale, x, y, tall = H.fit(K.PREF_W, K.PREF_H, K.MIN_W, K.MIN_H, K.PREF_W_TALL, K.PREF_H_TALL, K.MIN_W_TALL, K.MIN_H_TALL)
-	U.Holder.Size = UDim2.fromOffset(w, h)
-	U.Fit.Scale = scale
-	U.Holder.Position = UDim2.fromOffset(math.floor(x + 0.5), math.floor(y + 0.5))
-	local short = h < K.SHORT and not tall
+	U.Dock.Refresh()
+	local rect = U.Dock.Rect
+	if not rect then
+		return
+	end
+	local w, h = math.floor(rect.designW + 0.5), math.floor(rect.designH + 0.5)
+	if S.Open then
+		H.avoidRight(rect.mode == "Side" and rect.x or nil)
+	end
+	-- "short" (landscape phones): compact rows; "tall" (a narrow window with height): the one-column layouts
+	local short = h < K.SHORT
+	local tall = (not short) and w < K.TALL_W
+	-- every docked Care window is narrow: the Training Place and the garden picker are one column at every size
+	local oneCol = tall or short
 	local stacked = tall or (w - 48) < K.WIDE
 	local changed = short ~= S.Short or stacked ~= S.Stacked or tall ~= S.Tall
 	S.Short, S.Stacked, S.Tall = short, stacked, tall
 	-- landscape phones: no info line (the list needs the height); portrait: no Cash chip (the info line wraps)
-	local topH = short and 0 or K.TOP_H
-	U.Top.Visible = not short
+	-- (landscape phones keep the Berry Basket bar in the Food Machine, the other windows drop their info line)
+	local topH = short and ((S.Mode == "Feed") and 38 or 0) or K.TOP_H
+	U.Top.Visible = topH > 0
 	U.Top.Size = UDim2.new(1, -24, 0, topH)
 	U.Top.Position = UDim2.fromOffset(12, 8)
 	U.CashChip.Visible = not tall
@@ -1953,6 +1918,7 @@ function H.relayout()
 	if tall then
 		footH = 150
 	end
+	U.Leftovers.Visible = not short
 	U.Foot.Size = UDim2.new(1, 0, 0, footH)
 	U.FeedList.Size = UDim2.new(1, 0, 1, -(footH + 10))
 	if tall then
@@ -1967,20 +1933,20 @@ function H.relayout()
 	else
 		U.Leftovers.TextWrapped = false
 		U.Leftovers.Size = UDim2.new(1, -220, 0, 26)
-		U.Machine.Size = UDim2.new(1, -220, 0, footH - 44)
-		U.Machine.Position = UDim2.fromOffset(14, short and 30 or 36)
+		U.Machine.Size = UDim2.new(1, short and -170 or -220, 0, short and (footH - 12) or (footH - 44))
+		U.Machine.Position = UDim2.fromOffset(14, short and 6 or 36)
 		U.Upgrade.AnchorPoint = Vector2.new(1, 0.5)
 		U.Upgrade.Position = UDim2.new(1, -12, 0.5, 0)
-		U.Upgrade.Size = UDim2.fromOffset(190, short and 48 or 54)
+		U.Upgrade.Size = UDim2.fromOffset(short and 150 or 190, short and 48 or 54)
 	end
-	-- train: one column on portrait screens (the pets on top)
-	if tall then
+	-- train: one column (the pets on top)
+	if oneCol then
 		U.TrainList.Size = UDim2.new(1, 0, 0.36, -6)
 		U.TrainRight.AnchorPoint = Vector2.new(0, 1)
 		U.TrainRight.Position = UDim2.new(0, 0, 1, 0)
 		U.TrainRight.Size = UDim2.new(1, 0, 0.64, -6)
 	else
-		local listW = (w < 900) and 300 or K.TRAIN_LIST_W
+		local listW = (w < 900) and math.min(300, math.floor(w * 0.4)) or K.TRAIN_LIST_W
 		U.TrainList.Size = UDim2.new(0, listW, 1, 0)
 		U.TrainRight.AnchorPoint = Vector2.new(1, 0)
 		U.TrainRight.Position = UDim2.new(1, 0, 0, 0)
@@ -2041,7 +2007,7 @@ function H.relayoutConfirm()
 	if not U.Confirm then
 		return
 	end
-	local w, h, scale, x, y = H.fit(K.CONFIRM_W, K.CONFIRM_H, 440, 250, 460, K.CONFIRM_H, 440, 250)
+	local w, h, scale, x, y = H.confirmFit(K.CONFIRM_W, K.CONFIRM_H, 440, 250)
 	U.Confirm.Size = UDim2.fromOffset(w, h)
 	U.ConfirmFit.Scale = scale
 	U.Confirm.Position = UDim2.fromOffset(math.floor(x + 0.5), math.floor(y + 0.5))
@@ -2050,19 +2016,33 @@ end
 ----------------------------------------------------------------------
 -- actions
 ----------------------------------------------------------------------
-function H.feed(key, how)
+-- ONE feed (PetCare("Feed", key): the server checks everything again); a short basket or no machine says why here
+function H.feed(key)
 	if H.inMatch() then
 		H.hint("Pets eat at home, after the match.", "info")
 		return
 	end
-	if how == "levelup" then
-		local row = U.Rows[key]
-		local count = row and row.UpCount or H.plan(key, K.MAX_FEEDS, true).Count
-		count = math.max(1, math.min(K.MAX_FEEDS, math.floor(count or 1)))
-		H.fire("feed:" .. key, "PetCare", "Feed", key, { Count = count })
-	else
-		H.fire("feed:" .. key, "PetCare", "Feed", key, nil)
+	local def = H.def(key)
+	if not def then
+		return
 	end
+	local home = H.home()
+	local machine = H.station(home, "Kitchen")
+	if machine < 1 then
+		H.hint("Build the Food Machine at home first", "info")
+		return
+	end
+	local level = H.level(key)
+	if level >= H.cap(def, key) then
+		return
+	end
+	local cost = H.berryFeed(key, def, level, machine).Cost
+	local have = H.berries()
+	if have < cost then
+		H.hint("Not enough berries: a feed needs " .. H.commas(cost) .. " (you have " .. H.commas(have) .. "). Your garden pets grow more!", "bad")
+		return
+	end
+	H.fire("feed:" .. key, "PetCare", "Feed", key)
 end
 
 function H.showConfirm(spec)
@@ -2079,8 +2059,6 @@ function H.showConfirm(spec)
 	U.ConfirmNo.Text = spec.NoText or "Not now"
 	H.relayoutConfirm()
 	U.Confirm.Visible = true
-	U.Backdrop.Visible = true
-	U.Backdrop.BackgroundTransparency = 0.55
 	local pop = U.Confirm:FindFirstChild("Pop") or Util.Create("UIScale", { Name = "Pop", Scale = 1, Parent = U.Confirm:FindFirstChild("Box") })
 	pop.Scale = 0.9
 	H.tween(pop, 0.18, { Scale = 1 }, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
@@ -2091,10 +2069,6 @@ function H.closeConfirm()
 	S.Confirm = nil
 	if U.Confirm then
 		U.Confirm.Visible = false
-	end
-	if not S.Open and U.Backdrop then
-		U.Backdrop.Visible = false
-		U.Backdrop.BackgroundTransparency = 1
 	end
 	H.syncBack()
 end
@@ -2318,22 +2292,11 @@ end
 ----------------------------------------------------------------------
 -- open / close
 ----------------------------------------------------------------------
-function H.setBackdrop(on)
-	local b = U.Backdrop
-	if not b then
-		return
-	end
-	if on then
-		b.Visible = true
-		H.tween(b, 0.18, { BackgroundTransparency = 0.55 })
-	else
-		H.tween(b, 0.15, { BackgroundTransparency = 1 })
-		local mine = S.Token
-		task.delay(0.17, function()
-			if S.Token == mine and not S.Open and not S.Confirm and b.Parent then
-				b.Visible = false
-			end
-		end)
+-- HotbarController re-centres the hotbar left of the docked window (6.6); nil when nothing is docked
+function H.avoidRight(x)
+	local hb = H.controller("HotbarController")
+	if hb and type(hb.SetAvoidRight) == "function" then
+		pcall(hb.SetAvoidRight, x)
 	end
 end
 
@@ -2382,13 +2345,6 @@ end
 
 function CareController.Evolving()
 	return S.Evolving
-end
-
-function CareController.FeedPlan(key, count)
-	if count == "levelup" then
-		return H.plan(key, K.MAX_FEEDS, true)
-	end
-	return H.plan(key, math.max(1, math.min(K.MAX_FEEDS, math.floor(tonumber(count) or 1))))
 end
 
 -- the EVOLVE confirm ("Evolve Pebble Pup? +25% to everything") -> PetCare("Evolve", key)
@@ -2511,7 +2467,9 @@ function CareController.Open(panelId, args)
 	if not wasOpen then
 		U.Pop.Scale = 0.86
 		H.tween(U.Pop, 0.22, { Scale = 1 }, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
-		H.setBackdrop(true)
+	end
+	if U.Dock and U.Dock.Rect then
+		H.avoidRight(U.Dock.Rect.mode == "Side" and U.Dock.Rect.x or nil)
 	end
 	safe("refresh", H.refresh)
 	H.syncBack()
@@ -2548,7 +2506,7 @@ function CareController.Close()
 			U.Holder.Visible = false
 		end
 	end)
-	H.setBackdrop(false)
+	H.avoidRight(nil)
 	CareController.Closed:Fire()
 end
 
@@ -2604,25 +2562,6 @@ function CareController.Init()
 	LocalPlayer = Players.LocalPlayer
 	pcall(State.Init)
 	U.Gui = CloudUI.NewScreenGui("NimbusCare", K.DISPLAY_ORDER)
-	U.Backdrop = Util.Create("TextButton", {
-		Name = "Backdrop",
-		AutoButtonColor = false,
-		Text = "",
-		BorderSizePixel = 0,
-		BackgroundColor3 = Color3.fromRGB(8, 12, 32),
-		BackgroundTransparency = 1,
-		Size = UDim2.new(1, 0, 1, 0),
-		Visible = false,
-		ZIndex = 1,
-		Parent = U.Gui,
-	})
-	U.Backdrop.Activated:Connect(function()
-		if S.Confirm then
-			H.closeConfirm()
-		else
-			CareController.Close()
-		end
-	end)
 	H.buildConfirm()
 	U.Gui:GetPropertyChangedSignal("AbsoluteSize"):Connect(function()
 		safe("relayout", H.relayout)
@@ -2633,6 +2572,13 @@ function CareController.Init()
 			H.refreshSoon()
 		end
 	end)
+	if type(State.BerriesChanged) == "table" and type(State.BerriesChanged.Connect) == "function" then
+		State.BerriesChanged:Connect(function()
+			if S.Open then
+				H.refreshSoon()
+			end
+		end)
+	end
 	if type(State.CashChanged) == "table" and type(State.CashChanged.Connect) == "function" then
 		State.CashChanged:Connect(function()
 			if S.Open then

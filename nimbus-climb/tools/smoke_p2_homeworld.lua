@@ -31,13 +31,12 @@
 --   client_p2home   (client) HomeFx on plots HomeBuilder builds in the client world (standing in for replication):
 --                   it finds every NC_Home, hides another player's BuyPrompts / GardenSpotPrompts / pad signs and the
 --                   claim prompts of other plots while the local player owns a home (and keeps hiding a prompt the
---                   server re-enables), the owner's prompts stay; CoinPiles draws a coin heap per pile on its
---                   CoinPoint (growing with the stage, <= 40 parts, a Lucky sparkle) and the Welcome-back heap
---                   (<= 60) at Garden.Slot.WelcomePile, a pile that goes takes its heap; a bowl with the best plant's
---                   fruit in front of each open place; the Garden's pets (GardenPets) on their cushions, a place above
---                   GardenSlots asleep (Zzz), a full pile ('F') napping, eating pets dip and pop pooled coins (<= 40),
---                   the plants' fruit flies into the bowls (<= 24); the Training Place's pets (TrainingPets) on their
---                   mats with a moving voxel prop of their skill; the Coin Magnet's head turns; the Fusion swirl
+--                   server re-enables), the owner's prompts stay; (Phase 5) CoinDrops draws a 6-part TokenLook
+--                   Cloud Cash coin per drop at its HomeRoam poop point (a Lucky one sparkles, no lights) and the
+--                   Welcome-back heap (<= 60) at Garden.Slot.WelcomePile, a drop that goes takes its coin; no client
+--                   bowls; the Garden's pets (GardenPets) roam the yard on the ground, a place above GardenSlots asleep
+--                   on its bed (Zzz), roaming pets walk and poop once per 24 s cycle, the Berry Farm's berries fly;
+--                   the Training Place's pets (TrainingPets) on their mats with a moving voxel prop; the Fusion swirl
 --                   turns; a new station pops in and ends exactly where the server built it; the owner's pads dim
 --                   when Cash cannot pay; far homes freeze and put heaps, bowls, coins and pets away; nothing is
 --                   created per frame; ClearPlot / removing the home cleans up; no errors or warnings from HomeFx
@@ -1224,7 +1223,7 @@ local function clientScenarios()
 			HB.BuildHome(spot, home)
 			HB.SetPads(spot, TC.AvailablePads(home))
 		end
-		local stations = { Press1 = 4, Press2 = 2, Collector = 2, House = 1, Garden = 2, Kitchen = 1, Gym = 2, FusionMachine = 1, DecorLamps = 1 }
+		local stations = { Press1 = 4, House = 1, Garden = 2, Kitchen = 1, Gym = 2, FusionMachine = 1, DecorFence = 1 }
 		LocalPlayer:SetAttribute("Cash", 0) -- broke while the pads arrive (and pop in)
 		buildHome(mine, LocalPlayer, stations)
 		buildHome(theirs, neighbour, stations)
@@ -1295,8 +1294,9 @@ local function clientScenarios()
 		local st = stats()
 		T.check((tonumber(st.HiddenPrompts) or 0) >= #theirPrompts, "HomeFx: Stats() counts the hidden prompts", tostring(st.HiddenPrompts))
 
-		-- the Pet Garden (contract 3.2 / 3.3, client): heaps follow CoinPiles, bowls on the open places, pets eat
+		-- the Pet Garden (Phase 5 contract 3.5, client): Cloud Cash coins follow CoinDrops, the Welcome heap, roaming pets
 		local PC = moduleAt("shared", "PetCatalog")
+		local HR = moduleAt("shared", "HomeRoam")
 		local petId = nil
 		for _, d in ipairs((PC and PC.Pets) or {}) do
 			if d.Role == "Economy" and not d.EventOnly then
@@ -1304,106 +1304,113 @@ local function clientScenarios()
 				break
 			end
 		end
-		local garden = mineHome:FindFirstChild("Station_Garden")
 		local gdef = TC.Get("Garden")
-		local frame = base * gdef.Slot.CFrame
-		local function pileAt(slot)
-			return frame:PointToWorldSpace(Vector3.new(TC.CoinPoint(slot).X, 0, TC.CoinPoint(slot).Z))
+		local seed = (LocalPlayer.UserId % 2147483646) + 1
+		local function dropAt(slot, cycle)
+			local pt = HR.Plan(seed, slot, cycle or 0).Poop
+			return base:PointToWorldSpace(Vector3.new(pt.x, 0, pt.z))
 		end
 		local function gstate(folder)
 			return type(HF.Garden) == "function" and HF.Garden(folder) or nil
 		end
 		mine.Folder:SetAttribute("GardenSlots", 3)
-		mine.Folder:SetAttribute("CoinPiles", "1=2;2=5F*;W=5")
+		mine.Folder:SetAttribute("RoamSeed", seed)
+		mine.Folder:SetAttribute("RoamVersion", HR.Version)
+		mine.Folder:SetAttribute("Roam", "")
+		mine.Folder:SetAttribute("CoinDrops", "1=0:2;2=0:4*;W=5")
 		advance(0.3)
 		local g = gstate(mine.Folder)
 		T.check(type(HF.Garden) == "function" and g ~= nil, "HomeFx: HomeFx.Garden(plot) tells what the client draws in a garden")
-		g = g or { Heaps = {}, Bowls = {}, Pets = {}, Training = {} }
-		local h1, h2, hw = g.Heaps[1], g.Heaps[2], g.Heaps.W
+		g = g or { Heaps = {}, Coins = {}, Pets = {}, Training = {} }
+		local c1, c2, hw = g.Coins["1:0"], g.Coins["2:0"], g.Heaps.W
 		local function flat(a, b)
 			return (Vector3.new(a.X, 0, a.Z) - Vector3.new(b.X, 0, b.Z)).Magnitude
 		end
-		T.check(h1 ~= nil and h2 ~= nil and hw ~= nil and h1.Stage == 2 and h2.Stage == 5, "HomeFx: CoinPiles draws a heap per pile (stage 2, stage 5) and the Welcome-back heap",
-			tostring(h1 and h1.Stage) .. " / " .. tostring(h2 and h2.Stage) .. " / " .. tostring(hw ~= nil))
-		T.check(h1 and flat(h1.Point, pileAt(1)) < 0.05 and h2 and flat(h2.Point, pileAt(2)) < 0.05,
-			"HomeFx: ...each heap lies on its TycoonCatalog.CoinPoint (on the walk)")
+		T.check(c1 ~= nil and c2 ~= nil and hw ~= nil and c1.Stage == 2 and c2.Stage == 4 and c2.Lucky and c2.Look == "GoldenCash4",
+			"HomeFx: CoinDrops draws a Cloud Cash coin per drop (stage 2, a Lucky stage 4) and the Welcome-back heap",
+			tostring(c1 and c1.Look) .. " / " .. tostring(c2 and c2.Look) .. " / " .. tostring(hw ~= nil))
+		T.check(c1 and flat(c1.Point, dropAt(1)) < 0.05 and c2 and flat(c2.Point, dropAt(2)) < 0.05,
+			"HomeFx: ...each coin lies on its HomeRoam poop point (Plan(seed, slot, cycle).Poop)")
 		local wp = base:PointToWorldSpace(gdef.Slot.WelcomePile)
 		T.check(hw and flat(hw.Point, wp) < 0.05, "HomeFx: ...and the Welcome-back heap at Garden.Slot.WelcomePile")
-		T.check(h1 and h2 and hw and h1.Parts < h2.Parts and h2.Parts <= 40 and hw.Parts <= 60, "HomeFx: the heap grows with its stage (<= 40 parts, the Welcome-back heap <= 60)",
-			tostring(h1 and h1.Parts) .. " < " .. tostring(h2 and h2.Parts) .. ", W " .. tostring(hw and hw.Parts))
-		T.check(h2 and h2.Lucky and h1 and not h1.Lucky, "HomeFx: a Lucky coin ('*') sparkles on its heap")
-		local nb = 0
-		for slot, b in pairs(g.Bowls) do
-			nb = nb + 1
-			if slot > 3 or not (b.Dish.Parent and b.Food.Parent) then
-				nb = -100
+		T.check(c1 and c2 and c1.Parts == 6 and c2.Parts == 6 and hw and hw.Parts <= 60, "HomeFx: a coin is 6 TokenLook parts (no halo, no light), the Welcome-back heap <= 60",
+			tostring(c1 and c1.Parts) .. ", W " .. tostring(hw and hw.Parts))
+		local light = false
+		for _, d in ipairs(c1 and c1.Part:GetDescendants() or {}) do
+			if d:IsA("Light") then
+				light = true
 			end
 		end
-		T.check(nb == 3, "HomeFx: a food bowl (2 client parts) in front of each of the 3 open places", tostring(nb))
-		local food = g.Bowls[1] and g.Bowls[1].Food.Color
-		local carrot = mineHome:FindFirstChild("Station_Press2") and mineHome.Station_Press2:GetAttribute("FruitColor")
-		T.check(food ~= nil and carrot ~= nil and (food.R - carrot.R) ^ 2 + (food.G - carrot.G) ^ 2 + (food.B - carrot.B) ^ 2 < 1e-4,
-			"HomeFx: the bowls hold the fruit of the best plant built (the Carrot Patch here)")
+		T.check(c1 and c2 and not light and c2.Part:FindFirstChildOfClass("ParticleEmitter") ~= nil, "HomeFx: ...no light on a coin; a Lucky coin sparkles")
+		local fx = workspace:FindFirstChild("ClientFx") and workspace.ClientFx:FindFirstChild("HomeFx")
+		local bowls = 0
+		for _, pc in ipairs(fx and fx:GetChildren() or {}) do
+			if pc.Name == "Bowl" or pc.Name == "BowlFood" then
+				bowls = bowls + 1
+			end
+		end
+		T.eq(bowls, 0, "HomeFx: no client food bowls any more (the Food Bowl is HomeBuilder's)")
 		local solid = 0
-		for _, pc in ipairs(parts(workspace.ClientFx.HomeFx)) do
-			if pc.CanCollide or pc.CanQuery or pc.CanTouch or not pc.Anchored then
+		for _, pc in ipairs(parts(fx)) do
+			local welded = pc:FindFirstChildWhichIsA("WeldConstraint") ~= nil or pc:FindFirstChildWhichIsA("Weld") ~= nil
+			if pc.CanCollide or pc.CanQuery or pc.CanTouch or not (pc.Anchored or welded) then
 				solid = solid + 1
 			end
 		end
-		T.check(solid == 0, "HomeFx: heaps, bowls and coins are anchored and never collide, query or touch", solid .. " parts")
-		mine.Folder:SetAttribute("CoinPiles", "1=4;W=5")
+		T.check(solid == 0, "HomeFx: coins and heaps are anchored (or welded to an anchored root) and never collide, query or touch", solid .. " parts")
+		mine.Folder:SetAttribute("CoinDrops", "1=0:4;W=5")
 		advance(0.3)
 		g = gstate(mine.Folder) or g
-		T.check(g.Heaps[1] and g.Heaps[1].Stage == 4 and g.Heaps[2] == nil, "HomeFx: a pile that grows swaps its heap, a pile that is gone takes its heap away")
-		local fx = workspace:FindFirstChild("ClientFx") and workspace.ClientFx:FindFirstChild("HomeFx")
+		T.check(g.Coins["1:0"] and g.Coins["1:0"].Stage == 4 and g.Coins["2:0"] == nil, "HomeFx: a drop that grows swaps its coin's look, a drop that is gone takes its coin away")
 		local homeDesc = Mock.CountDescendants(mineHome)
 
 		if petId then
-			-- garden pets: GardenPets puts Low-detail pets on the cushions; a place above GardenSlots sleeps on its closed bed
+			-- garden pets roam: GardenPets + Roam; a pet above GardenSlots sleeps on its closed bed
+			local now = workspace:GetServerTimeNow()
+			mine.Folder:SetAttribute("Roam", string.format("1=%.1f;2=%.1f;7=%.1f", now - 50, now - 61, now - 40))
 			mine.Folder:SetAttribute("GardenPets", "1=" .. petId .. ";2=" .. petId .. "@Golden;7=" .. petId .. ";3=hyb:nobody")
 			advance(0.6)
 			g = gstate(mine.Folder) or g
-			local onCushion = 0
+			local onGround = 0
 			for slot = 1, 2 do
 				local e = g.Pets[slot]
-				local att = garden and garden:FindFirstChild("Spot" .. slot, true)
-				if e and att then
-					local pivot = e.Model:GetPivot()
+				if e then
 					local lo = huge
 					for _, part in ipairs(parts(e.Model)) do
-						lo = min(lo, part.Position.Y - part.Size.Y / 2)
+						if part.Transparency < 1 then
+							lo = min(lo, part.Position.Y - part.Size.Y / 2)
+						end
 					end
-					if flat(pivot.Position, att.WorldPosition) < 0.6 and abs(lo - att.WorldPosition.Y) < 0.5 then
-						onCushion = onCushion + 1
+					local ground = base.Position.Y + ((e.State == "Eat") and 0.2 or 0)
+					if abs(lo - base.Position.Y) < 0.6 then
+						onGround = onGround + 1
 					end
 				end
 			end
-			T.check(onCushion == 2 and g.Pets[3] == nil and (tonumber(stats().GardenPets) or 0) == 3,
-				"HomeFx: the Garden's pets (GardenPets) stand on their cushions; hybrids without a record are skipped", onCushion .. " on a cushion, " .. tostring(stats().GardenPets) .. " pets")
-			T.check(g.Pets[7] and g.Pets[7].Sleep and g.Pets[7].Zzz ~= nil, "HomeFx: a pet on a place above GardenSlots sleeps on its closed bed (a voxel Zzz)")
-			mine.Folder:SetAttribute("CoinPiles", "1=4;2=3F;W=5")
-			advance(0.3)
-			g = gstate(mine.Folder) or g
-			T.check(g.Pets[2] and g.Pets[2].Sleep and g.Pets[2].Zzz ~= nil and #g.Pets[2].Zzz <= 6, "HomeFx: a full pile ('F'): its pet naps (lies down, Zzz)")
-			T.check(g.Pets[1] and not g.Pets[1].Sleep, "HomeFx: ...the pets of piles that are not full keep eating")
-			-- the meal rhythm: the pet dips into its bowl, a coin hops onto its pile (Stats().Drops)
+			T.check(onGround == 2 and g.Pets[3] == nil and (tonumber(stats().GardenPets) or 0) == 3,
+				"HomeFx: the Garden's pets (GardenPets) roam the yard standing on the ground; hybrids without a record are skipped", onGround .. " on the ground, " .. tostring(stats().GardenPets) .. " pets")
+			local bx, bz = HR.BedPoint(7)
+			local p7 = g.Pets[7]
+			local lp7 = p7 and base:PointToObjectSpace(p7.Model:GetPivot().Position)
+			T.check(p7 and p7.Sleep and p7.Zzz ~= nil and #p7.Zzz <= 6 and math.sqrt((lp7.X - bx) ^ 2 + (lp7.Z - bz) ^ 2) < 2,
+				"HomeFx: a pet on a place above GardenSlots sleeps on its closed bed (a voxel Zzz)")
+			T.check(g.Pets[1] and not g.Pets[1].Sleep, "HomeFx: ...the open places' pets roam")
+			-- they walk: over 10 s a roaming pet moves several studs; poops pop pending coins (Stats().Poops)
 			local e1 = g.Pets[1]
 			local p0 = e1 and e1.Model:GetPivot()
-			local moved, drops0, maxCoins = 0, tonumber(stats().Drops) or 0, 0
-			for _ = 1, 100 do
+			local moved, poops0 = 0, tonumber(stats().Poops) or 0
+			for _ = 1, 260 do
 				advance(0.1)
 				local pv = e1 and e1.Model.Parent and e1.Model:GetPivot()
 				if pv and p0 then
-					moved = max(moved, (pv.Position - p0.Position).Magnitude)
+					moved = max(moved, flat(pv.Position, p0.Position))
 				end
-				maxCoins = max(maxCoins, tonumber(stats().Coins) or 0)
 			end
-			local drops = (tonumber(stats().Drops) or 0) - drops0
-			T.check(drops >= 1 and drops <= 4, "HomeFx: every meal (8 s) an eating pet pops a coin onto its pile (napping and sleeping pets do not)", drops .. " coins in 10 s")
-			T.check(moved > 0.1 and moved < 1.0, "HomeFx: ...after dipping into its bowl (a small move, back on its cushion)", fmt(moved) .. " studs")
-			T.check(maxCoins >= 1 and maxCoins <= 40, "HomeFx: the flying coins are pooled parts (<= 40)", tostring(maxCoins))
-			T.check((tonumber(stats().FruitFlights) or 0) >= 2, "HomeFx: the plants send their fruit into the bowls (~every 3 s per plant)", tostring(stats().FruitFlights))
-			T.check((tonumber(stats().Fruit) or 0) <= 24 and (tonumber(stats().FruitPool) or 0) <= 24, "HomeFx: ...pooled fruit parts (<= 24)", tostring(stats().FruitPool))
+			local poops = (tonumber(stats().Poops) or 0) - poops0
+			T.check(moved > 2, "HomeFx: a roaming pet walks the yard (HomeRoam)", fmt(moved) .. " studs")
+			T.check(poops >= 2 and poops <= 4, "HomeFx: each roaming pet poops once per 24 s cycle (2 pets, 26 s; the sleeper never)", poops .. " poops")
+			T.check((tonumber(stats().Coins) or 0) <= 36 and (tonumber(stats().Bits) or 0) <= 16, "HomeFx: coins (<= 36) and berries / puffs (<= 16) are pooled")
+			T.check((tonumber(stats().BerryFlights) or 0) >= 2, "HomeFx: the Berry Farm sends berries to the Food Bowl and the basket", tostring(stats().BerryFlights))
 			-- the Training Place: pets on their mats with a pooled voxel prop of their skill
 			local ends = math.floor(workspace:GetServerTimeNow()) + 130
 			mine.Folder:SetAttribute("TrainingPets", "1=" .. petId .. ":Physique:" .. ends .. ";2=" .. petId .. "@Golden:Speed:" .. ends .. ";4=" .. petId .. ":Defense:" .. ends)
@@ -1444,14 +1451,8 @@ local function clientScenarios()
 		local n1 = fx and Mock.CountDescendants(fx) or 0
 		advance(6)
 		local n2 = fx and Mock.CountDescendants(fx) or 0
-		T.check(n2 <= 260 and abs(n2 - n1) <= 60 and Mock.CountDescendants(mineHome) == homeDesc and (tonumber(stats().CoinPool) or 0) <= 40,
-			"HomeFx: heaps, bowls, coins and fruit are pooled client parts (nothing created per frame, nothing added to the home)", n1 .. " -> " .. n2 .. ", coin parts " .. tostring(stats().CoinPool))
-		-- the Coin Magnet's head turns
-		local magnet = mineHome:FindFirstChild("Station_Collector")
-		local headPart = magnet and magnet:FindFirstChild("MagnetHead") and parts(magnet.MagnetHead)[1]
-		local m0 = headPart and headPart.CFrame
-		advance(0.5)
-		T.check(headPart and m0 and (headPart.CFrame.LookVector - m0.LookVector).Magnitude > 0.01, "HomeFx: the Coin Magnet's head turns")
+		T.check(n2 <= 400 and abs(n2 - n1) <= 80 and Mock.CountDescendants(mineHome) == homeDesc and (tonumber(stats().CashMade) or 0) <= 36,
+			"HomeFx: coins, heaps and berries are pooled client parts (nothing created per frame, nothing added to the home)", n1 .. " -> " .. n2 .. ", coins made " .. tostring(stats().CashMade))
 
 		-- the fusion swirl turns
 		local fusion = mineHome:FindFirstChild("Station_FusionMachine")

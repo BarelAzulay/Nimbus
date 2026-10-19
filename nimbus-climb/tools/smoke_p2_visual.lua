@@ -14,8 +14,8 @@
 --                   reset, kept by ClearPlot while owned, never on a free plot); a locked station's ghost is a
 --                   ForceField hologram (light, no collisions, no prompts, <= 12 parts); the Prestige pad's sign says
 --                   what the reset buys ("Reset: x1.25 income")
---   client_p2visual (client) HomeFx shows the sign of one of the local player's LOCKED pads only up close (its
---                   unlocked pads keep their signs from afar), Garden pets stand bigger than Training Place pets; the Fusion
+--   client_p2visual (client) HomeFx shows the sign of one of the local player's LOCKED pads only up close (6 studs; the
+--                   next affordable unlocked pads keep their signs from afar), roaming Garden pets at 0.85 like Training pets; the Fusion
 --                   window's locked card is opaque with a teaser line, a Mix pick mark sits in the tile's top-left
 --                   corner clear of the pet; the Shop's Secret roulette hint is the short one-liner
 -- Plain Lua 5.1 syntax only.
@@ -546,8 +546,10 @@ local function clientScenarios()
 			local farLocked, farLockedShown, unlockedShown, unlocked = 0, 0, 0, 0
 			-- (HomeFx also lays the signs out on the screen, World text rule: an unlocked pad's sign may wait while a
 			-- nearer one takes its place, smoke_p2_fix_client.lua; it is never hidden for being far or locked)
-			local layoutOnly = { Shown = true, Crowded = true, Away = true, Pending = true }
-			local laidOut = 0
+			-- (Phase 5 3.3: an open pad TycoonCatalog.SignedPads did not pick is "Unsigned": only the next affordable
+			-- pads carry a sign)
+			local layoutOnly = { Shown = true, Crowded = true, Away = true, Pending = true, Unsigned = true }
+			local laidOut, signed = 0, 0
 			local nearest, nearestD = nil, huge
 			for _, s in ipairs(signs) do
 				local anchor = s.Gui.Adornee or s.Gui.Parent
@@ -571,17 +573,20 @@ local function clientScenarios()
 					if (why == nil and s.Gui.Enabled) or layoutOnly[why] then
 						laidOut = laidOut + 1
 					end
+					if why ~= "Unsigned" then
+						signed = signed + 1
+					end
 				end
 			end
 			T.check(farLocked > 0 and farLockedShown == 0, "HomeFx: the local player's locked pads keep their lock signs hidden from afar (the yard shows what can be bought now)",
 				farLockedShown .. " of " .. farLocked .. " far locked signs shown")
-			T.check(unlocked > 0 and unlockedShown >= 1 and laidOut == unlocked, "HomeFx: ...while its unlocked pads keep their signs (only the on-screen layout holds some back)",
-				unlockedShown .. " shown, " .. laidOut .. " of " .. unlocked .. " left to the layout")
+			T.check(unlocked > 0 and signed >= 1 and signed <= 4 and laidOut == unlocked, "HomeFx: ...while the next affordable unlocked pads (SignedPads) keep their signs, the rest 'Unsigned' (only the layout holds signed ones back)",
+				unlockedShown .. " shown, " .. signed .. " signed, " .. laidOut .. " of " .. unlocked .. " accounted")
 			if nearest then
 				local anchor = nearest.Gui.Adornee or nearest.Gui.Parent
-				standAt(anchor.Position + Vector3.new(4, 3, 4))
+				standAt(anchor.Position + Vector3.new(2, 1, 2))
 				advance(0.6)
-				T.check(nearest.Gui.Enabled, "HomeFx: walking up to a locked pad shows its sign (the lock reason)")
+				T.check(nearest.Gui.Enabled, "HomeFx: walking up to a locked pad (within 6 studs) shows its sign (the lock reason)")
 				standAt(anchor.Position + Vector3.new(80, 3, 80))
 				advance(0.6)
 				T.check(not nearest.Gui.Enabled, "HomeFx: ...and walking away hides it again")
@@ -600,7 +605,7 @@ local function clientScenarios()
 					end
 				end
 			end
-			T.check(gardenH > 0 and gymH > 0 and gardenH > gymH * 1.08, "HomeFx: Garden pets stand full size, Training Place pets a little smaller (their mats are closer)",
+			T.check(gardenH > 0 and gymH > 0 and math.abs(gardenH / gymH - 1) < 0.08, "HomeFx: roaming Garden pets and Training Place pets both stand at 0.85 scale (K.ROAM_SCALE)",
 				string.format("garden %.2f, training %.2f", gardenH, gymH))
 			if hrp and savedHrp then
 				hrp.CFrame = savedHrp

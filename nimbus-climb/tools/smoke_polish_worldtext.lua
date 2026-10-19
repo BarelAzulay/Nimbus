@@ -221,7 +221,7 @@ local function auditGui(gui)
 			if not (md >= 50) then
 				bad("MaxDistance " .. tostring(md))
 			end
-		elseif not (md >= 50 and md <= 150) then
+		elseif not (md >= 50 and md <= 150) and not (gui.Name == "BowlSign" and md >= 40) then -- Phase 5 3.4: the Food Bowl sign 40
 			bad("MaxDistance " .. tostring(md) .. " (want 50-150)")
 		end
 		if #noPlate > 0 then
@@ -718,7 +718,17 @@ local function serverScenarios()
 				names[r.name] = (names[r.name] or 0) + 1
 			end
 		end
-		local want = { Nameplate = Config.Lobby.SpotCount, PortalBillboard = #Config.Difficulties, PriceBillboard = #Config.Roulettes, ItemShopBillboard = 1, NameTag = 1, SignGui = 5, HintTag = 5 }
+		-- Phase 5 (6.1): one GateTag per Gate Court gate (workspace.NimbusLobby.Gates) instead of a portal per difficulty
+		local lobbyModel = workspace:FindFirstChild("NimbusLobby")
+		local gatesFolder = lobbyModel and lobbyModel:FindFirstChild("Gates")
+		local gateCount = 0
+		for _, g in ipairs(gatesFolder and gatesFolder:GetChildren() or {}) do
+			if g:IsA("Model") and g:FindFirstChild("GateTag", true) then
+				gateCount = gateCount + 1
+			end
+		end
+		T.check(gateCount >= 3, "polish worldtext: the Gate Court gates carry a GateTag each", gateCount .. " gates with a tag")
+		local want = { Nameplate = Config.Lobby.SpotCount, GateTag = math.max(3, gateCount), PriceBillboard = #Config.Roulettes, ItemShopBillboard = 1, NameTag = 1, SignGui = 5, HintTag = 5 }
 		local short = {}
 		for name, n in pairs(want) do
 			if (names[name] or 0) < n then
