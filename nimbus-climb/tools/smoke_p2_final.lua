@@ -1735,6 +1735,156 @@ local function checkPhase4(Config, PC, TC, Steps, lines, text, sub)
 end
 
 ----------------------------------------------------------------------------------------------------
+-- Phase 5: the Big Sky Update (the "## Phase 5: the Big Sky Update" bullets with the catalogs' numbers) and the owner
+-- checklist "## Phase 5: owner checklist" (ARCHITECTURE_V3.md 10.6: steps 0-7, one needle per step; judge M9)
+----------------------------------------------------------------------------------------------------
+local TOPICS5 = {
+	{ "teams of 3: a fighter and two helpers", { "**FIGHTER**", "**HELPERS**", "**buff**", "**SWAP**", "three lives", "RETREAT is gone" } },
+	{ "the new battle controls (keys and touch)", { "**ATTACK**", "**ELEMENT**", "**SPECIAL**", "**DASH**", "`F`", "`E`", "`Q`", "`Shift`", "`Tab`", "`1` / `2`", "big touch buttons" } },
+	{ "helpers / Supporters", { "Supporters", "**Heal**", "**Shield**", "**Rally**", "**Haste**", "about 70 %", "battle power" } },
+	{ "levels and evolutions", { "+10 %", "EVOLVE", "Nobody gets weaker" } },
+	{ "the Dungeon (floors, party, loot)", { "**The Dungeon**", "boss room", "loot", "first time pays big Tokens and Gems", "Trial record" } },
+	{ "one obby portal with a level picker", { "**level picker**", "Easy, Medium, Hard, Extreme or Saint", "beating a level unlocks the next" } },
+	{ "the Gate Court", { "Gate Court", "Home, Obby, Dungeon, Champion Ring, Arena and Storm Altar" } },
+	{ "the Berry Farm, one food and Feed", { "**Berry Farm**", "**Berry Basket**", "ONE button, **Feed**", "never costs Cash" } },
+	{ "roaming pets pooping Cloud Cash", { "roam the yard", "Food Bowl", "poop **Cloud Cash**", "only you can" } },
+	{ "fewer, cheaper decor", { "three decorations", "Yard Fence", "Fountain", "Pet Podium", "much cheaper" } },
+	{ "evolved looks everywhere", { "**Evolved pets look evolved everywhere:**" } },
+	{ "followers spaced", { "**Pets follow better.**", "keeps its distance", "out of the camera's way" } },
+	{ "the sky and the new look", { "pink-purple cloud sky with stars", "bigger plaza", "never cover the whole screen" } },
+	{ "loading screen, main menu, settings", { "loading screen", "main menu", "**PLAY**", "**SETTINGS**", "**UPDATES**", "camera shake" } },
+	{ "nothing is lost", { "**Nothing is lost.**", "Berry Farm, old snacks became berries", "4th team pet" } },
+	{ "the owner's new tools", { "`/berries [n]`", "`/menu`", "owner checklist" } },
+}
+
+-- 10.6: the step number, its needle (in the step's own text) and the extra words the step must give
+local CHECKLIST = {
+	{ 0, "rojo serve", { "src/shared/Config.lua", "play/NimbusClimb.rbxlx", "Connect", "rojo build" } },
+	{ 1, "Migrate to Latest Update", { "Publish to Roblox", "create.roblox.com", "phase 4 and phase 5 servers run together" } },
+	{ 2, "Bulk Import", { "Asset Manager", "branding/sky/", "IMAGES", "a Decal id would NOT work", "moderation", "Copy ID", "Config.Sky.Faces", "Swap the `Lf` and `Rt` ids" } },
+	{ 3, "Config.Audio", { "Toolbox", "Copy Asset ID", "Empty = silent" } },
+	{ 4, "Config.Icons", { "emoji" } },
+	{ 5, "ShadowMap", { "default.project.json", "\"Technology\": \"Future\"", "Graphics: **Low**" } },
+	{ 6, "Developer Products", { "Config.Gems.Products", "Product ID" } },
+	{ 7, "Output", { "[Config]", "[LightingService]" } },
+}
+
+local function checkTopics5(p5)
+	local f = flat(p5)
+	local t = T.tally("docs: the README's 'Phase 5: the Big Sky Update' covers every part the player asked for", 6)
+	for _, topic in ipairs(TOPICS5) do
+		for _, word in ipairs(topic[2]) do
+			t:case(has(f, word), topic[1] .. ": the section never says " .. show(word))
+		end
+	end
+	t:report()
+end
+
+local function checkFacts5(Config, PC, TC, BC, p5, text, lines)
+	local t = T.tally("docs: the Phase 5 numbers (team, stamina, Dungeon, stations, evolution) and owner rows match Config / the catalogs / the services", 6)
+	local f = flat(p5)
+	t:case(BC ~= nil and has(f, "Your battle team is **" .. tostring(BC.TeamSize) .. " pets**"), "the team is " .. tostring(BC and BC.TeamSize) .. " pets")
+	local lives = BC and (BC.Fighter or {}).Lives
+	t:case(lives ~= nil and NUMBER_WORDS[lives] ~= nil and has(f, NUMBER_WORDS[lives]:lower() .. " lives"), "the fighter has " .. tostring(lives) .. " lives")
+	local P = Config.Physics or {}
+	local dashes = floor((P.MaxStamina or 0) / (P.DashStaminaCost or 1))
+	t:case(has(f, "**More stamina:** **" .. num(P.MaxStamina) .. "**") and has(f, dashes .. " dashes from full"),
+		"stamina " .. tostring(P.MaxStamina) .. ", " .. dashes .. " dashes from full (Config.Physics)")
+	local refill = string.format("%.1f", (P.MaxStamina or 0) / (P.StaminaRegen or 1))
+	t:case(has(f, "refills in about " .. refill .. " seconds"), "the bar refills in about " .. refill .. " seconds")
+	local D = (BC and BC.Dungeon) or {}
+	t:case(has(f, "**" .. tostring(D.Floors) .. " floors**"), "the Dungeon has " .. tostring(D.Floors) .. " floors")
+	local maxParty = sourceNumber((readFile("src/server/Services/DungeonService.lua")), "MAX_PARTY")
+	t:case(maxParty ~= nil and has(f, "a party of up to **" .. num(maxParty) .. "** players"), "a party of up to " .. tostring(maxParty) .. " players")
+	t:case(TC.Version == 5 and has(f, "**" .. #TC.Stations .. " stations**") and has(text, "A home has **" .. #TC.Stations .. " stations**"),
+		"TycoonCatalog Version 5 with " .. #TC.Stations .. " stations ('**N stations**')")
+	t:case(has(f, "grows x" .. bonusText(PC, 1) .. ", after the second x" .. bonusText(PC, 2)), "the level bonus grows x" .. bonusText(PC, 1) .. " / x" .. bonusText(PC, 2))
+	local S = (BC and (BC.Roles or {}).Support) or {}
+	local ratio = (S.Power or 0) > 0 and has(f, "about 70 %")
+	t:case(ratio, "Support pets hit for about 70 % (BattleCatalog.Roles.Support)")
+	-- the developer rows
+	local cmds = rowsByName(tableRows(lines, "| Command | What it does |"))
+	t:case(cmds["/berries [n]"] ~= nil and has(text, "`/berries [n]`"), "the chat command table has a '/berries [n]' row")
+	local devController = readFile("src/client/Controllers/DevController.lua")
+	t:case(cmds["/menu"] ~= nil and has(devController, "/menu"), "the chat command table has a '/menu' row (DevController's /menu)")
+	t:case(not has(text, "4th slot") and not has(text, "slot 4 opens") and not has(text, "slot opens at Prestige"), "no 'slot 4 opens at Prestige 1' line")
+	-- the main menu and settings: what the README names exists
+	local U = requireModule("shared/UpdateNotes")
+	t:case(U ~= nil and tonumber(U.Latest) == 5, "UpdateNotes.Latest is 5 (the Big Sky Update)")
+	t:case((Config.Loading or {}).SkipAfter ~= nil and has(flat(text), "**SKIP** appears after " .. num((Config.Loading or {}).SkipAfter) .. " seconds"),
+		"the loading screen's SKIP after " .. tostring((Config.Loading or {}).SkipAfter) .. " seconds (Config.Loading.SkipAfter)")
+	t:report()
+end
+
+local function checkChecklist5(Config, ownerText)
+	local t = T.tally("docs: 'Phase 5: owner checklist' is numbered 0-7 like ARCHITECTURE_V3.md 10.6, one needle per step", 6)
+	-- the numbered steps (a line "N. ..." at column 0) and their text up to the next step
+	local steps, order = {}, {}
+	local cur = nil
+	for _, line in ipairs(splitLines(ownerText or "")) do
+		local n = line:match("^(%d+)%. ")
+		if n then
+			cur = tonumber(n)
+			order[#order + 1] = cur
+			steps[cur] = line
+		elseif cur ~= nil and line:match("^%s+%S") then
+			steps[cur] = steps[cur] .. " " .. line
+		elseif line:match("^%S") then
+			cur = nil
+		end
+	end
+	t:case(#order == #CHECKLIST, "the checklist has " .. #order .. " numbered steps, 10.6 has " .. #CHECKLIST)
+	for i, spec in ipairs(CHECKLIST) do
+		local step = steps[spec[1]]
+		if t:case(order[i] == spec[1] and step ~= nil, "step " .. spec[1] .. " is the checklist's step number " .. i .. " (got " .. tostring(order[i]) .. ")") then
+			local fs = flat(step)
+			t:case(has(fs, spec[2]), "step " .. spec[1] .. " has its needle " .. show(spec[2]))
+			for _, word in ipairs(spec[3]) do
+				t:case(has(fs, word), "step " .. spec[1] .. " should say " .. show(word))
+			end
+		end
+	end
+	-- step 2: the six face keys of Config.Sky.Faces, the images in branding/sky/
+	local faces = sortedKeys((Config.Sky or {}).Faces)
+	local s2 = flat(steps[2] or "")
+	t:case(#faces == 6 and has(s2, "(" .. table.concat(faces, " ") .. ")"), "step 2 names the six Config.Sky.Faces keys (" .. table.concat(faces, " ") .. ")")
+	for _, key in ipairs(faces) do
+		local png = readFile("branding/sky/Skybox" .. key .. ".png")
+		t:case(png ~= nil and #png > 1000 and has(s2, "`Skybox" .. key .. "`"), "branding/sky/Skybox" .. key .. ".png exists and step 2 names it")
+	end
+	-- step 3: every music and sound name of Config.Audio
+	local A = Config.Audio or {}
+	local s3 = flat(steps[3] or "")
+	for _, group in ipairs({ "Music", "Sfx" }) do
+		for _, key in ipairs(sortedKeys(A[group])) do
+			t:case(has(s3, "`" .. key .. "`") or has(s3, "." .. key .. "`"), "step 3 names Config.Audio." .. group .. "." .. key)
+		end
+	end
+	t:case(type(Config.Icons) == "table", "Config.Icons exists (step 4)")
+	-- step 5: the project file still says Future (the line the owner changes)
+	local project = readFile("default.project.json")
+	t:case(has(project, "\"Technology\": \"Future\""), "default.project.json has the line '\"Technology\": \"Future\"' that step 5 changes")
+	-- step 6: the sample is the first Config.Gems.Products pack
+	local first = ((Config.Gems or {}).Products or {})[1] or {}
+	t:case(has(flat(steps[6] or ""), "{ Id = ..., Gems = " .. tostring(first.Gems) .. ", Name = \"" .. tostring(first.Name) .. "\" }"),
+		"step 6 quotes the first Config.Gems.Products pack")
+	t:report()
+end
+
+local function checkPhase5(Config, PC, TC, lines, text, sub)
+	local BC = requireModule("shared/BattleCatalog")
+	local p5 = sub("## Phase 5: the Big Sky Update")
+	if p5 ~= "" then
+		checkTopics5(p5)
+		checkFacts5(Config, PC, TC, BC, p5, text, lines)
+	end
+	local owner = sub("## Phase 5: owner checklist")
+	if owner ~= "" then
+		checkChecklist5(Config, owner)
+	end
+end
+
+----------------------------------------------------------------------------------------------------
 -- scenario
 ----------------------------------------------------------------------------------------------------
 S.p2final_docs = guarded("p2final_docs", function()
@@ -1777,6 +1927,7 @@ S.p2final_docs = guarded("p2final_docs", function()
 	checkAnchors(lines, fences, text)
 	checkPhase3(Config, PC, TC, Steps, lines, text, sub)
 	checkPhase4(Config, PC, TC, Steps, lines, text, sub)
+	checkPhase5(Config, PC, TC, lines, text, sub)
 	T.eq(#game:GetDescendants(), before, "docs: the checks are pure (no Instances created)")
 	K.flushErrors("p2final_docs")
 end)

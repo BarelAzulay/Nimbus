@@ -1545,7 +1545,7 @@ local function clientScenarios()
 		local tg = pg:FindFirstChild("NimbusObbyToast")
 		local toast = tg and tg:FindFirstChild("UnlockToast")
 		T.check(toast and KC.isShown(toast) and find(toast, "Text").Text == "Extreme unlocked! Pick it at the Obby portal.", "p5obby client: 'Extreme unlocked! Pick it at the Obby portal.' after a Hard win",
-			toast and find(toast, "Text").Text)
+			toast and (find(toast, "Text").Text .. " visible=" .. tostring(toast.Visible) .. " gui=" .. tostring(tg.Enabled) .. " parent=" .. tostring(tg.Parent)))
 		toClient("MatchResult", { Won = true, DifficultyId = "Easy", Members = {} })
 		Mock.Advance(7)
 		T.check(toast and not KC.isShown(toast), "p5obby client: no toast for a win that unlocks nothing (and the toast fades)")

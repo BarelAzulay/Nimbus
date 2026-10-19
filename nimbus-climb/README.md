@@ -341,7 +341,8 @@ Stand on the Obby pad to join its party (1-4 players). The first player on the p
 join, whatever the level. A 15 s countdown starts (4 s once the party is full), then everyone is flown to the start
 platform of a new course. While the countdown runs you are **locked in**: soft walls keep you on the pad, and the only
 way out is the big red **Leave** button in the party panel (top-left). Everyone else walks through those walls freely.
-The gate's name tag shows its party ("Hard 2/4") and friends standing next to it see a big countdown on the gate.
+The gate's name tag shows its party and its level, and friends standing next to it see a big countdown on the
+gate.
 
 Every course is generated from a seed, in one of four shapes (Straight, Zigzag, Serpent, Spiral) and mixed
 from stage themes (moving clouds, spinning bars, storms, lightning, vanishing steps, cannons, wind, pendulums,
@@ -445,9 +446,9 @@ A home has **11 stations** (phase 4 had 18):
 | **Pet Podium** | Dresses up the podium of your best pet by the gate (stone, gold, crystal) | 3 | the Pet Garden | 3,600 -> 230,000 |
 
 A pad shows up as soon as the stations it needs are built; until the rest is there too (a house tier, a Prestige
-star) its sign says what is missing. Every station grows visibly with its level (a level-1 Berry Farm is one short
-row of bushes, a level-40 one a big, busy farm), and three world signs tell the berry story: the Berry Farm
-("Grows berries for your pets"), the Food Bowl ("Pets eat here, then poop Cloud Cash!") and the Food Machine
+star) its sign says what is missing. Every station grows visibly with its level (a level-1 Berry Farm is a few
+red-berry bushes by a little red barn; blue berries come at level 11, a golden trellis at 23 and the glowing Starberry
+tree at 38), and three world signs tell the berry story: the Berry Farm ("Grows berries for your pets"), the Food Bowl ("Pets eat here, then poop Cloud Cash!") and the Food Machine
 ("Berries -> XP: press E", with your Berry Basket under it). Decor is cheap, counts toward your Home Level like
 everything else and is **kept when you prestige**.
 
@@ -1028,7 +1029,7 @@ later you are back at the gate.
 
 ## Pets and roulettes
 
-**33 pets** in seven rarities follow right behind their owner, and everybody sees everybody's pets: Common 6,
+**33 pets** in seven rarities follow their owner, and everybody sees everybody's pets: Common 6,
 Uncommon 6, Rare 5, Epic 4, Legendary 3, Mythic 2 and **Secret 7** (Stormfang, Eclipse Dragon, Obsidian Phoenix,
 Phantom Kitsune, and the three Boss Raid pets Magma Cub, Rime Wyrmling and Hydralotl). Visit the **shop island** or
 press the **Shop** tile, pick a roulette and spin. Duplicates stack (up to 99 per pet).

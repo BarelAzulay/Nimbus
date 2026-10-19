@@ -1451,7 +1451,79 @@ end
 -- [owner: dungeon] end
 
 -- [owner: arenaart] begin
--- (arena, arena:ring, pocket:ring after the 6.4 art pass; the trial pocket is gone)
+-- Phase 5 art pass (6.4): views of the Battle Arena's parts (the trial pocket is gone; pocket:ring stays above)
+--   arena                 the whole Battle Arena (island, colosseum, rings, boards, bridge, the forum's Return gate)
+--   arena:island          the island without the bridge (frames the colosseum and the forum)
+--   arena:ring[:<n>]      duel ring n (default 1) on its apron
+--   arena:colosseum       the colosseum (floor, stands, columns, main gate sign)
+--   arena:forum           the forum: ground, decor, duel rings, boards, the Return gate (no colosseum, no bridge)
+--   arena:bridge          the bridge with its entrance arch
+do
+	local function arenaView(info, keep, label)
+		local holder = Instance.new("Folder")
+		holder.Name = label
+		for _, child in ipairs(info.Model:GetChildren()) do
+			if keep(child.Name) then
+				child:Clone().Parent = holder
+			end
+		end
+		holder.Parent = Workspace
+		return holder
+	end
+	BUILDERS.arena = function(sub, n)
+		local info = ensureArena()
+		local look = typeof(info.Center) == "CFrame" and info.Center.LookVector or Vector3.new(0, 0, -1)
+		local facing = { look.X, 0, look.Z }
+		local m = info.Model
+		sub = sub and tostring(sub):lower() or ""
+		if sub == "" then
+			return { { root = m, label = "Battle Arena", sub = "ArenaBuilder.Build(lobbyInfo) (" .. tostring(info.Link) .. " link)", facing = facing } }
+		elseif sub == "ring" then
+			local i = tonumber(n) or 1
+			local ring = m:FindFirstChild("DuelRing_" .. i)
+			if not ring then
+				fail("no DuelRing_" .. i)
+			end
+			local apron = arenaView(info, function()
+				return false
+			end, "DuelRing")
+			ring:Clone().Parent = apron
+			local forum = m:FindFirstChild("Forum")
+			local centre = info.Rings and info.Rings[i] and info.Rings[i].CFrame
+			if forum and centre then
+				-- the ring's apron tiles and the lawn / torches within 48 studs of its centre
+				for _, d in ipairs(forum:GetDescendants()) do
+					if d:IsA("BasePart") and (d.Position - centre.Position).Magnitude < 46 and math.max(d.Size.X, d.Size.Z) < 30 then
+						d:Clone().Parent = apron
+					end
+				end
+			end
+			return { { root = apron, label = "Duel Ring " .. i, sub = "ArenaBuilder (art pass 6.4)", facing = facing } }
+		elseif sub == "colosseum" then
+			local v = arenaView(info, function(name)
+				return name == "Colosseum" or name == "GateSign" or name == "GateSignFrame"
+			end, "Colosseum")
+			return { { root = v, label = "Colosseum", sub = "ArenaBuilder (art pass 6.4)", facing = facing } }
+		elseif sub == "forum" then
+			local v = arenaView(info, function(name)
+				return name == "Forum" or name == "ForumDecor" or name:sub(1, 9) == "DuelRing_" or name == "EventBoard" or name == "Leaderboard" or name == "Portal_Return"
+			end, "Forum")
+			return { { root = v, label = "Forum", sub = "ArenaBuilder (art pass 6.4)", facing = facing } }
+		elseif sub == "bridge" then
+			local b = m:FindFirstChild("ArenaBridge")
+			if not b then
+				fail("no ArenaBridge (link " .. tostring(info.Link) .. ")")
+			end
+			return { { root = b, label = "Arena bridge", sub = "ArenaBuilder (art pass 6.4)", facing = facing } }
+		elseif sub == "island" then
+			local v = arenaView(info, function(name)
+				return name ~= "ArenaBridge"
+			end, "Island")
+			return { { root = v, label = "Battle Arena island", sub = "ArenaBuilder (art pass 6.4, no bridge)", facing = facing } }
+		end
+		fail("arena:<island|ring[:n]|colosseum|forum|bridge>")
+	end
+end
 -- [owner: arenaart] end
 
 ----------------------------------------------------------------------

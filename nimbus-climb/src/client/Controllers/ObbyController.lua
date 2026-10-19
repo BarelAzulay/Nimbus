@@ -641,6 +641,7 @@ function H.onMatchResult(result)
 	if type(result) ~= "table" or result.Won ~= true then
 		return
 	end
+	S.WonAt = os.clock()
 	local list = ObbyLevels.List()
 	local before = S.Highest or H.highest()
 	local index = ObbyLevels.IndexOf(result.DifficultyId) or 0
@@ -671,10 +672,14 @@ function ObbyController.Init()
 	H.buildToast()
 	S.Highest = H.highest()
 	State.Changed:Connect(function()
+		-- the saved wins decide (a new profile can also lower it); a sync right after a won match that raised it
+		-- (the MatchResult may come after the sync) shows the unlock toast here
 		local now = H.highest()
-		if S.Highest == nil or now > S.Highest then
-			S.Highest = math.max(S.Highest or 1, now)
+		if S.Highest and now > S.Highest and os.clock() - (S.WonAt or -100) < 15 then
+			local list = ObbyLevels.List()
+			H.toast(tostring(H.diff(list[now]).DisplayName) .. " unlocked! Pick it at the Obby portal.")
 		end
+		S.Highest = now
 		H.safe("State.Changed", H.refresh)
 	end)
 	U.Gui:GetPropertyChangedSignal("AbsoluteSize"):Connect(function()

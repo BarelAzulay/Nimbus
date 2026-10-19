@@ -963,13 +963,17 @@ local function clientScenarios()
 		-- (earlier scenarios of a full run may leave a match / battle attribute behind)
 		LocalPlayer:SetAttribute("InMatch", false)
 		LocalPlayer:SetAttribute("InBattle", nil)
-		toClient("DungeonState", "End", { Floor = 1, Cleared = false, Reason = "Quit", Totals = {} })
 		Mock.SetViewport(1920, 1080)
 		advance(0.6)
 		-- the Dungeon prompt hand-off (contract 5.3: handled next to "Ring" in ArenaController's onPromptTriggered)
 		local holder = Instance.new("Part")
 		holder.Anchored = true
 		holder.Name = "DungeonPadTest"
+		-- next to the character: the window closes 40 studs away from the gate it was opened at
+		local charRoot = Mock.GetRoot and Mock.GetRoot(LocalPlayer)
+		if charRoot then
+			holder.CFrame = charRoot.CFrame * CFrame.new(0, 0, -6)
+		end
 		holder.Parent = workspace
 		local prompt = Instance.new("ProximityPrompt")
 		prompt.Name = "DungeonPrompt"
@@ -980,7 +984,8 @@ local function clientScenarios()
 		advance(0.8)
 		local dgui = pg():FindFirstChild("NimbusDungeon")
 		local dwin = dgui and dgui:FindFirstChild("Window_Dungeon")
-		T.check(DC.IsOpen() and dwin and shown(dwin) and not AC.IsOpen(), "p5arena: the DungeonPrompt (OpenPanel 'Dungeon') opens DungeonController's window, not an Arena window")
+		T.check(DC.IsOpen() and dwin and shown(dwin) and not AC.IsOpen(), "p5arena: the DungeonPrompt (OpenPanel 'Dungeon') opens DungeonController's window, not an Arena window",
+			string.format("open=%s win=%s shown=%s arena=%s gui=%s", tostring(DC.IsOpen()), tostring(dwin ~= nil), tostring(dwin and shown(dwin)), tostring(AC.IsOpen()), tostring(dgui and dgui.Enabled)))
 		local opens = 0
 		for _, args in ipairs(P5A.sends(mark, "DungeonRequest")) do
 			if args[1] == "Open" then

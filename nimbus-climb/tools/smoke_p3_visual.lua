@@ -2,13 +2,14 @@
 -- "Phase 3: Pet battles"). Loaded by tools/smoke.py in BOTH worlds; ARGS.context picks the half:
 --   p3visual_arena    (server, booted) the arena floors are crafted, not one flat colour: raked sand drifts on the boss
 --                     floor (flat slabs just over the sand, inside the gold line, clear of the element wheel), framed
---                     element marks, worn / warm stretches in the forum paving, sand drifts on every duel ring (under
---                     its painted circle), drifts on a trial pocket's floor; the arena stays <= 2500 parts and a
---                     pocket <= 250; the gate and arch sign titles fit their panels (World text rule sizes kept); the
+--                     element marks, Phase 5 (6.4): a mown lawn, jittered avenue tiles, a promenade and the colosseum's
+--                     apron; sand drifts on every duel ring (under its painted circle); the arena stays <= 2800 parts
+--                     and a pocket <= 250; the gate and arch sign titles fit their panels (World text rule sizes kept); the
 --                     event board draws the live boss HP bar (and hides it without a raid); Phase 5: Portal_Ring is a
 --                     WorldStyle gate in the Gate Court (NimbusLobby.Gates, <= 120 parts, gold crowns + violet gems on
---                     its pedestals), no Trial Portal anywhere; the Champion Ring pocket (<= 220) has a two-tone floor,
---                     a gold rim, four violet crown gems and a cheering crowd of cloud puffs facing the ring
+--                     its pedestals), no Trial Portal anywhere; the Champion Ring pocket (<= 250) has a two-tone floor,
+--                     a Marble rim with a gold Neon inlay, four violet crown gems and a cheering crowd of cloud puffs
+--                     facing the ring
 --   p3visual_bosses   (server) every boss keeps its shading and its colour regions at High detail (the torso is not
 --                     folded into one flat colour: several shades per region, the Frost Wyrm's belly and frost patch,
 --                     the Hydra's belly, the Golem's ash), High <= 1000 parts and Low <= 760, Low keeps the accents
@@ -86,7 +87,7 @@ local function serverScenarios()
 			return
 		end
 		local all = partsOf(model)
-		T.check(#all <= 2500, "visual arena: the detailed arena stays within its 2500-part budget", #all .. " parts")
+		T.check(#all <= 2800, "visual arena: the detailed arena stays within its 2800-part budget (Phase 5 10.3)", #all .. " parts")
 
 		-- the boss floor: sand drifts (flat, just over the sand, inside the gold line, not on the wheel)
 		local floorTop = info.Floor.CFrame.Position.Y
@@ -130,14 +131,23 @@ local function serverScenarios()
 		end
 		T.check(frames == 8 and marks == 8, "visual arena: eight element marks, each in a gold frame", frames .. " frames, " .. marks .. " marks")
 
-		-- the forum paving: plain paving plus worn and warm stretches
-		local paving = find(model, "Paving")
-		local keys = {}
-		for _, p in ipairs(partsOf(paving)) do
+		-- the forum (Phase 5 art pass): a mown lawn in two shades, the avenue's jittered tiles, Cobblestone aprons and a
+		-- promenade (never one flat colour)
+		local forum = find(model, "Forum")
+		local keys, shades = {}, {}
+		for _, p in ipairs(partsOf(forum)) do
 			keys[p.Name] = (keys[p.Name] or 0) + 1
+			if p.Name == "Lawn" or p.Name == "AvenueTile" or p.Name == "Promenade" then
+				shades[p.Name .. colorKey(p.Color)] = true
+			end
 		end
-		T.check((keys.Worn or 0) > 0 and (keys.Warm or 0) > 0, "visual arena: the forum paving has worn and sun-warmed stretches (never one flat colour)",
-			"Worn " .. tostring(keys.Worn) .. ", Warm " .. tostring(keys.Warm))
+		local nShades = 0
+		for _ in pairs(shades) do
+			nShades = nShades + 1
+		end
+		T.check((keys.Lawn or 0) > 10 and (keys.AvenueTile or 0) > 10 and (keys.Promenade or 0) > 10 and (keys.Apron or 0) == 32 and nShades >= 10,
+			"visual arena: the forum is crafted (mown lawn, jittered avenue tiles, promenade, the colosseum's apron), never one flat colour",
+			"Lawn " .. tostring(keys.Lawn) .. ", tiles " .. tostring(keys.AvenueTile) .. ", promenade " .. tostring(keys.Promenade) .. ", apron " .. tostring(keys.Apron) .. ", " .. nShades .. " shades")
 
 		-- every duel ring: drifts under its painted circle
 		for i, ring in ipairs(info.Rings or {}) do
@@ -179,9 +189,9 @@ local function serverScenarios()
 			T.check(bar and not bar.Visible, "visual arena: ...and hides it when no raid runs")
 		end
 
-		-- a trial pocket: sand drifts on its floor, within 250 parts
+		-- a pocket with no kind (Phase 5: the Ring pocket), within 250 parts
 		local pocket = AB.BuildPocket and AB.BuildPocket(61)
-		if T.check(type(pocket) == "table" and pocket.Model, "visual arena: a trial pocket builds") then
+		if T.check(type(pocket) == "table" and pocket.Model, "visual arena: a pocket builds (no kind = the Ring pocket)") then
 			local n = #partsOf(pocket.Model)
 			local dark = 0
 			for _, p in ipairs(partsOf(find(pocket.Model, "PocketFloor"))) do
@@ -234,7 +244,7 @@ local function serverScenarios()
 				local rel = rp.CFrame:PointToObjectSpace(p.Position)
 				if p.Name == "RingFloor" or p.Name == "RingCanvas" then
 					floorCols[colorKey(p.Color)] = true
-				elseif p.Name == "RingRim" and p.Color.R > 0.85 and p.Color.B < 0.4 then
+				elseif p.Name == "RingRimInlay" and p.Material == Enum.Material.Neon and p.Color.R > 0.85 and p.Color.B < 0.4 then
 					rimGold = rimGold + 1
 				elseif p.Name == "CrownGem" and p.Material == Enum.Material.Neon then
 					gems = gems + 1
@@ -267,8 +277,8 @@ local function serverScenarios()
 			for _ in pairs(tints) do
 				nTints = nTints + 1
 			end
-			T.check(n <= 220, "visual ring: the ring pocket stays within 220 parts", n .. " parts")
-			T.check(nFloor >= 2 and rimGold >= 8 and gems == 4, "visual ring: a two-tone floor, a gold rim and four violet crown gems", nFloor .. " floor colours, " .. rimGold .. " rim, " .. gems .. " gems")
+			T.check(n <= 250, "visual ring: the ring pocket stays within 250 parts (Phase 5 art pass)", n .. " parts")
+			T.check(nFloor >= 2 and rimGold >= 8 and gems == 4, "visual ring: a two-tone floor, a Marble rim with a champion-gold inlay and four violet crown gems", nFloor .. " floor colours, " .. rimGold .. " inlay, " .. gems .. " gems")
 			T.check(nTints >= 4 and eyes >= 10 and faceBad == 0, "visual ring: a cheering crowd of cloud puffs in soft colours, every face turned to the ring, all outside the battle square",
 				nTints .. " colours, " .. eyes .. " eyes, " .. faceBad .. " wrong")
 			AB.FreePocket(rp)

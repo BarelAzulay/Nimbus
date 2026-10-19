@@ -76,6 +76,16 @@
 --     ring pockets); the plaza, the forum, the stands, the bridge and the gates have none.
 --   * The home Arena Gate (HomeBuilder's ArenaGatePrompt) teleports its owner to ArenaInfo.Spawn: refused in a match
 --     or a battle, only near the gate, rate limited; the Arena / Return gates use the same checks.
+-- Phase 5 art pass (arenaart, ARCHITECTURE_V3.md 6.4; the helper table `Art`): every world part in WorldStyle
+-- materials (Brick colosseum walls on a Slate plinth with Marble pilasters, string course, cornice and coping; warm
+-- limestone tiers with Fabric seats in the muted element colours; round Marble columns with brass abaci and braziers;
+-- a mown Grass lawn, Cobblestone promenade / aprons, the avenue's 4..6-stud Slate tiles (+-0.05, jittered) between
+-- Marble borders with a Fabric runner; a Brick kerb + Slate lip round the island's edge, open at the bridge; trees,
+-- lanterns and hedge boxes as NC_Detail decor; a stone bridge with Brick parapets and Slate piers); big faces muted
+-- (saturation <= 0.45, value 0.35..0.9), gold only as small Metal pieces or thin Neon inlays; warm lights (<= 1.5,
+-- range <= 16, no shadows); the voxel clouds shaded for the sky by height and tagged NC_StyleExempt. Art.enforce is a
+-- safety net (the attribute ArtFixes counts what it had to fix: 0 when every piece follows the rules). Budgets: the
+-- arena <= 2800 parts (10.3), a ring pocket <= 250. Portal_Ring / Portal_Arena (the Gate Court gates) are unchanged.
 -- No server-side animation (Replication rule): torches, glows and particles only. Every text uses Theme roles.
 -- Plain Lua 5.1-compatible syntax only.
 
@@ -108,6 +118,7 @@ end
 
 local Voxel = loadShared("Voxel")
 local Remotes = loadShared("Remotes")
+local WorldStyle = loadShared("WorldStyle") -- the Phase 5 art kit (Kerb, Chamfer, BuildGate, Tags)
 
 -- other engineers' modules, resolved when first needed (a build may not have them yet)
 local lazyCache = {}
@@ -184,9 +195,9 @@ local MAX_ZONE = { Raid = 100, Duel = 45, Ring = 45 } -- the biggest square each
 -- Island layout (island-local studs; the colosseum centre is the origin, -Z points at the lobby)
 local ISL = {
 	FrontZ = -205, -- the forum's front edge (the bridge docks here)
-	HalfW = 100, -- forum half width
-	BackZ = -40, -- the forum rectangle reaches into the colosseum disc up to here
-	DiscR = 103, -- the colosseum disc
+	HalfW = 103, -- forum half width (Phase 5: = DiscR, so the forum's long sides run straight into the disc's side edges)
+	BackZ = -20, -- the forum rectangle reaches into the colosseum disc up to here
+	DiscR = 103, -- the colosseum disc: a 16-gon (apothem 103) around the stands, like the colosseum itself
 	Corner = 30, -- forum corner radius
 	Clearance = 14, -- studs kept between the island's cloud and anything of the lobby
 }
@@ -521,12 +532,14 @@ local function vnoise(x, z, scale, seed)
 end
 
 local TIER_KEYS = { "CloudLight", "Cloud", "CloudShade", "Mist", "MistDark" }
+-- Phase 5 (6.4 rule 9): the voxel clouds are shaded for the pink sky (tops 250,244,252; sides 226,214,240;
+-- undersides 186,172,222) and tagged NC_StyleExempt (they keep their voxel look on purpose)
 local CLOUD_PAL = {
-	CloudLight = C.CloudLight,
-	Cloud = C.Cloud,
-	CloudShade = C.CloudShade,
-	Mist = C.Mist,
-	MistDark = C.MistDark,
+	CloudLight = rgb(250, 244, 252),
+	Cloud = rgb(238, 229, 246),
+	CloudShade = rgb(226, 214, 240),
+	Mist = rgb(206, 192, 232),
+	MistDark = rgb(186, 172, 222),
 }
 
 -- A voxel cloud from a footprint signed distance. spec: V (studs per voxel), Sdf(x, z) -> studs (negative inside),
@@ -892,17 +905,6 @@ end
 ----------------------------------------------------------------------
 -- Island outline (island-local studs)
 ----------------------------------------------------------------------
-local function islandSdf(x, z)
-	local dDisc = sqrt(x * x + z * z) - ISL.DiscR
-	local cz = (ISL.FrontZ + ISL.BackZ) / 2
-	local hx, hz = ISL.HalfW, (ISL.BackZ - ISL.FrontZ) / 2
-	local r = ISL.Corner
-	local qx, qz = abs(x) - (hx - r), abs(z - cz) - (hz - r)
-	local ox, oz = max(qx, 0), max(qz, 0)
-	local dRect = sqrt(ox * ox + oz * oz) + min(max(qx, qz), 0) - r
-	return min(dDisc, dRect)
-end
-
 -- the colosseum's 16-gon "radius" of a point (max over the edge normals), island-local
 local NORMALS16 = {}
 for k = 0, 15 do
@@ -923,6 +925,337 @@ local function polyR(x, z)
 	return m
 end
 
+-- the island outline: the forum rectangle (its two front corners rounded) joined to the 16-gon disc around the stands
+local function islandSdf(x, z)
+	local dPoly = polyR(x, z) - ISL.DiscR
+	local hx, r, ax = ISL.HalfW, ISL.Corner, abs(x)
+	local dRect
+	if z < ISL.FrontZ + r and ax > hx - r then
+		local dx, dz = ax - (hx - r), z - (ISL.FrontZ + r)
+		dRect = sqrt(dx * dx + dz * dz) - r
+	else
+		dRect = max(ax - hx, ISL.FrontZ - z, z - ISL.BackZ)
+	end
+	return min(dPoly, dRect)
+end
+
+----------------------------------------------------------------------
+-- Phase 5 art pass (arenaart; ARCHITECTURE_V3.md 6.4): real materials (WorldStyle.Materials: stone, brick, wood,
+-- grass), muted big surfaces (saturation <= 0.45, value 0.35..0.9), saturated colour only on small pieces and thin
+-- Neon inlays, plinth + body + cap, kerbs + lips on the platform edges, round (or chamfered) tall corners, 4..6-stud
+-- tiles with a +-0.05 height alternation and +-6 RGB jitter, a detail every ~12 studs of walkway, warm lanterns
+-- (Brightness <= 1.5, Range <= 16), small parts cast no shadow, voxel clouds shaded for the pink sky and tagged
+-- NC_StyleExempt, pure decor tagged NC_Detail. ONE helper table: the main chunk stays under the 200-locals limit.
+----------------------------------------------------------------------
+local Art = {
+	P = {
+		Lawn = rgb(112, 152, 100),
+		LawnLight = rgb(121, 160, 106),
+		LawnDark = rgb(104, 144, 94),
+		Hedge = rgb(82, 124, 84),
+		HedgeLight = rgb(98, 140, 94),
+		Slate = rgb(108, 112, 130),
+		SlateLight = rgb(126, 130, 148),
+		SlateDark = rgb(84, 88, 106),
+		Cobble = rgb(156, 150, 158),
+		CobbleLight = rgb(170, 164, 170),
+		CobbleDark = rgb(138, 132, 142),
+		Marble = rgb(224, 218, 212),
+		MarbleShade = rgb(200, 194, 204),
+		Brick = rgb(188, 134, 114),
+		BrickDark = rgb(152, 104, 94),
+		Stone = rgb(198, 190, 178), -- the stands' warm limestone tiers
+		StoneDark = rgb(182, 174, 164),
+		Sand = rgb(216, 198, 160),
+		SandDark = rgb(202, 182, 146),
+		SandLight = rgb(226, 210, 178),
+		Wood = rgb(116, 88, 70),
+		Planks = rgb(156, 118, 90),
+		Brass = rgb(214, 184, 122), -- the gold trim of big faces (Metal, saturation 0.43)
+		Gold = rgb(228, 186, 86), -- small gold pieces only (<= 8 studs^3)
+		Iron = rgb(78, 82, 100),
+		Steel = rgb(196, 202, 214),
+		Carpet = rgb(172, 100, 106), -- the avenue's runner (Fabric, saturation 0.42)
+		Soil = rgb(118, 92, 74),
+		Cloth = rgb(176, 104, 110), -- banners
+	},
+	Light = rgb(255, 214, 170), -- the warm lantern light of 6.4 rule 7
+}
+-- the material of each palette key (6.4 rule 1: WorldStyle.Materials only)
+Art.M = {
+	Lawn = MAT.Grass,
+	LawnLight = MAT.Grass,
+	LawnDark = MAT.Grass,
+	Hedge = MAT.LeafyGrass,
+	HedgeLight = MAT.LeafyGrass,
+	Slate = MAT.Slate,
+	SlateLight = MAT.Slate,
+	SlateDark = MAT.Slate,
+	Cobble = MAT.Cobblestone,
+	CobbleLight = MAT.Cobblestone,
+	CobbleDark = MAT.Cobblestone,
+	Marble = MAT.Marble,
+	MarbleShade = MAT.Marble,
+	Brick = MAT.Brick,
+	BrickDark = MAT.Brick,
+	Stone = MAT.Slate,
+	StoneDark = MAT.Slate,
+	Sand = MAT.Sand,
+	SandDark = MAT.Sand,
+	SandLight = MAT.Sand,
+	Wood = MAT.Wood,
+	Planks = MAT.WoodPlanks,
+	Brass = MAT.Metal,
+	Gold = MAT.Metal,
+	Iron = MAT.Metal,
+	Steel = MAT.Metal,
+	Carpet = MAT.Fabric,
+	Soil = MAT.Sand,
+	Cloth = MAT.Fabric,
+}
+
+-- A colour moved into the art rules' range, keeping its hue: saturation <= smax, value within vmin..vmax.
+function Art.tone(c, smax, vmin, vmax)
+	local r, g, b = c.R, c.G, c.B
+	local hi, lo = max(r, g, b), min(r, g, b)
+	local v = min(max(hi, vmin or 0.42), vmax or 0.86)
+	if hi - lo < 1e-6 then
+		return Color3.new(v, v, v)
+	end
+	local s = min((hi - lo) / max(hi, 1e-6), smax or 0.42)
+	local function ch(x)
+		return v * (1 - s * (hi - x) / (hi - lo))
+	end
+	return Color3.new(ch(r), ch(g), ch(b))
+end
+
+-- +-6 RGB per tile (6.4 rule 2), deterministic
+function Art.jit(c, seed)
+	local d = (floor(hash3(floor(seed or 0), 5, 11, 61) * 13) - 6) / 255
+	return Color3.new(min(1, max(0, c.R + d)), min(1, max(0, c.G + d)), min(1, max(0, c.B + d)))
+end
+
+-- One anchored block in a palette key's colour + material (key may be a Color3 with opts.Material).
+-- opts: Collide, Query, Material, Transparency, Shadow, Jitter (seed).
+function Art.part(parent, name, cf, size, key, opts)
+	opts = opts or {}
+	local color = key
+	if type(key) == "string" then
+		color = Art.P[key] or C.Stone
+	end
+	if opts.Jitter then
+		color = Art.jit(color, opts.Jitter)
+	end
+	local mat = opts.Material or (type(key) == "string" and Art.M[key]) or nil
+	if not mat then
+		mat = (max(size.X, size.Y, size.Z) <= 2) and MAT.SmoothPlastic or MAT.Slate
+	end
+	return box(parent, name, cf, size, color, { Collide = opts.Collide, Query = opts.Query, Material = mat, Transparency = opts.Transparency, Shadow = opts.Shadow })
+end
+
+-- A round column standing on `cf` (its foot): h tall, d wide (a Cylinder part: no corners to chamfer, 6.4 rule 4).
+function Art.cyl(parent, name, cf, h, d, key, opts)
+	local p = Art.part(parent, name, cf * CFrame.new(0, h / 2, 0) * CFrame.Angles(0, 0, pi / 2), Vector3.new(h, d, d), key, opts)
+	p.Shape = Enum.PartType.Cylinder
+	return p
+end
+
+function Art.tag(inst, which)
+	local tags = WorldStyle and type(WorldStyle.Tags) == "table" and WorldStyle.Tags or {}
+	local name = tags[which] or ((which == "Exempt") and "NC_StyleExempt" or "NC_Detail")
+	if inst and not CollectionService:HasTag(inst, name) then
+		CollectionService:AddTag(inst, name)
+	end
+	return inst
+end
+
+-- A kerb + lip on a platform edge (WorldStyle.Kerb: cf = a point on the top surface at the edge, X along it,
+-- LookVector outward).
+function Art.kerb(parent, cf, length)
+	if WorldStyle and type(WorldStyle.Kerb) == "function" and pcall(WorldStyle.Kerb, parent, cf, length) then
+		return
+	end
+	Art.part(parent, "Kerb", cf * CFrame.new(0, 0.2, 0), Vector3.new(length, 0.4, 0.8), "Brick", { Collide = true })
+	Art.part(parent, "KerbLip", cf * CFrame.new(0, -0.25, -0.3), Vector3.new(length + 0.2, 0.3, 1), "SlateDark")
+end
+
+-- Ring tiles: 16 sectors of a 16-gon band (apothem r0 .. r1) per course, top at `top` (+0.05 on every other
+-- tile: the overlapping wedge ends never z-fight), jittered. opts: Courses (default 1), Seed, Keys = { key per course }.
+function Art.ring(parent, name, cf, r0, r1, top, h, key, opts)
+	opts = opts or {}
+	local courses = opts.Courses or 1
+	local step = (r1 - r0) / courses
+	for c = 1, courses do
+		local a0, a1 = r0 + (c - 1) * step, r0 + c * step
+		local len = 2 * a1 * TAN16 + 0.15
+		local k = (opts.Keys and opts.Keys[c]) or key
+		for j = 0, 15 do
+			local lift = ((j + c) % 2 == 0) and 0.05 or 0
+			Art.part(parent, name, cf * CFrame.Angles(0, j * STEP16, 0) * CFrame.new(0, top + lift - h / 2, -(a0 + a1) / 2), Vector3.new(len, h, a1 - a0), k, {
+				Collide = true,
+				Shadow = false,
+				Jitter = (opts.Seed or 0) + j * 7 + c * 131,
+			})
+		end
+	end
+end
+
+-- The outline as a polygon (island-local), walked with the outward normal on the left of the travel direction:
+-- the front edge (left to right), the front-right arc, the right side, the 16-gon's back edges, the left side, the
+-- front-left arc. Each vertex carries the kind of the edge that starts there ("Front", "Arc", "Side", "Back").
+function Art.outline()
+	if Art.pts then
+		return Art.pts
+	end
+	local pts = {}
+	local hw, fz, r = ISL.HalfW, ISL.FrontZ, ISL.Corner
+	local function add(x, z, kind)
+		pts[#pts + 1] = { x, z, kind }
+	end
+	add(-(hw - r), fz, "Front")
+	for i = 0, 5 do
+		local t = rad(i * 15)
+		add((hw - r) + r * sin(t), (fz + r) - r * cos(t), "Arc")
+	end
+	add(hw, fz + r, "Side")
+	local R = ISL.DiscR / math.cos(pi / 16)
+	for m = 11.5, 5.5, -1 do
+		local a = m * STEP16
+		add(-sin(a) * R, -cos(a) * R, "Back")
+	end
+	add(-hw, ISL.DiscR * TAN16, "Side")
+	for i = 0, 5 do
+		local u = rad(i * 15)
+		add(-(hw - r) - r * cos(u), (fz + r) - r * sin(u), "Arc")
+	end
+	Art.pts = pts
+	return pts
+end
+
+-- every outline edge: { x0, z0, x1, z1, kind, length, dx, dz (unit along), ox, oz (unit outward) }
+function Art.edges()
+	local pts = Art.outline()
+	local out = {}
+	for i = 1, #pts do
+		local p, q = pts[i], pts[i % #pts + 1]
+		local dx, dz = q[1] - p[1], q[2] - p[2]
+		local len = sqrt(dx * dx + dz * dz)
+		if len > 0.01 then
+			dx, dz = dx / len, dz / len
+			out[#out + 1] = { p[1], p[2], q[1], q[2], p[3], len, dx, dz, dz, -dx }
+		end
+	end
+	return out
+end
+
+-- A small round-crowned tree (Wood trunk, three LeafyGrass tiers turned 45 degrees): 6 parts, tagged NC_Detail.
+function Art.tree(parent, cf, s, seed)
+	local m = newModel(parent, "Tree")
+	s = s or 1
+	Art.part(m, "TreeBed", cf * CFrame.new(0, 0.15, 0), Vector3.new(4.4 * s, 0.5, 4.4 * s), "Soil", { Collide = true, Shadow = false })
+	Art.cyl(m, "Trunk", cf, 6 * s, 1.1 * s, "Wood", { Collide = true })
+	local turn = CFrame.Angles(0, rad(45 + (hash3(seed or 1, 2, 3, 9) - 0.5) * 30), 0)
+	local leaf = { { 0, 6.6, 7.4, 3.4, "Hedge" }, { 0.3, 9.4, 5.6, 3, "HedgeLight" }, { -0.2, 11.7, 3.4, 2.2, "HedgeLight" } }
+	for i, l in ipairs(leaf) do
+		Art.part(m, "Leaves", cf * CFrame.new(l[1] * s, l[2] * s, 0) * turn * CFrame.Angles(0, rad(i * 20), 0), Vector3.new(l[3] * s, l[4] * s, l[3] * s), l[5], { Collide = i == 1 })
+	end
+	return Art.tag(m, "Detail")
+end
+
+-- A lantern post (Slate foot, Wood post, a warm Neon lamp under a little iron roof): 4 parts.
+function Art.lantern(parent, cf, lit)
+	local m = newModel(parent, "Lantern")
+	Art.part(m, "LanternFoot", cf * CFrame.new(0, 0.3, 0), Vector3.new(1.4, 0.6, 1.4), "Slate", { Collide = true })
+	Art.cyl(m, "LanternPost", cf * CFrame.new(0, 0.6, 0), 4.6, 0.5, "Wood", { Collide = true })
+	local lamp = Art.part(m, "LanternLamp", cf * CFrame.new(0, 5.85, 0), Vector3.new(0.85, 0.95, 0.85), Art.Light, { Material = MAT.Neon })
+	Art.part(m, "LanternRoof", cf * CFrame.new(0, 6.45, 0) * CFrame.Angles(0, rad(45), 0), Vector3.new(1.2, 0.3, 1.2), "Iron")
+	if lit then
+		pointLight(lamp, Art.Light, 1.2, 14)
+	end
+	return Art.tag(m, "Detail")
+end
+
+-- A low hedge box (Brick planter, a LeafyGrass hedge, three small flowers in the element colours): 5 parts.
+function Art.hedgeBox(parent, cf, w, seed)
+	local m = newModel(parent, "HedgeBox")
+	w = w or 4
+	Art.part(m, "PlanterBox", cf * CFrame.new(0, 0.55, 0), Vector3.new(w, 1.1, 2.4), "Brick", { Collide = true })
+	Art.part(m, "PlanterCap", cf * CFrame.new(0, 1.18, 0), Vector3.new(w + 0.3, 0.16, 2.7), "Marble")
+	Art.part(m, "Hedge", cf * CFrame.new(0, 1.9, 0), Vector3.new(w - 0.5, 1.4, 1.9), "Hedge", { Collide = true })
+	for i = 1, 2 do
+		local e = floor(hash3(seed or 1, i, 5, 3) * 8) + 1
+		Art.part(m, "Flower", cf * CFrame.new((i - 1.5) * (w * 0.45), 2.7, -0.3), Vector3.new(0.6, 0.6, 0.6), elementColor(e):Lerp(rgb(255, 255, 255), 0.2), { Material = MAT.SmoothPlastic, Shadow = false })
+	end
+	return Art.tag(m, "Detail")
+end
+
+-- Rule 9 by height: the voxel LOD merges a big cloud into few colours, so its parts are re-shaded by where they sit
+-- under `cf` (the walking surface): light tops, lavender sides, violet undersides (CLOUD_PAL). Tagged NC_StyleExempt.
+function Art.shadeCloud(model, cf, depth)
+	if not model then
+		return nil
+	end
+	depth = depth or 24
+	for _, p in ipairs(model:GetDescendants()) do
+		if p:IsA("BasePart") then
+			local y = cf:PointToObjectSpace(p.Position).Y + p.Size.Y * 0.25
+			local t = -y / depth -- 0 at the top .. 1 at the bottom
+			local key = (t < 0.22 and "CloudLight") or (t < 0.45 and "Cloud") or (t < 0.68 and "CloudShade") or (t < 0.9 and "Mist") or "MistDark"
+			p.Color = CLOUD_PAL[key]
+		end
+	end
+	return Art.tag(model, "Exempt")
+end
+
+-- The safety net of 6.4 rules 1 + 2 + 8 over a built model (the voxel clouds / the crowd are exempt by tag):
+-- a SmoothPlastic part with a side > 2 studs takes the stone default, a big face that is too saturated or too
+-- dark / bright is moved into range (keeping its hue), parts < 4 studs cast no shadow. Returns how many it fixed.
+function Art.enforce(root)
+	local fixed = 0
+	local exemptTag = (WorldStyle and type(WorldStyle.Tags) == "table" and WorldStyle.Tags.Exempt) or "NC_StyleExempt"
+	local function exempt(p)
+		local cur = p
+		while cur and cur ~= root.Parent do
+			if CollectionService:HasTag(cur, exemptTag) then
+				return true
+			end
+			cur = cur.Parent
+		end
+		return false
+	end
+	for _, p in ipairs(root:GetDescendants()) do
+		if p:IsA("BasePart") then
+			local s = p.Size
+			local big = max(s.X, s.Y, s.Z)
+			local small = min(s.X, s.Y, s.Z)
+			if big < 4 and p.CastShadow then
+				p.CastShadow = false
+			end
+			if p.Transparency < 0.99 and not exempt(p) then
+				if p.Material == MAT.SmoothPlastic and big > 2 then
+					p.Material = MAT.Slate
+					fixed = fixed + 1
+				end
+				local mid = s.X + s.Y + s.Z - big - small
+				local face, vol = big * mid, s.X * s.Y * s.Z
+				local neon = p.Material == MAT.Neon
+				if face > 16 and p.Material ~= MAT.ForceField then
+					local c = p.Color
+					local hi, lo = max(c.R, c.G, c.B), min(c.R, c.G, c.B)
+					local sat = hi > 0 and (hi - lo) / hi or 0
+					local satBad = sat > 0.45 and vol > 8 and not (neon and small <= 0.5)
+					local valueBad = (not neon) and p.Transparency < 0.3 and (hi < 0.35 or hi > 0.9)
+					if satBad or valueBad then
+						p.Color = Art.tone(c, satBad and 0.44 or 1, 0.36, 0.89)
+						fixed = fixed + 1
+					end
+				end
+			end
+		end
+	end
+	return fixed
+end
+
 ----------------------------------------------------------------------
 -- Island cloud body
 ----------------------------------------------------------------------
@@ -939,13 +1272,9 @@ local function buildCloud(parent, A)
 			r = r + 2
 		end
 		local bx, bz = cx + dx * r, cz + dz * r
-		local front = bz < ISL.FrontZ + 30 and abs(bx) < 24 -- the bridge docks here: keep it open and flat
+		-- Phase 5: no rim puffs over the walking surface (the stone kerb is the edge now); the puffs bulge under it
 		local s = rng:Float(12, 15)
-		puffs[#puffs + 1] = { bx - dx * rng:Float(0, 2), rng:Float(-10, -6), bz - dz * rng:Float(0, 2), s, s * rng:Float(0.55, 0.7), s }
-		if not front and deg % 36 == 0 then
-			local s2 = rng:Float(5.5, 7.5)
-			rim[#rim + 1] = { bx - dx * 1.5, rng:Float(-0.5, 1), bz - dz * 1.5, s2, s2 * 0.62, s2 }
-		end
+		puffs[#puffs + 1] = { bx - dx * rng:Float(1, 3), rng:Float(-12.5, -10), bz - dz * rng:Float(1, 3), s, s * rng:Float(0.55, 0.7), s }
 	end
 	-- a hanging belly: big lumps under the middle, narrowing down
 	for i = 1, 5 do
@@ -959,7 +1288,7 @@ local function buildCloud(parent, A)
 		Sdf = islandSdf,
 		Bounds = { -ISL.HalfW - 12, ISL.HalfW + 12, ISL.FrontZ - 12, ISL.DiscR + 12 },
 		Tiers = {
-			{ Inset = 0, H = 1 },
+			{ Inset = 2, H = 1 }, -- 2 studs inside the outline: the stone edge overhangs the cloud like a cornice
 			{ Inset = 10, H = 1 },
 			{ Inset = 26, H = 2 },
 			{ Inset = 50, H = 2 },
@@ -984,7 +1313,7 @@ local function buildCloud(parent, A)
 	}
 	local g = cloudGrid(spec)
 	-- the top tier's top face sits 1.2 under the walking surface (the ground layers lie on it)
-	return VX.Build(g, { V = 4, Pal = CLOUD_PAL, Name = "IslandCloud", CF = A * CFrame.new(0, -1.2 - 2, 0), Collide = true, MaxParts = 340, Parent = parent })
+	return Art.shadeCloud(VX.Build(g, { V = 4, Pal = CLOUD_PAL, Name = "IslandCloud", CF = A * CFrame.new(0, -1.2 - 2, 0), Collide = true, MaxParts = 340, Parent = parent }), A, 30)
 end
 
 -- the element of a stand segment (two neighbours share one) and the angle its section is centred on
@@ -1016,82 +1345,111 @@ local function flatPatches(parent, name, cells, cell, cf, top, h, pal, material)
 end
 
 ----------------------------------------------------------------------
--- Forum ground: one paving layer over the whole island (also under the colosseum, whose floor lies on it), the
--- avenue's crimson runner with gold edges from the bridge to the main gate, a gold star where the bridge lands and
--- element tiles around the trophy. Paving top -0.2, runner 0, star / tiles +0.1.
+-- Forum ground (Phase 5 art pass, 6.4 rules 3 + 5): a mown lawn (Grass rows in two shades, top -0.2) inside a
+-- Cobblestone promenade along the island's edge with a Brick kerb + Slate lip; a Cobblestone apron round the
+-- colosseum and round each duel ring; the avenue of Slate tiles (5 x ~5, +-0.05 alternation, jittered) between Marble
+-- borders from the bridge to the main gate, its crimson Fabric runner, a Marble compass star where the bridge lands
+-- and the round trophy plaza with element tiles. Tile tops -0.15 / -0.10, runner -0.04.
 ----------------------------------------------------------------------
 local function buildGround(parent, A)
 	local f = newModel(parent, "Forum")
-	-- base paving (4-stud cells; its stair-stepped rim hides under the cloud's rim puffs)
-	local base = Voxel.NewGrid(1)
-	for i = ceil((-ISL.HalfW - 4) / 4), floor((ISL.HalfW + 4) / 4) do
-		for k = ceil((ISL.FrontZ - 4) / 4), floor((ISL.DiscR + 4) / 4) do
-			local x, z = i * 4, k * 4
-			local d = islandSdf(x, z)
-			if d <= -2 then
-				-- a darker kerb band along the rim, lighter aprons around the duel rings, the trophy and along the avenue
-				-- (the colosseum hides the cells under its floor)
-				local key = "Paving"
-				local apron = false
-				for _, spec in ipairs(RINGS) do
-					local pr = polyR(x - spec.X, z - spec.Z)
-					if pr >= RING_A + 1 and pr <= RING_A + 9 then
-						apron = true
-					end
-				end
-				if d > -10 then
-					key = "Kerb"
-				elseif apron or (abs(x) <= 10 and z < -(COL.WallOut - 2)) then
-					key = "Apron"
-				elseif sqrt(x * x + (z + 124) * (z + 124)) <= 16 then
-					key = "Apron"
-				else
-					-- worn and sun-warmed stretches so the big forum never reads as one flat colour
-					local n = vnoise(x, z, 30, SEED + 3)
-					if n < 0.3 then
-						key = "Worn"
-					elseif n > 0.72 then
-						key = "Warm"
-					end
-				end
-				Voxel.Set(base, i, 0, k, key)
+	local TOP_T = -0.15 -- tile tops (+0.05 on every other tile)
+	local TH = 1.1 -- tile thickness (down onto the cloud's top at -1.2)
+	-- the lawn: 4-stud rows (mown stripes), ends tucked under the promenade and the colosseum's apron
+	local lawn = newModel(f, "Lawn")
+	local row = 0
+	for z0 = ISL.FrontZ, ISL.BackZ, 4 do
+		row = row + 1
+		local z1 = min(z0 + 4, ISL.BackZ + 4)
+		local x0 = nil
+		for x = -ISL.HalfW, ISL.HalfW + 1 do
+			local ok = x <= ISL.HalfW and islandSdf(x, z0) <= -3 and islandSdf(x, z1) <= -3 and polyR(x, z0) > 101 and polyR(x, z1) > 101
+			if ok and not x0 then
+				x0 = x
+			elseif not ok and x0 then
+				local w = (x - 1) - x0 + 1
+				Art.part(lawn, "Lawn", A * CFrame.new((x0 + x - 1) / 2, -0.2 - 0.5, (z0 + z1) / 2), Vector3.new(w, 1, z1 - z0), (row % 2 == 0) and "LawnLight" or "Lawn", { Collide = true, Shadow = false, Jitter = row * 13 + x0 })
+				x0 = nil
 			end
 		end
 	end
-	VX.Build(base, {
-		V = 4,
-		Pal = {
-			Paving = { Color = C.Paving, Material = MAT.Slate },
-			Apron = { Color = C.PavingLight, Material = MAT.Slate },
-			Kerb = { Color = C.PavingDark, Material = MAT.Slate },
-			Worn = { Color = C.PavingWorn, Material = MAT.Slate },
-			Warm = { Color = C.PavingWarm, Material = MAT.Slate },
-		},
-		Name = "Paving",
-		CF = A * CFrame.new(0, -0.2 - 2, 0),
-		Collide = true,
-		Shadow = false,
-		Parent = f,
-		MaxParts = 370,
-	})
-	-- the runner: from the bridge's landing to the main gate's passage
-	local z0, z1 = ISL.FrontZ + 1, -(COL.WallOut + 1.5)
-	local len = z1 - z0
-	local mid = (z0 + z1) / 2
-	box(f, "Runner", A * CFrame.new(0, -0.2, mid), Vector3.new(4, 0.4, len), C.Crimson, { Collide = true, Shadow = false })
+	-- the promenade (5 wide, Cobblestone tiles ~6 long) and the kerb on every edge (open where the bridge lands)
+	local prom = newModel(f, "Promenade")
+	local kerbs = newModel(f, "Kerbs")
+	for ei, e in ipairs(Art.edges()) do
+		local x0, z0, len, dx, dz, ox, oz = e[1], e[2], e[6], e[7], e[8], e[9], e[10]
+		local look = Vector3.new(ox, 0, oz)
+		if e[5] ~= "Back" then
+			local n = max(1, floor(len / 6 + 0.5))
+			local tl = len / n
+			for i = 1, n do
+				local along = (i - 0.5) * tl
+				local cx, cz = x0 + dx * along - ox * 2.5, z0 + dz * along - oz * 2.5
+				if polyR(cx, cz) > 101 then
+					local lift = ((i + ei) % 2 == 0) and 0.05 or 0
+					local pos = Vector3.new(cx, TOP_T + lift - TH / 2, cz)
+					Art.part(prom, "Promenade", A * CFrame.lookAt(pos, pos + look), Vector3.new(tl + ((e[5] == "Arc") and 0.8 or 0), TH, 5), ((i + ei) % 3 == 0) and "CobbleLight" or "Cobble", { Collide = true, Shadow = false, Jitter = ei * 97 + i })
+				end
+			end
+		end
+		local spans = { { 0, len } }
+		if e[5] == "Front" then
+			-- the bridge's landing: no kerb across the deck (x within +-(BRIDGE_W / 2 + 1))
+			local gap = BRIDGE_W / 2 + 1
+			spans = { { 0, (-gap) - x0 }, { gap - x0, len } }
+		end
+		for _, sp in ipairs(spans) do
+			local l = sp[2] - sp[1]
+			if l > 0.5 then
+				local mid = (sp[1] + sp[2]) / 2
+				local pos = Vector3.new(x0 + dx * mid, TOP_T, z0 + dz * mid)
+				Art.kerb(kerbs, A * CFrame.lookAt(pos, pos + look), l)
+			end
+		end
+	end
+	-- the colosseum's apron (two courses round the stands, under the wall and the columns)
+	Art.ring(f, "Apron", A, COL.WallIn - 1, ISL.DiscR, TOP_T + 0.01, TH, "Cobble", { Courses = 2, Keys = { "CobbleDark", "Cobble" }, Seed = 401 })
+	-- the duel rings' aprons
+	for i, spec in ipairs(RINGS) do
+		Art.ring(f, "RingApron", A * CFrame.new(spec.X, 0, spec.Z), RING_A + 1.2, RING_A + 9.2, TOP_T, TH, "Cobble", { Seed = 503 + i * 50 })
+	end
+	-- the avenue: 4 columns of Slate tiles between Marble borders, the trophy plaza in its middle
+	local av = newModel(f, "Avenue")
+	local zA, zB = ISL.FrontZ + 5, -ISL.DiscR
+	local rows = floor((zB - zA) / 5 + 0.5)
+	local rl = (zB - zA) / rows
+	local plazaZ, plazaR = -124, 17
+	for k = 1, rows do
+		local zc = zA + (k - 0.5) * rl
+		if abs(zc - plazaZ) > plazaR - 4 then
+			for c = 1, 4 do
+				local lift = ((k + c) % 2 == 0) and 0.05 or 0
+				Art.part(av, "AvenueTile", A * CFrame.new(-7.5 + (c - 1) * 5, TOP_T + lift - TH / 2, zc), Vector3.new(5, TH, rl), ((k + c) % 2 == 0) and "SlateLight" or "Slate", { Collide = true, Shadow = false, Jitter = k * 11 + c })
+			end
+		end
+	end
 	for _, sx in ipairs({ -1, 1 }) do
-		box(f, "RunnerEdge", A * CFrame.new(sx * 2.6, -0.2, mid), Vector3.new(1.2, 0.4, len), C.Gold, { Collide = true, Shadow = false })
+		for _, seg in ipairs({ { zA, plazaZ - plazaR + 1 }, { plazaZ + plazaR - 1, zB } }) do
+			Art.part(av, "AvenueBorder", A * CFrame.new(sx * 10.6, -0.02 - TH / 2, (seg[1] + seg[2]) / 2), Vector3.new(1.2, TH, seg[2] - seg[1]), "Marble", { Collide = true, Shadow = false })
+		end
 	end
-	-- a gold eight-pointed star with a navy heart where the bridge lands
+	-- the runner: from the bridge's landing to the trophy plaza, and on from it to the main gate's passage
+	for _, seg in ipairs({ { ISL.FrontZ + 1, plazaZ - plazaR + 0.5 }, { plazaZ + plazaR - 0.5, -(COL.WallOut + 1.5) } }) do
+		Art.part(av, "Runner", A * CFrame.new(0, -0.04 - 0.2, (seg[1] + seg[2]) / 2), Vector3.new(4, 0.4, seg[2] - seg[1]), "Carpet", { Collide = true, Shadow = false })
+	end
+	-- a Marble compass star with a brass heart where the bridge lands
 	local star = A * CFrame.new(0, 0, ISL.FrontZ + 22)
-	for _, turn in ipairs({ 0, 45 }) do
-		box(f, "ArrivalStar", star * CFrame.new(0, -0.1, 0) * CFrame.Angles(0, math.rad(turn), 0), Vector3.new(9, 0.4, 9), C.Gold, { Collide = true, Shadow = false })
+	for i, turn in ipairs({ 0, 45 }) do
+		Art.part(av, "ArrivalStar", star * CFrame.new(0, 0.02 * i - 0.15, 0) * CFrame.Angles(0, rad(turn), 0), Vector3.new(8, 0.3, 8), (i == 1) and "Marble" or "MarbleShade", { Collide = true, Shadow = false })
 	end
-	box(f, "ArrivalHeart", star * CFrame.new(0, 0, 0) * CFrame.Angles(0, math.rad(45), 0), Vector3.new(3.6, 0.4, 3.6), C.Navy, { Collide = true, Shadow = false })
-	-- element tiles around the trophy plinth
+	Art.part(av, "ArrivalHeart", star * CFrame.new(0, 0.02, 0) * CFrame.Angles(0, rad(45), 0), Vector3.new(3, 0.3, 3), "Brass", { Collide = true, Shadow = false })
+	-- the trophy plaza: a round Slate court with a Cobblestone ring, element tiles round the statue's plinth
+	local plaza = A * CFrame.new(0, 0, plazaZ)
+	Art.ring(av, "PlazaTile", plaza, 0, 10, TOP_T + 0.06, TH, "SlateLight", { Seed = 611 })
+	Art.ring(av, "PlazaRing", plaza, 10, plazaR, TOP_T + 0.03, TH, "Cobble", { Seed = 677 })
 	for e = 1, 8 do
-		local turn = A * CFrame.new(0, 0, -124) * CFrame.Angles(0, sectionAngle(e), 0)
-		box(f, "TrophyTile", turn * CFrame.new(0, -0.1, -7.6) * CFrame.Angles(0, math.rad(45), 0), Vector3.new(2, 0.4, 2), elementColor(e), { Collide = true, Shadow = false })
+		local turn = plaza * CFrame.Angles(0, sectionAngle(e), 0)
+		Art.part(av, "TrophyTile", turn * CFrame.new(0, -0.02, -7.6) * CFrame.Angles(0, rad(45), 0), Vector3.new(2, 0.3, 2), elementColor(e), { Material = MAT.Slate, Collide = true, Shadow = false })
 	end
 	return f
 end
@@ -1157,7 +1515,7 @@ local function segmentGrid(kind)
 	fillA(g, COL.FloorR, COL.PodiumR, -1, 5, hwOut(COL.PodiumR), "Podium", function(ix, iy)
 		return not open(ix, iy)
 	end)
-	fillA(g, COL.FloorR, COL.PodiumR, 5, 6, hwOut(COL.PodiumR), "Gold", function(ix, iy)
+	fillA(g, COL.FloorR, COL.PodiumR, 5, 6, hwOut(COL.PodiumR), "Cap", function(ix, iy)
 		return not open(ix, iy)
 	end)
 	-- the four tiers (solid down to the ground) with their seat cushions
@@ -1180,14 +1538,17 @@ local function segmentGrid(kind)
 		end
 		return true
 	end)
-	fillA(g, COL.WallIn, COL.WallOut, COL.WallH, COL.WallH + 2, hwW, "Wall", function(ix)
+	-- Phase 5: a Marble coping course caps the wall (6.4 rule 3), the merlons stand on it
+	fillA(g, COL.WallIn, COL.WallOut, COL.WallH, COL.WallH + 1, hwW, "Cornice")
+	fillA(g, COL.WallIn, COL.WallOut, COL.WallH + 1, COL.WallH + 3, hwW, "Wall", function(ix)
 		return floor((ix + hwW) / 4) % 2 == 0
 	end)
 	if gate then
 		-- a gatehouse: the wall rises over the passage (the main gate's sign hangs on it), crowned by its own merlons
 		local gw = gh + 5
 		fillA(g, COL.WallIn, COL.WallOut, COL.WallH, COL.WallH + 6, gw, "Wall")
-		fillA(g, COL.WallIn, COL.WallOut, COL.WallH + 6, COL.WallH + 8, gw, "Wall", function(ix)
+		fillA(g, COL.WallIn, COL.WallOut, COL.WallH + 6, COL.WallH + 7, gw, "Cornice")
+		fillA(g, COL.WallIn, COL.WallOut, COL.WallH + 7, COL.WallH + 9, gw, "Wall", function(ix)
 			return floor((ix + gw) / 3) % 2 == 0
 		end)
 		fillA(g, COL.WallOut, COL.WallOut + 1, COL.WallH + 5, COL.WallH + 6, gw, "Cornice")
@@ -1212,6 +1573,12 @@ local function segmentGrid(kind)
 				for iy = 1, 18 do
 					setA(g, px, iy, ia, "Pilaster")
 				end
+			end
+		end
+		-- a Marble string course over the arches (the banner hangs in front of it)
+		for ix = -16, 16 do
+			if abs(ix) > 2 then
+				setA(g, ix, 13, fa, "Cornice")
 			end
 		end
 		for ix = -16, 16 do
@@ -1280,20 +1647,23 @@ local function segmentGrid(kind)
 	return g
 end
 
+-- Phase 5 (6.4): Brick walls on a Slate plinth with Marble pilasters, string course and cornice; warm limestone
+-- tiers with Fabric seat cushions in the muted element colours; a Marble podium; brass trim; iron portcullises.
 local SEG_PAL = {
-	Podium = C.Stone,
-	TierA = C.StoneLight,
-	TierB = C.Stone,
-	Seat = C.Crimson, -- recoloured per segment
-	Wall = C.StoneLight,
-	Plinth = C.StoneDark,
-	Cornice = C.Marble,
-	Pilaster = C.Marble,
-	Recess = C.Recess,
-	Gold = C.Gold,
-	Banner = C.Crimson, -- recoloured per segment
-	Iron = C.Iron,
-	Passage = { Color = C.Stone, Material = MAT.Slate },
+	Podium = { Color = Art.P.MarbleShade, Material = MAT.Marble },
+	Cap = { Color = Art.P.Marble, Material = MAT.Marble },
+	TierA = { Color = Art.P.Stone, Material = MAT.Slate },
+	TierB = { Color = Art.P.StoneDark, Material = MAT.Slate },
+	Seat = { Color = Art.P.Cloth, Material = MAT.Fabric }, -- recoloured per segment
+	Wall = { Color = Art.P.Brick, Material = MAT.Brick },
+	Plinth = { Color = Art.P.Slate, Material = MAT.Slate },
+	Cornice = { Color = Art.P.Marble, Material = MAT.Marble },
+	Pilaster = { Color = Art.P.Marble, Material = MAT.Marble },
+	Recess = { Color = rgb(92, 96, 118), Material = MAT.Slate },
+	Gold = { Color = Art.P.Brass, Material = MAT.Metal },
+	Banner = { Color = Art.P.Cloth, Material = MAT.Fabric }, -- recoloured per segment
+	Iron = { Color = Art.P.Iron, Material = MAT.Metal },
+	Passage = { Color = Art.P.Slate, Material = MAT.Slate },
 }
 
 local segTemplates = {}
@@ -1321,43 +1691,23 @@ local function segmentTemplate(kind)
 	return m
 end
 
+-- A column between two segments (Phase 5: a round Marble column on a Slate plinth with a Marble band, a capital,
+-- a brass abacus and an iron brazier with an element flame), segment-local: outward = -Z, on the apothem 94.
 local pillarTemplate = nil
 local function pillar()
 	if pillarTemplate then
 		return pillarTemplate
 	end
-	local g = Voxel.NewGrid(24)
-	local a0 = COL.WallOut - 1
-	fillA(g, a0, COL.PillarOut + 1, -1, 1, 2, "PillarBase")
-	fillA(g, a0, COL.PillarOut, 1, 22, 1, "Pillar")
-	fillA(g, a0, COL.PillarOut + 1, 22, 23, 2, "Gold")
-	fillA(g, a0 + 1, COL.PillarOut, 23, 24, 1, "Iron")
-	setA(g, 0, 24, a0 + 2, "Flame")
-	setA(g, 0, 25, a0 + 2, "Flame")
-	setA(g, -1, 24, a0 + 2, "Flame")
-	setA(g, 1, 24, a0 + 2, "Flame")
-	Voxel.Shade(g, { Only = { Pillar = true }, Smooth = 1, Seed = 9, Light = false })
-	local m = VX.Build(g, {
-		V = 1,
-		Pal = {
-			PillarBase = C.StoneDark,
-			Pillar = C.Marble,
-			Gold = C.Gold,
-			Iron = C.Iron,
-			Flame = { Color = C.Gold, Material = MAT.Neon },
-		},
-		Name = "Pillar",
-		CF = CFrame.new(0, 0.5, -0.5),
-		Collide = true,
-		MaxParts = 10,
-		Keep = { "Flame" },
-	})
-	for _, d in ipairs(m:GetDescendants()) do
-		if d:IsA("BasePart") and d.Name == "Flame" then
-			d.CanCollide = false
-			d.CanQuery = false
-		end
-	end
+	local m = newModel(nil, "Pillar")
+	local at = CFrame.new(0, 0, -(COL.WallOut + 2))
+	Art.part(m, "PillarBase", at * CFrame.new(0, 0, 0), Vector3.new(4.4, 2.2, 4.4), "Slate", { Collide = true })
+	Art.cyl(m, "Pillar", at * CFrame.new(0, 1.4, 0), 19.8, 2.8, "Marble", { Collide = true })
+	Art.part(m, "Capital", at * CFrame.new(0, 21.7, 0), Vector3.new(3.8, 1, 3.8), "Marble", { Collide = true })
+	Art.part(m, "Abacus", at * CFrame.new(0, 22.4, 0), Vector3.new(4.3, 0.4, 4.3), "Brass", { Collide = true })
+	Art.part(m, "Brazier", at * CFrame.new(0, 23.0, 0), Vector3.new(2.6, 0.8, 2.6), "Iron")
+	local flame = Art.part(m, "Flame", at * CFrame.new(0, 24.0, 0) * CFrame.Angles(0, rad(45), 0), Vector3.new(1.3, 1.4, 1.3), C.Gold, { Material = MAT.Neon, Shadow = false })
+	flame.CanCollide = false
+	flame.CanQuery = false
 	pillarTemplate = m
 	return m
 end
@@ -1367,13 +1717,14 @@ end
 local function disc16(parent, name, cf, apothem, topY, h, color, material, collide)
 	local w = 2 * apothem * TAN16 + 0.2
 	for j = 0, 7 do
-		box(parent, name, cf * CFrame.Angles(0, j * STEP16, 0) * CFrame.new(0, topY - h / 2, 0), Vector3.new(w, h, apothem * 2), color, { Collide = collide, Material = material, Shadow = false })
+		-- (each slab 0.004 higher than the last: textured materials never z-fight where the slabs overlap)
+		box(parent, name, cf * CFrame.Angles(0, j * STEP16, 0) * CFrame.new(0, topY + j * 0.004 - h / 2, 0), Vector3.new(w, h, apothem * 2), color, { Collide = collide, Material = material, Shadow = false })
 	end
 end
 local function ring16(parent, name, cf, r0, r1, topY, h, color, material, collide)
 	local len = 2 * r1 * TAN16 + 0.15
 	for j = 0, 15 do
-		box(parent, name, cf * CFrame.Angles(0, j * STEP16, 0) * CFrame.new(0, topY - h / 2, -(r0 + r1) / 2), Vector3.new(len, h, r1 - r0), color, { Collide = collide, Material = material, Shadow = false })
+		box(parent, name, cf * CFrame.Angles(0, j * STEP16, 0) * CFrame.new(0, topY + (j % 2) * 0.01 - h / 2, -(r0 + r1) / 2), Vector3.new(len, h, r1 - r0), color, { Collide = collide, Material = material, Shadow = false })
 	end
 end
 
@@ -1382,10 +1733,11 @@ end
 -- element colours between gold rays, a gold core and rim). Sand top -0.1, everything else on top at 0 / +0.1.
 local function buildFloor(parent, A)
 	local m = newModel(parent, "ArenaFloor")
-	disc16(m, "Sand", A, COL.FloorR + 1, -0.1, 1, C.Sand, MAT.Sand, true)
-	ring16(m, "FloorBand", A, COL.FloorR - 8, COL.FloorR + 1, 0, 1, C.Stone, MAT.Slate, true)
-	ring16(m, "FloorGold", A, COL.FloorR - 9.6, COL.FloorR - 8, 0, 1, C.GoldDark, nil, true)
-	ring16(m, "FloorLine", A, 40, 41.6, 0, 1, C.StoneLight, MAT.Slate, true)
+	local P = Art.P
+	disc16(m, "Sand", A, COL.FloorR + 1, -0.1, 1, P.Sand, MAT.Sand, true)
+	ring16(m, "FloorBand", A, COL.FloorR - 8, COL.FloorR + 1, 0, 1, P.SlateLight, MAT.Slate, true)
+	ring16(m, "FloorGold", A, COL.FloorR - 9.6, COL.FloorR - 8, 0.02, 1, P.Brass, MAT.Metal, true)
+	ring16(m, "FloorLine", A, 40, 41.6, 0, 1, P.MarbleShade, MAT.Marble, true)
 	-- raked sand: darker and paler drifts (4-stud cells, top -0.04) between the wheel and the gold line
 	local cells = {}
 	for i = -15, 15 do
@@ -1401,16 +1753,17 @@ local function buildFloor(parent, A)
 			end
 		end
 	end
-	flatPatches(m, "SandDrift", cells, 4, A, -0.04, 0.2, { SandDark = C.SandDrift, SandLight = C.SandLight }, MAT.Sand)
+	flatPatches(m, "SandDrift", cells, 4, A, -0.04, 0.2, { SandDark = P.SandDark, SandLight = P.SandLight }, MAT.Sand)
 	for e = 1, 8 do
 		local turn = A * CFrame.Angles(0, sectionAngle(e), 0)
-		box(m, "ElementFrame", turn * CFrame.new(0, -0.52, -54) * CFrame.Angles(0, math.rad(45), 0), Vector3.new(6.6, 1, 6.6), C.GoldDark, { Collide = true, Shadow = false })
-		box(m, "ElementMark", turn * CFrame.new(0, -0.45, -54) * CFrame.Angles(0, math.rad(45), 0), Vector3.new(5, 1, 5), elementColor(e), { Collide = true, Shadow = false })
-		box(m, "WheelPetal", turn * CFrame.new(0, -0.5, -10), Vector3.new(4, 1, 7), elementColor(e), { Collide = true, Shadow = false })
-		box(m, "WheelRay", A * CFrame.Angles(0, sectionAngle(e) + STEP16, 0) * CFrame.new(0, -0.5, -9.75), Vector3.new(0.7, 1, 8.5), C.Gold, { Collide = true, Shadow = false })
+		box(m, "ElementFrame", turn * CFrame.new(0, -0.52, -54) * CFrame.Angles(0, rad(45), 0), Vector3.new(6.6, 1, 6.6), P.Brass, { Collide = true, Material = MAT.Metal, Shadow = false })
+		box(m, "ElementMark", turn * CFrame.new(0, -0.45, -54) * CFrame.Angles(0, rad(45), 0), Vector3.new(5, 1, 5), Art.tone(elementColor(e), 0.44, 0.5, 0.82), { Collide = true, Material = MAT.Slate, Shadow = false })
+		box(m, "ElementGem", turn * CFrame.new(0, 0.1, -54) * CFrame.Angles(0, rad(45), 0), Vector3.new(1.6, 0.2, 1.6), elementColor(e), { Material = MAT.Neon, Shadow = false })
+		box(m, "WheelPetal", turn * CFrame.new(0, -0.5, -10), Vector3.new(4, 1, 7), Art.tone(elementColor(e), 0.44, 0.5, 0.82), { Collide = true, Material = MAT.Slate, Shadow = false })
+		box(m, "WheelRay", A * CFrame.Angles(0, sectionAngle(e) + STEP16, 0) * CFrame.new(0, -0.5, -9.75), Vector3.new(0.7, 1, 8.5), P.Brass, { Collide = true, Material = MAT.Metal, Shadow = false })
 	end
-	ring16(m, "WheelRim", A, 14, 15.2, 0, 1, C.Gold, nil, true)
-	disc16(m, "WheelCore", A, 5.5, 0.1, 1, C.Gold, nil, true)
+	ring16(m, "WheelRim", A, 14, 15.2, 0, 1, P.Brass, MAT.Metal, true)
+	disc16(m, "WheelCore", A, 5.5, 0.1, 1, P.Brass, MAT.Metal, true)
 	return m
 end
 
@@ -1432,8 +1785,8 @@ local function buildColosseum(parent, A)
 		local cf = A * CFrame.Angles(0, k * STEP16, 0)
 		local seg = place(segmentTemplate(kind), cf, segs, string.format("Segment_%02d", k))
 		local e = segmentElement(k) -- two neighbouring segments share an element (the wheel's petals point at them)
-		recolor(seg, "Seat", elementColor(e))
-		recolor(seg, "Banner", elementColor(e))
+		recolor(seg, "Seat", Art.tone(elementColor(e), 0.42, 0.5, 0.84))
+		recolor(seg, "Banner", Art.tone(elementColor(e), 0.44, 0.45, 0.78))
 		seg:SetAttribute("Element", ELEMENTS[e] and ELEMENTS[e].Id or "")
 		seg:SetAttribute("Kind", kind)
 	end
@@ -1446,7 +1799,7 @@ local function buildColosseum(parent, A)
 		if k % 2 == 0 then
 			local flame = p:FindFirstChild("Flame")
 			if flame then
-				pointLight(flame, flameColor(elementColor(e)), 1.1, 18)
+				pointLight(flame, Art.Light, 1.2, 16)
 			end
 		end
 	end
@@ -1462,10 +1815,10 @@ local function ringPost()
 		return ringPostTemplate
 	end
 	local m = newModel(nil, "RingPost")
-	box(m, "PostBase", CFrame.new(0, 0.5, 0), Vector3.new(2.2, 1, 2.2), C.StoneDark, { Collide = true, Shadow = false })
-	box(m, "Post", CFrame.new(0, 2.8, 0), Vector3.new(1.3, 3.6, 1.3), C.Marble, { Collide = true, Shadow = false })
-	box(m, "PostCap", CFrame.new(0, 4.85, 0), Vector3.new(1.9, 0.5, 1.9), C.Gold, { Shadow = false })
-	box(m, "Flame", CFrame.new(0, 5.6, 0) * CFrame.Angles(0, math.rad(45), 0), Vector3.new(0.9, 1.1, 0.9), C.Gold, { Material = MAT.Neon, Shadow = false })
+	Art.part(m, "PostBase", CFrame.new(0, 0.5, 0), Vector3.new(2.2, 1, 2.2), "Slate", { Collide = true, Shadow = false })
+	Art.cyl(m, "Post", CFrame.new(0, 1, 0), 3.6, 1.3, "Marble", { Collide = true, Shadow = false })
+	Art.part(m, "PostCap", CFrame.new(0, 4.85, 0), Vector3.new(1.9, 0.5, 1.9), "Brass", { Shadow = false })
+	Art.part(m, "Flame", CFrame.new(0, 5.6, 0) * CFrame.Angles(0, math.rad(45), 0), Vector3.new(0.9, 1.1, 0.9), C.Gold, { Material = MAT.Neon, Shadow = false })
 	ringPostTemplate = m
 	return m
 end
@@ -1498,7 +1851,7 @@ local function swordsEmblem(accent)
 		Voxel.Set(g, gx + (gx > 0 and 1 or -1), 0, gz + 1, "Guard")
 		Voxel.Set(g, gx + (gx > 0 and 2 or -2), 0, gz + 2, "Guard")
 	end
-	local m = VX.Build(g, { V = 1, Pal = { Accent = accent, Blade = C.Steel, Guard = C.Gold }, Name = "Emblem", CF = CFrame.new(0, -0.5, 0), Collide = false, Shadow = false, MaxParts = 30 })
+	local m = VX.Build(g, { V = 1, Pal = { Accent = { Color = accent, Material = MAT.Slate }, Blade = { Color = Art.P.Steel, Material = MAT.Metal }, Guard = { Color = Art.P.Gold, Material = MAT.Metal } }, Name = "Emblem", CF = CFrame.new(0, -0.5, 0), Collide = false, Shadow = false, MaxParts = 30 })
 	emblemTemplates[key] = m
 	return m
 end
@@ -1530,7 +1883,7 @@ local function buildRing(parent, A, spec, index)
 	-- the floor: eight long slabs turned 22.5 degrees apart make the 16-gon (same colour: the overlaps never show)
 	local slabW = 2 * RING_A * TAN16 + 0.4
 	for j = 0, 7 do
-		box(m, "RingFloor", cf * CFrame.Angles(0, j * STEP16, 0) * CFrame.new(0, RING_Y - 0.5, 0), Vector3.new(slabW, 1, RING_A * 2), C.SandLight, { Collide = true, Material = MAT.Sand, Shadow = false })
+		box(m, "RingFloor", cf * CFrame.Angles(0, j * STEP16, 0) * CFrame.new(0, RING_Y + j * 0.004 - 0.5, 0), Vector3.new(slabW, 1, RING_A * 2), Art.P.SandLight, { Collide = true, Material = MAT.Sand, Shadow = false })
 	end
 	-- sand drifts (3-stud cells) between the emblem and the rim, different on every ring
 	local cells = {}
@@ -1547,20 +1900,26 @@ local function buildRing(parent, A, spec, index)
 			end
 		end
 	end
-	flatPatches(m, "RingDrift", cells, 3, cf, RING_Y + 0.04, 0.12, { SandDark = C.Sand, SandPale = C.SandDrift }, MAT.Sand)
+	flatPatches(m, "RingDrift", cells, 3, cf, RING_Y + 0.04, 0.12, { SandDark = Art.P.Sand, SandPale = Art.P.SandDark }, MAT.Sand)
 	-- a painted circle (16 thin strips) where the two teams line up, and a darker sand rim inside the curb
 	local lineA = 21
 	local lineLen = 2 * lineA * TAN16 + 0.5
 	for j = 0, 15 do
 		local seg = cf * CFrame.Angles(0, j * STEP16, 0)
-		box(m, "RingLine", seg * CFrame.new(0, RING_Y + 0.03, -lineA), Vector3.new(lineLen, 0.1, 0.8), C.Marble, { Shadow = false })
-		box(m, "RingRim", seg * CFrame.new(0, RING_Y + 0.02, -(RING_A - 1.5)), Vector3.new(2 * (RING_A - 1.5) * TAN16 + 1.3, 0.08, 3), C.SandDark, { Material = MAT.Sand, Shadow = false })
+		box(m, "RingLine", seg * CFrame.new(0, RING_Y + 0.03 + (j % 2) * 0.01, -lineA), Vector3.new(lineLen, 0.1, 0.8), Art.P.Marble, { Material = MAT.Marble, Shadow = false })
+		box(m, "RingRim", seg * CFrame.new(0, RING_Y + 0.02 + (j % 2) * 0.005, -(RING_A - 1.5)), Vector3.new(2 * (RING_A - 1.5) * TAN16 + 1.3, 0.08, 3), Art.P.SandDark, { Material = MAT.Sand, Shadow = false })
 	end
-	-- the curb: 16 blocks on the edges, in the ring's colour
+	-- the curb: 16 stone blocks on the edges in the ring's (muted) colour under a Marble coping with a thin Neon
+	-- inlay in the ring's colour (6.4 rule 2: saturated colour only as a thin inlay)
 	local curbOut = RING_A + 1.6
 	local curbLen = 2 * curbOut * TAN16 + 0.25
+	local curbColor = Art.tone(accent, 0.4, 0.45, 0.66)
 	for j = 0, 15 do
-		box(m, "Curb", cf * CFrame.Angles(0, j * STEP16, 0) * CFrame.new(0, RING_Y + 0.3 - 0.55, -(RING_A + 0.3)), Vector3.new(curbLen, 1.7, 2.6), accent:Lerp(C.Navy, 0.25), { Collide = true, Shadow = false })
+		local seg = cf * CFrame.Angles(0, j * STEP16, 0)
+		local lift = (j % 2) * 0.01
+		box(m, "Curb", seg * CFrame.new(0, RING_Y + 0.3 - 0.55 + lift, -(RING_A + 0.3)), Vector3.new(curbLen, 1.7, 2.6), curbColor, { Collide = true, Material = MAT.Slate, Shadow = false })
+		box(m, "CurbCoping", seg * CFrame.new(0, RING_Y + 0.3 + 0.38 + lift, -(RING_A + 0.3)), Vector3.new(curbLen + 0.1, 0.36, 3), Art.P.Marble, { Collide = true, Material = MAT.Marble, Shadow = false })
+		box(m, "CurbInlay", seg * CFrame.new(0, RING_Y + 0.3 + 0.58 + lift, -(RING_A + 0.3)), Vector3.new(curbLen - 0.6, 0.06, 0.4), accent, { Material = MAT.Neon, Shadow = false })
 	end
 	-- torch posts on every other vertex
 	local postR = curbOut / math.cos(math.pi / 16) + 0.6
@@ -1572,7 +1931,7 @@ local function buildRing(parent, A, spec, index)
 		if j % 4 == 0 then
 			local flame = post:FindFirstChild("Flame")
 			if flame then
-				pointLight(flame, flameColor(elementColor(j + 1)), 1, 14)
+				pointLight(flame, Art.Light, 1.1, 14)
 				lit = lit + 1
 			end
 		end
@@ -1583,10 +1942,10 @@ local function buildRing(parent, A, spec, index)
 	local pads = {}
 	for p, side in ipairs({ -1, 1 }) do
 		local pcf = cf * CFrame.new(0, RING_Y, side * (RING_A - 6))
-		local base = box(m, "ChallengePad", pcf * CFrame.new(0, 0.1, 0), Vector3.new(5.4, 0.4, 5.4), C.Gold, { Collide = true, Shadow = false })
+		local base = box(m, "ChallengePad", pcf * CFrame.new(0, 0.1, 0), Vector3.new(5.4, 0.4, 5.4), Art.P.Brass, { Collide = true, Material = MAT.Metal, Shadow = false })
 		box(m, "PadGlow", pcf * CFrame.new(0, 0.33, 0), Vector3.new(4.2, 0.2, 4.2), accent, { Material = MAT.Neon, Shadow = false })
-		box(m, "PadMark", pcf * CFrame.new(0, 0.47, 0) * CFrame.Angles(0, math.rad(45), 0), Vector3.new(3.6, 0.12, 0.6), C.Gold, { Shadow = false })
-		box(m, "PadMark", pcf * CFrame.new(0, 0.47, 0) * CFrame.Angles(0, math.rad(-45), 0), Vector3.new(3.6, 0.12, 0.6), C.Gold, { Shadow = false })
+		box(m, "PadMark", pcf * CFrame.new(0, 0.47, 0) * CFrame.Angles(0, math.rad(45), 0), Vector3.new(3.6, 0.12, 0.6), Art.P.Gold, { Material = MAT.Metal, Shadow = false })
+		box(m, "PadMark", pcf * CFrame.new(0, 0.48, 0) * CFrame.Angles(0, math.rad(-45), 0), Vector3.new(3.6, 0.12, 0.6), Art.P.Gold, { Material = MAT.Metal, Shadow = false })
 		base:SetAttribute("RingIndex", index)
 		base:SetAttribute("PadIndex", p)
 		makePrompt(base, "DuelPrompt", "Duel", spec.Name, "Arena", { RingIndex = index, PadIndex = p })
@@ -1609,22 +1968,26 @@ local LEADER_W, LEADER_H = 15, 12.5
 -- a free-standing stone frame for a sign panel of w x h studs; returns the model and the panel part (Front face = sign)
 local function boardFrame(parent, name, cf, w, h)
 	local m = newModel(parent, name)
-	local base = h * 0 + 2.2 -- panel bottom over the ground
-	box(m, "Step", cf * CFrame.new(0, 0.3, 0.6), Vector3.new(w + 4, 0.6, 4.2), C.StoneDark, { Collide = true })
+	local base = 2.2 -- panel bottom over the ground
+	-- Phase 5: a Slate step + plinths, round Marble columns with brass caps and torches, a Marble lintel with a brass
+	-- trim, a Slate back; the crest (a crimson shield with crossed swords) on top
+	Art.part(m, "Step", cf * CFrame.new(0, 0.3, 0.6), Vector3.new(w + 4, 0.6, 4.2), "Slate", { Collide = true })
 	for _, sx in ipairs({ -1, 1 }) do
-		box(m, "Post", cf * CFrame.new(sx * (w / 2 + 0.9), (base + h + 1.6) / 2, 0.6), Vector3.new(1.6, base + h + 1.6, 1.8), C.StoneLight, { Collide = true })
-		box(m, "PostCap", cf * CFrame.new(sx * (w / 2 + 0.9), base + h + 1.85, 0.6), Vector3.new(2.2, 0.5, 2.4), C.Gold, { Shadow = false })
-		box(m, "Flame", cf * CFrame.new(sx * (w / 2 + 0.9), base + h + 2.6, 0.6) * CFrame.Angles(0, math.rad(45), 0), Vector3.new(0.9, 1, 0.9), C.Gold, { Material = MAT.Neon, Shadow = false })
+		local foot = cf * CFrame.new(sx * (w / 2 + 0.9), 0.6, 0.6)
+		Art.part(m, "PostPlinth", foot * CFrame.new(0, 0.6, 0), Vector3.new(2.2, 1.2, 2.4), "SlateDark", { Collide = true, Shadow = false })
+		Art.cyl(m, "Post", foot * CFrame.new(0, 1.2, 0), base + h - 1.2, 1.6, "Marble", { Collide = true })
+		Art.part(m, "PostCap", cf * CFrame.new(sx * (w / 2 + 0.9), base + h + 1.85, 0.6), Vector3.new(2.2, 0.5, 2.4), "Brass", { Shadow = false })
+		Art.part(m, "Flame", cf * CFrame.new(sx * (w / 2 + 0.9), base + h + 2.6, 0.6) * CFrame.Angles(0, rad(45), 0), Vector3.new(0.9, 1, 0.9), C.Gold, { Material = MAT.Neon, Shadow = false })
 	end
-	box(m, "Lintel", cf * CFrame.new(0, base + h + 0.9, 0.6), Vector3.new(w + 2.6, 1.4, 2), C.Marble, { Collide = true })
-	box(m, "LintelTrim", cf * CFrame.new(0, base + h + 0.2, -0.45), Vector3.new(w + 1.6, 0.3, 0.2), C.Gold, { Shadow = false })
-	box(m, "Back", cf * CFrame.new(0, base + h / 2, 0.85), Vector3.new(w + 0.4, h + 0.4, 0.8), C.Stone, { Collide = true })
-	local panel = box(m, "Panel", cf * CFrame.new(0, base + h / 2, 0.25), Vector3.new(w, h, 0.4), C.Navy, { Collide = true, Shadow = false })
-	-- crest: a gold shield with crossed swords on the lintel
-	box(m, "Crest", cf * CFrame.new(0, base + h + 2.4, 0.3), Vector3.new(2.6, 2.2, 0.6), C.Crimson, { Shadow = false })
-	box(m, "CrestRim", cf * CFrame.new(0, base + h + 2.4, 0.5), Vector3.new(3.1, 2.7, 0.4), C.Gold, { Shadow = false })
-	for _, s in ipairs({ -1, 1 }) do
-		box(m, "Sword", cf * CFrame.new(0, base + h + 2.6, -0.1) * CFrame.Angles(0, 0, math.rad(s * 40)), Vector3.new(0.35, 3.6, 0.2), C.Steel, { Shadow = false })
+	Art.part(m, "Lintel", cf * CFrame.new(0, base + h + 0.9, 0.6), Vector3.new(w + 2.6, 1.4, 2), "Marble", { Collide = true })
+	Art.part(m, "LintelTrim", cf * CFrame.new(0, base + h + 0.2, -0.45), Vector3.new(w + 1.6, 0.3, 0.2), "Brass", { Shadow = false })
+	Art.part(m, "Back", cf * CFrame.new(0, base + h / 2, 0.85), Vector3.new(w + 0.4, h + 0.4, 0.8), "Slate", { Collide = true })
+	local panel = Art.part(m, "Panel", cf * CFrame.new(0, base + h / 2, 0.25), Vector3.new(w, h, 0.4), "SlateDark", { Collide = true, Shadow = false })
+	-- crest: a crimson shield in a brass rim with crossed swords on the lintel
+	Art.part(m, "Crest", cf * CFrame.new(0, base + h + 2.4, 0.3), Vector3.new(2.6, 2.2, 0.6), C.Crimson, { Material = MAT.Fabric, Shadow = false })
+	Art.part(m, "CrestRim", cf * CFrame.new(0, base + h + 2.4, 0.5), Vector3.new(3.1, 2.7, 0.4), "Brass", { Shadow = false })
+	for _, sgn in ipairs({ -1, 1 }) do
+		Art.part(m, "Sword", cf * CFrame.new(0, base + h + 2.6, -0.1) * CFrame.Angles(0, 0, rad(sgn * 40)), Vector3.new(0.35, 3.6, 0.2), "Steel", { Shadow = false })
 	end
 	return m, panel
 end
@@ -1953,19 +2316,19 @@ local function torch()
 		return torchTemplate
 	end
 	local m = newModel(nil, "Torch")
-	box(m, "TorchBase", CFrame.new(0, 0.4, 0), Vector3.new(1.8, 0.8, 1.8), C.StoneDark, { Collide = true, Shadow = false })
-	box(m, "TorchPole", CFrame.new(0, 2.9, 0), Vector3.new(0.6, 4.4, 0.6), C.Iron, { Collide = true, Shadow = false })
-	box(m, "TorchBowl", CFrame.new(0, 5.3, 0), Vector3.new(1.6, 0.5, 1.6), C.Gold, { Shadow = false })
-	box(m, "Flame", CFrame.new(0, 6.05, 0) * CFrame.Angles(0, math.rad(45), 0), Vector3.new(0.9, 1.1, 0.9), C.Gold, { Material = MAT.Neon, Shadow = false })
+	Art.part(m, "TorchBase", CFrame.new(0, 0.4, 0), Vector3.new(1.8, 0.8, 1.8), "Slate", { Collide = true, Shadow = false })
+	Art.cyl(m, "TorchPole", CFrame.new(0, 0.7, 0), 4.4, 0.6, "Iron", { Collide = true, Shadow = false })
+	Art.part(m, "TorchBowl", CFrame.new(0, 5.3, 0), Vector3.new(1.6, 0.5, 1.6), "Brass", { Shadow = false })
+	Art.part(m, "Flame", CFrame.new(0, 6.05, 0) * CFrame.Angles(0, rad(45), 0), Vector3.new(0.9, 1.1, 0.9), C.Gold, { Material = MAT.Neon, Shadow = false })
 	torchTemplate = m
 	return m
 end
 
 local function buildTrophy(parent, cf)
 	local m = newModel(parent, "TrophyStatue")
-	box(m, "Plinth", cf * CFrame.new(0, 1.25, 0), Vector3.new(7, 2.5, 7), C.StoneLight, { Collide = true })
-	box(m, "PlinthTrim", cf * CFrame.new(0, 2.6, 0), Vector3.new(7.6, 0.4, 7.6), C.Gold, { Collide = true, Shadow = false })
-	box(m, "PlinthBase", cf * CFrame.new(0, 0.25, 0), Vector3.new(8.4, 0.5, 8.4), C.StoneDark, { Collide = true, Shadow = false })
+	Art.part(m, "Plinth", cf * CFrame.new(0, 1.25, 0), Vector3.new(7, 2.5, 7), "Marble", { Collide = true })
+	Art.part(m, "PlinthTrim", cf * CFrame.new(0, 2.6, 0), Vector3.new(7.6, 0.4, 7.6), "Brass", { Collide = true, Shadow = false })
+	Art.part(m, "PlinthBase", cf * CFrame.new(0, 0.25, 0), Vector3.new(8.4, 0.5, 8.4), "Slate", { Collide = true, Shadow = false })
 	local g = Voxel.NewGrid(20)
 	-- a big gold cup (0.5-stud voxels): square foot, stem with a knot, two handles, a hollow bowl with a rim, a gem
 	Voxel.Shape(g, { Kind = "RoundBox", Center = { 0, 1, 0 }, Size = { 10, 2, 10 }, Round = 1, Key = "Base" })
@@ -1983,7 +2346,12 @@ local function buildTrophy(parent, cf)
 	Voxel.Shade(g, { Only = { Gold = true, Rim = true }, Smooth = 1, Seed = 2 })
 	local cup = VX.Build(g, {
 		V = 0.5,
-		Pal = { Base = C.Navy, Gold = C.Gold, Rim = rgb(255, 226, 132), Gem = { Color = C.Crimson, Material = MAT.Neon } },
+		Pal = {
+			Base = { Color = Art.P.SlateDark, Material = MAT.Slate },
+			Gold = { Color = Art.P.Gold, Material = MAT.Metal },
+			Rim = { Color = rgb(250, 218, 130), Material = MAT.Metal },
+			Gem = { Color = C.Crimson, Material = MAT.Neon },
+		},
 		Name = "Trophy",
 		CF = cf * CFrame.new(0, 2.8, 0),
 		Collide = false,
@@ -1992,20 +2360,21 @@ local function buildTrophy(parent, cf)
 	if cup then
 		cup.Parent = m
 	end
-	local star = box(m, "TrophyStar", cf * CFrame.new(0, 2.8 + 8.8, 0) * CFrame.Angles(0, 0, math.rad(45)), Vector3.new(1.4, 1.4, 0.5), C.Gold, { Material = MAT.Neon, Shadow = false })
+	local star = Art.part(m, "TrophyStar", cf * CFrame.new(0, 2.8 + 8.8, 0) * CFrame.Angles(0, 0, rad(45)), Vector3.new(1.4, 1.4, 0.5), C.Gold, { Material = MAT.Neon, Shadow = false })
 	emitter(star, { Rate = 3, Lifetime = NumberRange.new(1.5, 2.5), Speed = NumberRange.new(0.5, 1.2), SpreadAngle = Vector2.new(180, 180) })
 	return m
 end
 
 local function bannerPole(parent, cf, color)
 	local m = newModel(parent, "BannerPole")
-	box(m, "PoleBase", cf * CFrame.new(0, 0.5, 0), Vector3.new(1.6, 1, 1.6), C.StoneDark, { Collide = true, Shadow = false })
-	box(m, "Pole", cf * CFrame.new(0, 7, 0), Vector3.new(0.6, 13, 0.6), C.Iron, { Collide = true, Shadow = false })
-	box(m, "PoleTop", cf * CFrame.new(0, 13.8, 0), Vector3.new(1, 1, 1), C.Gold, { Shadow = false })
-	box(m, "CrossBar", cf * CFrame.new(1.9, 12.6, 0), Vector3.new(4.2, 0.35, 0.35), C.Iron, { Shadow = false })
-	box(m, "Banner", cf * CFrame.new(1.9, 9.6, 0), Vector3.new(3.4, 5.6, 0.2), color, { Shadow = false })
-	box(m, "BannerTrim", cf * CFrame.new(1.9, 12.25, 0), Vector3.new(3.6, 0.4, 0.26), C.Gold, { Shadow = false })
-	box(m, "BannerMark", cf * CFrame.new(1.9, 9.9, -0.05) * CFrame.Angles(0, 0, math.rad(45)), Vector3.new(1.3, 1.3, 0.22), C.Gold, { Shadow = false })
+	Art.part(m, "PoleBase", cf * CFrame.new(0, 0.5, 0), Vector3.new(1.6, 1, 1.6), "Slate", { Collide = true, Shadow = false })
+	Art.cyl(m, "Pole", cf * CFrame.new(0, 0.5, 0), 13, 0.6, "Wood", { Collide = true })
+	Art.part(m, "PoleTop", cf * CFrame.new(0, 13.8, 0), Vector3.new(1, 1, 1), "Gold", { Shadow = false })
+	Art.part(m, "CrossBar", cf * CFrame.new(1.9, 12.6, 0), Vector3.new(4.2, 0.35, 0.35), "Iron", { Shadow = false })
+	Art.part(m, "Banner", cf * CFrame.new(1.9, 9.6, 0), Vector3.new(3.4, 5.6, 0.2), Art.tone(color, 0.44, 0.45, 0.8), { Material = MAT.Fabric, Shadow = false })
+	Art.part(m, "BannerTrim", cf * CFrame.new(1.9, 12.25, 0), Vector3.new(3.6, 0.4, 0.26), "Brass", { Shadow = false })
+	Art.part(m, "BannerMark", cf * CFrame.new(1.9, 9.9, -0.05) * CFrame.Angles(0, 0, rad(45)), Vector3.new(1.3, 1.3, 0.22), "Gold", { Shadow = false })
+	Art.tag(m, "Detail")
 	return m
 end
 
@@ -2035,7 +2404,13 @@ local function planter()
 			end
 		end
 	end
-	local pal = { Curb = C.StoneDark, CurbTop = C.StoneLight, Soil = C.Soil, Grass = { Color = C.Grass, Material = MAT.Grass }, Hedge = C.Hedge }
+	local pal = {
+		Curb = { Color = Art.P.Brick, Material = MAT.Brick },
+		CurbTop = { Color = Art.P.Marble, Material = MAT.Marble },
+		Soil = { Color = Art.P.Soil, Material = MAT.Sand },
+		Grass = { Color = Art.P.Lawn, Material = MAT.Grass },
+		Hedge = { Color = Art.P.Hedge, Material = MAT.LeafyGrass },
+	}
 	for e = 1, 8 do
 		pal["Fl" .. e] = elementColor(e):Lerp(rgb(255, 255, 255), 0.15)
 	end
@@ -2045,25 +2420,47 @@ end
 
 local function buildForumDecor(parent, A)
 	local m = newModel(parent, "ForumDecor")
-	-- torches along the avenue, in the element colours
+	-- torches along the avenue, in the element colours, and between them hedge boxes (a detail every ~11 studs)
 	local t = 0
 	for _, z in ipairs({ -186, -164, -142 }) do
 		for _, sx in ipairs({ -1, 1 }) do
 			t = t + 1
-			local tm = place(torch(), A * CFrame.new(sx * 11.5, -0.2, z), m, "AvenueTorch")
+			local tm = place(torch(), A * CFrame.new(sx * 12.6, -0.2, z), m, "AvenueTorch")
 			recolor(tm, "Flame", flameColor(elementColor(t)))
+			Art.tag(tm, "Detail")
 			local flame = tm:FindFirstChild("Flame")
 			if flame and z == -164 then
-				pointLight(flame, flameColor(elementColor(t)), 1, 16)
+				pointLight(flame, Art.Light, 1.2, 16)
 			end
 		end
 	end
+	for i, z in ipairs({ -175, -153 }) do
+		for _, sx in ipairs({ -1, 1 }) do
+			Art.hedgeBox(m, A * CFrame.new(sx * 13, -0.2, z) * CFrame.Angles(0, pi / 2, 0), 5, i * 7 + sx)
+		end
+	end
 	-- banner poles at the arrival
-	bannerPole(m, A * CFrame.new(-18, -0.2, ISL.FrontZ + 10) * CFrame.Angles(0, math.pi, 0), C.Crimson)
+	bannerPole(m, A * CFrame.new(-18, -0.2, ISL.FrontZ + 10) * CFrame.Angles(0, pi, 0), C.Crimson)
 	bannerPole(m, A * CFrame.new(18, -0.2, ISL.FrontZ + 10), C.Crimson)
-	-- planters between the rings and the colosseum and at the forum's front corners
+	-- planters between the rings and the colosseum
 	for _, p in ipairs({ { -60, -102, 0 }, { 60, -102, 0 } }) do
-		place(planter(), A * CFrame.new(p[1], 0, p[2]) * CFrame.Angles(0, p[3], 0), m, "Planter")
+		Art.tag(place(planter(), A * CFrame.new(p[1], 0, p[2]) * CFrame.Angles(0, p[3], 0), m, "Planter"), "Detail")
+	end
+	-- trees on the lawns (the front corners, beside the stands) and lanterns along the promenade (every ~24 studs,
+	-- alternating sides of a bench-free walk: a detail every ~12 studs along each side)
+	local trees = { { -84, -100, 1.1 }, { 84, -100, 1.0 }, { -92, -66, 0.95 }, { 92, -66, 1.05 }, { -84, -190, 0.85 }, { 84, -190, 0.9 } }
+	for i, tr in ipairs(trees) do
+		Art.tree(m, A * CFrame.new(tr[1], -0.2, tr[2]), tr[3], i)
+	end
+	local lit = 0
+	for _, sx in ipairs({ -1, 1 }) do
+		for i, z in ipairs({ -168, -144, -120, -84, -48 }) do
+			lit = lit + 1
+			Art.lantern(m, A * CFrame.new(sx * (ISL.HalfW - 4.6), -0.15, z), i % 2 == 1)
+		end
+	end
+	for _, x in ipairs({ -66, -40, 40, 66 }) do
+		Art.lantern(m, A * CFrame.new(x, -0.15, ISL.FrontZ + 4.6), abs(x) == 40)
 	end
 	buildTrophy(m, A * CFrame.new(0, -0.2, -124))
 	return m
@@ -2075,8 +2472,8 @@ end
 local function buildGateSign(parent, A)
 	local w, h = 11, 4.6
 	local cf = A * CFrame.new(0, COL.WallH + 1.6, -(COL.WallOut + 1.5))
-	local part = box(parent, "GateSign", cf, Vector3.new(w, h, 0.6), C.Navy, { Collide = true, Shadow = false })
-	local frame = box(parent, "GateSignFrame", cf * CFrame.new(0, 0, 0.35), Vector3.new(w + 0.8, h + 0.8, 0.4), C.Gold, { Collide = true, Shadow = false })
+	local part = Art.part(parent, "GateSign", cf, Vector3.new(w, h, 0.6), "SlateDark", { Collide = true, Shadow = false })
+	local frame = Art.part(parent, "GateSignFrame", cf * CFrame.new(0, 0, 0.35), Vector3.new(w + 0.8, h + 0.8, 0.4), "Brass", { Collide = true, Shadow = false })
 	frame.CanQuery = false
 	local gui = surfaceGui(part, Enum.NormalId.Front)
 	local p = signPanel(gui, C.TextGold)
@@ -2104,63 +2501,72 @@ local function buildBridge(parent, A, startZ, endZ)
 	local len = endZ - startZ -- island-local z grows towards the island
 	local mid = (startZ + endZ) / 2
 	local hw = BRIDGE_W / 2
-	-- deck: stone slabs (alternating shades), curbs and the crimson runner
-	local slabs = max(4, floor(len / 12 + 0.5))
+	-- Phase 5 (6.4): a stone bridge: Cobblestone deck slabs (~7.5 long, +-0.05 alternation, jittered) between Slate edge
+	-- beams, the crimson Fabric runner, Brick parapets with Marble copings between Slate piers (one every ~15 studs:
+	-- the walkway's detail rhythm with the deck joints), a torch on every fourth pier
+	local slabs = max(4, floor(len / 7.5 + 0.5))
 	local sl = len / slabs
 	for i = 1, slabs do
 		local z = startZ + (i - 0.5) * sl
-		box(m, "Deck", A * CFrame.new(0, -0.3 - 0.5, z), Vector3.new(BRIDGE_W - 1.6, 1, sl), (i % 2 == 0) and C.StoneLight or C.Stone, { Collide = true, Material = MAT.Slate, Shadow = false })
+		Art.part(m, "Deck", A * CFrame.new(0, -0.3 - 0.5 + (i % 2) * 0.05, z), Vector3.new(BRIDGE_W - 1.6, 1, sl), (i % 3 == 0) and "CobbleLight" or "Cobble", { Collide = true, Shadow = false, Jitter = i * 17 })
 	end
 	for _, sx in ipairs({ -1, 1 }) do
-		box(m, "DeckEdge", A * CFrame.new(sx * (hw - 0.4), -0.3 - 0.6, mid), Vector3.new(0.8, 1.2, len), C.StoneDark, { Collide = true, Shadow = false })
+		Art.part(m, "DeckEdge", A * CFrame.new(sx * (hw - 0.4), -0.3 - 0.6, mid), Vector3.new(0.8, 1.2, len), "Slate", { Collide = true, Shadow = false })
 	end
-	box(m, "Runner", A * CFrame.new(0, -0.3 + 0.05, mid), Vector3.new(3.6, 0.1, len - 1), C.Crimson, { Collide = true, Shadow = false })
-	box(m, "Underside", A * CFrame.new(0, -1.8, mid), Vector3.new(BRIDGE_W - 2, 1, len), C.StoneDark, { Shadow = false })
-	-- parapets with torch posts every ~22 studs (gaps at both ends: the street and the forum)
+	Art.part(m, "Runner", A * CFrame.new(0, -0.3 + 0.12, mid), Vector3.new(3.6, 0.1, len - 1), "Carpet", { Collide = true, Shadow = false })
+	Art.part(m, "Underside", A * CFrame.new(0, -1.8, mid), Vector3.new(BRIDGE_W - 2, 1, len), "SlateDark", { Shadow = false })
+	-- piers every ~11 studs (gaps at both ends: the street and the forum), parapets between them
 	local posts = {}
 	local p0, p1 = startZ + 6, endZ - 4
-	local nPosts = max(2, floor((p1 - p0) / 22 + 0.5) + 1)
+	local nPosts = max(2, floor((p1 - p0) / 15 + 0.5) + 1)
 	for i = 0, nPosts - 1 do
 		posts[#posts + 1] = p0 + (p1 - p0) * i / (nPosts - 1)
 	end
 	for _, sx in ipairs({ -1, 1 }) do
 		for i = 1, #posts - 1 do
-			local a, b = posts[i] + 0.9, posts[i + 1] - 0.9
+			local a, b = posts[i] + 0.8, posts[i + 1] - 0.8
 			if b > a then
-				box(m, "Parapet", A * CFrame.new(sx * (hw - 0.4), 0.55, (a + b) / 2), Vector3.new(0.8, 1.7, b - a), C.StoneLight, { Collide = true })
-				box(m, "ParapetCap", A * CFrame.new(sx * (hw - 0.4), 1.5, (a + b) / 2), Vector3.new(1.1, 0.25, b - a), C.Marble, { Collide = true, Shadow = false })
+				Art.part(m, "Parapet", A * CFrame.new(sx * (hw - 0.4), 0.4, (a + b) / 2), Vector3.new(0.8, 1.4, b - a), "Brick", { Collide = true })
+				Art.part(m, "ParapetCap", A * CFrame.new(sx * (hw - 0.4), 1.25, (a + b) / 2), Vector3.new(1.1, 0.3, b - a + 0.2), "Marble", { Collide = true, Shadow = false })
 			end
 		end
 		for i, z in ipairs(posts) do
-			local tm = place(torch(), A * CFrame.new(sx * (hw - 0.4), -0.3, z), m, "BridgeTorch")
-			local e = (i + (sx > 0 and 4 or 0)) % 8 + 1
-			recolor(tm, "Flame", flameColor(elementColor(e)))
-			local flame = tm:FindFirstChild("Flame")
-			if flame and i % 2 == 1 and sx < 0 then
-				pointLight(flame, flameColor(elementColor(e)), 1, 16)
+			if i % 4 == 1 then
+				local tm = place(torch(), A * CFrame.new(sx * (hw - 0.4), -0.3, z), m, "BridgeTorch")
+				local e = (i + (sx > 0 and 4 or 0)) % 8 + 1
+				recolor(tm, "Flame", flameColor(elementColor(e)))
+				local flame = tm:FindFirstChild("Flame")
+				if flame and i % 2 == 1 and sx < 0 then
+					pointLight(flame, Art.Light, 1.2, 16)
+				end
+			else
+				Art.part(m, "Pier", A * CFrame.new(sx * (hw - 0.4), 0.65, z), Vector3.new(1.5, 2.1, 1.5), "Slate", { Collide = true, Shadow = false })
 			end
 		end
 	end
-	-- the entrance arch over the bridge's foot, facing the street; its back says the way home
+	-- the entrance arch over the bridge's foot, facing the street; its back says the way home (round Marble columns on
+	-- Slate plinths, brass capitals with torches, a Marble lintel)
 	local az = startZ + 3
 	for _, sx in ipairs({ -1, 1 }) do
-		box(m, "ArchPillar", A * CFrame.new(sx * (hw + 1.6), 7, az), Vector3.new(2, 16.4, 2), C.StoneLight, { Collide = true })
-		box(m, "ArchPillarBase", A * CFrame.new(sx * (hw + 1.6), -0.6, az), Vector3.new(2.6, 1.2, 2.6), C.StoneDark, { Collide = true, Shadow = false })
-		box(m, "ArchCap", A * CFrame.new(sx * (hw + 1.6), 15.5, az), Vector3.new(2.6, 0.6, 2.6), C.Gold, { Shadow = false })
-		local fl = box(m, "Flame", A * CFrame.new(sx * (hw + 1.6), 16.4, az) * CFrame.Angles(0, math.rad(45), 0), Vector3.new(1, 1.2, 1), flameColor(C.Crimson), { Material = MAT.Neon, Shadow = false })
+		local foot = A * CFrame.new(sx * (hw + 1.6), -0.3, az)
+		Art.part(m, "ArchPillarBase", foot * CFrame.new(0, 0, 0), Vector3.new(2.8, 1.4, 2.8), "Slate", { Collide = true, Shadow = false })
+		Art.part(m, "ArchPillarBand", foot * CFrame.new(0, 0.8, 0), Vector3.new(3, 0.25, 3), "MarbleShade", { Shadow = false })
+		Art.cyl(m, "ArchPillar", foot * CFrame.new(0, 0.9, 0), 14.4, 2.1, "Marble", { Collide = true })
+		Art.part(m, "ArchCap", A * CFrame.new(sx * (hw + 1.6), 15.5, az), Vector3.new(2.6, 0.6, 2.6), "Brass", { Shadow = false })
+		local fl = Art.part(m, "Flame", A * CFrame.new(sx * (hw + 1.6), 16.4, az) * CFrame.Angles(0, rad(45), 0), Vector3.new(1, 1.2, 1), flameColor(C.Crimson), { Material = MAT.Neon, Shadow = false })
 		emitter(fl, { Color = ColorSequence.new(rgb(255, 220, 160), C.Crimson), Rate = 3, Speed = NumberRange.new(1, 2), EmissionDirection = Enum.NormalId.Top, SpreadAngle = Vector2.new(15, 15) })
 	end
-	box(m, "ArchLintel", A * CFrame.new(0, 14.6, az), Vector3.new(BRIDGE_W + 6, 1.2, 2.4), C.Marble, { Collide = true })
-	local sign = box(m, "ArchSign", A * CFrame.new(0, 11.5, az), Vector3.new(12, 4, 0.6), C.Navy, { Collide = true, Shadow = false })
-	box(m, "ArchSignTrim", A * CFrame.new(0, 13.75, az), Vector3.new(12.6, 0.4, 0.9), C.Gold, { Shadow = false })
+	Art.part(m, "ArchLintel", A * CFrame.new(0, 14.6, az), Vector3.new(BRIDGE_W + 6, 1.2, 2.4), "Marble", { Collide = true })
+	local sign = Art.part(m, "ArchSign", A * CFrame.new(0, 11.5, az), Vector3.new(12, 4, 0.6), "SlateDark", { Collide = true, Shadow = false })
+	Art.part(m, "ArchSignTrim", A * CFrame.new(0, 13.75, az), Vector3.new(12.6, 0.4, 0.9), "Brass", { Shadow = false })
 	-- the arch's local frame: Front (-Z) faces the street (the lobby)
 	archSign(sign, Enum.NormalId.Front, "BATTLE ARENA", "Duels " .. GLYPH.Dot .. " Boss Raids " .. GLYPH.Dot .. " Trophies")
 	archSign(sign, Enum.NormalId.Back, "TO THE PLAZA", "Homes " .. GLYPH.Dot .. " Portals " .. GLYPH.Dot .. " Shop")
 	-- puffs under the open stretch next to the island
-	local puff = puffTemplate(1.3)
+	local puff = Art.shadeCloud(puffTemplate(1.3), CFrame.new(), 13)
 	for _, z in ipairs({ endZ - 14, endZ - 34 }) do
 		if z > startZ + 20 then
-			place(puff, A * CFrame.new(0, -1.6, z), m, "BridgePuff")
+			Art.tag(place(puff, A * CFrame.new(0, -1.6, z), m, "BridgePuff"), "Exempt")
 		end
 	end
 	return m
@@ -2170,14 +2576,13 @@ end
 -- The Gate Court gates (Phase 5, 6.2): Portal_Ring and Portal_Arena via WorldStyle.BuildGate, parented to
 -- LobbyInfo.GatesFolder; the forum's Return gate. ONE helper table keeps the main chunk under the 200-locals limit.
 ----------------------------------------------------------------------
-local WorldStyle = loadShared("WorldStyle")
 
 -- Phase 4: the Champion Ring (Portal_Ring in the Gate Court, the ring pockets).
 local Ring = {
 	Color = rgb(250, 190, 56), -- champion gold (trim, crown)
 	Accent = rgb(156, 96, 238), -- royal violet (glows, gems)
 	PortalBudget = 120, -- Portal_Ring parts (6.2: every gate <= 120)
-	PocketBudget = 220,
+	PocketBudget = 250, -- Phase 5 art pass (stone deck + kerb): 10.3 counts up to 600 per pocket in the client total
 	Title = "Champion Ring",
 	Info = "Beat the champion, meet a stronger one",
 	EmptyBoard = "No record yet: be the first!",
@@ -2423,13 +2828,20 @@ function Ring.crowdStand()
 		return Ring.standTpl
 	end
 	local m = newModel(nil, "CrowdStand")
-	box(m, "StandStep", CFrame.new(0, 0.75, 1.9), Vector3.new(34, 1.5, 3.8), C.Cloud, { Collide = true, Shadow = false })
-	box(m, "StandStep", CFrame.new(0, 1.75, 5.7), Vector3.new(28, 3.5, 3.8), C.CloudShade, { Collide = true, Shadow = false })
+	-- Phase 5: a stone bleacher (Slate steps with Marble nosings on a plinth); the cloud puffs on it are characters
+	-- (like pets: their own soft look, tagged NC_StyleExempt)
+	Art.part(m, "StandStep", CFrame.new(0, 0.75, 1.9), Vector3.new(34, 1.5, 3.8), "Stone", { Collide = true, Shadow = false })
+	Art.part(m, "StandStep", CFrame.new(0, 1.75, 5.7), Vector3.new(28, 3.5, 3.8), "StoneDark", { Collide = true, Shadow = false })
+	Art.part(m, "StandNosing", CFrame.new(0, 1.58, 0.15), Vector3.new(34.2, 0.18, 0.5), "Marble", { Shadow = false })
+	Art.part(m, "StandNosing", CFrame.new(0, 3.58, 3.95), Vector3.new(28.2, 0.18, 0.5), "Marble", { Shadow = false })
+	local puffs = newModel(m, "CrowdPuffs")
+	Art.tag(puffs, "Exempt")
 	local spots = { { -12, 1.5, 1.9 }, { -4, 1.5, 1.9 }, { 4, 1.5, 1.9 }, { 12, 1.5, 1.9 }, { -8, 3.5, 5.7 }, { 0, 3.5, 5.7 }, { 8, 3.5, 5.7 } }
 	for i, sp in ipairs(spots) do
 		local tint = Ring.PuffTints[(i - 1) % #Ring.PuffTints + 1]
 		local base = CFrame.new(sp[1], sp[2], sp[3]) * CFrame.Angles(0, rad((i % 3 - 1) * 8), 0)
 		local shade = tint:Lerp(C.MistDark, 0.22)
+		local m = puffs
 		box(m, "PuffBody", base * CFrame.new(0, 1.1, 0), Vector3.new(3.4, 2.2, 2.4), tint, { Shadow = false })
 		box(m, "PuffTop", base * CFrame.new(0, 2.6, 0.1), Vector3.new(2.6, 0.8, 2.1), tint, { Shadow = false })
 		box(m, "PuffBump", base * CFrame.new(-0.3, 3.3, 0.2), Vector3.new(1.4, 0.7, 1.5), tint, { Shadow = false })
@@ -2445,15 +2857,15 @@ end
 
 -- a crown post (four on the diagonals): a stone post on a dark base, a gold crown with four points and a violet gem
 function Ring.crownPost(m, cf, lit)
-	box(m, "PostBase", cf * CFrame.new(0, 0.6, 0), Vector3.new(3.4, 1.2, 3.4), C.StoneDark, { Collide = true, Shadow = false })
-	box(m, "Post", cf * CFrame.new(0, 4, 0), Vector3.new(2, 5.6, 2), C.Marble, { Collide = true, Shadow = false })
-	box(m, "CrownBand", cf * CFrame.new(0, 7.3, 0), Vector3.new(3.2, 1.1, 3.2), Ring.Color, { Collide = true, Shadow = false })
+	Art.part(m, "PostBase", cf * CFrame.new(0, 0.6, 0), Vector3.new(3.4, 1.2, 3.4), "Slate", { Collide = true, Shadow = false })
+	Art.cyl(m, "Post", cf * CFrame.new(0, 1.2, 0), 5.6, 2, "Marble", { Collide = true })
+	Art.part(m, "CrownBand", cf * CFrame.new(0, 7.3, 0), Vector3.new(3.2, 1.1, 3.2), Ring.Color, { Material = MAT.Metal, Collide = true, Shadow = false })
 	for _, c in ipairs({ { -1, -1 }, { 1, -1 }, { -1, 1 }, { 1, 1 } }) do
-		box(m, "CrownPoint", cf * CFrame.new(c[1] * 1.25, 8.35, c[2] * 1.25), Vector3.new(0.7, 1, 0.7), Ring.Color, { Shadow = false })
+		Art.part(m, "CrownPoint", cf * CFrame.new(c[1] * 1.25, 8.35, c[2] * 1.25), Vector3.new(0.7, 1, 0.7), Ring.Color, { Material = MAT.Metal, Shadow = false })
 	end
-	local gem = box(m, "CrownGem", cf * CFrame.new(0, 8.4, 0) * CFrame.Angles(0, math.rad(45), 0), Vector3.new(1.2, 1.2, 1.2), Ring.Accent, { Material = MAT.Neon, Shadow = false })
+	local gem = Art.part(m, "CrownGem", cf * CFrame.new(0, 8.4, 0) * CFrame.Angles(0, rad(45), 0), Vector3.new(1.2, 1.2, 1.2), Ring.Accent, { Material = MAT.Neon, Shadow = false })
 	if lit then
-		pointLight(gem, Ring.Accent, 1, 18)
+		pointLight(gem, Art.Light, 1.2, 16)
 	end
 end
 
@@ -2476,44 +2888,51 @@ function Ring.pocketTemplate()
 		return sqrt(x * x + z * z) - 46
 	end
 	local g = cloudGrid({
-		V = 4,
+		V = 6,
 		Sdf = sdf,
 		Bounds = { -50, 50, -50, 50 },
-		Tiers = { { Inset = 0, H = 1 }, { Inset = 8, H = 1 }, { Inset = 20, H = 2 } },
+		Tiers = { { Inset = 0, H = 1 }, { Inset = 12, H = 1 } },
 		Puffs = puffs,
 		Carve = function(x, y, z)
 			return y > 0 and sdf(x, z) < -3
 		end,
 		Seed = 14,
 	})
-	VX.Build(g, { V = 4, Pal = CLOUD_PAL, Name = "RingCloud", CF = CFrame.new(0, -1.2 - 2, 0), Collide = true, MaxParts = 60, Parent = m })
-	-- the floor: eight long slabs turned 22.5 degrees apart (the 16-gon), cream canvas
+	Art.shadeCloud(VX.Build(g, { V = 6, Pal = CLOUD_PAL, Name = "RingCloud", CF = CFrame.new(0, -1.2 - 3, 0), Collide = true, MaxParts = 40, Parent = m }), CFrame.new(), 26)
+	-- Phase 5 (6.4): a stone deck round the ring (Cobblestone apron with a kerb on its 16 edges) on the cloud
+	Art.ring(m, "PocketApron", CFrame.new(), Ring.RimOut - 0.5, 45.5, -0.15, 1.1, "Cobble", { Seed = 707 })
+	for j = 0, 15 do
+		local seg = CFrame.Angles(0, j * STEP16, 0)
+		Art.kerb(m, seg * CFrame.new(0, -0.15, -45.5), 2 * 45.5 * TAN16)
+	end
+	-- the floor: eight long slabs turned 22.5 degrees apart (the 16-gon), warm sand
 	local slabW = 2 * Ring.FloorA * TAN16 + 0.4
 	for j = 0, 7 do
-		box(m, "RingFloor", CFrame.Angles(0, j * STEP16, 0) * CFrame.new(0, -0.5, 0), Vector3.new(slabW, 1, Ring.FloorA * 2), C.Sand, { Collide = true, Material = MAT.Sand, Shadow = false })
+		box(m, "RingFloor", CFrame.Angles(0, j * STEP16, 0) * CFrame.new(0, j * 0.004 - 0.5, 0), Vector3.new(slabW, 1, Ring.FloorA * 2), Art.P.Sand, { Collide = true, Material = MAT.Sand, Shadow = false })
 	end
-	-- a warmer sand ring inside the rim (the fighters' lanes) around the pale canvas in the middle
-	disc16(m, "RingCanvas", CFrame.new(), 23, 0.04, 0.3, C.Marble, MAT.Sand, false)
-	-- the gold rim (a low curb all around)
-	ring16(m, "RingRim", CFrame.new(), Ring.FloorA - 0.4, Ring.RimOut, 0.7, 1.9, Ring.Color, nil, true)
+	-- a paler canvas in the middle (the fighters' lanes stay warm sand)
+	disc16(m, "RingCanvas", CFrame.new(), 23, 0.04, 0.3, Art.P.SandLight, MAT.Sand, false)
+	-- the rim: a Marble curb with a thin champion-gold Neon inlay all around
+	ring16(m, "RingRim", CFrame.new(), Ring.FloorA - 0.4, Ring.RimOut, 0.7, 1.9, Art.P.Marble, MAT.Marble, true)
+	ring16(m, "RingRimInlay", CFrame.new(), Ring.FloorA + 0.9, Ring.FloorA + 1.4, 0.74, 0.06, Ring.Color, MAT.Neon, false)
 	-- the crown in the middle: a violet disc with a gold crown pointing at the champion's side (+Z)
-	disc16(m, "EmblemDisc", CFrame.new(), 7.5, 0.06, 0.2, Ring.Accent:Lerp(C.Navy, 0.12), nil, false)
+	disc16(m, "EmblemDisc", CFrame.new(), 7.5, 0.06, 0.2, Art.tone(Ring.Accent, 0.44, 0.45, 0.7), MAT.Slate, false)
 	local emblem = { { 0, -3.4, 9, 1.8 }, { 0, 0.4, 2, 6.2 }, { -3.6, -0.6, 1.8, 4.2 }, { 3.6, -0.6, 1.8, 4.2 } }
 	for _, e in ipairs(emblem) do
 		-- { x, z centre, width, depth }
-		box(m, "EmblemCrown", CFrame.new(e[1], 0.1, e[2]), Vector3.new(e[3], 0.12, e[4]), Ring.Color, { Shadow = false })
+		box(m, "EmblemCrown", CFrame.new(e[1], 0.12, e[2]), Vector3.new(e[3], 0.12, e[4]), Art.P.Gold, { Material = MAT.Metal, Shadow = false })
 	end
 	for _, e in ipairs({ { 0, 4.3 }, { -3.6, 2.3 }, { 3.6, 2.3 } }) do
-		box(m, "EmblemGem", CFrame.new(e[1], 0.12, e[2]) * CFrame.Angles(0, math.rad(45), 0), Vector3.new(1.3, 0.12, 1.3), rgb(255, 244, 214), { Material = MAT.Neon, Shadow = false })
+		box(m, "EmblemGem", CFrame.new(e[1], 0.14, e[2]) * CFrame.Angles(0, math.rad(45), 0), Vector3.new(1.3, 0.12, 1.3), rgb(255, 244, 214), { Material = MAT.Neon, Shadow = false })
 	end
 	-- four crown posts on the diagonals, two of them lit
 	local postR = Ring.RimOut + 2
 	for j = 0, 3 do
 		local a = rad(45 + 90 * j)
-		Ring.crownPost(m, CFrame.new(cos(a) * postR, -1.2, sin(a) * postR), j % 2 == 0)
+		Ring.crownPost(m, CFrame.new(cos(a) * postR, -0.15, sin(a) * postR), j % 2 == 0)
 	end
 	-- the cheering crowd on its cloud bleacher behind the champion's side (+Z)
-	place(Ring.crowdStand(), CFrame.new(0, -1.2, Ring.FloorA + 4.6), m, "Crowd")
+	place(Ring.crowdStand(), CFrame.new(0, -0.15, Ring.FloorA + 4.6), m, "Crowd")
 	-- confetti over the crowd (particles only: no server animation)
 	local confetti = box(m, "Confetti", CFrame.new(0, 14, 0), Vector3.new(80, 1, 80), Ring.Color, { Transparency = 1, Shadow = false })
 	confetti.CanQuery = false
@@ -2528,10 +2947,11 @@ function Ring.pocketTemplate()
 	})
 	-- the fighter's pad (-Z) and the champion's pad (+Z, gold with a violet glow)
 	local hf = Ring.FloorA
-	box(m, "SpawnPad", CFrame.new(0, 0.1, -(hf - 7)), Vector3.new(7, 0.4, 7), C.Gold, { Collide = true, Shadow = false })
+	box(m, "SpawnPad", CFrame.new(0, 0.1, -(hf - 7)), Vector3.new(7, 0.4, 7), Art.P.Brass, { Collide = true, Material = MAT.Metal, Shadow = false })
 	box(m, "SpawnGlow", CFrame.new(0, 0.32, -(hf - 7)), Vector3.new(5.6, 0.2, 5.6), rgb(96, 196, 108), { Material = MAT.Neon, Shadow = false })
-	box(m, "ChampionPad", CFrame.new(0, 0.1, hf - 7), Vector3.new(7, 0.4, 7), Ring.Color, { Collide = true, Shadow = false })
+	box(m, "ChampionPad", CFrame.new(0, 0.1, hf - 7), Vector3.new(7, 0.4, 7), Art.P.Brass, { Collide = true, Material = MAT.Metal, Shadow = false })
 	box(m, "ChampionGlow", CFrame.new(0, 0.32, hf - 7), Vector3.new(5.6, 0.2, 5.6), Ring.Accent, { Material = MAT.Neon, Shadow = false })
+	m:SetAttribute("ArtFixes", Art.enforce(m))
 	Ring.tpl = m
 	return m
 end
@@ -2963,6 +3383,9 @@ function ArenaBuilder.Build(lobbyInfo)
 	lobbyCF = lobbyCF or returnCF
 	returnCF = returnCF or lobbyCF
 
+	-- the 6.4 safety net (big SmoothPlastic, saturation / value of big faces, small-part shadows); 0 when every
+	-- piece above follows the rules (the art audit of smoke_p3_arenaworld checks the result)
+	model:SetAttribute("ArtFixes", Art.enforce(model))
 	model.Parent = Workspace
 	connectPrompts()
 

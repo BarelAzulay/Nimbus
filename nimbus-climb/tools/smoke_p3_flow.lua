@@ -14,14 +14,16 @@
 --                   Garden, the home chapter of the tutorial finished, no Teams / Battle) join: ArenaState on join (the
 --                   contract shape), ProfileSync Teams { Presets, Active, Slots } + Battle, Cy's migrated profile (3
 --                   empty presets, Slots 4 from his prestige, a zeroed record, the Phase 2 data intact) and his tutorial
---                   resuming at chapter 3 ("arena", the arrow at the forum). Teams through BattleRequest: the 4th slot
+--                   resuming at chapter 3 ("arena", the arrow at the Arena gate). Teams through BattleRequest: the 4th slot
 --                   refused before Prestige 1 (a side toast, nothing stored), a duplicate and a pet not owned refused,
 --                   then 3 pets saved (toast, TeamsChanged once, ProfileSync); Bo keeps a second preset. Cy claims his
 --                   home (E at a free gate: his Phase 2 build comes back), buys the Arena Gate on its pad (a "Coming
 --                   soon" pad in Phase 2) and walks through it to the arena ("arena" -> "team", the Team tile rings);
 --                   his Garden pet MAY join (Phase 4: only a training pet is busy), four pets are accepted (slot 4 at
---                   Prestige 1) -> "trial" (the arrow at the Trial Portal); his migrated Press1 = 2 reads as a Berry Bush
---   (p3flow_trials was deleted with the Trials: Phase 5 contract 10.5; the flow owner (W4) rebuilds the chapter on the dungeon)
+--                   Prestige 1) -> Phase 5: a team of 3 -> "dungeon" (the arrow at the Dungeon portal): Cy clears floor 1
+--                   solo through DungeonRequest (the shared driver of smoke_p5_flow.lua) -> "raid"; his migrated
+--                   Press1 = 2 reads as a level-2 Berry Farm
+--   (p3flow_trials was deleted with the Trials: Phase 5 contract 10.5; its chapter step is the dungeon now)
 --   p3flow_duels    Ava challenges Bo through the remote ("Lobby": Invites / Sent), Bo accepts: a duel on a ring with
 --                   Hal watching nearby (a spectator 'Start' / 'End'); the end pays trophies / tokens / XP / PvP counters
 --                   once and the leaderboard (ArenaState + the trophy board in the arena) shows the winner. Dee and Eli
@@ -227,17 +229,21 @@ if CONTEXT ~= "server" then
 					trialId = payload.BattleId -- Ava's duel with Bo (Phase 5: the Trials are gone)
 				elseif kind == "Snapshot" and payload.BattleId == trialId and not seen.trialHud then
 					seen.snaps = seen.snaps + 1
-					if seen.snaps == 12 then
+					if seen.snaps == 3 then
 						advance(0.3)
 						local b = BCtl.GetBattle()
+						-- Phase 5 HUD (4.7): the fighter card + two helper portraits (Root.Team.Fighter, Root.Team.Helpers.Helper1/2)
 						local rows = 0
-						for slot = 1, 4 do
-							if shown(at(battleGui(), "Root.Team.Row" .. slot)) then
+						if shown(at(battleGui(), "Root.Team.Fighter")) then
+							rows = rows + 1
+						end
+						for slot = 1, 2 do
+							if shown(at(battleGui(), "Root.Team.Helpers.Helper" .. slot)) then
 								rows = rows + 1
 							end
 						end
 						seen.trialHud = {
-							ok = b ~= nil and b.Id == trialId and b.Mode == "Trial" and b.Fighter == true and b.Spectator ~= true and BCtl.IsHudVisible(),
+							ok = b ~= nil and b.Id == trialId and b.Mode == "Duel" and b.Fighter == true and b.Spectator ~= true and BCtl.IsHudVisible() and rows == 3,
 							rows = rows,
 							top = hasText(at(battleGui(), "Root.TopCard"), "DUEL"),
 							models = b and b.Models or 0,
@@ -295,9 +301,10 @@ if CONTEXT ~= "server" then
 			end
 		end, 0.25)
 		local th = seen.trialHud
-		T.check(th ~= nil and th.ok and th.top, "client flow: Ava's real duel messages: BattleController draws her as a fighter (HUD: DUEL)",
+		T.check(th ~= nil and th.ok and th.top, "client flow: Ava's real duel messages: BattleController draws her as the fighter with her two helpers (Team.Fighter + Helpers.Helper1/2, HUD: DUEL)",
 			th and ("rows " .. th.rows .. " top " .. tostring(th.top)) or "never reached")
-		T.check(th ~= nil and th.models == th.units and th.units >= 2, "client flow: ...every unit of the real 'Start' has a model", th and (th.models .. "/" .. th.units) or "")
+		T.check(th ~= nil and th.units == 6 and th.models == th.units - 2, "client flow: ...every unit of the real 'Start' has a model except Bo's two benched helpers (another player's helpers are not drawn, B3)",
+			th and (th.models .. "/" .. th.units) or "")
 		T.check(seen.trialEnd ~= nil and seen.trialEnd.ok, "client flow: ...the real 'End' shows the result card with the tokens the server paid",
 			seen.trialEnd and tostring(seen.trialEnd.tokens) or "never reached")
 		T.check(seen.sent == true, "client flow: the real 'Lobby' of her challenge: ArenaController keeps it and shows the Sent card (waiting for Bo)")
@@ -315,7 +322,7 @@ if CONTEXT ~= "server" then
 		advance(12)
 		T.check(BCtl.GetBattle() == nil and not BCtl.IsHudVisible(), "client flow: after the replay no battle is left on the client")
 
-		-- Cy's real chapter-3 tutorial states: the card follows arena -> team -> trial -> raid -> done
+		-- Cy's real chapter-3 tutorial states: the card follows arena -> team -> dungeon -> raid -> done
 		local ids = {}
 		local guided = {}
 		for _, e in ipairs(cyStates) do
@@ -344,7 +351,7 @@ if CONTEXT ~= "server" then
 		KC.toClient("ArenaState", { Leaderboard = {}, Next = { Kind = "BossRaid", BossId = "storm_titan", Name = "Storm Titan", StartsIn = 1200, Announced = false } })
 		KC.toClient("BattleState", "Lobby", { Queue = { Queued = false, Waiting = 0 }, Invites = {} })
 		local order = table.concat(ids, ">")
-		T.check(order:find("arena>team", 1, true) ~= nil, "client flow: Cy's real TutorialState messages walk the card through arena > team (the Phase 5 chapter is the tutorial owner's, W4)", order)
+		T.check(order:find("arena>team>dungeon>raid", 1, true) ~= nil, "client flow: Cy's real TutorialState messages walk the card through the Phase 5 chapter 3: arena > team > dungeon > raid", order)
 		T.check(guided.arena == true, "client flow: ...the world guide points at the arena target the server resolved (forum)", tostring(guided.arena))
 		advance(8)
 		T.eq(#Mock.Errors - errors0, 0, "client flow: no client script errors")
@@ -1310,11 +1317,12 @@ S.p3flow_arrive = scenario("p3flow_arrive", function()
 	T.check(data.GetCash(cy) == 4321 and data.GetGems(cy) == 77 and tokens(cy) == 2500 and chome and chome.Prestige == 1 and chome.Stations.Press1 == 2
 		and data.GetPetLevel(cy, TEAMS.Cy[1]) == 12 and cprof.Pets[TEAMS.CyGarden] == 1 and chome.Garden[1] == TEAMS.CyGarden,
 		"flow arrive: ...his Phase 2 data is intact (Cash, Gems, tokens, the prestige home, the Garden pet, pet levels)")
-	-- Phase 4: the migrated save keeps Press1 = 2, which now means a level-2 Berry Bush (the kind Plant)
+	-- Phase 5: the migrated save keeps Press1 = 2, which now means a level-2 Berry Farm (the kind Farm; the P5Home fold
+	-- never lowers it)
 	local TCat0 = TC()
 	local press1 = TCat0 and TCat0.Get and TCat0.Get("Press1")
-	T.check(chome and chome.Stations.Press1 == 2 and press1 and press1.Name == "Berry Bush" and press1.Kind == "Plant",
-		"flow arrive: ...his Press1 = 2 is kept and reads as a level-2 Berry Bush (Phase 4 food plant)", press1 and tostring(press1.Name) or "no def")
+	T.check(chome and chome.Stations.Press1 == 2 and press1 and press1.Name == "Berry Farm" and press1.Kind == "Farm",
+		"flow arrive: ...his Press1 = 2 is kept and reads as a level-2 Berry Farm (Phase 5)", press1 and tostring(press1.Name) or "no def")
 	local sc = lastSync(cy, mark)
 	T.check(type(sc) == "table" and type(sc.Teams) == "table" and sc.Teams.Slots == 3 and type(sc.Battle) == "table",
 		"flow arrive: ...and his ProfileSync carries Teams (Slots 3) + Battle")
@@ -1323,8 +1331,10 @@ S.p3flow_arrive = scenario("p3flow_arrive", function()
 	local ts = tutorial(cy)
 	T.check(ts and ts.Id == "arena" and ts.Chapter == 3 and ts.Step == start3 and ts.Done == false,
 		"flow arrive: Cy (home chapter done in Phase 2) resumes the tutorial at chapter 3 'arena'", ts and (tostring(ts.Id) .. " step " .. tostring(ts.Step)) or "no state")
-	T.check(ts and ts.Target and ts.Target.Kind == "Spot" and near(ts.Target.Position, info.Spawn.Position, 1),
-		"flow arrive: ...its arrow points at the arena's forum (ArenaInfo.Spawn)")
+	local gatePos = (info.ArenaPortal and info.ArenaPortal:IsA("BasePart") and info.ArenaPortal.Position) or info.Spawn.Position
+	T.check(ts and ts.Target and typeof(ts.Target.Position) == "Vector3" and (near(ts.Target.Position, gatePos, 8) or near(ts.Target.Position, info.Spawn.Position, 1)),
+		"flow arrive: ...its arrow points at the Arena gate of the Gate Court (ArenaInfo.ArenaPortal; Phase 5)",
+		ts and ts.Target and typeof(ts.Target.Position) == "Vector3" and string.format("%.1f studs from the gate", (ts.Target.Position - gatePos).Magnitude) or "no target")
 	local tsMsgs = tutorialStates(cy, mark)
 	T.check(#tsMsgs > 0 and tsMsgs[#tsMsgs].Id == "arena", "flow arrive: ...and TutorialState told his client")
 
@@ -1438,6 +1448,30 @@ S.p3flow_arrive = scenario("p3flow_arrive", function()
 	T.check(ts and ts.Id ~= "team", "flow tutorial: a battle team moves the tutorial on from 'team' (the next step is the tutorial owner's, W4)", ts and tostring(ts.Id) or "nil")
 	F.facts.cyTeam = { TEAMS.Cy[1], TEAMS.Cy[2], TEAMS.Cy[3] }
 	F.facts.cyTrainee = TEAMS.Cy[4]
+	-- Phase 5 chapter 3: 'dungeon' (was 'trial'): Cy clears Dungeon floor 1 solo through DungeonRequest (the shared driver
+	-- of smoke_p5_flow.lua walks his character and presses ATTACK) -> 'raid'
+	ts = tutorial(cy)
+	local FK = _G.FlowKit5
+	local dinfo = FK and FK.dinfo and FK.dinfo()
+	T.check(ts and ts.Id == "dungeon" and ts.Target and typeof(ts.Target.Position) == "Vector3" and dinfo and K.planar(ts.Target.Position, (dinfo.Pad or dinfo.PromptPart).Position) < 12,
+		"flow tutorial: the team moves Cy's tutorial to 'dungeon' (the arrow on the Dungeon portal)", ts and tostring(ts.Id) or "nil")
+	if T.check(FK ~= nil and dinfo ~= nil, "flow tutorial: (precondition) the Phase 5 flow kit (smoke_p5_flow.lua) and DungeonInfo are loaded") then
+		local tc0 = tokens(cy)
+		FK.toPad(cy)
+		FK.dreq(cy, "Solo", 1)
+		local run = FK.runOf(cy)
+		if T.check(run ~= nil, "flow tutorial: Cy starts Dungeon floor 1 solo at its portal") then
+			local rooms = FK.clearRooms(run, { cy }, { remote = true })
+			FK.dreq(cy, "Chest")
+			advance(BC().Dungeon.TreasureSeconds + 6)
+			T.check(rooms == 4 and data.GetDungeon(cy).Best == 1 and tokens(cy) > tc0, "flow tutorial: ...his team of three clears it (Best 1, the loot paid)", tostring(rooms) .. " rooms")
+		end
+		waitFor(function()
+			return stepId(cy) ~= "dungeon"
+		end, 3)
+		ts = tutorial(cy)
+		T.check(ts and ts.Id == "raid", "flow tutorial: the floor-1 clear (DungeonWon) moves Cy on to 'raid'", ts and tostring(ts.Id) or "nil")
+	end
 	toLobby(cy, 6)
 	toLobby(ava)
 	toLobby(bo, -6)
@@ -1483,6 +1517,7 @@ S.p3flow_duels = scenario("p3flow_duels", function()
 	local ta0, tb0 = tokens(ava), tokens(bo)
 	local xpA0, xpB0 = xpOf(ava, data.ActiveTeamKeys(ava)), xpOf(bo, data.ActiveTeamKeys(bo))
 	local m2 = K.logSize()
+	F.record = true -- the client half replays the first seconds of Ava's duel (her Phase 5 fighter HUD)
 	request(bo, "ChallengeReply", ava.UserId, true)
 	advance(0.2)
 	local id = ava:GetAttribute("InBattle")
@@ -1505,6 +1540,7 @@ S.p3flow_duels = scenario("p3flow_duels", function()
 	advance(2.2)
 	local sh = lastMsg(hal, "Start", m2)
 	T.check(sh and sh.BattleId == id and sh.Spectator == true and sh.Side == 0, "flow duels: Hal, standing nearby in the arena, watches it ('Start' Spectator)")
+	F.record = nil
 	-- the fight (Phase 5: both characters walk in and press ATTACK / ELEMENT / SPECIAL)
 	drvPlay({ drvTracker(ava, m2), drvTracker(bo, m2) }, 135, function()
 		return F.w.find(id) ~= nil

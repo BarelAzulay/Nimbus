@@ -15,10 +15,15 @@
 --                     the bridge link; readable world text
 --   p3arena_boards    (booted) ApplyArenaState draws the event board and the trophy leaderboard; junk never errors
 --   p3arena_pockets   (booted) BuildPocket(index[, "Ring"]): the Champion Ring pocket only (Phase 5: nil / unknown kinds
---                     build it too): contract shape, Size = BattleCatalog.Zones.Ring 44 x 44, 100..220 parts, far out
+--                     build it too): contract shape, Size = BattleCatalog.Zones.Ring 44 x 44, 100..250 parts, far out
 --                     in the sky, a Ring zone found by ZoneAt, the square fits at any rotation, the spawn on the -Z side,
 --                     a gold rim / four crown posts / a crowd of cloud puffs; the same index returns the same pocket;
 --                     FreePocket removes it (and its zone); junk indices / zones never error
+--   p3arena_art       (booted; Phase 5 arenaart, 6.4) the art rules on the island and the Champion Ring pocket:
+--                     WorldStyle materials, no big SmoothPlastic, muted big faces, warm lanterns, no small-part shadows,
+--                     round tall posts, a kerb + lip round the edge (open at the bridge), the avenue's 4..6-stud tiles
+--                     (+-0.05, jittered), mown lawn stripes, NC_Detail decor every ~12 studs, sky-shaded exempt clouds,
+--                     <= 2800 / <= 250 parts, the safety net idle (ArtFixes = 0)
 --   p3arena_teleport  (booted) the home Arena Gate: the owner standing at the gate lands on the arena's Spawn; refused
 --                     for another player, from far away, in a match, in a battle, and during the cooldown; Phase 5:
 --                     Portal_Arena's ArenaPortalPrompt -> Spawn, the Return gate -> LobbyCFrame in front of Portal_Arena;
@@ -602,8 +607,10 @@ S.p3arena_boards = guarded("p3arena_boards", function()
 	end
 	advance(2)
 	local idle = visibleText(board)
-	-- EventService draws its next raid (NEXT: BOSS RAID, the boss, a countdown); without it the board shows the schedule
-	T.check(idle:find("NEXT: BOSS RAID", 1, true) ~= nil or idle:find("Every %d+ minutes") ~= nil or idle:find("BOSS RAIDS") ~= nil,
+	-- EventService draws its next raid (NEXT: BOSS RAID, the boss, a countdown); without it the board shows the schedule;
+	-- a scheduled raid that happens to be running when this scenario starts (the shared game clock of a full run) shows
+	-- BOSS RAID LIVE, which is right too
+	T.check(idle:find("NEXT: BOSS RAID", 1, true) ~= nil or idle:find("Every %d+ minutes") ~= nil or idle:find("BOSS RAIDS") ~= nil or idle:find("BOSS RAID LIVE", 1, true) ~= nil,
 		"boards: the event board shows when the next Boss Raid comes (EventService's state, or the schedule without it)", idle)
 
 	local BC = battleCatalog()
@@ -754,7 +761,7 @@ S.p3arena_pockets = guarded("p3arena_pockets", function()
 		T.check(abs(ring.Size.X - gx) < 0.01 and abs(ring.Size.Z - gz) < 0.01 and abs(gx - 44) < 0.01, "ring pocket: Size is BattleCatalog.Zones.Ring (44 x 44)", tostring(ring.Size))
 		local nr = #partsOf(ring.Model)
 		T.check(nr >= 100 and nr <= 250, "ring pocket: a detailed pocket within the 100..250 window", nr .. " parts")
-		T.check(nr <= 220, "ring pocket: within its 220-part budget (contract 3.8)", nr .. " parts")
+		T.check(nr <= 250, "ring pocket: within its budget (Phase 5 art pass: 250; 10.3 counts 600 per pocket)", nr .. " parts")
 		local rzone = AB.ZoneAt(ring.CFrame.Position + Vector3.new(0, 2, 0))
 		T.check(rzone ~= nil and rzone:IsDescendantOf(ring.Model) and rzone:GetAttribute("Mode") == "Ring" and rzone:GetAttribute("ZoneId") == "Ring" and CollectionService:HasTag(rzone, "NC_BattleZone"),
 			"ring pocket: ZoneAt(its centre) is its NC_BattleZone with Mode = \"Ring\", ZoneId = \"Ring\"", rzone and (tostring(rzone:GetAttribute("Mode")) .. "/" .. tostring(rzone:GetAttribute("ZoneId"))) or "none")
@@ -995,6 +1002,272 @@ S.p3arena_teleport = guarded("p3arena_teleport", function()
 	K.removePlayers(players)
 	K.flushErrors("p3arena_teleport")
 	K.flushWarnings("p3arena_teleport")
+end)
+
+----------------------------------------------------------------------------------------------------
+-- scenario: the Phase 5 art pass (arenaart, 6.4) on the island and the Champion Ring pocket
+----------------------------------------------------------------------------------------------------
+-- The 6.4 audit of one model: rules 1 (WorldStyle materials, no big SmoothPlastic), 2 (big faces: saturation <= 0.45
+-- unless a thin Neon inlay / a piece <= 8 studs^3; value 0.35..0.9), 7 (lights warm, Brightness <= 1.5, Range <= 16,
+-- no shadows) and 8 (parts < 4 studs cast no shadow); the voxel clouds / the crowd are skipped by the exempt tag.
+local function artAudit(root, label, WS)
+	local exemptTag = (WS and WS.Tags and WS.Tags.Exempt) or "NC_StyleExempt"
+	local function exempt(p)
+		local cur = p
+		while cur and cur ~= game do
+			if CollectionService:HasTag(cur, exemptTag) then
+				return true
+			end
+			cur = cur.Parent
+		end
+		return false
+	end
+	local function hsv(c)
+		local hi, lo = max(c.R, c.G, c.B), min(c.R, c.G, c.B)
+		return hi > 0 and (hi - lo) / hi or 0, hi
+	end
+	local tMat = T.tally(label .. ": every part uses a WorldStyle.Materials material (6.4 rule 1)")
+	local tPlastic = T.tally(label .. ": no SmoothPlastic part with a side > 2 studs (rule 1)")
+	local tSat = T.tally(label .. ": big faces (> 16 studs^2) have saturation <= 0.45 unless a thin Neon inlay / a piece <= 8 studs^3 (rule 2)")
+	local tVal = T.tally(label .. ": big opaque faces have value 0.35..0.9 (rule 2)")
+	local tShadow = T.tally(label .. ": parts < 4 studs cast no shadow (rule 8)")
+	local n, skipped = 0, 0
+	for _, p in ipairs(partsOf(root)) do
+		local s = p.Size
+		local dims = { s.X, s.Y, s.Z }
+		table.sort(dims)
+		if dims[3] < 4 then
+			tShadow:case(p.CastShadow == false, p:GetFullName())
+		end
+		if p.Transparency < 0.99 then
+			if exempt(p) then
+				skipped = skipped + 1
+			else
+				n = n + 1
+				local face, vol = dims[2] * dims[3], s.X * s.Y * s.Z
+				local neon = p.Material == Enum.Material.Neon
+				tMat:case(WS == nil or WS.IsWorldMaterial(p.Material), p:GetFullName() .. " " .. tostring(p.Material))
+				tPlastic:case(not (p.Material == Enum.Material.SmoothPlastic and dims[3] > 2), p:GetFullName() .. " " .. fmt(dims[3], 1))
+				if face > 16 then
+					local sat, val = hsv(p.Color)
+					tSat:case(sat <= 0.45 + 1e-3 or (neon and dims[1] <= 0.5) or vol <= 8 or p.Material == Enum.Material.ForceField, p:GetFullName() .. " sat " .. fmt(sat, 2))
+					if not neon and p.Material ~= Enum.Material.ForceField and p.Transparency < 0.3 then
+						tVal:case(val >= 0.35 - 1e-3 and val <= 0.9 + 1e-3, p:GetFullName() .. " value " .. fmt(val, 2))
+					end
+				end
+			end
+		end
+	end
+	tMat:report()
+	tPlastic:report()
+	tSat:report()
+	tVal:report()
+	tShadow:report()
+	local lights = T.tally(label .. ": every light is a lantern light: Brightness <= 1.5, Range <= 16, no shadows; warm outside the gates (rule 7)")
+	for _, d in ipairs(root:GetDescendants()) do
+		if d:IsA("PointLight") or d:IsA("SpotLight") or d:IsA("SurfaceLight") then
+			local inGate = d:FindFirstAncestor("Portal_Return") ~= nil
+			local c = d.Color
+			local warm = inGate or (c.R >= c.G and c.G >= c.B and c.R > 0.9)
+			lights:case(d.Brightness <= 1.5 and d.Range <= 16 and not d.Shadows and warm, d:GetFullName())
+		end
+	end
+	lights:report()
+	return n, skipped
+end
+
+S.p3arena_art = guarded("p3arena_art", function()
+	if not K.needBoot() then
+		return
+	end
+	local AB = arenaBuilder()
+	local info = AB and AB.GetInfo and AB.GetInfo()
+	local model = workspace:FindFirstChild("BattleArena")
+	if not T.check(type(info) == "table" and model ~= nil, "arena art: the Battle Arena is built") then
+		return
+	end
+	local wsInst = K.moduleInstance("shared/WorldStyle")
+	local okW, WS = pcall(require, wsInst)
+	WS = okW and type(WS) == "table" and WS or nil
+	T.check(WS ~= nil, "arena art: shared/WorldStyle loads (the art kit)")
+	local exemptTag = (WS and WS.Tags and WS.Tags.Exempt) or "NC_StyleExempt"
+	local detailTag = (WS and WS.Tags and WS.Tags.Detail) or "NC_Detail"
+
+	-- budget (10.3) and the safety net: the builder's own choices already follow the rules
+	local parts = partsOf(model)
+	T.check(#parts <= 2800, "arena art: the island + bridge stay <= 2800 parts (10.3)", #parts .. " parts")
+	T.check(#parts >= 1800, "arena art: still detailed (>= 1800 parts)", #parts .. " parts")
+	T.eq(model:GetAttribute("ArtFixes"), 0, "arena art: the 6.4 safety net had nothing to fix (every piece is built in the rules)")
+
+	-- rules 1, 2, 7, 8 over the whole island (the clouds are exempt by tag)
+	local audited, skipped = artAudit(model, "arena art", WS)
+	T.info("*arena art: " .. audited .. " parts audited, " .. skipped .. " exempt (voxel clouds)")
+	local cloud = model:FindFirstChild("IslandCloud")
+	T.check(cloud ~= nil and CollectionService:HasTag(cloud, exemptTag), "arena art: the island's voxel cloud is tagged " .. exemptTag)
+	-- rule 9: the clouds are shaded for the sky (lavender: blue >= green on every part, light tops ~250,244,252, the
+	-- undersides down to ~186,172,222, nothing pure white)
+	local light, dark, cool, white = false, false, 0, 0
+	for _, p in ipairs(partsOf(cloud)) do
+		local c = p.Color
+		if c.R >= 0.94 then
+			light = true
+		end
+		if c.R <= 0.8 then
+			dark = true
+		end
+		if c.B + 1e-3 < c.G then
+			cool = cool + 1
+		end
+		if c.R >= 0.99 and c.G >= 0.99 and c.B >= 0.99 then
+			white = white + 1
+		end
+	end
+	T.check(light and dark and cool == 0 and white == 0, "arena art: the cloud is shaded for the pink sky (light lavender tops, violet undersides, no pure white)",
+		tostring(light) .. "/" .. tostring(dark) .. ", " .. cool .. " not lavender, " .. white .. " white")
+
+	-- the main materials are there (stone, brick, wood, grass, marble, sand)
+	local mats = {}
+	for _, p in ipairs(parts) do
+		mats[p.Material] = (mats[p.Material] or 0) + 1
+	end
+	for _, m in ipairs({ "Brick", "Slate", "Cobblestone", "Marble", "Grass", "LeafyGrass", "Sand", "Wood", "Metal", "Fabric" }) do
+		T.check((mats[Enum.Material[m]] or 0) > 0, "arena art: the island uses " .. m, tostring(mats[Enum.Material[m]] or 0) .. " parts")
+	end
+	-- the colosseum: Brick walls, Marble pilasters / cornices, Fabric seats in muted element colours
+	local col = model:FindFirstChild("Colosseum")
+	local wall, seat, marble = 0, 0, 0
+	for _, p in ipairs(partsOf(col)) do
+		if p.Name == "Wall" and p.Material == Enum.Material.Brick then
+			wall = wall + 1
+		elseif p.Name == "Seat" and p.Material == Enum.Material.Fabric then
+			seat = seat + 1
+		elseif (p.Name == "Cornice" or p.Name == "Pilaster") and p.Material == Enum.Material.Marble then
+			marble = marble + 1
+		end
+	end
+	T.check(wall >= 16 and seat >= 16 and marble >= 32, "arena art: Brick walls, Marble trims and Fabric seats on the colosseum", wall .. " walls, " .. marble .. " marble, " .. seat .. " seats")
+
+	-- rule 4: free-standing posts / columns >= 4 studs tall are round (no sharp tall corners)
+	local postNames = { Post = true, Pillar = true, ArchPillar = true, TorchPole = true, Pole = true, LanternPost = true, Trunk = true }
+	local round = T.tally("arena art: every free-standing post / column >= 4 studs tall is round (rule 4)")
+	for _, p in ipairs(parts) do
+		if postNames[p.Name] and p:IsA("Part") and max(p.Size.X, p.Size.Y, p.Size.Z) >= 4 and not p:FindFirstAncestor("Portal_Return") then
+			round:case(p.Shape == Enum.PartType.Cylinder, p:GetFullName())
+		end
+	end
+	round:report()
+
+	-- rule 3: kerbs + lips along the island's edge (open where the bridge lands)
+	local kerbs = model:FindFirstChild("Kerbs", true)
+	local nKerb, nLip, kerbLen = 0, 0, 0
+	for _, p in ipairs(partsOf(kerbs)) do
+		if p.Name == "Kerb" then
+			nKerb = nKerb + 1
+			kerbLen = kerbLen + max(p.Size.X, p.Size.Z)
+			T.check(abs(p.Size.Y - 0.4) < 0.01, "arena art: a kerb is 0.4 tall", tostring(p.Size.Y))
+		elseif p.Name == "KerbLip" then
+			nLip = nLip + 1
+		end
+	end
+	T.check(nKerb >= 20 and nLip == nKerb and kerbLen > 900, "arena art: a kerb + lip runs round the island's edge (rule 3)", nKerb .. " kerbs, " .. nLip .. " lips, " .. fmt(kerbLen, 0) .. " studs")
+	if info.Link == "Bridge" then
+		local A = info.Center
+		local blocked = false
+		for _, p in ipairs(partsOf(kerbs)) do
+			local rel = A:PointToObjectSpace(p.Position)
+			if p.Name == "Kerb" and abs(rel.X) < 6 and rel.Z < -195 then
+				blocked = true
+			end
+		end
+		T.check(not blocked, "arena art: no kerb across the bridge's landing")
+	end
+
+	-- rule 5: the avenue's tiles are 4..6 studs, alternate +-0.05 in height and are jittered (+-6 RGB)
+	local A = info.Center
+	local tops, colours, sizesOk, nTiles = {}, {}, true, 0
+	for _, p in ipairs(partsOf(model:FindFirstChild("Forum"))) do
+		if p.Name == "AvenueTile" then
+			nTiles = nTiles + 1
+			local rel = A:PointToObjectSpace(p.Position + Vector3.new(0, p.Size.Y / 2, 0))
+			tops[string.format("%.2f", rel.Y)] = true
+			colours[string.format("%d,%d,%d", p.Color.R * 255 + 0.5, p.Color.G * 255 + 0.5, p.Color.B * 255 + 0.5)] = true
+			if p.Size.X < 4 - 1e-3 or p.Size.X > 6 + 1e-3 or p.Size.Z < 4 - 1e-3 or p.Size.Z > 6 + 1e-3 then
+				sizesOk = false
+			end
+		end
+	end
+	local nTops, nCols = 0, 0
+	local lo, hi = huge, -huge
+	for k in pairs(tops) do
+		nTops = nTops + 1
+		lo, hi = min(lo, tonumber(k)), max(hi, tonumber(k))
+	end
+	for _ in pairs(colours) do
+		nCols = nCols + 1
+	end
+	T.check(nTiles >= 40 and sizesOk, "arena art: the avenue is paved with 4..6-stud tiles (rule 5)", nTiles .. " tiles")
+	T.check(nTops == 2 and abs((hi - lo) - 0.05) < 0.011, "arena art: the tiles alternate by 0.05 in height (rule 5)", nTops .. " levels, " .. fmt(hi - lo, 3))
+	T.check(nCols >= 6, "arena art: the tiles are jittered (never one flat colour)", nCols .. " colours")
+	-- the lawn is mown in stripes of two shades (Grass)
+	local lawnCols = {}
+	for _, p in ipairs(partsOf(model:FindFirstChild("Lawn", true))) do
+		if p.Material == Enum.Material.Grass then
+			lawnCols[string.format("%.2f", p.Color.G)] = true
+		end
+	end
+	local nLawn = 0
+	for _ in pairs(lawnCols) do
+		nLawn = nLawn + 1
+	end
+	T.check(nLawn >= 2, "arena art: the forum lawn has mown stripes (Grass in 2+ shades)", nLawn .. " shades")
+
+	-- rule 6: a detail every ~12 studs along the avenue (torches, hedge boxes, banners, lanterns: NC_Detail)
+	local details = {}
+	for _, d in ipairs(CollectionService:GetTagged(detailTag)) do
+		if d:IsDescendantOf(model) and (d:IsA("Model") or d:IsA("BasePart")) then
+			local ok, pivot = pcall(function()
+				return d:GetPivot().Position
+			end)
+			if ok then
+				details[#details + 1] = A:PointToObjectSpace(pivot)
+			end
+		end
+	end
+	T.check(#details >= 30, "arena art: pure decor is tagged " .. detailTag .. " (the Low setting hides it)", #details .. " tagged")
+	local gaps = {}
+	for z = -200, -152, 12 do
+		local found = false
+		for _, rel in ipairs(details) do
+			if rel.Z >= z and rel.Z < z + 12 and abs(rel.X) < 22 then
+				found = true
+			end
+		end
+		if not found then
+			gaps[#gaps + 1] = tostring(z)
+		end
+	end
+	T.check(#gaps == 0, "arena art: a detail every ~12 studs along the avenue (rule 6)", "gaps at z " .. table.concat(gaps, ", "))
+
+	-- the Champion Ring pocket follows the same rules (its cloud and its cheering crowd are exempt)
+	local rp = AB.BuildPocket(63, "Ring")
+	if T.check(type(rp) == "table" and rp.Model, "arena art: a Champion Ring pocket builds") then
+		local n = #partsOf(rp.Model)
+		T.check(n <= 250, "arena art: the ring pocket stays <= 250 parts", n .. " parts")
+		T.eq(rp.Model:GetAttribute("ArtFixes"), 0, "arena art: the pocket needed no safety-net fixes")
+		artAudit(rp.Model, "ring pocket art", WS)
+		local crowd = rp.Model:FindFirstChild("CrowdPuffs", true)
+		T.check(crowd ~= nil and CollectionService:HasTag(crowd, exemptTag), "ring pocket art: the cheering cloud puffs are characters (tagged exempt)")
+		local pk = 0
+		for _, p in ipairs(partsOf(rp.Model)) do
+			if p.Name == "Kerb" then
+				pk = pk + 1
+			end
+		end
+		T.check(pk >= 16, "ring pocket art: a kerb + lip round its stone deck (rule 3)", pk .. " kerbs")
+		AB.FreePocket(rp)
+	end
+	K.flushErrors("p3arena_art")
+	K.flushWarnings("p3arena_art")
 end)
 
 return S
