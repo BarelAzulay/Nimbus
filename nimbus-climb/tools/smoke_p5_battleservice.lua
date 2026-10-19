@@ -326,7 +326,13 @@ local function scenario(name, fn)
 				bs.SetClosing(false)
 			end
 			if bs.SetRunProvider then
-				bs.SetRunProvider(nil)
+				-- give the booted game its real provider back (DungeonService.Init set it; later scenarios rely on it)
+				local dgs = req("server/Services/DungeonService")
+				if dgs and type(dgs.KeysInRun) == "function" and type(dgs.GetRun) == "function" then
+					bs.SetRunProvider({ KeysInRun = dgs.KeysInRun, GetRun = dgs.GetRun })
+				else
+					bs.SetRunProvider(nil)
+				end
 			end
 		end
 		loudReplication()
