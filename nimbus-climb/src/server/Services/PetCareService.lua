@@ -90,7 +90,6 @@ local MAX_NAME_CHARS = 28 -- "Rainbow Starlight Unicorn" fits; the longest toast
 local MAX_ACTION_LENGTH = 16
 local MAX_ID_LENGTH = 48
 local MAX_STAT_LENGTH = 24
-local MAX_FEEDS = 10 -- feeds in one "Level up" request
 local MAX_TRAIN_SLOTS = 5 -- Training Place mats (DataService P4.MAX_JOB_SLOT)
 local FALLBACK_MAX_RANK = 10
 local PROMPT_RANGE = 10
@@ -102,7 +101,7 @@ local ATTR_TRAINING = "TrainingPets"
 local ATTR_IN_BATTLE = Config.Attr.InBattle or "InBattle"
 local CARE_SIG = "CareSig" -- attribute on a station model: which prompts this service built on it
 local CARE_MARK = "CareMade" -- attribute on every prompt this service made
-local SIG_PREFIX = "p4:" -- stale Phase 3 Kitchen prompts (sig "<level>:<userId>") never match a Phase 4 signature
+local SIG_PREFIX = "p5:" -- stale Phase 3 / Phase 4 prompts (other signatures) never match a Phase 5 signature (the stations moved)
 local LOADING = "Your save is still loading, try again in a moment"
 local STATS = { "Speed", "Physique", "Ability", "Defense" }
 local STAT_LABELS = { Speed = "Attack Speed", Physique = "Physique", Ability = "Ability", Defense = "Defense" }
@@ -336,24 +335,6 @@ local function addCash(player, n)
 	return ok and result == true
 end
 
-local function getFood(player, foodId)
-	local ok, n = dsCall("GetFood", player, foodId)
-	if ok and isFinite(n) and n > 0 then
-		return math.floor(n)
-	end
-	return 0
-end
-
-local function addFood(player, foodId, n)
-	local ok, result = dsCall("AddFood", player, foodId, n)
-	return ok and result == true
-end
-
-local function spendFood(player, foodId, n)
-	local ok, result = dsCall("SpendFood", player, foodId, n)
-	return ok and result == true
-end
-
 local function petLevel(player, key)
 	local ok, level, xp = dsCall("GetPetLevel", player, key)
 	if not ok or not isFinite(level) or level < 1 then
@@ -390,36 +371,6 @@ local function money(n)
 		end
 	end
 	return "$" .. tostring(math.floor(tonumber(n) or 0))
-end
-
-local function foodDef(foodId)
-	if type(foodId) ~= "string" or foodId == "" or #foodId > MAX_ID_LENGTH or not catalog then
-		return nil
-	end
-	-- the leftover foods are data (TycoonCatalog.Foods / FoodsById); FoodById is a Phase 3 compat function
-	local def = type(catalog.FoodsById) == "table" and catalog.FoodsById[foodId] or nil
-	if type(def) ~= "table" and type(catalog.FoodById) == "function" then
-		local ok, result = pcall(catalog.FoodById, foodId)
-		if ok then
-			def = result
-		end
-	end
-	if type(def) ~= "table" or def.Id ~= foodId or not isFinite(def.Xp) or def.Xp <= 0 then
-		return nil
-	end
-	return def
-end
-
-local function foodList()
-	local out = {}
-	if catalog and type(catalog.Foods) == "table" then
-		for _, f in ipairs(catalog.Foods) do
-			if type(f) == "table" and foodDef(f.Id) then
-				out[#out + 1] = f
-			end
-		end
-	end
-	return out
 end
 
 local function stationLevel(home, id)
@@ -752,20 +703,21 @@ function Care.maxEvolution(def)
 	return 1
 end
 
--- "+25%" for stage 1, "+50%" for stage 2 (PetCatalog.EvolutionMultiplier)
+-- "Level bonus x1.5" for stage 1, "x1.875" for stage 2 (PetCatalog.EvolutionBonusOf; contract 3.1)
 function Care.boostText(stage)
 	local m = 1
-	if petCatalog and type(petCatalog.EvolutionMultiplier) == "function" then
-		local ok, v = pcall(petCatalog.EvolutionMultiplier, stage)
+	if petCatalog and type(petCatalog.EvolutionBonusOf) == "function" then
+		local ok, v = pcall(petCatalog.EvolutionBonusOf, stage)
 		if ok and isFinite(v) and v >= 1 then
 			m = v
 		end
 	elseif stage >= 2 then
-		m = 1.5
+		m = 1.875
 	elseif stage >= 1 then
-		m = 1.25
+		m = 1.5
 	end
-	return "+" .. tostring(math.floor((m - 1) * 100 + 0.5)) .. "%"
+	local text = string.format("%.3f", m):gsub("0+$", ""):gsub("%.$", "")
+	return "Level bonus x" .. text
 end
 
 -- the garden coin power of a pet (TycoonCatalog.PetPower; stage = the stored evolution stage)
@@ -990,124 +942,36 @@ function Care.publishTraining(player, map)
 end
 
 ----------------------------------------------------------------------
--- Feeding (the Food Machine and the leftovers)
+-- Feeding (the Food Machine: ONE feed, paid in berries; Phase 5 3.4)
 ----------------------------------------------------------------------
 
--- opts -> { Food = id } | { Count = n } | {} (one machine feed), or nil, reason for junk
-function Care.parseOpts(opts)
-	if opts == nil then
-		return {}
+-- whole berries owned (0 before the load)
+function Care.berries(player)
+	local ok, n = dsCall("GetBerries", player)
+	if ok and isFinite(n) and n > 0 then
+		return math.floor(n)
 	end
-	if type(opts) == "string" then
-		if not foodDef(opts) then
-			return nil, "Unknown food"
-		end
-		return { Food = opts }
-	end
-	if type(opts) ~= "table" then
-		return nil, "Unknown food"
-	end
-	local food = opts.Food
-	if food == nil then
-		food = opts.FoodId
-	end
-	if food ~= nil then
-		if type(food) ~= "string" or not foodDef(food) then
-			return nil, "Unknown food"
-		end
-		return { Food = food }
-	end
-	if opts.Count ~= nil then
-		local n = opts.Count
-		if not isFinite(n) or n ~= math.floor(n) or n < 1 or n > MAX_FEEDS then
-			return nil, "Pick how many feeds (1-" .. MAX_FEEDS .. ")"
-		end
-		return { Count = n }
-	end
-	return {}
+	return 0
 end
 
--- the leftover a pet gets: the biggest food in `stock` that does not overshoot `room` (the smallest one when every
--- food would), or nil without any leftover
-function Care.bowlFood(stock, room)
-	local best, smallest = nil, nil
-	for _, f in ipairs(foodList()) do
-		if (stock[f.Id] or 0) >= 1 then
-			if f.Xp <= room and (not best or f.Xp > best.Xp) then
-				best = f
-			end
-			if not smallest or f.Xp < smallest.Xp then
-				smallest = f
-			end
+-- berries of one feed of `def` at `level` (TycoonCatalog.FeedBerries = the Phase 4 FeedPrice: 1 berry = $1 of food)
+function Care.feedBerries(def, level)
+	if catalog and type(catalog.FeedBerries) == "function" then
+		local ok, n = pcall(catalog.FeedBerries, def, level)
+		if ok and isFinite(n) and n >= 0 then
+			return math.floor(n)
 		end
 	end
-	return best or smallest
+	return Care.feedPrice(def, level)
 end
 
--- Plans the feeds of one request feed by feed along the XP curve: leftovers first (free), then machine feeds priced
--- at the level each one is eaten at. Returns items { { Food = id, Name } | { Price = n }, Xp }..., the Cash sum, the
--- free count and a reason when nothing can be fed.
-function Care.planFeeds(player, def, mode, level, have, cap, machineLevel)
-	local count = mode.Count or 1
-	local items, total, free = {}, 0, 0
-	local stock = {}
-	for _, f in ipairs(foodList()) do
-		stock[f.Id] = getFood(player, f.Id)
-	end
-	local lv, xp = level, have
-	local room = xpRoom(level, have, cap)
-	local why = nil
-	for _ = 1, count do
-		if room <= 0 then
-			break
-		end
-		local item = nil
-		local f = nil
-		if mode.Food then
-			f = foodDef(mode.Food)
-			if (stock[f.Id] or 0) < 1 then
-				why = "You have no " .. plural(f.Name, 2) .. " left"
-				break
-			end
-		else
-			f = Care.bowlFood(stock, room)
-		end
-		if f then
-			stock[f.Id] = stock[f.Id] - 1
-			item = { Food = f.Id, Name = f.Name, Xp = math.min(f.Xp, room) }
-			free = free + 1
-		else
-			if machineLevel < 1 then
-				if #items == 0 then
-					why = "Build the Food Machine at home first"
-				end
-				break
-			end
-			local price = Care.feedPrice(def, lv)
-			local give = Care.feedXp(lv, machineLevel)
-			if not price or give < 1 then
-				break
-			end
-			item = { Price = price, Xp = math.min(give, room) }
-			total = total + price
-		end
-		items[#items + 1] = item
-		-- walk the curve: the next feed is priced at the level the pet has then
-		xp = xp + item.Xp
-		room = room - item.Xp
-		while lv < cap do
-			local need = xpToNext(lv)
-			if not isFinite(need) or xp < need then
-				break
-			end
-			xp = xp - need
-			lv = lv + 1
-		end
-	end
-	return items, total, free, why
-end
-
-local function feed(player, key, opts)
+-- Feed(player, key): exactly one Food Machine feed for FeedBerries(def, level) berries -> FeedXp(level, machineLevel) XP.
+-- Checks in order (each a toast, nothing moves before the last): loaded and not provisional; owned; below the cap; not
+-- in a running battle or dungeon run; the Food Machine built; berries >= the cost. Then ONE non-yielding step: spend
+-- (DataService.SpendBerries), grantXp; an XP write of 0 refunds the berries in the same step. A { Count } / { Food } /
+-- string second argument from an old client is ignored (one feed). The old Food items were converted into berries
+-- once by DataService's P5Home step, so there is no leftover path.
+local function feed(player, key)
 	if not initialized then
 		return false, "Feeding is not ready yet"
 	end
@@ -1116,10 +980,6 @@ local function feed(player, key, opts)
 	end
 	if not validKeyString(key) then
 		return false, "Unknown pet"
-	end
-	local mode, bad = Care.parseOpts(opts)
-	if not mode then
-		return false, bad
 	end
 	local profile = getProfile(player)
 	if not profile or isProvisional(player) then
@@ -1135,7 +995,8 @@ local function feed(player, key, opts)
 	local name = petName(def, key)
 	local level, have = petLevel(player, key)
 	local cap = levelCap(def)
-	if xpRoom(level, have, cap) <= 0 then
+	local room = xpRoom(level, have, cap)
+	if room <= 0 then
 		return false, name .. " is at max level (Lv " .. cap .. ")"
 	end
 	if Care.busyInBattle(player, key) then
@@ -1143,98 +1004,47 @@ local function feed(player, key, opts)
 	end
 	local home = getHome(player)
 	local machineLevel = home and stationLevel(home, "Kitchen") or 0
-	local items, total, free, why = Care.planFeeds(player, def, mode, level, have, cap, machineLevel)
-	if #items == 0 then
-		return false, why or "That pet cannot eat right now"
+	if machineLevel < 1 then
+		return false, "Build the Food Machine at home first"
 	end
-	-- the Cash check: paid feeds come after the free ones, so dropping them from the end keeps every price at its level
-	local firstPrice = nil
-	for _, item in ipairs(items) do
-		if item.Price and not firstPrice then
-			firstPrice = item.Price
+	local cost = Care.feedBerries(def, level)
+	local give = Care.feedXp(level, machineLevel)
+	if not cost or give < 1 then
+		return false, "That pet cannot eat right now"
+	end
+	local berries = Care.berries(player)
+	if berries < cost then
+		return false, "Not enough berries: a feed needs " .. tostring(cost) .. " (you have " .. tostring(berries) .. "). Your garden pets grow more!"
+	end
+	-- the berries and the XP in one step (no yields); the berries come back when the XP was refused
+	if cost > 0 then
+		local okSpend, spent = dsCall("SpendBerries", player, cost)
+		if not okSpend or spent ~= true then
+			return false, "Not enough berries: a feed needs " .. tostring(cost) .. " (you have " .. tostring(Care.berries(player)) .. "). Your garden pets grow more!"
 		end
 	end
-	local cash = getCash(player)
-	for i = #items, 1, -1 do
-		if total <= cash then
-			break
-		end
-		if items[i].Price then
-			total = total - items[i].Price
-			table.remove(items, i)
-		end
-	end
-	if #items == 0 then
-		return false, "Not enough Cash: a feed costs " .. money(firstPrice or 0)
-	end
-	local xpTotal, paidCount, firstFood = 0, 0, nil
-	for _, item in ipairs(items) do
-		xpTotal = xpTotal + item.Xp
-		if item.Price then
-			paidCount = paidCount + 1
-		elseif not firstFood then
-			firstFood = item
-		end
-	end
-	free = #items - paidCount
-	-- the foods, the Cash and the XP in one step (no yields); everything comes back when the XP was refused
-	local spent = {}
-	local function refundFood()
-		for id, n in pairs(spent) do
-			addFood(player, id, n)
-		end
-	end
-	for _, item in ipairs(items) do
-		if item.Food then
-			if not spendFood(player, item.Food, 1) then
-				refundFood()
-				return false, "You have no " .. plural(item.Name, 2) .. " left"
-			end
-			spent[item.Food] = (spent[item.Food] or 0) + 1
-		end
-	end
-	if total > 0 and not spendCash(player, total) then
-		refundFood()
-		return false, "Not enough Cash: a feed costs " .. money(firstPrice or total)
-	end
-	local given, levels, reason, newLevel, newXp, cap2, _, ready, stage = grantXp(player, key, xpTotal, "Feed")
+	local given, levels, reason, newLevel, newXp, cap2, _, ready, stage = grantXp(player, key, math.min(give, room), "Feed")
 	if given <= 0 then
-		if total > 0 then
-			addCash(player, total)
+		if cost > 0 then
+			dsCall("AddBerries", player, cost)
 		end
-		refundFood()
 		return false, reason or "That pet cannot eat right now"
 	end
-	local foodId = (paidCount > 0 or not firstFood) and "Machine" or firstFood.Food
-	PetCareService.Fed:Fire(player, key, foodId, levels)
-	-- ONE toast per request
+	local left = Care.berries(player)
+	PetCareService.Fed:Fire(player, key, "Berries", levels)
+	-- ONE toast per feed
 	if levels > 0 then
 		notify(player, levelUpText(def, key, newLevel, cap2 or cap, stage, ready), "good", 5)
 	else
 		local need = xpToNext(newLevel)
 		local progress = isFinite(need) and (" (" .. math.floor(newXp) .. "/" .. need .. " to Lv " .. (newLevel + 1) .. ")") or ""
-		local what
-		if #items == 1 then
-			if firstFood and paidCount == 0 then
-				what = " ate a free " .. tostring(firstFood.Name)
-			else
-				what = " ate a meal"
-			end
-		else
-			what = " ate " .. #items .. " meals"
-			if free > 0 and paidCount > 0 then
-				what = what .. " (" .. free .. " free)"
-			elseif paidCount == 0 then
-				what = what .. " (free)"
-			end
-		end
-		notify(player, name .. what .. ": +" .. math.floor(given) .. " XP" .. progress, "good", 3)
+		notify(player, name .. " ate " .. tostring(cost) .. " berries: +" .. math.floor(given) .. " XP" .. progress, "good", 3)
 	end
-	return true, { Xp = given, Levels = levels, Level = newLevel, Cap = cap2 or cap, Paid = total, Free = free, Count = #items }
+	return true, { Xp = given, Levels = levels, Level = newLevel, Cap = cap2 or cap, Berries = left, Cost = cost }
 end
 
-function PetCareService.Feed(player, key, opts)
-	return feed(player, key, opts)
+function PetCareService.Feed(player, key)
+	return feed(player, key)
 end
 
 ----------------------------------------------------------------------
@@ -1291,7 +1101,7 @@ function PetCareService.Evolve(player, key)
 		return false, "Could not evolve right now, try again"
 	end
 	PetCareService.Evolved:Fire(player, key, nextStage)
-	notify(player, name .. " evolved! " .. Care.boostText(nextStage) .. " to everything", "good", 6)
+	notify(player, name .. " evolved! " .. Care.boostText(nextStage) .. "!", "good", 6)
 	Care.refreshInfo(player)
 	Care.openPanel(player, "Evolve", { Key = key, Stage = nextStage })
 	return true, nextStage
@@ -1881,23 +1691,15 @@ local function onPetCare(player, action, a, b)
 		if not cooldown(player, "Feed", FEED_COOLDOWN) then
 			return
 		end
-		local key, opts = a, b
+		local key = a
 		if type(a) == "table" then
 			key = a.Key
 			if key == nil then
 				key = a[1]
 			end
-			if opts == nil then
-				if a.Count ~= nil then
-					opts = { Count = a.Count }
-				elseif a.Food ~= nil or a.FoodId ~= nil then
-					opts = { Food = a.Food ~= nil and a.Food or a.FoodId }
-				elseif a[2] ~= nil then
-					opts = a[2]
-				end
-			end
 		end
-		local ok, reason = feed(player, key, opts)
+		-- (a { Count } / { Food } / string in `b` from an old client is ignored: exactly one feed)
+		local ok, reason = feed(player, key)
 		if not ok then
 			toastOnce(player, reason or "That pet cannot eat now", "bad")
 		end

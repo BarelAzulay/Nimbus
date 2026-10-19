@@ -539,26 +539,32 @@ S.p2tycoon_progress = guarded("p2tycoon_progress", function()
 			"tycoon progress: the stations stand on the plot (Station_Garden / Station_Press1 with its Level attribute)")
 	end
 
-	-- coins: no pet in the garden = no coins; an Economy pet eats a meal every 8 s and pops a coin into its pile
+	-- coins (Phase 5): no pet in the garden = no coins; a roaming Economy pet poops Cloud Cash worth 3 meals once per
+	-- 24 s cycle (the first poop >= 24 s after the placement: Epoch = now + SettleSeconds)
 	local Eco, Combat = petsByRole()
+	local Roam = requireAt("shared/HomeRoam")
 	local meal = Cat.Coins.MealSeconds
+	local cycle = Roam.Cycle
 	T.eq(Ty.IncomePerSecond(p), 0, "tycoon progress: no pet in the garden = no coins (IncomePerSecond 0)")
 	givePet(p, Eco.Id, 1)
 	homeAction(p, "GardenSet", { 1, Eco.Id })
 	advance(0.3)
 	home = Ty.GetHome(p)
 	local coin = Cat.CoinValue(home, Cat.PetPower(entryOf(Eco)), 0)
+	local poop = coin * Cat.Coins.PoopMeals
 	local income = Ty.IncomePerSecond(p)
 	T.check(home.Garden[1] == Eco.Id and near(income, Cat.IncomePerSecond(home, { [1] = entryOf(Eco) }, 0), 1e-6) and near(coin, (12 + 7) * Cat.PetPower(entryOf(Eco)), 1e-6),
-		"tycoon progress: an Economy pet placed with HomeAction GardenSet earns Food (grass 12 + Berry Bush 7) / 8 x PetPower per second", tostring(income))
+		"tycoon progress: an Economy pet placed with HomeAction GardenSet earns Food (grass 12 + Berry Farm L1 7) / 8 x PetPower per second", tostring(income))
 	T.eq(info.Folder:GetAttribute("GardenPets"), "1=" .. Eco.Id, "tycoon progress: the plot folder replicates GardenPets")
+	T.check(tostring(info.Folder:GetAttribute("Roam")):match("^1=%d+%.%d$") ~= nil, "tycoon progress: ...and Roam ('1=<epoch>')", tostring(info.Folder:GetAttribute("Roam")))
 	away(p)
-	advance(2 * meal + 1.5)
+	advance(Roam.SettleSeconds + 2 * cycle + 2)
 	home = Ty.GetHome(p)
-	T.check(home.CollectorCash >= 2 * coin - 1e-6 and home.CollectorCash <= 3 * coin + 1e-6, "tycoon progress: the 1 s tick pops one coin per meal into the bank (CollectorCash)", tostring(home.CollectorCash))
+	T.check(home.CollectorCash >= 2 * poop - 1e-6 and home.CollectorCash <= 3 * poop + 1e-6, "tycoon progress: the 1 s tick lays one poop (3 coins) per cycle into the bank (CollectorCash)", tostring(home.CollectorCash))
 	T.eq(info.Folder:GetAttribute("CollectorCash"), floor(home.CollectorCash), "tycoon progress: the plot folder replicates CollectorCash (whole)")
 	T.check(near(info.Folder:GetAttribute("IncomePerSecond"), income, 0.051), "tycoon progress: ...and IncomePerSecond")
-	T.check(tostring(info.Folder:GetAttribute("CoinPiles")):match("^1=%d$") ~= nil, "tycoon progress: ...and CoinPiles ('1=<stage>')", tostring(info.Folder:GetAttribute("CoinPiles")))
+	T.check(tostring(info.Folder:GetAttribute("CoinDrops")):match("^1=%d+:%d") ~= nil, "tycoon progress: ...and CoinDrops ('1=<cycle>:<stage>')", tostring(info.Folder:GetAttribute("CoinDrops")))
+	T.eq(info.Folder:GetAttribute("CoinPiles"), nil, "tycoon progress: ...no CoinPiles any more (Phase 5)")
 	-- scoop: the owner walks over the pile (HomeAction 'Collect' = scoop in range, kept for old clients)
 	local pile = Ty.Piles(p) and Ty.Piles(p)[1]
 	local before = cashOf(p)
@@ -569,18 +575,18 @@ S.p2tycoon_progress = guarded("p2tycoon_progress", function()
 	advance(0.1)
 	home = Ty.GetHome(p)
 	T.eq(cashOf(p) - before, onLawn, "tycoon progress: walking over the pile scoops its whole Cash (HomeAction 'Collect' = scoop in range)")
-	T.check(home.CollectorCash < 1 + coin + 1e-6, "tycoon progress: ...the lawn is empty afterwards (at most the fraction and one new coin)", tostring(home.CollectorCash))
+	T.check(home.CollectorCash < 1 + poop + 1e-6, "tycoon progress: ...the lawn is empty afterwards (at most the fraction and one new poop)", tostring(home.CollectorCash))
 	T.check(K.notified(p, "scooped", "good", mark), "tycoon progress: ...with a 'scooped' side toast")
 
-	-- the pile cap: PileSeconds (240 s without a Coin Magnet) of the pet's coins, then the pet naps ('F')
+	-- the lawn cap: PileSeconds (Garden L1: 300 s) of the pet's coins, then the pet naps (Roam ':N<cycle>')
 	local pileSeconds = Ty.PileSeconds(p)
-	T.check(pileSeconds == Cat.PileSeconds(home) and pileSeconds == Cat.Coins.BasePileSeconds, "tycoon progress: PileSeconds = 240 s without a Coin Magnet", tostring(pileSeconds))
+	T.check(pileSeconds == Cat.PileSeconds(home) and pileSeconds == Cat.Get("Garden").Effects[1].PileSeconds, "tycoon progress: PileSeconds = the Garden's PileSeconds effect (300 s at L1)", tostring(pileSeconds))
 	away(p)
-	advance(pileSeconds + 2 * meal)
+	advance(pileSeconds + 3 * cycle)
 	home = Ty.GetHome(p)
 	local cap = pileSeconds * coin / meal
-	T.check(home.CollectorCash >= cap - 1e-6 and home.CollectorCash <= cap + coin + 1e-6 and tostring(info.Folder:GetAttribute("CoinPiles")):find("F", 1, true) ~= nil,
-		"tycoon progress: the pile stops at PileSeconds of coins and the pet naps ('F')", tostring(home.CollectorCash) .. " of " .. tostring(cap))
+	T.check(home.CollectorCash >= cap - 1e-6 and home.CollectorCash <= cap + poop + 1e-6 and tostring(info.Folder:GetAttribute("Roam")):find(":N", 1, true) ~= nil,
+		"tycoon progress: the lawn stops at PileSeconds of coins and the pet naps (':N')", tostring(home.CollectorCash) .. " of " .. tostring(cap) .. " roam " .. tostring(info.Folder:GetAttribute("Roam")))
 	-- nobody else scoops
 	local stranger = join("TyStranger")
 	Mock.Teleport(stranger, CFrame.new(pile.Pos + Vector3.new(0, 3, 0)))
@@ -701,7 +707,7 @@ S.p2tycoon_progress = guarded("p2tycoon_progress", function()
 	end
 	T.check(#wrong == 0, "tycoon prestige: stations reset, decor kept, the Garden back at its ResetLevel 1", table.concat(wrong, ","))
 	T.eq(after.Stations.Garden, 1, "tycoon prestige: the Pet Garden stays built at level 1 (the coins never stop)")
-	T.check(after.CollectorCash == 0 and Ty.CoinsWaiting(p) == 0 and (info.Folder:GetAttribute("CoinPiles") or "") == "" and after.Level == Cat.HomeLevelOf(after),
+	T.check(after.CollectorCash == 0 and Ty.CoinsWaiting(p) == 0 and (info.Folder:GetAttribute("CoinDrops") or "") == "" and after.Level == Cat.HomeLevelOf(after),
 		"tycoon prestige: the bank and the coins on the lawn are zero, Home Level = the decor + the Garden")
 	T.check(Eco == nil or after.Garden[1] == Eco.Id, "tycoon prestige: garden choices are kept")
 	T.check(Cat.GardenSlots(after) == 4 and info.Folder:GetAttribute("GardenSlots") == 4, "tycoon prestige: +1 garden place (4 = 3 + 1 star), replicated")
@@ -734,11 +740,11 @@ S.p2tycoon_progress = guarded("p2tycoon_progress", function()
 	T.check(okFusion == true, "tycoon prestige: the Fusion Machine pad unlocks at Prestige 1 (with its Kitchen)", tostring(reason2))
 	Ty.ClearCoins(p)
 	away(p)
-	advance(2 * meal + 1.5)
-	local coin25 = Cat.CoinValue(h1, Cat.PetPower(entryOf(Eco)), 1)
+	advance(2 * cycle + 2)
+	local coin25 = Cat.CoinValue(h1, Cat.PetPower(entryOf(Eco)), 1) * Cat.Coins.PoopMeals
 	local cc = Ty.GetHome(p).CollectorCash
-	T.check(near(coin25, Cat.FoodOf(h1) * Cat.PetPower(entryOf(Eco)) * 1.25, 1e-6) and cc >= 2 * coin25 - 1e-6 and cc <= 3 * coin25 + 1e-6,
-		"tycoon prestige: the coins keep coming at the multiplied value", tostring(cc) .. " vs coin " .. tostring(coin25))
+	T.check(near(coin25, Cat.FoodOf(h1) * Cat.PetPower(entryOf(Eco)) * 1.25 * Cat.Coins.PoopMeals, 1e-6) and cc >= coin25 - 1e-6 and cc <= 3 * coin25 + 1e-6,
+		"tycoon prestige: the coins keep coming at the multiplied value", tostring(cc) .. " vs poop " .. tostring(coin25))
 	leave(p)
 	K.flushErrors("p2tycoon_progress")
 	K.flushWarnings("p2tycoon_progress", { "HomeBuilder is missing" })
@@ -872,7 +878,7 @@ S.p2tycoon_exploits = guarded("p2tycoon_exploits", function()
 	local Eco, Combat = petsByRole()
 	local PC = K.M["shared/PetCatalog"]
 	DataS.MutateHome(a, function(h)
-		h.Stations.Press2 = 2
+		h.Stations.Press1 = 2
 		h.Level = Cat.HomeLevelOf(h)
 	end)
 	advance(1.2)
@@ -952,9 +958,7 @@ S.p2tycoon_offline = guarded("p2tycoon_offline", function()
 	local Eco = petsByRole()
 	DataS.MutateHome(p, function(h)
 		h.Stations.Garden = 1
-		h.Stations.Press1 = 3
-		h.Stations.Collector = 1
-		h.Stations.Press2 = 2
+		h.Stations.Press1 = 6
 		h.Stations.Vault = 1
 		h.Level = Cat.HomeLevelOf(h)
 	end)
@@ -980,6 +984,7 @@ S.p2tycoon_offline = guarded("p2tycoon_offline", function()
 	rec.Home.LastSeen = os.time() - awayFor
 	local storedBank = rec.Home.CollectorCash or 0
 	local storedCash = rec.Cash or 0
+	local storedBerries = rec.Berries or 0
 	local want = Cat.OfflineEarnings(home, awayFor, income)
 	local mark = K.logSize()
 	p = rejoin(name, userId)
@@ -988,6 +993,7 @@ S.p2tycoon_offline = guarded("p2tycoon_offline", function()
 	local bank = Ty.GetHome(p).CollectorCash
 	T.check(abs(bank - (storedBank + floor(want))) < 1, "tycoon offline: the Vault's offline coins go INTO the bank with LastSeen (the Welcome-back pile)",
 		"bank " .. tostring(bank) .. " stored " .. tostring(storedBank) .. " + " .. tostring(want))
+	T.eq(DataS.GetBerries(p) - storedBerries, floor(floor(want) * Cat.Berries.Share), "tycoon offline: ...and offline x Share berries land in the basket once")
 	T.check(K.notified(p, "Welcome back! Your pets made", "good", mark), "tycoon offline: a 'Welcome back! Your pets made $X while you were away' side toast")
 	advance(2)
 	T.check(near(Ty.GetHome(p).CollectorCash, bank, 1e-6) and cashOf(p) == storedCash, "tycoon offline: paid once (LastSeen moved on)")
@@ -1000,11 +1006,11 @@ S.p2tycoon_offline = guarded("p2tycoon_offline", function()
 	local second = freeIndex(first)
 	claim(p, second)
 	local restored = Ty.GetHome(p)
-	T.check(SS.GetSpot(p) == spots()[second] and restored.Stations.Press1 == 3 and restored.Stations.Vault == 1,
+	T.check(SS.GetSpot(p) == spots()[second] and restored.Stations.Press1 == 6 and restored.Stations.Vault == 1,
 		"tycoon offline: the saved build is restored on another plot")
 	local piles = Ty.Piles(p)
-	T.check(piles and piles.W and near(piles.W.Value, bank, 1e-6) and tostring(spots()[second].Folder:GetAttribute("CoinPiles")):find("W=5", 1, true) ~= nil,
-		"tycoon offline: the Welcome-back pile holds the offline coins (CoinPiles 'W=5')")
+	T.check(piles and piles.W and near(piles.W.Value, bank, 1e-6) and tostring(spots()[second].Folder:GetAttribute("CoinDrops")):find("W=5", 1, true) ~= nil,
+		"tycoon offline: the Welcome-back pile holds the offline coins (CoinDrops 'W=5')")
 	local cashBefore = cashOf(p)
 	Mock.Teleport(p, CFrame.new(piles.W.Pos + Vector3.new(0, 3, 0)))
 	advance(0.4)
@@ -1014,7 +1020,7 @@ S.p2tycoon_offline = guarded("p2tycoon_offline", function()
 	away(p)
 	if hasHomeBuilder() then
 		local models = stationModels(second)
-		T.check(models.Press1 and models.Press1:GetAttribute("Level") == 3 and models.Vault ~= nil, "tycoon offline: ...its stations stand on the new plot")
+		T.check(models.Press1 and models.Press1:GetAttribute("Level") == 6 and models.Vault ~= nil, "tycoon offline: ...its stations stand on the new plot")
 	end
 	advance(1.2)
 	T.eq(spots()[second].SubLabel.Text, "Home Level " .. Cat.HomeLevelOf(restored), "tycoon offline: ...and its nameplate shows the Home Level")

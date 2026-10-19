@@ -152,11 +152,16 @@ local hbWarned = {} -- [fnName] = count of warnings printed
 local Coins = {
 	SCOOP_TICK = 0.25, -- seconds between owner proximity passes
 	SCOOP_HEIGHT = 10, -- studs of vertical reach of a scoop
-	MAX_MEALS_PER_TICK = 3, -- a stalled server catches up at most this many meals per place per tick
-	MAX_LATE = 1, -- meals of backlog a place may owe (older ones are dropped)
-	state = {}, -- [Player] = { Piles = { [slot] = { Coins, Value, Lucky, Full } }, Welcome, NextMeal = { [slot] = clock },
-	--                 Keys = { [slot] = key }, Left = { [slot] = { Key, NextMeal, At } }, Rng, Points = { [slot] = Vector3 },
-	--                 WelcomePos = Vector3, Index }
+	MAX_POOPS_PER_TICK = 2, -- a stalled server catches up at most this many poops per slot per tick (3.5)
+	DROPS_WRITE_GAP = 2, -- seconds between CoinDrops attribute writes (<= 0.5 / s per plot)
+	state = {}, -- [Player] = the session ledger (see Coins.ensure)
+}
+local homeRoam = nil -- shared/HomeRoam (the deterministic roaming plans: poop times and points)
+Coins.welcomedP5 = {} -- [Player] = true once the 'Your home got simpler!' toast was shown this session
+-- old Phase 4 station ids an old client may still send: what they became (3.3 / FoldLegacy)
+Coins.LEGACY_HOME = {
+	Press2 = "Berry Farm", Press3 = "Berry Farm", Press4 = "Berry Farm", Collector = "Pet Garden",
+	DecorLamps = "Fountain", DecorFlowers = "Yard Fence", DecorBanners = "Yard Fence",
 }
 local Portal = {
 	TICK = 0.2, -- seconds between owner checks
@@ -571,42 +576,102 @@ local function gardenInfoText(entries)
 end
 
 ----------------------------------------------------------------------
--- Rainbow coins: the session ledger (Coins.state), the meal timers, the piles, the scoop
+-- Cloud Cash: the session ledger (Coins.state), the roaming epochs, the drops on the lawn, the scoop (Phase 5, 3.5)
 ----------------------------------------------------------------------
+
+-- the shared server clock (workspace:GetServerTimeNow() on both sides; epochs ride in the Roam attribute)
+function Coins.serverNow()
+	local ok, t = pcall(function()
+		return workspace:GetServerTimeNow()
+	end)
+	if ok and isFinite(t) then
+		return t
+	end
+	return os.time()
+end
+
+function Coins.seedOf(player)
+	local id = tonumber(player and player.UserId) or 0
+	return (math.floor(id) % 2147483646) + 1
+end
+
+function Coins.cycle()
+	return (homeRoam and tonumber(homeRoam.Cycle)) or 24
+end
+
+function Coins.settle()
+	return (homeRoam and tonumber(homeRoam.SettleSeconds)) or 20
+end
+
+function Coins.maxSlots()
+	return (homeRoam and tonumber(homeRoam.MaxSlots)) or 12
+end
+
+-- epochs are rounded to 0.1 s so the server and every client compute from the SAME number (the attribute carries one decimal)
+function Coins.roundEpoch(t)
+	return math.floor(t * 10 + 0.5) / 10
+end
 
 function Coins.ensure(player)
 	local st = Coins.state[player]
 	if not st then
-		st = { Piles = {}, Welcome = 0, NextMeal = {}, Keys = {}, Left = {}, Points = {}, Rng = Random.new(), Fresh = true }
+		st = {
+			Drops = {}, -- [slot] = { { Cycle, Value, Lucky, Poops, X, Z }... } (creation order)
+			Welcome = 0,
+			Epoch = {}, -- [slot] = server time of cycle 0 (nil: no pet / resting)
+			Nap = {}, -- [slot] = cycle the pet fell asleep in (no poop until a scoop below the cap)
+			Done = {}, -- [slot] = the last cycle whose poop was decided
+			Keys = {},
+			Left = {}, -- [slot] = { Key, Epoch, Done, Nap, At } (churn: the same key back within a cycle keeps its epoch)
+			Rng = Random.new(Coins.seedOf(player)),
+			Fresh = true,
+			BerryFrac = 0, -- the fraction of a berry the poops owe (whole berries go to DataService)
+			RoamText = nil,
+			DropsText = nil,
+			DropsDirty = false,
+			DropsAt = nil,
+		}
 		Coins.state[player] = st
 	end
 	return st
 end
 
--- Rebuilds the ledger from the bank: every live pile goes, the whole bank waits in the Welcome-back pile (on load,
--- claim, ProfileRebased, Prestige and the developer reset).
+-- Rebuilds the ledger from the bank: every drop goes, the whole bank waits in the Welcome-back pile (on load, claim,
+-- ProfileRebased, Prestige and the developer reset). The epochs start over (a fresh ledger staggers them).
 function Coins.reset(player, bank)
 	local st = Coins.ensure(player)
-	st.Piles = {}
+	st.Drops = {}
 	st.Welcome = math.max(0, tonumber(bank) or 0)
-	st.NextMeal = {}
+	st.Epoch = {}
+	st.Nap = {}
+	st.Done = {}
 	st.Keys = {}
 	st.Left = {}
 	st.Fresh = true
 	return st
 end
 
-function Coins.liveSum(st)
+function Coins.slotValue(st, slot)
 	local total = 0
-	for _, pile in pairs(st.Piles) do
-		total = total + (pile.Value or 0)
+	for _, d in ipairs(st.Drops[slot] or {}) do
+		total = total + (d.Value or 0)
 	end
 	return total
 end
 
--- Makes sum(piles) + welcome == bank. The bank only ever moves through this service's own MutateHome calls while
--- the plot is held, so normally this just sets the Welcome-back pile; when the bank shrank under the live piles
--- (another server scooped the same coins, a developer reset, a stale merge) the piles are trimmed from the top.
+function Coins.liveSum(st)
+	local total = 0
+	for _, list in pairs(st.Drops) do
+		for _, d in ipairs(list) do
+			total = total + (d.Value or 0)
+		end
+	end
+	return total
+end
+
+-- Makes sum(drops) + welcome == bank. The bank only ever moves through this service's own MutateHome calls while
+-- the plot is held, so normally this just sets the Welcome-back pile; when the bank shrank under the live drops
+-- (another server scooped the same coins, a developer reset, a stale merge) the drops are trimmed from the newest.
 function Coins.reconcile(st, bank)
 	bank = math.max(0, tonumber(bank) or 0)
 	local live = Coins.liveSum(st)
@@ -620,88 +685,99 @@ function Coins.reconcile(st, bank)
 	st.Welcome = 0
 	local over = live - bank
 	for slot = MAX_SLOT, 1, -1 do
-		local pile = st.Piles[slot]
-		if pile and over > 0 then
-			local cut = math.min(pile.Value, over)
-			pile.Value = pile.Value - cut
-			over = over - cut
-			if pile.Value < 1e-6 then
-				st.Piles[slot] = nil
-			else
-				pile.Coins = math.min(pile.Coins, math.max(1, math.floor(pile.Coins * pile.Value / (pile.Value + cut) + 0.5)))
-				pile.Full = false
+		local list = st.Drops[slot]
+		if list then
+			for i = #list, 1, -1 do
+				if over <= 0 then
+					break
+				end
+				local d = list[i]
+				local cut = math.min(d.Value, over)
+				d.Value = d.Value - cut
+				over = over - cut
+				if d.Value < 1e-6 then
+					table.remove(list, i)
+				end
+			end
+			if #list == 0 then
+				st.Drops[slot] = nil
 			end
 		end
 	end
 end
 
--- The world point of a place's pile (plot frame x Garden station frame x CoinPoint), cached per plot.
-function Coins.pointOf(st, index, slot)
-	local cached = st.Points[slot]
-	if cached and st.Index == index then
-		return cached
-	end
-	if st.Index ~= index then
-		st.Points = {}
-		st.WelcomePos = nil
-		st.Index = index
+-- the plot frame of a held plot (cached per ledger; a claim on another plot refreshes it)
+function Coins.plotFrame(st, index)
+	if st.Index == index and typeof(st.PlotCF) == "CFrame" then
+		return st.PlotCF
 	end
 	local info = plotInfo(index)
-	local def = catalog and catalog.Get("Garden")
-	local slotCF = def and def.Slot and def.Slot.CFrame
 	local plotCF = info and info.PlotCFrame
-	local local3 = catalog and type(catalog.CoinPoint) == "function" and catalog.CoinPoint(slot)
-	if typeof(plotCF) ~= "CFrame" or typeof(slotCF) ~= "CFrame" or typeof(local3) ~= "Vector3" then
+	if typeof(plotCF) ~= "CFrame" then
 		return nil
 	end
-	local pos = (plotCF * slotCF):PointToWorldSpace(local3)
-	st.Points[slot] = pos
-	return pos
+	st.Index = index
+	st.PlotCF = plotCF
+	st.WelcomePos = nil
+	return plotCF
+end
+
+-- the world point of a plot-local (x, z) on the lawn
+function Coins.worldPoint(st, index, x, z)
+	local plotCF = Coins.plotFrame(st, index)
+	if not plotCF or not isFinite(x) or not isFinite(z) then
+		return nil
+	end
+	return plotCF:PointToWorldSpace(Vector3.new(x, 0, z))
 end
 
 function Coins.welcomePoint(st, index)
 	if st.WelcomePos and st.Index == index then
 		return st.WelcomePos
 	end
-	if st.Index ~= index then
-		st.Points = {}
-		st.Index = index
-	end
-	local info = plotInfo(index)
+	local plotCF = Coins.plotFrame(st, index)
 	local def = catalog and catalog.Get("Garden")
 	local local3 = def and def.Slot and def.Slot.WelcomePile
-	local plotCF = info and info.PlotCFrame
-	if typeof(plotCF) ~= "CFrame" or typeof(local3) ~= "Vector3" then
+	if not plotCF or typeof(local3) ~= "Vector3" then
 		return nil
 	end
 	st.WelcomePos = plotCF:PointToWorldSpace(local3)
 	return st.WelcomePos
 end
 
--- "1=3;2=5F;4=2*;W=5" (heap stage by coin count; F full; * a Lucky coin inside; W the Welcome-back pile >= $1)
-function Coins.pilesText(st)
+-- the drop stage (1..4) of `poops` poops by Coins.DropStages {1, 2, 4, 8}; 0 for a fraction left by a scoop
+function Coins.stageOf(poops)
+	local n = tonumber(poops) or 0
+	local stages = catalog and catalog.Coins and catalog.Coins.DropStages or { 1, 2, 4, 8 }
+	local stage = 0
+	for i, need in ipairs(stages) do
+		if n >= need then
+			stage = i
+		end
+	end
+	return stage
+end
+
+-- "1=812:1,813:2*;3=40:1;W=5" (slot = cycle:stage[* Lucky] per drop; W the Welcome-back pile while it holds >= $1)
+function Coins.dropsText(st)
 	local slots = {}
-	for slot, pile in pairs(st.Piles) do
-		if (pile.Coins or 0) >= 1 then
+	for slot, list in pairs(st.Drops) do
+		if #list > 0 then
 			slots[#slots + 1] = slot
 		end
 	end
 	table.sort(slots)
 	local parts = {}
 	for _, slot in ipairs(slots) do
-		local pile = st.Piles[slot]
-		local stage = 0
-		if catalog and type(catalog.HeapStage) == "function" then
-			stage = catalog.HeapStage(pile.Coins)
+		local items = {}
+		for _, d in ipairs(st.Drops[slot]) do
+			if (d.Poops or 0) >= 1 then
+				items[#items + 1] = tostring(d.Cycle) .. ":" .. tostring(Coins.stageOf(d.Poops)) .. (d.Lucky and "*" or "")
+			end
 		end
-		local text = tostring(slot) .. "=" .. tostring(stage)
-		if pile.Full then
-			text = text .. "F"
+		if #items > 0 then
+			parts[#parts + 1] = tostring(slot) .. "=" .. table.concat(items, ",")
 		end
-		if pile.Lucky then
-			text = text .. "*"
-		end
-		parts[#parts + 1] = text
 	end
 	if (st.Welcome or 0) >= 1 then
 		parts[#parts + 1] = "W=5"
@@ -709,9 +785,27 @@ function Coins.pilesText(st)
 	return table.concat(parts, ";")
 end
 
+-- "1=1760001234.5;3=1760001240.0:N812" (slot = epoch, one decimal; :N<cycle> while the pet naps)
+function Coins.roamText(st)
+	local slots = {}
+	for slot in pairs(st.Epoch) do
+		slots[#slots + 1] = slot
+	end
+	table.sort(slots)
+	local parts = {}
+	for _, slot in ipairs(slots) do
+		local text = tostring(slot) .. "=" .. string.format("%.1f", st.Epoch[slot])
+		if st.Nap[slot] then
+			text = text .. ":N" .. tostring(st.Nap[slot])
+		end
+		parts[#parts + 1] = text
+	end
+	return table.concat(parts, ";")
+end
+
 -- Replicates the coin numbers of a plot (written only on change): CollectorCash (the bank, whole), IncomePerSecond,
--- CoinPiles, GardenInfo, GardenSlots.
-function Coins.show(index, st, home, income, entries)
+-- RoamSeed / RoamVersion, Roam, CoinDrops (<= one write per Coins.DROPS_WRITE_GAP), BerryCap, GardenInfo, GardenSlots.
+function Coins.show(index, st, home, income, entries, player)
 	local info = plotInfo(index)
 	if not info then
 		return
@@ -731,10 +825,46 @@ function Coins.show(index, st, home, income, entries)
 		s.Income = rate
 		setFolderAttr(info, "IncomePerSecond", rate)
 	end
-	local piles = Coins.pilesText(st)
-	if s.Piles ~= piles then
-		s.Piles = piles
-		setFolderAttr(info, "CoinPiles", piles)
+	if player then
+		local seed = Coins.seedOf(player)
+		if s.RoamSeed ~= seed then
+			s.RoamSeed = seed
+			setFolderAttr(info, "RoamSeed", seed)
+		end
+		local version = (homeRoam and homeRoam.Version) or 0
+		if s.RoamVersion ~= version then
+			s.RoamVersion = version
+			setFolderAttr(info, "RoamVersion", version)
+		end
+	end
+	local roam = Coins.roamText(st)
+	if s.Roam ~= roam then
+		s.Roam = roam
+		setFolderAttr(info, "Roam", roam)
+	end
+	local drops = Coins.dropsText(st)
+	if s.Drops ~= drops then
+		local now = os.clock()
+		if st.DropsAt == nil or now - st.DropsAt >= Coins.DROPS_WRITE_GAP then
+			s.Drops = drops
+			st.DropsAt = now
+			st.DropsDirty = false
+			setFolderAttr(info, "CoinDrops", drops)
+		else
+			st.DropsDirty = true -- the next tick after the gap writes it
+		end
+	else
+		st.DropsDirty = false
+	end
+	if catalog and type(catalog.BasketCap) == "function" then
+		local okCap, cap = pcall(catalog.BasketCap, home, income or 0)
+		if okCap and isFinite(cap) then
+			cap = math.floor(cap)
+			if s.BerryCap ~= cap then
+				s.BerryCap = cap
+				setFolderAttr(info, "BerryCap", cap)
+			end
+		end
 	end
 	local infoText = gardenInfoText(entries or {})
 	if s.Info ~= infoText then
@@ -748,123 +878,242 @@ function Coins.show(index, st, home, income, entries)
 	end
 end
 
--- The meal timers follow the placed keys: a slot whose key changed waits a full meal (X5: a NEW placement's first
--- coin after MealSeconds); the same key back in its slot within one meal keeps its old timer (removing and
--- re-placing a pet right after a coin gains nothing). Keys found on a fresh ledger (load / claim) get a random start
--- phase so a dozen piles do not all pop in the same second. A key resting above the open count (`open`) owns no
--- timer: the place that opens later (a Prestige) starts with a full meal, never with a backlog.
-function Coins.followKeys(st, valid, now, meal, open)
+-- The epochs follow the placed keys: a NEW key in a slot gets Epoch = now + SettleSeconds (its first poop >= a full
+-- cycle later: X5 / Y8); the same key back in its slot within one cycle keeps its old epoch (and its done / nap
+-- marks: removing and re-placing a pet right after a poop gains nothing). Keys found on a fresh ledger (load / claim /
+-- rebase) get a staggered start so a dozen pets do not all poop in the same second. A key resting above the open
+-- count (`open`) owns no epoch: the place that opens later (a Prestige) starts with a settle, never with a backlog.
+function Coins.followKeys(st, valid, now, cycle, open)
 	for slot = 1, MAX_SLOT do
 		local key = valid[slot]
 		local was = st.Keys[slot]
 		if key ~= was then
 			if was ~= nil then
-				st.Left[slot] = { Key = was, NextMeal = st.NextMeal[slot], At = now }
+				st.Left[slot] = { Key = was, Epoch = st.Epoch[slot], Done = st.Done[slot], Nap = st.Nap[slot], At = now }
 			end
 			st.Keys[slot] = key
 			if key ~= nil then
 				local left = st.Left[slot]
-				if left and left.Key == key and left.NextMeal and now - left.At <= meal then
-					st.NextMeal[slot] = left.NextMeal
+				if left and left.Key == key and left.Epoch and now - left.At <= cycle then
+					st.Epoch[slot] = left.Epoch
+					st.Done[slot] = left.Done
+					st.Nap[slot] = left.Nap
 				elseif st.Fresh then
-					st.NextMeal[slot] = now + meal * (0.25 + 0.75 * st.Rng:NextNumber())
+					st.Epoch[slot] = Coins.roundEpoch(now + st.Rng:NextNumber() * cycle)
+					st.Done[slot] = -1
+					st.Nap[slot] = nil
 				else
-					st.NextMeal[slot] = now + meal
+					st.Epoch[slot] = Coins.roundEpoch(now + Coins.settle())
+					st.Done[slot] = -1
+					st.Nap[slot] = nil
 				end
 				st.Left[slot] = nil
 			else
-				st.NextMeal[slot] = nil
+				st.Epoch[slot] = nil
+				st.Done[slot] = nil
+				st.Nap[slot] = nil
 			end
 		end
-		if open ~= nil and slot > open and st.NextMeal[slot] ~= nil then
-			st.NextMeal[slot] = nil -- resting: no meal is owed while the place is closed
+		if open ~= nil and slot > open and st.Epoch[slot] ~= nil then
+			st.Epoch[slot] = nil -- resting: no poop is owed while the place is closed
+			st.Done[slot] = nil
+			st.Nap[slot] = nil
 		end
 	end
 	st.Fresh = false
 end
 
--- The coins of one tick: for every OPEN place with a pet, every meal that is due pops one coin into its pile (Lucky
--- with LuckyChance), unless the pile is full (the pet naps: the meal is skipped). Returns the Cash of the new coins
--- and the list of { Slot, Value, Lucky } to apply once the bank took them.
-function Coins.meals(st, home, entries, valid, now)
+-- the lawn cap of one slot: PileSeconds(home) of that pet's coin rate (Lucky counted at its expected value)
+function Coins.capOf(home, coin)
 	local meal = catalog.Coins.MealSeconds
+	return catalog.PileSeconds(home) * coin / meal * catalog.LuckyEV(home)
+end
+
+-- A napping slot wakes when its lawn value is below its cap again: the pet walks back from where it slept (the nap
+-- cycle's OutLen / Speed) and the cycles start over from the new epoch. Returns true when something changed.
+function Coins.wake(st, seed, slot, now, cap)
+	local napCycle = st.Nap[slot]
+	if not napCycle then
+		return false
+	end
+	if Coins.slotValue(st, slot) >= cap - 1e-9 then
+		return false
+	end
+	local back = Coins.cycle()
+	local plan = homeRoam and homeRoam.Plan(seed, slot, napCycle)
+	if plan and isFinite(plan.OutLen) and isFinite(plan.Speed) and plan.Speed > 0 then
+		back = math.max(0, math.min(back, plan.OutLen / plan.Speed))
+	end
+	st.Nap[slot] = nil
+	st.Epoch[slot] = Coins.roundEpoch(now + back)
+	st.Done[slot] = -1
+	return true
+end
+
+-- The poops of one tick: for every OPEN place with a pet, every poop whose time (HomeRoam.PoopTime on the slot's
+-- epoch) has come drops Cloud Cash at the plan's poop point (Lucky with LuckyChance), at most MAX_POOPS_PER_TICK per
+-- slot per tick (a stalled server catches up a little at a time). A slot whose lawn value reached its cap naps
+-- instead (`:N<cycle>` in Roam, no poop) until a scoop below the cap wakes it. Returns the Cash of the new poops and
+-- the list of { Slot, Cycle, Value, Lucky, X, Z } to lay down once the bank took them.
+function Coins.poops(st, home, entries, valid, now, seed)
+	if not homeRoam or type(homeRoam.PoopTime) ~= "function" then
+		return 0, {}
+	end
 	local stars = starsOf(home)
 	local lucky = catalog.LuckyChance(home)
 	local luckyMult = catalog.Coins.LuckyMult
-	local luckyEV = catalog.LuckyEV(home)
-	local pileSeconds = catalog.PileSeconds(home)
-	local open = gardenSlots(home)
+	local poopMeals = catalog.Coins.PoopMeals or 3
+	local open = math.min(gardenSlots(home), MAX_SLOT, Coins.maxSlots())
 	local added, drops = 0, {}
-	for slot = 1, math.min(open, MAX_SLOT) do
+	for slot = 1, open do
 		local entry = valid[slot] and entries[slot]
 		if entry then
-			local due = st.NextMeal[slot]
-			if not due then
-				due = now + meal -- a place that just opened (or a timer dropped while resting): a full meal first
-				st.NextMeal[slot] = due
+			if not st.Epoch[slot] then
+				-- a place that just opened (or an epoch dropped while resting): a settle first, never a backlog
+				st.Epoch[slot] = Coins.roundEpoch(now + Coins.settle())
+				st.Done[slot] = -1
+				st.Nap[slot] = nil
 			end
-			if now >= due then
-				local power = catalog.PetPower(entry)
-				local coin = catalog.CoinValue(home, power, stars)
-				local cap = pileSeconds * coin / meal * luckyEV -- the pile holds PileSeconds of this pet's coins
-				local pile = st.Piles[slot]
-				local value = pile and pile.Value or 0
-				local meals = 0
-				while now >= due and meals < Coins.MAX_MEALS_PER_TICK do
-					meals = meals + 1
-					if coin <= 0 then
-						due = due + meal
-					elseif value >= cap - 1e-9 then
-						-- full: the pet naps and eats nothing until scooped
-						if pile then
-							pile.Full = true
-						end
-						due = now + meal
-						break
+			local coin = catalog.CoinValue(home, catalog.PetPower(entry), stars)
+			local cap = Coins.capOf(home, coin)
+			Coins.wake(st, seed, slot, now, cap)
+			local epoch = st.Epoch[slot]
+			local n = 0
+			while n < Coins.MAX_POOPS_PER_TICK and not st.Nap[slot] do
+				local c = (st.Done[slot] or -1) + 1
+				local at = homeRoam.PoopTime(seed, slot, epoch, c)
+				if not isFinite(at) or at > now then
+					break
+				end
+				n = n + 1
+				if coin <= 0 then
+					st.Done[slot] = c
+				elseif Coins.slotValue(st, slot) >= cap - 1e-9 then
+					st.Nap[slot] = c -- full lawn: the pet naps where it stands until a scoop below the cap
+				else
+					local plan = homeRoam.Plan(seed, slot, c)
+					local pt = plan and plan.Poop
+					if not pt then
+						st.Done[slot] = c
 					else
-						local v = coin
+						local v = coin * poopMeals
 						local isLucky = false
 						if lucky > 0 and st.Rng:NextNumber() < lucky then
 							v = v * luckyMult
 							isLucky = true
 						end
-						drops[#drops + 1] = { Slot = slot, Value = v, Lucky = isLucky, Cap = cap }
+						drops[#drops + 1] = { Slot = slot, Cycle = c, Value = v, Lucky = isLucky, X = pt.x or pt[1], Z = pt.z or pt[2] }
 						added = added + v
-						value = value + v
-						due = due + meal
+						st.Done[slot] = c
 					end
 				end
-				if now - due > meal * Coins.MAX_LATE then
-					due = now -- never owe more than one meal of backlog
+			end
+			-- never owe more than two cycles of backlog (a long stall is forgiven, the pets keep their rhythm)
+			local lastDue = (st.Done[slot] or -1)
+			if not st.Nap[slot] then
+				local late = homeRoam.PoopTime(seed, slot, epoch, lastDue + 1)
+				while isFinite(late) and now - late > 2 * Coins.cycle() do
+					lastDue = lastDue + 1
+					late = homeRoam.PoopTime(seed, slot, epoch, lastDue + 1)
 				end
-				st.NextMeal[slot] = due
+				st.Done[slot] = lastDue
 			end
 		end
 	end
 	return added, drops
 end
 
+-- Lays the new poops on the lawn: a slot keeps at most Coins.DropsPerPet drops, a further poop merges into the
+-- NEAREST drop of that slot (its value and poop count grow, its cycle id stays).
 function Coins.applyDrops(st, drops)
+	local maxDrops = (catalog.Coins and catalog.Coins.DropsPerPet) or 3
 	for _, d in ipairs(drops) do
-		local pile = st.Piles[d.Slot]
-		if not pile then
-			pile = { Coins = 0, Value = 0, Lucky = false, Full = false }
-			st.Piles[d.Slot] = pile
+		local list = st.Drops[d.Slot]
+		if not list then
+			list = {}
+			st.Drops[d.Slot] = list
 		end
-		pile.Coins = pile.Coins + 1
-		pile.Value = pile.Value + d.Value
-		if d.Lucky then
-			pile.Lucky = true
+		local real = 0
+		for _, e in ipairs(list) do
+			if (e.Poops or 0) >= 1 then
+				real = real + 1
+			end
 		end
-		if pile.Value >= d.Cap - 1e-9 then
-			pile.Full = true
+		if real < maxDrops then
+			list[#list + 1] = { Cycle = d.Cycle, Value = d.Value, Lucky = d.Lucky == true, Poops = 1, X = d.X, Z = d.Z }
+		else
+			local best, bestD = nil, math.huge
+			for _, e in ipairs(list) do
+				if (e.Poops or 0) >= 1 then
+					local dx, dz = (e.X or 0) - d.X, (e.Z or 0) - d.Z
+					local dist = dx * dx + dz * dz
+					if dist < bestD then
+						best, bestD = e, dist
+					end
+				end
+			end
+			best.Value = best.Value + d.Value
+			best.Poops = (best.Poops or 0) + 1
+			if d.Lucky then
+				best.Lucky = true
+			end
 		end
 	end
 end
 
--- Scoops every pile within ScoopRadius(home) (horizontally; SCOOP_HEIGHT vertically) of the OWNER's root: the bank
+-- Berries from the poops of one tick: value x Berries.Share whole berries into Profile.Berries (the fraction stays in
+-- the ledger), clamped so the poops never lift Berries above BasketCap (a cap below the berries removes none; the lost
+-- berries toast "Basket full!" once until the basket has room again). Non-yielding.
+function Coins.berries(player, st, home, income, added)
+	local B = catalog.Berries
+	if type(B) ~= "table" or not dataService or type(dataService.AddBerries) ~= "function" then
+		return 0
+	end
+	local pot = (st.BerryFrac or 0) + added * (tonumber(B.Share) or 0)
+	local whole = math.floor(pot + 1e-9)
+	st.BerryFrac = math.max(0, pot - whole)
+	if whole < 1 then
+		return 0
+	end
+	local have = 0
+	if type(dataService.GetBerries) == "function" then
+		local okH, h = pcall(dataService.GetBerries, player)
+		if okH and isFinite(h) then
+			have = h
+		end
+	end
+	local cap = whole + have
+	if type(catalog.BasketCap) == "function" then
+		local okCap, c = pcall(catalog.BasketCap, home, income or 0)
+		if okCap and isFinite(c) then
+			cap = c
+		end
+	end
+	local room = math.max(0, math.floor(cap) - have)
+	local give = math.min(whole, room)
+	if give < whole then
+		if not st.BasketFull then
+			st.BasketFull = true
+			notify(player, "Basket full! Feed your pets", "info", 4)
+		end
+	elseif have + give < cap then
+		st.BasketFull = nil
+	end
+	if give < 1 then
+		return 0
+	end
+	local okAdd, wrote = pcall(dataService.AddBerries, player, give)
+	if not okAdd or wrote ~= true then
+		st.BerryFrac = st.BerryFrac + give -- not banked (not loaded yet): the next tick tries again
+		return 0
+	end
+	return give
+end
+
+-- Scoops every drop within ScoopRadius(home) (horizontally; SCOOP_HEIGHT vertically) of the OWNER's root: the bank
 -- pays `take` (whole Cash, clamped to the bank) in one MutateHome, then AddCash; refunded when AddCash fails.
--- Fractions stay in their pile. Returns ok, amount | reason.
+-- Fractions stay on the lawn (an invisible drop below $1). Napping slots whose lawn fell under the cap wake up.
+-- Returns ok, amount | reason.
 function Coins.scoop(player, index)
 	local st = Coins.state[player]
 	local info = plotInfo(index)
@@ -889,13 +1138,19 @@ function Coins.scoop(player, index)
 		return math.sqrt(dx * dx + dz * dz) <= radius and math.abs(pos.Y - at.Y) <= Coins.SCOOP_HEIGHT
 	end
 	local hit, sum = {}, 0
-	for slot, pile in pairs(st.Piles) do
-		if pile.Value > 0 and inRange(Coins.pointOf(st, index, slot)) then
-			hit[#hit + 1] = slot
-			sum = sum + pile.Value
+	local slots = {}
+	for slot in pairs(st.Drops) do
+		slots[#slots + 1] = slot
+	end
+	table.sort(slots)
+	for _, slot in ipairs(slots) do
+		for i, d in ipairs(st.Drops[slot]) do
+			if d.Value > 0 and inRange(Coins.worldPoint(st, index, d.X, d.Z)) then
+				hit[#hit + 1] = { Slot = slot, Index = i, Drop = d }
+				sum = sum + d.Value
+			end
 		end
 	end
-	table.sort(hit)
 	local welcomeIn = st.Welcome > 0 and inRange(Coins.welcomePoint(st, index))
 	if welcomeIn then
 		sum = sum + st.Welcome
@@ -915,7 +1170,7 @@ function Coins.scoop(player, index)
 		return true
 	end)
 	if not wrote or paid < 1 then
-		Coins.reconcile(st, bankOf(getHome(player) or home)) -- the bank holds less than the piles claim
+		Coins.reconcile(st, bankOf(getHome(player) or home)) -- the bank holds less than the drops claim
 		return false, "Nothing to scoop yet"
 	end
 	if not dataService.AddCash(player, paid) then
@@ -925,22 +1180,52 @@ function Coins.scoop(player, index)
 		end)
 		return false, "Could not bank the Cash right now"
 	end
-	-- the piles in range are emptied; the fraction below one Cash stays in the first of them
+	-- the drops in range are gone; the fraction below one Cash stays in the first of them (invisible: no poops)
 	local left = math.max(0, sum - paid)
-	for _, slot in ipairs(hit) do
-		st.Piles[slot] = nil
+	local first = hit[1]
+	for i = #hit, 1, -1 do
+		local h = hit[i]
+		local list = st.Drops[h.Slot]
+		if list then
+			for j = #list, 1, -1 do
+				if list[j] == h.Drop then
+					table.remove(list, j)
+				end
+			end
+			if #list == 0 then
+				st.Drops[h.Slot] = nil
+			end
+		end
 	end
 	if welcomeIn then
 		st.Welcome = 0
 	end
 	if left > 1e-6 then
-		if hit[1] then
-			st.Piles[hit[1]] = { Coins = 0, Value = left, Lucky = false, Full = false }
+		if first then
+			local list = st.Drops[first.Slot]
+			if not list then
+				list = {}
+				st.Drops[first.Slot] = list
+			end
+			table.insert(list, 1, { Cycle = first.Drop.Cycle, Value = left, Lucky = false, Poops = 0, X = first.Drop.X, Z = first.Drop.Z })
 		else
 			st.Welcome = left
 		end
 	end
 	Coins.reconcile(st, bankOf(getHome(player) or home))
+	-- napping pets whose lawn has room again walk back to the bowl
+	local seed = Coins.seedOf(player)
+	local now = Coins.serverNow()
+	local _, _, valid, entries = incomeOf(player, home)
+	for slot in pairs(st.Nap) do
+		local entry = valid[slot] and entries[slot]
+		if entry then
+			local coin = catalog.CoinValue(home, catalog.PetPower(entry), starsOf(home))
+			Coins.wake(st, seed, slot, now, Coins.capOf(home, coin))
+		else
+			Coins.wake(st, seed, slot, now, math.huge)
+		end
+	end
 	TycoonService.CoinsScooped:Fire(player, paid)
 	return true, paid
 end
@@ -949,7 +1234,7 @@ end
 function Coins.scoopAll()
 	for player, index in pairs(plots) do
 		local st = Coins.state[player]
-		if st and player.Parent and not departed[player] and (st.Welcome >= 1 or next(st.Piles) ~= nil) then
+		if st and player.Parent and not departed[player] and (st.Welcome >= 1 or next(st.Drops) ~= nil) then
 			local ok, paid = pcall(Coins.scoop, player, index)
 			if not ok then
 				warn("[TycoonService] scoop failed: " .. tostring(paid))
@@ -957,7 +1242,7 @@ function Coins.scoopAll()
 				local home = getHome(player)
 				if home then
 					local income, _, _, entries = incomeOf(player, home)
-					Coins.show(index, st, home, income, entries)
+					Coins.show(index, st, home, income, entries, player)
 				end
 			end
 		end
@@ -1028,10 +1313,10 @@ local function syncPlot(player, home, income, valid, entries)
 	if st.Fresh then
 		-- a rebuilt ledger (claim, load, rebase, prestige, reset): the keys already in the garden get their random
 		-- start phase NOW, so a pet placed a moment later waits a full meal like every new placement (X5)
-		Coins.followKeys(st, valid or {}, os.clock(), catalog.Coins.MealSeconds, gardenSlots(home))
+		Coins.followKeys(st, valid or {}, Coins.serverNow(), Coins.cycle(), gardenSlots(home))
 	end
 	Coins.reconcile(st, bankOf(home))
-	Coins.show(index, st, home, income, entries)
+	Coins.show(index, st, home, income, entries, player)
 	local s = shown[index] or {}
 	shown[index] = s
 	local level, stars = homeLevelOf(home), starsOf(home)
@@ -1061,7 +1346,7 @@ local function resetPlotState(index)
 end
 
 local function clearPlotAttributes(info)
-	for _, name in ipairs({ "HomeLevel", "Prestige", "CollectorCash", "IncomePerSecond", "GardenPets", "GardenInfo", "GardenSlots", "CoinPiles" }) do
+	for _, name in ipairs({ "HomeLevel", "Prestige", "CollectorCash", "IncomePerSecond", "GardenPets", "GardenInfo", "GardenSlots", "RoamSeed", "RoamVersion", "Roam", "CoinDrops", "BerryCap" }) do
 		setFolderAttr(info, name, nil)
 	end
 end
@@ -1172,6 +1457,24 @@ local function welcomeVeteran(player)
 	return true
 end
 
+-- The one-time 'Your home got simpler!' toast of a Phase 4 home folded by THIS session's P5Home step
+-- (DataService.MigratedNow(player, "P5Home") answers only in the session that ran the fold for the first time).
+local function welcomeP5(player)
+	if Coins.welcomedP5[player] or not dataService or type(dataService.MigratedNow) ~= "function" then
+		return false
+	end
+	local ok, info = pcall(dataService.MigratedNow, player, "P5Home")
+	if not ok or type(info) ~= "table" or info.FirstTime ~= true then
+		return false
+	end
+	if info.Folded ~= true and info.Veteran ~= true and (tonumber(info.Berries) or 0) < 1 then
+		return false -- a brand-new profile marked on its first load: nothing changed for this player
+	end
+	Coins.welcomedP5[player] = true
+	notify(player, "Your home got simpler! Your plants grew into one Berry Farm and your garden pets now roam your yard. Old snacks count as berries, and feeding is free: berries!", "good", 9)
+	return true
+end
+
 function TycoonService.Claim(player, index)
 	if not initialized or not spotService or type(spotService.Claim) ~= "function" then
 		return false, "Homes are not ready yet"
@@ -1229,6 +1532,7 @@ function TycoonService.Claim(player, index)
 		notify(player, "Welcome home! Use the glowing pads to build.", "good", 6)
 	end
 	welcomeVeteran(player)
+	welcomeP5(player)
 	return true, nil
 end
 
@@ -1359,6 +1663,10 @@ function TycoonService.Buy(player, stationId)
 		return false, "Prestige from the Home window (it shows what resets first)"
 	end
 	local def = catalog.Get(stationId)
+	if not def and Coins.LEGACY_HOME[stationId] then
+		-- an old client's pad id (Phase 4 presses, Collector, old decor): the fold moved it into a Phase 5 station
+		return false, "That station is now part of the " .. Coins.LEGACY_HOME[stationId]
+	end
 	if not def or def.Kind == "Prestige" then
 		return false, "Unknown station"
 	end
@@ -1455,7 +1763,7 @@ function TycoonService.Collect(player, quiet)
 	local home = getHome(player)
 	if home then
 		local income, _, _, entries = incomeOf(player, home)
-		Coins.show(index, Coins.ensure(player), home, income, entries)
+		Coins.show(index, Coins.ensure(player), home, income, entries, player)
 	end
 	if not quiet or cooldown(player, "CollectToast", COLLECT_TOAST_GAP) then
 		notify(player, "+" .. money(result) .. " scooped!", "good", 2.5)
@@ -1746,7 +2054,7 @@ function TycoonService.GardenSet(player, slot, key)
 		if after then
 			local income, _, valid, entries = incomeOf(player, after)
 			local st = Coins.ensure(player)
-			Coins.followKeys(st, valid, os.clock(), catalog.Coins.MealSeconds, gardenSlots(after)) -- X5: the timer rule, right away
+			Coins.followKeys(st, valid, Coins.serverNow(), Coins.cycle(), gardenSlots(after)) -- X5 / Y8: the epoch rule, right away
 			syncPlot(player, after, income, valid, entries)
 		end
 	end
@@ -1802,7 +2110,38 @@ function TycoonService.CoinsWaiting(player)
 	return math.floor(bankOf(home))
 end
 
--- A copy of the session ledger: { [slot] = { Coins, Value, Lucky, Full, Pos }, W = { Value, Pos } } (nil without a plot).
+-- The drops on the lawn (a copy of the session ledger, slot then cycle order): { { Slot, Cycle, Position, Value,
+-- Lucky, Poops, Stage } } (nil without a plot). Drops of a fraction left by a scoop (Poops 0) are included.
+function TycoonService.Drops(player)
+	local index = player and plots[player]
+	local st = index and Coins.state[player]
+	if not st then
+		return nil
+	end
+	local slots = {}
+	for slot in pairs(st.Drops) do
+		slots[#slots + 1] = slot
+	end
+	table.sort(slots)
+	local out = {}
+	for _, slot in ipairs(slots) do
+		for _, d in ipairs(st.Drops[slot]) do
+			out[#out + 1] = {
+				Slot = slot,
+				Cycle = d.Cycle,
+				Position = Coins.worldPoint(st, index, d.X, d.Z),
+				Value = d.Value,
+				Lucky = d.Lucky == true,
+				Poops = d.Poops or 0,
+				Stage = Coins.stageOf(d.Poops),
+			}
+		end
+	end
+	return out
+end
+
+-- Per-slot sums of the drops (the Phase 4 shape, kept): { [slot] = { Coins (= poops), Value, Lucky, Full (= napping),
+-- Pos (the first drop) }, W = { Value, Pos } } (nil without a plot).
 function TycoonService.Piles(player)
 	local index = player and plots[player]
 	local st = index and Coins.state[player]
@@ -1810,8 +2149,26 @@ function TycoonService.Piles(player)
 		return nil
 	end
 	local out = {}
-	for slot, pile in pairs(st.Piles) do
-		out[slot] = { Coins = pile.Coins, Value = pile.Value, Lucky = pile.Lucky == true, Full = pile.Full == true, Pos = Coins.pointOf(st, index, slot) }
+	for slot, list in pairs(st.Drops) do
+		if #list > 0 then
+			local sum = { Coins = 0, Value = 0, Lucky = false, Full = st.Nap[slot] ~= nil, Pos = nil }
+			for _, d in ipairs(list) do
+				sum.Coins = sum.Coins + (d.Poops or 0)
+				sum.Value = sum.Value + d.Value
+				if d.Lucky then
+					sum.Lucky = true
+				end
+				if not sum.Pos then
+					sum.Pos = Coins.worldPoint(st, index, d.X, d.Z)
+				end
+			end
+			out[slot] = sum
+		end
+	end
+	for slot in pairs(st.Nap) do
+		if not out[slot] then
+			out[slot] = { Coins = 0, Value = 0, Lucky = false, Full = true, Pos = nil }
+		end
 	end
 	out.W = { Value = st.Welcome, Pos = Coins.welcomePoint(st, index) }
 	return out
@@ -2088,6 +2445,18 @@ local function onHomeLoaded(player)
 		end
 		return true
 	end)
+	local berries = 0
+	if wrote and amount >= 1 then
+		-- the offline coins also grow their berries (offline x Share, the basket cap ignored), in the same step
+		local share = catalog.Berries and tonumber(catalog.Berries.Share) or 0
+		berries = math.floor(amount * share)
+		if berries >= 1 and type(dataService.AddBerries) == "function" then
+			local okB, gave = pcall(dataService.AddBerries, player, berries)
+			if not okB or gave ~= true then
+				berries = 0
+			end
+		end
+	end
 	if wrote and amount >= 1 then
 		if plots[player] then
 			local after = getHome(player)
@@ -2097,7 +2466,8 @@ local function onHomeLoaded(player)
 			end
 		end
 		task.delay(OFFLINE_TOAST_DELAY, function()
-			notify(player, "Welcome back! Your pets made " .. money(amount) .. " while you were away: scoop it in your garden!", "good", 7)
+			local extra = berries >= 1 and (" and " .. tostring(berries) .. " berries") or ""
+			notify(player, "Welcome back! Your pets made " .. money(amount) .. extra .. " while you were away: scoop it in your garden!", "good", 7)
 		end)
 	end
 end
@@ -2132,6 +2502,7 @@ local function forget(player)
 	toastAt[player] = nil
 	Coins.state[player] = nil
 	Portal.open[player] = nil
+	Coins.welcomedP5[player] = nil
 end
 
 -- (LastSeen is not written here: the periodic refresh keeps it within LASTSEEN_EVERY of the leave and the offline pay
@@ -2157,19 +2528,25 @@ local function tickPlayer(player, index, now)
 	end
 	local income, _, valid, entries = incomeOf(player, home)
 	local st = Coins.ensure(player)
-	Coins.followKeys(st, valid, now, catalog.Coins.MealSeconds, gardenSlots(home))
+	local sNow = Coins.serverNow()
+	Coins.followKeys(st, valid, sNow, Coins.cycle(), gardenSlots(home))
 	if dt > 0 then
-		local added, drops = Coins.meals(st, home, entries, valid, now)
+		local added, drops = Coins.poops(st, home, entries, valid, sNow, Coins.seedOf(player))
 		if added > 0 then
+			-- the bank takes the new coins and the basket its berries in ONE non-yielding step per tick
 			local wrote = mutateHome(player, function(live)
-				live.CollectorCash = bankOf(live) + added -- the bank takes the new coins (one write per tick)
+				live.CollectorCash = bankOf(live) + added
 				return true
 			end)
 			if wrote then
 				Coins.applyDrops(st, drops)
 				home.CollectorCash = bankOf(home) + added
+				Coins.berries(player, st, home, income, added)
 			end
 		end
+	end
+	if st.DropsDirty and st.DropsAt and now - st.DropsAt >= Coins.DROPS_WRITE_GAP then
+		st.DropsAt = nil -- the throttled CoinDrops write lands now (syncPlot -> Coins.show)
 	end
 	if syncPlot(player, home, income, valid, entries) then
 		TycoonService.HomeChanged:Fire(player) -- another module changed the stations (rebase, dev reset)
@@ -2389,6 +2766,7 @@ function TycoonService.Init(lobbyInfo, deps)
 	spotService = deps.SpotService or requireModule(script.Parent, "SpotService")
 	battleService = deps.BattleService
 	catalog = requireModule(Shared, "TycoonCatalog")
+	homeRoam = requireModule(Shared, "HomeRoam")
 	petKeys = requireModule(Shared, "PetKeys")
 	petCatalog = requireModule(Shared, "PetCatalog")
 	if not catalog then
