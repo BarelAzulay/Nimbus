@@ -519,6 +519,26 @@ end
 -- Encounter fixtures: a zone part far out in the sky, a spec with recording callbacks
 ----------------------------------------------------------------------------------------------------
 local zoneSeq = 0
+-- the BattleService battle record of a battle id (white-box, tests only: the service's St is an upvalue of IsInBattle)
+-- -> b (b.Sim = the BattleSim, b.Parts[userId]) | nil
+local function battleOf(battleId)
+	local bs = BS()
+	local f = bs and bs.IsInBattle
+	if type(f) ~= "function" or not battleId then
+		return nil
+	end
+	for i = 1, 80 do
+		local name, v = debug.getupvalue(f, i)
+		if not name then
+			break
+		end
+		if name == "St" and type(v) == "table" and type(v.battles) == "table" then
+			return v.battles[battleId]
+		end
+	end
+	return nil
+end
+
 local function makeZone(size)
 	zoneSeq = zoneSeq + 1
 	local part = Instance.new("Part")
@@ -655,7 +675,7 @@ S.p5svc_commands = scenario("p5svc_commands", function()
 	local okB4, whyB4 = bs.Command(x, "Swap", 4)
 	local okBn, whyBn = bs.Command(x, "Buff")
 	T.check(okB1 == false and whyB1 == "BadSlot" and okB4 == false and whyB4 == "BadSlot" and okBn == false and whyBn == "BadSlot",
-		"p5 cmd: Buff / Swap take 2 or 3 only (BadSlot)", tostring(whyB1) .. " " .. tostring(whyB4) .. " " .. tostring(whyBn))
+		"p5 cmd: Buff / Swap take a BENCHED team slot 1..3 only (BadSlot for the fighter's own slot 1, slot 4, nil)", tostring(whyB1) .. " " .. tostring(whyB4) .. " " .. tostring(whyBn))
 	local okE, whyE = bs.Command(x, "Element", { x = 0 / 0, z = 0 })
 	local okE2, whyE2 = bs.Command(x, "Element", { x = 1e9, z = 0 })
 	T.check(okE == false and whyE == "BadPoint" and okE2 == false and whyE2 == "BadPoint", "p5 cmd: a NaN / huge aim point is refused (BadPoint)", tostring(whyE) .. " " .. tostring(whyE2))
@@ -763,6 +783,31 @@ S.p5svc_commands = scenario("p5svc_commands", function()
 		"p5 cmd: commands from outside the zone are refused (NotInZone), one toast per 3 s, Order { rejected = NotInZone } echoed", tostring(whyZ) .. " toasts " .. tostring(nZone))
 	Mock.Teleport(x, padCF)
 	advance(0.1)
+	-- W5 battle-dungeon-4: after Swap(2) the ORIGINAL fighter sits on the bench as team slot 1 (the client sends u.slot):
+	-- Buff(1) and Swap(1) pass the ladder (the sim decides), so the benched original can buff and come back
+	advance(1.0)
+	local m10 = K.logSize()
+	local okS2, whyS2 = bs.Command(x, "Swap", 2)
+	advance((BC().Fighter.SwapCastSeconds or 0.6) + 0.3)
+	local okB1b, whyB1b = bs.Command(x, "Buff", 1)
+	local okS1a, whyS1a = bs.Command(x, "Swap", 1)
+	T.check(okS2 == true and okB1b == true and okS1a == false and whyS1a == "Cooldown",
+		"p5 cmd: after Swap(2) the benched original fighter (slot 1) can BUFF; Swap(1) is only on the swap cooldown (not BadSlot)",
+		tostring(whyS2) .. " / Buff(1) " .. tostring(okB1b) .. " " .. tostring(whyB1b) .. " / Swap(1) " .. tostring(okS1a) .. " " .. tostring(whyS1a))
+	local bx = battleOf(id)
+	local teamX = bx and bx.Sim and bx.Sim.teamByOwner and bx.Sim.teamByOwner[x.UserId]
+	if T.check(teamX ~= nil, "p5 cmd: (white-box) the duel's sim team is reachable") then
+		teamX.swapReadyAt = 0
+		local okS1b, whyS1b = bs.Command(x, "Swap", 1)
+		advance(0.3)
+		local back = false
+		for _, ev in ipairs(eventsOf(x, m10, "Swap")) do
+			if ev.owner == x.UserId and ev["in"] == ownId then
+				back = true
+			end
+		end
+		T.check(okS1b == true and back and teamX.fighter and teamX.fighter.id == ownId, "p5 cmd: Swap(1) brings the original fighter back (Swap event in = its unit id)", tostring(whyS1b))
+	end
 	-- Forfeit still works from anywhere; afterwards commands pay or change nothing
 	bs.Forfeit(x)
 	advance(0.5)
@@ -894,10 +939,75 @@ S.p5svc_position = scenario("p5svc_position", function()
 		"p5 pos: a raider leashed out is removed from the raid (End Outcome Left, the others fight on)", string.format("after %.1f s, players %s", removedAt or -1, st and tostring(st.Players) or "nil"))
 	bs.EndRaid()
 	advance(0.3)
+
+	-- W5 battle-dungeon-3 (4.4 / B1 / C15): a STUNNED / frozen fighter stands (the sim caps its move at 0) while the
+	-- character keeps running, so the gap grows past Leash 10 through no fault of the player: no leash while the stun
+	-- lasts nor during the catch-up after it; afterwards a real run-off is still removed
+	local s = newPlayer("PosFrozen", MID, 10)
+	local zoneS = makeZone(160)
+	placeOnZone(zoneS, { s })
+	local specS, callsS = encounterSpec(zoneS, { s })
+	local markS = K.logSize()
+	local idS, whyS = bs.OpenEncounter(specS)
+	advance(0.3)
+	local trS = tracker(s)
+	trS.cursor = markS
+	pump(trS)
+	local bS = battleOf(idS)
+	local teamS = bS and bS.Sim and bS.Sim.teamByOwner and bS.Sim.teamByOwner[s.UserId]
+	if T.check(type(idS) == "string" and teamS ~= nil and trS.zone ~= nil and trS.speed ~= nil, "p5 pos: (setup) a solo dungeon encounter on a 160 zone, its sim reachable", tostring(whyS)) then
+		local fS = teamS.fighter
+		local runS = trS.speed.Run
+		-- the fighter follows the character to the zone centre first (the circles below stay inside the zone)
+		placeChar(trS, 0, 0)
+		local t0 = Mock.Clock.now
+		while Mock.Clock.now - t0 < 8 and math.abs(fS.x) + math.abs(fS.z) > 1 do
+			advance(0.2)
+		end
+		T.check(math.abs(fS.x) + math.abs(fS.z) <= 1 and #callsS.OnLeave == 0, "p5 pos: (setup) the fighter stands at the centre, nothing leashed")
+		-- a 2.5 s freeze (Blizzard) while the character circles at r 30 at the legal run speed for 9 s (without the
+		-- stun rule the leash fires at ~4.3 s)
+		fS.stunUntil = bS.Sim:Time() + 2.5
+		local theta = 0
+		for _ = 1, 90 do
+			theta = theta + runS * 0.1 / 30
+			placeChar(trS, 30 * math.cos(theta), 30 * math.sin(theta))
+			advance(0.1)
+		end
+		local partS = bS.Parts[s.UserId]
+		T.check(#callsS.OnLeave == 0 and bs.IsInBattle(s) and partS ~= nil and (partS.LeashGraceUntil or 0) > 2.5,
+			"p5 pos: a fighter frozen 2.5 s whose character keeps circling at r 30 at the legal run speed is NEVER leashed (the stun + its catch-up are exempt)",
+			string.format("OnLeave %d, grace until %.1f", #callsS.OnLeave, partS and partS.LeashGraceUntil or -1))
+		-- after the catch-up the leash is back: a 45 stud jump + a run-off at the legal speed is removed (the leash or
+		-- the zone's presence check, whichever comes first)
+		local waited = 0
+		while partS and bS.Sim:Time() < (partS.LeashGraceUntil or 0) + 0.2 and waited < 30 do
+			advance(0.5)
+			waited = waited + 0.5
+		end
+		T.check(#callsS.OnLeave == 0 and bs.IsInBattle(s), "p5 pos: ...and still in the fight once the grace has run out", tostring(#callsS.OnLeave))
+		local fx, fz = fS.x, fS.z
+		local leftAt = nil
+		local t1 = Mock.Clock.now
+		for i = 1, 60 do
+			placeChar(trS, fx + 45 + runS * 0.1 * i, fz)
+			advance(0.1)
+			if #callsS.OnLeave > 0 then
+				leftAt = Mock.Clock.now - t1
+				break
+			end
+		end
+		local whyLeft = callsS.OnLeave[1] and callsS.OnLeave[1][3]
+		T.check(leftAt ~= nil and leftAt <= F.LeashSeconds + 1.6 and not bs.IsInBattle(s) and (whyLeft == "Leash" or whyLeft == "Left"),
+			"p5 pos: a real run-off after the grace is still removed within LeashSeconds (OnLeave Leash / Left)", string.format("after %.1f s, why %s", leftAt or -1, tostring(whyLeft)))
+	end
+	bs.FinishEncounter(idS, "Abandoned")
+	advance(0.3)
+	zoneS:Destroy()
 	K.flushErrors("p5svc_position")
 	K.flushWarnings("p5svc_position", ALLOWED_WARNINGS)
 	w.stop()
-	cleanup({ a, b, r1, r2 })
+	cleanup({ a, b, r1, r2, s })
 end)
 
 ----------------------------------------------------------------------------------------------------

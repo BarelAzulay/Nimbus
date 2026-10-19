@@ -637,7 +637,9 @@ function SIM.dungeonRoom(f, r, teams, policies, seed, playerOpts)
 	local nWaves = isBoss and 2 or ((f == 1) and D.Floor1Waves[r] or D.Waves[r])
 	local wave = 1
 	local escortDue = false
-	b:SpawnEnemies(BC.DungeonWave(f, r, 1, n, seed).Pets, { Wave = 1 })
+	-- the Throne's enemies spawn at the foot of the dais stairs (DungeonBuilder's SpawnAnchor, zone-local z 15)
+	local anchor = isBoss and { 0, 15 } or nil
+	b:SpawnEnemies(BC.DungeonWave(f, r, 1, n, seed).Pets, { Wave = 1, Anchor = anchor })
 	local steps, maxSteps = 0, floor((limit + 5) / DT) + 10
 	local cleared = false
 	while not b:IsFinished() and steps < maxSteps do
@@ -653,7 +655,7 @@ function SIM.dungeonRoom(f, r, teams, policies, seed, playerOpts)
 			local hp = b:BossHp()
 			if hp and hp <= D.EscortAt then
 				escortDue = true
-				b:SpawnEnemies(BC.DungeonWave(f, r, 2, n, seed).Pets, { Wave = 2 })
+				b:SpawnEnemies(BC.DungeonWave(f, r, 2, n, seed).Pets, { Wave = 2, Anchor = anchor })
 				wave = 2
 			end
 		end

@@ -64,6 +64,21 @@ local CEIL_Y = 15.8
 local TILE = 6
 local MAX_INDEX = 12
 local JOG = 15 -- the lateral shift of a Left / Right corridor
+-- the battle zones (BattleCatalog.Dungeon.Zones when it loads: Room 44 x 44, Boss 56 x 72 = the whole Throne floor)
+local ROOM_ZONE = { X = 44, Z = 44 }
+local BOSS_ZONE = { X = 56, Z = 72 }
+do
+	local okZ, BattleCatalog = pcall(require, Shared:FindFirstChild("BattleCatalog"))
+	local zones = okZ and type(BattleCatalog) == "table" and type(BattleCatalog.Dungeon) == "table" and BattleCatalog.Dungeon.Zones or nil
+	if type(zones) == "table" then
+		for name, target in pairs({ Room = ROOM_ZONE, Boss = BOSS_ZONE }) do
+			local z = zones[name]
+			if type(z) == "table" and tonumber(z.X) and tonumber(z.Z) then
+				target.X, target.Z = tonumber(z.X), tonumber(z.Z)
+			end
+		end
+	end
+end
 
 -- the chain of a run (room 0 = the hall, 1..4 the fight rooms, 5 the treasure alcove); every piece heads +Z
 DungeonBuilder.Budgets = { Room = 320, Boss = 420, Hall = 140, Corridor = 70, Treasure = 90, Run = 950, Portal = 120 }
@@ -905,13 +920,16 @@ function Rooms.Throne(variant)
 	Kit.puddle(detail, CFrame.new(16, 0, 10), 4, 3)
 	Kit.moss(detail, CFrame.new(24, 0, -14), 4, 3)
 	Kit.hay(detail, CFrame.new(27, 0, 0))
-	-- points: the zone centre sits at z -8 (56 x 56 from -36 to 20, in front of the dais)
+	-- points: the zone covers the WHOLE room (56 x 72 on the 60 x 72 floor: the dais, the throne and the back strip are
+	-- inside it, so a member who climbs the stairs is never dropped out of the fight); the enemies spawn at the foot of
+	-- the dais stairs (SpawnAnchor), not on the throne
 	attach(base, "Threshold", Vector3.new(0, 1.5, -26))
 	for i = 1, 4 do
 		attach(base, "Spawn" .. i, Vector3.new(-6 + (i - 1) * 4, 1.5, -32))
 	end
 	attach(base, "Dais", Vector3.new(0, 1.5, daisZ))
-	attach(base, "ZoneCenter", Vector3.new(0, 1.5, -8))
+	attach(base, "ZoneCenter", Vector3.new(0, 1.5, 0))
+	attach(base, "SpawnAnchor", Vector3.new(0, 1.5, 15))
 	return model
 end
 
@@ -1448,9 +1466,15 @@ function DungeonBuilder.PlaceRoom(pocket, room)
 		info.Threshold = th
 	end
 	if piece.Kind == "Room" or piece.Kind == "Boss" then
-		local size = piece.Kind == "Boss" and Vector3.new(56, 0, 56) or Vector3.new(44, 0, 44)
+		local size = piece.Kind == "Boss" and Vector3.new(BOSS_ZONE.X, 0, BOSS_ZONE.Z) or Vector3.new(ROOM_ZONE.X, 0, ROOM_ZONE.Z)
 		local zc = worldPoint(model, "ZoneCenter")
 		info.Zone = makeZone(staging, pocket, room, size, zc and CFrame.new(zc.Position) or CFrame.new(center.Position - Vector3.new(0, 1.5, 0)))
+		-- the enemies' spawn point in zone-local x / z when the template names one (DungeonService passes it to SpawnWave)
+		local sa = worldPoint(model, "SpawnAnchor")
+		if sa then
+			local rel = info.Zone.CFrame:PointToObjectSpace(sa.Position)
+			info.SpawnAnchor = { x = rel.X, z = rel.Z }
+		end
 		-- the two portcullis doors: Entrance (closed when the fight starts) and Exit (opens after the clear)
 		if entranceCf then
 			local door, bars = Kit.door(staging, CFrame.new(entranceCf.Position - Vector3.new(0, 1.5, 0)) * CFrame.new(0, 0, 0), "Door_Entrance", 8)

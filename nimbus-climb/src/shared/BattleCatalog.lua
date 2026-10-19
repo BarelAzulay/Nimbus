@@ -52,7 +52,7 @@
 --   BattleCatalog.Ring / ChampionTeam(round, seed) / RingPower / RingTarget / RingSeconds / RingRewards(round, incomePerSecond, isRecord)   (Phase 4, re-tuned)
 --   BattleCatalog.Bosses / BossOrder / NextBoss / BossHp(bossId, teams) / WeightedTeams / GroupFactor / BossRules (GroupExponent 0.2)
 --   BattleCatalog.Events / Raid / RaidTier(share, won) / EventPets() / Trophies / Duel (PowerGap 2, the quick queue band)
---   BattleCatalog.Zones { Duel, Raid, Ring, Dungeon 44, DungeonBoss 56 }, TimeLimits { Duel 120, Raid 330, Ring 90, Dungeon 120 (fallback) }, Modes
+--   BattleCatalog.Zones { Duel, Raid, Ring, Dungeon 44, DungeonBoss 56 x 72 }, TimeLimits { Duel 120, Raid 330, Ring 90, Dungeon 120 (fallback) }, Modes
 --   BattleCatalog.Dungeon / DungeonFloors (5.1); DungeonPower(floor, partySize); DungeonWave(floor, room, wave, partySize, seed) ->
 --       { Pets = { { PetId, Key, Level, Tier, Slot, Boss, Boost, Handicap, Wild = true }... }, Boss = bool, Power, Target, Floor, Room, Wave };
 --       DungeonRewards(floor, room, waves, incomePerSecond, double) -> { Cash, Tokens, Xp }; DungeonFirstClear(floor) -> { Tokens, Gems };
@@ -122,7 +122,7 @@ BattleCatalog.Zones = {
 	Raid = { X = 96, Z = 96 }, -- the colosseum floor
 	Ring = { X = 44, Z = 44 }, -- the Champion Ring pocket (one champion per round)
 	Dungeon = { X = 44, Z = 44 }, -- a dungeon wave room
-	DungeonBoss = { X = 56, Z = 56 }, -- the boss room (the Throne set)
+	DungeonBoss = { X = 56, Z = 72 }, -- the boss room (the whole Throne floor: dais and throne inside, so nobody is dropped out there)
 }
 -- Dungeon 120 is the FALLBACK only: DungeonService always passes TimeLimit from Dungeon.RoomTime / Floor1RoomTime
 BattleCatalog.TimeLimits = { Duel = 120, Raid = 330, Ring = 90, Dungeon = 120 }
@@ -1501,7 +1501,7 @@ BattleCatalog.Dungeon = {
 	EnemyMaxLevel = 50,
 	RoomTime = 120,
 	Floor1RoomTime = 180,
-	Zones = { Room = { X = 44, Z = 44 }, Boss = { X = 56, Z = 56 } },
+	Zones = { Room = { X = 44, Z = 44 }, Boss = { X = 56, Z = 72 } }, -- Boss = the whole 60 x 72 Throne floor (W5: the dais was outside the 56 x 56 zone)
 	EscortAt = 0.5,
 	Intermission = 2,
 	DoorTime = 12,

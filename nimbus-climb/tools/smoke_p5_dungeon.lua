@@ -526,6 +526,84 @@ local function serverScenarios()
 		return runOf(p)
 	end
 
+	-- the BattleService battle record of an encounter (white-box, tests only: BattleService exposes no sim accessor; the
+	-- service's St is an upvalue of IsInBattle) -> b (b.Sim = the BattleSim, b.Parts) | nil
+	local function battleOf(battleId)
+		local bs = BS()
+		local f = bs and bs.IsInBattle
+		if type(f) ~= "function" or not battleId then
+			return nil
+		end
+		for i = 1, 80 do
+			local name, v = debug.getupvalue(f, i)
+			if not name then
+				break
+			end
+			if name == "St" and type(v) == "table" and type(v.battles) == "table" then
+				return v.battles[battleId]
+			end
+		end
+		return nil
+	end
+
+	-- the run's current encounter sim + the run's live units of one wave (side 2): -> sim, units
+	local function enemiesOfWave(run, wave)
+		local b = battleOf(run.Battle)
+		local sim = b and b.Sim
+		local out = {}
+		if sim then
+			for _, u in ipairs(sim.units or {}) do
+				if u.side == 2 and u.alive and u.team and u.team.wave == wave then
+					out[#out + 1] = u
+				end
+			end
+		end
+		return sim, out
+	end
+
+	-- kills `targets` with the player's own attacks while `keep` (a unit) is held at `keepHp`: the fighter is stood next
+	-- to each target with its attack ready and ATTACK is sent through the service (the kill fires the sim's EnemiesDown)
+	local function slayWith(run, p, tr, sim, targets, keep, keepHp)
+		local team = sim.teamByOwner[p.UserId]
+		for _, u in ipairs(targets) do
+			u.hp = 0.01
+		end
+		local tries = 0
+		while run.State == "Fight" and tries < 120 do
+			local target = nil
+			for _, u in ipairs(targets) do
+				if u.alive then
+					target = u
+					break
+				end
+			end
+			if not target then
+				break
+			end
+			local f = team.fighter
+			f.x, f.z = target.x - 1, target.z
+			placeChar(tr, target.x - 1, target.z)
+			if keep then
+				keep.hp = keepHp
+			end
+			f.nextAttack = 0
+			BS().Command(p, "Attack", target.id)
+			advance(0.1)
+			tries = tries + 1
+		end
+		advance(0.3)
+	end
+
+	-- from the Hall straight into the boss room's fight (white-box: enterRoom(4))
+	local function intoBossRoom(run, p)
+		waitState(run, "Corridor", D().HallSeconds + 3)
+		DGS().Dg.enterRoom(run, 4)
+		advance(0.3)
+		crossThreshold(run, p)
+		advance(0.6)
+		return run.State == "Fight" and run.Room == 4
+	end
+
 	-- from the Hall into the first room's fight (tracker created before the Start)
 	local function intoFight(run, p, tr)
 		waitState(run, "Corridor", D().HallSeconds + 3)
@@ -640,6 +718,154 @@ local function serverScenarios()
 		end
 		cleanup(all)
 		T.check(DGB().GetPocket(1) == nil and workspace:FindFirstChild("Dungeons") == nil, "p5 party: the cleanup freed every pocket (workspace.Dungeons gone)")
+
+		-- W5 data-money-1 / battle-dungeon-5 / data-money-2: a member who LEAVES a run cannot re-join it (one record per
+		-- member: no "DuplicatePlayer" for the whole party); a leader who leaves hands the party key to a live member
+		-- (the run stays listed once, the old leader may create a new party at once); when the old run ends it only
+		-- clears its own members' party links
+		local L = newPlayer("DgnReL", WEAK, 1)
+		local M1 = newPlayer("DgnReM1", WEAK, 1)
+		local M2 = newPlayer("DgnReM2", WEAK, 1)
+		local re = { L, M1, M2 }
+		for _, p in ipairs(re) do
+			toPad(p, 1, 0)
+		end
+		request(L, "Create", 1)
+		request(M1, "Join", L.UserId)
+		request(M1, "Ready", true)
+		request(M2, "Join", L.UserId)
+		request(M2, "Ready", true)
+		request(L, "Start")
+		advance(6)
+		local run2 = runOf(L)
+		if T.check(run2 ~= nil and count(run2.Members) == 3 and run2.State == "Hall", "p5 party: (setup) a 3-party run in its Hall") then
+			local party2 = run2.Party
+			request(M1, "Quit")
+			advance(1.2)
+			toPad(M1, 1, 0)
+			local mark2 = K.logSize()
+			request(M1, "Join", L.UserId)
+			advance(0.3)
+			local dup = 0
+			for _, uid in ipairs(run2.Order) do
+				if uid == M1.UserId then
+					dup = dup + 1
+				end
+			end
+			T.check(runOf(M1) == nil and dgs.GetParty(M1) == nil and dup == 1 and run2.Members[M1.UserId].Left == true and toasted(M1, "You left this run", mark2),
+				"p5 party: a member who QUIT cannot re-join the run ('You left this run'): one record, listed once in run.Order", "listed " .. dup)
+			local pdup = 0
+			for _, uid in ipairs(party2.Order) do
+				if uid == M1.UserId then
+					pdup = pdup + 1
+				end
+			end
+			T.check(pdup == 0 and party2.Members[M1.UserId] == nil, "p5 party: ...and is out of the party's Order too (partyCount exact)")
+			-- the leader leaves: the party is re-keyed to M2
+			advance(1.1)
+			request(L, "Quit")
+			advance(1.2)
+			T.check(party2.Leader == M2 and dgs.St.parties[M2.UserId] == party2 and dgs.St.parties[L.UserId] == nil and dgs.GetParty(M2) == party2 and dgs.GetParty(L) == nil and run2.State ~= "Ending",
+				"p5 party: the leader's Quit hands the party to the first live member (St.parties re-keyed, the run goes on)")
+			local rows, rowsL, rowsM2 = dgs.ListParties(), 0, 0
+			for _, row in ipairs(rows) do
+				if row.Leader == L.UserId then
+					rowsL = rowsL + 1
+				elseif row.Leader == M2.UserId then
+					rowsM2 = rowsM2 + 1
+				end
+			end
+			T.check(rowsL == 0 and rowsM2 == 1, "p5 party: ListParties lists the running party once, under its new leader", rowsL .. " / " .. rowsM2)
+			-- the old leader opens a new party at once; the old member who quit joins it
+			toPad(L, 0, 0)
+			advance(2.1)
+			request(L, "Create", 1)
+			local newParty = dgs.GetParty(L)
+			T.check(newParty ~= nil and newParty ~= party2 and newParty.Leader == L and dgs.St.parties[L.UserId] == newParty, "p5 party: the old leader creates a NEW party while the old run goes on")
+			rows, rowsL, rowsM2 = dgs.ListParties(), 0, 0
+			for _, row in ipairs(rows) do
+				if row.Leader == L.UserId then
+					rowsL = rowsL + 1
+				elseif row.Leader == M2.UserId then
+					rowsM2 = rowsM2 + 1
+				end
+			end
+			T.check(rowsL == 1 and rowsM2 == 1, "p5 party: both parties are listed once each (no duplicate partyOrder entry)", rowsL .. " / " .. rowsM2)
+			advance(1.1)
+			request(M1, "Join", L.UserId)
+			T.check(dgs.GetParty(M1) == newParty and newParty.Members[M1.UserId] ~= nil, "p5 party: the member who quit the run joins the new party")
+			-- the old run's room 1 fight starts for M2 alone (no DuplicatePlayer), then M2 quits: the old run ends and
+			-- leaves the new party's links alone
+			waitState(run2, "Corridor", D().HallSeconds + 3)
+			crossThreshold(run2, M2)
+			advance(0.6)
+			T.check(run2.State == "Fight" and run2.EndReason == nil, "p5 party: the old run's room 1 fight starts (one record per member: no DuplicatePlayer)", tostring(run2.State) .. " " .. tostring(run2.EndReason))
+			advance(1.1)
+			request(M2, "Quit")
+			advance(1.5)
+			T.check(run2.State == "Ending" and run2.Finished == true, "p5 party: (setup) the old run ended with its last member")
+			T.check(dgs.GetParty(L) == newParty and dgs.GetParty(M1) == newParty and dgs.St.parties[L.UserId] == newParty and dgs.St.parties[M2.UserId] == nil,
+				"p5 party: the old run's end keeps the new party's leader and member links (only its own party's links are cleared)")
+			local mark3 = K.logSize()
+			request(M1, "Ready", true)
+			advance(1.6)
+			request(L, "Start")
+			advance(6.5)
+			T.check(runOf(L) ~= nil and runOf(L) == runOf(M1) and not toasted(L, "Only the leader", mark3), "p5 party: ...so the new party's leader can START it")
+		end
+		cleanup(re)
+
+		-- W5 battle-dungeon-7 (5.3): a JOIN during a fight of room 1 / 2 is QUEUED (<= 20 s, 'Joining when the room is
+		-- cleared') and enters the run in the corridor after the clear; LEAVE or the deadline drop the queue entry
+		local qa = newPlayer("DgnQLead", STRONG, 20)
+		local qb = newPlayer("DgnQJoin", WEAK, 1)
+		local qc = newPlayer("DgnQLeave", WEAK, 1)
+		local qd = newPlayer("DgnQLate", WEAK, 1)
+		local qq = { qa, qb, qc, qd }
+		quietReplication()
+		local run3 = startSolo(qa, 1)
+		if T.check(run3 ~= nil, "p5 party: (setup) a solo run for the queued join") then
+			local party3 = run3.Party
+			local tr3 = tracker(qa)
+			intoFight(run3, qa, tr3)
+			T.check(run3.State == "Fight" and run3.Room == 1, "p5 party: (setup) room 1 fights")
+			for _, p in ipairs({ qb, qc, qd }) do
+				toPad(p, 2, 0)
+			end
+			local lobby3 = openLobby(qb)
+			local row = nil
+			for _, r in ipairs(lobby3 and lobby3.Parties or {}) do
+				if r.Leader == qa.UserId then
+					row = r
+				end
+			end
+			T.check(row ~= nil and row.Open == true and row.InRun == true and row.Room == 1, "p5 party: the Lobby lists a party fighting room 1 as open ('in room 1 - JOIN')", row and tostring(row.Open) or "no row")
+			local mark4 = K.logSize()
+			request(qb, "Join", qa.UserId)
+			request(qc, "Join", qa.UserId)
+			request(qd, "Join", qa.UserId)
+			T.check(dgs.St.joinQueue[qb] ~= nil and dgs.St.joinQueue[qb].Party == party3 and runOf(qb) == nil and toasted(qb, "Joining when the room is cleared", mark4) and not toasted(qb, "past room", mark4),
+				"p5 party: a JOIN during the fight is queued with 'Joining when the room is cleared' (not 'past room 2')")
+			request(qc, "Leave")
+			T.check(dgs.St.joinQueue[qc] == nil, "p5 party: LEAVE drops a queued join")
+			dgs.St.joinQueue[qd].Deadline = Mock.Clock.now - 1
+			local mark5 = K.logSize()
+			advance(0.6)
+			T.check(dgs.St.joinQueue[qd] == nil and runOf(qd) == nil and toasted(qd, "That party moved on", mark5), "p5 party: a queued join past its 20 s deadline is dropped ('That party moved on')")
+			local res3 = playUntilEnd(tr3, 200, { every = 3 })
+			T.check(res3 ~= nil and run3.State == "Corridor", "p5 party: (setup) room 1 cleared by the leader", tostring(run3.State))
+			advance(0.6)
+			local mq = run3.Members[qb.UserId]
+			local qdup = 0
+			for _, uid in ipairs(party3.Order) do
+				if uid == qb.UserId then
+					qdup = qdup + 1
+				end
+			end
+			T.check(mq ~= nil and mq.Left == false and mq.JoinedRoom == 2 and runOf(qb) == run3 and inBattle(qb) == run3.Id and dgs.GetParty(qb) == party3 and dgs.St.joinQueue[qb] == nil and qdup == 1,
+				"p5 party: the queued joiner enters the run in the corridor after the clear (JoinedRoom 2, InBattle = run id, in the party once)", tostring(mq and mq.JoinedRoom))
+		end
+		cleanup(qq)
 	end)
 
 	------------------------------------------------------------------------------------------------
@@ -1037,8 +1263,16 @@ local function serverScenarios()
 			end
 		end
 		T.check(noGems, "p5 loot: DungeonChest never rolls Gems on floors 1-2 (120 rolls)")
+		-- W5 data-money-3: an AFK alt carried through the floor (qualified in NO room) gets no chest (5.2 / Y4)
+		local z = newPlayer("DgnLootZ", WEAK, 5)
+		all[#all + 1] = z
+		toPad(z, 1, 0)
+		local okZ, whyZ = dgs.Dg.lateJoin(run, z)
+		local tokZ0, cashZ0 = tokens(z), cash(z)
+		T.check(okZ == true and run.Members[z.UserId] ~= nil and next(run.Members[z.UserId].Qualified) == nil, "p5 loot: (setup) an AFK member joined the run in its Hall, qualified nowhere", tostring(whyZ))
 		dgs.Dg.enterTreasure(run)
-		T.check(run.State == "Treasure" and run.Chests[uidA] == "Closed" and run.Chests[uidB] == "Closed", "p5 loot: the Treasure closes a chest per member")
+		T.check(run.State == "Treasure" and run.Chests[uidA] == "Closed" and run.Chests[uidB] == "Closed" and run.Chests[uidC] == "Closed", "p5 loot: the Treasure closes a chest per QUALIFYING member (A rooms 1 + 4, B room 1, C the boss room)")
+		T.check(run.Chests[z.UserId] == nil and dgs.OpenChest(z) == false, "p5 loot: the AFK member (0 damage everywhere) gets NO chest; Chest is refused")
 		local chestMark = K.logSize()
 		local okC1 = dgs.OpenChest(a)
 		local okC2 = dgs.OpenChest(a)
@@ -1048,8 +1282,67 @@ local function serverScenarios()
 		local tokB4, cashB4 = tokens(b), cash(b)
 		advance(d.TreasureSeconds + 1)
 		T.check(run.Chests[uidB] == "Opened" and (tokens(b) > tokB4 or cash(b) > cashB4) and run.State == "Ending", "p5 loot: the 45 s exit opens the unopened chest for its owner and ends the run")
+		T.check(run.Chests[z.UserId] == nil and tokens(z) == tokZ0 and cash(z) == cashZ0, "p5 loot: ...and pays the AFK member nothing")
 		advance(5)
 		cleanup(all)
+
+		-- W5 battle-dungeon-1 (5.4): the boss room is cleared when boss AND escort are down. BattleSim fires EnemiesDown
+		-- per wave team, so the escort falling first (or the boss first) must not clear / pay the room
+		quietReplication()
+		local e1 = newPlayer("DgnEsc", WEAK, 3)
+		local trE = tracker(e1)
+		local runE = startSolo(e1, 1)
+		if T.check(runE ~= nil and intoBossRoom(runE, e1), "p5 loot: (setup) a solo run straight into the boss room's fight") then
+			pump(trE)
+			local tokE0 = tokens(e1)
+			local best0 = DS().GetDungeon(e1).Best
+			-- the dais (W5 battle-dungeon-2): standing by the throne during the fight is NOT a drop-out
+			local base = runE.Pocket.Rooms[4].Room.PrimaryPart
+			Mock.Teleport(e1, CFrame.new(base.CFrame:PointToWorldSpace(Vector3.new(4, 2.4 + 3, 30))))
+			advance(2.0)
+			local me = runE.Members[e1.UserId]
+			T.check(me and me.Left == false and runE.State == "Fight" and inBattle(e1) == runE.Id, "p5 loot: a member on the throne dais during the boss fight stays in the fight (the zone covers the room)", tostring(me and me.LeftWhy))
+			local simE, bossUnits = enemiesOfWave(runE, 1)
+			local boss = bossUnits[1]
+			if T.check(simE ~= nil and boss ~= nil and boss.alive, "p5 loot: (setup) the boss is up (sim reachable)") then
+				dgs.Dg.onBossHp(runE, 0.45, runE.Battle)
+				advance(0.4)
+				local _, escort = enemiesOfWave(runE, 2)
+				T.check(runE.EscortSpawned == true and #escort >= 1, "p5 loot: the escort spawned at <= 50% boss HP (" .. #escort .. " units)")
+				boss.hp = boss.maxHp * 0.45
+				slayWith(runE, e1, trE, simE, escort, boss, boss.maxHp * 0.45)
+				local _, escortLeft = enemiesOfWave(runE, 2)
+				T.check(#escortLeft == 0 and boss.alive == true, "p5 loot: (setup) the escort is down, the boss alive at 45%")
+				T.check(runE.State == "Fight" and runE.Cleared ~= true and runE.Paid[4] == nil and tokens(e1) == tokE0 and DS().GetDungeon(e1).Best == best0,
+					"p5 loot: killing only the escort does NOT clear the boss room: nothing paid, no Best / first clear", tostring(runE.State) .. " Cleared=" .. tostring(runE.Cleared))
+				slayWith(runE, e1, trE, simE, { boss }, nil, nil)
+				T.check(runE.State ~= "Fight" and runE.Cleared == true and runE.Paid[4] and runE.Paid[4][e1.UserId] == true and tokens(e1) > tokE0 and DS().GetDungeon(e1).Best == 1,
+					"p5 loot: ...the boss falling last clears the room: the boss loot and Best 1 paid once (no first clear: rooms 1-3 skipped)", tostring(runE.State))
+			end
+		end
+		cleanup({ e1 })
+		-- the reverse order: the boss falls first, the escort still stands
+		local e2 = newPlayer("DgnEsc", WEAK, 3)
+		local trR = tracker(e2)
+		local runR = startSolo(e2, 1)
+		if T.check(runR ~= nil and intoBossRoom(runR, e2), "p5 loot: (setup) a second solo run in the boss room") then
+			pump(trR)
+			local tokR0 = tokens(e2)
+			local simR, bossUnits = enemiesOfWave(runR, 1)
+			local boss = bossUnits[1]
+			if T.check(simR ~= nil and boss ~= nil, "p5 loot: (setup) the boss is up") then
+				dgs.Dg.onBossHp(runR, 0.45, runR.Battle)
+				advance(0.4)
+				local _, escort = enemiesOfWave(runR, 2)
+				slayWith(runR, e2, trR, simR, { boss }, nil, nil)
+				local _, escortLeft = enemiesOfWave(runR, 2)
+				T.check(boss.alive == false and #escortLeft == #escort and #escort >= 1, "p5 loot: (setup) the boss is down, the escort alive")
+				T.check(runR.State == "Fight" and runR.Cleared ~= true and runR.Paid[4] == nil and tokens(e2) == tokR0, "p5 loot: killing only the boss does NOT clear the boss room while the escort stands")
+				slayWith(runR, e2, trR, simR, escort, nil, nil)
+				T.check(runR.State ~= "Fight" and runR.Cleared == true and runR.Paid[4] and runR.Paid[4][e2.UserId] == true, "p5 loot: ...the escort falling last clears it (paid once)", tostring(runR.State))
+			end
+		end
+		cleanup({ e2 })
 
 		-- the loss third on a wipe >= 20 s; nothing on Quit
 		local l = newPlayer("DgnLoss", WEAK, 5)
@@ -1254,13 +1547,26 @@ local function serverScenarios()
 		end
 		cleanup({ wd })
 
-		-- 7. a run older than RunMaxSeconds ends
+		-- 7. a run older than its floor's limit ends; W5 battle-dungeon-6: on floor 1 (180 s rooms) the catalog's
+		-- RunMaxSeconds 703 is NOT enough for four legit rooms, so the watchdog uses MaxRunSeconds(floor) (>= RunMaxSeconds)
+		-- and a run killed at the Treasure opens the earned chests first
 		local old = newPlayer("DgnOld", STRONG, 20)
 		run = startSolo(old, 1)
 		if T.check(run ~= nil, "p5 ends: (setup) a solo run for RunMaxSeconds") then
+			local maxT = dgs.MaxRunSeconds(1)
+			local roomT = d.Floor1RoomTime
+			T.check(maxT >= d.RunMaxSeconds and maxT >= 4 * roomT + 4 * (d.DoorTime + 30 + d.Intermission) + d.HallSeconds + d.TreasureSeconds + 120 and dgs.MaxRunSeconds(2) >= d.RunMaxSeconds,
+				"p5 ends: MaxRunSeconds(1) covers four 180 s rooms + corridors with the 30 s Threshold wait + hall + treasure + 120 (" .. tostring(maxT) .. " >= " .. tostring(d.RunMaxSeconds) .. ")")
 			run.Started = Mock.Clock.now - d.RunMaxSeconds - 1
 			advance(1.2)
-			T.check(run.State == "Ending" and run.EndReason == "Error", "p5 ends: a run older than RunMaxSeconds ends (Error)")
+			T.check(run.State ~= "Ending", "p5 ends: a floor-1 run older than the catalog's 703 s is NOT killed (a slow legit run)", tostring(run.State))
+			run.Members[old.UserId].Qualified[1] = true
+			dgs.Dg.enterTreasure(run)
+			local tok0, cash0 = tokens(old), cash(old)
+			run.Started = Mock.Clock.now - maxT - 1
+			advance(1.2)
+			T.check(run.State == "Ending" and run.EndReason == "Error", "p5 ends: a run older than MaxRunSeconds(floor) ends (Error)")
+			T.check(run.Chests[old.UserId] == "Opened" and (tokens(old) > tok0 or cash(old) > cash0), "p5 ends: the watchdog's Error end at the Treasure opens the earned chest first (paid once)")
 			advance(5)
 			T.check(inBattle(old) == nil and runEndedOnce(run.Id), "p5 ends: ... released, RunEnded once")
 		end
@@ -1425,8 +1731,8 @@ local function serverScenarios()
 				if not zone or zone:GetAttribute("Mode") ~= "Dungeon" or zone:GetAttribute("ZoneId") ~= "Room" or zone:GetAttribute("Index") ~= 8 or zone:GetAttribute("Room") ~= room then
 					zonesOk, zoneWhy = false, "room " .. room .. " zone attributes"
 				else
-					local want = (room == 4) and 56 or 44
-					if math.abs(zone.Size.X - want) > 0.01 or math.abs(zone.Size.Z - want) > 0.01 then
+					local want = (room == 4) and D().Zones.Boss or D().Zones.Room
+					if math.abs(zone.Size.X - want.X) > 0.01 or math.abs(zone.Size.Z - want.Z) > 0.01 then
 						zonesOk, zoneWhy = false, "room " .. room .. " zone size " .. tostring(zone.Size)
 					end
 					local piece = pocket.Layout.Pieces[pocket.Layout.Rooms[room].Piece]
@@ -1446,7 +1752,25 @@ local function serverScenarios()
 				end
 				T.check(ri.Threshold ~= nil and ri.Door ~= nil and ri.ExitDoor ~= nil and #ri.Door.Bars >= 5 and ri.Model:GetAttribute("DoorOpen") == false, "p5 world: room " .. room .. " has a Threshold, entrance bars (open) and exit bars (closed, DoorOpen false)")
 			end
-			T.check(zonesOk, "p5 world: zones Mode Dungeon / ZoneId Room / Index / Room, 44 and 56 wide, inside the floor, tagged", zoneWhy)
+			T.check(zonesOk, "p5 world: zones Mode Dungeon / ZoneId Room / Index / Room, 44 x 44 and 56 x 72 (the whole Throne floor), inside the floor, tagged", zoneWhy)
+			-- W5 battle-dungeon-2: the throne dais (room-local z 21..35, reachable by stairs) and the throne itself lie INSIDE
+			-- the boss zone, so a member who climbs up during the fight is never dropped out; the enemies' SpawnAnchor
+			-- (zone-local) sits at the foot of the stairs, inside the zone and off the dais
+			do
+				local ri4 = pocket.Rooms[4]
+				local zone4 = ri4 and ri4.Zone
+				local base4 = ri4 and ri4.Room and ri4.Room.PrimaryPart
+				local daisOk, anchorOk = false, false
+				if zone4 and base4 then
+					local throne = zone4.CFrame:PointToObjectSpace(base4.CFrame:PointToWorldSpace(Vector3.new(4, 2.4, 31)))
+					local back = zone4.CFrame:PointToObjectSpace(base4.CFrame:PointToWorldSpace(Vector3.new(-20, 0, 34)))
+					daisOk = math.abs(throne.X) <= zone4.Size.X / 2 and math.abs(throne.Z) <= zone4.Size.Z / 2 and math.abs(back.Z) <= zone4.Size.Z / 2 + 8
+					local sa = ri4.SpawnAnchor
+					anchorOk = type(sa) == "table" and math.abs(sa.x) < zone4.Size.X / 2 - 2 and sa.z > -zone4.Size.Z / 2 and sa.z < 17 and sa.z > 5
+				end
+				T.check(daisOk, "p5 world: the Throne's dais and throne are inside the boss zone (56 x 72 centred on the room)")
+				T.check(anchorOk, "p5 world: the Throne names a SpawnAnchor at the foot of the dais stairs (zone-local z 5..17)", tostring(ri4 and ri4.SpawnAnchor and ri4.SpawnAnchor.z))
+			end
 			T.check(accentOk, "p5 world: Accent parts are recoloured to the floor's element colour (" .. tostring(pocket.Element) .. ")")
 			local ri4 = pocket.Rooms[4]
 			db.SetDoor(ri4, "Exit", true)

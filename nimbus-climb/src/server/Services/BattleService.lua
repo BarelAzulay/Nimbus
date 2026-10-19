@@ -254,6 +254,7 @@ local C = {
 	MAX_POCKETS = 64,
 	RING_COOLDOWN = 4, -- a ring stays reserved this long after its duel (the result fx play out)
 	ZONE_MARGIN = 8, -- studs of slack around a zone part for commands
+	STUN_CATCHUP_MAX = 20, -- seconds after a stun during which the leash stays off (the server fighter catches up)
 	ZONE_FALLBACK_MARGIN = 16, -- ... around the floor rectangle when there is no zone part
 	SPECTATE_MARGIN = 80, -- studs beyond the zone's half diagonal where spectators receive a battle
 	SPECTATE_SWITCH = 10, -- a nearer battle must be this much nearer to switch
@@ -905,6 +906,7 @@ local function addParticipant(b, player, side, spec)
 		Left = false,
 		KeepInBattle = b.Enc ~= nil and b.Enc.KeepInBattle == true, -- the dungeon RUN owns the attribute (4.6)
 		LeashT = 0, -- seconds the character has been more than Fighter.Leash studs from the server fighter
+		LeashGraceUntil = 0, -- sim time until which a stun's catch-up keeps the leash off (Cmd.stunned)
 		Lives = nil, -- the fighter's lives at the last tick (OnDown)
 	}
 	b.Parts[player.UserId] = part
@@ -3764,7 +3766,9 @@ function Cmd.cleanArg(shape, arg)
 		return nil
 	end
 	if shape == "slot" then
-		if arg == 2 or arg == 3 then
+		-- a TEAM slot 1..3 (fixed for the fight): after a Swap the original fighter sits on the bench as slot 1 and may be
+		-- buffed / swapped back; the sim refuses the active fighter's own slot and a missing one (BadSlot)
+		if arg == 1 or arg == 2 or arg == 3 then
 			return arg
 		end
 		return nil, "BadSlot"
@@ -3851,6 +3855,28 @@ function Cmd.feedMoves(b)
 	end
 end
 
+-- the fighter is stunned (white-box: the sim unit's stunUntil), or the stun ended less than its catch-up ago: the time
+-- the server fighter needs to close the gap it was left with at run x (MoveSlack - 1), capped at STUN_CATCHUP_MAX
+function Cmd.stunned(b, part, gap, F)
+	local team = Cmd.simTeam(b, part.UserId)
+	local f = team and team.fighter
+	if type(f) ~= "table" or not finite(f.stunUntil) then
+		return false
+	end
+	local okT, t = pcall(b.Sim.Time, b.Sim)
+	if not okT or not finite(t) then
+		return false
+	end
+	if t < f.stunUntil then
+		local run = finite(f.run) and f.run > 0 and f.run or 15.6
+		local closing = max(2, run * ((tonumber(F.MoveSlack) or 1.25) - 1))
+		local catchUp = min(C.STUN_CATCHUP_MAX, gap / closing)
+		part.LeashGraceUntil = max(part.LeashGraceUntil or 0, f.stunUntil + catchUp)
+		return true
+	end
+	return (part.LeashGraceUntil or 0) > t
+end
+
 -- the leash: the gap between the character and the server fighter AFTER the legal step, > Fighter.Leash for
 -- Fighter.LeashSeconds = a run-off / teleport (a leaver in Duel / Ring, a RemoveTeam in Raid / Dungeon)
 function Cmd.leash(b, part, dt)
@@ -3867,7 +3893,15 @@ function Cmd.leash(b, part, dt)
 	local leash = tonumber(F.Leash) or 10
 	local seconds = tonumber(F.LeashSeconds) or 3
 	local dx, dz = part.CharX - fx, part.CharZ - fz
-	if sqrt(dx * dx + dz * dz) > leash then
+	local gap = sqrt(dx * dx + dz * dz)
+	-- a stunned / frozen fighter stands (the sim caps its move at 0) while the character keeps running: no leash while
+	-- the stun lasts, nor during the catch-up after it (the gap closes at legal run x (MoveSlack - 1)); B1 / C15: a legit
+	-- raider frozen by a boss is never leashed. The presence check (the zone + its margin) still applies.
+	if Cmd.stunned(b, part, gap, F) then
+		part.LeashT = 0
+		return false
+	end
+	if gap > leash then
 		part.LeashT = (part.LeashT or 0) + dt
 	else
 		part.LeashT = 0

@@ -294,6 +294,37 @@ local function partyCount(party)
 	return n
 end
 
+-- a member out of a party: the record AND its Order entry (a later re-join appends once; partyCount stays exact)
+local function dropPartyMember(party, uid)
+	party.Members[uid] = nil
+	for i = #party.Order, 1, -1 do
+		if party.Order[i] == uid then
+			table.remove(party.Order, i)
+		end
+	end
+end
+
+-- the member qualified (>= MinShare of the party's damage) in at least one room: the only ones the boss chest is for (5.2 / Y4)
+local function qualifiedAnywhere(m)
+	local q = type(m.Qualified) == "table" and m.Qualified or {}
+	for room = 1, 4 do
+		if q[room] == true then
+			return true
+		end
+	end
+	return false
+end
+
+-- the watchdog's limit of a run (5.4): Dungeon.RunMaxSeconds (the contract's RoomTime formula) or, when longer, the
+-- floor's own worst case: 4 rooms at the floor's room limit, 4 corridors (DoorTime + the Threshold wait + Intermission),
+-- the hall, the treasure and 120 s of slack (floor 1 rooms last 180 s, so 703 s would kill a slow legit run as "Error")
+function DungeonService.MaxRunSeconds(floorIndex)
+	local d = D()
+	local roomTime = (floorIndex == 1) and num(d.Floor1RoomTime, 180) or num(d.RoomTime, 120)
+	local worst = 4 * roomTime + 4 * (num(d.DoorTime, 12) + K.THRESHOLD_TIMEOUT + num(d.Intermission, 2)) + num(d.HallSeconds, 10) + num(d.TreasureSeconds, 45) + 120
+	return max(num(d.RunMaxSeconds, 700), worst)
+end
+
 local function markLobbyDirty()
 	for _, p in ipairs(Players:GetPlayers()) do
 		St.lobbyDirty[p] = true
@@ -428,7 +459,7 @@ local function lobbyPayload(player)
 				Floor = party.Floor,
 				Count = partyCount(party),
 				Max = K.MAX_PARTY,
-				Open = partyCount(party) < K.MAX_PARTY and (run == nil or run.Joinable == true),
+				Open = partyCount(party) < K.MAX_PARTY and (run == nil or run.Joinable == true or (run.State == "Fight" and run.Room <= num(D().LateJoinLastRoom, 2) and countLive(run) < K.MAX_PARTY)),
 				InRun = run ~= nil,
 				Room = run and run.Room or nil,
 			}
@@ -718,7 +749,7 @@ function Dg.begin(party, readyOnly)
 	for _, p in ipairs(dropped) do
 		local uid = p.UserId
 		if uid ~= leader.UserId then
-			party.Members[uid] = nil
+			dropPartyMember(party, uid)
 			St.partyOf[p] = nil
 			notify(p, "You were dropped from the party", "bad", 4)
 		end
@@ -767,6 +798,11 @@ end
 function Dg.lateJoin(run, player)
 	if run.State == "Ending" or not run.Joinable then
 		return false, "That run is closed"
+	end
+	-- a member who LEFT keeps their record (Left, loot, Runs + 1): a second record would list them twice in run.Order and
+	-- the next OpenEncounter refuses the whole party ("DuplicatePlayer")
+	if run.Members[player.UserId] then
+		return false, "You left this run"
 	end
 	if countLive(run) >= K.MAX_PARTY then
 		return false, "That party is full"
@@ -849,9 +885,11 @@ function Dg.enterTreasure(run)
 	run.Phase = nil
 	run.StateAt = now()
 	run.Joinable = false
+	-- one chest per member who qualified in at least one room (5.2: loot goes to QUALIFYING members; Y4: an AFK alt
+	-- carried through the floor earns nothing, so no chest either)
 	for _, m in ipairs(liveMembers(run)) do
 		local uid = m.Player.UserId
-		if run.Chests[uid] == nil then
+		if run.Chests[uid] == nil and qualifiedAnywhere(m) then
 			run.Chests[uid] = "Closed"
 		end
 	end
@@ -877,7 +915,10 @@ local function spawnWave(run, wave)
 		warn("[DungeonService] DungeonWave failed: " .. tostring(plan))
 		return false
 	end
-	local infos, why = BS.SpawnWave(run.Battle, plan.Pets, { Wave = wave, Name = plan.Name or ("Wave " .. tostring(wave)) })
+	-- the room's spawn point when its template names one (the Throne: at the foot of the dais, not on the throne)
+	local info = roomInfo(run, run.Room)
+	local anchor = info and type(info.SpawnAnchor) == "table" and info.SpawnAnchor or nil
+	local infos, why = BS.SpawnWave(run.Battle, plan.Pets, { Wave = wave, Name = plan.Name or ("Wave " .. tostring(wave)), Anchor = anchor })
 	if not infos then
 		warn("[DungeonService] SpawnWave refused: " .. tostring(why))
 		return false
@@ -975,9 +1016,16 @@ function Dg.onWave(run, waveIndex, battleId)
 		return
 	end
 	local BS = St.deps.BattleService
+	-- BattleSim fires EnemiesDown per wave TEAM: the room is cleared only when no enemy at all is left (the boss room:
+	-- boss AND escort down, 5.4; whichever falls last fires the EnemiesDown that clears)
+	local status = try(BS, "EncounterStatus", run.Battle)
+	local enemiesLeft = type(status) == "table" and tonumber(status.Enemies) or 0
 	if run.Room == 4 then
 		if not run.EscortSpawned then
 			Dg.spawnEscort(run)
+			return
+		end
+		if enemiesLeft > 0 then
 			return
 		end
 		BS.FinishEncounter(run.Battle, "Cleared")
@@ -994,7 +1042,7 @@ function Dg.onWave(run, waveIndex, battleId)
 				end
 			end
 		end)
-	else
+	elseif enemiesLeft == 0 then
 		BS.FinishEncounter(run.Battle, "Cleared")
 	end
 end
@@ -1248,9 +1296,39 @@ function Dg.removeMember(run, player, why)
 	unbindMember(run, m.Player)
 	local party = run.Party
 	if party then
-		party.Members[uid] = nil
+		dropPartyMember(party, uid)
+		-- the leader out while others fight on: the party record is re-keyed to the first live member, so the run stays
+		-- listed / joinable under its new leader and the old leader may open or join another party at once
+		if party.Leader == m.Player and run.State ~= "Ending" then
+			local heir = nil
+			for _, ouid in ipairs(run.Order) do
+				local om = run.Members[ouid]
+				if om and not om.Left and isPlayer(om.Player) then
+					heir = om.Player
+					break
+				end
+			end
+			if heir and St.parties[uid] == party then
+				St.parties[uid] = nil
+				St.parties[heir.UserId] = party
+				for i, id in ipairs(St.partyOrder) do
+					if id == uid then
+						St.partyOrder[i] = heir.UserId
+					end
+				end
+				party.Leader = heir
+				if not party.Members[heir.UserId] then
+					local spec = try(St.deps.BattleService, "TeamSpec", heir)
+					party.Members[heir.UserId] = { Player = heir, Ready = true, Keys = keysOf(spec), Power = powerOf(spec) }
+					party.Order[#party.Order + 1] = heir.UserId
+				end
+				St.partyOf[heir] = party
+			end
+		end
 	end
-	St.partyOf[m.Player] = nil
+	if St.partyOf[m.Player] == party then
+		St.partyOf[m.Player] = nil
+	end
 	if why ~= "Disconnect" and why ~= "Left" and isPlayer(m.Player) then
 		returnHome(m.Player)
 	end
@@ -1326,7 +1404,10 @@ local function finishRun(run)
 			end)
 			pcall(unbindMember, run, m.Player)
 			pcall(function()
-				St.partyOf[m.Player] = nil
+				-- a member who left earlier may already lead or sit in ANOTHER party: only this run's party link goes
+				if St.partyOf[m.Player] == run.Party then
+					St.partyOf[m.Player] = nil
+				end
 			end)
 		end
 	end
@@ -1380,6 +1461,15 @@ end
 function Dg.endRun(run, cleared, reason, immediate)
 	if run.State == "Ending" then
 		return false
+	end
+	-- a run killed at the Treasure (the watchdog): the chests already earned open for their owners first (same mark,
+	-- once); a Shutdown stays void
+	if run.State == "Treasure" and reason ~= "Shutdown" then
+		for _, m in ipairs(liveMembers(run)) do
+			if run.Chests[m.Player.UserId] == "Closed" then
+				pcall(Dg.openChest, run, m)
+			end
+		end
 	end
 	run.State = "Ending"
 	run.Phase = nil
@@ -1458,6 +1548,12 @@ function DungeonService.CreateParty(player, floorIndex)
 	if St.partyOf[player] then
 		return false, "You are already in a party"
 	end
+	-- (safety net: the key is re-assigned to a live member when a leader leaves a run, so this never holds a running
+	-- party; it is never overwritten while a run uses it)
+	local old = St.parties[player.UserId]
+	if old and old.Run and old.Run.State ~= "Ending" and not old.Run.Finished then
+		return false, "Your old party is still in the dungeon"
+	end
 	if St.joinQueue[player] then
 		St.joinQueue[player] = nil
 	end
@@ -1482,7 +1578,15 @@ function DungeonService.CreateParty(player, floorIndex)
 	party.Members[player.UserId] = { Player = player, Ready = true, Keys = keysOf(spec), Power = powerOf(spec) }
 	party.Order[1] = player.UserId
 	St.parties[player.UserId] = party
-	St.partyOrder[#St.partyOrder + 1] = player.UserId
+	local listed = false
+	for _, id in ipairs(St.partyOrder) do
+		if id == player.UserId then
+			listed = true
+		end
+	end
+	if not listed then
+		St.partyOrder[#St.partyOrder + 1] = player.UserId
+	end
 	St.partyOf[player] = party
 	markLobbyDirty()
 	return true, party
@@ -1516,20 +1620,28 @@ function DungeonService.JoinParty(player, leaderUserId)
 	if not ownsPet(player) then
 		return false, "You need a pet"
 	end
+	-- a new JOIN replaces a pending queued join (one queue entry per player)
+	St.joinQueue[player] = nil
 	local run = party.Run
 	if run then
 		if run.State == "Ending" then
 			return false, "That run is over"
 		end
-		if not (run.State == "Hall" or run.State == "Corridor") or run.Room > num(D().LateJoinLastRoom, 2) then
-			return false, "That party is past room " .. tostring(num(D().LateJoinLastRoom, 2))
+		local lastRoom = num(D().LateJoinLastRoom, 2)
+		if run.Room > lastRoom or (run.State ~= "Hall" and run.State ~= "Corridor" and run.State ~= "Fight") then
+			return false, "That party is past room " .. tostring(lastRoom)
+		end
+		if run.Members[player.UserId] then
+			return false, "You left this run"
 		end
 		if countLive(run) >= K.MAX_PARTY then
 			return false, "That party is full"
 		end
 		if run.State == "Fight" then
+			-- 5.3: a join during a fight of room 1 / 2 waits (<= JOIN_QUEUE) for the corridor; tickQueue enters them there
 			St.joinQueue[player] = { Party = party, Deadline = now() + K.JOIN_QUEUE }
 			notify(player, "Joining when the room is cleared", "info", 4)
+			markLobbyDirty()
 			return true, "Queued"
 		end
 		local okJ, whyJ = Dg.lateJoin(run, player)
@@ -1982,7 +2094,7 @@ local function tickRun(run, t)
 		end
 		return
 	end
-	if t - run.Started > num(d.RunMaxSeconds, 700) then
+	if t - run.Started > DungeonService.MaxRunSeconds(run.Floor) then
 		return Dg.endRun(run, false, "Error")
 	end
 	-- members who left the pocket (a respawn elsewhere, an obby match)
