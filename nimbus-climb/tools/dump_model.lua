@@ -1136,8 +1136,8 @@ BUILDERS.battle = function(mode, seconds, extra)
 	end
 	local Players = game:GetService("Players")
 	local me = Players.LocalPlayer and Players.LocalPlayer.UserId or 4242
-	mode = (mode and mode ~= "") and mode:lower() or "trial"
-	local simMode = (mode == "raid") and "Raid" or ((mode == "duel") and "Duel" or "Trial")
+	mode = (mode and mode ~= "") and mode:lower() or "raid"
+	local simMode = (mode == "duel") and "Duel" or "Raid" -- (Trial was deleted in Phase 5)
 	local setup = { Mode = simMode, Seed = 5, Id = "dump_battle" }
 	if simMode == "Duel" then
 		setup.Teams = { { Owner = me, Side = 1, Pets = battleTeamOf(PC, 4) }, { Owner = 78, Side = 2, Pets = battleTeamOf(PC, 3, 3) } }

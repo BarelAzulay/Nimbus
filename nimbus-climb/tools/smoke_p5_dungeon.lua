@@ -98,7 +98,9 @@ local function serverScenarios()
 	-- a player with pets (team preset 1 = the first 3 keys); `level` sets every pet's level
 	local function newPlayer(prefix, pets, level)
 		seq = seq + 1
-		local p = Mock.AddPlayer(prefix .. seq, 968000 + seq)
+		-- (968500+: smoke_p3_ui.lua's tutorial players use 968000 + seq and leave saves with dungeon progress in the
+		-- mock store, which a "new" player here would load in the full run)
+		local p = Mock.AddPlayer(prefix .. seq, 968500 + seq)
 		advance(1.0)
 		local data = DS()
 		local prof = data.GetProfile(p)
@@ -145,6 +147,21 @@ local function serverScenarios()
 	local function lastState(p, kind, fromIndex)
 		local list = states(p, fromIndex, kind)
 		return list[#list]
+	end
+
+	-- "Open" and the Lobby payload it answers with. The server pushes a Lobby to everyone on every party change and
+	-- player join (markLobbyDirty, flushed by its 0.5 s tick) and answers an Open within LOBBY_GAP (1 s) of such a push
+	-- only on its next tick, so whether the payload is in the log 0.05 s after the request depends on the tick phase of
+	-- the shared clock (green alone, red in the full run). Advance until it lands (<= 2.5 s), never on the phase.
+	local function openLobby(p)
+		local mark = K.logSize()
+		request(p, "Open")
+		local waited = 0.05
+		while lastState(p, "Lobby", mark) == nil and waited < 2.5 do
+			advance(0.1)
+			waited = waited + 0.1
+		end
+		return lastState(p, "Lobby", mark), mark
 	end
 
 	local function toasts(p, fromIndex)
@@ -536,9 +553,7 @@ local function serverScenarios()
 		for _, p in ipairs(all) do
 			toPad(p, 0, 0)
 		end
-		local mark = K.logSize()
-		request(a, "Open")
-		local lobby = lastState(a, "Lobby", mark)
+		local lobby, mark = openLobby(a)
 		T.check(type(lobby) == "table" and type(lobby.Parties) == "table" and lobby.Mine == nil and type(lobby.Record) == "table" and lobby.Record.Best == 0,
 			"p5 party: Open sends a Lobby payload (Parties, Mine nil, Record Best 0)")
 		-- locked floors: a new player may create floor 1 only
@@ -567,9 +582,7 @@ local function serverScenarios()
 		T.check(toasted(a, "already in that party", mark), "p5 party: joining your own party is refused")
 		-- the Lobby view of the party (<= 1/s per client)
 		advance(1.1)
-		mark = K.logSize()
-		request(b, "Open")
-		lobby = lastState(b, "Lobby", mark)
+		lobby, mark = openLobby(b)
 		local mine = lobby and lobby.Mine
 		T.check(mine ~= nil and mine.Leader == a.UserId and #mine.Members == 3 and mine.Members[1].UserId == a.UserId and mine.Members[1].Ready == true and mine.Members[2].Ready == false,
 			"p5 party: the Lobby payload's Mine lists the members in order (the leader ready, a joiner not)")

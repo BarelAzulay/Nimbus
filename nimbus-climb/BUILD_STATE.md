@@ -54,8 +54,8 @@ Request + approved decisions: scratchpad/phase5_request.md (player said "go!").
 | W1 | data F, battlecore F, economy+roam O, worldstyle O | DONE wf_63badf7b-be9 (resumed after a container restart). sim_battle 36/36, sim_tycoon ALL MET (C10 floor 115 for ring+dungeon), sky in branding/sky. Notes scratchpad/p5_wave1_notes.md; carry list scratchpad/p5jobs/carry.md |
 | W2 | battleservice F, tycoon+care F, worldlobby O, homeworld O, neonkit O | DONE wf_2a964f3d-aa8; lead fixes applied (PortalRingRadius gone, prestige test, storm audit, showcase exempt). Notes scratchpad/p5_wave2_notes.md; carry list scratchpad/p5jobs/carry.md |
 | W3 | dungeon F, battleclient O, homefx+pets O, careui O, menu O | DONE wf_1462dd08-eb9. Notes scratchpad/p5_wave3_notes.md. W3 gate DONE: fixer 13/15 (aliases deleted, MainMenu.Enabled=true, contract pending groups flipped, CoinPoint/HeapStage gone, mock Clone font flag); full 10396/86 (W4-owned + client_mobile x2 + client_replay timeout -> side fixer) |
-| W4 | dungeonclient, tutorial, docs, flow, arenaart (all O) | DONE wf_ad0c5701-086 (flow full run 11177/14). Notes scratchpad/p5_wave4_notes.md. W4 gate fixer (Fable) running: berries dup on 2-server first load + small items (carry.md) |
-| W5 | review (3 lenses) + fix + release gate + rbxlx + merge + send | - |
+| W4 | dungeonclient, tutorial, docs, flow, arenaart (all O) | DONE wf_ad0c5701-086 (flow full run 11177/14). Notes scratchpad/p5_wave4_notes.md. W4 gate DONE: berries dup fixed (BerriesMigrated), flakes isolated, menu touch zones; full 11311/1 (that 1 fixed after: userId collision) |
+| W5 | review (3 lenses) + fix + release gate + rbxlx + merge + send | REVIEW RUNNING (scratchpad/p5review.js) |
 Wave script: scratchpad/p5wave.js takes args {wave, jobs:[{key, model, files, task}], resume:{key: note}}. Notes after each wave: scratchpad/p5_wave<N>_notes.md.
 Resume design: Workflow({scriptPath: scratchpad/p5design.js, resumeFromRunId: "wf_9b76bb34-5d6"})
 Blender: bpy 5.2 at /tmp/claude-0/bpyenv/bin/python (re-install with pip in a venv if the container restarted). Pebble Pup script: nimbus-climb/blender/pebble_pup.py.

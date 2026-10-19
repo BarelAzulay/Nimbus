@@ -804,9 +804,21 @@ S.p5home_berries = guarded("p5home_berries", function()
 	K.advance(1)
 	T.check(W2.bankOf(p) > bankAt and DataS.GetBerries(p) == cap, "p5 berries: a poop that would overflow the basket is clamped at BasketCap (" .. cap .. ")", tostring(DataS.GetBerries(p)))
 	T.check(K.notified(p, "Basket full! Feed your pets", nil, mark), "p5 berries: ...with the 'Basket full! Feed your pets' toast")
-	local toastsAt = #K.remotesFor("Notify", p.UserId, mark)
+	-- (count HIS basket toasts only: K.remotesFor also lists broadcasts, and EventService's raid / Double Rewards
+	-- announcements ride the shared game clock, so one may land in this window in the full run)
+	local function basketToasts()
+		local n = 0
+		for _, e in ipairs(K.remotesFor("Notify", p.UserId, mark)) do
+			if e.kind ~= "all" and tostring(e.args[1]):find("Basket full", 1, true) then
+				n = n + 1
+			end
+		end
+		return n
+	end
+	local toastsAt = basketToasts()
 	K.advance(HR.Cycle + 2)
-	T.check(DataS.GetBerries(p) == cap and #K.remotesFor("Notify", p.UserId, mark) == toastsAt and W2.bankOf(p) > bankAt, "p5 berries: the coins never stop at a full basket; the toast is not repeated")
+	T.check(DataS.GetBerries(p) == cap and basketToasts() == toastsAt and W2.bankOf(p) > bankAt, "p5 berries: the coins never stop at a full basket; the toast is not repeated",
+		tostring(DataS.GetBerries(p)) .. "/" .. cap .. " toasts " .. basketToasts() .. "/" .. toastsAt)
 	DataS.AddBerries(p, 5000) -- a dev grant / an offline payout above the cap
 	local over = DataS.GetBerries(p)
 	K.advance(HR.Cycle + 2)

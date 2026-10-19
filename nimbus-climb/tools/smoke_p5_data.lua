@@ -18,6 +18,11 @@
 --                       Berries attribute (<= 2 writes/s, trailing), no ProfileSync on a Berries-only change (C14),
 --                       the +/- delta merge clamped at 0 against a second server, stored only while > 0, provisional
 --                       (Add allowed, Spend refused)
+--   p5data_berries_merge  two servers converting ONE unmigrated Phase 4 save's Food into berries (the m15 twin: a store
+--                       another server already marked P5Home holds its conversion, so the session's own is left out of
+--                       the merge): A saves first / B first, later earns and spends, a failed save retried, the berries
+--                       spent before any save, a provisional load recovering onto a migrated / an unmigrated store, and
+--                       the rest of the fold (Berry Farm level, LegacyMagnet, DecorCredit) equal to a one-server fold
 --   p5data_settings     per-key defaults, SetSetting validation (types, ranges, SeenNotes only up, the key whitelist),
 --                       malformed stored settings, the SettingsSet remote (6/s burst 6; junk dropped), the live session
 --                       wins the merge, left out of the store while default, always in the snapshot
@@ -926,6 +931,192 @@ S.p5data_berries = guarded("p5data_berries", function()
 	leave({ v })
 	K.flushErrors("p5data_berries")
 	K.flushWarnings("p5data_berries", { "[DataService]" })
+end)
+
+----------------------------------------------------------------------------------------------------
+-- scenario: two servers converting one Phase 4 save's Food into berries (the m15 twin, every interleaving)
+----------------------------------------------------------------------------------------------------
+-- the store (the real mock DataStore record) and its Home, both never nil
+local function storedBerries(uid)
+	return (stored(uid) or {}).Berries or 0
+end
+
+S.p5data_berries_merge = guarded("p5data_berries_merge", function()
+	if not K.needBoot() then
+		return
+	end
+	local DataS = mod("DataService")
+	local DSt = Mock.DataStore
+	local data = DSt.Data
+	local TC = K.M["shared/TycoonCatalog"]
+	if not T.check(type(TC) == "table" and type(TC.FoldLegacy) == "function", "p5 berry merge: (precondition) TycoonCatalog.FoldLegacy exists (the real P5Home fold)") then
+		return
+	end
+	local ids = petIds(4)
+	local FOOD = { Snack = 1, Meal = 1 } -- 200 + 1200 = 1400 berries once
+	local CONV = 1400
+	local B, cloneB, releaseB = secondServer("DataServiceP5BerryMergeB")
+	if not T.check(B ~= nil and type(B.AddBerries) == "function", "p5 berry merge: a second copy of DataService loads as 'server B'", tostring(cloneB)) then
+		return
+	end
+	local okRun, errRun = pcall(function()
+		-- 1. both load the unmigrated save; A saves first, B (which migrated before A's save) saves later; then both
+		--    earn / spend and save again; a third save of each
+		local ONE = 955601
+		data[storeKey(ONE)] = phase4Record(ids, { Food = FOOD })
+		local p = join("P5BerryMergeOne", ONE)
+		B.Load(p)
+		T.check(DataS.GetBerries(p) == CONV and B.GetBerries(p) == CONV and DataS.IsMigrated(p, "P5Home") == true and B.IsMigrated(p, "P5Home") == true,
+			"p5 berry merge: both servers converted the same Snack + Meal (1400 berries each, both marked)", tostring(DataS.GetBerries(p)) .. "/" .. tostring(B.GetBerries(p)))
+		T.check(DataS.AddBerries(p, 50) == true and DataS.Save(p) == true, "p5 berry merge: A adds 50 and saves first")
+		T.eq(storedBerries(ONE), CONV + 50, "p5 berry merge: the store holds 1400 + 50")
+		T.check(DataS.AddBerries(p, 5) == true and DataS.Save(p) == true and storedBerries(ONE) == CONV + 55, "p5 berry merge: A's second save (+5) lands on top (1455): its conversion is not subtracted again")
+		T.check(B.AddBerries(p, 100) == true and B.Save(p) == true, "p5 berry merge: B adds 100 and saves after A")
+		T.eq(storedBerries(ONE), CONV + 155, "p5 berry merge: the store holds 1400 + 55 + 100 = 1555, NOT 2955 (B's own conversion is left out: the store already held one)")
+		advance(0.3)
+		T.check(DataS.GetBerries(p) == CONV + 55 and B.GetBerries(p) == CONV + 155, "p5 berry merge: A still sees 1455 (it has not read the store), B adopted 1555")
+		-- A earns 10 and spends 60 after the merge: its next save adopts the store and lands only the +10 - 60
+		T.check(DataS.AddBerries(p, 10) == true and DataS.SpendBerries(p, 60) == true and DataS.Save(p) == true, "p5 berry merge: A earns 10, spends 60, saves (its third save)")
+		T.eq(storedBerries(ONE), CONV + 105, "p5 berry merge: the store holds 1555 + 10 - 60 = 1505")
+		advance(0.3)
+		T.check(DataS.GetBerries(p) == CONV + 105, "p5 berry merge: A adopted the merged berries (1505)", tostring(DataS.GetBerries(p)))
+		T.check(B.SpendBerries(p, 500) == true and B.Save(p) == true and storedBerries(ONE) == CONV + 105 - 500, "p5 berry merge: B spends 500 and saves: 1005 (a plain delta now)")
+		T.check(B.Save(p) == true and DataS.Save(p) == true and storedBerries(ONE) == CONV + 105 - 500, "p5 berry merge: empty saves of both change nothing")
+		T.check((stored(ONE) or {}).Food == nil, "p5 berry merge: the Food is gone from the store (converted once)")
+		leave({ p })
+
+		-- 2. the other order: B saves first (nothing but its migration), A (loaded before B's save) saves +0 after a
+		--    failed attempt (the DataStore down; the migration's part stays pending until a save lands)
+		local TWO = 955602
+		data[storeKey(TWO)] = phase4Record(ids, { Food = FOOD })
+		p = join("P5BerryMergeTwo", TWO)
+		B.Load(p)
+		T.check(B.Save(p) == true and storedBerries(TWO) == CONV, "p5 berry merge: B saves its migration first (1400)")
+		DSt.Fail = true
+		T.check(DataS.Save(p) == false, "p5 berry merge: A's save fails while the DataStore is down")
+		DSt.Fail = false
+		T.check(DataS.Save(p) == true and storedBerries(TWO) == CONV, "p5 berry merge: A's retried save lands: the store still holds 1400 (not 2800)")
+		advance(0.3)
+		T.check(DataS.GetBerries(p) == CONV and B.GetBerries(p) == CONV, "p5 berry merge: both read 1400")
+		leave({ p })
+
+		-- 3. the player spent the converted berries on A before anyone saved: B's conversion lands, A's spend lands
+		local THREE = 955603
+		data[storeKey(THREE)] = phase4Record(ids, { Food = FOOD })
+		p = join("P5BerryMergeThree", THREE)
+		B.Load(p)
+		T.check(DataS.SpendBerries(p, CONV) == true and DataS.GetBerries(p) == 0, "p5 berry merge: A's player spends all 1400 converted berries before any save")
+		T.check(B.Save(p) == true and storedBerries(THREE) == CONV, "p5 berry merge: B saves first (1400)")
+		T.check(DataS.Save(p) == true and storedBerries(THREE) == 0, "p5 berry merge: A's save takes the 1400 the player spent: the store holds 0 (never 1400 again, never negative)")
+		leave({ p })
+
+		-- 4. a provisional load on A (the DataStore down) recovers onto a store B already migrated: no second conversion
+		local FOUR = 955604
+		data[storeKey(FOUR)] = phase4Record(ids, { Food = FOOD })
+		local q = Mock.AddPlayer("P5BerryMergeFour", FOUR)
+		advance(1.0)
+		B.Load(q)
+		T.check(B.GetBerries(q) == CONV and B.Save(q) == true and storedBerries(FOUR) == CONV, "p5 berry merge: B migrated and saved (1400) while A...")
+		leave({ q })
+		DSt.Fail = true
+		q = Mock.AddPlayer("P5BerryMergeFour", FOUR)
+		advance(4)
+		T.check(DataS.IsProvisional(q) == true and DataS.GetBerries(q) == 0 and DataS.IsMigrated(q, "P5Home") ~= true, "p5 berry merge: ...loads provisionally (0 berries, no migration on a stand-in)")
+		T.check(DataS.AddBerries(q, 5) == true, "p5 berry merge: the provisional session earns 5 berries")
+		DSt.Fail = false
+		T.check(K.waitFor(function()
+			return not DataS.IsProvisional(q)
+		end, 40), "p5 berry merge: (the recovery reads the real save)")
+		advance(1)
+		T.check(DataS.GetBerries(q) == CONV + 5 and DataS.MigratedNow(q, "P5Home") == nil, "p5 berry merge: the recovery adopts B's 1400 + the 5 (no second conversion: the store was marked)", tostring(DataS.GetBerries(q)))
+		T.check(DataS.Save(q) == true and storedBerries(FOUR) == CONV + 5, "p5 berry merge: ...and saves 1405")
+		leave({ q })
+
+		-- 5. a provisional load on A whose recovery reads the UNMIGRATED save (A converts on ProfileRebased) while
+		--    B loaded the same save meanwhile and holds its own conversion in memory (no leave: B's PlayerRemoving
+		--    hook would save it)
+		local FIVE = 955605
+		data[storeKey(FIVE)] = phase4Record(ids, { Food = FOOD })
+		DSt.Fail = true
+		q = Mock.AddPlayer("P5BerryMergeFive", FIVE)
+		advance(4)
+		T.check(DataS.IsProvisional(q) == true and DataS.AddBerries(q, 7) == true, "p5 berry merge: A loads provisionally (the DataStore down) and earns 7")
+		DSt.Fail = false
+		B.Load(q)
+		T.check(B.GetBerries(q) == CONV and B.IsMigrated(q, "P5Home") == true, "p5 berry merge: B loads the same unmigrated save and converts it in memory (1400)")
+		T.check(storedBerries(FIVE) == 0 and ((stored(FIVE) or {}).Migrations or {}).P5Home == nil, "p5 berry merge: (precondition) the store is still the unmigrated Phase 4 save")
+		T.check(K.waitFor(function()
+			return not DataS.IsProvisional(q)
+		end, 40), "p5 berry merge: (the recovery reads the unmigrated save)")
+		advance(1)
+		T.check(DataS.GetBerries(q) == CONV + 7 and DataS.IsMigrated(q, "P5Home") == true, "p5 berry merge: A converts on the recovery (1400 + 7, marked)", tostring(DataS.GetBerries(q)))
+		local afterRecovery = storedBerries(FIVE)
+		T.check(afterRecovery == 0 or afterRecovery == CONV + 7, "p5 berry merge: the store holds the Phase 4 save or A's recovered save (1407), nothing else", tostring(afterRecovery))
+		T.check(DataS.Save(q) == true and B.Save(q) == true and DataS.Save(q) == true and storedBerries(FIVE) == CONV + 7,
+			"p5 berry merge: A saves, B saves its in-memory conversion, A saves again: the store holds 1407 (one conversion + the 7)", tostring(storedBerries(FIVE)))
+		advance(0.3)
+		T.check(B.GetBerries(q) == CONV + 7, "p5 berry merge: B adopted 1407", tostring(B.GetBerries(q)))
+		leave({ q })
+
+		-- 6. the rest of the fold is idempotent across two servers: the Berry Farm level, LegacyMagnet, DecorCredit
+		--    and the removed keys equal what ONE server's fold stores
+		local function oldHome()
+			return { Level = 12, Prestige = 1, Stations = { Press1 = 6, Press2 = 4, Press3 = 2, Collector = 3, Garden = 6, DecorFlowers = 2, DecorLamps = 2, DecorFence = 1 }, Garden = { ids[1] }, Gym = {}, CollectorCash = 500, LastSeen = 1700000000 }
+		end
+		local SOLO, DUO = 955606, 955607
+		data[storeKey(SOLO)] = phase4Record(ids, { Home = oldHome(), Food = FOOD })
+		data[storeKey(DUO)] = phase4Record(ids, { Home = oldHome(), Food = FOOD })
+		local ps = join("P5BerryMergeSolo", SOLO)
+		T.check(DataS.Save(ps) == true, "p5 berry merge: one server folds the old home and saves")
+		leave({ ps })
+		local pd = join("P5BerryMergeDuo", DUO)
+		B.Load(pd)
+		T.check(DataS.Save(pd) == true and B.Save(pd) == true and DataS.AddBerries(pd, 1) == true and DataS.Save(pd) == true, "p5 berry merge: two servers fold the same old home and both save (A twice)")
+		local sh, dh = (stored(SOLO) or {}).Home or {}, (stored(DUO) or {}).Home or {}
+		local diffs = {}
+		for _, key in ipairs({ "Level", "Prestige", "DecorCredit", "LegacyMagnet", "LegacyMagnetStar" }) do
+			if sh[key] ~= dh[key] then
+				diffs[#diffs + 1] = key .. " " .. tostring(sh[key]) .. "/" .. tostring(dh[key])
+			end
+		end
+		local stationsSame = deepEqual(sh.Stations, dh.Stations)
+		local function homeText(h)
+			local keys, out = {}, {}
+			for k in pairs(h) do
+				keys[#keys + 1] = k
+			end
+			table.sort(keys)
+			for _, k in ipairs(keys) do
+				local v = h[k]
+				if k == "Stations" then
+					local sk, parts = {}, {}
+					for id in pairs(v) do
+						sk[#sk + 1] = id
+					end
+					table.sort(sk)
+					for _, id in ipairs(sk) do
+						parts[#parts + 1] = id .. "=" .. tostring(v[id])
+					end
+					v = "{" .. table.concat(parts, ",") .. "}"
+				elseif type(v) == "table" then
+					v = "#" .. tostring(#v)
+				end
+				out[#out + 1] = k .. "=" .. tostring(v)
+			end
+			return table.concat(out, " ")
+		end
+		T.check(#diffs == 0 and stationsSame and dh.Stations.Press2 == nil and dh.Stations.Press3 == nil and dh.Stations.Collector == nil and dh.Stations.DecorFlowers == nil and dh.Stations.DecorLamps == nil and (dh.DecorCredit or 0) > 0 and dh.LegacyMagnet == 3,
+			"p5 berry merge: the two-server fold stores the same Level / Stations / DecorCredit / LegacyMagnet(Star) as the one-server fold (per-key replace, nothing doubled)",
+			table.concat(diffs, "; ") .. (stationsSame and "" or " stations differ") .. " solo[" .. homeText(sh) .. "] duo[" .. homeText(dh) .. "]")
+		T.check(storedBerries(DUO) == storedBerries(SOLO) + 1, "p5 berry merge: ...and the berries of the two-server save are the one-server conversion + 1")
+		leave({ pd })
+	end)
+	T.check(releaseB() == true, "p5 berry merge: server B's hooks are dropped with it")
+	if not okRun then
+		error(errRun, 0)
+	end
+	K.flushErrors("p5data_berries_merge")
+	K.flushWarnings("p5data_berries_merge", { "[DataService]" })
 end)
 
 ----------------------------------------------------------------------------------------------------

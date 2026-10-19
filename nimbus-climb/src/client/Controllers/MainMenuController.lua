@@ -508,13 +508,28 @@ function Menu.build()
 		Parent = shade,
 	})
 
-	-- the column
+	-- Roblox's touch thumbstick (bottom-left) and jump button (bottom-right) zones in screen px, kept clear of every
+	-- button: the classic stick / jump button of a small phone (<= 500 px on the short side), the big ones elsewhere
+	-- (the rule TutorialController and MovementController use)
+	local touch = H.isTouch()
+	local zoneW, zoneH = 0, 0
+	if touch then
+		if math.min(vp.X, vp.Y) <= 500 then
+			zoneW, zoneH = 104, 96
+		else
+			zoneW, zoneH = 206, 210
+		end
+	end
+
+	-- the column (landscape touch: right of the thumbstick zone, a little higher than on a desktop)
 	local colW = portrait and math.min(K.COL_W, designW - 48) or math.min(K.COL_W, math.max(300, 0.42 * designW - K.MARGIN))
 	local align = portrait and Enum.TextXAlignment.Center or Enum.TextXAlignment.Left
 	local logoSize = short and 70 or (portrait and 88 or 100)
+	local colX = math.max(math.floor(K.MARGIN * f), touch and (zoneW + math.floor(8 * f)) or 0)
+	local colY = touch and -math.floor(6 * f) or math.floor(22 * f)
 	local column = H.frame("Column", {
 		AnchorPoint = portrait and Vector2.new(0.5, 0) or Vector2.new(0, 0.5),
-		Position = portrait and UDim2.new(0.5, 0, 0.1, 0) or UDim2.new(0, math.floor(K.MARGIN * f), 0.5, math.floor(22 * f)),
+		Position = portrait and UDim2.new(0.5, 0, 0.1, 0) or UDim2.new(0, colX, 0.5, colY),
 		Size = UDim2.fromOffset(colW, short and 420 or 560),
 		ZIndex = 2,
 	}, menu)
@@ -607,12 +622,11 @@ function Menu.build()
 	}, column)
 
 	-- version + CREDITS chip, bottom-right
-	-- desktop: bottom-right; landscape touch: top-right under Roblox's buttons; portrait: bottom-centre (between the
-	-- thumbstick and the jump button a character would bring)
-	local touch = H.isTouch()
+	-- desktop: bottom-right; landscape touch: top-right under Roblox's buttons; portrait: bottom-centre, ABOVE the
+	-- thumbstick and the jump button a character would bring (never inside either zone)
 	local chipAnchor, chipPos = Vector2.new(1, 1), UDim2.new(1, -math.floor(20 * f), 1, -math.floor(18 * f))
 	if portrait then
-		chipAnchor, chipPos = Vector2.new(0.5, 1), UDim2.new(0.5, -math.floor(10 * f), 1, -math.floor(24 * f))
+		chipAnchor, chipPos = Vector2.new(0.5, 1), UDim2.new(0.5, -math.floor(10 * f), 1, -(zoneH + math.floor(12 * f)))
 	elseif touch then
 		chipAnchor, chipPos = Vector2.new(1, 0), UDim2.new(1, -math.floor(16 * f), 0, 66)
 	end

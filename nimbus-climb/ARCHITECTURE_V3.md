@@ -2929,3 +2929,4 @@ leashed after 3 s); `trials` deleted. `SIM.Stages`, `SIM.team`, `SIM.Player` kep
 - W1: C10 first Prestige floor is 115 min for the player who also runs the Ring and the Dungeon (`--ring 0.08 --dungeon 0.1`: 118 min), 120 otherwise.
 - W1: `TycoonCatalog.CoinPoint` / `HeapStage` stay as deprecated stubs until the W3 gate (HomeFx), then leave contract.json with the aliases.
 - W2: 4.5 wire: `Start.Team.Cooldowns.Buff` is keyed by slot STRINGS ('2', '3'); a rejected `Order` echo goes only to its owner. 10.5: `Config.Lobby.PortalRingRadius` deleted.
+- W4: 9.1 `Berries` merge: a session that converted Food -> berries in P5Home carries `BerriesMigrated`; applyDelta subtracts it when the STORED record was already P5Home-marked (two servers folding the same Phase 4 save never double-credit; the m15 Clears twin).

@@ -910,7 +910,8 @@ end)
 scenario("party", function()
 	local medium = difficulty("Medium")
 	toClient("PartyState", {
-		PortalId = medium.Id,
+		PortalId = "Obby", -- Phase 5 (6.3): the one obby portal; the level travels separately
+		Level = medium.Id,
 		DifficultyName = medium.DisplayName,
 		Color = medium.Color,
 		Players = { { UserId = LocalPlayer.UserId, Name = LocalPlayer.Name }, { UserId = 77, Name = "Buddy" } },

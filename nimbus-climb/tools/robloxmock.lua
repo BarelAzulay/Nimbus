@@ -5776,7 +5776,7 @@ for _, n in ipairs({ "ReplicatedStorage", "ReplicatedFirst", "ServerScriptServic
 	service(n, {})
 end
 -- TextChatService: the default chat of new places (no TextChatCommand class here: commands that need one are skipped)
-service("TextChatService", { props = { ChatVersion = T.enum("ChatVersion", "TextChatService"), CreateDefaultCommands = T.bool(true), CreateDefaultTextChannels = T.bool(true) } })
+service("TextChatService", { props = { ChatVersion = T.enum("ChatVersion", "TextChatService"), CreateDefaultCommands = T.bool(true), CreateDefaultTextChannels = T.bool(true) }, events = { "SendingMessage", "MessageReceived" } })
 service("StarterPlayer", { props = { CharacterWalkSpeed = T.num(16), CharacterJumpPower = T.num(50), CharacterJumpHeight = T.num(7.2), CharacterUseJumpPower = T.bool(false), CharacterMaxHealth = T.num(100), CameraMaxZoomDistance = T.num(128), CameraMinZoomDistance = T.num(0.5), AutoJumpEnabled = T.bool(true) } })
 service("StarterGui", {
 	props = { ScreenOrientation = T.any(nil), ShowDevelopmentGui = T.bool(true), ResetPlayerGuiOnSpawn = T.bool(true) },

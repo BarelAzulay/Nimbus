@@ -779,21 +779,27 @@
     },
     "client/Controllers/DungeonController": {
       "optional": true,
-      "pending": {
-        "_comment": "ARCHITECTURE_V3.md \"Phase 5 build contract\" 5.6 (wave 4, dungeonclient)",
-        "functions": [
-          "Init"
-        ]
-      }
+      "_comment": "ARCHITECTURE_V3.md \"Phase 5 build contract\" 5.6 (wave 4, dungeonclient)",
+      "functions": [
+        "Init",
+        "Open",
+        "Close",
+        "IsOpen",
+        "GetState",
+        "Request"
+      ]
     },
     "client/Controllers/ObbyController": {
       "optional": true,
-      "pending": {
-        "_comment": "ARCHITECTURE_V3.md \"Phase 5 build contract\" 6.3 (wave 4, dungeonclient)",
-        "functions": [
-          "Init"
-        ]
-      }
+      "_comment": "ARCHITECTURE_V3.md \"Phase 5 build contract\" 6.3 (wave 4, dungeonclient)",
+      "functions": [
+        "Init",
+        "Open",
+        "Close",
+        "IsOpen",
+        "GetState",
+        "Pick"
+      ]
     },
     "client/ClientSettings": {
       "optional": true,

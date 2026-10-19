@@ -35,8 +35,10 @@
 --     Home.DecorCredit = 1..18 | nil, Home.LegacyMagnet = 1..5 | nil, Home.LegacyMagnetStar = the Prestige it was folded at }
 --   Phase 5 rules: Teams hold 3 keys per preset (slot 1 = the fighter; a stored 4th key leaves the preset only, the pet
 --   stays owned); Dungeon merges Best max / Cleared union / Runs delta / Clears delta (the P5Dungeon migration's own
---   Clears as a max, so two servers migrating one save do not double it); Berries merge as a +/- delta clamped at 0; the
---   live session's Settings win; Food was converted into berries ONCE by the P5Home step and is never written again.
+--   Clears as a max, so two servers migrating one save do not double it); Berries merge as a +/- delta clamped at 0,
+--   MINUS the session's own P5Home conversion when the store was already marked P5Home (its twin: two servers
+--   converting one save's Food do not double the berries); the live session's Settings win; Food was converted into
+--   berries ONCE by the P5Home step and is never written again.
 --   Battle teams: a preset lists up to 3 UNIQUE keys in slot order (Phase 5: 3 always, slot 1 = the fighter; the
 --   Phase 3 prestige unlock of a 4th slot is gone); every key needs a FREE copy: owned (PetKeys.Count) more often than it
 --   works in the Gym (Phase 4: a Garden pet keeps earning at home while it follows you and fights, so only Home.Gym
@@ -2275,6 +2277,9 @@ local function diffProfiles(live, base, overwrite, opts)
 		-- a floor), berries as a +/- delta, the settings whole when the session changed them (the live session wins)
 		Dungeon = P5.diffDungeon(P5.cleanDungeon(live.Dungeon), P5.cleanDungeon(base.Dungeon), opts.DungeonMigrated),
 		Berries = P5.cleanBerries(live.Berries) - P5.cleanBerries(base.Berries),
+		-- the part of that delta the session's own P5Home step converted from Food (the m15 twin: a store another
+		-- server already marked P5Home holds its own conversion, so applyDelta leaves these out there)
+		BerriesMigrated = (isFinite(opts.BerriesMigrated) and opts.BerriesMigrated > 0) and math.floor(opts.BerriesMigrated) or nil,
 		Settings = nil,
 		Overwrite = overwriteValues(live, overwrite),
 		-- the prestige rule for Cash and the star rewards (applyDelta); receipt gems (no double grant)
@@ -2601,18 +2606,28 @@ local function applyDelta(stored, d)
 	if not (o and o.Ring) then
 		P4.applyRing(out, d.Ring)
 	end
+	-- Phase 5: whether the STORE already held the P5Home marker before this merge (another server converted the same
+	-- Food into berries, or this session's own earlier save landed): read from the stored record itself, before the
+	-- union below and regardless of a pending Migrations overwrite
+	local homeMarked = tableOr(stored.Migrations)[P5.HOME_MARK] == true
 	for name in pairs(tableOr(d.Migrations)) do
 		if validKey(name) then
 			out.Migrations[name] = true
 		end
 	end
 	-- Phase 5: the dungeon record by its rules (an overwritten record already is the session's whole value), berries
-	-- as a delta clamped at 0 (a two-server race costs at most one feed, Y9), the settings of the live session
+	-- as a delta clamped at 0 (a two-server race costs at most one feed, Y9) MINUS the session's own Food conversion
+	-- when the store was already marked P5Home (it holds the conversion then: two servers migrating one Phase 4 save
+	-- do not double the berries, the twin of the m15 Clears rule), the settings of the live session
 	if not (o and o.Dungeon) then
 		P5.applyDungeon(out, d.Dungeon)
 	end
 	if isFinite(d.Berries) then
-		out.Berries = P5.cleanBerries(out.Berries + d.Berries)
+		local delta = d.Berries
+		if homeMarked and isFinite(d.BerriesMigrated) and d.BerriesMigrated > 0 then
+			delta = delta - d.BerriesMigrated
+		end
+		out.Berries = P5.cleanBerries(out.Berries + delta)
 	end
 	if type(d.Settings) == "table" then
 		out.Settings = P5.cleanSettings(d.Settings)
@@ -2836,6 +2851,9 @@ local function deltaOpts(entry)
 		StandIn = entry.LoadFailed == true or entry.Loaded ~= true,
 		-- Phase 5: the Clears the session's own P5Dungeon migration wrote (merge as a max until the store holds them)
 		DungeonMigrated = entry.DungeonMigrated,
+		-- Phase 5: the berries the session's own P5Home step converted from Food (left out of the merge when the store
+		-- already holds another server's conversion)
+		BerriesMigrated = entry.BerriesMigrated,
 	}
 end
 
@@ -3441,6 +3459,7 @@ local function writeEntry(entry, userId)
 				entry.Overwrite = nil -- written; a ResetFields during the write stays pending for the next save
 			end
 			entry.DungeonMigrated = nil -- Phase 5: the store holds the migration's Clears now (the Base adopts them below)
+			entry.BerriesMigrated = nil -- Phase 5: ...and the P5Home step's berries (counted there exactly once)
 			if type(result) == "table" then
 				local confirmed = normalizeProfile(result)
 				if profilesEqual(confirmed, snapshot) then
@@ -5338,6 +5357,7 @@ function P5.migrateHome(entry, player)
 		if berries > 0 then
 			profile.Berries = P5.cleanBerries(P5.cleanBerries(profile.Berries) + berries)
 			info.Berries = berries
+			entry.BerriesMigrated = berries -- left out of the merge against a store another server already marked (m15 twin)
 		end
 		refill(ensureTable(profile, "Food"), {}) -- converted once; never written again (m16)
 		ensureTable(profile, "Migrations")[P5.HOME_MARK] = true

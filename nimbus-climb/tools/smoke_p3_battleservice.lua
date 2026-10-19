@@ -531,6 +531,10 @@ S.p3bs_contract = scenario("p3bs_contract", function()
 	T.check(string.find("\n" .. source, "\nBattleService%.BattleEnded = Util%.Signal%(%)") ~= nil, "p3 bs: ...created at module load (other services connect before Init)")
 	T.check(string.find(source, "[^%.%w_]wait%(") == nil and string.find(source, "[^%.%w_]spawn%(") == nil and string.find(source, "[^%.%w_]delay%(") == nil,
 		"p3 bs: task.* only (no wait / spawn / delay globals)")
+	if bs.GetRaidStatus() ~= nil then
+		bs.EndRaid("test") -- a scheduled raid may be live at this point of the full run (the shared game clock)
+		advance(0.5)
+	end
 	T.check(bs.IsInBattle(nil) == false and bs.GetBattle(nil) == nil and bs.GetRaidStatus() == nil and bs.EndRaid() == false,
 		"p3 bs: nil players and 'no raid' answer safely (IsInBattle false, GetBattle nil, GetRaidStatus nil, EndRaid false)")
 	-- Init ran through Main: the BattleRequest remote answers (a queue request away from the arena is refused with a toast)
