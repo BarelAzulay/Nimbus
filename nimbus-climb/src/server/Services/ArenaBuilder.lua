@@ -1,5 +1,6 @@
--- ArenaBuilder (Phase 3, arenaworld): the Battle Arena island, the Trial Portal on the plaza and the private trial
--- pockets in the sky, in the DETAILED VOXEL style (ARCHITECTURE_V3.md "Phase 3: Pet battles", "Phase 3 build contract"
+-- ArenaBuilder (Phase 3, arenaworld; Phase 5 worldlobby: the Trials are gone, the two Gate Court gates are built with
+-- WorldStyle.BuildGate): the Battle Arena island, Portal_Ring + Portal_Arena in the plaza's Gate Court and the private
+-- Champion Ring pockets in the sky, in the DETAILED VOXEL style (ARCHITECTURE_V3.md "Phase 3: Pet battles", "Phase 3 build contract"
 -- and its "Interfaces between the Phase 3 modules"; ART DIRECTION; World text rule). A server module: Main calls
 -- Build(lobbyInfo) once after the lobby; BattleService / EventService / TutorialService get the ArenaInfo it returns.
 --
@@ -15,26 +16,24 @@
 --       Rings        = { { CFrame, Size, Pads = { BasePart... }, Zone, Index }... }   the duel rings (Mode "Duel"); the
 --                               challenge pads carry the "Arena" prompts
 --       Spawn        = CFrame   arrival point on the forum (the Arena Gate teleport lands here), looking at the gate
---       ReturnCFrame = CFrame   on the plaza in front of the Trial Portal, looking at the plaza (trial fighters come back)
---       TrialPortal  = BasePart the Trial Portal's pad (carries the "Trials" prompt; trial starts are accepted near it)
---       RingPortal   = BasePart (Phase 4) the Champion Ring portal's pad (Portal_Ring, prompt "RingPrompt" with
---                               OpenPanel = "Ring"; ring starts are accepted near it). Without LobbyInfo.RingSite (an
---                               older lobby) it is the Trial Portal's pad carrying a second RingPrompt (OpenPanelTab
---                               = "Ring"), the contract's zero-part fallback. RingSite = the CFrame it stands on.
+--       ReturnCFrame = CFrame   on the plaza in front of Portal_Ring, looking at the plaza (ring climbers come back)
+--       RingPortal   = BasePart (Phase 4) the Champion Ring portal's pad (Portal_Ring in the Gate Court, prompt
+--                               "RingPrompt" with OpenPanel = "Ring"; ring starts are accepted near it). RingSite = the
+--                               gate centre (LobbyInfo.GateSites.Ring, LookVector = towards the plaza)
+--       ArenaPortal  = BasePart (Phase 5) Portal_Arena's prompt part (ArenaPortalPrompt -> Spawn)
+--       LobbyCFrame  = CFrame   (Phase 5) in front of Portal_Arena, looking at the plaza (the forum's Return gate)
 --       -- extras
 --       Radius, Bounds = { CFrame, Size }   the island (InArena uses its real outline); Link = "Bridge" | "Portal"
 --       EventBoard = { Model, Gui, Labels }, Leaderboard = { Model, Gui, Rows }   the SurfaceGuis (see ApplyArenaState)
 --       ApplyArenaState = ArenaBuilder.ApplyArenaState, InArena = ArenaBuilder.InArena
 --     }
 --   ArenaBuilder.BuildPocket(index, kind) -> { Model, CFrame, Size, Spawn, Zone, Index, Kind } | nil
---       a private battle pocket (index 1..MAX_POCKETS, one pool for trials and ring runs), cloned from one template,
---       far out in the sky on its own grid cell; CFrame = floor surface centre (axis aligned), Size = the battle floor
---       (BattleCatalog.Zones[Kind]), Spawn = where the fighter stands (side 1, -Z, looking at the enemy side).
---       kind nil / "Trial": the trial pocket (<= ~250 parts, zone Mode "Trial", ZoneId "Pocket"). kind "Ring" (Phase 4):
---       the Champion Ring, a round ring (16-gon floor of apothem 33: the 44 x 44 square fits at any rotation) with a
---       gold rim, four crown posts and a small cheering crowd of cloud puffs on a cloud bleacher behind the champion's
---       side (<= 220 parts, zone Mode "Ring", ZoneId "Ring"). Building an index that exists with the same kind returns
---       it; with the other kind it is rebuilt.
+--       a private battle pocket (index 1..MAX_POCKETS), cloned from one template, far out in the sky on its own grid
+--       cell; CFrame = floor surface centre (axis aligned), Size = the battle floor (BattleCatalog.Zones.Ring), Spawn =
+--       where the fighter stands (side 1, -Z, looking at the enemy side). Phase 5: the only kind is "Ring" (nil and
+--       unknown kinds build it too; the Trial pocket is deleted): the Champion Ring, a round ring (16-gon floor of
+--       apothem 33: the 44 x 44 square fits at any rotation) with a gold rim, four crown posts and a small cheering crowd of cloud puffs on a cloud bleacher behind the champion's
+--       side (<= 220 parts, zone Mode "Ring", ZoneId "Ring"). Building an index that exists returns it.
 --   ArenaBuilder.FreePocket(zone)              removes that pocket (the table from BuildPocket, its index or Model)
 --   ArenaBuilder.ApplyArenaState(state)        EventService: draws the ArenaState table (the same one it broadcasts:
 --       { Next = { Kind, BossId, StartsIn }, Raid = { Active, BossId, Hp, MaxHp, Players, EndsIn }, Double = { Active,
@@ -51,8 +50,8 @@
 --     first distance where nothing of the lobby (homes, gardens, the Storm Altar, sky clouds) comes near its outline;
 --     the sky dragon flies 120+ studs higher. Linked to the plaza by a stone BRIDGE that leaves the street at
 --     LobbyInfo.ArenaDock (the junction's outer rail is open there) and runs straight between the two plots, with an
---     entrance arch ("BATTLE ARENA") and torches in the element colours. Without a dock (an older lobby) or when
---     something blocks the corridor, an Arena Portal on the plaza and a Return Portal on the forum link it instead.
+--     entrance arch ("BATTLE ARENA") and torches in the element colours. Phase 5: Portal_Arena in the Gate Court and the
+--     Return gate on the forum link it too, always (the bridge stays when its corridor is clear).
 --   * Island: a big puffy voxel cloud; the forum in front (paving, the avenue with a crimson runner, torches, a golden
 --     trophy statue, banners, planters) and the COLOSSEUM behind: a 16-sided stadium whose sand floor (apothem 72)
 --     holds the raid zone at any rotation, an element wheel in its centre, a podium wall, four tiers of seats in the
@@ -62,22 +61,21 @@
 --     torch posts, a crossed-swords emblem and two challenge pads each (prompt "Duel", attribute OpenPanel = "Arena").
 --   * The EVENT BOARD and the TROPHY LEADERBOARD: free-standing stone frames flanking the avenue in front of the main
 --     gate, SurfaceGuis at 50 px per stud (titles >= 1.1 studs, every line >= 0.6 stud).
---   * Battle zones: invisible parts tagged NC_BattleZone with the attributes Mode ("Raid" | "Duel" | "Trial" | "Ring"), Size
+--   * Battle zones: invisible parts tagged NC_BattleZone with the attributes Mode ("Raid" | "Duel" | "Ring"), Size
 --     (Vector3, the battle floor: X, height, Z), ZoneId and Index; the part itself covers the floor plus a small margin
 --     (where the controls work). CanCollide / CanTouch / CanQuery false: test membership with the part's CFrame + Size.
---   * Trial Portal: model Portal_Trials at LobbyInfo.TrialSite (the next gate of the plaza's portal fan), styled like
---     the difficulty portals (crimson, crossed swords instead of stars), prompt "Trials" with OpenPanel = "Trials". It
---     lives in workspace.BattleArena (the lobby's own part budget is full); TutorialService can point at
---     ArenaInfo.TrialPortal.Position.
---   * Champion Ring portal (Phase 4): model Portal_Ring at LobbyInfo.RingSite (the next free gate of the fan), a
---     crowned square arch in champion gold and royal violet (<= 70 parts), its pad with a glowing crown, the prompt
---     "RingPrompt" (OpenPanel = "Ring") and a pixel tag "Champion Ring" / "Beat the champion, meet a stronger one" with
---     the pill "Best in this server: Alex - Round 31" drawn from the RingBoard attribute BattleService writes on the
---     model (or its pad) when a run ends ("Alex|31;Sam|24;Kim|20").
+--   * The Gate Court gates (Phase 5, 6.1 / 6.2, C4 / C12): Portal_Ring and Portal_Arena are WorldStyle.BuildGate gates
+--     at LobbyInfo.GateSites.Ring / .Arena, parented to LobbyInfo.GatesFolder (workspace.NimbusLobby.Gates; the arena
+--     island's budget no longer holds them). Portal_Ring: gold, the crown glyph, a pad, two crowned pedestals, the
+--     prompt "RingPrompt" (OpenPanel = "Ring") on the pad and the tag "Champion Ring" / "Beat the champion, meet a
+--     stronger one" with the pill "Best in this server: Alex - Round 31" drawn from the RingBoard attribute
+--     BattleService writes on the model (or its pad) when a run ends ("Alex|31;Sam|24;Kim|20"). Portal_Arena: red, the
+--     swords glyph, two torches, "ArenaPortalPrompt" (Travel / Battle Arena) -> ArenaInfo.Spawn; the forum's Return
+--     gate ("ArenaReturnPrompt") lands in front of it (ArenaInfo.LobbyCFrame). Each gate <= 120 parts.
 --   * Safe zones (contract 3.11): battles start only inside NC_BattleZone parts (the raid floor, the duel rings, the
---     trial and ring pockets); the plaza, the forum, the stands, the bridge and the portals have none.
+--     ring pockets); the plaza, the forum, the stands, the bridge and the gates have none.
 --   * The home Arena Gate (HomeBuilder's ArenaGatePrompt) teleports its owner to ArenaInfo.Spawn: refused in a match
---     or a battle, only near the gate, rate limited; the fallback portals use the same checks.
+--     or a battle, only near the gate, rate limited; the Arena / Return gates use the same checks.
 -- No server-side animation (Replication rule): torches, glows and particles only. Every text uses Theme roles.
 -- Plain Lua 5.1-compatible syntax only.
 
@@ -164,7 +162,7 @@ local SEED = 20261011
 local DEFAULT_ANGLE = 202.5 -- the arena's direction from the plaza when the lobby reserves none
 local STEP16 = pi * 2 / 16
 local TAN16 = math.tan(pi / 16) -- half width per stud of apothem of a 16-sided polygon (tan 11.25 degrees)
-local PART_BUDGET = 2500 -- the island, its bridge and the Trial Portal (ARCHITECTURE_V3.md: arena <= ~2500)
+local PART_BUDGET = 2800 -- the island and its bridge (Phase 5 10.3: arena <= 2800; its gates stand in the Gate Court)
 local POCKET_BUDGET = 250
 local MAX_POCKETS = 64
 local POCKET_ORIGIN = Vector3.new(-3600, 1500, -3600) -- far from the lobby, the obby match slots (+X) and each other
@@ -180,8 +178,8 @@ local FALLBACK_REFRESH = 10 -- seconds between two self-made leaderboards
 -- Battle floor sizes (BattleCatalog.Zones; local defaults when the catalog is missing or odd). The floors are built
 -- so that these squares fit at ANY rotation: the colosseum floor's apothem 72 holds a 96 x 96 square (half diagonal
 -- 67.9), a duel ring's apothem 33 holds 44 x 44 (31.1), a pocket's 64 x 64 square floor holds 56 x 56.
-local DEFAULT_ZONES = { Raid = { X = 96, Z = 96 }, Duel = { X = 44, Z = 44 }, Trial = { X = 56, Z = 56 }, Ring = { X = 44, Z = 44 } }
-local MAX_ZONE = { Raid = 100, Duel = 45, Trial = 62, Ring = 45 } -- the biggest square each floor can hold
+local DEFAULT_ZONES = { Raid = { X = 96, Z = 96 }, Duel = { X = 44, Z = 44 }, Ring = { X = 44, Z = 44 } }
+local MAX_ZONE = { Raid = 100, Duel = 45, Ring = 45 } -- the biggest square each floor can hold
 
 -- Island layout (island-local studs; the colosseum centre is the origin, -Z points at the lobby)
 local ISL = {
@@ -836,7 +834,7 @@ local S = {
 	A = nil, -- island frame
 	lobby = nil,
 	pockets = {}, -- [index] = pocket table
-	pocketTpl = nil,
+	gatePrompts = {}, -- the Arena / Return gates' prompts (Phase 5: Portal_Arena stands in the lobby's Gates folder)
 	board = nil, -- event board labels
 	leaders = nil, -- leaderboard rows
 	external = nil, -- os.clock() of the last ApplyArenaState
@@ -2169,18 +2167,16 @@ local function buildBridge(parent, A, startZ, endZ)
 end
 
 ----------------------------------------------------------------------
--- The Trial Portal (plaza), styled like the difficulty portals: crimson, crossed swords instead of stars
+-- The Gate Court gates (Phase 5, 6.2): Portal_Ring and Portal_Arena via WorldStyle.BuildGate, parented to
+-- LobbyInfo.GatesFolder; the forum's Return gate. ONE helper table keeps the main chunk under the 200-locals limit.
 ----------------------------------------------------------------------
-local TRIAL_COLOR = rgb(222, 74, 80)
-local gateBoxCache = nil
+local WorldStyle = loadShared("WorldStyle")
 
--- Phase 4: the Champion Ring (Portal_Ring on the plaza, the ring pockets). ONE helper table keeps the main chunk under
--- Lua's 200-locals limit (contract section 6).
+-- Phase 4: the Champion Ring (Portal_Ring in the Gate Court, the ring pockets).
 local Ring = {
 	Color = rgb(250, 190, 56), -- champion gold (trim, crown)
-	Accent = rgb(156, 96, 238), -- royal violet (glows, swirl, gems)
-	PortalBudget = 70, -- Portal_Ring parts (contract 3.8: the arena stays <= 2500)
-	GateParts = 50, -- the gate's voxel boxes inside that budget
+	Accent = rgb(156, 96, 238), -- royal violet (glows, gems)
+	PortalBudget = 120, -- Portal_Ring parts (6.2: every gate <= 120)
 	PocketBudget = 220,
 	Title = "Champion Ring",
 	Info = "Beat the champion, meet a stronger one",
@@ -2191,241 +2187,137 @@ local Ring = {
 	PillSize = 22,
 }
 
-local function gatePalette(color, accent)
-	local glow = accent or color
-	return {
-		Stone = C.StoneLight,
-		StoneDark = C.Stone,
-		Frame = C.CloudLight,
-		Puff = C.Cloud,
-		Trim = color,
-		Glow = { Color = glow, Material = MAT.Neon },
-		Swirl = { Color = glow:Lerp(rgb(255, 255, 255), 0.35), Material = MAT.Neon, Transparency = 0.62 },
-		Gem = { Color = accent and accent:Lerp(rgb(255, 255, 255), 0.2) or C.Gold, Material = MAT.Neon },
-	}
-end
+local Gates = {
+	Budget = 120,
+	ArenaTitle = "Battle Arena",
+	ArenaInfo = "Duels and boss raids",
+}
 
--- The Champion Ring gate (voxel units, x across, y up, -z = the front facing the plaza): a square stone arch (a round
--- hoop costs too many boxes for the arena budget, and the arch reads differently from every round portal of the fan)
--- with gold bands, a violet glowing frame around the swirl and a big gold crown with violet gems on the lintel.
-function Ring.gateVoxels(g)
-	VX.RoundRect(g, 0, 0, 22, 5, 1.5, 0, 0, "StoneDark")
-	VX.RoundRect(g, 0, 0, 20, 4, 1.2, 1, 1, "Stone")
-	for _, sx in ipairs({ -1, 1 }) do
-		local x0, x1 = min(sx * 7, sx * 9), max(sx * 7, sx * 9)
-		VX.Fill(g, x0, x1, 2, 16, -1, 1, "Stone")
-		VX.Fill(g, x0 - 1, x1 + 1, 2, 2, -2, 2, "Trim")
-		VX.Fill(g, x0 - 1, x1 + 1, 15, 15, -2, 2, "Trim")
-		Voxel.Set(g, sx * 8, 9, -2, "Gem")
-		VX.Fill(g, sx * 6, sx * 6, 3, 14, 0, 0, "Glow")
-	end
-	VX.Fill(g, -10, 10, 17, 17, -1, 1, "Trim")
-	VX.Fill(g, -10, 10, 18, 18, -1, 1, "Stone")
-	VX.Fill(g, -5, 5, 16, 16, 0, 0, "Glow")
-	VX.Fill(g, -5, 5, 3, 15, 0, 0, "Swirl")
-	-- violet gems up the pillar fronts
-	for _, sx in ipairs({ -1, 1 }) do
-		for _, y in ipairs({ 6, 12 }) do
-			Voxel.Set(g, sx * 8, y, -2, "Gem")
-		end
-	end
-	-- the crown: a band with a row of gems, three big points (the middle one tallest) and two small ones, a gem on
-	-- every tip
-	VX.Fill(g, -7, 7, 19, 20, -1, 1, "Trim")
-	for _, x in ipairs({ -4, 0, 4 }) do
-		Voxel.Set(g, x, 20, -2, "Gem")
-	end
-	for _, pt in ipairs({ { -6, 22 }, { 0, 23 }, { 6, 22 } }) do
-		VX.Fill(g, pt[1] - 1, pt[1] + 1, 21, 21, -1, 1, "Trim")
-		VX.Fill(g, pt[1], pt[1], 22, pt[2], -1, 1, "Trim")
-		Voxel.Set(g, pt[1], pt[2] + 1, 0, "Gem")
-	end
-	for _, x in ipairs({ -3, 3 }) do
-		Voxel.Set(g, x, 21, 0, "Trim")
-		Voxel.Set(g, x, 22, 0, "Gem")
-	end
-end
-
--- the round portal gate of the fan (Trial Portal, the fallback Arena / Return portals)
-local function gateHoop(g)
-	VX.RoundRect(g, 0, 0, 22, 5, 1.5, 0, 0, "StoneDark")
-	VX.RoundRect(g, 0, 0, 20, 4, 1.2, 1, 1, "Stone")
-	for _, s in ipairs({ -1, 1 }) do
-		VX.RoundRect(g, s * 9, 0, 3, 3.4, 0.8, 2, 10, "Stone")
-		VX.RoundRect(g, s * 9, 0, 4, 4.2, 1, 11, 11, "Trim")
-		VX.Fill(g, s * 9, s * 9, 12, 13, 0, 0, "Glow")
-		VX.Fill(g, s * 9, s * 9, 3, 3, -2, -2, "Trim")
-	end
-	local ringRot = CFrame.Angles(pi / 2, 0, 0)
-	Voxel.Shape(g, { Kind = "Torus", Center = { 0, 11, 0 }, Radius = 7.6, Thickness = 1.6, Rotation = ringRot, Key = "Frame" })
-	Voxel.Shape(g, { Kind = "Torus", Center = { 0, 11, 0 }, Radius = 5.9, Thickness = 0.5, Rotation = ringRot, Key = "Glow" })
-	Voxel.Shape(g, { Kind = "Ellipsoid", Center = { 0, 11, 0 }, Radius = { 5.3, 5.3, 0.2 }, Key = "Swirl", KeepExisting = true })
-	Voxel.Shape(g, {
-		Kind = "Torus",
-		Center = { 0, 11, 0 },
-		Radius = 7.6,
-		Thickness = 2.2,
-		Rotation = ringRot,
-		Op = "Paint",
-		OnlyKeys = { Frame = true },
-		Key = "Trim",
-		Pattern = function(x, y, z)
-			local dy = y - 11
-			if sqrt(x * x + dy * dy) >= 8.6 then
-				return "Trim"
-			end
-			return false
-		end,
-	})
-	VX.RoundRect(g, 0, 0, 4, 3, 0.8, 19, 20, "Trim")
-	Voxel.Set(g, 0, 20, -2, "Gem")
-	Voxel.Set(g, 0, 19, -2, "Gem")
-end
-
--- kind "Ring" (Phase 4, Portal_Ring): the crowned arch of Ring.gateVoxels in at most Ring.GateParts boxes
-local function gateBoxes(kind)
-	kind = (kind == "Ring") and "Ring" or "Gate"
-	gateBoxCache = gateBoxCache or {}
-	if gateBoxCache[kind] then
-		return gateBoxCache[kind]
-	end
-	local g = Voxel.NewGrid(24)
-	if kind == "Ring" then
-		Ring.gateVoxels(g)
-	else
-		gateHoop(g)
-	end
-	Voxel.Shade(g, { Skip = { Glow = true, Swirl = true, Gem = true }, Smooth = 1, Seed = 8 })
-	gateBoxCache[kind] = Voxel.Merge(g, {
-		Palette = (kind == "Ring") and gatePalette(Ring.Color, Ring.Accent) or gatePalette(TRIAL_COLOR),
-		MaxParts = (kind == "Ring") and Ring.GateParts or 105,
-		Keep = { "Stone", "StoneDark", "Frame", "Trim", "Glow", "Swirl", "Gem" },
-	})
-	return gateBoxCache[kind]
-end
-
-
--- `site`: CFrame on the plaza ground, LookVector = towards the plaza centre. Returns the model, the pad part and the
--- status pill's label. `opts` (Phase 4, Portal_Ring): { Kind = "Ring" (a gold crown instead of the crossed swords, a
--- plain tiled pad with a glowing crown, two-part lanterns: <= Ring.PortalBudget parts), Accent = Color3 (glows,
--- swirl), TagWidth = px, PillSize = px }
-local function buildTrialPortal(parent, site, color, id, title, info, pill, opts)
-	opts = type(opts) == "table" and opts or {}
-	local lite = opts.Kind == "Ring"
-	local model = newModel(parent, "Portal_" .. id)
-	color = color or TRIAL_COLOR
-	local glow = opts.Accent or color
-	local padCF = site
-	local outward = -site.LookVector
-	if lite then
-		-- the ready pad from a few plates (0.3 above the stone like the voxel pad): a gold rim, a pale stone ring, the
-		-- stone and a glowing crown pointing at the gate
-		local base = box(model, "Pad", padCF * CFrame.new(0, -0.2, 0), Vector3.new(14, 1, 14), color, { Collide = true })
-		box(model, "PadRing", padCF * CFrame.new(0, -0.1, 0), Vector3.new(12, 1, 12), C.StoneLight, { Collide = true, Shadow = false })
-		box(model, "PadStone", padCF * CFrame.new(0, 0, 0), Vector3.new(10, 1, 10), C.Stone, { Collide = true, Shadow = false })
-		-- { x, z0, z1, width } in the pad's frame (local +Z points at the gate: the crown's points)
-		for _, c in ipairs({ { 0, -2.8, -1.4, 6.6 }, { 0, -1.4, 2.8, 1.3 }, { -2.65, -1.4, 1.4, 1.3 }, { 2.65, -1.4, 1.4, 1.3 } }) do
-			box(model, "PadCrown", padCF * CFrame.new(c[1], 0.53, (c[2] + c[3]) / 2), Vector3.new(c[4], 0.1, c[3] - c[2]), color, { Material = MAT.Neon, Shadow = false })
-		end
-		model.PrimaryPart = base
-	else
-		-- the ready pad: a tiled 14 x 14 voxel plate, 0.3 above the stone, with a glowing X (crossed swords) in the middle
-		local pg = Voxel.NewGrid(14)
-		for i = -7, 6 do
-			for k = -7, 6 do
-				local ring = min(i + 7, 6 - i, k + 7, 6 - k)
-				local ci, ck = i + 0.5, k + 0.5
-				local key = "Stone"
-				if ring == 0 then
-					key = "Trim"
-				elseif ring == 1 then
-					key = "StoneLight"
-				elseif abs(abs(ci) - abs(ck)) < 0.6 and abs(ci) <= 4 then
-					key = "Glow"
-				end
-				Voxel.Set(pg, i, 0, k, key)
-			end
-		end
-		local pad = VX.Build(pg, {
-			V = 1,
-			Name = "Pad",
-			CF = padCF * CFrame.new(0.5, 0.3 - 0.5, 0.5),
-			Collide = true,
-			Parent = model,
-			Pal = { Stone = C.Stone, StoneLight = C.StoneLight, Trim = color, Glow = { Color = color, Material = MAT.Neon } },
+-- A Gate Court gate: WorldStyle.BuildGate (or a plain stand-in when WorldStyle is missing / throws) -> model, pad,
+-- promptPart, the tag's pill label. spec = { Id, Title, Info, Color, Glyph, Pad, Pill }
+function Gates.build(parent, site, spec)
+	local model, pad, prompt = nil, nil, nil
+	if WorldStyle and type(WorldStyle.BuildGate) == "function" then
+		local ok, m, p, pp = pcall(WorldStyle.BuildGate, parent, site, {
+			Id = spec.Id,
+			Title = spec.Title,
+			Info = spec.Info,
+			Color = spec.Color,
+			Glyph = spec.Glyph,
+			Pad = spec.Pad,
+			Pill = spec.Pill,
+			Name = "Portal_" .. spec.Id,
 		})
-		if pad and pad.PrimaryPart then
-			model.PrimaryPart = pad.PrimaryPart
+		if ok then
+			model, pad, prompt = m, p, pp
+		else
+			warn("[ArenaBuilder] gate " .. spec.Id .. " failed: " .. tostring(m))
+			local broken = parent:FindFirstChild("Portal_" .. spec.Id)
+			if broken then
+				broken:Destroy()
+			end
 		end
 	end
-	-- the prompt part (invisible, on the pad): ArenaInfo.TrialPortal / RingPortal
-	local padPart = box(model, "PortalPad", padCF * CFrame.new(0, 0.6, 0), Vector3.new(14, 0.6, 14), color, { Transparency = 1, Shadow = false })
-	padPart.CanCollide = false
-	padPart.CanQuery = false
-	-- lanterns on the two front corners
+	if not model then
+		model = newModel(parent, "Portal_" .. spec.Id)
+		model:SetAttribute("GateId", spec.Id)
+		for _, sx in ipairs({ -1, 1 }) do
+			box(model, "Column", site * CFrame.new(sx * 8.2, 8, 0), Vector3.new(2.4, 16, 2.4), C.StoneLight, { Collide = true })
+		end
+		model.PrimaryPart = box(model, "Lintel", site * CFrame.new(0, 17.4, 0), Vector3.new(21.4, 2.4, 3), C.Stone, { Collide = true })
+		if spec.Pad then
+			pad = box(model, "Pad", site * CFrame.new(0, 0.3, -14), Vector3.new(14, 0.6, 14), C.Stone, { Collide = true })
+		else
+			pad = box(model, "Step", site * CFrame.new(0, 0.15, -6), Vector3.new(10, 0.3, 6), C.Stone, { Collide = true })
+		end
+		prompt = box(model, "PromptAnchor", site * CFrame.new(0, 3, -2.2), Vector3.new(2, 2, 1), C.Stone, { Transparency = 1, Shadow = false })
+		local anchor = anchorPart(model, "TagAnchor", site * CFrame.new(0, 27, 0))
+		local gui = newTag(anchor, "GateTag", spec.TagWidth or 420, 150, 0, 120)
+		local plate = tagPlate(gui, C.Gold, 200)
+		tagText(plate, "Title", spec.Title, "Heading", 28, C.Text, 1)
+		tagText(plate, "Info", spec.Info, "Body", 20, C.Text, 2)
+		tagPill(plate, "Pill", spec.Pill or "", "Label", 18, C.Navy, 3)
+	end
+	local tag = model:FindFirstChild("GateTag", true)
+	local pill = tag and tag:FindFirstChild("Pill", true)
+	local label = pill and (pill:FindFirstChild("Label") or pill:FindFirstChild("PillLabel"))
+	if spec.TagWidth and tag and tag:IsA("BillboardGui") then
+		tag.Size = UDim2.fromOffset(spec.TagWidth, tag.Size.Y.Offset)
+	end
+	return model, pad, prompt, label
+end
+
+-- A crowned pedestal (Portal_Ring's extras): a Slate plinth, a Marble post, a gold crown with violet Neon gems.
+function Gates.crownPedestal(parent, cf)
+	box(parent, "PedestalBase", cf * CFrame.new(0, 0.6, 0), Vector3.new(2.6, 1.2, 2.6), C.Stone, { Collide = true, Material = MAT.Slate })
+	box(parent, "PedestalPost", cf * CFrame.new(0, 2.4, 0), Vector3.new(1.8, 2.4, 1.8), C.StoneLight, { Collide = true, Material = MAT.Marble })
+	box(parent, "PedestalCap", cf * CFrame.new(0, 3.75, 0), Vector3.new(2.3, 0.3, 2.3), C.StoneLight, { Material = MAT.Marble })
+	box(parent, "CrownBand", cf * CFrame.new(0, 4.3, 0), Vector3.new(1.9, 0.8, 1.9), Ring.Color, { Material = MAT.Metal, Shadow = false })
+	for _, o in ipairs({ { -0.7, -0.7 }, { 0.7, -0.7 }, { -0.7, 0.7 }, { 0.7, 0.7 } }) do
+		box(parent, "CrownPoint", cf * CFrame.new(o[1], 5.05, o[2]), Vector3.new(0.45, 0.7, 0.45), Ring.Color, { Material = MAT.Metal, Shadow = false })
+	end
+	box(parent, "CrownGem", cf * CFrame.new(0, 4.3, -0.98), Vector3.new(0.5, 0.5, 0.12), Ring.Accent, { Material = MAT.Neon, Shadow = false })
+end
+
+-- A torch (Portal_Arena's extras): a Slate foot, a wooden post, an iron bowl and a warm Neon flame with a light.
+function Gates.torch(parent, cf, flame)
+	box(parent, "TorchFoot", cf * CFrame.new(0, 0.5, 0), Vector3.new(1.8, 1, 1.8), C.Stone, { Collide = true, Material = MAT.Slate })
+	box(parent, "TorchPost", cf * CFrame.new(0, 3, 0), Vector3.new(0.7, 4, 0.7), C.Wood or C.StoneDark, { Collide = true, Material = MAT.Wood })
+	box(parent, "TorchBowl", cf * CFrame.new(0, 5.25, 0), Vector3.new(1.5, 0.5, 1.5), C.Iron or C.StoneDark, { Material = MAT.Metal, Shadow = false })
+	local f = box(parent, "TorchFlame", cf * CFrame.new(0, 5.95, 0), Vector3.new(0.8, 0.9, 0.8), flame, { Material = MAT.Neon, Shadow = false })
+	f.CanCollide = false
+	pointLight(f, rgb(255, 214, 170), 1.2, 12)
+end
+
+-- The gate site from the lobby (GateSites first; RingSite for Ring) or nil.
+function Gates.site(lobbyInfo, id)
+	local sites = type(lobbyInfo.GateSites) == "table" and lobbyInfo.GateSites or {}
+	local site = sites[id]
+	if typeof(site) ~= "CFrame" and id == "Ring" then
+		site = lobbyInfo.RingSite
+	end
+	return typeof(site) == "CFrame" and site or nil
+end
+
+function Gates.folder(lobbyInfo, fallback)
+	local f = lobbyInfo.GatesFolder
+	if typeof(f) == "Instance" and f.Parent ~= nil then
+		return f
+	end
+	return fallback
+end
+
+-- Portal_Arena (always built, 6.2): -> prompt part, the lobby landing (in front of the gate, looking at the plaza).
+function Gates.buildArena(lobbyInfo, fallbackParent)
+	local site = Gates.site(lobbyInfo, "Arena")
+	if not site then
+		return nil, nil
+	end
+	local parent = Gates.folder(lobbyInfo, fallbackParent)
+	local model, _, prompt = Gates.build(parent, site, { Id = "Arena", Title = Gates.ArenaTitle, Info = Gates.ArenaInfo, Color = "Red", Glyph = "swords", Pad = false })
 	for _, sx in ipairs({ -1, 1 }) do
-		local base = padCF * CFrame.new(sx * 7.9, 0, -7.9)
-		box(model, "LanternPost", base * CFrame.new(0, 1.6, 0), Vector3.new(0.7, 3.2, 0.7), C.Iron, { Collide = true })
-		if not lite then
-			box(model, "LanternCap", base * CFrame.new(0, 3.35, 0), Vector3.new(1.1, 0.3, 1.1), C.Iron)
-		end
-		box(model, "LanternGlow", base * CFrame.new(0, lite and 3.65 or 3.95, 0), Vector3.new(0.9, 0.9, 0.9), glow, { Material = MAT.Neon })
+		Gates.torch(model, site * CFrame.new(sx * 13.2, 0, -1.5), rgb(255, 150, 70))
 	end
-	-- the gate behind the pad
-	local gateBase = padCF.Position + outward * 9.5
-	local gateCF = flatLook(gateBase, gateBase - outward)
-	local gate = Instance.new("Model")
-	gate.Name = "Gate"
-	Voxel.BuildBoxes(gateBoxes(lite and "Ring" or nil), {
-		VoxelSize = 1,
-		Palette = gatePalette(color, opts.Accent),
-		CFrame = gateCF * CFrame.new(0, 0.5, 0),
-		Model = gate,
-		CanCollide = true,
-		CanQuery = true,
-	})
-	for _, d in ipairs(gate:GetChildren()) do
-		if d:IsA("BasePart") and (d.Name == "Swirl" or d.Name == "Puff" or d.Name == "Gem") then
-			d.CanCollide = false
-			d.CanQuery = false
-		end
+	local p = makePrompt(prompt, "ArenaPortalPrompt", "Travel", Gates.ArenaTitle)
+	p.MaxActivationDistance = PROMPT_RANGE + 2
+	S.gatePrompts[p] = true
+	local n = countParts(model)
+	if n > Gates.Budget then
+		warn(string.format("[ArenaBuilder] Portal_Arena has %d parts (budget %d)", n, Gates.Budget))
 	end
-	gate.Parent = model
-	local core = box(model, "SwirlCore", gateCF * CFrame.new(0, 11.5, 0), Vector3.new(9, 9, 0.4), glow, { Transparency = 1, Shadow = false })
-	pointLight(core, glow, 1.3, 28)
-	emitter(core, {
-		Color = ColorSequence.new(glow:Lerp(rgb(255, 255, 255), 0.5), lite and color or glow),
-		Rate = 12,
-		Lifetime = NumberRange.new(1.4, 2.2),
-		Speed = NumberRange.new(1.5, 3.5),
-		EmissionDirection = Enum.NormalId.Front,
-		SpreadAngle = Vector2.new(30, 30),
-		Size = popSize(0.9),
-	})
-	local crestTop = 26.4
-	if lite then
-		crestTop = 26 -- the crown is part of the gate's voxels
-	else
-		-- crossed swords + a gold shield over the keystone (instead of the difficulty stars)
-		box(model, "CrestPost", gateCF * CFrame.new(0, 21.6, 0), Vector3.new(0.8, 1.3, 0.6), C.GoldDark, { Shadow = false })
-		box(model, "CrestShield", gateCF * CFrame.new(0, 23.4, 0), Vector3.new(2.4, 2.6, 0.7), color:Lerp(C.Navy, 0.2), { Shadow = false })
-		box(model, "CrestShieldRim", gateCF * CFrame.new(0, 23.4, 0.15), Vector3.new(2.9, 3.1, 0.5), C.Gold, { Shadow = false })
-		for _, s in ipairs({ -1, 1 }) do
-			local scf = gateCF * CFrame.new(0, 23.6, -0.5) * CFrame.Angles(0, 0, math.rad(s * 42))
-			box(model, "CrestBlade", scf * CFrame.new(0, 0.6, 0), Vector3.new(0.45, 5, 0.2), C.Steel, { Shadow = false })
-			box(model, "CrestGuard", scf * CFrame.new(0, -1.9, 0), Vector3.new(1.5, 0.35, 0.3), C.Gold, { Shadow = false })
-			box(model, "CrestGrip", scf * CFrame.new(0, -2.5, 0), Vector3.new(0.35, 0.9, 0.3), C.GoldDark, { Shadow = false })
-		end
-	end
-	-- the pixel tag above the crest (World text rule)
-	local cardH = 15
-	local anchor = anchorPart(model, "BillboardAnchor", CFrame.new(gateBase + Vector3.new(0, crestTop + cardH / 2, 0)))
-	local gui = newTag(anchor, "PortalBillboard", opts.TagWidth or 380, 150, 1.2 - cardH / 2, 120)
-	local plate = tagPlate(gui, color:Lerp(C.Text, 0.15), 200)
-	tagText(plate, "TitleLabel", title, "Title", 32, color:Lerp(C.Text, 0.6), 1)
-	tagText(plate, "InfoLabel", info, "Heading", 21, C.Text, 2)
-	local _, pillLabel = tagPill(plate, "StatusPill", pill, "Display", opts.PillSize or 24, glow:Lerp(C.Navy, 0.25), 3)
-	return model, padPart, pillLabel
+	local front = site.Position + site.LookVector * 10
+	local landing = CFrame.lookAt(front + Vector3.new(0, 3, 0), front + site.LookVector * 20 + Vector3.new(0, 3, 0))
+	return prompt, landing
+end
+
+-- The Return gate on the forum (always built): lands in front of Portal_Arena (ArenaInfo.LobbyCFrame).
+function Gates.buildReturn(model, A)
+	local rSite = A * CFrame.new(0, 0, ISL.FrontZ + 34) * CFrame.Angles(0, pi, 0)
+	local gate, _, prompt = Gates.build(model, rSite, { Id = "Return", Title = "To the Plaza", Info = "Homes, gates, shop", Color = "Green", Glyph = "house", Pad = false })
+	local p = makePrompt(prompt, "ArenaReturnPrompt", "Travel", "Plaza")
+	p.MaxActivationDistance = PROMPT_RANGE + 2
+	S.gatePrompts[p] = true
+	return gate
 end
 
 -- The status pill of Portal_Ring from its RingBoard attribute ("Alex|31;Sam|24;Kim|20", written by BattleService when
@@ -2470,20 +2362,27 @@ function Ring.watchBoard(model, pad, label)
 	refresh(start)
 end
 
--- Portal_Ring: the next free gate of the portal fan (LobbyInfo.RingSite) -> pad part (ArenaInfo.RingPortal), site.
--- Without a RingSite (an older lobby) nothing is built: nil (the caller puts the contract's zero-part fallback, a
--- second prompt on the Trial Portal, in its place).
+-- Portal_Ring: the Gate Court's Ring gate (LobbyInfo.GateSites.Ring, = LobbyInfo.RingSite; C12) in the GatesFolder
+-- -> pad part (ArenaInfo.RingPortal), site. Without a site nothing is built: nil.
 function Ring.buildPortal(model, lobbyInfo)
-	local site = typeof(lobbyInfo.RingSite) == "CFrame" and lobbyInfo.RingSite or nil
+	local site = Gates.site(lobbyInfo, "Ring")
 	if not site then
 		return nil, nil
 	end
-	local portal, pad, pill = buildTrialPortal(model, site, Ring.Color, "Ring", Ring.Title, Ring.Info, Ring.EmptyBoard, {
-		Kind = "Ring",
-		Accent = Ring.Accent,
+	local parent = Gates.folder(lobbyInfo, model)
+	local portal, pad, _, pill = Gates.build(parent, site, {
+		Id = "Ring",
+		Title = Ring.Title,
+		Info = Ring.Info,
+		Color = "Gold",
+		Glyph = "crown",
+		Pad = true,
+		Pill = Ring.EmptyBoard,
 		TagWidth = Ring.TagWidth,
-		PillSize = Ring.PillSize,
 	})
+	for _, sx in ipairs({ -1, 1 }) do
+		Gates.crownPedestal(portal, site * CFrame.new(sx * 9.4, 0, -21.2))
+	end
 	local prompt = makePrompt(pad, "RingPrompt", Ring.Title, "Portal", "Ring")
 	prompt.MaxActivationDistance = Ring.PromptRange
 	Ring.watchBoard(portal, pad, pill)
@@ -2495,132 +2394,8 @@ function Ring.buildPortal(model, lobbyInfo)
 end
 
 ----------------------------------------------------------------------
--- Pockets: the private trial arenas (one template, cloned onto a grid far out in the sky)
+-- Pockets: the private Champion Ring arenas (one template, cloned onto a grid far out in the sky)
 ----------------------------------------------------------------------
-local POCKET_FLOOR = 64 -- square floor (studs)
-
-local function pocketSdf(x, z)
-	local h, r = 46, 14
-	local qx, qz = abs(x) - (h - r), abs(z) - (h - r)
-	local ox, oz = max(qx, 0), max(qz, 0)
-	return sqrt(ox * ox + oz * oz) + min(max(qx, qz), 0) - r
-end
-
-local function pocketTemplate()
-	if S.pocketTpl then
-		return S.pocketTpl
-	end
-	local m = newModel(nil, "TrialPocket")
-	local rng = Util.NewRng(SEED + 5)
-	-- cloud body
-	local puffs = {}
-	for deg = 0, 359, 30 do
-		local a = rad(deg)
-		local s = rng:Float(10, 13)
-		puffs[#puffs + 1] = { cos(a) * 44, rng:Float(-8, -5), sin(a) * 44, s, s * 0.6, s }
-	end
-	puffs[#puffs + 1] = { 0, -20, 0, 30, 10, 30 }
-	local g = cloudGrid({
-		V = 4,
-		Sdf = pocketSdf,
-		Bounds = { -52, 52, -52, 52 },
-		Tiers = { { Inset = 0, H = 1 }, { Inset = 8, H = 1 }, { Inset = 20, H = 2 } },
-		Puffs = puffs,
-		Carve = function(x, y, z)
-			return y > 0 and pocketSdf(x, z) < -3
-		end,
-		Seed = 12,
-	})
-	VX.Build(g, { V = 4, Pal = CLOUD_PAL, Name = "PocketCloud", CF = CFrame.new(0, -1.2 - 2, 0), Collide = true, MaxParts = 70, Parent = m })
-	-- the floor (2-stud cells): a stone border with gold corners, a crimson line inside it and sand
-	local fg = Voxel.NewGrid(1)
-	local hf = POCKET_FLOOR / 2
-	for i = -hf / 2, hf / 2 - 1 do
-		for k = -hf / 2, hf / 2 - 1 do
-			local x, z = i * 2 + 1, k * 2 + 1
-			local ax, az = abs(x), abs(z)
-			local key = "Sand"
-			if ax >= hf - 4 or az >= hf - 4 then
-				if ax >= hf - 4 and az >= hf - 4 then
-					key = "Gold"
-				else
-					key = "Stone"
-				end
-			elseif ax >= hf - 6 or az >= hf - 6 then
-				key = "Line"
-			elseif vnoise(x - x % 4, z - z % 4, 24, SEED + 21) < 0.32 then
-				key = "SandDark" -- raked drifts so the sand never reads as one flat colour
-			end
-			Voxel.Set(fg, i, 0, k, key)
-		end
-	end
-	local floorPal = {
-		Sand = { Color = C.Sand, Material = MAT.Sand },
-		SandDark = { Color = C.SandDrift, Material = MAT.Sand },
-		Stone = { Color = C.Stone, Material = MAT.Slate },
-		StoneLight = { Color = C.StoneLight, Material = MAT.Slate },
-		Gold = C.Gold,
-		Line = C.Crimson,
-	}
-	VX.Build(fg, {
-		V = 2,
-		Pal = floorPal,
-		Name = "PocketFloor",
-		CF = CFrame.new(1, -1, 1),
-		Collide = true,
-		Shadow = false,
-		MaxParts = 58,
-		Parent = m,
-	})
-	-- the element wheel (like the colosseum's, smaller): eight petals in the element colours, a gold rim and core
-	local wheel = newModel(m, "ElementWheel")
-	for e = 1, 8 do
-		box(wheel, "WheelPetal", CFrame.Angles(0, sectionAngle(e), 0) * CFrame.new(0, -0.45, -7.4), Vector3.new(3.2, 1, 5.6), elementColor(e), { Collide = true, Shadow = false })
-	end
-	ring16(wheel, "WheelRim", CFrame.new(), 10.5, 11.6, 0.05, 1, C.Gold, nil, true)
-	disc16(wheel, "WheelCore", CFrame.new(), 4.2, 0.05, 1, C.Gold, nil, true)
-	ring16(wheel, "FloorCircle", CFrame.new(), 21, 22.2, 0.02, 1, C.SandLight, MAT.Sand, true)
-	-- low crenellated walls on the four sides and corner towers with braziers
-	local wallH = 3
-	for side = 0, 3 do
-		local cf = CFrame.Angles(0, side * pi / 2, 0)
-		box(m, "PocketWall", cf * CFrame.new(0, wallH / 2 - 0.5, -(hf + 1)), Vector3.new(POCKET_FLOOR + 4, wallH + 1, 2), C.StoneLight, { Collide = true })
-		for i = -4, 4 do
-			if i ~= 0 then
-				box(m, "Merlon", cf * CFrame.new(i * 7, wallH + 0.6, -(hf + 1)), Vector3.new(3, 1.2, 2), C.StoneLight, { Collide = true, Shadow = false })
-			end
-		end
-		box(m, "WallStripe", cf * CFrame.new(0, 1.6, -(hf - 0.05)), Vector3.new(POCKET_FLOOR - 2, 0.6, 0.2), C.Crimson, { Shadow = false })
-		-- two element banners hanging over the inner face of every wall (gold rod, cloth, a darker hem)
-		for b, bx in ipairs({ -17, 17 }) do
-			local col = elementColor(side * 2 + b)
-			local bcf = cf * CFrame.new(bx, 0, -(hf - 0.1))
-			box(m, "BannerRod", bcf * CFrame.new(0, 4.5, 0.05), Vector3.new(4.2, 0.35, 0.35), C.Gold, { Shadow = false })
-			box(m, "Banner", bcf * CFrame.new(0, 2.6, 0.15), Vector3.new(3.2, 3.6, 0.2), col, { Shadow = false })
-			box(m, "BannerHem", bcf * CFrame.new(0, 0.6, 0.15), Vector3.new(3.2, 0.5, 0.22), col:Lerp(C.Navy, 0.35), { Shadow = false })
-		end
-		local tower = cf * CFrame.new(hf + 1, 0, -(hf + 1))
-		box(m, "Tower", tower * CFrame.new(0, 3.5, 0), Vector3.new(5, 8, 5), C.Stone, { Collide = true })
-		box(m, "TowerTop", tower * CFrame.new(0, 7.8, 0), Vector3.new(6, 0.6, 6), C.Gold, { Collide = true, Shadow = false })
-		box(m, "Brazier", tower * CFrame.new(0, 8.4, 0), Vector3.new(2.4, 0.6, 2.4), C.Iron, { Shadow = false })
-		local fl = box(m, "Flame", tower * CFrame.new(0, 9.4, 0) * CFrame.Angles(0, math.rad(45), 0), Vector3.new(1.4, 1.6, 1.4), flameColor(elementColor(side * 2 + 2)), { Material = MAT.Neon, Shadow = false })
-		if side % 2 == 0 then
-			pointLight(fl, flameColor(elementColor(side * 2 + 2)), 1, 22)
-		end
-	end
-	-- the fighter's pad (side 1, -Z) and the enemies' gate (side 2, +Z)
-	box(m, "SpawnPad", CFrame.new(0, 0.1, -(hf - 7)), Vector3.new(7, 0.4, 7), C.Gold, { Collide = true, Shadow = false })
-	box(m, "SpawnGlow", CFrame.new(0, 0.32, -(hf - 7)), Vector3.new(5.6, 0.2, 5.6), rgb(96, 196, 108), { Material = MAT.Neon, Shadow = false })
-	box(m, "EnemyPad", CFrame.new(0, 0.1, hf - 7), Vector3.new(7, 0.4, 7), C.Iron, { Collide = true, Shadow = false })
-	box(m, "EnemyGlow", CFrame.new(0, 0.32, hf - 7), Vector3.new(5.6, 0.2, 5.6), C.Crimson, { Material = MAT.Neon, Shadow = false })
-	box(m, "EnemyGate", CFrame.new(0, 3, hf + 0.2), Vector3.new(10, 6, 0.6), C.Recess, { Collide = true, Shadow = false })
-	for i = -2, 2 do
-		box(m, "GateBar", CFrame.new(i * 2, 3, hf - 0.25), Vector3.new(0.4, 6, 0.4), C.Iron, { Collide = true, Shadow = false })
-	end
-	box(m, "GateArch", CFrame.new(0, 6.6, hf), Vector3.new(12, 1.2, 1.4), C.Gold, { Collide = true, Shadow = false })
-	S.pocketTpl = m
-	return m
-end
 
 ----------------------------------------------------------------------
 -- Phase 4: the Champion Ring pocket (BuildPocket(index, "Ring")): a round ring on its own cloud, built from one template
@@ -2765,28 +2540,23 @@ function ArenaBuilder.GetPocket(index)
 	return S.pockets[index]
 end
 
--- kind: nil / "Trial" = the trial pocket (default), "Ring" = the Champion Ring pocket (Phase 4). An index that is
--- already built with the other kind is rebuilt (BattleService hands out only free indices of the shared pool).
+-- Phase 5: the only pocket is the Champion Ring's ("Ring"); nil / unknown kinds build it too (the Trial pocket is
+-- deleted). An index that is already built returns that pocket.
 function ArenaBuilder.BuildPocket(index, kind)
 	index = tonumber(index)
 	if not index or index ~= index or index < 1 or index > MAX_POCKETS or index ~= floor(index) then
 		return nil
 	end
-	local isRing = kind == "Ring"
-	local mode = isRing and "Ring" or "Trial"
 	local existing = S.pockets[index]
 	if existing and existing.Model and existing.Model.Parent then
-		if (existing.Kind or "Trial") == mode then
-			return existing
-		end
-		ArenaBuilder.FreePocket(index)
+		return existing
 	end
 	if not Voxel then
 		return nil
 	end
-	local okT, tpl = pcall(isRing and Ring.pocketTemplate or pocketTemplate)
+	local okT, tpl = pcall(Ring.pocketTemplate)
 	if not okT or not tpl then
-		warn("[ArenaBuilder] " .. mode .. " pocket template failed: " .. tostring(tpl))
+		warn("[ArenaBuilder] ring pocket template failed: " .. tostring(tpl))
 		return nil
 	end
 	local col = (index - 1) % POCKET_COLUMNS
@@ -2799,19 +2569,14 @@ function ArenaBuilder.BuildPocket(index, kind)
 		holder.Name = "BattlePockets"
 		holder.Parent = Workspace
 	end
-	local model = place(tpl, cf, holder, (isRing and "RingPocket_" or "TrialPocket_") .. index)
+	local model = place(tpl, cf, holder, "RingPocket_" .. index)
 	model:SetAttribute("PocketIndex", index)
-	model:SetAttribute("PocketKind", mode)
-	local floorSize = zoneFloorSize(mode)
-	local hf = isRing and Ring.FloorA or POCKET_FLOOR / 2
-	local zone = nil
-	if isRing then
-		zone = makeZone(model, "BattleZone_Ring", cf, Ring.RimOut, "Ring", floorSize, "Ring", index)
-	else
-		zone = makeZone(model, "BattleZone_Pocket", cf, POCKET_FLOOR / 2 + 2, "Trial", floorSize, "Pocket", index)
-	end
+	model:SetAttribute("PocketKind", "Ring")
+	local floorSize = zoneFloorSize("Ring")
+	local hf = Ring.FloorA
+	local zone = makeZone(model, "BattleZone_Ring", cf, Ring.RimOut, "Ring", floorSize, "Ring", index)
 	local spawn = CFrame.lookAt(pos + Vector3.new(0, 3, -(hf - 7)), pos + Vector3.new(0, 3, hf))
-	local info = { Model = model, CFrame = cf, Size = floorSize, Spawn = spawn, Zone = zone, Index = index, Kind = mode }
+	local info = { Model = model, CFrame = cf, Size = floorSize, Spawn = spawn, Zone = zone, Index = index, Kind = "Ring" }
 	S.pockets[index] = info
 	return info
 end
@@ -2844,7 +2609,7 @@ function ArenaBuilder.FreePocket(zone)
 	if info.Model then
 		info.Model:Destroy()
 	end
-	-- the holder goes away with the last pocket (the workspace stays as tidy as before the first trial)
+	-- the holder goes away with the last pocket (the workspace stays as tidy as before the first run)
 	local holder = Workspace:FindFirstChild("BattlePockets")
 	if holder and next(S.pockets) == nil and #holder:GetChildren() == 0 then
 		holder:Destroy()
@@ -2957,9 +2722,9 @@ local function onPromptTriggered(prompt, player)
 			return
 		end
 		teleport(player, prompt, S.info.Spawn, "Arena", "ArenaGate")
-	elseif name == "ArenaPortalPrompt" and prompt:IsDescendantOf(S.model or Workspace) then
+	elseif name == "ArenaPortalPrompt" and S.gatePrompts[prompt] then
 		teleport(player, prompt, S.info.Spawn, "Arena", "Portal")
-	elseif name == "ArenaReturnPrompt" and prompt:IsDescendantOf(S.model or Workspace) then
+	elseif name == "ArenaReturnPrompt" and S.gatePrompts[prompt] then
 		teleport(player, prompt, S.info.LobbyCFrame or S.info.ReturnCFrame, "Lobby", "Portal")
 	end
 end
@@ -3062,7 +2827,6 @@ function ArenaBuilder.Build(lobbyInfo)
 	emblemTemplates = {}
 	torchTemplate = nil
 	planterTemplate = nil
-	gateBoxCache = nil
 
 	local old = Workspace:FindFirstChild(ARENA_NAME)
 	if old then
@@ -3172,52 +2936,32 @@ function ArenaBuilder.Build(lobbyInfo)
 		end
 	end
 
-	-- the Trial Portal on the plaza
-	local site = typeof(lobbyInfo.TrialSite) == "CFrame" and lobbyInfo.TrialSite or flatLook(polar(225, LOBBY.PortalRingRadius or 88, TOP), Vector3.new(ORIGIN.X, TOP, ORIGIN.Z))
-	local trialPad = nil
-	section("trial portal", function()
-		local _, pad = buildTrialPortal(model, site, TRIAL_COLOR, "Trials", "Trial Portal", "Fight NPC pet teams", "30 levels")
-		trialPad = pad
-		makePrompt(pad, "TrialPrompt", "Trials", "Trial Portal", "Trials")
-	end)
-	if not trialPad then
-		trialPad = box(model, "TrialPortalPad", site * CFrame.new(0, 0.6, 0), Vector3.new(14, 0.6, 14), TRIAL_COLOR, { Transparency = 1, Shadow = false })
-		trialPad.CanCollide = false
-		makePrompt(trialPad, "TrialPrompt", "Trials", "Trial Portal", "Trials")
-	end
-	local returnCF = CFrame.lookAt(site.Position + site.LookVector * 12 + Vector3.new(0, 3, 0), site.Position + site.LookVector * 30 + Vector3.new(0, 3, 0))
-
-	-- Phase 4: the Champion Ring portal (Portal_Ring) on the plaza, the next free gate of the fan
+	-- Phase 5 (6.2, C12): the Gate Court's Portal_Ring and Portal_Arena (in LobbyInfo.GatesFolder) and the forum's
+	-- Return gate; the Trials and the fallback portal pair are gone
+	S.gatePrompts = {}
 	local ringPad, ringSite = nil, nil
 	section("ring portal", function()
 		ringPad, ringSite = Ring.buildPortal(model, lobbyInfo)
 	end)
-	if not ringPad and trialPad then
-		-- the zero-part fallback (contract 3.8): the ring window opens from a second prompt on the Trial Portal
-		local p = makePrompt(trialPad, "RingPrompt", Ring.Title, "Portal", "Ring", { OpenPanelTab = "Ring" })
-		p.UIOffset = Vector2.new(0, 72)
-		ringPad = trialPad
+	local arenaPrompt, lobbyCF = nil, nil
+	section("arena portal", function()
+		arenaPrompt, lobbyCF = Gates.buildArena(lobbyInfo, model)
+	end)
+	section("return gate", function()
+		Gates.buildReturn(model, A)
+	end)
+	-- ring climbers come back in front of Portal_Ring (BattleService builds the same point from RingSite)
+	local returnCF = nil
+	if ringSite then
+		local front = ringSite.Position + ringSite.LookVector * 12
+		returnCF = CFrame.lookAt(front + Vector3.new(0, 3, 0), front + ringSite.LookVector * 30 + Vector3.new(0, 3, 0))
 	end
 
 	-- the arrival point on the forum, looking at the main gate
 	local spawnPos = (A * CFrame.new(0, 3, ISL.FrontZ + 20)).Position
 	local spawn = CFrame.lookAt(spawnPos, (A * CFrame.new(0, 3, 0)).Position)
-
-	-- fallback link: an Arena Portal on the plaza next to the Trial Portal + a Return Portal on the forum
-	local lobbyCF = nil
-	if link == "Portal" then
-		section("portals", function()
-			local rel = site.Position - Vector3.new(ORIGIN.X, TOP, ORIGIN.Z)
-			local siteAngle = math.deg(atan2(rel.Z, rel.X))
-			local aSite = flatLook(polar(siteAngle + 16, Vector3.new(rel.X, 0, rel.Z).Magnitude, TOP), Vector3.new(ORIGIN.X, TOP, ORIGIN.Z))
-			local _, aPad = buildTrialPortal(model, aSite, C.Gold, "Arena", "Battle Arena", "Duels and Boss Raids", "Press E")
-			makePrompt(aPad, "ArenaPortalPrompt", "Travel", "Battle Arena")
-			local rSite = A * CFrame.new(0, 0, ISL.FrontZ + 34) * CFrame.Angles(0, pi, 0)
-			local _, rPad = buildTrialPortal(model, rSite, rgb(96, 190, 140), "Return", "To the Plaza", "Homes, portals, shop", "Press E")
-			makePrompt(rPad, "ArenaReturnPrompt", "Travel", "Plaza")
-			lobbyCF = CFrame.lookAt(aSite.Position + aSite.LookVector * 12 + Vector3.new(0, 3, 0), aSite.Position + aSite.LookVector * 30 + Vector3.new(0, 3, 0))
-		end)
-	end
+	lobbyCF = lobbyCF or returnCF
+	returnCF = returnCF or lobbyCF
 
 	model.Parent = Workspace
 	connectPrompts()
@@ -3230,9 +2974,9 @@ function ArenaBuilder.Build(lobbyInfo)
 		Rings = rings,
 		Spawn = spawn,
 		ReturnCFrame = returnCF,
-		TrialPortal = trialPad,
 		RingPortal = ringPad, -- Phase 4: Portal_Ring's pad (RingPrompt, OpenPanel = "Ring"; ring starts are accepted near it)
 		RingSite = ringSite,
+		ArenaPortal = arenaPrompt, -- Phase 5: Portal_Arena's prompt part (ArenaPortalPrompt)
 		Radius = sqrt(ISL.HalfW * ISL.HalfW + ISL.FrontZ * ISL.FrontZ),
 		Bounds = { CFrame = A * CFrame.new(0, 20, (ISL.FrontZ + ISL.DiscR) / 2), Size = Vector3.new(ISL.HalfW * 2 + 24, 90, ISL.DiscR - ISL.FrontZ + 24) },
 		Link = link,
@@ -3273,8 +3017,8 @@ function ArenaBuilder.InArena(position)
 	return islandSdf(rel.X, rel.Z) <= 2
 end
 
--- The NC_BattleZone part (arena floor, a duel ring, a trial pocket or a Champion Ring pocket: Mode "Raid" | "Duel" |
--- "Trial" | "Ring") that contains the position.
+-- The NC_BattleZone part (arena floor, a duel ring or a Champion Ring pocket: Mode "Raid" | "Duel" | "Ring") that
+-- contains the position.
 function ArenaBuilder.ZoneAt(position)
 	if typeof(position) ~= "Vector3" then
 		return nil

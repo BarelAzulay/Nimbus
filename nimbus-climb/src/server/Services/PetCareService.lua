@@ -2,22 +2,23 @@
 -- contract" 3.4-3.7, 5.1-5.4). The Phase 2 Kitchen (cooking queue) and Gym (passive XP) that lived in this file are
 -- gone: "Cook" / "GymSet" requests answer one toast that says where the feature went.
 --
--- * Food Machine (station id Kitchen): Feed(key, opts) with opts nil = one machine feed, { Food = "Snack" | "Meal" |
---   "Feast" } = one leftover from the old Kitchen (free), { Count = 1..10 } = "Level up" (several feeds in ONE
---   request; a plain string in `b` is read as Food for old clients). One machine feed gives
---   TycoonCatalog.FeedXp(level, machineLevel) XP (25-50% of the bar) for TycoonCatalog.FeedPrice(def, level) Cash; a
---   batch prices every feed at the level it is eaten at (the sum is recomputed here feed by feed, X7). Leftovers are
---   fed first and free (the biggest one that does not overshoot the cap, else the smallest), so a request only needs
---   the machine when a paid feed happens. Refusals come before any Cash moves: no Food Machine ("Build the Food
---   Machine at home first"), the cap (PetCatalog.LevelCap: 100 for every rarity), not owned, a provisional save, a
---   key in a running battle (BattleService.KeysInBattle). The foods, the Cash and the XP write are one non-yielding
---   step; everything comes back when the XP write gives 0. ONE toast per XP grant (a feed, a batch, a fight), never
---   one per level: a level-up toast shows the new stats and "Ready to evolve!" at 20 / 50 (PetCatalog.CanEvolve).
+-- * Food Machine (station id Kitchen; Phase 5 contract 3.4): Feed(key) = exactly ONE machine feed paid in berries:
+--   TycoonCatalog.FeedBerries(def, level) berries (= the Phase 4 FeedPrice: 1 berry = $1 of food) for
+--   TycoonCatalog.FeedXp(level, machineLevel) XP (25-50% of the bar). Checks in order (each a toast, nothing moves
+--   before the last): loaded and not provisional; owned; below the cap (PetCatalog.LevelCap: 100); not in a running
+--   battle or dungeon run (BattleService.KeysInBattle); the Food Machine built ("Build the Food Machine at home
+--   first"); berries >= the cost ("Not enough berries: a feed needs 340 (you have 120). Your garden pets grow more!").
+--   Then ONE non-yielding step: DataService.SpendBerries, grantXp; an XP write of 0 refunds the berries in the same
+--   step. A { Count } / { Food } / string second argument from an old client is ignored (one feed). The old Food
+--   items were converted into berries once by DataService's P5Home step: there is no leftover path and no Cash path.
+--   ONE toast per XP grant (a feed, a fight), never one per level: a level-up toast shows the new stats and "Ready to
+--   evolve!" at 20 / 50 (PetCatalog.CanEvolve).
 -- * EVOLVE: Evolve(key): owned, loaded and not provisional, level >= the next threshold (PetCatalog.EvolutionLevels
 --   20 / 50), stage < PetCatalog.MaxEvolution(def) (Common / Uncommon / Rare once, Epic and rarer twice), not in a
 --   running battle or ring run. Writes the stored stage (DataService.SetEvolution, only up), fires Evolved, toasts
 --   "<Pet> evolved! +25% to everything", refreshes the EquippedInfo attribute (PetService.Refresh) and sends
---   OpenPanel("Evolve", { Key, Stage }) to that client only. Free. A training pet may evolve.
+--   OpenPanel("Evolve", { Key, Stage }) to that client only. Free. A training pet may evolve. The toast reads
+--   "<Pet> evolved! Level bonus x1.5!" / "x1.875!" (PetCatalog.EvolutionBonusOf, Phase 5 3.1).
 -- * Training Place (station id Gym): Train(key, stat) with stat Speed | Physique | Ability | Defense: needs the
 --   station (TycoonCatalog.TrainingSlots(home) >= 1) and a free mat, an owned pet that is not training, a rank below
 --   10, no running battle, TycoonCatalog.TrainCost(def, rank) Cash; rank r takes TycoonCatalog.TrainSeconds(r)
@@ -38,24 +39,24 @@
 -- * Prompts (owner only, HomeFx hides them from visitors): FeedPrompt "Feed pets" on the Food Machine's Hopper part
 --   (its biggest part while HomeBuilder has no Hopper yet) -> OpenPanel("Pets", { Action = "Feed" }); TrainPrompt
 --   "Train pets" on Station_Gym -> OpenPanel("Train"). Rebuilt when the station is rebuilt (the CareSig attribute
---   carries a "p4:" marker so stale Kitchen prompts of a Phase 3 server never survive).
+--   carries a "p5:" marker so stale prompts of a Phase 3 / Phase 4 server never survive: the stations swapped slots).
 -- * Replication: the plot folder attribute TrainingPets = "1=cat:Physique:1760000000;2=fox@Golden:Speed:1760000420"
 --   (mat=key:stat:Ends, written only on change; a hybrid key holds ":" itself, so readers split from the right) and
 --   HomeBuilder.SetTraining(spotInfo, { [mat] = { Key, Stat, Ends } }) when HomeBuilder has such a function. Levels,
 --   growth and food reach the owner through ProfileSync (DataService).
--- * Remote PetCare(action, a, b): "Feed" (key, opts), "Evolve" (key), "Train" (key, stat), "TrainStop" (key); "Cook" /
+-- * Remote PetCare(action, a, b): "Feed" (key; b ignored), "Evolve" (key), "Train" (key, stat), "TrainStop" (key); "Cook" /
 --   "GymSet" are retired (one toast). Types, lengths, ranges and NaN are checked; every action has a cooldown plus a
 --   shared per-player burst budget; refusals answer with a side toast (repeated texts are throttled). Nothing here
 --   moves parts (Replication rule).
 --
 -- Public API (the contract): Init(deps)   deps = { DataService, PetService, TycoonService, BattleService }
---   Feed(player, key, opts) -> ok, { Xp, Levels, Level, Cap, Paid, Free, Count } | reason
+--   Feed(player, key) -> ok, { Xp, Levels, Level, Cap, Berries, Cost } | reason
 --   Evolve(player, key) -> ok, stage | reason
 --   Train(player, key, stat) -> ok, { Rank, Ends, Cost, Slot, From } | reason
 --   TrainStop(player, key) -> ok, refund | reason
 --   GrantXp(player, key, xp, source) -> xpGiven, levelsGained, reason   (cap-aware XP for other services, one toast)
 --   LevelCap(player, key) -> n | nil          ClearSessions(player) -> true   (developer reset)
---   Signals Fed(player, key, foodId, levelsGained)  (foodId "Machine" for machine food), LevelUp(player, key, level,
+--   Signals Fed(player, key, "Berries", levelsGained), LevelUp(player, key, level,
 --   source), Evolved(player, key, stage), TrainingStarted(player, key, stat), TrainingDone(player, key, stat, rank)
 --
 -- Every Phase 4 helper lives in the table `Care` (Lua's 200-local limit). Plain Lua 5.1-compatible syntax only.
@@ -70,7 +71,7 @@ local Util = require(Shared.Util)
 local Remotes = require(Shared.Remotes)
 
 local PetCareService = {}
-PetCareService.Fed = Util.Signal() -- Fire(player, key, foodId, levelsGained)  foodId "Machine" | "Snack" | "Meal" | "Feast"
+PetCareService.Fed = Util.Signal() -- Fire(player, key, "Berries", levelsGained)
 PetCareService.LevelUp = Util.Signal() -- Fire(player, key, newLevel, source)  source "Feed" | "Trial" | "Ring" | GrantXp's
 PetCareService.Evolved = Util.Signal() -- Fire(player, key, stage)
 PetCareService.TrainingStarted = Util.Signal() -- Fire(player, key, stat)

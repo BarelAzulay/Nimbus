@@ -2,6 +2,12 @@
 --
 --   HotbarController.Init()
 --   HotbarController.UseSlot(index)      -- same as pressing key `index` (1..4)
+--   HotbarController.SetAvoidRight(x)    -- v5: a side panel's left edge (screen px) or nil: the bar re-centres in the
+--                                           free area left of it (clear of the HUD's bottom-left card), nil = centred
+--
+-- v5 (Phase 5, contract 6.6): neon slots (CloudUI.Slot on the Neon kit: dark navy, the item's rarity colour as the
+-- glowing border) of 64 px on a 1080p desktop (x the screen factor), 54 px x the factor on touch screens and 46 px on
+-- landscape phones (48 px on portrait phones; never below 44 px, a thumb).
 --
 -- ScreenGui "NimbusHotbar" (display order 11, IgnoreGuiInset = false). Slots 1-3 follow ItemCatalog.List
 -- (Heal Cloud, Shield Bubble, Phoenix Feather); slot 4 is a locked placeholder. Keys 1-4 (also the keypad)
@@ -45,13 +51,17 @@ local HotbarController = {}
 ----------------------------------------------------------------------
 -- Tunables (design pixels of a 1080p screen unless noted)
 ----------------------------------------------------------------------
-local SLOT = 80
-local GAP = 10
+local SLOT = 64 -- v5: design px of one neon slot (64 on screen at 1080p)
+local GAP = 8
 local BOTTOM = 14 -- screen px from the bottom edge
 local TOUCH_BOTTOM = 16 -- screen px on touch devices (MovementController expects 16)
 local JUMP_GAP = 8 -- clear space kept between the bar and Roblox's jump button (touch devices)
 local SIDE_GAP = 6 -- the bar never slides closer than this to the left screen edge
-local TOUCH_MIN_PX = 48 -- smallest on-screen slot
+local TOUCH_MIN_PX = 44 -- smallest on-screen slot (a thumb)
+local TOUCH_SLOT_PX = 54 -- v5: on-screen slot on touch screens (x the screen factor) ...
+local PHONE_LAND_SLOT_PX = 46 -- ... and on landscape phones (the smaller side <= 500 px)
+local TOUCH_PORTRAIT_MIN_PX = 48 -- a portrait phone keeps 48 px slots (the thumb has the whole bottom edge)
+local AVOID_GAP = 12 -- screen px kept between the bar and a side panel / the HUD card
 local MIN_TEXT_PX = 14.5 -- smallest on-screen text
 local COUNT_TEXT = 22 -- design px of the "x3" stack count
 local KEY_TEXT = 19 -- design px of the key chip number
@@ -91,6 +101,7 @@ local useRemote = nil
 local hint = { Frame = nil, Label = nil, Limit = nil, Token = 0 }
 local touchDevice = false
 local warned = {}
+local avoidRight = nil -- v5: left edge (screen px) of an open side panel, see SetAvoidRight
 
 ----------------------------------------------------------------------
 -- Helpers
@@ -192,6 +203,8 @@ local function relayout()
 	local shift = 0
 	if touchDevice then
 		bottom = TOUCH_BOTTOM
+		local phoneLandscape = math.min(vp.X, vp.Y) <= 500 and vp.X > vp.Y
+		scale = (phoneLandscape and PHONE_LAND_SLOT_PX or math.max(TOUCH_PORTRAIT_MIN_PX, TOUCH_SLOT_PX * Theme.ScreenFactor(vp.Y))) / SLOT
 		-- stay inside the footprint the touch RUN / DASH buttons keep clear of
 		local mcScale = Util.Clamp(math.min(vp.X / 1280, vp.Y / 720), 0.75, 1.2)
 		scale = math.min(scale, MC_W * mcScale / width, MC_H * mcScale / SLOT)
@@ -213,8 +226,47 @@ local function relayout()
 		shift = math.min(0, reach - half - size.X / 2)
 		shift = math.min(0, math.max(shift, half + SIDE_GAP - size.X / 2))
 	end
+	-- v5: an open side panel (SetAvoidRight): centre the bar in the free strip between the HUD's bottom-left card and
+	-- the panel; when that strip is too narrow, keep it as far left of the panel as it goes
+	if avoidRight and avoidRight < size.X then
+		local half = width * scale / 2
+		local left = SIDE_GAP
+		local hud = gui and gui.Parent and gui.Parent:FindFirstChild("NimbusHud")
+		local card = hud and hud:FindFirstChild("Vitals", true)
+		if card and card:IsA("GuiObject") and card.AbsoluteSize.X > 0 then
+			local top = card.AbsolutePosition.Y
+			local barTop = size.Y - bottom - SLOT * scale
+			if top + card.AbsoluteSize.Y > barTop then
+				left = math.max(left, card.AbsolutePosition.X + card.AbsoluteSize.X + AVOID_GAP)
+			end
+		end
+		local right = avoidRight - AVOID_GAP
+		local centre = (left + right) / 2
+		if right - left < 2 * half then
+			centre = math.max(half + SIDE_GAP, right - half)
+		end
+		shift = math.min(shift, centre - size.X / 2)
+	end
 	holder.Position = UDim2.new(0.5, math.floor(shift), 1, -bottom)
 	applyTextSizes(scale)
+end
+
+-- v5 (6.6): while a side panel is open its owner passes the panel's left edge (screen px); nil when it closes.
+function HotbarController.SetAvoidRight(x)
+	local value = tonumber(x)
+	if value ~= nil and value ~= value then
+		value = nil
+	end
+	if value == avoidRight then
+		return
+	end
+	avoidRight = value
+	if holder then
+		local ok, err = pcall(relayout)
+		if not ok then
+			warnOnce("avoid", err)
+		end
+	end
 end
 
 ----------------------------------------------------------------------
@@ -235,8 +287,8 @@ local function buildHint()
 		Parent = holder,
 	})
 	Theme.Corner(frame, UDim.new(0, 12))
-	Theme.Stroke(frame, NAVY, 3, 0)
-	Theme.Gradient(frame, Colors.PanelLight, Colors.Panel, 90)
+	hint.Stroke = Theme.Stroke(frame, Theme.Neon.Blue, 3, 0) -- v5: the neon border takes the hint's kind colour
+	Theme.Gradient(frame, Colors.PanelTop or Colors.PanelLight, Colors.PanelBottom or Colors.Panel, 90)
 	Util.Create("UIPadding", {
 		PaddingLeft = UDim.new(0, 14),
 		PaddingRight = UDim.new(0, 14),
@@ -272,6 +324,9 @@ local function showHint(text, kind)
 	local color = KINDS[kind or "info"] or KINDS.info or Colors.PanelLight
 	hint.Label.Text = tostring(text)
 	hint.Label.TextColor3 = Theme.Lighten(color, 0.55)
+	if hint.Stroke then
+		hint.Stroke.Color = Theme.Lighten(color, 0.1)
+	end
 	hint.Frame.Visible = true
 	task.delay(HINT_SECONDS, function()
 		if hint.Token == mine and hint.Frame then
@@ -431,7 +486,7 @@ local function buildSlots()
 			Parent = slot.Root,
 		})
 		Theme.Corner(bar, UDim.new(0.5, 0))
-		Theme.Stroke(bar, NAVY, 1.5, 0)
+		Theme.Stroke(bar, Colors.PanelInk or NAVY, 1.5, 0)
 		-- the kit's count / key labels, resized by relayout so they stay readable at any scale
 		local countLabel = slot.Root:FindFirstChild("Count", true)
 		local keyLabel = slot.Root:FindFirstChild("Key", true)

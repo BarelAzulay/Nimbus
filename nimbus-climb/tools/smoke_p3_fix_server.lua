@@ -1,14 +1,7 @@
 -- smoke_p3_fix_server.lua: regression checks for the Phase 3 review fixes on the SERVER side (fix:server). Both
 -- worlds (ARGS.context picks the half): the server scenarios run booted, before the care block (they advance the
 -- clock by minutes); the client scenario checks BattleController's decoding of the new snapshot wire form.
---   p3fixsrv_retreat   (pure BattleSim) a timely RETREAT escapes Lines and Circles alike (>= 85% of threatened pets for
---                      a perfect dodger, every boss), Line telegraphs end just past their target, a parked team steps
---                      out of a telegraph aimed at it, a PLAYER team that only RETREATs returns to ATTACK by itself
---                      after Damage.RetreatLock + RetreatAutoResume (Order event with auto = true) while an Auto team
---                      keeps hiding, every boss telegraph lasts >= 2.2 s
---   p3fixsrv_trial1    Trial 1 is one handicapped pet that EVERY single level-1 Common / Uncommon beats without a
---                      command; levels 2+ keep their curve; the tutorial's "team" step passes a one-pet player with
---                      that pet and makes a player with more pets field three (DataService.FieldableKeys)
+--   (p3fixsrv_retreat and p3fixsrv_trial1 were deleted with RETREAT and the Trials: Phase 5 contract 10.5)
 --   p3fixsrv_duel      a duel between teams far apart in power is a practice duel (toast, nothing paid, no PvP
 --                      counters); an honest duel between comparable teams is still paid in full (the early-forfeit
 --                      gate is checked by p3bs_duel)
@@ -93,8 +86,9 @@ local function clientScenarios()
 		end
 		local me = LocalPlayer.UserId
 		local id = "smoke_wire_" .. tostring(math.random(100000, 999999))
-		local sim = Sim.new({ Mode = "Trial", Trial = 3, Seed = 5, Id = id, Teams = { { Owner = me, Side = 1, Pets = { pet("aurora_fox", 10), pet("storm_tabby", 10), pet("bamboo_panda", 10) } } }, Specials = false })
-		if not T.check(sim ~= nil, "wire: a BattleSim trial for the client") then
+		local sim = Sim.new({ Mode = "Duel", Seed = 5, Id = id, Teams = { { Owner = me, Side = 1, Pets = { pet("aurora_fox", 10), pet("storm_tabby", 10), pet("bamboo_panda", 10) } },
+			{ Owner = 777, Side = 2, Npc = true, Name = "Wild", Pets = { pet("pebble_pup", 8), pet("puddle_frog", 8) } } }, Specials = false })
+		if not T.check(sim ~= nil, "wire: a BattleSim duel against an NPC team for the client") then
 			return
 		end
 		local d = sim:Describe()
@@ -157,7 +151,7 @@ local function clientScenarios()
 		T.eq(#Mock.Errors, errs0, "wire: no script errors")
 		-- an out-of-range "End" cleans the battle up at once (no result card is left for the next scenarios)
 		LocalPlayer:SetAttribute("InBattle", nil)
-		BC.HandleState("End", { BattleId = id, Mode = "Trial", Spectator = true, Reason = "OutOfRange" }, id)
+		BC.HandleState("End", { BattleId = id, Mode = "Duel", Spectator = true, Reason = "OutOfRange" }, id)
 		KC.advance(1)
 		T.check(BC.GetBattle() == nil and not BC.IsHudVisible(), "wire: the battle is cleaned up afterwards")
 	end)
@@ -238,11 +232,6 @@ local function serverScenarios()
 	local function toArena(p, dx, dz)
 		local info = arenaInfo()
 		Mock.Teleport(p, info.Spawn * CFrame.new(dx or 0, 0, dz or 0))
-		advance(0.05)
-	end
-	local function toPortal(p)
-		local info = arenaInfo()
-		Mock.Teleport(p, CFrame.new(info.TrialPortal.Position + Vector3.new(0, 3, 6)))
 		advance(0.05)
 	end
 
@@ -360,17 +349,139 @@ local function serverScenarios()
 		end
 	end
 
-	-- keeps these players' teams RETREATing for `seconds` (a player team resumes by itself, so the order is repeated)
-	local function holdBack(bs, list, seconds)
-		local left = seconds
-		while left > 0 do
-			for _, p in ipairs(list) do
-				bs.Command(p, "Retreat")
+	----------------------------------------------------------------------------------------------------
+	-- [Phase 5 driver] the client-side picture of a battle (BattleSim.DecodeSnapshot of the player's own messages) and a
+	-- fighter that walks its CHARACTER toward the nearest enemy at the legal run speed and presses ATTACK (B1: the
+	-- character is the fighter's body; a passive player deals no damage any more)
+	----------------------------------------------------------------------------------------------------
+	local DRV_DOWN, DRV_BENCHED = 5, 3
+
+	local function drvTracker(p, mark)
+		return { p = p, cursor = mark or K.logSize(), static = {}, units = {}, ends = {}, ticks = 0, zone = nil, side = nil, fighter = nil, id = nil, start = nil, speed = nil }
+	end
+
+	local function drvPump(tr)
+		local Sm = req("shared/BattleSim")
+		local log = Mock.RemoteLog
+		local uid = tr.p.UserId
+		for i = tr.cursor + 1, #log do
+			local e = log[i]
+			if e.remote == "BattleState" and e.kind == "client" and e.userId == uid then
+				local kind, payload = e.args[1], e.args[2]
+				if kind == "Start" and type(payload) == "table" and payload.Spectator ~= true then
+					tr.start, tr.id = payload, payload.BattleId
+					tr.zone = payload.Zone and payload.Zone.CFrame
+					tr.side = payload.Side
+					tr.static, tr.units = {}, {}
+					for _, u in ipairs(payload.Units or {}) do
+						tr.static[u.id] = u
+					end
+					tr.fighter = payload.Team and payload.Team.Fighter
+					tr.speed = payload.Team and payload.Team.Speed
+				elseif kind == "Snapshot" and type(payload) == "table" and payload.BattleId == tr.id and Sm then
+					tr.units = Sm.DecodeSnapshot(payload, tr.units)
+				elseif kind == "Events" and type(payload) == "table" and e.args[3] == tr.id then
+					for _, ev in ipairs(payload) do
+						if (ev.type == "Spawn" or ev.type == "Wave") and type(ev.units) == "table" then
+							for _, u in ipairs(ev.units) do
+								tr.static[u.id] = u
+							end
+						elseif ev.type == "Swap" and ev.owner == uid then
+							tr.fighter = ev["in"]
+						elseif ev.type == "Speed" and ev.owner == uid then
+							tr.speed = { Walk = ev.walk, Run = ev.run }
+						elseif ev.type == "Telegraph" then
+							tr.telegraphAt = Mock.Clock.now
+						end
+					end
+				elseif kind == "End" and type(payload) == "table" and payload.Spectator ~= true and payload.BattleId == tr.id then
+					tr.ends[#tr.ends + 1] = payload
+				end
 			end
-			local step = min(2, left)
-			advance(step)
-			left = left - step
 		end
+		tr.cursor = #log
+	end
+
+	local function drvMyPos(tr)
+		local u = tr.fighter and tr.units[tr.fighter]
+		if u then
+			return u.x, u.z
+		end
+		return nil
+	end
+
+	local function drvNearest(tr)
+		local fx, fz = drvMyPos(tr)
+		if not fx then
+			return nil
+		end
+		local best, bestD, bestS = nil, math.huge, nil
+		for id, u in pairs(tr.units) do
+			local s = tr.static[id]
+			if s and s.side ~= tr.side and u.state ~= DRV_DOWN and u.state ~= DRV_BENCHED and (u.hp == nil or u.hp > 0) then
+				local d = math.sqrt((u.x - fx) ^ 2 + (u.z - fz) ^ 2)
+				if d < bestD then
+					best, bestD, bestS = id, d, s
+				end
+			end
+		end
+		return best, bestD, bestS
+	end
+
+	-- one 0.1 s tick: walk toward the nearest enemy (stop inside the reach), press ATTACK every `every` ticks (3 = ~3/s),
+	-- Element + Special once per second when opts.kit
+	local function drvTick(tr, opts)
+		opts = opts or {}
+		local bs = BS()
+		drvPump(tr)
+		if not tr.id or not tr.p.Parent then
+			return nil
+		end
+		local id, dist, s = drvNearest(tr)
+		if not id then
+			return nil
+		end
+		tr.ticks = tr.ticks + 1
+		local run = (tr.speed and tr.speed.Run) or 16
+		local mine = tr.static[tr.fighter] or {}
+		local reach = (tonumber(mine.range) or 4.5) + (tonumber(s.radius) or 1) + 1
+		local u = tr.units[id]
+		local root = K.root(tr.p)
+		if opts.move ~= false and root and tr.zone and dist > reach - 1 then
+			local rel = tr.zone:PointToObjectSpace(root.Position)
+			local dx, dz = u.x - rel.X, u.z - rel.Z
+			local d = math.sqrt(dx * dx + dz * dz)
+			if d > 0.01 then
+				local travel = math.min(run * 0.1, d)
+				Mock.Teleport(tr.p, CFrame.new(tr.zone:PointToWorldSpace(Vector3.new(rel.X + dx / d * travel, 3, rel.Z + dz / d * travel))))
+			end
+		end
+		if opts.attack ~= false and tr.ticks % (opts.every or 3) == 0 then
+			bs.Command(tr.p, "Attack", id)
+		end
+		if tr.telegraphAt and Mock.Clock.now - tr.telegraphAt < 0.25 and opts.dodge ~= false then
+			bs.Command(tr.p, "Dash") -- a boss telegraph: the i-frames dodge it
+		end
+		if opts.kit ~= false and tr.ticks % 10 == 0 then
+			bs.Command(tr.p, "Element")
+			bs.Command(tr.p, "Special")
+		end
+		return id
+	end
+
+	-- plays every tracked fighter (a list of trackers) until `seconds` pass or stopFn(trs) is true; -> true when stopped early
+	local function drvPlay(trs, seconds, stopFn, opts)
+		local t0 = Mock.Clock.now
+		while Mock.Clock.now - t0 < seconds do
+			advance(0.1)
+			for _, tr in ipairs(trs) do
+				drvTick(tr, opts)
+			end
+			if stopFn and stopFn(trs) then
+				return true
+			end
+		end
+		return false
 	end
 
 	local function cleanup(list)
@@ -418,281 +529,6 @@ local function serverScenarios()
 	end
 
 	------------------------------------------------------------------------------------------------
-	-- p3fixsrv_retreat (pure sim)
-	------------------------------------------------------------------------------------------------
-	S.p3fixsrv_retreat = guarded("p3fixsrv_retreat", function()
-		local Sm, Cat = Sim(), BC()
-		if not T.check(Sm and Cat, "retreat: BattleSim + BattleCatalog load") then
-			return
-		end
-		local D = Cat.Damage
-		T.check(type(D.RetreatAutoResume) == "number" and D.RetreatAutoResume >= 2 and D.RetreatAutoResume <= 5 and type(D.TelegraphMargin) == "number" and D.TelegraphMargin > 0,
-			"retreat: BattleCatalog.Damage.RetreatAutoResume (~3 s) and TelegraphMargin exist", tostring(D.RetreatAutoResume))
-		T.check(type(Sm.LineOvershoot) == "number" and Sm.LineOvershoot >= 3 and Sm.LineOvershoot <= 10, "retreat: BattleSim.LineOvershoot (a Line ends just past its target)")
-		local shortest = math.huge
-		for _, bossId in ipairs(Cat.BossOrder) do
-			for _, a in ipairs(Cat.Bosses[bossId].Attacks) do
-				shortest = min(shortest, a.Telegraph)
-			end
-		end
-		T.check(shortest >= 2.2, "retreat: every boss telegraph lasts at least 2.2 s (#7: the client fills toward the dodge deadline)", tostring(shortest))
-
-		-- a perfect dodger against every boss: threatened pets vs pets still hit, per shape; line lengths; parked escapes
-		local total = { Line = { threatened = 0, hit = 0 }, Circle = { threatened = 0, hit = 0 } }
-		local linesOk, parkedThreatened, parkedHit = true, 0, 0
-		for _, bossId in ipairs(Cat.BossOrder) do
-			for seed = 1, 2 do
-				local b = Sm.new({ Mode = "Raid", Boss = bossId, Seed = seed, Teams = { team(101, 1, M5) } })
-				local radius, mine, pending = {}, {}, {}
-				for _, info in ipairs(b:StaticUnits()) do
-					radius[info.id] = info.radius
-					if info.owner == 101 then
-						mine[info.id] = true
-					end
-				end
-				local bossUnit = b.boss
-				local retreatAt, attackAt = nil, nil
-				local steps = 0
-				while not b:IsFinished() and steps < 3400 do
-					local events = b:Step(0.1)
-					steps = steps + 1
-					local t = b:Time()
-					local snap = b:Snapshot()
-					local parked = b:TeamOf(101).Order == "Retreat"
-					for _, ev in ipairs(events) do
-						if ev.type == "Telegraph" then
-							if ev.shape == "Line" then
-								-- the line ends a little past the pet it is aimed at (never a whole-floor ray): no longer than the
-								-- farthest living pet plus the overshoot (a fan's side lines share the aimed pet's length; pets
-								-- moved up to ~2 studs since it was aimed)
-								local farthest = 0
-								for id in pairs(mine) do
-									local u = snap.Units[id]
-									if u and u.hp > 0 then
-										farthest = max(farthest, sqrt((u.x - bossUnit.x) ^ 2 + (u.z - bossUnit.z) ^ 2))
-									end
-								end
-								if farthest > 0 and ev.length > farthest + Sm.LineOvershoot + 3 then
-									linesOk = false
-								end
-							end
-							local threatened, any = {}, false
-							for id in pairs(mine) do
-								local u = snap.Units[id]
-								if u and u.hp > 0 and inShape(ev, u.x, u.z, radius[id] or 2) then
-									threatened[id] = true
-									any = true
-								end
-							end
-							if any then
-								pending[ev.id] = { shape = ev.shape, threatened = threatened, hit = {}, parked = parked }
-								local at = t + 1e-6
-								if not retreatAt or at < retreatAt then
-									retreatAt = at
-								end
-								if not attackAt or ev.at + 0.1 > attackAt then
-									attackAt = ev.at + 0.1
-								end
-							end
-						elseif ev.type == "Hit" and ev.tele and pending[ev.tele] and mine[ev.to] then
-							pending[ev.tele].hit[ev.to] = true
-						end
-					end
-					if retreatAt and t >= retreatAt then
-						retreatAt = nil
-						b:Command(101, "Retreat")
-					end
-					if attackAt and t >= attackAt and not retreatAt and b:Command(101, "Attack") then
-						attackAt = nil
-					end
-				end
-				for _, p in pairs(pending) do
-					for id in pairs(p.threatened) do
-						total[p.shape].threatened = total[p.shape].threatened + 1
-						if p.parked then
-							parkedThreatened = parkedThreatened + 1
-						end
-						if p.hit[id] then
-							total[p.shape].hit = total[p.shape].hit + 1
-							if p.parked then
-								parkedHit = parkedHit + 1
-							end
-						end
-					end
-				end
-			end
-		end
-		local function escaped(row)
-			return row.threatened > 0 and (row.threatened - row.hit) / row.threatened or 1
-		end
-		T.check(total.Line.threatened >= 20 and escaped(total.Line) >= 0.85, "retreat: a RETREAT on the warning escapes >= 85% of Line hits (#2 / #6)",
-			fmt("%d threatened, %d hit", total.Line.threatened, total.Line.hit))
-		T.check(total.Circle.threatened >= 20 and escaped(total.Circle) >= 0.85, "retreat: ...and >= 85% of Circle hits",
-			fmt("%d threatened, %d hit", total.Circle.threatened, total.Circle.hit))
-		T.check(linesOk, "retreat: every Line telegraph ends within LineOvershoot of the pet it is aimed at")
-		T.check(parkedThreatened == 0 or parkedHit <= parkedThreatened * 0.2, "retreat: a team already parked at its anchor steps out of a telegraph aimed at it",
-			fmt("%d threatened while parked, %d hit", parkedThreatened, parkedHit))
-
-		-- a retreating team parks beside its anchor within the lock + resume window, then goes back by itself
-		local b = Sm.new({ Mode = "Raid", Boss = "frost_wyrm", Seed = 3, Teams = { team(102, 1, M5) } })
-		b:Command(102, "Retreat")
-		for _ = 1, 40 do
-			b:Step(0.1)
-		end
-		local anchor = b:TeamOf(102).Anchor
-		local parkedAll = true
-		for _, u in ipairs(b:TeamOf(102).Units) do
-			local su = b:Snapshot().Units[u.id]
-			if su and sqrt((su.x - anchor.x) ^ 2 + (su.z - anchor.z) ^ 2) > 6 then
-				parkedAll = false
-			end
-		end
-		T.check(parkedAll and b:TeamOf(102).Order == "Retreat", "retreat: a retreating team is parked beside its anchor after 4 s (still RETREAT)")
-		for _ = 1, 12 do
-			b:Step(0.1)
-		end
-		T.eq(b:TeamOf(102).Order, "Attack", "retreat: ...and is back to ATTACK by itself a second later (RetreatLock + RetreatAutoResume)")
-
-		-- auto resume: a player team that only RETREATs returns to ATTACK by itself; an Auto team does not
-		local wait = D.RetreatLock + D.RetreatAutoResume
-		local duel = Sm.new({ Mode = "Trial", Trial = 4, Seed = 7, Teams = { team(1, 1, { pet("mallow_kitten", 4), pet("biscuit_bear", 3), pet("maple_fox", 3) }) } })
-		for _ = 1, 100 do
-			duel:Step(0.1)
-		end
-		duel:Command(1, "Retreat")
-		local resumedAt, orderEv = nil, nil
-		local steps = 0
-		while not duel:IsFinished() and steps < 1200 do
-			for _, ev in ipairs(duel:Step(0.1)) do
-				if ev.type == "Order" and ev.owner == 1 and ev.order == "Attack" and ev.auto and not resumedAt then
-					resumedAt, orderEv = duel:Time() - 10, ev
-				end
-			end
-			steps = steps + 1
-		end
-		local r = duel:Result()
-		T.check(resumedAt ~= nil and resumedAt >= wait - 0.01 and resumedAt <= wait + 3, "retreat: a player team that RETREATs returns to ATTACK by itself ~" .. wait .. " s later (Order event, auto = true) (#8)", tostring(resumedAt))
-		T.check(orderEv and orderEv.target == nil and r and r.WinnerSide == 1 and r.Reason ~= "Timeout", "retreat: ...and goes on to win the trial it was winning (no 120 s timeout)", r and r.Reason or "unfinished")
-		local okCmd, why = duel:Command(1, "Attack")
-		T.check(okCmd == true or why == "Finished", "retreat: ATTACK is still accepted at once after a RETREAT (the lock aside)", tostring(why))
-		local hide = Sm.new({ Mode = "Duel", Seed = 4, Teams = { team(1, 1, M5, { Auto = true }), team(2, 2, M5, { Auto = true }) } })
-		hide:Command(1, "Retreat")
-		local autoResumed = false
-		for _ = 1, 150 do
-			for _, ev in ipairs(hide:Step(0.1)) do
-				if ev.type == "Order" and ev.auto then
-					autoResumed = true
-				end
-			end
-		end
-		T.check(not autoResumed and hide:TeamOf(1).Order == "Retreat", "retreat: an Npc / Auto team keeps its RETREAT order (no auto resume)")
-	end)
-
-	------------------------------------------------------------------------------------------------
-	-- p3fixsrv_trial1
-	------------------------------------------------------------------------------------------------
-	S.p3fixsrv_trial1 = guarded("p3fixsrv_trial1", function()
-		local Cat, Sm, Pets = BC(), Sim(), PC()
-		if not T.check(Cat and Sm and Pets, "trial 1: BattleCatalog, BattleSim, PetCatalog load") then
-			return
-		end
-		local t1 = Cat.Trials[1]
-		T.check(t1 and #t1.Team == 1 and type(t1.Team[1].Handicap) == "number" and t1.Team[1].Handicap > 0 and t1.Team[1].Handicap < 1 and t1.Team[1].Level == 1
-			and t1.RecommendedPower <= 4, "trial 1: one handicapped level-1 NPC pet, RecommendedPower <= 4 (#5)", t1 and fmt("%d pets, power %d, handicap %s", #t1.Team, t1.RecommendedPower, tostring(t1.Team[1].Handicap)) or "nil")
-		local spec = Cat.TrialTeam(1)
-		T.check(spec and #spec.Pets == 1 and spec.Pets[1].Handicap == t1.Team[1].Handicap, "trial 1: TrialTeam(1) carries the handicap to BattleSim")
-		local ok, problems = Cat.Validate()
-		T.check(ok, "trial 1: BattleCatalog.Validate() still passes", table.concat(problems or {}, "; "))
-		T.check(Cat.Trials[2].RecommendedPower >= 15 and Cat.Trials[2].RecommendedPower <= 22 and #Cat.Trials[2].Team == 3 and Cat.Trials[5].MiniBoss == true,
-			"trial 1: levels 2+ keep their curve (level 2 ~17-18, three pets, a mini-boss at 5)", tostring(Cat.Trials[2].RecommendedPower))
-		-- every single level-1 Common / Uncommon, no command at all (the tutorial's player who never presses SPECIAL)
-		local tally = T.tally("trial 1: every single level-1 Common / Uncommon wins Trial 1 without a single command (6 seeds each)")
-		local singles = 0
-		for _, def in ipairs(Pets.Pets) do
-			if def.Rarity == "Common" or def.Rarity == "Uncommon" then
-				singles = singles + 1
-				local wins, dur = 0, 0
-				for seed = 1, 6 do
-					local b = Sm.new({ Mode = "Trial", Trial = 1, Seed = seed, Teams = { team(1, 1, { pet(def.Id, 1) }) } })
-					local steps = 0
-					while b and not b:IsFinished() and steps < 1300 do
-						b:Step(0.1)
-						steps = steps + 1
-					end
-					local r = b and b:Result()
-					if r and r.WinnerSide == 1 then
-						wins = wins + 1
-						dur = dur + r.Duration
-					end
-				end
-				tally:case(wins == 6 and dur / max(1, wins) <= 60, def.Id .. ": " .. wins .. "/6 wins, " .. fmt("%.0f", dur / max(1, wins)) .. " s")
-			end
-		end
-		tally:report(singles .. " pets")
-		-- a day-1 trio still clears trial 1 fast, and trial 2 is a real (winnable) fight for it
-		local b2 = Sm.new({ Mode = "Trial", Trial = 2, Seed = 2, Teams = { team(1, 1, { pet("mallow_kitten", 1), pet("puddle_frog", 1), pet("pebble_pup", 1) }, { Auto = true }) } })
-		local steps = 0
-		while not b2:IsFinished() and steps < 1300 do
-			b2:Step(0.1)
-			steps = steps + 1
-		end
-		T.check(b2:Result() and b2:Result().WinnerSide == 1, "trial 1: a brand-new trio of Commons (auto) still beats trial 2", b2:Result() and b2:Result().Reason or "unfinished")
-
-		-- the tutorial's "team" step on the booted game
-		if not K.needBoot() then
-			return
-		end
-		local TSv, DataS, Steps = K.mod("TutorialService"), K.mod("DataService"), req("shared/TutorialSteps")
-		local info = arenaInfo()
-		if not T.check(TSv and DataS and Steps and info and type(TSv.Reload) == "function" and type(DataS.FieldableKeys) == "function",
-			"trial 1 tutorial: TutorialService, DataService.FieldableKeys, TutorialSteps and the arena are there") then
-			return
-		end
-		local teamStep = Steps.Steps[Steps.IndexOf.team]
-		T.check(teamStep and teamStep.Text:find("put your pets in your team", 1, true) ~= nil and teamStep.Text:find("up to 3", 1, true) ~= nil and teamStep.Text:find("Prestige 1", 1, true) ~= nil
-			and not teamStep.Text:find("pick 3 pets", 1, true), "trial 1 tutorial: the 'team' text says what the step checks (put your pets in your team, up to 3, a 4th after Prestige 1)", teamStep and teamStep.Text)
-		local start = Steps.ChapterStart[3]
-		local function stepId(p)
-			local st = TSv.GetState(p)
-			return st and not st.Done and st.Id or (st and st.Done and "done!") or nil
-		end
-		local function tutorialPlayer(prefix, pets)
-			local p = newPlayer(prefix, nil)
-			local prof = DataS.GetProfile(p)
-			for _, petId in ipairs(pets) do
-				prof.Pets[petId] = (prof.Pets[petId] or 0) + 1
-			end
-			DataS.MarkDirty(p)
-			DataS.SetTeam(p, 1, {})
-			DataS.SetTutorial(p, { Step = start, Done = true, Gifted = true })
-			Mock.Teleport(p, CFrame.new(K.config().Lobby.Origin + Vector3.new(12, 4, 12)))
-			TSv.Reload(p)
-			advance(0.6)
-			Mock.Teleport(p, info.Spawn * CFrame.new(0, 3, 0))
-			K.waitFor(function()
-				return stepId(p) ~= "arena"
-			end, 3)
-			return p
-		end
-		local one = tutorialPlayer("TutOne", { "pebble_pup" })
-		T.eq(stepId(one), "team", "trial 1 tutorial: a player with ONE pet reaches 'team'")
-		T.eq(#DataS.FieldableKeys(one), 1, "trial 1 tutorial: DataService.FieldableKeys counts that one pet")
-		DataS.SetTeam(one, 1, { "pebble_pup" })
-		advance(0.6)
-		T.eq(stepId(one), "trial", "trial 1 tutorial: ...and completes 'team' with that one pet in the team")
-		local many = tutorialPlayer("TutMany", { "pebble_pup", "honey_bunny", "puddle_frog", "mallow_kitten" })
-		T.eq(stepId(many), "team", "trial 1 tutorial: a player with four pets reaches 'team'")
-		DataS.SetTeam(many, 1, { "pebble_pup" })
-		advance(1.2)
-		T.eq(stepId(many), "team", "trial 1 tutorial: ...one pet in the team is not enough for them ('team' waits)")
-		DataS.SetTeam(many, 1, { "pebble_pup", "honey_bunny", "puddle_frog" })
-		advance(0.6)
-		T.eq(stepId(many), "trial", "trial 1 tutorial: ...three pets complete 'team' (the 4th slot waits for Prestige 1)")
-		K.flushErrors("trial 1 tutorial")
-		cleanup({ one, many })
-	end)
-
-	------------------------------------------------------------------------------------------------
 	-- p3fixsrv_duel
 	------------------------------------------------------------------------------------------------
 	S.p3fixsrv_duel = scenario("p3fixsrv_duel", function()
@@ -716,7 +552,9 @@ local function serverScenarios()
 		local ok, id = bs.StartDuel(strong, weak)
 		T.check(ok == true, "practice: (setup) the duel starts", tostring(id))
 		T.check(toasted(strong, "Practice duel", mark) and toasted(weak, "Practice duel", mark), "practice: both get a clear 'Practice duel' side toast at the start (#0 power gap)", select(2, toasted(weak, "Practice duel", mark)))
-		waitEnded(w, id, 60)
+		drvPlay({ drvTracker(strong, mark) }, 60, function()
+			return w.find(id) ~= nil
+		end)
 		local r = w.find(id)
 		T.check(r ~= nil and contains(r.Winners, strong.UserId), "practice: the strong team wins", r and r.Reason or "no end")
 		local rwS, rwW = r and r.Rewards[strong.UserId], r and r.Rewards[weak.UserId]
@@ -734,7 +572,9 @@ local function serverScenarios()
 		T.check(ok == true and not toasted(strong, "Practice", m2), "stomp: a duel between comparable teams is not practice", tostring(id))
 		-- an honest duel between comparable teams, fought to the end, is still rewarded in full
 		local tS1, trS1, winsS1 = tokens(strong), record(strong).Trophies, record(strong).PvPWins or 0
-		waitEnded(w, id, 130)
+		drvPlay({ drvTracker(strong, m2), drvTracker(other, m2) }, 130, function()
+			return w.find(id) ~= nil
+		end)
 		r = w.find(id)
 		local winner = r and r.Winners[1] == strong.UserId and strong or other
 		local rwWin = r and r.Rewards[winner.UserId]
@@ -776,15 +616,10 @@ local function serverScenarios()
 		local altTokens0, altRaids0 = tokens(alt), record(alt).Raids or 0
 		local heroTokens0 = tokens(hero)
 		local mark = K.logSize()
-		-- the alt holds back the whole time, the hero fights; the raid is cut short as a loss (EndRaid)
-		for _ = 1, 10 do
-			bs.Command(alt, "Retreat")
-			bs.Command(hero, "Attack")
-			for slot = 1, 3 do
-				bs.Command(hero, "Special", slot)
-			end
-			advance(2)
-		end
+		-- the alt stands still the whole time (no damage), the hero fights; the raid is cut short as a loss (EndRaid)
+		drvPlay({ drvTracker(hero, 0) }, 20, function()
+			return w.find(raidId) ~= nil
+		end)
 		bs.EndRaid()
 		local r = w.find(raidId)
 		T.check(r ~= nil and r.Mode == "Raid", "raid share: (setup) the raid ends", r and r.Reason or "no end")
@@ -840,9 +675,12 @@ local function serverScenarios()
 		data.AddTrophies(b, 100)
 		toArena(a, 3, 0)
 		toArena(b, -3, 0)
+		local mAB = K.logSize()
 		local ok, id = bs.StartDuel(a, b)
 		T.check(ok == true, "leave: (setup) a duel starts", tostring(id))
-		holdBack(bs, { a }, 12)
+		drvPlay({ drvTracker(a, mAB), drvTracker(b, mAB) }, 12, function()
+			return w.find(id) ~= nil
+		end, { every = 6 })
 		local uidA, uidB = a.UserId, b.UserId
 		local lossesA, lossesB = record(a).PvPLosses or 0, record(b).PvPLosses or 0
 		local storedA, storedB = record(a).Trophies, record(b).Trophies
@@ -879,13 +717,7 @@ local function serverScenarios()
 		local okR, raidId = startRaid("lava_golem")
 		local okJ = bs.JoinRaid(e)
 		T.check(okD and okR and okJ, "leave: (setup) a duel and a raid run", tostring(duelId) .. " " .. tostring(raidId))
-		for _ = 1, 6 do
-			bs.Command(e, "Attack")
-			for slot = 1, 3 do
-				bs.Command(e, "Special", slot)
-			end
-			advance(2)
-		end
+		drvPlay({ drvTracker(e, 0) }, 12)
 		local tc0, td0, te0 = tokens(c), tokens(d), tokens(e)
 		local trC, trD = record(c).Trophies, record(d).Trophies
 		local m3 = K.logSize()
@@ -901,8 +733,7 @@ local function serverScenarios()
 		T.check(rr ~= nil and rr.Reason == "Shutdown" and rwE and tier and rwE.Tier == tier.Id and rwE.Tokens > 0 and tokens(e) - te0 == rwE.Tokens and rwE.EventPet == nil,
 			"leave: the raid ends with Reason Shutdown and pays the tier of the share so far (no event-pet roll)", rwE and tostring(rwE.Tier) or "none")
 		T.check(bs.GetRaidStatus() == nil and not bs.IsInBattle(c) and not bs.IsInBattle(e), "leave: ...nothing is left running, everyone is free")
-		toPortal(e)
-		local okT, whyT = bs.StartTrial(e, 1)
+		local okT, whyT = bs.StartDuel(c, d)
 		T.check(okT == false and type(whyT) == "string" and whyT:find("restarting", 1, true) ~= nil, "leave: while closing, new battles are refused", tostring(whyT))
 		if type(bs.StartRing) == "function" then
 			local okR, whyR = bs.StartRing(e, 1)
@@ -910,10 +741,10 @@ local function serverScenarios()
 				"leave: ...and no Champion Ring run starts while closing (Phase 4; a player without a home is told so first)", tostring(whyR))
 		end
 		bs.SetClosing(false)
-		local okT2, idT2 = bs.StartTrial(e, 1)
+		local okT2, idT2 = bs.StartDuel(c, d)
 		T.check(okT2 == true, "leave: SetClosing(false) reopens battles (tests)", tostring(idT2))
 		if okT2 then
-			bs.Forfeit(e)
+			bs.Forfeit(c)
 			advance(4.6)
 		end
 		K.flushErrors("p3fixsrv_leave")
@@ -945,15 +776,13 @@ local function serverScenarios()
 		advance(2)
 		local status = bs.GetRaidStatus()
 		T.check(okR and status and status.Players == 16, "net16: (setup) a 16-raider Shadow Hydra raid runs", status and tostring(status.Players) or "nil")
+		local trs = {}
+		for i, p in ipairs(raiders) do
+			trs[i] = drvTracker(p, 0)
+		end
 		local mark = K.logSize()
 		local seconds = 12
-		for _ = 1, seconds * 2 do
-			for i, p in ipairs(raiders) do
-				bs.Command(p, "Attack")
-				bs.Command(p, "Special", (i % 3) + 1)
-			end
-			advance(0.5)
-		end
+		drvPlay(trs, seconds)
 		local function stats(p)
 			local bytes, snaps, first, last, perSecond = 0, 0, nil, nil, {}
 			local t0 = nil
@@ -980,8 +809,8 @@ local function serverScenarios()
 		local rate, peak, hz = stats(raiders[1])
 		local wRate, wPeak, wHz = stats(watcher)
 		T.info(fmt("*net16: fighter %.1f KB/s (peak second %.1f KB), %.1f snapshots/s; spectator %.1f KB/s, %.1f snapshots/s", rate / 1000, peak / 1000, hz, wRate / 1000, wHz))
-		T.check(rate > 0 and rate < 20000, "net16: a fighter in a full 16-raider raid gets under 20 KB/s on average (#4)", fmt("%.0f B/s", rate))
-		T.check(peak < 32000, "net16: ...and no second above 32 KB", fmt("%.0f B", peak))
+		T.check(rate > 0 and rate < 6000, "net16: a fighter in a full 16-raider raid gets under 6 KB/s on average (Phase 5 budget 10.3)", fmt("%.0f B/s", rate))
+		T.check(peak < 12000, "net16: ...and no second above 12 KB", fmt("%.0f B", peak))
 		T.check(hz >= 9 and hz <= 11, "net16: fighters still get ~10 snapshots per second", fmt("%.1f", hz))
 		T.check(wHz >= 4 and wHz <= 6 and wRate < rate, "net16: a spectator gets ~5 snapshots per second and less traffic", fmt("%.1f Hz, %.0f B/s", wHz, wRate))
 		-- the wire form and the round trip: the spectator's decoded picture equals the fighter's at the same T
@@ -1036,7 +865,7 @@ local function serverScenarios()
 				end
 			end
 		end
-		T.check(same and compared >= 40, "net16: the 5 Hz spectator stream decodes to exactly the fighter's 10 Hz picture at the same T (BattleSim.DecodeSnapshot round trip)", fmt("%d units at T %s", compared, tostring(lastT)))
+		T.check(same and compared >= 17, "net16: the 5 Hz spectator stream decodes to exactly the fighter's 10 Hz picture at the same T (BattleSim.DecodeSnapshot round trip)", fmt("%d units at T %s", compared, tostring(lastT)))
 		bs.EndRaid()
 		K.flushErrors("p3fixsrv_net16")
 		local all = { watcher }

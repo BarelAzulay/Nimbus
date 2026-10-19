@@ -2,31 +2,27 @@
 -- "Interfaces between the Phase 3 modules") on the booted server with 2-8 simulated players. Server world only (listed
 -- in server_files of tools/smoke.py); the scenarios run before the Phase 2 care block (they advance the clock by several
 -- minutes):
---   p3bs_contract  the module, its API, BattleEnded / BattleStarted created at module load, Init wired by Main (the
---                  BattleRequest remote answers), safe answers for nil players and without a raid
---   p3bs_trial     a full trial: refusals (away from the Trial Portal, locked levels), the pocket teleport, InBattle,
---                  the "Start" payload (zone CFrame + Size, slots, sides, names), ~10 Hz dense snapshots, the end, rewards
---                  exactly once (first clear: tokens + first-clear bonus, pet XP; a repeat pays the repeat amount), the
---                  battle record (TrialCleared, TrialBest), the return teleport to the portal, the pocket freed; a forfeit
---                  through the remote (a loss, nothing paid); a disconnect mid-trial; slipping off the pocket (put back) and
---                  a teleport away from it (the trial is lost)
+--   p3bs_contract  the module, its API (Phase 5: the encounter API, no StartTrial), BattleEnded / BattleStarted created at
+--                  module load, Init wired by Main (the BattleRequest remote answers), safe answers for nil players and
+--                  without a raid; the mode names Duel / Raid / Ring / Dungeon
 --   p3bs_duel      challenge -> "Lobby" (Invites / Sent shapes) -> decline, expiry, accept (a challenge back is a yes);
 --                  both duellists on the ring's pads, Start to both, a spectator in range gets the battle and the far
---                  player nothing; the end: trophies / tokens / XP / PvP counters once; a forfeit after 15 s (full win),
---                  an early forfeit (the winner gets no rewards), the pair limit (no trophies), a disconnect (the
---                  leaver's penalty is in the saved profile, the opponent wins)
+--                  player nothing; both PLAY (the character walks in, ATTACK): the end pays trophies / tokens / XP / PvP
+--                  counters once; a forfeit after 15 s (full win), an early forfeit (the winner gets no rewards), the pair
+--                  limit (no trophies), a disconnect (the leaver's penalty is in the saved profile, the opponent wins)
 --   p3bs_queue     the quick queue: Queue / Unqueue, "Lobby" Queued / Waiting, similar trophies pair at once, far apart
 --                  only after the allowance grew, leaving the arena cancels
 --   p3bs_raid      StartRaid / GetRaidStatus / JoinRaid (inside the arena, the join window) / LeaveRaid, the boss HP grows
 --                  and shrinks per participant, a spectator becoming a fighter, a joiner who leaves the arena is
 --                  removed, EndRaid (a timeout loss, rewards once, Double Rewards pushed), a raid nobody joined, and a
---                  full raid won by three active teams (tiers by damage share)
+--                  full raid won by three active fighters (tiers by damage share)
 --   p3bs_exploits  junk remote arguments, commands for other units / bad slots / from spectators / from outside the zone,
 --                  spam (token buckets, cooldowns), starting two battles, a duel player teleported out of the arena,
 --                  an obby match during a battle, the portal lock, rewards once after the end
---   p3bs_net       bytes per second per client for a trial, a duel and an 8-player raid (BattleService.EstimateBytes of
+--   p3bs_net       bytes per second per client for a duel and an 8-player raid (BattleService.EstimateBytes of
 --                  every BattleState payload), ~10 Hz snapshots, players far away get nothing, payload hygiene (no
 --                  functions, NaN, sparse arrays or mixed tables), GetNetStats
+--   (p3bs_trial was deleted with the Trials: Phase 5 contract 10.5)
 -- Plain Lua 5.1 syntax only.
 
 local K = _G.K
@@ -109,12 +105,6 @@ local function newPlayer(prefix, pets, level)
 		end
 	end
 	return p
-end
-
-local function toPortal(p)
-	local info = arenaInfo()
-	Mock.Teleport(p, CFrame.new(info.TrialPortal.Position + Vector3.new(0, 3, 6)))
-	advance(0.05)
 end
 
 local function toArena(p, dx, dz)
@@ -346,6 +336,141 @@ local function planarTo(p, cf)
 	return math.sqrt((pos.X - cf.Position.X) ^ 2 + (pos.Z - cf.Position.Z) ^ 2)
 end
 
+----------------------------------------------------------------------------------------------------
+-- [Phase 5 driver] the client-side picture of a battle (BattleSim.DecodeSnapshot of the player's own messages) and a
+-- fighter that walks its CHARACTER toward the nearest enemy at the legal run speed and presses ATTACK (B1: the
+-- character is the fighter's body; a passive player deals no damage any more)
+----------------------------------------------------------------------------------------------------
+local DRV_DOWN, DRV_BENCHED = 5, 3
+
+local function drvTracker(p, mark)
+	return { p = p, cursor = mark or K.logSize(), static = {}, units = {}, ends = {}, ticks = 0, zone = nil, side = nil, fighter = nil, id = nil, start = nil, speed = nil }
+end
+
+local function drvPump(tr)
+	local Sm = req("shared/BattleSim")
+	local log = Mock.RemoteLog
+	local uid = tr.p.UserId
+	for i = tr.cursor + 1, #log do
+		local e = log[i]
+		if e.remote == "BattleState" and e.kind == "client" and e.userId == uid then
+			local kind, payload = e.args[1], e.args[2]
+			if kind == "Start" and type(payload) == "table" and payload.Spectator ~= true then
+				tr.start, tr.id = payload, payload.BattleId
+				tr.zone = payload.Zone and payload.Zone.CFrame
+				tr.side = payload.Side
+				tr.static, tr.units = {}, {}
+				for _, u in ipairs(payload.Units or {}) do
+					tr.static[u.id] = u
+				end
+				tr.fighter = payload.Team and payload.Team.Fighter
+				tr.speed = payload.Team and payload.Team.Speed
+			elseif kind == "Snapshot" and type(payload) == "table" and payload.BattleId == tr.id and Sm then
+				tr.units = Sm.DecodeSnapshot(payload, tr.units)
+			elseif kind == "Events" and type(payload) == "table" and e.args[3] == tr.id then
+				for _, ev in ipairs(payload) do
+					if (ev.type == "Spawn" or ev.type == "Wave") and type(ev.units) == "table" then
+						for _, u in ipairs(ev.units) do
+							tr.static[u.id] = u
+						end
+					elseif ev.type == "Swap" and ev.owner == uid then
+						tr.fighter = ev["in"]
+					elseif ev.type == "Speed" and ev.owner == uid then
+						tr.speed = { Walk = ev.walk, Run = ev.run }
+					elseif ev.type == "Telegraph" then
+						tr.telegraphAt = Mock.Clock.now
+					end
+				end
+			elseif kind == "End" and type(payload) == "table" and payload.Spectator ~= true and payload.BattleId == tr.id then
+				tr.ends[#tr.ends + 1] = payload
+			end
+		end
+	end
+	tr.cursor = #log
+end
+
+local function drvMyPos(tr)
+	local u = tr.fighter and tr.units[tr.fighter]
+	if u then
+		return u.x, u.z
+	end
+	return nil
+end
+
+local function drvNearest(tr)
+	local fx, fz = drvMyPos(tr)
+	if not fx then
+		return nil
+	end
+	local best, bestD, bestS = nil, math.huge, nil
+	for id, u in pairs(tr.units) do
+		local s = tr.static[id]
+		if s and s.side ~= tr.side and u.state ~= DRV_DOWN and u.state ~= DRV_BENCHED and (u.hp == nil or u.hp > 0) then
+			local d = math.sqrt((u.x - fx) ^ 2 + (u.z - fz) ^ 2)
+			if d < bestD then
+				best, bestD, bestS = id, d, s
+			end
+		end
+	end
+	return best, bestD, bestS
+end
+
+-- one 0.1 s tick: walk toward the nearest enemy (stop inside the reach), press ATTACK every `every` ticks (3 = ~3/s),
+-- Element + Special once per second when opts.kit
+local function drvTick(tr, opts)
+	opts = opts or {}
+	local bs = BS()
+	drvPump(tr)
+	if not tr.id or not tr.p.Parent then
+		return nil
+	end
+	local id, dist, s = drvNearest(tr)
+	if not id then
+		return nil
+	end
+	tr.ticks = tr.ticks + 1
+	local run = (tr.speed and tr.speed.Run) or 16
+	local mine = tr.static[tr.fighter] or {}
+	local reach = (tonumber(mine.range) or 4.5) + (tonumber(s.radius) or 1) + 1
+	local u = tr.units[id]
+	local root = K.root(tr.p)
+	if opts.move ~= false and root and tr.zone and dist > reach - 1 then
+		local rel = tr.zone:PointToObjectSpace(root.Position)
+		local dx, dz = u.x - rel.X, u.z - rel.Z
+		local d = math.sqrt(dx * dx + dz * dz)
+		if d > 0.01 then
+			local travel = math.min(run * 0.1, d)
+			Mock.Teleport(tr.p, CFrame.new(tr.zone:PointToWorldSpace(Vector3.new(rel.X + dx / d * travel, 3, rel.Z + dz / d * travel))))
+		end
+	end
+	if opts.attack ~= false and tr.ticks % (opts.every or 3) == 0 then
+		bs.Command(tr.p, "Attack", id)
+	end
+	if tr.telegraphAt and Mock.Clock.now - tr.telegraphAt < 0.25 and opts.dodge ~= false then
+		bs.Command(tr.p, "Dash") -- a boss telegraph: the i-frames dodge it
+	end
+	if opts.kit ~= false and tr.ticks % 10 == 0 then
+		bs.Command(tr.p, "Element")
+		bs.Command(tr.p, "Special")
+	end
+	return id
+end
+
+-- plays every tracked fighter (a list of trackers) until `seconds` pass or stopFn(trs) is true; -> true when stopped early
+local function drvPlay(trs, seconds, stopFn, opts)
+	local t0 = Mock.Clock.now
+	while Mock.Clock.now - t0 < seconds do
+		advance(0.1)
+		for _, tr in ipairs(trs) do
+			drvTick(tr, opts)
+		end
+		if stopFn and stopFn(trs) then
+			return true
+		end
+	end
+	return false
+end
+
 -- every scenario of this file: guarded, then the shared test switches are always put back (also after an abort), so
 -- the scenarios of other files never inherit them
 local function scenario(name, fn)
@@ -377,22 +502,24 @@ S.p3bs_contract = scenario("p3bs_contract", function()
 		return
 	end
 	local missing = {}
-	for _, fn in ipairs({ "Init", "StartTrial", "Challenge", "StartRaid", "EndRaid", "GetBattle", "IsInBattle", "GetRaidStatus",
+	for _, fn in ipairs({ "Init", "Challenge", "StartRaid", "EndRaid", "GetBattle", "IsInBattle", "GetRaidStatus",
 		"StartDuel", "ReplyChallenge", "Queue", "Unqueue", "JoinRaid", "LeaveRaid", "Command", "Forfeit", "SetDoubleRewards",
-		"IsDoubleRewards", "GetNetStats", "EstimateBytes", "ListBattles", "StartRing", "KeysInBattle" }) do
+		"IsDoubleRewards", "GetNetStats", "EstimateBytes", "ListBattles", "StartRing", "KeysInBattle",
+		"OpenEncounter", "SpawnWave", "FinishEncounter", "RemoveEncounterTeam", "EncounterStatus", "TeamSpec", "SetRunProvider" }) do
 		if type(bs[fn]) ~= "function" then
 			missing[#missing + 1] = fn
 		end
 	end
-	T.check(#missing == 0, "p3 bs: the contract API (StartTrial, Challenge, StartRaid / EndRaid, GetBattle, IsInBattle, GetRaidStatus, Phase 4 StartRing / KeysInBattle) and the extras exist", table.concat(missing, ", "))
-	-- Phase 4: the mode names (BattleSim.Modes carries the Champion Ring too) and the safe answers of the new API
+	T.check(#missing == 0, "p3 bs: the contract API (Challenge, StartRaid / EndRaid, GetBattle, IsInBattle, GetRaidStatus, StartRing / KeysInBattle, the Phase 5 encounter API) and the extras exist", table.concat(missing, ", "))
+	T.check(bs.StartTrial == nil, "p3 bs: StartTrial is gone (Phase 5 contract 10.5)")
+	-- the mode names (Phase 5: Duel / Raid / Ring / Dungeon, no Trial) and the safe answers of the new API
 	local sim = req("shared/BattleSim")
 	local modes = sim and sim.Modes or {}
 	local modeSet = {}
 	for k, v in pairs(modes) do
 		modeSet[type(k) == "string" and k or v] = true
 	end
-	T.check(modeSet.Trial and modeSet.Duel and modeSet.Raid and modeSet.Ring, "p3 bs: the mode names are Trial / Duel / Raid / Ring (BattleSim.Modes)")
+	T.check(not modeSet.Trial and modeSet.Duel and modeSet.Raid and modeSet.Ring and modeSet.Dungeon, "p3 bs: the mode names are Duel / Raid / Ring / Dungeon (BattleSim.Modes)")
 	local keysNil = bs.KeysInBattle(nil)
 	T.check(type(keysNil) == "table" and next(keysNil) == nil, "p3 bs: KeysInBattle(nil) is an empty set")
 	local okRingNil, whyRingNil = bs.StartRing(nil, 1)
@@ -420,335 +547,12 @@ S.p3bs_contract = scenario("p3bs_contract", function()
 end)
 
 ----------------------------------------------------------------------------------------------------
--- scenario: a full trial, refusals, rewards once, the return, forfeits, disconnects, the pocket leash
-----------------------------------------------------------------------------------------------------
-S.p3bs_trial = scenario("p3bs_trial", function()
-	if not ready("p3bs_trial") then
-		return
-	end
-	local bs, data, bc = BS(), DS(), BC()
-	local info = arenaInfo()
-	local w = watchEnded()
-	local p = newPlayer("Trialist", STRONG)
-	-- Phase 4: the stored evolution stage and training ranks ride into the fight as the UnitStats extras (teamOf):
-	-- the first pet is Evolved (stage 1) and trained in Physique rank 2, the second untouched
-	local grew = data.MutateGrowth and data.MutateGrowth(p, function(g)
-		g[STRONG[1]] = { Evo = 1, Physique = 2 }
-	end)
-	T.check(grew == true, "p3 trial: (setup) the first team pet is Evolved I with Physique rank 2 (DataService.MutateGrowth)")
-	toLobby(p)
-	local ok, why = bs.StartTrial(p, 1)
-	T.check(ok == false and type(why) == "string" and why:find("Trial Portal") ~= nil, "p3 trial: refused away from the Trial Portal", tostring(why))
-	toPortal(p)
-	ok, why = bs.StartTrial(p, 2)
-	T.check(ok == false and type(why) == "string" and why:find("Trial 1") ~= nil, "p3 trial: level 2 is locked until level 1 is cleared", tostring(why))
-	local bad = {}
-	for _, level in ipairs({ 0, 31, 1.5, -1, 0 / 0, math.huge, "1" }) do
-		local okBad = bs.StartTrial(p, level)
-		if okBad ~= false then
-			bad[#bad + 1] = tostring(level)
-		end
-	end
-	T.check(#bad == 0, "p3 trial: junk levels are refused (0, 31, 1.5, -1, nan, inf, '1')", table.concat(bad, ", "))
-
-	local tokens0 = tokens(p)
-	local mark = K.logSize()
-	local id
-	ok, id = bs.StartTrial(p, 1)
-	if not T.check(ok == true and type(id) == "string", "p3 trial: StartTrial(1) near the portal starts a battle", tostring(id)) then
-		w.stop()
-		cleanup({ p })
-		return
-	end
-	T.eq(p:GetAttribute("InBattle"), id, "p3 trial: the player attribute InBattle holds the battle id")
-	T.check(bs.IsInBattle(p) and bs.GetBattle(p) and bs.GetBattle(p).Mode == "Trial" and bs.GetBattle(p).BattleId == id and bs.GetBattle(p).Level == 1,
-		"p3 trial: IsInBattle / GetBattle report the trial")
-	local start = lastMsg(p, "Start", mark)
-	local pocketCF = start and start.Zone and start.Zone.CFrame
-	T.check(type(start) == "table" and start.BattleId == id and start.Mode == "Trial" and typeof(pocketCF) == "CFrame" and typeof(start.Zone.Size) == "Vector3"
-		and start.Zone.X == start.Zone.Size.X and start.Zone.Z == start.Zone.Size.Z and start.Side == 1 and start.Spectator == false,
-		"p3 trial: 'Start' carries BattleId, Mode, Zone = { CFrame, Size (Vector3), X, Z }, Side 1, Spectator false")
-	if type(start) == "table" then
-		local slots, sides = {}, 0
-		for _, u in ipairs(start.Units or {}) do
-			if u.owner == p.UserId then
-				slots[#slots + 1] = u.slot
-			end
-		end
-		table.sort(slots)
-		T.check(#slots == 3 and slots[1] == 1 and slots[3] == 3 and type(start.Sides) == "table" and contains(start.Sides[1], p.UserId) and #(start.Sides[2] or {}) >= 1
-			and start.Names and start.Names[tostring(p.UserId)] == p.DisplayName and type(start.Trial) == "table" and start.Trial.Level == 1,
-			"p3 trial: ...unit static info with the owner's slots 1-3, Sides (player vs npc), Names by userId string, Trial { Level }")
-		sides = #(start.Units or {})
-		T.check(sides >= 4, "p3 trial: ...both teams' units (" .. sides .. ": three pets and Trial 1's single handicapped NPC pet)")
-	end
-	if pocketCF then
-		T.check(distanceToZone(p, pocketCF) < 40 and (K.root(p).Position - info.TrialPortal.Position).Magnitude > 500,
-			"p3 trial: the player was teleported into the private pocket far out in the sky", tostring(K.root(p).Position))
-	end
-	ok, why = bs.StartTrial(p, 1)
-	T.check(ok == false and type(why) == "string" and why:find("already") ~= nil, "p3 trial: one battle at a time (a second StartTrial is refused)", tostring(why))
-	-- Phase 4: KeysInBattle = the team's keys while the trial runs; a home teleport is refused InBattle
-	local inBattle = bs.KeysInBattle(p)
-	local nKeys = 0
-	for _ in pairs(inBattle) do
-		nKeys = nKeys + 1
-	end
-	T.check(nKeys == 3 and inBattle[STRONG[1]] == true and inBattle[STRONG[2]] == true and inBattle[STRONG[3]] == true, "p3 trial: KeysInBattle(player) = the fighting team's keys", tostring(nKeys))
-	local Ty = req("server/Services/TycoonService")
-	if Ty and type(Ty.GoHome) == "function" then
-		local okHome, whyHome = Ty.GoHome(p)
-		T.check(okHome == false and type(whyHome) == "string" and whyHome:find("battle", 1, true) ~= nil and p:GetAttribute(K.config().Attr.HomePortal or "HomePortal") == nil,
-			"p3 trial: GoHome (the home portal) is refused InBattle ('Finish your battle first!')", tostring(whyHome))
-	else
-		T.info("*TycoonService.GoHome not in this build: the InBattle refusal was skipped")
-	end
-	-- Phase 4: the evolved, trained pet fights with the UnitStats extras (evo in the static info, MaxHp x1.25 x1.10)
-	if type(start) == "table" then
-		local PetCatalog = req("shared/PetCatalog")
-		local def = PetCatalog and PetCatalog.Get(STRONG[1])
-		local level = data.GetPetLevel(p, STRONG[1]) or 1
-		local plain = def and bc.UnitStats(def, level, "Normal")
-		local grown = def and bc.UnitStats(def, level, "Normal", { Evo = 1, Train = { Physique = 2 } })
-		-- the team's element synergy (Phase 3) multiplies every unit's HP the same way: expected = grown x HealthMult
-		local synList = {}
-		for i, key in ipairs(STRONG) do
-			synList[i] = { Def = PetCatalog and PetCatalog.Get(key), Level = data.GetPetLevel(p, key) or 1, Tier = "Normal" }
-		end
-		local okSyn, syn = pcall(bc.SynergyBonus, synList)
-		local healthMult = (okSyn and type(syn) == "table" and tonumber(syn.HealthMult)) or 1
-		local wantHp = grown and math.floor(grown.MaxHp * healthMult + 0.5) or -1
-		local u1, u2 = nil, nil
-		for _, u in ipairs(start.Units or {}) do
-			if u.owner == p.UserId and u.key == STRONG[1] then
-				u1 = u
-			elseif u.owner == p.UserId and u.key == STRONG[2] then
-				u2 = u
-			end
-		end
-		T.check(u1 and u2 and u1.evo == 1 and u2.evo == 0 and grown and plain and math.abs(u1.maxHp - wantHp) <= 1 and grown.MaxHp > plain.MaxHp * 1.3 and type(u1.xp) == "number" and type(u1.xpNext) == "number",
-			"p3 trial: the evolved + trained pet's unit carries evo 1 and the boosted MaxHp (x1.25 x1.10, then the team synergy), the plain pet evo 0; own units carry xp / xpNext",
-			u1 and ("evo " .. tostring(u1.evo) .. " hp " .. tostring(u1.maxHp) .. " vs " .. tostring(wantHp)) or "no unit")
-	end
-	-- snapshots at ~10 Hz, dense, with the battle id
-	local m1 = K.logSize()
-	advance(1.0)
-	local snaps = battleMsgs(p, m1, "Snapshot")
-	T.check(#snaps >= 8 and #snaps <= 12, "p3 trial: ~10 snapshots per second", #snaps .. " in 1 s")
-	local dense, idsOk, tUp = true, true, true
-	local lastT = -1
-	for _, e in ipairs(snaps) do
-		local s = e.args[2]
-		if s.BattleId ~= id or e.args[3] ~= id then
-			idsOk = false
-		end
-		-- the wire form: U is a flat dense array of numbers (BattleSim:SnapshotDelta; the client decodes it)
-		local n = 0
-		for _, v in pairs(s.U or {}) do
-			n = n + 1
-			if type(v) ~= "number" then
-				dense = false
-			end
-		end
-		if type(s.U) ~= "table" or n ~= #s.U or s.Units ~= nil then
-			dense = false
-		end
-		if not (s.T > lastT) then
-			tUp = false
-		end
-		lastT = s.T
-	end
-	T.check(dense and idsOk and tUp, "p3 trial: every snapshot has U as a dense number array (the wire form), the BattleId (also as the 3rd argument) and a rising T")
-	-- the end
-	local done = waitEnded(w, id, 130)
-	local result = w.find(id)
-	if not T.check(done and result ~= nil, "p3 trial: the trial ends (BattleEnded)") then
-		w.stop()
-		cleanup({ p })
-		return
-	end
-	T.check(result.Mode == "Trial" and result.Level == 1 and contains(result.Winners, p.UserId) and #result.Losers == 0 and result.Forfeit == false
-		and type(result.Damage) == "table" and result.RewardsPaid == true,
-		"p3 trial: the result follows the contract { Mode, Winners = {userId}, Losers, Level, Damage, Forfeit }", tostring(result.Reason))
-	T.eq(w.count(id), 1, "p3 trial: BattleEnded fired exactly once")
-	local rw = result.Rewards and result.Rewards[p.UserId]
-	local R = bc.TrialRewards(1, type(rw) == "table" and rw.Double == true)
-	local expected = R.Tokens + R.FirstClear.Tokens
-	T.check(type(rw) == "table" and rw.FirstClear == true and rw.Tokens == expected and rw.Xp == R.Xp and rw.Gems == R.FirstClear.Gems,
-		"p3 trial: first clear pays TrialRewards(1).Tokens + FirstClear.Tokens and Xp per pet", rw and ("tokens " .. tostring(rw.Tokens) .. " xp " .. tostring(rw.Xp)) or "no rewards")
-	T.eq(tokens(p) - tokens0, expected, "p3 trial: ...the token balance grew by exactly that")
-	local level = data.GetPetLevel(p, STRONG[1])
-	T.check(level > 1, "p3 trial: ...the team pets gained XP (level " .. tostring(level) .. ")")
-	local endMsg = lastMsg(p, "End", mark)
-	T.check(type(endMsg) == "table" and endMsg.BattleId == id and endMsg.Outcome == "Win" and endMsg.Won == true and type(endMsg.Rewards) == "table"
-		and endMsg.Rewards.Tokens == expected and type(endMsg.Result) == "table" and type(endMsg.Result.Damage) == "table",
-		"p3 trial: 'End' { BattleId, Result, Rewards, Outcome = Win } reached the player")
-	if type(endMsg) == "table" and type(endMsg.Result) == "table" then
-		local keysOk = true
-		for k in pairs(endMsg.Result.Damage) do
-			if type(k) ~= "string" then
-				keysOk = false
-			end
-		end
-		T.check(keysOk, "p3 trial: ...the public result's Damage is keyed by userId strings (remote-safe)")
-	end
-	local rec = record(p)
-	T.check(type(rec.TrialCleared) == "table" and rec.TrialCleared[1] == true and (rec.TrialBest or 0) >= 1, "p3 trial: the battle record has TrialCleared[1] and TrialBest >= 1")
-	T.eq(p:GetAttribute("InBattle"), id, "p3 trial: InBattle stays until the return teleport")
-	advance(4.5)
-	T.check(p:GetAttribute("InBattle") == nil and not bs.IsInBattle(p), "p3 trial: InBattle is cleared after the return")
-	T.check((K.root(p).Position - info.ReturnCFrame.Position).Magnitude < 12, "p3 trial: the player is back in front of the Trial Portal (ArenaInfo.ReturnCFrame)", tostring(K.root(p).Position))
-	local still = false
-	for _, b in ipairs(bs.ListBattles()) do
-		if b.BattleId == id then
-			still = true
-		end
-	end
-	local pockets = workspace:FindFirstChild("BattlePockets")
-	T.check(not still and (pockets == nil or #pockets:GetChildren() == 0), "p3 trial: the battle is forgotten and the pocket freed (ArenaBuilder.FreePocket)")
-	T.eq(tokens(p) - tokens0, expected, "p3 trial: nothing more was paid after the end (rewards exactly once)")
-
-	-- a repeat clear pays the repeat amount only
-	quietReplication()
-	toPortal(p)
-	local tokens1 = tokens(p)
-	local ok2, id2 = bs.StartTrial(p, 1)
-	waitEnded(w, id2, 130)
-	local r2 = w.find(id2)
-	local rw2 = r2 and r2.Rewards[p.UserId]
-	local R2 = bc.TrialRewards(1, type(rw2) == "table" and rw2.Double == true)
-	T.check(ok2 and rw2 and rw2.FirstClear == false and rw2.Tokens == R2.Tokens and tokens(p) - tokens1 == R2.Tokens,
-		"p3 trial: a repeat clear pays TrialRewards(1).Tokens only (no second first-clear bonus)", rw2 and tostring(rw2.Tokens) or tostring(id2))
-	advance(4.5)
-
-	-- a forfeit through the remote: a loss, nothing paid
-	toPortal(p)
-	local tokens2 = tokens(p)
-	local m2 = K.logSize()
-	local ok3, id3 = bs.StartTrial(p, 2)
-	T.check(ok3 == true, "p3 trial: level 2 is open after clearing level 1", tostring(id3))
-	advance(0.5)
-	Mock.FromClient(K.remoteFolder():FindFirstChild("BattleCommand"), p, "Forfeit")
-	advance(0.5)
-	local r3 = w.find(id3)
-	local end3 = lastMsg(p, "End", m2)
-	T.check(r3 ~= nil and r3.Forfeit == true and contains(r3.Losers, p.UserId) and #r3.Winners == 0 and end3 and end3.Outcome == "Loss",
-		"p3 trial: BattleCommand('Forfeit') ends the trial as a loss (Forfeit = true)")
-	T.check(tokens(p) == tokens2 and record(p).TrialCleared[2] ~= true, "p3 trial: ...nothing is paid and level 2 is not cleared")
-	advance(4.5)
-	T.check(p:GetAttribute("InBattle") == nil and (K.root(p).Position - info.ReturnCFrame.Position).Magnitude < 12, "p3 trial: ...and the player is back at the portal")
-
-	-- slipping off the pocket puts the player back; a teleport away loses the trial
-	toPortal(p)
-	local ok4, id4 = bs.StartTrial(p, 2)
-	local zoneCF = bs.GetBattle(p) and bs.GetBattle(p).Zone.CFrame
-	if ok4 and zoneCF then
-		Mock.Teleport(p, zoneCF * CFrame.new(10, -40, 0))
-		advance(0.7)
-		T.check(bs.IsInBattle(p) and (K.root(p).Position - zoneCF.Position).Magnitude < 40 and w.find(id4) == nil,
-			"p3 trial: a player who slips off the pocket is put back on its spawn (the trial goes on)")
-		toLobby(p)
-		advance(1.5)
-		local r4 = w.find(id4)
-		T.check(r4 ~= nil and contains(r4.Losers, p.UserId) and not (r4.Rewards[p.UserId] and r4.Rewards[p.UserId].Tokens > 0),
-			"p3 trial: a player teleported away from the pocket loses the trial (no reward)")
-		advance(4.5)
-		T.check(p:GetAttribute("InBattle") == nil, "p3 trial: ...and is free again")
-	else
-		T.fail("p3 trial: (precondition) a second level-2 trial starts", tostring(id4))
-	end
-
-	-- tier copies and fused hybrids fight with their own stats (PetKeys.DefOf + the copy's level and tier)
-	local h = newPlayer("TrialTiers", nil)
-	local hprof = data.GetProfile(h)
-	local golden = STRONG[1] .. "@Golden"
-	hprof.Tiers[STRONG[1]] = { Golden = 1 }
-	hprof.Hybrids.bst1 = { Body = STRONG[2], Style = STRONG[3], Elements = {}, Name = "Testblend", Rarity = "Legendary", Tier = "Normal" }
-	hprof.Pets[WEAK[1]] = 1
-	hprof.PetLevels[golden] = { Level = 3, Xp = 0 }
-	data.MarkDirty(h)
-	local okT, whyT = data.SetTeam(h, 1, { golden, "hyb:bst1", WEAK[1] })
-	toPortal(h)
-	local mh = K.logSize()
-	local okH, idH = bs.StartTrial(h, 1)
-	local sh = lastMsg(h, "Start", mh)
-	local gUnit, hUnit = nil, nil
-	for _, u in ipairs(sh and sh.Units or {}) do
-		if u.owner == h.UserId and u.key == golden then
-			gUnit = u
-		elseif u.owner == h.UserId and u.key == "hyb:bst1" then
-			hUnit = u
-		end
-	end
-	local plain = bc.UnitStats(STRONG[1], 3, "Normal")
-	T.check(okT and okH and gUnit and gUnit.tier == "Golden" and gUnit.level == 3 and plain and gUnit.maxHp >= 1.4 * plain.MaxHp and hUnit and type(hUnit.look) == "table",
-		"p3 trial: a Golden copy (its level and x1.5 stats) and a fused hybrid (its own look) fight in the team",
-		gUnit and string.format("golden %s hp %s vs normal %.0f", tostring(gUnit.level), tostring(gUnit.maxHp), plain and plain.MaxHp or -1) or tostring(whyT or idH))
-	if okH then
-		bs.Forfeit(h)
-		advance(4.6)
-	end
-
-	-- the fail-safe: when the end of a battle fails, nobody stays stuck (BattleService.Debug injects the failure)
-	local f = newPlayer("TrialFail", STRONG)
-	toPortal(f)
-	bs.Debug = { FailEnd = 1 }
-	local mf = K.logSize()
-	local okF, idF = bs.StartTrial(f, 1)
-	waitEnded(w, idF, 130)
-	bs.Debug = nil
-	local rf = w.find(idF)
-	local endF = lastMsg(f, "End", mf)
-	local pocketsF = workspace:FindFirstChild("BattlePockets")
-	T.check(okF and rf ~= nil and rf.Reason == "Error" and w.count(idF) == 1 and endF and endF.Reason == "Error" and f:GetAttribute("InBattle") == nil
-		and not bs.IsInBattle(f) and (K.root(f).Position - info.ReturnCFrame.Position).Magnitude < 12 and (pocketsF == nil or #pocketsF:GetChildren() == 0),
-		"p3 trial: when the end of a battle fails, the fail-safe frees the player (back at the portal) and the pocket, says 'End' and fires BattleEnded once")
-	K.flushWarnings("p3 trial", { "injected end failure" })
-
-	-- a disconnect mid-trial: the battle ends once, the pocket is freed
-	local q = newPlayer("TrialQuit", STRONG)
-	toPortal(q)
-	local ok5, id5 = bs.StartTrial(q, 1)
-	advance(0.3)
-	Mock.RemovePlayer(q)
-	advance(0.5)
-	local r5 = w.find(id5)
-	T.check(ok5 and r5 ~= nil and w.count(id5) == 1 and contains(r5.Losers, q.UserId), "p3 trial: a disconnect mid-trial ends it as a loss (BattleEnded once)")
-	advance(4.5)
-	local left = false
-	for _, b in ipairs(bs.ListBattles()) do
-		if b.BattleId == id5 then
-			left = true
-		end
-	end
-	T.check(not left and (workspace:FindFirstChild("BattlePockets") == nil or #workspace.BattlePockets:GetChildren() == 0), "p3 trial: ...and its pocket is freed")
-	K.flushErrors("p3 trial")
-	w.stop()
-	cleanup({ p })
-	loudReplication()
-end)
-
-----------------------------------------------------------------------------------------------------
 -- scenario: duels (invites, the ring, spectators, rewards, forfeits, the pair limit, a disconnect)
 ----------------------------------------------------------------------------------------------------
 local function storedBattle(userId)
 	local key = K.config().Tokens.DataStoreName .. "/u_" .. userId
 	local rec = Mock.DataStore.Data[key]
 	return type(rec) == "table" and rec.Battle or nil
-end
-
--- keeps these players' teams RETREATing for `seconds` (a player team goes back to ATTACK by itself after
--- Damage.RetreatLock + RetreatAutoResume, so the order is given again every 2 s)
-local function holdBack(bs, list, seconds)
-	local left = seconds
-	while left > 0 do
-		for _, p in ipairs(list) do
-			bs.Command(p, "Retreat")
-		end
-		local step = math.min(2, left)
-		advance(step)
-		left = left - step
-	end
 end
 
 S.p3bs_duel = scenario("p3bs_duel", function()
@@ -835,9 +639,12 @@ S.p3bs_duel = scenario("p3bs_duel", function()
 	T.check(#battleMsgs(far, m4) == 0, "p3 duel: a player far away gets no battle traffic")
 	local okC, whyC = bs.Command(c, "Attack")
 	T.check(okC == false and whyC == "NoBattle", "p3 duel: a spectator cannot command anything", tostring(whyC))
-	-- the end
+	-- the end: both play (the characters walk in, ATTACK + the kit); a passive loser would make the win unpaid
 	local mEnd = m4
-	waitEnded(w, id, 130)
+	local ta, tb = drvTracker(a, m4), drvTracker(b, m4)
+	drvPlay({ ta, tb }, 130, function()
+		return w.find(id) ~= nil
+	end)
 	local r = w.find(id)
 	if T.check(r ~= nil and r.Mode == "Duel" and #r.Winners == 1 and #r.Losers == 1 and not r.Draw, "p3 duel: the duel ends with one winner and one loser", r and tostring(r.Reason) or "no end") then
 		local winner = (r.Winners[1] == a.UserId) and a or b
@@ -867,10 +674,17 @@ S.p3bs_duel = scenario("p3bs_duel", function()
 	data.AddTrophies(b, 100)
 	local tb100 = record(b).Trophies
 	local id2
+	local m4b = K.logSize()
 	ok, id2 = bs.StartDuel(a, b)
 	T.check(ok == true, "p3 duel: StartDuel(a, b) starts the next duel", tostring(id2))
 	advance(0.3)
-	holdBack(bs, { a }, 16) -- a holds back, b's team fights (a loser who dealt damage keeps the winner's rewards)
+	-- both fight for 16 s (b deals damage: a loser who dealt damage keeps the winner's rewards), then b forfeits
+	drvPlay({ drvTracker(a, m4b), drvTracker(b, m4b) }, 16, function()
+		return w.find(id2) ~= nil
+	end, { every = 6 })
+	if w.find(id2) then
+		T.info("*p3 duel: the 16 s fight ended by itself before the forfeit (" .. tostring(w.find(id2).Reason) .. ")")
+	end
 	local ta1 = tokens(a)
 	Mock.FromClient(K.remoteFolder():FindFirstChild("BattleCommand"), b, "Forfeit")
 	advance(0.5)
@@ -886,8 +700,7 @@ S.p3bs_duel = scenario("p3bs_duel", function()
 	-- an early forfeit: the win counts, but pays nothing (no farming with an alt that quits at once)
 	local id3
 	ok, id3 = bs.StartDuel(a, b)
-	advance(0.3)
-	holdBack(bs, { a, b }, 2)
+	advance(2.3) -- nobody moves: an early forfeit
 	local ta2, tra2, wins2 = tokens(a), record(a).Trophies, record(a).PvPWins
 	bs.Forfeit(b)
 	advance(0.5)
@@ -905,7 +718,9 @@ S.p3bs_duel = scenario("p3bs_duel", function()
 	ok, id4 = bs.StartDuel(a, b)
 	T.check(ok and toasted(a, "no trophies", m5), "p3 duel: the 4th duel of the same two players within 30 min is announced as trophy-free")
 	advance(0.3)
-	holdBack(bs, { a }, 17)
+	drvPlay({ drvTracker(a, m5), drvTracker(b, m5) }, 17, function()
+		return w.find(id4) ~= nil
+	end, { every = 6 })
 	local tbBefore = record(b).Trophies
 	local traBefore = record(a).Trophies
 	local bUser = b.UserId
@@ -1026,12 +841,18 @@ S.p3bs_raid = scenario("p3bs_raid", function()
 	T.check(bs.GetRaidStatus() == nil and okNo == false and type(whyNo) == "string", "p3 raid: no raid: GetRaidStatus nil, JoinRaid refused", tostring(whyNo))
 	endAnyRaid(bs)
 	T.check(startRaid("no_such_boss") == false, "p3 raid: an unknown boss is refused")
+	-- Phase 5: one fighter alone does not outlive the boss for a whole minute (its basics are a share of the fighter's HP),
+	-- so this scenario's raid has a shorter join window (the catalog knob, put back at the end)
+	local events = bc.Events
+	local savedWindow = events.JoinWindowSeconds
+	events.JoinWindowSeconds = 25
+	local window = 25
 	local ok, raidId = startRaid("storm_titan")
 	T.check(ok == true and type(raidId) == "string" and startRaid("lava_golem") == false, "p3 raid: StartRaid opens one raid at a time", tostring(raidId))
 	local st = bs.GetRaidStatus()
-	T.check(st and st.Active == true and st.Waiting == true and st.Joinable == true and st.BossId == "storm_titan" and st.Players == 0 and st.JoinEndsIn >= 59
-		and st.JoinEndsIn <= 60 and st.BattleId == raidId and type(st.Name) == "string",
-		"p3 raid: GetRaidStatus before anyone joined: { Active, Waiting, Joinable, BossId, Name, Players = 0, JoinEndsIn = 60 }")
+	T.check(st and st.Active == true and st.Waiting == true and st.Joinable == true and st.BossId == "storm_titan" and st.Players == 0 and st.JoinEndsIn >= window - 1
+		and st.JoinEndsIn <= window and st.BattleId == raidId and type(st.Name) == "string",
+		"p3 raid: GetRaidStatus before anyone joined: { Active, Waiting, Joinable, BossId, Name, Players = 0, JoinEndsIn = the join window }")
 	local okO, whyO = bs.JoinRaid(outsider)
 	T.check(okO == false and type(whyO) == "string" and whyO:find("Battle Arena") ~= nil, "p3 raid: a player outside the arena cannot join", tostring(whyO))
 	local mark = K.logSize()
@@ -1099,10 +920,10 @@ S.p3bs_raid = scenario("p3bs_raid", function()
 	toLobby(r3)
 	advance(1.5)
 	T.check(r3:GetAttribute("InBattle") == nil and bs.GetRaidStatus().Players == 1, "p3 raid: a fighter who leaves the arena is out of the raid")
-	-- the join window
+	-- the join window (r1 fights meanwhile: the boss must be hit for the Loss tier)
 	local late = newPlayer("RaidLate", WEAK)
 	toArena(late, 0, 8)
-	advance(60)
+	drvPlay({ drvTracker(r1, mark) }, window, nil, { every = 20 }) -- r1 fights on (a hit every 2 s) and dodges the telegraphs
 	local okL, whyL = bs.JoinRaid(late)
 	T.check(okL == false and type(whyL) == "string" and whyL:find("started") ~= nil, "p3 raid: JoinRaid is refused after the join window", tostring(whyL))
 	-- EndRaid: the fighters still in it lose by timeout; rewards once; Double Rewards pushed by EventService
@@ -1129,10 +950,11 @@ S.p3bs_raid = scenario("p3bs_raid", function()
 	-- a raid nobody joined closes at the end of its join window
 	endAnyRaid(bs)
 	local okN, idN = startRaid("lava_golem")
-	advance(61.5)
+	advance(window + 1.5)
 	local resN = idN and w.find(idN)
 	T.check(okN and resN and resN.Reason == "NoPlayers" and #resN.Winners == 0 and #resN.Losers == 0 and bs.GetRaidStatus() == nil,
 		"p3 raid: a raid nobody joined closes after the join window (BattleEnded, Reason NoPlayers)")
+	events.JoinWindowSeconds = savedWindow
 	cleanup({ r1, r2, r3, outsider, late })
 
 	-- a whole raid with three active teams (specials, retreat from telegraphs): rewards follow the damage tiers
@@ -1150,7 +972,9 @@ S.p3bs_raid = scenario("p3bs_raid", function()
 		tier.GemChance, tier.EventPetChance = 1, 1
 	end
 	local okW, idW = startRaid("storm_titan")
+	local heroTrs = {}
 	for i = 1, 3 do
+		heroTrs[i] = drvTracker(heroes[i])
 		bs.JoinRaid(heroes[i])
 	end
 	local before0, gems0 = {}, {}
@@ -1166,16 +990,11 @@ S.p3bs_raid = scenario("p3bs_raid", function()
 		specials = specials + #eventsOf(heroes[1], cursor, "Special")
 		local tele = eventsOf(heroes[1], cursor, "Telegraph")
 		telegraphs = telegraphs + #tele
-		if #tele > 0 then
-			for _, h in ipairs(heroes) do
-				bs.Command(h, "Retreat")
-			end
-		end
 		cursor = K.logSize()
-		for _, h in ipairs(heroes) do
-			bs.Command(h, "Attack")
-			for slot = 1, 3 do
-				bs.Command(h, "Special", slot)
+		for _, tr in ipairs(heroTrs) do
+			drvTick(tr, { every = 1 })
+			if #tele > 0 then
+				bs.Command(tr.p, "Dash")
 			end
 		end
 	end
@@ -1199,7 +1018,7 @@ S.p3bs_raid = scenario("p3bs_raid", function()
 		end
 		T.check(consistent and math.abs(sum - 1) < 0.01, "p3 raid: each fighter got the tier of their damage share (Tokens paid once)", table.concat(detail, " | "))
 		T.eq(w.count(idW), 1, "p3 raid: BattleEnded once for the full raid")
-		T.check(specials > 0 and telegraphs > 0, "p3 raid: the fighters' SPECIAL commands cast specials and the boss telegraphed its attacks",
+		T.check(specials > 0 and telegraphs > 0, "p3 raid: the fighters' SPECIAL presses cast specials and the boss telegraphed its attacks",
 			specials .. " specials, " .. telegraphs .. " telegraphs")
 		local eventIds = {}
 		for _, petId in ipairs(bc.EventPets()) do
@@ -1256,8 +1075,8 @@ S.p3bs_exploits = scenario("p3bs_exploits", function()
 	toArena(z, 0, 6)
 	local errs0 = #Mock.Errors
 	local teamBefore = table.concat(data.GetTeams(x).Presets[1], ",")
-	local junk = { 0, -1, 1.5, 0 / 0, math.huge, "x", string.rep("y", 300), {}, { 1, 2 }, { foo = "bar" }, true, Vector3.new(1, 2, 3) }
-	for _, action in ipairs({ "Attack", "Retreat", "Special", "Forfeit", 5, {}, string.rep("A", 100), "Teleport" }) do
+	local junk = { 0, -1, 1.5, 0 / 0, math.huge, "x", string.rep("y", 300), {}, { 1, 2 }, { 1, 2, 3 }, { x = 0 / 0, z = 1 }, { foo = "bar" }, true, Vector3.new(1, 2, 3) }
+	for _, action in ipairs({ "Attack", "Element", "Special", "Dash", "Target", "Buff", "Swap", "Forfeit", "Retreat", 5, {}, string.rep("A", 100), "Teleport", "Move" }) do
 		for _, arg in ipairs(junk) do
 			Mock.FromClient(cmd, x, action, arg)
 		end
@@ -1267,7 +1086,7 @@ S.p3bs_exploits = scenario("p3bs_exploits", function()
 		{ "TeamSet", 0, { "cloudy_dragon" } }, { "TeamSet", 4, {} }, { "TeamSet", 1.5, {} }, { "TeamSet", "1", {} }, { "TeamSet", 1, "x" },
 		{ "TeamSet", 1, { [9] = "cloudy_dragon" } }, { "TeamSet", 1, { 5 } }, { "TeamSet", 1, { {} } }, { "TeamSet", 1, { string.rep("k", 60) } },
 		{ "TeamSet", 1, { "a", "b", "c", "d", "e", "f", "g", "h", "i" } }, { "TeamSelect", 0 }, { "TeamSelect", 9 }, { "TeamSelect", "2" },
-		{ "Trial", nil }, { "Trial", 0 }, { "Trial", 31 }, { "Trial", 1.5 }, { "Trial", "1" }, { "Trial", 0 / 0 }, { "Trial", {} },
+		{ "Trial", 1 }, { "Ring", 0 / 0 }, { "Ring", {} }, { "Ring", "1" },
 		{ "Challenge", nil }, { "Challenge", -1 }, { "Challenge", 1.5 }, { "Challenge", "id" }, { "Challenge", x.UserId }, { "Challenge", 123456789 },
 		{ "ChallengeReply", nil, true }, { "ChallengeReply", y.UserId, "yes" }, { "ChallengeReply", "x", true }, { "ChallengeReply", y.UserId, nil },
 		{ "Nope", 1 }, { 7, 1 }, { string.rep("Q", 40) },
@@ -1290,9 +1109,7 @@ S.p3bs_exploits = scenario("p3bs_exploits", function()
 		loudReplication()
 		return
 	end
-	advance(0.3)
-	bs.Command(y, "Retreat") -- y's team holds back (the order is given again below: a player team resumes by itself)
-	advance(0.2) -- (its Order event goes out before the checks below look for orders)
+	advance(0.5)
 	local start = lastMsg(x, "Start", mark)
 	local ownId, enemyId = nil, nil
 	for _, u in ipairs(start and start.Units or {}) do
@@ -1303,28 +1120,26 @@ S.p3bs_exploits = scenario("p3bs_exploits", function()
 		end
 	end
 	local okA, whyA = bs.Command(x, "Attack", ownId)
-	T.check(okA == false and whyA == "BadTarget", "p3 exploits: focusing one of your own units is refused", tostring(whyA))
-	local okS9, whyS9 = bs.Command(x, "Special", 9)
-	local okS4, whyS4 = bs.Command(x, "Special", 4)
-	T.check(okS9 == false and whyS9 == "BadSlot" and okS4 == false and whyS4 == "BadSlot", "p3 exploits: a special for a slot you do not have (9, 4 with 3 pets) is refused")
+	T.check(okA == false and whyA == "BadTarget", "p3 exploits: attacking one of your own units is refused", tostring(whyA))
+	local okS9, whyS9 = bs.Command(x, "Buff", 9)
+	local okS4, whyS4 = bs.Command(x, "Swap", 4)
+	T.check(okS9 == false and whyS9 == "BadSlot" and okS4 == false and whyS4 == "BadSlot", "p3 exploits: a Buff / Swap for a slot you do not have (9, 4 with 3 pets) is refused")
 	local okI, whyI = bs.Command(x, "Attack", 999)
 	T.check(okI == false and whyI == "BadTarget", "p3 exploits: a unit id out of range is refused")
-	T.check(bs.Command(x, "Attack", enemyId) == true, "p3 exploits: focusing an enemy unit works")
+	T.check(bs.Command(x, "Target", enemyId) == true, "p3 exploits: locking an enemy unit works")
 	local m2 = K.logSize()
-	bs.Command(x, "Retreat")
+	bs.Command(x, "Target", enemyId)
 	advance(0.3)
 	local orders = eventsOf(y, m2, "Order")
-	local retreatSeen, foreign = false, false
+	local targetSeen, foreign = false, false
 	for _, ev in ipairs(orders) do
 		if ev.owner ~= x.UserId then
 			foreign = true
-		elseif ev.order == "Retreat" then
-			retreatSeen = true
+		elseif ev.order == "Target" then
+			targetSeen = true
 		end
 	end
-	T.check(retreatSeen and not foreign, "p3 exploits: a Retreat only orders the caller's own team (Order owner = the caller)")
-	advance(1.7)
-	bs.Command(y, "Retreat")
+	T.check(targetSeen and not foreign, "p3 exploits: a command only orders the caller's own team (Order owner = the caller)")
 	-- outside the zone (still inside the arena)
 	local padCF = K.root(x).CFrame
 	toArena(x, 0, 0)
@@ -1335,54 +1150,30 @@ S.p3bs_exploits = scenario("p3bs_exploits", function()
 	T.check(okZ == false and whyZ == "NotInZone" and toasted(x, "battle zone", m3), "p3 exploits: commands from outside the battle zone are refused (side toast)", tostring(whyZ))
 	Mock.Teleport(x, padCF)
 	advance(0.1)
-	-- spam
+	-- spam: 300 Target commands in one frame reach the sim at most 12 times (the cmd bucket; accepted Targets echo an Order)
+	advance(1.0)
 	local m4 = K.logSize()
 	for _ = 1, 300 do
-		Mock.FromClient(cmd, x, "Attack")
+		Mock.FromClient(cmd, x, "Target", enemyId)
 	end
 	advance(0.3)
 	local n = 0
 	for _, ev in ipairs(eventsOf(x, m4, "Order")) do
-		if ev.owner == x.UserId then
+		if ev.owner == x.UserId and ev.order == "Target" and not ev.rejected then
 			n = n + 1
 		end
 	end
-	T.check(n >= 1 and n <= 11, "p3 exploits: 300 commands in one frame reach the battle at most ~10 times (token bucket)", n .. " orders")
+	T.check(n >= 1 and n <= 12, "p3 exploits: 300 commands in one frame reach the battle at most 12 times (token bucket)", n .. " orders")
 	advance(0.4)
-	bs.Command(x, "Retreat")
-	bs.Command(y, "Retreat")
 	-- two battles at once
-	T.check(bs.StartTrial(x, 1) == false and bs.JoinRaid(x) == false and bs.Queue(x) == false and bs.Challenge(x, z) == false and bs.StartDuel(x, z) == false,
-		"p3 exploits: a player in a battle cannot start or join another (trial, raid, queue, challenge, duel)")
-	-- request spam: 50 Trial requests in one frame start one trial
-	toPortal(z)
-	for _ = 1, 50 do
-		Mock.FromClient(reqR, z, "Trial", 1)
-	end
-	advance(0.3)
-	local zTrials = 0
-	for _, b in ipairs(bs.ListBattles()) do
-		if b.Mode == "Trial" and contains(b.Players, z.UserId) then
-			zTrials = zTrials + 1
-		end
-	end
-	T.eq(zTrials, 1, "p3 exploits: 50 Trial requests in one frame start exactly one trial")
-	-- an obby match during a battle loses it
-	local zb = bs.GetBattle(z)
-	z:SetAttribute("InMatch", true)
-	-- the 2 Hz monitor drops z, the next 10 Hz tick ends the trial and sends End: up to ~0.7 s depending on the monitor's
-	-- phase (the earlier scenarios' fight lengths shift it), so wait two monitor ticks
-	advance(1.2)
-	local rz = zb and w.find(zb.BattleId)
-	T.check(rz ~= nil and contains(rz.Losers, z.UserId), "p3 exploits: a player pulled into an obby match loses the battle at once")
-	z:SetAttribute("InMatch", false)
-	advance(4.5)
-	-- the portal lock
+	T.check(bs.JoinRaid(x) == false and bs.Queue(x) == false and bs.Challenge(x, z) == false and bs.StartDuel(x, z) == false and bs.StartRing(x, 1) == false,
+		"p3 exploits: a player in a battle cannot start or join another (raid, queue, challenge, duel, ring)")
+	-- the portal lock (canBattle)
 	local v = newPlayer("Locked", WEAK)
-	toPortal(v)
+	toArena(v, 0, 10)
 	v:SetAttribute("PortalLocked", "Easy")
-	local okP, whyP = bs.StartTrial(v, 1)
-	T.check(okP == false and type(whyP) == "string" and whyP:find("portal party") ~= nil, "p3 exploits: a player locked in a portal party cannot start a trial", tostring(whyP))
+	local okP, whyP = bs.Queue(v)
+	T.check(okP == false and type(whyP) == "string" and whyP:find("portal party") ~= nil, "p3 exploits: a player locked in a portal party cannot start a battle", tostring(whyP))
 	v:SetAttribute("PortalLocked", nil)
 	-- teleport trick: a duellist teleported out of the arena forfeits
 	toLobby(y)
@@ -1390,6 +1181,19 @@ S.p3bs_exploits = scenario("p3bs_exploits", function()
 	local r = w.find(id)
 	T.check(r ~= nil and contains(r.Losers, y.UserId) and contains(r.Winners, x.UserId) and r.Forfeit == true,
 		"p3 exploits: a duellist who leaves the arena (teleported away) forfeits; the other wins")
+	-- an obby match during a battle loses it (a second duel x vs z)
+	advance(4.6)
+	toArena(x, 3, 0)
+	toArena(z, -3, 0)
+	local okZ2, idZ2 = bs.StartDuel(x, z)
+	advance(0.3)
+	z:SetAttribute("InMatch", true)
+	-- the 2 Hz monitor drops z, the next 10 Hz tick ends the duel and sends End: wait two monitor ticks
+	advance(1.2)
+	local rz = idZ2 and w.find(idZ2)
+	T.check(okZ2 and rz ~= nil and contains(rz.Losers, z.UserId) and contains(rz.Winners, x.UserId), "p3 exploits: a player pulled into an obby match loses the battle at once")
+	z:SetAttribute("InMatch", false)
+	advance(4.5)
 	-- rewards once after the end
 	local tx, ty = tokens(x), tokens(y)
 	local trx = record(x).Trophies
@@ -1433,45 +1237,38 @@ S.p3bs_net = scenario("p3bs_net", function()
 		end
 		return bytes / seconds, hz
 	end
-	-- a trial
-	local t1 = newPlayer("NetTrial", WEAK)
-	toPortal(t1)
-	bs.StartTrial(t1, 1)
-	advance(0.5)
-	local m = K.logSize()
-	advance(5)
-	local trialRate = rate(t1, m, 5)
-	-- a duel
+	-- a duel (both play)
 	local d1, d2 = newPlayer("NetDuel", MID), newPlayer("NetDuel", ALT)
 	toArena(d1, 3, 0)
 	toArena(d2, -3, 0)
+	local mD = K.logSize()
 	bs.StartDuel(d1, d2)
 	advance(0.5)
-	m = K.logSize()
-	advance(5)
+	local m = K.logSize()
+	drvPlay({ drvTracker(d1, mD), drvTracker(d2, mD) }, 5)
 	local duelRate, duelHz = rate(d1, m, 5)
 	-- an 8-player raid
 	endAnyRaid(bs)
 	local okR = holdRaidSchedule(bs)("shadow_hydra")
-	local raiders = {}
+	local raiders, raidTrs = {}, {}
 	local teams = { STRONG, MID, ALT, WEAK }
 	for i = 1, 8 do
 		raiders[i] = newPlayer("NetRaid", teams[(i - 1) % 4 + 1], 5)
 		toArena(raiders[i], (i - 4) * 3, 8)
+		raidTrs[i] = drvTracker(raiders[i])
 		bs.JoinRaid(raiders[i])
 	end
 	local far = newPlayer("NetFar", WEAK)
 	toLobby(far)
 	advance(2)
 	m = K.logSize()
-	advance(10)
+	drvPlay(raidTrs, 10)
 	local raidRate, raidHz = rate(raiders[1], m, 10)
 	local status = bs.GetRaidStatus()
-	T.info(string.format("*BattleState traffic per client (estimated): trial %.1f KB/s, duel %.1f KB/s, 8-player raid %.1f KB/s (%d teams)",
-		trialRate / 1000, duelRate / 1000, raidRate / 1000, status and status.Players or 0))
-	T.check(trialRate > 0 and trialRate < 8000, "p3 net: a trial stays under 8 KB/s per client", string.format("%.0f B/s", trialRate))
-	T.check(duelRate > 0 and duelRate < 8000, "p3 net: a duel stays under 8 KB/s per client", string.format("%.0f B/s", duelRate))
-	T.check(okR and raidRate > 0 and raidRate < 30000, "p3 net: an 8-player boss raid stays under 30 KB/s per client", string.format("%.0f B/s", raidRate))
+	T.info(string.format("*BattleState traffic per client (estimated): duel %.1f KB/s, 8-player raid %.1f KB/s (%d teams)",
+		duelRate / 1000, raidRate / 1000, status and status.Players or 0))
+	T.check(duelRate > 0 and duelRate < 6000, "p3 net: a played duel stays under 6 KB/s per client", string.format("%.0f B/s", duelRate))
+	T.check(okR and raidRate > 0 and raidRate < 6000, "p3 net: an 8-player boss raid with everyone playing stays under 6 KB/s per client (10.3)", string.format("%.0f B/s", raidRate))
 	T.check(duelHz >= 9 and duelHz <= 11 and raidHz >= 9 and raidHz <= 11, "p3 net: participants get ~10 snapshots per second", string.format("duel %.1f, raid %.1f", duelHz, raidHz))
 	T.check(#battleMsgs(far, mark0) == 0, "p3 net: a player far from every battle gets no battle traffic")
 	local stats = bs.GetNetStats()
@@ -1500,7 +1297,7 @@ S.p3bs_net = scenario("p3bs_net", function()
 	end
 	bs.EndRaid()
 	K.flushErrors("p3 net")
-	local all = { t1, d1, d2, far }
+	local all = { d1, d2, far }
 	for _, p in ipairs(raiders) do
 		all[#all + 1] = p
 	end

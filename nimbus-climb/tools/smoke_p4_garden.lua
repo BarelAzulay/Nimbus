@@ -983,16 +983,29 @@ S.p4garden_coins = guarded("p4garden_coins", function()
 	local luckies = (live - count * poop8) / ((Cat.Coins.LuckyMult - 1) * poop8)
 	T.check(count >= 20 and near(luckies, floor(luckies + 0.5), 1e-6) and luckies >= 1 and luckies <= count * 0.5,
 		"p4 garden: Lucky poops are worth x5 (over " .. count .. " poops: " .. string.format("%.0f", luckies) .. " Lucky)")
+	advance(2.1) -- the throttled CoinDrops write (<= 0.5 / s) lands
 	local starsOk, anyStar = true, false
 	text = dropsText(info)
-	for _, d in ipairs(Ty.Drops(p) or {}) do
-		local needle = tostring(d.Cycle) .. ":" .. tostring(d.Stage) .. "*"
-		local inText = text:find(needle, 1, true) ~= nil
-		if d.Lucky ~= inText then
-			starsOk = false
+	local listed = {} -- [slot] = { [cycle] = "stage[*]" }
+	for part in text:gmatch("[^;]+") do
+		local slot, items = part:match("^(%d+)=(.*)$")
+		if slot then
+			listed[tonumber(slot)] = {}
+			for cycle, rest in items:gmatch("(%d+):([%d%*]+)") do
+				listed[tonumber(slot)][tonumber(cycle)] = rest
+			end
 		end
-		if d.Lucky then
-			anyStar = true
+	end
+	for _, d in ipairs(Ty.Drops(p) or {}) do
+		if d.Poops >= 1 then
+			local entry = listed[d.Slot] and listed[d.Slot][d.Cycle]
+			local inText = entry ~= nil and entry:sub(-1) == "*"
+			if entry == nil or d.Lucky ~= inText or tonumber(entry:match("^%d+")) ~= d.Stage then
+				starsOk = false
+			end
+			if d.Lucky then
+				anyStar = true
+			end
 		end
 	end
 	T.check(starsOk and anyStar, "p4 garden: a drop with a Lucky poop inside shows '*' in CoinDrops (" .. text .. ")")

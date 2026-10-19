@@ -2220,7 +2220,210 @@ end)
 ----------------------------------------------------------------------
 
 -- [owner: neonkit] begin
--- (the Neon widget gallery: NeonKit Card / Tile / Pill / Button / Orb / Dock at 4 sizes; the HUD pills + stamina ticks)
+-- The Neon kit (Phase 5, 6.6): `neon[:<view>]`
+--   gallery (default)  no game UI: the 21.png tile grid (2 x 3 + Stats / Settings), NeonKit pills / buttons / card, the
+--                      re-skinned CloudUI widgets (buttons, pills, bar, slots)
+--   window             the lobby HUD + a CloudUI.Panel (Category "Pets", 820 x 900) docked by NeonKit.Dock (the window
+--                      rule: right side panel / bottom sheet) with tabs and a slot grid; the hotbar avoids it
+--   hud                the lobby HUD with Cash / Gems / Tokens, stamina at 60% (the 4 dash ticks) and a dash cooling
+--   party              the HUD with the Obby portal party panel (level row "Hard" + stars, CHANGE chip: you lead)
+local NK = {}
+function NK.hideGame()
+	for _, g in ipairs(LocalPlayer.PlayerGui:GetChildren()) do
+		if g:IsA("ScreenGui") then
+			g.Enabled = false
+		end
+	end
+end
+function NK.newGui(name)
+	local CloudUI = req("client/UI/CloudUI")
+	local g = CloudUI.NewScreenGui(name, 30)
+	local root = Instance.new("Frame")
+	root.Name = "Root"
+	root.BackgroundTransparency = 1
+	root.Size = UDim2.fromScale(1, 1)
+	root.Parent = g
+	return g, root, CloudUI
+end
+function NK.gallery()
+	local NeonKit = req("client/UI/NeonKit")
+	local Theme = req("shared/Theme")
+	NK.hideGame()
+	local g, root, CloudUI = NK.newGui("NeonGallery")
+	local vp = Mock.Viewport
+	local portrait = vp.Y > vp.X
+	local phone = math.min(vp.X, vp.Y) <= 500
+	local f = Theme.ScreenFactor(vp.Y)
+	local T = phone and math.floor((portrait and 66 or 54) / f + 0.5) or 84 -- the contract's on-screen tile px
+	-- the tile grid (MenuController's future left column, careui W3)
+	local grid = Instance.new("Frame")
+	grid.Name = "TileGrid"
+	grid.BackgroundTransparency = 1
+	grid.Position = UDim2.fromOffset(16, 16)
+	grid.Size = UDim2.fromOffset(2 * T + 12, 3 * (T + 12) + T * 0.62)
+	grid.Parent = root
+	local s = Instance.new("UIScale")
+	s.Scale = f
+	s.Parent = grid
+	local tiles = { { "Pets", "Pets" }, { "Items", "Items" }, { "Team", "Team" }, { "Index", "Index" }, { "Shop", "Shop" }, { "Home", "Home" } }
+	for i, t in ipairs(tiles) do
+		NeonKit.Tile({
+			Name = "Tile_" .. t[1], Size = T, Color = t[2], Icon = t[1], Label = t[1], Badge = (t[1] == "Index"),
+			Position = UDim2.fromOffset(((i - 1) % 2) * (T + 12), math.floor((i - 1) / 2) * (T + 12)), Parent = grid,
+		})
+	end
+	local small = math.floor(T * 0.62 + 0.5)
+	for j, t in ipairs({ "Stats", "Settings" }) do
+		NeonKit.Tile({ Name = "Small_" .. t, Size = small, Color = t, Icon = t, Position = UDim2.fromOffset((j - 1) * (small + 10), 3 * (T + 12)), Parent = grid })
+	end
+	-- the samples column (right of the grid in landscape, under it in portrait)
+	local col = Instance.new("Frame")
+	col.Name = "Samples"
+	col.BackgroundTransparency = 1
+	local gx = 16 + (2 * T + 12) * f + 24
+	if portrait then
+		col.Position = UDim2.fromOffset(16, 16 + (3 * (T + 12) + small) * f + 20)
+		col.Size = UDim2.fromOffset((vp.X - 32) / 0.56, 1400)
+	else
+		col.Position = UDim2.fromOffset(gx, 16)
+		col.Size = UDim2.fromOffset(math.min(980, (vp.X - gx - 16) / f), 1200)
+	end
+	col.Parent = root
+	local cs = Instance.new("UIScale")
+	cs.Scale = portrait and 0.56 or f
+	cs.Parent = col
+	local list = Instance.new("UIListLayout")
+	list.Padding = UDim.new(0, 14)
+	list.SortOrder = Enum.SortOrder.LayoutOrder
+	list.Parent = col
+	local function row(name, order, h)
+		local r = Instance.new("Frame")
+		r.Name = name
+		r.BackgroundTransparency = 1
+		r.LayoutOrder = order
+		r.Size = UDim2.new(1, 0, 0, h)
+		r.Parent = col
+		local l = Instance.new("UIListLayout")
+		l.FillDirection = Enum.FillDirection.Horizontal
+		l.Padding = UDim.new(0, 18)
+		l.VerticalAlignment = Enum.VerticalAlignment.Center
+		l.SortOrder = Enum.SortOrder.LayoutOrder
+		l.Parent = r
+		return r
+	end
+	local r1 = row("Pills", 1, 52)
+	NeonKit.Pill({ Name = "Pill_Cash", Text = "12.4K", Glyph = "$", Color = "Green", Size = 200, LayoutOrder = 1, Parent = r1 })
+	NeonKit.Pill({ Name = "Pill_Tokens", Text = "1,250", Glyph = "\226\152\129", Color = "Gold", Size = 200, LayoutOrder = 2, Parent = r1 })
+	NeonKit.Pill({ Name = "Pill_Gems", Text = "85", Glyph = "\226\151\134", Color = "Cyan", Size = 200, LayoutOrder = 3, Parent = r1 })
+	local r2 = row("NeonButtons", 2, 66)
+	NeonKit.Button({ Name = "Play", Text = "\226\150\182  PLAY", Color = "Green", Size = UDim2.fromOffset(240, 64), TextSize = 30, LayoutOrder = 1, Parent = r2 })
+	NeonKit.Button({ Name = "Settings", Text = "SETTINGS", Variant = "Outline", Color = "Blue", Size = UDim2.fromOffset(220, 52), LayoutOrder = 2, Parent = r2 })
+	local locked = NeonKit.Button({ Name = "Locked", Text = "LOCKED", Color = "Purple", Size = UDim2.fromOffset(180, 52), LayoutOrder = 3, Parent = r2 })
+	locked:SetAttribute("Disabled", true)
+	local r3 = row("CloudButtons", 3, 52)
+	for i, st in ipairs({ "Green", "Blue", "Red", "Gold", "Pink" }) do
+		CloudUI.Button({ Text = st, Style = st, Size = UDim2.fromOffset(130, 46), LayoutOrder = i, Parent = r3 })
+	end
+	local r4 = row("CloudPills", 4, 34)
+	for i, k in ipairs(portrait and { "info", "good", "bad", "Epic" } or { "info", "good", "bad", "token", "Epic", "Legendary" }) do
+		local pill = CloudUI.Pill(k, k, r4)
+		pill.LayoutOrder = i
+	end
+	local r5 = row("Slots", 5, 84)
+	local Config = req("shared/Config")
+	local infos = {
+		nil,
+		{ Glyph = "\240\159\141\147", Name = "Berry", RarityColor = Config.Rarities[1].Color },
+		{ Glyph = "\226\156\168", Name = "Spark", RarityColor = Config.Rarities[4].Color },
+		{ Glyph = "\240\159\155\161\239\184\143", Name = "Shield", RarityColor = Config.Rarities[5].Color },
+	}
+	for i = 1, 4 do
+		local slot = CloudUI.Slot({ Size = UDim2.fromOffset(78, 78), Hotkey = tostring(i), LayoutOrder = i, Parent = r5 })
+		slot.SetContent(infos[i])
+		if i == 3 then
+			slot.SetCount(3)
+		end
+		if i == 4 then
+			slot.SetSelected(true)
+		end
+	end
+	local bar = CloudUI.Bar({ Size = UDim2.fromOffset(240, 26), Color = Theme.Neon.Green, Label = "65 / 100", LayoutOrder = 6, Parent = r5 })
+	bar.SetFraction(0.65)
+	local r6 = row("Cards", 6, 130)
+	local card = NeonKit.Card({ Name = "SampleCard", Size = UDim2.fromOffset(300, 116), Color = "Purple", LayoutOrder = 1, Parent = r6 })
+	local title = Theme.Label("Neon Card", "Title", { Size = 28, Outline = 2.5, OutlineColor = Theme.Colors.PanelInk,
+		Props = { Position = UDim2.fromOffset(18, 12), Size = UDim2.new(1, -36, 0, 34), TextXAlignment = Enum.TextXAlignment.Left } })
+	title.Parent = card.Body
+	local body = Theme.Label("Dark navy, a glowing border, a soft floor glow.", "Body", { Size = 18, Color = Theme.Colors.Muted,
+		Props = { Position = UDim2.fromOffset(18, 50), Size = UDim2.new(1, -36, 0, 52), TextWrapped = true, TextXAlignment = Enum.TextXAlignment.Left, TextYAlignment = Enum.TextYAlignment.Top } })
+	body.Parent = card.Body
+	for i, c in ipairs({ "Orange", "Cyan", "Pink" }) do
+		local holder = NeonKit.Card({ Name = "Orb_" .. c, Size = UDim2.fromOffset(96, 116), Color = c, LayoutOrder = 1 + i, Parent = r6 })
+		NeonKit.Orb(holder.Body, c, 64).Position = UDim2.fromScale(0.5, 0.5)
+		NeonKit.Icon(holder.Body, ({ "Fusion", "Altar", "Ring" })[i], 40)
+	end
+	advance(0.5)
+end
+function NK.window()
+	local NeonKit = req("client/UI/NeonKit")
+	local Theme = req("shared/Theme")
+	LocalPlayer:SetAttribute(Config.Attr.Cash, 12400)
+	LocalPlayer:SetAttribute(Config.Attr.Gems, 85)
+	advance(0.6)
+	local g, root, CloudUI = NK.newGui("NeonWindow")
+	g.DisplayOrder = 20
+	local panel = CloudUI.Panel({ Name = "PetsPanel", Title = "PETS", Category = "Pets", Closable = true, Size = UDim2.fromOffset(820, 900), Parent = root })
+	local dock = NeonKit.Dock(panel.Root, nil, 820, 900, 520, 420)
+	local sub = Theme.Label("Equipped 3 / 3   \226\128\162   Team power 1,284", "Label", { Size = 18, Color = Theme.Colors.Muted,
+		Props = { Position = UDim2.fromOffset(14, 8), Size = UDim2.new(1, -28, 0, 24), TextXAlignment = Enum.TextXAlignment.Left } })
+	sub.Parent = panel.Content
+	local tabs = CloudUI.Tabs({ Position = UDim2.fromOffset(12, 40), Size = UDim2.new(1, -24, 1, -52), Color = "Pets", Parent = panel.Content })
+	local Config2 = req("shared/Config")
+	tabs.Add("Pets", function(page)
+		local gridFrame = CloudUI.Grid(page, 118, 12)
+		for i = 1, 14 do
+			local r = Config2.Rarities[((i - 1) % #Config2.Rarities) + 1]
+			local slot = CloudUI.Slot({ Size = UDim2.fromOffset(118, 118), LayoutOrder = i, Parent = gridFrame })
+			slot.SetContent({ Glyph = ({ "\240\159\144\182", "\240\159\144\177", "\240\159\144\137", "\240\159\144\178" })[(i - 1) % 4 + 1], Name = "Pet " .. i, RarityColor = r.Color })
+			if i <= 3 then
+				slot.SetMarker("\226\152\133")
+			end
+		end
+	end)
+	tabs.Add("Items", function() end)
+	tabs.Add("Index", function() end)
+	local hotbar = req("client/Controllers/HotbarController", true)
+	if hotbar and type(hotbar.SetAvoidRight) == "function" and dock.Rect and dock.Rect.mode == "Side" then
+		hotbar.SetAvoidRight(dock.Rect.x)
+	end
+	advance(0.8)
+end
+function NK.hud()
+	LocalPlayer:SetAttribute(Config.Attr.Cash, 12400)
+	LocalPlayer:SetAttribute(Config.Attr.Gems, 85)
+	advance(0.5)
+	local maxSt = (Config.Physics and Config.Physics.MaxStamina) or 150
+	LocalPlayer:SetAttribute(Config.Attr.Stamina, maxSt * 0.6)
+	advance(1.5)
+end
+function NK.party()
+	local hard = Config.GetDifficulty and Config.GetDifficulty("Hard") or nil
+	toClient("PartyState", {
+		PortalId = "Obby", Level = "Hard", Stars = hard and hard.Stars or 3, LeaderUserId = LocalPlayer.UserId,
+		DifficultyName = hard and hard.DisplayName or "Hard", Color = hard and hard.Color or nil,
+		Players = { { UserId = LocalPlayer.UserId, Name = LocalPlayer.Name }, { UserId = 77, Name = "Buddy" } },
+		Max = 4, Countdown = 12, Locked = true,
+	})
+	advance(1.2)
+end
+scenario("neon", function(view)
+	view = (view and view ~= "") and view or "gallery"
+	local fn = NK[view]
+	if type(fn) ~= "function" or view == "hideGame" or view == "newGui" then
+		fail("usage: neon[:gallery|window|hud|party]")
+	end
+	fn()
+end)
 -- [owner: neonkit] end
 
 -- [owner: battleclient] begin

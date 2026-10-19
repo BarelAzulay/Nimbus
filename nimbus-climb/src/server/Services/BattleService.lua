@@ -944,7 +944,19 @@ local function startPayload(b, player, spectator)
 		-- the receiver's own team: fighter / bench ids, lives, the legal speeds (SetBattleSpeed) and the cooldowns
 		local okT, team = pcall(b.Sim.TeamOf, b.Sim, part.UserId)
 		if okT and type(team) == "table" then
-			d.Team = { Fighter = team.Fighter, Bench = team.Bench, Lives = team.Lives, Speed = team.Speed, Cooldowns = team.Cooldowns }
+			-- (Cooldowns.Buff is keyed by slot 2 / 3: string keys on the wire, like Names; a sparse array would not survive the remote)
+			local cds = type(team.Cooldowns) == "table" and team.Cooldowns or {}
+			local buff = {}
+			for slot, secs in pairs(type(cds.Buff) == "table" and cds.Buff or {}) do
+				buff[tostring(slot)] = secs
+			end
+			d.Team = {
+				Fighter = team.Fighter,
+				Bench = team.Bench,
+				Lives = team.Lives,
+				Speed = team.Speed,
+				Cooldowns = { Element = cds.Element, Dash = cds.Dash, Swap = cds.Swap, Buff = buff },
+			}
 		end
 	end
 	return d

@@ -19,6 +19,8 @@
 --   DashFx(userId)                -> a cheap puff + trail on that player's character (own dashes are ignored,
 --                                    MovementController already shows those).
 --
+-- v5 (Phase 5, contract 6.6): the toasts are neon pills (the Neon kit: dark navy, a glowing border in the kind's
+-- colour, a dark orb with the kind glyph, GothamBlack text); the result card is a Neon CloudUI.Panel.
 -- The GUI is "NimbusNotify" (display order 30, IgnoreGuiInset = false). Sizes follow the v3 readability rule:
 -- panels are designed in 1080p pixels and carry a UIScale of Theme.ScreenFactor() (same as the HUD), inside
 -- full-screen holder frames whose UIPadding is the screen margin, so scaling never detaches them from the edge.
@@ -411,6 +413,11 @@ local function resultPosition(xScale, panelHeight)
 		-- keep clear of a top-right currency stack on short screens
 		local floorY = hudValue("TopRightBottom") + HUD_GAP + half
 		local y = (vp.Y - topInset()) * RESULT_Y
+		-- v5: a short screen lifts the card so it never covers the touch RUN / DASH / jump buttons below it
+		local lowest = bottomLimitFor(cardLeft, vp.X - side) - half
+		if y > lowest then
+			return UDim2.new(xScale, 0, 0, math.floor(math.max(math.min(floorY, lowest), EDGE + half)))
+		end
 		if y >= floorY then
 			return UDim2.new(xScale, 0, RESULT_Y, 0)
 		end
@@ -499,7 +506,8 @@ local function setToastAlpha(toast, a, seconds)
 	local goals = {
 		{ toast.Card, { BackgroundTransparency = TOAST_BG + (1 - TOAST_BG) * a } },
 		{ toast.Stroke, { Transparency = a } },
-		{ toast.Accent, { BackgroundTransparency = a } },
+		{ toast.GlowStroke, { Transparency = 0.7 + 0.3 * a } },
+		{ toast.Accent, { BackgroundTransparency = 0.78 + 0.22 * a } },
 		{ toast.Label, { TextTransparency = a, TextStrokeTransparency = 0.3 + 0.7 * a } },
 		{ toast.Icon, { BackgroundTransparency = a } },
 		{ toast.IconStroke, { Transparency = a } },
@@ -586,15 +594,17 @@ local function buildToast(text, kind)
 		AutomaticSize = Enum.AutomaticSize.Y,
 		LayoutOrder = -toastSerial, -- newest on top
 	})
+	-- v5: a neon pill: the dark navy card fill, the kind colour as a glowing border (+ a faint outer glow ring)
 	local card = newFrame(slot, "Toast", {
 		Position = UDim2.new(0, TOAST_W + 40, 0, 0),
 		Size = UDim2.new(1, 0, 0, 0),
 		AutomaticSize = Enum.AutomaticSize.Y,
 		BackgroundTransparency = 1,
-		BackgroundColor3 = Colors.Panel,
+		BackgroundColor3 = WHITE,
 	})
-	Theme.Corner(card, UDim.new(0, 12))
-	local stroke = Theme.Stroke(card, Theme.Darken(color, 0.25), 2.5, 1)
+	Theme.Corner(card, UDim.new(0, 18))
+	Theme.Gradient(card, Colors.PanelTop or Colors.Panel, Colors.PanelBottom or Colors.Panel, 90)
+	local stroke = Theme.Stroke(card, color, 2.5, 1)
 	Util.Create("UISizeConstraint", { MinSize = Vector2.new(0, 44), Parent = card })
 	local pad = Instance.new("UIPadding")
 	pad.PaddingTop = UDim.new(0, 8)
@@ -603,25 +613,36 @@ local function buildToast(text, kind)
 	pad.PaddingRight = UDim.new(0, 10)
 	pad.Parent = card
 
-	-- coloured accent bar at the left edge (inside the padding box, pulled out towards the card edge)
+	-- the outer glow ring (outside the padding box: pulled out by the padding)
+	local glow = newFrame(card, "Glow", {
+		Position = UDim2.new(0, -17, 0, -11),
+		Size = UDim2.new(1, 30, 1, 22),
+	})
+	Theme.Corner(glow, UDim.new(0, 21))
+	local glowStroke = Theme.Stroke(glow, color, 4, 1)
+	-- the kind colour glowing up from the floor of the pill (the neon "floor")
 	local accent = newFrame(card, "Accent", {
-		AnchorPoint = Vector2.new(0, 0.5),
-		Position = UDim2.new(0, -10, 0.5, 0),
-		Size = UDim2.fromOffset(5, TOAST_ICON),
+		AnchorPoint = Vector2.new(0, 1),
+		Position = UDim2.new(0, -11, 1, 5),
+		Size = UDim2.new(1, 18, 0.55, 0),
 		BackgroundTransparency = 1,
 		BackgroundColor3 = color,
 	})
-	round(accent)
+	Theme.Corner(accent, UDim.new(0, 14))
+	local fade = Instance.new("UIGradient")
+	fade.Rotation = 90
+	fade.Transparency = NumberSequence.new(1, 0)
+	fade.Parent = accent
 
 	local icon = newFrame(card, "Icon", {
 		AnchorPoint = Vector2.new(0, 0.5),
 		Position = UDim2.new(0, 0, 0.5, 0),
 		Size = UDim2.fromOffset(TOAST_ICON, TOAST_ICON),
 		BackgroundTransparency = 1,
-		BackgroundColor3 = Theme.Darken(color, 0.1),
+		BackgroundColor3 = Theme.Darken(color, 0.45),
 	})
 	round(icon)
-	local iconStroke = Theme.Stroke(icon, Theme.Darken(color, 0.55), 2, 1)
+	local iconStroke = Theme.Stroke(icon, color, 2, 1)
 	local glyph = newText(icon, "Glyph", KIND_GLYPH[kindName] or "i", "Heading", 18, WHITE, {
 		TextXAlignment = Enum.TextXAlignment.Center,
 		TextTransparency = 1,
@@ -642,7 +663,7 @@ local function buildToast(text, kind)
 	return {
 		Slot = slot, Card = card, Stroke = stroke, Accent = accent, Icon = icon, IconStroke = iconStroke,
 		IconGlyph = glyph, Label = label, Text = text, Kind = kindName, Count = 1, Dead = false, Expiry = 0,
-		Color = color,
+		Color = color, Glow = glow, GlowStroke = glowStroke,
 	}
 end
 

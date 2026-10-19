@@ -149,11 +149,151 @@ local function positionOf(thing)
 	return ok and typeof(cf) == "CFrame" and cf.Position or nil
 end
 
--- where BattleService accepts ring starts: ArenaInfo.RingPortal, else the Portal_Ring model, else the Trial Portal
+-- where BattleService accepts ring starts: ArenaInfo.RingPortal, else the Portal_Ring model
 local function ringPortalPos()
 	local info = arenaInfo()
-	return positionOf(info and info.RingPortal) or positionOf(workspace:FindFirstChild("Portal_Ring", true)) or (info and info.TrialPortal and info.TrialPortal.Position)
+	return positionOf(info and info.RingPortal) or positionOf(workspace:FindFirstChild("Portal_Ring", true))
 end
+
+local function req(path)
+	return requireAt(path)
+end
+
+----------------------------------------------------------------------------------------------------
+-- [Phase 5 driver] the client-side picture of a battle (BattleSim.DecodeSnapshot of the player's own messages) and a
+-- fighter that walks its CHARACTER toward the nearest enemy at the legal run speed and presses ATTACK (B1: the
+-- character is the fighter's body; a passive player deals no damage any more)
+----------------------------------------------------------------------------------------------------
+local DRV_DOWN, DRV_BENCHED = 5, 3
+
+local function drvTracker(p, mark)
+	return { p = p, cursor = mark or K.logSize(), static = {}, units = {}, ends = {}, ticks = 0, zone = nil, side = nil, fighter = nil, id = nil, start = nil, speed = nil }
+end
+
+local function drvPump(tr)
+	local Sm = req("shared/BattleSim")
+	local log = Mock.RemoteLog
+	local uid = tr.p.UserId
+	for i = tr.cursor + 1, #log do
+		local e = log[i]
+		if e.remote == "BattleState" and e.kind == "client" and e.userId == uid then
+			local kind, payload = e.args[1], e.args[2]
+			if kind == "Start" and type(payload) == "table" and payload.Spectator ~= true then
+				tr.start, tr.id = payload, payload.BattleId
+				tr.zone = payload.Zone and payload.Zone.CFrame
+				tr.side = payload.Side
+				tr.static, tr.units = {}, {}
+				for _, u in ipairs(payload.Units or {}) do
+					tr.static[u.id] = u
+				end
+				tr.fighter = payload.Team and payload.Team.Fighter
+				tr.speed = payload.Team and payload.Team.Speed
+			elseif kind == "Snapshot" and type(payload) == "table" and payload.BattleId == tr.id and Sm then
+				tr.units = Sm.DecodeSnapshot(payload, tr.units)
+			elseif kind == "Events" and type(payload) == "table" and e.args[3] == tr.id then
+				for _, ev in ipairs(payload) do
+					if (ev.type == "Spawn" or ev.type == "Wave") and type(ev.units) == "table" then
+						for _, u in ipairs(ev.units) do
+							tr.static[u.id] = u
+						end
+					elseif ev.type == "Swap" and ev.owner == uid then
+						tr.fighter = ev["in"]
+					elseif ev.type == "Speed" and ev.owner == uid then
+						tr.speed = { Walk = ev.walk, Run = ev.run }
+					elseif ev.type == "Telegraph" then
+						tr.telegraphAt = Mock.Clock.now
+					end
+				end
+			elseif kind == "End" and type(payload) == "table" and payload.Spectator ~= true and payload.BattleId == tr.id then
+				tr.ends[#tr.ends + 1] = payload
+			end
+		end
+	end
+	tr.cursor = #log
+end
+
+local function drvMyPos(tr)
+	local u = tr.fighter and tr.units[tr.fighter]
+	if u then
+		return u.x, u.z
+	end
+	return nil
+end
+
+local function drvNearest(tr)
+	local fx, fz = drvMyPos(tr)
+	if not fx then
+		return nil
+	end
+	local best, bestD, bestS = nil, math.huge, nil
+	for id, u in pairs(tr.units) do
+		local s = tr.static[id]
+		if s and s.side ~= tr.side and u.state ~= DRV_DOWN and u.state ~= DRV_BENCHED and (u.hp == nil or u.hp > 0) then
+			local d = math.sqrt((u.x - fx) ^ 2 + (u.z - fz) ^ 2)
+			if d < bestD then
+				best, bestD, bestS = id, d, s
+			end
+		end
+	end
+	return best, bestD, bestS
+end
+
+-- one 0.1 s tick: walk toward the nearest enemy (stop inside the reach), press ATTACK every `every` ticks (3 = ~3/s),
+-- Element + Special once per second when opts.kit
+local function drvTick(tr, opts)
+	opts = opts or {}
+	local bs = BS()
+	drvPump(tr)
+	if not tr.id or not tr.p.Parent then
+		return nil
+	end
+	local id, dist, s = drvNearest(tr)
+	if not id then
+		return nil
+	end
+	tr.ticks = tr.ticks + 1
+	local run = (tr.speed and tr.speed.Run) or 16
+	local mine = tr.static[tr.fighter] or {}
+	local reach = (tonumber(mine.range) or 4.5) + (tonumber(s.radius) or 1) + 1
+	local u = tr.units[id]
+	local root = K.root(tr.p)
+	if opts.move ~= false and root and tr.zone and dist > reach - 1 then
+		local rel = tr.zone:PointToObjectSpace(root.Position)
+		local dx, dz = u.x - rel.X, u.z - rel.Z
+		local d = math.sqrt(dx * dx + dz * dz)
+		if d > 0.01 then
+			local travel = math.min(run * 0.1, d)
+			Mock.Teleport(tr.p, CFrame.new(tr.zone:PointToWorldSpace(Vector3.new(rel.X + dx / d * travel, 3, rel.Z + dz / d * travel))))
+		end
+	end
+	if opts.attack ~= false and tr.ticks % (opts.every or 3) == 0 then
+		bs.Command(tr.p, "Attack", id)
+	end
+	if tr.telegraphAt and Mock.Clock.now - tr.telegraphAt < 0.25 and opts.dodge ~= false then
+		bs.Command(tr.p, "Dash") -- a boss telegraph: the i-frames dodge it
+	end
+	if opts.kit ~= false and tr.ticks % 10 == 0 then
+		bs.Command(tr.p, "Element")
+		bs.Command(tr.p, "Special")
+	end
+	return id
+end
+
+-- plays every tracked fighter (a list of trackers) until `seconds` pass or stopFn(trs) is true; -> true when stopped early
+local function drvPlay(trs, seconds, stopFn, opts)
+	local t0 = Mock.Clock.now
+	while Mock.Clock.now - t0 < seconds do
+		advance(0.1)
+		for _, tr in ipairs(trs) do
+			drvTick(tr, opts)
+		end
+		if stopFn and stopFn(trs) then
+			return true
+		end
+	end
+	return false
+end
+
 
 -- a strong pet, a team of one, a claimed home, the player at the Champion Ring portal
 local function climber(p)
@@ -186,14 +326,17 @@ local function winOneRoundAndSave(p, uid, label)
 	if not T.check(climber(p), label .. ": (precondition) a strong pet, a claimed home, the player at the ring portal") then
 		return false
 	end
+	local mark = K.logSize()
 	local ok, why = bs.StartRing(p, 1)
 	if not T.check(ok == true, label .. ": (setup) the ring run starts", tostring(why)) then
 		return false
 	end
+	local tr = drvTracker(p, mark)
 	local t0 = Mock.Clock.now
 	local g = nil
 	while Mock.Clock.now - t0 < 60 do
 		advance(0.1)
+		drvTick(tr, { every = 5, kit = false }) -- Phase 5: the climber plays round 1
 		g = bs.GetBattle(p)
 		if g and g.State == "Intermission" then
 			break

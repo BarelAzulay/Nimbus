@@ -272,7 +272,8 @@ S.client_polish_vitals = guarded("client_polish_vitals", function()
 	-- 1. the look: chunky outlined plate, thick outlined tubes with a gradient fill + highlight strip, shapes not glyphs
 	local plateStroke = c.CardStroke
 	T.check(plateStroke ~= nil and plateStroke.Thickness >= 3 and c.Card:FindFirstChildOfClass("UICorner") ~= nil and c.Card:FindFirstChildOfClass("UIGradient") ~= nil,
-		"vitals: the card is a rounded glossy plate with a thick dark outline")
+		"vitals: the card is a rounded dark navy plate with a thick neon border")
+	T.check(sameColor(plateStroke.Color, Theme.Neon.Green, 0.01), "vitals: full health: the neon border is green (v5)", tostring(plateStroke.Color))
 	local k = scaleOf(c.Hp)
 	T.check(c.Hp.AbsoluteSize.Y / k >= 34 and strokeOf(c.Hp) ~= nil and strokeOf(c.Hp).Thickness >= 3, "vitals: the HP tube is thick (>= 34 design px) with a rounded dark outline",
 		fmt("%.0f design px", c.Hp.AbsoluteSize.Y / k))
@@ -338,12 +339,15 @@ S.client_polish_vitals = guarded("client_polish_vitals", function()
 	T.check(close(fraction(c.Trail), fraction(c.HpFill), 0.01) and close(fraction(c.HpFill), 47 / 117, 0.01), "vitals: the trail catches up with the fill",
 		fmt("trail %.2f, fill %.2f", fraction(c.Trail), fraction(c.HpFill)))
 	T.check(sameColor(gradientAt(fillGradient, 0.4), Theme.Colors.HealthMid, 0.03), "vitals: 40% health turns the fill amber")
+	T.check(sameColor(c.CardStroke.Color, Theme.Neon.Yellow, 0.01), "vitals: ...and the card's neon border amber (v5)")
 
 	-- 5. low health (< 30%): the heart beats, the outline glows red, the fill is red
 	setHealth(117, 18)
 	advance(0.5)
 	local maxScale, minScale, maxRed = 0, 9, 0
+	-- v5 (Phase 5, 6.6): the Neon card's border shows the health state: green, amber, red (pulsing when low)
 	local navy = Theme.Colors.Navy
+	local healthy = Theme.Neon.Green
 	for _ = 1, 40 do
 		advance(1 / 30)
 		local s = c.HeartScale and c.HeartScale.Scale or 1
@@ -356,7 +360,7 @@ S.client_polish_vitals = guarded("client_polish_vitals", function()
 	T.check(sameColor(gradientAt(fillGradient, 0.4), Theme.Colors.HealthLow, 0.03), "vitals: low health turns the fill red")
 	setHealth(117, 117)
 	advance(1.5)
-	T.check(c.HeartScale.Scale == 1 and c.Heart.Rotation == 0 and sameColor(c.CardStroke.Color, navy, 0.01), "vitals: healed: the pulse stops, the outline is navy again")
+	T.check(c.HeartScale.Scale == 1 and c.Heart.Rotation == 0 and sameColor(c.CardStroke.Color, healthy, 0.01), "vitals: healed: the pulse stops, the neon border is green again")
 
 	-- 6. stamina drains and refills smoothly, and dims when empty
 	advance(4)
@@ -419,12 +423,12 @@ S.client_polish_vitals = guarded("client_polish_vitals", function()
 	T.check(shown(c.Notice) and tostring(c.Notice.Text):lower():find("wait for a teammate", 1, true) ~= nil and c.HpText.Text == "DOWNED", "vitals: downed: 'DOWNED' + 'Wait for a teammate!'")
 	T.check(not shown(c.St) and not shown(c.Ring) and not shown(c.Bolt) and shown(path(c.Heart, "Glyph")) and not shown(heartShape),
 		"vitals: ...the stamina row makes room and the heart badge shows '!'")
-	T.check(sameColor(c.CardStroke.Color, Theme.Colors.Bad, 0.01), "vitals: ...and the card's outline is red")
+	T.check(sameColor(c.CardStroke.Color, Theme.Neon.Red, 0.01), "vitals: ...and the card's neon border is red")
 	small = smallTexts(c.Vitals, 15)
 	T.check(#small == 0, "vitals: the downed texts are readable too", table.concat(small, ", "))
 	LocalPlayer:SetAttribute("Downed", false)
 	advance(0.6)
-	T.check(not shown(c.Notice) and shown(c.St) and shown(c.Ring) and shown(c.Bolt) and shown(heartShape) and sameColor(c.CardStroke.Color, navy, 0.01),
+	T.check(not shown(c.Notice) and shown(c.St) and shown(c.Ring) and shown(c.Bolt) and shown(heartShape) and sameColor(c.CardStroke.Color, healthy, 0.01),
 		"vitals: revived: the card is back to normal")
 
 	-- 9. in a match the card keeps its place (the match panel lives top-left)

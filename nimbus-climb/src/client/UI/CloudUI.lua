@@ -1,4 +1,9 @@
--- CloudUI: the chunky "cloud" UI kit (v3). Front-page-simulator style panels made cloudier: a thick dark
+-- CloudUI: the game's UI kit. v5 (Phase 5, ARCHITECTURE_V3.md "Phase 5 build contract" 6.6): every widget is re-skinned
+-- on the Neon kit (client/UI/NeonKit.lua, image 21.png): dark navy faces, a glowing neon border in the widget's own
+-- colour, GothamBlack labels with a dark stroke. Panel = a Neon card (accent = props.Accent, props.Category or Blue)
+-- with a GothamBlack 34 title, a neon underline and a red X; the cloud bumps, the sky-blue frame and the pixel glint
+-- of v3 are gone ("less cute"). The API, the names and the attributes below are UNCHANGED.
+-- (v3 text kept for the API:) the chunky "cloud" UI kit. Front-page-simulator style panels made cloudier: a thick dark
 -- navy outline, glossy sky-blue frames with a bevelled rim, puffy cloud bumps along the top edge, a bold
 -- title bar with big outlined title text and a red X, glossy buttons with a darker bottom lip, and a tiny
 -- pixel glint (a nod to the voxel world). Everything is built from Frames / TextLabels / UICorner /
@@ -48,6 +53,7 @@ local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Config = require(Shared:WaitForChild("Config"))
 local Theme = require(Shared:WaitForChild("Theme"))
 local Util = require(Shared:WaitForChild("Util"))
+local NeonKit = require(script.Parent:WaitForChild("NeonKit"))
 
 local CloudUI = {}
 
@@ -62,6 +68,13 @@ local GOLD = Colors.Gold or Colors.Token
 
 local BUTTON_COLORS = Theme.Buttons or {}
 local KIND_COLORS = Theme.Kinds or {}
+-- v5 Neon kit colours
+local NEON = Theme.Neon
+local INK = Colors.PanelInk or Color3.fromRGB(8, 10, 28)
+local PANEL_TOP = Colors.PanelTop or Color3.fromRGB(26, 32, 72)
+local PANEL_BOTTOM = Colors.PanelBottom or Color3.fromRGB(12, 15, 38)
+-- the neon colour of a button style name
+local STYLE_NEON = { Green = "Green", Pink = "Pink", Red = "Red", Blue = "Blue", Gold = "Gold", Gray = "Grey" }
 
 local HOVER_SCALE = 1.04
 local PRESS_SCALE = 0.95
@@ -70,15 +83,15 @@ local TOOLTIP_DELAY = 0.35
 local LONG_PRESS = 0.45
 
 -- Panel geometry (design px)
-local OUTLINE_THICKNESS = 4 -- the thick navy outline of every window
+local OUTLINE_THICKNESS = 3 -- v5: the neon border of every window
 local PANEL_CORNER = 16
 local PANEL_PAD = 12 -- frame border around the title bar and the content well
 local TITLE_TOP = 10
 local TITLE_H = 50
 local TITLE_GAP = 10
-local TITLE_TEXT = 32
+local TITLE_TEXT = 34
 local CLOSE_SIZE = 40
-local UNTITLED_TOP_CLOUDS = 20 -- the cloud bumps need a little room above an untitled well
+local UNTITLED_TOP_CLOUDS = 20 -- v5: no cloud bumps any more; an untitled panel keeps this room for its corner X
 
 CloudUI.Metrics = {
 	Outline = OUTLINE_THICKNESS,
@@ -113,10 +126,8 @@ CloudUI.Palette = {
 -- the bottom (hard step), which gives the glossy chunky 3-D look without recolouring the text.
 local FACE_SEQUENCE = ColorSequence.new({
 	ColorSequenceKeypoint.new(0, Color3.fromRGB(255, 255, 255)),
-	ColorSequenceKeypoint.new(0.50, Color3.fromRGB(244, 246, 250)),
-	ColorSequenceKeypoint.new(0.77, Color3.fromRGB(226, 232, 244)),
-	ColorSequenceKeypoint.new(0.79, Color3.fromRGB(166, 174, 206)),
-	ColorSequenceKeypoint.new(1, Color3.fromRGB(150, 158, 192)),
+	ColorSequenceKeypoint.new(0.55, Color3.fromRGB(240, 242, 248)),
+	ColorSequenceKeypoint.new(1, Color3.fromRGB(150, 156, 184)),
 })
 
 ----------------------------------------------------------------------
@@ -206,27 +217,6 @@ local function addShine(parent, heightScale, sideInset, transparency, zIndex)
 	return shine
 end
 
--- A tiny pixel-art glint (an "L" of three square pixels) in the top-left corner of a glossy face: the
--- one voxel accent of the 2-D kit. `px` is the pixel size in design px.
-local function addPixelGlint(parent, x, y, px, transparency, zIndex)
-	local glint = frame("PixelGlint", {
-		Position = UDim2.fromOffset(x, y),
-		Size = UDim2.fromOffset(px * 2, px * 2),
-		ZIndex = zIndex or 1,
-	}, parent)
-	local cells = { { 0, 0, 0 }, { 1, 0, 0.25 }, { 0, 1, 0.25 } }
-	for i, cell in ipairs(cells) do
-		frame("Px" .. i, {
-			BackgroundColor3 = WHITE,
-			BackgroundTransparency = math.min(1, (transparency or 0.25) + cell[3]),
-			Position = UDim2.fromOffset(cell[1] * px, cell[2] * px),
-			Size = UDim2.fromOffset(px, px),
-			ZIndex = zIndex or 1,
-		}, glint)
-	end
-	return glint
-end
-
 local function titleCase(text)
 	text = tostring(text or "")
 	return text:sub(1, 1):upper() .. text:sub(2):lower()
@@ -255,17 +245,6 @@ local function isShown(gui)
 	return false
 end
 
--- Glossy face for a coloured bar: light top, the base colour, then a hard darker lip at the bottom.
-local function lipSequence(c)
-	return ColorSequence.new({
-		ColorSequenceKeypoint.new(0, Theme.Lighten(c, 0.26)),
-		ColorSequenceKeypoint.new(0.55, c),
-		ColorSequenceKeypoint.new(0.78, Theme.Darken(c, 0.08)),
-		ColorSequenceKeypoint.new(0.8, Theme.Darken(c, 0.3)),
-		ColorSequenceKeypoint.new(1, Theme.Darken(c, 0.36)),
-	})
-end
-
 ----------------------------------------------------------------------
 -- Readability helpers (v3)
 ----------------------------------------------------------------------
@@ -284,7 +263,7 @@ function CloudUI.ContentInset(hasTitle, clouds)
 	if hasTitle then
 		top = TITLE_TOP + TITLE_H + TITLE_GAP
 	elseif clouds ~= false then
-		top = UNTITLED_TOP_CLOUDS
+		top = UNTITLED_TOP_CLOUDS -- v5: room for the corner X of an untitled panel
 	end
 	return top, PANEL_PAD, PANEL_PAD
 end
@@ -491,7 +470,7 @@ function CloudUI.Button(props)
 		AutoButtonColor = false,
 		Active = true, -- explicit: "Active == false" is how a button is switched off (see isDisabled)
 		BorderSizePixel = 0,
-		BackgroundColor3 = Theme.Lighten(styleBase(state.Style), 0.16),
+		BackgroundColor3 = Theme.Darken(styleBase(state.Style), 0.4),
 		Size = props.Size or UDim2.fromOffset(160, 50),
 		Position = props.Position or UDim2.new(),
 		AnchorPoint = props.AnchorPoint or Vector2.new(0, 0),
@@ -500,13 +479,21 @@ function CloudUI.Button(props)
 		Text = props.Text or "",
 		TextTruncate = Enum.TextTruncate.AtEnd,
 	})
-	Theme.Style(button, "Button", { Size = props.TextSize or CloudUI.Metrics.ButtonText, Stroke = 0.1 })
+	Theme.Style(button, "Button", { Size = props.TextSize or CloudUI.Metrics.ButtonText, Stroke = 1 })
 	corner(button, 12)
-	local outline = stroke(button, NAVY, 3, 0) -- Border mode: the chunky outline of the button
-	local textOutline = Theme.TextOutline(button, 2, Theme.Darken(styleBase(state.Style), 0.62), 0) -- Contextual: the text
+	-- v5: the neon border in the style's own colour (Border mode) + a soft outer glow ring; dark text outline
+	local outline = stroke(button, NAVY, 3, 0)
+	local textOutline = Theme.TextOutline(button, 2, INK, 0) -- Contextual: the text
 	gradient(button, FACE_SEQUENCE, 90)
-	padding(button, 10, 0, 10, UDim.new(0.18, 0))
-	addShine(button, 0.3, 8, 0.78, button.ZIndex)
+	-- (no UIPadding: it would shift the glow ring; the text is centred and truncates at the edges)
+	local glow = frame("Glow", {
+		Position = UDim2.fromOffset(-4, -4),
+		Size = UDim2.new(1, 8, 1, 8),
+		ZIndex = button.ZIndex,
+	}, button)
+	corner(glow, 16)
+	local glowStroke = stroke(glow, NAVY, 4, 0.68)
+	addShine(button, 0.06, 12, 0.8, button.ZIndex)
 
 	local fx
 	local function isDisabled()
@@ -515,13 +502,13 @@ function CloudUI.Button(props)
 
 	local function paint(seconds)
 		local disabled = isDisabled()
-		local base = styleBase(disabled and "Gray" or state.Style)
-		local face = Theme.Lighten(base, 0.16)
+		local neon = disabled and NEON.Grey or Theme.NeonColor(STYLE_NEON[state.Style] or "Green")
+		local face = Theme.Darken(neon, disabled and 0.7 or 0.4)
 		if not disabled and fx then
 			if fx.Pressing then
-				face = Theme.Darken(face, 0.1)
+				face = Theme.Darken(face, 0.15)
 			elseif fx.Hovering then
-				face = Theme.Lighten(face, 0.1)
+				face = Theme.Lighten(face, 0.08)
 			end
 		end
 		if seconds and seconds > 0 then
@@ -529,12 +516,15 @@ function CloudUI.Button(props)
 		else
 			button.BackgroundColor3 = face
 		end
-		button.TextColor3 = disabled and Color3.fromRGB(226, 230, 240) or WHITE
-		button.TextStrokeColor3 = Theme.Darken(base, 0.62)
+		button.TextColor3 = disabled and Color3.fromRGB(176, 184, 206) or WHITE
+		button.TextStrokeColor3 = INK
 		if textOutline then
-			textOutline.Color = Theme.Darken(base, disabled and 0.5 or 0.62)
+			textOutline.Color = INK
+			textOutline.Transparency = disabled and 0.35 or 0
 		end
-		outline.Color = disabled and Theme.Darken(NAVY, 0.1) or NAVY
+		outline.Color = disabled and Theme.Darken(neon, 0.2) or neon
+		glowStroke.Color = neon
+		glow.Visible = not disabled
 	end
 
 	fx = attachFx(button, {
@@ -586,31 +576,17 @@ end
 ----------------------------------------------------------------------
 -- Panel (window)
 ----------------------------------------------------------------------
--- Cloud bumps along the top edge: { x scale, diameter px, y offset px below the edge }.
-local BUMPS = {
-	{ 0.06, 30, 5 },
-	{ 0.15, 44, 1 },
-	{ 0.26, 34, 5 },
-	{ 0.38, 50, 0 },
-	{ 0.50, 38, 4 },
-	{ 0.62, 52, 0 },
-	{ 0.74, 34, 5 },
-	{ 0.85, 46, 1 },
-	{ 0.94, 30, 5 },
-}
-
--- props: Name, Size, Position, AnchorPoint, Title, Closable, OnClose, Parent, Accent (Color3: title bar +
---        frame tint), Clouds (default true), LayoutOrder, TitleSize (default 32)
+-- props: Name, Size, Position, AnchorPoint, Title, Closable, OnClose, Parent, Accent (Color3: the neon border, glow,
+--        title underline), Category (v5: a Theme.Category name, e.g. "Pets", when no Accent is given; default Blue),
+--        Glow (v5, default true), Clouds (ignored since v5: no cloud bumps), LayoutOrder, TitleSize (default 34)
 function CloudUI.Panel(props)
 	props = props or {}
 	local hasTitle = type(props.Title) == "string" and props.Title ~= ""
-	local clouds = props.Clouds ~= false
 	local accent = props.Accent
-	local hasAccent = typeof(accent) == "Color3"
-	if not hasAccent then
-		accent = BUTTON_COLORS.Blue or Color3.fromRGB(90, 158, 234)
+	if typeof(accent) ~= "Color3" then
+		accent = Theme.NeonColor(props.Category or "Blue")
 	end
-	local topInset = CloudUI.ContentInset(hasTitle, clouds)
+	local topInset = CloudUI.ContentInset(hasTitle, props.Clouds)
 
 	local root = frame(props.Name or "CloudPanel", {
 		Size = props.Size or UDim2.fromOffset(520, 380),
@@ -619,143 +595,83 @@ function CloudUI.Panel(props)
 		LayoutOrder = props.LayoutOrder or 0,
 	})
 
-	-- soft drop shadow
+	-- soft drop shadow (keeps the dark card readable on a bright sky)
 	local shadow = frame("Shadow", {
-		BackgroundColor3 = Color3.fromRGB(8, 12, 32),
-		BackgroundTransparency = 0.66,
-		Position = UDim2.new(0, 0, 0, 7),
+		BackgroundColor3 = INK,
+		BackgroundTransparency = 0.72,
+		Position = UDim2.new(0, 0, 0, 6),
 		Size = UDim2.new(1, 0, 1, 0),
 		ZIndex = 0,
 	}, root)
 	corner(shadow, PANEL_CORNER + 2)
 
-	-- the frame colour, tinted a little by the accent
-	local frameTop = Colors.FrameTop:Lerp(accent, 0.12)
-	local frameBottom = Colors.FrameBottom:Lerp(accent, 0.12)
-
-	-- bump outlines (behind the body) and bump fills (in front of the body's top outline)
-	local puffs = {}
-	if clouds then
-		local back = frame("CloudOutline", { Size = UDim2.new(1, 0, 1, 0), ZIndex = 1 }, root)
-		local front = frame("CloudPuffs", { Size = UDim2.new(1, 0, 1, 0), ZIndex = 3 }, root)
-		for i, bump in ipairs(BUMPS) do
-			local d = bump[2]
-			local ring = frame("Ring" .. i, {
-				BackgroundColor3 = NAVY,
-				BackgroundTransparency = 0,
-				AnchorPoint = Vector2.new(0.5, 0.5),
-				Position = UDim2.new(bump[1], 0, 0, bump[3]),
-				Size = UDim2.fromOffset(d + 2 * OUTLINE_THICKNESS, d + 2 * OUTLINE_THICKNESS),
-				ZIndex = 1,
-			}, back)
-			round(ring)
-			local puff = frame("Puff" .. i, {
-				BackgroundColor3 = frameTop,
-				BackgroundTransparency = 0,
-				AnchorPoint = Vector2.new(0.5, 0.5),
-				Position = UDim2.new(bump[1], 0, 0, bump[3]),
-				Size = UDim2.fromOffset(d, d),
-				ZIndex = 3,
-			}, front)
-			round(puff)
-			-- a soft highlight on the upper part of each puff (rounder, fluffier clouds)
-			local tuft = frame("Tuft", {
-				BackgroundColor3 = WHITE,
-				BackgroundTransparency = 0.7,
-				AnchorPoint = Vector2.new(0.5, 0),
-				Position = UDim2.new(0.42, 0, 0.12, 0),
-				Size = UDim2.new(0.5, 0, 0.3, 0),
-				ZIndex = 3,
-			}, puff)
-			round(tuft)
-			table.insert(puffs, puff)
-		end
-	end
-
-	local body = frame("Body", {
-		BackgroundColor3 = WHITE,
-		BackgroundTransparency = 0,
+	-- the Neon card: dark navy fill, a 3 px neon border, an outer glow ring, a sheen line under the top edge
+	local card = NeonKit.Card({
+		Name = "Body",
 		Size = UDim2.new(1, 0, 1, 0),
+		Color = accent,
+		Corner = PANEL_CORNER,
+		Stroke = OUTLINE_THICKNESS,
+		Glow = props.Glow ~= false,
+		Floor = false,
 		ZIndex = 2,
 		Active = true, -- sinks clicks so the world behind the window is not clicked
-	}, root)
-	corner(body, PANEL_CORNER)
-	stroke(body, NAVY, OUTLINE_THICKNESS, 0)
-	local bodyGradient = gradient(body, ColorSequence.new(frameTop, frameBottom), 90)
-	-- bevel: a pale rim just inside the dark outline
-	local rim = frame("Rim", {
-		Position = UDim2.new(0, 3, 0, 3),
-		Size = UDim2.new(1, -6, 1, -6),
-		ZIndex = 2,
-	}, body)
-	corner(rim, PANEL_CORNER - 3)
-	local rimStroke = stroke(rim, Theme.Lighten(frameTop, 0.55), 2, 0.35)
-	-- glossy highlight just inside the top edge
-	local highlight = frame("Highlight", {
-		BackgroundColor3 = WHITE,
-		BackgroundTransparency = 0.6,
-		Position = UDim2.new(0, 16, 0, 6),
-		Size = UDim2.new(1, -32, 0, 5),
-		ZIndex = 2,
-	}, body)
-	round(highlight)
+		Parent = root,
+	})
+	local body = card.Root
 
-	-- inner content well (no decorative children: callers own its layout)
+	-- the content well: a slightly darker inset (no decorative children: callers own its layout)
 	local content = frame("Content", {
-		BackgroundColor3 = WHITE,
-		BackgroundTransparency = 0,
+		BackgroundColor3 = INK,
+		BackgroundTransparency = 0.55,
 		Position = UDim2.new(0, PANEL_PAD, 0, topInset),
 		Size = UDim2.new(1, -2 * PANEL_PAD, 1, -(topInset + PANEL_PAD)),
 		ZIndex = 4,
 	}, root)
 	corner(content, 12)
-	stroke(content, Colors.WellEdge or NAVY, 3, 0.05)
-	gradient(content, ColorSequence.new(Colors.WellTop, Colors.WellBottom), 90)
+	stroke(content, WHITE, 1, 0.9)
 
-	-- bold title bar with big outlined title text
-	local titleBar, titleLabel, titleGradient, titleOutline = nil, nil, nil, nil
+	-- title: GothamBlack 34, white with a dark stroke, over a neon underline that fades out to the right
+	local titleBar, titleLabel, underline = nil, nil, nil
 	if hasTitle then
-		local barColor = hasAccent and accent or (Colors.TitleBar or accent)
 		titleBar = frame("TitleBar", {
-			BackgroundColor3 = WHITE,
-			BackgroundTransparency = 0,
 			Position = UDim2.new(0, PANEL_PAD, 0, TITLE_TOP),
 			Size = UDim2.new(1, -2 * PANEL_PAD, 0, TITLE_H),
 			ZIndex = 5,
 		}, root)
-		corner(titleBar, 12)
-		stroke(titleBar, NAVY, 3, 0)
-		titleGradient = gradient(titleBar, lipSequence(barColor), 90)
-		local gloss = frame("Gloss", {
-			BackgroundColor3 = WHITE,
-			BackgroundTransparency = 0.76,
-			Position = UDim2.new(0, 8, 0, 4),
-			Size = UDim2.new(1, -16, 0.34, 0),
-			ZIndex = 5,
-		}, titleBar)
-		corner(gloss, 8)
-		addPixelGlint(titleBar, 7, 6, 4, 0.2, 6)
-
 		local rightRoom = props.Closable and (CLOSE_SIZE + 18) or 16
-		local darkText = Theme.Darken(barColor, 0.72)
 		titleLabel = Theme.Label(props.Title, "Title", {
 			Size = props.TitleSize or TITLE_TEXT,
-			Stroke = 0.1,
-			StrokeColor = darkText,
-			Outline = 2.5,
-			OutlineColor = darkText,
+			Stroke = 1,
+			Outline = 3,
+			OutlineColor = INK,
 			Props = {
 				Name = "Title",
-				Position = UDim2.new(0, 22, 0, 0),
-				Size = UDim2.new(1, -(22 + rightRoom), 0.8, 2),
+				Position = UDim2.new(0, 10, 0, 0),
+				Size = UDim2.new(1, -(10 + rightRoom), 1, -4),
 				TextXAlignment = Enum.TextXAlignment.Left,
 				TextYAlignment = Enum.TextYAlignment.Center,
 				TextTruncate = Enum.TextTruncate.AtEnd,
 				ZIndex = 6,
 			},
 		})
-		titleOutline = titleLabel:FindFirstChild("TextOutline")
 		titleLabel.Parent = titleBar
+		underline = frame("Underline", {
+			BackgroundColor3 = accent,
+			BackgroundTransparency = 0,
+			Position = UDim2.new(0, 8, 1, 1),
+			Size = UDim2.new(1, -16, 0, 3),
+			ZIndex = 6,
+		}, titleBar)
+		round(underline)
+		Util.Create("UIGradient", {
+			Transparency = NumberSequence.new({
+				NumberSequenceKeypoint.new(0, 0),
+				NumberSequenceKeypoint.new(0.6, 0.15),
+				NumberSequenceKeypoint.new(1, 0.85),
+			}),
+			Parent = underline,
+		})
 	end
 
 	local panel = {
@@ -764,6 +680,7 @@ function CloudUI.Panel(props)
 		Content = content,
 		TitleBar = titleBar,
 		TitleLabel = titleLabel,
+		Card = card,
 	}
 
 	function panel.Close()
@@ -780,27 +697,17 @@ function CloudUI.Panel(props)
 		end
 	end
 
-	-- Re-tint the title bar and the frame (e.g. by rarity).
+	-- Re-colour the neon border, glow and title underline (e.g. by rarity or category).
 	function panel.SetAccent(color)
+		if type(color) == "string" then
+			color = Theme.NeonColor(color)
+		end
 		if typeof(color) ~= "Color3" then
 			return
 		end
-		local top = Colors.FrameTop:Lerp(color, 0.12)
-		local bottom = Colors.FrameBottom:Lerp(color, 0.12)
-		bodyGradient.Color = ColorSequence.new(top, bottom)
-		rimStroke.Color = Theme.Lighten(top, 0.55)
-		for _, puff in ipairs(puffs) do
-			puff.BackgroundColor3 = top
-		end
-		if titleGradient then
-			titleGradient.Color = lipSequence(color)
-		end
-		if titleLabel then
-			local darkText = Theme.Darken(color, 0.72)
-			titleLabel.TextStrokeColor3 = darkText
-			if titleOutline then
-				titleOutline.Color = darkText
-			end
+		card.SetColor(color)
+		if underline then
+			underline.BackgroundColor3 = color
 		end
 	end
 
@@ -812,17 +719,17 @@ function CloudUI.Panel(props)
 		local closeSize = hasTitle and CLOSE_SIZE or (CLOSE_SIZE - 2)
 		local position
 		if hasTitle then
-			-- inside the right end of the title bar (the lip takes the bottom fifth)
-			position = UDim2.new(1, -(PANEL_PAD + 6 + CLOSE_SIZE / 2), 0, TITLE_TOP + math.floor(TITLE_H * 0.46))
+			-- at the right end of the title row
+			position = UDim2.new(1, -(PANEL_PAD + 4 + CLOSE_SIZE / 2), 0, TITLE_TOP + math.floor(TITLE_H / 2) - 2)
 		else
-			-- on the top-right corner of the frame
+			-- on the top-right corner of the card
 			position = UDim2.new(1, -12, 0, 8)
 		end
 		local closeButton = CloudUI.Button({
 			Name = "Close",
 			Text = "X",
 			Style = "Red",
-			TextSize = 26,
+			TextSize = 24,
 			Size = UDim2.fromOffset(closeSize, closeSize),
 			AnchorPoint = Vector2.new(0.5, 0.5),
 			Position = position,
@@ -832,12 +739,6 @@ function CloudUI.Panel(props)
 			end,
 			Parent = root,
 		})
-		-- the X is short: no side padding, so it stays centred in its square
-		local pad = closeButton:FindFirstChildOfClass("UIPadding")
-		if pad then
-			pad.PaddingLeft = UDim.new(0, 0)
-			pad.PaddingRight = UDim.new(0, 0)
-		end
 		panel.CloseButton = closeButton
 	end
 
@@ -856,7 +757,7 @@ function CloudUI.Bar(props)
 	local fraction = 1
 
 	local root = frame(props.Name or "CloudBar", {
-		BackgroundColor3 = Color3.fromRGB(32, 44, 92),
+		BackgroundColor3 = WHITE,
 		BackgroundTransparency = 0,
 		Size = props.Size or UDim2.new(1, 0, 0, height),
 		Position = props.Position or UDim2.new(),
@@ -864,9 +765,9 @@ function CloudUI.Bar(props)
 		LayoutOrder = props.LayoutOrder or 0,
 	})
 	round(root)
-	stroke(root, Theme.Darken(NAVY, 0.3), 3, 0)
-	-- a dark inner track so the empty part reads as "empty", not as a hole
-	gradient(root, ColorSequence.new(Color3.fromRGB(26, 34, 74), Color3.fromRGB(44, 58, 112)), 90)
+	-- v5: a dark ink track with a thin light rim (the fill carries the colour)
+	local trackStroke = stroke(root, Theme.Lighten(PANEL_TOP, 0.12), 2.5, 0)
+	gradient(root, ColorSequence.new(INK, PANEL_TOP), 90)
 
 	local inner = frame("Inner", {
 		Position = UDim2.new(0, 3, 0, 3),
@@ -935,6 +836,7 @@ function CloudUI.Bar(props)
 		color = newColor
 		fillGradient.Color = fillSequence(color)
 	end
+	bar.TrackStroke = trackStroke
 
 	root.Parent = props.Parent
 	return bar
@@ -960,17 +862,16 @@ end
 -- kind: "info" | "good" | "bad" | "token" | a rarity id ("Epic") | a Color3
 function CloudUI.Pill(text, kind, parent)
 	local color = kindColor(kind)
-	local dark = Theme.Darken(color, 0.62)
+	-- v5: a dark face tinted by the kind colour, a neon border in that colour, white text with a dark stroke
 	local pill = Theme.Label(tostring(text or ""), "Heading", {
 		Size = 17,
-		Stroke = 0.1,
-		StrokeColor = dark,
-		Outline = 1.5,
-		OutlineColor = dark,
+		Stroke = 1,
+		Outline = 2,
+		OutlineColor = INK,
 		Props = {
 			Name = "Pill",
 			BackgroundTransparency = 0,
-			BackgroundColor3 = Theme.Lighten(color, 0.14),
+			BackgroundColor3 = Theme.Darken(color, 0.62),
 			BorderSizePixel = 0,
 			AutomaticSize = Enum.AutomaticSize.X,
 			Size = UDim2.fromOffset(0, 28),
@@ -978,11 +879,10 @@ function CloudUI.Pill(text, kind, parent)
 		},
 	})
 	round(pill)
-	stroke(pill, NAVY, 2.5, 0)
+	stroke(pill, Theme.Lighten(color, 0.08), 2, 0)
 	gradient(pill, FACE_SEQUENCE, 90)
-	padding(pill, 12, 0, 12, UDim.new(0.14, 0))
+	padding(pill, 12, 0, 12, 0)
 	Util.Create("UISizeConstraint", { MinSize = Vector2.new(34, 28), Parent = pill })
-	addShine(pill, 0.3, 8, 0.78)
 	pill.Parent = parent
 	return pill
 end
@@ -1037,17 +937,15 @@ function CloudUI.IconButton(props)
 	})
 	Util.Create("UIAspectRatioConstraint", { AspectRatio = 1, Parent = button })
 	round(button)
-	local outline = stroke(button, NAVY, 4, 0)
+	local outline = stroke(button, color, 3, 0)
 	local faceGradient = gradient(button, ColorSequence.new(Theme.Lighten(color, 0.3), color), 90)
 
-	-- darker crescent at the bottom for the chunky look (the circle has no text, so a real gradient is fine)
+	-- v5: a dark disc tinted by the colour (light at the top), the neon ring around it
 	local function faceSequence(c)
 		return ColorSequence.new({
-			ColorSequenceKeypoint.new(0, Theme.Lighten(c, 0.34)),
-			ColorSequenceKeypoint.new(0.5, Theme.Lighten(c, 0.06)),
-			ColorSequenceKeypoint.new(0.76, Theme.Darken(c, 0.1)),
-			ColorSequenceKeypoint.new(0.78, Theme.Darken(c, 0.34)),
-			ColorSequenceKeypoint.new(1, Theme.Darken(c, 0.4)),
+			ColorSequenceKeypoint.new(0, Theme.Darken(c, 0.25)),
+			ColorSequenceKeypoint.new(0.55, Theme.Darken(c, 0.55)),
+			ColorSequenceKeypoint.new(1, Theme.Darken(c, 0.78)),
 		})
 	end
 	local function applyColor(c)
@@ -1070,10 +968,9 @@ function CloudUI.IconButton(props)
 
 	local glyph = Theme.Label(tostring(props.Glyph or ""), "Title", {
 		Scaled = true,
-		Stroke = 0,
-		StrokeColor = Theme.Darken(color, 0.65),
+		Stroke = 1,
 		Outline = 2,
-		OutlineColor = Theme.Darken(color, 0.65),
+		OutlineColor = INK,
 		Props = {
 			Name = "Glyph",
 			Position = UDim2.new(0.5, 0, 0.44, 0),
@@ -1083,7 +980,6 @@ function CloudUI.IconButton(props)
 		},
 	})
 	Util.Create("UITextSizeConstraint", { MaxTextSize = 60, MinTextSize = 10, Parent = glyph })
-	local glyphOutline = glyph:FindFirstChild("TextOutline")
 	glyph.Parent = button
 
 	local caption = nil
@@ -1114,7 +1010,7 @@ function CloudUI.IconButton(props)
 		Visible = props.Badge == true,
 	}, button)
 	round(badge)
-	stroke(badge, NAVY, 2.5, 0)
+	stroke(badge, INK, 2.5, 0)
 	local badgeText = Theme.Label("!", "Button", {
 		Size = 17,
 		Stroke = 0.1,
@@ -1130,7 +1026,7 @@ function CloudUI.IconButton(props)
 			face = Theme.Lighten(color, 0.1)
 		end
 		faceGradient.Color = faceSequence(face)
-		outline.Color = NAVY
+		outline.Color = color
 	end
 	attachFx(button, {
 		Hover = 1.07,
@@ -1163,10 +1059,7 @@ function CloudUI.IconButton(props)
 	function widget.SetColor(newColor)
 		if typeof(newColor) == "Color3" then
 			applyColor(newColor)
-			glyph.TextStrokeColor3 = Theme.Darken(newColor, 0.65)
-			if glyphOutline then
-				glyphOutline.Color = Theme.Darken(newColor, 0.65)
-			end
+			outline.Color = newColor
 		end
 	end
 
@@ -1194,7 +1087,7 @@ local function ensureTip()
 			Name = "Tip",
 			Visible = false,
 			BackgroundTransparency = 0.04,
-			BackgroundColor3 = Colors.Panel,
+			BackgroundColor3 = PANEL_BOTTOM,
 			BorderSizePixel = 0,
 			AutomaticSize = Enum.AutomaticSize.XY,
 			Size = UDim2.fromOffset(0, 0),
@@ -1205,7 +1098,7 @@ local function ensureTip()
 		},
 	})
 	corner(label, 10)
-	stroke(label, Colors.FrameTop or Colors.Cloud, 2.5, 0.1)
+	stroke(label, NEON.Blue, 2, 0.1)
 	padding(label, 12, 8, 12, 8)
 	local limit = Util.Create("UISizeConstraint", { MaxSize = Vector2.new(TIP_MAX_W, 480), Parent = label })
 	label.Parent = gui
@@ -1692,16 +1585,32 @@ function CloudUI.Slot(props)
 	})
 	corner(button, 12)
 	local outline = stroke(button, NAVY, 3, 0)
-	local fill = gradient(button, ColorSequence.new(Colors.Mist, Colors.MistDeep), 90)
+	local fill = gradient(button, ColorSequence.new(PANEL_TOP, PANEL_BOTTOM), 90)
 
-	-- glossy top band (behind the content)
+	-- v5: a thin sheen line under the top edge + the rarity colour glowing up from the floor (behind the content)
 	local gloss = frame("Gloss", {
 		BackgroundColor3 = WHITE,
-		BackgroundTransparency = 0.72,
-		Position = UDim2.new(0, 5, 0, 4),
-		Size = UDim2.new(1, -10, 0.28, 0),
+		BackgroundTransparency = 0.82,
+		Position = UDim2.new(0, 10, 0, 4),
+		Size = UDim2.new(1, -20, 0, 2),
 	}, button)
-	corner(gloss, 8)
+	corner(gloss, 1)
+	local floorGlow = frame("Floor", {
+		BackgroundColor3 = WHITE,
+		BackgroundTransparency = 0,
+		Position = UDim2.new(0, 3, 0.45, 0),
+		Size = UDim2.new(1, -6, 0.55, -3),
+		Visible = false,
+	}, button)
+	corner(floorGlow, 9)
+	Util.Create("UIGradient", {
+		Rotation = 90,
+		Transparency = NumberSequence.new({
+			NumberSequenceKeypoint.new(0, 1),
+			NumberSequenceKeypoint.new(1, 0.74),
+		}),
+		Parent = floorGlow,
+	})
 
 	local content = frame("Content", { Size = UDim2.new(1, 0, 1, 0), ZIndex = 2 }, button)
 
@@ -1722,17 +1631,17 @@ function CloudUI.Slot(props)
 	countLabel.Parent = button
 
 	local hotkeyChip = frame("Hotkey", {
-		BackgroundColor3 = Colors.Panel,
+		BackgroundColor3 = INK,
 		BackgroundTransparency = 0.05,
 		Position = UDim2.new(0, 4, 0, 4),
-		Size = UDim2.fromOffset(24, 24),
+		Size = UDim2.fromOffset(26, 26),
 		ZIndex = 5,
 		Visible = false,
 	}, button)
 	corner(hotkeyChip, 7)
-	stroke(hotkeyChip, NAVY, 2, 0)
+	stroke(hotkeyChip, NEON.Grey, 1.5, 0.3)
 	local hotkeyLabel = Theme.Label("", "Heading", {
-		Size = 16,
+		Size = 18,
 		Stroke = 0.2,
 		Props = { Name = "Key", Size = UDim2.new(1, 0, 1, 0), ZIndex = 6 },
 	})
@@ -1743,22 +1652,22 @@ function CloudUI.Slot(props)
 		BackgroundTransparency = 0,
 		AnchorPoint = Vector2.new(1, 0),
 		Position = UDim2.new(1, -4, 0, 4),
-		Size = UDim2.fromOffset(24, 24),
+		Size = UDim2.fromOffset(26, 26),
 		ZIndex = 5,
 		Visible = false,
 	}, button)
 	round(markerChip)
-	stroke(markerChip, NAVY, 2, 0)
+	stroke(markerChip, INK, 2, 0)
 	local markerLabel = Theme.Label("", "Heading", {
-		Size = 16,
+		Size = 18,
 		Stroke = 0.2,
 		Props = { Name = "Mark", Size = UDim2.new(1, 0, 1, 0), ZIndex = 6 },
 	})
 	markerLabel.Parent = markerChip
 
 	local dimOverlay = frame("Dim", {
-		BackgroundColor3 = Color3.fromRGB(14, 20, 52),
-		BackgroundTransparency = 0.5,
+		BackgroundColor3 = INK,
+		BackgroundTransparency = 0.45,
 		Size = UDim2.new(1, 0, 1, 0),
 		ZIndex = 6,
 		Visible = false,
@@ -1773,28 +1682,35 @@ function CloudUI.Slot(props)
 	}, button)
 	corner(flashOverlay, 12)
 
+	-- v5: a dark navy face; the border is the rarity (or the item) colour, gold when selected; the colour also
+	-- glows up from the floor; an empty slot is a dim, darker well
 	local function paint()
 		local rarity = info and info.RarityColor
+		local tint = rarity or (info and info.Color) or NEON.Grey
 		if selected then
-			outline.Color = GOLD
+			outline.Color = NEON.Gold
 			outline.Thickness = 4
-		else
-			outline.Color = rarity or NAVY
+		elseif info then
+			outline.Color = tint
 			outline.Thickness = 3
+		else
+			outline.Color = Theme.Darken(NEON.Grey, 0.45)
+			outline.Thickness = 2.5
 		end
 		if not info then
-			fill.Color = ColorSequence.new(Color3.fromRGB(78, 108, 166), Color3.fromRGB(56, 82, 138))
-			gloss.BackgroundTransparency = 0.88
+			fill.Color = ColorSequence.new(Theme.Darken(PANEL_TOP, 0.2), INK)
+			gloss.BackgroundTransparency = 0.92
+			floorGlow.Visible = false
 			return
 		end
-		gloss.BackgroundTransparency = 0.72
-		local tint = rarity or info.Color or Colors.MistDeep
-		local top = Colors.Mist
-		local bottom = Colors.MistDeep:Lerp(tint, rarity and 0.55 or 0.35)
+		gloss.BackgroundTransparency = 0.82
+		floorGlow.Visible = true
+		floorGlow.BackgroundColor3 = selected and NEON.Gold or tint
+		local top = PANEL_TOP:Lerp(tint, 0.1)
 		if selected then
-			top = Theme.Lighten(top, 0.4)
+			top = PANEL_TOP:Lerp(NEON.Gold, 0.18)
 		end
-		fill.Color = ColorSequence.new(top, bottom)
+		fill.Color = ColorSequence.new(top, PANEL_BOTTOM)
 	end
 
 	local function clearContent()
@@ -1842,14 +1758,13 @@ function CloudUI.Slot(props)
 					ZIndex = 2,
 				})
 			elseif info.Glyph then
-				local glyphColor = info.Color or NAVY
+				local glyphColor = info.Color and Theme.Lighten(info.Color, 0.2) or WHITE
 				local glyph = Theme.Label(tostring(info.Glyph), "Title", {
 					Scaled = true,
-					Stroke = 0.1,
+					Stroke = 1,
 					Color = glyphColor,
-					StrokeColor = Theme.Darken(glyphColor, 0.7),
 					Outline = 2,
-					OutlineColor = Theme.Darken(glyphColor, 0.7),
+					OutlineColor = INK,
 					Props = {
 						Name = "Glyph",
 						AnchorPoint = Vector2.new(0.5, 0.5),
@@ -1941,7 +1856,7 @@ end
 ----------------------------------------------------------------------
 -- Tabs
 ----------------------------------------------------------------------
--- props: Parent, Size, Position, AnchorPoint, Name, BarHeight (default 44), TextSize (default 21), OnSelect(name)
+-- props: Parent, Size, Position, AnchorPoint, Name, BarHeight (default 44), TextSize (default 21), OnSelect(name), Color (v5: the accent of the selected tab, a Color3 or neon / category name; default Blue)
 -- Add(name, builderFn): creates the page frame, calls builderFn(page) immediately (errors are
 -- warned, not thrown) and returns the page. The first tab added is selected.
 function CloudUI.Tabs(props)
@@ -1975,8 +1890,12 @@ function CloudUI.Tabs(props)
 	local selected = nil
 	local count = 0
 
-	local activeFace = Theme.Lighten(BUTTON_COLORS.Blue or Color3.fromRGB(90, 158, 234), 0.1)
-	local idleFace = Color3.fromRGB(88, 112, 166)
+	-- v5: neon pills; the selected tab is filled with its dark accent colour and glows, the others are navy with a
+	-- dim border (props.Color: the accent, a Color3 or neon / category name; default Blue)
+	local accent = Theme.NeonColor(props.Color or "Blue")
+	local activeFace = Theme.Darken(accent, 0.42)
+	local idleFace = PANEL_TOP
+	local strokes = {}
 
 	local function paintTab(name, animate)
 		local button = buttons[name]
@@ -1992,11 +1911,16 @@ function CloudUI.Tabs(props)
 			button.BackgroundColor3 = face
 			button.TextColor3 = textColor
 		end
-		button.TextStrokeColor3 = Theme.Darken(face, 0.6)
+		button.TextStrokeColor3 = INK
+		local border = strokes[name]
+		if border then
+			border.Color = on and accent or Theme.Darken(accent, 0.45)
+			border.Thickness = on and 3 or 2
+		end
 		local textOutline = outlines[name]
 		if textOutline then
-			textOutline.Color = Theme.Darken(face, 0.62)
-			textOutline.Transparency = on and 0 or 0.2
+			textOutline.Color = INK
+			textOutline.Transparency = on and 0 or 0.25
 		end
 	end
 
@@ -2035,13 +1959,12 @@ function CloudUI.Tabs(props)
 			Size = UDim2.new(0, 0, 0, barHeight - 4),
 			LayoutOrder = count,
 		})
-		Theme.Style(button, "Button", { Size = textSize, Color = MUTED, Stroke = 0.1 })
-		button.TextStrokeColor3 = Theme.Darken(idleFace, 0.6)
-		corner(button, 11)
-		stroke(button, NAVY, 3, 0)
-		outlines[name] = Theme.TextOutline(button, 2, Theme.Darken(idleFace, 0.62), 0.2)
+		Theme.Style(button, "Button", { Size = textSize, Color = MUTED, Stroke = 1 })
+		corner(button, math.floor((barHeight - 4) / 2))
+		strokes[name] = stroke(button, accent, 2, 0)
+		outlines[name] = Theme.TextOutline(button, 2, INK, 0.25)
 		gradient(button, FACE_SEQUENCE, 90)
-		padding(button, 20, 0, 20, UDim.new(0.16, 0))
+		padding(button, 20, 0, 20, 0)
 		Util.Create("UISizeConstraint", { MinSize = Vector2.new(84, 0), Parent = button })
 		button.Activated:Connect(function()
 			tabs.Select(name)
@@ -2095,8 +2018,8 @@ function CloudUI.Grid(parent, cellSize, cellPadding)
 		AutomaticCanvasSize = Enum.AutomaticSize.Y,
 		ScrollingDirection = Enum.ScrollingDirection.Y,
 		ScrollBarThickness = 10,
-		ScrollBarImageColor3 = Colors.FrameTop or Colors.Cloud,
-		ScrollBarImageTransparency = 0.05,
+		ScrollBarImageColor3 = Theme.Lighten(NEON.Blue, 0.2),
+		ScrollBarImageTransparency = 0.1,
 	})
 	padding(scroll, 10, 10, 10, 10)
 	Util.Create("UIGridLayout", {

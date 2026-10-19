@@ -1,13 +1,14 @@
 -- smoke_p2_visual.lua: the Phase 2 visual pass (ARCHITECTURE_V3.md ART DIRECTION, Readability + World text rules,
 -- "Phase 2 build contract"). Loaded by tools/smoke.py in BOTH worlds; ARGS.context picks the half:
---   p2visual_art    (server) the station art the visual passes reworked, level by level (HomeBuilder.BuildStationModel):
---                   the Fusion Machine keeps its contract parts (two tinted input pods + the output pod = 3 PodGlass,
---                   the Chamber, a Swirl of >= 3 parts, SwirlCenter, the FusionPrompt on an Attachment by the output
---                   pod) inside its 90-part budget, with breathing neon "Glow" parts, gold from level 2 and crystals
---                   at 3; every closed Garden bed carries a seedling (open counts 3 / 7 / 12); the Training Place keeps
---                   its front open and gives every mat its own colour; the food plants show their fruit colour and
---                   sparkle at the top level; the Coin Magnet's red horseshoe; the Food Machine's hopper full of fruit
---                   and its glowing button; the Sky Castle has its rose window
+--   p2visual_art    (server) the Phase 5 art pass (6.4) on every station level (HomeBuilder.BuildStationModel): only
+--                   WorldStyle materials and no big SmoothPlastic, muted large faces, three or more real materials per
+--                   station, pure decor in NC_Detail models without prompts; the Berry Farm's berry rows (red, blue,
+--                   gold, the glowing Starberry tree with its warm light at 40) by a planked barn; the Fusion Machine's
+--                   contract parts (2 Pods, Chamber, OutputDome, Swirl, FusionPrompt on PromptPoint) with neon inlays,
+--                   brass at 2 and shards at 3; seedlings on every closed Garden bed and a cushion under a clay roof on
+--                   every open one; the Training Place's open front and mat colours; the Food Machine's berry-filled
+--                   hopper, glowing button and Berry Basket; clay roofs, real walls, slate plinths and warm windows on
+--                   every House tier, the Sky Castle's rose window and spires
 --   p2visual_plot   (server, booted) a private test plot: the staked-out house lot (owned, no House yet: stakes, a
 --                   string, planks and bricks, no collisions, <= 12 parts; gone with the House, back after a prestige
 --                   reset, kept by ClearPlot while owned, never on a free plot); a locked station's ghost is a
@@ -107,175 +108,220 @@ local function serverScenarios()
 	S.p2visual_art = guarded("p2visual_art", function()
 		local HB = requireAt("server/Services/HomeBuilder")
 		local TC = requireAt("shared/TycoonCatalog")
+		local WS = requireAt("shared/WorldStyle")
 		if not (type(HB) == "table" and type(HB.BuildStationModel) == "function" and type(TC) == "table") then
 			T.warn("visual art: HomeBuilder.BuildStationModel or TycoonCatalog missing, skipped")
 			return
 		end
+		local CS = game:GetService("CollectionService")
+		local function count(m, name)
+			return #named(m, name)
+		end
+		local function exempt(p, root)
+			local cur = p
+			while cur and cur ~= root.Parent do
+				if CS:HasTag(cur, "NC_StyleExempt") then
+					return true
+				end
+				cur = cur.Parent
+			end
+			return false
+		end
+
+		-- 6.4 on every station at every level: real materials, muted big faces, plinths under the big structures
+		local mats = T.tally("visual art (6.4): every station level uses only WorldStyle materials, no SmoothPlastic part over 2 studs (voxel clouds aside)")
+		local muted = T.tally("visual art (6.4): every large face is muted (saturation <= 0.45, opaque value 0.35..0.9; thin neon inlays and small pieces aside)")
+		local varied = T.tally("visual art (6.4): every station mixes at least three real materials (no single-material toy blocks)")
+		local detail = T.tally("visual art (6.4): pure decor sits in NC_Detail models (the farm's crates, the fountain's lanterns, the fence's flowers) that hold no prompts")
+		for _, def in ipairs(TC.Stations) do
+			if def.Kind ~= "Prestige" then
+				for level = 1, def.MaxLevel do
+					local m = HB.BuildStationModel(def.Id, level)
+					if m then
+						local seen, kinds = {}, 0
+						for _, p in ipairs(parts(m)) do
+							local s = p.Size
+							local dims = { s.X, s.Y, s.Z }
+							table.sort(dims)
+							if p.Transparency < 0.99 and not exempt(p, m) then
+								mats:case((WS == nil or WS.IsWorldMaterial(p.Material)) and not (p.Material == Enum.Material.SmoothPlastic and dims[3] > 2), def.Id .. " " .. level .. " " .. p.Name .. " " .. tostring(p.Material))
+								if dims[2] * dims[3] > 16 and dims[1] * dims[2] * dims[3] > 8 and p.Material ~= Enum.Material.ForceField and not (p.Material == Enum.Material.Neon and dims[1] <= 0.5) then
+									local _, sat, val = p.Color:ToHSV()
+									muted:case(sat <= 0.451 and (p.Material == Enum.Material.Neon or p.Transparency >= 0.3 or (val >= 0.35 and val <= 0.9)), def.Id .. " " .. level .. " " .. p.Name .. string.format(" sat %.2f val %.2f", sat, val))
+								end
+								if not seen[p.Material] then
+									seen[p.Material] = true
+									kinds = kinds + 1
+								end
+							end
+						end
+						varied:case(kinds >= 3, def.Id .. " " .. level .. ": " .. kinds .. " materials")
+						for _, d in ipairs(m:GetDescendants()) do
+							if d:IsA("Model") and CS:HasTag(d, "NC_Detail") then
+								detail:case(find(d, "GardenSpotPrompt") == nil and find(d, "FusionPrompt") == nil and d:FindFirstChildWhichIsA("ProximityPrompt", true) == nil, def.Id .. " " .. level .. " " .. d.Name)
+							end
+						end
+						m:Destroy()
+					end
+				end
+			end
+		end
+		mats:report()
+		muted:report()
+		varied:report()
+		local function hasDetail(id, level, name)
+			local m = HB.BuildStationModel(id, level)
+			local ok = false
+			for _, d in ipairs(m and m:GetDescendants() or {}) do
+				if d:IsA("Model") and d.Name == name and CS:HasTag(d, "NC_Detail") then
+					ok = true
+				end
+			end
+			if m then
+				m:Destroy()
+			end
+			return ok
+		end
+		detail:case(hasDetail("Press1", 20, "Crates") and hasDetail("DecorFountain", 2, "Lanterns") and hasDetail("DecorFence", 1, "Flowers"), "crates / lanterns / flowers tagged")
+		detail:report()
+
+		-- the Berry Farm reads at a glance: red berries in the front row, blue ones in the middle, gold vines at the back,
+		-- the Starberry tree glowing at 38-40 (a warm light at 40), the barn and its crates at the south end
+		local farm = T.tally("visual art: the Berry Farm shows its berries (red L1-10, + blue L11-22, + gold L23-37, the glowing Starberry tree L38-40) by a red barn")
+		local function berryColours(m)
+			local red, blue, gold = 0, 0, 0
+			for _, p in ipairs(parts(m)) do
+				if p.Name == "Berry" then
+					if p.Color.R > p.Color.B then
+						red = red + 1
+					else
+						blue = blue + 1
+					end
+				elseif p.Name == "GoldBerry" then
+					gold = gold + 1
+				end
+			end
+			return red, blue, gold
+		end
+		for _, case in ipairs({ { 5, true, false, false }, { 15, true, true, false }, { 30, true, true, true }, { 40, true, true, true } }) do
+			local m = HB.BuildStationModel("Press1", case[1])
+			local red, blue, gold = berryColours(m)
+			local barn = m and find(m, "Barn", "BasePart")
+			local stars = count(m, "Starberry")
+			local glow = m and find(m, "Starberry") and m:FindFirstChildWhichIsA("PointLight", true)
+			local okTree = (case[1] >= 38) == (stars > 0) and ((case[1] < 40) or (glow ~= nil and glow.Brightness <= 1.5 and glow.Range <= 16))
+			farm:case((red > 0) == case[2] and (blue > 0) == case[3] and (gold > 0) == case[4] and barn ~= nil and barn.Material == Enum.Material.WoodPlanks and okTree,
+				"level " .. case[1] .. ": red " .. red .. " blue " .. blue .. " gold " .. gold .. " stars " .. stars)
+			if m then
+				m:Destroy()
+			end
+		end
+		farm:report()
 
 		-- the Fusion Machine at every level
-		local fusion = T.tally("visual art: the Fusion Machine keeps its contract parts at every level (3 PodGlass, Chamber, Swirl >= 3 parts, FusionPrompt by the output pod) in <= 90 parts")
-		local look = T.tally("visual art: the Fusion Machine reads at a glance (two differently tinted input pods, >= 3 breathing neon Glow parts, gold from level 2, crystals at 3)")
-		local def = TC.Get("FusionMachine")
-		for level = 1, (def and def.MaxLevel or 3) do
-			local ok, m = pcall(HB.BuildStationModel, "FusionMachine", level)
-			if not ok or typeof(m) ~= "Instance" then
-				fusion:case(false, "level " .. level .. ": " .. tostring(m))
-			else
-				local list = parts(m)
-				local pods = named(m, "PodGlass")
-				local swirl = m:FindFirstChild("Swirl")
-				local prompt = find(m, "FusionPrompt", "ProximityPrompt")
-				local att = prompt and prompt.Parent
-				local output = nil
-				for _, p in ipairs(pods) do
-					if not output or p.Size.Y < output.Size.Y then
-						output = p -- the output pod's dome is the low one
-					end
-				end
-				local near = att ~= nil and att:IsA("Attachment") and output ~= nil and (att.WorldPosition - output.Position).Magnitude <= 2
-				fusion:case(#pods == 3 and find(m, "Chamber", "BasePart") ~= nil and swirl ~= nil and #parts(swirl) >= 3 and near and #list <= 90,
-					"level " .. level .. ": " .. #pods .. " pods, " .. #list .. " parts, prompt by the output " .. tostring(near))
-				local tints = {}
-				for _, p in ipairs(pods) do
-					if p ~= output then
-						tints[#tints + 1] = p.Color
-					end
-				end
-				local differ = #tints == 2 and (abs(tints[1].R - tints[2].R) + abs(tints[1].G - tints[2].G) + abs(tints[1].B - tints[2].B)) > 0.2
-				local glows = 0
-				for _, p in ipairs(named(m, "Glow")) do
-					if p.Material == Enum.Material.Neon then
-						glows = glows + 1
-					end
-				end
-				local gold = #named(m, "Gold") > 0
-				local crystals = #named(m, "Crystal")
-				look:case(differ and glows >= 3 and (level < 2 or gold) and (level < 3 or crystals >= 3),
-					"level " .. level .. ": tints differ " .. tostring(differ) .. ", " .. glows .. " glows, gold " .. tostring(gold) .. ", " .. crystals .. " crystals")
+		local fusion = T.tally("visual art: the Fusion Machine keeps its contract parts at every level (2 Pods, Chamber, OutputDome, Swirl >= 3 parts, FusionPrompt on a PromptPoint) with neon inlays, brass from level 2, shards at 3")
+		for level = 1, TC.Get("FusionMachine").MaxLevel do
+			local m = HB.BuildStationModel("FusionMachine", level)
+			local swirl = m and m:FindFirstChild("Swirl")
+			local prompt = m and find(m, "FusionPrompt", "ProximityPrompt")
+			local inlays = m and count(m, "Inlay") + count(m, "ChamberInlay") or 0
+			local brass = m and find(m, "Lantern") ~= nil
+			fusion:case(m and count(m, "Pod") == 2 and find(m, "Chamber") and find(m, "OutputDome") and swirl and #parts(swirl) >= 3 and prompt and prompt.Parent.Name == "PromptPoint"
+				and inlays >= 3 and (level < 2 or brass) and (level < 3 or count(m, "Shard") == 2) and #parts(m) <= 90, "level " .. level)
+			if m then
+				m:Destroy()
 			end
 		end
 		fusion:report()
-		look:report()
 
-		-- the Garden: a seedling on every bed beyond the open places (3 + Prestige stars, SetGarden), open beds none
-		local garden = T.tally("visual art: every closed Pet Garden bed carries a seedling (Stem + Sprout), open beds none (open counts 3 / 7 / 12)")
-		local gdef = TC.Get("Garden")
-		local places = (gdef and gdef.Slot and gdef.Slot.Spots) and #gdef.Slot.Spots or 12
-		for _, open in ipairs({ 3, 7, 12 }) do
-			for _, level in ipairs({ 1, 5, (gdef and gdef.MaxLevel or 8) }) do
-				local ok, m = pcall(HB.BuildStationModel, "Garden", level, nil, open)
-				if ok and typeof(m) == "Instance" then
-					local stems, sprouts = #named(m, "Stem"), #named(m, "Sprout")
-					garden:case(stems == places - open and sprouts == places - open, "level " .. level .. " open " .. open .. ": " .. stems .. " stems, " .. sprouts .. " sprouts")
+		-- every closed garden bed carries a seedling; open beds a cushion under a little clay roof
+		local garden = T.tally("visual art: every closed Pet Garden bed carries a seedling (Stem + Sprout), every open bed a cushion under a clay roof (open counts 3 / 7 / 12)")
+		for _, level in ipairs({ 1, 5, 8 }) do
+			for _, open in ipairs({ 3, 7, 12 }) do
+				local m = HB.BuildStationModel("Garden", level, nil, open)
+				local roofs = 0
+				for _, p in ipairs(named(m, "BedRoof")) do
+					if p.Material == Enum.Material.ClayRoofTiles then
+						roofs = roofs + 1
+					end
+				end
+				garden:case(m and count(m, "Stem") == 12 - open and count(m, "Sprout") == 12 - open and count(m, "Cushion") == open and roofs == open,
+					"level " .. level .. " open " .. open .. ": " .. count(m, "Stem") .. " stems, " .. roofs .. " roofs")
+				if m then
 					m:Destroy()
-				else
-					garden:case(false, "level " .. level .. " open " .. open .. ": " .. tostring(m))
 				end
 			end
 		end
 		garden:report()
 
-		-- the Training Place: nothing tall between the yard (front, -Z) and the training mats; every mat its own colour
-		local train = T.tally("visual art: the Training Place keeps its front open (nothing over knee height in front of the mats) and every mat has its own bright colour")
-		local ydef = TC.Get("Gym")
-		local frontZ = huge
-		for _, p in ipairs((ydef and ydef.Slot and ydef.Slot.Spots) or {}) do
-			frontZ = min(frontZ, p.Z - 1.3)
-		end
-		for level = 1, (ydef and ydef.MaxLevel or 5) do
-			local ok, m = pcall(HB.BuildStationModel, "Gym", level)
-			if ok and typeof(m) == "Instance" then
-				local bad = nil
-				for _, p in ipairs(parts(m)) do
-					local top = p.Position.Y + p.Size.Y / 2
-					local back = p.Position.Z + p.Size.Z / 2
-					if top > 1.6 and back <= frontZ + 0.01 then
-						bad = p.Name .. string.format(" at z %.1f, top %.1f", p.Position.Z, top)
+		-- the Training Place keeps its front open and gives every mat its own colour
+		local train = T.tally("visual art: the Training Place keeps its front open (nothing over knee height in front of the mats) and every mat has its own colour")
+		for level = 1, TC.Get("Gym").MaxLevel do
+			local m = HB.BuildStationModel("Gym", level)
+			local blocking, colours, dup = nil, {}, false
+			for _, p in ipairs(parts(m)) do
+				if p.Position.Z < -1.4 and p.Position.Y + p.Size.Y / 2 > 1.4 and p.Transparency < 1 then
+					blocking = p.Name
+				end
+				if p.Name == "Mat" then
+					local key = p.Color:ToHex()
+					if colours[key] then
+						dup = true
 					end
+					colours[key] = true
 				end
-				local colours, mats = {}, named(m, "Mat")
-				for _, p in ipairs(mats) do
-					colours[p.Color:ToHex()] = true
-				end
-				local distinct = 0
-				for _ in pairs(colours) do
-					distinct = distinct + 1
-				end
-				train:case(bad == nil and #mats == level and distinct == level, "level " .. level .. ": " .. tostring(bad or (#mats .. " mats, " .. distinct .. " colours")))
+			end
+			train:case(m and blocking == nil and not dup, "level " .. level .. ": " .. tostring(blocking))
+			if m then
 				m:Destroy()
-			else
-				train:case(false, "level " .. level .. ": " .. tostring(m))
 			end
 		end
 		train:report()
 
-		-- the food plants read as food at a glance: their fruit colour is on the model, the top level glows
-		local fruit = T.tally("visual art: every food plant shows its fruit colour (FruitColor parts on the plant) and sparkles at its top level")
-		for _, id in ipairs({ "Press1", "Press2", "Press3", "Press4" }) do
-			local def = TC.Get(id)
-			for _, level in ipairs({ 1, 5, def.MaxLevel }) do
-				local ok, m = pcall(HB.BuildStationModel, id, level)
-				if ok and typeof(m) == "Instance" then
-					local want = m:GetAttribute("FruitColor")
-					local hits = 0
-					for _, p in ipairs(parts(m)) do
-						if typeof(want) == "Color3" and abs(p.Color.R - want.R) + abs(p.Color.G - want.G) + abs(p.Color.B - want.B) < 0.25 then
-							hits = hits + 1
-						end
-					end
-					local sparkle = find(m, "Sparkle", "Attachment")
-					fruit:case(hits >= 1 and ((level == def.MaxLevel) == (sparkle ~= nil)), id .. " level " .. level .. ": " .. hits .. " fruit parts, sparkle " .. tostring(sparkle ~= nil))
-					m:Destroy()
-				else
-					fruit:case(false, id .. " level " .. level .. ": " .. tostring(m))
-				end
-			end
-		end
-		fruit:report()
-
-		-- the Coin Magnet: a red horseshoe on the head; the Food Machine: fruit inside a see-through hopper and a lit button
-		local okM, mag = pcall(HB.BuildStationModel, "Collector", 5)
-		if okM and typeof(mag) == "Instance" then
-			local head = mag:FindFirstChild("MagnetHead")
-			local red = 0
-			for _, p in ipairs(parts(head)) do
-				if p.Color.R > 0.75 and p.Color.G < 0.4 and p.Color.B < 0.4 then
-					red = red + 1
-				end
-			end
-			T.check(head ~= nil and red >= 1 and find(mag, "Sparkle", "Attachment") ~= nil, "visual art: the Coin Magnet's head is a red horseshoe magnet; the top level sparkles", red .. " red parts")
-			mag:Destroy()
-		end
-		local okF, fm = pcall(HB.BuildStationModel, "Kitchen", 1)
-		if okF and typeof(fm) == "Instance" then
-			local hopper = find(fm, "Hopper", "BasePart")
+		-- the Food Machine's glass hopper is full of berries and its FEED button glows
+		local machine = HB.BuildStationModel("Kitchen", 3)
+		if machine then
+			local hopper = find(machine, "Hopper", "BasePart")
 			local inside, lit = 0, 0
-			for _, p in ipairs(parts(fm)) do
-				if hopper and p ~= hopper and p.Transparency < 0.2 then
-					local d = hopper.CFrame:PointToObjectSpace(p.Position)
-					if abs(d.X) < hopper.Size.X / 2 and abs(d.Y) < hopper.Size.Y / 2 and abs(d.Z) < hopper.Size.Z / 2 then
-						inside = inside + 1
-					end
+			for _, p in ipairs(parts(machine)) do
+				if hopper and p ~= hopper and p.Name == "HopperBerries" and math.abs(p.Position.X - hopper.Position.X) < hopper.Size.X / 2 and math.abs(p.Position.Y - hopper.Position.Y) < hopper.Size.Y / 2 then
+					inside = inside + 1
 				end
-				if p.Material == Enum.Material.Neon then
+				if p.Name == "Button" and p.Material == Enum.Material.Neon then
 					lit = lit + 1
 				end
 			end
-			T.check(hopper ~= nil and inside >= 2 and lit >= 1, "visual art: the Food Machine's glass hopper is full of fruit and its FEED button glows", inside .. " fruit parts inside, " .. lit .. " neon")
-			fm:Destroy()
+			T.check(hopper ~= nil and inside >= 2 and lit >= 1 and find(machine, "Basket") ~= nil, "visual art: the Food Machine's glass hopper is full of berries, its FEED button glows and the Berry Basket stands by it", inside .. " berry layers inside, " .. lit .. " neon")
+			machine:Destroy()
 		end
 
-		-- the Sky Castle's facade centrepiece
-		local okH, castle = pcall(HB.BuildStationModel, "House", 4)
-		if okH and typeof(castle) == "Instance" then
-			local rose = 0
-			for _, p in ipairs(named(castle, "WarmWindow")) do
-				if abs(p.Position.X) < 2.5 and p.Position.Y > 9.5 and p.Position.Y < 14.5 then
-					rose = rose + 1
+		-- the houses: real roofs and walls; the Sky Castle has its rose window and tiled spires
+		local houses = T.tally("visual art: every House tier has ClayRoofTiles roofs, Brick / WoodPlanks / Marble walls on a Slate plinth and warm-glass windows")
+		for level = 1, 4 do
+			local m = HB.BuildStationModel("House", level)
+			local roof, wall, plinth, windows = 0, 0, 0, 0
+			for _, p in ipairs(parts(m)) do
+				if p.Material == Enum.Material.ClayRoofTiles then
+					roof = roof + 1
+				elseif p.Material == Enum.Material.Brick or p.Material == Enum.Material.WoodPlanks or p.Material == Enum.Material.Marble then
+					wall = wall + 1
+				end
+				if p.Name == "Plinth" and p.Material == Enum.Material.Slate then
+					plinth = plinth + 1
+				end
+				if p.Name == "Window" and p.Material == Enum.Material.Glass then
+					windows = windows + 1
 				end
 			end
-			T.check(rose >= 1 and #parts(castle) <= 150, "visual art: the Sky Castle has a lit rose window over its gate (within its 150 parts)", rose .. " pieces, " .. #parts(castle) .. " parts")
+			houses:case(roof >= 2 and wall >= 3 and plinth >= 1 and windows >= 3, "tier " .. level .. ": roof " .. roof .. ", walls " .. wall .. ", windows " .. windows)
+			if level == 4 then
+				T.check(find(m, "RoseWindow") ~= nil and count(m, "Spire") >= 20 and #parts(m) <= 150, "visual art: the Sky Castle has a rose window over its gate and tiled spires on its towers (within its 150 parts)", #parts(m) .. " parts")
+			end
+			if m then
+				m:Destroy()
+			end
 		end
+		houses:report()
 	end)
 
 	S.p2visual_plot = guarded("p2visual_plot", function()
@@ -325,8 +371,8 @@ local function serverScenarios()
 			local loc = slot:PointToObjectSpace(c)
 			T.check(abs(loc.X) < 2 and abs(loc.Z) < 4, "visual plot: ...where the house will stand (the House slot)", string.format("%.1f, %.1f", loc.X, loc.Z))
 		end
-		HB.SetStation(spot, "Collector", 1)
-		T.check(home:FindFirstChild("HouseLot") ~= nil, "visual plot: other stations (the Coin Magnet) leave the lot alone")
+		HB.SetStation(spot, "Press1", 1)
+		T.check(home:FindFirstChild("HouseLot") ~= nil, "visual plot: other stations (the Berry Farm) leave the lot alone")
 		HB.SetStation(spot, "House", 1)
 		T.check(home:FindFirstChild("HouseLot") == nil, "visual plot: building the House clears the lot")
 		HB.SetStation(spot, "House", 0)
@@ -336,7 +382,7 @@ local function serverScenarios()
 
 		-- a ghost for a station that unlocks later: a ForceField hologram
 		local fusionPad = nil
-		for _, pad in ipairs(TC.AvailablePads({ Stations = { Press1 = 3, Press2 = 2, Collector = 1, House = 1, Garden = 1, Kitchen = 1 }, Prestige = 0 })) do
+		for _, pad in ipairs(TC.AvailablePads({ Stations = { Press1 = 3, House = 1, Garden = 1, Kitchen = 1 }, Prestige = 0 })) do
 			if pad.StationId == "FusionMachine" then
 				fusionPad = pad
 			end

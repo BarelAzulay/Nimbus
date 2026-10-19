@@ -1072,10 +1072,108 @@ BUILDERS.dragon = BUILDERS.skydragon
 
 -- [owner: worldlobby] begin
 -- (lobby with the Gate Court: `lobby` keeps its name; `gates` = the six gates + the court; `gate:<Home|Obby|Dungeon|Ring|Arena|Altar>`)
+--   lobby                 LobbyBuilder.Build() + the Gate Court gates of ArenaBuilder (Ring, Arena) and, once it exists,
+--                         DungeonBuilder (Dungeon): the whole lobby folder (crop with DUMP.box; render `--views top`)
+--   gates                 the Gate Court alone: every gate of LobbyInfo.GatesFolder + the court tiles, terrace, rims and
+--                         its dressing (cloned into one folder), facing the plaza
+--   gate:<Id>             one gate (Home, Obby, Dungeon, Ring, Arena, Altar) and its pad, facing the plaza
+local function worldlobbyLobby()
+	local info = ensureLobby()
+	if not info._p5GatesBuilt then
+		info._p5GatesBuilt = true
+		local okA, AB = pcall(req, "server/Services/ArenaBuilder")
+		if okA and type(AB) == "table" and type(AB.Build) == "function" then
+			pcall(AB.Build, info)
+		end
+		local okD, DB = pcall(req, "server/Services/DungeonBuilder")
+		if okD and type(DB) == "table" and type(DB.Build) == "function" then
+			pcall(DB.Build, info)
+		end
+		Mock.Advance(0.2)
+	end
+	return info
+end
+
+BUILDERS.lobby = function()
+	local info = worldlobbyLobby()
+	return { { root = info.Folder, label = "Lobby", sub = "LobbyBuilder.Build() + the Gate Court gates", facing = { 0, 0, -1 } } }
+end
+
+BUILDERS.gates = function()
+	local info = worldlobbyLobby()
+	local holder = Instance.new("Folder")
+	holder.Name = "GateCourt"
+	local plaza = info.Folder:FindFirstChild("Plaza")
+	local pieces = { info.GatesFolder }
+	if plaza then
+		for _, name in ipairs({ "Courts", "GateCourtDecor" }) do
+			pieces[#pieces + 1] = plaza:FindFirstChild(name)
+		end
+	end
+	for _, piece in ipairs(pieces) do
+		if piece then
+			local copy = piece:Clone()
+			-- the court only: the spawn court's rings stay out of the picture
+			for _, d in ipairs(copy:GetChildren()) do
+				if d.Name == "SpawnTile" or d.Name == "SpawnRing" then
+					d:Destroy()
+				end
+			end
+			copy.Parent = holder
+		end
+	end
+	local look = info.GateSites and info.GateSites.Ring and info.GateSites.Ring.LookVector or Vector3.new(0, 0, -1)
+	return { { root = holder, label = "Gate Court", sub = "the six gates + the court (LobbyInfo.GatesFolder)", facing = { look.X, 0, look.Z } } }
+end
+
+BUILDERS.gate = function(id)
+	local info = worldlobbyLobby()
+	id = tostring(id or "Obby")
+	local model = info.GatesFolder and info.GatesFolder:FindFirstChild("Portal_" .. id)
+	if not model then
+		fail("no Portal_" .. id .. " in the Gate Court")
+	end
+	local site = info.GateSites and info.GateSites[id]
+	local look = site and site.LookVector or Vector3.new(0, 0, -1)
+	return { { root = model, label = "Portal_" .. id, sub = "WorldStyle.BuildGate (" .. id .. ")", facing = { look.X, 0, look.Z } } }
+end
 -- [owner: worldlobby] end
 
 -- [owner: homeworld] begin
--- (home:Press1:<1..40> = the Berry Farm levels, homegarden = 12 beds + the Food Bowl, the Fence / Fountain levels, the House tiers)
+-- (home:Press1:<1..40> = the Berry Farm levels and home:<Id>:<level> every other station, through the generic `home`
+--  target; homerow:House:1,2,3,4 / homerow:DecorFountain:1,2,3 / homerow:DecorFence:1,2,3 the tiers side by side;
+--  homeplot:SkyCastle:pads the whole plot. homegarden[:<open>[:<level>]] = the Pet Garden with its 12 beds (default all
+--  open) and the Food Bowl: HomeFx's roaming pets on top when the client HomeFx can draw them, else the HomeBuilder model
+--  alone, so the target works before and after the W3 HomeFx rewrite)
+do
+	local petsView = BUILDERS.homegarden
+	BUILDERS.homegarden = function(open, level)
+		local HB = homeBuilder()
+		local TC = req("shared/TycoonCatalog")
+		local def = TC.Get("Garden")
+		local beds = (def.Slot and (def.Slot.Beds or def.Slot.Spots)) or {}
+		open = math.max(0, math.min(#beds, tonumber(open) or #beds))
+		level = math.max(1, math.min(def.MaxLevel, tonumber(level) or def.MaxLevel))
+		local ok, out = false, "no HomeFx view"
+		if type(petsView) == "function" then
+			ok, out = pcall(petsView, open, level)
+		end
+		if ok and type(out) == "table" then
+			return out
+		end
+		local m = HB.BuildStationModel("Garden", level, nil, open)
+		if not m then
+			fail("HomeBuilder.BuildStationModel(Garden, " .. level .. ") returned nothing")
+		end
+		m.Parent = Workspace
+		return { {
+			root = m,
+			label = def.Name .. " Lv " .. level .. "  " .. open .. " open beds + the Food Bowl",
+			sub = "HomeBuilder (no HomeFx pets yet)",
+			facing = { 0, 0, -1 },
+		} }
+	end
+end
 -- [owner: homeworld] end
 
 -- [owner: dungeon] begin

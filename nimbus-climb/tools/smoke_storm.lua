@@ -525,12 +525,15 @@ local function serverScenarios()
 			end
 			add(kind, label, boxes)
 		end
-		for _, diff in ipairs(Config.Difficulties) do
-			addModel("portal", "Portal_" .. diff.Id, folder:FindFirstChild("Portal_" .. diff.Id, true))
-			local p = info.Portals and info.Portals[diff.Id]
-			if p and typeof(p.Zone) == "Instance" then
-				addModel("portal", "portal zone " .. diff.Id, p.Zone)
+		-- Phase 5: the Gate Court (one gate per mode) + the one obby portal zone
+		if info.GatesFolder then
+			for _, g in ipairs(info.GatesFolder:GetChildren()) do
+				addModel("portal", g.Name, g)
 			end
+		end
+		local p = info.Portals and info.Portals.Obby
+		if p and typeof(p.Zone) == "Instance" then
+			addModel("portal", "portal zone Obby", p.Zone)
 		end
 		for _, r in ipairs(Config.Roulettes) do
 			addModel("roulette", "Roulette_" .. r.Id, folder:FindFirstChild("Roulette_" .. r.Id, true))

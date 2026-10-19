@@ -154,7 +154,6 @@ Config.Lobby = {
 	GateArcRadius = 118, -- the six gates stand on this arc (replaces PortalRingRadius 88); pad centres at r 104
 	GateStep = 14.5, -- degrees between gates (29.8 studs)
 	GateFacing = 90, -- degrees: the arc's middle (+Z); the spawn looks this way
-	PortalRingRadius = 88, -- DEPRECATED (10.5): the Phase 4 LobbyBuilder's five portals; deleted at the W2 gate with them
 	SpotRingRadius = 340, -- was 300: the player home plots stand on this ring (spoke bridges stay 130 studs)
 	SpotCount = 16, -- one saved spot per player; set the place's Max Players to <= this
 	PlotSize = 72, -- flat square buildable area (studs) of each home plot (read by TycoonCatalog)

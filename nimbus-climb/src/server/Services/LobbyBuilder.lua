@@ -3,16 +3,19 @@
 --
 -- Top view (+X right, +Z up the page, angles in degrees: x = cos, z = sin, plaza centre = Origin):
 --
---   * PLAZA          a big round cloud island (walkable radius ~116). Its body is a tiered voxel cloud with
---                    puffy rim clouds; the top is tiled ground in layers: shaded lawn with flower pixels, a
---                    stone court with a golden medallion (arrows point at every portal), a stone promenade
---                    on the portal ring, stone / sand paths with borders, a wooden boardwalk to the shop
---                    with a fountain roundabout (Nimbus, the Cloudy Dragon, on top), a voxel rainbow arch
---                    with the welcome sign, notice boards, trees, lamps, benches, flower beds, bunting and
---                    banners in the difficulty colours.
---   * PORTAL GATES   Model Portal_<Id>: one per Config.Difficulties entry on Config.Lobby.PortalRingRadius,
---                    spread over the +Z half (Easy at 0 degrees ... Saint at 180). A sculpted cloud-and-stone
---                    ring gate in the difficulty colour, star gems, a tiled ready pad (the Zone) + billboard.
+--   * PLAZA          a big round cloud island (Phase 5: PlazaRadius 150, 1.8x the Phase 4 area). Its body is a tiered
+--                    voxel cloud (the clouds keep their look on purpose, tagged NC_StyleExempt); the top is built in
+--                    the 6.4 art rules (WorldStyle materials, muted big surfaces, plinth + body + cap): the spawn court
+--                    (concentric Slate tile rings, a Marble ring, a Metal sun medallion with six Neon arrows in the gate
+--                    colours), the grand avenue to the Gate Court (Cobblestone, Brick kerbs, lamps every 16 studs, a
+--                    tall stone welcome arch at r 40 carrying the welcome sign), the cobbled circle walk (r 100) with
+--                    clipped hedges and lamps, the east / west walks, the shop boardwalk with the fountain roundabout,
+--                    lawns with trees, benches, flower beds and the six NPC spots, a Brick kerb along the edge.
+--   * GATE COURT     (6.1) a sector 48..132 degrees, r 96..146: Slate tile rings, a Marble rim, a raised terrace with
+--                    hedges, a banner behind every gate and two obelisks. Six gates left -> right Home, Obby, Dungeon,
+--                    Ring, Arena, Altar on the arc r Config.Lobby.GateArcRadius, GateStep degrees apart around
+--                    GateFacing, every gate facing the spawn (WorldStyle.BuildGate). This module builds Home, Obby and
+--                    Altar into the Gates folder; ArenaBuilder adds Ring + Arena, DungeonBuilder (W3) the Dungeon gate.
 --   * SHOP ISLAND    at Config.Lobby.ShopOffset: four voxel gacha machines (Model Roulette_<Id>, built in
 --                    the roulette colour), the striped item stall (Model ItemShop), a rarity board, a token
 --                    statue and an entrance arch, joined to the plaza by a short stone neck.
@@ -28,7 +31,8 @@
 --   * SKY            voxel cumulus clouds around the village and one far below it.
 --
 -- LobbyBuilder.Build() -> LobbyInfo (ARCHITECTURE.md / _V2 / _V3 contract):
---   Folder, SpawnCFrame, Portals[id] = PortalInfo (+ Model), Spots[i] = SpotInfo, Shop = { Roulettes[id], ItemShop },
+--   Folder, SpawnCFrame, Portals = { Obby = PortalInfo (+ Model, PromptPart) } (Phase 5: the one Sky Obby portal),
+--   Spots[i] = SpotInfo, Shop = { Roulettes[id], ItemShop },
 --   NpcSpots = { CFrame x6 }   ground-level CFrames on the plaza lawn beside the walkways, LookVector = towards
 --                              the walkway / court, each with ~5 studs of free space for an NPC pedestal
 --   AltarSite = CFrame | nil   reserved, empty spot inside the ring for the Storm Altar island (faces the plaza)
@@ -38,12 +42,11 @@
 --   ArenaAngle = degrees | nil  the spoke just past the last portal; its junction's OUTER rope rail is open
 --   ArenaDock = Vector3 | nil   outer edge of that junction on the spoke's ray: the arena bridge leaves the street here
 --   ArenaBridgeWidth = studs    the arena bridge's deck width (the rail gap is 1.6 studs wider)
---   TrialSite = CFrame | nil    the Trial Portal's ground point on the plaza (the next gate of the portal fan, on a stone
---                              patch joined to the end of the promenade), LookVector = towards the plaza centre
---   Phase 4: RingSite = CFrame | nil  the Champion Ring portal's ground point (ArenaBuilder's Portal_Ring): the first
---                              free gate of the fan beside the Trial Portal (before the first portal, else after the
---                              Trial Portal; >= 30 degrees from the shop, every portal and the Trial Portal), on a stone
---                              patch like the trial's, LookVector = towards the plaza centre
+--   Phase 5 (6.1): GateSites = { Home, Obby, Dungeon, Ring, Arena, Altar } ground CFrames of the gate centres
+--                              (LookVector = towards the plaza centre); RingSite = GateSites.Ring; DungeonSite =
+--                              GateSites.Dungeon; GatesFolder = workspace.NimbusLobby.Gates; Gates = { Home, Obby, Altar
+--                              = { Model, Pad, PromptPart } } (GateService / PortalService put the prompts on them).
+--                              NimbusLobby.PartCount is written by Main after the last gate builder, not here.
 -- SpotInfo also carries PlotCFrame (centre of the flat yard surface, LookVector = towards the gate),
 -- PlotSize (= Config.Lobby.PlotSize), GateCFrame (gate, on the ground) and Accent (the plot colour).
 -- Spot folders are named Spot_NN and carry the attribute SpotIndex; portal / roulette models are named
@@ -55,18 +58,19 @@
 -- hang from their rope, puffs under bridges stop at the deck, and no cloud rises over a path or an exit.
 -- No server-side animation (v3 replication rule): life comes from ParticleEmitters and lights only.
 --
--- Part budget: <= ~6500 parts after the greedy voxel merge. Repeated decor (trees, lamps, benches, flower beds,
+-- Part budget: the lobby with all six gates <= 8000 parts after the greedy voxel merge (10.3). Repeated decor (trees, lamps, benches, flower beds,
 -- the whole plot with its island, fence and gate, cloud puffs, sky clouds) is sculpted once and :Clone()d.
 -- No external assets: Parts, built-in particle textures and Theme-styled GUI text. Deterministic (seeded).
 -- ProximityPrompts are NOT created here: PetService / ItemService attach them to the PromptParts.
 --
--- Robustness: portals, spots, the shop machines and the item stall are what other services depend on. Each
+-- Robustness: gates, spots, the shop machines and the item stall are what other services depend on. Each
 -- is built inside pcall with a plain-part fallback that still returns the same LobbyInfo shape (the
 -- fallbacks also cover a missing shared/Voxel module), and all decoration runs in guarded sections.
 -- Plain Lua 5.1-compatible syntax only.
 
 local Workspace = game:GetService("Workspace")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local CollectionService = game:GetService("CollectionService")
 
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Config = require(Shared.Config)
@@ -89,6 +93,9 @@ local function loadShared(name)
 end
 
 local Voxel = loadShared("Voxel")
+local WorldStyle = loadShared("WorldStyle")
+local DETAIL_TAG = (WorldStyle and WorldStyle.Tags and WorldStyle.Tags.Detail) or "NC_Detail" -- pure decor (Low graphics hides it)
+local EXEMPT_TAG = (WorldStyle and WorldStyle.Tags and WorldStyle.Tags.Exempt) or "NC_StyleExempt" -- voxel clouds / pets / tokens
 
 ----------------------------------------------------------------------
 -- Constants
@@ -100,7 +107,6 @@ local TOP = ORIGIN.Y -- y of every walking surface
 local LAWN = 0.4 -- the lawn layer's top sits this far under TOP (paths 0, borders -0.1, patches -0.3)
 local OX, OZ = ORIGIN.X, ORIGIN.Z
 local PLAZA_R = (LOBBY.PlazaRadius or 110) + 6 -- walkable radius of the plaza ground
-local PORTAL_R = LOBBY.PortalRingRadius or 88
 local SPOT_R = LOBBY.SpotRingRadius or 300
 local SPOT_COUNT = math.max(1, LOBBY.SpotCount or 16)
 local PLOT = LOBBY.PlotSize or 72
@@ -127,13 +133,22 @@ end
 -- Layout numbers (studs). Plot-local frames: origin = yard centre on the ground, -Z = towards the plaza
 -- (the gate side), +X = across.
 local G = {}
-G.CourtR = 29 -- stone court around the spawn
-G.PromIn = PORTAL_R - 9 -- stone promenade ring the portal pads sit on
-G.PromOut = PORTAL_R + 9
+-- Phase 5 Gate Court (6.1): six gates on an arc in front of the spawn
+G.GateR = LOBBY.GateArcRadius or 118
+G.GateStep = LOBBY.GateStep or 14.5
+G.GateFacing = LOBBY.GateFacing or 90
+G.CourtR = 34 -- the spawn court (Slate rings + a Marble ring around the medallion)
+G.AvenueHalf = 10 -- the grand avenue to the Gate Court (20 wide, Cobblestone, Brick kerbs)
+G.RingRoadR = 100 -- the cobbled circle walk around the lawns (the spokes leave it)
+G.CourtIn = 96 -- the Gate Court sector: Slate rings from r 96 ...
+G.CourtOut = 146 -- ... to r 146
+G.TerraceIn = 126 -- the raised terrace behind the gates (r 126 .. 146)
+G.TerraceLift = 0.3
+G.PadR = G.GateR - 14 -- pad centres (WorldStyle.BuildGate puts the pad 14 studs in front of the gate)
 G.PathHalf = 5 -- radial stone paths (half width incl. border)
 G.BoardHalf = 7 -- the wooden boardwalk to the shop
 G.StubHalf = 5 -- sand paths to the spoke bridges
-G.FountainD = 58 -- fountain roundabout, distance from the centre towards the shop
+G.FountainD = 66 -- fountain roundabout, distance from the centre towards the shop
 G.Step = 360 / SPOT_COUNT
 G.HalfStep = G.Step / 2
 G.PlotHalf = PLOT / 2
@@ -148,10 +163,9 @@ G.JunctionX = G.StreetR * math.tan(math.rad(G.HalfStep)) -- plot-local x of the 
 G.StreetExt = (G.StreetW / 2) * math.tan(math.rad(G.HalfStep)) + 0.8 -- overlap past the junction
 G.SpokeEndR = (G.StreetR - G.StreetW / 2) / math.cos(math.rad(G.HalfStep)) + 2.4
 G.SpokeW = 10
-G.GardenR = 186 -- garden island centres
+G.GardenR = (PLAZA_R + G.StreetR - G.StreetW / 2) / 2 -- garden island centres, halfway between the plaza and the street (221)
 G.GardenSize = 22 -- garden island radius
 G.ArenaBridgeW = 12 -- Phase 3: the arena bridge (ArenaBuilder) leaves the street through a gap this wide + 1.6
-G.TrialHalf = 12 -- Phase 3: half width of the Trial Portal's stone patch (the gate is 22 studs wide)
 
 ----------------------------------------------------------------------
 -- Palette: cheerful but not blinding. Nothing is pure white (cloud tops stay below 249 on red).
@@ -161,124 +175,135 @@ local function rgb(r, g, b)
 	return Color3.fromRGB(r, g, b)
 end
 
+-- Phase 5 (6.4 "less cute, crafted, still bright"): the colours follow WorldStyle.Palette (big surfaces muted:
+-- saturation <= 0.45, value 0.35..0.9), every key has a WorldStyle material (MATS), and the clouds use the sky
+-- shading of rule 9 (tops 250,244,252; sides 226,214,240; undersides 186,172,222).
 local C = {
-	CloudLight = rgb(244, 247, 252),
-	Cloud = rgb(232, 238, 249),
-	CloudShade = rgb(212, 222, 241),
-	Mist = rgb(194, 211, 240),
-	MistDark = rgb(170, 190, 228),
-	Grass = rgb(108, 186, 86),
-	GrassLight = rgb(132, 202, 98),
-	GrassDark = rgb(86, 160, 76),
-	Hedge = rgb(74, 146, 72),
-	HedgeLight = rgb(100, 170, 84),
-	Stone = rgb(208, 202, 190),
-	StoneLight = rgb(226, 221, 209),
-	StoneDark = rgb(172, 164, 154),
-	StoneEdge = rgb(146, 138, 132),
-	Sand = rgb(236, 214, 166),
-	SandDark = rgb(212, 186, 138),
-	Plank = rgb(196, 146, 98),
-	PlankLight = rgb(214, 166, 114),
-	PlankDark = rgb(152, 108, 72),
-	Bark = rgb(132, 92, 62),
-	Iron = rgb(64, 70, 92),
-	IronLight = rgb(96, 104, 130),
-	Gold = rgb(244, 198, 84),
-	GoldDark = rgb(206, 154, 62),
-	Lamp = rgb(255, 214, 140),
-	Water = rgb(92, 178, 236),
-	WaterDeep = rgb(62, 136, 212),
-	Leaf = rgb(98, 178, 80),
-	Pine = rgb(60, 138, 92),
-	Blossom = rgb(246, 174, 204),
-	BlossomWhite = rgb(250, 228, 238),
-	Soil = rgb(120, 86, 64),
-	Navy = rgb(34, 42, 76),
-	Violet = rgb(68, 60, 118),
+	CloudLight = rgb(250, 244, 252),
+	Cloud = rgb(240, 232, 248),
+	CloudShade = rgb(226, 214, 240),
+	Mist = rgb(206, 193, 232),
+	MistDark = rgb(186, 172, 222),
+	Grass = rgb(112, 152, 100),
+	GrassLight = rgb(124, 162, 108),
+	GrassDark = rgb(100, 140, 92),
+	Hedge = rgb(82, 124, 84),
+	HedgeLight = rgb(98, 140, 94),
+	Stone = rgb(152, 146, 156), -- cobbled paths
+	StoneLight = rgb(170, 164, 172),
+	StoneDark = rgb(128, 122, 134),
+	StoneEdge = rgb(150, 104, 96), -- brick borders / kerbs
+	Slate = rgb(108, 112, 130),
+	SlateLight = rgb(124, 128, 146),
+	SlateDark = rgb(84, 88, 106),
+	Marble = rgb(222, 218, 228),
+	MarbleShade = rgb(196, 190, 210),
+	Sand = rgb(214, 198, 164),
+	SandDark = rgb(190, 172, 138),
+	Plank = rgb(156, 118, 90),
+	PlankLight = rgb(170, 132, 100),
+	PlankDark = rgb(124, 92, 70),
+	Bark = rgb(116, 88, 70),
+	Iron = rgb(70, 74, 94),
+	IronLight = rgb(96, 102, 124),
+	Gold = rgb(200, 172, 112),
+	GoldDark = rgb(168, 142, 94),
+	Lamp = rgb(255, 214, 170),
+	Water = rgb(108, 152, 190),
+	WaterDeep = rgb(86, 120, 156),
+	Leaf = rgb(96, 140, 84),
+	Pine = rgb(72, 112, 88),
+	Blossom = rgb(214, 160, 186),
+	BlossomWhite = rgb(222, 204, 216),
+	Soil = rgb(120, 94, 76),
+	Navy = rgb(72, 76, 104), -- sign boards (the SurfaceGui panel covers them)
+	Violet = rgb(96, 88, 132),
 	Ink = (Theme.Colors and Theme.Colors.Ink) or rgb(26, 32, 64),
 	Text = rgb(238, 243, 252),
 	TextDim = rgb(190, 202, 230),
 	TextGold = rgb(246, 216, 132),
 	StarOff = rgb(96, 104, 136),
-	Rose = rgb(234, 120, 146),
-	Cream = rgb(246, 234, 210),
+	Rose = rgb(190, 118, 134),
+	Cream = rgb(226, 214, 196),
+	PanelTop = rgb(68, 60, 118), -- sign GUI panels only (never a part colour)
+	PanelBottom = rgb(34, 42, 76),
 }
+
+-- WorldStyle material of every colour key (6.4 rule 1); the voxel palette and box() both read it.
+local MATS = {
+	Grass = "Grass", GrassLight = "Grass", GrassDark = "Grass",
+	Hedge = "LeafyGrass", HedgeLight = "LeafyGrass", Leaf = "LeafyGrass", Pine = "LeafyGrass",
+	Blossom = "LeafyGrass", BlossomWhite = "LeafyGrass",
+	Stone = "Cobblestone", StoneLight = "Cobblestone", StoneDark = "Cobblestone", StoneEdge = "Brick",
+	Slate = "Slate", SlateLight = "Slate", SlateDark = "Slate", Navy = "Slate", Violet = "Slate",
+	Marble = "Marble", MarbleShade = "Marble", Cream = "Marble",
+	Sand = "Sand", SandDark = "Sand", Soil = "Sand",
+	Plank = "WoodPlanks", PlankLight = "WoodPlanks", PlankDark = "WoodPlanks", Bark = "Wood",
+	Iron = "Metal", IronLight = "Metal", Gold = "Metal", GoldDark = "Metal",
+	Lamp = "Neon", Water = "Glass", WaterDeep = "Glass", Rose = "Fabric",
+}
+local function materialOf(name)
+	local m = (WorldStyle and WorldStyle.Materials and WorldStyle.Materials[name]) or MAT[name]
+	return m or MAT.SmoothPlastic
+end
+-- colour -> material for box() calls that pass a C colour (keyed by "r,g,b": Color3 values are not table keys)
+local function colorKey(color)
+	return string.format("%d,%d,%d", math.floor(color.R * 255 + 0.5), math.floor(color.G * 255 + 0.5), math.floor(color.B * 255 + 0.5))
+end
+local MAT_BY_COLOR = {}
+for key, name in pairs(MATS) do
+	if C[key] then
+		MAT_BY_COLOR[colorKey(C[key])] = materialOf(name)
+	end
+end
 
 local FLOWERS = {
-	rgb(246, 150, 188), -- pink
-	rgb(250, 214, 92), -- yellow
-	rgb(244, 244, 248), -- white (not pure)
-	rgb(172, 142, 232), -- violet
-	rgb(236, 104, 108), -- red
-	rgb(112, 172, 240), -- blue
+	rgb(236, 150, 184), -- pink
+	rgb(240, 208, 104), -- yellow
+	rgb(236, 232, 240), -- white (not pure)
+	rgb(170, 146, 222), -- violet
+	rgb(222, 112, 116), -- red
+	rgb(120, 168, 228), -- blue
 }
 
--- One accent per home plot (cycled): banner, mailbox flag, podium trim.
+-- One accent per home plot (cycled): banner, mailbox flag, podium trim (small pieces only, rule 2).
 local ACCENTS = {
-	rgb(232, 112, 132),
-	rgb(240, 160, 84),
-	rgb(236, 204, 92),
-	rgb(108, 192, 124),
-	rgb(86, 186, 206),
-	rgb(98, 148, 226),
-	rgb(154, 122, 222),
-	rgb(222, 120, 192),
+	rgb(212, 126, 142),
+	rgb(218, 160, 106),
+	rgb(216, 190, 114),
+	rgb(120, 176, 130),
+	rgb(108, 168, 184),
+	rgb(116, 146, 204),
+	rgb(152, 132, 204),
+	rgb(204, 128, 182),
 }
 
-local RAINBOW = {
-	rgb(232, 104, 116),
-	rgb(242, 160, 86),
-	rgb(244, 212, 96),
-	rgb(108, 196, 120),
-	rgb(96, 164, 232),
-	rgb(156, 124, 226),
+-- The six gates of the Gate Court, left -> right (6.1 / 6.2): id, gate colour (WorldStyle.Palette.Accent), glyph.
+local GATE_SPECS = {
+	{ Id = "Home", Accent = "Yellow", Glyph = "house" },
+	{ Id = "Obby", Accent = "Blue", Glyph = "cloud" },
+	{ Id = "Dungeon", Accent = "Purple", Glyph = "torch" },
+	{ Id = "Ring", Accent = "Gold", Glyph = "crown" },
+	{ Id = "Arena", Accent = "Red", Glyph = "swords" },
+	{ Id = "Altar", Accent = "Cyan", Glyph = "bolt" },
 }
+local function gateAccent(name)
+	local acc = WorldStyle and WorldStyle.Palette and WorldStyle.Palette.Accent
+	return (acc and acc[name]) or C.Gold
+end
 
 -- One palette for every voxel grid (keys are shared; Voxel derives missing _Light / _Dark variants).
-local P = {
-	CloudLight = C.CloudLight,
-	Cloud = C.Cloud,
-	CloudShade = C.CloudShade,
-	Mist = C.Mist,
-	MistDark = C.MistDark,
-	Grass = C.Grass,
-	GrassLight = C.GrassLight,
-	GrassDark = C.GrassDark,
-	Hedge = C.Hedge,
-	Stone = C.Stone,
-	StoneLight = C.StoneLight,
-	StoneDark = C.StoneDark,
-	StoneEdge = C.StoneEdge,
-	Sand = C.Sand,
-	SandDark = C.SandDark,
-	Plank = C.Plank,
-	PlankLight = C.PlankLight,
-	PlankDark = C.PlankDark,
-	Bark = C.Bark,
-	Iron = C.Iron,
-	Gold = C.Gold,
-	GoldDark = C.GoldDark,
-	GoldGlow = { Color = C.Gold, Material = MAT.Neon },
-	Leaf = C.Leaf,
-	Pine = C.Pine,
-	Blossom = C.Blossom,
-	BlossomWhite = C.BlossomWhite,
-	Soil = C.Soil,
-	Water = { Color = C.Water, Material = MAT.Glass, Transparency = 0.35 },
-	WaterDeep = C.WaterDeep,
-	Lamp = { Color = C.Lamp, Material = MAT.Neon },
-	Rose = C.Rose,
-	Cream = C.Cream,
-}
+local P = {}
+for key, color in pairs(C) do
+	P[key] = { Color = color, Material = materialOf(MATS[key] or "SmoothPlastic") }
+end
+P.GoldGlow = { Color = C.Gold, Material = MAT.Neon }
+P.Water = { Color = C.Water, Material = materialOf("Glass"), Transparency = 0.35 }
 for i, color in ipairs(FLOWERS) do
-	P["Flower" .. i] = color
+	P["Flower" .. i] = { Color = color, Material = materialOf("LeafyGrass") }
 end
-for i, color in ipairs(RAINBOW) do
-	P["Rainbow" .. i] = color
-end
-for i, diff in ipairs(Config.Difficulties) do
-	P["Diff" .. i] = diff.Color
+for i, spec in ipairs(GATE_SPECS) do
+	P["Gate" .. i] = { Color = gateAccent(spec.Accent), Material = MAT.Neon }
 end
 
 -- Cloud keys used by tiers, from the top tier down (height-banded shading: cheap and soft).
@@ -401,7 +426,12 @@ local function box(parent, name, cf, size, color, opts)
 	p.Size = size
 	p.CFrame = cf
 	p.Color = color
-	p.Material = opts.Material or MAT.SmoothPlastic
+	-- 6.4 rule 1: a WorldStyle material (by the colour's key); SmoothPlastic only for parts <= 2 studs
+	local material = opts.Material or MAT_BY_COLOR[colorKey(color)]
+	if not material then
+		material = (math.max(size.X, size.Y, size.Z) <= 2) and MAT.SmoothPlastic or materialOf("Marble")
+	end
+	p.Material = material
 	p.Transparency = opts.Transparency or 0
 	if opts.Reflectance then
 		p.Reflectance = opts.Reflectance
@@ -646,7 +676,7 @@ local function signPanel(gui, strokeColor)
 	panel.Size = UDim2.new(1, 0, 1, 0)
 	panel.BackgroundColor3 = Color3.fromRGB(255, 255, 255) -- UIGradient multiplies this
 	panel.BorderSizePixel = 0
-	vgradient(panel, C.Violet, C.Navy)
+	vgradient(panel, C.PanelTop, C.PanelBottom)
 	rounded(panel, 24)
 	outline(panel, strokeColor or C.TextGold, 6, 0.2)
 	panel.Parent = gui
@@ -936,7 +966,7 @@ end
 function VX.CloudModel(spec, cf, parent, name, collide)
 	local V = spec.V or 3
 	local g = VX.Cloud(spec)
-	return VX.Build(g, {
+	local model = VX.Build(g, {
 		V = V,
 		Name = name or "Cloud",
 		CF = cf * CFrame.new(0, -V / 2, 0),
@@ -944,6 +974,10 @@ function VX.CloudModel(spec, cf, parent, name, collide)
 		MaxParts = spec.MaxParts,
 		Parent = parent,
 	})
+	if model then
+		CollectionService:AddTag(model, EXEMPT_TAG) -- the voxel clouds keep their look on purpose (6.4 rule 9)
+	end
+	return model
 end
 
 ----------------------------------------------------------------------
@@ -1013,12 +1047,15 @@ function Props.Lamp()
 	return template("Lamp", function()
 		local m = Instance.new("Model")
 		m.Name = "Lamp"
-		box(m, "LampBase", CFrame.new(0, 0.5, 0), Vector3.new(1.8, 1, 1.8), C.StoneDark, { Collide = true })
-		box(m, "LampPole", CFrame.new(0, 4, 0), Vector3.new(0.6, 6.2, 0.6), C.Iron, { Collide = true })
-		box(m, "LampCollar", CFrame.new(0, 7.2, 0), Vector3.new(1.2, 0.4, 1.2), C.IronLight)
-		box(m, "LampGlass", CFrame.new(0, 8.1, 0), Vector3.new(1.1, 1.4, 1.1), C.Lamp, { Material = MAT.Neon })
-		box(m, "LampRoof", CFrame.new(0, 9, 0), Vector3.new(1.7, 0.45, 1.7), C.Iron)
-		box(m, "LampTip", CFrame.new(0, 9.45, 0), Vector3.new(0.6, 0.45, 0.6), C.GoldDark)
+		-- plinth + body + cap (6.4 rule 3): a Slate foot with a Marble band, an iron post, a glass lantern
+		box(m, "LampBase", CFrame.new(0, 0.6, 0), Vector3.new(1.8, 1.2, 1.8), C.Slate, { Collide = true })
+		box(m, "LampBand", CFrame.new(0, 1.3, 0), Vector3.new(2, 0.2, 2), C.MarbleShade)
+		box(m, "LampPole", CFrame.new(0, 4.6, 0), Vector3.new(0.5, 6.6, 0.5), C.Iron, { Collide = true })
+		box(m, "LampCollar", CFrame.new(0, 8, 0), Vector3.new(1.2, 0.3, 1.2), C.IronLight)
+		box(m, "LampCage", CFrame.new(0, 8.85, 0), Vector3.new(1.3, 1.4, 1.3), C.Lamp, { Material = materialOf("Glass"), Transparency = 0.45 })
+		box(m, "LampGlass", CFrame.new(0, 8.85, 0), Vector3.new(0.7, 1.0, 0.7), C.Lamp, { Material = MAT.Neon })
+		box(m, "LampRoof", CFrame.new(0, 9.75, 0), Vector3.new(1.8, 0.4, 1.8), C.Iron)
+		box(m, "LampTip", CFrame.new(0, 10.15, 0), Vector3.new(0.5, 0.4, 0.5), C.GoldDark)
 		return m
 	end)
 end
@@ -1149,19 +1186,21 @@ end
 ----------------------------------------------------------------------
 
 local function computeLayout()
-	local diffs = Config.Difficulties
-	local n = #diffs
 	local L = {}
 
-	-- Portals fan out over the +Z half of the plaza: the first (easiest) at angle 0 (+X), the last at 180.
-	L.PortalStep = (n > 1) and (180 / (n - 1)) or 90
-	L.PortalAngles = {}
-	for i = 1, n do
-		L.PortalAngles[i] = (n > 1) and ((i - 1) * L.PortalStep) or 90
+	-- Phase 5 Gate Court (6.1): the six gates left -> right on the arc r G.GateR around G.GateFacing (the spawn looks
+	-- this way), G.GateStep degrees apart; the court sector reaches 5.75 degrees past the end gates.
+	L.MidAngle = G.GateFacing
+	L.GateAngles = {}
+	L.GateOrder = {}
+	local nGates = #GATE_SPECS
+	for i, spec in ipairs(GATE_SPECS) do
+		local a = G.GateFacing + (i - (nGates + 1) / 2) * G.GateStep
+		L.GateAngles[spec.Id] = a
+		L.GateOrder[i] = spec.Id
 	end
-	L.MidAngle = L.PortalAngles[math.ceil(n / 2)] or 90
-	L.PromFrom = (L.PortalAngles[1] or 0) - 14
-	L.PromTo = (L.PortalAngles[n] or 180) + 14
+	L.CourtFrom = G.GateFacing - ((nGates - 1) / 2) * G.GateStep - 5.75
+	L.CourtTo = G.GateFacing + ((nGates - 1) / 2) * G.GateStep + 5.75
 
 	-- Shop island.
 	local off = LOBBY.ShopOffset or Vector3.new(0, 0, -150)
@@ -1172,7 +1211,8 @@ local function computeLayout()
 	L.FountainX = math.cos(math.rad(L.ShopAngle)) * G.FountainD
 	L.FountainZ = math.sin(math.rad(L.ShopAngle)) * G.FountainD
 
-	-- Home plots sit between the junctions of the ring street; spokes join every other junction.
+	-- Home plots sit between the junctions of the ring street; spokes join every other junction (never through the
+	-- Gate Court, whose terrace fills the plaza edge behind the gates, and never right beside the shop neck).
 	L.PlotAngles = {}
 	for i = 1, SPOT_COUNT do
 		L.PlotAngles[i] = (i - 1) * G.Step + G.HalfStep
@@ -1183,7 +1223,7 @@ local function computeLayout()
 		local a = j * G.Step
 		local info = { Angle = a, Index = j }
 		L.Junctions[#L.Junctions + 1] = info
-		if j % 2 == 1 and angleDiff(a, L.ShopAngle) > 14 and not nearAny(a, L.PortalAngles, 8) then
+		if j % 2 == 1 and angleDiff(a, L.ShopAngle) > 14 and not angleIn(a, L.CourtFrom - 8, L.CourtTo + 8) then
 			info.Spoke = true
 			L.SpokeAngles[#L.SpokeAngles + 1] = a
 		end
@@ -1218,12 +1258,10 @@ local function computeLayout()
 		L.AltarAngle = altar.Angle
 	end
 
-	-- Phase 3 (ArenaBuilder builds both into workspace.BattleArena; the lobby only keeps their ground free):
-	-- * the Battle Arena island floats beyond the homes; its bridge continues the spoke just past the last portal
-	--   straight through that street junction, between the two plots (the junction's outer rail opens for it);
-	-- * the Trial Portal stands on the plaza as the next gate of the portal fan, on a stone patch joined to the end
-	--   of the promenade (no tree on its site).
-	local arenaTarget = (L.PortalAngles[n] or 180) + L.PortalStep * 0.5
+	-- Phase 3 / 5: the Battle Arena island floats beyond the homes; its bridge continues the spoke junction nearest
+	-- 135 degrees straight through the street (the junction's outer rail opens for it). Portal_Arena in the Gate Court
+	-- is the other way in (ArenaBuilder).
+	local arenaTarget = L.CourtTo + 3
 	local arenaJ, arenaD = nil, 1e9
 	for _, info in ipairs(L.Junctions) do
 		if info.Spoke and not info.Garden and not info.Altar and angleDiff(info.Angle, L.ShopAngle) > 30
@@ -1237,30 +1275,6 @@ local function computeLayout()
 	if arenaJ then
 		arenaJ.Arena = true
 		L.ArenaAngle = arenaJ.Angle
-	end
-	local trialAngle = ((L.PortalAngles[n] or 180) + L.PortalStep) % 360
-	local trialFree = angleDiff(trialAngle, L.ShopAngle) >= 30
-	for _, a in ipairs(L.PortalAngles) do
-		if angleDiff(trialAngle, a) < 30 then
-			trialFree = false
-		end
-	end
-	if trialFree then
-		L.TrialAngle = trialAngle
-	end
-	-- Phase 4: the Champion Ring portal takes the first free gate of the fan beside the Trial Portal (before the first
-	-- portal, else after the Trial Portal), with the same >= 30 degree checks (and >= 30 degrees from the Trial Portal)
-	for _, cand in ipairs({ ((L.PortalAngles[1] or 0) - L.PortalStep) % 360, (trialAngle + L.PortalStep) % 360 }) do
-		local free = not L.RingAngle and angleDiff(cand, L.ShopAngle) >= 30
-			and (not L.TrialAngle or angleDiff(cand, L.TrialAngle) >= 30)
-		for _, a in ipairs(L.PortalAngles) do
-			if angleDiff(cand, a) < 30 then
-				free = false
-			end
-		end
-		if free then
-			L.RingAngle = cand
-		end
 	end
 
 	-- Exits through the plaza's soft cloud rim: spokes and the shop boardwalk.
@@ -1281,33 +1295,16 @@ local function computeLayout()
 		local d = dirOf(angle)
 		segAB(d.X * r0, d.Z * r0, d.X * r1, d.Z * r1, half, kind)
 	end
-	for _, a in ipairs(L.PortalAngles) do
-		seg(a, G.CourtR - 1, G.PromIn + 1, G.PathHalf, "Stone")
-	end
+	-- the grand avenue (spawn court -> Gate Court), the shop boardwalk, the east / west walks to the circle walk
+	seg(L.MidAngle, G.CourtR - 1, G.CourtIn + 1, G.AvenueHalf, "Stone")
 	seg(L.ShopAngle, G.CourtR - 1, PLAZA_R + 1, G.BoardHalf, "Plank")
-	for _, a in ipairs(L.SpokeAngles) do
-		local e = dirOf(a)
-		if angleIn(a, L.PromFrom, L.PromTo) then
-			seg(a, G.PromOut - 1, PLAZA_R + 1, G.StubHalf, "Sand")
-		elseif angleDiff(a, L.ShopAngle) <= 30 then
-			-- the spokes beside the shop branch off the fountain roundabout
-			segAB(L.FountainX, L.FountainZ, e.X * (PLAZA_R + 1), e.Z * (PLAZA_R + 1), G.StubHalf, "Sand")
-		else
-			-- start at the nearer end of the promenade (short paths, no long diagonals across the lawn)
-			local endA = (angleDiff(a, L.PromFrom) < angleDiff(a, L.PromTo)) and (L.PromFrom + 4) or (L.PromTo - 4)
-			local s0 = dirOf(endA)
-			segAB(s0.X * PORTAL_R, s0.Z * PORTAL_R, e.X * (PLAZA_R + 1), e.Z * (PLAZA_R + 1), G.StubHalf, "Sand")
-		end
+	L.CrossAngles = { (L.MidAngle + 90) % 360, (L.MidAngle - 90) % 360 }
+	for _, a in ipairs(L.CrossAngles) do
+		seg(a, G.CourtR - 1, G.RingRoadR, G.PathHalf, "Stone")
 	end
-	-- the Trial Portal's (and the Champion Ring portal's) stone patch (pad + gate, like the promenade under the other
-	-- portals) and a stone path from the nearer end of the promenade
-	for _, gateAngle in ipairs({ L.TrialAngle or false, L.RingAngle or false }) do
-		if gateAngle then
-			seg(gateAngle, PORTAL_R - 10, PORTAL_R + 14, G.TrialHalf, "Stone")
-			local endA = (angleDiff(gateAngle, L.PromFrom) < angleDiff(gateAngle, L.PromTo)) and (L.PromFrom + 4) or (L.PromTo - 4)
-			local s0, t0 = dirOf(endA), dirOf(gateAngle)
-			segAB(s0.X * PORTAL_R, s0.Z * PORTAL_R, t0.X * PORTAL_R, t0.Z * PORTAL_R, G.PathHalf, "Stone")
-		end
+	-- every spoke leaves the circle walk
+	for _, a in ipairs(L.SpokeAngles) do
+		seg(a, G.RingRoadR - 2, PLAZA_R + 1, G.StubHalf, "Stone")
 	end
 	L.PlazaSegs = segs
 	return L
@@ -1328,37 +1325,45 @@ local function segDist(px, pz, s)
 	return math.abs(-rx * s.dz + rz * s.dx), t
 end
 
+-- Signed lateral distance (studs) of a plaza-local point inside the Gate Court sector: > 0 inside, the distance to
+-- the nearer side edge (the rays at L.CourtFrom / L.CourtTo).
+local function courtSide(x, z, L)
+	local a0, a1 = math.rad(L.CourtFrom), math.rad(L.CourtTo)
+	-- the left edge ray at a0: inside is counter-clockwise of it; the right edge ray at a1: inside is clockwise
+	local d0 = math.cos(a0) * z - math.sin(a0) * x
+	local d1 = math.sin(a1) * x - math.cos(a1) * z
+	return math.min(d0, d1)
+end
+
 -- Keys of the plaza ground layers at a cell centre (plaza-local studs):
--- l1 lawn patches / flowers, l2 borders (just below the surface), l3 surfaces, l4 inlays.
+-- l1 lawn patches / flowers, l2 borders and the grout under the tiled courts (just below the surface), l3 surfaces
+-- (cobbles, planks); the spawn court and the Gate Court get their Slate tiles from Court.Tiles on top of the grout.
 local function plazaCell(x, z, L)
 	local r = math.sqrt(x * x + z * z)
 	if r > PLAZA_R - 0.5 then
 		return nil
 	end
-	local ang = math.deg(atan2(z, x)) % 360
 	local l1, l2, l3
 	local n = vnoise(x + 400, z + 400, 46, 11)
 	if r > PLAZA_R - 3.5 then
 		n = 0.5 -- lawn only at the very edge (no patch faces flush with the lawn's edge)
 	end
-	if n < 0.21 then
+	if n < 0.17 then
 		l1 = "GrassDark"
-	elseif n > 0.79 then
+	elseif n > 0.83 then
 		l1 = "GrassLight"
 	end
-	-- court
+	-- spawn court (tiles on top) and the Gate Court sector (tiles, terrace)
 	if r <= G.CourtR + 1 then
-		l2 = "StoneEdge"
-		if r <= G.CourtR - 1 then
-			l3 = "Stone"
-		end
+		l2 = "SlateDark"
 	end
-	-- promenade on the portal ring
-	if r >= G.PromIn - 1 and r <= G.PromOut + 1 and angleIn(ang, L.PromFrom - 1.2, L.PromTo + 1.2) then
-		l2 = l2 or "StoneEdge"
-		if r >= G.PromIn + 1 and r <= G.PromOut - 1 and angleIn(ang, L.PromFrom, L.PromTo) then
-			l3 = l3 or "Stone"
-		end
+	local side = courtSide(x, z, L)
+	if r >= G.CourtIn - 2 and r <= G.CourtOut + 1 and side >= -1.5 then
+		l2 = "SlateDark"
+	end
+	-- (the cobbled circle walk is built from arc segments by Court.RingRoad; keep its band free of lawn patches)
+	if math.abs(r - G.RingRoadR) <= G.PathHalf + 0.5 then
+		l1 = nil
 	end
 	-- fountain roundabout
 	local fx, fz = x - L.FountainX, z - L.FountainZ
@@ -1375,11 +1380,12 @@ local function plazaCell(x, z, L)
 		if d <= s.half then
 			l2 = l2 or BORDER_KEY[s.kind]
 			-- (the surface stops one cell before the island's edge, its border runs on: no two layers end flush)
-			if d <= s.half - 2 and not l3 and r <= PLAZA_R - 2.5 then
+			if d <= s.half - 2 and not l3 and l2 ~= "SlateDark" and r <= PLAZA_R - 2.5 then
 				if s.kind == "Plank" then
 					l3 = (math.floor(t / 4) % 2 == 0) and "Plank" or "PlankLight"
 				else
-					l3 = s.kind
+					-- cobbles in two shades by large soft patches (+-6 RGB, rule 2)
+					l3 = (vnoise(x + 1300, z + 1300, 9, 3) > 0.5) and "Stone" or "StoneLight"
 				end
 			end
 		end
@@ -1388,33 +1394,34 @@ local function plazaCell(x, z, L)
 	if not l2 and not l3 then
 		local h = hash3(math.floor(x), 0, math.floor(z), 21)
 		local meadow = vnoise(x + 900, z + 900, 26, 5) > 0.84
-		if r < PLAZA_R - 3.5 and ((r > 101 and r < 111 and h < 0.035) or (meadow and h < 0.08)) then
+		if r < PLAZA_R - 3.5 and ((r > G.RingRoadR + 8 and r < PLAZA_R - 6 and h < 0.03) or (meadow and h < 0.07)) then
 			l1 = "Flower" .. (math.floor(hash3(math.floor(x), 1, math.floor(z), 4) * #FLOWERS) + 1)
 		end
 	end
 	return l1, l2, l3
 end
 
--- The court medallion (1-stud inlay cells): a golden sun at the spawn, a coloured arrow pointing at every
--- portal, and a pale ring around them.
+-- The spawn medallion (1-stud inlay cells, thinned to 0.3-stud inlays when built): a Metal sun, a Marble ring and six
+-- Neon arrows in the gate colours, each pointing at its gate.
 local function courtInlay(x, z, L)
 	local r = math.sqrt(x * x + z * z)
 	if r <= 3.6 then
 		return "Gold"
 	elseif r <= 4.8 then
 		return "GoldDark"
-	elseif r >= 16.4 and r <= 17.9 then
-		return "StoneLight"
+	elseif r >= 15.4 and r <= 16.9 then
+		return "Marble"
 	end
-	for i, pa in ipairs(L.PortalAngles) do
+	for i, id in ipairs(L.GateOrder) do
+		local pa = L.GateAngles[id]
 		local dx, dz = math.cos(math.rad(pa)), math.sin(math.rad(pa))
 		local t = x * dx + z * dz
 		local d = math.abs(-x * dz + z * dx)
-		if t >= 8.5 and t <= 14.5 and d <= (14.6 - t) * 0.55 then
-			return "Diff" .. i
+		if t >= 18 and t <= 23 and d <= (23.4 - t) * 0.4 then
+			return "Gate" .. i
 		end
 	end
-	-- short sun rays between the arrows
+	-- short sun rays
 	if r >= 5.6 and r <= 7.6 then
 		local a = (math.deg(atan2(z, x)) - L.MidAngle) % 45
 		if a < 7 or a > 38 then
@@ -1509,14 +1516,26 @@ local function buildPlazaGround(f, L)
 	local names = { "Lawn", "LawnPatches", "PathBorders", "Paths", "Inlays" }
 	for li = 1, 5 do
 		local cellSize = (li == 5) and 1 or cell
-		VX.Build(grids[li], {
+		local model = VX.Build(grids[li], {
 			V = cellSize,
 			Name = names[li],
 			CF = CFrame.new(OX, TOP + tops[li] - cellSize / 2, OZ),
-			Collide = true,
+			Collide = li ~= 5,
 			Shadow = false,
 			Parent = f,
 		})
+		if li == 5 and model then
+			-- the medallion: 0.3-stud inlays (rule 2: saturated colours only as thin inlays) on top of the court tiles
+			for _, p in ipairs(model:GetDescendants()) do
+				if p:IsA("BasePart") then
+					local topY = p.Position.Y + p.Size.Y / 2
+					p.Size = Vector3.new(p.Size.X, 0.3, p.Size.Z)
+					p.CFrame = CFrame.new(p.Position.X, topY - 0.15, p.Position.Z)
+					p.CanCollide = false
+					p.CanQuery = false
+				end
+			end
+		end
 	end
 end
 
@@ -1614,17 +1633,17 @@ end
 local function buildFountain(f, centre, lookTarget)
 	local m = newModel(f, "Fountain")
 	local g = Voxel.NewGrid(16)
-	VX.Ring(g, 0, 0, 7.6, 9.6, 0, 1, "Stone")
-	VX.Ring(g, 0, 0, 7.2, 10.1, 2, 2, "StoneLight")
+	VX.Ring(g, 0, 0, 7.6, 9.6, 0, 1, "Slate")
+	VX.Ring(g, 0, 0, 7.2, 10.1, 2, 2, "MarbleShade")
 	VX.Disc(g, 0, 0, 7.6, 0, 0, "WaterDeep")
 	VX.Disc(g, 0, 0, 7.6, 1, 1, "Water")
-	VX.Disc(g, 0, 0, 1.7, 1, 4, "Stone")
-	VX.Disc(g, 0, 0, 4.3, 4, 4, "StoneLight")
-	VX.Ring(g, 0, 0, 3.4, 4.3, 5, 5, "StoneLight")
+	VX.Disc(g, 0, 0, 1.7, 1, 4, "Slate")
+	VX.Disc(g, 0, 0, 4.3, 4, 4, "MarbleShade")
+	VX.Ring(g, 0, 0, 3.4, 4.3, 5, 5, "MarbleShade")
 	VX.Disc(g, 0, 0, 3.3, 5, 5, "Water")
-	VX.Disc(g, 0, 0, 1.1, 6, 8, "Stone")
-	VX.Disc(g, 0, 0, 2.5, 8, 8, "StoneLight")
-	VX.Ring(g, 0, 0, 1.7, 2.5, 9, 9, "StoneLight")
+	VX.Disc(g, 0, 0, 1.1, 6, 8, "Slate")
+	VX.Disc(g, 0, 0, 2.5, 8, 8, "MarbleShade")
+	VX.Ring(g, 0, 0, 1.7, 2.5, 9, 9, "MarbleShade")
 	VX.Disc(g, 0, 0, 1.6, 9, 9, "Water")
 	-- falling water from both bowls
 	for _, d in ipairs({ { 1, 0 }, { -1, 0 }, { 0, 1 }, { 0, -1 } }) do
@@ -1636,7 +1655,7 @@ local function buildFountain(f, centre, lookTarget)
 		local a = i / 8 * math.pi * 2
 		Voxel.Set(g, math.floor(math.cos(a) * 8.6 + 0.5), 2, math.floor(math.sin(a) * 8.6 + 0.5), "Gold")
 	end
-	Voxel.Shade(g, { Only = { Stone = true, StoneLight = true }, Smooth = 1, Seed = 2 })
+	Voxel.Shade(g, { Only = { Slate = true, MarbleShade = true }, Smooth = 1, Seed = 2 })
 	local water = VX.Split(g, { Water = true })
 	local cf = CFrame.new(centre.X, TOP + 0.5, centre.Z)
 	VX.Build(g, { V = 1, Name = "Basin", CF = cf, Collide = true, Parent = m, MaxParts = 64 })
@@ -1690,6 +1709,7 @@ local function buildFountain(f, centre, lookTarget)
 				d.CanQuery = false
 			end
 		end
+		CollectionService:AddTag(pet, EXEMPT_TAG) -- a pet statue: skipped by the 6.4 material / saturation audit
 		pet.Parent = m
 	end)
 	if not ok then
@@ -1698,72 +1718,260 @@ local function buildFountain(f, centre, lookTarget)
 	return m
 end
 
--- Voxel rainbow arch over the main path, with the welcome sign standing on its crown.
-local function buildArch(f, L)
-	local m = newModel(f, "WelcomeArch")
-	local angle = L.MidAngle
-	local base = polar(angle, 54, TOP)
-	local cf = flatLook(base, base + dirOf(angle)) -- local -Z = along the path, away from the court
-	local V = 1.5
-	local g = Voxel.NewGrid(16)
-	Voxel.Shape(g, {
-		Kind = "Torus",
-		Center = { 0, 0, 0 },
-		Radius = 9.5,
-		Thickness = 2.6,
-		Arc = { 0, math.pi },
-		Rotation = CFrame.Angles(-math.pi / 2, 0, 0),
-		Bias = 0.1,
-		Key = "Rainbow1",
-		Pattern = function(x, y, z)
-			if math.abs(z) > 0.6 then
-				return false
-			end
-			local d = math.sqrt(x * x + y * y)
-			local band = clamp(math.floor((12.2 - d) / (5.2 / 6)) + 1, 1, 6)
-			return "Rainbow" .. band
-		end,
-	})
-	-- remove everything under the ground line, then cloud puffs hug both feet
-	local remove = {}
-	for k in pairs(g.Cells) do
-		local _, y = Voxel.Unpack(k)
-		if y < 0 then
-			remove[#remove + 1] = k
+----------------------------------------------------------------------
+-- Phase 5 courts (6.1 / 6.4): the tiled spawn court, the Gate Court with its terrace, the avenue, the welcome arch
+----------------------------------------------------------------------
+local Court = {}
+
+-- Boxes along an annulus sector (plaza angles in degrees, radii in studs): each segment spans [r0, r1] radially and
+-- about `seg` studs of arc. fn(i, n) -> color | nil (skip), topOffset (above TOP), material | nil. A grout gap
+-- separates the tiles; neighbours overlap a little at the inner edge, so their heights alternate (rule 5).
+function Court.Arc(parent, name, r0, r1, a0, a1, seg, thick, gap, fn)
+	local span = a1 - a0
+	local rm = (r0 + r1) / 2
+	local n = math.max(1, math.floor(math.rad(span) * rm / seg + 0.5))
+	local step = span / n
+	local width = 2 * r1 * math.sin(math.rad(step) / 2) - gap
+	for i = 1, n do
+		local color, top, material = fn(i, n)
+		if color then
+			local a = a0 + (i - 0.5) * step
+			local pos = polar(a, rm, TOP + top - thick / 2)
+			local cf = CFrame.lookAt(pos, Vector3.new(OX, pos.Y, OZ))
+			local p = box(parent, name, cf, Vector3.new(math.max(0.4, width), thick, (r1 - r0) - gap), color, { Collide = true, Material = material, Shadow = false })
+			p.CanQuery = true
 		end
 	end
-	for _, k in ipairs(remove) do
-		g.Cells[k] = nil
-		g.Count = g.Count - 1
-	end
-	for _, s in ipairs({ -1, 1 }) do
-		Voxel.Shape(g, { Kind = "Ellipsoid", Center = { s * 9.5, 1, 0 }, Radius = { 3.4, 2.4, 2.6 }, Key = "Puff" })
-		Voxel.Shape(g, { Kind = "Ellipsoid", Center = { s * 11.2, 0.4, 0.6 }, Radius = { 2.2, 1.7, 2 }, Key = "Puff" })
-		Voxel.Shape(g, { Kind = "Ellipsoid", Center = { s * 7.8, 0.2, -0.5 }, Radius = { 2, 1.5, 1.8 }, Key = "Puff" })
-	end
-	Voxel.Shade(g, { Only = { Puff = true }, Smooth = 2, Seed = 6 })
-	Voxel.Remap(g, { Puff = "Cloud", Puff_Light = "CloudLight", Puff_Dark = "CloudShade" })
-	VX.Build(g, {
-		V = V,
-		Name = "Rainbow",
-		CF = cf * CFrame.new(0, V / 2, 0),
-		Collide = true,
-		Parent = m,
-		MaxParts = 96,
-		Keep = { "Rainbow1", "Rainbow2", "Rainbow3", "Rainbow4", "Rainbow5", "Rainbow6" },
-	})
-	for _, s in ipairs({ -1, 1 }) do
-		reserve(base.X - OX + cf.RightVector.X * s * 14, base.Z - OZ + cf.RightVector.Z * s * 14, 6)
-	end
+end
 
-	-- welcome sign standing on the crown, readable from the spawn (front) and from the portals (back)
-	local crownY = 12.4 * V
-	local boardCf = cf * CFrame.new(0, crownY + 3.4, 0) * CFrame.Angles(0, math.pi, 0)
-	box(m, "SignPostL", cf * CFrame.new(-4.5, crownY + 0.6, 0), Vector3.new(0.9, 2, 0.6), C.PlankDark)
-	box(m, "SignPostR", cf * CFrame.new(4.5, crownY + 0.6, 0), Vector3.new(0.9, 2, 0.6), C.PlankDark)
-	box(m, "SignFrame", boardCf, Vector3.new(19.4, 6.4, 0.8), C.Plank)
+-- Tile colour: the base Slate with a +-6 RGB jitter per tile (rule 2), deterministic.
+function Court.Jitter(color, a, b)
+	local h = hash3(a, b, 7, 31) * 2 - 1
+	local d = h * 6 / 255
+	return Color3.new(clamp(color.R + d, 0, 1), clamp(color.G + d, 0, 1), clamp(color.B + d * 1.2, 0, 1))
+end
+
+-- The tiled courts: concentric Slate rings around the medallion (r 4 .. 32) inside a Marble ring (32 .. 34); the Gate
+-- Court's lower level (r 96 .. 126) and its raised terrace (r 126 .. 146, a Marble step in front), Marble rims.
+function Court.Tiles(f, L)
+	local m = newModel(f, "Courts")
+	local slate, slateL = C.Slate, C.SlateLight
+	local ring = 0
+	local function tiles(name, r0, r1, a0, a1, depth, seg, top)
+		local r = r0
+		while r < r1 - 0.5 do
+			local rb = math.min(r1, r + depth)
+			ring = ring + 1
+			local thisRing = ring
+			Court.Arc(m, name, r, rb, a0, a1, seg, top + 0.6, 0.22, function(i)
+				local alt = (i + thisRing) % 2 == 0
+				return Court.Jitter(alt and slateL or slate, i, thisRing), top + (alt and 0.05 or 0), materialOf("Slate")
+			end)
+			r = rb
+		end
+	end
+	-- the spawn court
+	tiles("SpawnTile", 4.6, 32, 0, 360, 4.6, 6, 0)
+	Court.Arc(m, "SpawnRing", 32, 34.4, 0, 360, 7, 0.7, 0.12, function(i)
+		return (i % 2 == 0) and C.Marble or C.MarbleShade, 0.08
+	end)
+	-- the Gate Court (lower level + the raised terrace)
+	tiles("CourtTile", G.CourtIn, G.TerraceIn - 1, L.CourtFrom, L.CourtTo, 6, 6, 0)
+	Court.Arc(m, "CourtRim", G.CourtIn - 1.6, G.CourtIn + 0.2, L.CourtFrom, L.CourtTo, 8, 0.6, 0.1, function(i)
+		return (i % 2 == 0) and C.Marble or C.MarbleShade, 0.08
+	end)
+	Court.Arc(m, "TerraceStep", G.TerraceIn - 1, G.TerraceIn + 1.2, L.CourtFrom, L.CourtTo, 8, 0.9, 0.1, function(i)
+		return (i % 2 == 0) and C.Marble or C.MarbleShade, G.TerraceLift + 0.05
+	end)
+	tiles("TerraceTile", G.TerraceIn + 1.2, G.CourtOut, L.CourtFrom, L.CourtTo, 6.3, 6, G.TerraceLift)
+	-- the side edges of the sector: Marble kerbs from the rim to the back of the terrace
+	for _, a in ipairs({ L.CourtFrom, L.CourtTo }) do
+		local inward = (a == L.CourtFrom) and 1 or -1
+		local mid = (G.CourtIn - 1.6 + G.CourtOut) / 2
+		local len = G.CourtOut - (G.CourtIn - 1.6)
+		local d = dirOf(a)
+		local side = dirOf(a + 90) * inward
+		local pos = Vector3.new(OX, TOP, OZ) + d * mid + side * 0.6 + Vector3.new(0, G.TerraceLift / 2 - 0.15, 0)
+		local p = box(m, "CourtSide", CFrame.lookAt(pos, pos + d), Vector3.new(1.4, G.TerraceLift + 0.75, len), C.MarbleShade, { Collide = true })
+		p.CanQuery = true
+	end
+	return m
+end
+
+-- The cobbled circle walk (r RingRoadR, 8 wide + Brick borders) from one end of the Gate Court round to the other:
+-- arc segments read smoother than voxel cells and cost fewer parts. Its tops sit 0.03 / 0.06 above the voxel paths
+-- that cross it (no coplanar overlap).
+function Court.RingRoad(f, L)
+	local m = newModel(f, "CircleWalk")
+	local a0, a1 = L.CourtTo + 0.4, L.CourtFrom + 360 - 0.4
+	local R, h = G.RingRoadR, G.PathHalf - 1
+	Court.Arc(m, "Walk", R - h, R + h, a0, a1, 8, 0.7, 0.05, function(i)
+		local alt = i % 2 == 0
+		return Court.Jitter(alt and C.StoneLight or C.Stone, i, 3), alt and 0.06 or 0.03, materialOf("Cobblestone")
+	end)
+	for _, rb in ipairs({ { R - h - 1.2, R - h + 0.05 }, { R + h - 0.05, R + h + 1.2 } }) do
+		Court.Arc(m, "WalkBorder", rb[1], rb[2], a0, a1, 10, 0.6, 0.02, function(i)
+			return C.StoneEdge, (i % 2 == 0) and 0.0 or 0.02, materialOf("Brick")
+		end)
+	end
+	return m
+end
+
+-- Angular gaps (degrees) of the walks crossing a ring of radius r: { centre, half } per crossing walk.
+function Court.Gaps(L, r, extra)
+	local gaps = {}
+	local function add(a, half)
+		gaps[#gaps + 1] = { a, math.deg((half + (extra or 0)) / r) }
+	end
+	for _, a in ipairs(L.SpokeAngles) do
+		add(a, G.StubHalf)
+	end
+	for _, a in ipairs(L.CrossAngles) do
+		add(a, G.PathHalf)
+	end
+	add(L.ShopAngle, G.BoardHalf)
+	return gaps
+end
+
+-- Arcs of a ring between the gaps (and outside the Gate Court sector when `skipCourt`) -> { { a0, a1 } ... }
+function Court.Runs(L, r, gaps, skipCourt)
+	local cuts = {}
+	for _, g in ipairs(gaps) do
+		cuts[#cuts + 1] = { g[1] - g[2], g[1] + g[2] }
+	end
+	if skipCourt then
+		cuts[#cuts + 1] = { L.CourtFrom - 1.5, L.CourtTo + 1.5 }
+	end
+	-- walk the circle in 0.5-degree steps and collect the free stretches (deterministic, cheap)
+	local runs, start = {}, nil
+	local function blocked(a)
+		for _, c in ipairs(cuts) do
+			if angleIn(a, c[1], c[2]) then
+				return true
+			end
+		end
+		return false
+	end
+	local base = 0
+	while not blocked(base) and base < 360 do
+		base = base + 0.5
+	end
+	for k = 0, 720 do
+		local a = base + k * 0.5
+		if not blocked(a) then
+			start = start or a
+		elseif start then
+			if a - 0.5 - start >= 2 then
+				runs[#runs + 1] = { start, a - 0.5 }
+			end
+			start = nil
+		end
+	end
+	return runs
+end
+
+-- The plaza's edge: a low Brick kerb all round the lawn (6.4 rule 3: platform edges), open at every exit; clipped
+-- hedges along the inner side of the circle walk; lamps along its outer side.
+function Court.Edges(f, L)
+	local m = newModel(f, "PlazaEdges")
+	local rimR0, rimR1 = PLAZA_R - 4.6, PLAZA_R - 3.2
+	for _, run in ipairs(Court.Runs(L, rimR1, Court.Gaps(L, rimR1, 2.5), false)) do
+		Court.Arc(m, "EdgeKerb", rimR0, rimR1, run[1], run[2], 14, 1.1, 0.02, function(i)
+			return C.StoneEdge, (i % 2 == 0) and 0.32 or 0.3, materialOf("Brick")
+		end)
+	end
+	local decor = newModel(f, "WalkHedges")
+	CollectionService:AddTag(decor, DETAIL_TAG)
+	local hr0 = G.RingRoadR - G.PathHalf - 4.4
+	local hr1 = hr0 + 2.2
+	for _, run in ipairs(Court.Runs(L, hr1, Court.Gaps(L, hr1, 1.5), true)) do
+		Court.Arc(decor, "Hedge", hr0, hr1, run[1], run[2], 11, 2.2, 0.15, function(i)
+			return (i % 2 == 0) and C.Hedge or C.HedgeLight, (i % 2 == 0) and 1.4 or 1.45, materialOf("LeafyGrass")
+		end)
+	end
+	local lampTpl = Props.Lamp()
+	local lit = 0
+	for _, a in ipairs({ 15, 165, 200, 236, 304, 340 }) do
+		if angleDiff(a, L.ShopAngle) > 12 then
+			local pos = polar(a, G.RingRoadR + G.PathHalf + 2.2, TOP - LAWN)
+			local lamp = place(lampTpl, CFrame.new(pos), decor, "WalkLamp")
+			local glass = lamp and lamp:FindFirstChild("LampGlass")
+			lit = lit + 1
+			if glass and lit % 2 == 1 then
+				pointLight(glass, C.Lamp, 1.0, 14)
+			end
+		end
+	end
+	return m
+end
+
+-- The grand avenue's Brick kerbs (WorldStyle.Kerb), lamp posts every 16 studs and the welcome arch at r 40.
+function Court.Avenue(f, L)
+	local m = newModel(f, "Avenue")
+	local d = dirOf(L.MidAngle)
+	local side = dirOf(L.MidAngle - 90) -- the viewer's right when looking up the avenue
+	local r0, r1 = G.CourtR + 0.6, G.CourtIn - 1.8
+	local mid = (r0 + r1) / 2
+	if WorldStyle and WorldStyle.Kerb then
+		for _, s in ipairs({ -1, 1 }) do
+			local p = Vector3.new(OX, TOP, OZ) + d * mid + side * s * (G.AvenueHalf - 0.6)
+			-- X along the edge, LookVector outward
+			local cf = CFrame.fromMatrix(p, d * s, Vector3.new(0, 1, 0), -(side * s))
+			pcall(WorldStyle.Kerb, m, cf, r1 - r0, materialOf("Brick"), C.StoneEdge)
+		end
+	end
+	local lampTpl = Props.Lamp()
+	local r = G.CourtR + 10
+	local n = 0
+	while r <= G.CourtIn - 6 do
+		for _, s in ipairs({ -1, 1 }) do
+			local pos = Vector3.new(OX, TOP - LAWN, OZ) + d * r + side * s * (G.AvenueHalf + 2)
+			local lamp = place(lampTpl, CFrame.new(pos), m, "AvenueLamp")
+			n = n + 1
+			local glass = lamp and lamp:FindFirstChild("LampGlass")
+			if glass and n % 2 == 1 then
+				pointLight(glass, C.Lamp, 1.1, 14)
+			end
+			reserve(pos.X - OX, pos.Z - OZ, 2)
+		end
+		r = r + 16
+	end
+	Court.WelcomeArch(m, L, 40)
+	return m
+end
+
+-- A stone arch over the avenue with the welcome sign (replaces the rainbow arch): two chamfered Marble piers on Slate
+-- plinths, a Slate beam with a Marble cornice, the sign board on the beam (readable from the spawn and the gates).
+function Court.WelcomeArch(parent, L, radius)
+	local m = newModel(parent, "WelcomeArch")
+	local base = polar(L.MidAngle, radius, TOP)
+	local cf = flatLook(base, base + dirOf(L.MidAngle)) -- local -Z = up the avenue, towards the gates
+	local px = G.AvenueHalf + 2.4
+	-- tall enough that the beam stays above the gates' tags seen from the spawn (eye 5 studs up: the tags at 27 studs
+	-- and 118 studs out sit ~11 degrees up; the beam's underside at ~27.5 studs and 40 out ~29 degrees)
+	local pierH = 24
+	for _, s in ipairs({ -1, 1 }) do
+		local pc = cf * CFrame.new(s * px, 0, 0)
+		if WorldStyle then
+			WorldStyle.Plinth(m, pc * CFrame.new(0, 0.7, 0), Vector3.new(4.4, 1.4, 4.4), materialOf("Slate"), C.Slate)
+			WorldStyle.Chamfer(m, pc * CFrame.new(0, 1.4 + pierH / 2, 0), Vector3.new(3.2, pierH, 3.2), materialOf("Marble"), C.Marble, 0.5)
+		else
+			box(m, "Pier", pc * CFrame.new(0, pierH / 2 + 0.7, 0), Vector3.new(3.2, pierH + 1.4, 3.2), C.Marble, { Collide = true })
+		end
+		box(m, "PierCap", pc * CFrame.new(0, 1.4 + pierH + 0.35, 0), Vector3.new(4, 0.7, 4), C.MarbleShade)
+		reserve(base.X - OX + cf.RightVector.X * s * px, base.Z - OZ + cf.RightVector.Z * s * px, 4)
+	end
+	local beamY = 1.4 + pierH + 0.7 + 1.1
+	box(m, "Beam", cf * CFrame.new(0, beamY, 0), Vector3.new(px * 2 + 4, 2.2, 3), C.MarbleShade, { Collide = true })
+	box(m, "Cornice", cf * CFrame.new(0, beamY + 1.3, 0), Vector3.new(px * 2 + 4.8, 0.4, 3.6), C.Marble)
+	box(m, "Soffit", cf * CFrame.new(0, beamY - 1.25, 0), Vector3.new(px * 2 + 2.6, 0.3, 3.3), C.SlateDark)
+	local inlay = box(m, "Inlay", cf * CFrame.new(0, beamY - 0.3, -1.55), Vector3.new(px * 2, 0.25, 0.2), gateAccent("Gold"), { Material = MAT.Neon, Shadow = false })
+	inlay.CastShadow = false
+	-- the sign on the beam
+	local boardCf = cf * CFrame.new(0, beamY + 1.5 + 3.4, 0) * CFrame.Angles(0, math.pi, 0)
+	box(m, "SignFrame", boardCf, Vector3.new(19.4, 6.4, 0.8), C.SlateDark)
+	box(m, "SignCap", boardCf * CFrame.new(0, 3.45, 0), Vector3.new(20.2, 0.5, 1.2), C.MarbleShade)
 	local board = box(m, "WelcomeSign", boardCf, Vector3.new(18.4, 5.4, 1.0), C.Navy, { Shadow = true })
-	-- 920 x 270 px canvas: the name 2 studs tall, the two script lines 0.72 stud
 	for _, face in ipairs({ Enum.NormalId.Front, Enum.NormalId.Back }) do
 		local gui = surfaceGui(board, face)
 		local panel = signPanel(gui, C.TextGold)
@@ -1780,62 +1988,127 @@ local function buildArch(f, L)
 	return m
 end
 
--- "How to play" and "Guide" notice boards on both sides of the main path, facing the spawn.
+-- An obelisk (plinth + chamfered Marble shaft + a Metal cap and a small Neon band in `color`).
+function Court.Obelisk(parent, ground, color)
+	local m = newModel(parent, "Obelisk")
+	local cf = CFrame.new(ground)
+	if WorldStyle then
+		WorldStyle.Plinth(m, cf * CFrame.new(0, 0.8, 0), Vector3.new(5, 1.6, 5), materialOf("Slate"), C.Slate)
+		WorldStyle.Chamfer(m, cf * CFrame.new(0, 1.6 + 7, 0), Vector3.new(3, 14, 3), materialOf("Marble"), C.Marble, 0.5)
+	else
+		box(m, "Shaft", cf * CFrame.new(0, 8, 0), Vector3.new(3, 16, 3), C.Marble, { Collide = true })
+	end
+	box(m, "Band", cf * CFrame.new(0, 13, 0), Vector3.new(3.15, 0.3, 3.15), color, { Material = MAT.Neon, Shadow = false })
+	box(m, "Cap", cf * CFrame.new(0, 15.95, 0), Vector3.new(3.4, 0.7, 3.4), C.MarbleShade)
+	local tip = Instance.new("WedgePart")
+	tip.Name = "Tip"
+	tip.Anchored = true
+	tip.CanCollide = false
+	tip.CanQuery = false
+	tip.CanTouch = false
+	tip.CastShadow = false
+	tip.Material = materialOf("Metal")
+	tip.Color = C.Gold
+	tip.Size = Vector3.new(2.2, 1.6, 1.1)
+	tip.CFrame = cf * CFrame.new(0, 17.1, -0.55)
+	tip.Parent = m
+	local tip2 = tip:Clone()
+	tip2.CFrame = cf * CFrame.new(0, 17.1, 0.55) * CFrame.Angles(0, math.pi, 0)
+	tip2.Parent = m
+	return m
+end
+
+-- The Gate Court's dressing: hedges in Brick planters along the back of the terrace, a banner behind every gate in its
+-- colour, two obelisks at the ends and lamps at the court's front corners.
+function Court.Decor(f, L)
+	local m = newModel(f, "GateCourtDecor")
+	CollectionService:AddTag(m, DETAIL_TAG)
+	-- hedges
+	local hedgeR0, hedgeR1 = G.CourtOut - 3.4, G.CourtOut - 0.4
+	Court.Arc(m, "Planter", hedgeR0, hedgeR1, L.CourtFrom + 1.2, L.CourtTo - 1.2, 10, 1.0, 0.3, function()
+		return C.StoneEdge, G.TerraceLift + 1.0, materialOf("Brick")
+	end)
+	Court.Arc(m, "Hedge", hedgeR0 + 0.3, hedgeR1 - 0.3, L.CourtFrom + 1.2, L.CourtTo - 1.2, 10, 2.4, 0.5, function(i)
+		return (i % 2 == 0) and C.Hedge or C.HedgeLight, G.TerraceLift + 3.2, materialOf("LeafyGrass")
+	end)
+	-- banners behind every gate (their colours, small cloth pieces: rule 2)
+	for i, id in ipairs(L.GateOrder) do
+		local a = L.GateAngles[id]
+		for _, s in ipairs({ -1, 1 }) do
+			local pos = polar(a + s * 3.4, G.TerraceIn + 6, TOP + G.TerraceLift)
+			bannerPole(m, faceCentre(pos), gateAccent(GATE_SPECS[i].Accent))
+		end
+	end
+	-- obelisks at both ends of the terrace
+	for _, a in ipairs({ L.CourtFrom + 3.2, L.CourtTo - 3.2 }) do
+		Court.Obelisk(m, polar(a, G.TerraceIn + 9, TOP + G.TerraceLift), gateAccent("Gold"))
+	end
+	-- lamps at the court's front corners (where the circle walk meets it)
+	local lampTpl = Props.Lamp()
+	for _, a in ipairs({ L.CourtFrom - 2.5, L.CourtTo + 2.5 }) do
+		local pos = polar(a, G.CourtIn - 4, TOP - LAWN)
+		local lamp = place(lampTpl, CFrame.new(pos), m, "CourtLamp")
+		local glass = lamp and lamp:FindFirstChild("LampGlass")
+		if glass then
+			pointLight(glass, C.Lamp, 1.2, 16)
+		end
+	end
+	return m
+end
+
+-- "How to play" and "Guide" notice boards on both sides of the avenue, facing the spawn.
 local function buildBoards(f, L)
 	local function spotFor(angle)
-		local pos = plazaSpot(angle, 42, 6, L)
+		local pos = plazaSpot(angle, 48, 6, L)
 		if not pos then
 			return nil
 		end
 		return faceCentre(pos - Vector3.new(0, LAWN, 0)) -- the board's face (-Z, the Front face) looks at the centre
 	end
 	-- 550 x 400 px canvas (11 x 8 studs): a 1.04-stud header, five 0.6-stud rows, a 0.6-stud footer
-	local howCf = spotFor(L.MidAngle - L.PortalStep * 0.5)
+	-- (beside the lawns, clear of the sight lines from the spawn to the six gates)
+	local howCf = spotFor(L.MidAngle - 58)
 	if howCf then
 		local face = noticeBoard(f, howCf, 11, 8, "HowToBoard")
 		local gui = surfaceGui(face, Enum.NormalId.Front)
 		local panel = signPanel(gui)
-		signText(panel, "HOW TO PLAY", "Title", 52, C.Gold, "Header", 0.04, 0.025, 0.92, 0.14)
+		signText(panel, "HOW TO PLAY", "Title", 52, C.TextGold, "Header", 0.04, 0.025, 0.92, 0.14)
 		local rows = {
 			{ "W A S D", "Move around" },
 			{ "SHIFT", "Hold to run" },
 			{ "Q", "Dash over wide gaps" },
 			{ "SPACE", "Jump" },
-			{ "1 - 4", "Use items (in a climb)" },
+			{ "E", "Use a gate" },
 		}
 		for i, row in ipairs(rows) do
 			keyRow(panel, 0.18 + (i - 1) * 0.12, 0.105, row[1], row[2])
 		end
-		signText(panel, "Step into a glowing PORTAL to climb with friends!", "Body", SIGN_INFO, C.TextGold, "Footer", 0.05, 0.785, 0.9, 0.19, nil, true)
+		signText(panel, "Walk up the avenue to the GATES!", "Body", SIGN_INFO, C.TextGold, "Footer", 0.05, 0.785, 0.9, 0.19, nil, true)
 		gui.Parent = face
 	end
-	local guideCf = spotFor(L.MidAngle + L.PortalStep * 0.5)
+	local guideCf = spotFor(L.MidAngle + 58)
 	if guideCf then
 		local face = noticeBoard(f, guideCf, 11, 8, "GuideBoard")
 		local gui = surfaceGui(face, Enum.NormalId.Front)
 		local panel = signPanel(gui, rgb(150, 200, 255))
-		signText(panel, "CLOUD GUIDE", "Title", 52, C.Gold, "Header", 0.04, 0.025, 0.92, 0.14)
+		signText(panel, "THE GATES", "Title", 52, C.TextGold, "Header", 0.04, 0.025, 0.92, 0.14)
 		local lines = {
-			{ "TOKENS", "Collect " .. GLYPH.Cloud .. " on climbs" },
-			{ "SHOP", "Spin roulettes for pets" },
-			{ "PETS", "Pets give you perks" },
-			{ "HOME", "Homes: the outer ring" },
-			{ "FRIENDS", "Chat with plaza pets" },
+			{ "HOME", "Your sky home" },
+			{ "OBBY", "Climb with friends" },
+			{ "DUNGEON", "Explore with your team" },
+			{ "RING", "Beat the champion" },
+			{ "ARENA", "Duels and raids" },
 		}
 		for i, line in ipairs(lines) do
 			keyRow(panel, 0.18 + (i - 1) * 0.12, 0.105, line[1], line[2])
 		end
-		signText(panel, "Harder portals pay more tokens!", "Body", SIGN_INFO, C.TextGold, "Footer", 0.05, 0.81, 0.9, 0.13)
+		signText(panel, "Storm Altar gate: secret pets!", "Body", SIGN_INFO, C.TextGold, "Footer", 0.05, 0.81, 0.9, 0.13)
 		gui.Parent = face
 	end
 end
 
--- Plaza decor: fountain, arch, boards, NPC spots, trees, lamps, benches, flower beds, bunting, banners.
+-- Plaza decor: courts, avenue, fountain, boards, NPC spots, trees, lamps, benches, flower beds.
 local function buildPlazaDecor(f, L)
-	local diffColors = {}
-	for i, d in ipairs(Config.Difficulties) do
-		diffColors[i] = d.Color
-	end
 	reserve(L.FountainX, L.FountainZ, 15)
 	reserve(0, 0, G.CourtR + 2)
 
@@ -1844,166 +2117,83 @@ local function buildPlazaDecor(f, L)
 	if not okF then
 		warn("[LobbyBuilder] fountain failed: " .. tostring(errF))
 	end
-	local okA, errA = pcall(buildArch, f, L)
-	if not okA then
-		warn("[LobbyBuilder] arch failed: " .. tostring(errA))
-	end
-	local okB, errB = pcall(buildBoards, f, L)
-	if not okB then
-		warn("[LobbyBuilder] boards failed: " .. tostring(errB))
+	for _, part in ipairs({
+		{ "court decor", Court.Decor },
+		{ "avenue", Court.Avenue },
+		{ "boards", buildBoards },
+	}) do
+		local ok, err = pcall(part[2], f, L)
+		if not ok then
+			warn("[LobbyBuilder] " .. part[1] .. " failed: " .. tostring(err))
+		end
 	end
 
-	-- NPC spots (NpcService builds the pets): on the lawn next to the walkways, facing them.
+	-- NPC spots (NpcService builds the pets): on the east / west lawns (6.1: r 62..80, >= 12 studs from any path),
+	-- facing the nearest walk.
 	L.NpcSpots = {}
-	local step = L.PortalStep
-	local npcPlan = {
-		{ L.PortalAngles[1] + step * 0.5, 58 },
-		{ L.PortalAngles[#L.PortalAngles] - step * 0.5, 58 },
-		{ L.ShopAngle - 20, 42 },
-		{ L.ShopAngle + 20, 42 },
-		{ L.ShopAngle - 45, 50 },
-		{ L.ShopAngle + 45, 50 },
-	}
-	for _, plan in ipairs(npcPlan) do
-		local pos = plazaSpot(plan[1], plan[2], 5, L, false)
+	local npcPlan = { 20, 160, 215, 235, 305, 325 }
+	for _, a in ipairs(npcPlan) do
+		local pos = plazaSpot(a, 70, 5, L, false)
 		if not pos then
-			pos = plazaSpot(plan[1], plan[2] + 8, 5, L, true)
+			pos = plazaSpot(a, 76, 5, L, true)
 		end
-		local look
-		if math.abs(angleDiff(plan[1], L.ShopAngle) - 20) < 1 then
-			-- beside the boardwalk: face across it
-			local d = dirOf(L.ShopAngle)
-			local toPath = Vector3.new(OX, TOP, OZ) + d * plan[2] - pos
-			look = pos + Vector3.new(toPath.X, 0, toPath.Z)
-		else
-			look = Vector3.new(OX, TOP, OZ)
-		end
-		L.NpcSpots[#L.NpcSpots + 1] = flatLook(pos, look)
+		L.NpcSpots[#L.NpcSpots + 1] = flatLook(pos, Vector3.new(OX, TOP, OZ))
 	end
 
-	-- Trees on the south lawns.
+	local decor = newModel(f, "LawnDecor")
+	CollectionService:AddTag(decor, DETAIL_TAG)
+	-- Trees on the lawns, between the walks (never near the courts).
 	local trees = {
-		{ L.ShopAngle - 45, 86, "Blossom" },
-		{ L.ShopAngle + 45, 86, "Round" },
-		{ L.ShopAngle - 79, 62, "Round" },
-		{ L.ShopAngle + 79, 62, "Blossom" },
-		{ L.ShopAngle - 31, 100, "Pine" },
-		{ L.ShopAngle + 31, 100, "Pine" },
+		{ 8, 120, "Round" }, { 36, 130, "Pine" }, { 144, 130, "Pine" }, { 172, 120, "Round" },
+		{ 196, 126, "Blossom" }, { 226, 130, "Round" }, { 314, 130, "Round" }, { 344, 126, "Blossom" },
 	}
-	-- Phase 3 / 4: the Trial Portal's and the Champion Ring portal's sites stay free (ArenaBuilder puts the gates there)
-	for _, gateAngle in ipairs({ L.TrialAngle or false, L.RingAngle or false }) do
-		if gateAngle then
-			local td = dirOf(gateAngle)
-			reserve(td.X * (PORTAL_R + 3), td.Z * (PORTAL_R + 3), 14)
-			for i = #trees, 1, -1 do
-				local d = dirOf(trees[i][1])
-				local dx, dz = d.X * trees[i][2] - td.X * (PORTAL_R + 3), d.Z * trees[i][2] - td.Z * (PORTAL_R + 3)
-				if dx * dx + dz * dz < 20 * 20 then
-					table.remove(trees, i)
-				end
-			end
-		end
-	end
 	for i, t in ipairs(trees) do
 		local pos = plazaSpot(t[1], t[2], 6, L)
 		if pos then
-			place(Props.Tree(t[3]), CFrame.new(pos - Vector3.new(0, LAWN, 0)) * CFrame.Angles(0, math.rad(i * 77), 0), f, t[3] .. "Tree")
+			place(Props.Tree(t[3]), CFrame.new(pos - Vector3.new(0, LAWN, 0)) * CFrame.Angles(0, math.rad(i * 77), 0), decor, t[3] .. "Tree")
 		end
 	end
 
-	-- Lamps around the court (with light) and at every exit through the rim.
+	-- Lamps where the walks meet the circle walk and at every exit through the rim.
 	local lampTpl = Props.Lamp()
-	-- (the pair flanking the main path stays clear of the sight lines to the two notice boards)
-	local courtLamps = {
-		L.PortalAngles[1] + step * 0.5,
-		L.MidAngle - 12.5,
-		L.MidAngle + 12.5,
-		L.PortalAngles[#L.PortalAngles] - step * 0.5,
-		L.ShopAngle - 45,
-		L.ShopAngle + 45,
-	}
-	local lampTops = {}
-	for _, a in ipairs(courtLamps) do
-		local pos = plazaSpot(a, G.CourtR + 5, 1.5, L)
-		if pos then
-			pos = pos - Vector3.new(0, LAWN, 0) -- (decor stands on the lawn layer)
-			local lamp = place(lampTpl, CFrame.new(pos), f, "CourtLamp")
-			local glass = lamp and lamp:FindFirstChild("LampGlass")
-			if glass then
-				pointLight(glass, C.Lamp, 0.9, 18)
-			end
-			lampTops[#lampTops + 1] = { Angle = a, Pos = pos + Vector3.new(0, 7.4, 0) }
+	local lit = 0
+	local function lampAt(pos, name, light)
+		local lamp = place(lampTpl, CFrame.new(pos), decor, name)
+		local glass = lamp and lamp:FindFirstChild("LampGlass")
+		if glass and light and lit < 6 then
+			lit = lit + 1
+			pointLight(glass, C.Lamp, 1.0, 14)
+		end
+	end
+	for _, a in ipairs(L.CrossAngles) do
+		for _, s in ipairs({ -1, 1 }) do
+			local pos = polar(a, G.RingRoadR - G.PathHalf - 2.2, TOP - LAWN) + dirOf(a + 90) * s * (G.PathHalf + 2)
+			lampAt(pos, "WalkLamp", s > 0)
 		end
 	end
 	for _, a in ipairs(L.RimGaps) do
 		local half = (angleDiff(a, L.ShopAngle) < 1) and G.BoardHalf or G.StubHalf
-		local skip = angleIn(a, L.PromFrom, L.PromTo) -- banners mark the exits on the promenade side
 		local side = dirOf(a + 90)
-		local pos = polar(a, PLAZA_R - 6, TOP - LAWN) + side * (half + 1.8)
-		if not skip then
-			place(lampTpl, CFrame.new(pos), f, "ExitLamp")
-		end
-		if angleDiff(a, L.ShopAngle) < 1 then
-			local pos2 = polar(a, PLAZA_R - 6, TOP - LAWN) - side * (half + 1.8)
-			local lamp2 = place(lampTpl, CFrame.new(pos2), f, "ExitLamp")
-			local glass = lamp2 and lamp2:FindFirstChild("LampGlass")
-			if glass then
-				pointLight(glass, C.Lamp, 0.8, 16)
+		for _, s in ipairs({ -1, 1 }) do
+			if s > 0 or angleDiff(a, L.ShopAngle) < 1 then
+				lampAt(polar(a, PLAZA_R - 6, TOP - LAWN) + side * s * (half + 1.8), "ExitLamp", angleDiff(a, L.ShopAngle) < 1)
 			end
 		end
 	end
 
-	-- Bunting between neighbouring court lamps (in the difficulty colours), open towards the shop.
-	table.sort(lampTops, function(a, b)
-		return (a.Angle % 360) < (b.Angle % 360)
-	end)
-	for i = 1, #lampTops do
-		local a, b = lampTops[i], lampTops[i % #lampTops + 1]
-		if a ~= b and angleDiff(a.Angle, b.Angle) <= 70 then
-			bunting(f, a.Pos, b.Pos, diffColors, 1.2)
-		end
-	end
-
-	-- Benches facing the court.
+	-- Benches on the inner lawns facing the spawn, flower beds along the circle walk.
 	local benchTpl = Props.Bench()
-	local benches = {
-		{ L.PortalAngles[1] + step * 0.5, 44 },
-		{ L.PortalAngles[#L.PortalAngles] - step * 0.5, 44 },
-	}
-	for _, b in ipairs(benches) do
+	for _, b in ipairs({ { 50, 44 }, { 130, 44 }, { 200, 44 }, { 340, 44 } }) do
 		local pos = plazaSpot(b[1], b[2], 3.5, L)
 		if pos then
-			place(benchTpl, faceCentre(pos - Vector3.new(0, LAWN, 0)), f, "Bench")
+			place(benchTpl, faceCentre(pos - Vector3.new(0, LAWN, 0)), decor, "Bench")
 		end
 	end
-
-	-- Flower beds near the promenade, between the portal paths.
-	for i = 1, #L.PortalAngles - 1 do
-		local a = (L.PortalAngles[i] + L.PortalAngles[i + 1]) / 2
-		local pos = plazaSpot(a, G.PromIn - 7, 4, L)
+	local beds = { 30, 150, 190, 250, 290, 350 }
+	for i, a in ipairs(beds) do
+		local pos = plazaSpot(a, G.RingRoadR - G.PathHalf - 14, 4, L)
 		if pos then
-			place(Props.FlowerBed((i - 1) % #FLOWERS + 1), faceCentre(pos - Vector3.new(0, LAWN, 0)), f, "FlowerBed")
-		end
-	end
-
-	-- Banners flank every spoke exit on the promenade side, in the colours of the neighbouring portals.
-	for _, a in ipairs(L.SpokeAngles) do
-		if angleIn(a, L.PromFrom, L.PromTo) then
-			local left, right = nil, nil
-			for i, pa in ipairs(L.PortalAngles) do
-				if pa < a and (not left or pa > L.PortalAngles[left]) then
-					left = i
-				end
-				if pa > a and (not right or pa < L.PortalAngles[right]) then
-					right = i
-				end
-			end
-			for _, s in ipairs({ -1, 1 }) do
-				local idx = (s < 0) and (left or right) or (right or left)
-				local color = diffColors[idx or 1] or C.Rose
-				local pos = polar(a, G.PromOut + 3, TOP - LAWN) + dirOf(a + 90) * (s * (G.StubHalf + 2.2))
-				bannerPole(f, faceCentre(pos) * CFrame.Angles(0, (s < 0) and math.pi or 0, 0), color)
-			end
+			place(Props.FlowerBed((i - 1) % #FLOWERS + 1), faceCentre(pos - Vector3.new(0, LAWN, 0)), decor, "FlowerBed")
 		end
 	end
 
@@ -2022,6 +2212,12 @@ end
 local function buildPlaza(root, L)
 	local f = newFolder(root, "Plaza")
 	buildPlazaGround(f, L)
+	for _, part in ipairs({ { "court tiles", Court.Tiles }, { "circle walk", Court.RingRoad }, { "edges", Court.Edges } }) do
+		local ok, err = pcall(part[2], f, L)
+		if not ok then
+			warn("[LobbyBuilder] " .. part[1] .. " failed: " .. tostring(err))
+		end
+	end
 	local okBody, errBody = pcall(buildPlazaBody, f, L)
 	if not okBody then
 		warn("[LobbyBuilder] plaza cloud failed: " .. tostring(errBody))
@@ -2034,237 +2230,117 @@ local function buildPlaza(root, L)
 end
 
 ----------------------------------------------------------------------
--- Portal gates (Model Portal_<Id>)
+-- Phase 5 Gate Court gates (6.1 / 6.2): Home, Obby and Altar are built here with WorldStyle.BuildGate into the
+-- Gates folder; Ring / Arena (ArenaBuilder) and Dungeon (DungeonBuilder, W3) stand at LobbyInfo.GateSites.
 ----------------------------------------------------------------------
+local Gates = {}
 
-local MAX_STARS = 5
-local gateBoxCache = nil
+Gates.Info = {
+	Home = { Title = "My Home", Info = "Your sky home and pets", Pad = false },
+	Obby = { Title = "Sky Obby", Info = "Climb the clouds", Pad = true },
+	Altar = { Title = "Storm Altar", Info = "The secret roulette", Pad = false },
+}
+Gates.Built = { "Home", "Obby", "Altar" } -- the lobby's own gates, in Build order
 
-local function gatePalette(color)
-	return {
-		Stone = C.StoneLight,
-		StoneDark = C.Stone,
-		Frame = C.CloudLight,
-		Puff = C.Cloud,
-		Trim = color,
-		Glow = { Color = color, Material = MAT.Neon },
-		Swirl = { Color = color:Lerp(rgb(255, 255, 255), 0.35), Material = MAT.Neon, Transparency = 0.62 },
-		Gem = { Color = C.Gold, Material = MAT.Neon },
-	}
-end
-
--- The gate is sculpted and merged once; every portal builds the same boxes with its own palette.
-local function gateBoxes()
-	if gateBoxCache then
-		return gateBoxCache
-	end
-	local g = Voxel.NewGrid(24)
-	VX.RoundRect(g, 0, 0, 22, 5, 1.5, 0, 0, "StoneDark")
-	VX.RoundRect(g, 0, 0, 20, 4, 1.2, 1, 1, "Stone")
-	for _, s in ipairs({ -1, 1 }) do
-		VX.RoundRect(g, s * 9, 0, 3, 3.4, 0.8, 2, 10, "Stone")
-		VX.RoundRect(g, s * 9, 0, 4, 4.2, 1, 11, 11, "Trim")
-		VX.Fill(g, s * 9, s * 9, 12, 13, 0, 0, "Glow")
-		VX.Fill(g, s * 9, s * 9, 3, 3, -2, -2, "Trim")
-	end
-	local ringRot = CFrame.Angles(math.pi / 2, 0, 0)
-	Voxel.Shape(g, { Kind = "Torus", Center = { 0, 11, 0 }, Radius = 7.6, Thickness = 1.6, Rotation = ringRot, Key = "Frame" })
-	Voxel.Shape(g, { Kind = "Torus", Center = { 0, 11, 0 }, Radius = 5.9, Thickness = 0.5, Rotation = ringRot, Key = "Glow" })
-	Voxel.Shape(g, { Kind = "Ellipsoid", Center = { 0, 11, 0 }, Radius = { 5.3, 5.3, 0.2 }, Key = "Swirl", KeepExisting = true })
-	-- the outer band of the frame takes the difficulty colour
-	Voxel.Shape(g, {
-		Kind = "Torus",
-		Center = { 0, 11, 0 },
-		Radius = 7.6,
-		Thickness = 2.2,
-		Rotation = ringRot,
-		Op = "Paint",
-		OnlyKeys = { Frame = true },
-		Key = "Trim",
-		Pattern = function(x, y, z)
-			local dy = y - 11
-			if math.sqrt(x * x + dy * dy) >= 8.6 then
-				return "Trim"
-			end
-			return false
-		end,
-	})
-	-- keystone with a gold gem facing the plaza
-	VX.RoundRect(g, 0, 0, 4, 3, 0.8, 19, 20, "Trim")
-	Voxel.Set(g, 0, 20, -2, "Gem")
-	Voxel.Set(g, 0, 19, -2, "Gem")
-	Voxel.Shade(g, { Skip = { Glow = true, Swirl = true, Gem = true }, Smooth = 1, Seed = 8 })
-	-- LOD folds shade variants only (Keep: the coloured keys differ per portal)
-	gateBoxCache = Voxel.Merge(g, {
-		Palette = gatePalette(rgb(120, 180, 140)),
-		MaxParts = 105,
-		Keep = { "Stone", "StoneDark", "Frame", "Trim", "Glow", "Swirl", "Gem" },
-	})
-	return gateBoxCache
-end
-
--- The portal's pixel tag (World text rule): name, stars + "0/4 players", a status pill. Returns the PortalInfo
--- GUI fields (Billboard + the four labels); PortalService rebuilds the same tag with the live party state.
-local function portalTag(anchor, diff, stars, lift)
-	local color = diff.Color or C.TextGold
-	local gui = newTag(anchor, "PortalBillboard", 380, 150, lift, 120)
-	local plate = tagPlate(gui, color:Lerp(C.Text, 0.15), 200, nil, 3)
-	local title = tagText(plate, "TitleLabel", diff.DisplayName or diff.Id, "Title", 32, color:Lerp(C.Text, 0.6), 1)
-	local row = plainFrame(plate, "InfoRow", { AutomaticSize = Enum.AutomaticSize.XY, LayoutOrder = 2 })
-	listLayout(row, Enum.FillDirection.Horizontal, 12)
-	local starLabel = tagText(row, "StarLabel", "", "Heading", 21, C.TextGold, 1)
-	starLabel.RichText = true
-	starLabel.Text = starRow(stars, MAX_STARS)
-	local countLabel = tagText(row, "CountLabel", "0/" .. tostring(Config.Match.MaxPlayers) .. " players", "Heading", 21, C.Text, 2)
-	local _, statusLabel = tagPill(plate, "StatusPill", "Step in to play", "Display", 24, color:Lerp(C.Navy, 0.25), 3)
-	statusLabel.Name = "StatusLabel"
-	return {
-		Billboard = gui,
-		TitleLabel = title,
-		CountLabel = countLabel,
-		StatusLabel = statusLabel,
-		StarLabel = starLabel,
-	}
-end
-
-local function buildPortal(parent, diff, angleDeg)
-	local model = newModel(parent, "Portal_" .. diff.Id)
-	local outward = dirOf(angleDeg)
-	local color = diff.Color
-	local padGround = polar(angleDeg, PORTAL_R, TOP)
-	local padCF = flatLook(padGround, padGround - outward) -- local -Z = towards the plaza centre
-
-	-- Ready pad: a tiled 14 x 14 voxel plate, 0.3 above the promenade.
-	local pg = Voxel.NewGrid(14)
-	for i = -7, 6 do
-		for k = -7, 6 do
-			local ring = math.min(i + 7, 6 - i, k + 7, 6 - k)
-			local di = math.abs(i + 0.5) + math.abs(k + 0.5)
-			local key = "Stone"
-			if ring == 0 then
-				key = "Trim"
-			elseif ring == 1 then
-				key = "StoneLight"
-			elseif di <= 2.5 then
-				key = "Glow"
-			end
-			Voxel.Set(pg, i, 0, k, key)
+function Gates.Spec(id)
+	for _, s in ipairs(GATE_SPECS) do
+		if s.Id == id then
+			return s
 		end
 	end
-	local pad = VX.Build(pg, {
-		V = 1,
-		Name = "Pad",
-		CF = padCF * CFrame.new(0.5, 0.3 - 0.5, 0.5),
-		Collide = true,
-		Parent = model,
-		Pal = {
-			Stone = C.Stone,
-			StoneLight = C.StoneLight,
-			Trim = color,
-			TrimSoft = color:Lerp(C.StoneLight, 0.55),
-			Glow = { Color = color, Material = MAT.Neon },
-		},
-	})
-	if pad and pad.PrimaryPart then
-		model.PrimaryPart = pad.PrimaryPart
+	return GATE_SPECS[1]
+end
+
+-- Ground CFrame of every gate centre on the arc (LookVector = towards the plaza centre).
+function Gates.Sites(L)
+	local sites = {}
+	for _, id in ipairs(L.GateOrder) do
+		sites[id] = faceCentre(polar(L.GateAngles[id], G.GateR, TOP))
 	end
+	return sites
+end
 
-	-- Invisible detection zone: 14 x 6 x 14, floor flush with the pad surface.
-	local zonePos = padGround + Vector3.new(0, 0.3 + 3, 0)
-	local zone = box(model, "Zone_" .. diff.Id, flatLook(zonePos, zonePos - outward), Vector3.new(14, 6, 14), color, {
-		Transparency = 1,
-		Shadow = false,
-	})
-	zone:SetAttribute("PortalId", diff.Id)
-
-	-- Lanterns on the two front corners of the pad.
-	for _, sx in ipairs({ -1, 1 }) do
-		local base = padCF * CFrame.new(sx * 7.9, 0, -7.9)
-		box(model, "LanternPost", base * CFrame.new(0, 1.6, 0), Vector3.new(0.7, 3.2, 0.7), C.Iron, { Collide = true })
-		box(model, "LanternCap", base * CFrame.new(0, 3.35, 0), Vector3.new(1.1, 0.3, 1.1), C.Iron)
-		box(model, "LanternGlow", base * CFrame.new(0, 3.95, 0), Vector3.new(0.9, 0.9, 0.9), color, { Material = MAT.Neon })
+-- A plain gate when WorldStyle is missing or BuildGate throws: two columns, a lintel, the pad / step, the prompt anchor
+-- and a pixel tag (the same names as BuildGate, so GateService / PortalService work unchanged).
+function Gates.Fallback(parent, site, id, info, color)
+	local model = newModel(parent, "Portal_" .. id)
+	model:SetAttribute("GateId", id)
+	for side = -1, 1, 2 do
+		box(model, "Column", site * CFrame.new(side * 8.2, 8, 0), Vector3.new(2.4, 16, 2.4), C.Marble, { Collide = true })
 	end
-
-	-- Gate behind the pad (sculpted voxels in the difficulty colour).
-	local gateBase = padGround + outward * 9.5
-	local gateCF = flatLook(gateBase, gateBase - outward)
-	local gate = Instance.new("Model")
-	gate.Name = "Gate"
-	Voxel.BuildBoxes(gateBoxes(), {
-		VoxelSize = 1,
-		Palette = gatePalette(color),
-		CFrame = gateCF * CFrame.new(0, 0.5, 0),
-		Model = gate,
-		CanCollide = true,
-		CanQuery = true,
-	})
-	for _, d in ipairs(gate:GetChildren()) do
-		if d:IsA("BasePart") and (d.Name == "Swirl" or d.Name == "Puff" or d.Name == "Gem") then
-			d.CanCollide = false
-			d.CanQuery = false
-		end
+	local lintel = box(model, "Lintel", site * CFrame.new(0, 17.4, 0), Vector3.new(21.4, 2.4, 3), C.Slate, { Collide = true })
+	box(model, "PortalDisc", site * CFrame.new(0, 8, 0), Vector3.new(13, 14, 0.2), color, { Material = MAT.Neon, Transparency = 0.35, Shadow = false })
+	local pad
+	if info.Pad then
+		pad = box(model, "Pad", site * CFrame.new(0, 0.3, -14), Vector3.new(14, 0.6, 14), C.Slate, { Collide = true })
+	else
+		pad = box(model, "Step", site * CFrame.new(0, 0.15, -6), Vector3.new(10, 0.3, 6), C.Slate, { Collide = true })
 	end
-	gate.Parent = model
+	local prompt = box(model, "PromptAnchor", site * CFrame.new(0, 3, -2.2), Vector3.new(2, 2, 1), C.Slate, { Transparency = 1, Shadow = false })
+	local gui = newTag(lintel, "GateTag", 420, 150, 27 - 17.4, 120)
+	local plate = tagPlate(gui, color, 190, Enum.FillDirection.Vertical, 2)
+	tagText(plate, "Title", info.Title, "Heading", 28, rgb(255, 255, 255), 1)
+	tagText(plate, "Info", info.Info, "Body", 20, C.TextDim, 2)
+	local pill = tagPill(plate, "Pill", "", "Label", 18, color:Lerp(C.Ink, 0.55), 3)
+	pill.Visible = false
+	model.PrimaryPart = lintel
+	return model, pad, prompt
+end
 
-	-- Swirl light + sparkles drifting out towards the pad.
-	local core = box(model, "SwirlCore", gateCF * CFrame.new(0, 11.5, 0), Vector3.new(9, 9, 0.4), color, { Transparency = 1, Shadow = false })
-	pointLight(core, color, 1.3, 28)
-	emitter(core, {
-		Color = ColorSequence.new(color:Lerp(rgb(255, 255, 255), 0.5), color),
-		Rate = 12,
-		Lifetime = NumberRange.new(1.4, 2.2),
-		Speed = NumberRange.new(1.5, 3.5),
-		EmissionDirection = Enum.NormalId.Front,
-		SpreadAngle = Vector2.new(30, 30),
-		Size = popSize(0.9),
-	})
-
-	-- Star gems above the keystone: lit gold for the difficulty, dim stone up to five, set on a gold crest bar
-	-- that a short post carries from the keystone (the keystone's top is 21 studs up)
-	local stars = clamp(diff.Stars or 1, 0, MAX_STARS)
-	box(model, "StarPost", gateCF * CFrame.new(0, 21.6, 0), Vector3.new(0.8, 1.3, 0.6), C.GoldDark, { Shadow = false })
-	box(model, "StarBar", gateCF * CFrame.new(0, 22.45, 0), Vector3.new((MAX_STARS - 1) * 2.6 + 1.2, 0.5, 0.5), C.GoldDark, { Shadow = false })
-	for s = 1, MAX_STARS do
-		local gx = ((MAX_STARS + 1) / 2 - s) * 2.6 -- gate +X is the viewer's left: lit stars first
-		local lit = s <= stars
-		box(model, lit and "StarGem" or "StarGemOff", gateCF * CFrame.new(gx, 23.6, 0) * CFrame.Angles(0, 0, math.rad(45)), Vector3.new(1.5, 1.5, 0.8), lit and C.Gold or C.StarOff, {
-			Material = lit and MAT.Neon or MAT.SmoothPlastic,
-			Shadow = false,
+-- One gate of the court -> { Model, Pad, PromptPart }.
+function Gates.BuildOne(parent, site, id)
+	local spec = Gates.Spec(id)
+	local info = Gates.Info[id] or { Title = id, Info = "", Pad = false }
+	local ok, model, pad, prompt = false, nil, nil, nil
+	if WorldStyle and type(WorldStyle.BuildGate) == "function" then
+		ok, model, pad, prompt = pcall(WorldStyle.BuildGate, parent, site, {
+			Id = id,
+			Title = info.Title,
+			Info = info.Info,
+			Color = spec.Accent,
+			Glyph = spec.Glyph,
+			Pad = info.Pad,
+			Name = "Portal_" .. id,
 		})
+		if not ok then
+			warn("[LobbyBuilder] gate " .. id .. " failed: " .. tostring(model))
+			local broken = parent:FindFirstChild("Portal_" .. id)
+			if broken then
+				broken:Destroy()
+			end
+		end
 	end
-
-	-- Billboard: a pixel tag above the star gems (PortalService rebuilds it with the live party state).
-	local cardH = 15
-	local anchor = anchorPart(model, "BillboardAnchor", gateBase + Vector3.new(0, 25.2 + cardH / 2, 0))
-	local tag = portalTag(anchor, diff, stars, 1.2 - cardH / 2) -- bottom edge 26.4 studs up, just over the gems
-	tag.Id = diff.Id
-	tag.Zone = zone
-	tag.Center = zone.Position
-	tag.Model = model
-	return tag
+	if not ok or not model then
+		model, pad, prompt = Gates.Fallback(parent, site, id, info, gateAccent(spec.Accent))
+	end
+	return { Model = model, Pad = pad, PromptPart = prompt, Site = site }
 end
 
--- Bare-minimum portal used only if the full builder throws: the gameplay contract (zone + labels) must
--- survive even when the scenery does not.
-local function fallbackPortal(parent, diff, angleDeg)
-	local old = parent:FindFirstChild("Portal_" .. diff.Id)
-	if old then
-		old:Destroy()
-	end
-	local model = newModel(parent, "Portal_" .. diff.Id)
-	local ground = polar(angleDeg, PORTAL_R, TOP)
-	local zone = box(model, "Zone_" .. diff.Id, CFrame.new(ground + Vector3.new(0, 3.3, 0)), Vector3.new(14, 6, 14), diff.Color, { Transparency = 1, Shadow = false })
-	zone:SetAttribute("PortalId", diff.Id)
-	local pad = box(model, "PadPlate", CFrame.new(ground + Vector3.new(0, 0, 0)), Vector3.new(14, 0.6, 14), C.Stone, { Collide = true })
-	box(model, "PadGlow", CFrame.new(ground + Vector3.new(0, 0.35, 0)), Vector3.new(4, 0.1, 4), diff.Color, { Material = MAT.Neon })
-	model.PrimaryPart = pad
-	local anchor = anchorPart(model, "BillboardAnchor", ground + Vector3.new(0, 14, 0))
-	local tag = portalTag(anchor, diff, clamp(diff.Stars or 1, 0, MAX_STARS), 0)
-	tag.Id = diff.Id
-	tag.Zone = zone
-	tag.Center = zone.Position
-	tag.Model = model
-	return tag
+-- The Obby portal's PortalInfo: the gate + the PortalService zone on its pad (14 x 6 x 14, floor flush with the pad,
+-- -Z facing the plaza) and the gate's pixel tag (PortalService writes the live party state into it).
+function Gates.ObbyPortal(gate)
+	local pad = gate.Pad
+	local top = pad.Position.Y + pad.Size.Y / 2
+	local zonePos = Vector3.new(pad.Position.X, top + 3, pad.Position.Z)
+	local zone = box(gate.Model, "Zone_Obby", faceCentre(zonePos), Vector3.new(14, 6, 14), C.Slate, { Transparency = 1, Shadow = false })
+	zone.CanQuery = false
+	zone:SetAttribute("PortalId", "Obby")
+	local tag = gate.Model:FindFirstChild("GateTag", true)
+	local plate = tag and tag:FindFirstChild("Plate")
+	local pill = plate and plate:FindFirstChild("Pill")
+	return {
+		Id = "Obby",
+		Model = gate.Model,
+		Zone = zone,
+		Center = zone.Position,
+		Pad = pad,
+		PromptPart = gate.PromptPart,
+		Billboard = tag,
+		TitleLabel = plate and plate:FindFirstChild("Title"),
+		InfoLabel = plate and plate:FindFirstChild("Info"),
+		StatusPill = pill,
+		StatusLabel = pill and (pill:FindFirstChild("Label") or pill:FindFirstChild("PillLabel")),
+	}
 end
 
 ----------------------------------------------------------------------
@@ -2298,26 +2374,44 @@ local function oddsRarities(roulette)
 	return list
 end
 
+-- 6.4 rule 2: a big surface keeps its hue but at most 0.42 saturation and 0.88 value (small pieces keep the full colour)
+local function muted(color)
+	local r, g, b = color.R, color.G, color.B
+	local mx, mn = math.max(r, g, b), math.min(r, g, b)
+	if mx <= 0 then
+		return color
+	end
+	local sat = (mx - mn) / mx
+	local v = clamp(mx, 0.4, 0.88)
+	local k = (sat > 0.42) and (0.42 / sat) or 1
+	-- pull every channel toward the max (less saturation), then scale to the clamped value
+	local function ch(c)
+		return (mx - (mx - c) * k) * (v / mx)
+	end
+	return Color3.new(ch(r), ch(g), ch(b))
+end
+
 local function machinePalette(roulette)
 	local color = roulette.Color or C.Rose
+	local metal, marble = materialOf("Metal"), materialOf("Marble")
 	local pal = {
-		Base = C.Iron,
-		Body = color,
-		Trim = C.Gold,
-		Seg1 = color:Lerp(rgb(255, 255, 255), 0.45),
-		Seg2 = C.Cream,
-		Rim = C.GoldDark,
-		Hub = C.Gold,
-		Dark = rgb(42, 46, 70),
+		Base = { Color = C.Iron, Material = metal },
+		Body = { Color = muted(color), Material = metal },
+		Trim = { Color = C.Gold, Material = metal },
+		Seg1 = { Color = muted(color:Lerp(rgb(255, 255, 255), 0.45)), Material = marble },
+		Seg2 = { Color = C.Cream, Material = marble },
+		Rim = { Color = C.GoldDark, Material = metal },
+		Hub = { Color = C.Gold, Material = metal },
+		Dark = { Color = C.SlateDark, Material = materialOf("Slate") },
 		Glass = { Color = rgb(214, 236, 255), Material = MAT.Glass, Transparency = 0.55 },
 		Bulb = { Color = C.Lamp, Material = MAT.Neon },
-		Knob = rgb(236, 88, 100),
-		Iron = C.IronLight,
+		Knob = { Color = color, Material = MAT.Neon }, -- the roulette colour, on a small piece
+		Iron = { Color = C.IronLight, Material = metal },
 	}
 	local rarities = oddsRarities(roulette)
 	for i = 1, 4 do
 		local r = rarities[(i - 1) % math.max(1, #rarities) + 1]
-		pal["Egg" .. i] = (r and r.Color) or color
+		pal["Egg" .. i] = { Color = muted((r and r.Color) or color), Material = metal }
 	end
 	return pal
 end
@@ -2493,13 +2587,13 @@ local function buildItemStall(parent, cf)
 		Collide = true,
 		Parent = model,
 		Pal = {
-			Wood = C.Plank,
-			WoodDark = C.PlankDark,
-			Post = C.PlankDark,
-			Top = C.Cream,
-			Rose = C.Rose,
-			Cream = C.Cream,
-			Heal = rgb(124, 214, 150),
+			Wood = P.Plank,
+			WoodDark = P.PlankDark,
+			Post = P.PlankDark,
+			Top = { Color = C.Cream, Material = materialOf("Fabric") },
+			Rose = { Color = C.Rose, Material = materialOf("Fabric") },
+			Cream = { Color = C.Cream, Material = materialOf("Fabric") },
+			Heal = { Color = rgb(124, 214, 150), Material = materialOf("Glass") },
 			Shield = { Color = rgb(120, 184, 250), Material = MAT.Glass, Transparency = 0.35 },
 			Feather = rgb(244, 136, 70),
 			Gold = C.Gold,
@@ -3096,7 +3190,7 @@ local function buildSpot(parent, index, angle)
 		if podium then
 			for _, d in ipairs(podium:GetChildren()) do
 				if d:IsA("BasePart") and d.Name == "Accent" then
-					d.Color = accent
+					d.Color = muted(accent) -- a 4.4 x 1 x 4.4 slab: a big face, so the muted accent (6.4 rule 2)
 				end
 			end
 		end
@@ -3516,7 +3610,6 @@ end
 function LobbyBuilder.Build()
 	templates = {}
 	reserved = {}
-	gateBoxCache = nil
 	machineBoxCache = nil
 
 	local old = Workspace:FindFirstChild("NimbusLobby")
@@ -3527,22 +3620,35 @@ function LobbyBuilder.Build()
 	root.Name = "NimbusLobby"
 
 	local L = computeLayout()
-	local diffs = Config.Difficulties
 	if not Voxel then
 		warn("[LobbyBuilder] shared/Voxel is missing: building the plain fallback lobby")
 	end
 
-	-- Gameplay-critical objects first (portals, spots, shop); each has a bare-bones fallback.
-	local portals = {}
-	local portalFolder = newFolder(root, "Portals")
-	for i, diff in ipairs(diffs) do
-		local angle = L.PortalAngles[i]
-		local ok, result = pcall(buildPortal, portalFolder, diff, angle)
+	-- Gameplay-critical objects first (gates, spots, shop); each has a bare-bones fallback.
+	-- The Gate Court (6.1): Home, Obby, Altar here; Ring / Arena (ArenaBuilder) and Dungeon (DungeonBuilder) join the
+	-- same folder later, at GateSites.
+	local gatesFolder = newFolder(root, "Gates")
+	local sites = Gates.Sites(L)
+	local gates = {}
+	for _, id in ipairs(Gates.Built) do
+		local ok, gate = pcall(Gates.BuildOne, gatesFolder, sites[id], id)
 		if not ok then
-			warn("[LobbyBuilder] portal " .. tostring(diff.Id) .. " failed: " .. tostring(result))
-			result = fallbackPortal(portalFolder, diff, angle)
+			warn("[LobbyBuilder] gate " .. id .. ": " .. tostring(gate))
+			gate = { Model = nil }
 		end
-		portals[diff.Id] = result
+		if not gate.Model then
+			local spec = Gates.Spec(id)
+			local m, pad, prompt = Gates.Fallback(gatesFolder, sites[id], id, Gates.Info[id], gateAccent(spec.Accent))
+			gate = { Model = m, Pad = pad, PromptPart = prompt, Site = sites[id] }
+		end
+		gates[id] = gate
+	end
+	local portals = {}
+	local okObby, obbyInfo = pcall(Gates.ObbyPortal, gates.Obby)
+	if okObby then
+		portals.Obby = obbyInfo
+	else
+		warn("[LobbyBuilder] obby portal zone failed: " .. tostring(obbyInfo))
 	end
 
 	local spots = {}
@@ -3598,29 +3704,22 @@ function LobbyBuilder.Build()
 	root.Parent = Workspace
 	-- the templates and merged box lists are only needed while building
 	templates = {}
-	gateBoxCache = nil
 	machineBoxCache = nil
 
-	-- Spawn on the golden medallion in the middle of the court, looking at the middle portal.
+	-- Spawn on the medallion in the middle of the spawn court, looking up the avenue at the Gate Court.
 	local spawnPos = Vector3.new(OX, TOP + 3, OZ)
-	local focus = polar(L.MidAngle, PORTAL_R, TOP + 3)
+	local focus = polar(L.MidAngle, G.GateR, TOP + 3)
 	local altarSite = nil
 	local altarDock = nil
 	if L.AltarAngle then
 		altarSite = faceCentre(polar(L.AltarAngle, G.GardenR, TOP))
 		altarDock = polar(L.AltarAngle, G.SpokeEndR - 2.4, TOP)
 	end
-	-- Phase 3: where ArenaBuilder links the Battle Arena (the outer edge of the junction on the arena spoke's ray) and
-	-- puts the Trial Portal (on the plaza ground, facing the centre)
-	local arenaDock, trialSite = nil, nil
+	-- Phase 3: where ArenaBuilder links the Battle Arena (the outer edge of the junction on the arena spoke's ray)
+	local arenaDock = nil
 	if L.ArenaAngle then
 		arenaDock = polar(L.ArenaAngle, (G.StreetR + G.StreetW / 2) / math.cos(math.rad(G.HalfStep)), TOP)
 	end
-	if L.TrialAngle then
-		trialSite = faceCentre(polar(L.TrialAngle, PORTAL_R, TOP))
-	end
-	-- Phase 4: the Champion Ring portal's ground point (ArenaBuilder builds Portal_Ring there)
-	local ringSite = L.RingAngle and faceCentre(polar(L.RingAngle, PORTAL_R, TOP)) or nil
 
 	local parts = 0
 	for _, d in ipairs(root:GetDescendants()) do
@@ -3628,27 +3727,33 @@ function LobbyBuilder.Build()
 			parts = parts + 1
 		end
 	end
-	print(string.format("[LobbyBuilder] voxel lobby built (%d parts, %d portals, %d plots)", parts, #diffs, #spots))
+	print(string.format("[LobbyBuilder] lobby built (%d parts, %d gates, %d plots)", parts, #Gates.Built, #spots))
 
+	local gateInfo = {}
+	for id, g in pairs(gates) do
+		gateInfo[id] = { Model = g.Model, Pad = g.Pad, PromptPart = g.PromptPart }
+	end
 	return {
 		Folder = root,
 		SpawnCFrame = flatLook(spawnPos, focus),
-		Portals = portals,
+		Portals = portals, -- Phase 5: exactly { Obby = PortalInfo } (6.3)
 		Spots = spots,
 		Shop = shop,
 		NpcSpots = L.NpcSpots,
-		AltarSite = altarSite, -- reserved for the Storm Altar (ARCHITECTURE_V3.md section 10), faces the plaza
-		AltarDock = altarDock, -- street inner edge where a bridge to the altar island can dock
+		AltarSite = altarSite, -- the Storm Altar island (StormAltar.Build), faces the plaza
+		AltarDock = altarDock, -- street inner edge where the bridge to the altar island docks
 		-- Phase 3 (ArenaBuilder): the arena bridge leaves the street here, straight out along ArenaAngle (degrees, the
-		-- spoke's ray through that junction, whose outer rail is open ArenaBridgeWidth + 1.6 studs); the Trial Portal
-		-- stands at TrialSite (ground, LookVector = towards the plaza centre) on its stone patch
+		-- spoke's ray through that junction, whose outer rail is open ArenaBridgeWidth + 1.6 studs)
 		ArenaAngle = L.ArenaAngle,
 		ArenaDock = arenaDock,
 		ArenaBridgeWidth = G.ArenaBridgeW,
-		TrialSite = trialSite,
-		-- Phase 4 (ArenaBuilder): the Champion Ring portal stands at RingSite (ground, LookVector = towards the plaza
-		-- centre) on its own stone patch, the next free gate of the portal fan beside the Trial Portal
-		RingSite = ringSite,
+		-- Phase 5 Gate Court (6.1): ground CFrame of every gate centre (LookVector = towards the plaza centre), the
+		-- folder every gate builder parents its gate to, and the lobby's own gates
+		GateSites = sites,
+		GatesFolder = gatesFolder,
+		Gates = gateInfo,
+		RingSite = sites.Ring, -- ArenaBuilder's Portal_Ring (C12)
+		DungeonSite = sites.Dungeon, -- DungeonBuilder.BuildPortal (W3)
 	}
 end
 

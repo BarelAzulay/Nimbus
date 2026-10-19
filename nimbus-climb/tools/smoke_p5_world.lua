@@ -630,14 +630,626 @@ local function serverScenarios()
 		T.check(ok, "p5world_style helper checks ran without errors", tostring(err))
 		folder:Destroy()
 
-		-- [W2 worldlobby] the lobby-wide pass goes here: styleAudit(workspace.NimbusLobby, WS, { label = "lobby" }) with the
-		-- exempt tag on clouds / pets / tokens, every child of LobbyInfo.GatesFolder <= 120 parts with a pixel tag
-		-- (pixelTagCheck), <= 12 shadow-casting lights, the 8000 budget (from the W3 gate).
+		-- [W2 worldlobby] the lobby-wide pass: styleAudit(workspace.NimbusLobby) with the exempt tag on clouds / pets /
+		-- tokens, every child of LobbyInfo.GatesFolder <= 120 parts with a pixel tag (pixelTagCheck), <= 12
+		-- shadow-casting lights (the 8000 budget is p5world_lobby's)
+		local lobbyInfo = K.W and K.W.lobbyInfo
+		local lobby = workspace:FindFirstChild("NimbusLobby")
+		if T.check(lobby ~= nil and type(lobbyInfo) == "table", "lobby style: the booted lobby exists") then
+			-- the plots' stations (HomeBuilder, homeworld) and the Storm Altar island (its own look on purpose, 6.4) are
+			-- audited by their owners: the pass covers the plaza, the courts, the gates, the shop, roads, gardens, plots
+			local skip = {}
+			for _, spot in ipairs(type(lobbyInfo.Spots) == "table" and lobbyInfo.Spots or {}) do
+				local home = type(spot) == "table" and typeof(spot.Folder) == "Instance" and spot.Folder:FindFirstChild("Home")
+				if home then
+					skip[#skip + 1] = home
+				end
+			end
+			for _, spot in ipairs(type(lobbyInfo.Spots) == "table" and lobbyInfo.Spots or {}) do
+				if type(spot) == "table" and typeof(spot.Folder) == "Instance" then
+					for _, d in ipairs(spot.Folder:GetDescendants()) do
+						-- HomeBuilder's claim gate (homeworld audits its own models) and the podium pets (pets are exempt)
+						if d:IsA("Model") and (d.Name == "ClaimGate" or d.Name == "ShowcasePet" or d:GetAttribute("PetId") ~= nil) then
+							skip[#skip + 1] = d
+						end
+					end
+				end
+			end
+			local altar = lobby:FindFirstChild("StormAltar", true)
+			if altar then
+				skip[#skip + 1] = altar
+			end
+			local holder = Instance.new("Folder")
+			holder.Name = "LobbyStyleAudit"
+			local moved = {}
+			for _, m in ipairs(skip) do
+				moved[#moved + 1] = { m, m.Parent }
+			end
+			-- audit everything except the skipped models: tag them exempt for the duration of the pass
+			local CS = game:GetService("CollectionService")
+			local exemptTag = (WS.Tags and WS.Tags.Exempt) or "NC_StyleExempt"
+			local added = {}
+			for _, m in ipairs(skip) do
+				if not CS:HasTag(m, exemptTag) then
+					CS:AddTag(m, exemptTag)
+					added[#added + 1] = m
+				end
+			end
+			local res = styleAudit(lobby, WS, { label = "lobby" })
+			for _, m in ipairs(added) do
+				CS:RemoveTag(m, exemptTag)
+			end
+			holder:Destroy()
+			T.info("*lobby style: " .. tostring(res.parts) .. " parts audited, " .. tostring(res.shadowLights) .. " shadow lights")
+			local gatesFolder = lobbyInfo.GatesFolder
+			if T.check(typeof(gatesFolder) == "Instance" and gatesFolder.Parent == lobby, "lobby style: LobbyInfo.GatesFolder is NimbusLobby.Gates") then
+				local n = 0
+				for _, gate in ipairs(gatesFolder:GetChildren()) do
+					n = n + 1
+					local count = #parts(gate)
+					T.check(count <= 120, "lobby style: " .. gate.Name .. " <= 120 parts (6.4 rule 8)", count .. " parts")
+					pixelTagCheck(gate:FindFirstChild("GateTag", true), "lobby style: " .. gate.Name)
+				end
+				T.check(n >= 5, "lobby style: the Gate Court holds the five gates of W2 (the Dungeon gate joins in W3)", n .. " gates")
+			end
+		end
 		_G.P5WorldStyleAudit = { styleAudit = styleAudit, pixelTagCheck = pixelTagCheck }
 	end)
 
-	-- [W2 worldlobby] S.p5world_lobby, S.p5world_gates, S.p5obby_levels, S.p5obby_migration, S.p5world_client_total go here
-	-- (and their names back on this file's line in tools/smoke.py).
+	-- [W2 worldlobby] S.p5world_lobby, S.p5world_gates, S.p5obby_levels, S.p5obby_migration, S.p5world_client_total
+	local GATE_ORDER = { "Home", "Obby", "Dungeon", "Ring", "Arena", "Altar" }
+	local function hdist(a, b)
+		local dx, dz = a.X - b.X, a.Z - b.Z
+		return math.sqrt(dx * dx + dz * dz)
+	end
+	local function angleOf(pos, origin)
+		return math.deg(math.atan2(pos.Z - origin.Z, pos.X - origin.X)) % 360
+	end
+	local function groundAt(pos, depth)
+		local params = RaycastParams.new()
+		local hit = workspace:Raycast(pos + Vector3.new(0, 2, 0), Vector3.new(0, -(depth or 8) - 2, 0), params)
+		return hit
+	end
+	-- stand a player at a point (feet on the ground below it)
+	local function standAt(player, pos, look)
+		local cf = look and CFrame.lookAt(pos + Vector3.new(0, 3, 0), look + Vector3.new(0, 3, 0)) or CFrame.new(pos + Vector3.new(0, 3, 0))
+		Mock.Teleport(player, cf)
+		K.advance(0.05)
+	end
+
+	------------------------------------------------------------------------------------------------
+	-- p5world_lobby (6.1, 10.3): the Gate Court and the bigger plaza
+	------------------------------------------------------------------------------------------------
+	S.p5world_lobby = guarded("p5world_lobby", function()
+		if not K.needBoot() then
+			return
+		end
+		local Config = config()
+		local info = K.W.lobbyInfo
+		local L = Config.Lobby
+		local origin = L.Origin
+		local folder = info.Folder
+		-- the six gate sites: on the arc (r GateArcRadius +- 1), 50..130 degrees, >= 26 studs apart, facing the centre,
+		-- left -> right Home .. Altar (rising angle: the spawn looks +Z, lower angles are on the left)
+		local sites = info.GateSites
+		if T.check(type(sites) == "table", "LobbyInfo.GateSites is a table") then
+			local last = -1
+			for i, id in ipairs(GATE_ORDER) do
+				local cf = sites[id]
+				if T.check(typeof(cf) == "CFrame", "GateSites." .. id .. " is a CFrame") then
+					local r = hdist(cf.Position, origin)
+					local a = angleOf(cf.Position, origin)
+					T.check(math.abs(r - L.GateArcRadius) <= 1, id .. ": on the gate arc (r " .. L.GateArcRadius .. ")", fmt(r, 2))
+					T.check(a >= 50 and a <= 130, id .. ": within 50..130 degrees", fmt(a, 2))
+					T.check(a > last, id .. ": the gates run left -> right " .. table.concat(GATE_ORDER, ", "), fmt(a, 2))
+					last = a
+					local toC = Vector3.new(origin.X - cf.Position.X, 0, origin.Z - cf.Position.Z).Unit
+					T.check(cf.LookVector:Dot(toC) > 0.999, id .. ": the site looks at the plaza centre")
+					T.check(math.abs(cf.Position.Y - origin.Y) < 0.01, id .. ": ground level")
+					for j = 1, i - 1 do
+						local other = sites[GATE_ORDER[j]]
+						if typeof(other) == "CFrame" then
+							T.check(hdist(other.Position, cf.Position) >= 26, id .. ": >= 26 studs from " .. GATE_ORDER[j], fmt(hdist(other.Position, cf.Position), 1))
+						end
+					end
+				end
+			end
+			T.check(info.RingSite == sites.Ring and info.DungeonSite == sites.Dungeon, "LobbyInfo.RingSite / DungeonSite = GateSites.Ring / .Dungeon")
+		end
+		T.check(info.TrialSite == nil, "LobbyInfo.TrialSite is gone")
+		-- the folder of the six gates
+		local gf = info.GatesFolder
+		T.check(typeof(gf) == "Instance" and gf:IsA("Folder") and gf.Name == "Gates" and gf.Parent == folder, "LobbyInfo.GatesFolder = workspace.NimbusLobby.Gates")
+		if typeof(gf) == "Instance" then
+			for _, id in ipairs({ "Home", "Obby", "Ring", "Arena", "Altar" }) do
+				local m = gf:FindFirstChild("Portal_" .. id)
+				if T.check(m ~= nil and m:IsA("Model"), "Portal_" .. id .. " stands in the Gates folder") and typeof(sites[id]) == "CFrame" then
+					T.check(hdist(m:GetPivot().Position, sites[id].Position) < 1.5, "Portal_" .. id .. " stands on its site")
+				end
+			end
+			-- W3: the Dungeon gate; until then its site is free ground of the court
+			if typeof(sites.Dungeon) == "CFrame" and not gf:FindFirstChild("Portal_Dungeon") then
+				local hit = groundAt(sites.Dungeon.Position, 6)
+				T.check(hit ~= nil, "the reserved Dungeon site is paved court ground (DungeonBuilder builds its gate there in W3)")
+			end
+		end
+		for _, id in ipairs({ "Home", "Obby", "Altar" }) do
+			local g = type(info.Gates) == "table" and info.Gates[id]
+			T.check(type(g) == "table" and typeof(g.Model) == "Instance" and typeof(g.Pad) == "Instance" and typeof(g.PromptPart) == "Instance", "LobbyInfo.Gates." .. id .. " = { Model, Pad, PromptPart }")
+		end
+		-- Portals = exactly Obby; no per-difficulty portal and no Trial portal anywhere
+		local n = 0
+		for _ in pairs(info.Portals or {}) do
+			n = n + 1
+		end
+		T.check(n == 1 and type(info.Portals.Obby) == "table" and typeof(info.Portals.Obby.PromptPart) == "Instance", "LobbyInfo.Portals = { Obby = PortalInfo + PromptPart }", n .. " portals")
+		local stale = {}
+		for _, name in ipairs({ "Portal_Easy", "Portal_Medium", "Portal_Hard", "Portal_Extreme", "Portal_Saint", "Portal_Trials" }) do
+			if workspace:FindFirstChild(name, true) then
+				stale[#stale + 1] = name
+			end
+		end
+		T.check(#stale == 0, "no Portal_Easy..Saint / Portal_Trials left in the world", table.concat(stale, ", "))
+		-- the plaza: 1.8x the Phase 4 area (PlazaRadius 150): the walkable ground reaches r 150 in every lawn direction
+		local reach = T.tally("the plaza ground reaches r " .. L.PlazaRadius .. " (1.8x the Phase 4 area)")
+		for a = 0, 330, 30 do
+			local p = origin + Vector3.new(math.cos(math.rad(a)) * (L.PlazaRadius - 2), 0, math.sin(math.rad(a)) * (L.PlazaRadius - 2))
+			reach:case(groundAt(p, 3) ~= nil, "angle " .. a)
+		end
+		reach:report()
+		-- 16 spots on r 340 +- 30
+		local ring = T.tally("16 spots on r " .. L.SpotRingRadius .. " +- 30")
+		local nSpots = 0
+		for i, sp in ipairs(info.Spots or {}) do
+			nSpots = nSpots + 1
+			ring:case(math.abs(hdist(sp.Center, origin) - L.SpotRingRadius) <= 30, "spot " .. i .. " r " .. fmt(hdist(sp.Center, origin), 1))
+		end
+		ring:report()
+		T.eq(nSpots, L.SpotCount, "LobbyInfo.Spots holds SpotCount spots")
+		-- the spawn looks at the Gate Court
+		local face = Vector3.new(math.cos(math.rad(L.GateFacing)), 0, math.sin(math.rad(L.GateFacing)))
+		T.check(info.SpawnCFrame.LookVector:Dot(face) > 0.99 and hdist(info.SpawnCFrame.Position, origin) < 2, "the spawn stands on the medallion looking at the Gate Court (GateFacing)")
+		-- gardens / altar between the plaza and the street; the shop beyond the plaza
+		local streetIn = L.SpotRingRadius - L.PlotSize / 2 - 4 - 14
+		local gardens = folder:FindFirstChild("Gardens")
+		local gTally = T.tally("the gardens float between the plaza and the street")
+		for _, g in ipairs(gardens and gardens:GetChildren() or {}) do
+			local sum, cnt = Vector3.new(0, 0, 0), 0
+			for _, d in ipairs(g:GetDescendants()) do
+				if d:IsA("BasePart") then
+					sum = sum + d.Position
+					cnt = cnt + 1
+				end
+			end
+			if cnt > 0 then
+				local r = hdist(sum / cnt, origin)
+				gTally:case(r > L.PlazaRadius + 8 and r < streetIn - 8, g.Name .. " r " .. fmt(r, 1))
+			end
+		end
+		gTally:report()
+		if typeof(info.AltarSite) == "CFrame" then
+			local r = hdist(info.AltarSite.Position, origin)
+			T.check(r > L.PlazaRadius + 8 and r < streetIn - 8, "the Storm Altar site lies between the plaza and the street", fmt(r, 1))
+		end
+		T.check(L.ShopOffset.Magnitude > L.PlazaRadius + 30, "the shop island lies beyond the plaza")
+		-- NPC spots: on lawn, no path within 8 studs, >= 10 studs from every gate pad
+		local pads = {}
+		for _, id in ipairs({ "Home", "Obby", "Altar" }) do
+			local g = info.Gates and info.Gates[id]
+			if g and typeof(g.Pad) == "Instance" then
+				pads[#pads + 1] = g.Pad.Position
+			end
+		end
+		local npc = T.tally("every NPC spot stands on lawn, >= 8 studs from any path and >= 10 from every gate pad")
+		for i, cf in ipairs(info.NpcSpots or {}) do
+			local okSpot, why = true, ""
+			local r = hdist(cf.Position, origin)
+			if r < 62 - 1 or r > 80 + 9 then
+				okSpot, why = false, "r " .. fmt(r, 1)
+			end
+			for k = 0, 7 do
+				local a = k * math.pi / 4
+				for _, rad in ipairs({ 0, 4, 8 }) do
+					local hit = groundAt(cf.Position + Vector3.new(math.cos(a) * rad, 0.5, math.sin(a) * rad), 3)
+					if hit and hit.Instance and hit.Instance.Material ~= Enum.Material.Grass and hit.Instance.Material ~= Enum.Material.LeafyGrass then
+						okSpot, why = false, hit.Instance:GetFullName() .. " (" .. tostring(hit.Instance.Material) .. ") within " .. rad .. " studs"
+					end
+				end
+			end
+			for _, pp in ipairs(pads) do
+				if hdist(pp, cf.Position) < 10 then
+					okSpot, why = false, "a gate pad within 10 studs"
+				end
+			end
+			npc:case(okSpot, "NPC spot " .. i .. ": " .. why)
+		end
+		npc:report()
+		-- the budget: the lobby with every gate (the Storm Altar's island has its own 500 and the plots' homes theirs)
+		local count = 0
+		local altar = folder:FindFirstChild("StormAltar", true)
+		for _, d in ipairs(folder:GetDescendants()) do
+			if d:IsA("BasePart") and not (altar and d:IsDescendantOf(altar)) then
+				-- the homes, HomeBuilder's claim gates and the podium pets have their own budgets
+				local home = false
+				local cur = d.Parent
+				while cur and cur ~= folder do
+					if cur.Name == "Home" or cur.Name == "ClaimGate" or cur.Name == "ShowcasePet" or (cur:IsA("Model") and cur:GetAttribute("PetId") ~= nil) then
+						home = true
+						break
+					end
+					cur = cur.Parent
+				end
+				if not home then
+					count = count + 1
+				end
+			end
+		end
+		T.check(count <= 8000, "the lobby (the plaza, the courts, every gate, the shop, roads, gardens and the plot islands) stays <= 8000 parts (10.3)", count .. " parts")
+		T.info("*p5 lobby: " .. count .. " parts (the Storm Altar island and the homes not counted)")
+		local pc = folder:GetAttribute("PartCount")
+		T.check(type(pc) == "number" and pc > 2000, "NimbusLobby.PartCount is written (Main, after the last gate builder)", tostring(pc))
+		-- the arena island stays clear of the plots
+		local AB = M["server/Services/ArenaBuilder"]
+		if AB and type(AB.InArena) == "function" then
+			local hits = 0
+			for _, sp in ipairs(info.Spots or {}) do
+				if AB.InArena(sp.Center) then
+					hits = hits + 1
+				end
+			end
+			T.eq(hits, 0, "the arena island is clear of every plot")
+		end
+		K.flushErrors("p5world_lobby")
+	end)
+
+	------------------------------------------------------------------------------------------------
+	-- p5world_gates (6.2, Y12): GateService's Home / Altar prompts, Portal_Arena and the Return gate
+	------------------------------------------------------------------------------------------------
+	S.p5world_gates = guarded("p5world_gates", function()
+		if not K.needBoot() then
+			return
+		end
+		local GS = M["server/Services/GateService"]
+		if not T.check(type(GS) == "table" and type(GS.Init) == "function" and type(GS.Use) == "function" and GS.Teleported ~= nil, "GateService is loaded (Init, Use, Teleported)") then
+			return
+		end
+		local info = K.W.lobbyInfo
+		local SpotService = K.mod("SpotService")
+		local fired = {}
+		local conn = GS.Teleported:Connect(function(player, id)
+			fired[#fired + 1] = { player, id }
+		end)
+		local function prompt(id)
+			local g = info.Gates and info.Gates[id]
+			local part = g and g.PromptPart
+			return part and part:FindFirstChild(id .. "GatePrompt"), part
+		end
+		for _, id in ipairs({ "Home", "Altar" }) do
+			local pr = prompt(id)
+			if T.check(pr ~= nil and pr:IsA("ProximityPrompt"), id .. "GatePrompt sits on LobbyInfo.Gates." .. id .. ".PromptPart") then
+				T.eq(pr.MaxActivationDistance, 12, id .. "GatePrompt: MaxActivationDistance 12")
+				T.eq(pr.HoldDuration, 0, id .. "GatePrompt: HoldDuration 0")
+			end
+		end
+		local hp = prompt("Home")
+		local ap = prompt("Altar")
+		T.check(hp and hp.ActionText == "Go home" and hp.ObjectText == "My Home", "HomeGatePrompt: 'Go home' / 'My Home'")
+		T.check(ap and ap.ActionText == "Travel" and ap.ObjectText == "Storm Altar", "AltarGatePrompt: 'Travel' / 'Storm Altar'")
+		local players = K.freshPlayers(2, "Gate")
+		local a, b = players[1], players[2]
+		local function atGate(p, id)
+			local site = info.GateSites[id]
+			standAt(p, site.Position + site.LookVector * 5, site.Position)
+		end
+		-- Home without a plot: the gate of a free plot + the claim toast
+		atGate(a, "Home")
+		local mark = K.logSize()
+		local n0 = #fired
+		Mock.Trigger(hp, a)
+		K.advance(0.3)
+		local pos = K.root(a).Position
+		local nearFree = false
+		for _, sp in ipairs(info.Spots) do
+			if SpotService.GetOwner(sp.Index) == nil and typeof(sp.GateCFrame) == "CFrame" and hdist(pos, sp.GateCFrame.Position) < 16 then
+				nearFree = true
+			end
+		end
+		T.check(nearFree, "Home without a plot: the player stands at the gate of a free plot", "at " .. tostring(pos))
+		T.check(K.notified(a, "claim this home", "info", mark), "...with 'Press E at the gate to claim this home!'")
+		T.check(#fired == n0 + 1 and fired[#fired][1] == a and fired[#fired][2] == "Home", "GateService.Teleported fires once (player, \"Home\")")
+		-- Home with a plot
+		K.advance(1.6)
+		local claimed = nil
+		for _, sp in ipairs(info.Spots) do
+			if not claimed and SpotService.GetOwner(sp.Index) == nil then
+				local ok = SpotService.Claim(a, sp.Index)
+				if ok then
+					claimed = sp
+				end
+			end
+		end
+		if T.check(claimed ~= nil, "precondition: the player claims a plot") then
+			atGate(a, "Home")
+			Mock.Trigger(hp, a)
+			K.advance(0.3)
+			T.check(hdist(K.root(a).Position, claimed.SpawnCFrame.Position) < 8, "Home with a plot: the player lands at home", fmt(hdist(K.root(a).Position, claimed.SpawnCFrame.Position), 1))
+		end
+		-- refusals: in a match, in a battle, locked on the obby pad, far away, cooldown
+		K.advance(1.6)
+		atGate(b, "Home")
+		b:SetAttribute("InMatch", true)
+		local ok, why = GS.Use(b, "Home")
+		T.check(not ok and why == "match", "refused in a match", tostring(why))
+		b:SetAttribute("InMatch", nil)
+		b:SetAttribute("InBattle", "B1")
+		mark = K.logSize()
+		ok, why = GS.Use(b, "Home")
+		T.check(not ok and why == "battle", "refused in a battle", tostring(why))
+		b:SetAttribute("InBattle", nil)
+		K.enterPortal(b)
+		K.advance(0.6)
+		ok, why = GS.Use(b, "Home")
+		T.check(not ok and why == "locked", "refused while locked on the obby pad (PortalService.IsLocked)", tostring(why))
+		K.mod("PortalService").RemovePlayer(b)
+		K.leavePortalArea(b)
+		K.advance(0.4)
+		standAt(b, info.SpawnCFrame.Position)
+		ok, why = GS.Use(b, "Home")
+		T.check(not ok and why == "far", "refused from far away (> 12 + 4 studs)", tostring(why))
+		atGate(b, "Altar")
+		local n1 = #fired
+		ok, why = GS.Use(b, "Altar")
+		T.check(ok == true, "the Altar gate accepts a player at the gate", tostring(why))
+		local SA = M["server/Services/StormAltar"]
+		local landing = SA and SA.GetLanding and SA.GetLanding()
+		if T.check(typeof(landing) == "CFrame", "StormAltar.GetLanding() is a CFrame") then
+			T.check((K.root(b).Position - landing.Position).Magnitude < 6 and groundAt(K.root(b).Position, 8) ~= nil, "Altar: the player lands within 6 studs of GetLanding(), on the island deck")
+			local altarCF = SA.GetCFrame()
+			local toAltar = Vector3.new(altarCF.Position.X - landing.Position.X, 0, altarCF.Position.Z - landing.Position.Z).Unit
+			T.check(landing.LookVector:Dot(toAltar) > 0.95, "GetLanding faces the altar")
+		end
+		T.check(#fired == n1 + 1 and fired[#fired][2] == "Altar", "Teleported fires once (player, \"Altar\")")
+		atGate(b, "Altar")
+		ok, why = GS.Use(b, "Altar")
+		T.check(not ok and why == "cooldown", "a second use inside 1.5 s is refused (cooldown)", tostring(why))
+		T.check(#fired == n1 + 1, "...and fires nothing")
+		local junkOk = pcall(GS.Use, "x", "Home") and pcall(GS.Use, b, "Nope") and pcall(GS.Use, nil, nil)
+		T.check(junkOk and select(1, GS.Use(b, "Nope")) == false, "junk players / gate ids are refused without errors")
+		-- Portal_Arena -> ArenaInfo.Spawn; the forum's Return gate -> in front of Portal_Arena
+		local AB = M["server/Services/ArenaBuilder"]
+		local ainfo = AB and AB.GetInfo and AB.GetInfo()
+		local arenaGate = info.GatesFolder:FindFirstChild("Portal_Arena")
+		local ap2 = arenaGate and arenaGate:FindFirstChild("ArenaPortalPrompt", true)
+		if T.check(ainfo ~= nil and ap2 ~= nil, "Portal_Arena carries ArenaPortalPrompt") then
+			K.advance(2.2)
+			atGate(b, "Arena")
+			Mock.Trigger(ap2, b)
+			K.advance(0.3)
+			T.check(hdist(K.root(b).Position, ainfo.Spawn.Position) < 8, "Portal_Arena: E lands on the arena's Spawn")
+			local ret = ainfo.Model:FindFirstChild("ArenaReturnPrompt", true)
+			if T.check(ret ~= nil, "the forum's Return gate carries ArenaReturnPrompt") then
+				K.advance(2.2)
+				local rp = ret.Parent
+				standAt(b, rp.Position + Vector3.new(0, -3, 0) + (rp.CFrame.LookVector * 4))
+				Mock.Trigger(ret, b)
+				K.advance(0.3)
+				T.check(hdist(K.root(b).Position, ainfo.LobbyCFrame.Position) < 8, "the Return gate lands in front of Portal_Arena (ArenaInfo.LobbyCFrame)")
+			end
+		end
+		conn:Disconnect()
+		SpotService.Release(a)
+		K.removePlayers(players)
+		K.flushErrors("p5world_gates")
+	end)
+
+	------------------------------------------------------------------------------------------------
+	-- p5obby_levels (6.3, Y10): ObbyLevels, ObbyPick, the party level
+	------------------------------------------------------------------------------------------------
+	S.p5obby_levels = guarded("p5obby_levels", function()
+		local OL = M["shared/ObbyLevels"]
+		local Config = config()
+		if not T.check(type(OL) == "table", "shared/ObbyLevels is loaded") then
+			return
+		end
+		-- the HighestUnlocked table (pure)
+		local cases = {
+			{ {}, 1 }, { { Easy = 100 }, 2 }, { { Medium = 90 }, 3 }, { { Easy = 100, Medium = 90 }, 3 },
+			{ { Extreme = 300 }, 5 }, { { Saint = 500 }, 5 }, { { Hard = 0 }, 1 }, { { Hard = -5 }, 1 }, { { Hard = "x" }, 1 },
+			{ { Hard = 0 / 0 }, 1 }, { "junk", 1 },
+		}
+		for i, c in ipairs(cases) do
+			T.eq(OL.HighestUnlocked(c[1]), c[2], "HighestUnlocked case " .. i)
+		end
+		T.check(OL.IsUnlocked({ Medium = 90 }, "Hard") and not OL.IsUnlocked({ Medium = 90 }, "Extreme") and not OL.IsUnlocked({}, "Nope"), "IsUnlocked follows HighestUnlocked")
+		if not K.needBoot() then
+			return
+		end
+		local PS = K.mod("PortalService")
+		local DS = K.mod("DataService")
+		T.check(type(PS.PickLevel) == "function", "PortalService.PickLevel exists")
+		local players = K.freshPlayers(2, "Lvl")
+		local a, b = players[1], players[2]
+		K.advance(0.5)
+		local remote = K.remoteFolder().ObbyPick
+		T.check(remote ~= nil, "the ObbyPick remote exists")
+		local attr = Config.Attr.ObbyLevel
+		-- refusals leave the attribute alone
+		local mark = K.logSize()
+		for _, junk in ipairs({ 5, {}, "", string.rep("E", 17), "Nope", "Hard" }) do
+			Mock.FromClient(remote, a, junk)
+			K.advance(0.3)
+		end
+		T.eq(a:GetAttribute(attr), nil, "junk / unknown / locked picks leave ObbyLevel unset")
+		T.check(K.notified(a, "Beat Medium to unlock Hard", "bad", mark), "a locked pick answers 'Beat Medium to unlock Hard'")
+		local okJ, whyJ = PS.PickLevel(a, "Nope")
+		T.check(okJ == false and whyJ == "junk", "an unknown level is dropped silently (junk)")
+		-- the rate limit: 4/s burst 4
+		K.advance(1.5)
+		local accepted = 0
+		for _ = 1, 8 do
+			local okR = PS.PickLevel(a, "Easy")
+			if okR then
+				accepted = accepted + 1
+			end
+		end
+		T.check(accepted == 4, "ObbyPick: burst 4 (4/s)", accepted .. " of 8 accepted")
+		K.advance(1.5)
+		-- a win unlocks the next level; the accepted pick sets the attribute
+		DS.RecordMatch(a, "Medium", true, 200)
+		local okP = PS.PickLevel(a, "Hard")
+		T.check(okP == true and a:GetAttribute(attr) == "Hard", "after beating Medium, ObbyPick('Hard') sets ObbyLevel = Hard")
+		-- first on the pad -> the party level
+		K.enterPortal(a)
+		K.advance(0.6)
+		local party = PS.GetParty("Obby")
+		T.eq(party.Level, "Hard", "the first player on the pad starts a Hard party (their pick)")
+		T.eq(K.W.lobbyInfo.Portals.Obby.Model:GetAttribute("PartyLevel"), "Hard", "Portal_Obby PartyLevel = Hard")
+		-- a joiner without the unlock joins the Hard party
+		K.enterPortal(b)
+		K.advance(0.6)
+		T.eq(#PS.GetParty("Obby").Players, 2, "a joiner without the unlock joins whatever the level")
+		-- PartyState fields
+		local st = K.lastRemote("PartyState", b.UserId)
+		st = st and st.args[1]
+		T.check(type(st) == "table" and st.Level == "Hard" and st.Stars == Config.GetDifficulty("Hard").Stars and st.LeaderUserId == a.UserId and st.PortalId == "Obby", "PartyState: Level / Stars / LeaderUserId / PortalId")
+		-- a member's pick does not move the party; the leader's re-pick does (+ 8 s, a toast to the members)
+		DS.RecordMatch(b, "Easy", true, 100)
+		K.advance(0.6)
+		PS.PickLevel(b, "Medium")
+		T.eq(PS.GetParty("Obby").Level, "Hard", "a member's pick leaves the party level alone")
+		T.eq(b:GetAttribute(attr), "Medium", "...but sets the member's own ObbyLevel")
+		mark = K.logSize()
+		K.advance(0.3)
+		local before = PS.GetParty("Obby").Countdown
+		PS.PickLevel(a, "Medium")
+		local after = PS.GetParty("Obby")
+		T.eq(after.Level, "Medium", "the leader's re-pick changes the party level")
+		T.check(after.Countdown ~= nil and after.Countdown >= 8, "...and leaves at least 8 s on the countdown", tostring(before) .. " -> " .. tostring(after.Countdown))
+		T.check(K.notified(b, "Level: Medium", "info", mark), "...and tells the members 'Level: Medium'")
+		-- launch: StartMatch(level)
+		PS.PickLevel(a, "Hard")
+		local started = K.waitFor(function()
+			return K.MS().GetMatchOf(a) ~= nil
+		end, Config.Match.PartyCountdown + 12)
+		T.check(started, "the party launches")
+		if started then
+			T.eq(K.MS().GetMatchOf(a).DifficultyId, "Hard", "launch: StartMatch(\"Hard\", players)")
+		end
+		K.endAllMatches(players)
+		-- unlock after a win
+		T.eq(OL.HighestUnlocked(DS.GetProfile(a).Stats.BestTimes), 3, "before a Hard win: Hard is the top")
+		DS.RecordMatch(a, "Hard", true, 300)
+		T.eq(OL.HighestUnlocked(DS.GetProfile(a).Stats.BestTimes), 4, "a Hard win unlocks Extreme")
+		K.advance(1.5)
+		T.check(PS.PickLevel(a, "Extreme") == true, "...and ObbyPick('Extreme') is accepted")
+		K.removePlayers(players)
+		K.flushErrors("p5obby_levels")
+	end)
+
+	------------------------------------------------------------------------------------------------
+	-- p5obby_migration (6.3): Phase 4 saves keep every win; no migration step
+	------------------------------------------------------------------------------------------------
+	S.p5obby_migration = guarded("p5obby_migration", function()
+		if not K.needBoot() then
+			return
+		end
+		local Config = config()
+		local PS = K.mod("PortalService")
+		local DS = K.mod("DataService")
+		local key = function(uid)
+			return Config.Tokens.DataStoreName .. "/u_" .. uid
+		end
+		local fixtures = {
+			{ 812001, { Easy = 120, Medium = 210 }, 3, "Hard" },
+			{ 812002, { Extreme = 400 }, 5, "Saint" },
+			{ 812003, {}, 1, "Easy" },
+		}
+		for _, f in ipairs(fixtures) do
+			local uid, bt, top, expect = f[1], f[2], f[3], f[4]
+			-- a Phase 4 record: a fresh save without the Phase 5 fields, with these best times
+			local p = Mock.AddPlayer("Old" .. uid, uid)
+			K.advance(1.0)
+			K.removePlayers({ p })
+			K.advance(3)
+			local rec = Mock.DataStore.Data[key(uid)]
+			if T.check(type(rec) == "table" and type(rec.Stats) == "table", uid .. ": the save exists") then
+				rec.Stats.BestTimes = {}
+				for k, v in pairs(bt) do
+					rec.Stats.BestTimes[k] = v
+				end
+				rec.Dungeon, rec.Berries, rec.Settings = nil, nil, nil
+				if type(rec.Migrations) == "table" then
+					for k in pairs(rec.Migrations) do
+						if tostring(k):sub(1, 2) == "P5" then
+							rec.Migrations[k] = nil
+						end
+					end
+				end
+			end
+			p = Mock.AddPlayer("Old" .. uid, uid)
+			K.advance(1.0)
+			local prof = DS.GetProfile(p)
+			T.check(prof ~= nil, uid .. ": the Phase 4 save loads")
+			if prof then
+				local OL = M["shared/ObbyLevels"]
+				T.eq(OL.HighestUnlocked(prof.Stats.BestTimes), top, uid .. ": the highest unlocked level is " .. expect)
+				K.enterPortal(p)
+				K.advance(0.6)
+				T.eq(PS.GetParty("Obby").Level, expect, uid .. ": the first party on the pad climbs " .. expect)
+				PS.RemovePlayer(p)
+				K.leavePortalArea(p)
+				K.advance(3.5)
+			end
+			K.removePlayers({ p })
+			K.advance(3)
+			local back = Mock.DataStore.Data[key(uid)]
+			local same = type(back) == "table" and type(back.Stats) == "table"
+			for k, v in pairs(bt) do
+				same = same and back.Stats.BestTimes[k] == v
+			end
+			for k in pairs(same and back.Stats.BestTimes or {}) do
+				same = same and bt[k] ~= nil
+			end
+			T.check(same, uid .. ": the best times round-trip unchanged (the record is the unlock)")
+		end
+		K.flushErrors("p5obby_migration")
+	end)
+
+	------------------------------------------------------------------------------------------------
+	-- p5world_client_total (10.3): every client holds everything (streaming off)
+	------------------------------------------------------------------------------------------------
+	S.p5world_client_total = guarded("p5world_client_total", function()
+		if not K.needBoot() then
+			return
+		end
+		local function count(root)
+			return root and #parts(root) or 0
+		end
+		local lobby = workspace:FindFirstChild("NimbusLobby")
+		local npcs = workspace:FindFirstChild("NimbusNpcs")
+		local arena = workspace:FindFirstChild("BattleArena")
+		local AB = M["server/Services/ArenaBuilder"]
+		local pockets = 0
+		if AB and type(AB.BuildPocket) == "function" then
+			for _, i in ipairs({ 63, 64 }) do
+				local pk = AB.BuildPocket(i, "Ring")
+				pockets = pockets + (pk and count(pk.Model) or 0)
+				AB.FreePocket(i)
+			end
+		end
+		-- 16 Sky Castle plots and 8 dungeon runs as their budgets (stand-ins until the W3 gate builds real ones)
+		local plots = 16 * 950
+		local runs = 8 * 950
+		local course = 0
+		for _, f in ipairs(K.courseFolders and K.courseFolders() or {}) do
+			course = math.max(course, count(f))
+		end
+		local lobbyN, npcN, arenaN = count(lobby), count(npcs), count(arena)
+		local total = lobbyN + npcN + arenaN + plots + runs + pockets + course
+		T.info(string.format("*client total: lobby %d + NPCs %d + arena %d + 16 plots %d + 8 runs %d + 2 pockets %d + an obby course %d = %d", lobbyN, npcN, arenaN, plots, runs, pockets, course, total))
+		T.check(total <= 45000, "the client holds <= 45,000 BaseParts in the worst case (10.3)", total .. " parts")
+		K.flushErrors("p5world_client_total")
+	end)
 
 	return S
 end

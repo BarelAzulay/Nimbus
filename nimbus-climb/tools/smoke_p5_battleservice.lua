@@ -626,6 +626,12 @@ S.p5svc_commands = scenario("p5svc_commands", function()
 	end
 	advance(1.5)
 	T.check(#Mock.Errors == errs0 and bs.IsInBattle(x) and bs.IsInBattle(y), "p5 cmd: junk during a battle breaks nothing (both still in)")
+	-- Charging: a SPECIAL with an empty meter (2 s in: the meter is at ~12 of 100; the first refusal toast of this player)
+	local m4 = K.logSize()
+	local okS, whyS, meterS = bs.Command(x, "Special")
+	Mock.FromClient(cmd, x, "Special")
+	advance(0.1)
+	T.check(okS == false and whyS == "Charging" and toasted(x, "charging", m4), "p5 cmd: SPECIAL with an empty meter -> Charging + a toast", tostring(whyS) .. " " .. tostring(meterS))
 	-- the ladder's direct refusals
 	local ownId, enemyId = nil, nil
 	for _, u in ipairs(tx.start.Units or {}) do
@@ -667,7 +673,8 @@ S.p5svc_commands = scenario("p5svc_commands", function()
 		end
 		return l
 	end)(), ","))
-	-- the toasts: OutOfReach "Too far!" once per 3 s through the remote
+	-- the toasts: OutOfReach "Too far!" once per 3 s through the remote (the refusal toasts share one 3 s throttle)
+	advance(3.1)
 	local m3 = K.logSize()
 	for _ = 1, 5 do
 		Mock.FromClient(cmd, x, "Attack", enemyId)
@@ -680,13 +687,6 @@ S.p5svc_commands = scenario("p5svc_commands", function()
 	advance(0.1)
 	local _, nFar2 = toasted(x, "Too far", m3)
 	T.check(nFar2 == 2, "p5 cmd: ...and again after 3 s", tostring(nFar2))
-	-- Charging: a SPECIAL with an empty meter (the refusal toasts share one 3 s throttle)
-	advance(3.1)
-	local m4 = K.logSize()
-	local okS, whyS = bs.Command(x, "Special")
-	Mock.FromClient(cmd, x, "Special")
-	advance(0.1)
-	T.check(okS == false and whyS == "Charging" and toasted(x, "charging", m4), "p5 cmd: SPECIAL with an empty meter -> Charging + a toast", tostring(whyS))
 	-- Dash: accepted once, then Cooldown with the seconds left (toast "Not ready")
 	advance(3.1)
 	local m5 = K.logSize()
@@ -1091,13 +1091,13 @@ S.p5svc_duel_fair = scenario("p5svc_duel_fair", function()
 	local tw = tracker(weak)
 	tw.cursor = m2
 	pump(tw)
-	local weakFighter = tw.static[tw.fighter]
 	local endS = playUntilEnd(ts, 60, {})
 	pump(tw)
 	local maxHitShare = 0
 	for _, ev in ipairs(tw.events) do
-		if ev.type == "Hit" and ev.to == tw.fighter and type(ev.dmg) == "number" and weakFighter then
-			maxHitShare = math.max(maxHitShare, ev.dmg / weakFighter.maxHp)
+		local victim = ev.type == "Hit" and tw.static[ev.to]
+		if victim and victim.owner == weak.UserId and type(ev.dmg) == "number" and (victim.maxHp or 0) > 0 then
+			maxHitShare = math.max(maxHitShare, ev.dmg / victim.maxHp)
 		end
 	end
 	local r = w.find(id)
@@ -1142,7 +1142,7 @@ S.p5svc_duel_fair = scenario("p5svc_duel_fair", function()
 	bs.Forfeit(q1)
 	advance(4.6)
 	-- a passive duel ends at exactly TimeLimit (no overtime) as a Draw by damage; a played duel pays once
-	local a = newPlayer("FairA", MID, 10)
+	local a = newPlayer("FairA", MID, 12)
 	local b = newPlayer("FairB", ALT, 10)
 	toArena(a, 3, 0)
 	toArena(b, -3, 0)
@@ -1159,17 +1159,28 @@ S.p5svc_duel_fair = scenario("p5svc_duel_fair", function()
 	local rwA = r2 and r2.Rewards[a.UserId]
 	T.check(rwA and rwA.Trophies == (TR.Draw or 0) and rwA.Tokens == (TR.Tokens.Draw or 0) * (rwA.Double and 2 or 1), "p5 duel fair: ...both get the Draw rewards", rwA and tostring(rwA.Tokens) or "none")
 	advance(4.5)
-	local ta0, tb0 = tokens(a), tokens(b)
+	local tok0 = { [a] = tokens(a), [b] = tokens(b) }
 	local m4 = K.logSize()
 	local ok3, id3 = bs.StartDuel(a, b)
-	local ta = tracker(a)
-	ta.cursor = m4
-	local endA = playUntilEnd(ta, 125, {})
+	local ta, tb = tracker(a), tracker(b)
+	ta.cursor, tb.cursor = m4, m4
+	local t3 = Mock.Clock.now
+	while Mock.Clock.now - t3 < 125 and not w.find(id3) do
+		advance(0.1)
+		playTick(ta, {})
+		playTick(tb, {})
+	end
 	local r3 = w.find(id3)
-	local rwW = r3 and r3.Rewards[a.UserId]
-	T.check(ok3 and endA and endA.Outcome == "Win" and r3 and contains(r3.Winners, a.UserId) and rwW and rwW.Trophies == TR.Win and tokens(a) - ta0 == rwW.Tokens
-		and (tokens(b) - tb0) == (r3.Rewards[b.UserId] and r3.Rewards[b.UserId].Tokens or 0) and w.count(id3) == 1,
-		"p5 duel fair: a played duel (ATTACK + walking in) is won and paid once (Trophies.Win, the tokens)", r3 and tostring(r3.Reason) or "no end")
+	local winner = r3 and r3.Winners[1] == b.UserId and b or a
+	local loser = winner == a and b or a
+	local rwW = r3 and r3.Rewards[winner.UserId]
+	local rwL = r3 and r3.Rewards[loser.UserId]
+	pump(ta)
+	pump(tb)
+	local endW = (winner == a and ta or tb).ends[1]
+	T.check(ok3 and r3 and #r3.Winners == 1 and r3.Reason ~= "Timeout" and rwW and rwW.Trophies == TR.Win and tokens(winner) - tok0[winner] == rwW.Tokens and rwW.Tokens == TR.Tokens.Win * (rwW.Double and 2 or 1)
+		and rwL and tokens(loser) - tok0[loser] == (rwL.Tokens or 0) and endW and endW.Outcome == "Win" and w.count(id3) == 1,
+		"p5 duel fair: a duel both PLAY (ATTACK + walking in) is decided by lives and paid once (Trophies.Win, the tokens)", r3 and (tostring(r3.Reason) .. " " .. tostring(rwW and rwW.Trophies)) or "no end")
 	K.flushErrors("p5svc_duel_fair")
 	K.flushWarnings("p5svc_duel_fair", ALLOWED_WARNINGS)
 	w.stop()

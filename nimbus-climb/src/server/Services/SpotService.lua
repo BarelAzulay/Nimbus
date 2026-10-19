@@ -535,6 +535,7 @@ local function setShowcasePet(index, key, def, stage)
 	model:SetAttribute("Ready", true)
 	pcall(function()
 		CollectionService:AddTag(model, SHOWCASE_TAG)
+		CollectionService:AddTag(model, "NC_StyleExempt") -- a pet: WorldStyle.Tags.Exempt (the 6.4 material audit skips it)
 	end)
 	show.Model = model
 	model.Parent = info.Folder or workspace

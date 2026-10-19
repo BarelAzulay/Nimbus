@@ -2928,3 +2928,4 @@ leashed after 3 s); `trials` deleted. `SIM.Stages`, `SIM.team`, `SIM.Player` kep
 - W1: 3.3 Kitchen pad `padAt(-19, 21.5, -24, 29)` (22.5 overlapped the 16x10x10 Food Machine).
 - W1: C10 first Prestige floor is 115 min for the player who also runs the Ring and the Dungeon (`--ring 0.08 --dungeon 0.1`: 118 min), 120 otherwise.
 - W1: `TycoonCatalog.CoinPoint` / `HeapStage` stay as deprecated stubs until the W3 gate (HomeFx), then leave contract.json with the aliases.
+- W2: 4.5 wire: `Start.Team.Cooldowns.Buff` is keyed by slot STRINGS ('2', '3'); a rejected `Order` echo goes only to its owner. 10.5: `Config.Lobby.PortalRingRadius` deleted.

@@ -6,6 +6,8 @@
 --                                           LookVector = towards the plaza). Safe to call again (rebuilds).
 --   StormAltar.GetModel() -> Model | nil
 --   StormAltar.GetCFrame() -> CFrame | nil
+--   StormAltar.GetLanding() -> CFrame | nil  Phase 5 (6.2): where the Gate Court's Altar gate (GateService) puts a
+--                                           player: on the island deck at the bridge end, 3 studs up, facing the altar
 --   StormAltar.Used                         Util.Signal; Fire(player) when a player uses the altar's prompt
 --
 -- What it builds (all static; the client animates the showcase, ShowcaseController):
@@ -162,6 +164,7 @@ local C = {
 ----------------------------------------------------------------------
 local altarModel = nil
 local altarCFrame = nil
+local altarLanding = nil -- Phase 5: GetLanding()
 local lastToast = {} -- [player] = os.clock() of the last toast
 local lastOpen = {} -- [player] = os.clock() of the last OpenPanel (Secret roulette)
 local playersHooked = false
@@ -1295,7 +1298,7 @@ function StormAltar.Build(lobbyInfo)
 	if old and old:IsA("Model") then
 		old:Destroy()
 	end
-	altarModel, altarCFrame = nil, nil
+	altarModel, altarCFrame, altarLanding = nil, nil, nil
 
 	local info = type(lobbyInfo) == "table" and lobbyInfo or {}
 	local site = typeof(info.AltarSite) == "CFrame" and info.AltarSite or nil
@@ -1384,6 +1387,10 @@ function StormAltar.Build(lobbyInfo)
 	model.Parent = container -- parented last: the whole altar replicates in one step
 	altarModel = model
 	altarCFrame = A
+	-- the Altar gate's arrival point: the island end of the bridge (else the front of the deck), facing the altar
+	local arrive = landing or (A * CFrame.new(0, 0, -(R_TOP - 6))).Position
+	arrive = Vector3.new(arrive.X, A.Position.Y, arrive.Z) + (Vector3.new(A.Position.X, arrive.Y, A.Position.Z) - Vector3.new(arrive.X, arrive.Y, arrive.Z)).Unit * 2
+	altarLanding = flatLook(arrive + Vector3.new(0, 3, 0), A.Position + Vector3.new(0, 3, 0))
 	print(string.format("[StormAltar] built (%d parts + showcase)", parts))
 	return A
 end
@@ -1397,6 +1404,13 @@ end
 
 function StormAltar.GetCFrame()
 	return altarCFrame
+end
+
+function StormAltar.GetLanding()
+	if altarModel and altarModel.Parent then
+		return altarLanding
+	end
+	return nil
 end
 
 return StormAltar

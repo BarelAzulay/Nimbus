@@ -1,11 +1,19 @@
--- PortalService (v3 polish): forms parties on the lobby portal pads, locks the members in until launch and
--- shows every portal's state on a readable billboard.
+-- PortalService (v3 polish, Phase 5 6.3): forms the party on the ONE Sky Obby portal pad (Portal_Obby in the Gate
+-- Court), locks the members in until launch and shows the party on the gate's readable tag.
 --
--- Standing inside a portal Zone (the "ready pad") puts a player in that portal's party. The first
--- player starts a countdown; a full party shortens it. When it reaches zero the party is handed to
--- MatchService.StartMatch. MatchService is passed in through Init (no require) so the two services
--- never form a circular dependency. One party per entry of Config.Difficulties, matched to
--- lobbyInfo.Portals[difficulty.Id] (no difficulty id is hard-coded here).
+-- Standing inside the portal Zone (the "ready pad") puts a player in the party. The first player starts a
+-- countdown; a full party shortens it. When it reaches zero the party is handed to MatchService.StartMatch(level,
+-- players). MatchService is passed in through Init (no require) so the two services never form a circular
+-- dependency. ONE party slot keyed "Obby" (lobbyInfo.Portals.Obby); its level (party.Diff, a Config.Difficulties
+-- entry) is mutable:
+--   * the level picker (ObbyController, W4) fires Remotes.ObbyPick(levelId) -> PortalService.PickLevel(player,
+--     levelId): a string <= 16 chars, a Config difficulty, 4/s burst 4, a loaded profile and ObbyLevels.IsUnlocked on
+--     the SERVER copy of Stats.BestTimes -> the player's ObbyLevel attribute; refused: "Beat Medium to unlock Hard";
+--     junk is dropped silently. The LEADER's pick before launch also changes the party's level (the countdown gets
+--     at least 8 more seconds, the members get "Level: Hard").
+--   * the first player on the empty pad picks the level: their ObbyLevel attribute if still unlocked, else their
+--     highest unlocked level; anyone may JOIN whatever the level (friends carry friends).
+--   * the gate's prompt "ObbyPrompt" (Pick level / Sky Obby, attribute OpenPanel = "Obby") opens the picker.
 --
 -- Lock-in (asked for after the playtest): a party member is LOCKED on the pad for the whole countdown.
 --   * Their character parts move to the collision group NC_PortalLocked. Every pad has five invisible walls
@@ -39,6 +47,17 @@ local Util = require(Shared.Util)
 local Remotes = require(Shared.Remotes)
 local Theme = require(Shared.Theme)
 
+local ObbyLevels = nil
+do
+	local inst = Shared:FindFirstChild("ObbyLevels")
+	if inst then
+		local ok, mod = pcall(require, inst)
+		if ok and type(mod) == "table" then
+			ObbyLevels = mod
+		end
+	end
+end
+
 local PortalService = {}
 
 ----------------------------------------------------------------------
@@ -52,6 +71,11 @@ local EJECT_DISTANCE = 12 -- studs the Leave button moves a player off the pad (
 local ZONE_HYSTERESIS = 1.5 -- extra studs of tolerance for players already inside (no edge flicker)
 local LEAVE_COOLDOWN = 0.5 -- LeaveParty rate limit per player
 local PULL_TOAST_COOLDOWN = 5 -- seconds between two "press Leave" toasts after a safety-net pull
+local PORTAL_ID = "Obby" -- the one portal (6.3)
+local PICK_RATE, PICK_BURST = 4, 4 -- ObbyPick rate limit (per second, burst)
+local PICK_EXTEND = 8 -- a leader's re-pick leaves the countdown at least this many seconds
+local PICK_MAX_LEN = 16
+local PROMPT_RANGE = 12
 
 -- Lock-in walls. The inner faces sit ZONE_HYSTERESIS outside the zone, so a member's root always stays inside
 -- the (hysteresis) zone and the safety net never fights the walls.
@@ -117,6 +141,8 @@ local fullNotified = {} -- Player -> portal id they were told is full
 local locks = {} -- Player -> { PortalId, Groups = { [BasePart] = previous group }, Conns }
 local lastLeave = {} -- Player -> clock of the last accepted LeaveParty
 local lastPullToast = {} -- Player -> clock of the last safety-net toast
+local pickBuckets = {} -- Player -> { tokens, last } (ObbyPick rate limit)
+local dataService = nil -- required lazily (PortalService never needs it at load time)
 local groupsReady = false
 
 local remoteCache = {}
@@ -248,6 +274,84 @@ local function zoneAt(position, hintId)
 		end
 	end
 	return nil
+end
+
+----------------------------------------------------------------------
+-- Obby levels (6.3): the server copy of BestTimes decides what a player may pick
+----------------------------------------------------------------------
+local function getDataService()
+	if dataService == nil then
+		dataService = false
+		local inst = script.Parent:FindFirstChild("DataService")
+		if inst then
+			local ok, mod = pcall(require, inst)
+			if ok and type(mod) == "table" then
+				dataService = mod
+			end
+		end
+	end
+	return dataService or nil
+end
+
+-- The player's Stats.BestTimes from the server profile; nil while the profile is not loaded.
+local function bestTimesOf(player)
+	local ds = getDataService()
+	if not ds or type(ds.GetProfile) ~= "function" then
+		return nil
+	end
+	local ok, profile = pcall(ds.GetProfile, player)
+	if not ok or type(profile) ~= "table" then
+		return nil
+	end
+	local stats = profile.Stats
+	if type(stats) == "table" and type(stats.BestTimes) == "table" then
+		return stats.BestTimes
+	end
+	return {}
+end
+
+local function levelUnlocked(bestTimes, levelId)
+	if ObbyLevels then
+		return ObbyLevels.IsUnlocked(bestTimes, levelId) == true
+	end
+	local first = Config.Difficulties[1]
+	return first ~= nil and first.Id == levelId
+end
+
+local function highestLevel(bestTimes)
+	local index = ObbyLevels and ObbyLevels.HighestUnlocked(bestTimes) or 1
+	return Config.Difficulties[index] or Config.Difficulties[1]
+end
+
+-- The level of a party the player starts on the empty pad: their pick (ObbyLevel) while it is still unlocked, else
+-- their highest unlocked level.
+local function levelForNewParty(player)
+	local bestTimes = bestTimesOf(player) or {}
+	local picked = player:GetAttribute(Config.Attr.ObbyLevel)
+	if type(picked) == "string" and levelUnlocked(bestTimes, picked) then
+		local d = Config.GetDifficulty(picked)
+		if d then
+			return d
+		end
+	end
+	return highestLevel(bestTimes)
+end
+
+-- ObbyPick token bucket (PICK_RATE per second, PICK_BURST burst).
+local function allowPick(player)
+	local t = clock()
+	local b = pickBuckets[player]
+	if not b then
+		b = { Tokens = PICK_BURST, Last = t }
+		pickBuckets[player] = b
+	end
+	b.Tokens = math.min(PICK_BURST, b.Tokens + math.max(0, t - b.Last) * PICK_RATE)
+	b.Last = t
+	if b.Tokens < 1 then
+		return false
+	end
+	b.Tokens = b.Tokens - 1
+	return true
 end
 
 local function hex(color)
@@ -571,7 +675,29 @@ local function billboardAnchor(party)
 	return anchor
 end
 
+-- Phase 5: the gate already carries a pixel tag (WorldStyle.BuildGate's "GateTag": Title / Info / Pill.Label); the
+-- party state is written into it (title "Sky Obby", info "Hard ★★★ - 2/4 players", the status pill). true when used.
+local function useGateTag(party)
+	local info = party.Info
+	local tag = info.Billboard
+	if typeof(tag) ~= "Instance" or not tag:IsA("BillboardGui") or tag.Name ~= "GateTag" then
+		return false
+	end
+	if not info.StatusLabel or not info.StatusPill then
+		return false
+	end
+	party.Billboard = tag
+	party.Pill = info.StatusPill
+	party.PillStroke = info.StatusPill:FindFirstChildOfClass("UIStroke")
+	party.PillMode = nil
+	info.StatusPill.Visible = true
+	return true
+end
+
 local function buildBillboard(party)
+	if useGateTag(party) then
+		return
+	end
 	local info = party.Info
 	local diff = party.Diff
 	local color = diff.Color
@@ -667,7 +793,7 @@ local function faceCFrame(party)
 	local hs = zone.Size * 0.5
 	local inner = hs.Z + ZONE_HYSTERESIS -- the back wall's inner face
 	local model = party.Info.Model
-	local swirl = model and model:FindFirstChild("SwirlCore")
+	local swirl = model and model:FindFirstChild("SwirlCore") -- (the Phase 5 gate has none: the face stands at the back wall)
 	local rel
 	if swirl and swirl:IsA("BasePart") then
 		rel = zone.CFrame:PointToObjectSpace(swirl.Position)
@@ -888,7 +1014,9 @@ local function setPillMode(party, mode)
 	party.PillMode = mode
 	local base = (mode == "Countdown") and GOLD or Theme.Darken(party.Diff.Color, 0.2)
 	party.Pill.BackgroundColor3 = base
-	party.PillStroke.Color = Theme.Darken(base, 0.7)
+	if party.PillStroke then
+		party.PillStroke.Color = Theme.Darken(base, 0.7)
+	end
 	local outline = party.Info.StatusLabel and party.Info.StatusLabel:FindFirstChild("TextOutline")
 	if outline then
 		outline.Color = Theme.Darken(base, 0.66)
@@ -939,6 +1067,11 @@ local function refreshLabels(party)
 	local n = #party.Players
 	local max = Config.Match.MaxPlayers
 	setText(info.CountLabel, string.format("%d/%d players", n, max), "LastCount", party)
+	if info.InfoLabel then
+		local diff = party.Diff
+		local stars = math.max(0, math.min(MAX_STARS, math.floor(tonumber(diff.Stars) or 1)))
+		setText(info.InfoLabel, string.format("%s %s - %d/%d players", tostring(diff.DisplayName or diff.Id), string.rep(STAR_FULL, stars), n, max), "LastInfo", party)
+	end
 
 	local status, mode
 	local seconds = countdownOf(party)
@@ -968,8 +1101,12 @@ local function buildPartyState(party)
 	for _, p in ipairs(party.Players) do
 		list[#list + 1] = { UserId = p.UserId, Name = nameOf(p) }
 	end
+	local leader = party.Leader
 	return {
 		PortalId = party.Id,
+		Level = party.Diff.Id, -- Phase 5 (6.3): the party's obby level, its stars and the leader (who may change it)
+		Stars = party.Diff.Stars,
+		LeaderUserId = leader and leader.UserId or nil,
 		DifficultyName = party.Diff.DisplayName,
 		Color = party.Diff.Color,
 		Players = list,
@@ -990,10 +1127,28 @@ local function sendPartyState(party)
 	party.LastStateAt = clock()
 end
 
+-- The party's level changed (a new party, a leader's pick): the model attribute, the old billboard's stars, the pill.
+local function applyLevel(party)
+	setModelAttr(party, "PartyLevel", party.Diff.Id)
+	local info = party.Info
+	if info.StarLabel then
+		pcall(function()
+			info.StarLabel.Text = starText(party.Diff.Stars)
+		end)
+	end
+	party.PillMode = nil
+	party.LastInfo = nil
+end
+
 local function addToParty(player, id)
 	local party = parties[id]
 	if not party then
 		return false
+	end
+	if #party.Players == 0 then
+		-- the first player on the empty pad picks the level (their pick if still unlocked, else their highest)
+		party.Diff = levelForNewParty(player)
+		applyLevel(party)
 	end
 	if isFull(party) then
 		if fullNotified[player] ~= id then
@@ -1003,13 +1158,14 @@ local function addToParty(player, id)
 		return false
 	end
 	table.insert(party.Players, player)
+	party.Leader = party.Players[1]
 	playerParty[player] = id
 	fullNotified[player] = nil
 	lockPlayer(player, id)
 	onMembershipChanged(party)
 	refreshLabels(party)
 	sendPartyState(party) -- everybody's list changed
-	notify(player, "You're in the " .. tostring(party.Diff.DisplayName) .. " portal! Press Leave to step out.", "info", 4)
+	notify(player, "You're in the " .. tostring(party.Diff.DisplayName) .. " climb! Press Leave to step out.", "info", 4)
 	return true
 end
 
@@ -1026,6 +1182,7 @@ removeFromParty = function(player)
 		return
 	end
 	removeValue(party.Players, player)
+	party.Leader = party.Players[1]
 	onMembershipChanged(party)
 	refreshLabels(party)
 	fireClient("PartyState", player, nil)
@@ -1061,13 +1218,15 @@ local function launch(party)
 		fireClient("PartyState", p, nil)
 	end
 	party.Players = {}
+	party.Leader = nil
+	local levelId = party.Diff.Id
 	onMembershipChanged(party)
 	refreshLabels(party)
 
 	task.spawn(function()
 		local match = nil
 		if matchService and type(matchService.StartMatch) == "function" then
-			local ok, result = pcall(matchService.StartMatch, party.Id, members)
+			local ok, result = pcall(matchService.StartMatch, levelId, members)
 			if ok then
 				match = result
 			else
@@ -1286,27 +1445,27 @@ function PortalService.Init(lobbyInfo, matchServiceArg)
 		warn("[PortalService] collision groups: " .. tostring(errGroups))
 	end
 
+	-- Phase 5 (6.3): ONE party slot, the Sky Obby portal (lobbyInfo.Portals.Obby)
 	local portals = (lobbyInfo and lobbyInfo.Portals) or {}
-	for _, diff in ipairs(Config.Difficulties) do
-		local info = portals[diff.Id]
-		if info and not info.Zone then
-			warn("[PortalService] portal " .. diff.Id .. " has no Zone")
-			info = nil
-		end
-		if info then
-			parties[diff.Id] = {
-				Id = diff.Id,
-				Info = info,
-				Diff = diff,
-				Players = {},
-				BaseDeadline = nil,
-				FullDeadline = nil,
-				LastStateAt = 0,
-			}
-			table.insert(order, diff.Id)
-		else
-			warn("[PortalService] lobby has no portal for " .. diff.Id)
-		end
+	local info = portals[PORTAL_ID]
+	if info and not info.Zone then
+		warn("[PortalService] the Obby portal has no Zone")
+		info = nil
+	end
+	if info then
+		parties[PORTAL_ID] = {
+			Id = PORTAL_ID,
+			Info = info,
+			Diff = Config.Difficulties[1],
+			Players = {},
+			Leader = nil,
+			BaseDeadline = nil,
+			FullDeadline = nil,
+			LastStateAt = 0,
+		}
+		table.insert(order, PORTAL_ID)
+	else
+		warn("[PortalService] the lobby has no Obby portal")
 	end
 	for _, id in ipairs(order) do
 		local party = parties[id]
@@ -1323,7 +1482,24 @@ function PortalService.Init(lobbyInfo, matchServiceArg)
 			party.Face = nil
 			warn("[PortalService] countdown face for " .. id .. ": " .. tostring(errFace))
 		end
+		applyLevel(party)
 		refreshLabels(party)
+		local okPrompt, errPrompt = pcall(PortalService._MakePrompt, party.Info)
+		if not okPrompt then
+			warn("[PortalService] ObbyPrompt: " .. tostring(errPrompt))
+		end
+	end
+
+	local okPick, pickRemote = pcall(Remotes.Get, "ObbyPick")
+	if okPick and pickRemote then
+		pickRemote.OnServerEvent:Connect(function(player, levelId)
+			local ok, err = pcall(PortalService.PickLevel, player, levelId)
+			if not ok then
+				warn("[PortalService] ObbyPick: " .. tostring(err))
+			end
+		end)
+	else
+		warn("[PortalService] ObbyPick remote unavailable")
 	end
 
 	local okRemote, leaveRemote = pcall(Remotes.Get, "LeaveParty")
@@ -1341,6 +1517,7 @@ function PortalService.Init(lobbyInfo, matchServiceArg)
 		fullNotified[player] = nil
 		lastLeave[player] = nil
 		lastPullToast[player] = nil
+		pickBuckets[player] = nil
 	end)
 
 	running = true
@@ -1353,11 +1530,84 @@ function PortalService.RemovePlayer(player)
 end
 
 function PortalService.GetParty(portalId)
-	local party = parties[portalId]
+	local party = parties[portalId or PORTAL_ID]
 	if not party then
 		return { Players = {}, Countdown = nil }
 	end
-	return { Players = copyList(party.Players), Countdown = countdownOf(party) }
+	return { Players = copyList(party.Players), Countdown = countdownOf(party), Level = party.Diff.Id, Leader = party.Leader }
+end
+
+-- The Obby gate's prompt (6.3): "Pick level" / "Sky Obby", OpenPanel = "Obby" (ObbyController opens the picker).
+function PortalService._MakePrompt(info)
+	local part = info and info.PromptPart
+	if typeof(part) ~= "Instance" or not part:IsA("BasePart") then
+		return nil
+	end
+	local old = part:FindFirstChild("ObbyPrompt")
+	if old then
+		old:Destroy()
+	end
+	local prompt = Instance.new("ProximityPrompt")
+	prompt.Name = "ObbyPrompt"
+	prompt.ActionText = "Pick level"
+	prompt.ObjectText = "Sky Obby"
+	prompt.KeyboardKeyCode = Enum.KeyCode.E
+	prompt.HoldDuration = 0
+	prompt.MaxActivationDistance = PROMPT_RANGE
+	prompt.RequiresLineOfSight = false
+	prompt:SetAttribute("OpenPanel", "Obby")
+	prompt.Parent = part
+	return prompt
+end
+
+-- ObbyPick (6.3, Y10): validates on the server copy of the profile and writes the player's ObbyLevel attribute; a
+-- party LEADER's pick before launch also moves the party's level. Returns ok, reason ("junk" | "rate" | "profile" |
+-- "locked"); junk is dropped silently, a locked level answers "Beat Medium to unlock Hard".
+function PortalService.PickLevel(player, levelId)
+	if not isPlayer(player) then
+		return false, "junk"
+	end
+	if type(levelId) ~= "string" or #levelId == 0 or #levelId > PICK_MAX_LEN then
+		return false, "junk"
+	end
+	local diff = Config.GetDifficulty(levelId)
+	if not diff then
+		return false, "junk"
+	end
+	if not allowPick(player) then
+		return false, "rate"
+	end
+	local bestTimes = bestTimesOf(player)
+	if not bestTimes then
+		return false, "profile"
+	end
+	if not levelUnlocked(bestTimes, levelId) then
+		local index = (ObbyLevels and ObbyLevels.IndexOf(levelId)) or 1
+		local prev = Config.Difficulties[math.max(1, index - 1)] or diff
+		notify(player, string.format("Beat %s to unlock %s", tostring(prev.DisplayName or prev.Id), tostring(diff.DisplayName or diff.Id)), "bad", 3)
+		return false, "locked"
+	end
+	if player:GetAttribute(Config.Attr.ObbyLevel) ~= levelId then
+		player:SetAttribute(Config.Attr.ObbyLevel, levelId)
+	end
+	local party = parties[playerParty[player] or ""]
+	if party and party.Leader == player and #party.Players > 0 and not starting[player] and party.Diff.Id ~= levelId then
+		party.Diff = diff
+		local t = clock()
+		party.BaseDeadline = math.max(party.BaseDeadline or t, t + PICK_EXTEND)
+		if party.FullDeadline then
+			party.FullDeadline = math.max(party.FullDeadline, t + PICK_EXTEND)
+		end
+		applyLevel(party)
+		for _, p in ipairs(party.Players) do
+			if p ~= player then
+				notify(p, "Level: " .. tostring(diff.DisplayName or diff.Id), "info", 3)
+			end
+		end
+		refreshLabels(party)
+		sendPartyState(party)
+	end
+	return true
 end
 
 -- true, portalId while `player` is locked inside a portal pad (waiting for its countdown).

@@ -1,5 +1,5 @@
--- TycoonService: the tycoon homes (ARCHITECTURE_V3.md "Phase 2: Tycoon homes" + "Phase 4: pets make the money" and
--- the "Phase 4 build contract", sections 3.1-3.3, 3.10, 3.11, 5.1-5.4, 7).
+-- TycoonService: the tycoon homes (ARCHITECTURE_V3.md "Phase 2: Tycoon homes" + "Phase 4: pets make the money", the
+-- "Phase 4 build contract" sections 3.1-3.3, 3.10, 3.11, 5.1-5.4, 7, and the "Phase 5 build contract" 3.3-3.5, 10.2).
 --
 -- * Claiming: every free plot's gate carries a "Claim Home" ProximityPrompt named ClaimPrompt (HomeBuilder.PreparePlot
 --   builds it; when HomeBuilder is missing or built none, this service puts a plain one on the gate). Pressing E
@@ -19,24 +19,30 @@
 --   (HomeBuilder.SetStation; the client pops it in), the pads refresh and a side toast confirms it. The Prestige pad
 --   (StationId "Prestige", prompt "Prestige") never resets anything by itself: E on it opens the Home window on its
 --   prestige confirmation (OpenPanel("Home", { Action = "Prestige" })) and only HomeAction "Prestige" prestiges.
--- * Rainbow coins (the ONLY money source, contract 3.2): every open garden place (slot <= TycoonCatalog.GardenSlots)
---   with an owned, non-training pet eats one meal every Coins.MealSeconds (a server timer per place, random start
---   phase after a load; a NEW placement's first coin waits a full meal; the same key back in its place within one
---   meal keeps its timer: X5) and pops out one coin worth TycoonCatalog.CoinValue(home, PetPower(pet)) (Food x
---   PetPower x 1.25^stars; the pet's STORED evolution stage from DataService.GetEvolution), Lucky with
---   TycoonCatalog.LuckyChance (x Coins.LuckyMult). A place's pile holds PileSeconds(home) x that pet's coin rate;
---   full = the pet naps and eats nothing until scooped. Keys above the open count (LegacySlots ended) rest: they keep
---   their place but do not eat. No pet in the garden = no coins.
+-- * Cloud Cash (the ONLY money source; Phase 5 contract 3.5): every open garden place (slot <= TycoonCatalog.GardenSlots)
+--   with an owned, non-training pet roams the yard on the shared deterministic plan (shared/HomeRoam: seed = RoamSeed,
+--   slot, cycle 24 s; epochs on workspace:GetServerTimeNow()) and poops once per cycle at HomeRoam.Plan(..).Poop a drop
+--   worth TycoonCatalog.CoinValue(home, PetPower(pet), stars) x Coins.PoopMeals 3 (the pet's STORED evolution stage from
+--   DataService.GetEvolution; Lucky x LuckyMult with LuckyChance). A NEW key in a slot gets Epoch = now + SettleSeconds 20
+--   (first poop >= 24 s later; Y8 churn-proof: the same key back within one cycle keeps its epoch), a fresh ledger
+--   staggers Epoch = now + Rng x 24. At most 2 catch-up poops per slot per tick. A slot whose lawn value reached
+--   PileSeconds(home) x its coin rate naps (Roam ":N<cycle>", no poop) until a scoop below the cap wakes it (Epoch =
+--   now + the back walk). A slot keeps DropsPerPet 3 drops, a further poop merges into its nearest drop. Keys above
+--   the open count (LegacySlots ended) rest: no epoch, no poop. No pet in the garden = no coins. Every poop also grows
+--   value x Berries.Share berries into Profile.Berries (DataService.AddBerries, whole; the fraction stays in the
+--   ledger), clamped so a poop never lifts Berries above TycoonCatalog.BasketCap(home, income) ("Basket full! Feed
+--   your pets" once); a cap below the berries removes none. Offline coins add offline x Share berries, cap ignored.
 -- * The coin ledger (X4, exactly once): Home.CollectorCash IS the bank (persisted, delta-merged): the 1 s tick adds
---   every new coin to it in one MutateHome. The piles are SESSION memory (Coins.state[player]: a value and a coin
---   count per place + the Welcome-back pile) rebuilt from the bank as the Welcome-back pile on load, claim and
---   ProfileRebased, and always reconciled so that sum(piles) + welcome == CollectorCash. Scooping: a 0.25 s loop
---   reads the OWNER's HumanoidRootPart; every pile within ScoopRadius(home) horizontally and SCOOP_HEIGHT vertically
---   is paid: MutateHome(CollectorCash - take) then DataService.AddCash(take) in one non-yielding step, clamped to
---   the bank, refunded when AddCash fails; whole Cash only, fractions stay in their pile. No pickup remote (X1):
---   HomeAction "Collect" / Collect(player) = "scoop every pile in range" for old clients and tests. Only the plot's
---   owner is ever checked (X2). Offline coins (the Vault's OfflineEarnings on IncomePerSecond) go INTO the bank in
---   the same MutateHome that writes LastSeen (X6; the "Welcome back! Your pets made $X ..." toast).
+--   every new poop to it in one MutateHome (+ AddBerries in the same step). The drops are SESSION memory
+--   (Coins.state[player]: per slot a list of { Cycle, Value, Lucky, Poops, X, Z } + the Welcome-back pile) rebuilt
+--   from the bank as the Welcome-back pile on load, claim and ProfileRebased, and always reconciled so that
+--   sum(drops) + welcome == CollectorCash. Scooping: a 0.25 s loop reads the OWNER's HumanoidRootPart; every drop
+--   within ScoopRadius(home) horizontally and SCOOP_HEIGHT vertically is paid: MutateHome(CollectorCash - take) then
+--   DataService.AddCash(take) in one non-yielding step, clamped to the bank, refunded when AddCash fails; whole Cash
+--   only, the fraction stays on the lawn as an unlisted drop. No pickup remote (X1 / Y7): HomeAction "Collect" /
+--   Collect(player) = "scoop every drop in range" for old clients and tests. Only the plot's owner is ever checked (X2).
+--   Offline coins (the Vault's OfflineEarnings on IncomePerSecond) go INTO the bank in the same MutateHome that
+--   writes LastSeen (X6; the "Welcome back! Your pets made $X ..." toast).
 -- * GardenSet (any role): slot 1..GardenSlots(home), an owned free copy, not a training key (DataService.TrainingKeys),
 --   not a key in the caller's running battle (BattleService.KeysInBattle when it exists); nil / "" clears any slot.
 -- * House tiers (every 10 Home Levels: Villa 10, Manor 20, Sky Castle 30) and the station caps per tier come from
@@ -55,12 +61,18 @@
 -- * Remote HomeAction(action, arg): "Upgrade" stationId, "GardenSet" {slot, key|nil} (also {Slot =, Key =}),
 --   "Collect", "Prestige", "GoHome". Types, ranges and NaN are checked; every action is rate limited (a per-action
 --   cooldown plus a per-player burst budget); refusals answer with a side toast (repeated texts are throttled).
--- * Replication (5.3): the plot folder (SpotInfo.Folder) carries attributes for the clients, written only on change:
---   HomeLevel, Prestige, CollectorCash (the bank, whole), IncomePerSecond, GardenPets ("1=cat;3=fox@Golden", every
---   placed owned key incl. resting ones), GardenInfo ("1=12:0;3=20:1" level:stage per placed slot), GardenSlots (the
---   open place count), CoinPiles ("1=3;2=5F;4=2*;W=5": heap stage 0-5 per pile by coin count, F = full / the pet
---   naps, * = a Lucky coin in the pile, W = the Welcome-back pile while it holds >= $1). HomeBuilder.SetGarden(info,
---   valid, open) gets the placed keys and the open count. Nothing here moves parts (HomeFx animates on the client).
+-- * Replication (5.3 / Phase 5 10.2): the plot folder (SpotInfo.Folder) carries attributes for the clients, written
+--   only on change: HomeLevel, Prestige, CollectorCash (the bank, whole), IncomePerSecond, GardenPets ("1=cat;3=fox@Golden",
+--   every placed owned key incl. resting ones), GardenInfo ("1=12:0;3=20:1" level:stage per placed slot), GardenSlots (the
+--   open place count), RoamSeed ((OwnerUserId % 2147483646) + 1), RoamVersion (HomeRoam.Version), Roam
+--   ("1=1760001234.5;3=1760001240.0:N812": slot = epoch with one decimal, :N<cycle> while napping), CoinDrops
+--   ("1=812:1,813:2*;3=40:1;W=5": slot = cycle:stage[* Lucky] per drop, stages by poops Coins.DropStages {1, 2, 4, 8},
+--   W the Welcome-back pile; <= one write per 2 s, <= 400 B), BerryCap (whole, <= 1 / s). The player attribute Berries
+--   is DataService's alone. CoinPiles is gone. HomeBuilder.SetGarden(info, valid, open) gets the placed keys and the open
+--   count. Nothing here moves parts (HomeFx poses the pets and the coins on the client from the same plan).
+-- * Old station ids (Press2-4, Collector, DecorLamps / Flowers / Banners) from an old client answer "That station is now
+--   part of the <Berry Farm | Pet Garden | Fountain | Yard Fence>" (3.3); the first claim after THIS session's P5Home
+--   fold (DataService.MigratedNow(player, "P5Home").FirstTime) shows the one-time "Your home got simpler!" toast.
 --
 -- Public API (the contract, 5.4):
 --   Init(lobbyInfo, deps)                deps = { DataService, PetService, SpotService, BattleService }
@@ -70,12 +82,13 @@
 --   Prestige(player) -> ok, stars | reason
 --   IncomePerSecond(player) -> cash/s, { Food, Pets, Lucky, Multiplier }
 --   PileSeconds(player) -> seconds (+ CollectorCap alias), CoinsWaiting(player) -> whole Cash on the lawn
+--   Drops(player) -> { { Slot, Cycle, Position, Value, Lucky, Poops, Stage } } (slot then cycle order; nil without a plot)
 --   GardenSet(player, slot, key) -> ok, reason      OpenHomePortal(player) -> ok, reason   GoHome = OpenHomePortal
 --   ClearCoins(player) (the developer reset: bank + piles to 0)
 --   Signals HomeChanged(player), Claimed(player, spotInfo), Prestiged(player, stars), Released(player, spotInfo),
 --           CoinsScooped(player, amount), PortalUsed(player)
--- Extras: Claim(player, index) -> ok, reason, Release(player), Piles(player) -> { [slot] = { Coins, Value, Lucky, Full,
---   Pos }, W = { Value, Pos } } (a copy of the session ledger: tests, the tutorial arrow).
+-- Extras: Claim(player, index) -> ok, reason, Release(player), Piles(player) -> { [slot] = { Coins (= poops), Value, Lucky,
+--   Full (= napping), Pos (the first drop) }, W = { Value, Pos } } (per-slot sums of the drops: tests, the tutorial arrow).
 --
 -- Plain Lua 5.1-compatible syntax only.
 

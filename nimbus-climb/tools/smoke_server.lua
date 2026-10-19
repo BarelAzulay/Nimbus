@@ -1162,12 +1162,13 @@ end
 -- the six NPC pets (workspace.NimbusNpcs) and, once it is built, the Storm Altar landmark.
 local function lobbyV3(info, folder)
 	local Config = config()
-	-- tutorial targets keep their names: Portal_<Id> / Roulette_<Id> models under workspace.NimbusLobby
-	for _, diff in ipairs(Config.Difficulties) do
-		local model = folder:FindFirstChild("Portal_" .. diff.Id, true)
-		local p = info.Portals and info.Portals[diff.Id]
-		if T.check(model ~= nil and model:IsA("Model"), "Portal_" .. diff.Id .. " is a Model in the lobby (tutorial arrow target)", model and model.ClassName or "missing") then
-			T.check(p and p.Zone and hdist(model:GetPivot().Position, p.Zone.Position) <= 20, "Portal_" .. diff.Id .. " stands at its portal zone")
+	-- tutorial targets keep their names: Portal_<Id> / Roulette_<Id> models under workspace.NimbusLobby (Phase 5: the
+	-- one Sky Obby portal, Portal_Obby, in the Gate Court; its pad 14 studs in front of the gate)
+	do
+		local model = folder:FindFirstChild("Portal_Obby", true)
+		local p = info.Portals and info.Portals.Obby
+		if T.check(model ~= nil and model:IsA("Model"), "Portal_Obby is a Model in the lobby (tutorial arrow target)", model and model.ClassName or "missing") then
+			T.check(p and p.Zone and hdist(model:GetPivot().Position, p.Zone.Position) <= 20, "Portal_Obby stands at its portal zone")
 		end
 	end
 	for _, r in ipairs(Config.Roulettes) do
@@ -1342,65 +1343,53 @@ S.lobby = guarded("lobby", function()
 	local pal = paletteAudit(folder)
 	T.check(pal.whiteCount == 0, "no lobby part is pure white", pal.whiteCount .. " parts, e.g. " .. table.concat(pal.white, "; "))
 	T.check(pal.bigNeonCount == 0, "Neon is used for small accents only (no big opaque Neon surfaces)", pal.bigNeonCount .. " big parts, e.g. " .. table.concat(pal.bigNeon, "; "))
-	T.check(pal.neonCount >= 6, "lobby has neon accents (arch, portal rings)", pal.neonCount .. " neon parts")
+	T.check(pal.neonCount >= 6, "lobby has neon accents (gate inlays, the medallion)", pal.neonCount .. " neon parts")
 	T.check(Mock.CountDescendants(folder, "ParticleEmitter") >= 3, "lobby has particle emitters (portal swirls, fireflies)")
 	T.check(Mock.CountDescendants(folder, "PointLight") >= 3, "lobby has point lights (portals, lanterns)")
 	local prompts = Mock.CountDescendants(folder, "ProximityPrompt")
 	T.check(prompts >= #Config.Roulettes + 1, "PetService / ItemService created the shop ProximityPrompts", prompts .. " prompts")
 
-	-- portals: one per difficulty
+	-- portals: Phase 5 (6.3) keeps ONE portal, the Sky Obby (its level is picked at the gate)
 	local nPortals = 0
 	for _ in pairs(info.Portals or {}) do
 		nPortals = nPortals + 1
 	end
-	T.eq(nPortals, #Config.Difficulties, "LobbyInfo.Portals holds exactly one portal per difficulty")
-	for _, id in ipairs(CONTRACT.v2.oldDifficultyIds) do
-		T.check(info.Portals[id] == nil, "no portal for the removed difficulty " .. id)
-	end
-	local lastAngle
+	T.eq(nPortals, 1, "LobbyInfo.Portals holds exactly one portal (the Sky Obby)")
 	for _, diff in ipairs(Config.Difficulties) do
-		local p = info.Portals and info.Portals[diff.Id]
-		if T.check(type(p) == "table", "portal " .. diff.Id .. " exists in LobbyInfo.Portals") then
-			T.eq(p.Id, diff.Id, diff.Id .. ": PortalInfo.Id")
+		T.check(info.Portals[diff.Id] == nil and folder:FindFirstChild("Portal_" .. diff.Id, true) == nil, "no per-difficulty portal " .. diff.Id .. " any more")
+	end
+	do
+		local p = info.Portals and info.Portals.Obby
+		if T.check(type(p) == "table", "the Obby portal exists in LobbyInfo.Portals") then
+			T.eq(p.Id, "Obby", "Obby: PortalInfo.Id")
 			local zone = p.Zone
-			if T.check(typeof(zone) == "Instance" and zone:IsA("BasePart"), diff.Id .. ": Zone is a BasePart") then
-				T.check(zone.CanCollide == false, diff.Id .. ": Zone is not collidable")
-				T.check(zone.Size.X >= 10 and zone.Size.X <= 22 and zone.Size.Z >= 10 and zone.Size.Z <= 22 and zone.Size.Y >= 3 and zone.Size.Y <= 12, diff.Id .. ": Zone is ~14x6x14", tostring(zone.Size))
-				T.check(zone:IsDescendantOf(folder), diff.Id .. ": Zone lives in the lobby folder")
-				T.check(typeof(p.Center) == "Vector3" and (p.Center - zone.Position).Magnitude < 3, diff.Id .. ": Center is the zone centre")
-				local horiz = math.sqrt((zone.Position.X - Config.Lobby.Origin.X) ^ 2 + (zone.Position.Z - Config.Lobby.Origin.Z) ^ 2)
-				T.check(math.abs(horiz - Config.Lobby.PortalRingRadius) <= 12, diff.Id .. ": portal sits on the ring (radius " .. Config.Lobby.PortalRingRadius .. ")", "horizontal distance " .. fmt(horiz))
-				T.check(groundBelow(zone.Position, 14), diff.Id .. ": the portal pad has solid ground under it")
-				-- gates are ordered Easy -> Saint around the plaza
-				local angle = math.atan2(zone.Position.Z - Config.Lobby.Origin.Z, zone.Position.X - Config.Lobby.Origin.X)
-				if lastAngle ~= nil then
-					T.check(math.abs(angle - lastAngle) > 0.2, diff.Id .. ": portals do not overlap each other")
-				end
-				lastAngle = angle
-				-- a Neon trim in the difficulty colour near the gate
-				local best = 1e9
-				for _, d in ipairs(folder:GetDescendants()) do
-					if d:IsA("BasePart") and d.Material == Enum.Material.Neon then
-						local dx, dz = d.Position.X - zone.Position.X, d.Position.Z - zone.Position.Z
-						if dx * dx + dz * dz < 18 * 18 then
-							best = math.min(best, colorDistance255(d.Color, diff.Color))
-						end
-					end
-				end
-				T.check(best <= 70, diff.Id .. ": the gate has a Neon trim in the difficulty colour", "closest neon colour distance " .. fmt(best, 0))
+			if T.check(typeof(zone) == "Instance" and zone:IsA("BasePart"), "Obby: Zone is a BasePart") then
+				T.check(zone.CanCollide == false, "Obby: Zone is not collidable")
+				T.check(zone.Size.X >= 10 and zone.Size.X <= 22 and zone.Size.Z >= 10 and zone.Size.Z <= 22 and zone.Size.Y >= 3 and zone.Size.Y <= 12, "Obby: Zone is ~14x6x14", tostring(zone.Size))
+				T.check(zone:IsDescendantOf(folder), "Obby: Zone lives in the lobby folder")
+				T.check(typeof(p.Center) == "Vector3" and (p.Center - zone.Position).Magnitude < 3, "Obby: Center is the zone centre")
+				local horiz = hdist(zone.Position, Config.Lobby.Origin)
+				T.check(math.abs(horiz - (Config.Lobby.GateArcRadius - 14)) <= 3, "Obby: the pad lies 14 studs in front of its gate on the Gate Court arc (r " .. (Config.Lobby.GateArcRadius - 14) .. ")", "horizontal distance " .. fmt(horiz))
+				T.check(groundBelow(zone.Position, 14), "Obby: the portal pad has solid ground under it")
 			end
-			T.check(typeof(p.Billboard) == "Instance" and p.Billboard:IsA("BillboardGui"), diff.Id .. ": Billboard is a BillboardGui")
-			for _, labelName in ipairs({ "TitleLabel", "CountLabel", "StatusLabel" }) do
+			T.check(typeof(p.Billboard) == "Instance" and p.Billboard:IsA("BillboardGui"), "Obby: Billboard is a BillboardGui (the gate's pixel tag)")
+			for _, labelName in ipairs({ "TitleLabel", "StatusLabel" }) do
 				local l = p[labelName]
-				T.check(typeof(l) == "Instance" and l:IsA("TextLabel") and l:IsDescendantOf(p.Billboard), diff.Id .. ": " .. labelName .. " is a TextLabel inside the Billboard")
+				T.check(typeof(l) == "Instance" and l:IsA("TextLabel") and l:IsDescendantOf(p.Billboard), "Obby: " .. labelName .. " is a TextLabel inside the Billboard")
 			end
 			if p.TitleLabel then
-				T.check(tostring(p.TitleLabel.Text):lower():find(diff.DisplayName:lower(), 1, true) ~= nil, diff.Id .. ": title shows the difficulty name", p.TitleLabel.Text)
+				T.eq(p.TitleLabel.Text, "Sky Obby", "Obby: the tag's title")
 			end
-			if p.CountLabel then
-				T.check(tostring(p.CountLabel.Text):find("0") ~= nil and tostring(p.CountLabel.Text):find(tostring(Config.Match.MaxPlayers)) ~= nil, diff.Id .. ": CountLabel starts at '0 / " .. Config.Match.MaxPlayers .. " players'", p.CountLabel.Text)
+			if p.InfoLabel then
+				T.check(tostring(p.InfoLabel.Text):find("0/" .. Config.Match.MaxPlayers, 1, true) ~= nil, "Obby: the info line starts at '0/" .. Config.Match.MaxPlayers .. " players'", p.InfoLabel.Text)
 			end
-			T.eq(countStars(textsUnder(p.Billboard)), diff.Stars, diff.Id .. ": billboard shows " .. diff.Stars .. " star(s)")
+			local prompt = typeof(p.PromptPart) == "Instance" and p.PromptPart:FindFirstChild("ObbyPrompt")
+			if T.check(prompt ~= nil and prompt:IsA("ProximityPrompt"), "Obby: PortalService put ObbyPrompt on the gate's PromptPart") then
+				T.eq(prompt.ActionText, "Pick level", "ObbyPrompt ActionText")
+				T.eq(prompt.ObjectText, "Sky Obby", "ObbyPrompt ObjectText")
+				T.eq(prompt:GetAttribute("OpenPanel"), "Obby", "ObbyPrompt OpenPanel = Obby")
+				T.eq(prompt.HoldDuration, 0, "ObbyPrompt HoldDuration")
+			end
 		end
 	end
 
@@ -1495,7 +1484,7 @@ S.lobby = guarded("lobby", function()
 	-- signs
 	local all = plainText(textsUnder(folder)):upper()
 	T.check(all:find(Config.GameName:upper(), 1, true) ~= nil, "welcome sign shows the game name '" .. Config.GameName .. "'")
-	for _, kw in ipairs({ "SHIFT", "DASH", "SPACE", "PORTAL" }) do
+	for _, kw in ipairs({ "SHIFT", "DASH", "SPACE", "GATE" }) do
 		T.check(all:find(kw, 1, true) ~= nil, "'How to play' board mentions " .. kw)
 	end
 	flushErrors("lobby")
@@ -2097,8 +2086,27 @@ end)
 ----------------------------------------------------------------------------------------------------
 -- scenario: portals + parties
 ----------------------------------------------------------------------------------------------------
+-- Phase 5 (6.3): ONE Sky Obby portal. enterPortal(player) steps onto its pad; enterPortal(player, levelId) first makes
+-- the player one who picked that level (a win on the level before it in the server profile, the ObbyLevel attribute),
+-- so a party the player starts climbs that level (the Phase 4 tests that entered "the Easy portal" keep working).
 local function enterPortal(player, id)
-	local zone = W.lobbyInfo.Portals[id].Zone
+	local Config = config()
+	if id and id ~= "Obby" and Config.GetDifficulty(id) then
+		local DSv = mod("DataService")
+		local prof = DSv and DSv.GetProfile and DSv.GetProfile(player)
+		local idx = 1
+		for i, d in ipairs(Config.Difficulties) do
+			if d.Id == id then
+				idx = i
+			end
+		end
+		if prof and prof.Stats and prof.Stats.BestTimes and idx > 1 then
+			local prev = Config.Difficulties[idx - 1].Id
+			prof.Stats.BestTimes[prev] = prof.Stats.BestTimes[prev] or 999
+		end
+		player:SetAttribute(Config.Attr.ObbyLevel, id)
+	end
+	local zone = W.lobbyInfo.Portals.Obby.Zone
 	Mock.Teleport(player, CFrame.new(zone.Position + Vector3.new(0, 0, 0)))
 end
 
@@ -2106,6 +2114,7 @@ local function leavePortalArea(player)
 	Mock.Teleport(player, W.lobbyInfo.SpawnCFrame)
 end
 
+-- Phase 5 (6.3): ONE party at the Sky Obby portal; a new player (no win) climbs Easy.
 S.portals = guarded("portals", function()
 	if not needBoot() then
 		return
@@ -2118,115 +2127,98 @@ S.portals = guarded("portals", function()
 	end
 	leavePortalArea(alice)
 	advance(0.6)
-	-- every one of the five gates forms its own party (no hard-coded ids in PortalService)
-	for _, diff in ipairs(Config.Difficulties) do
-		local mark0 = logSize()
-		enterPortal(alice, diff.Id)
-		advance(1.3)
-		for _, other in ipairs(Config.Difficulties) do
-			local expect = (other.Id == diff.Id) and 1 or 0
-			T.eq(#PortalService.GetParty(other.Id).Players, expect, diff.Id .. ": standing in the " .. diff.Id .. " gate fills only that party (" .. other.Id .. ")")
-		end
-		local entries0 = remotesFor("PartyState", alice.UserId, mark0)
-		local last0 = entries0[#entries0]
-		if T.check(last0 ~= nil and last0.args[1] ~= nil, diff.Id .. ": the member receives PartyState") then
-			local st0 = last0.args[1]
-			T.eq(st0.PortalId, diff.Id, diff.Id .. ": PartyState.PortalId")
-			T.eq(st0.DifficultyName, diff.DisplayName, diff.Id .. ": PartyState.DifficultyName")
-			T.check(st0.Color == diff.Color, diff.Id .. ": PartyState.Color is the difficulty colour")
-		end
-		T.check(tostring(W.lobbyInfo.Portals[diff.Id].CountLabel.Text):find("1") ~= nil, diff.Id .. ": its CountLabel shows 1 player", W.lobbyInfo.Portals[diff.Id].CountLabel.Text)
-		-- v3 lock-in: members cannot walk out (smoke_polish_portals.lua); RemovePlayer frees the seat without a lockout
-		PortalService.RemovePlayer(alice)
-		leavePortalArea(alice)
-		advance(0.8)
-		T.eq(#PortalService.GetParty(diff.Id).Players, 0, diff.Id .. ": leaving empties the party")
-	end
-	local info = W.lobbyInfo.Portals.Medium
+	local info = W.lobbyInfo.Portals.Obby
+	local easy = Config.Difficulties[1]
 	-- stepping onto the pad joins the party
 	local mark = logSize()
-	enterPortal(alice, "Medium")
+	enterPortal(alice)
 	advance(0.6)
-	local party = PortalService.GetParty("Medium")
+	local party = PortalService.GetParty("Obby")
 	T.check(#party.Players == 1 and party.Players[1] == alice, "standing in the zone joins the portal party")
+	T.eq(party.Level, easy.Id, "a player without an obby win starts an " .. easy.Id .. " party")
 	T.check(type(party.Countdown) == "number" and party.Countdown > 0 and party.Countdown <= Config.Match.PartyCountdown, "the party countdown starts at PartyCountdown", tostring(party.Countdown))
-	T.check(tostring(info.CountLabel.Text):find("1") and tostring(info.CountLabel.Text):find(tostring(Config.Match.MaxPlayers)), "CountLabel shows 1 / " .. Config.Match.MaxPlayers, info.CountLabel.Text)
+	T.check(tostring(info.InfoLabel.Text):find("1/" .. Config.Match.MaxPlayers, 1, true) ~= nil and tostring(info.InfoLabel.Text):find(easy.DisplayName, 1, true) ~= nil, "the tag's info line shows the level and 1/" .. Config.Match.MaxPlayers, info.InfoLabel.Text)
 	T.check(tostring(info.StatusLabel.Text):lower():find("start") ~= nil, "StatusLabel shows the countdown", info.StatusLabel.Text)
-	local others = PortalService.GetParty("Easy")
-	T.eq(#others.Players, 0, "other portals stay empty")
+	T.eq(info.Model:GetAttribute("PartyLevel"), easy.Id, "Portal_Obby carries the PartyLevel attribute")
 	advance(1.2)
 	local entries = remotesFor("PartyState", alice.UserId, mark)
 	T.check(#entries >= 2, "PartyState is sent to the member (every second)", #entries .. " messages")
 	local last = entries[#entries]
 	if last and last.args[1] then
-		local problems = V.partyState(last.args[1])
+		local st = last.args[1]
+		local problems = V.partyState(st)
 		T.check(#problems == 0, "PartyState payload matches ARCHITECTURE.md", table.concat(problems, ", "))
-		T.eq(last.args[1].PortalId, "Medium", "PartyState.PortalId")
-		T.eq(last.args[1].Max, Config.Match.MaxPlayers, "PartyState.Max")
-		T.check(#last.args[1].Players == 1 and last.args[1].Players[1].UserId == alice.UserId, "PartyState lists the member")
+		T.eq(st.PortalId, "Obby", "PartyState.PortalId")
+		T.eq(st.Level, easy.Id, "PartyState.Level")
+		T.eq(st.Stars, easy.Stars, "PartyState.Stars")
+		T.eq(st.LeaderUserId, alice.UserId, "PartyState.LeaderUserId")
+		T.eq(st.DifficultyName, easy.DisplayName, "PartyState.DifficultyName")
+		T.check(st.Color == easy.Color, "PartyState.Color is the level colour")
+		T.eq(st.Max, Config.Match.MaxPlayers, "PartyState.Max")
+		T.check(#st.Players == 1 and st.Players[1].UserId == alice.UserId, "PartyState lists the member")
 	end
 	-- v3 lock-in: walking out is not possible, the server puts the member back on the pad
 	leavePortalArea(alice)
 	advance(0.8)
-	T.eq(#PortalService.GetParty("Medium").Players, 1, "a locked member cannot walk out of the zone (still in the party)")
+	T.eq(#PortalService.GetParty("Obby").Players, 1, "a locked member cannot walk out of the zone (still in the party)")
 	T.check(planar(root(alice).Position, info.Center) <= 9, "the safety net puts a locked member back on the pad", "distance " .. fmt(planar(root(alice).Position, info.Center)))
 	-- leaving the party (RemovePlayer: no lockout, no teleport) sends PartyState(nil)
 	mark = logSize()
 	PortalService.RemovePlayer(alice)
 	leavePortalArea(alice)
 	advance(0.8)
-	T.eq(#PortalService.GetParty("Medium").Players, 0, "leaving the party empties it")
+	T.eq(#PortalService.GetParty("Obby").Players, 0, "leaving the party empties it")
 	local gone = remotesFor("PartyState", alice.UserId, mark)
 	T.check(#gone >= 1 and gone[#gone].args[1] == nil and gone[#gone].args.n >= 1, "PartyState(nil) is sent when leaving")
-	T.check(tostring(info.CountLabel.Text):find("0") ~= nil, "CountLabel back to 0 players", info.CountLabel.Text)
+	T.check(tostring(info.InfoLabel.Text):find("0/", 1, true) ~= nil, "the info line is back to 0 players", info.InfoLabel.Text)
 	-- the Leave button: removed + lockout + moved off the pad
-	enterPortal(alice, "Medium")
+	enterPortal(alice)
 	advance(0.6)
-	T.eq(#PortalService.GetParty("Medium").Players, 1, "re-entering joins again")
+	T.eq(#PortalService.GetParty("Obby").Players, 1, "re-entering joins again")
 	Mock.FromClient(remoteFolder().LeaveParty, alice)
 	advance(0.3)
-	T.eq(#PortalService.GetParty("Medium").Players, 0, "LeaveParty removes the player from the party")
-	local d = planar(root(alice).Position, W.lobbyInfo.Portals.Medium.Center)
+	T.eq(#PortalService.GetParty("Obby").Players, 0, "LeaveParty removes the player from the party")
+	local d = planar(root(alice).Position, info.Center)
 	T.check(d >= 8, "LeaveParty moves the player ~12 studs away from the portal", "distance " .. fmt(d))
-	enterPortal(alice, "Medium")
+	enterPortal(alice)
 	advance(1.0)
-	T.eq(#PortalService.GetParty("Medium").Players, 0, "the 3 s re-join lockout is respected")
+	T.eq(#PortalService.GetParty("Obby").Players, 0, "the 3 s re-join lockout is respected")
 	leavePortalArea(alice)
 	advance(3)
-	enterPortal(alice, "Medium")
+	enterPortal(alice)
 	advance(0.8)
-	T.eq(#PortalService.GetParty("Medium").Players, 1, "after the lockout the player can join again")
+	T.eq(#PortalService.GetParty("Obby").Players, 1, "after the lockout the player can join again")
 	PortalService.RemovePlayer(alice)
-	T.eq(#PortalService.GetParty("Medium").Players, 0, "PortalService.RemovePlayer")
+	T.eq(#PortalService.GetParty("Obby").Players, 0, "PortalService.RemovePlayer")
 	leavePortalArea(alice)
 	advance(0.6)
 	-- a full party: shortened countdown + 5th player is told it is full
 	local four = freshPlayers(Config.Match.MaxPlayers, "Climber")
 	for _, p in ipairs(four) do
-		enterPortal(p, "Saint")
+		enterPortal(p)
 		advance(0.3)
 	end
 	advance(0.5)
-	local tp = PortalService.GetParty("Saint")
+	local tp = PortalService.GetParty("Obby")
 	T.eq(#tp.Players, Config.Match.MaxPlayers, "a party holds MaxPlayers")
 	T.check(tp.Countdown ~= nil and tp.Countdown <= Config.Match.FullPartyCountdown + 1, "a full party uses the short countdown", tostring(tp.Countdown))
-	T.check(tostring(W.lobbyInfo.Portals.Saint.StatusLabel.Text):lower():find("full") ~= nil, "StatusLabel says the party is full", W.lobbyInfo.Portals.Saint.StatusLabel.Text)
+	T.check(tostring(info.StatusLabel.Text):lower():find("full") ~= nil, "StatusLabel says the party is full", info.StatusLabel.Text)
 	local fifth = freshPlayers(1, "Late")[1]
 	mark = logSize()
-	enterPortal(fifth, "Saint")
+	enterPortal(fifth)
 	advance(0.8)
-	T.eq(#PortalService.GetParty("Saint").Players, Config.Match.MaxPlayers, "a 5th player cannot join a full party")
+	T.eq(#PortalService.GetParty("Obby").Players, Config.Match.MaxPlayers, "a 5th player cannot join a full party")
 	T.check(notified(fifth, "full", "bad", mark), "the 5th player gets a 'Party is full' toast")
-	-- the party launches a match
+	-- the party launches a match at its level
 	local started = waitFor(function()
 		return MS().GetMatchOf(four[1]) ~= nil
 	end, Config.Match.FullPartyCountdown + 6)
 	T.check(started, "the party launches a match when the countdown ends")
 	if started then
 		local m = MS().GetMatchOf(four[1])
-		T.eq(m.DifficultyId, "Saint", "the match uses the portal's difficulty")
+		T.eq(m.DifficultyId, easy.Id, "the match uses the party's level")
 		T.eq(#m.Players, Config.Match.MaxPlayers, "all four party members are in the match")
-		T.eq(#PortalService.GetParty("Saint").Players, 0, "the party is cleared after launch")
+		T.eq(#PortalService.GetParty("Obby").Players, 0, "the party is cleared after launch")
 		T.check(m.Slot == 1, "first match uses slot 1", tostring(m.Slot))
 		for _, p in ipairs(four) do
 			T.eq(p:GetAttribute("InMatch"), true, p.Name .. ": InMatch = true after launch")

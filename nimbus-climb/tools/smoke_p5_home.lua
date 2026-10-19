@@ -12,7 +12,18 @@
 --                         slots x 50 cycles, speeds 4-9, idle >= 1 s, poop points inside the yard and off every Blocked
 --                         rect, continuity (never faster than MaxSpeed between 0.05 s samples, cycle edges and the settle
 --                         walk included), At states / PoopTime / BedPoint / EatPoint, cache <= 3 cycles, junk
---   tycoon+care (W2), server world: p5home_signs, p5home_berries, p5home_roam_server   (placeholders below: info only)
+--   tycoon+care (W2), server world (booted game):
+--     p5home_signs        TycoonCatalog.SignedPads over a booted home's pads: the cheapest when nothing is affordable,
+--                         the 3 cheapest affordable, never a locked pad, the Prestige pad first when unlocked, pure
+--     p5home_berries      poops grow value x Share berries (whole, fraction in the ledger), BerryCap = BasketCap,
+--                         the clamp at the cap + 'Basket full!' once, a cap below the berries removes none, no sync
+--                         on a Berries-only change, the Berries attribute <= 2 / s, Feed spends FeedBerries for FeedXp
+--                         (no Food path, { Count } = one feed, every refusal, XP 0 refunds, provisional), offline
+--                         berries once with the cap ignored
+--     p5home_roam_server  12 roaming pets: Epoch = now + 20 (0.1 s), first poop >= 24 s, every drop at Plan().Poop,
+--                         poops == due PoopTimes, <= 3 drops per slot then merging, stages, the invariant every tick,
+--                         CoinDrops format / <= 0.5 writes/s / <= 400 B, owner scoop radius 8 / visitor never, churn
+--                         keeps the epoch, nap at the cap + wake by a scoop (epoch = now + back walk), rebase -> Welcome once
 --   homefx+pets (W3), client world: client_p5home_roam, client_p5home_flow_ui            (placeholders below: info only)
 -- Plain Lua 5.1 syntax only; deterministic (fixed seeds and epochs, no game clock).
 
@@ -459,19 +470,691 @@ S.p5home_roam_shared = guarded("p5home_roam_shared", function()
 end)
 
 ----------------------------------------------------------------------------------------------------
--- wave 2 (tycoon+care) - server scenarios: replace each placeholder with the real scenario
+-- wave 2 (tycoon+care) - server scenarios on the booted game (TycoonService's Cloud Cash ledger, berries, signs)
 ----------------------------------------------------------------------------------------------------
--- [W2 tycoon+care] p5home_signs: HomeFx-free server half of the pad signs (TycoonCatalog.SignedPads on a booted home)
+local W2 = {} -- helpers of the booted-world scenarios (one table: this file is also loaded in the client world)
+
+function W2.requireAt(key)
+	local inst = K.moduleInstance(key)
+	if not inst then
+		return nil
+	end
+	local ok, result = pcall(require, inst)
+	if ok and type(result) == "table" then
+		return result
+	end
+	return nil
+end
+
+function W2.mods()
+	return W2.requireAt("server/Services/TycoonService"), W2.requireAt("shared/TycoonCatalog"), W2.requireAt("shared/HomeRoam"),
+		K.mod("DataService"), K.mod("SpotService"), W2.requireAt("server/Services/PetCareService")
+end
+
+W2.userSeq = 0
+function W2.join(prefix, userId)
+	W2.userSeq = W2.userSeq + 1
+	local p = Mock.AddPlayer(prefix .. W2.userSeq, userId or (965200 + W2.userSeq))
+	K.advance(1.0)
+	return p
+end
+
+function W2.leave(p)
+	if p and p.Parent then
+		Mock.RemovePlayer(p)
+	end
+	K.advance(0.6)
+end
+
+function W2.spots()
+	return (K.W.lobbyInfo and K.W.lobbyInfo.Spots) or {}
+end
+
+function W2.freeIndex(skip)
+	local SS = K.mod("SpotService")
+	for i = 1, K.config().Lobby.SpotCount do
+		if W2.spots()[i] and not SS.GetOwner(i) and i ~= skip then
+			return i
+		end
+	end
+	return nil
+end
+
+-- claims a free plot through TycoonService (the gate prompt is p2tycoon's business) and builds the free Garden
+function W2.startHome(Ty, p, stations)
+	local index = W2.freeIndex()
+	local ok = Ty.Claim(p, index)
+	if not ok then
+		return nil
+	end
+	K.mod("DataService").MutateHome(p, function(h)
+		h.Stations.Garden = 1
+		for id, lv in pairs(stations or {}) do
+			h.Stations[id] = lv
+		end
+		h.Level = W2.requireAt("shared/TycoonCatalog").HomeLevelOf(h)
+	end)
+	K.advance(1.2)
+	return index, W2.spots()[index]
+end
+
+function W2.givePet(p, key, n)
+	local DataS = K.mod("DataService")
+	local ok = W2.requireAt("shared/PetKeys").Add(DataS.GetProfile(p), key, n or 1)
+	DataS.MarkDirty(p)
+	return ok
+end
+
+function W2.ecoPet()
+	local PC = K.M["shared/PetCatalog"] or W2.requireAt("shared/PetCatalog")
+	for _, rarity in ipairs({ "Common", "Uncommon", "Rare" }) do
+		for _, def in ipairs(PC.Pets) do
+			if def.Rarity == rarity and def.Role == "Economy" and not def.EventOnly then
+				return def
+			end
+		end
+	end
+	return nil
+end
+
+function W2.entryOf(p, def)
+	local DataS = K.mod("DataService")
+	return { Def = def, Level = DataS.GetPetLevel(p, def.Id) or 1, Tier = "Normal", Stage = DataS.GetEvolution(p, def.Id) or 0, Key = def.Id }
+end
+
+function W2.bankOf(p)
+	local home = K.mod("DataService").GetHome(p)
+	return home and home.CollectorCash or 0
+end
+
+function W2.cashOf(p)
+	return K.mod("DataService").GetCash(p)
+end
+
+function W2.standAt(p, pos)
+	Mock.Teleport(p, CFrame.new(pos + Vector3.new(0, 3, 0)))
+end
+
+function W2.away(p)
+	Mock.Teleport(p, K.config().Lobby.Origin + Vector3.new(0, 4, 0))
+end
+
+function W2.now()
+	return workspace:GetServerTimeNow()
+end
+
+function W2.seedOf(p)
+	return (p.UserId % 2147483646) + 1
+end
+
+-- "1=1760001234.5;3=1760001240.0:N812" -> { [slot] = { Epoch, Nap } }
+function W2.roamOf(info)
+	local out = {}
+	local text = info and info.Folder and info.Folder:GetAttribute("Roam") or ""
+	for part in tostring(text):gmatch("[^;]+") do
+		local slot, epoch, nap = part:match("^(%d+)=([%d%.]+):N(%d+)$")
+		if not slot then
+			slot, epoch = part:match("^(%d+)=([%d%.]+)$")
+		end
+		if slot then
+			out[tonumber(slot)] = { Epoch = tonumber(epoch), Nap = nap and tonumber(nap) or nil }
+		end
+	end
+	return out
+end
+
+function W2.dropsText(info)
+	return info and info.Folder and info.Folder:GetAttribute("CoinDrops") or ""
+end
+
+function W2.liveSum(Ty, p)
+	local total, poops = 0, 0
+	for _, d in ipairs(Ty.Drops(p) or {}) do
+		total = total + d.Value
+		poops = poops + d.Poops
+	end
+	local piles = Ty.Piles(p)
+	return total, poops, piles and piles.W and piles.W.Value or 0
+end
+
+function W2.poopWorld(HR, info, seed, slot, cycle)
+	local plan = HR.Plan(seed, slot, cycle)
+	if not plan or not plan.Poop then
+		return nil
+	end
+	return info.PlotCFrame:PointToWorldSpace(Vector3.new(plan.Poop.x, 0, plan.Poop.z))
+end
+
+-- the number of poop times of (slot, epoch) at or before `now`
+function W2.dueCount(HR, seed, slot, epoch, now)
+	local n = 0
+	while n < 1000 do
+		local t = HR.PoopTime(seed, slot, epoch, n)
+		if not t or t > now then
+			break
+		end
+		n = n + 1
+	end
+	return n
+end
+
+-- [W2 tycoon+care] p5home_signs: the pad signs on a booted home (TycoonCatalog.SignedPads over TycoonService's pads)
 S.p5home_signs = guarded("p5home_signs", function()
-	T.info("p5home_signs: pending (tycoon+care, wave 2)")
+	if not K.needBoot() then
+		return
+	end
+	local Ty, Cat, HR, DataS = W2.mods()
+	if not Ty or not Cat or not HR then
+		T.fail("p5 signs: TycoonService, TycoonCatalog and HomeRoam load")
+		return
+	end
+	T.check(type(Cat.SignedPads) == "function" and type(Cat.SignRules) == "table" and Cat.SignRules.MaxSigns == 3, "p5 signs: TycoonCatalog.SignedPads + SignRules.MaxSigns 3")
+	local p = W2.join("P5Sign")
+	local index, info = W2.startHome(Ty, p, { Press1 = 1 })
+	if not T.check(index ~= nil, "p5 signs: (precondition) a claimed home with the Garden and the Berry Farm") then
+		W2.leave(p)
+		return
+	end
+	local function signsAt(cash)
+		local pads = Cat.AvailablePads(Ty.GetHome(p))
+		return Cat.SignedPads(pads, cash, Cat.SignRules.MaxSigns), pads
+	end
+	local function count(set)
+		local n = 0
+		for _, v in pairs(set) do
+			if v then
+				n = n + 1
+			end
+		end
+		return n
+	end
+	-- nothing affordable: the single cheapest pad is signed
+	local signs, pads = signsAt(0)
+	local cheapest, cheapestPrice = nil, math.huge
+	for _, pad in ipairs(pads) do
+		if not pad.Locked and pad.Price < cheapestPrice then
+			cheapest, cheapestPrice = pad.StationId, pad.Price
+		end
+	end
+	T.check(count(signs) == 1 and cheapest ~= nil and signs[cheapest] == true, "p5 signs: with $0 exactly the cheapest unlocked pad is signed (" .. tostring(cheapest) .. ")", idList(signs))
+	-- rich: the 3 cheapest affordable, never a locked pad
+	signs, pads = signsAt(1e9)
+	local affordable = {}
+	for _, pad in ipairs(pads) do
+		if not pad.Locked then
+			affordable[#affordable + 1] = pad
+		end
+	end
+	table.sort(affordable, function(a, b)
+		return a.Price < b.Price
+	end)
+	local okCheap = count(signs) == math.min(3, #affordable)
+	for i = 1, math.min(3, #affordable) do
+		if signs[affordable[i].StationId] ~= true then
+			okCheap = false
+		end
+	end
+	for _, pad in ipairs(pads) do
+		if pad.Locked and signs[pad.StationId] then
+			okCheap = false
+		end
+	end
+	T.check(okCheap, "p5 signs: with plenty of Cash the 3 cheapest unlocked pads are signed, locked pads never", idList(signs))
+	-- the server replicates what the client needs for the signs: the pads (HomeBuilder) and the Cash (DataService)
+	local hb = W2.requireAt("server/Services/HomeBuilder")
+	if hb and type(hb.GetPad) == "function" then
+		local pad = hb.GetPad(info, affordable[1] and affordable[1].StationId or "Kitchen")
+		T.check(pad ~= nil, "p5 signs: the cheapest pad stands on the plot (HomeBuilder.GetPad) for HomeFx's sign")
+	else
+		T.info("*p5 signs: HomeBuilder.GetPad missing (homeworld W2): pad presence not checked")
+	end
+	-- a prestige-ready home: the Prestige pad is signed first, then the cheapest affordable
+	DataS.MutateHome(p, function(h)
+		h.Stations = { Press1 = 15, Garden = 8, Kitchen = 5, Gym = 5, Vault = 5, House = 4 }
+		h.Level = Cat.HomeLevelOf(h)
+	end)
+	K.advance(1.2)
+	T.check(Cat.CanPrestige(Ty.GetHome(p)) == true, "p5 signs: (precondition) a prestige-ready home")
+	signs, pads = signsAt(1e9)
+	T.check(signs.Prestige == true and count(signs) <= 4, "p5 signs: the Prestige pad is signed when unlocked (plus the 3 cheapest affordable)", idList(signs))
+	signs = signsAt(0)
+	T.check(signs.Prestige == true, "p5 signs: ...even with $0")
+	-- pure: no Instances, the same answer twice
+	local before = #game:GetDescendants()
+	local a1, a2 = idList(signsAt(1234)), idList(signsAt(1234))
+	T.check(a1 == a2 and #game:GetDescendants() == before, "p5 signs: SignedPads is pure (deterministic, no Instances)")
+	W2.leave(p)
+	K.flushErrors("p5home_signs")
+	K.flushWarnings("p5home_signs", { "HomeBuilder is missing" })
 end)
+
 -- [W2 tycoon+care] p5home_berries: berries from poops (Share, BasketCap), Feed with berries, the Berries attribute
 S.p5home_berries = guarded("p5home_berries", function()
-	T.info("p5home_berries: pending (tycoon+care, wave 2)")
+	if not K.needBoot() then
+		return
+	end
+	local Ty, Cat, HR, DataS, SS, Care = W2.mods()
+	if not Ty or not Cat or not HR or not Care then
+		T.fail("p5 berries: TycoonService, TycoonCatalog, HomeRoam and PetCareService load")
+		return
+	end
+	local B = Cat.Berries
+	local Eco = W2.ecoPet()
+	local Config = K.config()
+	local attrName = Config.Attr.Berries or "Berries"
+	local name, userId = "P5Berry", 965301
+	local p = W2.join(name, userId)
+	local index, info = W2.startHome(Ty, p, { Press1 = 2, Vault = 1 })
+	if not T.check(index ~= nil and Eco ~= nil, "p5 berries: (precondition) a home with the Garden, a Berry Farm and a Vault; an Economy pet") then
+		W2.leave(p)
+		return
+	end
+	if DataS.GetBerries(p) > 0 then
+		DataS.SpendBerries(p, DataS.GetBerries(p))
+	end
+	W2.givePet(p, Eco.Id, 3)
+	W2.away(p)
+	T.eq(info.Folder:GetAttribute("BerryCap"), B.BasketMin, "p5 berries: BerryCap = BasketMin " .. B.BasketMin .. " while nothing earns")
+
+	-- poops grow value x Share berries (whole; the fraction stays in the server ledger)
+	Ty.GardenSet(p, 1, Eco.Id)
+	Ty.GardenSet(p, 2, Eco.Id)
+	local attrWrites, syncs = 0, 0
+	local conn = p:GetAttributeChangedSignal(attrName):Connect(function()
+		attrWrites = attrWrites + 1
+	end)
+	local okExact = true
+	local t0 = os.clock()
+	for _ = 1, HR.SettleSeconds + 3 * HR.Cycle + 2 do
+		K.advance(1)
+		local bank = W2.bankOf(p)
+		local want = math.floor(bank * B.Share + 1e-9)
+		if DataS.GetBerries(p) ~= want then
+			okExact = false
+		end
+	end
+	local poops = select(2, W2.liveSum(Ty, p))
+	T.check(poops >= 6, "p5 berries: (precondition) several poops landed (" .. poops .. ")")
+	T.check(okExact and DataS.GetBerries(p) >= 1, "p5 berries: after every tick Berries == floor(the lawn's value x Share 0.25): whole berries, the fraction kept in the ledger (" .. DataS.GetBerries(p) .. ")")
+	local elapsed = os.clock() - t0
+	T.check(attrWrites <= 2 * elapsed + 2, "p5 berries: the Berries attribute is written <= 2 / s (" .. attrWrites .. " writes in " .. string.format("%.0f", elapsed) .. " s)")
+	K.advance(0.6)
+	T.eq(p:GetAttribute(attrName), DataS.GetBerries(p), "p5 berries: ...and it carries the whole berries (the trailing write lands)")
+	local income = Ty.IncomePerSecond(p)
+	T.eq(info.Folder:GetAttribute("BerryCap"), Cat.BasketCap(Ty.GetHome(p), income), "p5 berries: BerryCap follows BasketCap(home, income) (" .. tostring(info.Folder:GetAttribute("BerryCap")) .. ")")
+	T.check(Cat.BasketCap(Ty.GetHome(p), income) == math.max(B.BasketMin, math.floor(income * B.Share * 60 * B.BasketMinutes)), "p5 berries: (catalog) BasketCap = max(BasketMin, income x Share x 30 min)")
+
+	-- the basket cap: a poop never lifts Berries above the cap; 'Basket full!' once; a cap that drops removes none
+	local cap = Cat.BasketCap(Ty.GetHome(p), income)
+	DataS.AddBerries(p, cap - DataS.GetBerries(p) - 2)
+	local mark = K.logSize()
+	local bankAt = W2.bankOf(p)
+	local waited = 0
+	while W2.bankOf(p) <= bankAt + 1e-6 and waited < 2 * HR.Cycle + 5 do
+		K.advance(1)
+		waited = waited + 1
+	end
+	K.advance(1)
+	T.check(W2.bankOf(p) > bankAt and DataS.GetBerries(p) == cap, "p5 berries: a poop that would overflow the basket is clamped at BasketCap (" .. cap .. ")", tostring(DataS.GetBerries(p)))
+	T.check(K.notified(p, "Basket full! Feed your pets", nil, mark), "p5 berries: ...with the 'Basket full! Feed your pets' toast")
+	local toastsAt = #K.remotesFor("Notify", p.UserId, mark)
+	K.advance(HR.Cycle + 2)
+	T.check(DataS.GetBerries(p) == cap and #K.remotesFor("Notify", p.UserId, mark) == toastsAt and W2.bankOf(p) > bankAt, "p5 berries: the coins never stop at a full basket; the toast is not repeated")
+	DataS.AddBerries(p, 5000) -- a dev grant / an offline payout above the cap
+	local over = DataS.GetBerries(p)
+	K.advance(HR.Cycle + 2)
+	T.check(DataS.GetBerries(p) == over and over > cap, "p5 berries: a basket above its cap (the cap dropped below the berries) loses nothing; poops add nothing")
+	conn:Disconnect()
+
+	-- a Berries-only change sends no ProfileSync (C14)
+	Ty.GardenSet(p, 1, nil)
+	Ty.GardenSet(p, 2, nil)
+	K.advance(1.5)
+	mark = K.logSize()
+	T.eq(DataS.AddBerries(p, 10), true, "p5 berries: AddBerries(10)")
+	K.advance(1.0)
+	T.eq(#K.remotesFor("ProfileSync", p.UserId, mark), 0, "p5 berries: ...a Berries-only change sends no ProfileSync (the attribute is the fast path)")
+
+	-- Feed: FeedBerries(def, level) berries -> FeedXp(level, machineLevel) XP; no Food path; refusals; one feed; refunds
+	DataS.MutateHome(p, function(h)
+		h.Stations.Kitchen = 1
+		h.Level = Cat.HomeLevelOf(h)
+	end)
+	K.advance(1.2)
+	local lv = DataS.GetPetLevel(p, Eco.Id)
+	local cost, xpWant = Cat.FeedBerries(Eco, lv), Cat.FeedXp(lv, 1)
+	local b0, c0 = DataS.GetBerries(p), W2.cashOf(p)
+	local x0 = select(2, DataS.GetPetLevel(p, Eco.Id))
+	local okFeed, res = Care.Feed(p, Eco.Id)
+	local lv1, x1 = DataS.GetPetLevel(p, Eco.Id)
+	T.check(okFeed == true and type(res) == "table" and res.Xp == xpWant and res.Berries == b0 - cost and DataS.GetBerries(p) == b0 - cost and W2.cashOf(p) == c0
+		and (lv1 > lv or x1 == x0 + xpWant) and res.Level == lv1 and res.Cap == 100 and res.Levels == lv1 - lv,
+		"p5 berries: Feed spends FeedBerries " .. cost .. " and grants FeedXp " .. xpWant .. "; answers { Xp, Levels, Level, Cap, Berries }; no Cash moves", tostring(res and res.Xp) .. " / " .. tostring(res and res.Berries))
+	if type(DataS.AddFood) == "function" and type(DataS.GetFood) == "function" then
+		DataS.AddFood(p, "Feast", 1) -- a leftover a Phase 4 server wrote after the fold: care ignores it
+		b0 = DataS.GetBerries(p)
+		local lvF = DataS.GetPetLevel(p, Eco.Id)
+		local okF2 = Care.Feed(p, Eco.Id)
+		T.check(okF2 == true and DataS.GetBerries(p) == b0 - Cat.FeedBerries(Eco, lvF) and DataS.GetFood(p, "Feast") == 1,
+			"p5 berries: no Food path: a stray Feast is never eaten, the feed takes berries (the old foods were converted once by P5Home)")
+		DataS.SpendFood(p, "Feast", 1)
+	end
+	local lvN = DataS.GetPetLevel(p, Eco.Id)
+	b0 = DataS.GetBerries(p)
+	local okC, resC = Care.Feed(p, Eco.Id, { Count = 5 })
+	T.check(okC == true and b0 - DataS.GetBerries(p) == Cat.FeedBerries(Eco, lvN) and resC.Xp == Cat.FeedXp(lvN, 1), "p5 berries: { Count = 5 } (an old client) = exactly one feed")
+	-- refusals in the contract's order, nothing moves
+	local other = nil
+	for _, def in ipairs((K.M["shared/PetCatalog"] or W2.requireAt("shared/PetCatalog")).Pets) do
+		if def.Id ~= Eco.Id and not def.EventOnly then
+			other = def
+			break
+		end
+	end
+	b0 = DataS.GetBerries(p)
+	local okO, whyO = Care.Feed(p, other.Id)
+	T.check(okO == false and whyO == "You do not own that pet" and DataS.GetBerries(p) == b0, "p5 berries: refusal: not owned", tostring(whyO))
+	DataS.SetPetLevel(p, Eco.Id, 100)
+	local okCap, whyCap = Care.Feed(p, Eco.Id)
+	T.check(okCap == false and tostring(whyCap):find("max level", 1, true) ~= nil and DataS.GetBerries(p) == b0, "p5 berries: refusal: at the cap", tostring(whyCap))
+	DataS.SetPetLevel(p, Eco.Id, 10)
+	local BS = W2.requireAt("server/Services/BattleService")
+	if BS then
+		local had = BS.KeysInBattle
+		BS.KeysInBattle = function(pl)
+			return pl == p and { [Eco.Id] = true } or {}
+		end
+		local okB, whyB = Care.Feed(p, Eco.Id)
+		BS.KeysInBattle = had
+		T.check(okB == false and whyB == "Finish your battle first" and DataS.GetBerries(p) == b0, "p5 berries: refusal: a key in a running battle", tostring(whyB))
+	end
+	DataS.MutateHome(p, function(h)
+		h.Stations.Kitchen = nil
+		h.Level = Cat.HomeLevelOf(h)
+	end)
+	local okM, whyM = Care.Feed(p, Eco.Id)
+	T.check(okM == false and whyM == "Build the Food Machine at home first" and DataS.GetBerries(p) == b0, "p5 berries: refusal: no Food Machine", tostring(whyM))
+	DataS.MutateHome(p, function(h)
+		h.Stations.Kitchen = 1
+		h.Level = Cat.HomeLevelOf(h)
+	end)
+	DataS.SpendBerries(p, DataS.GetBerries(p))
+	local need = Cat.FeedBerries(Eco, 10)
+	local okS, whyS = Care.Feed(p, Eco.Id)
+	T.check(okS == false and whyS == "Not enough berries: a feed needs " .. need .. " (you have 0). Your garden pets grow more!" and DataS.GetBerries(p) == 0,
+		"p5 berries: refusal: not enough berries (the toast names the need and the balance)", tostring(whyS))
+	DataS.AddBerries(p, need * 10)
+	-- an XP write of 0 refunds the berries in the same step
+	local realAdd = DataS.AddPetXp
+	DataS.AddPetXp = function()
+		return 0
+	end
+	b0 = DataS.GetBerries(p)
+	local okR = Care.Feed(p, Eco.Id)
+	DataS.AddPetXp = realAdd
+	T.check(okR == false and DataS.GetBerries(p) == b0, "p5 berries: an XP write of 0 refunds the berries")
+	-- provisional: refused
+	local DSt = Mock.DataStore
+	DSt.Fail = true
+	local v = W2.join("P5BerryOutage")
+	K.advance(3)
+	if T.check(DataS.IsProvisional(v) == true, "p5 berries: (precondition) an outage makes a newcomer provisional") then
+		local okP, whyP = Care.Feed(v, Eco.Id)
+		T.check(okP == false and tostring(whyP):find("still loading", 1, true) ~= nil, "p5 berries: a provisional save cannot feed ('Your save is still loading...')", tostring(whyP))
+	end
+	DSt.Fail = false
+	W2.leave(v)
+
+	-- offline berries: offline coins x Share into the basket ONCE, the cap ignored, in the LastSeen step
+	Ty.GardenSet(p, 1, Eco.Id)
+	Ty.GardenSet(p, 2, Eco.Id)
+	K.advance(2)
+	local homeBefore = Ty.GetHome(p)
+	income = Ty.IncomePerSecond(p)
+	DataS.AddBerries(p, 100000) -- far above the cap
+	local storeKey = Config.Tokens.DataStoreName .. "/u_" .. userId
+	W2.leave(p)
+	K.advance(1)
+	local rec = Mock.DataStore.Data[storeKey]
+	if T.check(rec ~= nil and type(rec.Home) == "table", "p5 berries: (precondition) the leave save") then
+		local awayFor = 3 * 3600
+		rec.Home.LastSeen = os.time() - awayFor
+		local want = Cat.OfflineEarnings(homeBefore, awayFor, income)
+		local storedBerries = rec.Berries or 0
+		local storedBank = rec.Home.CollectorCash or 0
+		p = W2.join(name, userId)
+		K.advance(4)
+		local wantBerries = math.floor(math.floor(want) * B.Share)
+		T.check(want > 0 and wantBerries >= 1 and DataS.GetBerries(p) == storedBerries + wantBerries and math.abs(W2.bankOf(p) - (storedBank + math.floor(want))) < 1,
+			"p5 berries: offline coins add offline x Share berries (" .. wantBerries .. ") with the bank, the cap ignored", tostring(DataS.GetBerries(p) - storedBerries))
+		K.advance(10)
+		T.eq(DataS.GetBerries(p), storedBerries + wantBerries, "p5 berries: ...once (LastSeen moved on in the same step)")
+	end
+	W2.leave(p)
+	K.flushErrors("p5home_berries")
+	K.flushWarnings("p5home_berries", { "HomeBuilder is missing", "[DataService]" })
 end)
+
 -- [W2 tycoon+care] p5home_roam_server: the roaming ledger (epochs, drops == Plan, CoinDrops, naps, scoops, invariant)
 S.p5home_roam_server = guarded("p5home_roam_server", function()
-	T.info("p5home_roam_server: pending (tycoon+care, wave 2)")
+	if not K.needBoot() then
+		return
+	end
+	local Ty, Cat, HR, DataS, SS = W2.mods()
+	if not Ty or not Cat or not HR then
+		T.fail("p5 roam server: TycoonService, TycoonCatalog and HomeRoam load")
+		return
+	end
+	local Eco = W2.ecoPet()
+	local p = W2.join("P5Roam")
+	local seed = W2.seedOf(p)
+	local index, info = W2.startHome(Ty, p)
+	if not T.check(index ~= nil and Eco ~= nil, "p5 roam server: (precondition) a home with the Garden; an Economy pet") then
+		W2.leave(p)
+		return
+	end
+	T.eq(info.Folder:GetAttribute("RoamSeed"), seed, "p5 roam server: RoamSeed = (UserId % 2147483646) + 1")
+	T.eq(info.Folder:GetAttribute("RoamVersion"), HR.Version, "p5 roam server: RoamVersion = HomeRoam.Version")
+	T.eq(info.Folder:GetAttribute("CoinPiles"), nil, "p5 roam server: no CoinPiles attribute")
+	W2.givePet(p, Eco.Id, 12)
+	DataS.MutateHome(p, function(h)
+		h.LegacySlots = 12 -- every bed open: 12 roaming pets
+	end)
+	K.advance(1.2)
+	T.eq(Cat.GardenSlots(Ty.GetHome(p)), 12, "p5 roam server: (precondition) 12 open places (LegacySlots)")
+	W2.away(p)
+	local placedAt = W2.now()
+	for slot = 1, 12 do
+		Ty.GardenSet(p, slot, Eco.Id)
+	end
+	local roam = W2.roamOf(info)
+	local okEpoch = true
+	for slot = 1, 12 do
+		local r = roam[slot]
+		if not r or math.abs(r.Epoch - (placedAt + HR.SettleSeconds)) > 0.11 or r.Nap ~= nil or math.floor(r.Epoch * 10 + 0.5) / 10 ~= r.Epoch then
+			okEpoch = false
+		end
+	end
+	T.check(okEpoch, "p5 roam server: every placed slot gets Epoch = now + SettleSeconds 20, rounded to 0.1 s, in Roam", tostring(info.Folder:GetAttribute("Roam")))
+	local firstPoop = math.huge
+	for slot = 1, 12 do
+		firstPoop = math.min(firstPoop, HR.PoopTime(seed, slot, roam[slot].Epoch, 0))
+	end
+	T.check(firstPoop - placedAt >= HR.Cycle - 1e-6, "p5 roam server: the first poop of every slot comes >= 24 s after the placement (" .. string.format("%.1f", firstPoop - placedAt) .. " s)")
+	local poopValue = Cat.CoinValue(Ty.GetHome(p), Cat.PetPower(W2.entryOf(p, Eco)), 0) * Cat.Coins.PoopMeals
+
+	-- 4 cycles, checked every second: the invariant, every drop at its plan point, poops == due poops (<= one tick late),
+	-- at most 3 drops per slot, the CoinDrops format and rate, the byte budget
+	local okInv, okPoints, okDue, okMax, okFormat = true, true, true, true, true
+	local writes, lastText, maxBytes = 0, W2.dropsText(info), 0
+	local dropConn = info.Folder:GetAttributeChangedSignal("CoinDrops"):Connect(function()
+		writes = writes + 1
+	end)
+	local seconds = HR.SettleSeconds + 4 * HR.Cycle + 2
+	for _ = 1, seconds do
+		K.advance(1)
+		local live, _, welcome = W2.liveSum(Ty, p)
+		if math.abs(live + welcome - W2.bankOf(p)) > 1e-6 then
+			okInv = false
+		end
+		local perSlot = {}
+		for _, d in ipairs(Ty.Drops(p) or {}) do
+			local at = W2.poopWorld(HR, info, seed, d.Slot, d.Cycle)
+			if not at or (at - d.Position).Magnitude > 1e-3 then
+				okPoints = false
+			end
+			if d.Poops >= 1 then
+				perSlot[d.Slot] = (perSlot[d.Slot] or 0) + 1
+			end
+		end
+		for slot, n in pairs(perSlot) do
+			if n > Cat.Coins.DropsPerPet then
+				okMax = false
+			end
+		end
+		local piles = Ty.Piles(p)
+		local now = W2.now()
+		for slot = 1, 12 do
+			local due = W2.dueCount(HR, seed, slot, roam[slot].Epoch, now)
+			local have = piles[slot] and piles[slot].Coins or 0
+			if have ~= due and have ~= due - 1 then
+				okDue = false
+			end
+		end
+		local text = W2.dropsText(info)
+		if text ~= "" and not text:match("^%d+=%d+:%d%*?[%d:,%*]*[;%d=:,%*W]*$") then
+			okFormat = false
+		end
+		maxBytes = math.max(maxBytes, #text)
+	end
+	dropConn:Disconnect()
+	T.check(okInv, "p5 roam server: sum(drops) + Welcome == CollectorCash after every tick")
+	T.check(okPoints, "p5 roam server: every drop lies at HomeRoam.Plan(seed, slot, cycle).Poop in the plot frame")
+	T.check(okDue, "p5 roam server: every slot's poop count equals its due PoopTime count (at most one tick late)")
+	T.check(okMax, "p5 roam server: a slot never holds more than DropsPerPet 3 drops (the 4th poop merges into the nearest)")
+	local merged = 0
+	for _, d in ipairs(Ty.Drops(p) or {}) do
+		if d.Poops >= 2 then
+			merged = merged + 1
+		end
+	end
+	T.check(merged >= 12, "p5 roam server: after 4 poops per slot every slot has a merged drop (" .. merged .. ")")
+	T.check(okFormat, "p5 roam server: CoinDrops reads 'slot=cycle:stage[*],...;...' throughout", W2.dropsText(info))
+	T.check(writes <= 0.5 * seconds + 2, "p5 roam server: CoinDrops is written <= 0.5 / s (" .. writes .. " writes in " .. seconds .. " s)")
+	T.check(maxBytes <= 400, "p5 roam server: CoinDrops stays <= 400 bytes with 12 pets (" .. maxBytes .. ")")
+	-- stages by poops: 1 poop -> 1, 2-3 -> 2, 4-7 -> 3
+	local okStage = true
+	for _, d in ipairs(Ty.Drops(p) or {}) do
+		local want = (d.Poops >= 8 and 4) or (d.Poops >= 4 and 3) or (d.Poops >= 2 and 2) or (d.Poops >= 1 and 1) or 0
+		if d.Stage ~= want then
+			okStage = false
+		end
+	end
+	T.check(okStage, "p5 roam server: a drop's stage follows Coins.DropStages {1, 2, 4, 8} by its poops")
+
+	-- owner scoop within the Garden L1 radius 8, a visitor never
+	local radius = Cat.ScoopRadius(Ty.GetHome(p))
+	T.eq(radius, 8, "p5 roam server: ScoopRadius at Garden L1 = 8")
+	local target = (Ty.Drops(p) or {})[1]
+	local visitor = W2.join("P5RoamVisitor")
+	local vCash, bank0 = W2.cashOf(visitor), W2.bankOf(p)
+	W2.standAt(visitor, target.Position)
+	K.advance(1.0)
+	T.check(W2.cashOf(visitor) == vCash and W2.bankOf(p) >= bank0 - 1e-6, "p5 roam server: a visitor standing on a drop scoops nothing")
+	W2.leave(visitor)
+	local want = 0
+	for _, d in ipairs(Ty.Drops(p) or {}) do
+		if K.planar(d.Position, target.Position) <= radius then
+			want = want + d.Value
+		end
+	end
+	local cash0 = W2.cashOf(p)
+	W2.standAt(p, target.Position)
+	K.advance(0.4)
+	T.eq(W2.cashOf(p) - cash0, math.floor(want + 1e-6), "p5 roam server: the owner scoops every drop within 8 studs, whole Cash (" .. math.floor(want) .. ")")
+	local live, _, welcome = W2.liveSum(Ty, p)
+	T.check(math.abs(live + welcome - W2.bankOf(p)) <= 1e-6, "p5 roam server: ...the invariant holds after the scoop")
+	W2.away(p)
+
+	-- churn: remove + re-place within a cycle keeps the epoch (and its poop count); after a cycle a new epoch
+	local e3 = W2.roamOf(info)[3].Epoch
+	local poops3 = Ty.Piles(p)[3] and Ty.Piles(p)[3].Coins or 0
+	Ty.GardenSet(p, 3, nil)
+	K.advance(5)
+	Ty.GardenSet(p, 3, Eco.Id)
+	T.check(math.abs(W2.roamOf(info)[3].Epoch - e3) < 1e-6, "p5 roam server: the same key back within one cycle keeps its epoch (Y8)")
+	K.advance(HR.Cycle + 1)
+	T.check((Ty.Piles(p)[3] and Ty.Piles(p)[3].Coins or 0) <= poops3 + 2, "p5 roam server: ...and no extra poop came from the churn")
+	Ty.GardenSet(p, 3, nil)
+	K.advance(HR.Cycle + 1)
+	local t3 = W2.now()
+	Ty.GardenSet(p, 3, Eco.Id)
+	T.check(math.abs(W2.roamOf(info)[3].Epoch - (t3 + HR.SettleSeconds)) <= 0.11, "p5 roam server: a placement after more than a cycle away gets a new epoch (now + 20)")
+
+	-- nap at the cap, wake by a scoop: one pet alone (the cap = PileSeconds of its coins)
+	for slot = 2, 12 do
+		Ty.GardenSet(p, slot, nil)
+	end
+	Ty.ClearCoins(p)
+	K.advance(1.2)
+	local home = Ty.GetHome(p)
+	local cap = Cat.PileSeconds(home) * Cat.CoinValue(home, Cat.PetPower(W2.entryOf(p, Eco)), 0) / Cat.Coins.MealSeconds * Cat.LuckyEV(home)
+	local waited = 0
+	while waited < Cat.PileSeconds(home) + 4 * HR.Cycle do
+		local r1 = W2.roamOf(info)[1]
+		if r1 and r1.Nap then
+			break
+		end
+		K.advance(1)
+		waited = waited + 1
+	end
+	local r1 = W2.roamOf(info)[1]
+	local lawn = Ty.Piles(p)[1] and Ty.Piles(p)[1].Value or 0
+	T.check(r1 and r1.Nap ~= nil and lawn >= cap - 1e-6 and lawn <= cap + poopValue * Cat.Coins.LuckyMult + 1e-6, "p5 roam server: at PileSeconds x its coin rate the slot naps (':N<cycle>' in Roam)",
+		tostring(info.Folder:GetAttribute("Roam")) .. " lawn " .. string.format("%.1f of %.1f", lawn, cap))
+	T.check(Ty.Piles(p)[1] and Ty.Piles(p)[1].Full == true, "p5 roam server: ...Piles[slot].Full says so")
+	local bankNap = W2.bankOf(p)
+	K.advance(2 * HR.Cycle)
+	T.check(math.abs(W2.bankOf(p) - bankNap) <= 1e-6, "p5 roam server: a napping pet poops nothing")
+	local napPlan = HR.Plan(seed, 1, r1.Nap)
+	local backWalk = napPlan.OutLen / napPlan.Speed
+	local d1 = nil
+	for _, d in ipairs(Ty.Drops(p) or {}) do
+		if d.Slot == 1 and d.Poops >= 1 then
+			d1 = d
+			break
+		end
+	end
+	local wakeAt = W2.now()
+	W2.standAt(p, d1.Position)
+	K.advance(0.3)
+	local r1b = W2.roamOf(info)[1]
+	T.check(r1b and r1b.Nap == nil and math.abs(r1b.Epoch - (wakeAt + backWalk)) <= 0.5, "p5 roam server: a scoop below the cap wakes the pet: Epoch = now + the back walk (" .. string.format("%.1f", backWalk) .. " s)",
+		tostring(info.Folder:GetAttribute("Roam")) .. " vs " .. string.format("%.1f", wakeAt + backWalk))
+	W2.away(p)
+	local poopsNow = Ty.Piles(p)[1] and Ty.Piles(p)[1].Coins or 0
+	K.advance(backWalk + HR.Cycle + 2)
+	T.check((Ty.Piles(p)[1] and Ty.Piles(p)[1].Coins or 0) > poopsNow, "p5 roam server: ...and it poops again from its new epoch")
+
+	-- a rebase moves everything to the Welcome pile once; a scoop pays it once
+	local liveBefore = W2.liveSum(Ty, p)
+	T.check(liveBefore > 0, "p5 roam server: (precondition) drops before the rebase")
+	DataS.ProfileRebased:Fire(p, DataS.GetProfile(p))
+	K.advance(0.3)
+	local piles = Ty.Piles(p)
+	T.check(piles.W and math.abs(piles.W.Value - W2.bankOf(p)) <= 1e-6 and #(Ty.Drops(p) or {}) == 0 and W2.dropsText(info):find("W=5", 1, true) ~= nil,
+		"p5 roam server: ProfileRebased rebuilds the ledger: the whole bank waits in the Welcome pile (CoinDrops 'W=5')", W2.dropsText(info))
+	cash0 = W2.cashOf(p)
+	local wantW = math.floor(piles.W.Value + 1e-6)
+	W2.standAt(p, piles.W.Pos)
+	K.advance(0.4)
+	T.eq(W2.cashOf(p) - cash0, wantW, "p5 roam server: ...scooped once")
+	K.advance(1.0)
+	T.eq(W2.cashOf(p) - cash0, wantW, "p5 roam server: ...and never twice")
+	W2.away(p)
+	W2.leave(p)
+	K.flushErrors("p5home_roam_server")
+	K.flushWarnings("p5home_roam_server", { "HomeBuilder is missing", "[DataService]" })
 end)
 
 ----------------------------------------------------------------------------------------------------

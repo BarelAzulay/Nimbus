@@ -52,8 +52,8 @@ Request + approved decisions: scratchpad/phase5_request.md (player said "go!").
 | R | show scratchpad/p5design/summary_for_player.md to the player, get OK | OK given ("go") |
 | W0 | lead (Fable): section 10.1 shared edits, fixtures, baseline log scratchpad/p5_w0_baseline.log | DONE wf_872fc5c9-bc1: baseline 9024/0; gate 9033/5 (known red for W1: p3battle_catalog x2 + p3fixsrv_trial1 = Rally/Haste in BattleCatalog, battlecore W1); StormAltar MAX_PARTS 500 done by lead. Notes scratchpad/p5_wave0_notes.md |
 | W1 | data F, battlecore F, economy+roam O, worldstyle O | DONE wf_63badf7b-be9 (resumed after a container restart). sim_battle 36/36, sim_tycoon ALL MET (C10 floor 115 for ring+dungeon), sky in branding/sky. Notes scratchpad/p5_wave1_notes.md; carry list scratchpad/p5jobs/carry.md |
-| W2 | battleservice F, tycoon+care F, worldlobby O, homeworld O, neonkit O | RUNNING wf_2a964f3d-aa8 (args = scratchpad/p5jobs/w2.json + small extra notes; exact task text is in each agent .jsonl first prompt under the run dir; a resume with different text just re-runs agents, which continue partial work) |
-| W3 | dungeon F, battleclient O, homefx+pets O, careui O, menu O | - |
+| W2 | battleservice F, tycoon+care F, worldlobby O, homeworld O, neonkit O | DONE wf_2a964f3d-aa8; lead fixes applied (PortalRingRadius gone, prestige test, storm audit, showcase exempt). Notes scratchpad/p5_wave2_notes.md; carry list scratchpad/p5jobs/carry.md |
+| W3 | dungeon F, battleclient O, homefx+pets O, careui O, menu O | RUNNING (args scratchpad/p5jobs/w3.json) |
 | W4 | dungeonclient, tutorial, docs, flow, arenaart (all O) | - |
 | W5 | review (3 lenses) + fix + release gate + rbxlx + merge + send | - |
 Wave script: scratchpad/p5wave.js takes args {wave, jobs:[{key, model, files, task}], resume:{key: note}}. Notes after each wave: scratchpad/p5_wave<N>_notes.md.

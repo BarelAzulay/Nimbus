@@ -101,8 +101,12 @@ local function serverScenarios()
 	local function statusText(id)
 		return tostring(infoOf(id).StatusLabel and infoOf(id).StatusLabel.Text or "")
 	end
+	-- Phase 5: the gate tag's info line reads "Easy ★ - 2/4 players"; the head count is its "N/M players" part
 	local function countText(id)
-		return tostring(infoOf(id).CountLabel and infoOf(id).CountLabel.Text or "")
+		local info = infoOf(id)
+		local label = info.InfoLabel or info.CountLabel
+		local text = tostring(label and label.Text or "")
+		return text:match("(%d+/%d+ players)") or text
 	end
 	local function sideWalls(id)
 		local out = {}
@@ -268,7 +272,8 @@ local function serverScenarios()
 		local eyeWorst, boardWorst = 0, 0
 		local walls = T.tally("five lock walls per pad in NC_PortalWall: anchored, collidable, no Touched, no shadow, invisible while idle")
 		local enclose = T.tally("the walls enclose the pad on all sides (just outside the zone) and above (clear of a full jump)")
-		for _, diff in ipairs(Config.Difficulties) do
+		-- Phase 5 (6.3): the ONE Sky Obby portal; its billboard is the gate's pixel tag (WorldStyle.BuildGate's GateTag)
+		for _, diff in ipairs({ { Id = "Obby", DisplayName = "Sky Obby" } }) do
 			local id = diff.Id
 			local info = infoOf(id)
 			local gui = info and info.Billboard
@@ -439,12 +444,14 @@ local function serverScenarios()
 		enclose:report()
 
 		------------------------------------------------------------------------------------------
-		-- 1b. the Phase 4 Champion Ring portal on the plaza (ArenaBuilder's Portal_Ring): the same World text rule for
-		--     its tag (one pixel-sized billboard over the crowned gate, a compact plate that holds the longest pill)
+		-- 1b. the Champion Ring portal (ArenaBuilder's Portal_Ring, Phase 5: in the Gate Court, NimbusLobby.Gates): the
+		--     same World text rule for its tag (one pixel-sized billboard over the gate, a compact plate that holds the
+		--     longest pill)
 		------------------------------------------------------------------------------------------
-		local arena = workspace:FindFirstChild("BattleArena")
-		local ringModel = arena and arena:FindFirstChild("Portal_Ring")
-		if T.check(ringModel ~= nil, "ring portal: Portal_Ring stands in workspace.BattleArena") then
+		local lobbyF = workspace:FindFirstChild("NimbusLobby")
+		local gatesF = lobbyF and lobbyF:FindFirstChild("Gates")
+		local ringModel = gatesF and gatesF:FindFirstChild("Portal_Ring")
+		if T.check(ringModel ~= nil, "ring portal: Portal_Ring stands in the Gate Court (NimbusLobby.Gates)") then
 			local guis = {}
 			for _, d in ipairs(ringModel:GetDescendants()) do
 				if d:IsA("BillboardGui") then
@@ -459,7 +466,7 @@ local function serverScenarios()
 				local bad = {}
 				for _, d in ipairs(gui:GetDescendants()) do
 					if d:IsA("TextLabel") then
-						local min = (d.Name == "TitleLabel") and 22 or 18
+						local min = (d.Name == "TitleLabel" or d.Name == "Title") and 22 or 18
 						local outlined = d:FindFirstChild("TextOutline") ~= nil or d:FindFirstChildOfClass("UIStroke") ~= nil or d.TextStrokeTransparency < 0.5
 						if d.TextScaled or d.TextSize < min or not outlined or fonts[d.Font] ~= true then
 							okText = false
@@ -479,7 +486,7 @@ local function serverScenarios()
 				-- above the gate's crown, readable from the plaza
 				local crownTop = -1e9
 				for _, d in ipairs(ringModel:GetDescendants()) do
-					if d:IsA("BasePart") and d.Transparency < 1 and d.Name ~= "BillboardAnchor" then
+					if d:IsA("BasePart") and d.Transparency < 1 and d.Name ~= "BillboardAnchor" and d.Name ~= "TagAnchor" then
 						crownTop = math.max(crownTop, d.Position.Y + d.Size.Y / 2)
 					end
 				end
@@ -496,22 +503,22 @@ local function serverScenarios()
 		------------------------------------------------------------------------------------------
 		local players = K.freshPlayers(2, "Lock")
 		local a, b = players[1], players[2]
-		local hard = infoOf("Hard")
+		local hard = infoOf("Obby")
 		local zone = hard.Zone
 		withCollisionRegistry(function(collides, groups)
 			local mark = K.logSize()
-			K.enterPortal(a, "Hard")
+			K.enterPortal(a, "Obby")
 			advance(0.6)
-			T.eq(partyCount("Hard"), 1, "stepping into the Hard portal joins its party")
+			T.eq(partyCount("Obby"), 1, "stepping into the Hard portal joins its party")
 			T.check(isLocked(a), "the member is locked (PortalService.IsLocked)")
-			T.eq(a:GetAttribute("PortalLocked"), "Hard", "the PortalLocked attribute names the portal")
+			T.eq(a:GetAttribute("PortalLocked"), "Obby", "the PortalLocked attribute names the portal")
 			T.check(allLocked(a), "every character part is in the NC_PortalLocked collision group")
 			T.check(groups[LOCK_GROUP] == true and groups[WALL_GROUP] == true, "the two collision groups are registered")
 			T.check(collides(WALL_GROUP, LOCK_GROUP), "the walls collide with locked players")
 			T.check(not collides(WALL_GROUP, "Default"), "the walls never collide with the Default group (everyone else walks through)")
 			T.check(not collides(WALL_GROUP, "NC_TestPets"), "...nor with groups other systems registered (pets, ...)")
 			T.check(collides(LOCK_GROUP, "Default"), "locked players still stand on the ground (NC_PortalLocked x Default)")
-			T.check(barrierShown("Hard"), "the side walls shimmer (ForceField) while the countdown runs")
+			T.check(barrierShown("Obby"), "the side walls shimmer (ForceField) while the countdown runs")
 			T.check(K.notified(a, "Leave", "info", mark), "a side toast tells the member how to get out (Leave)")
 			local st = lastPartyState(a, mark)
 			T.check(st ~= nil and type(st.args[1]) == "table" and st.args[1].Locked == true, "PartyState says Locked = true")
@@ -533,45 +540,45 @@ local function serverScenarios()
 			advance(1 / 30)
 		end
 		advance(0.4)
-		T.check(onPad("Hard", a, 0.6) and partyCount("Hard") == 1 and isLocked(a), "walking out does not work: the member is back on the pad, still in the party and locked", "rel " .. tostring(rel("Hard", a)))
+		T.check(onPad("Obby", a, 0.6) and partyCount("Obby") == 1 and isLocked(a), "walking out does not work: the member is back on the pad, still in the party and locked", "rel " .. tostring(rel("Obby", a)))
 		T.check(K.notified(a, "locked in the portal", "info", mark), "...and a side toast explains the Leave button")
 		-- a teleport-fling far away (exploit / physics fling)
 		Mock.Teleport(a, zone.Position + Vector3.new(260, 140, -60))
 		K.root(a).AssemblyLinearVelocity = Vector3.new(0, 180, 90)
 		advance(0.4)
-		T.check(onPad("Hard", a, 0.6) and partyCount("Hard") == 1 and isLocked(a), "a teleport-fling is undone within one poll: back on the pad", "rel " .. tostring(rel("Hard", a)))
+		T.check(onPad("Obby", a, 0.6) and partyCount("Obby") == 1 and isLocked(a), "a teleport-fling is undone within one poll: back on the pad", "rel " .. tostring(rel("Obby", a)))
 		T.check(K.root(a).AssemblyLinearVelocity.Magnitude < 1, "...with the fling velocity cleared", tostring(K.root(a).AssemblyLinearVelocity))
 		-- launched straight up through the ceiling
 		Mock.Teleport(a, zone.Position + Vector3.new(0, 45, 0))
 		advance(0.4)
-		T.check(onPad("Hard", a, 0.6), "a launch over the ceiling is undone as well", "rel " .. tostring(rel("Hard", a)))
+		T.check(onPad("Obby", a, 0.6), "a launch over the ceiling is undone as well", "rel " .. tostring(rel("Obby", a)))
 		-- the hysteresis edge (inside the walls, just outside the plain zone) is left alone
 		local edge = zone.CFrame * CFrame.new(zone.Size.X * 0.5 + 0.8, 0, 0)
 		Mock.Teleport(a, edge)
 		advance(0.5)
-		T.check((K.root(a).Position - edge.Position).Magnitude < 0.5 and partyCount("Hard") == 1, "standing at the pad's edge (inside the walls) is fine: no pull, still in the party")
+		T.check((K.root(a).Position - edge.Position).Magnitude < 0.5 and partyCount("Obby") == 1, "standing at the pad's edge (inside the walls) is fine: no pull, still in the party")
 
 		------------------------------------------------------------------------------------------
 		-- 4. the billboard follows the countdown and the head count
 		------------------------------------------------------------------------------------------
 		local function shownSeconds()
-			return tonumber(string.match(statusText("Hard"), "Starting in (%d+)"))
+			return tonumber(string.match(statusText("Obby"), "Starting in (%d+)"))
 		end
-		local cd = PS().GetParty("Hard").Countdown
+		local cd = PS().GetParty("Obby").Countdown
 		local shown = shownSeconds()
-		T.check(shown ~= nil and cd ~= nil and math.abs(shown - cd) <= 1, "the billboard shows 'Starting in N' with the party countdown", statusText("Hard") .. " vs " .. tostring(cd))
-		T.eq(countText("Hard"), "1/" .. Config.Match.MaxPlayers .. " players", "the billboard shows the players inside (1/" .. Config.Match.MaxPlayers .. ")")
-		local pill = hard.Billboard:FindFirstChild("StatusPill", true)
+		T.check(shown ~= nil and cd ~= nil and math.abs(shown - cd) <= 1, "the billboard shows 'Starting in N' with the party countdown", statusText("Obby") .. " vs " .. tostring(cd))
+		T.eq(countText("Obby"), "1/" .. Config.Match.MaxPlayers .. " players", "the billboard shows the players inside (1/" .. Config.Match.MaxPlayers .. ")")
+		local pill = hard.StatusPill or hard.Billboard:FindFirstChild("StatusPill", true)
 		T.check(pill ~= nil and pill.BackgroundColor3 == (Theme.Colors.Gold or Theme.Colors.Token), "the status pill turns gold while counting down")
 		T.eq(hard.Model:GetAttribute("PartyCount"), 1, "Portal_Hard attribute PartyCount = 1")
 		T.check(math.abs((hard.Model:GetAttribute("Countdown") or -99) - (cd or 0)) <= 1, "Portal_Hard attribute Countdown follows the timer", tostring(hard.Model:GetAttribute("Countdown")))
 		-- the eye-level face next to the pad shows the same countdown
-		local faceNum = tonumber(faceText("Hard", "Num"))
-		T.check(faceShown("Hard") and faceText("Hard", "Top") == "Starting in" and faceNum ~= nil and shown ~= nil and math.abs(faceNum - shown) <= 1
-			and faceText("Hard", "Count") == "1/" .. Config.Match.MaxPlayers .. " players",
+		local faceNum = tonumber(faceText("Obby", "Num"))
+		T.check(faceShown("Obby") and faceText("Obby", "Top") == "Starting in" and faceNum ~= nil and shown ~= nil and math.abs(faceNum - shown) <= 1
+			and faceText("Obby", "Count") == "1/" .. Config.Match.MaxPlayers .. " players",
 			"the eye-level face appears with 'Starting in', the billboard's seconds and '1/" .. Config.Match.MaxPlayers .. " players'",
-			faceText("Hard", "Top") .. " / " .. faceText("Hard", "Num") .. " / " .. faceText("Hard", "Count"))
-		local hardFace = faceOf("Hard")
+			faceText("Obby", "Top") .. " / " .. faceText("Obby", "Num") .. " / " .. faceText("Obby", "Count"))
+		local hardFace = faceOf("Obby")
 		local rim = hardFace and hardFace.Disc and hardFace.Disc:FindFirstChildWhichIsA("UIStroke")
 		T.check(rim ~= nil and rim.Color == (Theme.Colors.Gold or Theme.Colors.Token), "the face's badge rim turns gold while counting down")
 		local writes, faceWrites = 0, 0
@@ -590,12 +597,12 @@ local function serverScenarios()
 		T.check(faceWrites >= 2 and faceWrites <= 4, "...and the face's numeral too (" .. faceWrites .. " writes in 3 s)")
 		local later = shownSeconds()
 		T.check(shown ~= nil and later ~= nil and shown - later >= 2 and shown - later <= 4, "the countdown on the billboard goes down", tostring(shown) .. " -> " .. tostring(later))
-		T.check(later ~= nil and tonumber(faceText("Hard", "Num")) ~= nil and math.abs(tonumber(faceText("Hard", "Num")) - later) <= 1, "the face counts down with it", faceText("Hard", "Num") .. " vs " .. tostring(later))
+		T.check(later ~= nil and tonumber(faceText("Obby", "Num")) ~= nil and math.abs(tonumber(faceText("Obby", "Num")) - later) <= 1, "the face counts down with it", faceText("Obby", "Num") .. " vs " .. tostring(later))
 		-- a second player
-		K.enterPortal(b, "Hard")
+		K.enterPortal(b, "Obby")
 		advance(0.6)
-		T.eq(countText("Hard"), "2/" .. Config.Match.MaxPlayers .. " players", "a second member: '2/" .. Config.Match.MaxPlayers .. " players'")
-		T.eq(faceText("Hard", "Count"), "2/" .. Config.Match.MaxPlayers .. " players", "...on the face as well")
+		T.eq(countText("Obby"), "2/" .. Config.Match.MaxPlayers .. " players", "a second member: '2/" .. Config.Match.MaxPlayers .. " players'")
+		T.eq(faceText("Obby", "Count"), "2/" .. Config.Match.MaxPlayers .. " players", "...on the face as well")
 		T.check(isLocked(b) and allLocked(b), "the second member is locked as well")
 
 		------------------------------------------------------------------------------------------
@@ -605,10 +612,10 @@ local function serverScenarios()
 		leave(a)
 		advance(0.3)
 		T.check(not isLocked(a) and noneLocked(a) and a:GetAttribute("PortalLocked") == nil, "Leave unlocks (collision groups restored, attribute cleared)")
-		T.eq(partyCount("Hard"), 1, "Leave removes only the leaver")
+		T.eq(partyCount("Obby"), 1, "Leave removes only the leaver")
 		local gone = lastPartyState(a, mark)
 		T.check(gone ~= nil and gone.args[1] == nil, "the leaver gets PartyState(nil)")
-		local r = rel("Hard", a)
+		local r = rel("Obby", a)
 		local flat = math.sqrt(r.X * r.X + r.Z * r.Z)
 		local inWall = false
 		for _, w in ipairs(hard.Model.LockWalls:GetChildren()) do
@@ -616,76 +623,76 @@ local function serverScenarios()
 		end
 		T.check(flat >= zone.Size.X * 0.5 + 3.5 and not inWall, "Leave steps the player off the pad, outside the walls", "distance " .. fmt(flat))
 		advance(0.6)
-		T.check(not isLocked(a) and partyCount("Hard") == 1, "the safety net leaves a player who pressed Leave alone")
+		T.check(not isLocked(a) and partyCount("Obby") == 1, "the safety net leaves a player who pressed Leave alone")
 
 		------------------------------------------------------------------------------------------
 		-- 6. death (before the Hard countdown ends), then the Leave lockout on the empty pad
 		------------------------------------------------------------------------------------------
 		Mock.Kill(b)
 		advance(0.3)
-		T.check(not isLocked(b) and partyCount("Hard") == 0, "dying unlocks and leaves the party")
-		T.check(not barrierShown("Hard"), "an empty pad hides the barrier shimmer")
-		T.eq(statusText("Hard"), "Step in to play", "an empty portal's billboard says 'Step in to play'")
+		T.check(not isLocked(b) and partyCount("Obby") == 0, "dying unlocks and leaves the party")
+		T.check(not barrierShown("Obby"), "an empty pad hides the barrier shimmer")
+		T.eq(statusText("Obby"), "Step in to play", "an empty portal's billboard says 'Step in to play'")
 		T.eq(hard.Model:GetAttribute("Countdown"), nil, "...and its Countdown attribute is cleared")
-		T.check(not faceShown("Hard"), "...and the eye-level face hides again")
+		T.check(not faceShown("Obby"), "...and the eye-level face hides again")
 
 		-- (the Leave step put her outside the zone, so only the lockout holds her back; the "must step out first"
 		-- rule is covered by the CancelParty test below)
-		K.enterPortal(a, "Hard")
+		K.enterPortal(a, "Obby")
 		advance(1.0)
-		T.check(partyCount("Hard") == 0 and not isLocked(a), "LEAVE_LOCKOUT: stepping straight back in does not re-join")
+		T.check(partyCount("Obby") == 0 and not isLocked(a), "LEAVE_LOCKOUT: stepping straight back in does not re-join")
 		advance(2.5)
-		T.check(partyCount("Hard") == 1 and isLocked(a), "after LEAVE_LOCKOUT walking in joins (and locks) again")
+		T.check(partyCount("Obby") == 1 and isLocked(a), "after LEAVE_LOCKOUT walking in joins (and locks) again")
 		Portal.RemovePlayer(a)
 		K.leavePortalArea(a)
 		T.check(not isLocked(a) and noneLocked(a), "PortalService.RemovePlayer unlocks")
 		leave(a, "junk", 42, { Evil = true })
 		leave(a)
 		advance(0.4)
-		T.check(not isLocked(a) and partyCount("Hard") == 0, "LeaveParty with junk arguments / outside a party is ignored")
+		T.check(not isLocked(a) and partyCount("Obby") == 0, "LeaveParty with junk arguments / outside a party is ignored")
 		K.waitFor(function()
 			return b.Character ~= nil and K.hum(b) ~= nil and K.hum(b).Health > 0
 		end, 12)
 		advance(0.6)
-		T.check(not isLocked(b) and partyCount("Hard") == 0, "the respawned player is free (not in the party)")
+		T.check(not isLocked(b) and partyCount("Obby") == 0, "the respawned player is free (not in the party)")
 
 		------------------------------------------------------------------------------------------
 		-- 7. leaving the game, CancelParty and a too-small party unlock
 		------------------------------------------------------------------------------------------
 		local c = K.freshPlayers(1, "Quitter")[1]
-		K.enterPortal(c, "Easy")
+		K.enterPortal(c, "Obby")
 		advance(0.6)
 		T.check(isLocked(c), "precondition: the Easy member is locked")
 		Mock.RemovePlayer(c)
 		advance(0.4)
-		T.check(not isLocked(c) and partyCount("Easy") == 0, "leaving the game unlocks and empties the seat")
+		T.check(not isLocked(c) and partyCount("Obby") == 0, "leaving the game unlocks and empties the seat")
 
 		local d = K.freshPlayers(1, "Cancel")[1]
-		K.enterPortal(d, "Medium")
+		K.enterPortal(d, "Obby")
 		advance(0.6)
 		T.check(isLocked(d), "precondition: the Medium member is locked")
 		mark = K.logSize()
-		local cancelled = Portal.CancelParty("Medium", "The portal closed")
+		local cancelled = Portal.CancelParty("Obby", "The portal closed")
 		advance(0.3)
-		T.check(cancelled == 1 and not isLocked(d) and noneLocked(d) and partyCount("Medium") == 0, "CancelParty unlocks everyone and empties the party")
+		T.check(cancelled == 1 and not isLocked(d) and noneLocked(d) and partyCount("Obby") == 0, "CancelParty unlocks everyone and empties the party")
 		T.check(K.notified(d, "portal closed", "info", mark), "...with a side toast")
 		advance(4)
-		T.check(partyCount("Medium") == 0 and not isLocked(d), "after a cancel a player still on the pad must step out before re-joining")
+		T.check(partyCount("Obby") == 0 and not isLocked(d), "after a cancel a player still on the pad must step out before re-joining")
 		K.leavePortalArea(d)
 		advance(0.5)
 
 		local minBefore = Config.Match.MinPlayers
 		local okMin, errMin = pcall(function()
 			Config.Match.MinPlayers = 2
-			K.enterPortal(d, "Extreme")
+			K.enterPortal(d, "Obby")
 			advance(0.6)
-			T.check(isLocked(d) and statusText("Extreme"):lower():find("waiting") ~= nil, "a party below MinPlayers waits (locked, 'Waiting for players...')", statusText("Extreme"))
-			T.check(faceShown("Extreme") and faceText("Extreme", "Top") == "Waiting..." and tonumber(faceText("Extreme", "Num")) ~= nil, "...and the face says 'Waiting...' over the seconds left", faceText("Extreme", "Top"))
+			T.check(isLocked(d) and statusText("Obby"):lower():find("waiting") ~= nil, "a party below MinPlayers waits (locked, 'Waiting for players...')", statusText("Obby"))
+			T.check(faceShown("Obby") and faceText("Obby", "Top") == "Waiting..." and tonumber(faceText("Obby", "Num")) ~= nil, "...and the face says 'Waiting...' over the seconds left", faceText("Obby", "Top"))
 			mark = K.logSize()
 			local released = K.waitFor(function()
 				return not isLocked(d)
 			end, Config.Match.PartyCountdown + 3)
-			T.check(released and partyCount("Extreme") == 0, "when the countdown ends without enough players it is cancelled and the member unlocked")
+			T.check(released and partyCount("Obby") == 0, "when the countdown ends without enough players it is cancelled and the member unlocked")
 			T.check(K.notified(d, "Not enough players", "info", mark), "...with a 'Not enough players' toast")
 		end)
 		Config.Match.MinPlayers = minBefore
@@ -698,21 +705,21 @@ local function serverScenarios()
 		------------------------------------------------------------------------------------------
 		local four = K.freshPlayers(Config.Match.MaxPlayers, "Squad")
 		for _, p in ipairs(four) do
-			K.enterPortal(p, "Saint")
+			K.enterPortal(p, "Obby")
 			advance(0.25)
 		end
 		advance(0.3)
-		local allIn = partyCount("Saint") == Config.Match.MaxPlayers
+		local allIn = partyCount("Obby") == Config.Match.MaxPlayers
 		for _, p in ipairs(four) do
 			allIn = allIn and isLocked(p)
 		end
 		T.check(allIn, "four players fill the Saint party, all locked")
-		T.check(statusText("Saint"):find("Full! Starting in %d") ~= nil, "a full party's billboard reads 'Full! Starting in N'", statusText("Saint"))
-		T.eq(countText("Saint"), Config.Match.MaxPlayers .. "/" .. Config.Match.MaxPlayers .. " players", "...and '" .. Config.Match.MaxPlayers .. "/" .. Config.Match.MaxPlayers .. " players'")
-		T.check(faceShown("Saint") and faceText("Saint", "Top") == "Starting in" and faceText("Saint", "Count") == "Full! " .. Config.Match.MaxPlayers .. "/" .. Config.Match.MaxPlayers
-			and tonumber(faceText("Saint", "Num")) ~= nil and tonumber(faceText("Saint", "Num")) <= Config.Match.FullPartyCountdown,
+		T.check(statusText("Obby"):find("Full! Starting in %d") ~= nil, "a full party's billboard reads 'Full! Starting in N'", statusText("Obby"))
+		T.eq(countText("Obby"), Config.Match.MaxPlayers .. "/" .. Config.Match.MaxPlayers .. " players", "...and '" .. Config.Match.MaxPlayers .. "/" .. Config.Match.MaxPlayers .. " players'")
+		T.check(faceShown("Obby") and faceText("Obby", "Top") == "Starting in" and faceText("Obby", "Count") == "Full! " .. Config.Match.MaxPlayers .. "/" .. Config.Match.MaxPlayers
+			and tonumber(faceText("Obby", "Num")) ~= nil and tonumber(faceText("Obby", "Num")) <= Config.Match.FullPartyCountdown,
 			"the face of a full party: 'Starting in', the short countdown and 'Full! " .. Config.Match.MaxPlayers .. "/" .. Config.Match.MaxPlayers .. "'",
-			faceText("Saint", "Top") .. " / " .. faceText("Saint", "Num") .. " / " .. faceText("Saint", "Count"))
+			faceText("Obby", "Top") .. " / " .. faceText("Obby", "Num") .. " / " .. faceText("Obby", "Count"))
 		local started = K.waitFor(function()
 			return MS().GetMatchOf(four[1]) ~= nil
 		end, Config.Match.FullPartyCountdown + 6)
@@ -723,14 +730,14 @@ local function serverScenarios()
 				free = free and not isLocked(p) and noneLocked(p) and p:GetAttribute("PortalLocked") == nil
 			end
 			T.check(free, "launching unlocks every member (collision groups restored before the match)")
-			T.eq(statusText("Saint"), "Step in to play", "the billboard is back to 'Step in to play' after the launch")
-			T.eq(countText("Saint"), "0/" .. Config.Match.MaxPlayers .. " players", "...and '0/" .. Config.Match.MaxPlayers .. " players'")
-			T.check(not barrierShown("Saint"), "...and the barrier is off")
-			T.check(not faceShown("Saint"), "...and the face is hidden")
+			T.eq(statusText("Obby"), "Step in to play", "the billboard is back to 'Step in to play' after the launch")
+			T.eq(countText("Obby"), "0/" .. Config.Match.MaxPlayers .. " players", "...and '0/" .. Config.Match.MaxPlayers .. " players'")
+			T.check(not barrierShown("Obby"), "...and the barrier is off")
+			T.check(not faceShown("Obby"), "...and the face is hidden")
 			-- a player in a match standing in a portal zone (as the server sees it) is refused
-			K.enterPortal(four[2], "Easy")
+			K.enterPortal(four[2], "Obby")
 			advance(0.6)
-			T.check(partyCount("Easy") == 0 and not isLocked(four[2]), "a player in a match is never put in a party or locked")
+			T.check(partyCount("Obby") == 0 and not isLocked(four[2]), "a player in a match is never put in a party or locked")
 		end
 		K.endAllMatches(four)
 		advance(1)
