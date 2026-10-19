@@ -188,8 +188,31 @@ S.p2care_stats = guarded("p2care_stats", function()
 			end
 		end
 		if econ then
-			T.check(near(Cat.PetPower(econ, 1, "Normal", 1) / Cat.PetPower(econ, 1, "Normal", 0), 1.25, 1e-9) and near(Cat.PetPower(econ, 1, "Normal", 2) / Cat.PetPower(econ, 1, "Normal", 0), econ.Rarity == "Common" and 1.25 or (PCat.MaxEvolution(econ) >= 2 and 1.5 or 1.25), 1e-9),
-				"care stats: PetPower carries the STORED evolution stage (x1.25 / x1.5, cut by MaxEvolution), GetStats never does")
+			-- Phase 5 (ARCHITECTURE_V3.md "Phase 5 build contract" 3.1): an evolution multiplies the LEVEL BONUS, not the
+			-- stat: PetPower = ... x LevelFactor(level, stage), LevelFactor = 1 + 0.1 x (level - 1) x {1, 1.5, 1.875}[stage],
+			-- the stage cut by MaxEvolution (Common / Uncommon / Rare evolve once). So level 1 is never boosted (nobody
+			-- gets weaker) and the ratio to the unevolved pet grows with the level.
+			local bonus = { [0] = 1, [1] = 1.5, [2] = 1.875 }
+			local evo = T.tally("care stats: PetPower carries the STORED evolution stage (LevelFactor: level bonus x1.5 / x1.875, cut by MaxEvolution), GetStats never does without a stage")
+			local seen = {}
+			for _, d in ipairs(PCat.Pets) do
+				local maxEvo = d.Role == "Economy" and d.EventOnly ~= true and PCat.MaxEvolution(d) or nil
+				if maxEvo and not seen[maxEvo] then
+					seen[maxEvo] = true
+					for _, level in ipairs({ 1, 20, 50, top }) do
+						local base = Cat.PetPower(d, level, "Normal", 0)
+						for stage = 1, 3 do
+							local cut = math.min(stage, maxEvo)
+							local want = (1 + 0.1 * (level - 1) * bonus[cut]) / (1 + 0.1 * (level - 1))
+							local got = Cat.PetPower(d, level, "Normal", stage) / base
+							evo:case(near(got, want, 1e-9),
+								d.Id .. " (max evo " .. maxEvo .. ") Lv " .. level .. " stage " .. stage .. ": x" .. tostring(got) .. " want x" .. tostring(want))
+						end
+					end
+				end
+			end
+			evo:case(seen[1] == true and seen[2] == true, "economy pets of both evolution counts (1 and 2) were checked")
+			evo:report()
 			local s0, s1 = PCat.GetStats(econ.Id, 20), PCat.GetStats(econ.Id, 20)
 			T.check(same(s0, s1) and near(PCat.GetStats(econ.Id, 20).Power, econ.Stats.Power * (Config.PetStats.RarityScale[econ.Rarity] or 1) * PCat.LevelFactor(20), 1e-9 * s0.Power),
 				"care stats: GetStats at Lv 20 is the pure level formula (the evolution boost lives in PetPower / UnitStats only)")

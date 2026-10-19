@@ -1061,11 +1061,24 @@ S.p4data_migrate = guarded("p4data_migrate", function()
 	T.check(DataS.IsMigrated(v, "P4") == true, "p4 migrate: 4: Migrations.P4 = true")
 	T.check(DataS.IsMigrated(v, "P4Veteran") == true and DataS.IsMigrated(v, "P4Welcome") == false,
 		"p4 migrate: ...and Migrations.P4Veteran (persisted: the welcome toast is owed on the first claim, in any session); P4Welcome is TycoonService's to set")
-	T.check(home.Level == 20 and home.Prestige == 1 and home.Stations.Press1 == 5 and home.Stations.Press2 == 3 and home.Stations.Collector == 4 and home.Stations.Garden == 6 and home.Stations.Kitchen == 1
-		and home.Stations.Gym == 2 and count(home.Stations) == 6 and sameList({ home.Garden[1], home.Garden[2], home.Garden[3], home.Garden[4], home.Garden[5], home.Garden[6] }, { a, b, c, d, e, f }) and home.CollectorCash == 1234 and home.LastSeen == 1700000000,
-		"p4 migrate: nothing else changes: Home Level, Prestige, every station level (Garden 6, Gym 2 included), the 6 garden pets, CollectorCash, LastSeen")
-	T.check(DataS.GetCash(v) == 5000 and DataS.GetGems(v) == 20 and DataS.GetTokens(v) == 50 and (DataS.GetPetLevel(v, g)) == 25 and DataS.GetFood(v, "Feast") == 3,
-		"p4 migrate: no one-time payout: Cash, Gems, Tokens, the gym pet's level and the leftover food are as stored")
+	-- (Phase 5: the same load also runs the one-time P5Home fold, ARCHITECTURE_V3.md "Phase 5 build contract" 9.2 step 3:
+	-- Press1 5 + Press2 3 = 8, raised to the Berry Farm food floor (old plant food 21 + 32 = 53 -> FARM_FOOD[9] = 54) =
+	-- Press1 9; the Coin Magnet 4 -> LegacyMagnet 4 at star 1. Every station the Phase 4 migration knows is unchanged
+	-- and the Home Level never drops: 9 + 6 + 1 + 2 + LegacyMagnet 4 = 22 >= the old 21)
+	local TCat = K.M["shared/TycoonCatalog"]
+	local oldLevels = 5 + 3 + 4 + 6 + 1 + 2
+	local liveLevel = TCat and type(TCat.HomeLevelOf) == "function" and TCat.HomeLevelOf(home) or -1
+	T.check(home.Level == 20 and home.Prestige == 1 and home.Stations.Press1 == 9 and home.Stations.Press2 == nil and home.Stations.Collector == nil and home.LegacyMagnet == 4 and home.LegacyMagnetStar == 1
+		and home.Stations.Garden == 6 and home.Stations.Kitchen == 1 and home.Stations.Gym == 2 and count(home.Stations) == 4 and liveLevel >= oldLevels
+		and sameList({ home.Garden[1], home.Garden[2], home.Garden[3], home.Garden[4], home.Garden[5], home.Garden[6] }, { a, b, c, d, e, f }) and home.CollectorCash == 1234 and home.LastSeen == 1700000000,
+		"p4 migrate: nothing else changes: Home Level, Prestige, every station level (Garden 6, Gym 2 included), the 6 garden pets, CollectorCash, LastSeen (the Phase 5 fold: Press1 5 + Press2 3 -> Berry Farm 9, Collector 4 -> LegacyMagnet 4, HomeLevelOf never lower)",
+		"Press1 " .. tostring(home.Stations.Press1) .. " LegacyMagnet " .. tostring(home.LegacyMagnet) .. "/" .. tostring(home.LegacyMagnetStar) .. " stations " .. count(home.Stations) .. " HomeLevelOf " .. tostring(liveLevel))
+	-- (Phase 5: the leftover food is converted once by P5Home into berries: Feast 3 x LegacyFood.Feast 6400, Food zeroed)
+	local legacyFeast = TCat and type(TCat.Berries) == "table" and type(TCat.Berries.LegacyFood) == "table" and TCat.Berries.LegacyFood.Feast or 6400
+	T.check(DataS.GetCash(v) == 5000 and DataS.GetGems(v) == 20 and DataS.GetTokens(v) == 50 and (DataS.GetPetLevel(v, g)) == 25 and DataS.GetFood(v, "Feast") == 0
+		and legacyFeast == 6400 and DataS.GetBerries(v) == 3 * legacyFeast,
+		"p4 migrate: no one-time payout: Cash, Gems, Tokens, the gym pet's level are as stored; the leftover food (Feast 3) is converted exactly into 3 x 6400 berries by P5Home",
+		tostring(DataS.GetFood(v, "Feast")) .. " Feast / " .. tostring(DataS.GetBerries(v)) .. " berries")
 	T.check(sameList(DataS.FieldableKeys(v), K.M["shared/PetKeys"] and K.M["shared/PetKeys"].List(DataS.GetProfile(v)) or DataS.FieldableKeys(v)) and DataS.SetTeam(v, 1, { g, h, a }) == true,
 		"p4 migrate: the freed gym pets and the garden pets can all join a team")
 	local snap = lastSnapshot(v, mark)
@@ -1552,7 +1565,18 @@ S.p4data_rollout = guarded("p4data_rollout", function()
 		T.check(DataS.GetRing(p).Best == 21 and DataS.GetRing(p).Runs == 4 and DataS.IsMigrated(p, "P4") == true and DataS.MigratedNow(p, "P4") == nil,
 			"p4 rollout: ...Ring and Migrations too; the migration does not run again")
 		local home = DataS.GetHome(p)
-		T.check(home.LegacySlots == 6 and home.LegacyPrices == true and home.Level == 20 and home.Stations.Garden == 6 and count(home.Stations) == 6, "p4 rollout: ...the legacy Home keys, the Home Level and the station levels")
+		-- (Phase 5: this server's load also ran the one-time P5Home fold on the Phase 4 home, 9.2 step 3: Press1 5 + Press2 3
+		-- -> Berry Farm 9 (the food floor: 21 + 32 = 53 -> FARM_FOOD[9] 54), Collector 4 -> LegacyMagnet 4 at star 1; the
+		-- Phase 3 server wrote Press2 / Collector back unchanged, so the fold's removals win the per-key merge)
+		local stationText = {}
+		for id, lv in pairs(home.Stations) do
+			stationText[#stationText + 1] = id .. "=" .. tostring(lv)
+		end
+		table.sort(stationText)
+		T.check(home.LegacySlots == 6 and home.LegacyPrices == true and home.Level == 20 and home.Stations.Garden == 6 and home.Stations.Kitchen == 1 and home.Stations.Gym == 1
+			and home.Stations.Press1 == 9 and home.Stations.Press2 == nil and home.Stations.Collector == nil and home.LegacyMagnet == 4 and home.LegacyMagnetStar == 1 and count(home.Stations) == 4,
+			"p4 rollout: ...the legacy Home keys, the Home Level and the station levels (as the Phase 5 fold left them: Berry Farm 9, LegacyMagnet 4)",
+			table.concat(stationText, ",") .. " LegacyMagnet " .. tostring(home.LegacyMagnet) .. "/" .. tostring(home.LegacyMagnetStar))
 		T.check(DataS.GetTokens(p) == tokens4 + 5 + 1 and (stored(ROLL) or {}).Tokens == tokens4 + 5 + 1 and (DataS.GetBattle(p) or {}).Trophies == 42,
 			"p4 rollout: ...and the Phase 3 server's tokens and trophies (its +5 and this session's +1 both land once; trophies 42)",
 			tostring(DataS.GetTokens(p)) .. "/" .. tostring((DataS.GetBattle(p) or {}).Trophies) .. " stored " .. tostring((stored(ROLL) or {}).Tokens) .. "/" .. tostring(((stored(ROLL) or {}).Battle or {}).Trophies) .. " session had " .. tostring(tokens4))

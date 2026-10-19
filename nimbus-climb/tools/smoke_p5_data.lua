@@ -705,18 +705,45 @@ S.p5dgn_migrate = guarded("p5dgn_migrate", function()
 	T.eq(DataS.Save(p), true, "p5 migrate: the migrated profile saves")
 	local st = stored(UID) or {}
 	-- (Teams is re-encoded with its two empty presets and Tutorial belongs to TutorialService at the join: checked apart)
+	-- The same load runs the P5Home step (9.2 step 3) on this Phase 4 home: its ONLY allowed effect is the fold itself
+	-- (here Press1 5 -> the Berry Farm food floor), so the expected Home is the stored one put through
+	-- TycoonCatalog.FoldLegacy(home, true) (p5home_fold_data proves the fold); this record holds no Food, so no Berries.
+	-- Without FoldLegacy the step is skipped and the Home must be untouched.
+	local TCat = K.M["shared/TycoonCatalog"]
+	local expected = deepCopy(before)
+	local folds = TCat and type(TCat.FoldLegacy) == "function"
+	if folds then
+		TCat.FoldLegacy(expected.Home, true)
+	end
 	local differs = {}
-	for key, value in pairs(before) do
+	for key, value in pairs(expected) do
 		if key ~= "Migrations" and key ~= "Teams" and key ~= "Tutorial" and not deepEqual(st[key], value) then
 			differs[#differs + 1] = key
 		end
 	end
 	for key in pairs(st) do
-		if before[key] == nil and key ~= "Dungeon" and key ~= "UpdatedAt" then
+		if expected[key] == nil and key ~= "Dungeon" and key ~= "UpdatedAt" then
 			differs[#differs + 1] = "+" .. key
 		end
 	end
-	T.check(#differs == 0, "p5 migrate: every other stored field is byte-identical (only Dungeon, Migrations.P5Dungeon and UpdatedAt changed)", table.concat(differs, ", "))
+	-- the fold never touches anything but Home.Stations (and the folded credits): every other Home key byte-identical
+	local homeDiffers = {}
+	local sth = type(st.Home) == "table" and st.Home or {}
+	for key, value in pairs(before.Home) do
+		if key ~= "Stations" and not deepEqual(sth[key], value) then
+			homeDiffers[#homeDiffers + 1] = key
+		end
+	end
+	for id, lv in pairs(before.Home.Stations) do
+		if id ~= "Press1" and (type(sth.Stations) ~= "table" or sth.Stations[id] ~= lv) then
+			homeDiffers[#homeDiffers + 1] = "Stations." .. id
+		end
+	end
+	local farm = type(sth.Stations) == "table" and sth.Stations.Press1 or nil
+	T.check(#differs == 0, "p5 migrate: every other stored field is byte-identical (only Dungeon, Migrations.P5Dungeon / P5Home, UpdatedAt and the P5Home fold of the Home changed)", table.concat(differs, ", "))
+	T.check(#homeDiffers == 0 and type(farm) == "number" and farm >= before.Home.Stations.Press1 and (st.Migrations or {}).P5Home == (folds and true or nil),
+		"p5 migrate: ...the P5Home fold changed only the Berry Farm level (never lower), every other Home key and station is byte-identical; P5Home marked with the fold",
+		table.concat(homeDiffers, ", ") .. " Press1 " .. tostring(farm))
 	T.check(type(st.Teams) == "table" and sameList(st.Teams.Presets[1], before.Teams.Presets[1]) and st.Teams.Active == 1 and type(st.Tutorial) == "table" and st.Tutorial.Gifted == true,
 		"p5 migrate: ...the preset and the tutorial gift are kept too")
 	T.check(type(st.Migrations) == "table" and st.Migrations.P4 == true and st.Migrations.P5Dungeon == true and type(st.Dungeon) == "table" and st.Dungeon.Clears == 5 and #st.Dungeon.Cleared == 5,

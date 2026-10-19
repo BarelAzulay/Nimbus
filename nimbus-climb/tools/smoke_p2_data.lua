@@ -641,6 +641,9 @@ local function serverScenarios()
 			Version = 2, Tokens = 0, Pets = { pip_penguin = 1, pebble_pup = 1 }, Equipped = {}, Items = {}, Stats = statsOf(),
 			Cash = 1000, Gems = 0, Food = { Snack = 1 },
 			Home = { Level = 3, Prestige = 0, Stations = { Press1 = 1, Kitchen = 1 }, Garden = {}, Gym = {}, CollectorCash = 20, LastSeen = 100 },
+			-- (already through the one-time Phase 5 steps: the P5Home fold would convert the Food into berries and zero it;
+			-- this checks the Phase 2 delta merge of Food in isolation, the conversion is p5home_fold_data's)
+			Migrations = { P4 = true, P5Dungeon = true, P5Home = true },
 		}
 		local q = join("P2Merge", MG)
 		local qp = DataS.GetProfile(q)
@@ -756,6 +759,9 @@ local function serverScenarios()
 			Version = 2, Tokens = 0, Pets = { pebble_pup = 1 }, Equipped = {}, Items = {}, Stats = statsOf(), Cash = 500,
 			Home = { Level = 5, Prestige = 0, Stations = { Press1 = 7 }, Garden = {}, Gym = {}, CollectorCash = 30, LastSeen = 0 },
 			PetLevels = { pebble_pup = { Level = 6, Xp = 0 } },
+			-- (already through the one-time Phase 5 steps: a first P5Home fold on the recovery would raise Press1 to the
+			-- Berry Farm food floor; this checks the Phase 2 provisional rules in isolation)
+			Migrations = { P4 = true, P5Dungeon = true, P5Home = true },
 		}
 		DSt.Fail = true
 		local v = Mock.AddPlayer("P2Outage", PV)
