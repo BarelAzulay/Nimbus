@@ -217,6 +217,11 @@ local function isInMatch(player)
 	if player:GetAttribute(Config.Attr.InMatch) == true then
 		return true
 	end
+	-- 5.3 / Y12: a player in a battle or a dungeon run cannot take a pad seat
+	local inBattle = player:GetAttribute(Config.Attr.InBattle or "InBattle")
+	if inBattle ~= nil and inBattle ~= false and inBattle ~= "" then
+		return true
+	end
 	if matchService and type(matchService.GetMatchOf) == "function" then
 		local ok, match = pcall(matchService.GetMatchOf, player)
 		if ok and match then

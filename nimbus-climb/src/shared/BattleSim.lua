@@ -3210,7 +3210,7 @@ function doCommand(self, team, action, arg, events)
 		return true
 	elseif action == "Buff" then
 		local slot = tonumber(arg)
-		if not slot or slot ~= floor(slot) or slot < 2 then
+		if not slot or slot ~= floor(slot) or slot < 1 then
 			return false, "BadSlot"
 		end
 		local helper = team.bySlot[slot]
@@ -3238,7 +3238,7 @@ function doCommand(self, team, action, arg, events)
 		return true, helper.buffKind
 	elseif action == "Swap" then
 		local slot = tonumber(arg)
-		if not slot or slot ~= floor(slot) or slot < 2 then
+		if not slot or slot ~= floor(slot) or slot < 1 then
 			return false, "BadSlot"
 		end
 		local helper = team.bySlot[slot]

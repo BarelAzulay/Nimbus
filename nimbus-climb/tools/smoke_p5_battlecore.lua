@@ -764,6 +764,27 @@ S.p5sim_fighter = guarded("p5sim_fighter", function()
 		end
 		T.check(okAll, "every element buff applies (Nature +20 meter, Celestial shield, Storm attack speed ...)")
 	end
+	-- BENCHED SLOT 1: after Swap(2) the original fighter sits on the bench and can be buffed / swapped back
+	do
+		local bA, tA, fA = arena(BS, { pet("mallow_kitten", 5), pet("honey_bunny", 5), pet("biscuit_bear", 5) })
+		place(bA, tA, 0, 0, 0, 40)
+		local okS = bA:Command(1, "Swap", 2)
+		bA:Step(0.1)
+		local active = tA.fighter
+		T.check(okS and fA.benched and active == tA.bySlot[2], "Swap 1 -> 2: the slot-1 pet is benched")
+		local okBA, whyBA = bA:Command(1, "Buff", 2)
+		local okSA, whySA = bA:Command(1, "Swap", 2)
+		T.check(not okBA and whyBA == "BadSlot" and not okSA and whySA == "BadSlot", "Buff / Swap on the active fighter (slot 2) are refused BadSlot", tostring(whyBA) .. " / " .. tostring(whySA))
+		local okB1, kind1 = bA:Command(1, "Buff", 1)
+		T.check(okB1 and kind1 ~= nil, "Buff(1) is accepted on the benched original fighter", tostring(kind1))
+		for _ = 1, 8 do
+			bA:Step(0.1)
+		end
+		tA.swapReadyAt = 0
+		local okS1, whyS1 = bA:Command(1, "Swap", 1)
+		bA:Step(0.1)
+		T.check(okS1 and tA.fighter == fA and not fA.benched and active.benched, "Swap(1) brings the benched original fighter back", tostring(whyS1))
+	end
 	-- MOVE: the fighter walks toward the wanted point at <= legal run x MoveSlack
 	do
 		local b10, t10, f10 = arena(BS, { pet("mallow_kitten", 5), pet("pebble_pup", 5) })

@@ -1547,16 +1547,27 @@ local function petKey(info)
 		return nil
 	end
 	local pet = info.Pet
+	local id = nil
 	if type(pet) == "table" then
-		return pet.Id
+		id = pet.Id
 	elseif type(pet) == "string" then
-		return pet
+		id = pet
 	end
-	return nil
+	if id == nil then
+		return nil
+	end
+	-- the evolution stage is part of the key: a slot rebuilds its model when the stage changes
+	local stage = info.Evolved
+	if stage == true then
+		stage = 1
+	end
+	stage = math.floor(tonumber(stage) or 0)
+	return tostring(id) .. "|" .. tostring(stage)
 end
 
 -- props: Size (default 80x80), Position, AnchorPoint, Parent, Callback, Hotkey, Name, LayoutOrder
--- info = { Glyph, Color, Pet = PetDef, Detail = "High" | "Low" (PetBuilder detail, default High), RarityColor, Name, Blurb }
+-- info = { Glyph, Color, Pet = PetDef, Detail = "High" | "Low" (PetBuilder detail, default High), Evolved (stage 1 | 2 or
+-- true: drawn Low), RarityColor, Name, Blurb }
 function CloudUI.Slot(props)
 	props = props or {}
 	local info = nil
@@ -1754,7 +1765,8 @@ function CloudUI.Slot(props)
 					AnchorPoint = Vector2.new(0.5, 0.5),
 					Animate = hovering or selected,
 					Spin = "sway",
-					Detail = info.Detail,
+					Evolved = info.Evolved,
+					Detail = info.Evolved and "Low" or info.Detail,
 					ZIndex = 2,
 				})
 			elseif info.Glyph then
