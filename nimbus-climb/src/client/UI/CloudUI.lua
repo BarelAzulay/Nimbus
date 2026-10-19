@@ -1760,13 +1760,14 @@ function CloudUI.Slot(props)
 		info = newInfo
 		if info then
 			if info.Pet then
+				local evoStage = tonumber(info.Evolved == true and 1 or info.Evolved) or 0
 				viewportHandle = CloudUI.PetViewport(content, info.Pet, UDim2.new(1, -8, 1, -8), {
 					Position = UDim2.new(0.5, 0, 0.5, 0),
 					AnchorPoint = Vector2.new(0.5, 0.5),
 					Animate = hovering or selected,
 					Spin = "sway",
-					Evolved = info.Evolved,
-					Detail = info.Evolved and "Low" or info.Detail,
+					Evolved = evoStage >= 1 and evoStage or nil,
+					Detail = evoStage >= 1 and "Low" or info.Detail,
 					ZIndex = 2,
 				})
 			elseif info.Glyph then
