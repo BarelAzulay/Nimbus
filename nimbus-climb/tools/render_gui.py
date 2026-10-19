@@ -63,7 +63,10 @@ SCENARIOS = ["gallery", "lobby", "title", "match", "match:hit", "countdown", "pa
              "menu:Index", "menu:Shop", "menu:Stats", "tutorial", "npc", "dev", "toasts", "portal", "portal:Saint:4",
              # Phase 4 (careui): the Home window, the Food Machine list, the garden picker, the Training Place, the EVOLVE
              # confirm, the Champion Ring window and the floating pet cards
-             "home", "home:coins", "feed", "garden", "train", "evolve", "ring", "ring:new", "petcards"]
+             "home", "home:coins", "feed", "garden", "train", "evolve", "ring", "ring:new", "petcards",
+             # Phase 5: the fighter HUD (battleclient), the careui windows, the Neon kit (neonkit), the menu (menu)
+             "battle:fighter", "battle:raid", "battle:dungeon", "team", "looks", "looks:epic", "stats", "fusion", "fusion:mix",
+             "neon", "neon:window", "neon:hud", "neon:party", "mainmenu", "loading", "settings"]
 
 # ---------------------------------------------------------------------------------------------------
 # Lua world (booted the way tools/smoke.py boots its client world)

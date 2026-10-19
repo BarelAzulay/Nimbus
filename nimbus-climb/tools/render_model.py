@@ -40,7 +40,14 @@ except ImportError as exc:  # pragma: no cover
 # Lua world (booted the way tools/smoke.py boots one)
 # ---------------------------------------------------------------------------------------------------
 ENGINES = ["luajit21", "luajit20", "lua54", "lua53", "lua55", "lua52"]
-CLIENT_KINDS = {"skydragon", "dragon", "homegarden", "homegym", "hometrain", "battle", "portal"}
+# the targets of tools/dump_model.lua (--list)
+TARGETS = ["pet:<petId>[:High|Low]", "species:<Species>[:High|Low]", "pets", "lobby", "npcs", "npc", "storm-altar", "skydragon",
+           "dragon", "token[:golden]", "module:<path>:<func>[:lobby]", "home", "homerow", "homegardens", "homeplot", "homefree",
+           "homegarden[:<open>[:<level>]]", "hometrain[:<level>]", "homeroam[:<t>]", "followers[:walk]", "portal", "arena",
+           "pocket", "boss", "bosses", "battle", "gates", "gate:<Home|Obby|Dungeon|Ring|Arena|Altar>",
+           "dungeon[:<kind>[:<variant>]]", "dungeon:room:<kind>", "dungeon:boss", "dungeon:run[:<floor>[:<seed>]]",
+           "dungeon:floor", "dungeon:portal"]
+CLIENT_KINDS = {"skydragon", "dragon", "homegarden", "homegym", "hometrain", "battle", "portal", "homeroam", "followers"}
 
 
 def load_engine(preferred=None):
@@ -875,6 +882,7 @@ def main():
     ap.add_argument("--engine", help="lupa engine (default: luajit21)")
     ap.add_argument("--echo", action="store_true", help="print the game's print()/warn() output while building")
     ap.add_argument("-v", "--verbose", action="store_true", help="print the game's warn() lines")
+    ap.add_argument("--list", action="store_true", help="list the targets and exit")
     # "--box -120,..." would look like an option to argparse: glue the value on
     argv = list(sys.argv[1:])
     for i in range(len(argv) - 1):
@@ -882,6 +890,10 @@ def main():
             argv[i:i + 2] = ["--box=" + argv[i + 1], ""]
     args = ap.parse_args([a for a in argv if a != ""])
 
+    if args.list:
+        print("targets: " + ", ".join(TARGETS))
+        print("(several join with '+', e.g. lobby+npcs+storm-altar; a dump .json written with --json renders again)")
+        return 0
     target = args.target
     if args.grid and not target:
         target = "pets"

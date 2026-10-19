@@ -8,7 +8,7 @@
 --                       texts 20-200 bytes in plain text naming the Pet Garden, rainbow coins, the Food Machine, Feed,
 --                       EVOLVE, the Training Place and the Champion Ring, IndexOf keeps chapter 1's "portal", the new
 --                       CompleteOn kinds + RING_FINISH_TOKENS 300 in TutorialService; NPC tips: 3-5 lines <= 125 bytes,
---                       the Phase 4 needles with the catalogs' numbers (FeedShare[1], EvolutionBoost[1], the evolution
+--                       the Phase 4 needles with the catalogs' numbers (FeedShare[1], EvolutionBonusOf(1), the evolution
 --                       levels, RoleMult.Economy, Prestige x / Gems / garden places, RecordMult) and the kept p3ui needles
 --   p4ui_tutorial       (server, booted) a migrated veteran (home claimed, Garden with a pet, Food Machine) resumes at
 --                       every index 10-14 and lands on "feed" (no step waits for what the player already has); a finished
@@ -187,12 +187,15 @@ local function serverScenarios()
 			return tostring(math.floor(x * 100 + 0.5)) .. "%"
 		end
 		local share = pct(TC and TC.FeedShare and TC.FeedShare[1] or 0.25)
-		local boost = pct(((PC and PC.EvolutionBoost and PC.EvolutionBoost[1]) or 1.25) - 1)
+		-- Phase 5 (3.1): EVOLVE multiplies the level bonus (EvolutionBonusOf); the old flat boost table is gone
+		local bonus1 = PC and type(PC.EvolutionBonusOf) == "function" and tonumber(PC.EvolutionBonusOf(1)) or 1.5
+		local boost = (string.format("%.3f", bonus1):gsub("0+$", ""):gsub("%.$", ""))
+		T.check(PC ~= nil and PC.EvolutionBoost == nil and PC.EvolutionMultiplier == nil, "p4ui: PetCatalog.EvolutionBoost / EvolutionMultiplier are gone (W3 gate)")
 		local levels = PC and PC.EvolutionLevels or { 20, 50 }
 		local economy = pct(((PC and PC.RoleMult and PC.RoleMult.Economy) or 1.6) - 1)
 		local P = TC and TC.Prestige or {}
-		local ok1, why1 = says("granny_owl", "Food Machine", "Feed", "EVOLVE", share .. " of its XP bar", "+" .. boost, "level " .. levels[1], "at " .. levels[2], "Gems")
-		T.check(ok1, "p4ui: Granny Owl explains the Food Machine (" .. share .. "), EVOLVE (+" .. boost .. ", levels " .. levels[1] .. " / " .. levels[2] .. ") and Gem spins", why1)
+		local ok1, why1 = says("granny_owl", "Food Machine", "Feed", "EVOLVE", share .. " of its XP bar", "level bonus x" .. boost, "level " .. levels[1], "at " .. levels[2], "Gems")
+		T.check(ok1, "p4ui: Granny Owl explains the Food Machine (" .. share .. "), EVOLVE (level bonus x" .. boost .. ", levels " .. levels[1] .. " / " .. levels[2] .. ") and Gem spins", why1)
 		local ok2, why2 = says("mayor_panda", "free gate", "Pet Garden", "rainbow coins", "Economy pets make " .. economy .. " more",
 			"Home Level " .. tostring(P.HomeLevel or 40), "x" .. tostring(P.IncomeMultiplier or 1.25) .. " coins", tostring(P.GemReward or 100) .. " Gems",
 			"one more garden place", "portal")

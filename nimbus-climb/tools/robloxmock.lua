@@ -3167,6 +3167,12 @@ function IM.Clone(self)
 		for k, v in pairs(nst.props) do
 			cst.props[k] = v
 		end
+		-- a cloned text object keeps the Font its original was given (Roblox copies every property; the font audit
+		-- tracks the assignment beside the props)
+		if nst.fontAssigned then
+			cst.fontAssigned = true
+			cst.fontValue = nst.fontValue
+		end
 		for k, v in pairs(nst.attrs) do
 			cst.attrs[k] = v
 		end

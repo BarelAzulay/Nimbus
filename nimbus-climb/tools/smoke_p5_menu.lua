@@ -19,7 +19,7 @@
 --                      NC_Detail decor (emitters off) and pushes GfxLow, High restores; Shake OFF; SeenNotes on UPDATES
 --
 -- Every OTHER scenario runs with the menu DISABLED (contract 7.2: "what every existing smoke scenario and the mock get
--- unless a test sets Enabled"): this file sets Config.MainMenu.Enabled = false when it loads (both worlds), and on the
+-- unless a test sets Enabled"): smoke_common.lua sets Config.MainMenu.Enabled = false in every world's boot, and on the
 -- client it plays DataService's part for the loading screen (the player attribute ProfileLoaded = true) and gives the
 -- mock ReplicatedFirst:RemoveDefaultLoadingScreen. Deterministic: no RNG, mock clock only. Plain Lua 5.1 syntax only.
 
@@ -34,13 +34,7 @@ local function sharedModule(name)
 	return inst and require(inst) or nil
 end
 
--- the default for every scenario: the menu off (today's instant spawn, nothing gated)
-do
-	local Config = sharedModule("Config")
-	if Config and type(Config.MainMenu) == "table" then
-		Config.MainMenu.Enabled = false
-	end
-end
+-- the default for every scenario (the menu off: today's instant spawn, nothing gated) is set by smoke_common.lua's boot
 
 ----------------------------------------------------------------------------------------------------
 -- server half

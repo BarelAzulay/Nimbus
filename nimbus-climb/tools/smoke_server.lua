@@ -827,7 +827,7 @@ S.boot = guarded("boot", function()
 	T.check(dof == nil or dof.Enabled == false or (dof.FarIntensity <= 0.2 and dof.NearIntensity <= 0.2), "DepthOfField is off or extremely subtle")
 	T.near(workspace.Gravity, Config.Physics.Gravity, 0.001, "workspace.Gravity == Config.Physics.Gravity")
 	T.eq(workspace.FallenPartsDestroyHeight, -2000, "FallenPartsDestroyHeight is -2000")
-	T.eq(Players.CharacterAutoLoads, true, "Players.CharacterAutoLoads is true")
+	T.eq(Players.CharacterAutoLoads, false, "Players.CharacterAutoLoads stays false (PlayerService spawns, 7.2)")
 	T.eq(workspace.StreamingEnabled, false, "StreamingEnabled stays false")
 	-- LightingService.Init is idempotent
 	local LS = mod("LightingService")

@@ -515,9 +515,9 @@ Config.Loading = {
 
 -- The main menu BEFORE spawning (7.2, judge M7): the server holds the character until the client's PLAY (remote MenuPlay)
 -- or FallbackSeconds; the camera orbits the Gate Court meanwhile. Enabled = false restores today's behaviour in one line
--- (the character spawns at once on join). It stays false until the menu lands (wave 3); the lead flips it in that gate.
+-- (the character spawns at once on join). On since the wave-3 gate (the smoke worlds switch it off in their common boot).
 Config.MainMenu = {
-	Enabled = false,
+	Enabled = true,
 	OrbitRadius = 90,
 	OrbitHeight = 38,
 	OrbitPeriod = 60, -- seconds per orbit

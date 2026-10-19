@@ -94,6 +94,13 @@ local function commas(n)
 end
 
 -- 6.5 -> "6.5", 1.25 -> "1.25", 40 -> "40", 1000 -> "1,000" (two decimals at most)
+-- PetCatalog.EvolutionBonusOf(stage) as text: 1.5 -> "1.5", 1.875 -> "1.875"
+local function bonusText(PC, stage)
+	local v = type(PC.EvolutionBonusOf) == "function" and tonumber(PC.EvolutionBonusOf(stage)) or 1
+	local s = string.format("%.3f", v):gsub("0+$", ""):gsub("%.$", "")
+	return s
+end
+
 local function num(v)
 	v = floor((tonumber(v) or 0) * 100 + 0.5) / 100
 	if v == floor(v) then
@@ -1211,9 +1218,9 @@ local function checkGarden(TC, PC, Config, lines, gardenText, homeFxSource)
 	local eco = (PC.RoleMult or {}).Economy or 1
 	t:case(has(f, "**Economy pets x" .. num(eco) .. "**") and has(f, num((eco - 1) * 100) .. " % more than Combat pets"),
 		"Economy pets x" .. num(eco) .. " (" .. num((eco - 1) * 100) .. " % more)")
-	local b = PC.EvolutionBoost or {}
-	local evo = "(+" .. num(((b[1] or 1) - 1) * 100) .. " % after the first EVOLVE, +" .. num(((b[2] or 1) - 1) * 100) .. " % after the second)"
-	t:case(has(f, evo), "the Garden text should say " .. show(evo))
+	-- Phase 5 (3.1): EVOLVE multiplies the level bonus (EvolutionBonusOf); the old flat boost table is gone
+	local evo = "Level bonus x" .. bonusText(PC, 1)
+	t:case(PC.EvolutionBoost == nil and has(f, evo), "the Garden text should say " .. show(evo) .. " (and PetCatalog.EvolutionBoost is gone)")
 	t:case(has(f, "x" .. num(P.IncomeMultiplier) .. " coins per star"), "x" .. num(P.IncomeMultiplier) .. " coins per star")
 	t:case(has(f, "**Lucky coin** pops out, worth x" .. num(C.LuckyMult)), "a Lucky coin is worth x" .. tostring(C.LuckyMult))
 	local garden = TC.ById.Garden
@@ -1328,12 +1335,13 @@ end
 local function checkEvolution(PC, Config, evoText)
 	local t = T.tally("docs: evolution (levels, boosts, which rarities evolve twice) matches PetCatalog", 6)
 	local f = flat(evoText)
-	local lv, b = PC.EvolutionLevels or {}, PC.EvolutionBoost or {}
+	local lv = PC.EvolutionLevels or {}
+	local b1, b2 = bonusText(PC, 1), bonusText(PC, 2)
 	t:case(has(f, "At level **" .. tostring(lv[1]) .. "** every pet is \"Ready to evolve!\""), "the first evolution at level " .. tostring(lv[1]))
 	t:case(has(f, "**EVOLVE!**") and has(f, "**EVOLVE**"), "the EVOLVE! pill and the EVOLVE button are named")
-	t:case(has(f, "**+" .. num(((b[1] or 1) - 1) * 100) .. " %** stronger"), "evolved pets +" .. num(((b[1] or 1) - 1) * 100) .. " %")
-	t:case(has(f, "at level **" .. tostring(lv[2]) .. "** (+" .. num(((b[2] or 1) - 1) * 100) .. " % in total)"),
-		"the second evolution at level " .. tostring(lv[2]) .. " (+" .. num(((b[2] or 1) - 1) * 100) .. " %)")
+	t:case(PC.EvolutionBoost == nil and PC.EvolutionMultiplier == nil and has(f, "Level bonus x" .. b1), "evolved pets: Level bonus x" .. b1 .. " (the old flat boost is gone)")
+	t:case(has(f, "at level **" .. tostring(lv[2]) .. "**") and has(f, "x" .. b2),
+		"the second evolution at level " .. tostring(lv[2]) .. " (Level bonus x" .. b2 .. ")")
 	local twice, once = {}, {}
 	for _, id in ipairs(rarityIds(Config)) do
 		if (PC.MaxEvolution({ Rarity = id }) or 0) >= 2 then

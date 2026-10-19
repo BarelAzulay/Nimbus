@@ -67,8 +67,6 @@
 -- Extras: HouseTierOf, HouseTier, MaxLevelAt, StationLevel, PrestigeMultiplier, PrestigeGems, CanPrestige, EffectsOf,
 --   PadLevelText, FormatCash, ReachablePads, FootprintRect, PadRect, LocalRect, TierMultiplier, Icons, PrestigePad,
 --   MaxPetLevel, StartCash, OfflineMinSeconds, PlotSize, Version (5).
---   DEPRECATED until the wave-2 gate (still listed in tools/contract.json and read by the Phase 4 TycoonService /
---   HomeFx): CoinPoint(slot) -> the slot's bed (Garden station frame), HeapStage(coins) -> 0..4 by Coins.DropStages.
 --
 -- Notes for the services: a Price of 0 is FREE (the Pet Garden). Prestige keeps the decor (KeepOnPrestige) and the
 -- Garden at its ResetLevel, resets the rest (StationsAfterPrestige). Berries, training and roulettes never scale with
@@ -1221,22 +1219,6 @@ function TycoonCatalog.CoinValue(home, power, prestige)
 	return finite(v) and v or 0
 end
 
--- DEPRECATED (deleted at the wave-2 gate with its tools/contract.json entry): the drop stage (0..4) of `coins` poops of
--- value by Coins.DropStages (the Phase 4 TycoonService still writes CoinPiles heap stages with it)
-function TycoonCatalog.HeapStage(coins)
-	local n = tonumber(coins)
-	if not finite(n) or n < 1 then
-		return 0
-	end
-	local stage = 0
-	for i, need in ipairs(TycoonCatalog.Coins.DropStages) do
-		if n >= need then
-			stage = i
-		end
-	end
-	return stage
-end
-
 -- the old Coin Magnet's effect of a folded home (nil without one / after the next Prestige)
 local function legacyMagnetEffect(home, key)
 	local lv = TycoonCatalog.LegacyMagnetLevel(home)
@@ -1276,16 +1258,6 @@ function TycoonCatalog.PileSeconds(home)
 		s = s + (BY_ID.Vault.Effects[vault].PileSeconds or 0)
 	end
 	return s
-end
-
--- DEPRECATED (deleted at the wave-2 gate with its tools/contract.json entry): the bed of garden place `slot` (1..12) in
--- the Garden's station frame, or nil (the Phase 4 TycoonService / HomeFx still lay a pile per place there)
-function TycoonCatalog.CoinPoint(slot)
-	local n = int(slot)
-	if not n or n ~= tonumber(slot) then
-		return nil
-	end
-	return GARDEN_BEDS[n]
 end
 
 function TycoonCatalog.OfflineEarnings(home, seconds, incomePerSecond)

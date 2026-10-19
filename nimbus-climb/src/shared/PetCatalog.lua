@@ -43,11 +43,6 @@
 --   PetCatalog.TierMultiplier(tier)       -> 1 | 1.5 | 2.5 (a tier name, a pet key, a def or a multiplier)
 --   Phase 4 evolution and garden roles (ARCHITECTURE_V3.md "Phase 4 build contract" 3.2 / 3.6):
 --   PetCatalog.EvolutionLevels            { 20, 50 }: the level a pet needs for stage 1 / stage 2
---   PetCatalog.EvolutionBoost             DEPRECATED (Phase 5): { 1.25, 1.5 }, the Phase 4 flat stage boost. Kept with
---                                            its old values so Phase 4 callers (BattleCatalog P4.evoMult, TycoonCatalog
---                                            MIRROR, PetCareService toast, CareController, NpcDialog, sim_tycoon) keep
---                                            running until they switch to LevelFactor(level, stage) / GetStats(.., stage);
---                                            the lead deletes it in the wave-3 gate (contract 3.1 / 10.5)
 --   PetCatalog.RoleMult                   { Economy = 1.6, Combat = 1 }: garden coins by Role
 --   PetCatalog.MaxEvolution(subject)      -> 1 | 2  (2 for Epic, Legendary, Mythic, Secret: the data mirror of
 --                                            PetBuilder.MaxEvolution). subject = def, rarity id, pet id or pet key
@@ -57,7 +52,6 @@
 --                                            level alone never evolves a pet
 --   PetCatalog.CanEvolve(subject, level, stage) -> nextStage | nil  when level >= EvolutionLevels[next] and
 --                                            next <= MaxEvolution(subject)
---   PetCatalog.EvolutionMultiplier(stage) -> 1 | 1.25 | 1.5  DEPRECATED like EvolutionBoost (deleted in the W3 gate)
 --   PetCatalog.RoleMultiplier(subject)    -> RoleMult[def.Role] (1 for unknown roles / pets)
 --   v3 elements (ARCHITECTURE_V3.md section 11, chart in Config.Elements):
 --   PetCatalog.ElementsOf(def)            -> { element... }  a pet's Element, or a fused hybrid's Elements
@@ -1148,11 +1142,8 @@ end
 ----------------------------------------------------------------------
 
 PetCatalog.EvolutionLevels = { 20, 50 } -- stage 1 at level 20 (every pet), stage 2 at level 50 (Epic and rarer)
--- DEPRECATED (Phase 5 contract 3.1 / C6): the Phase 4 flat boost, kept with its OLD values only so Phase 4 callers keep
--- running (BattleCatalog P4.evoMult, TycoonCatalog MIRROR, PetCareService, CareController, NpcDialog, sim_tycoon.py).
--- New code uses LevelFactor(level, stage) / GetStats(.., stage) / EvolutionBonusOf. The lead deletes EvolutionBoost and
--- EvolutionMultiplier in the wave-3 gate once check.mjs lists no caller.
-PetCatalog.EvolutionBoost = { 1.25, 1.5 }
+-- (Phase 5 W3 gate: the Phase 4 flat stage boost and its multiplier function are gone; use LevelFactor(level, stage) /
+-- GetStats(.., stage) / EvolutionBonusOf)
 PetCatalog.EvolveTwice = { Epic = true, Legendary = true, Mythic = true, Secret = true } -- PetBuilder's ASCEND_RARITY
 PetCatalog.RoleMult = { Economy = 1.6, Combat = 1 } -- garden coins by Role: Economy pets make 60% more
 
@@ -1213,16 +1204,6 @@ function PetCatalog.CanEvolve(subject, level, stage)
 		return nil
 	end
 	return nextStage
-end
-
--- DEPRECATED (see EvolutionBoost): 1 | 1.25 | 1.5 for stage 0 | 1 | 2 (junk counts as 0; above 2 counts as 2)
-function PetCatalog.EvolutionMultiplier(stage)
-	local s = tonumber(stage)
-	if not finite(s) or s < 1 then
-		return 1
-	end
-	s = math.min(math.floor(s), #PetCatalog.EvolutionBoost)
-	return PetCatalog.EvolutionBoost[s] or 1
 end
 
 -- garden coin multiplier of a pet's Role (Economy 1.6, Combat 1); unknown pets / roles -> 1

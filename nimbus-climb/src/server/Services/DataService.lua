@@ -3671,6 +3671,17 @@ end
 -- Public API: loading + profile access
 ----------------------------------------------------------------------
 
+-- Phase 5 (7.1): the player attribute ProfileLoaded = true once the profile is loaded or provisional (written once; the
+-- loading screen waits for it).
+function P5.markProfileLoaded(player)
+	local attr = (Config.Attr and Config.Attr.ProfileLoaded) or "ProfileLoaded"
+	pcall(function()
+		if player:GetAttribute(attr) ~= true then
+			player:SetAttribute(attr, true)
+		end
+	end)
+end
+
 -- Never errors. Returns the LIVE profile (mutate, then MarkDirty + Sync).
 function DataService.Load(player)
 	if not player then
@@ -3685,6 +3696,7 @@ function DataService.Load(player)
 		fallback.Loaded = true
 		fallback.LoadFailed = true
 		scheduleRecovery(player.UserId) -- provisional until the real save is read (see the header)
+		P5.markProfileLoaded(player)
 		return fallback.Profile
 	end
 	-- A quick rejoin can find the previous session's entry still in memory (its final save was in
@@ -3711,6 +3723,7 @@ function DataService.Load(player)
 		P4.announceMigration(player, migrated)
 		P5.announceMigration(player, migrated5)
 	end
+	P5.markProfileLoaded(player)
 	return entry.Profile
 end
 

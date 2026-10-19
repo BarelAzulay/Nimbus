@@ -2375,14 +2375,15 @@ function CareController.ConfirmEvolve(key)
 		H.hint(text, "info")
 		return false
 	end
-	local boosts = PetCatalog.EvolutionBoost or { 1.25, 1.5 }
-	local pct = math.floor(((tonumber(boosts[nextStage]) or 1.25) - 1) * 100 + 0.5)
+	-- Phase 5 (3.1): EVOLVE multiplies the level bonus (x1.5 / x1.875), not the stat
+	local bonus = tonumber(H.call(PetCatalog, "EvolutionBonusOf", nextStage)) or (nextStage == 2 and 1.875 or 1.5)
+	local bonusText = string.format("%.3f", bonus):gsub("0+$", ""):gsub("%.$", "")
 	H.showConfirm({
 		Kind = "Evolve",
 		Key = key,
 		Title = G.Sparkle .. " Evolve " .. name .. "?",
-		Text = name .. " changes into its " .. (nextStage == 2 and "Evolved II" or "Evolved") .. " form: +" .. pct
-			.. "% to everything (battle power, health and coins). It keeps its level.",
+		Text = name .. " changes into its " .. (nextStage == 2 and "Evolved II" or "Evolved") .. " form: Level bonus x" .. bonusText
+			.. " (battle power, health and coins). It keeps its level.",
 		YesText = "EVOLVE!",
 		Style = "Gold",
 		Color = GOLD,

@@ -722,7 +722,8 @@ BUILDERS.homefree = function()
 end
 
 -- homegarden[:<open>[:<level>]] / hometrain[:<level>] (homegym)  (client world) the Pet Garden (default: 12 open
---            places, its top level) with a pet on every open place and a coin pile at each (CoinPiles), or the Training
+--            places, its top level) with a pet roaming from every open bed and Cloud Cash drops (RoamSeed / Roam /
+--            CoinDrops, like TycoonService writes them), or the Training
 --            Place (default: its top level) with a pet on every mat (TrainingPets): HomeBuilder builds the plot, the
 --            plot attributes name the pets and the real HomeFx draws them (PetBuilder Low)
 local function homePetsView(stationId, level, open)
@@ -739,6 +740,10 @@ local function homePetsView(stationId, level, open)
 	local spot = { Index = 99, PlotCFrame = cf, PlotSize = TC.PlotSize, Center = cf.Position, Folder = folder }
 	Fx.Init()
 	HB.PreparePlot(spot)
+	local lp = game:GetService("Players").LocalPlayer
+	if lp and type(HB.SetOwner) == "function" then
+		HB.SetOwner(spot, lp) -- the owner's own home: HomeFx draws full-strength coins
+	end
 	local ids = {}
 	for _, d in ipairs(PC.Pets) do
 		if #ids < 12 and not d.EventOnly then
@@ -747,15 +752,18 @@ local function homePetsView(stationId, level, open)
 	end
 	local count = level
 	if stationId == "Garden" then
-		count = math.max(1, math.min(#def.Slot.Spots, tonumber(open) or #def.Slot.Spots))
+		local beds = #(def.Slot.Beds or {})
+		count = math.max(1, math.min(beds, tonumber(open) or beds))
 	end
-	local list, valid, piles = {}, {}, {}
+	local list, valid, roam, drops = {}, {}, {}, {}
+	local now = Workspace:GetServerTimeNow()
 	for i = 1, count do
 		local key = ids[((i - 1) % #ids) + 1] .. ((i % 3 == 0) and "@Golden" or "")
 		valid[i] = key
 		if stationId == "Garden" then
 			list[#list + 1] = i .. "=" .. key
-			piles[#piles + 1] = i .. "=" .. tostring((i % 5) + 1) .. ((i % 4 == 0) and "F" or "") .. ((i % 6 == 0) and "*" or "")
+			roam[#roam + 1] = string.format("%d=%.1f", i, now - 200 - i * 2.7)
+			drops[#drops + 1] = i .. "=1:" .. tostring((i % 4) + 1) .. ((i % 6 == 0) and "*" or "")
 		else
 			list[#list + 1] = i .. "=" .. key .. ":" .. ({ "Speed", "Physique", "Ability", "Defense" })[((i - 1) % 4) + 1] .. ":" .. tostring(os.time() + 60 * i)
 		end
@@ -766,7 +774,12 @@ local function homePetsView(stationId, level, open)
 		end
 		folder:SetAttribute("GardenSlots", count)
 		folder:SetAttribute("GardenPets", table.concat(list, ";"))
-		folder:SetAttribute("CoinPiles", table.concat(piles, ";") .. ";W=5")
+		local HR = req("shared/HomeRoam")
+		local uid = (lp and lp.UserId) or 1
+		folder:SetAttribute("RoamSeed", (uid % 2147483646) + 1)
+		folder:SetAttribute("RoamVersion", HR.Version)
+		folder:SetAttribute("Roam", table.concat(roam, ";"))
+		folder:SetAttribute("CoinDrops", table.concat(drops, ";") .. ";W=5")
 	else
 		folder:SetAttribute("TrainingPets", table.concat(list, ";"))
 		folder:SetAttribute("GymPets", table.concat(list, ";"))
@@ -806,6 +819,148 @@ BUILDERS.hometrain = function(level)
 	return homePetsView("Gym", level)
 end
 BUILDERS.homegym = BUILDERS.hometrain
+
+-- homeroam[:t]  (client world, homefx W3) = a Sky Castle plot with 12 roaming pets + Cloud Cash,
+-- followers[:walk] = another player's 3 followers (small, evolved, second evolution)
+BUILDERS.homeroam = function(tsec)
+	local HB = homeBuilder()
+	local TC = req("shared/TycoonCatalog")
+	local PC = req("shared/PetCatalog")
+	local HR = req("shared/HomeRoam")
+	local Fx = req("client/Controllers/HomeFx")
+	local lp = game:GetService("Players").LocalPlayer
+	local folder = Instance.new("Folder")
+	folder.Name = "Spot_98"
+	folder.Parent = Workspace
+	local cf = CFrame.new(0, 0, 0)
+	local spot = { Index = 98, PlotCFrame = cf, PlotSize = TC.PlotSize, Center = cf.Position, Folder = folder }
+	Fx.Init()
+	HB.PreparePlot(spot)
+	HB.SetOwner(spot, lp)
+	local home = { Stations = {}, Prestige = 1 }
+	for _, def in ipairs(TC.Stations) do
+		local cap = def.TierCaps and def.TierCaps.SkyCastle or def.MaxLevel
+		if def.Id == "House" then
+			cap = 4
+		end
+		if cap and cap > 0 and not def.ComingSoon then
+			home.Stations[def.Id] = math.min(cap, def.MaxLevel)
+		end
+	end
+	HB.BuildHome(spot, home)
+	local ids = {}
+	for _, d in ipairs(PC.Pets) do
+		if #ids < 12 and not d.EventOnly then
+			ids[#ids + 1] = d.Id
+		end
+	end
+	local list, info, valid = {}, {}, {}
+	for i = 1, 12 do
+		local key = ids[i] .. ((i % 4 == 0) and "@Golden" or "")
+		valid[i] = key
+		list[#list + 1] = i .. "=" .. key
+		info[#info + 1] = i .. "=" .. (10 + i * 3) .. ":" .. ((i % 3 == 0) and 1 or 0)
+	end
+	HB.SetGarden(spot, valid, 12)
+	local seed = (lp.UserId % 2147483646) + 1
+	local now = Workspace:GetServerTimeNow() + (tonumber(tsec) or 0)
+	folder:SetAttribute("GardenSlots", 12)
+	folder:SetAttribute("GardenPets", table.concat(list, ";"))
+	folder:SetAttribute("GardenInfo", table.concat(info, ";"))
+	folder:SetAttribute("RoamSeed", seed)
+	folder:SetAttribute("RoamVersion", HR.Version)
+	local roam, drops = {}, {}
+	for i = 1, 12 do
+		roam[#roam + 1] = string.format("%d=%.1f", i, now - 200 - i * 1.93 * (1 + (i % 3)))
+		local stage = (i % 4) + 1
+		drops[#drops + 1] = i .. "=1:" .. stage .. ((i % 5 == 0) and "*" or "") .. ((i % 2 == 0) and (",2:" .. ((i + 1) % 4 + 1)) or "")
+	end
+	folder:SetAttribute("Roam", table.concat(roam, ";"))
+	folder:SetAttribute("CoinDrops", table.concat(drops, ";") .. ";W=5")
+	folder:SetAttribute("BerryCap", 3000)
+	lp:SetAttribute("Berries", 1240)
+	local cam = Workspace.CurrentCamera
+	if cam then
+		cam.CFrame = CFrame.lookAt(Vector3.new(20, 30, -40), Vector3.new(20, 0, 0))
+	end
+	for _ = 1, 90 do
+		Mock.Advance(1 / 30)
+	end
+	local view = Instance.new("Model")
+	view.Name = "HomeRoamView"
+	folder:Clone().Parent = view
+	local n = 0
+	local fx = Workspace:FindFirstChild("ClientFx")
+	if fx then
+		for _, sub in ipairs(fx:GetChildren()) do
+			for _, p in ipairs(sub:GetChildren()) do
+				p:Clone().Parent = view
+				n = n + 1
+			end
+		end
+	end
+	view.Parent = Workspace
+	local st = Fx.Stats()
+	return { { root = view, label = "Sky Castle yard: 12 roaming pets + Cloud Cash", sub = string.format("%d pets, %d coins, %d client pieces", st.GardenPets or 0, st.Coins or 0, n), facing = { 0, 0, -1 } } }
+end
+
+BUILDERS.followers = function(mode)
+	local PCtl = req("client/Controllers/PetController")
+	local PC = req("shared/PetCatalog")
+	local Players = game:GetService("Players")
+	local lp = Players.LocalPlayer
+	local function first(r, skip)
+		for _, d in ipairs(PC.Pets) do
+			if d.Rarity == r and not d.EventOnly and d.Id ~= skip then
+				return d.Id
+			end
+		end
+	end
+	local small, mid, big = first("Common"), first("Legendary"), first("Epic")
+	local other = Mock.AddPlayer("Walker", 880011)
+	Mock.Advance(0.5)
+	PCtl.Init()
+	local start = Vector3.new(0, 20, 0)
+	Mock.Teleport(other, start)
+	Mock.Teleport(lp, start + Vector3.new(30, 0, 30))
+	local cam = Workspace.CurrentCamera
+	if cam then
+		cam.CFrame = CFrame.lookAt(start + Vector3.new(0, 15, 30), start)
+	end
+	other:SetAttribute("EquippedPets", table.concat({ small, mid, big }, ","))
+	other:SetAttribute("EquippedInfo", "5:0,30:1,60:2")
+	for _ = 1, 120 do
+		Mock.Advance(1 / 30)
+	end
+	if mode == "walk" then
+		local pos = start
+		for _ = 1, 30 do
+			pos = pos + Vector3.new(0, 0, -24 / 30)
+			Mock.Teleport(other, pos)
+			Mock.Advance(1 / 30)
+		end
+	end
+	local view = Instance.new("Model")
+	view.Name = "FollowersView"
+	local char = other.Character
+	if char then
+		char:Clone().Parent = view
+	end
+	local pf = Workspace:FindFirstChild("ClientPets")
+	local f = pf and pf:FindFirstChild(tostring(other.UserId))
+	if f then
+		f:Clone().Parent = view
+	end
+	local g = Instance.new("Part")
+	g.Name = "Ground"
+	g.Anchored = true
+	g.Size = Vector3.new(40, 1, 50)
+	g.Color = Color3.fromRGB(120, 170, 100)
+	g.Position = Vector3.new(0, 16.5, -5)
+	g.Parent = view
+	view.Parent = Workspace
+	return { { root = view, label = "Followers: small, evolved, 2nd evolution" .. (mode == "walk" and " (walking 24 studs/s)" or " (rest)"), sub = "PetController 3.8", facing = { 0, 0, -1 } } }
+end
 
 -- portal:home  (client world) the home portal HomePortalFx (wave 3) draws from the local player's HomePortal attribute
 --              ("x,y,z,yaw,closesAt"): everything new in the Workspace after a few frames

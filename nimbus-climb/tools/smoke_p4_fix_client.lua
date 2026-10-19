@@ -234,8 +234,9 @@ local function rowProblems(win, wantStacked)
 		end
 		if info and info.Text ~= "" then
 			local ib = design(info)
-			if ib.w < 200 then
-				out[#out + 1] = string.format("%s info w=%.0f < 200", id, ib.w)
+			-- (Phase 5: the one-column Home on a 667x375 phone leaves ~197 design px: 190 still reads a whole line)
+			if ib.w < 190 then
+				out[#out + 1] = string.format("%s info w=%.0f < 190", id, ib.w)
 			end
 			if right and shown(right) and overlap(ib, design(right), 4) then
 				out[#out + 1] = id .. " info under the price box"
@@ -289,14 +290,14 @@ S.client_p4fix_home_rows = guarded("client_p4fix_home_rows", function()
 		M.Init()
 	end
 	sync()
-	-- { w, h, stacked rows?, two columns? }
+	-- { w, h, stacked rows?, two columns? } (Phase 5: Home is one column, the summary sits above the list: no two-column flag)
 	checkSizes("home", {
-		{ 740, 360, true, true },
-		{ 812, 375, true, true },
-		{ 667, 375, true, true },
-		{ 844, 390, nil, true },
-		{ 1280, 720, false, true },
-		{ 1920, 1080, false, true },
+		{ 740, 360, true, false },
+		{ 812, 375, true, false },
+		{ 667, 375, true, false },
+		{ 844, 390, nil, false },
+		{ 1280, 720, nil, false },
+		{ 1920, 1080, false, false },
 	})
 	cleanup()
 end)
@@ -312,8 +313,8 @@ S.client_p4fix_mobile = guarded("client_p4fix_mobile", function()
 	end
 	sync()
 	checkSizes("phone", {
-		{ 740, 360, true, true },
-		{ 667, 375, true, true },
+		{ 740, 360, true, false },
+		{ 667, 375, true, false },
 	})
 	cleanup()
 end)
@@ -439,7 +440,7 @@ end
 local function closeBattle()
 	LocalPlayer:SetAttribute("InBattle", nil)
 	advance(4)
-	local ok = at("Root.ResultCard.OkButton")
+	local ok = at("Root.ResultCard.Body.OkButton")
 	if ok then
 		Mock.Click(ok)
 	end
@@ -486,7 +487,7 @@ end
 -- what LEAVE must keep clear of: the battle HUD's other parts + every other GUI's buttons
 local function obstacles(card)
 	local out = {}
-	for _, path in ipairs({ "Root.TopCard", "Root.Commands.AttackButton", "Root.Commands.RetreatButton", "Root.ResultCard" }) do
+	for _, path in ipairs({ "Root.TopCard", "Root.Commands.AttackButton", "Root.Commands.DashButton", "Root.ResultCard" }) do
 		local o = at(path)
 		if o and shown(o) then
 			out[#out + 1] = { path, rect(o) }
@@ -539,7 +540,7 @@ local function checkLeaveLayout(tag, sizes)
 		end
 		d.start()
 		advance(0.3)
-		local b = at("Root.Commands.LeaveButton")
+		local b = at("Root.LeaveButton")
 		local why = leaveProblem(b, w, h, obstacles(false))
 		T.check(why == nil, name .. ": the fight's LEAVE is readable, off the centre and covers no control / card / button", tostring(why) .. (b and string.format(" [%.0f,%.0f %.0fx%.0f]", b.AbsolutePosition.X, b.AbsolutePosition.Y, b.AbsoluteSize.X, b.AbsoluteSize.Y) or ""))
 		d.finish(ringWon(4))
@@ -567,7 +568,7 @@ S.client_p4fix_leave = guarded("client_p4fix_leave", function()
 		return
 	end
 	d.start()
-	local b = at("Root.Commands.LeaveButton")
+	local b = at("Root.LeaveButton")
 	T.check(b and shown(b) and b.Text == "LEAVE", "p4fix leave: a ring fight shows LEAVE beside ATTACK / RETREAT", b and tostring(b.Text) or "missing")
 	local mark = #Mock.RemoteLog
 	if b then
@@ -588,12 +589,12 @@ S.client_p4fix_leave = guarded("client_p4fix_leave", function()
 	-- the server ends the run (BattleService: Forfeit -> the run's final End)
 	d.finish(ringFinal(3))
 	advance(0.3)
-	T.check(shown(at("Root.ResultCard")) and not shown(at("Root.Commands.LeaveButton")), "p4fix leave: the run's End after a Forfeit in a fight: the result card, no LEAVE left")
+	T.check(shown(at("Root.ResultCard")) and not shown(at("Root.LeaveButton")), "p4fix leave: the run's End after a Forfeit in a fight: the result card, no LEAVE left")
 	closeBattle()
 	-- between two rounds: the next-round card has its own LEAVE, and Forfeit passes Command while the round has ended
 	d = newBattle("Ring", 3)
 	d.start()
-	b = at("Root.Commands.LeaveButton")
+	b = at("Root.LeaveButton")
 	T.check(b and b.Text == "LEAVE", "p4fix leave: the next run's round starts with a plain LEAVE", b and b.Text or "missing")
 	if b then
 		Mock.Click(b) -- armed in the fight ...
@@ -614,20 +615,20 @@ S.client_p4fix_leave = guarded("client_p4fix_leave", function()
 	T.check(forfeits(mark) == 1, "p4fix leave: the card's second tap sends Forfeit during the intermission (Command lets it through)", forfeits(mark) .. " sent")
 	d.finish(ringFinal(3))
 	advance(0.3)
-	T.check(shown(at("Root.ResultCard")) and not shown(at("Root.NextRoundCard")) and not shown(at("Root.Commands.LeaveButton")), "p4fix leave: the run's End shows the result card, no LEAVE left")
+	T.check(shown(at("Root.ResultCard")) and not shown(at("Root.NextRoundCard")) and not shown(at("Root.LeaveButton")), "p4fix leave: the run's End shows the result card, no LEAVE left")
 	closeBattle()
 	-- a trial has LEAVE, a duel never does (a forfeited duel costs trophies)
 	local tr = newBattle("Trial")
 	if tr then
 		tr.start()
-		T.check(shown(at("Root.Commands.LeaveButton")), "p4fix leave: a Trial shows LEAVE")
+		T.check(shown(at("Root.LeaveButton")), "p4fix leave: a Trial shows LEAVE")
 		tr.finish({ Mode = "Trial", Outcome = "Loss", Won = false, Spectator = false, Reason = "Forfeit", Rewards = { Tokens = 0, Gems = 0, Xp = 0, Trophies = 0, LevelUps = 0, Level = 3 } })
 		closeBattle()
 	end
 	local du = newBattle("Duel")
 	if du then
 		du.start()
-		T.check(shown(at("Root.Commands.AttackButton")) and not shown(at("Root.Commands.LeaveButton")), "p4fix leave: a duel has no LEAVE")
+		T.check(shown(at("Root.Commands.AttackButton")) and not shown(at("Root.LeaveButton")), "p4fix leave: a duel has no LEAVE")
 		du.finish({ Mode = "Duel", Outcome = "Win", Won = true, Spectator = false, Reason = "Wipe", Rewards = { Tokens = 60, Gems = 0, Xp = 60, Trophies = 25, LevelUps = 0 } })
 		closeBattle()
 	end

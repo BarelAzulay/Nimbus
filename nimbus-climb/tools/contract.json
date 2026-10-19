@@ -92,7 +92,6 @@
         "MaxEvolution",
         "EvolutionStage",
         "CanEvolve",
-        "EvolutionMultiplier",
         "RoleMultiplier",
         "GetElements",
         "ElementMultiplier",
@@ -110,7 +109,6 @@
         "WingStyles",
         "LevelCaps",
         "EvolutionLevels",
-        "EvolutionBoost",
         "RoleMult",
         "EvolutionBonus",
         "SpecialKinds",
@@ -177,15 +175,10 @@
         "GetLobbySpawnCFrame",
         "ApplyHumanoidStats",
         "GetMaxHealth",
-        "RefreshMaxHealth"
-      ],
-      "pending": {
-        "_comment": "ARCHITECTURE_V3.md \"Phase 5 build contract\" 7.2 (wave 3, menu)",
-        "functions": [
-          "SpawnPlayer",
-          "HasSpawned"
-        ]
-      }
+        "RefreshMaxHealth",
+        "SpawnPlayer",
+        "HasSpawned"
+      ]
     },
     "server/Services/DataService": {
       "functions": [
@@ -214,24 +207,19 @@
         "IsMigrated",
         "MarkMigrated",
         "MigratedNow",
-        "SetPetLevel"
+        "SetPetLevel",
+        "GetDungeon",
+        "MutateDungeon",
+        "GetBerries",
+        "AddBerries",
+        "SpendBerries",
+        "GetSettings",
+        "SetSetting"
       ],
       "signals": [
         "ProfileLoaded",
         "Migrated"
-      ],
-      "pending": {
-        "_comment": "ARCHITECTURE_V3.md \"Phase 5 build contract\" 9.1 (wave 1, data)",
-        "functions": [
-          "GetDungeon",
-          "MutateDungeon",
-          "GetBerries",
-          "AddBerries",
-          "SpendBerries",
-          "GetSettings",
-          "SetSetting"
-        ]
-      }
+      ]
     },
     "server/Services/DamageService": {
       "functions": [
@@ -292,14 +280,9 @@
       "functions": [
         "Init",
         "RemovePlayer",
-        "GetParty"
-      ],
-      "pending": {
-        "_comment": "ARCHITECTURE_V3.md \"Phase 5 build contract\" 6.3 (wave 2, worldlobby)",
-        "functions": [
-          "PickLevel"
-        ]
-      }
+        "GetParty",
+        "PickLevel"
+      ]
     },
     "server/Services/PetService": {
       "functions": [
@@ -310,18 +293,13 @@
         "GetEquipped",
         "GetPerks",
         "GetTokenMultiplier",
-        "Refresh"
+        "Refresh",
+        "UnequipKey"
       ],
       "signals": [
         "PerksChanged",
         "Rolled"
-      ],
-      "pending": {
-        "_comment": "ARCHITECTURE_V3.md \"Phase 4 build contract\" section 5.4 (wave 2, care engineer)",
-        "functions": [
-          "UnequipKey"
-        ]
-      }
+      ]
     },
     "server/Services/ItemService": {
       "functions": [
@@ -369,14 +347,9 @@
     "server/Services/StormAltar": {
       "optional": true,
       "functions": [
-        "Build"
-      ],
-      "pending": {
-        "_comment": "ARCHITECTURE_V3.md \"Phase 5 build contract\" 6.1 (wave 2, worldlobby)",
-        "functions": [
-          "GetLanding"
-        ]
-      }
+        "Build",
+        "GetLanding"
+      ]
     },
     "client/State": {
       "functions": [
@@ -388,18 +361,13 @@
         "ItemCount",
         "Tokens",
         "IsDiscovered",
-        "IsClaimed"
+        "IsClaimed",
+        "PetGrowth",
+        "Ring"
       ],
       "signals": [
         "Changed"
-      ],
-      "pending": {
-        "_comment": "ARCHITECTURE_V3.md \"Phase 4 build contract\" section 5.4 (wave 1, data engineer)",
-        "functions": [
-          "PetGrowth",
-          "Ring"
-        ]
-      }
+      ]
     },
     "client/UI/CloudUI": {
       "functions": [
@@ -420,16 +388,11 @@
     "client/Controllers/MovementController": {
       "functions": [
         "Init",
-        "GetDashCooldownFraction"
-      ],
-      "pending": {
-        "_comment": "ARCHITECTURE_V3.md \"Phase 5 build contract\" 3.9 / 4.4 (wave 3, battleclient)",
-        "functions": [
-          "SetDashKeys",
-          "SetFreeDash",
-          "SetBattleSpeed"
-        ]
-      }
+        "GetDashCooldownFraction",
+        "SetDashKeys",
+        "SetFreeDash",
+        "SetBattleSpeed"
+      ]
     },
     "client/Controllers/HudController": {
       "functions": [
@@ -459,28 +422,18 @@
     "client/Controllers/HotbarController": {
       "functions": [
         "Init",
-        "UseSlot"
-      ],
-      "pending": {
-        "_comment": "ARCHITECTURE_V3.md \"Phase 5 build contract\" 6.6 (wave 2, neonkit)",
-        "functions": [
-          "SetAvoidRight"
-        ]
-      }
+        "UseSlot",
+        "SetAvoidRight"
+      ]
     },
     "client/Controllers/PetController": {
       "functions": [
         "Init",
         "Stop",
         "GetPetCount",
-        "PlayEvolution"
-      ],
-      "pending": {
-        "_comment": "ARCHITECTURE_V3.md \"Phase 5 build contract\" 3.8 (wave 3, homefx+pets)",
-        "functions": [
-          "FormationFor"
-        ]
-      }
+        "PlayEvolution",
+        "FormationFor"
+      ]
     },
     "client/Controllers/TokenFx": {
       "functions": [
@@ -533,38 +486,31 @@
         "GardenSlots",
         "LuckyEV",
         "CoinValue",
-        "HeapStage",
         "XpForLevel",
         "FoodOf",
         "PetPower",
         "LuckyChance",
         "ScoopRadius",
         "PileSeconds",
-        "CoinPoint",
         "FeedXp",
         "FeedPrice",
         "TrainCost",
         "TrainSeconds",
         "TrainingSlots",
         "StarPriceMultiplier",
-        "PriceAt"
+        "PriceAt",
+        "SignedPads",
+        "FoldLegacy",
+        "BasketCap",
+        "FeedBerries",
+        "RoamLayout",
+        "LegacyMagnetLevel"
       ],
       "fields": [
         "Coins",
         "FeedShare",
         "Training"
-      ],
-      "pending": {
-        "_comment": "ARCHITECTURE_V3.md \"Phase 5 build contract\" 3.3-3.5 (wave 1, economy+roam)",
-        "functions": [
-          "SignedPads",
-          "FoldLegacy",
-          "BasketCap",
-          "FeedBerries",
-          "RoamLayout",
-          "LegacyMagnetLevel"
-        ]
-      }
+      ]
     },
     "shared/BattleCatalog": {
       "functions": [
@@ -579,35 +525,28 @@
         "RingTarget",
         "RingSeconds",
         "ChampionTeam",
-        "RingRewards"
+        "RingRewards",
+        "RoleOf",
+        "DungeonPower",
+        "DungeonWave",
+        "DungeonRewards",
+        "DungeonFirstClear",
+        "DungeonChest"
       ],
       "fields": [
         "Zones",
         "TimeLimits",
         "TrainingSkills",
         "Ring",
-        "Training"
-      ],
-      "pending": {
-        "_comment": "ARCHITECTURE_V3.md \"Phase 5 build contract\" 4.2 / 5.1 (wave 1, battlecore)",
-        "functions": [
-          "RoleOf",
-          "DungeonPower",
-          "DungeonWave",
-          "DungeonRewards",
-          "DungeonFirstClear",
-          "DungeonChest"
-        ],
-        "fields": [
-          "Fighter",
-          "ElementAttacks",
-          "Buffs",
-          "Roles",
-          "LossRules",
-          "Dungeon",
-          "DungeonFloors"
-        ]
-      }
+        "Training",
+        "Fighter",
+        "ElementAttacks",
+        "Buffs",
+        "Roles",
+        "LossRules",
+        "Dungeon",
+        "DungeonFloors"
+      ]
     },
     "server/Services/TycoonService": {
       "optional": true,
@@ -625,7 +564,8 @@
         "PileSeconds",
         "CoinsWaiting",
         "OpenHomePortal",
-        "ClearCoins"
+        "ClearCoins",
+        "Drops"
       ],
       "signals": [
         "HomeChanged",
@@ -634,13 +574,7 @@
         "Released",
         "CoinsScooped",
         "PortalUsed"
-      ],
-      "pending": {
-        "_comment": "ARCHITECTURE_V3.md \"Phase 5 build contract\" 3.5 (wave 2, tycoon+care)",
-        "functions": [
-          "Drops"
-        ]
-      }
+      ]
     },
     "server/Services/PetCareService": {
       "optional": true,
@@ -648,49 +582,37 @@
         "Init",
         "Feed",
         "GrantXp",
-        "LevelCap"
+        "LevelCap",
+        "Evolve",
+        "Train",
+        "TrainStop",
+        "ClearSessions"
       ],
       "signals": [
         "Fed",
-        "LevelUp"
-      ],
-      "pending": {
-        "_comment": "ARCHITECTURE_V3.md \"Phase 4 build contract\" section 5.4 (wave 2, care engineer)",
-        "functions": [
-          "Evolve",
-          "Train",
-          "TrainStop",
-          "ClearSessions"
-        ],
-        "signals": [
-          "Evolved",
-          "TrainingStarted",
-          "TrainingDone"
-        ]
-      }
+        "LevelUp",
+        "Evolved",
+        "TrainingStarted",
+        "TrainingDone"
+      ]
     },
     "server/Services/BattleService": {
       "optional": true,
       "functions": [
         "Init",
         "StartRing",
-        "KeysInBattle"
+        "KeysInBattle",
+        "OpenEncounter",
+        "SpawnWave",
+        "FinishEncounter",
+        "RemoveEncounterTeam",
+        "EncounterStatus",
+        "TeamSpec",
+        "SetRunProvider"
       ],
       "signals": [
         "BattleEnded"
-      ],
-      "pending": {
-        "_comment": "ARCHITECTURE_V3.md \"Phase 5 build contract\" 4.4-4.6 (wave 2, battleservice)",
-        "functions": [
-          "OpenEncounter",
-          "SpawnWave",
-          "FinishEncounter",
-          "RemoveEncounterTeam",
-          "EncounterStatus",
-          "TeamSpec",
-          "SetRunProvider"
-        ]
-      }
+      ]
     },
     "server/Services/HomeBuilder": {
       "optional": true,
@@ -717,24 +639,18 @@
     },
     "client/UI/PetCard": {
       "optional": true,
-      "pending": {
-        "_comment": "ARCHITECTURE_V3.md \"Phase 4 build contract\" section 5.4 (wave 2, pets engineer): a missing file is info until it lands",
-        "functions": [
-          "New"
-        ]
-      }
+      "functions": [
+        "New"
+      ]
     },
     "client/Controllers/CareController": {
       "optional": true,
-      "pending": {
-        "_comment": "ARCHITECTURE_V3.md \"Phase 4 build contract\" section 5.4 (wave 3, careui engineer)",
-        "functions": [
-          "Init",
-          "Open",
-          "Close",
-          "IsOpen"
-        ]
-      }
+      "functions": [
+        "Init",
+        "Open",
+        "Close",
+        "IsOpen"
+      ]
     },
     "client/Controllers/HomePortalFx": {
       "optional": true,
@@ -761,135 +677,105 @@
     },
     "shared/HomeRoam": {
       "optional": true,
-      "pending": {
-        "_comment": "ARCHITECTURE_V3.md \"Phase 5 build contract\" 3.5 (wave 1, economy+roam)",
-        "functions": [
-          "Plan",
-          "At",
-          "Build",
-          "PoopTime",
-          "EatPoint",
-          "BedPoint"
-        ],
-        "fields": [
-          "Version"
-        ]
-      }
+      "functions": [
+        "Plan",
+        "At",
+        "Build",
+        "PoopTime",
+        "EatPoint",
+        "BedPoint"
+      ],
+      "fields": [
+        "Version"
+      ]
     },
     "shared/TokenLook": {
       "optional": true,
-      "pending": {
-        "_comment": "ARCHITECTURE_V3.md \"Phase 5 build contract\" 3.5 (wave 1, economy+roam)",
-        "functions": [
-          "Build"
-        ]
-      }
+      "functions": [
+        "Build"
+      ]
     },
     "shared/WorldStyle": {
       "optional": true,
-      "pending": {
-        "_comment": "ARCHITECTURE_V3.md \"Phase 5 build contract\" 6.2 (wave 1, worldstyle)",
-        "functions": [
-          "BuildGate",
-          "Plinth",
-          "Kerb",
-          "Chamfer"
-        ],
-        "fields": [
-          "Materials",
-          "Palette"
-        ]
-      }
+      "functions": [
+        "BuildGate",
+        "Plinth",
+        "Kerb",
+        "Chamfer"
+      ],
+      "fields": [
+        "Materials",
+        "Palette"
+      ]
     },
     "server/Services/GateService": {
       "optional": true,
-      "pending": {
-        "_comment": "ARCHITECTURE_V3.md \"Phase 5 build contract\" 6.2 (wave 2, worldlobby)",
-        "functions": [
-          "Init"
-        ],
-        "signals": [
-          "Teleported"
-        ]
-      }
+      "functions": [
+        "Init"
+      ],
+      "signals": [
+        "Teleported"
+      ]
     },
     "server/Services/DungeonBuilder": {
       "optional": true,
-      "pending": {
-        "_comment": "ARCHITECTURE_V3.md \"Phase 5 build contract\" 5.5 (wave 3, dungeon)",
-        "functions": [
-          "Build",
-          "BuildPortal",
-          "BuildRun",
-          "FreeRun"
-        ]
-      }
+      "functions": [
+        "Build",
+        "BuildPortal",
+        "BuildRun",
+        "FreeRun"
+      ]
     },
     "server/Services/DungeonService": {
       "optional": true,
-      "pending": {
-        "_comment": "ARCHITECTURE_V3.md \"Phase 5 build contract\" 5.4 (wave 3, dungeon)",
-        "functions": [
-          "Init",
-          "KickMember"
-        ],
-        "signals": [
-          "RunEnded"
-        ]
-      }
+      "functions": [
+        "Init",
+        "KickMember"
+      ],
+      "signals": [
+        "RunEnded"
+      ]
     },
     "client/LightingStack": {
       "optional": true,
-      "pending": {
-        "_comment": "ARCHITECTURE_V3.md \"Phase 5 build contract\" 6.4 (wave 1, worldstyle)",
-        "functions": [
-          "Push",
-          "Pop",
-          "Top"
-        ]
-      }
+      "functions": [
+        "Push",
+        "Pop",
+        "Top"
+      ]
     },
     "client/UiGate": {
       "optional": true,
-      "pending": {
-        "_comment": "ARCHITECTURE_V3.md \"Phase 5 build contract\" 7.2 (wave 3, menu)",
-        "functions": [
-          "HasPlayed",
-          "WaitForPlay",
-          "MarkPlayed"
-        ],
-        "signals": [
-          "Played"
-        ],
-        "fields": [
-          "ALLOW"
-        ]
-      }
+      "functions": [
+        "HasPlayed",
+        "WaitForPlay",
+        "MarkPlayed"
+      ],
+      "signals": [
+        "Played"
+      ],
+      "fields": [
+        "ALLOW"
+      ]
     },
     "client/UI/NeonKit": {
       "optional": true,
-      "pending": {
-        "_comment": "ARCHITECTURE_V3.md \"Phase 5 build contract\" 6.6 (wave 2, neonkit)",
-        "functions": [
-          "Card",
-          "Tile",
-          "Icon",
-          "Orb",
-          "Button",
-          "Pill",
-          "Dock",
-          "SideRect"
-        ]
-      }
+      "functions": [
+        "Card",
+        "Tile",
+        "Icon",
+        "Orb",
+        "Button",
+        "Pill",
+        "Dock",
+        "SideRect"
+      ]
     },
     "client/Controllers/MainMenuController": {
       "optional": true,
-      "pending": {
-        "_comment": "ARCHITECTURE_V3.md \"Phase 5 build contract\" 7.2 (wave 3, menu)",
-        "functions": [
-          "Init"
-        ]
-      }
+      "functions": [
+        "Init"
+      ]
     },
     "client/Controllers/DungeonController": {
       "optional": true,
@@ -908,11 +794,49 @@
           "Init"
         ]
       }
+    },
+    "client/ClientSettings": {
+      "optional": true,
+      "_comment": "ARCHITECTURE_V3.md \"Phase 5 build contract\" 7.3 (wave 3, menu)",
+      "functions": [
+        "Get",
+        "All",
+        "Set",
+        "Clean"
+      ],
+      "signals": [
+        "Changed"
+      ],
+      "fields": [
+        "KEYS",
+        "DEFAULTS"
+      ]
+    },
+    "client/SoundFx": {
+      "optional": true,
+      "_comment": "ARCHITECTURE_V3.md \"Phase 5 build contract\" 7.3 (wave 3, menu)",
+      "functions": [
+        "Play",
+        "Music",
+        "Current",
+        "Volume"
+      ]
+    },
+    "client/GraphicsQuality": {
+      "optional": true,
+      "_comment": "ARCHITECTURE_V3.md \"Phase 5 build contract\" 7.3 (wave 3, menu)",
+      "functions": [
+        "Init",
+        "Apply",
+        "Effective",
+        "Resolve"
+      ]
     }
   },
   "scripts": [
     "server/Main",
-    "client/Main"
+    "client/Main",
+    "first/LoadingScreen"
   ],
   "v2": {
     "_comment": "Numbers and names the v2 scenarios assert (kept here so a change in ARCHITECTURE_V2.md is a one-line edit).",

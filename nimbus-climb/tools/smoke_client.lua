@@ -1341,78 +1341,59 @@ S.client_mobile = guarded("client_mobile", function()
 						T.check(not overlaps(col, o), label .. ": the menu column does not cover " .. other[2], show(col) .. " vs " .. show(o))
 					end
 				end
-				-- MenuController (v3, ARCHITECTURE_V3.md section 9): six tiles under ONE UIScale, anchored (0, 0.5), laid out as
-				-- "Column" (labelled tiles in one column), "Grid" (labelled tiles, 2 x 3, short landscape screens) or "Compact"
-				-- (icon-only tiles in one column, narrow portrait screens). Its size must be the laid-out entries plus the scaled
-				-- gaps, scaled once (the mock used to apply the UIScale twice: 158 px instead of 219 on a 844x390 phone), and it
-				-- must sit vertically centred in the ScreenGui area (on touch landscape screens: above Roblox's thumbstick).
-				local entries, sum = {}, 0
+				-- MenuController (Phase 5, 6.6): a 2 x 3 grid of 66 px tiles (gap 6) and a small row of 46 px tiles (Stats + the
+				-- gear) under ONE UIScale (ColumnScale). Its size must be the laid-out grid + row, scaled once (the mock used to
+				-- apply the UIScale twice), vertically centred in the screen area on desktops, above Roblox's thumbstick on touch
+				-- landscape screens, and above the bottom sheet's top (0.44 H) on portrait phones.
+				local entries, grid = {}, {}
 				for _, entry in ipairs(menuColumn:GetChildren()) do
 					if entry:IsA("GuiObject") and entry.Name:find("^Entry_") then
 						entries[#entries + 1] = entry
-						sum = sum + entry.AbsoluteSize.Y
 					end
 				end
 				local count = #entries
 				local colScale = menuColumn:FindFirstChildOfClass("UIScale")
 				local factor = colScale and colScale.Scale or 1
-				local gridLayout = menuColumn:FindFirstChildOfClass("UIGridLayout")
-				local xs, labelsShown = {}, 0
+				local biggest = 0
 				for _, entry in ipairs(entries) do
-					xs[math.floor(entry.AbsolutePosition.X + 0.5)] = true
-					for _, d in ipairs(entry:GetDescendants()) do
-						if d:IsA("TextLabel") and isShown(d) and tostring(d.Text):gsub("%s", "") ~= "" and d.AbsoluteSize.Y > 0 then
-							labelsShown = labelsShown + 1
-						end
+					biggest = math.max(biggest, entry.AbsoluteSize.X)
+				end
+				local xs, ys = {}, {}
+				for _, entry in ipairs(entries) do
+					if entry.AbsoluteSize.X >= biggest - 1 then
+						grid[#grid + 1] = entry
+						xs[math.floor(entry.AbsolutePosition.X + 0.5)] = true
+						ys[math.floor(entry.AbsolutePosition.Y + 0.5)] = true
 					end
 				end
-				local columns = 0
+				local columns, rows = 0, 0
 				for _ in pairs(xs) do
 					columns = columns + 1
 				end
-				-- icon-only tiles are square (entry height == tile width); labelled tiles are taller than wide
-				local designH = count > 0 and entries[1].AbsoluteSize.Y / factor or 0
-				local designW = count > 0 and entries[1].AbsoluteSize.X / factor or 0
-				local mode = gridLayout and "Grid" or (designH < designW - 4 and "Compact" or "Column")
-				T.info("*" .. label .. ": menu layout " .. mode .. " (" .. columns .. " column(s), scale " .. fmt(factor, 2) .. ", entry " .. fmt(designW, 0) .. "x" .. fmt(designH, 0) .. " design px, " .. labelsShown .. " texts shown)")
-				if T.check(count == #CONTRACT.v3.menuEntries, label .. ": the menu column has six entries", tostring(count)) then
-					local expected
-					if gridLayout then
-						local rows = math.ceil(count / 2)
-						expected = (rows * gridLayout.CellSize.Y.Offset + (rows - 1) * gridLayout.CellPadding.Y.Offset) * factor
-						T.eq(columns, 2, label .. ": the grid layout is 2 x 3 (two columns)")
-					else
-						expected = sum + 6 * (count - 1) * factor
-						T.eq(columns, 1, label .. ": the list layouts keep one column")
-					end
-					T.check(math.abs(menuColumn.AbsoluteSize.Y - expected) <= 1.5, label .. ": the menu column height is its entries + gaps, scaled once", fmt(menuColumn.AbsoluteSize.Y, 1) .. " px vs " .. fmt(expected, 1))
-					if mode == "Compact" then
-						T.check(w < h, label .. ": icon-only tiles are used on portrait screens only")
-						local named = 0
-						for _, entry in ipairs(entries) do
-							local l = entry:FindFirstChild("Label", true)
-							if l and isShown(l) then
-								named = named + 1
+				for _ in pairs(ys) do
+					rows = rows + 1
+				end
+				T.info("*" .. label .. ": menu grid " .. columns .. "x" .. rows .. " + small row, scale " .. fmt(factor, 2))
+				if T.check(count == #CONTRACT.v3.menuEntries, label .. ": the menu column has its entries (six tiles + Stats)", tostring(count)) then
+					T.check(#grid == 6 and columns == 2 and rows == 3, label .. ": the tiles form a 2 x 3 grid", #grid .. " tiles, " .. columns .. " column(s), " .. rows .. " row(s)")
+					local expected = (3 * (66 + 6) + 2 + 46) * factor
+					T.check(math.abs(menuColumn.AbsoluteSize.Y - expected) <= 1.5, label .. ": the menu column height is the grid + the small row, scaled once", fmt(menuColumn.AbsoluteSize.Y, 1) .. " px vs " .. fmt(expected, 1))
+					local smallest = math.huge
+					for _, entry in ipairs(entries) do
+						for _, d in ipairs(entry:GetDescendants()) do
+							if d:IsA("TextLabel") and isShown(d) and not d.TextScaled then
+								smallest = math.min(smallest, d.TextSize * factor)
 							end
 						end
-						T.eq(named, 0, label .. ": icon-only tiles hide their labels")
 					end
-					T.check(mode ~= "Grid" or w > h, label .. ": the 2 x 3 grid is used on landscape screens only")
-					if mode == "Column" or mode == "Grid" then
-						local smallest = math.huge
-						for _, entry in ipairs(entries) do
-							for _, d in ipairs(entry:GetDescendants()) do
-								if d:IsA("TextLabel") and isShown(d) and not d.TextScaled then
-									smallest = math.min(smallest, d.TextSize * factor)
-								end
-							end
-						end
-						T.check(smallest >= 14, label .. ": menu tile labels stay readable (>= 14 px on screen)", fmt(smallest, 1) .. " px")
-					end
+					T.check(smallest >= 14, label .. ": menu tile labels stay readable (>= 14 px on screen)", fmt(smallest, 1) .. " px")
 				end
 				local area = Mock.GuiLayerSize(menuColumn)
 				local uis = game:GetService("UserInputService")
-				if area and w >= h and uis.TouchEnabled and not uis.KeyboardEnabled then
+				if area and w < h then
+					-- portrait: the grid sits above the bottom sheet's top edge (0.44 of the screen height)
+					T.check(col.y1 <= 0.44 * h + 1.5, label .. ": the menu grid sits above the bottom sheet's top (0.44 H, portrait)", show(col) .. " vs " .. fmt(0.44 * h, 1))
+				elseif area and uis.TouchEnabled and not uis.KeyboardEnabled then
 					-- release pass: on touch landscape screens the column sits in the band above Roblox's thumbstick
 					-- (classic stick / dynamic idle ring: top at H - 93 on small screens, H - 210 on large ones)
 					local stickTop = (math.min(w, h) <= 500) and (h - 93) or (h - 210)

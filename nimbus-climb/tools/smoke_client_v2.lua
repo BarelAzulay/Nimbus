@@ -936,13 +936,46 @@ S.client_menu = guarded("client_menu", function()
 		end
 		T.check(present == #names and extra == #names, "...with six entries: " .. table.concat(names, ", "), present .. " of " .. #names .. " found, " .. extra .. " entries in total")
 		T.check(buttonsOk, "...each tile is a TextButton named MenuButton_<Id> (the tutorial rings it)")
-		local ordered = true
-		for i = 2, #names do
-			if entries[names[i]] and entries[names[i - 1]] and entries[names[i]].AbsolutePosition.Y <= entries[names[i - 1]].AbsolutePosition.Y then
-				ordered = false
+		-- Phase 5 (6.6): a 2 x 3 grid of tiles in menu order (row = floor((i-1)/2): Y rises by row, X by column) and a
+		-- small row (Stats + the gear) under it
+		local grid, small = {}, {}
+		for _, n in ipairs(names) do
+			local e = entries[n]
+			if e then
+				if e.AbsoluteSize.X < (entries.Pets or e).AbsoluteSize.X - 1 then
+					small[#small + 1] = e
+				else
+					grid[#grid + 1] = e
+				end
 			end
 		end
-		T.check(ordered, "...stacked top to bottom in that order")
+		table.sort(grid, function(a, b)
+			return a.LayoutOrder < b.LayoutOrder
+		end)
+		local ordered, why = #grid == 6, (#grid .. " grid tiles")
+		for i = 1, #grid do
+			for j = i + 1, #grid do
+				local a, b = grid[i], grid[j]
+				local ra, rb = math.floor((i - 1) / 2), math.floor((j - 1) / 2)
+				local ay, by = a.AbsolutePosition.Y, b.AbsolutePosition.Y
+				local ax, bx = a.AbsolutePosition.X, b.AbsolutePosition.X
+				if ra < rb and not (ay < by - 1) then
+					ordered, why = false, a.Name .. " is not above " .. b.Name
+				elseif ra == rb and not (abs(ay - by) <= 1 and ax < bx - 1) then
+					ordered, why = false, a.Name .. " / " .. b.Name .. " are not side by side in order"
+				end
+			end
+		end
+		local lowest = -math.huge
+		for _, e in ipairs(grid) do
+			lowest = math.max(lowest, e.AbsolutePosition.Y + e.AbsoluteSize.Y)
+		end
+		for _, e in ipairs(small) do
+			if e.AbsolutePosition.Y < lowest - 1 then
+				ordered, why = false, e.Name .. " (small row) is not under the grid"
+			end
+		end
+		T.check(ordered, "...laid out as a 2-column grid in menu order (the small row under it)", why)
 		local cx = column.AbsolutePosition.X + column.AbsoluteSize.X / 2
 		local cy = column.AbsolutePosition.Y + column.AbsoluteSize.Y / 2
 		T.check(cx < vp.X * 0.12, "the column is on the left edge", string.format("centre x %.2f of the screen", cx / vp.X))
@@ -963,11 +996,12 @@ S.client_menu = guarded("client_menu", function()
 			local small, measured = KC.smallTexts(15)
 			T.check(#small == 0 and measured > 0, "Inventory window: every text on screen is readable (>= 15 px at 1920x1080)", #small .. " of " .. measured .. " too small: " .. table.concat(small, "; ", 1, math.min(#small, 6)))
 		end
-		local cxw = inv.AbsolutePosition.X + inv.AbsoluteSize.X / 2
-		local cyw = inv.AbsolutePosition.Y + inv.AbsoluteSize.Y / 2
-		T.check(abs(cxw - vp.X / 2) < vp.X * 0.05 and abs(cyw - vp.Y / 2) < vp.Y * 0.1, "windows open centred on the screen", string.format("centre %.2f,%.2f", cxw / vp.X, cyw / vp.Y))
+		-- Phase 5 (6.6, the window rule): windows dock RIGHT on landscape screens (NeonKit.Dock's DockMode 'Side')
+		local rightEdge = inv.AbsolutePosition.X + inv.AbsoluteSize.X
+		T.check(inv:GetAttribute("DockMode") == "Side" and rightEdge <= vp.X + 1 and vp.X - rightEdge <= vp.X * 0.05,
+			"windows open docked right (DockMode Side, the right edge within the margin)", string.format("DockMode %s, right edge %.0f of %d", tostring(inv:GetAttribute("DockMode")), rightEdge, vp.X))
 		T.check(findText("equipped 2/3", inv) ~= nil, "the Pets tab shows 'Equipped 2/3'", allShownText())
-		T.check(findText("inventory", inv) ~= nil, "...in a window titled Inventory")
+		T.check(findText("pets", inv) ~= nil, "...in a window titled Pets (the title follows the tab)")
 		local tabsFound = findText("^pets$", inv, true) ~= nil and findText("^items$", inv, true) ~= nil
 		T.check(tabsFound, "...with the tabs Pets and Items")
 		local grid = descendantNamed(inv, "CloudGrid")

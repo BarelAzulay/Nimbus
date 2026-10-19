@@ -686,11 +686,10 @@ local function coinChecks(TC, PC, Config)
 		and TC.OfflineEarnings(home({ Vault = 1 }, 0), 7200, 10) == 3600 and TC.OfflineEarnings(home({ Vault = 5 }, 0), 99999, 10) == floor(10 * 4 * 3600 * 0.3),
 		"economy: OfflineEarnings (0 without a Vault, 0 under 120 s, capped by OfflineHours)")
 	T.check(near(TC.CoinValue(home({ Garden = 1, Press1 = 1 }, 2), 2), 19 * 2 * 1.5625), "economy: CoinValue = Food x power x 1.25 ^ stars")
-	T.check(TC.HeapStage(0) == 0 and TC.HeapStage(1) == 1 and TC.HeapStage(3) == 2 and TC.HeapStage(4) == 3 and TC.HeapStage(9) == 4,
-		"economy: HeapStage (deprecated until the W2 gate) follows Coins.DropStages {1, 2, 4, 8}")
-	local cp = TC.CoinPoint(1)
-	T.check(typeof(cp) == "Vector3" and cp.X == -9 and cp.Z == -6.5 and TC.CoinPoint(13) == nil,
-		"economy: CoinPoint (deprecated until the W2 gate) answers the slot's bed")
+	T.check(TC.HeapStage == nil and TC.CoinPoint == nil, "economy: the deprecated HeapStage / CoinPoint are gone (W3 gate)")
+	local bed = TC.ById.Garden.Slot.Beds[1]
+	T.check(typeof(bed) == "Vector3" and bed.X == -9 and bed.Z == -6.5 and TC.ById.Garden.Slot.Beds[13] == nil,
+		"economy: Garden.Slot.Beds[1] is the slot's bed (12 beds)")
 end
 
 local function careChecks(TC, PC)

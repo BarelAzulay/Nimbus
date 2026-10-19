@@ -327,10 +327,11 @@ end
 -- Phase 4 numbers (PetCatalog: evolution; TycoonCatalog: Prestige garden places; BattleCatalog: the ring record)
 local PC = PetCatalog or {}
 local evoLevels = type(PC.EvolutionLevels) == "table" and PC.EvolutionLevels or { 20, 50 }
-local evoBoost = type(PC.EvolutionBoost) == "table" and PC.EvolutionBoost or { 1.25, 1.5 }
+-- Phase 5 (3.1): EVOLVE multiplies the level bonus (PetCatalog.EvolutionBonusOf: x1.5 / x1.875)
+local evoBonusOf = type(PC.EvolutionBonusOf) == "function" and tonumber(PC.EvolutionBonusOf(1)) or 1.5
 local roleMult = type(PC.RoleMult) == "table" and PC.RoleMult or { Economy = 1.6 }
 local economyBonus = percent((tonumber(roleMult.Economy) or 1.6) - 1)
-local evoBonus = percent((tonumber(evoBoost[1]) or 1.25) - 1)
+local evoBonus = "x" .. (string.format("%.3f", evoBonusOf):gsub("0+$", ""):gsub("%.$", ""))
 local placesPerStar = tonumber(PR.GardenSlotsPerStar) or 1
 local placeWord = placesPerStar == 1 and "one more garden place" or (number(placesPerStar) .. " more garden places")
 
@@ -436,8 +437,8 @@ NpcDialog.Npcs = {
 				.. (cheapGemSpin and ("Gems buy spins too: a " .. cheapGemSpin .. "!") or "The shop shows every chance."),
 			"Every pet you find fills the Pet Index. Complete a rarity group for a reward: " .. indexRewardRange() .. "!",
 			feedLine(),
-			"At level " .. number(evoLevels[1] or 20) .. " a pet glows gold: press EVOLVE for +" .. evoBonus
-				.. " to everything! Epic and rarer pets evolve again at " .. number(evoLevels[2] or 50) .. ".",
+			"At level " .. number(evoLevels[1] or 20) .. " a pet glows gold: press EVOLVE for a level bonus " .. evoBonus
+				.. "! Epic and rarer pets evolve again at " .. number(evoLevels[2] or 50) .. ".",
 		},
 	},
 	{
