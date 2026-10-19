@@ -110,6 +110,12 @@ local K = {
 	TALL = 760,
 	STRIP_H = 64, -- the group strip of the tall layout (tiles + room for its scroll bar)
 	STRIP_TILE_W = 150,
+	STRIP_NAME_PAD = 34, -- a strip tile's name runs past the faint star art (the badge corner stays clear)
+	PANEL_INSET_W = 24, -- the Neon panel's content inset (left + right, design px)
+	REWARD_ROOMY_W = 480, -- a reward box narrower than this (design px) gets the 150 x 52 CLAIM button
+	REWARD_LABEL_W = 112, -- "Rewards:" (Heading 22) and its gap
+	REWARD_AMOUNT_W = 140, -- the widest amount (the Secret group's "☁ 10,000" in Display 30)
+	REWARD_SUB_MIN_W = 150, -- narrower than this, the line under the amount is left out (no 4-line wrap)
 	ELEMENTS_STRIP_W = 132,
 	ELEMENTS_BTN_H = 52,
 	ELEMENTS_BTN_H_SHORT = 44,
@@ -904,6 +910,13 @@ local function relayout()
 	U.Rewards.Size = UDim2.new(1, 0, 0, rewardH)
 	U.RewardSub.Visible = not short
 	U.RewardLabel.Visible = not (short and narrow)
+	-- (a landscape phone's grid well only has room for the empty Fusions card's title: no sparkle, no explanation)
+	for _, part in ipairs({ "Glyph", "Body" }) do
+		local child = U.FusionEmpty and U.FusionEmpty:FindFirstChild(part)
+		if child then
+			child.Visible = not short
+		end
+	end
 	if short then
 		U.RewardLabel.AnchorPoint = Vector2.new(0, 0.5)
 		U.RewardLabel.Position = UDim2.new(0, 14, 0.5, 0)
@@ -914,29 +927,48 @@ local function relayout()
 		U.ClaimGlow.Size = UDim2.fromOffset(150 + 14, 52 + 10)
 		U.ClaimGlow.Position = UDim2.new(1, -14 - 75, 0.5, 0)
 	else
-		-- the portrait layout's centre is narrow: a smaller CLAIM button leaves the text more room
-		local buttonW, buttonH = tall and 150 or 184, tall and 52 or 60
+		-- the reward box follows the centre's own width (a docked 1920x1080 window has a narrow centre between the
+		-- group column and the detail card, like a portrait phone): a narrow centre gets the smaller CLAIM button,
+		-- and when "Rewards:" and the amount do not both fit left of it the amount takes the label's place
+		-- (Main is the window less the panel's content inset and its own 20 px)
+		local mainW = w - K.PANEL_INSET_W - 20
+		local centreW = tall and mainW or (mainW - groupW - detailW - 2 * K.GAP)
+		local small = tall or centreW < K.REWARD_ROOMY_W
+		local buttonW, buttonH = small and 150 or 184, small and 52 or 60
+		local textW = math.max(0, centreW - 16 - (buttonW + 14 + 10)) -- the room left of the button
+		local withLabel = textW >= K.REWARD_LABEL_W + K.REWARD_AMOUNT_W
+		U.RewardLabel.Visible = withLabel
+		S.RewardLabelOk = withLabel
 		U.RewardLabel.AnchorPoint = Vector2.new(0, 0)
 		U.RewardLabel.Position = UDim2.fromOffset(16, 8)
 		U.RewardAmount.AnchorPoint = Vector2.new(0, 0)
-		U.RewardAmount.Position = UDim2.fromOffset(tall and 128 or 140, 6)
-		U.RewardAmount.Size = UDim2.new(1, -(buttonW + (tall and 150 or 166)), 0, 32)
+		U.RewardAmount.Position = UDim2.fromOffset(withLabel and (16 + K.REWARD_LABEL_W) or 16, 6)
+		U.RewardAmount.Size = UDim2.new(0, math.max(0, withLabel and (textW - K.REWARD_LABEL_W) or textW), 0, 32)
 		U.ClaimButton.Size = UDim2.fromOffset(buttonW, buttonH)
 		U.ClaimGlow.Size = UDim2.fromOffset(buttonW + 16, buttonH + 16)
 		U.ClaimGlow.Position = UDim2.new(1, -14 - buttonW / 2, 0.5, 0)
+		S.RewardTextW = textW
 	end
-	S.RewardSubW = tall and -(150 + 44) or -230
+	if short then
+		S.RewardLabelOk = not narrow
+		S.RewardTextW = nil
+	end
 	if U.ElementsCard then
 		U.ElementsCard.Size = UDim2.new(1, 0, 1, -(rewardH + 8))
 	end
 	U.View.Size = UDim2.new(1, 0, 0, (short or tall) and K.VIEW_H_SHORT or K.VIEW_H)
 	local tileH = short and K.GROUP_TILE_H_SHORT or K.GROUP_TILE_H
 	local tileSize = tall and UDim2.new(0, K.STRIP_TILE_W, 1, 0) or UDim2.new(1, -10, 0, tileH)
+	-- the strip's tiles are narrow: the name gets the star art's room too, so "Uncommon" / "Legendary" stay on one
+	-- line at the 18 px minimum (TextScaled wraps a word that does not fit, mid-word)
+	local nameSize = UDim2.new(1, -(tall and K.STRIP_NAME_PAD or 52), 0, 30)
 	for _, tile in pairs(S.GroupTiles) do
 		tile.Button.Size = tileSize
+		tile.Name.Size = nameSize
 	end
 	if S.FusionTile then
 		S.FusionTile.Button.Size = tileSize
+		S.FusionTile.Name.Size = nameSize
 	end
 	if U.ElementsButton then
 		if tall then
@@ -1494,6 +1526,10 @@ local function renderRewards()
 		local compact = S.Short or S.Tall
 		U.RewardSub.Position = UDim2.fromOffset(16, compact and 4 or 8)
 		U.RewardSub.Size = UDim2.new(1, -(compact and 182 or 230), 1, compact and -8 or -16)
+		if S.RewardTextW and not S.Short then
+			-- (the same room as the reward line: left of the button)
+			U.RewardSub.Size = UDim2.new(0, S.RewardTextW, 1, compact and -8 or -16)
+		end
 		if machine then
 			U.RewardSub.Text = "Fuse 3 copies into Golden (x1.5), 3 Golden into Rainbow (x2.5), or mix two pets into a hybrid!"
 		elseif stars >= 1 then
@@ -1519,10 +1555,12 @@ local function renderRewards()
 	end
 	-- back from the Fusions tab: the reward box's own layout
 	U.RewardAmount.Visible = true
-	U.RewardLabel.Visible = not (S.Short and S.Narrow)
-	U.RewardSub.Visible = not S.Short
+	U.RewardLabel.Visible = S.RewardLabelOk ~= false
+	-- (the line under the amount, two lines at most, only when it is wide enough to read)
+	local subW = S.RewardTextW
+	U.RewardSub.Visible = not S.Short and subW ~= nil and subW >= K.REWARD_SUB_MIN_W
 	U.RewardSub.Position = UDim2.fromOffset(16, 44)
-	U.RewardSub.Size = UDim2.new(1, S.RewardSubW or -230, 0, 44)
+	U.RewardSub.Size = UDim2.new(0, subW or 0, 0, 44)
 	local found, total, complete, claimed, claimable = groupStatus(group)
 	U.RewardAmount.Text = TOKEN_GLYPH .. " " .. commas(rewardTokens(group))
 	local button = U.ClaimButton

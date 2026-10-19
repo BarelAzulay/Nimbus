@@ -1138,10 +1138,63 @@ function H.phoneRun(BC, sizes, scenario)
 	KC.flushErrors(scenario)
 end
 
+-- wave 5 (client-ux-3): a portrait phone whose currency pills sit top right (any player with Cash) gets a narrower
+-- fighter card; its energy caption must end before the lives hearts (the text's estimated width inside its label,
+-- the label clear of the hearts)
+function H.narrowCardChecks(BC, scenario)
+	local Config = H.moduleAt("shared", "Config")
+	local attr = Config and Config.Attr and Config.Attr.Cash
+	if not T.check(attr ~= nil, scenario .. ": Config.Attr.Cash") then
+		return
+	end
+	local gemAttr = Config.Attr.Gems
+	local oldCash, oldGems = LocalPlayer:GetAttribute(attr), gemAttr and LocalPlayer:GetAttribute(gemAttr)
+	LocalPlayer:SetAttribute(attr, 48250)
+	if gemAttr then
+		LocalPlayer:SetAttribute(gemAttr, 320)
+	end
+	Mock.SetViewport(390, 844)
+	H.step(3, 0.1)
+	local d = H.dungeon(4, true)
+	if T.check(d ~= nil, scenario .. ": driver (Cash pills top right)") then
+		H.begin(d)
+		d:run(0.8, 30)
+		local card = H.find("Root.Team.Fighter")
+		local energy = card and card:FindFirstChild("EnergyText", true)
+		local lives = card and card:FindFirstChild("Lives", true)
+		local cardW = card and card.AbsoluteSize.X or 0
+		T.check(card ~= nil and energy ~= nil and lives ~= nil, scenario .. ": the fighter card with its energy caption and hearts")
+		if energy and lives then
+			local er, lr = H.rect(energy), H.rect(lives)
+			-- (a generous glyph estimate: 0.6 of the on-screen text size per character)
+			local scale = (energy.AbsoluteSize.X > 0 and energy.Size.X.Offset > 0) and (energy.AbsoluteSize.X / energy.Size.X.Offset) or 1
+			local textW = #energy.Text * energy.TextSize * scale * 0.6
+			T.check(not H.overlap(er, lr), scenario .. ": the energy caption's label ends before the lives hearts", H.rectText(er) .. " vs " .. H.rectText(lr))
+			T.check(textW <= (er.x1 - er.x0) + 0.5, scenario .. ": '" .. energy.Text .. "' fits its label (no run under the hearts)",
+				string.format("text ~%.1f px, label %.1f px, card %.1f px", textW, er.x1 - er.x0, cardW))
+			T.check(energy.Text:find("%d+/%d+") ~= nil, scenario .. ": the caption still shows the energy count", energy.Text)
+		end
+		local pg = LocalPlayer:FindFirstChild("PlayerGui")
+		local cur = pg and pg:FindFirstChild("NimbusHud") and pg.NimbusHud:FindFirstChild("Currency", true)
+		-- (the case under test: the pills top right and the card narrowed to stay left of them)
+		local curR = cur and H.rect(cur)
+		T.check(curR ~= nil and cur:IsDescendantOf(pg.NimbusHud:FindFirstChild("TopRight") or pg) and card ~= nil and H.rect(card).x1 <= curR.x0 + 1,
+			scenario .. ": the currency pills sit top right and the fighter card narrows beside them",
+			string.format("card %.1f px, pills %s", cardW, curR and H.rectText(curR) or "nil"))
+		H.cleanup(BC, d)
+	end
+	LocalPlayer:SetAttribute(attr, oldCash)
+	if gemAttr then
+		LocalPlayer:SetAttribute(gemAttr, oldGems)
+	end
+	H.step(3, 0.1)
+end
+
 S.client_p5battle_mobile = guarded("client_p5battle_mobile", function()
 	local BC = H.load()
 	if BC then
 		H.phoneRun(BC, { { 390, 844 } }, "client_p5battle_mobile")
+		H.narrowCardChecks(BC, "client_p5battle_mobile")
 	end
 end)
 

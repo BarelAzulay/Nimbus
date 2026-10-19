@@ -1187,6 +1187,102 @@ local function clientScenarios()
 		end
 		T.check(#small == 0, "fusion window: every text is at least 18 design px (readability rule, under one UIScale)", table.concat(small, ", "))
 
+		-- wave 5 (client-ux-1): on phones the preview never stacks the name, the pills or the note on the cost / FUSE row,
+		-- and FUSE (left on a touch phone) never covers the cards or the "3/3" badge; checked at 4 sizes, both tabs
+		do
+			local UIS = game:GetService("UserInputService")
+			local old = { Mock.Viewport.X, Mock.Viewport.Y, UIS.TouchEnabled, UIS.KeyboardEnabled, UIS.MouseEnabled }
+			local function rect(o)
+				local p, z = o.AbsolutePosition, o.AbsoluteSize
+				return { x0 = p.X, y0 = p.Y, x1 = p.X + z.X, y1 = p.Y + z.Y }
+			end
+			local function overlap(a, b)
+				return a.x0 < b.x1 - 1 and b.x0 < a.x1 - 1 and a.y0 < b.y1 - 1 and b.y0 < a.y1 - 1
+			end
+			local function rtext(r)
+				return string.format("%d,%d-%d,%d", r.x0, r.y0, r.x1, r.y1)
+			end
+			local function shownIn(o, root)
+				while o and o ~= root do
+					if o:IsA("GuiObject") and not o.Visible then
+						return false
+					end
+					o = o.Parent
+				end
+				return true
+			end
+			LocalPlayer:SetAttribute(Config.Attr.Tokens, 10) -- (too poor: the red reason line is on screen too)
+			local bad = {}
+			for _, size in ipairs({ { 1920, 1080, false }, { 1280, 720, false }, { 390, 844, true }, { 844, 390, true } }) do
+				UIS.TouchEnabled, UIS.KeyboardEnabled, UIS.MouseEnabled = size[3], not size[3], not size[3]
+				Mock.SetViewport(size[1], size[2])
+				advance(0.2)
+				for _, tab in ipairs({ { "Upgrade", { Key = "pebble_pup" } }, { "Mix", { Key = "pip_penguin", KeyB = "ember_phoenix" } } }) do
+					FC.Open(tab[1], tab[2])
+					advance(0.4)
+					local preview = find(g, "Preview")
+					local bottom = preview and preview:FindFirstChild("Bottom")
+					local label = size[1] .. "x" .. size[2] .. " " .. tab[1]
+					if not (preview and bottom) then
+						bad[#bad + 1] = label .. ": no Preview / Bottom"
+					else
+						local pr = rect(preview)
+						local upper = {} -- what sits above the cost / FUSE row
+						for _, name in ipairs({ "ResultName", "Pills", "Info", "Copies", "Input1", "Input2", "Input3", "Result", "Body", "Style" }) do
+							local o = find(preview, name)
+							if o and o:IsA("GuiObject") and shownIn(o, preview) and o.AbsoluteSize.X > 2 and o.AbsoluteSize.Y > 2 and (not o:IsA("TextLabel") or o.Text ~= "") then
+								upper[#upper + 1] = { name, o }
+							end
+						end
+						local lower = {}
+						for _, name in ipairs({ "Fuse", "Cost" }) do
+							local o = bottom:FindFirstChild(name)
+							if o and o.Visible then
+								lower[#lower + 1] = { name, o }
+							end
+						end
+						for _, u in ipairs(upper) do
+							local ur = rect(u[2])
+							if u[1] == "Info" then
+								-- (the note shows through its clipping Details frame: it must fit there, not be cut)
+								local dr = rect(u[2].Parent)
+								if ur.y1 > dr.y1 + 1 then
+									bad[#bad + 1] = label .. ": the note is cut off (" .. rtext(ur) .. " in " .. rtext(dr) .. ") '" .. u[2].Text .. "'"
+								end
+								ur.y1 = math.min(ur.y1, dr.y1)
+							end
+							if ur.y1 > pr.y1 + 1 or ur.x1 > pr.x1 + 1 or ur.x0 < pr.x0 - 1 or ur.y0 < pr.y0 - 1 then
+								bad[#bad + 1] = label .. ": " .. u[1] .. " outside the preview " .. rtext(ur)
+							end
+							for _, l in ipairs(lower) do
+								if ur.y1 > ur.y0 + 1 and overlap(ur, rect(l[2])) then
+									bad[#bad + 1] = label .. ": " .. u[1] .. " " .. rtext(ur) .. " under " .. l[1] .. " " .. rtext(rect(l[2]))
+								end
+							end
+						end
+						-- the name and the pills / note never sit on the cards either
+						for _, a in ipairs({ "ResultName", "Pills", "Info" }) do
+							for _, u in ipairs(upper) do
+								if u[1] == a then
+									for _, c in ipairs(upper) do
+										if (c[1] == "Result" or c[1]:find("^Input") or c[1] == "Copies") and overlap(rect(u[2]), rect(c[2])) then
+											bad[#bad + 1] = label .. ": " .. a .. " over the card " .. c[1]
+										end
+									end
+								end
+							end
+						end
+					end
+				end
+			end
+			T.check(#bad == 0, "fusion window: at 1920x1080 / 1280x720 / 390x844 / 844x390 the preview's name, pills and note stay clear of the cost / FUSE row and the cards",
+				table.concat(bad, "; ", 1, math.min(#bad, 5)))
+			UIS.TouchEnabled, UIS.KeyboardEnabled, UIS.MouseEnabled = old[3], old[4], old[5]
+			Mock.SetViewport(old[1], old[2])
+			LocalPlayer:SetAttribute(Config.Attr.Tokens, 50000)
+			advance(0.3)
+		end
+
 		-- one window at a time: the menu closes it
 		KC.toClient("OpenPanel", "Inventory")
 		advance(0.5)

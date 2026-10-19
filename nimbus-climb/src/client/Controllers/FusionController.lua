@@ -109,6 +109,11 @@ local K = {
 	RESULT_SHORT = 92,
 	INPUT = 108,
 	INPUT_SHORT = 68,
+	RESULT_MIN = 72, -- the smallest result card a cramped portrait preview shrinks to
+	RESULT_FULL_MIN = 100, -- the full preview (title + pills) shrinks its cards down to this before it goes compact
+	RESULT_SIDE = 84, -- landscape phones: the cards beside the name column
+	INPUT_SIDE = 60,
+	NOTE_MIN = 24, -- one line of notes (18 px text) under the name / pills
 	TILE_BUDGET = 0.004, -- seconds of pet viewport building per frame (at least one per frame)
 	TILES_MAX = 3,
 	FUSE_TIMEOUT = 6, -- seconds the FUSE button waits for the server before it resets
@@ -598,6 +603,8 @@ local function computePlan()
 	plan.CanAfford = have >= plan.Cost.Amount
 	if not plan.CanAfford then
 		plan.Reason = "Not enough " .. ((plan.Cost.Currency == "Gems") and "Gems" or "Cloud Tokens") .. " (you have " .. commas(have) .. ")"
+		-- (the compact layouts: the red cost line already says how much, the HUD shows the balance)
+		plan.ReasonShort = "Not enough " .. ((plan.Cost.Currency == "Gems") and "Gems" or "Cloud Tokens")
 		return plan
 	end
 	if State.Get() and LocalPlayer and LocalPlayer:GetAttribute(Config.Attr.InMatch) == true then
@@ -756,6 +763,7 @@ local function relayout()
 		U.Picker.Position = UDim2.new(0, 0, 0, previewH + K.GAP)
 		U.Picker.Size = UDim2.new(1, 0, 1, -(previewH + K.GAP))
 	else
+		S.PreviewH = nil
 		U.Picker.Position = UDim2.new(0, 0, 0, 0)
 		U.Picker.Size = UDim2.new(0, pickerW, 1, 0)
 		U.Preview.Position = UDim2.new(0, pickerW + K.GAP, 0, 0)
@@ -1104,31 +1112,90 @@ layoutPreview = function()
 		return
 	end
 	local short = S.Short
+	local tall = S.Tall
+	local mix = S.Tab == "Mix"
 	local result = short and K.RESULT_SHORT or K.RESULT
 	local input = short and K.INPUT_SHORT or K.INPUT
-	if S.Tall then
+	if tall and not short then
 		result, input = K.RESULT_TALL, K.INPUT_TALL
 	end
-	local mix = S.Tab == "Mix"
-	U.PreviewTitle.Visible = not short
-	local rowY = short and 4 or (S.Tall and 54 or 66)
-	local rowH = result + ((mix or not short) and 26 or 8)
+	local bottomH = short and 52 or 64
+	-- the room above the cost / FUSE row (design px; only the one-column window knows its preview height)
+	local avail = S.PreviewH and (S.PreviewH - bottomH - (short and 6 or 12) - 4) or nil
+	-- landscape phones (a short one-column sheet): the cards on the left, the name and the one-line note beside them
+	local side = short and tall and avail ~= nil
+	-- portrait phones: when the full stack (title, big cards, name, pills, one line of notes) does not fit above the
+	-- FUSE row, the title steps aside (the tab says it) and the cards shrink until a line of notes fits again
+	local tight = false
+	local pills = not short
+	local block = 78 -- name 36 + 2, pills 32 + 8
+	if tall and not short and avail then
+		local fitFull = avail - (54 + 26 + 2 + block + K.NOTE_MIN)
+		if fitFull < result and fitFull >= K.RESULT_FULL_MIN then
+			-- (a little short: slightly smaller cards keep the full stack)
+			result = fitFull
+			input = math.floor(result * K.INPUT_TALL / K.RESULT_TALL + 0.5)
+		elseif fitFull < result then
+			tight = true
+			block = 66 -- name 30 + 2, pills 30 + 4
+			local extra = mix and 26 or 8
+			local fit = avail - 4 - extra - 2 - block - K.NOTE_MIN
+			if fit < K.RESULT_MIN then
+				-- not even the smallest cards leave room: the pills go, the name keeps its line
+				pills = false
+				block = 32
+				fit = avail - 4 - extra - 2 - block - K.NOTE_MIN
+			end
+			result = math.max(K.RESULT_MIN, math.min(K.RESULT_TALL, fit))
+			input = math.floor(result * K.INPUT_TALL / K.RESULT_TALL + 0.5)
+		end
+	end
+	if side then
+		result, input = K.RESULT_SIDE, K.INPUT_SIDE
+		if mix then
+			-- (two cards side by side: a little smaller, so the name column keeps its width)
+			result, input = result - 4, input - 6
+		end
+	end
+	S.PreviewMode = side and "Side" or (tight and "Tight" or (short and "Short" or "Full"))
+	local compactRow = short or tight
+	U.PreviewTitle.Visible = not compactRow
+	local rowY = compactRow and 4 or (tall and 54 or 66)
+	local rowH = result + ((mix or not compactRow) and 26 or 8)
+	-- where the inputs, the arrow and the result sit (fractions of the slot row)
+	local xIn, xArrow, xRes = 0.25, 0.53, 0.76
 	U.SlotRow.Position = UDim2.new(0, 0, 0, rowY)
 	U.SlotRow.Size = UDim2.new(1, 0, 0, rowH)
+	local rowW = 0
+	if side then
+		-- the slot row only as wide as its cards (design px), the rest is the name column
+		local mid, arrowX, resX
+		if mix then
+			local gap = input * 0.62
+			mid = 10 + input / 2 + gap
+			arrowX = mid + gap + input / 2 + 16
+		else
+			mid = 6 + input / 2 + 11 -- (the fanned stack spreads 8 px and tilts a little)
+			arrowX = mid + input / 2 + 26
+		end
+		resX = arrowX + 18 + result / 2
+		rowW = math.floor(resX + result / 2 + 4)
+		xIn, xArrow, xRes = mid / rowW, arrowX / rowW, resX / rowW
+		U.SlotRow.Size = UDim2.new(0, rowW, 0, rowH)
+	end
 	local cy = result / 2 + 4
-	-- result on the right third, inputs on the left
 	U.ResultSlot.Frame.Size = UDim2.fromOffset(result, result)
-	U.ResultSlot.Frame.Position = UDim2.new(0.76, 0, 0, cy)
-	U.Arrow.Position = UDim2.new(0.53, 0, 0, cy)
+	U.ResultSlot.Frame.Position = UDim2.new(xRes, 0, 0, cy)
+	U.Arrow.Position = UDim2.new(xArrow, 0, 0, cy)
 	for _, slot in ipairs(U.InSlots) do
 		slot.Frame.Size = UDim2.fromOffset(input, input)
 	end
 	if not mix then
 		-- three copies fanned out like a stack of cards
-		local fan = short and 10 or 16
-		U.InSlots[1].Frame.Position = UDim2.new(0.25, -fan, 0, cy - fan * 0.75)
-		U.InSlots[2].Frame.Position = UDim2.new(0.25, 0, 0, cy)
-		U.InSlots[3].Frame.Position = UDim2.new(0.25, fan, 0, cy + fan * 0.75)
+		local fan = compactRow and (side and 8 or 10) or 16
+		U.InSlots[1].Frame.Position = UDim2.new(xIn, -fan, 0, cy - fan * 0.75)
+		U.InSlots[2].Frame.Position = UDim2.new(xIn, 0, 0, cy)
+		U.InSlots[3].Frame.Position = UDim2.new(xIn, fan, 0, cy + fan * 0.75)
 		U.InSlots[1].Frame.Rotation = -6
 		U.InSlots[3].Frame.Rotation = 6
 		U.InSlots[2].Frame.Rotation = 0
@@ -1140,23 +1207,45 @@ layoutPreview = function()
 		U.Swap.Visible = false
 	else
 		local gap = input * 0.62
-		U.InSlots[1].Frame.Position = UDim2.new(0.25, -gap, 0, cy)
-		U.InSlots[2].Frame.Position = UDim2.new(0.25, gap, 0, cy)
+		U.InSlots[1].Frame.Position = UDim2.new(xIn, -gap, 0, cy)
+		U.InSlots[2].Frame.Position = UDim2.new(xIn, gap, 0, cy)
 		U.InSlots[1].Frame.Rotation = 0
 		U.InSlots[2].Frame.Rotation = 0
 		U.InSlots[3].Frame.Visible = false
 		U.InSlots[1].Frame.Visible = true
-		U.Plus.Visible = true
-		U.Plus.Position = UDim2.new(0.25, 0, 0, cy)
 		U.CaptionA.Visible = true
 		U.CaptionB.Visible = true
-		U.CaptionA.Position = UDim2.new(0.25, -gap, 0, cy + input / 2 + 2)
-		U.CaptionB.Position = UDim2.new(0.25, gap, 0, cy + input / 2 + 2)
-		U.Swap.Visible = S.MixA ~= nil and S.MixB ~= nil
-		U.Swap.Position = UDim2.new(0.25, 0, 0, cy - input / 2 - 2)
+		-- ("Body" / "Style" under small cards: a caption no wider than its card's column)
+		local capW = math.min(110, input + 12)
+		U.CaptionA.Size = UDim2.fromOffset(capW, 24)
+		U.CaptionB.Size = UDim2.fromOffset(capW, 24)
+		U.CaptionA.Position = UDim2.new(xIn, -gap, 0, cy + input / 2 + 2)
+		U.CaptionB.Position = UDim2.new(xIn, gap, 0, cy + input / 2 + 2)
+		local swap = S.MixA ~= nil and S.MixB ~= nil
+		U.Swap.Visible = swap
+		if compactRow then
+			-- no room above the cards: the swap button takes the plus sign's place between them
+			U.Plus.Visible = not swap
+			U.Swap.Position = UDim2.new(xIn, 0, 0, cy + 18)
+		else
+			U.Plus.Visible = true
+			U.Swap.Position = UDim2.new(xIn, 0, 0, cy - input / 2 - 2)
+		end
+		U.Plus.Position = UDim2.new(xIn, 0, 0, cy)
 	end
 	local y = rowY + rowH + 2
-	if short then
+	-- (in the side column the name is the first line of the details list, the note stacks right under it)
+	U.ResultName.Parent = side and U.Details or U.Preview
+	U.ResultName.LayoutOrder = 0
+	if side then
+		-- a column right of the cards: the name (one line, cut with "...") over the note
+		U.Pills.Visible = false
+		U.ResultName.Position = UDim2.new(0, 0, 0, 0)
+		U.ResultName.Size = UDim2.new(1, 0, 0, 26)
+		U.ResultName.TextSize = 20
+		U.Details.Position = UDim2.new(0, rowW + 4, 0, 6)
+		U.Details.Size = UDim2.new(1, -(rowW + 18), 0, math.max(0, avail - 6))
+	elseif short or not pills then
 		-- no room for the pills: the name (in its rarity colour) and a summary line instead
 		U.ResultName.Position = UDim2.new(0, 14, 0, y)
 		U.ResultName.Size = UDim2.new(1, -28, 0, 30)
@@ -1166,16 +1255,15 @@ layoutPreview = function()
 	else
 		U.Pills.Visible = true
 		U.ResultName.Position = UDim2.new(0, 14, 0, y)
-		U.ResultName.Size = UDim2.new(1, -28, 0, 36)
-		U.ResultName.TextSize = 28
-		y = y + 38
+		U.ResultName.Size = UDim2.new(1, -28, 0, tight and 30 or 36)
+		U.ResultName.TextSize = tight and 24 or 28
+		y = y + (tight and 32 or 38)
 		U.Pills.Position = UDim2.new(0, 14, 0, y)
-		U.Pills.Size = UDim2.new(1, -28, 0, 32)
+		U.Pills.Size = UDim2.new(1, -28, 0, tight and 30 or 32)
 		U.PillsLayout.HorizontalAlignment = Enum.HorizontalAlignment.Left
-		y = y + 40
+		y = y + (tight and 34 or 40)
 	end
 	local compact = short or S.Tall
-	local bottomH = short and 52 or 64
 	U.Bottom.Size = UDim2.new(1, -28, 0, bottomH)
 	U.Bottom.Position = UDim2.new(0, 14, 1, short and -6 or -12)
 	U.Cost.TextSize = compact and 24 or 28
@@ -1192,8 +1280,18 @@ layoutPreview = function()
 	U.Cost.Position = leftFuse and UDim2.new(0, fuseW + 14, 0.5, 0) or UDim2.new(0, 0, 0.5, 0)
 	U.Cost.TextXAlignment = Enum.TextXAlignment.Left
 	U.Cost.Size = UDim2.new(1, -(fuseW + 14), 0, 40)
-	U.Details.Position = UDim2.new(0, 14, 0, y)
-	U.Details.Size = UDim2.new(1, -28, 1, -(y + bottomH + (short and 8 or 20)))
+	-- a note with room for one line only stays on one line ("..." when long; the compact layouts use the notes'
+	-- short forms), so it is never cut through the middle; the side column wraps it under the name
+	local oneLine = not side and (short or tight or (avail ~= nil and avail - y < 2 * K.NOTE_MIN))
+	U.Info.TextWrapped = not oneLine
+	U.Info.TextTruncate = oneLine and Enum.TextTruncate.AtEnd or Enum.TextTruncate.None
+	if not side then
+		U.Details.Position = UDim2.new(0, 14, 0, y)
+		U.Details.Size = UDim2.new(1, -28, 0, math.max(0, avail and (avail - y) or 0))
+		if not avail then
+			U.Details.Size = UDim2.new(1, -28, 1, -(y + bottomH + (short and 8 or 20)))
+		end
+	end
 	U.ServerNote.Position = UDim2.new(0, 14, 1, -(bottomH + (short and 10 or 18)))
 	-- the locked card: a smaller crystal and no teaser line on short screens
 	if U.LockedSub then
@@ -1208,7 +1306,7 @@ end
 
 local function setNotes(plan)
 	for _, child in ipairs(U.Details:GetChildren()) do
-		if child:IsA("TextLabel") and child ~= U.Info then
+		if child:IsA("TextLabel") and child ~= U.Info and child ~= U.ResultName then
 			child:Destroy()
 		end
 	end
@@ -1240,7 +1338,7 @@ local function setNotes(plan)
 		-- one line only: the most important note replaces the summary / explanation
 		local first = lines[1]
 		if first then
-			U.Info.Text = (S.Short and first.Short) or first.Text
+			U.Info.Text = ((S.Short or S.PreviewMode == "Tight") and first.Short) or first.Text
 			U.Info.TextColor3 = first.Color or MUTED
 		end
 		return
@@ -1324,8 +1422,9 @@ local function summaryText(plan)
 end
 
 local function infoText(plan)
-	if S.Short then
-		if plan.ResultDef then
+	-- (the compact previews have one line here: the pills' summary when they are hidden, else a short hint)
+	if S.Short or S.PreviewMode == "Tight" then
+		if plan.ResultDef and not U.Pills.Visible then
 			return summaryText(plan)
 		end
 		return (S.Tab == "Upgrade") and "3 copies fuse into the next finish" or "Two different pets make a new hybrid"
@@ -1384,7 +1483,7 @@ local function renderPreview(plan)
 		U.ResultSlot.Stroke.Color = plan.Rarity and rarityAccent(plan.Rarity) or NAVY
 	end
 	U.ResultName.Text = plan.ResultName or ((S.Tab == "Upgrade") and "Pick a pet" or "Pick two pets")
-	U.ResultName.TextColor3 = plan.ResultDef and (S.Short and plan.Rarity and Theme.Lighten(rarityAccent(plan.Rarity), 0.35) or WHITE) or MUTED
+	U.ResultName.TextColor3 = plan.ResultDef and ((S.Short or not U.Pills.Visible) and plan.Rarity and Theme.Lighten(rarityAccent(plan.Rarity), 0.35) or WHITE) or MUTED
 	renderPills(plan)
 	U.Info.Text = infoText(plan)
 	U.Info.TextColor3 = MUTED

@@ -3567,11 +3567,17 @@ function Hud.LayoutFighter(B, m)
 	F.Energy.Size = UDim2.fromOffset(barW, enH)
 	y = y + enH + 3
 	local capH = compact and 18 or 22
-	F.EnergyText.Position = UDim2.fromOffset(pad, y)
-	F.EnergyText.Size = UDim2.fromOffset(barW - 80, capH)
-	F.EnergyText.TextSize = compact and 14 or 15
-	F.EnergyText:SetAttribute("BaseText", F.EnergyText.TextSize)
 	local hs = compact and 18 or 22
+	-- the caption ends where the lives hearts (anchored right) begin; a narrow card (a phone with the currency
+	-- pills top right) drops the "ENERGY" word, so "98/100" never runs under the hearts
+	local capW = max(0, barW - (3 * hs + 4) - 6)
+	local capSize = compact and 14 or 15
+	F.EnergyText.Position = UDim2.fromOffset(pad, y)
+	F.EnergyText.Size = UDim2.fromOffset(capW, capH)
+	F.EnergyText.TextSize = capSize
+	F.EnergyText.TextTruncate = Enum.TextTruncate.AtEnd
+	F.EnergyText:SetAttribute("BaseText", capSize)
+	Hud.energyShort = textWidth("ENERGY " .. METER_MAX .. "/" .. METER_MAX, max(capSize, minSize)) > capW
 	F.Lives.AnchorPoint = Vector2.new(1, 0)
 	F.Lives.Position = UDim2.fromOffset(pad + barW, y + (capH - hs) / 2)
 	F.Lives.Size = UDim2.fromOffset(3 * hs + 4, hs)
@@ -3967,7 +3973,7 @@ function Hud.Update(B, now, force)
 			last.meter = meter
 			F.EnergyFill.Size = UDim2.fromScale(meter / METER_MAX, 1)
 			F.EnergyFill.BackgroundColor3 = (meter >= METER_MAX) and COLORS.Gold or COLORS.Energy
-			F.EnergyText.Text = "ENERGY " .. meter .. "/" .. METER_MAX
+			F.EnergyText.Text = (Hud.energyShort and "" or "ENERGY ") .. meter .. "/" .. METER_MAX
 			F.EnergyText.TextColor3 = (meter >= METER_MAX) and COLORS.Gold or COLORS.EnergyText
 		end
 	end
