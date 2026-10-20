@@ -26,7 +26,7 @@
 --                                     Attack() locks the nearest targetable enemy (a press while the lock IS that one cycles to the
 --                                     next nearest, by distance then id); -> true, lockId, "OutOfReach" | nil (the lock is beyond
 --                                     range + radius + AttackSlack: BattleService toasts "Too far!"); refused: Down / BadTarget /
---                                     NoTarget. Echo: Order { owner, order = "Attack", target }.
+--                                     NoTarget. Echo: Order { owner, order = "Attack", target } when the lock changes.
 --                                     THE AUTO-ATTACK: every step a player's fighter that is not Stunned / Casting / Dashing /
 --                                     arriving, with t >= nextAttack - Interval x (1 - AttackTolerance), hits the lock when it is
 --                                     targetable and within range + radius + AttackSlack, else the nearest targetable enemy in that
@@ -3339,9 +3339,12 @@ function doCommand(self, team, action, arg, events)
 				return false, "NoTarget"
 			end
 		end
+		-- the echo only when the lock changes (a repeated order on the same enemy sends nothing: no traffic amplification)
+		if team.lock ~= target then
+			events[#events + 1] = { type = EV.Order, owner = team.owner, order = "Attack", target = target.id }
+		end
 		team.lock = target
 		f.target = target
-		events[#events + 1] = { type = EV.Order, owner = team.owner, order = "Attack", target = target.id }
 		if not inReach(f, target, num(F.AttackSlack, 3)) then
 			return true, target.id, "OutOfReach"
 		end
