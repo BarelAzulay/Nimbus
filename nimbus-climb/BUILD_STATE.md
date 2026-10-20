@@ -72,4 +72,6 @@ W5 review script ready: scratchpad/p5review.js (launch after the W4 gate fixer; 
 
 | Step | What | State |
 |---|---|---|
-| D | design workflow wf_f91389a6-695 (inv-creatures, inv-lobby, inv-home-arena-dungeon, pipeline proto (fine-voxel), research, style-ref Phase4-vs-Phase5 renders, judge) -> scratchpad/p6design/ | DONE. Recipe = p6design/judge/recipe.md (waves A look revert, B kit+bridge, C runtime MeshLibrary, D uploads). Style = p6design/style-ref/style.md. Kit proto = p6design/pipeline/kit. Previews sent to player; WAITING for player OK on style |
+| D | design workflow wf_f91389a6-695 (inv-creatures, inv-lobby, inv-home-arena-dungeon, pipeline proto (fine-voxel), research, style-ref Phase4-vs-Phase5 renders, judge) -> scratchpad/p6design/ | DONE. Recipe = p6design/judge/recipe.md (waves A look revert, B kit+bridge, C runtime MeshLibrary, D uploads). Style = p6design/style-ref/style.md. Kit proto = p6design/pipeline/kit. Previews sent; player said GOOD + asked: evolved pets best with aura+effects; portals = P5 Gate Court modes in P4 hoop style |
+| W0 | lead: contract ARCHITECTURE_V3 '## Phase 6', docs/phase6/*, blender/kit proto, ShadowMap, PetFx+MeshIds stubs, Config.MeshAssets | DONE 3684294 (branch v3-phase6) |
+| W1 | look-lobby, look-places, kit, runtime, evofx (scratchpad/p6wave.js, args scratchpad/p6jobs/w1.min.json) | RUNNING wf_5ec0bd9e-696 (resume: same scriptPath + args + resumeFromRunId) |
