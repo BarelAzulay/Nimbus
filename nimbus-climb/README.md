@@ -1439,7 +1439,8 @@ src/client   Main.client.lua; State; UiGate (nothing shows before PLAY); ClientS
              (pet showcase), EvolutionFx (evolution animation), Care (Food Machine, Garden, training and EVOLVE
              windows), HomeFx (roaming pets, Cloud Cash, berries), HomePortalFx (the home portal), Fusion, Battle,
              Arena, Dungeon (the Dungeon window and run), Obby (the level picker), PortalFx (the gates' soft
-             animation: a light running round the ring, the swirl breathing, gems twinkling)
+             animation: a light running round the ring, the swirl breathing, gems twinkling), MeshFallback (shows the
+             block pet on a device where a Blender model failed to load)
 ```
 
 The **server is authoritative** (health, tokens, Cash, Gems, berries, pets, items, checkpoints, matches, home
