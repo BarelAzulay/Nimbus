@@ -89,3 +89,9 @@ W5 review script ready: scratchpad/p5review.js (launch after the W4 gate fixer; 
 - Player wants: portal vortex like his reference (swirl, glowing rim, lightning, inward streaks) INSIDE the hoop (done, W2c).
 - Player wants (2026-10-20 later): NO Home portal in the lobby; Home window Go home improved; portal animation clean + smooth.
 - Player wants: caveman talk; previews before big builds (said OK to style); Blender-only models; evolved pets best (aura+fx); gates = P5 modes in P4 hoop style.
+
+## Dungeon fixes (player request after Phase 6; branch v3-dungeon-fixes)
+- Plan + contract: docs/dungeon-fixes/plan.md (root causes A: client Wave handler never draws enemies; B: zone centre 4.5-6 studs above floor; 7 decisions; ownership).
+- Upload progress: cal_axes uploaded (asset 115959775479149, Approved, on main). WAITING: player's Studio check of cal_axes (ML_Status/Yaw/Scale/FitErr, colourful cube, F readable) before Pebble Pup.
+- RUNNING (Agent, background): dungeon-flow, battle-core, battle-client, mouse-lock. NEXT: apply lead requests (Main.client MouseLock start line, contract.json), full gate (run_checks --quick both modes), rbxlx rebuild, commit/push, summary to player.
+
