@@ -87,20 +87,31 @@ def _cute_key(u, v, big):
     return "EyePupil"
 
 
+SMALL_EYE_STYLE = "B"  # (W2.5 polish) the Low pixel-eye layout, see _small_key
+
+
 def _small_key(i, j, w, h):
-    """pixel eye for coarse grids (Low LOD): i = column from the viewer's left (+X), j = row from the top"""
-    if j == 0:
-        return "Lash" if 0 < i < w - 1 or w <= 3 else None
-    if j == h - 1:
-        if w >= 3 and 0 < i < w - 1:
-            return "EyeIris"
-        return None if w >= 3 else "EyePupil"
-    if j == 1 and i == 0:
+    """pixel eye for coarse grids (Low LOD): i = column from the viewer's left (+X), j = row from the top.
+    W2.5: a calm dark eye with ONE highlight (upper-left, like the High eyes); no lash row and no iris pixel on the
+    3-wide eyes (at Low size those single coloured pixels read as noise).  The rounded rim cuts the corners: the top
+    corners always, the bottom ones on eyes 4+ tall and 4+ wide.  Wider eyes (>= 4) keep an iris crescent in the
+    bottom row and a second, small glint."""
+    last_i, last_j = w - 1, h - 1
+    corner_i = i == 0 or i == last_i
+    if j == 0 and corner_i and w >= 3:
+        return None
+    if j == last_j and corner_i and w >= 4 and h >= 4:
+        return None
+    if j == 1 and i == (1 if w == 3 else 0):
+        return "EyeShine"  # (a 3-wide eye keeps its highlight inside the dark: an edge pixel melts into a pale face)
+    if w >= 4 and h >= 4 and j == 1 and i == 1:
         return "EyeShine"
-    if j == 1 and i == 1 and w >= 4 and h >= 4:
-        return "EyeShine"
-    if j == 2 and i == 0 and h >= 5:
-        return "EyeShine"
+    if w >= 4 and j == last_j:
+        return "EyeIris"
+    if w >= 4 and h >= 5 and j == last_j - 1 and i == last_i - 1:
+        return "EyeGlint"
+    if SMALL_EYE_STYLE == "A" and j == last_j and corner_i and w >= 3:
+        return None
     return "EyePupil"
 
 

@@ -1155,6 +1155,9 @@ end
 
 -- returns the pop record (nil when the model simply appears: too far, too much popping already, nothing visible)
 local function startPop(model, rec)
+	if model:GetAttribute("ML_DressKey") then
+		return nil -- Phase 6: a mesh-dressed station appears without the Part pop (it would un-hide the dressed Parts)
+	end
 	if popParts >= K.MAX_POP_PARTS then
 		return nil
 	end
@@ -4442,5 +4445,7 @@ function HomeFx.Init()
 	end)
 	loopConn = RunService.RenderStepped:Connect(safeStep)
 end
+
+HomeFx._StartPop = startPop -- TESTS ONLY (tools/smoke_p6_mesh.lua: a dressed station never pops)
 
 return HomeFx

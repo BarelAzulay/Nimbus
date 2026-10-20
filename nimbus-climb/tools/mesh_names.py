@@ -52,10 +52,16 @@ def _lua_files():
 
 
 def _table_keys(text, name):
-    m = re.search(r"local\s+" + name + r"\s*=\s*\{(.*?)\n\}", text, re.S)
+    """keys / strings of the table constructor `local NAME = { ... }` (one line or many: braces are balanced, so the
+    scan never runs on into the code after a one-line table)"""
+    m = re.search(r"local\s+" + name + r"\s*=\s*\{", text)
     if not m:
         return set()
-    body = m.group(1)
+    depth, i = 1, m.end()
+    while i < len(text) and depth:
+        depth += {"{": 1, "}": -1}.get(text[i], 0)
+        i += 1
+    body = text[m.end():i - 1]
     return set(re.findall(r"\b" + IDENT + r"\s*=\s*true", body)) | set(re.findall(r"[\"']" + IDENT + r"[\"']", body))
 
 

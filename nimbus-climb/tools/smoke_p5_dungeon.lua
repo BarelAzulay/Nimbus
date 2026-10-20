@@ -2045,6 +2045,9 @@ local function serverScenarios()
 			idn = idn + 1
 			ids[key] = 300000 + idn
 		end
+		-- W2.5 isolation: Start() with ids creates ReplicatedStorage.MeshLibrary; remove it again at the end so later
+		-- scenarios (p6pets_default: MeshLibrary.Active() is false) see the empty-ids game
+		local hadMLFolder = game:GetService("ReplicatedStorage"):FindFirstChild("MeshLibrary") ~= nil
 		ML._Reset()
 		ML._Configure({ Ids = ids })
 		pcall(ML.Start)
@@ -2115,6 +2118,10 @@ local function serverScenarios()
 			cave:Destroy()
 		end
 		ML._Reset()
+		local mlFolder = game:GetService("ReplicatedStorage"):FindFirstChild("MeshLibrary")
+		if mlFolder and not hadMLFolder then
+			mlFolder:Destroy()
+		end
 		if pocket then
 			db.FreeRun(11)
 		end

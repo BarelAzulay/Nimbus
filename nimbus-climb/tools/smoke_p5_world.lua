@@ -495,8 +495,12 @@ local function serverScenarios()
 			end
 
 			-- the gates (6.0.3): the P4 round voxel hoop family (the crowned arch for "crown"), a crest per mode
-			local specs = WS.SampleGates or {}
-			T.check(#specs == 6, "WorldStyle.SampleGates lists the six Gate Court gates", tostring(#specs))
+			local specs = {}
+			for _, s in ipairs(WS.SampleGates or {}) do
+				specs[#specs + 1] = s
+			end
+			T.check(#specs == 5, "WorldStyle.SampleGates lists the five Gate Court gates (no Home gate, Phase 6)", tostring(#specs))
+			specs[#specs + 1] = { Id = "Return", Title = "Go Home", Info = "", Color = "Yellow", Glyph = "house", Pad = false } -- the house crest lives on the arena Return gate
 			local seenGlyph = {}
 			-- crest parts by glyph: { part name, minimum count, Neon? }
 			local CREST = {

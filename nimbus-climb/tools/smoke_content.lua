@@ -1018,6 +1018,12 @@ local function countParts(model)
 	return n
 end
 
+-- Phase 6 (recipe 4.9): a Blender-mesh pet (--mesh fixture mode) carries ML_Mesh = true. Its parts are whole meshes
+-- per palette key, so voxel-count asserts are gated to the Part path; mesh mode checks presence instead.
+local function isMesh(model)
+	return typeof(model) == "Instance" and model:GetAttribute("ML_Mesh") == true
+end
+
 local function partsNamed(model, pattern)
 	local out = {}
 	for _, d in ipairs(model:GetDescendants()) do
@@ -1210,7 +1216,7 @@ S.petbuilder = guarded("petbuilder", function()
 					irisNeon = true
 				end
 			end
-			local eyeOk = #eyeParts >= 4 and shine >= 2 and (not look.Glow or irisNeon or #partsNamed(model, "Iris") == 0)
+			local eyeOk = #eyeParts >= 4 and shine >= (isMesh(model) and 1 or 2) and (not look.Glow or irisNeon or #partsNamed(model, "Iris") == 0)
 			if look.Glow then
 				local anyNeon = false
 				for _, d in ipairs(model:GetDescendants()) do
@@ -1436,9 +1442,12 @@ S.petbuilder = guarded("petbuilder", function()
 			end
 		end
 		T.check(gold >= 2, "Cloudy Dragon's horns are gold", gold .. " gold horn parts")
-		T.check(#partsNamed(model, "^Nostril") == 2, "Cloudy Dragon has two nostril dots", #partsNamed(model, "^Nostril") .. "")
+		-- a mesh pet bakes both nostril dots into one Nostril MeshPart, and the tail + puff into the Tail group's meshes
+		local meshPet = isMesh(model)
+		local nostrils = #partsNamed(model, "^Nostril")
+		T.check(meshPet and nostrils >= 1 or nostrils == 2, "Cloudy Dragon has two nostril dots", nostrils .. (meshPet and " (mesh)" or ""))
 		T.check(#partsNamed(model, "^Eye") >= 6, "Cloudy Dragon has big eyes with sparkle highlights", #partsNamed(model, "^Eye") .. " eye parts")
-		T.check(#partsNamed(model, "Tail") >= 3, "Cloudy Dragon has a tail with a cloud-puff tip", #partsNamed(model, "Tail") .. " tail parts")
+		T.check(#partsNamed(model, "Tail") >= (meshPet and 1 or 3), "Cloudy Dragon has a tail with a cloud-puff tip", #partsNamed(model, "Tail") .. " tail parts")
 		T.check(#partsNamed(model, "^Wing[LR]") >= 6, "Cloudy Dragon's cloud wings are made of several puffs", #partsNamed(model, "^Wing[LR]") .. " wing parts")
 		local belly = partsNamed(model, "^Belly")
 		T.check(#belly >= 1 and belly[1].Color.R > 0.85 and belly[1].Color.B < belly[1].Color.R, "Cloudy Dragon has a cream belly", belly[1] and tostring(belly[1].Color))
@@ -1483,6 +1492,9 @@ S.petbuilder = guarded("petbuilder", function()
 				return d.Name:find("^Wing") ~= nil
 			end
 			local function feature(label, target, limit, minParts, filter)
+				if isMesh(hi) then
+					minParts = math.min(minParts, 1) -- one MeshPart per palette key on a mesh pet
+				end
 				local n, best = count(target, limit, filter)
 				T.check(n >= minParts, "Stormfang: " .. label, n .. " part(s) within " .. limit .. " (closest colour distance " .. fmt(best, 0) .. ", needs " .. minParts .. ")")
 				return n >= minParts
@@ -1687,7 +1699,8 @@ S.evolved = guarded("evolved", function()
 					m:PivotTo(CFrame.new(0, 3000, 0))
 					local n = countParts(m)
 					stageParts[stage .. level] = n
-					tally.caps:case(n >= 100 and n <= caps[stage][level], label .. ": " .. n .. " parts (cap " .. caps[stage][level] .. ")")
+					-- the >= 100 floor counts voxels; a mesh pet is a few dozen MeshParts under the same cap
+					tally.caps:case(n >= (isMesh(m) and 8 or 100) and n <= caps[stage][level], label .. ": " .. n .. " parts (cap " .. caps[stage][level] .. ")" .. (isMesh(m) and " (mesh)" or ""))
 					local w1 = m:FindFirstChild("WingL", true) ~= nil and m:FindFirstChild("WingR", true) ~= nil
 					local w2 = m:FindFirstChild("Wing2L", true) ~= nil and m:FindFirstChild("Wing2R", true) ~= nil
 					local want2 = stage == 2 and who ~= "phantom_kitsune"

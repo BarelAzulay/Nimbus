@@ -157,7 +157,7 @@ return {
 		{
 			Center = { 0, 0.3876, -0.323 },
 			Color = "vertex",
-			FixedKeys = { "EyeRing", "GemCore", "Mask" },
+			FixedKeys = { "GemCore", "Mask" },
 			Group = "Body",
 			Key = "Fixed",
 			Material = "SmoothPlastic",

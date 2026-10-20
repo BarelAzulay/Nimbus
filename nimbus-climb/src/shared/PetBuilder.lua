@@ -2999,10 +2999,13 @@ local function goldSparkles(ctx)
 	-- the hero star on top of the head, a little off centre
 	local hx = r[1] * 0.38
 	local top = topAt(ctx, hx, c[3])
+	-- (Phase 6: each star's centre + arm, so a Part build can wear the star_gold mesh instead, MESH.partStars)
+	ctx.StarSpots = {}
 	if top then
 		local X, Z = vx(hx), vx(c[3])
 		local Y = vx(top) + 1 + big
 		sparkleStar(g, X, Y, Z, big)
+		ctx.StarSpots[#ctx.StarSpots + 1] = { X, Y, Z, big }
 	end
 	-- a glint on the other cheek and one on the chest, one voxel in front of the surface
 	for _, p in ipairs({ { -r[1] * 0.62, c[2] - r[2] * 0.25 }, { r[1] * 0.3, (ctx.NeckY or 0) - 3.2 } }) do
@@ -3010,6 +3013,7 @@ local function goldSparkles(ctx)
 		local z = frontZ(g, X, Y)
 		if z then
 			sparkleStar(g, X, Y, z - 1, small)
+			ctx.StarSpots[#ctx.StarSpots + 1] = { X, Y, z - 1, small }
 		end
 	end
 	ctx.HyBounds = nil
@@ -6129,7 +6133,7 @@ local function buildBlueprint(look, detail, lean)
 			goldSparkles(ctx)
 		end
 
-		local bp = { Groups = {}, Pal = ctx.Pal, Look = look, Detail = detail, K = k, Pulse = ctx.Pulse, Grow = ctx.Grow }
+		local bp = { Groups = {}, Pal = ctx.Pal, Look = look, Detail = detail, K = k, Pulse = ctx.Pulse, Grow = ctx.Grow, Stars = ctx.StarSpots }
 		local bodyGroup = { Name = "Body" }
 		bp.Groups[#bp.Groups + 1] = bodyGroup
 
@@ -6989,6 +6993,9 @@ function MESH.makePlan(ML, look, detail, stage)
 	-- tail (when the trait swaps the tail) onto the body's Tail attachment instead of the body's tail
 	if stage == 0 and hy then
 		local key = (hy.Species == nil or hy.Species == look.Species) and "hyb_same" or ("hyb_" .. string.lower(hy.Species))
+		if key ~= "hyb_same" and not HAS_EARS[look.Species] and ML.Manifest(key .. "_ears") then
+			key = key .. "_ears" -- a bear/dog hybrid on an earless body: the variant that grows the round ears
+		end
 		local hm = ML.Manifest(key)
 		if not hm then
 			return nil
@@ -7214,6 +7221,14 @@ function MESH.assemble(ML, look, detail, plan, scale)
 			end
 		end
 	end
+	if look.Glow then -- Glow pets: Neon irises, glints and wing edges, as makePalette does for the Part build
+		for _, part in ipairs(model:GetChildren()) do
+			local key = part:IsA("BasePart") and part:GetAttribute("MK_Key")
+			if key == "EyeIris" or key == "EyeGlint" or key == "WingEdge" then
+				part.Material = Enum.Material.Neon
+			end
+		end
+	end
 	if look.Finish then
 		MESH.finish(model, look, detail, scale)
 	end
@@ -7299,6 +7314,92 @@ function PetBuilder.MeshVersion()
 	return (ML and type(ML.Version) == "function") and ML.Version() or 0
 end
 
+-- A Golden PART pet (its body keys are not usable here) still wears the Blender star_gold mesh once that key is ready:
+-- the body's voxel sparkle stars (goldSparkles: the hero star on the head, the cheek and chest glints) become
+-- star_gold MeshParts of the same span at the same centres (names GoldSpark / GoldSpark2 ..., Neon, PB_Star,
+-- PB_Pulse, like the mesh path). The wing glints flap with their wing and stay voxels. star_gold not ready = no change.
+function MESH.partStars(model, bp, scale)
+	local ML = MESH.lib()
+	if not ML or not ML.Active() or not ML.IsReady("star_gold") then
+		return false
+	end
+	local man = ML.Manifest("star_gold")
+	local b = man and man.Bounds
+	local size = b and (b.Size or b.size)
+	local span = (type(size) == "table" and tonumber(size[1])) or 1.0625
+	local vs = VOXEL / bp.K * scale * (bp.Grow or 1)
+	local made = {}
+	for _, spot in ipairs(bp.Stars) do
+		local ok, star = pcall(ML.Assemble, "star_gold", nil, {
+			Scale = (2 * spot[4] + 1) * vs / span,
+			At = CFrame.new(spot[1] * vs, spot[2] * vs, spot[3] * vs),
+		})
+		if not ok or typeof(star) ~= "Instance" then
+			for _, m in ipairs(made) do
+				m:Destroy()
+			end
+			return false
+		end
+		made[#made + 1] = star
+	end
+	for _, p in ipairs(model:GetChildren()) do
+		if p:IsA("BasePart") and string.sub(p.Name, 1, 9) == "GoldSpark" and p:GetAttribute("PB_G") == nil then
+			p:Destroy()
+		end
+	end
+	local n = 0
+	for _, star in ipairs(made) do
+		local parts = {}
+		for _, p in ipairs(star:GetDescendants()) do
+			if p:IsA("BasePart") then
+				parts[#parts + 1] = p
+			end
+		end
+		table.sort(parts, function(a, c)
+			return a.Name < c.Name
+		end)
+		for _, p in ipairs(parts) do
+			n = n + 1
+			p.Name = (n > 1) and ("GoldSpark" .. n) or "GoldSpark"
+			p.Color = rgb(255, 238, 160)
+			p.Material = Enum.Material.Neon
+			p.CastShadow = false
+			p:SetAttribute("PB_Star", true)
+			p:SetAttribute("PB_Pulse", p.Transparency)
+			p.Parent = model
+		end
+		star:Destroy()
+	end
+	model:SetAttribute("PB_MeshStars", n)
+	return true
+end
+
+-- SERVER builders (NpcService, LobbyBuilder fountain, StormAltar, SpotService podium) build their pets once at boot,
+-- usually before MeshLibrary has loaded the keys. SwapWhenReady(model, petDef, opts, buildFn, onSwapped) -> bool:
+-- when `model` is a Part build whose mesh keys still load, MeshLibrary.Swap rebuilds it ONCE they are ready (buildFn
+-- returns the finished, placed model; onSwapped(fresh, old) lets the caller take the new one). Empty MeshIds (no
+-- template folder) or a key without an id = false and no state at all.
+function PetBuilder.SwapWhenReady(model, petDef, opts, buildFn, onSwapped)
+	if typeof(model) ~= "Instance" or type(buildFn) ~= "function" or model:GetAttribute("ML_Mesh") == true then
+		return false
+	end
+	local ML = MESH.lib()
+	if not ML or type(ML.Swap) ~= "function" or not ML.Active() then
+		return false
+	end
+	local ok, keys = pcall(PetBuilder.MeshKeys, petDef, opts)
+	if not ok or type(keys) ~= "table" or #keys == 0 or ML.IsReady(keys) then
+		return false
+	end
+	for _, key in ipairs(keys) do
+		if ML.Status(key) == "missing" then
+			return false
+		end
+	end
+	ML.Swap(model, buildFn, keys, { Place = false, OnSwapped = onSwapped })
+	return true
+end
+
 ----------------------------------------------------------------------
 -- Public API
 ----------------------------------------------------------------------
@@ -7330,6 +7431,9 @@ function PetBuilder.Build(petDef, opts)
 		local tpl = getTemplate(bp, bpKey, scale)
 		model = tpl:Clone()
 		MESH.PartInfo[model] = { Look = look, Detail = detail, Stage = stage }
+		if bp.Stars and look.Finish == "Golden" and opts.Parts ~= true then
+			MESH.partStars(model, bp, scale)
+		end
 	end
 	model.PrimaryPart = model:FindFirstChild("Body")
 	if look.Rarity == "Legendary" or look.Rarity == "Mythic" or look.Rarity == "Secret" then

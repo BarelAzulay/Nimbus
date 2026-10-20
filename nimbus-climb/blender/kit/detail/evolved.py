@@ -94,48 +94,9 @@ def _exposed(cells, p):
 
 
 # ---------------------------------------------------------------------------------------------------- Lua eyes
-_LUA_LIDS = {}
-_MARK = "__evolved_lua_lids__"
-
-
-def _install_eye_hooks():
-    """petkit.face_pass runs the catalog passes only on its procedural-eye path, and then always carves procedural
-    eyes.  These wrappers hand back the game's own Lua lids instead, but ONLY for a cells dict that lua_eyes()
-    registered in the same face_pass call; every other caller gets the original functions."""
-    if getattr(faces.carve_eyes, "_evolved", False):
-        return
-    orig_carve, orig_groups = faces.carve_eyes, faces.lid_groups
-
-    def carve_eyes(cells, specs, K, *a, **kw):
-        lids = _LUA_LIDS.pop(id(cells), None)
-        if lids is not None:
-            return (_MARK, lids)
-        return orig_carve(cells, specs, K, *a, **kw)
-
-    def lid_groups(lids, *a, **kw):
-        if isinstance(lids, tuple) and len(lids) == 2 and lids[0] == _MARK:
-            return lids[1]
-        return orig_groups(lids, *a, **kw)
-
-    carve_eyes._evolved = True
-    faces.carve_eyes, faces.lid_groups = carve_eyes, lid_groups
-
-
-def lua_eyes(bp, cells, entry):
-    """undo faces.restore_carved_eyes (the evolved heads keep PetBuilder's carved eyes, sized for them) and make
-    face_pass return PetBuilder's own lid cells, exactly like the kit's "eyes": "lua" option (which skips passes)"""
-    body0 = bp.group("Body")
-    orig = {(int(x), int(y), int(z)): k for (x, y, z), k in zip(body0.xyz.tolist(), body0.keys)}
-    for eye in bp.lid_cells:
-        for (x, y, z, k) in eye:
-            for p in ((int(x), int(y), int(z)), (int(x), int(y), int(z) + 1)):
-                if p in orig:
-                    cells[p] = orig[p]
-                else:
-                    cells.pop(p, None)
-    _install_eye_hooks()
-    _LUA_LIDS[id(cells)] = [dict(((int(x), int(y), int(z)), k) for (x, y, z, k) in lid) for lid in bp.lid_cells]
-    return None
+# The High bodies keep the game's own carved Lua eyes: the catalog face option {"eyes": "lua"} (petkit.face_pass runs
+# the passes on that path since W2.5).  The old evolved:lua_eyes hook (it wrapped faces.carve_eyes / lid_groups) is
+# gone: the rebuilt bodies were byte-identical (contentHash) without it.
 
 
 # ---------------------------------------------------------------------------------------------------- body pass

@@ -7,6 +7,10 @@ Checks
               the game: PetBuilder.Build gives the same parts before and after a _Blueprint call (same mock world)
   recipes     every palette key of the golden pets fits a recipe (bridge probes)
   determinism the same key built twice gives the same contentHash, equal to the committed manifest's
+  wave 2.5    the tests' by-name keys stay unbaked (Basalt / HydraHead on the event pets' evolved keys), the
+              translucent closure rule of build_all.check_geometry, the hybrid ear variants (hyb_dog_ears /
+              hyb_bear_ears) are picked by PetBuilder for earless bodies (a LEAD REQUEST check until runtime-pets
+              adds it)
   manifests   every src/shared/MeshManifests/*.lua loads in Lua and follows the name contract (recipe 4.3): Body parts
               are palette keys (+Light / Dark), group parts start with their group name, MK keys present, Fixed
               parts bake no referenced key (tools/mesh_names.py), recipes use known ops; blender/meshes.json lists
@@ -166,6 +170,42 @@ def test_manifests(br):
               probs[:5])
 
 
+def test_wave25():
+    import mesh_names
+    import numpy as np
+    import build_all
+    from nvox.build import ModelSpec
+    names = mesh_names.referenced_names(REPO)[0]
+    need = ("Basalt", "MagmaHot", "HydraHead", "HydraEye", "HydraJaw", "Frost", "CrystalDeep")
+    check(all(n in names for n in need), "wave 2.5: mesh_names finds the smoke_p3_evolved signature keys",
+          [n for n in need if n not in names])
+    for key, part in (("evo1_magma_cub", "Basalt"), ("evo2_magma_cub", "Basalt"), ("evo1_hydralotl", "HydraHead"),
+                      ("evo2_hydralotl", "HydraHead")):
+        f = os.path.join(REPO, "src/shared/MeshManifests/%s.lua" % key)
+        lua = open(f).read() if os.path.exists(f) else ""
+        check(re.search(r'Name = "%s"' % part, lua) is not None, "wave 2.5: %s has its own %s part (not baked)" % (
+            key, part))
+    # a glass voxel next to an opaque one: the glass part's faces are open by design, the opaque part stays closed
+    m = ModelSpec("t_glass", "prop", 1.0, 1)
+    cube = lambda c, skip=(): [(np.array(q, float) + c, (1, 1, 1)) for i, q in enumerate([
+        [(0, 0, 0), (0, 1, 0), (1, 1, 0), (1, 0, 0)], [(0, 0, 1), (1, 0, 1), (1, 1, 1), (0, 1, 1)],
+        [(0, 0, 0), (1, 0, 0), (1, 0, 1), (0, 0, 1)], [(0, 1, 0), (0, 1, 1), (1, 1, 1), (1, 1, 0)],
+        [(0, 0, 0), (0, 0, 1), (0, 1, 1), (0, 1, 0)], [(1, 0, 0), (1, 1, 0), (1, 1, 1), (1, 0, 1)]]) if i not in skip]
+    o = m.obj("Stone", group="G", region="Stone", shade="main", recipe=None)
+    o.quads = cube(np.zeros(3))
+    g = m.obj("Ice", group="G", region="Ice", shade="main", recipe=None, material="Glass")
+    g.quads = cube(np.array([1.0, 0, 0]), skip=(4,))  # (the face towards the opaque cube is culled)
+    check(not build_all.Builder.check_geometry(m), "wave 2.5: check_geometry skips see-through parts in the closure",
+          build_all.Builder.check_geometry(m))
+    o.quads = o.quads[1:]
+    check(build_all.Builder.check_geometry(m), "wave 2.5: check_geometry still catches an open opaque part")
+    pb = open(os.path.join(REPO, "src/shared/PetBuilder.lua")).read()
+    ears = [k for k in ("hyb_dog_ears", "hyb_bear_ears")
+            if os.path.exists(os.path.join(REPO, "src/shared/MeshManifests/%s.lua" % k))]
+    check(not ears or "_ears" in pb, "LEAD REQUEST (runtime-pets): PetBuilder picks hyb_<style>_ears for an earless body "
+          "(PetBuilder.lua MESH.makePlan ~:6991, see the fix-kit wave 2.5 report)", ears)
+
+
 def main():
     t0 = time.time()
     from bridge import Bridge
@@ -173,6 +213,7 @@ def main():
     test_hooks(br)
     test_recipes(br)
     test_determinism(br)
+    test_wave25()
     test_manifests(br)
     fails = [r for r in RESULTS if not r[0]]
     print("selftest: %d checks, %d failed, %.1fs" % (len(RESULTS), len(fails), time.time() - t0))

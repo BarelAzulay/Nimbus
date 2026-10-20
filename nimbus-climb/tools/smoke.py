@@ -468,6 +468,8 @@ def main():
             only |= {"load_modules"}
         if only & set(client_scenarios) - {"client_load"}:
             only |= {"client_load"}
+        if only & (set(mobile_scenarios) - {"client_mobile"}):
+            only |= {"client_mobile"}  # phone scenarios get the booted phone client, like client scenarios get client_load
         if "cannon" in only:
             only |= {"layouts"}  # the cannon audit reads the cannons the layouts scenario collected
 

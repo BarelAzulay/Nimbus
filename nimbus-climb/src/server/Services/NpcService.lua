@@ -587,7 +587,7 @@ local function catalogPet(def)
 	return list[1]
 end
 
-local function buildNpc(def, spot, index)
+local function buildNpc(def, spot, index, detached)
 	local accent = typeof(def.Accent) == "Color3" and def.Accent or rgb(120, 180, 236)
 	local model = make("Model", { Name = "Npc_" .. tostring(def.Id) }, nil)
 	model:SetAttribute("NpcId", def.Id)
@@ -722,7 +722,9 @@ local function buildNpc(def, spot, index)
 
 	CollectionService:AddTag(model, TAG)
 	model:SetAttribute("Ready", true)
-	model.Parent = folder -- parented last: the whole NPC replicates in one step
+	if not detached then
+		model.Parent = folder -- parented last: the whole NPC replicates in one step
+	end
 	return {
 		Id = def.Id,
 		Name = def.Name,
@@ -731,6 +733,27 @@ local function buildNpc(def, spot, index)
 		Prompt = prompt,
 		Spot = spot,
 	}
+end
+
+-- Phase 6: the NPCs are built at boot, usually before MeshLibrary has loaded the pet keys. Once they are ready the
+-- whole NPC is rebuilt in place with the Blender mesh pet (MeshLibrary.Swap: same name and folder; the clients'
+-- NpcController sets the new model up like any NPC) and the record takes the new instances. Empty MeshIds = nothing.
+local function watchMeshPet(rec, def, spot, index)
+	local petDef = catalogPet(def)
+	if not rec.Pet or not petDef or not PetBuilder or type(PetBuilder.SwapWhenReady) ~= "function" then
+		return
+	end
+	local built = nil
+	pcall(PetBuilder.SwapWhenReady, rec.Model, petDef, { Scale = def.Scale or NPC_SCALE, Detail = "High" }, function()
+		built = buildNpc(def, spot, index, true)
+		return built and built.Model or nil
+	end, function(fresh)
+		if built and built.Model == fresh then
+			for k, v in pairs(built) do
+				rec[k] = v
+			end
+		end
+	end)
 end
 
 ----------------------------------------------------------------------
@@ -756,6 +779,7 @@ function NpcService.Init(lobbyInfo, deps)
 			local ok, rec = pcall(buildNpc, def, spots[i], i)
 			if ok and rec then
 				records[#records + 1] = rec
+				watchMeshPet(rec, def, spots[i], i)
 			else
 				warn("[NpcService] NPC " .. tostring(def.Id) .. " failed: " .. tostring(rec))
 			end

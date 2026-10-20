@@ -55,7 +55,7 @@ return {
 		Min = { -3.1636, -2.2909, -3.1636 },
 		Size = { 6.3273, 6.0927, 6.9388 },
 	},
-	ContentHash = "c7e32ba6cc59c77e8af1b1826b85b4fb",
+	ContentHash = "99f27ffef849c5c2c93c7b82fcb7005c",
 	DarkFactor = { 0.8425, 0.85, 0.8875 },
 	DeepFactor = { 0.7098, 0.7225, 0.7877 },
 	Groups = {
@@ -211,14 +211,14 @@ return {
 		{
 			Center = { 0, 0.4364, -0.6545 },
 			Color = "vertex",
-			FixedKeys = { "EyeGlint", "EyeIris", "Fur", "GoldLight", "Neon", "NeonB", "PlateDark", "Spark" },
+			FixedKeys = { "Fur", "GoldLight", "Neon", "NeonB", "PlateDark" },
 			Group = "Body",
 			Key = "Fixed",
 			Material = "SmoothPlastic",
 			Name = "Fixed",
 			Shade = "fixed",
 			Size = { 2.8364, 4.5818, 5.0182 },
-			Tris = 1032,
+			Tris = 1022,
 		},
 		{
 			Center = { 0, -0.9818, -0.6545 },
@@ -307,6 +307,17 @@ return {
 			Shade = "headroom",
 			Size = { 2.4, 5.0182, 4.1455 },
 			Tris = 630,
+		},
+		{
+			Center = { 0, -0.6545, -2.1818 },
+			Color = { "headroom", { "rgb", 255, 250, 232 } },
+			Group = "Body",
+			Key = "Spark",
+			Material = "SmoothPlastic",
+			Name = "Spark",
+			Shade = "headroom",
+			Size = { 0.2182, 0.2182, 0.2182 },
+			Tris = 10,
 		},
 		{
 			Center = { 0.4364, 1.0909, -2.6182 },
@@ -398,7 +409,7 @@ return {
 		},
 	},
 	Rig = "Tail:tail:1:0.3:0=0,-0.4632,1.72973,1,0,0,0,1,0,0,0,1;Halo:bob:1:0.6:0=0,3.47455,-1.38,1,0,0,0,1,0,0,0,1;Aura:orbit:1:0.8:0=0,-0.0552,0.18,1,0,0,0,1,0,0,0,1",
-	StructureHash = "7d14d7f6988ff616900d9e9af45fe9a6",
+	StructureHash = "8ec58cd3ca336db9031e85b6c449567d",
 	Tris = 3618,
 	VoxelStuds = 0.21818,
 }

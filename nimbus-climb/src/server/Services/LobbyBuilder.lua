@@ -970,6 +970,9 @@ local function place(tpl, cf, parent, name)
 			d.CFrame = cf * d.CFrame
 		end
 	end
+	if not m.PrimaryPart and m:IsA("Model") then
+		m.WorldPivot = cf -- the clone's pivot = where it was placed (TutorialController reads Plot:GetPivot())
+	end
 	if name then
 		m.Name = name
 	end
@@ -1832,30 +1835,42 @@ local function buildFountain(f, centre, lookTarget)
 		if not def or type(PetBuilder.Build) ~= "function" then
 			return
 		end
-		local pet = PetBuilder.Build(def, { Scale = 2.6, Detail = "Low" })
+		local opts = { Scale = 2.6, Detail = "Low" }
+		local function statue()
+			local pet = PetBuilder.Build(def, opts)
+			if not pet then
+				return nil
+			end
+			pet.Name = "NimbusStatue"
+			local topY = TOP + 9.4 -- perched on the top bowl's rim (its stone top is TOP + 10)
+			pet:PivotTo(CFrame.new(0, 0, 0))
+			local boxCf, boxSize = pet:GetBoundingBox()
+			local bottom = pet:GetPivot().Position.Y - (boxCf.Position.Y - boxSize.Y * 0.5)
+			if type(bottom) ~= "number" or bottom ~= bottom or bottom < -50 or bottom > 100 then
+				bottom = 2
+			end
+			local y = topY + bottom + 0.6
+			pet:PivotTo(flatLook(Vector3.new(centre.X, y, centre.Z), lookTarget))
+			for _, d in ipairs(pet:GetDescendants()) do
+				if d:IsA("BasePart") then
+					d.Anchored = true
+					d.CanCollide = false
+					d.CanTouch = false
+					d.CanQuery = false
+				end
+			end
+			CollectionService:AddTag(pet, EXEMPT_TAG) -- a pet statue: skipped by the 6.4 material / saturation audit
+			return pet
+		end
+		local pet = statue()
 		if not pet then
 			return
 		end
-		pet.Name = "NimbusStatue"
-		local topY = TOP + 9.4 -- perched on the top bowl's rim (its stone top is TOP + 10)
-		pet:PivotTo(CFrame.new(0, 0, 0))
-		local boxCf, boxSize = pet:GetBoundingBox()
-		local bottom = pet:GetPivot().Position.Y - (boxCf.Position.Y - boxSize.Y * 0.5)
-		if type(bottom) ~= "number" or bottom ~= bottom or bottom < -50 or bottom > 100 then
-			bottom = 2
-		end
-		local y = topY + bottom + 0.6
-		pet:PivotTo(flatLook(Vector3.new(centre.X, y, centre.Z), lookTarget))
-		for _, d in ipairs(pet:GetDescendants()) do
-			if d:IsA("BasePart") then
-				d.Anchored = true
-				d.CanCollide = false
-				d.CanTouch = false
-				d.CanQuery = false
-			end
-		end
-		CollectionService:AddTag(pet, EXEMPT_TAG) -- a pet statue: skipped by the 6.4 material / saturation audit
 		pet.Parent = m
+		-- Phase 6: the mesh Nimbus replaces this Part build once its keys load after boot (MeshLibrary.Swap)
+		if type(PetBuilder.SwapWhenReady) == "function" then
+			PetBuilder.SwapWhenReady(pet, def, opts, statue)
+		end
 	end)
 	if not ok then
 		warn("[LobbyBuilder] fountain statue skipped: " .. tostring(err))

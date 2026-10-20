@@ -1210,17 +1210,13 @@ local function extents(model, origin)
 	return lo, hi, reach
 end
 
--- Returns the showcase model (or nil) and the height of its top above the walking surface.
-local function buildShowcase(parent, A)
-	if not PetBuilder or type(PetBuilder.Build) ~= "function" then
-		warn("[StormAltar] PetBuilder is unavailable: no Stormfang showcase")
-		return nil, HOVER + 10
-	end
+-- The finished, placed Stormfang showcase pet (not parented) and its extents, or nil.
+local function makeShowcasePet(A)
 	local def = stormfangDef()
 	local ok, pet = pcall(PetBuilder.Build, def, { Detail = "High", Scale = 3 })
 	if not ok or typeof(pet) ~= "Instance" then
 		warn("[StormAltar] Stormfang showcase failed: " .. tostring(pet))
-		return nil, HOVER + 10
+		return nil
 	end
 	pet.Name = "StormfangShowcase"
 	pet:PivotTo(CFrame.new())
@@ -1244,7 +1240,27 @@ local function buildShowcase(parent, A)
 	pet:SetAttribute("HoverAmp", 0.45)
 	pet:SetAttribute("Ready", true)
 	CollectionService:AddTag(pet, SHOWCASE_TAG)
+	return pet, lo, hi, reach
+end
+
+-- Returns the showcase model (or nil) and the height of its top above the walking surface.
+local function buildShowcase(parent, A)
+	if not PetBuilder or type(PetBuilder.Build) ~= "function" then
+		warn("[StormAltar] PetBuilder is unavailable: no Stormfang showcase")
+		return nil, HOVER + 10
+	end
+	local pet, lo, hi, reach = makeShowcasePet(A)
+	if not pet then
+		return nil, HOVER + 10
+	end
 	pet.Parent = parent
+	-- Phase 6: the mesh Stormfang replaces this Part build once its keys load after boot (same name, same place;
+	-- the clients' ShowcaseController picks the new tagged model up). Empty MeshIds = nothing.
+	if type(PetBuilder.SwapWhenReady) == "function" then
+		pcall(PetBuilder.SwapWhenReady, pet, stormfangDef(), { Detail = "High", Scale = 3 }, function()
+			return (makeShowcasePet(A))
+		end)
+	end
 
 	-- one invisible collider keeps players out of the big (non-colliding) pet
 	local height = HOVER + (hi - lo)

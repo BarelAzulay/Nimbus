@@ -3731,6 +3731,15 @@ defclass("BasePart", "PVInstance", {
 	},
 	events = { "Touched", "TouchEnded" },
 	methods = {
+		-- PVInstance pivot API on parts (Phase 6: MeshLibrary.Dress pivots Part targets): the pivot is the part's
+		-- CFrame times its PivotOffset, as in Roblox
+		GetPivot = function(self)
+			local st = self[STATE]
+			return currentCFrame(st) * (st.props.PivotOffset or CF_IDENTITY)
+		end,
+		PivotTo = function(self, cfv)
+			pivotTo(self, cfv)
+		end,
 		GetMass = function(self)
 			return self.Mass
 		end,

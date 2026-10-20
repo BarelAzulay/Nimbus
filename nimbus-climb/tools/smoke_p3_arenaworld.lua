@@ -1415,6 +1415,9 @@ S.p3arena_mesh = guarded("p3arena_mesh", function()
 		idn = idn + 1
 		ids[key] = 200000 + idn
 	end
+	-- W2.5 isolation: Start() with ids creates ReplicatedStorage.MeshLibrary; remove it again at the end so later
+	-- scenarios (p6pets_default: MeshLibrary.Active() is false) see the empty-ids game
+	local hadMLFolder = game:GetService("ReplicatedStorage"):FindFirstChild("MeshLibrary") ~= nil
 	ML._Reset()
 	ML._Configure({ Ids = ids })
 	pcall(ML.Start)
@@ -1468,6 +1471,10 @@ S.p3arena_mesh = guarded("p3arena_mesh", function()
 		untag(r.Target)
 	end
 	ML._Reset()
+	local mlFolder = game:GetService("ReplicatedStorage"):FindFirstChild("MeshLibrary")
+	if mlFolder and not hadMLFolder then
+		mlFolder:Destroy()
+	end
 	if rp then
 		AB.FreePocket(rp)
 	end

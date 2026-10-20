@@ -9,7 +9,8 @@ hyb_<style> key is a `pet` entry of the reference body with a hybrid Look plus t
 
 `isolate` keeps only what the hybrid adds to the plain reference body:
   * every voxel the feature grows (ears, ruffs, horn, mane, crest, gills ...) with its own palette key;
-  * the feature's PAINTED patterns (tabby bands, spots, eye patches, tuxedo) raised one fine voxel off the body
+  * the feature's PAINTED patterns (tabby bands, spots, eye patches, tuxedo, a penguin's feet: any key the hybrid
+    paints over the plain body's voxels, Hy* or not; face keys excepted) raised one fine voxel off the body
     surface (they would z-fight as a recolour of the body's own voxels in a separate mesh); never in front of the eyes;
   * the hybrid's own tail group when the trait swaps the tail (else the Tail group is dropped: the body key's tail
     stays);
@@ -23,6 +24,10 @@ PetBuilder's hybrid palette.  Deterministic (fixed Seed in the catalog, sorted l
 from detail.faces import _base, eye_specs, front_map, rescale_face_features, restore_carved_eyes
 
 HY_KEYS = ("HyA", "HyB", "HyTip", "HyHorn", "HyGlow")
+# keys a hybrid never paints as a feature (eye / lid / mouth carving can differ by a voxel between the hybrid and the
+# plain body: those differences are not part of the feature)
+FACE_ONLY = frozenset(("EyeIris", "EyePupil", "EyeShine", "EyeGlint", "EyeRing", "Lash", "Lid", "LidLine", "Mouth",
+                       "Tongue", "Tooth", "Nose", "Blush"))
 LOOK_HYBRID = ("Hybrid", "StyleId", "Seed", "BodyId")
 _BRIDGE = []
 
@@ -76,7 +81,9 @@ def isolate(bp, cells, entry):
     raised = {}
     for p in sorted(cells):
         k = cells[p]
-        if p not in base or _base(k) not in HY_KEYS or _base(base[p]) == _base(k):
+        if p not in base or _base(k) == _base(base[p]) or _base(k) in FACE_ONLY:
+            continue
+        if _base(k) not in HY_KEYS and not entry.get("raiseAll", True):
             continue
         x, y, z = p
         for d in ((0, 0, -1), (1, 0, 0), (-1, 0, 0), (0, 1, 0), (0, 0, 1), (0, -1, 0)):

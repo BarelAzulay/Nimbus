@@ -627,6 +627,31 @@ S.p6mesh_server = guarded("p6mesh_server", function()
 		T.check(ML.Swap(now, function()
 			error("boom")
 		end) == nil and now.Parent == holder, "a failing build keeps the old model")
+		-- [fix-runtime W2.5] Swap opts: OnSwapped (callers that hold the model take the new one), Place = false
+		local got = {}
+		local placed = ML.Swap(now, function()
+			local m = ML.Assemble(petSpec(false), LOOK)
+			m:PivotTo(CFrame.new(50, 7, 0))
+			return m
+		end, nil, { Place = false, OnSwapped = function(fresh, old2)
+			got.Fresh, got.Old = fresh, old2
+		end })
+		T.check(placed ~= nil and near(placed:GetPivot().Position, Vector3.new(50, 7, 0)) and got.Fresh == placed and got.Old == now and now.Parent == nil,
+			"Swap opts { Place = false, OnSwapped }: the build keeps its own placement, the callback gets (fresh, old)")
+		local short = nil
+		local again = ML.Swap(placed, function()
+			return ML.Assemble(petSpec(false), LOOK)
+		end, nil, function(fresh)
+			short = fresh
+		end)
+		T.check(again ~= nil and short == again and near(again:GetPivot().Position, Vector3.new(50, 7, 0)), "Swap opts as a function = OnSwapped (and the default PivotTo the old pivot)")
+		local calls = 0
+		T.check(ML.Swap(again, function()
+			calls = calls + 1
+			return ML.Assemble(petSpec(false), LOOK)
+		end, { "pet_never_uploaded" }) == nil and ML.Status("pet_never_uploaded") == "missing", "Swap on a key with no id (after Start) returns nil")
+		Mock.Advance(1)
+		T.check(calls == 0 and again.Parent == holder, "... and never rebuilds (nothing waits on a missing key)")
 
 		-- Tag (server side of dressing)
 		local target = Instance.new("Model")
@@ -769,6 +794,71 @@ S.client_p6mesh = guarded("client_p6mesh", function()
 			end
 		end
 		T.check(meshes == 1, "client: dressing twice keeps one mesh")
+		-- [fix-runtime W2.5] hide-list mode (ML_Hide): only the named parts go transparent, later extras stay
+		local hideT = partTarget(world, "ArchHide", "prop_arch", CFrame.new(40, 3, 0))
+		hideT:SetAttribute("ML_Keep", "")
+		hideT:SetAttribute("ML_Hide", "Stone")
+		ML.Dress(hideT, "prop_arch")
+		Mock.Advance(0.2)
+		T.check(hideT:FindFirstChild("ML_Mesh") ~= nil and hideT.Stone.Transparency == 1 and hideT.Trim.Transparency == 0 and hideT.SignBoard.Transparency == 0,
+			"client: ML_Hide = 'Stone' hides only Stone (Trim / SignBoard stay)")
+		local tagT = Instance.new("Model")
+		ML.Tag(tagT, "prop_arch", { Hide = { "Trim", "Stone" } })
+		T.check(tagT:GetAttribute("ML_Hide") == "Stone,Trim", "Tag look.Hide -> ML_Hide (sorted csv)")
+		-- a dressed target nested in another one: the outer Dress never hides the inner mesh
+		local outer = partTarget(world, "Outer", "prop_arch", CFrame.new(60, 3, 0))
+		local inner = partTarget(outer, "Inner", "prop_arch", CFrame.new(64, 3, 0))
+		ML.Dress(inner, "prop_arch")
+		Mock.Advance(0.2)
+		ML.Dress(outer, "prop_arch")
+		Mock.Advance(0.2)
+		local innerMesh = inner:FindFirstChild("ML_Mesh")
+		T.check(innerMesh ~= nil and outer:FindFirstChild("ML_Mesh") ~= nil and innerMesh.Stone.Transparency == 0 and inner.Stone.Transparency == 1,
+			"client: an outer Dress leaves a nested target's ML_Mesh visible")
+		-- ML_Weld on a BasePart target (TokenFx coins): the mesh is unanchored + welded to the moving root
+		local coin = Instance.new("Part")
+		coin.Name = "Coin"
+		coin.Anchored = true
+		coin.CFrame = CFrame.new(5, 6, 7)
+		local halo = Instance.new("Part")
+		halo.Name = "Halo"
+		halo.Anchored = true
+		halo.CFrame = coin.CFrame
+		halo.Parent = coin
+		coin:SetAttribute("ML_Keep", "Halo")
+		coin:SetAttribute("ML_Weld", true)
+		coin.Parent = world
+		ML.Dress(coin, "prop_arch")
+		Mock.Advance(0.2)
+		local cm = coin:FindFirstChild("ML_Mesh")
+		local loose, welded = 0, 0
+		for _, d in ipairs(cm and cm:GetDescendants() or {}) do
+			if d:IsA("BasePart") then
+				local w = d:FindFirstChildOfClass("WeldConstraint")
+				if d.Anchored then
+					loose = loose + 1
+				end
+				if w and w.Part0 == coin and w.Part1 == d then
+					welded = welded + 1
+				end
+			end
+		end
+		T.check(cm ~= nil and loose == 0 and welded > 0 and coin.Transparency == 1 and halo.Transparency == 0,
+			"client: an ML_Weld Part target is dressed; every mesh part unanchored + WeldConstraint Part0 = the target, Halo kept", fmt("%d anchored, %d welded", loose, welded))
+		T.check(cm ~= nil and cm:FindFirstChild("Stone") ~= nil and near(cm.Stone.Position, Vector3.new(5 - 3, 6 + 4, 7)), "client: the Part target's mesh sits on its CFrame")
+		-- HomeFx: a mesh-dressed station appears without the Part pop (which would bring the hidden Parts back)
+		local KCm = rawget(_G, "KC")
+		local HF = KCm and KCm.M and KCm.M.HomeFx
+		if not HF then
+			pcall(function()
+				HF = require(Mock.GetPath(ROOTS.client .. "/Controllers/HomeFx"))
+			end)
+		end
+		if T.check(type(HF) == "table" and type(HF._StartPop) == "function", "HomeFx._StartPop test hook") then
+			local st = partTarget(world, "Station_Farm", "prop_arch", CFrame.new(0, 3, 30))
+			local t0 = st.Trim.Transparency
+			T.check(HF._StartPop(st, nil) == nil and st.Trim.Transparency == t0, "HomeFx.startPop: an ML_DressKey station never pops")
+		end
 		root.wing_feather_L:Destroy()
 		Mock.Advance(0.1)
 		T.check(not ML.IsReady("wing_feather_L") and ML.Assemble(petSpec(false), LOOK) == nil, "client: a removed template is not ready any more")

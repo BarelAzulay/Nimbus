@@ -10,6 +10,8 @@
 #   tools/run_checks.sh --smoke --only client_menu --echo   # show the game's print() / warn() output
 #   tools/run_checks.sh --smoke --only storm_elements,storm_pet,storm_altar,client_storm   # the Stormfang round (tools/smoke_storm.lua)
 #   tools/run_checks.sh --smoke --strict-members --strict   # also fail on warnings / unknown Instance members
+#   Every smoke run also runs "Smoke test, mesh mode" (smoke.py --quick --mesh, ~1 min: the pet scenarios on
+#   Blender-mesh fixture pets); it is skipped when you pass --only.
 #
 # Any argument that is not --static / --smoke is passed on to tools/smoke.py (python3 tools/smoke.py --list shows the scenarios).
 # Requirements: python3 + `pip install lupa`, node 18+ (npm packages are installed on first use).
@@ -28,10 +30,16 @@ for arg in "$@"; do
 		--static) do_smoke=0 ;;
 		--smoke) do_static=0 ;;
 		-h | --help)
-			sed -n '2,16p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
+			sed -n '2,18p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
 			exit 0
 			;;
 		*) smoke_args+=("$arg") ;;
+	esac
+done
+has_only=0
+for arg in ${smoke_args[@]+"${smoke_args[@]}"}; do
+	case "$arg" in
+		--only | --only=*) has_only=1 ;;
 	esac
 done
 
@@ -90,6 +98,11 @@ fi
 if [ $do_smoke -eq 1 ]; then
 	if need python3 "install Python 3" && python3 -c "import lupa" 2>/dev/null; then
 		step "Smoke test (tools/smoke.py)" python3 tools/smoke.py ${smoke_args[@]+"${smoke_args[@]}"}
+		# Phase 6 (recipe 4.9): the pet scenarios again on Blender-mesh fixture pets (fake MeshIds + templates built
+		# from src/shared/MeshManifests); skipped for an --only run
+		if [ $has_only -eq 0 ]; then
+			step "Smoke test, mesh mode (tools/smoke.py --quick --mesh)" python3 tools/smoke.py --quick --mesh
+		fi
 	else
 		echo "missing dependency: lupa (pip install lupa)" >&2
 		record "Smoke test (tools/smoke.py)" "FAILED (python3 / lupa missing)"

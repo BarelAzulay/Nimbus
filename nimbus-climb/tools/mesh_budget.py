@@ -8,9 +8,13 @@ Reads src/shared/MeshManifests/<key>.lua (Tris + Parts) and blender/meshes.json.
 what are in view:
     {"name": "lobby16", "budget": {"tris": 300000, "parts": 400},
      "pets": {"High": 3, "Low": 45},          # pet sets (body + wings + accessory), the heaviest built set per LOD
-     "keys": {"gate_obby": 1, "cloud_big_1": 12}}   # placements of world keys (missing keys are listed, not counted)
+     "petClasses": ["pets"],                  # catalogs whose sets count as pet sets (default: pets; never bosses)
+     "keys": {"gate_obby": 1, "cloud_big_1": 12},   # placements of world keys (missing keys are listed, not counted)
+     "include": [{"scene": "docs/phase6/review/home/plot_scene.json", "count": 4}]}   # other scenes' keys x count
 The default scene is the contract's worst case: 16 players x 3 pets in the lobby (own 3 pets High, 45 others Low)
-plus every gate / lobby key built so far once.  MeshParts approximate draw calls (one per part and material).
+plus every gate / lobby key built so far once, plus the home plots a phone sees from the plaza (the 16 plots stand
+on the 340-stud spot ring: a ~90 degree view takes in a quarter of it = 4 max-tier plots; the line "all 16 plots"
+gives the whole ring).  MeshParts approximate draw calls (one per part and material).
 --check exits 1 when the scene is over its budget.
 """
 import argparse
@@ -24,8 +28,11 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 MAN_DIR = os.path.join(ROOT, "src", "shared", "MeshManifests")
 CATALOG_DIR = os.path.join(ROOT, "blender", "catalog")
 
+PLOT_SCENE = "docs/phase6/review/home/plot_scene.json"
+PLOTS_IN_VIEW = 4  # of Config.Lobby.SpotCount = 16 on the spot ring (a quarter of the ring in a phone view)
 DEFAULT_SCENE = {"name": "lobby16 (16 players x 3 pets, phone)", "budget": {"tris": 300000, "parts": 400},
-                 "pets": {"High": 3, "Low": 45}, "keys": {}, "worldClasses": ["gates", "lobby"]}
+                 "pets": {"High": 3, "Low": 45}, "petClasses": ["pets"], "keys": {},
+                 "worldClasses": ["gates", "lobby"], "include": [{"scene": PLOT_SCENE, "count": PLOTS_IN_VIEW}]}
 
 
 def read_manifests():
@@ -60,8 +67,10 @@ def catalog_keys(classes):
 def scene_total(scene, mans):
     rows, missing = [], []
     tris = parts = 0
-    sets = catalog_sets()
-    for lod, n in (scene.get("pets") or {}).items():
+    pet_classes = set(scene.get("petClasses") or ["pets"])
+    # pet sets only (body + wings + accessory of a catalog pet): boss / dragon / creature sets are not pets
+    sets = [s for s in catalog_sets() if s.get("cls") in pet_classes]
+    for lod, n in sorted((scene.get("pets") or {}).items()):
         best = None
         for s in sets:
             low = s["name"].endswith("_low")
@@ -88,6 +97,16 @@ def scene_total(scene, mans):
         rows.append(("%d x %s" % (n, k), n * mans[k]["tris"], n * mans[k]["parts"]))
         tris += n * mans[k]["tris"]
         parts += n * mans[k]["parts"]
+    for inc in scene.get("include") or []:
+        path = inc["scene"] if os.path.isabs(inc["scene"]) else os.path.join(ROOT, inc["scene"])
+        sub = json.load(open(path))
+        sub = dict(sub, pets={})  # an included scene adds its world keys only (the pets are counted above)
+        n = int(inc.get("count", 1))
+        _, t, p, miss = scene_total(sub, mans)
+        rows.append(("%d x scene: %s" % (n, sub.get("name", inc["scene"])), n * t, n * p))
+        tris += n * t
+        parts += n * p
+        missing += ["%s (in %s)" % (m, os.path.basename(path)) for m in miss]
     return rows, tris, parts, missing
 
 
@@ -112,6 +131,13 @@ def main():
     print("  %-52s %8d / %s tris %5d / %s parts" % ("TOTAL", tris, b.get("tris"), parts, b.get("parts")))
     if missing:
         print("  not built yet (not counted):", ", ".join(missing))
+    if not a.scene:
+        # the whole spot ring and the evolved worst case, for reference (not part of the default scene's check)
+        ring = dict(DEFAULT_SCENE, include=[{"scene": PLOT_SCENE, "count": 16}])
+        evo = dict(DEFAULT_SCENE, petClasses=["evolved"])
+        for label, sc in (("all 16 plots in view", ring), ("every pet a second evolution (evolved sets)", evo)):
+            _, t2, p2, _ = scene_total(sc, mans)
+            print("  %-52s %8d tris %5d parts" % ("(if " + label + ")", t2, p2))
     over = (b.get("tris") and tris > b["tris"]) or (b.get("parts") and parts > b["parts"])
     if a.check and over:
         print("OVER BUDGET")

@@ -59,7 +59,7 @@ return {
 		Min = { -3.68, -2.2632, -3.5 },
 		Size = { 7.36, 6.3907, 7.4493 },
 	},
-	ContentHash = "6a0c87e914dba8cc5b338d6c751b6510",
+	ContentHash = "6d3a6feee7e74f6815912c0d967d68e5",
 	DarkFactor = { 0.8425, 0.85, 0.8875 },
 	DeepFactor = { 0.7098, 0.7225, 0.7877 },
 	Groups = {
@@ -270,14 +270,14 @@ return {
 		{
 			Center = { 0, 0, -0.4267 },
 			Color = "vertex",
-			FixedKeys = { "GemB", "GoldLight", "Spark", "Spine", "Tongue", "Tooth" },
+			FixedKeys = { "GemB", "GoldLight", "Spine", "Tongue", "Tooth" },
 			Group = "Body",
 			Key = "Fixed",
 			Material = "SmoothPlastic",
 			Name = "Fixed",
 			Shade = "fixed",
 			Size = { 2.4533, 0.96, 5.2267 },
-			Tris = 274,
+			Tris = 268,
 		},
 		{
 			Center = { 0, 0.0533, -0.64 },
@@ -421,6 +421,17 @@ return {
 			Shade = "base",
 			Size = { 0.5333, 0.1067, 0.1067 },
 			Tris = 8,
+		},
+		{
+			Center = { -0.1067, -0.4267, -1.92 },
+			Color = { "rgb", 255, 250, 232 },
+			Group = "Body",
+			Key = "Spark",
+			Material = "SmoothPlastic",
+			Name = "Spark",
+			Shade = "base",
+			Size = { 0.1067, 0.1067, 0.1067 },
+			Tris = 6,
 		},
 		{
 			Center = { 0, 1.8667, -1.2267 },
@@ -589,7 +600,7 @@ return {
 		},
 	},
 	Rig = "Tail:tail:1:0.25:0=0,-0.4632,1.48262,1,0,0,0,1,0,0,0,1;Halo:bob:1:0.6:0=0,3.2208,-1.14,1,0,0,0,1,0,0,0,1;Aura:orbit:1:0.8:0=0,-0.0552,0.18,1,0,0,0,1,0,0,0,1",
-	StructureHash = "1ccb2bebb78f33cec36d2f92522377fc",
+	StructureHash = "6f7da82f85e1be38a64f0c5f1d599ab3",
 	Tris = 14246,
 	VoxelStuds = 0.10667,
 }

@@ -28,16 +28,17 @@ CATALOG = os.path.join(REPO, "blender", "catalog", "evolved.json")
 PET_CATALOG = os.path.join(REPO, "src", "shared", "PetCatalog.lua")
 
 K = {(1, "High"): 1.25, (1, "Low"): 0.65, (2, "High"): 1.125, (2, "Low"): 0.55}
-PASSES = ["evolved:lua_eyes", "evolved:body", "evolved:aura"]
+PASSES = ["evolved:body", "evolved:aura"]
 PASSES_LOW = ["evolved:body", "evolved:aura"]  # Low: the kit's pixel eyes read better than the Lua masks
 # the evolved faces keep the game's own carved Lua eyes and mouth (drawn for the evolved heads; the kit's procedural
-# eyes mis-read them): evolved:lua_eyes puts them back (see its doc string); "eyes": "lua" would skip every pass
-FACE = {"features": False}
+# eyes mis-read them): "eyes": "lua" (petkit.face_pass runs the passes on that path too since W2.5; the old
+# evolved:lua_eyes hook gave byte-identical keys and was removed)
+FACE = {"eyes": "lua", "features": False}
 
 # recipe 4.2: evolved 1 <= 15k / 50 parts (Low 4.5k / 16), evolved 2 <= 20k / 60 (Low 6k / 18) per SET (body + wings);
 # keys get a share so the K step-down happens on the body first.  Part counts: see the doc string of BUDGETS_DOC.
 BUDGETS = {
-    "evo1Body": {"tris": 11500, "parts": 40, "maxPartTris": 10000},
+    "evo1Body": {"tris": 11500, "parts": 44, "maxPartTris": 10000},
     "evo1BodyLow": {"tris": 3700, "parts": 36, "maxPartTris": 10000},
     "evo1Wing": {"tris": 1750, "parts": 12},
     "evo1WingLow": {"tris": 400, "parts": 8},
@@ -58,7 +59,9 @@ BUDGETS_DOC = ("Sets (body + wings) keep the recipe 4.2 triangle budgets (evo1 1
                "MeshPart counts follow the 4.3 name contract (one part per group, key and shade; wings are separate "
                "L / R keys, up to 16 parts per wing), so the set part caps are 64 / Low 52 (evo1) and 110 / Low 84 "
                "(evo2) instead of 50 / 16 and 60 / 18 (the same deviation as the kit's base-pet Low sets). Still far "
-               "below the Part build (1500-2000 parts High).")
+               "below the Part build (1500-2000 parts High). evo1 bodies may take 44 parts: keys the game or a test "
+               "looks up by name (tools/mesh_names.py: Spark, Frost, CrystalDeep, Basalt, HydraHead ...) are never "
+               "baked into Fixed (recipe 4.3).")
 NO_WING2 = {"phantom_kitsune"}
 # first evolutions whose Low bat wings are big (828 tris at K 0.65): the wings get more, the body less
 LOW_BAT = {"twilight_dragon", "eclipse_dragon", "hydralotl"}

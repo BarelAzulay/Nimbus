@@ -343,7 +343,9 @@ local function serverScenarios()
 				local wl, wr = model:FindFirstChild("WingL", true), model:FindFirstChild("WingR", true)
 				T.check(wl ~= nil and wr ~= nil and wl:IsA("BasePart") and wr:IsA("BasePart"), label .. ": the storm cloud halves are WingL / WingR", tostring(wl) .. " / " .. tostring(wr))
 				local claws, eyes, gems = neonNamed(model, "Claw"), neonNamed(model, "Eye"), neonNamed(model, "Gem")
-				T.check(claws >= 2 and eyes >= 2 and gems >= 1, label .. ": glowing Neon claws, eyes and gem(s)", claws .. " claw, " .. eyes .. " eye, " .. gems .. " gem Neon parts")
+				-- a Blender-mesh pet (ML_Mesh, recipe 4.9) has one Neon MeshPart per palette key: presence, not voxel counts
+				local need = model:GetAttribute("ML_Mesh") == true and 1 or 2
+				T.check(claws >= need and eyes >= need and gems >= 1, label .. ": glowing Neon claws, eyes and gem(s)", claws .. " claw, " .. eyes .. " eye, " .. gems .. " gem Neon parts")
 				local badFlags = 0
 				for _, d in ipairs(model:GetDescendants()) do
 					if d:IsA("BasePart") and not (d.Anchored and not d.CanCollide and not d.CanTouch and not d.CanQuery) then

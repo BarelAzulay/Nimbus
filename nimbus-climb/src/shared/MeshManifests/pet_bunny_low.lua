@@ -43,7 +43,7 @@ return {
 		Min = { -0.9884, -1.2209, -0.8721 },
 		Size = { 1.9767, 3.3721, 1.9191 },
 	},
-	ContentHash = "cbeeb8951e393476db408159c1d82f93",
+	ContentHash = "ebb166ff37ad68405af2ea5e06960ecb",
 	DarkFactor = { 0.8425, 0.85, 0.8875 },
 	DeepFactor = { 0.7098, 0.7225, 0.7877 },
 	Groups = {
@@ -118,17 +118,6 @@ return {
 			Tris = 20,
 		},
 		{
-			Center = { 0, 0.4651, -0.6395 },
-			Color = { "headroom", { "cuteIris", { "Eye" } } },
-			Group = "Body",
-			Key = "EyeIris",
-			Material = "SmoothPlastic",
-			Name = "EyeIris",
-			Shade = "headroom",
-			Size = { 0.814, 0.1163, 0 },
-			Tris = 4,
-		},
-		{
 			Center = { 0, 0.6395, -0.5814 },
 			Color = { "headroom", { "cutePupil", { "Eye" }, false } },
 			Group = "Body",
@@ -136,11 +125,11 @@ return {
 			Material = "SmoothPlastic",
 			Name = "EyePupil",
 			Shade = "headroom",
-			Size = { 1.0465, 0.2326, 0.1163 },
-			Tris = 18,
+			Size = { 1.0465, 0.4651, 0.1163 },
+			Tris = 20,
 		},
 		{
-			Center = { 0.1163, 0.6977, -0.5814 },
+			Center = { 0, 0.6977, -0.5814 },
 			Color = { "headroom", { "rgb", 252, 252, 255 } },
 			Group = "Body",
 			Key = "EyeShine",
@@ -148,7 +137,7 @@ return {
 			Name = "EyeShine",
 			Shade = "headroom",
 			Size = { 0.814, 0.1163, 0.1163 },
-			Tris = 4,
+			Tris = 12,
 		},
 		{
 			Center = { -0.0581, 0.1163, -0.7558 },
@@ -171,7 +160,7 @@ return {
 			Name = "Fur",
 			Shade = "headroom",
 			Size = { 1.9767, 3.2558, 1.5116 },
-			Tris = 1360,
+			Tris = 1386,
 		},
 		{
 			Center = { 0, 1.5698, -0.0581 },
@@ -183,17 +172,6 @@ return {
 			Shade = "headroom",
 			Size = { 1.2791, 0.6977, 0.2326 },
 			Tris = 60,
-		},
-		{
-			Center = { 0, 0.814, -0.5814 },
-			Color = { "headroom", { "cuteLash", { "Eye" } } },
-			Group = "Body",
-			Key = "Lash",
-			Material = "SmoothPlastic",
-			Name = "Lash",
-			Shade = "headroom",
-			Size = { 1.0465, 0.1163, 0.1163 },
-			Tris = 12,
 		},
 		{
 			Center = { 0, 0.2907, -0.814 },
@@ -215,7 +193,7 @@ return {
 			Name = "Muzzle",
 			Shade = "headroom",
 			Size = { 0.5814, 0.3488, 0.2326 },
-			Tris = 32,
+			Tris = 36,
 		},
 		{
 			Center = { 0, 0.3488, -0.814 },
@@ -248,7 +226,7 @@ return {
 			Name = "EyeLid",
 			Shade = "headroom",
 			Size = { 0.3488, 0.4651, 0.2326 },
-			Tris = 46,
+			Tris = 52,
 		},
 		{
 			Center = { 0.3488, 0.5814, -0.6395 },
@@ -259,7 +237,7 @@ return {
 			Name = "EyeLid2",
 			Shade = "headroom",
 			Size = { 0.3488, 0.1163, 0.2326 },
-			Tris = 20,
+			Tris = 16,
 		},
 		{
 			Center = { -0.3488, 0.6395, -0.6395 },
@@ -270,7 +248,7 @@ return {
 			Name = "EyeLid3",
 			Shade = "headroom",
 			Size = { 0.3488, 0.4651, 0.2326 },
-			Tris = 46,
+			Tris = 52,
 		},
 		{
 			Center = { -0.3488, 0.5814, -0.6395 },
@@ -281,7 +259,7 @@ return {
 			Name = "EyeLid4",
 			Shade = "headroom",
 			Size = { 0.3488, 0.1163, 0.2326 },
-			Tris = 20,
+			Tris = 16,
 		},
 		{
 			Center = { 0, -0.7219, 0.7563 },
@@ -296,7 +274,7 @@ return {
 		},
 	},
 	Rig = "Tail:tail:1:0.25:0=0,-0.78,0.64,1,0,0,0,1,0,0,0,1",
-	StructureHash = "57315ca06e80f7dce3bd4ac76a12f3a7",
-	Tris = 2022,
+	StructureHash = "df044625938070d40fffeea7500f5bcb",
+	Tris = 2050,
 	VoxelStuds = 0.11628,
 }

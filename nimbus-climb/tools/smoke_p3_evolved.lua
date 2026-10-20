@@ -160,18 +160,21 @@ local function serverScenarios()
 							m.Parent = holder
 							m:PivotTo(CFrame.new(0, 3200, 0))
 							local n = #partsOf(m)
-							T.check(n >= 150 and n <= CAPS[stage][detail], "evolved event pets: " .. label .. " stays within its part cap (" .. CAPS[stage][detail] .. ")", n .. " parts")
+							-- recipe 4.9: a Blender-mesh pet (ML_Mesh) is one MeshPart per palette key / group, so the voxel floors
+							-- (>= 150 parts, >= 20 cracks, >= 4 aura voxels) become presence checks; the names stay required
+							local mesh = m:GetAttribute("ML_Mesh") == true
+							T.check(n >= (mesh and 8 or 150) and n <= CAPS[stage][detail], "evolved event pets: " .. label .. " stays within its part cap (" .. CAPS[stage][detail] .. ")", n .. " parts" .. (mesh and " (mesh)" or ""))
 							local w1 = m:FindFirstChild("WingL", true) ~= nil and m:FindFirstChild("WingR", true) ~= nil
 							local w2 = m:FindFirstChild("Wing2L", true) ~= nil and m:FindFirstChild("Wing2R", true) ~= nil
 							T.check(w1 and (w2 == (stage == 2)), "evolved event pets: " .. label .. " has its wings (a second pair at Evolved II)", "WingL/R " .. tostring(w1) .. ", Wing2L/R " .. tostring(w2))
 							if stage == 2 then
-								T.check(keyed(m, "Aura") >= 4, "evolved event pets: " .. label .. " has its orbiting element aura", keyed(m, "Aura") .. " aura parts")
+								T.check(keyed(m, "Aura") >= (mesh and 1 or 4), "evolved event pets: " .. label .. " has its orbiting element aura", keyed(m, "Aura") .. " aura parts")
 							end
 							local found = {}
 							for _, sign in ipairs(SIGNS[id][stage]) do
 								local c = signCount(m, sign[1])
 								found[#found + 1] = sign[1][1] .. " " .. c
-								local need = (detail == "High") and sign[2] or 1
+								local need = (detail == "High" and not mesh) and sign[2] or 1
 								T.check(c >= need, "evolved event pets: " .. label .. " shows " .. sign[3], c .. " parts (need " .. need .. ")")
 							end
 							T.info(label .. ": " .. n .. " parts; " .. table.concat(found, ", "))
@@ -793,7 +796,9 @@ local function clientScenarios()
 		folder = Show.Folder and Show.Folder()
 		local m = folder and folder:FindFirstChild("DevPet_magma_cub_2")
 		local n = m and #partsOf(m) or -1
-		T.check(m ~= nil and n > CAPS[2].Low and n <= CAPS[2].High and keyed(m, "Magma") > 0, "evolved lineup: '/pet magma 2' spawns Magma Cub's Evolved II at High detail, cracks and all", n .. " parts")
+		-- High detail: by part count on the voxel build; a Blender-mesh pet (ML_Mesh) says it with PB_Detail
+		local high = m ~= nil and (m:GetAttribute("ML_Mesh") == true and m:GetAttribute("PB_Detail") == "High" or n > CAPS[2].Low)
+		T.check(m ~= nil and high and n <= CAPS[2].High and keyed(m, "Magma") > 0, "evolved lineup: '/pet magma 2' spawns Magma Cub's Evolved II at High detail, cracks and all", n .. " parts")
 		Show.Handle("Clear", {})
 		advance(0.3)
 		T.eq(Show.Count(), 0, "evolved lineup: Clear removes the showcase pets")

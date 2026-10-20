@@ -1018,6 +1018,25 @@
    "description": "Hybrid feature: dog style (PetBuilder HYBRID.Dog) grown on the mallow_kitten body (pivot = body root; Hy* parts are coloured from the hybrid palette at runtime)"
   },
   {
+   "key": "hyb_dog_ears",
+   "type": "pet",
+   "pet": "puddle_frog",
+   "k": 1.38,
+   "strip": [
+    "Accessory"
+   ],
+   "budget": "hyb",
+   "look": {
+    "Hybrid": true,
+    "StyleId": "pebble_pup",
+    "Seed": 7
+   },
+   "passes": [
+    "pets_hyb:isolate"
+   ],
+   "description": "Hybrid feature: dog style (PetBuilder HYBRID.Dog) on an EARLESS body (the trait grows its floppy ears only where the body has none: Dragon, Slime, Unicorn, Phoenix, Frog, Penguin), grown on the puddle_frog body (pivot = body root; Hy* parts are coloured from the hybrid palette at runtime)"
+  },
+  {
    "key": "hyb_fox",
    "type": "pet",
    "pet": "pebble_pup",
@@ -1073,6 +1092,25 @@
     "pets_hyb:isolate"
    ],
    "description": "Hybrid feature: bear style (PetBuilder HYBRID.Bear) grown on the pebble_pup body (pivot = body root; Hy* parts are coloured from the hybrid palette at runtime)"
+  },
+  {
+   "key": "hyb_bear_ears",
+   "type": "pet",
+   "pet": "puddle_frog",
+   "k": 1.38,
+   "strip": [
+    "Accessory"
+   ],
+   "budget": "hyb",
+   "look": {
+    "Hybrid": true,
+    "StyleId": "biscuit_bear",
+    "Seed": 7
+   },
+   "passes": [
+    "pets_hyb:isolate"
+   ],
+   "description": "Hybrid feature: bear style (PetBuilder HYBRID.Bear) on an EARLESS body (the trait grows its round ears only where the body has none: Dragon, Slime, Unicorn, Phoenix, Frog, Penguin), grown on the puddle_frog body (pivot = body root; Hy* parts are coloured from the hybrid palette at runtime)"
   },
   {
    "key": "hyb_panda",
@@ -1224,7 +1262,8 @@
    "passes": [
     "pets_hyb:isolate"
    ],
-   "description": "Hybrid feature: penguin style (PetBuilder HYBRID.Penguin) grown on the pebble_pup body (pivot = body root; Hy* parts are coloured from the hybrid palette at runtime)"
+   "description": "Hybrid feature: penguin style (PetBuilder HYBRID.Penguin) grown on the pebble_pup body (pivot = body root; Hy* parts are coloured from the hybrid palette at runtime)",
+   "raiseAll": false
   },
   {
    "key": "hyb_axolotl",

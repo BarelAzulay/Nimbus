@@ -2041,7 +2041,9 @@ S.client_pets = guarded("client_pets", function()
 		for _, m in ipairs(modelsOf(LocalPlayer)) do
 			local n = Mock.CountDescendants(m, "BasePart")
 			detail[#detail + 1] = "mine " .. n
-			highOk = highOk and n > CONTRACT.v3.partBudget.petLow and n <= CONTRACT.v3.partBudget.petHigh
+			-- a Blender-mesh pet (ML_Mesh, recipe 4.9) is a few dozen MeshParts at either detail: read PB_Detail instead
+			local high = m:GetAttribute("ML_Mesh") == true and m:GetAttribute("PB_Detail") == "High" or n > CONTRACT.v3.partBudget.petLow
+			highOk = highOk and high and n <= CONTRACT.v3.partBudget.petHigh
 		end
 		T.check(lowOk, "other players' followers use PetBuilder Detail Low (<= " .. CONTRACT.v3.partBudget.petLow .. " parts each, evolved <= " .. CONTRACT.v3.partBudget.petEvoLow .. ")", table.concat(detail, ", "))
 		T.check(highOk, "the local player's own pets use Detail High (<= " .. CONTRACT.v3.partBudget.petHigh .. " parts)", table.concat(detail, ", "))

@@ -28,8 +28,9 @@ Same input = same bytes (FBX timestamps zeroed, hash seed fixed) and the same `c
 `.lua` files and `meshes.json` together with the catalog / kit change that made them.
 
 Check a build: `python3 tools/render_model.py meshkey:pet_dog:pebble_pup -o x.png` (one key, coloured for a pet's
-Look), `meshpet:pebble_pup[:Low]` (body + wings + accessory at the body's attachments); `python3 tools/mesh_budget.py`
-(key table + the busiest phone view); `python3 tools/mesh_names.py --check blender/out/*.manifest.json`.
+Look), `meshpet:pebble_pup[:Low]` (body + wings + accessory at the body's attachments; the accessory at its manifest
+Meta.attach), `meshevo:<petId>:<1|2>[:Low]` (evolved body + its evowing_ pairs); `python3 tools/mesh_budget.py`
+(key table + the busiest phone view: pet sets only, plus 4 max-tier home plots); `python3 tools/mesh_names.py --check blender/out/*.manifest.json`.
 
 ## How a key is made
 
@@ -45,7 +46,8 @@ Look), `meshpet:pebble_pup[:Low]` (body + wings + accessory at the body's attach
 Steps for bridge keys: shaded grids from Lua (Voxel.Shade's `_Light` / `_Dark`) -> the face pass
 (`kit/detail/faces.py`: puts the carved Lua eyes back, redraws mouth / blush / teeth as design cells at the mesh K,
 carves procedural eyes that scale with K - pixel eyes on coarse Low grids - and makes the blink lids) -> wave-2
-detail passes (`"passes": ["module:function"]`, functions `fn(bp, body_cells, entry)` in `kit/detail/`) ->
+detail passes (`"passes": ["module:function"]`, functions `fn(bp, body_cells, entry)` in `kit/detail/`; they also run
+with `"face": {"eyes": "lua"}`, which keeps PetBuilder's own carved eyes and lids) ->
 `nvox/parts.py` (name contract, deep crease shade, greedy mesher) -> colour recipes fitted from the game's own
 palette code (`nvox/recipes.py`: 40+ probe Looks per pet, ops of `nvox/colors.py`, the same ops as
 `MeshLibrary.EvalColor`) -> budgets -> FBX + 3 re-import checks -> manifest.

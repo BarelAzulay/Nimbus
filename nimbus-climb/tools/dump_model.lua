@@ -1531,8 +1531,9 @@ end
 -- tools/render_model.py draws it from blender/out/<key>.tris.json.gz instead of a box.  Targets:
 --   meshkey:<key>[:<petId>]   one generated manifest (shared/MeshManifests/<key>) as MeshParts at its pivot, coloured
 --                             with MeshLibrary.EvalColor for the pet's Look (default: a sample Look)
---   meshpet:<petId>           MeshLibrary.Assemble of pet_<species> + wing_<style>_L/R + acc_<name> when it can (the
---                             manifests exist), else the Part pet
+--   meshpet:<petId>[:Low]     pet_<species>[_variant] + wing_<style>_L/R + acc_<name> (at the accessory manifest's
+--                             Meta.attach, Hat by default) composed at the body's attachments
+--   meshevo:<petId>:<1|2>[:Low]  evo<stage>_<petId> + its evowing_ pairs at WingL/WingR (+ Wing2L/Wing2R, stage 2)
 do
 	local basePartJson = partJson
 	partJson = function(p, root)
@@ -1612,10 +1613,65 @@ do
 		return { { root = model, label = key, sub = "mesh manifest (" .. #(man.Parts or man.parts or {}) .. " MeshParts)", facing = { 0, 0, -1 } } }
 	end
 
-	-- the manifests composed by hand (the body's WingL / WingR / Hat attachments), no MeshLibrary needed
+	-- the manifests composed by hand (the body's attachments), no MeshLibrary needed
 	local function cfOf(a)
 		local p, r = a.Pos or a.pos, a.Rot or a.rot
 		return CFrame.new(p[1], p[2], p[3], r[1][1], r[1][2], r[1][3], r[2][1], r[2][2], r[2][3], r[3][1], r[3][2], r[3][3])
+	end
+	local function manifestOf(key)
+		local folder = Mock.GetPath(ROOTS.shared .. "/MeshManifests")
+		local mod = folder and folder:FindFirstChild(key)
+		if not mod then
+			return nil
+		end
+		local ok, man = pcall(require, mod)
+		return ok and type(man) == "table" and man or nil
+	end
+	-- where a key sits on the body: an accessory at its Meta.attach (Hat by default; Neck for the scarf, Flower for the
+	-- flower), a wing at its group's Attach (WingL / WingR / Wing2L / Wing2R), else `default`
+	local function attachOf(key, default)
+		local man = manifestOf(key)
+		local meta = man and (man.Meta or man.meta) or {}
+		local where = meta.attach or meta.Attach
+		if where == nil and man then
+			for _, g in pairs(man.Groups or man.groups or {}) do
+				if type(g) == "table" and (g.Attach or g.attach) then
+					where = g.Attach or g.attach
+				end
+			end
+		end
+		return where or default
+	end
+	-- compose `body` (a meshkey model) with extra keys { { key, defaultAttach }, ... } at the body's attachments
+	local function compose(body, extra, petId)
+		local man = manifestOf(body.Name) or {}
+		local att = man.Attachments or man.attachments or {}
+		local placed = {}
+		for _, e in ipairs(extra) do
+			local where = attachOf(e[1], e[2])
+			local ok, out = pcall(BUILDERS.meshkey, e[1], petId)
+			if ok and att[where] then
+				local m = out[1].root
+				local at = cfOf(att[where])
+				for _, d in ipairs(m:GetChildren()) do
+					d.CFrame = at * d.CFrame
+					d.Parent = body
+				end
+				m:Destroy()
+				placed[#placed + 1] = e[1] .. "@" .. where
+			end
+		end
+		return placed
+	end
+	-- the body key of a catalog pet: pet_<species>, or pet_<species>_<variant> when the Id's last token names a built
+	-- variant (waffle_corgi -> pet_dog_corgi)
+	local function bodyKey(petId, species, sfx)
+		local base = "pet_" .. string.lower(tostring(species))
+		local variant = string.match(tostring(petId), "_([%a]+)$")
+		if variant and manifestOf(base .. "_" .. variant .. sfx) then
+			return base .. "_" .. variant .. sfx
+		end
+		return base .. sfx
 	end
 	BUILDERS.meshpet = function(petId, lod)
 		local look, def = lookOf(petId)
@@ -1624,10 +1680,7 @@ do
 		end
 		local L = def.Look
 		local sfx = (lod == "Low") and "_low" or ""
-		local body = BUILDERS.meshkey("pet_" .. string.lower(tostring(L.Species)) .. sfx, petId)[1].root
-		local folder = Mock.GetPath(ROOTS.shared .. "/MeshManifests")
-		local man = require(folder:FindFirstChild(body.Name))
-		local att = man.Attachments or man.attachments or {}
+		local body = BUILDERS.meshkey(bodyKey(petId, L.Species, sfx), petId)[1].root
 		local extra = {}
 		if L.WingStyle then
 			extra[#extra + 1] = { "wing_" .. string.lower(L.WingStyle) .. "_L" .. sfx, "WingL" }
@@ -1636,19 +1689,38 @@ do
 		if L.Accessory then
 			extra[#extra + 1] = { "acc_" .. string.lower(L.Accessory) .. sfx, "Hat" }
 		end
-		for _, e in ipairs(extra) do
-			local ok, out = pcall(BUILDERS.meshkey, e[1], petId)
-			if ok and att[e[2]] then
-				local m = out[1].root
-				local at = cfOf(att[e[2]])
-				for _, d in ipairs(m:GetChildren()) do
-					d.CFrame = at * d.CFrame
-					d.Parent = body
+		local placed = compose(body, extra, petId)
+		return { { root = body, label = petId .. " (mesh keys)", sub = body.Name .. " + " .. table.concat(placed, " + "), facing = { 0, 0, -1 } } }
+	end
+	-- meshevo:<petId>:<1|2>[:Low]  evo<stage>_<petId>[_low] + evowing_<petId>_<stage>_L/R[_low] (+ the stage-2 Wing2
+	-- pair evowing_<petId>_2b_L/R[_low] when it exists) at the body's WingL / WingR / Wing2L / Wing2R
+	BUILDERS.meshevo = function(petId, stage, lod)
+		local _, def = lookOf(petId)
+		if not def then
+			fail("meshevo: unknown pet " .. tostring(petId))
+		end
+		stage = tonumber(stage) or 1
+		if stage ~= 1 and stage ~= 2 then
+			fail("meshevo: stage must be 1 or 2, got " .. tostring(stage))
+		end
+		local sfx = (lod == "Low") and "_low" or ""
+		local body = BUILDERS.meshkey("evo" .. stage .. "_" .. petId .. sfx, petId)[1].root
+		local extra = {}
+		local pairs_ = { tostring(stage) }
+		if stage == 2 then
+			pairs_[2] = "2b"
+		end
+		for _, tag in ipairs(pairs_) do
+			for _, side in ipairs({ "L", "R" }) do
+				local key = "evowing_" .. petId .. "_" .. tag .. "_" .. side .. sfx
+				if manifestOf(key) then
+					extra[#extra + 1] = { key, ((tag == "2b") and "Wing2" or "Wing") .. side }
 				end
-				m:Destroy()
 			end
 		end
-		return { { root = body, label = petId .. " (mesh keys)", sub = body.Name .. " + wings + accessory", facing = { 0, 0, -1 } } }
+		local placed = compose(body, extra, petId)
+		return { { root = body, label = petId .. " evo " .. stage .. ((lod == "Low") and " Low" or "") .. " (mesh keys)",
+			sub = body.Name .. " + " .. #placed .. " wing keys", facing = { 0, 0, -1 } } }
 	end
 end
 -- [owner: kit] end

@@ -957,10 +957,10 @@ function WorldStyle.BuildGate(parent, siteCFrame, spec)
 	return model, pad, promptPart
 end
 
--- The six Gate Court gates in a row (facing -Z) on a small cream court: the reference sample for renders
--- (tools/render_model.py module:shared/WorldStyle:Sample) and the style tests. Not used in game.
+-- The five Gate Court gates in a row (facing -Z) on a small cream court: the reference sample for renders
+-- (tools/render_model.py module:shared/WorldStyle:Sample) and the style tests. Not used in game. (Phase 6: no Home
+-- gate in the lobby any more, so no Home sample; the house crest still exists for the arena's Return gate.)
 WorldStyle.SampleGates = {
-	{ Id = "Home", Title = "My Home", Info = "Your house and pets", Color = "Yellow", Glyph = "house", Pad = false },
 	{ Id = "Obby", Title = "Sky Obby", Info = "Climb the clouds - pick a level", Color = "Blue", Glyph = "cloud", Pad = true, Pill = "Easy - 1/4" },
 	{ Id = "Dungeon", Title = "Dungeon", Info = "12 floors of monsters and loot", Color = "Purple", Glyph = "torch", Pad = true },
 	{ Id = "Ring", Title = "Champion Ring", Info = "Win rounds in a row", Color = "Gold", Glyph = "crown", Pad = true },

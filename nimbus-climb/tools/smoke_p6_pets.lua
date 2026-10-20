@@ -204,6 +204,47 @@ local function uninstall()
 	PB().ClearCache()
 end
 
+-- [fix-runtime W2.5] like install(), but returns right after Start: the keys are still LOADING (what a server sees
+-- while its builders run at boot). uninstall() takes them away again.
+local function installLate(keys)
+	local ML = lib()
+	ML._Reset()
+	PB().ClearCache()
+	local root = Instance.new("Folder")
+	root.Name = "P6PetsMeshLibrary"
+	root.Parent = RS
+	local ids, byId = {}, {}
+	for i, k in ipairs(keys) do
+		ids[k] = 7300000 + i
+		byId[7300000 + i] = k
+	end
+	local saved = Mock.AssetLoader
+	ML._Configure({ Root = root, Ids = ids, RetryDelays = { 0.05 } })
+	Mock.AssetLoader = function(id)
+		task.wait(0.3) -- LoadAsset yields: the keys stay 'loading' while the builders run
+		local key = byId[id]
+		if not key or not manifest(key) then
+			error("does not exist", 0)
+		end
+		return fakeAsset(key)
+	end
+	ML.Start()
+	installed = { Root = root, Saved = saved, Keys = keys }
+	return root
+end
+
+local function advanceUntilReady(keys)
+	local ML = lib()
+	for _ = 1, 80 do
+		if ML.IsReady(keys) then
+			break
+		end
+		Mock.Advance(0.5)
+	end
+	Mock.Advance(0.1)
+	return ML.IsReady(keys)
+end
+
 -- a scenario's own fixture set; in fixture mesh mode the global set stays (it already holds every pet key)
 local function withFixtures(keys, fn)
 	if MESH_MODE then
@@ -582,6 +623,190 @@ S.p6pets_server = guarded("p6pets_server", function()
 	partDog:Destroy()
 	if not MESH_MODE then
 		T.check(not ML.Active() and Pets.Build(D.dog, {}):GetAttribute("ML_Mesh") == nil, "after the scenario: fixtures removed, Build is the Part build again")
+	end
+
+	-- [fix-runtime W2.5] a Golden PART pet wears the star_gold mesh once that key is ready (MESH.partStars)
+	if not MESH_MODE then
+		install({ "star_gold" })
+		local okStars, errStars = pcall(function()
+			local g = Pets.Build(D.golden, {})
+			local ref = Pets.Build(D.golden, { Parts = true })
+			local meshStars, partStars, refStars = {}, 0, {}
+			for _, c in ipairs(g:GetChildren()) do
+				if c:IsA("BasePart") and string.sub(c.Name, 1, 9) == "GoldSpark" and c:GetAttribute("PB_G") == nil then
+					if c:GetAttribute("ML_Key") == "star_gold" then
+						meshStars[#meshStars + 1] = c
+					else
+						partStars = partStars + 1
+					end
+				end
+			end
+			for _, c in ipairs(ref:GetChildren()) do
+				if c:IsA("BasePart") and string.sub(c.Name, 1, 9) == "GoldSpark" and c:GetAttribute("PB_G") == nil then
+					refStars[#refStars + 1] = c
+				end
+			end
+			T.check(g:GetAttribute("ML_Mesh") == nil and #meshStars >= 2 and partStars == 0 and g:GetAttribute("PB_MeshStars") == #meshStars,
+				fmt("star_gold ready, body keys not: a Golden Part pet's body sparkle stars are star_gold MeshParts (%d mesh, %d voxel left)", #meshStars, partStars))
+			local far = 0
+			for _, m in ipairs(meshStars) do
+				local best = math.huge
+				for _, r in ipairs(refStars) do
+					best = math.min(best, (r.Position - m.Position).Magnitude)
+				end
+				if best > 0.35 then
+					far = far + 1
+				end
+				if not (m.Material == Enum.Material.Neon and m:GetAttribute("PB_Star") == true and type(m:GetAttribute("PB_Pulse")) == "number") then
+					far = far + 100
+				end
+			end
+			T.check(far == 0, "mesh stars sit on the voxel stars' centres (Neon, PB_Star, PB_Pulse)", tostring(far))
+			local okA = pcall(Pets.Animate, g, 1.5, {})
+			T.check(okA and #refStars > 0 and ref:GetAttribute("PB_MeshStars") == nil, "the mesh-star pet animates; opts.Parts = true keeps the voxel stars")
+			g:Destroy()
+			ref:Destroy()
+		end)
+		uninstall()
+		T.check(okStars, "Golden mesh-star checks ran", tostring(errStars))
+		local back = Pets.Build(D.golden, {})
+		T.check(back:GetAttribute("PB_MeshStars") == nil, "star_gold gone: the Golden Part pet has its voxel stars again")
+		back:Destroy()
+	end
+
+	-- [fix-runtime W2.5] server-built pets become mesh pets when the keys load AFTER the build (MeshLibrary.Swap)
+	if MESH_MODE then
+		T.info("fixture mesh mode: the server's pets are mesh pets from the start (late-swap checks skipped)")
+	else
+		local okNs, NS = pcall(function()
+			return require(Mock.GetPath(ROOTS.server .. "/Services/NpcService"))
+		end)
+		local recs = (okNs and type(NS) == "table" and type(NS.GetNpcs) == "function") and NS.GetNpcs() or {}
+		if T.check(#recs > 0, "late swap: NpcService has its booted NPCs") then
+			local spots, ids, lateKeys, seenK = {}, {}, {}, {}
+			local function addKeys(def, opts)
+				for _, k in ipairs((def and Pets.MeshKeys(def, opts)) or {}) do
+					if not seenK[k] then
+						seenK[k] = true
+						lateKeys[#lateKeys + 1] = k
+					end
+				end
+			end
+			for i, r in ipairs(recs) do
+				spots[i] = r.Spot
+				ids[i] = r.Model:GetAttribute("PetId")
+				addKeys(ids[i] and catalog(ids[i]), { Detail = "High" })
+			end
+			local storm = catalog("stormfang")
+			addKeys(storm, { Detail = "High", Scale = 3 })
+			table.sort(lateKeys)
+			installLate(lateKeys)
+			local okLate, errLate = pcall(function()
+				T.check(not ML.IsReady(lateKeys), fmt("late swap: %d keys still loading while the builders run", #lateKeys))
+				NS.Init({ NpcSpots = spots }, {})
+				local folder = workspace:FindFirstChild("NimbusNpcs")
+				local before = {}
+				local partPets = 0
+				for i, r in ipairs(NS.GetNpcs()) do
+					before[i] = { Model = r.Model, Ped = r.Model:FindFirstChild("Pedestal") and r.Model.Pedestal:GetPivot().Position }
+					if r.Pet and r.Pet:GetAttribute("ML_Mesh") == nil then
+						partPets = partPets + 1
+					end
+				end
+				T.check(partPets == #recs, fmt("late swap: NPCs built before the keys load have Part pets (%d / %d)", partPets, #recs))
+				-- the Storm Altar flow: a placed showcase that rebuilds itself (Place = false: buildFn places it)
+				local holder = Instance.new("Model")
+				holder.Name = "P6LateShowcase"
+				holder.Parent = workspace
+				local opts = { Detail = "High", Scale = 3 }
+				local show = Pets.Build(storm, opts)
+				show.Name = "StormfangShowcase"
+				show:PivotTo(CFrame.new(300, 40, 0))
+				show.Parent = holder
+				local gotFresh, gotOld = nil, nil
+				local reg = Pets.SwapWhenReady(show, storm, opts, function()
+					local m = Pets.Build(storm, opts)
+					m.Name = "StormfangShowcase"
+					m:PivotTo(CFrame.new(300, 44, 0))
+					return m
+				end, function(fresh, old)
+					gotFresh, gotOld = fresh, old
+				end)
+				T.check(reg == true, "SwapWhenReady registers a Part pet whose keys are loading")
+				T.check(advanceUntilReady(lateKeys), "late swap: the keys finished loading")
+				local newShow = holder:FindFirstChild("StormfangShowcase")
+				T.check(newShow ~= nil and newShow ~= show and newShow:GetAttribute("ML_Mesh") == true and show.Parent == nil and #holder:GetChildren() == 1,
+					"SwapWhenReady: the Part showcase was replaced by the mesh one (same name and parent)")
+				T.check(newShow ~= nil and (newShow:GetPivot().Position - Vector3.new(300, 44, 0)).Magnitude < 1e-3 and gotFresh == newShow and gotOld == show,
+					"SwapWhenReady: the build placed itself (no PivotTo onto the old pivot) and onSwapped got (fresh, old)")
+				T.check(Pets.SwapWhenReady(newShow, storm, opts, function()
+					return nil
+				end) == false, "SwapWhenReady: nothing to do for a mesh pet / ready keys")
+				holder:Destroy()
+				-- the NPCs (PetParts = every BasePart of the pet, its invisible root included: NpcController waits for it)
+				local function allParts(model)
+					local n = 0
+					for _, d in ipairs(model:GetDescendants()) do
+						if d:IsA("BasePart") then
+							n = n + 1
+						end
+					end
+					return n
+				end
+				local now = NS.GetNpcs()
+				local bad = {}
+				for i, r in ipairs(now) do
+					local m = r.Model
+					local why = nil
+					if m == before[i].Model or m.Parent ~= folder or before[i].Model.Parent ~= nil then
+						why = "model not replaced"
+					elseif not r.Pet or r.Pet.Parent ~= m or r.Pet:GetAttribute("ML_Mesh") ~= true then
+						why = "pet not mesh"
+					elseif not m.PrimaryPart or m.PrimaryPart ~= r.Pet.PrimaryPart then
+						why = "PrimaryPart"
+					elseif m:GetAttribute("PetParts") ~= allParts(r.Pet) then
+						why = "PetParts " .. tostring(m:GetAttribute("PetParts")) .. " vs " .. allParts(r.Pet)
+					elseif not r.Prompt or not r.Prompt:IsDescendantOf(m) or not game:GetService("CollectionService"):HasTag(m, "NC_Npc") then
+						why = "prompt / tag"
+					elseif m:GetAttribute("Ready") ~= true or m:GetAttribute("PetId") ~= ids[i] then
+						why = "attributes"
+					end
+					local ped = m:FindFirstChild("Pedestal")
+					if not why and before[i].Ped and ped and (ped:GetPivot().Position - before[i].Ped).Magnitude >= 1e-3 then
+						why = "pedestal moved"
+					end
+					if why then
+						bad[#bad + 1] = tostring(r.Id) .. " (" .. why .. ")"
+					end
+				end
+				T.check(#now == #recs and #bad == 0, "late swap: every NPC was rebuilt in place with its mesh pet (record, PrimaryPart, PetParts, prompt, tag, pedestal unmoved)", table.concat(bad, ", "))
+				local named = 0
+				for _, c in ipairs(folder:GetChildren()) do
+					if string.sub(c.Name, 1, 4) == "Npc_" then
+						named = named + 1
+					end
+				end
+				T.check(named == #recs, fmt("late swap: one model per NPC in NimbusNpcs (%d)", named))
+			end)
+			uninstall()
+			T.check(okLate, "late swap checks ran", tostring(errLate))
+			-- put the booted (Part) NPCs back
+			NS.Init({ NpcSpots = spots }, {})
+			local mesh = 0
+			for _, r in ipairs(NS.GetNpcs()) do
+				if r.Pet and r.Pet:GetAttribute("ML_Mesh") == true then
+					mesh = mesh + 1
+				end
+			end
+			T.check(#NS.GetNpcs() == #recs and mesh == 0, "late swap: NPCs rebuilt from Parts afterwards")
+			-- empty MeshIds (no template folder): SwapWhenReady does nothing at all
+			local p = Pets.Build(D.dog, {})
+			p.Parent = workspace
+			T.check(Pets.SwapWhenReady(p, D.dog, {}, function()
+				return Pets.Build(D.dog, {})
+			end) == false and not ML.Active(), "empty MeshIds: SwapWhenReady = false, no state")
+			p:Destroy()
+		end
 	end
 	flushWarn("p6pets_server")
 end)

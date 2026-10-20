@@ -289,6 +289,24 @@ The Phase 4 files (still run, updated for Phase 5 where 12.2 says so):
 | `smoke_p4_ui.lua` | the tutorial chapters 2 and 4, the NPC tips and the ring window (ArenaController) |
 | `smoke_p4_flow.lua` | end-to-end runs of several players through the home: garden, coins, Food Machine, EVOLVE, training, the ring, the portal, prestige, rejoin |
 
+### Mesh mode: `--mesh` (Phase 6)
+
+`python3 tools/smoke.py --quick --mesh` runs the pet scenarios again on Blender-mesh pets (about 1 minute). Real
+games get their meshes from Roblox asset ids, and the mock has none, so this mode sets `NC_MESH_FIXTURES=1`:
+`smoke_p6_pets.lua` installs fake MeshIds and fixture templates built from the committed
+`src/shared/MeshManifests/*.lua` (every pet-class key: `pet_`, `wing_`, `acc_`, `hyb_`, `evo1_`, `evo2_`, `evowing_`,
+`star_gold`) into the real `MeshLibrary` on both worlds, so `PetBuilder.Build` takes the mesh path.
+
+* Without `--only` it runs a fixed set of pet scenarios (petbuilder, evolved, p3evo_pets, storm_pet, client_pets,
+  the follower / looks / evolved / fusion scenarios ...). With `--only a,b` it runs those plus the two
+  `*_mesh_on` install scenarios.
+* A mesh pet carries `ML_Mesh = true`. Checks that count voxels (part floors, "two nostril dots", ">= 20 magma
+  cracks", "High detail = more parts than Low") are gated on that attribute (recipe 4.9): in mesh mode they check that
+  the named part is there, that the model stays under the same part cap, and read `PB_Detail` for the detail level.
+  Name checks (`Basalt`, `HydraHead`, `EyeIris` Neon on Glow pets ...) still apply in both modes.
+* `tools/run_checks.sh` runs it as the step "Smoke test, mesh mode" after the normal smoke test (skipped when you
+  pass `--only`).
+
 ## Gate vortex textures (Phase 6 W2b)
 
 `blender/textures/build_vortex.py` (numpy + Pillow, seeded, about a second) writes the white + alpha PNG layers of the

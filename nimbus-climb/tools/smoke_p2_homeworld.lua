@@ -642,6 +642,8 @@ local function serverScenarios()
 				ids[mod.Name] = 100000 + idn
 			end
 		end
+		-- W2.5 isolation: Start() with ids creates ReplicatedStorage.MeshLibrary; it is removed again at the end
+		local hadMLFolder = game:GetService("ReplicatedStorage"):FindFirstChild("MeshLibrary") ~= nil
 		ML._Reset()
 		ML._Configure({ Ids = ids })
 		local okStart = pcall(function()
@@ -702,6 +704,10 @@ local function serverScenarios()
 		pcall(HB.ClearPlot, spot)
 		root:Destroy()
 		ML._Reset()
+		local mlFolder = game:GetService("ReplicatedStorage"):FindFirstChild("MeshLibrary")
+		if mlFolder and not hadMLFolder then
+			mlFolder:Destroy()
+		end
 	end)
 	-- [owner: art-home] end
 
@@ -1605,8 +1611,16 @@ local function clientScenarios()
 			T.check(propsOk == 2 and g.Training[1].Stat == "Physique" and g.Training[2].Stat == "Speed", "HomeFx: ...each with a voxel prop of its skill (<= 12 parts: dumbbell, treadmill)")
 			local bar = g.Training[1] and g.Training[1].Prop and g.Training[1].Prop[1]
 			local b0 = bar and bar.Position
-			advance(0.4)
-			T.check(bar and b0 and (bar.Position - b0).Magnitude > 0.02, "HomeFx: ...and the prop moves (the dumbbell goes up and down)")
+			-- sample the swing for a whole lift period (2.1 s): one 0.4 s sample can straddle the top of the sine and see
+			-- almost no change, which made this check depend on the clock phase left by earlier scenarios
+			local swing = 0
+			for _ = 1, 11 do
+				advance(0.2)
+				if bar and b0 then
+					swing = max(swing, (bar.Position - b0).Magnitude)
+				end
+			end
+			T.check(bar and b0 and swing > 0.02, "HomeFx: ...and the prop moves (the dumbbell goes up and down)", fmt(swing) .. " studs")
 			mine.Folder:SetAttribute("TrainingPets", "")
 			advance(0.3)
 			T.check((tonumber(stats().TrainingPets) or 0) == 0 and (tonumber(stats().Props) or 0) == 0, "HomeFx: ...and pets and props leave when the training ends")

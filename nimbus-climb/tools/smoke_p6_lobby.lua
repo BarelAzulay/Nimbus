@@ -245,6 +245,20 @@ S.p6lobby_server = guarded("p6lobby_server", function()
 	live.Name = "NimbusLobby_P6Keep"
 	local okDefault, infoDefault = pcall(LB.Build)
 	local defaultParts = (okDefault and infoDefault and infoDefault.Folder) and partsOf(infoDefault.Folder) or -1
+	-- [fix-runtime W2.5] a place()d clone's pivot is where it was placed: Plot:GetPivot() == SpotInfo.PlotCFrame
+	-- (TutorialController uses it as the plot's ground point)
+	local pivotBad, pivotN = {}, 0
+	for i, spot in ipairs((okDefault and infoDefault and infoDefault.Spots) or {}) do
+		local plot = spot.Folder and spot.Folder:FindFirstChild("Plot")
+		if plot and typeof(spot.PlotCFrame) == "CFrame" then
+			pivotN = pivotN + 1
+			local pv = plot:GetPivot()
+			if (pv.Position - spot.PlotCFrame.Position).Magnitude > 1e-3 or (pv.LookVector - spot.PlotCFrame.LookVector).Magnitude > 1e-4 then
+				pivotBad[#pivotBad + 1] = tostring(i)
+			end
+		end
+	end
+	T.check(pivotN > 0 and #pivotBad == 0, fmt("p6 lobby: every Plot:GetPivot() == SpotInfo.PlotCFrame (%d plots)", pivotN), table.concat(pivotBad, ", "))
 	if okDefault and infoDefault and infoDefault.Folder then
 		infoDefault.Folder:Destroy()
 	end

@@ -29,8 +29,13 @@
 --     EvalColor(recipe, look) -> Color3   (the kit's recipe language, blender/kit/nvox/colors.py)
 --     Assemble(spec, look, opts) -> Model | nil (nil = build the Part version, never a mix)
 --     Tag(target, key, look, keep)   SERVER: mark a Part build to be dressed with mesh `key` on every client
---     Dress(target, key, opts)       CLIENT: hide the Part build locally (Keep parts stay) and show the mesh on it
---     Swap(model, buildFn, keys)     rebuild a server-built model in place once its keys are ready
+--                                    (look.Hide = { names }: ML_Hide, hide ONLY these part names instead of all-but-keep)
+--     Dress(target, key, opts)       CLIENT: hide the Part build locally (Keep parts stay) and show the mesh on it;
+--                                    a BasePart target with ML_Weld = true gets its mesh unanchored + welded to it
+--                                    (a moving root: TokenFx coins), never a part inside another target's ML_Mesh
+--     Swap(model, buildFn, keys, opts)  rebuild a server-built model in place once its keys are ready (opts: a function
+--                                    = OnSwapped(fresh, old), or { OnSwapped = fn, Place = false (the build placed
+--                                    itself: no PivotTo) }); after Start a key without an id never waits (no state)
 --     Version() -> number            bumped whenever a key may have become usable / unusable here (poll to rebuild)
 --     Active() -> bool               a template folder exists (false = empty MeshIds: skip every key lookup)
 --
@@ -1179,6 +1184,19 @@ function MeshLibrary.Tag(target, key, look, keep)
 		if typeof(look.Offset) == "CFrame" then
 			target:SetAttribute("ML_Offset", cfToString(look.Offset))
 		end
+		if type(look.Hide) == "table" then
+			-- hide-list mode: Dress hides ONLY BaseParts with these names (anything a builder adds later stays)
+			local names = {}
+			for k, v in pairs(look.Hide) do
+				if type(k) == "number" and type(v) == "string" then
+					names[#names + 1] = v
+				elseif type(k) == "string" and v then
+					names[#names + 1] = k
+				end
+			end
+			table.sort(names)
+			target:SetAttribute("ML_Hide", table.concat(names, ","))
+		end
 	end
 	if type(keep) == "table" then
 		local names = {}
@@ -1204,11 +1222,35 @@ local function lookFromAttributes(target)
 	return look
 end
 
-local function hideLocally(target, keep, mesh)
+-- hide: nil = every BasePart not in `keep`; a set = ONLY those names (ML_Hide). Parts of any ML_Mesh (this one or a
+-- nested dressed target's) are never hidden.
+-- a Part target's pivot is its CFrame (* PivotOffset); a Model's is GetPivot()
+local function pivotOf(target)
+	if target:IsA("BasePart") then
+		local ok, cf = pcall(function()
+			return target:GetPivot()
+		end)
+		if ok and typeof(cf) == "CFrame" then
+			return cf
+		end
+		return target.CFrame
+	end
+	return target:GetPivot()
+end
+
+local function hideLocally(target, keep, mesh, hide)
 	local list = target:GetDescendants()
 	list[#list + 1] = target
 	for _, d in ipairs(list) do
-		if d:IsA("BasePart") and not keep[d.Name] and not d:IsDescendantOf(mesh) then
+		local hit = false
+		if d:IsA("BasePart") then
+			if hide then
+				hit = hide[d.Name] == true
+			else
+				hit = not keep[d.Name]
+			end
+		end
+		if hit and not d:IsDescendantOf(mesh) and not d:FindFirstAncestor("ML_Mesh") then
 			d.Transparency = 1 -- set on the client: local only; still collides, still found by name
 			for _, deco in ipairs(d:GetChildren()) do
 				if deco:IsA("Decal") or deco:IsA("Texture") then
@@ -1219,8 +1261,9 @@ local function hideLocally(target, keep, mesh)
 	end
 end
 
--- opts (optional): { Keep = { Name = true } | { "Name" }, Look = {...}, Offset = CFrame }. Without opts the target's
--- ML_* attributes (Tag) are used.
+-- opts (optional): { Keep = { Name = true } | { "Name" }, Hide = { Name = true } | { "Name" } (hide-list mode: only
+-- these), Look = {...}, Offset = CFrame }. Without opts the target's ML_* attributes (Tag) are used (ML_Hide wins over
+-- ML_Keep).
 function MeshLibrary.Dress(target, key, opts)
 	if typeof(target) ~= "Instance" or type(key) ~= "string" then
 		return
@@ -1236,9 +1279,27 @@ function MeshLibrary.Dress(target, key, opts)
 		local look = opts.Look or lookFromAttributes(target)
 		local offset = opts.Offset or stringToCF(target:GetAttribute("ML_Offset")) or CFrame.new()
 		local mesh = MeshLibrary.Assemble({ Name = "ML_Mesh", Root = false, Parts = { { Key = key } } }, look,
-			{ Scale = tonumber(target:GetAttribute("ML_Scale")) or 1, At = target:GetPivot() * offset })
+			{ Scale = tonumber(target:GetAttribute("ML_Scale")) or 1, At = pivotOf(target) * offset })
 		if not mesh then
 			return
+		end
+		local hide = nil
+		local rawHide = opts.Hide
+		if rawHide == nil and type(target:GetAttribute("ML_Hide")) == "string" then
+			rawHide = {}
+			for name in string.gmatch(target:GetAttribute("ML_Hide"), "[^,]+") do
+				rawHide[#rawHide + 1] = name
+			end
+		end
+		if type(rawHide) == "table" then
+			hide = {}
+			for k, v in pairs(rawHide) do
+				if type(k) == "number" then
+					hide[v] = true
+				elseif v then
+					hide[k] = true
+				end
+			end
 		end
 		local keep = {}
 		local rawKeep = opts.Keep
@@ -1255,7 +1316,21 @@ function MeshLibrary.Dress(target, key, opts)
 				end
 			end
 		end
-		hideLocally(target, keep, mesh)
+		hideLocally(target, keep, mesh, hide)
+		if target:IsA("BasePart") and target:GetAttribute("ML_Weld") == true then
+			-- a moving root (TokenFx spins / bobs the server coin): the mesh rides on it
+			for _, p in ipairs(mesh:GetDescendants()) do
+				if p:IsA("BasePart") then
+					p.Anchored = false
+					p.Massless = true
+					local weld = Instance.new("WeldConstraint")
+					weld.Name = "ML_Weld"
+					weld.Part0 = target
+					weld.Part1 = p
+					weld.Parent = p
+				end
+			end
+		end
 		mesh.Parent = target
 	end)
 end
@@ -1263,7 +1338,7 @@ end
 ----------------------------------------------------------------------
 -- Swap: rebuild a server-built model in place (keeps Name, Parent, pivot, attributes)
 ----------------------------------------------------------------------
-local function swapNow(model, buildFn)
+local function swapNow(model, buildFn, place, onSwapped)
 	if typeof(model) ~= "Instance" or not model.Parent then
 		return nil
 	end
@@ -1280,31 +1355,55 @@ local function swapNow(model, buildFn)
 		end
 	end
 	fresh.Name = model.Name
-	pcall(function()
-		fresh:PivotTo(model:GetPivot())
-	end)
+	if place ~= false then
+		pcall(function()
+			fresh:PivotTo(model:GetPivot())
+		end)
+	end
 	local parent = model.Parent
 	model:Destroy()
 	fresh.Parent = parent
+	if type(onSwapped) == "function" then
+		local ok, err = pcall(onSwapped, fresh, model)
+		if not ok then
+			warn("[MeshLibrary] Swap callback failed: " .. tostring(err))
+		end
+	end
 	return fresh
 end
 
 -- keys: the keys the new build needs; nil = swap now. Returns the new model when it swapped at once.
-function MeshLibrary.Swap(model, buildFn, keys)
+-- opts: a function (OnSwapped(fresh, old): callers that hold the model take the new one) or
+-- { OnSwapped = fn, Place = false (buildFn places the model itself; default: PivotTo the old pivot) }.
+-- After Start, a key with no id ("missing") can never load: nothing waits (empty MeshIds = no state at all).
+function MeshLibrary.Swap(model, buildFn, keys, opts)
 	if type(buildFn) ~= "function" then
 		return nil
+	end
+	local onSwapped, place = nil, nil
+	if type(opts) == "function" then
+		onSwapped = opts
+	elseif type(opts) == "table" then
+		onSwapped, place = opts.OnSwapped, opts.Place
 	end
 	if type(keys) == "string" then
 		keys = { keys }
 	end
 	if type(keys) ~= "table" or MeshLibrary.IsReady(keys) then
-		return swapNow(model, buildFn)
+		return swapNow(model, buildFn, place, onSwapped)
+	end
+	if started then
+		for _, key in ipairs(keys) do
+			if MeshLibrary.Status(key) == "missing" then
+				return nil
+			end
+		end
 	end
 	local fired = false
 	local function try()
 		if not fired and MeshLibrary.IsReady(keys) then
 			fired = true
-			swapNow(model, buildFn)
+			swapNow(model, buildFn, place, onSwapped)
 		end
 	end
 	for _, key in ipairs(keys) do

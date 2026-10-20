@@ -32,10 +32,10 @@ return {
 	},
 	Bounds = {
 		Max = { 0.3261, 1.9203, 1.5983 },
-		Min = { -0.3261, -1.1486, -0.471 },
-		Size = { 0.6522, 3.0688, 2.0693 },
+		Min = { -0.3261, -1.1486, -0.5435 },
+		Size = { 0.6522, 3.0688, 2.1417 },
 	},
-	ContentHash = "9c9738a8a29da3312f8615b28e1fdf93",
+	ContentHash = "c7a8c59ba9b2fab98dc446573f60d044",
 	DarkFactor = { 0.8425, 0.85, 0.8875 },
 	DeepFactor = { 0.7098, 0.7225, 0.7877 },
 	Groups = {
@@ -70,15 +70,15 @@ return {
 	},
 	Parts = {
 		{
-			Center = { 0, 1.5942, -0.3261 },
+			Center = { 0, 1.558, -0.3623 },
 			Color = { "rgb", 244, 192, 72 },
 			Group = "Body",
 			Key = "Gold",
 			Material = "SmoothPlastic",
 			Name = "Gold",
 			Shade = "base",
-			Size = { 0.3623, 0.6522, 0.2899 },
-			Tris = 114,
+			Size = { 0.5072, 0.7246, 0.3623 },
+			Tris = 166,
 		},
 		{
 			Center = { 0, 1.558, -0.3261 },
@@ -89,7 +89,7 @@ return {
 			Name = "GoldDeep",
 			Shade = "base",
 			Size = { 0.3623, 0.4348, 0.2899 },
-			Tris = 60,
+			Tris = 52,
 		},
 		{
 			Center = { 0, 1.0507, 0.2899 },
@@ -115,7 +115,7 @@ return {
 		},
 	},
 	Rig = "Tail:tail:1:0.26:0=0,-0.75,0.62,1,0,0,0,1,0,0,0,1",
-	StructureHash = "ce489e97665d2f64f576146a09e96ee4",
-	Tris = 984,
+	StructureHash = "ee868bc789b9c4965a1bc7543f6f1bfc",
+	Tris = 1028,
 	VoxelStuds = 0.07246,
 }

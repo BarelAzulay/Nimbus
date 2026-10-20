@@ -84,6 +84,10 @@ local function leaveFixtureMode(ML, root)
 	if root then
 		root:Destroy()
 	end
+	local P6 = rawget(_G, "P6Pets")
+	if P6 and P6.MeshMode then
+		P6.Install(P6.PetKeys()) -- --mesh: put back the global fixture set that _Reset wiped
+	end
 end
 
 local function partsOf(model)
@@ -349,6 +353,9 @@ S.client_p6creatures = guarded("client_p6creatures", function()
 		keys[#keys + 1] = k
 	end
 	keys[#keys + 1] = "npc_pedestal"
+	for _, k in ipairs({ "fx_arrow", "fx_ice", "fx_shield" }) do -- [fix-runtime W2.5] the battle fx slots
+		keys[#keys + 1] = k
+	end
 	local MLf, root = fixtureMode(keys)
 	local world = Instance.new("Folder")
 	world.Name = "P6CreaturesClient"
@@ -467,6 +474,72 @@ S.client_p6creatures = guarded("client_p6creatures", function()
 		end
 		local rides = src ~= nil and string.find(src, "ML_Weld", 1, true) ~= nil
 		T.check(rides, "LEAD REQUEST: MeshLibrary.Dress welds the mesh of an ML_Weld target to it (src/shared/MeshLibrary.lua Dress, after Assemble: unanchor + WeldConstraint Part0 = target when target:IsA('BasePart') and target:GetAttribute('ML_Weld'))")
+		-- [fix-runtime W2.5] a dressed server coin (ML_Weld, a Part target) rides on its root
+		local coin = Instance.new("Part")
+		coin.Name = "Token"
+		coin.Anchored = true
+		coin.CFrame = CFrame.new(-6, 4, 2)
+		coin.Parent = world
+		MLf.Tag(coin, TOKENS[1], nil, { "Halo" })
+		coin:SetAttribute("ML_Weld", true)
+		Mock.Advance(0.3)
+		local cm = coin:FindFirstChild("ML_Mesh")
+		local loose = 0
+		for _, p in ipairs(cm and partsOf(cm) or {}) do
+			local w = p:FindFirstChildOfClass("WeldConstraint")
+			if p.Anchored or not w or w.Part0 ~= coin then
+				loose = loose + 1
+			end
+		end
+		T.check(cm ~= nil and #partsOf(cm) > 0 and loose == 0 and coin.Transparency == 1, "p6 creatures client fixtures: a tagged ML_Weld coin is dressed and its mesh is welded to the moving root", tostring(loose))
+		-- [fix-runtime W2.5] BattleController's ShieldCube / Ice / FocusArrow use fx_shield / fx_ice / fx_arrow
+		local BCm = KC.M and KC.M.BattleController
+		if not BCm then
+			pcall(function()
+				BCm = require(Mock.GetPath(ROOTS.client .. "/Controllers/BattleController"))
+			end)
+		end
+		local U = type(BCm) == "table" and BCm._Units or nil
+		if T.check(type(U) == "table" and type(U.UpdateStatus) == "function" and type(U.UpdateFocus) == "function", "BattleController._Units test hook (UpdateStatus / UpdateFocus)") then
+			local unitModel = Instance.new("Model")
+			unitModel.Name = "FxUnit"
+			unitModel.Parent = world
+			local u = { model = unitModel, height = 3, shield = 5, state = "Idle", radius = 1.8, hp = 10, x = 4, z = 0, centerY = 1.5 }
+			local cf = CFrame.new(10, 3, 0)
+			U.UpdateStatus({}, u, 1, cf)
+			local sh = u.shieldPart
+			T.check(sh ~= nil and sh:IsA("MeshPart") and sh.Name == "ShieldCube" and sh.Parent == unitModel and sh:GetAttribute("ML_Key") == "fx_shield"
+				and (sh.Size - Vector3.new(3.75, 3.45, 3.75)).Magnitude < 1e-3 and (sh.Position - cf.Position).Magnitude < 1e-3,
+				"battle fx: the shield is the fx_shield mesh, named ShieldCube, sized and moved like the Part cube")
+			u.iceUntil = 5
+			U.UpdateStatus({}, u, 1.2, cf)
+			local ice = u.icePart
+			local crystals, meshOk = 0, true
+			for _, c in ipairs(ice and ice:GetChildren() or {}) do
+				crystals = crystals + 1
+				if not (c:IsA("MeshPart") and c.Name == "Crystal" and c:GetAttribute("ML_Key") == "fx_ice" and type(c:GetAttribute("Angle")) == "number" and c.Position.X == c.Position.X) then
+					meshOk = false
+				end
+			end
+			T.check(ice ~= nil and ice.Name == "Ice" and crystals == 5 and meshOk, "battle fx: Ice holds 5 fx_ice Crystal meshes placed by the per-frame code", tostring(crystals))
+			u.shield, u.iceUntil = 0, nil
+			U.UpdateStatus({}, u, 6, cf)
+			T.check(u.shieldPart == nil and u.icePart == nil and sh.Parent == nil, "battle fx: the shield and ice go away as before")
+			local B = { lock = 1, units = { u }, folder = world, ended = false, basis = { 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1 } }
+			U.UpdateFocus(B, 2)
+			local mark = B.focusMark
+			local arrows, okArrow = 0, true
+			for _, p in ipairs(mark and mark:GetChildren() or {}) do
+				arrows = arrows + 1
+				if not (p:IsA("MeshPart") and p:GetAttribute("ML_Key") == "fx_arrow" and type(p:GetAttribute("Y")) == "number" and math.abs(p.Position.X - 4) < 1e-3) then
+					okArrow = false
+				end
+			end
+			T.check(mark ~= nil and mark.Name == "FocusArrow" and mark.Parent == world and arrows >= 1 and okArrow, "battle fx: FocusArrow is the fx_arrow mesh over the locked unit", tostring(arrows))
+			if mark then
+				mark:Destroy()
+			end
+		end
 	end)
 	T.check(ok, "client_p6creatures fixture mode ran to the end", tostring(err))
 	leaveFixtureMode(MLf, root)

@@ -66,18 +66,26 @@ def _cells_of(g):
     return {(int(x), int(y), int(z)): k for (x, y, z), k in zip(g.xyz.tolist(), g.keys)}
 
 
+def run_passes(bp, body_cells, entry):
+    """the entry's detail passes: "module:function" under kit/detail/, each called as fn(bp, body_cells, entry)"""
+    import importlib
+    for name in entry.get("passes", []):
+        mod, fn = name.split(":")
+        getattr(importlib.import_module("detail." + mod), fn)(bp, body_cells, entry)
+
+
 def face_pass(bp, body_cells, entry):
-    """procedural eyes + lids; returns lid groups (list of cell dicts)"""
+    """procedural eyes + lids; returns lid groups (list of cell dicts).  The entry's passes run on every path: with
+    face.eyes 'lua' (or a pet without Lua eye anchors) they run on the Lua-carved body and PetBuilder's own lids are
+    returned; on the procedural path they run after the carved eyes are restored, before the kit carves its eyes."""
     opts = entry.get("face", {})
     if opts.get("eyes", "procedural") != "procedural" or not bp.eyes:
+        run_passes(bp, body_cells, entry)
         return [dict(((x, y, z), k) for (x, y, z, k) in cells) for cells in bp.lid_cells]
     faces.restore_carved_eyes(body_cells, bp.lid_cells)
     if opts.get("features", True):
         faces.rescale_face_features(body_cells, bp.K, tuple(opts.get("featureKeys", faces.FACE_KEYS)))
-    for name in entry.get("passes", []):  # wave 2 detail passes: "module:function" under kit/detail/
-        mod, fn = name.split(":")
-        import importlib
-        getattr(importlib.import_module("detail." + mod), fn)(bp, body_cells, entry)
+    run_passes(bp, body_cells, entry)
     specs = faces.eye_specs(bp)
     lids = faces.carve_eyes(body_cells, specs, bp.K, scale=float(opts.get("eyeScale", 1.1)),
                             inflate=float(opts.get("eyeInflate", 0.0)))
