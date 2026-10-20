@@ -57,7 +57,7 @@ if not Mock then
 	M.Configure({ options = { StrictMembers = false, Echo = false, Watchdog = false, StepSize = 1 / 30, SliceLimit = 3600 } })
 	M.Boot("server", { localName = "Sim", localUserId = 1 })
 	local shared = M.GetPath("ReplicatedStorage/Shared", "Folder")
-	for _, name in ipairs({ "Config", "Util", "PetCatalog", "PetKeys", "TycoonCatalog", "BattleCatalog", "BattleSim" }) do
+	for _, name in ipairs({ "MeshIds", "Config", "Util", "PetCatalog", "PetKeys", "TycoonCatalog", "BattleCatalog", "BattleSim" }) do
 		local src = readFile(root .. "/src/shared/" .. name .. ".lua")
 		if src then
 			M.Mount(shared, { name = name, class = "ModuleScript", source = src, path = "src/shared/" .. name .. ".lua" })
@@ -204,7 +204,7 @@ SIM.RingMedians = { S1 = 16, S3 = 23, S5 = 28, S7 = 36, S9 = 44, S10 = 51 }
 
 ----------------------------------------------------------------------
 -- A scripted player (the character + the kit): walks the character at the legal run speed toward its target, keeps its
--- range, presses ATTACK in reach, ELEMENT / SPECIAL when ready, helper BUFFs, SWAPs a dying fighter, and DASHes out
+-- range, directs the auto-attacking pet (ATTACK on a new target), ELEMENT / SPECIAL when ready, helper BUFFs, SWAPs a dying fighter, and DASHes out
 -- of a wind-up or a telegraph with probability opts.dodge (default 0.7) after a human reaction (0.1-0.3 s)
 ----------------------------------------------------------------------
 local Player = {}
@@ -396,8 +396,11 @@ function Player:step(events, snapshot)
 	local reach = (myInfo.range or 4) + (tinfo2 and tinfo2.radius or 2) + 1.0
 	local dx, dz = tu.x - me.x, tu.z - me.z
 	local d = sqrt(dx * dx + dz * dz)
-	if self.opts.attack ~= false and d <= reach then
-		b:Command(self.owner, "Attack", target)
+	-- dungeon fixes (4): the pet auto-attacks; the player only DIRECTS it (one ATTACK press when the wanted target changes)
+	if self.opts.attack ~= false and d <= reach and target ~= self.directed then
+		if b:Command(self.owner, "Attack", target) then
+			self.directed = target
+		end
 	end
 	local cd = tinfo.Cooldowns or {}
 	if self.opts.element ~= false and (cd.Element or 0) <= 0 and d <= max(13, myInfo.range or 4) + (tinfo2 and tinfo2.radius or 2) then

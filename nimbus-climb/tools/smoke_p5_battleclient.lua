@@ -8,10 +8,11 @@
 --                          name, the cooldown ring from the Buff event, KO greys), late-join cooldowns from Start.Team
 --   client_p5hud_enemies   one row per living enemy, the LOCKED row first (gold bracket + TARGET), max 8 + "+n more",
 --                          the wind-up "!" flash, the boss bar at the top and never in the screen centre
---   client_p5input         the 4.7 map bound only while fighting (and inert before UiGate.HasPlayed), hold-to-attack at
---                          the fighter's interval, a helper key: tap = Buff, hold 0.5 s = Swap, Tab cycles the lock,
+--   client_p5input         the 4.7 map bound only while fighting (and inert before UiGate.HasPlayed), ATTACK = ONE
+--                          "Attack" order per press (dungeon fixes 4: no hold repeat, the pet attacks by itself), a
+--                          helper key: tap = Buff, hold 0.5 s = Swap, Tab cycles the lock,
 --                          predictions (the ring starts at once) + a rejected Order (owner-only) puts it back and shakes
---                          the button + the 0.6 s timeout; MovementController.SetDashKeys / SetFreeDash /
+--                          the button + the 0.6 s timeout; MovementController.SetPetDash (Shift = the pet's dash) /
 --                          SetBattleSpeed(walk, run) on Start / Speed / End (WalkSpeed = walk, run target = run, nil
 --                          restores the server base, a server 0 still wins), EXHAUST_RESUME 22
 --   client_p5models        my fighter drawn at the shoulder of the server position (blended with my character within
@@ -183,7 +184,8 @@ local Driver = {}
 Driver.__index = Driver
 
 -- opts: Mode, Teams, Boss, Side (0 = spectator), Zone, TimeLimit, Wave (entries spawned at once), Dungeon (the extra),
---       Ring, Team (override of Start.Team), Seed
+--       Ring, Team (override of Start.Team), Seed, ServerOrder (dungeon fixes A: the Wave is spawned AFTER "Start", like
+--       BattleService.OpenEncounter + SpawnWave: the enemies reach the client in a Wave event)
 function H.driver(opts)
 	local Sim = H.moduleAt("shared", "BattleSim")
 	if not Sim then
@@ -195,7 +197,7 @@ function H.driver(opts)
 	if not sim then
 		return nil, why
 	end
-	if opts.Wave then
+	if opts.Wave and not opts.ServerOrder then
 		local infos = sim:SpawnEnemies(opts.Wave, { Wave = 1, Anchor = { 0, 10 } })
 		if not infos then
 			return nil, "SpawnEnemies failed"
@@ -203,6 +205,7 @@ function H.driver(opts)
 	end
 	local d = setmetatable({ sim = sim, id = id, zoneCF = CFrame.new(0, 200, 0), side = opts.Side or 1, logIndex = #Mock.RemoteLog, events = {}, opts = opts }, Driver)
 	d.me = LocalPlayer.UserId
+	d.pendingWave = opts.ServerOrder and opts.Wave or nil
 	return d
 end
 
@@ -237,6 +240,11 @@ end
 
 function Driver:start()
 	KC.toClient("BattleState", "Start", self:startPayload(), self.id)
+	if self.pendingWave then
+		-- server order: the room's wave after "Start" (its Wave event goes out with the next step)
+		self.sim:SpawnEnemies(self.pendingWave, { Wave = 1, Anchor = { 0, 10 } })
+		self.pendingWave = nil
+	end
 end
 
 -- the wire form, like BattleService (SnapshotDelta against this driver's baseline)
@@ -583,6 +591,29 @@ S.client_p5hud_enemies = guarded("client_p5hud_enemies", function()
 	end
 	T.check(offOnce, "p5 enemies: ... and stops after the hit")
 	H.cleanup(BC, d)
+	-- server order (dungeon fixes A): "Start" carries no enemies, the wave comes in a Wave event after it
+	local so = H.dungeon(3, false, { ServerOrder = true })
+	if T.check(so ~= nil, "p5 enemies: a server-order room") then
+		H.begin(so)
+		so:run(1.6, 30) -- (the arrival: the models pop in after the flash)
+		local soIds = so:enemyIds()
+		local soRows = 0
+		for i = 1, 8 do
+			if H.shown(H.find("Root.Enemies.Row" .. i)) then
+				soRows = soRows + 1
+			end
+		end
+		local drawn = 0
+		for _, id in ipairs(soIds) do
+			local gu = BC.GetUnit(id)
+			if gu and gu.Model and gu.Model.Parent then
+				drawn = drawn + 1
+			end
+		end
+		T.check(#soIds == 3 and soRows == 3 and drawn == 3, "p5 enemies: server order: the Wave event's enemies get their rows and models",
+			#soIds .. " enemies, " .. soRows .. " rows, " .. drawn .. " drawn")
+		H.cleanup(BC, so)
+	end
 	-- max 8 rows + "+n more"
 	local wave = {}
 	for i = 1, 10 do
@@ -655,7 +686,7 @@ S.client_p5input = guarded("client_p5input", function()
 		and hasKey("NimbusBattleSpecial", "Q") and hasKey("NimbusBattleSpecial", "ButtonR1") and hasKey("NimbusBattleTarget", "Tab") and hasKey("NimbusBattleTarget", "T")
 		and hasKey("NimbusBattleHelper", "One") and hasKey("NimbusBattleHelper", "Two") and hasKey("NimbusBattleHelper", "ButtonL1") and hasKey("NimbusBattleHelper", "DPadLeft"),
 		"p5 input: F/X attack, E/Y element, Q/RB special, Tab/T lock, 1/2/LB/D-pad helpers")
-	-- MovementController: Shift dashes, free dash, the battle speeds from Start.Team.Speed
+	-- MovementController: Shift = the pet's dash (SetPetDash), the battle speeds from Start.Team.Speed
 	local team = d:team()
 	if MC and type(MC.GetSpeedState) == "function" then
 		local st = MC.GetSpeedState()
@@ -665,7 +696,7 @@ S.client_p5input = guarded("client_p5input", function()
 				shiftDash = true
 			end
 		end
-		T.check(shiftDash and st.FreeDash == true, "p5 input: SetDashKeys (Shift dashes) + SetFreeDash(true) on Start", tostring(shiftDash) .. " " .. tostring(st.FreeDash))
+		T.check(shiftDash and st.PetDash == true, "p5 input: SetPetDash on Start (Shift = the pet's dash)", tostring(shiftDash) .. " " .. tostring(st.PetDash))
 		T.check(st.Walk and abs(st.Walk - team.Speed.Walk) < 0.01 and abs(st.Run - team.Speed.Run) < 0.01, "p5 input: SetBattleSpeed(walk, run) from Start.Team.Speed",
 			tostring(st.Walk) .. " / " .. tostring(st.Run))
 		T.eq(st.ExhaustResume, 22, "p5 input: EXHAUST_RESUME is 22 (15% of 150)")
@@ -689,22 +720,17 @@ S.client_p5input = guarded("client_p5input", function()
 	else
 		T.fail("p5 input: MovementController.GetSpeedState missing")
 	end
-	-- hold-to-attack at the fighter's interval
+	-- ATTACK (F): ONE direct order per press, nothing repeats while it is held (the pet attacks by itself)
 	local idx = #Mock.RemoteLog
 	Mock.TriggerAction("NimbusBattleAttack", "Begin", Mock.NewInput("F", "Keyboard", "Begin"))
 	d.noForward = true
 	H.step(75, 1 / 30) -- 2.5 s held
 	local held = H.count(idx, "Attack")
 	Mock.TriggerAction("NimbusBattleAttack", "End", Mock.NewInput("F", "Keyboard", "End"))
-	local BCat = H.moduleAt("shared", "BattleCatalog")
-	local fu = d:unit(team.Fighter)
-	local us = BCat and BCat.UnitStats(fu.petId, fu.level, fu.tier, {})
-	local interval = us and us.Interval or 1
-	local want = floor(2.5 / max(0.2, interval)) + 1
-	T.check(held >= want - 1 and held <= want + 1, "p5 input: a held ATTACK repeats at the fighter's interval (" .. H.fmt(interval) .. " s)", held .. " sent, ~" .. want .. " expected")
+	T.eq(held, 1, "p5 input: F sends ONE Attack order, holding it repeats nothing")
 	local idx2 = #Mock.RemoteLog
 	H.step(30, 1 / 30)
-	T.eq(H.count(idx2, "Attack"), 0, "p5 input: releasing ATTACK stops the repeat")
+	T.eq(H.count(idx2, "Attack"), 0, "p5 input: ... and nothing after the release")
 	d.noForward = false
 	d.logIndex = #Mock.RemoteLog
 	-- helper keys: a tap = Buff, held 0.5 s = Swap
@@ -812,7 +838,7 @@ S.client_p5input = guarded("client_p5input", function()
 	T.eq(bound(), 0, "p5 input: the map is released at the end")
 	if MC and type(MC.GetSpeedState) == "function" then
 		local st = MC.GetSpeedState()
-		T.check(st.DashKeys == nil and st.FreeDash == false and st.Walk == nil, "p5 input: End resets SetDashKeys(nil) / SetFreeDash(false) / SetBattleSpeed(nil)")
+		T.check(st.DashKeys == nil and st.PetDash == false and st.FreeDash == false and st.Walk == nil, "p5 input: End resets SetPetDash(nil) / SetBattleSpeed(nil)")
 		T.check(hasKey("NimbusDash", "Q") and hasKey("NimbusRun", "LeftShift"), "p5 input: ... Q dashes and Shift runs again")
 		if hum then
 			Mock.Step(1 / 30)

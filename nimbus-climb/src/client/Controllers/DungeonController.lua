@@ -9,7 +9,8 @@
 --   DungeonController.IsOpen() -> bool
 --   DungeonController.Request(action, a, b) -> bool   DungeonRequest(action, a, b), spaced per action (K.FIRE_GAP);
 --                                             the server validates everything (DungeonService ladder + cooldowns)
---   DungeonController.GetState() -> { Window, Floor, Lobby, Run, End, Loot, Totals, Ready, Lit, CardMode, Countdown }
+--   DungeonController.GetState() -> { Window, Floor, Lobby, Run, End, Loot, Totals, Ready, Lit, CardMode, Countdown, Fade,
+--                                     Door }
 --   DungeonController.Opened / Closed (Util.Signal)
 --
 -- What the player sees
@@ -22,7 +23,9 @@
 --     READY flips at once (optimistic) and the next Lobby payload says what the server decided.
 --   * The run card (ScreenGui NimbusDungeonRun): on desktops a side card at the right edge between the enemy list and
 --     the battle buttons ("Floor 3 - Frozen Crypt", "Room 2 / 4" pips with the boss room crowned, "Wave 1 / 3",
---     the status: "Walk into the room", "Next room in 9", "Open your chest!", member chips with Downed / Left, the
+--     the status: "Walk into the room", "Go to the door and press E" / "Waiting for 1 more (Ava)" (dungeon-fixes
+--     decision 2: no room changes by timer; the door's EnterPrompt E goes through ProximityPromptService on the
+--     server, this controller sends nothing for it), "Open your chest!", member chips with Downed / Left, the
 --     loot so far, LEAVE (two presses -> DungeonRequest("Quit")) and CHEST in the treasure alcove); on phones a one-line
 --     chip in Roblox's top band. The party countdown uses the same card while the window is closed. Loot and chest
 --     toasts flash inside it ("Room 2 cleared! +$340 +24 tokens +70 XP"). The End card (totals, first clear, unlock,
@@ -32,6 +35,10 @@
 --     is no longer in the pocket (InBattle released).
 --   * Doors: the room models' DoorOpen / EntranceOpen attributes play a local slide (copies of the bars sink into the
 --     floor) in the player's own pocket.
+--   * The room change fade (DungeonState "Fade" { Out, Hold, In }): ONE black full-screen Frame in its own ScreenGui
+--     NimbusDungeonFade (IgnoreGuiInset, DisplayOrder K.FADE_ORDER 25: above the HUD 10, the battle HUD / run card 12
+--     and the windows 20-23, below Notify 30); tweens to black over Out, holds (until the next room's Run payload,
+--     at least Hold), back over In; never stuck: a FADE_SAFETY 3 s clear, End and leaving the run clear it at once.
 -- Remotes: DungeonState (in), OpenPanel (in), DungeonRequest (out). One side panel at a time: opening it closes the
 -- menu windows, the Pet Index, the Fusion / Care windows and the Arena windows; theirs close this one. Esc / gamepad
 -- B / the red X / walking 40 studs away from the gate close it. Text is designed at 1080p (>= 18 design px).
@@ -83,10 +90,10 @@ local K = {
 	LEAVE_CONFIRM = 3, -- seconds the first LEAVE press stays armed
 	TOAST_SECONDS = 4,
 	END_SECONDS = 14, -- the End card hides by itself after this
-	DOOR_TIME = 12, -- Dungeon.DoorTime (the corridor walk after a clear) when the catalog cannot be read
-	INTERMISSION = 2,
 	TREASURE = 45,
-	HALL = 10,
+	FADE_ORDER = 25, -- the room change fade: above the HUD (10), the run card (12) and the windows (20-23), below Notify (30)
+	FADE_SAFETY = 3, -- a fade never stays on longer than this (seconds)
+	FADE_MAX_STEP = 2, -- Out / Hold / In are clamped to 0..this
 	TICK = 0.25, -- the light loop
 	BACK_ACTION = "NimbusDungeonBack",
 	LIGHT_ID = "Dungeon",
@@ -1257,6 +1264,8 @@ function DungeonController.GetState()
 		Lit = S.Lit,
 		CardMode = S.CardMode,
 		Countdown = S.Lobby and S.Lobby.Mine and W.countdown(S.Lobby.Mine) or nil,
+		Fade = S.Fade and S.Fade.Phase or nil, -- "Out" | "Hold" | "In" while the room change fade shows
+		Door = (S.Run and R.doorWait()) or nil, -- "press" | "wait" | "go" at an open door
 	}
 end
 
@@ -1383,12 +1392,61 @@ function R.phaseLeft()
 		return nil
 	end
 	local since = os.clock() - S.PhaseAt
-	if run.State == "Hall" then
-		return math.max(0, H.dungeonNumber("HallSeconds", K.HALL) - since)
-	elseif run.State == "Corridor" and run.Phase == "Walk" then
-		return math.max(0, H.dungeonNumber("Intermission", K.INTERMISSION) + H.dungeonNumber("DoorTime", K.DOOR_TIME) - since)
-	elseif run.State == "Treasure" then
+	if run.State == "Treasure" then
 		return math.max(0, H.dungeonNumber("TreasureSeconds", K.TREASURE) - since)
+	end
+	return nil
+end
+
+-- the door wait (decision 2): "press" (go and press E), "wait" (I pressed, others not yet), "go" (the transit) or nil;
+-- -> kind, missing count, names of who did not press yet
+function R.doorWait()
+	local run = S.Run
+	if not run or run.EnterOpen ~= true then
+		if run and run.Transit == true then
+			return "go", 0, {}
+		end
+		return nil, 0, {}
+	end
+	local pressed = {}
+	for _, uid in ipairs(type(run.Confirmed) == "table" and run.Confirmed or {}) do
+		pressed[uid] = true
+	end
+	local names = {}
+	for _, m in ipairs(type(run.Members) == "table" and run.Members or {}) do
+		if not m.Left and not pressed[m.UserId] then
+			names[#names + 1] = tostring(m.Name or "?")
+		end
+	end
+	local missing = math.max(0, math.floor(tonumber(run.NeedConfirm) or #names))
+	if LocalPlayer and pressed[LocalPlayer.UserId] then
+		return "wait", missing, names
+	end
+	return "press", missing, names
+end
+
+-- touch-only devices tap the prompt's button instead of pressing E
+function R.pressWord()
+	if UserInputService.TouchEnabled and not UserInputService.KeyboardEnabled then
+		return "tap Enter"
+	end
+	return "press E"
+end
+
+function R.doorText(short)
+	local kind, missing, names = R.doorWait()
+	if kind == "go" then
+		return "Here we go!"
+	elseif kind == "wait" then
+		if missing <= 0 then
+			return "Here we go!"
+		end
+		if short then
+			return "Waiting for " .. missing .. " more"
+		end
+		return "Waiting for " .. missing .. " more (" .. table.concat(names, ", ") .. ")"
+	elseif kind == "press" then
+		return short and ("Door: " .. R.pressWord()) or ("Go to the door and " .. R.pressWord())
 	end
 	return nil
 end
@@ -1396,13 +1454,14 @@ end
 function R.statusText()
 	local run = S.Run
 	local left = R.phaseLeft()
+	local door = R.doorText(false)
 	if run.State == "Hall" then
-		return "Get ready! Room 1 opens in " .. math.ceil(left or 0)
+		return door or "Get ready!"
 	elseif run.State == "Corridor" then
 		if run.Phase == "Walk" then
-			return "Room cleared! Next room in " .. math.ceil(left or 0)
+			return door or "Room cleared! The bars open..."
 		end
-		return "Walk into the room to start the fight"
+		return door or "Walk into the room to start the fight"
 	elseif run.State == "Fight" then
 		return (tonumber(run.Room) == 4) and "Boss fight! Beat the boss and its escort" or "Fight! Beat every wave"
 	elseif run.State == "Treasure" then
@@ -1435,10 +1494,10 @@ function R.chipText(room, count)
 	local left = R.phaseLeft()
 	if run.State == "Fight" then
 		return (room >= count) and ("Floor " .. tostring(run.Floor or 1) .. " " .. G.Dot .. " Boss") or ("Room " .. room .. "/" .. count)
-	elseif run.State == "Hall" then
-		return "Room 1 in " .. math.ceil(left or 0)
+	elseif run.State == "Hall" or (run.State == "Corridor" and run.Phase == "Walk") then
+		return R.doorText(true) or ((run.State == "Hall") and "Get ready!" or "Cleared!")
 	elseif run.State == "Corridor" then
-		return (run.Phase == "Walk") and ("Next room " .. math.ceil(left or 0)) or "Walk in!"
+		return R.doorText(true) or "Walk in!"
 	elseif run.State == "Treasure" then
 		return "Chest! " .. H.clock(left or 0)
 	end
@@ -1723,6 +1782,131 @@ function R.fillEnd()
 end
 
 ----------------------------------------------------------------------
+-- The room change fade (dungeon-fixes decision 2): one black Frame in its own ScreenGui
+----------------------------------------------------------------------
+function R.buildFade()
+	local gui = CloudUI.NewScreenGui("NimbusDungeonFade", K.FADE_ORDER)
+	gui.IgnoreGuiInset = true
+	gui.Enabled = false
+	U.FadeGui = gui
+	U.Fade = Util.Create("Frame", {
+		Name = "Fade",
+		BackgroundColor3 = Color3.new(0, 0, 0),
+		BackgroundTransparency = 1,
+		BorderSizePixel = 0,
+		Size = UDim2.fromScale(1, 1),
+		Active = false,
+		Visible = false,
+		ZIndex = 10,
+		Parent = gui,
+	})
+end
+
+function R.fadeStep(v, default)
+	v = tonumber(v)
+	if not v or v ~= v then
+		return default
+	end
+	return math.max(0, math.min(K.FADE_MAX_STEP, v))
+end
+
+function R.fadeTween(target, seconds)
+	if S.FadeTween then
+		pcall(function()
+			S.FadeTween:Cancel()
+		end)
+		S.FadeTween = nil
+	end
+	if seconds <= 0 then
+		U.Fade.BackgroundTransparency = target
+		return
+	end
+	S.FadeTween = H.tween(U.Fade, seconds, { BackgroundTransparency = target }, Enum.EasingStyle.Quad, Enum.EasingDirection.InOut)
+end
+
+-- DungeonState "Fade" { Out, Hold, In }: to black over Out, hold (until the next room's Run payload arrived, >= Hold),
+-- back over In; FADE_SAFETY clears it whatever happens
+function R.fade(payload)
+	if not U.Fade then
+		return
+	end
+	local fade = {
+		Token = (S.Fade and S.Fade.Token or S.FadeSeq or 0) + 1,
+		Out = R.fadeStep(payload.Out, 0.45),
+		Hold = R.fadeStep(payload.Hold, 0.35),
+		In = R.fadeStep(payload.In, 0.45),
+		Key = S.PhaseKey,
+		Phase = "Out",
+		HardAt = os.clock() + K.FADE_SAFETY,
+	}
+	S.FadeSeq = fade.Token
+	S.Fade = fade
+	U.FadeGui.Enabled = true
+	U.Fade.Visible = true
+	R.fadeTween(0, fade.Out)
+	task.delay(fade.Out + fade.Hold, function()
+		if S.Fade == fade then
+			fade.Phase = "Hold"
+			-- the server moved us already (a new State / Room): fade back in now, else on the next Run payload
+			if S.PhaseKey ~= fade.Key or not S.Run then
+				R.fadeIn()
+			end
+		end
+	end)
+	task.delay(K.FADE_SAFETY, function()
+		if S.Fade == fade then
+			R.clearFade()
+		end
+	end)
+end
+
+function R.fadeIn()
+	local fade = S.Fade
+	if not fade or fade.Phase == "In" then
+		return
+	end
+	fade.Phase = "In"
+	R.fadeTween(1, fade.In)
+	task.delay(fade.In, function()
+		if S.Fade == fade then
+			R.clearFade()
+		end
+	end)
+end
+
+-- the overlay off at once (End, leaving the run, the safety timeout)
+function R.clearFade()
+	S.Fade = nil
+	if S.FadeTween then
+		pcall(function()
+			S.FadeTween:Cancel()
+		end)
+		S.FadeTween = nil
+	end
+	if U.Fade then
+		U.Fade.BackgroundTransparency = 1
+		U.Fade.Visible = false
+	end
+	if U.FadeGui then
+		U.FadeGui.Enabled = false
+	end
+end
+
+-- the light loop's safety net (a lost task.delay never leaves the screen black)
+function R.fadeTick()
+	local fade = S.Fade
+	if not fade then
+		return
+	end
+	local now = os.clock()
+	if now >= fade.HardAt then
+		R.clearFade()
+	elseif fade.Phase == "Hold" and now >= fade.HardAt - fade.In then
+		R.fadeIn()
+	end
+end
+
+----------------------------------------------------------------------
 -- Lighting (LightingStack "Dungeon") and the door slides
 ----------------------------------------------------------------------
 function R.lightingStack()
@@ -1892,6 +2076,10 @@ function R.onState(kind, payload)
 		end
 		S.Run = payload
 		S.RunAt = os.clock()
+		-- the next room arrived while the screen holds black: fade back in
+		if S.Fade and S.Fade.Phase == "Hold" and key ~= S.Fade.Key then
+			R.fadeIn()
+		end
 		if S.Open then
 			DungeonController.Close()
 		end
@@ -1929,6 +2117,10 @@ function R.onState(kind, payload)
 		S.ChestOpened = true
 		local label = (kindName == "Cash") and ("$" .. H.commas(amount)) or (H.commas(amount) .. " " .. (kindName == "Gems" and "Gems" or "tokens"))
 		R.toast(G.Chest .. " Chest: +" .. label .. "!", (kindName == "Gems") and C.Gem or C.Gold, nil, G.Chest .. " +" .. label)
+	elseif kind == "Fade" then
+		if S.Run then
+			R.fade(payload)
+		end
 	elseif kind == "End" then
 		S.End = payload
 		S.EndAt = os.clock()
@@ -1936,6 +2128,7 @@ function R.onState(kind, payload)
 		S.PhaseKey = nil
 		S.LeaveArmed = 0
 		S.Toast = nil
+		R.clearFade()
 		R.light(false)
 		R.unwatchDoors()
 		R.refresh()
@@ -1947,6 +2140,7 @@ function R.check()
 	if S.Run and not H.runAttr() and os.clock() - S.RunAt > 3 then
 		S.Run = nil
 		S.PhaseKey = nil
+		R.clearFade()
 		R.unwatchDoors()
 		R.light(false)
 		R.refresh()
@@ -1988,6 +2182,7 @@ function DungeonController.Init()
 	pcall(State.Init)
 	U.Gui = CloudUI.NewScreenGui("NimbusDungeon", K.DISPLAY_ORDER)
 	R.build()
+	R.buildFade()
 	R.refresh()
 	U.Gui:GetPropertyChangedSignal("AbsoluteSize"):Connect(function()
 		H.safe("relayout", function()
@@ -2055,6 +2250,7 @@ function DungeonController.Init()
 		if S.Open then
 			H.safe("tick window", W.refresh)
 		end
+		H.safe("tick fade", R.fadeTick)
 		H.safe("tick card", R.refresh)
 	end)
 end

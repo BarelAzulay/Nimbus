@@ -16,6 +16,20 @@
 --                  Stop() ends it at once: fromModel destroyed, toModel at rest at `pose`, the effects gone.
 --   EvolutionFx.Duration(stage) -> seconds the animation lasts
 --   EvolutionFx.Count() -> evolutions playing right now
+--   EvolutionFx.Arrive(pivot, opts) -> handle   (dungeon fixes, decision 3) an enemy's arrival: EFFECTS ONLY (no model
+--       is touched): the evolution's rune ring on the ground, a light pillar, the white flash with a sparkle burst, the
+--       shock ring and voxel sparks, about 1.2 s. pivot = CFrame of the arriving pet's centre.
+--       opts { Parent (default workspace), Colors = { Color3, Color3 }, Height, Radius (studs of the pet), Ground (y of
+--              the floor; default pivot.Y - Height / 2), Seconds (default 1.2), Quality "Low" | "High" (default
+--              GraphicsQuality.Effective()), OnFlash = function() (once, at the flash: the caller pops its model in),
+--              OnDone = function() (once, at the end or on Stop) }
+--       handle { Done, Low, FlashAt (seconds after the start), T, Stop = function() (ends it at once, OnFlash still
+--              runs once) }
+--       Cheap: the parts live in pooled kits (one kit per arrival, reused; nothing is created after the first wave),
+--       one BulkMoveTo per piece list per frame with reused buffers; at most ARRIVE_MAX full kits at once (more
+--       arrivals at the same moment get the Low kit). Low = the flash + the shock ring only (13 parts, no light, no
+--       particles).
+--   EvolutionFx.ArriveStats() -> { Live, LiveLow, Pooled, Parts }   (tests)
 --
 -- The animation (stage 1 about 4.3 s, stage 2 about 5 s):
 --   charge  the pet rises and spins faster and faster while it starts to glow (a Highlight), a ring of voxel runes
@@ -54,6 +68,17 @@ local K = {
 	PILLAR = { 9, 12 }, -- pillar height in pet heights... capped below
 	PILLAR_MAX = 60, -- studs
 	CONFETTI = 26, -- voxel confetti bits (opts.Confetti)
+	-- an enemy's arrival (EvolutionFx.Arrive): seconds, the flash moment (share of the time), piece counts, caps
+	ARRIVE_SECONDS = 1.2,
+	ARRIVE_FLASH = 0.35,
+	ARRIVE_RUNES = 12,
+	ARRIVE_SHOCK = 16,
+	ARRIVE_SHOCK_LOW = 12,
+	ARRIVE_SPARKS = 10,
+	ARRIVE_SPARKLES = 22,
+	ARRIVE_MAX = 6, -- full kits at once (a wave of 3-5 + an escort); more arrivals at once get the Low kit
+	ARRIVE_MAX_LOW = 16, -- beyond this nothing is drawn (OnFlash runs at once)
+	ARRIVE_POOL = 6, -- kits of each kind kept for reuse
 	CONFETTI_COLORS = {
 		Color3.fromRGB(255, 96, 120),
 		Color3.fromRGB(255, 176, 64),
@@ -65,7 +90,26 @@ local K = {
 }
 
 local plays = {}
+local arrivals = {} -- live EvolutionFx.Arrive plays
+local kitPool = { High = {}, Low = {} } -- free arrival kits
 local loopConn = nil
+local onFrame -- (below)
+local quality = nil -- client/GraphicsQuality (lazy; false = unavailable)
+
+local function ensureLoop()
+	if not loopConn then
+		loopConn = RunService.RenderStepped:Connect(function(dt)
+			onFrame(dt)
+		end)
+	end
+end
+
+local function maybeStopLoop()
+	if #plays == 0 and #arrivals == 0 and loopConn then
+		loopConn:Disconnect()
+		loopConn = nil
+	end
+end
 
 ----------------------------------------------------------------------
 -- Helpers
@@ -206,6 +250,39 @@ local function ringPose(play, i, n, radius, turn, lift)
 	return CFrame.new(pos) * CFrame.Angles(0, -a, 0)
 end
 
+-- the sparkle burst emitter (Rate 0: Emit(n) only) on an attachment of `part`; also used by the arrival kits
+local function newSparkles(part, c1, c2, R, u)
+	local att = Instance.new("Attachment")
+	att.Name = "EvolveSparkles"
+	att.Parent = part
+	local em = Instance.new("ParticleEmitter")
+	em.Name = "EvolveSparkles"
+	em.Texture = SPARKLE
+	em.LightEmission = 1
+	em.LightInfluence = 0
+	em.Rate = 0
+	em.Lifetime = NumberRange.new(0.7, 1.4)
+	em.SpreadAngle = Vector2.new(180, 180)
+	em.Rotation = NumberRange.new(0, 360)
+	em.RotSpeed = NumberRange.new(-180, 180)
+	em.Transparency = NumberSequence.new({
+		NumberSequenceKeypoint.new(0, 0),
+		NumberSequenceKeypoint.new(1, 1),
+	})
+	em.Parent = att
+	local function tune(a, b, radius, unit)
+		em.Color = ColorSequence.new(lighten(a, 0.3), lighten(b, 0.3))
+		em.Speed = NumberRange.new(radius * 2.2, radius * 4.4)
+		em.Size = NumberSequence.new({
+			NumberSequenceKeypoint.new(0, 0),
+			NumberSequenceKeypoint.new(0.25, unit * 0.9),
+			NumberSequenceKeypoint.new(1, 0),
+		})
+	end
+	tune(c1, c2, R, u)
+	return em, tune
+end
+
 local function buildEffects(play)
 	local stage = play.Stage
 	local c1, c2 = play.Colors[1], play.Colors[2]
@@ -258,32 +335,7 @@ local function buildEffects(play)
 	flash.Transparency = 1
 	play.Flash = flash
 	-- sparkles (emitted in bursts)
-	local att = Instance.new("Attachment")
-	att.Name = "EvolveSparkles"
-	att.Parent = flash
-	local em = Instance.new("ParticleEmitter")
-	em.Name = "EvolveSparkles"
-	em.Texture = SPARKLE
-	em.Color = ColorSequence.new(lighten(c1, 0.3), lighten(c2, 0.3))
-	em.LightEmission = 1
-	em.LightInfluence = 0
-	em.Rate = 0
-	em.Lifetime = NumberRange.new(0.7, 1.4)
-	em.Speed = NumberRange.new(R * 2.2, R * 4.4)
-	em.SpreadAngle = Vector2.new(180, 180)
-	em.Rotation = NumberRange.new(0, 360)
-	em.RotSpeed = NumberRange.new(-180, 180)
-	em.Size = NumberSequence.new({
-		NumberSequenceKeypoint.new(0, 0),
-		NumberSequenceKeypoint.new(0.25, u * 0.9),
-		NumberSequenceKeypoint.new(1, 0),
-	})
-	em.Transparency = NumberSequence.new({
-		NumberSequenceKeypoint.new(0, 0),
-		NumberSequenceKeypoint.new(1, 1),
-	})
-	em.Parent = att
-	play.Emitter = em
+	play.Emitter = newSparkles(flash, c1, c2, R, u)
 	-- shock ring + sparks (shown at the reveal)
 	play.Shock = {}
 	for i = 1, 28 do
@@ -356,10 +408,7 @@ local function finish(play)
 			table.remove(plays, i)
 		end
 	end
-	if #plays == 0 and loopConn then
-		loopConn:Disconnect()
-		loopConn = nil
-	end
+	maybeStopLoop()
 	if type(play.OnDone) == "function" and play.To then
 		local ok, err = pcall(play.OnDone, play.To.Model)
 		if not ok then
@@ -522,14 +571,360 @@ local function step(play, dt)
 	play.Handle.T = t
 end
 
-local function onFrame(dt)
+----------------------------------------------------------------------
+-- An enemy's arrival (EvolutionFx.Arrive): pooled kits of effect parts, effects only
+----------------------------------------------------------------------
+local function kitPart(folder, name, shape)
+	local p = effectPart({ Folder = folder }, name, shape, WHITE, Vector3.new(0.2, 0.2, 0.2))
+	p.Transparency = 1
+	return p
+end
+
+local function kitCount(kit)
+	local n = #kit.Shock + #kit.Runes + #kit.Sparks + 1
+	if kit.Pillar then
+		n = n + 1
+	end
+	return n
+end
+
+-- one kit: Low = the flash + the shock ring; High adds the rune ring, the pillar (+ light), the sparkles, the sparks
+local function newKit(low)
+	local folder = Instance.new("Folder")
+	folder.Name = "ArriveFx"
+	local kit = { Low = low, Folder = folder, Runes = {}, Shock = {}, Sparks = {}, SparkV = {}, SparkSpin = {}, BufP = {}, BufC = {} }
+	kit.Flash = kitPart(folder, "ArriveFlash", Enum.PartType.Ball)
+	for i = 1, low and K.ARRIVE_SHOCK_LOW or K.ARRIVE_SHOCK do
+		kit.Shock[i] = kitPart(folder, "ArriveShock")
+	end
+	if not low then
+		for i = 1, K.ARRIVE_RUNES do
+			kit.Runes[i] = kitPart(folder, "ArriveRune")
+		end
+		kit.Pillar = kitPart(folder, "ArrivePillar", Enum.PartType.Cylinder)
+		local light = Instance.new("PointLight")
+		light.Name = "ArriveLight"
+		light.Brightness = 0
+		light.Parent = kit.Pillar
+		kit.Light = light
+		kit.Emitter, kit.Tune = newSparkles(kit.Flash, WHITE, WHITE, 2, 0.6)
+		for i = 1, K.ARRIVE_SPARKS do
+			kit.Sparks[i] = kitPart(folder, "ArriveSpark")
+		end
+	end
+	return kit
+end
+
+-- the kit's parts sized and coloured for this arrival (once per play, never per frame)
+local function dressKit(kit, play)
+	local c1, c2, R, u = play.Colors[1], play.Colors[2], play.Radius, play.Unit
+	kit.Flash.Size = Vector3.new(0.2, 0.2, 0.2)
+	kit.Flash.Color = WHITE
+	for i, part in ipairs(kit.Shock) do
+		part.Size = Vector3.new(u * 0.5, u * 0.18, u * 1.3)
+		part.Color = (i % 2 == 0) and lighten(c2, 0.2) or WHITE
+	end
+	for i, part in ipairs(kit.Runes) do
+		part.Size = Vector3.new(u * 0.55, u * 0.14, u * ((i % 3 == 0) and 1.5 or 0.9))
+		part.Color = (i % 2 == 0) and c1 or c2
+	end
+	if kit.Pillar then
+		kit.Pillar.Color = lighten(c1, 0.45)
+		kit.Light.Color = lighten(c1, 0.3)
+		kit.Light.Range = math.min(32, R * 4 + 8)
+		kit.Light.Brightness = 0
+		kit.Tune(c1, c2, R, u)
+	end
+	for i, part in ipairs(kit.Sparks) do
+		part.Size = Vector3.new(u * 0.45, u * 0.45, u * 0.45)
+		part.Color = (i % 3 == 0) and WHITE or ((i % 2 == 0) and c1 or c2)
+		local a = hash(i, 5) * TAU + play.Salt
+		local speed = R * (2.0 + hash(i, 6) * 1.8)
+		kit.SparkV[i] = Vector3.new(math.cos(a) * speed, R * (2 + hash(i, 7) * 2.2), math.sin(a) * speed)
+		kit.SparkSpin[i] = Vector3.new(hash(i, 8) * 9, hash(i, 9) * 9, hash(i, 10) * 9)
+	end
+end
+
+local function hideKit(kit)
+	kit.Flash.Transparency = 1
+	for _, list in ipairs({ kit.Shock, kit.Runes, kit.Sparks }) do
+		for _, part in ipairs(list) do
+			part.Transparency = 1
+		end
+	end
+	if kit.Pillar then
+		kit.Pillar.Transparency = 1
+		kit.Light.Brightness = 0
+	end
+end
+
+local function takeKit(low, parent)
+	local pool = kitPool[low and "Low" or "High"]
+	while #pool > 0 do
+		local kit = table.remove(pool)
+		if pcall(function()
+			kit.Folder.Parent = parent
+		end) then
+			return kit
+		end
+	end
+	local kit = newKit(low)
+	kit.Folder.Parent = parent
+	return kit
+end
+
+local function giveKit(kit)
+	hideKit(kit)
+	local pool = kitPool[kit.Low and "Low" or "High"]
+	if #pool < K.ARRIVE_POOL then
+		pcall(function()
+			kit.Folder.Parent = nil
+		end)
+		pool[#pool + 1] = kit
+	else
+		pcall(function()
+			kit.Folder:Destroy()
+		end)
+	end
+end
+
+local function arriveFlash(play)
+	if play.Flashed then
+		return
+	end
+	play.Flashed = true
+	play.Handle.Flashed = true
+	if play.Kit and play.Kit.Emitter then
+		play.Kit.Emitter:Emit(K.ARRIVE_SPARKLES)
+	end
+	if type(play.OnFlash) == "function" then
+		local ok, err = pcall(play.OnFlash)
+		if not ok then
+			warn("[EvolutionFx] OnFlash failed: " .. tostring(err))
+		end
+	end
+end
+
+local function arriveFinish(play)
+	if play.Handle.Done then
+		return
+	end
+	arriveFlash(play) -- (a Stop before the flash still shows the pet)
+	play.Handle.Done = true
+	if play.Kit then
+		giveKit(play.Kit)
+		play.Kit = nil
+	end
+	for i = #arrivals, 1, -1 do
+		if arrivals[i] == play then
+			table.remove(arrivals, i)
+		end
+	end
+	maybeStopLoop()
+	if type(play.OnDone) == "function" then
+		local ok, err = pcall(play.OnDone)
+		if not ok then
+			warn("[EvolutionFx] OnDone failed: " .. tostring(err))
+		end
+	end
+end
+
+-- per frame: one arrival (reused buffers: no table per frame)
+local function arriveStep(play, dt)
+	play.T = play.T + dt
+	local t, D, F = play.T, play.Dur, play.FlashAt
+	local kit = play.Kit
+	local R, u = play.Radius, play.Unit
+	local centre = play.Pose.Position
+	local bp, bc = kit.BufP, kit.BufC
+	if t >= F then
+		arriveFlash(play)
+	end
+	-- the rune ring: grows and turns, fades out at the end
+	local n = #kit.Runes
+	if n > 0 then
+		local grow = smooth(t / (0.3 * D))
+		local fade = clamp01((t - 0.65 * D) / (0.35 * D))
+		local alpha = 1 - (1 - fade) * 0.9 * smooth(t / (0.25 * D))
+		for i, part in ipairs(kit.Runes) do
+			bp[i] = part
+			bc[i] = ringPose(play, i, n, R * (0.5 + 0.8 * grow), t * 1.6, 0.06)
+			part.Transparency = alpha
+		end
+		for i = n + 1, #bp do
+			bp[i], bc[i] = nil, nil
+		end
+		Workspace:BulkMoveTo(bp, bc, Enum.BulkMoveMode.FireCFrameChanged)
+	end
+	-- the pillar rises until the flash, flares, then fades
+	local pillar = kit.Pillar
+	if pillar then
+		local rise = easeOut(clamp01((t - 0.04 * D) / (F - 0.04 * D)))
+		local after = clamp01((t - F) / (0.3 * D))
+		local h = math.max(0.1, play.PillarHeight * rise)
+		local w = R * (0.9 + 0.6 * after)
+		pillar.Size = Vector3.new(h, w, w)
+		pillar.CFrame = CFrame.new(centre.X, play.Ground + h / 2, centre.Z) * CFrame.Angles(0, 0, math.pi / 2)
+		pillar.Transparency = (t < F) and (1 - 0.45 * rise) or (0.55 + 0.45 * after)
+		kit.Light.Brightness = (t < F) and (4 * rise) or (4 * (1 - after))
+	end
+	-- the white flash
+	local fp = (t - (F - 0.06 * D)) / (0.32 * D)
+	if fp > 0 and fp < 1 then
+		local fs = (R * 0.5 + R * 2.1 * easeOut(fp)) * 2
+		kit.Flash.Size = Vector3.new(fs, fs, fs)
+		kit.Flash.CFrame = CFrame.new(centre)
+		kit.Flash.Transparency = 0.12 + 0.88 * smooth(fp)
+	else
+		kit.Flash.Transparency = 1
+	end
+	-- the shock ring and the sparks (from the flash on)
+	if t >= F then
+		local q = t - F
+		local sp = clamp01(q / (0.45 * D))
+		local m = #kit.Shock
+		for i, part in ipairs(kit.Shock) do
+			bp[i] = part
+			bc[i] = ringPose(play, i, m, R * (0.6 + 2.6 * easeOut(sp)), 0, 0.12)
+			part.Transparency = (sp < 1) and (0.1 + 0.9 * sp) or 1
+		end
+		for i = m + 1, #bp do
+			bp[i], bc[i] = nil, nil
+		end
+		Workspace:BulkMoveTo(bp, bc, Enum.BulkMoveMode.FireCFrameChanged)
+		local k = #kit.Sparks
+		if k > 0 then
+			local fade = clamp01(q / (D - F))
+			for i, part in ipairs(kit.Sparks) do
+				local pos = centre + kit.SparkV[i] * q + Vector3.new(0, -13 * q * q, 0)
+				if pos.Y < play.Ground + u * 0.2 then
+					pos = Vector3.new(pos.X, play.Ground + u * 0.2, pos.Z)
+				end
+				local spin = kit.SparkSpin[i]
+				bp[i] = part
+				bc[i] = CFrame.new(pos) * CFrame.Angles(spin.X * q, spin.Y * q, spin.Z * q)
+				part.Transparency = fade
+			end
+			for i = k + 1, #bp do
+				bp[i], bc[i] = nil, nil
+			end
+			Workspace:BulkMoveTo(bp, bc, Enum.BulkMoveMode.FireCFrameChanged)
+		end
+	end
+	play.Handle.T = t
+	if t >= D then
+		arriveFinish(play)
+	end
+end
+
+local function wantLow(opts)
+	if opts.Quality == "Low" or opts.Quality == "High" then
+		return opts.Quality == "Low"
+	end
+	if quality == nil then
+		quality = false
+		local client = script.Parent and script.Parent.Parent
+		local mod = client and client:FindFirstChild("GraphicsQuality")
+		if mod then
+			local ok, result = pcall(require, mod)
+			if ok and type(result) == "table" and type(result.Effective) == "function" then
+				quality = result
+			end
+		end
+	end
+	if quality then
+		local ok, mode = pcall(quality.Effective)
+		return ok and mode == "Low"
+	end
+	return false
+end
+
+function EvolutionFx.Arrive(pivot, opts)
+	opts = type(opts) == "table" and opts or {}
+	local D = (type(opts.Seconds) == "number" and opts.Seconds > 0.2) and math.min(opts.Seconds, 4) or K.ARRIVE_SECONDS
+	local handle = { Done = false, Flashed = false, Low = false, FlashAt = D * K.ARRIVE_FLASH, T = 0 }
+	local play = { Handle = handle, OnFlash = opts.OnFlash, OnDone = opts.OnDone }
+	handle.Stop = function()
+		pcall(arriveFinish, play)
+	end
+	if typeof(pivot) ~= "CFrame" then
+		handle.Stop()
+		return handle
+	end
+	local high, low = 0, 0
+	for _, a in ipairs(arrivals) do
+		if a.Low then
+			low = low + 1
+		else
+			high = high + 1
+		end
+	end
+	local isLow = wantLow(opts) or high >= K.ARRIVE_MAX
+	if isLow and low >= K.ARRIVE_MAX_LOW then
+		handle.Stop() -- too many at once: no effect, the pet just appears
+		return handle
+	end
+	local colors = type(opts.Colors) == "table" and opts.Colors or {}
+	local H = (type(opts.Height) == "number" and opts.Height > 0) and opts.Height or 3.5
+	local R = (type(opts.Radius) == "number" and opts.Radius > 0) and opts.Radius or 1.8
+	play.Low = isLow
+	play.Pose = pivot
+	play.Dur = D
+	play.FlashAt = handle.FlashAt
+	play.Height = math.max(1, H)
+	play.Radius = math.max(0.8, R)
+	play.Unit = math.max(0.5, math.min(play.Radius, play.Height) * 0.22)
+	play.Ground = (type(opts.Ground) == "number") and opts.Ground or (pivot.Position.Y - play.Height / 2)
+	play.PillarHeight = math.min(28, play.Height * 6)
+	play.Colors = {
+		typeof(colors[1]) == "Color3" and colors[1] or Color3.fromRGB(255, 214, 90),
+		typeof(colors[2]) == "Color3" and colors[2] or Color3.fromRGB(120, 200, 255),
+	}
+	play.Salt = (#arrivals + 1) * 0.37 + (pivot.Position.X + pivot.Position.Z) * 0.01
+	play.T = 0
+	handle.Low = isLow
+	local parent = (typeof(opts.Parent) == "Instance") and opts.Parent or Workspace
+	play.Kit = takeKit(isLow, parent)
+	dressKit(play.Kit, play)
+	arrivals[#arrivals + 1] = play
+	ensureLoop()
+	return handle
+end
+
+function EvolutionFx.ArriveStats()
+	local out = { Live = 0, LiveLow = 0, Pooled = #kitPool.High + #kitPool.Low, Parts = 0 }
+	for _, a in ipairs(arrivals) do
+		if a.Low then
+			out.LiveLow = out.LiveLow + 1
+		else
+			out.Live = out.Live + 1
+		end
+		if a.Kit then
+			out.Parts = out.Parts + kitCount(a.Kit)
+		end
+	end
+	return out
+end
+
+onFrame = function(dt)
+	dt = math.min(dt, 0.1)
 	for i = #plays, 1, -1 do
 		local play = plays[i]
 		if play then
-			local ok, err = pcall(step, play, math.min(dt, 0.1))
+			local ok, err = pcall(step, play, dt)
 			if not ok then
 				warn("[EvolutionFx] " .. tostring(err))
 				pcall(finish, play)
+			end
+		end
+	end
+	for i = #arrivals, 1, -1 do
+		local play = arrivals[i]
+		if play then
+			local ok, err = pcall(arriveStep, play, dt)
+			if not ok then
+				warn("[EvolutionFx] arrive: " .. tostring(err))
+				pcall(arriveFinish, play)
 			end
 		end
 	end
@@ -592,9 +987,7 @@ function EvolutionFx.Play(fromModel, toModel, pose, opts)
 		pcall(finish, play)
 	end
 	plays[#plays + 1] = play
-	if not loopConn then
-		loopConn = RunService.RenderStepped:Connect(onFrame)
-	end
+	ensureLoop()
 	return handle
 end
 

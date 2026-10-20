@@ -17,14 +17,27 @@
 --   Signals: RunEnded(runId, result = { Floor, Cleared, Members, Winners, Loot, Reason }) after the payments;
 --            FloorCleared(player, floor)
 --   Remotes: DungeonRequest(action, a, b) c->s (Open / Create / Join / Leave / Ready / SetFloor / Start / Solo / Quit /
---            Chest / Kick), DungeonState(kind, payload) s->c (Lobby <= 1/s, Run, Loot, Chest, End), the gate's
---            attribute DungeonBoard, the room models' DoorOpen / EntranceOpen attributes
+--            Chest / Kick), DungeonState(kind, payload) s->c (Lobby <= 1/s, Run, Loot, Chest, End, Fade { Out, Hold,
+--            In, Room }), the gate's attribute DungeonBoard, the room models' DoorOpen / EntranceOpen attributes; the
+--            doors' EnterPrompt (DungeonAction "Enter") arrives through ProximityPromptService.PromptTriggered
 --
--- Run.State: "Hall" (HallSeconds) -> "Corridor" (Phase "Threshold": at the room's entrance until a member crosses the
--- Threshold part; Phase "Walk": bars open after Intermission, DoorTime to the next room) -> "Fight" -> ... ->
--- "Treasure" (TreasureSeconds, chests) -> "Ending" (End sent, Runs + 1, return teleport after RETURN_DELAY, InBattle
--- released, pocket freed, party removed, RunEnded once). Late joins while Hall / Corridor and Room <= LateJoinLastRoom.
--- Watchdog (the loop): a Fight whose encounter is gone for 15 s, or any run older than RunMaxSeconds -> endRun "Error".
+-- Run.State: "Hall" -> "Corridor" (Phase "Threshold": at the room's entrance until a member crosses the Threshold part;
+-- Phase "Walk": the room is cleared, its exit bars open after Intermission) -> "Fight" -> ... -> "Treasure"
+-- (TreasureSeconds, chests) -> "Ending" (End sent, Runs + 1, return teleport after RETURN_DELAY, InBattle released,
+-- pocket freed, party removed, RunEnded once). Late joins while Hall / Corridor and Room <= LateJoinLastRoom.
+-- Moving on (dungeon-fixes decision 2): NO timer ever moves the group to another room. In the Hall (the hall's exit ->
+-- room 1) and after a clear once the bars are open (the NEXT room's closed Door_Entrance; the boss room's exit -> the
+-- treasure) one EnterPrompt is enabled (Dg.nextDoor / Dg.syncPrompt). Its E press (ProximityPromptService, nothing new
+-- from the client) is Dg.confirm: run.Confirm[userId] = true, idempotent (own pocket, State Hall / Corridor-Walk, a
+-- member not Left, within CONFIRM_RANGE of the prompt, not during a transit). When every member still in the run
+-- (Downed ones too) confirmed, Dg.transit: run.Transit lock, DungeonState("Fade", { Out, Hold, In, Room }) to the
+-- members, after Out Dg.finishTransit (once per transit: TransitSeq + the state it started from) enters the next room
+-- (Dg.enterRoom: Door_Entrance opened, members at its Entrance) or the treasure, and clears Confirm / Transit. A member
+-- leaving re-checks the count; a late joiner must press too. The Run payload carries Confirmed { userId... },
+-- NeedConfirm (presses still missing), EnterOpen (a door is waiting), Next (the room it leads to, 5 = the treasure).
+-- Watchdog (the loop): a Fight whose encounter is gone for 15 s, or any run older than MaxRunSeconds(floor) -> endRun
+-- "Error". MaxRunSeconds no longer counts DoorTime: it allows WAIT_ALLOWANCE seconds per door (5 doors) in total, so a
+-- slow-walking group is never ended early while an AFK group still frees its pocket.
 -- Rate limits: DungeonRequest burst 6 refill 2 / s + per-action cooldowns; the ladder type -> range -> permission ->
 -- plausibility; refusals are throttled side toasts.
 -- Plain Lua 5.1 syntax only (Luau subset); no per-frame loops, no server tweens.
@@ -75,9 +88,15 @@ local K = {
 	FAR = 500, -- a member this far from the pocket respawned elsewhere
 	BUCKET_BURST = 6,
 	BUCKET_REFILL = 2,
+	CONFIRM_RANGE = 14, -- studs from the EnterPrompt's part (the prompt itself shows within 10)
+	WAIT_ALLOWANCE = 180, -- watchdog seconds per door wait (hall + 3 corridors + the boss exit = 5 waits, pooled)
+	DOOR_WAITS = 5,
 }
 
-local COOLDOWN = { Create = 2, Join = 1, Ready = 0.3, SetFloor = 0.5, Start = 1.5, Quit = 1, Chest = 0.5, Open = 0.5, Kick = 1, Leave = 0.5, Solo = 1.5 }
+-- the room change's fade (dungeon-fixes decision 2): the server enters the next room after Out
+local FADE = { Out = 0.45, Hold = 0.35, In = 0.45 }
+
+local COOLDOWN = { Create = 2, Join = 1, Ready = 0.3, SetFloor = 0.5, Start = 1.5, Quit = 1, Chest = 0.5, Open = 0.5, Kick = 1, Leave = 0.5, Solo = 1.5, Enter = 0.25 }
 local ACTIONS = { Open = true, Create = true, Join = true, Leave = true, Ready = true, SetFloor = true, Start = true, Solo = true, Quit = true, Chest = true, Kick = true }
 
 local St = {
@@ -315,13 +334,16 @@ local function qualifiedAnywhere(m)
 	return false
 end
 
--- the watchdog's limit of a run (5.4): Dungeon.RunMaxSeconds (the contract's RoomTime formula) or, when longer, the
--- floor's own worst case: 4 rooms at the floor's room limit, 4 corridors (DoorTime + the Threshold wait + Intermission),
--- the hall, the treasure and 120 s of slack (floor 1 rooms last 180 s, so 703 s would kill a slow legit run as "Error")
+-- the watchdog's limit of a run (5.4 + dungeon-fixes decision 2): Dungeon.RunMaxSeconds or, when longer, the floor's
+-- own worst case: 4 rooms at the floor's room limit, 4 Threshold waits + Intermissions, the door waits (no DoorTime /
+-- HallSeconds any more: the group walks at its own pace and presses E, so DOOR_WAITS x WAIT_ALLOWANCE seconds of
+-- waiting are allowed in total, pooled over the hall, the corridors and the boss exit), the fades, the treasure and
+-- 120 s of slack. Floor 2: 4 x 120 + 4 x 32 + 5 x 180 + 5 x 1.25 + 45 + 120 = 1679 s (28 min) instead of 703 s.
 function DungeonService.MaxRunSeconds(floorIndex)
 	local d = D()
 	local roomTime = (floorIndex == 1) and num(d.Floor1RoomTime, 180) or num(d.RoomTime, 120)
-	local worst = 4 * roomTime + 4 * (num(d.DoorTime, 12) + K.THRESHOLD_TIMEOUT + num(d.Intermission, 2)) + num(d.HallSeconds, 10) + num(d.TreasureSeconds, 45) + 120
+	local fade = FADE.Out + FADE.Hold + FADE.In
+	local worst = 4 * roomTime + 4 * (K.THRESHOLD_TIMEOUT + num(d.Intermission, 2)) + K.DOOR_WAITS * (K.WAIT_ALLOWANCE + fade) + num(d.TreasureSeconds, 45) + 120
 	return max(num(d.RunMaxSeconds, 700), worst)
 end
 
@@ -521,7 +543,25 @@ local function runPayload(run)
 			members[#members + 1] = { UserId = uid, Name = shortName(m.Player), Downed = m.Downed == true, Left = m.Left == true }
 		end
 	end
+	-- the door wait: who pressed E at the open door, how many presses are still missing (every member still in)
+	local door, target = Dg.nextDoor(run)
+	local confirmed, need = {}, 0
+	if door then
+		local mine = run.ConfirmFor == target and run.Confirm or {}
+		for _, m in ipairs(liveMembers(run)) do
+			if mine[m.Player.UserId] then
+				confirmed[#confirmed + 1] = m.Player.UserId
+			else
+				need = need + 1
+			end
+		end
+	end
 	return {
+		Confirmed = confirmed,
+		NeedConfirm = need,
+		EnterOpen = door ~= nil,
+		Next = door and target or nil,
+		Transit = run.Transit == true,
 		RunId = run.Id,
 		Floor = run.Floor,
 		Name = run.Name,
@@ -538,6 +578,7 @@ local function runPayload(run)
 end
 
 local function sendRun(run)
+	Dg.syncPrompt(run)
 	local payload = runPayload(run)
 	for _, m in ipairs(liveMembers(run)) do
 		sendState(m.Player, "Run", payload)
@@ -726,6 +767,10 @@ function Dg.begin(party, readyOnly)
 		Cleared = false,
 		Party = party,
 		PocketIndex = index,
+		Confirm = {}, -- userId -> true: pressed E at the open door (for run.ConfirmFor = the room it leads to)
+		ConfirmFor = nil,
+		Transit = nil, -- true from the last press to the next room (the lock: later presses are ignored)
+		TransitSeq = 0,
 	}
 	-- members in party order: the entry checks, the team spec fixed now
 	local dropped = {}
@@ -903,6 +948,163 @@ function Dg.enterTreasure(run)
 	markLobbyDirty()
 end
 
+----------------------------------------------------------------------
+-- Moving on: the door prompt, the per-member E, the fade, the next room (dungeon-fixes decision 2)
+----------------------------------------------------------------------
+-- the door the group walks to now -> prompt, targetRoom (5 = the treasure) | nil (fighting, bars still shut, a
+-- transit running, the run over)
+function Dg.nextDoor(run)
+	if run.Transit or not run.Pocket then
+		return nil
+	end
+	if run.State == "Hall" then
+		local hall = run.Pocket.Hall
+		local prompt = hall and hall.NextPrompt
+		return prompt and prompt.Parent and prompt or nil, 1
+	end
+	if run.State == "Corridor" and run.Phase == "Walk" and run.DoorOpened then
+		local prompt
+		if run.Room >= 4 then
+			local info = roomInfo(run, 4)
+			prompt = info and info.NextPrompt
+			if prompt and prompt.Parent then
+				return prompt, 5
+			end
+			return nil
+		end
+		local info = roomInfo(run, run.Room + 1)
+		prompt = info and info.EnterPrompt
+		if prompt and prompt.Parent then
+			return prompt, run.Room + 1
+		end
+	end
+	return nil
+end
+
+-- exactly the current door's prompt is enabled (sendRun calls this at every state change)
+function Dg.syncPrompt(run)
+	local prompt = (run.State ~= "Ending") and Dg.nextDoor(run) or nil
+	local old = run.ActivePrompt
+	if old and old ~= prompt then
+		pcall(function()
+			old.Enabled = false
+		end)
+	end
+	run.ActivePrompt = prompt
+	if prompt and prompt.Enabled ~= true then
+		pcall(function()
+			prompt.Enabled = true
+		end)
+	end
+end
+
+-- Dg.confirm(run, player, prompt) -> ok, why: one member's E at the open door (idempotent)
+function Dg.confirm(run, player, prompt)
+	if run.Transit then
+		return false, "Transit"
+	end
+	if run.State ~= "Hall" and run.State ~= "Corridor" then
+		return false, "State"
+	end
+	local uid = player.UserId
+	local m = run.Members[uid]
+	if not m or m.Left then
+		return false, "NotMember"
+	end
+	local door, target = Dg.nextDoor(run)
+	if not door or door ~= prompt then
+		return false, "NotNow"
+	end
+	local part = prompt.Parent
+	local root = rootOf(player)
+	if not root or typeof(part) ~= "Instance" or not part:IsA("BasePart") or (root.Position - part.Position).Magnitude > K.CONFIRM_RANGE then
+		return false, "Far"
+	end
+	if run.ConfirmFor ~= target then
+		run.Confirm = {}
+		run.ConfirmFor = target
+	end
+	if run.Confirm[uid] then
+		return true, "Already"
+	end
+	run.Confirm[uid] = true
+	if not Dg.checkConfirm(run) then
+		sendRun(run)
+	end
+	return true
+end
+
+-- every member still in the run (not Left; Downed ones too) pressed E -> the transit (true when it began)
+function Dg.checkConfirm(run)
+	if run.Transit or run.State == "Ending" then
+		return false
+	end
+	local door, target = Dg.nextDoor(run)
+	if not door or run.ConfirmFor ~= target then
+		return false
+	end
+	local live = liveMembers(run)
+	if #live == 0 then
+		return false
+	end
+	for _, m in ipairs(live) do
+		if not run.Confirm[m.Player.UserId] then
+			return false
+		end
+	end
+	return Dg.transit(run, target)
+end
+
+-- the lock, the fade to every member, the next room after FADE.Out (once: TransitSeq + the state it left from)
+function Dg.transit(run, target)
+	if run.Transit then
+		return false
+	end
+	run.Transit = true
+	run.TransitSeq = (run.TransitSeq or 0) + 1
+	local seq = run.TransitSeq
+	local from = tostring(run.State) .. ":" .. tostring(run.Room)
+	local fade = { Out = FADE.Out, Hold = FADE.Hold, In = FADE.In, Room = target }
+	for _, m in ipairs(liveMembers(run)) do
+		sendState(m.Player, "Fade", fade)
+	end
+	sendRun(run)
+	task.delay(FADE.Out, function()
+		local ok, err = pcall(Dg.finishTransit, run, seq, target, from)
+		if not ok then
+			warn("[DungeonService] the room change failed: " .. tostring(err))
+			pcall(Dg.endRun, run, false, "Error")
+		end
+	end)
+	return true
+end
+
+function Dg.finishTransit(run, seq, target, from)
+	if not run.Transit or run.TransitSeq ~= seq then
+		return false
+	end
+	run.Transit = nil
+	run.Confirm = {}
+	run.ConfirmFor = nil
+	if run.State == "Ending" or (tostring(run.State) .. ":" .. tostring(run.Room)) ~= from then
+		sendRun(run)
+		return false
+	end
+	if countLive(run) == 0 then
+		return false
+	end
+	if target >= 5 then
+		local info = roomInfo(run, 4)
+		if info then
+			St.deps.DungeonBuilder.SetDoor(info, "Exit", true)
+		end
+		Dg.enterTreasure(run)
+	else
+		Dg.enterRoom(run, target)
+	end
+	return true
+end
+
 local function spawnWave(run, wave)
 	local BC = catalog()
 	local BS = St.deps.BattleService
@@ -955,9 +1157,16 @@ function Dg.startFight(run)
 	local d = D()
 	local timeLimit = (run.Floor == 1) and num(d.Floor1RoomTime, 180) or num(d.RoomTime, 120)
 	local waves = wavesOf(run, room)
+	-- the encounter's centre is the room's FLOOR (RoomInfo.ZoneFloor; the zone part floats 6 studs above it and stays
+	-- the presence box); a builder without ZoneFloor: the part's centre moved down to the floor top (FloorY)
+	local floorCf = info.ZoneFloor
+	if typeof(floorCf) ~= "CFrame" then
+		local fy = info.Zone:GetAttribute("FloorY")
+		floorCf = info.Zone.CFrame * CFrame.new(0, (finite(fy) and fy or (info.Zone.Position.Y - 6)) - info.Zone.Position.Y, 0)
+	end
 	local id, why = BS.OpenEncounter({
 		Mode = "Dungeon",
-		Zone = info.Zone,
+		Zone = { CFrame = floorCf, Size = info.Zone.Size, Part = info.Zone },
 		Seed = run.Seed + room * 17,
 		TimeLimit = timeLimit,
 		Label = run.Name .. " room " .. tostring(room),
@@ -1338,6 +1547,9 @@ function Dg.removeMember(run, player, why)
 		markLobbyDirty()
 		if countLive(run) == 0 then
 			Dg.endRun(run, false, why == "Disconnect" and "Disconnect" or "Abandoned")
+		else
+			-- the others may all have pressed E at the door already: the leaver no longer holds them up
+			Dg.checkConfirm(run)
 		end
 	end
 	return true
@@ -1474,6 +1686,8 @@ function Dg.endRun(run, cleared, reason, immediate)
 	run.State = "Ending"
 	run.Phase = nil
 	run.Joinable = false
+	run.Transit = nil
+	pcall(Dg.syncPrompt, run)
 	run.EndReason = reason or (cleared and "Cleared" or "Ended")
 	if cleared then
 		run.Cleared = true
@@ -1637,8 +1851,9 @@ function DungeonService.JoinParty(player, leaderUserId)
 		if countLive(run) >= K.MAX_PARTY then
 			return false, "That party is full"
 		end
-		if run.State == "Fight" then
-			-- 5.3: a join during a fight of room 1 / 2 waits (<= JOIN_QUEUE) for the corridor; tickQueue enters them there
+		if run.State == "Fight" or run.Transit then
+			-- 5.3: a join during a fight of room 1 / 2 (or a room change) waits (<= JOIN_QUEUE) for the corridor;
+			-- tickQueue enters them there
 			St.joinQueue[player] = { Party = party, Deadline = now() + K.JOIN_QUEUE }
 			notify(player, "Joining when the room is cleared", "info", 4)
 			markLobbyDirty()
@@ -2115,9 +2330,8 @@ local function tickRun(run, t)
 		return
 	end
 	if run.State == "Hall" then
-		if t - run.StateAt >= num(d.HallSeconds, 10) then
-			Dg.enterRoom(run, 1)
-		end
+		-- no HallSeconds timer: the group moves on when every member pressed E at the hall's exit (Dg.confirm)
+		Dg.syncPrompt(run)
 	elseif run.State == "Corridor" then
 		local info = roomInfo(run, run.Room)
 		if run.Phase == "Threshold" then
@@ -2133,14 +2347,15 @@ local function tickRun(run, t)
 				Dg.startFight(run)
 			end
 		else
+			-- after the clear: the exit bars open after Intermission (the boss room's stay shut: its exit IS the door to
+			-- the treasure alcove, which has none) and the next door's EnterPrompt is enabled; no DoorTime: nobody is
+			-- moved until every member pressed E there
 			if not run.DoorOpened and t - run.StateAt >= num(d.Intermission, 2) then
 				run.DoorOpened = true
-				if info then
+				if info and run.Room < 4 then
 					St.deps.DungeonBuilder.SetDoor(info, "Exit", true)
 				end
-			end
-			if t - run.StateAt >= num(d.Intermission, 2) + num(d.DoorTime, 12) then
-				Dg.enterRoom(run, run.Room + 1)
+				sendRun(run)
 			end
 		end
 	elseif run.State == "Fight" then
@@ -2219,7 +2434,7 @@ local function tickQueue(t)
 			if isPlayer(player) then
 				notify(player, "That party moved on", "bad", 3)
 			end
-		elseif run.State == "Hall" or run.State == "Corridor" then
+		elseif (run.State == "Hall" or run.State == "Corridor") and not run.Transit then
 			St.joinQueue[player] = nil
 			local ok, why = Dg.lateJoin(run, player)
 			if ok then
@@ -2287,14 +2502,20 @@ local function onPromptTriggered(prompt, player)
 		return
 	end
 	local action = prompt:GetAttribute("DungeonAction")
-	if action ~= "Chest" and action ~= "Exit" then
+	if action ~= "Chest" and action ~= "Exit" and action ~= "Enter" then
 		return
 	end
 	local run = St.runOf[player]
 	if not run or not run.Pocket or not run.Pocket.Model or not prompt:IsDescendantOf(run.Pocket.Model) then
 		return
 	end
-	if action == "Chest" then
+	if action == "Enter" then
+		-- the door's E (decision 2): the shared bucket + a short cooldown, then Dg.confirm validates the rest
+		if not allow(player) or onCooldown(player, "Enter") then
+			return
+		end
+		Dg.confirm(run, player, prompt)
+	elseif action == "Chest" then
 		DungeonService.Request(player, "Chest")
 	else
 		DungeonService.Request(player, "Quit")

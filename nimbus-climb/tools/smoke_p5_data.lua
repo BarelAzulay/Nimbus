@@ -1132,7 +1132,7 @@ S.p5data_settings = guarded("p5data_settings", function()
 	local UID = 955401
 	local p = join("P5Settings", UID)
 	local s = DataS.GetSettings(p)
-	T.check(type(s) == "table" and s.Music == 6 and s.Sfx == 8 and s.Gfx == "Auto" and s.Shake == true and s.SeenNotes == 0, "p5 settings: the defaults are { 6, 8, 'Auto', true, 0 }")
+	T.check(type(s) == "table" and s.Music == 6 and s.Sfx == 8 and s.Gfx == "Auto" and s.Shake == true and s.SeenNotes == 0 and s.MouseLock == false, "p5 settings: the defaults are { 6, 8, 'Auto', true, 0, MouseLock false }")
 	T.eq(DataS.Save(p), true, "p5 settings: (a save)")
 	T.eq((stored(UID) or {}).Settings, nil, "p5 settings: default settings are left out of the store")
 	local okAll = DataS.SetSetting(p, "Music", 3) and DataS.SetSetting(p, "Sfx", 10) and DataS.SetSetting(p, "Gfx", "Low") and DataS.SetSetting(p, "Shake", false) and DataS.SetSetting(p, "SeenNotes", 5)
@@ -1141,7 +1141,7 @@ S.p5data_settings = guarded("p5data_settings", function()
 	local bad = {}
 	for _, case in ipairs({
 		{ "Music", 11 }, { "Music", -1 }, { "Music", 2.5 }, { "Music", "3" }, { "Music", 0 / 0 }, { "Sfx", 1 / 0 }, { "Gfx", "Ultra" }, { "Gfx", 1 },
-		{ "Shake", 1 }, { "Shake", "true" }, { "SeenNotes", 4 }, { "SeenNotes", 1001 }, { "SeenNotes", 5.5 }, { "Volume", 3 }, { 3, 3 }, { nil, 3 }, { "Music", nil },
+		{ "Shake", 1 }, { "Shake", "true" }, { "MouseLock", 1 }, { "MouseLock", "true" }, { "SeenNotes", 4 }, { "SeenNotes", 1001 }, { "SeenNotes", 5.5 }, { "Volume", 3 }, { 3, 3 }, { nil, 3 }, { "Music", nil },
 	}) do
 		if DataS.SetSetting(p, case[1], case[2]) ~= false then
 			bad[#bad + 1] = tostring(case[1]) .. "=" .. tostring(case[2])
@@ -1153,7 +1153,7 @@ S.p5data_settings = guarded("p5data_settings", function()
 	T.check(DataS.SetSetting(nil, "Music", 1) == false, "p5 settings: a nil player is refused")
 	T.eq(DataS.Save(p), true, "p5 settings: saves")
 	local st = (stored(UID) or {}).Settings
-	T.check(type(st) == "table" and st.Music == 3 and st.Sfx == 10 and st.Gfx == "Low" and st.Shake == false and st.SeenNotes == 9 and count(st) == 5, "p5 settings: the store holds the five keys")
+	T.check(type(st) == "table" and st.Music == 3 and st.Sfx == 10 and st.Gfx == "Low" and st.Shake == false and st.SeenNotes == 9 and st.MouseLock == false and count(st) == 6, "p5 settings: the store holds the six keys (MouseLock false: dungeon-fixes 6)")
 	-- the snapshot always has them
 	local mark = K.logSize()
 	DataS.Sync(p)

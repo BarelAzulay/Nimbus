@@ -440,6 +440,12 @@
         "Init"
       ]
     },
+    "client/MouseLock": {
+      "optional": true,
+      "_comment": "docs/dungeon-fixes/plan.md decision 6 (mouse-lock)",
+      "functions": ["Start", "SetEnabled", "IsEnabled", "IsLocked", "Hold", "Release", "Holds", "WatchVisible"],
+      "fields": ["KEY_NAME", "BIND"]
+    },
     "client/Controllers/SkyDragonController": {
       "functions": [
         "Init",

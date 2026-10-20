@@ -335,8 +335,8 @@ local function cleanDungeon(raw)
 end
 
 -- Phase 5: the settings with per-key defaults (7.2); a malformed value falls back to its default.
-local SETTING_KEYS = { "Music", "Sfx", "Gfx", "Shake", "SeenNotes" }
-local SETTING_DEFAULTS = { Music = 6, Sfx = 8, Gfx = "Auto", Shake = true, SeenNotes = 0 }
+local SETTING_KEYS = { "Music", "Sfx", "Gfx", "Shake", "SeenNotes", "MouseLock" }
+local SETTING_DEFAULTS = { Music = 6, Sfx = 8, Gfx = "Auto", Shake = true, SeenNotes = 0, MouseLock = false }
 local GFX_LEVELS = { Auto = true, Low = true, High = true }
 
 local function newSettings()
@@ -363,6 +363,9 @@ local function cleanSettings(raw)
 	end
 	if type(raw.Shake) == "boolean" then
 		s.Shake = raw.Shake
+	end
+	if type(raw.MouseLock) == "boolean" then
+		s.MouseLock = raw.MouseLock
 	end
 	local notes = raw.SeenNotes
 	if type(notes) == "number" and notes == notes and notes >= 0 and notes <= 1000 and notes == math.floor(notes) then

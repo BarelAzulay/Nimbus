@@ -74,11 +74,19 @@
 -- * Prediction: a press starts its button's ring at once and records St.pending; the matching event within 0.6 s
 --   confirms it, a rejected Order (owner-only) or the timeout puts the ring back and shakes the button. HP, numbers,
 --   kills and the meter are never predicted. Late joiners get their cooldowns from Start.Team.Cooldowns.
--- * MovementController (3.9 / 4.4): on Start SetDashKeys({ Shift, B }), SetFreeDash(true, DashCooldown),
---   SetBattleSpeed(walk, run) (again on every Speed event) and a dash listener that sends "Dash"; all reset on End.
+-- * MovementController (3.9 / 4.4, dungeon fixes 5): on Start SetPetDash(fn) (Shift / B = the PET's dash: "Dash" only,
+--   no character impulse, no stamina; RUN on Ctrl) and SetBattleSpeed(walk, run) (again on every Speed event); both
+--   reset on End.
+-- * Dungeon fixes (docs/dungeon-fixes/plan.md): enemies spawned after "Start" come in Wave / Spawn events and are
+--   added there (root cause A); an enemy whose info says Arrive > 0 arrives with EvolutionFx.Arrive (the model hidden
+--   until the flash, then a hop); the fighter attacks by itself (server): ATTACK sends one "Attack" order per press
+--   (the enemy clicked / under the screen centre while MouseLock holds the cursor, else nil = the nearest / the next),
+--   no hold repeat, no predicted swing (lunges from the server's Hits); the gold arrow shows the enemy the pet attacks
+--   (the lock, else its snapshot target, see-through); Dash events draw the pet's dash (mine on arrival); ELEMENT's E
+--   passes to a shown ProximityPrompt; MouseLock.Hold / Release ("BattleResult", "BattleLeave") via a pcall'd require.
 -- Keys (ContextActionService, High priority, sunk, bound ONLY while fighting and inert before UiGate.HasPlayed()):
--- F / X attack, E / Y element, Q / RB special, Tab / T / RT / LT lock, 1 / 2 (LB / D-up) buff (hold = swap), D-left /
--- D-right swap; the item hotbar keeps 1-4 outside battles.
+-- F / X attack (pick the target), E / Y element (E passes while a prompt is shown), Q / RB special, Tab / T / RT / LT
+-- lock, 1 / 2 (LB / D-up) buff (hold = swap), D-left / D-right swap; the item hotbar keeps 1-4 outside battles.
 --
 -- Cost: one RenderStepped connection, alive only while a battle is drawn or effects play. Per frame: one root CFrame
 -- write + PetBuilder.Animate per visible pet (strided for far / crowded ones), one BossBuilder.Animate, the pooled
@@ -137,6 +145,8 @@ local Mods = {
 	Tycoon = optional(Shared, "TycoonCatalog"),
 	Voxel = optional(Shared, "Voxel"),
 	Mesh = nil, -- shared/MeshLibrary (lazy: Units.FxMesh); false = unavailable
+	Evo = nil, -- client/Controllers/EvolutionFx (lazy: Units.EvoFx, the enemies' arrival)
+	MouseLock = nil, -- client/MouseLock (lazy, optional: Me.MouseHold); false = not there (yet)
 }
 
 local BattleController = {}
@@ -222,6 +232,8 @@ local K = {
 	HELPER_B = Vector3.new(2, 1.2, 2),
 	BUFF_FLY = 0.6, -- a helper flies to the fighter and back on its Buff
 	SWAP_TIME = 0.5, -- fighter and helper trade places
+	DASH_TIME = 0.35, -- the drawn PET dash (dungeon fixes decision 5): out and back along the Dash event's direction
+	DASH_DIST = 4.5, -- studs
 	WINDUP_FLASH = 0.35, -- the yellow Highlight of a wind-up
 	SHAKE_MAX = 0.35, -- studs of camera shake at most (x ClientSettings Shake)
 	-- HUD geometry (design px at 1080p)
@@ -340,7 +352,8 @@ local St = {
 	warned = {},
 	remoteCmd = nil,
 	result = nil, -- result card timer
-	attackHeld = nil, -- { next } while ATTACK is held (auto-repeat)
+	prompts = {}, -- [ProximityPrompt] = true while shown to me (E passes through to it: Input.PromptShown)
+	mouseHolds = {}, -- [reason] = true: our client/MouseLock holds (the cursor is free)
 	holds = {}, -- [key] = { index, t, fired }: a helper key / portrait held (0.5 s = swap)
 	movementOn = false, -- MovementController's battle switches are set
 	shake = nil, -- { t0, dur, amp } camera shake
@@ -1240,7 +1253,28 @@ function Units.Add(B, info)
 	return u
 end
 
+-- a Spawn / Wave event's unit infos (server order: they may come after "Start"); a new unit whose info says Arrive > 0
+-- (seconds) arrives: EvolutionFx.Arrive at its spot, the model hidden until the flash, then a hop (Units.Arrival)
+function Units.AddList(B, list)
+	for _, info in ipairs(type(list) == "table" and list or {}) do
+		local known = type(info) == "table" and B.units[tonumber(info.id) or -1] ~= nil
+		local u = Units.Add(B, info)
+		if u and not known then
+			local arrive = type(info) == "table" and tonumber(info.Arrive or info.arrive) or nil
+			if arrive and arrive > 0 and not u.mine then
+				u.arrive = min(arrive, 4)
+			end
+		end
+	end
+end
+
 function Units.Destroy(u)
+	if u.arriveFx then
+		if not u.arriveFx.Done then
+			pcall(u.arriveFx.Stop)
+		end
+		u.arriveFx = nil
+	end
 	if u.flash then
 		u.flash.hl.Adornee = nil
 	end
@@ -1354,7 +1388,13 @@ local function buildUnit(B, u)
 	-- evolved units use the Low evolved form (within the petEvoLow / petEvo2Low budgets), like evolved followers;
 	-- Phase 5 (10.3): my fighter High, my helpers Low (a helper swapped in is rebuilt at High: Units.Rebuild)
 	local detail = (u.mine and u.evo == 0 and not u.benched) and "High" or "Low"
-	local model = PetBuilder.Build(def, { Scale = K.PET_SCALE * u.scale, Detail = detail, Evolved = u.evo > 0 and u.evo or nil })
+	-- dungeon enemies wear the Wild look (contract 5.6 / C13): darker, tinted toward the floor's element, Neon eyes
+	local wild = nil
+	if u.info.wild and not u.ally then
+		local c = elementColor((B.Dungeon and B.Dungeon.Element) or u.element)
+		wild = { Tint = Theme.Darken(c, 0.35), Eyes = Theme.Lighten(c, 0.15) }
+	end
+	local model = PetBuilder.Build(def, { Scale = K.PET_SCALE * u.scale, Detail = detail, Evolved = u.evo > 0 and u.evo or nil, Wild = wild })
 	local root = model.PrimaryPart or model:FindFirstChild("Body")
 	if not root or not root:IsA("BasePart") then
 		model:Destroy()
@@ -1543,6 +1583,9 @@ function Units.Update(B, u, now, dt, sa, sb, alpha, animate)
 		u.yaw = yawToward(-x, -z)
 	end
 	u.x, u.z = x, z
+	if u.arrive and Units.Arrival(B, u, now) then
+		return -- still arriving: the model stays hidden until the flash
+	end
 	if not u.model then
 		return
 	end
@@ -1627,6 +1670,10 @@ function Units.Update(B, u, now, dt, sa, sb, alpha, animate)
 			ox, oz = ox + (u.hurtX or 0) * amt, oz + (u.hurtZ or 0) * amt
 		end
 	end
+	if u.dashAt then
+		local amt = K.DASH_DIST * Me.DashAmount(u, now)
+		ox, oz = ox + (u.dashX or 0) * amt, oz + (u.dashZ or 0) * amt
+	end
 	local bob = 0
 	local stunned = u.state == S_STUNNED
 	if not stunned then
@@ -1658,6 +1705,66 @@ function Units.Update(B, u, now, dt, sa, sb, alpha, animate)
 	end
 	-- shield cube and ice crystals follow the unit
 	Units.UpdateStatus(B, u, now, cf)
+end
+
+-- client/Controllers/EvolutionFx (the arrival effect); nil when missing
+function Units.EvoFx()
+	if Mods.Evo == nil then
+		Mods.Evo = optional(script.Parent, "EvolutionFx") or false
+	end
+	local m = Mods.Evo
+	return (m and type(m.Arrive) == "function") and m or nil
+end
+
+-- dungeon fixes (decision 3): an arriving enemy (Units.AddList, info Arrive > 0). Its first frame with a position
+-- starts EvolutionFx.Arrive at its spot (effects only: rune ring, pillar, flash, sparkles, shock ring, sparks; Low
+-- graphics = flash + ring); the model stays out of the world until the flash, then pops in with a hop. The server
+-- keeps it inert and unhittable meanwhile (arriveUntil). -> true while the model is hidden (skip the frame)
+function Units.Arrival(B, u, now)
+	if u.isBoss then
+		u.arrive = nil
+		return false
+	end
+	if not u.arriveFx and not u.arriveShown then
+		local fx = Units.EvoFx()
+		local h = u.height or (3.2 * u.scale * K.PET_SCALE)
+		local c = elementColor((B.Dungeon and B.Dungeon.Element) or u.element)
+		local ok, handle = false, nil
+		if fx then
+			ok, handle = pcall(fx.Arrive, worldFrame(B, u.x, u.centerY or (h / 2 + K.HOVER), u.z, 0), {
+				Parent = fxFolder(),
+				Colors = { c, Theme.Lighten(c, 0.55) },
+				Height = h,
+				Radius = max(1, u.radius),
+				Ground = worldPoint(B, u.x, 0, u.z).Y,
+				Seconds = u.arrive,
+				OnFlash = function()
+					u.arriveShown = true
+				end,
+			})
+		end
+		if not ok or type(handle) ~= "table" then
+			u.arrive = nil -- no effect module: the pet is simply there
+			return false
+		end
+		u.arriveFx = handle
+		St.arrivals = (St.arrivals or 0) + 1
+	end
+	if not u.arriveShown then
+		u.hidden = true
+		if u.model and u.model.Parent then
+			u.model.Parent = nil
+		end
+		return true
+	end
+	-- the flash: the pet pops in
+	u.arrive = nil
+	u.hidden = nil
+	if u.model and not u.model.Parent and not u.parked then
+		u.model.Parent = u.folder or B.folder
+	end
+	u.hopAt = now
+	return false
 end
 
 -- Phase 6: the Blender fx meshes (fx_shield / fx_ice / fx_arrow, creatures class) once they are usable on this
@@ -1982,13 +2089,13 @@ function Me.Draw(B, u, now, dt, x, z)
 	if want and u.state ~= S_STUNNED then
 		u.wyaw = u.wyaw + wrapAngle(want - u.wyaw) * (1 - exp(-K.FACE_RATE * dt))
 	end
-	-- the predicted swing (a press lunges at once), the server's lunges / hops / recoils (zone-local -> world)
+	-- the server's lunges (Hit events only: the pet attacks by itself, nothing is predicted) / hops / recoils and the
+	-- pet's dash (zone-local -> world)
 	local off = Vector3.new(0, 0, 0)
-	local swing = u.swingAt and (now - u.swingAt) / K.LUNGE_TIME or 1
-	if swing < 1 then
-		local amt = sin(swing * pi) * (u.ranged and -K.RECOIL_DIST or K.LUNGE_DIST)
-		off = off + Vector3.new(-sin(u.wyaw), 0, -cos(u.wyaw)) * amt
-	elseif u.lungeAt then
+	if u.dashAt then
+		off = off + zoneDir(B, u.dashX or 0, u.dashZ or 0) * (K.DASH_DIST * Me.DashAmount(u, now))
+	end
+	if u.lungeAt then
 		local p = (now - u.lungeAt) / K.LUNGE_TIME
 		if p >= 1 then
 			u.lungeAt = nil
@@ -2025,14 +2132,107 @@ function Me.Draw(B, u, now, dt, x, z)
 	if PetBuilder and not u.animBroken then
 		local opts = u.animOpts
 		local moving = rcf ~= nil and isFighter and u.state == S_MOVING
-		opts.Flap = stunned and 0 or ((u.state == S_DASHING or moving or u.flyAt) and 1.8 or 1)
-		opts.Excited = (u.state == S_ATTACKING or u.state == S_CASTING or swing < 1) and 0.6 or 0
+		opts.Flap = stunned and 0 or ((u.state == S_DASHING or u.dashAt or moving or u.flyAt) and 1.8 or 1)
+		opts.Excited = (u.state == S_ATTACKING or u.state == S_CASTING) and 0.6 or 0
 		local ok = pcall(PetBuilder.Animate, u.model, now + u.phase, opts)
 		if not ok then
 			u.animBroken = true
 		end
 	end
 	Units.UpdateStatus(B, u, now, cf)
+end
+
+-- the zone-local direction (x, z) of a Dash event: ev.dir (an angle like Element's, or { x, z }), ev.dx / ev.dz, the
+-- point ev.tx / ev.tz, else toward the pet's target / my lock, else where it faces (mine: where my character looks)
+function Me.DashDir(B, u, ev)
+	local dx, dz = nil, nil
+	local dir = ev.dir
+	if type(dir) == "number" then
+		dx, dz = cos(dir), sin(dir)
+	elseif type(dir) == "table" then
+		dx, dz = tonumber(dir.x or dir.X or dir[1]), tonumber(dir.z or dir.Z or dir[2])
+	end
+	if not (dx and dz) and tonumber(ev.dx) and tonumber(ev.dz) then
+		dx, dz = tonumber(ev.dx), tonumber(ev.dz)
+	end
+	if not (dx and dz) and tonumber(ev.tx) and tonumber(ev.tz) then
+		dx, dz = tonumber(ev.tx) - u.x, tonumber(ev.tz) - u.z
+	end
+	if not (dx and dz) then
+		local t = B.units[tonumber(ev.target) or u.target or (u.mine and B.lock) or -1]
+		if t and t ~= u then
+			dx, dz = t.x - u.x, t.z - u.z
+		end
+	end
+	if not (dx and dz) and u.mine then
+		local root = Me.Root()
+		if root then
+			-- world -> zone-local: the transpose of the zone's rotation
+			local lv, b = root.CFrame.LookVector, B.basis
+			dx, dz = b[4] * lv.X + b[7] * lv.Y + b[10] * lv.Z, b[6] * lv.X + b[9] * lv.Y + b[12] * lv.Z
+		end
+	end
+	if not (dx and dz) then
+		local yaw = u.wyaw or u.yaw or 0
+		dx, dz = -sin(yaw), -cos(yaw)
+	end
+	local d = sqrt(dx * dx + dz * dz)
+	if d < 1e-3 then
+		return 0, -1
+	end
+	return dx / d, dz / d
+end
+
+-- starts the drawn dash of pet u (a streak out and back + a trail), once per event
+function Me.StartDash(B, u, ev)
+	u.dashEv = ev
+	if not u.model or u.parked or u.hidden then
+		return
+	end
+	u.dashX, u.dashZ = Me.DashDir(B, u, ev)
+	u.dashAt = os.clock()
+	local a = unitCenter(B, u)
+	local b = a + zoneDir(B, u.dashX, u.dashZ) * K.DASH_DIST
+	Fx.Trail(a, b, COLORS.Dodge, 6, K.DASH_TIME + 0.1)
+	Fx.Burst(a, COLORS.Dodge, 8, 9, 0.4, 0.35, { up = 0.2, alpha = 0.2 })
+	St.dashes = (St.dashes or 0) + 1
+end
+
+-- 0..1..0 of a running dash (quick out, a softer way back); clears it at the end
+function Me.DashAmount(u, now)
+	local p = (now - u.dashAt) / K.DASH_TIME
+	if p >= 1 or p < 0 then
+		u.dashAt = nil
+		return 0
+	end
+	if p < 0.4 then
+		local q = 1 - p / 0.4
+		return 1 - q * q
+	end
+	local q = (p - 0.4) / 0.6
+	return 1 - q * q * (3 - 2 * q)
+end
+
+-- client/MouseLock (the mouse lock option, a separate module: no hard dependency): Hold(reason) frees the cursor while
+-- the result card / the LEAVE confirm is up, Release(reason) gives it back; idempotent per reason
+function Me.MouseHold(reason, on)
+	on = on == true
+	if (St.mouseHolds[reason] == true) == on then
+		return
+	end
+	if not Mods.MouseLock then
+		local inst = Client:FindFirstChild("MouseLock")
+		if inst then
+			local ok, m = pcall(require, inst)
+			Mods.MouseLock = (ok and type(m) == "table") and m or false
+		end
+	end
+	local ML = Mods.MouseLock
+	local fn = ML and ML[on and "Hold" or "Release"]
+	if type(fn) == "function" then
+		pcall(fn, reason)
+	end
+	St.mouseHolds[reason] = on or nil
 end
 
 -- the camera shake scale: ClientSettings.Get("Shake") (menu W3); 1 when the module is missing
@@ -2382,9 +2582,9 @@ Handlers[EV.Hit] = function(B, ev)
 		end
 		return
 	end
-	-- attacker motion: plain attacks lunge (melee) or shoot a bolt (ranged); my fighter already swung on the press
-	local predicted = attacker and attacker.swingAt and os.clock() - attacker.swingAt < 0.6
-	if attacker and not ev.special and not ev.zone and not ev.tele and not ev.element and not predicted then
+	-- attacker motion: plain attacks lunge (melee) or shoot a bolt (ranged); my fighter too (it attacks by itself:
+	-- its lunges come only from these server hits, never from a press)
+	if attacker and not ev.special and not ev.zone and not ev.tele and not ev.element then
 		if attacker.isBoss then
 			if attacker.pose ~= "Windup" and attacker.pose ~= "Attack" and attacker.pose ~= "Enrage" then
 				Units.SetPose(attacker, "Basic", 0.6, ev.attack)
@@ -2402,8 +2602,6 @@ Handlers[EV.Hit] = function(B, ev)
 				Fx.Bolt(unitCenter(B, attacker), unitCenter(B, victim), elementColor(attacker.element), 0.42, 0.24)
 			end
 		end
-	elseif predicted and attacker.ranged and attacker.model and not attacker.parked and not ev.special then
-		Fx.Bolt(unitCenter(B, attacker), unitCenter(B, victim), elementColor(attacker.element), 0.42, 0.24)
 	end
 	-- my fighter hit hard: a tiny camera shake (x the Shake setting)
 	if victim.mine and B.Fighter and victim.id == B.fighterId and dmg >= victim.maxHp * 0.12 then
@@ -2586,12 +2784,7 @@ Handlers[EV.Telegraph] = function(B, ev)
 end
 
 Handlers[EV.Spawn] = function(B, ev)
-	for _, info in ipairs(type(ev.units) == "table" and ev.units or {}) do
-		local u = Units.Add(B, info)
-		if u then
-			u.spawnFx = true
-		end
-	end
+	Units.AddList(B, ev.units)
 	if ev.wave then
 		B.wave = num(ev.wave, 0)
 		local boss = B.boss
@@ -2676,11 +2869,12 @@ Handlers[EV.Element or "Element"] = function(B, ev)
 	end
 end
 
+-- the PET dashes (the character never does, decision 5): every pet's Dash draws its streak; my own fighter's already
+-- started when the event arrived (Net.Pre: no render delay for my own dodge)
 Handlers[EV.Dash or "Dash"] = function(B, ev)
 	local u = B.units[tonumber(ev.unit) or -1]
-	if u and u.model and not u.parked and not u.mine then
-		local c = unitCenter(B, u)
-		Fx.Burst(c, COLORS.Dodge, 8, 9, 0.4, 0.35, { up = 0.2, alpha = 0.2 })
+	if u and u.dashEv ~= ev then
+		Me.StartDash(B, u, ev)
 	end
 end
 
@@ -2723,7 +2917,10 @@ Handlers[EV.Windup or "Windup"] = function(B, ev)
 	end
 end
 
+-- dungeon fixes (root cause A): the server opens a room's encounter with an EMPTY side 2 ("Start") and spawns every
+-- wave afterwards: the Wave event carries the enemies, so they are added here (deduped by id, like Spawn)
 Handlers[EV.Wave or "Wave"] = function(B, ev)
+	Units.AddList(B, ev.units)
 	B.wave = num(ev.index, B.wave or 0)
 	if B.Dungeon then
 		B.Dungeon.Wave = B.wave
@@ -2731,6 +2928,7 @@ Handlers[EV.Wave or "Wave"] = function(B, ev)
 	local f = B.fighterId and B.units[B.fighterId]
 	calloutAbove(f, "WAVE " .. tostring(B.wave) .. "!", Theme.Neon and Theme.Neon.Purple or COLORS.Gold, K.CRIT_PX, 1.4)
 	Hud.enemyDirty = true
+	Hud.Rebuild()
 end
 
 Handlers[EV.EnemiesDown or "EnemiesDown"] = function(B)
@@ -3806,12 +4004,12 @@ function Hud.Bench(B)
 	return out
 end
 
--- the action captions: the element attack's name, the fighter's special
+-- the action captions: ATTACK picks the enemy the pet attacks (it attacks by itself), the element attack's name
 function Hud.Captions(B)
 	local f = B.fighterId and B.units[B.fighterId]
 	local ea = f and type(f.info.elementAttack) == "table" and f.info.elementAttack or nil
 	local caps = {
-		Attack = "ATTACK",
+		Attack = "PICK TARGET",
 		Element = ea and string.upper(tostring(ea.Name)) or "ELEMENT",
 		Special = "SPECIAL",
 		Dash = "DASH",
@@ -4443,6 +4641,7 @@ function Hud.ShowResult(B, payload)
 	Leave.Place(m, nil, false)
 	local keep = St.result and St.result.payload == payload and St.result.t0 -- a relayout (rotation) keeps the timer
 	St.result = { t0 = keep or os.clock(), dur = K.RESULT_SECONDS, battle = B, payload = payload }
+	Me.MouseHold("BattleResult", true) -- the cursor is free for the card's OK
 	BattleController._wake()
 end
 
@@ -4503,6 +4702,7 @@ end
 
 function Hud.HideResult()
 	St.result = nil
+	Me.MouseHold("BattleResult", false)
 	if Hud.result then
 		Hud.result.Visible = false
 	end
@@ -4608,6 +4808,7 @@ end
 
 function Leave.Paint()
 	local text, style = Leave.State(os.clock())
+	Me.MouseHold("BattleLeave", style ~= "Pink") -- "Sure? Tap again": the cursor is free for the second press
 	local live = {}
 	for _, b in ipairs(Leave.buttons) do
 		if b.Parent then
@@ -5353,9 +5554,13 @@ end
 
 ----------------------------------------------------------------------
 -- Input (contract 4.7 control map; bound through ContextActionService at High priority ONLY while fighting)
---   ATTACK  left click / F / X / the big round button (hold = auto-repeat at the fighter's interval)
---   ELEMENT E / Y / its button (cooldown ring)      SPECIAL Q / RB / its button (lights gold at 100)
---   DASH    Shift / B / its button (MovementController's dash: SetDashKeys; the dash sends "Dash")
+--   ATTACK  left click / F / X / the big round button: ONE "Attack" order per press (dungeon fixes decision 4): the
+--           fighter attacks by itself (server auto-attack); "Attack"(id) = attack this one (a click on an enemy; with
+--           the mouse locked the enemy under the screen centre), "Attack"() = the nearest / the next one
+--   ELEMENT E / Y / its button (cooldown ring); E passes through while a ProximityPrompt is shown (exit, chest)
+--   SPECIAL Q / RB / its button (lights gold at 100)
+--   DASH    Shift / B / its button: the PET dashes ("Dash"; MovementController.SetPetDash: no character impulse, no
+--           stamina); RUN moves to Ctrl in a battle
 --   lock    Tab cycles (nearest first), click / tap an enemy or its row; T clears; RT cycles, LT clears
 --   helpers 1 / 2 (LB / D-up) tap = its buff, hold 0.5 s = swap; the SWAP chip; D-left / D-right swap; the portrait
 --           (tap = buff, hold = swap)
@@ -5409,18 +5614,35 @@ function Input.GateOpen()
 	return true
 end
 
+-- a ProximityPrompt shown to me that E would press (dungeon fixes 6: E stays the interaction key)
+function Input.PromptShown()
+	for prompt in pairs(St.prompts) do
+		local ok, live = pcall(function()
+			local code = prompt.KeyboardKeyCode
+			return prompt.Parent ~= nil and prompt.Enabled ~= false and (code == nil or code == Enum.KeyCode.E)
+		end)
+		if ok and live then
+			return true
+		elseif not ok or prompt.Parent == nil then
+			St.prompts[prompt] = nil
+		end
+	end
+	return false
+end
+
 function Input.OnAction(name, state, input)
 	if not fighting() or not Input.GateOpen() then
 		return pass()
 	end
 	local began = state == Enum.UserInputState.Begin
-	local ended = state == Enum.UserInputState.End or state == Enum.UserInputState.Cancel
 	local key = input and input.KeyCode
+	if name == K.ACTION_ELEMENT and key == Enum.KeyCode.E and Input.PromptShown() then
+		return pass() -- the shown prompt (the room's exit, a chest) gets the E
+	end
+	local ended = state == Enum.UserInputState.End or state == Enum.UserInputState.Cancel
 	if name == K.ACTION_ATTACK then
 		if began then
 			Input.Press("Attack", true)
-		elseif ended then
-			Input.Press("Attack", false)
 		end
 	elseif name == K.ACTION_ELEMENT then
 		if began then
@@ -5483,25 +5705,28 @@ function Input.Bind(on)
 				ContextActionService:UnbindAction(name)
 			end)
 		end
-		St.attackHeld = nil
 		St.holds = {}
 	end
 end
 
--- MovementController's battle switches (contract 3.9 / 4.4): Shift dashes, a dash is free, the battle speeds
+-- MovementController's battle switches (contract 3.9 / 4.4, dungeon fixes decision 5): Shift / B = the PET's dash
+-- (SetPetDash: the keys only send "Dash", the character gets no impulse and spends no stamina; RUN moves to Ctrl),
+-- the battle speeds. (An older MovementController without SetPetDash: the old character dash keys.)
 function Input.Movement(B, on)
 	local mc = Hud.Movement()
 	if not mc then
 		return
 	end
 	if on then
-		local F = BattleCatalog and BattleCatalog.Fighter or {}
-		pcall(mc.SetDashKeys, { Enum.KeyCode.LeftShift, Enum.KeyCode.RightShift, Enum.KeyCode.ButtonB })
-		pcall(mc.SetFreeDash, true, num(F.DashCooldown, 2.5))
-		if type(mc.SetDashListener) == "function" then
-			pcall(mc.SetDashListener, function()
-				BattleController.Command("Dash")
-			end)
+		if type(mc.SetPetDash) == "function" then
+			pcall(mc.SetPetDash, Input.PetDash)
+		else
+			local F = BattleCatalog and BattleCatalog.Fighter or {}
+			pcall(mc.SetDashKeys, { Enum.KeyCode.LeftShift, Enum.KeyCode.RightShift, Enum.KeyCode.ButtonB })
+			pcall(mc.SetFreeDash, true, num(F.DashCooldown, 2.5))
+			if type(mc.SetDashListener) == "function" then
+				pcall(mc.SetDashListener, Input.PetDash)
+			end
 		end
 		local sp = B and B.speed
 		if sp then
@@ -5510,83 +5735,44 @@ function Input.Movement(B, on)
 		St.movementOn = true
 	elseif St.movementOn then
 		St.movementOn = false
-		pcall(mc.SetDashKeys, nil)
-		pcall(mc.SetFreeDash, false)
-		pcall(mc.SetBattleSpeed, nil)
-		if type(mc.SetDashListener) == "function" then
-			pcall(mc.SetDashListener, nil)
+		if type(mc.SetPetDash) == "function" then
+			pcall(mc.SetPetDash, nil)
+		else
+			pcall(mc.SetDashKeys, nil)
+			pcall(mc.SetFreeDash, false)
+			if type(mc.SetDashListener) == "function" then
+				pcall(mc.SetDashListener, nil)
+			end
 		end
+		pcall(mc.SetBattleSpeed, nil)
 	end
 end
 
--- a button press / release of an action (keys, the round buttons, the mouse)
-function Input.Press(kind, down)
-	if not fighting() then
-		St.attackHeld = nil
+-- Shift / B in a battle (MovementController.SetPetDash calls it): the pet's dash
+function Input.PetDash()
+	if not fighting() or not Input.GateOpen() then
+		return false
+	end
+	return BattleController.Command("Dash")
+end
+
+-- a button press of an action (keys, the round buttons): ONE command per press (ATTACK never repeats: the fighter
+-- attacks by itself, ATTACK only tells it which enemy; arg = that enemy's id, nil = the nearest / the next one)
+function Input.Press(kind, down, arg)
+	if not down or not fighting() then
 		return
 	end
 	if kind == "Attack" then
-		if down then
-			St.attackHeld = { next = 0 }
-			Input.Tick(St.battle, os.clock())
-		else
-			St.attackHeld = nil
-		end
-		return
-	end
-	if not down then
-		return
-	end
-	if kind == "Dash" then
-		-- the character dashes (MovementController); its listener sends "Dash" (free in battle)
-		local mc = Hud.Movement()
-		if mc and type(mc.TryDash) == "function" and St.movementOn then
-			local ok, done = pcall(mc.TryDash)
-			if ok and done then
-				return
-			end
-			if ok then
-				Hud.Shake(Hud.ButtonOf("Dash"))
-				return
-			end
-		end
-		BattleController.Command("Dash")
+		BattleController.Command("Attack", arg)
 		return
 	end
 	BattleController.Command(kind)
 end
 
--- my fighter's attack interval (the hold-to-attack cadence): BattleCatalog.UnitStats, else 1 s
-function Input.AttackInterval(B)
-	local f = B.fighterId and B.units[B.fighterId]
-	if not f then
-		return 1
-	end
-	if f.interval == nil then
-		f.interval = 1
-		if BattleCatalog and type(BattleCatalog.UnitStats) == "function" then
-			local ok, us = pcall(BattleCatalog.UnitStats, f.info.key or f.info.petId, f.level, f.tier, { Evo = f.evo })
-			if not ok or type(us) ~= "table" then
-				ok, us = pcall(BattleCatalog.UnitStats, f.info.petId, f.level, f.tier, { Evo = f.evo })
-			end
-			if ok and type(us) == "table" and num(us.Interval, 0) > 0 then
-				f.interval = us.Interval
-			end
-		end
-	end
-	return max(K.ATTACK_GAP, f.interval)
-end
-
--- per frame: the held ATTACK repeats at the interval; a helper key / portrait held 0.5 s swaps
+-- per frame: a helper key / portrait held 0.5 s swaps
 function Input.Tick(B, now)
 	if not B or not fighting() then
-		St.attackHeld = nil
 		return
-	end
-	local held = St.attackHeld
-	if held and now >= held.next then
-		held.next = now + Input.AttackInterval(B)
-		BattleController.Command("Attack", nil, true)
 	end
 	for key, h in pairs(St.holds or {}) do
 		if not h.fired and now - h.t >= K.SWAP_HOLD then
@@ -5658,7 +5844,7 @@ function Input.CycleTarget()
 	local fx, fz = f and f.x or 0, f and f.z or 0
 	local list = {}
 	for _, u in ipairs(B.list) do
-		if not u.ally and u.hp > 0 and u.state ~= S_DOWN and u.state ~= S_BENCHED and (u.model or u.isBoss) then
+		if not u.ally and u.hp > 0 and u.state ~= S_DOWN and u.state ~= S_BENCHED and not u.hidden and (u.model or u.isBoss) then
 			local dx, dz = u.x - fx, u.z - fz
 			list[#list + 1] = { u = u, d = dx * dx + dz * dz }
 		end
@@ -5692,7 +5878,7 @@ function BattleController.ScreenPick(x, y)
 	local reach = K.TAP_REACH * Theme.ScreenFactor()
 	local best, bestD = nil, math.huge
 	for _, u in ipairs(B.list) do
-		if not u.ally and u.model and not u.parked and u.hp > 0 and u.state ~= S_DOWN then
+		if not u.ally and u.model and not u.parked and not u.hidden and u.hp > 0 and u.state ~= S_DOWN then
 			local ok, p, onScreen = pcall(cam.WorldToViewportPoint, cam, unitCenter(B, u))
 			if ok and onScreen and p.Z > 0 then
 				local dx, dy = p.X - x, p.Y - y
@@ -5742,23 +5928,27 @@ function Input.OnBegan(input, processed)
 	if t == Enum.UserInputType.Touch then
 		St.tap = { x = input.Position.X, y = input.Position.Y, t = os.clock(), input = input }
 	elseif t == Enum.UserInputType.MouseButton1 then
-		-- a click on an enemy locks it (and attacks it); anywhere else attacks (hold = repeat)
-		local id = BattleController.ScreenPick(input.Position.X, input.Position.Y + guiInset())
-		if id then
-			BattleController.Focus(id)
+		-- one "Attack" order: the enemy under the cursor (the screen centre while MouseLock holds the cursor there),
+		-- else the nearest / the next one
+		local x, y = input.Position.X, input.Position.Y + guiInset()
+		local cam = workspace.CurrentCamera
+		if Input.MouseLocked() and cam then
+			x, y = cam.ViewportSize.X / 2, cam.ViewportSize.Y / 2
 		end
-		St.mouseAttack = true
-		Input.Press("Attack", true)
+		Input.Press("Attack", true, BattleController.ScreenPick(x, y))
 	end
+end
+
+-- the cursor is locked at the screen centre (client/MouseLock's option: MouseBehavior LockCenter)
+function Input.MouseLocked()
+	local ok, locked = pcall(function()
+		return UserInputService.MouseBehavior == Enum.MouseBehavior.LockCenter
+	end)
+	return ok and locked == true
 end
 
 function Input.OnEnded(input)
 	local t = input.UserInputType
-	if t == Enum.UserInputType.MouseButton1 and St.mouseAttack then
-		St.mouseAttack = nil
-		Input.Press("Attack", false)
-		return
-	end
 	local tap = St.tap
 	if not tap or t ~= Enum.UserInputType.Touch then
 		return
@@ -5818,8 +6008,7 @@ local function refuse(action, slot)
 	return false
 end
 
--- auto = true: the held ATTACK's repeat (never shakes)
-function BattleController.Command(action, arg, auto)
+function BattleController.Command(action, arg)
 	local B = St.battle
 	if not B or not B.Fighter then
 		return false
@@ -5884,7 +6073,7 @@ function BattleController.Command(action, arg, auto)
 	if action == "Forfeit" then
 		return true -- the run's End does the rest
 	end
-	Input.Predict(B, action, arg, now, auto)
+	Input.Predict(B, action, arg, now)
 	return true
 end
 
@@ -5902,7 +6091,7 @@ end
 
 -- prediction: the button's own ring starts at once; the matching event (Element / Dash / Buff / Swap / Hit /
 -- Special / Order) within PENDING_TIMEOUT confirms it, a rejected Order or the timeout puts the old ring back
-function Input.Predict(B, action, arg, now, auto)
+function Input.Predict(B, action, arg, now)
 	local pend = B.pending
 	local cd = B.cd
 	if action == "Element" or action == "Dash" or action == "Swap" then
@@ -5926,10 +6115,12 @@ function Input.Predict(B, action, arg, now, auto)
 		B.lock = arg
 		Hud.enemyDirty = true
 	elseif action == "Attack" then
-		pend.Attack = { t = now, auto = auto == true }
-		local f = B.fighterId and B.units[B.fighterId]
-		if f then
-			f.swingAt = os.clock() -- the drawn fighter swings at once (the number waits for the server's Hit)
+		-- no swing: the fighter attacks by itself (its lunges come from the server's Hits); a picked enemy shows the
+		-- arrow at once (the server's lock echo / snapshot target follow)
+		pend.Attack = { t = now, prev = B.lock }
+		if arg ~= nil then
+			B.lock = arg
+			Hud.enemyDirty = true
 		end
 	elseif action == "Special" then
 		pend.Special = { t = now }
@@ -5961,7 +6152,7 @@ function Input.Revert(B, action, shake)
 		B.cd[action] = p.prev or 0
 	elseif action == "Buff" then
 		B.cd.Buff[p.slot] = p.prev or 0
-	elseif action == "Target" then
+	elseif action == "Target" or (action == "Attack" and p.prev ~= B.lock) then
 		B.lock = p.prev
 		Hud.enemyDirty = true
 	end
@@ -6190,16 +6381,23 @@ function Net.Pre(B, ev)
 			St.rejected = (St.rejected or 0) + 1
 			local p = B.pending[action]
 			if p then
-				Input.Revert(B, action, not (action == "Attack" and p.auto))
+				Input.Revert(B, action, true)
 			elseif action ~= "Attack" and action ~= "Target" then
 				Hud.Shake(Hud.ButtonOf(action, tonumber(ev.target)))
 			end
-		elseif action == "Target" then
+		elseif action == "Target" or (action == "Attack" and tonumber(ev.target)) then
+			-- the lock echo ("Attack"(id) / "Attack"() lock the enemy the pet now attacks)
 			B.lock = tonumber(ev.target)
-			B.pending.Target = nil
+			B.pending[action] = nil
 			Hud.enemyDirty = true
 		end
 	elseif t == EV.Element or t == EV.Dash then
+		if t == EV.Dash and B.fighterId and tonumber(ev.unit) == B.fighterId then
+			local f = B.units[B.fighterId]
+			if f then
+				Me.StartDash(B, f, ev) -- my pet's dash shows on arrival (the render clock would add its delay)
+			end
+		end
 		if B.fighterId and tonumber(ev.unit) == B.fighterId then
 			local kind = (t == EV.Element) and "Element" or "Dash"
 			if not Input.Confirm(B, kind) then
@@ -6515,11 +6713,29 @@ local function stepBattle(B, now, dt)
 	section("Hud", s0)
 end
 
--- a bobbing voxel arrow over the enemy I locked
-function Units.UpdateFocus(B, now)
+-- the enemy my pet attacks: the lock (ATTACK / click / Tab), else the target my fighter auto-attacks (its snapshot
+-- target, dungeon fixes decision 4); nil when none is drawn
+function Units.FocusUnit(B)
 	local u = B.lock and B.units[B.lock]
+	local auto = false
+	if not u and B.Fighter then
+		local f = B.fighterId and B.units[B.fighterId]
+		local t = f and f.target and B.units[f.target]
+		if t and not t.ally then
+			u, auto = t, true
+		end
+	end
+	if not u or not u.model or u.parked or u.hidden or u.hp <= 0 or u.state == S_DOWN then
+		return nil, false
+	end
+	return u, auto
+end
+
+-- a bobbing voxel arrow over the enemy my pet attacks (solid = picked, see-through = the one it chose by itself)
+function Units.UpdateFocus(B, now)
+	local u, auto = Units.FocusUnit(B)
 	local mark = B.focusMark
-	if not u or not u.model or u.parked or u.hp <= 0 or B.ended then
+	if not u or B.ended then
 		if mark then
 			mark.Parent = nil
 		end
@@ -6556,6 +6772,15 @@ function Units.UpdateFocus(B, now)
 	if mark.Parent ~= B.folder then
 		mark.Parent = B.folder
 	end
+	if (B.focusAuto == true) ~= auto then
+		B.focusAuto = auto
+		for _, p in ipairs(mark:GetChildren()) do
+			if p:IsA("BasePart") then
+				p.Transparency = auto and 0.4 or 0
+			end
+		end
+	end
+	B.focusId = u.id
 	local top = u.isBoss and (u.height or 20) + 2 or (u.centerY or 1.5) + (u.height or 3) / 2 + 2.4
 	local base = worldPoint(B, u.x, top + sin(now * 4) * 0.35, u.z)
 	local spin = now * 2
@@ -6711,6 +6936,9 @@ function BattleController.GetUnit(id)
 		-- Phase 5: the bench, the wind-up, the drawn root position (my fighter / helpers), the team's lives, detail
 		Benched = u.benched == true, Windup = u.windup == true, Lives = u.lives, Detail = u.detail,
 		Drawn = u.root and u.root.Position or nil, FlyAt = u.flyAt, SwapAt = u.swapAt,
+		-- dungeon fixes: arriving (the model hidden until the flash), the drawn pet dash, the wild look
+		Arriving = u.arrive ~= nil, Hidden = u.hidden == true, ArriveFx = u.arriveFx ~= nil, DashAt = u.dashAt,
+		Wild = u.info.wild == true,
 	}
 end
 
@@ -6752,6 +6980,16 @@ function BattleController.GetStats()
 		Sent = St.sent or 0,
 		Rejected = St.rejected or 0,
 		Timeouts = St.timeouts or 0,
+		Dashes = St.dashes or 0, -- pet dashes drawn (Dash events)
+		Arrivals = St.arrivals or 0, -- arrival effects started (EvolutionFx.Arrive)
+		Focus = (function()
+			local b = St.battle
+			local u, auto = nil, false
+			if b then
+				u, auto = Units.FocusUnit(b)
+			end
+			return u and { Id = u.id, Auto = auto } or nil
+		end)(),
 		Split = (function()
 			local out = {}
 			for k, v in pairs(perf.split or {}) do
@@ -6789,6 +7027,9 @@ function BattleController.Stop()
 		St.loop = nil
 	end
 	Hud.SetMenuHidden(false)
+	Me.MouseHold("BattleResult", false)
+	Me.MouseHold("BattleLeave", false)
+	St.prompts = {}
 	if Hud.gui then
 		Hud.gui:Destroy()
 	end
@@ -6847,6 +7088,16 @@ function BattleController.Init()
 	if okGp and gpConn then
 		conns[#conns + 1] = gpConn
 	end
+	-- the prompts shown to me: E presses them, not ELEMENT (Input.PromptShown)
+	pcall(function()
+		local pps = game:GetService("ProximityPromptService")
+		conns[#conns + 1] = pps.PromptShown:Connect(function(prompt)
+			St.prompts[prompt] = true
+		end)
+		conns[#conns + 1] = pps.PromptHidden:Connect(function(prompt)
+			St.prompts[prompt] = nil
+		end)
+	end)
 	-- own pets' level / XP from the profile mirror (after a fight's rewards land: the cards follow)
 	local okS, sConn = pcall(function()
 		return Mods.State and Mods.State.Changed and Mods.State.Changed:Connect(function()

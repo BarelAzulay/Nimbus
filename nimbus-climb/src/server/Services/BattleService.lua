@@ -139,7 +139,9 @@
 --   (one at a time; refreshed once a second). Bandwidth: EstimateBytes approximates the remote encoding; GetNetStats()
 --   reports bytes per second per client; a 16-raid stays under 6 KB/s per client (p5battle_net16).
 --
--- BattleCommand (action, a) (4.5): "Attack" (unit id | nil), "Element" (unit id | { x, z } | nil), "Special", "Dash",
+-- BattleCommand (action, a) (4.5): "Attack" (unit id | nil: dungeon fixes 4, it DIRECTS the auto-attacking fighter: id = lock
+--   that enemy, nil = lock the nearest / cycle to the next; a lock out of reach is accepted with the throttled "Too far!"
+--   toast), "Element" (unit id | { x, z } | nil), "Special", "Dash",
 --   "Target" (unit id | nil), "Buff" (2 | 3), "Swap" (2 | 3), "Forfeit". The validation ladder, in order: isPlayer -> type
 --   (action string <= 16 chars; arg number / nil / { x, z } of two finite numbers) -> the rate bucket (cmd: burst 12, refill
 --   8/s) -> a running battle, a live participant, inside the zone (present) -> Sim:Command (reach, cooldowns, meter, lives)
@@ -4675,7 +4677,12 @@ local function onCommand(player, action, a)
 		return
 	end
 	local ok, reason, extra = BattleService.Command(player, action, a)
-	if not ok and type(reason) == "string" then
+	if ok and extra == "OutOfReach" then
+		-- a direct order (Attack) to an enemy beyond the pet's reach: accepted (the pet hits it once in reach), one toast
+		if cooldown(player, "refusalToast", C.REFUSAL_TOAST_GAP) then
+			notify(player, Cmd.TOASTS.OutOfReach, "info", 2)
+		end
+	elseif not ok and type(reason) == "string" then
 		local text = Cmd.TOASTS[reason]
 		if reason == "Cooldown" and finite(extra) and extra > 0 then
 			text = string.format("Not ready: %.1f s", extra)

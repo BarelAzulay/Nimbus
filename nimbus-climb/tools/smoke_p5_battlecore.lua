@@ -5,9 +5,11 @@
 --                      stage) / LevelFactor(level), a stage above MaxEvolution clamped, hybrids (dual-element defs), no evoMult
 --   p5roles            Roles Support x2.6 / x1.5 in UnitStats only, RoleOf, the 15 Support kinds (BuffOf), Rally / Haste
 --                      specials, SpecialKinds (9), Combat pets bit-identical with and without a stage-0 extras table, Validate
---   p5sim_fighter      the fighter kit: Attack timing / reach (AttackSlack) / lock; Element cooldown + every shape and status;
---                      Specials incl. Rally / Haste on the fighter; Dash i-frames dodge a Winding hit and a telegraph; Swap
---                      cooldown / cast lock / bench regen / auto-swap / lives; Buff cooldowns; Move clamp at legal run x
+--   p5sim_fighter      the fighter kit: the AUTO-ATTACK (reach = range + radius + AttackSlack, Interval cadence, never moves
+--                      the unit) and the Attack command that only directs it (lock / OutOfReach / BadTarget); Element cooldown +
+--                      every shape and status; Specials incl. Rally / Haste on the fighter, Heal on the fighter + bench; Dash
+--                      i-frames dodge a Winding hit and a telegraph, the Dash event fields; Swap cooldown / cast lock / NO bench
+--                      regen / auto-swap / lives; Buff cooldowns, the Heal buff on the other benched pet; Move clamp at legal run x
 --                      MoveSlack incl. Haste / Slow / Dashing, SpeedOf, the Speed event on Swap / Haste
 --   p5sim_ai           NPC AI: threat target, the wind-up inside the interval, a miss on i-frames, slow / weaken / burn / stun
 --   p5sim_modes        Duel ends by lives or by damage (no Overtime); Ring timeout = loss; Raid with 1-16 fighters; Dungeon:
@@ -363,68 +365,84 @@ S.p5sim_fighter = guarded("p5sim_fighter", function()
 	end
 	T.check(fighterInfo and fighterInfo.role == "Fighter" and fighterInfo.bench == nil and fighterInfo.elementAttack and fighterInfo.elementAttack.Name == "Radiance" and fighterInfo.buff.Kind == "Celestial" and near(fighterInfo.walk, BC.UnitStats("mallow_kitten", 5).Walk, 1e-9), "unitInfo: role, elementAttack, buff, walk / run")
 	T.check(helperInfo and helperInfo.role == "Support" and helperInfo.bench == 2 and helperInfo.buff.Kind == "Heal" and helperInfo.buff.Cooldown == 12, "a helper's unitInfo: role Support, bench 2, buff Heal (cooldown 12)")
-	-- ATTACK: out of reach, then in reach; timing
+	-- ATTACK (dungeon fixes 4): the fighter AUTO-ATTACKS; the command only DIRECTS it (a lock). Out of reach first.
 	local e = firstEnemy(b)
+	e.nextAttack = huge -- the tank holds its own hits during these checks (white-box)
 	place(b, tm, 0, -10, 0, 10)
 	f.nextAttack = 0
-	local ok, why = b:Command(1, "Attack")
-	T.check(not ok and why == "NoTarget", "Attack with nobody in reach is refused NoTarget", tostring(why))
-	ok, why = b:Command(1, "Attack", e.id)
-	T.check(not ok and why == "OutOfReach", "Attack on a far target is refused OutOfReach", tostring(why))
+	local ok, why, extra = b:Command(1, "Attack")
+	T.check(ok == true and why == e.id and extra == "OutOfReach" and tm.lock == e, "Attack() locks the nearest enemy even out of reach (-> true, id, \"OutOfReach\")", tostring(why) .. " / " .. tostring(extra))
+	ok, why, extra = b:Command(1, "Attack", e.id)
+	T.check(ok == true and why == e.id and extra == "OutOfReach", "Attack(id) on a far target is accepted as a lock (OutOfReach: BattleService toasts Too far!)", tostring(extra))
 	local evs = b:Step(0.1)
 	T.check(findEvent(evs, "Order", function(ev)
-		return (ev.rejected == "NoTarget" or ev.rejected == "OutOfReach") and ev.order == "Attack" and ev.owner == 1
-	end) ~= nil and countType(evs, "Order") == 1, "a refused command echoes an Order event with rejected (one echo per team per step)")
-	-- reach = range + radius + AttackSlack
+		return ev.order == "Attack" and ev.target == e.id and ev.owner == 1 and ev.rejected == nil
+	end) ~= nil and findEvent(evs, "Hit", function(ev)
+		return ev.from == f.id
+	end) == nil, "the direct order echoes Order { order = Attack, target }; nothing in reach = no swing")
+	ok, why = b:Command(1, "Attack", f.id)
+	local ok2, why2 = b:Command(1, "Attack", 999)
+	evs = b:Step(0.1)
+	T.check(not ok and why == "BadTarget" and not ok2 and why2 == "BadTarget" and findEvent(evs, "Order", function(ev)
+		return ev.rejected == "BadTarget" and ev.order == "Attack" and ev.owner == 1
+	end) ~= nil and countType(evs, "Order") == 1, "Attack on an ally / a junk id is refused BadTarget; a refused command echoes an Order event with rejected (one echo per team per step)")
+	-- reach = range + radius + AttackSlack: the auto-attack swings inside it, never 0.2 stud beyond it
 	local reach = f.range + e.radius
-	place(b, tm, 0, 0, 0, reach + F.AttackSlack - 0.1)
-	f.nextAttack = b:Time()
-	ok = b:Command(1, "Attack", e.id)
-	T.check(ok == true, "Attack within range + radius + AttackSlack lands")
-	place(b, tm, 0, 0, 0, reach + F.AttackSlack + 0.2)
-	f.nextAttack = b:Time()
-	ok, why = b:Command(1, "Attack", e.id)
-	T.check(not ok and why == "OutOfReach", "Attack 0.2 stud beyond the slack is refused")
+	local function swingsAt(dz)
+		place(b, tm, 0, 0, 0, dz)
+		e.target, e.retargetAt, e.windAt = nil, huge, nil
+		e.stunUntil = b:Time() + 0.5 -- the tank stands still for the measurement (white-box)
+		f.nextAttack = b:Time()
+		local evs2 = b:Step(0.1)
+		local h = findEvent(evs2, "Hit", function(ev)
+			return ev.from == f.id and ev.to == e.id
+		end)
+		return h
+	end
+	T.check(swingsAt(reach + F.AttackSlack - 0.1) ~= nil, "the auto-attack lands within range + radius + AttackSlack")
+	T.check(swingsAt(reach + F.AttackSlack + 0.2) == nil, "no swing 0.2 stud beyond the slack (the unit is never moved toward it)", fmt("z %.2f", f.z))
+	-- the command never swings: not ready -> an accepted direct order and no hit
 	place(b, tm, 0, 0, 0, reach - 0.5)
-	f.nextAttack = b:Time()
-	evs = b:Step(0.1)
+	f.nextAttack = b:Time() + 5
 	local hpBefore = e.hp
-	ok = b:Command(1, "Attack", e.id)
+	ok, why, extra = b:Command(1, "Attack", e.id)
 	evs = b:Step(0.1)
-	local hit = findEvent(evs, "Hit", function(ev)
-		return ev.from == f.id and ev.to == e.id
-	end)
-	T.check(ok and hit ~= nil and e.hp < hpBefore and hit.dmg >= 1, "an accepted Attack hits NOW (Hit event, HP down)")
-	ok, why = b:Command(1, "Attack", e.id)
-	T.check(not ok and why == "Cooldown", "the next Attack before the interval is refused Cooldown", tostring(why))
-	-- tolerance: accepted at Interval x (1 - 0.15) early
-	local t0 = b:Time()
-	local accepted = nil
-	for _ = 1, 30 do
-		b:Step(0.1)
-		if b:Command(1, "Attack", e.id) then
-			accepted = b:Time() - t0
-			break
+	T.check(ok and extra == nil and findEvent(evs, "Hit", function(ev)
+		return ev.from == f.id
+	end) == nil and e.hp == hpBefore, "Attack(id) in reach is accepted but never swings by itself (cooldown not ready -> no Hit)")
+	-- the cadence: the auto-attack swings once per Interval (never faster), positions untouched
+	f.nextAttack = b:Time()
+	local times = {}
+	local fx, fz = f.x, f.z
+	for _ = 1, 60 do
+		e.x, e.z, e.px, e.pz = 0, reach - 0.5, 0, reach - 0.5
+		e.windAt = nil
+		e.nextAttack = huge
+		e.hp = e.maxHp
+		local evs2 = b:Step(0.1)
+		if findEvent(evs2, "Hit", function(ev)
+			return ev.from == f.id and ev.to == e.id
+		end) then
+			times[#times + 1] = b:Time()
 		end
 	end
-	T.check(accepted and accepted >= f.interval * F.AttackTolerance - 0.11 and accepted <= f.interval + 0.11, "an Attack is accepted from Interval x AttackTolerance after the last", fmt("%.2f of %.2f", accepted or -1, f.interval))
-	local nextBefore = f.nextAttack
-	for _ = 1, 20 do
-		b:Step(0.1)
-		if b:Command(1, "Attack", e.id) then
-			break
+	local cadenceOk = #times >= 4
+	for i = 2, #times do
+		local gap = times[i] - times[i - 1]
+		if gap < f.interval * F.AttackTolerance - 0.11 or gap > f.interval + 0.11 then
+			cadenceOk = false
 		end
 	end
-	T.check(near(f.nextAttack - nextBefore, f.interval, 1e-6), "nextAttack = max(nextAttack, t) + Interval: pressing early never speeds the cadence up")
+	T.check(cadenceOk and near((times[#times] - times[1]) / math.max(1, #times - 1), f.interval, 0.06), "the auto-attack swings every Interval (nextAttack = max(nextAttack, t) + Interval)", fmt("%d swings, mean %.2f of %.2f", #times, (#times > 1) and (times[#times] - times[1]) / (#times - 1) or -1, f.interval))
+	T.check(near(f.x, fx, 1e-9) and near(f.z, fz, 1e-9), "the auto-attack never moves the fighter (the character stays the body)")
 	-- lock: Target then Attack with nil
 	ok = b:Command(1, "Target", e.id)
 	evs = b:Step(0.1)
 	T.check(ok and tm.lock == e and findEvent(evs, "Order", function(ev)
 		return ev.order == "Target" and ev.target == e.id and ev.rejected == nil
 	end) ~= nil and b:TeamOf(1).Lock == e.id, "Target locks a unit (Order event, TeamOf.Lock)")
-	f.nextAttack = b:Time()
-	ok = b:Command(1, "Attack")
-	T.check(ok == true, "Attack with no argument uses the lock")
+	ok, why = b:Command(1, "Attack")
+	T.check(ok == true and why == e.id and tm.lock == e, "Attack() with the only enemy locked keeps it (the cycle wraps)")
 	ok, why = b:Command(1, "Target", f.id)
 	T.check(not ok and why == "BadTarget" and b:Command(1, "Target", nil) == true and tm.lock == nil, "a lock on an ally is refused; Target nil clears")
 	-- ELEMENT: cooldown and every shape
@@ -524,19 +542,21 @@ S.p5sim_fighter = guarded("p5sim_fighter", function()
 	do
 		local function special(fighterId, kind)
 			local def = cloneDef(PC, fighterId, { Special = { Id = "t_" .. kind, Name = "Test " .. kind, Kind = kind, Power = 40, Color = PC.Get(fighterId).Special.Color } })
-			local b4, t4, f4 = arena(BS, { { Def = def, Key = fighterId, Level = 10, Slot = 1 }, pet("pebble_pup", 1) })
+			local b4, t4, f4 = arena(BS, { { Def = def, Key = fighterId, Level = 10, Slot = 1 }, pet("pebble_pup", 1) }, tankNpc())
 			place(b4, t4, 0, 0, 0, 5)
 			return b4, t4, f4
 		end
 		local b4, t4, f4 = special("mallow_kitten", "Heal")
 		f4.hp = f4.maxHp * 0.3
+		local bench4 = t4.bySlot[2]
+		bench4.hp = bench4.maxHp * 0.3
 		local ok7, why7 = b4:Command(1, "Special")
 		T.check(not ok7 and why7 == "Charging", "Special with an empty meter is refused Charging")
 		f4.meter = 100
 		ok7 = b4:Command(1, "Special")
 		local evs7 = b4:Step(0.1)
 		local sp = findEvent(evs7, "Special")
-		T.check(ok7 and sp and sp.kind == "Heal" and f4.hp > f4.maxHp * 0.3 and #sp.heals == 1 and sp.heals[1][1] == f4.id and f4.meter < 100 and f4.state == BS.States.Casting, "a fighter's Heal special heals the fighter itself (Casting after)")
+		T.check(ok7 and sp and sp.kind == "Heal" and f4.hp > f4.maxHp * 0.3 and bench4.hp > bench4.maxHp * 0.3 and #sp.heals == 2 and sp.heals[1][1] == f4.id and sp.heals[2][1] == bench4.id and f4.meter < 100 and f4.state == BS.States.Casting, "a fighter's Heal special heals the fighter AND its benched pets (dungeon fixes 7; Casting after)", sp and sp.heals and #sp.heals)
 		b4, t4, f4 = special("mallow_kitten", "Shield")
 		f4.meter = 100
 		b4:Command(1, "Special")
@@ -595,7 +615,10 @@ S.p5sim_fighter = guarded("p5sim_fighter", function()
 		place(b5, t5, 0, 0, 0, 3)
 		local okD = b5:Command(1, "Dash")
 		local evsD = b5:Step(0.1)
-		T.check(okD and findEvent(evsD, "Dash") ~= nil and f5.state == BS.States.Dashing and f5.iframesUntil > b5:Time(), "Dash: Dashing state, i-frames, Dash event")
+		local dashEv = findEvent(evsD, "Dash")
+		T.check(okD and dashEv ~= nil and f5.state == BS.States.Dashing and f5.iframesUntil > b5:Time(), "Dash: Dashing state, i-frames, Dash event")
+		T.check(dashEv and dashEv.unit == f5.id and dashEv.owner == 1 and type(dashEv.dir) == "table" and near(dashEv.dir[1], 0, 0.011) and near(dashEv.dir[2], 1, 0.011) and dashEv.target == e5.id and dashEv.seconds == F.DashSeconds and dashEv.iframes == F.DashIFrames,
+			"the Dash event carries { unit, owner, x, z, dir (toward the nearest enemy), target, seconds, iframes } for the pet's dash", dashEv and dashEv.dir and fmt("%.2f, %.2f", dashEv.dir[1], dashEv.dir[2]))
 		local okD2, whyD2 = b5:Command(1, "Dash")
 		T.check(not okD2 and whyD2 == "Cooldown" and b5:TeamOf(1).Cooldowns.Dash > 2, "a second Dash is refused Cooldown (~2.5 s)")
 		-- the wind-up: find a Windup aimed at the fighter, dash right before it lands -> a miss
@@ -651,8 +674,9 @@ S.p5sim_fighter = guarded("p5sim_fighter", function()
 	end
 	-- SWAP: cooldown, cast lock, bench regen, auto-swap on a KO, lives
 	do
-		local b7, t7, f7 = arena(BS, { pet("mallow_kitten", 5), pet("honey_bunny", 5), pet("pebble_pup", 5) })
+		local b7, t7, f7 = arena(BS, { pet("mallow_kitten", 5), pet("honey_bunny", 5), pet("pebble_pup", 5) }, tankNpc())
 		local e7 = firstEnemy(b7)
+		e7.nextAttack = huge -- the tank waits (white-box) until the KO check below
 		place(b7, t7, 0, 0, 0, 4)
 		local helper = t7.bySlot[2]
 		local okS, whyS = b7:Command(1, "Swap", 1)
@@ -665,26 +689,36 @@ S.p5sim_fighter = guarded("p5sim_fighter", function()
 			return ev.owner == 1
 		end) ~= nil and near(b7:SpeedOf(1).Walk, helper.walk, 1e-9), "a Swap fires a Speed event with the new fighter's speeds")
 		helper.nextAttack = 0
-		local okA, whyA = b7:Command(1, "Attack", e7.id)
-		T.check(not okA and whyA == "Casting", "the incoming fighter cannot attack during its SwapCastSeconds")
+		local castSwing = false
+		for _ = 1, 4 do
+			if findEvent(b7:Step(0.1), "Hit", function(ev)
+				return ev.from == helper.id
+			end) then
+				castSwing = true
+			end
+		end
+		T.check(not castSwing and helper.state == BS.States.Casting, "the incoming fighter does not auto-attack during its SwapCastSeconds")
 		okS, whyS = b7:Command(1, "Swap", 3)
 		T.check(not okS and (whyS == "Casting" or whyS == "Cooldown"), "a second Swap is refused while Casting / on cooldown", tostring(whyS))
-		for _ = 1, 7 do
-			b7:Step(0.1)
+		local swung = false
+		for _ = 1, 4 do
+			if findEvent(b7:Step(0.1), "Hit", function(ev)
+				return ev.from == helper.id
+			end) then
+				swung = true
+			end
 		end
+		T.check(swung, "after the cast the incoming fighter auto-attacks")
 		okS, whyS = b7:Command(1, "Swap", 3)
 		T.check(not okS and whyS == "Cooldown" and b7:TeamOf(1).Cooldowns.Swap > 8, "SwapCooldown 10 s", tostring(whyS))
-		-- bench regen: the benched kitten heals 3%/s up to the cap
+		-- dungeon fixes (7): no bench regen in combat
 		f7.hp = f7.maxHp * 0.2
 		for _ = 1, 50 do
 			b7:Step(0.1)
 		end
-		T.check(near(f7.hp, f7.maxHp * (0.2 + 0.03 * 5), f7.maxHp * 0.02), "a benched pet regains 3% max HP per second", fmt("%.0f%%", 100 * f7.hp / f7.maxHp))
-		for _ = 1, 400 do
-			b7:Step(0.1)
-		end
-		T.check(near(f7.hp, f7.maxHp * F.BenchRegenCap, f7.maxHp * 0.02), "... up to BenchRegenCap of its max HP", fmt("%.0f%% (cap %.0f%%)", 100 * f7.hp / f7.maxHp, 100 * F.BenchRegenCap))
+		T.check(F.BenchRegenPerSecond == 0 and f7.hp == f7.maxHp * 0.2, "a benched pet does NOT regain HP in combat (BenchRegenPerSecond 0)", fmt("%.1f%%", 100 * f7.hp / f7.maxHp))
 		-- auto-swap on a KO: the fighter at 1 HP takes a hit -> KO + Swap auto; lives 2
+		e7.nextAttack = b7:Time()
 		local fighterNow = t7.fighter
 		fighterNow.hp = 1
 		fighterNow.shield = 0
@@ -729,10 +763,13 @@ S.p5sim_fighter = guarded("p5sim_fighter", function()
 		local b8, t8, f8 = arena(BS, { pet("mallow_kitten", 5), pet("honey_bunny", 5), pet("biscuit_bear", 5) })
 		place(b8, t8, 0, 0, 0, 4)
 		f8.hp = f8.maxHp * 0.5
+		local other8 = t8.bySlot[3]
+		other8.hp = other8.maxHp * 0.4
 		local okB, kind = b8:Command(1, "Buff", 2)
 		local evsB = b8:Step(0.1)
 		local buffEv = findEvent(evsB, "Buff")
 		T.check(okB and kind == "Heal" and buffEv and buffEv.owner == 1 and buffEv.unit == t8.bySlot[2].id and buffEv.kind == "Heal" and buffEv.target == f8.id and near(f8.hp, f8.maxHp * 0.8, f8.maxHp * 0.01), "Buff(2) Heal: +30% of the fighter's max HP; Buff event { owner, unit, kind, name, until, target }")
+		T.check(buffEv and type(buffEv.heals) == "table" and buffEv.heals[1][1] == f8.id and buffEv.heals[2] and buffEv.heals[2][1] == other8.id and near(other8.hp, other8.maxHp * 0.7, other8.maxHp * 0.01) and t8.bySlot[2].hp == t8.bySlot[2].maxHp, "the Heal buff also heals the OTHER benched pet 30% of its max HP (dungeon fixes 7); heals { { id, hp } x2 }")
 		okB, kind = b8:Command(1, "Buff", 2)
 		T.check(not okB and kind == "Cooldown" and near(b8:TeamOf(1).Cooldowns.Buff[2], F.SupportCooldown - 0.1, 0.11), "a Support helper's second buff is refused for SupportCooldown 12 s", tostring(kind))
 		okB, kind = b8:Command(1, "Buff", 3)
@@ -787,7 +824,7 @@ S.p5sim_fighter = guarded("p5sim_fighter", function()
 	end
 	-- MOVE: the fighter walks toward the wanted point at <= legal run x MoveSlack
 	do
-		local b10, t10, f10 = arena(BS, { pet("mallow_kitten", 5), pet("pebble_pup", 5) })
+		local b10, t10, f10 = arena(BS, { pet("mallow_kitten", 5), pet("pebble_pup", 5) }, tankNpc())
 		local okM, whyM = b10:Command(1, "Move", 0 / 0, 5)
 		T.check(not okM and whyM == "BadPoint" and select(2, b10:Command(1, "Move", "a", 1)) == "BadPoint", "Move with NaN / junk is refused BadPoint")
 		local sp = b10:SpeedOf(1)
@@ -864,6 +901,7 @@ S.p5sim_ai = guarded("p5sim_ai", function()
 	b:Step(0.1)
 	T.check(e.target == tA.fighter, "an NPC with no threat targets the nearest fighter")
 	tB.fighter.nextAttack = 0
+	tA.fighter.nextAttack = huge -- A holds its auto-attack (white-box): only B hits
 	tB.fighter.x, tB.fighter.z = 3, -3
 	tB.wantX, tB.wantZ = 3, -3
 	local okH = b:Command(2, "Attack", e.id)
@@ -871,6 +909,7 @@ S.p5sim_ai = guarded("p5sim_ai", function()
 		b:Step(0.1)
 	end
 	T.check(okH and e.target == tB.fighter, "after a hit from fighter B the NPC chases B (threat) although A is as near")
+	tB.fighter.nextAttack = huge -- B stops too: the threat runs out
 	for _ = 1, 35 do
 		b:Step(0.1)
 	end
@@ -880,6 +919,7 @@ S.p5sim_ai = guarded("p5sim_ai", function()
 	local f2 = b2.teams[1].fighter
 	local e2 = firstEnemy(b2)
 	f2.x, f2.z, e2.x, e2.z = 0, 0, 0, 3
+	f2.nextAttack = huge -- the fighter holds its auto-attack (white-box): the NPC's rhythm alone
 	b2.teams[1].wantX, b2.teams[1].wantZ = 0, 0
 	local windups, hits = {}, {}
 	for _ = 1, 80 do
@@ -921,6 +961,7 @@ S.p5sim_ai = guarded("p5sim_ai", function()
 	local t3, f3 = b3.teams[1], b3.teams[1].fighter
 	local e3 = firstEnemy(b3)
 	f3.x, f3.z, e3.x, e3.z = 0, 0, 0, 3
+	f3.nextAttack = huge
 	t3.wantX, t3.wantZ = 0, 0
 	local missed = false
 	for _ = 1, 80 do
@@ -943,6 +984,7 @@ S.p5sim_ai = guarded("p5sim_ai", function()
 	local t4, f4 = b4.teams[1], b4.teams[1].fighter
 	local e4 = firstEnemy(b4)
 	f4.x, f4.z, e4.x, e4.z = 0, -15, 0, 15
+	f4.nextAttack = huge
 	t4.wantX, t4.wantZ = 0, -15
 	e4.target = f4
 	e4.retargetAt = huge

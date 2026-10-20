@@ -24,10 +24,11 @@
 --                                                                  Rally (fighter damage +35% 8 s), Haste (attack + move speed +35% 8 s); SpecialKinds (9)
 --   BattleCatalog.Roles = { Combat = { Power 1, Health 1, Name "Fighter" }, Support = { Power 2.6, Health 1.5, Name "Support" } }
 --   BattleCatalog.RoleOf(def|petId|key) -> "Combat" | "Support"    (Support when def.Role == "Economy")
---   BattleCatalog.Fighter                                          the kit: AttackSlack 3.0, AttackTolerance 0.85, AutoRepeat, ElementCooldown 7, ElementMult 2.4,
+--   BattleCatalog.Fighter                                          the kit: AttackSlack 3.0, AttackTolerance 0.85, AutoRepeat false, ElementCooldown 7, ElementMult 2.4,
 --                                                                  ElementRange 14, SpecialMeterMax 100, MeterPerSecond 6, MeterOnHit 4, MeterOnHurt 2,
 --                                                                  DashSeconds 0.35, DashCooldown 2.5, DashIFrames 0.35, SwapCooldown 10, SwapCastSeconds 0.6,
---                                                                  BenchRegenPerSecond 0.03, DownAutoSwap, HelperCooldown 15, SupportCooldown 12, Windup 0.45,
+--                                                                  BenchRegenPerSecond 0 (no passive heal in combat), DownAutoSwap, HelperCooldown 15,
+--                                                                  SupportCooldown 12, Windup 0.45, ArriveSeconds 1.2 (a spawned enemy's entrance),
 --                                                                  KitFactor 1.5, HelperWeight 0.35, Lives 3, WalkMult 1.15, WalkMin 12, WalkMax 20, RunMult 1.3,
 --                                                                  MoveSlack 1.25, Leash 10, LeashSeconds 3
 --   BattleCatalog.Fighter.WalkOf(moveSpeed) -> walk (12..20); Fighter.RunOf(walk) -> walk x RunMult; Fighter.SpeedsOf(moveSpeed) -> walk, run
@@ -253,9 +254,9 @@ BattleCatalog.Roles = {
 -- The fighter kit (4.2): the player's character is the fighter's body (B1); one small command per button (B2)
 ----------------------------------------------------------------------
 BattleCatalog.Fighter = {
-	AttackSlack = 3.0, -- studs of extra reach for latency (run 20 x 0.15 s)
-	AttackTolerance = 0.85, -- an attack is accepted >= Interval x this after the last (the server re-times it)
-	AutoRepeat = true, -- holding ATTACK sends one command per Interval (the client, throttled)
+	AttackSlack = 3.0, -- studs of extra reach (the fighter's auto-attack and the old latency margin: run 20 x 0.15 s)
+	AttackTolerance = 0.85, -- an attack swings >= Interval x this after the last (the auto-attack re-times it)
+	AutoRepeat = false, -- dungeon fixes (4): the fighter AUTO-ATTACKS on the server; ATTACK only directs it (one order per press)
 	ElementCooldown = 7,
 	ElementMult = 2.4, -- x a basic hit
 	ElementRange = 14,
@@ -268,8 +269,9 @@ BattleCatalog.Fighter = {
 	DashIFrames = 0.35,
 	SwapCooldown = 10,
 	SwapCastSeconds = 0.6, -- the incoming pet arrives Casting (no free hit in)
-	BenchRegenPerSecond = 0.03, -- a benched pet regains 3% max HP per second ...
-	BenchRegenCap = 0.6, -- ... up to this share of its max HP (swap cycling cannot out-heal a mirror fighter: sim duels)
+	BenchRegenPerSecond = 0, -- dungeon fixes (7): no passive heal in combat (wave gaps too); only a healing pet's skill heals
+	BenchRegenCap = 0, -- (the bench regen is gone: a fresh battle per room / round starts at full HP)
+	ArriveSeconds = 1.2, -- dungeon fixes (3): a spawned enemy (wave, escort, raid minions) arrives this long: no acting, no hits
 	DownAutoSwap = true, -- a downed fighter is replaced by the next alive helper at once (no cooldown) = 3 lives
 	HelperCooldown = 15, -- an element buff button
 	SupportCooldown = 12, -- a Support pet's buff button
@@ -1826,10 +1828,16 @@ function BattleCatalog.Validate()
 		bad("Roles: Combat 1 / 1, Support above 1")
 	end
 	local F = BattleCatalog.Fighter
-	for _, key in ipairs({ "AttackSlack", "AttackTolerance", "ElementCooldown", "ElementMult", "ElementRange", "SpecialMeterMax", "MeterPerSecond", "MeterOnHit", "MeterOnHurt", "DashSeconds", "DashCooldown", "DashIFrames", "SwapCooldown", "SwapCastSeconds", "BenchRegenPerSecond", "HelperCooldown", "SupportCooldown", "Windup", "KitFactor", "HelperWeight", "Lives", "WalkMult", "WalkMin", "WalkMax", "RunMult", "MoveSlack", "Leash", "LeashSeconds" }) do
+	for _, key in ipairs({ "AttackSlack", "AttackTolerance", "ElementCooldown", "ElementMult", "ElementRange", "SpecialMeterMax", "MeterPerSecond", "MeterOnHit", "MeterOnHurt", "DashSeconds", "DashCooldown", "DashIFrames", "SwapCooldown", "SwapCastSeconds", "HelperCooldown", "SupportCooldown", "Windup", "KitFactor", "HelperWeight", "Lives", "WalkMult", "WalkMin", "WalkMax", "RunMult", "MoveSlack", "Leash", "LeashSeconds" }) do
 		if not finite(F[key]) or F[key] <= 0 then
 			bad("Fighter." .. key .. " must be a positive number")
 		end
+	end
+	if not finite(F.ArriveSeconds) or F.ArriveSeconds < 0 or F.ArriveSeconds > 3 then
+		bad("Fighter.ArriveSeconds must be 0..3 s")
+	end
+	if (F.BenchRegenPerSecond or 0) ~= 0 then
+		bad("Fighter.BenchRegenPerSecond must be 0 (no passive heal in combat)")
 	end
 	if F.Windup <= F.DashIFrames * 0.8 then
 		bad("Fighter.Windup must leave the dash i-frames room to dodge")

@@ -22,13 +22,20 @@
 --               (3 lives). Npc teams: every pet is on the floor. Auto (harness): the AI plays the fighter's kit.
 --               Mode Dungeon: side 2 may start empty (SpawnEnemies fills it).
 --   battle:Command(owner, action, arg) -> ok, reason, extra
---     "Attack" (targetId | nil)       alive, not Casting / Stunned / Winding / Down, t >= nextAttack - Interval x (1 - AttackTolerance);
---                                     reach = range + target.radius + AttackSlack; target = arg | lock | nearest in reach; hits NOW;
---                                     nextAttack = max(nextAttack, t) + Interval
+--     "Attack" (targetId | nil)       DIRECTS the fighter (dungeon fixes 4; it never swings by itself): Attack(id) locks that enemy,
+--                                     Attack() locks the nearest targetable enemy (a press while the lock IS that one cycles to the
+--                                     next nearest, by distance then id); -> true, lockId, "OutOfReach" | nil (the lock is beyond
+--                                     range + radius + AttackSlack: BattleService toasts "Too far!"); refused: Down / BadTarget /
+--                                     NoTarget. Echo: Order { owner, order = "Attack", target }.
+--                                     THE AUTO-ATTACK: every step a player's fighter that is not Stunned / Casting / Dashing /
+--                                     arriving, with t >= nextAttack - Interval x (1 - AttackTolerance), hits the lock when it is
+--                                     targetable and within range + radius + AttackSlack, else the nearest targetable enemy in that
+--                                     reach (applyDamage; nextAttack = max(nextAttack, t) + Interval). It never moves the unit.
 --     "Element" (id | { x, z } | nil) cooldown Fighter.ElementCooldown; the shape of ElementAttacks[fighter.elems[1]] from the SERVER
 --                                     fighter position toward the target / aim / lock / facing
 --     "Special" ()                    meter >= SpecialMeterMax; offensive kinds as before; Heal / Shield / Rally / Haste act on the fighter
---     "Dash" ()                       cooldown DashCooldown -> Dashing for DashSeconds, i-frames until t + DashIFrames
+--     "Dash" ()                       cooldown DashCooldown -> Dashing for DashSeconds, i-frames until t + DashIFrames; the Dash event
+--                                     carries the direction the client draws the PET's dash (lock / nearest enemy, else facing)
 --     "Target" (unitId | nil)         lock-on; Attack / Element default to it
 --     "Buff" (2 | 3)                  that helper's buff on the fighter; cooldown per helper (SupportCooldown / HelperCooldown)
 --     "Swap" (2 | 3)                  fighter <-> helper; SwapCooldown; the incoming pet arrives Casting for SwapCastSeconds; refused
@@ -64,11 +71,19 @@
 --   Special    { unit, kind, name, x, z, tx, tz, target, targets, heals, shields, stunned, angle }
 --   KO         { unit, by, forfeit }          Telegraph { id, boss, name, attack, shape, x, z, r | angle + length + width, at, hits, freeze, linger }
 --   Spawn      { units, wave, boss, owner }   Enrage { unit }      Zone { unit, kind, x, z, r, seconds, side }     Leave { owner, units }
---   Order      { owner, order, target, rejected }   (every refused command echoes `rejected`; Target / Forfeit echo when accepted)
---   Element    { unit, element, name, x, z, angle | tx, tz, targets }      Dash { unit }
---   Buff       { owner, unit (the helper), kind, name, until, target (the fighter) }     Swap { owner, out, in, auto }
+--   Order      { owner, order, target, rejected }   (every refused command echoes `rejected`; Attack / Target / Forfeit echo when accepted)
+--   Element    { unit, element, name, x, z, angle | tx, tz, targets }
+--   Dash       { unit, owner, x, z, dir = { dx, dz } (unit vector, floor space), target (id | nil), seconds, iframes }
+--   Buff       { owner, unit (the helper), kind, name, until, target (the fighter), amount, heals = { { id, hp }... } (Heal:
+--                the fighter + the other benched pet) }     Swap { owner, out, in, auto }
 --   Speed      { owner, walk, run }   (whenever the fighter's legal speeds change: Swap, Haste / Slow start and end)
---   Windup     { unit, target, at }   Wave { index, units, left }   EnemiesDown { wave }   End { reason, winnerSide }
+--   Windup     { unit, target, at }   Wave { index, units, left, timeLimit }   EnemiesDown { wave }   End { reason, winnerSide }
+--   ARRIVAL (dungeon fixes 3): every enemy added after the start (AddTeam / SpawnEnemies waves + escorts, raid minions) arrives for
+--   BattleCatalog.Fighter.ArriveSeconds (1.2): it does not act, cannot be hit (i-frames) and is never picked as the nearest target;
+--   its unit info (Wave / Spawn units, StaticUnits while it lasts) carries Arrive = seconds left. A Dungeon wave added after the
+--   start pushes the time limit back by the arrival (Wave.timeLimit = the new limit).
+--   HEALING (dungeon fixes 7): no passive bench regen; a player's Heal special heals the fighter AND its benched pets; the Heal
+--   helper buff heals the fighter and the other benched pet.
 -- Wire form (SnapshotDelta / DecodeSnapshot): per changed unit the numbers  code, pos [, hp] [, meter] [, shield] [, target]
 --   code = id x 1024 + lives x 256 + windup x 128 + mask x 8 + state (mask bits: 1 hp, 2 meter, 4 shield, 8 target; lives 0..3 =
 --   the fighter's team lives; windup 1 while Winding), pos = (x + 200) x 10 x 4096 + (z + 200) x 10 (0.1 stud steps).
@@ -224,7 +239,7 @@ local FALLBACK_DAMAGE = {
 local FALLBACK_FIGHTER = {
 	AttackSlack = 3.0, AttackTolerance = 0.85, ElementCooldown = 7, ElementMult = 2.4, ElementRange = 14, SpecialMeterMax = 100,
 	MeterPerSecond = 6, MeterOnHit = 4, MeterOnHurt = 2, DashSeconds = 0.35, DashCooldown = 2.5, DashIFrames = 0.35, SwapCooldown = 10,
-	SwapCastSeconds = 0.6, BenchRegenPerSecond = 0.03, DownAutoSwap = true, HelperCooldown = 15, SupportCooldown = 12, Windup = 0.45,
+	SwapCastSeconds = 0.6, BenchRegenPerSecond = 0, ArriveSeconds = 1.2, DownAutoSwap = true, HelperCooldown = 15, SupportCooldown = 12, Windup = 0.45,
 	KitFactor = 1.5, HelperWeight = 0.35, Lives = 3, WalkMult = 1.15, WalkMin = 12, WalkMax = 20, RunMult = 1.3, MoveSlack = 1.25,
 }
 
@@ -628,7 +643,7 @@ local function placeTeamUnits(self, team)
 	team.faceX, team.faceZ = cx, cz
 end
 
-local function unitInfo(u)
+local function unitInfo(u, t)
 	local info = {
 		id = u.id,
 		side = u.side,
@@ -669,6 +684,9 @@ local function unitInfo(u)
 	if u.wild then
 		info.wild = true
 	end
+	if t and u.arriveUntil and t < u.arriveUntil then
+		info.Arrive = r1(u.arriveUntil - t)
+	end
 	if u.team and u.team.player and u.slot and u.slot >= 2 then
 		info.bench = u.slot
 	end
@@ -699,6 +717,31 @@ end
 
 local function onFloor(u)
 	return u.alive and not u.gone and not u.benched
+end
+
+-- dungeon fixes (3): the entrance of an enemy added after the start: no acting, no hits (i-frames), not the nearest target
+local function arriveSeconds()
+	local s = num(fighterRules().ArriveSeconds, 1.2)
+	return max(0, min(3, s))
+end
+
+local function markArrival(self, u, seconds)
+	if seconds > 0 then
+		u.arriveUntil = self.t + seconds
+		if (u.iframesUntil or 0) < u.arriveUntil then
+			u.iframesUntil = u.arriveUntil
+		end
+		u.nextAttack = max(u.nextAttack, u.arriveUntil)
+	end
+end
+
+local function arriving(self, u)
+	return u.arriveUntil ~= nil and self.t < u.arriveUntil
+end
+
+-- a living enemy on the floor that may be chosen as a target (not arriving)
+local function targetable(self, e)
+	return e.alive and not e.gone and not e.benched and not (e.arriveUntil and self.t < e.arriveUntil)
 end
 
 -- Adds a team (also used by new / SpawnEnemies). Returns the unit infos, or nil + reason.
@@ -786,9 +829,17 @@ function BattleSim:AddTeam(spec)
 	else
 		team.dps = 0
 	end
+	-- an enemy team added after the start (waves, escorts, mid-fight adds) arrives first
+	local arrive = 0
+	if self.started and side == 2 and not player then
+		arrive = arriveSeconds()
+		for _, u in ipairs(infos) do
+			markArrival(self, u, arrive)
+		end
+	end
 	local out = {}
 	for i, u in ipairs(infos) do
-		out[i] = unitInfo(u)
+		out[i] = unitInfo(u, self.t)
 	end
 	if team.wave then
 		self.waveCount = max(self.waveCount or 0, team.wave)
@@ -808,7 +859,11 @@ function BattleSim:AddTeam(spec)
 					left = left + 1
 				end
 			end
-			self.pending[#self.pending + 1] = { type = EV.Wave, index = team.wave, units = out, left = left, owner = spec.Owner }
+			-- a dungeon room's clock does not run down while its new wave cannot be hit
+			if self.mode == "Dungeon" and arrive > 0 then
+				self.timeLimit = self.timeLimit + arrive
+			end
+			self.pending[#self.pending + 1] = { type = EV.Wave, index = team.wave, units = out, left = left, owner = spec.Owner, timeLimit = self.timeLimit }
 		else
 			self.pending[#self.pending + 1] = { type = EV.Spawn, units = out, owner = spec.Owner }
 		end
@@ -1117,7 +1172,7 @@ function BattleSim:StaticUnits()
 	local out = {}
 	for _, u in ipairs(self.units) do
 		if not u.gone then
-			out[#out + 1] = unitInfo(u)
+			out[#out + 1] = unitInfo(u, self.t)
 		end
 	end
 	return out
@@ -1529,6 +1584,19 @@ local function applyDamage(self, attacker, victim, amount, events, extra, noVari
 	if not victim.alive or victim.gone or amount <= 0 then
 		return 0
 	end
+	if victim.arriveUntil and self.t < victim.arriveUntil then
+		-- an arriving enemy cannot be hit (every path: specials, zones, burns): a miss
+		local ev = { type = EV.Hit, from = attacker and attacker.id or nil, to = victim.id, dmg = 0, miss = true }
+		if extra then
+			for k, v in pairs(extra) do
+				if k ~= "leech" then
+					ev[k] = v
+				end
+			end
+		end
+		events[#events + 1] = ev
+		return 0
+	end
 	local D = damageRules()
 	local F = fighterRules()
 	local dmg = amount
@@ -1686,7 +1754,7 @@ local function nearestEnemy(self, u, maxDist)
 	local side = u.side
 	for i = 1, #list do
 		local e = list[i]
-		if e.side ~= side and e.alive and not e.gone and not e.benched then
+		if e.side ~= side and targetable(self, e) then
 			local dx, dz = e.px - u.px, e.pz - u.pz
 			local d2 = dx * dx + dz * dz
 			if d2 < bestD2 then
@@ -1723,7 +1791,7 @@ local function pickTarget(self, u)
 	local side = u.side
 	for i = 1, #list do
 		local e = list[i]
-		if e.side ~= side and e.alive and not e.gone and not e.benched then
+		if e.side ~= side and targetable(self, e) then
 			local dx, dz = e.px - u.px, e.pz - u.pz
 			if dx * dx + dz * dz <= limit then
 				count = count + 1
@@ -1878,10 +1946,11 @@ local function castSpecial(self, u, events)
 		ev.heals = {}
 		local amount = base
 		if isFighter then
-			amount = base * num(S.Solo, 3) -- the whole-team heal lands on the one fighter
+			amount = base * num(S.Solo, 3) -- a fighter's heal: x Solo on the fighter and on each benched pet
 		end
+		-- dungeon fixes (7): a player's healer heals its fighter AND the benched pets (an NPC: its pets on the floor)
 		for _, a in ipairs(team.units) do
-			if a.alive and not a.gone and a.hp < a.maxHp and (not isFighter or a == u) and (isFighter or not a.benched) then
+			if a.alive and not a.gone and a.hp < a.maxHp and (isFighter or not a.benched) then
 				local got = min(amount, a.maxHp - a.hp)
 				a.hp = a.hp + got
 				ev.heals[#ev.heals + 1] = { a.id, floor(got + 0.5) }
@@ -2384,8 +2453,9 @@ local function spawnMinions(self, boss, wave, waveIndex, events)
 		u.px, u.pz = u.x, u.z
 		u.nextAttack = self.t + 1 + rand(self) * 0.8
 		u.meter = 0
+		markArrival(self, u, arriveSeconds())
 		boss.team.units[#boss.team.units + 1] = u
-		infos[#infos + 1] = unitInfo(u)
+		infos[#infos + 1] = unitInfo(u, self.t)
 	end
 	if #infos > 0 then
 		events[#events + 1] = { type = EV.Spawn, units = infos, wave = waveIndex, boss = boss.id, owner = boss.team.owner }
@@ -2551,6 +2621,11 @@ local function npcStep(self, u, dt, events)
 	local F = fighterRules()
 	local t = self.t
 	local team = u.team
+	if u.arriveUntil and t < u.arriveUntil then
+		-- arriving (dungeon fixes 3): it stands where it appeared and does nothing yet
+		u.state = S_IDLE
+		return
+	end
 	u.meter = min(D.MeterMax, u.meter + D.MeterPerSecond * dt * (u.meterRate or 1))
 	if t < u.stunUntil then
 		u.state = S_STUNNED
@@ -2651,6 +2726,83 @@ end
 
 -- the fighter of a player team: Move toward the character's point at the legal cap; timers; the Auto kit
 local autoFighter
+local fighterSwing
+
+-- the fighter's attack interval now (Charge / Haste speed it up, a Slow drags it)
+local function attackInterval(self, f)
+	local t = self.t
+	local interval = f.interval
+	if t < f.atkSpeedUntil then
+		interval = interval / f.atkSpeedMult
+	end
+	if t < f.speedBuffUntil then
+		interval = interval / f.speedBuffMult
+	end
+	if t < f.slowUntil then
+		interval = interval / num(damageRules().Slow, 0.6)
+	end
+	return interval
+end
+
+-- current positions: within the fighter's range + the target's radius + slack
+local function inReach(f, e, slack)
+	local dx, dz = e.x - f.x, e.z - f.z
+	local reach = f.range + e.radius + slack
+	return dx * dx + dz * dz <= reach * reach
+end
+
+-- the auto-attack's target: the lock when targetable and in reach, else the nearest targetable enemy in reach (by id on ties)
+local function autoTarget(self, team, f, slack)
+	local lock = lockOf(team)
+	if lock and targetable(self, lock) and inReach(f, lock, slack) then
+		return lock
+	end
+	local best, bestD2 = nil, huge
+	local list = self.units
+	local side = f.side
+	for i = 1, #list do
+		local e = list[i]
+		if e.side ~= side and targetable(self, e) then
+			local dx, dz = e.x - f.x, e.z - f.z
+			local d2 = dx * dx + dz * dz
+			local reach = f.range + e.radius + slack
+			if d2 <= reach * reach and d2 < bestD2 then
+				best, bestD2 = e, d2
+			end
+		end
+	end
+	return best
+end
+
+-- one auto-attack swing when the fighter can (not Stunned / Casting / Dashing / arriving, the interval ready) -> hit?
+function fighterSwing(self, team, f, events)
+	local t = self.t
+	if not f.alive or f.gone or f.benched or t < f.stunUntil or t < f.castUntil or t < f.dashUntil or arriving(self, f) then
+		return false
+	end
+	local F = fighterRules()
+	local interval = attackInterval(self, f)
+	if t < f.nextAttack - interval * (1 - num(F.AttackTolerance, 0.85)) then
+		return false
+	end
+	local target = autoTarget(self, team, f, num(F.AttackSlack, 3))
+	if not target then
+		return false
+	end
+	f.nextAttack = max(f.nextAttack, t) + interval
+	f.attackUntil = t + ATTACK_POSE
+	local dx, dz = target.x - f.x, target.z - f.z
+	local d = sqrt(dx * dx + dz * dz)
+	if d > 0.01 then
+		team.faceX, team.faceZ = dx / d, dz / d
+	end
+	if inIFrames(self, target) then
+		missEvent(self, f, target, events)
+	else
+		applyDamage(self, f, target, f.hit, events)
+	end
+	return true
+end
 
 local function fighterStep(self, team, dt, events)
 	local f = team.fighter
@@ -2689,6 +2841,8 @@ local function fighterStep(self, team, dt, events)
 		end
 	end
 	clampToFloor(self, f)
+	-- the auto-attack (dungeon fixes 4): the pet swings by itself; the character stays the body (never moved here)
+	fighterSwing(self, team, f, events)
 	-- the state
 	if t < f.stunUntil then
 		f.state = S_STUNNED
@@ -2705,13 +2859,7 @@ local function fighterStep(self, team, dt, events)
 	end
 	-- the lock is the drawn target
 	f.target = lockOf(team)
-	-- the bench regenerates
-	local cap = num(F.BenchRegenCap, 1)
-	for _, u in ipairs(team.units) do
-		if u.benched and u.alive and u.hp < u.maxHp * cap then
-			u.hp = min(u.maxHp * cap, u.hp + u.maxHp * num(F.BenchRegenPerSecond, 0.03) * dt)
-		end
-	end
+	-- dungeon fixes (7): no passive bench regen in combat (only a healing pet's Heal special / Heal buff heals the bench)
 end
 
 local doCommand -- forward
@@ -2738,9 +2886,7 @@ function autoFighter(self, team, f, dt, events)
 		if f.meter >= num(fighterRules().SpecialMeterMax, 100) then
 			doCommand(self, team, "Special", nil, events)
 		end
-		if d <= reach + fighterRules().AttackSlack then
-			doCommand(self, team, "Attack", target.id, events)
-		end
+		-- (the swing itself is the auto-attack of fighterStep)
 		if t >= team.elementReadyAt and d <= num(fighterRules().ElementRange, 14) + target.radius then
 			doCommand(self, team, "Element", target.id, events)
 		end
@@ -3075,6 +3221,58 @@ local function unitArg(self, team, arg)
 	return unit
 end
 
+-- Attack() with no id: the nearest targetable enemy, or the next one by distance after the current lock (repeated presses
+-- cycle; ties by id so it is deterministic)
+local function cycleTarget(self, team, f)
+	local list = {}
+	for _, e in ipairs(self.units) do
+		if e.side ~= team.side and targetable(self, e) then
+			local dx, dz = e.x - f.x, e.z - f.z
+			list[#list + 1] = { e = e, d2 = dx * dx + dz * dz }
+		end
+	end
+	if #list == 0 then
+		return nil
+	end
+	table.sort(list, function(a, b)
+		if a.d2 ~= b.d2 then
+			return a.d2 < b.d2
+		end
+		return a.e.id < b.e.id
+	end)
+	local lock = lockOf(team)
+	if lock then
+		for i, entry in ipairs(list) do
+			if entry.e == lock then
+				return list[(i % #list) + 1].e
+			end
+		end
+	end
+	return list[1].e
+end
+
+-- the direction the client draws the PET's dash: toward the lock / the nearest enemy, else the fighter's facing
+local function dashDirection(self, team, f)
+	local aim = lockOf(team)
+	if aim and not targetable(self, aim) then
+		aim = nil
+	end
+	aim = aim or nearestEnemy(self, f)
+	local dx, dz = team.faceX or 0, team.faceZ or 1
+	if aim then
+		local ax, az = aim.x - f.x, aim.z - f.z
+		local d = sqrt(ax * ax + az * az)
+		if d > 0.01 then
+			dx, dz = ax / d, az / d
+		end
+	end
+	local len = sqrt(dx * dx + dz * dz)
+	if len < 0.01 then
+		dx, dz, len = 0, 1, 1
+	end
+	return floor(dx / len * 100 + 0.5) / 100, floor(dz / len * 100 + 0.5) / 100, aim
+end
+
 -- the body of Command; `events` collects what the command causes (the caller queues them)
 function doCommand(self, team, action, arg, events)
 	local F = fighterRules()
@@ -3122,55 +3320,24 @@ function doCommand(self, team, action, arg, events)
 		busy = "Casting"
 	end
 	if action == "Attack" then
-		if busy then
-			return false, busy
-		end
-		local tolerance = num(F.AttackTolerance, 0.85)
-		local interval = f.interval
-		if t < f.atkSpeedUntil then
-			interval = interval / f.atkSpeedMult
-		end
-		if t < f.speedBuffUntil then
-			interval = interval / f.speedBuffMult
-		end
-		if t < f.slowUntil then
-			interval = interval / num(damageRules().Slow, 0.6)
-		end
-		local ready = f.nextAttack - interval * (1 - tolerance)
-		if t < ready then
-			return false, "Cooldown", r1(f.nextAttack - t)
-		end
+		-- dungeon fixes (4): ATTACK directs the auto-attacking pet (a lock); it never swings by itself
 		local target = nil
 		if arg ~= nil then
 			target = unitArg(self, team, arg)
 			if not target then
 				return false, "BadTarget"
 			end
-		end
-		target = target or lockOf(team)
-		local slack = num(F.AttackSlack, 3)
-		if target then
-			if dist(f.x, f.z, target.x, target.z) > f.range + target.radius + slack then
-				return false, "OutOfReach"
-			end
 		else
-			local near, nd2 = nearestEnemy(self, f, f.range + slack + 3)
-			if not near or nd2 > (f.range + near.radius + slack) ^ 2 then
+			target = cycleTarget(self, team, f)
+			if not target then
 				return false, "NoTarget"
 			end
-			target = near
 		end
-		f.nextAttack = max(f.nextAttack, t) + interval
-		f.attackUntil = t + ATTACK_POSE
-		local dx, dz = target.x - f.x, target.z - f.z
-		local d = sqrt(dx * dx + dz * dz)
-		if d > 0.01 then
-			team.faceX, team.faceZ = dx / d, dz / d
-		end
-		if inIFrames(self, target) then
-			missEvent(self, f, target, events)
-		else
-			applyDamage(self, f, target, f.hit, events)
+		team.lock = target
+		f.target = target
+		events[#events + 1] = { type = EV.Order, owner = team.owner, order = "Attack", target = target.id }
+		if not inReach(f, target, num(F.AttackSlack, 3)) then
+			return true, target.id, "OutOfReach"
 		end
 		return true, target.id
 	elseif action == "Element" then
@@ -3206,7 +3373,18 @@ function doCommand(self, team, action, arg, events)
 		f.iframesUntil = t + num(F.DashIFrames, 0.35)
 		team.dashReadyAt = t + num(F.DashCooldown, 2.5)
 		f.state = S_DASHING
-		events[#events + 1] = { type = EV.Dash, unit = f.id }
+		local dx, dz, aim = dashDirection(self, team, f)
+		events[#events + 1] = {
+			type = EV.Dash,
+			unit = f.id,
+			owner = team.owner,
+			x = r1(f.x),
+			z = r1(f.z),
+			dir = { dx, dz },
+			target = aim and aim.id or nil,
+			seconds = num(F.DashSeconds, 0.35),
+			iframes = num(F.DashIFrames, 0.35),
+		}
 		return true
 	elseif action == "Buff" then
 		local slot = tonumber(arg)
@@ -3234,6 +3412,17 @@ function doCommand(self, team, action, arg, events)
 		helper.buffReadyAt = t + cooldown
 		local ev = { type = EV.Buff, owner = team.owner, unit = helper.id, kind = helper.buffKind, name = buff.Name, target = f.id }
 		applyBuff(self, f, buff, helper.specialBoost, events, ev)
+		if buff.Effect == "Heal" then
+			-- dungeon fixes (7): a healing helper heals the fighter AND the other benched pet
+			ev.heals = { { f.id, ev.amount or 0 } }
+			for _, other in ipairs(team.units) do
+				if other ~= helper and other ~= f and other.benched and other.alive and not other.gone then
+					local tmp = {}
+					applyBuff(self, other, buff, helper.specialBoost, events, tmp)
+					ev.heals[#ev.heals + 1] = { other.id, tmp.amount or 0 }
+				end
+			end
+		end
 		events[#events + 1] = ev
 		return true, helper.buffKind
 	elseif action == "Swap" then

@@ -23,9 +23,12 @@
 -- version + CREDITS chip bottom-right.
 -- Windows (docked by NeonKit.Dock: right side panel / bottom sheet; the hotbar steps aside):
 --   SETTINGS  Music and Sound (11 steps 0..10, - / + and the step segments), Graphics (Auto / Low / High chips),
---             Camera shake (ON / OFF); applied at once through ClientSettings.Set (sent after a 0.4 s debounce)
+--             Camera shake (ON / OFF), Mouse lock (ON / OFF, keyboard + mouse devices only; the L key toggles it too);
+--             applied at once through ClientSettings.Set (sent after a 0.4 s debounce)
 --   UPDATES   UpdateNotes.Notes newest first; opening it sends SettingsSet("SeenNotes", UpdateNotes.Latest)
 --   CREDITS   UpdateNotes.Credits
+-- MouseLock (client/MouseLock.lua, dungeon-fixes decision 6): Init starts it (idempotent); the menu screen is a hold
+-- ("MainMenu", from Open until the PLAY fade ends); the windows are holds through NeonKit.Dock.
 --
 -- Public: Init(), Open(), Play(), IsOpen(), OpenSettings(), OpenUpdates(), OpenCredits(), CloseWindows(), Window()
 -- Plain Lua 5.1-compatible syntax only; fonts only through Theme roles.
@@ -72,6 +75,8 @@ local K = {
 	GLYPH_SOUND = "\240\159\148\138",
 	GLYPH_GFX = "\226\156\168",
 	GLYPH_SHAKE = "\240\159\147\183",
+	GLYPH_MOUSE = "\240\159\142\175",
+	MOUSE_HOLD = "MainMenu",
 	DOT = "  \226\128\162  ",
 }
 
@@ -91,6 +96,7 @@ local M = {
 	Mods = {},
 	Notes = nil,
 	Settings = { Rows = {} },
+	MouseHeld = false, -- the "MainMenu" MouseLock hold is on
 }
 MainMenuController._M = M
 
@@ -665,6 +671,26 @@ function H.isTouch()
 	return UIS.TouchEnabled and not UIS.KeyboardEnabled
 end
 
+-- a keyboard + mouse device (where MouseLock does anything)
+function H.isDesktop()
+	local UIS = game:GetService("UserInputService")
+	return UIS.KeyboardEnabled == true and UIS.MouseEnabled == true
+end
+
+-- MouseLock.Hold / Release for the menu screen (once each way; the module is optional)
+function H.mouseHold(on)
+	on = on == true
+	if (M.MouseHeld == true) == on then
+		return
+	end
+	local ml = H.mod("MouseLock")
+	if not ml then
+		return
+	end
+	M.MouseHeld = on
+	pcall(on and ml.Hold or ml.Release, K.MOUSE_HOLD)
+end
+
 function Menu.bindKeys(on)
 	if on then
 		ContextActionService:BindActionAtPriority(K.ACTION, function(_, state)
@@ -911,13 +937,25 @@ function MainMenuController.OpenSettings()
 	Win.sliderRow(list, "Sfx", "Sound", K.GLYPH_SOUND, 2)
 	Win.chipRow(list, "Gfx", "Graphics", K.GLYPH_GFX, { { "AUTO", "Auto" }, { "LOW", "Low" }, { "HIGH", "High" } }, 3)
 	Win.chipRow(list, "Shake", "Camera shake", K.GLYPH_SHAKE, { { "ON", true }, { "OFF", false } }, 4)
-	H.label("Note", "Low graphics hides small decorations and glow. Saved to your account.", "Label", 18, {
+	local desktop = H.isDesktop()
+	if desktop then
+		local ml = H.mod("MouseLock")
+		local key = ml and ml.KEY_NAME
+		Win.chipRow(list, "MouseLock", key and ("Mouse lock  (" .. key .. " key)") or "Mouse lock", K.GLYPH_MOUSE, { { "ON", true }, { "OFF", false } }, 5)
+	end
+	local note = "Low graphics hides small decorations and glow. Saved to your account."
+	if desktop then
+		local ml = H.mod("MouseLock")
+		local free = (ml and ml.KEY_NAME) and (" (press " .. ml.KEY_NAME .. " to free it)") or ""
+		note = "Mouse lock: the mouse turns the camera" .. free .. ". Low graphics hides small decorations and glow. Saved to your account."
+	end
+	H.label("Note", note, "Label", 18, {
 		Outline = 2,
 		Color = Color3.fromRGB(206, 210, 240),
 		TextWrapped = true,
-		Size = UDim2.new(1, 0, 0, 48),
+		Size = UDim2.new(1, 0, 0, desktop and 72 or 48),
 		TextXAlignment = Enum.TextXAlignment.Left,
-		LayoutOrder = 5,
+		LayoutOrder = 6,
 	}, list)
 end
 
@@ -1006,6 +1044,7 @@ function MainMenuController.Open()
 	end
 	M.Open = true
 	M.Playing = false
+	H.mouseHold(true)
 	Loading.hook()
 	Gate.close()
 	local ok = H.safe("build", Menu.build)
@@ -1055,6 +1094,7 @@ function MainMenuController.Play()
 		Gate.open()
 		M.Open = false
 		M.Playing = false
+		H.mouseHold(false)
 		UiGate.MarkPlayed()
 		H.sound("Whoosh")
 	end)
@@ -1084,6 +1124,10 @@ function MainMenuController.Init()
 		return
 	end
 	ClientSettings.Changed:Connect(onSettingChanged)
+	local MouseLock = H.mod("MouseLock")
+	if MouseLock and type(MouseLock.Start) == "function" then
+		H.safe("MouseLock", MouseLock.Start) -- idempotent (Main.client.lua may start it first)
+	end
 	local GraphicsQuality = H.mod("GraphicsQuality")
 	if GraphicsQuality and type(GraphicsQuality.Init) == "function" then
 		H.safe("GraphicsQuality", GraphicsQuality.Init)

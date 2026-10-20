@@ -11,6 +11,7 @@
 --   NeonKit.Button(props) -> TextButton (Variant "Primary" | "Outline"; hover 1.04 / press 0.95; Disabled attribute)
 --   NeonKit.SideRect(prefW, prefH, minW, minH) -> { x, y, w, h, scale, mode = "Side" | "Sheet", designW, designH }
 --   NeonKit.Dock(holder, uiScale, prefW, prefH, minW, minH) -> { Rect, Refresh(), Disconnect() }
+--     (also a MouseLock hold while the holder is shown: client/MouseLock.WatchVisible; dungeon-fixes decision 6)
 --
 -- Conventions (the same as CloudUI): sizes are DESIGN pixels of a 1920x1080 screen; put the tree under one UIScale
 -- (CloudUI.AutoScale, or the scale NeonKit.Dock writes) and it follows the readability rule everywhere. Colours are a
@@ -834,8 +835,27 @@ local function guiInsetOf(holder)
 	return inset
 end
 
+-- The optional client/MouseLock module (nil on the server or when missing): a docked window frees the cursor
+local mouseLock = nil
+local mouseLockWatched = setmetatable({}, { __mode = "k" }) -- [holder] = true (one watcher per holder)
+local function getMouseLock()
+	if mouseLock == nil then
+		mouseLock = false
+		local client = script.Parent and script.Parent.Parent
+		local module = client and client:FindFirstChild("MouseLock")
+		if module and module:IsA("ModuleScript") then
+			local ok, mod = pcall(require, module)
+			if ok and type(mod) == "table" and type(mod.WatchVisible) == "function" then
+				mouseLock = mod
+			end
+		end
+	end
+	return mouseLock or nil
+end
+
 -- Docks `holder` (a window root designed in px, AnchorPoint set to 0,0) by the window rule and keeps it docked when
--- the screen changes size. `uiScale` (optional) is the UIScale to drive; without one a UIScale "DockScale" is added
+-- the screen changes size. While the holder is shown (Visible in an Enabled ScreenGui) it is a MouseLock hold: the
+-- cursor is free; hiding / removing / destroying the holder releases it (independent of Disconnect). `uiScale` (optional) is the UIScale to drive; without one a UIScale "DockScale" is added
 -- (or reused) on the holder. Returns { Rect, Refresh(), Disconnect() }; Rect is the last SideRect.
 -- The holder's Position is in ITS gui's area: a ScreenGui with IgnoreGuiInset = false starts below the top bar.
 function NeonKit.Dock(holder, uiScale, prefW, prefH, minW, minH)
@@ -887,6 +907,11 @@ function NeonKit.Dock(holder, uiScale, prefW, prefH, minW, minH)
 		end
 	end
 	bindCamera()
+	local ml = getMouseLock()
+	if ml and not mouseLockWatched[holder] then
+		mouseLockWatched[holder] = true
+		pcall(ml.WatchVisible, "Dock:" .. holder.Name, holder)
+	end
 	return dock
 end
 

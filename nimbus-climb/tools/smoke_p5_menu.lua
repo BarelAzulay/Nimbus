@@ -16,7 +16,8 @@
 --   client_p5menu_mobile (phone 390x844) PLAY >= 56 px and on screen, no menu text under 14 px or off screen, SETTINGS is
 --                      a bottom sheet below 0.44 H, a tap sends MenuPlay once
 --   client_p5settings  sliders -> ONE SettingsSet after the 0.4 s debounce with clamped whole numbers; Graphics Low hides
---                      NC_Detail decor (emitters off) and pushes GfxLow, High restores; Shake OFF; SeenNotes on UPDATES
+--                      NC_Detail decor (emitters off) and pushes GfxLow, High restores; Shake OFF; Mouse lock ON / OFF
+--                      (one SettingsSet each, the row names the L key); SeenNotes on UPDATES
 --
 -- Every OTHER scenario runs with the menu DISABLED (contract 7.2: "what every existing smoke scenario and the mock get
 -- unless a test sets Enabled"): smoke_common.lua sets Config.MainMenu.Enabled = false in every world's boot, and on the
@@ -597,19 +598,45 @@ local function clientScenarios()
 		decor:Destroy()
 		late:Destroy()
 
-		-- Shake
-		local off = H.find(holder, "Chip_OFF")
+		-- Shake (its own row: Mouse lock has ON / OFF chips too)
+		local shakeRow = H.find(holder, "Row_Shake")
+		local off = H.find(shakeRow, "Chip_OFF")
 		if T.check(off ~= nil, "p5settings: Camera shake has an OFF chip") then
 			Mock.Click(off)
 			H.advance(0.6)
 		end
 		T.eq(CS.Get("Shake"), false, "p5settings: Shake OFF (BattleController's shake amplitude x 0)")
-		local on = H.find(holder, "Chip_ON")
+		local on = H.find(shakeRow, "Chip_ON")
 		if on then
 			Mock.Click(on)
 			H.advance(0.6)
 		end
 		T.eq(CS.Get("Shake"), true, "p5settings: Shake ON again")
+
+		-- Mouse lock (dungeon-fixes 6): a boolean like Shake, default OFF, ONE SettingsSet per change; the row says its key
+		T.eq(CS.Clean("MouseLock", 1), nil, "p5settings: MouseLock must be a boolean")
+		T.eq(CS.DEFAULTS.MouseLock, false, "p5settings: MouseLock defaults to false")
+		local mouseRow = H.find(holder, "Row_MouseLock")
+		if T.check(mouseRow ~= nil, "p5settings: a Mouse lock row on a keyboard + mouse device") then
+			local title = mouseRow:FindFirstChild("Title")
+			T.check(title and title.Text:find("Mouse lock", 1, true) and title.Text:find("L key", 1, true), "p5settings: the row reads 'Mouse lock  (L key)'", title and title.Text or "")
+			local mOn, mOff = H.find(mouseRow, "Chip_ON"), H.find(mouseRow, "Chip_OFF")
+			T.check(mOff and mOff:GetAttribute("Selected") == true, "p5settings: Mouse lock starts OFF (selected chip)")
+			local logM = #Mock.RemoteLog
+			if mOn then
+				Mock.Click(mOn)
+				H.advance(0.6)
+			end
+			T.eq(CS.Get("MouseLock"), true, "p5settings: Mouse lock ON")
+			local sentM = H.calls("SettingsSet", logM)
+			T.check(#sentM == 1 and sentM[1].args[1] == "MouseLock" and sentM[1].args[2] == true, "p5settings: ONE SettingsSet('MouseLock', true)", #sentM .. " sends")
+			mOff = H.find(mouseRow, "Chip_OFF")
+			if mOff then
+				Mock.Click(mOff)
+				H.advance(0.6)
+			end
+			T.eq(CS.Get("MouseLock"), false, "p5settings: Mouse lock OFF again")
+		end
 
 		-- SeenNotes on UPDATES
 		local log2 = #Mock.RemoteLog

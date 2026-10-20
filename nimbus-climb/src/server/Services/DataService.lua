@@ -31,7 +31,8 @@
 --     -- a Phase 4 server still running during the rollout writes them back untouched through keepForeign)
 --     Dungeon = { Best = 0..100, Cleared = {[floor]=true} (a dense boolean array in the store), Runs, Clears },
 --     Berries = whole number >= 0 (left out while 0),
---     Settings = { Music 0..10, Sfx 0..10, Gfx "Auto"|"Low"|"High", Shake bool, SeenNotes 0..1000 } (left out while default),
+--     Settings = { Music 0..10, Sfx 0..10, Gfx "Auto"|"Low"|"High", Shake bool, SeenNotes 0..1000, MouseLock bool }
+--       (left out while default),
 --     Home.DecorCredit = 1..18 | nil, Home.LegacyMagnet = 1..5 | nil, Home.LegacyMagnetStar = the Prestige it was folded at }
 --   Phase 5 rules: Teams hold 3 keys per preset (slot 1 = the fighter; a stored 4th key leaves the preset only, the pet
 --   stays owned); Dungeon merges Best max / Cleared union / Runs delta / Clears delta (the P5Dungeon migration's own
@@ -639,8 +640,8 @@ local P5 = {
 	LEGACY_FOOD = { Snack = 200, Meal = 1200, Feast = 6400 }, -- berries per old food when TycoonCatalog.Berries.LegacyFood is missing
 	MAX_BERRIES = 1000000000, -- sanity cap (whole berries)
 	BERRIES_GAP = 0.5, -- seconds: the Berries attribute is written at most twice a second (trailing write; 10.2 m6)
-	SETTING_KEYS = { "Music", "Sfx", "Gfx", "Shake", "SeenNotes" },
-	SETTING_DEFAULTS = { Music = 6, Sfx = 8, Gfx = "Auto", Shake = true, SeenNotes = 0 }, -- 7.2
+	SETTING_KEYS = { "Music", "Sfx", "Gfx", "Shake", "SeenNotes", "MouseLock" },
+	SETTING_DEFAULTS = { Music = 6, Sfx = 8, Gfx = "Auto", Shake = true, SeenNotes = 0, MouseLock = false }, -- 7.2 (+ MouseLock: dungeon-fixes 6)
 	GFX = { Auto = true, Low = true, High = true },
 	MAX_VOLUME = 10, -- Music / Sfx 0..10
 	MAX_NOTES = 1000, -- SeenNotes 0..1000 (UpdateNotes.Latest is a small version number)
@@ -802,7 +803,7 @@ function P5.settingValue(key, value)
 		if type(value) == "string" and P5.GFX[value] then
 			return value
 		end
-	elseif key == "Shake" then
+	elseif key == "Shake" or key == "MouseLock" then
 		if type(value) == "boolean" then
 			return value
 		end
@@ -3133,7 +3134,7 @@ local function buildSnapshot(profile)
 		-- Phase 4 (growth entries without their zero numbers; the ring record always whole)
 		PetGrowth = P4.encodeGrowth(P4.cleanGrowth(profile.PetGrowth)),
 		Ring = P4.cleanRing(profile.Ring),
-		-- Phase 5 (<= 60 B dungeon record with a dense Cleared array, the berries, the five settings always)
+		-- Phase 5 (<= 60 B dungeon record with a dense Cleared array, the berries, every setting always)
 		Dungeon = P5.encodeDungeon(P5.cleanDungeon(profile.Dungeon)),
 		Berries = P5.cleanBerries(profile.Berries),
 		Settings = P5.cleanSettings(profile.Settings),
@@ -5214,7 +5215,7 @@ function DataService.SpendBerries(player, n)
 	return true
 end
 
--- { Music, Sfx, Gfx, Shake, SeenNotes } (a clean copy with per-key defaults; the defaults before the load).
+-- { Music, Sfx, Gfx, Shake, SeenNotes, MouseLock } (a clean copy with per-key defaults; the defaults before the load).
 function DataService.GetSettings(player)
 	local entry = player and cache[player.UserId]
 	if not entry then
@@ -5223,7 +5224,7 @@ function DataService.GetSettings(player)
 	return P5.cleanSettings(entry.Profile.Settings)
 end
 
--- Stores one setting: key one of the five, value of its type and range (7.2; SeenNotes never goes down). Allowed
+-- Stores one setting: key one of P5.SETTING_KEYS, value of its type and range (7.2; SeenNotes never goes down). Allowed
 -- while provisional (the live session's settings win the merge). Not synced: the client applied it already. -> ok
 function DataService.SetSetting(player, key, value)
 	if not player or type(key) ~= "string" or P5.SETTING_DEFAULTS[key] == nil then

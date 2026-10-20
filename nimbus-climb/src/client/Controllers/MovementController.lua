@@ -29,7 +29,13 @@
 --                                                    (default walk x 1.3) instead of Config.Physics.RunSpeed;
 --                                                    SetBattleSpeed(nil) gives the server's base back at once
 --     plus MovementController.TryDash() -> bool (the battle DASH button), SetDashListener(fn | nil) (called after every
---     dash: BattleController sends BattleCommand "Dash") and GetSpeedState() (tests). EXHAUST_RESUME is 22 (15% of the
+--     dash: BattleController sends BattleCommand "Dash") and GetSpeedState() (tests).
+--   * Dungeon fixes (decision 5): MovementController.SetPetDash(fn | nil): in a battle Shift (+ RightShift, gamepad B)
+--     is the PET's dash: the keys call fn() only (BattleController sends BattleCommand "Dash"); the character gets NO
+--     velocity impulse, spends no stamina and starts no dash cooldown (tryDash / TryDash refuse while it is set, so
+--     the vitals card's dash ring never shows a character dash); RUN moves to Ctrl (as with SetDashKeys) and the
+--     mobile DASH button hides (the battle cluster's DASH sends the same command). nil restores Q / B, Shift = run.
+--     BattleController uses it instead of SetDashKeys / SetFreeDash / SetDashListener. EXHAUST_RESUME is 22 (15% of the
 --     150 MaxStamina). Run / dash input is ignored until UiGate.HasPlayed() (the main menu, 7.2; no UiGate = played).
 -- Plain Lua 5.1-compatible syntax only.
 
@@ -111,6 +117,8 @@ local dashLength = P.DashCooldown -- the cooldown of the current / last dash (th
 local freeDashCooldown = nil
 local dashKeys = nil -- the battle's dash keys (nil = the obby keys Q / B)
 local dashListener = nil -- called after every dash (BattleController: BattleCommand "Dash")
+local petDash = nil -- dungeon fixes: the battle's pet dash (SetPetDash); while set the dash keys call it and the character never dashes
+local PET_DASH_KEYS = { Enum.KeyCode.LeftShift, Enum.KeyCode.RightShift, Enum.KeyCode.ButtonB }
 local uiGate = nil -- client/UiGate (menu W3), loaded lazily; false when missing
 local regenBlockedUntil = 0
 
@@ -865,6 +873,9 @@ local function playDashFx(c)
 end
 
 function tryDash()
+	if petDash then
+		return false -- a battle: Shift / B are the pet's dash (onDashAction), the character never dashes
+	end
 	local reason = dashBlockedReason()
 	if reason == "cooldown" then
 		-- queue a press that arrives just before the cooldown ends so it still feels instant
@@ -1246,7 +1257,15 @@ local function onDashAction(_name, state)
 			return Enum.ContextActionResult.Pass -- the main menu is still up (7.2)
 		end
 		if UserInputService:GetFocusedTextBox() == nil then
-			tryDash()
+			local fn = petDash
+			if fn then
+				local ok, err = pcall(fn) -- the pet dashes (BattleCommand "Dash"); no impulse, no stamina
+				if not ok then
+					warn("[MovementController] pet dash failed: " .. tostring(err))
+				end
+			else
+				tryDash()
+			end
 		end
 	end
 	return Enum.ContextActionResult.Sink
@@ -1350,6 +1369,17 @@ function MovementController.SetDashKeys(keys)
 	end
 end
 
+-- fn: the battle's pet dash (BattleController: BattleCommand "Dash"); Shift / RightShift / B call it and nothing else
+-- (no character impulse, no stamina, no dash cooldown), RUN moves to Ctrl. nil: the obby keys again (Q / B dash,
+-- Shift runs)
+function MovementController.SetPetDash(fn)
+	petDash = type(fn) == "function" and fn or nil
+	if petDash and dash then
+		endDash(false) -- a dash that was running when the battle started ends now
+	end
+	MovementController.SetDashKeys(petDash and PET_DASH_KEYS or nil)
+end
+
 -- the touch buttons in screen px { left, bottom, right, top } (from the left / BOTTOM edge): jump (Roblox's), run,
 -- dash (nil in a battle); nil without the mobile controls
 function MovementController.MobileLayout()
@@ -1432,6 +1462,7 @@ function MovementController.GetSpeedState()
 		FreeDash = freeDash,
 		DashCooldown = (freeDash and freeDashCooldown) or P.DashCooldown,
 		DashKeys = dashKeys,
+		PetDash = petDash ~= nil,
 		Stamina = stamina,
 		ExhaustResume = EXHAUST_RESUME,
 		Written = lastWritten,

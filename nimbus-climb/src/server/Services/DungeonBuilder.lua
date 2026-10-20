@@ -27,8 +27,14 @@
 --   DungeonBuilder.CountParts(instance) -> n          BasePart descendants
 --   DungeonBuilder.Templates / Budgets / Kinds        data for tests and the renderer
 --
--- RoomInfo = { Index, Kind, Template, Model, Zone, Entrance (CFrame), Threshold (part), Door = { Bars }, ExitDoor =
---             { Bars }, Center (Vector3), Spawns = { CFrame... }, Chests = { part... }, Corridor }
+-- RoomInfo = { Index, Kind, Template, Model, Zone, ZoneFloor (CFrame: the floor centre ON the floor top = the encounter
+--             centre), Entrance (CFrame), Threshold (part), Door = { Bars }, ExitDoor = { Bars }, Center (Vector3), Spawns
+--             = { CFrame... }, Chests = { part... }, Corridor, EnterPrompt (the entrance's, corridor side), NextPrompt (the
+--             boss room's exit -> the treasure; Pocket.Hall.NextPrompt = the hall's exit -> room 1) }
+-- Doors (dungeon-fixes decision 2): every Door_Entrance is placed CLOSED (EntranceOpen false); the EnterPrompt
+-- ProximityPrompts (E, HoldDuration 0, RequiresLineOfSight false, MaxActivationDistance 10, DungeonAction "Enter",
+-- ActionText "Enter", ObjectText "Room N" / "Boss room" / "Treasure", attribute TargetRoom) are built DISABLED;
+-- DungeonService enables the one the group walks to and moves the group on when every member pressed it.
 --
 -- Art (Phase 6 A1: a cute, colourful voxel dungeon in the P4 spirit): lilac storybook stone walls with plinth, body
 -- and cap, warm sandstone 6-stud flagstones (+-0.05 alternation), wall torches (bracket + stick + Neon flame + Fire +
@@ -460,6 +466,48 @@ function Kit.setDoor(door, open)
 		end
 	end
 	door:SetAttribute("Open", open == true)
+end
+
+-- the "Enter" prompt of a door (dungeon-fixes decision 2): an invisible anchored point a little in front of the bars with
+-- a ProximityPrompt EnterPrompt (E, no hold, no line of sight, 10 studs, DungeonAction "Enter"), DISABLED: DungeonService
+-- enables it only while the group may move on and handles the press in its PromptTriggered (nothing new from the client)
+function Kit.enterPrompt(parent, cf, objectText, targetRoom)
+	local point = Instance.new("Part")
+	point.Name = "EnterPoint"
+	point.Anchored = true
+	point.CanCollide = false
+	point.CanQuery = false
+	point.CanTouch = false
+	point.CastShadow = false
+	point.Transparency = 1
+	point.Material = Enum.Material.SmoothPlastic
+	point.Size = Vector3.new(1, 1, 1)
+	point.CFrame = cf
+	point:SetAttribute("DungeonAction", "Enter")
+	point:SetAttribute("TargetRoom", targetRoom)
+	local prompt = Instance.new("ProximityPrompt")
+	prompt.Name = "EnterPrompt"
+	prompt.ActionText = "Enter"
+	prompt.ObjectText = objectText
+	prompt.KeyboardKeyCode = Enum.KeyCode.E
+	prompt.HoldDuration = 0
+	prompt.MaxActivationDistance = 10
+	prompt.RequiresLineOfSight = false
+	prompt.Enabled = false
+	prompt:SetAttribute("DungeonAction", "Enter")
+	prompt:SetAttribute("TargetRoom", targetRoom)
+	prompt.Parent = point
+	point.Parent = parent
+	return prompt, point
+end
+
+local function enterLabel(targetRoom)
+	if targetRoom >= 5 then
+		return "Treasure"
+	elseif targetRoom == 4 then
+		return "Boss room"
+	end
+	return "Room " .. tostring(targetRoom)
 end
 
 function Kit.ceiling(parent, w, d, y)
@@ -1539,8 +1587,10 @@ local function clonePiece(pocket, pieceIndex, holder)
 	return copy
 end
 
--- the zone part of a fight room: Mode "Dungeon", ZoneId "Room", Index (pocket), Room
-local function makeZone(model, pocket, room, size, centerCf)
+-- the zone part of a fight room: Mode "Dungeon", ZoneId "Room", Index (pocket), Room. `floorCf` is the room's floor
+-- centre (the floor top, y 0 of the template): the 16-stud part stands 6 studs above it (presence box floor -2..+14) and
+-- FloorY is the floor top itself (dungeon-fixes root cause B: the encounter centre is RoomInfo.ZoneFloor, never the part)
+local function makeZone(model, pocket, room, size, floorCf)
 	local zone = Instance.new("Part")
 	zone.Name = "NC_BattleZone"
 	zone.Anchored = true
@@ -1551,13 +1601,13 @@ local function makeZone(model, pocket, room, size, centerCf)
 	zone.Material = Enum.Material.SmoothPlastic
 	zone.CastShadow = false
 	zone.Size = Vector3.new(size.X, 16, size.Z)
-	zone.CFrame = centerCf * CFrame.new(0, 6, 0)
+	zone.CFrame = floorCf * CFrame.new(0, 6, 0)
 	zone:SetAttribute("Mode", "Dungeon")
 	zone:SetAttribute("ZoneId", "Room")
 	zone:SetAttribute("Index", pocket.Index)
 	zone:SetAttribute("Room", room)
 	zone:SetAttribute("Size", size.X)
-	zone:SetAttribute("FloorY", centerCf.Position.Y)
+	zone:SetAttribute("FloorY", floorCf.Position.Y)
 	CollectionService:AddTag(zone, ZONE_TAG)
 	zone.Parent = model
 	return zone
@@ -1636,27 +1686,38 @@ function DungeonBuilder.PlaceRoom(pocket, room)
 	end
 	if piece.Kind == "Room" or piece.Kind == "Boss" then
 		local size = piece.Kind == "Boss" and Vector3.new(BOSS_ZONE.X, 0, BOSS_ZONE.Z) or Vector3.new(ROOM_ZONE.X, 0, ROOM_ZONE.Z)
+		-- the floor centre: the ZoneCenter attachment or the room's centre, both ON the floor top (attachments sit at
+		-- template y 0); the old fallback took the centre 1.5 studs BELOW the floor (FloorY 1.5 low, enemies ~4.5 up)
 		local zc = worldPoint(model, "ZoneCenter")
-		info.Zone = makeZone(staging, pocket, room, size, zc and CFrame.new(zc.Position) or CFrame.new(center.Position - Vector3.new(0, 1.5, 0)))
+		local floorCf = CFrame.new(zc and zc.Position or center.Position)
+		info.ZoneFloor = floorCf
+		info.Zone = makeZone(staging, pocket, room, size, floorCf)
 		-- the enemies' spawn point in zone-local x / z when the template names one (DungeonService passes it to SpawnWave)
 		local sa = worldPoint(model, "SpawnAnchor")
 		if sa then
 			local rel = info.Zone.CFrame:PointToObjectSpace(sa.Position)
 			info.SpawnAnchor = { x = rel.X, z = rel.Z }
 		end
-		-- the two portcullis doors: Entrance (closed when the fight starts) and Exit (opens after the clear)
+		-- the two portcullis doors: Entrance (CLOSED until the group enters the room after everyone pressed E at it:
+		-- DungeonService opens it in Dg.enterRoom, closes it again when the fight starts) and Exit (opens after the clear).
+		-- The entrance's EnterPrompt stands on the corridor side; the boss room's exit carries the one to the treasure
+		-- (the alcove has no door of its own), on the room side
 		if entranceCf then
 			local door, bars = Kit.door(staging, CFrame.new(entranceCf.Position - Vector3.new(0, 1.5, 0)) * CFrame.new(0, 0, 0), "Door_Entrance", 8)
 			info.Door = { Model = door, Bars = bars }
-			Kit.setDoor(door, true)
+			Kit.setDoor(door, false)
+			info.EnterPrompt, info.EnterPoint = Kit.enterPrompt(staging, entranceCf * CFrame.new(0, 3, -2.5), enterLabel(room), room)
 		end
 		if exitCf then
 			local door, bars = Kit.door(staging, CFrame.new(exitCf.Position - Vector3.new(0, 1.5, 0)), "Door_Exit", 8)
 			info.ExitDoor = { Model = door, Bars = bars }
 			Kit.setDoor(door, false)
+			if piece.Kind == "Boss" then
+				info.NextPrompt, info.NextPoint = Kit.enterPrompt(staging, exitCf * CFrame.new(0, 3, -2.5), enterLabel(room + 1), room + 1)
+			end
 		end
 		staging:SetAttribute("DoorOpen", false)
-		staging:SetAttribute("EntranceOpen", true)
+		staging:SetAttribute("EntranceOpen", false)
 	else
 		for i = 1, 4 do
 			local c = worldPoint(model, "Chest" .. i)
@@ -1760,7 +1821,12 @@ function DungeonBuilder.BuildRun(index, floorIndex, seed)
 		local door, bars = Kit.door(hall, CFrame.new(exitCf and (exitCf.Position - Vector3.new(0, 1.5, 0)) or hall.PrimaryPart.Position), "Door_Exit", 8)
 		Kit.setDoor(door, false)
 		hall:SetAttribute("DoorOpen", false)
-		pocket.Hall = { Index = 0, Kind = "Hall", Model = hall, Room = hall, Spawns = spawns, Center = hall.PrimaryPart.Position + Vector3.new(0, 1.5, 0), ExitDoor = { Model = door, Bars = bars }, Entrance = spawns[1] }
+		-- the hall's exit carries room 1's EnterPrompt (hall side; the run moves on when every member pressed E)
+		local nextPrompt, nextPoint = nil, nil
+		if exitCf then
+			nextPrompt, nextPoint = Kit.enterPrompt(hall, exitCf * CFrame.new(0, 3, -2.5), enterLabel(1), 1)
+		end
+		pocket.Hall = { Index = 0, Kind = "Hall", Model = hall, Room = hall, Spawns = spawns, Center = hall.PrimaryPart.Position + Vector3.new(0, 1.5, 0), ExitDoor = { Model = door, Bars = bars }, Entrance = spawns[1], NextPrompt = nextPrompt, NextPoint = nextPoint }
 		pocket.Rooms[0] = pocket.Hall
 	end
 	State.Pockets[index] = pocket

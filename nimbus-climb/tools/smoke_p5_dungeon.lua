@@ -519,6 +519,50 @@ local function serverScenarios()
 		return run.State == state
 	end
 
+	-- the run's members still in (players, run order)
+	local function runMembers(run)
+		local out = {}
+		for _, uid in ipairs(run and run.Order or {}) do
+			local m = run.Members[uid]
+			if m and not m.Left then
+				out[#out + 1] = m.Player
+			end
+		end
+		return out
+	end
+
+	-- dungeon-fixes decision 2: nothing moves the group by a timer. Every member in `who` (default: all still in) is
+	-- stood next to the open door's EnterPrompt and presses E (ProximityPromptService, like the engine); then the fade's
+	-- Out passes and the server enters the next room. -> true when a door was open
+	local function pressDoor(run, who)
+		local dg = DGS().Dg
+		local t0 = Mock.Clock.now
+		local prompt = dg.nextDoor(run)
+		while not prompt and run.State ~= "Ending" and Mock.Clock.now - t0 < (D().Intermission or 2) + 2 do
+			advance(0.25)
+			prompt = dg.nextDoor(run)
+		end
+		if not prompt then
+			return false
+		end
+		for _, m in ipairs(who or runMembers(run)) do
+			if m.Parent and runOf(m) == run then
+				Mock.Teleport(m, CFrame.new(prompt.Parent.Position))
+				Mock.Trigger(prompt, m)
+			end
+		end
+		advance(0.6)
+		return true
+	end
+
+	-- from the Hall to room 1's entrance (everyone presses E at the hall's exit)
+	local function fromHall(run)
+		if run.State == "Hall" then
+			pressDoor(run)
+		end
+		return run.State == "Corridor" and run.Room == 1
+	end
+
 	-- a solo run on `floor` through the remote; -> run | nil
 	local function startSolo(p, floorIndex)
 		toPad(p, 0, 0)
@@ -561,6 +605,23 @@ local function serverScenarios()
 		return sim, out
 	end
 
+	-- white-box: `fn(u)` on every live enemy of the run's encounter (dungeon-fixes decision 4: a player's fighter
+	-- auto-attacks, so an "idle" pet fights back; tests that need a wipe / a timeout / a long fight tune the enemies)
+	local function tuneEnemies(run, fn)
+		local b = battleOf(run.Battle)
+		local n = 0
+		for _, u in ipairs(b and b.Sim and b.Sim.units or {}) do
+			if u.side == 2 and u.alive then
+				fn(u)
+				n = n + 1
+			end
+		end
+		return n
+	end
+	local function unbeatable(u)
+		u.maxHp, u.hp = 1e9, 1e9
+	end
+
 	-- kills `targets` with the player's own attacks while `keep` (a unit) is held at `keepHp`: the fighter is stood next
 	-- to each target with its attack ready and ATTACK is sent through the service (the kill fires the sim's EnemiesDown)
 	local function slayWith(run, p, tr, sim, targets, keep, keepHp)
@@ -596,7 +657,7 @@ local function serverScenarios()
 
 	-- from the Hall straight into the boss room's fight (white-box: enterRoom(4))
 	local function intoBossRoom(run, p)
-		waitState(run, "Corridor", D().HallSeconds + 3)
+		fromHall(run)
 		DGS().Dg.enterRoom(run, 4)
 		advance(0.3)
 		crossThreshold(run, p)
@@ -606,7 +667,7 @@ local function serverScenarios()
 
 	-- from the Hall into the first room's fight (tracker created before the Start)
 	local function intoFight(run, p, tr)
-		waitState(run, "Corridor", D().HallSeconds + 3)
+		fromHall(run)
 		crossThreshold(run, p)
 		advance(0.6)
 		if tr then
@@ -796,7 +857,7 @@ local function serverScenarios()
 			T.check(dgs.GetParty(M1) == newParty and newParty.Members[M1.UserId] ~= nil, "p5 party: the member who quit the run joins the new party")
 			-- the old run's room 1 fight starts for M2 alone (no DuplicatePlayer), then M2 quits: the old run ends and
 			-- leaves the new party's links alone
-			waitState(run2, "Corridor", D().HallSeconds + 3)
+			fromHall(run2)
 			crossThreshold(run2, M2)
 			advance(0.6)
 			T.check(run2.State == "Fight" and run2.EndReason == nil, "p5 party: the old run's room 1 fight starts (one record per member: no DuplicatePlayer)", tostring(run2.State) .. " " .. tostring(run2.EndReason))
@@ -915,9 +976,9 @@ local function serverScenarios()
 			Config.Dev.Admins = saved
 			T.check(okR ~= true and runOf(runner) == run and DS().GetProfile(runner).Pets[WEAK[1]] ~= nil, "p5 excl: /reset is refused during a dungeon run", tostring(whyR))
 		end
-		-- a Corridor (after HallSeconds) and the Treasure (white-box)
-		waitState(run, "Corridor", D().HallSeconds + 3)
-		T.check(run.State == "Corridor" and run.Room == 1, "p5 excl: after HallSeconds the run is in room 1's corridor (at the Threshold)")
+		-- a Corridor (after E at the hall's exit) and the Treasure (white-box)
+		fromHall(run)
+		T.check(run.State == "Corridor" and run.Room == 1, "p5 excl: after E at the hall's exit the run is in room 1's corridor (at the Threshold)")
 		refusedEverywhere("Corridor")
 		dgs.Dg.enterTreasure(run)
 		advance(0.3)
@@ -999,9 +1060,17 @@ local function serverScenarios()
 		T.check(pocket.Rooms[0] ~= nil and pocket.Rooms[1] ~= nil and pocket.Rooms[2] == nil, "p5 run: BuildRun placed the hall + room 1 only")
 		T.check(workspace:FindFirstChild("Dungeons") ~= nil and workspace.Dungeons:FindFirstChild("Dungeon_" .. pocket.Index) == pocket.Model, "p5 run: the holder is workspace.Dungeons.Dungeon_<index>")
 
-		-- the Hall -> room 1 corridor; the fight starts when the member crosses the Threshold
-		waitState(run, "Corridor", d.HallSeconds + 3)
-		T.check(run.State == "Corridor" and run.Room == 1 and run.Phase == "Threshold", "p5 run: after HallSeconds the member stands at room 1's entrance (Corridor / Threshold)")
+		-- the Hall -> room 1 corridor (no HallSeconds timer: E at the hall's exit); the fight starts when the member
+		-- crosses the Threshold
+		advance(d.HallSeconds + 3)
+		T.check(run.State == "Hall" and run.Room == 0, "p5 run: the Hall no longer times out into room 1 (" .. tostring(d.HallSeconds) .. " s + 3 passed)")
+		local hallPrompt = pocket.Hall and pocket.Hall.NextPrompt
+		T.check(hallPrompt and hallPrompt.Enabled == true and hallPrompt.Name == "EnterPrompt" and hallPrompt.ObjectText == "Room 1" and hallPrompt.KeyboardKeyCode == Enum.KeyCode.E
+			and hallPrompt.HoldDuration == 0 and hallPrompt.RequiresLineOfSight == false and hallPrompt.MaxActivationDistance == 10 and hallPrompt:GetAttribute("DungeonAction") == "Enter",
+			"p5 run: the hall's exit carries an enabled EnterPrompt (E, no hold, no line of sight, 10 studs, DungeonAction Enter, 'Room 1')")
+		fromHall(run)
+		T.check(run.State == "Corridor" and run.Room == 1 and run.Phase == "Threshold", "p5 run: after E at the hall's exit the member stands at room 1's entrance (Corridor / Threshold)")
+		T.check(hallPrompt and hallPrompt.Enabled == false, "p5 run: the hall's EnterPrompt is disabled once the group moved on")
 		T.check(pocket.Rooms[2] ~= nil and db.LiveParts(pocket) <= 950, "p5 run: room 2 is built on entering room 1 (live parts " .. tostring(db.LiveParts(pocket)) .. " <= 950)")
 		advance(2)
 		T.check(run.State == "Corridor", "p5 run: nobody crossed the Threshold yet: no fight")
@@ -1049,13 +1118,22 @@ local function serverScenarios()
 			T.check(run.Paid[room] and run.Paid[room][p.UserId] == true, "p5 run: run.Paid[" .. room .. "][uid] is marked")
 			advance(d.Intermission + 0.6)
 			local ri = roomInfo(run, room)
-			T.check(ri and ri.ExitDoor and ri.ExitDoor.Model:GetAttribute("Open") == true and ri.Model:GetAttribute("DoorOpen") == true, "p5 run: the exit bars open after Intermission (DoorOpen true)")
 			if room == 4 then
-				waitState(run, "Treasure", d.DoorTime + 3)
+				T.check(ri and ri.NextPrompt and ri.NextPrompt.Enabled == true and ri.NextPrompt.ObjectText == "Treasure" and ri.Model:GetAttribute("DoorOpen") == false,
+					"p5 run: after the boss the exit stays barred and its EnterPrompt 'Treasure' is enabled")
 			else
-				waitState(run, "Corridor", d.DoorTime + 3)
-				advance(d.DoorTime + 0.6)
-				T.check(run.Room == room + 1 and run.Phase == "Threshold", "p5 run: after DoorTime the stragglers stand at room " .. (room + 1) .. "'s entrance")
+				local nextRi = roomInfo(run, room + 1)
+				T.check(ri and ri.ExitDoor and ri.ExitDoor.Model:GetAttribute("Open") == true and ri.Model:GetAttribute("DoorOpen") == true, "p5 run: the exit bars open after Intermission (DoorOpen true)")
+				T.check(nextRi and nextRi.Door and nextRi.Door.Model:GetAttribute("Open") == false and nextRi.Model:GetAttribute("EntranceOpen") == false and nextRi.EnterPrompt and nextRi.EnterPrompt.Enabled == true,
+					"p5 run: room " .. (room + 1) .. "'s entrance stays closed with its EnterPrompt enabled")
+			end
+			advance(d.DoorTime + 3)
+			T.check(run.State == "Corridor" and run.Room == room and run.Phase == "Walk", "p5 run: room " .. room .. ": no timer moves the group on (Intermission + DoorTime + 3 s passed)")
+			pressDoor(run)
+			if room == 4 then
+				waitState(run, "Treasure", 2)
+			else
+				T.check(run.Room == room + 1 and run.Phase == "Threshold" and roomInfo(run, room + 1).Model:GetAttribute("EntranceOpen") == true, "p5 run: after E the member stands at room " .. (room + 1) .. "'s entrance (its door open)")
 				if room + 1 == 2 then
 					T.check(pocket.Rooms[1] == nil and pocket.Rooms[2] ~= nil and pocket.Rooms[3] ~= nil, "p5 run: room 1 is destroyed on entering room 2 (room 3 is built while 2 fights)")
 				elseif room + 1 == 3 then
@@ -1115,7 +1193,7 @@ local function serverScenarios()
 		local run4 = runOf(q[1])
 		if T.check(run4 ~= nil and count(run4.Members) == 4, "p5 run: a 4-party starts after the 5 s countdown with 4 members") then
 			local p2 = run4.Pocket
-			waitState(run4, "Corridor", d.HallSeconds + 3)
+			fromHall(run4)
 			-- a straggler far away is placed at the entrance with the others
 			for _, m in ipairs(q) do
 				local r = K.root(m)
@@ -1137,7 +1215,9 @@ local function serverScenarios()
 			local w3 = bc.DungeonWave(3, 1, 1, 4, 5)
 			local w1 = bc.DungeonWave(3, 1, 1, 1, 5)
 			T.check(#w1.Pets == 2 and #w3.Pets == 5, "p5 run: on floor 3 a solo wave has 2 enemies, a 4-party wave 2 + 3 = 5", tostring(#w1.Pets) .. "/" .. tostring(#w3.Pets))
-			-- the leash: a member 100 studs from the room centre is removed after 2 strikes
+			-- the leash: a member 100 studs from the room centre is removed after 2 strikes (the enemy is made
+			-- unbeatable first: the auto-attacking level-20 team would clear floor 1 before the second strike)
+			tuneEnemies(run4, unbeatable)
 			local ri = roomInfo(run4, 1)
 			local leashMark = K.logSize()
 			Mock.Teleport(q[4], CFrame.new(ri.Center + Vector3.new(100, 3, 0)))
@@ -1394,6 +1474,11 @@ local function serverScenarios()
 			local mark = K.logSize()
 			intoFight(run, w, nil)
 			T.check(run.State == "Fight", "p5 ends: KO: the fight runs")
+			-- (the level-1 pet auto-attacks: the enemy is made overwhelming so the room is lost by KO)
+			tuneEnemies(run, function(u)
+				unbeatable(u)
+				u.hit = 1e6
+			end)
 			local t0 = Mock.Clock.now
 			while run.State == "Fight" and Mock.Clock.now - t0 < 200 do
 				advance(0.5)
@@ -1412,6 +1497,11 @@ local function serverScenarios()
 		if T.check(run ~= nil, "p5 ends: (setup) a solo run for the timeout") then
 			local mark = K.logSize()
 			intoFight(run, tmo, nil)
+			-- (the strong team auto-attacks: the enemy is made unbeatable and harmless so only the clock ends the room)
+			tuneEnemies(run, function(u)
+				unbeatable(u)
+				u.hit = 0
+			end)
 			local t0 = Mock.Clock.now
 			while run.State == "Fight" and Mock.Clock.now - t0 < d.Floor1RoomTime + 20 do
 				advance(1)
@@ -1459,7 +1549,7 @@ local function serverScenarios()
 		advance(1.6)
 		run = startSolo(qa, 1)
 		if T.check(run ~= nil, "p5 ends: (setup) a solo run for the corridor Quit") then
-			waitState(run, "Corridor", d.HallSeconds + 3)
+			fromHall(run)
 			request(qa, "Quit")
 			advance(1)
 			T.check(run.State == "Ending" and inBattle(qa) == nil and runEndedOnce(run.Id), "p5 ends: Quit in a corridor ends a solo run (RunEnded once)")
@@ -1502,7 +1592,7 @@ local function serverScenarios()
 		if T.check(runA ~= nil and runB ~= nil and runA ~= runB, "p5 ends: (setup) two solo runs (two pockets)") then
 			T.check(runA.PocketIndex ~= runB.PocketIndex, "p5 ends: the runs use different pockets")
 			intoFight(runA, sa, nil)
-			waitState(runB, "Corridor", d.HallSeconds + 3)
+			fromHall(runB)
 			local markA, markB = K.logSize(), K.logSize()
 			local tok0 = tokens(sa)
 			dgs.Shutdown()
@@ -1555,8 +1645,9 @@ local function serverScenarios()
 		if T.check(run ~= nil, "p5 ends: (setup) a solo run for RunMaxSeconds") then
 			local maxT = dgs.MaxRunSeconds(1)
 			local roomT = d.Floor1RoomTime
-			T.check(maxT >= d.RunMaxSeconds and maxT >= 4 * roomT + 4 * (d.DoorTime + 30 + d.Intermission) + d.HallSeconds + d.TreasureSeconds + 120 and dgs.MaxRunSeconds(2) >= d.RunMaxSeconds,
-				"p5 ends: MaxRunSeconds(1) covers four 180 s rooms + corridors with the 30 s Threshold wait + hall + treasure + 120 (" .. tostring(maxT) .. " >= " .. tostring(d.RunMaxSeconds) .. ")")
+			-- dungeon-fixes decision 2: no DoorTime / HallSeconds any more; 5 door waits of 180 s (pooled) are allowed
+			T.check(maxT >= d.RunMaxSeconds and maxT >= 4 * roomT + 4 * (30 + d.Intermission) + 5 * 180 + d.TreasureSeconds + 120 and dgs.MaxRunSeconds(2) >= 4 * d.RoomTime + 5 * 180,
+				"p5 ends: MaxRunSeconds(1) covers four 180 s rooms + the 30 s Threshold waits + 5 door waits of 180 s (a slow-walking group) + treasure + 120 (" .. tostring(maxT) .. " >= " .. tostring(d.RunMaxSeconds) .. ")")
 			run.Started = Mock.Clock.now - d.RunMaxSeconds - 1
 			advance(1.2)
 			T.check(run.State ~= "Ending", "p5 ends: a floor-1 run older than the catalog's 703 s is NOT killed (a slow legit run)", tostring(run.State))
@@ -1754,7 +1845,9 @@ local function serverScenarios()
 						accentOk = true
 					end
 				end
-				T.check(ri.Threshold ~= nil and ri.Door ~= nil and ri.ExitDoor ~= nil and #ri.Door.Bars >= 5 and ri.Model:GetAttribute("DoorOpen") == false, "p5 world: room " .. room .. " has a Threshold, entrance bars (open) and exit bars (closed, DoorOpen false)")
+				T.check(ri.Threshold ~= nil and ri.Door ~= nil and ri.ExitDoor ~= nil and #ri.Door.Bars >= 5 and ri.Model:GetAttribute("DoorOpen") == false
+					and ri.Door.Model:GetAttribute("Open") == false and ri.Model:GetAttribute("EntranceOpen") == false and ri.EnterPrompt ~= nil and ri.EnterPrompt.Enabled == false,
+					"p5 world: room " .. room .. " has a Threshold, entrance bars (closed until the group enters, its EnterPrompt disabled) and exit bars (closed, DoorOpen false)")
 			end
 			T.check(zonesOk, "p5 world: zones Mode Dungeon / ZoneId Room / Index / Room, 44 x 44 and 56 x 72 (the whole Throne floor), inside the floor, tagged", zoneWhy)
 			-- W5 battle-dungeon-2: the throne dais (room-local z 21..35, reachable by stairs) and the throne itself lie INSIDE
