@@ -2,7 +2,8 @@
 """The gate vortex textures (Phase 6 W2b, the player's "magical moving circle" inside every gate hoop).
 
 Writes white RGB + alpha PNG layers (512 x 512, tinted in game with ImageLabel.ImageColor3 by PortalFxController) to
-blender/textures/vortex/ and the uploader index blender/textures/textures.json (key -> png, contentHash). Procedural
+blender/textures/vortex/ and the uploader index blender/textures/textures.json (key -> png, contentHash = the PNG's
+sha256, structureHash = its size + pixel format; any content change uploads as a NEW image asset). Procedural
 (numpy + Pillow), seeded: the same script gives the same bytes. Nothing here is uploaded; tools/upload_assets.py
 --textures uploads them later (dry run by default) and writes src/shared/TextureIds.lua.
 
@@ -169,11 +170,20 @@ def build():
             "displayName": "NC " + key.replace("_", " "),
             "description": "Nimbus Climb gate vortex layer " + key,
             "contentHash": digest,
-            "structureHash": "image",
+            "structureHash": image_structure(paths[key]),
         }
     with open(INDEX, "w", encoding="utf-8", newline="\n") as fh:
         fh.write(json.dumps(index, indent=2, sort_keys=True) + "\n")
     return paths
+
+
+def image_structure(path):
+    """the image's 'structure': size + pixel format (review3 tooling-1). Informational for the uploader: Open Cloud
+    cannot update an image's content in place, so tools/upload_assets.py --textures makes a NEW asset for ANY content
+    change (same size or not); this hash only tells the log whether the size / format changed too."""
+    with Image.open(path) as im:
+        sig = "png %dx%d %s" % (im.size[0], im.size[1], im.mode)
+    return hashlib.sha256(sig.encode("utf-8")).hexdigest()[:32]
 
 
 def sheet(paths, out):

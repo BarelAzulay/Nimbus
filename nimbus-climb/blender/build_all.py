@@ -5,6 +5,10 @@
     /tmp/claude-0/bpyenv/bin/python blender/build_all.py --all --preview
     python3 blender/build_all.py --key pet_dog --no-export                          # numbers + manifests only, no bpy
 
+--no-export writes NO FBX: meshes.json gets "fbxSha256": null for a key whose contentHash changed (an older FBX left in
+blender/out/ is then refused by tools/upload_assets.py) and keeps the sha + the manifest's verify when the contentHash
+did not change (that FBX still matches). An export build records the sha256 of the verified FBX (review3 tooling-0).
+
 Per key: build the model (bridge / props / calibration), check the class budgets (too many triangles -> K x 0.9,
 up to 2 times, then the build FAILS; too many MeshParts or > 10k triangles in one part -> FAILS), check geometry
 (no zero-area quads, every group closed), export blender/out/<key>.fbx (Roblox's Blender settings, deterministic
@@ -17,6 +21,7 @@ Same input -> same contentHash / bytes.  Needs lupa (+ bpy for export): see blen
 """
 import argparse
 import glob
+import hashlib
 import json
 import os
 import sys
@@ -41,6 +46,33 @@ K_STEP, K_STEPS = 0.9, 2
 
 class BuildError(Exception):
     pass
+
+
+def sha256_file(path):
+    h = hashlib.sha256()
+    with open(path, "rb") as fh:
+        for chunk in iter(lambda: fh.read(1 << 20), b""):
+            h.update(chunk)
+    return h.hexdigest()
+
+
+def kept_fbx(key, content_hash):
+    """--no-export: the FBX already in blender/out/ still belongs to this contentHash? -> (verify, sha) or (None, None).
+    Only when the previous manifest verified that FBX for the SAME contentHash and its bytes did not change since."""
+    fbx = os.path.join(OUT, key + ".fbx")
+    try:
+        with open(os.path.join(OUT, key + ".manifest.json")) as fh:
+            old = json.load(fh)
+    except (OSError, ValueError):
+        return None, None
+    verify = old.get("verify") if isinstance(old, dict) else None
+    if not isinstance(verify, dict) or not verify.get("ok") or old.get("contentHash") != content_hash or not os.path.isfile(fbx):
+        return None, None
+    sha = sha256_file(fbx)
+    if verify.get("sha256") and verify["sha256"] != sha:
+        return None, None
+    verify = dict(verify, sha256=sha)
+    return verify, sha
 
 
 def load_catalogs():
@@ -204,6 +236,7 @@ class Builder:
         os.makedirs(OUT, exist_ok=True)
         fbx_name = key + ".fbx"
         verify = None
+        fbx_sha = None
         if self.export:
             B = self.B
             B.reset_scene()
@@ -213,6 +246,10 @@ class Builder:
             verify["bytes"] = size
             if not verify["ok"]:
                 raise BuildError("%s FBX verify failed: %s" % (key, verify["problems"]))
+            fbx_sha = verify["sha256"] = sha256_file(os.path.join(OUT, fbx_name))
+        else:
+            from nvox.manifest import hashes
+            verify, fbx_sha = kept_fbx(key, hashes(m)[0])
         data = write_manifest(m, os.path.join(OUT, key + ".manifest.json"), fbx_name, verify)
         write_tris(m, os.path.join(OUT, key + ".tris.json.gz"))
         if entry.get("upload", True) is False:
@@ -230,11 +267,16 @@ class Builder:
             "maxTrianglesPerMesh": data["tris"]["maxPerPart"], "tris": data["tris"]["total"],
             "parts": data["tris"]["parts"], "contentHash": data["contentHash"], "structureHash": data["structureHash"],
             "manifest": "src/shared/MeshManifests/" + key + ".lua",
+            # the sha256 of the FBX exported + verified for THIS contentHash; null = none (tools/upload_assets.py refuses)
+            "fbxSha256": fbx_sha,
         }
+        if fbx_sha is None:
+            print("WARNING %s: no FBX for this contentHash (--no-export): not uploadable until an export build with the "
+                  "Blender python (/tmp/claude-0/bpyenv/bin/python blender/build_all.py --key %s)" % (key, key))
         if self.verbose:
             print("%-22s K %-6s tris %6d parts %3d maxPart %5d  %s  %.1fs" % (
                 key, round(m.K, 3), data["tris"]["total"], data["tris"]["parts"], data["tris"]["maxPerPart"],
-                "fbx ok" if verify else "no fbx", time.time() - t0))
+                "fbx ok" if self.export else ("fbx kept" if fbx_sha else "no fbx"), time.time() - t0))
         return entry_out, data
 
 
@@ -382,7 +424,8 @@ def main():
         try:
             import bpy  # noqa: F401
         except ImportError:
-            print("no bpy in this python: run with /tmp/claude-0/bpyenv/bin/python (or pass --no-export)")
+            print("no bpy in this python: run with /tmp/claude-0/bpyenv/bin/python (blender/README.md). --no-export "
+                  "builds manifests + numbers only: it writes NO FBX, so nothing it builds can be uploaded")
             return 2
     b = Builder(export=export)
     updates, built, errors = {}, {}, []

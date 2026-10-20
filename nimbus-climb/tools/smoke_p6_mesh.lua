@@ -136,6 +136,15 @@ end
 
 -- What LoadAsset returns for a fixture key: a wrapper Model holding the uploaded Model with one MeshPart per
 -- manifest part, placed with a yaw / scale / mirror / offset (what an import with wrong axes would give).
+-- [fix-meshlib W3b, review3 runtime-0] opts.Mode says how the yaw reaches each part:
+--   "rotated" the part CFrame carries the yaw, Size = the manifest size (geometry unrotated in the part's frame)
+--   "baked"   the yaw is BAKED into the vertices (what blender/kit/nvox/manifest.py says Roblox's importer does: every
+--             MeshPart recentred on its bounds, identity rotation): identity part rotation, the centre rotated, the
+--             AABB size (X / Z swapped at 90 / 270)
+--   nil       mixed: odd parts baked, even parts rotated (so every yawed fixture exercises a non-identity template
+--             rotation; the old all-"rotated" fixture made it the identity and passed even when Assemble dropped it)
+-- Each part records FX_GeoYaw: the yaw of its geometry inside its own frame (baked: the yaw, rotated: 0), so a test can
+-- tell where the mesh's own +X / +Z end up (geoErr).
 local function fakeAsset(key, opts)
 	opts = opts or {}
 	local man = opts.Manifest or manifestOf(opts.Fixture or key)
@@ -158,8 +167,17 @@ local function fakeAsset(key, opts)
 			end
 			local part = Instance.new("MeshPart")
 			part.Name = pf(p, "name")
-			part.Size = v3(pf(p, "size")) * scale
-			part.CFrame = CFrame.new(offset) * yaw * CFrame.new(c * scale)
+			local baked = opts.Mode == "baked" or (opts.Mode == nil and i % 2 == 1)
+			if baked then
+				local sz = yaw:VectorToWorldSpace(v3(pf(p, "size")) * scale)
+				part.Size = Vector3.new(abs(sz.X), abs(sz.Y), abs(sz.Z))
+				part.CFrame = CFrame.new(offset + yaw:VectorToWorldSpace(c * scale))
+				part:SetAttribute("FX_GeoYaw", opts.Yaw or 0)
+			else
+				part.Size = v3(pf(p, "size")) * scale
+				part.CFrame = CFrame.new(offset) * yaw * CFrame.new(c * scale)
+				part:SetAttribute("FX_GeoYaw", 0)
+			end
 			part.Anchored = false
 			part.CanCollide = true
 			part.Color = Color3.fromRGB(163, 162, 165)
@@ -195,6 +213,20 @@ local function installTemplate(ML, root, key, opts)
 	return tpl
 end
 
+-- the world AABB size of a box (cf, size)
+local function extentOf(cf, size)
+	local r, u, b = cf.RightVector, cf.UpVector, cf.LookVector
+	return Vector3.new(abs(r.X) * size.X + abs(u.X) * size.Y + abs(b.X) * size.Z, abs(r.Y) * size.X + abs(u.Y) * size.Y + abs(b.Y) * size.Z,
+		abs(r.Z) * size.X + abs(u.Z) * size.Y + abs(b.Z) * size.Z)
+end
+
+-- how far the part's GEOMETRY (its frame * FX_GeoYaw) is from the world rotation `want` (identity by default)
+local function geoErr(part, want)
+	local g = part.CFrame * CFrame.Angles(0, math.rad(part:GetAttribute("FX_GeoYaw") or 0), 0)
+	local w = want or CFrame.new()
+	return math.max((g.RightVector - w.RightVector).Magnitude, (g.LookVector - w.LookVector).Magnitude, (g.UpVector - w.UpVector).Magnitude)
+end
+
 local function canonicalOk(ML, key, tpl, manOverride)
 	local man = manOverride or manifestOf(key)
 	local worst, flags, junk = 0, true, false
@@ -204,7 +236,10 @@ local function canonicalOk(ML, key, tpl, manOverride)
 			return false, "no part " .. tostring(pf(p, "name"))
 		end
 		worst = math.max(worst, (part.Position - v3(pf(p, "center"))).Magnitude)
-		worst = math.max(worst, (part.Size - v3(pf(p, "size"))).Magnitude)
+		-- [fix-meshlib W3b] the template part may be rotated (a baked yaw): its WORLD box is the manifest size and its
+		-- geometry faces the manifest's axes
+		worst = math.max(worst, (extentOf(part.CFrame, part.Size) - v3(pf(p, "size"))).Magnitude)
+		worst = math.max(worst, geoErr(part))
 		if not (part.Anchored and not part.CanCollide and not part.CanQuery and not part.CanTouch and part.Massless and part.Color == Color3.new(1, 1, 1)) then
 			flags = false
 		end
@@ -366,6 +401,73 @@ S.p6mesh_fit = guarded("p6mesh_fit", function()
 	T.check(tpl == nil and string.find(tostring(why), "no manifest", 1, true) ~= nil, "fit refuses a key without a manifest", tostring(why))
 	ML._Reset()
 	box:Destroy()
+	-- [fix-meshlib W3b, review3 runtime-0] a yaw BAKED into the vertices (identity part rotation, centre rotated, AABB
+	-- swapped): the fit rotates each template part by inv(yaw) with its local size, and Assemble must keep both (it used
+	-- to rebuild every part unrotated at the world-axis manifest size: each piece turned 90 / 180 degrees and stretched)
+	for _, yawDeg in ipairs({ 90, 180 }) do
+		local BL, broot, bbox = newLib({}, { pet_dog = "pet_dog" })
+		local btpl, bwhy = BL._Fit("pet_dog", fakeAsset("pet_dog", { Yaw = yawDeg, Mode = "baked", Junk = false }))
+		T.check(btpl ~= nil and btpl:GetAttribute("ML_Yaw") == yawDeg, fmt("baked yaw %d: the import fits (ML_Yaw %d)", yawDeg, yawDeg), tostring(bwhy))
+		if btpl then
+			local okC, detail = canonicalOk(BL, "pet_dog", btpl)
+			T.check(okC, fmt("baked yaw %d: the template's world boxes = the manifest sizes, its geometry faces the manifest axes", yawDeg), detail)
+			local turned, swapped = 0, 0
+			for _, p in ipairs(manifestOf("pet_dog").Parts) do
+				local tp = btpl:FindFirstChild(pf(p, "name"))
+				if tp and (tp.CFrame.RightVector - Vector3.new(1, 0, 0)).Magnitude > 0.5 then
+					turned = turned + 1
+				end
+				local ms = v3(pf(p, "size"))
+				if tp and abs(ms.X - ms.Z) > 0.05 and (tp.Size - ms).Magnitude > 0.05 then
+					swapped = swapped + 1
+				end
+			end
+			T.check(turned > 0 and (yawDeg == 180 or swapped > 0), fmt("baked yaw %d: the fixture really turns the template parts (%d turned, %d with a local size != the manifest's)", yawDeg, turned, swapped))
+			btpl:SetAttribute("ML_Status", "ready")
+			btpl.Parent = broot
+			local at = CFrame.new(4, 2, -6) * CFrame.Angles(0, math.rad(30), 0)
+			for _, case in ipairs({ { Spec = "pet_dog", Opts = { Scale = 1.5 }, Want = CFrame.new(), Label = "rooted, scale 1.5" },
+				{ Spec = { Name = "ML_Mesh", Root = false, Parts = { { Key = "pet_dog" } } }, Opts = { At = at }, Want = at, Label = "rootless At (Dress)" } }) do
+				local m = BL.Assemble(case.Spec, {}, case.Opts)
+				local sc = case.Opts.Scale or 1
+				local worstRot, worstSize, worstGeo, worstBox, worstPos, n = 0, 0, 0, 0, 0, 0
+				for _, d in ipairs(m and m:GetDescendants() or {}) do
+					local mp = d:IsA("BasePart") and d:GetAttribute("ML_Part")
+					local tp = mp and btpl:FindFirstChild(mp)
+					if tp then
+						n = n + 1
+						local want = case.Want * (tp.CFrame - tp.CFrame.Position)
+						worstRot = math.max(worstRot, (d.CFrame.RightVector - want.RightVector).Magnitude, (d.CFrame.LookVector - want.LookVector).Magnitude)
+						worstSize = math.max(worstSize, (d.Size - tp.Size * sc).Magnitude)
+						worstGeo = math.max(worstGeo, geoErr(d, case.Want))
+						local mpart = nil
+						for _, p in ipairs(manifestOf("pet_dog").Parts) do
+							if pf(p, "name") == mp then
+								mpart = p
+							end
+						end
+						if mpart and case.Want == CFrame.new() then
+							worstBox = math.max(worstBox, (extentOf(d.CFrame, d.Size) - v3(pf(mpart, "size")) * sc).Magnitude)
+						end
+						if mpart then
+							worstPos = math.max(worstPos, (d.Position - case.Want:PointToWorldSpace(v3(pf(mpart, "center")) * sc)).Magnitude)
+						end
+					end
+				end
+				T.check(m ~= nil and n == #manifestOf("pet_dog").Parts and worstRot < 1e-3 and worstSize < 1e-3,
+					fmt("baked yaw %d, %s: Assemble keeps each template part's rotation and local size (x scale)", yawDeg, case.Label),
+					fmt("%d parts, rotation off %.4f, size off %.4f", n, worstRot, worstSize))
+				T.check(m ~= nil and worstGeo < 1e-3 and worstBox < 1e-3 and worstPos < 1e-3,
+					fmt("baked yaw %d, %s: every assembled piece faces the manifest axes at its manifest centre / box", yawDeg, case.Label),
+					fmt("geometry off %.4f, box off %.4f, centre off %.4f", worstGeo, worstBox, worstPos))
+				if m then
+					m:Destroy()
+				end
+			end
+		end
+		BL._Reset()
+		bbox:Destroy()
+	end
 	flushWarn("server", "p6mesh_fit", out0)
 end)
 
@@ -451,7 +553,7 @@ local function checkAssembled(ML, model, scale, label)
 	T.check(names.Fur and names.Fur.Color == ML.EvalColor(furRec, LOOK) and names.Fur.Color == LOOK.Primary, label .. ": Fur = the Look's Primary")
 	T.check(names.EyeIris and names.EyeIris.Color == ML.EvalColor(irisRec, LOOK), label .. ": EyeIris = cuteIris(Eye)")
 	-- placement: Fur at its manifest centre x scale, wings at the species' attachments
-	T.check(names.Fur and near(names.Fur.Position, furC) and near(names.Fur.Size, furS), label .. ": parts placed at manifest centre / size x scale")
+	T.check(names.Fur and near(names.Fur.Position, furC) and near(extentOf(names.Fur.CFrame, names.Fur.Size), furS), label .. ": parts placed at manifest centre / size x scale")
 	local wingAt = pf(man.Attachments.WingL, "pos")
 	local hingeRig = string.match(rig, "WingL:wing:1:[^=]*=([^;]+)")
 	local hx = hingeRig and tonumber(string.match(hingeRig, "^([^,]+)"))

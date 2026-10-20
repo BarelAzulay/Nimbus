@@ -443,7 +443,9 @@
     "client/Controllers/SkyDragonController": {
       "functions": [
         "Init",
-        "GetModel"
+        "GetModel",
+        "SetHeld",
+        "IsHeld"
       ]
     },
     "client/Controllers/IndexController": {

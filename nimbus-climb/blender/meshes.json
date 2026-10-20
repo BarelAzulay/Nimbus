@@ -871,6 +871,7 @@
    "description": "Nimbus Climb calibration: axes, scale, vertex colours, names",
    "displayName": "NC Cal Axes",
    "fbx": "blender/out/cal_axes.fbx",
+   "fbxSha256": "9b93ab82be62dc20b7143f939b46328a1d107a3df57dc2cd10c47ae7733d129b",
    "manifest": "src/shared/MeshManifests/cal_axes.lua",
    "maxTrianglesPerMesh": 768,
    "parts": 5,

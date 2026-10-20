@@ -7391,8 +7391,10 @@ function PetBuilder.SwapWhenReady(model, petDef, opts, buildFn, onSwapped)
 	if not ok or type(keys) ~= "table" or #keys == 0 or ML.IsReady(keys) then
 		return false
 	end
+	-- a key with no id, or one that FAILED to load (review3 world-3), never becomes ready: nothing waits on it
 	for _, key in ipairs(keys) do
-		if ML.Status(key) == "missing" then
+		local st = ML.Status(key)
+		if st == "missing" or st == "failed" then
 			return false
 		end
 	end

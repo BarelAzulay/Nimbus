@@ -24,7 +24,7 @@ Environment (never stored, never printed):
     ROBLOX_CREATOR_TYPE  "user" (default) or "group"
 
 Inputs:  blender/meshes.json  { "keys": { key: { fbx, displayName, description, maxTrianglesPerMesh, contentHash,
-                                                     structureHash } } }  ("assets" or a bare map work too)
+                                                     structureHash, fbxSha256 } } }  ("assets" or a bare map work too)
          blender/out/<key>.fbx (or the entry's "fbx" path)
 Outputs: blender/upload_state.json  (creator, per key: assetId, revisionId, moderationState, contentHash,
                                      structureHash, pending operation ...; written after every asset)

@@ -3039,6 +3039,12 @@ Amendments (lead; these win over the recipe):
 
 ### 6.5 Budgets
 recipe 4.2 table; plus the evolved auras count inside the evolved budget; busiest phone view <= 300k tris.
+W3 amendment (lead, from perf-plots): the busiest contract view (4 plots seen from the plaza, 340-stud ring) applies
+the client plot LOD (HomeFx: High < 120 studs, `_low` keys 120-200, Far >= 200 keeps only the house + plot base on
+`_low`; 20-stud hysteresis, checked every 0.5 s) and must be <= 300k tris; the sampled cross-plaza phone view
+(113 degrees, any yaw) <= 320k. The old "400 parts" is replaced by <= 3000 MeshParts in view and <= 700 distinct
+(mesh, material) batches (Roblox instances identical meshes; the 4.3 name contract alone makes pet sets 1395 parts).
+`tools/mesh_budget.py --lod-check` enforces it; confirm in Studio with the MicroProfiler after W4.
 
 ### 6.6 Tests
 recipe 4.9. Every wave keeps `tools/smoke.py --quick` green in the default (no ids) mode; W2 adds the mesh-fixture

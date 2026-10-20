@@ -84,6 +84,7 @@ local cfg = {
 	SlowSeconds = 20,
 	Root = nil, -- tests: the folder that holds the templates (default ReplicatedStorage.MeshLibrary)
 	Ids = nil, -- tests: an id table instead of shared/MeshIds
+	DressTag = nil, -- tests: a private CollectionService tag (default ML_Dress) so a test copy never dresses the game's targets
 }
 
 local ids = {} -- key -> asset id
@@ -470,9 +471,15 @@ local function notify(key)
 	MeshLibrary.Changed:Fire(key)
 end
 
+-- (review3 runtime-5) a key that can never become usable here ('failed' on the server or on this device, or 'missing'
+-- after Start) registers nothing: fn is dropped, so no closure (and no target it captures) is held forever
 function MeshLibrary.OnReady(key, fn)
 	if usable(key) then
 		task.defer(fn, key)
+		return
+	end
+	local st = MeshLibrary.Status(key)
+	if st == "failed" or (started and st == "missing") then
 		return
 	end
 	waiters[key] = waiters[key] or {}
@@ -592,7 +599,7 @@ end
 -- Solves scale / yaw / mirror. Returns fit = { Scale, Yaw, Mirror, Err } or nil, reason.
 local function solveFit(man, found)
 	local mparts = field(man, "Parts", "parts")
-	local names, P, C, S, M = {}, {}, {}, {}, {}
+	local names, P, C, S, M, Q = {}, {}, {}, {}, {}, {}
 	for _, p in ipairs(mparts) do
 		local inst = found[p.name]
 		if inst == nil then
@@ -603,6 +610,7 @@ local function solveFit(man, found)
 		names[#names + 1] = p.name
 		P[#P + 1] = inst.Position
 		S[#S + 1] = inst.Size
+		Q[#Q + 1] = inst.CFrame - inst.CFrame.Position
 		C[#C + 1] = vec(p.center)
 		M[#M + 1] = vec(p.size)
 	end
@@ -634,7 +642,21 @@ local function solveFit(man, found)
 		mc = mc + C[i]
 	end
 	pc, mc = pc / n, mc / n
-	local best, bestErr, bestPlain = nil, math.huge, math.huge
+	-- (review3 runtime-0) the yaw is picked on the centres PLUS the part sizes: a yaw baked into the vertices swaps a
+	-- part's local X / Z at 90 / 270, which a single-part (or concentric) asset only shows in its sizes. The tolerance
+	-- below still judges the centres alone. A baked 180 on a single-part asset stays undetectable (same centre, same box).
+	local sizeErr = {}
+	for _, deg in ipairs(YAWS) do
+		local R = yawCF(deg)
+		local e = 0
+		for i = 1, n do
+			local w = Q[i]:VectorToObjectSpace(R:VectorToWorldSpace(M[i])) * scale
+			local d = Vector3.new(math.abs(w.X), math.abs(w.Y), math.abs(w.Z)) - S[i]
+			e = e + d.X * d.X + d.Y * d.Y + d.Z * d.Z
+		end
+		sizeErr[deg] = e
+	end
+	local best, bestErr, bestPlain, bestScore = nil, math.huge, math.huge, math.huge
 	for _, mirror in ipairs({ false, true }) do
 		for _, deg in ipairs(YAWS) do
 			local R = yawCF(deg)
@@ -650,8 +672,9 @@ local function solveFit(man, found)
 			if not mirror and err < bestPlain then
 				bestPlain = err
 			end
-			if err < bestErr - 1e-9 then
-				best, bestErr = { Scale = scale, Yaw = deg, Mirror = mirror }, err
+			local score = err + sizeErr[deg]
+			if score < bestScore - 1e-9 then
+				best, bestErr, bestScore = { Scale = scale, Yaw = deg, Mirror = mirror }, err, score
 			end
 		end
 	end
@@ -808,6 +831,7 @@ local function loadKey(key, assetId, gen)
 	end
 	status[key] = "failed"
 	version = version + 1
+	waiters[key] = nil -- review3 runtime-5 / world-3: nothing waits on a key that will never load
 	setHolder(key, "failed", lastErr)
 	warn(string.format("[MeshLibrary] %s (asset %d) stays on the Part build: %s", key, assetId, tostring(lastErr)))
 	MeshLibrary.Changed:Fire(key)
@@ -880,7 +904,9 @@ local function preload(tpl, gen)
 	if failed then
 		localBroken[key] = true
 		version = version + 1
+		waiters[key] = nil -- review3 runtime-5: release what waited on it
 		warn("[MeshLibrary] " .. key .. " could not be downloaded on this device; it keeps the Part build here")
+		MeshLibrary.Changed:Fire(key) -- review3 runtime-2: MeshFallback re-checks the server-built mesh pets using it
 		return
 	end
 	setFidelity(tpl, key)
@@ -904,9 +930,25 @@ local function startClient(gen)
 		running = false
 	end
 	local function watch(child)
-		if child:GetAttribute("ML_Status") == "ready" and not localReady[child.Name] then
+		local st = child:GetAttribute("ML_Status")
+		if st == "ready" and not localReady[child.Name] then
 			queue[#queue + 1] = child
 			task.spawn(pump)
+		elseif st == "loading" and child:IsA("Folder") then
+			-- a holder the server may still mark 'failed' (review3 runtime-5): then release the key's waiters here
+			local conn = nil
+			conn = child:GetAttributeChangedSignal("ML_Status"):Connect(function()
+				if gen ~= generation or child:GetAttribute("ML_Status") ~= "failed" then
+					return
+				end
+				if conn then
+					conn:Disconnect()
+				end
+				waiters[child.Name] = nil
+				version = version + 1
+				MeshLibrary.Changed:Fire(child.Name)
+			end)
+			connections[#connections + 1] = conn
 		end
 	end
 	local function dressTagged(target)
@@ -915,10 +957,11 @@ local function startClient(gen)
 			MeshLibrary.Dress(target, key)
 		end
 	end
-	for _, target in ipairs(CollectionService:GetTagged(DRESS_TAG)) do
+	local tag = cfg.DressTag or DRESS_TAG
+	for _, target in ipairs(CollectionService:GetTagged(tag)) do
 		dressTagged(target)
 	end
-	connections[#connections + 1] = CollectionService:GetInstanceAddedSignal(DRESS_TAG):Connect(dressTagged)
+	connections[#connections + 1] = CollectionService:GetInstanceAddedSignal(tag):Connect(dressTagged)
 	task.spawn(function()
 		local f = cfg.Root or ReplicatedStorage:WaitForChild(FOLDER_NAME, 120)
 		if not f or gen ~= generation then
@@ -978,7 +1021,7 @@ function MeshLibrary._Reset()
 	lodSigOk = {} -- perf-plots LOD memo (LowKey)
 	folder = nil
 	started = false
-	cfg.Root, cfg.Ids = nil, nil
+	cfg.Root, cfg.Ids, cfg.DressTag = nil, nil, nil
 	cfg.MaxParallel, cfg.RetryDelays = 4, { 2, 5, 12 }
 end
 
@@ -1110,11 +1153,14 @@ function MeshLibrary.Assemble(spec, look, opts)
 			-- keeps the manifest part names, like the Body
 			local g = groups[gid] or { Id = gid, Name = "Body", Kind = "static" }
 			if (not entry.Groups or entry.Groups[gid]) and not (skip and skip[gid]) then
-				local part = tpl:FindFirstChild(p.name):Clone()
+				-- the template part keeps the fit's correction (canonical: rotation inv(yaw) * import rotation and the
+				-- LOCAL-axis size), so a yaw baked into the vertices is undone here too (review3 runtime-0)
+				local src = tpl:FindFirstChild(p.name)
+				local part = src:Clone()
 				flag(part)
 				local size = vec(p.size, es)
-				part.Size = size
-				part.CFrame = base * CFrame.new(vec(p.center, es))
+				part.Size = src.Size * es
+				part.CFrame = base * CFrame.new(vec(p.center, es)) * (src.CFrame - src.CFrame.Position)
 				part.CastShadow = math.max(size.X, size.Y, size.Z) >= 4
 				if type(p.color) == "table" then
 					part.Color = evalColor(p.color, look, 0)
@@ -1214,7 +1260,7 @@ function MeshLibrary.Tag(target, key, look, keep)
 		table.sort(names)
 		target:SetAttribute("ML_Keep", table.concat(names, ","))
 	end
-	CollectionService:AddTag(target, DRESS_TAG)
+	CollectionService:AddTag(target, cfg.DressTag or DRESS_TAG)
 end
 
 local function lookFromAttributes(target)
@@ -1273,7 +1319,8 @@ function MeshLibrary.Dress(target, key, opts)
 		return
 	end
 	opts = type(opts) == "table" and opts or {}
-	if target:FindFirstChild("ML_Mesh") then
+	-- review3 runtime-5: a target already gone, or a key that failed here, registers no waiter (OnReady drops it too)
+	if target:FindFirstChild("ML_Mesh") or not target.Parent or MeshLibrary.Status(key) == "failed" then
 		return
 	end
 	MeshLibrary.OnReady(key, function()
@@ -1517,11 +1564,12 @@ function MeshLibrary.Swap(model, buildFn, keys, opts)
 	if type(keys) ~= "table" or MeshLibrary.IsReady(keys) then
 		return swapNow(model, buildFn, place, onSwapped)
 	end
-	if started then
-		for _, key in ipairs(keys) do
-			if MeshLibrary.Status(key) == "missing" then
-				return nil
-			end
+	-- a key that can never load ('missing' after Start, 'failed' on the server or on this device: review3 runtime-5 /
+	-- world-3) waits for nothing: the Part model stays and no closure is kept
+	for _, key in ipairs(keys) do
+		local st = MeshLibrary.Status(key)
+		if st == "failed" or (started and st == "missing") then
+			return nil
 		end
 	end
 	local fired = false
