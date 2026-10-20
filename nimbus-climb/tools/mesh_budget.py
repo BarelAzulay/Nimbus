@@ -284,7 +284,7 @@ def lod_report(mans):
                          ("most triangles after the rule (r %d, yaw %d): %d plots" % (worst_t[0], worst_t[1], len(worst_t[2])), worst_t[2])):
         print("  " + label + " at " + ", ".join("%d" % d for d in dists) + " studs")
         for mode, text in (("before", "before (no LOD)"), ("today", "LOD rule, today's keys"),
-                           ("requested", "LOD rule + requested _low keys (estimate)")):
+                           ("requested", "LOD rule + _low keys (estimate where unbuilt)")):
             t, p, plots = scene_with_plots(mans, dists, mode, est)
             tiers = "/".join(x[1][0] for x in plots)
             print("    %-44s %8d tris %5d parts  [%s]%s" % (text, t, p, tiers, "  OVER" if t > budget["tris"] else ""))

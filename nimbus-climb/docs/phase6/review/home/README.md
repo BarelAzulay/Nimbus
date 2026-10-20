@@ -124,10 +124,11 @@ level per plot, from the camera distance to the plot centre, every 0.5 s (HomeFx
 MeshIds (today's game) change nothing. `MeshLibrary.LowKey(key)` takes `<key>_low` only when it is usable on the device
 and was baked from the same layout (LayoutSig).
 
-Requested keys (not built yet, catalog owner): `home_<station>_<L>_low` for every station key (vs 0.5, detail 1; the
-house at detail 0) and `prop_plot_low` (cloud cushion V 4). Their cost, measured with the kit in a scratch run, is in
-`low_keys_estimate.json`; `python3 tools/mesh_budget.py` prints the busiest views before the rule, with the rule on
-today's keys and with the requested keys.
+Built keys (W3c lod-keys): 80 `home_<station>_<L>_low` (vs 0.5, detail 1; the house at detail 0) and `prop_plot_low`
+(plain-box fence posts, 1976 tris), each with its High key's LayoutSig. A max plot measures High 48.8k / 68 parts,
+Low 15.6k / 68, Far 3.8k / 5. `python3 tools/mesh_budget.py --lod-check` passes: contract view 291,438 tris (<= 300k),
+sampled cross-plaza views 306,646 and 310,868 (<= 320k). Sheets: `plot_lod_lowkeys_tiers.png`,
+`plot_lod_lowkeys_onscreen.png`, `lowkeys_vs_high.png`. The first estimate is kept in `low_keys_estimate.json`.
 
 Sheets (scratch `w6/perf-plots/plotrender.py`: the Sky Castle plot composed from its station meshes at the
 TycoonCatalog slots; low keys baked in memory):

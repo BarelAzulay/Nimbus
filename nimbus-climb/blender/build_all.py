@@ -206,7 +206,7 @@ class Builder:
             # see-through parts (Glass / ForceField / Transparency > 0) emit faces only towards empty space and hide
             # none of their opaque neighbours' faces (nvox/mesher.py): their own closure sum is open by design, the
             # opaque parts next to them stay closed and are still checked.  The zero-area check runs for every part.
-            translucent = bool(getattr(o, "transparency", 0)) or o.material in ("Glass", "ForceField")
+            translucent = (bool(getattr(o, "transparency", 0)) or o.material in ("Glass", "ForceField")) and not getattr(o, "meshed_closed", False)
             for corners, _ in o.quads:
                 c = np.asarray(corners, float)
                 n = np.cross(c[1] - c[0], c[3] - c[0])

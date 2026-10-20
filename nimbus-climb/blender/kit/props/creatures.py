@@ -153,6 +153,7 @@ def boss_joint(entry, kit):
     for o in made:
         if o.key in see:
             o.transparency = float(see[o.key])
+            o.meshed_closed = True  # meshed as an opaque closed shell: build_all's closure check still applies
     return finish(m, {"boss": boss, "joint": joint, "parent": g["parent"], "pivotStuds": [round(float(v), 4) for v in pivot],
                       "K": k, "seeThrough": sorted(see)})
 
