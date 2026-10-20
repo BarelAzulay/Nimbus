@@ -1,0 +1,19 @@
+{
+  "assets": {
+    "cal_axes": {
+      "assetId": 115959775479149,
+      "contentHash": "afee3826ba910b9dbfc351e7cac9b7d4",
+      "fileSha256": "9b93ab82be62dc20b7143f939b46328a1d107a3df57dc2cd10c47ae7733d129b",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-10-20T21:33:44.148Z",
+      "revisionId": "1",
+      "structureHash": "08d674cc473038cbe9002d9d6da8aff5",
+      "uploadedAt": "2026-10-20T21:33:50Z"
+    }
+  },
+  "creator": {
+    "id": "93742920",
+    "type": "user"
+  },
+  "version": 1
+}
