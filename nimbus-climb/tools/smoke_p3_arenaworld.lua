@@ -1284,4 +1284,196 @@ S.p3arena_art = guarded("p3arena_art", function()
 	K.flushWarnings("p3arena_art")
 end)
 
+
+-- [owner: art-arenadungeon] begin -- Phase 6 W2: the Blender keys of the arena (blender/catalog/arenadungeon.json) and
+-- ArenaBuilder's Tag calls (ArenaBuilder._Mesh): every tagged piece has its arena_<piece> key and every arena key is
+-- tagged somewhere, each LayoutSig still matches the live Part build (else rebuild: blender/build_all.py --class
+-- arenadungeon), targets never nest, every visible Neon part of a target stays (keep), nothing is tagged without
+-- uploaded ids, a tag with ids carries the offset / look / keep, a stale layout is refused, the arena's mesh budget.
+local function meshKeysWith(prefix)
+	local inst = K.moduleInstance("shared/MeshLibrary")
+	local dir = inst and inst.Parent and inst.Parent:FindFirstChild("MeshManifests")
+	local out = {}
+	for _, m in ipairs(dir and dir:GetChildren() or {}) do
+		if m:IsA("ModuleScript") and string.sub(m.Name, 1, #prefix) == prefix then
+			out[#out + 1] = m.Name
+		end
+	end
+	table.sort(out)
+	return out
+end
+
+S.p3arena_mesh = guarded("p3arena_mesh", function()
+	if not K.needBoot() then
+		return
+	end
+	local AB = arenaBuilder()
+	local mlInst = K.moduleInstance("shared/MeshLibrary")
+	local okML, ML = pcall(require, mlInst)
+	local Mesh = AB and AB._Mesh
+	local info = AB and AB.GetInfo and AB.GetInfo()
+	if not T.check(type(Mesh) == "table" and type(Mesh.Placed) == "table" and okML and type(ML) == "table" and info and info.Model, "arena mesh: ArenaBuilder._Mesh, MeshLibrary and the built arena") then
+		return
+	end
+	local rp = AB.BuildPocket(37)
+	-- the recorded Tag calls (sorted: deterministic)
+	local recs = {}
+	for target, r in pairs(Mesh.Placed) do
+		if target.Parent and (target:IsDescendantOf(info.Model) or (rp and target == rp.Model)) then
+			recs[#recs + 1] = { Target = target, Key = r.Key, Origin = r.Origin, Look = r.Look, Keep = r.Keep, Scale = r.Scale, Name = target:GetFullName() }
+		end
+	end
+	table.sort(recs, function(a, b)
+		return a.Key .. a.Name < b.Key .. b.Name
+	end)
+	local set = {}
+	for _, r in ipairs(recs) do
+		set[r.Target] = true
+	end
+	-- 1. key coverage both ways
+	local used = {}
+	for _, r in ipairs(recs) do
+		used[r.Key] = (used[r.Key] or 0) + 1
+	end
+	local missing, orphan = {}, {}
+	for key in pairs(used) do
+		if not ML.Manifest(key) then
+			missing[#missing + 1] = key
+		end
+	end
+	table.sort(missing)
+	for _, key in ipairs(meshKeysWith("arena_")) do
+		if not used[key] then
+			orphan[#orphan + 1] = key
+		end
+	end
+	T.check(#recs >= 70 and #missing == 0, "arena mesh: every tagged piece has its manifest (src/shared/MeshManifests/arena_*)", #recs .. " targets; missing " .. table.concat(missing, ", "))
+	T.check(#orphan == 0, "arena mesh: every arena_* key is tagged by the build", table.concat(orphan, ", "))
+	for _, key in ipairs({ "arena_island", "arena_forum", "arena_floor", "arena_seg_stand", "arena_seg_gate", "arena_seg_bossgate", "arena_pillar", "arena_ring_1", "arena_ring_2", "arena_board_event", "arena_board_leader", "arena_trophy", "arena_bridge", "arena_pocket", "arena_torch", "arena_lantern", "arena_tree" }) do
+		T.check(used[key] ~= nil, "arena mesh: " .. key .. " is tagged", tostring(used[key]))
+	end
+	T.eq(used.arena_seg_stand, 12, "arena mesh: 12 stand segments share one key")
+	T.eq(used.arena_pillar, 16, "arena mesh: 16 columns share one key")
+	-- 2. layouts match, no nesting, glows kept
+	local sig = T.tally("arena mesh: each target's Part build matches its key's LayoutSig (else rebuild: blender/build_all.py --class arenadungeon)")
+	local nest = T.tally("arena mesh: targets never nest (one dress per subtree)")
+	local glow = T.tally("arena mesh: every visible Neon part of a target is in its keep list (it stays a glow part)")
+	for _, r in ipairs(recs) do
+		local man = ML.Manifest(r.Key)
+		local att = man and man.Attachments and man.Attachments.LayoutSig
+		if att then
+			local pos = att.Pos or att.pos
+			local n, a, b = Mesh.Signature(r.Target, r.Origin, r.Scale, r.Keep)
+			local tol = 0.05 + n * 1e-4
+			sig:case(n == pos[1] and abs(a - pos[2]) <= tol and abs(b - pos[3]) <= tol, r.Name, n .. " / " .. tostring(pos[1]) .. " parts, " .. fmt(a, 3) .. " vs " .. fmt(pos[2], 3))
+		end
+		local p = r.Target.Parent
+		local nested = false
+		while p do
+			if set[p] then
+				nested = true
+			end
+			p = p.Parent
+		end
+		nest:case(not nested, r.Name)
+		local keep = {}
+		for _, k in ipairs(r.Keep or {}) do
+			keep[k] = true
+		end
+		local bad = nil
+		for _, d in ipairs(r.Target:GetDescendants()) do
+			if d:IsA("BasePart") and d.Material == Enum.Material.Neon and d.Transparency < 0.99 and not keep[d.Name] then
+				bad = d.Name
+			end
+		end
+		glow:case(bad == nil, r.Name, bad)
+	end
+	sig:report()
+	nest:report()
+	glow:report()
+	-- 3. quiet with the shipped empty MeshIds
+	local dressed = 0
+	for _, r in ipairs(recs) do
+		if r.Target:GetAttribute("ML_DressKey") then
+			dressed = dressed + 1
+		end
+	end
+	T.eq(dressed, 0, "arena mesh: with the shipped empty MeshIds nothing is tagged (the Part build is unchanged)")
+	-- 4. the arena's meshes stay light: <= 300k triangles over every placement, <= 10k per MeshPart
+	local tris, worst = 0, 0
+	for _, r in ipairs(recs) do
+		local man = ML.Manifest(r.Key)
+		tris = tris + (tonumber(man and man.Raw and man.Raw.Tris) or 0)
+		for _, part in ipairs(man and man.Raw and man.Raw.Parts or {}) do
+			worst = max(worst, tonumber(part.Tris) or 0)
+		end
+	end
+	T.check(tris > 0 and tris <= 300000 and worst <= 10000, "arena mesh: the whole arena <= 300k triangles, every MeshPart <= 10k", tris .. " tris, worst part " .. worst)
+	-- 5. with ids: the tag carries the offset, the look and the keep list; a stale layout is refused
+	local ids, idn = {}, 0
+	for _, key in ipairs(meshKeysWith("arena_")) do
+		idn = idn + 1
+		ids[key] = 200000 + idn
+	end
+	ML._Reset()
+	ML._Configure({ Ids = ids })
+	pcall(ML.Start)
+	local tagged = T.tally("arena mesh: with ids every target is tagged (ML_DressKey = its key, the offset puts the mesh on the Tag origin)")
+	local function untag(target)
+		CollectionService:RemoveTag(target, "ML_Dress")
+		for _, att in ipairs({ "ML_DressKey", "ML_Offset", "ML_Keep", "ML_Primary", "ML_Secondary", "ML_Scale" }) do
+			target:SetAttribute(att, nil)
+		end
+	end
+	local seen = {}
+	for _, r in ipairs(recs) do
+		if not seen[r.Key] then
+			seen[r.Key] = r
+			local ok = Mesh.tag(r.Target, r.Key, r.Origin, r.Look, r.Keep, r.Scale)
+			local offOk = false
+			local off = r.Target:GetAttribute("ML_Offset")
+			if type(off) == "string" then
+				local v = {}
+				for x in string.gmatch(off, "[^,%s]+") do
+					v[#v + 1] = tonumber(x)
+				end
+				if #v == 12 then
+					local cf = r.Target:GetPivot() * CFrame.new(unpack(v))
+					offOk = (cf.Position - r.Origin.Position).Magnitude < 0.02
+				end
+			end
+			tagged:case(ok and r.Target:GetAttribute("ML_DressKey") == r.Key and CollectionService:HasTag(r.Target, "ML_Dress") and offOk, r.Key, tostring(off))
+		end
+	end
+	tagged:report()
+	local seg = seen.arena_seg_stand
+	if seg then
+		local seat = Mesh.colorOf(seg.Target, "Seat")
+		T.check(seat ~= nil and seg.Target:GetAttribute("ML_Primary") == seat and seg.Target:GetAttribute("ML_Secondary") == Mesh.colorOf(seg.Target, "Banner"), "arena mesh: a stand segment's seats / banner tint = its element colours (ML_Primary / ML_Secondary)")
+	end
+	local pil = seen.arena_pillar
+	T.check(pil ~= nil and string.find(pil.Target:GetAttribute("ML_Keep") or "", "Flame", 1, true) ~= nil, "arena mesh: a column keeps its Neon flame visible (ML_Keep)")
+	-- a stale layout (one part moved) is never tagged
+	if pil then
+		local clone = pil.Target:Clone()
+		untag(clone)
+		local moved = clone:FindFirstChild("Capital", true)
+		if moved then
+			moved.CFrame = moved.CFrame * CFrame.new(0, 2, 0)
+		end
+		T.check(Mesh.tag(clone, "arena_pillar", pil.Origin, nil, pil.Keep) == false and clone:GetAttribute("ML_DressKey") == nil, "arena mesh: a Part build that no longer matches its key is never tagged")
+		clone:Destroy()
+	end
+	for _, r in pairs(seen) do
+		untag(r.Target)
+	end
+	ML._Reset()
+	if rp then
+		AB.FreePocket(rp)
+	end
+	K.flushErrors("p3arena_mesh")
+	K.flushWarnings("p3arena_mesh")
+end)
+-- [owner: art-arenadungeon] end
+
 return S

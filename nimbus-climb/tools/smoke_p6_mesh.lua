@@ -265,6 +265,9 @@ S.p6mesh_noop = guarded("p6mesh_noop", function()
 		T.check((Mock.PendingTasks and Mock.PendingTasks() or 0) <= tasks0, "empty MeshIds: Start() spawns no thread")
 		T.check(real.Status("pet_dog") == "missing" and not real.IsReady("pet_dog"), "empty MeshIds: every key is 'missing' and not ready")
 		T.check(real.Assemble("pet_dog", {}) == nil, "empty MeshIds: Assemble returns nil (the caller builds Parts)")
+		-- [runtime-pets, W2] the cheap gates PetBuilder polls
+		T.check(type(real.Active) == "function" and real.Active() == false, "empty MeshIds: Active() is false (PetBuilder skips every key lookup)")
+		T.check(type(real.Version) == "function" and type(real.Version()) == "number", "Version() is a number (bumped when keys become usable / unusable)")
 	else
 		T.info("shared/MeshIds has ids", "the real-module no-op check is skipped (uploads exist)")
 	end

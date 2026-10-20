@@ -298,6 +298,88 @@ local function section(name, fn)
 end
 
 ----------------------------------------------------------------------
+-- Phase 6 (ARCHITECTURE_V3.md "## Phase 6" A7, owner art-lobby): Blender mesh dressing, exactly like LobbyBuilder's
+-- Mesh.tag: the Part build stays (fallback + colliders + every name / prompt / sign); static subtrees are tagged with
+-- MeshLibrary.Tag once their key has an uploaded id (empty MeshIds = nothing changes). Keys baked from this build carry
+-- a manifest "LayoutSig" (part count + position / size sums relative to the altar CFrame) and are tagged only while
+-- the live build matches it (the island's bridge gap follows the dock bearing).
+----------------------------------------------------------------------
+local Mesh = {
+	Lib = nil,
+	PuffParts = { "Body", "BodyLight", "Body_Light", "Cloud" }, -- a dressed storm puff's parts (kept by the bridge)
+}
+
+function Mesh.lib()
+	if Mesh.Lib == nil then
+		Mesh.Lib = false
+		local module = Shared:FindFirstChild("MeshLibrary")
+		if module then
+			local ok, result = pcall(require, module)
+			if ok and type(result) == "table" and type(result.Tag) == "function" then
+				Mesh.Lib = result
+			end
+		end
+	end
+	return Mesh.Lib or nil
+end
+
+-- the same numbers as LobbyBuilder._Mesh.Signature (blender/kit/props/lobby_world.py computes them too)
+function Mesh.Signature(target, origin)
+	local inv = origin:Inverse()
+	local n, a, b = 0, 0, 0
+	local list = target:GetDescendants()
+	list[#list + 1] = target
+	for _, d in ipairs(list) do
+		if d:IsA("BasePart") and d.Transparency < 0.99 then
+			local p = inv * d.Position
+			local sz = d.Size
+			n = n + 1
+			a = a + p.X + p.Y * 0.37 + p.Z * 0.61
+			b = b + sz.X + sz.Y * 1.3 + sz.Z * 1.7
+		end
+	end
+	return n, a, b
+end
+
+function Mesh.tag(target, key, origin, look, keep)
+	if typeof(target) ~= "Instance" or typeof(origin) ~= "CFrame" then
+		return false
+	end
+	local kit = StormAltar._Kit
+	if type(kit) == "table" and type(kit.Targets) == "table" then
+		kit.Targets[#kit.Targets + 1] = { Key = key, Target = target, Origin = origin, Look = look, Keep = keep }
+	end
+	local ML = Mesh.lib()
+	if not ML or type(ML.Status) ~= "function" then
+		return false
+	end
+	local okStatus, st = pcall(ML.Status, key)
+	if not okStatus or st == "missing" then
+		return false
+	end
+	local man = type(ML.Manifest) == "function" and ML.Manifest(key)
+	local att = man and man.Attachments and man.Attachments.LayoutSig
+	if att then
+		local pos = att.Pos or att.pos
+		if type(pos) ~= "table" then
+			return false
+		end
+		local n, a, b = Mesh.Signature(target, origin)
+		local tol = 0.05 + n * 1e-4
+		if n ~= pos[1] or math.abs(a - pos[2]) > tol or math.abs(b - pos[3]) > tol then
+			return false
+		end
+	end
+	local tagLook = {}
+	for k, v in pairs(look or {}) do
+		tagLook[k] = v
+	end
+	tagLook.Offset = target:GetPivot():Inverse() * origin
+	ML.Tag(target, key, tagLook, keep)
+	return true
+end
+
+----------------------------------------------------------------------
 -- Site: LobbyInfo.AltarSite / AltarDock, or a free spot at the lobby edge
 ----------------------------------------------------------------------
 -- Every visible part of the lobby near the walking height as an oriented box (for the free-spot search).
@@ -450,7 +532,8 @@ end
 -- edge of the walking top and a bank piled up behind the dais (the front stays low: the view from the plaza
 -- stays open). Lighter blue-grey tops, navy undersides, pale highlights painted onto a few crowns.
 local BV = 2
-local function sculptRim(gapDeg)
+local function sculptRim(gapDeg, bv)
+	local BV = bv or BV -- (the kit re-voxels the rim finer: StormAltar._Blueprint)
 	local g = Voxel.NewGrid(16)
 	local function billow(deg, r, y, rx, ry, key)
 		local a = math.rad(deg)
@@ -499,8 +582,12 @@ end
 -- The belly under the walking top (3-stud voxels, top layer just under the walking surface): a hanging
 -- cumulus, as wide as the rim at the top, then tiers of lumps that narrow downwards (a rounded, bumpy
 -- underside instead of a flat slab); lighter where it faces up, navy, darker underneath.
-local function sculptBelly()
+local function sculptBelly(f)
+	f = f or 1 -- the kit's finer grain: f voxels per 3-stud game voxel (StormAltar._Blueprint)
 	local g = Voxel.NewGrid(8)
+	local function ellipsoid(grid, x, y, z, rx, ry, rz, key, keep)
+		Voxel.Shape(grid, { Kind = "Ellipsoid", Center = { x * f, y * f, z * f }, Radius = { rx * f, ry * f, rz * f }, Key = key, KeepExisting = keep })
+	end
 	ellipsoid(g, 0, -0.6, 0, 7.4, 1.2, 7.4, "Body")
 	local function ring(n, r, y, rx, ry, seed, turn)
 		for i = 1, n do
@@ -778,6 +865,7 @@ local function placePuff(parent, cf)
 		end
 	end
 	m.Parent = parent
+	Mesh.tag(m, "cloud_storm_puff", cf) -- Phase 6
 end
 
 -- a stone post with a small crystal on top
@@ -1372,6 +1460,23 @@ function StormAltar.Build(lobbyInfo)
 		sparkles(glow, 1.5, 1, 0.35)
 	end)
 
+	-- Phase 6: mesh dressing of the static pieces (origin = the altar CFrame A; the bridge keeps its puffs' parts,
+	-- the sign keeps its poster board)
+	local meshTargets = {
+		{ "Island", "cloud_altar" },
+		{ "Ring", "prop_altar_ring" },
+		{ "Portal", "prop_altar_portal" },
+		{ "Crystals", "prop_altar_crystals" },
+		{ "Bridge", "floor_altar_bridge", Mesh.PuffParts },
+		{ "StormAltarSign", "prop_altar_sign", { "GatePanel" } },
+	}
+	for _, t in ipairs(meshTargets) do
+		local target = model:FindFirstChild(t[1])
+		if target then
+			Mesh.tag(target, t[2], A, nil, t[3])
+		end
+	end
+
 	-- part budget (the showcase pet is excluded)
 	local parts = 0
 	local showcase = model:FindFirstChild("StormfangShowcase")
@@ -1411,6 +1516,29 @@ function StormAltar.GetLanding()
 		return altarLanding
 	end
 	return nil
+end
+
+----------------------------------------------------------------------
+-- Phase 6 kit hooks (read-only; the game never calls them): blender/kit/props/lobby_world.py sets
+-- StormAltar._Kit = { Targets = {} } before Build() to list the mesh targets, and re-voxels the island's rim and belly
+-- finer with _Blueprint. Tests use _Mesh.
+----------------------------------------------------------------------
+StormAltar._Kit = nil
+StormAltar._Mesh = Mesh
+
+-- rim: the billow grid at `bv` studs per voxel (game: 2), belly: f voxels per 3-stud game voxel (game: 1)
+function StormAltar._Blueprint(gapDeg, bv, f)
+	if not Voxel then
+		return nil
+	end
+	return {
+		Rim = sculptRim(gapDeg or 180, bv or BV),
+		Belly = sculptBelly(f or 1),
+		RimVoxel = bv or BV,
+		BellyVoxel = 3 / (f or 1),
+		Palette = ISLAND_PALETTE,
+		RTop = R_TOP,
+	}
 end
 
 return StormAltar

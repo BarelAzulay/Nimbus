@@ -13,8 +13,9 @@ aura  the evolved aura meshes (6.0.4): a dashed ring of light that orbits the pe
       and white twinkles, stage 2 = a double ring in the pet's Glow / GlowB colours around its element bits (the
       second evolution's own Aura group is extended, so there is still exactly one Aura group); plus a crown of light
       (group `Halo`, kind bob) above the head of second evolutions that have no Halo of their own.
-Names stay inside the 4.3 contract: aura parts are `Aura`, `Aura2`... (MK_Key AuraA / AuraB / AuraC), the crown parts
-`Halo`... (MK_Key HaloGlow / Glow / GlowB); the new body keys are `GemGlint` (Neon) and the existing gold keys.
+Names stay inside the 4.3 contract: aura parts are `Aura`, `Aura2`... (MK_Key AuraGold / AuraGem / AuraSpark on first
+evolutions, AuraA / AuraB / AuraC on second ones and on a Secret pet's own rarity bits), the crown parts `Halo`...
+(MK_Key HaloGlow / AuraB / AuraC); the new body key is `GemGlint` (Neon), the trims reuse GoldLight / GoldDeep.
 Deterministic: no random numbers, set iteration is always sorted.
 """
 import math
@@ -290,17 +291,20 @@ def aura(bp, cells, entry):
     lo, hi, arr = _body_bounds(cells, K)
     height = hi[1] - lo[1]
     if stage == 1:
+        # own keys (a Secret pet's colour fit already knows AuraA / AuraB / AuraC for its rarity aura bits, which keep
+        # their colours): the first evolution's gold ring, its gem diamonds and white twinkles
         gold = STAGE1_GOLD
         gem = _pal_rgb(bp, "Gem", (232 / 255, 60 / 255, 100 / 255))
-        # (a Secret pet's own first-stage aura bits take the evolution's gold and gem colours too)
-        bp.palette["AuraA"] = _neon(gold)
-        bp.palette["AuraB"] = _neon(gem)
-        bp.palette["AuraC"] = _neon(_mix(gold, WHITE, 0.6))
+        bp.palette["AuraGold"] = _neon(gold)
+        bp.palette["AuraGem"] = _neon(gem)
+        bp.palette["AuraSpark"] = _neon(_mix(gold, WHITE, 0.6))
+        ka, kb, kc = "AuraGold", "AuraGem", "AuraSpark"
     else:
         glow = _pal_rgb(bp, "Glow", (1.0, 0.85, 0.4))
         bp.palette.setdefault("AuraA", _neon(glow))
         bp.palette.setdefault("AuraB", _neon(_pal_rgb(bp, "GlowB", glow)))
         bp.palette.setdefault("AuraC", _neon(_mix(glow, WHITE, 0.55)))
+        ka, kb, kc = "AuraA", "AuraB", "AuraC"
     g = bp.group("Aura")
     if g is not None:
         hinge = np.asarray(g.hinge[0], float)
@@ -326,27 +330,28 @@ def aura(bp, cells, entry):
     vox = 1.0 / gK  # design units per aura voxel
     if stage == 1:
         dash = 8
-        _ring(acells, "AuraA", R, ry, vox, vox, gK, dash=dash, gap=0.2, phase=0.0)
+        # (Low: one unbroken ring meshes into far fewer triangles than eight arcs)
+        _ring(acells, ka, R, ry, vox, vox, gK, dash=0 if low else dash, gap=0.2, phase=0.0)
         # a white twinkle in the middle of every gap, a slim gem floating over every second dash
-        for i in range(dash):
+        for i in range(0 if low else dash):
             a = (i + 0.1) / dash * 2 * math.pi
             p = (math.cos(a) * R * gK, ry * gK, math.sin(a) * R * gK)
-            acells[(int(round(p[0])), int(round(p[1])), int(round(p[2])))] = "AuraC"
+            acells[(int(round(p[0])), int(round(p[1])), int(round(p[2])))] = kc
             if not low:
-                acells[(int(round(p[0])), int(round(p[1])) + 1, int(round(p[2])))] = "AuraC"
+                acells[(int(round(p[0])), int(round(p[1])) + 1, int(round(p[2])))] = kc
         n = 4
         for i in range(n):
             a = (i + 0.6) / n * 2 * math.pi
-            _diamond(acells, "AuraB", (math.cos(a) * R, ry + 2.4 * vox, math.sin(a) * R), 1.0 * vox, gK, tall=2.2)
+            _diamond(acells, kb, (math.cos(a) * R, ry + 2.4 * vox, math.sin(a) * R), 1.0 * vox, gK, tall=2.2)
     else:
         th = max(vox, 0.18) if low else max(2 * vox, 1.6)
-        _ring(acells, "AuraA", R, ry, th, th, gK, dash=12, gap=0.18, phase=0.02)
+        _ring(acells, ka, R, ry, th, th, gK, dash=0 if low else 12, gap=0.18, phase=0.02)
         if not low:
-            _ring(acells, "AuraB", R + 2.6, ry - 0.2, vox, vox, gK, dash=6, gap=0.5, phase=0.3)
+            _ring(acells, kb, R + 2.6, ry - 0.2, vox, vox, gK, dash=6, gap=0.5, phase=0.3)
             n = 6
             for i in range(n):
                 a = (i + 0.25) / n * 2 * math.pi
-                _star(acells, "AuraC", (math.cos(a) * (R + 1.3), ry + 3.6 + (i % 2) * 1.8, math.sin(a) * (R + 1.3)),
+                _star(acells, kc, (math.cos(a) * (R + 1.3), ry + 3.6 + (i % 2) * 1.8, math.sin(a) * (R + 1.3)),
                       1.4, gK)
     if g is not None:
         _set_group_cells(g, acells)

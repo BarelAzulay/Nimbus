@@ -1,14 +1,118 @@
 {
  "class": "gates",
  "owner": "W2 art-gates",
- "doc": "blender/README.md. Keys: gate_<obby|ring|arena|dungeon|home|altar>, gate_arena_<n>, portal_dungeon, portal_home. type prop (kit/props/gates*.py); P4 hoop family, contract 6.0.3",
+ "doc": "blender/README.md + docs/phase6/review/gates/README.md. Keys: gate_<obby|ring|arena|dungeon|home|altar> (type prop 'gate', kit/props/gates.py; P4 hoop family, contract 6.0.3). One key per gate kind, shared by every BuildGate call of that glyph (lobby, arena Ring / Arena / Return, dungeon portal): gate_home dresses the arena's green Return gate. Pivot = the gate site; WorldStyle.BuildGate tags the gate model (ML_Offset (0, -11.5, 0)). The Neon glow ring / swirl / gems stay Parts.",
  "budgets": {
   "gate": {
    "tris": 8000,
    "parts": 20
   }
  },
- "keys": [],
+ "keys": [
+  {
+   "key": "gate_obby",
+   "type": "prop",
+   "prop": "gate",
+   "args": {
+    "kind": "obby",
+    "K": 2.0,
+    "KC": 4.0
+   },
+   "budget": "gate",
+   "description": "Nimbus Climb Sky Obby gate: hoop + 5-star crest (stone, cloud frame, coloured band, crest; Neon parts stay in Roblox)"
+  },
+  {
+   "key": "gate_ring",
+   "type": "prop",
+   "prop": "gate",
+   "args": {
+    "kind": "ring",
+    "K": 2.0,
+    "KC": 4.0
+   },
+   "budget": "gate",
+   "description": "Nimbus Climb Champion Ring gate: the crowned arch (stone, cloud frame, coloured band, crest; Neon parts stay in Roblox)"
+  },
+  {
+   "key": "gate_arena",
+   "type": "prop",
+   "prop": "gate",
+   "args": {
+    "kind": "arena",
+    "K": 2.0,
+    "KC": 4.0
+   },
+   "budget": "gate",
+   "description": "Nimbus Climb Battle Arena gate: hoop + shield and crossed swords (stone, cloud frame, coloured band, crest; Neon parts stay in Roblox)"
+  },
+  {
+   "key": "gate_dungeon",
+   "type": "prop",
+   "prop": "gate",
+   "args": {
+    "kind": "dungeon",
+    "K": 2.0,
+    "KC": 4.0
+   },
+   "budget": "gate",
+   "description": "Nimbus Climb Dungeon gate: hoop + skull over crossed bones (stone, cloud frame, coloured band, crest; Neon parts stay in Roblox)"
+  },
+  {
+   "key": "gate_home",
+   "type": "prop",
+   "prop": "gate",
+   "args": {
+    "kind": "home",
+    "K": 2.0,
+    "KC": 4.0
+   },
+   "budget": "gate",
+   "description": "Nimbus Climb Home / Return gate: hoop + little house (stone, cloud frame, coloured band, crest; Neon parts stay in Roblox)"
+  },
+  {
+   "key": "gate_altar",
+   "type": "prop",
+   "prop": "gate",
+   "args": {
+    "kind": "altar",
+    "K": 2.0,
+    "KC": 4.0
+   },
+   "budget": "gate",
+   "description": "Nimbus Climb Storm Altar gate: hoop + storm cloud (stone, cloud frame, coloured band, crest; Neon parts stay in Roblox)"
+  }
+ ],
  "sets": [],
- "previews": []
+ "previews": [
+  {
+   "name": "gate_obby",
+   "body": "gate_obby",
+   "res": 520
+  },
+  {
+   "name": "gate_ring",
+   "body": "gate_ring",
+   "res": 520
+  },
+  {
+   "name": "gate_arena",
+   "body": "gate_arena",
+   "res": 520
+  },
+  {
+   "name": "gate_dungeon",
+   "body": "gate_dungeon",
+   "res": 520
+  },
+  {
+   "name": "gate_home",
+   "body": "gate_home",
+   "res": 520
+  },
+  {
+   "name": "gate_altar",
+   "body": "gate_altar",
+   "res": 520
+  }
+ ]
 }

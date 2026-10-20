@@ -367,6 +367,38 @@ local function sculptPedestal(seed)
 	return g
 end
 
+-- Phase 6 (ARCHITECTURE_V3.md "## Phase 6" A7): the Part pedestal stays (the fallback; the Collider is separate) and
+-- is tagged for the Blender mesh npc_pedestal (one design; the rug / trim follow the NPC accent through ML_Primary).
+-- Clients dress it (MeshLibrary.Dress). Only once the key has an uploaded id: with an empty MeshIds nothing changes.
+local PEDESTAL_KEY = "npc_pedestal"
+local meshLib = nil
+local function meshLibrary()
+	if meshLib == nil then
+		meshLib = false
+		local module = Shared:FindFirstChild("MeshLibrary")
+		if module then
+			local ok, result = pcall(require, module)
+			if ok and type(result) == "table" and type(result.Tag) == "function" then
+				meshLib = result
+			end
+		end
+	end
+	return meshLib or nil
+end
+
+local function tagPedestal(model, origin, accent)
+	local ML = meshLibrary()
+	if not ML or type(ML.Status) ~= "function" then
+		return false
+	end
+	local okStatus, st = pcall(ML.Status, PEDESTAL_KEY)
+	if not okStatus or st == "missing" then
+		return false
+	end
+	ML.Tag(model, PEDESTAL_KEY, { Primary = accent, Offset = model:GetPivot():Inverse() * origin })
+	return true
+end
+
 local function buildPedestal(parent, spot, accent, seed)
 	if not Voxel then
 		-- no voxel kit: a plain two-tier plinth so the NPC still stands somewhere
@@ -381,6 +413,7 @@ local function buildPedestal(parent, spot, accent, seed)
 		return m
 	end
 	local g = sculptPedestal(seed)
+	local origin = spot * CFrame.new(0, PV / 2 - SINK, 0) -- where grid voxel (0, 0, 0) sits = the mesh pivot
 	local model = Voxel.Build(g, {
 		VoxelSize = PV,
 		Palette = pedestalPalette(accent),
@@ -394,8 +427,33 @@ local function buildPedestal(parent, spot, accent, seed)
 		Keep = { "Gold", "Trim", "Rug", "RugTop", "RugTrim", "RugCenter", "Plaque" },
 		PrimaryKey = "Stone",
 	})
+	tagPedestal(model, origin, accent)
 	model.Parent = parent
 	return model
+end
+
+-- tests (tools/smoke_p6_creatures.lua): build one pedestal (Model "Pedestal") under `parent` at `spot`, tagged for
+-- the mesh exactly like the NPCs' own. Returns the model.
+function NpcService._BuildPedestal(parent, spot, accent, seed)
+	return buildPedestal(parent, spot, accent, seed)
+end
+
+-- Phase 6 kit hook (read-only, never called by the game): the pedestal design for blender/kit/props/creatures.py
+-- (key npc_pedestal): the voxel grid of seed `seed`, its palette for `accent`, and the layout numbers.
+function NpcService._Blueprint(seed, accent)
+	if not Voxel then
+		return nil
+	end
+	accent = typeof(accent) == "Color3" and accent or rgb(120, 180, 236)
+	return {
+		Grid = sculptPedestal(tonumber(seed) or 1),
+		Palette = pedestalPalette(accent),
+		PV = PV,
+		Sink = SINK,
+		Top = PEDESTAL_TOP,
+		Accent = accent,
+		Keep = { "Gold", "Trim", "Rug", "RugTop", "RugTrim", "RugCenter", "Plaque" },
+	}
 end
 
 ----------------------------------------------------------------------

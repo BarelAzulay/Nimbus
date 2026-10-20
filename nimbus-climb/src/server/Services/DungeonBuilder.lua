@@ -156,6 +156,122 @@ local function jitter(color, seed)
 end
 
 ----------------------------------------------------------------------
+-- Phase 6 (ARCHITECTURE_V3.md "## Phase 6" A7, owner art-arenadungeon): Blender mesh dressing. The Part build stays
+-- exactly as it is (the fallback, the colliders, every name / prompt / attribute / Accent part). The reusable pieces
+-- (wall runs, floor tiles, pillars, torch bodies, chests, crates, cave rocks, stalagmites, cracks, door frames) sit in
+-- small wrapper Models whose PrimaryPart moves with the clone (clonePiece moves BaseParts), and are tagged with
+-- MeshLibrary.Tag(target, key, look, keep): clients Dress them (Parts hidden locally, Keep parts stay: flames, bars).
+-- Keys: blender/catalog/arenadungeon.json, baked by blender/kit/props/dungeon.py from this very build. A key is tagged
+-- only once it has an uploaded id (MeshLibrary.Status ~= "missing": the shipped empty MeshIds change nothing) and,
+-- for pieces baked from a layout (walls, floors, pillars, door frames), only while the live piece still matches the
+-- manifest's "LayoutSig" (part count + position / size sums in origin space; the random protruding Bricks are not
+-- counted: the mesh carries its own). Tint parts take the piece's colour (look Primary). Targets never nest.
+----------------------------------------------------------------------
+local Mesh = { Lib = nil, Skip = { Brick = true }, Placed = setmetatable({}, { __mode = "k" }) } -- Placed: target -> its Tag call
+
+function Mesh.lib()
+	if Mesh.Lib == nil then
+		Mesh.Lib = false
+		local module = Shared:FindFirstChild("MeshLibrary")
+		if module then
+			local ok, result = pcall(require, module)
+			if ok and type(result) == "table" and type(result.Tag) == "function" then
+				Mesh.Lib = result
+			end
+		end
+	end
+	return Mesh.Lib or nil
+end
+
+-- part count + weighted sums of the visible BaseParts' positions / sizes in `origin` space (/ scale), Skip names out
+function Mesh.Signature(target, origin, scale, keep)
+	local inv = origin:Inverse()
+	local s = tonumber(scale) or 1
+	local kept = {}
+	for _, k in ipairs(keep or {}) do
+		kept[k] = true
+	end
+	local n, a, b = 0, 0, 0
+	local list = target:GetDescendants()
+	list[#list + 1] = target
+	for _, d in ipairs(list) do
+		if d:IsA("BasePart") and d.Transparency < 0.99 and not Mesh.Skip[d.Name] and not kept[d.Name] then
+			local p = inv * d.Position
+			local z = d.Size
+			n = n + 1
+			a = a + (p.X + p.Y * 0.37 + p.Z * 0.61) / s
+			b = b + (z.X + z.Y * 1.3 + z.Z * 1.7) / s
+		end
+	end
+	return n, a, b
+end
+
+function Mesh.sigOk(ML, key, target, origin, scale, keep)
+	local man = type(ML.Manifest) == "function" and ML.Manifest(key)
+	if not man then
+		return false
+	end
+	local att = man.Attachments and man.Attachments.LayoutSig
+	if not att then
+		return true -- a designed piece (rock, crack): no layout to match
+	end
+	local pos = att.Pos or att.pos
+	if type(pos) ~= "table" then
+		return false
+	end
+	local n, a, b = Mesh.Signature(target, origin, scale, keep)
+	local tol = 0.05 + n * 1e-4
+	return n == pos[1] and math.abs(a - pos[2]) <= tol and math.abs(b - pos[3]) <= tol
+end
+
+-- target: the piece (Model with a PrimaryPart, or one Part); origin: world CFrame of the mesh pivot; look: { Primary };
+-- keep: names that stay visible; scale: uniform placement scale. Returns true when tagged.
+function Mesh.tag(target, key, origin, look, keep, scale)
+	if typeof(target) ~= "Instance" or typeof(origin) ~= "CFrame" then
+		return false
+	end
+	Mesh.Placed[target] = { Key = key, Origin = origin, Look = look, Keep = keep, Scale = scale }
+	local kit = DungeonBuilder._Kit
+	if type(kit) == "table" and type(kit.Targets) == "table" then
+		kit.Targets[#kit.Targets + 1] = { Key = key, Target = target, Origin = origin, Look = look, Keep = keep, Scale = scale }
+	end
+	local ML = Mesh.lib()
+	if not ML or type(ML.Status) ~= "function" then
+		return false
+	end
+	local okStatus, st = pcall(ML.Status, key)
+	if not okStatus or st == "missing" or not Mesh.sigOk(ML, key, target, origin, scale, keep) then
+		return false
+	end
+	local tagLook = {}
+	for k, v in pairs(look or {}) do
+		tagLook[k] = v
+	end
+	local pivot = target:IsA("BasePart") and target.CFrame or target:GetPivot() -- (a Part's pivot: PivotOffset is never set here)
+	tagLook.Offset = pivot:Inverse() * origin
+	if scale and scale ~= 1 then
+		target:SetAttribute("ML_Scale", scale)
+	end
+	ML.Tag(target, key, tagLook, keep)
+	return true
+end
+
+-- a number in a key: 15 -> "15", 15.5 -> "15p5", -6 -> "m6"
+function Mesh.num(v)
+	local t = string.format("%.2f", v):gsub("0+$", ""):gsub("%.$", "")
+	return (t:gsub("%-", "m"):gsub("%.", "p"))
+end
+
+-- a wrapper Model for one piece (PrimaryPart set by the caller once its first part exists)
+function Mesh.group(parent, name)
+	local g = Instance.new("Model")
+	g.Name = name
+	g.Parent = parent
+	return g
+end
+DungeonBuilder._Mesh = Mesh
+
+----------------------------------------------------------------------
 -- Kit: the parts (Voxel.Box) of the dungeon
 ----------------------------------------------------------------------
 local Kit = {}
@@ -184,6 +300,7 @@ function Kit.floorTiles(parent, w, d, color, mat, seed, y)
 	local tw, td = w / nx, d / nz
 	local base = y or 0
 	local n = 0
+	local tiles = Mesh.group(parent, "FloorTiles")
 	for i = 1, nx do
 		for j = 1, nz do
 			local lift = ((i + j) % 2 == 0) and 0.05 or -0.05
@@ -193,16 +310,23 @@ function Kit.floorTiles(parent, w, d, color, mat, seed, y)
 			if (i * 7 + j * 3 + seed) % 6 == 0 then
 				c = C.FlagDark
 			end
-			Kit.part(parent, CFrame.new(x, base - 0.5 + lift, z), Vector3.new(tw, 1, td), jitter(c, seed * 31 + i * 7 + j), mat or M.Cobblestone, { Name = "Floor", Collide = true })
+			local tile = Kit.part(tiles, CFrame.new(x, base - 0.5 + lift, z), Vector3.new(tw, 1, td), jitter(c, seed * 31 + i * 7 + j), mat or M.Cobblestone, { Name = "Floor", Collide = true })
+			if not tiles.PrimaryPart then
+				tiles.PrimaryPart = tile
+			end
 			n = n + 1
 		end
 	end
+	Mesh.tag(tiles, "dungeon_floor_" .. Mesh.num(w) .. "x" .. Mesh.num(d), CFrame.new(0, base, 0), { Primary = color })
 	-- cracks between the flagstones
 	local r = rng(seed * 13 + 5)
 	for k = 1, max(2, floor((nx * nz) / 12)) do
 		local x = -w / 2 + 4 + r() * (w - 8)
 		local z = -d / 2 + 4 + r() * (d - 8)
-		Kit.part(parent, CFrame.new(x, base + 0.06, z) * CFrame.Angles(0, r() * PI, 0), Vector3.new(2.5 + r() * 3, 0.12, 0.25), C.StoneDark, M.Slate, { Name = "Crack" })
+		local ccf = CFrame.new(x, base + 0.06, z) * CFrame.Angles(0, r() * PI, 0)
+		local len = 2.5 + r() * 3
+		local crack = Kit.part(parent, ccf, Vector3.new(len, 0.12, 0.25), C.StoneDark, M.Slate, { Name = "Crack" })
+		Mesh.tag(crack, "dungeon_crack", ccf, nil, nil, len / 4)
 		n = n + 1
 	end
 	return n
@@ -210,11 +334,12 @@ end
 
 -- a wall of length `len` whose centre is `cf` (local X along the wall, LookVector into the room): plinth band, body,
 -- cap, a few protruding stones; door = { X = offset, Width } leaves a doorway with a lintel
-function Kit.wall(parent, cf, len, color, mat, seed, door, lite)
+function Kit.wall(outer, cf, len, color, mat, seed, door, lite)
 	local h = WALL_H
 	local r = rng(seed)
+	local parent = Mesh.group(outer, "WallRun")
 	-- plinth (rule 3)
-	Kit.part(parent, cf * CFrame.new(0, 0.6, -0.35), Vector3.new(len, 1.2, 1.7), C.StoneDark, M.Slate, { Name = "Plinth", Collide = true })
+	parent.PrimaryPart = Kit.part(parent, cf * CFrame.new(0, 0.6, -0.35), Vector3.new(len, 1.2, 1.7), C.StoneDark, M.Slate, { Name = "Plinth", Collide = true })
 	if door then
 		local dw = door.Width or 8
 		local dx = door.X or 0
@@ -253,17 +378,30 @@ function Kit.wall(parent, cf, len, color, mat, seed, door, lite)
 			Kit.part(parent, cf * CFrame.new(x, y, -0.6), Vector3.new(sw, 1.0, 0.4), jitter(shade, seed + i * 3), M.Slate, { Name = "Brick" })
 		end
 	end
+	local key = "dungeon_wall_" .. Mesh.num(len)
+	if door then
+		key = key .. "_door" .. (((door.X or 0) ~= 0) and Mesh.num(door.X) or "") .. (((door.Width or 8) ~= 8) and ("w" .. Mesh.num(door.Width)) or "")
+	end
+	if lite then
+		key = key .. "_lite"
+	end
+	Mesh.tag(parent, key, cf, { Primary = color })
+	return parent
 end
 
-function Kit.pillar(parent, cf, h, color)
-	Kit.part(parent, cf * CFrame.new(0, 0.5, 0), Vector3.new(2.6, 1, 2.6), C.StoneDark, M.Slate, { Name = "PillarBase", Collide = true })
+function Kit.pillar(outer, cf, h, color)
+	local parent = Mesh.group(outer, "PillarStack")
+	parent.PrimaryPart = Kit.part(parent, cf * CFrame.new(0, 0.5, 0), Vector3.new(2.6, 1, 2.6), C.StoneDark, M.Slate, { Name = "PillarBase", Collide = true })
 	Kit.part(parent, cf * CFrame.new(0, h / 2, 0), Vector3.new(2, h, 2), color or C.Stone, M.Slate, { Name = "Pillar", Collide = true })
 	Kit.part(parent, cf * CFrame.new(0, h - 0.4, 0), Vector3.new(2.6, 0.8, 2.6), C.StoneDark, M.Slate, { Name = "PillarCap" })
+	Mesh.tag(parent, "dungeon_pillar_" .. Mesh.num(h), cf, { Primary = color or C.Stone })
+	return parent
 end
 
 -- a wall torch: cf = the mount point on the wall face (LookVector into the room)
-function Kit.torch(parent, cf, bright)
-	Kit.part(parent, cf * CFrame.new(0, 0.6, -0.1), Vector3.new(1.2, 2.2, 0.2), C.Iron, M.Metal, { Name = "Sconce" })
+function Kit.torch(outer, cf, bright)
+	local parent = Mesh.group(outer, "WallTorch")
+	parent.PrimaryPart = Kit.part(parent, cf * CFrame.new(0, 0.6, -0.1), Vector3.new(1.2, 2.2, 0.2), C.Iron, M.Metal, { Name = "Sconce" })
 	Kit.part(parent, cf * CFrame.new(0, 0, -0.3), Vector3.new(0.5, 0.7, 0.6), C.Iron, M.Metal, { Name = "Bracket" })
 	Kit.part(parent, cf * CFrame.new(0, 0.7, -0.75) * CFrame.Angles(-0.35, 0, 0), Vector3.new(0.3, 1.8, 0.3), C.Wood, M.Wood, { Name = "Stick" })
 	local flame = Kit.part(parent, cf * CFrame.new(0, 1.9, -1.05), Vector3.new(0.8, 1.3, 0.8), C.Flame, M.Neon, { Name = "Flame" })
@@ -283,6 +421,7 @@ function Kit.torch(parent, cf, bright)
 		fire.SecondaryColor = C.Ember
 		fire.Parent = flame
 	end)
+	Mesh.tag(parent, "dungeon_torch", cf, nil, { "Flame" })
 	return flame
 end
 
@@ -302,7 +441,10 @@ function Kit.door(parent, cf, name, width)
 		bars[i] = Kit.part(door, cf * CFrame.new(x, h / 2, 0), Vector3.new(0.35, h, 0.35), C.Iron, M.Metal, { Name = "Bar", Collide = true })
 	end
 	door:SetAttribute("Open", false)
+	door.PrimaryPart = door:FindFirstChild("Lintel")
 	door.Parent = parent
+	-- the frame (jambs + lintel) is the mesh; the Bars stay Parts (SetDoor flips them on the server)
+	Mesh.tag(door, "dungeon_door_" .. Mesh.num(w), cf, nil, { "Bar" })
 	return door, bars
 end
 
@@ -332,11 +474,14 @@ function Kit.barrel(parent, cf)
 	Kit.part(parent, cf * CFrame.new(0, 2.5, 0) * up, Vector3.new(0.25, 2.95, 2.95), C.Iron, M.Metal, { Name = "Band", Shape = Enum.PartType.Cylinder })
 end
 
-function Kit.crate(parent, cf, s)
+function Kit.crate(outer, cf, s)
 	s = s or 3
-	Kit.part(parent, cf * CFrame.new(0, s / 2, 0), Vector3.new(s, s, s), C.Plank, M.WoodPlanks, { Name = "Crate", Collide = true })
+	local parent = Mesh.group(outer, "CrateBox")
+	parent.PrimaryPart = Kit.part(parent, cf * CFrame.new(0, s / 2, 0), Vector3.new(s, s, s), C.Plank, M.WoodPlanks, { Name = "Crate", Collide = true })
 	Kit.part(parent, cf * CFrame.new(0, s / 2, s / 2 + 0.05), Vector3.new(s * 0.9, 0.3, 0.1), C.Wood, M.Wood, { Name = "Slat" })
 	Kit.part(parent, cf * CFrame.new(0, s / 2, -s / 2 - 0.05), Vector3.new(s * 0.9, 0.3, 0.1), C.Wood, M.Wood, { Name = "Slat" })
+	Mesh.tag(parent, "dungeon_crate", cf, nil, nil, s / 3)
+	return parent
 end
 
 function Kit.chain(parent, cf)
@@ -421,14 +566,23 @@ end
 
 function Kit.rock(parent, cf, size, seed)
 	local r = rng(seed)
-	Kit.part(parent, cf * CFrame.Angles((r() - 0.5) * 0.4, (r() - 0.5) * 0.6, (r() - 0.5) * 0.4), size, jitter((r() > 0.5) and C.Rock or C.RockDark, seed), M.Slate, { Name = "Rock", Collide = true })
+	local rock = Kit.part(parent, cf * CFrame.Angles((r() - 0.5) * 0.4, (r() - 0.5) * 0.6, (r() - 0.5) * 0.4), size, jitter((r() > 0.5) and C.Rock or C.RockDark, seed), M.Slate, { Name = "Rock", Collide = true })
+	-- a real voxel rock (3 shapes) upright at the box's centre, sized to the box's volume (the tilted box stays the collider)
+	local vol = (size.X * size.Y * size.Z) ^ (1 / 3)
+	local thin = min(size.X, size.Y, size.Z)
+	local shape = (floor(seed or 0) % 3) + 1
+	Mesh.tag(rock, "dungeon_rock_" .. shape, cf * CFrame.new(0, -size.Y / 2, 0), { Primary = rock.Color }, nil, min(vol, thin * 1.3) / 4)
+	return rock
 end
 
-function Kit.stalagmite(parent, cf, h)
+function Kit.stalagmite(outer, cf, h)
 	h = h or 4
-	Kit.part(parent, cf * CFrame.new(0, h * 0.2, 0) * CFrame.Angles(0, 0.4, 0), Vector3.new(2.6, h * 0.4, 2.6), C.RockDark, M.Slate, { Name = "Stalagmite", Collide = true })
+	local parent = Mesh.group(outer, "StalagmiteStack")
+	parent.PrimaryPart = Kit.part(parent, cf * CFrame.new(0, h * 0.2, 0) * CFrame.Angles(0, 0.4, 0), Vector3.new(2.6, h * 0.4, 2.6), C.RockDark, M.Slate, { Name = "Stalagmite", Collide = true })
 	Kit.part(parent, cf * CFrame.new(0, h * 0.55, 0) * CFrame.Angles(0, 0.8, 0), Vector3.new(1.6, h * 0.35, 1.6), C.Rock, M.Slate, { Name = "Stalagmite" })
 	Kit.part(parent, cf * CFrame.new(0, h * 0.85, 0), Vector3.new(0.7, h * 0.3, 0.7), C.Rock, M.Slate, { Name = "Stalagmite" })
+	Mesh.tag(parent, "dungeon_stalagmite", cf, nil, nil, h / 4)
+	return parent
 end
 
 -- a cobweb in a ceiling corner: cf = the corner at the ceiling, LookVector along one wall
@@ -545,8 +699,10 @@ function Kit.wineRack(parent, cf)
 	end
 end
 
-function Kit.chest(parent, cf, slot)
+function Kit.chest(outer, cf, slot)
+	local parent = Mesh.group(outer, "ChestBox")
 	local body = Kit.part(parent, cf * CFrame.new(0, 0.9, 0), Vector3.new(3, 1.8, 2), C.Plank, M.WoodPlanks, { Name = "Chest", Collide = true })
+	parent.PrimaryPart = body
 	Kit.part(parent, cf * CFrame.new(0, 2.05, 0), Vector3.new(3.1, 0.5, 2.1), C.Wood, M.Wood, { Name = "ChestLid" })
 	Kit.part(parent, cf * CFrame.new(0, 1.0, 1.05), Vector3.new(0.6, 0.6, 0.15), C.Gold, M.Metal, { Name = "ChestLock" })
 	body:SetAttribute("ChestSlot", slot)
@@ -561,6 +717,7 @@ function Kit.chest(parent, cf, slot)
 	prompt:SetAttribute("DungeonAction", "Chest")
 	prompt:SetAttribute("ChestSlot", slot)
 	prompt.Parent = body
+	Mesh.tag(parent, "dungeon_chest", cf)
 	return body
 end
 

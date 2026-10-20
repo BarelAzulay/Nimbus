@@ -216,6 +216,10 @@ function GraphicsQuality.Apply(setting)
 		showAll()
 		pauseDragon(false)
 	end
+	-- Phase 6 (6.4 / A6): the evolved pets' particles follow the same switch (PetFx: Low = the soft light only)
+	pcall(function()
+		require(ReplicatedStorage.Shared.PetFx).SetQuality(St.Mode)
+	end)
 	return St.Mode
 end
 

@@ -87,8 +87,9 @@ def main():
             aura = m["Groups"].get("Aura")
             check(aura is not None and aura["Kind"] == "orbit", "aura: %s has an Aura orbit group" % e["key"])
             ap = [p for p in m["Parts"] if p["Group"] == "Aura"]
-            check(len(ap) >= 2 and all(p["Name"].startswith("Aura") and p["Material"] == "Neon" for p in ap),
-                  "aura: %s Aura parts are Neon and named Aura..." % e["key"], [(p["Name"], p["Material"]) for p in ap])
+            check(all(p["Name"].startswith("Aura") for p in ap) and sum(p["Material"] == "Neon" for p in ap) >= 1,
+                  "aura: %s Aura parts named Aura..., at least one Neon (the pulse finds it)" % e["key"],
+                  [(p["Name"], p["Material"]) for p in ap])
             if st == 2:
                 h = m["Groups"].get("Halo")
                 check(h is not None and h["Kind"] == "bob", "aura: %s (second evolution) has a Halo bob group" % e["key"])

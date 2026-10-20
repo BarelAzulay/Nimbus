@@ -4144,10 +4144,45 @@ local function updateNear(rec, eye)
 	end
 end
 
+-- Phase 6 (runtime-pets): when MeshLibrary makes a pet's Blender mesh keys usable here (PetBuilder.MeshVersion
+-- changes), its Part-built home pets (stations, garden roamers, the pool) are dropped and rebuilt as mesh pets; one
+-- number compare per frame otherwise
+function G.meshSweep()
+	local ver = PetBuilder.MeshVersion()
+	if ver == G.meshVer then
+		return
+	end
+	G.meshVer = ver
+	for i = #petPool, 1, -1 do
+		local e = petPool[i]
+		if PetBuilder.NeedsMeshRebuild(e.Model) then
+			table.remove(petPool, i)
+			petLows[e.Key] = nil
+			pcall(e.Model.Destroy, e.Model)
+		end
+	end
+	for _, rec in ipairs(homeList) do
+		for _, pk in pairs(rec.Pet) do
+			for slot, entry in pairs(pk.Pets) do
+				if entry.Model and PetBuilder.NeedsMeshRebuild(entry.Model) then
+					pk.Pets[slot] = nil
+					G.releaseEntry(entry)
+					petLows[entry.LowKey] = nil
+					pcall(entry.Model.Destroy, entry.Model)
+					pk.Dirty = true
+				end
+			end
+		end
+	end
+end
+
 local function step(dt)
 	dt = min(tonumber(dt) or 0, 0.1)
 	clock = clock + dt
 	petFrameBuilds, petFramePlaced = 0, 0
+	if PetBuilder and PetBuilder.MeshVersion then
+		G.meshSweep()
+	end
 	R.frame = R.frame + 1
 	if #pops > 0 then
 		stepPops()

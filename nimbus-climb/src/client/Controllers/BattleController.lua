@@ -1405,7 +1405,41 @@ function Units.Rebuild(B, u)
 	end
 end
 
+-- Phase 6 (runtime-pets): when MeshLibrary makes a pet's Blender mesh keys usable here (PetBuilder.MeshVersion
+-- changes), its Part-built units are queued for a rebuild as mesh pets (KO'd / parked ones stay as they are)
+function Units.MeshSweep(B)
+	local ver = PetBuilder.MeshVersion()
+	if ver == B.meshVer then
+		return
+	end
+	B.meshVer = ver
+	local ids = {}
+	for id in pairs(B.units) do
+		ids[#ids + 1] = id
+	end
+	table.sort(ids, function(a, b)
+		return tostring(a) < tostring(b)
+	end)
+	for _, id in ipairs(ids) do
+		local u = B.units[id]
+		if u.model and not u.isBoss and not u.rebuild and not u.parked and not u.gone and PetBuilder.NeedsMeshRebuild(u.model) then
+			u.rebuild = true
+			B.buildQueue[#B.buildQueue + 1] = u
+		end
+	end
+	-- the helpers' portraits (ViewportFrames) too
+	for _, H in ipairs(Hud.helpers or {}) do
+		if H.unit and H.model and PetBuilder.NeedsMeshRebuild(H.model) then
+			H.built = false
+			pcall(Hud.Portrait, H, H.unit)
+		end
+	end
+end
+
 function Units.BuildPending(B)
+	if PetBuilder and PetBuilder.MeshVersion and B.units then
+		Units.MeshSweep(B)
+	end
 	local q = B.buildQueue
 	if #q == 0 then
 		return
@@ -3081,7 +3115,8 @@ function Hud.Portrait(H, u)
 		if not def then
 			return
 		end
-		local model = PetBuilder.Build(def, { Detail = "Low", Evolved = u.evo > 0 and u.evo or nil })
+		local model = PetBuilder.Build(def, { Detail = "Low", Evolved = u.evo > 0 and u.evo or nil, Viewport = true })
+		H.model = model
 		local okBox, cf, size = pcall(model.GetBoundingBox, model)
 		if not okBox or typeof(cf) ~= "CFrame" then
 			cf, size = CFrame.new(), Vector3.new(3, 3, 3)

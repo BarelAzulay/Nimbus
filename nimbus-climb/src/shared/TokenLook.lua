@@ -1,7 +1,7 @@
 -- TokenLook: the look of the voxel cloud token, built by one function (ARCHITECTURE_V3.md "Phase 5 build contract"
 -- 3.5). The obby's cloud tokens (TokenService.MakeTokenPart: palettes "Cloud" / "Golden", the output is the Phase 4
 -- token part for part) and the Cloud Cash of the home (HomeFx: "Cash" / "GoldenCash", pooled, client only) share it.
--- Shared module: no services, no yields, no tags, no attributes, no animation (the callers own those).
+-- Shared module: no yields, no animation (the callers own those); the only tag / attributes are the Phase 6 mesh ones.
 -- Plain Lua 5.1-compatible syntax.
 --
 -- The voxel coin (v3 art direction): every piece is a block on one lattice (u studs per voxel, 11 voxels across). The
@@ -24,6 +24,16 @@
 --     LightRange, SparkleRate, SparkleSize, SparkleLife, SparkleSpeed, SparkleAlpha, Spin, Bob, Name }   READ-ONLY
 --   TokenLook.Motion = { Spin 2.0, GoldenSpin 2.6, Bob 0.45, GoldenBob 0.6, BobSpeed 2.2 }   (radians/s, studs)
 --   TokenLook.Voxel = 0.32 (studs per voxel at Scale 1), TokenLook.HaloDiameter = 5.4
+--   TokenLook.MeshKey(palette) -> "token_cloud" | "token_golden" | "token_cash" | "token_goldencash"
+--
+-- Phase 6 (ARCHITECTURE_V3.md "## Phase 6"; Blender keys token_<kind>, blender/catalog/creatures.json): the coin's
+-- look becomes a Blender mesh while the root stays the same Part (the CanTouch hitbox, the light, the sparkles):
+--   * client-built coins (HomeFx Cloud Cash): when the key is ready on this device the coin is the mesh: its
+--     MeshParts (named by the mesh's colour keys: Rim, Face, Cloud ...) are welded to the root, which turns invisible;
+--     the block children are not made. Otherwise the blocks exactly as before.
+--   * server-built coins (TokenService): always the blocks; once the key has an uploaded id the root is tagged for
+--     MeshLibrary (ML_DressKey, Keep = Halo, ML_Weld = true: the dressed mesh rides on the moving root), so every
+--     client shows the mesh it could download and keeps the blocks otherwise. Empty MeshIds = nothing changes.
 
 local Shared = script.Parent
 
@@ -40,6 +50,82 @@ if not themeOk or type(Theme) ~= "table" then
 end
 
 local SPARKLE_TEXTURE = "rbxasset://textures/particles/sparkles_main.dds"
+
+local MESH_KEYS = { Cloud = "token_cloud", Golden = "token_golden", Cash = "token_cash", GoldenCash = "token_goldencash" }
+function TokenLook.MeshKey(paletteName)
+	return MESH_KEYS[paletteName] or MESH_KEYS.Cloud
+end
+
+local lazyMesh = nil
+local function meshLibrary()
+	if lazyMesh == nil then
+		lazyMesh = false
+		local module = Shared:FindFirstChild("MeshLibrary")
+		if module then
+			local ok, mod = pcall(require, module)
+			if ok and type(mod) == "table" and type(mod.IsReady) == "function" then
+				lazyMesh = mod
+			end
+		end
+	end
+	return lazyMesh or nil
+end
+
+local IS_CLIENT = false
+do
+	local okRun, run = pcall(function()
+		return game:GetService("RunService")
+	end)
+	if okRun and run then
+		IS_CLIENT = run:IsClient()
+	end
+end
+
+-- the welded mesh coin on a client-built root (true when it was made)
+local function meshCoin(token, key, scale)
+	local ML = meshLibrary()
+	if not ML or not IS_CLIENT then
+		return false
+	end
+	local okReady, ready = pcall(ML.IsReady, key)
+	if not okReady or ready ~= true then
+		return false
+	end
+	local okAsm, mesh = pcall(ML.Assemble, { Name = "Coin", Root = false, Parts = { { Key = key } } }, {}, { Scale = scale, At = token.CFrame })
+	if not okAsm or not mesh then
+		return false
+	end
+	for _, part in ipairs(mesh:GetChildren()) do
+		if part:IsA("BasePart") then
+			part.Anchored = false
+			part.Massless = true
+			part.CastShadow = false
+			part.Parent = token
+			local weld = Instance.new("WeldConstraint")
+			weld.Part0 = token
+			weld.Part1 = part
+			weld.Parent = part
+		end
+	end
+	mesh:Destroy()
+	token.Transparency = 1
+	return true
+end
+
+-- server-built coin: tag it for the clients' MeshLibrary.Dress once the key has an uploaded id
+local function tagCoin(token, key)
+	local ML = meshLibrary()
+	if not ML or IS_CLIENT or type(ML.Tag) ~= "function" or type(ML.Status) ~= "function" then
+		return false
+	end
+	local okStatus, st = pcall(ML.Status, key)
+	if not okStatus or st == "missing" then
+		return false
+	end
+	ML.Tag(token, key, nil, { "Halo" })
+	token:SetAttribute("ML_Weld", true)
+	return true
+end
 
 TokenLook.Voxel = 0.32 -- studs per coin voxel (a normal coin: 11 voxels = 3.5 studs across)
 TokenLook.HaloDiameter = 5.4
@@ -223,21 +309,25 @@ function TokenLook.Build(opts)
 	token.BottomSurface = Enum.SurfaceType.Smooth
 	token.CFrame = CFrame.new(position) * CFrame.Angles(0, phase, 0)
 
-	-- the rest of the stepped round silhouette: a wide and a tall band (11x5 and 5x11 voxels)
-	addBlock(token, "RimWide", u, 0, 0, 2, 5, 11, look.Rim, neon)
-	addBlock(token, "RimTall", u, 0, 0, 2, 11, 5, look.Rim, neon)
+	local key = TokenLook.MeshKey(paletteName)
+	if not meshCoin(token, key, scale) then
+		-- the rest of the stepped round silhouette: a wide and a tall band (11x5 and 5x11 voxels)
+		addBlock(token, "RimWide", u, 0, 0, 2, 5, 11, look.Rim, neon)
+		addBlock(token, "RimTall", u, 0, 0, 2, 11, 5, look.Rim, neon)
 
-	-- the face, half a voxel proud of the rim on both sides: a 7x7 plate, or an octagon of two plates
-	if look.Octagon then
-		addBlock(token, "FaceWide", u, 0, 0, 3, 5, 7, look.Face, smooth)
-		addBlock(token, "FaceTall", u, 0, 0, 3, 7, 5, look.Face, smooth)
-	else
-		addBlock(token, "Face", u, 0, 0, 3, 7, 7, look.Face, smooth)
+		-- the face, half a voxel proud of the rim on both sides: a 7x7 plate, or an octagon of two plates
+		if look.Octagon then
+			addBlock(token, "FaceWide", u, 0, 0, 3, 5, 7, look.Face, smooth)
+			addBlock(token, "FaceTall", u, 0, 0, 3, 7, 5, look.Face, smooth)
+		else
+			addBlock(token, "Face", u, 0, 0, 3, 7, 7, look.Face, smooth)
+		end
+
+		-- the cloud emblem in relief (both sides): a 5x2 base under a centred 3x1 dome
+		addBlock(token, "CloudBase", u, -0.5, 0, 4, 2, 5, look.Cloud, smooth)
+		addBlock(token, "CloudPuff", u, 1, 0, 4, 1, 3, look.Cloud, smooth)
+		tagCoin(token, key)
 	end
-
-	-- the cloud emblem in relief (both sides): a 5x2 base under a centred 3x1 dome
-	addBlock(token, "CloudBase", u, -0.5, 0, 4, 2, 5, look.Cloud, smooth)
-	addBlock(token, "CloudPuff", u, 1, 0, 4, 1, 3, look.Cloud, smooth)
 
 	-- the soft translucent halo (not welded: a ball looks the same however the coin turns)
 	local wantHalo = opts.Halo

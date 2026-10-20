@@ -2551,6 +2551,161 @@ local function removeGhost(rec, id)
 	end
 end
 
+----------------------------------------------------------------------
+-- Phase 6 (art-home, ARCHITECTURE_V3 6.1 A7 / recipe 4.8 "World path"): Blender meshes for the station art. Every
+-- placed station is tagged with MeshLibrary.Tag(station, "home_<stem>_<level>"): the client hides the Part build
+-- locally and shows the fine-voxel mesh (blender/catalog/home.json, built by blender/kit/props/home*.py from THIS
+-- file's own Part build). The Part build stays: colliders, names, prompts, attachments, signs and the fallback.
+-- Kept visible over the mesh (Mesh.keepOf): Neon / ForceField glow (HomeFx and the light pulse them), the parts HomeFx
+-- moves (the Fusion `Swirl`), SurfaceGui sign boards (text stays Parts) and the Garden's bed pieces, which carry one
+-- key each (home_bed_<piece>, tagged per Part, so a bed swap never needs a new station key). A key is tagged only
+-- when it has an uploaded id (MeshLibrary.Status ~= "missing": the shipped empty MeshIds change nothing) and while
+-- its manifest's "LayoutSig" (part count + position / size sums of the Part build it was baked from) still matches
+-- the live build, so a later art change can never show a stale mesh. The kit reads Mesh.keepOf / Mesh.signature
+-- through HomeBuilder._Mesh, so both sides use the same rules.
+----------------------------------------------------------------------
+local Mesh = {
+	Lib = nil,
+	-- key stem per station Kind (decor per Id): home_<stem>_<level>
+	Stems = {
+		Farm = "farm", Garden = "garden", FoodMachine = "foodmachine", Training = "training", Vault = "vault",
+		House = "house", Fusion = "fusion", Arena = "arena", DecorFence = "fence", DecorFountain = "fountain",
+		DecorPodium = "podium",
+	},
+	-- per-Part element keys (station Kind -> part name -> key); the element meshes' own parts use the same names
+	Elements = {
+		Garden = {
+			Bed = "home_bed_frame", Cushion = "home_bed_cushion", Headboard = "home_bed_headboard",
+			BedRoof = "home_bed_roof", SoilBed = "home_bed_soil", Stem = "home_bed_stem", Sprout = "home_bed_sprout",
+			Post = "home_bed_post",
+		},
+	},
+	NoElements = {},
+}
+
+function Mesh.lib()
+	if Mesh.Lib == nil then
+		Mesh.Lib = false
+		local module = Shared:FindFirstChild("MeshLibrary")
+		if module then
+			local ok, result = pcall(require, module)
+			if ok and type(result) == "table" and type(result.Tag) == "function" and type(result.Status) == "function" then
+				Mesh.Lib = result
+			end
+		end
+	end
+	return Mesh.Lib or nil
+end
+
+function Mesh.elementsOf(def)
+	return (def and Mesh.Elements[def.Kind]) or Mesh.NoElements
+end
+
+-- the part names that stay visible over a dressed station (sorted list) + the set
+function Mesh.keepOf(model, elements)
+	local set = {}
+	for name in pairs(elements or Mesh.NoElements) do
+		set[name] = true
+	end
+	for _, d in ipairs(model:GetDescendants()) do
+		if d:IsA("BasePart") then
+			local keep = d.Material == MAT.Neon or d.Material == MAT.ForceField
+				or (d.Material ~= MAT.Glass and d.Transparency > 0.05 and d.Transparency < 0.99)
+				or d:FindFirstChildWhichIsA("SurfaceGui") ~= nil
+			local a = d.Parent
+			while not keep and a and a ~= model do
+				if a.Name == "Swirl" then
+					keep = true
+				end
+				a = a.Parent
+			end
+			if keep then
+				set[d.Name] = true
+			end
+		end
+	end
+	local list = {}
+	for name in pairs(set) do
+		list[#list + 1] = name
+	end
+	table.sort(list)
+	return list, set
+end
+
+-- part count + weighted sums of the visible, not kept BaseParts in `origin` space (LobbyBuilder Mesh.Signature's
+-- formula; the kit stores the same numbers as the manifest attachment "LayoutSig")
+function Mesh.signature(target, origin, skip)
+	local inv = origin:Inverse()
+	local n, a, b = 0, 0, 0
+	local list = target:GetDescendants()
+	list[#list + 1] = target
+	for _, d in ipairs(list) do
+		if d:IsA("BasePart") and d.Transparency < 0.99 and not (skip and skip[d.Name]) then
+			local p = inv * d.Position
+			local s = d.Size
+			n = n + 1
+			a = a + p.X + p.Y * 0.37 + p.Z * 0.61
+			b = b + s.X + s.Y * 1.3 + s.Z * 1.7
+		end
+	end
+	return n, a, b
+end
+
+function Mesh.sigOk(ML, key, n, a, b)
+	local man = type(ML.Manifest) == "function" and ML.Manifest(key)
+	local att = man and man.Attachments and (man.Attachments.LayoutSig or man.Attachments.layoutSig)
+	local pos = att and (att.Pos or att.pos)
+	if type(pos) ~= "table" then
+		return false -- every home key is baked from a layout
+	end
+	local tol = 0.05 + n * 1e-4
+	return n == pos[1] and math.abs(a - pos[2]) <= tol and math.abs(b - pos[3]) <= tol
+end
+
+-- per template (cached): the station key, keep list and layout signature in template space
+function Mesh.info(def, level, tpl)
+	if tpl.Mesh then
+		return tpl.Mesh
+	end
+	local stem = Mesh.Stems[def.Id] or Mesh.Stems[def.Kind]
+	local elements = Mesh.elementsOf(def)
+	local keepList, keepSet = Mesh.keepOf(tpl.Model, elements)
+	local n, a, b = Mesh.signature(tpl.Model, CFrame.new(), keepSet)
+	tpl.Mesh = { Key = stem and ("home_" .. stem .. "_" .. level) or nil, Keep = keepList, Sig = { n, a, b } }
+	return tpl.Mesh
+end
+
+-- tags a placed station (model pivot = cf) and its element parts; returns the number of tags
+function Mesh.station(m, def, level, tpl, cf)
+	local ML = Mesh.lib()
+	if not ML or not tpl or not tpl.Model then
+		return 0
+	end
+	local info = Mesh.info(def, level, tpl)
+	local tags = 0
+	local key = info.Key
+	if key and ML.Status(key) ~= "missing" and Mesh.sigOk(ML, key, info.Sig[1], info.Sig[2], info.Sig[3]) then
+		ML.Tag(m, key, { Offset = m:GetPivot():Inverse() * cf }, info.Keep)
+		tags = tags + 1
+	end
+	local elements = Mesh.elementsOf(def)
+	if next(elements) then
+		for _, d in ipairs(m:GetDescendants()) do
+			local ekey = d:IsA("BasePart") and elements[d.Name]
+			if ekey and d.Transparency < 0.99 and ML.Status(ekey) ~= "missing" then
+				local n, a, b = Mesh.signature(d, d.CFrame)
+				if Mesh.sigOk(ML, ekey, n, a, b) then
+					ML.Tag(d, ekey, { Primary = d.Color }, nil) -- a tinted piece (the cushions) takes the part's colour
+					tags = tags + 1
+				end
+			end
+		end
+	end
+	return tags
+end
+
+HomeBuilder._Mesh = Mesh
+
 local function placeStation(rec, def, level)
 	local accent = (typeof(rec.Spot.Accent) == "Color3") and rec.Spot.Accent or nil
 	local tpl = stationTemplate(def, level, accent, (def.Kind == "Garden") and Garden.openOf(rec) or nil)
@@ -2568,6 +2723,7 @@ local function placeStation(rec, def, level)
 		m:SetAttribute(name, v)
 	end
 	applyOwnerAttr(rec, m)
+	Mesh.station(m, def, level, tpl, slotCF) -- Phase 6: the Blender mesh (no-op without uploaded ids)
 	return m
 end
 
@@ -3049,6 +3205,7 @@ function HomeBuilder.BuildStationModel(id, level, accent, open)
 	for name, v in pairs(tpl.Info) do
 		m:SetAttribute(name, v)
 	end
+	Mesh.station(m, def, level, tpl, CFrame.new()) -- Phase 6: the Blender mesh (no-op without uploaded ids)
 	return m
 end
 

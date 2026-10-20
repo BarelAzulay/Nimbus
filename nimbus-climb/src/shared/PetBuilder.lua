@@ -20,6 +20,10 @@
 --   PetBuilder.Animate(model, t, opts)        opts: { Flap = 1 (speed multiplier), Excited = 0..1 }
 --   PetBuilder.GetHeight(petDef) -> studs     height of the resting pose at Scale 1
 --   Extras: PetBuilder.Species / Accessories / WingStyles (the values Build understands), PetBuilder.ClearCache()
+--   Phase 6 mesh path (ARCHITECTURE_V3.md 6.3 runtime-pets): Build assembles the Blender mesh pet (MeshLibrary) when
+--   every key of the look is usable here, else this Part build, never a mix; opts.Viewport = true (ViewportFrames: no
+--   PetFx particles), opts.Parts = true (force Parts). PetBuilder.MeshKeys(petDef, opts) -> { keys } | nil,
+--   PetBuilder.NeedsMeshRebuild(model) -> bool, PetBuilder.MeshVersion() -> number (see "Phase 6 mesh path" below)
 --
 -- How a pet is made
 --   * Each species is sculpted from shapes (ellipsoids, capsules, cones, curves...) into a voxel grid about 28
@@ -6680,6 +6684,8 @@ local function getTemplate(bp, bpKey, scale)
 	return tpl
 end
 
+local MESH -- Phase 6 mesh path state (defined with its functions below, before the public API)
+
 function PetBuilder.ClearCache()
 	for _, m in pairs(templates) do
 		pcall(m.Destroy, m)
@@ -6687,6 +6693,12 @@ function PetBuilder.ClearCache()
 	templates = {}
 	templateOrder = {}
 	blueprints = {}
+	if MESH then
+		for _, m in pairs(MESH.Templates) do
+			pcall(m.Destroy, m)
+		end
+		MESH.Templates, MESH.Order, MESH.Plans = {}, {}, {}
+	end
 end
 
 ----------------------------------------------------------------------
@@ -6800,6 +6812,494 @@ applyWild = function(model, wild)
 end
 
 ----------------------------------------------------------------------
+-- Phase 6 mesh path (ARCHITECTURE_V3.md 6.3 runtime-pets, docs/phase6/recipe.md 4.8 "Pet path"). When EVERY key the
+-- pet needs is usable here (MeshLibrary.IsReady: body, wings, accessory, hybrid feature, Golden star, evolved form +
+-- its wings) Build assembles the pet from the Blender meshes (MeshLibrary.Assemble): an invisible `Body` root, the
+-- recipe 4.3 part names, PB_G / PB_Base / PB_T0 / PB_Pulse / PB_Hue, model PB_Rig (PetBuilder's group order) /
+-- PB_Scale / PB_Detail / PetId / PB_Seed / PB_Finish / PB_Hybrid, so Animate, the followers, battle units, cards and
+-- PetFx work unchanged. Otherwise (empty MeshIds, a key loading / failed / broken on this device, no manifest for
+-- this look) the whole pet is today's Part build: never a mix. One table (main-chunk local budget).
+--   PetBuilder.MeshKeys(petDef, opts) -> { keys } | nil   the keys this build would need (nil = no mesh design)
+--   PetBuilder.NeedsMeshRebuild(model) -> bool             a Part-built model whose keys are all usable now
+--   PetBuilder.MeshVersion() -> number                     MeshLibrary.Version() (0 without it): poll, then ask above
+----------------------------------------------------------------------
+MESH = {
+	Tried = false,
+	Lib = nil,
+	Plans = {}, -- plan key -> plan | false
+	Templates = {}, -- look signature | detail | scale -> mesh model template
+	Order = {},
+	Max = 40,
+	PartInfo = setmetatable({}, { __mode = "k" }), -- Part-built model -> { Look, Detail, Stage } (NeedsMeshRebuild)
+	RigRank = { WingL = 1, WingR = 2, Wing2L = 3, Wing2R = 4, Tail = 5, Halo = 6, Aura = 7 },
+	HyKeys = { HyA = true, HyB = true, HyTip = true, HyHorn = true, HyGlow = true },
+}
+
+function MESH.lib()
+	if not MESH.Tried then
+		MESH.Tried = true
+		local inst = script.Parent:FindFirstChild("MeshLibrary")
+		if inst and inst:IsA("ModuleScript") then
+			local ok, mod = pcall(require, inst)
+			if ok and type(mod) == "table" and type(mod.Assemble) == "function" and type(mod.Active) == "function" then
+				MESH.Lib = mod
+			end
+		end
+	end
+	return MESH.Lib
+end
+
+-- manifest group list { {Id, Attach} } (the kit writes a map keyed by id; hand-made fixtures may use a list)
+function MESH.groups(man)
+	local raw = man and man.Groups or {}
+	local out = {}
+	if #raw > 0 then
+		for i, g in ipairs(raw) do
+			out[#out + 1] = { Id = tostring(g.Id or g.id or g.Name or g.name or i), Attach = g.Attach or g.attach }
+		end
+	else
+		for id, g in pairs(raw) do
+			out[#out + 1] = { Id = id, Attach = type(g) == "table" and (g.Attach or g.attach) or nil }
+		end
+		table.sort(out, function(a, b)
+			return a.Id < b.Id
+		end)
+	end
+	return out
+end
+
+function MESH.att(man, name)
+	local a = man and man.Attachments and man.Attachments[name]
+	local pos = a and (a.Pos or a.pos)
+	if type(pos) == "table" then
+		return Vector3.new(pos[1] or 0, pos[2] or 0, pos[3] or 0)
+	end
+	return nil
+end
+
+function MESH.meta(man)
+	local raw = man and man.Raw
+	return type(raw) == "table" and type(raw.Meta or raw.meta) == "table" and (raw.Meta or raw.meta) or {}
+end
+
+-- a wing key: its manifest, the body attachment its pivot goes to (the group's Attach) or nil when unusable
+function MESH.wing(ML, bodyMan, key, default)
+	local man = ML.Manifest(key)
+	if not man then
+		return nil
+	end
+	local attach = default
+	for _, g in ipairs(MESH.groups(man)) do
+		if type(g.Attach) == "string" then
+			attach = g.Attach
+		end
+	end
+	if not MESH.att(bodyMan, attach) then
+		return nil
+	end
+	return { Key = key, At = attach }
+end
+
+-- The plan of one look (scale-free): keys, entries (At = attachment name | Vector3 offset in studs at Scale 1),
+-- root size, grow. false = no mesh design for this look (a missing manifest), so it always takes the Part path.
+function MESH.plan(ML, look, detail, stage)
+	local hy = look.Hybrid
+	local pk = table.concat({ look.Id, tostring(look.Base), look.Species, look.WingStyle, tostring(look.Accessory),
+		hy and tostring(hy.Species) or "-", tostring(look.Finish), tostring(stage), detail }, "|")
+	local cached = MESH.Plans[pk]
+	if cached ~= nil then
+		return cached
+	end
+	local plan = MESH.makePlan(ML, look, detail, stage) or false
+	MESH.Plans[pk] = plan
+	return plan
+end
+
+function MESH.makePlan(ML, look, detail, stage)
+	local sfx = (detail == "Low") and "_low" or ""
+	local hy = look.Hybrid
+	local body
+	if stage > 0 then
+		if type(look.Base) ~= "string" then
+			return nil -- fused hybrids evolve with their species' design: no per-pet mesh, Part build
+		end
+		body = "evo" .. stage .. "_" .. look.Base .. sfx
+	else
+		local sp = string.lower(look.Species)
+		body = "pet_" .. sp .. sfx
+		-- species variants keyed by the pet id (pet_dog_corgi): the same rule as the sculpt (string.find(Id, "corgi"))
+		for token in string.gmatch(string.lower(look.Id), "%w+") do
+			if ML.Manifest("pet_" .. sp .. "_" .. token .. sfx) then
+				body = "pet_" .. sp .. "_" .. token .. sfx
+				break
+			end
+		end
+	end
+	local bm = ML.Manifest(body)
+	if not bm then
+		return nil
+	end
+	local meta = MESH.meta(bm)
+	local rs = type(meta.rootSize) == "table" and meta.rootSize or { 0.9, 1.1, 0.9 }
+	local plan = {
+		Keys = { body },
+		Entries = {},
+		Grow = tonumber(meta.grow) or 1,
+		Root = Vector3.new(rs[1] or 0.9, rs[2] or 1.1, rs[3] or 0.9),
+		Hybrid = nil,
+		Stars = nil,
+	}
+	local bodyEntry = { Key = body }
+	plan.Entries[1] = bodyEntry
+	local function add(e)
+		plan.Entries[#plan.Entries + 1] = e
+		plan.Keys[#plan.Keys + 1] = e.Key
+	end
+	-- wings (L and R are separate keys; the pivot goes to the body's WingL / WingR / Wing2L / Wing2R attachment)
+	local pairsList
+	if stage > 0 then
+		pairsList = { { "evowing_" .. look.Base .. "_" .. stage, true } }
+		if stage == 2 then
+			pairsList[2] = { "evowing_" .. look.Base .. "_2b", false }
+		end
+	else
+		pairsList = { { "wing_" .. string.lower(look.WingStyle), true } }
+	end
+	for i, wp in ipairs(pairsList) do
+		local l = MESH.wing(ML, bm, wp[1] .. "_L" .. sfx, (i == 1) and "WingL" or "Wing2L")
+		local r = MESH.wing(ML, bm, wp[1] .. "_R" .. sfx, (i == 1) and "WingR" or "Wing2R")
+		if l and r then
+			add(l)
+			add(r)
+		elseif wp[2] or l or r then
+			return nil -- a required pair (or half of an optional one) has no mesh design
+		end
+	end
+	-- the accessory (base stage only; an evolved form wears its own jewellery)
+	if stage == 0 and look.Accessory then
+		local key = "acc_" .. string.lower(look.Accessory) .. sfx
+		local am = ML.Manifest(key)
+		local attach = am and (MESH.meta(am).attach or "Hat")
+		if not am or not MESH.att(bm, attach) then
+			return nil
+		end
+		add({ Key = key, At = attach })
+	end
+	-- a fused hybrid's feature (High keys only, small): head features moved onto this body's HeadCenter, its own
+	-- tail (when the trait swaps the tail) onto the body's Tail attachment instead of the body's tail
+	if stage == 0 and hy then
+		local key = (hy.Species == nil or hy.Species == look.Species) and "hyb_same" or ("hyb_" .. string.lower(hy.Species))
+		local hm = ML.Manifest(key)
+		if not hm then
+			return nil
+		end
+		local hc, bc = MESH.att(hm, "HeadCenter"), MESH.att(bm, "HeadCenter")
+		local headOff = (hc and bc) and (bc - hc) or Vector3.new()
+		local hasTail = false
+		for _, g in ipairs(MESH.groups(hm)) do
+			if g.Id == "Tail" then
+				hasTail = true
+			end
+		end
+		-- Each feature part is anchored by its height in the feature key's reference body (MESH.assemble): above the
+		-- head centre it blends toward the head TOP (Hat attachments: ears / horns / crests sit on a flat frog head or
+		-- a tall owl head alike), below it toward the FLOOR (paw socks stay on the paws), the head centre in between.
+		local hh, bh = MESH.att(hm, "Hat"), MESH.att(bm, "Hat")
+		local ref = ML.Manifest("pet_" .. string.lower(tostring(MESH.meta(hm).species or "dog")))
+		local function floorOf(m)
+			local b = m and m.Bounds
+			local lo = b and (b.Min or b.min)
+			return type(lo) == "table" and tonumber(lo[2]) or nil
+		end
+		local rf, bf = floorOf(ref), floorOf(bm)
+		local head = { OffY = headOff.Y, HC = hc and hc.Y or 0 }
+		if hc and bc and hh and bh and hh.Y > hc.Y + 0.05 then
+			head.Y1, head.Top = hh.Y, (bh - hh) - headOff
+		end
+		if hc and rf and bf and hc.Y > rf + 0.05 then
+			head.Y0, head.Ground = rf, Vector3.new(0, bf - rf, 0) - headOff
+		end
+		add({ Key = key, Off = headOff, Skip = { Tail = true }, Head = head })
+		if hasTail then
+			local ht, bt = MESH.att(hm, "Tail"), MESH.att(bm, "Tail")
+			bodyEntry.Skip = { Tail = true }
+			add({ Key = key, Off = (ht and bt) and (bt - ht) or Vector3.new(), Groups = { Tail = true } })
+		end
+		plan.Hybrid = true
+	end
+	-- Golden: the sparkle stars (a hero star standing on the head, a glint on the cheek)
+	if look.Finish == "Golden" then
+		if not ML.Manifest("star_gold") then
+			return nil
+		end
+		local hat, hc = MESH.att(bm, "Hat"), MESH.att(bm, "HeadCenter")
+		if hat and hc then
+			local r = math.max(0.3, hat.Y - hc.Y)
+			add({ Key = "star_gold", Off = hat + Vector3.new(r * 0.3, r * 0.6, 0), Scale = 0.52, Star = true })
+			add({ Key = "star_gold", Off = hc + Vector3.new(-r * 0.62, -r * 0.3, -r * 0.92), Scale = 0.24, Star = true })
+		end
+		plan.Stars = true
+	end
+	return plan
+end
+
+function MESH.dedupe(list)
+	local out, seen = {}, {}
+	for _, k in ipairs(list) do
+		if not seen[k] then
+			seen[k] = true
+			out[#out + 1] = k
+		end
+	end
+	return out
+end
+
+-- colours of a fused hybrid's Hy* keys: exactly applyHybrid's palette (same seed, same order of draws)
+function MESH.hybridColors(look)
+	local hy = look.Hybrid
+	local r = seededRandom(hy.Seed)
+	local a = hy.Primary
+	if colorDistance(a, look.Primary) < 0.2 then
+		a = (luminance(look.Primary) > 0.5) and darken(a, 0.32) or lighten(a, 0.32)
+	end
+	local h, s, v = a:ToHSV()
+	a = Color3.fromHSV((h + r(-0.025, 0.025)) % 1, clamp(s + r(-0.06, 0.06), 0, 1), clamp(v + r(-0.05, 0.05), 0, 1))
+	local b = look.Secondary
+	if colorDistance(b, a) < 0.12 then
+		b = (luminance(a) > 0.5) and darken(b, 0.3) or lighten(b, 0.35)
+	end
+	return { HyA = a, HyB = b, HyTip = darken(a, 0.42), HyHorn = mix(CREAM or rgb(255, 242, 218), b, 0.3), HyGlow = lighten(b, 0.3) }
+end
+
+-- Golden / Rainbow on mesh parts, by palette key (MK_Key): the Part build's goldPalette / rainbowPalette + instancing
+function MESH.finish(model, look, detail, scale)
+	if not GOLD_DEEP then
+		GOLD_DEEP = rgb(140, 88, 26)
+		GOLD_MID = rgb(240, 180, 52)
+		GOLD_PALE = rgb(255, 230, 140)
+		PEARL = rgb(246, 244, 255)
+	end
+	local rainbow = {}
+	local unit = 2.8 * scale
+	for _, part in ipairs(model:GetChildren()) do
+		local key = part:IsA("BasePart") and part:GetAttribute("MK_Key")
+		if type(key) == "string" and not FINISH_KEEP[key] and part.Name ~= "Body" and not part:GetAttribute("PB_Star") then
+			local neon = part.Material == Enum.Material.Neon
+			if look.Finish == "Golden" then
+				if GOLD_METAL[key] then
+					part.Color = goldTone(part.Color, 0.95)
+					if not neon then
+						part.Material = Enum.Material.Metal
+					end
+					part.Reflectance = 0.18
+				else
+					part.Color = goldTone(part.Color, 0.86)
+				end
+			elseif RAINBOW_KEYS[key] and not part:GetAttribute("PB_T0") then
+				local p = part.Position
+				local phase = (0.95 + 1.1 * (p.Y / unit) + 0.9 * (abs(p.X) / unit)) % 1
+				part.Color = Color3.fromHSV(phase, neon and 0.42 or 0.52, 1)
+				local s = part.Size
+				rainbow[#rainbow + 1] = { Part = part, Volume = s.X * s.Y * s.Z, Phase = phase }
+			else
+				part.Color = part.Color:Lerp(PEARL, 0.3)
+			end
+		end
+	end
+	if #rainbow > 0 then
+		table.sort(rainbow, function(a, b)
+			if a.Volume ~= b.Volume then
+				return a.Volume > b.Volume
+			end
+			return a.Phase < b.Phase
+		end)
+		for i = 1, min(HUE_PARTS[detail] or HUE_PARTS.High, #rainbow) do
+			rainbow[i].Part:SetAttribute("PB_Hue", rainbow[i].Phase)
+		end
+	end
+end
+
+-- PB_Rig in instantiate's order (WingL, WingR, Wing2L, Wing2R, Tail, Halo, Aura, the rest after)
+function MESH.sortRig(model)
+	local rig = model:GetAttribute("PB_Rig")
+	if type(rig) ~= "string" or rig == "" then
+		return
+	end
+	local list = {}
+	for entry in string.gmatch(rig, "[^;]+") do
+		local name = string.match(entry, "^([^:=]+)")
+		list[#list + 1] = { E = entry, R = MESH.RigRank[name] or 50, I = #list + 1 }
+	end
+	table.sort(list, function(a, b)
+		if a.R ~= b.R then
+			return a.R < b.R
+		end
+		return a.I < b.I
+	end)
+	local out = {}
+	for i, e in ipairs(list) do
+		out[i] = e.E
+	end
+	model:SetAttribute("PB_Rig", table.concat(out, ";"))
+end
+
+-- the mesh model of a look (a fresh Assemble; Build caches it as a template and hands out clones) or nil
+function MESH.assemble(ML, look, detail, plan, scale)
+	local parts = {}
+	local headFix = nil
+	for i, e in ipairs(plan.Entries) do
+		local entry = { Key = e.Key, From = 1, Groups = e.Groups, Skip = e.Skip, Scale = e.Scale }
+		if e.Head then
+			headFix = e.Head
+		end
+		if type(e.At) == "string" then
+			entry.At = e.At
+		elseif e.Off then
+			entry.At = CFrame.new(e.Off * scale)
+		end
+		parts[i] = entry
+	end
+	local grown = scale * plan.Grow
+	local attrs = {
+		PB_Detail = detail,
+		PetId = look.Id,
+		PB_Seed = hashString(look.Id .. look.Species),
+	}
+	if look.Finish then
+		attrs.PB_Finish = look.Finish
+	end
+	if look.Hybrid then
+		attrs.PB_Hybrid = true
+	end
+	local model = ML.Assemble({
+		Name = "Pet_" .. look.Id,
+		Root = { Name = "Body", Size = plan.Root * grown },
+		Parts = parts,
+		Attributes = attrs,
+	}, look, { Scale = scale })
+	if not model then
+		return nil
+	end
+	model:SetAttribute("PB_Scale", grown) -- (Animate's orbit / bob amplitudes follow the grown size, as instantiate)
+	MESH.sortRig(model)
+	local hyc = plan.Hybrid and MESH.hybridColors(look) or nil
+	local stars = 0
+	for _, part in ipairs(model:GetChildren()) do
+		if part:IsA("BasePart") and part.Name ~= "Body" then
+			part.CastShadow = false -- (pets never cast shadows, like the Part build)
+			local key = part:GetAttribute("MK_Key")
+			if hyc and MESH.HyKeys[key] then
+				part.Color = hyc[key]
+			end
+			-- hybrid features: anchored by height (head top / head centre / floor, see MESH.makePlan)
+			if headFix and string.sub(tostring(part:GetAttribute("ML_Key")), 1, 4) == "hyb_" and part:GetAttribute("PB_G") == nil then
+				local y = part.Position.Y / scale - headFix.OffY -- (height in the feature key's own space, Scale 1)
+				local d = nil
+				if y >= headFix.HC and headFix.Top then
+					d = headFix.Top * clamp((y - headFix.HC) / (headFix.Y1 - headFix.HC), 0, 1)
+				elseif y < headFix.HC and headFix.Ground then
+					d = headFix.Ground * (1 - clamp((y - headFix.Y0) / (headFix.HC - headFix.Y0), 0, 1))
+				end
+				if d then
+					part.CFrame = CFrame.new(d * scale) * part.CFrame
+				end
+			end
+			if part:GetAttribute("ML_Key") == "star_gold" then
+				stars = stars + 1
+				part.Name = (stars > 1) and ("GoldSpark" .. stars) or "GoldSpark"
+				part.Color = rgb(255, 238, 160)
+				part.Material = Enum.Material.Neon
+				part:SetAttribute("PB_Star", true)
+				part:SetAttribute("PB_Pulse", part.Transparency)
+			end
+		end
+	end
+	if look.Finish then
+		MESH.finish(model, look, detail, scale)
+	end
+	return model
+end
+
+-- Build's mesh step: a clone of the cached mesh template of this look, or nil (= the Part build)
+function MESH.build(look, detail, stage, scale)
+	local ML = MESH.lib()
+	if not ML or not ML.Active() then
+		return nil
+	end
+	local plan = MESH.plan(ML, look, detail, stage)
+	if not plan or not ML.IsReady(plan.Keys) then
+		return nil
+	end
+	local key = lookSignature(look) .. "|" .. detail .. "|" .. string.format("%.4f", scale)
+	local tpl = MESH.Templates[key]
+	if not tpl then
+		local ok, built = pcall(MESH.assemble, ML, look, detail, plan, scale)
+		if not ok then
+			warn("[PetBuilder] mesh build failed, using the Part build: " .. tostring(built))
+			return nil
+		end
+		if not built then
+			return nil
+		end
+		tpl = built
+		MESH.Templates[key] = tpl
+		MESH.Order[#MESH.Order + 1] = key
+		if #MESH.Order > MESH.Max then
+			local old = table.remove(MESH.Order, 1)
+			local m = MESH.Templates[old]
+			MESH.Templates[old] = nil
+			if m then
+				pcall(m.Destroy, m)
+			end
+		end
+	end
+	return tpl:Clone()
+end
+
+-- the evolution stage Build would use for (petDef, opts) and the look it builds
+function MESH.lookOf(petDef, opts)
+	local look = readLook(petDef)
+	local stage = opts.Evolved
+	if stage == nil and type(petDef) == "table" then
+		stage = petDef.Evolved
+	end
+	stage = (stage == true) and 1 or tonumber(stage) or 0
+	stage = min(floor(stage), ASCEND_RARITY[look.Rarity] and 2 or 1)
+	look.Evolved = (stage == 2) and 2 or (stage == 1) or nil
+	return look, stage
+end
+
+function PetBuilder.MeshKeys(petDef, opts)
+	initConstants()
+	opts = type(opts) == "table" and opts or {}
+	local ML = MESH.lib()
+	if not ML then
+		return nil
+	end
+	local look, stage = MESH.lookOf(petDef, opts)
+	local plan = MESH.plan(ML, look, (opts.Detail == "Low") and "Low" or "High", stage)
+	return plan and MESH.dedupe(plan.Keys) or nil
+end
+
+function PetBuilder.NeedsMeshRebuild(model)
+	local info = typeof(model) == "Instance" and MESH.PartInfo[model] or nil
+	if not info then
+		return false
+	end
+	local ML = MESH.lib()
+	if not ML or not ML.Active() then
+		return false
+	end
+	local plan = MESH.plan(ML, info.Look, info.Detail, info.Stage)
+	return (plan and ML.IsReady(plan.Keys)) and true or false
+end
+
+function PetBuilder.MeshVersion()
+	local ML = MESH.lib()
+	return (ML and type(ML.Version) == "function") and ML.Version() or 0
+end
+
+----------------------------------------------------------------------
 -- Public API
 ----------------------------------------------------------------------
 function PetBuilder.Build(petDef, opts)
@@ -6819,9 +7319,18 @@ function PetBuilder.Build(petDef, opts)
 	stage = (stage == true) and 1 or tonumber(stage) or 0
 	stage = min(floor(stage), ASCEND_RARITY[look.Rarity] and 2 or 1)
 	look.Evolved = (stage == 2) and 2 or (stage == 1) or nil
-	local bp, bpKey = getBlueprint(look, detail)
-	local tpl = getTemplate(bp, bpKey, scale)
-	local model = tpl:Clone()
+	-- Phase 6: the Blender mesh pet when every key it needs is usable here, else the whole Part build (opts.Parts =
+	-- true forces the Part build)
+	local model = nil
+	if opts.Parts ~= true then
+		model = MESH.build(look, detail, stage, scale)
+	end
+	if not model then
+		local bp, bpKey = getBlueprint(look, detail)
+		local tpl = getTemplate(bp, bpKey, scale)
+		model = tpl:Clone()
+		MESH.PartInfo[model] = { Look = look, Detail = detail, Stage = stage }
+	end
 	model.PrimaryPart = model:FindFirstChild("Body")
 	if look.Rarity == "Legendary" or look.Rarity == "Mythic" or look.Rarity == "Secret" then
 		addSparkles(model, look, (detail == "Low") and 3 or 5, scale)

@@ -209,7 +209,20 @@ local function withExtra(t, extra)
 	return t
 end
 
+-- Phase 6 kit hook scale (SkyDragonController._Blueprint, read-only, never used by the game): the sculpt runs at MK
+-- mesh voxels per dragon voxel; mesh cell i sits at (i - MO) / MK dragon voxels (MO = (MK - 1) / 2), so an
+-- integer dragon voxel x covers exactly the mesh cells x * MK .. x * MK + MK - 1. MK = 1, MO = 0 in the game.
+local MK, MO = 1, 0
+local function mk(v)
+	return v * MK + MO
+end
+
 local function rbox(g, key, c, size, round, extra)
+	if MK ~= 1 then
+		c = { mk(c[1]), mk(c[2]), mk(c[3]) }
+		size = { size[1] * MK, size[2] * MK, size[3] * MK }
+		round = round * MK
+	end
 	return Voxel.Shape(g, withExtra({ Kind = "RoundBox", Center = c, Size = size, Round = round, Key = key }, extra))
 end
 
@@ -217,10 +230,19 @@ end
 local function vbox(g, key, x0, x1, y0, y1, z0, z1, extra)
 	return Voxel.Shape(g, withExtra({
 		Kind = "Box",
-		Center = { (x0 + x1) * 0.5, (y0 + y1) * 0.5, (z0 + z1) * 0.5 },
-		Size = { x1 - x0 + 1, y1 - y0 + 1, z1 - z0 + 1 },
+		Center = { mk((x0 + x1) * 0.5), mk((y0 + y1) * 0.5), mk((z0 + z1) * 0.5) },
+		Size = { (x1 - x0 + 1) * MK, (y1 - y0 + 1) * MK, (z1 - z0 + 1) * MK },
 		Key = key,
 	}, extra))
+end
+
+-- one dragon voxel (a block of MK^3 mesh cells in the kit)
+local function vset(g, x, y, z, key)
+	if MK == 1 then
+		Voxel.Set(g, x, y, z, key)
+	else
+		vbox(g, key, x, x, y, y, z, z)
+	end
 end
 
 -- the same block on the right (x0..x1 >= 0) and mirrored on the left
@@ -231,7 +253,7 @@ end
 
 -- x of the outermost voxel of the row (y, z) on one side (side = 1: +X, -1: -X), or nil
 local function outerX(g, side, y, z)
-	for i = 16, 0, -1 do
+	for i = 16 * MK + MK - 1, 0, -1 do
 		if Voxel.Get(g, i * side, y, z) ~= nil then
 			return i * side
 		end
@@ -241,7 +263,7 @@ end
 
 -- y of the topmost voxel of the column (x, z), or nil
 local function topY(g, x, z)
-	for y = 16, -16, -1 do
+	for y = 16 * MK + MK - 1, -16 * MK, -1 do
 		if Voxel.Get(g, x, y, z) ~= nil then
 			return y
 		end
@@ -262,10 +284,15 @@ local function sideMask(g, side, yTop, zFront, rows, codes)
 			local key = codes[row:sub(c, c)]
 			if key then
 				local z = zFront + (c - 1)
-				local x = outerX(g, side, y, z)
-				if x and SKIN[Voxel.Get(g, x, y, z)] then
-					Voxel.Set(g, x, y, z, nil)
-					Voxel.Set(g, x - side, y, z, key)
+				for dy = 0, MK - 1 do
+					for dz = 0, MK - 1 do
+						local ys, zs = y * MK + dy, z * MK + dz
+						local x = outerX(g, side, ys, zs)
+						if x and SKIN[Voxel.Get(g, x, ys, zs)] then
+							Voxel.Set(g, x, ys, zs, nil)
+							Voxel.Set(g, x - side, ys, zs, key)
+						end
+					end
 				end
 			end
 		end
@@ -310,16 +337,21 @@ local function sculptHead()
 	vpair(g, "Horn", 4, 4, 0, 1, -11, -10)
 	-- palate (seen when the jaw opens) and fangs at the lip line
 	vbox(g, "Mouth", -1, 1, -2, -2, -11, -4, PAINT_SCALE)
-	Voxel.Set(g, 3, -2, -11, "Tooth")
-	Voxel.Set(g, -3, -2, -11, "Tooth")
+	vset(g, 3, -2, -11, "Tooth")
+	vset(g, -3, -2, -11, "Tooth")
 	Voxel.Shade(g, { Only = { Scale = true }, Crease = 0.15, Smooth = 2 })
 	-- carved nostrils on top of the nose and glowing eyes set into the face under the brows
 	for side = -1, 1, 2 do
 		for x = 1, 2 do
-			local y = topY(g, side * x, -12)
-			if y then
-				Voxel.Set(g, side * x, y, -12, nil)
-				Voxel.Set(g, side * x, y - 1, -12, "Nostril")
+			for dx = 0, MK - 1 do
+				for dz = 0, MK - 1 do
+					local xs, zs = side * x * MK + dx, -12 * MK + dz
+					local y = topY(g, xs, zs)
+					if y then
+						Voxel.Set(g, xs, y, zs, nil)
+						Voxel.Set(g, xs, y - 1, zs, "Nostril")
+					end
+				end
 			end
 		end
 		sideMask(g, side, 3, -4, EYE_ROWS, EYE_CODES)
@@ -333,8 +365,8 @@ local function sculptJaw()
 	local g = Voxel.NewGrid(20)
 	rbox(g, "Scale", { 0, -4, -6.5 }, { 5, 3, 11 }, 1)
 	vbox(g, "Mouth", -1, 1, -3, -3, -11, -2, PAINT_SCALE)
-	Voxel.Set(g, 2, -2, -11, "Tooth")
-	Voxel.Set(g, -2, -2, -11, "Tooth")
+	vset(g, 2, -2, -11, "Tooth")
+	vset(g, -2, -2, -11, "Tooth")
 	vbox(g, "Belly", -1, 1, -5, -5, -11, -1, PAINT_SCALE)
 	-- the beard: tiers narrowing downwards, swept back by the wind
 	vbox(g, "Mane_Light", -1, 1, -6, -6, -11, -6)
@@ -354,11 +386,13 @@ local function sculptSegment(r, withFin)
 	local ext = half + 5
 	Voxel.Shape(g, {
 		Kind = "Ellipsoid",
-		Center = { 0, 0, 0 },
-		Radius = { r, ry, 80 },
+		Center = { MO, MO, MO },
+		Radius = { r * MK, ry * MK, 80 * MK },
 		Key = "Scale",
 		Pattern = function(_, _, z)
-			if z < -ext or z > ext then
+			-- (z - MO) / MK is the dragon-voxel coordinate; at MK = 1 this is exactly -ext <= z <= ext
+			local zd = (z - MO) / MK
+			if zd < -ext - 0.5 or zd > ext + 0.5 then
 				return false
 			end
 			return nil
@@ -388,7 +422,7 @@ local function sculptSegment(r, withFin)
 		-- belly plate edge: a scute rim one voxel proud of the belly, inset from the sides, in the stretch of the
 		-- belly that only this segment shows
 		local wb = 0
-		while wb < 20 and Voxel.Get(g, wb + 1, bottom, 0) ~= nil do
+		while wb < 20 and Voxel.Get(g, (wb + 1) * MK, bottom * MK, 0) ~= nil do
 			wb = wb + 1
 		end
 		wb = max(wb - 1, 0)
@@ -457,6 +491,96 @@ local function buildPiece(grid, name, maxParts)
 		CastShadow = false,
 		Anchored = true,
 	})
+end
+
+----------------------------------------------------------------------
+-- Phase 6: Blender meshes (ARCHITECTURE_V3.md "## Phase 6", recipe 4.8; blender/catalog/creatures.json)
+----------------------------------------------------------------------
+-- Keys: dragon_head, dragon_jaw (head space, like the Part jaw), dragon_seg_<R*10>[f] (one per segment sculpt),
+-- dragon_leg, dragon_tail, dragon_puff, dragon_link (one rounded chain bead, resized and recoloured per link).
+-- Every piece's manifest pivot = the Part piece's own origin, so the pose code is the same for both builds. When
+-- EVERY key is ready on this device the dragon is built from meshes, otherwise from Parts (never a mix); a Part
+-- dragon rebuilds itself once when the keys become ready (MeshLibrary.Changed).
+local MESH_KEYS = { Head = "dragon_head", Jaw = "dragon_jaw", Leg = "dragon_leg", Tail = "dragon_tail", Puff = "dragon_puff", Link = "dragon_link" }
+local meshLib = nil -- MeshLibrary while the dragon is built from meshes
+
+local function segmentKey(spec)
+	return "dragon_seg_" .. tostring(floor(spec.R * 10 + 0.5)) .. (spec.Fin and "f" or "")
+end
+
+-- every key the mesh dragon needs (sorted, no duplicates)
+function SkyDragonController.MeshKeys()
+	local set = {}
+	for _, key in pairs(MESH_KEYS) do
+		set[key] = true
+	end
+	for _, spec in ipairs(SEGMENTS) do
+		set[segmentKey(spec)] = true
+	end
+	local list = {}
+	for key in pairs(set) do
+		list[#list + 1] = key
+	end
+	table.sort(list)
+	return list
+end
+
+-- a mesh piece: a Model named `name` whose MeshParts sit at the key's manifest centres around the identity origin
+local function meshPiece(key, name)
+	local model = meshLib.Assemble({ Name = name, Root = false, Parts = { { Key = key } } }, {}, { At = CFrame.new() })
+	if not model then
+		error("mesh key " .. key .. " did not assemble", 0)
+	end
+	local list = {}
+	for _, d in ipairs(model:GetChildren()) do
+		if d:IsA("BasePart") then
+			d.CastShadow = false
+			list[#list + 1] = d
+		end
+	end
+	return model, list
+end
+
+-- one piece from its mesh key (mesh dragon) or from its sculpt (Part dragon)
+local function piece(key, sculptFn, name, maxParts)
+	if meshLib then
+		return meshPiece(key, name)
+	end
+	return buildPiece(sculptFn(), name, maxParts)
+end
+
+-- Phase 6 kit hook (read-only, never called by the game): the dragon pieces sculpted at k mesh voxels per dragon
+-- voxel (blender/kit/props/creatures.py). Grid cell i sits at (i - Offset) * VoxelStuds studs from the piece origin.
+function SkyDragonController._Blueprint(k)
+	k = math.max(1, floor(tonumber(k) or 1))
+	Voxel = Voxel or require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Voxel"))
+	local saved = palette
+	MK, MO = k, (k - 1) / 2
+	local ok, result = pcall(function()
+		local pieces = { Head = sculptHead(), Jaw = sculptJaw(), Leg = sculptLeg(), Tail = sculptTail(), Puff = sculptPuff() }
+		local segs = {}
+		for _, spec in ipairs(SEGMENTS) do
+			local key = segmentKey(spec)
+			if not segs[key] then
+				segs[key] = sculptSegment(spec.R, spec.Fin)
+			end
+		end
+		return { Pieces = pieces, Segments = segs }
+	end)
+	MK, MO = 1, 0
+	palette = saved
+	if not ok then
+		error(result, 0)
+	end
+	result.Palette = makePalette()
+	result.Keep = KEEP
+	result.K = k
+	result.Offset = (k - 1) / 2
+	result.VoxelStuds = VS / k
+	result.Chains = CHAINS
+	result.JawHinge = JAW_HINGE
+	result.PuffPoint = PUFF.Point
+	return result
 end
 
 ----------------------------------------------------------------------
@@ -834,12 +958,12 @@ end
 
 -- head and jaw (the jaw's offsets are relative to its hinge)
 local function buildHead(model)
-	local head, headParts = buildPiece(sculptHead(), "Head", BUDGET.Head)
+	local head, headParts = piece(MESH_KEYS.Head, sculptHead, "Head", BUDGET.Head)
 	head.Parent = model
 	S.HeadFirst, S.HeadLast = addParts(headParts, nil)
 	task.wait()
 	S.JawHinge = CFrame.new(JAW_HINGE[1] * VS, JAW_HINGE[2] * VS, JAW_HINGE[3] * VS)
-	local jaw, jawParts = buildPiece(sculptJaw(), "Jaw", BUDGET.Jaw)
+	local jaw, jawParts = piece(MESH_KEYS.Jaw, sculptJaw, "Jaw", BUDGET.Jaw)
 	jaw.Parent = model
 	S.JawFirst, S.JawLast = addParts(jawParts, S.JawHinge)
 	task.wait()
@@ -850,30 +974,32 @@ local function buildBody(model)
 	local templates = {}
 	for i, spec in ipairs(SEGMENTS) do
 		local key = tostring(spec.R) .. (spec.Fin and "F" or "")
-		local piece
+		local segModel
 		if templates[key] then
-			piece = templates[key]:Clone()
+			segModel = templates[key]:Clone()
 		else
-			piece = buildPiece(sculptSegment(spec.R, spec.Fin), "Segment", BUDGET.Segment)
-			templates[key] = piece
+			segModel = piece(segmentKey(spec), function()
+				return sculptSegment(spec.R, spec.Fin)
+			end, "Segment", BUDGET.Segment)
+			templates[key] = segModel
 			task.wait()
 		end
-		piece.Name = string.format("Segment%02d", i)
-		piece.Parent = model
-		seg.First[i], seg.Last[i] = addParts(partsOf(piece), nil)
+		segModel.Name = string.format("Segment%02d", i)
+		segModel.Parent = model
+		seg.First[i], seg.Last[i] = addParts(partsOf(segModel), nil)
 		seg.CF[i] = CFrame.new()
 	end
-	local legTemplate = buildPiece(sculptLeg(), "Leg", BUDGET.Leg)
+	local legTemplate = piece(MESH_KEYS.Leg, sculptLeg, "Leg", BUDGET.Leg)
 	for l, spec in ipairs(LEGS) do
-		local piece = (l == 1) and legTemplate or legTemplate:Clone()
-		piece.Name = "Leg" .. l
-		piece.Parent = model
-		leg.First[l], leg.Last[l] = addParts(partsOf(piece), nil)
+		local legModel = (l == 1) and legTemplate or legTemplate:Clone()
+		legModel.Name = "Leg" .. l
+		legModel.Parent = model
+		leg.First[l], leg.Last[l] = addParts(partsOf(legModel), nil)
 		local r = (SEGMENTS[spec.Seg] and SEGMENTS[spec.Seg].R or 3) * VS
 		leg.Base[l] = CFrame.new(spec.Side * r * 0.72, -r * 0.45, 0.4) * CFrame.Angles(0, 0, spec.Side * LEG.Splay)
 	end
 	task.wait()
-	local tail, tailParts = buildPiece(sculptTail(), "Tail", BUDGET.Tail)
+	local tail, tailParts = piece(MESH_KEYS.Tail, sculptTail, "Tail", BUDGET.Tail)
 	tail.Parent = model
 	S.TailFirst, S.TailLast = addParts(tailParts, nil)
 	S.TuftV = Vector3.new(PUFF.Point[1] * VS, PUFF.Point[2] * VS, PUFF.Point[3] * VS)
@@ -885,6 +1011,15 @@ local function buildChains(model)
 	local holder = Instance.new("Model")
 	holder.Name = "Chains"
 	holder.Parent = model
+	-- mesh dragon: one rounded bead MeshPart, cloned per link (resized + recoloured like the Part block)
+	local bead = nil
+	if meshLib then
+		local _, beadParts = meshPiece(MESH_KEYS.Link, "Link")
+		bead = beadParts[1]
+		if not bead then
+			error("mesh key " .. MESH_KEYS.Link .. " has no part", 0)
+		end
+	end
 	for c, spec in ipairs(CHAINS) do
 		chain.Anchor[c] = Vector3.new(spec.Anchor[1] * VS, spec.Anchor[2] * VS, spec.Anchor[3] * VS)
 		local color = palette[spec.Key]
@@ -901,10 +1036,21 @@ local function buildChains(model)
 			if j % 2 == 0 then
 				shade = color:Lerp(Color3.new(1, 1, 1), 0.18)
 			end
-			list[j] = Voxel.Box(holder, CFrame.new(), Vector3.new(thick, thick, (spec.Length + 0.25) * VS), shade, Enum.Material.SmoothPlastic, {
-				Name = spec.Key,
-				CastShadow = false,
-			})
+			if bead then
+				local link = bead:Clone()
+				link.Name = spec.Key
+				link.Size = Vector3.new(thick, thick, (spec.Length + 0.25) * VS)
+				link.Color = shade
+				link.CFrame = CFrame.new()
+				link.CastShadow = false
+				link.Parent = holder
+				list[j] = link
+			else
+				list[j] = Voxel.Box(holder, CFrame.new(), Vector3.new(thick, thick, (spec.Length + 0.25) * VS), shade, Enum.Material.SmoothPlastic, {
+					Name = spec.Key,
+					CastShadow = false,
+				})
+			end
 		end
 		chain.First[c] = addParts(list, nil)
 	end
@@ -915,12 +1061,12 @@ local function buildPuffs(model)
 	local holder = Instance.new("Model")
 	holder.Name = "Puffs"
 	holder.Parent = model
-	local template = buildPiece(sculptPuff(), "Puff", BUDGET.Puff)
+	local template = piece(MESH_KEYS.Puff, sculptPuff, "Puff", BUDGET.Puff)
 	for p = 1, PUFF.Pool do
-		local piece = (p == 1) and template or template:Clone()
-		piece.Name = "Puff" .. p
-		piece.Parent = holder
-		local list = partsOf(piece)
+		local puffModel = (p == 1) and template or template:Clone()
+		puffModel.Name = "Puff" .. p
+		puffModel.Parent = holder
+		local list = partsOf(puffModel)
 		for _, part in ipairs(list) do
 			part.Transparency = 1
 		end
@@ -1000,6 +1146,15 @@ local function build()
 		ox, oy, oz = lobby.Origin.X, lobby.Origin.Y, lobby.Origin.Z
 	end
 	palette = makePalette()
+	meshLib = nil
+	local ML = loadShared("MeshLibrary")
+	if ML and type(ML.IsReady) == "function" and type(ML.Assemble) == "function" then
+		S.MeshLib = ML
+		local ok, ready = pcall(ML.IsReady, SkyDragonController.MeshKeys())
+		if ok and ready == true and not S.NoMesh then
+			meshLib = ML
+		end
+	end
 	S.Rng = Random.new(7071)
 	S.BulkMode = Enum.BulkMoveMode.FireCFrameChanged
 	setupPath()
@@ -1013,6 +1168,10 @@ local function build()
 	primeFlight()
 	model.Parent = clientFxFolder()
 	S.Model = model
+	S.Mesh = meshLib ~= nil
+	if S.Mesh then
+		model:SetAttribute("ML_Mesh", true)
+	end
 
 	-- BulkMoveTo is the fast path; fall back to plain CFrame writes if it is unavailable
 	S.UseBulk = pcall(Workspace.BulkMoveTo, Workspace, parts, cfs, S.BulkMode) and true or false
@@ -1022,6 +1181,77 @@ end
 ----------------------------------------------------------------------
 -- Public API
 ----------------------------------------------------------------------
+-- forgets every built part (a rebuild starts from scratch; the flight path is recomputed by build)
+local function resetBuild()
+	if S.Connection then
+		S.Connection:Disconnect()
+		S.Connection = nil
+	end
+	if S.Model then
+		S.Model:Destroy()
+		S.Model = nil
+	end
+	parts, cfs, offsets = {}, {}, {}
+	nParts = 0
+	seg = { First = {}, Last = {}, CF = {} }
+	leg = { First = {}, Last = {}, Base = {} }
+	chain = { First = {}, Anchor = {}, X = {}, Y = {}, Z = {} }
+	puff = { First = {}, Last = {}, Age = {}, X = {}, Y = {}, Z = {}, Rot = {}, Scale = {}, Pos = {}, Size = {} }
+	S.NextPuff, S.PuffTimer = 1, 0
+end
+
+-- builds the dragon (meshes when every key is ready here, else Parts) and starts the frame loop; a failed mesh
+-- build falls back to the Part dragon
+local function buildAndRun()
+	local ok, result = pcall(build)
+	if not ok and meshLib then
+		warn(TAG .. "mesh dragon failed (" .. tostring(result) .. "); building the Part dragon")
+		meshLib = nil
+		resetBuild()
+		S.NoMesh = true -- this one build is the Part dragon even though the keys are ready
+		ok, result = pcall(build)
+		S.NoMesh = false
+	end
+	if not ok then
+		warn(TAG .. "could not build the Sage Dragon: " .. tostring(result))
+		if S.Model then
+			S.Model:Destroy()
+			S.Model = nil
+		end
+		return false
+	end
+	if result then
+		S.Connection = RunService.RenderStepped:Connect(onRenderStep)
+	end
+	return result
+end
+
+-- a Part dragon rebuilds itself once from meshes when the last dragon key becomes ready on this device
+local function watchMeshes()
+	local ML = S.MeshLib
+	if not ML or S.Mesh or S.MeshWatch or type(ML.Changed) ~= "table" then
+		return
+	end
+	S.MeshWatch = ML.Changed:Connect(function()
+		if S.Mesh or S.Rebuilding or not S.Model then
+			return
+		end
+		local ok, ready = pcall(ML.IsReady, SkyDragonController.MeshKeys())
+		if ok and ready == true then
+			if S.MeshWatch then
+				S.MeshWatch:Disconnect()
+				S.MeshWatch = nil
+			end
+			S.Rebuilding = true
+			task.spawn(function()
+				resetBuild()
+				buildAndRun()
+				S.Rebuilding = false
+			end)
+		end
+	end)
+end
+
 function SkyDragonController.Init()
 	if S.Started then
 		return
@@ -1031,19 +1261,34 @@ function SkyDragonController.Init()
 		return
 	end
 	task.spawn(function()
-		local ok, result = pcall(build)
-		if not ok then
-			warn(TAG .. "could not build the Sage Dragon: " .. tostring(result))
-			if S.Model then
-				S.Model:Destroy()
-				S.Model = nil
-			end
-			return
-		end
-		if result then
-			S.Connection = RunService.RenderStepped:Connect(onRenderStep)
+		if buildAndRun() then
+			watchMeshes()
 		end
 	end)
+end
+
+-- tests / tools: rebuild the dragon now (picks meshes or Parts again); yields while it builds. Returns true when
+-- a dragon is flying afterwards.
+function SkyDragonController._Rebuild()
+	if not RunService:IsClient() or S.Rebuilding then
+		return false
+	end
+	S.Rebuilding = true
+	if S.MeshWatch then
+		S.MeshWatch:Disconnect()
+		S.MeshWatch = nil
+	end
+	resetBuild()
+	local ok = buildAndRun()
+	S.Rebuilding = false
+	if ok then
+		watchMeshes()
+	end
+	return ok and true or false
+end
+
+function SkyDragonController.IsMesh()
+	return S.Mesh == true
 end
 
 function SkyDragonController.GetModel()

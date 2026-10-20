@@ -59,7 +59,7 @@ return {
 		Min = { -3.3818, -2.2909, -3.2018 },
 		Size = { 6.7636, 6.4935, 7.2754 },
 	},
-	ContentHash = "661a2122b2c47e7b91d77237938c4b76",
+	ContentHash = "48b0096b6bcd3d0119991da1f41fcb6b",
 	DarkFactor = { 0.8425, 0.85, 0.8875 },
 	DeepFactor = { 0.7098, 0.7225, 0.7877 },
 	Groups = {
@@ -144,7 +144,7 @@ return {
 			Name = "Aura",
 			Shade = "headroom",
 			Size = { 6.7636, 1.7455, 6.7636 },
-			Tris = 566,
+			Tris = 550,
 		},
 		{
 			Center = { 0, -0.1643, 0.18 },
@@ -513,6 +513,6 @@ return {
 	},
 	Rig = "Tail:tail:1:0.25:0=0,-0.4632,1.48262,1,0,0,0,1,0,0,0,1;Halo:bob:1:0.6:0=0,3.2208,-1.14,1,0,0,0,1,0,0,0,1;Aura:orbit:1:0.8:0=0,-0.0552,0.18,1,0,0,0,1,0,0,0,1",
 	StructureHash = "bac9d0c065b4ced82f0b522200f65f50",
-	Tris = 4176,
+	Tris = 4160,
 	VoxelStuds = 0.21818,
 }

@@ -241,6 +241,7 @@ local renderConn = nil
 local playerConns = {}
 local frameIndex = 0
 local buildsThisFrame = 0 -- models built in the current frame
+local meshVerNow = 0 -- Phase 6 (runtime-pets): PetBuilder.MeshVersion() of this frame (a change = some mesh keys usable)
 local buildStart = 0 -- os.clock() when the frame's first build started
 local movedRigid, movedPivot = 0, 0 -- pets posed in the current frame (root write / PivotTo fallback)
 local lastRigid, lastPivot = 0, 0 -- ... in the last finished frame (GetMoveStats)
@@ -1487,6 +1488,13 @@ local function stepFollower(f, dt, now, viewPos)
 		local p = pets[i]
 		local model = p.model
 		p.live = false
+		-- Phase 6 (runtime-pets): a Part-built pet whose Blender mesh keys became usable here is rebuilt as a mesh pet
+		if model and p.meshVer ~= meshVerNow then
+			p.meshVer = meshVerNow
+			if not p.rebuildAt and PetBuilder.NeedsMeshRebuild and PetBuilder.NeedsMeshRebuild(model) then
+				p.rebuildAt = now
+			end
+		end
 		if p.rebuildAt and now >= p.rebuildAt and not p.parked then
 			-- Phase 4: the stage changed (EVOLVE, EquippedInfo, the 40-stud rule): rebuild where the pet is
 			p.rebuildAt = nil
@@ -1665,6 +1673,7 @@ local function onRender(dt)
 	end
 	frameIndex = frameIndex + 1
 	buildsThisFrame = 0
+	meshVerNow = PetBuilder.MeshVersion and PetBuilder.MeshVersion() or 0
 	lastRigid, lastPivot = movedRigid, movedPivot
 	movedRigid, movedPivot = 0, 0
 	if dt > MAX_DT then

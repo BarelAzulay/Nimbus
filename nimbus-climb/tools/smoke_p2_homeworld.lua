@@ -528,6 +528,183 @@ local function serverScenarios()
 		end
 	end)
 
+	-- [owner: art-home] begin -- Phase 6 W2: the Blender keys of the home plot (blender/catalog/home.json) and
+	-- HomeBuilder's Tag calls (HomeBuilder._Mesh): every station level has its key, each key's LayoutSig still matches
+	-- the live Part build (else: rebuild with blender/build_all.py --class home), nothing is tagged without uploaded ids,
+	-- a placed station / Garden bed piece is tagged once ids exist, a stale layout is never tagged, the max plot budget.
+	S.p2home_mesh = guarded("p2home_mesh", function()
+		local HB = requireAt("server/Services/HomeBuilder")
+		local TC = requireAt("shared/TycoonCatalog")
+		local ML = requireAt("shared/MeshLibrary")
+		local Mesh = HB and HB._Mesh
+		if not T.check(type(Mesh) == "table" and type(TC) == "table" and type(ML) == "table", "home mesh: HomeBuilder._Mesh, TycoonCatalog and MeshLibrary load") then
+			return
+		end
+		local function hasDress(root)
+			if root:GetAttribute("ML_DressKey") then
+				return true
+			end
+			for _, d in ipairs(root:GetDescendants()) do
+				if d:GetAttribute("ML_DressKey") then
+					return true
+				end
+			end
+			return false
+		end
+		local function sigOf(key)
+			local man = ML.Manifest(key)
+			local att = man and man.Attachments and man.Attachments.LayoutSig
+			return man, att and (att.Pos or att.pos)
+		end
+		-- 1. every station level: a key whose LayoutSig matches the live build; no tag without ids
+		local keys = T.tally("home mesh: every station level has its home_<stem>_<level> key and the key matches today's Part build (else rebuild: blender/build_all.py --class home)")
+		local quiet = T.tally("home mesh: with the shipped empty MeshIds nothing is tagged (the Part build is unchanged)")
+		local names = T.tally("home mesh: station keys are baked parts only (Fixed* / Glass*), never a kept name")
+		local GARDEN_OPENS = { 0, 3, 7, 12 }
+		local maxTris, maxParts = 0, 0
+		for _, def in ipairs(TC.Stations) do
+			local stem = Mesh.Stems[def.Id] or Mesh.Stems[def.Kind]
+			for level = 1, def.MaxLevel do
+				local opens = (def.Kind == "Garden") and GARDEN_OPENS or { false }
+				for _, open in ipairs(opens) do
+					local m = HB.BuildStationModel(def.Id, level, nil, open or nil)
+					local label = def.Id .. " " .. level .. (open and (" open " .. open) or "")
+					local key = stem and ("home_" .. stem .. "_" .. level)
+					local man, pos = nil, nil
+					if key then
+						man, pos = sigOf(key)
+					end
+					local keepList, keepSet = Mesh.keepOf(m, Mesh.elementsOf(def))
+					local n, a, b = Mesh.signature(m, CFrame.new(), keepSet)
+					local ok = man ~= nil and type(pos) == "table" and pos[1] == n and abs(pos[2] - a) <= 0.05 + n * 1e-4 and abs(pos[3] - b) <= 0.05 + n * 1e-4
+					keys:case(ok, label, man and pos and fmt(pos[1], 0) .. " / " .. n .. " parts, sums " .. fmt(pos[2], 3) .. " vs " .. fmt(a, 3) or ("no manifest " .. tostring(key)))
+					quiet:case(not hasDress(m), label)
+					if man and (open == false or open == 12) and level == def.MaxLevel then
+						maxTris = maxTris + (tonumber(man.Raw and man.Raw.Tris) or 0)
+						maxParts = maxParts + #(man.Parts or {})
+					end
+					if man then
+						local bad = nil
+						for _, p in ipairs(man.Parts or {}) do
+							local nm = p.name or p.Name
+							if not (string.match(nm, "^Fixed%d*$") or string.match(nm, "^Glass%d*$")) or keepSet[nm] then
+								bad = nm
+							end
+						end
+						names:case(bad == nil, label, bad)
+					end
+					m:Destroy()
+				end
+			end
+		end
+		keys:report()
+		quiet:report()
+		names:report()
+		-- 2. the Garden's bed pieces: one key per piece, its part named like the piece, matching the Part size
+		local gardenDef = TC.Get and TC.Get("Garden")
+		local elements = Mesh.elementsOf(gardenDef or { Kind = "Garden" })
+		local g = HB.BuildStationModel("Garden", 8, nil, 6)
+		local seen = {}
+		for _, d in ipairs(g:GetDescendants()) do
+			local ek = d:IsA("BasePart") and elements[d.Name]
+			if ek and not seen[ek] then
+				seen[ek] = d
+			end
+		end
+		local el = T.tally("home mesh: every Garden bed piece has its home_bed_<piece> key (part named like the piece, LayoutSig = the part's size)")
+		local bedTris = 0
+		for name, ek in pairs(elements) do
+			local part = seen[ek]
+			local man, pos = sigOf(ek)
+			local n, a, b = 0, 0, 0
+			if part then
+				n, a, b = Mesh.signature(part, part.CFrame)
+			end
+			local p1 = man and man.Parts and man.Parts[1]
+			el:case(part ~= nil and man ~= nil and pos ~= nil and pos[1] == n and abs(pos[3] - b) <= 0.05 and #man.Parts == 1 and p1 and (p1.name or p1.Name) == name, ek)
+			if man and (name == "Bed" or name == "Cushion" or name == "Headboard" or name == "BedRoof") then
+				bedTris = bedTris + (tonumber(man.Raw and man.Raw.Tris) or 0)
+			end
+		end
+		el:report()
+		g:Destroy()
+		-- 3. the max plot stays light (every station at its top level, 12 open beds): <= 50k triangles, <= 40 MeshParts
+		local plotTris = maxTris + 12 * bedTris
+		T.check(plotTris > 0 and plotTris <= 50000 and maxParts <= 40, "home mesh: a max-tier plot stays light (<= 50k triangles, <= 40 station MeshParts + the bed pieces)", plotTris .. " tris, " .. maxParts .. " parts")
+
+		-- 4. with ids (a private MeshLibrary config: every home key "uploaded"), placed stations and bed pieces get tagged
+		local ids, idn = {}, 0
+		local manDir = K.moduleInstance("shared/MeshLibrary")
+		manDir = manDir and manDir.Parent and manDir.Parent:FindFirstChild("MeshManifests")
+		for _, mod in ipairs(manDir and manDir:GetChildren() or {}) do
+			if mod:IsA("ModuleScript") and string.sub(mod.Name, 1, 5) == "home_" then
+				idn = idn + 1
+				ids[mod.Name] = 100000 + idn
+			end
+		end
+		ML._Reset()
+		ML._Configure({ Ids = ids })
+		local okStart = pcall(function()
+			-- ids are read at Start; the mock has no LoadAsset, so every key stays "loading" (never "missing")
+			ML.Start()
+		end)
+		local status = ML.Status("home_house_4")
+		local root = Instance.new("Folder")
+		root.Name = "SmokeHomesMesh"
+		root.Parent = workspace
+		local spotFolder = Instance.new("Folder")
+		spotFolder.Name = "Spot_93"
+		spotFolder.Parent = root
+		local plotCF = CFrame.new(-4000, 300, 4000) * CFrame.Angles(0, math.rad(180), 0)
+		local spot = { Index = 93, PlotCFrame = plotCF, PlotSize = TC.PlotSize, Center = plotCF.Position, Folder = spotFolder }
+		local good = pcall(function()
+			HB.PreparePlot(spot)
+			HB.SetStation(spot, "House", 4)
+			HB.SetStation(spot, "Garden", 8)
+			HB.SetGarden(spot, {}, 5)
+			HB.SetStation(spot, "DecorFountain", 3)
+		end)
+		local home = HB.GetHomeFolder and HB.GetHomeFolder(spot)
+		local house = home and home:FindFirstChild("Station_House")
+		local garden = home and home:FindFirstChild("Station_Garden")
+		local fountain = home and home:FindFirstChild("Station_DecorFountain")
+		if T.check(okStart and good and status ~= "missing" and house and garden and fountain, "home mesh: a test plot builds with ids configured", tostring(status)) then
+			local off = house:GetAttribute("ML_Offset")
+			T.check(house:GetAttribute("ML_DressKey") == "home_house_4" and type(off) == "string" and #CollectionService:GetTags(house) > 0,
+				"home mesh: a placed station is tagged with its level key (MeshLibrary.Tag; offset = the station origin)", tostring(house:GetAttribute("ML_DressKey")))
+			local keepAttr = house:GetAttribute("ML_Keep") or ""
+			T.check(string.find("," .. keepAttr .. ",", ",Lantern,", 1, true) ~= nil, "home mesh: Neon lanterns stay visible over the mesh (ML_Keep)", keepAttr)
+			local fk = fountain:GetAttribute("ML_Keep") or ""
+			T.check(fountain:GetAttribute("ML_DressKey") == "home_fountain_3" and string.find("," .. fk .. ",", ",Crystal,", 1, true) ~= nil, "home mesh: the Fountain is tagged and keeps its Neon crystal", fk)
+			T.check(garden:GetAttribute("ML_DressKey") == "home_garden_8", "home mesh: the Garden (any open count) is tagged with its level key", tostring(garden:GetAttribute("ML_DressKey")))
+			local tagged, pieces, wrong = 0, 0, nil
+			for _, d in ipairs(garden:GetDescendants()) do
+				if d:IsA("BasePart") and elements[d.Name] then
+					pieces = pieces + 1
+					if d:GetAttribute("ML_DressKey") == elements[d.Name] then
+						tagged = tagged + 1
+					else
+						wrong = d.Name
+					end
+				end
+			end
+			T.check(pieces > 0 and tagged == pieces, "home mesh: every Garden bed piece carries its own key (a bed swap needs no new station key)", tagged .. " / " .. pieces .. " " .. tostring(wrong))
+			local gk = garden:GetAttribute("ML_Keep") or ""
+			T.check(string.find("," .. gk .. ",", ",Bed,", 1, true) ~= nil and string.find("," .. gk .. ",", ",ClosedSign,", 1, true) ~= nil,
+				"home mesh: the Garden keeps its bed pieces and the sign boards (text stays Parts)", gk)
+			-- prompts / attachments still on Parts the server owns
+			local prompt = find(garden, "GardenSpotPrompt", "ProximityPrompt")
+			T.check(prompt ~= nil, "home mesh: the GardenSpotPrompts are still there")
+		end
+		-- 5. a stale layout is never tagged
+		T.check(Mesh.sigOk(ML, "home_house_4", 3, 1, 2) == false and Mesh.sigOk(ML, "home_no_such_key", 0, 0, 0) == false,
+			"home mesh: a key whose LayoutSig does not match (or with no manifest) is never tagged")
+		pcall(HB.ClearPlot, spot)
+		root:Destroy()
+		ML._Reset()
+	end)
+	-- [owner: art-home] end
+
 	S.p2home_plot = guarded("p2home_plot", function()
 		local HB = requireAt("server/Services/HomeBuilder")
 		local TC = requireAt("shared/TycoonCatalog")

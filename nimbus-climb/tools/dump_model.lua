@@ -1713,6 +1713,105 @@ do
 end
 -- [owner: evofx] end
 
+-- [owner: art-lobby] begin
+-- (Phase 6 lobby meshes) meshlobby: the lobby + Gate Court gates + Storm Altar with every art-lobby Mesh.tag target
+-- dressed from its committed manifest (shared/MeshManifests/<key>) the way MeshLibrary.Dress does it on a client: the
+-- target's Parts hidden (keep names stay), the key's MeshParts (ML_Key / ML_Part) placed at the Tag origin and coloured
+-- with MeshLibrary.EvalColor for the target's look. Crop with --box as for `lobby`.
+do
+	local function dressFromManifest(rec, ML)
+		local folder = Mock.GetPath(ROOTS.shared .. "/MeshManifests")
+		local mod = folder and folder:FindFirstChild(rec.Key)
+		if not mod then
+			return false
+		end
+		local man = require(mod)
+		local keep = {}
+		for _, n in ipairs(rec.Keep or {}) do
+			keep[n] = true
+		end
+		local list = rec.Target:GetDescendants()
+		list[#list + 1] = rec.Target
+		for _, d in ipairs(list) do
+			if d:IsA("BasePart") and not keep[d.Name] and d:GetAttribute("ML_Key") == nil then
+				d.Transparency = 1
+			end
+		end
+		local look = {
+			Primary = Color3.fromRGB(226, 150, 74), Secondary = Color3.fromRGB(255, 255, 255),
+			Eye = Color3.fromRGB(40, 40, 60), WingColor = Color3.fromRGB(255, 255, 255),
+		}
+		for k, v in pairs(rec.Look or {}) do
+			look[k] = v
+		end
+		local holder = Instance.new("Model")
+		holder.Name = "ML_Mesh"
+		for _, p in ipairs(man.Parts or {}) do
+			local mp = Instance.new("MeshPart")
+			mp.Name = p.Name
+			mp.Size = Vector3.new(p.Size[1], p.Size[2], p.Size[3])
+			mp.CFrame = rec.Origin * CFrame.new(p.Center[1], p.Center[2], p.Center[3])
+			if type(p.Color) == "table" and ML and ML.EvalColor then
+				mp.Color = ML.EvalColor(p.Color, look)
+			else
+				mp.Color = Color3.new(1, 1, 1)
+			end
+			mp.Material = (p.Material == "Neon" and Enum.Material.Neon) or (p.Material == "Glass" and Enum.Material.Glass) or Enum.Material.SmoothPlastic
+			mp.Transparency = tonumber(p.Transparency) or 0
+			mp:SetAttribute("ML_Key", rec.Key)
+			mp:SetAttribute("ML_Part", p.Name)
+			mp.Anchored = true
+			mp.Parent = holder
+		end
+		holder.Parent = rec.Target
+		return true
+	end
+
+	BUILDERS.meshlobby = function()
+		local LB = req("server/Services/LobbyBuilder")
+		local SA = req("server/Services/StormAltar", true)
+		LB._Kit = { Targets = {}, Clouds = {} }
+		if SA then
+			SA._Kit = { Targets = {} }
+		end
+		local info = ensureLobby()
+		for _, name in ipairs({ "server/Services/ArenaBuilder", "server/Services/DungeonBuilder" }) do
+			local ok, B = pcall(req, name, true)
+			if ok and type(B) == "table" and type(B.Build) == "function" then
+				pcall(B.Build, info)
+			end
+		end
+		if SA and type(SA.Build) == "function" then
+			pcall(SA.Build, info)
+		end
+		Mock.Advance(0.2)
+		local ML = req("shared/MeshLibrary", true)
+		local recs = {}
+		for _, r in ipairs(LB._Kit.Targets) do
+			recs[#recs + 1] = r
+		end
+		for _, r in ipairs(SA and SA._Kit and SA._Kit.Targets or {}) do
+			recs[#recs + 1] = r
+		end
+		LB._Kit = nil
+		if SA then
+			SA._Kit = nil
+		end
+		local n = 0
+		for _, r in ipairs(recs) do
+			if dressFromManifest(r, ML) then
+				n = n + 1
+			end
+		end
+		local altar = Workspace:FindFirstChild("StormAltar", true)
+		if altar and altar.Parent ~= info.Folder then
+			altar.Parent = info.Folder
+		end
+		return { { root = info.Folder, label = "Lobby (meshes)", sub = n .. " art-lobby targets dressed from their manifests", facing = { 0, 0, -1 } } }
+	end
+end
+-- [owner: art-lobby] end
+
 ----------------------------------------------------------------------
 -- main
 ----------------------------------------------------------------------

@@ -1,25 +1,748 @@
 {
  "class": "creatures",
  "owner": "W2 art-creatures",
- "doc": "blender/README.md. Keys: boss_<id>_<joint>, dragon_<piece>, npc_pedestal, token_<kind>, fx_<shield|ice|arrow>, star_gold. type boss: {boss, joint, k} (k = boss voxels per 0.5 stud: 1.5 - 2 gives 0.33 - 0.25 stud)",
+ "doc": "blender/README.md + docs/phase6/review/creatures/README.md. Keys: boss_<id>_<Joint>[_low] (type boss, pivot = the BossBuilder joint pivot, k = mesh voxels per 0.5-stud boss voxel), dragon_<piece> (SkyDragonController._Blueprint via props/creatures.py, pivot = the piece pivot), npc_pedestal, token_<cloud|golden|cash|goldencash>, fx_<shield|ice|arrow>, star_gold (props/creatures*.py).",
  "budgets": {
   "boss": {
    "tris": 15000,
-   "parts": 40
+   "parts": 48
   },
   "bossLow": {
    "tris": 6000,
-   "parts": 40
+   "parts": 48
+  },
+  "bossJoint": {
+   "tris": 10000,
+   "parts": 16,
+   "maxPartTris": 10000
+  },
+  "bossJointLow": {
+   "tris": 4000,
+   "parts": 16,
+   "maxPartTris": 10000
   },
   "skydragon": {
-   "tris": 12000
+   "tris": 12000,
+   "parts": 110
+  },
+  "dragonPiece": {
+   "tris": 4000,
+   "parts": 20,
+   "maxPartTris": 10000
+  },
+  "npc": {
+   "tris": 4000,
+   "parts": 20
   },
   "token": {
    "tris": 2000,
    "parts": 8
+  },
+  "fx": {
+   "tris": 1200,
+   "parts": 6
+  },
+  "star": {
+   "tris": 300,
+   "parts": 3
   }
  },
- "keys": [],
- "sets": [],
+ "keys": [
+  {
+   "key": "boss_storm_titan_Base",
+   "type": "boss",
+   "boss": "storm_titan",
+   "joint": "Base",
+   "k": 1.3,
+   "budget": "bossJoint",
+   "description": "Raid boss storm titan, joint Base (pivot = BossBuilder joint pivot), High"
+  },
+  {
+   "key": "boss_storm_titan_Body",
+   "type": "boss",
+   "boss": "storm_titan",
+   "joint": "Body",
+   "k": 1.3,
+   "budget": "bossJoint",
+   "description": "Raid boss storm titan, joint Body (pivot = BossBuilder joint pivot), High"
+  },
+  {
+   "key": "boss_storm_titan_Head",
+   "type": "boss",
+   "boss": "storm_titan",
+   "joint": "Head",
+   "k": 1.3,
+   "budget": "bossJoint",
+   "description": "Raid boss storm titan, joint Head (pivot = BossBuilder joint pivot), High"
+  },
+  {
+   "key": "boss_storm_titan_ArmL",
+   "type": "boss",
+   "boss": "storm_titan",
+   "joint": "ArmL",
+   "k": 1.3,
+   "budget": "bossJoint",
+   "description": "Raid boss storm titan, joint ArmL (pivot = BossBuilder joint pivot), High"
+  },
+  {
+   "key": "boss_storm_titan_ArmR",
+   "type": "boss",
+   "boss": "storm_titan",
+   "joint": "ArmR",
+   "k": 1.3,
+   "budget": "bossJoint",
+   "description": "Raid boss storm titan, joint ArmR (pivot = BossBuilder joint pivot), High"
+  },
+  {
+   "key": "boss_storm_titan_Base_low",
+   "type": "boss",
+   "boss": "storm_titan",
+   "joint": "Base",
+   "k": 0.75,
+   "lod": "Low",
+   "budget": "bossJointLow",
+   "description": "Raid boss storm titan, joint Base, Low"
+  },
+  {
+   "key": "boss_storm_titan_Body_low",
+   "type": "boss",
+   "boss": "storm_titan",
+   "joint": "Body",
+   "k": 0.75,
+   "lod": "Low",
+   "budget": "bossJointLow",
+   "description": "Raid boss storm titan, joint Body, Low"
+  },
+  {
+   "key": "boss_storm_titan_Head_low",
+   "type": "boss",
+   "boss": "storm_titan",
+   "joint": "Head",
+   "k": 0.75,
+   "lod": "Low",
+   "budget": "bossJointLow",
+   "description": "Raid boss storm titan, joint Head, Low"
+  },
+  {
+   "key": "boss_storm_titan_ArmL_low",
+   "type": "boss",
+   "boss": "storm_titan",
+   "joint": "ArmL",
+   "k": 0.75,
+   "lod": "Low",
+   "budget": "bossJointLow",
+   "description": "Raid boss storm titan, joint ArmL, Low"
+  },
+  {
+   "key": "boss_storm_titan_ArmR_low",
+   "type": "boss",
+   "boss": "storm_titan",
+   "joint": "ArmR",
+   "k": 0.75,
+   "lod": "Low",
+   "budget": "bossJointLow",
+   "description": "Raid boss storm titan, joint ArmR, Low"
+  },
+  {
+   "key": "boss_lava_golem_Body",
+   "type": "boss",
+   "boss": "lava_golem",
+   "joint": "Body",
+   "k": 1.45,
+   "budget": "bossJoint",
+   "description": "Raid boss lava golem, joint Body (pivot = BossBuilder joint pivot), High"
+  },
+  {
+   "key": "boss_lava_golem_Head",
+   "type": "boss",
+   "boss": "lava_golem",
+   "joint": "Head",
+   "k": 1.45,
+   "budget": "bossJoint",
+   "description": "Raid boss lava golem, joint Head (pivot = BossBuilder joint pivot), High"
+  },
+  {
+   "key": "boss_lava_golem_ArmL",
+   "type": "boss",
+   "boss": "lava_golem",
+   "joint": "ArmL",
+   "k": 1.45,
+   "budget": "bossJoint",
+   "description": "Raid boss lava golem, joint ArmL (pivot = BossBuilder joint pivot), High"
+  },
+  {
+   "key": "boss_lava_golem_ArmR",
+   "type": "boss",
+   "boss": "lava_golem",
+   "joint": "ArmR",
+   "k": 1.45,
+   "budget": "bossJoint",
+   "description": "Raid boss lava golem, joint ArmR (pivot = BossBuilder joint pivot), High"
+  },
+  {
+   "key": "boss_lava_golem_Body_low",
+   "type": "boss",
+   "boss": "lava_golem",
+   "joint": "Body",
+   "k": 0.88,
+   "lod": "Low",
+   "budget": "bossJointLow",
+   "description": "Raid boss lava golem, joint Body, Low"
+  },
+  {
+   "key": "boss_lava_golem_Head_low",
+   "type": "boss",
+   "boss": "lava_golem",
+   "joint": "Head",
+   "k": 0.88,
+   "lod": "Low",
+   "budget": "bossJointLow",
+   "description": "Raid boss lava golem, joint Head, Low"
+  },
+  {
+   "key": "boss_lava_golem_ArmL_low",
+   "type": "boss",
+   "boss": "lava_golem",
+   "joint": "ArmL",
+   "k": 0.88,
+   "lod": "Low",
+   "budget": "bossJointLow",
+   "description": "Raid boss lava golem, joint ArmL, Low"
+  },
+  {
+   "key": "boss_lava_golem_ArmR_low",
+   "type": "boss",
+   "boss": "lava_golem",
+   "joint": "ArmR",
+   "k": 0.88,
+   "lod": "Low",
+   "budget": "bossJointLow",
+   "description": "Raid boss lava golem, joint ArmR, Low"
+  },
+  {
+   "key": "boss_frost_wyrm_Body",
+   "type": "boss",
+   "boss": "frost_wyrm",
+   "joint": "Body",
+   "k": 1.45,
+   "budget": "bossJoint",
+   "description": "Raid boss frost wyrm, joint Body (pivot = BossBuilder joint pivot), High"
+  },
+  {
+   "key": "boss_frost_wyrm_WingL",
+   "type": "prop",
+   "budget": "bossJoint",
+   "description": "Raid boss frost wyrm, joint WingL (pivot = BossBuilder joint pivot), High (Ice membrane meshed closed, T 0.15 on the part)",
+   "prop": "boss_joint",
+   "args": {
+    "boss": "frost_wyrm",
+    "joint": "WingL",
+    "k": 1.45
+   }
+  },
+  {
+   "key": "boss_frost_wyrm_WingR",
+   "type": "prop",
+   "budget": "bossJoint",
+   "description": "Raid boss frost wyrm, joint WingR (pivot = BossBuilder joint pivot), High (Ice membrane meshed closed, T 0.15 on the part)",
+   "prop": "boss_joint",
+   "args": {
+    "boss": "frost_wyrm",
+    "joint": "WingR",
+    "k": 1.45
+   }
+  },
+  {
+   "key": "boss_frost_wyrm_Head",
+   "type": "boss",
+   "boss": "frost_wyrm",
+   "joint": "Head",
+   "k": 1.45,
+   "budget": "bossJoint",
+   "description": "Raid boss frost wyrm, joint Head (pivot = BossBuilder joint pivot), High"
+  },
+  {
+   "key": "boss_frost_wyrm_Jaw",
+   "type": "boss",
+   "boss": "frost_wyrm",
+   "joint": "Jaw",
+   "k": 1.45,
+   "budget": "bossJoint",
+   "description": "Raid boss frost wyrm, joint Jaw (pivot = BossBuilder joint pivot), High"
+  },
+  {
+   "key": "boss_frost_wyrm_Body_low",
+   "type": "boss",
+   "boss": "frost_wyrm",
+   "joint": "Body",
+   "k": 0.88,
+   "lod": "Low",
+   "budget": "bossJointLow",
+   "description": "Raid boss frost wyrm, joint Body, Low"
+  },
+  {
+   "key": "boss_frost_wyrm_WingL_low",
+   "type": "prop",
+   "lod": "Low",
+   "budget": "bossJointLow",
+   "description": "Raid boss frost wyrm, joint WingL, Low (Ice membrane meshed closed, T 0.15 on the part)",
+   "prop": "boss_joint",
+   "args": {
+    "boss": "frost_wyrm",
+    "joint": "WingL",
+    "k": 0.88
+   }
+  },
+  {
+   "key": "boss_frost_wyrm_WingR_low",
+   "type": "prop",
+   "lod": "Low",
+   "budget": "bossJointLow",
+   "description": "Raid boss frost wyrm, joint WingR, Low (Ice membrane meshed closed, T 0.15 on the part)",
+   "prop": "boss_joint",
+   "args": {
+    "boss": "frost_wyrm",
+    "joint": "WingR",
+    "k": 0.88
+   }
+  },
+  {
+   "key": "boss_frost_wyrm_Head_low",
+   "type": "boss",
+   "boss": "frost_wyrm",
+   "joint": "Head",
+   "k": 0.88,
+   "lod": "Low",
+   "budget": "bossJointLow",
+   "description": "Raid boss frost wyrm, joint Head, Low"
+  },
+  {
+   "key": "boss_frost_wyrm_Jaw_low",
+   "type": "boss",
+   "boss": "frost_wyrm",
+   "joint": "Jaw",
+   "k": 0.88,
+   "lod": "Low",
+   "budget": "bossJointLow",
+   "description": "Raid boss frost wyrm, joint Jaw, Low"
+  },
+  {
+   "key": "boss_shadow_hydra_Body",
+   "type": "boss",
+   "boss": "shadow_hydra",
+   "joint": "Body",
+   "k": 1.4,
+   "budget": "bossJoint",
+   "description": "Raid boss shadow hydra, joint Body (pivot = BossBuilder joint pivot), High"
+  },
+  {
+   "key": "boss_shadow_hydra_Head1",
+   "type": "boss",
+   "boss": "shadow_hydra",
+   "joint": "Head1",
+   "k": 1.4,
+   "budget": "bossJoint",
+   "description": "Raid boss shadow hydra, joint Head1 (pivot = BossBuilder joint pivot), High"
+  },
+  {
+   "key": "boss_shadow_hydra_Head2",
+   "type": "boss",
+   "boss": "shadow_hydra",
+   "joint": "Head2",
+   "k": 1.4,
+   "budget": "bossJoint",
+   "description": "Raid boss shadow hydra, joint Head2 (pivot = BossBuilder joint pivot), High"
+  },
+  {
+   "key": "boss_shadow_hydra_Head3",
+   "type": "boss",
+   "boss": "shadow_hydra",
+   "joint": "Head3",
+   "k": 1.4,
+   "budget": "bossJoint",
+   "description": "Raid boss shadow hydra, joint Head3 (pivot = BossBuilder joint pivot), High"
+  },
+  {
+   "key": "boss_shadow_hydra_Body_low",
+   "type": "boss",
+   "boss": "shadow_hydra",
+   "joint": "Body",
+   "k": 0.85,
+   "lod": "Low",
+   "budget": "bossJointLow",
+   "description": "Raid boss shadow hydra, joint Body, Low"
+  },
+  {
+   "key": "boss_shadow_hydra_Head1_low",
+   "type": "boss",
+   "boss": "shadow_hydra",
+   "joint": "Head1",
+   "k": 0.85,
+   "lod": "Low",
+   "budget": "bossJointLow",
+   "description": "Raid boss shadow hydra, joint Head1, Low"
+  },
+  {
+   "key": "boss_shadow_hydra_Head2_low",
+   "type": "boss",
+   "boss": "shadow_hydra",
+   "joint": "Head2",
+   "k": 0.85,
+   "lod": "Low",
+   "budget": "bossJointLow",
+   "description": "Raid boss shadow hydra, joint Head2, Low"
+  },
+  {
+   "key": "boss_shadow_hydra_Head3_low",
+   "type": "boss",
+   "boss": "shadow_hydra",
+   "joint": "Head3",
+   "k": 0.85,
+   "lod": "Low",
+   "budget": "bossJointLow",
+   "description": "Raid boss shadow hydra, joint Head3, Low"
+  },
+  {
+   "key": "dragon_head",
+   "type": "prop",
+   "prop": "dragon_piece",
+   "args": {
+    "piece": "Head"
+   },
+   "budget": "dragonPiece",
+   "description": "Sky dragon (Sage Dragon) head, SkyDragonController sculpt at 0.5 stud"
+  },
+  {
+   "key": "dragon_jaw",
+   "type": "prop",
+   "prop": "dragon_piece",
+   "args": {
+    "piece": "Jaw"
+   },
+   "budget": "dragonPiece",
+   "description": "Sky dragon (Sage Dragon) jaw, SkyDragonController sculpt at 0.5 stud"
+  },
+  {
+   "key": "dragon_leg",
+   "type": "prop",
+   "prop": "dragon_piece",
+   "args": {
+    "piece": "Leg"
+   },
+   "budget": "dragonPiece",
+   "description": "Sky dragon (Sage Dragon) leg, SkyDragonController sculpt at 0.5 stud"
+  },
+  {
+   "key": "dragon_tail",
+   "type": "prop",
+   "prop": "dragon_piece",
+   "args": {
+    "piece": "Tail"
+   },
+   "budget": "dragonPiece",
+   "description": "Sky dragon (Sage Dragon) tail, SkyDragonController sculpt at 0.5 stud"
+  },
+  {
+   "key": "dragon_puff",
+   "type": "prop",
+   "prop": "dragon_piece",
+   "args": {
+    "piece": "Puff"
+   },
+   "budget": "dragonPiece",
+   "description": "Sky dragon (Sage Dragon) puff, SkyDragonController sculpt at 0.5 stud"
+  },
+  {
+   "key": "dragon_seg_30",
+   "type": "prop",
+   "prop": "dragon_piece",
+   "args": {
+    "segment": "dragon_seg_30"
+   },
+   "budget": "dragonPiece",
+   "description": "Sky dragon body segment radius 3.0"
+  },
+  {
+   "key": "dragon_seg_35",
+   "type": "prop",
+   "prop": "dragon_piece",
+   "args": {
+    "segment": "dragon_seg_35"
+   },
+   "budget": "dragonPiece",
+   "description": "Sky dragon body segment radius 3.5"
+  },
+  {
+   "key": "dragon_seg_40f",
+   "type": "prop",
+   "prop": "dragon_piece",
+   "args": {
+    "segment": "dragon_seg_40f"
+   },
+   "budget": "dragonPiece",
+   "description": "Sky dragon body segment radius 4.0 with dorsal fin"
+  },
+  {
+   "key": "dragon_seg_45f",
+   "type": "prop",
+   "prop": "dragon_piece",
+   "args": {
+    "segment": "dragon_seg_45f"
+   },
+   "budget": "dragonPiece",
+   "description": "Sky dragon body segment radius 4.5 with dorsal fin"
+  },
+  {
+   "key": "dragon_seg_35f",
+   "type": "prop",
+   "prop": "dragon_piece",
+   "args": {
+    "segment": "dragon_seg_35f"
+   },
+   "budget": "dragonPiece",
+   "description": "Sky dragon body segment radius 3.5 with dorsal fin"
+  },
+  {
+   "key": "dragon_seg_30f",
+   "type": "prop",
+   "prop": "dragon_piece",
+   "args": {
+    "segment": "dragon_seg_30f"
+   },
+   "budget": "dragonPiece",
+   "description": "Sky dragon body segment radius 3.0 with dorsal fin"
+  },
+  {
+   "key": "dragon_seg_25f",
+   "type": "prop",
+   "prop": "dragon_piece",
+   "args": {
+    "segment": "dragon_seg_25f"
+   },
+   "budget": "dragonPiece",
+   "description": "Sky dragon body segment radius 2.5 with dorsal fin"
+  },
+  {
+   "key": "dragon_seg_20f",
+   "type": "prop",
+   "prop": "dragon_piece",
+   "args": {
+    "segment": "dragon_seg_20f"
+   },
+   "budget": "dragonPiece",
+   "description": "Sky dragon body segment radius 2.0 with dorsal fin"
+  },
+  {
+   "key": "dragon_seg_15f",
+   "type": "prop",
+   "prop": "dragon_piece",
+   "args": {
+    "segment": "dragon_seg_15f"
+   },
+   "budget": "dragonPiece",
+   "description": "Sky dragon body segment radius 1.5 with dorsal fin"
+  },
+  {
+   "key": "dragon_link",
+   "type": "prop",
+   "prop": "dragon_link",
+   "budget": "fx",
+   "description": "Sky dragon whisker / mane chain bead (resized + recoloured per link)"
+  },
+  {
+   "key": "npc_pedestal",
+   "type": "prop",
+   "prop": "npc_pedestal",
+   "args": {
+    "seed": 1
+   },
+   "budget": "npc",
+   "description": "NPC pedestal (rug + band follow the NPC accent)"
+  },
+  {
+   "key": "token_cloud",
+   "type": "prop",
+   "prop": "token",
+   "args": {
+    "palette": "Cloud"
+   },
+   "budget": "token",
+   "description": "Coin token_cloud (TokenLook palette Cloud), Scale 1"
+  },
+  {
+   "key": "token_golden",
+   "type": "prop",
+   "prop": "token",
+   "args": {
+    "palette": "Golden"
+   },
+   "budget": "token",
+   "description": "Coin token_golden (TokenLook palette Golden), Scale 1"
+  },
+  {
+   "key": "token_cash",
+   "type": "prop",
+   "prop": "token",
+   "args": {
+    "palette": "Cash"
+   },
+   "budget": "token",
+   "description": "Coin token_cash (TokenLook palette Cash), Scale 1"
+  },
+  {
+   "key": "token_goldencash",
+   "type": "prop",
+   "prop": "token",
+   "args": {
+    "palette": "GoldenCash"
+   },
+   "budget": "token",
+   "description": "Coin token_goldencash (TokenLook palette GoldenCash), Scale 1"
+  },
+  {
+   "key": "fx_shield",
+   "type": "prop",
+   "prop": "fx",
+   "args": {
+    "kind": "shield"
+   },
+   "budget": "fx",
+   "description": "Battle effect prop: shield"
+  },
+  {
+   "key": "fx_ice",
+   "type": "prop",
+   "prop": "fx",
+   "args": {
+    "kind": "ice"
+   },
+   "budget": "fx",
+   "description": "Battle effect prop: ice"
+  },
+  {
+   "key": "fx_arrow",
+   "type": "prop",
+   "prop": "fx",
+   "args": {
+    "kind": "arrow"
+   },
+   "budget": "fx",
+   "description": "Battle effect prop: arrow"
+  },
+  {
+   "key": "star_gold",
+   "type": "prop",
+   "prop": "star",
+   "budget": "star",
+   "description": "Golden finish sparkle star"
+  }
+ ],
+ "sets": [
+  {
+   "name": "boss_storm_titan",
+   "keys": [
+    "boss_storm_titan_Base",
+    "boss_storm_titan_Body",
+    "boss_storm_titan_Head",
+    "boss_storm_titan_ArmL",
+    "boss_storm_titan_ArmR"
+   ],
+   "budget": "boss"
+  },
+  {
+   "name": "boss_storm_titan_low",
+   "keys": [
+    "boss_storm_titan_Base_low",
+    "boss_storm_titan_Body_low",
+    "boss_storm_titan_Head_low",
+    "boss_storm_titan_ArmL_low",
+    "boss_storm_titan_ArmR_low"
+   ],
+   "budget": "bossLow"
+  },
+  {
+   "name": "boss_lava_golem",
+   "keys": [
+    "boss_lava_golem_Body",
+    "boss_lava_golem_Head",
+    "boss_lava_golem_ArmL",
+    "boss_lava_golem_ArmR"
+   ],
+   "budget": "boss"
+  },
+  {
+   "name": "boss_lava_golem_low",
+   "keys": [
+    "boss_lava_golem_Body_low",
+    "boss_lava_golem_Head_low",
+    "boss_lava_golem_ArmL_low",
+    "boss_lava_golem_ArmR_low"
+   ],
+   "budget": "bossLow"
+  },
+  {
+   "name": "boss_frost_wyrm",
+   "keys": [
+    "boss_frost_wyrm_Body",
+    "boss_frost_wyrm_WingL",
+    "boss_frost_wyrm_WingR",
+    "boss_frost_wyrm_Head",
+    "boss_frost_wyrm_Jaw"
+   ],
+   "budget": "boss"
+  },
+  {
+   "name": "boss_frost_wyrm_low",
+   "keys": [
+    "boss_frost_wyrm_Body_low",
+    "boss_frost_wyrm_WingL_low",
+    "boss_frost_wyrm_WingR_low",
+    "boss_frost_wyrm_Head_low",
+    "boss_frost_wyrm_Jaw_low"
+   ],
+   "budget": "bossLow"
+  },
+  {
+   "name": "boss_shadow_hydra",
+   "keys": [
+    "boss_shadow_hydra_Body",
+    "boss_shadow_hydra_Head1",
+    "boss_shadow_hydra_Head2",
+    "boss_shadow_hydra_Head3"
+   ],
+   "budget": "boss"
+  },
+  {
+   "name": "boss_shadow_hydra_low",
+   "keys": [
+    "boss_shadow_hydra_Body_low",
+    "boss_shadow_hydra_Head1_low",
+    "boss_shadow_hydra_Head2_low",
+    "boss_shadow_hydra_Head3_low"
+   ],
+   "budget": "bossLow"
+  },
+  {
+   "name": "skydragon",
+   "keys": [
+    "dragon_head",
+    "dragon_jaw",
+    "dragon_leg",
+    "dragon_tail",
+    "dragon_puff",
+    "dragon_link",
+    "dragon_seg_30",
+    "dragon_seg_35",
+    "dragon_seg_40f",
+    "dragon_seg_45f",
+    "dragon_seg_35f",
+    "dragon_seg_30f",
+    "dragon_seg_25f",
+    "dragon_seg_20f",
+    "dragon_seg_15f"
+   ],
+   "budget": "skydragon"
+  }
+ ],
  "previews": []
 }

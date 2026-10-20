@@ -1,0 +1,42 @@
+{
+ "name": "lobby centre, phone (art-lobby keys in view + 16 players x 3 pets)",
+ "budget": {
+  "tris": 300000,
+  "parts": 400
+ },
+ "pets": {
+  "High": 3,
+  "Low": 45
+ },
+ "keys": {
+  "floor_plaza_lawn": 1,
+  "floor_plaza_lawnpatches": 1,
+  "floor_plaza_pathborders": 1,
+  "floor_plaza_paths": 1,
+  "floor_plaza_inlays": 1,
+  "floor_plaza_courts": 1,
+  "floor_plaza_walk": 1,
+  "floor_plaza_edges": 1,
+  "cloud_plaza": 1,
+  "prop_fountain": 1,
+  "prop_fountain_water": 1,
+  "prop_welcome_arch": 1,
+  "prop_board_s": 2,
+  "prop_tree_round": 3,
+  "prop_tree_pine": 2,
+  "prop_tree_blossom": 2,
+  "prop_lamp": 20,
+  "prop_bench": 4,
+  "prop_flowerbed": 6,
+  "prop_banner": 10,
+  "prop_obelisk": 2,
+  "cloud_sky_big": 2,
+  "floor_spoke": 3,
+  "cloud_puff_s": 3,
+  "gate_obby": 1,
+  "gate_dungeon": 1,
+  "gate_ring": 1,
+  "gate_arena": 1,
+  "gate_altar": 1
+ }
+}

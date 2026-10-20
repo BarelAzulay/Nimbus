@@ -31,9 +31,13 @@
 --     Tag(target, key, look, keep)   SERVER: mark a Part build to be dressed with mesh `key` on every client
 --     Dress(target, key, opts)       CLIENT: hide the Part build locally (Keep parts stay) and show the mesh on it
 --     Swap(model, buildFn, keys)     rebuild a server-built model in place once its keys are ready
+--     Version() -> number            bumped whenever a key may have become usable / unusable here (poll to rebuild)
+--     Active() -> bool               a template folder exists (false = empty MeshIds: skip every key lookup)
 --
 -- Assemble spec: a key string, or { Name = "Pet_x", Root = { Name = "Body", Size = Vector3 } | false,
 --   Parts = { { Key = "pet_dog" }, { Key = "wing_feather", At = "WingL" | CFrame, From = 1, Groups = { WingL = true } } },
+--   (per entry also Skip = { Tail = true } (leave these group ids out) and Scale = n (a size factor on top of opts.Scale);
+--   a CFrame At is used as given, in studs, NOT multiplied by opts.Scale)
 --   Attributes = { PetId = ..., PB_Seed = ..., ... } }.  opts: { Scale = 1, Parent = Instance, At = CFrame (rootless
 --   specs only: where the manifest pivot goes) }.
 --   Part names (recipe 4.3): Body-group parts keep their manifest name (= the PetBuilder palette key, "Fur",
@@ -85,6 +89,7 @@ local connections = {}
 local folder = nil
 local started = false
 local generation = 0 -- bumped by _Reset: threads of an older Start stop touching state
+local version = 0 -- bumped whenever a key's usability may have changed (Version(): cheap polling for rebuilds)
 
 local IS_SERVER = RunService:IsServer()
 
@@ -405,6 +410,22 @@ function MeshLibrary.IsReady(...)
 	return true
 end
 
+-- Version() -> number: changes every time a key may have become usable / unusable here (ready, failed, a device
+-- preload failure, a template removed, _Reset). Callers that keep Part-built models poll it (one number compare per
+-- frame) and only then ask PetBuilder.NeedsMeshRebuild (runtime-pets, Phase 6 W2).
+function MeshLibrary.Version()
+	return version
+end
+
+-- Active() -> bool: cheap gate (one FindFirstChild): false while no template folder exists (empty MeshIds = today's
+-- game), so builders skip every key / manifest lookup.
+function MeshLibrary.Active()
+	if not folder or not folder.Parent then
+		folder = cfg.Root or ReplicatedStorage:FindFirstChild(FOLDER_NAME)
+	end
+	return folder ~= nil
+end
+
 function MeshLibrary.Status(key)
 	if localBroken[key] then
 		return "failed"
@@ -430,6 +451,7 @@ function MeshLibrary.Status(key)
 end
 
 local function notify(key)
+	version = version + 1
 	local list = waiters[key]
 	waiters[key] = nil
 	if list then
@@ -777,6 +799,7 @@ local function loadKey(key, assetId, gen)
 		end
 	end
 	status[key] = "failed"
+	version = version + 1
 	setHolder(key, "failed", lastErr)
 	warn(string.format("[MeshLibrary] %s (asset %d) stays on the Part build: %s", key, assetId, tostring(lastErr)))
 	MeshLibrary.Changed:Fire(key)
@@ -848,6 +871,7 @@ local function preload(tpl, gen)
 	end
 	if failed then
 		localBroken[key] = true
+		version = version + 1
 		warn("[MeshLibrary] " .. key .. " could not be downloaded on this device; it keeps the Part build here")
 		return
 	end
@@ -897,6 +921,7 @@ local function startClient(gen)
 		connections[#connections + 1] = f.ChildRemoved:Connect(function(child)
 			if templateOf(child.Name) == nil then
 				localReady[child.Name] = nil
+				version = version + 1
 			end
 		end)
 		for _, child in ipairs(f:GetChildren()) do
@@ -936,6 +961,7 @@ end
 
 function MeshLibrary._Reset()
 	generation = generation + 1
+	version = version + 1
 	for _, c in ipairs(connections) do
 		c:Disconnect()
 	end
@@ -1047,6 +1073,10 @@ function MeshLibrary.Assemble(spec, look, opts)
 			end
 		end
 		bases[i] = base
+		-- per entry: Groups = whitelist of group ids, Skip = blacklist (e.g. a body without its Tail when a hybrid
+		-- feature brings its own), Scale = a size multiplier on top of opts.Scale (Golden sparkle stars)
+		local es = scale * (tonumber(entry.Scale) or 1)
+		local skip = type(entry.Skip) == "table" and entry.Skip or nil
 		local groups, memberOf = {}, {}
 		for _, g in ipairs(groupsOf(man)) do
 			groups[g.Id] = g
@@ -1058,8 +1088,8 @@ function MeshLibrary.Assemble(spec, look, opts)
 		end
 		local hinges = {}
 		for _, g in ipairs(groupsOf(man)) do
-			if (not entry.Groups or entry.Groups[g.Id]) and g.Hinge then
-				hinges[g.Id] = base * cfOf(g.Hinge, scale)
+			if (not entry.Groups or entry.Groups[g.Id]) and not (skip and skip[g.Id]) and g.Hinge then
+				hinges[g.Id] = base * cfOf(g.Hinge, es)
 				if g.Kind ~= "static" then
 					specs[#specs + 1] = groupSpec(g) .. "=" .. cfToString(hinges[g.Id])
 				end
@@ -1070,12 +1100,12 @@ function MeshLibrary.Assemble(spec, look, opts)
 			-- a group the manifest defines (Tail, WingL, EyeLid ...) names its parts; an undefined one ("Accessory")
 			-- keeps the manifest part names, like the Body
 			local g = groups[gid] or { Id = gid, Name = "Body", Kind = "static" }
-			if not entry.Groups or entry.Groups[gid] then
+			if (not entry.Groups or entry.Groups[gid]) and not (skip and skip[gid]) then
 				local part = tpl:FindFirstChild(p.name):Clone()
 				flag(part)
-				local size = vec(p.size, scale)
+				local size = vec(p.size, es)
 				part.Size = size
-				part.CFrame = base * CFrame.new(vec(p.center, scale))
+				part.CFrame = base * CFrame.new(vec(p.center, es))
 				part.CastShadow = math.max(size.X, size.Y, size.Z) >= 4
 				if type(p.color) == "table" then
 					part.Color = evalColor(p.color, look, 0)

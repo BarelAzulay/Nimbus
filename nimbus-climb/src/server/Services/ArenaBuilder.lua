@@ -444,6 +444,129 @@ local function recolor(root, name, color)
 end
 
 ----------------------------------------------------------------------
+-- Phase 6 (ARCHITECTURE_V3.md "## Phase 6" A7, owner art-arenadungeon): Blender mesh dressing. Every Part build in
+-- this file stays exactly as it is (the fallback, the colliders, every name / prompt / zone / sign). The static
+-- decoration subtrees are tagged with MeshLibrary.Tag(target, key, look, keep) and clients Dress them (Parts hidden
+-- locally, Keep parts stay: Neon flames / glows and sign panels). Keys: blender/catalog/arenadungeon.json (baked by
+-- blender/kit/props/arena.py from this very build). A key is tagged only once it has an uploaded id
+-- (MeshLibrary.Status ~= "missing": the shipped empty MeshIds change nothing) and only while the live build still
+-- matches the manifest's "LayoutSig" attachment (part count + position / size sums in origin space), so a layout
+-- change can never show a stale mesh (scaled pieces, the trees, carry none). Targets never nest (one dress each).
+----------------------------------------------------------------------
+local Mesh = { Lib = nil, Placed = setmetatable({}, { __mode = "k" }) } -- Placed: target -> its Tag call (tests, the kit)
+
+function Mesh.lib()
+	if Mesh.Lib == nil then
+		Mesh.Lib = false
+		local module = Shared:FindFirstChild("MeshLibrary")
+		if module then
+			local ok, result = pcall(require, module)
+			if ok and type(result) == "table" and type(result.Tag) == "function" then
+				Mesh.Lib = result
+			end
+		end
+	end
+	return Mesh.Lib or nil
+end
+
+-- part count + weighted sums of every visible BasePart's position / size in `origin` space, divided by `scale`, the
+-- keep names left out (blender/kit/props/arena.py stores the same numbers in the key's LayoutSig)
+function Mesh.Signature(target, origin, scale, keep)
+	local inv = origin:Inverse()
+	local s = tonumber(scale) or 1
+	local kept = {}
+	for _, k in ipairs(keep or {}) do
+		kept[k] = true
+	end
+	local n, a, b = 0, 0, 0
+	local list = target:GetDescendants()
+	list[#list + 1] = target
+	for _, d in ipairs(list) do
+		if d:IsA("BasePart") and d.Transparency < 0.99 and not kept[d.Name] then
+			local p = inv * d.Position
+			local z = d.Size
+			n = n + 1
+			a = a + (p.X + p.Y * 0.37 + p.Z * 0.61) / s
+			b = b + (z.X + z.Y * 1.3 + z.Z * 1.7) / s
+		end
+	end
+	return n, a, b
+end
+
+function Mesh.sigOk(ML, key, target, origin, scale, keep)
+	local man = type(ML.Manifest) == "function" and ML.Manifest(key)
+	if not man then
+		return false
+	end
+	local att = man.Attachments and man.Attachments.LayoutSig
+	if not att then
+		return true -- a scaled piece (the trees): no layout to match
+	end
+	local pos = att.Pos or att.pos
+	if type(pos) ~= "table" then
+		return false
+	end
+	local n, a, b = Mesh.Signature(target, origin, scale, keep)
+	local tol = 0.05 + n * 1e-4
+	return n == pos[1] and math.abs(a - pos[2]) <= tol and math.abs(b - pos[3]) <= tol
+end
+
+-- target: Model subtree; key: mesh key; origin: world CFrame of the mesh pivot; look: { Primary, Secondary } (the tint
+-- parts); keep: part names that stay visible; scale: uniform placement scale (nil = 1). Returns true when tagged.
+function Mesh.tag(target, key, origin, look, keep, scale)
+	if typeof(target) ~= "Instance" or typeof(origin) ~= "CFrame" then
+		return false
+	end
+	Mesh.Placed[target] = { Key = key, Origin = origin, Look = look, Keep = keep, Scale = scale }
+	local kit = ArenaBuilder._Kit
+	if type(kit) == "table" and type(kit.Targets) == "table" then
+		kit.Targets[#kit.Targets + 1] = { Key = key, Target = target, Origin = origin, Look = look, Keep = keep, Scale = scale }
+	end
+	local ML = Mesh.lib()
+	if not ML or type(ML.Status) ~= "function" then
+		return false
+	end
+	local okStatus, st = pcall(ML.Status, key)
+	if not okStatus or st == "missing" or not Mesh.sigOk(ML, key, target, origin, scale, keep) then
+		return false
+	end
+	local tagLook = {}
+	for k, v in pairs(look or {}) do
+		tagLook[k] = v
+	end
+	local pivot = target:IsA("BasePart") and target.CFrame or target:GetPivot() -- (a Part's pivot: PivotOffset is never set here)
+	tagLook.Offset = pivot:Inverse() * origin
+	if scale and scale ~= 1 then
+		target:SetAttribute("ML_Scale", scale)
+	end
+	ML.Tag(target, key, tagLook, keep)
+	return true
+end
+
+-- the first BasePart named `name` under root (the tint colour a mesh part takes)
+function Mesh.colorOf(root, name)
+	for _, d in ipairs(root:GetDescendants()) do
+		if d:IsA("BasePart") and d.Name == name then
+			return d.Color
+		end
+	end
+	return nil
+end
+
+-- keep lists (parts that stay visible over a dressed piece)
+Mesh.Keep = {
+	Flame = { "Flame" },
+	Floor = { "ElementGem" },
+	Ring = { "Flame", "CurbInlay", "PadGlow" },
+	Board = { "Panel", "Flame" },
+	Lantern = { "LanternLamp" },
+	Trophy = { "TrophyStar", "Gem" },
+	Bridge = { "Flame", "ArchSign" },
+	Pocket = { "RingRimInlay", "EmblemGem", "CrownGem", "SpawnGlow", "ChampionGlow" },
+}
+ArenaBuilder._Mesh = Mesh
+
+----------------------------------------------------------------------
 -- Voxel helpers
 ----------------------------------------------------------------------
 local VX = {}
@@ -1272,7 +1395,9 @@ local function buildCloud(parent, A)
 	}
 	local g = cloudGrid(spec)
 	-- the top tier's top face sits 1.2 under the walking surface (the ground layers lie on it)
-	return Art.shadeCloud(VX.Build(g, { V = 4, Pal = CLOUD_PAL, Name = "IslandCloud", CF = A * CFrame.new(0, -1.2 - 2, 0), Collide = true, MaxParts = 340, Parent = parent }), A, 30)
+	local cloud = Art.shadeCloud(VX.Build(g, { V = 4, Pal = CLOUD_PAL, Name = "IslandCloud", CF = A * CFrame.new(0, -1.2 - 2, 0), Collide = true, MaxParts = 340, Parent = parent }), A, 30)
+	Mesh.tag(cloud, "arena_island", A)
+	return cloud
 end
 
 -- the element of a stand segment (two neighbours share one) and the angle its section is centred on
@@ -1410,6 +1535,7 @@ local function buildGround(parent, A)
 		local turn = plaza * CFrame.Angles(0, sectionAngle(e), 0)
 		Art.part(av, "TrophyTile", turn * CFrame.new(0, -0.02, -7.6) * CFrame.Angles(0, rad(45), 0), Vector3.new(2, 0.3, 2), elementColor(e), { Material = MAT.Slate, Collide = true, Shadow = false })
 	end
+	Mesh.tag(f, "arena_forum", A)
 	return f
 end
 
@@ -1723,6 +1849,7 @@ local function buildFloor(parent, A)
 	end
 	ring16(m, "WheelRim", A, 14, 15.2, 0, 1, P.Brass, MAT.Metal, true)
 	disc16(m, "WheelCore", A, 5.5, 0.1, 1, P.Brass, MAT.Metal, true)
+	Mesh.tag(m, "arena_floor", A, nil, Mesh.Keep.Floor)
 	return m
 end
 
@@ -1748,6 +1875,7 @@ local function buildColosseum(parent, A)
 		recolor(seg, "Banner", Art.tone(elementColor(e), 0.44, 0.45, 0.78))
 		seg:SetAttribute("Element", ELEMENTS[e] and ELEMENTS[e].Id or "")
 		seg:SetAttribute("Kind", kind)
+		Mesh.tag(seg, "arena_seg_" .. string.lower(kind), cf, { Primary = Mesh.colorOf(seg, "Seat"), Secondary = Mesh.colorOf(seg, "Banner") })
 	end
 	local pillars = newModel(m, "Pillars")
 	for k = 0, 15 do
@@ -1761,6 +1889,7 @@ local function buildColosseum(parent, A)
 				pointLight(flame, Art.Light, 1.2, 16)
 			end
 		end
+		Mesh.tag(p, "arena_pillar", cf, nil, Mesh.Keep.Flame)
 	end
 	return m
 end
@@ -1915,6 +2044,7 @@ local function buildRing(parent, A, spec, index)
 		tagText(plate, "RingHint", "Challenge a player", "Heading", 19, C.Text, 2)
 		pads[#pads + 1] = base
 	end
+	Mesh.tag(m, "arena_ring_" .. index, cf, { Primary = accent, Secondary = curbColor }, Mesh.Keep.Ring)
 	return m, cf, pads
 end
 
@@ -1948,6 +2078,7 @@ local function boardFrame(parent, name, cf, w, h)
 	for _, sgn in ipairs({ -1, 1 }) do
 		Art.part(m, "Sword", cf * CFrame.new(0, base + h + 2.6, -0.1) * CFrame.Angles(0, 0, rad(sgn * 40)), Vector3.new(0.35, 3.6, 0.2), "Steel", { Shadow = false })
 	end
+	Mesh.tag(m, (name == "EventBoard") and "arena_board_event" or "arena_board_leader", cf, nil, Mesh.Keep.Board)
 	return m, panel
 end
 
@@ -2387,6 +2518,7 @@ local function buildForumDecor(parent, A)
 			local tm = place(torch(), A * CFrame.new(sx * 12.6, -0.2, z), m, "AvenueTorch")
 			recolor(tm, "Flame", flameColor(elementColor(t)))
 			Art.tag(tm, "Detail")
+			Mesh.tag(tm, "arena_torch", A * CFrame.new(sx * 12.6, -0.2, z), nil, Mesh.Keep.Flame)
 			local flame = tm:FindFirstChild("Flame")
 			if flame and z == -164 then
 				pointLight(flame, Art.Light, 1.2, 16)
@@ -2395,33 +2527,36 @@ local function buildForumDecor(parent, A)
 	end
 	for i, z in ipairs({ -175, -153 }) do
 		for _, sx in ipairs({ -1, 1 }) do
-			Art.hedgeBox(m, A * CFrame.new(sx * 13, -0.2, z) * CFrame.Angles(0, pi / 2, 0), 5, i * 7 + sx)
+			local hcf = A * CFrame.new(sx * 13, -0.2, z) * CFrame.Angles(0, pi / 2, 0)
+			Mesh.tag(Art.hedgeBox(m, hcf, 5, i * 7 + sx), "arena_hedge", hcf)
 		end
 	end
 	-- banner poles at the arrival
-	bannerPole(m, A * CFrame.new(-18, -0.2, ISL.FrontZ + 10) * CFrame.Angles(0, pi, 0), C.Crimson)
-	bannerPole(m, A * CFrame.new(18, -0.2, ISL.FrontZ + 10), C.Crimson)
+	for _, bcf in ipairs({ A * CFrame.new(-18, -0.2, ISL.FrontZ + 10) * CFrame.Angles(0, pi, 0), A * CFrame.new(18, -0.2, ISL.FrontZ + 10) }) do
+		Mesh.tag(bannerPole(m, bcf, C.Crimson), "arena_bannerpole", bcf)
+	end
 	-- planters between the rings and the colosseum
 	for _, p in ipairs({ { -60, -102, 0 }, { 60, -102, 0 } }) do
-		Art.tag(place(planter(), A * CFrame.new(p[1], 0, p[2]) * CFrame.Angles(0, p[3], 0), m, "Planter"), "Detail")
+		local pcf = A * CFrame.new(p[1], 0, p[2]) * CFrame.Angles(0, p[3], 0)
+		Mesh.tag(Art.tag(place(planter(), pcf, m, "Planter"), "Detail"), "arena_planter", pcf)
 	end
 	-- trees on the lawns (the front corners, beside the stands) and lanterns along the promenade (every ~24 studs,
 	-- alternating sides of a bench-free walk: a detail every ~12 studs along each side)
 	local trees = { { -84, -100, 1.1 }, { 84, -100, 1.0 }, { -92, -66, 0.95 }, { 92, -66, 1.05 }, { -84, -190, 0.85 }, { 84, -190, 0.9 } }
 	for i, tr in ipairs(trees) do
-		Art.tree(m, A * CFrame.new(tr[1], -0.2, tr[2]), tr[3], i)
+		Mesh.tag(Art.tree(m, A * CFrame.new(tr[1], -0.2, tr[2]), tr[3], i), "arena_tree", A * CFrame.new(tr[1], -0.2, tr[2]), nil, nil, tr[3])
 	end
 	local lit = 0
 	for _, sx in ipairs({ -1, 1 }) do
 		for i, z in ipairs({ -168, -144, -120, -84, -48 }) do
 			lit = lit + 1
-			Art.lantern(m, A * CFrame.new(sx * (ISL.HalfW - 4.6), -0.15, z), i % 2 == 1)
+			Mesh.tag(Art.lantern(m, A * CFrame.new(sx * (ISL.HalfW - 4.6), -0.15, z), i % 2 == 1), "arena_lantern", A * CFrame.new(sx * (ISL.HalfW - 4.6), -0.15, z), nil, Mesh.Keep.Lantern)
 		end
 	end
 	for _, x in ipairs({ -66, -40, 40, 66 }) do
-		Art.lantern(m, A * CFrame.new(x, -0.15, ISL.FrontZ + 4.6), abs(x) == 40)
+		Mesh.tag(Art.lantern(m, A * CFrame.new(x, -0.15, ISL.FrontZ + 4.6), abs(x) == 40), "arena_lantern", A * CFrame.new(x, -0.15, ISL.FrontZ + 4.6), nil, Mesh.Keep.Lantern)
 	end
-	buildTrophy(m, A * CFrame.new(0, -0.2, -124))
+	Mesh.tag(buildTrophy(m, A * CFrame.new(0, -0.2, -124)), "arena_trophy", A * CFrame.new(0, -0.2, -124), nil, Mesh.Keep.Trophy)
 	return m
 end
 
@@ -2528,6 +2663,7 @@ local function buildBridge(parent, A, startZ, endZ)
 			Art.tag(place(puff, A * CFrame.new(0, -1.6, z), m, "BridgePuff"), "Exempt")
 		end
 	end
+	Mesh.tag(m, "arena_bridge", A, nil, Mesh.Keep.Bridge)
 	return m
 end
 
@@ -2951,6 +3087,7 @@ function ArenaBuilder.BuildPocket(index, kind)
 	local model = place(tpl, cf, holder, "RingPocket_" .. index)
 	model:SetAttribute("PocketIndex", index)
 	model:SetAttribute("PocketKind", "Ring")
+	Mesh.tag(model, "arena_pocket", cf, nil, Mesh.Keep.Pocket)
 	local floorSize = zoneFloorSize("Ring")
 	local hf = Ring.FloorA
 	local zone = makeZone(model, "BattleZone_Ring", cf, Ring.RimOut, "Ring", floorSize, "Ring", index)

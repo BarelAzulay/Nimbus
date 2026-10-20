@@ -781,6 +781,82 @@ local function buildPad(model, site, kind, trim, glow)
 	return pad
 end
 
+----------------------------------------------------------------------
+-- Phase 6 (art-gates, contract 6.0.3 / A7): the Blender gate meshes (blender/kit/props/gates.py, keys gate_<kind>).
+-- BuildGate tags the gate model with MeshLibrary.Tag; once the key's asset is ready a client Dresses it: the voxels
+-- named in GATE_MESH_HIDE (stone, cloud frame, coloured trim, crest bodies) go transparent locally and the mesh takes
+-- their place. Every other part stays visible (ML_Keep): the Neon glow ring / swirl / gems / star gems / crest eyes,
+-- windows and bolt (PortalFxController animates them), the pad, the lanterns, the invisible anchors, and whatever a
+-- builder adds to the gate later (torches, pedestals: the keep list follows DescendantAdded on the server). With
+-- empty MeshIds the tag changes nothing.
+----------------------------------------------------------------------
+WorldStyle.GateMeshKeys = { cloud = "gate_obby", crown = "gate_ring", swords = "gate_arena", torch = "gate_dungeon", house = "gate_home", bolt = "gate_altar" }
+WorldStyle.GATE_MESH_HIDE = {
+	Stone = true, StoneDark = true, Frame = true, Trim = true,
+	StarPost = true, StarBar = true, CrestPost = true,
+	CrestShield = true, CrestShieldRim = true, CrestBlade = true, CrestGuard = true, CrestGrip = true,
+	CrestHouse = true, CrestRoof = true, CrestRoofTop = true, CrestChimney = true, CrestDoor = true,
+	CrestBone = true, CrestSkull = true, CrestSkullTop = true, CrestJaw = true, CrestNose = true,
+	CrestCloudBase = true, CrestCloud = true, CrestCloudTop = true, CrestCloudPuff = true,
+}
+
+local meshLib = nil
+local function meshLibrary()
+	if meshLib == nil then
+		meshLib = false
+		local mod = Shared:FindFirstChild("MeshLibrary")
+		if mod then
+			local ok, lib = pcall(require, mod)
+			if ok and type(lib) == "table" and type(lib.Tag) == "function" then
+				meshLib = lib
+			end
+		end
+	end
+	return meshLib or nil
+end
+
+-- the mesh key of a gate: the arch is gate_ring; a hoop takes its crest's key (an unknown glyph wears the stars)
+function WorldStyle.GateMeshKey(shape, glyph)
+	if shape == "Arch" then
+		return "gate_ring"
+	end
+	if glyph == "crown" or not WorldStyle.GateMeshKeys[glyph] then
+		return "gate_obby"
+	end
+	return WorldStyle.GateMeshKeys[glyph]
+end
+
+local function keepList(keep)
+	local names = {}
+	for name in pairs(keep) do
+		names[#names + 1] = name
+	end
+	table.sort(names)
+	return table.concat(names, ",")
+end
+
+-- model pivot = GlowCore (SwirlY up the site): ML_Offset puts the mesh origin back on the site
+local function tagGateMesh(model, key, color, stars)
+	local ML = meshLibrary()
+	if not ML then
+		return
+	end
+	local hide = WorldStyle.GATE_MESH_HIDE
+	local keep = {}
+	for _, d in ipairs(model:GetDescendants()) do
+		if d:IsA("BasePart") and not hide[d.Name] then
+			keep[d.Name] = true
+		end
+	end
+	ML.Tag(model, key, { Primary = color, Stars = stars, Offset = CFrame.new(0, -GATE.SwirlY, 0) }, keep)
+	model.DescendantAdded:Connect(function(d)
+		if d:IsA("BasePart") and not hide[d.Name] and not keep[d.Name] and model:GetAttribute("ML_DressKey") == key then
+			keep[d.Name] = true
+			model:SetAttribute("ML_Keep", keepList(keep))
+		end
+	end)
+end
+
 local function popSize(maxSize)
 	return NumberSequence.new({
 		NumberSequenceKeypoint.new(0, 0),
@@ -875,6 +951,8 @@ function WorldStyle.BuildGate(parent, siteCFrame, spec)
 
 	buildTag(core, GATE.TagLift - GATE.SwirlY, spec, color)
 	model.PrimaryPart = core
+	local stars = (shape == "Hoop" and not (Crest[glyph] and glyph ~= "cloud")) and max(0, min(5, floor(tonumber(spec.Stars) or 5))) or nil
+	tagGateMesh(model, WorldStyle.GateMeshKey(shape, glyph), color, stars)
 	model.Parent = parent
 	return model, pad, promptPart
 end

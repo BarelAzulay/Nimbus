@@ -848,6 +848,117 @@ function VX.Build(g, o)
 	return model
 end
 
+----------------------------------------------------------------------
+-- Phase 6 (ARCHITECTURE_V3.md "## Phase 6" A7, owner art-lobby): Blender mesh dressing. Every Part build in this
+-- file stays exactly as it is (the fallback, the colliders, every name / prompt / zone / sign); the static decoration
+-- subtrees are tagged with MeshLibrary.Tag(target, key, look, keep) and clients Dress them (Parts hidden locally, the
+-- mesh placed at the target's pivot * ML_Offset = `origin`). Keys: blender/catalog/lobby.json. A key is tagged only
+-- once it has an uploaded id (MeshLibrary.Status ~= "missing"): with the shipped empty MeshIds nothing changes.
+-- Keys baked from this file's own layout (clouds, floors, the altar) carry a "LayoutSig" attachment in their manifest
+-- (part count + position / size sums of the Part build, relative to `origin`): they are tagged only while the live
+-- build still matches it, so a Config change can never show a stale mesh.
+----------------------------------------------------------------------
+local Mesh = {
+	Lib = nil,
+	-- template name -> mesh key (place() tags every clone)
+	Templates = {
+		TreeRound = "prop_tree_round",
+		TreeBlossom = "prop_tree_blossom",
+		TreePine = "prop_tree_pine",
+		Lamp = "prop_lamp",
+		Bench = "prop_bench",
+		PuffS = "cloud_puff_s",
+		PuffM = "cloud_puff_m",
+		SkyBig = "cloud_sky_big",
+		SkySmall = "cloud_sky_small",
+		Plot = "prop_plot",
+	},
+	-- parts that stay visible over the mesh (live per-plot colour, signs)
+	Keep = {
+		Plot = { "PodiumBase", "Accent", "PodiumTop" },
+	},
+	Names = {}, -- template model -> template name
+	-- the part names of a dressed cloud puff (Voxel cloud keys + the cloud mesh's parts): kept by the bridge that
+	-- carries one, so the two dresses never hide each other
+	CloudParts = { "Cloud", "CloudLight", "CloudShade", "Mist", "MistDark", "Puff" },
+	Template = nil, -- the template being built (VX.CloudModel records it for the kit)
+}
+
+function Mesh.lib()
+	if Mesh.Lib == nil then
+		Mesh.Lib = false
+		local module = Shared:FindFirstChild("MeshLibrary")
+		if module then
+			local ok, result = pcall(require, module)
+			if ok and type(result) == "table" and type(result.Tag) == "function" then
+				Mesh.Lib = result
+			end
+		end
+	end
+	return Mesh.Lib or nil
+end
+
+-- part count + weighted sums of every visible BasePart's position / size in `origin` space (the kit computes the
+-- same numbers from the same build: blender/kit/props/lobby_world.py)
+function Mesh.Signature(target, origin)
+	local inv = origin:Inverse()
+	local n, a, b = 0, 0, 0
+	local list = target:GetDescendants()
+	list[#list + 1] = target
+	for _, d in ipairs(list) do
+		if d:IsA("BasePart") and d.Transparency < 0.99 then
+			local p = inv * d.Position
+			local s = d.Size
+			n = n + 1
+			a = a + p.X + p.Y * 0.37 + p.Z * 0.61
+			b = b + s.X + s.Y * 1.3 + s.Z * 1.7
+		end
+	end
+	return n, a, b
+end
+
+local function meshSigOk(ML, key, target, origin)
+	local man = type(ML.Manifest) == "function" and ML.Manifest(key)
+	local att = man and man.Attachments and man.Attachments.LayoutSig
+	if not att then
+		return true -- a designed prop: no layout to match
+	end
+	local pos = att.Pos or att.pos
+	if type(pos) ~= "table" then
+		return false
+	end
+	local n, a, b = Mesh.Signature(target, origin)
+	local tol = 0.05 + n * 1e-4
+	return n == pos[1] and math.abs(a - pos[2]) <= tol and math.abs(b - pos[3]) <= tol
+end
+
+-- target: Model / Part subtree; key: mesh key; origin: world CFrame of the mesh pivot; look: { Primary, Secondary };
+-- keep: part names that stay visible. Returns true when tagged.
+function Mesh.tag(target, key, origin, look, keep)
+	if typeof(target) ~= "Instance" or typeof(origin) ~= "CFrame" then
+		return false
+	end
+	local kit = LobbyBuilder._Kit
+	if type(kit) == "table" and type(kit.Targets) == "table" then
+		kit.Targets[#kit.Targets + 1] = { Key = key, Target = target, Origin = origin, Look = look, Keep = keep }
+	end
+	local ML = Mesh.lib()
+	if not ML or type(ML.Status) ~= "function" then
+		return false
+	end
+	local okStatus, st = pcall(ML.Status, key)
+	if not okStatus or st == "missing" or not meshSigOk(ML, key, target, origin) then
+		return false
+	end
+	local tagLook = {}
+	for k, v in pairs(look or {}) do
+		tagLook[k] = v
+	end
+	tagLook.Offset = target:GetPivot():Inverse() * origin
+	ML.Tag(target, key, tagLook, keep)
+	return true
+end
+
 -- Clones a template (built at the origin) to `cf`; returns the clone.
 local function place(tpl, cf, parent, name)
 	if not tpl then
@@ -863,15 +974,29 @@ local function place(tpl, cf, parent, name)
 		m.Name = name
 	end
 	m.Parent = parent
+	local tname = Mesh.Names[tpl]
+	local key = tname and (Mesh.Templates[tname] or (tname:match("^FlowerBed") and "prop_flowerbed"))
+	if key then
+		local look = nil
+		local v = tonumber(tname:match("^FlowerBed(%d+)"))
+		if v then -- the bed's two flower colours (Props.FlowerBed)
+			look = { Primary = FLOWERS[v], Secondary = FLOWERS[v % #FLOWERS + 1] }
+		end
+		Mesh.tag(m, key, cf, look, Mesh.Keep[tname])
+	end
 	return m
 end
 
 local function template(name, make)
 	local t = templates[name]
 	if t == nil then
+		local outer = Mesh.Template
+		Mesh.Template = name
 		local ok, result = pcall(make)
+		Mesh.Template = outer
 		if ok and result then
 			t = result
+			Mesh.Names[t] = name
 		else
 			warn("[LobbyBuilder] template " .. name .. " failed: " .. tostring(result))
 			t = false
@@ -968,6 +1093,10 @@ function VX.CloudModel(spec, cf, parent, name, collide)
 	})
 	if model then
 		CollectionService:AddTag(model, EXEMPT_TAG) -- the voxel clouds keep their look on purpose (6.4 rule 9)
+		local kit = LobbyBuilder._Kit
+		if type(kit) == "table" and type(kit.Clouds) == "table" then -- Phase 6 kit hook (blender/kit/props/lobby_world.py)
+			kit.Clouds[model] = { Spec = spec, CF = cf, Template = Mesh.Template, Name = name }
+		end
 	end
 	return model
 end
@@ -1155,6 +1284,7 @@ local function bannerPole(parent, cf, color)
 	box(m, "Bar", cf * CFrame.new(0.9, 10.5, 0), Vector3.new(2.4, 0.3, 0.3), C.Iron)
 	box(m, "Cloth", cf * CFrame.new(1.2, 8.2, 0), Vector3.new(2, 4.2, 0.15), color, { Shadow = false })
 	box(m, "ClothTip", cf * CFrame.new(1.2, 5.75, 0), Vector3.new(1, 0.7, 0.15), color, { Shadow = false })
+	Mesh.tag(m, "prop_banner", cf, { Primary = color }) -- Phase 6: the cloth takes `color`
 	return m
 end
 
@@ -1170,6 +1300,11 @@ local function noticeBoard(parent, cf, width, height, name)
 	local face = box(m, "Face", cf * CFrame.new(0, 2.4 + height / 2, -0.2), Vector3.new(width, height, 0.2), C.Navy)
 	box(m, "Roof", cf * CFrame.new(0, postH + 0.25, 0), Vector3.new(width + 3, 0.5, 2.4), C.PlankDark)
 	box(m, "RoofTop", cf * CFrame.new(0, postH + 0.75, 0), Vector3.new(width + 1.6, 0.5, 1.4), C.Rose)
+	-- Phase 6: prop_board_s (11 x 8) / prop_board_l (14 x 9); the Face keeps its SurfaceGui and stays visible
+	local boardKey = (width == 11 and height == 8) and "prop_board_s" or ((width == 14 and height == 9) and "prop_board_l" or nil)
+	if boardKey then
+		Mesh.tag(m, boardKey, cf, nil, { "Face" })
+	end
 	return face, m
 end
 
@@ -1532,6 +1667,9 @@ local function buildPlazaGround(f, L)
 				end
 			end
 		end
+		if model then -- Phase 6: floor_plaza_<layer> (baked from this very build: LayoutSig)
+			Mesh.tag(model, "floor_plaza_" .. string.lower(names[li]), CFrame.new(OX, TOP, OZ))
+		end
 	end
 end
 
@@ -1621,7 +1759,10 @@ local function buildPlazaBody(f, L)
 		MaxParts = 360,
 	}
 	-- top of tier 1 sits 1.2 under the lawn surface; rim puffs rise up to ~5 studs above the lawn
-	VX.CloudModel(spec, CFrame.new(OX, TOP - 1.2, OZ), f, "PlazaCloud", true)
+	local body = VX.CloudModel(spec, CFrame.new(OX, TOP - 1.2, OZ), f, "PlazaCloud", true)
+	if body then
+		Mesh.tag(body, "cloud_plaza", CFrame.new(OX, TOP - 1.2, OZ))
+	end
 end
 
 -- Fountain on the roundabout: stone basin, translucent water, two tiers with falling water, spray, and
@@ -1654,8 +1795,16 @@ local function buildFountain(f, centre, lookTarget)
 	Voxel.Shade(g, { Only = { Slate = true, MarbleShade = true }, Smooth = 1, Seed = 2 })
 	local water = VX.Split(g, { Water = true })
 	local cf = CFrame.new(centre.X, TOP + 0.5, centre.Z)
-	VX.Build(g, { V = 1, Name = "Basin", CF = cf, Collide = true, Parent = m, MaxParts = 64 })
-	VX.Build(water, { V = 1, Name = "Water", CF = cf, Collide = false, Parent = m })
+	local basin = VX.Build(g, { V = 1, Name = "Basin", CF = cf, Collide = true, Parent = m, MaxParts = 64 })
+	local waterModel = VX.Build(water, { V = 1, Name = "Water", CF = cf, Collide = false, Parent = m })
+	-- Phase 6: the basin and its water (the Nimbus statue on top stays the pet build)
+	local ground = CFrame.new(centre.X, TOP, centre.Z)
+	if basin then
+		Mesh.tag(basin, "prop_fountain", ground)
+	end
+	if waterModel then
+		Mesh.tag(waterModel, "prop_fountain_water", ground)
+	end
 
 	local spray = anchorPart(m, "Spray", centre + Vector3.new(0, 10.6, 0))
 	emitter(spray, {
@@ -1792,6 +1941,7 @@ function Court.Tiles(f, L)
 		local p = box(m, "CourtSide", CFrame.lookAt(pos, pos + d), Vector3.new(1.4, G.TerraceLift + 0.75, len), C.MarbleShade, { Collide = true })
 		p.CanQuery = true
 	end
+	Mesh.tag(m, "floor_plaza_courts", CFrame.new(OX, TOP, OZ)) -- Phase 6 (LayoutSig)
 	return m
 end
 
@@ -1811,6 +1961,7 @@ function Court.RingRoad(f, L)
 			return C.StoneEdge, (i % 2 == 0) and 0.0 or 0.02, materialOf("Brick")
 		end)
 	end
+	Mesh.tag(m, "floor_plaza_walk", CFrame.new(OX, TOP, OZ)) -- Phase 6 (LayoutSig)
 	return m
 end
 
@@ -1877,6 +2028,7 @@ function Court.Edges(f, L)
 			return C.StoneEdge, (i % 2 == 0) and 0.32 or 0.3, materialOf("Brick")
 		end)
 	end
+	Mesh.tag(m, "floor_plaza_edges", CFrame.new(OX, TOP, OZ)) -- Phase 6 (LayoutSig)
 	local decor = newModel(f, "WalkHedges")
 	CollectionService:AddTag(decor, DETAIL_TAG)
 	local hr0 = G.RingRoadR - G.PathHalf - 4.4
@@ -1982,6 +2134,7 @@ function Court.WelcomeArch(parent, L, radius)
 		signText(panel, Config.Tagline or "", "Script", 36, C.Text, "Tagline", 0.04, 0.72, 0.92, 0.17)
 		gui.Parent = board
 	end
+	Mesh.tag(m, "prop_welcome_arch", cf, nil, { "WelcomeSign" }) -- Phase 6: the sign board stays (SurfaceGuis)
 	return m
 end
 
@@ -2012,6 +2165,7 @@ function Court.Obelisk(parent, ground, color)
 	local tip2 = tip:Clone()
 	tip2.CFrame = cf * CFrame.new(0, 17.1, 0.55) * CFrame.Angles(0, math.pi, 0)
 	tip2.Parent = m
+	Mesh.tag(m, "prop_obelisk", cf, { Primary = color }) -- Phase 6: the band takes `color`
 	return m
 end
 
@@ -2475,6 +2629,10 @@ local function buildMachine(parent, cf, roulette)
 	Voxel.BuildBoxes(boxes.Fine, { VoxelSize = 0.5, Palette = pal, CFrame = cf * CFrame.new(0, 0.25, 0), Model = body, CanCollide = true, CanQuery = true })
 	Voxel.BuildBoxes(boxes.Dome, { VoxelSize = 1, Palette = pal, CFrame = cf * CFrame.new(0, 0.5, 0), Model = body, CanCollide = true, CanQuery = true })
 	body.Parent = model
+	-- Phase 6: one cabinet design for every roulette (cabinet + knob = the roulette colour, eggs = its top rarity)
+	local rarities = oddsRarities(roulette)
+	local top = rarities[#rarities]
+	Mesh.tag(body, "prop_roulette", cf, { Primary = roulette.Color or C.Rose, Secondary = (top and top.Color) or C.Gold })
 	local cabinet = nil
 	for _, d in ipairs(body:GetChildren()) do
 		if d:IsA("BasePart") and d.Name == "Body" and (not cabinet or d.Size.Magnitude > cabinet.Size.Magnitude) then
@@ -2559,7 +2717,7 @@ local function buildItemStall(parent, cf)
 	Voxel.Set(g, 3, 4, -1, "Gold")
 	Voxel.Set(g, -3, 4, 0, "Heal")
 	Voxel.Shade(g, { Skip = { Shield = true, Rose = true, Cream = true }, Smooth = 1, Seed = 13 })
-	VX.Build(g, {
+	local stallModel = VX.Build(g, {
 		V = 1,
 		Name = "Stall",
 		CF = cf * CFrame.new(0, 0.5, 0),
@@ -2579,6 +2737,9 @@ local function buildItemStall(parent, cf)
 		},
 		MaxParts = 80,
 	})
+	if stallModel then
+		Mesh.tag(stallModel, "prop_item_stall", cf) -- Phase 6
+	end
 	local lamp = anchorPart(model, "StallLight", (cf * CFrame.new(0, 7.5, 0)).Position)
 	pointLight(lamp, C.Lamp, 0.8, 16)
 
@@ -2670,7 +2831,11 @@ local function buildTokenStatue(parent, ground)
 	end
 	VX.Fill(g, -1, 1, 3, 3, 0, 0, "GoldDark")
 	Voxel.Shade(g, { Only = { StoneLight = true, Stone = true }, Smooth = 1 })
-	VX.Build(g, { V = 1, Name = "Coin", CF = flatLook(ground, Vector3.new(OX, ground.Y, OZ)) * CFrame.new(0, 0.5, 0), Collide = true, Parent = m })
+	local coinCf = flatLook(ground, Vector3.new(OX, ground.Y, OZ))
+	local coin = VX.Build(g, { V = 1, Name = "Coin", CF = coinCf * CFrame.new(0, 0.5, 0), Collide = true, Parent = m })
+	if coin then
+		Mesh.tag(coin, "prop_token_statue", coinCf) -- Phase 6
+	end
 	local sparkle = anchorPart(m, "CoinSparkle", ground + Vector3.new(0, 7, 0), Vector3.new(6, 6, 2))
 	emitter(sparkle, { Rate = 5, Lifetime = NumberRange.new(1.2, 2), Speed = NumberRange.new(0.5, 1.5), SpreadAngle = Vector2.new(180, 180), Size = popSize(0.6) })
 	return m
@@ -2732,7 +2897,10 @@ local function buildShop(root, L)
 	end
 	local tops = { -0.4, -0.3, -0.1, 0, 0.1 }
 	for li = 1, 5 do
-		VX.Build(grids[li], { V = cell, Name = "Ground" .. li, CF = CFrame.new(S.X, TOP + tops[li] - cell / 2, S.Z), Collide = true, Shadow = false, Parent = f })
+		local layer = VX.Build(grids[li], { V = cell, Name = "Ground" .. li, CF = CFrame.new(S.X, TOP + tops[li] - cell / 2, S.Z), Collide = true, Shadow = false, Parent = f })
+		if layer then
+			Mesh.tag(layer, "floor_shop_" .. li, CFrame.new(S.X, TOP, S.Z)) -- Phase 6 (LayoutSig)
+		end
 	end
 
 	-- The shop's cloud body + the stone neck to the plaza.
@@ -2753,7 +2921,7 @@ local function buildShop(root, L)
 			local s = rng:Float(7, 11)
 			puffs[#puffs + 1] = { math.cos(a) * (R - 6), -7, math.sin(a) * (R - 6), s, s * 0.7, s }
 		end
-		VX.CloudModel({
+		local shopCloud = VX.CloudModel({
 			V = 3,
 			Tiers = { { R = R + 3, H = 1 }, { R = R - 3, H = 2 }, { R = R - 11, H = 2 }, { R = R - 19, H = 2 } },
 			Puffs = puffs,
@@ -2764,6 +2932,9 @@ local function buildShop(root, L)
 			Seed = 5,
 			MaxParts = 84,
 		}, CFrame.new(S.X, TOP - 1.2, S.Z), f, "ShopCloud", true)
+		if shopCloud then
+			Mesh.tag(shopCloud, "cloud_shop", CFrame.new(S.X, TOP - 1.2, S.Z)) -- Phase 6 (LayoutSig)
+		end
 	end)
 	if not okBody then
 		warn("[LobbyBuilder] shop cloud failed: " .. tostring(errBody))
@@ -2821,6 +2992,7 @@ local function buildShop(root, L)
 		box(arch, "Beam", archCF * CFrame.new(0, 10.3, 0), Vector3.new(13, 0.6, 1.2), C.PlankDark)
 		local sign = box(arch, "ShopSign", archCF * CFrame.new(0, 12.38, 0), Vector3.new(12.4, 3.6, 0.8), C.Navy, { Shadow = true })
 		box(arch, "SignRoof", archCF * CFrame.new(0, 14.46, 0), Vector3.new(14, 0.6, 1.8), C.Rose)
+		Mesh.tag(arch, "prop_shop_arch", archCF, nil, { "ShopSign" }) -- Phase 6: the sign board stays (SurfaceGuis)
 		-- 620 x 180 px canvas: the name 1.6 studs tall, the caption 0.68 stud
 		for _, face in ipairs({ Enum.NormalId.Front, Enum.NormalId.Back }) do
 			local gui = surfaceGui(sign, face)
@@ -3295,6 +3467,9 @@ local function woodBridge(parent, name, a, b, width, opts)
 		-- underside of the 1-stud planks and nothing pokes through
 		place(Props.Puff(opts.PuffSize or "M"), CFrame.new(a + dir * t - Vector3.new(0, 4, 0)) * CFrame.Angles(0, t * 7, 0), m, "BridgePuff")
 	end
+	if opts.MeshKey then -- Phase 6 (LayoutSig); the puff under it is dressed on its own (its parts are kept)
+		Mesh.tag(m, opts.MeshKey, cf, nil, Mesh.CloudParts)
+	end
 	return m
 end
 
@@ -3360,6 +3535,9 @@ local function buildRoads(root, L)
 				end
 			end
 		end
+		-- Phase 6: one plank-deck mesh per junction kind (identical local geometry; LayoutSig)
+		local kind = (info.Arena and "arena") or (info.Altar and "altar") or (info.Spoke and "spoke") or (info.Garden and "garden") or "plain"
+		Mesh.tag(jf, "floor_junction_" .. kind, faceCentre(polar(a, G.StreetR, TOP)))
 	end
 
 	-- Spokes: plaza rim -> junction, over open sky, carried by cloud puffs.
@@ -3367,7 +3545,7 @@ local function buildRoads(root, L)
 		local p0 = polar(a, PLAZA_R - 3, TOP)
 		local p1 = polar(a, G.SpokeEndR, TOP)
 		-- rails run from the plaza's cloud rim right up to the street edge (no open window over the sky)
-		woodBridge(f, "Spoke", p0, p1, G.SpokeW, { Puffs = { 0.52 }, PuffSize = "S", RailInsetA = 6, RailInsetB = 2.6 })
+		woodBridge(f, "Spoke", p0, p1, G.SpokeW, { Puffs = { 0.52 }, PuffSize = "S", RailInsetA = 6, RailInsetB = 2.6, MeshKey = "floor_spoke" })
 	end
 end
 
@@ -3376,7 +3554,7 @@ end
 ----------------------------------------------------------------------
 
 -- Five stacked ground layers around `centre` (2-stud cells). fn(x, z, r) -> l1, l2, l3, l4 (see plazaCell).
-local function layeredGround(parent, centre, radius, fn)
+local function layeredGround(parent, centre, radius, fn, meshPrefix)
 	local cell = 2
 	local n = math.ceil(radius / cell)
 	local grids = { Voxel.NewGrid(1), Voxel.NewGrid(1), Voxel.NewGrid(1), Voxel.NewGrid(1), Voxel.NewGrid(1) }
@@ -3397,7 +3575,10 @@ local function layeredGround(parent, centre, radius, fn)
 	end
 	local tops = { -0.4, -0.3, -0.1, 0, 0.1 }
 	for li = 1, 5 do
-		VX.Build(grids[li], { V = cell, Name = "Ground" .. li, CF = CFrame.new(centre.X, TOP + tops[li] - cell / 2, centre.Z), Collide = true, Shadow = false, Parent = parent })
+		local layer = VX.Build(grids[li], { V = cell, Name = "Ground" .. li, CF = CFrame.new(centre.X, TOP + tops[li] - cell / 2, centre.Z), Collide = true, Shadow = false, Parent = parent })
+		if layer and meshPrefix then
+			Mesh.tag(layer, meshPrefix .. li, CFrame.new(centre.X, TOP, centre.Z)) -- Phase 6 (LayoutSig)
+		end
 	end
 end
 
@@ -3414,8 +3595,16 @@ local function buildPond(parent, ground)
 	Voxel.Set(g, -2, 1, 1, "BlossomWhite")
 	local water = VX.Split(g, { Water = true })
 	local cf = CFrame.new(ground.X, TOP + 0.1, ground.Z)
-	VX.Build(g, { V = 1, Name = "PondStone", CF = cf, Collide = true, Parent = parent })
-	VX.Build(water, { V = 1, Name = "PondWater", CF = cf, Collide = false, Parent = parent })
+	local stone = VX.Build(g, { V = 1, Name = "PondStone", CF = cf, Collide = true, Parent = parent })
+	local pondWater = VX.Build(water, { V = 1, Name = "PondWater", CF = cf, Collide = false, Parent = parent })
+	-- Phase 6: the pond ring and its water
+	local ground0 = CFrame.new(ground.X, TOP, ground.Z)
+	if stone then
+		Mesh.tag(stone, "prop_pond", ground0)
+	end
+	if pondWater then
+		Mesh.tag(pondWater, "prop_pond_water", ground0)
+	end
 	local sparkle = anchorPart(parent, "PondSparkle", ground + Vector3.new(0, 1, 0), Vector3.new(9, 1, 9))
 	emitter(sparkle, { Color = ColorSequence.new(rgb(200, 236, 255)), Rate = 3, Lifetime = NumberRange.new(1.5, 2.5), Speed = NumberRange.new(0.2, 0.6), Size = popSize(0.5) })
 end
@@ -3442,7 +3631,8 @@ local function buildGarden(parent, spec, L)
 		local s = rng:Float(7, 9)
 		puffs[#puffs + 1] = { math.cos(ang) * (R - 5), -6, math.sin(ang) * (R - 5), s, s * 0.7, s }
 	end
-	VX.CloudModel({
+	local gardenKind = (spec.Kind == "Pond") and "pond" or "blossom"
+	local gardenCloud = VX.CloudModel({
 		V = 3,
 		Tiers = { { R = R + 3, H = 1 }, { R = R - 3, H = 2 }, { R = R - 10, H = 2 }, { R = R - 16, H = 1 } },
 		Puffs = puffs,
@@ -3453,6 +3643,9 @@ local function buildGarden(parent, spec, L)
 		MaxParts = 46,
 		Seed = 20 + math.floor(a),
 	}, CFrame.new(c.X, TOP - 1.2, c.Z), f, "GardenCloud", true)
+	if gardenCloud then
+		Mesh.tag(gardenCloud, "cloud_garden_" .. gardenKind, CFrame.new(c.X, TOP - 1.2, c.Z)) -- Phase 6 (LayoutSig)
+	end
 
 	layeredGround(f, c, R, function(x, z, r)
 		local l1, l2, l3
@@ -3480,7 +3673,7 @@ local function buildGarden(parent, spec, L)
 			l1 = "Flower" .. (math.floor(hash3(math.floor(x), 8, math.floor(z), 6) * #FLOWERS) + 1)
 		end
 		return l1, l2, l3, nil
-	end)
+	end, "floor_garden_" .. gardenKind .. "_")
 
 	-- features
 	local function localPos(deg, dist)
@@ -3506,7 +3699,7 @@ local function buildGarden(parent, spec, L)
 	local gui = newTag(tag, "NameTag", 320, 80, -1.7, 120)
 	local plate = tagPlate(gui, rgb(150, 210, 160), 160)
 	tagText(plate, "Text", spec.Name, "Title", TAG_NAME + 2, C.Text, 1)
-	woodBridge(f, "GardenBridge", polar(a, G.GardenR + R - 3, TOP), polar(a, G.SpokeEndR, TOP), 8, { RailInsetA = 3, RailInsetB = 2.6 })
+	woodBridge(f, "GardenBridge", polar(a, G.GardenR + R - 3, TOP), polar(a, G.SpokeEndR, TOP), 8, { RailInsetA = 3, RailInsetB = 2.6, MeshKey = "floor_garden_bridge" })
 	return f
 end
 
@@ -3590,6 +3783,7 @@ function LobbyBuilder.Build()
 	templates = {}
 	reserved = {}
 	machineBoxCache = nil
+	Mesh.Names = {}
 
 	local old = Workspace:FindFirstChild("NimbusLobby")
 	if old then
@@ -3734,6 +3928,34 @@ function LobbyBuilder.Build()
 		RingSite = sites.Ring, -- ArenaBuilder's Portal_Ring (C12)
 		DungeonSite = sites.Dungeon, -- DungeonBuilder.BuildPortal (W3)
 	}
+end
+
+----------------------------------------------------------------------
+-- Phase 6 kit hooks (read-only; the game never calls them): blender/kit/props/lobby_world.py sets
+-- LobbyBuilder._Kit = { Targets = {}, Clouds = {} } before Build() to list every mesh target (key, subtree, origin) and
+-- every voxel cloud spec, then re-voxels a cloud at a finer grain with _CloudGrid. Tests use _Mesh (Signature, tag).
+----------------------------------------------------------------------
+LobbyBuilder._Kit = nil
+LobbyBuilder._Mesh = Mesh
+
+-- the cells of a recorded VX.Cloud spec at `V` studs per voxel (tier heights keep their stud thickness)
+function LobbyBuilder._CloudGrid(spec, V)
+	local V0 = spec.V or 3
+	local copy = {}
+	for k, v in pairs(spec) do
+		copy[k] = v
+	end
+	copy.V = V
+	copy.Tiers = {}
+	for i, t in ipairs(spec.Tiers) do
+		local tt = {}
+		for k, v in pairs(t) do
+			tt[k] = v
+		end
+		tt.H = math.max(1, math.floor((t.H or 1) * V0 / V + 0.5))
+		copy.Tiers[i] = tt
+	end
+	return VX.Cloud(copy)
 end
 
 return LobbyBuilder

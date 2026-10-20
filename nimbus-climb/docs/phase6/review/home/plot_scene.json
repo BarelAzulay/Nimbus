@@ -1,0 +1,28 @@
+{
+ "name": "home plot, max tier (every station at its top level, 12 open Garden beds)",
+ "budget": {
+  "tris": 50000,
+  "parts": 80
+ },
+ "pets": {
+  "High": 0,
+  "Low": 0
+ },
+ "keys": {
+  "home_farm_40": 1,
+  "home_garden_8": 1,
+  "home_foodmachine_5": 1,
+  "home_training_5": 1,
+  "home_vault_5": 1,
+  "home_house_4": 1,
+  "home_fusion_3": 1,
+  "home_arena_1": 1,
+  "home_fence_3": 1,
+  "home_fountain_3": 1,
+  "home_podium_3": 1,
+  "home_bed_frame": 12,
+  "home_bed_cushion": 12,
+  "home_bed_headboard": 12,
+  "home_bed_roof": 12
+ }
+}

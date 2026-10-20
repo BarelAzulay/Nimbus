@@ -59,7 +59,7 @@ return {
 		Min = { -2.9455, -2.2909, -2.7655 },
 		Size = { 5.8909, 6.6065, 5.8909 },
 	},
-	ContentHash = "e1c479ed39b50ce159bc4ee628990a7b",
+	ContentHash = "0a151be9a55f7ee3b63afbaeeefc6b32",
 	DarkFactor = { 0.8425, 0.85, 0.8875 },
 	DeepFactor = { 0.7098, 0.7225, 0.7877 },
 	Groups = {
