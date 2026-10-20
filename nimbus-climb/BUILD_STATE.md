@@ -63,3 +63,12 @@ Blender: bpy 5.2 at /tmp/claude-0/bpyenv/bin/python (re-install with pip in a ve
 PLAYER IS AFK: player said "if this wave ends i allow you to continue the build without stops without asking ... until the end of the phase". So: run W0..W5 + ship with NO questions. Job args for each wave: scratchpad/p5jobs/w<N>.json (pass as Workflow args).
 Preview sent to player: scratchpad/release_p5_preview (W3 gate 56c2f71 + side fixes Hud/Menu/EvolutionFx). Not merged.
 W5 review script ready: scratchpad/p5review.js (launch after the W4 gate fixer; review reads v3-phase4..HEAD)
+
+# Phase 6: Blender models only (started 2026-10-20)
+- Player: "dont use any roblox models, use only blender models"; scope "Everything now"; upload via Open Cloud API key; work from the cloud session.
+- Key: player added it to the environment settings, but THIS session started before -> env ROBLOX_API_KEY / ROBLOX_CREATOR_ID not visible (403 no auth). Build models now; upload in a NEW session (it loads the env). Never paste/print the key.
+- Check with the player before the FIRST real upload (uploads publish to their account).
+
+| Step | What | State |
+|---|---|---|
+| D | design workflow wf_f91389a6-695 (inv-creatures, inv-lobby, inv-home-arena-dungeon, pipeline proto, research, judge) -> scratchpad/p6design/ | RUNNING |
