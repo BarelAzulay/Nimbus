@@ -129,7 +129,15 @@ local BUDGET = {
 -- the rarities that have a second evolution
 local ASCEND_RARITY = { Epic = true, Legendary = true, Mythic = true, Secret = true }
 
+-- Phase 6 kit hook (read-only; the game never sets it): PetBuilder._Blueprint sculpts the same shapes at the
+-- Blender kit's mesh resolution with no part budget (blender/kit/bridge.py, ARCHITECTURE_V3.md 6.3 "kit")
+local MESH_K = nil
+local MESH_BUDGET = { Total = 1e9, Cap = 1e9, Body = 1e9, Wing = 1e9, Wing2 = 1e9, Tail = 1e9, Halo = 1e9, Aura = 1e9 }
+
 local function budgetOf(look, detail)
+	if MESH_K then
+		return MESH_BUDGET
+	end
 	if look.Evolved == 2 then
 		return BUDGET[(detail == "Low") and "AscLow" or "AscHigh"]
 	elseif look.Evolved then
@@ -6071,6 +6079,9 @@ local function buildBlueprint(look, detail, lean)
 	if look.Evolved then
 		k = ((detail == "Low") and 0.65 or 1.25) * (lean and 0.85 or 1)
 	end
+	if MESH_K then
+		k = MESH_K
+	end
 	SK = k
 	local ok, result = pcall(function()
 		local ctx = newContext(look, detail)
@@ -6179,6 +6190,16 @@ local function buildBlueprint(look, detail, lean)
 		bodyGroup.Boxes = mergeGroup(ctx, ctx.Body, max(30, min(ctx.BodyFill and budget.Total or budget.Body, budget.Total - used)))
 		-- Phase 2: the finish recolours the palette the parts are instanced with (the merge used the base colours)
 		applyFinishPalette(ctx, bp)
+		if MESH_K then
+			-- (kit hook only) where the separate meshes attach, in design units; the eyes in sculpted voxels
+			bp.Anchors = {
+				HeadTop = ctx.HeadTop, HeadC = ctx.HeadC, HeadR = ctx.HeadR, EarX = ctx.EarX,
+				Hat = { 0, ctx.HeadTop, ctx.HeadC[3] }, Neck = { 0, ctx.NeckY, ctx.NeckZ }, NeckR = ctx.NeckR,
+				Flower = ctx.FlowerAt, HornBase = ctx.HornBase, Tail = ctx.TailHinge, Wing = ctx.WingHinge,
+				WingTilt = ctx.WingTilt, WingSweep = ctx.WingSweep, Halo = ctx.HaloAt, Aura = ctx.AuraAt,
+				Eyes = ctx.Eyes, LidCells = ctx.LidCells, NoShade = ctx.NoShade, Keep = ctx.Keep,
+			}
+		end
 		return bp
 	end)
 	SK = 1
@@ -6925,6 +6946,26 @@ function PetBuilder.GetHeight(petDef)
 	end
 	heightCache[key] = h
 	return h
+end
+
+-- Phase 6 kit hook (read-only, never used by the game): the blueprint of a pet at the mesh resolution k (sculpted
+-- voxels per design unit) with no part budget, plus bp.Anchors. petDef as in Build (petDef.Evolved = 1 | 2).
+-- The kit (blender/kit/bridge.py) reads the shaded grids through Voxel.Shade / Voxel.Merge; nothing is cached.
+function PetBuilder._Blueprint(petDef, detail, k)
+	initConstants()
+	detail = (detail == "Low") and "Low" or "High"
+	local look = readLook(petDef)
+	local stage = (type(petDef) == "table") and petDef.Evolved or nil
+	stage = (stage == true) and 1 or tonumber(stage) or 0
+	stage = min(floor(stage), ASCEND_RARITY[look.Rarity] and 2 or 1)
+	look.Evolved = (stage == 2) and 2 or (stage == 1) or nil
+	MESH_K = tonumber(k) or 1
+	local ok, bp = pcall(buildBlueprint, look, detail)
+	MESH_K = nil
+	if not ok then
+		error(bp, 0)
+	end
+	return bp
 end
 
 return PetBuilder

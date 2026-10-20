@@ -1,13 +1,31 @@
-"""Manifest JSON -> a Lua module (plain Lua 5.1 table) the game can require, e.g. src/shared/MeshManifests/pet_dog.lua.
+"""Manifest JSON -> the generated ModuleScript src/shared/MeshManifests/<key>.lua (plain Lua 5.1 table; contract A3).
 
-    python3 manifest_to_lua.py out/final/pet_dog.manifest.json > pet_dog.lua
+    python3 blender/kit/manifest_to_lua.py blender/out/pet_dog.manifest.json > src/shared/MeshManifests/pet_dog.lua
+    (build_all.py does this for every key it builds)
 
-Only what the loader needs is kept (parts: name, group, centre, size, colour recipe, material, transparency;
-attachments; groups); stats / verify stay in the JSON.  Asset ids are NOT in here: they live in Config
-(ART RULE: "Mesh asset ids live in Config"), filled in by the uploader after a real upload.
+Kept: what MeshLibrary needs at run time (parts with their name / group / key / shade / centre / size / colour
+recipe / material / transparency / tris, groups with hinges and PB_G specs, attachments, the PB_Rig string,
+bounds, hashes, the dark / deep vertex-colour factors and a few meta fields).  Stats and the FBX verify report stay
+in the JSON.  Asset ids never go here (src/shared/MeshIds.lua, written by the uploader only).
+Output is deterministic (sorted keys, rounded numbers), so an unchanged model gives an unchanged file.
 """
 import json
+import re
 import sys
+
+LUA_KEYWORDS = {"and", "break", "do", "else", "elseif", "end", "false", "for", "function", "if", "in", "local", "nil",
+                "not", "or", "repeat", "return", "then", "true", "until", "while", "goto", "continue", "type"}
+
+
+def _num(v):
+    if isinstance(v, bool):
+        return "true" if v else "false"
+    if isinstance(v, int):
+        return str(v)
+    r = round(float(v), 5)
+    if r == int(r) and abs(r) < 1e12:
+        return str(int(r))
+    return repr(r)
 
 
 def lua(v, ind=""):
@@ -16,34 +34,71 @@ def lua(v, ind=""):
     if v is None:
         return "nil"
     if isinstance(v, (int, float)):
-        return repr(round(v, 5)) if isinstance(v, float) else str(v)
+        return _num(v)
     if isinstance(v, str):
-        return '"' + v.replace("\\", "\\\\").replace('"', '\\"') + '"'
-    if isinstance(v, list):
-        if all(isinstance(x, (int, float, str, bool)) for x in v):
-            return "{ " + ", ".join(lua(x) for x in v) + " }"
+        return '"' + v.replace("\\", "\\\\").replace('"', '\\"').replace("\n", "\\n") + '"'
+    if isinstance(v, (list, tuple)):
+        if not v:
+            return "{}"
+        if not any(isinstance(x, dict) for x in v):
+            return "{ " + ", ".join(lua(x, ind) for x in v) + " }"
         return "{\n" + "".join(ind + "\t" + lua(x, ind + "\t") + ",\n" for x in v) + ind + "}"
     if isinstance(v, dict):
+        if not v:
+            return "{}"
         out = "{\n"
         for k in sorted(v):
-            key = k if k.isidentifier() else "[" + lua(k) + "]"
+            ok = isinstance(k, str) and re.match(r"^[A-Za-z_][A-Za-z0-9_]*$", k) and k not in LUA_KEYWORDS
+            key = k if ok else "[" + lua(k) + "]"
             out += ind + "\t" + key + " = " + lua(v[k], ind + "\t") + ",\n"
         return out + ind + "}"
     raise TypeError(type(v))
 
 
+PART_FIELDS = (("name", "Name"), ("group", "Group"), ("key", "Key"), ("shade", "Shade"), ("center", "Center"),
+               ("size", "Size"), ("color", "Color"), ("material", "Material"), ("transparency", "Transparency"),
+               ("tris", "Tris"), ("fixedKeys", "FixedKeys"))
+
+
+def _cf(cf):
+    if not cf:
+        return None
+    return {"Pos": cf["pos"], "Rot": cf["rot"]}
+
+
 def convert(m):
-    keep_part = ("name", "group", "region", "shade", "center", "size", "color", "material", "transparency", "tris")
+    groups = {}
+    for name, g in (m.get("groups") or {}).items():
+        e = {"Kind": g.get("kind"), "Side": g.get("side"), "Amp": g.get("amp"), "Index": g.get("index"),
+             "Spec": g.get("spec"), "Hinge": _cf(g.get("hinge")), "Parts": g.get("parts") or []}
+        if g.get("attach"):
+            e["Attach"] = g["attach"]
+        if g.get("hiddenByDefault"):
+            e["Hidden"] = True
+        groups[name] = {k: v for k, v in e.items() if v is not None}
+    meta = m.get("meta") or {}
+    keep_meta = {}
+    for k in ("species", "pet", "stage", "grow", "detail", "headroom", "pulseKeys", "rootSize", "style", "side",
+              "accessory", "attach", "class", "lod"):
+        if k in meta:
+            keep_meta[k] = meta[k]
     return {
-        "Model": m["model"], "Kind": m["kind"], "KitVersion": m["kitVersion"], "VoxelStuds": m["voxelStuds"],
-        "Bounds": m["bounds"], "Tris": m["tris"]["total"],
-        "Parts": [{k: p[k] for k in keep_part if k in p} for p in m["parts"]],
-        "Attachments": m.get("attachments", {}), "Groups": m.get("groups", {}),
-        "DarkFactor": m["shading"]["dark"], "DeepFactor": m["shading"]["deep"],
+        "Key": m["key"], "Kind": m["kind"], "KitVersion": m["kitVersion"], "VoxelStuds": m["voxelStuds"],
+        "Bounds": {"Min": m["bounds"]["min"], "Max": m["bounds"]["max"], "Size": m["bounds"]["size"]},
+        "Tris": m["tris"]["total"],
+        "Parts": [{lk: p[jk] for jk, lk in PART_FIELDS if jk in p} for p in m["parts"]],
+        "Attachments": {k: _cf(v) for k, v in (m.get("attachments") or {}).items()},
+        "Groups": groups, "Rig": m.get("rig") or "",
+        "DarkFactor": m["shading"]["dark"], "DeepFactor": m["shading"]["deep"], "Headroom": 0.87,
+        "ContentHash": m["contentHash"], "StructureHash": m["structureHash"], "Meta": keep_meta,
     }
 
 
+def to_lua_source(m):
+    return ("-- GENERATED by blender/build_all.py (blender/kit/manifest_to_lua.py) from " + m["key"]
+            + ".manifest.json: do not edit by hand (ARCHITECTURE_V3.md 6.1 A3, recipe 4.6)\n"
+            + "return " + lua(convert(m)) + "\n")
+
+
 if __name__ == "__main__":
-    m = json.load(open(sys.argv[1]))
-    print("-- generated by blender/kit manifest_to_lua.py from " + m["model"] + ".manifest.json; do not edit by hand")
-    print("return " + lua(convert(m)))
+    sys.stdout.write(to_lua_source(json.load(open(sys.argv[1]))))

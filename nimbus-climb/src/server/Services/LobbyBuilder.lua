@@ -4,18 +4,20 @@
 -- Top view (+X right, +Z up the page, angles in degrees: x = cos, z = sin, plaza centre = Origin):
 --
 --   * PLAZA          a big round cloud island (Phase 5: PlazaRadius 150, 1.8x the Phase 4 area). Its body is a tiered
---                    voxel cloud (the clouds keep their look on purpose, tagged NC_StyleExempt); the top is built in
---                    the 6.4 art rules (WorldStyle materials, muted big surfaces, plinth + body + cap): the spawn court
---                    (concentric Slate tile rings, a Marble ring, a Metal sun medallion with six Neon arrows in the gate
---                    colours), the grand avenue to the Gate Court (Cobblestone, Brick kerbs, lamps every 16 studs, a
---                    tall stone welcome arch at r 40 carrying the welcome sign), the cobbled circle walk (r 100) with
---                    clipped hedges and lamps, the east / west walks, the shop boardwalk with the fountain roundabout,
---                    lawns with trees, benches, flower beds and the six NPC spots, a Brick kerb along the edge.
---   * GATE COURT     (6.1) a sector 48..132 degrees, r 96..146: Slate tile rings, a Marble rim, a raised terrace with
+--                    voxel cloud (white / light-blue, tagged NC_StyleExempt); the top is built in the Phase 4 look again
+--                    (Phase 6, 6.0.2 / 6.1 A1: SmoothPlastic, bright lime grass, cream stone paths with darker borders,
+--                    glow in Neon) on the Phase 5 layout: the spawn court (concentric cream stone tile rings, a light
+--                    ring, a gold sun medallion with six Neon arrows in the gate colours), the grand avenue to the Gate
+--                    Court (stone kerbs, lamps every 16 studs, a tall cream welcome arch at r 40 carrying the welcome
+--                    sign), the circle walk (r 100) with clipped hedges and lamps, the east / west walks, the shop
+--                    boardwalk with the fountain roundabout, lawns with trees, benches, flower beds and the six NPC
+--                    spots, a kerb along the edge.
+--   * GATE COURT     (6.1) a sector 48..132 degrees, r 96..146: cream tile rings, a light rim, a raised terrace with
 --                    hedges, a banner behind every gate and two obelisks. Six gates left -> right Home, Obby, Dungeon,
 --                    Ring, Arena, Altar on the arc r Config.Lobby.GateArcRadius, GateStep degrees apart around
---                    GateFacing, every gate facing the spawn (WorldStyle.BuildGate). This module builds Home, Obby and
---                    Altar into the Gates folder; ArenaBuilder adds Ring + Arena, DungeonBuilder (W3) the Dungeon gate.
+--                    GateFacing, every gate facing the spawn (WorldStyle.BuildGate: the P4 round voxel hoop family,
+--                    6.0.3). This module builds Home, Obby and Altar into the Gates folder; ArenaBuilder adds Ring +
+--                    Arena, DungeonBuilder the Dungeon gate.
 --   * SHOP ISLAND    at Config.Lobby.ShopOffset: four voxel gacha machines (Model Roulette_<Id>, built in
 --                    the roulette colour), the striped item stall (Model ItemShop), a rarity board, a token
 --                    statue and an entrance arch, joined to the plaza by a short stone neck.
@@ -175,76 +177,68 @@ local function rgb(r, g, b)
 	return Color3.fromRGB(r, g, b)
 end
 
--- Phase 5 (6.4 "less cute, crafted, still bright"): the colours follow WorldStyle.Palette (big surfaces muted:
--- saturation <= 0.45, value 0.35..0.9), every key has a WorldStyle material (MATS), and the clouds use the sky
--- shading of rule 9 (tops 250,244,252; sides 226,214,240; undersides 186,172,222).
+-- Phase 6 (6.0.2 / 6.1 A1): the Phase 4 look again (7aa0df2 LobbyBuilder palette): bright lime grass, cream stone
+-- paths with darker borders, white / light-blue clouds, everything SmoothPlastic (glow Neon, water Glass). The
+-- Phase 5 layout keys (Slate courts, Marble rings and arches, Navy signs) keep their names with P4 colours.
 local C = {
-	CloudLight = rgb(250, 244, 252),
-	Cloud = rgb(240, 232, 248),
-	CloudShade = rgb(226, 214, 240),
-	Mist = rgb(206, 193, 232),
-	MistDark = rgb(186, 172, 222),
-	Grass = rgb(112, 152, 100),
-	GrassLight = rgb(124, 162, 108),
-	GrassDark = rgb(100, 140, 92),
-	Hedge = rgb(82, 124, 84),
-	HedgeLight = rgb(98, 140, 94),
-	Stone = rgb(152, 146, 156), -- cobbled paths
-	StoneLight = rgb(170, 164, 172),
-	StoneDark = rgb(128, 122, 134),
-	StoneEdge = rgb(150, 104, 96), -- brick borders / kerbs
-	Slate = rgb(108, 112, 130),
-	SlateLight = rgb(124, 128, 146),
-	SlateDark = rgb(84, 88, 106),
-	Marble = rgb(222, 218, 228),
-	MarbleShade = rgb(196, 190, 210),
-	Sand = rgb(214, 198, 164),
-	SandDark = rgb(190, 172, 138),
-	Plank = rgb(156, 118, 90),
-	PlankLight = rgb(170, 132, 100),
-	PlankDark = rgb(124, 92, 70),
-	Bark = rgb(116, 88, 70),
-	Iron = rgb(70, 74, 94),
-	IronLight = rgb(96, 102, 124),
-	Gold = rgb(200, 172, 112),
-	GoldDark = rgb(168, 142, 94),
-	Lamp = rgb(255, 214, 170),
-	Water = rgb(108, 152, 190),
-	WaterDeep = rgb(86, 120, 156),
-	Leaf = rgb(96, 140, 84),
-	Pine = rgb(72, 112, 88),
-	Blossom = rgb(214, 160, 186),
-	BlossomWhite = rgb(222, 204, 216),
-	Soil = rgb(120, 94, 76),
-	Navy = rgb(72, 76, 104), -- sign boards (the SurfaceGui panel covers them)
-	Violet = rgb(96, 88, 132),
+	CloudLight = rgb(244, 247, 252),
+	Cloud = rgb(232, 238, 249),
+	CloudShade = rgb(212, 222, 241),
+	Mist = rgb(194, 211, 240),
+	MistDark = rgb(170, 190, 228),
+	Grass = rgb(108, 186, 86),
+	GrassLight = rgb(132, 202, 98),
+	GrassDark = rgb(86, 160, 76),
+	Hedge = rgb(74, 146, 72),
+	HedgeLight = rgb(100, 170, 84),
+	Stone = rgb(208, 202, 190), -- cream stone paths
+	StoneLight = rgb(226, 221, 209),
+	StoneDark = rgb(172, 164, 154),
+	StoneEdge = rgb(146, 138, 132), -- path borders / kerbs
+	Slate = rgb(214, 208, 196), -- the courts: cream stone tiles (a hair lighter than the paths)
+	SlateLight = rgb(228, 223, 211),
+	SlateDark = rgb(172, 164, 154),
+	Marble = rgb(242, 237, 226), -- the courts' light rings, arches, columns
+	MarbleShade = rgb(226, 221, 209),
+	Sand = rgb(236, 214, 166),
+	SandDark = rgb(212, 186, 138),
+	Plank = rgb(196, 146, 98),
+	PlankLight = rgb(214, 166, 114),
+	PlankDark = rgb(152, 108, 72),
+	Bark = rgb(132, 92, 62),
+	Iron = rgb(64, 70, 92),
+	IronLight = rgb(96, 104, 130),
+	Gold = rgb(244, 198, 84),
+	GoldDark = rgb(206, 154, 62),
+	Lamp = rgb(255, 214, 140),
+	Water = rgb(92, 178, 236),
+	WaterDeep = rgb(62, 136, 212),
+	Leaf = rgb(98, 178, 80),
+	Pine = rgb(60, 138, 92),
+	Blossom = rgb(246, 174, 204),
+	BlossomWhite = rgb(250, 228, 238),
+	Soil = rgb(120, 86, 64),
+	Navy = rgb(34, 42, 76),
+	Violet = rgb(68, 60, 118),
 	Ink = (Theme.Colors and Theme.Colors.Ink) or rgb(26, 32, 64),
 	Text = rgb(238, 243, 252),
 	TextDim = rgb(190, 202, 230),
 	TextGold = rgb(246, 216, 132),
 	StarOff = rgb(96, 104, 136),
-	Rose = rgb(190, 118, 134),
-	Cream = rgb(226, 214, 196),
+	Rose = rgb(234, 120, 146),
+	Cream = rgb(246, 234, 210),
 	PanelTop = rgb(68, 60, 118), -- sign GUI panels only (never a part colour)
 	PanelBottom = rgb(34, 42, 76),
 }
 
--- WorldStyle material of every colour key (6.4 rule 1); the voxel palette and box() both read it.
+-- Material of every colour key: the P4 look is SmoothPlastic everywhere; lamps glow (Neon), water is Glass.
+-- (materialOf keeps the Phase 5 material names working: they all resolve to SmoothPlastic.)
 local MATS = {
-	Grass = "Grass", GrassLight = "Grass", GrassDark = "Grass",
-	Hedge = "LeafyGrass", HedgeLight = "LeafyGrass", Leaf = "LeafyGrass", Pine = "LeafyGrass",
-	Blossom = "LeafyGrass", BlossomWhite = "LeafyGrass",
-	Stone = "Cobblestone", StoneLight = "Cobblestone", StoneDark = "Cobblestone", StoneEdge = "Brick",
-	Slate = "Slate", SlateLight = "Slate", SlateDark = "Slate", Navy = "Slate", Violet = "Slate",
-	Marble = "Marble", MarbleShade = "Marble", Cream = "Marble",
-	Sand = "Sand", SandDark = "Sand", Soil = "Sand",
-	Plank = "WoodPlanks", PlankLight = "WoodPlanks", PlankDark = "WoodPlanks", Bark = "Wood",
-	Iron = "Metal", IronLight = "Metal", Gold = "Metal", GoldDark = "Metal",
-	Lamp = "Neon", Water = "Glass", WaterDeep = "Glass", Rose = "Fabric",
+	Lamp = "Neon", Water = "Glass", WaterDeep = "Glass",
 }
+local LOOK_MATERIALS = { Neon = MAT.Neon, Glass = MAT.Glass, SmoothPlastic = MAT.SmoothPlastic }
 local function materialOf(name)
-	local m = (WorldStyle and WorldStyle.Materials and WorldStyle.Materials[name]) or MAT[name]
-	return m or MAT.SmoothPlastic
+	return LOOK_MATERIALS[name] or MAT.SmoothPlastic
 end
 -- colour -> material for box() calls that pass a C colour (keyed by "r,g,b": Color3 values are not table keys)
 local function colorKey(color)
@@ -258,24 +252,24 @@ for key, name in pairs(MATS) do
 end
 
 local FLOWERS = {
-	rgb(236, 150, 184), -- pink
-	rgb(240, 208, 104), -- yellow
-	rgb(236, 232, 240), -- white (not pure)
-	rgb(170, 146, 222), -- violet
-	rgb(222, 112, 116), -- red
-	rgb(120, 168, 228), -- blue
+	rgb(246, 150, 188), -- pink
+	rgb(250, 214, 92), -- yellow
+	rgb(244, 244, 248), -- white (not pure)
+	rgb(172, 142, 232), -- violet
+	rgb(236, 104, 108), -- red
+	rgb(112, 172, 240), -- blue
 }
 
--- One accent per home plot (cycled): banner, mailbox flag, podium trim (small pieces only, rule 2).
+-- One accent per home plot (cycled): banner, mailbox flag, podium trim.
 local ACCENTS = {
-	rgb(212, 126, 142),
-	rgb(218, 160, 106),
-	rgb(216, 190, 114),
-	rgb(120, 176, 130),
-	rgb(108, 168, 184),
-	rgb(116, 146, 204),
-	rgb(152, 132, 204),
-	rgb(204, 128, 182),
+	rgb(232, 112, 132),
+	rgb(240, 160, 84),
+	rgb(236, 204, 92),
+	rgb(108, 192, 124),
+	rgb(86, 186, 206),
+	rgb(98, 148, 226),
+	rgb(154, 122, 222),
+	rgb(222, 120, 192),
 }
 
 -- The six gates of the Gate Court, left -> right (6.1 / 6.2): id, gate colour (WorldStyle.Palette.Accent), glyph.
@@ -426,12 +420,8 @@ local function box(parent, name, cf, size, color, opts)
 	p.Size = size
 	p.CFrame = cf
 	p.Color = color
-	-- 6.4 rule 1: a WorldStyle material (by the colour's key); SmoothPlastic only for parts <= 2 studs
-	local material = opts.Material or MAT_BY_COLOR[colorKey(color)]
-	if not material then
-		material = (math.max(size.X, size.Y, size.Z) <= 2) and MAT.SmoothPlastic or materialOf("Marble")
-	end
-	p.Material = material
+	-- the P4 look: SmoothPlastic unless the caller (or the colour: lamps, water) says Neon / Glass
+	p.Material = opts.Material or MAT_BY_COLOR[colorKey(color)] or MAT.SmoothPlastic
 	p.Transparency = opts.Transparency or 0
 	if opts.Reflectance then
 		p.Reflectance = opts.Reflectance
@@ -1719,7 +1709,8 @@ local function buildFountain(f, centre, lookTarget)
 end
 
 ----------------------------------------------------------------------
--- Phase 5 courts (6.1 / 6.4): the tiled spawn court, the Gate Court with its terrace, the avenue, the welcome arch
+-- Phase 5 courts (6.1; Phase 6: the P4 colours): the tiled spawn court, the Gate Court with its terrace, the avenue,
+-- the welcome arch
 ----------------------------------------------------------------------
 local Court = {}
 
@@ -1744,7 +1735,7 @@ function Court.Arc(parent, name, r0, r1, a0, a1, seg, thick, gap, fn)
 	end
 end
 
--- Tile colour: the base Slate with a +-6 RGB jitter per tile (rule 2), deterministic.
+-- Tile colour: the base cream stone with a +-6 RGB jitter per tile, deterministic.
 function Court.Jitter(color, a, b)
 	local h = hash3(a, b, 7, 31) * 2 - 1
 	local d = h * 6 / 255
@@ -2374,44 +2365,27 @@ local function oddsRarities(roulette)
 	return list
 end
 
--- 6.4 rule 2: a big surface keeps its hue but at most 0.42 saturation and 0.88 value (small pieces keep the full colour)
-local function muted(color)
-	local r, g, b = color.R, color.G, color.B
-	local mx, mn = math.max(r, g, b), math.min(r, g, b)
-	if mx <= 0 then
-		return color
-	end
-	local sat = (mx - mn) / mx
-	local v = clamp(mx, 0.4, 0.88)
-	local k = (sat > 0.42) and (0.42 / sat) or 1
-	-- pull every channel toward the max (less saturation), then scale to the clamped value
-	local function ch(c)
-		return (mx - (mx - c) * k) * (v / mx)
-	end
-	return Color3.new(ch(r), ch(g), ch(b))
-end
-
+-- the P4 machine colours: the roulette colour on the cabinet, gold trims, cream wheel segments, a glass dome
 local function machinePalette(roulette)
 	local color = roulette.Color or C.Rose
-	local metal, marble = materialOf("Metal"), materialOf("Marble")
 	local pal = {
-		Base = { Color = C.Iron, Material = metal },
-		Body = { Color = muted(color), Material = metal },
-		Trim = { Color = C.Gold, Material = metal },
-		Seg1 = { Color = muted(color:Lerp(rgb(255, 255, 255), 0.45)), Material = marble },
-		Seg2 = { Color = C.Cream, Material = marble },
-		Rim = { Color = C.GoldDark, Material = metal },
-		Hub = { Color = C.Gold, Material = metal },
-		Dark = { Color = C.SlateDark, Material = materialOf("Slate") },
+		Base = C.Iron,
+		Body = color,
+		Trim = C.Gold,
+		Seg1 = color:Lerp(rgb(255, 255, 255), 0.45),
+		Seg2 = C.Cream,
+		Rim = C.GoldDark,
+		Hub = C.Gold,
+		Dark = rgb(42, 46, 70),
 		Glass = { Color = rgb(214, 236, 255), Material = MAT.Glass, Transparency = 0.55 },
 		Bulb = { Color = C.Lamp, Material = MAT.Neon },
-		Knob = { Color = color, Material = MAT.Neon }, -- the roulette colour, on a small piece
-		Iron = { Color = C.IronLight, Material = metal },
+		Knob = { Color = color, Material = MAT.Neon },
+		Iron = C.IronLight,
 	}
 	local rarities = oddsRarities(roulette)
 	for i = 1, 4 do
 		local r = rarities[(i - 1) % math.max(1, #rarities) + 1]
-		pal["Egg" .. i] = { Color = muted((r and r.Color) or color), Material = metal }
+		pal["Egg" .. i] = (r and r.Color) or color
 	end
 	return pal
 end
@@ -3190,7 +3164,7 @@ local function buildSpot(parent, index, angle)
 		if podium then
 			for _, d in ipairs(podium:GetChildren()) do
 				if d:IsA("BasePart") and d.Name == "Accent" then
-					d.Color = muted(accent) -- a 4.4 x 1 x 4.4 slab: a big face, so the muted accent (6.4 rule 2)
+					d.Color = accent
 				end
 			end
 		end

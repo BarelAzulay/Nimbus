@@ -74,6 +74,8 @@ def from_hsv(h, s, v):
 #   ["mix", A, B, t] / ["lighten", A, t] / ["darken", A, t]          PetBuilder ops (A, B are recipes)
 #   ["cuteIris", A] / ["cutePupil", A] / ["cuteLash", A]           PetBuilder cuteEyes (HSV based)
 #   ["ifLum<", A, threshold, THEN, ELSE]                             luminance switch (pale pets etc.)
+#   ["shadeLight", A]                                                Voxel.Lighten(A) (the <Key>Light parts)
+#   ["headroom", A]                                                  min(1, A / 0.87) (Low parts, decision 11)
 def eval_recipe(rec, look):
     op = rec[0]
     if op in ("Primary", "Secondary", "Eye", "WingColor"):
@@ -101,6 +103,11 @@ def eval_recipe(rec, look):
         e = eval_recipe(rec[1], look)
         h, s, v = to_hsv(e)
         return from_hsv(h, clamp(s * 0.6 + 0.15, 0.2, 0.6), 0.1)
+    if op == "shadeLight":
+        return shade_light(eval_recipe(rec[1], look))
+    if op == "headroom":
+        c = eval_recipe(rec[1], look)
+        return tuple(min(1.0, x / 0.87) for x in c)
     if op == "ifLum<":
         a = eval_recipe(rec[1], look)
         return eval_recipe(rec[3] if luminance(a) < rec[2] else rec[4], look)

@@ -1,0 +1,18 @@
+{
+ "class": "home",
+ "owner": "W2 art-home",
+ "doc": "blender/README.md. Keys: home_<station>_<level>, prop_<name>. type prop (kit/props/home*.py)",
+ "budgets": {
+  "station": {
+   "tris": 4000,
+   "parts": 8
+  },
+  "decor": {
+   "tris": 2000,
+   "parts": 8
+  }
+ },
+ "keys": [],
+ "sets": [],
+ "previews": []
+}

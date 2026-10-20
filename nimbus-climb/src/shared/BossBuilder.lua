@@ -117,7 +117,42 @@ end
 ----------------------------------------------------------------------
 -- Sculpt helpers (voxel units; y up from the feet, the boss faces -Z, +X is its right)
 ----------------------------------------------------------------------
+-- Phase 6 kit hook (read-only; the game never sets it): BossBuilder._Blueprint sculpts at k voxels per boss voxel
+local MESH_K = nil
+local MESH_FIELDS = { Center = true, A = true, B = true, Pivot = true, Radius = true, RadiusB = true, Size = true, Round = true, Thickness = true, ThicknessB = true }
+local function meshScaled(t)
+	local o = {}
+	for key, v in pairs(t) do
+		if MESH_FIELDS[key] then
+			if type(v) == "number" then
+				v = v * MESH_K
+			elseif type(v) == "table" then
+				local c = {}
+				for i, x in pairs(v) do
+					c[i] = (type(x) == "number") and x * MESH_K or x
+				end
+				v = c
+			end
+		elseif key == "Points" or key == "Radii" then
+			local list = {}
+			for i, pt in ipairs(v) do
+				if type(pt) == "number" then
+					list[i] = pt * MESH_K
+				else
+					list[i] = { pt[1] * MESH_K, pt[2] * MESH_K, pt[3] * MESH_K }
+				end
+			end
+			v = list
+		end
+		o[key] = v
+	end
+	return o
+end
+
 local function shape(g, t)
+	if MESH_K then
+		t = meshScaled(t)
+	end
 	return Voxel.Shape(g, t)
 end
 local function ell(g, key, c, r, extra)
@@ -868,6 +903,38 @@ local function buildTemplate(bossId, detail, scale)
 	model:SetAttribute("Detail", low and "Low" or "High")
 	model:SetAttribute("Scale", scale)
 	return model
+end
+
+-- Phase 6 kit hook (read-only, never used by the game): the shaded joint grids of a boss sculpted at k voxels per
+-- boss voxel (blender/kit/bridge.py). Joint pivots stay in boss voxels (VOXEL studs each); grid voxels are VOXEL / k.
+function BossBuilder._Blueprint(bossId, k)
+	local rigDef = BossBuilder.Rigs[bossId]
+	local sculpt = SCULPT[bossId]
+	if not rigDef or not sculpt then
+		return nil
+	end
+	local grids = {}
+	for _, name in ipairs(rigDef.Order) do
+		grids[name] = Voxel.NewGrid(rigDef.Height)
+	end
+	MESH_K = tonumber(k) or 1
+	local ok, err = pcall(sculpt, grids)
+	MESH_K = nil
+	if not ok then
+		error(err, 0)
+	end
+	local skip = { Mouth = true }
+	for key in pairs(GLOW_KEYS) do
+		skip[key] = true
+	end
+	for _, name in ipairs(rigDef.Order) do
+		Voxel.Shade(grids[name], { Skip = skip, Smooth = 1 })
+	end
+	return {
+		Grids = grids, Order = rigDef.Order, Joints = rigDef.Joints, Fx = rigDef.Fx, Keep = KEEP[bossId],
+		Palette = resolvePalette(PALETTES[bossId]), Colors = COLORS[bossId] or FALLBACK_COLORS, K = MESH_K or tonumber(k) or 1,
+		VoxelStuds = VOXEL / (tonumber(k) or 1),
+	}
 end
 
 -- the runtime rig of a model built by Build (read from its joint attributes; the model must be at rest)

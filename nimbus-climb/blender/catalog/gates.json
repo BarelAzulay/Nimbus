@@ -1,0 +1,14 @@
+{
+ "class": "gates",
+ "owner": "W2 art-gates",
+ "doc": "blender/README.md. Keys: gate_<obby|ring|arena|dungeon|home|altar>, gate_arena_<n>, portal_dungeon, portal_home. type prop (kit/props/gates*.py); P4 hoop family, contract 6.0.3",
+ "budgets": {
+  "gate": {
+   "tris": 8000,
+   "parts": 20
+  }
+ },
+ "keys": [],
+ "sets": [],
+ "previews": []
+}

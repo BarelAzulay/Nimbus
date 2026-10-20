@@ -1,0 +1,268 @@
+{
+ "class": "pets",
+ "owner": "W2 art-pets (W1 kit wrote the skeleton and the golden path: dog / cat / dragon, feather wings, crown)",
+ "doc": "blender/README.md. Keys: pet_<species>[_low], wing_<style>_<L|R>[_low], acc_<name>[_low], hyb_<feature>. k = mesh voxels per design unit (recipe 4.2: High 1.38, Low 0.86); lod Low = headroom shades; fixed = bake unreferenced constant keys into one Fixed part; strip = Look fields removed for the species body.",
+ "budgets": {
+  "pet": {
+   "tris": 4750,
+   "parts": 26,
+   "maxPartTris": 10000
+  },
+  "petLow": {
+   "tris": 2150,
+   "parts": 22,
+   "maxPartTris": 10000
+  },
+  "wing": {
+   "tris": 900,
+   "parts": 8
+  },
+  "wingLow": {
+   "tris": 450,
+   "parts": 5
+  },
+  "acc": {
+   "tris": 1000,
+   "parts": 6
+  },
+  "accLow": {
+   "tris": 500,
+   "parts": 6
+  },
+  "setHigh": {
+   "tris": 6500,
+   "parts": 40
+  },
+  "setLow": {
+   "tris": 3000,
+   "parts": 32
+  }
+ },
+ "budgetNotes": "recipe 4.2: base pet + wings + accessory High <= 6.5k tris / 40 MeshParts, Low <= 3k tris. Low parts: 32 (not 14) because the name contract (4.3) keeps one part per palette key; see the W1 kit report. Per-key pet High 4.75k tris so a body + Feather pair + Crown fits 6.5k (heavier bodies step K: cat / dragon 1.242). acc_crown bakes its unreferenced constant gems into Fixed (40-part set budget).",
+ "keys": [
+  {
+   "key": "pet_dog",
+   "type": "pet",
+   "pet": "pebble_pup",
+   "k": 1.38,
+   "strip": [
+    "Accessory"
+   ],
+   "budget": "pet",
+   "description": "Pet body: dog (from pebble_pup), High"
+  },
+  {
+   "key": "pet_dog_low",
+   "type": "pet",
+   "pet": "pebble_pup",
+   "k": 0.86,
+   "strip": [
+    "Accessory"
+   ],
+   "budget": "petLow",
+   "lod": "Low",
+   "fixed": true,
+   "description": "Pet body: dog, Low LOD (headroom shades)"
+  },
+  {
+   "key": "pet_cat",
+   "type": "pet",
+   "pet": "mallow_kitten",
+   "k": 1.38,
+   "strip": [
+    "Accessory"
+   ],
+   "budget": "pet",
+   "description": "Pet body: cat (from mallow_kitten), High"
+  },
+  {
+   "key": "pet_cat_low",
+   "type": "pet",
+   "pet": "mallow_kitten",
+   "k": 0.86,
+   "strip": [
+    "Accessory"
+   ],
+   "budget": "petLow",
+   "lod": "Low",
+   "fixed": true,
+   "description": "Pet body: cat, Low LOD (headroom shades)"
+  },
+  {
+   "key": "pet_dragon",
+   "type": "pet",
+   "pet": "twilight_dragon",
+   "k": 1.38,
+   "strip": [
+    "Accessory"
+   ],
+   "budget": "pet",
+   "description": "Pet body: dragon (from twilight_dragon), High"
+  },
+  {
+   "key": "pet_dragon_low",
+   "type": "pet",
+   "pet": "twilight_dragon",
+   "k": 0.86,
+   "strip": [
+    "Accessory"
+   ],
+   "budget": "petLow",
+   "lod": "Low",
+   "fixed": true,
+   "description": "Pet body: dragon, Low LOD (headroom shades)"
+  },
+  {
+   "key": "wing_feather_L",
+   "type": "wing",
+   "pet": "pebble_pup",
+   "side": "L",
+   "k": 1.38,
+   "budget": "wing"
+  },
+  {
+   "key": "wing_feather_L_low",
+   "type": "wing",
+   "pet": "pebble_pup",
+   "side": "L",
+   "k": 0.86,
+   "lod": "Low",
+   "budget": "wingLow"
+  },
+  {
+   "key": "wing_feather_R",
+   "type": "wing",
+   "pet": "pebble_pup",
+   "side": "R",
+   "k": 1.38,
+   "budget": "wing"
+  },
+  {
+   "key": "wing_feather_R_low",
+   "type": "wing",
+   "pet": "pebble_pup",
+   "side": "R",
+   "k": 0.86,
+   "lod": "Low",
+   "budget": "wingLow"
+  },
+  {
+   "key": "acc_crown",
+   "type": "acc",
+   "pet": "pebble_pup",
+   "accessory": "Crown",
+   "k": 1.38,
+   "budget": "acc",
+   "fixed": true
+  },
+  {
+   "key": "acc_crown_low",
+   "type": "acc",
+   "pet": "pebble_pup",
+   "accessory": "Crown",
+   "k": 0.86,
+   "lod": "Low",
+   "fixed": true,
+   "budget": "accLow"
+  }
+ ],
+ "sets": [
+  {
+   "name": "dog_feather_crown",
+   "keys": [
+    "pet_dog",
+    "wing_feather_L",
+    "wing_feather_R",
+    "acc_crown"
+   ],
+   "budget": "setHigh"
+  },
+  {
+   "name": "dog_feather_crown_low",
+   "keys": [
+    "pet_dog_low",
+    "wing_feather_L_low",
+    "wing_feather_R_low",
+    "acc_crown_low"
+   ],
+   "budget": "setLow"
+  },
+  {
+   "name": "cat_feather_crown",
+   "keys": [
+    "pet_cat",
+    "wing_feather_L",
+    "wing_feather_R",
+    "acc_crown"
+   ],
+   "budget": "setHigh"
+  },
+  {
+   "name": "cat_feather_crown_low",
+   "keys": [
+    "pet_cat_low",
+    "wing_feather_L_low",
+    "wing_feather_R_low",
+    "acc_crown_low"
+   ],
+   "budget": "setLow"
+  },
+  {
+   "name": "dragon_feather",
+   "keys": [
+    "pet_dragon",
+    "wing_feather_L",
+    "wing_feather_R"
+   ],
+   "budget": "setHigh",
+   "note": "twilight_dragon's real set (Bat wings + Horns) is wave 2 (art-pets)"
+  },
+  {
+   "name": "dragon_feather_low",
+   "keys": [
+    "pet_dragon_low",
+    "wing_feather_L_low",
+    "wing_feather_R_low"
+   ],
+   "budget": "setLow"
+  }
+ ],
+ "previews": [
+  {
+   "name": "dog_feather_crown",
+   "body": "pet_dog",
+   "attach": [
+    "wing_feather_L",
+    "wing_feather_R",
+    "acc_crown"
+   ]
+  },
+  {
+   "name": "cat_feather_crown",
+   "body": "pet_cat",
+   "attach": [
+    "wing_feather_L",
+    "wing_feather_R",
+    "acc_crown"
+   ]
+  },
+  {
+   "name": "dragon_feather_crown",
+   "body": "pet_dragon",
+   "attach": [
+    "wing_feather_L",
+    "wing_feather_R",
+    "acc_crown"
+   ]
+  },
+  {
+   "name": "dog_feather_crown_low",
+   "body": "pet_dog_low",
+   "attach": [
+    "wing_feather_L_low",
+    "wing_feather_R_low",
+    "acc_crown_low"
+   ]
+  }
+ ]
+}

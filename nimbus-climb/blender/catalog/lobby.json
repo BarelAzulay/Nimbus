@@ -1,0 +1,26 @@
+{
+ "class": "lobby",
+ "owner": "W2 art-lobby",
+ "doc": "blender/README.md. Keys: prop_<name>, cloud_<size>_<v>, floor_<area>_<i>. type prop (kit/props/lobby*.py)",
+ "budgets": {
+  "prop": {
+   "tris": 2000,
+   "parts": 8
+  },
+  "propBig": {
+   "tris": 4000,
+   "parts": 8
+  },
+  "cloud": {
+   "tris": 3500,
+   "parts": 2
+  },
+  "floor": {
+   "tris": 1000,
+   "parts": 1
+  }
+ },
+ "keys": [],
+ "sets": [],
+ "previews": []
+}

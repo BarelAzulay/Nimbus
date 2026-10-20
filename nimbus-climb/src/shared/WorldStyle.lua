@@ -1,38 +1,48 @@
--- WorldStyle: the shared art kit of the Phase 5 world (ARCHITECTURE_V3.md "Phase 5 build contract" 6.2 / 6.4).
--- "Less cute, crafted, still bright": real Roblox materials (stone, wood, grass), plinth + body + cap on every
--- structure, kerbs and lips on platform edges, chamfered tall corners, muted big surfaces with ONE accent hue
--- per structure, neon only as thin inlays. Every world builder (LobbyBuilder, HomeBuilder, ArenaBuilder,
--- DungeonBuilder) builds with these pieces so the whole world reads as one place. Usable on the server and the
--- client (pure part building; no services, no remotes). Plain Lua 5.1-compatible syntax only.
+-- WorldStyle: the shared art kit of the world (ARCHITECTURE_V3.md "Phase 6" 6.0.2 / 6.0.3 / 6.1 A1, docs/phase6/style.md
+-- section 4). Phase 6 = the Phase 4 look again (7aa0df2): bright, cute, colourful voxels in SmoothPlastic, the P4
+-- palette (lime grass, cream stone paths, white / light-blue clouds), no realistic textures and no round primitives.
+-- Glow stays Neon (gate rings, swirls, gems, lanterns, inlays); water may be Glass. The Part builds here are the
+-- fallback + colliders until the Blender meshes (wave 2) dress them. Every world builder (LobbyBuilder, HomeBuilder,
+-- ArenaBuilder, DungeonBuilder) builds with these pieces so the world reads as one place. Usable on the server and
+-- the client (pure part building; no services, no remotes). Plain Lua 5.1-compatible syntax only.
 --
---   WorldStyle.Materials                      name -> Enum.Material: the ONLY materials a world part may use
---   WorldStyle.Palette                        muted surface colours, lantern / cloud colours, Accent.<Name> gate colours
---   WorldStyle.Plinth(parent, cf, size, mat, color) -> body, band
---       the darker base of a structure: a `size` block centred on `cf` (default Slate) + a 0.2-stud Marble band
---       overhanging 0.15 on top (the moulding the body stands on)
---   WorldStyle.Kerb(parent, cf, length, mat, color) -> kerb, lip
---       a platform edge: cf = a point ON the platform's top surface at the edge, X = along the edge, LookVector =
---       outward. A 0.4-tall x 0.8 kerb straddling the edge (default Brick) + a 0.3-tall lip under the top surface
---       sticking out 0.3 (Slate)
---   WorldStyle.Chamfer(parent, cf, size, mat, color, cut) -> body, parts
---       a box with chamfered VERTICAL corners (the art rule for corners >= 4 studs tall): a cross of two boxes +
---       four 45-degree corner posts whose outer faces are the bevels; cut = bevel leg (default 0.6). 6 parts.
+--   WorldStyle.Materials                      name -> Enum.Material. The P4 look: SmoothPlastic for every surface,
+--       Neon for glow, Glass for water. The Phase 5 names (Slate, Cobblestone, Brick, Marble, WoodPlanks, Wood, Grass,
+--       LeafyGrass, Sand, ClayRoofTiles, RoofShingles, Metal, Fabric) stay as aliases of SmoothPlastic and ForceField
+--       as an alias of Neon, so older builder code keeps working and looks P4.
+--   WorldStyle.Palette                        the P4 colours (style.md 4), the legacy Phase 5 keys recoloured to their
+--       P4 counterparts, Accent.<Name> = the gate / mode colours (Obby Blue, Home Yellow, Dungeon Purple, Ring Gold +
+--       Violet, Arena Red, Altar Cyan, Return Green)
+--   WorldStyle.Plinth(parent, cf, size, mat, color) -> body, band          a base block + a 0.2-stud band on top
+--   WorldStyle.Kerb(parent, cf, length, mat, color) -> kerb, lip           a platform edge (cf on the top surface at
+--       the edge, X = along it, LookVector = outward): a 0.4 x 0.8 kerb + a 0.3-stud lip under the top
+--   WorldStyle.Chamfer(parent, cf, size, mat, color, cut) -> body, parts    a box with bevelled vertical corners
 --   WorldStyle.BuildGate(parent, siteCFrame, spec) -> model, pad, promptPart
---       siteCFrame = ground CFrame of the gate centre, LookVector toward the plaza (the gate's front).
---       spec = { Id, Title, Info, Color (Theme.Neon.* / Palette.Accent.*), Glyph = "house"|"cloud"|"torch"|"crown"|
---                "swords"|"bolt", Pad = bool, Name = "Portal_<Id>", Pill = text (optional, the builder's status) }
---       22 wide x 8 deep x 26 tall: two round Marble columns on Slate plinths, a Slate lintel with a Marble
---       keystone medallion carrying the 6x6 voxel glyph (built once per glyph and cloned), a 0.4-stud Neon inlay
---       ring around the 14 x 15 opening, a Neon disc (Transparency 0.35) + a ForceField disc, the pixel tag
---       (BillboardGui "GateTag": title 28 px, info 20 px, pill 18 px, 27 studs up, MaxDistance 120), one PointLight
---       (Range 14, Brightness 1.2, Shadows false) and a sparkle emitter (Rate 6). Pad = true: a 14 x 0.6 x 14 Slate
---       slab 14 studs in front with a Marble border and a Neon glyph inlay (the PortalService zone part sits on
---       it); else a 10 x 0.3 x 6 step. promptPart = an invisible anchor in the front of the opening (prompts go
---       here). Model attributes: GateId, Glyph. <= 90 parts; the owner adds <= 30 (crown, torches).
--- Extras: WorldStyle.Jitter(color, seed, amount), WorldStyle.Glyphs (the 6x6 patterns), WorldStyle.IsWorldMaterial(m),
---   WorldStyle.Saturation(color), WorldStyle.GateSize, WorldStyle.Tags.Detail ("NC_Detail": pure decor, the Low
---   graphics setting hides it), WorldStyle.Tags.Exempt ("NC_StyleExempt": voxel clouds / pets / tokens, skipped by the
---   material + saturation checks of p5world_style).
+--       The P4 round voxel hoop gate family (6.0.3; P4 LobbyBuilder buildPortal / ArenaBuilder buildTrialPortal):
+--       siteCFrame = ground CFrame of the gate centre, LookVector toward the plaza (the gate's front, local -Z).
+--       spec = { Id, Title, Info, Color (Palette.Accent name | Theme.Neon name | Color3), Glyph = "house" | "cloud" |
+--                "torch" | "crown" | "swords" | "bolt", Pad = bool, Name = "Portal_<Id>", Pill = text (optional),
+--                Stars = 0..5 (the "cloud" star crest, default 5), Accent = Color3 (the crowned arch's glow) }
+--       Shape by glyph: "crown" = the P4 Champion Ring crowned square arch (gold trim, violet glow, crown baked into
+--       the voxels); every other glyph = the round hoop: a stone base, two stone pillars with coloured caps and a
+--       glowing dot, a chunky pixel ring whose outer band is the gate colour around a white cloud frame, an inner Neon
+--       ring, a translucent Neon swirl (Transparency 0.62) and a coloured keystone with two gold gems. Crest on top by
+--       glyph: cloud = 5 gold stars on a bar (Obby), swords = crossed swords + shield (Arena), house = a little house
+--       (Home), torch = a skull (Dungeon), bolt = a cloud with a lightning bolt (Altar). Voxels are 1 stud, shaded like
+--       P4 (Voxel.Shade: _Light tops, _Dark creases), sculpted once per shape and cloned with the gate's palette.
+--       Children: the voxel parts (named by key: StoneDark, Stone, Frame, Trim, Glow, Swirl, Gem; Swirl / Glow / Gem
+--       never collide), "GlowCore" (invisible, the PrimaryPart, 11.5 up; not named SwirlCore so PortalService keeps the countdown face at the lock wall: PointLight "GateLight" Range 28 Brightness 1.3
+--       + ParticleEmitter "Sparkles" Rate 12 drifting toward the plaza), "Crest*" / "Star*" parts, "PromptAnchor"
+--       (invisible, front of the opening, 3 up: prompts go here), the BillboardGui "GateTag" (Plate: Title 28 px,
+--       Info 20 px, Pill.Label 18 px; anchor 27 studs up, MaxDistance 120). Pad = true: "Pad" (14 x 0.6 x 14, 14 studs
+--       in front, walkable; the PortalService zone sits on it) tiled like P4 (a colour rim, a light stone ring, a Neon
+--       plus; X for swords, a crown for the arch: "PadTile*" 0.06 thick on top) + two lanterns on its front corners;
+--       else "Step" (10 x 0.3 x 6, 6 studs in front). Attributes GateId, Glyph, GateShape ("Hoop" | "Arch").
+--       <= 100 parts; the owner adds <= 20 (crown pedestals, torches): every gate <= 120.
+-- Extras: WorldStyle.Jitter(color, seed, amount), WorldStyle.Glyphs (the 6x6 patterns), WorldStyle.GlyphRects,
+--   WorldStyle.IsWorldMaterial(m), WorldStyle.Saturation(color), WorldStyle.GateSize, WorldStyle.Look = "P4",
+--   WorldStyle.Tags.Detail ("NC_Detail": pure decor, the Low graphics setting hides it), WorldStyle.Tags.Exempt
+--   ("NC_StyleExempt": pets / tokens / the storm island, skipped by the look audit of p5world_style).
 
 local Shared = script.Parent
 local Voxel = require(Shared:WaitForChild("Voxel", 10))
@@ -41,32 +51,35 @@ local Theme = require(Shared:WaitForChild("Theme", 10))
 local WorldStyle = {}
 
 local rgb = Color3.fromRGB
-local floor, max, min, sqrt = math.floor, math.max, math.min, math.sqrt
+local floor, max, min, sqrt, abs = math.floor, math.max, math.min, math.sqrt, math.abs
 local PI = math.pi
 
+WorldStyle.Look = "P4"
 WorldStyle.Tags = { Detail = "NC_Detail", Exempt = "NC_StyleExempt" }
 
 ----------------------------------------------------------------------
--- Materials (6.4 rule 1): the only materials a world part may use
+-- Materials (6.1 A1): SmoothPlastic surfaces, Neon glow, Glass water. The rest are aliases (see the header).
 ----------------------------------------------------------------------
+local SMOOTH = Enum.Material.SmoothPlastic
 WorldStyle.Materials = {
-	Slate = Enum.Material.Slate, -- courts, plinths, lintels
-	Cobblestone = Enum.Material.Cobblestone, -- paths, avenues
-	Brick = Enum.Material.Brick, -- kerbs, low walls
-	Marble = Enum.Material.Marble, -- columns, gates, statues, trims
-	WoodPlanks = Enum.Material.WoodPlanks, -- decks, bridges, boardwalks
-	Wood = Enum.Material.Wood, -- posts, beams
-	Grass = Enum.Material.Grass, -- lawns
-	LeafyGrass = Enum.Material.LeafyGrass, -- hedges
-	Sand = Enum.Material.Sand, -- flower / berry beds
-	ClayRoofTiles = Enum.Material.ClayRoofTiles, -- roofs
-	RoofShingles = Enum.Material.RoofShingles, -- roofs
-	Metal = Enum.Material.Metal, -- gold trims, lamp posts
-	Glass = Enum.Material.Glass, -- windows, lanterns
-	Neon = Enum.Material.Neon, -- inlays only (<= 0.5 stud thick)
-	Fabric = Enum.Material.Fabric, -- banners, awnings
-	ForceField = Enum.Material.ForceField, -- the gate shimmer disc only
-	SmoothPlastic = Enum.Material.SmoothPlastic, -- the voxel cloud palette + parts <= 2 studs (rule 1)
+	SmoothPlastic = SMOOTH, -- every surface
+	Neon = Enum.Material.Neon, -- glow: gate rings, swirls, gems, lanterns, inlays
+	Glass = Enum.Material.Glass, -- water, lantern cages, machine domes (translucent)
+	-- Phase 5 names, kept so older builder code runs: all P4 SmoothPlastic now (style.md 4: no textures)
+	Slate = SMOOTH,
+	Cobblestone = SMOOTH,
+	Brick = SMOOTH,
+	Marble = SMOOTH,
+	WoodPlanks = SMOOTH,
+	Wood = SMOOTH,
+	Grass = SMOOTH,
+	LeafyGrass = SMOOTH,
+	Sand = SMOOTH,
+	ClayRoofTiles = SMOOTH,
+	RoofShingles = SMOOTH,
+	Metal = SMOOTH,
+	Fabric = SMOOTH,
+	ForceField = Enum.Material.Neon, -- shimmer sheets become translucent Neon (the P4 swirl)
 }
 
 local MATERIAL_SET = {}
@@ -79,40 +92,73 @@ function WorldStyle.IsWorldMaterial(material)
 end
 
 ----------------------------------------------------------------------
--- Palette (6.4 rule 2): big surfaces saturation <= 0.45, value 0.35..0.9
+-- Palette (style.md 4: big surfaces bright and saturated; the P4 numbers are the reference)
 ----------------------------------------------------------------------
 WorldStyle.Palette = {
-	SlateDark = rgb(82, 86, 104),
-	Slate = rgb(108, 112, 130),
-	SlateLight = rgb(140, 144, 160),
-	Marble = rgb(222, 218, 228),
-	MarbleShade = rgb(196, 190, 210),
-	Cobble = rgb(152, 146, 156),
-	Brick = rgb(156, 106, 96),
-	WoodPlanks = rgb(156, 118, 90),
-	Wood = rgb(116, 88, 70),
-	Grass = rgb(112, 152, 100),
-	LeafyGrass = rgb(86, 130, 86),
-	Sand = rgb(214, 198, 164),
-	Roof = rgb(148, 96, 90),
-	Metal = rgb(200, 166, 98), -- gold trim (small pieces only)
-	Glass = rgb(190, 210, 226),
-	Fabric = rgb(196, 176, 206),
-	Lantern = rgb(255, 214, 170), -- warm lights: Brightness <= 1.5, Range <= 16
-	-- the voxel clouds, shaded for the pink sky (6.4 rule 9)
-	CloudTop = rgb(250, 244, 252),
-	CloudSide = rgb(226, 214, 240),
-	CloudUnder = rgb(186, 172, 222),
-	-- gate / mode accents (the Neon kit hues; Theme.Neon.* wins when present)
+	-- the P4 world
+	Grass = rgb(108, 186, 86),
+	GrassLight = rgb(132, 202, 98),
+	GrassDark = rgb(86, 160, 76),
+	Hedge = rgb(74, 146, 72),
+	Stone = rgb(208, 202, 190), -- cream stone paths
+	StoneLight = rgb(226, 221, 209),
+	StoneDark = rgb(172, 164, 154),
+	StoneEdge = rgb(146, 138, 132), -- path borders
+	Sand = rgb(236, 214, 166),
+	Plank = rgb(196, 146, 98),
+	PlankLight = rgb(214, 166, 114),
+	PlankDark = rgb(152, 108, 72),
+	Bark = rgb(132, 92, 62),
+	Gold = rgb(244, 198, 84),
+	GoldDark = rgb(206, 154, 62),
+	Iron = rgb(64, 70, 92),
+	IronLight = rgb(96, 104, 130),
+	Steel = rgb(206, 214, 228),
+	Water = rgb(92, 178, 236),
+	WaterDeep = rgb(62, 136, 212),
+	Blossom = rgb(246, 174, 204),
+	Cream = rgb(246, 234, 210),
+	Bone = rgb(240, 236, 226),
+	RoofBlue = rgb(88, 136, 226),
+	RoofRed = rgb(232, 104, 112),
+	StarOff = rgb(96, 104, 136),
+	Navy = rgb(34, 42, 76),
+	-- white / light-blue clouds (never pure white; tops < 249)
+	CloudLight = rgb(244, 247, 252),
+	Cloud = rgb(232, 238, 249),
+	CloudShade = rgb(212, 222, 241),
+	Mist = rgb(194, 211, 240),
+	MistDark = rgb(170, 190, 228),
+	-- the Phase 5 keys, recoloured to their P4 counterparts (older builder code keeps working, looks P4)
+	SlateDark = rgb(172, 164, 154),
+	Slate = rgb(208, 202, 190),
+	SlateLight = rgb(226, 221, 209),
+	Marble = rgb(240, 234, 220),
+	MarbleShade = rgb(226, 221, 209),
+	Cobble = rgb(208, 202, 190),
+	Brick = rgb(146, 138, 132),
+	WoodPlanks = rgb(196, 146, 98),
+	Wood = rgb(132, 92, 62),
+	LeafyGrass = rgb(74, 146, 72),
+	Roof = rgb(88, 136, 226),
+	Metal = rgb(244, 198, 84), -- gold trim
+	Glass = rgb(150, 206, 244),
+	Fabric = rgb(246, 174, 204),
+	Lantern = rgb(255, 214, 140), -- warm lights
+	CloudTop = rgb(244, 247, 252),
+	CloudSide = rgb(232, 238, 249),
+	CloudUnder = rgb(194, 211, 240),
+	-- gate / mode colours (6.0.3; the P4 difficulty / Trial / Ring hues; Palette.Accent wins over Theme.Neon)
 	Accent = {
-		Yellow = rgb(255, 214, 92),
-		Blue = rgb(92, 178, 255),
-		Purple = rgb(178, 112, 255),
-		Gold = rgb(255, 190, 70),
-		Red = rgb(255, 96, 110),
-		Cyan = rgb(80, 232, 240),
-		Pink = rgb(255, 120, 200),
-		Green = rgb(110, 230, 140),
+		Yellow = rgb(246, 196, 60), -- Home
+		Blue = rgb(96, 160, 224), -- Obby (the P4 Medium blue)
+		Purple = rgb(150, 110, 220), -- Dungeon (the P4 Saint purple)
+		Gold = rgb(250, 190, 56), -- Champion Ring trim
+		Violet = rgb(156, 96, 238), -- Champion Ring glow and gems
+		Red = rgb(222, 74, 80), -- Arena (the P4 Trial red)
+		Cyan = rgb(64, 196, 222), -- Storm Altar
+		Pink = rgb(234, 120, 170),
+		Green = rgb(96, 190, 140), -- the arena's Return gate (the P4 Easy green)
 	},
 	TagPlate = rgb(20, 24, 52), -- the dark navy tag card
 	TagInfo = rgb(214, 220, 255),
@@ -128,7 +174,7 @@ function WorldStyle.Saturation(color)
 	return (hi - min(r, g, b)) / hi
 end
 
--- Deterministic +-amount RGB jitter (default 6) so tiles / planks / bricks never read as one flat toy colour.
+-- Deterministic +-amount RGB jitter (default 6): tile checkers that never read as one flat colour.
 function WorldStyle.Jitter(color, seed, amount)
 	amount = amount or 6
 	local s = tonumber(seed) or 0
@@ -151,14 +197,14 @@ local function decoProps(name)
 end
 
 function WorldStyle.Plinth(parent, cf, size, mat, color)
-	mat = mat or WorldStyle.Materials.Slate
-	local body = Voxel.Box(parent, cf, size, color or WorldStyle.Palette.SlateDark, mat, solidProps("Plinth"))
+	mat = mat or SMOOTH
+	local body = Voxel.Box(parent, cf, size, color or WorldStyle.Palette.StoneDark, mat, solidProps("Plinth"))
 	local band = Voxel.Box(
 		parent,
 		cf * CFrame.new(0, size.Y * 0.5 - 0.1, 0),
 		Vector3.new(size.X + 0.3, 0.2, size.Z + 0.3),
-		WorldStyle.Palette.MarbleShade,
-		WorldStyle.Materials.Marble,
+		WorldStyle.Palette.StoneLight,
+		SMOOTH,
 		solidProps("PlinthBand")
 	)
 	return body, band
@@ -170,8 +216,8 @@ function WorldStyle.Kerb(parent, cf, length, mat, color)
 		parent,
 		cf * CFrame.new(0, 0.2, 0),
 		Vector3.new(length, 0.4, 0.8),
-		color or WorldStyle.Palette.Brick,
-		mat or WorldStyle.Materials.Brick,
+		color or WorldStyle.Palette.StoneEdge,
+		mat or SMOOTH,
 		solidProps("Kerb")
 	)
 	-- the lip: 0.3 tall, just under the top surface, 0.3 beyond the kerb's outer face (-Z local = outward)
@@ -179,8 +225,8 @@ function WorldStyle.Kerb(parent, cf, length, mat, color)
 		parent,
 		cf * CFrame.new(0, -0.25, -0.3),
 		Vector3.new(length + 0.2, 0.3, 1.0),
-		WorldStyle.Palette.SlateDark,
-		WorldStyle.Materials.Slate,
+		WorldStyle.Palette.StoneDark,
+		SMOOTH,
 		decoProps("KerbLip")
 	)
 	return kerb, lip
@@ -189,8 +235,8 @@ end
 function WorldStyle.Chamfer(parent, cf, size, mat, color, cut)
 	cut = tonumber(cut) or 0.6
 	cut = min(cut, size.X * 0.25, size.Z * 0.25)
-	mat = mat or WorldStyle.Materials.Marble
-	color = color or WorldStyle.Palette.Marble
+	mat = mat or SMOOTH
+	color = color or WorldStyle.Palette.StoneLight
 	local parts = {}
 	local body = Voxel.Box(parent, cf, Vector3.new(size.X - 2 * cut, size.Y, size.Z), color, mat, solidProps("Chamfer"))
 	parts[1] = body
@@ -400,19 +446,158 @@ local function buildTag(adornee, lift, spec, color)
 end
 
 ----------------------------------------------------------------------
--- The gate (6.2)
+-- The gate family (6.0.3): the P4 round voxel hoop + the P4 crowned arch, a crest per mode
 ----------------------------------------------------------------------
-WorldStyle.GateSize = Vector3.new(22, 26, 8)
+WorldStyle.GateSize = Vector3.new(23, 26, 5) -- the P4 hoop: a 23-voxel base, crest tops ~26, 5 deep
 
 local GATE = {
-	ColumnX = 8.2, -- column centres (opening 14 wide between the shafts)
-	PlinthH = 1.2,
-	ShaftH = 14,
-	CapitalH = 1,
-	LintelH = 2.4,
 	PadDistance = 14, -- pad centre in front of the gate centre (gate r 118, pad r 104)
-	TagLift = 27,
+	TagLift = 27, -- the tag's anchor height (just over the crests)
+	SwirlY = 11.5, -- the swirl's centre (the ring is centred 11 voxels up, voxel centres 0.5 above the site)
+	HoopParts = 80, -- MaxParts of the merged hoop voxels: ~76 boxes, the shade variants fold away (every gate <= 120)
+	ArchParts = 56,
 }
+local NEON = Enum.Material.Neon
+local WHITE = rgb(255, 255, 255)
+-- ring radii (voxel units from the ring centre 11 up): swirl < Glow <= neon ring < Inner <= white frame < Band <=
+-- coloured band < Outer
+local RING = { Glow = 5.7, Inner = 6.6, Band = 8.6, Outer = 9.6 }
+local KEEP = { "Stone", "StoneDark", "Frame", "Trim", "Glow", "Swirl", "Gem" }
+
+-- Inclusive integer box of voxels.
+local function vxFill(g, x0, x1, y0, y1, z0, z1, key)
+	for y = y0, y1 do
+		for x = x0, x1 do
+			for z = z0, z1 do
+				Voxel.Set(g, x, y, z, key)
+			end
+		end
+	end
+end
+
+-- Rounded rectangle prism centred on (cx, cz): sx by sz voxels, corner radius `round` (P4 VX.RoundRect).
+local function vxRoundRect(g, cx, cz, sx, sz, round, y0, y1, key)
+	local hx, hz = sx / 2, sz / 2
+	round = max(0, min(round, hx, hz))
+	for y = y0, y1 do
+		for x = floor(cx - hx) - 1, math.ceil(cx + hx) + 1 do
+			for z = floor(cz - hz) - 1, math.ceil(cz + hz) + 1 do
+				local qx, qz = abs(x - cx) - (hx - round), abs(z - cz) - (hz - round)
+				local ox, oz = max(qx, 0), max(qz, 0)
+				local d = sqrt(ox * ox + oz * oz) + min(max(qx, qz), 0)
+				if d <= round then
+					Voxel.Set(g, x, y, z, key)
+				end
+			end
+		end
+	end
+end
+
+-- The round hoop (P4 LobbyBuilder gateBoxes / ArenaBuilder gateHoop; x across, y up, -z = the front)
+local function hoopVoxels(g)
+	vxRoundRect(g, 0, 0, 22, 5, 1.5, 0, 0, "StoneDark")
+	vxRoundRect(g, 0, 0, 20, 4, 1.2, 1, 1, "Stone")
+	for _, s in ipairs({ -1, 1 }) do
+		vxRoundRect(g, s * 9, 0, 3, 3.4, 0.8, 2, 10, "Stone")
+		vxRoundRect(g, s * 9, 0, 4, 4.2, 1, 11, 11, "Trim")
+		vxFill(g, s * 9, s * 9, 12, 13, 0, 0, "Glow")
+		vxFill(g, s * 9, s * 9, 3, 3, -2, -2, "Trim")
+	end
+	-- the ring (P4: a torus R 7.6 / 1.6 thick): a 3-voxel-deep pixel annulus, the white cloud frame inside the
+	-- stepped outer band in the gate colour, a thin Neon ring at its inner edge and the swirl disc in the middle.
+	-- Extruded (every depth layer the same) so the greedy merge keeps it near 60 boxes instead of 110.
+	for y = 1, 21 do
+		for x = -10, 10 do
+			local dy = y - 11
+			local r = sqrt(x * x + dy * dy)
+			if r >= RING.Inner and r < RING.Outer then
+				local key = (r >= RING.Band) and "Trim" or "Frame"
+				vxFill(g, x, x, y, y, -1, 1, key)
+			elseif r >= RING.Glow and r < RING.Inner then
+				Voxel.Set(g, x, y, 0, "Glow")
+			elseif r < RING.Glow and Voxel.Get(g, x, y, 0) == nil then
+				Voxel.Set(g, x, y, 0, "Swirl")
+			end
+		end
+	end
+	-- the keystone with two gold gems facing the plaza
+	vxRoundRect(g, 0, 0, 4, 3, 0.8, 19, 20, "Trim")
+	Voxel.Set(g, 0, 20, -2, "Gem")
+	Voxel.Set(g, 0, 19, -2, "Gem")
+end
+
+-- The crowned square arch (P4 ArenaBuilder Ring.gateVoxels): gold bands, a glowing frame around the swirl, violet
+-- gems up the pillars and a big gold crown on the lintel
+local function archVoxels(g)
+	vxRoundRect(g, 0, 0, 22, 5, 1.5, 0, 0, "StoneDark")
+	vxRoundRect(g, 0, 0, 20, 4, 1.2, 1, 1, "Stone")
+	for _, sx in ipairs({ -1, 1 }) do
+		local x0, x1 = min(sx * 7, sx * 9), max(sx * 7, sx * 9)
+		vxFill(g, x0, x1, 2, 16, -1, 1, "Stone")
+		vxFill(g, x0 - 1, x1 + 1, 2, 2, -2, 2, "Trim")
+		vxFill(g, x0 - 1, x1 + 1, 15, 15, -2, 2, "Trim")
+		vxFill(g, sx * 6, sx * 6, 3, 14, 0, 0, "Glow")
+		for _, y in ipairs({ 6, 9, 12 }) do
+			Voxel.Set(g, sx * 8, y, -2, "Gem")
+		end
+	end
+	vxFill(g, -10, 10, 17, 17, -1, 1, "Trim")
+	vxFill(g, -10, 10, 18, 18, -1, 1, "Stone")
+	vxFill(g, -5, 5, 16, 16, 0, 0, "Glow")
+	vxFill(g, -5, 5, 3, 15, 0, 0, "Swirl")
+	-- the crown: a band with a row of gems, three big points (the middle one tallest), two small ones, gems on the tips
+	vxFill(g, -7, 7, 19, 20, -1, 1, "Trim")
+	for _, x in ipairs({ -4, 0, 4 }) do
+		Voxel.Set(g, x, 20, -2, "Gem")
+	end
+	for _, pt in ipairs({ { -6, 22 }, { 0, 23 }, { 6, 22 } }) do
+		vxFill(g, pt[1] - 1, pt[1] + 1, 21, 21, -1, 1, "Trim")
+		vxFill(g, pt[1], pt[1], 22, pt[2], -1, 1, "Trim")
+		Voxel.Set(g, pt[1], pt[2] + 1, 0, "Gem")
+	end
+	for _, x in ipairs({ -3, 3 }) do
+		Voxel.Set(g, x, 21, 0, "Trim")
+		Voxel.Set(g, x, 22, 0, "Gem")
+	end
+end
+
+-- The gate palette (P4 gatePalette): stone light pillars, a white cloud frame, the trim in the gate colour, Neon glow /
+-- swirl / gems
+local function gatePalette(trim, glow, gem)
+	local P = WorldStyle.Palette
+	return {
+		Stone = P.StoneLight,
+		StoneDark = P.Stone,
+		Frame = P.CloudLight,
+		Puff = P.Cloud,
+		Trim = trim,
+		Glow = { Color = glow, Material = NEON },
+		Swirl = { Color = glow:Lerp(WHITE, 0.35), Material = NEON, Transparency = 0.62 },
+		Gem = { Color = gem, Material = NEON },
+	}
+end
+
+-- sculpted, shaded and merged once per shape; every gate builds the same boxes with its own palette
+local boxCache = {}
+local function gateBoxes(shape)
+	if boxCache[shape] then
+		return boxCache[shape]
+	end
+	local g = Voxel.NewGrid(24)
+	if shape == "Arch" then
+		archVoxels(g)
+	else
+		hoopVoxels(g)
+	end
+	Voxel.Shade(g, { Skip = { Glow = true, Swirl = true, Gem = true }, Smooth = 1, Seed = 8 })
+	local sample = rgb(120, 180, 140)
+	boxCache[shape] = Voxel.Merge(g, {
+		Palette = gatePalette(sample, sample, WorldStyle.Palette.Gold),
+		MaxParts = (shape == "Arch") and GATE.ArchParts or GATE.HoopParts,
+		Keep = KEEP,
+	})
+	return boxCache[shape]
+end
 
 local function accentOf(spec)
 	local c = spec.Color
@@ -420,15 +605,188 @@ local function accentOf(spec)
 		return c
 	end
 	if type(c) == "string" then
+		if WorldStyle.Palette.Accent[c] then
+			return WorldStyle.Palette.Accent[c]
+		end
 		local neon = Theme.Neon
 		if type(neon) == "table" and typeof(neon[c]) == "Color3" then
 			return neon[c]
 		end
-		if WorldStyle.Palette.Accent[c] then
-			return WorldStyle.Palette.Accent[c]
-		end
 	end
 	return WorldStyle.Palette.Accent.Blue
+end
+
+-- one anchored block in the gate's frame
+local function block(model, name, cf, size, color, opts)
+	opts = opts or {}
+	local p = Voxel.Box(model, cf, size, color, opts.Material or SMOOTH, {
+		Name = name,
+		Transparency = opts.Transparency or 0,
+		CanCollide = opts.Collide == true,
+		CanQuery = opts.Collide == true,
+		CanTouch = false,
+	})
+	p.CastShadow = opts.Shadow == true
+	return p
+end
+
+----------------------------------------------------------------------
+-- Crests (P4 star crest / Trial sword crest; house, skull and storm bolt in the same toy style). The hoop's keystone
+-- top is 21 studs up; every crest stays under ~26 (the tag's anchor is 27).
+----------------------------------------------------------------------
+local Crest = {}
+
+function Crest.post(m, site)
+	block(m, "CrestPost", site * CFrame.new(0, 21.6, 0), Vector3.new(0.8, 1.3, 0.6), WorldStyle.Palette.GoldDark)
+end
+
+-- cloud (Obby): five gold star gems on a bar (lit = Neon gold, unlit = dim stone); spec.Stars lights the first n
+function Crest.cloud(m, site, color, spec)
+	local P = WorldStyle.Palette
+	local n = 5
+	local lit = floor(tonumber(spec.Stars) or n)
+	lit = max(0, min(n, lit))
+	block(m, "StarPost", site * CFrame.new(0, 21.6, 0), Vector3.new(0.8, 1.3, 0.6), P.GoldDark)
+	block(m, "StarBar", site * CFrame.new(0, 22.45, 0), Vector3.new((n - 1) * 2.6 + 1.2, 0.5, 0.5), P.GoldDark)
+	for s = 1, n do
+		local gx = ((n + 1) / 2 - s) * 2.6 -- gate +X is the viewer's left: lit stars first
+		local on = s <= lit
+		block(m, on and "StarGem" or "StarGemOff", site * CFrame.new(gx, 23.6, 0) * CFrame.Angles(0, 0, math.rad(45)), Vector3.new(1.5, 1.5, 0.8), on and P.Gold or P.StarOff, { Material = on and NEON or SMOOTH })
+	end
+end
+
+-- swords (Arena): a shield in the gate colour with a gold rim and two crossed steel swords (P4 Trial crest)
+function Crest.swords(m, site, color)
+	local P = WorldStyle.Palette
+	Crest.post(m, site)
+	block(m, "CrestShield", site * CFrame.new(0, 23.4, 0), Vector3.new(2.4, 2.6, 0.7), color:Lerp(P.Navy, 0.2))
+	block(m, "CrestShieldRim", site * CFrame.new(0, 23.4, 0.15), Vector3.new(2.9, 3.1, 0.5), P.Gold)
+	for _, s in ipairs({ -1, 1 }) do
+		local scf = site * CFrame.new(0, 23.6, -0.5) * CFrame.Angles(0, 0, math.rad(s * 42))
+		block(m, "CrestBlade", scf * CFrame.new(0, 0.6, 0), Vector3.new(0.45, 5, 0.2), P.Steel)
+		block(m, "CrestGuard", scf * CFrame.new(0, -1.9, 0), Vector3.new(1.5, 0.35, 0.3), P.Gold)
+		block(m, "CrestGrip", scf * CFrame.new(0, -2.5, 0), Vector3.new(0.35, 0.9, 0.3), P.GoldDark)
+	end
+end
+
+-- house (Home): a little cream house with a stepped coral roof, a door, two lit windows and a chimney
+function Crest.house(m, site)
+	local P = WorldStyle.Palette
+	Crest.post(m, site)
+	block(m, "CrestHouse", site * CFrame.new(0, 23.3, 0), Vector3.new(3.8, 2.4, 1.2), P.Cream)
+	block(m, "CrestRoof", site * CFrame.new(0, 24.85, 0), Vector3.new(4.8, 0.7, 1.5), P.RoofRed)
+	block(m, "CrestRoofTop", site * CFrame.new(0, 25.5, 0), Vector3.new(2.8, 0.6, 1.5), P.RoofRed:Lerp(WHITE, 0.15))
+	block(m, "CrestChimney", site * CFrame.new(1.5, 25.5, 0.25), Vector3.new(0.6, 1.0, 0.6), P.PlankDark)
+	block(m, "CrestDoor", site * CFrame.new(0, 22.85, -0.65), Vector3.new(1, 1.4, 0.15), P.Plank)
+	for _, s in ipairs({ -1, 1 }) do
+		block(m, "CrestWindow", site * CFrame.new(s * 1.25, 23.7, -0.65), Vector3.new(0.7, 0.7, 0.15), P.Lantern, { Material = NEON })
+	end
+end
+
+-- torch (Dungeon): a cute bone skull with glowing eyes in the gate colour over two crossed bones; its jaw sits on
+-- the keystone
+function Crest.torch(m, site, color)
+	local P = WorldStyle.Palette
+	for _, s in ipairs({ -1, 1 }) do
+		block(m, "CrestBone", site * CFrame.new(0, 23.4, 0.5) * CFrame.Angles(0, 0, math.rad(s * 45)), Vector3.new(0.55, 5.4, 0.4), P.StoneLight)
+	end
+	block(m, "CrestSkull", site * CFrame.new(0, 23.6, 0), Vector3.new(3.6, 2.8, 1.5), P.Bone)
+	block(m, "CrestSkullTop", site * CFrame.new(0, 25.25, 0), Vector3.new(2.6, 0.5, 1.3), P.Bone)
+	block(m, "CrestJaw", site * CFrame.new(0, 21.8, 0), Vector3.new(2.4, 0.8, 1.3), P.Bone)
+	for _, s in ipairs({ -1, 1 }) do
+		block(m, "CrestEye", site * CFrame.new(s * 0.8, 23.75, -0.77), Vector3.new(0.9, 0.9, 0.12), color, { Material = NEON })
+	end
+	block(m, "CrestNose", site * CFrame.new(0, 22.8, -0.77), Vector3.new(0.45, 0.45, 0.12), P.Navy)
+end
+
+-- bolt (Storm Altar): a puffy little storm cloud with a misty underside and a gold Neon lightning bolt on its face,
+-- striking down out of it
+function Crest.bolt(m, site)
+	local P = WorldStyle.Palette
+	block(m, "CrestPost", site * CFrame.new(0, 21.85, 0), Vector3.new(0.8, 1.7, 0.6), WorldStyle.Palette.GoldDark)
+	block(m, "CrestCloudBase", site * CFrame.new(0, 22.9, 0), Vector3.new(4.4, 0.4, 1.3), P.Mist)
+	block(m, "CrestCloud", site * CFrame.new(0, 23.9, 0), Vector3.new(5.6, 1.6, 1.4), P.CloudLight)
+	block(m, "CrestCloudTop", site * CFrame.new(-0.6, 25.1, 0), Vector3.new(3.2, 0.8, 1.3), P.CloudLight)
+	block(m, "CrestCloudPuff", site * CFrame.new(1.5, 24.95, 0), Vector3.new(2, 0.5, 1.2), P.Cloud)
+	local bolt = rgb(252, 214, 72)
+	block(m, "CrestBolt", site * CFrame.new(0.5, 24.3, -0.8) * CFrame.Angles(0, 0, math.rad(-28)), Vector3.new(0.7, 1.4, 0.2), bolt, { Material = NEON })
+	block(m, "CrestBolt", site * CFrame.new(0.1, 23.65, -0.8), Vector3.new(1.4, 0.45, 0.2), bolt, { Material = NEON })
+	block(m, "CrestBolt", site * CFrame.new(-0.3, 22.95, -0.8) * CFrame.Angles(0, 0, math.rad(-28)), Vector3.new(0.6, 1.4, 0.2), bolt, { Material = NEON })
+end
+
+----------------------------------------------------------------------
+-- The ready pad (P4): a 14 x 14 tiled plate, a colour rim, a light stone ring, a Neon plus (X for swords, a crown
+-- for the arch), and two lanterns on its front corners
+----------------------------------------------------------------------
+local function padInlay(kind, ci, ck)
+	local ai, ak = abs(ci), abs(ck)
+	if kind == "swords" then
+		return abs(ai - ak) < 0.6 and ai <= 4
+	elseif kind == "crown" then
+		-- +k points at the gate: the crown's points
+		if (ck == -2.5 or ck == -1.5) and ai <= 3 then
+			return true
+		end
+		return (ai == 0.5 and ck >= -0.5 and ck <= 2.5) or (ai == 2.5 and ck >= -0.5 and ck <= 1.5)
+	end
+	return ai + ak <= 2.5
+end
+
+local padCache = {}
+local function padBoxes(kind)
+	if padCache[kind] then
+		return padCache[kind]
+	end
+	local g = Voxel.NewGrid(14)
+	for i = -7, 6 do
+		for k = -7, 6 do
+			local ring = min(i + 7, 6 - i, k + 7, 6 - k)
+			local key = nil
+			-- the pad itself is the light stone ring; one Stone tile covers the middle, the inlay lies on top of it
+			if ring == 0 then
+				key = "Trim"
+			elseif padInlay(kind, i + 0.5, k + 0.5) then
+				key = "Glow"
+			end
+			if key then
+				Voxel.Set(g, i, 0, k, key)
+			end
+		end
+	end
+	padCache[kind] = Voxel.Merge(g, {})
+	return padCache[kind]
+end
+
+local function buildPad(model, site, kind, trim, glow)
+	local P = WorldStyle.Palette
+	local padCF = site * CFrame.new(0, 0, -GATE.PadDistance) -- ground under the pad centre
+	local pad = Voxel.Box(model, padCF * CFrame.new(0, 0.3, 0), Vector3.new(14, 0.6, 14), P.StoneLight, SMOOTH, { Name = "Pad", CanCollide = true, CanQuery = true, CanTouch = false })
+	pad.CastShadow = false
+	block(model, "PadTileStone", padCF * CFrame.new(0, 0.63, 0), Vector3.new(10, 0.06, 10), P.Stone)
+	for _, b in ipairs(padBoxes(kind)) do
+		local key = b.Key
+		local w, d = b.X1 - b.X0 + 1, b.Z1 - b.Z0 + 1
+		local cx, cz = (b.X0 + b.X1) * 0.5 + 0.5, (b.Z0 + b.Z1) * 0.5 + 0.5
+		local glowTile = key == "Glow"
+		-- the inlay pokes 0.02 over the Stone tile (no z-fighting); the rim is level with it
+		block(model, "PadTile" .. key, padCF * CFrame.new(cx, glowTile and 0.64 or 0.63, cz), Vector3.new(w, glowTile and 0.08 or 0.06, d), glowTile and glow or trim, { Material = glowTile and NEON or SMOOTH })
+	end
+	-- lanterns on the two front corners (away from the gate)
+	for _, sx in ipairs({ -1, 1 }) do
+		local base = padCF * CFrame.new(sx * 7.9, 0, -7.9)
+		block(model, "LanternPost", base * CFrame.new(0, 1.6, 0), Vector3.new(0.7, 3.2, 0.7), P.Iron, { Collide = true })
+		block(model, "LanternCap", base * CFrame.new(0, 3.35, 0), Vector3.new(1.1, 0.3, 1.1), P.Iron)
+		block(model, "LanternGlow", base * CFrame.new(0, 3.95, 0), Vector3.new(0.9, 0.9, 0.9), glow, { Material = NEON })
+	end
+	return pad
+end
+
+local function popSize(maxSize)
+	return NumberSequence.new({
+		NumberSequenceKeypoint.new(0, 0),
+		NumberSequenceKeypoint.new(0.3, maxSize),
+		NumberSequenceKeypoint.new(1, 0),
+	})
 end
 
 function WorldStyle.BuildGate(parent, siteCFrame, spec)
@@ -436,7 +794,8 @@ function WorldStyle.BuildGate(parent, siteCFrame, spec)
 	local id = tostring(spec.Id or "Gate")
 	local color = accentOf(spec)
 	local glyph = WorldStyle.Glyphs[spec.Glyph] and spec.Glyph or "cloud"
-	local P, M = WorldStyle.Palette, WorldStyle.Materials
+	local shape = (spec.Shape == "Arch" or spec.Shape == "Hoop") and spec.Shape or ((glyph == "crown") and "Arch" or "Hoop")
+	local P = WorldStyle.Palette
 	-- level the site: gates always stand upright, facing the site's horizontal look direction
 	local look = siteCFrame.LookVector
 	local flat = Vector3.new(look.X, 0, look.Z)
@@ -449,146 +808,79 @@ function WorldStyle.BuildGate(parent, siteCFrame, spec)
 	model.Name = spec.Name or ("Portal_" .. id)
 	model:SetAttribute("GateId", id)
 	model:SetAttribute("Glyph", glyph)
+	model:SetAttribute("GateShape", shape)
 
-	local G = GATE
-	local topOfShaft = G.PlinthH + G.ShaftH
-	local lintelY = topOfShaft + G.CapitalH + G.LintelH * 0.5 -- 17.4
-	-- columns: Slate plinth + Marble base ring + round Marble shaft + capital + a gold collar
-	for side = -1, 1, 2 do
-		local x = side * G.ColumnX
-		WorldStyle.Plinth(model, site * CFrame.new(x, G.PlinthH * 0.5, 0), Vector3.new(4, G.PlinthH, 4))
-		Voxel.Box(model, site * CFrame.new(x, G.PlinthH + 0.2, 0), Vector3.new(3, 0.4, 3), P.MarbleShade, M.Marble, solidProps("ColumnBase"))
-		Voxel.Box(
-			model,
-			site * CFrame.new(x, G.PlinthH + G.ShaftH * 0.5, 0) * CFrame.Angles(0, 0, PI / 2),
-			Vector3.new(G.ShaftH, 2.4, 2.4),
-			P.Marble,
-			M.Marble,
-			{ Name = "Column", Shape = Enum.PartType.Cylinder, CanCollide = true, CanQuery = true, CanTouch = false }
-		)
-		Voxel.Box(model, site * CFrame.new(x, topOfShaft - 0.6, 0) * CFrame.Angles(0, 0, PI / 2), Vector3.new(0.3, 2.6, 2.6), P.Metal, M.Metal, { Name = "Collar", Shape = Enum.PartType.Cylinder })
-		Voxel.Box(model, site * CFrame.new(x, topOfShaft + G.CapitalH * 0.5, 0), Vector3.new(3.2, G.CapitalH, 3.2), P.MarbleShade, M.Marble, solidProps("Capital"))
+	-- the arch glows violet under its gold trim (P4 Champion Ring); the hoop glows in its own colour
+	local glow = color
+	local gem = P.Gold
+	if shape == "Arch" then
+		glow = (typeof(spec.Accent) == "Color3") and spec.Accent or P.Accent.Violet
+		gem = glow:Lerp(WHITE, 0.2)
 	end
-	-- lintel (Slate) + a Marble cornice on top and a darker soffit band below
-	local lintel = Voxel.Box(model, site * CFrame.new(0, lintelY, 0), Vector3.new(21.4, G.LintelH, 3), P.Slate, M.Slate, solidProps("Lintel"))
-	Voxel.Box(model, site * CFrame.new(0, lintelY + G.LintelH * 0.5 + 0.2, 0), Vector3.new(22, 0.4, 3.6), P.MarbleShade, M.Marble, solidProps("Cornice"))
-	Voxel.Box(model, site * CFrame.new(0, lintelY - G.LintelH * 0.5 + 0.15, 0), Vector3.new(20.8, 0.3, 3.3), P.SlateDark, M.Slate, decoProps("Soffit"))
-	-- the keystone medallion: a chamfered Marble block standing on the cornice, the glyph on its front face
-	local medY = lintelY + G.LintelH * 0.5 + 0.7 + 3.2 -- centre of a 6.4-tall block on its base (cap top at 26)
-	WorldStyle.Plinth(model, site * CFrame.new(0, lintelY + G.LintelH * 0.5 + 0.55, 0), Vector3.new(9, 0.3, 3.2))
-	local _, medParts = WorldStyle.Chamfer(model, site * CFrame.new(0, medY, 0), Vector3.new(7.8, 6.4, 2), M.Marble, P.Marble, 0.8)
-	medParts[1].Name = "Keystone"
-	Voxel.Box(model, site * CFrame.new(0, medY + 3.35, 0), Vector3.new(6.2, 0.3, 2.2), P.Metal, M.Metal, decoProps("KeystoneCap"))
-	-- a dark Slate inset behind the glyph so the neon reads from across the plaza
-	Voxel.Box(model, site * CFrame.new(0, medY, -1.0), Vector3.new(6.6, 6.2, 0.12), P.SlateDark, M.Slate, decoProps("EmblemPanel"))
-	placeGlyph(model, glyph, site * CFrame.new(0, medY, -1.14), color, 1, 0.2, false).Name = "Emblem"
-	-- corbels: two Marble wedges in the upper corners of the opening (an arch feel without curves)
-	for side = -1, 1, 2 do
-		local wedge = Instance.new("WedgePart")
-		wedge.Name = "Corbel"
-		wedge.Anchored = true
-		wedge.CanCollide = false
-		wedge.CanQuery = false
-		wedge.CanTouch = false
-		wedge.CastShadow = false
-		wedge.Material = M.Marble
-		wedge.Color = P.MarbleShade
-		wedge.TopSurface = Enum.SurfaceType.Smooth
-		wedge.BottomSurface = Enum.SurfaceType.Smooth
-		wedge.Size = Vector3.new(2.2, 1.6, 1.6)
-		-- flipped (full faces up + toward the column), then turned so the column side faces outward
-		wedge.CFrame = site * CFrame.new(side * (G.ColumnX - 1.6 - 0.8), topOfShaft + G.CapitalH - 0.8, 0)
-			* CFrame.Angles(0, -side * PI / 2, 0) * CFrame.Angles(PI, 0, 0)
-		wedge.Parent = model
-	end
-
-	-- the opening: a 0.4-stud Neon inlay ring, the Neon disc and the ForceField shimmer
-	local inX = G.ColumnX - 1.2 - 0.2 -- just inside the shaft faces
-	local ringTop = topOfShaft - 0.9 -- under the corbels
-	local function inlay(name, cf, size)
-		local p = Voxel.Box(model, site * cf, size, color, M.Neon, decoProps(name))
-		p.CastShadow = false
-		return p
-	end
-	inlay("InlayL", CFrame.new(-inX, (G.PlinthH + ringTop) * 0.5, -1.0), Vector3.new(0.4, ringTop - G.PlinthH, 0.4))
-	inlay("InlayR", CFrame.new(inX, (G.PlinthH + ringTop) * 0.5, -1.0), Vector3.new(0.4, ringTop - G.PlinthH, 0.4))
-	inlay("InlayTop", CFrame.new(0, ringTop, -1.0), Vector3.new(inX * 2 + 0.4, 0.4, 0.4))
-	inlay("InlayLintel", CFrame.new(0, lintelY, -1.6), Vector3.new(17, 0.25, 0.2))
-	inlay("InlaySill", CFrame.new(0, 0.32, -1.0), Vector3.new(inX * 2 + 0.4, 0.4, 0.4))
-	local discY = (G.PlinthH + ringTop) * 0.5 + 0.2
-	local discD = min(inX * 2 - 0.6, ringTop - G.PlinthH - 0.4)
-	local disc = Voxel.Box(model, site * CFrame.new(0, discY, 0) * CFrame.Angles(0, PI / 2, 0), Vector3.new(0.2, discD, discD), color, M.Neon, {
-		Name = "PortalDisc",
-		Shape = Enum.PartType.Cylinder,
-		Transparency = 0.35,
-		CanCollide = false,
-		CanQuery = false,
-		CanTouch = false,
+	Voxel.BuildBoxes(gateBoxes(shape), {
+		VoxelSize = 1,
+		Palette = gatePalette(color, glow, gem),
+		CFrame = site * CFrame.new(0, 0.5, 0),
+		Model = model,
+		CanCollide = true,
+		CanQuery = true,
 	})
-	disc.CastShadow = false
-	local shimmer = Voxel.Box(model, site * CFrame.new(0, discY, -0.3) * CFrame.Angles(0, PI / 2, 0), Vector3.new(0.2, discD, discD), color:Lerp(rgb(255, 255, 255), 0.4), M.ForceField, {
-		Name = "PortalShimmer",
-		Shape = Enum.PartType.Cylinder,
-		CanCollide = false,
-		CanQuery = false,
-		CanTouch = false,
-	})
-	shimmer.CastShadow = false
-	-- threshold: a Slate sill between the plinths
-	Voxel.Box(model, site * CFrame.new(0, 0.1, 0), Vector3.new(inX * 2 + 1.2, 0.2, 4), P.Slate, M.Slate, solidProps("Sill"))
+	for _, d in ipairs(model:GetChildren()) do
+		if d:IsA("BasePart") and (d.Name == "Swirl" or d.Name == "Glow" or d.Name == "Gem" or d.Name == "Puff") then
+			d.CanCollide = false
+			d.CanQuery = false
+			d.CastShadow = false
+		end
+	end
+	if shape == "Hoop" then
+		local crest = Crest[glyph] or Crest.cloud
+		crest(model, site, color, spec)
+	end
 
+	-- the swirl's light and sparkles drifting out toward the pad (an invisible core: the PrimaryPart)
+	local core = block(model, "GlowCore", site * CFrame.new(0, GATE.SwirlY, 0), Vector3.new(9, 9, 0.4), glow, { Transparency = 1 })
 	local light = Instance.new("PointLight")
 	light.Name = "GateLight"
-	light.Range = 14
-	light.Brightness = 1.2
-	light.Color = color
+	light.Range = 28
+	light.Brightness = 1.3
+	light.Color = glow
 	light.Shadows = false
-	light.Parent = disc
+	light.Parent = core
 	local sparkles = Instance.new("ParticleEmitter")
 	sparkles.Name = "Sparkles"
 	sparkles.Texture = "rbxasset://textures/particles/sparkles_main.dds"
-	sparkles.Rate = 6
-	sparkles.Lifetime = NumberRange.new(1.2, 2)
-	sparkles.Speed = NumberRange.new(0.5, 1.5)
-	sparkles.Size = NumberSequence.new(0.35)
-	sparkles.Color = ColorSequence.new(color:Lerp(rgb(255, 255, 255), 0.5))
-	sparkles.LightEmission = 0.8
+	sparkles.Rate = 12
+	sparkles.Lifetime = NumberRange.new(1.4, 2.2)
+	sparkles.Speed = NumberRange.new(1.5, 3.5)
+	sparkles.Size = popSize(0.9)
+	sparkles.Color = ColorSequence.new(glow:Lerp(WHITE, 0.5), (shape == "Arch") and color or glow)
+	sparkles.LightEmission = 0.6
 	sparkles.LightInfluence = 0
+	sparkles.EmissionDirection = Enum.NormalId.Front
 	sparkles.SpreadAngle = Vector2.new(30, 30)
-	sparkles.Parent = disc
+	sparkles.Parent = core
 
-	-- the prompt anchor: invisible, in the front of the opening at chest height
-	local promptPart = Voxel.Box(model, site * CFrame.new(0, 3, -2.2), Vector3.new(2, 2, 1), P.Slate, M.Slate, {
-		Name = "PromptAnchor",
-		Transparency = 1,
-		CanCollide = false,
-		CanQuery = false,
-		CanTouch = false,
-	})
-	promptPart.CastShadow = false
+	-- the prompt anchor: invisible, in front of the opening at chest height
+	local promptPart = block(model, "PromptAnchor", site * CFrame.new(0, 3.5, -2.8), Vector3.new(2, 2, 1), P.Stone, { Transparency = 1 })
 
 	-- pad (Pad = true) or a step
 	local pad
 	if spec.Pad then
-		local padCF = site * CFrame.new(0, 0.3, -G.PadDistance)
-		pad = Voxel.Box(model, padCF, Vector3.new(14, 0.6, 14), P.Slate, M.Slate, solidProps("Pad"))
-		local border = { { 0, -6.6, 14, 0.8 }, { 0, 6.6, 14, 0.8 }, { -6.6, 0, 0.8, 12.4 }, { 6.6, 0, 0.8, 12.4 } }
-		for i, b in ipairs(border) do
-			Voxel.Box(model, padCF * CFrame.new(b[1], 0.35, b[2]), Vector3.new(b[3], 0.1, b[4]), P.Marble, M.Marble, solidProps("PadBorder" .. i))
-		end
-		placeGlyph(model, glyph, padCF * CFrame.new(0, 0.33, 0), color, 1.4, 0.08, true).Name = "PadGlyph"
+		local kind = (shape == "Arch") and "crown" or ((glyph == "swords") and "swords" or "plus")
+		pad = buildPad(model, site, kind, color, glow)
 	else
-		pad = Voxel.Box(model, site * CFrame.new(0, 0.15, -6), Vector3.new(10, 0.3, 6), P.Slate, M.Slate, solidProps("Step"))
+		pad = Voxel.Box(model, site * CFrame.new(0, 0.15, -6), Vector3.new(10, 0.3, 6), P.StoneLight, SMOOTH, { Name = "Step", CanCollide = true, CanQuery = true, CanTouch = false })
+		pad.CastShadow = false
 	end
 
-	buildTag(lintel, GATE.TagLift - lintelY, spec, color)
-	model.PrimaryPart = lintel
+	buildTag(core, GATE.TagLift - GATE.SwirlY, spec, color)
+	model.PrimaryPart = core
 	model.Parent = parent
 	return model, pad, promptPart
 end
 
--- The six Gate Court gates in a row (facing -Z) + one of each piece on a small kerbed court: the reference
--- sample for renders (tools/render_model.py module:shared/WorldStyle:Sample) and the style tests. Not used in game.
+-- The six Gate Court gates in a row (facing -Z) on a small cream court: the reference sample for renders
+-- (tools/render_model.py module:shared/WorldStyle:Sample) and the style tests. Not used in game.
 WorldStyle.SampleGates = {
 	{ Id = "Home", Title = "My Home", Info = "Your house and pets", Color = "Yellow", Glyph = "house", Pad = false },
 	{ Id = "Obby", Title = "Sky Obby", Info = "Climb the clouds - pick a level", Color = "Blue", Glyph = "cloud", Pad = true, Pill = "Easy - 1/4" },
@@ -601,16 +893,17 @@ WorldStyle.SampleGates = {
 function WorldStyle.Sample(parent)
 	local root = Instance.new("Model")
 	root.Name = "WorldStyleSample"
-	local P, M = WorldStyle.Palette, WorldStyle.Materials
+	local P = WorldStyle.Palette
 	local n = #WorldStyle.SampleGates
 	local step = 30
-	-- the court: Slate tiles (jittered, +-0.05 height alternation) with Brick kerbs on the long edges
+	-- the court: cream stone tiles (a light / dark checker) with stone-edge kerbs on the long edges, on lime grass
 	local w, d = n * step, 40
+	Voxel.Box(root, CFrame.new(0, -1.5, 0), Vector3.new(w + 24, 1, d + 24), P.Grass, SMOOTH, { Name = "Lawn", CanCollide = true, CanQuery = true })
 	for ix = 0, floor(w / 5) - 1 do
 		for iz = 0, floor(d / 5) - 1 do
-			local h = ((ix + iz) % 2 == 0) and 0.05 or 0
-			Voxel.Box(root, CFrame.new(-w * 0.5 + 2.5 + ix * 5, -0.5 + h, -d * 0.5 + 2.5 + iz * 5), Vector3.new(5, 1, 5),
-				WorldStyle.Jitter(P.Slate, ix * 31 + iz), M.Slate, solidProps("Tile"))
+			local alt = (ix + iz) % 2 == 0
+			Voxel.Box(root, CFrame.new(-w * 0.5 + 2.5 + ix * 5, -0.5, -d * 0.5 + 2.5 + iz * 5), Vector3.new(5, 1, 5),
+				alt and P.StoneLight or P.Stone, SMOOTH, { Name = "Tile", CanCollide = true, CanQuery = true })
 		end
 	end
 	WorldStyle.Kerb(root, CFrame.new(0, 0, -d * 0.5), w)

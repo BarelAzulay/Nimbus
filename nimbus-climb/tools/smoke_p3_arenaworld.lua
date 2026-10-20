@@ -19,10 +19,10 @@
 --                     in the sky, a Ring zone found by ZoneAt, the square fits at any rotation, the spawn on the -Z side,
 --                     a gold rim / four crown posts / a crowd of cloud puffs; the same index returns the same pocket;
 --                     FreePocket removes it (and its zone); junk indices / zones never error
---   p3arena_art       (booted; Phase 5 arenaart, 6.4) the art rules on the island and the Champion Ring pocket:
---                     WorldStyle materials, no big SmoothPlastic, muted big faces, warm lanterns, no small-part shadows,
---                     round tall posts, a kerb + lip round the edge (open at the bridge), the avenue's 4..6-stud tiles
---                     (+-0.05, jittered), mown lawn stripes, NC_Detail decor every ~12 studs, sky-shaded exempt clouds,
+--   p3arena_art       (booted; Phase 6 A1 look revert) the P4 look on the island and the Champion Ring pocket:
+--                     SmoothPlastic (Neon / Glass / ForceField), blocks only, a bright P4 palette, warm lanterns, no
+--                     small-part shadows, square voxel posts, a kerb + lip round the edge (open at the bridge), the avenue's 4..6-stud tiles
+--                     (+-0.05, jittered), mown lawn stripes, NC_Detail decor every ~12 studs, P4 white / light-blue exempt clouds,
 --                     <= 2800 / <= 250 parts, the safety net idle (ArtFixes = 0)
 --   p3arena_teleport  (booted) the home Arena Gate: the owner standing at the gate lands on the arena's Spawn; refused
 --                     for another player, from far away, in a match, in a battle, and during the cooldown; Phase 5:
@@ -1007,11 +1007,14 @@ end)
 ----------------------------------------------------------------------------------------------------
 -- scenario: the Phase 5 art pass (arenaart, 6.4) on the island and the Champion Ring pocket
 ----------------------------------------------------------------------------------------------------
--- The 6.4 audit of one model: rules 1 (WorldStyle materials, no big SmoothPlastic), 2 (big faces: saturation <= 0.45
--- unless a thin Neon inlay / a piece <= 8 studs^3; value 0.35..0.9), 7 (lights warm, Brightness <= 1.5, Range <= 16,
--- no shadows) and 8 (parts < 4 studs cast no shadow); the voxel clouds / the crowd are skipped by the exempt tag.
+-- The look audit of one model (Phase 6 A1: back to the P4 look, 7aa0df2): every part SmoothPlastic (Neon / Glass /
+-- ForceField for glow, glass and shimmer), blocky voxel shapes only (no Ball / Cylinder), a bright colourful palette
+-- (the area-weighted saturation of the big opaque faces >= 0.2: no muted P5 greys); kept from 6.4: lights Brightness
+-- <= 1.5, Range <= 16, no shadows, warm outside the gates (rule 7) and parts < 4 studs cast no shadow (rule 8); the
+-- voxel clouds / the crowd are skipped by the exempt tag.
 local function artAudit(root, label, WS)
 	local exemptTag = (WS and WS.Tags and WS.Tags.Exempt) or "NC_StyleExempt"
+	local P4MAT = { [Enum.Material.SmoothPlastic] = true, [Enum.Material.Neon] = true, [Enum.Material.Glass] = true, [Enum.Material.ForceField] = true }
 	local function exempt(p)
 		local cur = p
 		while cur and cur ~= game do
@@ -1026,12 +1029,11 @@ local function artAudit(root, label, WS)
 		local hi, lo = max(c.R, c.G, c.B), min(c.R, c.G, c.B)
 		return hi > 0 and (hi - lo) / hi or 0, hi
 	end
-	local tMat = T.tally(label .. ": every part uses a WorldStyle.Materials material (6.4 rule 1)")
-	local tPlastic = T.tally(label .. ": no SmoothPlastic part with a side > 2 studs (rule 1)")
-	local tSat = T.tally(label .. ": big faces (> 16 studs^2) have saturation <= 0.45 unless a thin Neon inlay / a piece <= 8 studs^3 (rule 2)")
-	local tVal = T.tally(label .. ": big opaque faces have value 0.35..0.9 (rule 2)")
+	local tMat = T.tally(label .. ": every part is SmoothPlastic / Neon / Glass / ForceField (P6 A1: the P4 look, no realistic textures)")
+	local tShape = T.tally(label .. ": blocky voxel shapes only (no Ball / Cylinder parts; P6 A1)")
 	local tShadow = T.tally(label .. ": parts < 4 studs cast no shadow (rule 8)")
 	local n, skipped = 0, 0
+	local satArea, area = 0, 0
 	for _, p in ipairs(partsOf(root)) do
 		local s = p.Size
 		local dims = { s.X, s.Y, s.Z }
@@ -1044,32 +1046,36 @@ local function artAudit(root, label, WS)
 				skipped = skipped + 1
 			else
 				n = n + 1
-				local face, vol = dims[2] * dims[3], s.X * s.Y * s.Z
-				local neon = p.Material == Enum.Material.Neon
-				tMat:case(WS == nil or WS.IsWorldMaterial(p.Material), p:GetFullName() .. " " .. tostring(p.Material))
-				tPlastic:case(not (p.Material == Enum.Material.SmoothPlastic and dims[3] > 2), p:GetFullName() .. " " .. fmt(dims[3], 1))
-				if face > 16 then
-					local sat, val = hsv(p.Color)
-					tSat:case(sat <= 0.45 + 1e-3 or (neon and dims[1] <= 0.5) or vol <= 8 or p.Material == Enum.Material.ForceField, p:GetFullName() .. " sat " .. fmt(sat, 2))
-					if not neon and p.Material ~= Enum.Material.ForceField and p.Transparency < 0.3 then
-						tVal:case(val >= 0.35 - 1e-3 and val <= 0.9 + 1e-3, p:GetFullName() .. " value " .. fmt(val, 2))
-					end
+				tMat:case(P4MAT[p.Material] == true, p:GetFullName() .. " " .. tostring(p.Material))
+				tShape:case(not p:IsA("Part") or p.Shape == Enum.PartType.Block, p:GetFullName() .. " " .. tostring(p:IsA("Part") and p.Shape))
+				if dims[2] * dims[3] > 16 and p.Transparency < 0.3 and p.Material ~= Enum.Material.Neon then
+					local sat = hsv(p.Color)
+					satArea = satArea + sat * dims[2] * dims[3]
+					area = area + dims[2] * dims[3]
 				end
 			end
 		end
 	end
 	tMat:report()
-	tPlastic:report()
-	tSat:report()
-	tVal:report()
+	tShape:report()
 	tShadow:report()
+	local wsat = area > 0 and satArea / area or 0
+	T.check(wsat >= 0.2, label .. ": a bright, colourful P4 palette (area-weighted saturation of the big faces >= 0.2)", fmt(wsat, 3))
 	local lights = T.tally(label .. ": every light is a lantern light: Brightness <= 1.5, Range <= 16, no shadows; warm outside the gates (rule 7)")
 	for _, d in ipairs(root:GetDescendants()) do
 		if d:IsA("PointLight") or d:IsA("SpotLight") or d:IsA("SurfaceLight") then
-			local inGate = d:FindFirstAncestor("Portal_Return") ~= nil
+			-- a gate's own glow (WorldStyle.BuildGate: the GateId model) follows the gate kit, not the lantern rule
+			local inGate = false
+			local cur = d.Parent
+			while cur and cur ~= root.Parent do
+				if cur:GetAttribute("GateId") ~= nil then
+					inGate = true
+				end
+				cur = cur.Parent
+			end
 			local c = d.Color
-			local warm = inGate or (c.R >= c.G and c.G >= c.B and c.R > 0.9)
-			lights:case(d.Brightness <= 1.5 and d.Range <= 16 and not d.Shadows and warm, d:GetFullName())
+			local warm = c.R >= c.G and c.G >= c.B and c.R > 0.9
+			lights:case(inGate or (d.Brightness <= 1.5 and d.Range <= 16 and not d.Shadows and warm), d:GetFullName())
 		end
 	end
 	lights:report()
@@ -1097,15 +1103,15 @@ S.p3arena_art = guarded("p3arena_art", function()
 	local parts = partsOf(model)
 	T.check(#parts <= 2800, "arena art: the island + bridge stay <= 2800 parts (10.3)", #parts .. " parts")
 	T.check(#parts >= 1800, "arena art: still detailed (>= 1800 parts)", #parts .. " parts")
-	T.eq(model:GetAttribute("ArtFixes"), 0, "arena art: the 6.4 safety net had nothing to fix (every piece is built in the rules)")
+	T.eq(model:GetAttribute("ArtFixes"), 0, "arena art: the P6 A1 safety net had nothing to fix (every piece is built in the P4 look)")
 
-	-- rules 1, 2, 7, 8 over the whole island (the clouds are exempt by tag)
+	-- the P4 look, rules 7, 8 over the whole island (the clouds are exempt by tag)
 	local audited, skipped = artAudit(model, "arena art", WS)
 	T.info("*arena art: " .. audited .. " parts audited, " .. skipped .. " exempt (voxel clouds)")
 	local cloud = model:FindFirstChild("IslandCloud")
 	T.check(cloud ~= nil and CollectionService:HasTag(cloud, exemptTag), "arena art: the island's voxel cloud is tagged " .. exemptTag)
-	-- rule 9: the clouds are shaded for the sky (lavender: blue >= green on every part, light tops ~250,244,252, the
-	-- undersides down to ~186,172,222, nothing pure white)
+	-- the clouds are shaded like P4 (white / light blue: blue >= green on every part, light tops ~244,247,252, the
+	-- undersides down to ~170,190,228, nothing pure white)
 	local light, dark, cool, white = false, false, 0, 0
 	for _, p in ipairs(partsOf(cloud)) do
 		local c = p.Color
@@ -1122,37 +1128,45 @@ S.p3arena_art = guarded("p3arena_art", function()
 			white = white + 1
 		end
 	end
-	T.check(light and dark and cool == 0 and white == 0, "arena art: the cloud is shaded for the pink sky (light lavender tops, violet undersides, no pure white)",
+	T.check(light and dark and cool == 0 and white == 0, "arena art: the cloud is shaded like P4 (white tops, light-blue undersides, no pure white)",
 		tostring(light) .. "/" .. tostring(dark) .. ", " .. cool .. " not lavender, " .. white .. " white")
 
-	-- the main materials are there (stone, brick, wood, grass, marble, sand)
-	local mats = {}
+	-- the P4 palette on the main surfaces (P6 A1): a lime lawn, light cream stone walls, golden sand, gold trim
+	local pal = { Lawn = 0, Wall = 0, Sand = 0, Gold = 0 }
 	for _, p in ipairs(parts) do
-		mats[p.Material] = (mats[p.Material] or 0) + 1
+		local _, sat, val = p.Color:ToHSV()
+		if p.Name == "Lawn" and p.Color.G > 0.6 and sat >= 0.4 then
+			pal.Lawn = pal.Lawn + 1
+		elseif p.Name == "Wall" and val >= 0.75 and sat <= 0.2 then
+			pal.Wall = pal.Wall + 1
+		elseif (p.Name == "Sand" or p.Name == "SandDrift" or p.Name == "RingFloor") and p.Color.R >= 0.82 and sat >= 0.2 then
+			pal.Sand = pal.Sand + 1
+		elseif p.Color.R > 0.9 and p.Color.G > 0.7 and p.Color.B < 0.45 then
+			pal.Gold = pal.Gold + 1
+		end
 	end
-	for _, m in ipairs({ "Brick", "Slate", "Cobblestone", "Marble", "Grass", "LeafyGrass", "Sand", "Wood", "Metal", "Fabric" }) do
-		T.check((mats[Enum.Material[m]] or 0) > 0, "arena art: the island uses " .. m, tostring(mats[Enum.Material[m]] or 0) .. " parts")
-	end
-	-- the colosseum: Brick walls, Marble pilasters / cornices, Fabric seats in muted element colours
+	T.check(pal.Lawn > 0 and pal.Wall > 0 and pal.Sand > 0 and pal.Gold > 0, "arena art: the P4 palette (lime lawn, light cream stone walls, golden sand, gold trim)",
+		string.format("lawn %d, walls %d, sand %d, gold %d", pal.Lawn, pal.Wall, pal.Sand, pal.Gold))
+	-- the colosseum: walls, marble-white trims and seats in the element colours
 	local col = model:FindFirstChild("Colosseum")
 	local wall, seat, marble = 0, 0, 0
 	for _, p in ipairs(partsOf(col)) do
-		if p.Name == "Wall" and p.Material == Enum.Material.Brick then
+		if p.Name == "Wall" then
 			wall = wall + 1
-		elseif p.Name == "Seat" and p.Material == Enum.Material.Fabric then
+		elseif p.Name == "Seat" and select(2, p.Color:ToHSV()) >= 0.3 then
 			seat = seat + 1
-		elseif (p.Name == "Cornice" or p.Name == "Pilaster") and p.Material == Enum.Material.Marble then
+		elseif (p.Name == "Cornice" or p.Name == "Pilaster") and select(3, p.Color:ToHSV()) >= 0.85 then
 			marble = marble + 1
 		end
 	end
-	T.check(wall >= 16 and seat >= 16 and marble >= 32, "arena art: Brick walls, Marble trims and Fabric seats on the colosseum", wall .. " walls, " .. marble .. " marble, " .. seat .. " seats")
+	T.check(wall >= 16 and seat >= 16 and marble >= 32, "arena art: walls, white trims and element-coloured seats on the colosseum", wall .. " walls, " .. marble .. " marble, " .. seat .. " seats")
 
-	-- rule 4: free-standing posts / columns >= 4 studs tall are round (no sharp tall corners)
+	-- P6 A1: free-standing posts / columns are square voxel posts (no Cylinder parts)
 	local postNames = { Post = true, Pillar = true, ArchPillar = true, TorchPole = true, Pole = true, LanternPost = true, Trunk = true }
-	local round = T.tally("arena art: every free-standing post / column >= 4 studs tall is round (rule 4)")
+	local round = T.tally("arena art: every free-standing post / column >= 4 studs tall is a square voxel post (P6 A1)")
 	for _, p in ipairs(parts) do
 		if postNames[p.Name] and p:IsA("Part") and max(p.Size.X, p.Size.Y, p.Size.Z) >= 4 and not p:FindFirstAncestor("Portal_Return") then
-			round:case(p.Shape == Enum.PartType.Cylinder, p:GetFullName())
+			round:case(p.Shape == Enum.PartType.Block, p:GetFullName())
 		end
 	end
 	round:report()
@@ -1208,10 +1222,10 @@ S.p3arena_art = guarded("p3arena_art", function()
 	T.check(nTiles >= 40 and sizesOk, "arena art: the avenue is paved with 4..6-stud tiles (rule 5)", nTiles .. " tiles")
 	T.check(nTops == 2 and abs((hi - lo) - 0.05) < 0.011, "arena art: the tiles alternate by 0.05 in height (rule 5)", nTops .. " levels, " .. fmt(hi - lo, 3))
 	T.check(nCols >= 6, "arena art: the tiles are jittered (never one flat colour)", nCols .. " colours")
-	-- the lawn is mown in stripes of two shades (Grass)
+	-- the lawn is mown in stripes of two shades
 	local lawnCols = {}
 	for _, p in ipairs(partsOf(model:FindFirstChild("Lawn", true))) do
-		if p.Material == Enum.Material.Grass then
+		if p.Name == "Lawn" then
 			lawnCols[string.format("%.2f", p.Color.G)] = true
 		end
 	end
@@ -1219,7 +1233,7 @@ S.p3arena_art = guarded("p3arena_art", function()
 	for _ in pairs(lawnCols) do
 		nLawn = nLawn + 1
 	end
-	T.check(nLawn >= 2, "arena art: the forum lawn has mown stripes (Grass in 2+ shades)", nLawn .. " shades")
+	T.check(nLawn >= 2, "arena art: the forum lawn has mown stripes (2+ green shades)", nLawn .. " shades")
 
 	-- rule 6: a detail every ~12 studs along the avenue (torches, hedge boxes, banners, lanterns: NC_Detail)
 	local details = {}

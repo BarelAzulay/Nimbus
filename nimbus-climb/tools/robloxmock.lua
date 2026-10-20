@@ -1654,6 +1654,8 @@ for name in ("KeyCode UserInputType Font FontWeight FontStyle ContextActionPrior
 	.. "AvatarContextMenuOption AvatarJointUpgrade BreakpointRemoveReason ConnectionError NormalId CreatorType"):gmatch("%S+") do
 	OPEN_ENUMS[name] = true
 end
+-- [owner: runtime, Phase 6] ContentProvider:PreloadAsync callback status (MeshLibrary client preload)
+CLOSED_ENUMS.AssetFetchStatus = CLOSED_ENUMS.AssetFetchStatus or "Success Failure None Loading TimedOut"
 
 local enumTypes = {}
 local function getEnumType(name)
@@ -6337,6 +6339,39 @@ for _, n in ipairs({ "MarketplaceService", "TeleportService", "PhysicsService", 
 	end
 end
 Classes.ContentProvider.own.methods = { PreloadAsync = function() end }
+-- [owner: runtime, Phase 6] mesh asset loading for MeshLibrary fixtures (additive). Without a hook nothing changes:
+-- LoadAssetAsync / LoadAsset raise (the mock has no asset store), PreloadAsync stays a no-op. Tests set
+--   Mock.AssetLoader = function(assetId, via) -> Instance (the LoadAsset wrapper Model) | error(msg)
+--   Mock.PreloadHook = function(list, callback) -> nil     (callback(contentId, Enum.AssetFetchStatus.X) per item)
+-- and reset them to nil afterwards. Both loaders are server-only, as in Roblox.
+if not Classes.PackageLink then
+	defclass("PackageLink", "Instance", { creatable = false, props = { PackageId = T.str(""), VersionNumber = T.num(0), AutoUpdate = T.bool(false) } })
+end
+do
+	local function loadVia(via)
+		return function(self, assetId)
+			if Mock.Context ~= "server" then
+				error(via .. " can only be called from the server", 2)
+			end
+			if type(assetId) ~= "number" then
+				error("Unable to cast value to std::wstring / int64 (asset id)", 2)
+			end
+			if not Mock.AssetLoader then
+				error(via .. ": no asset store in the mock (Mock.AssetLoader unset)", 2)
+			end
+			return Mock.AssetLoader(assetId, via)
+		end
+	end
+	Classes.AssetService.own.methods = Classes.AssetService.own.methods or {}
+	Classes.AssetService.own.methods.LoadAssetAsync = loadVia("AssetService:LoadAssetAsync")
+	Classes.InsertService.own.methods = Classes.InsertService.own.methods or {}
+	Classes.InsertService.own.methods.LoadAsset = loadVia("InsertService:LoadAsset")
+	Classes.ContentProvider.own.methods.PreloadAsync = function(self, list, callback)
+		if Mock.PreloadHook then
+			return Mock.PreloadHook(list, callback)
+		end
+	end
+end
 Classes.PhysicsService.own.methods = {
 	RegisterCollisionGroup = function() end,
 	CollisionGroupSetCollidable = function() end,

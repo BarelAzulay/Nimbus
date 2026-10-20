@@ -65,8 +65,10 @@ def _material(name, color, metallic=0.0, emit=False):
     return mat
 
 
-def make_objects(model, look, collection=None, matrix=None):
-    """one Blender mesh object per ObjectSpec; vertices welded per object, a CORNER byte colour layer "Col"."""
+def make_objects(model, look, collection=None, matrix=None, export=False):
+    """one Blender mesh object per ObjectSpec; vertices welded per object, a CORNER byte colour layer "Col".
+    export=True: every object gets the one shared white material M_Vertex (recipe 4.4); otherwise a preview
+    material in the part's colour for `look` (recipes evaluated like the runtime)."""
     col = collection or bpy.context.scene.collection
     made = []
     for o in model.objects.values():
@@ -88,7 +90,8 @@ def make_objects(model, look, collection=None, matrix=None):
         me.from_pydata(verts, [], faces)
         me.validate()
         attr = me.color_attributes.new("Col", "BYTE_COLOR", "CORNER")
-        data = np.repeat(np.array([list(c) + [1.0] for c in fcols], np.float32), 4, axis=0)
+        counts = [len(f) for f in faces]
+        data = np.repeat(np.array([list(c) + [1.0] for c in fcols], np.float32), counts, axis=0)
         # BYTE_COLOR stores sRGB bytes; .color takes linear floats, .color_srgb sRGB floats
         attr.data.foreach_set("color_srgb", data.ravel())
         me.color_attributes.active_color = attr
@@ -97,14 +100,20 @@ def make_objects(model, look, collection=None, matrix=None):
         if matrix is not None:
             from mathutils import Matrix
             ob.matrix_world = Matrix(matrix.tolist())
-        if o.baked or o.recipe is None:
-            base = (1.0, 1.0, 1.0)
+        if export:
+            mat = bpy.data.materials.get("M_Vertex") or _material("M_Vertex", (1.0, 1.0, 1.0))
         else:
-            base = C.eval_recipe(o.recipe, look)
-            if o.shade == "light":
-                base = C.shade_light(base)
-        mat = _material("M_" + model.name + "_" + o.name, base, emit=(o.material == "Neon"),
-                        metallic=0.0)
+            if o.baked or o.recipe is None:
+                base = (1.0, 1.0, 1.0)
+            else:
+                base = C.eval_recipe(o.recipe, look)
+            mat = _material("M_" + model.name + "_" + o.name, base, emit=(o.material == "Neon"),
+                            metallic=0.25 if o.material == "Metal" else 0.0)
+            tr = getattr(o, "transparency", None)
+            if tr:
+                bsdf = mat.node_tree.nodes.get("Principled BSDF")
+                if bsdf is not None:
+                    bsdf.inputs["Alpha"].default_value = max(0.05, 1.0 - float(tr))
         me.materials.append(mat)
         made.append(ob)
     return made
@@ -122,7 +131,34 @@ def export_fbx(objs, path):
         mesh_smooth_type="FACE", colors_type="SRGB", add_leaf_bones=False, bake_anim=False,
         use_custom_props=False, path_mode="STRIP", use_space_transform=True, bake_space_transform=True,
     )
+    zero_timestamp(path)
     return os.path.getsize(path)
+
+
+TIMESTAMP_FIELDS = ((b"Year", 2000), (b"Month", 1), (b"Day", 1), (b"Hour", 0), (b"Minute", 0), (b"Second", 0),
+                    (b"Millisecond", 0))
+
+
+def zero_timestamp(path):
+    """Make the FBX bytes deterministic: the exporter's CreationTimeStamp (Year..Millisecond int32 properties) gets
+    fixed values.  (Blender already writes a constant FileId and CreationTime string; checked by verify_fbx:
+    exporting the same model twice gives the same bytes.)"""
+    import struct
+    data = bytearray(open(path, "rb").read())
+    head = bytes(data[:4096])
+    start = head.find(b"CreationTimeStamp")
+    if start < 0:
+        return False
+    for name, value in TIMESTAMP_FIELDS:
+        pat = bytes([len(name)]) + name + b"I"
+        i = head.find(pat, start)
+        if i < 0:
+            continue
+        j = i + len(pat)
+        data[j:j + 4] = struct.pack("<i", value)
+    with open(path, "wb") as fh:
+        fh.write(bytes(data))
+    return True
 
 
 def _mesh_stats(ob):
@@ -140,10 +176,13 @@ def verify_fbx(path, model):
     for o in model.objects.values():
         a = np.concatenate([q[0] for q in o.quads])
         expect[o.name] = (a.min(0), a.max(0), o.tris())
-    for mode in ("roundtrip", "raw"):
+    for mode in ("roundtrip", "raw", "header"):
         reset_scene()
         if mode == "roundtrip":
             bpy.ops.import_scene.fbx(filepath=path, axis_forward="Z", axis_up="Y", use_manual_orientation=True)
+        elif mode == "header":
+            # honour the file's own axis header (what a generic importer does): the front must land at -Y
+            bpy.ops.import_scene.fbx(filepath=path)
         else:
             # forward Y / up Z = Blender's own axes: no conversion, Blender coordinates == the file's raw coordinates
             bpy.ops.import_scene.fbx(filepath=path, use_manual_orientation=True, axis_forward="Y", axis_up="Z",
@@ -163,8 +202,8 @@ def verify_fbx(path, model):
             if name not in got:
                 continue
             co, gtris, ncol = got[name]
-            if mode == "roundtrip":
-                rob = co @ PM.T  # back to roblox space
+            if mode in ("roundtrip", "header"):
+                rob = co @ PM.T  # back to roblox space (front -Z <-> blender -Y)
             else:
                 rob = co  # the file's raw coordinates must already be Roblox studs
             err = max(np.abs(rob.min(0) - lo).max(), np.abs(rob.max(0) - hi).max())

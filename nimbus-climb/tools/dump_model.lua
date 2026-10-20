@@ -1526,6 +1526,133 @@ do
 end
 -- [owner: arenaart] end
 
+-- [owner: kit] begin
+-- (Phase 6 mesh path) Every MeshPart that carries ML_Key / ML_Part is dumped with "mlKey" / "mlPart", and
+-- tools/render_model.py draws it from blender/out/<key>.tris.json.gz instead of a box.  Targets:
+--   meshkey:<key>[:<petId>]   one generated manifest (shared/MeshManifests/<key>) as MeshParts at its pivot, coloured
+--                             with MeshLibrary.EvalColor for the pet's Look (default: a sample Look)
+--   meshpet:<petId>           MeshLibrary.Assemble of pet_<species> + wing_<style>_L/R + acc_<name> when it can (the
+--                             manifests exist), else the Part pet
+do
+	local basePartJson = partJson
+	partJson = function(p, root)
+		local s = basePartJson(p, root)
+		if p:IsA("MeshPart") then
+			local key, part = p:GetAttribute("ML_Key"), p:GetAttribute("ML_Part")
+			if type(key) == "string" and type(part) == "string" then
+				s = string.sub(s, 1, -2) .. ",\"mlKey\":" .. str(key) .. ",\"mlPart\":" .. str(part) .. "}"
+			end
+		end
+		return s
+	end
+
+	local function lookOf(petId)
+		local look = {
+			Primary = Color3.fromRGB(190, 154, 114), Secondary = Color3.fromRGB(238, 222, 196),
+			Eye = Color3.fromRGB(50, 36, 32), WingColor = Color3.fromRGB(226, 208, 182),
+		}
+		local PC = req("shared/PetCatalog", true)
+		local def = PC and PC.Get and petId and PC.Get(petId)
+		if def and type(def.Look) == "table" then
+			for k, v in pairs(def.Look) do
+				look[k] = v
+			end
+			if not def.Look.WingColor and typeof(look.Primary) == "Color3" then
+				look.WingColor = look.Primary:Lerp(Color3.new(1, 1, 1), 0.4)
+			end
+		end
+		return look, def
+	end
+
+	local function vec3(t)
+		return Vector3.new(t[1] or t.X or 0, t[2] or t.Y or 0, t[3] or t.Z or 0)
+	end
+
+	BUILDERS.meshkey = function(key, petId)
+		key = tostring(key or "")
+		local folder = Mock.GetPath(ROOTS.shared .. "/MeshManifests")
+		local mod = folder and folder:FindFirstChild(key)
+		if not mod then
+			fail("no shared/MeshManifests/" .. key .. " (build it with blender/build_all.py --key " .. key .. ")")
+		end
+		local man = require(mod)
+		local ML = req("shared/MeshLibrary", true)
+		local look = lookOf(petId)
+		local model = Instance.new("Model")
+		model.Name = key
+		for _, p in ipairs(man.Parts or man.parts or {}) do
+			local mp = Instance.new("MeshPart")
+			mp.Name = p.Name or p.name
+			mp.Size = vec3(p.Size or p.size)
+			mp.CFrame = CFrame.new(vec3(p.Center or p.center))
+			local color = p.Color or p.color
+			if type(color) == "table" and ML and ML.EvalColor then
+				mp.Color = ML.EvalColor(color, look)
+			else
+				mp.Color = Color3.new(1, 1, 1)
+			end
+			local mat = p.Material or p.material
+			if mat == "Neon" then
+				mp.Material = Enum.Material.Neon
+			elseif mat == "Metal" then
+				mp.Material = Enum.Material.Metal
+			else
+				mp.Material = Enum.Material.SmoothPlastic
+			end
+			mp.Transparency = tonumber(p.Transparency or p.transparency) or 0
+			if (p.Group or p.group) == "EyeLid" then
+				mp.Transparency = 1
+			end
+			mp:SetAttribute("ML_Key", key)
+			mp:SetAttribute("ML_Part", p.Name or p.name)
+			mp.Anchored = true
+			mp.Parent = model
+		end
+		model.Parent = Workspace
+		return { { root = model, label = key, sub = "mesh manifest (" .. #(man.Parts or man.parts or {}) .. " MeshParts)", facing = { 0, 0, -1 } } }
+	end
+
+	-- the manifests composed by hand (the body's WingL / WingR / Hat attachments), no MeshLibrary needed
+	local function cfOf(a)
+		local p, r = a.Pos or a.pos, a.Rot or a.rot
+		return CFrame.new(p[1], p[2], p[3], r[1][1], r[1][2], r[1][3], r[2][1], r[2][2], r[2][3], r[3][1], r[3][2], r[3][3])
+	end
+	BUILDERS.meshpet = function(petId, lod)
+		local look, def = lookOf(petId)
+		if not def then
+			fail("meshpet: unknown pet " .. tostring(petId))
+		end
+		local L = def.Look
+		local sfx = (lod == "Low") and "_low" or ""
+		local body = BUILDERS.meshkey("pet_" .. string.lower(tostring(L.Species)) .. sfx, petId)[1].root
+		local folder = Mock.GetPath(ROOTS.shared .. "/MeshManifests")
+		local man = require(folder:FindFirstChild(body.Name))
+		local att = man.Attachments or man.attachments or {}
+		local extra = {}
+		if L.WingStyle then
+			extra[#extra + 1] = { "wing_" .. string.lower(L.WingStyle) .. "_L" .. sfx, "WingL" }
+			extra[#extra + 1] = { "wing_" .. string.lower(L.WingStyle) .. "_R" .. sfx, "WingR" }
+		end
+		if L.Accessory then
+			extra[#extra + 1] = { "acc_" .. string.lower(L.Accessory) .. sfx, "Hat" }
+		end
+		for _, e in ipairs(extra) do
+			local ok, out = pcall(BUILDERS.meshkey, e[1], petId)
+			if ok and att[e[2]] then
+				local m = out[1].root
+				local at = cfOf(att[e[2]])
+				for _, d in ipairs(m:GetChildren()) do
+					d.CFrame = at * d.CFrame
+					d.Parent = body
+				end
+				m:Destroy()
+			end
+		end
+		return { { root = body, label = petId .. " (mesh keys)", sub = body.Name .. " + wings + accessory", facing = { 0, 0, -1 } } }
+	end
+end
+-- [owner: kit] end
+
 ----------------------------------------------------------------------
 -- main
 ----------------------------------------------------------------------

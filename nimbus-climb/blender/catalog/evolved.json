@@ -1,0 +1,26 @@
+{
+ "class": "evolved",
+ "owner": "W2 art-evolved",
+ "doc": "blender/README.md. Keys: evo1_<petId>[_low], evo2_<petId>[_low], evowing_<style>_<L|R>[_low], aura_<kind>[_low]. type pet with stage 1 | 2 (k = 1.25 x 1.0 / 0.9 of the Lua K; Low 0.65 / 0.55); auras count inside the evolved budget",
+ "budgets": {
+  "evo1": {
+   "tris": 15000,
+   "parts": 50
+  },
+  "evo1Low": {
+   "tris": 4500,
+   "parts": 16
+  },
+  "evo2": {
+   "tris": 20000,
+   "parts": 60
+  },
+  "evo2Low": {
+   "tris": 6000,
+   "parts": 18
+  }
+ },
+ "keys": [],
+ "sets": [],
+ "previews": []
+}

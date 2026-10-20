@@ -1,0 +1,18 @@
+{
+ "class": "arenadungeon",
+ "owner": "W2 art-arenadungeon",
+ "doc": "blender/README.md. Keys: arena_<piece>, dungeon_<room|piece>. type prop (kit/props/arena*.py, kit/props/dungeon*.py)",
+ "budgets": {
+  "piece": {
+   "tris": 4000,
+   "parts": 8
+  },
+  "floor": {
+   "tris": 1000,
+   "parts": 1
+  }
+ },
+ "keys": [],
+ "sets": [],
+ "previews": []
+}

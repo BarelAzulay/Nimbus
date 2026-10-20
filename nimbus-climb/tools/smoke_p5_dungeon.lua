@@ -1650,35 +1650,39 @@ local function serverScenarios()
 		T.check(#over == 0, "p5 world: 17 templates within their budgets (wave room <= 320, boss <= 420, hall <= 140, corridor <= 70, treasure <= 90; <= 40 Accent parts)", table.concat(over, ", "))
 		T.check(#missingAtt == 0, "p5 world: every template carries Entrance / Exit (+ Threshold, Spawn1..4, Dais on rooms)", table.concat(missingAtt, ", "))
 		T.check(total <= 4000, "p5 world: the whole template set is <= 4,000 parts (" .. total .. ")")
-		-- materials and big faces (6.4 rules 1-2) on the templates
-		local WS = req("shared/WorldStyle")
-		local badMat, badFace = {}, {}
+		-- the look (Phase 6 A1: the P4 look) on the templates: SmoothPlastic (Neon / Glass / ForceField for glow, water
+		-- and shimmer), blocks only (no Ball / Cylinder), a bright colourful palette (no muted P5 greys: the
+		-- area-weighted saturation of the big opaque faces >= 0.2)
+		local P4MAT = { [Enum.Material.SmoothPlastic] = true, [Enum.Material.Neon] = true, [Enum.Material.Glass] = true, [Enum.Material.ForceField] = true }
+		local badMat, badShape = {}, {}
+		local satArea, area = 0, 0
 		for _, name in ipairs(db.Templates) do
 			local model = db.Template(name)
 			for _, part in ipairs(model:GetDescendants()) do
-				if part:IsA("BasePart") then
+				if part:IsA("BasePart") and part.Transparency < 0.99 then
 					local s = part.Size
-					local big = math.max(s.X, s.Y, s.Z) > 2
-					if big and part.Material == Enum.Material.SmoothPlastic then
-						badMat[#badMat + 1] = name .. "." .. part.Name
-					elseif WS and WS.IsWorldMaterial and not WS.IsWorldMaterial(part.Material) then
+					if not P4MAT[part.Material] then
 						badMat[#badMat + 1] = name .. "." .. part.Name .. " " .. tostring(part.Material)
+					end
+					if part:IsA("Part") and part.Shape ~= Enum.PartType.Block then
+						badShape[#badShape + 1] = name .. "." .. part.Name
 					end
 					local faces = { s.X * s.Y, s.Y * s.Z, s.X * s.Z }
 					local maxFace = math.max(faces[1], faces[2], faces[3])
-					if maxFace > 16 and part.Material ~= Enum.Material.Neon and s.X * s.Y * s.Z > 8 then
+					if maxFace > 16 and part.Material ~= Enum.Material.Neon and part.Transparency < 0.3 then
 						local c = part.Color
 						local val = math.max(c.R, c.G, c.B)
 						local sat = (val > 0) and ((val - math.min(c.R, c.G, c.B)) / val) or 0
-						if sat > 0.45 + 1e-6 or val < 0.35 - 1e-6 or val > 0.9 + 1e-6 then
-							badFace[#badFace + 1] = name .. "." .. part.Name
-						end
+						satArea = satArea + sat * maxFace
+						area = area + maxFace
 					end
 				end
 			end
 		end
-		T.check(#badMat == 0, "p5 world: template materials come from WorldStyle.Materials; no big SmoothPlastic", table.concat(badMat, ", "):sub(1, 300))
-		T.check(#badFace == 0, "p5 world: big faces keep saturation <= 0.45 and value 0.35..0.9", table.concat(badFace, ", "):sub(1, 300))
+		T.check(#badMat == 0, "p5 world: template materials are the P4 look (SmoothPlastic / Neon / Glass / ForceField; P6 A1)", table.concat(badMat, ", "):sub(1, 300))
+		T.check(#badShape == 0, "p5 world: templates are blocky voxels (no Ball / Cylinder parts; P6 A1)", table.concat(badShape, ", "):sub(1, 300))
+		local wsat = area > 0 and satArea / area or 0
+		T.check(wsat >= 0.2, string.format("p5 world: a cute, colourful dungeon (area-weighted saturation of the big faces %.2f >= 0.2; P6 A1)", wsat))
 		-- the layout never overlaps over 20 seeds (every floor kind)
 		local overlaps = {}
 		for seed = 1, 20 do

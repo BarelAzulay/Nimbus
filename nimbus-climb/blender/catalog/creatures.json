@@ -1,0 +1,25 @@
+{
+ "class": "creatures",
+ "owner": "W2 art-creatures",
+ "doc": "blender/README.md. Keys: boss_<id>_<joint>, dragon_<piece>, npc_pedestal, token_<kind>, fx_<shield|ice|arrow>, star_gold. type boss: {boss, joint, k} (k = boss voxels per 0.5 stud: 1.5 - 2 gives 0.33 - 0.25 stud)",
+ "budgets": {
+  "boss": {
+   "tris": 15000,
+   "parts": 40
+  },
+  "bossLow": {
+   "tris": 6000,
+   "parts": 40
+  },
+  "skydragon": {
+   "tris": 12000
+  },
+  "token": {
+   "tris": 2000,
+   "parts": 8
+  }
+ },
+ "keys": [],
+ "sets": [],
+ "previews": []
+}

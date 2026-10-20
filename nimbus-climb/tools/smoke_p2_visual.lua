@@ -1,7 +1,7 @@
 -- smoke_p2_visual.lua: the Phase 2 visual pass (ARCHITECTURE_V3.md ART DIRECTION, Readability + World text rules,
 -- "Phase 2 build contract"). Loaded by tools/smoke.py in BOTH worlds; ARGS.context picks the half:
---   p2visual_art    (server) the Phase 5 art pass (6.4) on every station level (HomeBuilder.BuildStationModel): only
---                   WorldStyle materials and no big SmoothPlastic, muted large faces, three or more real materials per
+--   p2visual_art    (server) the Phase 6 A1 look (P4) on every station level (HomeBuilder.BuildStationModel): only
+--                   SmoothPlastic / Neon / Glass / ForceField, blocks only, bright big faces, four or more colours per
 --                   station, pure decor in NC_Detail models without prompts; the Berry Farm's berry rows (red, blue,
 --                   gold, the glowing Starberry tree with its warm light at 40) by a planked barn; the Fusion Machine's
 --                   contract parts (2 Pods, Chamber, OutputDome, Swirl, FusionPrompt on PromptPoint) with neon inlays,
@@ -108,7 +108,6 @@ local function serverScenarios()
 	S.p2visual_art = guarded("p2visual_art", function()
 		local HB = requireAt("server/Services/HomeBuilder")
 		local TC = requireAt("shared/TycoonCatalog")
-		local WS = requireAt("shared/WorldStyle")
 		if not (type(HB) == "table" and type(HB.BuildStationModel) == "function" and type(TC) == "table") then
 			T.warn("visual art: HomeBuilder.BuildStationModel or TycoonCatalog missing, skipped")
 			return
@@ -128,10 +127,12 @@ local function serverScenarios()
 			return false
 		end
 
-		-- 6.4 on every station at every level: real materials, muted big faces, plinths under the big structures
-		local mats = T.tally("visual art (6.4): every station level uses only WorldStyle materials, no SmoothPlastic part over 2 studs (voxel clouds aside)")
-		local muted = T.tally("visual art (6.4): every large face is muted (saturation <= 0.45, opaque value 0.35..0.9; thin neon inlays and small pieces aside)")
-		local varied = T.tally("visual art (6.4): every station mixes at least three real materials (no single-material toy blocks)")
+		-- Phase 6 A1 (the P4 look) on every station at every level: SmoothPlastic (Neon / Glass / ForceField for glow,
+		-- glass and holograms), blocky voxel shapes, bright big faces, colourful (several colours per station)
+		local P4MAT = { [Enum.Material.SmoothPlastic] = true, [Enum.Material.Neon] = true, [Enum.Material.Glass] = true, [Enum.Material.ForceField] = true }
+		local mats = T.tally("visual art (P6 A1): every station level uses only SmoothPlastic / Neon / Glass / ForceField (the P4 look, voxel clouds aside)")
+		local muted = T.tally("visual art (P6 A1): blocky voxel shapes only (no Ball / Cylinder) and big opaque faces stay bright (value >= 0.3)")
+		local varied = T.tally("visual art (P6 A1): every station is colourful (at least four distinct colours)")
 		local detail = T.tally("visual art (6.4): pure decor sits in NC_Detail models (the farm's crates, the fountain's lanterns, the fence's flowers) that hold no prompts")
 		for _, def in ipairs(TC.Stations) do
 			if def.Kind ~= "Prestige" then
@@ -144,18 +145,22 @@ local function serverScenarios()
 							local dims = { s.X, s.Y, s.Z }
 							table.sort(dims)
 							if p.Transparency < 0.99 and not exempt(p, m) then
-								mats:case((WS == nil or WS.IsWorldMaterial(p.Material)) and not (p.Material == Enum.Material.SmoothPlastic and dims[3] > 2), def.Id .. " " .. level .. " " .. p.Name .. " " .. tostring(p.Material))
-								if dims[2] * dims[3] > 16 and dims[1] * dims[2] * dims[3] > 8 and p.Material ~= Enum.Material.ForceField and not (p.Material == Enum.Material.Neon and dims[1] <= 0.5) then
-									local _, sat, val = p.Color:ToHSV()
-									muted:case(sat <= 0.451 and (p.Material == Enum.Material.Neon or p.Transparency >= 0.3 or (val >= 0.35 and val <= 0.9)), def.Id .. " " .. level .. " " .. p.Name .. string.format(" sat %.2f val %.2f", sat, val))
+								mats:case(P4MAT[p.Material] == true, def.Id .. " " .. level .. " " .. p.Name .. " " .. tostring(p.Material))
+								local blocky = not p:IsA("Part") or p.Shape == Enum.PartType.Block
+								if dims[2] * dims[3] > 16 and p.Transparency < 0.3 then
+									local _, _, val = p.Color:ToHSV()
+									muted:case(blocky and val >= 0.3, def.Id .. " " .. level .. " " .. p.Name .. string.format(" val %.2f", val))
+								else
+									muted:case(blocky, def.Id .. " " .. level .. " " .. p.Name .. " " .. tostring(p:IsA("Part") and p.Shape))
 								end
-								if not seen[p.Material] then
-									seen[p.Material] = true
+								local ck = string.format("%d,%d,%d", math.floor(p.Color.R * 255 / 16), math.floor(p.Color.G * 255 / 16), math.floor(p.Color.B * 255 / 16))
+								if not seen[ck] then
+									seen[ck] = true
 									kinds = kinds + 1
 								end
 							end
 						end
-						varied:case(kinds >= 3, def.Id .. " " .. level .. ": " .. kinds .. " materials")
+						varied:case(kinds >= 4, def.Id .. " " .. level .. ": " .. kinds .. " colours")
 						for _, d in ipairs(m:GetDescendants()) do
 							if d:IsA("Model") and CS:HasTag(d, "NC_Detail") then
 								detail:case(find(d, "GardenSpotPrompt") == nil and find(d, "FusionPrompt") == nil and d:FindFirstChildWhichIsA("ProximityPrompt", true) == nil, def.Id .. " " .. level .. " " .. d.Name)
@@ -210,7 +215,7 @@ local function serverScenarios()
 			local stars = count(m, "Starberry")
 			local glow = m and find(m, "Starberry") and m:FindFirstChildWhichIsA("PointLight", true)
 			local okTree = (case[1] >= 38) == (stars > 0) and ((case[1] < 40) or (glow ~= nil and glow.Brightness <= 1.5 and glow.Range <= 16))
-			farm:case((red > 0) == case[2] and (blue > 0) == case[3] and (gold > 0) == case[4] and barn ~= nil and barn.Material == Enum.Material.WoodPlanks and okTree,
+			farm:case((red > 0) == case[2] and (blue > 0) == case[3] and (gold > 0) == case[4] and barn ~= nil and barn.Color.R > barn.Color.G * 1.5 and okTree,
 				"level " .. case[1] .. ": red " .. red .. " blue " .. blue .. " gold " .. gold .. " stars " .. stars)
 			if m then
 				m:Destroy()
@@ -234,14 +239,14 @@ local function serverScenarios()
 		end
 		fusion:report()
 
-		-- every closed garden bed carries a seedling; open beds a cushion under a little clay roof
-		local garden = T.tally("visual art: every closed Pet Garden bed carries a seedling (Stem + Sprout), every open bed a cushion under a clay roof (open counts 3 / 7 / 12)")
+		-- every closed garden bed carries a seedling; open beds a cushion under a little roof (P6 A1: a flat voxel roof)
+		local garden = T.tally("visual art: every closed Pet Garden bed carries a seedling (Stem + Sprout), every open bed a cushion under a little roof (open counts 3 / 7 / 12)")
 		for _, level in ipairs({ 1, 5, 8 }) do
 			for _, open in ipairs({ 3, 7, 12 }) do
 				local m = HB.BuildStationModel("Garden", level, nil, open)
 				local roofs = 0
 				for _, p in ipairs(named(m, "BedRoof")) do
-					if p.Material == Enum.Material.ClayRoofTiles then
+					if p.Material == Enum.Material.SmoothPlastic then
 						roofs = roofs + 1
 					end
 				end
@@ -295,27 +300,36 @@ local function serverScenarios()
 			machine:Destroy()
 		end
 
-		-- the houses: real roofs and walls; the Sky Castle has its rose window and tiled spires
-		local houses = T.tally("visual art: every House tier has ClayRoofTiles roofs, Brick / WoodPlanks / Marble walls on a Slate plinth and warm-glass windows")
+		-- the houses (P6 A1, the P4 look): stepped voxel roofs in a bright roof colour, walls, a plinth and glass
+		-- windows; the Sky Castle has its rose window and blue stepped spires
+		local houses = T.tally("visual art: every House tier has stepped colourful roofs (saturation >= 0.3), walls on a plinth and glass windows")
+		local WALLS = { Walls = true, Upper = true, Wing = true, Keep = true, CornerTower = true, Bay = true }
 		for level = 1, 4 do
 			local m = HB.BuildStationModel("House", level)
 			local roof, wall, plinth, windows = 0, 0, 0, 0
 			for _, p in ipairs(parts(m)) do
-				if p.Material == Enum.Material.ClayRoofTiles then
+				local _, sat = p.Color:ToHSV()
+				if (p.Name == "Roof" or p.Name == "WingRoof" or p.Name == "BayRoof" or p.Name == "Spire") and sat >= 0.3 then
 					roof = roof + 1
-				elseif p.Material == Enum.Material.Brick or p.Material == Enum.Material.WoodPlanks or p.Material == Enum.Material.Marble then
+				elseif WALLS[p.Name] then
 					wall = wall + 1
 				end
-				if p.Name == "Plinth" and p.Material == Enum.Material.Slate then
+				if p.Name == "Plinth" then
 					plinth = plinth + 1
 				end
 				if p.Name == "Window" and p.Material == Enum.Material.Glass then
 					windows = windows + 1
 				end
 			end
-			houses:case(roof >= 2 and wall >= 3 and plinth >= 1 and windows >= 3, "tier " .. level .. ": roof " .. roof .. ", walls " .. wall .. ", windows " .. windows)
+			houses:case(roof >= 2 and wall >= 1 and plinth >= 1 and windows >= 3, "tier " .. level .. ": roof " .. roof .. ", walls " .. wall .. ", windows " .. windows)
 			if level == 4 then
-				T.check(find(m, "RoseWindow") ~= nil and count(m, "Spire") >= 20 and #parts(m) <= 150, "visual art: the Sky Castle has a rose window over its gate and tiled spires on its towers (within its 150 parts)", #parts(m) .. " parts")
+				local blue = 0
+				for _, p in ipairs(named(m, "Spire")) do
+					if p.Color.B > p.Color.R * 1.5 then
+						blue = blue + 1
+					end
+				end
+				T.check(find(m, "RoseWindow") ~= nil and blue >= 20 and #parts(m) <= 150, "visual art: the Sky Castle has a rose window over its gate and blue stepped spires on its towers (within its 150 parts)", #parts(m) .. " parts, " .. blue .. " blue spire steps")
 			end
 			if m then
 				m:Destroy()

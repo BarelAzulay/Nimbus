@@ -459,7 +459,7 @@ local function serverScenarios()
 		local bowl = gm and find(gm, "FoodBowl", "BasePart")
 		local bowlGui = bowl and find(bowl, "BowlSign", "BillboardGui")
 		local bowlText = bowlGui and plainText(bowlGui) or ""
-		T.check(bowl ~= nil and abs(bowl.Position.X - gs.Bowl.Center.X) < 0.05 and abs(bowl.Position.Z - gs.Bowl.Center.Z) < 0.05 and abs(bowl.Size.Y - 2 * gs.Bowl.Radius) < 0.6
+		T.check(bowl ~= nil and abs(bowl.Position.X - gs.Bowl.Center.X) < 0.05 and abs(bowl.Position.Z - gs.Bowl.Center.Z) < 0.05 and abs(math.max(bowl.Size.X, bowl.Size.Z) - 2 * gs.Bowl.Radius) < 0.6
 			and bowlGui ~= nil and bowlGui.MaxDistance == 40 and bowlText:find("Food Bowl", 1, true) and bowlText:find("Pets eat here, then poop Cloud Cash!", 1, true),
 			"station art: the Food Bowl stands at Slot.Bowl (radius " .. gs.Bowl.Radius .. ") with its sign 'Food Bowl' / 'Pets eat here, then poop Cloud Cash!' (MaxDistance 40)", bowlText)
 		local g3a, g3b, g7 = HB.BuildStationModel("Garden", 3, nil, 5), HB.BuildStationModel("Garden", 3, nil, 5), HB.BuildStationModel("Garden", 3, nil, 7)
@@ -1028,12 +1028,12 @@ local function serverScenarios()
 		end
 		apart:report()
 
-		-- the 6.4 art rules on the whole built plot (stations, pads, paths): world materials only, no big SmoothPlastic,
-		-- muted large faces (saturation <= 0.45, value 0.35..0.9; thin neon / ForceField / pieces <= 8 studs^3 aside),
-		-- parts < 4 studs cast no shadow, warm lights within Brightness 1.5 / Range 16 and no shadows; pure decor sits
+		-- the Phase 6 A1 look (back to P4) on the whole built plot (stations, pads, paths): SmoothPlastic (Neon / Glass /
+		-- ForceField for glow, glass and holograms) and blocky voxel shapes only (no Ball / Cylinder parts); kept from
+		-- 6.4: parts < 4 studs cast no shadow, warm lights within Brightness 1.5 / Range 16 and no shadows; pure decor sits
 		-- in NC_Detail models that block nothing and hold no prompts
 		do
-			local WS = requireAt("shared/WorldStyle")
+			local P4MAT = { [Enum.Material.SmoothPlastic] = true, [Enum.Material.Neon] = true, [Enum.Material.Glass] = true, [Enum.Material.ForceField] = true }
 			local CS = game:GetService("CollectionService")
 			local function exempt(p)
 				local cur = p
@@ -1045,8 +1045,8 @@ local function serverScenarios()
 				end
 				return false
 			end
-			local tMat = T.tally("home plot art (6.4): every visible part uses a WorldStyle material and no SmoothPlastic part has a side > 2 studs")
-			local tSat = T.tally("home plot art (6.4): large faces are muted (saturation <= 0.45, opaque value 0.35..0.9)")
+			local tMat = T.tally("home plot art (P6 A1): every visible part is SmoothPlastic, Neon, Glass or ForceField (the P4 look, no realistic textures)")
+			local tSat = T.tally("home plot art (P6 A1): blocky voxel shapes only (no Ball / Cylinder parts)")
 			local tShadow = T.tally("home plot art (6.4): parts under 4 studs cast no shadow")
 			local tLight = T.tally("home plot art (6.4): lights are warm lanterns (Brightness <= 1.5, Range <= 16, no shadows)")
 			local tDetail = T.tally("home plot art (6.4): NC_Detail decor blocks nothing and holds no prompts")
@@ -1055,13 +1055,8 @@ local function serverScenarios()
 				local dims = { sz.X, sz.Y, sz.Z }
 				table.sort(dims)
 				if p.Transparency < 0.99 and not exempt(p) and not p.Name:find("^Ghost") then
-					local okMat = (WS == nil or WS.IsWorldMaterial(p.Material)) and not (p.Material == Enum.Material.SmoothPlastic and dims[3] > 2)
-					tMat:case(okMat, p:GetFullName() .. " " .. tostring(p.Material) .. " " .. fmt(dims[3], 1))
-					if dims[2] * dims[3] > 16 and p.Material ~= Enum.Material.ForceField and dims[1] * dims[2] * dims[3] > 8 and not (p.Material == Enum.Material.Neon and dims[1] <= 0.5) then
-						local _, sat, val = p.Color:ToHSV()
-						local okVal = p.Material == Enum.Material.Neon or p.Transparency >= 0.3 or (val >= 0.35 and val <= 0.9)
-						tSat:case(sat <= 0.451 and okVal, p:GetFullName() .. string.format(" sat %.2f val %.2f", sat, val))
-					end
+					tMat:case(P4MAT[p.Material] == true, p:GetFullName() .. " " .. tostring(p.Material) .. " " .. fmt(dims[3], 1))
+					tSat:case(not p:IsA("Part") or p.Shape == Enum.PartType.Block, p:GetFullName() .. " " .. tostring(p:IsA("Part") and p.Shape))
 				end
 				if dims[3] < 4 then
 					tShadow:case(p.CastShadow == false, p:GetFullName())

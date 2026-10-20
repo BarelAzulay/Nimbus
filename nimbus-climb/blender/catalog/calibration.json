@@ -1,0 +1,36 @@
+{
+ "class": "calibration",
+ "owner": "W1 kit",
+ "doc": "The first upload (recipe 4.7 step 1): an asymmetric test model, inspected in Studio before any pet.",
+ "budgets": {
+  "cal": {
+   "tris": 4000,
+   "parts": 5
+  },
+  "reference": {
+   "tris": 9000,
+   "parts": 40
+  }
+ },
+ "keys": [
+  {
+   "key": "cal_axes",
+   "type": "cal",
+   "budget": "cal",
+   "description": "Nimbus Climb calibration: axes, scale, vertex colours, names"
+  },
+  {
+   "key": "prop_portal_reference",
+   "type": "prop",
+   "prop": "p4_portal",
+   "args": {
+    "K": 2.0
+   },
+   "budget": "reference",
+   "description": "Kit test: the prototype's P4 portal through the props API (not uploaded; wave 2 builds the real gates)",
+   "upload": false
+  }
+ ],
+ "sets": [],
+ "previews": []
+}
