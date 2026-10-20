@@ -67,8 +67,9 @@ W5 review script ready: scratchpad/p5review.js (launch after the W4 gate fixer; 
 # Phase 6: Blender models only (started 2026-10-20)
 - Player: "dont use any roblox models, use only blender models"; scope "Everything now"; upload via Open Cloud API key; work from the cloud session.
 - Key: player added it to the environment settings, but THIS session started before -> env ROBLOX_API_KEY / ROBLOX_CREATOR_ID not visible (403 no auth). Build models now; upload in a NEW session (it loads the env). Never paste/print the key.
+- STYLE: player dislikes Phase 5 realistic look; wants pre-Phase-5 (7aa0df2) voxel style, finer voxels, more detail; portals as before P5. See ARCHITECTURE_V3 "ART RULE".
 - Check with the player before the FIRST real upload (uploads publish to their account).
 
 | Step | What | State |
 |---|---|---|
-| D | design workflow wf_f91389a6-695 (inv-creatures, inv-lobby, inv-home-arena-dungeon, pipeline proto, research, judge) -> scratchpad/p6design/ | RUNNING |
+| D | design workflow wf_f91389a6-695 (inv-creatures, inv-lobby, inv-home-arena-dungeon, pipeline proto (fine-voxel), research, style-ref Phase4-vs-Phase5 renders, judge) -> scratchpad/p6design/ | RUNNING |

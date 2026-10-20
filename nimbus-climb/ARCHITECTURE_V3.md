@@ -32,6 +32,10 @@ loads `SkyDragonController`, `IndexController`, `NpcController`, `TutorialContro
   buildings, portals) is made in **Blender** (scripts in `blender/`, exported as FBX) and used in game as a MeshPart.
 * No Toolbox / Creator Store models. No new Part-built (voxel / block) models.
 * Mesh asset ids live in Config; the uploaded FBX source stays in `blender/`.
+* **Style (player, 2026-10-20):** NOT the more realistic Phase 5 look. Go back to the pre-Phase-5 style (Phase 4 release,
+  commit 7aa0df2: bright, cute, colourful voxel / pixel look of "ART DIRECTION") but with **finer voxels, more detail, more
+  aesthetic**. Blender models are detailed fine-voxel models (greedy-merged outer faces, 2-3 shades per colour region).
+* **Portals / gates:** look like they did before Phase 5 (7aa0df2), just more detailed.
 
 ## ART DIRECTION (decided by the player after the plan): DETAILED voxel style everywhere
 **This section overrides sections 6, 7 and 8 wherever they mention smooth terrain, round parts or Ball shapes.**
