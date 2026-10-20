@@ -27,6 +27,12 @@ loads `SkyDragonController`, `IndexController`, `NpcController`, `TutorialContro
     a special-attack button; currencies = **Cash** (tycoon), **Cloud Tokens** (obby + battles, roulettes/items),
     **Gems** (Robux; buy roulettes cheaply in gems, and a gems-only **Secret** roulette). All art is built in code.
 
+## ART RULE (player, 2026-10-20; overrides ART DIRECTION below and "no asset ids"): Blender models only
+* From now on **no Roblox-built models**: every new or reworked model (pets, enemies, bosses, NPCs, props, decor,
+  buildings, portals) is made in **Blender** (scripts in `blender/`, exported as FBX) and used in game as a MeshPart.
+* No Toolbox / Creator Store models. No new Part-built (voxel / block) models.
+* Mesh asset ids live in Config; the uploaded FBX source stays in `blender/`.
+
 ## ART DIRECTION (decided by the player after the plan): DETAILED voxel style everywhere
 **This section overrides sections 6, 7 and 8 wherever they mention smooth terrain, round parts or Ball shapes.**
 The player chose a voxel ("pixel") look for the whole game, and then clarified with a reference image: **NOT chunky /

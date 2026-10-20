@@ -4,6 +4,7 @@ Updated: 2026-10-18 (after wave 2). Branch `v3-phase4`. Plan: `ARCHITECTURE_V3.m
 (incl. the "Player update" block: every pet levels to 100, evolutions at 20 / 50).
 
 ## Player decisions (all settled)
+- **2026-10-20 ART RULE: Blender models only** (no Roblox Part-built / Toolbox models). See ARCHITECTURE_V3 "ART RULE".
 - Evolve button; 2nd evolution only Epic+; level cap 100 for all pets (XP curve keeps rising).
 - Presses become food plants, Collector = Coin Magnet, Kitchen = Food Machine, Gym = Training Place.
 - Pet bars above each pet; Champion Ring needs a claimed home + 1 pet.
