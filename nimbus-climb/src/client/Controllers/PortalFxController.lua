@@ -77,6 +77,10 @@ local St = {
 	Quality = "High",
 	Writes = 0, -- property writes so far (tests / profiling)
 	Quality0 = nil, -- GraphicsQuality module (lazy)
+	Vortex0 = nil, -- client/PortalVortex (lazy)
+	TextureIds = {}, -- shared/TextureIds: empty = the fallback vortex (effects only)
+	Folder = nil, -- workspace.PortalFxLocal: the client-only vortex planes
+	Built = 0, -- vortices built so far (tests: built once per gate)
 }
 PortalFx._St = St
 
@@ -168,20 +172,13 @@ end
 -- one gate
 ----------------------------------------------------------------------
 
-local function restore(rec)
+-- the Neon ring, gems, light and sparkles back to their built values (the swirl and the vortex are separate)
+local function restoreNeon(rec)
 	for _, e in ipairs(rec.Ring) do
 		if e.Part.Parent then
 			e.Part.Color = e.Base
 		end
 		e.Last = -1
-	end
-	for _, e in ipairs(rec.Swirl) do
-		if e.Part.Parent then
-			e.Part.Color = e.Base
-			e.Part.Transparency = e.BaseT
-		end
-		e.Last = -1
-		e.LastT = -1
 	end
 	for _, e in ipairs(rec.Gems) do
 		if e.Part.Parent then
@@ -199,7 +196,53 @@ local function restore(rec)
 		end)
 	end
 	rec.Rising = false
+end
+
+local function restoreSwirl(rec)
+	for _, e in ipairs(rec.Swirl) do
+		if e.Part.Parent then
+			e.Part.Color = e.Base
+			e.Part.Transparency = e.BaseT
+		end
+		e.Last = -1
+		e.LastT = -1
+	end
+	rec.SwirlLook = nil
+end
+
+local function vortexModule()
+	if St.Vortex0 == nil then
+		St.Vortex0 = false
+		local client = script.Parent and script.Parent.Parent
+		local module = client and client:FindFirstChild("PortalVortex")
+		if module then
+			local ok, mod = pcall(require, module)
+			if ok and type(mod) == "table" and type(mod.Build) == "function" then
+				St.Vortex0 = mod
+			end
+		end
+	end
+	return St.Vortex0 or nil
+end
+
+-- everything back to the server's build: the Neon parts, the swirl, and the vortex hidden
+local function restore(rec)
+	restoreNeon(rec)
+	restoreSwirl(rec)
+	local V = vortexModule()
+	if V and rec.Vortex then
+		V.Show(rec.Vortex, false)
+	end
 	rec.Shown = false
+	rec.StaticDone = false
+end
+
+local function dropVortex(rec)
+	local V = vortexModule()
+	if V and rec.Vortex then
+		V.Destroy(rec.Vortex)
+	end
+	rec.Vortex = nil
 end
 
 -- (re)collects the animated parts of a gate; the gate is restored first so every base value is the built one
@@ -221,6 +264,8 @@ local function scan(rec)
 		origin = origin * CFrame.new(0, 11.5, 0)
 	end
 	rec.Center = origin.Position
+	rec.Origin = origin
+	dropVortex(rec)
 	for _, d in ipairs(model:GetDescendants()) do
 		if d:IsA("BasePart") and d.Material == Enum.Material.Neon and (d.Name == "Glow" or d.Name == "Swirl" or GEM_NAMES[d.Name]) and not skipPart(d, model) then
 			local lp = origin:PointToObjectSpace(d.Position)
@@ -271,6 +316,7 @@ local function forget(model)
 		return
 	end
 	restore(rec)
+	dropVortex(rec)
 	for _, c in ipairs(rec.Conns) do
 		c:Disconnect()
 	end
@@ -366,13 +412,88 @@ local function setColor(e, level, fade)
 	end
 end
 
+local NONE = {}
+
+-- the old swirl's look while the vortex shows (written once)
+local function applySwirlLook(rec, V)
+	if rec.SwirlLook then
+		return
+	end
+	local look = V.SwirlLook(rec.Vortex)
+	rec.SwirlLook = look
+	for _, e in ipairs(rec.Swirl) do
+		if e.Part.Parent then
+			e.Part.Color = look.Color
+			e.Part.Transparency = look.Transparency
+			St.Writes = St.Writes + 2
+		end
+		e.Last = -1
+		e.LastT = -1
+	end
+end
+
+-- the gate colour: the average of its glow ring (the arch glows violet under gold)
+local function gateColor(rec)
+	local r, g, b, n = 0, 0, 0, 0
+	for _, e in ipairs(rec.Ring) do
+		r, g, b, n = r + e.Base.R, g + e.Base.G, b + e.Base.B, n + 1
+	end
+	if n == 0 then
+		for _, e in ipairs(rec.Swirl) do
+			r, g, b, n = r + e.Base.R, g + e.Base.G, b + e.Base.B, n + 1
+		end
+	end
+	if n == 0 then
+		return Color3.fromRGB(150, 120, 255)
+	end
+	return Color3.new(r / n, g / n, b / n)
+end
+
+local function localFolder()
+	local f = St.Folder
+	if f and f.Parent then
+		return f
+	end
+	f = Instance.new("Folder")
+	f.Name = "PortalFxLocal" -- client-only: created here, never replicated
+	f.Parent = Workspace
+	St.Folder = f
+	return f
+end
+
+-- the vortex of a gate, built once (lazily, when it first animates) and shown
+local function ensureVortex(rec)
+	local V = vortexModule()
+	if not V or #rec.Swirl == 0 then
+		return nil
+	end
+	if not rec.Vortex then
+		local ok, v = pcall(V.Build, rec, localFolder(), St.TextureIds, gateColor(rec), math.floor(rec.Phase * 100000) + 7)
+		if not ok then
+			warn("[PortalFxController] vortex for " .. rec.Id .. ": " .. tostring(v))
+			rec.Swirl = rec.Swirl -- keep the plain animation
+			return nil
+		end
+		rec.Vortex = v
+		St.Built = St.Built + 1
+	end
+	V.SetStatic(rec.Vortex, St.Quality == "Low")
+	V.Show(rec.Vortex, true)
+	return rec.Vortex
+end
+
 local function animate(rec, t)
 	local fade = smooth01(rec.Fade)
 	local phase = rec.Phase
 	for _, e in ipairs(rec.Ring) do
 		setColor(e, PortalFx.RingLevel(t, e.Angle, phase), fade)
 	end
-	for _, e in ipairs(rec.Swirl) do
+	local V = rec.Vortex and vortexModule()
+	if V and rec.Vortex.Shown then
+		applySwirlLook(rec, V)
+		St.Writes = St.Writes + V.Animate(rec.Vortex, t, fade, PortalFx.Breath(t, phase), false)
+	end
+	for _, e in ipairs((V and rec.Vortex.Shown) and NONE or rec.Swirl) do
 		local level = PortalFx.SwirlLevel(t, e.Dist, phase)
 		setColor(e, level, fade)
 		-- more solid at the swell, clearer between (quantised to 0.01 so a write happens only on a change)
@@ -436,7 +557,7 @@ local function refresh()
 			end
 			rec.Dist = d
 			local limit = rec.On and K.RANGE_OUT or K.RANGE
-			if St.Quality ~= "Low" and d <= limit and rec.Parts > 0 then
+			if d <= limit and rec.Parts > 0 then
 				wanted[#wanted + 1] = rec
 			end
 		end
@@ -454,6 +575,14 @@ local function refresh()
 				rec.On = true
 				rec.Fade = 0
 			end
+			local low = St.Quality == "Low"
+			if low ~= rec.Low then
+				rec.Low = low
+				rec.StaticDone = false
+				restoreNeon(rec) -- Low: the ring, gems and light hold their built values
+				rec.SwirlLook = nil
+			end
+			ensureVortex(rec)
 		elseif rec.On then
 			rec.On = false
 			rec.Fade = 0
@@ -486,8 +615,20 @@ function PortalFx.Step(dt)
 	St.Acc = 0
 	for _, rec in ipairs(St.Active) do
 		if rec.On and rec.Model.Parent then
-			rec.Fade = math.min(1, rec.Fade + step / K.FADE_IN)
-			animate(rec, St.Time)
+			if rec.Low then
+				-- Low graphics: a still vortex (posed once), no other motion
+				if not rec.StaticDone then
+					rec.StaticDone = true
+					local V = rec.Vortex and vortexModule()
+					if V then
+						applySwirlLook(rec, V)
+						St.Writes = St.Writes + V.Animate(rec.Vortex, 0, 1, 0.5, true)
+					end
+				end
+			else
+				rec.Fade = math.min(1, rec.Fade + step / K.FADE_IN)
+				animate(rec, St.Time)
+			end
 		end
 	end
 end
@@ -497,7 +638,15 @@ function PortalFx.Stats()
 	for _, rec in pairs(St.Gates) do
 		parts = parts + (rec.Parts or 0)
 	end
-	return { Gates = St.Count, Active = #St.Active, Parts = parts, Writes = St.Writes, Time = St.Time, Quality = St.Quality }
+	local shown, mode = 0, nil
+	for _, rec in pairs(St.Gates) do
+		if rec.Vortex and rec.Vortex.Shown then
+			shown = shown + 1
+			mode = rec.Vortex.Mode
+		end
+	end
+	return { Gates = St.Count, Active = #St.Active, Parts = parts, Writes = St.Writes, Time = St.Time, Quality = St.Quality,
+		Vortices = shown, VortexMode = mode, Built = St.Built }
 end
 
 function PortalFx.Gate(model)
@@ -518,6 +667,20 @@ function PortalFx.Stop()
 	end
 	St.Active = {}
 	St.Started = false
+	if St.Folder then
+		St.Folder:Destroy()
+		St.Folder = nil
+	end
+end
+
+-- the vortex texture ids (shared/TextureIds; tests pass fake ones): every vortex is rebuilt in the new mode
+function PortalFx.SetTextureIds(ids)
+	St.TextureIds = type(ids) == "table" and ids or {}
+	for _, rec in pairs(St.Gates) do
+		restoreSwirl(rec)
+		dropVortex(rec)
+	end
+	St.RefreshAcc = K.REFRESH
 end
 
 function PortalFx.Init()
@@ -525,6 +688,12 @@ function PortalFx.Init()
 		return
 	end
 	St.Started = true
+	local shared = game:GetService("ReplicatedStorage"):FindFirstChild("Shared")
+	local idsModule = shared and shared:FindFirstChild("TextureIds")
+	if idsModule then
+		local ok, ids = pcall(require, idsModule)
+		St.TextureIds = (ok and type(ids) == "table") and ids or {}
+	end
 	St.Conns[#St.Conns + 1] = Workspace.DescendantAdded:Connect(function(inst)
 		if inst:IsA("Model") and inst:GetAttribute("GateId") ~= nil then
 			track(inst)

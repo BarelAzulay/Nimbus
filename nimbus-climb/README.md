@@ -299,8 +299,8 @@ ends it (it asks first). Your step is saved, so the tutorial continues where you
 ## The village
 
 - **The plaza** in the middle (bigger since phase 5): you spawn on the round court and look straight down the avenue
-  at the **Gate Court**, five stone gates side by side. Press **E** at a gate (there is no Home gate: the **Home**
-  tile's **Go home** takes you home):
+  at the **Gate Court**, five stone gates side by side, each with a glowing magic vortex swirling inside its hoop.
+  Press **E** at a gate (there is no Home gate: the **Home** tile's **Go home** takes you home):
 
   | Gate | What it does |
   |---|---|
@@ -1381,13 +1381,15 @@ src/shared   Config (every number)  TycoonCatalog (every tycoon number)  Theme  
              unlocks)  UpdateNotes (menu notes + tips)  BattleCatalog (every battle and Dungeon number)  BattleSim (the
              battle simulation)  BossBuilder  WorldStyle (gates, plinths, the art rules)  HomeRoam (the roaming plan
              of garden pets, shared by server and clients)  TokenLook (the coin look of tokens and Cloud Cash)
-             MeshLibrary (loads the Blender models)  MeshIds (generated: model asset ids)  MeshManifests (generated:
+             MeshLibrary (loads the Blender models)  MeshIds (generated: model asset ids)  TextureIds (generated:
+             the gate vortex image ids)  MeshManifests (generated:
              one module per Blender model)  PetFx (the auras and effects of evolved pets)
 src/server   Main.server.lua; Services: Lighting, LobbyBuilder, StormAltar, Player (the spawn after PLAY), Data,
              Damage, Token, Hazard, Course (layout + builder), Match, Portal, Gate (the Altar gate's prompt), Spot, Pet,
              Item, Index, Tutorial, Npc, Dev, Tycoon, HomeBuilder, PetCare, Fusion, Gem, ArenaBuilder, Battle, Event,
              Dungeon (parties, runs, loot), DungeonBuilder (the Dungeon gate and rooms)
 src/client   Main.client.lua; State; UiGate (nothing shows before PLAY); ClientSettings; SoundFx; GraphicsQuality;
+             PortalVortex (the swirling vortex inside every gate hoop);
              LightingStack (lighting looks, e.g. the Dungeon); UI/CloudUI; UI/NeonKit (the neon cards, tiles and side
              panels); UI/PetCard (the cards above pets); Controllers: Movement, MainMenu (main menu + settings), Hud,
              DamageFx, Notify, Menu, Hotbar, Pet, TokenFx, Index, Tutorial, Npc, SkyDragon, Showcase, Dev, DevPetShow

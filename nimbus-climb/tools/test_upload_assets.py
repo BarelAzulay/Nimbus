@@ -332,6 +332,30 @@ def main():
     check("ROBLOX_CREATOR_TYPE=group sends a groupId creator", code == 0 and '"groupId": "123456"' in writes()[-1][3], writes()[-1])
     os.environ.pop("ROBLOX_CREATOR_TYPE")
 
+    # 12) --textures (the Image class of the gate vortex): a dry run plans Decal / image/png uploads, writes nothing
+    troot = os.path.join(tmp, "tex")
+    os.makedirs(os.path.join(troot, "blender", "textures", "vortex"))
+    os.makedirs(os.path.join(troot, "src", "shared"))
+    tindex = {"comment": "test", "keys": {}}
+    for tk in ("vortex_arms", "vortex_rim"):
+        with open(os.path.join(troot, "blender", "textures", "vortex", tk + ".png"), "wb") as f:
+            f.write(b"\x89PNG\r\n\x1a\n" + tk.encode())
+        tindex["keys"][tk] = {"png": "blender/textures/vortex/%s.png" % tk, "displayName": "NC " + tk, "contentHash": "h-" + tk, "structureHash": "image"}
+    with open(os.path.join(troot, "blender", "textures", "textures.json"), "w") as f:
+        json.dump(tindex, f)
+    n = len(STATE["log"])
+    code, out = run(troot, base, "--textures")
+    check("--textures dry run: exit 0, two Decal / image/png creates", code == 0 and "DRY RUN" in out and out.count('"assetType": "Decal"') == 2
+          and "image/png" in out, out)
+    check("--textures dry run sends and writes nothing", len(STATE["log"]) == n and not os.path.exists(os.path.join(troot, "src", "shared", "TextureIds.lua"))
+          and not os.path.exists(os.path.join(troot, "blender", "textures", "upload_state.json")), STATE["log"][n:])
+    code, out = run(troot, base, "--textures", "--only", "pet_dog")
+    check("--textures --only checks the texture index", code == 2 and "textures.json" in out, out)
+    U.CLASS = U.CLASSES["image"]
+    lua = U.mesh_ids_lua({"assets": {"vortex_arms": {"assetId": 77}, "vortex_rim": {"assetId": 78, "moderationState": "Rejected"}}})
+    U.CLASS = U.CLASSES["mesh"]
+    check("TextureIds.lua: numbers only, rejected left out", "vortex_arms = 77," in lua and "vortex_rim" not in lua and "TextureIds" not in lua.split("return")[1], lua)
+
     # 11) the throttle (unit, fake clock): the 4th call in a minute waits
     clock = [0.0]
     slept = []

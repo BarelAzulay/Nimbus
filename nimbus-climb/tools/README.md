@@ -288,3 +288,13 @@ The Phase 4 files (still run, updated for Phase 5 where 12.2 says so):
 | `smoke_p4_pets_client.lua` | the pet cards (PetCard) and the followers |
 | `smoke_p4_ui.lua` | the tutorial chapters 2 and 4, the NPC tips and the ring window (ArenaController) |
 | `smoke_p4_flow.lua` | end-to-end runs of several players through the home: garden, coins, Food Machine, EVOLVE, training, the ring, the portal, prestige, rejoin |
+
+## Gate vortex textures (Phase 6 W2b)
+
+`blender/textures/build_vortex.py` (numpy + Pillow, seeded, about a second) writes the white + alpha PNG layers of the
+gates' swirling vortex to `blender/textures/vortex/` (disc, core, arms, fine, streaks, rim, crackle 1-4) and the index
+`blender/textures/textures.json`; `python3 blender/textures/build_vortex.py --sheet x.png` adds a contact sheet. They
+are uploaded later with `python3 tools/upload_assets.py --textures` (dry run by default; `--upload` only with the
+player's OK), which writes `src/shared/TextureIds.lua` (numbers only, check.mjs rule `texture-ids`). Until then
+`client/PortalVortex.lua` draws the effects-only fallback (Beam spiral arms, inward particle streaks, rim crackles);
+with every id present it shows the textured SurfaceGui layers. `tools/smoke_p6_portalfx.lua` covers both modes.

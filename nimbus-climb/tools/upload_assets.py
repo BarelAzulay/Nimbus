@@ -8,6 +8,14 @@ only prints what it would send and writes nothing.
     python3 tools/upload_assets.py --only cal_axes          # dry run of one key (repeatable / comma separated)
     python3 tools/upload_assets.py --upload --only cal_axes # REAL upload (needs the player's OK: see recipe section 6)
     python3 tools/upload_assets.py --upload --refresh       # re-read moderation state of every known asset
+    python3 tools/upload_assets.py --textures               # dry run of the IMAGE class: the gate vortex PNG layers
+
+--textures (Phase 6 W2b): the same rules for the Image class: index blender/textures/textures.json (written by
+blender/textures/build_vortex.py: key -> png, contentHash), state blender/textures/upload_state.json, output
+src/shared/TextureIds.lua (rule texture-ids: numbers only; empty = the vortex's effects-only fallback). Each PNG goes up
+as assetType "Decal" with image/png. CHECK AT CALIBRATION (the first real image upload, with the player's OK): the id the
+operation returns must load in an ImageLabel ("rbxassetid://<id>"); if it is the Decal wrapper and not its Image, put
+the Image id in the state file by hand before the game uses it. Never --upload without the player's OK.
 
 Environment (never stored, never printed):
     ROBLOX_API_KEY       Open Cloud API key with the Assets API (Read + Write), made by the experience owner
@@ -260,7 +268,40 @@ def plan(key, entry, record):
     return "new-asset", "structure changed (%s -> %s): a NEW asset, the id changes" % (str(record.get("structureHash"))[:12], str(struct)[:12])
 
 
+# the asset classes: meshes (the default) and the Image class (--textures)
+CLASSES = {
+    "mesh": {"index": ("blender", "meshes.json"), "state": ("blender", "upload_state.json"), "lua": ("src", "shared", "MeshIds.lua"),
+             "assetType": "Model", "ext": ".fbx", "mime": "model/fbx", "file": "fbx", "build": "python3 blender/build_all.py --key %s"},
+    "image": {"index": ("blender", "textures", "textures.json"), "state": ("blender", "textures", "upload_state.json"),
+              "lua": ("src", "shared", "TextureIds.lua"), "assetType": "Decal", "ext": ".png", "mime": "image/png", "file": "png",
+              "build": "python3 blender/textures/build_vortex.py  (%s)"},
+}
+CLASS = CLASSES["mesh"]
+
+
+def png_path(root, key, entry):
+    if entry.get("png"):
+        p = os.path.join(root, entry["png"])
+        if os.path.isfile(p):
+            return p
+        alt = os.path.join(root, "blender", entry["png"])
+        if os.path.isfile(alt):
+            return alt
+        return p
+    return os.path.join(root, "blender", "textures", "vortex", key + ".png")
+
+
 def check_entry(root, key, entry):
+    if CLASS["file"] == "png":
+        path = png_path(root, key, entry)
+        if not os.path.isfile(path):
+            raise UploadError("missing %s (build it: %s)" % (os.path.relpath(path, root), CLASS["build"] % key))
+        size = os.path.getsize(path)
+        if size > MAX_FILE_BYTES:
+            raise UploadError("%s is %.1f MB; the API takes up to 20 MB" % (path, size / 1048576.0))
+        if not entry.get("contentHash"):
+            raise UploadError("%s: textures.json has no contentHash (rebuild with build_vortex.py)" % key)
+        return path, size
     path = fbx_path(root, key, entry)
     if not os.path.isfile(path):
         raise UploadError("missing %s (build it: python3 blender/build_all.py --key %s)" % (os.path.relpath(path, root), key))
@@ -278,7 +319,7 @@ def check_entry(root, key, entry):
 
 
 def request_json(key, entry, creator, asset_id):
-    req = {"assetType": "Model", "creationContext": {"creator": creator}}
+    req = {"assetType": CLASS["assetType"], "creationContext": {"creator": creator}}
     if asset_id is None:
         req["displayName"] = safe_name(entry.get("displayName") or "NC " + key)
         req["description"] = (entry.get("description") or "Nimbus Climb model " + key)[:MAX_DESCRIPTION]
@@ -302,7 +343,7 @@ def upload_one(client, key, entry, record, creator, root, args, log):
     req = request_json(key, entry, creator, asset_id)
     with open(path, "rb") as f:
         data = f.read()
-    body, ctype = encode_multipart([("request", json.dumps(req))], [("fileContent", os.path.basename(path), "model/fbx", data)])
+    body, ctype = encode_multipart([("request", json.dumps(req))], [("fileContent", os.path.basename(path), CLASS["mime"], data)])
     if asset_id:
         method, api_path = "PATCH", UPDATE_PATH.format(assetId=asset_id)
     else:
@@ -310,7 +351,7 @@ def upload_one(client, key, entry, record, creator, root, args, log):
     describe = [
         "Content-Type: multipart/form-data (%d bytes)" % len(body),
         "part 'request': %s" % json.dumps(req),
-        "part 'fileContent': %s; model/fbx; %d bytes; sha256 %s" % (os.path.relpath(path, root), size, sha256_file(path)[:16]),
+        "part 'fileContent': %s; %s; %d bytes; sha256 %s" % (os.path.relpath(path, root), CLASS["mime"], size, sha256_file(path)[:16]),
         "then GET %s until done -> assetId / revisionId / moderationResult" % OPERATION_PATH,
     ]
     op = client.request(method, api_path, body=body, content_type=ctype, write=True, describe=describe)
@@ -389,13 +430,21 @@ def refresh(client, key, record, log):
 
 
 def mesh_ids_lua(state):
-    """src/shared/MeshIds.lua: one sorted table of [string] = number (tools/check.mjs rule mesh-ids)."""
-    lines = [
-        "-- GENERATED by tools/upload_assets.py (Phase 6) from blender/upload_state.json. Do not edit by hand.",
-        "-- Mesh key -> Roblox Model asset id (numbers only). Empty = every model uses its Part build (today's game).",
-        "-- Rejected assets are left out; assets still in review are listed and simply fall back until approved.",
-        "return {",
-    ]
+    """src/shared/MeshIds.lua (or TextureIds.lua): one sorted table of [string] = number (check.mjs mesh-ids / texture-ids)."""
+    if CLASS["file"] == "png":
+        lines = [
+            "-- GENERATED by tools/upload_assets.py --textures (Phase 6) from blender/textures/upload_state.json. Do not edit.",
+            "-- Texture key -> Roblox Image asset id (numbers only). Empty = the gates' vortex uses its effects-only fallback.",
+            "-- Rejected assets are left out; assets still in review are listed and simply fall back until approved.",
+            "return {",
+        ]
+    else:
+        lines = [
+            "-- GENERATED by tools/upload_assets.py (Phase 6) from blender/upload_state.json. Do not edit by hand.",
+            "-- Mesh key -> Roblox Model asset id (numbers only). Empty = every model uses its Part build (today's game).",
+            "-- Rejected assets are left out; assets still in review are listed and simply fall back until approved.",
+            "return {",
+        ]
     for key in sorted(state.get("assets", {})):
         rec = state["assets"][key]
         aid = rec.get("assetId")
@@ -412,6 +461,7 @@ def parse_args(argv):
     ap.add_argument("--only", action="append", default=[], help="these keys only (repeatable or comma separated)")
     ap.add_argument("--refresh", action="store_true", help="only re-read revision + moderation of known assets")
     ap.add_argument("--force", action="store_true", help="upload even when the contentHash is unchanged")
+    ap.add_argument("--textures", action="store_true", help="the Image class: blender/textures/textures.json -> TextureIds.lua")
     ap.add_argument("--poll-timeout", type=float, default=300)
     ap.add_argument("--root", default=DEFAULT_ROOT, help=argparse.SUPPRESS)
     ap.add_argument("--base-url", default=BASE_URL, help=argparse.SUPPRESS)  # tests: the local fake API
@@ -424,12 +474,16 @@ def parse_args(argv):
 
 
 def main(argv=None):
+    global CLASS
     args = parse_args(argv)
+    CLASS = CLASSES["image" if args.textures else "mesh"]
     root = os.path.abspath(args.root)
-    index_path = os.path.join(root, "blender", "meshes.json")
-    state_path = os.path.join(root, "blender", "upload_state.json")
-    lua_path = os.path.join(root, "src", "shared", "MeshIds.lua")
+    index_path = os.path.join(root, *CLASS["index"])
+    state_path = os.path.join(root, *CLASS["state"])
+    lua_path = os.path.join(root, *CLASS["lua"])
     if not os.path.isfile(index_path):
+        if args.textures:
+            raise Refusal("no %s yet (build the textures first: python3 blender/textures/build_vortex.py)" % os.path.relpath(index_path, root))
         raise Refusal("no %s yet (build the meshes first: python3 blender/build_all.py --all)" % os.path.relpath(index_path, root))
     assets = load_index(index_path)
     try:
@@ -455,7 +509,7 @@ def main(argv=None):
                       "game could not load them. Refusing." % (stored.get("type"), stored.get("id"), creator_type, creator_id))
     unknown = [k for k in args.only if k not in assets]
     if unknown:
-        raise Refusal("not in blender/meshes.json: " + ", ".join(unknown))
+        raise Refusal("not in %s: " % "/".join(CLASS["index"]) + ", ".join(unknown))
     keys = [k for k in sorted(assets) if not args.only or k in args.only]
 
     def log(msg):

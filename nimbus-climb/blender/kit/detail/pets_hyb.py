@@ -20,7 +20,7 @@ Hy* keys (HyA / HyB / HyTip / HyHorn / HyGlow) depend on the Style parent's Prim
 Look recipe ops cannot express: their manifest colour is the reference hybrid's constant; the runtime sets them from
 PetBuilder's hybrid palette.  Deterministic (fixed Seed in the catalog, sorted loops).
 """
-from detail.faces import _base, eye_specs, rescale_face_features, restore_carved_eyes
+from detail.faces import _base, eye_specs, front_map, rescale_face_features, restore_carved_eyes
 
 HY_KEYS = ("HyA", "HyB", "HyTip", "HyHorn", "HyGlow")
 LOOK_HYBRID = ("Hybrid", "StyleId", "Seed", "BodyId")
@@ -86,9 +86,18 @@ def isolate(bp, cells, entry):
             if d[2] == -1 and _in_eyes(bp, K, x, y):
                 continue  # the eye patch frames the eye, it never covers it
             raised[q] = k
+    # nothing may sit in front of the eyes (the Lua carve of a patched face can differ from the plain one by a
+    # voxel, which would leave a stray layer over the eye)
+    fm = front_map(base)
+    out = {}
+    for p, k in list(added.items()) + list(raised.items()):
+        x, y, z = p
+        front = fm.get((x, y))
+        if _in_eyes(bp, K, x, y, pad=1.25) and (front is None or z <= front):
+            continue
+        out[p] = k
     cells.clear()
-    cells.update(added)
-    cells.update(raised)
+    cells.update(out)
     # keep the tail only when the trait grew its own (hyTail); drop groups identical to the plain body's
     keep = []
     for g in bp.groups:
@@ -101,4 +110,4 @@ def isolate(bp, cells, entry):
         keep.append(g)
     bp.groups = keep
     bp.eyes = []  # no eyes / lids in a feature key
-    return {"added": len(added), "raised": len(raised), "groups": [g.name for g in keep]}
+    return {"added": len(added), "raised": len(raised), "kept": len(out), "groups": [g.name for g in keep]}

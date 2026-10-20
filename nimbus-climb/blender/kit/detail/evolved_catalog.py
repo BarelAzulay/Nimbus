@@ -38,25 +38,30 @@ FACE = {"features": False}
 # keys get a share so the K step-down happens on the body first.  Part counts: see the doc string of BUDGETS_DOC.
 BUDGETS = {
     "evo1Body": {"tris": 11500, "parts": 40, "maxPartTris": 10000},
-    "evo1BodyLow": {"tris": 3300, "parts": 30, "maxPartTris": 10000},
+    "evo1BodyLow": {"tris": 3600, "parts": 36, "maxPartTris": 10000},
     "evo1Wing": {"tris": 1750, "parts": 12},
-    "evo1WingLow": {"tris": 600, "parts": 8},
-    "evo2Body": {"tris": 15000, "parts": 46, "maxPartTris": 10000},
-    "evo2BodyLow": {"tris": 4400, "parts": 34, "maxPartTris": 10000},
+    "evo1WingLow": {"tris": 450, "parts": 8},
+    "evo1WingLowBat": {"tris": 650, "parts": 8},
+    "evo1BodyLowBat": {"tris": 3200, "parts": 36, "maxPartTris": 10000},
+    "evo2Body": {"tris": 14800, "parts": 50, "maxPartTris": 10000},
+    "evo2BodyLow": {"tris": 4500, "parts": 40, "maxPartTris": 10000},
     "evo2Wing": {"tris": 1700, "parts": 16},
-    "evo2WingLow": {"tris": 500, "parts": 10},
-    "evo2Wing2": {"tris": 800, "parts": 14},
+    "evo2WingLow": {"tris": 450, "parts": 10},
+    "evo2Wing2": {"tris": 900, "parts": 14},
     "evo2Wing2Low": {"tris": 300, "parts": 10},
     "evo1": {"tris": 15000, "parts": 60},
-    "evo1Low": {"tris": 4500, "parts": 46},
-    "evo2": {"tris": 20000, "parts": 100},
-    "evo2Low": {"tris": 6000, "parts": 74},
+    "evo1Low": {"tris": 4500, "parts": 52},
+    "evo2": {"tris": 20000, "parts": 110},
+    "evo2Low": {"tris": 6000, "parts": 84},
 }
 BUDGETS_DOC = ("Sets (body + wings) keep the recipe 4.2 triangle budgets (evo1 15k / Low 4.5k, evo2 20k / Low 6k). "
                "MeshPart counts follow the 4.3 name contract (one part per group, key and shade; wings are separate "
-               "L / R keys), so the set part caps are 60 / 40 (evo1) and 84 / 56 (evo2) instead of 50 / 16 and "
-               "60 / 18 (the same deviation as the kit's base-pet Low sets).")
+               "L / R keys, up to 16 parts per wing), so the set part caps are 60 / Low 52 (evo1) and 110 / Low 84 "
+               "(evo2) instead of 50 / 16 and 60 / 18 (the same deviation as the kit's base-pet Low sets). Still far "
+               "below the Part build (1500-2000 parts High).")
 NO_WING2 = {"phantom_kitsune"}
+# first evolutions whose Low bat wings are big (828 tris at K 0.65): the wings get more, the body less
+LOW_BAT = {"twilight_dragon", "eclipse_dragon"}
 PREVIEWS1 = ["pebble_pup", "maple_fox", "twilight_dragon", "ember_phoenix", "phantom_kitsune", "rime_wyrmling"]
 PREVIEWS2 = ["aurora_fox", "twilight_dragon", "candy_unicorn", "stormfang", "phantom_kitsune", "hydralotl"]
 
@@ -89,7 +94,8 @@ def entries():
                 k = K[(stage, lod)]
                 body = "evo%d_%s%s" % (stage, pid, sfx(lod))
                 e = {"key": body, "type": "pet", "pet": pid, "stage": stage, "k": k,
-                     "budget": "evo%dBody%s" % (stage, "Low" if low else ""), "passes": PASSES_LOW if low else PASSES, "face": {} if low else FACE,
+                     "budget": "evo%dBody%s" % (stage, "Low" if low else ""), "passes": PASSES_LOW if low else PASSES,
+                     "face": {} if low else FACE,
                      "description": "Evolved pet: %s, %s evolution, %s" % (
                          pid.replace("_", " "), "first" if stage == 1 else "second", lod)}
                 # evolved colours are per pet constants: every constant key nothing looks up by name is baked into one
@@ -97,6 +103,8 @@ def entries():
                 e["fixed"] = True
                 if low:
                     e["lod"] = "Low"
+                    if stage == 1 and pid in LOW_BAT:
+                        e["budget"] = "evo1BodyLowBat"
                 keys.append(e)
                 set_keys = [body]
                 pairs = [("Wing", str(stage))]
@@ -112,6 +120,8 @@ def entries():
                                  pid.replace("_", " "), stage, group, side, lod)}
                         if low:
                             w["lod"] = "Low"
+                            if stage == 1 and pid in LOW_BAT:
+                                w["budget"] = "evo1WingLowBat"
                         keys.append(w)
                         set_keys.append(wk)
                 sets.append({"name": body, "keys": set_keys, "budget": "evo%d%s" % (stage, "Low" if low else "")})
