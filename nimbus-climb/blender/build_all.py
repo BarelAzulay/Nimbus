@@ -171,6 +171,10 @@ class Builder:
         problems = []
         per_group = {}
         for o in m.objects.values():
+            # see-through parts (Glass / ForceField / Transparency > 0) emit faces only towards empty space and hide
+            # none of their opaque neighbours' faces (nvox/mesher.py): their own closure sum is open by design, the
+            # opaque parts next to them stay closed and are still checked.  The zero-area check runs for every part.
+            translucent = bool(getattr(o, "transparency", 0)) or o.material in ("Glass", "ForceField")
             for corners, _ in o.quads:
                 c = np.asarray(corners, float)
                 n = np.cross(c[1] - c[0], c[3] - c[0])
@@ -178,6 +182,8 @@ class Builder:
                 if area < 1e-9:
                     problems.append("%s: zero-area quad" % o.name)
                     break
+                if translucent:
+                    continue
                 per_group.setdefault(o.group, np.zeros(3))
                 per_group[o.group] += n  # (corners are CCW from outside: n points out, |n| = area)
         for g, s in per_group.items():
