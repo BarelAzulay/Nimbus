@@ -136,6 +136,7 @@ local Mods = {
 	State = optional(Client, "State", 5),
 	Tycoon = optional(Shared, "TycoonCatalog"),
 	Voxel = optional(Shared, "Voxel"),
+	Mesh = nil, -- shared/MeshLibrary (lazy: Units.FxMesh); false = unavailable
 }
 
 local BattleController = {}
@@ -1405,7 +1406,41 @@ function Units.Rebuild(B, u)
 	end
 end
 
+-- Phase 6 (runtime-pets): when MeshLibrary makes a pet's Blender mesh keys usable here (PetBuilder.MeshVersion
+-- changes), its Part-built units are queued for a rebuild as mesh pets (KO'd / parked ones stay as they are)
+function Units.MeshSweep(B)
+	local ver = PetBuilder.MeshVersion()
+	if ver == B.meshVer then
+		return
+	end
+	B.meshVer = ver
+	local ids = {}
+	for id in pairs(B.units) do
+		ids[#ids + 1] = id
+	end
+	table.sort(ids, function(a, b)
+		return tostring(a) < tostring(b)
+	end)
+	for _, id in ipairs(ids) do
+		local u = B.units[id]
+		if u.model and not u.isBoss and not u.rebuild and not u.parked and not u.gone and PetBuilder.NeedsMeshRebuild(u.model) then
+			u.rebuild = true
+			B.buildQueue[#B.buildQueue + 1] = u
+		end
+	end
+	-- the helpers' portraits (ViewportFrames) too
+	for _, H in ipairs(Hud.helpers or {}) do
+		if H.unit and H.model and PetBuilder.NeedsMeshRebuild(H.model) then
+			H.built = false
+			pcall(Hud.Portrait, H, H.unit)
+		end
+	end
+end
+
 function Units.BuildPending(B)
+	if PetBuilder and PetBuilder.MeshVersion and B.units then
+		Units.MeshSweep(B)
+	end
 	local q = B.buildQueue
 	if #q == 0 then
 		return
@@ -1625,11 +1660,65 @@ function Units.Update(B, u, now, dt, sa, sb, alpha, animate)
 	Units.UpdateStatus(B, u, now, cf)
 end
 
+-- Phase 6: the Blender fx meshes (fx_shield / fx_ice / fx_arrow, creatures class) once they are usable on this
+-- device: Units.FxMesh(key, scale) -> the MeshParts of a fresh rootless Assemble (sorted by name, Anchored, no
+-- collisions) or nil (= the Part build). Same slot names and the same per-frame CFrame code either way.
+function Units.FxMesh(key, scale)
+	if Mods.Mesh == nil then
+		Mods.Mesh = optional(Shared, "MeshLibrary") or false
+	end
+	local ML = Mods.Mesh
+	if not ML or type(ML.Active) ~= "function" or not ML.Active() or not ML.IsReady(key) then
+		return nil
+	end
+	local ok, model = pcall(ML.Assemble, key, nil, { Scale = scale or 1 })
+	if not ok or typeof(model) ~= "Instance" then
+		return nil
+	end
+	local parts = {}
+	for _, d in ipairs(model:GetDescendants()) do
+		if d:IsA("BasePart") then
+			parts[#parts + 1] = d
+		end
+	end
+	table.sort(parts, function(a, b)
+		return a.Name < b.Name
+	end)
+	for _, d in ipairs(parts) do
+		d.Parent = nil
+		d.Anchored = true
+		d.CanCollide = false
+		d.CanQuery = false
+		d.CanTouch = false
+		d.CastShadow = false
+	end
+	model:Destroy()
+	if #parts == 0 then
+		return nil
+	end
+	return parts
+end
+
 -- shield bubble (while the snapshot reports a shield) and ice (while stunned)
 function Units.UpdateStatus(B, u, now, cf)
 	local h = u.height or 3
 	if u.shield > 0 then
 		local p = u.shieldPart
+		if not p then
+			local mesh = Units.FxMesh("fx_shield")
+			if mesh then
+				-- the voxel bubble: one MeshPart sized like the Part cube (MeshPart.Size scales the mesh)
+				p = mesh[1]
+				p.Name = "ShieldCube"
+				p.Size = Vector3.new(h * 1.25, h * 1.15, h * 1.25)
+				p.Color = COLORS.Shield
+				for i = 2, #mesh do
+					mesh[i]:Destroy()
+				end
+				p.Parent = u.model
+				u.shieldPart = p
+			end
+		end
 		if not p then
 			p = make("Part", {
 				Name = "ShieldCube",
@@ -1658,18 +1747,38 @@ function Units.UpdateStatus(B, u, now, cf)
 			for i = 1, 5 do
 				local a = (i / 5) * TAU
 				local s = h * (0.28 + 0.06 * (i % 3))
-				make("Part", {
-					Name = "Crystal",
-					Anchored = true,
-					CanCollide = false,
-					CanQuery = false,
-					CanTouch = false,
-					CastShadow = false,
-					Material = Enum.Material.Glass,
-					Color = COLORS.Ice,
-					Transparency = 0.35,
-					Size = Vector3.new(s * 0.45, s * 1.4, s * 0.45),
-				}, p):SetAttribute("Angle", a)
+				-- Phase 6: a Blender ice crystal (fx_ice, 1.1 tall) when ready: its main part is the "Crystal" the
+				-- per-frame code moves, the light core rides on it (welded child, also named Crystal)
+				local mesh = Units.FxMesh("fx_ice", s * 1.4 / 1.1)
+				if mesh then
+					local main = mesh[1]
+					main.Name = "Crystal"
+					main:SetAttribute("Angle", a)
+					for k = 2, #mesh do
+						local c = mesh[k]
+						c.Name = "Crystal"
+						c.Anchored = false
+						c.Massless = true
+						local weld = make("WeldConstraint", { Part0 = main, Part1 = c }, c)
+						weld.Name = "IceWeld"
+						c.Parent = main
+					end
+					main.Parent = p
+				end
+				if not mesh then
+					make("Part", {
+						Name = "Crystal",
+						Anchored = true,
+						CanCollide = false,
+						CanQuery = false,
+						CanTouch = false,
+						CastShadow = false,
+						Material = Enum.Material.Glass,
+						Color = COLORS.Ice,
+						Transparency = 0.35,
+						Size = Vector3.new(s * 0.45, s * 1.4, s * 0.45),
+					}, p):SetAttribute("Angle", a)
+				end
 			end
 			u.icePart = p
 		end
@@ -3081,7 +3190,8 @@ function Hud.Portrait(H, u)
 		if not def then
 			return
 		end
-		local model = PetBuilder.Build(def, { Detail = "Low", Evolved = u.evo > 0 and u.evo or nil })
+		local model = PetBuilder.Build(def, { Detail = "Low", Evolved = u.evo > 0 and u.evo or nil, Viewport = true })
+		H.model = model
 		local okBox, cf, size = pcall(model.GetBoundingBox, model)
 		if not okBox or typeof(cf) ~= "CFrame" then
 			cf, size = CFrame.new(), Vector3.new(3, 3, 3)
@@ -6418,6 +6528,16 @@ function Units.UpdateFocus(B, now)
 	if not mark then
 		mark = make("Model", { Name = "FocusArrow" })
 		local spec = { { 0, 0, 0.9 }, { 0, 0.7, 0.6 }, { 0, 1.3, 0.35 } }
+		-- Phase 6: the Blender arrow (fx_arrow, 1 stud wide, pointing down) when ready: 1.4 studs wide like the Part
+		-- arrow's top; each MeshPart's Y attribute keeps its manifest height under the same per-frame code
+		local mesh = Units.FxMesh("fx_arrow", 1.4)
+		if mesh then
+			spec = {}
+			for _, mp in ipairs(mesh) do
+				mp:SetAttribute("Y", -mp.Position.Y / 0.8)
+				mp.Parent = mark
+			end
+		end
 		for i, s in ipairs(spec) do
 			make("Part", {
 				Name = "Arrow" .. i,
@@ -6769,5 +6889,7 @@ function BattleController.Init()
 		commandRemote()
 	end)
 end
+
+BattleController._Units = Units -- TESTS ONLY (tools/smoke_p6_creatures.lua: the fx mesh slots)
 
 return BattleController

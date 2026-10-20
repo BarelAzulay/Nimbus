@@ -468,7 +468,7 @@ NpcDialog.Npcs = {
 		Accent = Color3.fromRGB(100, 184, 112),
 		Keywords = { "free gate", "press E", "Food Bowl", "Cloud Cash", "Berry Farm", "Food Machine", "Home Level", "Prestige", "portal" },
 		Lines = {
-			"Welcome to Nimbus Village! Walk up to a free gate on the big ring and press E to claim your very own home.",
+			"Welcome to Nimbus Village! Tap Home, then Claim a home: a portal takes you to a free gate. Walk in and press E there!",
 			"Your garden pets roam your yard, eat at the Food Bowl and poop Cloud Cash. Only you can scoop it: walk over it!",
 			"Level up your Berry Farm: bigger berries make bigger Cloud Cash, and more berries for the Food Machine!",
 			"Home Level " .. prestigeLevel .. " and a " .. castleName .. "? Prestige! You get x" .. prestigeMul

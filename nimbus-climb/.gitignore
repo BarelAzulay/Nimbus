@@ -3,3 +3,6 @@ __pycache__/
 *.rbxl
 *.rbxlx
 !play/NimbusClimb.rbxlx
+blender/out/
+blender/meshes.json.lock
+blender/meshes.json.tmp

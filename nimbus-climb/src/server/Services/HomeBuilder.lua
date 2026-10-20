@@ -72,12 +72,12 @@
 --                              Locked ("" when unlocked), Title, LevelText, Kind, BuiltAt)
 --     Ghost_<Id>               hologram silhouette (the 12 biggest blocks, ForceField) of a station that unlocks later
 --
--- Art (6.4 art rules): real materials only (WorldStyle.Materials: Slate, Cobblestone, Brick, Marble, WoodPlanks, Wood,
--- Grass, LeafyGrass, Sand, ClayRoofTiles / RoofShingles, Metal, Glass, Neon inlays, Fabric), muted big faces with one
--- accent hue per station, plinth + body + cap, inset corner posts on corners >= 4 studs tall, warm lanterns
--- (Brightness <= 1.5, Range <= 16, no shadows), parts < 4 studs cast no shadow; pure decor sits in sub-models tagged
--- NC_Detail (the Low graphics setting hides them), voxel clouds are tagged NC_StyleExempt. Every part is a Voxel.Box
--- (or a ball / cylinder / wedge of the same kit); Kit.finish guards the rules on every template. Each (station,
+-- Art (Phase 6 A1: back to the Phase 4 look, 7aa0df2): SmoothPlastic everywhere (Neon for glow, Glass for windows
+-- and water, ForceField for holograms), the bright P4 palette (white castle keep, blue / terracotta stepped voxel
+-- roofs, gold trim, juicy greens, cream stone), blocky voxel shapes only (no Ball / Cylinder: the "round" helpers
+-- build square prisms, roofs are stepped layers); warm lanterns (Brightness <= 1.5, Range <= 16, no shadows), parts
+-- < 4 studs cast no shadow; pure decor sits in sub-models tagged NC_Detail (the Low graphics setting hides them),
+-- voxel clouds are tagged NC_StyleExempt. Kit.finish guards the look on every template. Each (station,
 -- level) is built ONCE per server and kept as a template that is :Clone()d onto every plot. No server-side
 -- animation and no Instance per coin (Replication rule): HomeFx (client) pops stations in, spins the fusion swirl,
 -- poses the roaming pets, draws the coins and berries, and hides other players' pads and prompts. Texts follow the
@@ -478,78 +478,92 @@ end
 
 
 ----------------------------------------------------------------------
--- The Phase 5 art kit (6.4 art rules): real materials only (WorldStyle.Materials), muted big faces, one accent hue
--- per station, plinth + body + cap, inset corner posts on corners >= 4 studs tall, warm lanterns, parts < 4 studs
--- cast no shadow. Every part goes through Voxel.Box (box above); WorldStyle gives the Plinth / Chamfer pieces.
+-- The art kit (Phase 6 A1: back to the Phase 4 look, 7aa0df2): SmoothPlastic everywhere (Glass / Neon / ForceField
+-- only for glass, glow and holograms), the bright P4 palette, blocky voxel shapes only (no Cylinder / Ball: the
+-- "round" helpers below build square prisms and cubes, roofs are stepped voxel stacks). The material keys stay so
+-- the art code reads the same; every one of them is SmoothPlastic now. The detail comes later from the Blender
+-- meshes (wave 2), so this is a revert, not new Part detail.
 ----------------------------------------------------------------------
-local WM = (WorldStyle and WorldStyle.Materials) or {}
+local PLASTIC = MAT.SmoothPlastic
 local M = {
-	Slate = WM.Slate or MAT.Slate,
-	Cobble = WM.Cobblestone or MAT.Cobblestone,
-	Brick = WM.Brick or MAT.Brick,
-	Marble = WM.Marble or MAT.Marble,
-	Planks = WM.WoodPlanks or MAT.WoodPlanks,
-	Wood = WM.Wood or MAT.Wood,
-	Grass = WM.Grass or MAT.Grass,
-	Leafy = WM.LeafyGrass or MAT.LeafyGrass,
-	Sand = WM.Sand or MAT.Sand,
-	Clay = WM.ClayRoofTiles or MAT.ClayRoofTiles,
-	Shingles = WM.RoofShingles or MAT.RoofShingles,
-	Metal = WM.Metal or MAT.Metal,
-	Glass = WM.Glass or MAT.Glass,
-	Neon = WM.Neon or MAT.Neon,
-	Fabric = WM.Fabric or MAT.Fabric,
-	Force = WM.ForceField or MAT.ForceField,
-	Plastic = WM.SmoothPlastic or MAT.SmoothPlastic,
+	Slate = PLASTIC,
+	Cobble = PLASTIC,
+	Brick = PLASTIC,
+	Marble = PLASTIC,
+	Planks = PLASTIC,
+	Wood = PLASTIC,
+	Grass = PLASTIC,
+	Leafy = PLASTIC,
+	Sand = PLASTIC,
+	Clay = PLASTIC,
+	Shingles = PLASTIC,
+	Metal = PLASTIC,
+	Glass = MAT.Glass,
+	Neon = MAT.Neon,
+	Fabric = PLASTIC,
+	Force = MAT.ForceField,
+	Plastic = PLASTIC,
 }
+-- the materials a home part may use (Kit.finish turns anything else into SmoothPlastic)
+local ALLOWED_MATS = { [PLASTIC] = true, [MAT.Neon] = true, [MAT.Glass] = true, [MAT.ForceField] = true }
 
--- the muted world palette (WorldStyle.Palette + the home's own woods, soils and foliage; big faces sat <= 0.45)
-local WP = (WorldStyle and WorldStyle.Palette) or {}
+-- the Phase 4 palette (7aa0df2 HomeBuilder.lua:151-191 + its House / station colours; style.md 4): bright stone,
+-- white castle walls, blue and terracotta roofs, gold trim, juicy greens. The old key names stay.
 local K = {
-	SlateDark = WP.SlateDark or rgb(82, 86, 104),
-	Slate = WP.Slate or rgb(108, 112, 130),
-	SlateLight = WP.SlateLight or rgb(140, 144, 160),
-	Marble = WP.Marble or rgb(222, 218, 228),
-	MarbleShade = WP.MarbleShade or rgb(196, 190, 210),
-	Cobble = WP.Cobble or rgb(152, 146, 156),
-	Brick = WP.Brick or rgb(156, 106, 96),
-	BrickDark = rgb(130, 90, 84),
-	Planks = WP.WoodPlanks or rgb(156, 118, 90),
-	PlanksLight = rgb(184, 150, 116),
-	PlanksDark = rgb(124, 92, 72),
-	Wood = WP.Wood or rgb(116, 88, 70),
-	WoodDark = rgb(86, 66, 56),
-	Whitewash = rgb(226, 220, 206),
-	Grass = WP.Grass or rgb(112, 152, 100),
-	GrassLight = rgb(130, 168, 110),
-	Leafy = WP.LeafyGrass or rgb(86, 130, 86),
-	LeafyDark = rgb(66, 108, 74),
-	LeafyTeal = rgb(66, 114, 108),
-	Soil = rgb(112, 86, 68),
-	SoilDark = rgb(94, 72, 60),
-	Sand = WP.Sand or rgb(214, 198, 164),
-	Roof = WP.Roof or rgb(148, 96, 90),
-	RoofDark = rgb(124, 82, 80),
-	Shingle = rgb(96, 92, 110),
-	BarnRed = rgb(150, 96, 86),
-	Gold = WP.Metal or rgb(200, 166, 98),
-	GoldBright = rgb(232, 188, 84),
-	Iron = rgb(92, 96, 112),
-	IronDark = rgb(64, 66, 80),
-	Copper = rgb(178, 122, 88),
-	Glass = WP.Glass or rgb(190, 210, 226),
-	WarmGlass = rgb(255, 226, 176),
-	Fabric = WP.Fabric or rgb(196, 176, 206),
-	Lantern = WP.Lantern or rgb(255, 214, 170),
-	BerryRed = rgb(200, 44, 66),
-	BerryRed2 = rgb(222, 70, 82),
-	BerryBlue = rgb(70, 92, 196),
-	BerryBlue2 = rgb(96, 118, 214),
-	BerryGold = rgb(236, 186, 70),
-	Star = rgb(255, 220, 130),
-	CloudTop = WP.CloudTop or rgb(250, 244, 252),
-	CloudSide = WP.CloudSide or rgb(226, 214, 240),
-	CloudUnder = WP.CloudUnder or rgb(186, 172, 222),
+	SlateDark = rgb(160, 152, 144), -- P4 StoneDark: plinths and steps
+	Slate = rgb(208, 202, 190), -- P4 Stone
+	SlateLight = rgb(226, 221, 209), -- P4 StoneLight
+	Marble = rgb(240, 240, 246), -- P4 Castle white
+	MarbleShade = rgb(212, 216, 232), -- P4 CastleShade
+	Cobble = rgb(208, 202, 190),
+	Brick = rgb(250, 214, 196), -- P4 VillaWall (peach)
+	BrickDark = rgb(220, 120, 80), -- P4 Terracotta
+	Planks = rgb(196, 146, 98),
+	PlanksLight = rgb(218, 170, 118),
+	PlanksDark = rgb(146, 102, 70),
+	Wood = rgb(128, 90, 62), -- P4 Bark
+	WoodDark = rgb(150, 100, 66), -- P4 Door
+	Whitewash = rgb(252, 248, 240), -- P4 VillaTrim
+	Cream = rgb(250, 238, 214), -- P4 cottage Wall
+	Manor = rgb(232, 226, 240), -- P4 ManorWall
+	Grass = rgb(118, 192, 92),
+	GrassLight = rgb(132, 202, 98),
+	Leafy = rgb(98, 178, 80),
+	LeafyDark = rgb(70, 146, 70),
+	LeafyTeal = rgb(104, 196, 116), -- P4 Canopy
+	Soil = rgb(122, 88, 66),
+	SoilDark = rgb(100, 72, 56),
+	Sand = rgb(236, 214, 166),
+	Roof = rgb(222, 104, 82), -- P4 Roof (terracotta)
+	RoofDark = rgb(190, 82, 68), -- P4 RoofTop
+	RoofBlue = rgb(88, 136, 226), -- P4 Spire
+	RoofBlueLight = rgb(110, 158, 238), -- P4 Spire2
+	RoofBlueDark = rgb(70, 112, 204), -- P4 SpireTop
+	Shingle = rgb(86, 106, 160), -- P4 manor Slate roof
+	ShingleLight = rgb(102, 124, 178),
+	BarnRed = rgb(226, 92, 90),
+	Gold = rgb(244, 198, 84),
+	GoldBright = rgb(255, 214, 96),
+	Iron = rgb(74, 82, 108),
+	IronDark = rgb(46, 52, 72),
+	Copper = rgb(212, 134, 84),
+	Glass = rgb(186, 224, 250),
+	WarmGlass = rgb(255, 222, 150),
+	Shutter = rgb(98, 148, 226),
+	Fabric = rgb(246, 150, 188),
+	Banner = rgb(236, 88, 110),
+	Lantern = rgb(255, 214, 140),
+	Water = rgb(92, 178, 236),
+	WaterDeep = rgb(62, 136, 212),
+	BerryRed = rgb(226, 58, 94),
+	BerryRed2 = rgb(240, 92, 104),
+	BerryBlue = rgb(84, 120, 230),
+	BerryBlue2 = rgb(118, 160, 244),
+	BerryGold = rgb(255, 210, 66),
+	Star = rgb(255, 222, 96),
+	CloudTop = rgb(244, 247, 252),
+	CloudSide = rgb(232, 238, 249),
+	CloudUnder = rgb(212, 222, 241),
 }
 local LANTERN = K.Lantern
 local DETAIL_TAG = (WorldStyle and WorldStyle.Tags and WorldStyle.Tags.Detail) or "NC_Detail"
@@ -570,82 +584,52 @@ function Kit.p(parent, name, cf, size, color, mat, collide, extra)
 	return box(parent, name, cf, size, color, opts)
 end
 
--- a ball (Shape Ball: always round) centred on pos
+-- a "ball" (P6 A1: a voxel cube, no round primitives) centred on pos, d studs wide
 function Kit.ball(parent, name, pos, d, color, mat, collide)
-	local part = Kit.p(parent, name, CFrame.new(pos), Vector3.new(d, d, d), color, mat, collide)
-	part.Shape = Enum.PartType.Ball
-	return part
+	return Kit.p(parent, name, CFrame.new(pos), Vector3.new(d, d, d), color, mat, collide)
 end
 
--- an upright cylinder standing on (x, y0, z): diameter d, height h
+-- an upright "cylinder" standing on (x, y0, z): a square voxel prism d wide, h tall
 function Kit.cyl(parent, name, x, y0, z, d, h, color, mat, collide)
-	local part = Kit.p(parent, name, CFrame.new(x, y0 + h / 2, z) * CFrame.Angles(0, 0, PI / 2), Vector3.new(h, d, d), color, mat, collide)
-	part.Shape = Enum.PartType.Cylinder
-	return part
+	return Kit.p(parent, name, CFrame.new(x, y0 + h / 2, z), Vector3.new(d, h, d), color, mat, collide)
 end
 
--- a cylinder along an arbitrary CFrame's X axis (pipes, door wheels, medallions)
+-- a "cylinder" along an arbitrary CFrame's X axis (pipes, door wheels, medallions): a square bar / tile
 function Kit.cylAt(parent, name, cf, length, d, color, mat, collide)
-	local part = Kit.p(parent, name, cf, Vector3.new(length, d, d), color, mat, collide)
-	part.Shape = Enum.PartType.Cylinder
-	return part
+	return Kit.p(parent, name, cf, Vector3.new(length, d, d), color, mat, collide)
 end
 
--- a WedgePart (full bottom and back faces; the slope falls toward local -Z)
+-- a wedge (P6 A1: no slopes either; a block of the same size)
 function Kit.wedge(parent, name, cf, size, color, mat, collide)
-	local w = Instance.new("WedgePart")
-	w.Name = name
-	w.Anchored = true
-	w.Size = size
-	w.CFrame = cf
-	w.Color = color
-	w.Material = mat or M.Planks
-	w.TopSurface = Enum.SurfaceType.Smooth
-	w.BottomSurface = Enum.SurfaceType.Smooth
-	w.CanCollide = collide == true
-	w.CanQuery = collide == true
-	w.CanTouch = false
-	w.CastShadow = max(size.X, size.Y, size.Z) >= 4
-	w.Parent = parent
-	return w
+	return Kit.p(parent, name, cf, size, color, mat or M.Planks, collide)
 end
 
--- a round slab (a cylinder) of diameter w and height h standing on y0
+-- a round slab of width w and height h standing on y0: a square voxel slab
 function Kit.oct(parent, name, x, y0, z, w, h, color, mat, collide)
 	return Kit.cyl(parent, name, x, y0, z, w, h, color, mat, collide)
 end
 
--- a gable roof over a rectangle: cf = the centre of the wall tops (ridge along local X), len = ridge length,
--- span = the width it covers (local Z), rise = ridge height. Two slabs + an optional ridge beam + gable wedges
--- (gableColor / gableMat; nil = no gable ends). Returns the slabs.
+-- a stepped voxel roof over a rectangle (the P4 look): cf = the centre of the wall tops (ridge along local X),
+-- len = ridge length, span = the width it covers (local Z), rise = ridge height. Layers of blocks shrink toward
+-- the ridge (light / dark alternate like P4's stepped spires); the first layer overhangs the walls. opts: Overhang,
+-- EndOverhang, Ridge (a ridge cap colour), Collide, Dark (the alternate layer colour). Returns the layers.
 function Kit.gable(parent, name, cf, len, span, rise, color, mat, opts)
 	opts = opts or {}
 	local ov = opts.Overhang or 0.6
-	local t = opts.Thick or 0.35
-	local half = span / 2
-	local a = math.atan(rise / half)
-	local slope = math.sqrt(half * half + rise * rise) + ov
-	local slabs = {}
-	for _, sgn in ipairs({ 1, -1 }) do
-		-- the slab runs from the ridge down to past the eave (ov beyond the wall line)
-		local th = sgn * a
-		local dirZ = sgn * math.cos(a)
-		local dirY = -math.sin(a)
-		local cz = sgn * half / 2 + dirZ * ov / 2 + sgn * math.sin(a) * t / 2
-		local cy = rise / 2 + dirY * ov / 2 + math.cos(a) * t / 2
-		slabs[#slabs + 1] = Kit.p(parent, name, cf * CFrame.new(0, cy, cz) * CFrame.Angles(th, 0, 0), Vector3.new(len + 2 * (opts.EndOverhang or 0.4), t, slope), color, mat, opts.Collide)
+	local eo = opts.EndOverhang or 0.4
+	local n = max(2, min(5, floor(rise / 0.9 + 0.5)))
+	local lh = rise / n
+	local w0 = span + 2 * ov
+	local layers = {}
+	for i = 0, n - 1 do
+		local w = w0 * (1 - i / n)
+		local c = (opts.Dark and i % 2 == 1) and opts.Dark or color
+		layers[#layers + 1] = Kit.p(parent, name, cf * CFrame.new(0, (i + 0.5) * lh, 0), Vector3.new(len + 2 * eo, lh, max(0.5, w)), c, mat, opts.Collide)
 	end
 	if opts.Ridge then
-		Kit.p(parent, name .. "Ridge", cf * CFrame.new(0, rise + t * 0.7, 0), Vector3.new(len + 2 * (opts.EndOverhang or 0.4) + 0.1, 0.3, 0.45), opts.Ridge, M.Wood)
+		Kit.p(parent, name .. "Ridge", cf * CFrame.new(0, rise + 0.15, 0), Vector3.new(len + 2 * eo + 0.1, 0.3, 0.5), opts.Ridge, M.Wood)
 	end
-	if opts.GableColor then
-		for _, sx in ipairs({ -1, 1 }) do
-			local x = sx * (len / 2 - 0.15)
-			Kit.wedge(parent, name .. "Gable", cf * CFrame.new(x, rise / 2, -half / 2), Vector3.new(0.3, rise, half), opts.GableColor, opts.GableMat or M.Planks)
-			Kit.wedge(parent, name .. "Gable", cf * CFrame.new(x, rise / 2, half / 2) * CFrame.Angles(0, PI, 0), Vector3.new(0.3, rise, half), opts.GableColor, opts.GableMat or M.Planks)
-		end
-	end
-	return slabs
+	return layers
 end
 
 -- a window on a wall: cf = the window centre ON the wall surface, local -Z = outward. A wooden frame and warm glass
@@ -694,12 +678,13 @@ function Kit.detail(parent, name)
 	return d
 end
 
--- deterministic +-6 RGB jitter (6.4 rule 2) for repeated pieces
+-- deterministic +-6 RGB shade noise for repeated pieces (P4 Voxel.Shade spirit: never one flat colour)
 function Kit.jit(color, seed)
-	if WorldStyle and WorldStyle.Jitter then
-		return WorldStyle.Jitter(color, seed, 6)
+	local n = ((seed or 0) * 7919 + 13) % 13 - 6
+	local function ch(v)
+		return max(0, min(255, floor(v * 255 + 0.5) + n))
 	end
-	return color
+	return Color3.fromRGB(ch(color.R), ch(color.G), ch(color.B))
 end
 
 -- a pixel billboard sign (World text rule): a title line and info lines on a navy plate; returns gui, labels
@@ -717,10 +702,9 @@ function Kit.sign(adornee, name, lift, title, infos, maxDistance, edge)
 end
 
 ----------------------------------------------------------------------
--- The style finish (a guard after every template, 6.4 rules 1 / 2 / 8): a part in a material outside
--- WorldStyle.Materials or SmoothPlastic with a side > 2 becomes Slate; a large face (> 16 studs^2) over saturation
--- 0.45 or outside value 0.35..0.9 is pulled in (thin Neon inlays, ForceField and pieces <= 8 studs^3 stay);
--- parts < 4 studs cast no shadow. Voxel clouds / pets / tokens (NC_StyleExempt) are skipped.
+-- The style finish (a guard after every template, Phase 6 A1): every visible part is SmoothPlastic unless it is
+-- Glass / Neon / ForceField, every Part is a Block (no Ball / Cylinder), Reflectance 0; parts < 4 studs cast no
+-- shadow. Voxel clouds / pets / tokens (NC_StyleExempt) are skipped.
 ----------------------------------------------------------------------
 local function exemptPart(p, root)
 	local cur = p
@@ -737,34 +721,18 @@ function Kit.finish(root)
 	for _, p in ipairs(root:GetDescendants()) do
 		if p:IsA("BasePart") then
 			local s = p.Size
-			local a, b, c = s.X, s.Y, s.Z
-			local big = max(a, b, c)
-			local small = min(a, b, c)
-			local face = big * (a + b + c - big - small)
-			if big < 4 then
+			if max(s.X, s.Y, s.Z) < 4 then
 				p.CastShadow = false
 			end
-			if p.Transparency < 0.99 and not exemptPart(p, root) then
-				local isWorld = (not WorldStyle) or WorldStyle.IsWorldMaterial(p.Material)
-				if not isWorld or (p.Material == MAT.SmoothPlastic and big > 2) then
-					p.Material = M.Slate
+			if not exemptPart(p, root) then
+				if not ALLOWED_MATS[p.Material] then
+					p.Material = PLASTIC
 				end
-				if face > 16 and p.Material ~= MAT.ForceField and a * b * c > 8 and not (p.Material == MAT.Neon and small <= 0.5) then
-					local h, sat, v = p.Color:ToHSV()
-					local fix = false
-					if sat > 0.45 then
-						sat, fix = 0.45, true
-					end
-					if p.Material ~= MAT.Neon and p.Transparency < 0.3 then
-						if v < 0.36 then
-							v, fix = 0.36, true
-						elseif v > 0.89 then
-							v, fix = 0.89, true
-						end
-					end
-					if fix then
-						p.Color = Color3.fromHSV(h, sat, v)
-					end
+				if p:IsA("Part") and p.Shape ~= Enum.PartType.Block then
+					p.Shape = Enum.PartType.Block
+				end
+				if p.Material ~= MAT.Glass then
+					p.Reflectance = 0
 				end
 			end
 		end
@@ -1018,7 +986,7 @@ local Garden = {}
 Garden.PROMPT_RANGE = 3 -- studs (contract 3.6)
 Garden.CUSHION_TOP = 0.95
 Garden.LAWN_TOP = 0.2
-Garden.CUSHIONS = { rgb(206, 150, 160), rgb(150, 176, 150), rgb(150, 164, 204), rgb(216, 190, 140) }
+Garden.CUSHIONS = { rgb(246, 150, 188), rgb(150, 224, 176), rgb(130, 170, 255), rgb(250, 214, 92) }
 
 function Garden.places(def)
 	return (def and def.Slot and type(def.Slot.Beds) == "table") and def.Slot.Beds or {}
@@ -1127,7 +1095,7 @@ function Art.Garden(def, level, open)
 	local bc, br = bowl.Center, bowl.Radius
 	local basin = Kit.cyl(m, "FoodBowl", bc.X, Garden.LAWN_TOP, bc.Z, 2 * br, 0.55, K.Slate, M.Slate, true)
 	Kit.cyl(m, "BowlRim", bc.X, Garden.LAWN_TOP + 0.55, bc.Z, 2 * br + 0.2, 0.18, K.Marble, M.Marble, true)
-	Kit.cyl(m, "BowlBerries", bc.X, Garden.LAWN_TOP + 0.73, bc.Z, 2 * br - 0.8, 0.16, rgb(150, 62, 86), M.Sand)
+	Kit.cyl(m, "BowlBerries", bc.X, Garden.LAWN_TOP + 0.73, bc.Z, 2 * br - 0.8, 0.16, rgb(226, 58, 94), M.Sand)
 	local heap = { { -0.55, 0.1, K.BerryRed2 }, { 0.5, -0.3, K.BerryBlue } }
 	for _, h in ipairs(heap) do
 		Kit.ball(m, "BowlBerry", Vector3.new(bc.X + h[1], Garden.LAWN_TOP + 1.05, bc.Z + h[2]), 0.85, h[3], M.Plastic)
@@ -1141,7 +1109,7 @@ function Art.Garden(def, level, open)
 			Kit.p(m, "Bed", cf * CFrame.new(0, 0.225, 0), Vector3.new(size, 0.45, size), Kit.jit(K.Planks, 50 + i), M.Planks, true)
 			Kit.p(m, "Cushion", cf * CFrame.new(0, 0.6, 0.05), Vector3.new(size - 0.5, 0.3, size - 0.55), Kit.jit(Garden.CUSHIONS[(i - 1) % 4 + 1], i), M.Fabric)
 			Kit.p(m, "Headboard", cf * CFrame.new(0, 1.05, size / 2 - 0.12), Vector3.new(size, 1.7, 0.24), Kit.jit(K.PlanksDark, 70 + i), M.Planks)
-			Kit.p(m, "BedRoof", cf * CFrame.new(0, 2.05, size / 2 - 0.55) * CFrame.Angles(rad(-22), 0, 0), Vector3.new(size + 0.4, 0.16, 1.5), Kit.jit(K.Roof, 60 + i), M.Clay)
+			Kit.p(m, "BedRoof", cf * CFrame.new(0, 2.05, size / 2 - 0.55), Vector3.new(size + 0.4, 0.2, 1.5), Kit.jit(K.Roof, 60 + i), M.Clay)
 		else
 			Kit.p(m, "SoilBed", cf * CFrame.new(0, 0.175, 0), Vector3.new(size, 0.35, size), K.SoilDark, M.Sand, true)
 			Kit.p(m, "Stem", cf * CFrame.new(0, 0.7, 0.3), Vector3.new(0.18, 0.7, 0.18), K.LeafyDark, M.Leafy)
@@ -1155,7 +1123,7 @@ function Art.Garden(def, level, open)
 		-- flower strips on the front kerb, both sides of the entrance
 		for _, r in ipairs({ runs[4], runs[5] }) do
 			Kit.p(d, "FlowerStrip", CFrame.new(r[2], Garden.LAWN_TOP + kh + 0.15, r[3]), Vector3.new(r[4] - 1.2, 0.3, 0.5), K.Leafy, M.Leafy)
-			Kit.p(d, "Blooms", CFrame.new(r[2], Garden.LAWN_TOP + kh + 0.36, r[3]), Vector3.new(r[4] - 1.6, 0.14, 0.34), rgb(214, 150, 172), M.Fabric)
+			Kit.p(d, "Blooms", CFrame.new(r[2], Garden.LAWN_TOP + kh + 0.36, r[3]), Vector3.new(r[4] - 1.6, 0.14, 0.34), rgb(246, 150, 188), M.Fabric)
 		end
 	end
 	if arch then
@@ -1170,7 +1138,7 @@ function Art.Garden(def, level, open)
 	if level >= 5 then
 		for _, r in ipairs({ runs[2], runs[3] }) do
 			Kit.p(d, "FlowerStrip", CFrame.new(r[2], Garden.LAWN_TOP + kh + 0.15, r[3]), Vector3.new(0.5, 0.3, r[5] - 2.0), K.Leafy, M.Leafy)
-			Kit.p(d, "Blooms", CFrame.new(r[2], Garden.LAWN_TOP + kh + 0.36, r[3]), Vector3.new(0.34, 0.14, r[5] - 2.6), rgb(176, 160, 214), M.Fabric)
+			Kit.p(d, "Blooms", CFrame.new(r[2], Garden.LAWN_TOP + kh + 0.36, r[3]), Vector3.new(0.34, 0.14, r[5] - 2.6), rgb(172, 142, 232), M.Fabric)
 		end
 	end
 	if level >= 6 then
@@ -1179,8 +1147,8 @@ function Art.Garden(def, level, open)
 		end
 	end
 	if level >= 7 then
-		Kit.p(d, "Bunting", CFrame.new(0, railY - 0.3, hz - t / 2 - 0.05), Vector3.new(fp.X - 2.0, 0.4, 0.06), rgb(210, 160, 120), M.Fabric)
-		Kit.p(d, "Bunting", CFrame.new(0, railY - 0.3, hz - t / 2 + 0.05), Vector3.new(fp.X - 2.4, 0.4, 0.06), rgb(150, 170, 206), M.Fabric)
+		Kit.p(d, "Bunting", CFrame.new(0, railY - 0.3, hz - t / 2 - 0.05), Vector3.new(fp.X - 2.0, 0.4, 0.06), rgb(250, 168, 72), M.Fabric)
+		Kit.p(d, "Bunting", CFrame.new(0, railY - 0.3, hz - t / 2 + 0.05), Vector3.new(fp.X - 2.4, 0.4, 0.06), rgb(118, 168, 236), M.Fabric)
 	end
 	if gold then
 		local att = Instance.new("Attachment")
@@ -1225,12 +1193,12 @@ function Art.FoodMachine(def, level)
 	local zc = (z0 + z1) / 2
 	local dz = z1 - z0
 	Kit.p(m, "Plinth", CFrame.new(0, 0.25, zc - 0.6), Vector3.new(2 * hw + 1.4, 0.5, dz + 2.6), K.SlateDark, M.Slate, true)
-	local body = Kit.p(m, "Cabinet", CFrame.new(0, 0.5 + (top - 0.5) / 2, zc), Vector3.new(2 * hw, top - 0.5, dz), K.Planks, M.Planks, true)
-	Kit.corners(m, -hw + 0.2, hw - 0.2, z0 + 0.2, z1 - 0.2, 0.5, top - 0.5, K.WoodDark, M.Wood)
+	local body = Kit.p(m, "Cabinet", CFrame.new(0, 0.5 + (top - 0.5) / 2, zc), Vector3.new(2 * hw, top - 0.5, dz), rgb(240, 112, 104), M.Planks, true)
+	Kit.corners(m, -hw + 0.2, hw - 0.2, z0 + 0.2, z1 - 0.2, 0.5, top - 0.5, rgb(118, 168, 236), M.Wood)
 	for _, y in ipairs({ 1.3, top - 0.9 }) do
 		Kit.p(m, "Band", CFrame.new(0, y, z0 - 0.04), Vector3.new(2 * hw + 0.1, 0.22, 0.1), band, M.Metal)
 	end
-	Kit.p(m, "Cornice", CFrame.new(0, top + 0.17, zc), Vector3.new(2 * hw + 0.5, 0.35, dz + 0.5), K.WoodDark, M.Wood, true)
+	Kit.p(m, "Cornice", CFrame.new(0, top + 0.17, zc), Vector3.new(2 * hw + 0.5, 0.35, dz + 0.5), rgb(92, 150, 230), M.Wood, true)
 	Kit.p(m, "Panel", CFrame.new(0, 0.5 + (top - 0.5) / 2, z0 - 0.02), Vector3.new(2 * hw - 0.9, top - 1.6, 0.06), K.Whitewash, M.Planks)
 	-- the dispenser: a slate mouth, a two-step copper chute, the tray with a few berries
 	Kit.p(m, "Mouth", CFrame.new(-0.6, 2.4, z0 - 0.06), Vector3.new(1.7, 1.4, 0.14), K.IronDark, M.Slate)
@@ -1249,7 +1217,7 @@ function Art.FoodMachine(def, level)
 	hopper.CastShadow = false
 	Kit.p(m, "HopperBerries", CFrame.new(0, gy0 + 0.4, zc), Vector3.new(gw - 0.3, 0.8, gw - 0.3), K.BerryRed, M.Plastic)
 	Kit.p(m, "HopperBerries", CFrame.new(0, gy0 + 1.05, zc), Vector3.new(gw - 0.3, 0.5, gw - 0.3), K.BerryBlue, M.Plastic)
-	Kit.p(m, "Lid", CFrame.new(0, gy0 + gh + 0.15, zc), Vector3.new(gw + 0.4, 0.3, gw + 0.4), K.WoodDark, M.Wood)
+	Kit.p(m, "Lid", CFrame.new(0, gy0 + gh + 0.15, zc), Vector3.new(gw + 0.4, 0.3, gw + 0.4), rgb(92, 150, 230), M.Wood)
 	for _, cx in ipairs({ -1, 1 }) do
 		for _, cz2 in ipairs({ -1, 1 }) do
 			Kit.p(m, "HopperRod", CFrame.new(cx * gw / 2, gy0 + gh / 2, zc + cz2 * gw / 2), Vector3.new(0.16, gh, 0.16), band, M.Metal)
@@ -1311,7 +1279,7 @@ end
 -- a barbell rack (Physique, 1), two hurdles (Attack Speed, 2), a marble pedestal with a glowing orb (Ability, 3), a
 -- shield wall (Defense, 4) and a scoreboard with a trophy (5). Pennant posts from 3. <= 90 parts.
 ----------------------------------------------------------------------
-local TRAIN_MATS = { rgb(176, 104, 100), rgb(184, 160, 96), rgb(146, 116, 176), rgb(96, 128, 172), rgb(110, 156, 112) }
+local TRAIN_MATS = { rgb(236, 92, 96), rgb(250, 204, 72), rgb(176, 120, 236), rgb(84, 140, 226), rgb(110, 200, 120) }
 
 function Art.Training(def, level)
 	local tpl = newTemplate("Training")
@@ -1352,7 +1320,7 @@ function Art.Training(def, level)
 			for _, lz in ipairs({ bz - 0.9, bz + 0.9 }) do
 				Kit.p(m, "HurdleLeg", CFrame.new(hx, y + 0.65, lz), Vector3.new(0.2, 1.3, 0.2), K.Whitewash, M.Wood)
 			end
-			Kit.p(m, "Hurdle", CFrame.new(hx, y + 1.2, bz), Vector3.new(0.25, 0.3, 2.0), rgb(184, 92, 84), M.Wood)
+			Kit.p(m, "Hurdle", CFrame.new(hx, y + 1.2, bz), Vector3.new(0.25, 0.3, 2.0), rgb(236, 86, 86), M.Wood)
 		end
 	end
 	-- 3 Ability: a marble pedestal with a glowing orb
@@ -1368,7 +1336,7 @@ function Art.Training(def, level)
 		local x = spotX(4)
 		Kit.p(m, "ShieldWall", CFrame.new(x, y + 1.8, hz - 0.9), Vector3.new(2.8, 3.6, 0.4), K.PlanksDark, M.Planks, true)
 		Kit.p(m, "ShieldWallCap", CFrame.new(x, y + 3.75, hz - 0.9), Vector3.new(3.2, 0.3, 0.7), K.WoodDark, M.Wood)
-		Kit.cylAt(m, "Shield", CFrame.new(x, y + 1.9, hz - 1.18) * CFrame.Angles(0, PI / 2, 0), 0.16, 2.2, rgb(110, 128, 168), M.Metal)
+		Kit.cylAt(m, "Shield", CFrame.new(x, y + 1.9, hz - 1.18) * CFrame.Angles(0, PI / 2, 0), 0.16, 2.2, rgb(84, 140, 226), M.Metal)
 		Kit.cylAt(m, "ShieldBoss", CFrame.new(x, y + 1.9, hz - 1.3) * CFrame.Angles(0, PI / 2, 0), 0.14, 0.7, gold and K.Gold or K.Iron, M.Metal)
 	end
 	-- 5: a scoreboard with three lights and a trophy on a little stand
@@ -1392,7 +1360,7 @@ function Art.Training(def, level)
 		for _, px in ipairs({ x0 + 0.4, x1 - 0.4 }) do
 			Kit.p(d, "PennantPost", CFrame.new(px, y + 2.6, hz - 0.4), Vector3.new(0.3, 5.2, 0.3), gold and K.Gold or K.WoodDark, gold and M.Metal or M.Wood)
 			local fx = (px < cx) and (px + 0.85) or (px - 0.85)
-			Kit.p(d, "Pennant", CFrame.new(fx, y + 4.6, hz - 0.4), Vector3.new(1.4, 0.9, 0.06), rgb(186, 96, 90), M.Fabric)
+			Kit.p(d, "Pennant", CFrame.new(fx, y + 4.6, hz - 0.4), Vector3.new(1.4, 0.9, 0.06), rgb(236, 86, 86), M.Fabric)
 		end
 	end
 	-- the training mats (one per level) and their Spot<i> attachments on the deck
@@ -1417,14 +1385,9 @@ function Art.Vault(def, level)
 	local w, d, h = 5.6, 6.0, 4.4
 	Kit.p(m, "Plinth", CFrame.new(0, 0.3, 0), Vector3.new(w + 1.0, 0.6, d + 1.0), K.SlateDark, M.Slate, true)
 	Kit.p(m, "Step", CFrame.new(0, 0.15, -d / 2 - 1.0), Vector3.new(3.2, 0.3, 1.2), K.Slate, M.Slate, true)
-	if WorldStyle and WorldStyle.Chamfer then
-		local body = WorldStyle.Chamfer(m, CFrame.new(0, 0.6 + h / 2, 0), Vector3.new(w, h, d), M.Slate, K.Slate, 0.6)
-		body.Name = "Vault"
-	else
-		Kit.p(m, "Vault", CFrame.new(0, 0.6 + h / 2, 0), Vector3.new(w, h, d), K.Slate, M.Slate, true)
-	end
-	Kit.p(m, "Cornice", CFrame.new(0, 0.6 + h + 0.12, 0), Vector3.new(w + 0.6, 0.24, d + 0.6), K.MarbleShade, M.Marble, true)
-	Kit.p(m, "Roof", CFrame.new(0, 0.6 + h + 0.32, 0), Vector3.new(w - 0.4, 0.16, d - 0.4), K.SlateDark, M.Slate)
+	Kit.p(m, "Vault", CFrame.new(0, 0.6 + h / 2, 0), Vector3.new(w, h, d), rgb(218, 212, 200), M.Slate, true)
+	Kit.p(m, "Cornice", CFrame.new(0, 0.6 + h + 0.12, 0), Vector3.new(w + 0.6, 0.24, d + 0.6), rgb(100, 122, 170), M.Marble, true)
+	Kit.p(m, "Roof", CFrame.new(0, 0.6 + h + 0.32, 0), Vector3.new(w - 0.4, 0.16, d - 0.4), rgb(84, 104, 150), M.Slate)
 	for _, y in ipairs({ 1.55, 3.95 }) do
 		Kit.p(m, "Course", CFrame.new(0, y, 0), Vector3.new(w + 0.12, 0.16, d - 1.2), K.SlateLight, M.Slate)
 		Kit.p(m, "Course", CFrame.new(0, y, 0), Vector3.new(w - 1.2, 0.16, d + 0.12), K.SlateLight, M.Slate)
@@ -1492,8 +1455,8 @@ function Art.Fusion(def, level)
 	local trim = gold and K.Gold or K.Iron
 	local cz = 1.0
 	local violet = rgb(170, 118, 255)
-	Kit.oct(m, "Base", 0, 0, 0.5, 9.4, 0.5, K.SlateDark, M.Slate, true)
-	local deckA = Kit.oct(m, "Deck", 0, 0.5, 0.5, 8.4, 0.45, K.MarbleShade, M.Marble, true)
+	Kit.oct(m, "Base", 0, 0, 0.5, 9.4, 0.5, rgb(84, 72, 160), M.Slate, true)
+	local deckA = Kit.oct(m, "Deck", 0, 0.5, 0.5, 8.4, 0.45, rgb(150, 128, 226), M.Marble, true)
 	deckA.Name = "Deck"
 	Kit.oct(m, "Inlay", 0, 0.62, 0.5, 8.6, 0.08, violet, M.Neon)
 	Kit.p(m, "Step", CFrame.new(0, 0.25, -4.7), Vector3.new(3.0, 0.5, 1.2), K.Slate, M.Slate, true)
@@ -1561,15 +1524,15 @@ function Art.Fusion(def, level)
 end
 
 ----------------------------------------------------------------------
--- Arena Gate (Kind Arena): front -Z. A half-size WorldStyle gate in the Arena's red: two round marble columns on
--- slate plinths, a slate lintel with a marble keystone medallion carrying crossed swords, a thin red neon inlay
--- around the opening, a red neon disc + a ForceField shimmer, braziers on top and red banners. `ArenaGatePrompt`
--- ("Go to Arena", owner only, attributes StationId / Teleport = "Arena"; ArenaBuilder teleports). <= 80 parts.
+-- Arena Gate (Kind Arena): front -Z. The P4 home Arena Gate (7aa0df2 Art.Arena): two square stone pillars on
+-- plinths, a stone lintel with a red shield crest and crossed swords, a violet neon inlay around the opening, the
+-- violet portal + a ForceField shimmer, braziers on top and red banners. `ArenaGatePrompt` ("Go to Arena", owner
+-- only, attributes StationId / Teleport = "Arena"; ArenaBuilder teleports). <= 80 parts.
 ----------------------------------------------------------------------
 function Art.ArenaGate(def, level)
 	local tpl = newTemplate("ArenaGate")
 	local m = tpl.Model
-	local accent = (WP.Accent and WP.Accent.Red) or rgb(255, 96, 110)
+	local accent = rgb(140, 96, 220) -- the P4 home Arena Gate: a violet portal under a red shield
 	local cx = 2.55 -- column centres at +-cx
 	local colH = 7.4
 	for _, sx in ipairs({ -1, 1 }) do
@@ -1578,7 +1541,7 @@ function Art.ArenaGate(def, level)
 		Kit.p(m, "PlinthBand", CFrame.new(x, 0.95, 0), Vector3.new(2.05, 0.15, 2.05), K.MarbleShade, M.Marble)
 		Kit.cyl(m, "Column", x, 1.0, 0, 1.35, colH, K.Marble, M.Marble, true)
 		Kit.p(m, "Capital", CFrame.new(x, 1.0 + colH + 0.25, 0), Vector3.new(1.8, 0.5, 1.8), K.MarbleShade, M.Marble)
-		Kit.p(m, "Banner", CFrame.new(x, 5.0, -0.72), Vector3.new(0.9, 3.4, 0.06), rgb(176, 72, 78), M.Fabric)
+		Kit.p(m, "Banner", CFrame.new(x, 5.0, -0.72), Vector3.new(0.9, 3.4, 0.06), rgb(214, 70, 74), M.Fabric)
 		Kit.p(m, "Brazier", CFrame.new(x, 11.05, 0), Vector3.new(0.9, 0.5, 0.9), K.IronDark, M.Metal)
 		local fire = Kit.p(m, "Fire", CFrame.new(x, 11.55, 0), Vector3.new(0.55, 0.6, 0.55), rgb(255, 170, 80), M.Neon)
 		if sx > 0 then
@@ -1588,10 +1551,10 @@ function Art.ArenaGate(def, level)
 	local ly = 1.0 + colH + 0.5
 	Kit.p(m, "Lintel", CFrame.new(0, ly + 0.7, 0), Vector3.new(6.9, 1.4, 2.0), K.Slate, M.Slate, true)
 	Kit.p(m, "Cornice", CFrame.new(0, ly + 1.55, 0), Vector3.new(7.0, 0.3, 2.3), K.MarbleShade, M.Marble)
-	Kit.cylAt(m, "Medallion", CFrame.new(0, ly + 0.7, -1.05) * CFrame.Angles(0, PI / 2, 0), 0.2, 1.7, K.Marble, M.Marble)
+	Kit.cylAt(m, "Medallion", CFrame.new(0, ly + 0.7, -1.05) * CFrame.Angles(0, PI / 2, 0), 0.2, 1.7, rgb(196, 58, 66), M.Marble)
 	for _, sx in ipairs({ -1, 1 }) do
 		local cf = CFrame.new(0, ly + 0.7, -1.2) * CFrame.Angles(0, 0, rad(sx * 40))
-		Kit.p(m, "Sword", cf, Vector3.new(0.22, 1.7, 0.06), rgb(120, 130, 150), M.Metal)
+		Kit.p(m, "Sword", cf, Vector3.new(0.22, 1.7, 0.06), rgb(214, 222, 236), M.Metal)
 		Kit.p(m, "Hilt", cf * CFrame.new(0, -0.7, 0), Vector3.new(0.7, 0.16, 0.08), K.GoldBright, M.Metal)
 	end
 	-- the opening: a neon inlay frame, the red disc and the ForceField shimmer (non-solid)
@@ -1600,7 +1563,7 @@ function Art.ArenaGate(def, level)
 	Kit.p(m, "Inlay", CFrame.new(ow / 2 + 0.12, 1.0 + oh / 2, -0.35), Vector3.new(0.18, oh, 0.18), accent, M.Neon)
 	Kit.p(m, "Inlay", CFrame.new(0, ly - 0.05, -0.35), Vector3.new(ow + 0.42, 0.18, 0.18), accent, M.Neon)
 	Kit.p(m, "Portal", CFrame.new(0, 1.0 + oh / 2, 0), Vector3.new(ow, oh, 0.12), accent, M.Neon, false, { Transparency = 0.35 })
-	Kit.p(m, "Shimmer", CFrame.new(0, 1.0 + oh / 2, -0.1), Vector3.new(ow, oh, 0.05), rgb(255, 180, 190), M.Force, false, { Transparency = 0.2 })
+	Kit.p(m, "Shimmer", CFrame.new(0, 1.0 + oh / 2, -0.1), Vector3.new(ow, oh, 0.05), rgb(206, 180, 255), M.Force, false, { Transparency = 0.2 })
 	Kit.p(m, "Threshold", CFrame.new(0, 0.3, 0), Vector3.new(ow + 0.6, 0.6, 2.6), K.Slate, M.Slate, true)
 	local prompt = newPrompt("ArenaGatePrompt", "Go to Arena", "Arena Gate", "ArenaGate")
 	prompt:SetAttribute("Teleport", "Arena")
@@ -1611,11 +1574,11 @@ function Art.ArenaGate(def, level)
 	return tpl
 end
 ----------------------------------------------------------------------
--- House (4 tiers, judge M8 restyle): front -Z toward the gate (the HouseWalk ends at local z -10). Slate plinths,
--- WoodPlanks / Brick walls with inset corner posts, ClayRoofTiles gable roofs, warm-glass windows, warm lanterns.
--- Cottage (a planked cottage, a chimney), Villa (two storeys: brick below, planks above, a porch, a cross gable),
--- Manor (a brick hall with two gabled wings and a marble portico), Sky Castle (a marble keep, four round towers with
--- tiled spires, banners, a rose window). <= 150 parts.
+-- House (4 tiers; Phase 6 A1 = the P4 colours): front -Z toward the gate (the HouseWalk ends at local z -10). Stone
+-- plinths, walls with corner posts, stepped voxel roofs, glass windows, warm lanterns. Cottage (cream walls, a
+-- terracotta roof, a chimney), Villa (two storeys: peach below, cream above, a porch, a cross gable, terracotta
+-- roofs), Manor (a lavender-white hall with two wings, slate-blue roofs, a white portico), Sky Castle (a white keep,
+-- four square towers with blue stepped spires and gold tips, pink banners, a rose window). <= 150 parts.
 ----------------------------------------------------------------------
 local House = {}
 
@@ -1644,8 +1607,8 @@ end
 
 function House.cottage(m)
 	Kit.p(m, "Plinth", CFrame.new(0, 0.35, 0), Vector3.new(13.2, 0.7, 9.2), K.SlateDark, M.Slate, true)
-	House.block(m, "Walls", 0, 0, 12, 8, 0.7, 4.6, K.PlanksLight, M.Planks)
-	Kit.gable(m, "Roof", CFrame.new(0, 5.3, 0), 12, 8, 3.4, K.Roof, M.Clay, { Overhang = 0.8, Ridge = K.RoofDark, GableColor = K.PlanksLight })
+	House.block(m, "Walls", 0, 0, 12, 8, 0.7, 4.6, K.Cream, M.Planks, K.Wood)
+	Kit.gable(m, "Roof", CFrame.new(0, 5.3, 0), 12, 8, 3.4, K.Roof, M.Clay, { Overhang = 0.8, Ridge = K.RoofDark, Dark = K.RoofDark })
 	House.door(m, 0, 0.7, -4, 1.8, 3.0)
 	House.windows(m, { -3.6, 3.6 }, 2.9, -4, 1.8, 1.5)
 	Kit.window(m, CFrame.new(6, 2.9, 0) * CFrame.Angles(0, -PI / 2, 0), 1.6, 1.4)
@@ -1657,7 +1620,7 @@ function House.cottage(m)
 	end
 	for _, x in ipairs({ -3.6, 3.6 }) do
 		Kit.p(d, "FlowerBox", CFrame.new(x, 1.75, -4.35), Vector3.new(1.9, 0.4, 0.5), K.PlanksDark, M.Planks)
-		Kit.p(d, "Flowers", CFrame.new(x, 2.05, -4.35), Vector3.new(1.7, 0.25, 0.4), rgb(206, 140, 160), M.Leafy)
+		Kit.p(d, "Flowers", CFrame.new(x, 2.05, -4.35), Vector3.new(1.7, 0.25, 0.4), rgb(246, 150, 188), M.Leafy)
 	end
 	return 9.6
 end
@@ -1667,12 +1630,12 @@ function House.villa(m)
 	Kit.p(m, "Plinth", CFrame.new(0, 0.35, 0.5), Vector3.new(w + 1.2, 0.7, d + 1.2), K.SlateDark, M.Slate, true)
 	House.block(m, "Walls", 0, 0.5, w, d, 0.7, 4.4, K.Brick, M.Brick, K.Whitewash)
 	Kit.p(m, "Band", CFrame.new(0, 5.25, 0.5), Vector3.new(w + 0.4, 0.3, d + 0.4), K.SlateLight, M.Slate)
-	House.block(m, "Upper", 0, 0.5, w - 0.4, d - 0.4, 5.4, 3.8, K.PlanksLight, M.Planks)
-	Kit.gable(m, "Roof", CFrame.new(0, 9.2, 0.5), w - 0.4, d - 0.4, 4.2, K.Roof, M.Clay, { Overhang = 0.9, Ridge = K.RoofDark, GableColor = K.PlanksLight })
+	House.block(m, "Upper", 0, 0.5, w - 0.4, d - 0.4, 5.4, 3.8, K.Cream, M.Planks, K.Whitewash)
+	Kit.gable(m, "Roof", CFrame.new(0, 9.2, 0.5), w - 0.4, d - 0.4, 4.2, K.Roof, M.Clay, { Overhang = 0.9, Ridge = K.RoofDark, Dark = K.RoofDark })
 	-- the cross gable over the entrance
 	local fz = 0.5 - d / 2
-	Kit.p(m, "Bay", CFrame.new(0, 7.3, fz - 0.6), Vector3.new(5.4, 3.8, 1.2), K.PlanksLight, M.Planks, true)
-	Kit.gable(m, "BayRoof", CFrame.new(0, 9.2, fz - 0.2) * CFrame.Angles(0, PI / 2, 0), 2.4, 5.4, 2.4, K.Roof, M.Clay, { Overhang = 0.5, GableColor = K.PlanksLight })
+	Kit.p(m, "Bay", CFrame.new(0, 7.3, fz - 0.6), Vector3.new(5.4, 3.8, 1.2), K.Cream, M.Planks, true)
+	Kit.gable(m, "BayRoof", CFrame.new(0, 9.2, fz - 0.2) * CFrame.Angles(0, PI / 2, 0), 2.4, 5.4, 2.4, K.Roof, M.Clay, { Overhang = 0.5, Dark = K.RoofDark })
 	House.door(m, 0, 0.7, fz, 2.4, 3.2)
 	House.windows(m, { -6.4, -3.4, 3.4, 6.4 }, 2.9, fz, 1.6, 1.6)
 	House.windows(m, { -6.4, -3.4, 3.4, 6.4 }, 7.2, fz + 0.2, 1.5, 1.5)
@@ -1695,16 +1658,16 @@ end
 function House.manor(m)
 	local cw, cd = 14, 12
 	Kit.p(m, "Plinth", CFrame.new(0, 0.4, 0.5), Vector3.new(25.2, 0.8, cd + 1.4), K.SlateDark, M.Slate, true)
-	House.block(m, "Walls", 0, 0.5, cw, cd, 0.8, 4.6, K.Brick, M.Brick, K.Marble)
+	House.block(m, "Walls", 0, 0.5, cw, cd, 0.8, 4.6, K.Manor, M.Brick, K.Whitewash)
 	Kit.p(m, "Band", CFrame.new(0, 5.55, 0.5), Vector3.new(cw + 0.4, 0.3, cd + 0.4), K.Marble, M.Marble)
-	House.block(m, "Upper", 0, 0.5, cw, cd, 5.7, 4.3, K.Brick, M.Brick, K.Marble)
+	House.block(m, "Upper", 0, 0.5, cw, cd, 5.7, 4.3, K.Manor, M.Brick, K.Whitewash)
 	Kit.p(m, "Cornice", CFrame.new(0, 10.15, 0.5), Vector3.new(cw + 0.6, 0.3, cd + 0.6), K.Marble, M.Marble)
-	Kit.gable(m, "Roof", CFrame.new(0, 10.3, 0.5), cw, cd, 5.6, K.Roof, M.Clay, { Overhang = 0.8, Ridge = K.RoofDark, GableColor = K.BrickDark, GableMat = M.Brick })
+	Kit.gable(m, "Roof", CFrame.new(0, 10.3, 0.5), cw, cd, 5.6, K.Shingle, M.Clay, { Overhang = 0.8, Ridge = K.Gold, Dark = K.ShingleLight })
 	-- the wings (their gables face the yard)
 	for _, sx in ipairs({ -1, 1 }) do
 		local wx = sx * 9.6
-		House.block(m, "Wing", wx, 1.0, 5.0, 10, 0.8, 6.0, K.Brick, M.Brick, K.Marble)
-		Kit.gable(m, "WingRoof", CFrame.new(wx, 6.8, 1.0) * CFrame.Angles(0, PI / 2, 0), 10, 5.0, 3.0, K.Roof, M.Clay, { Overhang = 0.6, GableColor = K.BrickDark, GableMat = M.Brick })
+		House.block(m, "Wing", wx, 1.0, 5.0, 10, 0.8, 6.0, K.Manor, M.Brick, K.Whitewash)
+		Kit.gable(m, "WingRoof", CFrame.new(wx, 6.8, 1.0) * CFrame.Angles(0, PI / 2, 0), 10, 5.0, 3.0, K.Shingle, M.Clay, { Overhang = 0.6, Dark = K.ShingleLight })
 		Kit.window(m, CFrame.new(wx, 3.2, -4.0), 1.8, 2.0)
 		Kit.window(m, CFrame.new(wx, 7.6, -4.15), 1.0, 1.0, nil, nil, { Sill = false })
 	end
@@ -1717,7 +1680,7 @@ function House.manor(m)
 		Kit.cyl(m, "Column", x, 0.8, fz - 1.9, 0.75, 4.6, K.Marble, M.Marble, true)
 	end
 	Kit.p(m, "Entablature", CFrame.new(0, 5.65, fz - 1.1), Vector3.new(5.6, 0.5, 2.4), K.MarbleShade, M.Marble)
-	Kit.gable(m, "Pediment", CFrame.new(0, 5.9, fz - 1.1) * CFrame.Angles(0, PI / 2, 0), 2.4, 5.6, 1.4, K.MarbleShade, M.Marble, { Overhang = 0.25, Thick = 0.25, EndOverhang = 0.1, GableColor = K.Marble, GableMat = M.Marble })
+	Kit.gable(m, "Pediment", CFrame.new(0, 5.9, fz - 1.1) * CFrame.Angles(0, PI / 2, 0), 2.4, 5.6, 1.4, K.MarbleShade, M.Marble, { Overhang = 0.25, EndOverhang = 0.1, Dark = K.Marble })
 	Kit.p(m, "Steps", CFrame.new(0, 0.5, fz - 1.5), Vector3.new(5.2, 1.0, 2.8), K.Slate, M.Slate, true)
 	Kit.p(m, "Steps", CFrame.new(0, 0.2, fz - 3.2), Vector3.new(4.6, 0.4, 1.0), K.SlateLight, M.Slate, true)
 	House.chimney(m, -4.2, 3.0, 11.0, 5.4)
@@ -1737,8 +1700,8 @@ function House.castle(m)
 	local cz = 0.5
 	Kit.p(m, "Plinth", CFrame.new(0, 0.45, cz), Vector3.new(hw + 2.0, 0.9, hd + 1.6), K.SlateDark, M.Slate, true)
 	House.block(m, "Keep", 0, cz, hw, hd, 0.9, hh, K.Marble, M.Marble, K.MarbleShade)
-	Kit.p(m, "Band", CFrame.new(0, 5.2, cz), Vector3.new(hw + 0.3, 0.3, hd + 0.3), K.SlateLight, M.Slate)
-	Kit.p(m, "Cornice", CFrame.new(0, 0.9 + hh + 0.2, cz), Vector3.new(hw + 0.6, 0.4, hd + 0.6), K.Slate, M.Slate)
+	Kit.p(m, "Band", CFrame.new(0, 5.2, cz), Vector3.new(hw + 0.3, 0.3, hd + 0.3), K.Gold, M.Slate)
+	Kit.p(m, "Cornice", CFrame.new(0, 0.9 + hh + 0.2, cz), Vector3.new(hw + 0.6, 0.4, hd + 0.6), K.MarbleShade, M.Slate)
 	-- battlements along the front and the back
 	local fz = cz - hd / 2
 	for k = 0, 5 do
@@ -1748,7 +1711,7 @@ function House.castle(m)
 		end
 	end
 	-- the great door, the portcullis, the rose window
-	Kit.p(m, "GateArch", CFrame.new(0, 2.9, fz - 0.1), Vector3.new(4.4, 4.6, 0.3), K.Slate, M.Slate)
+	Kit.p(m, "GateArch", CFrame.new(0, 2.9, fz - 0.1), Vector3.new(4.4, 4.6, 0.3), K.Gold, M.Slate)
 	Kit.p(m, "Door", CFrame.new(0, 2.6, fz - 0.28), Vector3.new(3.2, 3.6, 0.12), K.WoodDark, M.Wood)
 	Kit.p(m, "Portcullis", CFrame.new(0, 4.25, fz - 0.36), Vector3.new(3.2, 0.5, 0.1), K.Iron, M.Metal)
 	Kit.cylAt(m, "RoseFrame", CFrame.new(0, 7.3, fz - 0.06) * CFrame.Angles(0, PI / 2, 0), 0.14, 2.9, K.SlateLight, M.Slate)
@@ -1757,12 +1720,12 @@ function House.castle(m)
 	House.windows(m, { -5.4, -2.8, 2.8, 5.4 }, 7.4, fz, 1.2, 1.8, K.MarbleShade)
 	-- the central tower behind the gate
 	Kit.cyl(m, "Tower", 0, 0.9 + hh, cz + 1.5, 5.2, 6.0, K.Marble, M.Marble, true)
-	Kit.cyl(m, "TowerBand", 0, 0.9 + hh + 6.0, cz + 1.5, 5.8, 0.45, K.SlateLight, M.Slate)
+	Kit.cyl(m, "TowerBand", 0, 0.9 + hh + 6.0, cz + 1.5, 5.8, 0.45, K.Gold, M.Slate)
 	Kit.window(m, CFrame.new(0, 0.9 + hh + 3.2, cz + 1.5 - 2.62), 1.1, 1.8, K.MarbleShade, nil, { Sill = false })
 	local function spire(x, z, y0, d0, h)
 		local steps = { 1.0, 0.8, 0.6, 0.42, 0.26 }
 		for k, f in ipairs(steps) do
-			Kit.cyl(m, "Spire", x, y0 + (k - 1) * h * 0.17, z, d0 * f, h * 0.17, (k % 2 == 0) and K.RoofDark or K.Roof, M.Clay)
+			Kit.cyl(m, "Spire", x, y0 + (k - 1) * h * 0.17, z, d0 * f, h * 0.17, (k % 2 == 0) and K.RoofBlueDark or K.RoofBlue, M.Clay)
 		end
 		Kit.cyl(m, "SpireTip", x, y0 + h * 0.85, z, d0 * 0.1, h * 0.2, K.Gold, M.Metal)
 	end
@@ -1773,11 +1736,11 @@ function House.castle(m)
 		local th = (i <= 2) and 12.5 or 11.0
 		Kit.cyl(m, "TowerBase", t[1], 0, t[2], 4.8, 0.9, K.SlateDark, M.Slate, true)
 		Kit.cyl(m, "CornerTower", t[1], 0.9, t[2], 4.2, th, Kit.jit(K.Marble, i), M.Marble, true)
-		Kit.cyl(m, "TowerBand", t[1], 0.9 + th, t[2], 4.7, 0.4, K.SlateLight, M.Slate)
+		Kit.cyl(m, "TowerBand", t[1], 0.9 + th, t[2], 4.7, 0.4, K.Gold, M.Slate)
 		spire(t[1], t[2], 0.9 + th + 0.4, 4.9, 5.2)
 		if i <= 2 then
 			Kit.window(m, CFrame.new(t[1], 8.0, t[2] - 2.12), 0.9, 1.6, K.MarbleShade, nil, { Sill = false })
-			Kit.p(m, "Banner", CFrame.new(t[1] + ((t[1] < 0) and 2.2 or -2.2), 6.4, fz - 0.12), Vector3.new(1.4, 3.6, 0.08), rgb(150, 116, 186), M.Fabric)
+			Kit.p(m, "Banner", CFrame.new(t[1] + ((t[1] < 0) and 2.2 or -2.2), 6.4, fz - 0.12), Vector3.new(1.4, 3.6, 0.08), K.Banner, M.Fabric)
 		end
 	end
 	-- the bridge steps and lanterns
@@ -1901,7 +1864,7 @@ function Art.Fence(def, level, plotSize)
 		Fence.points(runs, 9, function(x, z, i)
 			Kit.p(m, "Post", CFrame.new(x, 1.15, z), Vector3.new(0.55, 2.3, 0.55), K.Whitewash, M.Wood, true)
 		end)
-		Fence.flowers(m, e, gate, { rgb(204, 92, 104), rgb(232, 196, 96), rgb(214, 150, 180) }, false)
+		Fence.flowers(m, e, gate, { rgb(236, 104, 108), rgb(250, 214, 92), rgb(246, 150, 188) }, false)
 	elseif level == 2 then
 		-- a clipped hedge on a brick kerb, brick pillars, the tulips and cloth banners at the gate and the corners
 		for _, r in ipairs(runs) do
@@ -1913,10 +1876,10 @@ function Art.Fence(def, level, plotSize)
 			Kit.p(m, "Pillar", CFrame.new(x, 1.45, z), Vector3.new(1.3, 2.9, 1.3), K.Brick, M.Brick, true)
 			Kit.p(m, "PillarCap", CFrame.new(x, 3.05, z), Vector3.new(1.5, 0.3, 1.5), K.SlateLight, M.Slate)
 		end)
-		Fence.flowers(m, e, gate, { rgb(204, 92, 104), rgb(232, 196, 96), rgb(214, 150, 180) }, false)
+		Fence.flowers(m, e, gate, { rgb(236, 104, 108), rgb(250, 214, 92), rgb(246, 150, 188) }, false)
 		for _, sx in ipairs({ -1, 1 }) do
-			Fence.banner(m, sx * (gate + 0.4), -e, 0, rgb(176, 92, 104), false)
-			Fence.banner(m, sx * (e - 1.0), e - 1.0, PI, rgb(176, 92, 104), false)
+			Fence.banner(m, sx * (gate + 0.4), -e, 0, rgb(236, 88, 110), false)
+			Fence.banner(m, sx * (e - 1.0), e - 1.0, PI, rgb(236, 88, 110), false)
 		end
 	else
 		-- a cloudstone wall: a slate base, marble wall and cap, pillars with cloud puffs, royal banners, starflowers
@@ -1933,8 +1896,8 @@ function Art.Fence(def, level, plotSize)
 		end)
 		Fence.flowers(m, e, gate, { rgb(196, 156, 255), rgb(140, 226, 255), rgb(255, 222, 140) }, true)
 		for _, sx in ipairs({ -1, 1 }) do
-			Fence.banner(m, sx * (gate + 0.4), -e, 0, rgb(118, 92, 172), true)
-			Fence.banner(m, sx * (e - 1.0), e - 1.0, PI, rgb(118, 92, 172), true)
+			Fence.banner(m, sx * (gate + 0.4), -e, 0, rgb(150, 116, 226), true)
+			Fence.banner(m, sx * (e - 1.0), e - 1.0, PI, rgb(150, 116, 226), true)
 			Kit.lantern(m, Vector3.new(sx * gate, 4.6, -e), 0.6, true, "Crystal")
 		end
 	end
@@ -1953,7 +1916,7 @@ function Art.Fountain(def, level)
 	local eff = (def and def.Effects and def.Effects[level]) or {}
 	local style = eff.LanternStyle or ({ "Wood", "Brass", "Crystal" })[level]
 	local count = tonumber(eff.Lanterns) or (2 + 2 * level)
-	local water = rgb(120, 178, 214)
+	local water = K.Water
 	Kit.oct(m, "Plinth", 0, 0, 0, 7.4, 0.4, K.SlateDark, M.Slate, true)
 	local basin = Kit.cyl(m, "Basin", 0, 0.4, 0, 6.6, 1.0, K.Marble, M.Marble, true)
 	Kit.cyl(m, "BasinFoot", 0, 0.4, 0, 6.9, 0.3, K.MarbleShade, M.Marble, true)
@@ -2040,7 +2003,7 @@ function Art.Podium(def, level)
 			Kit.p(m, "Collar", CFrame.new(0, 2.25, sz * 2.85), Vector3.new(6.2, 0.4, 0.4), K.Gold, M.Metal)
 			Kit.p(m, "Collar", CFrame.new(sz * 2.85, 2.25, 0), Vector3.new(0.4, 0.4, 5.3), K.Gold, M.Metal)
 		end
-		Kit.p(m, "Carpet", CFrame.new(0, 0.53, -4.35), Vector3.new(2.4, 0.06, 0.8), rgb(166, 72, 82), M.Fabric)
+		Kit.p(m, "Carpet", CFrame.new(0, 0.53, -4.35), Vector3.new(2.4, 0.06, 0.8), rgb(236, 88, 110), M.Fabric)
 	end
 	return tpl
 end
@@ -2150,7 +2113,7 @@ local function padTemplate(state)
 		size = cat.Layout.PadSize
 	end
 	local w, d = size.X, size.Z
-	local base = box(m, "Base", CFrame.new(0, 0.2, 0), Vector3.new(w, 0.4, d), (state == "Locked") and C.StoneDark or C.StoneEdge, { Collide = true, Shadow = false, Material = MAT.Slate })
+	local base = box(m, "Base", CFrame.new(0, 0.2, 0), Vector3.new(w, 0.4, d), (state == "Locked") and C.StoneDark or C.StoneEdge, { Collide = true, Shadow = false })
 	box(m, "Glow", CFrame.new(0, 0.45, 0), Vector3.new(w - 0.7, 0.1, d - 0.7), glow, { Material = MAT.Neon, Shadow = false, Collide = true })
 	local ec = (state == "Locked") and rgb(214, 220, 236) or rgb(255, 255, 255)
 	local eo = { Material = MAT.Neon, Shadow = false }
@@ -2232,8 +2195,8 @@ local function buildClaimSign(rec)
 	-- live inside the lobby and count toward its part budget. (World text rule: 50 px per stud, 1.1 stud title,
 	-- 0.6 stud info, both fitting the 7 x 2.6 stud board; the GUI draws the board's frame.)
 	local base = cf * CFrame.new(11, 0, -half - 2) * CFrame.Angles(0, math.pi, 0)
-	box(m, "Post", base * CFrame.new(0, 1.6, 0), Vector3.new(0.6, 3.2, 0.6), C.PlankDark, { Collide = true, Material = MAT.Wood })
-	local board = box(m, "Board", base * CFrame.new(0, 3.9, 0), Vector3.new(7.0, 2.6, 0.4), C.Plank, { Collide = true, Shadow = false, Material = MAT.WoodPlanks })
+	box(m, "Post", base * CFrame.new(0, 1.6, 0), Vector3.new(0.6, 3.2, 0.6), C.PlankDark, { Collide = true })
+	local board = box(m, "Board", base * CFrame.new(0, 3.9, 0), Vector3.new(7.0, 2.6, 0.4), C.Plank, { Collide = true, Shadow = false })
 	local gui = surfaceGui(board, Enum.NormalId.Back, "ClaimGui")
 	local panel = plainFrame(gui, "Panel", { Size = UDim2.fromScale(1, 1), BackgroundColor3 = rgb(255, 255, 255), BackgroundTransparency = 0 })
 	vgradient(panel, C.Violet, C.Navy)
@@ -2407,12 +2370,12 @@ local function pathTemplate()
 				local half = (catalog() and catalog().PlotSize or 72) / 2 - 0.3
 				x0, x1 = max(x0, -half), min(x1, half)
 				z0, z1 = max(z0, -half), min(z1, half)
-				box(tpl.Model, "PathEdge", CFrame.new((x0 + x1) / 2, -0.02, (z0 + z1) / 2), Vector3.new(x1 - x0, 0.2, z1 - z0), rgb(150, 144, 150), { Collide = true, Shadow = false, Material = MAT.Slate })
+				box(tpl.Model, "PathEdge", CFrame.new((x0 + x1) / 2, -0.02, (z0 + z1) / 2), Vector3.new(x1 - x0, 0.2, z1 - z0), rgb(146, 138, 132), { Collide = true, Shadow = false })
 			end
 		end
 		local model = Voxel.Build(g, {
 			VoxelSize = 1,
-			Palette = { Path = { Color = rgb(176, 170, 172), Material = MAT.Cobblestone }, PathEdge = { Color = rgb(150, 144, 150), Material = MAT.Slate } },
+			Palette = { Path = { Color = rgb(208, 202, 190), Material = MAT.SmoothPlastic }, PathEdge = { Color = rgb(146, 138, 132), Material = MAT.SmoothPlastic } },
 			Name = "Paths",
 			CFrame = CFrame.new(0.5, -0.32, 0.5), -- one voxel layer whose top sits 0.18 stud over the lawn
 			CanCollide = true,
@@ -2452,8 +2415,8 @@ local function lotTemplate()
 	-- in the House slot's frame (front -Z, toward the yard); kept clear of the walk in front of the house
 	local x0, x1, z0, z1 = -12, 12, -6.5, 8
 	local rope = rgb(244, 238, 222)
-	local deco = { Shadow = false, Material = MAT.Wood }
-	local plank = { Shadow = false, Material = MAT.WoodPlanks }
+	local deco = { Shadow = false }
+	local plank = { Shadow = false }
 	for _, x in ipairs({ x0, x1 }) do
 		for _, z in ipairs({ z0, z1 }) do
 			box(m, "Stake", CFrame.new(x, 0.8, z), Vector3.new(0.4, 1.6, 0.4), C.Plank, deco)
@@ -2466,8 +2429,8 @@ local function lotTemplate()
 	-- planks (two crossed layers) and bricks inside the lot
 	box(m, "Planks", CFrame.new(-6, 0.25, 1.5) * CFrame.Angles(0, math.rad(8), 0), Vector3.new(4.5, 0.5, 1.6), C.PlankLight, plank)
 	box(m, "Planks", CFrame.new(-6, 0.75, 1.6) * CFrame.Angles(0, math.rad(-6), 0), Vector3.new(4.0, 0.5, 1.4), C.Plank, plank)
-	box(m, "Bricks", CFrame.new(6, 0.5, 2.5), Vector3.new(2.4, 1.0, 1.6), rgb(170, 112, 98), { Shadow = false, Material = MAT.Brick })
-	box(m, "Bricks", CFrame.new(5.8, 1.25, 2.5) * CFrame.Angles(0, math.rad(10), 0), Vector3.new(1.6, 0.5, 1.2), rgb(182, 124, 106), { Shadow = false, Material = MAT.Brick })
+	box(m, "Bricks", CFrame.new(6, 0.5, 2.5), Vector3.new(2.4, 1.0, 1.6), rgb(220, 120, 80), { Shadow = false })
+	box(m, "Bricks", CFrame.new(5.8, 1.25, 2.5) * CFrame.Angles(0, math.rad(10), 0), Vector3.new(1.6, 0.5, 1.2), rgb(232, 140, 98), { Shadow = false })
 	templates.HouseLot = tpl
 	return tpl
 end
@@ -2588,6 +2551,161 @@ local function removeGhost(rec, id)
 	end
 end
 
+----------------------------------------------------------------------
+-- Phase 6 (art-home, ARCHITECTURE_V3 6.1 A7 / recipe 4.8 "World path"): Blender meshes for the station art. Every
+-- placed station is tagged with MeshLibrary.Tag(station, "home_<stem>_<level>"): the client hides the Part build
+-- locally and shows the fine-voxel mesh (blender/catalog/home.json, built by blender/kit/props/home*.py from THIS
+-- file's own Part build). The Part build stays: colliders, names, prompts, attachments, signs and the fallback.
+-- Kept visible over the mesh (Mesh.keepOf): Neon / ForceField glow (HomeFx and the light pulse them), the parts HomeFx
+-- moves (the Fusion `Swirl`), SurfaceGui sign boards (text stays Parts) and the Garden's bed pieces, which carry one
+-- key each (home_bed_<piece>, tagged per Part, so a bed swap never needs a new station key). A key is tagged only
+-- when it has an uploaded id (MeshLibrary.Status ~= "missing": the shipped empty MeshIds change nothing) and while
+-- its manifest's "LayoutSig" (part count + position / size sums of the Part build it was baked from) still matches
+-- the live build, so a later art change can never show a stale mesh. The kit reads Mesh.keepOf / Mesh.signature
+-- through HomeBuilder._Mesh, so both sides use the same rules.
+----------------------------------------------------------------------
+local Mesh = {
+	Lib = nil,
+	-- key stem per station Kind (decor per Id): home_<stem>_<level>
+	Stems = {
+		Farm = "farm", Garden = "garden", FoodMachine = "foodmachine", Training = "training", Vault = "vault",
+		House = "house", Fusion = "fusion", Arena = "arena", DecorFence = "fence", DecorFountain = "fountain",
+		DecorPodium = "podium",
+	},
+	-- per-Part element keys (station Kind -> part name -> key); the element meshes' own parts use the same names
+	Elements = {
+		Garden = {
+			Bed = "home_bed_frame", Cushion = "home_bed_cushion", Headboard = "home_bed_headboard",
+			BedRoof = "home_bed_roof", SoilBed = "home_bed_soil", Stem = "home_bed_stem", Sprout = "home_bed_sprout",
+			Post = "home_bed_post",
+		},
+	},
+	NoElements = {},
+}
+
+function Mesh.lib()
+	if Mesh.Lib == nil then
+		Mesh.Lib = false
+		local module = Shared:FindFirstChild("MeshLibrary")
+		if module then
+			local ok, result = pcall(require, module)
+			if ok and type(result) == "table" and type(result.Tag) == "function" and type(result.Status) == "function" then
+				Mesh.Lib = result
+			end
+		end
+	end
+	return Mesh.Lib or nil
+end
+
+function Mesh.elementsOf(def)
+	return (def and Mesh.Elements[def.Kind]) or Mesh.NoElements
+end
+
+-- the part names that stay visible over a dressed station (sorted list) + the set
+function Mesh.keepOf(model, elements)
+	local set = {}
+	for name in pairs(elements or Mesh.NoElements) do
+		set[name] = true
+	end
+	for _, d in ipairs(model:GetDescendants()) do
+		if d:IsA("BasePart") then
+			local keep = d.Material == MAT.Neon or d.Material == MAT.ForceField
+				or (d.Material ~= MAT.Glass and d.Transparency > 0.05 and d.Transparency < 0.99)
+				or d:FindFirstChildWhichIsA("SurfaceGui") ~= nil
+			local a = d.Parent
+			while not keep and a and a ~= model do
+				if a.Name == "Swirl" then
+					keep = true
+				end
+				a = a.Parent
+			end
+			if keep then
+				set[d.Name] = true
+			end
+		end
+	end
+	local list = {}
+	for name in pairs(set) do
+		list[#list + 1] = name
+	end
+	table.sort(list)
+	return list, set
+end
+
+-- part count + weighted sums of the visible, not kept BaseParts in `origin` space (LobbyBuilder Mesh.Signature's
+-- formula; the kit stores the same numbers as the manifest attachment "LayoutSig")
+function Mesh.signature(target, origin, skip)
+	local inv = origin:Inverse()
+	local n, a, b = 0, 0, 0
+	local list = target:GetDescendants()
+	list[#list + 1] = target
+	for _, d in ipairs(list) do
+		if d:IsA("BasePart") and d.Transparency < 0.99 and not (skip and skip[d.Name]) then
+			local p = inv * d.Position
+			local s = d.Size
+			n = n + 1
+			a = a + p.X + p.Y * 0.37 + p.Z * 0.61
+			b = b + s.X + s.Y * 1.3 + s.Z * 1.7
+		end
+	end
+	return n, a, b
+end
+
+function Mesh.sigOk(ML, key, n, a, b)
+	local man = type(ML.Manifest) == "function" and ML.Manifest(key)
+	local att = man and man.Attachments and (man.Attachments.LayoutSig or man.Attachments.layoutSig)
+	local pos = att and (att.Pos or att.pos)
+	if type(pos) ~= "table" then
+		return false -- every home key is baked from a layout
+	end
+	local tol = 0.05 + n * 1e-4
+	return n == pos[1] and math.abs(a - pos[2]) <= tol and math.abs(b - pos[3]) <= tol
+end
+
+-- per template (cached): the station key, keep list and layout signature in template space
+function Mesh.info(def, level, tpl)
+	if tpl.Mesh then
+		return tpl.Mesh
+	end
+	local stem = Mesh.Stems[def.Id] or Mesh.Stems[def.Kind]
+	local elements = Mesh.elementsOf(def)
+	local keepList, keepSet = Mesh.keepOf(tpl.Model, elements)
+	local n, a, b = Mesh.signature(tpl.Model, CFrame.new(), keepSet)
+	tpl.Mesh = { Key = stem and ("home_" .. stem .. "_" .. level) or nil, Keep = keepList, Sig = { n, a, b } }
+	return tpl.Mesh
+end
+
+-- tags a placed station (model pivot = cf) and its element parts; returns the number of tags
+function Mesh.station(m, def, level, tpl, cf)
+	local ML = Mesh.lib()
+	if not ML or not tpl or not tpl.Model then
+		return 0
+	end
+	local info = Mesh.info(def, level, tpl)
+	local tags = 0
+	local key = info.Key
+	if key and ML.Status(key) ~= "missing" and Mesh.sigOk(ML, key, info.Sig[1], info.Sig[2], info.Sig[3]) then
+		ML.Tag(m, key, { Offset = m:GetPivot():Inverse() * cf }, info.Keep)
+		tags = tags + 1
+	end
+	local elements = Mesh.elementsOf(def)
+	if next(elements) then
+		for _, d in ipairs(m:GetDescendants()) do
+			local ekey = d:IsA("BasePart") and elements[d.Name]
+			if ekey and d.Transparency < 0.99 and ML.Status(ekey) ~= "missing" then
+				local n, a, b = Mesh.signature(d, d.CFrame)
+				if Mesh.sigOk(ML, ekey, n, a, b) then
+					ML.Tag(d, ekey, { Primary = d.Color }, nil) -- a tinted piece (the cushions) takes the part's colour
+					tags = tags + 1
+				end
+			end
+		end
+	end
+	return tags
+end
+
+HomeBuilder._Mesh = Mesh
+
 local function placeStation(rec, def, level)
 	local accent = (typeof(rec.Spot.Accent) == "Color3") and rec.Spot.Accent or nil
 	local tpl = stationTemplate(def, level, accent, (def.Kind == "Garden") and Garden.openOf(rec) or nil)
@@ -2605,6 +2723,7 @@ local function placeStation(rec, def, level)
 		m:SetAttribute(name, v)
 	end
 	applyOwnerAttr(rec, m)
+	Mesh.station(m, def, level, tpl, slotCF) -- Phase 6: the Blender mesh (no-op without uploaded ids)
 	return m
 end
 
@@ -3086,6 +3205,7 @@ function HomeBuilder.BuildStationModel(id, level, accent, open)
 	for name, v in pairs(tpl.Info) do
 		m:SetAttribute(name, v)
 	end
+	Mesh.station(m, def, level, tpl, CFrame.new()) -- Phase 6: the Blender mesh (no-op without uploaded ids)
 	return m
 end
 

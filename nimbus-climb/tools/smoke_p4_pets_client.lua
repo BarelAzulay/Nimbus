@@ -493,7 +493,9 @@ S.client_p4pets_evolved = guarded("client_p4pets_evolved", function()
 	local e1, e2, n0 = info[COMMON], info[EPIC], info[LEGEND]
 	if T.check(e1 and e2 and n0 and e1.Model and e2.Model and n0.Model, "three own followers built (stage 1, stage 2, not evolved)") then
 		local p1, p2, p0 = partsOf(e1.Model), partsOf(e2.Model), partsOf(n0.Model)
-		T.check(e1.Stage == 1 and e1.Model:GetAttribute("PB_Detail") == "Low" and p1 > budget.petLow and p1 <= budget.petEvoLow,
+		-- the > petLow floor counts voxels; a Blender-mesh pet (ML_Mesh, recipe 4.9) only has to stay under the cap
+		local floor1 = e1.Model:GetAttribute("ML_Mesh") == true and 0 or budget.petLow
+		T.check(e1.Stage == 1 and e1.Model:GetAttribute("PB_Detail") == "Low" and p1 > floor1 and p1 <= budget.petEvoLow,
 			"own evolved follower (stage 1): Low detail within petEvoLow " .. budget.petEvoLow, fmt("stage %s, %s, %d parts", tostring(e1.Stage), tostring(e1.Model:GetAttribute("PB_Detail")), p1))
 		T.check(e2.Stage == 2 and e2.Model:GetAttribute("PB_Detail") == "Low" and p2 <= budget.petEvo2Low,
 			"own second evolution (stage 2, Epic): Low detail within petEvo2Low " .. budget.petEvo2Low, fmt("stage %s, %d parts", tostring(e2.Stage), p2))

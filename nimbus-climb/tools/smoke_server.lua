@@ -806,7 +806,7 @@ S.boot = guarded("boot", function()
 		local cr, cg, cb = rgb255(atm.Color)
 		T.check(cb >= cr, "Atmosphere.Color is blue-grey", string.format("%.0f,%.0f,%.0f", cr, cg, cb))
 		local dr, dg, db = rgb255(atm.Decay)
-		T.check(db >= dr, "Atmosphere.Decay is violet (the pink-purple sky)", string.format("%.0f,%.0f,%.0f", dr, dg, db))
+		T.check(dr >= db, "Atmosphere.Decay is a warm peach horizon (P4)", string.format("%.0f,%.0f,%.0f", dr, dg, db))
 	end
 	local bloom = Lighting:FindFirstChildOfClass("BloomEffect")
 	if bloom then
@@ -851,7 +851,15 @@ local function paletteAudit(container, limits)
 	local maxNeonFace = limits.maxNeonFace or 160 -- studs^2 of the largest face of an opaque Neon part
 	local out = { parts = 0, white = {}, bigNeon = {}, neonCount = 0, whiteCount = 0, bigNeonCount = 0 }
 	for _, d in ipairs(container:GetDescendants()) do
-		if d:IsA("BasePart") and not d:IsA("Terrain") then
+		local meshModel = d:FindFirstAncestorWhichIsA("Model")
+		if meshModel and meshModel:GetAttribute("ML_Mesh") == true then
+			-- Phase 6 --mesh: a mesh pet (fountain statue) merges its voxels into big vertex-coloured parts, so the
+			-- per-part white-size rule is meaningless there; the Part build of the same pet is audited in default mode
+			meshModel = true
+		else
+			meshModel = false
+		end
+		if d:IsA("BasePart") and not d:IsA("Terrain") and not meshModel then
 			out.parts = out.parts + 1
 			local c = d.Color
 			local size = d.Size

@@ -6,8 +6,9 @@
 --   DungeonBuilder.Build(lobbyInfo) -> DungeonInfo    the gate (BuildPortal) + the template folder; the templates are
 --                                                      built in a task.spawn after boot, one set per task.wait()
 --   DungeonBuilder.BuildPortal(gatesFolder, siteCFrame) -> DungeonInfo { Portal, Pad, PromptPart, ReturnCFrame, Prompt }
---                                                      WorldStyle.BuildGate (Purple, "torch", pill from the attribute
---                                                      DungeonBoard) + two torches, <= 120 parts; prompt "DungeonPrompt"
+--                                                      WorldStyle.BuildGate (the P4 hoop, Purple, "torch" = the skull
+--                                                      crest, pill from the attribute DungeonBoard) + two torches on its
+--                                                      pillars, <= 120 parts; prompt "DungeonPrompt"
 --                                                      with OpenPanel = "Dungeon" on the prompt part
 --   DungeonBuilder.BuildRun(index, floor, seed) -> Pocket { Index, Origin, Model, Floor, Seed, Layout, Rooms, Hall }
 --                                                      the holder workspace.Dungeons.Dungeon_<index>, the Entrance Hall,
@@ -29,12 +30,13 @@
 -- RoomInfo = { Index, Kind, Template, Model, Zone, Entrance (CFrame), Threshold (part), Door = { Bars }, ExitDoor =
 --             { Bars }, Center (Vector3), Spawns = { CFrame... }, Chests = { part... }, Corridor }
 --
--- Art: Slate / Cobblestone / Brick walls with plinth, body and cap, 6-stud flagstone floors (+-0.05 alternation), wall
--- torches (bracket + stick + Neon flame + Fire + PointLight range 18 amber, Shadows off), puddles, moss, barrels,
--- crates, chains, pillars, arches, a portcullis on every door, stairs to a dais and a throne under a plum carpet (the
--- Throne set), caves with rock walls, stalagmites, a turquoise pool and a waterfall wall, bridges over a dark chasm
--- (an invisible floor under it), a dark stone ceiling 16 studs up. Materials from WorldStyle.Materials only (rule 1:
--- the design's Sandstone / Rock are Cobblestone / Slate here); saturated colours only on small pieces or Neon inlays;
+-- Art (Phase 6 A1: a cute, colourful voxel dungeon in the P4 spirit): lilac storybook stone walls with plinth, body
+-- and cap, warm sandstone 6-stud flagstones (+-0.05 alternation), wall torches (bracket + stick + Neon flame + Fire +
+-- PointLight range 18 amber, Shadows off), puddles, juicy moss, barrels, crates, chains, pillars, arches, a
+-- portcullis on every door, stairs to a dais and a throne under a magenta carpet (the Throne set), caves with rock
+-- walls, stalagmites, a turquoise pool and a waterfall wall, bridges over a deep violet chasm (an invisible floor
+-- under it), a dark violet ceiling 16 studs up. SmoothPlastic only (Neon for glow, Glass for water and bottles,
+-- ForceField for shimmer), blocky voxel shapes only (no Cylinder / Ball: barrels, bowls and rings are blocks);
 -- parts < 4 studs do not cast shadows (Voxel.Box). Budgets per template: wave room <= 320, boss room <= 420, hall <=
 -- 140, corridor <= 70, treasure <= 90; live per run hall + room k + corridor + room k+1 <= 950.
 -- Plain Lua 5.1 syntax only (Luau subset).
@@ -54,7 +56,13 @@ local floor, max, min, abs = math.floor, math.max, math.min, math.abs
 local PI = math.pi
 local rgb = Color3.fromRGB
 
-local M = WorldStyle.Materials
+-- Phase 6 A1 (back to the P4 look): every material key is SmoothPlastic; only Neon / Glass / ForceField stay
+local M = setmetatable({ Neon = Enum.Material.Neon, Glass = Enum.Material.Glass, ForceField = Enum.Material.ForceField }, {
+	__index = function()
+		return Enum.Material.SmoothPlastic
+	end,
+})
+local P4_MATS = { [Enum.Material.SmoothPlastic] = true, [Enum.Material.Neon] = true, [Enum.Material.Glass] = true, [Enum.Material.ForceField] = true }
 local ZONE_TAG = "NC_BattleZone"
 local DETAIL_TAG = (WorldStyle.Tags and WorldStyle.Tags.Detail) or "NC_Detail"
 local TEMPLATE_FOLDER = "DungeonTemplates"
@@ -89,34 +97,36 @@ DungeonBuilder.Templates = {
 }
 
 ----------------------------------------------------------------------
--- Colours (big faces: saturation <= 0.45, value 0.35..0.9)
+-- Colours (Phase 6 A1: a cute, colourful voxel dungeon in the P4 spirit: lilac storybook stone, warm sandstone
+-- flagstones, gold trim, juicy moss and turquoise water; bright enough for the dungeon's darker lighting preset)
 ----------------------------------------------------------------------
 local C = {
-	Stone = rgb(122, 120, 116),
-	StoneDark = rgb(98, 96, 94),
-	StoneLight = rgb(146, 142, 136),
-	Brick = rgb(134, 112, 102),
-	Flag = rgb(176, 162, 134), -- the warm flagstone floor
-	FlagDark = rgb(150, 138, 114),
-	Ceiling = rgb(96, 92, 98),
-	Wood = rgb(118, 88, 66),
-	Plank = rgb(150, 116, 86),
-	Iron = rgb(92, 92, 100),
-	Gold = rgb(200, 166, 98),
+	Stone = rgb(170, 160, 212), -- lilac castle stone
+	StoneDark = rgb(130, 120, 182),
+	StoneLight = rgb(198, 190, 236),
+	Brick = rgb(186, 156, 214),
+	Flag = rgb(232, 210, 166), -- the warm sandstone floor
+	FlagDark = rgb(210, 184, 140),
+	Ceiling = rgb(104, 92, 156),
+	Wood = rgb(150, 100, 66),
+	Plank = rgb(196, 146, 98),
+	Iron = rgb(74, 82, 108),
+	Gold = rgb(244, 198, 84),
 	Flame = rgb(255, 184, 96),
 	Ember = rgb(255, 120, 60),
 	Light = rgb(255, 190, 120), -- amber torch light
-	Moss = rgb(104, 136, 92),
-	Hay = rgb(206, 182, 112),
-	Water = rgb(110, 184, 184), -- the muted turquoise pool
-	WaterGlow = rgb(140, 230, 230),
-	Puddle = rgb(140, 170, 190),
-	Carpet = rgb(132, 92, 150), -- plum: the big face stays under 0.45 saturation
-	Rock = rgb(112, 104, 100),
-	RockDark = rgb(98, 92, 90),
-	Abyss = rgb(92, 88, 100),
-	Bone = rgb(222, 214, 196),
-	Marble = rgb(206, 200, 210),
+	Moss = rgb(110, 200, 120),
+	Hay = rgb(250, 214, 120),
+	Water = rgb(92, 200, 236), -- the turquoise pool
+	WaterGlow = rgb(150, 236, 255),
+	Puddle = rgb(120, 190, 240),
+	Carpet = rgb(206, 72, 150), -- the throne's magenta carpet
+	Rock = rgb(156, 146, 196),
+	RockDark = rgb(124, 114, 170),
+	Abyss = rgb(60, 50, 104),
+	Bone = rgb(246, 240, 226),
+	Marble = rgb(240, 238, 248),
+	Accent = rgb(176, 120, 240), -- the default accent (recoloured to the floor's element)
 }
 
 ----------------------------------------------------------------------
@@ -136,13 +146,130 @@ local function rng(seed)
 	end
 end
 
+-- deterministic +-6 RGB shade noise (P4 Voxel.Shade spirit: big areas are never one flat colour)
 local function jitter(color, seed)
-	local ok, c = pcall(WorldStyle.Jitter, color, seed, 6)
-	if ok and typeof(c) == "Color3" then
-		return c
+	local n = (floor(seed or 0) * 7919 + 13) % 13 - 6
+	local function ch(v)
+		return max(0, min(255, floor(v * 255 + 0.5) + n))
 	end
-	return color
+	return rgb(ch(color.R), ch(color.G), ch(color.B))
 end
+
+----------------------------------------------------------------------
+-- Phase 6 (ARCHITECTURE_V3.md "## Phase 6" A7, owner art-arenadungeon): Blender mesh dressing. The Part build stays
+-- exactly as it is (the fallback, the colliders, every name / prompt / attribute / Accent part). The reusable pieces
+-- (wall runs, floor tiles, pillars, torch bodies, chests, crates, cave rocks, stalagmites, cracks, door frames) sit in
+-- small wrapper Models whose PrimaryPart moves with the clone (clonePiece moves BaseParts), and are tagged with
+-- MeshLibrary.Tag(target, key, look, keep): clients Dress them (Parts hidden locally, Keep parts stay: flames, bars).
+-- Keys: blender/catalog/arenadungeon.json, baked by blender/kit/props/dungeon.py from this very build. A key is tagged
+-- only once it has an uploaded id (MeshLibrary.Status ~= "missing": the shipped empty MeshIds change nothing) and,
+-- for pieces baked from a layout (walls, floors, pillars, door frames), only while the live piece still matches the
+-- manifest's "LayoutSig" (part count + position / size sums in origin space; the random protruding Bricks are not
+-- counted: the mesh carries its own). Tint parts take the piece's colour (look Primary). Targets never nest.
+----------------------------------------------------------------------
+local Mesh = { Lib = nil, Skip = { Brick = true }, Placed = setmetatable({}, { __mode = "k" }) } -- Placed: target -> its Tag call
+
+function Mesh.lib()
+	if Mesh.Lib == nil then
+		Mesh.Lib = false
+		local module = Shared:FindFirstChild("MeshLibrary")
+		if module then
+			local ok, result = pcall(require, module)
+			if ok and type(result) == "table" and type(result.Tag) == "function" then
+				Mesh.Lib = result
+			end
+		end
+	end
+	return Mesh.Lib or nil
+end
+
+-- part count + weighted sums of the visible BaseParts' positions / sizes in `origin` space (/ scale), Skip names out
+function Mesh.Signature(target, origin, scale, keep)
+	local inv = origin:Inverse()
+	local s = tonumber(scale) or 1
+	local kept = {}
+	for _, k in ipairs(keep or {}) do
+		kept[k] = true
+	end
+	local n, a, b = 0, 0, 0
+	local list = target:GetDescendants()
+	list[#list + 1] = target
+	for _, d in ipairs(list) do
+		if d:IsA("BasePart") and d.Transparency < 0.99 and not Mesh.Skip[d.Name] and not kept[d.Name] then
+			local p = inv * d.Position
+			local z = d.Size
+			n = n + 1
+			a = a + (p.X + p.Y * 0.37 + p.Z * 0.61) / s
+			b = b + (z.X + z.Y * 1.3 + z.Z * 1.7) / s
+		end
+	end
+	return n, a, b
+end
+
+function Mesh.sigOk(ML, key, target, origin, scale, keep)
+	local man = type(ML.Manifest) == "function" and ML.Manifest(key)
+	if not man then
+		return false
+	end
+	local att = man.Attachments and man.Attachments.LayoutSig
+	if not att then
+		return true -- a designed piece (rock, crack): no layout to match
+	end
+	local pos = att.Pos or att.pos
+	if type(pos) ~= "table" then
+		return false
+	end
+	local n, a, b = Mesh.Signature(target, origin, scale, keep)
+	local tol = 0.05 + n * 1e-4
+	return n == pos[1] and math.abs(a - pos[2]) <= tol and math.abs(b - pos[3]) <= tol
+end
+
+-- target: the piece (Model with a PrimaryPart, or one Part); origin: world CFrame of the mesh pivot; look: { Primary };
+-- keep: names that stay visible; scale: uniform placement scale. Returns true when tagged.
+function Mesh.tag(target, key, origin, look, keep, scale)
+	if typeof(target) ~= "Instance" or typeof(origin) ~= "CFrame" then
+		return false
+	end
+	Mesh.Placed[target] = { Key = key, Origin = origin, Look = look, Keep = keep, Scale = scale }
+	local kit = DungeonBuilder._Kit
+	if type(kit) == "table" and type(kit.Targets) == "table" then
+		kit.Targets[#kit.Targets + 1] = { Key = key, Target = target, Origin = origin, Look = look, Keep = keep, Scale = scale }
+	end
+	local ML = Mesh.lib()
+	if not ML or type(ML.Status) ~= "function" then
+		return false
+	end
+	local okStatus, st = pcall(ML.Status, key)
+	if not okStatus or st == "missing" or not Mesh.sigOk(ML, key, target, origin, scale, keep) then
+		return false
+	end
+	local tagLook = {}
+	for k, v in pairs(look or {}) do
+		tagLook[k] = v
+	end
+	local pivot = target:IsA("BasePart") and target.CFrame or target:GetPivot() -- (a Part's pivot: PivotOffset is never set here)
+	tagLook.Offset = pivot:Inverse() * origin
+	if scale and scale ~= 1 then
+		target:SetAttribute("ML_Scale", scale)
+	end
+	ML.Tag(target, key, tagLook, keep)
+	return true
+end
+
+-- a number in a key: 15 -> "15", 15.5 -> "15p5", -6 -> "m6"
+function Mesh.num(v)
+	local t = string.format("%.2f", v):gsub("0+$", ""):gsub("%.$", "")
+	return (t:gsub("%-", "m"):gsub("%.", "p"))
+end
+
+-- a wrapper Model for one piece (PrimaryPart set by the caller once its first part exists)
+function Mesh.group(parent, name)
+	local g = Instance.new("Model")
+	g.Name = name
+	g.Parent = parent
+	return g
+end
+DungeonBuilder._Mesh = Mesh
 
 ----------------------------------------------------------------------
 -- Kit: the parts (Voxel.Box) of the dungeon
@@ -156,8 +283,9 @@ function Kit.part(parent, cf, size, color, mat, opts)
 	if opts.Transparency then
 		props.Transparency = opts.Transparency
 	end
-	if opts.Shape then
-		props.Shape = opts.Shape
+	-- Phase 6 A1: blocks only (opts.Shape is ignored: no Cylinder / Ball) and P4 materials only
+	if not P4_MATS[mat or M.Slate] then
+		mat = M.Slate
 	end
 	local p = Voxel.Box(parent, cf, size, color, mat or M.Slate, props)
 	if opts.Accent then
@@ -172,6 +300,7 @@ function Kit.floorTiles(parent, w, d, color, mat, seed, y)
 	local tw, td = w / nx, d / nz
 	local base = y or 0
 	local n = 0
+	local tiles = Mesh.group(parent, "FloorTiles")
 	for i = 1, nx do
 		for j = 1, nz do
 			local lift = ((i + j) % 2 == 0) and 0.05 or -0.05
@@ -181,16 +310,23 @@ function Kit.floorTiles(parent, w, d, color, mat, seed, y)
 			if (i * 7 + j * 3 + seed) % 6 == 0 then
 				c = C.FlagDark
 			end
-			Kit.part(parent, CFrame.new(x, base - 0.5 + lift, z), Vector3.new(tw, 1, td), jitter(c, seed * 31 + i * 7 + j), mat or M.Cobblestone, { Name = "Floor", Collide = true })
+			local tile = Kit.part(tiles, CFrame.new(x, base - 0.5 + lift, z), Vector3.new(tw, 1, td), jitter(c, seed * 31 + i * 7 + j), mat or M.Cobblestone, { Name = "Floor", Collide = true })
+			if not tiles.PrimaryPart then
+				tiles.PrimaryPart = tile
+			end
 			n = n + 1
 		end
 	end
+	Mesh.tag(tiles, "dungeon_floor_" .. Mesh.num(w) .. "x" .. Mesh.num(d), CFrame.new(0, base, 0), { Primary = color })
 	-- cracks between the flagstones
 	local r = rng(seed * 13 + 5)
 	for k = 1, max(2, floor((nx * nz) / 12)) do
 		local x = -w / 2 + 4 + r() * (w - 8)
 		local z = -d / 2 + 4 + r() * (d - 8)
-		Kit.part(parent, CFrame.new(x, base + 0.06, z) * CFrame.Angles(0, r() * PI, 0), Vector3.new(2.5 + r() * 3, 0.12, 0.25), C.StoneDark, M.Slate, { Name = "Crack" })
+		local ccf = CFrame.new(x, base + 0.06, z) * CFrame.Angles(0, r() * PI, 0)
+		local len = 2.5 + r() * 3
+		local crack = Kit.part(parent, ccf, Vector3.new(len, 0.12, 0.25), C.StoneDark, M.Slate, { Name = "Crack" })
+		Mesh.tag(crack, "dungeon_crack", ccf, nil, nil, len / 4)
 		n = n + 1
 	end
 	return n
@@ -198,11 +334,12 @@ end
 
 -- a wall of length `len` whose centre is `cf` (local X along the wall, LookVector into the room): plinth band, body,
 -- cap, a few protruding stones; door = { X = offset, Width } leaves a doorway with a lintel
-function Kit.wall(parent, cf, len, color, mat, seed, door, lite)
+function Kit.wall(outer, cf, len, color, mat, seed, door, lite)
 	local h = WALL_H
 	local r = rng(seed)
+	local parent = Mesh.group(outer, "WallRun")
 	-- plinth (rule 3)
-	Kit.part(parent, cf * CFrame.new(0, 0.6, -0.35), Vector3.new(len, 1.2, 1.7), C.StoneDark, M.Slate, { Name = "Plinth", Collide = true })
+	parent.PrimaryPart = Kit.part(parent, cf * CFrame.new(0, 0.6, -0.35), Vector3.new(len, 1.2, 1.7), C.StoneDark, M.Slate, { Name = "Plinth", Collide = true })
 	if door then
 		local dw = door.Width or 8
 		local dx = door.X or 0
@@ -241,17 +378,30 @@ function Kit.wall(parent, cf, len, color, mat, seed, door, lite)
 			Kit.part(parent, cf * CFrame.new(x, y, -0.6), Vector3.new(sw, 1.0, 0.4), jitter(shade, seed + i * 3), M.Slate, { Name = "Brick" })
 		end
 	end
+	local key = "dungeon_wall_" .. Mesh.num(len)
+	if door then
+		key = key .. "_door" .. (((door.X or 0) ~= 0) and Mesh.num(door.X) or "") .. (((door.Width or 8) ~= 8) and ("w" .. Mesh.num(door.Width)) or "")
+	end
+	if lite then
+		key = key .. "_lite"
+	end
+	Mesh.tag(parent, key, cf, { Primary = color })
+	return parent
 end
 
-function Kit.pillar(parent, cf, h, color)
-	Kit.part(parent, cf * CFrame.new(0, 0.5, 0), Vector3.new(2.6, 1, 2.6), C.StoneDark, M.Slate, { Name = "PillarBase", Collide = true })
+function Kit.pillar(outer, cf, h, color)
+	local parent = Mesh.group(outer, "PillarStack")
+	parent.PrimaryPart = Kit.part(parent, cf * CFrame.new(0, 0.5, 0), Vector3.new(2.6, 1, 2.6), C.StoneDark, M.Slate, { Name = "PillarBase", Collide = true })
 	Kit.part(parent, cf * CFrame.new(0, h / 2, 0), Vector3.new(2, h, 2), color or C.Stone, M.Slate, { Name = "Pillar", Collide = true })
 	Kit.part(parent, cf * CFrame.new(0, h - 0.4, 0), Vector3.new(2.6, 0.8, 2.6), C.StoneDark, M.Slate, { Name = "PillarCap" })
+	Mesh.tag(parent, "dungeon_pillar_" .. Mesh.num(h), cf, { Primary = color or C.Stone })
+	return parent
 end
 
 -- a wall torch: cf = the mount point on the wall face (LookVector into the room)
-function Kit.torch(parent, cf, bright)
-	Kit.part(parent, cf * CFrame.new(0, 0.6, -0.1), Vector3.new(1.2, 2.2, 0.2), C.Iron, M.Metal, { Name = "Sconce" })
+function Kit.torch(outer, cf, bright)
+	local parent = Mesh.group(outer, "WallTorch")
+	parent.PrimaryPart = Kit.part(parent, cf * CFrame.new(0, 0.6, -0.1), Vector3.new(1.2, 2.2, 0.2), C.Iron, M.Metal, { Name = "Sconce" })
 	Kit.part(parent, cf * CFrame.new(0, 0, -0.3), Vector3.new(0.5, 0.7, 0.6), C.Iron, M.Metal, { Name = "Bracket" })
 	Kit.part(parent, cf * CFrame.new(0, 0.7, -0.75) * CFrame.Angles(-0.35, 0, 0), Vector3.new(0.3, 1.8, 0.3), C.Wood, M.Wood, { Name = "Stick" })
 	local flame = Kit.part(parent, cf * CFrame.new(0, 1.9, -1.05), Vector3.new(0.8, 1.3, 0.8), C.Flame, M.Neon, { Name = "Flame" })
@@ -271,6 +421,7 @@ function Kit.torch(parent, cf, bright)
 		fire.SecondaryColor = C.Ember
 		fire.Parent = flame
 	end)
+	Mesh.tag(parent, "dungeon_torch", cf, nil, { "Flame" })
 	return flame
 end
 
@@ -290,7 +441,10 @@ function Kit.door(parent, cf, name, width)
 		bars[i] = Kit.part(door, cf * CFrame.new(x, h / 2, 0), Vector3.new(0.35, h, 0.35), C.Iron, M.Metal, { Name = "Bar", Collide = true })
 	end
 	door:SetAttribute("Open", false)
+	door.PrimaryPart = door:FindFirstChild("Lintel")
 	door.Parent = parent
+	-- the frame (jambs + lintel) is the mesh; the Bars stay Parts (SetDoor flips them on the server)
+	Mesh.tag(door, "dungeon_door_" .. Mesh.num(w), cf, nil, { "Bar" })
 	return door, bars
 end
 
@@ -320,11 +474,14 @@ function Kit.barrel(parent, cf)
 	Kit.part(parent, cf * CFrame.new(0, 2.5, 0) * up, Vector3.new(0.25, 2.95, 2.95), C.Iron, M.Metal, { Name = "Band", Shape = Enum.PartType.Cylinder })
 end
 
-function Kit.crate(parent, cf, s)
+function Kit.crate(outer, cf, s)
 	s = s or 3
-	Kit.part(parent, cf * CFrame.new(0, s / 2, 0), Vector3.new(s, s, s), C.Plank, M.WoodPlanks, { Name = "Crate", Collide = true })
+	local parent = Mesh.group(outer, "CrateBox")
+	parent.PrimaryPart = Kit.part(parent, cf * CFrame.new(0, s / 2, 0), Vector3.new(s, s, s), C.Plank, M.WoodPlanks, { Name = "Crate", Collide = true })
 	Kit.part(parent, cf * CFrame.new(0, s / 2, s / 2 + 0.05), Vector3.new(s * 0.9, 0.3, 0.1), C.Wood, M.Wood, { Name = "Slat" })
 	Kit.part(parent, cf * CFrame.new(0, s / 2, -s / 2 - 0.05), Vector3.new(s * 0.9, 0.3, 0.1), C.Wood, M.Wood, { Name = "Slat" })
+	Mesh.tag(parent, "dungeon_crate", cf, nil, nil, s / 3)
+	return parent
 end
 
 function Kit.chain(parent, cf)
@@ -368,12 +525,12 @@ end
 -- a hanging banner (Accent: recoloured to the floor's element) on a wall mount point
 function Kit.banner(parent, cf)
 	Kit.part(parent, cf * CFrame.new(0, 0, -0.5), Vector3.new(4.4, 0.3, 0.3), C.Wood, M.Wood, { Name = "BannerPole" })
-	Kit.part(parent, cf * CFrame.new(0, -2.8, -0.45), Vector3.new(3.6, 5.4, 0.25), WorldStyle.Palette.Accent.Purple, M.Fabric, { Name = "Banner", Accent = true })
+	Kit.part(parent, cf * CFrame.new(0, -2.8, -0.45), Vector3.new(3.6, 5.4, 0.25), C.Accent, M.Fabric, { Name = "Banner", Accent = true })
 end
 
 -- a thin Neon rune inlay in the floor (Accent)
 function Kit.rune(parent, cf, w, d)
-	Kit.part(parent, cf * CFrame.new(0, 0.08, 0), Vector3.new(w or 3, 0.16, d or 0.6), WorldStyle.Palette.Accent.Purple, M.Neon, { Name = "Rune", Accent = true })
+	Kit.part(parent, cf * CFrame.new(0, 0.08, 0), Vector3.new(w or 3, 0.16, d or 0.6), C.Accent, M.Neon, { Name = "Rune", Accent = true })
 end
 
 function Kit.arch(parent, cf, width, height)
@@ -409,14 +566,23 @@ end
 
 function Kit.rock(parent, cf, size, seed)
 	local r = rng(seed)
-	Kit.part(parent, cf * CFrame.Angles((r() - 0.5) * 0.4, (r() - 0.5) * 0.6, (r() - 0.5) * 0.4), size, jitter((r() > 0.5) and C.Rock or C.RockDark, seed), M.Slate, { Name = "Rock", Collide = true })
+	local rock = Kit.part(parent, cf * CFrame.Angles((r() - 0.5) * 0.4, (r() - 0.5) * 0.6, (r() - 0.5) * 0.4), size, jitter((r() > 0.5) and C.Rock or C.RockDark, seed), M.Slate, { Name = "Rock", Collide = true })
+	-- a real voxel rock (3 shapes) upright at the box's centre, sized to the box's volume (the tilted box stays the collider)
+	local vol = (size.X * size.Y * size.Z) ^ (1 / 3)
+	local thin = min(size.X, size.Y, size.Z)
+	local shape = (floor(seed or 0) % 3) + 1
+	Mesh.tag(rock, "dungeon_rock_" .. shape, cf * CFrame.new(0, -size.Y / 2, 0), { Primary = rock.Color }, nil, min(vol, thin * 1.3) / 4)
+	return rock
 end
 
-function Kit.stalagmite(parent, cf, h)
+function Kit.stalagmite(outer, cf, h)
 	h = h or 4
-	Kit.part(parent, cf * CFrame.new(0, h * 0.2, 0) * CFrame.Angles(0, 0.4, 0), Vector3.new(2.6, h * 0.4, 2.6), C.RockDark, M.Slate, { Name = "Stalagmite", Collide = true })
+	local parent = Mesh.group(outer, "StalagmiteStack")
+	parent.PrimaryPart = Kit.part(parent, cf * CFrame.new(0, h * 0.2, 0) * CFrame.Angles(0, 0.4, 0), Vector3.new(2.6, h * 0.4, 2.6), C.RockDark, M.Slate, { Name = "Stalagmite", Collide = true })
 	Kit.part(parent, cf * CFrame.new(0, h * 0.55, 0) * CFrame.Angles(0, 0.8, 0), Vector3.new(1.6, h * 0.35, 1.6), C.Rock, M.Slate, { Name = "Stalagmite" })
 	Kit.part(parent, cf * CFrame.new(0, h * 0.85, 0), Vector3.new(0.7, h * 0.3, 0.7), C.Rock, M.Slate, { Name = "Stalagmite" })
+	Mesh.tag(parent, "dungeon_stalagmite", cf, nil, nil, h / 4)
+	return parent
 end
 
 -- a cobweb in a ceiling corner: cf = the corner at the ceiling, LookVector along one wall
@@ -458,7 +624,7 @@ end
 -- a wall emblem: a shield with crossed bars (cf on the wall face, LookVector into the room)
 function Kit.shield(parent, cf)
 	Kit.part(parent, cf * CFrame.new(0, 0, -0.3), Vector3.new(2.6, 3.2, 0.3), C.Iron, M.Metal, { Name = "Shield" })
-	Kit.part(parent, cf * CFrame.new(0, 0, -0.5), Vector3.new(1.6, 2, 0.15), WorldStyle.Palette.Accent.Purple, M.Fabric, { Name = "ShieldCrest", Accent = true })
+	Kit.part(parent, cf * CFrame.new(0, 0, -0.5), Vector3.new(1.6, 2, 0.15), C.Accent, M.Fabric, { Name = "ShieldCrest", Accent = true })
 	Kit.part(parent, cf * CFrame.new(0, 0, -0.65) * CFrame.Angles(0, 0, 0.75), Vector3.new(4, 0.25, 0.2), C.Gold, M.Metal, { Name = "Sword" })
 	Kit.part(parent, cf * CFrame.new(0, 0, -0.65) * CFrame.Angles(0, 0, -0.75), Vector3.new(4, 0.25, 0.2), C.Gold, M.Metal, { Name = "Sword" })
 end
@@ -520,7 +686,7 @@ end
 
 function Kit.rug(parent, cf, w, d)
 	Kit.part(parent, cf * CFrame.new(0, 0.07, 0), Vector3.new(w or 8, 0.14, d or 6), C.Carpet, M.Fabric, { Name = "Rug" })
-	Kit.part(parent, cf * CFrame.new(0, 0.15, 0), Vector3.new((w or 8) - 1.6, 0.06, (d or 6) - 1.6), WorldStyle.Palette.Accent.Purple, M.Fabric, { Name = "RugInlay", Accent = true })
+	Kit.part(parent, cf * CFrame.new(0, 0.15, 0), Vector3.new((w or 8) - 1.6, 0.06, (d or 6) - 1.6), C.Accent, M.Fabric, { Name = "RugInlay", Accent = true })
 end
 
 -- a wine rack against a wall (cf on the wall face, LookVector into the room)
@@ -533,8 +699,10 @@ function Kit.wineRack(parent, cf)
 	end
 end
 
-function Kit.chest(parent, cf, slot)
+function Kit.chest(outer, cf, slot)
+	local parent = Mesh.group(outer, "ChestBox")
 	local body = Kit.part(parent, cf * CFrame.new(0, 0.9, 0), Vector3.new(3, 1.8, 2), C.Plank, M.WoodPlanks, { Name = "Chest", Collide = true })
+	parent.PrimaryPart = body
 	Kit.part(parent, cf * CFrame.new(0, 2.05, 0), Vector3.new(3.1, 0.5, 2.1), C.Wood, M.Wood, { Name = "ChestLid" })
 	Kit.part(parent, cf * CFrame.new(0, 1.0, 1.05), Vector3.new(0.6, 0.6, 0.15), C.Gold, M.Metal, { Name = "ChestLock" })
 	body:SetAttribute("ChestSlot", slot)
@@ -549,6 +717,7 @@ function Kit.chest(parent, cf, slot)
 	prompt:SetAttribute("DungeonAction", "Chest")
 	prompt:SetAttribute("ChestSlot", slot)
 	prompt.Parent = body
+	Mesh.tag(parent, "dungeon_chest", cf)
 	return body
 end
 
@@ -1039,7 +1208,7 @@ function Rooms.Treasure()
 	Kit.rune(detail, CFrame.new(0, 0, -3), 20, 0.5)
 	-- the exit portal: a Marble arch with a purple shimmer and the prompt part
 	Kit.arch(model, CFrame.new(0, 0, 9.4), 6, 9)
-	Kit.part(model, CFrame.new(0, 4.2, 9.4), Vector3.new(5.6, 8, 0.15), WorldStyle.Palette.Accent.Purple, M.ForceField, { Name = "ExitShimmer", Transparency = 0.4 })
+	Kit.part(model, CFrame.new(0, 4.2, 9.4), Vector3.new(5.6, 8, 0.15), C.Accent, M.ForceField, { Name = "ExitShimmer", Transparency = 0.4 })
 	local exitPart = Kit.part(model, CFrame.new(0, 3, 7.4), Vector3.new(1, 1, 1), C.Stone, M.Slate, { Name = "ExitPrompt", Transparency = 1 })
 	exitPart:SetAttribute("DungeonAction", "Exit")
 	local exitPrompt = Instance.new("ProximityPrompt")
@@ -1153,7 +1322,7 @@ function DungeonBuilder.BuildPortal(gatesFolder, siteCFrame)
 		Glyph = "torch",
 		Pad = true,
 	})
-	-- two torches on the columns' inner faces
+	-- two torches on the front faces of the hoop's stone pillars (P6 A1: the P4 hoop gate), facing the plaza
 	local look = siteCFrame.LookVector
 	local flat = Vector3.new(look.X, 0, look.Z)
 	if flat.Magnitude < 1e-3 then
@@ -1161,12 +1330,12 @@ function DungeonBuilder.BuildPortal(gatesFolder, siteCFrame)
 	end
 	local site = CFrame.lookAt(siteCFrame.Position, siteCFrame.Position + flat.Unit)
 	for _, sx in ipairs({ -1, 1 }) do
-		local mount = site * CFrame.new(sx * 6.6, 9, -0.4) * CFrame.Angles(0, PI, 0)
+		local mount = site * CFrame.new(sx * 9.9, 4.2, -1.5)
 		local flame = Kit.torch(model, mount, 1.2)
 		local light = flame:FindFirstChild("TorchLight")
 		if light then
 			light.Range = 16 -- the lobby rule (6.4 rule 7)
-			light.Color = WorldStyle.Palette.Lantern
+			light.Color = C.Light
 		end
 	end
 	model:SetAttribute("DungeonBoard", "")
@@ -1246,7 +1415,7 @@ local function elementColor(element)
 	if info and typeof(info.Color) == "Color3" then
 		return info.Color
 	end
-	return WorldStyle.Palette.Accent.Purple
+	return C.Accent
 end
 
 local function floorDef(floorIndex)

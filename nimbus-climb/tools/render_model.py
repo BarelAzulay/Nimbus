@@ -360,10 +360,82 @@ GLASS = {"Glass"}
 FORCEFIELD = {"ForceField"}
 
 
+# [owner: kit] begin -- Phase 6 mesh path: MeshParts that carry ML_Key / ML_Part (tools/dump_model.lua "mlKey" /
+# "mlPart") are drawn from blender/out/<key>.tris.json.gz (part-local triangles + vertex colour bytes, written by
+# blender/build_all.py), scaled to the dumped Size and placed at the dumped CFrame; Color multiplies the vertex colours
+# like Roblox does.  A missing tris file draws the part as a box (and says so once).
+MESH_SHAPE = "MeshTris"
+MESH_DIR = os.path.join(ROOT, "blender", "out")
+_MESH_CACHE = {}
+_MESH_WARNED = set()
+
+
+def _mesh_tris(key):
+    if key not in _MESH_CACHE:
+        import gzip
+        path = os.path.join(MESH_DIR, key + ".tris.json.gz")
+        try:
+            with open(path, "rb") as fh:
+                _MESH_CACHE[key] = json.loads(gzip.decompress(fh.read()))
+        except OSError:
+            _MESH_CACHE[key] = None
+    return _MESH_CACHE[key]
+
+
+def expand_mesh_parts(parts):
+    """one virtual part per (MeshPart, vertex colour) with its part-local triangles; other parts unchanged"""
+    out = []
+    for p in parts:
+        key, name = p.get("mlKey"), p.get("mlPart")
+        data = _mesh_tris(key) if key else None
+        entry = data and data["parts"].get(name or "")
+        if not entry:
+            if key and (key, name) not in _MESH_WARNED:
+                _MESH_WARNED.add((key, name))
+                print("render_model: no triangles for %s/%s (build it with blender/build_all.py); drawn as a box" % (key, name))
+            out.append(p)
+            continue
+        v = np.asarray(entry["v"], dtype=np.float64).reshape(-1, 3, 3)
+        msize = np.maximum(np.asarray(entry["size"], dtype=np.float64), 1e-6)
+        scale = np.asarray(p["size"], dtype=np.float64) / msize
+        v = v * scale[None, None, :]
+        cols = np.asarray(entry["c"], dtype=np.float64)
+        base = np.asarray(p.get("color", [163, 162, 165]), dtype=np.float64)
+        uniq, inv = np.unique(cols, axis=0, return_inverse=True)
+        for ci, c in enumerate(uniq):
+            q = dict(p)
+            q["shape"] = MESH_SHAPE
+            q["tris"] = v[inv.reshape(-1) == ci]
+            q["color"] = (base * c / 255.0).tolist()
+            out.append(q)
+    return out
+
+
+def mesh_prims(keep, idx, pos, rot):
+    """TRI primitives (world space) of the virtual mesh parts keep[i] for i in idx"""
+    A, E1, E2, NRM, PID = [], [], [], [], []
+    for i in idx:
+        t = keep[i]["tris"]
+        w = np.einsum("ij,ntj->nti", rot[i], t) + pos[i][None, None, :]
+        e1, e2 = w[:, 1] - w[:, 0], w[:, 2] - w[:, 0]
+        n = np.cross(e1, e2)
+        ln = np.linalg.norm(n, axis=1, keepdims=True)
+        ok = ln[:, 0] > 1e-12
+        A.append(w[ok, 0]), E1.append(e1[ok]), E2.append(e2[ok]), NRM.append((n / np.maximum(ln, 1e-12))[ok])
+        PID.append(np.full(int(ok.sum()), i, dtype=np.int64))
+    return A, E1, E2, NRM, PID
+
+
+# --list: the mesh-path targets of the tools/dump_model.lua kit block (blender/out/<key>.tris.json.gz, built by the kit)
+TARGETS.extend(["meshkey:<key>[:<petId>]", "meshpet:<petId>[:Low]", "meshevo:<petId>:<1|2>[:Low]"])
+# [owner: kit] end
+
+
 class Geometry:
     """Flat primitives of a model: origin A, edges E1 / E2, kind (TRI or PARA), outward normal, colour, alpha."""
 
     def __init__(self, parts):
+        parts = expand_mesh_parts(parts)  # [owner: kit] MeshParts with ML_Key / ML_Part
         keep = []
         for p in parts:
             tr = float(p.get("transparency", 0) or 0)
@@ -373,8 +445,12 @@ class Geometry:
         self.count_all = len(parts)
         self.count_visible = len(keep)
         groups = {}
+        mesh_idx = []  # [owner: kit]
         for i, p in enumerate(keep):
             shape = p.get("shape", "Block")
+            if shape == MESH_SHAPE:  # [owner: kit]
+                mesh_idx.append(i)
+                continue
             if shape not in MESHES:
                 shape = "Block"
             groups.setdefault(shape, []).append(i)
@@ -436,6 +512,14 @@ class Geometry:
             K.append(np.broadcast_to(fk[None, :], (len(idx), F))[ok])
             NRM.append(nrm[ok])
             PID.append(np.broadcast_to(idx[:, None], (len(idx), F))[ok])
+        if mesh_idx:  # [owner: kit]
+            mA, mE1, mE2, mN, mP = mesh_prims(keep, mesh_idx, pos, rot)
+            A += mA
+            E1 += mE1
+            E2 += mE2
+            NRM += mN
+            PID += mP
+            K += [np.full(len(x), TRI, dtype=np.int8) for x in mA]
         if A:
             self.A = np.concatenate(A)
             self.E1 = np.concatenate(E1)

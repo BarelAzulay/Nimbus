@@ -1,0 +1,678 @@
+{
+ "class": "arenadungeon",
+ "owner": "W2 art-arenadungeon",
+ "doc": "blender/kit/props/arena.py (ad_baked: a Mesh.tag target of ArenaBuilder / DungeonBuilder re-voxeled finer by props/arena_style.py; pivot = the Tag origin; LayoutSig = the Part build's signature) + props/dungeon.py (ad_rock, ad_crack: designed pieces). Keys: arena_<piece>, dungeon_<piece>. The builders tag them (Tag calls only): ArenaBuilder._Mesh / DungeonBuilder._Mesh.",
+ "budgets": {
+  "tiny": {
+   "tris": 900,
+   "parts": 4
+  },
+  "small": {
+   "tris": 1800,
+   "parts": 6
+  },
+  "piece": {
+   "tris": 4000,
+   "parts": 8
+  },
+  "wall": {
+   "tris": 6000,
+   "parts": 6
+  },
+  "segment": {
+   "tris": 9000,
+   "parts": 8
+  },
+  "ring": {
+   "tris": 14000,
+   "parts": 8
+  },
+  "big": {
+   "tris": 24000,
+   "parts": 8
+  },
+  "island": {
+   "tris": 36000,
+   "parts": 8
+  },
+  "floor": {
+   "tris": 1000,
+   "parts": 1
+  }
+ },
+ "keys": [
+  {
+   "key": "arena_island",
+   "type": "prop",
+   "prop": "ad_baked",
+   "args": {
+    "vs": 2.0,
+    "soften": 1
+   },
+   "budget": "island",
+   "description": "Battle Arena island cloud (fine voxel, rounded puffs)"
+  },
+  {
+   "key": "arena_forum",
+   "type": "prop",
+   "prop": "ad_baked",
+   "args": {
+    "vs": 0.5,
+    "aligny": true
+   },
+   "budget": "island",
+   "description": "Battle Arena forum ground: lawn, cobble promenade, kerbs, avenue, plaza"
+  },
+  {
+   "key": "arena_floor",
+   "type": "prop",
+   "prop": "ad_baked",
+   "args": {
+    "vs": 0.5,
+    "aligny": true
+   },
+   "budget": "big",
+   "description": "Colosseum sand floor with the element wheel"
+  },
+  {
+   "key": "arena_seg_stand",
+   "type": "prop",
+   "prop": "ad_baked",
+   "args": {
+    "vs": 0.5,
+    "aligny": true,
+    "tints": {
+     "Seat": "Primary",
+     "Banner": "Secondary"
+    }
+   },
+   "budget": "segment",
+   "description": "Colosseum stand segment (seats + banner tinted per element)"
+  },
+  {
+   "key": "arena_seg_gate",
+   "type": "prop",
+   "prop": "ad_baked",
+   "args": {
+    "vs": 0.5,
+    "aligny": true,
+    "tints": {
+     "Seat": "Primary"
+    }
+   },
+   "budget": "segment",
+   "description": "Colosseum gate segment (seats tinted per element)"
+  },
+  {
+   "key": "arena_seg_bossgate",
+   "type": "prop",
+   "prop": "ad_baked",
+   "args": {
+    "vs": 0.5,
+    "aligny": true,
+    "tints": {
+     "Seat": "Primary",
+     "Banner": "Secondary"
+    }
+   },
+   "budget": "segment",
+   "description": "Colosseum boss gate segment (seats + banner tinted)"
+  },
+  {
+   "key": "arena_pillar",
+   "type": "prop",
+   "prop": "ad_baked",
+   "args": {
+    "vs": 0.25
+   },
+   "budget": "small",
+   "description": "Colosseum column with brazier (flame stays a glow part)"
+  },
+  {
+   "key": "arena_ring_1",
+   "type": "prop",
+   "prop": "ad_baked",
+   "args": {
+    "vs": 0.5,
+    "aligny": true,
+    "tints": {
+     "Accent": "Primary",
+     "Curb": "Secondary"
+    }
+   },
+   "budget": "ring",
+   "description": "Duel ring 1 (accent + curb tinted)"
+  },
+  {
+   "key": "arena_ring_2",
+   "type": "prop",
+   "prop": "ad_baked",
+   "args": {
+    "vs": 0.5,
+    "aligny": true,
+    "tints": {
+     "Accent": "Primary",
+     "Curb": "Secondary"
+    }
+   },
+   "budget": "ring",
+   "description": "Duel ring 2 (accent + curb tinted)"
+  },
+  {
+   "key": "arena_board_event",
+   "type": "prop",
+   "prop": "ad_baked",
+   "args": {
+    "vs": 0.25
+   },
+   "budget": "piece",
+   "description": "Arena event board frame (panel stays for the sign)"
+  },
+  {
+   "key": "arena_board_leader",
+   "type": "prop",
+   "prop": "ad_baked",
+   "args": {
+    "vs": 0.25
+   },
+   "budget": "piece",
+   "description": "Arena trophy leaderboard frame (panel stays for the sign)"
+  },
+  {
+   "key": "arena_torch",
+   "type": "prop",
+   "prop": "ad_baked",
+   "args": {
+    "vs": 0.125
+   },
+   "budget": "tiny",
+   "description": "Arena avenue torch post"
+  },
+  {
+   "key": "arena_lantern",
+   "type": "prop",
+   "prop": "ad_baked",
+   "args": {
+    "vs": 0.25
+   },
+   "budget": "tiny",
+   "description": "Arena promenade lantern post"
+  },
+  {
+   "key": "arena_hedge",
+   "type": "prop",
+   "prop": "ad_baked",
+   "args": {
+    "vs": 0.25
+   },
+   "budget": "small",
+   "description": "Arena hedge box with flowers"
+  },
+  {
+   "key": "arena_bannerpole",
+   "type": "prop",
+   "prop": "ad_baked",
+   "args": {
+    "vs": 0.125
+   },
+   "budget": "small",
+   "description": "Arena banner pole"
+  },
+  {
+   "key": "arena_planter",
+   "type": "prop",
+   "prop": "ad_baked",
+   "args": {
+    "vs": 0.25
+   },
+   "budget": "piece",
+   "description": "Arena raised planter"
+  },
+  {
+   "key": "arena_tree",
+   "type": "prop",
+   "prop": "ad_baked",
+   "args": {
+    "vs": 0.35,
+    "sig": false
+   },
+   "budget": "small",
+   "description": "Arena lawn tree (scaled per placement)"
+  },
+  {
+   "key": "arena_trophy",
+   "type": "prop",
+   "prop": "ad_baked",
+   "args": {
+    "vs": 0.25
+   },
+   "budget": "piece",
+   "description": "Arena golden trophy statue"
+  },
+  {
+   "key": "arena_bridge",
+   "type": "prop",
+   "prop": "ad_baked",
+   "args": {
+    "vs": 0.5,
+    "aligny": true,
+    "soften": 1
+   },
+   "budget": "big",
+   "description": "Arena stone bridge with torches, arch and cloud puffs"
+  },
+  {
+   "key": "arena_pocket",
+   "type": "prop",
+   "prop": "ad_baked",
+   "args": {
+    "vs": 0.5,
+    "aligny": true,
+    "soften": 1
+   },
+   "budget": "big",
+   "description": "Champion Ring pocket: cloud, ring, crown posts, cloud-puff crowd"
+  },
+  {
+   "key": "dungeon_wall_10_lite",
+   "type": "prop",
+   "prop": "ad_baked",
+   "args": {
+    "vs": 0.5,
+    "tints": {
+     "Wall": "Primary"
+    }
+   },
+   "budget": "wall",
+   "description": "Dungeon wall run 10_lite (lilac stone blocks, tinted per room)"
+  },
+  {
+   "key": "dungeon_wall_15_lite",
+   "type": "prop",
+   "prop": "ad_baked",
+   "args": {
+    "vs": 0.5,
+    "tints": {
+     "Wall": "Primary"
+    }
+   },
+   "budget": "wall",
+   "description": "Dungeon wall run 15_lite (lilac stone blocks, tinted per room)"
+  },
+  {
+   "key": "dungeon_wall_22_lite",
+   "type": "prop",
+   "prop": "ad_baked",
+   "args": {
+    "vs": 0.5,
+    "tints": {
+     "Wall": "Primary"
+    }
+   },
+   "budget": "wall",
+   "description": "Dungeon wall run 22_lite (lilac stone blocks, tinted per room)"
+  },
+  {
+   "key": "dungeon_wall_24",
+   "type": "prop",
+   "prop": "ad_baked",
+   "args": {
+    "vs": 0.5,
+    "tints": {
+     "Wall": "Primary"
+    }
+   },
+   "budget": "wall",
+   "description": "Dungeon wall run 24 (lilac stone blocks, tinted per room)"
+  },
+  {
+   "key": "dungeon_wall_30",
+   "type": "prop",
+   "prop": "ad_baked",
+   "args": {
+    "vs": 0.5,
+    "tints": {
+     "Wall": "Primary"
+    }
+   },
+   "budget": "wall",
+   "description": "Dungeon wall run 30 (lilac stone blocks, tinted per room)"
+  },
+  {
+   "key": "dungeon_wall_30_door",
+   "type": "prop",
+   "prop": "ad_baked",
+   "args": {
+    "vs": 0.5,
+    "tints": {
+     "Wall": "Primary"
+    }
+   },
+   "budget": "wall",
+   "description": "Dungeon wall run 30_door (lilac stone blocks, tinted per room)"
+  },
+  {
+   "key": "dungeon_wall_30_door_lite",
+   "type": "prop",
+   "prop": "ad_baked",
+   "args": {
+    "vs": 0.5,
+    "tints": {
+     "Wall": "Primary"
+    }
+   },
+   "budget": "wall",
+   "description": "Dungeon wall run 30_door_lite (lilac stone blocks, tinted per room)"
+  },
+  {
+   "key": "dungeon_wall_30_lite",
+   "type": "prop",
+   "prop": "ad_baked",
+   "args": {
+    "vs": 0.5,
+    "tints": {
+     "Wall": "Primary"
+    }
+   },
+   "budget": "wall",
+   "description": "Dungeon wall run 30_lite (lilac stone blocks, tinted per room)"
+  },
+  {
+   "key": "dungeon_wall_48",
+   "type": "prop",
+   "prop": "ad_baked",
+   "args": {
+    "vs": 0.5,
+    "tints": {
+     "Wall": "Primary"
+    }
+   },
+   "budget": "wall",
+   "description": "Dungeon wall run 48 (lilac stone blocks, tinted per room)"
+  },
+  {
+   "key": "dungeon_wall_50_door",
+   "type": "prop",
+   "prop": "ad_baked",
+   "args": {
+    "vs": 0.5,
+    "tints": {
+     "Wall": "Primary"
+    }
+   },
+   "budget": "wall",
+   "description": "Dungeon wall run 50_door (lilac stone blocks, tinted per room)"
+  },
+  {
+   "key": "dungeon_wall_5_lite",
+   "type": "prop",
+   "prop": "ad_baked",
+   "args": {
+    "vs": 0.5,
+    "tints": {
+     "Wall": "Primary"
+    }
+   },
+   "budget": "wall",
+   "description": "Dungeon wall run 5_lite (lilac stone blocks, tinted per room)"
+  },
+  {
+   "key": "dungeon_wall_62_door",
+   "type": "prop",
+   "prop": "ad_baked",
+   "args": {
+    "vs": 0.5,
+    "tints": {
+     "Wall": "Primary"
+    }
+   },
+   "budget": "wall",
+   "description": "Dungeon wall run 62_door (lilac stone blocks, tinted per room)"
+  },
+  {
+   "key": "dungeon_wall_62_door20",
+   "type": "prop",
+   "prop": "ad_baked",
+   "args": {
+    "vs": 0.5,
+    "tints": {
+     "Wall": "Primary"
+    }
+   },
+   "budget": "wall",
+   "description": "Dungeon wall run 62_door20 (lilac stone blocks, tinted per room)"
+  },
+  {
+   "key": "dungeon_wall_72",
+   "type": "prop",
+   "prop": "ad_baked",
+   "args": {
+    "vs": 0.5,
+    "tints": {
+     "Wall": "Primary"
+    }
+   },
+   "budget": "wall",
+   "description": "Dungeon wall run 72 (lilac stone blocks, tinted per room)"
+  },
+  {
+   "key": "dungeon_floor_28x22",
+   "type": "prop",
+   "prop": "ad_baked",
+   "args": {
+    "vs": 0.5,
+    "aligny": true,
+    "tints": {
+     "Floor": "Primary"
+    }
+   },
+   "budget": "wall",
+   "description": "Dungeon sandstone flagstone floor 28x22 (tinted per room)"
+  },
+  {
+   "key": "dungeon_floor_28x24",
+   "type": "prop",
+   "prop": "ad_baked",
+   "args": {
+    "vs": 0.5,
+    "aligny": true,
+    "tints": {
+     "Floor": "Primary"
+    }
+   },
+   "budget": "wall",
+   "description": "Dungeon sandstone flagstone floor 28x24 (tinted per room)"
+  },
+  {
+   "key": "dungeon_floor_44x48",
+   "type": "prop",
+   "prop": "ad_baked",
+   "args": {
+    "vs": 0.5,
+    "aligny": true,
+    "tints": {
+     "Floor": "Primary"
+    }
+   },
+   "budget": "wall",
+   "description": "Dungeon sandstone flagstone floor 44x48 (tinted per room)"
+  },
+  {
+   "key": "dungeon_floor_48x48",
+   "type": "prop",
+   "prop": "ad_baked",
+   "args": {
+    "vs": 0.5,
+    "aligny": true,
+    "tints": {
+     "Floor": "Primary"
+    }
+   },
+   "budget": "wall",
+   "description": "Dungeon sandstone flagstone floor 48x48 (tinted per room)"
+  },
+  {
+   "key": "dungeon_floor_60x72",
+   "type": "prop",
+   "prop": "ad_baked",
+   "args": {
+    "vs": 0.5,
+    "aligny": true,
+    "tints": {
+     "Floor": "Primary"
+    }
+   },
+   "budget": "wall",
+   "description": "Dungeon sandstone flagstone floor 60x72 (tinted per room)"
+  },
+  {
+   "key": "dungeon_pillar_7",
+   "type": "prop",
+   "prop": "ad_baked",
+   "args": {
+    "vs": 0.25,
+    "tints": {
+     "Pillar": "Primary"
+    }
+   },
+   "budget": "small",
+   "description": "Dungeon pillar 7 (tinted per room)"
+  },
+  {
+   "key": "dungeon_pillar_10p5",
+   "type": "prop",
+   "prop": "ad_baked",
+   "args": {
+    "vs": 0.25,
+    "tints": {
+     "Pillar": "Primary"
+    }
+   },
+   "budget": "small",
+   "description": "Dungeon pillar 10p5 (tinted per room)"
+  },
+  {
+   "key": "dungeon_pillar_15",
+   "type": "prop",
+   "prop": "ad_baked",
+   "args": {
+    "vs": 0.25,
+    "tints": {
+     "Pillar": "Primary"
+    }
+   },
+   "budget": "small",
+   "description": "Dungeon pillar 15 (tinted per room)"
+  },
+  {
+   "key": "dungeon_pillar_15p5",
+   "type": "prop",
+   "prop": "ad_baked",
+   "args": {
+    "vs": 0.25,
+    "tints": {
+     "Pillar": "Primary"
+    }
+   },
+   "budget": "small",
+   "description": "Dungeon pillar 15p5 (tinted per room)"
+  },
+  {
+   "key": "dungeon_torch",
+   "type": "prop",
+   "prop": "ad_baked",
+   "args": {
+    "vs": 0.125,
+    "solid": "Sconce"
+   },
+   "budget": "tiny",
+   "description": "Dungeon wall torch body (the flame stays a glow part)"
+  },
+  {
+   "key": "dungeon_chest",
+   "type": "prop",
+   "prop": "ad_baked",
+   "args": {
+    "vs": 0.125
+   },
+   "budget": "small",
+   "description": "Dungeon treasure chest"
+  },
+  {
+   "key": "dungeon_crate",
+   "type": "prop",
+   "prop": "ad_baked",
+   "args": {
+    "vs": 0.125,
+    "sig": false
+   },
+   "budget": "small",
+   "description": "Dungeon crate (scaled per placement)"
+  },
+  {
+   "key": "dungeon_door_8",
+   "type": "prop",
+   "prop": "ad_baked",
+   "args": {
+    "vs": 0.25
+   },
+   "budget": "small",
+   "description": "Dungeon portcullis frame (the bars stay parts)"
+  },
+  {
+   "key": "dungeon_stalagmite",
+   "type": "prop",
+   "prop": "ad_stalagmite",
+   "args": {
+    "vs": 0.25
+   },
+   "budget": "small",
+   "description": "Dungeon voxel stalagmite (scaled per placement)"
+  },
+  {
+   "key": "dungeon_rock_1",
+   "type": "prop",
+   "prop": "ad_rock",
+   "args": {
+    "shape": 1,
+    "vs": 0.25
+   },
+   "budget": "small",
+   "description": "Dungeon voxel cave rock 1 (tinted, moss)"
+  },
+  {
+   "key": "dungeon_rock_2",
+   "type": "prop",
+   "prop": "ad_rock",
+   "args": {
+    "shape": 2,
+    "vs": 0.25
+   },
+   "budget": "small",
+   "description": "Dungeon voxel cave rock 2 (tinted, moss, crystals)"
+  },
+  {
+   "key": "dungeon_rock_3",
+   "type": "prop",
+   "prop": "ad_rock",
+   "args": {
+    "shape": 3,
+    "vs": 0.25
+   },
+   "budget": "small",
+   "description": "Dungeon voxel cave rock 3 (tinted, moss, crystals)"
+  },
+  {
+   "key": "dungeon_crack",
+   "type": "prop",
+   "prop": "ad_crack",
+   "args": {
+    "vs": 0.125
+   },
+   "budget": "tiny",
+   "description": "Dungeon floor crack (scaled per placement)"
+  }
+ ],
+ "sets": [],
+ "previews": []
+}

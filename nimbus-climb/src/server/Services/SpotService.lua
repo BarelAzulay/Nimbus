@@ -487,58 +487,77 @@ local function setShowcasePet(index, key, def, stage)
 		opts.Detail = "Low"
 		opts.Evolved = (stage >= 2) and 2 or 1
 	end
-	local okBuild, model = pcall(builder.Build, def, opts)
-	if not okBuild or typeof(model) ~= "Instance" then
-		warn("[SpotService] PetBuilder.Build failed for " .. tostring(key) .. ": " .. tostring(model))
+	local podium = info.PodiumCFrame
+	-- the finished, placed podium pet (not parented) and its height, or nil
+	local function buildShow()
+		local okBuild, model = pcall(builder.Build, def, opts)
+		if not okBuild or typeof(model) ~= "Instance" then
+			warn("[SpotService] PetBuilder.Build failed for " .. tostring(key) .. ": " .. tostring(model))
+			return nil, 3
+		end
+
+		-- Visual only: nothing may collide, be touched or be hit by raycasts; every part Anchored (the client welds).
+		local parts = 0
+		for _, inst in ipairs(model:GetDescendants()) do
+			if inst:IsA("BasePart") then
+				inst.Anchored = true
+				inst.CanCollide = false
+				inst.CanTouch = false
+				inst.CanQuery = false
+				parts = parts + 1
+			end
+		end
+
+		-- Measure the model at the origin: how far its lowest point sits below the pivot, and its height.
+		local bottomOffset = 1.2
+		local height = 3
+		local okBox = pcall(function()
+			model:PivotTo(CFrame.new(0, 0, 0))
+			local boxCf, boxSize = model:GetBoundingBox()
+			local pivotY = model:GetPivot().Position.Y
+			bottomOffset = pivotY - (boxCf.Position.Y - boxSize.Y * 0.5)
+			height = boxSize.Y
+		end)
+		if not okBox and type(builder.GetHeight) == "function" then
+			local okH, h = pcall(builder.GetHeight, def)
+			if okH and type(h) == "number" then
+				height = h * SHOWCASE_SCALE
+				bottomOffset = height * 0.5
+			end
+		end
+
+		-- facing the street like the podium, hovering a little over it (the client bobs it by HoverAmp)
+		local rest = podium.Position + Vector3.new(0, HOVER_HEIGHT + bottomOffset, 0)
+		model.Name = "ShowcasePet"
+		model:PivotTo(CFrame.new(rest) * (podium - podium.Position))
+		model:SetAttribute("PetId", key)
+		model:SetAttribute("PetParts", parts)
+		model:SetAttribute("PB_Evolved", stage)
+		model:SetAttribute("HoverAmp", BOB_HEIGHT)
+		model:SetAttribute("Ready", true)
+		pcall(function()
+			CollectionService:AddTag(model, SHOWCASE_TAG)
+			CollectionService:AddTag(model, "NC_StyleExempt") -- a pet: WorldStyle.Tags.Exempt (the 6.4 material audit skips it)
+		end)
+		return model, height
+	end
+	local model, height = buildShow()
+	if not model then
 		return
 	end
-
-	-- Visual only: nothing may collide, be touched or be hit by raycasts; every part Anchored (the client welds).
-	local parts = 0
-	for _, inst in ipairs(model:GetDescendants()) do
-		if inst:IsA("BasePart") then
-			inst.Anchored = true
-			inst.CanCollide = false
-			inst.CanTouch = false
-			inst.CanQuery = false
-			parts = parts + 1
-		end
-	end
-
-	-- Measure the model at the origin: how far its lowest point sits below the pivot, and its height.
-	local podium = info.PodiumCFrame
-	local bottomOffset = 1.2
-	local height = 3
-	local okBox = pcall(function()
-		model:PivotTo(CFrame.new(0, 0, 0))
-		local boxCf, boxSize = model:GetBoundingBox()
-		local pivotY = model:GetPivot().Position.Y
-		bottomOffset = pivotY - (boxCf.Position.Y - boxSize.Y * 0.5)
-		height = boxSize.Y
-	end)
-	if not okBox and type(builder.GetHeight) == "function" then
-		local okH, h = pcall(builder.GetHeight, def)
-		if okH and type(h) == "number" then
-			height = h * SHOWCASE_SCALE
-			bottomOffset = height * 0.5
-		end
-	end
-
-	-- facing the street like the podium, hovering a little over it (the client bobs it by HoverAmp)
-	local rest = podium.Position + Vector3.new(0, HOVER_HEIGHT + bottomOffset, 0)
-	model.Name = "ShowcasePet"
-	model:PivotTo(CFrame.new(rest) * (podium - podium.Position))
-	model:SetAttribute("PetId", key)
-	model:SetAttribute("PetParts", parts)
-	model:SetAttribute("PB_Evolved", stage)
-	model:SetAttribute("HoverAmp", BOB_HEIGHT)
-	model:SetAttribute("Ready", true)
-	pcall(function()
-		CollectionService:AddTag(model, SHOWCASE_TAG)
-		CollectionService:AddTag(model, "NC_StyleExempt") -- a pet: WorldStyle.Tags.Exempt (the 6.4 material audit skips it)
-	end)
 	show.Model = model
 	model.Parent = info.Folder or workspace
+	-- Phase 6: the mesh pet replaces this Part build once its keys load after boot (MeshLibrary.Swap: same name and
+	-- place, re-tagged, so the clients' ShowcaseController picks it up); show.Model follows. Empty MeshIds = nothing.
+	if type(builder.SwapWhenReady) == "function" then
+		pcall(builder.SwapWhenReady, model, def, opts, function()
+			return (buildShow())
+		end, function(fresh, old)
+			if show.Model == old then
+				show.Model = fresh
+			end
+		end)
+	end
 
 	-- Tag: name + rarity, floating above the highest point of the bob.
 	local tag = show.Tag

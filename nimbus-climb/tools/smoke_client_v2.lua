@@ -1226,11 +1226,18 @@ S.client_menu = guarded("client_menu", function()
 	-- v3: the Pet Index window
 	indexWindowChecks(PetCatalog)
 
-	-- Spot button
+	-- Spot button (Phase 6: it opens the Home window; without a home its "Claim a home" hero fires Remotes.GoToSpot)
 	local mark = #serverCalls("GoToSpot")
 	clickEntry("Spot")
-	T.eq(#serverCalls("GoToSpot"), mark + 1, "the Spot button fires Remotes.GoToSpot")
-	T.eq(#visibleWindows(), 0, "...without opening a window")
+	local homeWin = windowOf("Window_Home")
+	T.check(homeWin ~= nil and homeWin.Visible and #serverCalls("GoToSpot") == mark, "the Spot button opens the Home window (no home yet: nothing sent)")
+	local claim = homeWin and descendantNamed(homeWin, "ClaimHome")
+	if T.check(claim ~= nil, "...with the Claim a home button") then
+		Mock.Click(claim)
+		advance(0.3)
+		T.eq(#serverCalls("GoToSpot"), mark + 1, "Claim a home fires Remotes.GoToSpot")
+		T.eq(#visibleWindows(), 0, "...and closes the window")
+	end
 
 	-- Shop: roulettes
 	clickEntry("Shop")
@@ -2034,7 +2041,9 @@ S.client_pets = guarded("client_pets", function()
 		for _, m in ipairs(modelsOf(LocalPlayer)) do
 			local n = Mock.CountDescendants(m, "BasePart")
 			detail[#detail + 1] = "mine " .. n
-			highOk = highOk and n > CONTRACT.v3.partBudget.petLow and n <= CONTRACT.v3.partBudget.petHigh
+			-- a Blender-mesh pet (ML_Mesh, recipe 4.9) is a few dozen MeshParts at either detail: read PB_Detail instead
+			local high = m:GetAttribute("ML_Mesh") == true and m:GetAttribute("PB_Detail") == "High" or n > CONTRACT.v3.partBudget.petLow
+			highOk = highOk and high and n <= CONTRACT.v3.partBudget.petHigh
 		end
 		T.check(lowOk, "other players' followers use PetBuilder Detail Low (<= " .. CONTRACT.v3.partBudget.petLow .. " parts each, evolved <= " .. CONTRACT.v3.partBudget.petEvoLow .. ")", table.concat(detail, ", "))
 		T.check(highOk, "the local player's own pets use Detail High (<= " .. CONTRACT.v3.partBudget.petHigh .. " parts)", table.concat(detail, ", "))

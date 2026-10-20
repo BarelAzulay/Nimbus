@@ -2,8 +2,8 @@
 
 > *Climb the storm. Together.*
 
-A cosy, co-op **sky village** game for Roblox. You live in a floating stone-and-wood village under a pink-purple sky
-full of stars. Six gates stand side by side in the **Gate Court** on the plaza: walk through the Obby gate with up to
+A cosy, co-op **sky village** game for Roblox. You live in a floating stone-and-wood village under a bright blue
+sky full of clouds. Five gates stand side by side in the **Gate Court** on the plaza: walk through the Obby gate with up to
 three friends and you get flown to a freshly generated **sky course** that you climb as a team (dash over gaps, dodge
 spinning bars, lightning and swinging beams, share checkpoints and pick each other back up). Along the way you collect
 **Cloud Tokens**, and back home you spend them on **pets** (from roulettes) and **usable items**, fill your **Pet
@@ -14,20 +14,60 @@ fight with a team of three (one **fighter** you steer and two **helpers**) in th
 players, in Boss Raids that the whole server fights together and in the endless **Champion Ring**.
 
 Version 3 turns Nimbus Climb into a multi-concept game: the **tycoon homes** are the main mode, **pet battles**
-are the second one, and the climb (obby) stays as a side mode. This build is **v3 phase 5**: phase 1 brought the
+are the second one, and the climb (obby) stays as a side mode. This build is **v3 phase 6**: phase 1 brought the
 new look, the pet collection and everything the later updates build on (see
 [What's new in v3](#whats-new-in-v3-phase-1)), phase 2 added the tycoon homes, Cash, Gems, prestige and the Fusion
 Machine (see [Tycoon homes](#tycoon-homes)), phase 3 added the **Battle Arena** with duels and Boss Raids (see
 [Pet battles](#pet-battles)), phase 4 made your **pets make the money** (see
 [What's new in phase 4](#whats-new-in-phase-4-pets-make-the-money)), and phase 5, the **Big Sky Update**, brings a new
 battle system, the Dungeon, the Gate Court, a simpler home and a whole new look (see
-[Phase 5: the Big Sky Update](#phase-5-the-big-sky-update)).
+[Phase 5: the Big Sky Update](#phase-5-the-big-sky-update)), and phase 6 brings back the cute voxel look with
+Blender models for everything (see [Phase 6: Blender models](#phase-6-blender-models)).
 
-Everything is built in code from plain parts and particles (no toolbox models), and all text uses one small
+Every model is made in Blender (until the owner uploads them, the game builds the same shapes in code from plain
+parts; no toolbox models), and all text uses one small
 `Theme` module, so the whole game shares the same look. The only asset ids in the code are the owner's own Stormfang
 artwork (`Config.Art.StormfangImage`) and the optional sky, music, sound and icon ids the owner pastes into
 `src/shared/Config.lua` (see [Phase 5: owner checklist](#phase-5-owner-checklist)); until then the game uses its
 built-in sky, stays silent and draws emoji icons.
+
+## Phase 6: Blender models
+
+- **The cute voxel look is back.** Bright colours, smooth plastic, a bright sky: the look of phase 4, which players
+  liked best. The realistic look of phase 5 is gone; every place stays where it was.
+- **Every model is made in Blender.** Pets, evolved pets, wings, accessories, hybrids, bosses, the sky dragon, NPC
+  pedestals, coins, the gates, the lobby, clouds, homes and their stations, the Battle Arena and the Dungeon:
+  **716 models** in all, with finer voxels and more detail than before. Effects (sparkles, lights, glow trails) stay
+  effects.
+- **Evolved pets look the best.** A first evolution gets sparkles in its element's colours and a soft glow. A second
+  evolution gets twice the sparkles, a brighter glow and a slow pulse. With the Blender models they also wear a ring
+  of element bits that circles them, and second evolutions a crown of light. On Graphics **Low** they keep only the
+  glow.
+- **Magic vortex portals.** The gates are round hoops again, like in phase 4, one per mode. Inside every hoop turns a
+  magic vortex: swirling arms, a glowing rim, little lightning sparks and light streaks pulled into the middle. On
+  Graphics **Low** the gates stand still.
+- **No Home gate in the lobby.** The Gate Court has five gates: Obby, Dungeon, Champion Ring, Arena and Storm Altar.
+  To go home, tap **Home**: the big golden button on top says **Go home** (a magic portal takes you and your pets
+  home) or, if you have no home yet, **Claim a home**.
+- **Nothing is lost.** Pets, levels, Cash, Gems, Tokens, homes and records stay the same. Only the looks change.
+
+### Phase 6: owner notes
+
+**How the game works today.** The file `src/shared/MeshIds.lua` holds the Roblox ids of the Blender models. Right now
+it is empty (`return {}`), so every model uses its old Part model (the voxel look, built in code). The game is fully
+playable like that. The swirl inside the gates also works without ids (made from effects).
+
+**After the upload.** The models must be uploaded to your Roblox account first. That needs your Open Cloud key and a
+new Claude session; you never paste the key in the chat. The whole checklist (making the key, the test model
+`cal_axes`, one pet, then the rest, the vortex images, what to do when something goes wrong) is in
+`docs/phase6/OWNER_UPLOAD.md`. Once an id is in `MeshIds.lua`, that model switches to its Blender mesh by itself, one
+by one, as soon as all its pieces are uploaded and approved by Roblox. A model that cannot load (still in review,
+rejected, or a phone that could not download it) simply keeps its Part model: nothing breaks.
+
+**Check it in Studio.** Press **Play**, then View -> **Output**: `[MeshLibrary] N mesh model(s) to load` means the
+ids were found. A yellow `[MeshLibrary] <name> ... stays on the Part build` line names a model that did not load.
+
+**Roll back.** Make `MeshIds.lua` empty again (`return {}`) and publish: every model goes back to its Part model.
 
 ## Phase 5: the Big Sky Update
 
@@ -49,7 +89,8 @@ built-in sky, stays silent and draws emoji icons.
   boss room. Every room pays Cash, Tokens and XP (loot) to everyone who really fought in it; clearing a floor for the
   first time pays big Tokens and Gems and unlocks the next floor. Go alone or as a party of up to **4** players, each
   with their own fighter and helpers. Your old Trial record already unlocked floors (see [The Dungeon](#the-dungeon)).
-- **One portal per mode, all together in the Gate Court:** Home, Obby, Dungeon, Champion Ring, Arena and Storm Altar.
+- **One portal per mode, all together in the Gate Court:** Obby, Dungeon, Champion Ring, Arena and Storm Altar. (Since
+  phase 6 there is no Home gate: tap **Home**, then **Go home**.)
   The obby has ONE portal now, with a **level picker**: pick Easy, Medium, Hard, Extreme or Saint; beating a level
   unlocks the next, and every win you ever had still counts (see [The Obby portal](#the-obby-portal-five-levels)).
 - **Your home, simpler:** **11 stations** instead of 18. One **Berry Farm** (40 levels) replaces the four food plants,
@@ -248,10 +289,11 @@ or the VS Code "Rojo" extension are the easy ways to get it).
 | Run (drains stamina) | hold `Shift` | **RUN** button (tap to toggle) | `L3` (toggle) |
 | Dash (35 stamina, 1.6 s cooldown, works in the air; in a battle it is free and uses `Shift`) | `Q` | **DASH** button | `B` |
 | Use an item | `1` `2` `3` `4` (or click / tap a slot) | tap a slot | - |
-| Talk to an NPC pet, use a gate of the Gate Court (Home, the Obby level picker, the Dungeon, the Champion Ring, the Arena, the Storm Altar), claim a home, put a pet on a pet bed, use the Food Machine (*Feed pets*), the Training Place (*Train pets*), the Fusion Machine, the Arena Gate, a duel pad, the arena boards or a dungeon chest | `E` | tap the prompt | `X` |
+| Talk to an NPC pet, use a gate of the Gate Court (the Obby level picker, the Dungeon, the Champion Ring, the Arena, the Storm Altar), claim a home, put a pet on a pet bed, use the Food Machine (*Feed pets*), the Training Place (*Train pets*), the Fusion Machine, the Arena Gate, a duel pad, the arena boards or a dungeon chest | `E` | tap the prompt | `X` |
 | Buy at a home pad (hold a moment) | hold `E` | hold the prompt | hold `X` |
 | Scoop your Cloud Cash | walk over it | walk over it | walk over it |
 | Go home through your own portal | **Home** tile -> **Go home**, then walk into the portal | the same | the same |
+| No home yet: find a free one | **Home** tile -> **Claim a home**, walk into the portal, press `E` at the gate | the same | the same |
 | Battle: **ATTACK** (hold to keep attacking) | `F` (or left click) | **ATTACK** button | `X` |
 | Battle: **ELEMENT** (your fighter's element attack) | `E` | **ELEMENT** button | `Y` |
 | Battle: **SPECIAL** (when the energy bar is full) | `Q` | **SPECIAL** button | `RB` |
@@ -297,11 +339,11 @@ ends it (it asks first). Your step is saved, so the tutorial continues where you
 ## The village
 
 - **The plaza** in the middle (bigger since phase 5): you spawn on the round court and look straight down the avenue
-  at the **Gate Court**, six stone gates side by side. Press **E** at a gate:
+  at the **Gate Court**, five stone gates side by side, each with a glowing magic vortex swirling inside its hoop.
+  Press **E** at a gate (there is no Home gate: the **Home** tile's **Go home** takes you home):
 
   | Gate | What it does |
   |---|---|
-  | **Home** | takes you to your home (or to a free gate, if you have no home yet) |
   | **Obby** | opens the level picker; stand on its pad to climb (see [The Obby portal](#the-obby-portal-five-levels)) |
   | **Dungeon** | opens the Dungeon window: 12 floors, solo or with friends (see [The Dungeon](#the-dungeon)) |
   | **Champion Ring** | opens the Champion Ring window (see [the Champion Ring](#the-champion-ring)) |
@@ -382,10 +424,10 @@ the second run takes under an hour, the third a little less).
   your save) and the gate offers *Claim Home* to someone else.
 - Coming back? If your last plot is free you get a side toast "Welcome back! Press E at your gate (#7)". Any other
   free plot works just as well: your whole build comes back on it.
-- The **Home** gate in the Gate Court takes you home (or to a free gate while you have no home). The **Home** tile of
-  the menu opens a magic portal toward a free gate while you have no home; once you have one it opens the
-  [Home window](#the-home-window), whose **Go home** button opens your own portal home. Nimbus' arrow leads to a free
-  gate too.
+- The **Home** tile of the menu opens the [Home window](#the-home-window). While you have no home it offers
+  **Claim a home**: a magic portal opens toward a free gate, walk in and press **E** there. Once you have a home, its
+  big **Go home** button opens your own portal home. Nimbus' arrow leads to a free gate too. (There is no Home gate
+  in the Gate Court any more.)
 - The name tag over the mailbox shows your avatar, your name, your **Home Level** and one star per **Prestige**,
   and the podium by the gate shows a slowly turning copy of your best pet (rarest first, Rainbow and Golden copies
   before plain ones, evolved when you evolved it). With a home, you respawn there instead of on the plaza.
@@ -687,12 +729,13 @@ Rainbow and hybrid pets.
 
 ### The Home window
 
-The **Home** tile of the menu opens it (once you have a home): your house tier, Home Level and Prestige stars, a strip
+The **Home** tile of the menu opens it. On top sits the big golden **Go home** button (your
+[home portal](#the-home-portal)); before you have a home it is **Claim a home** instead, with three steps that show
+how (a portal to a free gate, walk in, press **E**). Below: your house tier, Home Level and Prestige stars, a strip
 of four tiles that tells the whole home loop at a glance (the Berry Farm, your garden pets and their Cloud Cash, the
 Berry Basket and the Food Machine), the **Pet Garden** card (coins waiting on your lawn, coins per minute, open
-places), the prestige progress (Home Level x/40 and the Sky Castle) with the **Prestige** button, **Go home** (your
-[home portal](#the-home-portal)), and every station with its level, what the next level does, its price and a
-**Build** / **Upgrade** button, or why it is still locked. So you can upgrade from anywhere, without walking to the
+places), the prestige progress (Home Level x/40 and the Sky Castle) with the **Prestige** button, and every station
+with its level, what the next level does, its price and a **Build** / **Upgrade** button, or why it is still locked. So you can upgrade from anywhere, without walking to the
 pad.
 
 ### Gems and the Secret Roulette
@@ -1273,8 +1316,8 @@ Things only you can do, by hand, once. Steps 3 and 4 are optional; everything wo
    `Whoosh`) as `"rbxassetid://..."`. Empty = silent, nothing breaks.
 4. **Icons (optional):** the menu tiles use emoji; a PNG you Bulk Import (step 2) and paste into `Config.Icons` (for
    example `Config.Icons.Shop = "rbxassetid://..."`) replaces one.
-5. **Lighting on a slow PC or phone:** in `default.project.json`, change the line `"Technology": "Future"` to
-   `"Technology": "ShadowMap"` (one word), save, publish. Players can also pick Graphics: **Low** in SETTINGS.
+5. **Lighting:** since phase 6 the game is back to the bright cartoon look: `default.project.json` has the line
+   `"Technology": "ShadowMap"` (fast on phones too). Players can also pick Graphics: **Low** in SETTINGS.
 6. **Gems for Robux** (open since phase 2): create.roblox.com -> your experience -> Monetization -> **Developer
    Products** -> Create (one per pack: a name and the Robux price) -> copy each Product ID into
    `Config.Gems.Products` (`{ Id = ..., Gems = 100, Name = "Pouch of Gems" }`); until then the Gems tab says the packs
@@ -1367,9 +1410,12 @@ the Gate Court, a home with its garden, a Dungeon room, the Storm Altar or the s
 ```
 default.project.json   Rojo project           play/NimbusClimb.rbxlx   ready-made place file
 Start-Rojo-*           one-click launchers    branding/                game icon, Stormfang art, branding/sky (the 6 sky images)
-blender/               Blender scripts (blender/sky/render_sky.py paints the sky)
+blender/               Blender models (build_all.py builds every model, see blender/README.md), the gate vortex
+                       images (blender/textures/) and the sky
+docs/phase6/           the Phase 6 plan and art notes; OWNER_UPLOAD.md = the model upload checklist
 tools/                 syntax check, static analysis, smoke test (see "Tests"), tycoon economy sim, battle sim,
-                       place verifier, model and GUI renderers
+                       place verifier, model and GUI renderers, the model uploader (upload_assets.py) and mesh
+                       budget / name checks
 ARCHITECTURE.md, ARCHITECTURE_V2.md, ARCHITECTURE_V3.md   module contracts (the newest wins where they differ)
 
 src/first    LoadingScreen.client.lua (the loading screen, in ReplicatedFirst)
@@ -1378,17 +1424,23 @@ src/shared   Config (every number)  TycoonCatalog (every tycoon number)  Theme  
              unlocks)  UpdateNotes (menu notes + tips)  BattleCatalog (every battle and Dungeon number)  BattleSim (the
              battle simulation)  BossBuilder  WorldStyle (gates, plinths, the art rules)  HomeRoam (the roaming plan
              of garden pets, shared by server and clients)  TokenLook (the coin look of tokens and Cloud Cash)
+             MeshLibrary (loads the Blender models)  MeshIds (generated: model asset ids)  TextureIds (generated:
+             the gate vortex image ids)  MeshManifests (generated:
+             one module per Blender model)  PetFx (the auras and effects of evolved pets)
 src/server   Main.server.lua; Services: Lighting, LobbyBuilder, StormAltar, Player (the spawn after PLAY), Data,
-             Damage, Token, Hazard, Course (layout + builder), Match, Portal, Gate (the Gate Court gates), Spot, Pet,
+             Damage, Token, Hazard, Course (layout + builder), Match, Portal, Gate (the Altar gate's prompt), Spot, Pet,
              Item, Index, Tutorial, Npc, Dev, Tycoon, HomeBuilder, PetCare, Fusion, Gem, ArenaBuilder, Battle, Event,
              Dungeon (parties, runs, loot), DungeonBuilder (the Dungeon gate and rooms)
 src/client   Main.client.lua; State; UiGate (nothing shows before PLAY); ClientSettings; SoundFx; GraphicsQuality;
+             PortalVortex (the swirling vortex inside every gate hoop);
              LightingStack (lighting looks, e.g. the Dungeon); UI/CloudUI; UI/NeonKit (the neon cards, tiles and side
              panels); UI/PetCard (the cards above pets); Controllers: Movement, MainMenu (main menu + settings), Hud,
              DamageFx, Notify, Menu, Hotbar, Pet, TokenFx, Index, Tutorial, Npc, SkyDragon, Showcase, Dev, DevPetShow
              (pet showcase), EvolutionFx (evolution animation), Care (Food Machine, Garden, training and EVOLVE
              windows), HomeFx (roaming pets, Cloud Cash, berries), HomePortalFx (the home portal), Fusion, Battle,
-             Arena, Dungeon (the Dungeon window and run), Obby (the level picker)
+             Arena, Dungeon (the Dungeon window and run), Obby (the level picker), PortalFx (the gates' soft
+             animation: a light running round the ring, the swirl breathing, gems twinkling), MeshFallback (shows the
+             block pet on a device where a Blender model failed to load)
 ```
 
 The **server is authoritative** (health, tokens, Cash, Gems, berries, pets, items, checkpoints, matches, home

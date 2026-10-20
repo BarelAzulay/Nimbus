@@ -36,8 +36,9 @@
 --     multiplier tag), the Pet Garden card (coins waiting = the plot's CollectorCash, coins per minute, places
 --     "N/12" = the plot's GardenSlots: 3 + 1 per prestige, the LegacySlots / LegacyPrices lines; no Collect: kids
 --     walk over their coins), the prestige progress (Home Level x/40 and the Sky Castle) with a confirmed Prestige
---     (what starts over, what stays, the new star's coins / garden place / Gems), Go home (HomeAction "GoHome": the
---     home portal) and every station of TycoonCatalog grouped Pets at home (Pet Garden, Food Machine, Training Place,
+--     (what starts over, what stays, the new star's coins / garden place / Gems), Go home (Phase 6: the big golden
+--     hero on top, HomeAction "GoHome": the home portal; without a home the window shows "Claim a home" (GoToSpot)
+--     and the three claim steps instead) and every station of TycoonCatalog grouped Pets at home (Pet Garden, Food Machine, Training Place,
 --     Fusion Machine), Coin makers (the plants, Coin Magnet, Vault), House, Decor, each with its level (pips), what it
 --     does now -> next ("+7 -> +9 food", "Feeds fill 30% -> 35% of a bar", "2 pets train at once"), the next price
 --     and Build / Upgrade (or why it is locked: "Reach Home Level 10", "Needs the Villa", "Unlocks at Prestige 1").
@@ -1960,20 +1961,15 @@ local function menuActionShop()
 	toggleWindow("Shop")
 end
 
--- The Home tile (id "Spot"): the Home window once a home is claimed; before that it walks the player to a free
--- gate (Remotes.GoToSpot: the last plot when it is free, else the nearest free one) where E claims it.
+-- The Home tile (id "Spot"): the Home window. Phase 6: also before a home is claimed; then its Claim a home hero
+-- walks the player to a free gate (Remotes.GoToSpot: the home portal toward the last plot when it is free, else the
+-- nearest free one) where E claims it.
 local function menuActionSpot()
 	if inMatch() then
 		showHint("You cannot go home during a match.", "info")
 		return
 	end
-	if P2.hasHome() then
-		toggleWindow("Home")
-		return
-	end
-	closeEverything()
-	fire("GoToSpot")
-	showHint("Press E at the gate to claim your home!", "info")
+	toggleWindow("Home")
 end
 
 local function menuActionStats()
@@ -5037,6 +5033,279 @@ function P5.paintStrip(H, home, income, open)
 	H.StripOpen = open
 end
 
+-- Phase 6 (the player asked: no Home gate in the lobby, "improve the one in the inventory"): the Home window's hero.
+-- A big golden button on top of the window, fixed above the scrolling list: a glossy orb with the house, "Go home" and
+-- a short line, a round arrow badge on the right; hover 1.02 / press 0.97 (NeonKit.AttachFx) and a soft light sweep
+-- across it when the window opens, on hover and every K.HERO_SHINE_EVERY seconds while it is shown. Without a home the
+-- same spot shows "Claim a home" (Remotes.GoToSpot: the home portal toward a free gate, the server checks everything)
+-- and the three steps of claiming one replace the list.
+K.HERO_H = 96 -- the hero's height (design px)
+K.HERO_H_SHORT = 76 -- ... on short windows (landscape phones)
+K.HERO_SHINE = 0.75 -- seconds of one light sweep
+K.HERO_SHINE_EVERY = 5.5
+P5.HERO = {
+	GoHome = { Title = "Go home", Sub = "A magic portal for you and your pets", Short = "Hop in with your pets!", Glyph = "\240\159\143\160", Badge = "\226\158\156" },
+	ClaimHome = { Title = "Claim a home", Sub = "Get your own sky island, free!", Short = "Your own sky island, free!", Glyph = "\240\159\143\161", Badge = "\226\156\168" },
+}
+-- what a home gives (the claim view's "Your home" tiles)
+P5.CLAIM_GETS = {
+	{ Glyph = "\240\159\140\177", Title = "Pet Garden", Text = "Pets roam and play", Color = "Green" },
+	{ Glyph = "\240\159\141\147", Title = "Berry Farm", Text = "Berries feed pets", Color = "Pink" },
+	{ Glyph = "\226\152\129", Title = "Cloud Cash", Text = "Pets earn for you", Color = "Cyan" },
+}
+P5.CLAIM_STEPS = {
+	{ Glyph = "\240\159\140\128", Text = "Tap Claim a home: a magic portal opens" },
+	{ Glyph = "\240\159\143\131", Text = "Walk into it: you land at a free home" },
+	{ Glyph = "\240\159\148\145", Text = "Press E at its gate. The home is yours!" },
+}
+
+-- one hero card (a clickable NeonKit card) -> { Root, Title, Sub, Orb, Badge, Shine, Fx }
+function P5.heroCard(parent, id, callback)
+	local spec = P5.HERO[id]
+	local gold = Theme.NeonColor("Yellow")
+	local card = P5.Kit.Card({
+		Name = id,
+		Class = "TextButton",
+		Color = gold,
+		Size = UDim2.new(1, 0, 0, K.HERO_H),
+		Corner = 18,
+		Fill = { Theme.Darken(gold, 0.1), Theme.Darken(Theme.NeonColor("Orange"), 0.4) },
+		Floor = true,
+		ZIndex = 4,
+		Parent = parent,
+	})
+	local root = card.Root
+	local hero = { Root = root, Card = card, Id = id }
+	-- the light sweep, clipped to the rounded card (a CanvasGroup clips to its UICorner)
+	local clip = Util.Create("CanvasGroup", {
+		Name = "ShineClip",
+		BackgroundTransparency = 1,
+		BorderSizePixel = 0,
+		Size = UDim2.fromScale(1, 1),
+		ZIndex = 4,
+		Parent = root,
+	})
+	corner(clip, 18)
+	local shine = makeFrame(clip, "Shine", {
+		BackgroundTransparency = 0,
+		BackgroundColor3 = WHITE,
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		Position = UDim2.new(-0.25, 0, 0.5, 0),
+		Size = UDim2.new(0, 70, 2.2, 0),
+		Rotation = 18,
+		ZIndex = 4,
+	})
+	Util.Create("UIGradient", {
+		Transparency = NumberSequence.new({
+			NumberSequenceKeypoint.new(0, 1),
+			NumberSequenceKeypoint.new(0.5, 0.62),
+			NumberSequenceKeypoint.new(1, 1),
+		}),
+		Parent = shine,
+	})
+	hero.Shine = shine
+	card.Body.ZIndex = 5
+	-- the orb with the house
+	local orb = P5.Kit.Orb(card.Body, Color3.fromRGB(255, 244, 214), 64)
+	orb.AnchorPoint = Vector2.new(0, 0.5)
+	orb.Position = UDim2.new(0, 16, 0.5, 0)
+	orb.ZIndex = 5
+	local icon = P5.Kit.Icon(orb, spec.Glyph, 34)
+	icon.ZIndex = 6
+	hero.Orb = orb
+	hero.Title = makeText(card.Body, "Title", spec.Title, "Title", 34, WHITE, {
+		Position = UDim2.new(0, 96, 0.5, -2),
+		AnchorPoint = Vector2.new(0, 1),
+		Size = UDim2.new(1, -176, 0, 40),
+		TextXAlignment = Enum.TextXAlignment.Left,
+		TextYAlignment = Enum.TextYAlignment.Bottom,
+		TextScaled = true,
+		ZIndex = 6,
+	})
+	Util.Create("UITextSizeConstraint", { MaxTextSize = 34, MinTextSize = 24, Parent = hero.Title })
+	hero.Sub = makeText(card.Body, "Sub", spec.Sub, "Body", 19, Color3.fromRGB(255, 247, 222), {
+		Position = UDim2.new(0, 96, 0.5, 2),
+		Size = UDim2.new(1, -176, 0, 26),
+		TextXAlignment = Enum.TextXAlignment.Left,
+		TextYAlignment = Enum.TextYAlignment.Top,
+		TextTruncate = Enum.TextTruncate.AtEnd,
+		ZIndex = 6,
+	})
+	-- the round badge on the right (an arrow: "go")
+	local badge = makeFrame(card.Body, "Badge", {
+		BackgroundTransparency = 0,
+		BackgroundColor3 = Color3.fromRGB(255, 251, 238),
+		AnchorPoint = Vector2.new(1, 0.5),
+		Position = UDim2.new(1, -18, 0.5, 0),
+		Size = UDim2.fromOffset(52, 52),
+		ZIndex = 6,
+	})
+	round(badge)
+	stroke(badge, Theme.Darken(Theme.NeonColor("Orange"), 0.35), 3, 0)
+	Theme.Gradient(badge, WHITE, Color3.fromRGB(255, 226, 160), 90)
+	makeText(badge, "Glyph", spec.Badge, "Title", 28, Theme.NeonColor("Orange"), { Size = UDim2.fromScale(1, 1), ZIndex = 7 })
+	hero.Badge = badge
+	-- hover / press: a gentle grow and squash, a sweep on hover
+	hero.Fx = P5.Kit.AttachFx(root, function(hover, press)
+		if hover and not press then
+			P5.heroShine(hero)
+		end
+	end, 1.02, 0.97)
+	root.Activated:Connect(function()
+		if root:GetAttribute("Disabled") ~= true then
+			callback(root)
+		end
+	end)
+	return hero
+end
+
+-- one soft light sweep across the hero (skipped while one is running)
+function P5.heroShine(hero)
+	if not hero or not hero.Shine or hero.Shining then
+		return
+	end
+	hero.Shining = true
+	hero.Shine.Position = UDim2.new(-0.25, 0, 0.5, 0)
+	tween(hero.Shine, K.HERO_SHINE, { Position = UDim2.new(1.25, 0, 0.5, 0) }, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut)
+	task.delay(K.HERO_SHINE + 0.05, function()
+		hero.Shining = false
+	end)
+end
+
+-- the hero buttons + the claim steps of the Home window (H = win.HomeUi)
+function P5.buildHomeHero(H, win, onGoHome, onClaim)
+	local content = win.Panel.Content
+	local holder = makeFrame(content, "Hero", {
+		Position = UDim2.fromOffset(12, 12),
+		Size = UDim2.new(1, -24, 0, K.HERO_H),
+		ZIndex = 4,
+	})
+	H.Hero = holder
+	H.GoHomeHero = P5.heroCard(holder, "GoHome", onGoHome)
+	H.ClaimHero = P5.heroCard(holder, "ClaimHome", onClaim)
+	H.GoHome = H.GoHomeHero.Root
+	H.ClaimHome = H.ClaimHero.Root
+	-- without a home: three steps (fixed under the hero; scrolls on very short windows)
+	local steps = scroller(content, "ClaimSteps", {
+		Position = UDim2.fromOffset(12, K.HERO_H + 24),
+		Size = UDim2.new(1, -24, 1, -(K.HERO_H + 36)),
+		Visible = false,
+	})
+	pad(steps, 2, 2, 14, 6)
+	H.ClaimList = listLayout(steps, Enum.FillDirection.Vertical, 12)
+	makeText(steps, "Caption", "How to get your home", "Heading", 21, MUTED, {
+		Size = UDim2.new(1, 0, 0, 28),
+		TextXAlignment = Enum.TextXAlignment.Left,
+		LayoutOrder = 0,
+	})
+	for i, step in ipairs(P5.CLAIM_STEPS) do
+		local row = makeInset(steps, "Step" .. i, { Size = UDim2.new(1, 0, 0, 72), LayoutOrder = i })
+		local num = makeFrame(row, "Num", {
+			BackgroundTransparency = 0,
+			BackgroundColor3 = Theme.NeonColor("Yellow"),
+			AnchorPoint = Vector2.new(0, 0.5),
+			Position = UDim2.new(0, 12, 0.5, 0),
+			Size = UDim2.fromOffset(40, 40),
+		})
+		round(num)
+		Theme.Gradient(num, Theme.Lighten(Theme.NeonColor("Yellow"), 0.2), Theme.Darken(Theme.NeonColor("Yellow"), 0.25), 90)
+		makeText(num, "N", tostring(i), "Title", 24, WHITE, { Size = UDim2.fromScale(1, 1) })
+		local glyph = P5.Kit.Icon(row, step.Glyph, 28)
+		glyph.AnchorPoint = Vector2.new(0, 0.5)
+		glyph.Position = UDim2.new(0, 62, 0.5, 0)
+		makeText(row, "Text", step.Text, "Body", 21, WHITE, {
+			Position = UDim2.new(0, 104, 0, 0),
+			Size = UDim2.new(1, -114, 1, 0),
+			TextXAlignment = Enum.TextXAlignment.Left,
+			TextWrapped = true,
+		})
+	end
+	-- what a home gives: three small neon tiles
+	makeText(steps, "GetsCaption", "Your home has", "Heading", 21, MUTED, {
+		Size = UDim2.new(1, 0, 0, 28),
+		TextXAlignment = Enum.TextXAlignment.Left,
+		LayoutOrder = 10,
+	})
+	local gets = makeFrame(steps, "Gets", { Size = UDim2.new(1, 0, 0, 132), LayoutOrder = 11 })
+	Util.Create("UIGridLayout", {
+		CellSize = UDim2.new(1 / 3, -8, 1, 0),
+		CellPadding = UDim2.new(0, 12, 0, 0),
+		SortOrder = Enum.SortOrder.LayoutOrder,
+		Parent = gets,
+	})
+	for i, item in ipairs(P5.CLAIM_GETS) do
+		local tile = P5.Kit.Card({ Name = "Get" .. i, Size = UDim2.fromOffset(160, 132), Color = item.Color, Glow = false, LayoutOrder = i, Parent = gets })
+		local orb = P5.Kit.Orb(tile.Body, item.Color, 52)
+		orb.Position = UDim2.new(0.5, 0, 0, 36)
+		P5.Kit.Icon(orb, item.Glyph, 28)
+		makeText(tile.Body, "Title", item.Title, "Heading", 20, WHITE, {
+			Position = UDim2.new(0, 6, 0, 68),
+			Size = UDim2.new(1, -12, 0, 24),
+		})
+		makeText(tile.Body, "Text", item.Text, "Body", 18, Theme.Lighten(P5.Kit.ColorOf(item.Color), 0.45), {
+			Position = UDim2.new(0, 6, 0, 94),
+			Size = UDim2.new(1, -12, 0, 24),
+		})
+	end
+	H.ClaimGets = gets
+	H.ClaimSteps = steps
+end
+
+-- shows the hero of the current state (home or none), its disabled look in a match, and places the list under it
+function P5.paintHomeHero(H, hasHome, matchOn)
+	if not H.Hero then
+		return
+	end
+	H.GoHomeHero.Root.Visible = hasHome
+	H.ClaimHero.Root.Visible = not hasHome
+	H.ClaimSteps.Visible = not hasHome
+	H.List.Visible = hasHome
+	for _, hero in ipairs({ H.GoHomeHero, H.ClaimHero }) do
+		hero.Root:SetAttribute("Disabled", matchOn and true or false)
+		hero.Card.SetColor(matchOn and Theme.Neon.Grey or Theme.NeonColor("Yellow"))
+		hero.Badge.Visible = not matchOn
+	end
+	H.HomeState = hasHome
+end
+
+-- (w: the window's design width; narrow windows get the short line under the title)
+function P5.layoutHomeHero(H, short, w)
+	if not H.Hero then
+		return 0
+	end
+	local h = short and K.HERO_H_SHORT or K.HERO_H
+	H.Hero.Size = UDim2.new(1, -24, 0, h)
+	for _, hero in ipairs({ H.GoHomeHero, H.ClaimHero }) do
+		hero.Root.Size = UDim2.new(1, 0, 0, h)
+		local orb = short and 52 or 64
+		hero.Orb.Size = UDim2.fromOffset(orb, orb)
+		hero.Orb.Position = UDim2.new(0, short and 12 or 16, 0.5, 0)
+		local x = short and 76 or 96
+		hero.Title.Position = UDim2.new(0, x, 0.5, short and 0 or -2)
+		hero.Title.Size = UDim2.new(1, -(x + 76), 0, short and 34 or 40)
+		hero.Sub.Position = UDim2.new(0, x, 0.5, 2)
+		hero.Sub.Size = UDim2.new(1, -(x + 76), 0, 26)
+		local spec = P5.HERO[hero.Id]
+		hero.Sub.Text = (short or (tonumber(w) or 999) < 640) and spec.Short or spec.Sub
+		hero.Badge.Size = UDim2.fromOffset(short and 44 or 52, short and 44 or 52)
+	end
+	H.ClaimSteps.Position = UDim2.fromOffset(12, h + 22)
+	H.ClaimSteps.Size = UDim2.new(1, -24, 1, -(h + 32))
+	return h
+end
+
+-- the light sweep while the window is shown (one loop per opening; the token stops it)
+function P5.heroLoop(H, win)
+	H.ShineToken = (H.ShineToken or 0) + 1
+	local mine = H.ShineToken
+	task.delay(0.3, function()
+		while H.ShineToken == mine and win.Shown do
+			P5.heroShine(H.HomeState == false and H.ClaimHero or H.GoHomeHero)
+			task.wait(K.HERO_SHINE_EVERY)
+		end
+	end)
+end
+
 local buildHome -- (the window's helpers live in this do-block: Lua's 200-local limit of the main chunk)
 do
 	local HOME_SECTIONS = {
@@ -5385,27 +5654,26 @@ do
 			Parent = prestige,
 		})
 
-		-- Go home: in the title bar, left of the red X (always in view, also on the one-column phone layout)
-		H.GoHome = CloudUI.Button({
-			Name = "GoHome",
-			Text = G.House .. " Go home",
-			Style = "Blue",
-			AnchorPoint = Vector2.new(1, 0.5),
-			Position = UDim2.new(1, -66, 0, 34),
-			Size = UDim2.fromOffset(164, 40),
-			TextSize = 21,
-			ZIndex = 8,
-			Callback = function()
-				if inMatch() then
-					showHint("You cannot go home during a match.", "info")
-					return
-				end
-				if fireKeyed("HomeAction:GoHome", "HomeAction", "GoHome") then
-					closeWindow("Home")
-				end
-			end,
-			Parent = win.Panel.Root,
-		})
+		-- Phase 6: the big golden Go home hero on top (fixed above the list, always in view); without a home the same
+		-- spot offers Claim a home (Remotes.GoToSpot: the home portal toward a free gate) with the three steps
+		P5.buildHomeHero(H, win, function()
+			if inMatch() then
+				showHint("You cannot go home during a match.", "info")
+				return
+			end
+			if fireKeyed("HomeAction:GoHome", "HomeAction", "GoHome") then
+				closeWindow("Home")
+			end
+		end, function()
+			if inMatch() then
+				showHint("You cannot go home during a match.", "info")
+				return
+			end
+			if fire("GoToSpot") then
+				closeWindow("Home")
+				showHint("Press E at the gate to claim your home!", "info")
+			end
+		end)
 
 		------------------------------------------------------------------
 		-- station rows
@@ -5827,7 +6095,7 @@ do
 			end
 			H.PrestigeReward.Text = reward
 			CloudUI.SetDisabled(H.PrestigeButton, not ok or inMatch() or not P2.hasHome())
-			CloudUI.SetDisabled(H.GoHome, inMatch())
+			P5.paintHomeHero(H, P2.hasHome(), inMatch())
 		end
 
 		H.PlotFolder = plotFolder
@@ -5931,13 +6199,13 @@ do
 				end
 			end
 			left.Visible = not tall
-			-- portrait phones: a slimmer Go home (no glyph) so the window title keeps clear of it
-			H.GoHome.Size = UDim2.fromOffset(tall and 136 or 164, 40)
-			H.GoHome.Text = tall and "Go home" or (G.House .. " Go home")
+			-- Phase 6: the Go home hero sits on top; the list starts under it
+			local heroH = P5.layoutHomeHero(H, short, w)
+			local top = heroH > 0 and (heroH + 22) or 0
 			if tall then
 				local stripH = P5.layoutStrip(H, w)
-				list.Position = UDim2.new(1, -10, 0, stripH + 16)
-				list.Size = UDim2.new(1, -20, 1, -(stripH + 26))
+				list.Position = UDim2.new(1, -10, 0, stripH + top + 6)
+				list.Size = UDim2.new(1, -20, 1, -(stripH + top + 16))
 				for i, c in ipairs(H.Cards) do
 					-- the house + income cards first, the prestige card after the stations; the old garden card is gone
 					-- (Phase 5: coins roam the yard; its places live in the income card)
@@ -6004,6 +6272,8 @@ do
 		end
 		win.OnOpen = function()
 			H.ShowConfirm(false)
+			P5.paintHomeHero(H, P2.hasHome(), inMatch())
+			P5.heroLoop(H, win)
 			Home.Folder = nil
 			for _, conn in ipairs(Home.Conns) do
 				conn:Disconnect()
@@ -8265,11 +8535,7 @@ local function onOpenPanel(panelId, args, fromRemote)
 		if inMatch() then
 			return
 		end
-		if P2.hasHome() then
-			openWindow("Home", args)
-		else
-			menuActionSpot()
-		end
+		openWindow("Home", args) -- Phase 6: without a home it offers Claim a home
 	elseif key == "index" then
 		local groupId = args.GroupId or args.Group or args.Rarity
 		openIndex(type(groupId) == "string" and groupId or nil)
@@ -8312,19 +8578,15 @@ local function onTokensChanged()
 	end
 end
 
--- the claimed plot changed (claimed / released): the Home window follows, or closes when the home is gone
+-- the claimed plot changed (claimed / released): the Home window follows (Phase 6: without a home it shows Claim a home)
 local function onSpotChanged()
 	Home.Folder = nil
 	local win = windows.Home
 	if win and win.Shown then
-		if P2.hasHome() then
-			if win.OnOpen then
-				safe("home rebind", win.OnOpen, {})
-			end
-			refreshWindow(win)
-		else
-			closeWindow("Home")
+		if win.OnOpen then
+			safe("home rebind", win.OnOpen, {})
 		end
+		refreshWindow(win)
 	end
 end
 

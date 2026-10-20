@@ -635,6 +635,26 @@ local function clientScenarios()
 	------------------------------------------------------------------------------------------------
 	-- phone (390x844 touch): the menu column fits, PLAY is a big thumb target, the settings sheet keeps the top clear
 	S.client_p5menu_mobile = guarded("client_p5menu_mobile", function()
+		-- isolation (W2.5): the phone world's earlier scenarios may leave a landscape viewport (client_p4ui_mobile ends
+		-- on 844x390) or, in an --only run, no booted client at all (no Remotes -> PLAY sends nothing). Set the portrait
+		-- phone and boot what is missing, then restore the viewport.
+		local vp0 = Mock.Viewport
+		Mock.SetViewport(390, 844)
+		local RS = game:GetService("ReplicatedStorage")
+		if not RS:FindFirstChild("Remotes") then
+			local folder = Instance.new("Folder")
+			folder.Name = "Remotes"
+			for _, n in ipairs(Config.Remotes) do
+				local r = Instance.new("RemoteEvent")
+				r.Name = n
+				r.Parent = folder
+			end
+			folder.Parent = RS
+		end
+		if not (H.pg() and H.pg():FindFirstChild("NimbusMenu")) then
+			Mock.RunScript(Mock.GetPath(ROOTS["client"] .. "/Main"))
+			H.advance(3)
+		end
 		local pg = H.pg()
 		local UiGate = H.client("UiGate")
 		local MMC = H.client("Controllers/MainMenuController")
@@ -689,6 +709,9 @@ local function clientScenarios()
 		T.eq(#H.calls("MenuPlay", log0), 1, "p5menu phone: a tap on PLAY sends MenuPlay once")
 		T.eq(UiGate.HasPlayed(), true, "p5menu phone: played after the tap")
 		Config.MainMenu.Enabled = false
+		if vp0 and (vp0.X ~= 390 or vp0.Y ~= 844) then
+			Mock.SetViewport(vp0.X, vp0.Y)
+		end
 		KC.flushErrors("client_p5menu_mobile")
 	end)
 

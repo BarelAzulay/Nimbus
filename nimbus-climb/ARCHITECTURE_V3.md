@@ -27,6 +27,16 @@ loads `SkyDragonController`, `IndexController`, `NpcController`, `TutorialContro
     a special-attack button; currencies = **Cash** (tycoon), **Cloud Tokens** (obby + battles, roulettes/items),
     **Gems** (Robux; buy roulettes cheaply in gems, and a gems-only **Secret** roulette). All art is built in code.
 
+## ART RULE (player, 2026-10-20; overrides ART DIRECTION below and "no asset ids"): Blender models only
+* From now on **no Roblox-built models**: every new or reworked model (pets, enemies, bosses, NPCs, props, decor,
+  buildings, portals) is made in **Blender** (scripts in `blender/`, exported as FBX) and used in game as a MeshPart.
+* No Toolbox / Creator Store models. No new Part-built (voxel / block) models.
+* Mesh asset ids live in Config; the uploaded FBX source stays in `blender/`.
+* **Style (player, 2026-10-20):** NOT the more realistic Phase 5 look. Go back to the pre-Phase-5 style (Phase 4 release,
+  commit 7aa0df2: bright, cute, colourful voxel / pixel look of "ART DIRECTION") but with **finer voxels, more detail, more
+  aesthetic**. Blender models are detailed fine-voxel models (greedy-merged outer faces, 2-3 shades per colour region).
+* **Portals / gates:** look like they did before Phase 5 (7aa0df2), just more detailed.
+
 ## ART DIRECTION (decided by the player after the plan): DETAILED voxel style everywhere
 **This section overrides sections 6, 7 and 8 wherever they mention smooth terrain, round parts or Ball shapes.**
 The player chose a voxel ("pixel") look for the whole game, and then clarified with a reference image: **NOT chunky /
@@ -2931,3 +2941,111 @@ leashed after 3 s); `trials` deleted. `SIM.Stages`, `SIM.team`, `SIM.Player` kep
 - W2: 4.5 wire: `Start.Team.Cooldowns.Buff` is keyed by slot STRINGS ('2', '3'); a rejected `Order` echo goes only to its owner. 10.5: `Config.Lobby.PortalRingRadius` deleted.
 - W4: 9.1 `Berries` merge: a session that converted Food -> berries in P5Home carries `BerriesMigrated`; applyDelta subtracts it when the STORED record was already P5Home-marked (two servers folding the same Phase 4 save never double-credit; the m15 Clears twin).
 - W5: `Buff` / `Swap` take any benched slot 1..3 (the active fighter is refused); the boss room zone is 56x72 (`BattleCatalog.Dungeon.Zones.Boss`) with a `SpawnAnchor` at the foot of the stairs; the dungeon watchdog uses `DungeonService.MaxRunSeconds(floor)` (floor 1 room time 180 s counted); the boss room ends only at 0 living enemies; a member who quit cannot re-join that run; the Treasure chest goes only to members who qualified in a room; a leader who quits hands the party to the next live member; a join during a room-1/2 fight queues <= 20 s ("Joining when the room is cleared").
+
+## Phase 6: Blender models only, back to the cute voxel look (contract; lead, 2026-10-20)
+
+### 6.0 Player rulings (these win over everything, including the docs below)
+1. **Blender models only.** No Roblox Part-built models and no Toolbox models: every model the player sees (pets,
+   evolved forms, accessories, wings, hybrids, Stormfang, bosses, wild/enemy pets, sky dragon, NPCs, tokens, gates,
+   Storm Altar, lobby props, clouds, floors, home stations, decor, arena, dungeon) becomes a Blender mesh (FBX ->
+   Open Cloud Model asset -> MeshParts). Effects are not models: particles, lights, beams, trails, billboard/surface
+   text and invisible gameplay volumes (colliders, zones, prompt anchors) stay Roblox instances.
+2. **Style = the pre-Phase-5 look (Phase 4 release 7aa0df2) with finer voxels, more detail, more aesthetic.** Bright,
+   cute, colourful, SmoothPlastic, no realistic textures, no Future lighting, no muted greys. Reference sheets:
+   `docs/phase6/img/compare_*.png`, rules and numbers: `docs/phase6/style.md` section 4 (P4 palette, lighting LOOK).
+   Approved previews: `docs/phase6/img/pebble_pup_preview.png`, `twilight_dragon_preview.png`, `cmp_portal.png`.
+3. **Portals = the P4 round hoop gates, more detailed, but for the Phase 5 Gate Court modes** (the player changed the
+   lobby from difficulty portals to mode portals). Mapping (recipe 4.10): Obby = hoop + 5-star crest; Ring = crowned
+   arch (P4 Ring portal); Arena = hoop + crossed-swords crest (P4 Trials); Dungeon = hoop, purple, skull/key crest;
+   Home = hoop, yellow, house crest; Altar = hoop, cyan, storm-bolt crest. Each gate keeps its Phase 5 position,
+   prompts, pads, zones, signs and names. Same family for the arena gates, the dungeon portal, the home portal.
+4. **Evolved pets look the best: auras and effects.** Evolution 1 and 2 get Blender aura meshes (rings, orbiting
+   element bits, crowns of light, wing glows) plus effects (PetFx, 6.4): element particles, a soft PointLight, a
+   pulse on Neon parts; second evolutions stronger than first. Must stay readable and cheap (budgets 6.5).
+5. Uploads happen only in a NEW session that sees `ROBLOX_API_KEY` / `ROBLOX_CREATOR_ID`; the first real upload is
+   the calibration asset and needs the player's OK in chat. Never fake an upload or an id.
+
+### 6.1 The technical contract
+`docs/phase6/recipe.md` section 4 IS the technical contract (pipeline layout 4.1, grain and budgets 4.2, part split
+and names 4.3, colour 4.4, export + verify 4.5, manifest + keys 4.6, upload 4.7, runtime MeshLibrary 4.8, tests 4.9,
+look 4.10, waves 4.11) with the amendments below. Background: `docs/phase6/research.md` (Open Cloud + loading facts,
+cited), `docs/phase6/style.md`, `docs/phase6/kit-design.md` (the prototype kit, now in `blender/kit/`),
+`docs/phase6/inv-*.md` (every model today with file:line, consumers and name contracts),
+`docs/phase6/proto/` (prototype MeshLibrary.lua, upload_assets.py and their tests).
+
+Amendments (lead; these win over the recipe):
+* A1 **Fallback look (wave 1) is a revert, not a redesign**: palette, materials (SmoothPlastic), lighting values and
+  blocky shapes back to 7aa0df2 per style.md 4; round primitives (Cylinder / Ball) go; the gate Part build becomes the
+  P4 hoop family with the 6.0.3 mapping. The detail comes from the Blender meshes, so do not spend effort on new Part
+  detail. Keep every name, prompt, zone, collider, attribute and position the code and tests use.
+* A2 `default.project.json` Technology is already `ShadowMap` (lead, W0). LightingService goes back to the P4 LOOK
+  values (style.md 4; Fallback = P4 sky-blue / peach, Custom = light pink when the sky ids are set). LightingStack stays.
+* A3 Ids: `src/shared/MeshIds.lua` (generated, numbers only) and `Config.MeshAssets = require(script.Parent.MeshIds)`
+  exist (lead, W0). Manifests: `src/shared/MeshManifests/<key>.lua` (generated by the kit, one ModuleScript per key in
+  a plain Rojo folder; MeshLibrary requires a key's manifest by name, lazily).
+* A4 Build outputs: `blender/out/` is NOT committed (`.gitignore`): FBX, previews and `.tris.json.gz` are rebuilt by
+  `blender/build_all.py` (deterministic: same input = same `contentHash`). Committed: kit code, catalogs, generated
+  `src/shared/MeshManifests/*.lua`, `blender/meshes.json` (index with hashes) and a few review PNGs under
+  `docs/phase6/review/<class>/` (<= 400 KB each, <= 12 per class).
+* A5 Catalog split (so builders never edit the same file): `blender/catalog/<class>.json` per art class (pets,
+  evolved, creatures, gates, lobby, home, arenadungeon); `build_all.py --class <c>` / `--key <k>` / `--all`.
+* A6 Effects for evolved pets: `src/shared/PetFx.lua` (stub + call already in `PetBuilder.Build`, lead W0). PetFx works
+  on any pet model (Part or mesh): it creates `Body.PetFx` (a Folder of Attachments under the invisible `Body` root)
+  with ParticleEmitters / PointLight / optional Beams; aura MESHES are pet parts (group `Aura`, kind `orbit`, from the
+  evolved art keys) and PetFx never creates Parts. Respect `GraphicsQuality` (Low = no particles, light only) and the
+  Detail option (Low = half rates). No per-frame Lua: emitters + the existing Animate orbit/pulse only.
+* A7 Client mesh dressing of world builders (recipe 4.8 "World path"): the builder tags a static decoration subtree
+  with `MeshLibrary.Tag(target, key, look, keep)`; the client `Dress`es it. Builders own their Tag calls.
+* A8 Ownership is by files (6.3). Shared tool files (`tools/smoke.py`, `tools/dump_model.lua`, `tools/render_model.py`
+  callers): only your own registration line / `-- [owner: <key>]` block.
+
+### 6.2 Keys (mesh asset names; recipe 4.6, extended)
+`cal_axes`; `pet_<species>[_low]` (15); `wing_<style>_<L|R>[_low]` (7 styles); `acc_<name>[_low]` (8 incl. halo);
+`hyb_<feature>`; `lid` (procedural, part of the body key); `evo1_<petId>[_low]` (33), `evo2_<petId>[_low]` (16);
+`evowing_<style>_<L|R>[_low]`; `aura_<kind>[_low]` (element aura meshes); `star_gold`; `boss_<id>_<joint>`;
+`dragon_<piece>`; `npc_pedestal`; `token_<kind>`; `fx_<shield|ice|arrow>`; `gate_<obby|ring|arena|dungeon|home|altar>`;
+`gate_arena_<n>`, `portal_dungeon`, `portal_home`; `prop_<name>`; `cloud_<size>_<v>`; `floor_<area>_<i>`;
+`home_<station>_<level>`; `arena_<piece>`; `dungeon_<room|piece>`. Exact lists live in the catalogs.
+
+> Player ruling (2026-10-20, Phase 6 W2b): NO Home gate in the lobby Gate Court (5 gates: Obby, Dungeon, Ring, Arena, Altar). Going home = the Home window hero button "Go home" / "Claim a home" (MenuController). Every BuildGate gate is animated client-side by src/client/Controllers/PortalFxController.lua (Neon Glow/Swirl/Gem + GlowCore light only; Low graphics = static). art-gates may skip gate_home.
+
+### 6.3 Waves and ownership
+| Wave | Key | Files (owns) | Task |
+|---|---|---|---|
+| W0 | lead | ARCHITECTURE_V3, BUILD_STATE, default.project.json, Config, MeshIds stub, PetFx stub + PetBuilder.Build call, README step 5, docs/phase6 | DONE |
+| W1 | look-lobby | WorldStyle.lua, LobbyBuilder.lua, LightingService.lua, StormAltar.lua (look only), tools/smoke_p5_world.lua, smoke_p2_final pinned asserts (not the checklist) | A1/A2 revert for the lobby, gates (P4 hoop family, 6.0.3), altar, lighting; tests updated |
+| W1 | look-places | HomeBuilder.lua, ArenaBuilder.lua, DungeonBuilder.lua, their smoke files | A1 revert for home plots, arena, dungeon (incl. arena gates / dungeon portal / home portal use of the gate kit) |
+| W1 | kit | blender/** (kit, catalog/, build_all.py), tools/mesh_names.py, tools/mesh_budget.py, tools/render_model.py + tools/dump_model.lua mesh path, read-only hooks in PetBuilder.lua (`_Blueprint`, Anchors) and BossBuilder.lua, .gitignore line for blender/out | recipe 4.1/4.2/4.5/4.6 + bridge + cal_axes + pets.json skeleton; build Dog/Cat/Dragon through the bridge as the golden path |
+| W1 | runtime | src/shared/MeshLibrary.lua, tools/upload_assets.py (+ tests), tools/check.mjs rules, tools/smoke_p6_mesh.lua, tools/fixtures/mesh/, smoke.py line | recipe 4.7/4.8/4.9 core: load/fit/validate, templates, Tag/Dress, Assemble skeleton, fixtures from the kit's Dog manifest |
+| W1 | evofx | src/shared/PetFx.lua, tools/smoke_p6_evofx.lua, render scenes | A6 effects on today's Part pets (visible now) |
+| W2 | art-pets | blender/catalog/pets.json, blender/kit/detail/pets*, review PNGs | 15 species + wings + accessories + hybrid features + lids, High/Low, previews >= 3 rounds |
+| W2 | art-evolved | blender/catalog/evolved.json, kit/detail/evolved*, aura meshes | evo1 x33, evo2 x16, evo wings, auras (6.0.4), budgets |
+| W2 | art-creatures | blender/catalog/creatures.json, BossBuilder.lua + SkyDragonController.lua + NpcService.lua + TokenLook.lua mesh paths | bosses, sky dragon, NPC pedestals, tokens, battle fx cubes |
+| W2 | art-gates | blender/catalog/gates.json, kit/props/gates*, WorldStyle.lua Tag calls | 6 Gate Court gates + arena gates + dungeon/home portals + altar gate |
+| W2 | art-lobby | blender/catalog/lobby.json, kit/props/lobby*, LobbyBuilder.lua + StormAltar.lua Tag calls | lobby props, clouds, floors, shop, plots, garden, altar island, course pieces |
+| W2 | art-home | blender/catalog/home.json, kit/props/home*, HomeBuilder.lua Tag calls | stations per level, house tiers, fence, fountain, decor, pads |
+| W2 | art-arenadungeon | blender/catalog/arenadungeon.json, kit/props/arena*/dungeon*, ArenaBuilder.lua + DungeonBuilder.lua Tag calls | arena island, colosseum, ring, stands, bridge, dungeon rooms + props |
+| W2 | runtime-pets | PetBuilder.lua (mesh path), MeshLibrary.lua (Assemble, effects hookup), PetController / HomeFx / CloudUI / BattleController / EvolutionFx rebuild-on-Changed lines | recipe 4.8 pet path, both-modes test runs |
+| W3 | review + docs + ship | as assigned | review/verify/fix, README Phase 6 + owner checklist, full suite both modes, rbxlx, merge |
+| W4 | upload (new session) | MeshIds.lua via the tool | calibration, one pet live, batches (recipe 6) |
+
+### 6.4 PetFx (A6) details
+* Per element (Config.Elements order): particle texture-free shapes only (default ParticleEmitter sprite, Squash,
+  LightEmission), colours from the pet's Look Glow/GlowB or element palette; stage 1: 1 emitter + light 0.6
+  brightness range 6; stage 2: 2 emitters + light 1.0 range 8 + Neon pulse (PB_Pulse) on aura parts.
+* Total emitter Rate per pet <= 12 (stage 2, High), <= 4 on Low detail; none when GraphicsQuality is Low.
+* Never in viewports (CloudUI / Index / Fusion) unless the caller passes `opts.Fx = true` (viewports ignore particles
+  anyway: skip creating them). Battle units keep them.
+
+### 6.5 Budgets
+recipe 4.2 table; plus the evolved auras count inside the evolved budget; busiest phone view <= 300k tris.
+W3 amendment (lead, from perf-plots): the busiest contract view (4 plots seen from the plaza, 340-stud ring) applies
+the client plot LOD (HomeFx: High < 120 studs, `_low` keys 120-200, Far >= 200 keeps only the house + plot base on
+`_low`; 20-stud hysteresis, checked every 0.5 s) and must be <= 300k tris; the sampled cross-plaza phone view
+(113 degrees, any yaw) <= 320k. The old "400 parts" is replaced by <= 3000 MeshParts in view and <= 700 distinct
+(mesh, material) batches (Roblox instances identical meshes; the 4.3 name contract alone makes pet sets 1395 parts).
+`tools/mesh_budget.py --lod-check` enforces it; confirm in Studio with the MicroProfiler after W4.
+
+### 6.6 Tests
+recipe 4.9. Every wave keeps `tools/smoke.py --quick` green in the default (no ids) mode; W2 adds the mesh-fixture
+mode runs. `tools/run_checks.sh` full at W3.

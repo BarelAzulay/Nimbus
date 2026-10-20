@@ -1,0 +1,2006 @@
+{
+ "class": "pets",
+ "owner": "W2 art-pets (W1 kit: skeleton + golden path dog / cat / dragon, feather wings, crown)",
+ "doc": "blender/README.md. Keys: pet_<species>[_low], wing_<style>_<L|R>[_low], acc_<name>[_low], hyb_<feature>. k = mesh voxels per design unit (recipe 4.2: High 1.38, Low 0.86); lod Low = headroom shades; fixed = bake unreferenced constant keys into one Fixed part; strip = Look fields removed for the species body.",
+ "budgets": {
+  "pet": {
+   "tris": 4750,
+   "parts": 26,
+   "maxPartTris": 10000
+  },
+  "petLow": {
+   "tris": 2150,
+   "parts": 22,
+   "maxPartTris": 10000
+  },
+  "wing": {
+   "tris": 700,
+   "parts": 8
+  },
+  "wingLow": {
+   "tris": 320,
+   "parts": 5
+  },
+  "acc": {
+   "tris": 1000,
+   "parts": 6
+  },
+  "accLow": {
+   "tris": 400,
+   "parts": 6
+  },
+  "setHigh": {
+   "tris": 6500,
+   "parts": 40
+  },
+  "setLow": {
+   "tris": 3000,
+   "parts": 32
+  },
+  "wingStorm": {
+   "tris": 3000,
+   "parts": 8
+  },
+  "wingStormLow": {
+   "tris": 1500,
+   "parts": 5
+  },
+  "hyb": {
+   "tris": 2000,
+   "parts": 10
+  }
+ },
+ "budgetNotes": "recipe 4.2: base pet + wings + accessory High <= 6.5k tris / 40 MeshParts, Low <= 3k tris. Low parts: 32 (not 14) because the name contract (4.3) keeps one part per palette key; see the W1 kit report. Per-key pet High 4.75k tris so a body + Feather pair + Crown fits 6.5k (heavier bodies step K: cat / dragon 1.242). acc_crown bakes its unreferenced constant gems into Fixed (40-part set budget).",
+ "keys": [
+  {
+   "key": "pet_cat",
+   "type": "pet",
+   "pet": "mallow_kitten",
+   "k": 1.38,
+   "strip": [
+    "Accessory"
+   ],
+   "budget": "pet",
+   "passes": [
+    "pets:cute"
+   ],
+   "description": "Pet body: cat (shape from mallow_kitten; colours are recipes), High"
+  },
+  {
+   "key": "pet_cat_low",
+   "type": "pet",
+   "pet": "mallow_kitten",
+   "k": 0.86,
+   "strip": [
+    "Accessory"
+   ],
+   "budget": "petLow",
+   "lod": "Low",
+   "fixed": true,
+   "passes": [
+    "pets:cute"
+   ],
+   "description": "Pet body: cat, Low LOD (headroom shades)"
+  },
+  {
+   "key": "pet_dog",
+   "type": "pet",
+   "pet": "pebble_pup",
+   "k": 1.38,
+   "strip": [
+    "Accessory"
+   ],
+   "budget": "pet",
+   "passes": [
+    "pets:cute"
+   ],
+   "description": "Pet body: dog (shape from pebble_pup; colours are recipes), High"
+  },
+  {
+   "key": "pet_dog_low",
+   "type": "pet",
+   "pet": "pebble_pup",
+   "k": 0.86,
+   "strip": [
+    "Accessory"
+   ],
+   "budget": "petLow",
+   "lod": "Low",
+   "fixed": true,
+   "passes": [
+    "pets:cute"
+   ],
+   "description": "Pet body: dog, Low LOD (headroom shades)"
+  },
+  {
+   "key": "pet_dog_corgi",
+   "type": "pet",
+   "pet": "waffle_corgi",
+   "k": 1.38,
+   "strip": [
+    "Accessory"
+   ],
+   "budget": "pet",
+   "passes": [
+    "pets:cute"
+   ],
+   "description": "Pet body: dog corgi (shape from waffle_corgi; colours are recipes), High"
+  },
+  {
+   "key": "pet_dog_corgi_low",
+   "type": "pet",
+   "pet": "waffle_corgi",
+   "k": 0.86,
+   "strip": [
+    "Accessory"
+   ],
+   "budget": "petLow",
+   "lod": "Low",
+   "fixed": true,
+   "passes": [
+    "pets:cute"
+   ],
+   "description": "Pet body: dog corgi, Low LOD (headroom shades)"
+  },
+  {
+   "key": "pet_fox",
+   "type": "pet",
+   "pet": "maple_fox",
+   "k": 1.38,
+   "strip": [
+    "Accessory"
+   ],
+   "budget": "pet",
+   "passes": [
+    "pets:cute"
+   ],
+   "description": "Pet body: fox (shape from maple_fox; colours are recipes), High"
+  },
+  {
+   "key": "pet_fox_low",
+   "type": "pet",
+   "pet": "maple_fox",
+   "k": 0.86,
+   "strip": [
+    "Accessory"
+   ],
+   "budget": "petLow",
+   "lod": "Low",
+   "fixed": true,
+   "passes": [
+    "pets:cute"
+   ],
+   "description": "Pet body: fox, Low LOD (headroom shades)"
+  },
+  {
+   "key": "pet_bunny",
+   "type": "pet",
+   "pet": "honey_bunny",
+   "k": 1.38,
+   "strip": [
+    "Accessory"
+   ],
+   "budget": "pet",
+   "passes": [
+    "pets:cute"
+   ],
+   "description": "Pet body: bunny (shape from honey_bunny; colours are recipes), High"
+  },
+  {
+   "key": "pet_bunny_low",
+   "type": "pet",
+   "pet": "honey_bunny",
+   "k": 0.86,
+   "strip": [
+    "Accessory"
+   ],
+   "budget": "petLow",
+   "lod": "Low",
+   "fixed": true,
+   "passes": [
+    "pets:cute"
+   ],
+   "description": "Pet body: bunny, Low LOD (headroom shades)"
+  },
+  {
+   "key": "pet_bear",
+   "type": "pet",
+   "pet": "biscuit_bear",
+   "k": 1.38,
+   "strip": [
+    "Accessory"
+   ],
+   "budget": "pet",
+   "passes": [
+    "pets:cute"
+   ],
+   "description": "Pet body: bear (shape from biscuit_bear; colours are recipes), High"
+  },
+  {
+   "key": "pet_bear_low",
+   "type": "pet",
+   "pet": "biscuit_bear",
+   "k": 0.86,
+   "strip": [
+    "Accessory"
+   ],
+   "budget": "petLow",
+   "lod": "Low",
+   "fixed": true,
+   "passes": [
+    "pets:cute"
+   ],
+   "description": "Pet body: bear, Low LOD (headroom shades)"
+  },
+  {
+   "key": "pet_panda",
+   "type": "pet",
+   "pet": "bamboo_panda",
+   "k": 1.38,
+   "strip": [
+    "Accessory"
+   ],
+   "budget": "pet",
+   "passes": [
+    "pets:cute"
+   ],
+   "description": "Pet body: panda (shape from bamboo_panda; colours are recipes), High"
+  },
+  {
+   "key": "pet_panda_low",
+   "type": "pet",
+   "pet": "bamboo_panda",
+   "k": 0.86,
+   "strip": [
+    "Accessory"
+   ],
+   "budget": "petLow",
+   "lod": "Low",
+   "fixed": true,
+   "passes": [
+    "pets:cute"
+   ],
+   "description": "Pet body: panda, Low LOD (headroom shades)"
+  },
+  {
+   "key": "pet_dragon",
+   "type": "pet",
+   "pet": "twilight_dragon",
+   "k": 1.38,
+   "strip": [
+    "Accessory"
+   ],
+   "budget": "pet",
+   "passes": [
+    "pets:cute"
+   ],
+   "description": "Pet body: dragon (shape from twilight_dragon; colours are recipes), High",
+   "fixed": true
+  },
+  {
+   "key": "pet_dragon_low",
+   "type": "pet",
+   "pet": "twilight_dragon",
+   "k": 0.86,
+   "strip": [
+    "Accessory"
+   ],
+   "budget": "petLow",
+   "lod": "Low",
+   "fixed": true,
+   "passes": [
+    "pets:cute"
+   ],
+   "description": "Pet body: dragon, Low LOD (headroom shades)"
+  },
+  {
+   "key": "pet_owl",
+   "type": "pet",
+   "pet": "sleepy_owl",
+   "k": 1.38,
+   "strip": [
+    "Accessory"
+   ],
+   "budget": "pet",
+   "passes": [
+    "pets:cute"
+   ],
+   "description": "Pet body: owl (shape from sleepy_owl; colours are recipes), High"
+  },
+  {
+   "key": "pet_owl_low",
+   "type": "pet",
+   "pet": "sleepy_owl",
+   "k": 0.86,
+   "strip": [
+    "Accessory"
+   ],
+   "budget": "petLow",
+   "lod": "Low",
+   "fixed": true,
+   "passes": [
+    "pets:cute"
+   ],
+   "description": "Pet body: owl, Low LOD (headroom shades)"
+  },
+  {
+   "key": "pet_slime",
+   "type": "pet",
+   "pet": "mochi_slime",
+   "k": 1.38,
+   "strip": [
+    "Accessory"
+   ],
+   "budget": "pet",
+   "passes": [
+    "pets:cute"
+   ],
+   "description": "Pet body: slime (shape from mochi_slime; colours are recipes), High"
+  },
+  {
+   "key": "pet_slime_low",
+   "type": "pet",
+   "pet": "mochi_slime",
+   "k": 0.86,
+   "strip": [
+    "Accessory"
+   ],
+   "budget": "petLow",
+   "lod": "Low",
+   "fixed": true,
+   "passes": [
+    "pets:cute"
+   ],
+   "description": "Pet body: slime, Low LOD (headroom shades)"
+  },
+  {
+   "key": "pet_unicorn",
+   "type": "pet",
+   "pet": "candy_unicorn",
+   "k": 1.38,
+   "strip": [
+    "Accessory"
+   ],
+   "budget": "pet",
+   "passes": [
+    "pets:cute"
+   ],
+   "description": "Pet body: unicorn (shape from candy_unicorn; colours are recipes), High",
+   "cute": {
+    "merge": {
+     "Inner": "Blush"
+    },
+    "foldLight": [
+     "Accent"
+    ]
+   }
+  },
+  {
+   "key": "pet_unicorn_low",
+   "type": "pet",
+   "pet": "candy_unicorn",
+   "k": 0.86,
+   "strip": [
+    "Accessory"
+   ],
+   "budget": "petLow",
+   "lod": "Low",
+   "fixed": true,
+   "passes": [
+    "pets:cute"
+   ],
+   "description": "Pet body: unicorn, Low LOD (headroom shades)"
+  },
+  {
+   "key": "pet_phoenix",
+   "type": "pet",
+   "pet": "ember_phoenix",
+   "k": 1.38,
+   "strip": [
+    "Accessory"
+   ],
+   "budget": "pet",
+   "passes": [
+    "pets:cute"
+   ],
+   "description": "Pet body: phoenix (shape from ember_phoenix; colours are recipes), High"
+  },
+  {
+   "key": "pet_phoenix_low",
+   "type": "pet",
+   "pet": "ember_phoenix",
+   "k": 0.86,
+   "strip": [
+    "Accessory"
+   ],
+   "budget": "petLow",
+   "lod": "Low",
+   "fixed": true,
+   "passes": [
+    "pets:cute"
+   ],
+   "description": "Pet body: phoenix, Low LOD (headroom shades)"
+  },
+  {
+   "key": "pet_frog",
+   "type": "pet",
+   "pet": "puddle_frog",
+   "k": 1.38,
+   "strip": [
+    "Accessory"
+   ],
+   "budget": "pet",
+   "passes": [
+    "pets:cute"
+   ],
+   "description": "Pet body: frog (shape from puddle_frog; colours are recipes), High"
+  },
+  {
+   "key": "pet_frog_low",
+   "type": "pet",
+   "pet": "puddle_frog",
+   "k": 0.86,
+   "strip": [
+    "Accessory"
+   ],
+   "budget": "petLow",
+   "lod": "Low",
+   "fixed": true,
+   "passes": [
+    "pets:cute"
+   ],
+   "description": "Pet body: frog, Low LOD (headroom shades)"
+  },
+  {
+   "key": "pet_penguin",
+   "type": "pet",
+   "pet": "pip_penguin",
+   "k": 1.38,
+   "strip": [
+    "Accessory"
+   ],
+   "budget": "pet",
+   "passes": [
+    "pets:cute"
+   ],
+   "description": "Pet body: penguin (shape from pip_penguin; colours are recipes), High"
+  },
+  {
+   "key": "pet_penguin_low",
+   "type": "pet",
+   "pet": "pip_penguin",
+   "k": 0.86,
+   "strip": [
+    "Accessory"
+   ],
+   "budget": "petLow",
+   "lod": "Low",
+   "fixed": true,
+   "passes": [
+    "pets:cute"
+   ],
+   "description": "Pet body: penguin, Low LOD (headroom shades)"
+  },
+  {
+   "key": "pet_axolotl",
+   "type": "pet",
+   "pet": "bubble_axolotl",
+   "k": 1.38,
+   "strip": [
+    "Accessory"
+   ],
+   "budget": "pet",
+   "passes": [
+    "pets:cute"
+   ],
+   "description": "Pet body: axolotl (shape from bubble_axolotl; colours are recipes), High"
+  },
+  {
+   "key": "pet_axolotl_low",
+   "type": "pet",
+   "pet": "bubble_axolotl",
+   "k": 0.86,
+   "strip": [
+    "Accessory"
+   ],
+   "budget": "petLow",
+   "lod": "Low",
+   "fixed": true,
+   "passes": [
+    "pets:cute"
+   ],
+   "description": "Pet body: axolotl, Low LOD (headroom shades)"
+  },
+  {
+   "key": "pet_stormfang",
+   "type": "pet",
+   "pet": "stormfang",
+   "k": 1.38,
+   "strip": [
+    "Accessory"
+   ],
+   "budget": "pet",
+   "passes": [
+    "pets:cute"
+   ],
+   "description": "Pet body: stormfang (shape from stormfang; colours are recipes), High"
+  },
+  {
+   "key": "pet_stormfang_low",
+   "type": "pet",
+   "pet": "stormfang",
+   "k": 0.86,
+   "strip": [
+    "Accessory"
+   ],
+   "budget": "petLow",
+   "lod": "Low",
+   "fixed": true,
+   "passes": [
+    "pets:cute"
+   ],
+   "description": "Pet body: stormfang, Low LOD (headroom shades)"
+  },
+  {
+   "key": "wing_feather_L",
+   "type": "wing",
+   "pet": "pebble_pup",
+   "side": "L",
+   "k": 1.38,
+   "budget": "wing",
+   "description": "Pet wing: feather, L side, High (pivot = the wing hinge)"
+  },
+  {
+   "key": "wing_feather_L_low",
+   "type": "wing",
+   "pet": "pebble_pup",
+   "side": "L",
+   "k": 0.86,
+   "lod": "Low",
+   "budget": "wingLow",
+   "description": "Pet wing: feather, L side, Low LOD"
+  },
+  {
+   "key": "wing_feather_R",
+   "type": "wing",
+   "pet": "pebble_pup",
+   "side": "R",
+   "k": 1.38,
+   "budget": "wing",
+   "description": "Pet wing: feather, R side, High (pivot = the wing hinge)"
+  },
+  {
+   "key": "wing_feather_R_low",
+   "type": "wing",
+   "pet": "pebble_pup",
+   "side": "R",
+   "k": 0.86,
+   "lod": "Low",
+   "budget": "wingLow",
+   "description": "Pet wing: feather, R side, Low LOD"
+  },
+  {
+   "key": "wing_bat_L",
+   "type": "wing",
+   "pet": "twilight_dragon",
+   "side": "L",
+   "k": 1.15,
+   "budget": "wing",
+   "description": "Pet wing: bat, L side, High (pivot = the wing hinge)"
+  },
+  {
+   "key": "wing_bat_L_low",
+   "type": "wing",
+   "pet": "twilight_dragon",
+   "side": "L",
+   "k": 0.86,
+   "lod": "Low",
+   "budget": "wingLow",
+   "description": "Pet wing: bat, L side, Low LOD"
+  },
+  {
+   "key": "wing_bat_R",
+   "type": "wing",
+   "pet": "twilight_dragon",
+   "side": "R",
+   "k": 1.15,
+   "budget": "wing",
+   "description": "Pet wing: bat, R side, High (pivot = the wing hinge)"
+  },
+  {
+   "key": "wing_bat_R_low",
+   "type": "wing",
+   "pet": "twilight_dragon",
+   "side": "R",
+   "k": 0.86,
+   "lod": "Low",
+   "budget": "wingLow",
+   "description": "Pet wing: bat, R side, Low LOD"
+  },
+  {
+   "key": "wing_fairy_L",
+   "type": "wing",
+   "pet": "puddle_frog",
+   "side": "L",
+   "k": 1.38,
+   "budget": "wing",
+   "description": "Pet wing: fairy, L side, High (pivot = the wing hinge)"
+  },
+  {
+   "key": "wing_fairy_L_low",
+   "type": "wing",
+   "pet": "puddle_frog",
+   "side": "L",
+   "k": 0.86,
+   "lod": "Low",
+   "budget": "wingLow",
+   "description": "Pet wing: fairy, L side, Low LOD"
+  },
+  {
+   "key": "wing_fairy_R",
+   "type": "wing",
+   "pet": "puddle_frog",
+   "side": "R",
+   "k": 1.38,
+   "budget": "wing",
+   "description": "Pet wing: fairy, R side, High (pivot = the wing hinge)"
+  },
+  {
+   "key": "wing_fairy_R_low",
+   "type": "wing",
+   "pet": "puddle_frog",
+   "side": "R",
+   "k": 0.86,
+   "lod": "Low",
+   "budget": "wingLow",
+   "description": "Pet wing: fairy, R side, Low LOD"
+  },
+  {
+   "key": "wing_cloud_L",
+   "type": "wing",
+   "pet": "cloudy_dragon",
+   "side": "L",
+   "k": 1.38,
+   "budget": "wing",
+   "description": "Pet wing: cloud, L side, High (pivot = the wing hinge)"
+  },
+  {
+   "key": "wing_cloud_L_low",
+   "type": "wing",
+   "pet": "cloudy_dragon",
+   "side": "L",
+   "k": 0.86,
+   "lod": "Low",
+   "budget": "wingLow",
+   "description": "Pet wing: cloud, L side, Low LOD"
+  },
+  {
+   "key": "wing_cloud_R",
+   "type": "wing",
+   "pet": "cloudy_dragon",
+   "side": "R",
+   "k": 1.38,
+   "budget": "wing",
+   "description": "Pet wing: cloud, R side, High (pivot = the wing hinge)"
+  },
+  {
+   "key": "wing_cloud_R_low",
+   "type": "wing",
+   "pet": "cloudy_dragon",
+   "side": "R",
+   "k": 0.86,
+   "lod": "Low",
+   "budget": "wingLow",
+   "description": "Pet wing: cloud, R side, Low LOD"
+  },
+  {
+   "key": "wing_crystal_L",
+   "type": "wing",
+   "pet": "frostling_penguin",
+   "side": "L",
+   "k": 1.38,
+   "budget": "wing",
+   "description": "Pet wing: crystal, L side, High (pivot = the wing hinge)"
+  },
+  {
+   "key": "wing_crystal_L_low",
+   "type": "wing",
+   "pet": "frostling_penguin",
+   "side": "L",
+   "k": 0.86,
+   "lod": "Low",
+   "budget": "wingLow",
+   "description": "Pet wing: crystal, L side, Low LOD"
+  },
+  {
+   "key": "wing_crystal_R",
+   "type": "wing",
+   "pet": "frostling_penguin",
+   "side": "R",
+   "k": 1.38,
+   "budget": "wing",
+   "description": "Pet wing: crystal, R side, High (pivot = the wing hinge)"
+  },
+  {
+   "key": "wing_crystal_R_low",
+   "type": "wing",
+   "pet": "frostling_penguin",
+   "side": "R",
+   "k": 0.86,
+   "lod": "Low",
+   "budget": "wingLow",
+   "description": "Pet wing: crystal, R side, Low LOD"
+  },
+  {
+   "key": "wing_flame_L",
+   "type": "wing",
+   "pet": "obsidian_phoenix",
+   "side": "L",
+   "k": 1.38,
+   "budget": "wing",
+   "description": "Pet wing: flame, L side, High (pivot = the wing hinge)"
+  },
+  {
+   "key": "wing_flame_L_low",
+   "type": "wing",
+   "pet": "obsidian_phoenix",
+   "side": "L",
+   "k": 0.86,
+   "lod": "Low",
+   "budget": "wingLow",
+   "description": "Pet wing: flame, L side, Low LOD"
+  },
+  {
+   "key": "wing_flame_R",
+   "type": "wing",
+   "pet": "obsidian_phoenix",
+   "side": "R",
+   "k": 1.38,
+   "budget": "wing",
+   "description": "Pet wing: flame, R side, High (pivot = the wing hinge)"
+  },
+  {
+   "key": "wing_flame_R_low",
+   "type": "wing",
+   "pet": "obsidian_phoenix",
+   "side": "R",
+   "k": 0.86,
+   "lod": "Low",
+   "budget": "wingLow",
+   "description": "Pet wing: flame, R side, Low LOD"
+  },
+  {
+   "key": "wing_stormcloud_L",
+   "type": "wing",
+   "pet": "stormfang",
+   "side": "L",
+   "k": 1.38,
+   "budget": "wingStorm",
+   "description": "Pet wing: stormcloud, L side, High (pivot = the wing hinge)"
+  },
+  {
+   "key": "wing_stormcloud_L_low",
+   "type": "wing",
+   "pet": "stormfang",
+   "side": "L",
+   "k": 0.86,
+   "lod": "Low",
+   "budget": "wingStormLow",
+   "description": "Pet wing: stormcloud, L side, Low LOD"
+  },
+  {
+   "key": "wing_stormcloud_R",
+   "type": "wing",
+   "pet": "stormfang",
+   "side": "R",
+   "k": 1.38,
+   "budget": "wingStorm",
+   "description": "Pet wing: stormcloud, R side, High (pivot = the wing hinge)"
+  },
+  {
+   "key": "wing_stormcloud_R_low",
+   "type": "wing",
+   "pet": "stormfang",
+   "side": "R",
+   "k": 0.86,
+   "lod": "Low",
+   "budget": "wingStormLow",
+   "description": "Pet wing: stormcloud, R side, Low LOD"
+  },
+  {
+   "key": "acc_horns",
+   "type": "acc",
+   "pet": "twilight_dragon",
+   "accessory": "Horns",
+   "k": 1.38,
+   "budget": "acc",
+   "fixed": true,
+   "description": "Pet accessory: horns (cut from twilight_dragon, pivot = the body's Hat attachment), High"
+  },
+  {
+   "key": "acc_horns_low",
+   "type": "acc",
+   "pet": "twilight_dragon",
+   "accessory": "Horns",
+   "k": 0.62,
+   "budget": "accLow",
+   "fixed": true,
+   "description": "Pet accessory: horns, Low LOD",
+   "lod": "Low"
+  },
+  {
+   "key": "acc_crown",
+   "type": "acc",
+   "pet": "pebble_pup",
+   "accessory": "Crown",
+   "k": 1.38,
+   "budget": "acc",
+   "fixed": true,
+   "description": "Pet accessory: crown (cut from pebble_pup, pivot = the body's Hat attachment), High"
+  },
+  {
+   "key": "acc_crown_low",
+   "type": "acc",
+   "pet": "pebble_pup",
+   "accessory": "Crown",
+   "k": 0.86,
+   "budget": "accLow",
+   "fixed": true,
+   "description": "Pet accessory: crown, Low LOD",
+   "lod": "Low"
+  },
+  {
+   "key": "acc_halo",
+   "type": "acc",
+   "pet": "pebble_pup",
+   "accessory": "Halo",
+   "k": 1.38,
+   "budget": "acc",
+   "fixed": true,
+   "description": "Pet accessory: halo (cut from pebble_pup, pivot = the body's Hat attachment), High"
+  },
+  {
+   "key": "acc_halo_low",
+   "type": "acc",
+   "pet": "pebble_pup",
+   "accessory": "Halo",
+   "k": 0.86,
+   "budget": "accLow",
+   "fixed": true,
+   "description": "Pet accessory: halo, Low LOD",
+   "lod": "Low"
+  },
+  {
+   "key": "acc_leaf",
+   "type": "acc",
+   "pet": "maple_fox",
+   "accessory": "Leaf",
+   "k": 1.38,
+   "budget": "acc",
+   "fixed": true,
+   "description": "Pet accessory: leaf (cut from maple_fox, pivot = the body's Hat attachment), High"
+  },
+  {
+   "key": "acc_leaf_low",
+   "type": "acc",
+   "pet": "maple_fox",
+   "accessory": "Leaf",
+   "k": 0.86,
+   "budget": "accLow",
+   "fixed": true,
+   "description": "Pet accessory: leaf, Low LOD",
+   "lod": "Low"
+  },
+  {
+   "key": "acc_mushroom",
+   "type": "acc",
+   "pet": "shroomie_frog",
+   "accessory": "Mushroom",
+   "k": 1.38,
+   "budget": "acc",
+   "fixed": true,
+   "description": "Pet accessory: mushroom (cut from shroomie_frog, pivot = the body's Hat attachment), High"
+  },
+  {
+   "key": "acc_mushroom_low",
+   "type": "acc",
+   "pet": "shroomie_frog",
+   "accessory": "Mushroom",
+   "k": 0.86,
+   "budget": "accLow",
+   "fixed": true,
+   "description": "Pet accessory: mushroom, Low LOD",
+   "lod": "Low"
+  },
+  {
+   "key": "acc_scarf",
+   "type": "acc",
+   "pet": "biscuit_bear",
+   "accessory": "Scarf",
+   "k": 1.035,
+   "budget": "acc",
+   "fixed": true,
+   "description": "Pet accessory: scarf (cut from biscuit_bear, pivot = the body's Neck attachment), High",
+   "attach": "Neck"
+  },
+  {
+   "key": "acc_scarf_low",
+   "type": "acc",
+   "pet": "biscuit_bear",
+   "accessory": "Scarf",
+   "k": 0.7,
+   "budget": "accLow",
+   "fixed": true,
+   "description": "Pet accessory: scarf, Low LOD",
+   "attach": "Neck",
+   "lod": "Low"
+  },
+  {
+   "key": "acc_antlers",
+   "type": "acc",
+   "pet": "aurora_fox",
+   "accessory": "Antlers",
+   "k": 1.38,
+   "budget": "acc",
+   "fixed": true,
+   "description": "Pet accessory: antlers (cut from aurora_fox, pivot = the body's Hat attachment), High"
+  },
+  {
+   "key": "acc_antlers_low",
+   "type": "acc",
+   "pet": "aurora_fox",
+   "accessory": "Antlers",
+   "k": 0.86,
+   "budget": "accLow",
+   "fixed": true,
+   "description": "Pet accessory: antlers, Low LOD",
+   "lod": "Low"
+  },
+  {
+   "key": "acc_flower",
+   "type": "acc",
+   "pet": "cherry_panda",
+   "accessory": "Flower",
+   "k": 1.38,
+   "budget": "acc",
+   "fixed": true,
+   "description": "Pet accessory: flower (cut from cherry_panda, pivot = the body's Flower attachment), High",
+   "attach": "Flower"
+  },
+  {
+   "key": "acc_flower_low",
+   "type": "acc",
+   "pet": "cherry_panda",
+   "accessory": "Flower",
+   "k": 0.86,
+   "budget": "accLow",
+   "fixed": true,
+   "description": "Pet accessory: flower, Low LOD",
+   "attach": "Flower",
+   "lod": "Low"
+  },
+  {
+   "key": "hyb_cat",
+   "type": "pet",
+   "pet": "pebble_pup",
+   "k": 1.38,
+   "strip": [
+    "Accessory"
+   ],
+   "budget": "hyb",
+   "look": {
+    "Hybrid": true,
+    "StyleId": "mallow_kitten",
+    "Seed": 7
+   },
+   "passes": [
+    "pets_hyb:isolate"
+   ],
+   "description": "Hybrid feature: cat style (PetBuilder HYBRID.Cat) grown on the pebble_pup body (pivot = body root; Hy* parts are coloured from the hybrid palette at runtime)"
+  },
+  {
+   "key": "hyb_dog",
+   "type": "pet",
+   "pet": "mallow_kitten",
+   "k": 1.38,
+   "strip": [
+    "Accessory"
+   ],
+   "budget": "hyb",
+   "look": {
+    "Hybrid": true,
+    "StyleId": "pebble_pup",
+    "Seed": 7
+   },
+   "passes": [
+    "pets_hyb:isolate"
+   ],
+   "description": "Hybrid feature: dog style (PetBuilder HYBRID.Dog) grown on the mallow_kitten body (pivot = body root; Hy* parts are coloured from the hybrid palette at runtime)"
+  },
+  {
+   "key": "hyb_dog_ears",
+   "type": "pet",
+   "pet": "puddle_frog",
+   "k": 1.38,
+   "strip": [
+    "Accessory"
+   ],
+   "budget": "hyb",
+   "look": {
+    "Hybrid": true,
+    "StyleId": "pebble_pup",
+    "Seed": 7
+   },
+   "passes": [
+    "pets_hyb:isolate"
+   ],
+   "description": "Hybrid feature: dog style (PetBuilder HYBRID.Dog) on an EARLESS body (the trait grows its floppy ears only where the body has none: Dragon, Slime, Unicorn, Phoenix, Frog, Penguin), grown on the puddle_frog body (pivot = body root; Hy* parts are coloured from the hybrid palette at runtime)"
+  },
+  {
+   "key": "hyb_fox",
+   "type": "pet",
+   "pet": "pebble_pup",
+   "k": 1.38,
+   "strip": [
+    "Accessory"
+   ],
+   "budget": "hyb",
+   "look": {
+    "Hybrid": true,
+    "StyleId": "maple_fox",
+    "Seed": 7
+   },
+   "passes": [
+    "pets_hyb:isolate"
+   ],
+   "description": "Hybrid feature: fox style (PetBuilder HYBRID.Fox) grown on the pebble_pup body (pivot = body root; Hy* parts are coloured from the hybrid palette at runtime)"
+  },
+  {
+   "key": "hyb_bunny",
+   "type": "pet",
+   "pet": "pebble_pup",
+   "k": 1.38,
+   "strip": [
+    "Accessory"
+   ],
+   "budget": "hyb",
+   "look": {
+    "Hybrid": true,
+    "StyleId": "honey_bunny",
+    "Seed": 7
+   },
+   "passes": [
+    "pets_hyb:isolate"
+   ],
+   "description": "Hybrid feature: bunny style (PetBuilder HYBRID.Bunny) grown on the pebble_pup body (pivot = body root; Hy* parts are coloured from the hybrid palette at runtime)"
+  },
+  {
+   "key": "hyb_bear",
+   "type": "pet",
+   "pet": "pebble_pup",
+   "k": 1.38,
+   "strip": [
+    "Accessory"
+   ],
+   "budget": "hyb",
+   "look": {
+    "Hybrid": true,
+    "StyleId": "biscuit_bear",
+    "Seed": 7
+   },
+   "passes": [
+    "pets_hyb:isolate"
+   ],
+   "description": "Hybrid feature: bear style (PetBuilder HYBRID.Bear) grown on the pebble_pup body (pivot = body root; Hy* parts are coloured from the hybrid palette at runtime)"
+  },
+  {
+   "key": "hyb_bear_ears",
+   "type": "pet",
+   "pet": "puddle_frog",
+   "k": 1.38,
+   "strip": [
+    "Accessory"
+   ],
+   "budget": "hyb",
+   "look": {
+    "Hybrid": true,
+    "StyleId": "biscuit_bear",
+    "Seed": 7
+   },
+   "passes": [
+    "pets_hyb:isolate"
+   ],
+   "description": "Hybrid feature: bear style (PetBuilder HYBRID.Bear) on an EARLESS body (the trait grows its round ears only where the body has none: Dragon, Slime, Unicorn, Phoenix, Frog, Penguin), grown on the puddle_frog body (pivot = body root; Hy* parts are coloured from the hybrid palette at runtime)"
+  },
+  {
+   "key": "hyb_panda",
+   "type": "pet",
+   "pet": "pebble_pup",
+   "k": 1.38,
+   "strip": [
+    "Accessory"
+   ],
+   "budget": "hyb",
+   "look": {
+    "Hybrid": true,
+    "StyleId": "bamboo_panda",
+    "Seed": 7
+   },
+   "passes": [
+    "pets_hyb:isolate"
+   ],
+   "description": "Hybrid feature: panda style (PetBuilder HYBRID.Panda) grown on the pebble_pup body (pivot = body root; Hy* parts are coloured from the hybrid palette at runtime)"
+  },
+  {
+   "key": "hyb_dragon",
+   "type": "pet",
+   "pet": "pebble_pup",
+   "k": 1.38,
+   "strip": [
+    "Accessory"
+   ],
+   "budget": "hyb",
+   "look": {
+    "Hybrid": true,
+    "StyleId": "twilight_dragon",
+    "Seed": 7
+   },
+   "passes": [
+    "pets_hyb:isolate"
+   ],
+   "description": "Hybrid feature: dragon style (PetBuilder HYBRID.Dragon) grown on the pebble_pup body (pivot = body root; Hy* parts are coloured from the hybrid palette at runtime)"
+  },
+  {
+   "key": "hyb_owl",
+   "type": "pet",
+   "pet": "pebble_pup",
+   "k": 1.38,
+   "strip": [
+    "Accessory"
+   ],
+   "budget": "hyb",
+   "look": {
+    "Hybrid": true,
+    "StyleId": "sleepy_owl",
+    "Seed": 7
+   },
+   "passes": [
+    "pets_hyb:isolate"
+   ],
+   "description": "Hybrid feature: owl style (PetBuilder HYBRID.Owl) grown on the pebble_pup body (pivot = body root; Hy* parts are coloured from the hybrid palette at runtime)"
+  },
+  {
+   "key": "hyb_slime",
+   "type": "pet",
+   "pet": "pebble_pup",
+   "k": 1.38,
+   "strip": [
+    "Accessory"
+   ],
+   "budget": "hyb",
+   "look": {
+    "Hybrid": true,
+    "StyleId": "mochi_slime",
+    "Seed": 7
+   },
+   "passes": [
+    "pets_hyb:isolate"
+   ],
+   "description": "Hybrid feature: slime style (PetBuilder HYBRID.Slime) grown on the pebble_pup body (pivot = body root; Hy* parts are coloured from the hybrid palette at runtime)"
+  },
+  {
+   "key": "hyb_unicorn",
+   "type": "pet",
+   "pet": "pebble_pup",
+   "k": 1.38,
+   "strip": [
+    "Accessory"
+   ],
+   "budget": "hyb",
+   "look": {
+    "Hybrid": true,
+    "StyleId": "candy_unicorn",
+    "Seed": 7
+   },
+   "passes": [
+    "pets_hyb:isolate"
+   ],
+   "description": "Hybrid feature: unicorn style (PetBuilder HYBRID.Unicorn) grown on the pebble_pup body (pivot = body root; Hy* parts are coloured from the hybrid palette at runtime)"
+  },
+  {
+   "key": "hyb_phoenix",
+   "type": "pet",
+   "pet": "pebble_pup",
+   "k": 1.38,
+   "strip": [
+    "Accessory"
+   ],
+   "budget": "hyb",
+   "look": {
+    "Hybrid": true,
+    "StyleId": "ember_phoenix",
+    "Seed": 7
+   },
+   "passes": [
+    "pets_hyb:isolate"
+   ],
+   "description": "Hybrid feature: phoenix style (PetBuilder HYBRID.Phoenix) grown on the pebble_pup body (pivot = body root; Hy* parts are coloured from the hybrid palette at runtime)"
+  },
+  {
+   "key": "hyb_frog",
+   "type": "pet",
+   "pet": "pebble_pup",
+   "k": 1.38,
+   "strip": [
+    "Accessory"
+   ],
+   "budget": "hyb",
+   "look": {
+    "Hybrid": true,
+    "StyleId": "puddle_frog",
+    "Seed": 7
+   },
+   "passes": [
+    "pets_hyb:isolate"
+   ],
+   "description": "Hybrid feature: frog style (PetBuilder HYBRID.Frog) grown on the pebble_pup body (pivot = body root; Hy* parts are coloured from the hybrid palette at runtime)"
+  },
+  {
+   "key": "hyb_penguin",
+   "type": "pet",
+   "pet": "pebble_pup",
+   "k": 1.38,
+   "strip": [
+    "Accessory"
+   ],
+   "budget": "hyb",
+   "look": {
+    "Hybrid": true,
+    "StyleId": "pip_penguin",
+    "Seed": 7
+   },
+   "passes": [
+    "pets_hyb:isolate"
+   ],
+   "description": "Hybrid feature: penguin style (PetBuilder HYBRID.Penguin) grown on the pebble_pup body (pivot = body root; Hy* parts are coloured from the hybrid palette at runtime)",
+   "raiseAll": false
+  },
+  {
+   "key": "hyb_axolotl",
+   "type": "pet",
+   "pet": "pebble_pup",
+   "k": 1.38,
+   "strip": [
+    "Accessory"
+   ],
+   "budget": "hyb",
+   "look": {
+    "Hybrid": true,
+    "StyleId": "bubble_axolotl",
+    "Seed": 7
+   },
+   "passes": [
+    "pets_hyb:isolate"
+   ],
+   "description": "Hybrid feature: axolotl style (PetBuilder HYBRID.Axolotl) grown on the pebble_pup body (pivot = body root; Hy* parts are coloured from the hybrid palette at runtime)"
+  },
+  {
+   "key": "hyb_stormfang",
+   "type": "pet",
+   "pet": "pebble_pup",
+   "k": 1.38,
+   "strip": [
+    "Accessory"
+   ],
+   "budget": "hyb",
+   "look": {
+    "Hybrid": true,
+    "StyleId": "stormfang",
+    "Seed": 7
+   },
+   "passes": [
+    "pets_hyb:isolate"
+   ],
+   "description": "Hybrid feature: stormfang style (PetBuilder HYBRID.Stormfang) grown on the pebble_pup body (pivot = body root; Hy* parts are coloured from the hybrid palette at runtime)"
+  },
+  {
+   "key": "hyb_same",
+   "type": "pet",
+   "pet": "pebble_pup",
+   "k": 1.38,
+   "strip": [
+    "Accessory"
+   ],
+   "budget": "hyb",
+   "look": {
+    "Hybrid": true,
+    "StyleId": "waffle_corgi",
+    "Seed": 7
+   },
+   "passes": [
+    "pets_hyb:isolate"
+   ],
+   "description": "Hybrid feature: same style (PetBuilder HYBRID.Same) grown on the pebble_pup body (pivot = body root; Hy* parts are coloured from the hybrid palette at runtime)"
+  }
+ ],
+ "sets": [
+  {
+   "name": "pebble_pup",
+   "keys": [
+    "pet_dog",
+    "wing_feather_L",
+    "wing_feather_R"
+   ],
+   "budget": "setHigh"
+  },
+  {
+   "name": "pebble_pup_low",
+   "keys": [
+    "pet_dog_low",
+    "wing_feather_L_low",
+    "wing_feather_R_low"
+   ],
+   "budget": "setLow"
+  },
+  {
+   "name": "mallow_kitten",
+   "keys": [
+    "pet_cat",
+    "wing_fairy_L",
+    "wing_fairy_R"
+   ],
+   "budget": "setHigh"
+  },
+  {
+   "name": "mallow_kitten_low",
+   "keys": [
+    "pet_cat_low",
+    "wing_fairy_L_low",
+    "wing_fairy_R_low"
+   ],
+   "budget": "setLow"
+  },
+  {
+   "name": "puddle_frog",
+   "keys": [
+    "pet_frog",
+    "wing_fairy_L",
+    "wing_fairy_R",
+    "acc_leaf"
+   ],
+   "budget": "setHigh"
+  },
+  {
+   "name": "puddle_frog_low",
+   "keys": [
+    "pet_frog_low",
+    "wing_fairy_L_low",
+    "wing_fairy_R_low",
+    "acc_leaf_low"
+   ],
+   "budget": "setLow"
+  },
+  {
+   "name": "honey_bunny",
+   "keys": [
+    "pet_bunny",
+    "wing_feather_L",
+    "wing_feather_R"
+   ],
+   "budget": "setHigh"
+  },
+  {
+   "name": "honey_bunny_low",
+   "keys": [
+    "pet_bunny_low",
+    "wing_feather_L_low",
+    "wing_feather_R_low"
+   ],
+   "budget": "setLow"
+  },
+  {
+   "name": "biscuit_bear",
+   "keys": [
+    "pet_bear",
+    "wing_feather_L",
+    "wing_feather_R",
+    "acc_scarf"
+   ],
+   "budget": "setHigh"
+  },
+  {
+   "name": "biscuit_bear_low",
+   "keys": [
+    "pet_bear_low",
+    "wing_feather_L_low",
+    "wing_feather_R_low",
+    "acc_scarf_low"
+   ],
+   "budget": "setLow"
+  },
+  {
+   "name": "pip_penguin",
+   "keys": [
+    "pet_penguin",
+    "wing_feather_L",
+    "wing_feather_R"
+   ],
+   "budget": "setHigh"
+  },
+  {
+   "name": "pip_penguin_low",
+   "keys": [
+    "pet_penguin_low",
+    "wing_feather_L_low",
+    "wing_feather_R_low"
+   ],
+   "budget": "setLow"
+  },
+  {
+   "name": "maple_fox",
+   "keys": [
+    "pet_fox",
+    "wing_feather_L",
+    "wing_feather_R",
+    "acc_leaf"
+   ],
+   "budget": "setHigh"
+  },
+  {
+   "name": "maple_fox_low",
+   "keys": [
+    "pet_fox_low",
+    "wing_feather_L_low",
+    "wing_feather_R_low",
+    "acc_leaf_low"
+   ],
+   "budget": "setLow"
+  },
+  {
+   "name": "bamboo_panda",
+   "keys": [
+    "pet_panda",
+    "wing_feather_L",
+    "wing_feather_R",
+    "acc_leaf"
+   ],
+   "budget": "setHigh"
+  },
+  {
+   "name": "bamboo_panda_low",
+   "keys": [
+    "pet_panda_low",
+    "wing_feather_L_low",
+    "wing_feather_R_low",
+    "acc_leaf_low"
+   ],
+   "budget": "setLow"
+  },
+  {
+   "name": "mochi_slime",
+   "keys": [
+    "pet_slime",
+    "wing_fairy_L",
+    "wing_fairy_R",
+    "acc_flower"
+   ],
+   "budget": "setHigh"
+  },
+  {
+   "name": "mochi_slime_low",
+   "keys": [
+    "pet_slime_low",
+    "wing_fairy_L_low",
+    "wing_fairy_R_low",
+    "acc_flower_low"
+   ],
+   "budget": "setLow"
+  },
+  {
+   "name": "sleepy_owl",
+   "keys": [
+    "pet_owl",
+    "wing_feather_L",
+    "wing_feather_R"
+   ],
+   "budget": "setHigh"
+  },
+  {
+   "name": "sleepy_owl_low",
+   "keys": [
+    "pet_owl_low",
+    "wing_feather_L_low",
+    "wing_feather_R_low"
+   ],
+   "budget": "setLow"
+  },
+  {
+   "name": "waffle_corgi",
+   "keys": [
+    "pet_dog_corgi",
+    "wing_feather_L",
+    "wing_feather_R",
+    "acc_flower"
+   ],
+   "budget": "setHigh"
+  },
+  {
+   "name": "waffle_corgi_low",
+   "keys": [
+    "pet_dog_corgi_low",
+    "wing_feather_L_low",
+    "wing_feather_R_low",
+    "acc_flower_low"
+   ],
+   "budget": "setLow"
+  },
+  {
+   "name": "bubble_axolotl",
+   "keys": [
+    "pet_axolotl",
+    "wing_fairy_L",
+    "wing_fairy_R"
+   ],
+   "budget": "setHigh"
+  },
+  {
+   "name": "bubble_axolotl_low",
+   "keys": [
+    "pet_axolotl_low",
+    "wing_fairy_L_low",
+    "wing_fairy_R_low"
+   ],
+   "budget": "setLow"
+  },
+  {
+   "name": "blossom_bunny",
+   "keys": [
+    "pet_bunny",
+    "wing_fairy_L",
+    "wing_fairy_R",
+    "acc_flower"
+   ],
+   "budget": "setHigh"
+  },
+  {
+   "name": "blossom_bunny_low",
+   "keys": [
+    "pet_bunny_low",
+    "wing_fairy_L_low",
+    "wing_fairy_R_low",
+    "acc_flower_low"
+   ],
+   "budget": "setLow"
+  },
+  {
+   "name": "shroomie_frog",
+   "keys": [
+    "pet_frog",
+    "wing_fairy_L",
+    "wing_fairy_R",
+    "acc_mushroom"
+   ],
+   "budget": "setHigh"
+  },
+  {
+   "name": "shroomie_frog_low",
+   "keys": [
+    "pet_frog_low",
+    "wing_fairy_L_low",
+    "wing_fairy_R_low",
+    "acc_mushroom_low"
+   ],
+   "budget": "setLow"
+  },
+  {
+   "name": "frostling_penguin",
+   "keys": [
+    "pet_penguin",
+    "wing_crystal_L",
+    "wing_crystal_R",
+    "acc_scarf"
+   ],
+   "budget": "setHigh"
+  },
+  {
+   "name": "frostling_penguin_low",
+   "keys": [
+    "pet_penguin_low",
+    "wing_crystal_L_low",
+    "wing_crystal_R_low",
+    "acc_scarf_low"
+   ],
+   "budget": "setLow"
+  },
+  {
+   "name": "storm_tabby",
+   "keys": [
+    "pet_cat",
+    "wing_bat_L",
+    "wing_bat_R"
+   ],
+   "budget": "setHigh"
+  },
+  {
+   "name": "storm_tabby_low",
+   "keys": [
+    "pet_cat_low",
+    "wing_bat_L_low",
+    "wing_bat_R_low"
+   ],
+   "budget": "setLow"
+  },
+  {
+   "name": "cherry_panda",
+   "keys": [
+    "pet_panda",
+    "wing_feather_L",
+    "wing_feather_R",
+    "acc_flower"
+   ],
+   "budget": "setHigh"
+  },
+  {
+   "name": "cherry_panda_low",
+   "keys": [
+    "pet_panda_low",
+    "wing_feather_L_low",
+    "wing_feather_R_low",
+    "acc_flower_low"
+   ],
+   "budget": "setLow"
+  },
+  {
+   "name": "aurora_fox",
+   "keys": [
+    "pet_fox",
+    "wing_crystal_L",
+    "wing_crystal_R",
+    "acc_antlers"
+   ],
+   "budget": "setHigh"
+  },
+  {
+   "name": "aurora_fox_low",
+   "keys": [
+    "pet_fox_low",
+    "wing_crystal_L_low",
+    "wing_crystal_R_low",
+    "acc_antlers_low"
+   ],
+   "budget": "setLow"
+  },
+  {
+   "name": "moonlit_owl",
+   "keys": [
+    "pet_owl",
+    "wing_feather_L",
+    "wing_feather_R",
+    "acc_halo"
+   ],
+   "budget": "setHigh"
+  },
+  {
+   "name": "moonlit_owl_low",
+   "keys": [
+    "pet_owl_low",
+    "wing_feather_L_low",
+    "wing_feather_R_low",
+    "acc_halo_low"
+   ],
+   "budget": "setLow"
+  },
+  {
+   "name": "nebula_axolotl",
+   "keys": [
+    "pet_axolotl",
+    "wing_cloud_L",
+    "wing_cloud_R"
+   ],
+   "budget": "setHigh"
+  },
+  {
+   "name": "nebula_axolotl_low",
+   "keys": [
+    "pet_axolotl_low",
+    "wing_cloud_L_low",
+    "wing_cloud_R_low"
+   ],
+   "budget": "setLow"
+  },
+  {
+   "name": "candy_unicorn",
+   "keys": [
+    "pet_unicorn",
+    "wing_feather_L",
+    "wing_feather_R",
+    "acc_flower"
+   ],
+   "budget": "setHigh"
+  },
+  {
+   "name": "candy_unicorn_low",
+   "keys": [
+    "pet_unicorn_low",
+    "wing_feather_L_low",
+    "wing_feather_R_low",
+    "acc_flower_low"
+   ],
+   "budget": "setLow"
+  },
+  {
+   "name": "ember_phoenix",
+   "keys": [
+    "pet_phoenix",
+    "wing_flame_L",
+    "wing_flame_R"
+   ],
+   "budget": "setHigh"
+  },
+  {
+   "name": "ember_phoenix_low",
+   "keys": [
+    "pet_phoenix_low",
+    "wing_flame_L_low",
+    "wing_flame_R_low"
+   ],
+   "budget": "setLow"
+  },
+  {
+   "name": "sunbeam_bear",
+   "keys": [
+    "pet_bear",
+    "wing_feather_L",
+    "wing_feather_R",
+    "acc_crown"
+   ],
+   "budget": "setHigh"
+  },
+  {
+   "name": "sunbeam_bear_low",
+   "keys": [
+    "pet_bear_low",
+    "wing_feather_L_low",
+    "wing_feather_R_low",
+    "acc_crown_low"
+   ],
+   "budget": "setLow"
+  },
+  {
+   "name": "twilight_dragon",
+   "keys": [
+    "pet_dragon",
+    "wing_bat_L",
+    "wing_bat_R",
+    "acc_horns"
+   ],
+   "budget": "setHigh"
+  },
+  {
+   "name": "twilight_dragon_low",
+   "keys": [
+    "pet_dragon_low",
+    "wing_bat_L_low",
+    "wing_bat_R_low",
+    "acc_horns_low"
+   ],
+   "budget": "setLow"
+  },
+  {
+   "name": "cloudy_dragon",
+   "keys": [
+    "pet_dragon",
+    "wing_cloud_L",
+    "wing_cloud_R",
+    "acc_horns"
+   ],
+   "budget": "setHigh"
+  },
+  {
+   "name": "cloudy_dragon_low",
+   "keys": [
+    "pet_dragon_low",
+    "wing_cloud_L_low",
+    "wing_cloud_R_low",
+    "acc_horns_low"
+   ],
+   "budget": "setLow"
+  },
+  {
+   "name": "starlight_unicorn",
+   "keys": [
+    "pet_unicorn",
+    "wing_crystal_L",
+    "wing_crystal_R",
+    "acc_halo"
+   ],
+   "budget": "setHigh"
+  },
+  {
+   "name": "starlight_unicorn_low",
+   "keys": [
+    "pet_unicorn_low",
+    "wing_crystal_L_low",
+    "wing_crystal_R_low",
+    "acc_halo_low"
+   ],
+   "budget": "setLow"
+  },
+  {
+   "name": "stormfang",
+   "keys": [
+    "pet_stormfang",
+    "wing_stormcloud_L",
+    "wing_stormcloud_R"
+   ],
+   "budget": "setHigh"
+  },
+  {
+   "name": "stormfang_low",
+   "keys": [
+    "pet_stormfang_low",
+    "wing_stormcloud_L_low",
+    "wing_stormcloud_R_low"
+   ],
+   "budget": "setLow"
+  },
+  {
+   "name": "eclipse_dragon",
+   "keys": [
+    "pet_dragon",
+    "wing_bat_L",
+    "wing_bat_R",
+    "acc_horns"
+   ],
+   "budget": "setHigh"
+  },
+  {
+   "name": "eclipse_dragon_low",
+   "keys": [
+    "pet_dragon_low",
+    "wing_bat_L_low",
+    "wing_bat_R_low",
+    "acc_horns_low"
+   ],
+   "budget": "setLow"
+  },
+  {
+   "name": "obsidian_phoenix",
+   "keys": [
+    "pet_phoenix",
+    "wing_flame_L",
+    "wing_flame_R",
+    "acc_crown"
+   ],
+   "budget": "setHigh"
+  },
+  {
+   "name": "obsidian_phoenix_low",
+   "keys": [
+    "pet_phoenix_low",
+    "wing_flame_L_low",
+    "wing_flame_R_low",
+    "acc_crown_low"
+   ],
+   "budget": "setLow"
+  },
+  {
+   "name": "phantom_kitsune",
+   "keys": [
+    "pet_fox",
+    "wing_fairy_L",
+    "wing_fairy_R",
+    "acc_halo"
+   ],
+   "budget": "setHigh"
+  },
+  {
+   "name": "phantom_kitsune_low",
+   "keys": [
+    "pet_fox_low",
+    "wing_fairy_L_low",
+    "wing_fairy_R_low",
+    "acc_halo_low"
+   ],
+   "budget": "setLow"
+  },
+  {
+   "name": "magma_cub",
+   "keys": [
+    "pet_bear",
+    "wing_flame_L",
+    "wing_flame_R",
+    "acc_horns"
+   ],
+   "budget": "setHigh"
+  },
+  {
+   "name": "magma_cub_low",
+   "keys": [
+    "pet_bear_low",
+    "wing_flame_L_low",
+    "wing_flame_R_low",
+    "acc_horns_low"
+   ],
+   "budget": "setLow"
+  },
+  {
+   "name": "rime_wyrmling",
+   "keys": [
+    "pet_dragon",
+    "wing_crystal_L",
+    "wing_crystal_R",
+    "acc_horns"
+   ],
+   "budget": "setHigh"
+  },
+  {
+   "name": "rime_wyrmling_low",
+   "keys": [
+    "pet_dragon_low",
+    "wing_crystal_L_low",
+    "wing_crystal_R_low",
+    "acc_horns_low"
+   ],
+   "budget": "setLow"
+  },
+  {
+   "name": "hydralotl",
+   "keys": [
+    "pet_axolotl",
+    "wing_bat_L",
+    "wing_bat_R",
+    "acc_horns"
+   ],
+   "budget": "setHigh"
+  },
+  {
+   "name": "hydralotl_low",
+   "keys": [
+    "pet_axolotl_low",
+    "wing_bat_L_low",
+    "wing_bat_R_low",
+    "acc_horns_low"
+   ],
+   "budget": "setLow"
+  }
+ ],
+ "previews": [
+  {
+   "name": "dog_feather_crown",
+   "body": "pet_dog",
+   "attach": [
+    "wing_feather_L",
+    "wing_feather_R",
+    "acc_crown"
+   ]
+  },
+  {
+   "name": "dog_feather_crown_low",
+   "body": "pet_dog_low",
+   "attach": [
+    "wing_feather_L_low",
+    "wing_feather_R_low",
+    "acc_crown_low"
+   ]
+  },
+  {
+   "name": "dragon_bat_horns",
+   "body": "pet_dragon",
+   "attach": [
+    "wing_bat_L",
+    "wing_bat_R",
+    "acc_horns"
+   ]
+  },
+  {
+   "name": "stormfang_ride",
+   "body": "pet_stormfang",
+   "attach": [
+    "wing_stormcloud_L",
+    "wing_stormcloud_R"
+   ]
+  }
+ ],
+ "setsNote": "one set per catalog pet (base stage): its species body + its wing pair + its accessory (recipe 4.2)"
+}

@@ -1,7 +1,7 @@
 -- UpdateNotes: what the UPDATES panel of the main menu shows, the credits and the loading-screen tips
 -- (ARCHITECTURE_V3.md "Phase 5 build contract" 7.1 / 7.2; lead W0). Pure data, read by the client only.
 --
---   UpdateNotes.Latest   -> 5   the newest note's Version; the menu shows a "NEW" badge while Settings.SeenNotes < Latest
+--   UpdateNotes.Latest   -> 6   the newest note's Version; the menu shows a "NEW" badge while Settings.SeenNotes < Latest
 --                                and opening UPDATES sends SettingsSet("SeenNotes", Latest)
 --   UpdateNotes.Notes    -> { { Version, Title, Lines = { ... } }, ... }  newest first
 --   UpdateNotes.Credits  -> { line, ... }
@@ -10,16 +10,28 @@
 
 local UpdateNotes = {}
 
-UpdateNotes.Latest = 5
+UpdateNotes.Latest = 6
 
 UpdateNotes.Notes = {
+	{
+		Version = 6,
+		Title = "The Cute Blocks Update",
+		Lines = {
+			"The bright, cute look is back, with smaller blocks and more detail.",
+			"New hand-made 3D models for every pet, evolved pet, boss, gate, home and island arrive one by one.",
+			"Evolved pets shine: sparkles in their colours and a soft glow. Second evolutions glow brighter and pulse.",
+			"A magic swirl spins inside every gate, with a glowing rim and tiny lightning sparks.",
+			"No Home gate in the lobby: tap Home, then Go home. No home yet? Tap Claim a home.",
+			"Nothing is lost: pets, levels, Cash, Gems, Tokens and homes stay the same.",
+		},
+	},
 	{
 		Version = 5,
 		Title = "The Big Sky Update",
 		Lines = {
 			"Fight with one pet and bring two helpers. You move your fighter: ATTACK, ELEMENT, SPECIAL and DASH.",
 			"The Dungeon: 12 floors of 4 rooms, alone or with up to 3 friends. Every room pays Cash, Tokens and XP.",
-			"One portal per mode in the new Gate Court: Home, Obby, Dungeon, Champion Ring, Arena, Storm Altar.",
+			"One portal per mode in the new Gate Court: Obby, Dungeon, Champion Ring, Arena, Storm Altar. Tap Home to go home.",
 			"Pick your obby level at the Obby gate. Beat a level to unlock the next one.",
 			"Your home got simpler: one Berry Farm, a roaming Pet Garden and three decorations.",
 			"Garden pets roam your yard, eat at the Food Bowl and drop Cloud Cash. Walk over it to scoop!",
@@ -75,7 +87,7 @@ UpdateNotes.Tips = {
 	"Garden pets drop Cloud Cash in your yard. Walk over it to scoop it up.",
 	"Berries go into your Berry Basket. Feed them to your pets at the Food Machine.",
 	"DASH costs stamina outside a battle, but inside a battle it is free.",
-	"Pets follow you better now and stay out of the camera.",
+	"Tap Home, then Go home: a magic portal takes you and your pets home.",
 }
 
 return UpdateNotes

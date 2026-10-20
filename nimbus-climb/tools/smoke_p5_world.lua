@@ -1,19 +1,24 @@
 -- smoke_p5_world.lua: the Phase 5 world (ARCHITECTURE_V3.md "Phase 5 build contract" 6.1-6.5, 10.3, 12.1).
 -- Loaded by tools/smoke.py in BOTH worlds; ARGS.context picks the half.
 --
+-- Phase 6 (look-lobby, ARCHITECTURE_V3.md 6.0.2 / 6.0.3 / 6.1 A1 / A2): the look checks pin the Phase 4 look again.
 -- worldstyle (W1):
---   p5world_lighting       (server, booted) LightingService.Look = { Custom, Fallback } with the contract's numbers; boot
---                          with empty Config.Sky.Faces = Fallback (stock skybox, 3000 stars, pink clouds); all six ids =
---                          Custom (the Sky's six Skybox* ids, StarCount 0); one id missing / unreadable -> Fallback + a
---                          warning naming it (a bare number is unreadable); Init() twice = the same Lighting (values
---                          and children); Init never touches Players.CharacterAutoLoads (Main holds spawns, 7.2)
---   p5world_style          (server, booted) the WorldStyle helpers: Materials / Palette (big-surface colours obey the
---                          saturation / value rule), Jitter, Plinth / Kerb / Chamfer geometry (the chamfer's bevels),
---                          BuildGate for all six Gate Court specs (22 x 8 x 26, <= 90 parts, pad 14 x 0.6 x 14 fourteen
---                          studs in front or the 10 x 0.3 x 6 step, the prompt anchor, one PointLight + sparkles, the
---                          Neon / ForceField discs, the cloned 6x6 emblem, the pixel tag per the World text rule, upright
---                          on a tilted site, deterministic) and the art-rule audit (styleAudit) run on every gate.
---                          [W2 worldlobby] extends it with the lobby-wide audit (marked below).
+--   p5world_lighting       (server, booted) LightingService.Look = { Custom, Fallback } with the P4 numbers (ClockTime
+--                          14.5, Brightness 2.0, Bloom 0.16 / 18 / 1.6, ColorCorrection 0.1 / 0.14); boot with empty
+--                          Config.Sky.Faces = Fallback (stock skybox, 2500 stars, sky-blue air with a peach horizon, white
+--                          clouds); all six ids = Custom (the Sky's six Skybox* ids, StarCount 0, light pink air); one id
+--                          missing / unreadable -> Fallback + a warning naming it (a bare number is unreadable); Init()
+--                          twice = the same Lighting (values and children); Init never touches Players.CharacterAutoLoads
+--   p5world_style          (server, booted) the WorldStyle helpers: Materials (SmoothPlastic / Neon / Glass + the P5
+--                          aliases) / Palette (the P4 numbers, white-blue clouds, the gate colours), Jitter, Plinth / Kerb
+--                          / Chamfer geometry, BuildGate for all six Gate Court specs (the P4 voxel hoop, the crowned arch
+--                          for "crown", 22 wide, <= 5 deep, crest under 26.2, <= 100 parts, the trim in the gate colour,
+--                          the white cloud frame, Neon glow / swirl (0.62) / gems, the crest per glyph, the tiled pad 14 x
+--                          0.6 x 14 fourteen studs in front with its rim, Neon inlay and lanterns or the 10 x 0.3 x 6
+--                          step, the prompt anchor, the GlowCore light (28 / 1.3) + sparkles (12), the pixel tag per the
+--                          World text rule, upright on a tilted site, deterministic) and the look audit (styleAudit:
+--                          SmoothPlastic / Neon / Glass, no Cylinder / Ball, small parts without shadows) on every gate.
+--                          [W2 worldlobby] extends it with the lobby-wide audit (+ area-weighted saturation >= 0.3).
 --   client_p5lightingstack (client) LightingStack: Push A, Push B, Pop A -> B applied; Pop B -> base exact; unknown id
 --                          no-op; tweened pushes reach their goal and a later Push cancels a running tween; re-push moves
 --                          to the top; GfxLow + Dungeon stacked (each restores only its own properties)
@@ -57,10 +62,16 @@ local function parts(root)
 end
 
 ----------------------------------------------------------------------------------------------------
--- The art-rule audit (6.4 rules 1, 2, 7, 8): shared by p5world_style (gates, W1) and the lobby-wide pass (W2).
--- opts: { label, exemptTag = "NC_StyleExempt", maxShadowLights = 12, gateParts = 120 }
--- Returns { parts, shadowLights, bad = { material, plastic, saturation, value, shadow } }.
+-- The look audit (Phase 6, ARCHITECTURE_V3.md 6.0.2 / 6.1 A1, docs/phase6/style.md 4: the Phase 4 look): shared by
+-- p5world_style (gates) and the lobby-wide pass. Every visible part outside the exempt tag is SmoothPlastic, Neon or
+-- Glass (no realistic textures), no round primitives (Cylinder / Ball) and no Reflectance; parts < 4 studs cast no
+-- shadow; <= maxShadowLights shadow-casting lights; the area-weighted saturation of the big opaque top faces is
+-- >= minSaturation (P4 lobby 0.39, P5 0.22: bright, not muted).
+-- opts: { label, maxShadowLights = 12, minSaturation = nil }
+-- Returns { parts, shadowLights, saturation }.
 ----------------------------------------------------------------------------------------------------
+local LOOK_MATERIALS = { [Enum.Material.SmoothPlastic] = true, [Enum.Material.Neon] = true, [Enum.Material.Glass] = true }
+
 local function styleAudit(root, WS, opts)
 	opts = opts or {}
 	local label = opts.label or root.Name
@@ -76,32 +87,26 @@ local function styleAudit(root, WS, opts)
 		end
 		return false
 	end
-	local tMat = T.tally(label .. ": every part uses a WorldStyle.Materials material (6.4 rule 1)")
-	local tPlastic = T.tally(label .. ": no SmoothPlastic part with a side > 2 studs (rule 1)")
-	local tSat = T.tally(label .. ": large faces (> 16 studs^2) have saturation <= 0.45 unless a thin Neon inlay / a piece <= 8 studs^3 (rule 2)")
-	local tVal = T.tally(label .. ": large opaque faces have value 0.35..0.9 (rule 2)")
-	local tShadow = T.tally(label .. ": parts < 4 studs cast no shadow (rule 8)")
+	local tMat = T.tally(label .. ": every visible part is SmoothPlastic / Neon / Glass (the P4 look: no textures)")
+	local tShape = T.tally(label .. ": no round primitives (Cylinder / Ball) and no Reflectance on visible parts")
+	local tShadow = T.tally(label .. ": parts < 4 studs cast no shadow")
 	local n, shadowLights = 0, 0
+	local satArea, area = 0, 0
 	for _, p in ipairs(parts(root)) do
 		n = n + 1
 		local s = p.Size
 		local dims = { s.X, s.Y, s.Z }
 		table.sort(dims)
-		local face = dims[2] * dims[3]
-		local vol = s.X * s.Y * s.Z
 		local visible = p.Transparency < 0.99
-		local isNeon = p.Material == Enum.Material.Neon
 		if visible and not exempt(p) then
-			tMat:case(WS.IsWorldMaterial(p.Material), p:GetFullName() .. " " .. tostring(p.Material))
-			tPlastic:case(not (p.Material == Enum.Material.SmoothPlastic and dims[3] > 2), p:GetFullName() .. " " .. fmt(dims[3], 1))
-			if face > 16 then
-				local sat, val = hsv(p.Color)
-				local thinNeon = isNeon and dims[1] <= 0.5
-				local forceField = p.Material == Enum.Material.ForceField
-				tSat:case(sat <= 0.45 or thinNeon or forceField or vol <= 8, p:GetFullName() .. " sat " .. fmt(sat))
-				if not isNeon and not forceField and p.Transparency < 0.3 then
-					tVal:case(val >= 0.35 and val <= 0.9, p:GetFullName() .. " value " .. fmt(val))
-				end
+			tMat:case(LOOK_MATERIALS[p.Material] == true and WS.IsWorldMaterial(p.Material), p:GetFullName() .. " " .. tostring(p.Material))
+			local round = p:IsA("Part") and (p.Shape == Enum.PartType.Cylinder or p.Shape == Enum.PartType.Ball)
+			tShape:case(not round and (p.Reflectance or 0) == 0, p:GetFullName())
+			local top = s.X * s.Z
+			if top > 16 and p.Material ~= Enum.Material.Neon and p.Transparency < 0.3 then
+				local sat = hsv(p.Color)
+				satArea = satArea + sat * top
+				area = area + top
 			end
 		end
 		if dims[3] < 4 then
@@ -114,12 +119,14 @@ local function styleAudit(root, WS, opts)
 		end
 	end
 	tMat:report()
-	tPlastic:report()
-	tSat:report()
-	tVal:report()
+	tShape:report()
 	tShadow:report()
-	T.check(shadowLights <= (opts.maxShadowLights or 12), label .. ": <= " .. (opts.maxShadowLights or 12) .. " shadow-casting lights (rule 7)", tostring(shadowLights))
-	return { parts = n, shadowLights = shadowLights }
+	T.check(shadowLights <= (opts.maxShadowLights or 12), label .. ": <= " .. (opts.maxShadowLights or 12) .. " shadow-casting lights", tostring(shadowLights))
+	local saturation = area > 0 and satArea / area or 0
+	if opts.minSaturation then
+		T.check(saturation >= opts.minSaturation, label .. ": bright, colourful big faces (area-weighted saturation >= " .. fmt(opts.minSaturation) .. ", P4 0.39 / P5 0.22)", fmt(saturation, 3))
+	end
+	return { parts = n, shadowLights = shadowLights, saturation = saturation }
 end
 
 -- The pixel tag of the World text rule: offset-only sizes, TextSize >= 18 (titles >= 22), an outline on every
@@ -231,7 +238,7 @@ local function serverScenarios()
 			T.eq(t.Lighting.EnvironmentDiffuseScale, L[8], name .. ": EnvironmentDiffuseScale")
 			T.eq(t.Lighting.EnvironmentSpecularScale, L[9], name .. ": EnvironmentSpecularScale")
 			T.eq(t.Atmosphere.Density, L[10], name .. ": Atmosphere.Density")
-			T.eq(t.Atmosphere.Offset, 0.2, name .. ": Atmosphere.Offset")
+			T.eq(t.Atmosphere.Offset, 0.25, name .. ": Atmosphere.Offset")
 			T.check(sameColor(t.Atmosphere.Color, L[11][1], L[11][2], L[11][3]), name .. ": Atmosphere.Color")
 			T.check(sameColor(t.Atmosphere.Decay, L[12][1], L[12][2], L[12][3]), name .. ": Atmosphere.Decay")
 			T.eq(t.Atmosphere.Glare, L[13], name .. ": Atmosphere.Glare")
@@ -242,16 +249,22 @@ local function serverScenarios()
 			T.eq(t.Clouds.Density, L[18], name .. ": Clouds.Density")
 			T.check(sameColor(t.Clouds.Color, L[19][1], L[19][2], L[19][3]), name .. ": Clouds.Color")
 			T.eq(t.SunRays.Intensity, L[20], name .. ": SunRays.Intensity")
-			T.eq(t.Bloom.Intensity, 0.25, name .. ": Bloom.Intensity")
-			T.eq(t.Bloom.Size, 24, name .. ": Bloom.Size")
-			T.eq(t.Bloom.Threshold, 1.35, name .. ": Bloom.Threshold")
-			T.eq(t.ColorCorrection.Contrast, 0.12, name .. ": ColorCorrection.Contrast")
-			T.eq(t.ColorCorrection.Saturation, 0.06, name .. ": ColorCorrection.Saturation")
-			T.check(sameColor(t.ColorCorrection.TintColor, 255, 246, 252), name .. ": ColorCorrection.TintColor")
+			T.eq(t.Bloom.Intensity, 0.16, name .. ": Bloom.Intensity (P4)")
+			T.eq(t.Bloom.Size, 18, name .. ": Bloom.Size (P4)")
+			T.eq(t.Bloom.Threshold, 1.6, name .. ": Bloom.Threshold (P4)")
+			T.eq(t.ColorCorrection.Contrast, 0.1, name .. ": ColorCorrection.Contrast (P4)")
+			T.eq(t.ColorCorrection.Saturation, 0.14, name .. ": ColorCorrection.Saturation (P4: a little richer)")
+			T.check(sameColor(t.ColorCorrection.TintColor, 255, 250, 242), name .. ": ColorCorrection.TintColor (P4 warm)")
+			T.eq(t.Lighting.GeographicLatitude, 34, name .. ": GeographicLatitude")
+			T.eq(t.Lighting.ShadowSoftness, 0.3, name .. ": ShadowSoftness")
 		end
-		numbers(C, { 14.5, 2.2, 0, { 112, 104, 140 }, { 150, 138, 176 }, { 70, 46, 40 }, { 30, 20, 60 }, 0.7, 0.45, 0.32, { 226, 188, 232 }, { 150, 120, 210 }, 0.15, 1.2, 0, 11, 0.45, 0.55, { 255, 222, 242 }, 0.04 }, "Look.Custom")
-		numbers(F, { 16.6, 2.6, 0.1, { 118, 104, 140 }, { 160, 140, 180 }, { 80, 50, 40 }, { 34, 22, 64 }, 0.6, 0.35, 0.36, { 220, 176, 232 }, { 126, 104, 214 }, 0.4, 2.0, 3000, 14, 0.62, 0.7, { 255, 206, 236 }, 0.06 }, "Look.Fallback")
+		-- Phase 6 (6.1 A2, style.md 4): both looks use the Phase 4 light; Fallback = the P4 sky-blue air with a peach
+		-- horizon, Custom = a light pink air for the painted sky
+		numbers(C, { 14.5, 2.0, -0.15, { 98, 106, 132 }, { 132, 138, 160 }, { 66, 50, 26 }, { 14, 20, 40 }, 0.6, 0.35, 0.28, { 240, 214, 232 }, { 238, 200, 180 }, 0.25, 1.0, 0, 11, 0.5, 0.6, { 252, 238, 246 }, 0.06 }, "Look.Custom")
+		numbers(F, { 14.5, 2.0, -0.15, { 98, 106, 132 }, { 132, 138, 160 }, { 66, 50, 26 }, { 14, 20, 40 }, 0.6, 0.35, 0.28, { 178, 198, 228 }, { 238, 200, 170 }, 0.25, 1.0, 2500, 16, 0.5, 0.6, { 240, 244, 252 }, 0.06 }, "Look.Fallback")
 		T.check(C.Bloom == F.Bloom and C.ColorCorrection == F.ColorCorrection, "Bloom and ColorCorrection are shared by both looks")
+		-- no golden hour, no purple haze (the Phase 5 look the player disliked)
+		T.check(F.Lighting.ClockTime < 15 and F.Atmosphere.Haze <= 1.0 and F.Atmosphere.Color.B > F.Atmosphere.Color.R, "Fallback is the P4 afternoon (no golden hour, no purple haze, blue air)")
 
 		-- FaceId: the full pasted id (trimmed); bare numbers and junk are unusable
 		if T.check(type(LS.FaceId) == "function", "LightingService.FaceId exists") then
@@ -274,17 +287,17 @@ local function serverScenarios()
 			K.resetCursors()
 			T.eq(LS.Init(), "Fallback", "empty Config.Sky.Faces -> Init returns Fallback")
 			T.eq(LS.Current, "Fallback", "LightingService.Current = Fallback")
-			T.eq(Lighting.ClockTime, 16.6, "Fallback: ClockTime 16.6 (golden hour pinks the stock sky)")
-			T.eq(Lighting.Brightness, 2.6, "Fallback: Brightness 2.6")
+			T.eq(Lighting.ClockTime, 14.5, "Fallback: ClockTime 14.5 (the P4 afternoon sun)")
+			T.eq(Lighting.Brightness, 2.0, "Fallback: Brightness 2.0")
 			local s = sky()
 			if T.check(s ~= nil, "Fallback: a Sky exists") then
-				T.eq(s.StarCount, 3000, "Fallback: 3000 stars")
+				T.eq(s.StarCount, 2500, "Fallback: 2500 stars (P4)")
 				T.eq(s.SkyboxBk .. s.SkyboxDn .. s.SkyboxFt .. s.SkyboxLf .. s.SkyboxRt .. s.SkyboxUp, "", "Fallback: no skybox ids (the stock sky)")
 			end
 			local atm = Lighting:FindFirstChildOfClass("Atmosphere")
-			T.check(atm ~= nil and atm.Density == 0.36 and sameColor(atm.Color, 220, 176, 232), "Fallback: pink Atmosphere (Density 0.36)")
+			T.check(atm ~= nil and atm.Density == 0.28 and sameColor(atm.Color, 178, 198, 228) and sameColor(atm.Decay, 238, 200, 170), "Fallback: the P4 sky-blue Atmosphere with a peach horizon (Density 0.28)")
 			local clouds = workspace.Terrain and workspace.Terrain:FindFirstChildOfClass("Clouds")
-			T.check(clouds ~= nil and clouds.Cover == 0.62 and sameColor(clouds.Color, 255, 206, 236), "Fallback: pink moving clouds (Cover 0.62)")
+			T.check(clouds ~= nil and clouds.Cover == 0.5 and sameColor(clouds.Color, 240, 244, 252), "Fallback: soft white moving clouds (Cover 0.5)")
 			K.flushWarnings("p5world_lighting: Init with no ids warns nothing")
 
 			-- 2. all six ids -> Custom
@@ -302,8 +315,10 @@ local function serverScenarios()
 				T.eq(s.SunAngularSize, 11, "Custom: SunAngularSize 11")
 			end
 			T.eq(Lighting.ClockTime, 14.5, "Custom: ClockTime 14.5")
-			T.eq(Lighting.Brightness, 2.2, "Custom: Brightness 2.2")
-			T.eq(Lighting.EnvironmentDiffuseScale, 0.7, "Custom: EnvironmentDiffuseScale 0.7")
+			T.eq(Lighting.Brightness, 2.0, "Custom: Brightness 2.0 (P4)")
+			T.eq(Lighting.EnvironmentDiffuseScale, 0.6, "Custom: EnvironmentDiffuseScale 0.6 (P4)")
+			local catm = Lighting:FindFirstChildOfClass("Atmosphere")
+			T.check(catm ~= nil and sameColor(catm.Color, 240, 214, 232), "Custom: a light pink Atmosphere for the painted sky")
 			K.flushWarnings("p5world_lighting: Init with six ids warns nothing")
 			-- Init twice = the same
 			local before = lightingSnapshot()
@@ -324,7 +339,7 @@ local function serverScenarios()
 			end
 			T.check(warned, "one id missing -> a [LightingService] warning names the missing face (Up)")
 			s = sky()
-			T.check(s ~= nil and s.SkyboxBk == "" and s.StarCount == 3000, "one id missing -> the stock sky again (ids cleared, 3000 stars)")
+			T.check(s ~= nil and s.SkyboxBk == "" and s.StarCount == 2500, "one id missing -> the stock sky again (ids cleared, 2500 stars)")
 			-- an unreadable id counts as missing
 			setFaces(Config, { Bk = "rbxassetid://101", Dn = "rbxassetid://102", Ft = "103", Lf = "rbxassetid://104", Rt = "rbxassetid://105", Up = "rbxassetid://106" })
 			T.eq(LS.Init(), "Fallback", "a bare number (\"103\") is unreadable -> Fallback")
@@ -362,24 +377,48 @@ local function serverScenarios()
 		if type(WS.BuildGate) ~= "function" or type(WS.Materials) ~= "table" or type(WS.Palette) ~= "table" then
 			return
 		end
-		-- Materials: the contract's list (6.4 rule 1)
-		for _, name in ipairs({ "Slate", "Cobblestone", "Brick", "Marble", "WoodPlanks", "Wood", "Grass", "LeafyGrass", "Sand", "ClayRoofTiles", "RoofShingles", "Metal", "Glass", "Neon", "Fabric" }) do
-			T.check(WS.Materials[name] == Enum.Material[name], "WorldStyle.Materials." .. name)
+		-- Materials (Phase 6, 6.1 A1): the P4 look = SmoothPlastic surfaces, Neon glow, Glass water; the Phase 5 names stay
+		-- as aliases (SmoothPlastic; ForceField -> Neon) so older builder code keeps running and looks P4
+		T.check(WS.Look == "P4", "WorldStyle.Look = \"P4\"")
+		T.eq(WS.Materials.SmoothPlastic, Enum.Material.SmoothPlastic, "WorldStyle.Materials.SmoothPlastic")
+		T.eq(WS.Materials.Neon, Enum.Material.Neon, "WorldStyle.Materials.Neon")
+		T.eq(WS.Materials.Glass, Enum.Material.Glass, "WorldStyle.Materials.Glass")
+		local alias = T.tally("WorldStyle.Materials: the Phase 5 names are SmoothPlastic aliases (no textures)")
+		for _, name in ipairs({ "Slate", "Cobblestone", "Brick", "Marble", "WoodPlanks", "Wood", "Grass", "LeafyGrass", "Sand", "ClayRoofTiles", "RoofShingles", "Metal", "Fabric" }) do
+			alias:case(WS.Materials[name] == Enum.Material.SmoothPlastic, name .. " " .. tostring(WS.Materials[name]))
 		end
-		T.check(WS.IsWorldMaterial(Enum.Material.Slate) and not WS.IsWorldMaterial(Enum.Material.Plastic) and not WS.IsWorldMaterial(Enum.Material.DiamondPlate), "IsWorldMaterial: Slate yes, Plastic / DiamondPlate no")
-		-- Palette: big-surface colours obey the rule (saturation <= 0.45, value 0.35..0.9)
-		local surf = T.tally("Palette: big-surface colours have saturation <= 0.45 and value 0.35..0.9")
-		for _, key in ipairs({ "SlateDark", "Slate", "SlateLight", "Marble", "MarbleShade", "Cobble", "Brick", "WoodPlanks", "Wood", "Grass", "LeafyGrass", "Sand", "Roof", "Glass", "Fabric" }) do
-			local c = WS.Palette[key]
-			local sat, val = 0, 0
-			if typeof(c) == "Color3" then
-				sat, val = hsv(c)
-			end
-			surf:case(typeof(c) == "Color3" and sat <= 0.45 and val >= 0.35 and val <= 0.9, key .. " sat " .. fmt(sat) .. " val " .. fmt(val))
+		alias:report()
+		T.eq(WS.Materials.ForceField, Enum.Material.Neon, "WorldStyle.Materials.ForceField = Neon (shimmers become the P4 translucent swirl)")
+		T.check(WS.IsWorldMaterial(Enum.Material.SmoothPlastic) and WS.IsWorldMaterial(Enum.Material.Neon) and not WS.IsWorldMaterial(Enum.Material.Slate)
+			and not WS.IsWorldMaterial(Enum.Material.Grass) and not WS.IsWorldMaterial(Enum.Material.Plastic), "IsWorldMaterial: SmoothPlastic / Neon yes, Slate / Grass / Plastic no")
+		-- Palette: the P4 numbers (style.md 4)
+		local function pal(key, r, g, b)
+			T.check(typeof(WS.Palette[key]) == "Color3" and sameColor(WS.Palette[key], r, g, b), "Palette." .. key .. " = P4 (" .. r .. ", " .. g .. ", " .. b .. ")")
 		end
-		surf:report()
-		T.check(sameColor(WS.Palette.Lantern, 255, 214, 170), "Palette.Lantern = (255, 214, 170) (rule 7)")
-		T.check(sameColor(WS.Palette.CloudTop, 250, 244, 252) and sameColor(WS.Palette.CloudSide, 226, 214, 240) and sameColor(WS.Palette.CloudUnder, 186, 172, 222), "Palette clouds: tops / sides / undersides (rule 9)")
+		pal("Grass", 108, 186, 86)
+		pal("Stone", 208, 202, 190)
+		pal("StoneLight", 226, 221, 209)
+		pal("StoneEdge", 146, 138, 132)
+		pal("Gold", 244, 198, 84)
+		pal("Water", 92, 178, 236)
+		pal("CloudLight", 244, 247, 252)
+		pal("Cloud", 232, 238, 249)
+		pal("Mist", 194, 211, 240)
+		T.check(sameColor(WS.Palette.CloudTop, 244, 247, 252) and sameColor(WS.Palette.CloudSide, 232, 238, 249) and sameColor(WS.Palette.CloudUnder, 194, 211, 240), "Palette clouds: white / light blue (P4), not lavender")
+		local legacy = T.tally("Palette: the Phase 5 keys exist with P4 colours (bright, not muted)")
+		for _, key in ipairs({ "SlateDark", "Slate", "SlateLight", "Marble", "MarbleShade", "Cobble", "Brick", "WoodPlanks", "Wood", "LeafyGrass", "Sand", "Roof", "Metal", "Glass", "Fabric", "Lantern" }) do
+			legacy:case(typeof(WS.Palette[key]) == "Color3", key)
+		end
+		legacy:report()
+		T.check(WS.Saturation(WS.Palette.Grass) > 0.5, "Palette.Grass is the bright lime (saturation > 0.5; P5 olive 0.34)", fmt(WS.Saturation(WS.Palette.Grass)))
+		-- the mode colours of the Gate Court (6.0.3)
+		local acc = WS.Palette.Accent or {}
+		local accOk = true
+		for _, k in ipairs({ "Yellow", "Blue", "Purple", "Gold", "Violet", "Red", "Cyan", "Green" }) do
+			accOk = accOk and typeof(acc[k]) == "Color3"
+		end
+		T.check(accOk, "Palette.Accent has the gate colours (Yellow, Blue, Purple, Gold, Violet, Red, Cyan, Green)")
+		T.check(acc.Purple and acc.Purple.B > acc.Purple.G and acc.Cyan and acc.Cyan.G > acc.Cyan.R and acc.Yellow and acc.Yellow.R > acc.Yellow.B, "Dungeon purple, Altar cyan, Home yellow (6.0.3)")
 		-- Jitter: deterministic, within +-6
 		local j1, j2 = WS.Jitter(WS.Palette.Slate, 42), WS.Jitter(WS.Palette.Slate, 42)
 		T.check(j1 == j2, "Jitter is deterministic for a seed")
@@ -405,7 +444,7 @@ local function serverScenarios()
 			local origin = CFrame.new(2000, 600, 2000)
 			-- Plinth
 			local body, band = WS.Plinth(folder, origin, Vector3.new(4, 1, 4))
-			T.check(body and body.Size == Vector3.new(4, 1, 4) and body.Material == Enum.Material.Slate, "Plinth: the body is the given size in Slate")
+			T.check(body and body.Size == Vector3.new(4, 1, 4) and body.Material == Enum.Material.SmoothPlastic, "Plinth: the body is the given size in SmoothPlastic (P4)")
 			T.check(band and abs(band.Position.Y + band.Size.Y * 0.5 - (origin.Y + 0.5)) < 1e-3 and band.Size.X > 4, "Plinth: a band flush with the top, overhanging")
 			T.check(body.CanCollide == true and body.Anchored == true, "Plinth: solid and anchored")
 			-- Kerb: edge at origin2, outward = LookVector (-Z)
@@ -455,29 +494,46 @@ local function serverScenarios()
 				T.check(covered(Vector3.new(0, 2.45, 0)) and covered(Vector3.new(2.9, 2.45, 0)), "Chamfer: solid inside, full height")
 			end
 
-			-- the gates
-			local specs = WS.SampleGates or {}
-			T.check(#specs == 6, "WorldStyle.SampleGates lists the six Gate Court gates", tostring(#specs))
+			-- the gates (6.0.3): the P4 round voxel hoop family (the crowned arch for "crown"), a crest per mode
+			local specs = {}
+			for _, s in ipairs(WS.SampleGates or {}) do
+				specs[#specs + 1] = s
+			end
+			T.check(#specs == 5, "WorldStyle.SampleGates lists the five Gate Court gates (no Home gate, Phase 6)", tostring(#specs))
+			specs[#specs + 1] = { Id = "Return", Title = "Go Home", Info = "", Color = "Yellow", Glyph = "house", Pad = false } -- the house crest lives on the arena Return gate
 			local seenGlyph = {}
+			-- crest parts by glyph: { part name, minimum count, Neon? }
+			local CREST = {
+				cloud = { { "StarGem", 5, true }, { "StarBar", 1 } },
+				swords = { { "CrestBlade", 2 }, { "CrestShield", 1 }, { "CrestShieldRim", 1 } },
+				house = { { "CrestHouse", 1 }, { "CrestRoof", 1 }, { "CrestWindow", 2, true } },
+				torch = { { "CrestSkull", 1 }, { "CrestEye", 2, true }, { "CrestBone", 2 } },
+				bolt = { { "CrestCloud", 1 }, { "CrestBolt", 3, true } },
+				crown = {},
+			}
+			local PAD_NAMES = { Pad = true, Step = true, LanternPost = true, LanternCap = true, LanternGlow = true }
 			for i, spec in ipairs(specs) do
 				local yaw = (i - 1) * 0.7
 				local site = CFrame.new(2300 + i * 40, 600, 2000) * CFrame.Angles(0, yaw, 0)
 				local model, pad, prompt = WS.BuildGate(folder, site, spec)
 				local label = "gate " .. spec.Id
+				local accent = WS.Palette.Accent[spec.Color]
 				if T.check(model ~= nil and model:IsA("Model") and model.Parent == folder, label .. ": BuildGate returns a Model in the parent") then
 					T.eq(model.Name, "Portal_" .. spec.Id, label .. ": named Portal_<Id>")
 					T.eq(model:GetAttribute("GateId"), spec.Id, label .. ": attribute GateId")
+					T.eq(model:GetAttribute("Glyph"), spec.Glyph, label .. ": attribute Glyph")
+					local arch = spec.Glyph == "crown"
+					T.eq(model:GetAttribute("GateShape"), arch and "Arch" or "Hoop", label .. ": " .. (arch and "the crowned arch (P4 Champion Ring)" or "the round hoop (P4 portal)"))
 					local ps = parts(model)
-					T.check(#ps <= 90, label .. ": <= 90 parts (builders add <= 30: every gate <= 120)", tostring(#ps))
+					T.check(#ps <= 100, label .. ": <= 100 parts (builders add <= 20: every gate <= 120)", tostring(#ps))
 					T.check(pad ~= nil and pad:IsDescendantOf(model) and prompt ~= nil and prompt:IsDescendantOf(model), label .. ": returns its pad and prompt part")
-					-- footprint in the site's frame (the pad / step excluded): 22 wide, 8 deep, 26 tall
+					-- footprint in the site's frame (the pad / step / lanterns excluded): 23 wide, 5 deep, crest under 26.2
 					local x0, x1, y0, y1, z0, z1 = 1e9, -1e9, 1e9, -1e9, 1e9, -1e9
-					local padParts = {}
+					local byName = {}
 					for _, p in ipairs(ps) do
-						local n = p.Name
-						if n == "Pad" or n == "Step" or n:sub(1, 9) == "PadBorder" or (p.Parent and p.Parent.Name == "PadGlyph") then
-							padParts[#padParts + 1] = p
-						elseif p.Transparency < 1 then
+						byName[p.Name] = byName[p.Name] or {}
+						table.insert(byName[p.Name], p)
+						if not PAD_NAMES[p.Name] and p.Name:sub(1, 7) ~= "PadTile" and p.Transparency < 1 then
 							for sx = -1, 1, 2 do
 								for sy = -1, 1, 2 do
 									for sz = -1, 1, 2 do
@@ -490,24 +546,78 @@ local function serverScenarios()
 							end
 						end
 					end
-					T.check(x1 - x0 <= 22.01 and x1 - x0 >= 20, label .. ": 22 studs wide", fmt(x1 - x0))
-					T.check(z1 - z0 <= 8.01, label .. ": <= 8 studs deep", fmt(z1 - z0))
-					T.check(abs(y1 - 26) < 0.05 and y0 >= -0.01, label .. ": 26 tall, standing on the site", fmt(y0) .. ".." .. fmt(y1))
-					-- pad or step
-					if spec.Pad then
-						T.check(pad.Name == "Pad" and pad.Size == Vector3.new(14, 0.6, 14) and pad.Material == Enum.Material.Slate, label .. ": a 14 x 0.6 x 14 Slate pad")
-						local l = site:PointToObjectSpace(pad.Position)
-						T.check(abs(l.X) < 1e-3 and abs(l.Z + 14) < 1e-3 and abs(l.Y - 0.3) < 1e-3, label .. ": the pad lies 14 studs in front (toward the plaza)", tostring(l))
-						local border, glyphNeon = 0, 0
-						for _, p in ipairs(padParts) do
-							if p.Name:sub(1, 9) == "PadBorder" and p.Material == Enum.Material.Marble then
-								border = border + 1
-							elseif p.Material == Enum.Material.Neon then
-								glyphNeon = glyphNeon + 1
+					T.check(x1 - x0 <= 23.01 and x1 - x0 >= 20, label .. ": 22-23 studs wide (the P4 base is 23 voxels)", fmt(x1 - x0))
+					T.check(z1 - z0 <= 5.01, label .. ": <= 5 studs deep", fmt(z1 - z0))
+					T.check(y1 >= 21 and y1 <= 26.2 and y0 >= -0.01 and y0 < 0.6, label .. ": stands on the site, crest top 21..26 (under the tag)", fmt(y0) .. ".." .. fmt(y1))
+					-- the voxel body: stone, the gate colour on the trim, Neon glow / swirl / gems
+					local function all(name, fn)
+						local list = byName[name] or {}
+						for _, p in ipairs(list) do
+							if not fn(p) then
+								return false, #list
 							end
 						end
-						T.check(border == 4 and glyphNeon >= 3, label .. ": the pad has a Marble border and a Neon glyph", border .. " / " .. glyphNeon)
+						return #list > 0, #list
+					end
+					local smooth = function(p)
+						return p.Material == Enum.Material.SmoothPlastic
+					end
+					local okTrim, nTrim = all("Trim", function(p)
+						return smooth(p) and (not accent or p.Color == accent)
+					end)
+					T.check(okTrim and nTrim >= (arch and 6 or 15), label .. ": the trim is SmoothPlastic voxels in the gate colour (" .. tostring(spec.Color) .. ")", tostring(nTrim))
+					T.check(all("Stone", smooth), label .. ": stone light pillars / base (SmoothPlastic)")
+					if not arch then
+						local okFrame, nFrame = all("Frame", function(p)
+							return smooth(p) and sameColor(p.Color, 244, 247, 252)
+						end)
+						T.check(okFrame and nFrame >= 8, label .. ": the white cloud frame of the hoop", tostring(nFrame))
+					end
+					local glowColor = arch and WS.Palette.Accent.Violet or accent
+					T.check(all("Glow", function(p)
+						return p.Material == Enum.Material.Neon and (not glowColor or p.Color == glowColor) and p.CanCollide == false
+					end), label .. ": the glow ring is Neon in " .. (arch and "violet" or "the gate colour") .. ", not solid")
+					T.check(all("Swirl", function(p)
+						return p.Material == Enum.Material.Neon and abs(p.Transparency - 0.62) < 1e-6 and p.CanCollide == false
+					end), label .. ": a translucent Neon swirl (Transparency 0.62), walk-through")
+					local okGem, nGem = all("Gem", function(p)
+						return p.Material == Enum.Material.Neon
+					end)
+					T.check(okGem and nGem >= (arch and 8 or 1), label .. ": Neon gems (keystone; the arch's crown and pillars)", tostring(nGem))
+					-- the crest
+					for _, c in ipairs(CREST[spec.Glyph] or {}) do
+						local list = byName[c[1]] or {}
+						local neonOk = true
+						for _, p in ipairs(list) do
+							if c[3] and p.Material ~= Enum.Material.Neon then
+								neonOk = false
+							end
+						end
+						T.check(#list >= c[2] and neonOk, label .. ": crest " .. c[1] .. " x" .. c[2] .. (c[3] and " (Neon)" or ""), tostring(#list))
+					end
+					if spec.Glyph == "torch" and byName.CrestEye then
+						T.check(byName.CrestEye[1].Color == accent, label .. ": the skull's eyes glow in the gate colour")
+					end
+					-- pad or step
+					if spec.Pad then
+						T.check(pad.Name == "Pad" and pad.Size == Vector3.new(14, 0.6, 14) and pad.Material == Enum.Material.SmoothPlastic, label .. ": a 14 x 0.6 x 14 pad (SmoothPlastic)")
+						local l = site:PointToObjectSpace(pad.Position)
+						T.check(abs(l.X) < 1e-3 and abs(l.Z + 14) < 1e-3 and abs(l.Y - 0.3) < 1e-3, label .. ": the pad lies 14 studs in front (toward the plaza)", tostring(l))
 						T.check(pad.CanCollide == true, label .. ": the pad is walkable")
+						local rim = byName.PadTileTrim or {}
+						local rimOk = #rim == 4
+						for _, p in ipairs(rim) do
+							rimOk = rimOk and p.Color == (arch and accent or accent) and p.CanCollide == false
+						end
+						T.check(rimOk, label .. ": the pad's rim tiles are the gate colour (4, not solid)", tostring(#rim))
+						local inlay = byName.PadTileGlow or {}
+						local inlayOk = #inlay >= 1
+						for _, p in ipairs(inlay) do
+							local top = p.Position.Y + p.Size.Y * 0.5
+							inlayOk = inlayOk and p.Material == Enum.Material.Neon and top > pad.Position.Y + 0.3 + 0.06
+						end
+						T.check(inlayOk, label .. ": a Neon inlay (plus / X / crown) poking over the tiles (no z-fighting)", tostring(#inlay))
+						T.eq(#(byName.LanternGlow or {}), 2, label .. ": two lanterns on the pad's front corners")
 					else
 						T.check(pad.Name == "Step" and pad.Size == Vector3.new(10, 0.3, 6), label .. ": no pad -> a 10 x 0.3 x 6 step")
 						T.check(site:PointToObjectSpace(pad.Position).Z < -3, label .. ": the step lies in front")
@@ -515,11 +625,9 @@ local function serverScenarios()
 					-- prompt anchor
 					local pl = site:PointToObjectSpace(prompt.Position)
 					T.check(prompt.Transparency == 1 and prompt.CanCollide == false and abs(pl.X) < 1 and pl.Z < 0 and pl.Z > -4 and pl.Y > 1 and pl.Y < 5, label .. ": an invisible prompt anchor in the front of the opening", tostring(pl))
-					-- the discs, the light, the sparkles
-					local disc = model:FindFirstChild("PortalDisc", true)
-					local shimmer = model:FindFirstChild("PortalShimmer", true)
-					T.check(disc ~= nil and disc.Material == Enum.Material.Neon and abs(disc.Transparency - 0.35) < 1e-6, label .. ": a Neon disc at Transparency 0.35")
-					T.check(shimmer ~= nil and shimmer.Material == Enum.Material.ForceField, label .. ": a ForceField shimmer disc")
+					-- the swirl core: the PrimaryPart, one light + the sparkles
+					local core = model:FindFirstChild("GlowCore")
+					T.check(core ~= nil and model.PrimaryPart == core and core.Transparency == 1 and core.CanCollide == false, label .. ": an invisible GlowCore is the PrimaryPart")
 					local lights, emitters = {}, {}
 					for _, d in ipairs(model:GetDescendants()) do
 						if d:IsA("Light") or d:IsA("PointLight") then
@@ -528,27 +636,8 @@ local function serverScenarios()
 							emitters[#emitters + 1] = d
 						end
 					end
-					T.check(#lights == 1 and lights[1]:IsA("PointLight") and lights[1].Range == 14 and abs(lights[1].Brightness - 1.2) < 1e-6 and lights[1].Shadows == false, label .. ": one PointLight (Range 14, Brightness 1.2, no shadows)", tostring(#lights))
-					T.check(#emitters == 1 and emitters[1].Rate == 6, label .. ": one sparkle emitter (Rate 6)")
-					-- the emblem: one per glyph, cloned, <= 30 parts, all Neon in the accent
-					local emblem = model:FindFirstChild("Emblem")
-					local rects = WS.GlyphRects(WS.Glyphs[spec.Glyph])
-					if T.check(emblem ~= nil, label .. ": has the voxel emblem") then
-						local cells = emblem:GetChildren()
-						local allNeon = true
-						for _, c in ipairs(cells) do
-							allNeon = allNeon and c:IsA("BasePart") and c.Material == Enum.Material.Neon and c.Color == disc.Color
-						end
-						T.check(#cells == #rects and #cells <= 30 and allNeon, label .. ": the emblem = " .. #rects .. " Neon cells in the accent (<= 30)", tostring(#cells))
-						-- 6 x 6 cells of 1 stud
-						local ex0, ex1, ey0, ey1 = 1e9, -1e9, 1e9, -1e9
-						for _, c in ipairs(cells) do
-							local l = site:PointToObjectSpace(c.Position)
-							ex0, ex1 = min(ex0, l.X - c.Size.X * 0.5), max(ex1, l.X + c.Size.X * 0.5)
-							ey0, ey1 = min(ey0, l.Y - c.Size.Y * 0.5), max(ey1, l.Y + c.Size.Y * 0.5)
-						end
-						T.check(ex1 - ex0 <= 6.01 and ey1 - ey0 <= 6.01 and ey0 > 18.6, label .. ": the emblem fits 6 x 6 above the lintel", fmt(ex1 - ex0) .. " x " .. fmt(ey1 - ey0))
-					end
+					T.check(#lights == 1 and lights[1]:IsA("PointLight") and lights[1].Range == 28 and abs(lights[1].Brightness - 1.3) < 1e-6 and lights[1].Shadows == false, label .. ": one PointLight (P4: Range 28, Brightness 1.3, no shadows)", tostring(#lights))
+					T.check(#emitters == 1 and emitters[1].Rate == 12 and emitters[1].EmissionDirection == Enum.NormalId.Front, label .. ": one sparkle emitter (Rate 12) drifting toward the plaza")
 					seenGlyph[spec.Glyph] = true
 					-- the tag (World text rule), 27 studs up
 					local tag = model:FindFirstChild("GateTag", true)
@@ -564,7 +653,7 @@ local function serverScenarios()
 						local pillLabel = pill and pill:FindFirstChildOfClass("TextLabel")
 						T.check(pill and pillLabel and pillLabel.TextSize == 18 and pill.Visible == ((spec.Pill or "") ~= ""), label .. ": the pill (18 px) shows only with text")
 					end
-					-- art rules on the gate
+					-- the look on the gate
 					styleAudit(model, WS, { label = label, maxShadowLights = 0 })
 				end
 			end
@@ -572,9 +661,20 @@ local function serverScenarios()
 			for _ in pairs(seenGlyph) do
 				glyphCount = glyphCount + 1
 			end
-			T.eq(glyphCount, 6, "six different glyphs (house, cloud, torch, crown, swords, bolt)")
+			T.eq(glyphCount, 6, "six different crests (house, cloud stars, skull, crown, swords, bolt)")
+			-- the star crest lights spec.Stars stars
+			local sm = WS.BuildGate(folder, CFrame.new(3500, 600, 2000), { Id = "S3", Glyph = "cloud", Stars = 3, Color = "Blue" })
+			local lit, off = 0, 0
+			for _, p in ipairs(sm:GetChildren()) do
+				if p.Name == "StarGem" then
+					lit = lit + 1
+				elseif p.Name == "StarGemOff" then
+					off = off + 1
+				end
+			end
+			T.check(lit == 3 and off == 2, "Stars = 3 -> three lit star gems, two dim ones", lit .. " / " .. off)
 
-			-- determinism + the cached emblem: two builds of the same spec are identical relative to their sites
+			-- determinism + the cached voxels: two builds of the same spec are identical relative to their sites
 			local function signature(model, site)
 				local rows = {}
 				for _, p in ipairs(parts(model)) do
@@ -620,9 +720,13 @@ local function serverScenarios()
 			T.check(toPad:Dot(flat) > 0.999, "the pad lies along the site's horizontal LookVector (the gate faces the plaza)")
 			-- accents: a name, a Color3, junk
 			local cm = WS.BuildGate(folder, CFrame.new(3300, 600, 2000), { Id = "T1", Title = "T", Color = Color3.fromRGB(10, 200, 30), Glyph = "bolt" })
-			T.check(cm:FindFirstChild("PortalDisc", true).Color == Color3.fromRGB(10, 200, 30), "a Color3 accent colours the disc")
+			local trim = cm:FindFirstChild("Trim")
+			local glow = cm:FindFirstChild("Glow")
+			T.check(trim and glow and trim.Color == Color3.fromRGB(10, 200, 30) and glow.Color == Color3.fromRGB(10, 200, 30), "a Color3 accent colours the trim and the glow")
+			local ym = WS.BuildGate(folder, CFrame.new(3350, 600, 2000), { Id = "T3", Color = "Yellow", Glyph = "house" })
+			T.check(ym:FindFirstChild("Trim").Color == WS.Palette.Accent.Yellow, "a colour name resolves to Palette.Accent first (not the UI neon)")
 			local jm = WS.BuildGate(folder, CFrame.new(3400, 600, 2000), { Id = "T2", Glyph = "nope", Color = 5 })
-			T.check(jm ~= nil and jm:GetAttribute("Glyph") == "cloud", "junk glyph / colour -> the cloud glyph in the default accent (no error)")
+			T.check(jm ~= nil and jm:GetAttribute("Glyph") == "cloud" and jm:FindFirstChild("Trim").Color == WS.Palette.Accent.Blue, "junk glyph / colour -> the star crest in the default blue (no error)")
 			-- the reference sample builds
 			local sample = WS.Sample and WS.Sample(folder)
 			T.check(sample ~= nil and #parts(sample) > 300, "WorldStyle.Sample builds (the renders' reference court)", sample and tostring(#parts(sample)) or "nil")
@@ -675,12 +779,12 @@ local function serverScenarios()
 					added[#added + 1] = m
 				end
 			end
-			local res = styleAudit(lobby, WS, { label = "lobby" })
+			local res = styleAudit(lobby, WS, { label = "lobby", minSaturation = 0.3 })
 			for _, m in ipairs(added) do
 				CS:RemoveTag(m, exemptTag)
 			end
 			holder:Destroy()
-			T.info("*lobby style: " .. tostring(res.parts) .. " parts audited, " .. tostring(res.shadowLights) .. " shadow lights")
+			T.info("*lobby style: " .. tostring(res.parts) .. " parts audited, " .. tostring(res.shadowLights) .. " shadow lights, saturation " .. fmt(res.saturation, 3))
 			local gatesFolder = lobbyInfo.GatesFolder
 			if T.check(typeof(gatesFolder) == "Instance" and gatesFolder.Parent == lobby, "lobby style: LobbyInfo.GatesFolder is NimbusLobby.Gates") then
 				local n = 0
@@ -697,7 +801,8 @@ local function serverScenarios()
 	end)
 
 	-- [W2 worldlobby] S.p5world_lobby, S.p5world_gates, S.p5obby_levels, S.p5obby_migration, S.p5world_client_total
-	local GATE_ORDER = { "Home", "Obby", "Dungeon", "Ring", "Arena", "Altar" }
+	-- Phase 6: no Home gate in the lobby (the player asked; the Home window's Go home is the way home)
+	local GATE_ORDER = { "Obby", "Dungeon", "Ring", "Arena", "Altar" }
 	local function hdist(a, b)
 		local dx, dz = a.X - b.X, a.Z - b.Z
 		return math.sqrt(dx * dx + dz * dz)
@@ -729,8 +834,8 @@ local function serverScenarios()
 		local L = Config.Lobby
 		local origin = L.Origin
 		local folder = info.Folder
-		-- the six gate sites: on the arc (r GateArcRadius +- 1), 50..130 degrees, >= 26 studs apart, facing the centre,
-		-- left -> right Home .. Altar (rising angle: the spawn looks +Z, lower angles are on the left)
+		-- the five gate sites: on the arc (r GateArcRadius +- 1), 50..130 degrees, >= 26 studs apart, facing the centre,
+		-- left -> right Obby .. Altar (rising angle: the spawn looks +Z, lower angles are on the left)
 		local sites = info.GateSites
 		if T.check(type(sites) == "table", "LobbyInfo.GateSites is a table") then
 			local last = -1
@@ -755,13 +860,22 @@ local function serverScenarios()
 				end
 			end
 			T.check(info.RingSite == sites.Ring and info.DungeonSite == sites.Dungeon, "LobbyInfo.RingSite / DungeonSite = GateSites.Ring / .Dungeon")
+			T.check(sites.Home == nil, "Phase 6: LobbyInfo.GateSites has no Home site (no Home gate in the lobby)")
+			-- balanced: the Ring gate (the middle one) stands at GateFacing, the end gates mirror each other around it
+			if typeof(sites.Ring) == "CFrame" and typeof(sites.Obby) == "CFrame" and typeof(sites.Altar) == "CFrame" then
+				local mid = angleOf(sites.Ring.Position, origin)
+				T.check(math.abs(mid - L.GateFacing) < 0.5, "Phase 6: the Ring gate stands in the middle of the court (GateFacing)", fmt(mid, 2))
+				local left, right = mid - angleOf(sites.Obby.Position, origin), angleOf(sites.Altar.Position, origin) - mid
+				T.check(math.abs(left - right) < 0.5, "Phase 6: the end gates sit symmetric around the Ring gate", fmt(left, 2) .. " / " .. fmt(right, 2))
+			end
 		end
 		T.check(info.TrialSite == nil, "LobbyInfo.TrialSite is gone")
-		-- the folder of the six gates
+		-- the folder of the gates
 		local gf = info.GatesFolder
 		T.check(typeof(gf) == "Instance" and gf:IsA("Folder") and gf.Name == "Gates" and gf.Parent == folder, "LobbyInfo.GatesFolder = workspace.NimbusLobby.Gates")
 		if typeof(gf) == "Instance" then
-			for _, id in ipairs({ "Home", "Obby", "Ring", "Arena", "Altar" }) do
+			T.check(gf:FindFirstChild("Portal_Home") == nil and workspace:FindFirstChild("Portal_Home", true) == nil, "Phase 6: no Portal_Home anywhere in the world")
+			for _, id in ipairs({ "Obby", "Ring", "Arena", "Altar" }) do
 				local m = gf:FindFirstChild("Portal_" .. id)
 				if T.check(m ~= nil and m:IsA("Model"), "Portal_" .. id .. " stands in the Gates folder") and typeof(sites[id]) == "CFrame" then
 					T.check(hdist(m:GetPivot().Position, sites[id].Position) < 1.5, "Portal_" .. id .. " stands on its site")
@@ -773,7 +887,8 @@ local function serverScenarios()
 				T.check(hit ~= nil, "the reserved Dungeon site is paved court ground (DungeonBuilder builds its gate there in W3)")
 			end
 		end
-		for _, id in ipairs({ "Home", "Obby", "Altar" }) do
+		T.check(type(info.Gates) == "table" and info.Gates.Home == nil, "Phase 6: LobbyInfo.Gates has no Home gate")
+		for _, id in ipairs({ "Obby", "Altar" }) do
 			local g = type(info.Gates) == "table" and info.Gates[id]
 			T.check(type(g) == "table" and typeof(g.Model) == "Instance" and typeof(g.Pad) == "Instance" and typeof(g.PromptPart) == "Instance", "LobbyInfo.Gates." .. id .. " = { Model, Pad, PromptPart }")
 		end
@@ -834,7 +949,7 @@ local function serverScenarios()
 		T.check(L.ShopOffset.Magnitude > L.PlazaRadius + 30, "the shop island lies beyond the plaza")
 		-- NPC spots: on lawn, no path within 8 studs, >= 10 studs from every gate pad
 		local pads = {}
-		for _, id in ipairs({ "Home", "Obby", "Altar" }) do
+		for _, id in ipairs({ "Obby", "Altar" }) do
 			local g = info.Gates and info.Gates[id]
 			if g and typeof(g.Pad) == "Instance" then
 				pads[#pads + 1] = g.Pad.Position
@@ -851,8 +966,11 @@ local function serverScenarios()
 				local a = k * math.pi / 4
 				for _, rad in ipairs({ 0, 4, 8 }) do
 					local hit = groundAt(cf.Position + Vector3.new(math.cos(a) * rad, 0.5, math.sin(a) * rad), 3)
-					if hit and hit.Instance and hit.Instance.Material ~= Enum.Material.Grass and hit.Instance.Material ~= Enum.Material.LeafyGrass then
-						okSpot, why = false, hit.Instance:GetFullName() .. " (" .. tostring(hit.Instance.Material) .. ") within " .. rad .. " studs"
+					-- lawn = the plaza's Lawn / LawnPatches layers (every surface is SmoothPlastic in the P4 look)
+					local layer = hit and hit.Instance and hit.Instance.Parent
+					local lawn = layer and (layer.Name == "Lawn" or layer.Name == "LawnPatches")
+					if hit and hit.Instance and not lawn then
+						okSpot, why = false, hit.Instance:GetFullName() .. " within " .. rad .. " studs"
 					end
 				end
 			end
@@ -903,7 +1021,7 @@ local function serverScenarios()
 	end)
 
 	------------------------------------------------------------------------------------------------
-	-- p5world_gates (6.2, Y12): GateService's Home / Altar prompts, Portal_Arena and the Return gate
+	-- p5world_gates (6.2, Y12): GateService's Altar prompt (Phase 6: no Home gate), Portal_Arena and the Return gate
 	------------------------------------------------------------------------------------------------
 	S.p5world_gates = guarded("p5world_gates", function()
 		if not K.needBoot() then
@@ -914,7 +1032,6 @@ local function serverScenarios()
 			return
 		end
 		local info = K.W.lobbyInfo
-		local SpotService = K.mod("SpotService")
 		local fired = {}
 		local conn = GS.Teleported:Connect(function(player, id)
 			fired[#fired + 1] = { player, id }
@@ -924,16 +1041,20 @@ local function serverScenarios()
 			local part = g and g.PromptPart
 			return part and part:FindFirstChild(id .. "GatePrompt"), part
 		end
-		for _, id in ipairs({ "Home", "Altar" }) do
-			local pr = prompt(id)
-			if T.check(pr ~= nil and pr:IsA("ProximityPrompt"), id .. "GatePrompt sits on LobbyInfo.Gates." .. id .. ".PromptPart") then
-				T.eq(pr.MaxActivationDistance, 12, id .. "GatePrompt: MaxActivationDistance 12")
-				T.eq(pr.HoldDuration, 0, id .. "GatePrompt: HoldDuration 0")
+		-- Phase 6: no Home gate, so no HomeGatePrompt anywhere (players go home with the Home window's Go home)
+		local stray = nil
+		for _, d in ipairs(workspace:GetDescendants()) do
+			if d:IsA("ProximityPrompt") and d.Name == "HomeGatePrompt" then
+				stray = d
 			end
 		end
-		local hp = prompt("Home")
+		T.check(stray == nil, "Phase 6: no HomeGatePrompt anywhere in the world", stray and stray:GetFullName() or "")
+		T.check(type(GS.GetPrompt) == "function" and GS.GetPrompt("Home") == nil, "Phase 6: GateService.GetPrompt('Home') is nil")
 		local ap = prompt("Altar")
-		T.check(hp and hp.ActionText == "Go home" and hp.ObjectText == "My Home", "HomeGatePrompt: 'Go home' / 'My Home'")
+		if T.check(ap ~= nil and ap:IsA("ProximityPrompt"), "AltarGatePrompt sits on LobbyInfo.Gates.Altar.PromptPart") then
+			T.eq(ap.MaxActivationDistance, 12, "AltarGatePrompt: MaxActivationDistance 12")
+			T.eq(ap.HoldDuration, 0, "AltarGatePrompt: HoldDuration 0")
+		end
 		T.check(ap and ap.ActionText == "Travel" and ap.ObjectText == "Storm Altar", "AltarGatePrompt: 'Travel' / 'Storm Altar'")
 		local players = K.freshPlayers(2, "Gate")
 		local a, b = players[1], players[2]
@@ -941,60 +1062,35 @@ local function serverScenarios()
 			local site = info.GateSites[id]
 			standAt(p, site.Position + site.LookVector * 5, site.Position)
 		end
-		-- Home without a plot: the gate of a free plot + the claim toast
-		atGate(a, "Home")
-		local mark = K.logSize()
+		-- Phase 6: "Home" is no gate id any more: refused as junk, nobody moves, nothing fires
+		atGate(a, "Altar")
+		local before = K.root(a).Position
 		local n0 = #fired
-		Mock.Trigger(hp, a)
+		local okH, whyH = GS.Use(a, "Home")
 		K.advance(0.3)
-		local pos = K.root(a).Position
-		local nearFree = false
-		for _, sp in ipairs(info.Spots) do
-			if SpotService.GetOwner(sp.Index) == nil and typeof(sp.GateCFrame) == "CFrame" and hdist(pos, sp.GateCFrame.Position) < 16 then
-				nearFree = true
-			end
-		end
-		T.check(nearFree, "Home without a plot: the player stands at the gate of a free plot", "at " .. tostring(pos))
-		T.check(K.notified(a, "claim this home", "info", mark), "...with 'Press E at the gate to claim this home!'")
-		T.check(#fired == n0 + 1 and fired[#fired][1] == a and fired[#fired][2] == "Home", "GateService.Teleported fires once (player, \"Home\")")
-		-- Home with a plot
-		K.advance(1.6)
-		local claimed = nil
-		for _, sp in ipairs(info.Spots) do
-			if not claimed and SpotService.GetOwner(sp.Index) == nil then
-				local ok = SpotService.Claim(a, sp.Index)
-				if ok then
-					claimed = sp
-				end
-			end
-		end
-		if T.check(claimed ~= nil, "precondition: the player claims a plot") then
-			atGate(a, "Home")
-			Mock.Trigger(hp, a)
-			K.advance(0.3)
-			T.check(hdist(K.root(a).Position, claimed.SpawnCFrame.Position) < 8, "Home with a plot: the player lands at home", fmt(hdist(K.root(a).Position, claimed.SpawnCFrame.Position), 1))
-		end
+		T.check(okH == false and whyH == "junk" and #fired == n0 and hdist(K.root(a).Position, before) < 0.5,
+			"Phase 6: GateService.Use(player, 'Home') is refused (junk): the lobby has no Home gate", tostring(whyH))
 		-- refusals: in a match, in a battle, locked on the obby pad, far away, cooldown
-		K.advance(1.6)
-		atGate(b, "Home")
+		atGate(b, "Altar")
 		b:SetAttribute("InMatch", true)
-		local ok, why = GS.Use(b, "Home")
+		local ok, why = GS.Use(b, "Altar")
 		T.check(not ok and why == "match", "refused in a match", tostring(why))
 		b:SetAttribute("InMatch", nil)
 		b:SetAttribute("InBattle", "B1")
-		mark = K.logSize()
-		ok, why = GS.Use(b, "Home")
+		local mark = K.logSize()
+		ok, why = GS.Use(b, "Altar")
 		T.check(not ok and why == "battle", "refused in a battle", tostring(why))
+		T.check(K.notified(b, "Finish your battle", "bad", mark), "...with the toast 'Finish your battle first!'")
 		b:SetAttribute("InBattle", nil)
 		K.enterPortal(b)
 		K.advance(0.6)
-		ok, why = GS.Use(b, "Home")
+		ok, why = GS.Use(b, "Altar")
 		T.check(not ok and why == "locked", "refused while locked on the obby pad (PortalService.IsLocked)", tostring(why))
 		K.mod("PortalService").RemovePlayer(b)
 		K.leavePortalArea(b)
 		K.advance(0.4)
 		standAt(b, info.SpawnCFrame.Position)
-		ok, why = GS.Use(b, "Home")
+		ok, why = GS.Use(b, "Altar")
 		T.check(not ok and why == "far", "refused from far away (> 12 + 4 studs)", tostring(why))
 		atGate(b, "Altar")
 		local n1 = #fired
@@ -1013,7 +1109,7 @@ local function serverScenarios()
 		ok, why = GS.Use(b, "Altar")
 		T.check(not ok and why == "cooldown", "a second use inside 1.5 s is refused (cooldown)", tostring(why))
 		T.check(#fired == n1 + 1, "...and fires nothing")
-		local junkOk = pcall(GS.Use, "x", "Home") and pcall(GS.Use, b, "Nope") and pcall(GS.Use, nil, nil)
+		local junkOk = pcall(GS.Use, "x", "Altar") and pcall(GS.Use, b, "Nope") and pcall(GS.Use, nil, nil)
 		T.check(junkOk and select(1, GS.Use(b, "Nope")) == false, "junk players / gate ids are refused without errors")
 		-- Portal_Arena -> ArenaInfo.Spawn; the forum's Return gate -> in front of Portal_Arena
 		local AB = M["server/Services/ArenaBuilder"]
@@ -1037,7 +1133,6 @@ local function serverScenarios()
 			end
 		end
 		conn:Disconnect()
-		SpotService.Release(a)
 		K.removePlayers(players)
 		K.flushErrors("p5world_gates")
 	end)

@@ -1,0 +1,18 @@
+{
+ "doc": "perf-plots W3: what the requested *_low keys of a max-tier plot cost, measured with the kit in a scratch run (Builder(export=False).make on a copy of each catalog entry; nothing written to the project). Spec: home stations vs 0.5 at detail level 1 (the house at detail 0), prop_plot with the cloud cushion at V 4. tools/mesh_budget.py uses these numbers ONLY for a key whose real manifest does not exist yet, and labels the result 'with the requested _low keys (estimate)'.",
+ "spec": {"home_<station>_<L>_low": {"vs": 0.5, "detail": 1}, "home_house_<L>_low": {"vs": 0.5, "detail": 0}, "prop_plot_low": {"V": 4.0}},
+ "keys": {
+  "home_farm_40_low": {"tris": 2516, "parts": 1},
+  "home_garden_8_low": {"tris": 698, "parts": 1},
+  "home_foodmachine_5_low": {"tris": 810, "parts": 2},
+  "home_training_5_low": {"tris": 676, "parts": 1},
+  "home_vault_5_low": {"tris": 568, "parts": 2},
+  "home_house_4_low": {"tris": 1826, "parts": 2},
+  "home_fusion_3_low": {"tris": 716, "parts": 3},
+  "home_arena_1_low": {"tris": 372, "parts": 1},
+  "home_fence_3_low": {"tris": 1256, "parts": 1},
+  "home_fountain_3_low": {"tris": 882, "parts": 2},
+  "home_podium_3_low": {"tris": 452, "parts": 1},
+  "prop_plot_low": {"tris": 3444, "parts": 3}
+ }
+}

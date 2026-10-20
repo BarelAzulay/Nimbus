@@ -19,6 +19,7 @@ local Workspace = game:GetService("Workspace")
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Config = require(Shared.Config)
 local Remotes = require(Shared.Remotes)
+do local okMesh, MeshLibrary = pcall(require, Shared:WaitForChild("MeshLibrary", 5)) if okMesh and type(MeshLibrary) == "table" then MeshLibrary.Start() end end -- Phase 6: Blender meshes (no-op while MeshIds is empty)
 
 local Services = script.Parent:WaitForChild("Services")
 
@@ -371,7 +372,7 @@ end
 
 call("PortalService.Init", PortalService, "Init", lobbyInfo, MatchService)
 
--- Phase 5 (6.2): the Gate Court prompts (Home / Altar / Arena gates; the Obby and Dungeon gates are their services')
+-- Phase 5 (6.2): the Gate Court prompts (the Altar gate; Phase 6: no Home gate; the Obby and Dungeon gates are their services')
 if GateService then call("GateService.Init", GateService, "Init", lobbyInfo, {
 	SpotService = SpotService,
 	PortalService = PortalService,

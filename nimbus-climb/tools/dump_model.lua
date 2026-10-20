@@ -1226,12 +1226,12 @@ BUILDERS.dragon = BUILDERS.skydragon
 ----------------------------------------------------------------------
 
 -- [owner: worldlobby] begin
--- (lobby with the Gate Court: `lobby` keeps its name; `gates` = the six gates + the court; `gate:<Home|Obby|Dungeon|Ring|Arena|Altar>`)
+-- (lobby with the Gate Court: `lobby` keeps its name; `gates` = the five gates + the court; `gate:<Obby|Dungeon|Ring|Arena|Altar>`; Phase 6: no Home gate)
 --   lobby                 LobbyBuilder.Build() + the Gate Court gates of ArenaBuilder (Ring, Arena) and, once it exists,
 --                         DungeonBuilder (Dungeon): the whole lobby folder (crop with DUMP.box; render `--views top`)
 --   gates                 the Gate Court alone: every gate of LobbyInfo.GatesFolder + the court tiles, terrace, rims and
 --                         its dressing (cloned into one folder), facing the plaza
---   gate:<Id>             one gate (Home, Obby, Dungeon, Ring, Arena, Altar) and its pad, facing the plaza
+--   gate:<Id>             one gate (Obby, Dungeon, Ring, Arena, Altar) and its pad, facing the plaza
 local function worldlobbyLobby()
 	local info = ensureLobby()
 	if not info._p5GatesBuilt then
@@ -1278,7 +1278,7 @@ BUILDERS.gates = function()
 		end
 	end
 	local look = info.GateSites and info.GateSites.Ring and info.GateSites.Ring.LookVector or Vector3.new(0, 0, -1)
-	return { { root = holder, label = "Gate Court", sub = "the six gates + the court (LobbyInfo.GatesFolder)", facing = { look.X, 0, look.Z } } }
+	return { { root = holder, label = "Gate Court", sub = "the five gates + the court (LobbyInfo.GatesFolder)", facing = { look.X, 0, look.Z } } }
 end
 
 BUILDERS.gate = function(id)
@@ -1525,6 +1525,367 @@ do
 	end
 end
 -- [owner: arenaart] end
+
+-- [owner: kit] begin
+-- (Phase 6 mesh path) Every MeshPart that carries ML_Key / ML_Part is dumped with "mlKey" / "mlPart", and
+-- tools/render_model.py draws it from blender/out/<key>.tris.json.gz instead of a box.  Targets:
+--   meshkey:<key>[:<petId>]   one generated manifest (shared/MeshManifests/<key>) as MeshParts at its pivot, coloured
+--                             with MeshLibrary.EvalColor for the pet's Look (default: a sample Look)
+--   meshpet:<petId>[:Low]     pet_<species>[_variant] + wing_<style>_L/R + acc_<name> (at the accessory manifest's
+--                             Meta.attach, Hat by default) composed at the body's attachments
+--   meshevo:<petId>:<1|2>[:Low]  evo<stage>_<petId> + its evowing_ pairs at WingL/WingR (+ Wing2L/Wing2R, stage 2)
+-- `python3 tools/render_model.py --list` shows these three (the TARGETS line at the end of render_model.py's kit block):
+-- keep the two in step when a mesh target is added. Each needs blender/out/<key>.tris.json.gz (a build_all.py run);
+-- without it the MeshParts draw as boxes. Examples: meshkey:cal_axes, meshpet:pebble_pup, meshevo:twilight_dragon:2.
+do
+	local basePartJson = partJson
+	partJson = function(p, root)
+		local s = basePartJson(p, root)
+		if p:IsA("MeshPart") then
+			local key, part = p:GetAttribute("ML_Key"), p:GetAttribute("ML_Part")
+			if type(key) == "string" and type(part) == "string" then
+				s = string.sub(s, 1, -2) .. ",\"mlKey\":" .. str(key) .. ",\"mlPart\":" .. str(part) .. "}"
+			end
+		end
+		return s
+	end
+
+	local function lookOf(petId)
+		local look = {
+			Primary = Color3.fromRGB(190, 154, 114), Secondary = Color3.fromRGB(238, 222, 196),
+			Eye = Color3.fromRGB(50, 36, 32), WingColor = Color3.fromRGB(226, 208, 182),
+		}
+		local PC = req("shared/PetCatalog", true)
+		local def = PC and PC.Get and petId and PC.Get(petId)
+		if def and type(def.Look) == "table" then
+			for k, v in pairs(def.Look) do
+				look[k] = v
+			end
+			if not def.Look.WingColor and typeof(look.Primary) == "Color3" then
+				look.WingColor = look.Primary:Lerp(Color3.new(1, 1, 1), 0.4)
+			end
+		end
+		return look, def
+	end
+
+	local function vec3(t)
+		return Vector3.new(t[1] or t.X or 0, t[2] or t.Y or 0, t[3] or t.Z or 0)
+	end
+
+	BUILDERS.meshkey = function(key, petId)
+		key = tostring(key or "")
+		local folder = Mock.GetPath(ROOTS.shared .. "/MeshManifests")
+		local mod = folder and folder:FindFirstChild(key)
+		if not mod then
+			fail("no shared/MeshManifests/" .. key .. " (build it with blender/build_all.py --key " .. key .. ")")
+		end
+		local man = require(mod)
+		local ML = req("shared/MeshLibrary", true)
+		local look = lookOf(petId)
+		local model = Instance.new("Model")
+		model.Name = key
+		for _, p in ipairs(man.Parts or man.parts or {}) do
+			local mp = Instance.new("MeshPart")
+			mp.Name = p.Name or p.name
+			mp.Size = vec3(p.Size or p.size)
+			mp.CFrame = CFrame.new(vec3(p.Center or p.center))
+			local color = p.Color or p.color
+			if type(color) == "table" and ML and ML.EvalColor then
+				mp.Color = ML.EvalColor(color, look)
+			else
+				mp.Color = Color3.new(1, 1, 1)
+			end
+			local mat = p.Material or p.material
+			if mat == "Neon" then
+				mp.Material = Enum.Material.Neon
+			elseif mat == "Metal" then
+				mp.Material = Enum.Material.Metal
+			else
+				mp.Material = Enum.Material.SmoothPlastic
+			end
+			mp.Transparency = tonumber(p.Transparency or p.transparency) or 0
+			if (p.Group or p.group) == "EyeLid" then
+				mp.Transparency = 1
+			end
+			mp:SetAttribute("ML_Key", key)
+			mp:SetAttribute("ML_Part", p.Name or p.name)
+			mp.Anchored = true
+			mp.Parent = model
+		end
+		model.Parent = Workspace
+		return { { root = model, label = key, sub = "mesh manifest (" .. #(man.Parts or man.parts or {}) .. " MeshParts)", facing = { 0, 0, -1 } } }
+	end
+
+	-- the manifests composed by hand (the body's attachments), no MeshLibrary needed
+	local function cfOf(a)
+		local p, r = a.Pos or a.pos, a.Rot or a.rot
+		return CFrame.new(p[1], p[2], p[3], r[1][1], r[1][2], r[1][3], r[2][1], r[2][2], r[2][3], r[3][1], r[3][2], r[3][3])
+	end
+	local function manifestOf(key)
+		local folder = Mock.GetPath(ROOTS.shared .. "/MeshManifests")
+		local mod = folder and folder:FindFirstChild(key)
+		if not mod then
+			return nil
+		end
+		local ok, man = pcall(require, mod)
+		return ok and type(man) == "table" and man or nil
+	end
+	-- where a key sits on the body: an accessory at its Meta.attach (Hat by default; Neck for the scarf, Flower for the
+	-- flower), a wing at its group's Attach (WingL / WingR / Wing2L / Wing2R), else `default`
+	local function attachOf(key, default)
+		local man = manifestOf(key)
+		local meta = man and (man.Meta or man.meta) or {}
+		local where = meta.attach or meta.Attach
+		if where == nil and man then
+			for _, g in pairs(man.Groups or man.groups or {}) do
+				if type(g) == "table" and (g.Attach or g.attach) then
+					where = g.Attach or g.attach
+				end
+			end
+		end
+		return where or default
+	end
+	-- compose `body` (a meshkey model) with extra keys { { key, defaultAttach }, ... } at the body's attachments
+	local function compose(body, extra, petId)
+		local man = manifestOf(body.Name) or {}
+		local att = man.Attachments or man.attachments or {}
+		local placed = {}
+		for _, e in ipairs(extra) do
+			local where = attachOf(e[1], e[2])
+			local ok, out = pcall(BUILDERS.meshkey, e[1], petId)
+			if ok and att[where] then
+				local m = out[1].root
+				local at = cfOf(att[where])
+				for _, d in ipairs(m:GetChildren()) do
+					d.CFrame = at * d.CFrame
+					d.Parent = body
+				end
+				m:Destroy()
+				placed[#placed + 1] = e[1] .. "@" .. where
+			end
+		end
+		return placed
+	end
+	-- the body key of a catalog pet: pet_<species>, or pet_<species>_<variant> when the Id's last token names a built
+	-- variant (waffle_corgi -> pet_dog_corgi)
+	local function bodyKey(petId, species, sfx)
+		local base = "pet_" .. string.lower(tostring(species))
+		local variant = string.match(tostring(petId), "_([%a]+)$")
+		if variant and manifestOf(base .. "_" .. variant .. sfx) then
+			return base .. "_" .. variant .. sfx
+		end
+		return base .. sfx
+	end
+	BUILDERS.meshpet = function(petId, lod)
+		local look, def = lookOf(petId)
+		if not def then
+			fail("meshpet: unknown pet " .. tostring(petId))
+		end
+		local L = def.Look
+		local sfx = (lod == "Low") and "_low" or ""
+		local body = BUILDERS.meshkey(bodyKey(petId, L.Species, sfx), petId)[1].root
+		local extra = {}
+		if L.WingStyle then
+			extra[#extra + 1] = { "wing_" .. string.lower(L.WingStyle) .. "_L" .. sfx, "WingL" }
+			extra[#extra + 1] = { "wing_" .. string.lower(L.WingStyle) .. "_R" .. sfx, "WingR" }
+		end
+		if L.Accessory then
+			extra[#extra + 1] = { "acc_" .. string.lower(L.Accessory) .. sfx, "Hat" }
+		end
+		local placed = compose(body, extra, petId)
+		return { { root = body, label = petId .. " (mesh keys)", sub = body.Name .. " + " .. table.concat(placed, " + "), facing = { 0, 0, -1 } } }
+	end
+	-- meshevo:<petId>:<1|2>[:Low]  evo<stage>_<petId>[_low] + evowing_<petId>_<stage>_L/R[_low] (+ the stage-2 Wing2
+	-- pair evowing_<petId>_2b_L/R[_low] when it exists) at the body's WingL / WingR / Wing2L / Wing2R
+	BUILDERS.meshevo = function(petId, stage, lod)
+		local _, def = lookOf(petId)
+		if not def then
+			fail("meshevo: unknown pet " .. tostring(petId))
+		end
+		stage = tonumber(stage) or 1
+		if stage ~= 1 and stage ~= 2 then
+			fail("meshevo: stage must be 1 or 2, got " .. tostring(stage))
+		end
+		local sfx = (lod == "Low") and "_low" or ""
+		local body = BUILDERS.meshkey("evo" .. stage .. "_" .. petId .. sfx, petId)[1].root
+		local extra = {}
+		local pairs_ = { tostring(stage) }
+		if stage == 2 then
+			pairs_[2] = "2b"
+		end
+		for _, tag in ipairs(pairs_) do
+			for _, side in ipairs({ "L", "R" }) do
+				local key = "evowing_" .. petId .. "_" .. tag .. "_" .. side .. sfx
+				if manifestOf(key) then
+					extra[#extra + 1] = { key, ((tag == "2b") and "Wing2" or "Wing") .. side }
+				end
+			end
+		end
+		local placed = compose(body, extra, petId)
+		return { { root = body, label = petId .. " evo " .. stage .. ((lod == "Low") and " Low" or "") .. " (mesh keys)",
+			sub = body.Name .. " + " .. #placed .. " wing keys", facing = { 0, 0, -1 } } }
+	end
+end
+-- [owner: kit] end
+
+-- [owner: evofx] begin
+-- (Phase 6 PetFx) petfx:<petId>[:evo|evo2|evolow|evo2low]  the evolved pet with its effects; besides the usual parts
+-- dump it writes <DUMP.out>.fx.json: every ParticleEmitter / PointLight under Body.PetFx with its world position and
+-- the properties the scratch particle preview needs (rates, lifetimes, speeds, curves, colours, light).
+do
+	local function seqJson(seq)
+		local out = {}
+		for i, k in ipairs(seq.Keypoints) do
+			local v = k.Value
+			if typeof(v) == "Color3" then
+				out[i] = arr({ k.Time, v.R, v.G, v.B })
+			else
+				out[i] = arr({ k.Time, v })
+			end
+		end
+		return "[" .. table.concat(out, ",") .. "]"
+	end
+	BUILDERS.petfx = function(a, b)
+		local entry = catalogPet(a, detailOf(b or "evo2"))
+		local model = entry.root
+		local body = model and model:FindFirstChild("Body")
+		local fx = body and body:FindFirstChild("PetFx")
+		local items = {}
+		if fx then
+			local at = fx.WorldPosition or body.Position
+			for _, c in ipairs(fx:GetChildren()) do
+				if c:IsA("ParticleEmitter") then
+					items[#items + 1] = table.concat({
+						"{\"class\":\"ParticleEmitter\",\"name\":", str(c.Name), ",\"pos\":", arr({ at.X, at.Y, at.Z }),
+						",\"rate\":", num(c.Rate), ",\"life\":", arr({ c.Lifetime.Min, c.Lifetime.Max }),
+						",\"speed\":", arr({ c.Speed.Min, c.Speed.Max }), ",\"spread\":", arr({ c.SpreadAngle.X, c.SpreadAngle.Y }),
+						",\"drag\":", num(c.Drag), ",\"accel\":", arr({ c.Acceleration.X, c.Acceleration.Y, c.Acceleration.Z }),
+						",\"rot\":", arr({ c.Rotation.Min, c.Rotation.Max }), ",\"rotspeed\":", arr({ c.RotSpeed.Min, c.RotSpeed.Max }),
+						",\"size\":", seqJson(c.Size), ",\"transparency\":", seqJson(c.Transparency), ",\"squash\":", seqJson(c.Squash),
+						",\"color\":", seqJson(c.Color), ",\"lightEmission\":", num(c.LightEmission), ",\"brightness\":", num(c.Brightness),
+						",\"orientation\":", str(tostring(c.Orientation.Name or c.Orientation)), ",\"locked\":", tostring(c.LockedToPart),
+						",\"enabled\":", tostring(c.Enabled), "}",
+					})
+				elseif c:IsA("PointLight") then
+					local col = c.Color
+					items[#items + 1] = table.concat({
+						"{\"class\":\"PointLight\",\"pos\":", arr({ at.X, at.Y, at.Z }), ",\"brightness\":", num(c.Brightness),
+						",\"range\":", num(c.Range), ",\"color\":", arr({ col.R, col.G, col.B }), "}",
+					})
+				end
+			end
+		end
+		if ARGS.out and ARGS.out ~= "" then
+			local fh = io.open(tostring(ARGS.out) .. ".fx.json", "w")
+			if fh then
+				fh:write("{\"pet\":", str(a), ",\"element\":", str(fx and fx:GetAttribute("Element") or ""), ",\"stage\":",
+					tostring(fx and fx:GetAttribute("Stage") or 0), ",\"items\":[", table.concat(items, ","), "]}")
+				fh:close()
+			end
+		end
+		return { entry }
+	end
+end
+-- [owner: evofx] end
+
+-- [owner: art-lobby] begin
+-- (Phase 6 lobby meshes) meshlobby: the lobby + Gate Court gates + Storm Altar with every art-lobby Mesh.tag target
+-- dressed from its committed manifest (shared/MeshManifests/<key>) the way MeshLibrary.Dress does it on a client: the
+-- target's Parts hidden (keep names stay), the key's MeshParts (ML_Key / ML_Part) placed at the Tag origin and coloured
+-- with MeshLibrary.EvalColor for the target's look. Crop with --box as for `lobby`.
+do
+	local function dressFromManifest(rec, ML)
+		local folder = Mock.GetPath(ROOTS.shared .. "/MeshManifests")
+		local mod = folder and folder:FindFirstChild(rec.Key)
+		if not mod then
+			return false
+		end
+		local man = require(mod)
+		local keep = {}
+		for _, n in ipairs(rec.Keep or {}) do
+			keep[n] = true
+		end
+		local list = rec.Target:GetDescendants()
+		list[#list + 1] = rec.Target
+		for _, d in ipairs(list) do
+			if d:IsA("BasePart") and not keep[d.Name] and d:GetAttribute("ML_Key") == nil then
+				d.Transparency = 1
+			end
+		end
+		local look = {
+			Primary = Color3.fromRGB(226, 150, 74), Secondary = Color3.fromRGB(255, 255, 255),
+			Eye = Color3.fromRGB(40, 40, 60), WingColor = Color3.fromRGB(255, 255, 255),
+		}
+		for k, v in pairs(rec.Look or {}) do
+			look[k] = v
+		end
+		local holder = Instance.new("Model")
+		holder.Name = "ML_Mesh"
+		for _, p in ipairs(man.Parts or {}) do
+			local mp = Instance.new("MeshPart")
+			mp.Name = p.Name
+			mp.Size = Vector3.new(p.Size[1], p.Size[2], p.Size[3])
+			mp.CFrame = rec.Origin * CFrame.new(p.Center[1], p.Center[2], p.Center[3])
+			if type(p.Color) == "table" and ML and ML.EvalColor then
+				mp.Color = ML.EvalColor(p.Color, look)
+			else
+				mp.Color = Color3.new(1, 1, 1)
+			end
+			mp.Material = (p.Material == "Neon" and Enum.Material.Neon) or (p.Material == "Glass" and Enum.Material.Glass) or Enum.Material.SmoothPlastic
+			mp.Transparency = tonumber(p.Transparency) or 0
+			mp:SetAttribute("ML_Key", rec.Key)
+			mp:SetAttribute("ML_Part", p.Name)
+			mp.Anchored = true
+			mp.Parent = holder
+		end
+		holder.Parent = rec.Target
+		return true
+	end
+
+	BUILDERS.meshlobby = function()
+		local LB = req("server/Services/LobbyBuilder")
+		local SA = req("server/Services/StormAltar", true)
+		LB._Kit = { Targets = {}, Clouds = {} }
+		if SA then
+			SA._Kit = { Targets = {} }
+		end
+		local info = ensureLobby()
+		for _, name in ipairs({ "server/Services/ArenaBuilder", "server/Services/DungeonBuilder" }) do
+			local ok, B = pcall(req, name, true)
+			if ok and type(B) == "table" and type(B.Build) == "function" then
+				pcall(B.Build, info)
+			end
+		end
+		if SA and type(SA.Build) == "function" then
+			pcall(SA.Build, info)
+		end
+		Mock.Advance(0.2)
+		local ML = req("shared/MeshLibrary", true)
+		local recs = {}
+		for _, r in ipairs(LB._Kit.Targets) do
+			recs[#recs + 1] = r
+		end
+		for _, r in ipairs(SA and SA._Kit and SA._Kit.Targets or {}) do
+			recs[#recs + 1] = r
+		end
+		LB._Kit = nil
+		if SA then
+			SA._Kit = nil
+		end
+		local n = 0
+		for _, r in ipairs(recs) do
+			if dressFromManifest(r, ML) then
+				n = n + 1
+			end
+		end
+		local altar = Workspace:FindFirstChild("StormAltar", true)
+		if altar and altar.Parent ~= info.Folder then
+			altar.Parent = info.Folder
+		end
+		return { { root = info.Folder, label = "Lobby (meshes)", sub = n .. " art-lobby targets dressed from their manifests", facing = { 0, 0, -1 } } }
+	end
+end
+-- [owner: art-lobby] end
 
 ----------------------------------------------------------------------
 -- main

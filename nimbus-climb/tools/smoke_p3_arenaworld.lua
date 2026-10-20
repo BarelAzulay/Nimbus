@@ -19,10 +19,10 @@
 --                     in the sky, a Ring zone found by ZoneAt, the square fits at any rotation, the spawn on the -Z side,
 --                     a gold rim / four crown posts / a crowd of cloud puffs; the same index returns the same pocket;
 --                     FreePocket removes it (and its zone); junk indices / zones never error
---   p3arena_art       (booted; Phase 5 arenaart, 6.4) the art rules on the island and the Champion Ring pocket:
---                     WorldStyle materials, no big SmoothPlastic, muted big faces, warm lanterns, no small-part shadows,
---                     round tall posts, a kerb + lip round the edge (open at the bridge), the avenue's 4..6-stud tiles
---                     (+-0.05, jittered), mown lawn stripes, NC_Detail decor every ~12 studs, sky-shaded exempt clouds,
+--   p3arena_art       (booted; Phase 6 A1 look revert) the P4 look on the island and the Champion Ring pocket:
+--                     SmoothPlastic (Neon / Glass / ForceField), blocks only, a bright P4 palette, warm lanterns, no
+--                     small-part shadows, square voxel posts, a kerb + lip round the edge (open at the bridge), the avenue's 4..6-stud tiles
+--                     (+-0.05, jittered), mown lawn stripes, NC_Detail decor every ~12 studs, P4 white / light-blue exempt clouds,
 --                     <= 2800 / <= 250 parts, the safety net idle (ArtFixes = 0)
 --   p3arena_teleport  (booted) the home Arena Gate: the owner standing at the gate lands on the arena's Spawn; refused
 --                     for another player, from far away, in a match, in a battle, and during the cooldown; Phase 5:
@@ -1007,11 +1007,14 @@ end)
 ----------------------------------------------------------------------------------------------------
 -- scenario: the Phase 5 art pass (arenaart, 6.4) on the island and the Champion Ring pocket
 ----------------------------------------------------------------------------------------------------
--- The 6.4 audit of one model: rules 1 (WorldStyle materials, no big SmoothPlastic), 2 (big faces: saturation <= 0.45
--- unless a thin Neon inlay / a piece <= 8 studs^3; value 0.35..0.9), 7 (lights warm, Brightness <= 1.5, Range <= 16,
--- no shadows) and 8 (parts < 4 studs cast no shadow); the voxel clouds / the crowd are skipped by the exempt tag.
+-- The look audit of one model (Phase 6 A1: back to the P4 look, 7aa0df2): every part SmoothPlastic (Neon / Glass /
+-- ForceField for glow, glass and shimmer), blocky voxel shapes only (no Ball / Cylinder), a bright colourful palette
+-- (the area-weighted saturation of the big opaque faces >= 0.2: no muted P5 greys); kept from 6.4: lights Brightness
+-- <= 1.5, Range <= 16, no shadows, warm outside the gates (rule 7) and parts < 4 studs cast no shadow (rule 8); the
+-- voxel clouds / the crowd are skipped by the exempt tag.
 local function artAudit(root, label, WS)
 	local exemptTag = (WS and WS.Tags and WS.Tags.Exempt) or "NC_StyleExempt"
+	local P4MAT = { [Enum.Material.SmoothPlastic] = true, [Enum.Material.Neon] = true, [Enum.Material.Glass] = true, [Enum.Material.ForceField] = true }
 	local function exempt(p)
 		local cur = p
 		while cur and cur ~= game do
@@ -1026,12 +1029,11 @@ local function artAudit(root, label, WS)
 		local hi, lo = max(c.R, c.G, c.B), min(c.R, c.G, c.B)
 		return hi > 0 and (hi - lo) / hi or 0, hi
 	end
-	local tMat = T.tally(label .. ": every part uses a WorldStyle.Materials material (6.4 rule 1)")
-	local tPlastic = T.tally(label .. ": no SmoothPlastic part with a side > 2 studs (rule 1)")
-	local tSat = T.tally(label .. ": big faces (> 16 studs^2) have saturation <= 0.45 unless a thin Neon inlay / a piece <= 8 studs^3 (rule 2)")
-	local tVal = T.tally(label .. ": big opaque faces have value 0.35..0.9 (rule 2)")
+	local tMat = T.tally(label .. ": every part is SmoothPlastic / Neon / Glass / ForceField (P6 A1: the P4 look, no realistic textures)")
+	local tShape = T.tally(label .. ": blocky voxel shapes only (no Ball / Cylinder parts; P6 A1)")
 	local tShadow = T.tally(label .. ": parts < 4 studs cast no shadow (rule 8)")
 	local n, skipped = 0, 0
+	local satArea, area = 0, 0
 	for _, p in ipairs(partsOf(root)) do
 		local s = p.Size
 		local dims = { s.X, s.Y, s.Z }
@@ -1044,32 +1046,36 @@ local function artAudit(root, label, WS)
 				skipped = skipped + 1
 			else
 				n = n + 1
-				local face, vol = dims[2] * dims[3], s.X * s.Y * s.Z
-				local neon = p.Material == Enum.Material.Neon
-				tMat:case(WS == nil or WS.IsWorldMaterial(p.Material), p:GetFullName() .. " " .. tostring(p.Material))
-				tPlastic:case(not (p.Material == Enum.Material.SmoothPlastic and dims[3] > 2), p:GetFullName() .. " " .. fmt(dims[3], 1))
-				if face > 16 then
-					local sat, val = hsv(p.Color)
-					tSat:case(sat <= 0.45 + 1e-3 or (neon and dims[1] <= 0.5) or vol <= 8 or p.Material == Enum.Material.ForceField, p:GetFullName() .. " sat " .. fmt(sat, 2))
-					if not neon and p.Material ~= Enum.Material.ForceField and p.Transparency < 0.3 then
-						tVal:case(val >= 0.35 - 1e-3 and val <= 0.9 + 1e-3, p:GetFullName() .. " value " .. fmt(val, 2))
-					end
+				tMat:case(P4MAT[p.Material] == true, p:GetFullName() .. " " .. tostring(p.Material))
+				tShape:case(not p:IsA("Part") or p.Shape == Enum.PartType.Block, p:GetFullName() .. " " .. tostring(p:IsA("Part") and p.Shape))
+				if dims[2] * dims[3] > 16 and p.Transparency < 0.3 and p.Material ~= Enum.Material.Neon then
+					local sat = hsv(p.Color)
+					satArea = satArea + sat * dims[2] * dims[3]
+					area = area + dims[2] * dims[3]
 				end
 			end
 		end
 	end
 	tMat:report()
-	tPlastic:report()
-	tSat:report()
-	tVal:report()
+	tShape:report()
 	tShadow:report()
+	local wsat = area > 0 and satArea / area or 0
+	T.check(wsat >= 0.2, label .. ": a bright, colourful P4 palette (area-weighted saturation of the big faces >= 0.2)", fmt(wsat, 3))
 	local lights = T.tally(label .. ": every light is a lantern light: Brightness <= 1.5, Range <= 16, no shadows; warm outside the gates (rule 7)")
 	for _, d in ipairs(root:GetDescendants()) do
 		if d:IsA("PointLight") or d:IsA("SpotLight") or d:IsA("SurfaceLight") then
-			local inGate = d:FindFirstAncestor("Portal_Return") ~= nil
+			-- a gate's own glow (WorldStyle.BuildGate: the GateId model) follows the gate kit, not the lantern rule
+			local inGate = false
+			local cur = d.Parent
+			while cur and cur ~= root.Parent do
+				if cur:GetAttribute("GateId") ~= nil then
+					inGate = true
+				end
+				cur = cur.Parent
+			end
 			local c = d.Color
-			local warm = inGate or (c.R >= c.G and c.G >= c.B and c.R > 0.9)
-			lights:case(d.Brightness <= 1.5 and d.Range <= 16 and not d.Shadows and warm, d:GetFullName())
+			local warm = c.R >= c.G and c.G >= c.B and c.R > 0.9
+			lights:case(inGate or (d.Brightness <= 1.5 and d.Range <= 16 and not d.Shadows and warm), d:GetFullName())
 		end
 	end
 	lights:report()
@@ -1097,15 +1103,15 @@ S.p3arena_art = guarded("p3arena_art", function()
 	local parts = partsOf(model)
 	T.check(#parts <= 2800, "arena art: the island + bridge stay <= 2800 parts (10.3)", #parts .. " parts")
 	T.check(#parts >= 1800, "arena art: still detailed (>= 1800 parts)", #parts .. " parts")
-	T.eq(model:GetAttribute("ArtFixes"), 0, "arena art: the 6.4 safety net had nothing to fix (every piece is built in the rules)")
+	T.eq(model:GetAttribute("ArtFixes"), 0, "arena art: the P6 A1 safety net had nothing to fix (every piece is built in the P4 look)")
 
-	-- rules 1, 2, 7, 8 over the whole island (the clouds are exempt by tag)
+	-- the P4 look, rules 7, 8 over the whole island (the clouds are exempt by tag)
 	local audited, skipped = artAudit(model, "arena art", WS)
 	T.info("*arena art: " .. audited .. " parts audited, " .. skipped .. " exempt (voxel clouds)")
 	local cloud = model:FindFirstChild("IslandCloud")
 	T.check(cloud ~= nil and CollectionService:HasTag(cloud, exemptTag), "arena art: the island's voxel cloud is tagged " .. exemptTag)
-	-- rule 9: the clouds are shaded for the sky (lavender: blue >= green on every part, light tops ~250,244,252, the
-	-- undersides down to ~186,172,222, nothing pure white)
+	-- the clouds are shaded like P4 (white / light blue: blue >= green on every part, light tops ~244,247,252, the
+	-- undersides down to ~170,190,228, nothing pure white)
 	local light, dark, cool, white = false, false, 0, 0
 	for _, p in ipairs(partsOf(cloud)) do
 		local c = p.Color
@@ -1122,37 +1128,45 @@ S.p3arena_art = guarded("p3arena_art", function()
 			white = white + 1
 		end
 	end
-	T.check(light and dark and cool == 0 and white == 0, "arena art: the cloud is shaded for the pink sky (light lavender tops, violet undersides, no pure white)",
+	T.check(light and dark and cool == 0 and white == 0, "arena art: the cloud is shaded like P4 (white tops, light-blue undersides, no pure white)",
 		tostring(light) .. "/" .. tostring(dark) .. ", " .. cool .. " not lavender, " .. white .. " white")
 
-	-- the main materials are there (stone, brick, wood, grass, marble, sand)
-	local mats = {}
+	-- the P4 palette on the main surfaces (P6 A1): a lime lawn, light cream stone walls, golden sand, gold trim
+	local pal = { Lawn = 0, Wall = 0, Sand = 0, Gold = 0 }
 	for _, p in ipairs(parts) do
-		mats[p.Material] = (mats[p.Material] or 0) + 1
+		local _, sat, val = p.Color:ToHSV()
+		if p.Name == "Lawn" and p.Color.G > 0.6 and sat >= 0.4 then
+			pal.Lawn = pal.Lawn + 1
+		elseif p.Name == "Wall" and val >= 0.75 and sat <= 0.2 then
+			pal.Wall = pal.Wall + 1
+		elseif (p.Name == "Sand" or p.Name == "SandDrift" or p.Name == "RingFloor") and p.Color.R >= 0.82 and sat >= 0.2 then
+			pal.Sand = pal.Sand + 1
+		elseif p.Color.R > 0.9 and p.Color.G > 0.7 and p.Color.B < 0.45 then
+			pal.Gold = pal.Gold + 1
+		end
 	end
-	for _, m in ipairs({ "Brick", "Slate", "Cobblestone", "Marble", "Grass", "LeafyGrass", "Sand", "Wood", "Metal", "Fabric" }) do
-		T.check((mats[Enum.Material[m]] or 0) > 0, "arena art: the island uses " .. m, tostring(mats[Enum.Material[m]] or 0) .. " parts")
-	end
-	-- the colosseum: Brick walls, Marble pilasters / cornices, Fabric seats in muted element colours
+	T.check(pal.Lawn > 0 and pal.Wall > 0 and pal.Sand > 0 and pal.Gold > 0, "arena art: the P4 palette (lime lawn, light cream stone walls, golden sand, gold trim)",
+		string.format("lawn %d, walls %d, sand %d, gold %d", pal.Lawn, pal.Wall, pal.Sand, pal.Gold))
+	-- the colosseum: walls, marble-white trims and seats in the element colours
 	local col = model:FindFirstChild("Colosseum")
 	local wall, seat, marble = 0, 0, 0
 	for _, p in ipairs(partsOf(col)) do
-		if p.Name == "Wall" and p.Material == Enum.Material.Brick then
+		if p.Name == "Wall" then
 			wall = wall + 1
-		elseif p.Name == "Seat" and p.Material == Enum.Material.Fabric then
+		elseif p.Name == "Seat" and select(2, p.Color:ToHSV()) >= 0.3 then
 			seat = seat + 1
-		elseif (p.Name == "Cornice" or p.Name == "Pilaster") and p.Material == Enum.Material.Marble then
+		elseif (p.Name == "Cornice" or p.Name == "Pilaster") and select(3, p.Color:ToHSV()) >= 0.85 then
 			marble = marble + 1
 		end
 	end
-	T.check(wall >= 16 and seat >= 16 and marble >= 32, "arena art: Brick walls, Marble trims and Fabric seats on the colosseum", wall .. " walls, " .. marble .. " marble, " .. seat .. " seats")
+	T.check(wall >= 16 and seat >= 16 and marble >= 32, "arena art: walls, white trims and element-coloured seats on the colosseum", wall .. " walls, " .. marble .. " marble, " .. seat .. " seats")
 
-	-- rule 4: free-standing posts / columns >= 4 studs tall are round (no sharp tall corners)
+	-- P6 A1: free-standing posts / columns are square voxel posts (no Cylinder parts)
 	local postNames = { Post = true, Pillar = true, ArchPillar = true, TorchPole = true, Pole = true, LanternPost = true, Trunk = true }
-	local round = T.tally("arena art: every free-standing post / column >= 4 studs tall is round (rule 4)")
+	local round = T.tally("arena art: every free-standing post / column >= 4 studs tall is a square voxel post (P6 A1)")
 	for _, p in ipairs(parts) do
 		if postNames[p.Name] and p:IsA("Part") and max(p.Size.X, p.Size.Y, p.Size.Z) >= 4 and not p:FindFirstAncestor("Portal_Return") then
-			round:case(p.Shape == Enum.PartType.Cylinder, p:GetFullName())
+			round:case(p.Shape == Enum.PartType.Block, p:GetFullName())
 		end
 	end
 	round:report()
@@ -1208,10 +1222,10 @@ S.p3arena_art = guarded("p3arena_art", function()
 	T.check(nTiles >= 40 and sizesOk, "arena art: the avenue is paved with 4..6-stud tiles (rule 5)", nTiles .. " tiles")
 	T.check(nTops == 2 and abs((hi - lo) - 0.05) < 0.011, "arena art: the tiles alternate by 0.05 in height (rule 5)", nTops .. " levels, " .. fmt(hi - lo, 3))
 	T.check(nCols >= 6, "arena art: the tiles are jittered (never one flat colour)", nCols .. " colours")
-	-- the lawn is mown in stripes of two shades (Grass)
+	-- the lawn is mown in stripes of two shades
 	local lawnCols = {}
 	for _, p in ipairs(partsOf(model:FindFirstChild("Lawn", true))) do
-		if p.Material == Enum.Material.Grass then
+		if p.Name == "Lawn" then
 			lawnCols[string.format("%.2f", p.Color.G)] = true
 		end
 	end
@@ -1219,7 +1233,7 @@ S.p3arena_art = guarded("p3arena_art", function()
 	for _ in pairs(lawnCols) do
 		nLawn = nLawn + 1
 	end
-	T.check(nLawn >= 2, "arena art: the forum lawn has mown stripes (Grass in 2+ shades)", nLawn .. " shades")
+	T.check(nLawn >= 2, "arena art: the forum lawn has mown stripes (2+ green shades)", nLawn .. " shades")
 
 	-- rule 6: a detail every ~12 studs along the avenue (torches, hedge boxes, banners, lanterns: NC_Detail)
 	local details = {}
@@ -1269,5 +1283,204 @@ S.p3arena_art = guarded("p3arena_art", function()
 	K.flushErrors("p3arena_art")
 	K.flushWarnings("p3arena_art")
 end)
+
+
+-- [owner: art-arenadungeon] begin -- Phase 6 W2: the Blender keys of the arena (blender/catalog/arenadungeon.json) and
+-- ArenaBuilder's Tag calls (ArenaBuilder._Mesh): every tagged piece has its arena_<piece> key and every arena key is
+-- tagged somewhere, each LayoutSig still matches the live Part build (else rebuild: blender/build_all.py --class
+-- arenadungeon), targets never nest, every visible Neon part of a target stays (keep), nothing is tagged without
+-- uploaded ids, a tag with ids carries the offset / look / keep, a stale layout is refused, the arena's mesh budget.
+local function meshKeysWith(prefix)
+	local inst = K.moduleInstance("shared/MeshLibrary")
+	local dir = inst and inst.Parent and inst.Parent:FindFirstChild("MeshManifests")
+	local out = {}
+	for _, m in ipairs(dir and dir:GetChildren() or {}) do
+		if m:IsA("ModuleScript") and string.sub(m.Name, 1, #prefix) == prefix then
+			out[#out + 1] = m.Name
+		end
+	end
+	table.sort(out)
+	return out
+end
+
+S.p3arena_mesh = guarded("p3arena_mesh", function()
+	if not K.needBoot() then
+		return
+	end
+	local AB = arenaBuilder()
+	local mlInst = K.moduleInstance("shared/MeshLibrary")
+	local okML, ML = pcall(require, mlInst)
+	local Mesh = AB and AB._Mesh
+	local info = AB and AB.GetInfo and AB.GetInfo()
+	if not T.check(type(Mesh) == "table" and type(Mesh.Placed) == "table" and okML and type(ML) == "table" and info and info.Model, "arena mesh: ArenaBuilder._Mesh, MeshLibrary and the built arena") then
+		return
+	end
+	local rp = AB.BuildPocket(37)
+	-- the recorded Tag calls (sorted: deterministic)
+	local recs = {}
+	for target, r in pairs(Mesh.Placed) do
+		if target.Parent and (target:IsDescendantOf(info.Model) or (rp and target == rp.Model)) then
+			recs[#recs + 1] = { Target = target, Key = r.Key, Origin = r.Origin, Look = r.Look, Keep = r.Keep, Scale = r.Scale, Name = target:GetFullName() }
+		end
+	end
+	table.sort(recs, function(a, b)
+		return a.Key .. a.Name < b.Key .. b.Name
+	end)
+	local set = {}
+	for _, r in ipairs(recs) do
+		set[r.Target] = true
+	end
+	-- 1. key coverage both ways
+	local used = {}
+	for _, r in ipairs(recs) do
+		used[r.Key] = (used[r.Key] or 0) + 1
+	end
+	local missing, orphan = {}, {}
+	for key in pairs(used) do
+		if not ML.Manifest(key) then
+			missing[#missing + 1] = key
+		end
+	end
+	table.sort(missing)
+	for _, key in ipairs(meshKeysWith("arena_")) do
+		if not used[key] then
+			orphan[#orphan + 1] = key
+		end
+	end
+	T.check(#recs >= 70 and #missing == 0, "arena mesh: every tagged piece has its manifest (src/shared/MeshManifests/arena_*)", #recs .. " targets; missing " .. table.concat(missing, ", "))
+	T.check(#orphan == 0, "arena mesh: every arena_* key is tagged by the build", table.concat(orphan, ", "))
+	for _, key in ipairs({ "arena_island", "arena_forum", "arena_floor", "arena_seg_stand", "arena_seg_gate", "arena_seg_bossgate", "arena_pillar", "arena_ring_1", "arena_ring_2", "arena_board_event", "arena_board_leader", "arena_trophy", "arena_bridge", "arena_pocket", "arena_torch", "arena_lantern", "arena_tree" }) do
+		T.check(used[key] ~= nil, "arena mesh: " .. key .. " is tagged", tostring(used[key]))
+	end
+	T.eq(used.arena_seg_stand, 12, "arena mesh: 12 stand segments share one key")
+	T.eq(used.arena_pillar, 16, "arena mesh: 16 columns share one key")
+	-- 2. layouts match, no nesting, glows kept
+	local sig = T.tally("arena mesh: each target's Part build matches its key's LayoutSig (else rebuild: blender/build_all.py --class arenadungeon)")
+	local nest = T.tally("arena mesh: targets never nest (one dress per subtree)")
+	local glow = T.tally("arena mesh: every visible Neon part of a target is in its keep list (it stays a glow part)")
+	for _, r in ipairs(recs) do
+		local man = ML.Manifest(r.Key)
+		local att = man and man.Attachments and man.Attachments.LayoutSig
+		if att then
+			local pos = att.Pos or att.pos
+			local n, a, b = Mesh.Signature(r.Target, r.Origin, r.Scale, r.Keep)
+			local tol = 0.05 + n * 1e-4
+			sig:case(n == pos[1] and abs(a - pos[2]) <= tol and abs(b - pos[3]) <= tol, r.Name, n .. " / " .. tostring(pos[1]) .. " parts, " .. fmt(a, 3) .. " vs " .. fmt(pos[2], 3))
+		end
+		local p = r.Target.Parent
+		local nested = false
+		while p do
+			if set[p] then
+				nested = true
+			end
+			p = p.Parent
+		end
+		nest:case(not nested, r.Name)
+		local keep = {}
+		for _, k in ipairs(r.Keep or {}) do
+			keep[k] = true
+		end
+		local bad = nil
+		for _, d in ipairs(r.Target:GetDescendants()) do
+			if d:IsA("BasePart") and d.Material == Enum.Material.Neon and d.Transparency < 0.99 and not keep[d.Name] then
+				bad = d.Name
+			end
+		end
+		glow:case(bad == nil, r.Name, bad)
+	end
+	sig:report()
+	nest:report()
+	glow:report()
+	-- 3. quiet with the shipped empty MeshIds
+	local dressed = 0
+	for _, r in ipairs(recs) do
+		if r.Target:GetAttribute("ML_DressKey") then
+			dressed = dressed + 1
+		end
+	end
+	T.eq(dressed, 0, "arena mesh: with the shipped empty MeshIds nothing is tagged (the Part build is unchanged)")
+	-- 4. the arena's meshes stay light: <= 300k triangles over every placement, <= 10k per MeshPart
+	local tris, worst = 0, 0
+	for _, r in ipairs(recs) do
+		local man = ML.Manifest(r.Key)
+		tris = tris + (tonumber(man and man.Raw and man.Raw.Tris) or 0)
+		for _, part in ipairs(man and man.Raw and man.Raw.Parts or {}) do
+			worst = max(worst, tonumber(part.Tris) or 0)
+		end
+	end
+	T.check(tris > 0 and tris <= 300000 and worst <= 10000, "arena mesh: the whole arena <= 300k triangles, every MeshPart <= 10k", tris .. " tris, worst part " .. worst)
+	-- 5. with ids: the tag carries the offset, the look and the keep list; a stale layout is refused
+	local ids, idn = {}, 0
+	for _, key in ipairs(meshKeysWith("arena_")) do
+		idn = idn + 1
+		ids[key] = 200000 + idn
+	end
+	-- W2.5 isolation: Start() with ids creates ReplicatedStorage.MeshLibrary; remove it again at the end so later
+	-- scenarios (p6pets_default: MeshLibrary.Active() is false) see the empty-ids game
+	local hadMLFolder = game:GetService("ReplicatedStorage"):FindFirstChild("MeshLibrary") ~= nil
+	ML._Reset()
+	ML._Configure({ Ids = ids })
+	pcall(ML.Start)
+	local tagged = T.tally("arena mesh: with ids every target is tagged (ML_DressKey = its key, the offset puts the mesh on the Tag origin)")
+	local function untag(target)
+		CollectionService:RemoveTag(target, "ML_Dress")
+		for _, att in ipairs({ "ML_DressKey", "ML_Offset", "ML_Keep", "ML_Primary", "ML_Secondary", "ML_Scale" }) do
+			target:SetAttribute(att, nil)
+		end
+	end
+	local seen = {}
+	for _, r in ipairs(recs) do
+		if not seen[r.Key] then
+			seen[r.Key] = r
+			local ok = Mesh.tag(r.Target, r.Key, r.Origin, r.Look, r.Keep, r.Scale)
+			local offOk = false
+			local off = r.Target:GetAttribute("ML_Offset")
+			if type(off) == "string" then
+				local v = {}
+				for x in string.gmatch(off, "[^,%s]+") do
+					v[#v + 1] = tonumber(x)
+				end
+				if #v == 12 then
+					local cf = r.Target:GetPivot() * CFrame.new(unpack(v))
+					offOk = (cf.Position - r.Origin.Position).Magnitude < 0.02
+				end
+			end
+			tagged:case(ok and r.Target:GetAttribute("ML_DressKey") == r.Key and CollectionService:HasTag(r.Target, "ML_Dress") and offOk, r.Key, tostring(off))
+		end
+	end
+	tagged:report()
+	local seg = seen.arena_seg_stand
+	if seg then
+		local seat = Mesh.colorOf(seg.Target, "Seat")
+		T.check(seat ~= nil and seg.Target:GetAttribute("ML_Primary") == seat and seg.Target:GetAttribute("ML_Secondary") == Mesh.colorOf(seg.Target, "Banner"), "arena mesh: a stand segment's seats / banner tint = its element colours (ML_Primary / ML_Secondary)")
+	end
+	local pil = seen.arena_pillar
+	T.check(pil ~= nil and string.find(pil.Target:GetAttribute("ML_Keep") or "", "Flame", 1, true) ~= nil, "arena mesh: a column keeps its Neon flame visible (ML_Keep)")
+	-- a stale layout (one part moved) is never tagged
+	if pil then
+		local clone = pil.Target:Clone()
+		untag(clone)
+		local moved = clone:FindFirstChild("Capital", true)
+		if moved then
+			moved.CFrame = moved.CFrame * CFrame.new(0, 2, 0)
+		end
+		T.check(Mesh.tag(clone, "arena_pillar", pil.Origin, nil, pil.Keep) == false and clone:GetAttribute("ML_DressKey") == nil, "arena mesh: a Part build that no longer matches its key is never tagged")
+		clone:Destroy()
+	end
+	for _, r in pairs(seen) do
+		untag(r.Target)
+	end
+	ML._Reset()
+	local mlFolder = game:GetService("ReplicatedStorage"):FindFirstChild("MeshLibrary")
+	if mlFolder and not hadMLFolder then
+		mlFolder:Destroy()
+	end
+	if rp then
+		AB.FreePocket(rp)
+	end
+	K.flushErrors("p3arena_mesh")
+	K.flushWarnings("p3arena_mesh")
+end)
+-- [owner: art-arenadungeon] end
 
 return S

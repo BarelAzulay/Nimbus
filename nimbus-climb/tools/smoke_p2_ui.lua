@@ -705,11 +705,20 @@ local function clientScenarios()
 		local mark = #Mock.RemoteLog
 		Mock.Click(tile)
 		advance(0.3)
-		local hint = menu and menu:FindFirstChild("MenuHint")
-		T.check(#calls("GoToSpot", mark) == 1 and hint and hint.Visible and tostring(find(hint, "Text") and find(hint, "Text").Text):find("Press E", 1, true),
-			"p2ui menu: without a home the Home tile walks to a free gate (GoToSpot) with a side hint 'Press E at the gate'")
+		-- Phase 6: without a home the tile opens the Home window with the big "Claim a home" hero (no lobby Home gate)
 		local win = menu and menu:FindFirstChild("Window_Home")
-		T.check(win == nil or not win.Visible, "p2ui menu: ...and opens no window")
+		local claim = win and find(win, "ClaimHome")
+		local goHome = win and find(win, "GoHome")
+		T.check(win ~= nil and win.Visible and claim ~= nil and claim.Visible and (goHome == nil or not goHome.Visible) and #calls("GoToSpot", mark) == 0,
+			"p2ui menu: without a home the Home tile opens the Home window with 'Claim a home' (nothing sent yet)")
+		local steps = win and find(win, "ClaimSteps")
+		local stations = win and find(win, "Stations")
+		T.check(steps ~= nil and steps.Visible and (stations == nil or not stations.Visible), "p2ui menu: ...with the three claim steps instead of the stations")
+		Mock.Click(claim)
+		advance(0.3)
+		local hint = menu and menu:FindFirstChild("MenuHint")
+		T.check(#calls("GoToSpot", mark) == 1 and hint and hint.Visible and tostring(find(hint, "Text") and find(hint, "Text").Text):find("Press E", 1, true) and not win.Visible,
+			"p2ui menu: Claim a home walks to a free gate (GoToSpot, the server's home portal) with a side hint 'Press E at the gate' and closes")
 
 		-- the Home window
 		setHome("mid")
@@ -793,7 +802,7 @@ local function clientScenarios()
 		advance(0.2)
 		hc = calls("HomeAction", mark)
 		T.check(#hc == 1 and hc[1].args[1] == "Prestige" and not confirm.Visible, "p2ui menu: confirming sends HomeAction('Prestige')")
-		-- Go home (in the title bar)
+		-- Go home (Phase 6: the big golden hero on top of the window)
 		setHome("mid")
 		mark = #Mock.RemoteLog
 		Mock.Click(find(win, "GoHome"))

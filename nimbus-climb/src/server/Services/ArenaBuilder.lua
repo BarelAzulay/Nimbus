@@ -76,16 +76,14 @@
 --     ring pockets); the plaza, the forum, the stands, the bridge and the gates have none.
 --   * The home Arena Gate (HomeBuilder's ArenaGatePrompt) teleports its owner to ArenaInfo.Spawn: refused in a match
 --     or a battle, only near the gate, rate limited; the Arena / Return gates use the same checks.
--- Phase 5 art pass (arenaart, ARCHITECTURE_V3.md 6.4; the helper table `Art`): every world part in WorldStyle
--- materials (Brick colosseum walls on a Slate plinth with Marble pilasters, string course, cornice and coping; warm
--- limestone tiers with Fabric seats in the muted element colours; round Marble columns with brass abaci and braziers;
--- a mown Grass lawn, Cobblestone promenade / aprons, the avenue's 4..6-stud Slate tiles (+-0.05, jittered) between
--- Marble borders with a Fabric runner; a Brick kerb + Slate lip round the island's edge, open at the bridge; trees,
--- lanterns and hedge boxes as NC_Detail decor; a stone bridge with Brick parapets and Slate piers); big faces muted
--- (saturation <= 0.45, value 0.35..0.9), gold only as small Metal pieces or thin Neon inlays; warm lights (<= 1.5,
--- range <= 16, no shadows); the voxel clouds shaded for the sky by height and tagged NC_StyleExempt. Art.enforce is a
--- safety net (the attribute ArtFixes counts what it had to fix: 0 when every piece follows the rules). Budgets: the
--- arena <= 2800 parts (10.3), a ring pocket <= 250. Portal_Ring / Portal_Arena (the Gate Court gates) are unchanged.
+-- Look (Phase 6 A1: back to the Phase 4 look, 7aa0df2; the helper table `Art`): every world part SmoothPlastic (Neon
+-- for glow, Glass / ForceField for water and shimmer), the P4 arena palette `C` (light cream stone colosseum walls,
+-- white marble trims, golden sand floors, a lime lawn, cream paving, a crimson carpet, gold trim, seats and banners in
+-- the full element colours), blocky voxel shapes only (square posts, no Cylinder / Ball), P4 white / light-blue voxel
+-- clouds tagged NC_StyleExempt, warm lanterns (<= 1.5, range <= 16, no shadows), small parts cast no shadow, pure
+-- decor tagged NC_Detail. Art.enforce is a safety net (the attribute ArtFixes counts what it had to fix: 0 when every
+-- piece is built in the look). Budgets: the arena <= 2800 parts (10.3), a ring pocket <= 250. Portal_Ring /
+-- Portal_Arena / Portal_Return are WorldStyle.BuildGate gates (the P4 hoop family, 6.0.3).
 -- No server-side animation (Replication rule): torches, glows and particles only. Every text uses Theme roles.
 -- Plain Lua 5.1-compatible syntax only.
 
@@ -309,6 +307,9 @@ local function newModel(parent, name)
 end
 
 -- One anchored block. opts: Collide, Query, Material, Transparency, Shadow.
+-- Phase 6 A1 (back to the P4 look): the only materials a part may use
+local P4_MATS = { [MAT.SmoothPlastic] = true, [MAT.Neon] = true, [MAT.Glass] = true, [MAT.ForceField] = true }
+
 local function box(parent, name, cf, size, color, opts)
 	opts = opts or {}
 	local p = Instance.new("Part")
@@ -317,7 +318,11 @@ local function box(parent, name, cf, size, color, opts)
 	p.Size = size
 	p.CFrame = cf
 	p.Color = color
-	p.Material = opts.Material or MAT.SmoothPlastic
+	local mat = opts.Material or MAT.SmoothPlastic
+	if not P4_MATS[mat] then
+		mat = MAT.SmoothPlastic -- Phase 6 A1: SmoothPlastic look (Glass / Neon / ForceField stay)
+	end
+	p.Material = mat
 	p.Transparency = opts.Transparency or 0
 	p.TopSurface = Enum.SurfaceType.Smooth
 	p.BottomSurface = Enum.SurfaceType.Smooth
@@ -439,6 +444,129 @@ local function recolor(root, name, color)
 end
 
 ----------------------------------------------------------------------
+-- Phase 6 (ARCHITECTURE_V3.md "## Phase 6" A7, owner art-arenadungeon): Blender mesh dressing. Every Part build in
+-- this file stays exactly as it is (the fallback, the colliders, every name / prompt / zone / sign). The static
+-- decoration subtrees are tagged with MeshLibrary.Tag(target, key, look, keep) and clients Dress them (Parts hidden
+-- locally, Keep parts stay: Neon flames / glows and sign panels). Keys: blender/catalog/arenadungeon.json (baked by
+-- blender/kit/props/arena.py from this very build). A key is tagged only once it has an uploaded id
+-- (MeshLibrary.Status ~= "missing": the shipped empty MeshIds change nothing) and only while the live build still
+-- matches the manifest's "LayoutSig" attachment (part count + position / size sums in origin space), so a layout
+-- change can never show a stale mesh (scaled pieces, the trees, carry none). Targets never nest (one dress each).
+----------------------------------------------------------------------
+local Mesh = { Lib = nil, Placed = setmetatable({}, { __mode = "k" }) } -- Placed: target -> its Tag call (tests, the kit)
+
+function Mesh.lib()
+	if Mesh.Lib == nil then
+		Mesh.Lib = false
+		local module = Shared:FindFirstChild("MeshLibrary")
+		if module then
+			local ok, result = pcall(require, module)
+			if ok and type(result) == "table" and type(result.Tag) == "function" then
+				Mesh.Lib = result
+			end
+		end
+	end
+	return Mesh.Lib or nil
+end
+
+-- part count + weighted sums of every visible BasePart's position / size in `origin` space, divided by `scale`, the
+-- keep names left out (blender/kit/props/arena.py stores the same numbers in the key's LayoutSig)
+function Mesh.Signature(target, origin, scale, keep)
+	local inv = origin:Inverse()
+	local s = tonumber(scale) or 1
+	local kept = {}
+	for _, k in ipairs(keep or {}) do
+		kept[k] = true
+	end
+	local n, a, b = 0, 0, 0
+	local list = target:GetDescendants()
+	list[#list + 1] = target
+	for _, d in ipairs(list) do
+		if d:IsA("BasePart") and d.Transparency < 0.99 and not kept[d.Name] then
+			local p = inv * d.Position
+			local z = d.Size
+			n = n + 1
+			a = a + (p.X + p.Y * 0.37 + p.Z * 0.61) / s
+			b = b + (z.X + z.Y * 1.3 + z.Z * 1.7) / s
+		end
+	end
+	return n, a, b
+end
+
+function Mesh.sigOk(ML, key, target, origin, scale, keep)
+	local man = type(ML.Manifest) == "function" and ML.Manifest(key)
+	if not man then
+		return false
+	end
+	local att = man.Attachments and man.Attachments.LayoutSig
+	if not att then
+		return true -- a scaled piece (the trees): no layout to match
+	end
+	local pos = att.Pos or att.pos
+	if type(pos) ~= "table" then
+		return false
+	end
+	local n, a, b = Mesh.Signature(target, origin, scale, keep)
+	local tol = 0.05 + n * 1e-4
+	return n == pos[1] and math.abs(a - pos[2]) <= tol and math.abs(b - pos[3]) <= tol
+end
+
+-- target: Model subtree; key: mesh key; origin: world CFrame of the mesh pivot; look: { Primary, Secondary } (the tint
+-- parts); keep: part names that stay visible; scale: uniform placement scale (nil = 1). Returns true when tagged.
+function Mesh.tag(target, key, origin, look, keep, scale)
+	if typeof(target) ~= "Instance" or typeof(origin) ~= "CFrame" then
+		return false
+	end
+	Mesh.Placed[target] = { Key = key, Origin = origin, Look = look, Keep = keep, Scale = scale }
+	local kit = ArenaBuilder._Kit
+	if type(kit) == "table" and type(kit.Targets) == "table" then
+		kit.Targets[#kit.Targets + 1] = { Key = key, Target = target, Origin = origin, Look = look, Keep = keep, Scale = scale }
+	end
+	local ML = Mesh.lib()
+	if not ML or type(ML.Status) ~= "function" then
+		return false
+	end
+	local okStatus, st = pcall(ML.Status, key)
+	if not okStatus or st == "missing" or not Mesh.sigOk(ML, key, target, origin, scale, keep) then
+		return false
+	end
+	local tagLook = {}
+	for k, v in pairs(look or {}) do
+		tagLook[k] = v
+	end
+	local pivot = target:IsA("BasePart") and target.CFrame or target:GetPivot() -- (a Part's pivot: PivotOffset is never set here)
+	tagLook.Offset = pivot:Inverse() * origin
+	if scale and scale ~= 1 then
+		target:SetAttribute("ML_Scale", scale)
+	end
+	ML.Tag(target, key, tagLook, keep)
+	return true
+end
+
+-- the first BasePart named `name` under root (the tint colour a mesh part takes)
+function Mesh.colorOf(root, name)
+	for _, d in ipairs(root:GetDescendants()) do
+		if d:IsA("BasePart") and d.Name == name then
+			return d.Color
+		end
+	end
+	return nil
+end
+
+-- keep lists (parts that stay visible over a dressed piece)
+Mesh.Keep = {
+	Flame = { "Flame" },
+	Floor = { "ElementGem" },
+	Ring = { "Flame", "CurbInlay", "PadGlow" },
+	Board = { "Panel", "Flame" },
+	Lantern = { "LanternLamp" },
+	Trophy = { "TrophyStar", "Gem" },
+	Bridge = { "Flame", "ArchSign" },
+	Pocket = { "RingRimInlay", "EmblemGem", "CrownGem", "SpawnGlow", "ChampionGlow" },
+}
+ArenaBuilder._Mesh = Mesh
+
+----------------------------------------------------------------------
 -- Voxel helpers
 ----------------------------------------------------------------------
 local VX = {}
@@ -502,6 +630,11 @@ function VX.Build(g, o)
 		Keep = o.Keep,
 		CastShadow = o.Shadow,
 	})
+	for _, p in ipairs(model:GetDescendants()) do
+		if p:IsA("BasePart") and not P4_MATS[p.Material] then
+			p.Material = MAT.SmoothPlastic -- Phase 6 A1 (palette entries may still name a Phase 5 material)
+		end
+	end
 	if o.Parent then
 		model.Parent = o.Parent
 	end
@@ -534,12 +667,12 @@ end
 local TIER_KEYS = { "CloudLight", "Cloud", "CloudShade", "Mist", "MistDark" }
 -- Phase 5 (6.4 rule 9): the voxel clouds are shaded for the pink sky (tops 250,244,252; sides 226,214,240;
 -- undersides 186,172,222) and tagged NC_StyleExempt (they keep their voxel look on purpose)
-local CLOUD_PAL = {
-	CloudLight = rgb(250, 244, 252),
-	Cloud = rgb(238, 229, 246),
-	CloudShade = rgb(226, 214, 240),
-	Mist = rgb(206, 192, 232),
-	MistDark = rgb(186, 172, 222),
+local CLOUD_PAL = { -- P4 white / light-blue clouds (style.md 4)
+	CloudLight = C.CloudLight,
+	Cloud = C.Cloud,
+	CloudShade = C.CloudShade,
+	Mist = C.Mist,
+	MistDark = C.MistDark,
 }
 
 -- A voxel cloud from a footprint signed distance. spec: V (studs per voxel), Sdf(x, z) -> studs (negative inside),
@@ -948,85 +1081,47 @@ end
 -- NC_StyleExempt, pure decor tagged NC_Detail. ONE helper table: the main chunk stays under the 200-locals limit.
 ----------------------------------------------------------------------
 local Art = {
-	P = {
-		Lawn = rgb(112, 152, 100),
-		LawnLight = rgb(121, 160, 106),
-		LawnDark = rgb(104, 144, 94),
-		Hedge = rgb(82, 124, 84),
-		HedgeLight = rgb(98, 140, 94),
-		Slate = rgb(108, 112, 130),
-		SlateLight = rgb(126, 130, 148),
-		SlateDark = rgb(84, 88, 106),
-		Cobble = rgb(156, 150, 158),
-		CobbleLight = rgb(170, 164, 170),
-		CobbleDark = rgb(138, 132, 142),
-		Marble = rgb(224, 218, 212),
-		MarbleShade = rgb(200, 194, 204),
-		Brick = rgb(188, 134, 114),
-		BrickDark = rgb(152, 104, 94),
-		Stone = rgb(198, 190, 178), -- the stands' warm limestone tiers
-		StoneDark = rgb(182, 174, 164),
-		Sand = rgb(216, 198, 160),
-		SandDark = rgb(202, 182, 146),
-		SandLight = rgb(226, 210, 178),
-		Wood = rgb(116, 88, 70),
-		Planks = rgb(156, 118, 90),
-		Brass = rgb(214, 184, 122), -- the gold trim of big faces (Metal, saturation 0.43)
-		Gold = rgb(228, 186, 86), -- small gold pieces only (<= 8 studs^3)
-		Iron = rgb(78, 82, 100),
-		Steel = rgb(196, 202, 214),
-		Carpet = rgb(172, 100, 106), -- the avenue's runner (Fabric, saturation 0.42)
-		Soil = rgb(118, 92, 74),
-		Cloth = rgb(176, 104, 110), -- banners
+	P = { -- the Phase 4 arena palette (7aa0df2 ArenaBuilder `C`): cream stone, white marble, sand, gold, crimson
+		Lawn = C.Grass,
+		LawnLight = C.GrassLight,
+		LawnDark = C.GrassDark,
+		Hedge = C.Hedge,
+		HedgeLight = rgb(98, 172, 90),
+		Slate = C.PavingDark,
+		SlateLight = C.Paving,
+		SlateDark = C.StoneEdge,
+		Cobble = C.Paving,
+		CobbleLight = C.PavingLight,
+		CobbleDark = C.PavingWorn,
+		Marble = C.Marble,
+		MarbleShade = C.StoneLight,
+		Brick = C.StoneLight, -- the colosseum walls: P4 light cream stone
+		BrickDark = C.Stone,
+		Stone = C.StoneLight, -- the stands' tiers
+		StoneDark = C.Stone,
+		Sand = C.Sand,
+		SandDark = C.SandDark,
+		SandLight = C.SandLight,
+		Wood = rgb(132, 92, 62),
+		Planks = rgb(196, 146, 98),
+		Brass = C.Gold,
+		Gold = C.Gold,
+		Iron = C.Iron,
+		Steel = C.Steel,
+		Carpet = C.Crimson, -- the avenue's red carpet
+		Soil = C.Soil,
+		Cloth = C.Crimson, -- banners
 	},
-	Light = rgb(255, 214, 170), -- the warm lantern light of 6.4 rule 7
+	Light = C.Lamp,
 }
--- the material of each palette key (6.4 rule 1: WorldStyle.Materials only)
-Art.M = {
-	Lawn = MAT.Grass,
-	LawnLight = MAT.Grass,
-	LawnDark = MAT.Grass,
-	Hedge = MAT.LeafyGrass,
-	HedgeLight = MAT.LeafyGrass,
-	Slate = MAT.Slate,
-	SlateLight = MAT.Slate,
-	SlateDark = MAT.Slate,
-	Cobble = MAT.Cobblestone,
-	CobbleLight = MAT.Cobblestone,
-	CobbleDark = MAT.Cobblestone,
-	Marble = MAT.Marble,
-	MarbleShade = MAT.Marble,
-	Brick = MAT.Brick,
-	BrickDark = MAT.Brick,
-	Stone = MAT.Slate,
-	StoneDark = MAT.Slate,
-	Sand = MAT.Sand,
-	SandDark = MAT.Sand,
-	SandLight = MAT.Sand,
-	Wood = MAT.Wood,
-	Planks = MAT.WoodPlanks,
-	Brass = MAT.Metal,
-	Gold = MAT.Metal,
-	Iron = MAT.Metal,
-	Steel = MAT.Metal,
-	Carpet = MAT.Fabric,
-	Soil = MAT.Sand,
-	Cloth = MAT.Fabric,
-}
+-- the material of each palette key: SmoothPlastic everywhere (Phase 6 A1; the keys stay for the art code)
+Art.M = setmetatable({}, { __index = function()
+	return MAT.SmoothPlastic
+end })
 
--- A colour moved into the art rules' range, keeping its hue: saturation <= smax, value within vmin..vmax.
-function Art.tone(c, smax, vmin, vmax)
-	local r, g, b = c.R, c.G, c.B
-	local hi, lo = max(r, g, b), min(r, g, b)
-	local v = min(max(hi, vmin or 0.42), vmax or 0.86)
-	if hi - lo < 1e-6 then
-		return Color3.new(v, v, v)
-	end
-	local s = min((hi - lo) / max(hi, 1e-6), smax or 0.42)
-	local function ch(x)
-		return v * (1 - s * (hi - x) / (hi - lo))
-	end
-	return Color3.new(ch(r), ch(g), ch(b))
+-- Phase 6 A1: colours stay as bright as P4 (the Phase 5 muting is gone); the signature stays for the callers.
+function Art.tone(c)
+	return c
 end
 
 -- +-6 RGB per tile (6.4 rule 2), deterministic
@@ -1046,18 +1141,13 @@ function Art.part(parent, name, cf, size, key, opts)
 	if opts.Jitter then
 		color = Art.jit(color, opts.Jitter)
 	end
-	local mat = opts.Material or (type(key) == "string" and Art.M[key]) or nil
-	if not mat then
-		mat = (max(size.X, size.Y, size.Z) <= 2) and MAT.SmoothPlastic or MAT.Slate
-	end
+	local mat = opts.Material or MAT.SmoothPlastic
 	return box(parent, name, cf, size, color, { Collide = opts.Collide, Query = opts.Query, Material = mat, Transparency = opts.Transparency, Shadow = opts.Shadow })
 end
 
--- A round column standing on `cf` (its foot): h tall, d wide (a Cylinder part: no corners to chamfer, 6.4 rule 4).
+-- A column standing on `cf` (its foot): h tall, d wide. Phase 6 A1: a square voxel post (no Cylinder parts).
 function Art.cyl(parent, name, cf, h, d, key, opts)
-	local p = Art.part(parent, name, cf * CFrame.new(0, h / 2, 0) * CFrame.Angles(0, 0, pi / 2), Vector3.new(h, d, d), key, opts)
-	p.Shape = Enum.PartType.Cylinder
-	return p
+	return Art.part(parent, name, cf * CFrame.new(0, h / 2, 0), Vector3.new(d, h, d), key, opts)
 end
 
 function Art.tag(inst, which)
@@ -1072,9 +1162,6 @@ end
 -- A kerb + lip on a platform edge (WorldStyle.Kerb: cf = a point on the top surface at the edge, X along it,
 -- LookVector outward).
 function Art.kerb(parent, cf, length)
-	if WorldStyle and type(WorldStyle.Kerb) == "function" and pcall(WorldStyle.Kerb, parent, cf, length) then
-		return
-	end
 	Art.part(parent, "Kerb", cf * CFrame.new(0, 0.2, 0), Vector3.new(length, 0.4, 0.8), "Brick", { Collide = true })
 	Art.part(parent, "KerbLip", cf * CFrame.new(0, -0.25, -0.3), Vector3.new(length + 0.2, 0.3, 1), "SlateDark")
 end
@@ -1207,9 +1294,9 @@ function Art.shadeCloud(model, cf, depth)
 	return Art.tag(model, "Exempt")
 end
 
--- The safety net of 6.4 rules 1 + 2 + 8 over a built model (the voxel clouds / the crowd are exempt by tag):
--- a SmoothPlastic part with a side > 2 studs takes the stone default, a big face that is too saturated or too
--- dark / bright is moved into range (keeping its hue), parts < 4 studs cast no shadow. Returns how many it fixed.
+-- The safety net of Phase 6 A1 over a built model (the voxel clouds / the crowd are exempt by tag): every part is
+-- SmoothPlastic unless it is Neon / Glass / ForceField, every Part is a Block (no Ball / Cylinder), Reflectance 0;
+-- parts < 4 studs cast no shadow. Returns how many parts it had to fix (0 when every piece follows the rules).
 function Art.enforce(root)
 	local fixed = 0
 	local exemptTag = (WorldStyle and type(WorldStyle.Tags) == "table" and WorldStyle.Tags.Exempt) or "NC_StyleExempt"
@@ -1226,29 +1313,24 @@ function Art.enforce(root)
 	for _, p in ipairs(root:GetDescendants()) do
 		if p:IsA("BasePart") then
 			local s = p.Size
-			local big = max(s.X, s.Y, s.Z)
-			local small = min(s.X, s.Y, s.Z)
-			if big < 4 and p.CastShadow then
+			if max(s.X, s.Y, s.Z) < 4 and p.CastShadow then
 				p.CastShadow = false
 			end
-			if p.Transparency < 0.99 and not exempt(p) then
-				if p.Material == MAT.SmoothPlastic and big > 2 then
-					p.Material = MAT.Slate
-					fixed = fixed + 1
+			if not exempt(p) then
+				local bad = false
+				if not P4_MATS[p.Material] then
+					p.Material = MAT.SmoothPlastic
+					bad = true
 				end
-				local mid = s.X + s.Y + s.Z - big - small
-				local face, vol = big * mid, s.X * s.Y * s.Z
-				local neon = p.Material == MAT.Neon
-				if face > 16 and p.Material ~= MAT.ForceField then
-					local c = p.Color
-					local hi, lo = max(c.R, c.G, c.B), min(c.R, c.G, c.B)
-					local sat = hi > 0 and (hi - lo) / hi or 0
-					local satBad = sat > 0.45 and vol > 8 and not (neon and small <= 0.5)
-					local valueBad = (not neon) and p.Transparency < 0.3 and (hi < 0.35 or hi > 0.9)
-					if satBad or valueBad then
-						p.Color = Art.tone(c, satBad and 0.44 or 1, 0.36, 0.89)
-						fixed = fixed + 1
-					end
+				if p:IsA("Part") and p.Shape ~= Enum.PartType.Block then
+					p.Shape = Enum.PartType.Block
+					bad = true
+				end
+				if p.Reflectance ~= 0 and p.Material ~= MAT.Glass then
+					p.Reflectance = 0
+				end
+				if bad then
+					fixed = fixed + 1
 				end
 			end
 		end
@@ -1313,7 +1395,9 @@ local function buildCloud(parent, A)
 	}
 	local g = cloudGrid(spec)
 	-- the top tier's top face sits 1.2 under the walking surface (the ground layers lie on it)
-	return Art.shadeCloud(VX.Build(g, { V = 4, Pal = CLOUD_PAL, Name = "IslandCloud", CF = A * CFrame.new(0, -1.2 - 2, 0), Collide = true, MaxParts = 340, Parent = parent }), A, 30)
+	local cloud = Art.shadeCloud(VX.Build(g, { V = 4, Pal = CLOUD_PAL, Name = "IslandCloud", CF = A * CFrame.new(0, -1.2 - 2, 0), Collide = true, MaxParts = 340, Parent = parent }), A, 30)
+	Mesh.tag(cloud, "arena_island", A)
+	return cloud
 end
 
 -- the element of a stand segment (two neighbours share one) and the angle its section is centred on
@@ -1451,6 +1535,7 @@ local function buildGround(parent, A)
 		local turn = plaza * CFrame.Angles(0, sectionAngle(e), 0)
 		Art.part(av, "TrophyTile", turn * CFrame.new(0, -0.02, -7.6) * CFrame.Angles(0, rad(45), 0), Vector3.new(2, 0.3, 2), elementColor(e), { Material = MAT.Slate, Collide = true, Shadow = false })
 	end
+	Mesh.tag(f, "arena_forum", A)
 	return f
 end
 
@@ -1649,21 +1734,21 @@ end
 
 -- Phase 5 (6.4): Brick walls on a Slate plinth with Marble pilasters, string course and cornice; warm limestone
 -- tiers with Fabric seat cushions in the muted element colours; a Marble podium; brass trim; iron portcullises.
-local SEG_PAL = {
-	Podium = { Color = Art.P.MarbleShade, Material = MAT.Marble },
-	Cap = { Color = Art.P.Marble, Material = MAT.Marble },
-	TierA = { Color = Art.P.Stone, Material = MAT.Slate },
-	TierB = { Color = Art.P.StoneDark, Material = MAT.Slate },
-	Seat = { Color = Art.P.Cloth, Material = MAT.Fabric }, -- recoloured per segment
-	Wall = { Color = Art.P.Brick, Material = MAT.Brick },
-	Plinth = { Color = Art.P.Slate, Material = MAT.Slate },
-	Cornice = { Color = Art.P.Marble, Material = MAT.Marble },
-	Pilaster = { Color = Art.P.Marble, Material = MAT.Marble },
-	Recess = { Color = rgb(92, 96, 118), Material = MAT.Slate },
-	Gold = { Color = Art.P.Brass, Material = MAT.Metal },
-	Banner = { Color = Art.P.Cloth, Material = MAT.Fabric }, -- recoloured per segment
-	Iron = { Color = Art.P.Iron, Material = MAT.Metal },
-	Passage = { Color = Art.P.Slate, Material = MAT.Slate },
+local SEG_PAL = { -- the Phase 4 colosseum palette (7aa0df2), SmoothPlastic (Cap kept for the P5 coping)
+	Podium = C.Stone,
+	Cap = C.Marble,
+	TierA = C.StoneLight,
+	TierB = C.Stone,
+	Seat = C.Crimson, -- recoloured per segment
+	Wall = C.StoneLight,
+	Plinth = C.StoneDark,
+	Cornice = C.Marble,
+	Pilaster = C.Marble,
+	Recess = C.Recess,
+	Gold = C.Gold,
+	Banner = C.Crimson, -- recoloured per segment
+	Iron = C.Iron,
+	Passage = C.Stone,
 }
 
 local segTemplates = {}
@@ -1764,6 +1849,7 @@ local function buildFloor(parent, A)
 	end
 	ring16(m, "WheelRim", A, 14, 15.2, 0, 1, P.Brass, MAT.Metal, true)
 	disc16(m, "WheelCore", A, 5.5, 0.1, 1, P.Brass, MAT.Metal, true)
+	Mesh.tag(m, "arena_floor", A, nil, Mesh.Keep.Floor)
 	return m
 end
 
@@ -1789,6 +1875,7 @@ local function buildColosseum(parent, A)
 		recolor(seg, "Banner", Art.tone(elementColor(e), 0.44, 0.45, 0.78))
 		seg:SetAttribute("Element", ELEMENTS[e] and ELEMENTS[e].Id or "")
 		seg:SetAttribute("Kind", kind)
+		Mesh.tag(seg, "arena_seg_" .. string.lower(kind), cf, { Primary = Mesh.colorOf(seg, "Seat"), Secondary = Mesh.colorOf(seg, "Banner") })
 	end
 	local pillars = newModel(m, "Pillars")
 	for k = 0, 15 do
@@ -1802,6 +1889,7 @@ local function buildColosseum(parent, A)
 				pointLight(flame, Art.Light, 1.2, 16)
 			end
 		end
+		Mesh.tag(p, "arena_pillar", cf, nil, Mesh.Keep.Flame)
 	end
 	return m
 end
@@ -1956,6 +2044,7 @@ local function buildRing(parent, A, spec, index)
 		tagText(plate, "RingHint", "Challenge a player", "Heading", 19, C.Text, 2)
 		pads[#pads + 1] = base
 	end
+	Mesh.tag(m, "arena_ring_" .. index, cf, { Primary = accent, Secondary = curbColor }, Mesh.Keep.Ring)
 	return m, cf, pads
 end
 
@@ -1989,6 +2078,7 @@ local function boardFrame(parent, name, cf, w, h)
 	for _, sgn in ipairs({ -1, 1 }) do
 		Art.part(m, "Sword", cf * CFrame.new(0, base + h + 2.6, -0.1) * CFrame.Angles(0, 0, rad(sgn * 40)), Vector3.new(0.35, 3.6, 0.2), "Steel", { Shadow = false })
 	end
+	Mesh.tag(m, (name == "EventBoard") and "arena_board_event" or "arena_board_leader", cf, nil, Mesh.Keep.Board)
 	return m, panel
 end
 
@@ -2428,6 +2518,7 @@ local function buildForumDecor(parent, A)
 			local tm = place(torch(), A * CFrame.new(sx * 12.6, -0.2, z), m, "AvenueTorch")
 			recolor(tm, "Flame", flameColor(elementColor(t)))
 			Art.tag(tm, "Detail")
+			Mesh.tag(tm, "arena_torch", A * CFrame.new(sx * 12.6, -0.2, z), nil, Mesh.Keep.Flame)
 			local flame = tm:FindFirstChild("Flame")
 			if flame and z == -164 then
 				pointLight(flame, Art.Light, 1.2, 16)
@@ -2436,33 +2527,36 @@ local function buildForumDecor(parent, A)
 	end
 	for i, z in ipairs({ -175, -153 }) do
 		for _, sx in ipairs({ -1, 1 }) do
-			Art.hedgeBox(m, A * CFrame.new(sx * 13, -0.2, z) * CFrame.Angles(0, pi / 2, 0), 5, i * 7 + sx)
+			local hcf = A * CFrame.new(sx * 13, -0.2, z) * CFrame.Angles(0, pi / 2, 0)
+			Mesh.tag(Art.hedgeBox(m, hcf, 5, i * 7 + sx), "arena_hedge", hcf)
 		end
 	end
 	-- banner poles at the arrival
-	bannerPole(m, A * CFrame.new(-18, -0.2, ISL.FrontZ + 10) * CFrame.Angles(0, pi, 0), C.Crimson)
-	bannerPole(m, A * CFrame.new(18, -0.2, ISL.FrontZ + 10), C.Crimson)
+	for _, bcf in ipairs({ A * CFrame.new(-18, -0.2, ISL.FrontZ + 10) * CFrame.Angles(0, pi, 0), A * CFrame.new(18, -0.2, ISL.FrontZ + 10) }) do
+		Mesh.tag(bannerPole(m, bcf, C.Crimson), "arena_bannerpole", bcf)
+	end
 	-- planters between the rings and the colosseum
 	for _, p in ipairs({ { -60, -102, 0 }, { 60, -102, 0 } }) do
-		Art.tag(place(planter(), A * CFrame.new(p[1], 0, p[2]) * CFrame.Angles(0, p[3], 0), m, "Planter"), "Detail")
+		local pcf = A * CFrame.new(p[1], 0, p[2]) * CFrame.Angles(0, p[3], 0)
+		Mesh.tag(Art.tag(place(planter(), pcf, m, "Planter"), "Detail"), "arena_planter", pcf)
 	end
 	-- trees on the lawns (the front corners, beside the stands) and lanterns along the promenade (every ~24 studs,
 	-- alternating sides of a bench-free walk: a detail every ~12 studs along each side)
 	local trees = { { -84, -100, 1.1 }, { 84, -100, 1.0 }, { -92, -66, 0.95 }, { 92, -66, 1.05 }, { -84, -190, 0.85 }, { 84, -190, 0.9 } }
 	for i, tr in ipairs(trees) do
-		Art.tree(m, A * CFrame.new(tr[1], -0.2, tr[2]), tr[3], i)
+		Mesh.tag(Art.tree(m, A * CFrame.new(tr[1], -0.2, tr[2]), tr[3], i), "arena_tree", A * CFrame.new(tr[1], -0.2, tr[2]), nil, nil, tr[3])
 	end
 	local lit = 0
 	for _, sx in ipairs({ -1, 1 }) do
 		for i, z in ipairs({ -168, -144, -120, -84, -48 }) do
 			lit = lit + 1
-			Art.lantern(m, A * CFrame.new(sx * (ISL.HalfW - 4.6), -0.15, z), i % 2 == 1)
+			Mesh.tag(Art.lantern(m, A * CFrame.new(sx * (ISL.HalfW - 4.6), -0.15, z), i % 2 == 1), "arena_lantern", A * CFrame.new(sx * (ISL.HalfW - 4.6), -0.15, z), nil, Mesh.Keep.Lantern)
 		end
 	end
 	for _, x in ipairs({ -66, -40, 40, 66 }) do
-		Art.lantern(m, A * CFrame.new(x, -0.15, ISL.FrontZ + 4.6), abs(x) == 40)
+		Mesh.tag(Art.lantern(m, A * CFrame.new(x, -0.15, ISL.FrontZ + 4.6), abs(x) == 40), "arena_lantern", A * CFrame.new(x, -0.15, ISL.FrontZ + 4.6), nil, Mesh.Keep.Lantern)
 	end
-	buildTrophy(m, A * CFrame.new(0, -0.2, -124))
+	Mesh.tag(buildTrophy(m, A * CFrame.new(0, -0.2, -124)), "arena_trophy", A * CFrame.new(0, -0.2, -124), nil, Mesh.Keep.Trophy)
 	return m
 end
 
@@ -2569,6 +2663,7 @@ local function buildBridge(parent, A, startZ, endZ)
 			Art.tag(place(puff, A * CFrame.new(0, -1.6, z), m, "BridgePuff"), "Exempt")
 		end
 	end
+	Mesh.tag(m, "arena_bridge", A, nil, Mesh.Keep.Bridge)
 	return m
 end
 
@@ -2992,6 +3087,7 @@ function ArenaBuilder.BuildPocket(index, kind)
 	local model = place(tpl, cf, holder, "RingPocket_" .. index)
 	model:SetAttribute("PocketIndex", index)
 	model:SetAttribute("PocketKind", "Ring")
+	Mesh.tag(model, "arena_pocket", cf, nil, Mesh.Keep.Pocket)
 	local floorSize = zoneFloorSize("Ring")
 	local hf = Ring.FloorA
 	local zone = makeZone(model, "BattleZone_Ring", cf, Ring.RimOut, "Ring", floorSize, "Ring", index)

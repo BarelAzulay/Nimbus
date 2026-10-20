@@ -367,6 +367,38 @@ local function sculptPedestal(seed)
 	return g
 end
 
+-- Phase 6 (ARCHITECTURE_V3.md "## Phase 6" A7): the Part pedestal stays (the fallback; the Collider is separate) and
+-- is tagged for the Blender mesh npc_pedestal (one design; the rug / trim follow the NPC accent through ML_Primary).
+-- Clients dress it (MeshLibrary.Dress). Only once the key has an uploaded id: with an empty MeshIds nothing changes.
+local PEDESTAL_KEY = "npc_pedestal"
+local meshLib = nil
+local function meshLibrary()
+	if meshLib == nil then
+		meshLib = false
+		local module = Shared:FindFirstChild("MeshLibrary")
+		if module then
+			local ok, result = pcall(require, module)
+			if ok and type(result) == "table" and type(result.Tag) == "function" then
+				meshLib = result
+			end
+		end
+	end
+	return meshLib or nil
+end
+
+local function tagPedestal(model, origin, accent)
+	local ML = meshLibrary()
+	if not ML or type(ML.Status) ~= "function" then
+		return false
+	end
+	local okStatus, st = pcall(ML.Status, PEDESTAL_KEY)
+	if not okStatus or st == "missing" then
+		return false
+	end
+	ML.Tag(model, PEDESTAL_KEY, { Primary = accent, Offset = model:GetPivot():Inverse() * origin })
+	return true
+end
+
 local function buildPedestal(parent, spot, accent, seed)
 	if not Voxel then
 		-- no voxel kit: a plain two-tier plinth so the NPC still stands somewhere
@@ -381,6 +413,7 @@ local function buildPedestal(parent, spot, accent, seed)
 		return m
 	end
 	local g = sculptPedestal(seed)
+	local origin = spot * CFrame.new(0, PV / 2 - SINK, 0) -- where grid voxel (0, 0, 0) sits = the mesh pivot
 	local model = Voxel.Build(g, {
 		VoxelSize = PV,
 		Palette = pedestalPalette(accent),
@@ -394,8 +427,33 @@ local function buildPedestal(parent, spot, accent, seed)
 		Keep = { "Gold", "Trim", "Rug", "RugTop", "RugTrim", "RugCenter", "Plaque" },
 		PrimaryKey = "Stone",
 	})
+	tagPedestal(model, origin, accent)
 	model.Parent = parent
 	return model
+end
+
+-- tests (tools/smoke_p6_creatures.lua): build one pedestal (Model "Pedestal") under `parent` at `spot`, tagged for
+-- the mesh exactly like the NPCs' own. Returns the model.
+function NpcService._BuildPedestal(parent, spot, accent, seed)
+	return buildPedestal(parent, spot, accent, seed)
+end
+
+-- Phase 6 kit hook (read-only, never called by the game): the pedestal design for blender/kit/props/creatures.py
+-- (key npc_pedestal): the voxel grid of seed `seed`, its palette for `accent`, and the layout numbers.
+function NpcService._Blueprint(seed, accent)
+	if not Voxel then
+		return nil
+	end
+	accent = typeof(accent) == "Color3" and accent or rgb(120, 180, 236)
+	return {
+		Grid = sculptPedestal(tonumber(seed) or 1),
+		Palette = pedestalPalette(accent),
+		PV = PV,
+		Sink = SINK,
+		Top = PEDESTAL_TOP,
+		Accent = accent,
+		Keep = { "Gold", "Trim", "Rug", "RugTop", "RugTrim", "RugCenter", "Plaque" },
+	}
 end
 
 ----------------------------------------------------------------------
@@ -529,7 +587,7 @@ local function catalogPet(def)
 	return list[1]
 end
 
-local function buildNpc(def, spot, index)
+local function buildNpc(def, spot, index, detached)
 	local accent = typeof(def.Accent) == "Color3" and def.Accent or rgb(120, 180, 236)
 	local model = make("Model", { Name = "Npc_" .. tostring(def.Id) }, nil)
 	model:SetAttribute("NpcId", def.Id)
@@ -664,7 +722,9 @@ local function buildNpc(def, spot, index)
 
 	CollectionService:AddTag(model, TAG)
 	model:SetAttribute("Ready", true)
-	model.Parent = folder -- parented last: the whole NPC replicates in one step
+	if not detached then
+		model.Parent = folder -- parented last: the whole NPC replicates in one step
+	end
 	return {
 		Id = def.Id,
 		Name = def.Name,
@@ -673,6 +733,27 @@ local function buildNpc(def, spot, index)
 		Prompt = prompt,
 		Spot = spot,
 	}
+end
+
+-- Phase 6: the NPCs are built at boot, usually before MeshLibrary has loaded the pet keys. Once they are ready the
+-- whole NPC is rebuilt in place with the Blender mesh pet (MeshLibrary.Swap: same name and folder; the clients'
+-- NpcController sets the new model up like any NPC) and the record takes the new instances. Empty MeshIds = nothing.
+local function watchMeshPet(rec, def, spot, index)
+	local petDef = catalogPet(def)
+	if not rec.Pet or not petDef or not PetBuilder or type(PetBuilder.SwapWhenReady) ~= "function" then
+		return
+	end
+	local built = nil
+	pcall(PetBuilder.SwapWhenReady, rec.Model, petDef, { Scale = def.Scale or NPC_SCALE, Detail = "High" }, function()
+		built = buildNpc(def, spot, index, true)
+		return built and built.Model or nil
+	end, function(fresh)
+		if built and built.Model == fresh then
+			for k, v in pairs(built) do
+				rec[k] = v
+			end
+		end
+	end)
 end
 
 ----------------------------------------------------------------------
@@ -698,6 +779,7 @@ function NpcService.Init(lobbyInfo, deps)
 			local ok, rec = pcall(buildNpc, def, spots[i], i)
 			if ok and rec then
 				records[#records + 1] = rec
+				watchMeshPet(rec, def, spots[i], i)
 			else
 				warn("[NpcService] NPC " .. tostring(def.Id) .. " failed: " .. tostring(rec))
 			end

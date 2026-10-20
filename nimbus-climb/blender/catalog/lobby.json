@@ -1,0 +1,653 @@
+{
+ "class": "lobby",
+ "owner": "W2 art-lobby",
+ "doc": "blender/README.md + docs/phase6/review/lobby/README.md. Keys: prop_<name> (designed props: kit/props/lobby.py), cloud_<name> (the game's own VX.Cloud specs re-voxeled finer: kit/props/lobby_world.py lobby_cloud), floor_<area>[_<i>] (layout pieces meshed from their own Part boxes: lobby_boxes). Pivot = the Mesh.tag origin in LobbyBuilder / StormAltar; layout-baked keys carry the LayoutSig attachment (tagged only while the live build matches).",
+ "budgets": {
+  "prop": {
+   "tris": 2000,
+   "parts": 8
+  },
+  "propBig": {
+   "tris": 4000,
+   "parts": 8
+  },
+  "plot": {
+   "tris": 9000,
+   "parts": 8,
+   "maxPartTris": 10000
+  },
+  "cloud": {
+   "tris": 3500,
+   "parts": 2
+  },
+  "island": {
+   "tris": 14000,
+   "parts": 3,
+   "maxPartTris": 10000
+  },
+  "floor": {
+   "tris": 10000,
+   "parts": 8,
+   "maxPartTris": 10000
+  },
+  "centrepiece": {
+   "tris": 7500,
+   "parts": 8
+  }
+ },
+ "keys": [
+  {
+   "key": "floor_plaza_lawn",
+   "type": "prop",
+   "prop": "lobby_boxes",
+   "budget": "floor",
+   "description": "Lobby floor: plaza lawn layer"
+  },
+  {
+   "key": "floor_plaza_lawnpatches",
+   "type": "prop",
+   "prop": "lobby_boxes",
+   "budget": "floor",
+   "description": "Lobby floor: plaza lawn patches + flowers"
+  },
+  {
+   "key": "floor_plaza_pathborders",
+   "type": "prop",
+   "prop": "lobby_boxes",
+   "budget": "floor",
+   "description": "Lobby floor: plaza path borders"
+  },
+  {
+   "key": "floor_plaza_paths",
+   "type": "prop",
+   "prop": "lobby_boxes",
+   "budget": "floor",
+   "description": "Lobby floor: plaza stone paths"
+  },
+  {
+   "key": "floor_plaza_inlays",
+   "type": "prop",
+   "prop": "lobby_boxes",
+   "budget": "floor",
+   "description": "Lobby floor: spawn medallion inlays"
+  },
+  {
+   "key": "floor_plaza_courts",
+   "type": "prop",
+   "prop": "lobby_boxes",
+   "budget": "floor",
+   "description": "Lobby floor: spawn court + Gate Court tiles"
+  },
+  {
+   "key": "floor_plaza_walk",
+   "type": "prop",
+   "prop": "lobby_boxes",
+   "budget": "floor",
+   "description": "Lobby floor: the cobbled circle walk"
+  },
+  {
+   "key": "floor_plaza_edges",
+   "type": "prop",
+   "prop": "lobby_boxes",
+   "budget": "floor",
+   "description": "Lobby floor: plaza edge kerb"
+  },
+  {
+   "key": "floor_shop_1",
+   "type": "prop",
+   "prop": "lobby_boxes",
+   "budget": "floor",
+   "description": "Lobby floor: shop island ground layer 1"
+  },
+  {
+   "key": "floor_shop_2",
+   "type": "prop",
+   "prop": "lobby_boxes",
+   "budget": "floor",
+   "description": "Lobby floor: shop island ground layer 2"
+  },
+  {
+   "key": "floor_shop_3",
+   "type": "prop",
+   "prop": "lobby_boxes",
+   "budget": "floor",
+   "description": "Lobby floor: shop island ground layer 3"
+  },
+  {
+   "key": "floor_shop_4",
+   "type": "prop",
+   "prop": "lobby_boxes",
+   "budget": "floor",
+   "description": "Lobby floor: shop island ground layer 4"
+  },
+  {
+   "key": "floor_shop_5",
+   "type": "prop",
+   "prop": "lobby_boxes",
+   "budget": "floor",
+   "description": "Lobby floor: shop island ground layer 5"
+  },
+  {
+   "key": "floor_garden_blossom_1",
+   "type": "prop",
+   "prop": "lobby_boxes",
+   "budget": "floor",
+   "description": "Lobby floor: blossom garden ground layer 1"
+  },
+  {
+   "key": "floor_garden_blossom_2",
+   "type": "prop",
+   "prop": "lobby_boxes",
+   "budget": "floor",
+   "description": "Lobby floor: blossom garden ground layer 2"
+  },
+  {
+   "key": "floor_garden_blossom_3",
+   "type": "prop",
+   "prop": "lobby_boxes",
+   "budget": "floor",
+   "description": "Lobby floor: blossom garden ground layer 3"
+  },
+  {
+   "key": "floor_garden_blossom_4",
+   "type": "prop",
+   "prop": "lobby_boxes",
+   "budget": "floor",
+   "description": "Lobby floor: blossom garden ground layer 4"
+  },
+  {
+   "key": "floor_garden_pond_1",
+   "type": "prop",
+   "prop": "lobby_boxes",
+   "budget": "floor",
+   "description": "Lobby floor: pond garden ground layer 1"
+  },
+  {
+   "key": "floor_garden_pond_2",
+   "type": "prop",
+   "prop": "lobby_boxes",
+   "budget": "floor",
+   "description": "Lobby floor: pond garden ground layer 2"
+  },
+  {
+   "key": "floor_garden_pond_3",
+   "type": "prop",
+   "prop": "lobby_boxes",
+   "budget": "floor",
+   "description": "Lobby floor: pond garden ground layer 3"
+  },
+  {
+   "key": "floor_garden_pond_4",
+   "type": "prop",
+   "prop": "lobby_boxes",
+   "budget": "floor",
+   "description": "Lobby floor: pond garden ground layer 4"
+  },
+  {
+   "key": "floor_junction_plain",
+   "type": "prop",
+   "prop": "lobby_boxes",
+   "budget": "floor",
+   "description": "Lobby floor: ring street plank junction"
+  },
+  {
+   "key": "floor_junction_spoke",
+   "type": "prop",
+   "prop": "lobby_boxes",
+   "budget": "floor",
+   "description": "Lobby floor: street junction (spoke dock)"
+  },
+  {
+   "key": "floor_junction_garden",
+   "type": "prop",
+   "prop": "lobby_boxes",
+   "budget": "floor",
+   "description": "Lobby floor: street junction (garden dock)"
+  },
+  {
+   "key": "floor_junction_arena",
+   "type": "prop",
+   "prop": "lobby_boxes",
+   "budget": "floor",
+   "description": "Lobby floor: street junction (arena gap)"
+  },
+  {
+   "key": "floor_junction_altar",
+   "type": "prop",
+   "prop": "lobby_boxes",
+   "budget": "floor",
+   "description": "Lobby floor: street junction (altar dock)"
+  },
+  {
+   "key": "floor_spoke",
+   "type": "prop",
+   "prop": "lobby_boxes",
+   "budget": "floor",
+   "description": "Lobby floor: spoke bridge (plaza to street)"
+  },
+  {
+   "key": "floor_garden_bridge",
+   "type": "prop",
+   "prop": "lobby_boxes",
+   "budget": "floor",
+   "description": "Lobby floor: garden bridge"
+  },
+  {
+   "key": "floor_altar_bridge",
+   "type": "prop",
+   "prop": "lobby_boxes",
+   "budget": "floor",
+   "description": "Lobby floor: Storm Altar bridge"
+  },
+  {
+   "key": "cloud_plaza",
+   "type": "prop",
+   "prop": "lobby_cloud",
+   "budget": "island",
+   "description": "Lobby cloud: the plaza island body",
+   "args": {
+    "V": 2.25
+   }
+  },
+  {
+   "key": "cloud_shop",
+   "type": "prop",
+   "prop": "lobby_cloud",
+   "budget": "island",
+   "description": "Lobby cloud: the shop island body",
+   "args": {
+    "V": 1.5
+   }
+  },
+  {
+   "key": "cloud_garden_blossom",
+   "type": "prop",
+   "prop": "lobby_cloud",
+   "budget": "island",
+   "description": "Lobby cloud: blossom garden island",
+   "args": {
+    "V": 1.5
+   }
+  },
+  {
+   "key": "cloud_garden_pond",
+   "type": "prop",
+   "prop": "lobby_cloud",
+   "budget": "island",
+   "description": "Lobby cloud: lily pond island",
+   "args": {
+    "V": 1.5
+   }
+  },
+  {
+   "key": "cloud_puff_s",
+   "type": "prop",
+   "prop": "lobby_cloud",
+   "budget": "cloud",
+   "description": "Lobby cloud: small puff under bridges",
+   "args": {
+    "V": 1.0,
+    "template": "PuffS"
+   }
+  },
+  {
+   "key": "cloud_sky_big",
+   "type": "prop",
+   "prop": "lobby_cloud",
+   "budget": "cloud",
+   "description": "Lobby cloud: big distant cumulus",
+   "args": {
+    "V": 3.0,
+    "template": "SkyBig"
+   }
+  },
+  {
+   "key": "cloud_sky_small",
+   "type": "prop",
+   "prop": "lobby_cloud",
+   "budget": "cloud",
+   "description": "Lobby cloud: small distant cumulus",
+   "args": {
+    "V": 2.0,
+    "template": "SkySmall"
+   }
+  },
+  {
+   "key": "cloud_storm_puff",
+   "type": "prop",
+   "prop": "lobby_boxes",
+   "budget": "cloud",
+   "description": "Storm Altar: small storm puff under the bridge"
+  },
+  {
+   "key": "cloud_altar",
+   "type": "prop",
+   "prop": "altar_island",
+   "budget": "island",
+   "description": "Storm Altar island: walking top + storm billows + hanging belly",
+   "args": {
+    "bv": 1.0,
+    "f": 2.0
+   }
+  },
+  {
+   "key": "prop_altar_ring",
+   "type": "prop",
+   "prop": "lobby_boxes",
+   "budget": "propBig",
+   "description": "Storm Altar: the charcoal stone ring"
+  },
+  {
+   "key": "prop_altar_portal",
+   "type": "prop",
+   "prop": "lobby_boxes",
+   "budget": "prop",
+   "description": "Storm Altar: the portal disc and rim"
+  },
+  {
+   "key": "prop_altar_crystals",
+   "type": "prop",
+   "prop": "lobby_boxes",
+   "budget": "prop",
+   "description": "Storm Altar: the glowing crystals"
+  },
+  {
+   "key": "prop_altar_sign",
+   "type": "prop",
+   "prop": "lobby_boxes",
+   "budget": "prop",
+   "description": "Storm Altar: the entrance gate (poster board stays a Part)"
+  },
+  {
+   "key": "prop_tree_round",
+   "type": "prop",
+   "prop": "lobby_tree",
+   "budget": "propBig",
+   "description": "Lobby tree: round green tree with red fruit",
+   "args": {
+    "kind": "Round"
+   }
+  },
+  {
+   "key": "prop_tree_blossom",
+   "type": "prop",
+   "prop": "lobby_tree",
+   "budget": "propBig",
+   "description": "Lobby tree: pink blossom tree",
+   "args": {
+    "kind": "Blossom",
+    "K": 1.8
+   }
+  },
+  {
+   "key": "prop_tree_pine",
+   "type": "prop",
+   "prop": "lobby_tree",
+   "budget": "propBig",
+   "description": "Lobby tree: three-tier pine",
+   "args": {
+    "kind": "Pine",
+    "K": 1.7
+   }
+  },
+  {
+   "key": "prop_lamp",
+   "type": "prop",
+   "prop": "lobby_lamp",
+   "budget": "prop",
+   "description": "Lobby lamp post with a warm lantern"
+  },
+  {
+   "key": "prop_bench",
+   "type": "prop",
+   "prop": "lobby_bench",
+   "budget": "prop",
+   "description": "Lobby wooden bench"
+  },
+  {
+   "key": "prop_flowerbed",
+   "type": "prop",
+   "prop": "lobby_flowerbed",
+   "budget": "prop",
+   "description": "Lobby flower bed (flowers follow the bed's two colours)"
+  },
+  {
+   "key": "prop_fountain",
+   "type": "prop",
+   "prop": "lobby_fountain",
+   "budget": "centrepiece",
+   "description": "Plaza fountain basin"
+  },
+  {
+   "key": "prop_fountain_water",
+   "type": "prop",
+   "prop": "lobby_fountain",
+   "budget": "prop",
+   "description": "Plaza fountain water",
+   "args": {
+    "water": true
+   }
+  },
+  {
+   "key": "prop_welcome_arch",
+   "type": "prop",
+   "prop": "lobby_welcome_arch",
+   "budget": "propBig",
+   "description": "Welcome arch over the avenue (the sign board stays a Part)"
+  },
+  {
+   "key": "prop_obelisk",
+   "type": "prop",
+   "prop": "lobby_obelisk",
+   "budget": "prop",
+   "description": "Gate Court obelisk (band follows the look colour)"
+  },
+  {
+   "key": "prop_banner",
+   "type": "prop",
+   "prop": "lobby_banner",
+   "budget": "prop",
+   "description": "Gate Court banner pole (cloth follows the gate colour)"
+  },
+  {
+   "key": "prop_board_s",
+   "type": "prop",
+   "prop": "lobby_board",
+   "budget": "prop",
+   "description": "Notice board 11 x 8 (the face stays a Part)",
+   "args": {
+    "w": 11,
+    "h": 8
+   }
+  },
+  {
+   "key": "prop_board_l",
+   "type": "prop",
+   "prop": "lobby_board",
+   "budget": "prop",
+   "description": "Notice board 14 x 9 (the face stays a Part)",
+   "args": {
+    "w": 14,
+    "h": 9
+   }
+  },
+  {
+   "key": "prop_roulette",
+   "type": "prop",
+   "prop": "lobby_roulette",
+   "budget": "propBig",
+   "description": "Shop roulette machine (cabinet = roulette colour, eggs = its top rarity)"
+  },
+  {
+   "key": "prop_item_stall",
+   "type": "prop",
+   "prop": "lobby_stall",
+   "budget": "propBig",
+   "description": "Shop item stall"
+  },
+  {
+   "key": "prop_token_statue",
+   "type": "prop",
+   "prop": "lobby_token_statue",
+   "budget": "prop",
+   "description": "Shop token statue (big gold coin)"
+  },
+  {
+   "key": "prop_shop_arch",
+   "type": "prop",
+   "prop": "lobby_shop_arch",
+   "budget": "propBig",
+   "description": "Shop entrance arch (the sign board stays a Part)"
+  },
+  {
+   "key": "prop_pond",
+   "type": "prop",
+   "prop": "lobby_pond",
+   "budget": "propBig",
+   "description": "Lily pond stones and lilies"
+  },
+  {
+   "key": "prop_pond_water",
+   "type": "prop",
+   "prop": "lobby_pond",
+   "budget": "prop",
+   "description": "Lily pond water",
+   "args": {
+    "water": true
+   }
+  },
+  {
+   "key": "prop_plot",
+   "type": "prop",
+   "prop": "lobby_plot",
+   "budget": "plot",
+   "description": "Home plot: cloud cushion, lawn, street, hedge, fence, gate, mailbox (the podium stays a Part)",
+   "args": {
+    "V": 2.0
+   }
+  },
+  {
+   "key": "prop_plot_low",
+   "type": "prop",
+   "prop": "lobby_plot",
+   "budget": "plot",
+   "description": "Home plot far LOD (HomeFx Low / Far tiers): the same plot with a 4-stud cloud cushion and plain-box fence posts; prop_plot's LayoutSig",
+   "args": {
+    "V": 4.0
+   }
+  }
+ ],
+ "sets": [],
+ "previews": [
+  {
+   "name": "lobby_prop_tree_round",
+   "body": "prop_tree_round",
+   "res": 420
+  },
+  {
+   "name": "lobby_prop_tree_blossom",
+   "body": "prop_tree_blossom",
+   "res": 420
+  },
+  {
+   "name": "lobby_prop_tree_pine",
+   "body": "prop_tree_pine",
+   "res": 420
+  },
+  {
+   "name": "lobby_prop_lamp",
+   "body": "prop_lamp",
+   "res": 420
+  },
+  {
+   "name": "lobby_prop_bench",
+   "body": "prop_bench",
+   "res": 420
+  },
+  {
+   "name": "lobby_prop_flowerbed",
+   "body": "prop_flowerbed",
+   "res": 420
+  },
+  {
+   "name": "lobby_prop_fountain",
+   "body": "prop_fountain",
+   "res": 420
+  },
+  {
+   "name": "lobby_prop_welcome_arch",
+   "body": "prop_welcome_arch",
+   "res": 420
+  },
+  {
+   "name": "lobby_prop_obelisk",
+   "body": "prop_obelisk",
+   "res": 420
+  },
+  {
+   "name": "lobby_prop_banner",
+   "body": "prop_banner",
+   "res": 420
+  },
+  {
+   "name": "lobby_prop_board_s",
+   "body": "prop_board_s",
+   "res": 420
+  },
+  {
+   "name": "lobby_prop_roulette",
+   "body": "prop_roulette",
+   "res": 420
+  },
+  {
+   "name": "lobby_prop_item_stall",
+   "body": "prop_item_stall",
+   "res": 420
+  },
+  {
+   "name": "lobby_prop_token_statue",
+   "body": "prop_token_statue",
+   "res": 420
+  },
+  {
+   "name": "lobby_prop_shop_arch",
+   "body": "prop_shop_arch",
+   "res": 420
+  },
+  {
+   "name": "lobby_prop_pond",
+   "body": "prop_pond",
+   "res": 420
+  },
+  {
+   "name": "lobby_prop_plot",
+   "body": "prop_plot",
+   "res": 420
+  },
+  {
+   "name": "lobby_cloud_altar",
+   "body": "cloud_altar",
+   "res": 420
+  },
+  {
+   "name": "lobby_cloud_puff_s",
+   "body": "cloud_puff_s",
+   "res": 420
+  },
+  {
+   "name": "lobby_cloud_sky_big",
+   "body": "cloud_sky_big",
+   "res": 420
+  },
+  {
+   "name": "lobby_prop_altar_crystals",
+   "body": "prop_altar_crystals",
+   "res": 420
+  },
+  {
+   "name": "lobby_prop_altar_ring",
+   "body": "prop_altar_ring",
+   "res": 420
+  }
+ ]
+}

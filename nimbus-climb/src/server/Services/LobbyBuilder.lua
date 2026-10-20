@@ -4,18 +4,21 @@
 -- Top view (+X right, +Z up the page, angles in degrees: x = cos, z = sin, plaza centre = Origin):
 --
 --   * PLAZA          a big round cloud island (Phase 5: PlazaRadius 150, 1.8x the Phase 4 area). Its body is a tiered
---                    voxel cloud (the clouds keep their look on purpose, tagged NC_StyleExempt); the top is built in
---                    the 6.4 art rules (WorldStyle materials, muted big surfaces, plinth + body + cap): the spawn court
---                    (concentric Slate tile rings, a Marble ring, a Metal sun medallion with six Neon arrows in the gate
---                    colours), the grand avenue to the Gate Court (Cobblestone, Brick kerbs, lamps every 16 studs, a
---                    tall stone welcome arch at r 40 carrying the welcome sign), the cobbled circle walk (r 100) with
---                    clipped hedges and lamps, the east / west walks, the shop boardwalk with the fountain roundabout,
---                    lawns with trees, benches, flower beds and the six NPC spots, a Brick kerb along the edge.
---   * GATE COURT     (6.1) a sector 48..132 degrees, r 96..146: Slate tile rings, a Marble rim, a raised terrace with
---                    hedges, a banner behind every gate and two obelisks. Six gates left -> right Home, Obby, Dungeon,
---                    Ring, Arena, Altar on the arc r Config.Lobby.GateArcRadius, GateStep degrees apart around
---                    GateFacing, every gate facing the spawn (WorldStyle.BuildGate). This module builds Home, Obby and
---                    Altar into the Gates folder; ArenaBuilder adds Ring + Arena, DungeonBuilder (W3) the Dungeon gate.
+--                    voxel cloud (white / light-blue, tagged NC_StyleExempt); the top is built in the Phase 4 look again
+--                    (Phase 6, 6.0.2 / 6.1 A1: SmoothPlastic, bright lime grass, cream stone paths with darker borders,
+--                    glow in Neon) on the Phase 5 layout: the spawn court (concentric cream stone tile rings, a light
+--                    ring, a gold sun medallion with Neon arrows in the gate colours), the grand avenue to the Gate
+--                    Court (stone kerbs, lamps every 16 studs, a tall cream welcome arch at r 40 carrying the welcome
+--                    sign), the circle walk (r 100) with clipped hedges and lamps, the east / west walks, the shop
+--                    boardwalk with the fountain roundabout, lawns with trees, benches, flower beds and the six NPC
+--                    spots, a kerb along the edge.
+--   * GATE COURT     (6.1) a sector 48..132 degrees, r 96..146: cream tile rings, a light rim, a raised terrace with
+--                    hedges, a banner behind every gate and two obelisks. Five gates left -> right Obby, Dungeon, Ring,
+--                    Arena, Altar on the arc r Config.Lobby.GateArcRadius, spread evenly over the court's six Phase 5
+--                    slots (GateStep degrees apart) around GateFacing, the Ring gate in the middle, every gate facing
+--                    the spawn (WorldStyle.BuildGate: the P4 round voxel hoop family, 6.0.3). Phase 6: no Home gate (the
+--                    player asked; the Home window's Go home portal is the way home). This module builds Obby and Altar
+--                    into the Gates folder; ArenaBuilder adds Ring + Arena, DungeonBuilder the Dungeon gate.
 --   * SHOP ISLAND    at Config.Lobby.ShopOffset: four voxel gacha machines (Model Roulette_<Id>, built in
 --                    the roulette colour), the striped item stall (Model ItemShop), a rarity board, a token
 --                    statue and an entrance arch, joined to the plaza by a short stone neck.
@@ -42,9 +45,9 @@
 --   ArenaAngle = degrees | nil  the spoke just past the last portal; its junction's OUTER rope rail is open
 --   ArenaDock = Vector3 | nil   outer edge of that junction on the spoke's ray: the arena bridge leaves the street here
 --   ArenaBridgeWidth = studs    the arena bridge's deck width (the rail gap is 1.6 studs wider)
---   Phase 5 (6.1): GateSites = { Home, Obby, Dungeon, Ring, Arena, Altar } ground CFrames of the gate centres
+--   Phase 5 (6.1): GateSites = { Obby, Dungeon, Ring, Arena, Altar } ground CFrames of the gate centres
 --                              (LookVector = towards the plaza centre); RingSite = GateSites.Ring; DungeonSite =
---                              GateSites.Dungeon; GatesFolder = workspace.NimbusLobby.Gates; Gates = { Home, Obby, Altar
+--                              GateSites.Dungeon; GatesFolder = workspace.NimbusLobby.Gates; Gates = { Obby, Altar
 --                              = { Model, Pad, PromptPart } } (GateService / PortalService put the prompts on them).
 --                              NimbusLobby.PartCount is written by Main after the last gate builder, not here.
 -- SpotInfo also carries PlotCFrame (centre of the flat yard surface, LookVector = towards the gate),
@@ -137,6 +140,7 @@ local G = {}
 G.GateR = LOBBY.GateArcRadius or 118
 G.GateStep = LOBBY.GateStep or 14.5
 G.GateFacing = LOBBY.GateFacing or 90
+G.CourtSlots = 6 -- Phase 6: the court keeps its Phase 5 width of six gate slots; the five gates spread over it
 G.CourtR = 34 -- the spawn court (Slate rings + a Marble ring around the medallion)
 G.AvenueHalf = 10 -- the grand avenue to the Gate Court (20 wide, Cobblestone, Brick kerbs)
 G.RingRoadR = 100 -- the cobbled circle walk around the lawns (the spokes leave it)
@@ -175,76 +179,68 @@ local function rgb(r, g, b)
 	return Color3.fromRGB(r, g, b)
 end
 
--- Phase 5 (6.4 "less cute, crafted, still bright"): the colours follow WorldStyle.Palette (big surfaces muted:
--- saturation <= 0.45, value 0.35..0.9), every key has a WorldStyle material (MATS), and the clouds use the sky
--- shading of rule 9 (tops 250,244,252; sides 226,214,240; undersides 186,172,222).
+-- Phase 6 (6.0.2 / 6.1 A1): the Phase 4 look again (7aa0df2 LobbyBuilder palette): bright lime grass, cream stone
+-- paths with darker borders, white / light-blue clouds, everything SmoothPlastic (glow Neon, water Glass). The
+-- Phase 5 layout keys (Slate courts, Marble rings and arches, Navy signs) keep their names with P4 colours.
 local C = {
-	CloudLight = rgb(250, 244, 252),
-	Cloud = rgb(240, 232, 248),
-	CloudShade = rgb(226, 214, 240),
-	Mist = rgb(206, 193, 232),
-	MistDark = rgb(186, 172, 222),
-	Grass = rgb(112, 152, 100),
-	GrassLight = rgb(124, 162, 108),
-	GrassDark = rgb(100, 140, 92),
-	Hedge = rgb(82, 124, 84),
-	HedgeLight = rgb(98, 140, 94),
-	Stone = rgb(152, 146, 156), -- cobbled paths
-	StoneLight = rgb(170, 164, 172),
-	StoneDark = rgb(128, 122, 134),
-	StoneEdge = rgb(150, 104, 96), -- brick borders / kerbs
-	Slate = rgb(108, 112, 130),
-	SlateLight = rgb(124, 128, 146),
-	SlateDark = rgb(84, 88, 106),
-	Marble = rgb(222, 218, 228),
-	MarbleShade = rgb(196, 190, 210),
-	Sand = rgb(214, 198, 164),
-	SandDark = rgb(190, 172, 138),
-	Plank = rgb(156, 118, 90),
-	PlankLight = rgb(170, 132, 100),
-	PlankDark = rgb(124, 92, 70),
-	Bark = rgb(116, 88, 70),
-	Iron = rgb(70, 74, 94),
-	IronLight = rgb(96, 102, 124),
-	Gold = rgb(200, 172, 112),
-	GoldDark = rgb(168, 142, 94),
-	Lamp = rgb(255, 214, 170),
-	Water = rgb(108, 152, 190),
-	WaterDeep = rgb(86, 120, 156),
-	Leaf = rgb(96, 140, 84),
-	Pine = rgb(72, 112, 88),
-	Blossom = rgb(214, 160, 186),
-	BlossomWhite = rgb(222, 204, 216),
-	Soil = rgb(120, 94, 76),
-	Navy = rgb(72, 76, 104), -- sign boards (the SurfaceGui panel covers them)
-	Violet = rgb(96, 88, 132),
+	CloudLight = rgb(244, 247, 252),
+	Cloud = rgb(232, 238, 249),
+	CloudShade = rgb(212, 222, 241),
+	Mist = rgb(194, 211, 240),
+	MistDark = rgb(170, 190, 228),
+	Grass = rgb(108, 186, 86),
+	GrassLight = rgb(132, 202, 98),
+	GrassDark = rgb(86, 160, 76),
+	Hedge = rgb(74, 146, 72),
+	HedgeLight = rgb(100, 170, 84),
+	Stone = rgb(208, 202, 190), -- cream stone paths
+	StoneLight = rgb(226, 221, 209),
+	StoneDark = rgb(172, 164, 154),
+	StoneEdge = rgb(146, 138, 132), -- path borders / kerbs
+	Slate = rgb(214, 208, 196), -- the courts: cream stone tiles (a hair lighter than the paths)
+	SlateLight = rgb(228, 223, 211),
+	SlateDark = rgb(172, 164, 154),
+	Marble = rgb(242, 237, 226), -- the courts' light rings, arches, columns
+	MarbleShade = rgb(226, 221, 209),
+	Sand = rgb(236, 214, 166),
+	SandDark = rgb(212, 186, 138),
+	Plank = rgb(196, 146, 98),
+	PlankLight = rgb(214, 166, 114),
+	PlankDark = rgb(152, 108, 72),
+	Bark = rgb(132, 92, 62),
+	Iron = rgb(64, 70, 92),
+	IronLight = rgb(96, 104, 130),
+	Gold = rgb(244, 198, 84),
+	GoldDark = rgb(206, 154, 62),
+	Lamp = rgb(255, 214, 140),
+	Water = rgb(92, 178, 236),
+	WaterDeep = rgb(62, 136, 212),
+	Leaf = rgb(98, 178, 80),
+	Pine = rgb(60, 138, 92),
+	Blossom = rgb(246, 174, 204),
+	BlossomWhite = rgb(250, 228, 238),
+	Soil = rgb(120, 86, 64),
+	Navy = rgb(34, 42, 76),
+	Violet = rgb(68, 60, 118),
 	Ink = (Theme.Colors and Theme.Colors.Ink) or rgb(26, 32, 64),
 	Text = rgb(238, 243, 252),
 	TextDim = rgb(190, 202, 230),
 	TextGold = rgb(246, 216, 132),
 	StarOff = rgb(96, 104, 136),
-	Rose = rgb(190, 118, 134),
-	Cream = rgb(226, 214, 196),
+	Rose = rgb(234, 120, 146),
+	Cream = rgb(246, 234, 210),
 	PanelTop = rgb(68, 60, 118), -- sign GUI panels only (never a part colour)
 	PanelBottom = rgb(34, 42, 76),
 }
 
--- WorldStyle material of every colour key (6.4 rule 1); the voxel palette and box() both read it.
+-- Material of every colour key: the P4 look is SmoothPlastic everywhere; lamps glow (Neon), water is Glass.
+-- (materialOf keeps the Phase 5 material names working: they all resolve to SmoothPlastic.)
 local MATS = {
-	Grass = "Grass", GrassLight = "Grass", GrassDark = "Grass",
-	Hedge = "LeafyGrass", HedgeLight = "LeafyGrass", Leaf = "LeafyGrass", Pine = "LeafyGrass",
-	Blossom = "LeafyGrass", BlossomWhite = "LeafyGrass",
-	Stone = "Cobblestone", StoneLight = "Cobblestone", StoneDark = "Cobblestone", StoneEdge = "Brick",
-	Slate = "Slate", SlateLight = "Slate", SlateDark = "Slate", Navy = "Slate", Violet = "Slate",
-	Marble = "Marble", MarbleShade = "Marble", Cream = "Marble",
-	Sand = "Sand", SandDark = "Sand", Soil = "Sand",
-	Plank = "WoodPlanks", PlankLight = "WoodPlanks", PlankDark = "WoodPlanks", Bark = "Wood",
-	Iron = "Metal", IronLight = "Metal", Gold = "Metal", GoldDark = "Metal",
-	Lamp = "Neon", Water = "Glass", WaterDeep = "Glass", Rose = "Fabric",
+	Lamp = "Neon", Water = "Glass", WaterDeep = "Glass",
 }
+local LOOK_MATERIALS = { Neon = MAT.Neon, Glass = MAT.Glass, SmoothPlastic = MAT.SmoothPlastic }
 local function materialOf(name)
-	local m = (WorldStyle and WorldStyle.Materials and WorldStyle.Materials[name]) or MAT[name]
-	return m or MAT.SmoothPlastic
+	return LOOK_MATERIALS[name] or MAT.SmoothPlastic
 end
 -- colour -> material for box() calls that pass a C colour (keyed by "r,g,b": Color3 values are not table keys)
 local function colorKey(color)
@@ -258,29 +254,29 @@ for key, name in pairs(MATS) do
 end
 
 local FLOWERS = {
-	rgb(236, 150, 184), -- pink
-	rgb(240, 208, 104), -- yellow
-	rgb(236, 232, 240), -- white (not pure)
-	rgb(170, 146, 222), -- violet
-	rgb(222, 112, 116), -- red
-	rgb(120, 168, 228), -- blue
+	rgb(246, 150, 188), -- pink
+	rgb(250, 214, 92), -- yellow
+	rgb(244, 244, 248), -- white (not pure)
+	rgb(172, 142, 232), -- violet
+	rgb(236, 104, 108), -- red
+	rgb(112, 172, 240), -- blue
 }
 
--- One accent per home plot (cycled): banner, mailbox flag, podium trim (small pieces only, rule 2).
+-- One accent per home plot (cycled): banner, mailbox flag, podium trim.
 local ACCENTS = {
-	rgb(212, 126, 142),
-	rgb(218, 160, 106),
-	rgb(216, 190, 114),
-	rgb(120, 176, 130),
-	rgb(108, 168, 184),
-	rgb(116, 146, 204),
-	rgb(152, 132, 204),
-	rgb(204, 128, 182),
+	rgb(232, 112, 132),
+	rgb(240, 160, 84),
+	rgb(236, 204, 92),
+	rgb(108, 192, 124),
+	rgb(86, 186, 206),
+	rgb(98, 148, 226),
+	rgb(154, 122, 222),
+	rgb(222, 120, 192),
 }
 
--- The six gates of the Gate Court, left -> right (6.1 / 6.2): id, gate colour (WorldStyle.Palette.Accent), glyph.
+-- The five gates of the Gate Court, left -> right (6.1 / 6.2): id, gate colour (WorldStyle.Palette.Accent), glyph.
+-- (Phase 6: the Home gate is gone; players go home with the Home window's Go home button.)
 local GATE_SPECS = {
-	{ Id = "Home", Accent = "Yellow", Glyph = "house" },
 	{ Id = "Obby", Accent = "Blue", Glyph = "cloud" },
 	{ Id = "Dungeon", Accent = "Purple", Glyph = "torch" },
 	{ Id = "Ring", Accent = "Gold", Glyph = "crown" },
@@ -426,12 +422,8 @@ local function box(parent, name, cf, size, color, opts)
 	p.Size = size
 	p.CFrame = cf
 	p.Color = color
-	-- 6.4 rule 1: a WorldStyle material (by the colour's key); SmoothPlastic only for parts <= 2 studs
-	local material = opts.Material or MAT_BY_COLOR[colorKey(color)]
-	if not material then
-		material = (math.max(size.X, size.Y, size.Z) <= 2) and MAT.SmoothPlastic or materialOf("Marble")
-	end
-	p.Material = material
+	-- the P4 look: SmoothPlastic unless the caller (or the colour: lamps, water) says Neon / Glass
+	p.Material = opts.Material or MAT_BY_COLOR[colorKey(color)] or MAT.SmoothPlastic
 	p.Transparency = opts.Transparency or 0
 	if opts.Reflectance then
 		p.Reflectance = opts.Reflectance
@@ -856,6 +848,117 @@ function VX.Build(g, o)
 	return model
 end
 
+----------------------------------------------------------------------
+-- Phase 6 (ARCHITECTURE_V3.md "## Phase 6" A7, owner art-lobby): Blender mesh dressing. Every Part build in this
+-- file stays exactly as it is (the fallback, the colliders, every name / prompt / zone / sign); the static decoration
+-- subtrees are tagged with MeshLibrary.Tag(target, key, look, keep) and clients Dress them (Parts hidden locally, the
+-- mesh placed at the target's pivot * ML_Offset = `origin`). Keys: blender/catalog/lobby.json. A key is tagged only
+-- once it has an uploaded id (MeshLibrary.Status ~= "missing"): with the shipped empty MeshIds nothing changes.
+-- Keys baked from this file's own layout (clouds, floors, the altar) carry a "LayoutSig" attachment in their manifest
+-- (part count + position / size sums of the Part build, relative to `origin`): they are tagged only while the live
+-- build still matches it, so a Config change can never show a stale mesh.
+----------------------------------------------------------------------
+local Mesh = {
+	Lib = nil,
+	-- template name -> mesh key (place() tags every clone)
+	Templates = {
+		TreeRound = "prop_tree_round",
+		TreeBlossom = "prop_tree_blossom",
+		TreePine = "prop_tree_pine",
+		Lamp = "prop_lamp",
+		Bench = "prop_bench",
+		PuffS = "cloud_puff_s",
+		PuffM = "cloud_puff_m",
+		SkyBig = "cloud_sky_big",
+		SkySmall = "cloud_sky_small",
+		Plot = "prop_plot",
+	},
+	-- parts that stay visible over the mesh (live per-plot colour, signs)
+	Keep = {
+		Plot = { "PodiumBase", "Accent", "PodiumTop" },
+	},
+	Names = {}, -- template model -> template name
+	-- the part names of a dressed cloud puff (Voxel cloud keys + the cloud mesh's parts): kept by the bridge that
+	-- carries one, so the two dresses never hide each other
+	CloudParts = { "Cloud", "CloudLight", "CloudShade", "Mist", "MistDark", "Puff" },
+	Template = nil, -- the template being built (VX.CloudModel records it for the kit)
+}
+
+function Mesh.lib()
+	if Mesh.Lib == nil then
+		Mesh.Lib = false
+		local module = Shared:FindFirstChild("MeshLibrary")
+		if module then
+			local ok, result = pcall(require, module)
+			if ok and type(result) == "table" and type(result.Tag) == "function" then
+				Mesh.Lib = result
+			end
+		end
+	end
+	return Mesh.Lib or nil
+end
+
+-- part count + weighted sums of every visible BasePart's position / size in `origin` space (the kit computes the
+-- same numbers from the same build: blender/kit/props/lobby_world.py)
+function Mesh.Signature(target, origin)
+	local inv = origin:Inverse()
+	local n, a, b = 0, 0, 0
+	local list = target:GetDescendants()
+	list[#list + 1] = target
+	for _, d in ipairs(list) do
+		if d:IsA("BasePart") and d.Transparency < 0.99 then
+			local p = inv * d.Position
+			local s = d.Size
+			n = n + 1
+			a = a + p.X + p.Y * 0.37 + p.Z * 0.61
+			b = b + s.X + s.Y * 1.3 + s.Z * 1.7
+		end
+	end
+	return n, a, b
+end
+
+local function meshSigOk(ML, key, target, origin)
+	local man = type(ML.Manifest) == "function" and ML.Manifest(key)
+	local att = man and man.Attachments and man.Attachments.LayoutSig
+	if not att then
+		return true -- a designed prop: no layout to match
+	end
+	local pos = att.Pos or att.pos
+	if type(pos) ~= "table" then
+		return false
+	end
+	local n, a, b = Mesh.Signature(target, origin)
+	local tol = 0.05 + n * 1e-4
+	return n == pos[1] and math.abs(a - pos[2]) <= tol and math.abs(b - pos[3]) <= tol
+end
+
+-- target: Model / Part subtree; key: mesh key; origin: world CFrame of the mesh pivot; look: { Primary, Secondary };
+-- keep: part names that stay visible. Returns true when tagged.
+function Mesh.tag(target, key, origin, look, keep)
+	if typeof(target) ~= "Instance" or typeof(origin) ~= "CFrame" then
+		return false
+	end
+	local kit = LobbyBuilder._Kit
+	if type(kit) == "table" and type(kit.Targets) == "table" then
+		kit.Targets[#kit.Targets + 1] = { Key = key, Target = target, Origin = origin, Look = look, Keep = keep }
+	end
+	local ML = Mesh.lib()
+	if not ML or type(ML.Status) ~= "function" then
+		return false
+	end
+	local okStatus, st = pcall(ML.Status, key)
+	if not okStatus or st == "missing" or not meshSigOk(ML, key, target, origin) then
+		return false
+	end
+	local tagLook = {}
+	for k, v in pairs(look or {}) do
+		tagLook[k] = v
+	end
+	tagLook.Offset = target:GetPivot():Inverse() * origin
+	ML.Tag(target, key, tagLook, keep)
+	return true
+end
+
 -- Clones a template (built at the origin) to `cf`; returns the clone.
 local function place(tpl, cf, parent, name)
 	if not tpl then
@@ -867,19 +970,36 @@ local function place(tpl, cf, parent, name)
 			d.CFrame = cf * d.CFrame
 		end
 	end
+	if not m.PrimaryPart and m:IsA("Model") then
+		m.WorldPivot = cf -- the clone's pivot = where it was placed (TutorialController reads Plot:GetPivot())
+	end
 	if name then
 		m.Name = name
 	end
 	m.Parent = parent
+	local tname = Mesh.Names[tpl]
+	local key = tname and (Mesh.Templates[tname] or (tname:match("^FlowerBed") and "prop_flowerbed"))
+	if key then
+		local look = nil
+		local v = tonumber(tname:match("^FlowerBed(%d+)"))
+		if v then -- the bed's two flower colours (Props.FlowerBed)
+			look = { Primary = FLOWERS[v], Secondary = FLOWERS[v % #FLOWERS + 1] }
+		end
+		Mesh.tag(m, key, cf, look, Mesh.Keep[tname])
+	end
 	return m
 end
 
 local function template(name, make)
 	local t = templates[name]
 	if t == nil then
+		local outer = Mesh.Template
+		Mesh.Template = name
 		local ok, result = pcall(make)
+		Mesh.Template = outer
 		if ok and result then
 			t = result
+			Mesh.Names[t] = name
 		else
 			warn("[LobbyBuilder] template " .. name .. " failed: " .. tostring(result))
 			t = false
@@ -976,6 +1096,10 @@ function VX.CloudModel(spec, cf, parent, name, collide)
 	})
 	if model then
 		CollectionService:AddTag(model, EXEMPT_TAG) -- the voxel clouds keep their look on purpose (6.4 rule 9)
+		local kit = LobbyBuilder._Kit
+		if type(kit) == "table" and type(kit.Clouds) == "table" then -- Phase 6 kit hook (blender/kit/props/lobby_world.py)
+			kit.Clouds[model] = { Spec = spec, CF = cf, Template = Mesh.Template, Name = name }
+		end
 	end
 	return model
 end
@@ -1163,6 +1287,7 @@ local function bannerPole(parent, cf, color)
 	box(m, "Bar", cf * CFrame.new(0.9, 10.5, 0), Vector3.new(2.4, 0.3, 0.3), C.Iron)
 	box(m, "Cloth", cf * CFrame.new(1.2, 8.2, 0), Vector3.new(2, 4.2, 0.15), color, { Shadow = false })
 	box(m, "ClothTip", cf * CFrame.new(1.2, 5.75, 0), Vector3.new(1, 0.7, 0.15), color, { Shadow = false })
+	Mesh.tag(m, "prop_banner", cf, { Primary = color }) -- Phase 6: the cloth takes `color`
 	return m
 end
 
@@ -1178,6 +1303,11 @@ local function noticeBoard(parent, cf, width, height, name)
 	local face = box(m, "Face", cf * CFrame.new(0, 2.4 + height / 2, -0.2), Vector3.new(width, height, 0.2), C.Navy)
 	box(m, "Roof", cf * CFrame.new(0, postH + 0.25, 0), Vector3.new(width + 3, 0.5, 2.4), C.PlankDark)
 	box(m, "RoofTop", cf * CFrame.new(0, postH + 0.75, 0), Vector3.new(width + 1.6, 0.5, 1.4), C.Rose)
+	-- Phase 6: prop_board_s (11 x 8) / prop_board_l (14 x 9); the Face keeps its SurfaceGui and stays visible
+	local boardKey = (width == 11 and height == 8) and "prop_board_s" or ((width == 14 and height == 9) and "prop_board_l" or nil)
+	if boardKey then
+		Mesh.tag(m, boardKey, cf, nil, { "Face" })
+	end
 	return face, m
 end
 
@@ -1188,19 +1318,23 @@ end
 local function computeLayout()
 	local L = {}
 
-	-- Phase 5 Gate Court (6.1): the six gates left -> right on the arc r G.GateR around G.GateFacing (the spawn looks
-	-- this way), G.GateStep degrees apart; the court sector reaches 5.75 degrees past the end gates.
+	-- Phase 5 Gate Court (6.1): the gates left -> right on the arc r G.GateR around G.GateFacing (the spawn looks this
+	-- way); Phase 6: the court keeps its six-slot width ((G.CourtSlots - 1) * G.GateStep) and the five gates spread
+	-- evenly over it (the end gates stand on the old end slots, Ring in the middle); the sector reaches 5.75 degrees
+	-- past the end gates.
 	L.MidAngle = G.GateFacing
 	L.GateAngles = {}
 	L.GateOrder = {}
 	local nGates = #GATE_SPECS
+	local span = (G.CourtSlots - 1) * G.GateStep
+	local step = nGates > 1 and span / (nGates - 1) or 0
 	for i, spec in ipairs(GATE_SPECS) do
-		local a = G.GateFacing + (i - (nGates + 1) / 2) * G.GateStep
+		local a = G.GateFacing + (i - (nGates + 1) / 2) * step
 		L.GateAngles[spec.Id] = a
 		L.GateOrder[i] = spec.Id
 	end
-	L.CourtFrom = G.GateFacing - ((nGates - 1) / 2) * G.GateStep - 5.75
-	L.CourtTo = G.GateFacing + ((nGates - 1) / 2) * G.GateStep + 5.75
+	L.CourtFrom = G.GateFacing - span / 2 - 5.75
+	L.CourtTo = G.GateFacing + span / 2 + 5.75
 
 	-- Shop island.
 	local off = LOBBY.ShopOffset or Vector3.new(0, 0, -150)
@@ -1536,6 +1670,9 @@ local function buildPlazaGround(f, L)
 				end
 			end
 		end
+		if model then -- Phase 6: floor_plaza_<layer> (baked from this very build: LayoutSig)
+			Mesh.tag(model, "floor_plaza_" .. string.lower(names[li]), CFrame.new(OX, TOP, OZ))
+		end
 	end
 end
 
@@ -1625,7 +1762,10 @@ local function buildPlazaBody(f, L)
 		MaxParts = 360,
 	}
 	-- top of tier 1 sits 1.2 under the lawn surface; rim puffs rise up to ~5 studs above the lawn
-	VX.CloudModel(spec, CFrame.new(OX, TOP - 1.2, OZ), f, "PlazaCloud", true)
+	local body = VX.CloudModel(spec, CFrame.new(OX, TOP - 1.2, OZ), f, "PlazaCloud", true)
+	if body then
+		Mesh.tag(body, "cloud_plaza", CFrame.new(OX, TOP - 1.2, OZ))
+	end
 end
 
 -- Fountain on the roundabout: stone basin, translucent water, two tiers with falling water, spray, and
@@ -1658,8 +1798,16 @@ local function buildFountain(f, centre, lookTarget)
 	Voxel.Shade(g, { Only = { Slate = true, MarbleShade = true }, Smooth = 1, Seed = 2 })
 	local water = VX.Split(g, { Water = true })
 	local cf = CFrame.new(centre.X, TOP + 0.5, centre.Z)
-	VX.Build(g, { V = 1, Name = "Basin", CF = cf, Collide = true, Parent = m, MaxParts = 64 })
-	VX.Build(water, { V = 1, Name = "Water", CF = cf, Collide = false, Parent = m })
+	local basin = VX.Build(g, { V = 1, Name = "Basin", CF = cf, Collide = true, Parent = m, MaxParts = 64 })
+	local waterModel = VX.Build(water, { V = 1, Name = "Water", CF = cf, Collide = false, Parent = m })
+	-- Phase 6: the basin and its water (the Nimbus statue on top stays the pet build)
+	local ground = CFrame.new(centre.X, TOP, centre.Z)
+	if basin then
+		Mesh.tag(basin, "prop_fountain", ground)
+	end
+	if waterModel then
+		Mesh.tag(waterModel, "prop_fountain_water", ground)
+	end
 
 	local spray = anchorPart(m, "Spray", centre + Vector3.new(0, 10.6, 0))
 	emitter(spray, {
@@ -1687,30 +1835,42 @@ local function buildFountain(f, centre, lookTarget)
 		if not def or type(PetBuilder.Build) ~= "function" then
 			return
 		end
-		local pet = PetBuilder.Build(def, { Scale = 2.6, Detail = "Low" })
+		local opts = { Scale = 2.6, Detail = "Low" }
+		local function statue()
+			local pet = PetBuilder.Build(def, opts)
+			if not pet then
+				return nil
+			end
+			pet.Name = "NimbusStatue"
+			local topY = TOP + 9.4 -- perched on the top bowl's rim (its stone top is TOP + 10)
+			pet:PivotTo(CFrame.new(0, 0, 0))
+			local boxCf, boxSize = pet:GetBoundingBox()
+			local bottom = pet:GetPivot().Position.Y - (boxCf.Position.Y - boxSize.Y * 0.5)
+			if type(bottom) ~= "number" or bottom ~= bottom or bottom < -50 or bottom > 100 then
+				bottom = 2
+			end
+			local y = topY + bottom + 0.6
+			pet:PivotTo(flatLook(Vector3.new(centre.X, y, centre.Z), lookTarget))
+			for _, d in ipairs(pet:GetDescendants()) do
+				if d:IsA("BasePart") then
+					d.Anchored = true
+					d.CanCollide = false
+					d.CanTouch = false
+					d.CanQuery = false
+				end
+			end
+			CollectionService:AddTag(pet, EXEMPT_TAG) -- a pet statue: skipped by the 6.4 material / saturation audit
+			return pet
+		end
+		local pet = statue()
 		if not pet then
 			return
 		end
-		pet.Name = "NimbusStatue"
-		local topY = TOP + 9.4 -- perched on the top bowl's rim (its stone top is TOP + 10)
-		pet:PivotTo(CFrame.new(0, 0, 0))
-		local boxCf, boxSize = pet:GetBoundingBox()
-		local bottom = pet:GetPivot().Position.Y - (boxCf.Position.Y - boxSize.Y * 0.5)
-		if type(bottom) ~= "number" or bottom ~= bottom or bottom < -50 or bottom > 100 then
-			bottom = 2
-		end
-		local y = topY + bottom + 0.6
-		pet:PivotTo(flatLook(Vector3.new(centre.X, y, centre.Z), lookTarget))
-		for _, d in ipairs(pet:GetDescendants()) do
-			if d:IsA("BasePart") then
-				d.Anchored = true
-				d.CanCollide = false
-				d.CanTouch = false
-				d.CanQuery = false
-			end
-		end
-		CollectionService:AddTag(pet, EXEMPT_TAG) -- a pet statue: skipped by the 6.4 material / saturation audit
 		pet.Parent = m
+		-- Phase 6: the mesh Nimbus replaces this Part build once its keys load after boot (MeshLibrary.Swap)
+		if type(PetBuilder.SwapWhenReady) == "function" then
+			PetBuilder.SwapWhenReady(pet, def, opts, statue)
+		end
 	end)
 	if not ok then
 		warn("[LobbyBuilder] fountain statue skipped: " .. tostring(err))
@@ -1719,7 +1879,8 @@ local function buildFountain(f, centre, lookTarget)
 end
 
 ----------------------------------------------------------------------
--- Phase 5 courts (6.1 / 6.4): the tiled spawn court, the Gate Court with its terrace, the avenue, the welcome arch
+-- Phase 5 courts (6.1; Phase 6: the P4 colours): the tiled spawn court, the Gate Court with its terrace, the avenue,
+-- the welcome arch
 ----------------------------------------------------------------------
 local Court = {}
 
@@ -1744,7 +1905,7 @@ function Court.Arc(parent, name, r0, r1, a0, a1, seg, thick, gap, fn)
 	end
 end
 
--- Tile colour: the base Slate with a +-6 RGB jitter per tile (rule 2), deterministic.
+-- Tile colour: the base cream stone with a +-6 RGB jitter per tile, deterministic.
 function Court.Jitter(color, a, b)
 	local h = hash3(a, b, 7, 31) * 2 - 1
 	local d = h * 6 / 255
@@ -1795,6 +1956,7 @@ function Court.Tiles(f, L)
 		local p = box(m, "CourtSide", CFrame.lookAt(pos, pos + d), Vector3.new(1.4, G.TerraceLift + 0.75, len), C.MarbleShade, { Collide = true })
 		p.CanQuery = true
 	end
+	Mesh.tag(m, "floor_plaza_courts", CFrame.new(OX, TOP, OZ)) -- Phase 6 (LayoutSig)
 	return m
 end
 
@@ -1814,6 +1976,7 @@ function Court.RingRoad(f, L)
 			return C.StoneEdge, (i % 2 == 0) and 0.0 or 0.02, materialOf("Brick")
 		end)
 	end
+	Mesh.tag(m, "floor_plaza_walk", CFrame.new(OX, TOP, OZ)) -- Phase 6 (LayoutSig)
 	return m
 end
 
@@ -1880,6 +2043,7 @@ function Court.Edges(f, L)
 			return C.StoneEdge, (i % 2 == 0) and 0.32 or 0.3, materialOf("Brick")
 		end)
 	end
+	Mesh.tag(m, "floor_plaza_edges", CFrame.new(OX, TOP, OZ)) -- Phase 6 (LayoutSig)
 	local decor = newModel(f, "WalkHedges")
 	CollectionService:AddTag(decor, DETAIL_TAG)
 	local hr0 = G.RingRoadR - G.PathHalf - 4.4
@@ -1985,6 +2149,7 @@ function Court.WelcomeArch(parent, L, radius)
 		signText(panel, Config.Tagline or "", "Script", 36, C.Text, "Tagline", 0.04, 0.72, 0.92, 0.17)
 		gui.Parent = board
 	end
+	Mesh.tag(m, "prop_welcome_arch", cf, nil, { "WelcomeSign" }) -- Phase 6: the sign board stays (SurfaceGuis)
 	return m
 end
 
@@ -2015,6 +2180,7 @@ function Court.Obelisk(parent, ground, color)
 	local tip2 = tip:Clone()
 	tip2.CFrame = cf * CFrame.new(0, 17.1, 0.55) * CFrame.Angles(0, math.pi, 0)
 	tip2.Parent = m
+	Mesh.tag(m, "prop_obelisk", cf, { Primary = color }) -- Phase 6: the band takes `color`
 	return m
 end
 
@@ -2092,17 +2258,18 @@ local function buildBoards(f, L)
 		local gui = surfaceGui(face, Enum.NormalId.Front)
 		local panel = signPanel(gui, rgb(150, 200, 255))
 		signText(panel, "THE GATES", "Title", 52, C.TextGold, "Header", 0.04, 0.025, 0.92, 0.14)
+		-- Phase 6: the 5 real Gate Court gates (no Home gate any more); the way home is the footer hint
 		local lines = {
-			{ "HOME", "Your sky home" },
 			{ "OBBY", "Climb with friends" },
 			{ "DUNGEON", "Explore with your team" },
 			{ "RING", "Beat the champion" },
 			{ "ARENA", "Duels and raids" },
+			{ "ALTAR", "Secret storm pets!" },
 		}
 		for i, line in ipairs(lines) do
 			keyRow(panel, 0.18 + (i - 1) * 0.12, 0.105, line[1], line[2])
 		end
-		signText(panel, "Storm Altar gate: secret pets!", "Body", SIGN_INFO, C.TextGold, "Footer", 0.05, 0.81, 0.9, 0.13)
+		signText(panel, "Going home?\nTap Home, then Go home!", "Body", SIGN_INFO, C.TextGold, "Footer", 0.05, 0.785, 0.9, 0.19, nil, true)
 		gui.Parent = face
 	end
 end
@@ -2230,17 +2397,16 @@ local function buildPlaza(root, L)
 end
 
 ----------------------------------------------------------------------
--- Phase 5 Gate Court gates (6.1 / 6.2): Home, Obby and Altar are built here with WorldStyle.BuildGate into the
+-- Phase 5 Gate Court gates (6.1 / 6.2): Obby and Altar are built here with WorldStyle.BuildGate into the
 -- Gates folder; Ring / Arena (ArenaBuilder) and Dungeon (DungeonBuilder, W3) stand at LobbyInfo.GateSites.
 ----------------------------------------------------------------------
 local Gates = {}
 
 Gates.Info = {
-	Home = { Title = "My Home", Info = "Your sky home and pets", Pad = false },
 	Obby = { Title = "Sky Obby", Info = "Climb the clouds", Pad = true },
 	Altar = { Title = "Storm Altar", Info = "The secret roulette", Pad = false },
 }
-Gates.Built = { "Home", "Obby", "Altar" } -- the lobby's own gates, in Build order
+Gates.Built = { "Obby", "Altar" } -- the lobby's own gates, in Build order (Phase 6: no Home gate)
 
 function Gates.Spec(id)
 	for _, s in ipairs(GATE_SPECS) do
@@ -2374,44 +2540,27 @@ local function oddsRarities(roulette)
 	return list
 end
 
--- 6.4 rule 2: a big surface keeps its hue but at most 0.42 saturation and 0.88 value (small pieces keep the full colour)
-local function muted(color)
-	local r, g, b = color.R, color.G, color.B
-	local mx, mn = math.max(r, g, b), math.min(r, g, b)
-	if mx <= 0 then
-		return color
-	end
-	local sat = (mx - mn) / mx
-	local v = clamp(mx, 0.4, 0.88)
-	local k = (sat > 0.42) and (0.42 / sat) or 1
-	-- pull every channel toward the max (less saturation), then scale to the clamped value
-	local function ch(c)
-		return (mx - (mx - c) * k) * (v / mx)
-	end
-	return Color3.new(ch(r), ch(g), ch(b))
-end
-
+-- the P4 machine colours: the roulette colour on the cabinet, gold trims, cream wheel segments, a glass dome
 local function machinePalette(roulette)
 	local color = roulette.Color or C.Rose
-	local metal, marble = materialOf("Metal"), materialOf("Marble")
 	local pal = {
-		Base = { Color = C.Iron, Material = metal },
-		Body = { Color = muted(color), Material = metal },
-		Trim = { Color = C.Gold, Material = metal },
-		Seg1 = { Color = muted(color:Lerp(rgb(255, 255, 255), 0.45)), Material = marble },
-		Seg2 = { Color = C.Cream, Material = marble },
-		Rim = { Color = C.GoldDark, Material = metal },
-		Hub = { Color = C.Gold, Material = metal },
-		Dark = { Color = C.SlateDark, Material = materialOf("Slate") },
+		Base = C.Iron,
+		Body = color,
+		Trim = C.Gold,
+		Seg1 = color:Lerp(rgb(255, 255, 255), 0.45),
+		Seg2 = C.Cream,
+		Rim = C.GoldDark,
+		Hub = C.Gold,
+		Dark = rgb(42, 46, 70),
 		Glass = { Color = rgb(214, 236, 255), Material = MAT.Glass, Transparency = 0.55 },
 		Bulb = { Color = C.Lamp, Material = MAT.Neon },
-		Knob = { Color = color, Material = MAT.Neon }, -- the roulette colour, on a small piece
-		Iron = { Color = C.IronLight, Material = metal },
+		Knob = { Color = color, Material = MAT.Neon },
+		Iron = C.IronLight,
 	}
 	local rarities = oddsRarities(roulette)
 	for i = 1, 4 do
 		local r = rarities[(i - 1) % math.max(1, #rarities) + 1]
-		pal["Egg" .. i] = { Color = muted((r and r.Color) or color), Material = metal }
+		pal["Egg" .. i] = (r and r.Color) or color
 	end
 	return pal
 end
@@ -2496,6 +2645,10 @@ local function buildMachine(parent, cf, roulette)
 	Voxel.BuildBoxes(boxes.Fine, { VoxelSize = 0.5, Palette = pal, CFrame = cf * CFrame.new(0, 0.25, 0), Model = body, CanCollide = true, CanQuery = true })
 	Voxel.BuildBoxes(boxes.Dome, { VoxelSize = 1, Palette = pal, CFrame = cf * CFrame.new(0, 0.5, 0), Model = body, CanCollide = true, CanQuery = true })
 	body.Parent = model
+	-- Phase 6: one cabinet design for every roulette (cabinet + knob = the roulette colour, eggs = its top rarity)
+	local rarities = oddsRarities(roulette)
+	local top = rarities[#rarities]
+	Mesh.tag(body, "prop_roulette", cf, { Primary = roulette.Color or C.Rose, Secondary = (top and top.Color) or C.Gold })
 	local cabinet = nil
 	for _, d in ipairs(body:GetChildren()) do
 		if d:IsA("BasePart") and d.Name == "Body" and (not cabinet or d.Size.Magnitude > cabinet.Size.Magnitude) then
@@ -2580,7 +2733,7 @@ local function buildItemStall(parent, cf)
 	Voxel.Set(g, 3, 4, -1, "Gold")
 	Voxel.Set(g, -3, 4, 0, "Heal")
 	Voxel.Shade(g, { Skip = { Shield = true, Rose = true, Cream = true }, Smooth = 1, Seed = 13 })
-	VX.Build(g, {
+	local stallModel = VX.Build(g, {
 		V = 1,
 		Name = "Stall",
 		CF = cf * CFrame.new(0, 0.5, 0),
@@ -2600,6 +2753,9 @@ local function buildItemStall(parent, cf)
 		},
 		MaxParts = 80,
 	})
+	if stallModel then
+		Mesh.tag(stallModel, "prop_item_stall", cf) -- Phase 6
+	end
 	local lamp = anchorPart(model, "StallLight", (cf * CFrame.new(0, 7.5, 0)).Position)
 	pointLight(lamp, C.Lamp, 0.8, 16)
 
@@ -2691,7 +2847,11 @@ local function buildTokenStatue(parent, ground)
 	end
 	VX.Fill(g, -1, 1, 3, 3, 0, 0, "GoldDark")
 	Voxel.Shade(g, { Only = { StoneLight = true, Stone = true }, Smooth = 1 })
-	VX.Build(g, { V = 1, Name = "Coin", CF = flatLook(ground, Vector3.new(OX, ground.Y, OZ)) * CFrame.new(0, 0.5, 0), Collide = true, Parent = m })
+	local coinCf = flatLook(ground, Vector3.new(OX, ground.Y, OZ))
+	local coin = VX.Build(g, { V = 1, Name = "Coin", CF = coinCf * CFrame.new(0, 0.5, 0), Collide = true, Parent = m })
+	if coin then
+		Mesh.tag(coin, "prop_token_statue", coinCf) -- Phase 6
+	end
 	local sparkle = anchorPart(m, "CoinSparkle", ground + Vector3.new(0, 7, 0), Vector3.new(6, 6, 2))
 	emitter(sparkle, { Rate = 5, Lifetime = NumberRange.new(1.2, 2), Speed = NumberRange.new(0.5, 1.5), SpreadAngle = Vector2.new(180, 180), Size = popSize(0.6) })
 	return m
@@ -2753,7 +2913,10 @@ local function buildShop(root, L)
 	end
 	local tops = { -0.4, -0.3, -0.1, 0, 0.1 }
 	for li = 1, 5 do
-		VX.Build(grids[li], { V = cell, Name = "Ground" .. li, CF = CFrame.new(S.X, TOP + tops[li] - cell / 2, S.Z), Collide = true, Shadow = false, Parent = f })
+		local layer = VX.Build(grids[li], { V = cell, Name = "Ground" .. li, CF = CFrame.new(S.X, TOP + tops[li] - cell / 2, S.Z), Collide = true, Shadow = false, Parent = f })
+		if layer then
+			Mesh.tag(layer, "floor_shop_" .. li, CFrame.new(S.X, TOP, S.Z)) -- Phase 6 (LayoutSig)
+		end
 	end
 
 	-- The shop's cloud body + the stone neck to the plaza.
@@ -2774,7 +2937,7 @@ local function buildShop(root, L)
 			local s = rng:Float(7, 11)
 			puffs[#puffs + 1] = { math.cos(a) * (R - 6), -7, math.sin(a) * (R - 6), s, s * 0.7, s }
 		end
-		VX.CloudModel({
+		local shopCloud = VX.CloudModel({
 			V = 3,
 			Tiers = { { R = R + 3, H = 1 }, { R = R - 3, H = 2 }, { R = R - 11, H = 2 }, { R = R - 19, H = 2 } },
 			Puffs = puffs,
@@ -2785,6 +2948,9 @@ local function buildShop(root, L)
 			Seed = 5,
 			MaxParts = 84,
 		}, CFrame.new(S.X, TOP - 1.2, S.Z), f, "ShopCloud", true)
+		if shopCloud then
+			Mesh.tag(shopCloud, "cloud_shop", CFrame.new(S.X, TOP - 1.2, S.Z)) -- Phase 6 (LayoutSig)
+		end
 	end)
 	if not okBody then
 		warn("[LobbyBuilder] shop cloud failed: " .. tostring(errBody))
@@ -2842,6 +3008,7 @@ local function buildShop(root, L)
 		box(arch, "Beam", archCF * CFrame.new(0, 10.3, 0), Vector3.new(13, 0.6, 1.2), C.PlankDark)
 		local sign = box(arch, "ShopSign", archCF * CFrame.new(0, 12.38, 0), Vector3.new(12.4, 3.6, 0.8), C.Navy, { Shadow = true })
 		box(arch, "SignRoof", archCF * CFrame.new(0, 14.46, 0), Vector3.new(14, 0.6, 1.8), C.Rose)
+		Mesh.tag(arch, "prop_shop_arch", archCF, nil, { "ShopSign" }) -- Phase 6: the sign board stays (SurfaceGuis)
 		-- 620 x 180 px canvas: the name 1.6 studs tall, the caption 0.68 stud
 		for _, face in ipairs({ Enum.NormalId.Front, Enum.NormalId.Back }) do
 			local gui = surfaceGui(sign, face)
@@ -3190,7 +3357,7 @@ local function buildSpot(parent, index, angle)
 		if podium then
 			for _, d in ipairs(podium:GetChildren()) do
 				if d:IsA("BasePart") and d.Name == "Accent" then
-					d.Color = muted(accent) -- a 4.4 x 1 x 4.4 slab: a big face, so the muted accent (6.4 rule 2)
+					d.Color = accent
 				end
 			end
 		end
@@ -3316,6 +3483,9 @@ local function woodBridge(parent, name, a, b, width, opts)
 		-- underside of the 1-stud planks and nothing pokes through
 		place(Props.Puff(opts.PuffSize or "M"), CFrame.new(a + dir * t - Vector3.new(0, 4, 0)) * CFrame.Angles(0, t * 7, 0), m, "BridgePuff")
 	end
+	if opts.MeshKey then -- Phase 6 (LayoutSig); the puff under it is dressed on its own (its parts are kept)
+		Mesh.tag(m, opts.MeshKey, cf, nil, Mesh.CloudParts)
+	end
 	return m
 end
 
@@ -3381,6 +3551,9 @@ local function buildRoads(root, L)
 				end
 			end
 		end
+		-- Phase 6: one plank-deck mesh per junction kind (identical local geometry; LayoutSig)
+		local kind = (info.Arena and "arena") or (info.Altar and "altar") or (info.Spoke and "spoke") or (info.Garden and "garden") or "plain"
+		Mesh.tag(jf, "floor_junction_" .. kind, faceCentre(polar(a, G.StreetR, TOP)))
 	end
 
 	-- Spokes: plaza rim -> junction, over open sky, carried by cloud puffs.
@@ -3388,7 +3561,7 @@ local function buildRoads(root, L)
 		local p0 = polar(a, PLAZA_R - 3, TOP)
 		local p1 = polar(a, G.SpokeEndR, TOP)
 		-- rails run from the plaza's cloud rim right up to the street edge (no open window over the sky)
-		woodBridge(f, "Spoke", p0, p1, G.SpokeW, { Puffs = { 0.52 }, PuffSize = "S", RailInsetA = 6, RailInsetB = 2.6 })
+		woodBridge(f, "Spoke", p0, p1, G.SpokeW, { Puffs = { 0.52 }, PuffSize = "S", RailInsetA = 6, RailInsetB = 2.6, MeshKey = "floor_spoke" })
 	end
 end
 
@@ -3397,7 +3570,7 @@ end
 ----------------------------------------------------------------------
 
 -- Five stacked ground layers around `centre` (2-stud cells). fn(x, z, r) -> l1, l2, l3, l4 (see plazaCell).
-local function layeredGround(parent, centre, radius, fn)
+local function layeredGround(parent, centre, radius, fn, meshPrefix)
 	local cell = 2
 	local n = math.ceil(radius / cell)
 	local grids = { Voxel.NewGrid(1), Voxel.NewGrid(1), Voxel.NewGrid(1), Voxel.NewGrid(1), Voxel.NewGrid(1) }
@@ -3418,7 +3591,10 @@ local function layeredGround(parent, centre, radius, fn)
 	end
 	local tops = { -0.4, -0.3, -0.1, 0, 0.1 }
 	for li = 1, 5 do
-		VX.Build(grids[li], { V = cell, Name = "Ground" .. li, CF = CFrame.new(centre.X, TOP + tops[li] - cell / 2, centre.Z), Collide = true, Shadow = false, Parent = parent })
+		local layer = VX.Build(grids[li], { V = cell, Name = "Ground" .. li, CF = CFrame.new(centre.X, TOP + tops[li] - cell / 2, centre.Z), Collide = true, Shadow = false, Parent = parent })
+		if layer and meshPrefix then
+			Mesh.tag(layer, meshPrefix .. li, CFrame.new(centre.X, TOP, centre.Z)) -- Phase 6 (LayoutSig)
+		end
 	end
 end
 
@@ -3435,8 +3611,16 @@ local function buildPond(parent, ground)
 	Voxel.Set(g, -2, 1, 1, "BlossomWhite")
 	local water = VX.Split(g, { Water = true })
 	local cf = CFrame.new(ground.X, TOP + 0.1, ground.Z)
-	VX.Build(g, { V = 1, Name = "PondStone", CF = cf, Collide = true, Parent = parent })
-	VX.Build(water, { V = 1, Name = "PondWater", CF = cf, Collide = false, Parent = parent })
+	local stone = VX.Build(g, { V = 1, Name = "PondStone", CF = cf, Collide = true, Parent = parent })
+	local pondWater = VX.Build(water, { V = 1, Name = "PondWater", CF = cf, Collide = false, Parent = parent })
+	-- Phase 6: the pond ring and its water
+	local ground0 = CFrame.new(ground.X, TOP, ground.Z)
+	if stone then
+		Mesh.tag(stone, "prop_pond", ground0)
+	end
+	if pondWater then
+		Mesh.tag(pondWater, "prop_pond_water", ground0)
+	end
 	local sparkle = anchorPart(parent, "PondSparkle", ground + Vector3.new(0, 1, 0), Vector3.new(9, 1, 9))
 	emitter(sparkle, { Color = ColorSequence.new(rgb(200, 236, 255)), Rate = 3, Lifetime = NumberRange.new(1.5, 2.5), Speed = NumberRange.new(0.2, 0.6), Size = popSize(0.5) })
 end
@@ -3463,7 +3647,8 @@ local function buildGarden(parent, spec, L)
 		local s = rng:Float(7, 9)
 		puffs[#puffs + 1] = { math.cos(ang) * (R - 5), -6, math.sin(ang) * (R - 5), s, s * 0.7, s }
 	end
-	VX.CloudModel({
+	local gardenKind = (spec.Kind == "Pond") and "pond" or "blossom"
+	local gardenCloud = VX.CloudModel({
 		V = 3,
 		Tiers = { { R = R + 3, H = 1 }, { R = R - 3, H = 2 }, { R = R - 10, H = 2 }, { R = R - 16, H = 1 } },
 		Puffs = puffs,
@@ -3474,6 +3659,9 @@ local function buildGarden(parent, spec, L)
 		MaxParts = 46,
 		Seed = 20 + math.floor(a),
 	}, CFrame.new(c.X, TOP - 1.2, c.Z), f, "GardenCloud", true)
+	if gardenCloud then
+		Mesh.tag(gardenCloud, "cloud_garden_" .. gardenKind, CFrame.new(c.X, TOP - 1.2, c.Z)) -- Phase 6 (LayoutSig)
+	end
 
 	layeredGround(f, c, R, function(x, z, r)
 		local l1, l2, l3
@@ -3501,7 +3689,7 @@ local function buildGarden(parent, spec, L)
 			l1 = "Flower" .. (math.floor(hash3(math.floor(x), 8, math.floor(z), 6) * #FLOWERS) + 1)
 		end
 		return l1, l2, l3, nil
-	end)
+	end, "floor_garden_" .. gardenKind .. "_")
 
 	-- features
 	local function localPos(deg, dist)
@@ -3527,7 +3715,7 @@ local function buildGarden(parent, spec, L)
 	local gui = newTag(tag, "NameTag", 320, 80, -1.7, 120)
 	local plate = tagPlate(gui, rgb(150, 210, 160), 160)
 	tagText(plate, "Text", spec.Name, "Title", TAG_NAME + 2, C.Text, 1)
-	woodBridge(f, "GardenBridge", polar(a, G.GardenR + R - 3, TOP), polar(a, G.SpokeEndR, TOP), 8, { RailInsetA = 3, RailInsetB = 2.6 })
+	woodBridge(f, "GardenBridge", polar(a, G.GardenR + R - 3, TOP), polar(a, G.SpokeEndR, TOP), 8, { RailInsetA = 3, RailInsetB = 2.6, MeshKey = "floor_garden_bridge" })
 	return f
 end
 
@@ -3611,6 +3799,7 @@ function LobbyBuilder.Build()
 	templates = {}
 	reserved = {}
 	machineBoxCache = nil
+	Mesh.Names = {}
 
 	local old = Workspace:FindFirstChild("NimbusLobby")
 	if old then
@@ -3625,7 +3814,7 @@ function LobbyBuilder.Build()
 	end
 
 	-- Gameplay-critical objects first (gates, spots, shop); each has a bare-bones fallback.
-	-- The Gate Court (6.1): Home, Obby, Altar here; Ring / Arena (ArenaBuilder) and Dungeon (DungeonBuilder) join the
+	-- The Gate Court (6.1): Obby, Altar here; Ring / Arena (ArenaBuilder) and Dungeon (DungeonBuilder) join the
 	-- same folder later, at GateSites.
 	local gatesFolder = newFolder(root, "Gates")
 	local sites = Gates.Sites(L)
@@ -3755,6 +3944,34 @@ function LobbyBuilder.Build()
 		RingSite = sites.Ring, -- ArenaBuilder's Portal_Ring (C12)
 		DungeonSite = sites.Dungeon, -- DungeonBuilder.BuildPortal (W3)
 	}
+end
+
+----------------------------------------------------------------------
+-- Phase 6 kit hooks (read-only; the game never calls them): blender/kit/props/lobby_world.py sets
+-- LobbyBuilder._Kit = { Targets = {}, Clouds = {} } before Build() to list every mesh target (key, subtree, origin) and
+-- every voxel cloud spec, then re-voxels a cloud at a finer grain with _CloudGrid. Tests use _Mesh (Signature, tag).
+----------------------------------------------------------------------
+LobbyBuilder._Kit = nil
+LobbyBuilder._Mesh = Mesh
+
+-- the cells of a recorded VX.Cloud spec at `V` studs per voxel (tier heights keep their stud thickness)
+function LobbyBuilder._CloudGrid(spec, V)
+	local V0 = spec.V or 3
+	local copy = {}
+	for k, v in pairs(spec) do
+		copy[k] = v
+	end
+	copy.V = V
+	copy.Tiers = {}
+	for i, t in ipairs(spec.Tiers) do
+		local tt = {}
+		for k, v in pairs(t) do
+			tt[k] = v
+		end
+		tt.H = math.max(1, math.floor((t.H or 1) * V0 / V + 0.5))
+		copy.Tiers[i] = tt
+	end
+	return VX.Cloud(copy)
 end
 
 return LobbyBuilder

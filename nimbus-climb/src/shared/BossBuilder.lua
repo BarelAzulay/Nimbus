@@ -27,6 +27,10 @@
 --   BossBuilder.GetHeight(model) -> studs       (also attribute Height; Radius = attribute Radius)
 --   BossBuilder.Ids() -> { bossId... }          BattleCatalog.BossOrder (or the built-in list)
 --   BossBuilder.Rigs[bossId]                    { Joints = { name -> { Parent, Pivot (voxels) } }, Fx = {...} }
+--   BossBuilder.MeshKeys(bossId, detail) -> { "boss_<id>_<Joint>[_low]", ... }   Phase 6 Blender keys, joint order
+--   BossBuilder.UsesMeshes(bossId, detail) -> bool   every key ready here (MeshLibrary): Build assembles MeshParts
+--       (same tree, names by palette key, joint attributes, Fx points, rig; model attribute ML_Mesh = true);
+--       otherwise (no ids, loading, failed) the voxel Part build exactly as before. Never a mix.
 --
 -- Model layout (names are part of the contract: BattleController animates / attaches effects by them):
 --   Boss_<id> (Model; attributes BossId, Element, Height, Radius, Detail, Scale; PrimaryPart = Root)
@@ -117,7 +121,42 @@ end
 ----------------------------------------------------------------------
 -- Sculpt helpers (voxel units; y up from the feet, the boss faces -Z, +X is its right)
 ----------------------------------------------------------------------
+-- Phase 6 kit hook (read-only; the game never sets it): BossBuilder._Blueprint sculpts at k voxels per boss voxel
+local MESH_K = nil
+local MESH_FIELDS = { Center = true, A = true, B = true, Pivot = true, Radius = true, RadiusB = true, Size = true, Round = true, Thickness = true, ThicknessB = true }
+local function meshScaled(t)
+	local o = {}
+	for key, v in pairs(t) do
+		if MESH_FIELDS[key] then
+			if type(v) == "number" then
+				v = v * MESH_K
+			elseif type(v) == "table" then
+				local c = {}
+				for i, x in pairs(v) do
+					c[i] = (type(x) == "number") and x * MESH_K or x
+				end
+				v = c
+			end
+		elseif key == "Points" or key == "Radii" then
+			local list = {}
+			for i, pt in ipairs(v) do
+				if type(pt) == "number" then
+					list[i] = pt * MESH_K
+				else
+					list[i] = { pt[1] * MESH_K, pt[2] * MESH_K, pt[3] * MESH_K }
+				end
+			end
+			v = list
+		end
+		o[key] = v
+	end
+	return o
+end
+
 local function shape(g, t)
+	if MESH_K then
+		t = meshScaled(t)
+	end
 	return Voxel.Shape(g, t)
 end
 local function ell(g, key, c, r, extra)
@@ -772,7 +811,51 @@ local function nearestPart(model, pos)
 	return best
 end
 
-local function buildTemplate(bossId, detail, scale)
+-- Phase 6 mesh path (ARCHITECTURE_V3.md "## Phase 6", recipe 4.8): one Blender key per joint,
+-- boss_<id>_<Joint> (High) / boss_<id>_<Joint>_low (Low), pivot = the joint pivot (blender/catalog/creatures.json).
+-- When EVERY key of the boss is ready on this machine the joints are MeshParts (MeshLibrary.Assemble), otherwise the
+-- whole boss is today's voxel Part build (never a mix). Same tree, names, attributes, Fx points and rig either way.
+local lazyMesh = nil
+local function meshLibrary()
+	if lazyMesh == nil then
+		lazyMesh = false
+		local inst = Shared:FindFirstChild("MeshLibrary")
+		if inst then
+			local ok, mod = pcall(require, inst)
+			if ok and type(mod) == "table" and type(mod.IsReady) == "function" and type(mod.Assemble) == "function" then
+				lazyMesh = mod
+			end
+		end
+	end
+	return lazyMesh or nil
+end
+
+-- the mesh keys of a boss at a detail, in joint order (nil for an unknown boss)
+function BossBuilder.MeshKeys(bossId, detail)
+	local rigDef = BossBuilder.Rigs[bossId]
+	if not rigDef then
+		return nil
+	end
+	local suffix = (detail == "Low") and "_low" or ""
+	local keys = {}
+	for i, name in ipairs(rigDef.Order) do
+		keys[i] = "boss_" .. bossId .. "_" .. name .. suffix
+	end
+	return keys
+end
+
+-- true when the boss would be built from meshes right now on this machine
+function BossBuilder.UsesMeshes(bossId, detail)
+	local ML = meshLibrary()
+	local keys = BossBuilder.MeshKeys(bossId, detail == "Low" and "Low" or "High")
+	if not ML or not keys then
+		return false
+	end
+	local ok, ready = pcall(ML.IsReady, keys)
+	return ok and ready == true
+end
+
+local function buildTemplate(bossId, detail, scale, useMesh)
 	local rigDef = BossBuilder.Rigs[bossId]
 	local sculpt = SCULPT[bossId]
 	if not rigDef or not sculpt then
@@ -780,10 +863,14 @@ local function buildTemplate(bossId, detail, scale)
 	end
 	local vs = VOXEL * scale
 	local grids = {}
-	for _, name in ipairs(rigDef.Order) do
-		grids[name] = Voxel.NewGrid(rigDef.Height)
+	if not useMesh then
+		for _, name in ipairs(rigDef.Order) do
+			grids[name] = Voxel.NewGrid(rigDef.Height)
+		end
+		sculpt(grids)
 	end
-	sculpt(grids)
+	local meshKeys = useMesh and BossBuilder.MeshKeys(bossId, detail) or nil
+	local ML = useMesh and meshLibrary() or nil
 	local palette = resolvePalette(PALETTES[bossId])
 	local colors = COLORS[bossId] or FALLBACK_COLORS
 	local model = Instance.new("Model")
@@ -806,15 +893,31 @@ local function buildTemplate(bossId, detail, scale)
 		skip[k] = true
 	end
 	skip.Mouth = true
-	for _, name in ipairs(rigDef.Order) do
-		local g = grids[name]
-		Voxel.Shade(g, { Skip = skip, Smooth = 1 })
-		local maxParts = budget[name] or 150
-		if low then
-			maxParts = floor(maxParts * LOW_FACTOR)
-		end
+	for jointIndex, name in ipairs(rigDef.Order) do
 		local joint = rigDef.Joints[name]
-		local group, parts = Voxel.Build(g, { VoxelSize = vs, Palette = palette, Name = name, MaxParts = maxParts, Keep = KEEP[bossId], CastShadow = false })
+		local group, parts
+		if meshKeys and ML then
+			-- the joint's Blender key, placed with its pivot on the joint pivot (manifest space = joint space)
+			group = ML.Assemble({ Name = name, Root = false, Parts = { { Key = meshKeys[jointIndex] } } }, {},
+				{ Scale = scale, At = CFrame.new(vec3(joint.Pivot, vs)) })
+			if not group then
+				error("mesh key " .. tostring(meshKeys[jointIndex]) .. " did not assemble", 0)
+			end
+			parts = {}
+			for _, d in ipairs(group:GetChildren()) do
+				if d:IsA("BasePart") then
+					parts[#parts + 1] = d
+				end
+			end
+		else
+			local g = grids[name]
+			Voxel.Shade(g, { Skip = skip, Smooth = 1 })
+			local maxParts = budget[name] or 150
+			if low then
+				maxParts = floor(maxParts * LOW_FACTOR)
+			end
+			group, parts = Voxel.Build(g, { VoxelSize = vs, Palette = palette, Name = name, MaxParts = maxParts, Keep = KEEP[bossId], CastShadow = false })
+		end
 		for _, p in ipairs(parts) do
 			-- big pieces cast shadows (the boss should sit on the floor); small ones stay cheap
 			p.CastShadow = max(p.Size.X, p.Size.Y, p.Size.Z) >= 3 * scale
@@ -867,7 +970,42 @@ local function buildTemplate(bossId, detail, scale)
 	model:SetAttribute("Radius", (boss and tonumber(boss.Radius) or 7) * scale)
 	model:SetAttribute("Detail", low and "Low" or "High")
 	model:SetAttribute("Scale", scale)
+	if meshKeys then
+		model:SetAttribute("ML_Mesh", true)
+	end
 	return model
+end
+
+-- Phase 6 kit hook (read-only, never used by the game): the shaded joint grids of a boss sculpted at k voxels per
+-- boss voxel (blender/kit/bridge.py). Joint pivots stay in boss voxels (VOXEL studs each); grid voxels are VOXEL / k.
+function BossBuilder._Blueprint(bossId, k)
+	local rigDef = BossBuilder.Rigs[bossId]
+	local sculpt = SCULPT[bossId]
+	if not rigDef or not sculpt then
+		return nil
+	end
+	local grids = {}
+	for _, name in ipairs(rigDef.Order) do
+		grids[name] = Voxel.NewGrid(rigDef.Height)
+	end
+	MESH_K = tonumber(k) or 1
+	local ok, err = pcall(sculpt, grids)
+	MESH_K = nil
+	if not ok then
+		error(err, 0)
+	end
+	local skip = { Mouth = true }
+	for key in pairs(GLOW_KEYS) do
+		skip[key] = true
+	end
+	for _, name in ipairs(rigDef.Order) do
+		Voxel.Shade(grids[name], { Skip = skip, Smooth = 1 })
+	end
+	return {
+		Grids = grids, Order = rigDef.Order, Joints = rigDef.Joints, Fx = rigDef.Fx, Keep = KEEP[bossId],
+		Palette = resolvePalette(PALETTES[bossId]), Colors = COLORS[bossId] or FALLBACK_COLORS, K = MESH_K or tonumber(k) or 1,
+		VoxelStuds = VOXEL / (tonumber(k) or 1),
+	}
 end
 
 -- the runtime rig of a model built by Build (read from its joint attributes; the model must be at rest)
@@ -895,8 +1033,9 @@ local function registerRig(model, bossId)
 					table.insert(rig.Rest, rootInv * d.CFrame)
 					table.insert(rig.Owner, j)
 					table.insert(rig.CFs, d.CFrame)
-					if GLOW_KEYS[d.Name] then
-						table.insert(rig.Glow, { Part = d, Color = d.Color })
+					local glowKey = GLOW_KEYS[d.Name] and d.Name or d:GetAttribute("MK_Key")
+					if GLOW_KEYS[glowKey] then
+						table.insert(rig.Glow, { Part = d, Color = d.Color, Key = glowKey })
 					end
 				end
 			end
@@ -914,10 +1053,21 @@ function BossBuilder.Build(bossId, opts)
 	end
 	local detail = opts.Detail == "Low" and "Low" or "High"
 	local scale = scaleOf(bossId, opts)
-	local key = bossId .. "|" .. detail .. "|" .. tostring(scale)
+	local useMesh = BossBuilder.UsesMeshes(bossId, detail)
+	local key = bossId .. "|" .. detail .. "|" .. tostring(scale) .. (useMesh and "|mesh" or "")
 	local template = templates[key]
 	if not template then
-		local ok, result = pcall(buildTemplate, bossId, detail, scale)
+		local ok, result = pcall(buildTemplate, bossId, detail, scale, useMesh)
+		if not ok and useMesh then
+			-- a mesh template that cannot be assembled falls back to the whole Part build
+			warn("[BossBuilder] " .. bossId .. " meshes: " .. tostring(result) .. "; using the Part build")
+			key = bossId .. "|" .. detail .. "|" .. tostring(scale)
+			template = templates[key]
+			ok, result = true, template
+			if not template then
+				ok, result = pcall(buildTemplate, bossId, detail, scale, false)
+			end
+		end
 		if not ok then
 			warn("[BossBuilder] " .. bossId .. " failed: " .. tostring(result))
 			return nil
@@ -952,11 +1102,12 @@ function BossBuilder.Preload(bossId, opts)
 	end
 	local detail = opts.Detail == "Low" and "Low" or "High"
 	local scale = scaleOf(bossId, opts)
-	local key = bossId .. "|" .. detail .. "|" .. tostring(scale)
+	local useMesh = BossBuilder.UsesMeshes(bossId, detail)
+	local key = bossId .. "|" .. detail .. "|" .. tostring(scale) .. (useMesh and "|mesh" or "")
 	if templates[key] then
 		return true
 	end
-	local ok, result = pcall(buildTemplate, bossId, detail, scale)
+	local ok, result = pcall(buildTemplate, bossId, detail, scale, useMesh)
 	if ok and result then
 		templates[key] = result
 		return true
@@ -1320,7 +1471,7 @@ function BossBuilder.SetEnraged(model, on)
 	local colors = COLORS[rig.BossId] or FALLBACK_COLORS
 	for _, entry in ipairs(rig.Glow) do
 		if on then
-			entry.Part.Color = entry.Color:Lerp(colors.Enrage, entry.Part.Name == "Eye" and 0.85 or 0.6)
+			entry.Part.Color = entry.Color:Lerp(colors.Enrage, entry.Key == "Eye" and 0.85 or 0.6)
 		else
 			entry.Part.Color = entry.Color
 		end

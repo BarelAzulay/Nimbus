@@ -1350,6 +1350,8 @@ function CloudUI.PetViewport(parent, petDef, size, opts)
 	local dead = false
 	local model = nil
 	local builder = nil
+	local buildOpts = nil -- (Phase 6: kept for the mesh rebuild below)
+	local meshVer = nil
 
 	local center = Vector3.new(0, 1, 0)
 	local halfH, halfW = 1.5, 1.8
@@ -1359,7 +1361,7 @@ function CloudUI.PetViewport(parent, petDef, size, opts)
 	if type(petDef) == "table" then
 		builder = getPetBuilder()
 		if builder and type(builder.Build) == "function" then
-			local buildOpts = { Scale = 1 }
+			buildOpts = { Scale = 1, Viewport = true } -- Phase 6: no PetFx particles inside a ViewportFrame
 			if opts.Detail == "Low" or opts.Detail == "High" then
 				buildOpts.Detail = opts.Detail
 			end
@@ -1513,6 +1515,35 @@ function CloudUI.PetViewport(parent, petDef, size, opts)
 				if orphanTime > 1.5 then
 					handle.Destroy()
 					return
+				end
+				-- Phase 6 (runtime-pets): the pet's Blender mesh keys became usable here -> swap the Part model for
+				-- the mesh pet (MeshVersion: one compare per check; the rebuild only when this model can upgrade)
+				local ver = builder.MeshVersion and builder.MeshVersion()
+				if ver and ver ~= meshVer then
+					meshVer = ver
+					if builder.NeedsMeshRebuild and builder.NeedsMeshRebuild(model) then
+						local okNew, fresh = pcall(builder.Build, petDef, buildOpts)
+						if okNew and typeof(fresh) == "Instance" then
+							model:Destroy()
+							model = fresh
+							handle.Model = fresh
+							model.Parent = viewport
+							pcall(function()
+								model:PivotTo(CFrame.new())
+							end)
+							animate(0.35)
+							local okBox, cf, bbox = pcall(function()
+								return model:GetBoundingBox()
+							end)
+							if okBox and cf and bbox then
+								center = cf.Position
+								halfH = math.max(0.5, bbox.Y * 0.5)
+								halfW = math.max(0.5, math.max(bbox.X, bbox.Z) * 0.5)
+							end
+							pose(0.35, 0)
+							fit()
+						end
+					end
 				end
 				shown = isShown(viewport)
 				if shown then

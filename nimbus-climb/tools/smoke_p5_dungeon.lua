@@ -900,9 +900,9 @@ local function serverScenarios()
 			local okH = Ty and Ty.GoHome and Ty.GoHome(runner)
 			T.check(okH ~= true, "p5 excl: " .. label .. ": GoHome is refused")
 			if GS and GS.Use then
-				local okG, whyG = GS.Use(runner, "Home")
+				-- (Phase 6: no Home gate in the lobby; GoHome above is the way home)
 				local okA, whyA = GS.Use(runner, "Altar")
-				T.check(okG == false and okA == false, "p5 excl: " .. label .. ": the Home / Altar gates refuse (" .. tostring(whyG) .. " / " .. tostring(whyA) .. ")")
+				T.check(okA == false, "p5 excl: " .. label .. ": the Altar gate refuses (" .. tostring(whyA) .. ")")
 			end
 			T.check(inBattle(runner) == run.Id and runOf(runner) == run, "p5 excl: " .. label .. ": InBattle stays the run id")
 		end
@@ -1650,35 +1650,39 @@ local function serverScenarios()
 		T.check(#over == 0, "p5 world: 17 templates within their budgets (wave room <= 320, boss <= 420, hall <= 140, corridor <= 70, treasure <= 90; <= 40 Accent parts)", table.concat(over, ", "))
 		T.check(#missingAtt == 0, "p5 world: every template carries Entrance / Exit (+ Threshold, Spawn1..4, Dais on rooms)", table.concat(missingAtt, ", "))
 		T.check(total <= 4000, "p5 world: the whole template set is <= 4,000 parts (" .. total .. ")")
-		-- materials and big faces (6.4 rules 1-2) on the templates
-		local WS = req("shared/WorldStyle")
-		local badMat, badFace = {}, {}
+		-- the look (Phase 6 A1: the P4 look) on the templates: SmoothPlastic (Neon / Glass / ForceField for glow, water
+		-- and shimmer), blocks only (no Ball / Cylinder), a bright colourful palette (no muted P5 greys: the
+		-- area-weighted saturation of the big opaque faces >= 0.2)
+		local P4MAT = { [Enum.Material.SmoothPlastic] = true, [Enum.Material.Neon] = true, [Enum.Material.Glass] = true, [Enum.Material.ForceField] = true }
+		local badMat, badShape = {}, {}
+		local satArea, area = 0, 0
 		for _, name in ipairs(db.Templates) do
 			local model = db.Template(name)
 			for _, part in ipairs(model:GetDescendants()) do
-				if part:IsA("BasePart") then
+				if part:IsA("BasePart") and part.Transparency < 0.99 then
 					local s = part.Size
-					local big = math.max(s.X, s.Y, s.Z) > 2
-					if big and part.Material == Enum.Material.SmoothPlastic then
-						badMat[#badMat + 1] = name .. "." .. part.Name
-					elseif WS and WS.IsWorldMaterial and not WS.IsWorldMaterial(part.Material) then
+					if not P4MAT[part.Material] then
 						badMat[#badMat + 1] = name .. "." .. part.Name .. " " .. tostring(part.Material)
+					end
+					if part:IsA("Part") and part.Shape ~= Enum.PartType.Block then
+						badShape[#badShape + 1] = name .. "." .. part.Name
 					end
 					local faces = { s.X * s.Y, s.Y * s.Z, s.X * s.Z }
 					local maxFace = math.max(faces[1], faces[2], faces[3])
-					if maxFace > 16 and part.Material ~= Enum.Material.Neon and s.X * s.Y * s.Z > 8 then
+					if maxFace > 16 and part.Material ~= Enum.Material.Neon and part.Transparency < 0.3 then
 						local c = part.Color
 						local val = math.max(c.R, c.G, c.B)
 						local sat = (val > 0) and ((val - math.min(c.R, c.G, c.B)) / val) or 0
-						if sat > 0.45 + 1e-6 or val < 0.35 - 1e-6 or val > 0.9 + 1e-6 then
-							badFace[#badFace + 1] = name .. "." .. part.Name
-						end
+						satArea = satArea + sat * maxFace
+						area = area + maxFace
 					end
 				end
 			end
 		end
-		T.check(#badMat == 0, "p5 world: template materials come from WorldStyle.Materials; no big SmoothPlastic", table.concat(badMat, ", "):sub(1, 300))
-		T.check(#badFace == 0, "p5 world: big faces keep saturation <= 0.45 and value 0.35..0.9", table.concat(badFace, ", "):sub(1, 300))
+		T.check(#badMat == 0, "p5 world: template materials are the P4 look (SmoothPlastic / Neon / Glass / ForceField; P6 A1)", table.concat(badMat, ", "):sub(1, 300))
+		T.check(#badShape == 0, "p5 world: templates are blocky voxels (no Ball / Cylinder parts; P6 A1)", table.concat(badShape, ", "):sub(1, 300))
+		local wsat = area > 0 and satArea / area or 0
+		T.check(wsat >= 0.2, string.format("p5 world: a cute, colourful dungeon (area-weighted saturation of the big faces %.2f >= 0.2; P6 A1)", wsat))
 		-- the layout never overlaps over 20 seeds (every floor kind)
 		local overlaps = {}
 		for seed = 1, 20 do
@@ -1908,6 +1912,223 @@ local function serverScenarios()
 		K.flushWarnings("p5dgn_net", { "[BattleService]", "[DungeonService]" })
 		cleanup(q)
 	end)
+
+	------------------------------------------------------------------------------------------------
+	-- [owner: art-arenadungeon] begin -- p5dgn_mesh (Phase 6 W2): the Blender keys of the dungeon (blender/catalog/
+	-- arenadungeon.json) and DungeonBuilder's Tag calls (DungeonBuilder._Mesh): every tagged piece has its dungeon_* key
+	-- and every key is tagged, LayoutSig matches the live pieces (else rebuild: blender/build_all.py --class
+	-- arenadungeon), no nesting, flames kept, nothing tagged without ids, with ids the tag rides along when clonePiece
+	-- moves a template (the wrapper's PrimaryPart), a stale piece is refused, a room's meshes stay light.
+	------------------------------------------------------------------------------------------------
+	S.p5dgn_mesh = guarded("p5dgn_mesh", function()
+		if not K.needBoot() then
+			return
+		end
+		local db = DGB()
+		local ML = req("shared/MeshLibrary")
+		local Mesh = db and db._Mesh
+		if not T.check(type(Mesh) == "table" and type(Mesh.Placed) == "table" and type(ML) == "table", "dungeon mesh: DungeonBuilder._Mesh and MeshLibrary load") then
+			return
+		end
+		local abs, max = math.abs, math.max
+		local CollectionService = game:GetService("CollectionService")
+		local folder = db.EnsureTemplates()
+		local pocket = db.BuildRun(11, 1, 4242)
+		local recs = {}
+		for target, r in pairs(Mesh.Placed) do
+			local live = target.Parent and (target:IsDescendantOf(folder) or (pocket and pocket.Model and target:IsDescendantOf(pocket.Model)))
+			if live then
+				recs[#recs + 1] = { Target = target, Key = r.Key, Origin = r.Origin, Look = r.Look, Keep = r.Keep, Scale = r.Scale, Name = target:GetFullName() }
+			end
+		end
+		table.sort(recs, function(a, b)
+			return a.Key .. a.Name < b.Key .. b.Name
+		end)
+		local set, used = {}, {}
+		for _, r in ipairs(recs) do
+			set[r.Target] = true
+			used[r.Key] = (used[r.Key] or 0) + 1
+		end
+		local missing, orphan = {}, {}
+		for key in pairs(used) do
+			if not ML.Manifest(key) then
+				missing[#missing + 1] = key
+			end
+		end
+		table.sort(missing)
+		local inst = K.moduleInstance("shared/MeshLibrary")
+		local dir = inst and inst.Parent and inst.Parent:FindFirstChild("MeshManifests")
+		local allKeys = {}
+		for _, m in ipairs(dir and dir:GetChildren() or {}) do
+			if m:IsA("ModuleScript") and string.sub(m.Name, 1, 8) == "dungeon_" then
+				allKeys[#allKeys + 1] = m.Name
+				if not used[m.Name] then
+					orphan[#orphan + 1] = m.Name
+				end
+			end
+		end
+		table.sort(orphan)
+		table.sort(allKeys)
+		T.check(#recs >= 200 and #missing == 0, "dungeon mesh: every tagged piece has its manifest (src/shared/MeshManifests/dungeon_*)", #recs .. " targets; missing " .. table.concat(missing, ", "))
+		T.check(#orphan == 0, "dungeon mesh: every dungeon_* key is tagged by the templates / a run", table.concat(orphan, ", "))
+		for _, key in ipairs({ "dungeon_wall_48", "dungeon_wall_50_door", "dungeon_floor_48x48", "dungeon_pillar_15p5", "dungeon_torch", "dungeon_chest", "dungeon_crate", "dungeon_rock_1", "dungeon_stalagmite", "dungeon_crack", "dungeon_door_8" }) do
+			T.check(used[key] ~= nil, "dungeon mesh: " .. key .. " is tagged", tostring(used[key]))
+		end
+		local sig = T.tally("dungeon mesh: each piece matches its key's LayoutSig (else rebuild: blender/build_all.py --class arenadungeon)")
+		local nest = T.tally("dungeon mesh: targets never nest")
+		local glow = T.tally("dungeon mesh: every visible Neon part of a piece is in its keep list (torch flames stay)")
+		local quiet = 0
+		for _, r in ipairs(recs) do
+			local man = ML.Manifest(r.Key)
+			local att = man and man.Attachments and man.Attachments.LayoutSig
+			if att then
+				local pos = att.Pos or att.pos
+				local n, a, b = Mesh.Signature(r.Target, r.Origin, r.Scale, r.Keep)
+				local tol = 0.05 + n * 1e-4
+				sig:case(n == pos[1] and abs(a - pos[2]) <= tol and abs(b - pos[3]) <= tol, r.Name, n .. " / " .. tostring(pos[1]))
+			end
+			local p = r.Target.Parent
+			local nested = false
+			while p do
+				if set[p] then
+					nested = true
+				end
+				p = p.Parent
+			end
+			nest:case(not nested, r.Name)
+			local keep = {}
+			for _, k in ipairs(r.Keep or {}) do
+				keep[k] = true
+			end
+			local bad = nil
+			local list = r.Target:GetDescendants()
+			list[#list + 1] = r.Target
+			for _, d in ipairs(list) do
+				if d:IsA("BasePart") and d.Material == Enum.Material.Neon and d.Transparency < 0.99 and not keep[d.Name] then
+					bad = d.Name
+				end
+			end
+			glow:case(bad == nil, r.Name, bad)
+			if r.Target:GetAttribute("ML_DressKey") then
+				quiet = quiet + 1
+			end
+		end
+		sig:report()
+		nest:report()
+		glow:report()
+		T.eq(quiet, 0, "dungeon mesh: with the shipped empty MeshIds nothing is tagged (the Part build is unchanged)")
+		-- a room's meshes stay light (every template: <= 90k triangles, <= 10k per MeshPart)
+		local per, worst, heavy = {}, 0, 0
+		for _, r in ipairs(recs) do
+			local top = r.Target
+			while top.Parent and top.Parent ~= folder do
+				top = top.Parent
+			end
+			if top.Parent == folder then
+				local man = ML.Manifest(r.Key)
+				per[top.Name] = (per[top.Name] or 0) + (tonumber(man and man.Raw and man.Raw.Tris) or 0)
+				for _, part in ipairs(man and man.Raw and man.Raw.Parts or {}) do
+					worst = max(worst, tonumber(part.Tris) or 0)
+				end
+			end
+		end
+		local heavyName = "-"
+		for name, t in pairs(per) do
+			if t > heavy or (t == heavy and name < heavyName) then
+				heavy, heavyName = t, name
+			end
+		end
+		T.check(heavy > 0 and heavy <= 90000 and worst <= 10000, "dungeon mesh: every room's meshes <= 90k triangles, every MeshPart <= 10k", heavyName .. " " .. heavy .. " tris, worst part " .. worst)
+		-- with ids: a fresh Cave template is tagged; the tags ride along when the pieces move like clonePiece moves them
+		local ids, idn = {}, 0
+		for _, key in ipairs(allKeys) do
+			idn = idn + 1
+			ids[key] = 300000 + idn
+		end
+		-- W2.5 isolation: Start() with ids creates ReplicatedStorage.MeshLibrary; remove it again at the end so later
+		-- scenarios (p6pets_default: MeshLibrary.Active() is false) see the empty-ids game
+		local hadMLFolder = game:GetService("ReplicatedStorage"):FindFirstChild("MeshLibrary") ~= nil
+		ML._Reset()
+		ML._Configure({ Ids = ids })
+		pcall(ML.Start)
+		local okB, cave = pcall(db.Geo.Cave_1.build)
+		if T.check(okB and cave ~= nil, "dungeon mesh: a Cave template builds with ids configured", tostring(cave)) then
+			local function landing(t)
+				local off = t:GetAttribute("ML_Offset")
+				local v = {}
+				for x in string.gmatch(off or "", "[^,%s]+") do
+					v[#v + 1] = tonumber(x)
+				end
+				if #v ~= 12 then
+					return nil
+				end
+				local pivot = t:IsA("BasePart") and t.CFrame or t:GetPivot()
+				return pivot * CFrame.new(unpack(v))
+			end
+			local tagged = {}
+			for _, d in ipairs(cave:GetDescendants()) do
+				if d:GetAttribute("ML_DressKey") then
+					tagged[#tagged + 1] = d
+				end
+			end
+			local kinds = {}
+			for _, d in ipairs(tagged) do
+				kinds[string.match(d:GetAttribute("ML_DressKey"), "^dungeon_(%a+)")] = true
+			end
+			T.check(#tagged >= 40 and kinds.wall and kinds.floor and kinds.rock and kinds.torch and kinds.pillar and kinds.stalagmite and kinds.crack, "dungeon mesh: with ids the Cave's walls, floor, pillars, torches, rocks, stalagmites and cracks are tagged", #tagged .. " tagged")
+			local where = T.tally("dungeon mesh: each tag lands its mesh on the Tag origin (pivot * ML_Offset)")
+			local before = {}
+			for _, d in ipairs(tagged) do
+				local r = Mesh.Placed[d]
+				local l = landing(d)
+				before[d] = l
+				where:case(r ~= nil and l ~= nil and (l.Position - r.Origin.Position).Magnitude < 0.02, d:GetFullName())
+			end
+			where:report()
+			-- move every part the way clonePiece does (one delta): the landing points move with it
+			local delta = CFrame.new(500, 40, -300) * CFrame.Angles(0, math.rad(90), 0)
+			for _, d in ipairs(cave:GetDescendants()) do
+				if d:IsA("BasePart") then
+					d.CFrame = delta * d.CFrame
+				end
+			end
+			local ride = T.tally("dungeon mesh: after clonePiece's move the mesh still lands on the moved origin")
+			for _, d in ipairs(tagged) do
+				local l = landing(d)
+				ride:case(l ~= nil and before[d] ~= nil and (l.Position - (delta * before[d]).Position).Magnitude < 0.05, d:GetFullName())
+			end
+			ride:report()
+			local wall = nil
+			for _, d in ipairs(tagged) do
+				if d.Name == "WallRun" and not wall then
+					wall = d
+				end
+			end
+			if wall then
+				T.check(wall:GetAttribute("ML_Primary") ~= nil, "dungeon mesh: a wall run takes its room's stone colour (ML_Primary)")
+				local clone = wall:Clone()
+				local plinth = clone:FindFirstChild("Plinth")
+				if plinth then
+					plinth.CFrame = plinth.CFrame * CFrame.new(0, 1, 0)
+				end
+				clone:SetAttribute("ML_DressKey", nil)
+				T.check(Mesh.tag(clone, wall:GetAttribute("ML_DressKey"), plinth and (clone.PrimaryPart.CFrame * CFrame.new(0, -0.6, 0.35)) or CFrame.new(), nil, nil) == false and clone:GetAttribute("ML_DressKey") == nil, "dungeon mesh: a wall run that no longer matches its key is never tagged")
+				clone:Destroy()
+			end
+			cave:Destroy()
+		end
+		ML._Reset()
+		local mlFolder = game:GetService("ReplicatedStorage"):FindFirstChild("MeshLibrary")
+		if mlFolder and not hadMLFolder then
+			mlFolder:Destroy()
+		end
+		if pocket then
+			db.FreeRun(11)
+		end
+		K.flushErrors("p5dgn_mesh")
+		K.flushWarnings("p5dgn_mesh")
+	end)
+	-- [owner: art-arenadungeon] end
 
 	return S
 end

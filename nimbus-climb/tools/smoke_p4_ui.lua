@@ -903,6 +903,8 @@ local function clientScenarios()
 			AC.Close()
 			advance(0.4)
 		end
+		Mock.SetViewport(390, 844) -- leave the phone upright for the next phone scenario
+		advance(0.2)
 	end)
 
 	return S

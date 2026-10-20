@@ -4,8 +4,8 @@
 --   "Low"   LightingStack.Push("GfxLow"): Bloom / SunRays / DepthOfField off, Terrain clouds Density 0.4; every model
 --           tagged NC_Detail (pure decor: LobbyBuilder / HomeBuilder / DungeonBuilder) is moved to a local holder
 --           folder outside the workspace (client-side only) with its particle emitters / beams / trails disabled, also
---           decor that streams in later; the Sage Dragon (SkyDragonController) is paused by taking its model out of the
---           workspace (its RenderStepped step skips a model without a parent)
+--           decor that streams in later; the Sage Dragon is paused with SkyDragonController.SetHeld(true) (model out
+--           of the workspace, RenderStepped loop off, kept across its mesh rebuild)
 --   "High"  everything restored (the GfxLow preset popped, the decor and the dragon back where they were, emitters on
 --           again exactly where they were on)
 --
@@ -42,7 +42,7 @@ local St = {
 	Hidden = {}, -- [model] = original parent
 	HiddenList = {}, -- models in the order they were hidden (restored in that order)
 	Emitters = {}, -- [emitter] = true (an emitter WE turned off)
-	Dragon = nil, -- { Model, Parent } while paused
+	Dragon = nil, -- true while Low holds the dragon (SetHeld); { Parent } on the fallback path
 	Conns = {},
 	Started = false,
 }
@@ -141,14 +141,21 @@ local function showAll()
 	St.Emitters = {}
 end
 
-local function dragonModel()
+local function dragonModule()
 	local controllers = Client:FindFirstChild("Controllers")
 	local module = controllers and controllers:FindFirstChild("SkyDragonController")
 	if not module then
 		return nil
 	end
 	local ok, mod = pcall(require, module)
-	if ok and type(mod) == "table" and type(mod.GetModel) == "function" then
+	if ok and type(mod) == "table" then
+		return mod
+	end
+	return nil
+end
+
+local function dragonModel(mod)
+	if mod and type(mod.GetModel) == "function" then
 		local okModel, model = pcall(mod.GetModel)
 		if okModel and typeof(model) == "Instance" then
 			return model
@@ -157,21 +164,34 @@ local function dragonModel()
 	return nil
 end
 
+-- Low pauses the Sage Dragon, High lets it fly again. The controller keeps the flag (SetHeld), so a dragon rebuilt
+-- while Low (its mesh rebuild once the dragon keys load, _Rebuild) is built paused and High always finds the LIVE
+-- model. Without SetHeld (an older controller): the current model is re-fetched every call and a write to a
+-- destroyed model can never throw (Apply always reaches PetFx.SetQuality).
 local function pauseDragon(on)
+	local mod = dragonModule()
+	if mod and type(mod.SetHeld) == "function" then
+		St.Dragon = on and true or nil
+		pcall(mod.SetHeld, on)
+		return
+	end
+	local model = dragonModel(mod)
 	if on then
-		if St.Dragon then
-			return
-		end
-		local model = dragonModel()
 		if model and model.Parent then
-			St.Dragon = { Model = model, Parent = model.Parent }
-			model.Parent = nil
+			local parent = model.Parent
+			if pcall(function()
+				model.Parent = nil
+			end) then
+				St.Dragon = { Parent = parent }
+			end
 		end
 	elseif St.Dragon then
 		local d = St.Dragon
 		St.Dragon = nil
-		if d.Parent and d.Parent.Parent and d.Model.Parent == nil then
-			d.Model.Parent = d.Parent
+		if type(d) == "table" and model and model.Parent == nil and d.Parent and d.Parent.Parent then
+			pcall(function()
+				model.Parent = d.Parent
+			end)
 		end
 	end
 end
@@ -216,6 +236,10 @@ function GraphicsQuality.Apply(setting)
 		showAll()
 		pauseDragon(false)
 	end
+	-- Phase 6 (6.4 / A6): the evolved pets' particles follow the same switch (PetFx: Low = the soft light only)
+	pcall(function()
+		require(ReplicatedStorage.Shared.PetFx).SetQuality(St.Mode)
+	end)
 	return St.Mode
 end
 
