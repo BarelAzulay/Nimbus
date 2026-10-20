@@ -421,6 +421,18 @@
    "structureHash": "0edbcd9852f57b18dd52d02c96427ef0",
    "tris": 1084
   },
+  "hyb_penguin": {
+   "class": "pets",
+   "contentHash": "268670cb32b42ed776ba902860b7a793",
+   "description": "Hybrid feature: penguin style (PetBuilder HYBRID.Penguin) grown on the pebble_pup body (pivot = body root; Hy* parts are coloured from the hybrid palette at runtime)",
+   "displayName": "NC Hyb Penguin",
+   "fbx": "blender/out/hyb_penguin.fbx",
+   "manifest": "src/shared/MeshManifests/hyb_penguin.lua",
+   "maxTrianglesPerMesh": 1476,
+   "parts": 2,
+   "structureHash": "4dfca9bac3b957045a1ad6f8e09b1811",
+   "tris": 1952
+  },
   "hyb_phoenix": {
    "class": "pets",
    "contentHash": "c5ebf582e463b48cf7c031ac8014ff6d",
