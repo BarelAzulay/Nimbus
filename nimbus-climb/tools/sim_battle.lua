@@ -1220,6 +1220,12 @@ section("move", function()
 	local allOk = true
 	for _, c in ipairs({ { "mochi_slime", 1 }, { "sunbeam_bear", 20 }, { "stormfang", 50 } }) do
 		local b = BS.new({ Mode = "Duel", Seed = 9, Teams = { team(1, 1, { pet(c[1], c[2]) }), team("npc", 2, { pet("honey_bunny", 1, nil, { Handicap = 0.3 }) }, { Npc = true, Specials = false }) }, Specials = false })
+		-- the fighter auto-attacks (dungeon fixes 4): the dummy may neither fall nor hit, the battle must outlast the patterns
+		for _, u in ipairs(b.units) do
+			if u.side == 2 then
+				u.maxHp, u.hp, u.hit = 1e9, 1e9, 0
+			end
+		end
 		local sp = b:SpeedOf(1)
 		local tid = b:TeamOf(1).Fighter
 		local rng = lcg(5)

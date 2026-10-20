@@ -72,9 +72,10 @@ ids were found. A yellow `[MeshLibrary] <name> ... stays on the Part build` line
 ## Phase 5: the Big Sky Update
 
 - **Fight with one pet, bring two helpers.** Your battle team is **3 pets**. The first is your **FIGHTER**: you walk
-  your character and your fighter fights right where you go (fast pets make you faster in a fight). Press **ATTACK**
-  (`F`, hold it to keep attacking), **ELEMENT** (`E`, your fighter's element attack), **SPECIAL** (`Q`, when the
-  energy bar is full) and **DASH** (`Shift`, it dodges a hit). `Tab` picks the next enemy. The other two pets are your
+  your character and your fighter fights right where you go (fast pets make you faster in a fight). Your fighter
+  attacks by itself; **ATTACK** (`F` or a click) picks the enemy it attacks. Use **ELEMENT** (`E`, your fighter's
+  element attack), **SPECIAL** (`Q`, when the energy bar is full) and **DASH** (`Shift`: your pet dashes and dodges a
+  hit). `Tab` picks the next enemy. The other two pets are your
   **HELPERS**: they float behind you, and `1` / `2` (or a tap on a helper's picture) give that helper's **buff**. Hold
   `1` / `2` (or tap **SWAP**) to swap a helper in as your fighter. If your fighter is knocked out, the next pet steps
   in: three lives. On a phone the same big touch buttons sit at the bottom right. RETREAT is gone. The same controls
@@ -286,18 +287,18 @@ or the VS Code "Rojo" extension are the easy ways to get it).
 | Start playing from the main menu | **PLAY** (or `Enter`) | tap **PLAY** | `A` |
 | Move | `W` `A` `S` `D` | thumbstick | left stick |
 | Jump | `Space` | jump button | `A` |
-| Run (drains stamina) | hold `Shift` | **RUN** button (tap to toggle) | `L3` (toggle) |
-| Dash (35 stamina, 1.6 s cooldown, works in the air; in a battle it is free and uses `Shift`) | `Q` | **DASH** button | `B` |
+| Run (drains stamina; in a battle hold `Ctrl`) | hold `Shift` | **RUN** button (tap to toggle) | `L3` (toggle) |
+| Dash (35 stamina, 1.6 s cooldown, works in the air; in a battle `Shift` makes your PET dash instead) | `Q` | **DASH** button | `B` |
 | Use an item | `1` `2` `3` `4` (or click / tap a slot) | tap a slot | - |
 | Talk to an NPC pet, use a gate of the Gate Court (the Obby level picker, the Dungeon, the Champion Ring, the Arena, the Storm Altar), claim a home, put a pet on a pet bed, use the Food Machine (*Feed pets*), the Training Place (*Train pets*), the Fusion Machine, the Arena Gate, a duel pad, the arena boards or a dungeon chest | `E` | tap the prompt | `X` |
 | Buy at a home pad (hold a moment) | hold `E` | hold the prompt | hold `X` |
 | Scoop your Cloud Cash | walk over it | walk over it | walk over it |
 | Go home through your own portal | **Home** tile -> **Go home**, then walk into the portal | the same | the same |
 | No home yet: find a free one | **Home** tile -> **Claim a home**, walk into the portal, press `E` at the gate | the same | the same |
-| Battle: **ATTACK** (hold to keep attacking) | `F` (or left click) | **ATTACK** button | `X` |
-| Battle: **ELEMENT** (your fighter's element attack) | `E` | **ELEMENT** button | `Y` |
+| Battle: **ATTACK** (your pet attacks by itself: this picks the enemy it attacks) | `F` (or left click) | **ATTACK** button | `X` |
+| Battle: **ELEMENT** (your fighter's element attack; a door or chest prompt you can see gets `E` first) | `E` | **ELEMENT** button | `Y` |
 | Battle: **SPECIAL** (when the energy bar is full) | `Q` | **SPECIAL** button | `RB` |
-| Battle: **DASH** (dodge a hit) | `Shift` | **DASH** button | `B` |
+| Battle: **DASH** (your pet dashes and dodges a hit) | `Shift` | **DASH** button | `B` |
 | Battle: pick the next enemy | `Tab` (or click it; `T` clears) | tap it | `RT` (`LT` clears) |
 | Battle: a helper's buff (tap) or swap it in (hold) | `1` / `2` | tap / hold its picture, or **SWAP** | `LB` / D-pad up (D-pad left / right swap) |
 | Open the Pets window on a pet that is ready to evolve | click its gold **EVOLVE!** pill | tap the pill | - |
@@ -837,10 +838,10 @@ them and train their skills at the Training Place.
 
 | Button | PC | Phone | Gamepad | What it does |
 |---|---|---|---|---|
-| **ATTACK** | `F` or left click (hold) | the big round button | `X` | Your fighter hits the enemy you picked (or the nearest one in reach). Hold it to keep attacking. |
-| **ELEMENT** | `E` | ELEMENT button | `Y` | Your fighter's element attack (see below), then a **7 s** cooldown. |
+| **ATTACK** | `F` or left click | the big round button (**PICK TARGET**) | `X` | Your fighter attacks by itself, all the time. ATTACK picks the enemy it attacks: the one you click (with **Mouse lock** on: the one in the middle of the screen), else the nearest one; press again for the next one. A gold arrow shows who your pet is attacking. |
+| **ELEMENT** | `E` | ELEMENT button | `Y` | Your fighter's element attack (see below), then a **7 s** cooldown. When a door or chest prompt shows, `E` presses the prompt. |
 | **SPECIAL** | `Q` | SPECIAL button | `RB` | Your fighter's special attack, when the **ENERGY** bar is full (100). |
-| **DASH** | `Shift` | DASH button | `B` | A quick dodge: a hit during the dash misses ("DODGED!"). In a battle it costs no stamina, one dash every **2.5 s**. |
+| **DASH** | `Shift` | DASH button | `B` | Your PET dashes (your character stays put): a hit during the dash misses ("DODGED!"). It costs no stamina, one dash every **2.5 s**. In a battle RUN is `Ctrl`. |
 | Pick an enemy | `Tab` (next), click it, `T` clears | tap it or its row | `RT` / `LT` | The picked enemy gets a gold "TARGET" bracket. |
 | Helper buff | `1` / `2` | tap the helper's picture | `LB` / D-pad up | That helper's buff (see the table below). |
 | **SWAP** | hold `1` / `2` | hold the picture, or **SWAP** | D-pad left / right | The helper becomes your fighter and your fighter rests as a helper (every **10 s**). |
@@ -849,7 +850,8 @@ them and train their skills at the Training Place.
   you faster in a fight, slow pets a little slower, so keep up with the enemies and DASH out of their big hits:
   before an enemy's heavy hit it crouches and flashes yellow (its row flashes "!"), and that is the moment to dash.
 - **3 lives:** when your fighter is knocked out, the next pet of your team steps in by itself. A team is out when all
-  three are down. Helpers that rest on the bench slowly heal (up to 60 % of their health).
+  three are down. Nobody heals by themselves in a fight: only a healing pet's **Heal** (its special, or its buff as a
+  helper) heals your fighter and the pets on the bench.
 - **Your helpers** float behind you. Each one has ONE buff with its own cooldown ring (**12 s** for a Support pet's
   buff, **15 s** for an element buff); pressing it flies the helper to your fighter for a moment:
 
@@ -925,7 +927,9 @@ You need a pet; you do not need a home.
   party can also take a new member while it is still in room 1 or 2.
 - **Inside:** you start in the Entrance Hall, then walk into room 1; the fight starts when someone crosses the line
   inside the door. Every room has 2-3 waves (floor 1: three single sleepy enemies, made so that any single level-1 pet
-  wins). Your pets heal fully between rooms. You have **2 minutes** per room (**3 minutes** on floor 1); a member whose
+  wins); every wave arrives in a flash of light (for a moment it cannot be hit and does not attack). When a room is
+  clear its exit opens: go to the next door and press `E` (the whole party presses it, then the screen fades into the
+  next room). Your pets heal fully between rooms. You have **2 minutes** per room (**3 minutes** on floor 1); a member whose
   three pets are down watches from the edge until the next room. If everybody is down, the run ends ("Floor 3: the
   Frozen Crypt got you in room 3. Train your team and try again!"); the loot you already got stays yours.
 - **Loot for every room**, paid to everyone who really fought in it (at least 5 % of the party's damage; standing

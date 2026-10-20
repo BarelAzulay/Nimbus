@@ -8,7 +8,9 @@
 --   p5dgn_exclusive  in the Hall, a Corridor and the Treasure: raid join / duel / Ring start, GoHome, the Home / Altar
 --                    gates, the obby pad and the dev /reset are refused and InBattle stays the run id
 --   p5dgn_run        SetRunProvider called by Init; solo floor 1 with ONE level-1 pet end to end through the remotes:
---                    hall -> room 1 Start (Mode Dungeon, Start.Dungeon) -> waves -> loot once -> bars -> room 2 built
+--                    hall (no HallSeconds timer: E at the hall's EnterPrompt) -> room 1 Start (Mode Dungeon,
+--                    Start.Dungeon) -> waves -> loot once -> bars (the next entrance stays closed, its EnterPrompt
+--                    enabled, no DoorTime: E moves the run; the boss exit stays barred -> E -> treasure) -> room 2 built
 --                    while 1 fights, room 1 destroyed on entering 3 -> boss + escort -> treasure + chest -> exit;
 --                    InBattle = the run id from the teleport to the return; the pocket freed; workspace.Dungeons gone;
 --                    a 4-party: stragglers placed, enemies 2 + 3, the leash

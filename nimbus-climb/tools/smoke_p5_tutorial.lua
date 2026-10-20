@@ -180,7 +180,7 @@ local function serverScenarios()
 		T.eq(lineOf("mayor_panda", 2), "Your garden pets roam your yard, eat at the Food Bowl and poop Cloud Cash. Only you can scoop it: walk over it!", "p5ui: Mayor Panda 2")
 		T.eq(lineOf("mayor_panda", 3), "Level up your Berry Farm: bigger berries make bigger Cloud Cash, and more berries for the Food Machine!", "p5ui: Mayor Panda 3")
 		T.eq(lineOf("granny_owl", 4), "Your farm fills the Berry Basket. Press E at the Food Machine, pick a pet and press Feed: berries become XP!", "p5ui: Granny Owl 4")
-		T.eq(lineOf("coach_corgi", 5), "Your team is a fighter and two helpers: ATTACK, ELEMENT, SPECIAL and DASH; tap a helper for its buff!", "p5ui: Coach Corgi 5")
+		T.eq(lineOf("coach_corgi", 5), "Your team is a fighter and two helpers. Your fighter attacks by itself: ATTACK picks who; tap a helper for its buff!", "p5ui: Coach Corgi 5")
 		local bonus = PC and type(PC.EvolutionBonusOf) == "function" and tonumber(PC.EvolutionBonusOf(1)) or 1.5
 		local faster = tostring(math.floor((bonus - 1) * 100 + 0.5)) .. "%"
 		local floors = BC and BC.Dungeon and tonumber(BC.Dungeon.Floors) or 12
@@ -188,8 +188,8 @@ local function serverScenarios()
 		T.check(okA, "p5ui: Granny Owl: the Berry Basket, EVOLVE's new look, evolved pets grow " .. faster .. " faster (EvolutionBonusOf)", whyA)
 		local okB, whyB = says("coach_corgi", "Dungeon portal", tostring(floors) .. " floors", "Gems", "Team", "+" .. tostring(BC and BC.Trophies and BC.Trophies.Win or 20) .. " trophies")
 		T.check(okB, "p5ui: Coach Corgi: the Dungeon (" .. floors .. " floors from BattleCatalog.Dungeon), Team and trophies", whyB)
-		local okC, whyC = says("sparky_fox", "F = ATTACK", "E = ELEMENT", "Q = SPECIAL", "Shift = DASH", "helper", "SWAP")
-		T.check(okC, "p5ui: Sparky Fox: the battle keys (F / E / Q / Shift, helpers 1 / 2, SWAP)", whyC)
+		local okC, whyC = says("sparky_fox", "attack by themselves", "F = ATTACK picks who", "E = ELEMENT", "Q = SPECIAL", "Shift = DASH", "helper", "SWAP", "Ctrl in a battle")
+		T.check(okC, "p5ui: Sparky Fox: the battle keys (pets attack by themselves, F picks who / E / Q / Shift = the pet's DASH, helpers 1 / 2, SWAP, RUN on Ctrl)", whyC)
 		local okD, whyD = says("captain_penguin", "Obby portal", "level", "DASH", "safe zone", "Dungeon")
 		T.check(okD, "p5ui: Captain Penguin: the Obby portal's levels, DASH out of telegraphs, safe zones", whyD)
 		local staleNpc = {}

@@ -453,6 +453,29 @@ function Kit.crossThreshold(run, p)
 	end
 	advance(0.6)
 end
+-- dungeon-fixes decision 2: no timer moves the group; every member still in presses E at the open door's
+-- EnterPrompt (ProximityPromptService), then the fade's Out passes and the server enters the next room
+function Kit.pressDoor(run)
+	local dg = Kit.DGS().Dg
+	local t0 = Mock.Clock.now
+	local prompt = dg.nextDoor(run)
+	while not prompt and run.State ~= "Ending" and Mock.Clock.now - t0 < Kit.BC().Dungeon.Intermission + 2 do
+		advance(0.25)
+		prompt = dg.nextDoor(run)
+	end
+	if not prompt then
+		return false
+	end
+	for _, uid in ipairs(run.Order) do
+		local m = run.Members[uid]
+		if m and not m.Left and m.Player.Parent then
+			Mock.Teleport(m.Player, CFrame.new(prompt.Parent.Position))
+			Mock.Trigger(prompt, m.Player)
+		end
+	end
+	advance(0.6)
+	return true
+end
 -- DungeonState messages of a kind since a log mark
 function Kit.dstates(p, mark, kind)
 	local out = {}
@@ -475,7 +498,7 @@ function Kit.clearRooms(run, members, opts)
 		trs[i].ticks = i - 1 -- (party members press ATTACK on different ticks)
 	end
 	if run.State == "Hall" then
-		Kit.waitState(run, "Corridor", D.HallSeconds + 3)
+		Kit.pressDoor(run)
 	end
 	local cleared, room = 0, run.Room
 	while room <= (opts.toRoom or 4) do
@@ -511,12 +534,13 @@ function Kit.clearRooms(run, members, opts)
 			break
 		end
 		cleared = cleared + 1
+		Kit.pressDoor(run)
 		if room == 4 then
-			Kit.waitState(run, "Treasure", D.Intermission + D.DoorTime + 4)
+			Kit.waitState(run, "Treasure", 2)
 			break
 		end
 		local t1 = Mock.Clock.now
-		while not (run.Room == room + 1 and run.Phase == "Threshold" and run.State == "Corridor") and Mock.Clock.now - t1 < D.Intermission + D.DoorTime + 6 do
+		while not (run.Room == room + 1 and run.Phase == "Threshold" and run.State == "Corridor") and Mock.Clock.now - t1 < 2 do
 			advance(0.25)
 		end
 		room = room + 1

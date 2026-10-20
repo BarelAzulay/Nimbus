@@ -1261,7 +1261,7 @@ BattleCatalog.BossRules = {
 	MinionHp = 0.7,
 	MinionDamage = 0.035,
 	GroupExponent = 0.2, -- boss HP x teams ^ GroupExponent (Phase 5: 0.25 -> 0.2, so 8 fighters finish in ~220 s)
-	DamageGroup = { Min = 0.55, FullAt = 8 },
+	DamageGroup = { Min = 0.35, FullAt = 8 }, -- dungeon fixes (7): 0.55 -> 0.35 (no bench regen: a solo raid has no heal but its own)
 	MinionInterval = 1.4,
 	MinionLevelOf = "average",
 	Enrage = { Damage = 2, Cooldown = 0.7 },
@@ -1310,7 +1310,7 @@ BattleCatalog.Bosses = {
 		Scale = 1,
 		Basic = { Name = "Magma Fist", Interval = 2.8, Damage = 0.05, Range = 20 },
 		Attacks = {
-			attack("pool", "Magma Pool", "Circle", { Radius = 7, Telegraph = 2.2, Cooldown = 18, Damage = 0.15, Target = "Cluster", Linger = 5, LingerDamage = 0.03, First = 8 }),
+			attack("pool", "Magma Pool", "Circle", { Radius = 7, Telegraph = 2.2, Cooldown = 18, Damage = 0.15, Target = "Cluster", Linger = 5, LingerDamage = 0.015, First = 8 }), -- dungeon fixes (7): LingerDamage 0.03 -> 0.015
 			attack("eruption", "Eruption", "Circle", { Radius = 15, Telegraph = 2.4, Cooldown = 30, Damage = 0.2, Target = "Self", First = 18 }),
 		},
 		MinionPet = "maple_fox",

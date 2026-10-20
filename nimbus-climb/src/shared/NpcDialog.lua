@@ -398,13 +398,13 @@ NpcDialog.Npcs = {
 		Accent = Color3.fromRGB(64, 188, 192),
 		Keywords = { "Shift", "RUN", "DASH!", "DASH", "Q", "1 to 4", "Heal Cloud", "ATTACK", "ELEMENT", "SPECIAL", "helper", "SWAP" },
 		Lines = {
-			"Zap! Hold Shift to run (the RUN button on phones). Running drains stamina, walking refills it.",
+			"Zap! Hold Shift to run (the RUN button on phones; Ctrl in a battle). Running drains stamina, walking refills it.",
 			"Press Q to dash (DASH on phones). It costs " .. number(P.DashStaminaCost or 35) .. " stamina, recharges in "
 				.. number(P.DashCooldown or 1.6) .. " seconds and works in mid-air!",
 			"See a DASH! sign? That gap is too wide for a jump alone: jump first, then dash while you are in the air.",
 			"Keys 1 to 4 use your hotbar items during a climb. A Heal Cloud (" .. tokens(itemPrice("heal_cloud", 30))
 				.. ") restores 40% of your health.",
-			"In a battle: F = ATTACK, E = ELEMENT, Q = SPECIAL, Shift = DASH. Press 1 or 2 for a helper's buff, hold it to SWAP!",
+			"Pets attack by themselves! F = ATTACK picks who, E = ELEMENT, Q = SPECIAL, Shift = DASH, 1 or 2 = a helper, hold it to SWAP!",
 		},
 	},
 	{
@@ -456,7 +456,7 @@ NpcDialog.Npcs = {
 			trainLine(skillList),
 			"Try the Champion Ring on the plaza: one champion after another, each stronger. Beat your record for "
 				.. recordWord .. " Cash!",
-			"Your team is a fighter and two helpers: ATTACK, ELEMENT, SPECIAL and DASH; tap a helper for its buff!",
+			"Your team is a fighter and two helpers. Your fighter attacks by itself: ATTACK picks who; tap a helper for its buff!",
 		},
 	},
 	{
