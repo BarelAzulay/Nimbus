@@ -1764,7 +1764,7 @@ local CHECKLIST = {
 	{ 2, "Bulk Import", { "Asset Manager", "branding/sky/", "IMAGES", "a Decal id would NOT work", "moderation", "Copy ID", "Config.Sky.Faces", "Swap the `Lf` and `Rt` ids" } },
 	{ 3, "Config.Audio", { "Toolbox", "Copy Asset ID", "Empty = silent" } },
 	{ 4, "Config.Icons", { "emoji" } },
-	{ 5, "ShadowMap", { "default.project.json", "\"Technology\": \"Future\"", "Graphics: **Low**" } },
+	{ 5, "ShadowMap", { "default.project.json", "\"Technology\": \"ShadowMap\"", "Graphics: **Low**" } },
 	{ 6, "Developer Products", { "Config.Gems.Products", "Product ID" } },
 	{ 7, "Output", { "[Config]", "[LightingService]" } },
 }
@@ -1861,9 +1861,9 @@ local function checkChecklist5(Config, ownerText)
 		end
 	end
 	t:case(type(Config.Icons) == "table", "Config.Icons exists (step 4)")
-	-- step 5: the project file still says Future (the line the owner changes)
+	-- step 5: the project file says ShadowMap (phase 6: back to the bright cartoon look)
 	local project = readFile("default.project.json")
-	t:case(has(project, "\"Technology\": \"Future\""), "default.project.json has the line '\"Technology\": \"Future\"' that step 5 changes")
+	t:case(has(project, "\"Technology\": \"ShadowMap\""), "default.project.json has the line '\"Technology\": \"ShadowMap\"' that step 5 quotes")
 	-- step 6: the sample is the first Config.Gems.Products pack
 	local first = ((Config.Gems or {}).Products or {})[1] or {}
 	t:case(has(flat(steps[6] or ""), "{ Id = ..., Gems = " .. tostring(first.Gems) .. ", Name = \"" .. tostring(first.Name) .. "\" }"),

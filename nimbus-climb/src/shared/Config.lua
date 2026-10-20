@@ -506,6 +506,10 @@ Config.Audio = {
 -- image (NeonKit.Icon). Empty table = glyphs everywhere.
 Config.Icons = {}
 
+-- Phase 6: the Blender models. Mesh key -> Roblox Model asset id, written only by tools/upload_assets.py into
+-- shared/MeshIds.lua. Empty = every model uses its Part build. See README "Phase 6" and ARCHITECTURE_V3.md "## Phase 6".
+Config.MeshAssets = require(script.Parent.MeshIds)
+
 -- The loading screen (src/first/LoadingScreen.client.lua, ReplicatedFirst): SKIP appears after SkipAfter seconds, the
 -- screen finishes by itself at 100% or after MaxSeconds.
 Config.Loading = {

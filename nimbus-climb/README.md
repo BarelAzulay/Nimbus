@@ -1273,8 +1273,8 @@ Things only you can do, by hand, once. Steps 3 and 4 are optional; everything wo
    `Whoosh`) as `"rbxassetid://..."`. Empty = silent, nothing breaks.
 4. **Icons (optional):** the menu tiles use emoji; a PNG you Bulk Import (step 2) and paste into `Config.Icons` (for
    example `Config.Icons.Shop = "rbxassetid://..."`) replaces one.
-5. **Lighting on a slow PC or phone:** in `default.project.json`, change the line `"Technology": "Future"` to
-   `"Technology": "ShadowMap"` (one word), save, publish. Players can also pick Graphics: **Low** in SETTINGS.
+5. **Lighting:** since phase 6 the game is back to the bright cartoon look: `default.project.json` has the line
+   `"Technology": "ShadowMap"` (fast on phones too). Players can also pick Graphics: **Low** in SETTINGS.
 6. **Gems for Robux** (open since phase 2): create.roblox.com -> your experience -> Monetization -> **Developer
    Products** -> Create (one per pack: a name and the Robux price) -> copy each Product ID into
    `Config.Gems.Products` (`{ Id = ..., Gems = 100, Name = "Pouch of Gems" }`); until then the Gems tab says the packs

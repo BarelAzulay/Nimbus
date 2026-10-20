@@ -75,6 +75,18 @@ do
 	end
 end
 
+-- Phase 6: evolved-pet effects (auras, particles, lights); optional, a missing module only skips the effects
+local PetFx = nil
+do
+	local ok, mod = pcall(function()
+		local inst = script.Parent:FindFirstChild("PetFx")
+		return inst and require(inst) or nil
+	end)
+	if ok and type(mod) == "table" then
+		PetFx = mod
+	end
+end
+
 PetBuilder.Species = {
 	"Cat", "Dog", "Fox", "Bunny", "Bear", "Panda", "Dragon",
 	"Owl", "Slime", "Unicorn", "Phoenix", "Frog", "Penguin", "Axolotl",
@@ -6800,6 +6812,10 @@ function PetBuilder.Build(petDef, opts)
 	model:SetAttribute("PB_Evolved", look.Evolved == 2 and 2 or (look.Evolved and 1 or 0))
 	if type(opts.Wild) == "table" then
 		applyWild(model, opts.Wild)
+	end
+	-- Phase 6 (contract 6.4): auras, particles and lights of evolved pets (both the Part and the mesh path)
+	if stage > 0 and PetFx and opts.NoFx ~= true then
+		PetFx.Apply(model, look, stage, { Detail = detail, Scale = scale })
 	end
 	return model
 end
