@@ -93,5 +93,5 @@ W5 review script ready: scratchpad/p5review.js (launch after the W4 gate fixer; 
 ## Dungeon fixes (player request after Phase 6; branch v3-dungeon-fixes)
 - Plan + contract: docs/dungeon-fixes/plan.md (root causes A: client Wave handler never draws enemies; B: zone centre 4.5-6 studs above floor; 7 decisions; ownership).
 - Upload progress: cal_axes uploaded (asset 115959775479149, Approved, on main). WAITING: player's Studio check of cal_axes (ML_Status/Yaw/Scale/FitErr, colourful cube, F readable) before Pebble Pup.
-- RUNNING (Agent, background): dungeon-flow, battle-core, battle-client, mouse-lock. NEXT: apply lead requests (Main.client MouseLock start line, contract.json), full gate (run_checks --quick both modes), rbxlx rebuild, commit/push, summary to player.
+- DONE: all 7 requirements (commits up to 1ad81ed, fast-forwarded to main). Gate: default smoke 12633/3 -> p6pets fixed (431/0), mesh 1023/0. Known: sim_battle element-counter target 53% (55-90) after no-passive-heal (35/36 targets); duel idle-loser guard weaker with auto-attack. NEXT: player Studio check of cal_axes, then Pebble Pup upload.
 
