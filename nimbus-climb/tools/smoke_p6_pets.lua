@@ -353,13 +353,27 @@ S.p6pets_mesh_on = guarded("p6pets_mesh_on", function()
 	flushWarn("p6pets_mesh_on")
 end)
 
+-- no pet-class mesh is live: either no template folder at all (empty MeshIds) or the uploaded ids name no key of this
+-- pet (e.g. only the calibration key cal_axes is uploaded): the pet code must still build today's Part pets
+local function noPetMeshes(ML, Pets, def)
+	if not ML.Active() then
+		return true
+	end
+	for _, key in ipairs(Pets.MeshKeys(def, {}) or {}) do
+		if ML.Status(key) == "ready" or ML.Status(key) == "loading" then
+			return false
+		end
+	end
+	return true
+end
+
 S.p6pets_default = guarded("p6pets_default", function()
 	local ML, Pets = lib(), PB()
 	local D = testDefs()
 	if MESH_MODE then
 		T.info("fixture mesh mode: the default-mode checks are skipped")
 	else
-		T.check(not ML.Active(), "empty MeshIds: MeshLibrary.Active() is false (no template folder)")
+		T.check(noPetMeshes(ML, Pets, D.dog), "no pet ids: no pet-class mesh key is live (MeshIds empty or holding only non-pet keys like cal_axes)")
 		local m = Pets.Build(D.dog, { Detail = "High" })
 		local mesh = countParts(m)
 		T.check(m:GetAttribute("ML_Mesh") == nil and mesh == 0, "empty MeshIds: Build is today's Part build (no ML_Mesh, no MeshPart)")
@@ -652,7 +666,7 @@ S.p6pets_server = guarded("p6pets_server", function()
 	end
 	partDog:Destroy()
 	if not MESH_MODE then
-		T.check(not ML.Active() and Pets.Build(D.dog, {}):GetAttribute("ML_Mesh") == nil, "after the scenario: fixtures removed, Build is the Part build again")
+		T.check(noPetMeshes(ML, Pets, D.dog) and Pets.Build(D.dog, {}):GetAttribute("ML_Mesh") == nil, "after the scenario: fixtures removed, Build is the Part build again")
 	end
 
 	-- [fix-runtime W2.5] a Golden PART pet wears the star_gold mesh once that key is ready (MESH.partStars)
@@ -834,7 +848,7 @@ S.p6pets_server = guarded("p6pets_server", function()
 			p.Parent = workspace
 			T.check(Pets.SwapWhenReady(p, D.dog, {}, function()
 				return Pets.Build(D.dog, {})
-			end) == false and not ML.Active(), "empty MeshIds: SwapWhenReady = false, no state")
+			end) == false and noPetMeshes(ML, Pets, D.dog), "no pet ids: SwapWhenReady = false, no state")
 			p:Destroy()
 			-- [fix-meshlib W3b, review3 world-3] a pet key that FAILED to load on the server: a podium / NPC rebuild never
 			-- waits on it (SwapWhenReady = false, no OnReady closure kept), and its waiters from the loading time are gone
