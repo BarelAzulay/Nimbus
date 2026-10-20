@@ -29,6 +29,44 @@ artwork (`Config.Art.StormfangImage`) and the optional sky, music, sound and ico
 `src/shared/Config.lua` (see [Phase 5: owner checklist](#phase-5-owner-checklist)); until then the game uses its
 built-in sky, stays silent and draws emoji icons.
 
+## Phase 6: Blender models
+
+- **The cute voxel look is back.** Bright colours, smooth plastic, a bright sky: the look of phase 4, which players
+  liked best. The realistic look of phase 5 is gone; every place stays where it was.
+- **Every model is made in Blender.** Pets, evolved pets, wings, accessories, hybrids, bosses, the sky dragon, NPC
+  pedestals, coins, the gates, the lobby, clouds, homes and their stations, the Battle Arena and the Dungeon:
+  **716 models** in all, with finer voxels and more detail than before. Effects (sparkles, lights, glow trails) stay
+  effects.
+- **Evolved pets look the best.** A first evolution gets sparkles in its element's colours and a soft glow. A second
+  evolution gets twice the sparkles, a brighter glow and a slow pulse. With the Blender models they also wear a ring
+  of element bits that circles them, and second evolutions a crown of light. On Graphics **Low** they keep only the
+  glow.
+- **Magic vortex portals.** The gates are round hoops again, like in phase 4, one per mode. Inside every hoop turns a
+  magic vortex: swirling arms, a glowing rim, little lightning sparks and light streaks pulled into the middle. On
+  Graphics **Low** the gates stand still.
+- **No Home gate in the lobby.** The Gate Court has five gates: Obby, Dungeon, Champion Ring, Arena and Storm Altar.
+  To go home, tap **Home**: the big golden button on top says **Go home** (a magic portal takes you and your pets
+  home) or, if you have no home yet, **Claim a home**.
+- **Nothing is lost.** Pets, levels, Cash, Gems, Tokens, homes and records stay the same. Only the looks change.
+
+### Phase 6: owner notes
+
+**How the game works today.** The file `src/shared/MeshIds.lua` holds the Roblox ids of the Blender models. Right now
+it is empty (`return {}`), so every model uses its old Part model (the voxel look, built in code). The game is fully
+playable like that. The swirl inside the gates also works without ids (made from effects).
+
+**After the upload.** The models must be uploaded to your Roblox account first. That needs your Open Cloud key and a
+new Claude session; you never paste the key in the chat. The whole checklist (making the key, the test model
+`cal_axes`, one pet, then the rest, the vortex images, what to do when something goes wrong) is in
+`docs/phase6/OWNER_UPLOAD.md`. Once an id is in `MeshIds.lua`, that model switches to its Blender mesh by itself, one
+by one, as soon as all its pieces are uploaded and approved by Roblox. A model that cannot load (still in review,
+rejected, or a phone that could not download it) simply keeps its Part model: nothing breaks.
+
+**Check it in Studio.** Press **Play**, then View -> **Output**: `[MeshLibrary] N mesh model(s) to load` means the
+ids were found. A yellow `[MeshLibrary] <name> ... stays on the Part build` line names a model that did not load.
+
+**Roll back.** Make `MeshIds.lua` empty again (`return {}`) and publish: every model goes back to its Part model.
+
 ## Phase 5: the Big Sky Update
 
 - **Fight with one pet, bring two helpers.** Your battle team is **3 pets**. The first is your **FIGHTER**: you walk
@@ -1370,9 +1408,12 @@ the Gate Court, a home with its garden, a Dungeon room, the Storm Altar or the s
 ```
 default.project.json   Rojo project           play/NimbusClimb.rbxlx   ready-made place file
 Start-Rojo-*           one-click launchers    branding/                game icon, Stormfang art, branding/sky (the 6 sky images)
-blender/               Blender models (build_all.py builds every model, see blender/README.md) and the sky
+blender/               Blender models (build_all.py builds every model, see blender/README.md), the gate vortex
+                       images (blender/textures/) and the sky
+docs/phase6/           the Phase 6 plan and art notes; OWNER_UPLOAD.md = the model upload checklist
 tools/                 syntax check, static analysis, smoke test (see "Tests"), tycoon economy sim, battle sim,
-                       place verifier, model and GUI renderers
+                       place verifier, model and GUI renderers, the model uploader (upload_assets.py) and mesh
+                       budget / name checks
 ARCHITECTURE.md, ARCHITECTURE_V2.md, ARCHITECTURE_V3.md   module contracts (the newest wins where they differ)
 
 src/first    LoadingScreen.client.lua (the loading screen, in ReplicatedFirst)

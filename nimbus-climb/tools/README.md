@@ -316,3 +316,70 @@ are uploaded later with `python3 tools/upload_assets.py --textures` (dry run by 
 player's OK), which writes `src/shared/TextureIds.lua` (numbers only, check.mjs rule `texture-ids`). Until then
 `client/PortalVortex.lua` draws the effects-only fallback (Beam spiral arms, inward particle streaks, rim crackles);
 with every id present it shows the textured SurfaceGui layers. `tools/smoke_p6_portalfx.lua` covers both modes.
+
+## Phase 6 tools: the Blender models
+
+The Blender kit itself is described in `blender/README.md`; the upload checklist for the owner and the upload session
+is `docs/phase6/OWNER_UPLOAD.md`. Blender runs as a Python module: `/tmp/claude-0/bpyenv/bin/python` (setup in
+`blender/README.md`). Everything here works offline; nothing talks to Roblox unless `upload_assets.py` gets `--upload`.
+
+**Build the meshes:** `blender/build_all.py` reads `blender/catalog/<class>.json` and writes `blender/out/<key>.fbx`
+(+ `.manifest.json`, `.tris.json.gz`; not committed), the committed `src/shared/MeshManifests/<key>.lua` and
+`blender/meshes.json` (the uploader's index: fbx, displayName, contentHash, structureHash).
+
+```sh
+/tmp/claude-0/bpyenv/bin/python blender/build_all.py --class pets             # one class (repeatable)
+/tmp/claude-0/bpyenv/bin/python blender/build_all.py --key pet_dog --key acc_crown
+/tmp/claude-0/bpyenv/bin/python blender/build_all.py --all                    # every class
+/tmp/claude-0/bpyenv/bin/python blender/build_all.py --class pets --preview   # + Cycles sheets of the class's previews
+python3 blender/build_all.py --class home --no-export                         # no bpy: manifests + numbers, no FBX
+python3 blender/build_all.py --list                                           # every class and key
+```
+Classes: `calibration` (cal_axes + the test key prop_portal_reference), `pets`, `evolved`, `creatures`, `gates`,
+`lobby`, `home`, `arenadungeon` (717 uploadable keys). A key over its budget fails the build (exit 1), and so does
+any catalog `set` over its budget. `--no-export` still rewrites the manifests and `meshes.json`: finish with an export
+build. Same input = same bytes and the same `contentHash`.
+
+**Budgets:** `python3 tools/mesh_budget.py` prints the triangle / MeshPart sum of a scene from the committed
+manifests (default: the busiest phone view, 16 players x 3 pets in the lobby + every gate / lobby key + 4 max-tier
+home plots, budget 300k triangles / 400 parts). `--keys` adds every key, `--scene <file.json>` sums another scene
+(for example `docs/phase6/review/home/plot_scene.json`), `--check` exits 1 when the scene is over its budget.
+
+**Name contract:** `python3 tools/mesh_names.py` lists every part / palette name the game or a test looks up by name
+(those must never be baked into a `Fixed` part); `python3 tools/mesh_names.py --check blender/out/*.manifest.json`
+exits 1 when a built key bakes one. The kit uses the same list.
+
+**Look at a mesh** (no Studio; the manifest's boxes coloured like the game colours them):
+```sh
+python3 tools/render_model.py meshkey:pet_dog:pebble_pup -o key.png      # one key, coloured for a pet's look
+python3 tools/render_model.py meshpet:pebble_pup -o pet.png              # body + wings + accessory (add :Low)
+python3 tools/render_model.py meshevo:twilight_dragon:2 -o evo.png       # evolved body + its evo wings (1 or 2, add :Low)
+```
+(These targets are not in `--list`.) `meshpet` picks the body variant from the pet id (`waffle_corgi` -> `pet_dog_corgi`)
+and puts the accessory at its manifest's `Meta.attach`; `meshevo` puts the wings at the wing manifest's attach.
+
+**Tests:** `python3 tools/test_upload_assets.py` runs the uploader against a local fake of the Open Cloud Assets API
+on 127.0.0.1 (create, PATCH keeping the id, new asset on a structure change, 429 retry, resume after a timeout,
+refresh, moderation, creator lock, throttle; 34 checks). `python3 blender/kit/selftest.py` checks the kit (hooks,
+recipes, determinism, manifests). `python3 tools/smoke.py --quick --mesh` runs the pet scenarios on mesh pets (see
+"Mesh mode" above). The Phase 6 smoke files: `smoke_p6_mesh.lua` (MeshLibrary: empty ids = no-op, fit, loader,
+Assemble, Swap, Tag / Dress), `smoke_p6_pets.lua` (the pet mesh path), `smoke_p6_evofx.lua` (PetFx),
+`smoke_p6_creatures.lua`, `smoke_p6_gates.lua`, `smoke_p6_lobby.lua` (world meshes),
+`smoke_p6_portalfx.lua` (gate animation + vortex); the arena, dungeon and home mesh checks live in
+`smoke_p3_arenaworld.lua`, `smoke_p5_dungeon.lua` and `smoke_p2_homeworld.lua` (`p3arena_mesh`, `p5dgn_mesh`,
+`p2home_mesh`).
+
+**Upload (dry run):** `python3 tools/upload_assets.py --help` explains everything. Without `--upload` it only
+prints the requests it would send (the key hidden) and writes nothing:
+```sh
+python3 tools/upload_assets.py                    # every key in blender/meshes.json
+python3 tools/upload_assets.py --only cal_axes    # some keys (repeatable or comma separated)
+python3 tools/upload_assets.py --textures         # the vortex images (blender/textures/textures.json)
+```
+`--upload` (real; only with the owner's OK, see `docs/phase6/OWNER_UPLOAD.md`) needs `ROBLOX_API_KEY`,
+`ROBLOX_CREATOR_ID` and `ROBLOX_CREATOR_TYPE` in the environment and writes `blender/upload_state.json` +
+`src/shared/MeshIds.lua` (or `blender/textures/upload_state.json` + `src/shared/TextureIds.lua`). Other flags:
+`--refresh` (re-read moderation), `--force` (send unchanged keys), `--poll-timeout N` (seconds, default 300).
+
+**Vortex textures:** `python3 blender/textures/build_vortex.py` (no `--help`: it builds at once) rewrites the 10 PNG
+layers and `textures.json`; see "Gate vortex textures" above.

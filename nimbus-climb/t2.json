@@ -1,0 +1,242 @@
+{
+ "home_farm_40 vs0.25 d0": [
+  6364,
+  1
+ ],
+ "home_farm_40 vs0.25 d1": [
+  7724,
+  1
+ ],
+ "home_farm_40 vs0.5 d0": [
+  2244,
+  1
+ ],
+ "home_farm_40 vs0.5 d1": [
+  2516,
+  1
+ ],
+ "home_garden_8 vs0.25 d0": [
+  946,
+  1
+ ],
+ "home_garden_8 vs0.25 d1": [
+  1614,
+  1
+ ],
+ "home_garden_8 vs0.5 d0": [
+  568,
+  1
+ ],
+ "home_garden_8 vs0.5 d1": [
+  698,
+  1
+ ],
+ "home_foodmachine_5 vs0.25 d0": [
+  1062,
+  2
+ ],
+ "home_foodmachine_5 vs0.25 d1": [
+  1846,
+  2
+ ],
+ "home_foodmachine_5 vs0.5 d0": [
+  608,
+  2
+ ],
+ "home_foodmachine_5 vs0.5 d1": [
+  810,
+  2
+ ],
+ "home_training_5 vs0.25 d0": [
+  818,
+  1
+ ],
+ "home_training_5 vs0.25 d1": [
+  1258,
+  1
+ ],
+ "home_training_5 vs0.5 d0": [
+  560,
+  1
+ ],
+ "home_training_5 vs0.5 d1": [
+  676,
+  1
+ ],
+ "home_vault_5 vs0.25 d0": [
+  660,
+  2
+ ],
+ "home_vault_5 vs0.25 d1": [
+  1446,
+  2
+ ],
+ "home_vault_5 vs0.5 d0": [
+  370,
+  2
+ ],
+ "home_vault_5 vs0.5 d1": [
+  568,
+  2
+ ],
+ "home_house_4 vs0.25 d0": [
+  2136,
+  2
+ ],
+ "home_house_4 vs0.25 d1": [
+  4938,
+  2
+ ],
+ "home_house_4 vs0.5 d0": [
+  1826,
+  2
+ ],
+ "home_house_4 vs0.5 d1": [
+  3032,
+  2
+ ],
+ "home_fusion_3 vs0.25 d0": [
+  1120,
+  3
+ ],
+ "home_fusion_3 vs0.25 d1": [
+  1950,
+  3
+ ],
+ "home_fusion_3 vs0.5 d0": [
+  446,
+  3
+ ],
+ "home_fusion_3 vs0.5 d1": [
+  716,
+  3
+ ],
+ "home_arena_1 vs0.25 d0": [
+  444,
+  1
+ ],
+ "home_arena_1 vs0.25 d1": [
+  698,
+  1
+ ],
+ "home_arena_1 vs0.5 d0": [
+  288,
+  1
+ ],
+ "home_arena_1 vs0.5 d1": [
+  372,
+  1
+ ],
+ "home_fence_3 vs0.25 d0": [
+  3296,
+  1
+ ],
+ "home_fence_3 vs0.25 d1": [
+  4190,
+  1
+ ],
+ "home_fence_3 vs0.5 d0": [
+  1048,
+  1
+ ],
+ "home_fence_3 vs0.5 d1": [
+  1256,
+  1
+ ],
+ "home_fountain_3 vs0.25 d0": [
+  1636,
+  2
+ ],
+ "home_fountain_3 vs0.25 d1": [
+  2248,
+  2
+ ],
+ "home_fountain_3 vs0.5 d0": [
+  794,
+  2
+ ],
+ "home_fountain_3 vs0.5 d1": [
+  882,
+  2
+ ],
+ "home_podium_3 vs0.25 d0": [
+  280,
+  1
+ ],
+ "home_podium_3 vs0.25 d1": [
+  680,
+  1
+ ],
+ "home_podium_3 vs0.5 d0": [
+  256,
+  1
+ ],
+ "home_podium_3 vs0.5 d1": [
+  452,
+  1
+ ],
+ "home_bed_frame vs0.25 d0": [
+  20,
+  1
+ ],
+ "home_bed_frame vs0.25 d1": [
+  68,
+  1
+ ],
+ "home_bed_frame vs0.5 d0": [
+  20,
+  1
+ ],
+ "home_bed_frame vs0.5 d1": [
+  44,
+  1
+ ],
+ "home_bed_cushion vs0.25 d0": [
+  20,
+  1
+ ],
+ "home_bed_cushion vs0.25 d1": [
+  28,
+  1
+ ],
+ "home_bed_cushion vs0.5 d0": [
+  20,
+  1
+ ],
+ "home_bed_cushion vs0.5 d1": [
+  28,
+  1
+ ],
+ "home_bed_headboard vs0.25 d0": [
+  28,
+  1
+ ],
+ "home_bed_headboard vs0.25 d1": [
+  44,
+  1
+ ],
+ "home_bed_headboard vs0.5 d0": [
+  28,
+  1
+ ],
+ "home_bed_headboard vs0.5 d1": [
+  28,
+  1
+ ],
+ "home_bed_roof vs0.25 d0": [
+  20,
+  1
+ ],
+ "home_bed_roof vs0.25 d1": [
+  20,
+  1
+ ],
+ "home_bed_roof vs0.5 d0": [
+  20,
+  1
+ ],
+ "home_bed_roof vs0.5 d1": [
+  20,
+  1
+ ]
+}

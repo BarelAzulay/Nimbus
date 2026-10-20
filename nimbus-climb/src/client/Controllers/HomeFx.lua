@@ -113,6 +113,12 @@ local CASH_ATTR, BERRY_ATTR = (Config.Attr and Config.Attr.Cash) or "Cash", (Con
 local K = {
 	NEAR = 230, -- studs from the camera: homes farther away are frozen (no coins, fruit, swirls)
 	NEAR_CHECK = 0.5, -- seconds between distance checks
+	-- Phase 6 plot LOD (perf-plots W3; tools/mesh_budget.py LOD mirrors these): per plot, from the camera to the plot
+	-- centre, checked with the distance above (never per frame), only when MeshLibrary has templates (empty MeshIds = off)
+	LOD_HIGH = 120, -- closer: every mesh on its High key (the own plot, a visit)
+	LOD_FAR = 200, -- farther: only the landmarks (house + plot base) on their _low keys, the rest hidden
+	LOD_HYST = 20, -- leave High only beyond LOD_HIGH + this, leave Far only inside LOD_FAR - this
+	LOD_RETRY = 2, -- seconds between looks at tagged targets that are not dressed yet
 	POP_WINDOW = 6, -- a station whose BuiltAt is younger than this pops in
 	POP_LIVE_AFTER = 1.5, -- children without BuiltAt pop when they arrive this long after the home was found
 	POP_PART = 0.3, -- one block's spring
@@ -3869,6 +3875,9 @@ local function isNew(rec, inst)
 end
 
 local function onDescendant(rec, d)
+	if d:GetAttribute("ML_DressKey") ~= nil then
+		rec.LodDirty = true -- a newly tagged station / bed piece: the plot LOD list is rebuilt at the next check
+	end
 	if d:IsA("ProximityPrompt") then
 		if d.Name ~= "ClaimPrompt" then
 			trackPrompt(d, rec)
@@ -4100,6 +4109,121 @@ local function removeHome(folder)
 end
 
 ----------------------------------------------------------------------
+-- Phase 6 plot LOD (perf-plots W3; ARCHITECTURE_V3 6.5 "busiest phone view <= 300k tris"). A home plot's dressed
+-- Blender meshes (HomeBuilder's station / bed-piece Tag targets + the lobby's `Plot` base next to the Home folder) take a
+-- level by the plot's tier, from the camera distance to the plot centre (updateNear, every K.NEAR_CHECK, never per
+-- frame; hysteresis K.LOD_HYST):
+--   High (< K.LOD_HIGH)  everything on its High key (today's look)
+--   Low                  every mesh on "<key>_low" (MeshLibrary.LowKey: when that key is uploaded and baked from the
+--                        same layout, else the High key stays); a neighbour's plot seen from your own yard
+--   Far (>= K.LOD_FAR)   only the landmarks (house, plot base) on their _low keys; every station and the decor (fence,
+--                        fountain, podium, Garden bed pieces) hidden with their kept glow Parts: every plot seen from
+--                        the lobby plaza is Far (the nearest is ~175 studs from a camera on the plaza edge)
+-- MeshLibrary.SetLod does the work and touches nothing a client did not dress, so empty MeshIds (today's game) and Part
+-- fallbacks are untouched; without a template folder (MeshLibrary.Active() false) this costs one call per check.
+----------------------------------------------------------------------
+G.LOD_CLASS = { -- ML_DressKey prefix -> class (first match; anything else on a plot is a "station")
+	{ "prop_plot", "landmark" }, { "home_house_", "landmark" },
+	{ "home_fence_", "decor" }, { "home_fountain_", "decor" }, { "home_podium_", "decor" }, { "home_bed_", "decor" },
+}
+G.LOD_LEVEL = { -- tier -> class -> MeshLibrary.SetLod level
+	High = { landmark = "High", station = "High", decor = "High" },
+	Low = { landmark = "Low", station = "Low", decor = "Low" },
+	Far = { landmark = "Low", station = "Hide", decor = "Hide" },
+}
+G.lodStats = { Applied = 0, Scans = 0 }
+
+function G.meshLib()
+	if G.ML == nil then
+		G.ML = optionalShared("MeshLibrary") or false
+		if G.ML and type(G.ML.SetLod) ~= "function" then
+			G.ML = false
+		end
+	end
+	return G.ML or nil
+end
+
+function G.lodClass(key)
+	for _, rule in ipairs(G.LOD_CLASS) do
+		if string.sub(key, 1, #rule[1]) == rule[1] then
+			return rule[2]
+		end
+	end
+	return "station"
+end
+
+-- tier with hysteresis: a plot leaves High only beyond LOD_HIGH + LOD_HYST and leaves Far only inside LOD_FAR - LOD_HYST
+function G.lodTier(prev, dist)
+	local high = (prev == "High") and (K.LOD_HIGH + K.LOD_HYST) or K.LOD_HIGH
+	local far = (prev == "Far") and (K.LOD_FAR - K.LOD_HYST) or K.LOD_FAR
+	if dist < high then
+		return "High"
+	elseif dist < far then
+		return "Low"
+	end
+	return "Far"
+end
+
+-- the plot's LOD targets: the lobby's dressed plot base (Spot_NN.Plot) + every tagged target inside the Home folder
+function G.scanLod(rec)
+	G.lodStats.Scans = G.lodStats.Scans + 1
+	local list = {}
+	local function add(inst)
+		local key = inst:GetAttribute("ML_DressKey")
+		if type(key) == "string" then
+			list[#list + 1] = { Inst = inst, Class = G.lodClass(key), Done = false }
+		end
+	end
+	local spot = rec.Folder.Parent
+	local base = spot and spot:FindFirstChild("Plot")
+	if base then
+		add(base)
+	end
+	for _, d in ipairs(rec.Folder:GetDescendants()) do
+		add(d)
+	end
+	rec.LodTargets = list
+	rec.LodDirty = false
+	rec.LodPending = #list
+end
+
+function G.applyLod(rec, all)
+	local ML = G.meshLib()
+	local levels = G.LOD_LEVEL[rec.Lod]
+	local pending = 0
+	for _, t in ipairs(rec.LodTargets) do
+		if (all or not t.Done) and t.Inst.Parent then
+			t.Done = ML.SetLod(t.Inst, levels[t.Class]) == true
+			G.lodStats.Applied = G.lodStats.Applied + 1
+			if not t.Done then
+				pending = pending + 1
+			end
+		end
+	end
+	rec.LodPending = pending
+	rec.LodRetryAt = clock + K.LOD_RETRY
+end
+
+function G.stepLod(rec, dist)
+	local ML = G.meshLib()
+	if not ML or not ML.Active() then
+		return -- empty MeshIds: no template folder, nothing is ever dressed (today's game)
+	end
+	local fresh = rec.LodDirty or rec.LodTargets == nil
+	if fresh then
+		G.scanLod(rec)
+	end
+	local tier = G.lodTier(rec.Lod, dist)
+	local changed = tier ~= rec.Lod
+	rec.Lod = tier
+	if changed or fresh then
+		G.applyLod(rec, true)
+	elseif rec.LodPending > 0 and clock >= (rec.LodRetryAt or 0) then
+		G.applyLod(rec, false) -- targets whose mesh arrived since (Dress waits for the key on this device)
+	end
+end
+
+----------------------------------------------------------------------
 -- Frame loop
 ----------------------------------------------------------------------
 local function updateNear(rec, eye)
@@ -4123,6 +4247,9 @@ local function updateNear(rec, eye)
 	end
 	local dist = (rec.Center ~= nil and eye ~= nil) and (rec.Center - eye).Magnitude or 0
 	rec.Dist = dist
+	if rec.Center ~= nil and eye ~= nil then
+		G.stepLod(rec, dist)
+	end
 	local near = rec.Center ~= nil and dist <= K.NEAR
 	local petsNear = near and dist <= (rec.PetsNear and (K.PET_NEAR + 20) or K.PET_NEAR)
 	rec.PetsAnimate = petsNear and dist <= K.PET_ANIM_NEAR
@@ -4197,8 +4324,10 @@ local function step(dt)
 		if rec.Folder.Parent then
 			updateNear(rec, eye)
 			if rec.Near then
-				for _, sw in ipairs(rec.Swirls) do
-					stepSwirl(sw, dt)
+				if rec.Lod ~= "Far" then -- a Far plot's Fusion station is hidden (plot LOD): its swirl rests
+					for _, sw in ipairs(rec.Swirls) do
+						stepSwirl(sw, dt)
+					end
 				end
 				stepPads(rec, dt)
 				stepPetStations(rec)
@@ -4447,5 +4576,29 @@ function HomeFx.Init()
 end
 
 HomeFx._StartPop = startPop -- TESTS ONLY (tools/smoke_p6_mesh.lua: a dressed station never pops)
+
+-- plot LOD (tests / debugging; tools/smoke_p6_lod.lua): the tier of one home ("High" | "Low" | "Far" | nil before the
+-- first check or with empty MeshIds), its targets and the counters; the constants for tools/mesh_budget.py parity
+function HomeFx.Lod(folder)
+	local rec = typeof(folder) == "Instance" and (homes[folder] or homes[folder:FindFirstChild("Home") or folder]) or nil
+	if not rec then
+		return nil
+	end
+	local targets = {}
+	for _, t in ipairs(rec.LodTargets or {}) do
+		targets[#targets + 1] = { Inst = t.Inst, Class = t.Class, Done = t.Done }
+	end
+	return { Tier = rec.Lod, Dist = rec.Dist, Targets = targets, Pending = rec.LodPending or 0, Applied = G.lodStats.Applied,
+		Scans = G.lodStats.Scans }
+end
+-- TESTS ONLY (tools/smoke_p6_lod.lua): run the plot LOD on a private MeshLibrary copy (nil = the shared one again);
+-- every home re-scans and re-applies at its next check
+function HomeFx._SetMeshLib(ml)
+	G.ML = ml
+	for _, rec in ipairs(homeList) do
+		rec.LodTargets, rec.Lod, rec.LodDirty, rec.NextNear = nil, nil, true, 0
+	end
+end
+HomeFx._LodK = { High = K.LOD_HIGH, Far = K.LOD_FAR, Hyst = K.LOD_HYST, Check = K.NEAR_CHECK, Tier = G.lodTier, Class = G.lodClass, Level = G.LOD_LEVEL }
 
 return HomeFx

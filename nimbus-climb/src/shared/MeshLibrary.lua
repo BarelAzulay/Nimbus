@@ -38,6 +38,8 @@
 --                                    itself: no PivotTo) }); after Start a key without an id never waits (no state)
 --     Version() -> number            bumped whenever a key may have become usable / unusable here (poll to rebuild)
 --     Active() -> bool               a template folder exists (false = empty MeshIds: skip every key lookup)
+--     LowKey(key) / SetLod(target, "High" | "Low" | "Hide")   CLIENT, additive (perf-plots W3): distance LOD of a
+--                                    dressed world target (see "LOD of dressed world targets"); a no-op on undressed targets
 --
 -- Assemble spec: a key string, or { Name = "Pet_x", Root = { Name = "Body", Size = Vector3 } | false,
 --   Parts = { { Key = "pet_dog" }, { Key = "wing_feather", At = "WingL" | CFrame, From = 1, Groups = { WingL = true } } },
@@ -90,6 +92,7 @@ local localReady = {} -- client: key -> true once the mesh data is on this devic
 local localBroken = {} -- client: key -> true when this device could not fetch it
 local waiters = {} -- key -> { fn, ... }
 local manifestCache = {} -- key -> manifest table | false
+local lodSigOk = {} -- LowKey memo: "<key>|<key>_low" -> layouts match (perf-plots LOD)
 local connections = {}
 local folder = nil
 local started = false
@@ -972,6 +975,7 @@ function MeshLibrary._Reset()
 	end
 	connections = {}
 	ids, status, localReady, localBroken, waiters, manifestCache, handlers = {}, {}, {}, {}, {}, {}, {}
+	lodSigOk = {} -- perf-plots LOD memo (LowKey)
 	folder = nil
 	started = false
 	cfg.Root, cfg.Ids = nil, nil
@@ -1333,6 +1337,127 @@ function MeshLibrary.Dress(target, key, opts)
 		end
 		mesh.Parent = target
 	end)
+end
+
+----------------------------------------------------------------------
+-- LOD of dressed world targets (perf-plots, Phase 6 W3; additive). CLIENT, never per frame: callers (HomeFx's plot
+-- LOD) decide a level a few times per second per plot and call SetLod only for that. Nothing here touches a target
+-- Dress did not dress (no ML_Mesh child): empty MeshIds / Part fallbacks are exactly today's game.
+--   LowKey(key) -> "<key>_low" when that key is usable HERE and was baked from the same layout (manifest LayoutSig equal
+--                  or absent on both), else nil
+--   SetLod(target, level) -> true when the target is dressed (false = nothing done). level:
+--     "High"  the target's own key (ML_DressKey), every part shown
+--     "Low"   LowKey(key) when there is one (the ML_Mesh is rebuilt from it, same look / pivot / scale), else the High
+--             mesh; every part shown
+--     "Hide"  the mesh AND the kept Parts of the target are hidden locally (Transparency 1, the old value kept in the
+--             part's ML_LodT attribute and put back by High / Low). A nested dressed target (another ML_DressKey inside,
+--             e.g. a Garden bed piece) is left to its own SetLod. ML_Weld targets (moving roots) are never touched.
+--   Idempotent: when nothing changes it costs a FindFirstChild + two attribute reads.
+----------------------------------------------------------------------
+local LOD_SHOWN = "ML_LodKey" -- on the ML_Mesh: the key it was assembled from (absent = the target's own key)
+local LOD_HIDDEN = "ML_LodHidden" -- on the target: true while SetLod "Hide" holds it
+local LOD_T = "ML_LodT" -- on a hidden part: its Transparency before the hide
+
+local function layoutSig(key)
+	local man = manifestOf(key)
+	local att = man and man.Attachments and (man.Attachments.LayoutSig or man.Attachments.layoutSig)
+	local pos = att and (att.Pos or att.pos)
+	return type(pos) == "table" and pos or nil
+end
+
+function MeshLibrary.LowKey(key)
+	if type(key) ~= "string" then
+		return nil
+	end
+	local low = key .. "_low"
+	if not usable(low) then
+		return nil
+	end
+	local memo = key .. "|" .. low
+	if lodSigOk[memo] == nil then
+		local a, b = layoutSig(key), layoutSig(low)
+		local same = (a == nil) == (b == nil)
+		if same and a and b then
+			for i = 1, 3 do
+				if type(a[i]) ~= "number" or type(b[i]) ~= "number" or math.abs(a[i] - b[i]) > 0.05 + math.abs(a[1] or 0) * 1e-4 then
+					same = false
+				end
+			end
+		end
+		lodSigOk[memo] = same
+	end
+	return lodSigOk[memo] and low or nil
+end
+
+-- every BasePart that belongs to `target` itself (not to a nested dressed target), the target first when it is one
+local function lodParts(target)
+	local out = {}
+	if target:IsA("BasePart") then
+		out[1] = target
+	end
+	local stack = { target }
+	while #stack > 0 do
+		local inst = table.remove(stack)
+		for _, c in ipairs(inst:GetChildren()) do
+			if c:GetAttribute("ML_DressKey") == nil then
+				if c:IsA("BasePart") then
+					out[#out + 1] = c
+				end
+				stack[#stack + 1] = c
+			end
+		end
+	end
+	return out
+end
+
+local function lodHide(target, hide)
+	for _, p in ipairs(lodParts(target)) do
+		if hide then
+			if p:GetAttribute(LOD_T) == nil and p.Transparency < 0.999 then
+				p:SetAttribute(LOD_T, p.Transparency)
+				p.Transparency = 1
+			end
+		else
+			local t = p:GetAttribute(LOD_T)
+			if type(t) == "number" then
+				p.Transparency = t
+				p:SetAttribute(LOD_T, nil)
+			end
+		end
+	end
+	target:SetAttribute(LOD_HIDDEN, hide and true or nil)
+end
+
+function MeshLibrary.SetLod(target, level)
+	if typeof(target) ~= "Instance" then
+		return false
+	end
+	local mesh = target:FindFirstChild("ML_Mesh")
+	local key = target:GetAttribute("ML_DressKey")
+	if not mesh or type(key) ~= "string" or target:GetAttribute("ML_Weld") == true then
+		return false
+	end
+	local hide = level == "Hide"
+	if not hide then
+		local want = (level == "Low" and MeshLibrary.LowKey(key)) or key
+		local shown = mesh:GetAttribute(LOD_SHOWN) or key
+		if shown ~= want then
+			local offset = stringToCF(target:GetAttribute("ML_Offset")) or CFrame.new()
+			local fresh = MeshLibrary.Assemble({ Name = "ML_Mesh", Root = false, Parts = { { Key = want } } }, lookFromAttributes(target),
+				{ Scale = tonumber(target:GetAttribute("ML_Scale")) or 1, At = pivotOf(target) * offset })
+			if fresh then
+				if want ~= key then
+					fresh:SetAttribute(LOD_SHOWN, want)
+				end
+				mesh:Destroy()
+				fresh.Parent = target
+			end
+		end
+	end
+	if (target:GetAttribute(LOD_HIDDEN) == true) ~= hide then
+		lodHide(target, hide)
+	end
+	return true
 end
 
 ----------------------------------------------------------------------
