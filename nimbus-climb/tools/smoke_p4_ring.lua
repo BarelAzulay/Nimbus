@@ -303,6 +303,35 @@ local function watchEnded()
 	}
 end
 
+-- the BattleService battle record of a battle id (white-box, tests only: the service's St is an upvalue of IsInBattle)
+local function battleOf(battleId)
+	local bs = BS()
+	local f = bs and bs.IsInBattle
+	if type(f) ~= "function" or not battleId then
+		return nil
+	end
+	for i = 1, 80 do
+		local name, v = debug.getupvalue(f, i)
+		if not name then
+			break
+		end
+		if name == "St" and type(v) == "table" and type(v.battles) == "table" then
+			return v.battles[battleId]
+		end
+	end
+	return nil
+end
+
+-- dungeon fixes (4): fighters auto-attack; a test that needs a PASSIVE climber holds every pet's swing (white-box)
+local function holdAttacks(battleId, userId)
+	local b = battleOf(battleId)
+	local team = b and b.Sim and b.Sim.teamByOwner and b.Sim.teamByOwner[userId]
+	for _, u in ipairs(team and team.units or {}) do
+		u.nextAttack = math.huge
+	end
+	return team ~= nil
+end
+
 local function contains(list, value)
 	for _, v in ipairs(type(list) == "table" and list or {}) do
 		if v == value then
@@ -1381,7 +1410,7 @@ S.p4ring_lossxp = scenario("p4ring_lossxp", function()
 	local L = bc.LossRules or {}
 	T.check(L.LossShare and math.abs(L.LossShare - 1 / 3) < 1e-9 and L.LossMinSeconds == 20 and L.LossMinDamage == 0.2 and bc.TrialRewardRules == nil,
 		"p4 loss xp: LossRules.LossShare 1/3, LossMinSeconds 20, LossMinDamage 0.2 (TrialRewardRules gone)")
-	-- a passive climber (nobody presses ATTACK) loses round 1 by the 90 s timeout = a REAL loss (>= 20 s): a third of 20 + 6
+	-- a passive climber (its pets held: nobody attacks) loses round 1 (the 90 s timeout or a wipe) = a REAL loss (>= 20 s): a third of 20 + 6
 	local p = newPlayer("RingLoser", MID, 10)
 	claimHome(p)
 	toRing(p)
@@ -1392,14 +1421,16 @@ S.p4ring_lossxp = scenario("p4ring_lossxp", function()
 	local cash0 = data.GetCash(p)
 	local mark = K.logSize()
 	local ok, id = bs.StartRing(p, 1)
+	local held = holdAttacks(id, p.UserId) -- the pets never swing (the fighters auto-attack since the dungeon fixes)
 	K.waitFor(function()
 		return w.find(id) ~= nil
 	end, 130)
 	local r = w.find(id)
 	local e = lastMsg(p, "End", mark)
 	local winXp = bc.Ring.XpBase + bc.Ring.XpPerRound * 1
-	if T.check(ok and r ~= nil and contains(r.Losers, p.UserId) and r.Forfeit == false and r.Reason == "Timeout" and r.Duration >= L.LossMinSeconds,
-		"p4 loss xp: a passive climber LOSES round 1 by timeout (a real loss: " .. tostring(r and r.Duration) .. " s)", r and tostring(r.Reason) or "no end") then
+	-- a timeout or (no bench regen since the dungeon fixes) a wipe after >= LossMinSeconds: both are real losses
+	if T.check(ok and held and r ~= nil and contains(r.Losers, p.UserId) and r.Forfeit == false and (r.Reason == "Timeout" or r.Reason == "Wipe") and r.Duration >= L.LossMinSeconds,
+		"p4 loss xp: a passive climber LOSES round 1 by timeout / wipe (a real loss: " .. tostring(r and r.Duration) .. " s)", r and (tostring(r.Reason) .. " " .. tostring(r.Duration) .. " s") or "no end") then
 		local dealt = 1 - ((type(r.Hp) == "table" and r.Hp[2]) or 1)
 		local want = bc.LossXp(winXp, r.Duration, dealt)
 		local rw = r.Rewards[p.UserId]
@@ -1421,6 +1452,7 @@ S.p4ring_lossxp = scenario("p4ring_lossxp", function()
 	advance(1.6)
 	local xp1 = totalXp(p, MID[1])
 	local ok2, id2 = bs.StartRing(p, 1)
+	holdAttacks(id2, p.UserId) -- passive: the round must still run at 25 s
 	advance(25)
 	bs.Forfeit(p)
 	advance(0.3)

@@ -539,6 +539,16 @@ local function battleOf(battleId)
 	return nil
 end
 
+-- dungeon fixes (4): fighters auto-attack; a test that needs a PASSIVE player holds every pet's swing (white-box)
+local function holdAttacks(battleId, userId)
+	local b = battleOf(battleId)
+	local team = b and b.Sim and b.Sim.teamByOwner and b.Sim.teamByOwner[userId]
+	for _, u in ipairs(team and team.units or {}) do
+		u.nextAttack = math.huge
+	end
+	return team ~= nil
+end
+
 local function makeZone(size)
 	zoneSeq = zoneSeq + 1
 	local part = Instance.new("Part")
@@ -684,15 +694,20 @@ S.p5svc_commands = scenario("p5svc_commands", function()
 	-- every refusal echoes Order { rejected } (the sim's refusals and the ladder's own; one echo per step)
 	advance(0.3)
 	local m2 = K.logSize()
-	bs.Command(x, "Attack", enemyId) -- y is on the far pad: OutOfReach
+	-- dungeon fixes (4): ATTACK directs the auto-attacking pet: a far enemy is LOCKED (accepted, extra "OutOfReach")
+	local okFar, lockFar, extraFar = bs.Command(x, "Attack", enemyId) -- y is on the far pad
+	bs.Command(x, "Attack", ownId) -- the sim refuses it: BadTarget
 	advance(0.3)
-	local rejected = {}
+	local rejected, directed = {}, false
 	for _, ev in ipairs(eventsOf(x, m2, "Order")) do
 		if ev.owner == x.UserId and ev.rejected then
 			rejected[tostring(ev.rejected)] = true
+		elseif ev.owner == x.UserId and ev.order == "Attack" and ev.target == enemyId then
+			directed = true
 		end
 	end
-	T.check(rejected.OutOfReach == true, "p5 cmd: an attack on a far enemy is refused by the sim with Order { rejected = OutOfReach }", table.concat((function()
+	T.check(okFar == true and lockFar == enemyId and extraFar == "OutOfReach" and directed, "p5 cmd: ATTACK on a far enemy locks it (true, id, OutOfReach) and echoes Order { order = Attack, target }", tostring(okFar) .. " " .. tostring(extraFar))
+	T.check(rejected.BadTarget == true, "p5 cmd: a refused command is echoed by the sim with Order { rejected = BadTarget }", table.concat((function()
 		local l = {}
 		for k in pairs(rejected) do
 			l[#l + 1] = k
@@ -707,7 +722,7 @@ S.p5svc_commands = scenario("p5svc_commands", function()
 		advance(0.15)
 	end
 	local hadFar, nFar = toasted(x, "Too far", m3)
-	T.check(hadFar and nFar == 1, "p5 cmd: 'Too far!' toast once per 3 s (5 refusals in 0.75 s -> 1 toast)", tostring(nFar))
+	T.check(hadFar and nFar == 1, "p5 cmd: 'Too far!' toast once per 3 s (5 far ATTACK orders in 0.75 s -> 1 toast)", tostring(nFar))
 	advance(3.2)
 	Mock.FromClient(cmd, x, "Attack", enemyId)
 	advance(0.1)
@@ -1562,6 +1577,7 @@ S.p5svc_ring = scenario("p5svc_ring", function()
 	local final = nil
 	local t1 = Mock.Clock.now
 	while Mock.Clock.now - t1 < 700 do
+		holdAttacks(p:GetAttribute("InBattle"), p.UserId) -- passive: the pet no longer auto-attacks either
 		advance(0.5)
 		pump(tr)
 		for _, e in ipairs(tr.ends) do

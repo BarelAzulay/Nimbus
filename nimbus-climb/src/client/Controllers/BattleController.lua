@@ -89,7 +89,8 @@
 -- lock, 1 / 2 (LB / D-up) buff (hold = swap), D-left / D-right swap; the item hotbar keeps 1-4 outside battles.
 --
 -- Cost: one RenderStepped connection, alive only while a battle is drawn or effects play. Per frame: one root CFrame
--- write + PetBuilder.Animate per visible pet (strided for far / crowded ones), one BossBuilder.Animate, the pooled
+-- write per pet + PetBuilder.Animate per visible pet (strided for far / crowded ones; a strided frame moves the
+-- animated parts with the root in one BulkMoveTo), one BossBuilder.Animate, the pooled
 -- effects, HUD writes only when a shown value changes, the rings at 10 Hz. GetStats() reports the measured ms.
 -- Plain Lua 5.1-compatible syntax only. Every font comes from a Theme role. No asset ids.
 
@@ -1406,6 +1407,16 @@ local function buildUnit(B, u)
 	-- weld at the built pose FIRST, then move: a pose is one root CFrame write from here on
 	local okWeld = pcall(weldStatic, model, root)
 	u.rigid = okWeld
+	-- the parts PetBuilder.Animate poses (still anchored after the weld): moved with the root on a strided frame
+	u.loose = {}
+	u.looseBuf = {}
+	if okWeld then
+		for _, part in ipairs(model:GetDescendants()) do
+			if part:IsA("BasePart") and part ~= root and part.Anchored then
+				u.loose[#u.loose + 1] = part
+			end
+		end
+	end
 	local cf = worldFrame(B, u.x, u.centerY, u.z, u.yaw)
 	if okWeld then
 		root.CFrame = cf
@@ -1624,11 +1635,14 @@ function Units.Update(B, u, now, dt, sa, sb, alpha, animate)
 		u.accDt = 0
 		return Me.Draw(B, u, now, dt, x, z) -- my fighter at my shoulder, my helpers behind me
 	end
-	if u.parked or not animate then
+	if u.parked then
 		return
 	end
-	u.posed = true
-	dt = u.accDt -- the time since this pet was last drawn (strided far / crowded pets)
+	-- every frame: the root (interpolated position + facing), so a far / crowded pet never stutters; the stride
+	-- (animate = false) only skips the pose work (PetBuilder.Animate), its loose parts ride along (Units.CarryLoose)
+	if animate then
+		u.posed = true
+	end
 	u.accDt = 0
 	-- facing: the target while fighting, else the way it moves
 	local want = nil
@@ -1684,11 +1698,14 @@ function Units.Update(B, u, now, dt, sa, sb, alpha, animate)
 	end
 	local cf = worldFrame(B, x + ox, (u.centerY or 1.5) + bob + oy, z + oz, u.yaw)
 	if u.rigid then
+		if not animate or u.animBroken or not PetBuilder then
+			Units.CarryLoose(u, cf) -- no Animate this frame: the wings / animated parts keep their pose on the root
+		end
 		u.root.CFrame = cf
 	else
 		pcall(u.model.PivotTo, u.model, cf)
 	end
-	if PetBuilder and not u.animBroken then
+	if animate and PetBuilder and not u.animBroken then
 		local opts = u.animOpts
 		opts.Flap = stunned and 0 or ((u.state == S_DASHING or mx * mx + mz * mz > 0.0004) and 1.8 or 1)
 		opts.Excited = u.windup and 1 or ((u.state == S_ATTACKING or u.state == S_CASTING) and 0.6 or 0)
@@ -1705,6 +1722,27 @@ function Units.Update(B, u, now, dt, sa, sb, alpha, animate)
 	end
 	-- shield cube and ice crystals follow the unit
 	Units.UpdateStatus(B, u, now, cf)
+end
+
+-- a strided frame (no PetBuilder.Animate): the root moves to cf and the anchored animated parts (wings, tails...) move
+-- rigidly with it, keeping their last pose (one BulkMoveTo, a reused buffer: no table per frame)
+function Units.CarryLoose(u, cf)
+	local list = u.loose
+	local n = list and #list or 0
+	if n == 0 then
+		return
+	end
+	local delta = cf * u.root.CFrame:Inverse()
+	local buf = u.looseBuf
+	for i = 1, n do
+		buf[i] = delta * list[i].CFrame
+	end
+	local ok = pcall(workspace.BulkMoveTo, workspace, list, buf, Enum.BulkMoveMode.FireCFrameChanged)
+	if not ok then
+		for i = 1, n do
+			list[i].CFrame = buf[i]
+		end
+	end
 end
 
 -- client/Controllers/EvolutionFx (the arrival effect); nil when missing
@@ -6690,7 +6728,8 @@ local function stepBattle(B, now, dt)
 					stride = 3
 				end
 			end
-			-- a skipped frame skips the WHOLE pet (root and wings), so it never comes apart
+			-- a strided frame skips only the pose (PetBuilder.Animate); the root moves every frame and carries the
+			-- animated parts rigidly (Units.CarryLoose), so the pet never stutters and never comes apart
 			animate = (not u.posed) or ((frameNo + i) % stride) == 0
 		end
 		local ok, err = pcall(updateUnit, B, u, now, dt, sa, sb, alpha, animate)
