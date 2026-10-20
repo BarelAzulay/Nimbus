@@ -1172,8 +1172,9 @@ never drops below 14 px on a phone.
   seconds), then the **main menu** over a slow flight around the Gate Court: **PLAY**, **SETTINGS** and **UPDATES**
   (with a NEW badge when there is something new). Your character only appears when you press PLAY.
 - **Settings** (in the main menu, and later from the **Settings** tile): Music and Sound volume (0-10), Graphics
-  (**Auto**, **Low** for slow phones and PCs, **High**) and Camera shake (on / off). They apply at once and are saved
-  with your profile.
+  (**Auto**, **Low** for slow phones and PCs, **High**), Camera shake (on / off) and **Mouse lock** (on / off, or
+  press `L`: the cursor stays in the middle of the screen and the mouse turns the camera; windows free it). They
+  apply at once and are saved with your profile.
 - **Left, vertically centred: the menu** of glossy square tiles: Pets, Items, Team, Index, Shop, Home, and the small
   Stats and Settings tiles. Windows close with Esc, the red X or gamepad B.
 - **Top-left:** party panel in the lobby (the obby level with its stars, the countdown, members, the **Leave** button
@@ -1436,11 +1437,11 @@ src/server   Main.server.lua; Services: Lighting, LobbyBuilder, StormAltar, Play
              Item, Index, Tutorial, Npc, Dev, Tycoon, HomeBuilder, PetCare, Fusion, Gem, ArenaBuilder, Battle, Event,
              Dungeon (parties, runs, loot), DungeonBuilder (the Dungeon gate and rooms)
 src/client   Main.client.lua; State; UiGate (nothing shows before PLAY); ClientSettings; SoundFx; GraphicsQuality;
-             PortalVortex (the swirling vortex inside every gate hoop);
+             PortalVortex (the swirling vortex inside every gate hoop); MouseLock (the Mouse lock option);
              LightingStack (lighting looks, e.g. the Dungeon); UI/CloudUI; UI/NeonKit (the neon cards, tiles and side
              panels); UI/PetCard (the cards above pets); Controllers: Movement, MainMenu (main menu + settings), Hud,
              DamageFx, Notify, Menu, Hotbar, Pet, TokenFx, Index, Tutorial, Npc, SkyDragon, Showcase, Dev, DevPetShow
-             (pet showcase), EvolutionFx (evolution animation), Care (Food Machine, Garden, training and EVOLVE
+             (pet showcase), EvolutionFx (evolution animation, the dungeon enemies' arrival), Care (Food Machine, Garden, training and EVOLVE
              windows), HomeFx (roaming pets, Cloud Cash, berries), HomePortalFx (the home portal), Fusion, Battle,
              Arena, Dungeon (the Dungeon window and run), Obby (the level picker), PortalFx (the gates' soft
              animation: a light running round the ring, the swirl breathing, gems twinkling), MeshFallback (shows the

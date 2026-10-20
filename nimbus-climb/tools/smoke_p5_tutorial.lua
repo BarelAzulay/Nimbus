@@ -116,7 +116,8 @@ local function serverScenarios()
 		T.eq(s[14].Text, "Press E at the Food Machine and press Feed: your berries become XP. At level " .. evo .. " your pet can EVOLVE!", "p5ui: 14 'feed' text (level " .. evo .. ")")
 		T.check(s[16].Text:find("(a fighter + 2 helpers)", 1, true) ~= nil, "p5ui: 16 'team' says (a fighter + 2 helpers)")
 		T.check(s[17].Title == "Into the Dungeon!" and s[17].Hint == "Clear Dungeon floor 1" and s[17].Text:find("Floor 1: the " .. floorOne, 1, true) ~= nil
-			and s[17].Text:find("helpers buff", 1, true) ~= nil, "p5ui: 17 'dungeon' = Into the Dungeon!, Floor 1: the " .. floorOne .. ", helpers buff")
+			and s[17].Text:find("helpers buff", 1, true) ~= nil and s[17].Text:find("attack by themselves", 1, true) ~= nil,
+			"p5ui: 17 'dungeon' = Into the Dungeon!, Floor 1: the " .. floorOne .. ", pets attack by themselves, helpers buff")
 
 		-- targets
 		local function t(i)

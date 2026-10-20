@@ -22,6 +22,7 @@ UpdateNotes.Notes = {
 			"Evolved pets shine: sparkles in their colours and a soft glow. Second evolutions glow brighter and pulse.",
 			"A magic swirl spins inside every gate, with a glowing rim and tiny lightning sparks.",
 			"No Home gate in the lobby: tap Home, then Go home. No home yet? Tap Claim a home.",
+			"Battles: your pet attacks by itself, F picks who, and Shift makes your pet dash. Dungeon enemies arrive in a flash!",
 			"Nothing is lost: pets, levels, Cash, Gems, Tokens and homes stay the same.",
 		},
 	},
@@ -86,7 +87,7 @@ UpdateNotes.Tips = {
 	"Clear a dungeon floor for the first time for big Tokens and Gems.",
 	"Garden pets drop Cloud Cash in your yard. Walk over it to scoop it up.",
 	"Berries go into your Berry Basket. Feed them to your pets at the Food Machine.",
-	"DASH costs stamina outside a battle, but inside a battle it is free.",
+	"In a battle Shift makes your pet dash, for free. Outside a battle DASH is Q and costs stamina.",
 	"Tap Home, then Go home: a magic portal takes you and your pets home.",
 }
 

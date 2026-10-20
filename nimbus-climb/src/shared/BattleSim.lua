@@ -3187,7 +3187,13 @@ function BattleSim:Step(dt)
 			end
 		end
 	end
-	for _, team in ipairs(self.teams) do
+	-- the fighters (incl. their auto-attack): the team order alternates every step, so in a mirror race no side always
+	-- swings first (deterministic: it follows the step count)
+	local teams = self.teams
+	local nTeams = #teams
+	local reverse = self.stepCount % 2 == 0
+	for k = 1, nTeams do
+		local team = teams[reverse and (nTeams + 1 - k) or k]
 		if team.player and not team.left then
 			fighterStep(self, team, dt, events)
 		end

@@ -936,8 +936,13 @@ local function checkBattleRules(BC, Config, TC, p3, text, controllerSource)
 	t:case(has(f, "one dash every **" .. num(F.DashCooldown) .. " s**"), "a battle dash every " .. tostring(F.DashCooldown) .. " s")
 	t:case(has(f, "(every **" .. num(F.SwapCooldown) .. " s**)"), "SWAP every " .. tostring(F.SwapCooldown) .. " s")
 	t:case(has(f, "**ENERGY** bar is full (" .. num(F.SpecialMeterMax) .. ")"), "SPECIAL at a full ENERGY bar (" .. tostring(F.SpecialMeterMax) .. ")")
-	t:case(has(f, "(up to " .. num((F.BenchRegenCap or 0) * 100) .. " % of their health)"), "benched helpers heal up to "
-		.. num((F.BenchRegenCap or 0) * 100) .. " %")
+	if (F.BenchRegenPerSecond or 0) == 0 then
+		-- dungeon fixes (7): no passive heal in a fight
+		t:case(has(f, "Nobody heals by themselves in a fight") and not has(f, "slowly heal"), "no passive heal in a fight (BenchRegenPerSecond 0): the battle section says so")
+	else
+		t:case(has(f, "(up to " .. num((F.BenchRegenCap or 0) * 100) .. " % of their health)"), "benched helpers heal up to "
+			.. num((F.BenchRegenCap or 0) * 100) .. " %")
+	end
 	t:case(has(f, "(**" .. num(F.SupportCooldown) .. " s** for a Support pet's buff, **" .. num(F.HelperCooldown) .. " s** for an element buff)"),
 		"buff cooldowns " .. tostring(F.SupportCooldown) .. " s (Support) / " .. tostring(F.HelperCooldown) .. " s (element)")
 	-- Supporters
@@ -1025,9 +1030,16 @@ local function checkBattleRules(BC, Config, TC, p3, text, controllerSource)
 	end
 	local helperRow = controlRow("Battle: a helper's buff")
 	t:case(helperRow ~= nil and helperRow[2] == "`1` / `2`", "the controls table's helper row reads `1` / `2`")
-	t:case(src:find("SetDashKeys, { Enum%.KeyCode%.LeftShift") ~= nil, "BattleController makes Shift the battle dash (SetDashKeys)")
+	-- dungeon fixes (5): Shift = the PET's dash (MovementController.SetPetDash binds Shift / RightShift / B to it)
+	local mcSrc = readFile("src/client/Controllers/MovementController.lua") or ""
+	t:case(src:find("SetPetDash", 1, true) ~= nil and mcSrc:find("PET_DASH_KEYS = { Enum%.KeyCode%.LeftShift") ~= nil,
+		"BattleController makes Shift the pet's battle dash (MovementController.SetPetDash, PET_DASH_KEYS LeftShift)")
 	local dashRow = controlRow("Battle: **DASH**")
-	t:case(dashRow ~= nil and dashRow[2] == "`Shift`", "the controls table's battle DASH row reads `Shift`")
+	t:case(dashRow ~= nil and dashRow[2] == "`Shift`" and has(flat(dashRow[1]), "your pet dashes"), "the controls table's battle DASH row reads `Shift` (your pet dashes)")
+	local attackRow = controlRow("Battle: **ATTACK**")
+	t:case(attackRow ~= nil and has(flat(attackRow[1]), "attacks by itself") and not has(f, "Hold it to keep attacking") and not has(f, "hold to keep attacking"),
+		"ATTACK picks the target, the pet attacks by itself (no hold-to-attack text left)")
+	t:case(has(f, "Your PET dashes") and has(f, "RUN is `Ctrl`"), "the battle section: Shift makes the PET dash, RUN is `Ctrl` in a battle")
 	t:case(not src:find("ACTION_RETREAT", 1, true) and not has(f, "RETREAT"), "RETREAT is gone (BattleController and the battle section)")
 	t:report()
 end

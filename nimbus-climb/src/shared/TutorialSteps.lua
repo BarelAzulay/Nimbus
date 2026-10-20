@@ -294,7 +294,7 @@ TutorialSteps.Steps = {
 		Chapter = 3,
 		Title = "Into the Dungeon!",
 		Text = "Press E at the Dungeon portal, start Floor 1: the " .. FLOOR_ONE
-			.. ". Beat every room and the boss. Fighter attacks, helpers buff!",
+			.. ". Beat every room: pets attack by themselves, helpers buff!",
 		Target = { Kind = "Arena", Place = "Dungeon", Label = "Dungeon portal" },
 		CompleteOn = "DungeonWon",
 		Hint = "Clear Dungeon floor 1",
