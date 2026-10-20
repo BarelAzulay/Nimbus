@@ -4,7 +4,8 @@
 The Blender kit may bake a constant-colour key into a shared `Fixed` MeshPart only when nothing looks that key up by
 name: once baked, the part named after the key no longer exists.  This tool collects the referenced names from
   * src/**/*.lua and tools/*.lua:  FindFirstChild("X"), WaitForChild("X"), Name == "X", "X" == ...Name,
-    :match("^X") / string.match(n, "^X") / find("^X"), partsNamed("^X"), Voxel.BaseKey lookups in tables
+    :match("^X") / string.match(n, "^X") / find("^X"), partsNamed("^X"), Voxel.BaseKey lookups in tables,
+    keyed(model, "X") and the tests' key-count tables { { "X", "Y" }, n, ... } / ipairs({ "X", ... }) ... keyed(
   * PetBuilder's by-name tables: GOLD_METAL, RAINBOW_KEYS, WILD_EYES, WILD_KEEP
   * the contract's never-bake list (Horn, Claw, Beak, Hoof, Nostril, EyeShine; recipe 4.3)
 
@@ -32,6 +33,14 @@ PATTERNS = [
     re.compile(r"[\"']" + IDENT + r"[\"']\s*[~=]=\s*[A-Za-z_.:]*Name\b"),
     re.compile(r"(?:match|find|gmatch|partsNamed|named)\(\s*(?:[A-Za-z_.]+\s*,\s*)?[\"']\^" + IDENT),
     re.compile(r":(?:match|find)\(\s*[\"']\^" + IDENT),
+    re.compile(r"\bkeyed\(\s*[A-Za-z_.]+\s*,\s*[\"']" + IDENT + r"[\"']"),
+]
+_STRS = r"((?:[\"'][A-Z][A-Za-z0-9_]*[\"']\s*,?\s*)+)"
+# lists of key names (every string in group 1 is a name): smoke_p3_evolved's SIGNS { { "Basalt" }, 2, "..." } and
+# its leak loop `for _, key in ipairs({ "Magma", "Basalt", ... }) do ... keyed(m, key)` (by-name part counts)
+LIST_PATTERNS = [
+    re.compile(r"\{\s*\{\s*" + _STRS + r"\}\s*,\s*\d+"),
+    re.compile(r"ipairs\(\{\s*" + _STRS + r"\}\)\s*do[^\n]*\n[^\n]*\bkeyed\("),
 ]
 
 
@@ -64,6 +73,11 @@ def referenced_names(root=ROOT):
                 n = m.group(1)
                 found.add(n)
                 where.setdefault(n, rel)
+        for pat in LIST_PATTERNS:
+            for m in pat.finditer(text):
+                for n in re.findall(r"[\"']" + IDENT + r"[\"']", m.group(1)):
+                    found.add(n)
+                    where.setdefault(n, rel)
         if rel.replace(os.sep, "/") == "src/shared/PetBuilder.lua":
             for t in NAME_TABLES:
                 for n in _table_keys(text, t):
