@@ -1495,7 +1495,11 @@ local function stepFollower(f, dt, now, viewPos)
 				p.rebuildAt = now
 			end
 		end
-		if p.rebuildAt and now >= p.rebuildAt and not p.parked then
+		-- review3 runtime-4: the old model goes only when this frame still has a build slot for its replacement (the same
+		-- gate as the build below), so a MeshVersion change that marks every pet in the lobby keeps each one on screen
+		-- until its turn comes (no lobby-wide blink; at most BUILD_MAX swaps per frame, built in the same frame)
+		if p.rebuildAt and now >= p.rebuildAt and not p.parked and now >= p.retryAt and buildsThisFrame < BUILD_MAX
+			and (buildsThisFrame == 0 or os.clock() - buildStart < BUILD_BUDGET) then
 			-- Phase 4: the stage changed (EVOLVE, EquippedInfo, the 40-stud rule): rebuild where the pet is
 			p.rebuildAt = nil
 			destroyPetModel(p)

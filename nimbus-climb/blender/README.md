@@ -25,10 +25,12 @@ python3 -m venv /tmp/claude-0/bpyenv
 python3 blender/kit/selftest.py                                              # hooks, recipes, determinism, manifests
 ```
 Classes (one catalog each, `blender/catalog/<class>.json`): `calibration` (cal_axes + the test key
-prop_portal_reference), `pets` (94 keys), `evolved` (354), `creatures` (60), `gates` (6), `lobby` (62), `home` (88),
-`arenadungeon` (52): 717 uploadable keys.  `blender/out/previews/<name>.png` holds the preview sheets.
+prop_portal_reference), `pets` (94 keys), `evolved` (354), `creatures` (60), `gates` (6), `lobby` (63), `home` (168),
+`arenadungeon` (52): 798 uploadable keys (W3 added `prop_plot_low` and the 80 home plot `_low` keys
+`home_<stem>_<level>_low`).  `blender/out/previews/<name>.png` holds the preview sheets.
 Per key: `blender/out/<key>.fbx`, `.manifest.json`, `.tris.json.gz` (not committed, rebuilt from here) and the
-committed `src/shared/MeshManifests/<key>.lua` + `blender/meshes.json` (uploader index: fbx, displayName, hashes).
+committed `src/shared/MeshManifests/<key>.lua` + `blender/meshes.json` (uploader index: fbx, displayName, hashes,
+`fbxSha256` = the sha256 of the FBX exported and verified for this contentHash).
 Same input = same bytes (FBX timestamps zeroed, hash seed fixed) and the same `contentHash`.  Commit the generated
 `.lua` files and `meshes.json` together with the catalog / kit change that made them.
 
@@ -149,7 +151,11 @@ are instanced by Roblox, so draw calls grow with distinct keys, not with copies.
 ## Gotchas
 
 * `--no-export` (plain `python3`, no bpy) still rewrites `src/shared/MeshManifests/` and `meshes.json`: finish with an
-  export build before committing.
+  export build before committing. meshes.json then has "fbxSha256": null for every key whose contentHash changed, and
+  tools/upload_assets.py refuses that key until an export build with /tmp/claude-0/bpyenv/bin/python (a key whose
+  contentHash did not change keeps its sha: that FBX still matches).
+* Upload a class with `python3 tools/upload_assets.py --class <class>` (dry run; `--upload` only with the owner's OK,
+  `docs/phase6/OWNER_UPLOAD.md` section 5): it takes the catalog's upload keys, `_low` keys included.
 * After any build, `git status`: changed manifests + `meshes.json` go into the same commit as the catalog / kit
   change.  A changed `structureHash` means the next upload makes a NEW asset id (see `docs/phase6/OWNER_UPLOAD.md`).
 * Waiting on a background build: never `pgrep -f "build_all.py --class ..."` (it matches its own shell).

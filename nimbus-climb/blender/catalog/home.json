@@ -1,7 +1,7 @@
 {
  "class": "home",
  "owner": "W2 art-home",
- "doc": "blender/kit/props/home.py + home_style.py, docs/phase6/review/home/README.md. Keys: home_<stem>_<level> = one station level baked from HomeBuilder's own Part build (pivot = station origin; LayoutSig), home_bed_<piece> = one Garden bed piece per Part (pivot = the part). HomeBuilder._Mesh tags them (Tag calls only).",
+ "doc": "blender/kit/props/home.py + home_style.py, docs/phase6/review/home/README.md. Keys: home_<stem>_<level> = one station level baked from HomeBuilder's own Part build (pivot = station origin; LayoutSig), home_bed_<piece> = one Garden bed piece per Part (pivot = the part). HomeBuilder._Mesh tags them (Tag calls only). home_<stem>_<level>_low = the plot LOD of the same station (args vs 0.5, detail 1; the house detail 0; same LayoutSig as the High key; HomeFx Low / Far tiers; bed pieces have none).",
  "budgets": {
   "station": {
    "tris": 4000,
@@ -1029,6 +1029,1054 @@
    },
    "budget": "element",
    "description": "Home Garden closed bed sign post (one per Part)"
+  },
+  {
+   "key": "home_farm_1_low",
+   "type": "prop",
+   "prop": "home_station",
+   "args": {
+    "station": "Press1",
+    "level": 1,
+    "vs": 0.5,
+    "detail": 1
+   },
+   "budget": "stationBig",
+   "description": "Home Berry Farm level 1 (far-plot LOD: 0.5-stud bake of the same Part build)"
+  },
+  {
+   "key": "home_farm_2_low",
+   "type": "prop",
+   "prop": "home_station",
+   "args": {
+    "station": "Press1",
+    "level": 2,
+    "vs": 0.5,
+    "detail": 1
+   },
+   "budget": "stationBig",
+   "description": "Home Berry Farm level 2 (far-plot LOD: 0.5-stud bake of the same Part build)"
+  },
+  {
+   "key": "home_farm_3_low",
+   "type": "prop",
+   "prop": "home_station",
+   "args": {
+    "station": "Press1",
+    "level": 3,
+    "vs": 0.5,
+    "detail": 1
+   },
+   "budget": "stationBig",
+   "description": "Home Berry Farm level 3 (far-plot LOD: 0.5-stud bake of the same Part build)"
+  },
+  {
+   "key": "home_farm_4_low",
+   "type": "prop",
+   "prop": "home_station",
+   "args": {
+    "station": "Press1",
+    "level": 4,
+    "vs": 0.5,
+    "detail": 1
+   },
+   "budget": "stationBig",
+   "description": "Home Berry Farm level 4 (far-plot LOD: 0.5-stud bake of the same Part build)"
+  },
+  {
+   "key": "home_farm_5_low",
+   "type": "prop",
+   "prop": "home_station",
+   "args": {
+    "station": "Press1",
+    "level": 5,
+    "vs": 0.5,
+    "detail": 1
+   },
+   "budget": "stationBig",
+   "description": "Home Berry Farm level 5 (far-plot LOD: 0.5-stud bake of the same Part build)"
+  },
+  {
+   "key": "home_farm_6_low",
+   "type": "prop",
+   "prop": "home_station",
+   "args": {
+    "station": "Press1",
+    "level": 6,
+    "vs": 0.5,
+    "detail": 1
+   },
+   "budget": "stationBig",
+   "description": "Home Berry Farm level 6 (far-plot LOD: 0.5-stud bake of the same Part build)"
+  },
+  {
+   "key": "home_farm_7_low",
+   "type": "prop",
+   "prop": "home_station",
+   "args": {
+    "station": "Press1",
+    "level": 7,
+    "vs": 0.5,
+    "detail": 1
+   },
+   "budget": "stationBig",
+   "description": "Home Berry Farm level 7 (far-plot LOD: 0.5-stud bake of the same Part build)"
+  },
+  {
+   "key": "home_farm_8_low",
+   "type": "prop",
+   "prop": "home_station",
+   "args": {
+    "station": "Press1",
+    "level": 8,
+    "vs": 0.5,
+    "detail": 1
+   },
+   "budget": "stationBig",
+   "description": "Home Berry Farm level 8 (far-plot LOD: 0.5-stud bake of the same Part build)"
+  },
+  {
+   "key": "home_farm_9_low",
+   "type": "prop",
+   "prop": "home_station",
+   "args": {
+    "station": "Press1",
+    "level": 9,
+    "vs": 0.5,
+    "detail": 1
+   },
+   "budget": "stationBig",
+   "description": "Home Berry Farm level 9 (far-plot LOD: 0.5-stud bake of the same Part build)"
+  },
+  {
+   "key": "home_farm_10_low",
+   "type": "prop",
+   "prop": "home_station",
+   "args": {
+    "station": "Press1",
+    "level": 10,
+    "vs": 0.5,
+    "detail": 1
+   },
+   "budget": "stationBig",
+   "description": "Home Berry Farm level 10 (far-plot LOD: 0.5-stud bake of the same Part build)"
+  },
+  {
+   "key": "home_farm_11_low",
+   "type": "prop",
+   "prop": "home_station",
+   "args": {
+    "station": "Press1",
+    "level": 11,
+    "vs": 0.5,
+    "detail": 1
+   },
+   "budget": "stationBig",
+   "description": "Home Berry Farm level 11 (far-plot LOD: 0.5-stud bake of the same Part build)"
+  },
+  {
+   "key": "home_farm_12_low",
+   "type": "prop",
+   "prop": "home_station",
+   "args": {
+    "station": "Press1",
+    "level": 12,
+    "vs": 0.5,
+    "detail": 1
+   },
+   "budget": "stationBig",
+   "description": "Home Berry Farm level 12 (far-plot LOD: 0.5-stud bake of the same Part build)"
+  },
+  {
+   "key": "home_farm_13_low",
+   "type": "prop",
+   "prop": "home_station",
+   "args": {
+    "station": "Press1",
+    "level": 13,
+    "vs": 0.5,
+    "detail": 1
+   },
+   "budget": "stationBig",
+   "description": "Home Berry Farm level 13 (far-plot LOD: 0.5-stud bake of the same Part build)"
+  },
+  {
+   "key": "home_farm_14_low",
+   "type": "prop",
+   "prop": "home_station",
+   "args": {
+    "station": "Press1",
+    "level": 14,
+    "vs": 0.5,
+    "detail": 1
+   },
+   "budget": "stationBig",
+   "description": "Home Berry Farm level 14 (far-plot LOD: 0.5-stud bake of the same Part build)"
+  },
+  {
+   "key": "home_farm_15_low",
+   "type": "prop",
+   "prop": "home_station",
+   "args": {
+    "station": "Press1",
+    "level": 15,
+    "vs": 0.5,
+    "detail": 1
+   },
+   "budget": "stationBig",
+   "description": "Home Berry Farm level 15 (far-plot LOD: 0.5-stud bake of the same Part build)"
+  },
+  {
+   "key": "home_farm_16_low",
+   "type": "prop",
+   "prop": "home_station",
+   "args": {
+    "station": "Press1",
+    "level": 16,
+    "vs": 0.5,
+    "detail": 1
+   },
+   "budget": "stationBig",
+   "description": "Home Berry Farm level 16 (far-plot LOD: 0.5-stud bake of the same Part build)"
+  },
+  {
+   "key": "home_farm_17_low",
+   "type": "prop",
+   "prop": "home_station",
+   "args": {
+    "station": "Press1",
+    "level": 17,
+    "vs": 0.5,
+    "detail": 1
+   },
+   "budget": "stationBig",
+   "description": "Home Berry Farm level 17 (far-plot LOD: 0.5-stud bake of the same Part build)"
+  },
+  {
+   "key": "home_farm_18_low",
+   "type": "prop",
+   "prop": "home_station",
+   "args": {
+    "station": "Press1",
+    "level": 18,
+    "vs": 0.5,
+    "detail": 1
+   },
+   "budget": "stationBig",
+   "description": "Home Berry Farm level 18 (far-plot LOD: 0.5-stud bake of the same Part build)"
+  },
+  {
+   "key": "home_farm_19_low",
+   "type": "prop",
+   "prop": "home_station",
+   "args": {
+    "station": "Press1",
+    "level": 19,
+    "vs": 0.5,
+    "detail": 1
+   },
+   "budget": "stationBig",
+   "description": "Home Berry Farm level 19 (far-plot LOD: 0.5-stud bake of the same Part build)"
+  },
+  {
+   "key": "home_farm_20_low",
+   "type": "prop",
+   "prop": "home_station",
+   "args": {
+    "station": "Press1",
+    "level": 20,
+    "vs": 0.5,
+    "detail": 1
+   },
+   "budget": "stationBig",
+   "description": "Home Berry Farm level 20 (far-plot LOD: 0.5-stud bake of the same Part build)"
+  },
+  {
+   "key": "home_farm_21_low",
+   "type": "prop",
+   "prop": "home_station",
+   "args": {
+    "station": "Press1",
+    "level": 21,
+    "vs": 0.5,
+    "detail": 1
+   },
+   "budget": "stationBig",
+   "description": "Home Berry Farm level 21 (far-plot LOD: 0.5-stud bake of the same Part build)"
+  },
+  {
+   "key": "home_farm_22_low",
+   "type": "prop",
+   "prop": "home_station",
+   "args": {
+    "station": "Press1",
+    "level": 22,
+    "vs": 0.5,
+    "detail": 1
+   },
+   "budget": "stationBig",
+   "description": "Home Berry Farm level 22 (far-plot LOD: 0.5-stud bake of the same Part build)"
+  },
+  {
+   "key": "home_farm_23_low",
+   "type": "prop",
+   "prop": "home_station",
+   "args": {
+    "station": "Press1",
+    "level": 23,
+    "vs": 0.5,
+    "detail": 1
+   },
+   "budget": "stationBig",
+   "description": "Home Berry Farm level 23 (far-plot LOD: 0.5-stud bake of the same Part build)"
+  },
+  {
+   "key": "home_farm_24_low",
+   "type": "prop",
+   "prop": "home_station",
+   "args": {
+    "station": "Press1",
+    "level": 24,
+    "vs": 0.5,
+    "detail": 1
+   },
+   "budget": "stationBig",
+   "description": "Home Berry Farm level 24 (far-plot LOD: 0.5-stud bake of the same Part build)"
+  },
+  {
+   "key": "home_farm_25_low",
+   "type": "prop",
+   "prop": "home_station",
+   "args": {
+    "station": "Press1",
+    "level": 25,
+    "vs": 0.5,
+    "detail": 1
+   },
+   "budget": "stationBig",
+   "description": "Home Berry Farm level 25 (far-plot LOD: 0.5-stud bake of the same Part build)"
+  },
+  {
+   "key": "home_farm_26_low",
+   "type": "prop",
+   "prop": "home_station",
+   "args": {
+    "station": "Press1",
+    "level": 26,
+    "vs": 0.5,
+    "detail": 1
+   },
+   "budget": "stationBig",
+   "description": "Home Berry Farm level 26 (far-plot LOD: 0.5-stud bake of the same Part build)"
+  },
+  {
+   "key": "home_farm_27_low",
+   "type": "prop",
+   "prop": "home_station",
+   "args": {
+    "station": "Press1",
+    "level": 27,
+    "vs": 0.5,
+    "detail": 1
+   },
+   "budget": "stationBig",
+   "description": "Home Berry Farm level 27 (far-plot LOD: 0.5-stud bake of the same Part build)"
+  },
+  {
+   "key": "home_farm_28_low",
+   "type": "prop",
+   "prop": "home_station",
+   "args": {
+    "station": "Press1",
+    "level": 28,
+    "vs": 0.5,
+    "detail": 1
+   },
+   "budget": "stationBig",
+   "description": "Home Berry Farm level 28 (far-plot LOD: 0.5-stud bake of the same Part build)"
+  },
+  {
+   "key": "home_farm_29_low",
+   "type": "prop",
+   "prop": "home_station",
+   "args": {
+    "station": "Press1",
+    "level": 29,
+    "vs": 0.5,
+    "detail": 1
+   },
+   "budget": "stationBig",
+   "description": "Home Berry Farm level 29 (far-plot LOD: 0.5-stud bake of the same Part build)"
+  },
+  {
+   "key": "home_farm_30_low",
+   "type": "prop",
+   "prop": "home_station",
+   "args": {
+    "station": "Press1",
+    "level": 30,
+    "vs": 0.5,
+    "detail": 1
+   },
+   "budget": "stationBig",
+   "description": "Home Berry Farm level 30 (far-plot LOD: 0.5-stud bake of the same Part build)"
+  },
+  {
+   "key": "home_farm_31_low",
+   "type": "prop",
+   "prop": "home_station",
+   "args": {
+    "station": "Press1",
+    "level": 31,
+    "vs": 0.5,
+    "detail": 1
+   },
+   "budget": "stationBig",
+   "description": "Home Berry Farm level 31 (far-plot LOD: 0.5-stud bake of the same Part build)"
+  },
+  {
+   "key": "home_farm_32_low",
+   "type": "prop",
+   "prop": "home_station",
+   "args": {
+    "station": "Press1",
+    "level": 32,
+    "vs": 0.5,
+    "detail": 1
+   },
+   "budget": "stationBig",
+   "description": "Home Berry Farm level 32 (far-plot LOD: 0.5-stud bake of the same Part build)"
+  },
+  {
+   "key": "home_farm_33_low",
+   "type": "prop",
+   "prop": "home_station",
+   "args": {
+    "station": "Press1",
+    "level": 33,
+    "vs": 0.5,
+    "detail": 1
+   },
+   "budget": "stationBig",
+   "description": "Home Berry Farm level 33 (far-plot LOD: 0.5-stud bake of the same Part build)"
+  },
+  {
+   "key": "home_farm_34_low",
+   "type": "prop",
+   "prop": "home_station",
+   "args": {
+    "station": "Press1",
+    "level": 34,
+    "vs": 0.5,
+    "detail": 1
+   },
+   "budget": "stationBig",
+   "description": "Home Berry Farm level 34 (far-plot LOD: 0.5-stud bake of the same Part build)"
+  },
+  {
+   "key": "home_farm_35_low",
+   "type": "prop",
+   "prop": "home_station",
+   "args": {
+    "station": "Press1",
+    "level": 35,
+    "vs": 0.5,
+    "detail": 1
+   },
+   "budget": "stationBig",
+   "description": "Home Berry Farm level 35 (far-plot LOD: 0.5-stud bake of the same Part build)"
+  },
+  {
+   "key": "home_farm_36_low",
+   "type": "prop",
+   "prop": "home_station",
+   "args": {
+    "station": "Press1",
+    "level": 36,
+    "vs": 0.5,
+    "detail": 1
+   },
+   "budget": "stationBig",
+   "description": "Home Berry Farm level 36 (far-plot LOD: 0.5-stud bake of the same Part build)"
+  },
+  {
+   "key": "home_farm_37_low",
+   "type": "prop",
+   "prop": "home_station",
+   "args": {
+    "station": "Press1",
+    "level": 37,
+    "vs": 0.5,
+    "detail": 1
+   },
+   "budget": "stationBig",
+   "description": "Home Berry Farm level 37 (far-plot LOD: 0.5-stud bake of the same Part build)"
+  },
+  {
+   "key": "home_farm_38_low",
+   "type": "prop",
+   "prop": "home_station",
+   "args": {
+    "station": "Press1",
+    "level": 38,
+    "vs": 0.5,
+    "detail": 1
+   },
+   "budget": "stationBig",
+   "description": "Home Berry Farm level 38 (far-plot LOD: 0.5-stud bake of the same Part build)"
+  },
+  {
+   "key": "home_farm_39_low",
+   "type": "prop",
+   "prop": "home_station",
+   "args": {
+    "station": "Press1",
+    "level": 39,
+    "vs": 0.5,
+    "detail": 1
+   },
+   "budget": "stationBig",
+   "description": "Home Berry Farm level 39 (far-plot LOD: 0.5-stud bake of the same Part build)"
+  },
+  {
+   "key": "home_farm_40_low",
+   "type": "prop",
+   "prop": "home_station",
+   "args": {
+    "station": "Press1",
+    "level": 40,
+    "vs": 0.5,
+    "detail": 1
+   },
+   "budget": "stationBig",
+   "description": "Home Berry Farm level 40 (far-plot LOD: 0.5-stud bake of the same Part build)"
+  },
+  {
+   "key": "home_garden_1_low",
+   "type": "prop",
+   "prop": "home_station",
+   "args": {
+    "station": "Garden",
+    "level": 1,
+    "open": 3,
+    "vs": 0.5,
+    "detail": 1
+   },
+   "budget": "stationBig",
+   "description": "Home Pet Garden level 1 (far-plot LOD: 0.5-stud bake of the same Part build)"
+  },
+  {
+   "key": "home_garden_2_low",
+   "type": "prop",
+   "prop": "home_station",
+   "args": {
+    "station": "Garden",
+    "level": 2,
+    "open": 3,
+    "vs": 0.5,
+    "detail": 1
+   },
+   "budget": "stationBig",
+   "description": "Home Pet Garden level 2 (far-plot LOD: 0.5-stud bake of the same Part build)"
+  },
+  {
+   "key": "home_garden_3_low",
+   "type": "prop",
+   "prop": "home_station",
+   "args": {
+    "station": "Garden",
+    "level": 3,
+    "open": 3,
+    "vs": 0.5,
+    "detail": 1
+   },
+   "budget": "stationBig",
+   "description": "Home Pet Garden level 3 (far-plot LOD: 0.5-stud bake of the same Part build)"
+  },
+  {
+   "key": "home_garden_4_low",
+   "type": "prop",
+   "prop": "home_station",
+   "args": {
+    "station": "Garden",
+    "level": 4,
+    "open": 3,
+    "vs": 0.5,
+    "detail": 1
+   },
+   "budget": "stationBig",
+   "description": "Home Pet Garden level 4 (far-plot LOD: 0.5-stud bake of the same Part build)"
+  },
+  {
+   "key": "home_garden_5_low",
+   "type": "prop",
+   "prop": "home_station",
+   "args": {
+    "station": "Garden",
+    "level": 5,
+    "open": 3,
+    "vs": 0.5,
+    "detail": 1
+   },
+   "budget": "stationBig",
+   "description": "Home Pet Garden level 5 (far-plot LOD: 0.5-stud bake of the same Part build)"
+  },
+  {
+   "key": "home_garden_6_low",
+   "type": "prop",
+   "prop": "home_station",
+   "args": {
+    "station": "Garden",
+    "level": 6,
+    "open": 3,
+    "vs": 0.5,
+    "detail": 1
+   },
+   "budget": "stationBig",
+   "description": "Home Pet Garden level 6 (far-plot LOD: 0.5-stud bake of the same Part build)"
+  },
+  {
+   "key": "home_garden_7_low",
+   "type": "prop",
+   "prop": "home_station",
+   "args": {
+    "station": "Garden",
+    "level": 7,
+    "open": 3,
+    "vs": 0.5,
+    "detail": 1
+   },
+   "budget": "stationBig",
+   "description": "Home Pet Garden level 7 (far-plot LOD: 0.5-stud bake of the same Part build)"
+  },
+  {
+   "key": "home_garden_8_low",
+   "type": "prop",
+   "prop": "home_station",
+   "args": {
+    "station": "Garden",
+    "level": 8,
+    "open": 3,
+    "vs": 0.5,
+    "detail": 1
+   },
+   "budget": "stationBig",
+   "description": "Home Pet Garden level 8 (far-plot LOD: 0.5-stud bake of the same Part build)"
+  },
+  {
+   "key": "home_foodmachine_1_low",
+   "type": "prop",
+   "prop": "home_station",
+   "args": {
+    "station": "Kitchen",
+    "level": 1,
+    "vs": 0.5,
+    "detail": 1
+   },
+   "budget": "station",
+   "description": "Home Food Machine level 1 (far-plot LOD: 0.5-stud bake of the same Part build)"
+  },
+  {
+   "key": "home_foodmachine_2_low",
+   "type": "prop",
+   "prop": "home_station",
+   "args": {
+    "station": "Kitchen",
+    "level": 2,
+    "vs": 0.5,
+    "detail": 1
+   },
+   "budget": "station",
+   "description": "Home Food Machine level 2 (far-plot LOD: 0.5-stud bake of the same Part build)"
+  },
+  {
+   "key": "home_foodmachine_3_low",
+   "type": "prop",
+   "prop": "home_station",
+   "args": {
+    "station": "Kitchen",
+    "level": 3,
+    "vs": 0.5,
+    "detail": 1
+   },
+   "budget": "station",
+   "description": "Home Food Machine level 3 (far-plot LOD: 0.5-stud bake of the same Part build)"
+  },
+  {
+   "key": "home_foodmachine_4_low",
+   "type": "prop",
+   "prop": "home_station",
+   "args": {
+    "station": "Kitchen",
+    "level": 4,
+    "vs": 0.5,
+    "detail": 1
+   },
+   "budget": "station",
+   "description": "Home Food Machine level 4 (far-plot LOD: 0.5-stud bake of the same Part build)"
+  },
+  {
+   "key": "home_foodmachine_5_low",
+   "type": "prop",
+   "prop": "home_station",
+   "args": {
+    "station": "Kitchen",
+    "level": 5,
+    "vs": 0.5,
+    "detail": 1
+   },
+   "budget": "station",
+   "description": "Home Food Machine level 5 (far-plot LOD: 0.5-stud bake of the same Part build)"
+  },
+  {
+   "key": "home_training_1_low",
+   "type": "prop",
+   "prop": "home_station",
+   "args": {
+    "station": "Gym",
+    "level": 1,
+    "vs": 0.5,
+    "detail": 1
+   },
+   "budget": "station",
+   "description": "Home Training Place level 1 (far-plot LOD: 0.5-stud bake of the same Part build)"
+  },
+  {
+   "key": "home_training_2_low",
+   "type": "prop",
+   "prop": "home_station",
+   "args": {
+    "station": "Gym",
+    "level": 2,
+    "vs": 0.5,
+    "detail": 1
+   },
+   "budget": "station",
+   "description": "Home Training Place level 2 (far-plot LOD: 0.5-stud bake of the same Part build)"
+  },
+  {
+   "key": "home_training_3_low",
+   "type": "prop",
+   "prop": "home_station",
+   "args": {
+    "station": "Gym",
+    "level": 3,
+    "vs": 0.5,
+    "detail": 1
+   },
+   "budget": "station",
+   "description": "Home Training Place level 3 (far-plot LOD: 0.5-stud bake of the same Part build)"
+  },
+  {
+   "key": "home_training_4_low",
+   "type": "prop",
+   "prop": "home_station",
+   "args": {
+    "station": "Gym",
+    "level": 4,
+    "vs": 0.5,
+    "detail": 1
+   },
+   "budget": "station",
+   "description": "Home Training Place level 4 (far-plot LOD: 0.5-stud bake of the same Part build)"
+  },
+  {
+   "key": "home_training_5_low",
+   "type": "prop",
+   "prop": "home_station",
+   "args": {
+    "station": "Gym",
+    "level": 5,
+    "vs": 0.5,
+    "detail": 1
+   },
+   "budget": "station",
+   "description": "Home Training Place level 5 (far-plot LOD: 0.5-stud bake of the same Part build)"
+  },
+  {
+   "key": "home_vault_1_low",
+   "type": "prop",
+   "prop": "home_station",
+   "args": {
+    "station": "Vault",
+    "level": 1,
+    "vs": 0.5,
+    "detail": 1
+   },
+   "budget": "station",
+   "description": "Home Vault level 1 (far-plot LOD: 0.5-stud bake of the same Part build)"
+  },
+  {
+   "key": "home_vault_2_low",
+   "type": "prop",
+   "prop": "home_station",
+   "args": {
+    "station": "Vault",
+    "level": 2,
+    "vs": 0.5,
+    "detail": 1
+   },
+   "budget": "station",
+   "description": "Home Vault level 2 (far-plot LOD: 0.5-stud bake of the same Part build)"
+  },
+  {
+   "key": "home_vault_3_low",
+   "type": "prop",
+   "prop": "home_station",
+   "args": {
+    "station": "Vault",
+    "level": 3,
+    "vs": 0.5,
+    "detail": 1
+   },
+   "budget": "station",
+   "description": "Home Vault level 3 (far-plot LOD: 0.5-stud bake of the same Part build)"
+  },
+  {
+   "key": "home_vault_4_low",
+   "type": "prop",
+   "prop": "home_station",
+   "args": {
+    "station": "Vault",
+    "level": 4,
+    "vs": 0.5,
+    "detail": 1
+   },
+   "budget": "station",
+   "description": "Home Vault level 4 (far-plot LOD: 0.5-stud bake of the same Part build)"
+  },
+  {
+   "key": "home_vault_5_low",
+   "type": "prop",
+   "prop": "home_station",
+   "args": {
+    "station": "Vault",
+    "level": 5,
+    "vs": 0.5,
+    "detail": 1
+   },
+   "budget": "station",
+   "description": "Home Vault level 5 (far-plot LOD: 0.5-stud bake of the same Part build)"
+  },
+  {
+   "key": "home_house_1_low",
+   "type": "prop",
+   "prop": "home_station",
+   "args": {
+    "station": "House",
+    "level": 1,
+    "vs": 0.5,
+    "detail": 0
+   },
+   "budget": "stationBig",
+   "description": "Home house tier 1: Cottage (far-plot LOD: 0.5-stud bake of the same Part build)"
+  },
+  {
+   "key": "home_house_2_low",
+   "type": "prop",
+   "prop": "home_station",
+   "args": {
+    "station": "House",
+    "level": 2,
+    "vs": 0.5,
+    "detail": 0
+   },
+   "budget": "stationBig",
+   "description": "Home house tier 2: Villa (far-plot LOD: 0.5-stud bake of the same Part build)"
+  },
+  {
+   "key": "home_house_3_low",
+   "type": "prop",
+   "prop": "home_station",
+   "args": {
+    "station": "House",
+    "level": 3,
+    "vs": 0.5,
+    "detail": 0
+   },
+   "budget": "house",
+   "description": "Home house tier 3: Manor (far-plot LOD: 0.5-stud bake of the same Part build)"
+  },
+  {
+   "key": "home_house_4_low",
+   "type": "prop",
+   "prop": "home_station",
+   "args": {
+    "station": "House",
+    "level": 4,
+    "vs": 0.5,
+    "detail": 0
+   },
+   "budget": "house",
+   "description": "Home house tier 4: Sky Castle (far-plot LOD: 0.5-stud bake of the same Part build)"
+  },
+  {
+   "key": "home_fusion_1_low",
+   "type": "prop",
+   "prop": "home_station",
+   "args": {
+    "station": "FusionMachine",
+    "level": 1,
+    "vs": 0.5,
+    "detail": 1
+   },
+   "budget": "station",
+   "description": "Home Fusion Machine level 1 (far-plot LOD: 0.5-stud bake of the same Part build)"
+  },
+  {
+   "key": "home_fusion_2_low",
+   "type": "prop",
+   "prop": "home_station",
+   "args": {
+    "station": "FusionMachine",
+    "level": 2,
+    "vs": 0.5,
+    "detail": 1
+   },
+   "budget": "station",
+   "description": "Home Fusion Machine level 2 (far-plot LOD: 0.5-stud bake of the same Part build)"
+  },
+  {
+   "key": "home_fusion_3_low",
+   "type": "prop",
+   "prop": "home_station",
+   "args": {
+    "station": "FusionMachine",
+    "level": 3,
+    "vs": 0.5,
+    "detail": 1
+   },
+   "budget": "station",
+   "description": "Home Fusion Machine level 3 (far-plot LOD: 0.5-stud bake of the same Part build)"
+  },
+  {
+   "key": "home_arena_1_low",
+   "type": "prop",
+   "prop": "home_station",
+   "args": {
+    "station": "ArenaGate",
+    "level": 1,
+    "vs": 0.5,
+    "detail": 1
+   },
+   "budget": "station",
+   "description": "Home Arena Gate station level 1 (far-plot LOD: 0.5-stud bake of the same Part build)"
+  },
+  {
+   "key": "home_fence_1_low",
+   "type": "prop",
+   "prop": "home_station",
+   "args": {
+    "station": "DecorFence",
+    "level": 1,
+    "vs": 0.5,
+    "detail": 1
+   },
+   "budget": "stationBig",
+   "description": "Home Yard Fence level 1 (far-plot LOD: 0.5-stud bake of the same Part build)"
+  },
+  {
+   "key": "home_fence_2_low",
+   "type": "prop",
+   "prop": "home_station",
+   "args": {
+    "station": "DecorFence",
+    "level": 2,
+    "vs": 0.5,
+    "detail": 1
+   },
+   "budget": "stationBig",
+   "description": "Home Yard Fence level 2 (far-plot LOD: 0.5-stud bake of the same Part build)"
+  },
+  {
+   "key": "home_fence_3_low",
+   "type": "prop",
+   "prop": "home_station",
+   "args": {
+    "station": "DecorFence",
+    "level": 3,
+    "vs": 0.5,
+    "detail": 1
+   },
+   "budget": "stationBig",
+   "description": "Home Yard Fence level 3 (far-plot LOD: 0.5-stud bake of the same Part build)"
+  },
+  {
+   "key": "home_fountain_1_low",
+   "type": "prop",
+   "prop": "home_station",
+   "args": {
+    "station": "DecorFountain",
+    "level": 1,
+    "vs": 0.5,
+    "detail": 1
+   },
+   "budget": "station",
+   "description": "Home Fountain level 1 (far-plot LOD: 0.5-stud bake of the same Part build)"
+  },
+  {
+   "key": "home_fountain_2_low",
+   "type": "prop",
+   "prop": "home_station",
+   "args": {
+    "station": "DecorFountain",
+    "level": 2,
+    "vs": 0.5,
+    "detail": 1
+   },
+   "budget": "station",
+   "description": "Home Fountain level 2 (far-plot LOD: 0.5-stud bake of the same Part build)"
+  },
+  {
+   "key": "home_fountain_3_low",
+   "type": "prop",
+   "prop": "home_station",
+   "args": {
+    "station": "DecorFountain",
+    "level": 3,
+    "vs": 0.5,
+    "detail": 1
+   },
+   "budget": "station",
+   "description": "Home Fountain level 3 (far-plot LOD: 0.5-stud bake of the same Part build)"
+  },
+  {
+   "key": "home_podium_1_low",
+   "type": "prop",
+   "prop": "home_station",
+   "args": {
+    "station": "DecorPodium",
+    "level": 1,
+    "vs": 0.5,
+    "detail": 1
+   },
+   "budget": "station",
+   "description": "Home Pet Podium level 1 (far-plot LOD: 0.5-stud bake of the same Part build)"
+  },
+  {
+   "key": "home_podium_2_low",
+   "type": "prop",
+   "prop": "home_station",
+   "args": {
+    "station": "DecorPodium",
+    "level": 2,
+    "vs": 0.5,
+    "detail": 1
+   },
+   "budget": "station",
+   "description": "Home Pet Podium level 2 (far-plot LOD: 0.5-stud bake of the same Part build)"
+  },
+  {
+   "key": "home_podium_3_low",
+   "type": "prop",
+   "prop": "home_station",
+   "args": {
+    "station": "DecorPodium",
+    "level": 3,
+    "vs": 0.5,
+    "detail": 1
+   },
+   "budget": "station",
+   "description": "Home Pet Podium level 3 (far-plot LOD: 0.5-stud bake of the same Part build)"
   }
  ],
  "sets": [],

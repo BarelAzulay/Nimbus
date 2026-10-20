@@ -243,6 +243,7 @@ S.p6lobby_server = guarded("p6lobby_server", function()
 
 	-- a second build next to the booted one (set aside, put back afterwards)
 	live.Name = "NimbusLobby_P6Keep"
+	ML._Reset() -- a true untagged build: under --mesh the global pet fixtures would turn the fountain statue into a mesh
 	local okDefault, infoDefault = pcall(LB.Build)
 	local defaultParts = (okDefault and infoDefault and infoDefault.Folder) and partsOf(infoDefault.Folder) or -1
 	-- [fix-runtime W2.5] a place()d clone's pivot is where it was placed: Plot:GetPivot() == SpotInfo.PlotCFrame
@@ -416,6 +417,10 @@ S.p6lobby_server = guarded("p6lobby_server", function()
 	ML._Reset()
 	root:Destroy()
 	live.Name = "NimbusLobby"
+	local P6 = rawget(_G, "P6Pets")
+	if P6 and P6.MeshMode then
+		P6.Install(P6.PetKeys()) -- --mesh: put back the global fixture set that _Reset wiped
+	end
 	T.check(okTests, "p6 lobby fixture: scenario ran", tostring(err))
 end)
 

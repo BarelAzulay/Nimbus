@@ -248,6 +248,11 @@ end
 -- a scenario's own fixture set; in fixture mesh mode the global set stays (it already holds every pet key)
 local function withFixtures(keys, fn)
 	if MESH_MODE then
+		-- [fix-meshlib W3b] order-independent: a scenario that ran before may have _Reset the shared MeshLibrary without
+		-- putting the --mesh set back (seen: client_p6gates); reinstall it when these keys are not ready any more
+		if not lib().IsReady(keys) then
+			install(petKeys())
+		end
 		fn()
 		return
 	end
@@ -425,6 +430,31 @@ S.p6pets_server = guarded("p6pets_server", function()
 		local body = dog:FindFirstChild("Body")
 		T.check(dog.PrimaryPart == body and body:IsA("Part") and body.Transparency == 1 and not body.CanCollide, "dog: PrimaryPart = an invisible, non-colliding Body Part")
 		T.check(body and (body.Size - Vector3.new(0.9, 1.1, 0.9)).Magnitude < 1e-3, "dog: Body root 0.9 x 1.1 x 0.9 at Scale 1 (as the Part build)")
+		-- [fix-meshlib W3b, review3 runtime-2] a SERVER-built mesh pet carries its definition (PBD_*) + the
+		-- PB_ServerMesh tag, so a device that cannot draw its meshes rebuilds the same Part pet (client MeshFallback)
+		for _, name in ipairs({ "dog", "hybrid", "golden" }) do
+			local sm = Pets.Build(D[name], { Scale = 2, Evolved = (name == "dog") and 1 or nil })
+			local def, opts = Pets.ServerDef(sm)
+			local CS = game:GetService("CollectionService")
+			local sameLook = def ~= nil and def.Look ~= nil
+			for k, v in pairs(D[name].Look or {}) do
+				if typeof(v) ~= "table" and def and def.Look[k] ~= v then
+					sameLook = false
+				end
+			end
+			T.check(sm:GetAttribute("ML_Mesh") == true and CS:HasTag(sm, Pets.ServerMeshTag) and def and def.Id == D[name].Id and def.Rarity == D[name].Rarity
+				and sameLook and opts.Parts == true and opts.NoFx == true and opts.Scale == 2 and opts.Evolved == ((name == "dog") and 1 or 0)
+				and type(sm:GetAttribute("PBD_Keys")) == "string" and (name ~= "hybrid" or (def.IsHybrid == true and def.Look.Hybrid == true and def.Look.StyleId == "mallow_kitten" and def.Look.Seed == 11)),
+				name .. ": a server-built mesh pet is stamped (PBD_* definition, keys, PB_ServerMesh tag) and PetBuilder.ServerDef reads it back")
+			local copy = def and Pets.Build(def, opts)
+			T.check(copy ~= nil and copy:GetAttribute("ML_Mesh") == nil and copy:GetAttribute("PB_Evolved") == sm:GetAttribute("PB_Evolved")
+				and not CS:HasTag(copy, Pets.ServerMeshTag) and copy:GetAttribute("PBD_Detail") == nil,
+				name .. ": Build(ServerDef(model)) = the same pet as a Part build (same stage), never stamped")
+			sm:Destroy()
+			if copy then
+				copy:Destroy()
+			end
+		end
 		local names = {}
 		for _, c in ipairs(dog:GetChildren()) do
 			names[c.Name] = c
@@ -806,6 +836,69 @@ S.p6pets_server = guarded("p6pets_server", function()
 				return Pets.Build(D.dog, {})
 			end) == false and not ML.Active(), "empty MeshIds: SwapWhenReady = false, no state")
 			p:Destroy()
+			-- [fix-meshlib W3b, review3 world-3] a pet key that FAILED to load on the server: a podium / NPC rebuild never
+			-- waits on it (SwapWhenReady = false, no OnReady closure kept), and its waiters from the loading time are gone
+			local dogKeys = Pets.MeshKeys(D.dog, {}) or {}
+			local failKey = dogKeys[#dogKeys]
+			local fails = {}
+			for _, k in ipairs(dogKeys) do
+				fails[#fails + 1] = k
+			end
+			local savedLoader = Mock.AssetLoader
+			ML._Reset()
+			Pets.ClearCache()
+			local froot = Instance.new("Folder")
+			froot.Name = "P6PetsFailRoot"
+			froot.Parent = RS
+			local fids, fby = {}, {}
+			for i, k in ipairs(fails) do
+				fids[k] = 7400000 + i
+				fby[7400000 + i] = k
+			end
+			ML._Configure({ Root = froot, Ids = fids, RetryDelays = { 0.05 } })
+			Mock.AssetLoader = function(id)
+				task.wait(0.3)
+				local k = fby[id]
+				if not k or k == failKey then
+					error("Asset is not authorized for this place", 0)
+				end
+				return fakeAsset(k)
+			end
+			ML.Start()
+			local early = Pets.Build(D.dog, {})
+			early.Parent = workspace
+			local regEarly = Pets.SwapWhenReady(early, D.dog, {}, function()
+				return Pets.Build(D.dog, {})
+			end)
+			for _ = 1, 20 do
+				Mock.Advance(0.5)
+			end
+			local waiting = 0
+			for _, k in ipairs(fails) do
+				waiting = waiting + ML._Waiters(k)
+			end
+			T.check(regEarly == true and ML.Status(failKey) == "failed" and waiting == 0 and early.Parent == workspace and early:GetAttribute("ML_Mesh") == nil,
+				"world-3: the key failed while a swap waited: the Part pet stays and no waiter is left",
+				fmt("registered %s, %s %s, %d waiting", tostring(regEarly), failKey, ML.Status(failKey), waiting))
+			local late = Pets.Build(D.dog, {})
+			late.Parent = workspace
+			local calls = 0
+			T.check(Pets.SwapWhenReady(late, D.dog, {}, function()
+				calls = calls + 1
+				return Pets.Build(D.dog, {})
+			end) == false, "world-3: SwapWhenReady on a pet with a 'failed' key = false (nothing registered)")
+			local after = 0
+			for _, k in ipairs(fails) do
+				after = after + ML._Waiters(k)
+			end
+			Mock.Advance(1)
+			T.check(after == 0 and calls == 0 and late.Parent == workspace, "world-3: ...no OnReady closure kept, never rebuilt")
+			early:Destroy()
+			late:Destroy()
+			Mock.AssetLoader = savedLoader
+			ML._Reset()
+			froot:Destroy()
+			Pets.ClearCache()
 		end
 	end
 	flushWarn("p6pets_server")
@@ -889,7 +982,69 @@ S.client_p6pets = guarded("client_p6pets", function()
 	else
 		T.fail("PetController.GetFollowerInfo is not reachable from the client world")
 	end
+	-- [fix-meshlib W3b, review3 runtime-4] a lobby of Part-built followers: when the keys become ready (MeshVersion
+	-- changes) every pet is due for its mesh rebuild in the same frame, but only BUILD_MAX are built per frame; no pet
+	-- may lose its model while it waits (the old one stays until its own replacement is built)
+	local lobby, blinkConn, worstMissing, lobbyPets = {}, nil, 0, 0
+	local function followersOf()
+		local all = { LocalPlayer }
+		for _, o in ipairs(lobby) do
+			all[#all + 1] = o
+		end
+		return all
+	end
+	if follow and not MESH_MODE then
+		for i = 1, 3 do
+			local o = Mock.AddPlayer("P6Lobby" .. i, 7700 + i)
+			lobby[#lobby + 1] = o
+		end
+		KC.advance(0.5)
+		for i, o in ipairs(lobby) do
+			Mock.Teleport(o, Vector3.new(-300 + 6 * i, 60, 306))
+			o:SetAttribute("EquippedInfo", "3:0,3:0,3:0")
+			o:SetAttribute("EquippedPets", "pebble_pup,pebble_pup,pebble_pup")
+		end
+		KC.advance(3)
+		for _, pl in ipairs(followersOf()) do
+			for _, info in ipairs(pc.GetFollowerInfo(pl)) do
+				if info.Model then
+					lobbyPets = lobbyPets + 1
+				end
+			end
+		end
+		blinkConn = game:GetService("RunService").Heartbeat:Connect(function()
+			local missing = 0
+			for _, pl in ipairs(followersOf()) do
+				for _, info in ipairs(pc.GetFollowerInfo(pl)) do
+					if not info.Model and not info.Parked then
+						missing = missing + 1
+					end
+				end
+			end
+			worstMissing = math.max(worstMissing, missing)
+		end)
+	end
 	withFixtures(need, function()
+		if blinkConn then
+			KC.advance(1)
+			blinkConn:Disconnect()
+			blinkConn = nil
+			local meshPets = 0
+			for _, pl in ipairs(followersOf()) do
+				for _, info in ipairs(pc.GetFollowerInfo(pl)) do
+					if info.Model and info.Model:GetAttribute("ML_Mesh") == true then
+						meshPets = meshPets + 1
+					end
+				end
+			end
+			T.check(lobbyPets >= 10 and meshPets == lobbyPets and worstMissing == 0,
+				"PetController: a lobby of Part followers becomes mesh pets with no frame where a pet has no model (review3 runtime-4)",
+				fmt("%d pets, %d mesh, at most %d without a model in a frame", lobbyPets, meshPets, worstMissing))
+			for _, o in ipairs(lobby) do
+				Mock.RemovePlayer(o)
+			end
+			lobby = {}
+		end
 		if follow and not MESH_MODE then
 			KC.advance(1)
 			local info = pc.GetFollowerInfo(LocalPlayer)
@@ -952,13 +1107,80 @@ S.client_p6pets = guarded("client_p6pets", function()
 					cb(inst.Name, (inst.Name == broken) and Enum.AssetFetchStatus.Failure or Enum.AssetFetchStatus.Success)
 				end
 			end
+			-- [fix-meshlib W3b, review3 runtime-2] what the server replicated: a mesh pet it built (stamped with its
+			-- definition, tagged PB_ServerMesh), one whose keys all work here, and the client's MeshFallback watcher
+			local function serverMesh(name, keys, at)
+				local sm = Pets.Build(D.dog, {})
+				sm.Name = name
+				for k, v in pairs(D.dog.Look or {}) do
+					if typeof(v) ~= "table" then
+						sm:SetAttribute("PBDL_" .. k, v)
+					end
+				end
+				sm:SetAttribute("PBD_Id", D.dog.Id)
+				sm:SetAttribute("PBD_Rarity", D.dog.Rarity)
+				sm:SetAttribute("PBD_Detail", "High")
+				sm:SetAttribute("PBD_Stage", 0)
+				sm:SetAttribute("PBD_Scale", 1)
+				sm:SetAttribute("PBD_Keys", keys)
+				sm:SetAttribute("ML_Mesh", true) -- (the late one is built after the failure: it stands in for a replicated mesh pet)
+				sm:PivotTo(at)
+				sm.Parent = workspace
+				game:GetService("CollectionService"):AddTag(sm, Pets.ServerMeshTag)
+				return sm
+			end
+			local srvBroken = serverMesh("P6ServerPet", table.concat(Pets.MeshKeys(D.dog, {}) or {}, ","), CFrame.new(40, 8, 40))
+			local srvOk = serverMesh("P6ServerPetOk", "pet_dog", CFrame.new(50, 8, 40))
+			local okMF, MF = pcall(function()
+				return require(Mock.GetPath(ROOTS.client .. "/Controllers/MeshFallback"))
+			end)
 			ML2._Reset()
 			ML2._Configure({ Root = root, Ids = { [broken] = 1, pet_dog = 2, wing_feather_R = 3 } })
+			if okMF and type(MF) == "table" then
+				MF.Stop()
+				MF.Start(true)
+			end
 			ML2.Start()
 			Mock.Advance(1)
 			local m2 = Pets.Build(D.dog, {})
 			T.check(ML2.Status(broken) == "failed" and m2:GetAttribute("ML_Mesh") == nil, "a key that failed to download on THIS device: Build keeps the Part pet here")
 			m2:Destroy()
+			if T.check(okMF and type(MF) == "table" and type(MF.Check) == "function", "client/Controllers/MeshFallback loads") then
+				local copy = srvBroken:FindFirstChild("ML_PartCopy")
+				local shown, welded, loose = 0, 0, 0
+				for _, d in ipairs(srvBroken:GetDescendants()) do
+					if d:IsA("MeshPart") and not (copy and d:IsDescendantOf(copy)) and d.Transparency < 1 then
+						shown = shown + 1
+					end
+				end
+				for _, d in ipairs(copy and copy:GetDescendants() or {}) do
+					if d:IsA("BasePart") then
+						local w = d:FindFirstChildOfClass("WeldConstraint")
+						if w and w.Part0 == srvBroken.PrimaryPart and w.Part1 == d and not d.Anchored then
+							welded = welded + 1
+						else
+							loose = loose + 1
+						end
+					end
+				end
+				T.check(copy ~= nil and copy:GetAttribute("ML_Mesh") == nil and shown == 0 and welded > 10 and loose == 0
+					and (copy:GetPivot().Position - srvBroken:GetPivot().Position).Magnitude < 1e-3,
+					"runtime-2: a server-built mesh pet using a key broken on THIS device shows a local Part copy (mesh hidden here, copy welded to its root, same pivot)",
+					fmt("copy %s, %d mesh parts shown, %d welded, %d loose", tostring(copy), shown, welded, loose))
+				T.check(srvOk:FindFirstChild("ML_PartCopy") == nil, "runtime-2: a server-built mesh pet whose keys work here is left alone")
+				if copy and srvBroken.PrimaryPart then
+					srvBroken:PivotTo(CFrame.new(40, 12, 40))
+					T.check((copy:GetPivot().Position - Vector3.new(40, 12, 40)).Magnitude < 1e-3, "runtime-2: the Part copy follows the server model")
+				end
+				T.check(MF.Check(srvBroken) == false and #srvBroken:GetChildren() > 0, "runtime-2: checked once (no second copy)")
+				local late = serverMesh("P6ServerPetLate", broken, CFrame.new(60, 8, 40))
+				Mock.Advance(0.1)
+				T.check(late:FindFirstChild("ML_PartCopy") ~= nil, "runtime-2: a server mesh pet streamed in after the failure gets its copy (tag signal)")
+				late:Destroy()
+				MF.Stop()
+			end
+			srvBroken:Destroy()
+			srvOk:Destroy()
 			Mock.PreloadHook = saved
 		end
 	end)

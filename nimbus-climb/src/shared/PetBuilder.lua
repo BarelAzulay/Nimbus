@@ -7402,6 +7402,105 @@ function PetBuilder.SwapWhenReady(model, petDef, opts, buildFn, onSwapped)
 	return true
 end
 
+-- review3 runtime-2: a SERVER-built mesh pet (NPC pets, the fountain statue, podium pets, the Storm Altar Stormfang)
+-- replicates as MeshParts; a device whose PreloadAsync failed for one of its keys cannot draw it. The server stamps the
+-- pet's definition on the model (PBD_* attributes: ids, rarity, the flat Look and the hybrid StyleDef Look, stage,
+-- detail, scale, keys) and tags it SERVER_MESH_TAG; the client's MeshFallback rebuilds the Part pet from
+-- PetBuilder.ServerDef(model) on such a device. Nothing is stamped on the Part path or on the client (empty MeshIds =
+-- today's game).
+MESH.ServerTag = "PB_ServerMesh"
+function MESH.isServer()
+	if MESH.IsServer == nil then
+		local ok, v = pcall(function()
+			return game:GetService("RunService"):IsServer()
+		end)
+		MESH.IsServer = ok and v == true
+	end
+	return MESH.IsServer
+end
+
+local function stampable(v)
+	local t = typeof(v)
+	return t == "string" or t == "number" or t == "boolean" or t == "Color3"
+end
+
+function MESH.stampLook(model, prefix, look)
+	if type(look) ~= "table" then
+		return
+	end
+	for k, v in pairs(look) do
+		if type(k) == "string" and string.match(k, "^[%a_][%w_]*$") and #k <= 60 and stampable(v) then
+			model:SetAttribute(prefix .. k, v)
+		end
+	end
+end
+
+function MESH.stamp(model, petDef, detail, stage, scale)
+	if type(petDef) ~= "table" then
+		return
+	end
+	pcall(function()
+		for _, k in ipairs({ "Id", "PetId", "Rarity", "IsHybrid", "DisplayName" }) do
+			if stampable(petDef[k]) then
+				model:SetAttribute("PBD_" .. k, petDef[k])
+			end
+		end
+		MESH.stampLook(model, "PBDL_", petDef.Look)
+		if type(petDef.StyleDef) == "table" then
+			if stampable(petDef.StyleDef.Id) then
+				model:SetAttribute("PBD_StyleId", petDef.StyleDef.Id)
+			end
+			MESH.stampLook(model, "PBDS_", petDef.StyleDef.Look)
+		end
+		model:SetAttribute("PBD_Detail", detail)
+		model:SetAttribute("PBD_Stage", stage)
+		model:SetAttribute("PBD_Scale", scale)
+		local plan = MESH.plan(MESH.lib(), MESH.lookOf(petDef, { Evolved = stage }), detail, stage)
+		if plan then
+			model:SetAttribute("PBD_Keys", table.concat(MESH.dedupe(plan.Keys), ","))
+		end
+		game:GetService("CollectionService"):AddTag(model, MESH.ServerTag)
+	end)
+end
+
+-- PetBuilder.ServerDef(model) -> petDef, opts | nil: the definition MESH.stamp put on a server-built mesh pet, and the
+-- Build opts that rebuild it as the Part pet (Parts = true, NoFx = true: the mesh model keeps its own PetFx).
+-- PetBuilder.ServerMeshTag = the CollectionService tag of those models.
+PetBuilder.ServerMeshTag = MESH.ServerTag
+function PetBuilder.ServerDef(model)
+	if typeof(model) ~= "Instance" or type(model:GetAttribute("PBD_Detail")) ~= "string" then
+		return nil
+	end
+	local def, look, style = { Look = {} }, nil, nil
+	for name, v in pairs(model:GetAttributes()) do
+		local f = string.match(name, "^PBDL_(.+)$")
+		local g = string.match(name, "^PBDS_(.+)$")
+		local h = string.match(name, "^PBD_(.+)$")
+		if f then
+			def.Look[f] = v
+		elseif g then
+			style = style or { Look = {} }
+			style.Look[g] = v
+		elseif h and h ~= "Detail" and h ~= "Stage" and h ~= "Scale" and h ~= "Keys" and h ~= "StyleId" then
+			def[h] = v
+		end
+	end
+	look = model:GetAttribute("PBD_StyleId")
+	if style or look ~= nil then
+		style = style or { Look = {} }
+		style.Id = look
+		def.StyleDef = style
+	end
+	local opts = {
+		Parts = true,
+		NoFx = true,
+		Detail = model:GetAttribute("PBD_Detail"),
+		Scale = tonumber(model:GetAttribute("PBD_Scale")) or 1,
+		Evolved = tonumber(model:GetAttribute("PBD_Stage")) or 0,
+	}
+	return def, opts
+end
+
 ----------------------------------------------------------------------
 -- Public API
 ----------------------------------------------------------------------
@@ -7427,6 +7526,9 @@ function PetBuilder.Build(petDef, opts)
 	local model = nil
 	if opts.Parts ~= true then
 		model = MESH.build(look, detail, stage, scale)
+		if model and MESH.isServer() then
+			MESH.stamp(model, petDef, detail, stage, scale)
+		end
 	end
 	if not model then
 		local bp, bpKey = getBlueprint(look, detail)

@@ -635,6 +635,138 @@ def main():
     check("--force on an uploaded, unchanged image is refused (it would only duplicate)", code == 1 and "duplicate" in out
           and not [x for x in STATE["log"][n:] if x[0] in ("POST", "PATCH")], out)
 
+    # 19) W3c --set-id KEY=ID: the textures' Decal -> Image id swap (no network; writes only with --upload)
+    with open(tstate) as f:
+        ts = json.load(f)
+    rim_decal = ts["assets"]["vortex_rim"]["assetId"]
+    arms_before = dict(ts["assets"]["vortex_arms"])
+    tlua_before = open(tlua).read()
+    n = len(STATE["log"])
+    bad_runs = [
+        ("non-numeric id", ("--textures", "--set-id", "vortex_rim=12x")),
+        ("zero id", ("--textures", "--set-id", "vortex_rim=0")),
+        ("unknown key", ("--textures", "--set-id", "vortex_nope=5")),
+        ("a mesh key without --textures", ("--set-id", "vortex_rim=5")),
+        ("same id twice with different ids", ("--textures", "--set-id", "vortex_rim=5,vortex_rim=6")),
+        ("the id it already has", ("--textures", "--set-id", "vortex_rim=%d" % rim_decal)),
+        ("with --refresh", ("--textures", "--refresh", "--set-id", "vortex_rim=5")),
+        ("with --force", ("--textures", "--force", "--set-id", "vortex_rim=5")),
+        ("outside --only", ("--textures", "--only", "vortex_arms", "--set-id", "vortex_rim=5")),
+        ("--allow-mesh-set-id alone", ("--allow-mesh-set-id",)),
+    ]
+    wrong = []
+    for label, extra in bad_runs:
+        code, out = run(troot, base, "--upload", *extra)
+        if code != 2 or "refused" not in out or "Traceback" in out:
+            wrong.append((label, code, out[-300:]))
+    check("--set-id refuses non-numeric / zero ids, unknown keys, mesh keys, clashes, combos (%d cases, exit 2)" % len(bad_runs),
+          not wrong and len(STATE["log"]) == n and open(tlua).read() == tlua_before, wrong)
+    code, out = run(troot, base, "--textures", "--set-id", "vortex_rim=%d" % (rim_decal + 5000))
+    with open(tstate) as f:
+        rim_now = json.load(f)["assets"]["vortex_rim"]
+    check("--set-id dry run (the default): prints the swap, sends and writes nothing", code == 0 and "DRY RUN" in out
+          and "decalAssetId" in out and rim_now["assetId"] == rim_decal and "decalAssetId" not in rim_now
+          and len(STATE["log"]) == n and open(tlua).read() == tlua_before, out)
+    img = rim_decal + 5000
+    code, out = run(troot, base, "--textures", "--upload", "--set-id", "vortex_rim=%d" % img)
+    with open(tstate) as f:
+        ts2 = json.load(f)
+    rim_now = ts2["assets"]["vortex_rim"]
+    check("--set-id --upload: Image id = assetId, Decal id kept as decalAssetId, TextureIds.lua rewritten, nothing sent",
+          code == 0 and rim_now["assetId"] == img and rim_now.get("decalAssetId") == rim_decal and "previousAssetIds" not in rim_now
+          and rim_now.get("contentHash") == ts["assets"]["vortex_rim"].get("contentHash")
+          and "vortex_rim = %d," % img in open(tlua).read() and ts2["assets"]["vortex_arms"] == arms_before
+          and len(STATE["log"]) == n and KEY not in out, (out, rim_now))
+    code, out = run(troot, base, "--textures", "--upload", "--set-id", "vortex_rim=%d" % rim_decal)
+    check("--set-id with the Decal id is refused (it wants the Image id)", code == 2 and "Decal id" in out and len(STATE["log"]) == n, out)
+    code, out = run(troot, base, "--textures", "--upload", "--set-id", "vortex_rim=%d" % (img + 1))
+    with open(tstate) as f:
+        rim_now = json.load(f)["assets"]["vortex_rim"]
+    check("a second --set-id replaces a wrong Image id (-> previousAssetIds), the Decal id stays", code == 0
+          and rim_now["assetId"] == img + 1 and rim_now.get("decalAssetId") == rim_decal and rim_now.get("previousAssetIds") == [img], rim_now)
+    code, out = run(troot, base, "--textures", "--upload", "--only", "vortex_rim")
+    check("after --set-id the unchanged image is skipped (no upload)", code == 0 and "skip" in out and len(STATE["log"]) == n, out)
+    code, out = run(troot, base, "--textures", "--upload", "--refresh", "--only", "vortex_rim")
+    gets = [x for x in STATE["log"][n:] if x[0] == "GET"]
+    check("--refresh of a set-id image reads the Decal asset's moderation", code == 0 and len(gets) == 1
+          and gets[0][1].endswith("/%d" % rim_decal), (gets, out))
+    n = len(STATE["log"])
+    with open(os.path.join(troot, "blender", "textures", "vortex", "vortex_rim.png"), "ab") as f:
+        f.write(b"retuned")
+    tindex["keys"]["vortex_rim"]["contentHash"] = "h-vortex_rim-2"
+    with open(os.path.join(troot, "blender", "textures", "textures.json"), "w") as f:
+        json.dump(tindex, f)
+    code, out = run(troot, base, "--textures", "--upload", "--only", "vortex_rim")
+    with open(tstate) as f:
+        rim_now = json.load(f)["assets"]["vortex_rim"]
+    check("a changed PNG after --set-id: a NEW Decal, Image + Decal ids go to previousAssetIds (the check is due again)",
+          code == 0 and [x[0] for x in STATE["log"][n:] if x[0] in ("POST", "PATCH", "PATCH-refused")] == ["POST"]
+          and rim_now.get("previousAssetIds") == [img, img + 1, rim_decal] and "decalAssetId" not in rim_now and "Image id" in out, (out, rim_now))
+    # a mesh key: refused unless --allow-mesh-set-id; then the new id replaces the old one (no decalAssetId)
+    mroot, _ = make_repo(os.path.join(tmp, "setmesh"))
+    mstate = os.path.join(mroot, "blender", "upload_state.json")
+    code, out = run(mroot, base, "--upload", "--only", "cal_axes")
+    with open(mstate) as f:
+        cal_id = json.load(f)["assets"]["cal_axes"]["assetId"]
+    n = len(STATE["log"])
+    code, out = run(mroot, base, "--upload", "--set-id", "cal_axes=%d" % (cal_id + 7))
+    check("--set-id on a mesh key is refused without --allow-mesh-set-id (points to --adopt)", code == 2 and "--allow-mesh-set-id" in out
+          and "--adopt" in out, out)
+    code, out = run(mroot, base, "--upload", "--set-id", "pet_dog=5", "--allow-mesh-set-id")
+    check("--set-id of a key with no uploaded asset is refused", code == 2 and "no uploaded asset" in out, out)
+    code, out = run(mroot, base, "--upload", "--set-id", "cal_axes=%d" % (cal_id + 7), "--allow-mesh-set-id")
+    with open(mstate) as f:
+        cal = json.load(f)["assets"]["cal_axes"]
+    check("--set-id --allow-mesh-set-id: the mesh id replaced, the old one in previousAssetIds, MeshIds.lua follows, nothing sent",
+          code == 0 and cal["assetId"] == cal_id + 7 and cal.get("previousAssetIds") == [cal_id] and "decalAssetId" not in cal
+          and "cal_axes = %d," % (cal_id + 7) in open(os.path.join(mroot, "src", "shared", "MeshIds.lua")).read()
+          and len(STATE["log"]) == n, (out, cal))
+
+    # 20) W3c --class CATALOG: the upload keys of blender/catalog/<CATALOG>.json, combined with --only
+    croot, _ = make_repo(os.path.join(tmp, "classes"))
+    cdir = os.path.join(croot, "blender", "catalog")
+    os.makedirs(cdir)
+    catalogs = {
+        "pets.json": {"class": "pets", "keys": [{"key": "pet_dog"}, {"key": "wing_feather"}, {"key": "cal_axes", "upload": False}]},
+        "calibration.json": {"class": "calibration", "keys": [{"key": "cal_axes"}]},
+        "gate_art.json": {"class": "gates", "keys": [{"key": "gate_hoop"}, {"key": "gate_hoop_low"}]},
+        "empty.json": {"class": "empty", "keys": [{"key": "cal_axes", "upload": False}]},
+    }
+    for name, cat in catalogs.items():
+        with open(os.path.join(cdir, name), "w") as f:
+            json.dump(cat, f)
+    n = len(STATE["log"])
+
+    def run_keys(out):
+        return [ln[2:] for ln in out.splitlines() if ln.startswith("- ")]
+    code, out = run(croot, base, "--class", "pets")
+    check("--class pets (dry run): exactly its upload keys ('upload': false left out), nothing sent", code == 0
+          and run_keys(out) == ["pet_dog", "wing_feather"] and out.count("POST %s/assets/v1/assets" % base) == 2
+          and len(STATE["log"]) == n and not os.path.exists(os.path.join(croot, "blender", "upload_state.json")), out)
+    code, out = run(croot, base, "--class", "pets", "--only", "cal_axes")
+    code2, out2 = run(croot, base, "--class", "pets,calibration")
+    code3, out3 = run(croot, base, "--class", "pets", "--class", "calibration", "--only", "pet_dog")
+    check("--class combines with --only and with more classes (repeatable / comma separated)", code == 0 and code2 == 0 and code3 == 0
+          and run_keys(out) == run_keys(out2) == run_keys(out3) == ["cal_axes", "pet_dog", "wing_feather"], (out, out2, out3))
+    wrong = []
+    for label, extra, want in (("unknown class", ("--class", "nope"), "calibration, empty, gates, pets"),
+                               ("a path is not a class", ("--class", "../pets"), "catalog name"),
+                               ("no upload keys", ("--class", "empty"), "no upload keys"),
+                               ("--textures has no catalog", ("--textures", "--class", "pets"), "textures"),
+                               ("--set-id with --class", ("--textures", "--class", "pets", "--set-id", "vortex_arms=5"), "on its own"),
+                               ("unbuilt keys: the build hint", ("--class", "gates"), "gate_hoop, gate_hoop_low (build the class first: "
+                                                                 "/tmp/claude-0/bpyenv/bin/python blender/build_all.py --class gates)")):
+        code, out = run(croot if "--textures" not in extra else troot, base, *extra)
+        if code != 2 or want not in out:
+            wrong.append((label, code, out[-300:]))
+    check("--class refusals: unknown class, a path, no upload keys, --textures, --set-id, unbuilt keys (+ build hint), by 'class' name",
+          not wrong and len(STATE["log"]) == n, wrong)
+    code, out = run(croot, base, "--upload", "--class", "pets")
+    with open(os.path.join(croot, "blender", "upload_state.json")) as f:
+        cst = json.load(f)
+    check("--upload --class pets (fake): uploads exactly that class", code == 0 and sorted(cst["assets"]) == ["pet_dog", "wing_feather"]
+          and len([x for x in STATE["log"][n:] if x[0] == "POST"]) == 2, out)
+
     # 18) review3 tooling-5: check.mjs lets PortalVortex.lua join "rbxassetid://" only to a TextureIds id variable
     node = shutil.which("node")
     if node:

@@ -313,7 +313,8 @@ games get their meshes from Roblox asset ids, and the mock has none, so this mod
 gates' swirling vortex to `blender/textures/vortex/` (disc, core, arms, fine, streaks, rim, crackle 1-4) and the index
 `blender/textures/textures.json`; `python3 blender/textures/build_vortex.py --sheet x.png` adds a contact sheet. They
 are uploaded later with `python3 tools/upload_assets.py --textures` (dry run by default; `--upload` only with the
-player's OK), which writes `src/shared/TextureIds.lua` (numbers only, check.mjs rule `texture-ids`). Until then
+player's OK), which writes `src/shared/TextureIds.lua` (numbers only, check.mjs rule `texture-ids`); if Roblox hands
+back Decal ids, `--textures --set-id KEY=<image id>` swaps in the Image ids (`docs/phase6/OWNER_UPLOAD.md` section 6). Until then
 `client/PortalVortex.lua` draws the effects-only fallback (Beam spiral arms, inward particle streaks, rim crackles);
 with every id present it shows the textured SurfaceGui layers. `tools/smoke_p6_portalfx.lua` covers both modes.
 
@@ -325,7 +326,7 @@ is `docs/phase6/OWNER_UPLOAD.md`. Blender runs as a Python module: `/tmp/claude-
 
 **Build the meshes:** `blender/build_all.py` reads `blender/catalog/<class>.json` and writes `blender/out/<key>.fbx`
 (+ `.manifest.json`, `.tris.json.gz`; not committed), the committed `src/shared/MeshManifests/<key>.lua` and
-`blender/meshes.json` (the uploader's index: fbx, displayName, contentHash, structureHash).
+`blender/meshes.json` (the uploader's index: fbx, displayName, contentHash, structureHash, fbxSha256).
 
 ```sh
 /tmp/claude-0/bpyenv/bin/python blender/build_all.py --class pets             # one class (repeatable)
@@ -336,9 +337,11 @@ python3 blender/build_all.py --class home --no-export                         # 
 python3 blender/build_all.py --list                                           # every class and key
 ```
 Classes: `calibration` (cal_axes + the test key prop_portal_reference), `pets`, `evolved`, `creatures`, `gates`,
-`lobby`, `home`, `arenadungeon` (717 uploadable keys). A key over its budget fails the build (exit 1), and so does
-any catalog `set` over its budget. `--no-export` still rewrites the manifests and `meshes.json`: finish with an export
-build. Same input = same bytes and the same `contentHash`.
+`lobby`, `home`, `arenadungeon` (798 uploadable keys, `_low` keys included; `home`'s 80 `_low` keys and
+`prop_plot_low` are new in W3). A key over its budget fails the build (exit 1), and so does any catalog `set` over its budget.
+`--no-export` still rewrites the manifests and `meshes.json`: finish with an export build. meshes.json then has
+"fbxSha256": null for every key whose contentHash changed, and tools/upload_assets.py refuses that key until an export
+build with /tmp/claude-0/bpyenv/bin/python. Same input = same bytes and the same `contentHash`.
 
 **Budgets:** `python3 tools/mesh_budget.py` prints the triangle / MeshPart sum of a scene from the committed
 manifests (default: the busiest phone view, 16 players x 3 pets in the lobby + every gate / lobby key + 4 max-tier
@@ -355,12 +358,14 @@ python3 tools/render_model.py meshkey:pet_dog:pebble_pup -o key.png      # one k
 python3 tools/render_model.py meshpet:pebble_pup -o pet.png              # body + wings + accessory (add :Low)
 python3 tools/render_model.py meshevo:twilight_dragon:2 -o evo.png       # evolved body + its evo wings (1 or 2, add :Low)
 ```
-(These targets are not in `--list`.) `meshpet` picks the body variant from the pet id (`waffle_corgi` -> `pet_dog_corgi`)
+(`python3 tools/render_model.py --list` shows them too.) `meshpet` picks the body variant from the pet id (`waffle_corgi` -> `pet_dog_corgi`)
 and puts the accessory at its manifest's `Meta.attach`; `meshevo` puts the wings at the wing manifest's attach.
 
 **Tests:** `python3 tools/test_upload_assets.py` runs the uploader against a local fake of the Open Cloud Assets API
 on 127.0.0.1 (create, PATCH keeping the id, new asset on a structure change, 429 retry, resume after a timeout,
-refresh, moderation, creator lock, throttle; 34 checks). `python3 blender/kit/selftest.py` checks the kit (hooks,
+refresh, moderation, creator lock, throttle, the no-duplicate create rules (`pendingCreate`, `--adopt`,
+`--not-created`), stale-FBX refusals, images never PATCHed, `--set-id`, `--class`, the check.mjs PortalVortex rule;
+76 checks). `python3 blender/kit/selftest.py` checks the kit (hooks,
 recipes, determinism, manifests). `python3 tools/smoke.py --quick --mesh` runs the pet scenarios on mesh pets (see
 "Mesh mode" above). The Phase 6 smoke files: `smoke_p6_mesh.lua` (MeshLibrary: empty ids = no-op, fit, loader,
 Assemble, Swap, Tag / Dress), `smoke_p6_pets.lua` (the pet mesh path), `smoke_p6_evofx.lua` (PetFx),
@@ -374,12 +379,24 @@ prints the requests it would send (the key hidden) and writes nothing:
 ```sh
 python3 tools/upload_assets.py                    # every key in blender/meshes.json
 python3 tools/upload_assets.py --only cal_axes    # some keys (repeatable or comma separated)
+python3 tools/upload_assets.py --class pets       # every upload key of blender/catalog/pets.json (+ --only keys)
 python3 tools/upload_assets.py --textures         # the vortex images (blender/textures/textures.json)
+python3 tools/upload_assets.py --textures --set-id vortex_arms=123   # Decal id -> Image id (sends nothing)
 ```
 `--upload` (real; only with the owner's OK, see `docs/phase6/OWNER_UPLOAD.md`) needs `ROBLOX_API_KEY`,
 `ROBLOX_CREATOR_ID` and `ROBLOX_CREATOR_TYPE` in the environment and writes `blender/upload_state.json` +
 `src/shared/MeshIds.lua` (or `blender/textures/upload_state.json` + `src/shared/TextureIds.lua`). Other flags:
-`--refresh` (re-read moderation), `--force` (send unchanged keys), `--poll-timeout N` (seconds, default 300).
+`--refresh` (re-read moderation), `--force` (send unchanged keys; refused for images), `--poll-timeout N` (seconds,
+default 300). `--class C` (repeatable / comma separated) adds the keys of `blender/catalog/C.json` without
+`"upload": false`, `_low` keys included; an unbuilt one is refused with the build command. `--textures --set-id
+KEY=ID` records the Image id as `assetId`, keeps the Decal id as `decalAssetId` and rewrites `TextureIds.lua`
+(written only with `--upload`; it refuses unknown keys, non-numbers, the Decal id and mesh keys unless
+`--allow-mesh-set-id`).
+If a key says "the create of KEY may have reached Roblox": look in Creator Hub > Creations for its name. Found:
+`python3 tools/upload_assets.py --upload --only KEY --adopt KEY=<id>`. Not there:
+`python3 tools/upload_assets.py --upload --only KEY --not-created KEY`. A key that says "was not exported from this
+contentHash" has `"fbxSha256": null` (a `--no-export` build) or another FBX: rebuild it with
+`/tmp/claude-0/bpyenv/bin/python blender/build_all.py --key KEY`.
 
 **Vortex textures:** `python3 blender/textures/build_vortex.py` (no `--help`: it builds at once) rewrites the 10 PNG
 layers and `textures.json`; see "Gate vortex textures" above.

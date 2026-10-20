@@ -525,6 +525,16 @@
    "args": {
     "V": 2.0
    }
+  },
+  {
+   "key": "prop_plot_low",
+   "type": "prop",
+   "prop": "lobby_plot",
+   "budget": "plot",
+   "description": "Home plot far LOD (HomeFx Low / Far tiers): the same plot with a 4-stud cloud cushion and plain-box fence posts; prop_plot's LayoutSig",
+   "args": {
+    "V": 4.0
+   }
   }
  ],
  "sets": [],

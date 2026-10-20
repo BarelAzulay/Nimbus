@@ -424,6 +424,10 @@ def mesh_prims(keep, idx, pos, rot):
         A.append(w[ok, 0]), E1.append(e1[ok]), E2.append(e2[ok]), NRM.append((n / np.maximum(ln, 1e-12))[ok])
         PID.append(np.full(int(ok.sum()), i, dtype=np.int64))
     return A, E1, E2, NRM, PID
+
+
+# --list: the mesh-path targets of the tools/dump_model.lua kit block (blender/out/<key>.tris.json.gz, built by the kit)
+TARGETS.extend(["meshkey:<key>[:<petId>]", "meshpet:<petId>[:Low]", "meshevo:<petId>:<1|2>[:Low]"])
 # [owner: kit] end
 
 

@@ -617,7 +617,8 @@ def bake(m, boxes, vs, budget=4000, opts=None):
     name = opts.get("name") or "Fixed"
     tries = []
     import os
-    force = os.environ.get("HOME_DETAIL")
+    # HOME_DETAIL (scratch runs) wins; else the catalog's args.detail (the *_low plot LOD keys); else step down
+    force = os.environ.get("HOME_DETAIL") or (opts.get("detail") is not None and str(opts["detail"])) or None
     levels = (int(force),) if force else (3, 2, 1, 0)
     if opts.get("tint"):
         # tinted per instance (the Garden's cushions come in 5 colours): white voxels, so the vertex colours carry

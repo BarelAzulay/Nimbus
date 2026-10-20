@@ -293,6 +293,15 @@ S.p6mesh_noop = guarded("p6mesh_noop", function()
 	local conns0 = Mock.LiveConnections()
 	local tasks0 = Mock.PendingTasks and Mock.PendingTasks() or 0
 	local real = require(sharedModule("MeshLibrary"))
+	-- [fix-meshlib W3b] order-independent: under --mesh the shared module holds the fixture pet set (smoke_p6_pets);
+	-- forget it for these checks and put it back after
+	local P6 = rawget(_G, "P6Pets")
+	local fixtureMode = P6 and P6.MeshMode and real.Active()
+	if fixtureMode then
+		real._Reset()
+		hadFolder = RS:FindFirstChild("MeshLibrary") ~= nil
+		conns0 = Mock.LiveConnections()
+	end
 	if next(shipped or {}) == nil then
 		real.Start()
 		T.check(RS:FindFirstChild("MeshLibrary") == nil or hadFolder, "empty MeshIds: Start() creates no ReplicatedStorage.MeshLibrary")
@@ -305,6 +314,10 @@ S.p6mesh_noop = guarded("p6mesh_noop", function()
 		T.check(type(real.Version) == "function" and type(real.Version()) == "number", "Version() is a number (bumped when keys become usable / unusable)")
 	else
 		T.info("shared/MeshIds has ids", "the real-module no-op check is skipped (uploads exist)")
+	end
+	if fixtureMode then
+		real._Reset()
+		P6.Install(P6.PetKeys())
 	end
 	-- LEAD REQUEST (runtime W1): Main.server.lua / Main.client.lua are lead-owned; both must call MeshLibrary.Start()
 	-- (a no-op while MeshIds is empty). Fails until the two lines from the W1 runtime report are in.
@@ -362,7 +375,7 @@ S.p6mesh_fit = guarded("p6mesh_fit", function()
 	-- every manifest the kit generated so far (src/shared/MeshManifests) fits through the same loader
 	local dir = sharedModule("MeshManifests")
 	if dir then
-		local mods, tested, bad = {}, 0, {}
+		local mods, tested, bad, unresolvable = {}, 0, {}, {}
 		for _, m in ipairs(dir:GetChildren()) do
 			if m:IsA("ModuleScript") then
 				mods[m.Name] = m
@@ -377,21 +390,51 @@ S.p6mesh_fit = guarded("p6mesh_fit", function()
 		for _, name in ipairs(names) do
 			local okReq, man = pcall(require, mods[name])
 			if okReq and type(man) == "table" and type(pf(man, "parts")) == "table" then
-				local tpl, why = KL._Fit(name, fakeAsset(name, { Manifest = man, Yaw = 180, Junk = false }))
-				tested = tested + 1
-				local okC, detail = false, why
-				if tpl then
-					okC, detail = canonicalOk(KL, name, tpl, man)
-					tpl:Destroy()
+				-- [fix-meshlib W3b] twice: a 180 import carried by the part rotations, and one BAKED into the vertices.
+				-- A baked 180 cannot be told apart when every centre sits on one vertical line (one part, a stacked
+				-- column: a yaw about it moves no centre and keeps every box); those take a baked 90 instead (told by the
+				-- swapped X / Z sizes) or are counted unresolvable.
+				local cs, mean, square = {}, Vector3.new(0, 0, 0), true
+				for _, p in ipairs(pf(man, "parts")) do
+					cs[#cs + 1] = v3(pf(p, "center"))
+					mean = mean + cs[#cs]
+					local sz = v3(pf(p, "size"))
+					if abs(sz.X - sz.Z) > 1e-3 then
+						square = false
+					end
 				end
-				if not okC then
-					bad[#bad + 1] = name .. ": " .. tostring(detail)
+				mean = mean / math.max(#cs, 1)
+				local concentric = true
+				for _, c in ipairs(cs) do
+					if Vector3.new(c.X - mean.X, 0, c.Z - mean.Z).Magnitude > 1e-3 then
+						concentric = false
+					end
+				end
+				local bakedYaw = (not concentric) and 180 or ((not square) and 90 or nil)
+				if not bakedYaw then
+					unresolvable[#unresolvable + 1] = name
+				end
+				for _, mode in ipairs({ "rotated", "baked" }) do
+					local yaw = (mode == "rotated") and 180 or bakedYaw
+					if yaw then
+						local tpl, why = KL._Fit(name, fakeAsset(name, { Manifest = man, Yaw = yaw, Mode = mode, Junk = false }))
+						tested = tested + 1
+						local okC, detail = false, why
+						if tpl then
+							okC, detail = canonicalOk(KL, name, tpl, man)
+							tpl:Destroy()
+						end
+						if not okC then
+							bad[#bad + 1] = name .. " (" .. mode .. " " .. yaw .. "): " .. tostring(detail)
+						end
+					end
 				end
 			else
 				bad[#bad + 1] = name .. ": does not load as a manifest"
 			end
 		end
-		T.check(#bad == 0, "every kit manifest in shared/MeshManifests (" .. tested .. ") fits a 180-degree import back to its canonical template", table.concat(bad, "; "))
+		T.check(#bad == 0, "every kit manifest in shared/MeshManifests fits a 180-degree import (part rotations) and a baked-yaw import back to its canonical template (" .. tested .. " fits)", table.concat(bad, "; "))
+		T.info(fmt("%d manifests with every centre on one vertical line and square X / Z boxes: a baked yaw cannot be told from their centres or boxes (the first upload checks ML_Yaw)", #unresolvable), table.concat(unresolvable, ", "))
 		KL._Reset()
 		kbox:Destroy()
 	else
@@ -636,6 +679,7 @@ S.p6mesh_server = guarded("p6mesh_server", function()
 			return ML.Assemble("prop_arch", LOOK)
 		end, { "prop_arch" })
 
+		local waitBefore = ML._Waiters("prop_arch")
 		ML.Start()
 		T.check(ML.Status("pet_dog") == "loading" and root:FindFirstChild("pet_dog") ~= nil, "while LoadAsset yields: Status 'loading' and a replicated holder")
 		Mock.Advance(1)
@@ -722,6 +766,29 @@ S.p6mesh_server = guarded("p6mesh_server", function()
 		T.check(swapped ~= nil and swapped ~= old and swapped:GetAttribute("ML_Mesh") == true and swapped:GetAttribute("Owner") == "Ann" and swapped:GetAttribute("PetParts") == 12
 			and near(swapped:GetPivot().Position, Vector3.new(10, 5, 0)), "Swap (deferred until the keys were ready): same Name / Parent / pivot / attributes, now the mesh")
 		T.check(holder:FindFirstChild("NeverSwapped") == never and never:GetAttribute("ML_Mesh") == nil, "Swap waiting on a failed key keeps the Part model")
+		-- [fix-meshlib W3b, review3 runtime-5 / world-3] a key that failed (or has no id) holds no closure: the waiter
+		-- registered while it loaded is released by the failure, and later OnReady / Swap / Dress register nothing
+		T.check(waitBefore == 1 and ML._Waiters("prop_arch") == 0, "a failed key releases the waiters registered while it loaded (" .. waitBefore .. " -> " .. ML._Waiters("prop_arch") .. ")")
+		local late = 0
+		ML.OnReady("prop_arch", function()
+			late = late + 1
+		end)
+		local lateModel = never:Clone()
+		lateModel.Name = "LateSwap"
+		lateModel.Parent = holder
+		local swappedLate = ML.Swap(lateModel, function()
+			late = late + 1
+			return ML.Assemble("prop_arch", LOOK)
+		end, { "prop_arch" })
+		local dressT = Instance.new("Model")
+		dressT.Parent = holder
+		ML.Dress(dressT, "prop_arch")
+		ML.OnReady("pet_never_uploaded", function()
+			late = late + 1
+		end)
+		Mock.Advance(0.5)
+		T.check(swappedLate == nil and late == 0 and ML._Waiters("prop_arch") == 0 and ML._Waiters("pet_never_uploaded") == 0 and lateModel.Parent == holder,
+			"OnReady / Swap / Dress on a failed key, OnReady on a key with no id: nothing waits, nothing runs, the Part model stays")
 		local now = ML.Swap(swapped, function()
 			return ML.Assemble(petSpec(false), LOOK)
 		end)
@@ -835,17 +902,26 @@ S.client_p6mesh = guarded("client_p6mesh", function()
 
 	local ids = { pet_dog = 111, wing_feather_L = 222, wing_feather_R = 223, acc_crown = 333, prop_arch = 444 }
 	local ML, root, box = newLib(ids, { pet_dog = "pet_dog", wing_feather_L = "wing_feather_L", wing_feather_R = "wing_feather_R", acc_crown = "acc_crown", prop_arch = "prop_arch" })
+	-- [fix-meshlib W3b] a private dress tag: the game's own MeshLibrary (started with fixture keys under --mesh) never
+	-- dresses these targets, and this copy never dresses the game's (order-independent)
+	local DTAG = "ML_Dress_P6MeshTest"
+	ML._Configure({ DressTag = DTAG })
 	-- what the server replicated: four ready templates (fixture assets run through the same fit)
 	for _, key in ipairs(FIXTURES) do
 		installTemplate(ML, root, key, { Yaw = 0 })
 	end
+	-- a key the server is still loading (and will mark failed): its holder Folder
+	local lateHolder = Instance.new("Folder")
+	lateHolder.Name = "acc_late"
+	lateHolder:SetAttribute("ML_Status", "loading")
+	lateHolder.Parent = root
 	local world = Instance.new("Folder")
 	world.Name = "P6MeshDress"
 	world.Parent = workspace
 	local before = partTarget(world, "ArchBefore", "prop_arch", CFrame.new(20, 3, -4))
-	CollectionService:AddTag(before, "ML_Dress")
+	CollectionService:AddTag(before, DTAG)
 	local onBroken = partTarget(world, "CrownStand", "acc_crown", CFrame.new(0, 3, 9))
-	CollectionService:AddTag(onBroken, "ML_Dress")
+	CollectionService:AddTag(onBroken, DTAG)
 	local savedHook = Mock.PreloadHook
 	local preloaded = {}
 	Mock.PreloadHook = function(list, cb)
@@ -861,8 +937,16 @@ S.client_p6mesh = guarded("client_p6mesh", function()
 		local conn = ML.Changed:Connect(function(k)
 			changed[k] = true
 		end)
+		local lateRan = 0
+		ML.OnReady("acc_crown", function()
+			lateRan = lateRan + 1
+		end)
 		ML.Start()
 		Mock.Advance(0.05)
+		ML.OnReady("acc_late", function()
+			lateRan = lateRan + 1
+		end)
+		local lateWaiting = ML._Waiters("acc_late")
 		T.check(ML.Status("pet_dog") == "loading" and not ML.IsReady("pet_dog"), "client: a replicated template is 'loading' until its mesh data is on this device")
 		Mock.Advance(3)
 		T.check(#preloaded == 5, "client: PreloadAsync once per template (" .. #preloaded .. ")")
@@ -883,8 +967,22 @@ S.client_p6mesh = guarded("client_p6mesh", function()
 		T.check(mesh and near(mesh.Stone.Position, Vector3.new(20 - 3, 3 + 4, -4)) and mesh.Stone.Transparency == 0, "client: the mesh sits on the target's pivot",
 			mesh and (tostring(mesh.Stone.Position) .. " T=" .. mesh.Stone.Transparency .. " pivot " .. tostring(before:GetPivot().Position)))
 		T.check(onBroken:FindFirstChild("ML_Mesh") == nil and onBroken.Stone.Transparency == 0, "client: a target whose key failed on this device keeps its Parts")
+		-- [fix-meshlib W3b, review3 runtime-5] the device failure released what waited on acc_crown (the tagged stand's
+		-- Dress + an OnReady), a later Dress / OnReady registers nothing, and Changed fired for it (MeshFallback)
+		local again = partTarget(world, "CrownStand2", "acc_crown", CFrame.new(0, 3, 19))
+		ML.Dress(again, "acc_crown")
+		ML.OnReady("acc_crown", function()
+			lateRan = lateRan + 1
+		end)
+		Mock.Advance(0.2)
+		T.check(ML._Waiters("acc_crown") == 0 and lateRan == 0 and changed.acc_crown == true and again:FindFirstChild("ML_Mesh") == nil,
+			"client: a key broken on this device holds no waiter (released at the failure, none added later) and Changed fired for it", "waiters " .. ML._Waiters("acc_crown"))
+		lateHolder:SetAttribute("ML_Status", "failed")
+		Mock.Advance(0.1)
+		T.check(lateWaiting == 1 and ML._Waiters("acc_late") == 0 and ML.Status("acc_late") == "failed" and changed.acc_late == true and lateRan == 0,
+			"client: a key the server marks 'failed' after a waiter registered releases it here too (and Changed fires)", lateWaiting .. " -> " .. ML._Waiters("acc_late"))
 		local after = partTarget(world, "ArchAfter", "prop_arch", CFrame.new(-8, 2, 0))
-		CollectionService:AddTag(after, "ML_Dress")
+		CollectionService:AddTag(after, DTAG)
 		Mock.Advance(0.2)
 		T.check(after:FindFirstChild("ML_Mesh") ~= nil and after.Stone.Transparency == 1, "client: a target tagged later (streamed in) is dressed through the tag signal")
 		ML.Dress(after, "prop_arch")
@@ -968,6 +1066,11 @@ S.client_p6mesh = guarded("client_p6mesh", function()
 	end)
 	Mock.PreloadHook = savedHook
 	T.check(ok, "client_p6mesh ran to the end", tostring(err))
+	-- LEAD REQUEST (fix-meshlib W3b, review3 runtime-2): Main.client.lua is lead-owned; it must start the per-device
+	-- fallback watcher for server-built mesh pets (a no-op while MeshIds is empty). Fails until the line is in.
+	local mainC = readFile("src/client/Main.client.lua") or ""
+	T.check(string.find(mainC, "MeshFallback", 1, true) ~= nil,
+		"LEAD REQUEST: src/client/Main.client.lua starts client/Controllers/MeshFallback (after the MeshLibrary.Start line)")
 	ML._Reset()
 	world:Destroy()
 	box:Destroy()

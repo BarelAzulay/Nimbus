@@ -11,8 +11,10 @@
 --                     "does not exist", "invalid"); unwraps the result, strips PackageLink / scripts /
 --                     SurfaceAppearance, FITS it to the key's manifest (shared/MeshManifests/<key>: every manifest part
 --                     must exist as a MeshPart; scale in {1, 100, 0.01, measured}, yaw in {0, 90, 180, 270} and mirror
---                     solved by least squares on the part centres; fail over 2% of the bounds or on a mirror), then sets
---                     every part to its manifest Size / centre (pivot = identity), anchored, no collisions, Massless,
+--                     solved by least squares on the part centres, ties broken by the part sizes (a yaw baked into the
+--                     vertices swaps X / Z); fail over 2% of the bounds or on a mirror), then sets every part to its
+--                     manifest centre with rotation inv(yaw) * import rotation and the matching LOCAL size (its world box =
+--                     the manifest size; Assemble keeps both: review3 runtime-0) (pivot = identity), anchored, no collisions, Massless,
 --                     Color white, SmoothPlastic (or the manifest material), and parents the template to
 --                     ReplicatedStorage.MeshLibrary.<key> with ML_Status ("loading" | "ready" | "failed"), ML_Error,
 --                     ML_LoadMs, ML_Yaw, ML_Scale, ML_FitErr.
@@ -24,7 +26,9 @@
 --   API (synchronous, never yields; plain values, no Instances created unless asked):
 --     IsReady(key, ...) / IsReady({ keys })  -> bool (all usable HERE)
 --     Status(key)       -> "missing" | "loading" | "ready" | "failed"
---     OnReady(key, fn)  fn(key) once the key is usable here (at once, deferred, when it already is)
+--     OnReady(key, fn)  fn(key) once the key is usable here (at once, deferred, when it already is); a key that can
+--                       never be usable ('failed' here, or 'missing' after Start) keeps nothing, and a failure releases
+--                       the waiters of its key (review3 runtime-5)
 --     Changed           signal: Changed:Connect(function(key) end) -> connection (:Disconnect())
 --     EvalColor(recipe, look) -> Color3   (the kit's recipe language, blender/kit/nvox/colors.py)
 --     Assemble(spec, look, opts) -> Model | nil (nil = build the Part version, never a mix)
@@ -645,7 +649,10 @@ local function solveFit(man, found)
 	-- (review3 runtime-0) the yaw is picked on the centres PLUS the part sizes: a yaw baked into the vertices swaps a
 	-- part's local X / Z at 90 / 270, which a single-part (or concentric) asset only shows in its sizes. The tolerance
 	-- below still judges the centres alone. A baked 180 on a single-part asset stays undetectable (same centre, same box).
+	-- A tie (a concentric asset whose import carries the yaw in its part rotations) goes to the yaw that leaves the
+	-- template parts unrotated (manifest parts are axis-aligned): a tiny weight, far below any centre evidence.
 	local sizeErr = {}
+	local rotW = (1e-5 * bounds(man) * scale) ^ 2
 	for _, deg in ipairs(YAWS) do
 		local R = yawCF(deg)
 		local e = 0
@@ -653,10 +660,18 @@ local function solveFit(man, found)
 			local w = Q[i]:VectorToObjectSpace(R:VectorToWorldSpace(M[i])) * scale
 			local d = Vector3.new(math.abs(w.X), math.abs(w.Y), math.abs(w.Z)) - S[i]
 			e = e + d.X * d.X + d.Y * d.Y + d.Z * d.Z
+			local rot = R:Inverse() * Q[i]
+			local dr = (rot.RightVector - Vector3.new(1, 0, 0)).Magnitude + (rot.LookVector - Vector3.new(0, 0, -1)).Magnitude
+			e = e + rotW * dr * dr
 		end
 		sizeErr[deg] = e
 	end
-	local best, bestErr, bestPlain, bestScore = nil, math.huge, math.huge, math.huge
+	-- plain (unmirrored) yaws: the best SCORE among those whose centres fit within the tolerance (else the best centre
+	-- error); a mirror only decides the refusal when no plain yaw fits (review3 runtime-0: a planar asset fits a mirror
+	-- as well as its true yaw, and the old pick could take the mirror's yaw)
+	local tol = FIT_TOLERANCE * bounds(man) * scale
+	local tol2 = (tol + 1e-6) ^ 2 * n
+	local plainErr, mirrorErr = {}, math.huge
 	for _, mirror in ipairs({ false, true }) do
 		for _, deg in ipairs(YAWS) do
 			local R = yawCF(deg)
@@ -669,25 +684,30 @@ local function solveFit(man, found)
 				local d = (P[i] - pc) - R:VectorToWorldSpace(c) * scale
 				err = err + d.X * d.X + d.Y * d.Y + d.Z * d.Z
 			end
-			if not mirror and err < bestPlain then
-				bestPlain = err
-			end
-			local score = err + sizeErr[deg]
-			if score < bestScore - 1e-9 then
-				best, bestErr, bestScore = { Scale = scale, Yaw = deg, Mirror = mirror }, err, score
+			if mirror then
+				mirrorErr = math.min(mirrorErr, err)
+			else
+				plainErr[deg] = err
 			end
 		end
 	end
-	local rms = math.sqrt(bestErr / n)
-	local tol = FIT_TOLERANCE * bounds(man) * scale
-	best.Err = rms / math.max(scale, 1e-6)
+	local bestDeg, bestKey = nil, nil
+	for _, deg in ipairs(YAWS) do
+		local inTol = plainErr[deg] <= tol2
+		-- rank: inside the tolerance first, then by score (centres + sizes + the tiny rotation prior)
+		local key = (inTol and 0 or 1e30) + (inTol and (plainErr[deg] + sizeErr[deg]) or plainErr[deg])
+		if bestKey == nil or key < bestKey - 1e-14 then
+			bestDeg, bestKey = deg, key
+		end
+	end
+	local rms = math.sqrt(plainErr[bestDeg] / n)
+	local best = { Scale = scale, Yaw = bestDeg, Mirror = false, Err = rms / math.max(scale, 1e-6) }
 	if rms > tol + 1e-6 then
-		return nil, string.format("fit error %.4f studs over %.4f (yaw %d, scale %g)", rms, tol, best.Yaw, scale)
+		if math.sqrt(mirrorErr / n) <= tol + 1e-6 then
+			return nil, "the asset is mirrored (fix the FBX export axes)"
+		end
+		return nil, string.format("fit error %.4f studs over %.4f (yaw %d, scale %g)", rms, tol, bestDeg, scale)
 	end
-	if best.Mirror and math.sqrt(bestPlain / n) > tol + 1e-6 then
-		return nil, "the asset is mirrored (fix the FBX export axes)"
-	end
-	best.Mirror = false
 	return best
 end
 
@@ -1008,6 +1028,11 @@ function MeshLibrary._Configure(opts)
 		cfg[k] = v
 	end
 	folder = nil
+end
+
+-- TESTS ONLY (review3 runtime-5): how many OnReady callbacks wait on `key`
+function MeshLibrary._Waiters(key)
+	return waiters[key] and #waiters[key] or 0
 end
 
 function MeshLibrary._Reset()

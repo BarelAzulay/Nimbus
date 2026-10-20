@@ -851,7 +851,15 @@ local function paletteAudit(container, limits)
 	local maxNeonFace = limits.maxNeonFace or 160 -- studs^2 of the largest face of an opaque Neon part
 	local out = { parts = 0, white = {}, bigNeon = {}, neonCount = 0, whiteCount = 0, bigNeonCount = 0 }
 	for _, d in ipairs(container:GetDescendants()) do
-		if d:IsA("BasePart") and not d:IsA("Terrain") then
+		local meshModel = d:FindFirstAncestorWhichIsA("Model")
+		if meshModel and meshModel:GetAttribute("ML_Mesh") == true then
+			-- Phase 6 --mesh: a mesh pet (fountain statue) merges its voxels into big vertex-coloured parts, so the
+			-- per-part white-size rule is meaningless there; the Part build of the same pet is audited in default mode
+			meshModel = true
+		else
+			meshModel = false
+		end
+		if d:IsA("BasePart") and not d:IsA("Terrain") and not meshModel then
 			out.parts = out.parts + 1
 			local c = d.Color
 			local size = d.Size

@@ -1534,6 +1534,9 @@ end
 --   meshpet:<petId>[:Low]     pet_<species>[_variant] + wing_<style>_L/R + acc_<name> (at the accessory manifest's
 --                             Meta.attach, Hat by default) composed at the body's attachments
 --   meshevo:<petId>:<1|2>[:Low]  evo<stage>_<petId> + its evowing_ pairs at WingL/WingR (+ Wing2L/Wing2R, stage 2)
+-- `python3 tools/render_model.py --list` shows these three (the TARGETS line at the end of render_model.py's kit block):
+-- keep the two in step when a mesh target is added. Each needs blender/out/<key>.tris.json.gz (a build_all.py run);
+-- without it the MeshParts draw as boxes. Examples: meshkey:cal_axes, meshpet:pebble_pup, meshevo:twilight_dragon:2.
 do
 	local basePartJson = partJson
 	partJson = function(p, root)

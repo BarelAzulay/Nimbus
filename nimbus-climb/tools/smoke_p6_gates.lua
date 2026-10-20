@@ -315,6 +315,10 @@ S.client_p6gates = guarded("client_p6gates", function()
 	ML._Reset()
 	root:Destroy()
 	world:Destroy()
+	local P6 = rawget(_G, "P6Pets")
+	if P6 and P6.MeshMode then
+		P6.Install(P6.PetKeys()) -- --mesh: put back the global fixture set that _Reset wiped
+	end
 end)
 end
 

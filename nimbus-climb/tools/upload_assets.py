@@ -9,13 +9,20 @@ only prints what it would send and writes nothing.
     python3 tools/upload_assets.py --upload --only cal_axes # REAL upload (needs the player's OK: see recipe section 6)
     python3 tools/upload_assets.py --upload --refresh       # re-read moderation state of every known asset
     python3 tools/upload_assets.py --textures               # dry run of the IMAGE class: the gate vortex PNG layers
+    python3 tools/upload_assets.py --class pets             # dry run of one catalog class (blender/catalog/pets.json)
+    python3 tools/upload_assets.py --textures --set-id vortex_arms=123   # dry run of the Decal -> Image id swap
+
+--class CATALOG (repeatable / comma separated): the upload keys of blender/catalog/<CATALOG>.json (the entries without
+"upload": false, _low keys included), added to the --only keys. Mesh class only.
 
 --textures (Phase 6 W2b): the same rules for the Image class: index blender/textures/textures.json (written by
 blender/textures/build_vortex.py: key -> png, contentHash), state blender/textures/upload_state.json, output
 src/shared/TextureIds.lua (rule texture-ids: numbers only; empty = the vortex's effects-only fallback). Each PNG goes up
 as assetType "Decal" with image/png. CHECK AT CALIBRATION (the first real image upload, with the player's OK): the id the
 operation returns must load in an ImageLabel ("rbxassetid://<id>"); if it is the Decal wrapper and not its Image, put
-the Image id in the state file by hand before the game uses it. Never --upload without the player's OK.
+the Image id in with --set-id KEY=IMAGEID (--textures --upload --set-id ...: sends nothing, records the Image id as
+assetId, keeps the Decal id as decalAssetId, rewrites TextureIds.lua). Never --upload without the player's OK.
+--set-id on a mesh key is refused unless --allow-mesh-set-id says it is meant (a Model id needs no swap).
 
 Environment (never stored, never printed):
     ROBLOX_API_KEY       Open Cloud API key with the Assets API (Read + Write), made by the experience owner
@@ -287,6 +294,36 @@ def fbx_path(root, key, entry):
     return cands[0]
 
 
+def catalog_keys(root, name):
+    """--class NAME -> the upload keys of blender/catalog/<NAME>.json (or the catalog whose "class" is NAME), in catalog
+    order; entries with "upload": false (kit test keys) are left out, like blender/build_all.py does"""
+    import glob
+    cat_dir = os.path.join(root, "blender", "catalog")
+    cats = {}
+    for path in sorted(glob.glob(os.path.join(cat_dir, "*.json"))):
+        try:
+            with open(path, encoding="utf-8") as f:
+                cat = json.load(f)
+        except (OSError, ValueError) as e:
+            raise Refusal("%s: unreadable catalog (%s)" % (os.path.relpath(path, root), e))
+        if not isinstance(cat, dict):
+            continue
+        base = os.path.splitext(os.path.basename(path))[0]
+        cats[base] = cat
+        if isinstance(cat.get("class"), str):
+            cats.setdefault(cat["class"], cat)
+    if name not in cats:
+        names = sorted(set(c["class"] if isinstance(c.get("class"), str) else b for b, c in cats.items()))
+        raise Refusal("--class %s: no blender/catalog/%s.json (classes: %s)" % (name, name, ", ".join(names) or "none"))
+    keys = []
+    for e in cats[name].get("keys") or []:
+        if isinstance(e, dict) and isinstance(e.get("key"), str) and e.get("upload", True) is not False and e["key"] not in keys:
+            keys.append(e["key"])
+    if not keys:
+        raise Refusal("--class %s: the catalog has no upload keys" % name)
+    return keys
+
+
 def creator_block(creator_type, creator_id):
     return {("groupId" if creator_type == "group" else "userId"): str(creator_id)}
 
@@ -498,6 +535,27 @@ def adopt(key, record, asset_id, log):
     log("  adopted asset %d for %s (the create of %s)" % (asset_id, key, pc.get("startedAt")))
 
 
+def set_id(key, record, new_id, log):
+    """--set-id KEY=ID (OWNER_UPLOAD.md section 6): an uploaded image's Decal id is swapped for its Image id. Nothing is
+    sent: assetId = the Image id (TextureIds.lua follows), the Decal id is kept as decalAssetId. A second --set-id on the
+    same key replaces a wrong Image id (that one goes to previousAssetIds) and keeps decalAssetId. A mesh key (only with
+    --allow-mesh-set-id) just records the new id; the old one goes to previousAssetIds."""
+    old = int(record["assetId"])
+    if CLASS["file"] == "png" and not record.get("decalAssetId"):
+        record["decalAssetId"] = old
+        what = "Decal id %d kept as decalAssetId" % old
+    else:
+        record.setdefault("previousAssetIds", []).append(old)
+        what = "old id %d moved to previousAssetIds" % old
+    if CLASS["file"] != "png":
+        record["revisionId"] = None
+        record["moderationState"] = None
+    record["assetId"] = new_id
+    record["idSetByHand"] = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+    record.pop("lastError", None)
+    log("  set-id: %s = %d (%s)" % (key, new_id, what))
+
+
 def finish(client, key, record, args, log):
     op_id = record["pendingOperation"]
     deadline = time.monotonic() + args.poll_timeout
@@ -551,12 +609,13 @@ def finish(client, key, record, args, log):
 def refresh(client, key, record, log):
     if not record.get("assetId"):
         return record
-    data = client.request("GET", GET_ASSET_PATH.format(assetId=record["assetId"]))
+    # an image whose Image id was set by hand (--set-id): its moderation lives on the uploaded Decal asset
+    data = client.request("GET", GET_ASSET_PATH.format(assetId=record.get("decalAssetId") or record["assetId"]))
     if data is None:
         return record
     record["revisionId"] = data.get("revisionId", record.get("revisionId"))
     record["moderationState"] = (data.get("moderationResult") or {}).get("moderationState", record.get("moderationState"))
-    log("  asset %s revision %s moderation %s" % (record["assetId"], record["revisionId"], record["moderationState"]))
+    log("  asset %s revision %s moderation %s" % (record.get("decalAssetId") or record["assetId"], record["revisionId"], record["moderationState"]))
     return record
 
 
@@ -597,6 +656,13 @@ def parse_args(argv):
                     help="a create whose outcome was unknown DID make this asset (seen in Creator Hub): record its id")
     ap.add_argument("--not-created", action="append", default=[], metavar="KEY",
                     help="a create whose outcome was unknown made NO asset (checked in Creator Hub): create it again")
+    ap.add_argument("--class", dest="classes", action="append", default=[], metavar="CATALOG",
+                    help="the upload keys of blender/catalog/<CATALOG>.json (repeatable or comma separated; adds to --only)")
+    ap.add_argument("--set-id", action="append", default=[], metavar="KEY=ID",
+                    help="--textures: record the Image id ID for KEY (its Decal id is kept as decalAssetId) and rewrite "
+                         "TextureIds.lua; sends nothing, writes only with --upload")
+    ap.add_argument("--allow-mesh-set-id", action="store_true",
+                    help="--set-id on a mesh key really is meant (normally refused: a Model id needs no swap)")
     ap.add_argument("--poll-timeout", type=float, default=300)
     ap.add_argument("--root", default=DEFAULT_ROOT, help=argparse.SUPPRESS)
     ap.add_argument("--base-url", default=BASE_URL, help=argparse.SUPPRESS)  # tests: the local fake API
@@ -615,7 +681,66 @@ def parse_args(argv):
     args.adopt = adopt_ids
     if set(args.adopt) & set(args.not_created):
         raise Refusal("--adopt and --not-created name the same key: pick one")
+    args.classes = [k.strip() for item in args.classes for k in item.split(",") if k.strip()]
+    for name in args.classes:
+        if not KEY_RE.match(name):
+            raise Refusal("--class takes a catalog name such as pets (blender/catalog/pets.json), not %r" % name)
+    set_ids = {}
+    for item in [k.strip() for item in args.set_id for k in item.split(",") if k.strip()]:
+        key, _, aid = item.partition("=")
+        key, aid = key.strip(), aid.strip()
+        if not KEY_RE.match(key) or not aid.isdigit() or int(aid) <= 0:
+            raise Refusal("--set-id takes KEY=ID (ID = the number of the Image, digits only), not %r" % item)
+        if key in set_ids and set_ids[key] != int(aid):
+            raise Refusal("--set-id names %s twice with different ids" % key)
+        set_ids[key] = int(aid)
+    args.set_id = set_ids
+    if args.set_id and (args.refresh or args.force or args.adopt or args.not_created or args.classes):
+        raise Refusal("--set-id only records ids (nothing is sent): run it on its own, without --refresh / --force / "
+                      "--adopt / --not-created / --class")
+    if args.allow_mesh_set_id and not args.set_id:
+        raise Refusal("--allow-mesh-set-id goes with --set-id")
     return args
+
+
+def set_ids_run(args, assets, state, keys, creator, state_path, lua_path, root):
+    """--set-id: validate every pair first, then record them all (no network); a dry run writes nothing"""
+    if CLASS["file"] != "png" and not args.allow_mesh_set_id:
+        raise Refusal("--set-id is for the textures' Decal -> Image id swap (--textures --set-id KEY=ID). A mesh is a Model "
+                      "and needs no swap; a create of unknown outcome is settled with --adopt KEY=ID. If you really "
+                      "mean to change a mesh key's id by hand, add --allow-mesh-set-id")
+    for key in sorted(args.set_id):
+        new_id = args.set_id[key]
+        rec = state["assets"].get(key) or {}
+        if key not in assets:
+            raise Refusal("--set-id %s: not in %s" % (key, "/".join(CLASS["index"])))
+        if key not in keys:
+            raise Refusal("--set-id %s: not in this run's keys (add it to --only)" % key)
+        if rec.get("pendingCreate") or rec.get("pendingOperation"):
+            raise Refusal("--set-id %s: its upload is not finished (settle it first: a plain run / --adopt / --not-created)" % key)
+        if not isinstance(rec.get("assetId"), int):
+            raise Refusal("--set-id %s: no uploaded asset recorded yet (upload it first; --set-id only swaps the id of "
+                          "an uploaded asset)" % key)
+        if rec["assetId"] == new_id:
+            raise Refusal("--set-id %s=%d: that is already its id (nothing to change)" % (key, new_id))
+        if CLASS["file"] == "png" and rec.get("decalAssetId") == new_id:
+            raise Refusal("--set-id %s=%d: that is its Decal id; give the Image id (OWNER_UPLOAD.md section 6)" % (key, new_id))
+
+    print("%s --set-id for %d key(s) (nothing is sent)" % ("DRY RUN (nothing is written; add --upload to write):" if args.dry_run
+                                                           else "SET-ID:", len(args.set_id)))
+    for key in sorted(args.set_id):
+        print("- " + key)
+        set_id(key, state["assets"][key], args.set_id[key], lambda m: print(m, flush=True))
+    if args.dry_run:
+        print("dry run: nothing was sent and nothing was written")
+    else:
+        state["version"] = STATE_VERSION
+        state["creator"] = creator
+        atomic_write_json(state_path, state)
+        atomic_write(lua_path, mesh_ids_lua(state))
+        print("wrote %s and %s" % (os.path.relpath(state_path, root), os.path.relpath(lua_path, root)))
+    print("ok")
+    return 0
 
 
 def main(argv=None):
@@ -652,10 +777,20 @@ def main(argv=None):
     if stored and creator_id and stored != creator:
         raise Refusal("upload_state.json belongs to %s %s, not %s %s: another owner cannot update these assets and the "
                       "game could not load them. Refusing." % (stored.get("type"), stored.get("id"), creator_type, creator_id))
+    if args.classes and args.textures:
+        raise Refusal("--class names a mesh catalog (blender/catalog/); the textures have none: use --only")
+    for name in args.classes:
+        args.only += [k for k in catalog_keys(root, name) if k not in args.only]
     unknown = [k for k in args.only if k not in assets]
     if unknown:
-        raise Refusal("not in %s: " % "/".join(CLASS["index"]) + ", ".join(unknown))
+        hint = ""
+        if args.classes:
+            hint = " (build the class first: %s blender/build_all.py --class %s)" % (BLENDER_PY, " / --class ".join(args.classes))
+        shown = ", ".join(unknown[:8]) + (" ... (%d more)" % (len(unknown) - 8) if len(unknown) > 8 else "")
+        raise Refusal("not in %s: " % "/".join(CLASS["index"]) + shown + hint)
     keys = [k for k in sorted(assets) if not args.only or k in args.only]
+    if args.set_id:
+        return set_ids_run(args, assets, state, keys, creator, state_path, lua_path, root)
     for key in list(args.adopt) + args.not_created:
         if key not in assets or not (state["assets"].get(key) or {}).get("pendingCreate"):
             raise Refusal("%s has no create of unknown outcome to settle (--adopt / --not-created are only for a key the "

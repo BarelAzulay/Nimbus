@@ -750,19 +750,23 @@ def lobby_plot(entry, kit):
     from props import lobby_world as W
     args = entry.get("args") or {}
     V = float(args.get("V", 2.0))
-    t = W.target(entry["key"])
+    # prop_plot_low (the far plot LOD) bakes the same tagged target, so it keeps prop_plot's LayoutSig
+    t = W.target(entry["key"][:-4] if entry["key"].endswith("_low") else entry["key"])
     idx, rec = W.find_cloud(template="Plot")
     R0, p0 = W.cf_matrix(rec["CF"])
     m = kit.model(entry["key"], "prop", vs=0.2, K=5.0)
     W.add_cloud(m, idx, V, R0=R0, p0=p0, name="Cloud", group="Island")
     boxes = [b for b in W.parse_boxes(t["Boxes"]) if b["name"] not in ("PodiumBase", "Accent", "PodiumTop")]
     island_keys = {"Cloud", "CloudLight", "CloudShade", "Mist", "MistDark"}
-    flat = [b for b in boxes if b["name"] not in island_keys and b["name"] not in ("FencePost", "GatePillar", "GateCap", "GateBase", "GateLantern", "MailBox", "MailPost")]
+    sculpted = ("FencePost", "GatePillar", "GateCap", "GateBase", "GateLantern", "MailBox", "MailPost")
+    if entry["key"].endswith("_low"):
+        sculpted = ("GateLantern",)  # far LOD: posts, pillars and the mailbox stay the Part build's plain boxes
+    flat = [b for b in boxes if b["name"] not in island_keys and b["name"] not in sculpted]
     W.add_boxes(m, flat, "Grounds", {})
     K = 5.0
     for b in boxes:
         n = b["name"]
-        if n not in ("FencePost", "GatePillar", "GateCap", "GateBase", "GateLantern", "MailBox", "MailPost"):
+        if n not in sculpted:
             continue
         # one small grid per piece, meshed at its own centre (a plot-wide 0.2-stud grid would be ~500^3 voxels)
         ox, oy, oz = b["pos"]

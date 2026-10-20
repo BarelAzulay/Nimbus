@@ -86,17 +86,22 @@ python3 -m venv /tmp/claude-0/bpyenv          # once per container: bpy 5.2 as a
    manifests in git and the FBX you would upload no longer match.
 2. **Run the checks** (all offline):
    ```bash
-   python3 tools/test_upload_assets.py           # the uploader against a local fake API (34 checks today)
+   python3 tools/test_upload_assets.py           # the uploader against a local fake API (76 checks today)
    python3 tools/mesh_names.py --check blender/out/*.manifest.json
    python3 tools/syntax.py && node tools/check.mjs
    ```
 3. **Dry run** (sends nothing, writes nothing; it prints every request it would make, with the key hidden):
    ```bash
-   python3 tools/upload_assets.py                # every key (717 today)
+   python3 tools/upload_assets.py                # every key in blender/meshes.json (798 today)
    python3 tools/upload_assets.py --only cal_axes
+   python3 tools/upload_assets.py --class pets   # one catalog class (section 5)
    python3 tools/upload_assets.py --textures     # the 10 vortex images
    ```
    Check the first line: it names the creator (`for user <id>` or `for group <id>`). It must be the game's owner.
+   A key that says `FAILED: ... was not exported from this contentHash` has a stale FBX (its last build was
+   `--no-export`, so `blender/meshes.json` has `"fbxSha256": null` for it): rebuild that key with the Blender python
+   (`/tmp/claude-0/bpyenv/bin/python blender/build_all.py --key <key>`) before it can go up. The tool never uploads it
+   as it is.
 4. Show the owner the dry-run summary and ask: "OK to upload the calibration model cal_axes?" Wait for a yes.
 
 ---
@@ -150,6 +155,13 @@ python3 tools/upload_assets.py --upload --only pet_dog,pet_dog_low,wing_feather_
 ```
 Commit `MeshIds.lua` + `upload_state.json`, push.
 
+If a key says **`the create of KEY may have reached Roblox`** (the connection broke after the upload was sent), the
+tool refuses that key until someone looked: open Creator Hub -> **Creations** -> **Development Items** -> **Models**
+(**Decals** for a texture) and look for the name it printed, made at that time. Found it: run
+`python3 tools/upload_assets.py --upload --only KEY --adopt KEY=<its id>` (records that id, no new upload). Not there:
+`python3 tools/upload_assets.py --upload --only KEY --not-created KEY` (uploads it again). Never just run the upload
+again without one of the two: that could make a second copy.
+
 **OWNER** (Studio, published game, Rojo connected, **Play**):
 1. Output: `[MeshLibrary] 9 mesh model(s) to load` (cal_axes + 8) and no yellow `stays on the Part build` line.
    `ReplicatedStorage -> MeshLibrary -> pet_dog` has `ML_Status = ready`.
@@ -169,13 +181,24 @@ Commit `MeshIds.lua` + `upload_state.json`, push.
 `arenadungeon`. Ask the owner before each batch. For a class `C`:
 
 ```bash
-KEYS=$(python3 -c "import json,sys; print(','.join(e['key'] for e in json.load(open('blender/catalog/'+sys.argv[1]+'.json'))['keys'] if e.get('upload', True)))" C)
-python3 tools/upload_assets.py --only "$KEYS"            # dry run
-python3 tools/upload_assets.py --upload --only "$KEYS"   # real
+python3 tools/upload_assets.py --class C                 # dry run (C = pets, evolved, creatures, ...)
+python3 tools/upload_assets.py --upload --class C        # real
 ```
-Keys already uploaded and unchanged are skipped (`skip: unchanged`). Today's sizes: pets 94, evolved 354,
-creatures 60, gates 6, lobby 62, home 88, arenadungeon 52 (with cal_axes: 717). The tool keeps under the Roblox
-limits by itself (100 writes and 250 reads per minute), so a big class takes several minutes.
+`--class C` takes every key of `blender/catalog/C.json` that is uploaded (its `_low` keys too); it can be repeated
+and mixed with `--only` (`--class gates --only cal_axes`). A key of the catalog that is not built yet is refused
+with the build command to run. Keys already uploaded and unchanged are skipped (`skip: unchanged`). The first line of
+the dry run counts the keys; today: pets 94, evolved 354, creatures 60, gates 6, lobby 63, home 168,
+arenadungeon 52 (with cal_axes: 798). The tool keeps under the Roblox limits by itself (100 writes and 250 reads per
+minute), so a big class takes several minutes.
+
+**`_low` keys.** Pets, evolved forms, creatures, the lobby plot (`prop_plot_low`) and the home plots
+(`home_<station>_<level>_low`, new in Phase 6 W3: the far-away version of every home station, house, fence, fountain
+and podium; the Garden bed pieces have none) have a lighter `_low` copy. They are ordinary models: upload them in the
+same batch as their High keys (`--class` does that by itself). A `_low` key that is missing, rejected or still in
+review just keeps the High mesh at a distance: nothing breaks, it only costs a little more on phones.
+
+A key that says `the create of KEY may have reached Roblox`: see section 4 (check Creator Hub, then `--adopt` or
+`--not-created`), or 8g.
 
 After each batch: commit `src/shared/MeshIds.lua` + `blender/upload_state.json`, rebuild the place file
 (`rojo build default.project.json -o play/NimbusClimb.rbxlx`, then `python3 tools/verify_place.py`), push, and ask
@@ -214,10 +237,17 @@ not always show in an ImageLabel; the game needs the **Image** id.
 4. **Delete the test ScreenGui** (otherwise players see it).
 
 **CLAUDE**, only if the ids are Decal ids: get the Image id of each texture from the owner the same way (paste each
-id into the ImageLabel), put it as `assetId` in `blender/textures/upload_state.json` (keep the Decal id next to it as
-`"decalAssetId"`), then run `python3 tools/upload_assets.py --textures --upload --refresh` once: it rewrites
-`TextureIds.lua` from the state file (the refresh of an Image id may print FAILED; the file is written anyway).
-Never `--force` the textures after that: a PATCH would go to the Image id.
+id into the ImageLabel), then record them all in one go (check with the dry run first; nothing is sent to Roblox):
+```bash
+python3 tools/upload_assets.py --textures --set-id vortex_arms=<image id>,vortex_rim=<image id>            # dry run
+python3 tools/upload_assets.py --textures --upload --set-id vortex_arms=<image id>,vortex_rim=<image id>   # writes
+```
+It puts each Image id as `assetId` in `blender/textures/upload_state.json`, keeps the Decal id next to it as
+`decalAssetId` (later `--refresh` runs read the moderation from the Decal) and rewrites `TextureIds.lua`. It refuses
+an unknown key, an id that is not a number, the Decal id itself and a key that was never uploaded; a wrong Image id
+is fixed by running `--set-id` again with the right one.
+The tool never PATCHes images: a changed PNG uploads as a NEW Decal (the old id goes to previousAssetIds), so repeat
+the Image-id check for that key; --force on an unchanged image is refused.
 
 Then commit `src/shared/TextureIds.lua` + `blender/textures/upload_state.json`. **OWNER** Play-test: every gate in the
 Gate Court shows the textured swirl, the rim glows, small lightning flickers, and the light streaks pull **inward**
@@ -271,6 +301,18 @@ uploader for that key:
 **f. `[MeshLibrary] <key> could not be downloaded on this device`.** One player's device failed to fetch it; that
 player sees the Part model for that key. Nothing to do unless it happens for everyone.
 
+**g. `the create of KEY may have reached Roblox`.** The upload was sent but the answer got lost (a 500 / 502 / 504, a
+dropped connection, or the session stopped half way through a create). The key is marked `pendingCreate` in the
+state file and every run refuses it until it is settled. OWNER or CLAUDE: Creator Hub -> **Creations** ->
+**Development Items** -> **Models** (**Decals** for a texture); look for the name the message printed, made at the
+time it printed. Found: `python3 tools/upload_assets.py --upload --only KEY --adopt KEY=<id>`. Not there:
+`python3 tools/upload_assets.py --upload --only KEY --not-created KEY`. (Add `--textures` for a texture key.)
+
+**h. `FAILED: <key>: ... was not exported from this contentHash`.** The FBX on disk is not the one the last build
+described: the last build was `--no-export` (plain `python3`, no Blender), so `blender/meshes.json` has
+`"fbxSha256": null` for that key, or the file changed since. Rebuild it with the Blender python
+(`/tmp/claude-0/bpyenv/bin/python blender/build_all.py --key <key>`, or `--class <class>`) and run the upload again.
+
 ---
 
 ## 9. Roll back
@@ -291,10 +333,14 @@ Everything goes back to the Part models when `MeshIds.lua` is empty:
 | What | Command |
 |---|---|
 | uploader help | `python3 tools/upload_assets.py --help` |
-| dry run (default) | `python3 tools/upload_assets.py [--only k1,k2] [--textures]` |
+| dry run (default) | `python3 tools/upload_assets.py [--only k1,k2] [--class pets] [--textures]` |
 | real upload | `python3 tools/upload_assets.py --upload --only k1,k2` |
+| one class (with its `_low` keys) | `python3 tools/upload_assets.py --upload --class pets` |
 | re-read moderation | `python3 tools/upload_assets.py --upload --refresh` |
-| re-send unchanged | `--force` (rarely needed) |
+| "the create of KEY may have reached Roblox" | found in Creator Hub: `--upload --only KEY --adopt KEY=<id>`; not there: `--upload --only KEY --not-created KEY` (8g) |
+| texture Decal id -> Image id | `python3 tools/upload_assets.py --textures --upload --set-id KEY=<image id>` (section 6) |
+| "was not exported from this contentHash" | `/tmp/claude-0/bpyenv/bin/python blender/build_all.py --key <key>` (8h) |
+| re-send unchanged | `--force` (meshes only, rarely needed; refused for images) |
 | wait longer per upload | `--poll-timeout 600` (seconds, default 300) |
 | offline tests | `python3 tools/test_upload_assets.py` |
 | build a class / a key | `/tmp/claude-0/bpyenv/bin/python blender/build_all.py --class pets` / `--key pet_dog` |
