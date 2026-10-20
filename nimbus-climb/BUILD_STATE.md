@@ -72,4 +72,4 @@ W5 review script ready: scratchpad/p5review.js (launch after the W4 gate fixer; 
 
 | Step | What | State |
 |---|---|---|
-| D | design workflow wf_f91389a6-695 (inv-creatures, inv-lobby, inv-home-arena-dungeon, pipeline proto (fine-voxel), research, style-ref Phase4-vs-Phase5 renders, judge) -> scratchpad/p6design/ | RUNNING |
+| D | design workflow wf_f91389a6-695 (inv-creatures, inv-lobby, inv-home-arena-dungeon, pipeline proto (fine-voxel), research, style-ref Phase4-vs-Phase5 renders, judge) -> scratchpad/p6design/ | DONE. Recipe = p6design/judge/recipe.md (waves A look revert, B kit+bridge, C runtime MeshLibrary, D uploads). Style = p6design/style-ref/style.md. Kit proto = p6design/pipeline/kit. Previews sent to player; WAITING for player OK on style |
