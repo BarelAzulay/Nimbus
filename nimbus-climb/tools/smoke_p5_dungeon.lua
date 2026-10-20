@@ -891,6 +891,7 @@ local function serverScenarios()
 			local party3 = run3.Party
 			local tr3 = tracker(qa)
 			intoFight(run3, qa, tr3)
+			tuneEnemies(run3, unbeatable) -- the auto-attacking test team would clear room 1 before the queued join's deadline
 			T.check(run3.State == "Fight" and run3.Room == 1, "p5 party: (setup) room 1 fights")
 			for _, p in ipairs({ qb, qc, qd }) do
 				toPad(p, 2, 0)
@@ -915,6 +916,9 @@ local function serverScenarios()
 			local mark5 = K.logSize()
 			advance(0.6)
 			T.check(dgs.St.joinQueue[qd] == nil and runOf(qd) == nil and toasted(qd, "That party moved on", mark5), "p5 party: a queued join past its 20 s deadline is dropped ('That party moved on')")
+			tuneEnemies(run3, function(u)
+				u.maxHp, u.hp = 1, 1 -- beatable again: the leader now clears room 1
+			end)
 			local res3 = playUntilEnd(tr3, 200, { every = 3 })
 			T.check(res3 ~= nil and run3.State == "Corridor", "p5 party: (setup) room 1 cleared by the leader", tostring(run3.State))
 			advance(0.6)
@@ -1671,6 +1675,7 @@ local function serverScenarios()
 		run = startSolo(fs, 1)
 		if T.check(run ~= nil, "p5 ends: (setup) a solo run for the BattleService fail-safe") then
 			intoFight(run, fs, nil)
+			tuneEnemies(run, unbeatable) -- the auto-attacking pet must not clear the room before the wipe
 			bs.Debug = { HoldEnd = true }
 			local t0 = Mock.Clock.now
 			while run.State == "Fight" and Mock.Clock.now - t0 < 200 do

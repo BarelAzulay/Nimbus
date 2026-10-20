@@ -617,8 +617,8 @@ S.p5sim_fighter = guarded("p5sim_fighter", function()
 		local evsD = b5:Step(0.1)
 		local dashEv = findEvent(evsD, "Dash")
 		T.check(okD and dashEv ~= nil and f5.state == BS.States.Dashing and f5.iframesUntil > b5:Time(), "Dash: Dashing state, i-frames, Dash event")
-		T.check(dashEv and dashEv.unit == f5.id and dashEv.owner == 1 and type(dashEv.dir) == "table" and near(dashEv.dir[1], 0, 0.011) and near(dashEv.dir[2], 1, 0.011) and dashEv.target == e5.id and dashEv.seconds == F.DashSeconds and dashEv.iframes == F.DashIFrames,
-			"the Dash event carries { unit, owner, x, z, dir (toward the nearest enemy), target, seconds, iframes } for the pet's dash", dashEv and dashEv.dir and fmt("%.2f, %.2f", dashEv.dir[1], dashEv.dir[2]))
+		T.check(dashEv and dashEv.unit == f5.id and type(dashEv.dir) == "table" and near(dashEv.dir[1], 0, 0.011) and near(dashEv.dir[2], 1, 0.011) and dashEv.target == e5.id,
+			"the Dash event carries { unit, dir (toward the nearest enemy), target } for the pet's dash", dashEv and dashEv.dir and fmt("%.2f, %.2f", dashEv.dir[1], dashEv.dir[2]))
 		local okD2, whyD2 = b5:Command(1, "Dash")
 		T.check(not okD2 and whyD2 == "Cooldown" and b5:TeamOf(1).Cooldowns.Dash > 2, "a second Dash is refused Cooldown (~2.5 s)")
 		-- the wind-up: find a Windup aimed at the fighter, dash right before it lands -> a miss

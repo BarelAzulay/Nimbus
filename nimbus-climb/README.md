@@ -857,7 +857,7 @@ them and train their skills at the Training Place.
 
   | Buff | Who gives it | What it does |
   |---|---|---|
-  | **Heal** | Support pets with Heal | Heals 30% of the fighter's health. |
+  | **Heal** | Support pets with Heal | Heals 30% of the fighter's and the other helper's health. |
   | **Shield** | Support pets with Shield | A shield of 35% health for 6 seconds. |
   | **Rally** | Support pets with Rally | +35% damage for 8 seconds. |
   | **Haste** | Support pets with Haste | +35% attack and move speed for 8 seconds. |

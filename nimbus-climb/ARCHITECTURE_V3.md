@@ -3049,3 +3049,28 @@ the client plot LOD (HomeFx: High < 120 studs, `_low` keys 120-200, Far >= 200 k
 ### 6.6 Tests
 recipe 4.9. Every wave keeps `tools/smoke.py --quick` green in the default (no ids) mode; W2 adds the mesh-fixture
 mode runs. `tools/run_checks.sh` full at W3.
+
+## Dungeon fixes (player request after Phase 6; branch `v3-dungeon-fixes`; plan `docs/dungeon-fixes/plan.md`)
+
+These rulings amend sections 4 and 5 of Phase 5 (they win over the older text there).
+* **Enemies drawn (bug):** the client adds the units of `Wave` events (`Units.AddList`), not only `Spawn` / `Start`; the dungeon
+  encounter centre is the room FLOOR (`RoomInfo.ZoneFloor`, `FloorY` = floor top); enemies use the Wild look.
+* **Doors (5.3):** no timer moves a group any more (HallSeconds / Intermission + DoorTime / boss -> treasure are gone). After a clear
+  the route leads to the next room's closed `Door_Entrance`; its `EnterPrompt` (E, `DungeonAction "Enter"`) records
+  `run.Confirm[userId]`; when every member still in the run (Downed included) confirmed, `DungeonState("Fade", { Out 0.45, Hold
+  0.35, In 0.45, Room })` then the room is entered ONCE (`Dg.transit` / `Dg.finishTransit`, `run.Transit` + `TransitSeq` lock).
+  Run payload: `Confirmed`, `NeedConfirm`, `EnterOpen`, `Next`. `MaxRunSeconds` no longer counts DoorTime / HallSeconds.
+* **Arrival (4.x):** every enemy added after the start (waves, escorts, raid adds) arrives for `BattleCatalog.Fighter.ArriveSeconds`
+  1.2 s: it does not act, cannot be hit or targeted; unit info carries `Arrive`; a dungeon wave adds 1.2 s to the time limit.
+  Client: `EvolutionFx.Arrive(pivot, opts)` (effects only), the model appears at the flash.
+* **Attack (4.4):** a player's fighter AUTO-ATTACKS every step in every mode (lock if in reach, else nearest in reach; never moves);
+  the `Attack` command only directs (`Attack(id)` locks, `Attack()` locks / cycles the nearest; echo `Order{order="Attack",
+  target}`); `Fighter.AutoRepeat = false`; the ATTACK button reads "PICK TARGET".
+* **Dash (4.4):** in battle Shift / RightShift / ButtonB = the PET's dash (`MovementController.SetPetDash`): no character
+  impulse, no stamina; sim Dash unchanged; event `Dash { unit, dir = {dx, dz}, target }`; run stays on Ctrl.
+* **E (4.4):** ELEMENT's E passes to a visible ProximityPrompt (exit, chest); gamepad Y keeps ELEMENT.
+* **Mouse lock:** setting `MouseLock` (bool, default false, L key) + `src/client/MouseLock.lua` (LockCenter after the camera; any
+  Dock window, main menu, loading, result cards, tutorial card, a focused TextBox = cursor free).
+* **Healing (4.x):** no passive heal in combat (`BenchRegenPerSecond` / `BenchRegenCap` 0, code removed; wave gaps count). A player's
+  Heal special heals the fighter AND both benched pets; the Heal helper buff heals the fighter and the other benched pet.
+  Raid retune: `BossRules.DamageGroup.Min` 0.55 -> 0.35, lava_golem `LingerDamage` 0.03 -> 0.015.

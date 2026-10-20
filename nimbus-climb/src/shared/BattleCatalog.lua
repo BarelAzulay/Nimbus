@@ -333,7 +333,7 @@ end
 --   "Lifesteal" (Value of damage dealt heals, Seconds); Meter = meter added at once
 ----------------------------------------------------------------------
 BattleCatalog.Buffs = {
-	Heal = { Kind = "Heal", Name = "Heal", Effect = "Heal", Seconds = 0, Value = 0.30, Cooldown = 12, Text = "Heals 30% of the fighter's health." },
+	Heal = { Kind = "Heal", Name = "Heal", Effect = "Heal", Seconds = 0, Value = 0.30, Cooldown = 12, Text = "Heals 30% of the fighter's and the other helper's health." },
 	Shield = { Kind = "Shield", Name = "Shield", Effect = "Shield", Seconds = 6, Value = 0.35, Cooldown = 12, Text = "A shield of 35% health for 6 seconds." },
 	Rally = { Kind = "Rally", Name = "Rally", Effect = "Damage", Seconds = 8, Value = 0.35, Cooldown = 12, Text = "+35% damage for 8 seconds." },
 	Haste = { Kind = "Haste", Name = "Haste", Effect = "Speed", Seconds = 8, Value = 0.35, Cooldown = 12, Text = "+35% attack and move speed for 8 seconds." },

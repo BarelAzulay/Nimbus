@@ -73,7 +73,7 @@
 --   Spawn      { units, wave, boss, owner }   Enrage { unit }      Zone { unit, kind, x, z, r, seconds, side }     Leave { owner, units }
 --   Order      { owner, order, target, rejected }   (every refused command echoes `rejected`; Attack / Target / Forfeit echo when accepted)
 --   Element    { unit, element, name, x, z, angle | tx, tz, targets }
---   Dash       { unit, owner, x, z, dir = { dx, dz } (unit vector, floor space), target (id | nil), seconds, iframes }
+--   Dash       { unit, dir = { dx, dz } (unit vector in floor space, 0.01 steps), target (the enemy it points at | nil) }
 --   Buff       { owner, unit (the helper), kind, name, until, target (the fighter), amount, heals = { { id, hp }... } (Heal:
 --                the fighter + the other benched pet) }     Swap { owner, out, in, auto }
 --   Speed      { owner, walk, run }   (whenever the fighter's legal speeds change: Swap, Haste / Slow start and end)
@@ -1585,16 +1585,7 @@ local function applyDamage(self, attacker, victim, amount, events, extra, noVari
 		return 0
 	end
 	if victim.arriveUntil and self.t < victim.arriveUntil then
-		-- an arriving enemy cannot be hit (every path: specials, zones, burns): a miss
-		local ev = { type = EV.Hit, from = attacker and attacker.id or nil, to = victim.id, dmg = 0, miss = true }
-		if extra then
-			for k, v in pairs(extra) do
-				if k ~= "leech" then
-					ev[k] = v
-				end
-			end
-		end
-		events[#events + 1] = ev
+		-- an arriving enemy cannot be hit by any path (specials, zones, burns); no event (the client draws its entrance)
 		return 0
 	end
 	local D = damageRules()
@@ -1810,7 +1801,7 @@ local function livingEnemies(self, side)
 	local list = self.units
 	for i = 1, #list do
 		local e = list[i]
-		if e.side ~= side and e.alive and not e.gone and not e.benched then
+		if e.side ~= side and targetable(self, e) then -- an arriving enemy is not in any shape yet
 			out[#out + 1] = e
 		end
 	end
@@ -3383,17 +3374,8 @@ function doCommand(self, team, action, arg, events)
 		team.dashReadyAt = t + num(F.DashCooldown, 2.5)
 		f.state = S_DASHING
 		local dx, dz, aim = dashDirection(self, team, f)
-		events[#events + 1] = {
-			type = EV.Dash,
-			unit = f.id,
-			owner = team.owner,
-			x = r1(f.x),
-			z = r1(f.z),
-			dir = { dx, dz },
-			target = aim and aim.id or nil,
-			seconds = num(F.DashSeconds, 0.35),
-			iframes = num(F.DashIFrames, 0.35),
-		}
+		-- small on the wire (16-raid budget): the position comes from the snapshot, the timings from BattleCatalog.Fighter
+		events[#events + 1] = { type = EV.Dash, unit = f.id, dir = { dx, dz }, target = aim and aim.id or nil }
 		return true
 	elseif action == "Buff" then
 		local slot = tonumber(arg)
