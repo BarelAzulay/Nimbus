@@ -48,6 +48,7 @@ local LIGHT = {
 local STAGE2_WIDE = 1.3 -- stage 2 spreads wider
 local STAGE2_SIZE = 1.15 -- and slightly bigger
 local AURA_RATE = 5
+local UNITS = 7 -- a pet is about 7 units across (U = its largest extent / 7)
 
 PetFx.TAG = TAG
 
@@ -56,93 +57,96 @@ local function rgb(r, g, b)
 end
 
 ----------------------------------------------------------------------
--- The element recipes (sizes / speeds at Scale 1; Color = {t, r, g, b}, Size / Transparency / Squash = {t, v})
+-- The element recipes. Lengths are in pet units U = the pet's largest extent / 7 (about 1 stud for a second
+-- evolution at Scale 1), so the same recipe fits a small first evolution, a big Ascended form and a mesh pet.
+-- Color = { t, r, g, b }; Size / Transparency / Squash = { t, v }; Light = LightEmission.
 ----------------------------------------------------------------------
 local E = {}
--- Flame: little embers that leap out of the pet and float upward, yellow -> orange -> red, fading as they shrink
+-- Flame: embers that leap out of the pet and float up like a campfire's, gold -> orange -> red, shrinking as they cool
 E.Flame = {
-	Rate = 6, Lifetime = { 0.9, 1.5 }, Speed = { 1.4, 2.4 }, Spread = { 70, 70 }, Drag = 2.2,
-	Accel = { 0, 2.6, 0 }, Rot = { 0, 360 }, RotSpeed = { -120, 120 }, Light = 1, Brightness = 1.6,
-	Color = { { 0, 255, 246, 170 }, { 0.35, 255, 170, 60 }, { 1, 255, 84, 40 } },
-	Size = { { 0, 0.05 }, { 0.15, 0.3 }, { 0.6, 0.2 }, { 1, 0 } },
-	Transparency = { { 0, 0.1 }, { 0.7, 0.2 }, { 1, 1 } },
-	Squash = { { 0, 0.6 }, { 1, 0.2 } },
+	Rate = 6, Lifetime = { 1.4, 2.0 }, Speed = { 3.0, 4.4 }, Spread = { 75, 75 }, Drag = 1.6,
+	Accel = { 0, 2.0, 0 }, Rot = { 0, 360 }, RotSpeed = { -140, 140 }, Light = 0.6, Brightness = 1.1,
+	Color = { { 0, 255, 236, 120 }, { 0.35, 255, 150, 40 }, { 1, 240, 70, 40 } },
+	Size = { { 0, 0.2 }, { 0.12, 0.81 }, { 0.6, 0.57 }, { 1, 0 } },
+	Transparency = { { 0, 0.05 }, { 0.7, 0.15 }, { 1, 1 } },
+	Squash = { { 0, 0.7 }, { 1, 0.25 } },
 	LightColor = rgb(255, 170, 90),
 }
--- Frost: soft snowflakes puffed up and drifting slowly down, white with an icy blue edge, turning gently
+-- Frost: soft snowflakes puffed out of the fur that drift slowly down, white with an icy blue edge, turning gently
 E.Frost = {
-	Rate = 5, Lifetime = { 2.0, 2.8 }, Speed = { 1.6, 2.4 }, Spread = { 80, 80 }, Drag = 2.4,
-	Accel = { 0.15, -0.9, 0 }, Rot = { 0, 360 }, RotSpeed = { -50, 50 }, Light = 0.7, Brightness = 1.4,
-	Color = { { 0, 255, 255, 255 }, { 0.5, 214, 246, 255 }, { 1, 160, 220, 255 } },
-	Size = { { 0, 0 }, { 0.12, 0.26 }, { 0.85, 0.22 }, { 1, 0 } },
-	Transparency = { { 0, 0.15 }, { 0.8, 0.25 }, { 1, 1 } },
+	Rate = 5, Lifetime = { 2.2, 3.0 }, Speed = { 3.4, 4.6 }, Spread = { 80, 80 }, Drag = 1.8,
+	Accel = { 0.2, -1.1, 0 }, Rot = { 0, 360 }, RotSpeed = { -50, 50 }, Light = 0.35, Brightness = 1.1,
+	Color = { { 0, 255, 255, 255 }, { 0.5, 200, 240, 255 }, { 1, 140, 210, 255 } },
+	Size = { { 0, 0 }, { 0.1, 0.74 }, { 0.85, 0.65 }, { 1, 0 } },
+	Transparency = { { 0, 0.1 }, { 0.8, 0.2 }, { 1, 1 } },
 	LightColor = rgb(190, 236, 255),
 }
--- Storm: quick electric sparks that crackle outward as short streaks, white-blue -> violet
+-- Storm: quick electric sparks that crackle outward as bright streaks, white-blue -> violet
 E.Storm = {
-	Rate = 7, Lifetime = { 0.25, 0.45 }, Speed = { 4.5, 6.5 }, Spread = { 180, 180 }, Drag = 6,
-	Accel = { 0, 0, 0 }, Rot = { 0, 0 }, RotSpeed = { 0, 0 }, Light = 1, Brightness = 2,
-	Color = { { 0, 236, 248, 255 }, { 0.5, 130, 180, 255 }, { 1, 178, 120, 255 } },
-	Size = { { 0, 0.26 }, { 0.6, 0.18 }, { 1, 0 } },
+	Rate = 7, Lifetime = { 0.45, 0.7 }, Speed = { 8, 11 }, Spread = { 180, 180 }, Drag = 3.2,
+	Accel = { 0, 0, 0 }, Rot = { 0, 0 }, RotSpeed = { 0, 0 }, Light = 0.7, Brightness = 1.1,
+	Color = { { 0, 200, 240, 255 }, { 0.5, 96, 160, 255 }, { 1, 160, 100, 255 } },
+	Size = { { 0, 0.9 }, { 0.6, 0.7 }, { 1, 0 } },
 	Transparency = { { 0, 0 }, { 0.6, 0.1 }, { 1, 1 } },
-	Squash = { { 0, 1.6 }, { 1, 0.8 } },
+	Squash = { { 0, 1.8 }, { 1, 0.9 } },
 	Orientation = "VelocityParallel",
 	LightColor = rgb(150, 176, 255),
 }
--- Nature: little leaves that tumble out and sail down sideways, fresh green -> spring lime
+-- Nature: little leaves that tumble out and sail down sideways on a breeze, fresh green -> spring lime
 E.Nature = {
-	Rate = 5, Lifetime = { 1.8, 2.6 }, Speed = { 1.8, 2.6 }, Spread = { 75, 75 }, Drag = 2.0,
-	Accel = { 0.6, -0.7, 0.2 }, Rot = { 0, 360 }, RotSpeed = { -160, 160 }, Light = 0.35, Brightness = 1.3, Influence = 0.4,
-	Color = { { 0, 150, 236, 110 }, { 0.6, 120, 214, 90 }, { 1, 214, 244, 130 } },
-	Size = { { 0, 0 }, { 0.1, 0.3 }, { 0.85, 0.26 }, { 1, 0 } },
-	Transparency = { { 0, 0 }, { 0.85, 0.1 }, { 1, 1 } },
-	Squash = { { 0, -0.55 }, { 1, -0.55 } },
+	Rate = 5, Lifetime = { 2.0, 2.8 }, Speed = { 3.6, 4.8 }, Spread = { 75, 75 }, Drag = 1.6,
+	Accel = { 0.9, -1.0, 0.3 }, Rot = { 0, 360 }, RotSpeed = { -160, 160 }, Light = 0, Brightness = 1.1, Influence = 0.5,
+	Color = { { 0, 150, 236, 110 }, { 0.6, 120, 216, 92 }, { 1, 214, 244, 130 } },
+	Size = { { 0, 0 }, { 0.08, 0.81 }, { 0.85, 0.7 }, { 1, 0 } },
+	Transparency = { { 0, 0 }, { 0.85, 0.08 }, { 1, 1 } },
+	Squash = { { 0, -0.6 }, { 1, -0.6 } },
 	LightColor = rgb(176, 255, 150),
 }
 -- Water: shiny bubbles that bob upward and swell before they pop, aqua -> sky blue
 E.Water = {
-	Rate = 5, Lifetime = { 1.6, 2.3 }, Speed = { 1.2, 2.0 }, Spread = { 90, 90 }, Drag = 2.2,
-	Accel = { 0, 1.5, 0 }, Rot = { 0, 360 }, RotSpeed = { -40, 40 }, Light = 0.6, Brightness = 1.4,
-	Color = { { 0, 200, 250, 255 }, { 0.6, 110, 206, 255 }, { 1, 160, 236, 255 } },
-	Size = { { 0, 0.06 }, { 0.75, 0.32 }, { 0.92, 0.38 }, { 1, 0 } },
-	Transparency = { { 0, 0.35 }, { 0.75, 0.2 }, { 0.92, 0 }, { 1, 1 } },
+	Rate = 5, Lifetime = { 1.8, 2.5 }, Speed = { 2.8, 4.0 }, Spread = { 90, 90 }, Drag = 1.8,
+	Accel = { 0, 1.8, 0 }, Rot = { 0, 360 }, RotSpeed = { -40, 40 }, Light = 0.25, Brightness = 1.1,
+	Color = { { 0, 150, 236, 255 }, { 0.6, 80, 186, 255 }, { 1, 140, 226, 255 } },
+	Size = { { 0, 0.2 }, { 0.75, 0.84 }, { 0.92, 1 }, { 1, 0 } },
+	Transparency = { { 0, 0.3 }, { 0.75, 0.15 }, { 0.92, 0 }, { 1, 1 } },
 	LightColor = rgb(130, 210, 255),
 }
 -- Earth: golden gem glints kicked up like crystal dust that twinkle and fall back, amber -> mint crystal
 E.Earth = {
-	Rate = 5, Lifetime = { 1.2, 1.7 }, Speed = { 2.6, 3.4 }, Spread = { 45, 45 }, Drag = 1.2,
-	Accel = { 0, -3.2, 0 }, Rot = { 0, 0 }, RotSpeed = { 0, 0 }, Light = 0.8, Brightness = 1.6,
-	Color = { { 0, 255, 226, 140 }, { 0.5, 255, 190, 96 }, { 1, 170, 240, 200 } },
-	Size = { { 0, 0 }, { 0.15, 0.3 }, { 0.35, 0.12 }, { 0.55, 0.28 }, { 0.8, 0.1 }, { 1, 0 } },
-	Transparency = { { 0, 0 }, { 0.85, 0.1 }, { 1, 1 } },
+	Rate = 5, Lifetime = { 1.3, 1.8 }, Speed = { 5.0, 6.4 }, Spread = { 50, 50 }, Drag = 1.0,
+	Accel = { 0, -5.0, 0 }, Rot = { 0, 0 }, RotSpeed = { 0, 0 }, Light = 0.5, Brightness = 1.1,
+	Color = { { 0, 255, 220, 110 }, { 0.5, 255, 180, 70 }, { 1, 120, 230, 180 } },
+	Size = { { 0, 0 }, { 0.15, 0.84 }, { 0.35, 0.35 }, { 0.55, 0.78 }, { 0.8, 0.3 }, { 1, 0 } },
+	Transparency = { { 0, 0 }, { 0.85, 0.08 }, { 1, 1 } },
 	LightColor = rgb(255, 210, 140),
 }
--- Celestial: twinkling star motes that drift around the pet and rise, white-gold
+-- Celestial: twinkling star motes that float out around the pet and rise, white-gold
 E.Celestial = {
-	Rate = 6, Lifetime = { 1.6, 2.4 }, Speed = { 2.2, 3.0 }, Spread = { 180, 180 }, Drag = 2.6,
-	Accel = { 0, 0.5, 0 }, Rot = { 0, 0 }, RotSpeed = { 0, 0 }, Light = 1, Brightness = 1.8,
-	Color = { { 0, 255, 255, 236 }, { 0.5, 255, 232, 150 }, { 1, 255, 206, 120 } },
-	Size = { { 0, 0 }, { 0.15, 0.32 }, { 0.3, 0.14 }, { 0.5, 0.3 }, { 0.7, 0.12 }, { 0.85, 0.26 }, { 1, 0 } },
+	Rate = 6, Lifetime = { 1.8, 2.6 }, Speed = { 4.6, 6.0 }, Spread = { 180, 180 }, Drag = 2.0,
+	Accel = { 0, 0.6, 0 }, Rot = { 0, 0 }, RotSpeed = { 0, 0 }, Light = 0.6, Brightness = 1.1,
+	Color = { { 0, 255, 250, 210 }, { 0.5, 255, 222, 110 }, { 1, 255, 190, 90 } },
+	Size = { { 0, 0 }, { 0.15, 0.94 }, { 0.3, 0.41 }, { 0.5, 0.89 }, { 0.7, 0.35 }, { 0.85, 0.76 }, { 1, 0 } },
 	Transparency = { { 0, 0 }, { 0.85, 0.05 }, { 1, 1 } },
 	LightColor = rgb(255, 236, 170),
 }
 -- Shadow: soft violet wisps that curl upward and stretch thin, violet -> magenta
 E.Shadow = {
-	Rate = 5, Lifetime = { 1.5, 2.1 }, Speed = { 0.8, 1.4 }, Spread = { 90, 90 }, Drag = 1.5,
-	Accel = { 0, 1.4, 0 }, Rot = { -15, 15 }, RotSpeed = { -30, 30 }, Light = 0.5, Brightness = 1.5,
-	Color = { { 0, 150, 96, 230 }, { 0.5, 186, 110, 255 }, { 1, 236, 120, 214 } },
-	Size = { { 0, 0.1 }, { 0.5, 0.38 }, { 1, 0.2 } },
-	Transparency = { { 0, 1 }, { 0.2, 0.35 }, { 0.7, 0.45 }, { 1, 1 } },
+	Rate = 5, Lifetime = { 1.6, 2.2 }, Speed = { 2.6, 3.6 }, Spread = { 90, 90 }, Drag = 1.4,
+	Accel = { 0, 1.8, 0 }, Rot = { -15, 15 }, RotSpeed = { -30, 30 }, Light = 0.1, Brightness = 1.1,
+	Color = { { 0, 120, 70, 210 }, { 0.5, 168, 90, 240 }, { 1, 230, 100, 200 } },
+	Size = { { 0, 0.34 }, { 0.5, 1.22 }, { 1, 0.61 } },
+	Transparency = { { 0, 1 }, { 0.2, 0.3 }, { 0.7, 0.4 }, { 1, 1 } },
 	Squash = { { 0, 0.4 }, { 1, 1.4 } },
 	LightColor = rgb(196, 140, 255),
 }
 PetFx.Elements = E
 
--- the second evolution's aura: a shell of glints around the pet in its Glow / GlowB colours that twinkle and turn
+-- the second evolution's aura: a shell of glints around the pet in its Glow / GlowB colours that twinkle and turn,
+-- locked to the pet so it travels with it
 local AURA = {
-	Lifetime = { 1.4, 2.0 }, Speed = { 3.2, 4.0 }, Spread = { 180, 180 }, Drag = 2.2,
-	Accel = { 0, 0.4, 0 }, Rot = { 0, 360 }, RotSpeed = { -90, 90 }, Light = 1, Brightness = 1.8, Locked = true,
-	Size = { { 0, 0 }, { 0.2, 0.36 }, { 0.4, 0.18 }, { 0.6, 0.34 }, { 0.8, 0.16 }, { 1, 0 } },
+	Lifetime = { 1.5, 2.1 }, Speed = { 6.0, 7.2 }, Spread = { 180, 180 }, Drag = 2.2,
+	Accel = { 0, 0.4, 0 }, Rot = { 0, 360 }, RotSpeed = { -90, 90 }, Light = 0.4, Brightness = 1.1, Locked = true,
+	Size = { { 0, 0 }, { 0.2, 0.97 }, { 0.4, 0.46 }, { 0.6, 0.92 }, { 0.8, 0.41 }, { 1, 0 } },
 	Transparency = { { 0, 0 }, { 0.8, 0.05 }, { 1, 1 } },
 }
 
@@ -541,6 +545,19 @@ function PetFx.Apply(model, look, stage, opts)
 	end
 	local element = PetFx.ElementOf(look, opts.Element)
 	local spec = PetFx.Spec(element, stage, detail)
+	-- the pet's own size and visual centre (the Body root sits low, near the belly)
+	local unit, centre = scale, nil
+	local okBox, cf, size = pcall(function()
+		local c, sz = model:GetBoundingBox()
+		return c, sz
+	end)
+	if okBox and typeof(size) == "Vector3" then
+		local m = math.max(size.X, size.Y, size.Z)
+		if m > 0 and m < 1e4 then
+			unit = m / UNITS
+			centre = root.CFrame:PointToObjectSpace(cf.Position)
+		end
+	end
 
 	local fx = Instance.new("Attachment")
 	fx.Name = FX_NAME
@@ -548,17 +565,21 @@ function PetFx.Apply(model, look, stage, opts)
 	fx:SetAttribute("Element", element)
 	fx:SetAttribute("Detail", detail)
 	fx:SetAttribute("Rate", spec.Rate)
+	fx:SetAttribute("Unit", unit)
+	if centre then
+		fx.Position = centre
+	end
 
-	local emitters = { makeEmitter("FxMain", spec.Main, scale, spec.Wide, spec.Grow) }
+	local emitters = { makeEmitter("FxMain", spec.Main, unit, spec.Wide, spec.Grow) }
 	if spec.Aura then
 		local a, b = glowColors(model, look, element)
 		local aura = copy(spec.Aura)
 		aura.ColorSeq = ColorSequence.new({
-			ColorSequenceKeypoint.new(0, a:Lerp(rgb(255, 255, 255), 0.35)),
+			ColorSequenceKeypoint.new(0, a:Lerp(rgb(255, 255, 255), 0.1)),
 			ColorSequenceKeypoint.new(0.5, a),
 			ColorSequenceKeypoint.new(1, b),
 		})
-		emitters[2] = makeEmitter("FxAura", aura, scale, spec.Wide, spec.Grow)
+		emitters[2] = makeEmitter("FxAura", aura, unit, spec.Wide, spec.Grow)
 	end
 	local low = isClient() and PetFx.Quality() == "Low"
 	for _, pe in ipairs(emitters) do

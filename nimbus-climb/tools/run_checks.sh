@@ -81,6 +81,10 @@ if [ $do_static -eq 1 ]; then
 	else
 		record "Static analysis (tools/check.mjs)" "FAILED (node / npm missing)"
 	fi
+
+	if need python3 "install Python 3"; then
+		step "Upload tool tests (tools/test_upload_assets.py, offline)" python3 tools/test_upload_assets.py
+	fi
 fi
 
 if [ $do_smoke -eq 1 ]; then

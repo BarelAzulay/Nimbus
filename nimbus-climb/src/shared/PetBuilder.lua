@@ -6836,7 +6836,7 @@ function PetBuilder.Build(petDef, opts)
 	end
 	-- Phase 6 (contract 6.4): auras, particles and lights of evolved pets (both the Part and the mesh path)
 	if stage > 0 and PetFx and opts.NoFx ~= true then
-		PetFx.Apply(model, look, stage, { Detail = detail, Scale = scale })
+		PetFx.Apply(model, look, stage, { Detail = detail, Scale = scale, Viewport = opts.Viewport, Fx = opts.Fx, Element = opts.Element })
 	end
 	return model
 end

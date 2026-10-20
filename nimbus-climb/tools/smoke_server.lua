@@ -806,7 +806,7 @@ S.boot = guarded("boot", function()
 		local cr, cg, cb = rgb255(atm.Color)
 		T.check(cb >= cr, "Atmosphere.Color is blue-grey", string.format("%.0f,%.0f,%.0f", cr, cg, cb))
 		local dr, dg, db = rgb255(atm.Decay)
-		T.check(db >= dr, "Atmosphere.Decay is violet (the pink-purple sky)", string.format("%.0f,%.0f,%.0f", dr, dg, db))
+		T.check(dr >= db, "Atmosphere.Decay is a warm peach horizon (P4)", string.format("%.0f,%.0f,%.0f", dr, dg, db))
 	end
 	local bloom = Lighting:FindFirstChildOfClass("BloomEffect")
 	if bloom then

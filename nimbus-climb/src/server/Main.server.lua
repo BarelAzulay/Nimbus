@@ -19,6 +19,7 @@ local Workspace = game:GetService("Workspace")
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Config = require(Shared.Config)
 local Remotes = require(Shared.Remotes)
+do local okMesh, MeshLibrary = pcall(require, Shared:WaitForChild("MeshLibrary", 5)) if okMesh and type(MeshLibrary) == "table" then MeshLibrary.Start() end end -- Phase 6: Blender meshes (no-op while MeshIds is empty)
 
 local Services = script.Parent:WaitForChild("Services")
 

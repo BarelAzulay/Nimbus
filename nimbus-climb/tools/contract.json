@@ -837,6 +837,31 @@
         "Effective",
         "Resolve"
       ]
+    },
+    "shared/MeshLibrary": {
+      "optional": true,
+      "functions": [
+        "Start",
+        "IsReady",
+        "Status",
+        "OnReady",
+        "EvalColor",
+        "Assemble",
+        "Tag",
+        "Dress",
+        "Swap"
+      ],
+      "fields": [
+        "Changed"
+      ]
+    },
+    "shared/PetFx": {
+      "optional": true,
+      "functions": [
+        "Apply",
+        "Clear"
+      ],
+      "fields": []
     }
   },
   "scripts": [

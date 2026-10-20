@@ -1367,7 +1367,7 @@ the Gate Court, a home with its garden, a Dungeon room, the Storm Altar or the s
 ```
 default.project.json   Rojo project           play/NimbusClimb.rbxlx   ready-made place file
 Start-Rojo-*           one-click launchers    branding/                game icon, Stormfang art, branding/sky (the 6 sky images)
-blender/               Blender scripts (blender/sky/render_sky.py paints the sky)
+blender/               Blender models (build_all.py builds every model, see blender/README.md) and the sky
 tools/                 syntax check, static analysis, smoke test (see "Tests"), tycoon economy sim, battle sim,
                        place verifier, model and GUI renderers
 ARCHITECTURE.md, ARCHITECTURE_V2.md, ARCHITECTURE_V3.md   module contracts (the newest wins where they differ)
@@ -1378,6 +1378,8 @@ src/shared   Config (every number)  TycoonCatalog (every tycoon number)  Theme  
              unlocks)  UpdateNotes (menu notes + tips)  BattleCatalog (every battle and Dungeon number)  BattleSim (the
              battle simulation)  BossBuilder  WorldStyle (gates, plinths, the art rules)  HomeRoam (the roaming plan
              of garden pets, shared by server and clients)  TokenLook (the coin look of tokens and Cloud Cash)
+             MeshLibrary (loads the Blender models)  MeshIds (generated: model asset ids)  MeshManifests (generated:
+             one module per Blender model)  PetFx (the auras and effects of evolved pets)
 src/server   Main.server.lua; Services: Lighting, LobbyBuilder, StormAltar, Player (the spawn after PLAY), Data,
              Damage, Token, Hazard, Course (layout + builder), Match, Portal, Gate (the Gate Court gates), Spot, Pet,
              Item, Index, Tutorial, Npc, Dev, Tycoon, HomeBuilder, PetCare, Fusion, Gem, ArenaBuilder, Battle, Event,

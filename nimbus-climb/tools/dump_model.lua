@@ -1653,6 +1653,66 @@ do
 end
 -- [owner: kit] end
 
+-- [owner: evofx] begin
+-- (Phase 6 PetFx) petfx:<petId>[:evo|evo2|evolow|evo2low]  the evolved pet with its effects; besides the usual parts
+-- dump it writes <DUMP.out>.fx.json: every ParticleEmitter / PointLight under Body.PetFx with its world position and
+-- the properties the scratch particle preview needs (rates, lifetimes, speeds, curves, colours, light).
+do
+	local function seqJson(seq)
+		local out = {}
+		for i, k in ipairs(seq.Keypoints) do
+			local v = k.Value
+			if typeof(v) == "Color3" then
+				out[i] = arr({ k.Time, v.R, v.G, v.B })
+			else
+				out[i] = arr({ k.Time, v })
+			end
+		end
+		return "[" .. table.concat(out, ",") .. "]"
+	end
+	BUILDERS.petfx = function(a, b)
+		local entry = catalogPet(a, detailOf(b or "evo2"))
+		local model = entry.root
+		local body = model and model:FindFirstChild("Body")
+		local fx = body and body:FindFirstChild("PetFx")
+		local items = {}
+		if fx then
+			local at = fx.WorldPosition or body.Position
+			for _, c in ipairs(fx:GetChildren()) do
+				if c:IsA("ParticleEmitter") then
+					items[#items + 1] = table.concat({
+						"{\"class\":\"ParticleEmitter\",\"name\":", str(c.Name), ",\"pos\":", arr({ at.X, at.Y, at.Z }),
+						",\"rate\":", num(c.Rate), ",\"life\":", arr({ c.Lifetime.Min, c.Lifetime.Max }),
+						",\"speed\":", arr({ c.Speed.Min, c.Speed.Max }), ",\"spread\":", arr({ c.SpreadAngle.X, c.SpreadAngle.Y }),
+						",\"drag\":", num(c.Drag), ",\"accel\":", arr({ c.Acceleration.X, c.Acceleration.Y, c.Acceleration.Z }),
+						",\"rot\":", arr({ c.Rotation.Min, c.Rotation.Max }), ",\"rotspeed\":", arr({ c.RotSpeed.Min, c.RotSpeed.Max }),
+						",\"size\":", seqJson(c.Size), ",\"transparency\":", seqJson(c.Transparency), ",\"squash\":", seqJson(c.Squash),
+						",\"color\":", seqJson(c.Color), ",\"lightEmission\":", num(c.LightEmission), ",\"brightness\":", num(c.Brightness),
+						",\"orientation\":", str(tostring(c.Orientation.Name or c.Orientation)), ",\"locked\":", tostring(c.LockedToPart),
+						",\"enabled\":", tostring(c.Enabled), "}",
+					})
+				elseif c:IsA("PointLight") then
+					local col = c.Color
+					items[#items + 1] = table.concat({
+						"{\"class\":\"PointLight\",\"pos\":", arr({ at.X, at.Y, at.Z }), ",\"brightness\":", num(c.Brightness),
+						",\"range\":", num(c.Range), ",\"color\":", arr({ col.R, col.G, col.B }), "}",
+					})
+				end
+			end
+		end
+		if ARGS.out and ARGS.out ~= "" then
+			local fh = io.open(tostring(ARGS.out) .. ".fx.json", "w")
+			if fh then
+				fh:write("{\"pet\":", str(a), ",\"element\":", str(fx and fx:GetAttribute("Element") or ""), ",\"stage\":",
+					tostring(fx and fx:GetAttribute("Stage") or 0), ",\"items\":[", table.concat(items, ","), "]}")
+				fh:close()
+			end
+		end
+		return { entry }
+	end
+end
+-- [owner: evofx] end
+
 ----------------------------------------------------------------------
 -- main
 ----------------------------------------------------------------------
