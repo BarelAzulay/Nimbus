@@ -182,7 +182,7 @@ def plot_cost(tier, mans, est=None):
                 use = mans[low]
             elif est is not None and low in est:
                 use = est[low]
-            else:
+            elif not key.startswith("home_bed_"):  # bed pieces (<= 120 tris each) keep their High key: no _low asked
                 missing.append(low)
         tris += n * use["tris"]
         parts += n * use["parts"]

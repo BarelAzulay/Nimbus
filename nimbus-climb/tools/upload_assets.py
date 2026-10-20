@@ -36,15 +36,29 @@ Rules (recipe 4.7):
   * changed and the structureHash is the same as the uploaded one -> PATCH (a new version, same id: running servers
     keep their copy, new servers load the new one). Structure changed -> a NEW asset (POST), so the key's id changes in
     the same commit as its manifest and an old server never loads a mesh its manifest does not describe.
+  * images (--textures) are NEVER updated in place: Open Cloud content updates are Model-only, so a changed PNG (any
+    contentHash change, same size or not; the structureHash is the image's size + pixel format) is a NEW asset whose
+    id replaces the old one in TextureIds.lua. --force on an unchanged, uploaded image is refused (a duplicate).
+  * the FBX must be the one the kit exported for this contentHash: meshes.json "fbxSha256" (written by an export
+    build, null after a --no-export build) or, for older entries, blender/out/<key>.manifest.json (verify ok + same
+    contentHash). A stale FBX is refused, never uploaded under the new hashes.
   * every call returns an operation; it is polled until done. A poll that times out is saved and RESUMED by the next
     run (no duplicate assets after a crash or Ctrl-C).
-  * HTTP 429 (retry-after honoured) and 5xx / network errors are retried with backoff; a client-side throttle keeps
-    writes under the documented 120 / minute and operation reads under 300 / minute.
+  * HTTP 429 (retry-after honoured) and 5xx / network errors are retried with backoff (reads and PATCH). A CREATE
+    (POST) is retried only when Roblox cannot have made the asset (429, 503, or the request never got out). After a
+    500 / 502 / 504 or a dropped connection once the upload was sent, or a crash mid-POST, the key is marked
+    "pendingCreate" in upload_state.json and REFUSED until the owner checked Creator Hub for it:
+        --adopt KEY=ASSETID   it was created: record that id (no new upload)
+        --not-created KEY     it is not there: forget the mark, the run creates it again
+    (no duplicate assets in the owner's inventory).
+  * a client-side throttle keeps writes under the documented 120 / minute and operation reads under 300 / minute.
+  * one key's failure (any error) is recorded as its lastError and the batch goes on (exit 1 at the end).
   * the creator recorded in upload_state.json is never switched.
 Python 3 standard library only.
 """
 import argparse
 import hashlib
+import http.client
 import json
 import os
 import re
@@ -76,6 +90,10 @@ KEY_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 
 class UploadError(Exception):
     pass
+
+
+class CreateUnknown(UploadError):
+    """a POST create whose outcome is unknown (the asset may exist): never retried blindly"""
 
 
 class Refusal(SystemExit):
@@ -175,7 +193,9 @@ class Client:
         else:
             self.opener = urllib.request.build_opener()  # honours HTTPS_PROXY and the system CA settings
 
-    def request(self, method, path, body=None, content_type=None, write=False, describe=None):
+    def request(self, method, path, body=None, content_type=None, write=False, describe=None, idempotent=True):
+        """One API call with retries. idempotent=False (the POST create): retried only when Roblox cannot have made the
+        asset; an unknown outcome raises CreateUnknown instead of a second POST (which would duplicate the asset)."""
         url = self.base_url + path
         headers = {"x-api-key": self.api_key, "Accept": "application/json"}
         if content_type:
@@ -187,30 +207,49 @@ class Client:
                 print("      " + line)
             return None
         delay = 2.0
+        unknown = "the upload was sent, so the asset may exist now"
         for attempt in range(1, MAX_ATTEMPTS + 1):
             (self.writes if write else self.reads).wait()
             req = urllib.request.Request(url, data=body, method=method, headers=headers)
+            wait = delay
             try:
                 with self.opener.open(req, timeout=120) as resp:
                     raw = resp.read()
+                try:
                     return json.loads(raw.decode("utf-8")) if raw else {}
+                except ValueError:
+                    if not idempotent:
+                        raise CreateUnknown("unreadable answer to %s %s (%s)" % (method, path, unknown))
+                    self.log("  unreadable answer on %s %s, retry %d/%d in %.1f s" % (method, path, attempt, MAX_ATTEMPTS, wait))
             except urllib.error.HTTPError as e:
-                text = e.read().decode("utf-8", "replace")
-                if e.code == 429 or 500 <= e.code < 600:
-                    ra = e.headers.get("retry-after")
-                    try:
-                        wait = float(ra) if ra else delay
-                    except ValueError:
-                        wait = delay
-                    self.log("  HTTP %d on %s %s, retry %d/%d in %.1f s" % (e.code, method, path, attempt, MAX_ATTEMPTS, wait))
-                    time.sleep(min(wait, 120.0))
-                    delay = min(delay * 2, 60.0)
-                    continue
-                raise UploadError("HTTP %d on %s %s: %s" % (e.code, method, path, text[:400]))
+                try:
+                    text = e.read().decode("utf-8", "replace")
+                except Exception:  # noqa: BLE001 - the error body is only for the message
+                    text = ""
+                transient = e.code == 429 or 500 <= e.code < 600
+                if not transient:
+                    raise UploadError("HTTP %d on %s %s: %s" % (e.code, method, path, text[:400]))
+                if not idempotent and e.code not in (429, 503):
+                    # 500 / 502 / 504 can come from a gateway AFTER the backend accepted the upload
+                    raise CreateUnknown("HTTP %d on %s %s (%s)" % (e.code, method, path, unknown))
+                ra = e.headers.get("retry-after") if e.headers else None
+                try:
+                    wait = float(ra) if ra else delay
+                except ValueError:
+                    wait = delay
+                self.log("  HTTP %d on %s %s, retry %d/%d in %.1f s" % (e.code, method, path, attempt, MAX_ATTEMPTS, wait))
             except urllib.error.URLError as e:
-                self.log("  network error on %s %s (%s), retry %d/%d in %.1f s" % (method, path, e.reason, attempt, MAX_ATTEMPTS, delay))
-                time.sleep(delay)
-                delay = min(delay * 2, 60.0)
+                # urllib wraps only the errors of connecting / SENDING the request: Roblox never got a whole request,
+                # so a retry cannot duplicate anything (also for the POST create)
+                self.log("  network error on %s %s (%s), retry %d/%d in %.1f s" % (method, path, e.reason, attempt, MAX_ATTEMPTS, wait))
+            except (http.client.HTTPException, OSError) as e:
+                # raised raw by getresponse() / read() AFTER the request went out: RemoteDisconnected,
+                # ConnectionResetError, socket.timeout / TimeoutError, IncompleteRead ...
+                if not idempotent:
+                    raise CreateUnknown("%s on %s %s (%s)" % (type(e).__name__, method, path, unknown))
+                self.log("  connection error on %s %s (%s), retry %d/%d in %.1f s" % (method, path, type(e).__name__, attempt, MAX_ATTEMPTS, wait))
+            time.sleep(min(wait, 120.0))
+            delay = min(delay * 2, 60.0)
         raise UploadError("gave up on %s %s after %d attempts" % (method, path, MAX_ATTEMPTS))
 
 
@@ -254,24 +293,34 @@ def creator_block(creator_type, creator_id):
 
 # ------------------------------------------------------------------------------------------------ the work
 def plan(key, entry, record):
-    """-> (action, reason): action in create | update | new-asset | skip | resume"""
+    """-> (action, reason): action in create | update | new-asset | skip | resume | unknown"""
     if record.get("pendingOperation"):
         return "resume", "operation %s still pending" % record["pendingOperation"]
+    if record.get("pendingCreate"):
+        return "unknown", "a create of %s may have reached Roblox (%s)" % (key, record["pendingCreate"].get("why") or "interrupted")
     content = entry.get("contentHash")
     struct = entry.get("structureHash")
     if not record.get("assetId"):
         return "create", "no asset yet"
     if record.get("contentHash") == content and content:
         return "skip", "unchanged (contentHash %s)" % str(content)[:12]
+    if CLASS["file"] == "png":
+        # Open Cloud updates the content of Models only: a changed image (same size or not) is always a new asset
+        what = "same size" if struct and record.get("structureHash") == struct else "size / format changed"
+        return "new-asset", "image changed (%s): images cannot be updated in place -> a NEW asset, the id changes" % what
     if struct and record.get("structureHash") == struct:
         return "update", "content changed, same structure -> new version of %s" % record["assetId"]
     return "new-asset", "structure changed (%s -> %s): a NEW asset, the id changes" % (str(record.get("structureHash"))[:12], str(struct)[:12])
 
 
 # the asset classes: meshes (the default) and the Image class (--textures)
+# FBX export needs bpy: the Blender python of blender/README.md, never plain python3 (no bpy) or --no-export (no FBX)
+BLENDER_PY = "/tmp/claude-0/bpyenv/bin/python"
+BUILD_MESH = BLENDER_PY + " blender/build_all.py --key %s  (the Blender python of blender/README.md; not --no-export: it writes no FBX)"
+BUILD_ALL = BLENDER_PY + " blender/build_all.py --all  (the Blender python of blender/README.md; not --no-export: it writes no FBX)"
 CLASSES = {
     "mesh": {"index": ("blender", "meshes.json"), "state": ("blender", "upload_state.json"), "lua": ("src", "shared", "MeshIds.lua"),
-             "assetType": "Model", "ext": ".fbx", "mime": "model/fbx", "file": "fbx", "build": "python3 blender/build_all.py --key %s"},
+             "assetType": "Model", "ext": ".fbx", "mime": "model/fbx", "file": "fbx", "build": BUILD_MESH},
     "image": {"index": ("blender", "textures", "textures.json"), "state": ("blender", "textures", "upload_state.json"),
               "lua": ("src", "shared", "TextureIds.lua"), "assetType": "Decal", "ext": ".png", "mime": "image/png", "file": "png",
               "build": "python3 blender/textures/build_vortex.py  (%s)"},
@@ -304,7 +353,7 @@ def check_entry(root, key, entry):
         return path, size
     path = fbx_path(root, key, entry)
     if not os.path.isfile(path):
-        raise UploadError("missing %s (build it: python3 blender/build_all.py --key %s)" % (os.path.relpath(path, root), key))
+        raise UploadError("missing %s (build it: %s)" % (os.path.relpath(path, root), CLASS["build"] % key))
     if not path.lower().endswith(".fbx"):
         raise UploadError("%s: only .fbx (content updates are FBX-only)" % path)
     size = os.path.getsize(path)
@@ -315,7 +364,35 @@ def check_entry(root, key, entry):
         raise UploadError("a mesh of %s has %s triangles (limit %d per mesh)" % (key, tris, MAX_TRIANGLES_PER_MESH))
     if not entry.get("contentHash") or not entry.get("structureHash"):
         raise UploadError("%s: meshes.json has no contentHash / structureHash (rebuild with the kit)" % key)
+    check_fbx_fresh(root, key, entry, path)
     return path, size
+
+
+def check_fbx_fresh(root, key, entry, path):
+    """the FBX on disk must be the one the kit exported for this contentHash (review3 tooling-0): a --no-export build
+    rewrites meshes.json + the manifests but leaves an older FBX behind, which must never go up under the new hashes"""
+    stale = "%s: %s was not exported from this contentHash (%s); rebuild it: %s"
+    rel = os.path.relpath(path, root)
+    if "fbxSha256" in entry:  # written by every build_all run since review3: the sha of the verified FBX, null = none
+        want = entry.get("fbxSha256")
+        if not want:
+            raise UploadError(stale % (key, rel, "the last build was --no-export", CLASS["build"] % key))
+        if sha256_file(path) != want:
+            raise UploadError(stale % (key, rel, "its sha256 is not meshes.json fbxSha256", CLASS["build"] % key))
+        return
+    man_path = os.path.join(os.path.dirname(path), key + ".manifest.json")
+    try:
+        with open(man_path, encoding="utf-8") as f:
+            man = json.load(f)
+    except (OSError, ValueError):
+        raise UploadError(stale % (key, rel, "no readable blender/out/%s.manifest.json" % key, CLASS["build"] % key))
+    verify = man.get("verify") if isinstance(man, dict) else None
+    if not isinstance(verify, dict) or not verify.get("ok"):
+        raise UploadError(stale % (key, rel, "its manifest has no FBX verify: a --no-export build", CLASS["build"] % key))
+    if man.get("contentHash") != entry.get("contentHash"):
+        raise UploadError(stale % (key, rel, "its manifest has another contentHash", CLASS["build"] % key))
+    if verify.get("sha256") and verify["sha256"] != sha256_file(path):
+        raise UploadError(stale % (key, rel, "its sha256 is not the verified one", CLASS["build"] % key))
 
 
 def request_json(key, entry, creator, asset_id):
@@ -336,8 +413,13 @@ def upload_one(client, key, entry, record, creator, root, args, log):
             log("    (dry run: the real run polls operation %s first)" % record["pendingOperation"])
             return record
         return finish(client, key, record, args, log)
+    if action == "unknown":
+        raise UploadError(unknown_hint(key, record["pendingCreate"]))
     if action == "skip" and not args.force:
         return record
+    if action == "skip" and CLASS["file"] == "png":
+        raise UploadError("--force on the uploaded image %s refused: images are never updated in place, so it would only "
+                          "make a duplicate asset (change the PNG to upload a new one)" % key)
     path, size = check_entry(root, key, entry)
     asset_id = record.get("assetId") if action in ("update", "skip") else None
     req = request_json(key, entry, creator, asset_id)
@@ -354,21 +436,66 @@ def upload_one(client, key, entry, record, creator, root, args, log):
         "part 'fileContent': %s; %s; %d bytes; sha256 %s" % (os.path.relpath(path, root), CLASS["mime"], size, sha256_file(path)[:16]),
         "then GET %s until done -> assetId / revisionId / moderationResult" % OPERATION_PATH,
     ]
-    op = client.request(method, api_path, body=body, content_type=ctype, write=True, describe=describe)
+    file_sha = sha256_file(path)
+    if method == "POST" and not args.dry_run:
+        # written BEFORE the POST (review3 tooling-2/3): if the outcome is unknown (gateway 5xx, dropped connection,
+        # crash, Ctrl-C) the next run refuses this key until the owner checked Creator Hub (--adopt / --not-created)
+        record["pendingCreate"] = {"displayName": req["displayName"], "contentHash": entry.get("contentHash"),
+                                   "structureHash": entry.get("structureHash"), "fileSha256": file_sha,
+                                   "startedAt": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()), "why": "interrupted"}
+        args.save()
+    try:
+        op = client.request(method, api_path, body=body, content_type=ctype, write=True, describe=describe,
+                            idempotent=(method != "POST"))
+    except CreateUnknown as e:
+        record["pendingCreate"]["why"] = str(e)
+        raise UploadError(unknown_hint(key, record["pendingCreate"]))
+    except UploadError:
+        record.pop("pendingCreate", None)  # refused / never sent: nothing was created
+        raise
     if args.dry_run:
         return record
     op_path = (op or {}).get("path") or ""
     if not op_path.startswith("operations/"):
+        if method == "POST":
+            record["pendingCreate"]["why"] = "answer without an operation path"
+            raise UploadError(unknown_hint(key, record["pendingCreate"]) + " | answer: %s" % json.dumps(op)[:200])
         raise UploadError("unexpected response (no operation path): %s" % json.dumps(op)[:300])
+    record.pop("pendingCreate", None)
     record["pendingOperation"] = op_path.split("/", 1)[1]
     record["pendingMode"] = "update" if asset_id else "create"
     record["pendingContentHash"] = entry.get("contentHash")
     record["pendingStructureHash"] = entry.get("structureHash")
-    record["pendingFileSha256"] = sha256_file(path)
+    record["pendingFileSha256"] = file_sha
     if record.get("assetId") and not asset_id:
         record["pendingReplaces"] = record["assetId"]
     args.save()  # an interrupted poll is resumed, never re-uploaded
     return finish(client, key, record, args, log)
+
+
+def unknown_hint(key, pc):
+    return ("the create of %s may have reached Roblox (%s, started %s). Do NOT upload it again blindly: look in Creator "
+            "Hub > Creations for a model/decal named \"%s\" made then. Found it: re-run with --adopt %s=<its id>. Not "
+            "there: re-run with --not-created %s" % (key, pc.get("why"), pc.get("startedAt"), pc.get("displayName"), key, key))
+
+
+def adopt(key, record, asset_id, log):
+    """--adopt KEY=ID: the unknown create did make asset ID; record it as if its operation had finished"""
+    pc = record.pop("pendingCreate")
+    old = record.get("assetId")
+    if old and int(old) != asset_id:
+        record.setdefault("previousAssetIds", []).append(int(old))
+        if record.get("decalAssetId"):
+            record["previousAssetIds"].append(int(record.pop("decalAssetId")))
+    record["assetId"] = asset_id
+    record["contentHash"] = pc.get("contentHash")
+    record["structureHash"] = pc.get("structureHash")
+    record["fileSha256"] = pc.get("fileSha256")
+    record["revisionId"] = None
+    record["moderationState"] = None
+    record["uploadedAt"] = pc.get("startedAt")
+    record.pop("lastError", None)
+    log("  adopted asset %d for %s (the create of %s)" % (asset_id, key, pc.get("startedAt")))
 
 
 def finish(client, key, record, args, log):
@@ -402,6 +529,10 @@ def finish(client, key, record, args, log):
         raise UploadError("a PATCH of %s answered with asset %s - refusing to record it" % (record["assetId"], new_id))
     if replaces:
         record.setdefault("previousAssetIds", []).append(int(replaces))
+        if record.get("decalAssetId"):  # an image whose Image id had been swapped in by hand (OWNER_UPLOAD.md 6)
+            record["previousAssetIds"].append(int(record.pop("decalAssetId")))
+    if CLASS["file"] == "png" and mode == "create":
+        log("  NOTE: a new image id: check it is the Image id, not the Decal id (docs/phase6/OWNER_UPLOAD.md section 6)")
     record["assetId"] = new_id
     record["revisionId"] = resp.get("revisionId")
     record["revisionCreateTime"] = resp.get("revisionCreateTime")
@@ -462,6 +593,10 @@ def parse_args(argv):
     ap.add_argument("--refresh", action="store_true", help="only re-read revision + moderation of known assets")
     ap.add_argument("--force", action="store_true", help="upload even when the contentHash is unchanged")
     ap.add_argument("--textures", action="store_true", help="the Image class: blender/textures/textures.json -> TextureIds.lua")
+    ap.add_argument("--adopt", action="append", default=[], metavar="KEY=ASSETID",
+                    help="a create whose outcome was unknown DID make this asset (seen in Creator Hub): record its id")
+    ap.add_argument("--not-created", action="append", default=[], metavar="KEY",
+                    help="a create whose outcome was unknown made NO asset (checked in Creator Hub): create it again")
     ap.add_argument("--poll-timeout", type=float, default=300)
     ap.add_argument("--root", default=DEFAULT_ROOT, help=argparse.SUPPRESS)
     ap.add_argument("--base-url", default=BASE_URL, help=argparse.SUPPRESS)  # tests: the local fake API
@@ -470,6 +605,16 @@ def parse_args(argv):
         raise Refusal("--upload and --dry-run together: pick one")
     args.dry_run = not args.upload
     args.only = [k.strip() for item in args.only for k in item.split(",") if k.strip()]
+    args.not_created = [k.strip() for item in args.not_created for k in item.split(",") if k.strip()]
+    adopt_ids = {}
+    for item in args.adopt:
+        key, _, aid = item.partition("=")
+        if not KEY_RE.match(key.strip()) or not aid.strip().isdigit() or int(aid) <= 0:
+            raise Refusal("--adopt takes KEY=ASSETID (the number from Creator Hub), not %r" % item)
+        adopt_ids[key.strip()] = int(aid)
+    args.adopt = adopt_ids
+    if set(args.adopt) & set(args.not_created):
+        raise Refusal("--adopt and --not-created name the same key: pick one")
     return args
 
 
@@ -484,7 +629,7 @@ def main(argv=None):
     if not os.path.isfile(index_path):
         if args.textures:
             raise Refusal("no %s yet (build the textures first: python3 blender/textures/build_vortex.py)" % os.path.relpath(index_path, root))
-        raise Refusal("no %s yet (build the meshes first: python3 blender/build_all.py --all)" % os.path.relpath(index_path, root))
+        raise Refusal("no %s yet (build the meshes first: %s)" % (os.path.relpath(index_path, root), BUILD_ALL))
     assets = load_index(index_path)
     try:
         with open(state_path, encoding="utf-8") as f:
@@ -511,6 +656,12 @@ def main(argv=None):
     if unknown:
         raise Refusal("not in %s: " % "/".join(CLASS["index"]) + ", ".join(unknown))
     keys = [k for k in sorted(assets) if not args.only or k in args.only]
+    for key in list(args.adopt) + args.not_created:
+        if key not in assets or not (state["assets"].get(key) or {}).get("pendingCreate"):
+            raise Refusal("%s has no create of unknown outcome to settle (--adopt / --not-created are only for a key the "
+                          "tool marked 'pendingCreate')" % key)
+        if key not in keys:
+            raise Refusal("%s is not in this run's keys (add it to --only)" % key)
 
     def log(msg):
         print(msg, flush=True)
@@ -532,6 +683,11 @@ def main(argv=None):
         print("- " + key)
         record = state["assets"].setdefault(key, {})
         try:
+            if key in args.not_created:
+                log("  --not-created: forgetting the unknown create of %s (%s)" % (key, record.pop("pendingCreate").get("startedAt")))
+            elif key in args.adopt:
+                adopt(key, record, args.adopt[key], log)
+                refresh(client, key, record, log)
             if args.refresh:
                 refresh(client, key, record, log)
             else:
@@ -540,6 +696,10 @@ def main(argv=None):
             failures += 1
             record["lastError"] = str(e)
             log("  FAILED: %s" % e)
+        except Exception as e:  # noqa: BLE001 - one key's surprise must not abort the batch (review3 tooling-2)
+            failures += 1
+            record["lastError"] = "%s: %s" % (type(e).__name__, e)
+            log("  FAILED (unexpected %s): %s" % (type(e).__name__, e))
         finally:
             if not record:
                 state["assets"].pop(key, None)

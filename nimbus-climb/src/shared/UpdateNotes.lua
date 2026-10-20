@@ -1,7 +1,7 @@
 -- UpdateNotes: what the UPDATES panel of the main menu shows, the credits and the loading-screen tips
 -- (ARCHITECTURE_V3.md "Phase 5 build contract" 7.1 / 7.2; lead W0). Pure data, read by the client only.
 --
---   UpdateNotes.Latest   -> 5   the newest note's Version (6 once the test allows it, see below); the menu shows a "NEW" badge while Settings.SeenNotes < Latest
+--   UpdateNotes.Latest   -> 6   the newest note's Version; the menu shows a "NEW" badge while Settings.SeenNotes < Latest
 --                                and opening UPDATES sends SettingsSet("SeenNotes", Latest)
 --   UpdateNotes.Notes    -> { { Version, Title, Lines = { ... } }, ... }  newest first
 --   UpdateNotes.Credits  -> { line, ... }
@@ -10,9 +10,7 @@
 
 local UpdateNotes = {}
 
--- Phase 6: the Version 6 note is listed first, but Latest stays 5 until tools/smoke_p2_final.lua (checkFacts5:
--- "UpdateNotes.Latest is 5") accepts 6; then set Latest = 6 so the NEW badge shows (lead request, Phase 6 W3a docs).
-UpdateNotes.Latest = 5
+UpdateNotes.Latest = 6
 
 UpdateNotes.Notes = {
 	{

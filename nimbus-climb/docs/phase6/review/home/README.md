@@ -107,3 +107,36 @@ Rounds:
    spires, sparser tufts.
 3. Crossed swords readable (thin parts at an angle get a connected line), squarer fountain basin, barn boards,
    tinted cushions.
+
+## Plot LOD (perf-plots, Phase 6 W3)
+
+The busiest lobby phone view went over the 300k scene budget once the home plots counted. The client now picks a
+level per plot, from the camera distance to the plot centre, every 0.5 s (HomeFx `updateNear`, never per frame), with
+20 studs of hysteresis:
+
+| Tier | Distance | What shows | Max plot + its base |
+|---|---|---|---|
+| High | < 120 (leave at 140) | every High key: your own yard, a visit | 48.8k tris, 68 parts |
+| Low | 120-200 | every key on `<key>_low` (the High key while no _low is uploaded): a neighbour seen from your yard | 17.1k with the _low keys |
+| Far | >= 200 (leave at 180) | only the landmarks (house + the lobby's plot base) on _low; stations, decor and their kept glow hidden. Every plot seen from the plaza is Far. | 5.3k, 5 parts |
+
+`MeshLibrary.SetLod(target, "High" | "Low" | "Hide")` does the work and touches only dressed targets, so empty
+MeshIds (today's game) change nothing. `MeshLibrary.LowKey(key)` takes `<key>_low` only when it is usable on the device
+and was baked from the same layout (LayoutSig).
+
+Requested keys (not built yet, catalog owner): `home_<station>_<L>_low` for every station key (vs 0.5, detail 1; the
+house at detail 0) and `prop_plot_low` (cloud cushion V 4). Their cost, measured with the kit in a scratch run, is in
+`low_keys_estimate.json`; `python3 tools/mesh_budget.py` prints the busiest views before the rule, with the rule on
+today's keys and with the requested keys.
+
+Sheets (scratch `w6/perf-plots/plotrender.py`: the Sky Castle plot composed from its station meshes at the
+TycoonCatalog slots; low keys baked in memory):
+
+- `plot_lod_tiers.png`: the same plot at High / Low / Far.
+- `plot_lod_onscreen.png`: High next to the tier it gets, at the size it has on a landscape phone (150 / 300 / 420
+  studs).
+
+Rounds: 1. Low hid the decor (the Garden looked bare at 150 studs). 2. Low keeps the decor on low keys; it costs
+about 1.3k tris in the worst view, because the plaza only ever sees Far plots. 3. Checked at the on-screen size: Low is
+hard to tell from High. Far keeps the castle and the yard frame, and loses the farm and station colour. That is the
+trade-off for 8 plots across the plaza.

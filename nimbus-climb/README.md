@@ -2,8 +2,8 @@
 
 > *Climb the storm. Together.*
 
-A cosy, co-op **sky village** game for Roblox. You live in a floating stone-and-wood village under a pink-purple sky
-full of stars. Six gates stand side by side in the **Gate Court** on the plaza: walk through the Obby gate with up to
+A cosy, co-op **sky village** game for Roblox. You live in a floating stone-and-wood village under a bright blue
+sky full of clouds. Five gates stand side by side in the **Gate Court** on the plaza: walk through the Obby gate with up to
 three friends and you get flown to a freshly generated **sky course** that you climb as a team (dash over gaps, dodge
 spinning bars, lightning and swinging beams, share checkpoints and pick each other back up). Along the way you collect
 **Cloud Tokens**, and back home you spend them on **pets** (from roulettes) and **usable items**, fill your **Pet
@@ -14,16 +14,18 @@ fight with a team of three (one **fighter** you steer and two **helpers**) in th
 players, in Boss Raids that the whole server fights together and in the endless **Champion Ring**.
 
 Version 3 turns Nimbus Climb into a multi-concept game: the **tycoon homes** are the main mode, **pet battles**
-are the second one, and the climb (obby) stays as a side mode. This build is **v3 phase 5**: phase 1 brought the
+are the second one, and the climb (obby) stays as a side mode. This build is **v3 phase 6**: phase 1 brought the
 new look, the pet collection and everything the later updates build on (see
 [What's new in v3](#whats-new-in-v3-phase-1)), phase 2 added the tycoon homes, Cash, Gems, prestige and the Fusion
 Machine (see [Tycoon homes](#tycoon-homes)), phase 3 added the **Battle Arena** with duels and Boss Raids (see
 [Pet battles](#pet-battles)), phase 4 made your **pets make the money** (see
 [What's new in phase 4](#whats-new-in-phase-4-pets-make-the-money)), and phase 5, the **Big Sky Update**, brings a new
 battle system, the Dungeon, the Gate Court, a simpler home and a whole new look (see
-[Phase 5: the Big Sky Update](#phase-5-the-big-sky-update)).
+[Phase 5: the Big Sky Update](#phase-5-the-big-sky-update)), and phase 6 brings back the cute voxel look with
+Blender models for everything (see [Phase 6: Blender models](#phase-6-blender-models)).
 
-Everything is built in code from plain parts and particles (no toolbox models), and all text uses one small
+Every model is made in Blender (until the owner uploads them, the game builds the same shapes in code from plain
+parts; no toolbox models), and all text uses one small
 `Theme` module, so the whole game shares the same look. The only asset ids in the code are the owner's own Stormfang
 artwork (`Config.Art.StormfangImage`) and the optional sky, music, sound and icon ids the owner pastes into
 `src/shared/Config.lua` (see [Phase 5: owner checklist](#phase-5-owner-checklist)); until then the game uses its

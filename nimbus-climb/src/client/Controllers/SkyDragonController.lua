@@ -4,6 +4,8 @@
 --   SkyDragonController.Init()
 --   SkyDragonController.GetModel()      -- the dragon Model once it is built (nil before; debug / tests)
 --   SkyDragonController.IsPaused()      -- true while the camera is far from the lobby (the dragon is frozen)
+--   SkyDragonController.SetHeld(on)     -- GraphicsQuality Low / High: out of the world + no frame loop; kept across rebuilds
+--   SkyDragonController.IsHeld()        -- the SetHeld flag
 --
 -- Look: detailed fine-voxel style, every piece sculpted with shared/Voxel.lua at ONE voxel scale (1 stud).
 --   * head: a long snout with a bulbous upturned nose and carved nostrils, glowing amber eyes (slit pupil and a white
@@ -131,6 +133,7 @@ local palette = nil
 local S = {
 	Started = false,
 	Paused = false,
+	Held = false, -- GraphicsQuality Low: the model is out of the world and the frame loop is off (survives rebuilds)
 	Connection = nil,
 	Model = nil,
 	Clock = 0,
@@ -1221,7 +1224,12 @@ local function buildAndRun()
 		return false
 	end
 	if result then
-		S.Connection = RunService.RenderStepped:Connect(onRenderStep)
+		if S.Held then
+			-- GraphicsQuality Low: a (re)build never brings the dragon back; SetHeld(false) does
+			S.Model.Parent = nil
+		else
+			S.Connection = RunService.RenderStepped:Connect(onRenderStep)
+		end
 	end
 	return result
 end
@@ -1285,6 +1293,45 @@ function SkyDragonController._Rebuild()
 		watchMeshes()
 	end
 	return ok and true or false
+end
+
+-- GraphicsQuality Low / High: held = the model leaves the world and the RenderStepped loop is disconnected (no
+-- per-frame work at all); released = back in the client fx folder and flying. The flag outlives every rebuild (the
+-- mesh rebuild, _Rebuild) so a dragon built while held is built held. Idempotent; never touches a destroyed model.
+function SkyDragonController.SetHeld(on)
+	on = on == true
+	S.Held = on
+	local model = S.Model
+	if on then
+		if S.Connection then
+			S.Connection:Disconnect()
+			S.Connection = nil
+		end
+		if model and model.Parent ~= nil then
+			pcall(function()
+				model.Parent = nil
+			end)
+		end
+	elseif model and not S.Rebuilding then
+		if model.Parent == nil and not pcall(function()
+			model.Parent = clientFxFolder()
+		end) then
+			return S.Held -- destroyed by something else: nothing to fly
+		end
+		if not S.Connection then
+			S.Connection = RunService.RenderStepped:Connect(onRenderStep)
+		end
+	end
+	return S.Held
+end
+
+function SkyDragonController.IsHeld()
+	return S.Held == true
+end
+
+-- tests: true while the RenderStepped frame loop is connected
+function SkyDragonController._IsRunning()
+	return S.Connection ~= nil
 end
 
 function SkyDragonController.IsMesh()

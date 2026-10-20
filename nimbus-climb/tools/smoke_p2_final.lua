@@ -1216,10 +1216,10 @@ local function checkBattleDrift(Config, PC, Steps, text, tutorialText, tutorialS
 	local t = T.tally("docs: the rest of the README knows Phase 5 (tutorial chapter 3, Index count, no Trials or RETREAT in the battle rules)", 6)
 	local f = flat(text)
 	for _, stale in ipairs({ "coming Pet Battles", "in the next update", "come in the next update", "Coming soon* until phase 3", "This build is **v3 phase 2**",
-		"This build is **v3 phase 3**", "This build is **v3 phase 4**", "## Pet battles (phase 3)", "### Trials 1-30", "## The five portals" }) do
+		"This build is **v3 phase 3**", "This build is **v3 phase 4**", "This build is **v3 phase 5**", "## Pet battles (phase 3)", "### Trials 1-30", "## The five portals" }) do
 		t:case(not has(text, stale), "the README still says " .. show(stale))
 	end
-	t:case(has(f, "This build is **v3 phase 5**"), "the intro names this build v3 phase 5")
+	t:case(has(f, "This build is **v3 phase 6**"), "the intro names this build v3 phase 6")
 	if type(PC.TotalCount) == "function" then
 		t:case(has(f, "\"Unlocked: x/" .. PC.TotalCount() .. "\""), "the Pet Index footer counts " .. PC.TotalCount() .. " pets")
 	end
@@ -1812,7 +1812,7 @@ local function checkFacts5(Config, PC, TC, BC, p5, text, lines)
 	t:case(not has(text, "4th slot") and not has(text, "slot 4 opens") and not has(text, "slot opens at Prestige"), "no 'slot 4 opens at Prestige 1' line")
 	-- the main menu and settings: what the README names exists
 	local U = requireModule("shared/UpdateNotes")
-	t:case(U ~= nil and tonumber(U.Latest) == 5, "UpdateNotes.Latest is 5 (the Big Sky Update)")
+	t:case(U ~= nil and tonumber(U.Latest) >= 5 and U.Notes[1].Version == U.Latest, "UpdateNotes.Latest is the newest note's Version")
 	t:case((Config.Loading or {}).SkipAfter ~= nil and has(flat(text), "**SKIP** appears after " .. num((Config.Loading or {}).SkipAfter) .. " seconds"),
 		"the loading screen's SKIP after " .. tostring((Config.Loading or {}).SkipAfter) .. " seconds (Config.Loading.SkipAfter)")
 	t:report()

@@ -2258,17 +2258,18 @@ local function buildBoards(f, L)
 		local gui = surfaceGui(face, Enum.NormalId.Front)
 		local panel = signPanel(gui, rgb(150, 200, 255))
 		signText(panel, "THE GATES", "Title", 52, C.TextGold, "Header", 0.04, 0.025, 0.92, 0.14)
+		-- Phase 6: the 5 real Gate Court gates (no Home gate any more); the way home is the footer hint
 		local lines = {
-			{ "HOME", "Your sky home" },
 			{ "OBBY", "Climb with friends" },
 			{ "DUNGEON", "Explore with your team" },
 			{ "RING", "Beat the champion" },
 			{ "ARENA", "Duels and raids" },
+			{ "ALTAR", "Secret storm pets!" },
 		}
 		for i, line in ipairs(lines) do
 			keyRow(panel, 0.18 + (i - 1) * 0.12, 0.105, line[1], line[2])
 		end
-		signText(panel, "Storm Altar gate: secret pets!", "Body", SIGN_INFO, C.TextGold, "Footer", 0.05, 0.81, 0.9, 0.13)
+		signText(panel, "Going home?\nTap Home, then Go home!", "Body", SIGN_INFO, C.TextGold, "Footer", 0.05, 0.785, 0.9, 0.19, nil, true)
 		gui.Parent = face
 	end
 end
