@@ -144,8 +144,8 @@ python3 tools/render_model.py module:server/Services/LobbyBuilder:Build -o any.p
   every open place and its coin piles, and the Training Place with a pet on every mat, drawn by the real `HomeFx`;
   `pocket:ring` is the Champion Ring pocket (`ArenaBuilder.BuildPocket(1, "Ring")`) and `portal:home` the home portal
   `HomePortalFx` draws, e.g. `python3 tools/render_model.py homegarden:12:8 --views threequarter,top -o garden.png`.
-* Phase 5 targets: `lobby` is the whole lobby with the **Gate Court** (render it `--views top`), `gates` the six gates
-  and the court alone, `gate:<Home|Obby|Dungeon|Ring|Arena|Altar>` one gate with its pad (`WorldStyle.BuildGate`);
+* Phase 5 targets: `lobby` is the whole lobby with the **Gate Court** (render it `--views top`), `gates` the five gates
+  and the court alone (Phase 6: no Home gate), `gate:<Obby|Dungeon|Ring|Arena|Altar>` one gate with its pad (`WorldStyle.BuildGate`);
   `home:Press1:<1..40>` the Berry Farm at a level (and `home:<Id>:<level>` every other station), `homerow:House:1,2,3,4` /
   `homerow:DecorFountain:1,2,3` / `homerow:DecorFence:1,2,3` the tiers side by side, `homeplot:SkyCastle:pads` the whole
   plot, `homegarden[:<open>[:<level>]]` the Pet Garden with its 12 beds and the Food Bowl; `homeroam[:<t>]` (client world)

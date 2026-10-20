@@ -54,6 +54,7 @@ local OPTIONAL = { SkyDragonController = true, IndexController = true, NpcContro
 
 local client = script.Parent
 task.spawn(function() local okMesh, MeshLibrary = pcall(function() return require(game:GetService("ReplicatedStorage"):WaitForChild("Shared"):WaitForChild("MeshLibrary", 30)) end) if okMesh and type(MeshLibrary) == "table" then MeshLibrary.Start() end end) -- Phase 6: Blender meshes
+task.spawn(function() local okFx, PortalFx = pcall(function() return require(client:WaitForChild("Controllers"):WaitForChild("PortalFxController", 30)) end) if okFx and type(PortalFx) == "table" and type(PortalFx.Init) == "function" then local okInit, err = pcall(PortalFx.Init) if not okInit then warn(TAG .. "PortalFxController.Init failed: " .. tostring(err)) end end end) -- Phase 6: the gates' animation
 
 -- 1. State
 task.spawn(function()

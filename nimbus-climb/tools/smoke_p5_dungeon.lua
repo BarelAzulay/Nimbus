@@ -900,9 +900,9 @@ local function serverScenarios()
 			local okH = Ty and Ty.GoHome and Ty.GoHome(runner)
 			T.check(okH ~= true, "p5 excl: " .. label .. ": GoHome is refused")
 			if GS and GS.Use then
-				local okG, whyG = GS.Use(runner, "Home")
+				-- (Phase 6: no Home gate in the lobby; GoHome above is the way home)
 				local okA, whyA = GS.Use(runner, "Altar")
-				T.check(okG == false and okA == false, "p5 excl: " .. label .. ": the Home / Altar gates refuse (" .. tostring(whyG) .. " / " .. tostring(whyA) .. ")")
+				T.check(okA == false, "p5 excl: " .. label .. ": the Altar gate refuses (" .. tostring(whyA) .. ")")
 			end
 			T.check(inBattle(runner) == run.Id and runOf(runner) == run, "p5 excl: " .. label .. ": InBattle stays the run id")
 		end

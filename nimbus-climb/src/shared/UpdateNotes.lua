@@ -19,7 +19,7 @@ UpdateNotes.Notes = {
 		Lines = {
 			"Fight with one pet and bring two helpers. You move your fighter: ATTACK, ELEMENT, SPECIAL and DASH.",
 			"The Dungeon: 12 floors of 4 rooms, alone or with up to 3 friends. Every room pays Cash, Tokens and XP.",
-			"One portal per mode in the new Gate Court: Home, Obby, Dungeon, Champion Ring, Arena, Storm Altar.",
+			"One portal per mode in the new Gate Court: Obby, Dungeon, Champion Ring, Arena, Storm Altar. Tap Home to go home.",
 			"Pick your obby level at the Obby gate. Beat a level to unlock the next one.",
 			"Your home got simpler: one Berry Farm, a roaming Pet Garden and three decorations.",
 			"Garden pets roam your yard, eat at the Food Bowl and drop Cloud Cash. Walk over it to scoop!",
@@ -75,7 +75,7 @@ UpdateNotes.Tips = {
 	"Garden pets drop Cloud Cash in your yard. Walk over it to scoop it up.",
 	"Berries go into your Berry Basket. Feed them to your pets at the Food Machine.",
 	"DASH costs stamina outside a battle, but inside a battle it is free.",
-	"Pets follow you better now and stay out of the camera.",
+	"Tap Home, then Go home: a magic portal takes you and your pets home.",
 }
 
 return UpdateNotes

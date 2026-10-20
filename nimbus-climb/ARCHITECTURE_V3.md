@@ -3007,6 +3007,8 @@ Amendments (lead; these win over the recipe):
 `gate_arena_<n>`, `portal_dungeon`, `portal_home`; `prop_<name>`; `cloud_<size>_<v>`; `floor_<area>_<i>`;
 `home_<station>_<level>`; `arena_<piece>`; `dungeon_<room|piece>`. Exact lists live in the catalogs.
 
+> Player ruling (2026-10-20, Phase 6 W2b): NO Home gate in the lobby Gate Court (5 gates: Obby, Dungeon, Ring, Arena, Altar). Going home = the Home window hero button "Go home" / "Claim a home" (MenuController). Every BuildGate gate is animated client-side by src/client/Controllers/PortalFxController.lua (Neon Glow/Swirl/Gem + GlowCore light only; Low graphics = static). art-gates may skip gate_home.
+
 ### 6.3 Waves and ownership
 | Wave | Key | Files (owns) | Task |
 |---|---|---|---|

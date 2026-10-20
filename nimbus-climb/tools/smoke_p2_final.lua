@@ -1747,7 +1747,7 @@ local TOPICS5 = {
 	{ "levels and evolutions", { "+10 %", "EVOLVE", "Nobody gets weaker" } },
 	{ "the Dungeon (floors, party, loot)", { "**The Dungeon**", "boss room", "loot", "first time pays big Tokens and Gems", "Trial record" } },
 	{ "one obby portal with a level picker", { "**level picker**", "Easy, Medium, Hard, Extreme or Saint", "beating a level unlocks the next" } },
-	{ "the Gate Court", { "Gate Court", "Home, Obby, Dungeon, Champion Ring, Arena and Storm Altar" } },
+	{ "the Gate Court (Phase 6: no Home gate)", { "Gate Court", "Obby, Dungeon, Champion Ring, Arena and Storm Altar", "no Home gate" } },
 	{ "the Berry Farm, one food and Feed", { "**Berry Farm**", "**Berry Basket**", "ONE button, **Feed**", "never costs Cash" } },
 	{ "roaming pets pooping Cloud Cash", { "roam the yard", "Food Bowl", "poop **Cloud Cash**", "only you can" } },
 	{ "fewer, cheaper decor", { "three decorations", "Yard Fence", "Fountain", "Pet Podium", "much cheaper" } },

@@ -1,16 +1,17 @@
--- GateService (Phase 5, ARCHITECTURE_V3.md "Phase 5 build contract" 6.2): the prompts of the Gate Court's travel gates.
+-- GateService (Phase 5, ARCHITECTURE_V3.md "Phase 5 build contract" 6.2): the prompt of the Gate Court's Altar gate.
+-- Phase 6: the lobby has no Home gate any more (the player asked): players go home with the Home window's Go home
+-- button (HomeAction "GoHome" -> TycoonService's home portal; without a home it leads to a free plot's gate, and the
+-- Home tile's Claim a home sends GoToSpot, the same portal). "Home" is no gate id here: Use(player, "Home") is junk.
 --
 --   GateService.Init(lobbyInfo, deps)  deps = { SpotService, PortalService, StormAltar, ArenaInfo, MatchService,
 --                                      DataService } (Main.server, after SpotService.Init and PortalService.Init)
---   GateService.Teleported             Util.Signal; Fire(player, "Home" | "Altar") once per accepted teleport
---   GateService.Use(player, gateId)    the handler behind both prompts (tests call it); -> ok, reason
+--   GateService.Teleported             Util.Signal; Fire(player, "Altar") once per accepted teleport
+--   GateService.Use(player, gateId)    the handler behind the prompt (tests call it); -> ok, reason
 --
 -- Prompts (created here on LobbyInfo.Gates.<Id>.PromptPart, MaxActivationDistance 12, HoldDuration 0):
---   HomeGatePrompt   "Go home" / "My Home"      -> SpotService.Teleport(player): the player's home, or the gate of a
---                                                  free plot + the toast "Press E at the gate to claim this home!"
 --   AltarGatePrompt  "Travel" / "Storm Altar"   -> StormAltar.GetLanding(): the island deck at the bridge end
 -- The Obby gate's prompt is PortalService's, the Dungeon gate's DungeonService's, Ring / Arena are ArenaBuilder's.
--- Every use is checked on the server (Y12): the prompt is one of these two, the player is alive, not InMatch, not
+-- Every use is checked on the server (Y12): the prompt is this one, the player is alive, not InMatch, not
 -- InBattle, not locked on a portal pad (PortalService.IsLocked), within MaxActivationDistance + 4 of the prompt
 -- part, and 1.5 s after their last use. Plain Lua 5.1-compatible syntax only.
 
@@ -33,10 +34,9 @@ local ATTR_IN_BATTLE = (Config.Attr and Config.Attr.InBattle) or "InBattle"
 local ATTR_IN_MATCH = (Config.Attr and Config.Attr.InMatch) or "InMatch"
 
 local PROMPTS = {
-	Home = { Name = "HomeGatePrompt", Action = "Go home", Object = "My Home" },
 	Altar = { Name = "AltarGatePrompt", Action = "Travel", Object = "Storm Altar" },
 }
-local ORDER = { "Home", "Altar" }
+local ORDER = { "Altar" } -- Phase 6: no Home gate (the Home window's Go home is the way home)
 
 local S = {
 	deps = {},
@@ -143,20 +143,7 @@ function GateService.Use(player, gateId)
 	S.lastUse[player] = now
 
 	local moved = false
-	if gateId == "Home" then
-		local spots = S.deps.SpotService
-		if not hasFn(spots, "Teleport") then
-			return false, "unavailable"
-		end
-		local hadPlot = hasFn(spots, "GetSpot") and spots.GetSpot(player) ~= nil
-		local ok, result = pcall(spots.Teleport, player)
-		moved = ok and result == true
-		if moved and not hadPlot then
-			notify(player, "Press E at the gate to claim this home!", "info")
-		elseif not moved and not hadPlot then
-			notify(player, "Every home is taken right now.", "bad")
-		end
-	elseif gateId == "Altar" then
+	if gateId == "Altar" then
 		local altar = S.deps.StormAltar
 		local cf = nil
 		if hasFn(altar, "GetLanding") then
@@ -222,7 +209,7 @@ function GateService.Init(lobbyInfo, deps)
 	end)
 end
 
--- The prompt of a gate ("Home" | "Altar"), for tests and tutorials.
+-- The prompt of a gate ("Altar"), for tests and tutorials.
 function GateService.GetPrompt(gateId)
 	local part = S.parts[gateId]
 	local spec = PROMPTS[gateId]

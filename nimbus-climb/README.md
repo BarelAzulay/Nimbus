@@ -49,7 +49,8 @@ built-in sky, stays silent and draws emoji icons.
   boss room. Every room pays Cash, Tokens and XP (loot) to everyone who really fought in it; clearing a floor for the
   first time pays big Tokens and Gems and unlocks the next floor. Go alone or as a party of up to **4** players, each
   with their own fighter and helpers. Your old Trial record already unlocked floors (see [The Dungeon](#the-dungeon)).
-- **One portal per mode, all together in the Gate Court:** Home, Obby, Dungeon, Champion Ring, Arena and Storm Altar.
+- **One portal per mode, all together in the Gate Court:** Obby, Dungeon, Champion Ring, Arena and Storm Altar. (Since
+  phase 6 there is no Home gate: tap **Home**, then **Go home**.)
   The obby has ONE portal now, with a **level picker**: pick Easy, Medium, Hard, Extreme or Saint; beating a level
   unlocks the next, and every win you ever had still counts (see [The Obby portal](#the-obby-portal-five-levels)).
 - **Your home, simpler:** **11 stations** instead of 18. One **Berry Farm** (40 levels) replaces the four food plants,
@@ -248,10 +249,11 @@ or the VS Code "Rojo" extension are the easy ways to get it).
 | Run (drains stamina) | hold `Shift` | **RUN** button (tap to toggle) | `L3` (toggle) |
 | Dash (35 stamina, 1.6 s cooldown, works in the air; in a battle it is free and uses `Shift`) | `Q` | **DASH** button | `B` |
 | Use an item | `1` `2` `3` `4` (or click / tap a slot) | tap a slot | - |
-| Talk to an NPC pet, use a gate of the Gate Court (Home, the Obby level picker, the Dungeon, the Champion Ring, the Arena, the Storm Altar), claim a home, put a pet on a pet bed, use the Food Machine (*Feed pets*), the Training Place (*Train pets*), the Fusion Machine, the Arena Gate, a duel pad, the arena boards or a dungeon chest | `E` | tap the prompt | `X` |
+| Talk to an NPC pet, use a gate of the Gate Court (the Obby level picker, the Dungeon, the Champion Ring, the Arena, the Storm Altar), claim a home, put a pet on a pet bed, use the Food Machine (*Feed pets*), the Training Place (*Train pets*), the Fusion Machine, the Arena Gate, a duel pad, the arena boards or a dungeon chest | `E` | tap the prompt | `X` |
 | Buy at a home pad (hold a moment) | hold `E` | hold the prompt | hold `X` |
 | Scoop your Cloud Cash | walk over it | walk over it | walk over it |
 | Go home through your own portal | **Home** tile -> **Go home**, then walk into the portal | the same | the same |
+| No home yet: find a free one | **Home** tile -> **Claim a home**, walk into the portal, press `E` at the gate | the same | the same |
 | Battle: **ATTACK** (hold to keep attacking) | `F` (or left click) | **ATTACK** button | `X` |
 | Battle: **ELEMENT** (your fighter's element attack) | `E` | **ELEMENT** button | `Y` |
 | Battle: **SPECIAL** (when the energy bar is full) | `Q` | **SPECIAL** button | `RB` |
@@ -297,11 +299,11 @@ ends it (it asks first). Your step is saved, so the tutorial continues where you
 ## The village
 
 - **The plaza** in the middle (bigger since phase 5): you spawn on the round court and look straight down the avenue
-  at the **Gate Court**, six stone gates side by side. Press **E** at a gate:
+  at the **Gate Court**, five stone gates side by side. Press **E** at a gate (there is no Home gate: the **Home**
+  tile's **Go home** takes you home):
 
   | Gate | What it does |
   |---|---|
-  | **Home** | takes you to your home (or to a free gate, if you have no home yet) |
   | **Obby** | opens the level picker; stand on its pad to climb (see [The Obby portal](#the-obby-portal-five-levels)) |
   | **Dungeon** | opens the Dungeon window: 12 floors, solo or with friends (see [The Dungeon](#the-dungeon)) |
   | **Champion Ring** | opens the Champion Ring window (see [the Champion Ring](#the-champion-ring)) |
@@ -382,10 +384,10 @@ the second run takes under an hour, the third a little less).
   your save) and the gate offers *Claim Home* to someone else.
 - Coming back? If your last plot is free you get a side toast "Welcome back! Press E at your gate (#7)". Any other
   free plot works just as well: your whole build comes back on it.
-- The **Home** gate in the Gate Court takes you home (or to a free gate while you have no home). The **Home** tile of
-  the menu opens a magic portal toward a free gate while you have no home; once you have one it opens the
-  [Home window](#the-home-window), whose **Go home** button opens your own portal home. Nimbus' arrow leads to a free
-  gate too.
+- The **Home** tile of the menu opens the [Home window](#the-home-window). While you have no home it offers
+  **Claim a home**: a magic portal opens toward a free gate, walk in and press **E** there. Once you have a home, its
+  big **Go home** button opens your own portal home. Nimbus' arrow leads to a free gate too. (There is no Home gate
+  in the Gate Court any more.)
 - The name tag over the mailbox shows your avatar, your name, your **Home Level** and one star per **Prestige**,
   and the podium by the gate shows a slowly turning copy of your best pet (rarest first, Rainbow and Golden copies
   before plain ones, evolved when you evolved it). With a home, you respawn there instead of on the plaza.
@@ -687,12 +689,13 @@ Rainbow and hybrid pets.
 
 ### The Home window
 
-The **Home** tile of the menu opens it (once you have a home): your house tier, Home Level and Prestige stars, a strip
+The **Home** tile of the menu opens it. On top sits the big golden **Go home** button (your
+[home portal](#the-home-portal)); before you have a home it is **Claim a home** instead, with three steps that show
+how (a portal to a free gate, walk in, press **E**). Below: your house tier, Home Level and Prestige stars, a strip
 of four tiles that tells the whole home loop at a glance (the Berry Farm, your garden pets and their Cloud Cash, the
 Berry Basket and the Food Machine), the **Pet Garden** card (coins waiting on your lawn, coins per minute, open
-places), the prestige progress (Home Level x/40 and the Sky Castle) with the **Prestige** button, **Go home** (your
-[home portal](#the-home-portal)), and every station with its level, what the next level does, its price and a
-**Build** / **Upgrade** button, or why it is still locked. So you can upgrade from anywhere, without walking to the
+places), the prestige progress (Home Level x/40 and the Sky Castle) with the **Prestige** button, and every station
+with its level, what the next level does, its price and a **Build** / **Upgrade** button, or why it is still locked. So you can upgrade from anywhere, without walking to the
 pad.
 
 ### Gems and the Secret Roulette
@@ -1381,7 +1384,7 @@ src/shared   Config (every number)  TycoonCatalog (every tycoon number)  Theme  
              MeshLibrary (loads the Blender models)  MeshIds (generated: model asset ids)  MeshManifests (generated:
              one module per Blender model)  PetFx (the auras and effects of evolved pets)
 src/server   Main.server.lua; Services: Lighting, LobbyBuilder, StormAltar, Player (the spawn after PLAY), Data,
-             Damage, Token, Hazard, Course (layout + builder), Match, Portal, Gate (the Gate Court gates), Spot, Pet,
+             Damage, Token, Hazard, Course (layout + builder), Match, Portal, Gate (the Altar gate's prompt), Spot, Pet,
              Item, Index, Tutorial, Npc, Dev, Tycoon, HomeBuilder, PetCare, Fusion, Gem, ArenaBuilder, Battle, Event,
              Dungeon (parties, runs, loot), DungeonBuilder (the Dungeon gate and rooms)
 src/client   Main.client.lua; State; UiGate (nothing shows before PLAY); ClientSettings; SoundFx; GraphicsQuality;
@@ -1390,7 +1393,8 @@ src/client   Main.client.lua; State; UiGate (nothing shows before PLAY); ClientS
              DamageFx, Notify, Menu, Hotbar, Pet, TokenFx, Index, Tutorial, Npc, SkyDragon, Showcase, Dev, DevPetShow
              (pet showcase), EvolutionFx (evolution animation), Care (Food Machine, Garden, training and EVOLVE
              windows), HomeFx (roaming pets, Cloud Cash, berries), HomePortalFx (the home portal), Fusion, Battle,
-             Arena, Dungeon (the Dungeon window and run), Obby (the level picker)
+             Arena, Dungeon (the Dungeon window and run), Obby (the level picker), PortalFx (the gates' soft
+             animation: a light running round the ring, the swirl breathing, gems twinkling)
 ```
 
 The **server is authoritative** (health, tokens, Cash, Gems, berries, pets, items, checkpoints, matches, home

@@ -372,7 +372,7 @@ end
 
 call("PortalService.Init", PortalService, "Init", lobbyInfo, MatchService)
 
--- Phase 5 (6.2): the Gate Court prompts (Home / Altar / Arena gates; the Obby and Dungeon gates are their services')
+-- Phase 5 (6.2): the Gate Court prompts (the Altar gate; Phase 6: no Home gate; the Obby and Dungeon gates are their services')
 if GateService then call("GateService.Init", GateService, "Init", lobbyInfo, {
 	SpotService = SpotService,
 	PortalService = PortalService,

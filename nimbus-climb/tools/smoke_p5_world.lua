@@ -797,7 +797,8 @@ local function serverScenarios()
 	end)
 
 	-- [W2 worldlobby] S.p5world_lobby, S.p5world_gates, S.p5obby_levels, S.p5obby_migration, S.p5world_client_total
-	local GATE_ORDER = { "Home", "Obby", "Dungeon", "Ring", "Arena", "Altar" }
+	-- Phase 6: no Home gate in the lobby (the player asked; the Home window's Go home is the way home)
+	local GATE_ORDER = { "Obby", "Dungeon", "Ring", "Arena", "Altar" }
 	local function hdist(a, b)
 		local dx, dz = a.X - b.X, a.Z - b.Z
 		return math.sqrt(dx * dx + dz * dz)
@@ -829,8 +830,8 @@ local function serverScenarios()
 		local L = Config.Lobby
 		local origin = L.Origin
 		local folder = info.Folder
-		-- the six gate sites: on the arc (r GateArcRadius +- 1), 50..130 degrees, >= 26 studs apart, facing the centre,
-		-- left -> right Home .. Altar (rising angle: the spawn looks +Z, lower angles are on the left)
+		-- the five gate sites: on the arc (r GateArcRadius +- 1), 50..130 degrees, >= 26 studs apart, facing the centre,
+		-- left -> right Obby .. Altar (rising angle: the spawn looks +Z, lower angles are on the left)
 		local sites = info.GateSites
 		if T.check(type(sites) == "table", "LobbyInfo.GateSites is a table") then
 			local last = -1
@@ -855,13 +856,22 @@ local function serverScenarios()
 				end
 			end
 			T.check(info.RingSite == sites.Ring and info.DungeonSite == sites.Dungeon, "LobbyInfo.RingSite / DungeonSite = GateSites.Ring / .Dungeon")
+			T.check(sites.Home == nil, "Phase 6: LobbyInfo.GateSites has no Home site (no Home gate in the lobby)")
+			-- balanced: the Ring gate (the middle one) stands at GateFacing, the end gates mirror each other around it
+			if typeof(sites.Ring) == "CFrame" and typeof(sites.Obby) == "CFrame" and typeof(sites.Altar) == "CFrame" then
+				local mid = angleOf(sites.Ring.Position, origin)
+				T.check(math.abs(mid - L.GateFacing) < 0.5, "Phase 6: the Ring gate stands in the middle of the court (GateFacing)", fmt(mid, 2))
+				local left, right = mid - angleOf(sites.Obby.Position, origin), angleOf(sites.Altar.Position, origin) - mid
+				T.check(math.abs(left - right) < 0.5, "Phase 6: the end gates sit symmetric around the Ring gate", fmt(left, 2) .. " / " .. fmt(right, 2))
+			end
 		end
 		T.check(info.TrialSite == nil, "LobbyInfo.TrialSite is gone")
-		-- the folder of the six gates
+		-- the folder of the gates
 		local gf = info.GatesFolder
 		T.check(typeof(gf) == "Instance" and gf:IsA("Folder") and gf.Name == "Gates" and gf.Parent == folder, "LobbyInfo.GatesFolder = workspace.NimbusLobby.Gates")
 		if typeof(gf) == "Instance" then
-			for _, id in ipairs({ "Home", "Obby", "Ring", "Arena", "Altar" }) do
+			T.check(gf:FindFirstChild("Portal_Home") == nil and workspace:FindFirstChild("Portal_Home", true) == nil, "Phase 6: no Portal_Home anywhere in the world")
+			for _, id in ipairs({ "Obby", "Ring", "Arena", "Altar" }) do
 				local m = gf:FindFirstChild("Portal_" .. id)
 				if T.check(m ~= nil and m:IsA("Model"), "Portal_" .. id .. " stands in the Gates folder") and typeof(sites[id]) == "CFrame" then
 					T.check(hdist(m:GetPivot().Position, sites[id].Position) < 1.5, "Portal_" .. id .. " stands on its site")
@@ -873,7 +883,8 @@ local function serverScenarios()
 				T.check(hit ~= nil, "the reserved Dungeon site is paved court ground (DungeonBuilder builds its gate there in W3)")
 			end
 		end
-		for _, id in ipairs({ "Home", "Obby", "Altar" }) do
+		T.check(type(info.Gates) == "table" and info.Gates.Home == nil, "Phase 6: LobbyInfo.Gates has no Home gate")
+		for _, id in ipairs({ "Obby", "Altar" }) do
 			local g = type(info.Gates) == "table" and info.Gates[id]
 			T.check(type(g) == "table" and typeof(g.Model) == "Instance" and typeof(g.Pad) == "Instance" and typeof(g.PromptPart) == "Instance", "LobbyInfo.Gates." .. id .. " = { Model, Pad, PromptPart }")
 		end
@@ -934,7 +945,7 @@ local function serverScenarios()
 		T.check(L.ShopOffset.Magnitude > L.PlazaRadius + 30, "the shop island lies beyond the plaza")
 		-- NPC spots: on lawn, no path within 8 studs, >= 10 studs from every gate pad
 		local pads = {}
-		for _, id in ipairs({ "Home", "Obby", "Altar" }) do
+		for _, id in ipairs({ "Obby", "Altar" }) do
 			local g = info.Gates and info.Gates[id]
 			if g and typeof(g.Pad) == "Instance" then
 				pads[#pads + 1] = g.Pad.Position
@@ -1006,7 +1017,7 @@ local function serverScenarios()
 	end)
 
 	------------------------------------------------------------------------------------------------
-	-- p5world_gates (6.2, Y12): GateService's Home / Altar prompts, Portal_Arena and the Return gate
+	-- p5world_gates (6.2, Y12): GateService's Altar prompt (Phase 6: no Home gate), Portal_Arena and the Return gate
 	------------------------------------------------------------------------------------------------
 	S.p5world_gates = guarded("p5world_gates", function()
 		if not K.needBoot() then
@@ -1017,7 +1028,6 @@ local function serverScenarios()
 			return
 		end
 		local info = K.W.lobbyInfo
-		local SpotService = K.mod("SpotService")
 		local fired = {}
 		local conn = GS.Teleported:Connect(function(player, id)
 			fired[#fired + 1] = { player, id }
@@ -1027,16 +1037,20 @@ local function serverScenarios()
 			local part = g and g.PromptPart
 			return part and part:FindFirstChild(id .. "GatePrompt"), part
 		end
-		for _, id in ipairs({ "Home", "Altar" }) do
-			local pr = prompt(id)
-			if T.check(pr ~= nil and pr:IsA("ProximityPrompt"), id .. "GatePrompt sits on LobbyInfo.Gates." .. id .. ".PromptPart") then
-				T.eq(pr.MaxActivationDistance, 12, id .. "GatePrompt: MaxActivationDistance 12")
-				T.eq(pr.HoldDuration, 0, id .. "GatePrompt: HoldDuration 0")
+		-- Phase 6: no Home gate, so no HomeGatePrompt anywhere (players go home with the Home window's Go home)
+		local stray = nil
+		for _, d in ipairs(workspace:GetDescendants()) do
+			if d:IsA("ProximityPrompt") and d.Name == "HomeGatePrompt" then
+				stray = d
 			end
 		end
-		local hp = prompt("Home")
+		T.check(stray == nil, "Phase 6: no HomeGatePrompt anywhere in the world", stray and stray:GetFullName() or "")
+		T.check(type(GS.GetPrompt) == "function" and GS.GetPrompt("Home") == nil, "Phase 6: GateService.GetPrompt('Home') is nil")
 		local ap = prompt("Altar")
-		T.check(hp and hp.ActionText == "Go home" and hp.ObjectText == "My Home", "HomeGatePrompt: 'Go home' / 'My Home'")
+		if T.check(ap ~= nil and ap:IsA("ProximityPrompt"), "AltarGatePrompt sits on LobbyInfo.Gates.Altar.PromptPart") then
+			T.eq(ap.MaxActivationDistance, 12, "AltarGatePrompt: MaxActivationDistance 12")
+			T.eq(ap.HoldDuration, 0, "AltarGatePrompt: HoldDuration 0")
+		end
 		T.check(ap and ap.ActionText == "Travel" and ap.ObjectText == "Storm Altar", "AltarGatePrompt: 'Travel' / 'Storm Altar'")
 		local players = K.freshPlayers(2, "Gate")
 		local a, b = players[1], players[2]
@@ -1044,60 +1058,35 @@ local function serverScenarios()
 			local site = info.GateSites[id]
 			standAt(p, site.Position + site.LookVector * 5, site.Position)
 		end
-		-- Home without a plot: the gate of a free plot + the claim toast
-		atGate(a, "Home")
-		local mark = K.logSize()
+		-- Phase 6: "Home" is no gate id any more: refused as junk, nobody moves, nothing fires
+		atGate(a, "Altar")
+		local before = K.root(a).Position
 		local n0 = #fired
-		Mock.Trigger(hp, a)
+		local okH, whyH = GS.Use(a, "Home")
 		K.advance(0.3)
-		local pos = K.root(a).Position
-		local nearFree = false
-		for _, sp in ipairs(info.Spots) do
-			if SpotService.GetOwner(sp.Index) == nil and typeof(sp.GateCFrame) == "CFrame" and hdist(pos, sp.GateCFrame.Position) < 16 then
-				nearFree = true
-			end
-		end
-		T.check(nearFree, "Home without a plot: the player stands at the gate of a free plot", "at " .. tostring(pos))
-		T.check(K.notified(a, "claim this home", "info", mark), "...with 'Press E at the gate to claim this home!'")
-		T.check(#fired == n0 + 1 and fired[#fired][1] == a and fired[#fired][2] == "Home", "GateService.Teleported fires once (player, \"Home\")")
-		-- Home with a plot
-		K.advance(1.6)
-		local claimed = nil
-		for _, sp in ipairs(info.Spots) do
-			if not claimed and SpotService.GetOwner(sp.Index) == nil then
-				local ok = SpotService.Claim(a, sp.Index)
-				if ok then
-					claimed = sp
-				end
-			end
-		end
-		if T.check(claimed ~= nil, "precondition: the player claims a plot") then
-			atGate(a, "Home")
-			Mock.Trigger(hp, a)
-			K.advance(0.3)
-			T.check(hdist(K.root(a).Position, claimed.SpawnCFrame.Position) < 8, "Home with a plot: the player lands at home", fmt(hdist(K.root(a).Position, claimed.SpawnCFrame.Position), 1))
-		end
+		T.check(okH == false and whyH == "junk" and #fired == n0 and hdist(K.root(a).Position, before) < 0.5,
+			"Phase 6: GateService.Use(player, 'Home') is refused (junk): the lobby has no Home gate", tostring(whyH))
 		-- refusals: in a match, in a battle, locked on the obby pad, far away, cooldown
-		K.advance(1.6)
-		atGate(b, "Home")
+		atGate(b, "Altar")
 		b:SetAttribute("InMatch", true)
-		local ok, why = GS.Use(b, "Home")
+		local ok, why = GS.Use(b, "Altar")
 		T.check(not ok and why == "match", "refused in a match", tostring(why))
 		b:SetAttribute("InMatch", nil)
 		b:SetAttribute("InBattle", "B1")
-		mark = K.logSize()
-		ok, why = GS.Use(b, "Home")
+		local mark = K.logSize()
+		ok, why = GS.Use(b, "Altar")
 		T.check(not ok and why == "battle", "refused in a battle", tostring(why))
+		T.check(K.notified(b, "Finish your battle", "bad", mark), "...with the toast 'Finish your battle first!'")
 		b:SetAttribute("InBattle", nil)
 		K.enterPortal(b)
 		K.advance(0.6)
-		ok, why = GS.Use(b, "Home")
+		ok, why = GS.Use(b, "Altar")
 		T.check(not ok and why == "locked", "refused while locked on the obby pad (PortalService.IsLocked)", tostring(why))
 		K.mod("PortalService").RemovePlayer(b)
 		K.leavePortalArea(b)
 		K.advance(0.4)
 		standAt(b, info.SpawnCFrame.Position)
-		ok, why = GS.Use(b, "Home")
+		ok, why = GS.Use(b, "Altar")
 		T.check(not ok and why == "far", "refused from far away (> 12 + 4 studs)", tostring(why))
 		atGate(b, "Altar")
 		local n1 = #fired
@@ -1116,7 +1105,7 @@ local function serverScenarios()
 		ok, why = GS.Use(b, "Altar")
 		T.check(not ok and why == "cooldown", "a second use inside 1.5 s is refused (cooldown)", tostring(why))
 		T.check(#fired == n1 + 1, "...and fires nothing")
-		local junkOk = pcall(GS.Use, "x", "Home") and pcall(GS.Use, b, "Nope") and pcall(GS.Use, nil, nil)
+		local junkOk = pcall(GS.Use, "x", "Altar") and pcall(GS.Use, b, "Nope") and pcall(GS.Use, nil, nil)
 		T.check(junkOk and select(1, GS.Use(b, "Nope")) == false, "junk players / gate ids are refused without errors")
 		-- Portal_Arena -> ArenaInfo.Spawn; the forum's Return gate -> in front of Portal_Arena
 		local AB = M["server/Services/ArenaBuilder"]
@@ -1140,7 +1129,6 @@ local function serverScenarios()
 			end
 		end
 		conn:Disconnect()
-		SpotService.Release(a)
 		K.removePlayers(players)
 		K.flushErrors("p5world_gates")
 	end)

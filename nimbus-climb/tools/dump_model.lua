@@ -1226,12 +1226,12 @@ BUILDERS.dragon = BUILDERS.skydragon
 ----------------------------------------------------------------------
 
 -- [owner: worldlobby] begin
--- (lobby with the Gate Court: `lobby` keeps its name; `gates` = the six gates + the court; `gate:<Home|Obby|Dungeon|Ring|Arena|Altar>`)
+-- (lobby with the Gate Court: `lobby` keeps its name; `gates` = the five gates + the court; `gate:<Obby|Dungeon|Ring|Arena|Altar>`; Phase 6: no Home gate)
 --   lobby                 LobbyBuilder.Build() + the Gate Court gates of ArenaBuilder (Ring, Arena) and, once it exists,
 --                         DungeonBuilder (Dungeon): the whole lobby folder (crop with DUMP.box; render `--views top`)
 --   gates                 the Gate Court alone: every gate of LobbyInfo.GatesFolder + the court tiles, terrace, rims and
 --                         its dressing (cloned into one folder), facing the plaza
---   gate:<Id>             one gate (Home, Obby, Dungeon, Ring, Arena, Altar) and its pad, facing the plaza
+--   gate:<Id>             one gate (Obby, Dungeon, Ring, Arena, Altar) and its pad, facing the plaza
 local function worldlobbyLobby()
 	local info = ensureLobby()
 	if not info._p5GatesBuilt then
@@ -1278,7 +1278,7 @@ BUILDERS.gates = function()
 		end
 	end
 	local look = info.GateSites and info.GateSites.Ring and info.GateSites.Ring.LookVector or Vector3.new(0, 0, -1)
-	return { { root = holder, label = "Gate Court", sub = "the six gates + the court (LobbyInfo.GatesFolder)", facing = { look.X, 0, look.Z } } }
+	return { { root = holder, label = "Gate Court", sub = "the five gates + the court (LobbyInfo.GatesFolder)", facing = { look.X, 0, look.Z } } }
 end
 
 BUILDERS.gate = function(id)

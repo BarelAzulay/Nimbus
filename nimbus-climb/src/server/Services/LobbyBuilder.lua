@@ -7,17 +7,18 @@
 --                    voxel cloud (white / light-blue, tagged NC_StyleExempt); the top is built in the Phase 4 look again
 --                    (Phase 6, 6.0.2 / 6.1 A1: SmoothPlastic, bright lime grass, cream stone paths with darker borders,
 --                    glow in Neon) on the Phase 5 layout: the spawn court (concentric cream stone tile rings, a light
---                    ring, a gold sun medallion with six Neon arrows in the gate colours), the grand avenue to the Gate
+--                    ring, a gold sun medallion with Neon arrows in the gate colours), the grand avenue to the Gate
 --                    Court (stone kerbs, lamps every 16 studs, a tall cream welcome arch at r 40 carrying the welcome
 --                    sign), the circle walk (r 100) with clipped hedges and lamps, the east / west walks, the shop
 --                    boardwalk with the fountain roundabout, lawns with trees, benches, flower beds and the six NPC
 --                    spots, a kerb along the edge.
 --   * GATE COURT     (6.1) a sector 48..132 degrees, r 96..146: cream tile rings, a light rim, a raised terrace with
---                    hedges, a banner behind every gate and two obelisks. Six gates left -> right Home, Obby, Dungeon,
---                    Ring, Arena, Altar on the arc r Config.Lobby.GateArcRadius, GateStep degrees apart around
---                    GateFacing, every gate facing the spawn (WorldStyle.BuildGate: the P4 round voxel hoop family,
---                    6.0.3). This module builds Home, Obby and Altar into the Gates folder; ArenaBuilder adds Ring +
---                    Arena, DungeonBuilder the Dungeon gate.
+--                    hedges, a banner behind every gate and two obelisks. Five gates left -> right Obby, Dungeon, Ring,
+--                    Arena, Altar on the arc r Config.Lobby.GateArcRadius, spread evenly over the court's six Phase 5
+--                    slots (GateStep degrees apart) around GateFacing, the Ring gate in the middle, every gate facing
+--                    the spawn (WorldStyle.BuildGate: the P4 round voxel hoop family, 6.0.3). Phase 6: no Home gate (the
+--                    player asked; the Home window's Go home portal is the way home). This module builds Obby and Altar
+--                    into the Gates folder; ArenaBuilder adds Ring + Arena, DungeonBuilder the Dungeon gate.
 --   * SHOP ISLAND    at Config.Lobby.ShopOffset: four voxel gacha machines (Model Roulette_<Id>, built in
 --                    the roulette colour), the striped item stall (Model ItemShop), a rarity board, a token
 --                    statue and an entrance arch, joined to the plaza by a short stone neck.
@@ -44,9 +45,9 @@
 --   ArenaAngle = degrees | nil  the spoke just past the last portal; its junction's OUTER rope rail is open
 --   ArenaDock = Vector3 | nil   outer edge of that junction on the spoke's ray: the arena bridge leaves the street here
 --   ArenaBridgeWidth = studs    the arena bridge's deck width (the rail gap is 1.6 studs wider)
---   Phase 5 (6.1): GateSites = { Home, Obby, Dungeon, Ring, Arena, Altar } ground CFrames of the gate centres
+--   Phase 5 (6.1): GateSites = { Obby, Dungeon, Ring, Arena, Altar } ground CFrames of the gate centres
 --                              (LookVector = towards the plaza centre); RingSite = GateSites.Ring; DungeonSite =
---                              GateSites.Dungeon; GatesFolder = workspace.NimbusLobby.Gates; Gates = { Home, Obby, Altar
+--                              GateSites.Dungeon; GatesFolder = workspace.NimbusLobby.Gates; Gates = { Obby, Altar
 --                              = { Model, Pad, PromptPart } } (GateService / PortalService put the prompts on them).
 --                              NimbusLobby.PartCount is written by Main after the last gate builder, not here.
 -- SpotInfo also carries PlotCFrame (centre of the flat yard surface, LookVector = towards the gate),
@@ -139,6 +140,7 @@ local G = {}
 G.GateR = LOBBY.GateArcRadius or 118
 G.GateStep = LOBBY.GateStep or 14.5
 G.GateFacing = LOBBY.GateFacing or 90
+G.CourtSlots = 6 -- Phase 6: the court keeps its Phase 5 width of six gate slots; the five gates spread over it
 G.CourtR = 34 -- the spawn court (Slate rings + a Marble ring around the medallion)
 G.AvenueHalf = 10 -- the grand avenue to the Gate Court (20 wide, Cobblestone, Brick kerbs)
 G.RingRoadR = 100 -- the cobbled circle walk around the lawns (the spokes leave it)
@@ -272,9 +274,9 @@ local ACCENTS = {
 	rgb(222, 120, 192),
 }
 
--- The six gates of the Gate Court, left -> right (6.1 / 6.2): id, gate colour (WorldStyle.Palette.Accent), glyph.
+-- The five gates of the Gate Court, left -> right (6.1 / 6.2): id, gate colour (WorldStyle.Palette.Accent), glyph.
+-- (Phase 6: the Home gate is gone; players go home with the Home window's Go home button.)
 local GATE_SPECS = {
-	{ Id = "Home", Accent = "Yellow", Glyph = "house" },
 	{ Id = "Obby", Accent = "Blue", Glyph = "cloud" },
 	{ Id = "Dungeon", Accent = "Purple", Glyph = "torch" },
 	{ Id = "Ring", Accent = "Gold", Glyph = "crown" },
@@ -1178,19 +1180,23 @@ end
 local function computeLayout()
 	local L = {}
 
-	-- Phase 5 Gate Court (6.1): the six gates left -> right on the arc r G.GateR around G.GateFacing (the spawn looks
-	-- this way), G.GateStep degrees apart; the court sector reaches 5.75 degrees past the end gates.
+	-- Phase 5 Gate Court (6.1): the gates left -> right on the arc r G.GateR around G.GateFacing (the spawn looks this
+	-- way); Phase 6: the court keeps its six-slot width ((G.CourtSlots - 1) * G.GateStep) and the five gates spread
+	-- evenly over it (the end gates stand on the old end slots, Ring in the middle); the sector reaches 5.75 degrees
+	-- past the end gates.
 	L.MidAngle = G.GateFacing
 	L.GateAngles = {}
 	L.GateOrder = {}
 	local nGates = #GATE_SPECS
+	local span = (G.CourtSlots - 1) * G.GateStep
+	local step = nGates > 1 and span / (nGates - 1) or 0
 	for i, spec in ipairs(GATE_SPECS) do
-		local a = G.GateFacing + (i - (nGates + 1) / 2) * G.GateStep
+		local a = G.GateFacing + (i - (nGates + 1) / 2) * step
 		L.GateAngles[spec.Id] = a
 		L.GateOrder[i] = spec.Id
 	end
-	L.CourtFrom = G.GateFacing - ((nGates - 1) / 2) * G.GateStep - 5.75
-	L.CourtTo = G.GateFacing + ((nGates - 1) / 2) * G.GateStep + 5.75
+	L.CourtFrom = G.GateFacing - span / 2 - 5.75
+	L.CourtTo = G.GateFacing + span / 2 + 5.75
 
 	-- Shop island.
 	local off = LOBBY.ShopOffset or Vector3.new(0, 0, -150)
@@ -2221,17 +2227,16 @@ local function buildPlaza(root, L)
 end
 
 ----------------------------------------------------------------------
--- Phase 5 Gate Court gates (6.1 / 6.2): Home, Obby and Altar are built here with WorldStyle.BuildGate into the
+-- Phase 5 Gate Court gates (6.1 / 6.2): Obby and Altar are built here with WorldStyle.BuildGate into the
 -- Gates folder; Ring / Arena (ArenaBuilder) and Dungeon (DungeonBuilder, W3) stand at LobbyInfo.GateSites.
 ----------------------------------------------------------------------
 local Gates = {}
 
 Gates.Info = {
-	Home = { Title = "My Home", Info = "Your sky home and pets", Pad = false },
 	Obby = { Title = "Sky Obby", Info = "Climb the clouds", Pad = true },
 	Altar = { Title = "Storm Altar", Info = "The secret roulette", Pad = false },
 }
-Gates.Built = { "Home", "Obby", "Altar" } -- the lobby's own gates, in Build order
+Gates.Built = { "Obby", "Altar" } -- the lobby's own gates, in Build order (Phase 6: no Home gate)
 
 function Gates.Spec(id)
 	for _, s in ipairs(GATE_SPECS) do
@@ -3599,7 +3604,7 @@ function LobbyBuilder.Build()
 	end
 
 	-- Gameplay-critical objects first (gates, spots, shop); each has a bare-bones fallback.
-	-- The Gate Court (6.1): Home, Obby, Altar here; Ring / Arena (ArenaBuilder) and Dungeon (DungeonBuilder) join the
+	-- The Gate Court (6.1): Obby, Altar here; Ring / Arena (ArenaBuilder) and Dungeon (DungeonBuilder) join the
 	-- same folder later, at GateSites.
 	local gatesFolder = newFolder(root, "Gates")
 	local sites = Gates.Sites(L)

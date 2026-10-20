@@ -47,7 +47,7 @@ return {
 		Min = { -0.8721, -1.2209, -0.8721 },
 		Size = { 1.8605, 2.907, 2.4205 },
 	},
-	ContentHash = "2c70a300b122a77e9ce9d39515fa78f0",
+	ContentHash = "26bcdfb5a051fc781f19bd1d3f26ed14",
 	DarkFactor = { 0.8425, 0.85, 0.8875 },
 	DeepFactor = { 0.7098, 0.7225, 0.7877 },
 	Groups = {
@@ -133,15 +133,15 @@ return {
 			Tris = 40,
 		},
 		{
-			Center = { 0, 0.407, -0.4651 },
+			Center = { 0, 0.1163, -0.4651 },
 			Color = { "headroom", { "mix", { "Primary" }, { "rgb", 255, 130, 158 }, 0.75 } },
 			Group = "Body",
 			Key = "Blush",
 			Material = "SmoothPlastic",
 			Name = "Blush",
 			Shade = "headroom",
-			Size = { 1.7442, 0.2326, 0.1163 },
-			Tris = 16,
+			Size = { 1.0465, 0.1163, 0.1163 },
+			Tris = 8,
 		},
 		{
 			Center = { 0, -1.0465, -0.4651 },
@@ -208,7 +208,7 @@ return {
 			Name = "Fur",
 			Shade = "headroom",
 			Size = { 1.7442, 1.5116, 1.5116 },
-			Tris = 764,
+			Tris = 758,
 		},
 		{
 			Center = { 0, 1.2791, 0 },
@@ -263,7 +263,7 @@ return {
 			Name = "Scale",
 			Shade = "headroom",
 			Size = { 1.5116, 1.3953, 1.2791 },
-			Tris = 546,
+			Tris = 560,
 		},
 		{
 			Center = { 0.407, 0.6977, -0.5814 },
@@ -333,7 +333,7 @@ return {
 		},
 	},
 	Rig = "Tail:tail:1:0.3:0=0,-0.86,0.56,1,0,0,0,1,0,0,0,1",
-	StructureHash = "684e4342f01162ee03c6a905b7d97b06",
+	StructureHash = "d0e9c904aec677d87005e32462af1485",
 	Tris = 2130,
 	VoxelStuds = 0.11628,
 }

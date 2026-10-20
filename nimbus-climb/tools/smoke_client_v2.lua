@@ -1226,11 +1226,18 @@ S.client_menu = guarded("client_menu", function()
 	-- v3: the Pet Index window
 	indexWindowChecks(PetCatalog)
 
-	-- Spot button
+	-- Spot button (Phase 6: it opens the Home window; without a home its "Claim a home" hero fires Remotes.GoToSpot)
 	local mark = #serverCalls("GoToSpot")
 	clickEntry("Spot")
-	T.eq(#serverCalls("GoToSpot"), mark + 1, "the Spot button fires Remotes.GoToSpot")
-	T.eq(#visibleWindows(), 0, "...without opening a window")
+	local homeWin = windowOf("Window_Home")
+	T.check(homeWin ~= nil and homeWin.Visible and #serverCalls("GoToSpot") == mark, "the Spot button opens the Home window (no home yet: nothing sent)")
+	local claim = homeWin and descendantNamed(homeWin, "ClaimHome")
+	if T.check(claim ~= nil, "...with the Claim a home button") then
+		Mock.Click(claim)
+		advance(0.3)
+		T.eq(#serverCalls("GoToSpot"), mark + 1, "Claim a home fires Remotes.GoToSpot")
+		T.eq(#visibleWindows(), 0, "...and closes the window")
+	end
 
 	-- Shop: roulettes
 	clickEntry("Shop")
