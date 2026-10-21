@@ -8897,7 +8897,15 @@ return ItemCatalog
 -- Mesh key -> Roblox Model asset id (numbers only). Empty = every model uses its Part build (today's game).
 -- Rejected assets are left out; assets still in review are listed and simply fall back until approved.
 return {
+	acc_crown = 95719441990639,
+	acc_crown_low = 131409076531825,
 	cal_axes = 115959775479149,
+	pet_dog = 134064311685185,
+	pet_dog_low = 90453620352778,
+	wing_feather_L = 109522978408114,
+	wing_feather_L_low = 118536422831995,
+	wing_feather_R = 80562218189547,
+	wing_feather_R_low = 83847180366774,
 }
 ]]></string>
         </Properties>
