@@ -541,7 +541,14 @@
       "uploadedAt": "2026-10-21T09:26:38Z"
     },
     "pet_owl_low": {
-      "lastError": "operation e3a7adfe-48bb-4ea6-b1f2-6081901f4c72 failed: Unknown Unknown Error"
+      "assetId": 133163557509554,
+      "contentHash": "fdac34cb222fcc13f01c7e3b2712dfe6",
+      "fileSha256": "7797363814def73282bb8b1d9fc76b09ee9a19374992beeec5432ee47941ff81",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-10-21T09:37:13.214Z",
+      "revisionId": "1",
+      "structureHash": "b763b4147b892e66ca7ce517970f5f29",
+      "uploadedAt": "2026-10-21T09:37:16Z"
     },
     "pet_panda": {
       "assetId": 133769677985253,
@@ -814,7 +821,14 @@
       "uploadedAt": "2026-10-21T09:32:58Z"
     },
     "wing_fairy_R_low": {
-      "lastError": "operation 124f8568-d187-4de1-972a-09e6efe35afb failed: Unknown Unknown Error"
+      "assetId": 114930468500842,
+      "contentHash": "36169e284d0e5af0d03b327713af7362",
+      "fileSha256": "1ad443a6e08507dfa4f002fe6d8d2c7e271cce8bbad869b30adb37b1ac1a5507",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-10-21T09:37:19.836Z",
+      "revisionId": "1",
+      "structureHash": "466a950e78b13d5250e28764470d06d7",
+      "uploadedAt": "2026-10-21T09:37:24Z"
     },
     "wing_feather_L": {
       "assetId": 109522978408114,
