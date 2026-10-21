@@ -2491,7 +2491,14 @@
       "uploadedAt": "2026-10-21T10:59:22Z"
     },
     "evowing_moonlit_owl_2b_R": {
-      "lastError": "operation 2744cb50-0a06-491a-a8ee-67e911b1eb42 failed: Unknown Unknown Error"
+      "assetId": 75737762556293,
+      "contentHash": "8bc745deb1656685603e4be6749ec4ba",
+      "fileSha256": "695665e5baa2f587991b9d28217cd04751e1e717abe39d02578bf57bba3ba4cd",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-10-21T11:25:33.266Z",
+      "revisionId": "1",
+      "structureHash": "1a0f38f89c7306432269ed215c863f09",
+      "uploadedAt": "2026-10-21T11:25:37Z"
     },
     "evowing_moonlit_owl_2b_R_low": {
       "assetId": 117452828835353,
@@ -3194,7 +3201,14 @@
       "uploadedAt": "2026-10-21T11:13:34Z"
     },
     "evowing_starlight_unicorn_2_L_low": {
-      "lastError": "operation 12829642-3468-418b-80f5-2281731b81a1 failed: Unknown Unknown Error"
+      "assetId": 121936035884481,
+      "contentHash": "ce4b0ce81ba67a1f0f1cc203d6957e8f",
+      "fileSha256": "9ebf8eb71055a685f50d2462930323a339be683a1f62c201b27471204875b66c",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-10-21T11:25:45.660Z",
+      "revisionId": "1",
+      "structureHash": "b5345f76cc45688e5a8367f6eaf43ff1",
+      "uploadedAt": "2026-10-21T11:25:50Z"
     },
     "evowing_starlight_unicorn_2_R": {
       "assetId": 118087724787048,
@@ -3377,7 +3391,14 @@
       "uploadedAt": "2026-10-21T11:18:17Z"
     },
     "evowing_stormfang_2b_L": {
-      "lastError": "operation f243442b-a615-4f0f-80a8-4e48de7716a5 failed: Unknown Unknown Error"
+      "assetId": 87747234302680,
+      "contentHash": "4619007189013ebc675b9d04d9e22a68",
+      "fileSha256": "36c8ef5eec74baa87db471f3927dfd5cf05bcb80cf5095bba4377de5ac1a482b",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-10-21T11:25:57.430Z",
+      "revisionId": "1",
+      "structureHash": "4e19d6f81141dcc918312c2558fb55d6",
+      "uploadedAt": "2026-10-21T11:25:58Z"
     },
     "evowing_stormfang_2b_L_low": {
       "assetId": 80513760024800,
