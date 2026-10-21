@@ -59,7 +59,7 @@ Request + approved decisions: scratchpad/phase5_request.md (player said "go!").
 | W5 | review (3 lenses) + fix + release gate + rbxlx + merge + send | DONE: 14 review findings fixed; release run_checks full 11372/0 (scratchpad/p5_release2.log); rbxlx rebuilt + verify_place 87/87; merged to main; sent to player (scratchpad/release_p5) |
 Wave script: scratchpad/p5wave.js takes args {wave, jobs:[{key, model, files, task}], resume:{key: note}}. Notes after each wave: scratchpad/p5_wave<N>_notes.md.
 Resume design: Workflow({scriptPath: scratchpad/p5design.js, resumeFromRunId: "wf_9b76bb34-5d6"})
-Blender: bpy 5.2 at /tmp/claude-0/bpyenv/bin/python (re-install with pip in a venv if the container restarted). Pebble Pup script: nimbus-climb/blender/pebble_pup.py.
+Blender: bpy 5.2 at /tmp/claude-0/bpyenv/bin/python (re-install with pip in a venv if the container restarted). (The old smooth Pebble Pup script blender/pebble_pup.py + its preview were deleted 2026-10-21 at the player's request: old design, not used; the live pup is the fine-voxel pet_dog key.)
 PLAYER IS AFK: player said "if this wave ends i allow you to continue the build without stops without asking ... until the end of the phase". So: run W0..W5 + ship with NO questions. Job args for each wave: scratchpad/p5jobs/w<N>.json (pass as Workflow args).
 Preview sent to player: scratchpad/release_p5_preview (W3 gate 56c2f71 + side fixes Hud/Menu/EvolutionFx). Not merged.
 W5 review script ready: scratchpad/p5review.js (launch after the W4 gate fixer; review reads v3-phase4..HEAD)
