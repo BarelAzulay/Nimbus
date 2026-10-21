@@ -2241,11 +2241,514 @@
       "uploadedAt": "2026-10-21T10:54:12Z"
     },
     "evowing_magma_cub_2b_L_low": {
-      "pendingContentHash": "d253fea7875b3050a074c1ecba6123cc",
-      "pendingFileSha256": "5a7e6b2d0fcf6b49297cc934ff2f6b8c8f94575f39ae683db5a61c5fc4a3a4c1",
+      "assetId": 89132947814412,
+      "contentHash": "d253fea7875b3050a074c1ecba6123cc",
+      "fileSha256": "5a7e6b2d0fcf6b49297cc934ff2f6b8c8f94575f39ae683db5a61c5fc4a3a4c1",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-10-21T10:54:23.905Z",
+      "revisionId": "1",
+      "structureHash": "b6ea96fcad45f88a77e7a4b1a6f9ee6c",
+      "uploadedAt": "2026-10-21T10:54:31Z"
+    },
+    "evowing_magma_cub_2b_R": {
+      "assetId": 82268068114017,
+      "contentHash": "989ecbbf5c64318e51f5e445a839a553",
+      "fileSha256": "a7105dc5c2904371c1813a7689e92da1a3cc6d86269fa165201b8e5b3e9868fb",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-10-21T10:54:45.946Z",
+      "revisionId": "1",
+      "structureHash": "eeca05e745409b74347cfcae06fc2817",
+      "uploadedAt": "2026-10-21T10:54:50Z"
+    },
+    "evowing_magma_cub_2b_R_low": {
+      "assetId": 134657144849194,
+      "contentHash": "c7470db8efe254292815281dc9d71427",
+      "fileSha256": "a4604a397f0243a33970095075a6241eaa0a565b2c93fb9b0069c2eba6814d58",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-10-21T10:55:06.265Z",
+      "revisionId": "1",
+      "structureHash": "0f1c47e808284b018172c1625ba85376",
+      "uploadedAt": "2026-10-21T10:55:09Z"
+    },
+    "evowing_mallow_kitten_1_L": {
+      "assetId": 75581412021030,
+      "contentHash": "8db3803554b0c7e9fbf6036d59689075",
+      "fileSha256": "d615511a4fc5f41afcb96cf7460a4fadf35b1c61e657028cadfed636d6ee58ea",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-10-21T10:55:12.918Z",
+      "revisionId": "1",
+      "structureHash": "30724b7d8a37d946628a7a8ebfbe377a",
+      "uploadedAt": "2026-10-21T10:55:16Z"
+    },
+    "evowing_mallow_kitten_1_L_low": {
+      "assetId": 121411274428517,
+      "contentHash": "616f6221c14cd60a92effd29a4316a80",
+      "fileSha256": "76c656785fcf2a7fa246b51f06a635f94c24c8488f437349e3ac9e919a2bea0b",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-10-21T10:55:27.257Z",
+      "revisionId": "1",
+      "structureHash": "ae2c4c6f9ee1bb9e9088a349ca2f1c28",
+      "uploadedAt": "2026-10-21T10:55:27Z"
+    },
+    "evowing_mallow_kitten_1_R": {
+      "assetId": 121845006371752,
+      "contentHash": "a6fe49c19f91ae74d92c01e219756321",
+      "fileSha256": "d65b3d6dc9b783483f9b985c1902961cab2105f04a2146ab99a3403698a21383",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-10-21T10:55:37.054Z",
+      "revisionId": "1",
+      "structureHash": "cec4e32ed3eba4559837eab62a5cd5a2",
+      "uploadedAt": "2026-10-21T10:55:39Z"
+    },
+    "evowing_mallow_kitten_1_R_low": {
+      "assetId": 89569093489296,
+      "contentHash": "50138cface0471cd3b408c9d008f4e59",
+      "fileSha256": "5555744784113cbabbd8ae6181135df0ee7e967cc8aae66fe3a943779c80ccd2",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-10-21T10:55:46.270Z",
+      "revisionId": "1",
+      "structureHash": "ff6159dd839165743a5e39a9a8e503d9",
+      "uploadedAt": "2026-10-21T10:55:50Z"
+    },
+    "evowing_maple_fox_1_L": {
+      "assetId": 133926847308524,
+      "contentHash": "c11849068ae6ed4faddc1377903ec784",
+      "fileSha256": "d615511a4fc5f41afcb96cf7460a4fadf35b1c61e657028cadfed636d6ee58ea",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-10-21T10:55:57.299Z",
+      "revisionId": "1",
+      "structureHash": "30724b7d8a37d946628a7a8ebfbe377a",
+      "uploadedAt": "2026-10-21T10:55:57Z"
+    },
+    "evowing_maple_fox_1_L_low": {
+      "assetId": 114176866475409,
+      "contentHash": "4054d5b41bd38dcc3aff1dd5acc9709d",
+      "fileSha256": "76c656785fcf2a7fa246b51f06a635f94c24c8488f437349e3ac9e919a2bea0b",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-10-21T10:56:07.343Z",
+      "revisionId": "1",
+      "structureHash": "ae2c4c6f9ee1bb9e9088a349ca2f1c28",
+      "uploadedAt": "2026-10-21T10:56:09Z"
+    },
+    "evowing_maple_fox_1_R": {
+      "assetId": 133924664720072,
+      "contentHash": "0aff750a4a29a6d32ec0fc21c192f1c8",
+      "fileSha256": "d65b3d6dc9b783483f9b985c1902961cab2105f04a2146ab99a3403698a21383",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-10-21T10:56:28.069Z",
+      "revisionId": "1",
+      "structureHash": "cec4e32ed3eba4559837eab62a5cd5a2",
+      "uploadedAt": "2026-10-21T10:56:38Z"
+    },
+    "evowing_maple_fox_1_R_low": {
+      "assetId": 91817367363573,
+      "contentHash": "ffaf6782720abd8deb54be0558e022a4",
+      "fileSha256": "5555744784113cbabbd8ae6181135df0ee7e967cc8aae66fe3a943779c80ccd2",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-10-21T10:56:48.646Z",
+      "revisionId": "1",
+      "structureHash": "ff6159dd839165743a5e39a9a8e503d9",
+      "uploadedAt": "2026-10-21T10:56:50Z"
+    },
+    "evowing_mochi_slime_1_L": {
+      "assetId": 93364914278532,
+      "contentHash": "9c84c0f01b8cbc8f841cf54874681a14",
+      "fileSha256": "d615511a4fc5f41afcb96cf7460a4fadf35b1c61e657028cadfed636d6ee58ea",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-10-21T10:56:56.775Z",
+      "revisionId": "1",
+      "structureHash": "30724b7d8a37d946628a7a8ebfbe377a",
+      "uploadedAt": "2026-10-21T10:57:01Z"
+    },
+    "evowing_mochi_slime_1_L_low": {
+      "assetId": 109824675760557,
+      "contentHash": "639fa2f049295272879a7e056d4bd709",
+      "fileSha256": "76c656785fcf2a7fa246b51f06a635f94c24c8488f437349e3ac9e919a2bea0b",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-10-21T10:57:09.335Z",
+      "revisionId": "1",
+      "structureHash": "ae2c4c6f9ee1bb9e9088a349ca2f1c28",
+      "uploadedAt": "2026-10-21T10:57:12Z"
+    },
+    "evowing_mochi_slime_1_R": {
+      "assetId": 80150641486708,
+      "contentHash": "0c32c116ab0fe3bd15bfb5973b111b6f",
+      "fileSha256": "d65b3d6dc9b783483f9b985c1902961cab2105f04a2146ab99a3403698a21383",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-10-21T10:57:17.969Z",
+      "revisionId": "1",
+      "structureHash": "cec4e32ed3eba4559837eab62a5cd5a2",
+      "uploadedAt": "2026-10-21T10:57:22Z"
+    },
+    "evowing_mochi_slime_1_R_low": {
+      "assetId": 72446840972969,
+      "contentHash": "faadf9660566ab6f0d75ea2ba2e242cd",
+      "fileSha256": "5555744784113cbabbd8ae6181135df0ee7e967cc8aae66fe3a943779c80ccd2",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-10-21T10:57:26.065Z",
+      "revisionId": "1",
+      "structureHash": "ff6159dd839165743a5e39a9a8e503d9",
+      "uploadedAt": "2026-10-21T10:57:29Z"
+    },
+    "evowing_moonlit_owl_1_L": {
+      "assetId": 121445818123133,
+      "contentHash": "3a46e7203156846bf54e5b9f2adc82c1",
+      "fileSha256": "d615511a4fc5f41afcb96cf7460a4fadf35b1c61e657028cadfed636d6ee58ea",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-10-21T10:57:37.598Z",
+      "revisionId": "1",
+      "structureHash": "30724b7d8a37d946628a7a8ebfbe377a",
+      "uploadedAt": "2026-10-21T10:57:39Z"
+    },
+    "evowing_moonlit_owl_1_L_low": {
+      "assetId": 88158428702722,
+      "contentHash": "0f8f87e17f329e29b140e25bb4a94122",
+      "fileSha256": "76c656785fcf2a7fa246b51f06a635f94c24c8488f437349e3ac9e919a2bea0b",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-10-21T10:57:53.035Z",
+      "revisionId": "1",
+      "structureHash": "ae2c4c6f9ee1bb9e9088a349ca2f1c28",
+      "uploadedAt": "2026-10-21T10:57:58Z"
+    },
+    "evowing_moonlit_owl_1_R": {
+      "assetId": 83340750243968,
+      "contentHash": "dc58e90618d16a3a4b9f3af3ccec8e5d",
+      "fileSha256": "d65b3d6dc9b783483f9b985c1902961cab2105f04a2146ab99a3403698a21383",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-10-21T10:58:06.710Z",
+      "revisionId": "1",
+      "structureHash": "cec4e32ed3eba4559837eab62a5cd5a2",
+      "uploadedAt": "2026-10-21T10:58:10Z"
+    },
+    "evowing_moonlit_owl_1_R_low": {
+      "assetId": 122914505776843,
+      "contentHash": "77da732152d9eb6a228adef14ad9349d",
+      "fileSha256": "5555744784113cbabbd8ae6181135df0ee7e967cc8aae66fe3a943779c80ccd2",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-10-21T10:58:17.639Z",
+      "revisionId": "1",
+      "structureHash": "ff6159dd839165743a5e39a9a8e503d9",
+      "uploadedAt": "2026-10-21T10:58:21Z"
+    },
+    "evowing_moonlit_owl_2_L": {
+      "assetId": 101536049429004,
+      "contentHash": "e0b25276942197f858de8365621da0fa",
+      "fileSha256": "ea799f1ed3b55fdc283a2f0febb8002341016640ba57b7564d912ca65f5a79cb",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-10-21T10:58:28.624Z",
+      "revisionId": "1",
+      "structureHash": "c880e0216a63139a3e544da8f6b6563a",
+      "uploadedAt": "2026-10-21T10:58:32Z"
+    },
+    "evowing_moonlit_owl_2_L_low": {
+      "assetId": 111471438511393,
+      "contentHash": "bce33007c952dc8757398779697c70df",
+      "fileSha256": "87e8c3920f7fc4edb65c4126ba3150a0b0dbeb389fcd009f27c4c7963d5e8da5",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-10-21T10:58:38.834Z",
+      "revisionId": "1",
+      "structureHash": "b5345f76cc45688e5a8367f6eaf43ff1",
+      "uploadedAt": "2026-10-21T10:58:42Z"
+    },
+    "evowing_moonlit_owl_2_R": {
+      "assetId": 75316231889264,
+      "contentHash": "166c4b5aeba6811ce5d082eb262c8f38",
+      "fileSha256": "8259e7d6eaf954665032ac02bc18d9b00c7b3dd03f98f4ddad1eb27a1e3afe3c",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-10-21T10:58:49.245Z",
+      "revisionId": "1",
+      "structureHash": "cf66daf8bfc6e0029eeb9ed9ce288ecb",
+      "uploadedAt": "2026-10-21T10:58:53Z"
+    },
+    "evowing_moonlit_owl_2_R_low": {
+      "assetId": 109941475132740,
+      "contentHash": "da737e7353fbb1996da572c9b0bf8527",
+      "fileSha256": "a588d051e373766c85525fec4b1956f67eb50960ba786874ddff95aeb48dd023",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-10-21T10:59:04.131Z",
+      "revisionId": "1",
+      "structureHash": "69ec3e689ac030332ae433eb7251446f",
+      "uploadedAt": "2026-10-21T10:59:04Z"
+    },
+    "evowing_moonlit_owl_2b_L": {
+      "assetId": 91018934090106,
+      "contentHash": "b1c3c3efcd6c9a439b212b124f2eeb8c",
+      "fileSha256": "a9ae2d1d8a0489d502699f17224a9e5d4880ea6d6f1d95e9967f0e17565e25df",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-10-21T10:59:08.528Z",
+      "revisionId": "1",
+      "structureHash": "ac89dbf341b6f63a7deba80af8a8830d",
+      "uploadedAt": "2026-10-21T10:59:11Z"
+    },
+    "evowing_moonlit_owl_2b_L_low": {
+      "assetId": 99922079436053,
+      "contentHash": "1b7ded9e70ab56b3c563adb94b9ee458",
+      "fileSha256": "5a7e6b2d0fcf6b49297cc934ff2f6b8c8f94575f39ae683db5a61c5fc4a3a4c1",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-10-21T10:59:21.232Z",
+      "revisionId": "1",
+      "structureHash": "b6ea96fcad45f88a77e7a4b1a6f9ee6c",
+      "uploadedAt": "2026-10-21T10:59:22Z"
+    },
+    "evowing_moonlit_owl_2b_R": {
+      "lastError": "operation 2744cb50-0a06-491a-a8ee-67e911b1eb42 failed: Unknown Unknown Error"
+    },
+    "evowing_moonlit_owl_2b_R_low": {
+      "assetId": 117452828835353,
+      "contentHash": "ed84347d713adcc2c00bf2b716da58d0",
+      "fileSha256": "a4604a397f0243a33970095075a6241eaa0a565b2c93fb9b0069c2eba6814d58",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-10-21T10:59:48.524Z",
+      "revisionId": "1",
+      "structureHash": "0f1c47e808284b018172c1625ba85376",
+      "uploadedAt": "2026-10-21T10:59:51Z"
+    },
+    "evowing_nebula_axolotl_1_L": {
+      "assetId": 106588314294662,
+      "contentHash": "83d54b162c78960cf0231d9ba962c1e3",
+      "fileSha256": "d615511a4fc5f41afcb96cf7460a4fadf35b1c61e657028cadfed636d6ee58ea",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-10-21T11:00:07.845Z",
+      "revisionId": "1",
+      "structureHash": "30724b7d8a37d946628a7a8ebfbe377a",
+      "uploadedAt": "2026-10-21T11:00:08Z"
+    },
+    "evowing_nebula_axolotl_1_L_low": {
+      "assetId": 132928189425100,
+      "contentHash": "cc2cdfa99629db86db5965e14c2c737a",
+      "fileSha256": "76c656785fcf2a7fa246b51f06a635f94c24c8488f437349e3ac9e919a2bea0b",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-10-21T11:00:23.150Z",
+      "revisionId": "1",
+      "structureHash": "ae2c4c6f9ee1bb9e9088a349ca2f1c28",
+      "uploadedAt": "2026-10-21T11:00:27Z"
+    },
+    "evowing_nebula_axolotl_1_R": {
+      "assetId": 133760172572940,
+      "contentHash": "f270c3f1af6d44b1b92f0c620dd8cf5f",
+      "fileSha256": "d65b3d6dc9b783483f9b985c1902961cab2105f04a2146ab99a3403698a21383",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-10-21T11:00:29.896Z",
+      "revisionId": "1",
+      "structureHash": "cec4e32ed3eba4559837eab62a5cd5a2",
+      "uploadedAt": "2026-10-21T11:00:33Z"
+    },
+    "evowing_nebula_axolotl_1_R_low": {
+      "assetId": 128624857594317,
+      "contentHash": "3691fd4f4ec8969d55664e9942ce3e82",
+      "fileSha256": "5555744784113cbabbd8ae6181135df0ee7e967cc8aae66fe3a943779c80ccd2",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-10-21T11:00:37.693Z",
+      "revisionId": "1",
+      "structureHash": "ff6159dd839165743a5e39a9a8e503d9",
+      "uploadedAt": "2026-10-21T11:00:39Z"
+    },
+    "evowing_nebula_axolotl_2_L": {
+      "assetId": 119056802566359,
+      "contentHash": "9016ddc75bee0e58aa9dc101688a731b",
+      "fileSha256": "8925683b61e6695b2e446a9bd8c5f3b2b4c342aca09973c2cf77adad42456bd9",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-10-21T11:00:49.958Z",
+      "revisionId": "1",
+      "structureHash": "2c5455d6032c03e0f35f277a20828021",
+      "uploadedAt": "2026-10-21T11:00:50Z"
+    },
+    "evowing_nebula_axolotl_2_L_low": {
+      "assetId": 71914919145217,
+      "contentHash": "3e622adeb564c825ab576d744966598f",
+      "fileSha256": "268ce163a7a7beb5ff4d61b0e6d4681451df97469099ac935a0ae2b167ce222e",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-10-21T11:01:00.532Z",
+      "revisionId": "1",
+      "structureHash": "bc2b4625d45b29db1f9be4aeaa3d15f4",
+      "uploadedAt": "2026-10-21T11:01:01Z"
+    },
+    "evowing_nebula_axolotl_2_R": {
+      "assetId": 110913654337452,
+      "contentHash": "e7b6c68acf3826fb512ad5c64aeb28c0",
+      "fileSha256": "0bd19b9be4cbdc7cd665cacdd618febd2d82f7fc7eb16383b72496972a2ac145",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-10-21T11:01:13.766Z",
+      "revisionId": "1",
+      "structureHash": "d8965539da3bc496b1176b27eae7edf5",
+      "uploadedAt": "2026-10-21T11:01:19Z"
+    },
+    "evowing_nebula_axolotl_2_R_low": {
+      "assetId": 112107468326686,
+      "contentHash": "a33bf9215359b838acd8408d936c9069",
+      "fileSha256": "be445bf9304958532ab623a71e4c039f25f64f1281d8955ddfb672f98aeabe90",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-10-21T11:01:29.113Z",
+      "revisionId": "1",
+      "structureHash": "e6216e39f73351fc5ac5531f5891b0ef",
+      "uploadedAt": "2026-10-21T11:01:30Z"
+    },
+    "evowing_nebula_axolotl_2b_L": {
+      "assetId": 102117880072625,
+      "contentHash": "d71da74ceabd7f5767730666d8584085",
+      "fileSha256": "2b3752b52ecf0a02c75b2e2324f79c46bb048452e9fb8675042dd2b5138292c5",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-10-21T11:01:34.898Z",
+      "revisionId": "1",
+      "structureHash": "3de8a117f6ec7740e3fe9757ca8b9aaf",
+      "uploadedAt": "2026-10-21T11:01:37Z"
+    },
+    "evowing_nebula_axolotl_2b_L_low": {
+      "assetId": 94935895554071,
+      "contentHash": "cf82cac36bc7a950f04f7ffe98dab87f",
+      "fileSha256": "5a7e6b2d0fcf6b49297cc934ff2f6b8c8f94575f39ae683db5a61c5fc4a3a4c1",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-10-21T11:01:47.871Z",
+      "revisionId": "1",
+      "structureHash": "b6ea96fcad45f88a77e7a4b1a6f9ee6c",
+      "uploadedAt": "2026-10-21T11:01:54Z"
+    },
+    "evowing_nebula_axolotl_2b_R": {
+      "assetId": 90112615296314,
+      "contentHash": "79fe9db1eff160229e9ef42192583566",
+      "fileSha256": "a7105dc5c2904371c1813a7689e92da1a3cc6d86269fa165201b8e5b3e9868fb",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-10-21T11:02:00.216Z",
+      "revisionId": "1",
+      "structureHash": "eeca05e745409b74347cfcae06fc2817",
+      "uploadedAt": "2026-10-21T11:02:01Z"
+    },
+    "evowing_nebula_axolotl_2b_R_low": {
+      "assetId": 74597040033767,
+      "contentHash": "1aab210ad66fea1d1ccec2c7ac7cff01",
+      "fileSha256": "a4604a397f0243a33970095075a6241eaa0a565b2c93fb9b0069c2eba6814d58",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-10-21T11:02:09.917Z",
+      "revisionId": "1",
+      "structureHash": "0f1c47e808284b018172c1625ba85376",
+      "uploadedAt": "2026-10-21T11:02:12Z"
+    },
+    "evowing_obsidian_phoenix_1_L": {
+      "assetId": 74589503145552,
+      "contentHash": "11ff18a368c90c463e2d22353edc0a6a",
+      "fileSha256": "280101cccb39a52a63deb62cf573d3a1eca6b858f147fc80c5e51df3a2b5609f",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-10-21T11:02:17.499Z",
+      "revisionId": "1",
+      "structureHash": "6925c3f7ed29a8863507d0538787f495",
+      "uploadedAt": "2026-10-21T11:02:18Z"
+    },
+    "evowing_obsidian_phoenix_1_L_low": {
+      "assetId": 135958749342434,
+      "contentHash": "1d732a3d6adef3392d035d079f3dba33",
+      "fileSha256": "89834abc0e47379acef1657e3bdb4c3ac29ddfc07ef420e6d5e691c39d118b4d",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-10-21T11:02:21.629Z",
+      "revisionId": "1",
+      "structureHash": "6ede06b84d3bd1f4762f19838c52a09f",
+      "uploadedAt": "2026-10-21T11:02:24Z"
+    },
+    "evowing_obsidian_phoenix_1_R": {
+      "assetId": 130733276909767,
+      "contentHash": "82c55cc774b8d0c7c0475d7da3d7ad81",
+      "fileSha256": "945be20198c42f30834e469dc78ffe1761873b41bc4d84796085e91bdaa7cccb",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-10-21T11:02:28.476Z",
+      "revisionId": "1",
+      "structureHash": "9a0a80d87ce283e14ff50643cf85b836",
+      "uploadedAt": "2026-10-21T11:02:31Z"
+    },
+    "evowing_obsidian_phoenix_1_R_low": {
+      "assetId": 113751202294100,
+      "contentHash": "2690c05b1aa93d4177054a2daacb5c57",
+      "fileSha256": "ddee61e36cc21e9fbbf9231b33b562bcec0bfea8bd0d30e386f8aed58e0d25e9",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-10-21T11:02:38.130Z",
+      "revisionId": "1",
+      "structureHash": "f2b7c5191b3917d06948a10b18c3bb4b",
+      "uploadedAt": "2026-10-21T11:02:42Z"
+    },
+    "evowing_obsidian_phoenix_2_L": {
+      "assetId": 77890515457331,
+      "contentHash": "66cabfacc0d2e287037b59c16815d7ca",
+      "fileSha256": "419812993a21d75c87c36f6e2917a1c34d1e8f6fa1eaa1aad8c86b94d0d550c4",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-10-21T11:02:47.940Z",
+      "revisionId": "1",
+      "structureHash": "b6cae26b6aa938e43b513208b5b13be4",
+      "uploadedAt": "2026-10-21T11:02:48Z"
+    },
+    "evowing_obsidian_phoenix_2_L_low": {
+      "assetId": 110456477651904,
+      "contentHash": "a7c6f3733e9c922701f43fcd2f6b35bf",
+      "fileSha256": "19ea740e3664f4604be973bfd5fb583bcdb00dcde4d5fd1442eda6e988828d53",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-10-21T11:02:55.008Z",
+      "revisionId": "1",
+      "structureHash": "a772309bd5ad6c4dc0a538c9a01f7e07",
+      "uploadedAt": "2026-10-21T11:02:55Z"
+    },
+    "evowing_obsidian_phoenix_2_R": {
+      "assetId": 137479510398253,
+      "contentHash": "a790d21d474d5514cc570806832674de",
+      "fileSha256": "0bee13f9b13bac1dd0fa25c019aa36545d1aff3b28c7a4732098c0926de6846e",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-10-21T11:03:01.648Z",
+      "revisionId": "1",
+      "structureHash": "fe10799e0f8e3d5012bb959d1811c42c",
+      "uploadedAt": "2026-10-21T11:03:02Z"
+    },
+    "evowing_obsidian_phoenix_2_R_low": {
+      "assetId": 74719784103198,
+      "contentHash": "936fd1b1751b7c2a4fad855745ea2985",
+      "fileSha256": "c89651200b03af170922ac4b76aac929a0bdc16811e70d1411666e2c14a4cc7a",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-10-21T11:03:09.902Z",
+      "revisionId": "1",
+      "structureHash": "11667bcae75125280312b2b9081d6d86",
+      "uploadedAt": "2026-10-21T11:03:14Z"
+    },
+    "evowing_obsidian_phoenix_2b_L": {
+      "assetId": 116103525044158,
+      "contentHash": "978c72c627c028e178736c25d61d6f30",
+      "fileSha256": "204915a998df9cc9864a77a02809e835e22be2781ef6525e43d95a57273a6d84",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-10-21T11:03:20.920Z",
+      "revisionId": "1",
+      "structureHash": "1c7f12e0e8814bac8075955543350583",
+      "uploadedAt": "2026-10-21T11:03:25Z"
+    },
+    "evowing_obsidian_phoenix_2b_L_low": {
+      "assetId": 111658051975140,
+      "contentHash": "56f50dc764106bab44d5f64113d61726",
+      "fileSha256": "d239b7fa67919febe1e501a5c8f541bfeb85b90eeb6450bc667703f7cf2f609d",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-10-21T11:03:31.421Z",
+      "revisionId": "1",
+      "structureHash": "e62bfc825da94cae2fa317e5cfe8c009",
+      "uploadedAt": "2026-10-21T11:03:32Z"
+    },
+    "evowing_obsidian_phoenix_2b_R": {
+      "assetId": 76737836645625,
+      "contentHash": "bbde946c7d86888b2380ca52081a83c0",
+      "fileSha256": "349685dbd36788b9a1cba286d825525e26d35f2fc6974078fce155b856a833ad",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-10-21T11:03:47.080Z",
+      "revisionId": "1",
+      "structureHash": "192b9f24fcaae70cf064b0a287b0fce1",
+      "uploadedAt": "2026-10-21T11:03:50Z"
+    },
+    "evowing_obsidian_phoenix_2b_R_low": {
+      "assetId": 120896276518622,
+      "contentHash": "e6cba25f41efe0940dec42cd16a81517",
+      "fileSha256": "090501585ead374c8504ee87067411e5a8ed052b8f87bcc399f1dfcca1dd13e5",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-10-21T11:03:54.940Z",
+      "revisionId": "1",
+      "structureHash": "f9c14bf544840ad7bf8a4713803fb1b3",
+      "uploadedAt": "2026-10-21T11:03:56Z"
+    },
+    "evowing_pebble_pup_1_L": {
+      "pendingContentHash": "34e17f80656b2ec974353fe3bcee52aa",
+      "pendingFileSha256": "d615511a4fc5f41afcb96cf7460a4fadf35b1c61e657028cadfed636d6ee58ea",
       "pendingMode": "create",
-      "pendingOperation": "47249d0d-22fa-429a-a270-e453eb05b2a4",
-      "pendingStructureHash": "b6ea96fcad45f88a77e7a4b1a6f9ee6c"
+      "pendingOperation": "b28e2e8d-8794-4cd3-b220-6439737b5f7a",
+      "pendingStructureHash": "30724b7d8a37d946628a7a8ebfbe377a"
     },
     "hyb_axolotl": {
       "assetId": 75807933596369,
