@@ -1231,11 +1231,541 @@
       "uploadedAt": "2026-10-21T10:34:27Z"
     },
     "evowing_aurora_fox_2b_L": {
-      "pendingContentHash": "4ca2da01ee557cab9fbf4486b951b51d",
-      "pendingFileSha256": "2b3752b52ecf0a02c75b2e2324f79c46bb048452e9fb8675042dd2b5138292c5",
+      "assetId": 137965436008244,
+      "contentHash": "4ca2da01ee557cab9fbf4486b951b51d",
+      "fileSha256": "2b3752b52ecf0a02c75b2e2324f79c46bb048452e9fb8675042dd2b5138292c5",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-10-21T10:34:37.499Z",
+      "revisionId": "1",
+      "structureHash": "3de8a117f6ec7740e3fe9757ca8b9aaf",
+      "uploadedAt": "2026-10-21T10:34:38Z"
+    },
+    "evowing_aurora_fox_2b_L_low": {
+      "assetId": 98152049373301,
+      "contentHash": "d51f332fc4b2dc6c4993c65605f0d85d",
+      "fileSha256": "5a7e6b2d0fcf6b49297cc934ff2f6b8c8f94575f39ae683db5a61c5fc4a3a4c1",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-10-21T10:34:50.214Z",
+      "revisionId": "1",
+      "structureHash": "b6ea96fcad45f88a77e7a4b1a6f9ee6c",
+      "uploadedAt": "2026-10-21T10:34:56Z"
+    },
+    "evowing_aurora_fox_2b_R": {
+      "assetId": 81832751212002,
+      "contentHash": "7d11a3920b30c057d53023949ffed00d",
+      "fileSha256": "a7105dc5c2904371c1813a7689e92da1a3cc6d86269fa165201b8e5b3e9868fb",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-10-21T10:34:59.293Z",
+      "revisionId": "1",
+      "structureHash": "eeca05e745409b74347cfcae06fc2817",
+      "uploadedAt": "2026-10-21T10:35:02Z"
+    },
+    "evowing_aurora_fox_2b_R_low": {
+      "assetId": 128504520890645,
+      "contentHash": "91be130c16226fc89ca36e211e8f04b3",
+      "fileSha256": "a4604a397f0243a33970095075a6241eaa0a565b2c93fb9b0069c2eba6814d58",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-10-21T10:35:16.967Z",
+      "revisionId": "1",
+      "structureHash": "0f1c47e808284b018172c1625ba85376",
+      "uploadedAt": "2026-10-21T10:35:20Z"
+    },
+    "evowing_bamboo_panda_1_L": {
+      "assetId": 103535251435694,
+      "contentHash": "3801959ddfed5b2d3665b71855548674",
+      "fileSha256": "d615511a4fc5f41afcb96cf7460a4fadf35b1c61e657028cadfed636d6ee58ea",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-10-21T10:35:37.916Z",
+      "revisionId": "1",
+      "structureHash": "30724b7d8a37d946628a7a8ebfbe377a",
+      "uploadedAt": "2026-10-21T10:35:38Z"
+    },
+    "evowing_bamboo_panda_1_L_low": {
+      "assetId": 99525321627648,
+      "contentHash": "62f0f17c594274cde3120f4afc91cb91",
+      "fileSha256": "76c656785fcf2a7fa246b51f06a635f94c24c8488f437349e3ac9e919a2bea0b",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-10-21T10:35:47.938Z",
+      "revisionId": "1",
+      "structureHash": "ae2c4c6f9ee1bb9e9088a349ca2f1c28",
+      "uploadedAt": "2026-10-21T10:35:49Z"
+    },
+    "evowing_bamboo_panda_1_R": {
+      "assetId": 108236303830138,
+      "contentHash": "5d74160eba247320aef10463c3c815d7",
+      "fileSha256": "d65b3d6dc9b783483f9b985c1902961cab2105f04a2146ab99a3403698a21383",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-10-21T10:35:59.104Z",
+      "revisionId": "1",
+      "structureHash": "cec4e32ed3eba4559837eab62a5cd5a2",
+      "uploadedAt": "2026-10-21T10:36:00Z"
+    },
+    "evowing_bamboo_panda_1_R_low": {
+      "assetId": 134539599187091,
+      "contentHash": "a62ac30ead47fc78354dc6cc7acd835a",
+      "fileSha256": "5555744784113cbabbd8ae6181135df0ee7e967cc8aae66fe3a943779c80ccd2",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-10-21T10:36:07.911Z",
+      "revisionId": "1",
+      "structureHash": "ff6159dd839165743a5e39a9a8e503d9",
+      "uploadedAt": "2026-10-21T10:36:11Z"
+    },
+    "evowing_biscuit_bear_1_L": {
+      "assetId": 112301090966964,
+      "contentHash": "1e703c58cf5372a8b9a12338b6513036",
+      "fileSha256": "d615511a4fc5f41afcb96cf7460a4fadf35b1c61e657028cadfed636d6ee58ea",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-10-21T10:36:19.265Z",
+      "revisionId": "1",
+      "structureHash": "30724b7d8a37d946628a7a8ebfbe377a",
+      "uploadedAt": "2026-10-21T10:36:22Z"
+    },
+    "evowing_biscuit_bear_1_L_low": {
+      "assetId": 94183601563295,
+      "contentHash": "66b8cb6963b85e5d3ab10fea411bbe72",
+      "fileSha256": "76c656785fcf2a7fa246b51f06a635f94c24c8488f437349e3ac9e919a2bea0b",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-10-21T10:36:30.620Z",
+      "revisionId": "1",
+      "structureHash": "ae2c4c6f9ee1bb9e9088a349ca2f1c28",
+      "uploadedAt": "2026-10-21T10:36:33Z"
+    },
+    "evowing_biscuit_bear_1_R": {
+      "assetId": 80237069318306,
+      "contentHash": "00e60bbbafaa42b0be2cdb5d7694270d",
+      "fileSha256": "d65b3d6dc9b783483f9b985c1902961cab2105f04a2146ab99a3403698a21383",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-10-21T10:36:39.384Z",
+      "revisionId": "1",
+      "structureHash": "cec4e32ed3eba4559837eab62a5cd5a2",
+      "uploadedAt": "2026-10-21T10:36:40Z"
+    },
+    "evowing_biscuit_bear_1_R_low": {
+      "assetId": 73115933818577,
+      "contentHash": "39a38590babf53513e27784acf7363b8",
+      "fileSha256": "5555744784113cbabbd8ae6181135df0ee7e967cc8aae66fe3a943779c80ccd2",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-10-21T10:36:47.683Z",
+      "revisionId": "1",
+      "structureHash": "ff6159dd839165743a5e39a9a8e503d9",
+      "uploadedAt": "2026-10-21T10:36:51Z"
+    },
+    "evowing_blossom_bunny_1_L": {
+      "assetId": 101287800657992,
+      "contentHash": "c5ced2ba99e3a0596e620f3ea58b706b",
+      "fileSha256": "d615511a4fc5f41afcb96cf7460a4fadf35b1c61e657028cadfed636d6ee58ea",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-10-21T10:37:00.400Z",
+      "revisionId": "1",
+      "structureHash": "30724b7d8a37d946628a7a8ebfbe377a",
+      "uploadedAt": "2026-10-21T10:37:02Z"
+    },
+    "evowing_blossom_bunny_1_L_low": {
+      "assetId": 98654842974299,
+      "contentHash": "296d723749647c23a9803daa3ba7ec70",
+      "fileSha256": "76c656785fcf2a7fa246b51f06a635f94c24c8488f437349e3ac9e919a2bea0b",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-10-21T10:37:08.933Z",
+      "revisionId": "1",
+      "structureHash": "ae2c4c6f9ee1bb9e9088a349ca2f1c28",
+      "uploadedAt": "2026-10-21T10:37:09Z"
+    },
+    "evowing_blossom_bunny_1_R": {
+      "assetId": 87887842340567,
+      "contentHash": "0ea1a0a13f819fd7fb81e50ff190afda",
+      "fileSha256": "d65b3d6dc9b783483f9b985c1902961cab2105f04a2146ab99a3403698a21383",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-10-21T10:37:17.913Z",
+      "revisionId": "1",
+      "structureHash": "cec4e32ed3eba4559837eab62a5cd5a2",
+      "uploadedAt": "2026-10-21T10:37:20Z"
+    },
+    "evowing_blossom_bunny_1_R_low": {
+      "assetId": 89132643531740,
+      "contentHash": "b8682d44d81a30a3127e359fdcb12dd9",
+      "fileSha256": "5555744784113cbabbd8ae6181135df0ee7e967cc8aae66fe3a943779c80ccd2",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-10-21T10:37:32.070Z",
+      "revisionId": "1",
+      "structureHash": "ff6159dd839165743a5e39a9a8e503d9",
+      "uploadedAt": "2026-10-21T10:37:38Z"
+    },
+    "evowing_bubble_axolotl_1_L": {
+      "assetId": 87331667498974,
+      "contentHash": "681f71111510814945922d01143db8a3",
+      "fileSha256": "d615511a4fc5f41afcb96cf7460a4fadf35b1c61e657028cadfed636d6ee58ea",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-10-21T10:37:48.730Z",
+      "revisionId": "1",
+      "structureHash": "30724b7d8a37d946628a7a8ebfbe377a",
+      "uploadedAt": "2026-10-21T10:37:50Z"
+    },
+    "evowing_bubble_axolotl_1_L_low": {
+      "assetId": 121177444140033,
+      "contentHash": "15e198bc881eb55fdffa142779d1ec45",
+      "fileSha256": "76c656785fcf2a7fa246b51f06a635f94c24c8488f437349e3ac9e919a2bea0b",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-10-21T10:37:57.541Z",
+      "revisionId": "1",
+      "structureHash": "ae2c4c6f9ee1bb9e9088a349ca2f1c28",
+      "uploadedAt": "2026-10-21T10:38:01Z"
+    },
+    "evowing_bubble_axolotl_1_R": {
+      "assetId": 103713581020903,
+      "contentHash": "7f6ac733e381a2ac40d9106cccf58bed",
+      "fileSha256": "d65b3d6dc9b783483f9b985c1902961cab2105f04a2146ab99a3403698a21383",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-10-21T10:38:04.243Z",
+      "revisionId": "1",
+      "structureHash": "cec4e32ed3eba4559837eab62a5cd5a2",
+      "uploadedAt": "2026-10-21T10:38:08Z"
+    },
+    "evowing_bubble_axolotl_1_R_low": {
+      "assetId": 127899017098094,
+      "contentHash": "9970fe6b53ffa27d5947c3632fb5f6f9",
+      "fileSha256": "5555744784113cbabbd8ae6181135df0ee7e967cc8aae66fe3a943779c80ccd2",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-10-21T10:38:11.033Z",
+      "revisionId": "1",
+      "structureHash": "ff6159dd839165743a5e39a9a8e503d9",
+      "uploadedAt": "2026-10-21T10:38:14Z"
+    },
+    "evowing_candy_unicorn_1_L": {
+      "assetId": 126687769674521,
+      "contentHash": "b30c4410ad14977901575219f54f5ff5",
+      "fileSha256": "d615511a4fc5f41afcb96cf7460a4fadf35b1c61e657028cadfed636d6ee58ea",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-10-21T10:38:19.336Z",
+      "revisionId": "1",
+      "structureHash": "30724b7d8a37d946628a7a8ebfbe377a",
+      "uploadedAt": "2026-10-21T10:38:21Z"
+    },
+    "evowing_candy_unicorn_1_L_low": {
+      "assetId": 117738263802596,
+      "contentHash": "3137c9ec4d50e9d0a04c01a6beb172c0",
+      "fileSha256": "76c656785fcf2a7fa246b51f06a635f94c24c8488f437349e3ac9e919a2bea0b",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-10-21T10:38:31.552Z",
+      "revisionId": "1",
+      "structureHash": "ae2c4c6f9ee1bb9e9088a349ca2f1c28",
+      "uploadedAt": "2026-10-21T10:38:38Z"
+    },
+    "evowing_candy_unicorn_1_R": {
+      "assetId": 130362082102289,
+      "contentHash": "24efef5cb2227e0a05077fcbec7d0f55",
+      "fileSha256": "d65b3d6dc9b783483f9b985c1902961cab2105f04a2146ab99a3403698a21383",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-10-21T10:38:57.340Z",
+      "revisionId": "1",
+      "structureHash": "cec4e32ed3eba4559837eab62a5cd5a2",
+      "uploadedAt": "2026-10-21T10:39:07Z"
+    },
+    "evowing_candy_unicorn_1_R_low": {
+      "assetId": 122554522685370,
+      "contentHash": "9693817ca056557f2f7ed8abede338a4",
+      "fileSha256": "5555744784113cbabbd8ae6181135df0ee7e967cc8aae66fe3a943779c80ccd2",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-10-21T10:39:17.822Z",
+      "revisionId": "1",
+      "structureHash": "ff6159dd839165743a5e39a9a8e503d9",
+      "uploadedAt": "2026-10-21T10:39:18Z"
+    },
+    "evowing_candy_unicorn_2_L": {
+      "assetId": 125290008236470,
+      "contentHash": "fc9fccae281a1b949538a2f7de7d0dce",
+      "fileSha256": "92de226598081aa0481c62537b1014ce9ec83e3ceb75be6c883e91841dff4b83",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-10-21T10:39:22.468Z",
+      "revisionId": "1",
+      "structureHash": "99c0ef7880a013800c4899b6e53314f6",
+      "uploadedAt": "2026-10-21T10:39:24Z"
+    },
+    "evowing_candy_unicorn_2_L_low": {
+      "assetId": 91936061320636,
+      "contentHash": "bda42b08e0905ceafdafe25539f5b93c",
+      "fileSha256": "6e507a5a69ad4e06018b4ac8750dd02e075cdc59b9d88ecadaa1366be050f186",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-10-21T10:39:32.481Z",
+      "revisionId": "1",
+      "structureHash": "ac50af0c8ebd64a5beeea4f543bf5bf3",
+      "uploadedAt": "2026-10-21T10:39:35Z"
+    },
+    "evowing_candy_unicorn_2_R": {
+      "assetId": 83604753859753,
+      "contentHash": "f06810f5a7d0b5fcb6486cb91667e25b",
+      "fileSha256": "8b9e2b58653b35cefe892ff82e4940af3d27e651c1bd384c273be19dbc0ed572",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-10-21T10:39:42.076Z",
+      "revisionId": "1",
+      "structureHash": "9515f59d834307bf7755f18f0f9939be",
+      "uploadedAt": "2026-10-21T10:39:46Z"
+    },
+    "evowing_candy_unicorn_2_R_low": {
+      "assetId": 104794536956248,
+      "contentHash": "af85ed2c5b31289ae0b7ba322f278a5f",
+      "fileSha256": "3f8daf4f0a764263c279439ae6abdfee7037f23ee853c8f0b800279fda5270b5",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-10-21T10:39:59.541Z",
+      "revisionId": "1",
+      "structureHash": "915dd0ade236c58653ca9d8895c826e8",
+      "uploadedAt": "2026-10-21T10:40:04Z"
+    },
+    "evowing_candy_unicorn_2b_L": {
+      "assetId": 110719468481478,
+      "contentHash": "e3188bd61b607256f86c2e5bc3725371",
+      "fileSha256": "4e90e4566064c5d02a66c0a96f3eec3880f665ba79e7bf5a07a83640cc322ecd",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-10-21T10:40:10.195Z",
+      "revisionId": "1",
+      "structureHash": "a0b7506fc2b484de74bbdd9a17ec04b1",
+      "uploadedAt": "2026-10-21T10:40:11Z"
+    },
+    "evowing_candy_unicorn_2b_L_low": {
+      "assetId": 135060257893634,
+      "contentHash": "8f71d188b535eb303f66c0a97c73fe65",
+      "fileSha256": "5bcde3dfdb44cda8810de4171d1c2e00932816882dc902e765d1adf9a2ce26c1",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-10-21T10:40:20.916Z",
+      "revisionId": "1",
+      "structureHash": "0efc335003d6c8349d55ad4af941be4f",
+      "uploadedAt": "2026-10-21T10:40:22Z"
+    },
+    "evowing_candy_unicorn_2b_R": {
+      "assetId": 135288630974246,
+      "contentHash": "b33360dca30c4da0bfba7cb588289b81",
+      "fileSha256": "de6e794765c477aafd78028be657dcfaaa744b7072b47370240fe4f08f751821",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-10-21T10:40:30.676Z",
+      "revisionId": "1",
+      "structureHash": "c59fa2933804de3e8780833a22b7667e",
+      "uploadedAt": "2026-10-21T10:40:33Z"
+    },
+    "evowing_candy_unicorn_2b_R_low": {
+      "assetId": 97823848215595,
+      "contentHash": "5a2b72f74c840053fccb87ae69e82680",
+      "fileSha256": "239d5491b38c7bd7b99f89a35748ea56d20c59fb081f9e852e68689e783ff300",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-10-21T10:40:41.512Z",
+      "revisionId": "1",
+      "structureHash": "e918f8f3cc05b7ac2df4fdcb3ff3614d",
+      "uploadedAt": "2026-10-21T10:40:44Z"
+    },
+    "evowing_cherry_panda_1_L": {
+      "assetId": 76162671350310,
+      "contentHash": "fd22999d885799075f3a9b1e36f07e25",
+      "fileSha256": "d615511a4fc5f41afcb96cf7460a4fadf35b1c61e657028cadfed636d6ee58ea",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-10-21T10:40:50.368Z",
+      "revisionId": "1",
+      "structureHash": "30724b7d8a37d946628a7a8ebfbe377a",
+      "uploadedAt": "2026-10-21T10:40:55Z"
+    },
+    "evowing_cherry_panda_1_L_low": {
+      "assetId": 138099142106798,
+      "contentHash": "126639490ad3e56a26be0f909b7183b4",
+      "fileSha256": "76c656785fcf2a7fa246b51f06a635f94c24c8488f437349e3ac9e919a2bea0b",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-10-21T10:40:58.274Z",
+      "revisionId": "1",
+      "structureHash": "ae2c4c6f9ee1bb9e9088a349ca2f1c28",
+      "uploadedAt": "2026-10-21T10:41:01Z"
+    },
+    "evowing_cherry_panda_1_R": {
+      "assetId": 125345612332884,
+      "contentHash": "1eef95fd2cc366db1bc7de9ed4a7dbc0",
+      "fileSha256": "d65b3d6dc9b783483f9b985c1902961cab2105f04a2146ab99a3403698a21383",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-10-21T10:41:09.715Z",
+      "revisionId": "1",
+      "structureHash": "cec4e32ed3eba4559837eab62a5cd5a2",
+      "uploadedAt": "2026-10-21T10:41:12Z"
+    },
+    "evowing_cherry_panda_1_R_low": {
+      "assetId": 88282423241190,
+      "contentHash": "2b175f279eeda7043a9a40fcebccbbf9",
+      "fileSha256": "5555744784113cbabbd8ae6181135df0ee7e967cc8aae66fe3a943779c80ccd2",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-10-21T10:41:21.004Z",
+      "revisionId": "1",
+      "structureHash": "ff6159dd839165743a5e39a9a8e503d9",
+      "uploadedAt": "2026-10-21T10:41:23Z"
+    },
+    "evowing_cloudy_dragon_1_L": {
+      "assetId": 133769795075137,
+      "contentHash": "eaf70d27f97e8c7f9ecd0e3bf290d2f7",
+      "fileSha256": "d615511a4fc5f41afcb96cf7460a4fadf35b1c61e657028cadfed636d6ee58ea",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-10-21T10:41:27.109Z",
+      "revisionId": "1",
+      "structureHash": "30724b7d8a37d946628a7a8ebfbe377a",
+      "uploadedAt": "2026-10-21T10:41:29Z"
+    },
+    "evowing_cloudy_dragon_1_L_low": {
+      "assetId": 81441477486392,
+      "contentHash": "879e2d83fe31f5b8b961e82eaa1fcf86",
+      "fileSha256": "76c656785fcf2a7fa246b51f06a635f94c24c8488f437349e3ac9e919a2bea0b",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-10-21T10:41:37.174Z",
+      "revisionId": "1",
+      "structureHash": "ae2c4c6f9ee1bb9e9088a349ca2f1c28",
+      "uploadedAt": "2026-10-21T10:41:40Z"
+    },
+    "evowing_cloudy_dragon_1_R": {
+      "assetId": 89384232754481,
+      "contentHash": "58e2bc70a1c541772357424c495a5fd4",
+      "fileSha256": "d65b3d6dc9b783483f9b985c1902961cab2105f04a2146ab99a3403698a21383",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-10-21T10:41:42.830Z",
+      "revisionId": "1",
+      "structureHash": "cec4e32ed3eba4559837eab62a5cd5a2",
+      "uploadedAt": "2026-10-21T10:41:43Z"
+    },
+    "evowing_cloudy_dragon_1_R_low": {
+      "assetId": 136510102906484,
+      "contentHash": "4277e2e12e4a8a0ab3bded6b43121adb",
+      "fileSha256": "5555744784113cbabbd8ae6181135df0ee7e967cc8aae66fe3a943779c80ccd2",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-10-21T10:41:48.262Z",
+      "revisionId": "1",
+      "structureHash": "ff6159dd839165743a5e39a9a8e503d9",
+      "uploadedAt": "2026-10-21T10:41:49Z"
+    },
+    "evowing_cloudy_dragon_2_L": {
+      "assetId": 128670520379532,
+      "contentHash": "175f31ceb42ec09a126743f0a7375c9d",
+      "fileSha256": "f7609e360e34f4d4d2d265678b4158e2ad83aadb8ef3495c5ef46d8d2cdbd38f",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-10-21T10:41:57.172Z",
+      "revisionId": "1",
+      "structureHash": "fc47b881a3d7a91986baddba046e9732",
+      "uploadedAt": "2026-10-21T10:42:00Z"
+    },
+    "evowing_cloudy_dragon_2_L_low": {
+      "assetId": 123804691241986,
+      "contentHash": "07709407fecddb75f2f2d8bfb535f39f",
+      "fileSha256": "268ce163a7a7beb5ff4d61b0e6d4681451df97469099ac935a0ae2b167ce222e",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-10-21T10:42:03.978Z",
+      "revisionId": "1",
+      "structureHash": "bc2b4625d45b29db1f9be4aeaa3d15f4",
+      "uploadedAt": "2026-10-21T10:42:07Z"
+    },
+    "evowing_cloudy_dragon_2_R": {
+      "assetId": 128491396200024,
+      "contentHash": "4ad9a4ced45a1f4e155ea00d6b93801b",
+      "fileSha256": "3d7b8a72e9265dcb07fa16eca7a0c03fb5415e4640ef5e9619a22fd7a833c5dd",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-10-21T10:42:18.533Z",
+      "revisionId": "1",
+      "structureHash": "16df39705331bf14a54d4df935cf85ed",
+      "uploadedAt": "2026-10-21T10:42:25Z"
+    },
+    "evowing_cloudy_dragon_2_R_low": {
+      "assetId": 120372198357971,
+      "contentHash": "b9a3e1495292db59cdcbbc15a323d04f",
+      "fileSha256": "be445bf9304958532ab623a71e4c039f25f64f1281d8955ddfb672f98aeabe90",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-10-21T10:42:31.976Z",
+      "revisionId": "1",
+      "structureHash": "e6216e39f73351fc5ac5531f5891b0ef",
+      "uploadedAt": "2026-10-21T10:42:36Z"
+    },
+    "evowing_cloudy_dragon_2b_L": {
+      "assetId": 89512456439441,
+      "contentHash": "1126da99297547ff53af7ec4b0e1e492",
+      "fileSha256": "2b3752b52ecf0a02c75b2e2324f79c46bb048452e9fb8675042dd2b5138292c5",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-10-21T10:42:41.519Z",
+      "revisionId": "1",
+      "structureHash": "3de8a117f6ec7740e3fe9757ca8b9aaf",
+      "uploadedAt": "2026-10-21T10:42:43Z"
+    },
+    "evowing_cloudy_dragon_2b_L_low": {
+      "assetId": 135949348591000,
+      "contentHash": "acf0561152b0515aba7678cdd428f7e2",
+      "fileSha256": "5a7e6b2d0fcf6b49297cc934ff2f6b8c8f94575f39ae683db5a61c5fc4a3a4c1",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-10-21T10:42:59.377Z",
+      "revisionId": "1",
+      "structureHash": "b6ea96fcad45f88a77e7a4b1a6f9ee6c",
+      "uploadedAt": "2026-10-21T10:43:01Z"
+    },
+    "evowing_cloudy_dragon_2b_R": {
+      "assetId": 113550148594876,
+      "contentHash": "2ac79afa1c1e193c878b92df936ef7bb",
+      "fileSha256": "a7105dc5c2904371c1813a7689e92da1a3cc6d86269fa165201b8e5b3e9868fb",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-10-21T10:43:07.510Z",
+      "revisionId": "1",
+      "structureHash": "eeca05e745409b74347cfcae06fc2817",
+      "uploadedAt": "2026-10-21T10:43:12Z"
+    },
+    "evowing_cloudy_dragon_2b_R_low": {
+      "assetId": 99097178077079,
+      "contentHash": "2f20ce1d01a4bcf6cc4e38e370205588",
+      "fileSha256": "a4604a397f0243a33970095075a6241eaa0a565b2c93fb9b0069c2eba6814d58",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-10-21T10:43:23.569Z",
+      "revisionId": "1",
+      "structureHash": "0f1c47e808284b018172c1625ba85376",
+      "uploadedAt": "2026-10-21T10:43:30Z"
+    },
+    "evowing_eclipse_dragon_1_L": {
+      "assetId": 109665637775072,
+      "contentHash": "b319aa0c6c2f0d8b0235667ce50de873",
+      "fileSha256": "a82fc338a2ea8714126dda3d29853f0cb2c7a5a31ddd10fa6654d206d35d6011",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-10-21T10:43:40.948Z",
+      "revisionId": "1",
+      "structureHash": "985b2e8872a32b9122165fd637c9c773",
+      "uploadedAt": "2026-10-21T10:43:42Z"
+    },
+    "evowing_eclipse_dragon_1_L_low": {
+      "assetId": 105892353621036,
+      "contentHash": "16b71225297dcdbb0a90d7ac23941d02",
+      "fileSha256": "36df7d9959af42fdeabecabc6f4dd6aab006b0a1f1699934586f183b3a78f359",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-10-21T10:43:46.174Z",
+      "revisionId": "1",
+      "structureHash": "386e1825276e7bc72283f8352e6e4c29",
+      "uploadedAt": "2026-10-21T10:43:48Z"
+    },
+    "evowing_eclipse_dragon_1_R": {
+      "assetId": 84218827078446,
+      "contentHash": "a9e4d05c94cc1ccf3cc574ce33ebf859",
+      "fileSha256": "4344562470f8d7c6fc13ede9e473a893e6f64e11477deddf35ccb8fb370f756b",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-10-21T10:43:58.209Z",
+      "revisionId": "1",
+      "structureHash": "a836e899c0f8ff1fbe4b759bb5decaee",
+      "uploadedAt": "2026-10-21T10:43:59Z"
+    },
+    "evowing_eclipse_dragon_1_R_low": {
+      "assetId": 72290459806675,
+      "contentHash": "b8d486b7f4f54f6a9108fbca1e466302",
+      "fileSha256": "111ece4ee5a21c40ffa3f21a8a09c8416e680d1e8442a7ffab1461cddb4197b6",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-10-21T10:44:04.628Z",
+      "revisionId": "1",
+      "structureHash": "b8ee625e766a168c98c44685cef061f2",
+      "uploadedAt": "2026-10-21T10:44:06Z"
+    },
+    "evowing_eclipse_dragon_2_L": {
+      "assetId": 121771632603847,
+      "contentHash": "5dae7040763cc72c6956ecdff696d151",
+      "fileSha256": "5ed161caca819add10be77ecba488a55e6f7ee8a95893bd2b263e1202bf79d09",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-10-21T10:44:20.746Z",
+      "revisionId": "1",
+      "structureHash": "212ff3b16edf4cc763c5113cbc96669d",
+      "uploadedAt": "2026-10-21T10:44:25Z"
+    },
+    "evowing_eclipse_dragon_2_L_low": {
+      "pendingContentHash": "611b030575f8c0b5407e7b4d8a106f83",
+      "pendingFileSha256": "e63e5ddf068b99f9587771b6bb7c4ce975fc49dbecf3029d575b514a3815ba3f",
       "pendingMode": "create",
-      "pendingOperation": "038a03cb-30d2-4a19-b964-2d7cf892ce5f",
-      "pendingStructureHash": "3de8a117f6ec7740e3fe9757ca8b9aaf"
+      "pendingOperation": "aa9dd376-9d27-4904-8ff3-51b4a4ef9b88",
+      "pendingStructureHash": "66b66e8c5b5473ab9e39b1196047fc07"
     },
     "hyb_axolotl": {
       "assetId": 75807933596369,
