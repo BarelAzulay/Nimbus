@@ -353,18 +353,36 @@ S.p6pets_mesh_on = guarded("p6pets_mesh_on", function()
 	flushWarn("p6pets_mesh_on")
 end)
 
--- no pet-class mesh is live: either no template folder at all (empty MeshIds) or the uploaded ids name no key of this
--- pet (e.g. only the calibration key cal_axes is uploaded): the pet code must still build today's Part pets
+-- no pet-class mesh is ready: no template folder at all (empty MeshIds), the uploaded ids name no key of this pet
+-- (e.g. only cal_axes), or its keys ARE uploaded but stay 'loading' (the mock has no asset store, like a live server
+-- before LoadAsset returns): the pet code must still build today's Part pets
 local function noPetMeshes(ML, Pets, def)
 	if not ML.Active() then
 		return true
 	end
 	for _, key in ipairs(Pets.MeshKeys(def, {}) or {}) do
-		if ML.Status(key) == "ready" or ML.Status(key) == "loading" then
+		if ML.Status(key) == "ready" then
 			return false
 		end
 	end
 	return true
+end
+
+-- SwapWhenReady waits on this pet only while a key still loads (shipped ids the mock cannot fetch) and none is
+-- missing or failed (an earlier scenario may have failed one): the same rule as PetBuilder.SwapWhenReady
+local function petSwapWaits(ML, Pets, def)
+	if not ML.Active() then
+		return false
+	end
+	local loading = false
+	for _, key in ipairs(Pets.MeshKeys(def, {}) or {}) do
+		local st = ML.Status(key)
+		if st == "missing" or st == "failed" then
+			return false
+		end
+		loading = loading or st == "loading"
+	end
+	return loading
 end
 
 S.p6pets_default = guarded("p6pets_default", function()
@@ -373,7 +391,7 @@ S.p6pets_default = guarded("p6pets_default", function()
 	if MESH_MODE then
 		T.info("fixture mesh mode: the default-mode checks are skipped")
 	else
-		T.check(noPetMeshes(ML, Pets, D.dog), "no pet ids: no pet-class mesh key is live (MeshIds empty or holding only non-pet keys like cal_axes)")
+		T.check(noPetMeshes(ML, Pets, D.dog), "no pet ids: no pet-class mesh key is ready (MeshIds empty, only non-pet keys like cal_axes, or shipped pet ids not loaded)")
 		local m = Pets.Build(D.dog, { Detail = "High" })
 		local mesh = countParts(m)
 		T.check(m:GetAttribute("ML_Mesh") == nil and mesh == 0, "empty MeshIds: Build is today's Part build (no ML_Mesh, no MeshPart)")
@@ -843,12 +861,15 @@ S.p6pets_server = guarded("p6pets_server", function()
 				end
 			end
 			T.check(#NS.GetNpcs() == #recs and mesh == 0, "late swap: NPCs rebuilt from Parts afterwards")
-			-- empty MeshIds (no template folder): SwapWhenReady does nothing at all
+			-- empty MeshIds (no template folder): SwapWhenReady does nothing at all; shipped dog ids still 'loading': it waits
 			local p = Pets.Build(D.dog, {})
 			p.Parent = workspace
+			local waits = petSwapWaits(ML, Pets, D.dog)
 			T.check(Pets.SwapWhenReady(p, D.dog, {}, function()
 				return Pets.Build(D.dog, {})
-			end) == false and noPetMeshes(ML, Pets, D.dog), "no pet ids: SwapWhenReady = false, no state")
+			end) == waits and noPetMeshes(ML, Pets, D.dog),
+				waits and "shipped pet ids not loaded yet: SwapWhenReady = true (waits), the pet stays Parts"
+					or "no pet ids (or a failed key): SwapWhenReady = false, no state")
 			p:Destroy()
 			-- [fix-meshlib W3b, review3 world-3] a pet key that FAILED to load on the server: a podium / NPC rebuild never
 			-- waits on it (SwapWhenReady = false, no OnReady closure kept), and its waiters from the loading time are gone
