@@ -478,7 +478,7 @@ Config.Dev = {
 -- an upload's Decal id (here 129423539279679) fails in an ImageLabel ("Asset type does not match"); the Image id is
 -- the Decal's Texture (InsertService:LoadAsset(decalId) in Studio).
 Config.Art = {
-	StormfangImage = "rbxassetid://106396716077974",
+	StormfangImage = "rbxassetid://101827417487186",
 }
 
 Config.Items = {
