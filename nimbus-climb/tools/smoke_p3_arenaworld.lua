@@ -1391,14 +1391,16 @@ S.p3arena_mesh = guarded("p3arena_mesh", function()
 	sig:report()
 	nest:report()
 	glow:report()
-	-- 3. quiet with the shipped empty MeshIds
-	local dressed = 0
+	-- 3. tagged exactly when the key has a shipped id (Status ~= "missing"; ArenaBuilder's rule with the LayoutSig
+	-- checked in 2.): empty MeshIds = nothing tagged, the Part build is unchanged
+	local quiet = T.tally("arena mesh: a target is tagged exactly when its key has a shipped id (empty MeshIds: nothing tagged, the Part build is unchanged)")
 	for _, r in ipairs(recs) do
-		if r.Target:GetAttribute("ML_DressKey") then
-			dressed = dressed + 1
-		end
+		local okStatus, st = pcall(ML.Status, r.Key)
+		local shipped = okStatus and st ~= "missing"
+		local key = r.Target:GetAttribute("ML_DressKey")
+		quiet:case((key ~= nil) == shipped and (key == nil or key == r.Key), r.Name, tostring(key) .. " / shipped " .. tostring(shipped))
 	end
-	T.eq(dressed, 0, "arena mesh: with the shipped empty MeshIds nothing is tagged (the Part build is unchanged)")
+	quiet:report()
 	-- 4. the arena's meshes stay light: <= 300k triangles over every placement, <= 10k per MeshPart
 	local tris, worst = 0, 0
 	for _, r in ipairs(recs) do

@@ -2109,14 +2109,19 @@ local function serverScenarios()
 				end
 			end
 			glow:case(bad == nil, r.Name, bad)
-			if r.Target:GetAttribute("ML_DressKey") then
+			-- DungeonBuilder's rule: tagged only when the key has a shipped id (Status ~= "missing") and the LayoutSig
+			-- matches (checked above): empty MeshIds = nothing tagged
+			local okStatus, st = pcall(ML.Status, r.Key)
+			local shipped = okStatus and st ~= "missing"
+			local key = r.Target:GetAttribute("ML_DressKey")
+			if (key ~= nil) ~= shipped or (key ~= nil and key ~= r.Key) then
 				quiet = quiet + 1
 			end
 		end
 		sig:report()
 		nest:report()
 		glow:report()
-		T.eq(quiet, 0, "dungeon mesh: with the shipped empty MeshIds nothing is tagged (the Part build is unchanged)")
+		T.eq(quiet, 0, "dungeon mesh: a target is tagged exactly when its key has a shipped id (empty MeshIds: nothing tagged, the Part build is unchanged)")
 		-- a room's meshes stay light (every template: <= 90k triangles, <= 10k per MeshPart)
 		local per, worst, heavy = {}, 0, 0
 		for _, r in ipairs(recs) do
