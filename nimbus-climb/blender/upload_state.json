@@ -641,11 +641,41 @@
       "uploadedAt": "2026-10-23T16:47:31Z"
     },
     "dragon_seg_35f": {
-      "pendingContentHash": "298288307341ee4052a6b90a87a99500",
-      "pendingFileSha256": "15bbfa0a2bab1d655501320cdeb3eecdafcba3cca11b782544227eb3823405d5",
+      "assetId": 124430180142125,
+      "contentHash": "298288307341ee4052a6b90a87a99500",
+      "fileSha256": "15bbfa0a2bab1d655501320cdeb3eecdafcba3cca11b782544227eb3823405d5",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-10-23T16:47:40.314Z",
+      "revisionId": "1",
+      "structureHash": "8fbc0f958c42b1921226b2c373d17a63",
+      "uploadedAt": "2026-10-23T16:47:43Z"
+    },
+    "dragon_seg_40f": {
+      "assetId": 111177310781612,
+      "contentHash": "f0ffe884cae9c16b14ba61bfcbbf0027",
+      "fileSha256": "488265c098e261e47b04a6032aae8344b10422eea3f89435dd9f41e299c7ba0d",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-10-23T16:47:47.954Z",
+      "revisionId": "1",
+      "structureHash": "6cd8927d56a7160e6de877dc551858f4",
+      "uploadedAt": "2026-10-23T16:47:49Z"
+    },
+    "dragon_seg_45f": {
+      "assetId": 110995233527062,
+      "contentHash": "0f6667b920fd7edb741d1bb8d358f486",
+      "fileSha256": "03cb3a271345ed429585217173521655aae9888fece3617173fb4bac0f7e919c",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-10-23T16:47:56.615Z",
+      "revisionId": "1",
+      "structureHash": "2f1d42899886faa107f82be844e828ff",
+      "uploadedAt": "2026-10-23T16:48:01Z"
+    },
+    "dragon_tail": {
+      "pendingContentHash": "bfc874105b74634c2d8ebb615c7af3ca",
+      "pendingFileSha256": "048504168af170e9f2a179d84a564bc431626819c9ea6968382eb669912782ab",
       "pendingMode": "create",
-      "pendingOperation": "b5f865e1-6ad5-4a40-a18e-deeeef6c3910",
-      "pendingStructureHash": "8fbc0f958c42b1921226b2c373d17a63"
+      "pendingOperation": "9f9597e0-595d-4c01-9183-767e8268b081",
+      "pendingStructureHash": "01aed183ba9ce02227d5e6d80373c67b"
     },
     "evo1_aurora_fox": {
       "assetId": 87772383693151,
