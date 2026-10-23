@@ -6,3 +6,5 @@ __pycache__/
 blender/out/
 blender/meshes.json.lock
 blender/meshes.json.tmp
+*.rbxl.lock
+*.rbxlx.lock
