@@ -1,8 +1,9 @@
 -- smoke_p7vfx.lua: the pet attack VFX (docs/superpowers/plans/2026-10-23-pet-attack-vfx.md). Loaded by tools/smoke.py
 -- in the server world.
---   p7vfx_ids   (pure) the uploaded ids: every key of blender/vfx/textures.json is in shared/TextureIds with a value
---               "rbxassetid://<digits>" (an Image id, checked in Studio when uploaded), TextureIds has no extra key, and
---               every vfx_* key of blender/catalog/vfx.json is in shared/MeshIds (the 22 effect / signature cores).
+--   p7vfx_ids   (pure) the uploaded ids: every key of blender/vfx/textures.json is in shared/TextureIds as a positive
+--               integer (an Image id, checked in Studio when uploaded; the file is written by tools/upload_assets.py
+--               --textures), TextureIds has no key besides those and the gate vortex layers (blender/textures/
+--               textures.json), and every vfx_* key of blender/catalog/vfx.json is in shared/MeshIds (the 22 cores).
 -- Deterministic: keys are read from the committed manifests in file order. Plain Lua 5.1 syntax.
 
 local T = SmokeCommon.T
@@ -59,30 +60,38 @@ S.p7vfx_ids = guarded("p7vfx_ids", function()
 		return
 	end
 
-	-- textures: every manifest key, as "rbxassetid://<digits>"
+	-- textures: every manifest key, as a positive integer Image id (check.mjs texture-ids: numbers only)
 	local known, okTex = {}, 0
 	for _, key in ipairs(texKeys) do
 		known[key] = true
 		local v = TextureIds[key]
 		if v == nil then
 			T.fail("p7vfx ids: TextureIds missing " .. key)
-		elseif type(v) ~= "string" or not string.find(v, "^rbxassetid://%d+$") then
-			T.fail("p7vfx ids: TextureIds." .. key .. " is not \"rbxassetid://<digits>\"", tostring(v))
+		elseif type(v) ~= "number" or v <= 0 or v ~= math.floor(v) then
+			T.fail("p7vfx ids: TextureIds." .. key .. " is not a positive integer id", tostring(v))
 		else
 			okTex = okTex + 1
 		end
 	end
-	T.check(okTex == #texKeys, fmt("p7vfx ids: every texture key has an rbxassetid id (%d / %d)", okTex, #texKeys))
+	T.check(okTex == #texKeys, fmt("p7vfx ids: every texture key has a positive integer Image id (%d / %d)", okTex, #texKeys))
 
-	-- no extra keys
+	-- no extra keys: TextureIds = the VFX keys + (once uploaded) the gate vortex layers of the uploader's other Image
+	-- index blender/textures/textures.json ({ "keys": { key: { ... } } }); nothing else
+	local vortexSrc = readFile("blender/textures/textures.json") or ""
+	local vortex = {}
+	for k in string.gmatch(vortexSrc, '"([%w_]+)"%s*:%s*{') do
+		if k ~= "keys" then
+			vortex[k] = true
+		end
+	end
 	local extra = {}
 	for k in pairs(TextureIds) do
-		if not known[k] then
+		if not known[k] and not vortex[k] then
 			extra[#extra + 1] = tostring(k)
 		end
 	end
 	table.sort(extra)
-	T.check(#extra == 0, "p7vfx ids: TextureIds has no key outside blender/vfx/textures.json", table.concat(extra, ","))
+	T.check(#extra == 0, "p7vfx ids: TextureIds has no key outside blender/vfx/textures.json + the vortex layers", table.concat(extra, ","))
 
 	-- cores: every vfx_* key of the catalog is uploaded
 	local okCore = 0

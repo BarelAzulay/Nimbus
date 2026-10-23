@@ -223,6 +223,11 @@ def run(root, base, *extra):
     return code, buf.getvalue()
 
 
+def run_keys_of(out):
+    """the keys a run lists ("- key" lines), in order"""
+    return [ln[2:] for ln in out.splitlines() if ln.startswith("- ")]
+
+
 def main():
     import time
     real_sleep = time.sleep
@@ -721,6 +726,70 @@ def main():
           code == 0 and cal["assetId"] == cal_id + 7 and cal.get("previousAssetIds") == [cal_id] and "decalAssetId" not in cal
           and "cal_axes = %d," % (cal_id + 7) in open(os.path.join(mroot, "src", "shared", "MeshIds.lua")).read()
           and len(STATE["log"]) == n, (out, cal))
+
+    # 21) pet attack VFX: --textures also reads blender/vfx/textures.json (PNGs in blender/vfx/out/); an Image uploaded
+    #     outside the tool (Studio upload_image) is recorded with --set-id on a key with no asset yet, and survives later runs
+    import struct as _struct
+    vroot = os.path.join(tmp, "vfxtex")
+    os.makedirs(os.path.join(vroot, "blender", "textures", "vortex"))
+    os.makedirs(os.path.join(vroot, "blender", "vfx", "out"))
+    os.makedirs(os.path.join(vroot, "src", "shared"))
+    vindex = {"comment": "test", "keys": {}}
+    with open(os.path.join(vroot, "blender", "textures", "vortex", "vortex_arms.png"), "wb") as f:
+        f.write(b"\x89PNG\r\n\x1a\nvortex_arms")
+    vindex["keys"]["vortex_arms"] = {"png": "blender/textures/vortex/vortex_arms.png", "contentHash": "h-va", "structureHash": "image"}
+    with open(os.path.join(vroot, "blender", "textures", "textures.json"), "w") as f:
+        json.dump(vindex, f)
+    with open(os.path.join(vroot, "blender", "vfx", "textures.json"), "w") as f:
+        json.dump({"comment": "test", "textures": [{"key": "fx_flame", "grid": 4}, {"key": "fx_glow", "grid": 4}, {"key": "fx_unrendered", "grid": 4}]}, f)
+    for vk in ("fx_flame", "fx_glow"):
+        with open(os.path.join(vroot, "blender", "vfx", "out", vk + ".png"), "wb") as f:
+            f.write(b"\x89PNG\r\n\x1a\n" + _struct.pack(">I", 13) + b"IHDR" + _struct.pack(">II", 1024, 1024) + bytes([8, 6, 0, 0, 0]) + vk.encode())
+    vstate = os.path.join(vroot, "blender", "textures", "upload_state.json")
+    vlua = os.path.join(vroot, "src", "shared", "TextureIds.lua")
+    n = len(STATE["log"])
+    code, out = run(vroot, base, "--textures", "--only", "fx_flame,vortex_arms")
+    check("--textures reads blender/vfx/textures.json too: fx keys plan Decal / image/png creates (dry run, nothing sent)",
+          code == 0 and run_keys_of(out) == ["fx_flame", "vortex_arms"] and out.count('"assetType": "Decal"') == 2
+          and len(STATE["log"]) == n and not os.path.exists(vlua), out)
+    code, out = run(vroot, base, "--textures", "--only", "fx_unrendered")
+    check("an unrendered fx PNG: the run of that key fails with the render hint (never sent)", code == 1
+          and "blender/vfx/render_textures.py" in out and len(STATE["log"]) == n, out)
+    saved_key = os.environ.pop("ROBLOX_API_KEY", None)
+    saved_cid = os.environ.pop("ROBLOX_CREATOR_ID", None)
+    code, out = run(vroot, base, "--textures", "--upload", "--set-id", "fx_flame=777001")
+    check("--set-id --upload without ROBLOX_CREATOR_ID is refused", code == 2 and "ROBLOX_CREATOR_ID" in out and not os.path.exists(vstate), out)
+    os.environ["ROBLOX_CREATOR_ID"] = "123456"
+    code, out = run(vroot, base, "--textures", "--upload", "--set-id", "fx_unrendered=777003")
+    check("--set-id of an outside image with no PNG to record it against is refused", code == 2 and "render_textures.py" in out
+          and not os.path.exists(vstate), out)
+    code, out = run(vroot, base, "--textures", "--upload", "--set-id", "fx_flame=777001,fx_glow=777002")
+    with open(vstate) as f:
+        vs = json.load(f)
+    flame = vs["assets"].get("fx_flame", {})
+    vlua_text = open(vlua).read()
+    check("--set-id records Images uploaded outside the tool (no API key needed, nothing sent): assetId, the PNG's hashes, TextureIds.lua",
+          code == 0 and flame.get("assetId") == 777001 and flame.get("contentHash") == sha_of(os.path.join(vroot, "blender", "vfx", "out", "fx_flame.png"))
+          and flame.get("structureHash") and flame.get("uploadedOutside") is True and "decalAssetId" not in flame
+          and vs["assets"]["fx_glow"]["assetId"] == 777002 and "fx_flame = 777001," in vlua_text and "fx_glow = 777002," in vlua_text
+          and len(STATE["log"]) == n and vs.get("creator") == {"type": "user", "id": "123456"}, (out, flame))
+    if saved_key is not None:
+        os.environ["ROBLOX_API_KEY"] = saved_key
+    if saved_cid is not None:
+        os.environ["ROBLOX_CREATOR_ID"] = saved_cid
+    code, out = run(vroot, base, "--textures", "--upload", "--only", "fx_flame,fx_glow,vortex_arms")
+    with open(vstate) as f:
+        vs = json.load(f)
+    vlua_text = open(vlua).read()
+    posts = [x for x in STATE["log"][n:] if x[0] in ("POST", "PATCH", "PATCH-refused")]
+    check("a later --textures upload skips the recorded fx keys and keeps them in TextureIds.lua next to the new vortex id",
+          code == 0 and [x[0] for x in posts] == ["POST"] and out.count("skip: unchanged") == 2
+          and "fx_flame = 777001," in vlua_text and "fx_glow = 777002," in vlua_text
+          and "vortex_arms = %d," % vs["assets"]["vortex_arms"]["assetId"] in vlua_text, out)
+    with open(os.path.join(vroot, "blender", "vfx", "textures.json"), "w") as f:
+        json.dump({"textures": [{"key": "vortex_arms"}]}, f)
+    code, out = run(vroot, base, "--textures")
+    check("a key in both texture indexes is refused", code == 2 and "both list vortex_arms" in out, out)
 
     # 20) W3c --class CATALOG: the upload keys of blender/catalog/<CATALOG>.json, combined with --only
     croot, _ = make_repo(os.path.join(tmp, "classes"))
