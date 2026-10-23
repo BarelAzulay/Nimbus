@@ -1020,22 +1020,33 @@ local function cmdFx(player, _, arg)
 	end
 	local kinds, shapes, rarities = namesOf(Cat.KindNames), namesOf(Cat.ShapeNames), namesOf(Cat.Rarities)
 	local payload = { Element = element, Attack = attack, Rarity = "Common", Stage = 0 }
+	local given = {}
 	for i = 3, #words do
 		local w = string.lower(words[i])
+		-- (each of kind / shape / rarity / stage at most once: "/fx flame ranged epic rare" is refused, never guessed)
+		local field, value = nil, nil
 		if kinds[w] then
 			if attack ~= "Special" then
 				return false, kinds[w] .. " is a special's kind: /fx " .. string.lower(element) .. " special " .. w
 			end
-			payload.Kind = kinds[w]
+			field, value = "Kind", kinds[w]
 		elseif shapes[w] then
 			if attack ~= "Element" then
 				return false, shapes[w] .. " is an element attack's shape: /fx " .. string.lower(element) .. " element " .. w
 			end
-			payload.Shape = shapes[w]
+			field, value = "Shape", shapes[w]
 		elseif rarities[w] then
-			payload.Rarity = rarities[w]
+			field, value = "Rarity", rarities[w]
 		elseif STAGE_WORDS[w] ~= nil then
-			payload.Stage = STAGE_WORDS[w]
+			field, value = "Stage", STAGE_WORDS[w]
+		end
+		if field then
+			if given[field] then
+				local plural = ({ Kind = "kinds", Shape = "shapes", Rarity = "rarities", Stage = "stages" })[field]
+				return false, "two " .. plural .. ": " .. tostring(given[field]) .. " and " .. string.sub(words[i], 1, 12)
+			end
+			given[field] = words[i]
+			payload[field] = value
 		else
 			return false, "'" .. string.sub(words[i], 1, 12) .. "' is no kind, shape, rarity or stage"
 		end

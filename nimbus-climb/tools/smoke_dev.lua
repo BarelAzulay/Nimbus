@@ -914,6 +914,10 @@ local function serverScenarios()
 			{ "/fx Flame", "which attack" },
 			{ "/fx Flame Melee Blast", "Special" },
 			{ "/fx Flame Ranged Shiny", "shiny" },
+			{ "/fx Flame Ranged Epic Rare", "two rarities" },
+			{ "/fx flame special blast beam", "two kinds" },
+			{ "/fx water element cone line", "two shapes" },
+			{ "/fx earth melee 1 evolved2", "two stages" },
 		}
 		for _, r in ipairs(refusals) do
 			mark = chat(owner, r[1])

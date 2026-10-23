@@ -23,7 +23,7 @@
 --       names; P 0..1). Blend = 1 normally; for AttackFx.CROSSFADE (0.12 s) after a pose replaces another mid-way,
 --       Blend rises 0 -> 1 and Prev = { Name, P, Ranged } is the replaced pose, still animating. The CALLER blends:
 --       root = frame * PoseBody(Prev):Lerp(PoseBody(cur), Blend), Animate with the current pose (Prev while
---       Blend < 0.5). The newest play on a unit wins (Ko > Cast > Windup / Strike / Victory > Hurt while the higher
+--       Blend < 0.5; the returned tables are reused per unit: read them at once). The newest play on a unit wins (Ko > Cast > Windup / Strike / Victory > Hurt while the higher
 --       one is still playing); a melee Strike freezes for HIT_STOP (0.05 s) at the impact; Ko holds at P = 1 until
 --       Cancel(unitId) / ClearAll(). nil = no attack pose (the caller shows IdleBattle or nothing).
 --   AttackFx.Cancel(unitId)         drops the unit's pose and ends the effects it cast (a unit swapped out / gone)
@@ -2301,6 +2301,7 @@ function AttackFx.Update(now)
 	end
 end
 
+-- (the returned table and its Prev are reused per pose entry: read them at once, do not keep them across frames)
 function AttackFx.Pose(unit)
 	local entry = St.poses[unit]
 	if not entry then
@@ -2309,23 +2310,36 @@ function AttackFx.Pose(unit)
 	local now = St.now or os.clock()
 	local name, p, ranged = poseSample(entry, now)
 	local prev = entry.Prev
+	local out = entry.Out
+	if not out then
+		out = {}
+		entry.Out = out
+	end
+	out.Blend, out.Prev = 1, nil
 	if not name then
 		if prev and entry.SwitchAt and now < entry.SwitchAt then -- the new pose has not started: the old one plays on
 			local n2, p2, r2 = poseSample(prev, now)
 			if n2 then
-				return { Name = n2, P = p2, Ranged = r2, Blend = 1 }
+				out.Name, out.P, out.Ranged = n2, p2, r2
+				return out
 			end
 		end
 		return nil
 	end
-	local out = { Name = name, P = p, Ranged = ranged, Blend = 1 }
+	out.Name, out.P, out.Ranged = name, p, ranged
 	if prev and entry.SwitchAt then
 		local w = (now - entry.SwitchAt) / AttackFx.CROSSFADE
 		if w < 1 then
 			local n2, p2, r2 = poseSample(prev, now)
 			if n2 then
+				local po = entry.PrevOut
+				if not po then
+					po = {}
+					entry.PrevOut = po
+				end
+				po.Name, po.P, po.Ranged = n2, p2, r2
 				out.Blend = max(0, w)
-				out.Prev = { Name = n2, P = p2, Ranged = r2 }
+				out.Prev = po
 			end
 		end
 	end

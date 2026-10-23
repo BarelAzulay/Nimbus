@@ -18,6 +18,9 @@
 --               handler by handler: no cube Fx while AttackFx plays, the old Fx.* when Play returns false, DODGED! on a
 --               miss, Ko replaces the cube poof; a fallback replay (Play always false) is drawn by the cubes; Ruling 12:
 --               idle units show PetPoses IdleBattle at their own phase, an attack pose replaces it and it comes back;
+--               the KO on the render clock (Ko on arrival, the down snapshot later): the pose holds, the effect plays,
+--               no Cancel, parked after KO_PARK_FX; the fallback KO still poofs and parks at 0.3 s; the End message
+--               before the sim's End: the winners' Victory starts after the grace and is not cut;
 --               Review Focus 4 + Ruling 11: the killing blow + End in one batch: the blow stays live past its impact, no
 --               new effect starts, Live == 0 and the pools at keep size within 1.0 s; a Leave mid-effect: at once.
 
@@ -635,7 +638,7 @@ local function recordRaid(seconds)
 			break
 		end
 	end
-	return { Start = start, Steps = steps, Team77 = sim:TeamOf(77), Mine = team }
+	return { Start = start, Steps = steps, Team77 = sim:TeamOf(77), Mine = team, Sim = sim, Last = last }
 end
 
 local function copyOf(t)
@@ -986,6 +989,106 @@ S.client_p7vfx_battle = guarded("client_p7vfx_battle", function()
 		T.check(#calls == n0 + 1 and calls[n0 + 1].Attack == "Ko" and calls[n0 + 1].Result == true and BC.GetStats().FxParts - p0 <= 0,
 			"handlers: a KO plays AttackFx Ko (no cube poof)", fmt("%d plays, %d new parts", #calls - n0, BC.GetStats().FxParts - p0))
 
+		-- 2b) the KO on the render clock (fix round 2): AttackFx's Ko plays on arrival, the snapshot draws the pet down
+		--     when the event plays: the Ko pose holds, the effect plays its beats, nothing cancels it, the pet lies until
+		--     KO_PARK_FX (1.6 s, not the cube path's 0.3 s); with Play false the cube poof still shows and it parks at 0.3 s
+		local Sim = moduleAt(ROOTS.shared .. "/BattleSim")
+		local downState = (Sim and Sim.States and Sim.States.Down) or 5
+		local cancels = {}
+		local realCancel = AF.Cancel
+		AF.Cancel = function(unitId)
+			cancels[#cancels + 1] = unitId
+			return realCancel(unitId)
+		end
+		-- the sim draws `uid` down: its next wire snapshot (the client decoded the same baseline: rec.Last)
+		local function koOnRenderClock(uid)
+			for _, su in ipairs(rec.Sim.units or {}) do
+				if su.id == uid then
+					su.hp = 0
+					su.state = downState
+				end
+			end
+			local delta = rec.Sim:SnapshotDelta(rec.Last)
+			live.T = live.T + 0.1
+			delta.T, delta.BattleId = live.T, id
+			local n0 = #calls
+			KC.toClient("BattleState", "Events", { { type = "KO", unit = uid, by = boss } }, id)
+			KC.toClient("BattleState", "Snapshot", delta, id)
+			return calls[n0 + 1], #calls - n0
+		end
+		local function watchPark(uid, due, seconds, probe)
+			local parkedAt = nil
+			for i = 1, math.floor(seconds * 30) do
+				if i % 3 == 1 then
+					live.T = live.T + 0.1
+					KC.toClient("BattleState", "Snapshot", { BattleId = live.id, T = live.T, U = {} }, live.id)
+				end
+				Mock.Step(1 / 30)
+				local g = BC.GetUnit(uid)
+				if probe then
+					probe(os.clock())
+				end
+				if not parkedAt and g and g.Parked then
+					parkedAt = os.clock()
+				end
+			end
+			return parkedAt and due and (parkedAt - due) or nil
+		end
+		local t77b = rec.Team77
+		local kid = t77b and t77b.Fighter
+		if T.check(kid ~= nil and drawable(BC.GetUnit(kid)) and BC.GetUnit(kid).Model ~= nil, "KO (render clock): player 77's fighter is on the floor") then
+			pulse(2)
+			local c0 = #cancels
+			local ko, n = koOnRenderClock(kid)
+			local due = ko and ko.DueAt
+			local poseHeld, effectLive, effectBeats = false, false, nil
+			local parkedAfter = watchPark(kid, due, 2.6, function(now)
+				if due and now >= due + 0.25 and now < due + 0.3 then
+					local p = AF.Pose(kid)
+					local g = BC.GetUnit(kid)
+					poseHeld = p ~= nil and p.Name == "Ko" and g ~= nil and g.Pose == "Ko"
+					for _, e in ipairs(AF._Live()) do
+						if e.Unit == kid and e.Recipe.Attack == "Ko" then
+							effectLive = true
+							effectBeats = e.End - e.Start
+						end
+					end
+				end
+			end)
+			local cancelled = false
+			for i = c0 + 1, #cancels do
+				if cancels[i] == kid then
+					cancelled = true
+				end
+			end
+			T.check(n == 1 and ko and ko.Attack == "Ko" and ko.Result == true and type(due) == "number" and due > ko.At,
+				"KO (render clock): the KO plays AttackFx Ko once on arrival, due when the event plays", ko and fmt("lead %.2f s", (due or 0) - ko.At) or "no play")
+			T.check(poseHeld and effectLive, "KO (render clock): after the due time the Ko pose holds and the Ko effect still plays its beats",
+				fmt("pose %s, effect %s (%.2f s long)", tostring(poseHeld), tostring(effectLive), effectBeats or 0))
+			T.check(not cancelled, "KO (render clock): nothing cancels the Ko (no AttackFx.Cancel on the pet before it is parked)")
+			T.check(parkedAfter ~= nil and parkedAfter >= 1.3 and parkedAfter <= 2.2, "KO (render clock): the pet lies and is parked after KO_PARK_FX (~1.6 s, not 0.3 s)",
+				parkedAfter and fmt("%.2f s after the due time", parkedAfter) or "never parked")
+		end
+		-- the cube path: Play false -> the KO handler's cube poof, parked after KO_PARK 0.3 s
+		local kid2 = helper
+		if kid2 and drawable(BC.GetUnit(kid2)) and BC.GetUnit(kid2).Model then
+			pulse(1.5)
+			force = false
+			local p0 = BC.GetStats().FxParts
+			local ko2 = koOnRenderClock(kid2)
+			local due2 = ko2 and ko2.DueAt
+			local poofParts = 0
+			local parkedAfter2 = watchPark(kid2, due2, 1.2, function()
+				poofParts = math.max(poofParts, BC.GetStats().FxParts - p0)
+			end)
+			force = nil
+			T.check(ko2 and ko2.Result == false and poofParts > 0, "KO (fallback): with Play false the cube poof still shows", fmt("%d cube parts", poofParts))
+			T.check(parkedAfter2 ~= nil and parkedAfter2 < 0.9, "KO (fallback): ... and the pet is parked after KO_PARK (0.3 s)", parkedAfter2 and fmt("%.2f s", parkedAfter2) or "never")
+		else
+			T.fail("KO (fallback): my helper is on the floor")
+		end
+		AF.Cancel = realCancel
+
 		-- 3) Review Focus 4 + Ruling 11: the killing blow and the End arrive together (like the sim's last step): the blow
 		--    lands visibly, no new effect starts, everything is gone (pools at keep size) within FX_END_GRACE 1.0 s
 		pulse(2.5)
@@ -1095,7 +1198,28 @@ S.client_p7vfx_battle = guarded("client_p7vfx_battle", function()
 			poolsAtKeep("Review Focus 4 (Leave event mid-effect)")
 			T.check(AF.Pose(f77) == nil and BC.GetUnit(f77) == nil, "Review Focus 4 (Leave): the leaver's unit and pose are gone")
 		end
-		KC.toClient("BattleState", "End", { BattleId = id, Mode = "Raid", Outcome = "Left", Won = false, Spectator = false, Reason = "Left" }, id)
+		-- the End MESSAGE before any sim End event plays (fix round 2): the grace starts there, the winners' Victory starts
+		-- after it and is never cut by it (a late End event changes nothing)
+		local nv = #calls
+		local endAt = os.clock()
+		KC.toClient("BattleState", "End", { BattleId = id, Mode = "Raid", Outcome = "Win", Won = true, Spectator = false, Reason = "BossDown",
+			Rewards = { Tokens = 10, Gems = 0, Xp = 5, Trophies = 0, LevelUps = 0, Tier = "Gold", Share = 0.4, Damage = 500 } }, id)
+		KC.toClient("BattleState", "Events", { { type = "End", reason = "BossDown", winnerSide = 1 } }, id)
+		local firstVictory, liveAfter = nil, nil
+		for _ = 1, 75 do
+			Mock.Step(1 / 30)
+			for i = nv + 1, #calls do
+				if calls[i].Attack == "Victory" and calls[i].Result == true and not firstVictory then
+					firstVictory = calls[i].At
+				end
+			end
+			if firstVictory and liveAfter == nil and os.clock() >= firstVictory + 0.5 then
+				liveAfter = AF.Stats().Live + AF.Stats().Stepped
+			end
+		end
+		T.check(firstVictory ~= nil and firstVictory >= endAt, "End message first: the winners play AttackFx Victory (after the grace)",
+			firstVictory and fmt("%.2f s after the End", firstVictory - endAt) or "no Victory")
+		T.check(liveAfter ~= nil and liveAfter >= 1, "End message first: the Victory is not cut by the grace (still live 0.5 s after it starts)", tostring(liveAfter))
 		LocalPlayer:SetAttribute("InBattle", nil)
 		KC.advance(15)
 		poolsAtKeep("after the second battle")

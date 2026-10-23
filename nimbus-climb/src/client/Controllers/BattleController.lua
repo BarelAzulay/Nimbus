@@ -51,7 +51,9 @@
 --     PetBuilder.PoseBody x the build scale on the root write) replace the old lunge / recoil, the wind-up crouch (now
 --     PetPoses' Windup held while the snapshot says Winding) and the hurt nudge for the units it drives; between attacks
 --     those units breathe and glance (PetPoses IdleBattle, out of step per unit; not on Low, not while my fighter moves
---     under my input); a KO'd pet tumbles and lies (KO_PARK_FX) before it is parked. The sim's End starts no new
+--     under my input; posed every other frame like a strided pet); a KO'd pet tumbles and lies (KO_PARK_FX) before it
+--     is parked (its Ko plays on arrival: only a pet drawn down and up again, or a KO no snapshot confirms within
+--     KO_CONFIRM, drops it). The sim's End starts no new
 --     effect and lets the live ones finish for FX_END_GRACE (1 s: the killing blow lands), then AttackFx.ClearAll (the
 --     winners' Victory waits for it); a Leave ends the leavers' own effects at once (AttackFx.Cancel), every teardown
 --     clears at once. Camera punch -> Me.Shake (own pets),
@@ -211,6 +213,7 @@ local K = {
 	KO_PARK = 0.3, -- seconds after a KO before the downed pet is parked (the poof covers it)
 	KO_PARK_FX = 1.6, -- with AttackFx's Ko: the pet tumbles onto its side (KO_TIME) and lies a moment before it is parked
 	KO_TIME = 0.9, -- PetPoses Ko (AttackFx K.KO): the tumble, then the pose holds
+	KO_CONFIRM = 1.0, -- a played Ko whose pet no snapshot draws down within this long is dropped (no KO after all)
 	FX_LEAD_MAX = 0.45, -- seconds an effect may start before its event plays (the render delay: the charge beat)
 	FX_COVER = 1.6, -- seconds after a played Special / Element during which its targets' hits are AttackFx's (Hurt pose)
 	WINDUP_HOLD = 0.6, -- PetPoses Windup is held at this p while Winding (its crouch is full from p 0.5 to 0.82) ...
@@ -1667,12 +1670,16 @@ function Units.Update(B, u, now, dt, sa, sb, alpha, animate)
 			return
 		end
 	else
-		if u.koAt then
-			u.koAt = nil -- back up (a revive): its Ko pose ends
+		-- AttackFx's Ko plays when the KO event ARRIVES, before the render clock draws the pet down: only a pet that was
+		-- drawn down and is up again (a revive), or a KO no snapshot confirmed within KO_CONFIRM, ends its Ko pose
+		if u.koAt and (u.downAt or now > u.koAt + K.KO_CONFIRM) then
+			u.koAt = nil
+			u.poofed = nil
 			Atk.Cancel(u.id)
 		end
-		if u.parked then
+		if u.downAt or u.parked then
 			u.downAt = nil
+			u.poofed = nil -- (up again: its next KO poofs)
 			parkUnit(u, false)
 		end
 	end
@@ -1739,7 +1746,7 @@ function Units.Update(B, u, now, dt, sa, sb, alpha, animate)
 	if not stunned then
 		bob = sin(now * 3.1 + u.phase) * K.BOB
 	end
-	local pose, body = Atk.PoseOf(u, now, down, false)
+	local pose, body = Atk.PoseOf(u, now, down, false, animate)
 	if u.windup and not Atk.Drives(u) then
 		oy = oy - 0.35 -- the wind-up crouch (Winding: the dash cue; AttackFx shows its held Windup pose instead)
 	end
@@ -2215,17 +2222,22 @@ function Me.Draw(B, u, now, dt, x, z)
 	local cf = CFrame.new(p) * CFrame.Angles(0, u.wyaw, 0)
 	-- no battle idle while my fighter moves under my input (or a helper flies / swaps)
 	local busy = (isFighter and (u.state == S_MOVING or Me.Walking())) or u.flyAt ~= nil or u.swapAt ~= nil
-	local pose, body = Atk.PoseOf(u, now, down, busy)
+	-- a helper that only breathes (the battle idle) is posed every other frame, like the other pets (stepBattle)
+	local animate = isFighter or u.poseSrc ~= "idle" or (St.frameNo + (u.slot or 0)) % 2 == 0
+	local pose, body = Atk.PoseOf(u, now, down, busy, animate)
 	if body then
 		cf = cf * body
 	end
 	if u.rigid then
+		if not animate then
+			Units.CarryLoose(u, cf) -- (the wings keep their pose on the root this frame)
+		end
 		u.root.CFrame = cf
 	else
 		pcall(u.model.PivotTo, u.model, cf)
 	end
 	u.posed = true
-	if PetBuilder and not u.animBroken then
+	if animate and PetBuilder and not u.animBroken then
 		local opts = u.animOpts
 		local moving = rcf ~= nil and isFighter and u.state == S_MOVING
 		opts.Flap = stunned and 0 or ((u.state == S_DASHING or u.dashAt or moving or u.flyAt) and 1.8 or 1)
@@ -2239,6 +2251,10 @@ function Me.Draw(B, u, now, dt, x, z)
 	Units.UpdateStatus(B, u, now, cf)
 end
 
+local function moveDirection(hum)
+	return hum.MoveDirection
+end
+
 -- the character walks under the player's input (Humanoid.MoveDirection)
 function Me.Walking()
 	local char = LocalPlayer and LocalPlayer.Character
@@ -2246,9 +2262,7 @@ function Me.Walking()
 	if not hum then
 		return false
 	end
-	local ok, dir = pcall(function()
-		return hum.MoveDirection
-	end)
+	local ok, dir = pcall(moveDirection, hum)
 	return ok and typeof(dir) == "Vector3" and dir.Magnitude > 0.1
 end
 
@@ -2600,8 +2614,14 @@ function Atk.ClearAll()
 	end
 end
 
--- the sim's End: no new effect (Atk.Play refuses), the live ones get FX_END_GRACE seconds, then ClearAll
-function Atk.EndSoon()
+-- the battle's end (the sim's End event, or the End message if it comes first): no new effect (Atk.Play refuses),
+-- the live ones get FX_END_GRACE seconds, then ClearAll; once per battle, so a late End event never cuts the
+-- winners' Victory that starts after the grace
+function Atk.EndSoon(B)
+	if B.fxGrace or not Mods.AttackFx then
+		return
+	end
+	B.fxGrace = true
 	if not St.fxEndAt then
 		St.fxEndAt = os.clock() + K.FX_END_GRACE
 	end
@@ -2661,10 +2681,15 @@ function Atk.Stats()
 	return (ok and type(s) == "table") and s or nil
 end
 
--- AttackFx drives this unit's body: loaded, and its last attack here was not refused (then the old crouch / lunge
--- come back until a play succeeds again)
+-- the poses can be drawn (PetBuilder.PoseBody / Animate opts.Pose in this build)
+function Atk.Posable()
+	return PetBuilder ~= nil and type(PetBuilder.PoseBody) == "function"
+end
+
+-- AttackFx drives this unit's body: loaded, poses drawable, and its last attack here was not refused (else the old
+-- crouch / lunge / nudge come back until a play succeeds again)
 function Atk.Drives(u)
-	return (Mods.AttackFx and u.fxDriven ~= false) and true or false
+	return (Mods.AttackFx and Atk.Posable() and u.fxDriven ~= false) and true or false
 end
 
 -- the hits of a played Special / Element on these sides are AttackFx's (their Hurt pose: no nudge)
@@ -2962,10 +2987,13 @@ end
 -- cue's crouch, for a unit AttackFx drives); the battle idle (Atk.Idles; P = time + a per-unit phase, so the pets do
 -- not breathe or glance in step). A switch between those sources crossfades over AttackFx.CROSSFADE like AttackFx's
 -- own Prev / Blend: the body blends, Animate keeps the previous pose for the first half.
-function Atk.PoseOf(u, now, down, busy)
+function Atk.PoseOf(u, now, down, busy, animate)
 	local AF = Mods.AttackFx
-	if not AF or u.isBoss or not PetBuilder or type(PetBuilder.PoseBody) ~= "function" then
+	if not AF or u.isBoss or not Atk.Posable() then
 		return nil, nil
+	end
+	if animate == false and not u.poseSwitch then
+		return u.poseLast, u.poseScaled -- a strided frame: the last pose rides along (Units.CarryLoose)
 	end
 	local pose, body, src = nil, nil, nil
 	local ok, ps = pcall(AF.Pose, u.id)
@@ -3026,6 +3054,7 @@ function Atk.PoseOf(u, now, down, busy)
 	u.poseShown = pose and pose.Name or nil
 	u.poseShownP = pose and pose.P or nil
 	u.poseShownRanged = pose and pose.Ranged or nil
+	u.poseLast, u.poseScaled = pose, nil
 	if not body then
 		return pose, nil
 	end
@@ -3038,6 +3067,7 @@ function Atk.PoseOf(u, now, down, busy)
 		local x, y, z, r00, r01, r02, r10, r11, r12, r20, r21, r22 = body:GetComponents()
 		body = CFrame.new(x * s, y * s, z * s, r00, r01, r02, r10, r11, r12, r20, r21, r22)
 	end
+	u.poseScaled = body
 	return pose, body
 end
 
@@ -3338,7 +3368,7 @@ Handlers[EV.Hit] = function(B, ev)
 			if d > 0.01 then
 				attacker.lungeAt = os.clock()
 				attacker.lungeX, attacker.lungeZ = dx / d, dz / d
-				attacker.lungeFx = played
+				attacker.lungeFx = played and Atk.Posable()
 			end
 		end
 		return
@@ -3358,7 +3388,7 @@ Handlers[EV.Hit] = function(B, ev)
 			if d > 0.01 then
 				attacker.lungeAt = os.clock()
 				attacker.lungeX, attacker.lungeZ = dx / d, dz / d
-				attacker.lungeFx = played -- (the Strike pose replaces the lunge offset)
+				attacker.lungeFx = played and Atk.Posable() -- (the Strike pose replaces the lunge offset)
 			end
 			if not played and attacker.ranged and attacker.model and not attacker.parked then
 				Fx.Bolt(unitCenter(B, attacker), unitCenter(B, victim), elementColor(attacker.element), 0.42, 0.24)
@@ -3377,7 +3407,7 @@ Handlers[EV.Hit] = function(B, ev)
 			victim.hurtAt = os.clock()
 			victim.hurtX, victim.hurtZ = dx / d, dz / d
 			-- the Hurt pose instead of the nudge: this hit's effect played, or a played special / element covers it
-			victim.hurtFx = played or (victim.fxHitUntil ~= nil and victim.hurtAt <= victim.fxHitUntil)
+			victim.hurtFx = Atk.Posable() and (played or (victim.fxHitUntil ~= nil and victim.hurtAt <= victim.fxHitUntil))
 		end
 	end
 	if not ev.zone or math.random() < 0.5 then
@@ -3626,7 +3656,7 @@ Handlers[EV.End] = function(B)
 	B.simEnded = true
 	-- the fight is over (Review Focus 4, Ruling 11): no new attack effect from here; the live ones (the killing blow
 	-- lands visibly) finish for at most FX_END_GRACE, then AttackFx.ClearAll (Atk.Update)
-	Atk.EndSoon()
+	Atk.EndSoon(B)
 end
 
 -- Phase 5 events (the visuals, on the render clock; the HUD / prediction side runs on arrival in Net.Pre)
@@ -7387,6 +7417,7 @@ function Net.End(payload, battleId)
 	Net.PlayDue(B, os.clock())
 	B.ended = true
 	B.endAt = os.clock()
+	Atk.EndSoon(B) -- (when the sim's End event has not played: the grace starts now, the cheers wait for it)
 	Input.Bind(false)
 	Input.Movement(B, false)
 	B.pending = {}
@@ -7506,6 +7537,10 @@ local function stepBattle(B, now, dt)
 				elseif d2 > K.ANIM_MID * K.ANIM_MID then
 					stride = 3
 				end
+			end
+			-- a pet that only breathes (the battle idle) is posed every other frame: the idle is slow
+			if stride < 2 and u.poseSrc == "idle" then
+				stride = 2
 			end
 			-- a strided frame skips only the pose (PetBuilder.Animate); the root moves every frame and carries the
 			-- animated parts rigidly (Units.CarryLoose), so the pet never stutters and never comes apart
