@@ -160,6 +160,13 @@
       "structureHash": "70737a782516cafee1bec3587e575acb",
       "uploadedAt": "2026-10-21T09:17:50Z"
     },
+    "arena_bannerpole": {
+      "pendingContentHash": "80777efba37df1beb01bf596d2ae4389",
+      "pendingFileSha256": "b0239a96463ff8a8e1e2d2e9b2ea22e123118cfdc49e52ac4c5dc48c6b90083c",
+      "pendingMode": "create",
+      "pendingOperation": "063d06b4-123e-4367-aaed-8a71461dd900",
+      "pendingStructureHash": "6999dc51d9a71f849b7bb92f0dd4cafc"
+    },
     "boss_frost_wyrm_Body": {
       "assetId": 126978251398119,
       "contentHash": "52f8cb2ea7c3e184d657b27aa124b433",
