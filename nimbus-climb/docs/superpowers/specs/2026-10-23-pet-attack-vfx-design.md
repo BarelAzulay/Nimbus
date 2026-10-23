@@ -84,32 +84,32 @@ never delayed past the event time, so damage numbers stay in sync.
 
 ## Rarity ladder
 
-Each tier keeps everything below it and adds a visible layer. Size is a multiplier on the whole effect.
+Revised after Gemini's review: rarity shows mainly through the **core's intensity and shape**, in **4 clearly
+different bands**, not through sheer size (big effects bury 16-pet raids). Small steps inside a band. Each band keeps
+everything below it.
 
-| Tier | Adds | Size |
-|---|---|---|
-| Common | core projectile / swipe + impact burst | 1.0x |
-| Uncommon | + element trail | 1.1x |
-| Rare | + crescent slash arc + ground glow | 1.2x |
-| Epic | + shockwave ring + light flash | 1.35x |
-| Legendary | + afterimages + bloom pulse + small camera punch (own pet only) | 1.5x |
-| Mythic | + double arcs + a lingering element field | 1.65x |
-| Secret | + a colour-shifting signature layer + a screen-edge glow on hit (own pet only) | 1.8x |
+| Band | Tiers | Core look | Adds | Size |
+|---|---|---|---|---|
+| 1 | Common, Uncommon | plain element colour (e.g. orange fire) | core shape + impact burst; Uncommon + element trail | 1.0x / 1.05x |
+| 2 | Rare, Epic | brighter, a hot inner core (e.g. blue-hot fire) | + crescent slash arc, ground glow; Epic + shockwave ring, light flash | 1.1x / 1.15x |
+| 3 | Legendary, Mythic | blazing core, upgraded shape (e.g. the spear grows fins / a second blade) | + afterimages, bloom pulse, small camera punch (own pet only); Mythic + double arcs, a ground-only lingering field | 1.2x / 1.3x |
+| 4 | Secret | white plasma core with a colour-shifting rim | + the signature layer, a screen-edge glow on hit (own pet only) | 1.4x (cap) |
 
-Evolution adds size on top: Evolved +10%, Evolved II +20%. Wild / champion pets use their own rarity.
+Evolution adds a little on top (Evolved +5%, Evolved II +10%), never past the 1.4x cap. Wild / champion pets use
+their own rarity.
 
 ## Elements: normal attacks
 
-| Element | Melee swipe | Ranged projectile + trail | Impact | Textures (sprite sheets) |
-|---|---|---|---|---|
-| Flame | crescent of fire | flame spear, ember trail | fire burst + embers + scorch glow | flame, embers, smoke |
-| Water | water-whip arc | spinning water orb, droplet trail | splash crown + ripple ring | splash, droplets, ripple |
-| Frost | ice-shard slash | ice lance, snow trail | crystal shatter + frost ring on the ground | ice shards, snowflakes, frost mist |
-| Nature | vine whip with leaves | spinning leaf-blade swarm | leaf + petal burst + vines sprouting | leaves, petals, vine streak |
-| Earth | ground slam, rock spikes | boulder, dust trail | rock debris + dust cloud + ground crack | rock chunks, dust, crack |
-| Storm | electric claw, crackling arcs | jagged lightning bolt | electric burst + zig-zag sparks | lightning strip, sparks, storm cloud |
-| Celestial | golden starlight slash | shooting star, sparkle tail | star burst + light rays | stars, light rays, sparkle |
-| Shadow | dark claw, purple wisps | shadow orb pulling wisps | void implosion, then a smoke pop | wisps, void ring, dark sparks |
+| Element | Melee swipe | Ranged projectile + trail | Impact | "Alive" detail | Textures (sprite sheets) |
+|---|---|---|---|---|---|
+| Flame | crescent of fire | flame spear, ember trail | fire burst + embers + scorch glow | embers swirl upward on heat | flame, embers, smoke |
+| Water | crescent wave slash | spinning water orb, droplet trail | geyser burst + ripple ring | droplets bounce on the ground, then pop | splash, droplets, ripple |
+| Frost | ice spikes burst from the ground along a path | sharp ice shard, snow trail | crystal shatter + frost ring on the ground | impact shards linger and visibly melt (~1 s) | ice shards, snowflakes, frost mist |
+| Nature | thorny roots erupt under the target | glowing seed pod, pink / yellow petal trail (reads on green grass) | root burst + petals | vines briefly wrap the target | petals, leaves, thorn streak |
+| Earth | ground slam, rock spikes | boulder, dust trail | rock breaks into voxel chunks + dust + ground crack | chunks scatter and bounce | rock chunks, dust, crack |
+| Storm | electric claw, crackling arcs | jagged lightning bolt | electric burst + zig-zag sparks | stray bolts strike the ground nearby | lightning strip, sparks, storm cloud |
+| Celestial | golden starlight slash | shooting star, sparkle tail | star burst + light rays | constellation lines join the stars | stars, light rays, sparkle |
+| Shadow | dark claw, purple wisps | shadow orb pulling wisps | void implosion, then black glass shatters with glitchy purple sparks | the floor darkens under the wisps | wisps, void ring, dark sparks, glass shards |
 
 Shared textures: crescent slash arc, shockwave ring, soft glow, spark streak, speed lines, hexagon shield.
 About 30 sprite sheets in all.
@@ -162,6 +162,11 @@ Poses on the existing rig, for every pet:
 
 ## Budgets, quality, readability
 
+- **Solid cores, sparse textures** (Gemini review: transparency overdraw is the biggest phone cost). The main
+  volume of every effect (orb, crescent, spear, spike, beam, shield shell) is a glowing **solid mesh made in
+  Blender** (MeshPart, Neon / Glass, tweened in scale and transparency): cheap, no overdraw, and it follows the
+  Blender-only art rule. Flipbook particles are a sparse finishing layer (embers, sparks, mist) with tight caps.
+- Lingering fields are ground decals only, and fade near boss attack telegraphs, which always draw on top.
 - My own team: full density. Other players' and wild pets' effects: about 60% density, no camera punch, no screen glow.
 - Concurrent effect budget: a fixed number of full effects at once; extras step down a tier, then fall back to the
   cube effects. Particle caps per effect scale with tier and quality.
@@ -190,8 +195,8 @@ Visual:
 
 ## Build order (waves, with player check-ins)
 
-1. **Textures**: Blender render scripts + all sprite sheets; upload through Studio; `TextureIds`. Check-in: the
-   player sees the texture sheet.
+1. **Art**: Blender scripts for the solid effect cores (meshes, uploaded like the Phase 6 models) and all sprite
+   sheets (uploaded through Studio; `TextureIds`). Check-in: the player sees the cores + texture sheet.
 2. **Engine**: `AttackFxCatalog`, `AttackFx`, `PetPoses`, budget, quality, fallback, `/fx` command, tests.
 3. **Flame end to end**: melee, ranged, element attack, Blast / Pounce / Storm. Check-in: the player reviews it in
    Studio before the rest.
@@ -209,4 +214,7 @@ and verifies), commit and push after every milestone.
 - Texture moderation can delay new uploads; until an id loads, that recipe uses the cube fallback.
 - Many textured emitters can cost frames on phones: the budget, density rules and Low path are there for that,
   and the stress test checks them.
-- Gemini was unavailable (Google 503 overload) during this design; its review happens on this spec once it is back.
+- Gemini reviewed this spec (gemini-3.1-pro). Adopted: Nature roots + seed pod (leaf swarm vanished on grass),
+  Water wave slash + geyser (whips read as noodles), Shadow glass shatter, Frost ground spikes, the 1.4x size cap,
+  4 rarity bands by core intensity and shape, solid Blender cores with sparse flipbooks, ground-only lingering
+  fields. Kept against its advice: an ice-shard projectile for ranged Frost pets (they need something that flies).
