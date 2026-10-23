@@ -6,7 +6,9 @@
 -- not download the mesh data). EMPTY MeshIds = nothing happens at all: no folder, no thread, no connection (today's
 -- game exactly).
 --
---   SERVER  Start()   loads every id in the background (at most 4 at a time): AssetService:LoadAssetAsync, then
+--   SERVER  Start()   loads every id in the background (at most MaxParallel = 4 at a time; the keys of ML_Dress-tagged
+--                     targets first, tagged before Start or while the queue drains, then alphabetical):
+--                     AssetService:LoadAssetAsync, then
 --                     InsertService:LoadAsset, both in pcall; retries after 2 / 5 / 12 s (not for "not authorized",
 --                     "does not exist", "invalid"); unwraps the result, strips PackageLink / scripts /
 --                     SurfaceAppearance, FITS it to the key's manifest (shared/MeshManifests/<key>: every manifest part
@@ -18,8 +20,10 @@
 --                     Color white, SmoothPlastic (or the manifest material), and parents the template to
 --                     ReplicatedStorage.MeshLibrary.<key> with ML_Status ("loading" | "ready" | "failed"), ML_Error,
 --                     ML_LoadMs, ML_Yaw, ML_Scale, ML_FitErr.
---   CLIENT  Start()   ContentProvider:PreloadAsync per ready template (a Failure / TimedOut marks the key broken on THIS
---                     device only), RenderFidelity set locally (Precise for creatures / gates, Automatic for the world),
+--   CLIENT  Start()   ContentProvider:PreloadAsync per ready template (at most ClientParallel = 6 at a time, best first:
+--                     keys of tagged targets nearest the camera, then keys something waits on, then arrival order; a
+--                     Failure / TimedOut marks the key broken on THIS device only), RenderFidelity set locally (Precise
+--                     for creatures / gates, Automatic for the world),
 --                     then Changed fires; dresses every Tag-ged target (CollectionService "ML_Dress", streaming re-adds
 --                     included).
 --
@@ -83,7 +87,8 @@ local SNAP_SCALES = { 1, 100, 0.01 }
 local PRECISE_PREFIX = { "pet_", "evo1_", "evo2_", "evowing_", "wing_", "acc_", "hyb_", "aura_", "star_", "boss_", "dragon_", "gate_", "portal_", "npc_", "token_" }
 
 local cfg = {
-	MaxParallel = 4,
+	MaxParallel = 4, -- server: LoadAsset calls at once
+	ClientParallel = 6, -- client: PreloadAsync calls at once (mesh-load-priority)
 	RetryDelays = { 2, 5, 12 },
 	SlowSeconds = 20,
 	Root = nil, -- tests: the folder that holds the templates (default ReplicatedStorage.MeshLibrary)
@@ -873,18 +878,46 @@ local function startServer(gen)
 		status[key] = "loading"
 		setHolder(key, "loading")
 	end
-	local nextIndex = 1
-	local function worker()
-		while gen == generation and nextIndex <= #queue do
-			local key = queue[nextIndex]
-			nextIndex = nextIndex + 1
-			loadKey(key, ids[key], gen)
+	-- (mesh-load-priority) keys of ML_Dress-tagged targets first: the world builds after Start, so the tags are
+	-- watched while the queue drains (one tag signal, dropped once the queue is empty); the rest stays alphabetical
+	local wanted = {}
+	local tag = cfg.DressTag or DRESS_TAG
+	local function want(target)
+		local key = target:GetAttribute("ML_DressKey")
+		if type(key) == "string" then
+			wanted[key] = true
 		end
 	end
-	for _ = 1, math.min(cfg.MaxParallel, #queue) do
+	for _, target in ipairs(CollectionService:GetTagged(tag)) do
+		want(target)
+	end
+	local tagConn = CollectionService:GetInstanceAddedSignal(tag):Connect(want)
+	connections[#connections + 1] = tagConn
+	local function pick()
+		for i, key in ipairs(queue) do
+			if wanted[key] then
+				return table.remove(queue, i)
+			end
+		end
+		return table.remove(queue, 1)
+	end
+	local total, running = #queue, 0
+	local function worker()
+		while gen == generation and #queue > 0 do
+			local key = pick()
+			loadKey(key, ids[key], gen)
+		end
+		running = running - 1
+		if running == 0 and tagConn then
+			tagConn:Disconnect()
+			tagConn = nil
+		end
+	end
+	for _ = 1, math.min(cfg.MaxParallel, total) do
+		running = running + 1
 		task.spawn(worker)
 	end
-	log(#queue .. " mesh model(s) to load")
+	log(total .. " mesh model(s) to load")
 end
 
 ----------------------------------------------------------------------
@@ -934,26 +967,123 @@ local function preload(tpl, gen)
 	notify(key)
 end
 
+-- (mesh-load-priority) where the camera is now (nil without one)
+local function cameraPosition()
+	local cam = game:GetService("Workspace").CurrentCamera
+	if not cam then
+		return nil
+	end
+	local ok, p = pcall(function()
+		return cam.CFrame.Position
+	end)
+	return ok and p or nil
+end
+
+-- how far a tagged target is from `from` (0 without a camera / pivot)
+local function cameraDistance(target, from)
+	if not from then
+		return 0
+	end
+	local ok, d = pcall(function()
+		return (target:GetPivot().Position - from).Magnitude
+	end)
+	return ok and d or 0
+end
+
+-- the camera may move this far (studs) before the rank-0 distances are taken again (an early join samples them at the
+-- place's saved camera, before the character spawns; the first pick after the camera reaches the player re-ranks)
+local RESAMPLE_STUDS = 48
+
 local function startClient(gen)
-	local queue, running = {}, false
-	local function pump()
-		if running then
+	-- (mesh-load-priority) preload queue, best first each time a worker frees up, at most cfg.ClientParallel workers:
+	--   rank 0  the key of an ML_Dress-tagged target, the nearest one (distance when the target was seen) first
+	--   rank 1  a key something waits on (OnReady / Dress / Swap waiters: pets being built ...)
+	--   rank 2  the rest, in arrival order (ties keep arrival order too)
+	-- a linear scan per pick (no per-frame work); the queue only shrinks while workers run, so every key loads
+	local queue, pending, nearest = {}, {}, {} -- queue: { Key, Tpl } in arrival order; pending: key -> its entry
+	local seen = {} -- key -> weak set of its tagged targets (to take the distances again once the camera moved)
+	local sampledFrom = nil -- the camera position the distances in `nearest` were taken from
+	local busy = 0
+	local function resample()
+		local from = cameraPosition()
+		if not from or not sampledFrom or (from - sampledFrom).Magnitude < RESAMPLE_STUDS then
 			return
 		end
-		running = true
+		sampledFrom = from
+		for _, e in ipairs(queue) do -- only keys still queued matter; a key stays rank 0 even if its targets are gone
+			local set = seen[e.Key]
+			if set then
+				local best = nil
+				for target in pairs(set) do
+					if target.Parent then
+						local d = cameraDistance(target, from)
+						if not best or d < best then
+							best = d
+						end
+					end
+				end
+				if best then
+					nearest[e.Key] = best
+				end
+			end
+		end
+	end
+	local function rankOf(key)
+		if nearest[key] then
+			return 0, nearest[key]
+		end
+		if waiters[key] and #waiters[key] > 0 then
+			return 1, 0
+		end
+		return 2, 0
+	end
+	local function pick()
+		resample()
+		local best, bestRank, bestDist = 1, 3, 0
+		for i, e in ipairs(queue) do
+			local r, d = rankOf(e.Key)
+			if r < bestRank or (r == bestRank and d < bestDist) then
+				best, bestRank, bestDist = i, r, d
+			end
+		end
+		local e = table.remove(queue, best)
+		pending[e.Key] = nil
+		return e.Tpl
+	end
+	local function worker()
 		while gen == generation and #queue > 0 do
-			local tpl = table.remove(queue, 1)
+			local tpl = pick()
 			if tpl.Parent then
 				preload(tpl, gen)
 			end
 		end
-		running = false
+		busy = busy - 1
+	end
+	local function pump()
+		-- the count is taken once: each worker picks (shrinks the queue) before its first yield, so re-reading #queue
+		-- in the loop condition would start only about half the workers a burst needs; a fixed count (not "until busy
+		-- reaches it") also ends when a worker drains the queue without yielding and busy drops back
+		local n = math.min(cfg.ClientParallel - busy, #queue)
+		for _ = 1, n do
+			if gen ~= generation then
+				break
+			end
+			busy = busy + 1
+			task.spawn(worker)
+		end
 	end
 	local function watch(child)
 		local st = child:GetAttribute("ML_Status")
 		if st == "ready" and not localReady[child.Name] then
-			queue[#queue + 1] = child
-			task.spawn(pump)
+			local e = pending[child.Name]
+			if e then
+				e.Tpl = child -- a newer template of a key still queued
+			else
+				e = { Key = child.Name, Tpl = child }
+				pending[child.Name] = e
+				queue[#queue + 1] = e
+			end
+			task.defer(pump) -- deferred: a burst of templates (the first GetChildren) is queued before the first pick
 		elseif st == "loading" and child:IsA("Folder") then
 			-- a holder the server may still mark 'failed' (review3 runtime-5): then release the key's waiters here
 			local conn = nil
@@ -974,6 +1104,20 @@ local function startClient(gen)
 	local function dressTagged(target)
 		local key = target:GetAttribute("ML_DressKey")
 		if type(key) == "string" then
+			local from = cameraPosition()
+			if not sampledFrom then
+				sampledFrom = from
+			end
+			local set = seen[key]
+			if not set then
+				set = setmetatable({}, { __mode = "k" })
+				seen[key] = set
+			end
+			set[target] = true
+			local d = cameraDistance(target, from)
+			if not nearest[key] or d < nearest[key] then
+				nearest[key] = d
+			end
 			MeshLibrary.Dress(target, key)
 		end
 	end
@@ -1047,7 +1191,7 @@ function MeshLibrary._Reset()
 	folder = nil
 	started = false
 	cfg.Root, cfg.Ids, cfg.DressTag = nil, nil, nil
-	cfg.MaxParallel, cfg.RetryDelays = 4, { 2, 5, 12 }
+	cfg.MaxParallel, cfg.ClientParallel, cfg.RetryDelays = 4, 6, { 2, 5, 12 }
 end
 
 ----------------------------------------------------------------------

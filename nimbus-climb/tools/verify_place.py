@@ -122,7 +122,8 @@ def main():
                 expected.add(path)
                 rel = os.path.relpath(os.path.join(dirpath, filename), ROOT)
                 with open(os.path.join(dirpath, filename), "rb") as f:
-                    disk = f.read().decode("utf-8")
+                    # XML parsing turns CRLF into LF, so a Windows (autocrlf) checkout compares on LF too
+                    disk = f.read().decode("utf-8").replace("\r\n", "\n")
                 got = index.get(path)
                 if got is None:
                     problems.append("MISSING %s (expected %s %s)" % (rel, cls, ".".join(path)))
