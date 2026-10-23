@@ -1,8 +1,8 @@
-# roblox
+# Nimbus
 
-My Roblox projects.
+Nimbus Climb, a co-op cloud parkour game for Roblox.
 
-## Games
+## The game
 
 ### [Nimbus Climb](nimbus-climb/) — co-op cloud parkour
 A cosy cloud-village lobby with match portals, a procedurally generated sky parkour for 1–4 players,
