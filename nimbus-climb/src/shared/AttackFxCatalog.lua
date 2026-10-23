@@ -48,7 +48,8 @@
 --   AttackFxCatalog.Unit(info) -> { Element, Rarity, Stage, PetId, Ranged }   from a BattleSim unitInfo (petId, key, look,
 --                                                                  element, elements, evo, ranged): Rarity = an explicit
 --                                                                  info.rarity / look.Rarity, else PetCatalog.Get(petId | key's
---                                                                  base).Rarity, else a hybrid's look.BodyId pet's rarity, else
+--                                                                  base).Rarity, else a hybrid's: the HIGHER of its look.BodyId
+--                                                                  and look.StyleId pets' rarities (PetKeys' own rule), else
 --                                                                  "Common"; Element = the FIRST of `elements` (else `element`);
 --                                                                  Stage = evo clamped 0..2
 --   AttackFxCatalog.Signatures[petId]                              the 12 signature pets (Element, Kind, Rarity, Twist, overrides)
@@ -876,6 +877,15 @@ local function rarityOfPet(id)
 	return ok and type(def) == "table" and cleanRarity(def.Rarity) or nil
 end
 
+-- a hybrid's rarity when its record gave none: the higher of its body and style pets (PetKeys hybridDef: higherRarity)
+local function hybridRarity(look)
+	local body, style = rarityOfPet(look.BodyId), rarityOfPet(look.StyleId)
+	if body and style then
+		return (rarityOrder[style] > rarityOrder[body]) and style or body
+	end
+	return body or style
+end
+
 function AttackFxCatalog.Unit(info)
 	if type(info) ~= "table" then
 		info = {}
@@ -887,7 +897,7 @@ function AttackFxCatalog.Unit(info)
 	end
 	local keyBase = type(info.key) == "string" and string.match(info.key, "^([^@]+)") or nil
 	local rarity = cleanRarity(info.rarity) or cleanRarity(info.Rarity) or cleanRarity(look.Rarity)
-		or rarityOfPet(petId) or rarityOfPet(keyBase) or rarityOfPet(look.BodyId) or "Common"
+		or rarityOfPet(petId) or rarityOfPet(keyBase) or hybridRarity(look) or "Common"
 	local element = nil
 	if type(info.elements) == "table" and type(info.elements[1]) == "string" then
 		element = info.elements[1]

@@ -559,8 +559,14 @@ S.p7vfx_catalog = guarded("p7vfx_catalog", function()
 	local hyb = C.Unit({ id = 4, key = "hyb:abc123", petId = "hyb:abc123", element = "Storm", elements = { "Storm", "Flame" }, evo = 1, ranged = true,
 		look = { Hybrid = true, BodyId = "storm_tabby", StyleId = "maple_fox", Species = "Cat" } })
 	T.check(type(hyb) == "table" and hyb.Element == "Storm" and hyb.Rarity == rarityOf("storm_tabby") and hyb.Stage == 1 and hyb.Ranged == true,
-		"p7vfx catalog: Unit on a hyb: unit = its first element (Storm) and the hybrid's rarity (body pet)",
+		"p7vfx catalog: Unit on a hyb: unit = its first element (Storm) and the hybrid's rarity (Rare body > Uncommon style)",
 		hyb and fmt("%s %s %s %s", tostring(hyb.Element), tostring(hyb.Rarity), tostring(hyb.Stage), tostring(hyb.Ranged)))
+	-- PetKeys' rule: a hybrid without a record rarity is the HIGHER of its body and style pets
+	local styleRarer = C.Unit({ key = "hyb:s", petId = "hyb:s", elements = { "Storm", "Flame" }, look = { Hybrid = true, BodyId = "storm_tabby", StyleId = "ember_phoenix" } })
+	T.check(rarityOf("storm_tabby") == "Rare" and rarityOf("ember_phoenix") == "Legendary" and styleRarer and styleRarer.Rarity == "Legendary" and styleRarer.Element == "Storm",
+		"p7vfx catalog: Unit on a hybrid whose Style is rarer than its Body = the Style's rarity", styleRarer and tostring(styleRarer.Rarity))
+	local styleExplicit = C.Unit({ key = "hyb:t", petId = "hyb:t", elements = { "Storm" }, look = { Hybrid = true, BodyId = "storm_tabby", StyleId = "ember_phoenix", Rarity = "Epic" } })
+	T.check(styleExplicit and styleExplicit.Rarity == "Epic", "p7vfx catalog: an explicit hybrid Rarity still wins over body / style", styleExplicit and tostring(styleExplicit.Rarity))
 	local hybFirst = C.Unit({ key = "hyb:z", petId = "hyb:z", elements = { "Flame", "Storm" }, look = { Hybrid = true, BodyId = "storm_tabby" } })
 	T.check(hybFirst and hybFirst.Element == "Flame", "p7vfx catalog: Unit takes the FIRST of several elements", hybFirst and tostring(hybFirst.Element))
 	local hybExplicit = C.Unit({ key = "hyb:q", petId = "hyb:q", elements = { "Storm", "Flame" }, look = { Hybrid = true, BodyId = "storm_tabby", Rarity = "Mythic" } })
