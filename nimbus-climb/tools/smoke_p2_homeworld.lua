@@ -551,6 +551,10 @@ local function serverScenarios()
 			end
 			return false
 		end
+		local function shipped(k)
+			local okStatus, st = pcall(ML.Status, k)
+			return okStatus and st ~= "missing"
+		end
 		local function sigOf(key)
 			local man = ML.Manifest(key)
 			local att = man and man.Attachments and man.Attachments.LayoutSig
@@ -558,7 +562,7 @@ local function serverScenarios()
 		end
 		-- 1. every station level: a key whose LayoutSig matches the live build; no tag without ids
 		local keys = T.tally("home mesh: every station level has its home_<stem>_<level> key and the key matches today's Part build (else rebuild: blender/build_all.py --class home)")
-		local quiet = T.tally("home mesh: with the shipped empty MeshIds nothing is tagged (the Part build is unchanged)")
+		local quiet = T.tally("home mesh: a station is tagged exactly when its key has a shipped id and its LayoutSig matches (empty MeshIds: nothing tagged, the Part build is unchanged)")
 		local names = T.tally("home mesh: station keys are baked parts only (Fixed* / Glass*), never a kept name")
 		local GARDEN_OPENS = { 0, 3, 7, 12 }
 		local maxTris, maxParts = 0, 0
@@ -578,7 +582,18 @@ local function serverScenarios()
 					local n, a, b = Mesh.signature(m, CFrame.new(), keepSet)
 					local ok = man ~= nil and type(pos) == "table" and pos[1] == n and abs(pos[2] - a) <= 0.05 + n * 1e-4 and abs(pos[3] - b) <= 0.05 + n * 1e-4
 					keys:case(ok, label, man and pos and fmt(pos[1], 0) .. " / " .. n .. " parts, sums " .. fmt(pos[2], 3) .. " vs " .. fmt(a, 3) or ("no manifest " .. tostring(key)))
-					quiet:case(not hasDress(m), label)
+					-- HomeBuilder's rule: the station key is tagged only with an uploaded id (Status ~= "missing") and a matching
+					-- LayoutSig; a Garden bed piece only with its own uploaded home_bed_* id
+					local want = (key and shipped(key) and ok) and key or nil
+					local stray = nil
+					for _, d in ipairs(m:GetDescendants()) do
+						local dk = d:GetAttribute("ML_DressKey")
+						if dk and not shipped(dk) then
+							stray = dk
+						end
+					end
+					quiet:case(m:GetAttribute("ML_DressKey") == want and stray == nil, label,
+						tostring(m:GetAttribute("ML_DressKey")) .. " vs " .. tostring(want) .. (stray and (", untagged-id piece " .. stray) or ""))
 					if man and (open == false or open == 12) and level == def.MaxLevel then
 						maxTris = maxTris + (tonumber(man.Raw and man.Raw.Tris) or 0)
 						maxParts = maxParts + #(man.Parts or {})
@@ -1663,7 +1678,12 @@ local function clientScenarios()
 				popping = popping + 1
 			end
 		end
-		T.check(kitchen ~= before and popping > 0, "HomeFx: a new station pops in (its blocks spring up bottom-to-top)", popping .. " of " .. #kParts .. " parts mid-pop")
+		if kitchen and kitchen:GetAttribute("ML_DressKey") then
+			-- Phase 6: a mesh-dressed station (its home key has a shipped id) appears without the Part pop (HomeFx.startPop)
+			T.check(kitchen ~= before and popping == 0, "HomeFx: a new mesh-dressed station appears without the Part pop", popping .. " of " .. #kParts .. " parts mid-pop")
+		else
+			T.check(kitchen ~= before and popping > 0, "HomeFx: a new station pops in (its blocks spring up bottom-to-top)", popping .. " of " .. #kParts .. " parts mid-pop")
+		end
 		advance(2.0)
 		local off = 0
 		for i, p in ipairs(kParts) do
