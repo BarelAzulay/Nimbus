@@ -65,8 +65,11 @@ The key is read from the environment only; never `echo` it, never write it to a 
 cd /home/user/roblox/nimbus-climb
 git checkout v3-phase6 && git pull            # or the branch the lead named (after the merge: main)
 python3 -m venv /tmp/claude-0/bpyenv          # once per container: bpy 5.2 as a module (headless Blender)
-/tmp/claude-0/bpyenv/bin/pip install bpy numpy lupa pillow
+/tmp/claude-0/bpyenv/bin/pip install bpy==5.2.2 numpy lupa pillow
 ```
+
+Pin **bpy 5.2.2**: the FBX stores the Blender version, so 5.2.3 or later gives other `fbxSha256` values than
+`blender/meshes.json` (same models, other bytes) and the no-change check in step 1 fails.
 
 1. **Rebuild the FBX files.** `blender/out/` is not committed, so a new container has no FBX. Build every class
    (one at a time is easiest to watch; a class takes a few minutes):

@@ -10,7 +10,7 @@ later with `tools/upload_assets.py` in a session that has the Open Cloud key (ch
 
 ```
 python3 -m venv /tmp/claude-0/bpyenv
-/tmp/claude-0/bpyenv/bin/pip install bpy numpy lupa pillow     # bpy 5.2 as a Python module (headless Blender)
+/tmp/claude-0/bpyenv/bin/pip install bpy==5.2.2 numpy lupa pillow  # bpy 5.2.2 (pinned: the FBX bytes hold the version)
 ```
 `python3` with `lupa` + `numpy` is enough for everything except FBX export and Cycles previews (`--no-export`).
 
