@@ -258905,6 +258905,19 @@ local K = {
 	BUTTON_H = 44,
 	PIP = 12,
 	PIP_GAP = 5,
+	PIP_MIN = 6, -- smallest pip with the 2 px ring; below it the ring thins to 1 px and the gaps tighten
+	PIP_TIGHT_GAP = 3,
+	PIP_TIGHT_MIN = 4, -- smallest pip at all; below it a progress bar replaces the pips
+	PIP_BAR_H = 8,
+	NAME_MIN = 20, -- narrow cards shrink the name (and the step title down to CAPTION_SIZE) before truncating
+	OUTLINE_ROOM = 6, -- the labels' glyph outline + stroke draw this much wider than TextService measures
+	SKIP_W = 132,
+	SKIP_SHORT_W = 56,
+	CONFIRM_W = 92,
+	CONFIRM_SHORT_W = 76,
+	CONFIRM_TIGHT_W = 64,
+	QUESTION_MIN = 90, -- the confirm question wraps to two lines down to this width, then shortens to "Skip?"
+	QUESTION_SHORT_MIN = 60, -- "Skip?" needs this much on one line, else the confirm buttons narrow again
 	EDGE = 12,
 	TOUCH_EDGE = 20,
 	GAP = 10,
@@ -259338,6 +259351,25 @@ local function bodyHeight(text, width)
 	return estimate
 end
 
+-- Single-line text width (design px); a rough per-character estimate when TextService cannot measure.
+local function textWidth(text, size, font)
+	local ok, measured = pcall(function()
+		return TextService:GetTextSize(text, size, font, Vector2.new(10000, 10000))
+	end)
+	if ok and measured and measured.X > 0 then
+		return measured.X
+	end
+	return #text * size * 0.62
+end
+
+-- The largest text size from `size` down to `minSize` (steps of 2) whose text fits `room` design px.
+local function fitTextSize(text, size, minSize, font, room)
+	while size > minSize and textWidth(text, size, font) + K.OUTLINE_ROOM > room do
+		size = math.max(minSize, size - 2)
+	end
+	return size
+end
+
 local function hintShown()
 	local st = S.state
 	-- (S.compactCard: a short screen's opened card drops the objective line; the text above says the same)
@@ -259355,8 +259387,8 @@ local function panelHeight(width)
 	if S.heightKey == key then
 		return S.heightValue, S.bodyValue
 	end
-	local textWidth = width - 2 * K.PAD - 2 * K.WELL_PAD
-	local bodyH = bodyHeight(text, textWidth)
+	local wellW = width - 2 * K.PAD - 2 * K.WELL_PAD
+	local bodyH = bodyHeight(text, wellW)
 	local h = K.HEADER_H + 10 + bodyH + 8 + K.PAD
 	if hintShown() then
 		h = h + K.HINT_H + 4
@@ -259547,20 +259579,57 @@ local function applyGeometry(width, height, bodyH)
 	local x0 = K.PAD + K.PORTRAIT + 12
 	local roomy = width - x0 - 150 >= 96
 	UI.CounterPill.Visible = roomy
-	if roomy then
-		UI.Name.Size = UDim2.new(1, -(x0 + 150), 0, 34)
-	else
-		UI.Name.Size = UDim2.new(1, -(x0 + 56), 0, 34)
-	end
-	-- pips shrink when many steps share a narrow header
+	local nameRoom = width - (roomy and (x0 + 150) or (x0 + 56))
+	UI.Name.Size = UDim2.new(0, nameRoom, 0, 34)
+	UI.Name.TextSize = fitTextSize(UI.Name.Text, K.NAME_SIZE, K.NAME_MIN, Theme.Fonts.Title, nameRoom)
+	local headRoom = width - x0 - K.PAD
+	UI.StepTitle.TextSize = fitTextSize(UI.StepTitle.Text, K.TITLE_SIZE, K.CAPTION_SIZE, Theme.Fonts.Heading, headRoom)
+	-- pips (and their gaps) shrink to fit the header; the rings draw outside each pip, so both ends keep room for
+	-- them. When even tight pips cannot fit (many steps on a narrow card), a progress bar replaces the pips.
 	local total = #UI.PipList
 	if total > 0 then
-		local room = width - (K.PAD + K.PORTRAIT + 12) - K.PAD
-		local pip = math.max(6, math.min(K.PIP, math.floor(room / total) - K.PIP_GAP))
-		for _, pipFrame in ipairs(UI.PipList) do
-			pipFrame.Size = UDim2.fromOffset(pip, pip)
+		local ring, gap = 2, K.PIP_GAP
+		local pip = math.min(K.PIP, math.floor((headRoom - 2 * ring + gap) / total) - gap)
+		if pip < K.PIP_MIN then
+			ring, gap = 1, K.PIP_TIGHT_GAP
+			pip = math.floor((headRoom - 2 * ring + gap) / total) - gap
+		end
+		local asBar = pip < K.PIP_TIGHT_MIN
+		UI.Pips.Visible = not asBar
+		UI.PipBar.Visible = asBar
+		if not asBar then
+			UI.PipLayout.Padding = UDim.new(0, gap)
+			for _, pipFrame in ipairs(UI.PipList) do
+				pipFrame.Size = UDim2.fromOffset(pip, pip)
+				local pipRing = pipFrame:FindFirstChild("Stroke")
+				if pipRing then
+					pipRing.Thickness = ring
+				end
+			end
 		end
 	end
+	-- narrow footers: "Skip tutorial" shortens to "Skip" and the Next button narrows, so they never overlap
+	local footerW = width - 2 * K.PAD - 2 * K.WELL_PAD
+	local shortSkip = footerW < K.SKIP_W + K.GAP + K.NEXT_W
+	local skipW = shortSkip and K.SKIP_SHORT_W or K.SKIP_W
+	UI.SkipLink.Text = shortSkip and "Skip" or "Skip tutorial"
+	UI.SkipLink.Size = UDim2.fromOffset(skipW, 34)
+	UI.SkipUnderline.Size = UDim2.fromOffset(math.ceil(textWidth(UI.SkipLink.Text, K.CAPTION_SIZE, Theme.Fonts.Label)), 2)
+	UI.Next.Size = UDim2.fromOffset(math.min(K.NEXT_W, footerW - skipW - K.GAP), K.BUTTON_H)
+	-- and the skip confirmation: smaller buttons first, then the short question
+	local confirmW = K.CONFIRM_W
+	if footerW - (2 * confirmW + 12) < K.QUESTION_MIN then
+		confirmW = K.CONFIRM_SHORT_W
+	end
+	if footerW - (2 * confirmW + 12) < K.QUESTION_SHORT_MIN then
+		confirmW = K.CONFIRM_TIGHT_W
+	end
+	local questionW = footerW - (2 * confirmW + 12)
+	UI.ConfirmYes.Size = UDim2.fromOffset(confirmW, 40)
+	UI.ConfirmYes.Position = UDim2.new(1, -(confirmW + 8), 0.5, 0)
+	UI.ConfirmStay.Size = UDim2.fromOffset(confirmW, 40)
+	UI.ConfirmQuestion.Size = UDim2.new(0, questionW, 1, 0)
+	UI.ConfirmQuestion.Text = questionW >= K.QUESTION_MIN and "Skip the tutorial?" or "Skip?"
 end
 
 local function layout()
@@ -259806,6 +259875,16 @@ local function paintPips(current, allDone)
 			pip.BackgroundColor3 = C.WellBottom
 			pip.BackgroundTransparency = 0.15
 		end
+	end
+	-- the progress bar (narrow cards): gold for the steps done, white for the current one
+	local total = #UI.PipList
+	if total > 0 then
+		local done = allDone and total or math.clamp(current - 1, 0, total)
+		UI.PipBarDone.Size = UDim2.fromScale(done / total, 1)
+		UI.PipBarDone.Visible = done > 0
+		UI.PipBarNow.Position = UDim2.fromScale(done / total, 0)
+		UI.PipBarNow.Size = UDim2.fromScale(1 / total, 1)
+		UI.PipBarNow.Visible = not allDone and current >= 1 and current <= total
 	end
 end
 
@@ -260067,13 +260146,28 @@ local function buildPanel()
 		TextTruncate = Enum.TextTruncate.AtEnd,
 	})
 	UI.Pips = box("Pips", { Position = UDim2.fromOffset(x0, 76), Size = UDim2.new(1, -(x0 + K.PAD), 0, K.PIP + 2) }, header)
-	make("UIListLayout", "List", {
+	UI.PipLayout = make("UIListLayout", "List", {
 		FillDirection = Enum.FillDirection.Horizontal,
 		Padding = UDim.new(0, K.PIP_GAP),
 		SortOrder = Enum.SortOrder.LayoutOrder,
 		VerticalAlignment = Enum.VerticalAlignment.Center,
 	}, UI.Pips)
 	UI.PipList = {}
+	-- the progress bar that stands in for the pips on narrow cards (its ring stays inside the header room)
+	local bar = box("PipBar", {
+		BackgroundTransparency = 0.15,
+		BackgroundColor3 = C.WellBottom,
+		Position = UDim2.fromOffset(x0 + 2, 76 + math.floor((K.PIP + 2 - K.PIP_BAR_H) / 2)),
+		Size = UDim2.new(1, -(x0 + K.PAD + 4), 0, K.PIP_BAR_H),
+		Visible = false,
+	}, header)
+	round(bar)
+	stroke(bar, C.Navy, 2, 0)
+	UI.PipBarDone = box("Done", { BackgroundTransparency = 0, BackgroundColor3 = C.Gold, Size = UDim2.fromScale(0, 1) }, bar)
+	round(UI.PipBarDone)
+	UI.PipBarNow = box("Now", { BackgroundTransparency = 0, BackgroundColor3 = C.White, Size = UDim2.fromScale(0, 1) }, bar)
+	round(UI.PipBarNow)
+	UI.PipBar = bar
 	local pill = box("Counter", {
 		BackgroundTransparency = 0,
 		BackgroundColor3 = C.Navy,
@@ -260157,7 +260251,7 @@ local function buildPanel()
 		TextXAlignment = Enum.TextXAlignment.Left,
 	}, footer)
 	Theme.Style(skip, "Label", { Size = K.CAPTION_SIZE, Color = C.Muted, Stroke = 1, Outline = 2, OutlineColor = C.Stroke })
-	box("Underline", {
+	UI.SkipUnderline = box("Underline", {
 		BackgroundTransparency = 0.35,
 		BackgroundColor3 = C.Muted,
 		Position = UDim2.new(0, 0, 1, -5),
@@ -260178,7 +260272,7 @@ local function buildPanel()
 
 	local confirm = box("Confirm", { Size = UDim2.fromScale(1, 1), Visible = false }, footer)
 	UI.Confirm = confirm
-	label(confirm, "Question", "Skip the tutorial?", "Body", 19, C.White, {
+	UI.ConfirmQuestion = label(confirm, "Question", "Skip the tutorial?", "Body", 19, C.White, {
 		AnchorPoint = Vector2.new(0, 0.5),
 		Position = UDim2.new(0, 0, 0.5, 0),
 		Size = UDim2.new(1, -196, 1, 0),
@@ -260201,7 +260295,7 @@ local function buildPanel()
 		end,
 		Parent = confirm,
 	})
-	button({
+	UI.ConfirmStay = button({
 		Name = "ConfirmStay",
 		Text = "Stay",
 		Style = "Blue",
@@ -261421,7 +261515,7 @@ function TutorialController.Step(dt)
 			end
 			-- the current pip breathes
 			local st = S.state
-			local pip = st and not S.finale and UI.PipList[st.Step]
+			local pip = st and not S.finale and (UI.PipBar.Visible and UI.PipBarNow or UI.PipList[st.Step])
 			if pip then
 				pip.BackgroundTransparency = (math.sin(t * 6) + 1) * 0.2
 			end
