@@ -160,6 +160,366 @@
       "structureHash": "70737a782516cafee1bec3587e575acb",
       "uploadedAt": "2026-10-21T09:17:50Z"
     },
+    "boss_frost_wyrm_Body": {
+      "assetId": 126978251398119,
+      "contentHash": "52f8cb2ea7c3e184d657b27aa124b433",
+      "fileSha256": "2c2d317ad4c3b4bfba416724cb5d5230a71b64dfa05f2dfc85f049f0ff25e5f2",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-10-23T16:37:47.619Z",
+      "revisionId": "1",
+      "structureHash": "3a5464c7f236a1a563416d49066a9a2a",
+      "uploadedAt": "2026-10-23T16:37:51Z"
+    },
+    "boss_frost_wyrm_Body_low": {
+      "assetId": 74828428312269,
+      "contentHash": "4c21156546df29258fd1b9d1fab7c610",
+      "fileSha256": "cabfd69703d44705669cf89714d9f33cbd52389b34b95b7ccc574c71d8375ee4",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-10-23T16:38:03.335Z",
+      "revisionId": "1",
+      "structureHash": "7c2e1c9663c29a6842643e3cabe13859",
+      "uploadedAt": "2026-10-23T16:38:09Z"
+    },
+    "boss_frost_wyrm_Head": {
+      "assetId": 112684961940401,
+      "contentHash": "18936ec57620ccfaedaf63852470ab9b",
+      "fileSha256": "95776d57e0746db1d68a8141915ebd136815110f35844ccab98409adfa20d25b",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-10-23T16:38:20.594Z",
+      "revisionId": "1",
+      "structureHash": "89c45c3b674cf2dfa8233a0679225110",
+      "uploadedAt": "2026-10-23T16:38:21Z"
+    },
+    "boss_frost_wyrm_Head_low": {
+      "assetId": 99847660511253,
+      "contentHash": "fba79d2205e019d54f6c2ec9210ef096",
+      "fileSha256": "fba1e3aef5c84416f0005155eb38f85925ed508413b95ea37d5a16ea591a84c0",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-10-23T16:38:27.281Z",
+      "revisionId": "1",
+      "structureHash": "d46916a0f2d3df5307a62b1b3929dd49",
+      "uploadedAt": "2026-10-23T16:38:29Z"
+    },
+    "boss_frost_wyrm_Jaw": {
+      "assetId": 113357686999773,
+      "contentHash": "22dc5b4a4fcf609eb0da74b354c00a89",
+      "fileSha256": "37abe3e145e4f44cfceafe8df9dbcb3ff25adff123b62417d624d6b85d1ea5b3",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-10-23T16:38:43.549Z",
+      "revisionId": "1",
+      "structureHash": "8773060af065f132c68fb298a9ed1490",
+      "uploadedAt": "2026-10-23T16:38:47Z"
+    },
+    "boss_frost_wyrm_Jaw_low": {
+      "assetId": 116093270455423,
+      "contentHash": "a42e6949e3734258e8926b5fedce7a2a",
+      "fileSha256": "cdcad3ea01b2f9f1697c26c3f1d129c478481088060a614738b6a610954b1e16",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-10-23T16:38:49.670Z",
+      "revisionId": "1",
+      "structureHash": "2dfc406252379e30f01a606e053dd7bc",
+      "uploadedAt": "2026-10-23T16:38:50Z"
+    },
+    "boss_frost_wyrm_WingL": {
+      "assetId": 116508304230446,
+      "contentHash": "877e6c08792beb574e54813276d9dc3b",
+      "fileSha256": "0f501a0d6b266bb02261ab172863fdbdb73701d4739dae8ce91b7c82a16e3260",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-10-23T16:39:02.930Z",
+      "revisionId": "1",
+      "structureHash": "eb9b01046602581dbd46e75d907a9be8",
+      "uploadedAt": "2026-10-23T16:39:09Z"
+    },
+    "boss_frost_wyrm_WingL_low": {
+      "assetId": 107878825208920,
+      "contentHash": "4cfa858bdfeeef6ce0446b5b67a8a381",
+      "fileSha256": "e09ded488ae0167be81005262d85e6d9cfc70567a04bc3ccb4a3bd2df0f48968",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-10-23T16:39:22.459Z",
+      "revisionId": "1",
+      "structureHash": "0c2aa585968848841ac754c605abc030",
+      "uploadedAt": "2026-10-23T16:39:26Z"
+    },
+    "boss_frost_wyrm_WingR": {
+      "assetId": 120446772747742,
+      "contentHash": "25f148edf409779da12ee6cc85cce559",
+      "fileSha256": "a6ace5b8ac1211196e828c83e4c9c6c94c69913873fde52dc914045490f81433",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-10-23T16:39:42.134Z",
+      "revisionId": "1",
+      "structureHash": "58cfa960ebd2de1224e856ebcb66f46a",
+      "uploadedAt": "2026-10-23T16:39:48Z"
+    },
+    "boss_frost_wyrm_WingR_low": {
+      "assetId": 95643195095860,
+      "contentHash": "83f9f0378243711fabd3d2cbb9b00e2e",
+      "fileSha256": "f2e8734e34b69958b1c5c2d31d707daf4fe35eb2c61cc1b4e069414172e6270b",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-10-23T16:40:04.674Z",
+      "revisionId": "1",
+      "structureHash": "54848872ea8707f380a6778c3742487c",
+      "uploadedAt": "2026-10-23T16:40:08Z"
+    },
+    "boss_lava_golem_ArmL": {
+      "assetId": 89977076344768,
+      "contentHash": "c09b2c95157936118b50b54fb885e3c9",
+      "fileSha256": "79f3ad7cd42488cfa99320072981df555111376e325363136f37049e304c8fe0",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-10-23T16:40:20.924Z",
+      "revisionId": "1",
+      "structureHash": "1337cd531f3c1ba1999ff03befec4d5f",
+      "uploadedAt": "2026-10-23T16:40:26Z"
+    },
+    "boss_lava_golem_ArmL_low": {
+      "assetId": 82984080145038,
+      "contentHash": "b80f785edbc49ea46da576c350877650",
+      "fileSha256": "f6e531fade52810719b5d335ff651cfbc4812ee0399203a37b2267cb5dcfae01",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-10-23T16:40:33.271Z",
+      "revisionId": "1",
+      "structureHash": "f9dc69bb7ced792b92a610ac6f951526",
+      "uploadedAt": "2026-10-23T16:40:35Z"
+    },
+    "boss_lava_golem_ArmR": {
+      "assetId": 89380563445532,
+      "contentHash": "369c66fa567327554d5d4047f3d05b7f",
+      "fileSha256": "2fd0403315f72bc4a2a827175a7098110e6ef7ea666a53191cac00014bc9dff9",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-10-23T16:40:45.135Z",
+      "revisionId": "1",
+      "structureHash": "5350ca77aaa788e238fc8bcf84679e57",
+      "uploadedAt": "2026-10-23T16:40:46Z"
+    },
+    "boss_lava_golem_ArmR_low": {
+      "assetId": 82296407691616,
+      "contentHash": "425bba406d2ff35f398d2f560fda2d89",
+      "fileSha256": "c2e7880420dde766c190b10a060e59c5b08873b83d321b35191062948ca1e5a8",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-10-23T16:40:49.492Z",
+      "revisionId": "1",
+      "structureHash": "331322019a5ba6b4949de4ae29a97a34",
+      "uploadedAt": "2026-10-23T16:40:52Z"
+    },
+    "boss_lava_golem_Body": {
+      "assetId": 93968433532137,
+      "contentHash": "192c663cc93bb7b00d3f1f9b98018e50",
+      "fileSha256": "168db1a396fc3d94100ecc4c013d5f45533671b28e39b3a206c8f88406740e6a",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-10-23T16:41:08.138Z",
+      "revisionId": "1",
+      "structureHash": "dc4bf7006fc62834d27b536f83e900a3",
+      "uploadedAt": "2026-10-23T16:41:11Z"
+    },
+    "boss_lava_golem_Body_low": {
+      "assetId": 119635741363273,
+      "contentHash": "9c48128593c1d68628e2c227e3ad5b72",
+      "fileSha256": "d9a24bd76e3d9f01fd00449eb5c10a28e69e0449ad77940288ab64a8eb3bb59a",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-10-23T16:41:16.438Z",
+      "revisionId": "1",
+      "structureHash": "d6117e8491f8e03447ab7660afa63d7e",
+      "uploadedAt": "2026-10-23T16:41:17Z"
+    },
+    "boss_lava_golem_Head": {
+      "assetId": 98497767005510,
+      "contentHash": "7192ad05a3e7a2dc65b76bfa28bd5747",
+      "fileSha256": "cd157686dfdc1532c01b8b1c02b499a7390e8c328ce44a8b6a498f018f9342cf",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-10-23T16:41:28.639Z",
+      "revisionId": "1",
+      "structureHash": "4442ec99bb7769ac27f5f229277224d6",
+      "uploadedAt": "2026-10-23T16:41:29Z"
+    },
+    "boss_lava_golem_Head_low": {
+      "assetId": 75234888273530,
+      "contentHash": "754d02a4091d74d1f2f7b7a8cec53bd6",
+      "fileSha256": "8ee4db5f251f8b996dd71c0f75f4964ffdd72d8a1b3e6395e64f82bb64026e99",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-10-23T16:41:37.733Z",
+      "revisionId": "1",
+      "structureHash": "094e1662fa444858a41f44139163750f",
+      "uploadedAt": "2026-10-23T16:41:40Z"
+    },
+    "boss_shadow_hydra_Body": {
+      "assetId": 105617990203822,
+      "contentHash": "b7dd9651b0475edaeba8d6c4ab62a91f",
+      "fileSha256": "41269c254979b70d95e098dbb262e221d140fb8ab806e7a27ea882edbc053ddd",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-10-23T16:41:46.946Z",
+      "revisionId": "1",
+      "structureHash": "efca59b83c61c4e3a0e69e5edf5c5f62",
+      "uploadedAt": "2026-10-23T16:41:47Z"
+    },
+    "boss_shadow_hydra_Body_low": {
+      "assetId": 104217120773544,
+      "contentHash": "ae353e745c36dd819fba266d5a69a4ff",
+      "fileSha256": "6d7a3b5a866a0d577d276a07e9800b26b3f61719ee14715c5c15ec9ca071d445",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-10-23T16:41:54.324Z",
+      "revisionId": "1",
+      "structureHash": "196adaef2d42c60ddb71b259adf07ae0",
+      "uploadedAt": "2026-10-23T16:41:58Z"
+    },
+    "boss_shadow_hydra_Head1": {
+      "assetId": 112857647842218,
+      "contentHash": "13d2020d7ae61da7975ce7354dca735a",
+      "fileSha256": "f65eaca383c222e99439ad3a8e2ba9289d4c414521d2ac6a4dcd503874df834c",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-10-23T16:42:05.398Z",
+      "revisionId": "1",
+      "structureHash": "b4be75f6f366a3b44e0afa55b9148bf7",
+      "uploadedAt": "2026-10-23T16:42:10Z"
+    },
+    "boss_shadow_hydra_Head1_low": {
+      "assetId": 117812094293379,
+      "contentHash": "522023ec7b5fec9ebd6d03bc61ea07c9",
+      "fileSha256": "7ca8eedeabf8bbd450dbd3c09d66b954d41c6c3401867f4a31957323516e5c2d",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-10-23T16:42:21.141Z",
+      "revisionId": "1",
+      "structureHash": "18144a4384dba3a15dcbf64659e33db2",
+      "uploadedAt": "2026-10-23T16:42:22Z"
+    },
+    "boss_shadow_hydra_Head2": {
+      "assetId": 84151334569204,
+      "contentHash": "ebded14530b17d89ca379acc0b063c8b",
+      "fileSha256": "f79bd3f8b72c43c662099bae15f167073eef7f64baab48da2d224d2995fbee47",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-10-23T16:42:28.074Z",
+      "revisionId": "1",
+      "structureHash": "dff8b956c80fba2f5dd6a25b84fd1e09",
+      "uploadedAt": "2026-10-23T16:42:29Z"
+    },
+    "boss_shadow_hydra_Head2_low": {
+      "assetId": 76470568909918,
+      "contentHash": "dad61a67b9be15a2031ad61b165e1a7d",
+      "fileSha256": "892291381ccacc822adb5e205d3b6feb4789867f7fb83a6bb82b020cd28446e1",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-10-23T16:42:38.909Z",
+      "revisionId": "1",
+      "structureHash": "4f253e1c53e45a94319012b7a8c26bfa",
+      "uploadedAt": "2026-10-23T16:42:41Z"
+    },
+    "boss_shadow_hydra_Head3": {
+      "assetId": 89320351920417,
+      "contentHash": "de769999d7638e92c6113642ad1fbf38",
+      "fileSha256": "6b38f17a15a84cc6a030eb1c3715ff641d7898b74bb26ad0d0e5ee27d0ecb206",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-10-23T16:42:49.368Z",
+      "revisionId": "1",
+      "structureHash": "6f3a9180055f2b9fab3a51c59eb8b07f",
+      "uploadedAt": "2026-10-23T16:42:52Z"
+    },
+    "boss_shadow_hydra_Head3_low": {
+      "assetId": 97147941938759,
+      "contentHash": "e1fe260fef6bca97efc53b1866229835",
+      "fileSha256": "960a062df66a255063302eb1096f0d372eeea47447cc694e28a2382647ec4dc5",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-10-23T16:43:05.666Z",
+      "revisionId": "1",
+      "structureHash": "b5326d7f7258031afb3b8ee40116aec8",
+      "uploadedAt": "2026-10-23T16:43:11Z"
+    },
+    "boss_storm_titan_ArmL": {
+      "assetId": 104857783702350,
+      "contentHash": "f47e050fd3c768819384e806c2f3bb4e",
+      "fileSha256": "6221016bbbb609bed5a7f248630fff4b46f37f0726741b00f2209b7d748e4347",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-10-23T16:43:25.123Z",
+      "revisionId": "1",
+      "structureHash": "e24224869fcadd0047674496f77ec311",
+      "uploadedAt": "2026-10-23T16:43:31Z"
+    },
+    "boss_storm_titan_ArmL_low": {
+      "assetId": 113638528544068,
+      "contentHash": "318407e5bc71f5556515bfa8761a2849",
+      "fileSha256": "c2699c2a8abda266a823a363653069f921d31a41c481e5d7aa3b9227a6b92f8e",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-10-23T16:43:36.673Z",
+      "revisionId": "1",
+      "structureHash": "0fedd7fdf64a87fca96c219621c55fb2",
+      "uploadedAt": "2026-10-23T16:43:37Z"
+    },
+    "boss_storm_titan_ArmR": {
+      "assetId": 95831079879937,
+      "contentHash": "09b655ed9a45e0f6dfcea01ea53ad1a1",
+      "fileSha256": "36f36c71951f03949dad26a88919fc57f9f5795a203fc627c780141220ca3185",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-10-23T16:43:48.379Z",
+      "revisionId": "1",
+      "structureHash": "df13f92760fcc88c1e7d77cbfa51c4fc",
+      "uploadedAt": "2026-10-23T16:43:50Z"
+    },
+    "boss_storm_titan_ArmR_low": {
+      "assetId": 100265215880898,
+      "contentHash": "802cf06465688088aa89bd499ef22725",
+      "fileSha256": "61c0b806d0c5f3e316513c43ef2512449580d7c9648b349dd373ac47703a40c6",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-10-23T16:44:04.591Z",
+      "revisionId": "1",
+      "structureHash": "369138b9b2c1b25c6f55b7afa8a76f53",
+      "uploadedAt": "2026-10-23T16:44:08Z"
+    },
+    "boss_storm_titan_Base": {
+      "assetId": 118283958878193,
+      "contentHash": "6eb861b6f695cfa764bc965f61486d78",
+      "fileSha256": "6106e18006d957f38f5d91cf52f64e2b615a290be787728e2b54eb3620142e72",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-10-23T16:44:18.888Z",
+      "revisionId": "1",
+      "structureHash": "0192d65bc37e24861f970f108d3a8c33",
+      "uploadedAt": "2026-10-23T16:44:21Z"
+    },
+    "boss_storm_titan_Base_low": {
+      "assetId": 102631865683509,
+      "contentHash": "3d3d3b88e68e5ef1b3fa3fcaa6625a85",
+      "fileSha256": "9440684928c9ac006724b86511371176326536f0dbf5e82414ae5164f3732270",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-10-23T16:44:26.258Z",
+      "revisionId": "1",
+      "structureHash": "834b43d89bced236f432396c174f6862",
+      "uploadedAt": "2026-10-23T16:44:28Z"
+    },
+    "boss_storm_titan_Body": {
+      "assetId": 95696079078759,
+      "contentHash": "6137d03164e85d9086fc8b7033c81748",
+      "fileSha256": "c5e57f6048194e8e4afa45944dc650a9a177846608198da5316c9fe6c5a05085",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-10-23T16:44:35.902Z",
+      "revisionId": "1",
+      "structureHash": "6ffdcfdc1da87ed399f3c749afa1d2d7",
+      "uploadedAt": "2026-10-23T16:44:39Z"
+    },
+    "boss_storm_titan_Body_low": {
+      "assetId": 95763196801523,
+      "contentHash": "e65177fd61cad0d99e617489ecec45ec",
+      "fileSha256": "aa0cd726707752b82236c96398f32c0495c5c09d7ccfe219467081fd1c467a31",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-10-23T16:44:46.219Z",
+      "revisionId": "1",
+      "structureHash": "175c00b2ffd93d94cf590634076b1bc6",
+      "uploadedAt": "2026-10-23T16:44:50Z"
+    },
+    "boss_storm_titan_Head": {
+      "assetId": 133626627996771,
+      "contentHash": "99d2918e288e6e249db910ee353fa7bd",
+      "fileSha256": "b54cd230754a8db69de1b488de066ea81bb62847bf940a3881435fcbb6c3a4ad",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-10-23T16:45:06.697Z",
+      "revisionId": "1",
+      "structureHash": "ed192f94be62a0ac538948ded5259a72",
+      "uploadedAt": "2026-10-23T16:45:08Z"
+    },
+    "boss_storm_titan_Head_low": {
+      "assetId": 71504940099722,
+      "contentHash": "95ad97bec242cb39a507787afeb00ef2",
+      "fileSha256": "cff4141450b1ae12ef677744be7a774c3314a046b576d1c7df4d5da2bc13739a",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-10-23T16:45:18.697Z",
+      "revisionId": "1",
+      "structureHash": "4999051ce2fb4fa7eb1f814127a70dda",
+      "uploadedAt": "2026-10-23T16:45:20Z"
+    },
     "cal_axes": {
       "assetId": 115959775479149,
       "contentHash": "afee3826ba910b9dbfc351e7cac9b7d4",
@@ -169,6 +529,123 @@
       "revisionId": "1",
       "structureHash": "08d674cc473038cbe9002d9d6da8aff5",
       "uploadedAt": "2026-10-20T21:33:50Z"
+    },
+    "dragon_head": {
+      "assetId": 116218725057320,
+      "contentHash": "ce4d10247f3892b411bafc8579004e92",
+      "fileSha256": "47da5f5e15f31739a04fe446755a9e42368083c2ae9d4569e03d212fda1b11a0",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-10-23T16:45:29.146Z",
+      "revisionId": "1",
+      "structureHash": "ab2524d98c64bcad173919d70bfae807",
+      "uploadedAt": "2026-10-23T16:45:31Z"
+    },
+    "dragon_jaw": {
+      "assetId": 121409819131574,
+      "contentHash": "c11c8c6e148a9d2b3cf7c3054489ce75",
+      "fileSha256": "fac3d22098c4c8ed176053860075cc1963156633c4325e2ad2a1c748acb99f2f",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-10-23T16:45:38.538Z",
+      "revisionId": "1",
+      "structureHash": "ac4c55491a8eea5524ed68bf28f77f36",
+      "uploadedAt": "2026-10-23T16:45:43Z"
+    },
+    "dragon_leg": {
+      "assetId": 131143785042965,
+      "contentHash": "cc93a0ac62014ef01bd04474dec3bd9e",
+      "fileSha256": "ff7ae2fdd3de34bda8745cdb7960746810634a583f28898b134950eea5edfaf1",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-10-23T16:45:47.738Z",
+      "revisionId": "1",
+      "structureHash": "b13eb0e37a0291e1980fd29bfe4bfe9b",
+      "uploadedAt": "2026-10-23T16:45:49Z"
+    },
+    "dragon_link": {
+      "assetId": 115306728493988,
+      "contentHash": "3b03341aa71718c43af69edf7b1f4d3a",
+      "fileSha256": "d60246bd03f71d3d160bf83dec9d04ec053743f7ab697830538183d17dac1445",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-10-23T16:45:59.258Z",
+      "revisionId": "1",
+      "structureHash": "a54612a5f4faea87444cc5608222f056",
+      "uploadedAt": "2026-10-23T16:46:02Z"
+    },
+    "dragon_puff": {
+      "assetId": 98228657311129,
+      "contentHash": "26e9e1d1740495c3c62d505482c291db",
+      "fileSha256": "25cdecc7fc35b7960c36f6166bcf1ca1cd0d2e6eb7fcf2622eac7fee65825f07",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-10-23T16:46:06.649Z",
+      "revisionId": "1",
+      "structureHash": "6bcd4559f483864da7cb0263f121a04a",
+      "uploadedAt": "2026-10-23T16:46:09Z"
+    },
+    "dragon_seg_15f": {
+      "assetId": 125844078086803,
+      "contentHash": "da3fb5c18e5c71a19d60245568e16261",
+      "fileSha256": "f3f787cabe5cca7e251037a6d89f07567f8bd97b570948ada70b305cfa35394c",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-10-23T16:46:25.064Z",
+      "revisionId": "1",
+      "structureHash": "2e76283afcf929f43ecebcf4a8558330",
+      "uploadedAt": "2026-10-23T16:46:29Z"
+    },
+    "dragon_seg_20f": {
+      "assetId": 95426626150655,
+      "contentHash": "a494ad6764d71100d29636aac9a334be",
+      "fileSha256": "1115e8f17bfd03b996bb7ae589748be7081ce7d9b361259f3bb7d2a9f1360b56",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-10-23T16:46:38.871Z",
+      "revisionId": "1",
+      "structureHash": "36db04c139ad26718aaf3fca7540b906",
+      "uploadedAt": "2026-10-23T16:46:43Z"
+    },
+    "dragon_seg_25f": {
+      "assetId": 91570140584397,
+      "contentHash": "1ab1e17e4af9be2d09bc0fda0c3b18bc",
+      "fileSha256": "961034d0116cc62c694aff214cf4f296d2dd498f8a1e479ea95f01e2861315c5",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-10-23T16:46:48.900Z",
+      "revisionId": "1",
+      "structureHash": "90d37692a758bfb5e5003f2e70ddd757",
+      "uploadedAt": "2026-10-23T16:46:50Z"
+    },
+    "dragon_seg_30": {
+      "assetId": 136574496982178,
+      "contentHash": "7756c69f25c4504b4326230b5fd9c93c",
+      "fileSha256": "5d535c41ac97c7121b2dd6cca0ee2d17ce5d6ed7f8b897adcbb14b2cb2ae542f",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-10-23T16:47:07.198Z",
+      "revisionId": "1",
+      "structureHash": "797108317a0fbdfcffdbe086d70e4c75",
+      "uploadedAt": "2026-10-23T16:47:08Z"
+    },
+    "dragon_seg_30f": {
+      "assetId": 76029558384894,
+      "contentHash": "f68f25a0ed3699d056ed8fbd9d1a1b56",
+      "fileSha256": "116193805c05c993393f7b862cdbcc203ac88442e13627a8f79364442abb596f",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-10-23T16:47:18.104Z",
+      "revisionId": "1",
+      "structureHash": "1e29e3436f3c74b8a8023effb1224477",
+      "uploadedAt": "2026-10-23T16:47:20Z"
+    },
+    "dragon_seg_35": {
+      "assetId": 132119427845577,
+      "contentHash": "1d8489ea4ab56b66ecc49dc9e6716846",
+      "fileSha256": "5b5518f7a4410a09d315c3185bf1fd57b9b24db5ad34fbce2794975cf48b23af",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-10-23T16:47:30.235Z",
+      "revisionId": "1",
+      "structureHash": "e3a410797ba9a0eeeade3f8e40a92542",
+      "uploadedAt": "2026-10-23T16:47:31Z"
+    },
+    "dragon_seg_35f": {
+      "pendingContentHash": "298288307341ee4052a6b90a87a99500",
+      "pendingFileSha256": "15bbfa0a2bab1d655501320cdeb3eecdafcba3cca11b782544227eb3823405d5",
+      "pendingMode": "create",
+      "pendingOperation": "b5f865e1-6ad5-4a40-a18e-deeeef6c3910",
+      "pendingStructureHash": "8fbc0f958c42b1921226b2c373d17a63"
     },
     "evo1_aurora_fox": {
       "assetId": 87772383693151,
