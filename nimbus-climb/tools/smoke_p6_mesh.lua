@@ -15,12 +15,14 @@
 --                   ML_LoadMs; OnReady + Changed; Assemble (recipe 4.3 names, MK_Key / ML_Key / ML_Part, PB_* rig
 --                   attributes, colours from the recipes, attachments) animated by the real PetBuilder.Animate (no NaN,
 --                   no new instances, Clone animates); partially ready keys -> nil (the Part build, never a mix); Swap
---                   now / deferred / never; Tag attributes; EvalColor parity with Voxel.Lighten and the recipe ops
+--                   now / deferred / never; Tag attributes; EvalColor parity with Voxel.Lighten and the recipe ops; keys of
+--                   tagged targets load first (mesh-load-priority)
 --   client_p6mesh   (client) a private copy in client mode over installed fixture templates: PreloadAsync per template,
 --                   a Failure marks the key broken on THIS device only (Status failed, Assemble nil, its targets keep
 --                   their Parts), RenderFidelity Precise / Automatic, Changed, Dress of targets tagged before and after
 --                   Start (Keep parts stay visible, colours from the ML_* look, pivot on the target), a removed template
---                   is not ready any more, an empty id table does nothing
+--                   is not ready any more, an empty id table does nothing; preload best-first (near tagged key, waited-on
+--                   key, arrival order) with at most ClientParallel in flight (mesh-load-priority)
 -- Ports the 23 checks of the research prototype (docs/phase6/proto/test_meshlibrary.py) into these four scenarios.
 -- Every scenario uses its own copy of the module and its own root folder and restores Mock.AssetLoader /
 -- Mock.PreloadHook, so nothing leaks into the game or into another scenario. Plain Lua 5.1; deterministic.
@@ -860,6 +862,44 @@ S.p6mesh_server = guarded("p6mesh_server", function()
 	T.check(ML.EvalColor({ "bogus" }, L) == Color3.new(1, 1, 1) and ML.EvalColor(nil, nil) == Color3.new(1, 1, 1), "EvalColor: unknown op / junk -> white")
 	ML._Reset()
 	box:Destroy()
+
+	-- [mesh-load-priority] the keys of tagged world targets load first (tagged before Start, or while the queue drains),
+	-- then alphabetical as before; every key still loads (one load at a time so the order is exact)
+	local P, _, pbox = newLib({ acc_crown = 333, pet_dog = 111, prop_arch = 444, wing_feather_L = 222, wing_feather_R = 777 },
+		{ acc_crown = "acc_crown", pet_dog = "pet_dog", prop_arch = "prop_arch", wing_feather_L = "wing_feather_L", wing_feather_R = "wing_feather_R" })
+	P._Configure({ DressTag = "ML_Dress_P6PrioServer", MaxParallel = 1 })
+	local keyOf = { [333] = "acc_crown", [111] = "pet_dog", [444] = "prop_arch", [222] = "wing_feather_L", [777] = "wing_feather_R" }
+	local order = {}
+	local pworld = Instance.new("Folder")
+	pworld.Name = "P6MeshPrio"
+	pworld.Parent = workspace
+	local early = Instance.new("Model")
+	early.Parent = pworld
+	P.Tag(early, "wing_feather_R")
+	Mock.AssetLoader = function(id)
+		if not keyOf[id] then
+			error("unexpected id " .. tostring(id)) -- another MeshLibrary (the game's own, under --mesh): not this queue
+		end
+		order[#order + 1] = keyOf[id]
+		task.wait(0.5)
+		return fakeAsset(keyOf[id])
+	end
+	local okP, errP = pcall(function()
+		P.Start()
+		Mock.Advance(0.1)
+		local late = Instance.new("Model")
+		late.Parent = pworld
+		P.Tag(late, "prop_arch")
+		Mock.Advance(10)
+	end)
+	Mock.AssetLoader = savedLoader
+	local got = table.concat(order, ",")
+	T.check(okP and got == "wing_feather_R,prop_arch,acc_crown,pet_dog,wing_feather_L",
+		"server: keys of tagged targets load first (tagged before Start, then while loading), the rest alphabetical", tostring(errP) .. " " .. got)
+	T.check(P.IsReady("acc_crown", "pet_dog", "prop_arch", "wing_feather_L", "wing_feather_R"), "server: every key is ready once the prioritised queue drained")
+	P._Reset()
+	pworld:Destroy()
+	pbox:Destroy()
 	flushWarn("server", "p6mesh_server", out0)
 end)
 
@@ -924,8 +964,12 @@ S.client_p6mesh = guarded("client_p6mesh", function()
 	CollectionService:AddTag(onBroken, DTAG)
 	local savedHook = Mock.PreloadHook
 	local preloaded = {}
+	local inFlight, peakFlight = 0, 0
 	Mock.PreloadHook = function(list, cb)
+		inFlight = inFlight + 1
+		peakFlight = math.max(peakFlight, inFlight)
 		task.wait(0.2)
+		inFlight = inFlight - 1
 		local name = list[1].Name
 		preloaded[#preloaded + 1] = name
 		if cb then
@@ -950,6 +994,9 @@ S.client_p6mesh = guarded("client_p6mesh", function()
 		T.check(ML.Status("pet_dog") == "loading" and not ML.IsReady("pet_dog"), "client: a replicated template is 'loading' until its mesh data is on this device")
 		Mock.Advance(3)
 		T.check(#preloaded == 5, "client: PreloadAsync once per template (" .. #preloaded .. ")")
+		-- [mesh-load-priority] a burst of 5 templates under the default ClientParallel 6 starts all 5 at once (review: pump
+		-- re-read the shrinking queue and started only 3)
+		T.check(peakFlight == 5, "client: a burst of 5 templates has all 5 PreloadAsync in flight (ClientParallel 6) (" .. peakFlight .. ")")
 		T.check(ML.IsReady("pet_dog", "wing_feather_L", "wing_feather_R", "prop_arch") and changed.pet_dog and changed.prop_arch, "client: preloaded keys are ready and Changed fired")
 		T.check(ML.Status("acc_crown") == "failed" and not ML.IsReady("acc_crown") and ML.Assemble(petSpec(true), LOOK) == nil,
 			"client: a failed download marks the key broken on this device; a pet that needs it stays all Parts")
@@ -1074,6 +1121,108 @@ S.client_p6mesh = guarded("client_p6mesh", function()
 	ML._Reset()
 	world:Destroy()
 	box:Destroy()
+
+	-- [mesh-load-priority] preload order + bounded parallel workers on a fresh copy (ClientParallel 2): the NEAR tagged
+	-- key first although untagged keys arrived earlier, then the far tagged key, then the key of a target tagged while
+	-- the first two load, then a key with a waiter, then the rest in arrival order; never more than 2 at once; a key
+	-- whose download fails releases its waiter and the queue goes on (every key is picked)
+	local pkeys = { "acc_crown", "pet_dog", "wing_feather_L", "wing_feather_R", "prop_far", "prop_arch" }
+	local P, proot, pbox = newLib({ acc_crown = 333, pet_dog = 111, wing_feather_L = 222, wing_feather_R = 223, prop_far = 445, prop_arch = 444 },
+		{ acc_crown = "acc_crown", pet_dog = "pet_dog", wing_feather_L = "wing_feather_L", wing_feather_R = "wing_feather_R", prop_far = "prop_arch", prop_arch = "prop_arch" })
+	local PTAG = "ML_Dress_P6PrioClient"
+	P._Configure({ DressTag = PTAG, ClientParallel = 2 })
+	for _, key in ipairs(pkeys) do
+		installTemplate(P, proot, key, { Yaw = 0, Fixture = key == "prop_far" and "prop_arch" or nil })
+	end
+	local cam = workspace.CurrentCamera
+	local camPos = cam and cam.CFrame.Position or Vector3.new(0, 0, 0)
+	local pworld = Instance.new("Folder")
+	pworld.Name = "P6MeshPrio"
+	pworld.Parent = workspace
+	local farT = partTarget(pworld, "FarArch", "prop_far", CFrame.new(camPos + Vector3.new(600, 0, 0)))
+	CollectionService:AddTag(farT, PTAG)
+	local nearT = partTarget(pworld, "NearArch", "prop_arch", CFrame.new(camPos + Vector3.new(12, 0, 0)))
+	CollectionService:AddTag(nearT, PTAG)
+	local order, active, peak, ran, waitBefore = {}, 0, 0, 0, -1
+	Mock.PreloadHook = function(list, cb)
+		local name = list[1].Name
+		order[#order + 1] = name
+		active = active + 1
+		peak = math.max(peak, active)
+		task.wait(0.2)
+		active = active - 1
+		if cb then
+			cb("rbxassetid://0", name == "wing_feather_R" and Enum.AssetFetchStatus.Failure or Enum.AssetFetchStatus.Success)
+		end
+	end
+	local okP, errP = pcall(function()
+		P.OnReady("wing_feather_R", function()
+			ran = ran + 1
+		end)
+		waitBefore = P._Waiters("wing_feather_R")
+		P.Start()
+		Mock.Advance(0.05)
+		local petT = partTarget(pworld, "PetStand", "pet_dog", CFrame.new(camPos + Vector3.new(30, 0, 0)))
+		CollectionService:AddTag(petT, PTAG)
+		Mock.Advance(3)
+	end)
+	Mock.PreloadHook = savedHook
+	local got = table.concat(order, ",")
+	T.check(okP and got == "prop_arch,prop_far,pet_dog,wing_feather_R,acc_crown,wing_feather_L",
+		"client: preload best-first (near tagged, far tagged, tagged meanwhile, waited on, then arrival order), every key once", tostring(errP) .. " " .. got)
+	T.check(peak == 2, "client: at most ClientParallel (2) preloads in flight, and 2 while there is work (" .. peak .. ")")
+	T.check(waitBefore == 1 and P._Waiters("wing_feather_R") == 0 and ran == 0 and P.Status("wing_feather_R") == "failed",
+		"client: a key that fails to download under the parallel queue still releases its waiters", waitBefore .. " -> " .. P._Waiters("wing_feather_R"))
+	T.check(P.IsReady("acc_crown", "pet_dog", "wing_feather_L", "prop_far", "prop_arch") and nearT:FindFirstChild("ML_Mesh") ~= nil and farT:FindFirstChild("ML_Mesh") ~= nil,
+		"client: every other queued key ends ready and the tagged targets are dressed (nothing starves)")
+	P._Reset()
+	pworld:Destroy()
+	pbox:Destroy()
+
+	-- [mesh-load-priority] the rank-0 distances are taken again once the camera moved far (an early join tags the world
+	-- while the camera still sits at the place's saved CFrame): tagged at camera A, A's arch is nearer; the camera then
+	-- moves next to the far arch before the first pick, so the far arch loads first (one at a time so the order is exact)
+	local R, rroot, rbox = newLib({ pet_dog = 111, prop_far = 445, prop_arch = 444 },
+		{ pet_dog = "pet_dog", prop_far = "prop_arch", prop_arch = "prop_arch" })
+	local RTAG = "ML_Dress_P6PrioResample"
+	R._Configure({ DressTag = RTAG, ClientParallel = 1 })
+	for _, key in ipairs({ "pet_dog", "prop_far", "prop_arch" }) do
+		installTemplate(R, rroot, key, { Yaw = 0, Fixture = key == "prop_far" and "prop_arch" or nil })
+	end
+	local savedCam = cam and cam.CFrame
+	local base = Vector3.new(5000, 0, 0)
+	local rworld = Instance.new("Folder")
+	rworld.Name = "P6MeshResample"
+	rworld.Parent = workspace
+	local okR, errR, gotR = false, "no camera", ""
+	if cam then
+		cam.CFrame = CFrame.new(base)
+		local nearA = partTarget(rworld, "NearA", "prop_arch", CFrame.new(base + Vector3.new(12, 0, 0)))
+		CollectionService:AddTag(nearA, RTAG)
+		local nearB = partTarget(rworld, "NearB", "prop_far", CFrame.new(base + Vector3.new(600, 0, 0)))
+		CollectionService:AddTag(nearB, RTAG)
+		local rorder = {}
+		Mock.PreloadHook = function(list, cb)
+			rorder[#rorder + 1] = list[1].Name
+			task.wait(0.2)
+			if cb then
+				cb("rbxassetid://0", Enum.AssetFetchStatus.Success)
+			end
+		end
+		okR, errR = pcall(function()
+			R.Start()
+			cam.CFrame = CFrame.new(base + Vector3.new(590, 0, 0)) -- the character spawned next to the far arch
+			Mock.Advance(3)
+		end)
+		Mock.PreloadHook = savedHook
+		cam.CFrame = savedCam
+		gotR = table.concat(rorder, ",")
+	end
+	T.check(okR and gotR == "prop_far,prop_arch,pet_dog",
+		"client: tagged keys re-rank by distance once the camera moved (the arch now nearest loads first)", tostring(errR) .. " " .. gotR)
+	R._Reset()
+	rworld:Destroy()
+	rbox:Destroy()
 	flushWarn("client", "client_p6mesh", out0)
 end)
 

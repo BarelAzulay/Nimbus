@@ -171,7 +171,7 @@ Limits that apply everywhere:
 ### 4.8 Runtime: `shared/MeshLibrary.lua` (merge of both prototypes)
 
 **Server `Start()`** reads `MeshIds`. An empty table means today's game, exactly. For each id it does the following:
-1. Load in the background, at most 4 in parallel: `AssetService:LoadAssetAsync` first, then `InsertService:LoadAsset`, both inside pcall. Retry after 2, 5 and 12 s. Do not retry "not authorized", "does not exist" or "invalid".
+1. Load in the background, at most `MaxParallel` (4) in parallel, the keys of `ML_Dress`-tagged targets first (tagged before Start or while the queue drains), then alphabetical (2026-10-24 mesh-load-priority): `AssetService:LoadAssetAsync` first, then `InsertService:LoadAsset`, both inside pcall. Retry after 2, 5 and 12 s. Do not retry "not authorized", "does not exist" or "invalid".
 2. Unwrap the result, and strip PackageLink and any scripts.
 3. **Fit and validate against the manifest:**
    - Every manifest part name must exist as a MeshPart (no merged meshes).
@@ -182,7 +182,7 @@ Limits that apply everywhere:
 5. Parent the template under `ReplicatedStorage.MeshLibrary.<key>` with `ML_Status` (ready or failed), `ML_Error` and `ML_LoadMs`.
 
 **Client `Start()`:**
-- `ContentProvider:PreloadAsync` per template. A Failure status marks that key broken *on this device only*.
+- `ContentProvider:PreloadAsync` per template, at most `ClientParallel` (6) at once, best first: keys of tagged targets nearest the camera, then keys something waits on (`OnReady`), then arrival order (2026-10-24 mesh-load-priority). A Failure status marks that key broken *on this device only*.
 - Set `RenderFidelity` locally on the templates (Precise or Automatic per class). It does not replicate.
 - Fire `MeshLibrary.Changed(key)`.
 

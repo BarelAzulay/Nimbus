@@ -74,7 +74,7 @@ local NUMBER_WORDS = { "One", "Two", "Three", "Four", "Five", "Six", "Seven", "E
 local function readFile(rel)
 	local candidates = { rel, HERE .. "../" .. rel, "../" .. rel }
 	for _, path in ipairs(candidates) do
-		local fh = io.open(path, "r")
+		local fh = io.open(path, "rb") -- binary: Windows text mode stops a PNG at its first Ctrl-Z byte
 		if fh then
 			local src = fh:read("*a")
 			fh:close()
