@@ -16,8 +16,10 @@
 --               plays) with the unit's element / rarity / stage (boss hits: my pet's Hurt; zone / burn / special / element
 --               damage: none), the pets strike and flinch (opts.Pose), the caps (FxParts 260 / Numbers 26 / Flashes 8);
 --               handler by handler: no cube Fx while AttackFx plays, the old Fx.* when Play returns false, DODGED! on a
---               miss, Ko replaces the cube poof; a fallback replay (Play always false) is drawn by the cubes; Review Focus
---               4: an End event and a Leave event mid-effect leave AttackFx.Stats().Live == 0 and the pools at keep size.
+--               miss, Ko replaces the cube poof; a fallback replay (Play always false) is drawn by the cubes; Ruling 12:
+--               idle units show PetPoses IdleBattle at their own phase, an attack pose replaces it and it comes back;
+--               Review Focus 4 + Ruling 11: the killing blow + End in one batch: the blow stays live past its impact, no
+--               new effect starts, Live == 0 and the pools at keep size within 1.0 s; a Leave mid-effect: at once.
 
 local T = SmokeCommon.T
 local guarded = SmokeCommon.guarded
@@ -856,6 +858,47 @@ S.client_p7vfx_battle = guarded("client_p7vfx_battle", function()
 		T.check((posesSeen.Strike or 0) > 0 and (posesSeen.Hurt or 0) > 0, "raid replay: the pets strike and flinch (PetBuilder.Animate gets opts.Pose Strike / Hurt)",
 			fmt("Strike %d, Hurt %d, Cast %d, Windup %d", posesSeen.Strike or 0, posesSeen.Hurt or 0, posesSeen.Cast or 0, posesSeen.Windup or 0))
 
+		-- 1b) Ruling 12: between attacks the pets breathe and glance (PetPoses IdleBattle), out of step per unit; an attack
+		--     pose replaces it and the idle comes back after the attack
+		pulse(2.5)
+		local idle = {}
+		for uid, info in pairs(infos) do
+			local g = BC.GetUnit(uid)
+			if info.kind ~= "Boss" and drawable(g) and g.Model and g.Pose == "IdleBattle" and type(g.PoseP) == "number" then
+				idle[#idle + 1] = g
+			end
+		end
+		table.sort(idle, function(p, q)
+			return p.Id < q.Id
+		end)
+		T.check(#idle >= 2 and math.abs(idle[1].PoseP - idle[2].PoseP) > 0.05, "idle: battle units with no attack pose show IdleBattle, each at its own phase",
+			fmt("%d idle units%s", #idle, (#idle >= 2) and fmt(", p %.2f vs %.2f", idle[1].PoseP, idle[2].PoseP) or ""))
+		T.check((posesSeen.IdleBattle or 0) > 0, "idle: PetBuilder.Animate gets opts.Pose IdleBattle", tostring(posesSeen.IdleBattle))
+		local bossId = nil
+		for uid, info in pairs(infos) do
+			if info.kind == "Boss" then
+				bossId = uid
+			end
+		end
+		if idle[1] and bossId then
+			local who = idle[1].Id
+			local n1 = #calls
+			KC.toClient("BattleState", "Events", { { type = "Hit", from = who, to = bossId, dmg = 3 } }, id)
+			local attackPose, crossfade = nil, false
+			for _ = 1, 12 do
+				pulse(0.1)
+				local g = BC.GetUnit(who)
+				if g and g.Pose and g.Pose ~= "IdleBattle" then
+					attackPose = attackPose or g.Pose
+				end
+			end
+			T.check(calls[n1 + 1] and calls[n1 + 1].Result == true and (attackPose == "Strike" or attackPose == "Windup"),
+				"idle: an attack pose replaces the idle (" .. tostring(attackPose) .. ")")
+			pulse(2)
+			local back = BC.GetUnit(who)
+			T.check(back and back.Pose == "IdleBattle", "idle: ... and IdleBattle returns after the attack", back and tostring(back.Pose) or "gone")
+		end
+
 		-- 2) handler by handler: with AttackFx the cube effects stay off, when Play returns false the old Fx.* still runs
 		pulse(3) -- (everything of the replay ends)
 		local team = rec.Mine
@@ -943,18 +986,56 @@ S.client_p7vfx_battle = guarded("client_p7vfx_battle", function()
 		T.check(#calls == n0 + 1 and calls[n0 + 1].Attack == "Ko" and calls[n0 + 1].Result == true and BC.GetStats().FxParts - p0 <= 0,
 			"handlers: a KO plays AttackFx Ko (no cube poof)", fmt("%d plays, %d new parts", #calls - n0, BC.GetStats().FxParts - p0))
 
-		-- 3) Review Focus 4: the End event mid-effect -> nothing live, the pools at keep size
-		pulse(1.8)
+		-- 3) Review Focus 4 + Ruling 11: the killing blow and the End arrive together (like the sim's last step): the blow
+		--    lands visibly, no new effect starts, everything is gone (pools at keep size) within FX_END_GRACE 1.0 s
+		pulse(2.5)
+		local n3 = #calls
 		KC.toClient("BattleState", "Events", {
 			{ type = "Special", unit = fighter, kind = "Blast", name = "Test Blast", x = f.X, z = f.Z, tx = bo.X, tz = bo.Z, target = boss, targets = { boss } },
 			{ type = "Hit", from = fighter, to = boss, dmg = 5 },
+			-- (a helper swapped in at the last moment: its Victory entrance outlasts the 1.0 s grace)
+			{ type = "Swap", owner = LocalPlayer.UserId, out = fighter, ["in"] = (team.Bench and team.Bench[2]) or helper },
+			{ type = "End", reason = "BossDown", winnerSide = 1 },
 		}, id)
-		pulse(0.2)
-		local mid = AF.Stats()
-		T.check(mid.Live + mid.Stepped >= 1, "Review Focus 4 (End): effects are live before the End event", fmt("Live %d", mid.Live))
-		KC.toClient("BattleState", "Events", { { type = "End", reason = "BossDown", winnerSide = 1 } }, id)
-		pulse(0.25)
-		poolsAtKeep("Review Focus 4 (End event mid-effect)")
+		local blow = calls[n3 + 2]
+		local due = blow and blow.DueAt
+		local naturalEnd = 0
+		for _, e in ipairs(AF._Live()) do
+			naturalEnd = math.max(naturalEnd, e.End)
+		end
+		T.check(blow and blow.Attack == "Melee" or blow and blow.Attack == "Ranged", "Ruling 11: the killing blow plays AttackFx", blow and tostring(blow.Attack) or "no play")
+		T.check(type(due) == "number" and naturalEnd > due + 1.0, "Ruling 11: (precondition) the live effects would run past the 1.0 s grace on their own",
+			fmt("ends %.2f s after the impact", naturalEnd - (due or 0)))
+		local liveAtImpact, zeroAt, lateCalls = nil, nil, nil
+		local afterEnd = false
+		for i = 1, 60 do
+			if i % 3 == 1 then
+				live.T = live.T + 0.1
+				KC.toClient("BattleState", "Snapshot", { BattleId = live.id, T = live.T, U = {} }, live.id)
+			end
+			Mock.Step(1 / 30)
+			local s = AF.Stats()
+			local now = os.clock()
+			if due and liveAtImpact == nil and now >= due + 0.05 then
+				liveAtImpact = s.Live + s.Stepped
+			end
+			if due and not afterEnd and now >= due + 0.1 then
+				-- a hit that arrives during the grace starts no new AttackFx effect (its cube fallback draws)
+				afterEnd = true
+				local n4 = #calls
+				KC.toClient("BattleState", "Events", { { type = "Hit", from = fighter, to = boss, dmg = 2 } }, id)
+				lateCalls = #calls - n4
+			end
+			if zeroAt == nil and s.Live + s.Stepped == 0 then
+				zeroAt = now
+			end
+		end
+		T.check(liveAtImpact ~= nil and liveAtImpact >= 1, "Ruling 11: the End does not cut the killing blow (its effect is still live after the impact)", tostring(liveAtImpact))
+		T.check(lateCalls == 0, "Ruling 11: after the End no new AttackFx effect starts", tostring(lateCalls))
+		T.check(zeroAt ~= nil and due ~= nil and zeroAt >= due and zeroAt <= due + 1.0 + 0.07,
+			"Review Focus 4 (End): AttackFx.Stats().Live == 0 within 1.0 s of the End (not before the impact)",
+			(zeroAt and due) and fmt("%.2f s after the impact", zeroAt - due) or "never")
+		poolsAtKeep("Review Focus 4 (End event mid-effect, after the grace)")
 		T.check(AF.Pose(fighter) == nil and AF.Pose(boss) == nil, "Review Focus 4 (End): no pose is left")
 		KC.toClient("BattleState", "End", { BattleId = id, Mode = "Raid", Outcome = "Left", Won = false, Spectator = false, Reason = "Left" }, id)
 		LocalPlayer:SetAttribute("InBattle", nil)

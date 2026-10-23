@@ -20,7 +20,7 @@
 --                                     Round, Best, Next, ... } | nil
 --   BattleController.GetUnit(id) -> { Id, Side, Kind, Name, Hp, MaxHp, State, Meter, Model, X, Z, World, Card, Level,
 --                                     Evo, Xp, XpNext, Crowned, Writes, Benched, Windup, Drawn (the drawn root position),
---                                     Pose (the battle pose drawn: a PetPoses name | nil) }
+--                                     Pose, PoseP (the battle pose drawn: a PetPoses name | nil, its p) }
 --   BattleController.GetStats() / ResetStats() / IsHudVisible() / ScreenPick(x, y) / GetTelegraphs()   (as Phase 3;
 --                                     GetStats().AttackFx = AttackFx.Stats() once the pet attack VFX are loaded)
 --
@@ -49,9 +49,12 @@
 --     when the event ARRIVES with DueAt = the time it plays on the render clock (the INTERP_DELAY lead is the charge
 --     beat; the impact lands with the damage number). AttackFx's poses (PetBuilder.Animate opts.Pose + the body offset
 --     PetBuilder.PoseBody x the build scale on the root write) replace the old lunge / recoil, the wind-up crouch (now
---     PetPoses' Windup held while the snapshot says Winding) and the hurt nudge for the units it drives; a KO'd pet
---     tumbles and lies (KO_PARK_FX) before it is parked. The sim's End clears every effect and pose at once
---     (AttackFx.ClearAll), a Leave ends the leavers' own effects (AttackFx.Cancel). Camera punch -> Me.Shake (own pets),
+--     PetPoses' Windup held while the snapshot says Winding) and the hurt nudge for the units it drives; between attacks
+--     those units breathe and glance (PetPoses IdleBattle, out of step per unit; not on Low, not while my fighter moves
+--     under my input); a KO'd pet tumbles and lies (KO_PARK_FX) before it is parked. The sim's End starts no new
+--     effect and lets the live ones finish for FX_END_GRACE (1 s: the killing blow lands), then AttackFx.ClearAll (the
+--     winners' Victory waits for it); a Leave ends the leavers' own effects at once (AttackFx.Cancel), every teardown
+--     clears at once. Camera punch -> Me.Shake (own pets),
 --     the Secret screen-edge glow / a signature's dim -> Me.ScreenFx. GraphicsQuality drives AttackFx.SetQuality.
 --   * The player's CHARACTER is the fighter's body (B1): my fighter (High) is drawn at the shoulder offset (1.8, 0.5,
 --     0.6) of the SERVER fighter position, blended toward the character root while the two are within 2 studs and
@@ -212,6 +215,8 @@ local K = {
 	FX_COVER = 1.6, -- seconds after a played Special / Element during which its targets' hits are AttackFx's (Hurt pose)
 	WINDUP_HOLD = 0.6, -- PetPoses Windup is held at this p while Winding (its crouch is full from p 0.5 to 0.82) ...
 	WINDUP_IN = 0.25, -- ... reached in this many seconds
+	IDLE_PHASE = 2.2, -- the battle idle's per-unit time offset = u.phase (0..2 pi) x this (pets breathe out of step)
+	FX_END_GRACE = 1.0, -- after the sim's End: no new AttackFx effect; the live ones finish for at most this long
 	BUILD_BUDGET = 0.006, -- seconds of model building per frame (the first build of a frame always runs)
 	BUILD_MAX = 4,
 	CROWD = 14, -- more units than this: other players' / enemy pets are drawn every other frame
@@ -1734,7 +1739,7 @@ function Units.Update(B, u, now, dt, sa, sb, alpha, animate)
 	if not stunned then
 		bob = sin(now * 3.1 + u.phase) * K.BOB
 	end
-	local pose, body = Atk.PoseOf(u, now, down)
+	local pose, body = Atk.PoseOf(u, now, down, false)
 	if u.windup and not Atk.Drives(u) then
 		oy = oy - 0.35 -- the wind-up crouch (Winding: the dash cue; AttackFx shows its held Windup pose instead)
 	end
@@ -2208,7 +2213,9 @@ function Me.Draw(B, u, now, dt, x, z)
 	local bob = stunned and 0 or sin(now * 3.1 + u.phase) * K.BOB
 	local p = u.drawn + off + Vector3.new(0, bob, 0)
 	local cf = CFrame.new(p) * CFrame.Angles(0, u.wyaw, 0)
-	local pose, body = Atk.PoseOf(u, now, down)
+	-- no battle idle while my fighter moves under my input (or a helper flies / swaps)
+	local busy = (isFighter and (u.state == S_MOVING or Me.Walking())) or u.flyAt ~= nil or u.swapAt ~= nil
+	local pose, body = Atk.PoseOf(u, now, down, busy)
 	if body then
 		cf = cf * body
 	end
@@ -2230,6 +2237,19 @@ function Me.Draw(B, u, now, dt, x, z)
 		end
 	end
 	Units.UpdateStatus(B, u, now, cf)
+end
+
+-- the character walks under the player's input (Humanoid.MoveDirection)
+function Me.Walking()
+	local char = LocalPlayer and LocalPlayer.Character
+	local hum = char and char:FindFirstChildOfClass("Humanoid")
+	if not hum then
+		return false
+	end
+	local ok, dir = pcall(function()
+		return hum.MoveDirection
+	end)
+	return ok and typeof(dir) == "Vector3" and dir.Magnitude > 0.1
 end
 
 -- the zone-local direction (x, z) of a Dash event: ev.dir (an angle like Element's, or { x, z }), ev.dx / ev.dz, the
@@ -2511,6 +2531,7 @@ function Atk.SyncQuality()
 		local ok, mode = pcall(gq.Effective)
 		if ok and (mode == "Low" or mode == "High") then
 			pcall(AF.SetQuality, mode)
+			St.fxLow = mode == "Low" -- (no battle idle on the light path: Atk.Idles)
 		end
 	end
 end
@@ -2552,10 +2573,10 @@ local function worldAngle(B, a)
 	return atan2(w.Z, w.X)
 end
 
--- AttackFx.Play (pcall'd) -> true only when it plays
+-- AttackFx.Play (pcall'd) -> true only when it plays (never during the End grace: the cube fallback then)
 function Atk.Play(ctx)
 	local AF = Atk.Mod()
-	if not AF then
+	if not AF or St.fxEndAt then
 		return false
 	end
 	local ok, played = pcall(AF.Play, ctx)
@@ -2569,19 +2590,53 @@ function Atk.Cancel(id)
 	end
 end
 
+-- every effect and pose ends now (a teardown: Leave of my team, Net.Cleanup, Stop); a pending End grace is over too
 function Atk.ClearAll()
+	St.fxEndAt = nil
+	St.cheers = {}
 	local AF = Mods.AttackFx
 	if AF and type(AF.ClearAll) == "function" then
 		pcall(AF.ClearAll)
 	end
 end
 
+-- the sim's End: no new effect (Atk.Play refuses), the live ones get FX_END_GRACE seconds, then ClearAll
+function Atk.EndSoon()
+	if not St.fxEndAt then
+		St.fxEndAt = os.clock() + K.FX_END_GRACE
+	end
+	BattleController._wake()
+end
+
 function Atk.Update(now)
 	local AF = Mods.AttackFx
-	if AF then
-		local ok, err = pcall(AF.Update, now)
-		if not ok then
-			warnOnce("attackfx", "AttackFx.Update failed: " .. tostring(err))
+	if not AF then
+		return
+	end
+	local ok, err = pcall(AF.Update, now)
+	if not ok then
+		warnOnce("attackfx", "AttackFx.Update failed: " .. tostring(err))
+	end
+	-- the End grace: over at its deadline, or as soon as nothing plays any more
+	if St.fxEndAt and (now >= St.fxEndAt or not Atk.Busy()) then
+		local cheers = St.cheers or {}
+		Atk.ClearAll()
+		St.cheers = cheers
+	end
+	-- the winners' cheers wait for the grace (Net.Cheer): Victory, else the old hop
+	local list = St.cheers
+	if not St.fxEndAt and list and #list > 0 then
+		local i = 1
+		while i <= #list do
+			local c = list[i]
+			if now >= c.at then
+				table.remove(list, i)
+				if c.B == St.battle and not c.u.gone and not Atk.Victory(c.B, c.u, 0) then
+					c.u.hopAt = now
+				end
+			else
+				i = i + 1
+			end
 		end
 	end
 end
@@ -2590,6 +2645,11 @@ end
 function Atk.Busy()
 	local s = Atk.Stats()
 	return s ~= nil and ((s.Live or 0) + (s.Stepped or 0)) > 0
+end
+
+-- something of the pet attack VFX still needs frames (live effects, the End grace, cheers waiting)
+function Atk.Pending()
+	return St.fxEndAt ~= nil or (St.cheers ~= nil and #St.cheers > 0) or Atk.Busy()
 end
 
 function Atk.Stats()
@@ -2887,12 +2947,22 @@ local function poseBody(pose)
 	return (ok and typeof(cf) == "CFrame") and cf or IDENTITY
 end
 
+-- the battle idle (PetPoses IdleBattle: breathing, a glance every 2-4 s) shows while AttackFx drives the unit and
+-- nothing else does: not on Low graphics (the light path keeps the old drawing), not while down, stunned, winding,
+-- dashing or moving under the player's input (my fighter: `busy`), never on a boss
+function Atk.Idles(u, down, busy)
+	return not busy and not down and not u.windup and not St.fxLow and u.state ~= S_STUNNED and u.state ~= S_DASHING
+		and not u.dashAt and Atk.Drives(u)
+end
+
 -- the pose a battle pet shows now -> pose (PetBuilder.Animate opts.Pose) and its body offset (studs x the build
--- scale, for the root write: root = frame * body), or nil, nil (no pose: exactly the old drawing). AttackFx's pose
--- first (its crossfade honoured: Prev -> current over Blend), else the Ko pose held after AttackFx let it go (the
--- End's ClearAll: the pet still lies there), else PetPoses' Windup held while the snapshot says Winding (the dash
--- cue's crouch, for a unit AttackFx drives). A switch between those sources blends the body over AttackFx.CROSSFADE.
-function Atk.PoseOf(u, now, down)
+-- scale, for the root write: root = frame * body), or nil, nil (no pose: exactly the old drawing). In order:
+-- AttackFx's pose (its crossfade honoured: Prev -> current over Blend); the Ko pose held after AttackFx let it go
+-- (the End's ClearAll: the pet still lies there); PetPoses' Windup held while the snapshot says Winding (the dash
+-- cue's crouch, for a unit AttackFx drives); the battle idle (Atk.Idles; P = time + a per-unit phase, so the pets do
+-- not breathe or glance in step). A switch between those sources crossfades over AttackFx.CROSSFADE like AttackFx's
+-- own Prev / Blend: the body blends, Animate keeps the previous pose for the first half.
+function Atk.PoseOf(u, now, down, busy)
 	local AF = Mods.AttackFx
 	if not AF or u.isBoss or not PetBuilder or type(PetBuilder.PoseBody) ~= "function" then
 		return nil, nil
@@ -2911,32 +2981,51 @@ function Atk.PoseOf(u, now, down)
 				pose = ps.Prev
 			end
 		end
-	elseif down and u.koAt then
-		pose = u.poseHold or {}
-		u.poseHold = pose
-		pose.Name, pose.P, pose.Ranged = "Ko", clamp((now - u.koAt) / K.KO_TIME, 0, 1), false
-		body, src = poseBody(pose), "ko"
-	elseif u.windup and not down and Atk.Drives(u) then
-		pose = u.poseHold or {}
-		u.poseHold = pose
-		pose.Name, pose.P, pose.Ranged = "Windup", min(K.WINDUP_HOLD, max(0, now - (u.windAt or now)) / K.WINDUP_IN * 0.5), u.ranged == true
-		body, src = poseBody(pose), "hold"
+	else
+		local hold = u.poseHold or {}
+		u.poseHold = hold
+		if down and u.koAt then
+			hold.Name, hold.P, hold.Ranged = "Ko", clamp((now - u.koAt) / K.KO_TIME, 0, 1), false
+			src = "ko"
+		elseif u.windup and not down and Atk.Drives(u) then
+			hold.Name, hold.P, hold.Ranged = "Windup", min(K.WINDUP_HOLD, max(0, now - (u.windAt or now)) / K.WINDUP_IN * 0.5), u.ranged == true
+			src = "hold"
+		elseif Atk.Idles(u, down, busy) then
+			hold.Name, hold.P, hold.Ranged = "IdleBattle", now + u.phase * K.IDLE_PHASE, false
+			src = "idle"
+		end
+		if src then
+			pose, body = hold, poseBody(hold)
+		end
 	end
 	if src ~= u.poseSrc then
+		-- the crossfade starts from what was shown (an IdleBattle keeps running while it fades out)
 		u.poseSrc = src
 		u.poseFrom = u.poseBody
 		u.poseSwitch = now
+		local from = u.poseFromPose or {}
+		u.poseFromPose = from
+		from.Name, from.P, from.Ranged = u.poseShown, u.poseShownP, u.poseShownRanged
 	end
 	if u.poseSwitch then
 		local w = (now - u.poseSwitch) / num(AF.CROSSFADE, 0.12)
 		if w < 1 then
 			body = (u.poseFrom or IDENTITY):Lerp(body or IDENTITY, max(0, w))
+			local from = u.poseFromPose
+			if w < 0.5 and from and from.Name then
+				if from.Name == "IdleBattle" then
+					from.P = now + u.phase * K.IDLE_PHASE
+				end
+				pose = from
+			end
 		else
 			u.poseSwitch, u.poseFrom = nil, nil
 		end
 	end
 	u.poseBody = body
 	u.poseShown = pose and pose.Name or nil
+	u.poseShownP = pose and pose.P or nil
+	u.poseShownRanged = pose and pose.Ranged or nil
 	if not body then
 		return pose, nil
 	end
@@ -3535,7 +3624,9 @@ end
 
 Handlers[EV.End] = function(B)
 	B.simEnded = true
-	Atk.ClearAll() -- the fight is over: every attack effect and pose ends at once (Review Focus 4)
+	-- the fight is over (Review Focus 4, Ruling 11): no new attack effect from here; the live ones (the killing blow
+	-- lands visibly) finish for at most FX_END_GRACE, then AttackFx.ClearAll (Atk.Update)
+	Atk.EndSoon()
 end
 
 -- Phase 5 events (the visuals, on the render clock; the HUD / prediction side runs on arrival in Net.Pre)
@@ -7251,13 +7342,20 @@ function Net.Events(list, battleId)
 	end
 end
 
--- the winners cheer: AttackFx's Victory (hop-spin + sparkles), else the old hop; a little apart (0-0.4 s)
+-- the winners cheer: AttackFx's Victory (hop-spin + sparkles), else the old hop; a little apart (0-0.4 s). During the
+-- End grace (Ruling 11: no new effect) the cheers wait for it in St.cheers (Atk.Update plays them)
 function Net.Cheer(B)
+	local now = os.clock()
 	for _, u in ipairs(B.list) do
 		if u.ally and u.root and not u.parked then
 			local delay = math.random() * 0.4
-			if not Atk.Victory(B, u, delay) then
-				u.hopAt = os.clock() + delay
+			if not Atk.Mod() then
+				u.hopAt = now + delay
+			elseif St.fxEndAt then
+				St.cheers = St.cheers or {}
+				St.cheers[#St.cheers + 1] = { B = B, u = u, at = St.fxEndAt + delay }
+			elseif not Atk.Victory(B, u, delay) then
+				u.hopAt = now + delay
 			end
 		end
 	end
@@ -7542,7 +7640,7 @@ local function onFrame(dt)
 	end
 	-- the loop sleeps when nothing is drawn
 	if not St.battle and #St.effects == 0 and #St.numbers == 0 and #St.flashes == 0 and not St.result and not St.next and not St.shake
-		and not screenFx and not Atk.Busy() then
+		and not screenFx and not Atk.Pending() then
 		if St.loop then
 			St.loop:Disconnect()
 			St.loop = nil
@@ -7663,7 +7761,7 @@ function BattleController.GetUnit(id)
 		Arriving = u.arrive ~= nil, Hidden = u.hidden == true, ArriveFx = u.arriveFx ~= nil, DashAt = u.dashAt,
 		Wild = u.info.wild == true,
 		-- pet attack VFX: the battle pose drawn last frame (PetPoses name; nil = none)
-		Pose = u.poseShown,
+		Pose = u.poseShown, PoseP = u.poseShownP,
 	}
 end
 
