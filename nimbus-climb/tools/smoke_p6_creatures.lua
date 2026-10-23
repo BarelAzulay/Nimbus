@@ -1,7 +1,8 @@
 -- smoke_p6_creatures.lua: the Phase 6 creature meshes (ARCHITECTURE_V3.md "## Phase 6" 6.3 art-creatures; owner:
 -- art-creatures, wave 2). Loaded by tools/smoke.py in BOTH worlds; every scenario runs BOTH modes:
---   default mode  the shipped (empty) MeshIds: the bosses, the token, the NPC pedestal and the sky dragon are today's
---                 Part builds exactly (no ML_* attribute, no tag, no MeshPart)
+--   default mode  the shipped MeshIds: the bosses, the token, the NPC pedestal and the sky dragon are today's Part
+--                 builds (no MeshPart; the mock has no asset store, so shipped ids stay 'loading'); a server coin /
+--                 pedestal whose key has a shipped id is tagged for the clients' Dress, else it has no ML_* attribute
 --   fixture mode  the real MeshLibrary pointed (_Configure) at a private folder of canonical templates made from the
 --                 committed manifests (src/shared/MeshManifests/<key>.lua) with fake ids: the builders take the mesh
 --                 path and keep every name / joint / attribute / Fx point / rig the game uses; a partly ready set
@@ -180,10 +181,23 @@ S.p6creatures_server = guarded("p6creatures_server", function()
 			end
 		end
 	end
+	-- a server coin / pedestal is tagged once its key has a shipped id (Status ~= "missing", the TokenLook / NpcService
+	-- rule): the mock has no asset store, so a shipped id stays 'loading' and the client keeps the Part build
+	local function shipped(key)
+		local okStatus, st = pcall(ML.Status, key)
+		return okStatus and st ~= "missing"
+	end
+	local coinKey = TL.MeshKey("Cloud")
 	local coin = TL.Build({ Palette = "Cloud" })
-	T.check(coin:FindFirstChild("RimWide") and coin:FindFirstChild("Face") and coin:GetAttribute("ML_DressKey") == nil
-		and not CollectionService:HasTag(coin, "ML_Dress") and coin.Transparency == 0,
-		"p6 creatures default: a server coin is the block coin, untagged")
+	if shipped(coinKey) then
+		T.check(coin:FindFirstChild("RimWide") and coin:FindFirstChild("Face") and coin:GetAttribute("ML_DressKey") == coinKey
+			and coin:GetAttribute("ML_Weld") == true and CollectionService:HasTag(coin, "ML_Dress") and coin.Transparency == 0,
+			"p6 creatures default: a server coin keeps its blocks and is tagged " .. coinKey .. " (shipped id)")
+	else
+		T.check(coin:FindFirstChild("RimWide") and coin:FindFirstChild("Face") and coin:GetAttribute("ML_DressKey") == nil
+			and not CollectionService:HasTag(coin, "ML_Dress") and coin.Transparency == 0,
+			"p6 creatures default: a server coin is the block coin, untagged (no shipped id)")
+	end
 	coin:Destroy()
 	local holder = Instance.new("Folder")
 	holder.Name = "P6CreaturesPedestals"
@@ -191,18 +205,33 @@ S.p6creatures_server = guarded("p6creatures_server", function()
 	local accent = Color3.fromRGB(236, 120, 170)
 	local spot = CFrame.new(40, 3, -20) * CFrame.Angles(0, 0.6, 0)
 	local ped = NS._BuildPedestal(holder, spot, accent, 2)
-	T.check(ped and ped:GetAttribute("ML_DressKey") == nil and not CollectionService:HasTag(ped, "ML_Dress"),
-		"p6 creatures default: an NPC pedestal is not tagged while MeshIds is empty")
+	local pedShipped = shipped("npc_pedestal")
+	if pedShipped then
+		T.check(ped and ped:GetAttribute("ML_DressKey") == "npc_pedestal" and ped:GetAttribute("ML_Primary") == accent
+			and CollectionService:HasTag(ped, "ML_Dress"),
+			"p6 creatures default: an NPC pedestal is tagged npc_pedestal with the accent (shipped id)")
+	else
+		T.check(ped and ped:GetAttribute("ML_DressKey") == nil and not CollectionService:HasTag(ped, "ML_Dress"),
+			"p6 creatures default: an NPC pedestal is not tagged (no shipped id)")
+	end
 	local npcFolder = workspace:FindFirstChild("NimbusNpcs")
-	local tagged = 0
+	local tagged, other = 0, 0
 	if npcFolder then
 		for _, d in ipairs(npcFolder:GetDescendants()) do
-			if d:GetAttribute("ML_DressKey") ~= nil then
+			local k = d:GetAttribute("ML_DressKey")
+			if k == "npc_pedestal" then
 				tagged = tagged + 1
+			elseif k ~= nil then
+				other = other + 1
 			end
 		end
 	end
-	T.eq(tagged, 0, "p6 creatures default: the lobby NPCs carry no ML_DressKey")
+	T.eq(other, 0, "p6 creatures default: the lobby NPCs carry no ML_DressKey but npc_pedestal")
+	if pedShipped then
+		T.check(npcFolder == nil or tagged > 0, "p6 creatures default: the lobby NPC pedestals are tagged npc_pedestal (shipped id)", tostring(tagged))
+	else
+		T.eq(tagged, 0, "p6 creatures default: the lobby NPCs carry no ML_DressKey (no shipped id)")
+	end
 
 	-- fixture mode
 	local keys = {}
