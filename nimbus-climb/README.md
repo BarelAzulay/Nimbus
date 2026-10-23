@@ -1431,7 +1431,8 @@ src/shared   Config (every number)  TycoonCatalog (every tycoon number)  Theme  
              of garden pets, shared by server and clients)  TokenLook (the coin look of tokens and Cloud Cash)
              MeshLibrary (loads the Blender models)  MeshIds (generated: model asset ids)  TextureIds (generated:
              the gate vortex image ids)  MeshManifests (generated:
-             one module per Blender model)  PetFx (the auras and effects of evolved pets)
+             one module per Blender model)  PetFx (the auras and effects of evolved pets)  AttackFxCatalog (the look
+             of every pet attack effect: recipes by element, attack, rarity band, signature)
 src/server   Main.server.lua; Services: Lighting, LobbyBuilder, StormAltar, Player (the spawn after PLAY), Data,
              Damage, Token, Hazard, Course (layout + builder), Match, Portal, Gate (the Altar gate's prompt), Spot, Pet,
              Item, Index, Tutorial, Npc, Dev, Tycoon, HomeBuilder, PetCare, Fusion, Gem, ArenaBuilder, Battle, Event,

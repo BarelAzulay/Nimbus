@@ -1,0 +1,909 @@
+-- AttackFxCatalog: the look of every pet attack effect (docs/superpowers/specs/2026-10-23-pet-attack-vfx-design.md,
+-- plan docs/superpowers/plans/2026-10-23-pet-attack-vfx.md Task 4). The single source of every effect's data: the
+-- AttackFx engine (client) and BattleController only PLAY what Resolve returns. Pure data + pure functions: no
+-- Instances, no services, no yields; safe on the server and the client. Plain Lua 5.1-compatible syntax only.
+--
+-- Tables a designer tunes (each one mirrors a spec section):
+--   Bands / Sizes / StageBonus / SizeCap        "Rarity ladder": 4 bands (Common+Uncommon, Rare+Epic, Legendary+Mythic,
+--                                               Secret), sizes 1.0 .. 1.4, Evolved +5% / Evolved II +10%, hard cap 1.4
+--   CoreLook[band]                              the core's intensity and shape per band (plain -> hot inner core ->
+--                                               blazing + upgraded shape -> white plasma with a colour-shifting rim)
+--   Ladder                                      the layers each rarity ADDS (every rarity keeps all the layers below it)
+--   LayerSlots[id]                              the layer templates the ladder names ("$Burst" etc. = the element's sheet)
+--   Elements[element]                           "Elements: normal attacks": palette, melee swipe, ranged projectile +
+--                                               trail, impact sheets, the "alive" detail, the Storm special's rain
+--   Shapes[shape]                               the 8 element attacks (Cone / Circle / Line of BattleCatalog.ElementAttacks)
+--   Specials[kind]                              "Specials (the 9 kinds)": core, beats, extra layers, skipped ladder layers
+--   Reactions (Hurt / Ko / Victory)             the small reaction effects
+--   Signatures[petId]                           "Signature specials (12 pets)": overrides on top of their kind
+--   Textures[key]                               mirror of blender/vfx/textures.json { Grid = 4 | 1, Baked = bool } (smoke
+--                                               p7vfx_catalog checks it): Grid 1 strips (fx_lightning, fx_speedlines) are
+--                                               for Beam / Trail layers ONLY; every Emitter / Decal texture is a 4x4 flipbook
+--
+-- API:
+--   AttackFxCatalog.BandOf(rarity) -> 1..4                         unknown rarity -> 1
+--   AttackFxCatalog.SizeOf(rarity, stage) -> number                Sizes[rarity] x (1 + StageBonus[stage]), <= SizeCap 1.4;
+--                                                                  unknown rarity = Common, stage clamped to 0..2 (non-number 0)
+--   AttackFxCatalog.Resolve(req) -> recipe | nil                   req = { Element, Attack, Kind, Shape, Rarity, Stage, PetId,
+--                                                                  Mine, Distance? }; Attack = "Melee" | "Ranged" | "Special" |
+--                                                                  "Element" | "Hurt" | "Ko" | "Victory"; Kind = one of the 9
+--                                                                  special kinds (Special; a signature pet may leave it nil);
+--                                                                  Shape = "Cone" | "Circle" | "Line" (Element; nil = the element's
+--                                                                  BattleCatalog shape); Distance = studs to the target (projectile
+--                                                                  travel, default 14). nil for an unknown element / attack / kind /
+--                                                                  shape (the caller falls back to the cube Fx).
+--     recipe = { Element, Attack, Kind, Shape, Rarity, Stage, Band, Size, Density (1 mine / 0.6 others), CameraPunch
+--                (mine and band >= 3), ScreenGlow (mine and band 4), Signature (petId | nil), Sig = { Name, Twist, Actor,
+--                DimWorld } | nil, Palette = { Core, Mid, Edge, Hot, Smoke }, Text,
+--                Beats = { Charge, Release, Travel, Impact, Linger } (seconds), ImpactAt (= Charge + Release + Travel: the
+--                engine starts the effect so that impact lands on the server event, never later),
+--                Core = { Key (vfx_* MeshIds key), Color, Material, Path ("Projectile"|"Swipe"|"Ground"|"Self"|"Allies"|
+--                "Area"), Glow, InnerColor?, RimColor?, RimShift?, Upgraded, Speed?, Count?, Scale?, ... shape flags },
+--                Layers = { { Id, Kind ("Emitter"|"Beam"|"Trail"|"Light"|"Ring"|"Decal"), Beat, At, Texture?, Key?, Color,
+--                Count?, Size?, ... } }, Alive = { Kind ("Emitter"|"Beam"|"Decal"|"Mesh"), Texture?, Key?, Motion, Color,
+--                Count, Seconds, Text } ({} = none) }
+--     Layer At: "Source" (mouth / paws), "Core" (on the moving core), "Path" (source -> target), "Target", "Ground" (under
+--     the hit point), "Above" (over the target), "Self", "Allies". Counts are FULL density, already scaled by band
+--     (CountScale): the engine multiplies them by Density and its quality factor. Recipes are fresh tables every call.
+--   AttackFxCatalog.Unit(info) -> { Element, Rarity, Stage, PetId, Ranged }   from a BattleSim unitInfo (petId, key, look,
+--                                                                  element, elements, evo, ranged): Rarity = an explicit
+--                                                                  info.rarity / look.Rarity, else PetCatalog.Get(petId | key's
+--                                                                  base).Rarity, else a hybrid's look.BodyId pet's rarity, else
+--                                                                  "Common"; Element = the FIRST of `elements` (else `element`);
+--                                                                  Stage = evo clamped 0..2
+--   AttackFxCatalog.Signatures[petId]                              the 12 signature pets (Element, Kind, Rarity, Twist, overrides)
+--   AttackFxCatalog.AttackNames / KindNames / ShapeNames / Rarities   ordered name lists (the /fx dev command validates with them)
+
+local Shared = script.Parent
+
+local AttackFxCatalog = {}
+
+local floor, min, max, huge = math.floor, math.min, math.max, math.huge
+
+local function rgb(r, g, b)
+	return Color3.fromRGB(r, g, b)
+end
+local WHITE = rgb(255, 255, 255)
+
+----------------------------------------------------------------------
+-- Lazy modules (load order must never matter)
+----------------------------------------------------------------------
+local lazyCache = {}
+local function lazy(name)
+	local entry = lazyCache[name]
+	if entry == nil then
+		entry = false
+		local inst = Shared:FindFirstChild(name)
+		if inst then
+			local ok, result = pcall(require, inst)
+			if ok and type(result) == "table" then
+				entry = result
+			end
+		end
+		lazyCache[name] = entry
+	end
+	return entry or nil
+end
+
+local function finite(n)
+	return type(n) == "number" and n == n and n ~= huge and n ~= -huge
+end
+
+local function copy(t)
+	if type(t) ~= "table" then
+		return t
+	end
+	local out = {}
+	for k, v in pairs(t) do
+		out[k] = copy(v)
+	end
+	return out
+end
+
+local function merge(into, from)
+	if type(from) == "table" then
+		for k, v in pairs(from) do
+			into[k] = copy(v)
+		end
+	end
+	return into
+end
+
+----------------------------------------------------------------------
+-- Names
+----------------------------------------------------------------------
+AttackFxCatalog.Rarities = { "Common", "Uncommon", "Rare", "Epic", "Legendary", "Mythic", "Secret" }
+AttackFxCatalog.AttackNames = { "Melee", "Ranged", "Special", "Element", "Hurt", "Ko", "Victory" }
+AttackFxCatalog.KindNames = { "Blast", "Heal", "Shield", "Storm", "Pounce", "Freeze", "Beam", "Rally", "Haste" } -- PetCatalog.SpecialKinds
+AttackFxCatalog.ShapeNames = { "Cone", "Circle", "Line" }
+
+local rarityOrder = {}
+for i, r in ipairs(AttackFxCatalog.Rarities) do
+	rarityOrder[r] = i
+end
+
+----------------------------------------------------------------------
+-- Rarity ladder (spec "Rarity ladder"): rarity shows through the core's intensity and shape in 4 bands, not sheer size
+----------------------------------------------------------------------
+AttackFxCatalog.Bands = { Common = 1, Uncommon = 1, Rare = 2, Epic = 2, Legendary = 3, Mythic = 3, Secret = 4 }
+AttackFxCatalog.Sizes = { Common = 1.0, Uncommon = 1.05, Rare = 1.1, Epic = 1.15, Legendary = 1.2, Mythic = 1.3, Secret = 1.4 }
+AttackFxCatalog.StageBonus = { [0] = 0, [1] = 0.05, [2] = 0.10 } -- Evolved +5%, Evolved II +10%
+AttackFxCatalog.SizeCap = 1.4
+AttackFxCatalog.OthersDensity = 0.6 -- other players' and wild pets' effects (own team: 1)
+AttackFxCatalog.CountScale = { 1, 1.2, 1.4, 1.6 } -- particle counts per band (full density)
+
+-- the core per band: Color / Inner / Rim name Palette entries ("White" = pure white)
+AttackFxCatalog.CoreLook = {
+	[1] = { Color = "Mid", Glow = 0 }, -- plain element colour (e.g. orange fire)
+	[2] = { Color = "Mid", Inner = "Hot", Glow = 0.35 }, -- brighter, a hot inner core (e.g. blue-hot fire)
+	[3] = { Color = "Core", Inner = "Hot", Glow = 0.7, Upgraded = true }, -- blazing core, upgraded shape (fins / a second blade)
+	[4] = { Color = "White", Rim = "Edge", RimShift = true, Glow = 1, Upgraded = true, Material = "Neon" }, -- white plasma, colour-shifting rim
+}
+
+-- the layers each rarity adds, in rarity order (each keeps everything below it)
+AttackFxCatalog.Ladder = {
+	{ Tier = "Common", Add = { "Charge", "Burst" } }, -- core shape + impact burst (+ the charge glow of beat 1)
+	{ Tier = "Uncommon", Add = { "Trail" } }, -- + element trail
+	{ Tier = "Rare", Add = { "Slash", "GroundGlow", "Debris" } }, -- + crescent slash arc, ground glow (and the impact debris)
+	{ Tier = "Epic", Add = { "Shockwave", "Flash" } }, -- + shockwave ring, light flash
+	{ Tier = "Legendary", Add = { "Afterimage", "Bloom" } }, -- + afterimages, bloom pulse (camera punch: own pet)
+	{ Tier = "Mythic", Add = { "DoubleArc", "Field" } }, -- + double arcs, a ground-only lingering field
+	{ Tier = "Secret", Add = { "PlasmaRim" } }, -- + the colour-shifting rim (signature layer on signature pets; screen glow: own pet)
+}
+
+-- layer templates: Texture / Kind / Key / Tint "$Name" = the element's (or attack's / kind's / signature's) slot; At "$Hit"
+-- = where the attack lands (Target, or Self / Allies for those paths). Tint = a Palette entry (baked textures play white).
+AttackFxCatalog.LayerSlots = {
+	Charge = { Kind = "Emitter", Texture = "fx_glow", Beat = "Charge", At = "Source", Tint = "Mid", Count = 5, Size = 1.5 },
+	Burst = { Kind = "Emitter", Texture = "$Burst", Beat = "Impact", At = "$Hit", Tint = "Mid", Count = 12, Size = 2.5 },
+	Trail = { Kind = "Emitter", Texture = "$Trail", Beat = "Travel", At = "Core", Tint = "Mid", Count = 10, Size = 1 },
+	Slash = { Kind = "Emitter", Texture = "fx_slash", Beat = "Release", At = "Source", Tint = "Core", Count = 1, Size = 4 },
+	GroundGlow = { Kind = "Decal", Texture = "$Ground", Beat = "Impact", At = "Ground", Tint = "Edge", Size = 5, Seconds = 0.6 },
+	Debris = { Kind = "Emitter", Texture = "$Debris", Beat = "Impact", At = "$Hit", Tint = "$DebrisTint", Count = 8, Size = 1.2 },
+	Shockwave = { Kind = "Ring", Key = "vfx_ring", Beat = "Impact", At = "Ground", Tint = "Mid", Grow = 3 },
+	Flash = { Kind = "Light", Beat = "Impact", At = "$Hit", Tint = "Core", Brightness = 3, Range = 12 },
+	Afterimage = { Kind = "Trail", Texture = "fx_speedlines", Beat = "Travel", At = "Core", Tint = "Edge", Afterimages = 2 },
+	Bloom = { Kind = "Light", Beat = "Release", At = "Core", Tint = "Hot", Brightness = 4, Range = 14, Pulse = true },
+	DoubleArc = { Kind = "Beam", Beat = "Release", At = "Source", Tint = "Hot", Curve = 3, Width = 1.2 }, -- the second crescent, a curved Beam
+	Field = { Kind = "Decal", Texture = "$Ground", Beat = "Linger", At = "Ground", Tint = "Mid", Size = 7, Seconds = 1.0, GroundOnly = true },
+	PlasmaRim = { Kind = "Light", Beat = "Travel", At = "Core", Tint = "Edge", Brightness = 2, Range = 8, ColorShift = true },
+}
+
+----------------------------------------------------------------------
+-- Textures (mirror of blender/vfx/textures.json; Baked = the colour is in the sheet, play it white)
+----------------------------------------------------------------------
+AttackFxCatalog.Textures = {
+	fx_flame = { Grid = 4, Baked = true },
+	fx_embers = { Grid = 4, Baked = true },
+	fx_smoke = { Grid = 4, Baked = false },
+	fx_splash = { Grid = 4, Baked = true },
+	fx_droplets = { Grid = 4, Baked = true },
+	fx_ripple = { Grid = 4, Baked = true },
+	fx_iceshards = { Grid = 4, Baked = true },
+	fx_snow = { Grid = 4, Baked = true },
+	fx_frostmist = { Grid = 4, Baked = true },
+	fx_petals = { Grid = 4, Baked = true },
+	fx_leaves = { Grid = 4, Baked = true },
+	fx_thorn = { Grid = 4, Baked = true },
+	fx_rock = { Grid = 4, Baked = true },
+	fx_dust = { Grid = 4, Baked = true },
+	fx_crack = { Grid = 4, Baked = true },
+	fx_lightning = { Grid = 1, Baked = true }, -- Beam strip
+	fx_sparks = { Grid = 4, Baked = false },
+	fx_stormcloud = { Grid = 4, Baked = false },
+	fx_stars = { Grid = 4, Baked = true },
+	fx_rays = { Grid = 4, Baked = true },
+	fx_sparkle = { Grid = 4, Baked = false },
+	fx_wisps = { Grid = 4, Baked = true },
+	fx_voidring = { Grid = 4, Baked = true },
+	fx_darkglass = { Grid = 4, Baked = true },
+	fx_slash = { Grid = 4, Baked = false },
+	fx_shock = { Grid = 4, Baked = false },
+	fx_glow = { Grid = 4, Baked = false },
+	fx_streak = { Grid = 4, Baked = false },
+	fx_speedlines = { Grid = 1, Baked = false }, -- Beam / Trail strip
+	fx_hexshield = { Grid = 4, Baked = false },
+}
+
+----------------------------------------------------------------------
+-- Elements: normal attacks (spec table). Sheets: Burst (impact, Common up), Trail (Uncommon up), Debris (Rare up),
+-- Ground (ground glow / lingering field decal; nil = an untextured glow), Motif (heal spirals, victory), Arc (the Beam
+-- special's spiral strip). Melee / Ranged = the core + any slot overrides + extra Layers ({ From = tier }).
+----------------------------------------------------------------------
+AttackFxCatalog.Elements = {
+	Water = {
+		Palette = { Core = rgb(214, 244, 255), Mid = rgb(64, 148, 236), Edge = rgb(28, 96, 204), Hot = rgb(236, 255, 255), Smoke = rgb(150, 190, 230) },
+		Material = "Neon",
+		Burst = "fx_splash", Trail = "fx_droplets", Debris = "fx_sparkle", DebrisTint = "Core", Ground = "fx_ripple", Motif = "fx_droplets", Arc = "fx_speedlines",
+		Melee = { Key = "vfx_crescent", Path = "Swipe", Text = "crescent wave slash" },
+		Ranged = { Key = "vfx_orb", Path = "Projectile", Spin = true, Text = "spinning water orb, droplet trail" },
+		Impact = "geyser burst + ripple ring",
+		Alive = { Kind = "Emitter", Texture = "fx_droplets", Motion = "Bounce", Count = 5, Seconds = 0.7, Text = "droplets bounce on the ground, then pop" },
+		Rain = { Key = "vfx_orb", Texture = "fx_droplets", Kind = "Emitter", Scale = 0.3, Text = "a downpour" },
+	},
+	Flame = {
+		Palette = { Core = rgb(255, 232, 150), Mid = rgb(255, 122, 40), Edge = rgb(214, 54, 22), Hot = rgb(140, 200, 255), Smoke = rgb(74, 56, 48) },
+		Material = "Neon",
+		Burst = "fx_flame", Trail = "fx_embers", Debris = "fx_smoke", DebrisTint = "Smoke", Ground = nil, Motif = "fx_embers", Arc = "fx_speedlines",
+		Melee = { Key = "vfx_crescent", Path = "Swipe", Text = "crescent of fire" },
+		Ranged = { Key = "vfx_spear", Path = "Projectile", Text = "flame spear, ember trail" },
+		Impact = "fire burst + embers + scorch glow",
+		Alive = { Kind = "Emitter", Texture = "fx_embers", Motion = "SwirlUp", Count = 6, Seconds = 0.9, Text = "embers swirl upward on heat" },
+		Rain = { Key = "vfx_spear", Texture = "fx_flame", Kind = "Emitter", Scale = 0.4, Text = "fire rain" },
+	},
+	Frost = {
+		Palette = { Core = rgb(240, 252, 255), Mid = rgb(150, 222, 248), Edge = rgb(86, 168, 232), Hot = rgb(255, 255, 255), Smoke = rgb(200, 230, 245) },
+		Material = "Glass",
+		Burst = "fx_iceshards", Trail = "fx_snow", Debris = "fx_frostmist", DebrisTint = "Smoke", Ground = "fx_frostmist", Motif = "fx_snow", Arc = "fx_speedlines",
+		Melee = { Key = "vfx_spike", Path = "Ground", Count = 4, Text = "ice spikes burst from the ground along a path" },
+		Ranged = { Key = "vfx_shard", Path = "Projectile", Text = "sharp ice shard, snow trail" },
+		Impact = "crystal shatter + frost ring on the ground",
+		Alive = { Kind = "Mesh", Key = "vfx_shard", Motion = "Melt", Tint = "Mid", Count = 4, Seconds = 1.0, Text = "impact shards linger and visibly melt (~1 s)" },
+		Rain = { Key = "vfx_shard", Texture = "fx_snow", Kind = "Emitter", Scale = 0.5, Text = "hail" },
+		Area = { Key = "vfx_spike", Count = 5 },
+	},
+	Nature = {
+		-- pink / yellow / cream only: Nature must read on green grass (no green-only colour anywhere)
+		Palette = { Core = rgb(255, 228, 120), Mid = rgb(255, 142, 192), Edge = rgb(240, 236, 150), Hot = rgb(255, 250, 214), Smoke = rgb(230, 210, 170) },
+		Material = "Neon",
+		Burst = "fx_petals", Trail = "fx_petals", Debris = "fx_leaves", DebrisTint = "Smoke", Ground = nil, Motif = "fx_petals", Arc = "fx_speedlines",
+		Melee = {
+			Key = "vfx_root", Path = "Ground", Count = 3, Text = "thorny roots erupt under the target",
+			Layers = { { Id = "Thorns", Kind = "Emitter", Texture = "fx_thorn", Beat = "Travel", At = "$Hit", Count = 3, Size = 2.5, From = "Common" } },
+		},
+		Ranged = { Key = "vfx_orb", Path = "Projectile", Scale = 0.7, Debris = "fx_sparkle", DebrisTint = "Core", Text = "glowing seed pod, pink / yellow petal trail" },
+		Impact = "root burst + petals",
+		Alive = { Kind = "Mesh", Key = "vfx_root", Motion = "Wrap", Tint = "Edge", Count = 3, Seconds = 0.6, Text = "vines briefly wrap the target" },
+		Rain = { Key = "vfx_orb", Texture = "fx_petals", Kind = "Emitter", Scale = 0.25, Text = "a petal shower" },
+		Area = { Key = "vfx_root", Count = 4 },
+	},
+	Earth = {
+		Palette = { Core = rgb(255, 204, 120), Mid = rgb(178, 128, 80), Edge = rgb(110, 78, 50), Hot = rgb(255, 150, 60), Smoke = rgb(196, 170, 130) },
+		Material = "SmoothPlastic", -- rock; the glowing seam comes in with the band 2 inner core
+		Burst = "fx_rock", Trail = "fx_dust", Debris = "fx_dust", DebrisTint = "Smoke", Ground = "fx_crack", Motif = "fx_sparkle", Arc = "fx_speedlines",
+		Melee = { Key = "vfx_spike", Path = "Ground", Count = 3, Text = "ground slam, rock spikes" },
+		Ranged = { Key = "vfx_chunk", Path = "Projectile", Scale = 2.2, Text = "boulder, dust trail" },
+		Impact = "rock breaks into voxel chunks + dust + ground crack",
+		Alive = { Kind = "Mesh", Key = "vfx_chunk", Motion = "Bounce", Tint = "Mid", Count = 5, Seconds = 0.8, Text = "chunks scatter and bounce" },
+		Rain = { Key = "vfx_chunk", Texture = "fx_rock", Kind = "Emitter", Scale = 1.2, Text = "a rock fall" },
+		Area = { Key = "vfx_spike", Count = 5 },
+	},
+	Storm = {
+		Palette = { Core = rgb(224, 236, 255), Mid = rgb(110, 128, 255), Edge = rgb(60, 72, 210), Hot = rgb(255, 252, 170), Smoke = rgb(120, 124, 150) },
+		Material = "Neon",
+		Burst = "fx_sparks", Trail = "fx_sparks", Debris = "fx_streak", DebrisTint = "Core", Ground = nil, Motif = "fx_sparks", Arc = "fx_lightning",
+		Melee = {
+			Key = "vfx_crescent", Path = "Swipe", Text = "electric claw, crackling arcs",
+			Layers = { { Id = "Arcs", Kind = "Beam", Texture = "fx_lightning", Beat = "Travel", At = "$Hit", Count = 2, From = "Common" } },
+		},
+		Ranged = {
+			Key = "vfx_shard", Path = "Projectile", Speed = 120, Scale = 0.8, Text = "jagged lightning bolt",
+			Layers = { { Id = "Bolt", Kind = "Beam", Texture = "fx_lightning", Beat = "Travel", At = "Path", Width = 1.2, From = "Common" } },
+		},
+		Impact = "electric burst + zig-zag sparks",
+		Alive = { Kind = "Beam", Texture = "fx_lightning", Motion = "Strike", Count = 2, Seconds = 0.6, Text = "stray bolts strike the ground nearby" },
+		Rain = { Key = "vfx_shard", Texture = "fx_lightning", Kind = "Beam", Scale = 0.6, Text = "lightning strikes" },
+		Area = { Layers = { { Id = "Bolt", Kind = "Beam", Texture = "fx_lightning", Beat = "Travel", At = "Path", Width = 1.6, From = "Common" } } },
+	},
+	Celestial = {
+		Palette = { Core = rgb(255, 250, 224), Mid = rgb(255, 212, 104), Edge = rgb(236, 164, 64), Hot = rgb(255, 255, 255), Smoke = rgb(255, 236, 190) },
+		Material = "Neon",
+		Burst = "fx_stars", Trail = "fx_sparkle", Debris = "fx_rays", DebrisTint = "Core", Ground = nil, Motif = "fx_stars", Arc = "fx_speedlines",
+		Melee = { Key = "vfx_crescent", Path = "Swipe", Text = "golden starlight slash" },
+		Ranged = { Key = "vfx_star", Path = "Projectile", Spin = true, Text = "shooting star, sparkle tail" },
+		Impact = "star burst + light rays",
+		Alive = { Kind = "Beam", Motion = "Connect", Tint = "Core", Count = 4, Seconds = 0.8, Text = "constellation lines join the stars" },
+		Rain = { Key = "vfx_star", Texture = "fx_stars", Kind = "Emitter", Scale = 0.5, Text = "falling stars" },
+	},
+	Shadow = {
+		Palette = { Core = rgb(214, 156, 255), Mid = rgb(128, 72, 178), Edge = rgb(44, 22, 66), Hot = rgb(255, 96, 224), Smoke = rgb(60, 40, 80) },
+		Material = "Neon",
+		Burst = "fx_voidring", Trail = "fx_wisps", Debris = "fx_darkglass", DebrisTint = "Smoke", Ground = nil, Motif = "fx_wisps", Arc = "fx_speedlines",
+		Melee = { Key = "vfx_crescent", Path = "Swipe", Text = "dark claw, purple wisps" },
+		Ranged = { Key = "vfx_orb", Path = "Projectile", Text = "shadow orb pulling wisps" },
+		Impact = "void implosion, then black glass shatters with glitchy purple sparks",
+		-- the glitchy purple sparks join the glass shatter (every attack of the element, Rare up)
+		Layers = { { Id = "GlitchSparks", Kind = "Emitter", Texture = "fx_sparks", Beat = "Impact", At = "$Hit", Tint = "Hot", Count = 8, Size = 1, From = "Rare" } },
+		Alive = { Kind = "Decal", Motion = "Darken", Tint = "Edge", Count = 1, Seconds = 0.9, Text = "the floor darkens under the wisps" },
+		Rain = { Key = "vfx_shard", Texture = "fx_wisps", Kind = "Emitter", Scale = 0.5, Text = "falling shadow shards" },
+	},
+}
+
+----------------------------------------------------------------------
+-- The 5 beats (spec "The 5 beats of every attack"): Charge 0.12-0.3 (specials up to 0.8), Release 0.05, Travel by
+-- distance (projectiles 60 studs/s, capped), Impact 0.15, Linger 0.4-1.0. Charge / Linger grow a little per band.
+----------------------------------------------------------------------
+AttackFxCatalog.Beats = {
+	Release = 0.05,
+	Impact = 0.15,
+	ChargeStep = 0.03, -- per band above 1 (specials: 0.05)
+	LingerStep = 0.1, -- per band above 1
+	ChargeMax = 0.3,
+	SpecialChargeMax = 0.8,
+	LingerMax = 1.0,
+	ProjectileSpeed = 60, -- studs / s
+	DefaultDistance = 14, -- studs, when the request has no Distance
+	TravelMax = 0.5, -- seconds (the engine also keeps impact <= the event's due time)
+}
+
+-- the basic attacks; Skip = ladder layers this attack never draws
+AttackFxCatalog.Basic = {
+	Melee = { Beats = { Charge = 0.15, Travel = 0.1, Linger = 0.5 }, GroundTravel = 0.15 },
+	Ranged = { Beats = { Charge = 0.18, Linger = 0.5 } }, -- Travel by distance
+}
+
+----------------------------------------------------------------------
+-- Element attacks (spec: "a Cone becomes a fanned blast of the element, a Circle a ground nova, a Line a long sweeping
+-- strike"). Elements[e].Area overrides the core (ground elements: spikes / roots) and adds layers (Storm's bolt).
+----------------------------------------------------------------------
+AttackFxCatalog.Shapes = {
+	Cone = { Text = "a fanned blast of the element", Core = { Key = "vfx_crescent", Path = "Area", Fan = true, Count = 3 }, Beats = { Charge = 0.2, Travel = 0.22, Linger = 0.5 } },
+	Circle = { Text = "a ground nova", Core = { Key = "vfx_ring", Path = "Area", Grow = 4 }, Beats = { Charge = 0.2, Travel = 0.2, Linger = 0.5 } },
+	Line = { Text = "a long sweeping strike", Core = { Key = "vfx_beam", Path = "Area", Stretch = true }, Beats = { Charge = 0.2, Travel = 0.35, Linger = 0.5 } },
+}
+
+----------------------------------------------------------------------
+-- Specials (spec "the 9 kinds, recoloured and retextured per element"). Core.Key "$RainKey" = the element's Rain.
+-- Slots override the element's sheets for this kind; Layers are the kind's own (From = the tier they join, default
+-- Common); Skip = ladder layers the kind never draws.
+----------------------------------------------------------------------
+local SUPPORT_SKIP = { Trail = true, Slash = true, Debris = true, Afterimage = true, DoubleArc = true }
+
+AttackFxCatalog.Specials = {
+	Blast = {
+		Text = "an orb grows above the pet, fires, and explodes into a dome + shockwave",
+		Core = { Key = "vfx_orb", Path = "Projectile", Rise = 3, Grow = true },
+		Beats = { Charge = 0.55, Linger = 0.6 },
+		Layers = {
+			{ Id = "Dome", Kind = "Ring", Key = "vfx_shell", Beat = "Impact", At = "$Hit", Tint = "Mid", Grow = 2.2, Transparency = 0.5 },
+			{ Id = "Blastwave", Kind = "Ring", Key = "vfx_ring", Beat = "Impact", At = "Ground", Tint = "Core", Grow = 3.5 },
+		},
+		Skip = {},
+	},
+	Beam = {
+		Text = "charge glow at the mouth, then a thick beam wrapped in spiral arcs; impact flare at the end",
+		Core = { Key = "vfx_beam", Path = "Projectile", Stretch = true, Thick = 1.4 },
+		Beats = { Charge = 0.5, Travel = 0.1, Linger = 0.5 },
+		Layers = {
+			{ Id = "Spiral", Kind = "Beam", Texture = "$Arc", Beat = "Travel", At = "Path", Tint = "Edge", Spiral = true, Count = 2 },
+			{ Id = "Flare", Kind = "Emitter", Texture = "fx_glow", Beat = "Impact", At = "$Hit", Tint = "Hot", Count = 4, Size = 3 },
+		},
+		Skip = { Trail = true, Slash = true },
+	},
+	Pounce = {
+		Text = "crouch, a leap with afterimages, a slam landing that cracks the ground",
+		Core = { Key = "vfx_ring", Path = "Ground", Grow = 3 },
+		Beats = { Charge = 0.4, Travel = 0.35, Linger = 0.6 },
+		Layers = {
+			{ Id = "Leap", Kind = "Trail", Texture = "fx_speedlines", Beat = "Travel", At = "Self", Tint = "Edge", Afterimages = 3 },
+			{ Id = "Crack", Kind = "Decal", Texture = "fx_crack", Beat = "Impact", At = "Ground", Size = 6, Seconds = 0.8 },
+		},
+		Skip = { Trail = true },
+	},
+	Storm = {
+		Text = "a cloud gathers over the target and rains the element",
+		Core = { Key = "$RainKey", Path = "Area", Count = 8, Fall = true },
+		Beats = { Charge = 0.6, Travel = 0.45, Linger = 0.7 },
+		Layers = {
+			{ Id = "Cloud", Kind = "Emitter", Texture = "fx_stormcloud", Beat = "Charge", At = "Above", Tint = "Edge", Count = 6, Size = 4 },
+			{ Id = "Rain", Kind = "$RainKind", Texture = "$RainTexture", Beat = "Travel", At = "Above", Tint = "Mid", Count = 12, Size = 1 },
+		},
+		Skip = { Trail = true, Slash = true, Afterimage = true },
+	},
+	Freeze = {
+		Text = "a crystal cage in the element's colour locks the target",
+		Core = { Key = "vfx_cage", Path = "Ground", Material = "Glass", Rise = true },
+		Beats = { Charge = 0.4, Travel = 0.2, Linger = 0.7 },
+		Layers = { { Id = "Lock", Kind = "Light", Beat = "Impact", At = "$Hit", Tint = "Core", Brightness = 2, Range = 8 } },
+		Skip = { Trail = true, Slash = true, Afterimage = true },
+	},
+	Heal = {
+		Text = "spirals of glowing petals rise around allies, plus-shaped sparkles",
+		Core = { Key = "vfx_ring", Path = "Allies", Grow = 1.5 },
+		Beats = { Charge = 0.45, Travel = 0.3, Linger = 0.7 },
+		Slots = { Burst = "fx_sparkle" },
+		Layers = { { Id = "Spiral", Kind = "Emitter", Texture = "$Motif", Beat = "Travel", At = "Allies", Tint = "Core", Spiral = true, Count = 10, Size = 1 } },
+		BurstShape = "Plus",
+		Skip = SUPPORT_SKIP,
+	},
+	Shield = {
+		Text = "a hexagon bubble around each ally, rippling when hit",
+		Core = { Key = "vfx_shell", Path = "Allies", Material = "Glass", Transparency = 0.6 },
+		Beats = { Charge = 0.4, Travel = 0.2, Linger = 0.8 },
+		Slots = { Burst = "fx_hexshield" },
+		Layers = {},
+		Skip = SUPPORT_SKIP,
+	},
+	Rally = {
+		Text = "the pet roars; rings pulse outward; allies light up",
+		Core = { Key = "vfx_ring", Path = "Self", Grow = 4, Pulses = 3 },
+		Beats = { Charge = 0.45, Travel = 0.25, Linger = 0.6 },
+		Slots = { Burst = "fx_shock" },
+		Layers = { { Id = "AllyGlow", Kind = "Light", Beat = "Impact", At = "Allies", Tint = "Core", Brightness = 2, Range = 8 } },
+		Skip = SUPPORT_SKIP,
+	},
+	Haste = {
+		Text = "wind-streak trails and speed lines on allies",
+		Core = { Key = "vfx_ring", Path = "Allies", Grow = 1.2 },
+		Beats = { Charge = 0.4, Travel = 0.2, Linger = 0.6 },
+		Slots = { Burst = "fx_streak" },
+		Layers = { { Id = "Wind", Kind = "Trail", Texture = "fx_speedlines", Beat = "Linger", At = "Allies", Tint = "Core" } },
+		Skip = SUPPORT_SKIP,
+	},
+}
+
+----------------------------------------------------------------------
+-- Reactions: hit reaction, KO poof, victory sparkle (small; no element extras, no alive detail)
+----------------------------------------------------------------------
+local REACTION_SKIP = { Charge = true, Trail = true, Slash = true, Debris = true, Afterimage = true, DoubleArc = true, Field = true }
+
+AttackFxCatalog.Reactions = {
+	Hurt = {
+		Text = "quick squash + flinch, a flash of the hit element",
+		Core = { Key = "vfx_orb", Path = "Self", Scale = 0.45, Flash = true },
+		Beats = { Charge = 0, Release = 0, Travel = 0, Linger = 0.4 },
+		Skip = { Charge = true, Trail = true, Slash = true, GroundGlow = true, Debris = true, Shockwave = true, Afterimage = true, Bloom = true, DoubleArc = true, Field = true },
+	},
+	Ko = {
+		Text = "tumble + element-coloured poof",
+		Core = { Key = "vfx_orb", Path = "Self", Scale = 0.8, Poof = true },
+		Beats = { Charge = 0, Travel = 0, Linger = 0.8 },
+		Slots = { Burst = "fx_smoke" },
+		Layers = { { Id = "Sparkle", Kind = "Emitter", Texture = "fx_sparkle", Beat = "Linger", At = "Self", Tint = "Core", Count = 6, Size = 0.8 } },
+		Skip = REACTION_SKIP,
+	},
+	Victory = {
+		Text = "hop-spin + sparkle burst",
+		Core = { Key = "vfx_star", Path = "Self", Scale = 1 },
+		Beats = { Charge = 0.2, Travel = 0.25, Linger = 1.0 },
+		Slots = { Burst = "fx_sparkle" },
+		Layers = { { Id = "Confetti", Kind = "Emitter", Texture = "$Motif", Beat = "Impact", At = "Self", Tint = "Core", Count = 10, Size = 1 } },
+		Skip = REACTION_SKIP,
+	},
+}
+
+----------------------------------------------------------------------
+-- Signature specials (spec table, 12 pets). Overrides on top of the kind: Core (merged), Palette (merged), Slots,
+-- Layers (added, From Common), Tints[layerId] (an explicit colour for a base layer), Beats, Actor (a vfx_sig_* solid
+-- mesh piece), DimWorld (seconds the battle dims).
+----------------------------------------------------------------------
+AttackFxCatalog.Signatures = {
+	ember_phoenix = {
+		Name = "Phoenix Flare", Rarity = "Legendary", Element = "Flame", Kind = "Blast",
+		Twist = "spreads blazing wings, the orb is a phoenix-shaped fireball",
+		Core = { Key = "vfx_sig_phoenix_wing", Scale = 0.8 },
+		Layers = { { Id = "SigWingGlow", Kind = "Light", Beat = "Charge", At = "Source", Tint = "Hot", Brightness = 3, Range = 14 } },
+	},
+	sunbeam_bear = {
+		Name = "Golden Aegis", Rarity = "Legendary", Element = "Earth", Kind = "Shield",
+		Twist = "a golden sun-disc shield with rays",
+		Core = { Key = "vfx_sig_sun_disc", Material = "Neon", Transparency = 0.2 },
+		Palette = { Core = rgb(255, 244, 196), Mid = rgb(255, 210, 110), Edge = rgb(232, 150, 40), Hot = rgb(255, 255, 230) },
+		Layers = { { Id = "SigRays", Kind = "Emitter", Texture = "fx_rays", Beat = "Impact", At = "Allies", Count = 3, Size = 5 } },
+	},
+	twilight_dragon = {
+		Name = "Dusk Storm", Rarity = "Legendary", Element = "Shadow", Kind = "Storm",
+		Twist = "a dusk-purple storm with falling shadow stars",
+		Palette = { Core = rgb(236, 190, 255), Mid = rgb(176, 124, 236), Edge = rgb(72, 40, 120) },
+		Slots = { RainKey = "vfx_star", RainTexture = "fx_sparkle", RainKind = "Emitter" },
+	},
+	cloudy_dragon = {
+		Name = "Cloud Breath", Rarity = "Mythic", Element = "Storm", Kind = "Beam",
+		Twist = "a cloud dragon spirals up, then breathes the beam on the dive",
+		Actor = { Key = "vfx_sig_cloud_dragon", At = "Source", Motion = "SpiralUp", Beat = "Charge", Tint = "Core" },
+		Beats = { Charge = 0.65 },
+	},
+	starlight_unicorn = {
+		Name = "Wishing Star", Rarity = "Mythic", Element = "Celestial", Kind = "Heal",
+		Twist = "a giant wishing star rises and showers allies",
+		Actor = { Key = "vfx_sig_wish_star", At = "Above", Motion = "Rise", Beat = "Charge", Tint = "Mid" },
+		Layers = { { Id = "SigShower", Kind = "Emitter", Texture = "fx_stars", Beat = "Travel", At = "Allies", Count = 14, Size = 1, Fall = true } },
+	},
+	stormfang = {
+		Name = "Storm Pounce", Rarity = "Secret", Element = "Storm", Kind = "Pounce",
+		Twist = "a lightning storm-wolf charges through the target",
+		Actor = { Key = "vfx_sig_wolf", At = "Source", Motion = "ChargeThrough", Beat = "Travel", Tint = "Core" },
+		Layers = { { Id = "SigBolts", Kind = "Beam", Texture = "fx_lightning", Beat = "Travel", At = "Path", Count = 3 } },
+	},
+	eclipse_dragon = {
+		Name = "Eclipse Nova", Rarity = "Secret", Element = "Shadow", Kind = "Blast",
+		Twist = "the battle dims for a moment; a black-sun ring bursts",
+		DimWorld = 0.6,
+		Actor = { Key = "vfx_sig_black_sun", At = "Target", Motion = "Burst", Beat = "Impact", Color = rgb(20, 10, 30) },
+	},
+	obsidian_phoenix = {
+		Name = "Shadowflame Storm", Rarity = "Secret", Element = "Flame", Kind = "Storm",
+		Twist = "black-flame wings sweep the field; dark fire rains",
+		Palette = { Core = rgb(255, 150, 240), Mid = rgb(150, 40, 170), Edge = rgb(40, 12, 44), Smoke = rgb(30, 16, 36) },
+		Tints = { Rain = rgb(170, 70, 210) }, -- the baked fire sheet darkened to shadow-fire
+		Actor = { Key = "vfx_sig_phoenix_wing", At = "Above", Motion = "Sweep", Beat = "Charge", Color = rgb(40, 16, 48), Scale = 1.4 },
+	},
+	phantom_kitsune = {
+		Name = "Foxfire Ward", Rarity = "Secret", Element = "Shadow", Kind = "Shield",
+		Twist = "nine ghost fox-fire orbs circle each ally",
+		Palette = { Core = rgb(220, 255, 250), Mid = rgb(124, 252, 228), Edge = rgb(60, 150, 170) },
+		Actor = { Key = "vfx_sig_fox_orb", At = "Allies", Motion = "Orbit", Beat = "Travel", Count = 9, Scale = 0.5, Tint = "Mid" },
+	},
+	magma_cub = {
+		Name = "Lava Slam", Rarity = "Secret", Element = "Flame", Kind = "Blast",
+		Twist = "erupts from a lava crack; magma spikes ring the target",
+		Layers = { { Id = "SigLavaCrack", Kind = "Decal", Texture = "fx_crack", Beat = "Charge", At = "Source", Color = rgb(255, 150, 80), Size = 5, Seconds = 1.0 } },
+		Actor = { Key = "vfx_sig_lava_spike", At = "Target", Motion = "RingRise", Beat = "Impact", Count = 5, Tint = "Mid" },
+	},
+	rime_wyrmling = {
+		Name = "Glacier Breath", Rarity = "Secret", Element = "Frost", Kind = "Freeze",
+		Twist = "breathes a glacier that rises around the target",
+		Core = { Key = "vfx_sig_glacier" },
+		Layers = { { Id = "SigBreath", Kind = "Beam", Beat = "Travel", At = "Path", Tint = "Core", Width = 2 } },
+	},
+	hydralotl = {
+		Name = "Void Fangs", Rarity = "Secret", Element = "Shadow", Kind = "Rally",
+		Twist = "void serpent heads rise behind the pet and roar",
+		Actor = { Key = "vfx_sig_serpent", At = "Behind", Motion = "RiseRoar", Beat = "Charge", Count = 3, Tint = "Mid" },
+	},
+}
+
+----------------------------------------------------------------------
+-- Rarity helpers
+----------------------------------------------------------------------
+local function cleanRarity(rarity)
+	return (type(rarity) == "string" and rarityOrder[rarity]) and rarity or nil
+end
+
+local function cleanStage(stage)
+	if not finite(stage) then
+		return 0
+	end
+	return max(0, min(2, floor(stage)))
+end
+
+function AttackFxCatalog.BandOf(rarity)
+	return AttackFxCatalog.Bands[cleanRarity(rarity) or "Common"]
+end
+
+function AttackFxCatalog.SizeOf(rarity, stage)
+	local size = AttackFxCatalog.Sizes[cleanRarity(rarity) or "Common"]
+	local bonus = AttackFxCatalog.StageBonus[cleanStage(stage)] or 0
+	return min(AttackFxCatalog.SizeCap, size * (1 + bonus))
+end
+
+----------------------------------------------------------------------
+-- Resolver
+----------------------------------------------------------------------
+local REACTIONS = AttackFxCatalog.Reactions
+local HIT_AT = { Projectile = "Target", Swipe = "Target", Ground = "Target", Area = "Target", Self = "Self", Allies = "Allies" }
+
+-- the attack definition: { Core, Beats, Skip, Layers (list of lists), Slots (list, strongest first), Alive?, Extras?,
+-- Kind?, Shape?, Text, Special? }
+local function attackDef(req, element, sig)
+	local attack = req.Attack
+	if attack == "Melee" or attack == "Ranged" then
+		local entry = element[attack]
+		local base = AttackFxCatalog.Basic[attack]
+		local beats = copy(base.Beats)
+		if attack == "Melee" and entry.Path == "Ground" then
+			beats.Travel = base.GroundTravel
+		end
+		return { Core = entry, Beats = beats, Skip = {}, Layers = { entry.Layers }, Slots = { entry }, Alive = true, Extras = true, Text = entry.Text }
+	elseif attack == "Element" then
+		local shape = req.Shape
+		if shape == nil then
+			local bc = lazy("BattleCatalog")
+			local ea = bc and type(bc.ElementAttacks) == "table" and bc.ElementAttacks[req.Element]
+			shape = type(ea) == "table" and ea.Shape or "Cone"
+		end
+		local def = AttackFxCatalog.Shapes[shape]
+		if not def then
+			return nil
+		end
+		local area = element.Area or {}
+		local core = copy(def.Core)
+		if area.Key then
+			core.Key, core.Count = area.Key, area.Count
+		end
+		return { Core = core, Beats = copy(def.Beats), Skip = { Afterimage = true }, Layers = { area.Layers }, Slots = {}, Alive = true, Extras = true, Shape = shape, Text = def.Text }
+	elseif attack == "Special" then
+		local kind = req.Kind
+		if kind == nil and sig then
+			kind = sig.Kind
+		end
+		local def = type(kind) == "string" and AttackFxCatalog.Specials[kind]
+		if not def then
+			return nil
+		end
+		return { Core = def.Core, Beats = copy(def.Beats), Skip = def.Skip or {}, Layers = { def.Layers }, Slots = { def.Slots }, Alive = true, Extras = true, Kind = kind, Text = def.Text, Special = true, BurstShape = def.BurstShape }
+	end
+	local def = REACTIONS[attack]
+	if not def then
+		return nil
+	end
+	return { Core = def.Core, Beats = copy(def.Beats), Skip = def.Skip or {}, Layers = { def.Layers }, Slots = { def.Slots }, Alive = false, Extras = false, Text = def.Text }
+end
+
+local function slotsOf(def, element, sig)
+	local refs = {
+		Burst = element.Burst, Trail = element.Trail, Debris = element.Debris, DebrisTint = element.DebrisTint or "Smoke",
+		Ground = element.Ground, Motif = element.Motif, Arc = element.Arc,
+		RainKey = element.Rain.Key, RainTexture = element.Rain.Texture, RainKind = element.Rain.Kind or "Emitter",
+	}
+	for i = 1, #def.Slots do
+		local s = def.Slots[i]
+		if type(s) == "table" then
+			for k in pairs(refs) do
+				if s[k] ~= nil then
+					refs[k] = s[k]
+				end
+			end
+		end
+	end
+	if sig and type(sig.Slots) == "table" then
+		for k, v in pairs(sig.Slots) do
+			refs[k] = v
+		end
+	end
+	return refs
+end
+
+local function ref(v, refs)
+	if type(v) == "string" and string.sub(v, 1, 1) == "$" then
+		return refs[string.sub(v, 2)]
+	end
+	return v
+end
+
+local function colourOf(spec, texture, palette, refs)
+	if spec.Color ~= nil then
+		return spec.Color
+	end
+	local t = texture and AttackFxCatalog.Textures[texture]
+	if t and t.Baked then
+		return WHITE
+	end
+	local tint = ref(spec.Tint, refs) or "Mid"
+	return palette[tint] or palette.Mid
+end
+
+-- one concrete layer from a template, or nil when it has nothing to draw (an Emitter without a sheet)
+local function buildLayer(id, tpl, ctx)
+	local layer = copy(tpl)
+	layer.Id = id
+	layer.Kind = ref(tpl.Kind, ctx.refs)
+	layer.Texture = ref(tpl.Texture, ctx.refs)
+	layer.Key = ref(tpl.Key, ctx.refs)
+	if layer.Kind == "Emitter" and layer.Texture == nil then
+		return nil
+	end
+	if layer.Kind == "Light" or layer.Kind == "Ring" then
+		layer.Texture = nil
+	end
+	local at = tpl.At
+	if at == "$Hit" then
+		at = ctx.hitAt
+	end
+	layer.At = at
+	layer.Color = colourOf(tpl, layer.Texture, ctx.palette, ctx.refs)
+	if ctx.tints and ctx.tints[id] then
+		layer.Color = ctx.tints[id]
+	end
+	if finite(tpl.Count) then
+		layer.Count = max(1, floor(tpl.Count * ctx.countScale + 0.5))
+	end
+	layer.Tint = nil
+	layer.From = nil
+	return layer
+end
+
+local function addExtras(out, list, tier, ctx)
+	if type(list) ~= "table" then
+		return
+	end
+	for _, tpl in ipairs(list) do
+		if (tpl.From or "Common") == tier then
+			local layer = buildLayer(tpl.Id, tpl, ctx)
+			if layer then
+				out[#out + 1] = layer
+			end
+		end
+	end
+end
+
+local function aliveOf(element, palette, countScale)
+	local a = copy(element.Alive)
+	a.Color = colourOf(element.Alive, a.Texture, palette, {})
+	a.Count = max(1, floor((a.Count or 1) * countScale + 0.5))
+	a.Tint = nil
+	return a
+end
+
+function AttackFxCatalog.Resolve(req)
+	if type(req) ~= "table" then
+		return nil
+	end
+	local petId = type(req.PetId) == "string" and req.PetId or nil
+	local sig = (req.Attack == "Special" and petId) and AttackFxCatalog.Signatures[petId] or nil
+	if sig and req.Kind ~= nil and req.Kind ~= sig.Kind then
+		sig = nil -- a signature only replaces its own kind
+	end
+	local elementName = req.Element
+	if elementName == nil and sig then
+		elementName = sig.Element
+	end
+	local element = type(elementName) == "string" and AttackFxCatalog.Elements[elementName]
+	if not element then
+		return nil
+	end
+	local def = attackDef({ Attack = req.Attack, Kind = req.Kind, Shape = req.Shape, Element = elementName }, element, sig)
+	if not def then
+		return nil
+	end
+
+	local rarity = cleanRarity(req.Rarity) or "Common"
+	local stage = cleanStage(req.Stage)
+	local band = AttackFxCatalog.BandOf(rarity)
+	local mine = req.Mine == true
+	local B = AttackFxCatalog.Beats
+
+	local palette = merge(copy(element.Palette), sig and sig.Palette)
+	palette.White = WHITE
+	local refs = slotsOf(def, element, sig)
+
+	-- core
+	local core = copy(def.Core)
+	merge(core, sig and sig.Core)
+	core.Key = ref(core.Key, refs)
+	core.Text = nil
+	core.Layers = nil
+	for slotName in pairs(refs) do
+		core[slotName] = nil -- slot overrides that rode on the element's Melee / Ranged entry
+	end
+	local look = AttackFxCatalog.CoreLook[band]
+	core.Color = palette[look.Color] or palette.Mid
+	core.InnerColor = look.Inner and palette[look.Inner] or nil
+	core.RimColor = look.Rim and palette[look.Rim] or nil
+	core.RimShift = look.RimShift == true
+	core.Glow = look.Glow
+	core.Upgraded = look.Upgraded == true
+	core.Material = look.Material or core.Material or element.Material or "Neon"
+	if core.Path == "Projectile" and not core.Stretch then
+		core.Speed = core.Speed or B.ProjectileSpeed
+	end
+
+	-- beats
+	local beats = merge(def.Beats, sig and sig.Beats)
+	local special = def.Special == true
+	local chargeStep = special and 0.05 or B.ChargeStep
+	local charge = beats.Charge or 0
+	if charge > 0 then
+		charge = min(special and B.SpecialChargeMax or B.ChargeMax, charge + chargeStep * (band - 1))
+	end
+	local travel = beats.Travel
+	if core.Speed then
+		local d = tonumber(req.Distance)
+		if not finite(d) or d < 0 then
+			d = B.DefaultDistance
+		end
+		travel = min(B.TravelMax, d / core.Speed)
+	end
+	local linger = beats.Linger or 0.5
+	if req.Attack ~= "Hurt" then
+		linger = linger + B.LingerStep * (band - 1)
+	end
+	local out = {
+		Charge = charge,
+		Release = beats.Release or B.Release,
+		Travel = travel or 0,
+		Impact = beats.Impact or B.Impact,
+		Linger = min(B.LingerMax, linger),
+	}
+
+	-- layers: the ladder up to this rarity, each tier followed by the kind / attack / element / signature extras of that tier
+	local ctx = {
+		refs = refs,
+		palette = palette,
+		hitAt = HIT_AT[core.Path] or "Target",
+		countScale = AttackFxCatalog.CountScale[band],
+		tints = sig and sig.Tints or nil,
+	}
+	local layers = {}
+	local myOrder = rarityOrder[rarity]
+	for _, step in ipairs(AttackFxCatalog.Ladder) do
+		if rarityOrder[step.Tier] > myOrder then
+			break
+		end
+		for _, id in ipairs(step.Add) do
+			if not def.Skip[id] then
+				local layer = buildLayer(id, AttackFxCatalog.LayerSlots[id], ctx)
+				if layer then
+					if id == "Burst" and def.BurstShape then
+						layer.Shape = def.BurstShape
+					end
+					layers[#layers + 1] = layer
+				end
+			end
+		end
+		for _, list in ipairs(def.Layers) do
+			addExtras(layers, list, step.Tier, ctx)
+		end
+		if def.Extras then
+			addExtras(layers, element.Layers, step.Tier, ctx)
+		end
+		if sig then
+			addExtras(layers, sig.Layers, step.Tier, ctx)
+		end
+	end
+
+	local recipe = {
+		Element = elementName,
+		Attack = req.Attack,
+		Kind = def.Kind,
+		Shape = def.Shape,
+		Rarity = rarity,
+		Stage = stage,
+		Band = band,
+		Size = AttackFxCatalog.SizeOf(rarity, stage),
+		Density = mine and 1 or AttackFxCatalog.OthersDensity,
+		CameraPunch = mine and band >= 3,
+		ScreenGlow = mine and band == 4,
+		Signature = sig and petId or nil,
+		Palette = palette,
+		Text = def.Text,
+		Beats = out,
+		ImpactAt = out.Charge + out.Release + out.Travel,
+		Core = core,
+		Layers = layers,
+		Alive = def.Alive and aliveOf(element, palette, ctx.countScale) or {},
+	}
+	if sig then
+		local actor = copy(sig.Actor)
+		if actor then
+			actor.Color = actor.Color or palette[actor.Tint or "Mid"] or palette.Mid
+			actor.Tint = nil
+		end
+		recipe.Sig = { Name = sig.Name, Twist = sig.Twist, Actor = actor, DimWorld = sig.DimWorld }
+	end
+	return recipe
+end
+
+----------------------------------------------------------------------
+-- Unit: what a battle unit's effects look like (from a BattleSim unitInfo)
+----------------------------------------------------------------------
+local function rarityOfPet(id)
+	local pc = lazy("PetCatalog")
+	if not pc or type(pc.Get) ~= "function" or type(id) ~= "string" then
+		return nil
+	end
+	local ok, def = pcall(pc.Get, id)
+	return ok and type(def) == "table" and cleanRarity(def.Rarity) or nil
+end
+
+function AttackFxCatalog.Unit(info)
+	if type(info) ~= "table" then
+		info = {}
+	end
+	local look = type(info.look) == "table" and info.look or {}
+	local petId = type(info.petId) == "string" and info.petId or nil
+	if petId == nil and type(info.key) == "string" and info.key ~= "" then
+		petId = string.match(info.key, "^([^@]+)") -- "cat@Golden" -> "cat"; "hyb:<uid>@Golden" -> "hyb:<uid>"
+	end
+	local keyBase = type(info.key) == "string" and string.match(info.key, "^([^@]+)") or nil
+	local rarity = cleanRarity(info.rarity) or cleanRarity(info.Rarity) or cleanRarity(look.Rarity)
+		or rarityOfPet(petId) or rarityOfPet(keyBase) or rarityOfPet(look.BodyId) or "Common"
+	local element = nil
+	if type(info.elements) == "table" and type(info.elements[1]) == "string" then
+		element = info.elements[1]
+	elseif type(info.element) == "string" then
+		element = info.element
+	end
+	if element ~= nil and not AttackFxCatalog.Elements[element] then
+		element = nil
+	end
+	return {
+		Element = element,
+		Rarity = rarity,
+		Stage = cleanStage(info.evo),
+		PetId = petId,
+		Ranged = info.ranged == true,
+	}
+end
+
+return AttackFxCatalog

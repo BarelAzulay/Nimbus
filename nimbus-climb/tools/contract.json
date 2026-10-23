@@ -556,6 +556,31 @@
         "DungeonFloors"
       ]
     },
+    "shared/AttackFxCatalog": {
+      "functions": [
+        "BandOf",
+        "SizeOf",
+        "Resolve",
+        "Unit"
+      ],
+      "fields": [
+        "Signatures",
+        "Elements",
+        "Specials",
+        "Shapes",
+        "Reactions",
+        "Ladder",
+        "LayerSlots",
+        "CoreLook",
+        "Textures",
+        "Bands",
+        "Sizes",
+        "Rarities",
+        "AttackNames",
+        "KindNames",
+        "ShapeNames"
+      ]
+    },
     "server/Services/TycoonService": {
       "optional": true,
       "functions": [
