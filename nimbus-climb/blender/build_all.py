@@ -289,9 +289,13 @@ def resolve_budget(cat, entry):
 
 def write_index(updates):
     # several builds (one per catalog class) may run at once: read-merge-write under a lock
-    import fcntl
     with open(INDEX + ".lock", "w") as lock:
-        fcntl.flock(lock, fcntl.LOCK_EX)
+        if os.name == "nt":
+            import msvcrt  # Windows has no fcntl: lock the first byte (LK_LOCK retries for ~10 s, then raises)
+            msvcrt.locking(lock.fileno(), msvcrt.LK_LOCK, 1)
+        else:
+            import fcntl
+            fcntl.flock(lock, fcntl.LOCK_EX)
         idx = {}
         if os.path.exists(INDEX):
             with open(INDEX) as fh:
@@ -302,7 +306,7 @@ def write_index(updates):
                           "FBX files live in blender/out/ (not committed; rebuild with build_all.py).",
                "keys": {k: keys[k] for k in sorted(keys)}}
         tmp = INDEX + ".tmp"
-        with open(tmp, "w") as fh:
+        with open(tmp, "w", newline="\n") as fh:
             json.dump(out, fh, indent=1, sort_keys=True)
             fh.write("\n")
         os.replace(tmp, INDEX)
@@ -392,6 +396,10 @@ def main():
         # Blender's FBX exporter derives object UIDs from Python string hashes: a fixed hash seed keeps the FBX bytes
         # identical from run to run (the manifests' contentHash never depends on it)
         env = dict(os.environ, PYTHONHASHSEED="0")
+        if os.name == "nt":
+            # os.execve crashes the bpy python on Windows (access violation): run a child and pass its exit code on
+            import subprocess
+            sys.exit(subprocess.call([sys.executable] + sys.argv, env=env))
         os.execve(sys.executable, [sys.executable] + sys.argv, env)
     ap = argparse.ArgumentParser(description="Build Nimbus Climb mesh keys (blender/catalog/*.json)")
     ap.add_argument("--class", dest="classes", action="append", default=[])
