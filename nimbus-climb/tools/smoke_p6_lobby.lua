@@ -246,6 +246,25 @@ S.p6lobby_server = guarded("p6lobby_server", function()
 	T.check(strayTags == 0 and (nShipped == 0) == (liveTags == 0),
 		fmt("p6 lobby default: ML_Dress tags on lobby pieces only for shipped keys (%d tags)", liveTags))
 
+	-- Tag pins an implicit pivot (no PrimaryPart, no WorldPivot): the client must read the same pivot ML_Offset was
+	-- computed from (real Roblox derives an unset pivot per machine from the parts it has; grey spawn court bug)
+	do
+		local m = Instance.new("Model")
+		local a = Instance.new("Part")
+		a.Size = Vector3.new(4, 1, 4)
+		a.CFrame = CFrame.new(0, 0, 0)
+		a.Parent = m
+		local b = Instance.new("Part")
+		b.Size = Vector3.new(4, 1, 4)
+		b.CFrame = CFrame.new(0, 0, 100)
+		b.Parent = m
+		local before = m:GetPivot()
+		ML.Tag(m, "floor_plaza_courts", { Offset = before:Inverse() })
+		b.CFrame = CFrame.new(0, 0, 300) -- an unset (bounding box) pivot would move with it
+		T.check(m:GetPivot().Position:FuzzyEq(before.Position, 1e-4), "p6 lobby: Tag pins the target's implicit pivot (WorldPivot set)")
+		m:Destroy()
+	end
+
 	-- the live Storm Altar matches the committed LayoutSig of each piece (read-only)
 	local altar = type(SA.GetModel) == "function" and SA.GetModel()
 	if T.check(altar ~= nil and altar.PrimaryPart ~= nil, "p6 lobby altar: the live Storm Altar exists") then

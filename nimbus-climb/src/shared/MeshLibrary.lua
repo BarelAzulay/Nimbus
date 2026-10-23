@@ -1242,6 +1242,13 @@ function MeshLibrary.Tag(target, key, look, keep)
 	if typeof(target) ~= "Instance" or type(key) ~= "string" then
 		return
 	end
+	-- pin an implicit pivot (a Model without PrimaryPart whose WorldPivot was never set): Roblox derives it on every
+	-- machine from the parts it has (in the frame of a part that depends on the replication order), so a client can
+	-- read another pivot than the one ML_Offset was computed from and dress a lopsided target (floor_plaza_courts:
+	-- spawn disc + Gate Court) tens of studs off; the explicit WorldPivot replicates, so both sides agree
+	if target:IsA("Model") and not target.PrimaryPart then
+		target.WorldPivot = target:GetPivot()
+	end
 	target:SetAttribute("ML_DressKey", key)
 	if type(look) == "table" then
 		if typeof(look.Primary) == "Color3" then
