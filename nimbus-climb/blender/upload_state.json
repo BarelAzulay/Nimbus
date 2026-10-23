@@ -541,14 +541,84 @@
       "uploadedAt": "2026-10-23T18:48:09Z"
     },
     "cloud_garden_blossom": {
-      "pendingCreate": {
-        "contentHash": "15dad46053debef786e889e532eaa6a8",
-        "displayName": "NC Cloud Garden Blossom",
-        "fileSha256": "0bc54e6008418742ef90d6d8259cdded187b06abf65838356fd93cbaab805fb9",
-        "startedAt": "2026-10-23T18:48:09Z",
-        "structureHash": "7af6823bb546f2d97348cea4749af458",
-        "why": "interrupted"
-      }
+      "assetId": 100113711682749,
+      "contentHash": "15dad46053debef786e889e532eaa6a8",
+      "fileSha256": "0bc54e6008418742ef90d6d8259cdded187b06abf65838356fd93cbaab805fb9",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-10-23T18:48:15.405Z",
+      "revisionId": "1",
+      "structureHash": "7af6823bb546f2d97348cea4749af458",
+      "uploadedAt": "2026-10-23T18:48:16Z"
+    },
+    "cloud_garden_pond": {
+      "assetId": 135794055027047,
+      "contentHash": "10d658c4e8cc7ee89f9deb38e6d08957",
+      "fileSha256": "adcd5eea46d18ca46150fe4d005f1a109daa7875a630588b0ca999b31b1e5ca7",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-10-23T18:48:24.598Z",
+      "revisionId": "1",
+      "structureHash": "57fd87df515f960140d32db2a0a3dc7e",
+      "uploadedAt": "2026-10-23T18:48:28Z"
+    },
+    "cloud_plaza": {
+      "assetId": 114746028676411,
+      "contentHash": "624e1e5a283ac3082878c665524d3d93",
+      "fileSha256": "ce8b458eb2d3f966ff864aec22578e423bcb2e8d2ba1598fac40004b8db39cf2",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-10-23T18:48:33.141Z",
+      "revisionId": "1",
+      "structureHash": "cd281164e4c04c6887be44889ce32722",
+      "uploadedAt": "2026-10-23T18:48:35Z"
+    },
+    "cloud_puff_s": {
+      "assetId": 84608667775223,
+      "contentHash": "6132662905bfe523b6e6d75446a879c0",
+      "fileSha256": "dce8e3a5f479b53bb1165e011d0c49f7f0ebefe31fb7b6355a2c37b5d26191b3",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-10-23T18:48:39.964Z",
+      "revisionId": "1",
+      "structureHash": "0b389c351acd26eebb2f06ac294d653e",
+      "uploadedAt": "2026-10-23T18:48:41Z"
+    },
+    "cloud_shop": {
+      "assetId": 70479851978201,
+      "contentHash": "685bd5328ddda275d2a5acc0e1b26937",
+      "fileSha256": "a9414391d7242f06913d9f8c8a0da63674b23d6aea8384a34ede59a2ed0de96f",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-10-23T18:48:47.115Z",
+      "revisionId": "1",
+      "structureHash": "c6c846b5c3f1c01fe67e7df8d4f2aa8e",
+      "uploadedAt": "2026-10-23T18:48:48Z"
+    },
+    "cloud_sky_big": {
+      "assetId": 95877720898113,
+      "contentHash": "d6e17277d61dc8b10eb81dc609df8915",
+      "fileSha256": "95c95bb570e7399edf5541c7733fcedc3d0330deaee8f18130313f8a24b79ed9",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-10-23T18:48:53.054Z",
+      "revisionId": "1",
+      "structureHash": "897974d535001dc9afdb040efdddbfd8",
+      "uploadedAt": "2026-10-23T18:48:54Z"
+    },
+    "cloud_sky_small": {
+      "assetId": 98727812341391,
+      "contentHash": "4df7b6e3e2db073ba7b98110f4ec3045",
+      "fileSha256": "7b60475a23707dfd40141b6f6094b5f26329e151731e90d86b8ad77166537f27",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-10-23T18:49:00.976Z",
+      "revisionId": "1",
+      "structureHash": "09609ba0e3056893b3665dfdb531acf9",
+      "uploadedAt": "2026-10-23T18:49:06Z"
+    },
+    "cloud_storm_puff": {
+      "assetId": 113861102702763,
+      "contentHash": "2efcd94dec24aceac9a1ae64a9c908cc",
+      "fileSha256": "b8698d2f17914cd95370f64b0d192929b89bda571ddb6202749991b66c592a40",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-10-23T18:49:12.832Z",
+      "revisionId": "1",
+      "structureHash": "f7536a92a05d50dd9ca09404674792b1",
+      "uploadedAt": "2026-10-23T18:49:16Z"
     },
     "dragon_head": {
       "assetId": 116218725057320,
@@ -4240,6 +4310,296 @@
       "structureHash": "ff6159dd839165743a5e39a9a8e503d9",
       "uploadedAt": "2026-10-21T11:25:07Z"
     },
+    "floor_altar_bridge": {
+      "assetId": 99073720893384,
+      "contentHash": "5486d8f52c7640ad2e15db4a3382198e",
+      "fileSha256": "fb8846885f453ea74121ce6f0f7ef5153c04951d0edbc2dc96561be7c2be469d",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-10-23T18:49:25.876Z",
+      "revisionId": "1",
+      "structureHash": "425033efb0de15d1f45dcdb85c3f3232",
+      "uploadedAt": "2026-10-23T18:49:28Z"
+    },
+    "floor_garden_blossom_1": {
+      "assetId": 116684232944659,
+      "contentHash": "16d2b3936ef2ce278e4cc82fe2e3dfe8",
+      "fileSha256": "77cc4ddfaa2bb8177357adcb19f12d7b2e31966d6fbe4f1050f68e139be52e74",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-10-23T18:49:32.990Z",
+      "revisionId": "1",
+      "structureHash": "5b03d808d061d9f1bdcf59bf5f9de95e",
+      "uploadedAt": "2026-10-23T18:49:34Z"
+    },
+    "floor_garden_blossom_2": {
+      "assetId": 115549554257291,
+      "contentHash": "57fb5174f602900a739ad1fd3e347b12",
+      "fileSha256": "cbb6e6cd25348b90781d61ef506afe2679d866e06c078baf97ed3752e2f524a9",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-10-23T18:49:40.978Z",
+      "revisionId": "1",
+      "structureHash": "bfb5ccbf365e4d3144ebbb1fe4a020f6",
+      "uploadedAt": "2026-10-23T18:49:45Z"
+    },
+    "floor_garden_blossom_3": {
+      "assetId": 100283798912883,
+      "contentHash": "7d22a5dcea0277df4883a3c93782fdfa",
+      "fileSha256": "25ed6a05cb60cd6273d5615e865c215df5718c899ac01f1af48c2a1f0582de7e",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-10-23T18:49:53.673Z",
+      "revisionId": "1",
+      "structureHash": "68b9d7575c380efcc12ad8da95061c9b",
+      "uploadedAt": "2026-10-23T18:49:57Z"
+    },
+    "floor_garden_blossom_4": {
+      "assetId": 115828940234480,
+      "contentHash": "66da4a5e38265e5b5d4ef7f7b5bf5dcb",
+      "fileSha256": "bb36c71785a2c08a987373cc5e3f3076636a1b5441331865d9f5053ebec9f221",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-10-23T18:50:03.556Z",
+      "revisionId": "1",
+      "structureHash": "abdf8f979b2e7679fc942bc6075c61ee",
+      "uploadedAt": "2026-10-23T18:50:04Z"
+    },
+    "floor_garden_bridge": {
+      "assetId": 78197829150708,
+      "contentHash": "a355aa8e0a2055f9369de10057c91a50",
+      "fileSha256": "fc2bb574df61afe316eefb37c4edf16207d03cc7128f55a5e14c72535339741f",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-10-23T18:50:11.290Z",
+      "revisionId": "1",
+      "structureHash": "a87cf6927fd8cdb3bd0ade207cd961ae",
+      "uploadedAt": "2026-10-23T18:50:16Z"
+    },
+    "floor_garden_pond_1": {
+      "assetId": 134705297788444,
+      "contentHash": "16d2b3936ef2ce278e4cc82fe2e3dfe8",
+      "fileSha256": "77cc4ddfaa2bb8177357adcb19f12d7b2e31966d6fbe4f1050f68e139be52e74",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-10-23T18:50:20.562Z",
+      "revisionId": "1",
+      "structureHash": "5b03d808d061d9f1bdcf59bf5f9de95e",
+      "uploadedAt": "2026-10-23T18:50:22Z"
+    },
+    "floor_garden_pond_2": {
+      "assetId": 105820261522481,
+      "contentHash": "2e2ba99b07fc72a758c7d9533ed48da6",
+      "fileSha256": "97f309b7a67fe3f606c613f295ed9f7db3d0564c7234c5a298bc845dff42b402",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-10-23T18:50:32.891Z",
+      "revisionId": "1",
+      "structureHash": "7c87714c39c8a3ef7af961a2b8cee947",
+      "uploadedAt": "2026-10-23T18:50:35Z"
+    },
+    "floor_garden_pond_3": {
+      "assetId": 120797400585571,
+      "contentHash": "e19382911baa5921823d50cd528c610c",
+      "fileSha256": "8c19bf243501a847394e9a4467f82b628e0f9a5a22c201ccca1f9878078b9a47",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-10-23T18:50:40.385Z",
+      "revisionId": "1",
+      "structureHash": "68b9d7575c380efcc12ad8da95061c9b",
+      "uploadedAt": "2026-10-23T18:50:41Z"
+    },
+    "floor_garden_pond_4": {
+      "assetId": 134591410639022,
+      "contentHash": "924378978ee1508885ad7a3ecd0b00cd",
+      "fileSha256": "7897f26e1ca5b6093ddf1753c1abda3647d90f8abf71ac528159702c4e61ec08",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-10-23T18:50:47.615Z",
+      "revisionId": "1",
+      "structureHash": "abdf8f979b2e7679fc942bc6075c61ee",
+      "uploadedAt": "2026-10-23T18:50:52Z"
+    },
+    "floor_junction_altar": {
+      "assetId": 78039164478789,
+      "contentHash": "45d48255fd5e3d1fcd8d0a62b1300fda",
+      "fileSha256": "267ba008125af527874e50ed7d60419001652fed9972155cf745778230d22763",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-10-23T18:51:03.664Z",
+      "revisionId": "1",
+      "structureHash": "40b0c18fb488fcb1e682c53dc1b8fdb0",
+      "uploadedAt": "2026-10-23T18:51:04Z"
+    },
+    "floor_junction_arena": {
+      "assetId": 105306597194944,
+      "contentHash": "82f2325665618983893ad075e97442c5",
+      "fileSha256": "57c72f9746c3fe7e7bb593db524984fd1ebd325c13b30f28d6cc5f379ae65481",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-10-23T18:51:13.327Z",
+      "revisionId": "1",
+      "structureHash": "40b0c18fb488fcb1e682c53dc1b8fdb0",
+      "uploadedAt": "2026-10-23T18:51:15Z"
+    },
+    "floor_junction_garden": {
+      "assetId": 91035768622847,
+      "contentHash": "e8aed9da7d6ce7fece808c2173cdf98c",
+      "fileSha256": "481a4a1541521a4c06f1d26cfa7f908188c237de184071486477c49d17d3a8f2",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-10-23T18:51:20.795Z",
+      "revisionId": "1",
+      "structureHash": "40b0c18fb488fcb1e682c53dc1b8fdb0",
+      "uploadedAt": "2026-10-23T18:51:21Z"
+    },
+    "floor_junction_plain": {
+      "assetId": 130785578565174,
+      "contentHash": "4f1e1b1ce3d57e142631feb7e2cb7532",
+      "fileSha256": "58cbbe7fd98cc13308996209665e3723e82102ae99c47feb7db3e4cde00befa3",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-10-23T18:51:27.293Z",
+      "revisionId": "1",
+      "structureHash": "40b0c18fb488fcb1e682c53dc1b8fdb0",
+      "uploadedAt": "2026-10-23T18:51:29Z"
+    },
+    "floor_junction_spoke": {
+      "assetId": 120945248776590,
+      "contentHash": "b6d9648a156d172cb346acec5572a039",
+      "fileSha256": "778a6ddb70d81b1220c2d3daaa744e25925579b53c2a8486c989b57ab028bc1a",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-10-23T18:51:32.461Z",
+      "revisionId": "1",
+      "structureHash": "40b0c18fb488fcb1e682c53dc1b8fdb0",
+      "uploadedAt": "2026-10-23T18:51:34Z"
+    },
+    "floor_plaza_courts": {
+      "assetId": 130020403716293,
+      "contentHash": "9d1347a79d1786c826f684db402503d4",
+      "fileSha256": "27e07d2ad230005a7ae5c0dfdb3f3782d34b0d3f1dce264ec0bd03f5b74ba17e",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-10-23T18:51:42.693Z",
+      "revisionId": "1",
+      "structureHash": "e07d2564690cbdecb4963970ae0b7609",
+      "uploadedAt": "2026-10-23T18:51:47Z"
+    },
+    "floor_plaza_edges": {
+      "assetId": 81628708403630,
+      "contentHash": "3f975ad80ebcb25231d8966a8c1f0330",
+      "fileSha256": "61f7a397d8e4462882266158246107878652a14ae328652082e1d55a239013e2",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-10-23T18:51:53.394Z",
+      "revisionId": "1",
+      "structureHash": "a0dcfdbacc8e5255d49d409f9d03a9be",
+      "uploadedAt": "2026-10-23T18:51:57Z"
+    },
+    "floor_plaza_inlays": {
+      "assetId": 90102910568501,
+      "contentHash": "a30a921809c9213a40a2d4eba39cb231",
+      "fileSha256": "3638b2d39952d9f119395425b67a2f7d9f8486f726d7f2c78ab8b9f184bbe36c",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-10-23T18:52:02.526Z",
+      "revisionId": "1",
+      "structureHash": "e1b773d21f11fc30430f7d8b247a8a4c",
+      "uploadedAt": "2026-10-23T18:52:06Z"
+    },
+    "floor_plaza_lawn": {
+      "assetId": 101125842281356,
+      "contentHash": "5d6ec34b9a928385d3d1c7a309727312",
+      "fileSha256": "df74467dc6511a93faa229b7a486d9cbdf08759fa0920d2ce0482afb583f9247",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-10-23T18:52:10.354Z",
+      "revisionId": "1",
+      "structureHash": "40969f2a168c6ddb31495269bc0fe7d0",
+      "uploadedAt": "2026-10-23T18:52:12Z"
+    },
+    "floor_plaza_lawnpatches": {
+      "assetId": 102227408722174,
+      "contentHash": "539a0a559fa50923730dbb45c15d3d67",
+      "fileSha256": "06a28037cbb072dcf55fa6738ff9f90fd1532c8bafca856baa15d5de2b47a9aa",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-10-23T18:52:23.114Z",
+      "revisionId": "1",
+      "structureHash": "344671500f99fd7fcdf352ceb5a4b97b",
+      "uploadedAt": "2026-10-23T18:52:23Z"
+    },
+    "floor_plaza_pathborders": {
+      "assetId": 87170099442279,
+      "contentHash": "92d1e84d87523d2882834979d7f1993c",
+      "fileSha256": "e5ab85b9f4c47ef23874c590449c874a232f38275176b504545c7f27c2126e41",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-10-23T18:52:34.073Z",
+      "revisionId": "1",
+      "structureHash": "6a368919ec3d229cc3e593a3199aa2fa",
+      "uploadedAt": "2026-10-23T18:52:36Z"
+    },
+    "floor_plaza_paths": {
+      "assetId": 121280972743461,
+      "contentHash": "102ea285858b4eb6e92ae8888c9cb2e0",
+      "fileSha256": "8d46f4425e169473bb4f4f4183e59c265543eccbc26638dc8e1dfcf8c229e764",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-10-23T18:52:40.571Z",
+      "revisionId": "1",
+      "structureHash": "fd0acf0ed52bb2cb60693a34845c28d3",
+      "uploadedAt": "2026-10-23T18:52:44Z"
+    },
+    "floor_plaza_walk": {
+      "assetId": 72633927032073,
+      "contentHash": "2446d91dfd4d54e98e6824aa870013c7",
+      "fileSha256": "261c4dbc8d12fd213e7d29105f5280a41ae9a7e2e82bb40d6065d166a70868df",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-10-23T18:52:59.371Z",
+      "revisionId": "1",
+      "structureHash": "07c0b8d03a3977c5917856a4e1745985",
+      "uploadedAt": "2026-10-23T18:53:03Z"
+    },
+    "floor_shop_1": {
+      "assetId": 110002843002035,
+      "contentHash": "dfe127059df8a1148acfb5d46b29d9a1",
+      "fileSha256": "45a2f5aadb68598243d4c1340ce64eea7f0d9f3b862158753f1509156ec63e14",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-10-23T18:53:19.939Z",
+      "revisionId": "1",
+      "structureHash": "dc66fb208f6bd166bf9107daa34d1428",
+      "uploadedAt": "2026-10-23T18:53:24Z"
+    },
+    "floor_shop_2": {
+      "assetId": 99144809635341,
+      "contentHash": "2088c17aa0bea59eeee2b328b00c89b2",
+      "fileSha256": "7ff9650fb3286ee812275e52d65246d9d605251c4663fb3800f38f159dbce4ee",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-10-23T18:53:31.518Z",
+      "revisionId": "1",
+      "structureHash": "7a6bd2fd3ea3862a7aa2ebd71c478176",
+      "uploadedAt": "2026-10-23T18:53:34Z"
+    },
+    "floor_shop_3": {
+      "assetId": 108457987974954,
+      "contentHash": "2f3b12a49a996f996f8a9e4aa7badeeb",
+      "fileSha256": "f50e6ec1be6c856e66ec03966e2418bf51f6ff89b825125415bf05b254760400",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-10-23T18:53:42.810Z",
+      "revisionId": "1",
+      "structureHash": "c72ea046748756e4b09b1dfa5648c6e9",
+      "uploadedAt": "2026-10-23T18:53:48Z"
+    },
+    "floor_shop_4": {
+      "assetId": 102315389058096,
+      "contentHash": "6e2e5ccc9929ee6bd06e08895de5cd34",
+      "fileSha256": "e4ea7dea6acfa9352bffb7777d0a14c27bff9571f8e3863aa70d4eb672843fee",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-10-23T18:53:52.092Z",
+      "revisionId": "1",
+      "structureHash": "492a3bfd46e2be5da368d149028dabb8",
+      "uploadedAt": "2026-10-23T18:53:55Z"
+    },
+    "floor_shop_5": {
+      "assetId": 78128445272840,
+      "contentHash": "8539aff32f20cd922440ec68df790cca",
+      "fileSha256": "d546630d8fcbcc8fa66de37d02ca5acb8ee89f82946d3708b5d42d76d1773e69",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-10-23T18:54:02.206Z",
+      "revisionId": "1",
+      "structureHash": "90c59c25d50a3628f309d06fbab2b9aa",
+      "uploadedAt": "2026-10-23T18:54:03Z"
+    },
+    "floor_spoke": {
+      "assetId": 95485479984979,
+      "contentHash": "d4e62f5628b8e3ce44b811b9c9402d42",
+      "fileSha256": "890b46fa580718f2fd3cd6752bf46f6a0215542cb136d2077d2908eeadcac744",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-10-23T18:54:11.092Z",
+      "revisionId": "1",
+      "structureHash": "d80da2090f2b0c5fda1646d84009a6dc",
+      "uploadedAt": "2026-10-23T18:54:14Z"
+    },
     "fx_arrow": {
       "assetId": 118312094555281,
       "contentHash": "27e3f63044f88c6466072824caee2e63",
@@ -4839,6 +5199,256 @@
       "revisionId": "1",
       "structureHash": "71804cf90a7a495f898c74ac7d46b6fb",
       "uploadedAt": "2026-10-21T09:30:11Z"
+    },
+    "prop_altar_crystals": {
+      "assetId": 73251915899511,
+      "contentHash": "181f973c2187caf251311aa4fce383cb",
+      "fileSha256": "f3f4b317cb2eef100dbd7c4917f202735ddbf3085770b51dab449c1c225c0abb",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-10-23T18:54:23.009Z",
+      "revisionId": "1",
+      "structureHash": "414adfdaba61c76b8bda39bcbf8a1190",
+      "uploadedAt": "2026-10-23T18:54:27Z"
+    },
+    "prop_altar_portal": {
+      "assetId": 127725801016530,
+      "contentHash": "e0cb8b921fab74762ab115d4223872d9",
+      "fileSha256": "3f35891f65139c8a30bfd336489f645688ffb456ead8c279336f6fa7d2826716",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-10-23T18:54:34.302Z",
+      "revisionId": "1",
+      "structureHash": "5ad3551b3a2bd0e763458f14d8f3d1e8",
+      "uploadedAt": "2026-10-23T18:54:39Z"
+    },
+    "prop_altar_ring": {
+      "assetId": 91363477278729,
+      "contentHash": "919f6fa3a090d9096e8e171e65b9bbe9",
+      "fileSha256": "b8877ae8ed7ecbbd73a1cce0f9b045248d67e7f86fb5d49f85d8e74cc0eabac3",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-10-23T18:54:43.693Z",
+      "revisionId": "1",
+      "structureHash": "2019d9ab3781de5ae733cd1ba58430be",
+      "uploadedAt": "2026-10-23T18:54:45Z"
+    },
+    "prop_altar_sign": {
+      "assetId": 99775863891501,
+      "contentHash": "e3f494765a6c86a84430a829d9200791",
+      "fileSha256": "088a86ad32a3485a424e8498c8ba0fd952124df1b20771c411e7d9ad01e457de",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-10-23T18:54:52.071Z",
+      "revisionId": "1",
+      "structureHash": "61645d518719b8d4f78d1a1581bca8e3",
+      "uploadedAt": "2026-10-23T18:54:53Z"
+    },
+    "prop_banner": {
+      "assetId": 86835945019078,
+      "contentHash": "6289d552d8160f9b508aaaf52cfdd62d",
+      "fileSha256": "36149e042f1663a4a701ed912453df4aa602e186afb1df0124afd29cd8f67e6b",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-10-23T18:55:02.473Z",
+      "revisionId": "1",
+      "structureHash": "e919d4f88f917e215342b02a1a68cebd",
+      "uploadedAt": "2026-10-23T18:55:05Z"
+    },
+    "prop_bench": {
+      "assetId": 131804966833568,
+      "contentHash": "5cce6240c3d8f270fa06422abd01d9c8",
+      "fileSha256": "656fd571786ad3a8874e79679f1c079381d1091c0c10452f871caf53706b6282",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-10-23T18:55:14.587Z",
+      "revisionId": "1",
+      "structureHash": "0c764095f59e6bd3cc36a1239c8848b1",
+      "uploadedAt": "2026-10-23T18:55:19Z"
+    },
+    "prop_board_l": {
+      "assetId": 103282573473641,
+      "contentHash": "952219177653a3d628a1c48e073105df",
+      "fileSha256": "ccc0840d123aa0f4a8d39df296f01377c9970df42bd2f294734c7415e425936f",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-10-23T18:55:24.496Z",
+      "revisionId": "1",
+      "structureHash": "763277d0543b02334fafc1bbac20f80b",
+      "uploadedAt": "2026-10-23T18:55:28Z"
+    },
+    "prop_board_s": {
+      "assetId": 72741145857444,
+      "contentHash": "b60768f6ac79f4347bb45e5ecbf51cf6",
+      "fileSha256": "7c3af7abdc959daee33f92169dfd11c68b5dd949e4a9c42645565468c4a6d1ef",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-10-23T18:55:34.483Z",
+      "revisionId": "1",
+      "structureHash": "03bac29c33d6d5c1397a7e1256ec5870",
+      "uploadedAt": "2026-10-23T18:55:36Z"
+    },
+    "prop_flowerbed": {
+      "assetId": 110584593760020,
+      "contentHash": "a7b0198b9677c535f449d435cd4ebd1d",
+      "fileSha256": "f1675e268034a6416d52ca9dc31c05b0959ad7540a04cdaae00e351c2e719f01",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-10-23T18:55:43.128Z",
+      "revisionId": "1",
+      "structureHash": "5b6cb40e2c1dd465c7eab42ee3cf8d1a",
+      "uploadedAt": "2026-10-23T18:55:44Z"
+    },
+    "prop_fountain": {
+      "assetId": 117505453375233,
+      "contentHash": "666886eebccb8b908ce36bb774ae9125",
+      "fileSha256": "6c91c4a8692dea2310e60757b5e603ed3e77ca819d4f5a5ff8bbc6a5869bd46e",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-10-23T18:56:01.081Z",
+      "revisionId": "1",
+      "structureHash": "2094bc0afaf9ca95f67014d1eecbd654",
+      "uploadedAt": "2026-10-23T18:56:04Z"
+    },
+    "prop_fountain_water": {
+      "assetId": 125758065742655,
+      "contentHash": "d4e88503fda52b27e5ce85557603a82a",
+      "fileSha256": "81a166e99bc684c932af7bcf5ea03e185e9dcd34cbb81b2a1dc27d6ae267e744",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-10-23T18:56:12.297Z",
+      "revisionId": "1",
+      "structureHash": "ac7b0016e8439b2f483bec468585c26e",
+      "uploadedAt": "2026-10-23T18:56:17Z"
+    },
+    "prop_item_stall": {
+      "assetId": 75410301679148,
+      "contentHash": "f906e345dfdad11ac60a667e505eb26e",
+      "fileSha256": "c6b523d88a1884629a6f6261fd2725b1787d50623303204901d49557cb7154da",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-10-23T18:56:22.513Z",
+      "revisionId": "1",
+      "structureHash": "8db8091c669cfa4bee4aacd422fd2438",
+      "uploadedAt": "2026-10-23T18:56:26Z"
+    },
+    "prop_lamp": {
+      "assetId": 133024479791419,
+      "contentHash": "b6a743e25beb86ad3f4fa466aaf7eee6",
+      "fileSha256": "c8cbc95d7e5bd31409e3c20c2e910cc72e38d75fe15df48e2432bacb7fd19388",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-10-23T18:56:37.670Z",
+      "revisionId": "1",
+      "structureHash": "f3240e62b9231c55d57ea7dacca17fdb",
+      "uploadedAt": "2026-10-23T18:56:39Z"
+    },
+    "prop_obelisk": {
+      "assetId": 118339406939031,
+      "contentHash": "e748d66ecb35fd5884e0b2b49230bd77",
+      "fileSha256": "5e5386c9ffc9cf7a0a26a6b73e2bc420f2d39db2cc4d1987ff6a1287c2b8b23d",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-10-23T18:56:42.555Z",
+      "revisionId": "1",
+      "structureHash": "bb4b317cf51b4d9bc70a431b3d3b218d",
+      "uploadedAt": "2026-10-23T18:56:44Z"
+    },
+    "prop_plot": {
+      "assetId": 79616906534893,
+      "contentHash": "cd7f95dd58515b413488b0328d472531",
+      "fileSha256": "97b9050fc724934d5736ac9ac5b1a5b30fad852db873316e21d76fcc032c31a3",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-10-23T18:56:49.816Z",
+      "revisionId": "1",
+      "structureHash": "4ebcd5220f5ed4254e9ead3f657b3ae8",
+      "uploadedAt": "2026-10-23T18:56:53Z"
+    },
+    "prop_plot_low": {
+      "assetId": 111070503612096,
+      "contentHash": "27c3db2695bfc810219b45595ba88ecb",
+      "fileSha256": "c2e372f8ad6b09adb25d290d7cf6751d54127df4ce0c14c14b1f3183c8e98fc2",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-10-23T18:56:59.722Z",
+      "revisionId": "1",
+      "structureHash": "4ebcd5220f5ed4254e9ead3f657b3ae8",
+      "uploadedAt": "2026-10-23T18:57:02Z"
+    },
+    "prop_pond": {
+      "assetId": 101705449941906,
+      "contentHash": "e7e428e689c06539a5ae9826e5df1ae3",
+      "fileSha256": "13906df17a580ffdb948093450ed4b35bce3fd041af64e17598bc9f8395930ed",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-10-23T18:57:09.657Z",
+      "revisionId": "1",
+      "structureHash": "6a03160e86f9e6c8d417f121afff10ca",
+      "uploadedAt": "2026-10-23T18:57:11Z"
+    },
+    "prop_pond_water": {
+      "assetId": 131287400961473,
+      "contentHash": "2e15ae0f3a09ef23308fbd0e114f74d4",
+      "fileSha256": "a8209d4045d4a610398d036b7ef7132fd2265581b520dc099f5fa05dcb681b78",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-10-23T18:57:20.794Z",
+      "revisionId": "1",
+      "structureHash": "65476abb6ca952258d859dee24a464e2",
+      "uploadedAt": "2026-10-23T18:57:25Z"
+    },
+    "prop_roulette": {
+      "assetId": 118961331660735,
+      "contentHash": "d07add3fda627d5f8ca95555d05e9c2a",
+      "fileSha256": "ee05ad8392d349ba1bf2ee26042e9afe3e7b53667c5f6a6feb7d6c8c46b9f586",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-10-23T18:57:40.345Z",
+      "revisionId": "1",
+      "structureHash": "4797909deac5d03fc85661ad8b20abae",
+      "uploadedAt": "2026-10-23T18:57:47Z"
+    },
+    "prop_shop_arch": {
+      "assetId": 112480125539070,
+      "contentHash": "cffae3dff40b16665b174fcf04557667",
+      "fileSha256": "6302c4f05abe6ace50affdaba8b343bb603757e0164b8480074218989ff3208c",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-10-23T18:57:59.969Z",
+      "revisionId": "1",
+      "structureHash": "8116d90441efcf21a3c0e58b467189a1",
+      "uploadedAt": "2026-10-23T18:58:01Z"
+    },
+    "prop_token_statue": {
+      "assetId": 117507408589600,
+      "contentHash": "19fbb65d99f5e74cbfde80430a489404",
+      "fileSha256": "569f072097002972f999a256317f8b7f9232ecae1c272b09aa2cb237141f5930",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-10-23T18:58:05.119Z",
+      "revisionId": "1",
+      "structureHash": "98dfd9fda48a714aeb957416fb30a0e8",
+      "uploadedAt": "2026-10-23T18:58:09Z"
+    },
+    "prop_tree_blossom": {
+      "assetId": 122775907026889,
+      "contentHash": "8d2efe72f4262c05682cf732b8ff2a4e",
+      "fileSha256": "61df636894d23ecc78f42daee62ea98bf5b7928bf41482c788a10592cbd75bf9",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-10-23T18:58:28.081Z",
+      "revisionId": "1",
+      "structureHash": "fdf1aaccd3dbbc8d598835ce092a4085",
+      "uploadedAt": "2026-10-23T18:58:29Z"
+    },
+    "prop_tree_pine": {
+      "assetId": 126617122715483,
+      "contentHash": "6d49acdea1011a75b7b45e301f14d535",
+      "fileSha256": "6f78c5fcbf4ca823612113e426bfdf8f2487ec031123cda28568a4b40ddcbc84",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-10-23T18:58:36.097Z",
+      "revisionId": "1",
+      "structureHash": "8ff98988814778539659ae348d8f5c29",
+      "uploadedAt": "2026-10-23T18:58:37Z"
+    },
+    "prop_tree_round": {
+      "assetId": 126388669029483,
+      "contentHash": "a74abeaa060f0ff9c008fe8d9cdc9c36",
+      "fileSha256": "41807d7974a0eba9fc53e131e17e1ba2da3343446bcc9b4c43844402682facb1",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-10-23T18:58:45.331Z",
+      "revisionId": "1",
+      "structureHash": "c6fa48067f99b2b5ad38da7ba65a3b52",
+      "uploadedAt": "2026-10-23T18:58:50Z"
+    },
+    "prop_welcome_arch": {
+      "assetId": 74927694777669,
+      "contentHash": "23b8d3eea16d118ccfeb7f50212d8cbd",
+      "fileSha256": "f07eabf83ad692cbe36b39b1893a79a434c7634c0b2166c1a956f1116ce4badb",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-10-23T18:58:57.045Z",
+      "revisionId": "1",
+      "structureHash": "7c20e4271f6376b4d2c8088f340e2bfe",
+      "uploadedAt": "2026-10-23T18:59:01Z"
     },
     "star_gold": {
       "assetId": 134009756798299,
