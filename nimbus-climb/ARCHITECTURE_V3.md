@@ -292,7 +292,7 @@ loop, no per-frame allocation, frozen when far from the lobby (player in a match
 The player designed this creature themselves and wants it in the game. Reference art (READ these images before
 building): `branding/stormfang-concept.webp` (original sheet: three poses of the creature on dark storm clouds plus a
 crystal altar ring), `branding/stormfang-art.png` (same, transparent background) and `branding/stormfang-portrait.png`
-(close-up of the head). The player uploaded the sheet to Roblox as asset 129423539279679 -> `Config.Art.StormfangImage`.
+(close-up of the head). The player uploaded the sheet to Roblox as Decal 129423539279679, whose Image 106396716077974 is `Config.Art.StormfangImage` (an ImageLabel needs the Image id).
 
 * **Pet (catalog agent + pets agent):** `Id = "stormfang"`, `Name = "Stormfang"`, `Rarity = "Secret"` (the 4th Secret pet,
   listed first among the Secrets: it is the player's signature creature), `Role = "Combat"`, Special "Storm Pounce"
