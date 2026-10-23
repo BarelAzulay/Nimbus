@@ -671,11 +671,14 @@
       "uploadedAt": "2026-10-23T16:48:01Z"
     },
     "dragon_tail": {
-      "pendingContentHash": "bfc874105b74634c2d8ebb615c7af3ca",
-      "pendingFileSha256": "048504168af170e9f2a179d84a564bc431626819c9ea6968382eb669912782ab",
-      "pendingMode": "create",
-      "pendingOperation": "9f9597e0-595d-4c01-9183-767e8268b081",
-      "pendingStructureHash": "01aed183ba9ce02227d5e6d80373c67b"
+      "assetId": 131198018369800,
+      "contentHash": "bfc874105b74634c2d8ebb615c7af3ca",
+      "fileSha256": "048504168af170e9f2a179d84a564bc431626819c9ea6968382eb669912782ab",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-10-23T16:48:08.451Z",
+      "revisionId": "1",
+      "structureHash": "01aed183ba9ce02227d5e6d80373c67b",
+      "uploadedAt": "2026-10-23T16:48:12Z"
     },
     "evo1_aurora_fox": {
       "assetId": 87772383693151,
@@ -4217,6 +4220,36 @@
       "structureHash": "ff6159dd839165743a5e39a9a8e503d9",
       "uploadedAt": "2026-10-21T11:25:07Z"
     },
+    "fx_arrow": {
+      "assetId": 118312094555281,
+      "contentHash": "27e3f63044f88c6466072824caee2e63",
+      "fileSha256": "f31ddd50da87feecef75c6daa994afd231937e0cb0f0cdcde84e29571c7be124",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-10-23T16:48:20.496Z",
+      "revisionId": "1",
+      "structureHash": "cade4838f971e44b185a49057f02fea7",
+      "uploadedAt": "2026-10-23T16:48:24Z"
+    },
+    "fx_ice": {
+      "assetId": 77705415234107,
+      "contentHash": "e420d92e46afebc2b38cc24e6b0663fc",
+      "fileSha256": "c41ec9712622ba2ccb33cce38bdae20b16a84d750bba408cc545bf69dc6932f7",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-10-23T16:48:28.822Z",
+      "revisionId": "1",
+      "structureHash": "0ee00280b590d56f5e1f66a94f8d8613",
+      "uploadedAt": "2026-10-23T16:48:30Z"
+    },
+    "fx_shield": {
+      "assetId": 98799822310444,
+      "contentHash": "78500693cb5f46003e511036d3a4c480",
+      "fileSha256": "29f8246507cd7fa840d27879fa81cc519397d1965a655ba98d2ba6e0022a6572",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-10-23T16:48:36.766Z",
+      "revisionId": "1",
+      "structureHash": "410a1b419629b152e6d721246b8bdc09",
+      "uploadedAt": "2026-10-23T16:48:37Z"
+    },
     "hyb_axolotl": {
       "assetId": 75807933596369,
       "contentHash": "cecdbf74c97f6287409212b6670ec06e",
@@ -4396,6 +4429,16 @@
       "revisionId": "1",
       "structureHash": "ee868bc789b9c4965a1bc7543f6f1bfc",
       "uploadedAt": "2026-10-21T09:22:38Z"
+    },
+    "npc_pedestal": {
+      "assetId": 73741292262134,
+      "contentHash": "9754ba8e614cbbc5b263f6f77ce3913c",
+      "fileSha256": "f4e35694d82336fb2264c98e947d9364370e3e3bc14e864b247f7d9e6e71278f",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-10-23T16:48:50.738Z",
+      "revisionId": "1",
+      "structureHash": "b14cd0653a3cb9ee1b07801c4a6163dc",
+      "uploadedAt": "2026-10-23T16:48:56Z"
     },
     "pet_axolotl": {
       "assetId": 81567999436977,
@@ -4716,6 +4759,56 @@
       "revisionId": "1",
       "structureHash": "71804cf90a7a495f898c74ac7d46b6fb",
       "uploadedAt": "2026-10-21T09:30:11Z"
+    },
+    "star_gold": {
+      "assetId": 134009756798299,
+      "contentHash": "1255f53bb40902dab7b925a0bb4408b4",
+      "fileSha256": "115e579227bbae517fbe033814bf6a5d5e4ec53aa49fc41445dfe9bef1f7f848",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-10-23T16:48:58.880Z",
+      "revisionId": "1",
+      "structureHash": "0b6314704e1381dd00b5db2899da14f5",
+      "uploadedAt": "2026-10-23T16:49:02Z"
+    },
+    "token_cash": {
+      "assetId": 94347711783065,
+      "contentHash": "248f60f04c9a8b88f9f3352cedc829aa",
+      "fileSha256": "eb65c7750dee2ebe883a038dc157080ad1baf86ebafa432f7975441a8e44791e",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-10-23T16:49:09.124Z",
+      "revisionId": "1",
+      "structureHash": "c3de1fff816df90d1de24f5fd4dd561c",
+      "uploadedAt": "2026-10-23T16:49:10Z"
+    },
+    "token_cloud": {
+      "assetId": 80952177296306,
+      "contentHash": "b021ccafd90ba0e606bd6c2946e5ef58",
+      "fileSha256": "eb65c7750dee2ebe883a038dc157080ad1baf86ebafa432f7975441a8e44791e",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-10-23T16:49:20.613Z",
+      "revisionId": "1",
+      "structureHash": "c3de1fff816df90d1de24f5fd4dd561c",
+      "uploadedAt": "2026-10-23T16:49:21Z"
+    },
+    "token_golden": {
+      "assetId": 90473274880839,
+      "contentHash": "9759c35e1a7ae3265f7e666ef6471cac",
+      "fileSha256": "cb512bd05e1a72d83da854671c68561a4c225c4ee5ac8b6ba6acdb1eb809092a",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-10-23T16:49:27.330Z",
+      "revisionId": "1",
+      "structureHash": "d50441130d6a69fd45151b6e32baca4d",
+      "uploadedAt": "2026-10-23T16:49:32Z"
+    },
+    "token_goldencash": {
+      "assetId": 129274487361575,
+      "contentHash": "bf9a4fc37518984c59d3c06e0c44947b",
+      "fileSha256": "eb65c7750dee2ebe883a038dc157080ad1baf86ebafa432f7975441a8e44791e",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-10-23T16:49:51.043Z",
+      "revisionId": "1",
+      "structureHash": "c3de1fff816df90d1de24f5fd4dd561c",
+      "uploadedAt": "2026-10-23T16:50:01Z"
     },
     "wing_bat_L": {
       "assetId": 122184756009948,
