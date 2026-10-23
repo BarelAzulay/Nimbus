@@ -451,6 +451,11 @@
         "Init"
       ]
     },
+    "client/Controllers/AttackFx": {
+      "_comment": "pet attack VFX, Task 6 (docs/superpowers/plans/2026-10-23-pet-attack-vfx.md): plays AttackFxCatalog recipes; BattleController (Task 7) calls Play / Update / Pose and sets Hooks",
+      "functions": ["Play", "Update", "Pose", "Cancel", "ClearAll", "SetQuality", "Stats", "Folder"],
+      "fields": ["MAX_LIVE", "MAX_STEPPED", "MAX_EMITTERS", "MAX_BEAMS", "MAX_TRAILS", "MAX_LIGHTS", "MAX_CORES", "PUNCH_MAX", "CROSSFADE", "HIT_STOP", "POOL_KEEP_TOTAL", "Hooks"]
+    },
     "client/MouseLock": {
       "optional": true,
       "_comment": "docs/dungeon-fixes/plan.md decision 6 (mouse-lock)",

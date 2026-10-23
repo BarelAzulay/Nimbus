@@ -862,6 +862,24 @@ def main():
             if got != want:
                 wrong.append((label, got, res.stdout[-300:]))
         check("check.mjs PortalVortex asset-id rule: %d cases" % len(cases), not wrong, wrong)
+        # pet attack VFX, Task 6: client/Controllers/AttackFx.lua joins TextureIds ids the same way, under the same rule;
+        # the same file name anywhere else gets no allowance
+        adir = os.path.join(tmp, "attackfx", "src", "client", "Controllers")
+        os.makedirs(adir)
+        sdir = os.path.join(tmp, "attackfx", "src", "shared")
+        os.makedirs(sdir)
+        wrong = []
+        for where, allowed in ((os.path.join(adir, "AttackFx.lua"), True), (os.path.join(sdir, "AttackFx.lua"), False)):
+            for label, src, want in cases:
+                with open(where, "w") as f:
+                    f.write(src + "\n")
+                res = subprocess.run([node, os.path.join(HERE, "check.mjs"), where], capture_output=True, text=True)
+                got = res.stdout.count("asset-id")
+                # outside client/Controllers the good joins are errors too (one per prefix literal: 3)
+                expect = want if allowed else (3 if want == 0 else want)
+                if got != expect:
+                    wrong.append((("Controllers/" if allowed else "shared/") + label, got, res.stdout[-300:]))
+        check("check.mjs AttackFx asset-id rule: %d cases in client/Controllers, none elsewhere" % len(cases), not wrong, wrong)
     else:
         print("SKIP check.mjs PortalVortex cases (no node)")
 

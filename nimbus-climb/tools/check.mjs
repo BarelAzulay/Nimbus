@@ -24,7 +24,8 @@
 //   asset-id            an asset id / web URL outside Config.Art (rbxassetid://, rbxthumb://, http(s)://). The only
 //                       asset the game may reference is the player's own upload, Config.Art.StormfangImage
 //                       (tools/contract.json v3.artImage); built-in rbxasset:// content is fine. Phase 6: the bare prefix
-//                       "rbxassetid://" (no id) is allowed in src/client/PortalVortex.lua, which joins it to the numbers of
+//                       "rbxassetid://" (no id) is allowed in src/client/PortalVortex.lua and (pet attack VFX, Task 6)
+//                       src/client/Controllers/AttackFx.lua, which join it to the numbers of
 //                       src/shared/TextureIds.lua (rule texture-ids: numbers only, written by tools/upload_assets.py) -
 //                       ONLY as `"rbxassetid://" .. x`, `.. tostring(x)` or `.. t[k]` where x is a variable never given
 //                       a literal number / digit string; `.. 1818`, `.. "123"`, `local P = "rbxassetid://"` all fail.
@@ -244,7 +245,7 @@ function strValue(node) {
 	return null;
 }
 
-// PortalVortex.lua (review3 tooling-5): the "rbxassetid://" literals used as `"rbxassetid://" .. <id variable>`, where the
+// PortalVortex.lua (review3 tooling-5) and Controllers/AttackFx.lua (pet attack VFX): the "rbxassetid://" literals used as `"rbxassetid://" .. <id variable>`, where the
 // right operand is `x`, `tostring(x)`, `t[k]` or `tostring(t[k])` (x / t local, k not a literal) and x is never assigned
 // a literal number or digit string anywhere in the file. Every other use of the prefix is reported by the caller.
 function vortexPrefixUses(ast) {
@@ -365,7 +366,9 @@ function analyse(file) {
 	const base = path.basename(file);
 	const isTheme = base === "Theme.lua" && path.basename(path.dirname(file)) === "shared";
 	const isConfig = base === "Config.lua" && path.basename(path.dirname(file)) === "shared";
-	const isVortex = base === "PortalVortex.lua" && path.basename(path.dirname(file)) === "client";
+	// the TextureIds joiners: client/PortalVortex.lua and (pet attack VFX, Task 6) client/Controllers/AttackFx.lua
+	const isVortex = (base === "PortalVortex.lua" && path.basename(path.dirname(file)) === "client")
+		|| (base === "AttackFx.lua" && path.basename(path.dirname(file)) === "Controllers" && path.basename(path.dirname(path.dirname(file))) === "client");
 	// review3 tooling-5: the PortalVortex prefix literals that are joined to a TextureIds id variable (not a literal id)
 	const vortexPrefixOk = isVortex ? vortexPrefixUses(ast) : new Set();
 	const normPath = file.replace(/\\/g, "/");
@@ -513,7 +516,7 @@ function analyse(file) {
 			case "StringLiteral": {
 				const v = strValue(node);
 				if (isVortex && v === "rbxassetid://" && !vortexPrefixOk.has(node)) {
-					report(node, "error", "asset-id", "PortalVortex: \"rbxassetid://\" may only be joined to a TextureIds id variable (`.. id` / `.. tostring(id)` / `.. ids[key]`), never to a literal or kept in a variable: no hard-coded asset ids");
+					report(node, "error", "asset-id", base.replace(/\.lua$/, "") + ": \"rbxassetid://\" may only be joined to a TextureIds id variable (`.. id` / `.. tostring(id)` / `.. ids[key]`), never to a literal or kept in a variable: no hard-coded asset ids");
 				} else if (v && ASSET_PATTERN.test(v) && !(isVortex && v === "rbxassetid://")) {
 					if (!isConfig) {
 						report(node, "error", "asset-id", "asset id / URL '" + v.slice(0, 60) + "' outside Config.Art; reference Config.Art.StormfangImage instead (the only allowed asset)");

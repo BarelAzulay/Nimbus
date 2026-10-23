@@ -1443,7 +1443,9 @@ src/client   Main.client.lua; State; UiGate (nothing shows before PLAY); ClientS
              LightingStack (lighting looks, e.g. the Dungeon); UI/CloudUI; UI/NeonKit (the neon cards, tiles and side
              panels); UI/PetCard (the cards above pets); Controllers: Movement, MainMenu (main menu + settings), Hud,
              DamageFx, Notify, Menu, Hotbar, Pet, TokenFx, Index, Tutorial, Npc, SkyDragon, Showcase, Dev, DevPetShow
-             (pet showcase), EvolutionFx (evolution animation, the dungeon enemies' arrival), Care (Food Machine, Garden, training and EVOLVE
+             (pet showcase), EvolutionFx (evolution animation, the dungeon enemies' arrival), AttackFx (plays the pet
+             attack effects: Blender cores, flipbook particles, beams, trails and lights, pooled, within a budget, plus
+             the battle poses), Care (Food Machine, Garden, training and EVOLVE
              windows), HomeFx (roaming pets, Cloud Cash, berries), HomePortalFx (the home portal), Fusion, Battle,
              Arena, Dungeon (the Dungeon window and run), Obby (the level picker), PortalFx (the gates' soft
              animation: a light running round the ring, the swirl breathing, gems twinkling), MeshFallback (shows the
