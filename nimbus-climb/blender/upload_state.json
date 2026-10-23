@@ -161,11 +161,204 @@
       "uploadedAt": "2026-10-21T09:17:50Z"
     },
     "arena_bannerpole": {
-      "pendingContentHash": "80777efba37df1beb01bf596d2ae4389",
-      "pendingFileSha256": "b0239a96463ff8a8e1e2d2e9b2ea22e123118cfdc49e52ac4c5dc48c6b90083c",
-      "pendingMode": "create",
-      "pendingOperation": "063d06b4-123e-4367-aaed-8a71461dd900",
-      "pendingStructureHash": "6999dc51d9a71f849b7bb92f0dd4cafc"
+      "assetId": 134391452029202,
+      "contentHash": "80777efba37df1beb01bf596d2ae4389",
+      "fileSha256": "b0239a96463ff8a8e1e2d2e9b2ea22e123118cfdc49e52ac4c5dc48c6b90083c",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-10-23T22:52:47.892Z",
+      "revisionId": "1",
+      "structureHash": "6999dc51d9a71f849b7bb92f0dd4cafc",
+      "uploadedAt": "2026-10-23T22:52:51Z"
+    },
+    "arena_board_event": {
+      "assetId": 115236497467800,
+      "contentHash": "21c54aec860026ae23ccb3bbc1beea2b",
+      "fileSha256": "72fd7d5f78bbc77f61d5e88eba3431b9cff7307eed429aa42a2bb0bd692fa42e",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-10-23T22:53:08.938Z",
+      "revisionId": "1",
+      "structureHash": "00c67287dd7bbcc6a2e69a63aabce174",
+      "uploadedAt": "2026-10-23T22:53:10Z"
+    },
+    "arena_board_leader": {
+      "assetId": 126681784675393,
+      "contentHash": "4656864d2637b8a89a23a37ef3f3a329",
+      "fileSha256": "4e9e481f7e4e5aa77dacbf9b04daa6c42e6315cec81dc42cf9f61f354e6d0f38",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-10-23T22:53:19.012Z",
+      "revisionId": "1",
+      "structureHash": "56a2cf729793f07270ce711b623558de",
+      "uploadedAt": "2026-10-23T22:53:21Z"
+    },
+    "arena_bridge": {
+      "assetId": 121062021802328,
+      "contentHash": "44703098eb9fb5fadfdd3978558770f7",
+      "fileSha256": "fc2a7fd5bdf99962d3133bcfb0cfc4a56c2f7d6d034c99eb6a94a66887cbac83",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-10-23T22:53:28.083Z",
+      "revisionId": "1",
+      "structureHash": "a29c7111a4c148e516c6a299497c3ee0",
+      "uploadedAt": "2026-10-23T22:53:28Z"
+    },
+    "arena_floor": {
+      "assetId": 75036762269780,
+      "contentHash": "d8ca3e7f52a6619e5abf56981d11fc94",
+      "fileSha256": "e113e06743c2fe5d733d9429a6505a99096925d0a33c7ad9eb15010bfe6e7fff",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-10-23T22:53:34.203Z",
+      "revisionId": "1",
+      "structureHash": "fec0e24e7bcb3576243dd9f00c53d91a",
+      "uploadedAt": "2026-10-23T22:53:36Z"
+    },
+    "arena_forum": {
+      "assetId": 123496737471228,
+      "contentHash": "5c864178bac927eca174474413c3c414",
+      "fileSha256": "556891f7c8bc05e7eb81dcd45d87f6a8472b8a770099805268c8a18af7cce4f1",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-10-23T22:53:48.142Z",
+      "revisionId": "1",
+      "structureHash": "4effeb024344318816945ebc542d5f9d",
+      "uploadedAt": "2026-10-23T22:53:55Z"
+    },
+    "arena_hedge": {
+      "assetId": 129104106009088,
+      "contentHash": "5b98145a8edbc0e37fad1079128b7081",
+      "fileSha256": "03f76eb0b824f01d0a473dfb38fdee6fc00a6edbafe9e02721ce40400d52061b",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-10-23T22:54:06.729Z",
+      "revisionId": "1",
+      "structureHash": "89a07a6012e60d3e515d859c11830860",
+      "uploadedAt": "2026-10-23T22:54:07Z"
+    },
+    "arena_island": {
+      "assetId": 115949123526098,
+      "contentHash": "0eb096bc6f981a313ec2d7ae929c9e8e",
+      "fileSha256": "a20c5235f2f7a02293ab7be21efd2a12a020b3f18dc4f563bf1bbbcbff6cfa0b",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-10-23T22:54:12.024Z",
+      "revisionId": "1",
+      "structureHash": "66bf37a89026e66ac386fa464b47ff4c",
+      "uploadedAt": "2026-10-23T22:54:14Z"
+    },
+    "arena_lantern": {
+      "assetId": 106018736186937,
+      "contentHash": "35890d8b2a99953bcdc4ec07773b5dc8",
+      "fileSha256": "fe9efcaef9d8460744e97deb3796e3f73d5f1a0a8f10dfdd93d818e5841ca3cb",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-10-23T22:54:26.428Z",
+      "revisionId": "1",
+      "structureHash": "a63eea4d78a2737bdd97ac0bc089ab3c",
+      "uploadedAt": "2026-10-23T22:54:34Z"
+    },
+    "arena_pillar": {
+      "assetId": 117866726378747,
+      "contentHash": "0b6edfdffb3006f5bc15bc9d6f00558e",
+      "fileSha256": "48cfcc3cda487479f833c1c609b00fdb0e44710f16c7fb6d03749d5fad2e3ae1",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-10-23T22:54:46.112Z",
+      "revisionId": "1",
+      "structureHash": "49272be12abe0fd7736e94d5cbc37235",
+      "uploadedAt": "2026-10-23T22:54:46Z"
+    },
+    "arena_planter": {
+      "assetId": 125575256985622,
+      "contentHash": "f5cdbfa3f7bb8dc3ad8e573cbc8ef111",
+      "fileSha256": "691f33092588a4339f9342ac7818b15ce34e4db319db7831145e826646ef8668",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-10-23T22:54:50.513Z",
+      "revisionId": "1",
+      "structureHash": "cef25980269c72558fe67f14c222aaed",
+      "uploadedAt": "2026-10-23T22:54:52Z"
+    },
+    "arena_pocket": {
+      "assetId": 84746313288295,
+      "contentHash": "7d5a267505dc6f4d0ae6acefebc77de5",
+      "fileSha256": "b87920f5bb8933274d8920a89f2d95ad5200cf8f8b537a435bd1065ee7a3e941",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-10-23T22:55:06.502Z",
+      "revisionId": "1",
+      "structureHash": "89a68030de7199d3a9b022ace2482068",
+      "uploadedAt": "2026-10-23T22:55:12Z"
+    },
+    "arena_ring_1": {
+      "assetId": 88555256378642,
+      "contentHash": "a6a90c8b0d5d0691dadd1b6a9ca4db89",
+      "fileSha256": "27c4792a665973534b66bd81fc970ceaacd09e8c2c6aebb33a34bbd380cebade",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-10-23T22:55:27.981Z",
+      "revisionId": "1",
+      "structureHash": "c2e3aaa3cd5d8e7b890ef2d7b0756422",
+      "uploadedAt": "2026-10-23T22:55:31Z"
+    },
+    "arena_ring_2": {
+      "assetId": 136812080984367,
+      "contentHash": "6b8e094a281cd370ba9c978fcc5d4497",
+      "fileSha256": "e31456e29143e482766e81dff34feff06d3607dc741c0cd9c23e3f1276390fd5",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-10-23T22:55:43.684Z",
+      "revisionId": "1",
+      "structureHash": "c2e3aaa3cd5d8e7b890ef2d7b0756422",
+      "uploadedAt": "2026-10-23T22:55:50Z"
+    },
+    "arena_seg_bossgate": {
+      "assetId": 129796106047078,
+      "contentHash": "a317df1276939ff64d898b8c465b4a52",
+      "fileSha256": "6c7fcdf941c08c52e8c39b5b963a0815e36edb660eb8f2d591bfbadbb3fbb8b1",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-10-23T22:56:05.877Z",
+      "revisionId": "1",
+      "structureHash": "0d0eec12f66c3e1dcaebd1cc02e2a1ae",
+      "uploadedAt": "2026-10-23T22:56:09Z"
+    },
+    "arena_seg_gate": {
+      "assetId": 108356657078464,
+      "contentHash": "3ab99702baeca8cba81f96214c955f93",
+      "fileSha256": "948485c602529cc3dea7e55042ece40a322adb3f420f8cb0871738cf35813a83",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-10-23T22:56:14.182Z",
+      "revisionId": "1",
+      "structureHash": "e698e185e9be913ceedd9a212ff05d72",
+      "uploadedAt": "2026-10-23T22:56:15Z"
+    },
+    "arena_seg_stand": {
+      "assetId": 92767252141883,
+      "contentHash": "b85c8e7ff417101ba33c4df088b9d79b",
+      "fileSha256": "6cbf019fc026ba6aa6768dd55a2fabbe6ccfdcc1e6895c9d8dd77df36234e25b",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-10-23T22:56:25.948Z",
+      "revisionId": "1",
+      "structureHash": "783829a0d93f06e81e6a59b31a3af020",
+      "uploadedAt": "2026-10-23T22:56:27Z"
+    },
+    "arena_torch": {
+      "assetId": 81444601648747,
+      "contentHash": "09a54f6029d4ab88b55129cd78803e88",
+      "fileSha256": "1e304b7f2c5981d90759a79cb6c422fcc7822cdc02bf8ce5501c13a7c297d6df",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-10-23T22:56:31.807Z",
+      "revisionId": "1",
+      "structureHash": "0389fefe91345deed8d346c6f3b3eb02",
+      "uploadedAt": "2026-10-23T22:56:34Z"
+    },
+    "arena_tree": {
+      "assetId": 130181684274461,
+      "contentHash": "e358cc7892a3a6cecabf8678a03a922e",
+      "fileSha256": "4c685abd8a3fbc6303edf65a9f652fde7b31112f5254d638373bac00f740640b",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-10-23T22:56:48.781Z",
+      "revisionId": "1",
+      "structureHash": "fc5d2a2f2f66e413658759f4c05cbb56",
+      "uploadedAt": "2026-10-23T22:56:52Z"
+    },
+    "arena_trophy": {
+      "assetId": 122056220764330,
+      "contentHash": "454f9d28c00625ec5f1c8639045e8e4a",
+      "fileSha256": "9282a3be073a27e74fdd35b8d40a1aac9b238283daa22c8d92652aaed7082766",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-10-23T22:56:56.879Z",
+      "revisionId": "1",
+      "structureHash": "520039f423ca840915af03cd3cd2d991",
+      "uploadedAt": "2026-10-23T22:57:00Z"
     },
     "boss_frost_wyrm_Body": {
       "assetId": 126978251398119,
@@ -776,6 +969,53 @@
       "revisionId": "1",
       "structureHash": "01aed183ba9ce02227d5e6d80373c67b",
       "uploadedAt": "2026-10-23T16:48:12Z"
+    },
+    "dungeon_chest": {
+      "assetId": 78637299762649,
+      "contentHash": "916e3b482ad7664988dca59a67f6fae0",
+      "fileSha256": "acadd3271ad7d76c70beaf5c9bf74e3296636325c19a011c441daea71cd39ac6",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-10-23T22:57:10.316Z",
+      "revisionId": "1",
+      "structureHash": "6c25b44f4fb76dc7ed17961c8dcff5df",
+      "uploadedAt": "2026-10-23T22:57:11Z"
+    },
+    "dungeon_crack": {
+      "assetId": 121217003541242,
+      "contentHash": "9e0e76b0a772e058a322042a2f7919c1",
+      "fileSha256": "2188c155431ccb7cecaf3480b9d16132eb326ef097c4f5609ea8511195ca72cd",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-10-23T22:57:29.029Z",
+      "revisionId": "1",
+      "structureHash": "25f8cc4e8ca643ea5e8d87811edc05b7",
+      "uploadedAt": "2026-10-23T22:57:39Z"
+    },
+    "dungeon_crate": {
+      "assetId": 116637601972571,
+      "contentHash": "563ee3a958898aeca90403fdf33680e7",
+      "fileSha256": "20ad9de509f0767f5aff302616b743bb5db9c179a6ab39cf73dd6ca387f5a71c",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-10-23T22:57:49.064Z",
+      "revisionId": "1",
+      "structureHash": "ebc43304a992173e12b2881364244e4e",
+      "uploadedAt": "2026-10-23T22:57:52Z"
+    },
+    "dungeon_door_8": {
+      "assetId": 106778008920162,
+      "contentHash": "1677caa8e325fc7b51ddc6c85db2bcd0",
+      "fileSha256": "e941a7c1619b4b42f64c2e35cabf2aae8804aaccd65375433f2dc5f0103ba9d1",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-10-23T22:58:09.490Z",
+      "revisionId": "1",
+      "structureHash": "62d2f01602221341d1b62a2e17f6d647",
+      "uploadedAt": "2026-10-23T22:58:11Z"
+    },
+    "dungeon_floor_28x22": {
+      "pendingContentHash": "b4de42077c2dea92b6ce158eddddf410",
+      "pendingFileSha256": "94b631f42607fdde17008ae0a510c2fd001370ed135c7de43d9cb4968f14bdfa",
+      "pendingMode": "create",
+      "pendingOperation": "d6e91294-74f2-4463-b3e3-c3a50e807183",
+      "pendingStructureHash": "41a1a695a88a65ff27fa7830285577b4"
     },
     "evo1_aurora_fox": {
       "assetId": 87772383693151,
