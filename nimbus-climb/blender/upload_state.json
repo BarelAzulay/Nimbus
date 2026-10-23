@@ -4690,6 +4690,23 @@
       "structureHash": "6f4fae5fefe6bf14640e7d157360e050",
       "uploadedAt": "2026-10-23T18:22:50Z"
     },
+    "home_arena_1": {
+      "assetId": 138088594623572,
+      "contentHash": "46bc9778c7b16f06a8056449fe90e476",
+      "fileSha256": "54c1a50cd1ebe4fed97b07f8fdf0f9fcfd852656e6854a75cffc565d0c71b2da",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-10-23T19:55:37.286Z",
+      "revisionId": "1",
+      "structureHash": "365b0f84fc586dfc3e70498324ab2ea0",
+      "uploadedAt": "2026-10-23T19:55:37Z"
+    },
+    "home_arena_1_low": {
+      "pendingContentHash": "079e1773061f07475e5d3836fd31c212",
+      "pendingFileSha256": "9dcbc97c22ebf59fa4751f39151c3fc9d6cbf87ced0796ae51a16dc8a2018320",
+      "pendingMode": "create",
+      "pendingOperation": "ac269e0c-21c8-4769-b9c8-13e76ec9b67a",
+      "pendingStructureHash": "d6c1d4627b076e58020f95d7631c9e7c"
+    },
     "hyb_axolotl": {
       "assetId": 75807933596369,
       "contentHash": "cecdbf74c97f6287409212b6670ec06e",

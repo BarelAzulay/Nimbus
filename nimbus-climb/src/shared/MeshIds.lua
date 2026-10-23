@@ -471,6 +471,7 @@ return {
 	gate_home = 74934625058064,
 	gate_obby = 93622901255900,
 	gate_ring = 124464085210906,
+	home_arena_1 = 138088594623572,
 	hyb_axolotl = 75807933596369,
 	hyb_bear = 108711409203090,
 	hyb_bear_ears = 70693081745401,
