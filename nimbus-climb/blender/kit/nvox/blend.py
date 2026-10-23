@@ -227,6 +227,7 @@ def verify_fbx(path, model):
 VIEWS = {
     # name: (yaw degrees around the model's up axis, pitch degrees) ; yaw 0 = looking at the face
     "front": (0, 8), "threequarter": (-38, 22), "side": (-90, 6), "back": (180, 10), "hero": (-28, 14),
+    "top": (-20, 78),
 }
 
 
@@ -262,7 +263,10 @@ def setup_render(res=520, samples=48):
     return sc
 
 
-def render_views(objs_bounds, out_png, views=("front", "threequarter", "side", "back"), res=520, label=None):
+def render_views(objs_bounds, out_png, views=("front", "threequarter", "side", "back"), res=520, label=None, bg=None,
+                 cols=None):
+    """bg: optional ((r, g, b) bottom, (r, g, b) top) 0..255 of the background gradient (default: a soft sky);
+    cols: tiles per row (default 2 for four views, else all in one row)"""
     lo, hi = objs_bounds
     centre = (np.asarray(lo) + np.asarray(hi)) / 2
     ext = float(np.max(np.asarray(hi) - np.asarray(lo)))
@@ -291,14 +295,16 @@ def render_views(objs_bounds, out_png, views=("front", "threequarter", "side", "
         # alpha over a soft sky gradient (bottom-up rows: row 0 is the bottom)
         t = np.linspace(0, 1, res, dtype=np.float32)[:, None, None]
         top, bottom = np.array([172, 208, 246], np.float32) / 255, np.array([236, 244, 252], np.float32) / 255
-        bg = bottom * (1 - t) + top * t
+        if bg is not None:
+            bottom, top = np.array(bg[0], np.float32) / 255, np.array(bg[1], np.float32) / 255
+        grad = bottom * (1 - t) + top * t
         a = px[:, :, 3:4]
-        rgb = px[:, :, :3] * a + bg * (1 - a)
+        rgb = px[:, :, :3] * a + grad * (1 - a)
         tiles.append(np.concatenate([rgb, np.ones_like(a)], 2))
         bpy.data.images.remove(img)
     os.remove(tmp)
     n = len(tiles)
-    cols = 2 if n == 4 else n
+    cols = cols or (2 if n == 4 else n)
     rows = (n + cols - 1) // cols
     sheet = np.ones((rows * res, cols * res, 4), np.float32)
     for i, t in enumerate(tiles):

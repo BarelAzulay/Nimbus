@@ -287,11 +287,25 @@ def resolve_budget(cat, entry):
     return dict((cat.get("budgets") or {}).get(b or entry["type"], {}))
 
 
+def _lock(fh):
+    """exclusive lock on an open file (fcntl on Linux / macOS, msvcrt on Windows: both wait for the other build)"""
+    try:
+        import fcntl
+    except ImportError:  # Windows
+        import msvcrt
+        while True:
+            try:
+                msvcrt.locking(fh.fileno(), msvcrt.LK_LOCK, 1)
+                return
+            except OSError:
+                time.sleep(0.2)
+    fcntl.flock(fh, fcntl.LOCK_EX)
+
+
 def write_index(updates):
     # several builds (one per catalog class) may run at once: read-merge-write under a lock
-    import fcntl
     with open(INDEX + ".lock", "w") as lock:
-        fcntl.flock(lock, fcntl.LOCK_EX)
+        _lock(lock)
         idx = {}
         if os.path.exists(INDEX):
             with open(INDEX) as fh:
@@ -343,6 +357,9 @@ def render_previews(cat, names=None):
     for pv in cat.get("previews", []):
         if names and pv["name"] not in names:
             continue
+        if pv.get("sheet"):
+            render_sheet(pv)
+            continue
         mans = {}
         for k in [pv["body"]] + pv.get("attach", []):
             with open(os.path.join(OUT, k + ".tris.json.gz"), "rb") as fh:
@@ -387,11 +404,74 @@ def render_previews(cat, names=None):
         print("preview", png)
 
 
+def render_sheet(pv):
+    """a contact sheet of single-part keys (catalog vfx): per key a front + three-quarter view, the part tinted with
+    pv["tint"][key] (r, g, b 0..255, as the runtime will), Neon glow over a dark battle-sky background, labelled with
+    the key and its size in studs; written to blender/<pv["out"]> (Pillow composes the tiles)"""
+    import gzip
+    from PIL import Image, ImageDraw, ImageFont
+    from nvox import blend as B
+    from nvox.build import ModelSpec
+    res = int(pv.get("res", 300))
+    views = tuple(pv.get("views", ("front", "threequarter")))
+    out = os.path.join(HERE, pv["out"])
+    tmpdir = os.path.join(os.path.dirname(out), "_tiles")
+    os.makedirs(tmpdir, exist_ok=True)
+    keys = pv["sheet"]
+    cols = int(pv.get("cols", 4))
+    label_h = 26
+    tile_w, tile_h = res * len(views), res + label_h
+    rows = (len(keys) + cols - 1) // cols
+    sheet = Image.new("RGB", (cols * tile_w + (cols + 1) * 6, rows * tile_h + (rows + 1) * 6), (14, 16, 30))
+    draw = ImageDraw.Draw(sheet)
+    try:
+        font = ImageFont.load_default(size=17)
+    except TypeError:
+        font = ImageFont.load_default()
+    for i, k in enumerate(keys):
+        with open(os.path.join(OUT, k + ".tris.json.gz"), "rb") as fh:
+            tris = json.loads(gzip.decompress(fh.read()))
+        with open(os.path.join(OUT, k + ".manifest.json")) as fh:
+            man = json.load(fh)
+        tint = pv.get("tint", {}).get(k, (255, 255, 255))
+        B.reset_scene()
+        B.setup_render(res, samples=int(pv.get("samples", 32)))
+        m = ModelSpec(man["key"], man["kind"], 0.1, 1)
+        for p in man["parts"]:
+            t = tris["parts"][p["name"]]
+            o = m.obj(p["name"], group=p["group"], region=p["key"], shade=p["shade"], recipe=["rgb"] + list(tint),
+                      material=p["material"], baked=False)
+            v = np.asarray(t["v"], float).reshape(-1, 3, 3) + np.asarray(t["center"], float)
+            for tri, col in zip(v, t["c"]):
+                o.quads.append((tri, tuple(c / 255 for c in col)))
+        made = B.make_objects(m, {})
+        pts = np.array([list(ob.matrix_world @ v.co) for ob in made for v in ob.data.vertices])
+        lo_r, hi_r = B.PM @ pts.min(0), B.PM @ pts.max(0)
+        png = os.path.join(tmpdir, k + ".png")
+        B.render_views((np.minimum(lo_r, hi_r), np.maximum(lo_r, hi_r)), png, views=views, res=res,
+                       bg=((22, 26, 52), (52, 44, 86)), cols=len(views))
+        r, c = i // cols, i % cols
+        x0, y0 = 6 + c * (tile_w + 6), 6 + r * (tile_h + 6)
+        with Image.open(png) as im:
+            sheet.paste(im.convert("RGB"), (x0, y0 + label_h))
+        size = man["bounds"]["size"]
+        draw.text((x0 + 6, y0 + 4), "%s   %s studs   %d tris" % (k, " x ".join("%g" % round(s, 2) for s in size),
+                                                                man["tris"]["total"]), fill=(235, 238, 255), font=font)
+        print("sheet tile", k)
+    os.makedirs(os.path.dirname(out), exist_ok=True)
+    sheet.save(out)
+    print("preview", out)
+
+
 def main():
     if os.environ.get("PYTHONHASHSEED") != "0":
         # Blender's FBX exporter derives object UIDs from Python string hashes: a fixed hash seed keeps the FBX bytes
         # identical from run to run (the manifests' contentHash never depends on it)
         env = dict(os.environ, PYTHONHASHSEED="0")
+        if os.name == "nt":
+            # Windows has no exec: os.execve starts a new process and returns to the shell at once (no exit code)
+            import subprocess
+            sys.exit(subprocess.call([sys.executable] + sys.argv, env=env))
         os.execve(sys.executable, [sys.executable] + sys.argv, env)
     ap = argparse.ArgumentParser(description="Build Nimbus Climb mesh keys (blender/catalog/*.json)")
     ap.add_argument("--class", dest="classes", action="append", default=[])
