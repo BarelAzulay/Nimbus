@@ -55,6 +55,7 @@ return {
 	boss_storm_titan_Head = 133626627996771,
 	boss_storm_titan_Head_low = 71504940099722,
 	cal_axes = 115959775479149,
+	cloud_altar = 137440391068041,
 	dragon_head = 116218725057320,
 	dragon_jaw = 121409819131574,
 	dragon_leg = 131143785042965,

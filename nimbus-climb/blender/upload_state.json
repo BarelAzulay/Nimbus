@@ -530,6 +530,26 @@
       "structureHash": "08d674cc473038cbe9002d9d6da8aff5",
       "uploadedAt": "2026-10-20T21:33:50Z"
     },
+    "cloud_altar": {
+      "assetId": 137440391068041,
+      "contentHash": "1d921ca2a705c31d456d85c4b0fa3231",
+      "fileSha256": "f1fef24849b95a7af0383aeee4ae40a4f791e0915df3ef260483b7cca68f6216",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-10-23T18:48:08.388Z",
+      "revisionId": "1",
+      "structureHash": "36ff6c1b32e6a932cada6e06d20d3874",
+      "uploadedAt": "2026-10-23T18:48:09Z"
+    },
+    "cloud_garden_blossom": {
+      "pendingCreate": {
+        "contentHash": "15dad46053debef786e889e532eaa6a8",
+        "displayName": "NC Cloud Garden Blossom",
+        "fileSha256": "0bc54e6008418742ef90d6d8259cdded187b06abf65838356fd93cbaab805fb9",
+        "startedAt": "2026-10-23T18:48:09Z",
+        "structureHash": "7af6823bb546f2d97348cea4749af458",
+        "why": "interrupted"
+      }
+    },
     "dragon_head": {
       "assetId": 116218725057320,
       "contentHash": "ce4d10247f3892b411bafc8579004e92",
