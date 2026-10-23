@@ -39,12 +39,19 @@
 --                engine starts the effect so that impact lands on the server event, never later),
 --                Core = { Key (vfx_* MeshIds key), Color, Material, Path ("Projectile"|"Swipe"|"Ground"|"Self"|"Allies"|
 --                "Area"), Glow, InnerColor?, RimColor?, RimShift?, Upgraded, Speed?, Count?, Scale?, ... shape flags },
---                Layers = { { Id, Kind ("Emitter"|"Beam"|"Trail"|"Light"|"Ring"|"Decal"), Beat, At, Texture?, Key?, Color,
---                Count?, Size?, ... } }, Alive = { Kind ("Emitter"|"Beam"|"Decal"|"Mesh"), Texture?, Key?, Motion, Color,
---                Count, Seconds, Text } ({} = none) }
+--                Layers = { { Id, Kind ("Emitter"|"Beam"|"Trail"|"Light"|"Ring"|"Decal"|"Mesh"), Beat, At, Texture?, Key?,
+--                Color, Count?, Size?, Motion?, Delay?, ... } }, Alive = { Kind ("Emitter"|"Beam"|"Decal"|"Mesh"), Texture?,
+--                Key?, Motion, Color, Count, Seconds, Text } ({} = none) }
+--     Layer kinds: Emitter = a flipbook ParticleEmitter (4x4 sheet); Beam / Trail = a grid-1 strip or untextured; Light =
+--     a PointLight; Ring = an expanding solid vfx_* mesh (vfx_ring / vfx_shell); Decal = a ground-flat layer (a 4x4 sheet
+--     played as a flat flipbook particle, or an untextured glow disc); Mesh = a solid vfx_* piece with a Motion (e.g.
+--     Nature's roots erupting). Burst Motion: "Geyser" (an upward column), "Implode" (contracts inward first), "Shatter",
+--     "Burst"; Delay = seconds after the beat starts (Shadow's glass shatters after the implosion).
 --     Layer At: "Source" (mouth / paws), "Core" (on the moving core), "Path" (source -> target), "Target", "Ground" (under
---     the hit point), "Above" (over the target), "Self", "Allies". Counts are FULL density, already scaled by band
---     (CountScale): the engine multiplies them by Density and its quality factor. Recipes are fresh tables every call.
+--     the hit point), "Above" (over the target), "Behind" (behind the caster), "Self", "Allies". Counts are FULL density:
+--     ladder / kind layers x CountScale[band]; the element's own impact detail and alive detail x DetailScale[band]
+--     (reduced at band 1, growing by band). The engine multiplies them by Density and its quality factor. Recipes are
+--     fresh tables every call.
 --   AttackFxCatalog.Unit(info) -> { Element, Rarity, Stage, PetId, Ranged }   from a BattleSim unitInfo (petId, key, look,
 --                                                                  element, elements, evo, ranged): Rarity = an explicit
 --                                                                  info.rarity / look.Rarity, else PetCatalog.Get(petId | key's
@@ -131,7 +138,8 @@ AttackFxCatalog.Sizes = { Common = 1.0, Uncommon = 1.05, Rare = 1.1, Epic = 1.15
 AttackFxCatalog.StageBonus = { [0] = 0, [1] = 0.05, [2] = 0.10 } -- Evolved +5%, Evolved II +10%
 AttackFxCatalog.SizeCap = 1.4
 AttackFxCatalog.OthersDensity = 0.6 -- other players' and wild pets' effects (own team: 1)
-AttackFxCatalog.CountScale = { 1, 1.2, 1.4, 1.6 } -- particle counts per band (full density)
+AttackFxCatalog.CountScale = { 1, 1.2, 1.4, 1.6 } -- particle counts per band: ladder / kind layers (full density)
+AttackFxCatalog.DetailScale = { 0.5, 0.75, 1, 1.25 } -- the element's own impact + alive detail: every rarity, reduced at band 1
 
 -- the core per band: Color / Inner / Rim name Palette entries ("White" = pure white)
 AttackFxCatalog.CoreLook = {
@@ -141,11 +149,12 @@ AttackFxCatalog.CoreLook = {
 	[4] = { Color = "White", Rim = "Edge", RimShift = true, Glow = 1, Upgraded = true, Material = "Neon" }, -- white plasma, colour-shifting rim
 }
 
--- the layers each rarity adds, in rarity order (each keeps everything below it)
+-- the layers each rarity adds, in rarity order (each keeps everything below it). The element's OWN impact detail
+-- (Elements[e].Detail + the attack's own Layers) and its alive detail are NOT on the ladder: they show at every rarity.
 AttackFxCatalog.Ladder = {
 	{ Tier = "Common", Add = { "Charge", "Burst" } }, -- core shape + impact burst (+ the charge glow of beat 1)
 	{ Tier = "Uncommon", Add = { "Trail" } }, -- + element trail
-	{ Tier = "Rare", Add = { "Slash", "GroundGlow", "Debris" } }, -- + crescent slash arc, ground glow (and the impact debris)
+	{ Tier = "Rare", Add = { "Slash", "GroundGlow" } }, -- + crescent slash arc, ground glow
 	{ Tier = "Epic", Add = { "Shockwave", "Flash" } }, -- + shockwave ring, light flash
 	{ Tier = "Legendary", Add = { "Afterimage", "Bloom" } }, -- + afterimages, bloom pulse (camera punch: own pet)
 	{ Tier = "Mythic", Add = { "DoubleArc", "Field" } }, -- + double arcs, a ground-only lingering field
@@ -159,8 +168,7 @@ AttackFxCatalog.LayerSlots = {
 	Burst = { Kind = "Emitter", Texture = "$Burst", Beat = "Impact", At = "$Hit", Tint = "Mid", Count = 12, Size = 2.5 },
 	Trail = { Kind = "Emitter", Texture = "$Trail", Beat = "Travel", At = "Core", Tint = "Mid", Count = 10, Size = 1 },
 	Slash = { Kind = "Emitter", Texture = "fx_slash", Beat = "Release", At = "Source", Tint = "Core", Count = 1, Size = 4 },
-	GroundGlow = { Kind = "Decal", Texture = "$Ground", Beat = "Impact", At = "Ground", Tint = "Edge", Size = 5, Seconds = 0.6 },
-	Debris = { Kind = "Emitter", Texture = "$Debris", Beat = "Impact", At = "$Hit", Tint = "$DebrisTint", Count = 8, Size = 1.2 },
+	GroundGlow = { Kind = "Decal", Beat = "Impact", At = "Ground", Tint = "Edge", Size = 5, Seconds = 0.6 }, -- an untextured glow disc
 	Shockwave = { Kind = "Ring", Key = "vfx_ring", Beat = "Impact", At = "Ground", Tint = "Mid", Grow = 3 },
 	Flash = { Kind = "Light", Beat = "Impact", At = "$Hit", Tint = "Core", Brightness = 3, Range = 12 },
 	Afterimage = { Kind = "Trail", Texture = "fx_speedlines", Beat = "Travel", At = "Core", Tint = "Edge", Afterimages = 2 },
@@ -207,39 +215,55 @@ AttackFxCatalog.Textures = {
 }
 
 ----------------------------------------------------------------------
--- Elements: normal attacks (spec table). Sheets: Burst (impact, Common up), Trail (Uncommon up), Debris (Rare up),
--- Ground (ground glow / lingering field decal; nil = an untextured glow), Motif (heal spirals, victory), Arc (the Beam
--- special's spiral strip). Melee / Ranged = the core + any slot overrides + extra Layers ({ From = tier }).
+-- Elements: normal attacks (spec table). Sheets: Burst (the impact burst, Common up; BurstMotion = how it moves),
+-- Trail (Uncommon up), Ground (the Mythic lingering field decal; nil = an untextured glow), Motif (heal spirals,
+-- victory), Arc (the Beam special's spiral strip). Detail = the element's OWN impact detail (spec "Impact" column):
+-- every attack that hits an enemy shows it at EVERY rarity (counts x DetailScale: reduced at band 1, growing by band).
+-- Alive = the spec "Alive" detail (every rarity too). Melee / Ranged = the core + slot overrides + their own Layers
+-- (attack-specific detail, also every rarity).
 ----------------------------------------------------------------------
 AttackFxCatalog.Elements = {
 	Water = {
 		Palette = { Core = rgb(214, 244, 255), Mid = rgb(64, 148, 236), Edge = rgb(28, 96, 204), Hot = rgb(236, 255, 255), Smoke = rgb(150, 190, 230) },
 		Material = "Neon",
-		Burst = "fx_splash", Trail = "fx_droplets", Debris = "fx_sparkle", DebrisTint = "Core", Ground = "fx_ripple", Motif = "fx_droplets", Arc = "fx_speedlines",
+		Burst = "fx_splash", BurstMotion = "Geyser", Trail = "fx_droplets", Ground = "fx_ripple", Motif = "fx_droplets", Arc = "fx_speedlines",
 		Melee = { Key = "vfx_crescent", Path = "Swipe", Text = "crescent wave slash" },
 		Ranged = { Key = "vfx_orb", Path = "Projectile", Spin = true, Text = "spinning water orb, droplet trail" },
 		Impact = "geyser burst + ripple ring",
-		Alive = { Kind = "Emitter", Texture = "fx_droplets", Motion = "Bounce", Count = 5, Seconds = 0.7, Text = "droplets bounce on the ground, then pop" },
+		Detail = {
+			-- the geyser is the Burst itself (BurstMotion "Geyser": an upward fx_splash column)
+			{ Id = "Droplets", Kind = "Emitter", Texture = "fx_droplets", Beat = "Impact", At = "$Hit", Motion = "Fling", Count = 10, Size = 0.8 },
+			{ Id = "Ripple", Kind = "Decal", Texture = "fx_ripple", Beat = "Impact", At = "Ground", Size = 5, Seconds = 0.8 },
+		},
+		Alive = { Kind = "Emitter", Texture = "fx_droplets", Motion = "Bounce", Count = 6, Seconds = 0.7, Text = "droplets bounce on the ground, then pop" },
 		Rain = { Key = "vfx_orb", Texture = "fx_droplets", Kind = "Emitter", Scale = 0.3, Text = "a downpour" },
 	},
 	Flame = {
 		Palette = { Core = rgb(255, 232, 150), Mid = rgb(255, 122, 40), Edge = rgb(214, 54, 22), Hot = rgb(140, 200, 255), Smoke = rgb(74, 56, 48) },
 		Material = "Neon",
-		Burst = "fx_flame", Trail = "fx_embers", Debris = "fx_smoke", DebrisTint = "Smoke", Ground = nil, Motif = "fx_embers", Arc = "fx_speedlines",
+		Burst = "fx_flame", BurstMotion = "Burst", Trail = "fx_embers", Ground = nil, Motif = "fx_embers", Arc = "fx_speedlines",
 		Melee = { Key = "vfx_crescent", Path = "Swipe", Text = "crescent of fire" },
 		Ranged = { Key = "vfx_spear", Path = "Projectile", Text = "flame spear, ember trail" },
 		Impact = "fire burst + embers + scorch glow",
-		Alive = { Kind = "Emitter", Texture = "fx_embers", Motion = "SwirlUp", Count = 6, Seconds = 0.9, Text = "embers swirl upward on heat" },
+		Detail = {
+			{ Id = "Scorch", Kind = "Decal", Beat = "Impact", At = "Ground", Tint = "Edge", Size = 4, Seconds = 0.9 }, -- the scorch glow
+			{ Id = "Smoke", Kind = "Emitter", Texture = "fx_smoke", Beat = "Impact", At = "$Hit", Tint = "Smoke", Motion = "Rise", Count = 6, Size = 1.6 },
+		},
+		Alive = { Kind = "Emitter", Texture = "fx_embers", Motion = "SwirlUp", Count = 8, Seconds = 0.9, Text = "embers swirl upward on heat" },
 		Rain = { Key = "vfx_spear", Texture = "fx_flame", Kind = "Emitter", Scale = 0.4, Text = "fire rain" },
 	},
 	Frost = {
 		Palette = { Core = rgb(240, 252, 255), Mid = rgb(150, 222, 248), Edge = rgb(86, 168, 232), Hot = rgb(255, 255, 255), Smoke = rgb(200, 230, 245) },
 		Material = "Glass",
-		Burst = "fx_iceshards", Trail = "fx_snow", Debris = "fx_frostmist", DebrisTint = "Smoke", Ground = "fx_frostmist", Motif = "fx_snow", Arc = "fx_speedlines",
+		Burst = "fx_iceshards", BurstMotion = "Shatter", Trail = "fx_snow", Ground = "fx_frostmist", Motif = "fx_snow", Arc = "fx_speedlines",
 		Melee = { Key = "vfx_spike", Path = "Ground", Count = 4, Text = "ice spikes burst from the ground along a path" },
 		Ranged = { Key = "vfx_shard", Path = "Projectile", Text = "sharp ice shard, snow trail" },
 		Impact = "crystal shatter + frost ring on the ground",
-		Alive = { Kind = "Mesh", Key = "vfx_shard", Motion = "Melt", Tint = "Mid", Count = 4, Seconds = 1.0, Text = "impact shards linger and visibly melt (~1 s)" },
+		Detail = {
+			{ Id = "FrostRing", Kind = "Decal", Texture = "fx_frostmist", Beat = "Impact", At = "Ground", Size = 5, Seconds = 1.0 },
+			{ Id = "FrostMist", Kind = "Emitter", Texture = "fx_frostmist", Beat = "Impact", At = "$Hit", Count = 5, Size = 1.5 },
+		},
+		Alive = { Kind = "Mesh", Key = "vfx_shard", Motion = "Melt", Tint = "Mid", Count = 5, Seconds = 1.0, Text = "impact shards linger and visibly melt (~1 s)" },
 		Rain = { Key = "vfx_shard", Texture = "fx_snow", Kind = "Emitter", Scale = 0.5, Text = "hail" },
 		Area = { Key = "vfx_spike", Count = 5 },
 	},
@@ -247,13 +271,24 @@ AttackFxCatalog.Elements = {
 		-- pink / yellow / cream only: Nature must read on green grass (no green-only colour anywhere)
 		Palette = { Core = rgb(255, 228, 120), Mid = rgb(255, 142, 192), Edge = rgb(240, 236, 150), Hot = rgb(255, 250, 214), Smoke = rgb(230, 210, 170) },
 		Material = "Neon",
-		Burst = "fx_petals", Trail = "fx_petals", Debris = "fx_leaves", DebrisTint = "Smoke", Ground = nil, Motif = "fx_petals", Arc = "fx_speedlines",
+		Burst = "fx_petals", BurstMotion = "Burst", Trail = "fx_petals", Ground = nil, Motif = "fx_petals", Arc = "fx_speedlines",
 		Melee = {
 			Key = "vfx_root", Path = "Ground", Count = 3, Text = "thorny roots erupt under the target",
-			Layers = { { Id = "Thorns", Kind = "Emitter", Texture = "fx_thorn", Beat = "Travel", At = "$Hit", Count = 3, Size = 2.5, From = "Common" } },
+			Layers = {
+				{ Id = "Thorns", Kind = "Emitter", Texture = "fx_thorn", Beat = "Travel", At = "$Hit", Count = 4, Size = 2.5 },
+				{ Id = "Leaves", Kind = "Emitter", Texture = "fx_leaves", Beat = "Impact", At = "$Hit", Count = 6, Size = 1 }, -- root burst debris
+			},
 		},
-		Ranged = { Key = "vfx_orb", Path = "Projectile", Scale = 0.7, Debris = "fx_sparkle", DebrisTint = "Core", Text = "glowing seed pod, pink / yellow petal trail" },
+		Ranged = {
+			Key = "vfx_orb", Path = "Projectile", Scale = 0.7, Text = "glowing seed pod, pink / yellow petal trail",
+			Layers = {
+				-- the root burst: the pod lands and roots erupt from the ground under the target
+				{ Id = "RootBurst", Kind = "Mesh", Key = "vfx_root", Beat = "Impact", At = "$Hit", Motion = "Erupt", Tint = "Edge", Count = 3, Scale = 0.6 },
+				{ Id = "PodGlow", Kind = "Emitter", Texture = "fx_sparkle", Beat = "Impact", At = "$Hit", Tint = "Core", Count = 6, Size = 0.8 },
+			},
+		},
 		Impact = "root burst + petals",
+		Detail = {}, -- the petals are the Burst; the vines are the Alive detail
 		Alive = { Kind = "Mesh", Key = "vfx_root", Motion = "Wrap", Tint = "Edge", Count = 3, Seconds = 0.6, Text = "vines briefly wrap the target" },
 		Rain = { Key = "vfx_orb", Texture = "fx_petals", Kind = "Emitter", Scale = 0.25, Text = "a petal shower" },
 		Area = { Key = "vfx_root", Count = 4 },
@@ -261,51 +296,64 @@ AttackFxCatalog.Elements = {
 	Earth = {
 		Palette = { Core = rgb(255, 204, 120), Mid = rgb(178, 128, 80), Edge = rgb(110, 78, 50), Hot = rgb(255, 150, 60), Smoke = rgb(196, 170, 130) },
 		Material = "SmoothPlastic", -- rock; the glowing seam comes in with the band 2 inner core
-		Burst = "fx_rock", Trail = "fx_dust", Debris = "fx_dust", DebrisTint = "Smoke", Ground = "fx_crack", Motif = "fx_sparkle", Arc = "fx_speedlines",
+		Burst = "fx_rock", BurstMotion = "Burst", Trail = "fx_dust", Ground = "fx_crack", Motif = "fx_sparkle", Arc = "fx_speedlines",
 		Melee = { Key = "vfx_spike", Path = "Ground", Count = 3, Text = "ground slam, rock spikes" },
 		Ranged = { Key = "vfx_chunk", Path = "Projectile", Scale = 2.2, Text = "boulder, dust trail" },
 		Impact = "rock breaks into voxel chunks + dust + ground crack",
-		Alive = { Kind = "Mesh", Key = "vfx_chunk", Motion = "Bounce", Tint = "Mid", Count = 5, Seconds = 0.8, Text = "chunks scatter and bounce" },
+		Detail = {
+			{ Id = "Dust", Kind = "Emitter", Texture = "fx_dust", Beat = "Impact", At = "$Hit", Count = 8, Size = 1.6 },
+			{ Id = "GroundCrack", Kind = "Decal", Texture = "fx_crack", Beat = "Impact", At = "Ground", Size = 5, Seconds = 1.0 },
+		},
+		Alive = { Kind = "Mesh", Key = "vfx_chunk", Motion = "Bounce", Tint = "Mid", Count = 6, Seconds = 0.8, Text = "chunks scatter and bounce" },
 		Rain = { Key = "vfx_chunk", Texture = "fx_rock", Kind = "Emitter", Scale = 1.2, Text = "a rock fall" },
 		Area = { Key = "vfx_spike", Count = 5 },
 	},
 	Storm = {
 		Palette = { Core = rgb(224, 236, 255), Mid = rgb(110, 128, 255), Edge = rgb(60, 72, 210), Hot = rgb(255, 252, 170), Smoke = rgb(120, 124, 150) },
 		Material = "Neon",
-		Burst = "fx_sparks", Trail = "fx_sparks", Debris = "fx_streak", DebrisTint = "Core", Ground = nil, Motif = "fx_sparks", Arc = "fx_lightning",
+		Burst = "fx_glow", BurstMotion = "Burst", Trail = "fx_sparks", Ground = nil, Motif = "fx_sparks", Arc = "fx_lightning",
 		Melee = {
 			Key = "vfx_crescent", Path = "Swipe", Text = "electric claw, crackling arcs",
-			Layers = { { Id = "Arcs", Kind = "Beam", Texture = "fx_lightning", Beat = "Travel", At = "$Hit", Count = 2, From = "Common" } },
+			Layers = { { Id = "Arcs", Kind = "Beam", Texture = "fx_lightning", Beat = "Travel", At = "$Hit", Count = 2 } },
 		},
 		Ranged = {
 			Key = "vfx_shard", Path = "Projectile", Speed = 120, Scale = 0.8, Text = "jagged lightning bolt",
-			Layers = { { Id = "Bolt", Kind = "Beam", Texture = "fx_lightning", Beat = "Travel", At = "Path", Width = 1.2, From = "Common" } },
+			Layers = { { Id = "Bolt", Kind = "Beam", Texture = "fx_lightning", Beat = "Travel", At = "Path", Width = 1.2 } },
 		},
 		Impact = "electric burst + zig-zag sparks",
+		Detail = {
+			{ Id = "ZigZag", Kind = "Emitter", Texture = "fx_sparks", Beat = "Impact", At = "$Hit", Tint = "Core", Count = 10, Size = 1.2 },
+		},
 		Alive = { Kind = "Beam", Texture = "fx_lightning", Motion = "Strike", Count = 2, Seconds = 0.6, Text = "stray bolts strike the ground nearby" },
 		Rain = { Key = "vfx_shard", Texture = "fx_lightning", Kind = "Beam", Scale = 0.6, Text = "lightning strikes" },
-		Area = { Layers = { { Id = "Bolt", Kind = "Beam", Texture = "fx_lightning", Beat = "Travel", At = "Path", Width = 1.6, From = "Common" } } },
+		Area = { Layers = { { Id = "Bolt", Kind = "Beam", Texture = "fx_lightning", Beat = "Travel", At = "Path", Width = 1.6 } } },
 	},
 	Celestial = {
 		Palette = { Core = rgb(255, 250, 224), Mid = rgb(255, 212, 104), Edge = rgb(236, 164, 64), Hot = rgb(255, 255, 255), Smoke = rgb(255, 236, 190) },
 		Material = "Neon",
-		Burst = "fx_stars", Trail = "fx_sparkle", Debris = "fx_rays", DebrisTint = "Core", Ground = nil, Motif = "fx_stars", Arc = "fx_speedlines",
+		Burst = "fx_stars", BurstMotion = "Burst", Trail = "fx_sparkle", Ground = nil, Motif = "fx_stars", Arc = "fx_speedlines",
 		Melee = { Key = "vfx_crescent", Path = "Swipe", Text = "golden starlight slash" },
 		Ranged = { Key = "vfx_star", Path = "Projectile", Spin = true, Text = "shooting star, sparkle tail" },
 		Impact = "star burst + light rays",
+		Detail = {
+			{ Id = "Rays", Kind = "Emitter", Texture = "fx_rays", Beat = "Impact", At = "$Hit", Count = 4, Size = 4 },
+		},
 		Alive = { Kind = "Beam", Motion = "Connect", Tint = "Core", Count = 4, Seconds = 0.8, Text = "constellation lines join the stars" },
 		Rain = { Key = "vfx_star", Texture = "fx_stars", Kind = "Emitter", Scale = 0.5, Text = "falling stars" },
 	},
 	Shadow = {
 		Palette = { Core = rgb(214, 156, 255), Mid = rgb(128, 72, 178), Edge = rgb(44, 22, 66), Hot = rgb(255, 96, 224), Smoke = rgb(60, 40, 80) },
 		Material = "Neon",
-		Burst = "fx_voidring", Trail = "fx_wisps", Debris = "fx_darkglass", DebrisTint = "Smoke", Ground = nil, Motif = "fx_wisps", Arc = "fx_speedlines",
+		-- the void implosion is the Burst itself (BurstMotion "Implode": the fx_voidring contracts inward), then the glass
+		Burst = "fx_voidring", BurstMotion = "Implode", Trail = "fx_wisps", Ground = nil, Motif = "fx_wisps", Arc = "fx_speedlines",
 		Melee = { Key = "vfx_crescent", Path = "Swipe", Text = "dark claw, purple wisps" },
 		Ranged = { Key = "vfx_orb", Path = "Projectile", Text = "shadow orb pulling wisps" },
 		Impact = "void implosion, then black glass shatters with glitchy purple sparks",
-		-- the glitchy purple sparks join the glass shatter (every attack of the element, Rare up)
-		Layers = { { Id = "GlitchSparks", Kind = "Emitter", Texture = "fx_sparks", Beat = "Impact", At = "$Hit", Tint = "Hot", Count = 8, Size = 1, From = "Rare" } },
-		Alive = { Kind = "Decal", Motion = "Darken", Tint = "Edge", Count = 1, Seconds = 0.9, Text = "the floor darkens under the wisps" },
+		Detail = {
+			{ Id = "Glass", Kind = "Emitter", Texture = "fx_darkglass", Beat = "Impact", At = "$Hit", Delay = 0.12, Count = 8, Size = 1.2 },
+			{ Id = "GlitchSparks", Kind = "Emitter", Texture = "fx_sparks", Beat = "Impact", At = "$Hit", Tint = "Hot", Delay = 0.12, Count = 8, Size = 1 },
+		},
+		Alive = { Kind = "Decal", Motion = "Darken", Tint = "Edge", Count = 2, Seconds = 0.9, Text = "the floor darkens under the wisps" },
 		Rain = { Key = "vfx_shard", Texture = "fx_wisps", Kind = "Emitter", Scale = 0.5, Text = "falling shadow shards" },
 	},
 }
@@ -346,9 +394,9 @@ AttackFxCatalog.Shapes = {
 ----------------------------------------------------------------------
 -- Specials (spec "the 9 kinds, recoloured and retextured per element"). Core.Key "$RainKey" = the element's Rain.
 -- Slots override the element's sheets for this kind; Layers are the kind's own (From = the tier they join, default
--- Common); Skip = ladder layers the kind never draws.
+-- Common); Skip = ladder layers the kind never draws; Detail = false = no element impact detail (the support kinds).
 ----------------------------------------------------------------------
-local SUPPORT_SKIP = { Trail = true, Slash = true, Debris = true, Afterimage = true, DoubleArc = true }
+local SUPPORT_SKIP = { Trail = true, Slash = true, Afterimage = true, DoubleArc = true }
 
 AttackFxCatalog.Specials = {
 	Blast = {
@@ -377,7 +425,7 @@ AttackFxCatalog.Specials = {
 		Beats = { Charge = 0.4, Travel = 0.35, Linger = 0.6 },
 		Layers = {
 			{ Id = "Leap", Kind = "Trail", Texture = "fx_speedlines", Beat = "Travel", At = "Self", Tint = "Edge", Afterimages = 3 },
-			{ Id = "Crack", Kind = "Decal", Texture = "fx_crack", Beat = "Impact", At = "Ground", Size = 6, Seconds = 0.8 },
+			{ Id = "SlamCrack", Kind = "Decal", Texture = "fx_crack", Beat = "Impact", At = "Ground", Size = 6, Seconds = 0.8 },
 		},
 		Skip = { Trail = true },
 	},
@@ -393,7 +441,7 @@ AttackFxCatalog.Specials = {
 	},
 	Freeze = {
 		Text = "a crystal cage in the element's colour locks the target",
-		Core = { Key = "vfx_cage", Path = "Ground", Material = "Glass", Rise = true },
+		Core = { Key = "vfx_cage", Path = "Ground", Material = "Glass", KeepMaterial = true, Rise = true }, -- Glass at every band
 		Beats = { Charge = 0.4, Travel = 0.2, Linger = 0.7 },
 		Layers = { { Id = "Lock", Kind = "Light", Beat = "Impact", At = "$Hit", Tint = "Core", Brightness = 2, Range = 8 } },
 		Skip = { Trail = true, Slash = true, Afterimage = true },
@@ -406,14 +454,16 @@ AttackFxCatalog.Specials = {
 		Layers = { { Id = "Spiral", Kind = "Emitter", Texture = "$Motif", Beat = "Travel", At = "Allies", Tint = "Core", Spiral = true, Count = 10, Size = 1 } },
 		BurstShape = "Plus",
 		Skip = SUPPORT_SKIP,
+		Detail = false, -- lands on allies: no element impact detail
 	},
 	Shield = {
 		Text = "a hexagon bubble around each ally, rippling when hit",
-		Core = { Key = "vfx_shell", Path = "Allies", Material = "Glass", Transparency = 0.6 },
+		Core = { Key = "vfx_shell", Path = "Allies", Material = "Glass", KeepMaterial = true, Transparency = 0.6 }, -- Glass at every band
 		Beats = { Charge = 0.4, Travel = 0.2, Linger = 0.8 },
 		Slots = { Burst = "fx_hexshield" },
 		Layers = {},
 		Skip = SUPPORT_SKIP,
+		Detail = false, -- lands on allies: no element impact detail
 	},
 	Rally = {
 		Text = "the pet roars; rings pulse outward; allies light up",
@@ -422,6 +472,7 @@ AttackFxCatalog.Specials = {
 		Slots = { Burst = "fx_shock" },
 		Layers = { { Id = "AllyGlow", Kind = "Light", Beat = "Impact", At = "Allies", Tint = "Core", Brightness = 2, Range = 8 } },
 		Skip = SUPPORT_SKIP,
+		Detail = false, -- lands on allies: no element impact detail
 	},
 	Haste = {
 		Text = "wind-streak trails and speed lines on allies",
@@ -430,20 +481,21 @@ AttackFxCatalog.Specials = {
 		Slots = { Burst = "fx_streak" },
 		Layers = { { Id = "Wind", Kind = "Trail", Texture = "fx_speedlines", Beat = "Linger", At = "Allies", Tint = "Core" } },
 		Skip = SUPPORT_SKIP,
+		Detail = false, -- lands on allies: no element impact detail
 	},
 }
 
 ----------------------------------------------------------------------
 -- Reactions: hit reaction, KO poof, victory sparkle (small; no element extras, no alive detail)
 ----------------------------------------------------------------------
-local REACTION_SKIP = { Charge = true, Trail = true, Slash = true, Debris = true, Afterimage = true, DoubleArc = true, Field = true }
+local REACTION_SKIP = { Charge = true, Trail = true, Slash = true, Afterimage = true, DoubleArc = true, Field = true }
 
 AttackFxCatalog.Reactions = {
 	Hurt = {
 		Text = "quick squash + flinch, a flash of the hit element",
 		Core = { Key = "vfx_orb", Path = "Self", Scale = 0.45, Flash = true },
 		Beats = { Charge = 0, Release = 0, Travel = 0, Linger = 0.4 },
-		Skip = { Charge = true, Trail = true, Slash = true, GroundGlow = true, Debris = true, Shockwave = true, Afterimage = true, Bloom = true, DoubleArc = true, Field = true },
+		Skip = { Charge = true, Trail = true, Slash = true, GroundGlow = true, Shockwave = true, Afterimage = true, Bloom = true, DoubleArc = true, Field = true },
 	},
 	Ko = {
 		Text = "tumble + element-coloured poof",
@@ -574,8 +626,9 @@ end
 local REACTIONS = AttackFxCatalog.Reactions
 local HIT_AT = { Projectile = "Target", Swipe = "Target", Ground = "Target", Area = "Target", Self = "Self", Allies = "Allies" }
 
--- the attack definition: { Core, Beats, Skip, Layers (list of lists), Slots (list, strongest first), Alive?, Extras?,
--- Kind?, Shape?, Text, Special? }
+-- the attack definition: { Core, Beats, Skip, Layers (lists: kind / reaction layers), Detail (lists: the attack's own
+-- element detail, e.g. Nature's thorns), Slots (list), Alive?, Extras? (= the element's impact detail), Kind?, Shape?,
+-- Text, Special? }
 local function attackDef(req, element, sig)
 	local attack = req.Attack
 	if attack == "Melee" or attack == "Ranged" then
@@ -585,7 +638,7 @@ local function attackDef(req, element, sig)
 		if attack == "Melee" and entry.Path == "Ground" then
 			beats.Travel = base.GroundTravel
 		end
-		return { Core = entry, Beats = beats, Skip = {}, Layers = { entry.Layers }, Slots = { entry }, Alive = true, Extras = true, Text = entry.Text }
+		return { Core = entry, Beats = beats, Skip = {}, Layers = {}, Detail = { entry.Layers }, Slots = { entry }, Alive = true, Extras = true, Text = entry.Text }
 	elseif attack == "Element" then
 		local shape = req.Shape
 		if shape == nil then
@@ -602,7 +655,7 @@ local function attackDef(req, element, sig)
 		if area.Key then
 			core.Key, core.Count = area.Key, area.Count
 		end
-		return { Core = core, Beats = copy(def.Beats), Skip = { Afterimage = true }, Layers = { area.Layers }, Slots = {}, Alive = true, Extras = true, Shape = shape, Text = def.Text }
+		return { Core = core, Beats = copy(def.Beats), Skip = { Afterimage = true }, Layers = {}, Detail = { area.Layers }, Slots = {}, Alive = true, Extras = true, Shape = shape, Text = def.Text }
 	elseif attack == "Special" then
 		local kind = req.Kind
 		if kind == nil and sig then
@@ -612,19 +665,18 @@ local function attackDef(req, element, sig)
 		if not def then
 			return nil
 		end
-		return { Core = def.Core, Beats = copy(def.Beats), Skip = def.Skip or {}, Layers = { def.Layers }, Slots = { def.Slots }, Alive = true, Extras = true, Kind = kind, Text = def.Text, Special = true, BurstShape = def.BurstShape }
+		return { Core = def.Core, Beats = copy(def.Beats), Skip = def.Skip or {}, Layers = { def.Layers }, Detail = {}, Slots = { def.Slots }, Alive = true, Extras = def.Detail ~= false, Kind = kind, Text = def.Text, Special = true, BurstShape = def.BurstShape }
 	end
 	local def = REACTIONS[attack]
 	if not def then
 		return nil
 	end
-	return { Core = def.Core, Beats = copy(def.Beats), Skip = def.Skip or {}, Layers = { def.Layers }, Slots = { def.Slots }, Alive = false, Extras = false, Text = def.Text }
+	return { Core = def.Core, Beats = copy(def.Beats), Skip = def.Skip or {}, Layers = { def.Layers }, Detail = {}, Slots = { def.Slots }, Alive = false, Extras = false, Text = def.Text }
 end
 
 local function slotsOf(def, element, sig)
 	local refs = {
-		Burst = element.Burst, Trail = element.Trail, Debris = element.Debris, DebrisTint = element.DebrisTint or "Smoke",
-		Ground = element.Ground, Motif = element.Motif, Arc = element.Arc,
+		Burst = element.Burst, Trail = element.Trail, Ground = element.Ground, Motif = element.Motif, Arc = element.Arc,
 		RainKey = element.Rain.Key, RainTexture = element.Rain.Texture, RainKind = element.Rain.Kind or "Emitter",
 	}
 	for i = 1, #def.Slots do
@@ -665,7 +717,7 @@ local function colourOf(spec, texture, palette, refs)
 end
 
 -- one concrete layer from a template, or nil when it has nothing to draw (an Emitter without a sheet)
-local function buildLayer(id, tpl, ctx)
+local function buildLayer(id, tpl, ctx, scale)
 	local layer = copy(tpl)
 	layer.Id = id
 	layer.Kind = ref(tpl.Kind, ctx.refs)
@@ -674,7 +726,7 @@ local function buildLayer(id, tpl, ctx)
 	if layer.Kind == "Emitter" and layer.Texture == nil then
 		return nil
 	end
-	if layer.Kind == "Light" or layer.Kind == "Ring" then
+	if layer.Kind == "Light" or layer.Kind == "Ring" or layer.Kind == "Mesh" then
 		layer.Texture = nil
 	end
 	local at = tpl.At
@@ -687,20 +739,20 @@ local function buildLayer(id, tpl, ctx)
 		layer.Color = ctx.tints[id]
 	end
 	if finite(tpl.Count) then
-		layer.Count = max(1, floor(tpl.Count * ctx.countScale + 0.5))
+		layer.Count = max(1, floor(tpl.Count * (scale or ctx.countScale) + 0.5))
 	end
 	layer.Tint = nil
 	layer.From = nil
 	return layer
 end
 
-local function addExtras(out, list, tier, ctx)
+local function addExtras(out, list, tier, ctx, scale)
 	if type(list) ~= "table" then
 		return
 	end
 	for _, tpl in ipairs(list) do
 		if (tpl.From or "Common") == tier then
-			local layer = buildLayer(tpl.Id, tpl, ctx)
+			local layer = buildLayer(tpl.Id, tpl, ctx, scale)
 			if layer then
 				out[#out + 1] = layer
 			end
@@ -764,7 +816,9 @@ function AttackFxCatalog.Resolve(req)
 	core.RimShift = look.RimShift == true
 	core.Glow = look.Glow
 	core.Upgraded = look.Upgraded == true
-	core.Material = look.Material or core.Material or element.Material or "Neon"
+	if not (core.KeepMaterial and core.Material) then -- the Shield shell / Freeze cage stay Glass at every band
+		core.Material = look.Material or core.Material or element.Material or "Neon"
+	end
 	if core.Path == "Projectile" and not core.Stretch then
 		core.Speed = core.Speed or B.ProjectileSpeed
 	end
@@ -797,12 +851,14 @@ function AttackFxCatalog.Resolve(req)
 		Linger = min(B.LingerMax, linger),
 	}
 
-	-- layers: the ladder up to this rarity, each tier followed by the kind / attack / element / signature extras of that tier
+	-- layers: the ladder up to this rarity, each tier followed by the kind layers, the attack's and the element's impact
+	-- detail and the signature layers of that tier (detail is From = "Common": every rarity shows it)
 	local ctx = {
 		refs = refs,
 		palette = palette,
 		hitAt = HIT_AT[core.Path] or "Target",
 		countScale = AttackFxCatalog.CountScale[band],
+		detailScale = AttackFxCatalog.DetailScale[band],
 		tints = sig and sig.Tints or nil,
 	}
 	local layers = {}
@@ -818,6 +874,9 @@ function AttackFxCatalog.Resolve(req)
 					if id == "Burst" and def.BurstShape then
 						layer.Shape = def.BurstShape
 					end
+					if id == "Burst" and refs.Burst == element.Burst then
+						layer.Motion = element.BurstMotion -- e.g. Water's geyser column, Shadow's void implosion
+					end
 					layers[#layers + 1] = layer
 				end
 			end
@@ -825,8 +884,11 @@ function AttackFxCatalog.Resolve(req)
 		for _, list in ipairs(def.Layers) do
 			addExtras(layers, list, step.Tier, ctx)
 		end
+		for _, list in ipairs(def.Detail) do
+			addExtras(layers, list, step.Tier, ctx, ctx.detailScale)
+		end
 		if def.Extras then
-			addExtras(layers, element.Layers, step.Tier, ctx)
+			addExtras(layers, element.Detail, step.Tier, ctx, ctx.detailScale)
 		end
 		if sig then
 			addExtras(layers, sig.Layers, step.Tier, ctx)
@@ -852,7 +914,7 @@ function AttackFxCatalog.Resolve(req)
 		ImpactAt = out.Charge + out.Release + out.Travel,
 		Core = core,
 		Layers = layers,
-		Alive = def.Alive and aliveOf(element, palette, ctx.countScale) or {},
+		Alive = def.Alive and aliveOf(element, palette, ctx.detailScale) or {},
 	}
 	if sig then
 		local actor = copy(sig.Actor)

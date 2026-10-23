@@ -138,7 +138,8 @@ local BAND = { Common = 1, Uncommon = 1, Rare = 2, Epic = 2, Legendary = 3, Myth
 local SIZE = { Common = 1.0, Uncommon = 1.05, Rare = 1.1, Epic = 1.15, Legendary = 1.2, Mythic = 1.3, Secret = 1.4 }
 local KINDS = { "Blast", "Beam", "Pounce", "Storm", "Freeze", "Heal", "Shield", "Rally", "Haste" }
 local SHAPES = { "Cone", "Circle", "Line" }
-local LAYER_KINDS = { Emitter = true, Beam = true, Trail = true, Light = true, Ring = true, Decal = true }
+local LAYER_KINDS = { Emitter = true, Beam = true, Trail = true, Light = true, Ring = true, Decal = true, Mesh = true }
+local AT = { Source = true, Core = true, Path = true, Target = true, Ground = true, Above = true, Behind = true, Self = true, Allies = true }
 local PATHS = { Projectile = true, Swipe = true, Ground = true, Self = true, Allies = true, Area = true }
 local BEATS = { "Charge", "Release", "Travel", "Impact", "Linger" }
 local SIGNATURE_PETS = {
@@ -196,7 +197,7 @@ local function recipeProblems(r, tex, cores)
 			bad[#bad + 1] = where .. " " .. kind .. " uses the flipbook " .. t
 		elseif (kind == "Emitter" or kind == "Decal") and m.grid ~= 4 then
 			bad[#bad + 1] = where .. " " .. kind .. " uses the strip " .. t
-		elseif kind == "Light" or kind == "Ring" then
+		elseif kind == "Light" or kind == "Ring" or kind == "Mesh" then
 			bad[#bad + 1] = where .. " " .. kind .. " has a texture"
 		end
 	end
@@ -228,8 +229,11 @@ local function recipeProblems(r, tex, cores)
 			if l.Key ~= nil then
 				key(l.Key, where)
 			end
-			if l.Kind == "Ring" and l.Key == nil then
-				bad[#bad + 1] = where .. " Ring without a core key"
+			if (l.Kind == "Ring" or l.Kind == "Mesh") and l.Key == nil then
+				bad[#bad + 1] = where .. " " .. tostring(l.Kind) .. " without a core key"
+			end
+			if not AT[l.At] then
+				bad[#bad + 1] = where .. " At " .. tostring(l.At)
 			end
 			if l.Color == nil then
 				bad[#bad + 1] = where .. " no Color"
@@ -263,6 +267,9 @@ local function recipeProblems(r, tex, cores)
 	end
 	if type(r.Sig) == "table" and r.Sig.Actor ~= nil then
 		key(r.Sig.Actor.Key, "Sig.Actor")
+		if not AT[r.Sig.Actor.At] then
+			bad[#bad + 1] = "Sig.Actor At " .. tostring(r.Sig.Actor.At)
+		end
 	end
 	return table.concat(bad, "; ")
 end
@@ -646,6 +653,113 @@ S.p7vfx_catalog = guarded("p7vfx_catalog", function()
 		end
 	end
 	T.check(bolt, "p7vfx catalog: Storm's ranged bolt is a fx_lightning Beam from Common up")
+
+	-- Ruling 8: each element's OWN impact detail (spec Impact + Alive columns) shows at EVERY rarity, from Common, with a
+	-- reduced count that grows by band; the ladder layers stay where the spec ladder puts them
+	local detail = {
+		Flame = { ids = { "Scorch", "Smoke" }, burst = "fx_flame", alive = "SwirlUp" },
+		Water = { ids = { "Droplets", "Ripple" }, burst = "fx_splash", alive = "Bounce" },
+		Frost = { ids = { "FrostRing", "FrostMist" }, burst = "fx_iceshards", alive = "Melt" },
+		Nature = { melee = { "Thorns", "Leaves" }, ranged = { "RootBurst" }, burst = "fx_petals", alive = "Wrap" },
+		Earth = { ids = { "Dust", "GroundCrack" }, burst = "fx_rock", alive = "Bounce" },
+		Storm = { ids = { "ZigZag" }, burst = "fx_glow", alive = "Strike" },
+		Celestial = { ids = { "Rays" }, burst = "fx_stars", alive = "Connect" },
+		Shadow = { ids = { "Glass", "GlitchSparks" }, burst = "fx_voidring", alive = "Darken" },
+	}
+	local function layerById(r, id)
+		for _, l in ipairs(r and r.Layers or {}) do
+			if l.Id == id then
+				return l
+			end
+		end
+		return nil
+	end
+	local det = T.tally("p7vfx catalog: every element's Common Melee and Ranged recipes contain its own impact detail (burst, detail layers, alive)")
+	local grow = T.tally("p7vfx catalog: the impact / alive detail starts reduced at Common and grows by band (Count Common < Secret)")
+	for _, element in ipairs(elements) do
+		local d = detail[element]
+		for _, attack in ipairs({ "Melee", "Ranged" }) do
+			local common = C.Resolve({ Element = element, Attack = attack, Rarity = "Common", Mine = true })
+			local secret = C.Resolve({ Element = element, Attack = attack, Rarity = "Secret", Mine = true })
+			local ids = d.ids or (attack == "Melee" and d.melee or d.ranged)
+			local missing = {}
+			for _, id in ipairs(ids) do
+				local l = layerById(common, id)
+				if not l then
+					missing[#missing + 1] = id
+				elseif l.Count ~= nil then
+					local l2 = layerById(secret, id)
+					grow:case(l2 ~= nil and l2.Count ~= nil and l.Count < l2.Count, fmt("%s %s %s: %s -> %s", element, attack, id, tostring(l.Count), tostring(l2 and l2.Count)))
+				end
+			end
+			local burst = layerById(common, "Burst")
+			det:case(common ~= nil and #missing == 0 and burst ~= nil and burst.Texture == d.burst and common.Alive.Motion == d.alive,
+				fmt("%s %s Common: missing %s, burst %s, alive %s", element, attack, table.concat(missing, ","), tostring(burst and burst.Texture), tostring(common and common.Alive.Motion)))
+			grow:case(common and secret and common.Alive.Count < secret.Alive.Count, fmt("%s %s alive %s -> %s", element, attack, tostring(common and common.Alive.Count), tostring(secret and secret.Alive.Count)))
+		end
+	end
+	det:report()
+	grow:report()
+
+	-- the ladder layers join exactly where the spec ladder puts them (Melee / Ranged of every element)
+	local LADDER_AT = { Charge = "Common", Burst = "Common", Trail = "Uncommon", Slash = "Rare", GroundGlow = "Rare", Shockwave = "Epic", Flash = "Epic",
+		Afterimage = "Legendary", Bloom = "Legendary", DoubleArc = "Mythic", Field = "Mythic", PlasmaRim = "Secret" }
+	local rarityIndex = {}
+	for i, r in ipairs(RARITIES) do
+		rarityIndex[r] = i
+	end
+	local lad = T.tally("p7vfx catalog: ladder layers first appear at their spec rarity (Uncommon trail ... Secret rim); no other layer is gated by rarity")
+	for _, element in ipairs(elements) do
+		for _, attack in ipairs({ "Melee", "Ranged" }) do
+			local first = {}
+			for _, rarity in ipairs(RARITIES) do
+				local r = C.Resolve({ Element = element, Attack = attack, Rarity = rarity, Mine = true })
+				for _, l in ipairs(r and r.Layers or {}) do
+					if first[l.Id] == nil then
+						first[l.Id] = rarity
+					end
+				end
+			end
+			for id, at in pairs(first) do
+				local want = LADDER_AT[id] or "Common"
+				lad:case(at == want, fmt("%s %s: %s first at %s (want %s)", element, attack, id, at, want))
+			end
+			for id in pairs(LADDER_AT) do
+				lad:case(first[id] ~= nil, fmt("%s %s: ladder layer %s missing", element, attack, id))
+			end
+		end
+	end
+	lad:report()
+
+	-- review minors: Water's droplets + geyser, Shadow's implosion before the glass, Nature's root burst as playable layers
+	local water = C.Resolve({ Element = "Water", Attack = "Melee", Rarity = "Common", Mine = true })
+	local wb, wd = layerById(water, "Burst"), layerById(water, "Droplets")
+	T.check(wb and wb.Texture == "fx_splash" and wb.Motion == "Geyser" and wd and wd.Texture == "fx_droplets" and wd.Kind == "Emitter",
+		"p7vfx catalog: Water's impact = a Geyser fx_splash burst + fx_droplets droplets")
+	local shadow = C.Resolve({ Element = "Shadow", Attack = "Ranged", Rarity = "Common", Mine = true })
+	local sb, sg = layerById(shadow, "Burst"), layerById(shadow, "Glass")
+	T.check(sb and sb.Texture == "fx_voidring" and sb.Motion == "Implode" and sg and sg.Texture == "fx_darkglass" and finiteNum(sg.Delay) and sg.Delay > 0,
+		"p7vfx catalog: Shadow's impact = the fx_voidring Implode burst, then the fx_darkglass shatter (Delay > 0)")
+	local natureR = C.Resolve({ Element = "Nature", Attack = "Ranged", Rarity = "Common", Mine = true })
+	local rb = layerById(natureR, "RootBurst")
+	T.check(rb and rb.Kind == "Mesh" and rb.Key == "vfx_root" and rb.Motion == "Erupt" and rb.Texture == nil,
+		"p7vfx catalog: Nature's ranged root burst is a vfx_root Mesh layer that erupts")
+
+	-- the Shield shell and the Freeze cage stay Glass at every band (other cores follow the band)
+	local glass = T.tally("p7vfx catalog: Shield shell / Freeze cage cores are Glass at every rarity; other band-4 cores are Neon")
+	for _, element in ipairs(elements) do
+		for _, rarity in ipairs(RARITIES) do
+			for _, kind in ipairs({ "Shield", "Freeze" }) do
+				local r = C.Resolve({ Element = element, Attack = "Special", Kind = kind, Rarity = rarity, Mine = true })
+				glass:case(r and r.Core.Material == "Glass", fmt("%s %s %s: %s", element, kind, rarity, tostring(r and r.Core.Material)))
+			end
+		end
+		local blast = C.Resolve({ Element = element, Attack = "Special", Kind = "Blast", Rarity = "Secret", Mine = true })
+		glass:case(blast and blast.Core.Material == "Neon", element .. " Secret Blast core " .. tostring(blast and blast.Core.Material))
+	end
+	glass:report()
+	local hyd = C.Resolve({ Element = "Shadow", Attack = "Special", Kind = "Rally", Rarity = "Secret", PetId = "hydralotl", Mine = true })
+	T.check(hyd and hyd.Sig and hyd.Sig.Actor and hyd.Sig.Actor.At == "Behind", "p7vfx catalog: Hydralotl's serpents rise Behind the pet (a documented At)")
 end)
 
 return S
