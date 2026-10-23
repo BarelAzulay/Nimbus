@@ -3,7 +3,8 @@
 --   p6lobby_server
 --     manifests   a committed manifest for every lobby key (blender/catalog/lobby.json), every part under 10k tris,
 --                 the layout-baked keys (cloud_*, floor_*, the altar) carry their LayoutSig
---     default     the booted lobby with the shipped (empty) MeshIds: no lobby key is tagged anywhere (nothing changes)
+--     default     the booted lobby with the shipped MeshIds: exactly the lobby keys with a shipped id are tagged (empty
+--                 MeshIds = nothing tagged, nothing changes); the mock cannot load them, so the Parts stay visible
 --     fixture     the real MeshLibrary pointed (_Configure) at canonical templates made from the committed manifests
 --                 (fake ids) and a second LobbyBuilder.Build() (the booted lobby is set aside and put back): every
 --                 key is tagged where the kit says (template clones, plots, shop, plaza layers, roads, gardens, sky),
@@ -207,15 +208,43 @@ S.p6lobby_server = guarded("p6lobby_server", function()
 	for _ in pairs(found) do
 		n = n + 1
 	end
-	T.check(n == 0, "p6 lobby default: no lobby key is tagged with the shipped empty MeshIds")
-	local liveTags = 0
+	-- a lobby piece is tagged once its key has a shipped id (Status ~= "missing") and its LayoutSig matches (the
+	-- LobbyBuilder / StormAltar rule); the mock has no asset store, so shipped ids stay 'loading' (Parts stay visible)
+	local function shipped(key)
+		local okStatus, st = pcall(ML.Status, key)
+		return okStatus and st ~= "missing"
+	end
+	local stray, idle = {}, {}
+	for key in pairs(found) do
+		if not shipped(key) then
+			stray[#stray + 1] = key
+		end
+	end
+	local nShipped = 0
+	for _, key in ipairs(allKeys()) do
+		if shipped(key) then
+			nShipped = nShipped + 1
+			if not found[key] then
+				idle[#idle + 1] = key
+			end
+		end
+	end
+	table.sort(stray)
+	T.check(#stray == 0, "p6 lobby default: only lobby keys with a shipped id are tagged", table.concat(stray, ", "))
+	T.check(#idle == 0, fmt("p6 lobby default: every lobby key with a shipped id is tagged in the booted lobby (%d shipped, %d tagged)", nShipped, n),
+		table.concat(idle, ", "))
+	local liveTags, strayTags = 0, 0
 	for _, d in ipairs(CollectionService:GetTagged("ML_Dress")) do
 		local key = d:GetAttribute("ML_DressKey")
 		if type(key) == "string" and set[key] then
 			liveTags = liveTags + 1
+			if not shipped(key) then
+				strayTags = strayTags + 1
+			end
 		end
 	end
-	T.check(liveTags == 0, "p6 lobby default: no ML_Dress tag on a lobby piece")
+	T.check(strayTags == 0 and (nShipped == 0) == (liveTags == 0),
+		fmt("p6 lobby default: ML_Dress tags on lobby pieces only for shipped keys (%d tags)", liveTags))
 
 	-- the live Storm Altar matches the committed LayoutSig of each piece (read-only)
 	local altar = type(SA.GetModel) == "function" and SA.GetModel()
