@@ -1011,11 +1011,284 @@
       "uploadedAt": "2026-10-23T22:58:11Z"
     },
     "dungeon_floor_28x22": {
-      "pendingContentHash": "b4de42077c2dea92b6ce158eddddf410",
-      "pendingFileSha256": "94b631f42607fdde17008ae0a510c2fd001370ed135c7de43d9cb4968f14bdfa",
-      "pendingMode": "create",
-      "pendingOperation": "d6e91294-74f2-4463-b3e3-c3a50e807183",
-      "pendingStructureHash": "41a1a695a88a65ff27fa7830285577b4"
+      "assetId": 124834769147033,
+      "contentHash": "b4de42077c2dea92b6ce158eddddf410",
+      "fileSha256": "94b631f42607fdde17008ae0a510c2fd001370ed135c7de43d9cb4968f14bdfa",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-10-23T22:58:28.298Z",
+      "revisionId": "1",
+      "structureHash": "41a1a695a88a65ff27fa7830285577b4",
+      "uploadedAt": "2026-10-23T22:58:29Z"
+    },
+    "dungeon_floor_28x24": {
+      "assetId": 101847823312380,
+      "contentHash": "525b6787a2ea76f78f70c70bcfe28745",
+      "fileSha256": "60616a10b37084d25938f3880c78c20a8dd83732918d2c2efdeb9bcae835a654",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-10-23T22:58:40.019Z",
+      "revisionId": "1",
+      "structureHash": "c0fea63db1fb73f83c7285f72e9ed1f0",
+      "uploadedAt": "2026-10-23T22:58:41Z"
+    },
+    "dungeon_floor_44x48": {
+      "assetId": 109918084767739,
+      "contentHash": "c5213345e0c1e24274b26fde07cc53b9",
+      "fileSha256": "05a14c51447e1185ac873f218c117c2738662855cedfb1f585d8213d4ebb1545",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-10-23T22:58:50.442Z",
+      "revisionId": "1",
+      "structureHash": "9c6c71357d294321e2347a8f3f2628e6",
+      "uploadedAt": "2026-10-23T22:58:53Z"
+    },
+    "dungeon_floor_48x48": {
+      "assetId": 124670360703707,
+      "contentHash": "c7b77bfb64f5fc5c7cc30abdf308c834",
+      "fileSha256": "617a930a780b62ce0e69360fd673ee9b82967432f16e0287b8f888039a761ab4",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-10-23T22:59:09.050Z",
+      "revisionId": "1",
+      "structureHash": "0deafa3aad2ce64e1736272746244bfd",
+      "uploadedAt": "2026-10-23T22:59:13Z"
+    },
+    "dungeon_floor_60x72": {
+      "assetId": 124479879649312,
+      "contentHash": "b884afcbc13a9f6469ff4f6e794421ba",
+      "fileSha256": "0215e8de3cbeacb440364c8c2b3fbaddc4d1cfc3f52de157f9d7c5c81e7b06e9",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-10-23T22:59:28.575Z",
+      "revisionId": "1",
+      "structureHash": "b706608aa9bda12dbf12227da4834fd8",
+      "uploadedAt": "2026-10-23T22:59:31Z"
+    },
+    "dungeon_pillar_10p5": {
+      "assetId": 119465021448859,
+      "contentHash": "47867e6970493d74cb08869c1be9bd7e",
+      "fileSha256": "a173b1a43bbf9a921ea30ae75da6a579219dd7de648896a4ebe6ff576ea4d9a1",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-10-23T22:59:40.818Z",
+      "revisionId": "1",
+      "structureHash": "7161b7dc97808f928a946bc76a5c05ee",
+      "uploadedAt": "2026-10-23T22:59:42Z"
+    },
+    "dungeon_pillar_15": {
+      "assetId": 117784066589405,
+      "contentHash": "26262a76ff7fe6195eb17f84f3837e5c",
+      "fileSha256": "d4ac0ba5da61789c7ecff16e25589c730c691c0b2921a6c7a58d32e7750f75c3",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-10-23T22:59:51.145Z",
+      "revisionId": "1",
+      "structureHash": "0c4c26f10032bea38d9db87aad673f96",
+      "uploadedAt": "2026-10-23T22:59:53Z"
+    },
+    "dungeon_pillar_15p5": {
+      "assetId": 124245617844584,
+      "contentHash": "bbdeac6ff2de622d1921e54f17d3dc7f",
+      "fileSha256": "3b778b950a46287bd2e66ebfda2b8a737e9089edce1fa37c89dfcc928aed8ca8",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-10-23T23:00:08.508Z",
+      "revisionId": "1",
+      "structureHash": "767ae72bd322e0423cc17333637f59c7",
+      "uploadedAt": "2026-10-23T23:00:11Z"
+    },
+    "dungeon_pillar_7": {
+      "assetId": 102528053397602,
+      "contentHash": "85c513f7a4cc65e90c8e134275e03c98",
+      "fileSha256": "428c1d4d185ac3712e2c0fcd6537385bcb15799c868592613f9d2e65b11979ef",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-10-23T23:00:22.859Z",
+      "revisionId": "1",
+      "structureHash": "2ffeb9518bd6891fb0d8b72f084e4583",
+      "uploadedAt": "2026-10-23T23:00:23Z"
+    },
+    "dungeon_rock_1": {
+      "assetId": 112895714509151,
+      "contentHash": "e4ec7356cf9a8f726af4477b5c1b0b04",
+      "fileSha256": "de67bdc94ff167d43c668f30ef7f0619a2bc61b4491fe274bf40603910c71ba9",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-10-23T23:00:30.481Z",
+      "revisionId": "1",
+      "structureHash": "6dc63db249f8617d2051b841f560d043",
+      "uploadedAt": "2026-10-23T23:00:31Z"
+    },
+    "dungeon_rock_2": {
+      "assetId": 116366859038174,
+      "contentHash": "6a84c617766b853a6cf41bc37f568e03",
+      "fileSha256": "f45aaa78007dcf5f20ebdd838317f6966f80f0044a5ce90f8f72dd0bc293c222",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-10-23T23:00:48.603Z",
+      "revisionId": "1",
+      "structureHash": "ac7d36cbf2ea27c3e3bbe63746ed3b28",
+      "uploadedAt": "2026-10-23T23:00:52Z"
+    },
+    "dungeon_rock_3": {
+      "assetId": 135828723535863,
+      "contentHash": "c860d1cc3aca110c3a9008646d3e1cfa",
+      "fileSha256": "8b2379aff554573117556a7a4f9365cdf1da9db4946745b5c6611dc89b2ec2c0",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-10-23T23:01:10.614Z",
+      "revisionId": "1",
+      "structureHash": "d4882a812bca8b7a918dec59e6969eba",
+      "uploadedAt": "2026-10-23T23:01:12Z"
+    },
+    "dungeon_stalagmite": {
+      "assetId": 135289578361565,
+      "contentHash": "ca73e4a3a6221a8c104d07bce9203a6c",
+      "fileSha256": "ce5b162262f3426b227ea0e5b9f52bccc3804122fd9c857dfa836006b5f3adb5",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-10-23T23:01:28.110Z",
+      "revisionId": "1",
+      "structureHash": "01da7eddfcc60ff4720b199be287316f",
+      "uploadedAt": "2026-10-23T23:01:32Z"
+    },
+    "dungeon_torch": {
+      "assetId": 71320723131950,
+      "contentHash": "e369dadf43cb9b2d999b4721d34f7ebe",
+      "fileSha256": "e50f96e166a04f1b7693cc3c88ad45fdf724eceaa4539dc756a75f6ae26bf717",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-10-23T23:01:52.303Z",
+      "revisionId": "1",
+      "structureHash": "43133d5aed647f61862597a3df60f567",
+      "uploadedAt": "2026-10-23T23:01:54Z"
+    },
+    "dungeon_wall_10_lite": {
+      "assetId": 110107055516485,
+      "contentHash": "17fd96951d475bca97e2f9f4f9c3c38b",
+      "fileSha256": "e340349c946cf6023660e939857aa00af440c6baf3aa07e65fe63196a635ed92",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-10-23T23:02:08.874Z",
+      "revisionId": "1",
+      "structureHash": "0e71cd014f484c9ab67cd5a754f74b2b",
+      "uploadedAt": "2026-10-23T23:02:13Z"
+    },
+    "dungeon_wall_15_lite": {
+      "assetId": 117845462733407,
+      "contentHash": "affbb1bb4d9b95811afa884883956a34",
+      "fileSha256": "26af20c9b91076bd4a7229ced8b24ecb9f6fcfa613438fead98b9a1bebb47500",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-10-23T23:02:23.285Z",
+      "revisionId": "1",
+      "structureHash": "9a6bddf78a4ff37ad827ede2078bd868",
+      "uploadedAt": "2026-10-23T23:02:26Z"
+    },
+    "dungeon_wall_22_lite": {
+      "assetId": 99003050038321,
+      "contentHash": "e341c15aea0fee89e523a0da9a7babfb",
+      "fileSha256": "a82c2db5443a8ed21fc87f231b6ab33916aeec7bc9b891c382e185d758921189",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-10-23T23:02:33.244Z",
+      "revisionId": "1",
+      "structureHash": "d4019c7932f488b33a5b803a14265744",
+      "uploadedAt": "2026-10-23T23:02:38Z"
+    },
+    "dungeon_wall_24": {
+      "assetId": 115802742509079,
+      "contentHash": "bd69fdcb700fcade6e1e274811506c6e",
+      "fileSha256": "82fdaf37aed883c0d0614bd1cf5274db4d6bf334584c0ca3526896e1761b2bc0",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-10-23T23:02:52.321Z",
+      "revisionId": "1",
+      "structureHash": "799eb66ecf58eca43ac7b75634adf28b",
+      "uploadedAt": "2026-10-23T23:02:56Z"
+    },
+    "dungeon_wall_30": {
+      "assetId": 105616032793826,
+      "contentHash": "8063b036f5e8111e773178c5fcc5f80d",
+      "fileSha256": "2481c09d593bdca03ae886041f23ab15d75f3d8f3a6e9da08f8211b3a37081f0",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-10-23T23:03:03.471Z",
+      "revisionId": "1",
+      "structureHash": "9e33ba25aae794ba146717678c5e3af6",
+      "uploadedAt": "2026-10-23T23:03:07Z"
+    },
+    "dungeon_wall_30_door": {
+      "assetId": 119078885184026,
+      "contentHash": "5df71e99e851fe97ca11c5a479ab19ba",
+      "fileSha256": "57c86ef214cee0b6817eb918b5702432ade9fb59d7c3b6be521e374b84272d88",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-10-23T23:03:12.359Z",
+      "revisionId": "1",
+      "structureHash": "9e33ba25aae794ba146717678c5e3af6",
+      "uploadedAt": "2026-10-23T23:03:13Z"
+    },
+    "dungeon_wall_30_door_lite": {
+      "assetId": 98031960982573,
+      "contentHash": "f882694e11f87940178975444de4c60b",
+      "fileSha256": "65e3ad33851c110fa1463770fa69818a03ae2401d45a9efe5398c76f6d943783",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-10-23T23:03:24.031Z",
+      "revisionId": "1",
+      "structureHash": "9e33ba25aae794ba146717678c5e3af6",
+      "uploadedAt": "2026-10-23T23:03:25Z"
+    },
+    "dungeon_wall_30_lite": {
+      "assetId": 108236189440675,
+      "contentHash": "23e2d58891b5d2271965742ab08496d2",
+      "fileSha256": "a7c5160d13ddd024884d398e53b8824fcae10c62a9d1442a499afd9f6f1bf521",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-10-23T23:03:33.556Z",
+      "revisionId": "1",
+      "structureHash": "9e33ba25aae794ba146717678c5e3af6",
+      "uploadedAt": "2026-10-23T23:03:37Z"
+    },
+    "dungeon_wall_48": {
+      "assetId": 87692045027857,
+      "contentHash": "959ed18eea0bdacc49b7e37fe00ec453",
+      "fileSha256": "2cb2714ddf43c9ec37e7e4af75fa6d000ebf7e432fa9f72989fe4c65cbf9062e",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-10-23T23:03:45.836Z",
+      "revisionId": "1",
+      "structureHash": "7038906f6994917a58a00780d8080db2",
+      "uploadedAt": "2026-10-23T23:03:47Z"
+    },
+    "dungeon_wall_50_door": {
+      "assetId": 109725535483428,
+      "contentHash": "8ae64676fa2c8fd265dde00dc51f6a33",
+      "fileSha256": "cc7d7c96a2a90b42a92d17a6023704a8fb749b79b6559467f031fb8434dad32e",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-10-23T23:03:54.210Z",
+      "revisionId": "1",
+      "structureHash": "5e552bfdfd6fec9728823ed5ebf7bf63",
+      "uploadedAt": "2026-10-23T23:03:59Z"
+    },
+    "dungeon_wall_5_lite": {
+      "assetId": 128991323393224,
+      "contentHash": "55611d54b97985e97da72693f6d944b6",
+      "fileSha256": "f6b528ccfc9fdd7cdb71bbebf217e4945a8da49ca7df739ba0305ba0290bc726",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-10-23T23:04:11.913Z",
+      "revisionId": "1",
+      "structureHash": "eb34170410d0efdbfaf67d62833602dc",
+      "uploadedAt": "2026-10-23T23:04:12Z"
+    },
+    "dungeon_wall_62_door": {
+      "assetId": 125102455629252,
+      "contentHash": "25119b18f0e18cc84e24139ff90db31f",
+      "fileSha256": "b7c1757374f3d5a16adf78ee8f81bac2555a94a78a9bba6c280167980a24a589",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-10-23T23:04:24.245Z",
+      "revisionId": "1",
+      "structureHash": "85625f12339d5ff045bf6ebc4093ff60",
+      "uploadedAt": "2026-10-23T23:04:31Z"
+    },
+    "dungeon_wall_62_door20": {
+      "assetId": 98770643784920,
+      "contentHash": "26a28b4da06a957835fba15a615c878d",
+      "fileSha256": "ba52c5d2100bcd136db3c84d63511947e90704b9b687ee9b00060e5c97d44ab0",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-10-23T23:04:37.056Z",
+      "revisionId": "1",
+      "structureHash": "38614e6efa33d447786bb973360328ce",
+      "uploadedAt": "2026-10-23T23:04:38Z"
+    },
+    "dungeon_wall_72": {
+      "assetId": 127255731701657,
+      "contentHash": "23b77e9359c60a9385292f0fd47d3726",
+      "fileSha256": "7f24d8bab13714ddad79f780938e59b48686744c8a10b0707aeb5d6aaf0cf46b",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-10-23T23:04:51.918Z",
+      "revisionId": "1",
+      "structureHash": "bef4c80a8ef8761137695066a70ce389",
+      "uploadedAt": "2026-10-23T23:04:56Z"
     },
     "evo1_aurora_fox": {
       "assetId": 87772383693151,
