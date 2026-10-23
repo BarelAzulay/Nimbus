@@ -128,7 +128,18 @@
       "functions": [
         "Build",
         "Animate",
-        "GetHeight"
+        "GetHeight",
+        "PoseBody"
+      ]
+    },
+    "shared/PetPoses": {
+      "functions": [
+        "Sample"
+      ],
+      "fields": [
+        "Names",
+        "Loops",
+        "Holds"
       ]
     },
     "shared/Voxel": {

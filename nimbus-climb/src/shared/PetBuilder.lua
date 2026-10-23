@@ -17,7 +17,15 @@
 --                                             (gold + the evolved form's gem; the second evolution's two neon accents)
 --                                             High: <= ~350 parts (viewports, podiums, NPCs, your own pets)
 --                                             Low:  <= ~120 parts (other players' followers, far away)
---   PetBuilder.Animate(model, t, opts)        opts: { Flap = 1 (speed multiplier), Excited = 0..1 }
+--   PetBuilder.Animate(model, t, opts)        opts: { Flap = 1 (speed multiplier), Excited = 0..1,
+--                                             Pose = { Name, P, Ranged } (optional, shared/PetPoses: the pose's group
+--                                             turns multiply onto the idle motion, in the pet's frame about each
+--                                             group's hinge, mirrored for the right side;
+--                                             its Still holds the flap / wag back; Lids >= 0.5 shows the eyelids).
+--                                             Without Pose, Animate is exactly what it always was }
+--   PetBuilder.PoseBody(opts) -> CFrame       the body offset of opts.Pose (PetPoses.Sample(...).Body, identity
+--                                             without a Pose) for the CALLER to apply to the root (root = frame *
+--                                             PoseBody(opts), then Animate): Animate never moves the root itself
 --   PetBuilder.GetHeight(petDef) -> studs     height of the resting pose at Scale 1
 --   Extras: PetBuilder.Species / Accessories / WingStyles (the values Build understands), PetBuilder.ClearCache()
 --   Phase 6 mesh path (ARCHITECTURE_V3.md 6.3 runtime-pets): Build assembles the Blender mesh pet (MeshLibrary) when
@@ -88,6 +96,18 @@ do
 	end)
 	if ok and type(mod) == "table" then
 		PetFx = mod
+	end
+end
+
+-- pet attack VFX: the battle poses Animate's opts.Pose samples (optional, a missing module only skips the poses)
+local PetPoses = nil
+do
+	local ok, mod = pcall(function()
+		local inst = script.Parent:FindFirstChild("PetPoses")
+		return inst and require(inst) or nil
+	end)
+	if ok and type(mod) == "table" and type(mod.Sample) == "function" then
+		PetPoses = mod
 	end
 end
 
@@ -6638,13 +6658,14 @@ local function updateHue(rig, t)
 	end
 end
 
-local function updateBlink(rig, t)
+-- shut = true: a pose holds the eyes closed (PetPoses Lids >= 0.5)
+local function updateBlink(rig, t, shut)
 	local lids = rig.Lids
 	if #lids == 0 then
 		return
 	end
 	local u = (t + rig.BlinkOffset) % rig.BlinkPeriod
-	local closed = u < BLINK_TIME
+	local closed = u < BLINK_TIME or shut == true
 	if closed == rig.Blinking then
 		return
 	end
@@ -6659,6 +6680,91 @@ local function updateBlink(rig, t)
 			end
 		end
 	end
+end
+
+-- Battle poses (opts.Pose = { Name, P, Ranged } -> PetPoses.Sample). One sample is kept: Animate and PoseBody of
+-- the same unit in the same frame sample once.
+-- (one table keeps PetBuilder's main chunk under the local-variable limit)
+local POSE = {
+	Identity = CFrame.new(),
+	Cache = { Name = nil, P = nil, Ranged = nil, Sample = nil },
+	Forward = math.rad(10), -- how far past broadside a pose may swing a wing forward
+}
+
+function POSE.sample(pose)
+	if not PetPoses or type(pose) ~= "table" or type(pose.Name) ~= "string" then
+		return nil
+	end
+	local p = tonumber(pose.P) or 0
+	local ranged = pose.Ranged == true
+	local c = POSE.Cache
+	if c.Sample and c.Name == pose.Name and c.P == p and c.Ranged == ranged then
+		return c.Sample
+	end
+	local s = PetPoses.Sample(pose.Name, p, ranged)
+	if type(s) ~= "table" or typeof(s.Body) ~= "CFrame" or type(s.Groups) ~= "table" or type(s.Lids) ~= "number" then
+		return nil
+	end
+	c.Name, c.P, c.Ranged, c.Sample = pose.Name, p, ranged, s
+	return s
+end
+
+-- the lowest pose sweep (radians, PetPoses' left-side "back" angle) a wing group may take: its rest reach (the
+-- centre of its parts around the hinge, in the pet's frame) swung forward to POSE.Forward past broadside
+function POSE.restSweep(gr)
+	local sx, sy, sz = 0, 0, 0
+	local bases = gr.Base
+	for i = 1, #bases do
+		local p = bases[i].Position
+		sx, sy, sz = sx + p.X, sy + p.Y, sz + p.Z
+	end
+	local d = gr.Hinge:VectorToWorldSpace(Vector3.new(sx, sy, sz))
+	local x = gr.Side < 0 and -d.X or d.X
+	if x * x + d.Z * d.Z < 1e-9 then
+		return -POSE.Forward
+	end
+	return -(math.max(math.atan2(d.Z, -x), 0) + POSE.Forward)
+end
+
+-- a group's frame (relative to the root) under a pose: the hinge with its idle motion (held back by Still), turned
+-- by the pose's offset for its kind in the PET's frame about the hinge point (PetPoses writes it for the left side:
+-- mirrored for Side = -1; its lift is studs at Scale 1)
+local function posedFrame(gr, st, pose)
+	local m = groupMotion(gr, st)
+	local still = pose.Still
+	if type(still) == "number" and still > 0 then
+		m = POSE.Identity:Lerp(m, 1 - clamp(still, 0, 1))
+	end
+	local h = gr.Hinge
+	local g = pose.Groups[gr.Kind]
+	if typeof(g) ~= "CFrame" then
+		return h * m
+	end
+	if gr.Kind == "wing" or gr.Kind == "cloud" then
+		-- a wing swings forward ("open") at most POSE.Forward past broadside: forms whose wings already rest
+		-- broadside would otherwise fold them forward round the face
+		local floorSweep = gr.PoseSweep
+		if floorSweep == nil then
+			floorSweep = POSE.restSweep(gr)
+			gr.PoseSweep = floorSweep
+		end
+		local rx, ry, rz = g:ToEulerAnglesXYZ()
+		if ry < floorSweep then
+			g = CFrame.Angles(rx, floorSweep, rz)
+		end
+	end
+	if gr.Side < 0 then
+		g = mirrorCF(g)
+	end
+	local k = st.Stud / VOXEL
+	if k ~= 1 then
+		local x, y, z, r00, r01, r02, r10, r11, r12, r20, r21, r22 = g:GetComponents()
+		if x ~= 0 or y ~= 0 or z ~= 0 then
+			g = CFrame.new(x * k, y * k, z * k, r00, r01, r02, r10, r11, r12, r20, r21, r22)
+		end
+	end
+	local hp = h.Position
+	return CFrame.new(hp.X, hp.Y, hp.Z) * g * CFrame.new(-hp.X, -hp.Y, -hp.Z) * h * m
 end
 
 ----------------------------------------------------------------------
@@ -7600,6 +7706,7 @@ function PetBuilder.Animate(model, t, opts)
 		t = os.clock()
 	end
 	local flapMul, excited = 1, 0
+	local pose = nil
 	if type(opts) == "table" then
 		if type(opts.Flap) == "number" then
 			flapMul = clamp(opts.Flap, 0, 8)
@@ -7607,22 +7714,44 @@ function PetBuilder.Animate(model, t, opts)
 		if type(opts.Excited) == "number" then
 			excited = clamp(opts.Excited, 0, 1)
 		end
+		if opts.Pose ~= nil then
+			pose = POSE.sample(opts.Pose)
+		end
 	end
 	advance(rig, t, flapMul, excited)
 	local base = root.CFrame
 	local st = rig.St
 	local groups = rig.Groups
-	for i = 1, #groups do
-		local gr = groups[i]
-		local cur = base * gr.Hinge * groupMotion(gr, st)
-		local parts, bases = gr.Parts, gr.Base
-		for j = 1, #parts do
-			parts[j].CFrame = cur * bases[j]
+	if pose then
+		for i = 1, #groups do
+			local gr = groups[i]
+			local cur = base * posedFrame(gr, st, pose)
+			local parts, bases = gr.Parts, gr.Base
+			for j = 1, #parts do
+				parts[j].CFrame = cur * bases[j]
+			end
+		end
+	else
+		for i = 1, #groups do
+			local gr = groups[i]
+			local cur = base * gr.Hinge * groupMotion(gr, st)
+			local parts, bases = gr.Parts, gr.Base
+			for j = 1, #parts do
+				parts[j].CFrame = cur * bases[j]
+			end
 		end
 	end
-	updateBlink(rig, t)
+	updateBlink(rig, t, pose ~= nil and pose.Lids >= 0.5)
 	updatePulse(rig, t)
 	updateHue(rig, t)
+end
+
+function PetBuilder.PoseBody(opts)
+	if type(opts) ~= "table" or opts.Pose == nil then
+		return POSE.Identity
+	end
+	local pose = POSE.sample(opts.Pose)
+	return pose and pose.Body or POSE.Identity
 end
 
 -- Height of the resting pose (studs, Scale 1), measured once per look from the High build.

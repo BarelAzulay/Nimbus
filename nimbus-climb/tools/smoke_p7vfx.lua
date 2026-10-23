@@ -8,6 +8,12 @@
 --               stage x mine resolves (beats, size, band, known texture / core keys, Beam / Trail strips vs Emitter
 --               flipbooks, <= 6 emitters), monotonic layers, density / camera punch / screen glow, the 12 signatures,
 --               Unit (hybrids: first element + the hybrid's rarity), Nature's petal trail with no green-only colour.
+--   p7vfx_poses (pure) shared/PetPoses (Task 5): every pose at p = 0 / 0.25 / 0.5 / 1 (melee and ranged) is finite,
+--               the one-shot poses start and end at rest (Ko ends on its side, PetPoses.Holds), the shapes (crouch,
+--               lunge 1.5 / ranged kick 0.35, rise 0.6, flinch + shut lids, 90 deg tumble, hop 1.2 + 360 deg spin,
+--               0.05 breathing + glances every 2-4 s), no pops (fine-step continuity); PetBuilder.Animate with
+--               opts.Pose on real builds (stage 0 / 2, winged + tailed) moves WingL / Tail, keeps the wings mirrored,
+--               shuts the lids, returns to the exact unposed frame without Pose, creates no Instances; PoseBody.
 -- Deterministic: keys are read from the committed manifests in file order. Plain Lua 5.1 syntax.
 
 local T = SmokeCommon.T
@@ -760,6 +766,385 @@ S.p7vfx_catalog = guarded("p7vfx_catalog", function()
 	glass:report()
 	local hyd = C.Resolve({ Element = "Shadow", Attack = "Special", Kind = "Rally", Rarity = "Secret", PetId = "hydralotl", Mine = true })
 	T.check(hyd and hyd.Sig and hyd.Sig.Actor and hyd.Sig.Actor.At == "Behind", "p7vfx catalog: Hydralotl's serpents rise Behind the pet (a documented At)")
+end)
+
+----------------------------------------------------------------------
+-- p7vfx_poses: shared/PetPoses (Task 5) and the PetBuilder.Animate rig hook (opts.Pose, PetBuilder.PoseBody)
+----------------------------------------------------------------------
+local POSE_NAMES = { "Windup", "Strike", "Recoil", "Cast", "Hurt", "Ko", "Victory", "IdleBattle" }
+
+local function cfFinite(cf)
+	if typeof(cf) ~= "CFrame" then
+		return false
+	end
+	for _, v in ipairs({ cf:GetComponents() }) do
+		if not finiteNum(v) then
+			return false
+		end
+	end
+	return true
+end
+
+-- rotation angle (radians) of a CFrame
+local function angleOf(cf)
+	local _, a = cf:ToAxisAngle()
+	return a
+end
+
+local function isIdentity(cf, eps)
+	eps = eps or 1e-4
+	return cfFinite(cf) and cf.Position.Magnitude < eps and angleOf(cf) < eps * 10
+end
+
+-- how far a pose moved the pet along its own LookVector (pets face -Z: PetBuilder header)
+local function forwardOf(cf)
+	return -cf.Position.Z
+end
+
+local function sampleOk(s)
+	if type(s) ~= "table" or not cfFinite(s.Body) or type(s.Groups) ~= "table" or not finiteNum(s.Lids) or s.Lids < 0 or s.Lids > 1 then
+		return false
+	end
+	for _, g in pairs(s.Groups) do
+		if not cfFinite(g) then
+			return false
+		end
+	end
+	return s.Still == nil or (finiteNum(s.Still) and s.Still >= 0 and s.Still <= 1)
+end
+
+-- the extreme of fn(sample) over p in [a, b] (steps of 0.005)
+local function extreme(P, name, ranged, fn, useMax, a, b)
+	local best = nil
+	for i = math.floor((a or 0) * 200 + 0.5), math.floor((b or 1) * 200 + 0.5) do
+		local v = fn(P.Sample(name, i / 200, ranged))
+		if best == nil or (useMax and v > best) or (not useMax and v < best) then
+			best = v
+		end
+	end
+	return best
+end
+
+local function deg(r)
+	return r * 180 / math.pi
+end
+
+-- yaw (degrees) of a CFrame's LookVector, 0 = straight ahead
+local function yawOf(cf)
+	local look = cf.LookVector
+	return deg(math.atan2(-look.X, -look.Z))
+end
+
+S.p7vfx_poses = guarded("p7vfx_poses", function()
+	local P = sharedModule("PetPoses")
+	if not T.check(P ~= nil and type(P.Sample) == "function" and type(P.Names) == "table", "p7vfx poses: shared/PetPoses loads (Names, Sample)") then
+		return
+	end
+	local namesOk = #P.Names == #POSE_NAMES
+	for i, n in ipairs(POSE_NAMES) do
+		namesOk = namesOk and P.Names[i] == n
+	end
+	T.check(namesOk, "p7vfx poses: PetPoses.Names = Windup, Strike, Recoil, Cast, Hurt, Ko, Victory, IdleBattle (in order)")
+	local loops = P.Loops or {}
+	local holds = P.Holds or {}
+	T.check(loops.IdleBattle == true and holds.Ko == true, "p7vfx poses: IdleBattle loops (p = time), Ko holds its downed end pose")
+
+	-- every pose, melee and ranged, at the sample points: finite CFrames, Lids in 0..1
+	local fin = T.tally("p7vfx poses: every pose at p = 0 / 0.25 / 0.5 / 1 (melee + ranged) returns finite CFrames, Lids 0..1")
+	for _, name in ipairs(POSE_NAMES) do
+		for _, ranged in ipairs({ false, true }) do
+			for _, p in ipairs({ 0, 0.25, 0.5, 1 }) do
+				fin:case(sampleOk(P.Sample(name, p, ranged)), fmt("%s p=%.2f ranged=%s", name, p, tostring(ranged)))
+			end
+		end
+	end
+	fin:report()
+	local unknown = P.Sample("Nope", 0.5)
+	T.check(sampleOk(unknown) and isIdentity(unknown.Body) and unknown.Lids == 0, "p7vfx poses: an unknown pose name = rest (identity)")
+	T.check(sampleOk(P.Sample("Strike", 0 / 0)) and sampleOk(P.Sample("Strike", nil)) and sampleOk(P.Sample("Strike", 7))
+		and sampleOk(P.Sample("IdleBattle", -3.5)) and sampleOk(P.Sample("IdleBattle", 1e6)), "p7vfx poses: NaN / nil / out-of-range p stay finite")
+
+	-- one-shot poses: rest at p = 0 and p = 1 (Ko: rest at 0, its downed pose at 1)
+	local rest = T.tally("p7vfx poses: one-shot poses are at rest at p = 0 and p = 1 (body, groups, lids, stillness)")
+	for _, name in ipairs(POSE_NAMES) do
+		if not loops[name] then
+			for _, ranged in ipairs({ false, true }) do
+				for _, p in ipairs({ 0, 1 }) do
+					if not (p == 1 and holds[name]) then
+						local s = P.Sample(name, p, ranged)
+						local ok = isIdentity(s.Body) and s.Lids == 0 and (s.Still or 0) == 0
+						for _, g in pairs(s.Groups) do
+							ok = ok and isIdentity(g)
+						end
+						rest:case(ok, fmt("%s p=%d ranged=%s", name, p, tostring(ranged)))
+					end
+				end
+			end
+		end
+	end
+	rest:report()
+
+	-- no pops: neighbouring samples (dp = 0.005; the loop: dt = 0.005 s over 12 s) stay close
+	local smooth = T.tally("p7vfx poses: no pops (each 0.005 step moves the body < 0.2 studs / 0.2 rad, each group < 0.2 rad)")
+	for _, name in ipairs(POSE_NAMES) do
+		for _, ranged in ipairs({ false, true }) do
+			local prev, worstPos, worstAng, worstGrp = nil, 0, 0, 0
+			local span = loops[name] and 2400 or 200
+			for i = 0, span do
+				local s = P.Sample(name, i / 200, ranged)
+				if prev then
+					worstPos = math.max(worstPos, (s.Body.Position - prev.Body.Position).Magnitude)
+					worstAng = math.max(worstAng, angleOf(prev.Body:Inverse() * s.Body))
+					for k, g in pairs(s.Groups) do
+						local g0 = prev.Groups[k]
+						if g0 then
+							worstGrp = math.max(worstGrp, angleOf(g0:Inverse() * g))
+						end
+					end
+				end
+				prev = s
+			end
+			smooth:case(worstPos < 0.2 and worstAng < 0.2 and worstGrp < 0.2,
+				fmt("%s ranged=%s: worst step %.3f studs, %.3f rad body, %.3f rad group", name, tostring(ranged), worstPos, worstAng, worstGrp))
+		end
+	end
+	smooth:report()
+
+	-- the shapes (brief: Windup crouch 0.25, wings back 25, tail up; Strike lunge 1.5 / ranged recoil 0.35, wings open
+	-- 35; Cast rise 0.6, wings spread 50; Hurt squash + flinch 0.3, lids shut; Ko 90 deg roll; Victory hop 1.2 + 360
+	-- spin; IdleBattle 0.05 breathing, a glance every 2-4 s)
+	local function fwd(s)
+		return forwardOf(s.Body)
+	end
+	local function height(s)
+		return s.Body.Position.Y
+	end
+	local fwdMax = extreme(P, "Strike", false, fwd, true)
+	local fwdQuarter = forwardOf(P.Sample("Strike", 0.25).Body)
+	T.check(fwdMax > 1.45 and fwdMax < 1.56 and fwdQuarter > 1.0, "p7vfx poses: melee Strike lunges forward (along the LookVector) 1.5 studs",
+		fmt("peak %.3f, p=0.25 %.3f", fwdMax, fwdQuarter))
+	local kick, kickFwd = extreme(P, "Strike", true, fwd, false), extreme(P, "Strike", true, fwd, true)
+	T.check(kick < -0.32 and kick > -0.38 and kickFwd < 0.05, "p7vfx poses: ranged Strike recoils backward 0.35 studs (never lunges)", fmt("min %.3f, max %.3f", kick, kickFwd))
+	local under = extreme(P, "Strike", false, fwd, false, 0.4, 1)
+	T.check(under < -0.02 and under > -0.25, "p7vfx poses: melee Strike settles with a small overshoot behind its start", fmt("%.3f", under))
+	local recoil = extreme(P, "Recoil", false, fwd, false)
+	T.check(recoil < -0.25 and forwardOf(P.Sample("Recoil", 0.25).Body) < -0.2 and extreme(P, "Recoil", false, fwd, true) < 0.05,
+		"p7vfx poses: Recoil moves the body backward", fmt("min %.3f, p=0.25 %.3f", recoil, forwardOf(P.Sample("Recoil", 0.25).Body)))
+	-- the left wing reaches towards -X: sweep (+ = tip back, - = swung forward / open) and rise (+ = tip up), degrees
+	local function sweepOf(s)
+		local tip = s.Groups.wing * Vector3.new(-1, 0, 0)
+		return deg(math.atan2(tip.Z, -tip.X))
+	end
+	local function riseOf(s)
+		return deg(math.asin(math.max(-1, math.min(1, (s.Groups.wing * Vector3.new(-1, 0, 0)).Y))))
+	end
+	local open = -extreme(P, "Strike", false, sweepOf, false)
+	local openR = -extreme(P, "Strike", true, sweepOf, false)
+	T.check(open > 33 and open < 42 and openR > 33 and openR < 42, "p7vfx poses: Strike snaps the wings open 35 deg (melee + ranged)", fmt("%.1f / %.1f deg", open, openR))
+	local highest, highestAt = -90, ""
+	for _, name in ipairs(POSE_NAMES) do
+		for _, ranged in ipairs({ false, true }) do
+			local r = extreme(P, name, ranged, riseOf, true, 0, loops[name] and 12 or 1)
+			if r > highest then
+				highest, highestAt = r, name
+			end
+		end
+	end
+	T.check(highest <= 12, "p7vfx poses: no pose raises the wings more than 12 deg (evolved wings rest near upright)", fmt("%.1f deg (%s)", highest, highestAt))
+
+	local crouch = extreme(P, "Windup", false, height, false)
+	T.check(crouch < -0.235 and crouch > -0.27, "p7vfx poses: Windup crouches 0.25 studs", fmt("%.3f", crouch))
+	local back = extreme(P, "Windup", false, sweepOf, true)
+	T.check(back > 22 and back < 28, "p7vfx poses: Windup sweeps the wings back 25 deg", fmt("%.1f deg", back))
+	local tailUp = extreme(P, "Windup", false, function(s)
+		return (s.Groups.tail * Vector3.new(0, 0, 1)).Y -- the tail reaches back (+Z)
+	end, true)
+	T.check(tailUp > 0.25, "p7vfx poses: Windup lifts the tail", fmt("tail tip rise %.3f", tailUp))
+
+	local rise = extreme(P, "Cast", false, height, true)
+	T.check(rise > 0.58 and rise < 0.66, "p7vfx poses: Cast rises 0.6 studs", fmt("%.3f", rise))
+	local spread = -extreme(P, "Cast", false, sweepOf, false)
+	T.check(spread > 46 and spread < 56, "p7vfx poses: Cast spreads the wings 50 deg", fmt("%.1f deg", spread))
+
+	local hurt = P.Sample("Hurt", 0.3)
+	T.check(hurt.Lids >= 0.8, "p7vfx poses: Hurt shuts the lids (Lids >= 0.8 at p = 0.3)", fmt("%.2f", hurt.Lids))
+	local flinch, dip = extreme(P, "Hurt", false, fwd, false), extreme(P, "Hurt", false, height, false)
+	T.check(flinch < -0.27 and flinch > -0.33 and dip < -0.06, "p7vfx poses: Hurt flinches back 0.3 studs with a squash dip", fmt("back %.3f, dip %.3f", flinch, dip))
+
+	local ko = P.Sample("Ko", 1)
+	local tilt = deg(math.acos(math.max(-1, math.min(1, ko.Body:VectorToWorldSpace(Vector3.new(0, 1, 0)).Y))))
+	T.check(math.abs(tilt - 90) < 3 and ko.Lids >= 0.8 and (ko.Still or 0) >= 0.9,
+		"p7vfx poses: Ko ends tumbled 90 deg onto its side, eyes shut, wings / tail still", fmt("tilt %.1f deg, lids %.2f", tilt, ko.Lids))
+
+	local hop = extreme(P, "Victory", false, height, true)
+	T.check(hop > 1.17 and hop < 1.25, "p7vfx poses: Victory hops 1.2 studs", fmt("%.3f", hop))
+	local spin, last = 0, 0
+	for i = 0, 200 do
+		local a = yawOf(P.Sample("Victory", i / 200).Body)
+		local d = a - last
+		if d > 180 then
+			d = d - 360
+		elseif d < -180 then
+			d = d + 360
+		end
+		spin, last = spin + d, a
+	end
+	T.check(math.abs(math.abs(spin) - 360) < 3, "p7vfx poses: Victory spins a full 360 deg", fmt("%.1f deg", spin))
+
+	local maxBreath, glances, inGlance, gapsOk, lastStart = 0, 0, false, true, nil
+	for i = 0, 6000 do
+		local t = i / 100
+		local s = P.Sample("IdleBattle", t)
+		maxBreath = math.max(maxBreath, math.abs(s.Body.Position.Y))
+		local yaw = math.abs(yawOf(s.Body))
+		if yaw > 4 and not inGlance then
+			inGlance = true
+			glances = glances + 1
+			if lastStart and (t - lastStart < 1.9 or t - lastStart > 4.1) then
+				gapsOk = false
+			end
+			lastStart = t
+		elseif yaw < 1 then
+			inGlance = false
+		end
+	end
+	T.check(maxBreath > 0.04 and maxBreath <= 0.0501, "p7vfx poses: IdleBattle breathes 0.05 studs", fmt("%.4f", maxBreath))
+	T.check(glances >= 15 and gapsOk, "p7vfx poses: IdleBattle glances every 2-4 s", fmt("%d glances in 60 s, gaps ok %s", glances, tostring(gapsOk)))
+
+	-- the rig hook on real builds
+	local PB, PC = sharedModule("PetBuilder"), sharedModule("PetCatalog")
+	if not T.check(PB ~= nil and type(PB.Animate) == "function" and type(PB.PoseBody) == "function" and PC ~= nil,
+		"p7vfx poses: PetBuilder loads with Animate + PoseBody") then
+		return
+	end
+	T.check(isIdentity(PB.PoseBody(nil)) and isIdentity(PB.PoseBody({})) and isIdentity(PB.PoseBody({ Flap = 1 })), "p7vfx poses: PoseBody without a Pose = identity")
+	local pb = PB.PoseBody({ Pose = { Name = "Strike", P = 0.25 } })
+	T.check(cfFinite(pb) and (pb.Position - P.Sample("Strike", 0.25).Body.Position).Magnitude < 1e-6, "p7vfx poses: PoseBody returns the pose's Body")
+	local pbr = PB.PoseBody({ Pose = { Name = "Strike", P = 0.1, Ranged = true } })
+	T.check(forwardOf(pbr) < 0, "p7vfx poses: PoseBody honours Ranged", fmt("%.3f", forwardOf(pbr)))
+
+	-- one winged pet (flapping wings) and one tailed pet, each with a second evolution
+	local winged, tailed = nil, nil
+	for _, def in ipairs(PC.Pets) do
+		if winged and tailed then
+			break
+		end
+		if PB.MaxEvolution(def) == 2 then
+			local m = PB.Build(def, { Detail = "Low" })
+			local w = m:FindFirstChild("WingL")
+			if not winged and w and string.find(tostring(w:GetAttribute("PB_G")), ":wing:", 1, true) then
+				winged = def
+			elseif not tailed and m:FindFirstChild("Tail") then
+				tailed = def
+			end
+			m:Destroy()
+		end
+	end
+	if not T.check(winged ~= nil and tailed ~= nil, "p7vfx poses: the catalog has a winged and a tailed pet with a second evolution",
+		tostring(winged and winged.Id) .. " / " .. tostring(tailed and tailed.Id)) then
+		return
+	end
+
+	local function cfNear(a, b, eps)
+		eps = eps or 1e-6
+		return (a.Position - b.Position).Magnitude < eps and angleOf(a:Inverse() * b) < eps * 10
+	end
+	local function mirroredPair(a, b)
+		local l, r = a.Position, b.Position
+		return math.abs(l.X + r.X) < 1e-3 and math.abs(l.Y - r.Y) < 1e-3 and math.abs(l.Z - r.Z) < 1e-3
+	end
+	local hook = T.tally("p7vfx poses: Animate + Pose moves WingL / Tail, wings stay mirrored, back to the exact unposed frame, no Instances")
+	for _, def in ipairs({ winged, tailed }) do
+		for _, stage in ipairs({ 0, 2 }) do
+			local m = PB.Build(def, { Detail = "Low", Evolved = stage > 0 and stage or nil })
+			local tag = fmt("%s stage %d", def.Id, stage)
+			local wingL, wingR = m:FindFirstChild("WingL"), m:FindFirstChild("WingR")
+			local subjectName = (def == winged) and "WingL" or "Tail"
+			local subject = m:FindFirstChild(subjectName)
+			if not subject then
+				hook:case(false, tag .. ": has no " .. subjectName)
+			else
+				local t0 = 3.37
+				PB.Animate(m, t0, {})
+				local restCF = subject.CFrame
+				local mirrored = wingL and wingR and mirroredPair(wingL.CFrame, wingR.CFrame)
+				if def == winged then
+					hook:case(mirrored == true, tag .. ": WingL / WingR start mirrored (so the mirror check below runs)")
+					-- the pose reads right on the real wings: Windup sweeps them back (+Z), Cast raises them (+Y)
+					local function wingCentre()
+						local sum, n = Vector3.new(0, 0, 0), 0
+						for _, part in ipairs(m:GetChildren()) do
+							if part:IsA("BasePart") and string.sub(tostring(part:GetAttribute("PB_G")), 1, 6) == "WingL:" then
+								sum, n = sum + part.Position, n + 1
+							end
+						end
+						return sum / math.max(1, n)
+					end
+					local c0 = wingCentre()
+					PB.Animate(m, t0, { Pose = { Name = "Windup", P = 0.6 } })
+					local cBack = wingCentre()
+					PB.Animate(m, t0, { Pose = { Name = "Cast", P = 0.5 } })
+					local cOpen = wingCentre()
+					hook:case(cBack.Z > c0.Z + 0.05, fmt("%s: Windup sweeps the real left wing back (dz %.3f)", tag, cBack.Z - c0.Z))
+					-- the wing's reach around its hinge (PB_Rig, the root sits at the origin): swung forward, but
+					-- never folded round past ~broadside (10 deg + the flap's own +-7 deg sweep)
+					local hx, hz = string.match(tostring(m:GetAttribute("PB_Rig")), "WingL:[^=]*=([^,]+),[^,]+,([^,;]+)")
+					hx, hz = tonumber(hx), tonumber(hz)
+					local sweep = hx and deg(math.atan2(cOpen.Z - hz, -(cOpen.X - hx))) or -999
+					hook:case(cOpen.Z < c0.Z - 0.05 and sweep > -20,
+						fmt("%s: Cast spreads the real left wing forward, never round past broadside (dz %.3f, sweep %.1f deg)", tag, cOpen.Z - c0.Z, sweep))
+					PB.Animate(m, t0, {})
+				end
+				local live0, desc0 = Mock.Stats().liveInstances, #m:GetDescendants()
+				for _, name in ipairs({ "Windup", "Strike", "Recoil", "Cast", "Hurt", "Ko", "Victory" }) do
+					PB.Animate(m, t0, { Pose = { Name = name, P = 0.5 } })
+					hook:case(not cfNear(subject.CFrame, restCF, 1e-3), fmt("%s: %s at p=0.5 moves %s", tag, name, subjectName))
+					if mirrored then
+						hook:case(mirroredPair(wingL.CFrame, wingR.CFrame), fmt("%s: %s keeps WingL / WingR mirrored", tag, name))
+					end
+				end
+				PB.Animate(m, t0, { Pose = { Name = "Strike", P = 0.2, Ranged = true } })
+				PB.Animate(m, t0, { Pose = { Name = "IdleBattle", P = 7.3 } })
+				PB.Animate(m, t0, {})
+				hook:case(cfNear(subject.CFrame, restCF), tag .. ": the same call without Pose returns the exact unposed frame")
+				hook:case(Mock.Stats().liveInstances == live0 and #m:GetDescendants() == desc0, tag .. ": posing created no Instances")
+			end
+			m:Destroy()
+		end
+	end
+	hook:report()
+
+	-- the lids: Hurt shuts them, the unposed call opens them again (outside a blink)
+	local m = PB.Build(winged, { Detail = "Low" })
+	local lids = {}
+	for _, part in ipairs(m:GetChildren()) do
+		if part:IsA("BasePart") and string.find(tostring(part:GetAttribute("PB_G")), ":lid:", 1, true) then
+			lids[#lids + 1] = part
+		end
+	end
+	if T.check(#lids > 0, "p7vfx poses: the winged pet has eyelid parts", tostring(#lids)) then
+		local tOpen = nil
+		for i = 0, 400 do
+			PB.Animate(m, 10 + i * 0.01, {})
+			if lids[1].Transparency == 1 then
+				tOpen = 10 + i * 0.01
+				break
+			end
+		end
+		PB.Animate(m, tOpen, { Pose = { Name = "Hurt", P = 0.3 } })
+		local shut = tOpen ~= nil
+		for _, l in ipairs(lids) do
+			shut = shut and l.Transparency < 1 and l.Transparency == l:GetAttribute("PB_T0")
+		end
+		T.check(shut, "p7vfx poses: Hurt (p = 0.3) shows every eyelid (eyes squeezed shut)")
+		PB.Animate(m, tOpen, {})
+		local opened = true
+		for _, l in ipairs(lids) do
+			opened = opened and l.Transparency == 1
+		end
+		T.check(opened, "p7vfx poses: without the Pose the lids open again (outside a blink)")
+	end
+	m:Destroy()
 end)
 
 return S
