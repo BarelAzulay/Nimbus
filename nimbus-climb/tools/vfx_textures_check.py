@@ -4,10 +4,12 @@
     py -3.12 tools/vfx_textures_check.py            # every manifest key
     py -3.12 tools/vfx_textures_check.py --key fx_flame
     py -3.12 tools/vfx_textures_check.py --sheet    # + blender/vfx/out/contact_sheet.png (only when all pass)
+    py -3.12 tools/vfx_textures_check.py --selftest # the check's own cases (grid-1 strip sizes, tint, empty)
 
-Per key: the manifest entry is well formed (grid 4, size 1024, mode OneShot|Loop, fps, known elements, tint
-runtime|baked), the key matches ^fx_[a-z]+$ and is unique, the PNG exists and is 1024x1024 RGBA, the four corner
-pixels are fully transparent, every one of the 16 grid cells has at least 2% of its pixels with alpha > 32 (no empty
+Per key: the manifest entry is well formed (grid 4 = a 16-frame flipbook, size 1024 square; grid 1 = a single-frame
+Beam strip of size x height; mode OneShot|Loop, fps, known elements, tint runtime|baked), the key matches ^fx_[a-z]+$
+and is unique, the PNG exists at the manifest size and is RGBA, the four corner pixels are fully transparent, every
+grid cell (16 for grid 4, the whole strip for grid 1) has at least 2% of its pixels with alpha > 32 (no empty
 frames), and every fully transparent pixel has RGB (30, 38, 72) - never a gray / white checkerboard or fringe (the
 Storm Altar lesson: Roblox shows the RGB of transparent pixels at mip edges).
 Exit 0 and "N/N textures OK" when all pass.
@@ -42,6 +44,13 @@ def rel(p):
     return os.path.relpath(p, ROOT).replace("\\", "/")
 
 
+def dims(e):
+    """(width, height) of a key's PNG: grid 4 = size x size; grid 1 (a Beam strip) = size x height"""
+    if e.get("grid") == 1:
+        return e.get("size"), e.get("height")
+    return e.get("size"), e.get("size")
+
+
 def check_entry(e):
     errs = []
     if not isinstance(e, dict):
@@ -49,10 +58,19 @@ def check_entry(e):
     key = e.get("key")
     if not isinstance(key, str) or not KEY_RE.match(key):
         errs.append("bad key %r (must match ^fx_[a-z]+$)" % (key,))
-    if e.get("grid") != GRID:
-        errs.append("%s: grid must be %d" % (key, GRID))
-    if e.get("size") != SIZE:
-        errs.append("%s: size must be %d" % (key, SIZE))
+    grid = e.get("grid")
+    if grid == GRID:
+        if e.get("size") != SIZE:
+            errs.append("%s: size must be %d" % (key, SIZE))
+        if "height" in e and e["height"] != SIZE:
+            errs.append("%s: a grid-4 sheet is square (height %r)" % (key, e["height"]))
+    elif grid == 1:
+        for f in ("size", "height"):
+            v = e.get(f)
+            if not isinstance(v, int) or isinstance(v, bool) or v <= 0:
+                errs.append("%s: grid-1 strip needs a positive int %s" % (key, f))
+    else:
+        errs.append("%s: grid must be %d (flipbook) or 1 (Beam strip)" % (key, GRID))
     if e.get("mode") not in ("OneShot", "Loop"):
         errs.append("%s: mode must be OneShot or Loop" % key)
     fps = e.get("fps")
@@ -66,27 +84,30 @@ def check_entry(e):
     return errs
 
 
-def check_png(key):
-    path = os.path.join(OUT, key + ".png")
+def check_png(e, out_dir=None):
+    key = e["key"]
+    path = os.path.join(out_dir or OUT, key + ".png")
     if not os.path.isfile(path):
         return ["missing %s" % rel(path)]
     with open(path, "rb") as f:
         im = Image.open(f)
         im.load()
-    if im.size != (SIZE, SIZE):
-        return ["%s: size %dx%d, want %dx%d" % (key, im.size[0], im.size[1], SIZE, SIZE)]
+    w, h = dims(e)
+    if im.size != (w, h):
+        return ["%s: size %dx%d, want %dx%d" % (key, im.size[0], im.size[1], w, h)]
     if im.mode != "RGBA":
         return ["%s: mode %s, want RGBA" % (key, im.mode)]
     a = np.asarray(im)
     errs = []
     alpha = a[..., 3]
-    for (y, x) in ((0, 0), (0, SIZE - 1), (SIZE - 1, 0), (SIZE - 1, SIZE - 1)):
+    for (y, x) in ((0, 0), (0, w - 1), (h - 1, 0), (h - 1, w - 1)):
         if alpha[y, x] != 0:
             errs.append("%s: corner (%d,%d) alpha %d, want 0" % (key, x, y, alpha[y, x]))
-    cell = SIZE // GRID
-    for i in range(GRID * GRID):
-        r, c = divmod(i, GRID)
-        sub = alpha[r * cell:(r + 1) * cell, c * cell:(c + 1) * cell]
+    g = e["grid"]
+    cw, ch = w // g, h // g
+    for i in range(g * g):
+        r, c = divmod(i, g)
+        sub = alpha[r * ch:(r + 1) * ch, c * cw:(c + 1) * cw]
         cover = float((sub > 32).mean())
         if cover < MIN_COVER:
             errs.append("%s: frame %d (row %d col %d) cover %.2f%% < %.0f%%" % (key, i + 1, r, c, cover * 100, MIN_COVER * 100))
@@ -98,6 +119,47 @@ def check_png(key):
         errs.append("%s: %d transparent pixels are not RGB %s (first at %d,%d = %s)" % (
             key, nbad, DARK_TINT, xs[0], ys[0], tuple(int(v) for v in a[ys[0], xs[0], :3])))
     return errs
+
+
+def selftest():
+    """the check itself: a good grid-1 strip passes, a grid-1 strip of the wrong size fails, and so do a gray
+    transparent pixel and an empty strip"""
+    import tempfile
+    entry = {"key": "fx_test", "grid": 1, "size": 1024, "height": 256, "mode": "Loop", "fps": 1,
+             "elements": ["Storm"], "tint": "baked"}
+
+    def strip(w, h, gray=False, empty=False):
+        a = np.zeros((h, w, 4), np.uint8)
+        a[..., :3] = DARK_TINT
+        if not empty:
+            a[h // 2 - 20:h // 2 + 20, :, :] = (200, 210, 255, 255)
+        if gray:
+            a[0, 5, :3] = (128, 128, 128)
+        return a
+    cases = [("good 1024x256 strip", strip(1024, 256), True),
+             ("grid-1 strip at the wrong size (1024x1024)", strip(1024, 1024), False),
+             ("grid-1 strip at the wrong size (512x256)", strip(512, 256), False),
+             ("gray transparent pixel", strip(1024, 256, gray=True), False),
+             ("empty strip", strip(1024, 256, empty=True), False)]
+    bad = 0
+    with tempfile.TemporaryDirectory() as d:
+        if check_entry(entry):
+            print("SELFTEST FAIL: entry rejected: %s" % check_entry(entry))
+            return 1
+        for name, arr, want_ok in cases:
+            with open(os.path.join(d, "fx_test.png"), "wb") as f:
+                Image.fromarray(arr, "RGBA").save(f, "PNG")
+            errs = check_png(entry, d)
+            ok = not errs
+            print("selftest %-45s %s%s" % (name, "pass" if ok else "fail", "" if ok else "  (" + errs[0] + ")"))
+            if ok != want_ok:
+                bad += 1
+                print("SELFTEST FAIL: %s: expected %s" % (name, "pass" if want_ok else "fail"))
+        if not check_entry(dict(entry, height=None)):
+            bad += 1
+            print("SELFTEST FAIL: a grid-1 entry without height was accepted")
+    print("selftest %s" % ("OK" if not bad else "FAILED"))
+    return 1 if bad else 0
 
 
 def write_sheet(entries, path):
@@ -117,6 +179,19 @@ def write_sheet(entries, path):
         im = im.convert("RGBA")
         x0 = 16 + (n % cols) * (bw + 16)
         y0 = 8 + (n // cols) * (th + label + 14)
+        if e["grid"] == 1:
+            # a Beam strip: two copies side by side (the seam is in the middle), on blue above and green below
+            draw.text((x0, y0 + 3), "%s  Beam strip %dx%d (tiled x2)  tint %s" % (e["key"], im.size[0], im.size[1], e["tint"]),
+                      fill=(230, 232, 240))
+            two = Image.new("RGBA", (im.size[0] * 2, im.size[1]), (0, 0, 0, 0))
+            two.paste(im, (0, 0))
+            two.paste(im, (im.size[0], 0))
+            hh = (th - gap) // 2
+            for j, bg in enumerate(bgs):
+                base = Image.new("RGBA", two.size, bg + (255,))
+                base.alpha_composite(two)
+                sheet.paste(base.convert("RGB").resize((bw, hh), Image.LANCZOS), (x0, y0 + label + j * (hh + gap)))
+            continue
         draw.text((x0, y0 + 3), "%s  %s %dfps  tint %s" % (e["key"], e["mode"], e["fps"], e["tint"]), fill=(230, 232, 240))
         k = 0
         for bg in bgs:
@@ -133,6 +208,8 @@ def write_sheet(entries, path):
 
 
 def main(argv):
+    if "--selftest" in argv:
+        return selftest()
     only = None
     if "--key" in argv:
         only = argv[argv.index("--key") + 1]
@@ -164,7 +241,7 @@ def main(argv):
         total += 1
         ee = check_entry(e)
         if not ee:
-            ee = check_png(e["key"])
+            ee = check_png(e)
         if ee:
             errs.extend(ee)
         else:
