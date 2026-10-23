@@ -984,12 +984,15 @@ function BEAM.Strike(eff, it, t)
 	return g + UP * (6 * eff.Size) + V3(hash(f, 10) - 0.5, 0, hash(f, 11) - 0.5), g, eff.Right
 end
 
+-- the i-th star of the Celestial constellation around the hit point
+local function constellationStar(eff, i)
+	local a = hash(i, 12) * TAU
+	local r = (1.4 + hash(i, 13)) * eff.Size
+	return eff.Hit + V3(cos(a) * r, (1 + 1.6 * hash(i, 14)) * eff.Size, sin(a) * r)
+end
+
 function BEAM.Connect(eff, it, t)
-	local function star(i)
-		local a = hash(i, 12) * TAU
-		return eff.Hit + V3(cos(a) * (1.4 + hash(i, 13)) * eff.Size, (1 + 1.6 * hash(i, 14)) * eff.Size, sin(a) * (1.4 + hash(i, 13)) * eff.Size)
-	end
-	local p0, p1 = star(it.I), star(it.I + 1)
+	local p0, p1 = constellationStar(eff, it.I), constellationStar(eff, it.I + 1)
 	local u = seg(t, it.T0 + (it.I - 1) * 0.08, it.T0 + (it.I - 1) * 0.08 + 0.2)
 	if u <= 0 then
 		return nil
@@ -1333,6 +1336,13 @@ local function isEmitter(layer)
 	return layer.Kind == "Emitter" or (layer.Kind == "Decal" and type(layer.Texture) == "string")
 end
 
+-- a charge glow at the mouth with no charge shown (shortened to fit the event): drawn by nobody, so it never takes
+-- one of the effect's emitter slots
+local function chargeDropped(eff, layer)
+	return (layer.Beat or "Impact") == "Charge" and layer.At == "Source" and not layer.Alive and layer.Kind ~= "Decal"
+		and eff.Times.Release <= 0.02
+end
+
 local function resetEmitter(em)
 	em.Shape = Enum.ParticleEmitterShape.Box
 	em.ShapeStyle = Enum.ParticleEmitterShapeStyle.Volume
@@ -1528,7 +1538,7 @@ local function addEmitterLayer(eff, layer)
 		preset = (layer.Motion == "Bounce" or layer.Motion == "SwirlUp") and layer.Motion or "Rise"
 		t1 = min(eff.EndRel - 0.1, t0 + (finite(layer.Seconds) and layer.Seconds or 0.6) * 0.6)
 	elseif beat == "Charge" and at == "Source" then
-		if T.Release <= 0.02 then
+		if chargeDropped(eff, layer) then
 			return -- no charge shown (shortened to fit the event)
 		end
 		mode, preset = "Stream", "Gather"
@@ -2122,6 +2132,7 @@ function AttackFx.Play(ctx)
 	if type(ctx) ~= "table" then
 		return false
 	end
+	local eff = nil -- (outside the pcall: a build that fails half-way gives back every kit it took)
 	local ok, result = pcall(function()
 		local now = finite(ctx.Now) and ctx.Now or os.clock()
 		local src = sideOf(ctx.From)
@@ -2195,7 +2206,7 @@ function AttackFx.Play(ctx)
 				drop = d
 			end
 		end
-		local eff = {
+		eff = {
 			Recipe = r, Unit = src.Unit, Src = src, Targets = targets, T = {}, S = src.Last, Dir = dir, Right = dir:Cross(UP),
 			Path = r.Core.Path, Area = area, Reach = reach, Drop = drop, Size = r.Size or 1,
 			Start = start, Times = T, EndRel = endRel, End = start + endRel,
@@ -2227,7 +2238,7 @@ function AttackFx.Play(ctx)
 		local cap = AttackFx.MAX_EMITTERS[quality] or 6
 		local ranked = {}
 		for i, layer in ipairs(layers) do
-			if isEmitter(layer) then
+			if isEmitter(layer) and not chargeDropped(eff, layer) then
 				ranked[#ranked + 1] = { L = layer, R = emitterRank(layer), I = i }
 			end
 		end
@@ -2254,6 +2265,9 @@ function AttackFx.Play(ctx)
 	if not ok then
 		St.errors = St.errors + 1
 		warnOnce("play", "Play failed: " .. tostring(result))
+		if eff then
+			pcall(finish, eff) -- out of St.live (if it got there) and every kit back to its pool, hidden
+		end
 		return false
 	end
 	return result == true

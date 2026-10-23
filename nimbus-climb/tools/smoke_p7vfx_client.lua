@@ -490,6 +490,54 @@ S.client_p7vfx_engine = guarded("client_p7vfx_engine", function()
 	T.check(discY ~= nil and discY > 1.0 and discY < 1.25, "a glow disc (ground glow) lies on the floor", tostring(discY))
 	run(3)
 
+	-- 12) an error mid-build: Play returns false, counts the error, and every kit taken so far goes back (no orphan) ------
+	-- warm-up: the same effect once, so the pools already hold every kit it takes
+	local mid = ctx({ Element = "Flame", Attack = "Melee", Rarity = "Common", Now = clock })
+	T.check(Fx.Play(mid), "mid-build error: the warm-up play")
+	run(3)
+	local reads, armed = {}, false
+	local throwing = setmetatable({}, {
+		__index = function(_, key)
+			reads[key] = (reads[key] or 0) + 1
+			-- texturesOk reads each key once; the 2nd read of the Burst sheet comes after the core and the charge
+			-- emitter were taken
+			if armed and key == "fx_flame" and reads[key] >= 2 then
+				error("forced mid-build failure")
+			end
+			return Ids[key]
+		end,
+	})
+	local errBefore = Fx.Stats().Errors
+	local poolBefore, descBefore = Fx.Stats().PoolInstances, #folder:GetDescendants()
+	Fx._Deps({ TextureIds = throwing })
+	armed = true
+	mid.Now = clock
+	local played = Fx.Play(mid)
+	armed = false
+	Fx._Deps({ TextureIds = false })
+	local after = Fx.Stats()
+	T.check(played == false and after.Errors == errBefore + 1 and (reads.fx_glow or 0) >= 2,
+		"mid-build error (after the core and a layer were taken): Play returns false, Stats().Errors + 1", fmt("played %s, errors %d -> %d", tostring(played), errBefore, after.Errors))
+	T.check(after.Live == 0 and after.Emitters == 0 and after.Cores == 0 and after.PoolInstances == poolBefore and #folder:GetDescendants() == descBefore,
+		"mid-build error: every kit taken goes back to its pool (no orphan instances)", fmt("pool %d -> %d, folder %d -> %d", poolBefore, after.PoolInstances, descBefore, #folder:GetDescendants()))
+	local hidden2, what2 = allHidden(folder)
+	T.check(hidden2, "mid-build error: the returned kits are hidden", tostring(what2))
+
+	-- 13) a charge glow dropped for lack of time takes no emitter slot (Lava Slam: 7 emitter layers, cap 6) -------------
+	Fx.Play(ctx({ Element = "Flame", Attack = "Special", Kind = "Blast", PetId = "magma_cub", Rarity = "Secret", DueAt = clock, Now = clock }))
+	local em = Fx._Live()[#Fx._Live()]
+	local crack, charge = false, false
+	for _, it in ipairs(em and em.Items or {}) do
+		if it.Kind == "Emitter" and it.Layer.Id == "SigLavaCrack" then
+			crack = true
+		elseif it.Kind == "Emitter" and it.Layer.Id == "Charge" then
+			charge = true
+		end
+	end
+	T.check(em and em.Times.Release == 0 and not charge and crack and em.Emitters == Fx.MAX_EMITTERS.High,
+		"no charge time: the dropped charge glow frees its emitter slot (the signature lava crack is drawn, 6 emitters)", em and tostring(em.Emitters))
+	run(3)
+
 	-- clean up
 	Fx.ClearAll()
 	Fx.Hooks.Punch = nil
