@@ -72,14 +72,23 @@
 --   evolve <pet|all> [stage]   the evolution animation: with no stage the whole line (normal -> evolved, then ->
 --                           evolved II for Epic+), 1 = normal -> evolved, 2 = evolved -> evolved II; "all" plays
 --                           every pet's evolutions one after another -> Evolve { Steps = { {PetId, From, To}, ... } }
---   clearpets               removes the showcase pets and stops an evolution -> Clear {}
+--   fx <element> <attack> [kind|shape] [rarity] [stage]
+--                           the pet attack VFX preview (plan docs/superpowers/plans/2026-10-23-pet-attack-vfx.md
+--                           Task 7): a caster pet of that element (and rarity, when the catalog has one) and a dummy
+--                           target 10 studs apart in front of you play client/Controllers/AttackFx. Words are
+--                           shared/AttackFxCatalog's names in any case: <element> (Flame, Water...), <attack> (Melee,
+--                           Ranged, Special, Element, Hurt, Ko, Victory), then in any order a special's kind (Blast,
+--                           Beam...; none = the caster pet's own), an element attack's shape (Cone, Circle, Line), a
+--                           rarity (default Common) and a stage (0-2 or the stage words, default 0)
+--                           -> Fx { Element, Attack, Kind, Shape, Rarity, Stage }
+--   clearpets               removes the showcase pets (and the fx pair) and stops an evolution -> Clear {}
 -- They need no loaded profile and run while it is provisional; they change no data.
 -- After every change: DataService.MarkDirty + Sync (the menu updates at once) and a side toast "DEV: ..." (kind
 -- "good"); refusals get a "bad" toast. Rate limit: 4 commands per 2 seconds per player. Every command is logged with
 -- print("[NimbusClimb][Dev] ...") including the UserId. Nothing yields between reading and writing the profile.
 --
 -- Chat: "/allpets", "/tokens 50000", "/reset", "/tutorial", "/skiptutorial", "/raid", "/petlevel 20", "/pet cloudy dragon 2",
--- "/pets 1", "/evolve all", "/clearpets", "/devhelp", typed in the GAME's chat (not Studio's command bar). Two ways in, one
+-- "/pets 1", "/evolve all", "/fx flame ranged epic", "/clearpets", "/devhelp", typed in the GAME's chat (not Studio's command bar). Two ways in, one
 -- parser (onChatted): Player.Chatted of allowed players (the legacy chat), and one TextChatCommand per command
 -- (PrimaryAlias "/<command>", children of TextChatService, made at Init when the place uses TextChatService):
 -- the new chat only hands a "/" message to the game when a TextChatCommand claims it, and claimed commands stay
@@ -119,7 +128,7 @@ local DevService = {}
 
 DevService.Commands = {
 	"allpets", "tokens", "cash", "gems", "berries", "petlevel", "reset", "tutorial", "skiptutorial", "raid", "pet", "pets", "evolve",
-	"clearpets", "devhelp",
+	"fx", "clearpets", "devhelp",
 }
 
 local TAG = "[NimbusClimb][Dev] "
@@ -142,15 +151,15 @@ end
 -- the commands that still run while the profile is provisional (see the persistence note)
 local PROVISIONAL_OK = {
 	tokens = true, cash = true, gems = true, berries = true, raid = true, devhelp = true, pet = true, pets = true, evolve = true,
-	clearpets = true,
+	fx = true, clearpets = true,
 }
 -- the pet showcase never touches the profile, so it does not wait for it
-local NO_PROFILE = { pet = true, pets = true, evolve = true, clearpets = true }
+local NO_PROFILE = { pet = true, pets = true, evolve = true, fx = true, clearpets = true }
 -- the commands that take a whole-number amount
 local NUMERIC = { tokens = true, cash = true, gems = true, berries = true, petlevel = true }
 -- the commands that take a value, and its type (tokens / cash / gems / berries / petlevel: a number; the showcase: the
 -- rest of the chat line)
-local ARG_KIND = { tokens = "number", cash = "number", gems = "number", berries = "number", petlevel = "number", pet = "string", pets = "string", evolve = "string" }
+local ARG_KIND = { tokens = "number", cash = "number", gems = "number", berries = "number", petlevel = "number", pet = "string", pets = "string", evolve = "string", fx = "string" }
 -- the example value a refusal toast shows for a numeric command (50000 for the currencies)
 local ARG_EXAMPLE = { petlevel = "20" }
 local MAX_ARG_LENGTH = 48
@@ -181,6 +190,7 @@ end
 
 local PetCatalog = loadModule(Shared, "PetCatalog")
 local PetBuilder = nil -- loaded on the first showcase command (MaxEvolution)
+local AttackFxCatalog = nil -- loaded on the first /fx (its name lists validate the words)
 local DataService = nil
 local TutorialService = nil
 local IndexService = nil
@@ -966,6 +976,77 @@ local function cmdEvolve(player, _, arg)
 	return true, label .. "; /clearpets stops it", false
 end
 
+-- AttackFxCatalog name list -> { [lower name] = name }
+local function namesOf(list)
+	local out = {}
+	for _, name in ipairs(type(list) == "table" and list or {}) do
+		out[string.lower(name)] = name
+	end
+	return out
+end
+
+-- /fx <element> <attack> [kind|shape] [rarity] [stage] -> Fx { Element, Attack, Kind, Shape, Rarity, Stage }
+local function cmdFx(player, _, arg)
+	if AttackFxCatalog == nil then
+		AttackFxCatalog = loadModule(Shared, "AttackFxCatalog") or false
+	end
+	local Cat = AttackFxCatalog
+	if not (Cat and type(Cat.Elements) == "table" and type(Cat.AttackNames) == "table") then
+		return false, "the attack effects catalog is missing"
+	end
+	local words = {}
+	for w in string.gmatch(tostring(arg or ""), "%S+") do
+		words[#words + 1] = w
+	end
+	if #words == 0 then
+		return false, "which element? like /fx flame ranged epic"
+	end
+	local elements, order = {}, {}
+	for name in pairs(Cat.Elements) do
+		elements[string.lower(name)] = name
+		order[#order + 1] = string.lower(name)
+	end
+	table.sort(order)
+	local element = elements[string.lower(words[1])]
+	if not element then
+		return false, "no element '" .. string.sub(words[1], 1, 12) .. "' (" .. table.concat(order, " ") .. ")"
+	end
+	if not words[2] then
+		return false, "which attack? like /fx " .. string.lower(element) .. " melee"
+	end
+	local attack = namesOf(Cat.AttackNames)[string.lower(words[2])]
+	if not attack then
+		return false, "no attack '" .. string.sub(words[2], 1, 12) .. "' (" .. string.lower(table.concat(Cat.AttackNames, " ")) .. ")"
+	end
+	local kinds, shapes, rarities = namesOf(Cat.KindNames), namesOf(Cat.ShapeNames), namesOf(Cat.Rarities)
+	local payload = { Element = element, Attack = attack, Rarity = "Common", Stage = 0 }
+	for i = 3, #words do
+		local w = string.lower(words[i])
+		if kinds[w] then
+			if attack ~= "Special" then
+				return false, kinds[w] .. " is a special's kind: /fx " .. string.lower(element) .. " special " .. w
+			end
+			payload.Kind = kinds[w]
+		elseif shapes[w] then
+			if attack ~= "Element" then
+				return false, shapes[w] .. " is an element attack's shape: /fx " .. string.lower(element) .. " element " .. w
+			end
+			payload.Shape = shapes[w]
+		elseif rarities[w] then
+			payload.Rarity = rarities[w]
+		elseif STAGE_WORDS[w] ~= nil then
+			payload.Stage = STAGE_WORDS[w]
+		else
+			return false, "'" .. string.sub(words[i], 1, 12) .. "' is no kind, shape, rarity or stage"
+		end
+	end
+	if not showPets(player, "Fx", payload) then
+		return false, "the DevPetShow remote is missing"
+	end
+	local label = element .. " " .. attack .. ((payload.Kind or payload.Shape) and (" " .. (payload.Kind or payload.Shape)) or "")
+	return true, label .. " " .. payload.Rarity .. " stage " .. payload.Stage .. " in front of you; /clearpets ends it", false
+end
+
 local function cmdClearPets(player)
 	if not showPets(player, "Clear", {}) then
 		return false, "the DevPetShow remote is missing"
@@ -973,11 +1054,11 @@ local function cmdClearPets(player)
 	return true, "showcase pets removed", false
 end
 
--- Two toasts (each fits a side toast, <= 90 characters with the "DEV: " prefix; the first one, 73 characters, also
--- fits a 390 px phone card whole): the pet showcase commands first, then the others (/petlevel among them since
--- Phase 4; the numeric commands take a number, which their refusal toasts spell out: "like /tokens 50000").
+-- Two toasts (each fits a side toast, <= 90 characters with the "DEV: " prefix): the pet showcase commands first
+-- (/fx among them since the pet attack VFX), then the others (/petlevel among them since Phase 4; the numeric
+-- commands take a number, which their refusal toasts spell out: "like /tokens 50000").
 local function cmdHelp(player)
-	notify(player, "DEV: /pet <name> [0-2]  /pets [0-2]  /evolve <name|all> [1-2]  /clearpets  /berries [n]", "info", HELP_SECONDS)
+	notify(player, "DEV: /pet <name> [0-2] /pets [0-2] /evolve <name|all> [1-2] /fx /clearpets /berries [n]", "info", HELP_SECONDS)
 	if tutorialReloader() then
 		return true, "/allpets /tokens /cash /gems /petlevel /reset /tutorial /skiptutorial /raid /devhelp", false
 	end
@@ -998,6 +1079,7 @@ local HANDLERS = {
 	pet = cmdPet,
 	pets = cmdPets,
 	evolve = cmdEvolve,
+	fx = cmdFx,
 	clearpets = cmdClearPets,
 	devhelp = cmdHelp,
 }

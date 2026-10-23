@@ -12,6 +12,10 @@
 --                      of waiting forever), chat commands, logging; Studio (everyone allowed, AllowInStudio /
 --                      Enabled switches, StudioAutoGrant); a build with the tools switched off still listens on
 --                      DevCommand (Roblox would queue the events otherwise) and refuses everything
+--                      the pet showcase (/pet, /pets, /evolve, /clearpets) and /fx <element> <attack> [kind|shape]
+--                      [rarity] [stage] (AttackFxCatalog names, any case; refused for others and with a 'bad' toast
+--                      for an unknown element / attack / word) -> DevPetShow("Fx", { Element, Attack, Kind, Shape,
+--                      Rarity, Stage }) to the developer only
 --   client_dev         (client, 1920x1080 + other window sizes) the DEV button only exists with NC_Dev on the
 --                      PlayerGui, sits on the right edge clear of the menu column / HUD / hotbar / tutorial panel,
 --                      the toasts' room and the middle; the "Developer tools" side panel (never centred, readable,
@@ -872,6 +876,63 @@ local function serverScenarios()
 		T.eq(#shows(stranger, markS), 0, "DEV showcase: a normal player's showcase commands send nothing (chat and remote)")
 	end
 
+	-- /fx <element> <attack> [kind|shape] [rarity] [stage] (pet attack VFX, plan Task 7): validated against
+	-- AttackFxCatalog, sent as DevPetShow("Fx", { Element, Attack, Kind, Shape, Rarity, Stage }) to the developer only
+	local function fxShowcase(owner, stranger)
+		local function shows(p, mark)
+			local out = {}
+			for _, e in ipairs(K.remotesFor("DevPetShow", p.UserId, mark)) do
+				out[#out + 1] = { action = e.args[1], payload = e.args[2] or {} }
+			end
+			return out
+		end
+		local before = snapshotOf(owner)
+		local mark = chat(owner, "/fx Flame Ranged Epic")
+		local list = shows(owner, mark)
+		local e = list[1] or { payload = {} }
+		local p = e.payload
+		T.check(#list == 1 and e.action == "Fx" and p.Element == "Flame" and p.Attack == "Ranged" and p.Rarity == "Epic" and p.Stage == 0 and p.Kind == nil and p.Shape == nil,
+			"DEV fx: '/fx Flame Ranged Epic' (a developer) -> DevPetShow Fx { Flame, Ranged, Epic, stage 0 }",
+			#list .. " events, " .. tostring(e.action) .. " " .. tostring(p.Element) .. " " .. tostring(p.Attack) .. " " .. tostring(p.Rarity) .. " " .. tostring(p.Stage))
+		T.check(lastToast(owner, mark).kind ~= "bad" and lastToast(owner, mark).text:find("Flame", 1, true) ~= nil, "DEV fx: ...with a toast naming it", lastToast(owner, mark).text)
+		mark = chat(owner, "/FX flame SPECIAL blast legendary 2")
+		e = shows(owner, mark)[1] or { payload = {} }
+		p = e.payload
+		T.check(p.Element == "Flame" and p.Attack == "Special" and p.Kind == "Blast" and p.Rarity == "Legendary" and p.Stage == 2,
+			"DEV fx: any case; a special's kind, the rarity and the stage words in any order ('/FX flame SPECIAL blast legendary 2')",
+			tostring(p.Element) .. " " .. tostring(p.Attack) .. " " .. tostring(p.Kind) .. " " .. tostring(p.Rarity) .. " " .. tostring(p.Stage))
+		mark = send(owner, "fx", "water element circle evolved")
+		e = shows(owner, mark)[1] or { payload = {} }
+		p = e.payload
+		T.check(p.Element == "Water" and p.Attack == "Element" and p.Shape == "Circle" and p.Rarity == "Common" and p.Stage == 1,
+			"DEV fx: an element attack's shape through the DevCommand remote; the rarity defaults to Common",
+			tostring(p.Element) .. " " .. tostring(p.Attack) .. " " .. tostring(p.Shape) .. " " .. tostring(p.Rarity) .. " " .. tostring(p.Stage))
+		local refusals = {
+			{ "/fx Lava Ranged", "no element" },
+			{ "/fx Flame Kick", "no attack" },
+			{ "/fx", "which element" },
+			{ "/fx Flame", "which attack" },
+			{ "/fx Flame Melee Blast", "Special" },
+			{ "/fx Flame Ranged Shiny", "shiny" },
+		}
+		for _, r in ipairs(refusals) do
+			mark = chat(owner, r[1])
+			local toast = lastToast(owner, mark)
+			T.check(#shows(owner, mark) == 0 and toast.kind == "bad" and toast.text:lower():find(r[2]:lower(), 1, true) ~= nil,
+				"DEV fx: '" .. r[1] .. "' is refused with a 'bad' toast and sends nothing", toast.text)
+		end
+		mark = send(owner, "fx", { Element = "Flame" })
+		T.check(#shows(owner, mark) == 0 and lastToast(owner, mark).kind == "bad", "DEV fx: a forged value (a table) is refused", lastToast(owner, mark).text)
+		local unchanged, diff = same(before, snapshotOf(owner))
+		T.check(unchanged, "DEV fx: /fx changes no data", diff)
+		local markS = K.logSize()
+		chat(stranger, "/fx Flame Ranged Epic")
+		send(stranger, "fx", "Flame Ranged Epic")
+		advance(2.1)
+		T.eq(#shows(stranger, markS), 0, "DEV fx: '/fx Flame Ranged Epic' from a normal player is refused (sends nothing)")
+		T.eq(#devToasts(stranger, markS), 0, "DEV fx: ...and they get no DEV toast")
+	end
+
 	S.dev_tools = guarded("dev_tools", function()
 		if not K.needBoot() then
 			return
@@ -913,6 +974,7 @@ local function serverScenarios()
 			groupGame(Dev, Config, joined, stranger)
 			local owner = ownerCommands(Dev, Config, joined)
 			petShowcase(Dev, owner, stranger)
+			fxShowcase(owner, stranger)
 			resetMidTutorial(Config, joined)
 			switchedOff(Config, owner)
 			studio(Dev, Config, joined, owner)
@@ -1558,6 +1620,42 @@ local function clientScenarios()
 		T.check(h.Done and a.Parent == nil and b.Parent ~= nil and off < 0.01 and Fx.Count() == 0, "DEV pets: Stop() ends it at once: the old pet gone, the evolved one at rest at the pose", string.format("%.3f studs off", off))
 		b:Destroy()
 		T.check(typeof(c1) == "Color3" and typeof(c2) == "Color3", "DEV pets: PetBuilder.EvolutionColors gives two colours")
+
+		-- Fx (/fx): a caster pet and a dummy target 10 studs apart in front of the player play AttackFx; Clear removes them
+		local okAF, AF = pcall(require, Mock.GetPath(ROOTS["client"] .. "/Controllers/AttackFx"))
+		if T.check(okAF and type(AF) == "table" and type(AF.Stats) == "function", "DEV pets: client/Controllers/AttackFx.lua loads") then
+			T.check(Show.Handle("Fx", { Element = "Lava", Attack = "Ranged", Rarity = "Epic", Stage = 0 }) == false
+				and Show.Handle("Fx", { Element = "Flame", Attack = "Kick", Rarity = "Epic", Stage = 0 }) == false,
+				"DEV pets: an Fx payload with an unknown element / attack builds nothing")
+			KC.toClient("DevPetShow", "Fx", { Element = "Flame", Attack = "Ranged", Rarity = "Epic", Stage = 0 })
+			advance(0.2)
+			list = models()
+			local caster, dummy = nil, nil
+			for _, m in ipairs(list) do
+				if m:GetAttribute("DevFx") == "Caster" then
+					caster = m
+				elseif m:GetAttribute("DevFx") == "Target" then
+					dummy = m
+				end
+			end
+			local apart = (caster and dummy) and (Vector3.new(caster.PrimaryPart.Position.X, 0, caster.PrimaryPart.Position.Z) - Vector3.new(dummy.PrimaryPart.Position.X, 0, dummy.PrimaryPart.Position.Z)).Magnitude or -1
+			T.check(#list == 2 and caster ~= nil and dummy ~= nil and math.abs(apart - 10) < 0.6, "DEV pets: Fx builds a caster pet and a dummy target 10 studs apart (the showcase cleared)",
+				#list .. " models, " .. string.format("%.1f", apart) .. " studs")
+			local mid = (caster and dummy) and (caster.PrimaryPart.Position + dummy.PrimaryPart.Position) / 2 or me.Position
+			local toMid = mid - me.Position
+			T.check(Vector3.new(toMid.X, 0, toMid.Z):Dot(look) > 3, "DEV pets: ...in front of the player")
+			local st = AF.Stats()
+			T.check(st.Live + st.Stepped >= 1 and caster and caster:GetAttribute("DevFxElement") == "Flame" and caster:GetAttribute("DevFxRarity") == "Epic",
+				"DEV pets: ...and the caster (a Flame pet) plays the AttackFx effect", "Live " .. st.Live)
+			advance(3)
+			T.eq(AF.Stats().Live + AF.Stats().Stepped, 0, "DEV pets: the Fx effect ends by itself")
+			KC.toClient("DevPetShow", "Fx", { Element = "Storm", Attack = "Special", Kind = "Beam", Rarity = "Mythic", Stage = 2 })
+			advance(0.3)
+			T.check(#models() == 2 and AF.Stats().Live + AF.Stats().Stepped >= 1, "DEV pets: a second Fx replaces the pair and plays (Storm Special Beam Mythic)")
+			KC.toClient("DevPetShow", "Clear", {})
+			advance(0.3)
+			T.check(Show.Count() == 0 and AF.Stats().Live + AF.Stats().Stepped == 0, "DEV pets: Clear (/clearpets) removes the Fx pets and ends their effects")
+		end
 		KC.flushErrors("dev pets")
 		KC.flushWarnings("dev pets")
 	end)

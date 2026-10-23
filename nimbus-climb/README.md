@@ -1245,11 +1245,12 @@ runs Lua code and the game never sees what you type there.
 | `/pets [stage]` | Every pet lined up in rows in front of you: `/pets` (normal), `/pets 1` (all 33 evolved), `/pets 2` (the 16 second evolutions). |
 | `/evolve <name> [stage]` | Plays that pet's evolution animation in front of you: with no stage its whole line (normal -> evolved, then -> second evolution for Epic pets and up), `1` only normal -> evolved, `2` only evolved -> second evolution. |
 | `/evolve all [stage]` | Every pet's evolutions one after another (all 49 take about 4½ minutes; `/evolve all 2` plays just the 16 second evolutions). |
-| `/clearpets` | Stops an evolution and removes the showcase pets. |
+| `/fx <element> <attack> [kind or shape] [rarity] [stage]` | Previews a pet attack effect: a pet of that element (and rarity) and a dummy target stand 10 studs apart in front of you and the attack plays. `<attack>` is `melee`, `ranged`, `special`, `element`, `hurt`, `ko` or `victory`; then, in any order, a special's kind (`blast`, `beam`, `pounce`, `storm`, `freeze`, `heal`, `shield`, `rally`, `haste`; none = the pet's own), an element attack's shape (`cone`, `circle`, `line`), a rarity (default `common`) and a stage (`0`-`2`). Any case: `/fx flame ranged epic`, `/fx storm special beam mythic 2`. |
+| `/clearpets` | Stops an evolution and removes the showcase pets (and the `/fx` pair). |
 | `/devhelp` | Two toasts listing the commands. |
 | `/menu` | Opens the main menu again (PLAY, SETTINGS, UPDATES) on your own screen only: your character stays where it is. Press PLAY to close it. |
 
-The pet showcase (`/pet`, `/pets`, `/evolve`, `/clearpets`) is built on your own screen only: other players do not
+The pet showcase (`/pet`, `/pets`, `/evolve`, `/fx`, `/clearpets`) is built on your own screen only: other players do not
 see it, nothing is saved and your pets are not touched. The evolution animation is
 `src/client/Controllers/EvolutionFx.lua` (the pet charges up and spins in a pillar of light over a ring of runes,
 bursts into a flash and the evolved pet pops out; the second evolution gets a double ring and more sparks); the
@@ -1443,9 +1444,9 @@ src/client   Main.client.lua; State; UiGate (nothing shows before PLAY); ClientS
              LightingStack (lighting looks, e.g. the Dungeon); UI/CloudUI; UI/NeonKit (the neon cards, tiles and side
              panels); UI/PetCard (the cards above pets); Controllers: Movement, MainMenu (main menu + settings), Hud,
              DamageFx, Notify, Menu, Hotbar, Pet, TokenFx, Index, Tutorial, Npc, SkyDragon, Showcase, Dev, DevPetShow
-             (pet showcase), EvolutionFx (evolution animation, the dungeon enemies' arrival), AttackFx (plays the pet
-             attack effects: Blender cores, flipbook particles, beams, trails and lights, pooled, within a budget, plus
-             the battle poses), Care (Food Machine, Garden, training and EVOLVE
+             (pet showcase, /fx attack preview), EvolutionFx (evolution animation, the dungeon enemies' arrival),
+             AttackFx (plays the pet attack effects: Blender cores, flipbook particles, beams, trails and lights,
+             pooled, within a budget, plus the battle poses; BattleController plays it first, cubes as the fallback), Care (Food Machine, Garden, training and EVOLVE
              windows), HomeFx (roaming pets, Cloud Cash, berries), HomePortalFx (the home portal), Fusion, Battle,
              Arena, Dungeon (the Dungeon window and run), Obby (the level picker), PortalFx (the gates' soft
              animation: a light running round the ring, the swirl breathing, gems twinkling), MeshFallback (shows the

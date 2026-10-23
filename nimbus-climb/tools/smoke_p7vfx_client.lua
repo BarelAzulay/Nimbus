@@ -11,6 +11,13 @@
 --               plays use <= 2 emitters and no bloom); a texture missing from TextureIds = Play false; cores not ready =
 --               texture layers only; Mine = false never punches (no hook call) and AttackFx never touches the camera.
 -- Deterministic: a fake clock (Update(now) / ctx.Now), a fake MeshLibrary for the cores where the test needs them.
+--   client_p7vfx_battle  BattleController plays AttackFx (Task 7): a recorded Boss Raid replayed one event at a time:
+--               every Hit / Special / Element / KO plays AttackFx.Play exactly once on arrival (impact due when the event
+--               plays) with the unit's element / rarity / stage (boss hits: my pet's Hurt; zone / burn / special / element
+--               damage: none), the pets strike and flinch (opts.Pose), the caps (FxParts 260 / Numbers 26 / Flashes 8);
+--               handler by handler: no cube Fx while AttackFx plays, the old Fx.* when Play returns false, DODGED! on a
+--               miss, Ko replaces the cube poof; a fallback replay (Play always false) is drawn by the cubes; Review Focus
+--               4: an End event and a Leave event mid-effect leave AttackFx.Stats().Live == 0 and the pools at keep size.
 
 local T = SmokeCommon.T
 local guarded = SmokeCommon.guarded
@@ -512,9 +519,21 @@ S.client_p7vfx_engine = guarded("client_p7vfx_engine", function()
 	Fx._Deps({ TextureIds = throwing })
 	armed = true
 	mid.Now = clock
+	local out0 = #Mock.Output
 	local played = Fx.Play(mid)
 	armed = false
 	Fx._Deps({ TextureIds = false })
+	-- AttackFx's own warn() for the forced error is expected here: turned into a print, so the client world's
+	-- flushWarnings (client_final) only reports foreign warnings
+	local expectedWarn = false
+	for i = out0 + 1, #Mock.Output do
+		local o = Mock.Output[i]
+		if o.kind == "warn" and string.find(o.text, "forced mid-build failure", 1, true) then
+			o.kind = "print"
+			expectedWarn = true
+		end
+	end
+	T.check(expectedWarn or played == false, "mid-build error: AttackFx warns once (warnOnce) about the failed Play")
 	local after = Fx.Stats()
 	T.check(played == false and after.Errors == errBefore + 1 and (reads.fx_glow or 0) >= 2,
 		"mid-build error (after the core and a layer were taken): Play returns false, Stats().Errors + 1", fmt("played %s, errors %d -> %d", tostring(played), errBefore, after.Errors))
@@ -545,6 +564,479 @@ S.client_p7vfx_engine = guarded("client_p7vfx_engine", function()
 	Fx.SetQuality(nil)
 	T.check(Fx.Stats().Live == 0 and Fx.Pose(21) == nil, "ClearAll: nothing live, no poses")
 	holder:Destroy()
+end)
+
+----------------------------------------------------------------------------------------------------------------------
+-- client_p7vfx_battle: BattleController plays AttackFx (plan Task 7)
+----------------------------------------------------------------------------------------------------------------------
+local KC = _G.KC
+local LocalPlayer = game:GetService("Players").LocalPlayer
+
+-- combat catalog pets with different specials (skipping `skip`), like smoke_p5_battleclient's H.team
+local function catalogTeam(count, skip, level)
+	local PC = moduleAt(ROOTS.shared .. "/PetCatalog")
+	local out, kinds = {}, {}
+	skip = skip or 0
+	for _, def in ipairs(PC and PC.Pets or {}) do
+		local sp = type(def.Special) == "table" and def.Special.Kind or nil
+		if sp and def.Role == "Combat" and not kinds[sp] and def.Rarity ~= "Secret" and not def.EventOnly then
+			if skip > 0 then
+				skip = skip - 1
+			else
+				kinds[sp] = true
+				out[#out + 1] = { Key = def.Id, PetId = def.Id, Level = level or 20, Tier = "Normal", Slot = #out + 1 }
+				if #out >= count then
+					break
+				end
+			end
+		end
+	end
+	return out
+end
+
+-- a recorded Boss Raid (my team + player 77's, both on Auto so specials / elements / buffs come): the Start payload the
+-- way BattleService sends it, then per 0.1 s server step its events and its wire snapshot (SnapshotDelta)
+local function recordRaid(seconds)
+	local Sim = moduleAt(ROOTS.shared .. "/BattleSim")
+	if not Sim then
+		return nil, "shared/BattleSim missing"
+	end
+	local me = LocalPlayer.UserId
+	local sim, why = Sim.new({ Mode = "Raid", Seed = 11, Id = "p7vfx_raid", Boss = "storm_titan", Zone = { X = 44, Z = 44 }, TimeLimit = 120,
+		Teams = { { Owner = me, Side = 1, Pets = catalogTeam(3, 0, 20), Auto = true }, { Owner = 77, Side = 1, Pets = catalogTeam(3, 3, 20), Auto = true } } })
+	if not sim then
+		return nil, why
+	end
+	for _, u in ipairs(sim.units or {}) do
+		if u.kind ~= "Boss" then
+			u.meter = 100 -- the specials come at once
+		end
+	end
+	local start = sim:Describe()
+	start.Zone = { CFrame = CFrame.new(0, 200, 0), Size = Vector3.new(start.Zone.X, 30, start.Zone.Z), X = start.Zone.X, Z = start.Zone.Z }
+	start.Names = { [tostring(me)] = LocalPlayer.Name, ["77"] = "Buddy" }
+	start.Side, start.Spectator, start.T = 1, false, sim:Time()
+	local team = sim:TeamOf(me)
+	if team then
+		local buff = {}
+		for slot, secs in pairs(team.Cooldowns.Buff or {}) do
+			buff[tostring(slot)] = secs
+		end
+		start.Team = { Fighter = team.Fighter, Bench = team.Bench, Lives = team.Lives, Speed = team.Speed,
+			Cooldowns = { Element = team.Cooldowns.Element, Dash = team.Cooldowns.Dash, Swap = team.Cooldowns.Swap, Buff = buff } }
+	end
+	local steps, last = {}, {}
+	for _ = 1, math.floor(seconds / 0.1 + 0.5) do
+		local evs = sim:Step(0.1)
+		steps[#steps + 1] = { Events = evs, Snap = sim:SnapshotDelta(last) }
+		if sim:IsFinished() then
+			break
+		end
+	end
+	return { Start = start, Steps = steps, Team77 = sim:TeamOf(77), Mine = team }
+end
+
+local function copyOf(t)
+	local c = {}
+	for k, v in pairs(t) do
+		c[k] = v
+	end
+	return c
+end
+
+S.client_p7vfx_battle = guarded("client_p7vfx_battle", function()
+	local BC = moduleAt(ROOTS.client .. "/Controllers/BattleController")
+	local AF = moduleAt(ROOTS.client .. "/Controllers/AttackFx")
+	local Cat = moduleAt(ROOTS.shared .. "/AttackFxCatalog")
+	local PB = moduleAt(ROOTS.shared .. "/PetBuilder")
+	if not T.check(BC ~= nil and AF ~= nil and Cat ~= nil and PB ~= nil and KC ~= nil, "BattleController, AttackFx, AttackFxCatalog, PetBuilder load") then
+		return
+	end
+	local out0, err0 = #Mock.Output, #Mock.Errors
+	local rec, why = recordRaid(14)
+	if not T.check(rec ~= nil and #rec.Steps > 50, "a recorded Boss Raid (14 s of events + snapshots)", tostring(why)) then
+		return
+	end
+	AF.ClearAll()
+	AF.SetQuality("High")
+	-- the spy: every AttackFx.Play call (force = false: Play refuses, the caller must draw its cube Fx.*)
+	local calls, force = {}, nil
+	local realPlay, realAnimate = AF.Play, PB.Animate
+	AF.Play = function(ctx)
+		local c = { Attack = ctx.Attack, Kind = ctx.Kind, Shape = ctx.Shape, Element = ctx.Element, Rarity = ctx.Rarity, Stage = ctx.Stage,
+			From = type(ctx.From) == "table" and ctx.From.Unit or nil, Mine = ctx.Mine, Miss = ctx.Miss == true, DueAt = ctx.DueAt, At = os.clock() }
+		if force == false then
+			c.Result = false
+		else
+			c.Result = realPlay(ctx)
+		end
+		calls[#calls + 1] = c
+		return c.Result
+	end
+	-- the poses PetBuilder.Animate is given, per unit model
+	local posesSeen = {}
+	PB.Animate = function(model, t, opts)
+		if type(opts) == "table" and type(opts.Pose) == "table" and typeof(model) == "Instance" then
+			posesSeen[opts.Pose.Name] = (posesSeen[opts.Pose.Name] or 0) + 1
+		end
+		return realAnimate(model, t, opts)
+	end
+	local function frames(seconds)
+		for _ = 1, math.max(1, math.floor(seconds * 30 + 0.5)) do
+			Mock.Step(1 / 30)
+		end
+	end
+	local peak = { FxParts = 0, Numbers = 0, Flashes = 0, Live = 0, Stepped = 0 }
+	local function track()
+		local s = BC.GetStats()
+		for _, k in ipairs({ "FxParts", "Numbers", "Flashes" }) do
+			peak[k] = math.max(peak[k], s[k] or 0)
+		end
+		local a = s.AttackFx or {}
+		peak.Live = math.max(peak.Live, a.Live or 0)
+		peak.Stepped = math.max(peak.Stepped, a.Stepped or 0)
+	end
+	local function poolsAtKeep(label)
+		local s = AF.Stats()
+		local folder = AF.Folder()
+		local hidden, what = allHidden(folder)
+		T.check(s.Live == 0 and s.Stepped == 0 and s.Emitters == 0 and s.Beams == 0 and s.Trails == 0 and s.Lights == 0 and s.Cores == 0,
+			label .. ": AttackFx.Stats().Live == 0 (nothing live, no kit held)", fmt("Live %d Stepped %d Emitters %d", s.Live, s.Stepped, s.Emitters))
+		T.check(s.Pooled <= AF.POOL_KEEP_TOTAL and s.PoolInstances == #folder:GetDescendants() and hidden,
+			label .. ": the pools are at their keep size (every kit pooled and hidden, nothing else in the folder)",
+			fmt("pooled %d / keep %d, instances %d vs folder %d, %s", s.Pooled, AF.POOL_KEEP_TOTAL, s.PoolInstances, #folder:GetDescendants(), tostring(what)))
+	end
+	-- the battle's unit infos (Start + Spawn / Wave units) and the client's view of a unit now
+	local infos = {}
+	local function learn(list)
+		for _, info in ipairs(type(list) == "table" and list or {}) do
+			if type(info) == "table" and tonumber(info.id) then
+				infos[tonumber(info.id)] = info
+			end
+		end
+	end
+	local function drawable(g)
+		return g ~= nil and not g.Parked and not g.Hidden and not (g.Benched and not g.Mine)
+	end
+	-- what one event must make BattleController play: nil = nothing, else { Attack, Unit, Kind?, Shape?, Miss?, El? }
+	local function expected(ev)
+		local t = ev.type
+		local function unit(id)
+			return BC.GetUnit(tonumber(id) or -1)
+		end
+		if t == "Hit" then
+			if ev.special or ev.element or ev.zone or ev.burn then
+				return nil
+			end
+			local a, v = unit(ev.from), unit(ev.to)
+			if not v then
+				return nil
+			end
+			if ev.tele or (a and a.Kind == "Boss") then
+				if not ev.miss and v.Kind ~= "Boss" and v.Mine and drawable(v) then
+					return { Attack = "Hurt", Unit = v.Id, El = a and Cat.Unit(infos[a.Id] or {}).Element }
+				end
+				return nil
+			end
+			if a and drawable(a) then
+				return { Attack = (infos[a.Id] or {}).ranged and "Ranged" or "Melee", Unit = a.Id, Miss = ev.miss == true }
+			end
+		elseif t == "Special" or t == "Element" then
+			local u = unit(ev.unit)
+			if u and u.Kind ~= "Boss" and drawable(u) then
+				return { Attack = t, Unit = u.Id, Kind = (t == "Special") and ev.kind or nil, Shape = (t == "Element") and ev.shape or nil }
+			end
+		elseif t == "KO" then
+			local u = unit(ev.unit)
+			if u and u.Kind ~= "Boss" and drawable(u) and u.Model ~= nil then
+				return { Attack = "Ko", Unit = u.Id }
+			end
+		elseif t == "Buff" then
+			-- the support special the buff is like, on the fighter (from the helper when it is drawn)
+			local h, f = unit(ev.unit), unit(ev.target)
+			if h and f and f.Kind ~= "Boss" and drawable(f) and f.Model ~= nil then
+				return { Attack = "Special", Unit = (drawable(h) and h.Model ~= nil) and h.Id or nil, LookId = h.Id }
+			end
+		elseif t == "Swap" then
+			local inc = unit(ev["in"])
+			if inc and inc.Kind ~= "Boss" and drawable(inc) and inc.Model ~= nil then
+				return { Attack = "Victory", Unit = inc.Id }
+			end
+		end
+		return nil
+	end
+
+	-- empty wire snapshots (the picture carried forward) keep the render clock moving after a recording ends, so the
+	-- crafted events below play
+	local live = { id = nil, T = 0 }
+	local function pulse(seconds)
+		for _ = 1, math.max(1, math.floor(seconds / 0.1 + 0.5)) do
+			live.T = live.T + 0.1
+			KC.toClient("BattleState", "Snapshot", { BattleId = live.id, T = live.T, U = {} }, live.id)
+			frames(0.1)
+		end
+	end
+	local ok, err = pcall(function()
+		-- 1) the recorded raid, one event at a time: each Hit / Special / Element / KO plays AttackFx exactly once (on
+		--    arrival, impact due when the event plays), with the unit's element and rarity
+		local id = "p7vfx_raid_1"
+		LocalPlayer:SetAttribute("InBattle", id)
+		BC.ResetStats()
+		local start = copyOf(rec.Start)
+		start.BattleId = id
+		learn(start.Units)
+		KC.toClient("BattleState", "Start", start, id)
+		frames(0.1)
+		local seen, bad, wrongLook, leads = {}, {}, {}, { n = 0, positive = 0, max = 0 }
+		for _, st in ipairs(rec.Steps) do
+			for _, ev in ipairs(st.Events) do
+				if ev.type == "Spawn" or ev.type == "Wave" then
+					learn(ev.units)
+				end
+				local want = expected(ev)
+				local n0 = #calls
+				KC.toClient("BattleState", "Events", { ev }, id)
+				local got = {}
+				for i = n0 + 1, #calls do
+					got[#got + 1] = calls[i]
+				end
+				local label = ev.type .. (ev.kind and (" " .. tostring(ev.kind)) or "") .. " #" .. tostring(ev.from or ev.unit)
+				if want == nil then
+					if #got > 0 then
+						bad[#bad + 1] = label .. ": " .. #got .. " plays, none expected (" .. tostring(got[1].Attack) .. ")"
+					end
+				elseif #got ~= 1 then
+					bad[#bad + 1] = label .. ": " .. #got .. " plays, 1 expected (" .. want.Attack .. ")"
+				else
+					local c = got[1]
+					local lookId = want.LookId or want.Unit
+					local look = Cat.Unit(infos[lookId] or {})
+					local el = (want.Attack == "Element" and ev.element) or (want.Attack == "Hurt" and (want.El or look.Element)) or look.Element
+					if c.Attack ~= want.Attack or c.From ~= want.Unit or (want.Kind and c.Kind ~= want.Kind) or (want.Shape and c.Shape ~= want.Shape)
+						or (want.Miss ~= nil and c.Miss ~= want.Miss) then
+						bad[#bad + 1] = fmt("%s: played %s from %s (kind %s shape %s miss %s)", label, tostring(c.Attack), tostring(c.From), tostring(c.Kind), tostring(c.Shape), tostring(c.Miss))
+					elseif c.Element ~= el or c.Rarity ~= look.Rarity or c.Stage ~= look.Stage or c.Mine ~= (BC.GetUnit(lookId) or {}).Mine then
+						wrongLook[#wrongLook + 1] = fmt("%s: %s %s stage %s mine %s (want %s %s %s)", label, tostring(c.Element), tostring(c.Rarity), tostring(c.Stage), tostring(c.Mine), tostring(el), tostring(look.Rarity), tostring(look.Stage))
+					end
+					seen[want.Attack] = (seen[want.Attack] or 0) + 1
+					if type(c.DueAt) == "number" then
+						local lead = c.DueAt - c.At
+						leads.n = leads.n + 1
+						leads.max = math.max(leads.max, lead)
+						if lead > 0.05 then
+							leads.positive = leads.positive + 1
+						end
+					end
+				end
+			end
+			local snap = copyOf(st.Snap)
+			snap.BattleId = id
+			KC.toClient("BattleState", "Snapshot", snap, id)
+			live.id, live.T = id, snap.T
+			frames(0.1)
+			track()
+		end
+		local list = {}
+		for k, v in pairs(seen) do
+			list[#list + 1] = k .. " " .. v
+		end
+		table.sort(list)
+		T.info("client_p7vfx_battle: AttackFx plays in the recorded raid", table.concat(list, ", "))
+		T.check(#bad == 0, "raid replay: every Hit / Special / Element / KO event plays AttackFx exactly once (boss hits: my pet's Hurt; zone / burn / special / element damage: none)", table.concat(bad, "; "))
+		T.check(#wrongLook == 0, "raid replay: ... with the unit's element, rarity and stage (AttackFxCatalog.Unit) and Mine = my own pet", table.concat(wrongLook, "; "))
+		T.check(((seen.Melee or 0) + (seen.Ranged or 0)) >= 5 and (seen.Special or 0) >= 1 and (seen.Element or 0) >= 1,
+			"raid replay: basic attacks, specials and element attacks were all played", table.concat(list, ", "))
+		T.check(leads.n > 0 and leads.positive > leads.n / 2 and leads.max <= 0.45,
+			"raid replay: played on arrival with the impact due when the event plays (the render delay is the charge lead, <= 0.45 s)",
+			fmt("%d of %d with lead > 0.05 s, max %.2f s", leads.positive, leads.n, leads.max))
+		T.check(peak.FxParts <= 260 and peak.Numbers <= 26 and peak.Flashes <= 8, "raid replay: FxParts <= 260, Numbers <= 26, Flashes <= 8",
+			fmt("%d parts, %d numbers, %d flashes", peak.FxParts, peak.Numbers, peak.Flashes))
+		T.check(peak.Live >= 1 and peak.Live <= AF.MAX_LIVE and peak.Stepped <= AF.MAX_STEPPED, "raid replay: GetStats().AttackFx reports the live effects within MAX_LIVE / MAX_STEPPED",
+			fmt("peak Live %d, Stepped %d", peak.Live, peak.Stepped))
+		T.check((posesSeen.Strike or 0) > 0 and (posesSeen.Hurt or 0) > 0, "raid replay: the pets strike and flinch (PetBuilder.Animate gets opts.Pose Strike / Hurt)",
+			fmt("Strike %d, Hurt %d, Cast %d, Windup %d", posesSeen.Strike or 0, posesSeen.Hurt or 0, posesSeen.Cast or 0, posesSeen.Windup or 0))
+
+		-- 2) handler by handler: with AttackFx the cube effects stay off, when Play returns false the old Fx.* still runs
+		pulse(3) -- (everything of the replay ends)
+		local team = rec.Mine
+		local fighter = team and team.Fighter
+		local boss = nil
+		for uid, info in pairs(infos) do
+			if info.kind == "Boss" then
+				boss = uid
+			end
+		end
+		local helper = team and team.Bench and team.Bench[1]
+		local ranged = nil
+		for uid, info in pairs(infos) do
+			if info.ranged and info.kind ~= "Boss" and drawable(BC.GetUnit(uid)) and BC.GetUnit(uid).Model then
+				ranged = uid
+			end
+		end
+		if not T.check(fighter and boss and BC.GetUnit(fighter) and BC.GetUnit(boss), "raid replay: my fighter and the boss are on the floor") then
+			return
+		end
+		local f = BC.GetUnit(fighter)
+		local bo = BC.GetUnit(boss)
+		local fInfo = infos[fighter] or {}
+		local function crafted()
+			local list2 = {
+				{ "Special Blast", { type = "Special", unit = fighter, kind = "Blast", name = "Test Blast", x = f.X, z = f.Z, tx = bo.X, tz = bo.Z, target = boss, targets = { boss } } },
+				{ "Element", { type = "Element", unit = fighter, element = fInfo.element, name = "Test Element", x = f.X, z = f.Z, angle = 0, tx = bo.X, tz = bo.Z, shape = "Cone", targets = { boss } } },
+			}
+			if ranged then
+				list2[#list2 + 1] = { "ranged Hit", { type = "Hit", from = ranged, to = boss, dmg = 7 } }
+			end
+			if helper then
+				list2[#list2 + 1] = { "Buff", { type = "Buff", owner = LocalPlayer.UserId, unit = helper, kind = (infos[helper] and infos[helper].buff and infos[helper].buff.Kind) or "Heal", name = "Heal", target = fighter } }
+			end
+			return list2
+		end
+		local fallbackBad, liveBad = {}, {}
+		for _, mode in ipairs({ "fx", "fallback" }) do
+			if mode == "fallback" then
+				force = false
+			else
+				force = nil
+			end
+			for _, item in ipairs(crafted()) do
+				pulse(1.8)
+				local p0 = BC.GetStats().FxParts
+				local n0 = #calls
+				KC.toClient("BattleState", "Events", { item[2] }, id)
+				pulse(0.3)
+				local dp = BC.GetStats().FxParts - p0
+				local played = calls[n0 + 1] and calls[n0 + 1].Result
+				if #calls ~= n0 + 1 then
+					liveBad[#liveBad + 1] = mode .. " " .. item[1] .. ": " .. (#calls - n0) .. " plays"
+				elseif mode == "fx" and not (played and dp <= 0) then
+					liveBad[#liveBad + 1] = fmt("%s: played %s, %d new cube parts", item[1], tostring(played), dp)
+				elseif mode == "fallback" and not (dp > 0) then
+					fallbackBad[#fallbackBad + 1] = fmt("%s: %d new cube parts (played %s)", item[1], dp, tostring(played))
+				end
+			end
+		end
+		force = nil
+		T.check(#liveBad == 0, "handlers: Special / Element / ranged Hit / Buff play AttackFx once and draw no cube Fx while it plays", table.concat(liveBad, "; "))
+		T.check(#fallbackBad == 0, "handlers: when AttackFx.Play returns false the old cube Fx.* call still runs", table.concat(fallbackBad, "; "))
+		-- DODGED! on a miss (both ways)
+		local function dodged()
+			local fx = workspace:FindFirstChild("ClientBattle") and workspace.ClientBattle:FindFirstChild("Fx")
+			for _, g in ipairs(fx and fx:GetDescendants() or {}) do
+				if g:IsA("TextLabel") and g.Text == "DODGED!" and g:FindFirstAncestorOfClass("BillboardGui") and g:FindFirstAncestorOfClass("BillboardGui").Enabled then
+					return true
+				end
+			end
+			return false
+		end
+		pulse(1.5)
+		KC.toClient("BattleState", "Events", { { type = "Hit", from = ranged or fighter, to = boss, dmg = 0, miss = true } }, id)
+		pulse(0.3)
+		T.check(dodged(), "handlers: a missed hit still shows DODGED! (with AttackFx playing the miss)")
+		-- the KO: AttackFx's Ko poof replaces the cube poof
+		local koUnit = helper or fighter
+		pulse(1.8)
+		local p0 = BC.GetStats().FxParts
+		local n0 = #calls
+		KC.toClient("BattleState", "Events", { { type = "KO", unit = koUnit } }, id)
+		pulse(0.3)
+		T.check(#calls == n0 + 1 and calls[n0 + 1].Attack == "Ko" and calls[n0 + 1].Result == true and BC.GetStats().FxParts - p0 <= 0,
+			"handlers: a KO plays AttackFx Ko (no cube poof)", fmt("%d plays, %d new parts", #calls - n0, BC.GetStats().FxParts - p0))
+
+		-- 3) Review Focus 4: the End event mid-effect -> nothing live, the pools at keep size
+		pulse(1.8)
+		KC.toClient("BattleState", "Events", {
+			{ type = "Special", unit = fighter, kind = "Blast", name = "Test Blast", x = f.X, z = f.Z, tx = bo.X, tz = bo.Z, target = boss, targets = { boss } },
+			{ type = "Hit", from = fighter, to = boss, dmg = 5 },
+		}, id)
+		pulse(0.2)
+		local mid = AF.Stats()
+		T.check(mid.Live + mid.Stepped >= 1, "Review Focus 4 (End): effects are live before the End event", fmt("Live %d", mid.Live))
+		KC.toClient("BattleState", "Events", { { type = "End", reason = "BossDown", winnerSide = 1 } }, id)
+		pulse(0.25)
+		poolsAtKeep("Review Focus 4 (End event mid-effect)")
+		T.check(AF.Pose(fighter) == nil and AF.Pose(boss) == nil, "Review Focus 4 (End): no pose is left")
+		KC.toClient("BattleState", "End", { BattleId = id, Mode = "Raid", Outcome = "Left", Won = false, Spectator = false, Reason = "Left" }, id)
+		LocalPlayer:SetAttribute("InBattle", nil)
+		KC.advance(15)
+		T.check(BC.GetBattle() == nil, "the first battle is freed after its end")
+		poolsAtKeep("after the battle is freed")
+
+		-- 4) a fallback replay (Play always false): the cube effects draw the whole fight
+		id = "p7vfx_raid_2"
+		LocalPlayer:SetAttribute("InBattle", id)
+		start = copyOf(rec.Start)
+		start.BattleId = id
+		force = false
+		KC.toClient("BattleState", "Start", start, id)
+		frames(0.1)
+		local cubePeak = 0
+		for i = 1, math.min(60, #rec.Steps) do
+			local st = rec.Steps[i]
+			if #st.Events > 0 then
+				KC.toClient("BattleState", "Events", st.Events, id)
+			end
+			local snap = copyOf(st.Snap)
+			snap.BattleId = id
+			KC.toClient("BattleState", "Snapshot", snap, id)
+			live.id, live.T = id, snap.T
+			frames(0.1)
+			cubePeak = math.max(cubePeak, BC.GetStats().FxParts)
+			track()
+		end
+		T.check(cubePeak > 0 and AF.Stats().Live == 0, "fallback replay: with Play false the fight is drawn by the cube Fx (and nothing of AttackFx)", fmt("peak %d cube parts", cubePeak))
+		force = nil
+
+		-- 5) Review Focus 4: player 77 leaves mid-effect -> its effects end at once, the pools at keep size
+		pulse(3)
+		local t77 = rec.Team77
+		local f77 = t77 and t77.Fighter
+		local g77 = f77 and BC.GetUnit(f77)
+		if T.check(g77 ~= nil and AF.Stats().Live == 0, "Review Focus 4 (Leave): player 77's fighter is on the floor, nothing live") then
+			KC.toClient("BattleState", "Events", {
+				{ type = "Special", unit = f77, kind = "Blast", name = "Test Blast", x = g77.X, z = g77.Z, tx = bo.X, tz = bo.Z, target = boss, targets = { boss } },
+				{ type = "Hit", from = f77, to = boss, dmg = 5 },
+			}, id)
+			pulse(0.2)
+			local mine77 = true
+			for _, e in ipairs(AF._Live()) do
+				if e.Unit ~= f77 then
+					mine77 = false
+				end
+			end
+			T.check(AF.Stats().Live + AF.Stats().Stepped >= 1 and mine77, "Review Focus 4 (Leave): player 77's effects are live", fmt("Live %d", AF.Stats().Live))
+			local ids = { f77 } -- (TeamOf: the fighter + the bench ids, like BattleSim's Leave)
+			for _, b in ipairs(t77.Bench or {}) do
+				ids[#ids + 1] = b
+			end
+			KC.toClient("BattleState", "Events", { { type = "Leave", owner = 77, units = ids } }, id)
+			pulse(0.25)
+			poolsAtKeep("Review Focus 4 (Leave event mid-effect)")
+			T.check(AF.Pose(f77) == nil and BC.GetUnit(f77) == nil, "Review Focus 4 (Leave): the leaver's unit and pose are gone")
+		end
+		KC.toClient("BattleState", "End", { BattleId = id, Mode = "Raid", Outcome = "Left", Won = false, Spectator = false, Reason = "Left" }, id)
+		LocalPlayer:SetAttribute("InBattle", nil)
+		KC.advance(15)
+		poolsAtKeep("after the second battle")
+		T.check(type(BC.GetStats().AttackFx) == "table" and BC.GetStats().AttackFx.Live == 0, "GetStats().AttackFx = AttackFx.Stats()")
+	end)
+	AF.Play = realPlay
+	PB.Animate = realAnimate
+	force = nil
+	if not ok then
+		T.fail("client_p7vfx_battle raised an error", tostring(err))
+	end
+	local warned = nil
+	for i = out0 + 1, #Mock.Output do
+		local o = Mock.Output[i]
+		if o.kind == "warn" and (o.text:find("BattleController", 1, true) or o.text:find("AttackFx", 1, true)) then
+			warned = o.text
+			break
+		end
+	end
+	T.check(warned == nil and #Mock.Errors == err0, "client_p7vfx_battle: no errors or BattleController / AttackFx warnings", tostring(warned))
+	AF.SetQuality(nil)
+	KC.flushErrors("client_p7vfx_battle")
 end)
 
 return S
