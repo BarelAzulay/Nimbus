@@ -47,7 +47,9 @@
 --     Element / KO / Buff / Swap event and the winners' cheer play client/Controllers/AttackFx FIRST; the cube Fx.* of
 --     each handler is the fallback when AttackFx.Play returns false (Low budget, a missing texture, an error). They play
 --     when the event ARRIVES with DueAt = the time it plays on the render clock (the INTERP_DELAY lead is the charge
---     beat; the impact lands with the damage number). AttackFx's poses (PetBuilder.Animate opts.Pose + the body offset
+--     beat; the impact lands with the damage number; a ranged pet's shot keeps AttackFx's MinTravel of flight, so when
+--     the lead is short its Hit, and the victim's later Hit / KO and the End, play up to FX_LATE_MAX later: Net.Hold /
+--     Net.Queue, player note 1). AttackFx's poses (PetBuilder.Animate opts.Pose + the body offset
 --     PetBuilder.PoseBody x the build scale on the root write) replace the old lunge / recoil, the wind-up crouch (now
 --     PetPoses' Windup held while the snapshot says Winding) and the hurt nudge for the units it drives; between attacks
 --     those units breathe and glance (PetPoses IdleBattle, out of step per unit; not on Low, not while my fighter moves
@@ -220,6 +222,8 @@ local K = {
 	WINDUP_IN = 0.25, -- ... reached in this many seconds
 	IDLE_PHASE = 2.2, -- the battle idle's per-unit time offset = u.phase (0..2 pi) x this (pets breathe out of step)
 	FX_END_GRACE = 1.0, -- after the sim's End: no new AttackFx effect; the live ones finish for at most this long
+	FX_LATE_MAX = 0.3, -- seconds a ranged shot's Hit (and the victim's later events) may play after their time: the
+	--                    shot's flight is never cut below AttackFx's MinTravel (player note 1)
 	BUILD_BUDGET = 0.006, -- seconds of model building per frame (the first build of a frame always runs)
 	BUILD_MAX = 4,
 	CROWD = 14, -- more units than this: other players' / enemy pets are drawn every other frame
@@ -1101,6 +1105,7 @@ local function newBattle(payload, battleId)
 		renderT = num(payload.T, 0),
 		evq = {},
 		fxEv = {}, -- [event] = what AttackFx did with it on arrival (Atk.Arrive / Atk.Result)
+		fxHold = {}, -- [unit id] = render-clock time a ranged shot at it lands (Net.Queue / Net.Hold: its next events wait)
 		teles = {},
 		buildQueue = {},
 		-- Phase 5: my team (Start.Team), the lock, the cooldowns (os.clock ready times) and the predictions
@@ -2739,11 +2744,18 @@ function Atk.Hit(B, ev, dueAt)
 	if not a or not Atk.Drawable(a) then
 		return "none"
 	end
-	local played = Atk.Play(lookCtx(a, {
+	local ctx = lookCtx(a, {
 		Attack = a.ranged and "Ranged" or "Melee", From = Atk.Side(B, a), To = Atk.Side(B, v), Mine = a.mine == true,
 		Crit = ev.crit == true, Strong = num(ev.elem, 1) > 1, Miss = ev.miss == true, DueAt = dueAt, Ground = groundOf(B, a),
-	}))
+	})
+	local played = Atk.Play(ctx)
 	a.fxDriven = played
+	-- a ranged shot keeps its flight (AttackFx MinTravel): its impact may land after the event's time; Net.Events
+	-- then plays the Hit (number, flash) and the victim's next events that much later, so they land with the shot
+	local late = played and tonumber(ctx.ImpactLate) or 0
+	if late == late and late > 0 then
+		ev.fxLate = min(late, K.FX_LATE_MAX)
+	end
 	return played
 end
 
@@ -7343,6 +7355,60 @@ function Net.Snapshot(payload, battleId)
 	end
 end
 
+-- the unit an event lands on (the ranged-shot hold): a Hit's victim, a KO'd unit
+local function heldUnitOf(ev)
+	if ev.type == EV.Hit then
+		return tonumber(ev.to)
+	elseif ev.type == EV.KO then
+		return tonumber(ev.unit)
+	end
+	return nil
+end
+
+-- seconds `ev` (due at t) waits for a ranged shot still flying at its unit (B.fxHold: when the shot lands), <=
+-- FX_LATE_MAX; the End waits for every shot (the killing blow lands first)
+function Net.Hold(B, ev, t)
+	local holds = B.fxHold
+	if not holds then
+		return 0
+	end
+	local h = nil
+	if ev.type == EV.End then
+		for _, v in pairs(holds) do
+			if not h or v > h then
+				h = v
+			end
+		end
+	else
+		local id = heldUnitOf(ev)
+		h = id and holds[id]
+	end
+	if not h or h <= t then
+		return 0
+	end
+	return min(h - t, K.FX_LATE_MAX)
+end
+
+-- queue `ev` to play at `due` (in time order: a held event lets the others pass); a Hit whose shot lands late
+-- (ev.fxLate, Atk.Hit) holds its victim's next events until then
+function Net.Queue(B, ev, due)
+	local q = B.evq
+	local i = #q
+	while i > 0 and q[i].t > due do
+		i = i - 1
+	end
+	table.insert(q, i + 1, { t = due, ev = ev })
+	if (tonumber(ev.fxLate) or 0) > 0 then
+		local id = heldUnitOf(ev)
+		if id then
+			B.fxHold = B.fxHold or {}
+			if (B.fxHold[id] or -math.huge) < due then
+				B.fxHold[id] = due
+			end
+		end
+	end
+end
+
 function Net.Events(list, battleId)
 	local B = St.battle
 	if not B or type(list) ~= "table" then
@@ -7361,13 +7427,15 @@ function Net.Events(list, battleId)
 			if not okPre then
 				warnOnce("pre_" .. ev.type, "event " .. ev.type .. " (HUD) failed: " .. tostring(errPre))
 			end
-			Atk.Arrive(B, ev, lead)
+			-- a victim whose ranged shot is still flying (Net.Hold): its Hit / KO wait for the shot to land
+			local hold = Net.Hold(B, ev, t)
+			Atk.Arrive(B, ev, lead + hold)
 			-- telegraphs start at once (their fill must complete at the hit), the rest on the render clock
 			if ev.type == EV.Telegraph then
 				local fn = Handlers[ev.type]
 				pcall(fn, B, ev)
 			else
-				B.evq[#B.evq + 1] = { t = t, ev = ev }
+				Net.Queue(B, ev, t + hold + (tonumber(ev.fxLate) or 0))
 			end
 		end
 	end

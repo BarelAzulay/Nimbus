@@ -11,10 +11,13 @@
 --               Shape (Element: "Cone" | "Circle" | "Line"), Element, Rarity, Stage, PetId,
 --               From = { Unit, Model, Pos }, To = { Unit, Model, Pos } or a list of them (allies / several targets),
 --               Mine (own team: full density, camera punch, screen glow), Crit, Strong, Miss,
---               DueAt (clock time the impact must land: the charge is shortened to fit, impact never later),
+--               DueAt (clock time the impact must land: the charge is shortened to fit, impact never later, except
+--               that a basic Ranged shot keeps its recipe's Beats.MinTravel of flight: player note 1),
 --               Angle (Element attacks without a To: the WORLD yaw of the attack, direction (cos a, 0, sin a)),
 --               Radius (Cone reach / Circle radius, default 9 / 8), Length (Line, default 24),
 --               Ground (world Y of the floor under From; default From.Y - 1.6), Now (the clock; default os.clock()) }
+--       Play writes ctx.ImpactLate = seconds the impact lands after DueAt (0 unless a Ranged shot's MinTravel needed
+--       more time than DueAt left; BattleController then plays the Hit that much later).
 --       A point is Model:GetPivot() while the Model is in the game, else its last known point, else Pos: a unit
 --       destroyed mid-travel ends the effect at its last known point; From.Model may be nil (From.Pos only).
 --   AttackFx.Update(now)            advances every live effect and pose; called from BattleController's existing
@@ -23,8 +26,9 @@
 --       names; P 0..1). Blend = 1 normally; for AttackFx.CROSSFADE (0.12 s) after a pose replaces another mid-way,
 --       Blend rises 0 -> 1 and Prev = { Name, P, Ranged } is the replaced pose, still animating. The CALLER blends:
 --       root = frame * PoseBody(Prev):Lerp(PoseBody(cur), Blend), Animate with the current pose (Prev while
---       Blend < 0.5; the returned tables are reused per unit: read them at once). The newest play on a unit wins (Ko > Cast > Windup / Strike / Victory > Hurt while the higher
---       one is still playing); a melee Strike freezes for HIT_STOP (0.05 s) at the impact; Ko holds at P = 1 until
+--       Blend < 0.5; the returned tables are reused per unit: read them at once). The newest play on a unit wins (Ko > Cast > Windup / Strike / Shoot / Victory > Hurt while
+--       the higher one is still playing); Melee = Windup + the Strike lunge, Ranged = the ranged Windup (rear back) +
+--       Shoot (the head snaps forward, the body kicks back: never the lunge, player note 1); a melee Strike freezes for HIT_STOP (0.05 s) at the impact; Ko holds at P = 1 until
 --       Cancel(unitId) / ClearAll(). nil = no attack pose (the caller shows IdleBattle or nothing).
 --   AttackFx.Cancel(unitId)         drops the unit's pose and ends the effects it cast (a unit swapped out / gone)
 --   AttackFx.ClearAll()             ends everything (the battle is over)
@@ -103,9 +107,9 @@ local K = {
 	HURT = 0.5,
 	KO = 0.9,
 	VICTORY = 1.2,
-	RANGED_STRIKE = 0.5,
+	SHOOT = 0.6, -- the ranged Shoot pose (PetPoses): the head snaps forward, the body kicks back, settles
 	BAND_RARITY = { "Common", "Rare", "Legendary", "Secret" },
-	PRIO = { Ko = 4, Cast = 3, Windup = 2, Strike = 2, Recoil = 2, Victory = 2, Hurt = 1 },
+	PRIO = { Ko = 4, Cast = 3, Windup = 2, Strike = 2, Shoot = 2, Recoil = 2, Victory = 2, Hurt = 1 },
 }
 AttackFx.POOL_KEEP_TOTAL = K.KEEP.Emitter + K.KEEP.Beam + K.KEEP.Trail + K.KEEP.Light + K.KEEP.Disc + K.CORE_KEEP * K.CORE_KEYS
 
@@ -718,6 +722,9 @@ MOVE.Ring = function(eff, it, t)
 	end
 	local g = it.From + (it.To - it.From) * outCubic(seg(t, it.T0, it.TG))
 	local fade = smooth(seg(t, it.TF, it.T1))
+	if it.Face then -- stood up across the attack's direction (the flat XZ ring turned to face eff.Dir)
+		return face(p, eff.Dir) * CFrame.Angles(pi / 2, 0, 0), ONE * g, fadeTo(it, fade)
+	end
 	return CFrame.new(p) * CFrame.Angles(0, t * (it.Spin or 0), 0), ONE * g, fadeTo(it, fade)
 end
 
@@ -1740,6 +1747,14 @@ local function addRingLayer(eff, layer)
 	local t0 = beatStart(eff, layer.Beat or "Impact") + (finite(layer.Delay) and layer.Delay or 0)
 	local flatRing = key == "vfx_ring"
 	local anchor = (layer.At == "Self") and "Self" or ((layer.At == "Source") and "Source" or "Hit")
+	if layer.Face == true then -- a quick ring standing up at the anchor, facing the attack (the ranged muzzle shock)
+		addSolid(eff, key, {
+			Layer = layer, Move = MOVE.Ring, Face = true, Anchor = anchor, Color = layer.Color, Material = Enum.Material.Neon,
+			Trans = finite(layer.Transparency) and layer.Transparency or 0.1, T0 = t0, TG = t0 + 0.2, TF = t0 + 0.05,
+			T1 = min(eff.EndRel, t0 + 0.32), From = 0.3, To = finite(layer.Grow) and layer.Grow or 1,
+		})
+		return
+	end
 	addSolid(eff, key, {
 		Layer = layer, Move = MOVE.Ring, Flat = flatRing or layer.At == "Ground", Anchor = anchor, Color = layer.Color, Material = Enum.Material.Neon,
 		Trans = finite(layer.Transparency) and layer.Transparency or 0.1, T0 = t0, TG = t0 + max(0.25, T.Linger - T.Impact + 0.2), TF = t0 + 0.08,
@@ -1911,8 +1926,14 @@ local function schedulePoses(eff, now)
 		if T.Release > 0.04 then
 			segs[#segs + 1] = { Name = "Windup", T0 = st, Dur = T.Release, Ranged = ranged }
 		end
-		local dur = ranged and K.RANGED_STRIKE or max(0.45, min(0.9, (T.Impact - T.Release) / 0.26))
-		segs[#segs + 1] = { Name = "Strike", T0 = st + T.Release, Dur = dur, Ranged = ranged, StopAt = (not eff.Miss and not ranged) and (st + T.Impact) or nil, StopDur = AttackFx.HIT_STOP }
+		if ranged then
+			-- a shot, never the melee lunge (player note 1): rear back (the ranged Windup), then Shoot = the head snaps
+			-- forward to loose the shot while the body kicks back; the pet stays at its spot
+			segs[#segs + 1] = { Name = "Shoot", T0 = st + T.Release, Dur = K.SHOOT, Ranged = true }
+		else
+			local dur = max(0.45, min(0.9, (T.Impact - T.Release) / 0.26))
+			segs[#segs + 1] = { Name = "Strike", T0 = st + T.Release, Dur = dur, StopAt = (not eff.Miss) and (st + T.Impact) or nil, StopDur = AttackFx.HIT_STOP }
+		end
 	elseif A == "Special" or A == "Element" then
 		-- Cast's release (p 0.66 .. 0.74) lands as the release beat ends
 		segs[1] = { Name = "Cast", T0 = st, Dur = max(0.6, min(1.6, T.Travel / 0.7)) }
@@ -2107,25 +2128,31 @@ local function texturesOk(r)
 	return ok(type(r.Alive) == "table" and r.Alive.Texture or nil)
 end
 
+-- -> start, charge, release, travel, late (seconds the impact lands AFTER dueAt: only a recipe's MinTravel, a basic
+-- ranged shot's flight, is never cut, so the shot is always seen crossing the gap: player note 1)
 local function fitTimes(b, now, dueAt)
 	local C, R, Tr = b.Charge or 0, b.Release or 0, b.Travel or 0
-	local start = now
+	local keep = finite(b.MinTravel) and max(0, min(Tr, b.MinTravel)) or 0
+	local start, late = now, 0
 	if finite(dueAt) then
 		local need = C + R + Tr
 		local avail = dueAt - now
 		if avail >= need then
 			start = dueAt - need -- (may be a little ahead: the effect waits, then lands exactly on the event)
 		else
-			-- late: shorten the charge first, then the travel, then the release; impact never after the event
+			-- late: shorten the charge first, then the travel (down to its MinTravel), then the release; impact never
+			-- after the event, except by what the MinTravel keeps
 			local cut = need - max(0, avail)
 			local c = min(C, cut)
 			C, cut = C - c, cut - c
-			c = min(Tr, cut)
+			c = min(Tr - keep, cut)
 			Tr, cut = Tr - c, cut - c
-			R = R - min(R, cut)
+			c = min(R, cut)
+			R, cut = R - c, cut - c
+			late = cut
 		end
 	end
-	return start, C, R, Tr
+	return start, C, R, Tr, late
 end
 
 function AttackFx.Play(ctx)
@@ -2174,7 +2201,8 @@ function AttackFx.Play(ctx)
 			return false
 		end
 		local quality = applyQuality()
-		local start, C, R, Tr = fitTimes(r.Beats, now, ctx.DueAt)
+		local start, C, R, Tr, late = fitTimes(r.Beats, now, ctx.DueAt)
+		ctx.ImpactLate = late
 		local Imp, L = r.Beats.Impact or 0.15, r.Beats.Linger or 0.5
 		local aliveSecs = (type(r.Alive) == "table" and finite(r.Alive.Seconds)) and r.Alive.Seconds or 0
 		local T = { Charge = 0, Release = C, Travel = C + R, Impact = C + R + Tr }

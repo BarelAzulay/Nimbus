@@ -354,22 +354,22 @@ S.client_p7vfx_engine = guarded("client_p7vfx_engine", function()
 	T.check(pose ~= nil and pose.Name == "Windup" and pose.Ranged == true and pose.P < 0.3, "RF3: Pose shows the second play (ranged Windup from its start)", pose and fmt("%s %.2f %s", tostring(pose.Name), pose.P, tostring(pose.Ranged)))
 	T.check(pose ~= nil and type(pose.Blend) == "number" and pose.Blend < 1 and type(pose.Prev) == "table" and pose.Prev.Ranged ~= true,
 		"RF3: the switch carries the crossfade info (Prev = the first's pose, Blend < 1)")
-	local onlySecond, sawStrike, blendDone = true, false, false
+	local onlySecond, sawShoot, blendDone = true, false, false
 	run(1.6, function()
 		local p = Fx.Pose(21)
 		if p then
 			if p.Ranged ~= true then
 				onlySecond = false
 			end
-			if p.Name == "Strike" then
-				sawStrike = true
+			if p.Name == "Shoot" then
+				sawShoot = true
 			end
 			if p.Blend == 1 and p.Prev == nil then
 				blendDone = true
 			end
 		end
 	end)
-	T.check(onlySecond and sawStrike and blendDone, "RF3: from then on only the second play's poses (ranged Windup -> Strike), crossfade done after ~0.12 s")
+	T.check(onlySecond and sawShoot and blendDone, "RF3: from then on only the second play's poses (ranged Windup -> Shoot), crossfade done after ~0.12 s")
 	T.check(Fx.Pose(2) == nil or Fx.Pose(2).Name == "Hurt", "the victim's pose is Hurt (or none)")
 	run(3)
 	T.check(Fx.Pose(21) == nil, "RF3: no pose once the effects are over")
@@ -484,6 +484,70 @@ S.client_p7vfx_engine = guarded("client_p7vfx_engine", function()
 	ed = Fx._Live()[#Fx._Live()]
 	T.check(ed and math.abs(ed.Start + ed.Times.Impact - due) < 1e-6, "DueAt later than the beats: the effect waits and impacts exactly at the event")
 	run(5)
+
+	-- 10b) player note 1: a Ranged attack is a shot that visibly crosses the gap; Melee stays the close swipe ---------
+	local Poses = moduleAt(ROOTS.shared .. "/PetPoses")
+	local function posesOf(unit, seconds)
+		local names, order, forward = {}, {}, -math.huge
+		run(seconds, function()
+			local p = Fx.Pose(unit)
+			if p and names[p.Name] == nil then
+				names[p.Name] = true
+				order[#order + 1] = p.Name
+			end
+			if p and Poses then
+				local f = -Poses.Sample(p.Name, p.P, p.Ranged).Body.Position.Z -- (pets face -Z: forward = -Z)
+				forward = math.max(forward, f)
+			end
+		end)
+		return names, table.concat(order, " > "), forward
+	end
+	-- the poses: Ranged = the ranged Windup (rear back) then Shoot, never the Strike lunge; Melee = Windup then Strike
+	local rc = ctx({ Attack = "Ranged", Element = "Flame", Rarity = "Rare", From = { Unit = 31, Model = A }, To = { Unit = 32, Model = B }, Now = clock })
+	T.check(Fx.Play(rc), "note 1: a Ranged play")
+	local rNames, rOrder, rFwd = posesOf(31, 1.5)
+	T.check(rNames.Windup and rNames.Shoot and not rNames.Strike and rFwd < 0.05,
+		"note 1: the Ranged pose is Windup (rear back) then Shoot, never the Strike lunge (the body never moves forward)", fmt("%s, forward max %.3f", rOrder, rFwd))
+	run(3)
+	T.check(Fx.Play(ctx({ Attack = "Melee", Element = "Flame", Rarity = "Rare", From = { Unit = 33, Model = A }, To = { Unit = 34, Model = B }, Now = clock })), "note 1: a Melee play")
+	local mNames, mOrder, mFwd = posesOf(33, 1.5)
+	T.check(mNames.Strike and not mNames.Shoot and mFwd > 1.0, "note 1: Melee is unchanged: Windup then the Strike lunge forward", fmt("%s, forward max %.3f", mOrder, mFwd))
+	run(3)
+	-- the travel: the shot leaves the mouth, is seen between the two pets mid-flight and lands on the target; a Streak
+	-- trail rides it; the flight lasts at least MinTravel even when the event leaves only the render delay (0.12 s)
+	local lead = 0.12
+	local rl = ctx({ Attack = "Ranged", Element = "Flame", Rarity = "Common", DueAt = clock + lead, Now = clock })
+	T.check(Fx.Play(rl), "note 1: a Ranged play with the battle's short lead")
+	local es = Fx._Live()[#Fx._Live()]
+	local minTravel = Cat.Beats.MinTravel
+	local flight = es and (es.Times.Impact - es.Times.Travel) or 0
+	T.check(es and flight >= minTravel - 1e-6 and type(rl.ImpactLate) == "number" and math.abs(rl.ImpactLate - (es.Start + es.Times.Impact - (clock + lead))) < 1e-6
+		and rl.ImpactLate > 0 and rl.ImpactLate <= minTravel + 1e-6,
+		"note 1: a short lead keeps the shot's MinTravel flight; ctx.ImpactLate = how much after the event it lands",
+		es and fmt("flight %.3f (min %.2f), late %s", flight, minTravel, tostring(rl.ImpactLate)))
+	local streak = false
+	for _, it in ipairs(es and es.Items or {}) do
+		if it.Kind == "Trail" and it.Layer and it.Layer.Id == "Streak" and it.Mode == "Core" then
+			streak = true
+		end
+	end
+	T.check(streak, "note 1: a Streak trail rides the shot (even at Common)")
+	local src, dst = A:GetPivot().Position, B:GetPivot().Position
+	local gap = (dst - src).Magnitude
+	run(es.Times.Travel + flight * 0.5 - (clock - es.Start))
+	local mid = es.CorePos
+	local along = mid and (mid - src):Dot((dst - src).Unit) or -1
+	T.check(mid ~= nil and along > gap * 0.25 and along < gap * 0.85, "note 1: mid-flight the shot is between the caster and the target",
+		fmt("%.2f of %.2f studs along", along, gap))
+	run(flight * 0.5 + 0.02)
+	T.check(es.CorePos ~= nil and (es.CorePos - es.Hit).Magnitude < 0.05, "note 1: ... and it lands on the target")
+	run(3)
+	local ml = ctx({ Attack = "Melee", Element = "Flame", Rarity = "Common", DueAt = clock + lead, Now = clock })
+	Fx.Play(ml)
+	local em = Fx._Live()[#Fx._Live()]
+	T.check(em and (ml.ImpactLate or 0) == 0 and em.Start + em.Times.Impact <= clock + lead + 1e-6, "note 1: Melee still lands by the event (ImpactLate 0)",
+		tostring(ml.ImpactLate))
+	run(3)
 
 	-- 11) ground-flat layers lie on the floor (ctx.Ground), not under it ------------------------------------------------
 	local crackId = Ids.fx_crack
@@ -674,6 +738,7 @@ S.client_p7vfx_battle = guarded("client_p7vfx_battle", function()
 			c.Result = false
 		else
 			c.Result = realPlay(ctx)
+			c.Late = ctx.ImpactLate
 		end
 		calls[#calls + 1] = c
 		return c.Result
@@ -895,7 +960,7 @@ S.client_p7vfx_battle = guarded("client_p7vfx_battle", function()
 					attackPose = attackPose or g.Pose
 				end
 			end
-			T.check(calls[n1 + 1] and calls[n1 + 1].Result == true and (attackPose == "Strike" or attackPose == "Windup"),
+			T.check(calls[n1 + 1] and calls[n1 + 1].Result == true and (attackPose == "Strike" or attackPose == "Windup" or attackPose == "Shoot"),
 				"idle: an attack pose replaces the idle (" .. tostring(attackPose) .. ")")
 			pulse(2)
 			local back = BC.GetUnit(who)
@@ -1088,6 +1153,47 @@ S.client_p7vfx_battle = guarded("client_p7vfx_battle", function()
 			T.fail("KO (fallback): my helper is on the floor")
 		end
 		AF.Cancel = realCancel
+
+		-- 2c) player note 1: a ranged pet's shot keeps its flight (MinTravel) even with the render delay's short lead:
+		--     its Hit (the damage number) plays when the shot LANDS (Net.Queue holds it by ctx.ImpactLate), not before
+		local shooter = nil
+		for uid, info in pairs(infos) do
+			local g = BC.GetUnit(uid)
+			if info.ranged == true and info.kind ~= "Boss" and drawable(g) and g.Model ~= nil and (not shooter or uid < shooter) then
+				shooter = uid
+			end
+		end
+		if T.check(shooter ~= nil and bossId ~= nil, "note 1 (battle): a ranged pet and the boss are on the floor") then
+			pulse(1.5)
+			local n0 = #calls
+			KC.toClient("BattleState", "Events", { { type = "Hit", from = shooter, to = bossId, dmg = 7 } }, id)
+			local c = calls[n0 + 1]
+			local impactAt = nil
+			for _, e in ipairs(AF._Live()) do
+				if e.Unit == shooter and e.Recipe.Attack == "Ranged" then
+					impactAt = e.Start + e.Times.Impact
+				end
+			end
+			local numbers = BC.GetStats().Numbers
+			local numberAt = nil
+			for i = 1, 30 do
+				if i % 3 == 1 then
+					live.T = live.T + 0.1
+					KC.toClient("BattleState", "Snapshot", { BattleId = live.id, T = live.T, U = {} }, live.id)
+				end
+				Mock.Step(1 / 30)
+				local now = BC.GetStats().Numbers
+				if not numberAt and now > numbers then
+					numberAt = os.clock()
+				end
+				numbers = math.min(numbers, now)
+			end
+			T.check(c ~= nil and c.Attack == "Ranged" and c.Result == true and type(c.Late) == "number" and c.Late > 0.05 and impactAt ~= nil,
+				"note 1 (battle): the shot keeps its flight with the short lead (ctx.ImpactLate > 0)", c and fmt("late %s", tostring(c.Late)) or "no play")
+			T.check(numberAt ~= nil and impactAt ~= nil and numberAt >= impactAt - 1 / 30 - 1e-3 and numberAt <= impactAt + 0.2,
+				"note 1 (battle): the Hit's damage number shows when the shot lands, not before (Net.Queue holds it)",
+				fmt("number %.3f s after the impact", (numberAt or 0) - (impactAt or 0)))
+		end
 
 		-- 3) Review Focus 4 + Ruling 11: the killing blow and the End arrive together (like the sim's last step): the blow
 		--    lands visibly, no new effect starts, everything is gone (pools at keep size) within FX_END_GRACE 1.0 s

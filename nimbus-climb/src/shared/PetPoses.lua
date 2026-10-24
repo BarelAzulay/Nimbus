@@ -6,7 +6,7 @@
 -- syntax only.
 --
 -- API:
---   PetPoses.Names = { "Windup", "Strike", "Recoil", "Cast", "Hurt", "Ko", "Victory", "IdleBattle" }
+--   PetPoses.Names = { "Windup", "Strike", "Shoot", "Recoil", "Cast", "Hurt", "Ko", "Victory", "IdleBattle" }
 --   PetPoses.Loops = { IdleBattle = true }   p is TIME in seconds (any value; never at rest)
 --   PetPoses.Holds = { Ko = true }           p = 1 is the pose's end state, held (the KO'd pet lies on its side until
 --                                            the poof covers it and the model is parked); every other one-shot pose
@@ -34,6 +34,10 @@
 --   Strike     melee: stretch-lunge 1.5 studs along the LookVector (out-back ease, peak exactly 1.5), nose down, wings
 --              snap open 35 deg (overshoot ~38), then settle back with a small overshoot behind the start.
 --              ranged: a kick back 0.35 studs, chin up, wings snap open 35 deg, settle.
+--   Shoot      the basic ranged attack's release (player note 1: a shot, never the melee lunge; it follows the ranged
+--              Windup's rear-back): the head snaps forward and down 14 deg to loose the shot (a spit / a slap of the
+--              air) while the body kicks back 0.45 studs and a little up, wings brace forward 20 deg with a downbeat,
+--              tail flicks up; then settles. The body never moves forward of its spot.
 --   Recoil     rear back: 0.5 studs back (ranged 0.35), up and nose high, wings flare forward to brace, tail down.
 --   Cast       rise 0.6 studs, wings spread 50 deg and held, tail up, eyes shut gathering power, a hover bob, then the
 --              release: a forward thrust + nod and a wing downbeat; soft landing.
@@ -48,7 +52,7 @@
 
 local PetPoses = {}
 
-PetPoses.Names = { "Windup", "Strike", "Recoil", "Cast", "Hurt", "Ko", "Victory", "IdleBattle" }
+PetPoses.Names = { "Windup", "Strike", "Shoot", "Recoil", "Cast", "Hurt", "Ko", "Victory", "IdleBattle" }
 PetPoses.Loops = { IdleBattle = true }
 PetPoses.Holds = { Ko = true }
 
@@ -59,6 +63,7 @@ local sin, cos, rad, floor = math.sin, math.cos, math.rad, math.floor
 -- Strike / Recoil / Hurt / Victory values (studs, degrees)
 local LUNGE = 1.5
 local RANGED_KICK = 0.35
+local SHOOT_KICK = 0.45
 local CROUCH = 0.25
 local WINDUP_BACK = 25
 local SNAP_OPEN = 35
@@ -183,6 +188,20 @@ POSES.Strike = function(f, p, ranged)
 		f.haloY = -0.06 * k
 		f.haloTilt = 10 * k
 	end
+end
+
+POSES.Shoot = function(f, p)
+	local kick = outCubic(seg(p, 0, 0.12)) * settle(seg(p, 0.3, 1), 0) -- the body kicks back, then settles (no overshoot: never forward)
+	local snap = sin(PI * seg(p, 0, 0.18)) -- the head snaps forward and back (0 -> 1 -> 0)
+	f.z = SHOOT_KICK * kick -- (+ = back: never forward of its spot)
+	f.y = 0.08 * kick
+	f.pitch = -14 * snap + 8 * kick * seg(p, 0.1, 0.24) -- nose down to loose the shot, then the chin comes up
+	f.back = -20 * kick -- wings brace forward
+	f.raise = -10 * snap + 4 * kick -- a downbeat with the shot
+	f.lift = 22 * kick
+	f.sway = 8 * sin(TAU * 1.5 * p) * kick
+	f.haloTilt = -8 * kick
+	f.still = 0.45 * kick
 end
 
 POSES.Recoil = function(f, p, ranged)

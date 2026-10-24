@@ -35,12 +35,14 @@
 --     recipe = { Element, Attack, Kind, Shape, Rarity, Stage, Band, Size, Density (1 mine / 0.6 others), CameraPunch
 --                (mine and band >= 3), ScreenGlow (mine and band 4), Signature (petId | nil), Sig = { Name, Twist, Actor,
 --                DimWorld } | nil, Palette = { Core, Mid, Edge, Hot, Smoke }, Text,
---                Beats = { Charge, Release, Travel, Impact, Linger } (seconds), ImpactAt (= Charge + Release + Travel: the
---                engine starts the effect so that impact lands on the server event, never later),
+--                Beats = { Charge, Release, Travel, Impact, Linger, MinTravel? } (seconds), ImpactAt (= Charge + Release +
+--                Travel: the engine starts the effect so that impact lands on the server event, never later, except
+--                that a basic Ranged shot keeps MinTravel of flight: player note 1, the shot is always seen crossing),
 --                Core = { Key (vfx_* MeshIds key), Color, Material, Path ("Projectile"|"Swipe"|"Ground"|"Self"|"Allies"|
 --                "Area"), Glow, InnerColor?, RimColor?, RimShift?, Upgraded, Speed?, Count?, Scale?, ... shape flags },
 --                Layers = { { Id, Kind ("Emitter"|"Beam"|"Trail"|"Light"|"Ring"|"Decal"|"Mesh"), Beat, At, Texture?, Key?,
---                Color, Count?, Size?, Motion?, Delay?, ... } }, Alive = { Kind ("Emitter"|"Beam"|"Decal"|"Mesh"), Texture?,
+--                Color, Count?, Size?, Motion?, Delay?, ... } } (a template's Except = { [Attack] = true } leaves it out of
+--                those attacks), Alive = { Kind ("Emitter"|"Beam"|"Decal"|"Mesh"), Texture?,
 --                Key?, Motion, Color, Count, Seconds, Text } ({} = none) }
 --     Layer kinds: Emitter = a flipbook ParticleEmitter (4x4 sheet); Beam / Trail = a grid-1 strip or untextured; Light =
 --     a PointLight; Ring = an expanding solid vfx_* mesh (vfx_ring / vfx_shell); Decal = a ground-flat layer (a 4x4 sheet
@@ -176,6 +178,10 @@ AttackFxCatalog.LayerSlots = {
 	DoubleArc = { Kind = "Beam", Beat = "Release", At = "Source", Tint = "Hot", Curve = 3, Width = 1.2 }, -- the second crescent, a curved Beam
 	Field = { Kind = "Decal", Texture = "$Ground", Beat = "Linger", At = "Ground", Tint = "Mid", Size = 7, Seconds = 1.0, GroundOnly = true },
 	PlasmaRim = { Kind = "Light", Beat = "Travel", At = "Core", Tint = "Edge", Brightness = 2, Range = 8, ColorShift = true },
+	-- the ranged swaps (Basic.Ranged.Swap, player note 1: a shot is no swing): the Rare crescent becomes a muzzle shock
+	-- ring standing at the mouth, facing the shot; the Mythic double arcs become two spiral arcs wrapped round the shot
+	MuzzleRing = { Kind = "Ring", Key = "vfx_ring", Beat = "Release", At = "Source", Tint = "Core", Grow = 0.75, Face = true, Transparency = 0.15 },
+	ShotArcs = { Kind = "Beam", Texture = "$Arc", Beat = "Travel", At = "Path", Tint = "Hot", Spiral = true, Curve = 1.2, Width = 0.45, Count = 2 },
 }
 
 ----------------------------------------------------------------------
@@ -243,11 +249,16 @@ AttackFxCatalog.Elements = {
 		Material = "Neon",
 		Burst = "fx_flame", BurstMotion = "Burst", Trail = "fx_embers", Ground = nil, Motif = "fx_embers", Arc = "fx_speedlines",
 		Melee = { Key = "vfx_crescent", Path = "Swipe", Text = "crescent of fire" },
-		Ranged = { Key = "vfx_spear", Path = "Projectile", Text = "flame spear, ember trail" },
+		Ranged = {
+			Key = "vfx_spear", Path = "Projectile", Text = "flame spear, ember trail",
+			-- the spear flies wrapped in fire: flame licks stream off it all the way to the target (a flame bolt)
+			Layers = { { Id = "Mantle", Kind = "Emitter", Texture = "fx_flame", Beat = "Travel", At = "Core", Count = 10, Size = 1.5 } },
+		},
 		Impact = "fire burst + embers + scorch glow",
 		Detail = {
 			{ Id = "Scorch", Kind = "Decal", Beat = "Impact", At = "Ground", Tint = "Edge", Size = 4, Seconds = 0.9 }, -- the scorch glow
-			{ Id = "Smoke", Kind = "Emitter", Texture = "fx_smoke", Beat = "Impact", At = "$Hit", Tint = "Smoke", Motion = "Rise", Count = 6, Size = 1.6 },
+			-- (not on the ranged shot: its flame mantle + muzzle puff take the emitter budget, <= 6 per effect)
+			{ Id = "Smoke", Kind = "Emitter", Texture = "fx_smoke", Beat = "Impact", At = "$Hit", Tint = "Smoke", Motion = "Rise", Count = 6, Size = 1.6, Except = { Ranged = true } },
 		},
 		Alive = { Kind = "Emitter", Texture = "fx_embers", Motion = "SwirlUp", Count = 8, Seconds = 0.9, Text = "embers swirl upward on heat" },
 		Rain = { Key = "vfx_spear", Texture = "fx_flame", Kind = "Emitter", Scale = 0.4, Text = "fire rain" },
@@ -370,15 +381,31 @@ AttackFxCatalog.Beats = {
 	ChargeMax = 0.3,
 	SpecialChargeMax = 0.8,
 	LingerMax = 1.0,
-	ProjectileSpeed = 60, -- studs / s
+	ProjectileSpeed = 60, -- studs / s (the Blast orb)
+	RangedSpeed = 34, -- studs / s: a basic ranged shot flies slower than the Blast orb, so its flight reads (player note 1)
+	MinTravel = 0.24, -- seconds a basic ranged shot always flies (the engine keeps it even when the event is near: the
+	--                  impact may then land up to this much after the event, and BattleController holds the hit for it)
 	DefaultDistance = 14, -- studs, when the request has no Distance
-	TravelMax = 0.5, -- seconds (the engine also keeps impact <= the event's due time)
+	TravelMax = 0.5, -- seconds (the engine keeps impact <= the event's due time, except for a recipe's MinTravel)
 }
 
--- the basic attacks; Skip = ladder layers this attack never draws
+-- the basic attacks; Skip = ladder layers this attack never draws; Swap = ladder layers replaced by another template
+-- (LayerSlots); Layers = the attack's own layers at every rarity (counts x DetailScale, like the element's detail).
+-- Ranged (player note 1): a shot across the gap, never a swing: no crescent (Slash -> MuzzleRing, DoubleArc ->
+-- ShotArcs), a muzzle puff of the element's burst sheet at the release, a glowing streak behind the shot at every
+-- rarity, and a guaranteed visible flight (RangedSpeed, MinTravel).
 AttackFxCatalog.Basic = {
 	Melee = { Beats = { Charge = 0.15, Travel = 0.1, Linger = 0.5 }, GroundTravel = 0.15 },
-	Ranged = { Beats = { Charge = 0.18, Linger = 0.5 } }, -- Travel by distance
+	Ranged = {
+		Beats = { Charge = 0.18, Linger = 0.5 }, -- Travel by distance at Beats.RangedSpeed (an element's Ranged.Speed wins:
+		--                                          Storm's bolt), at least Beats.MinTravel
+		Shot = true,
+		Swap = { Slash = "MuzzleRing", DoubleArc = "ShotArcs" },
+		Layers = {
+			{ Id = "Muzzle", Kind = "Emitter", Texture = "$Burst", Beat = "Release", At = "Source", Tint = "Mid", Count = 4, Size = 1.3 },
+			{ Id = "Streak", Kind = "Trail", Beat = "Travel", At = "Core", Tint = "Mid" },
+		},
+	},
 }
 
 ----------------------------------------------------------------------
@@ -638,7 +665,13 @@ local function attackDef(req, element, sig)
 		if attack == "Melee" and entry.Path == "Ground" then
 			beats.Travel = base.GroundTravel
 		end
-		return { Core = entry, Beats = beats, Skip = {}, Layers = {}, Detail = { entry.Layers }, Slots = { entry }, Alive = true, Extras = true, Text = entry.Text }
+		local detail = {} -- (no holes: ipairs) the attack's own layers, then the element's for this attack
+		detail[#detail + 1] = base.Layers
+		detail[#detail + 1] = entry.Layers
+		return {
+			Core = entry, Beats = beats, Skip = base.Skip or {}, Swap = base.Swap, Shot = base.Shot == true, Layers = {},
+			Detail = detail, Slots = { entry }, Alive = true, Extras = true, Text = entry.Text,
+		}
 	elseif attack == "Element" then
 		local shape = req.Shape
 		if shape == nil then
@@ -743,6 +776,7 @@ local function buildLayer(id, tpl, ctx, scale)
 	end
 	layer.Tint = nil
 	layer.From = nil
+	layer.Except = nil
 	return layer
 end
 
@@ -751,7 +785,7 @@ local function addExtras(out, list, tier, ctx, scale)
 		return
 	end
 	for _, tpl in ipairs(list) do
-		if (tpl.From or "Common") == tier then
+		if (tpl.From or "Common") == tier and not (type(tpl.Except) == "table" and tpl.Except[ctx.attack]) then
 			local layer = buildLayer(tpl.Id, tpl, ctx, scale)
 			if layer then
 				out[#out + 1] = layer
@@ -820,7 +854,7 @@ function AttackFxCatalog.Resolve(req)
 		core.Material = look.Material or core.Material or element.Material or "Neon"
 	end
 	if core.Path == "Projectile" and not core.Stretch then
-		core.Speed = core.Speed or B.ProjectileSpeed
+		core.Speed = core.Speed or (def.Shot and B.RangedSpeed) or B.ProjectileSpeed
 	end
 
 	-- beats
@@ -838,6 +872,9 @@ function AttackFxCatalog.Resolve(req)
 			d = B.DefaultDistance
 		end
 		travel = min(B.TravelMax, d / core.Speed)
+		if def.Shot then
+			travel = max(travel, B.MinTravel) -- a ranged shot is always seen flying (player note 1)
+		end
 	end
 	local linger = beats.Linger or 0.5
 	if req.Attack ~= "Hurt" then
@@ -849,6 +886,7 @@ function AttackFxCatalog.Resolve(req)
 		Travel = travel or 0,
 		Impact = beats.Impact or B.Impact,
 		Linger = min(B.LingerMax, linger),
+		MinTravel = def.Shot and min(travel or 0, B.MinTravel) or nil, -- the engine never cuts the shot's flight below this
 	}
 
 	-- layers: the ladder up to this rarity, each tier followed by the kind layers, the attack's and the element's impact
@@ -860,6 +898,7 @@ function AttackFxCatalog.Resolve(req)
 		countScale = AttackFxCatalog.CountScale[band],
 		detailScale = AttackFxCatalog.DetailScale[band],
 		tints = sig and sig.Tints or nil,
+		attack = req.Attack,
 	}
 	local layers = {}
 	local myOrder = rarityOrder[rarity]
@@ -867,8 +906,9 @@ function AttackFxCatalog.Resolve(req)
 		if rarityOrder[step.Tier] > myOrder then
 			break
 		end
-		for _, id in ipairs(step.Add) do
-			if not def.Skip[id] then
+		for _, ladderId in ipairs(step.Add) do
+			if not def.Skip[ladderId] then
+				local id = (def.Swap and def.Swap[ladderId]) or ladderId -- (Ranged: Slash -> MuzzleRing, DoubleArc -> ShotArcs)
 				local layer = buildLayer(id, AttackFxCatalog.LayerSlots[id], ctx)
 				if layer then
 					if id == "Burst" and def.BurstShape then

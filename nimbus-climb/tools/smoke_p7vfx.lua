@@ -478,11 +478,22 @@ S.p7vfx_catalog = guarded("p7vfx_catalog", function()
 	local r2 = C.Resolve({ Element = "Water", Attack = "Ranged", Rarity = "Epic", Stage = 1, Mine = true })
 	T.check(r2.Layers[1].Count ~= 999 and r2.Core.Key ~= "broken" and r2.Beats.Charge ~= 99, "p7vfx catalog: Resolve returns a fresh recipe each call")
 
-	-- travel by distance: 60 studs/s for a projectile, capped; impact time = Charge + Release + Travel
+	-- travel by distance: 60 studs/s for the Blast orb; a basic ranged shot flies at RangedSpeed (34) and never less
+	-- than MinTravel (0.24 s: player note 1, the shot is seen crossing the gap), capped; impact = Charge + Release + Travel
+	local blastNear = C.Resolve({ Element = "Flame", Attack = "Special", Kind = "Blast", Rarity = "Rare", Distance = 6 })
+	T.check(blastNear and math.abs(blastNear.Beats.Travel - 0.1) < 1e-6 and blastNear.Beats.MinTravel == nil,
+		"p7vfx catalog: the Blast orb's Travel = distance / 60 studs/s (no MinTravel)", blastNear and fmt("%.3f", blastNear.Beats.Travel))
 	local near = C.Resolve({ Element = "Flame", Attack = "Ranged", Rarity = "Rare", Distance = 6 })
+	local mid = C.Resolve({ Element = "Flame", Attack = "Ranged", Rarity = "Rare", Distance = 12 })
 	local far = C.Resolve({ Element = "Flame", Attack = "Ranged", Rarity = "Rare", Distance = 600 })
-	T.check(near and far and math.abs(near.Beats.Travel - 0.1) < 1e-6 and far.Beats.Travel <= 0.5 + 1e-9 and far.Beats.Travel > near.Beats.Travel,
-		"p7vfx catalog: projectile Travel = distance / 60 studs/s, capped", near and far and fmt("%.3f / %.3f", near.Beats.Travel, far.Beats.Travel))
+	T.check(C.Beats.RangedSpeed == 34 and C.Beats.MinTravel == 0.24 and near and mid and far
+		and math.abs(near.Beats.Travel - 0.24) < 1e-6 and math.abs(mid.Beats.Travel - 12 / 34) < 1e-6
+		and math.abs(far.Beats.Travel - 0.5) < 1e-9 and near.Beats.MinTravel == 0.24,
+		"p7vfx catalog: a ranged shot's Travel = distance / 34 studs/s, at least MinTravel 0.24 s, capped at 0.5 s",
+		near and mid and far and fmt("%.3f / %.3f / %.3f", near.Beats.Travel, mid.Beats.Travel, far.Beats.Travel))
+	local stormShot = C.Resolve({ Element = "Storm", Attack = "Ranged", Rarity = "Rare", Distance = 12 })
+	T.check(stormShot and math.abs(stormShot.Beats.Travel - 0.24) < 1e-6, "p7vfx catalog: a fast element shot (Storm's bolt, 120 studs/s) still flies MinTravel",
+		stormShot and fmt("%.3f", stormShot.Beats.Travel))
 	T.check(near and finiteNum(near.ImpactAt) and math.abs(near.ImpactAt - (near.Beats.Charge + near.Beats.Release + near.Beats.Travel)) < 1e-9,
 		"p7vfx catalog: ImpactAt = Charge + Release + Travel")
 
@@ -663,7 +674,7 @@ S.p7vfx_catalog = guarded("p7vfx_catalog", function()
 	-- Ruling 8: each element's OWN impact detail (spec Impact + Alive columns) shows at EVERY rarity, from Common, with a
 	-- reduced count that grows by band; the ladder layers stay where the spec ladder puts them
 	local detail = {
-		Flame = { ids = { "Scorch", "Smoke" }, burst = "fx_flame", alive = "SwirlUp" },
+		Flame = { melee = { "Scorch", "Smoke" }, ranged = { "Scorch", "Mantle" }, burst = "fx_flame", alive = "SwirlUp" }, -- (Task 8: the shot wears its flame mantle, no smoke)
 		Water = { ids = { "Droplets", "Ripple" }, burst = "fx_splash", alive = "Bounce" },
 		Frost = { ids = { "FrostRing", "FrostMist" }, burst = "fx_iceshards", alive = "Melt" },
 		Nature = { melee = { "Thorns", "Leaves" }, ranged = { "RootBurst" }, burst = "fx_petals", alive = "Wrap" },
@@ -709,7 +720,9 @@ S.p7vfx_catalog = guarded("p7vfx_catalog", function()
 
 	-- the ladder layers join exactly where the spec ladder puts them (Melee / Ranged of every element)
 	local LADDER_AT = { Charge = "Common", Burst = "Common", Trail = "Uncommon", Slash = "Rare", GroundGlow = "Rare", Shockwave = "Epic", Flash = "Epic",
-		Afterimage = "Legendary", Bloom = "Legendary", DoubleArc = "Mythic", Field = "Mythic", PlasmaRim = "Secret" }
+		Afterimage = "Legendary", Bloom = "Legendary", DoubleArc = "Mythic", Field = "Mythic", PlasmaRim = "Secret",
+		MuzzleRing = "Rare", ShotArcs = "Mythic" } -- (Ranged: Slash -> MuzzleRing, DoubleArc -> ShotArcs, player note 1)
+	local SWAPPED = { Ranged = { Slash = "MuzzleRing", DoubleArc = "ShotArcs" }, Melee = {} }
 	local rarityIndex = {}
 	for i, r in ipairs(RARITIES) do
 		rarityIndex[r] = i
@@ -731,11 +744,63 @@ S.p7vfx_catalog = guarded("p7vfx_catalog", function()
 				lad:case(at == want, fmt("%s %s: %s first at %s (want %s)", element, attack, id, at, want))
 			end
 			for id in pairs(LADDER_AT) do
-				lad:case(first[id] ~= nil, fmt("%s %s: ladder layer %s missing", element, attack, id))
+				local swappedIn, swappedOut = false, SWAPPED[attack][id] ~= nil
+				for _, to in pairs(SWAPPED[attack]) do
+					swappedIn = swappedIn or to == id
+				end
+				local ownSwap = (id == "MuzzleRing" or id == "ShotArcs")
+				if swappedOut or (ownSwap and not swappedIn) then
+					lad:case(first[id] == nil, fmt("%s %s: %s is not drawn (swapped / not this attack's)", element, attack, id))
+				else
+					lad:case(first[id] ~= nil, fmt("%s %s: ladder layer %s missing", element, attack, id))
+				end
 			end
 		end
 	end
 	lad:report()
+
+	-- player note 1: Ranged is a shot across the gap, never a swing; Melee stays the close swipe
+	local shot = T.tally("p7vfx catalog: every element's Ranged is a shot (a Projectile core, MinTravel kept, a travel layer from caster to target, a muzzle at the mouth, no crescent) and Melee is unchanged")
+	for _, element in ipairs(elements) do
+		for _, rarity in ipairs(RARITIES) do
+			local r = C.Resolve({ Element = element, Attack = "Ranged", Rarity = rarity, Mine = true })
+			local travel, muzzle, crescent = false, false, false
+			for _, l in ipairs(r and r.Layers or {}) do
+				if l.Beat == "Travel" and (l.At == "Core" or l.At == "Path") then
+					travel = true -- the Core rides the shot from the mouth to the target; Path = mouth -> target
+				end
+				if l.Beat == "Release" and l.At == "Source" and (l.Id == "Muzzle" or l.Id == "MuzzleRing") then
+					muzzle = true
+				end
+				if l.Id == "Slash" or l.Id == "DoubleArc" then
+					crescent = true
+				end
+			end
+			local b = r and r.Beats or {}
+			shot:case(r ~= nil and r.Core.Path == "Projectile" and not r.Core.Stretch and finiteNum(r.Core.Speed) and b.MinTravel == C.Beats.MinTravel
+				and b.Travel >= b.MinTravel - 1e-9 and layerById(r, "Streak") ~= nil and layerById(r, "Streak").Kind == "Trail" and travel and muzzle and not crescent,
+				fmt("%s Ranged %s: path %s, travel %.2f, min %s, travel layer %s, muzzle %s, crescent %s", element, rarity, tostring(r and r.Core.Path),
+					b.Travel or -1, tostring(b.MinTravel), tostring(travel), tostring(muzzle), tostring(crescent)))
+			local m = C.Resolve({ Element = element, Attack = "Melee", Rarity = rarity, Mine = true })
+			local own = false
+			for _, l in ipairs(m and m.Layers or {}) do
+				own = own or l.Id == "Muzzle" or l.Id == "Streak" or l.Id == "MuzzleRing" or l.Id == "ShotArcs"
+			end
+			local band = C.BandOf(rarity)
+			local wantSlash = band >= 2
+			local mb = m and m.Beats or {}
+			shot:case(m ~= nil and m.Beats.MinTravel == nil and not own and (layerById(m, "Slash") ~= nil) == wantSlash
+				and (m.Core.Path == "Swipe" or m.Core.Path == "Ground") and math.abs((mb.Travel or -1) - ((m.Core.Path == "Ground") and 0.15 or 0.1)) < 1e-9,
+				fmt("%s Melee %s: path %s, travel %.2f, slash %s, ranged layers %s", element, rarity, tostring(m and m.Core.Path), mb.Travel or -1,
+					tostring(layerById(m, "Slash") ~= nil), tostring(own)))
+		end
+	end
+	shot:report()
+	local fr = C.Resolve({ Element = "Flame", Attack = "Ranged", Rarity = "Common", Mine = true })
+	local frm, frmu = layerById(fr, "Mantle"), layerById(fr, "Muzzle")
+	T.check(fr and fr.Core.Key == "vfx_spear" and frm and frm.Texture == "fx_flame" and frm.Beat == "Travel" and frm.At == "Core"
+		and frmu and frmu.Texture == "fx_flame" and layerById(fr, "Burst") and layerById(fr, "Burst").Texture == "fx_flame",
+		"p7vfx catalog: Flame's ranged shot = a flame spear wrapped in fire (Mantle) with a flame muzzle puff and a fire burst")
 
 	-- review minors: Water's droplets + geyser, Shadow's implosion before the glass, Nature's root burst as playable layers
 	local water = C.Resolve({ Element = "Water", Attack = "Melee", Rarity = "Common", Mine = true })
@@ -771,7 +836,7 @@ end)
 ----------------------------------------------------------------------
 -- p7vfx_poses: shared/PetPoses (Task 5) and the PetBuilder.Animate rig hook (opts.Pose, PetBuilder.PoseBody)
 ----------------------------------------------------------------------
-local POSE_NAMES = { "Windup", "Strike", "Recoil", "Cast", "Hurt", "Ko", "Victory", "IdleBattle" }
+local POSE_NAMES = { "Windup", "Strike", "Shoot", "Recoil", "Cast", "Hurt", "Ko", "Victory", "IdleBattle" }
 
 local function cfFinite(cf)
 	if typeof(cf) ~= "CFrame" then
@@ -844,7 +909,7 @@ S.p7vfx_poses = guarded("p7vfx_poses", function()
 	for i, n in ipairs(POSE_NAMES) do
 		namesOk = namesOk and P.Names[i] == n
 	end
-	T.check(namesOk, "p7vfx poses: PetPoses.Names = Windup, Strike, Recoil, Cast, Hurt, Ko, Victory, IdleBattle (in order)")
+	T.check(namesOk, "p7vfx poses: PetPoses.Names = Windup, Strike, Shoot, Recoil, Cast, Hurt, Ko, Victory, IdleBattle (in order)")
 	local loops = P.Loops or {}
 	local holds = P.Holds or {}
 	T.check(loops.IdleBattle == true and holds.Ko == true, "p7vfx poses: IdleBattle loops (p = time), Ko holds its downed end pose")
@@ -927,6 +992,17 @@ S.p7vfx_poses = guarded("p7vfx_poses", function()
 	T.check(kick < -0.32 and kick > -0.38 and kickFwd < 0.05, "p7vfx poses: ranged Strike recoils backward 0.35 studs (never lunges)", fmt("min %.3f, max %.3f", kick, kickFwd))
 	local under = extreme(P, "Strike", false, fwd, false, 0.4, 1)
 	T.check(under < -0.02 and under > -0.25, "p7vfx poses: melee Strike settles with a small overshoot behind its start", fmt("%.3f", under))
+	-- player note 1: the ranged Shoot is no lunge: the body kicks back ~0.45 and never moves forward, the head snaps
+	-- forward (nose down) to loose the shot early in the pose
+	local shootBack, shootFwd = extreme(P, "Shoot", false, fwd, false), extreme(P, "Shoot", false, fwd, true)
+	local function pitchOf(sm)
+		return deg(math.asin(math.max(-1, math.min(1, sm.Body.LookVector.Y))))
+	end
+	local nod = extreme(P, "Shoot", false, pitchOf, false, 0, 0.2)
+	T.check(shootBack < -0.4 and shootBack > -0.5 and shootFwd < 1e-6 and nod < -10,
+		"p7vfx poses: Shoot kicks the body back ~0.45 studs, never forward, the head snapping forward (nose down) to loose the shot",
+		fmt("min %.3f, max %.3f, nod %.1f deg", shootBack, shootFwd, nod))
+	T.check(fwdMax > 1.4 and shootFwd < 0.05, "p7vfx poses: the ranged Shoot is not the melee Strike lunge", fmt("Strike %.3f vs Shoot %.3f", fwdMax, shootFwd))
 	local recoil = extreme(P, "Recoil", false, fwd, false)
 	T.check(recoil < -0.25 and forwardOf(P.Sample("Recoil", 0.25).Body) < -0.2 and extreme(P, "Recoil", false, fwd, true) < 0.05,
 		"p7vfx poses: Recoil moves the body backward", fmt("min %.3f, p=0.25 %.3f", recoil, forwardOf(P.Sample("Recoil", 0.25).Body)))
@@ -1096,7 +1172,7 @@ S.p7vfx_poses = guarded("p7vfx_poses", function()
 					PB.Animate(m, t0, {})
 				end
 				local live0, desc0 = Mock.Stats().liveInstances, #m:GetDescendants()
-				for _, name in ipairs({ "Windup", "Strike", "Recoil", "Cast", "Hurt", "Ko", "Victory" }) do
+				for _, name in ipairs({ "Windup", "Strike", "Shoot", "Recoil", "Cast", "Hurt", "Ko", "Victory" }) do
 					PB.Animate(m, t0, { Pose = { Name = name, P = 0.5 } })
 					hook:case(not cfNear(subject.CFrame, restCF, 1e-3), fmt("%s: %s at p=0.5 moves %s", tag, name, subjectName))
 					if mirrored then
