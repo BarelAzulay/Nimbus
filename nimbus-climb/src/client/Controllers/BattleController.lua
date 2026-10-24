@@ -2992,8 +2992,9 @@ function Atk.PoseOf(u, now, down, busy, animate)
 	if not AF or u.isBoss or not Atk.Posable() then
 		return nil, nil
 	end
-	if animate == false and not u.poseSwitch then
-		return u.poseLast, u.poseScaled -- a strided frame: the last pose rides along (Units.CarryLoose)
+	if animate == false and not u.poseSwitch and u.poseSrc ~= "fx" then
+		return u.poseLast, u.poseScaled -- a strided frame: the last pose rides along (Units.CarryLoose); an attack pose
+		-- (src "fx") still runs so its body offset (the Strike lunge) moves every frame
 	end
 	local pose, body, src = nil, nil, nil
 	local ok, ps = pcall(AF.Pose, u.id)
