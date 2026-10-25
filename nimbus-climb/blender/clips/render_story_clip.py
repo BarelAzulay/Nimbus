@@ -36,7 +36,7 @@ import clip_assets as CA  # noqa: E402
 
 import bpy  # noqa: E402
 import bmesh  # noqa: E402
-from mathutils import Euler, Matrix, Vector  # noqa: E402
+from mathutils import Euler, Matrix, Quaternion, Vector  # noqa: E402
 from mathutils.bvhtree import BVHTree  # noqa: E402
 
 FPS = 30
@@ -284,6 +284,18 @@ def disc_mesh(name, coll, r, n=64, z=0.0, mat=None, parent=None):
     return mesh_from(name, coll, verts, faces, mat, parent)
 
 
+def spike(name, coll, base, direction, length, w, mat, parent=None, twist=0.0):
+    """a pointed four-sided hair spike from `base` toward `direction` (parent-local)"""
+    h = w / 2
+    verts = [(-h, -h, 0), (h, -h, 0), (h, h, 0), (-h, h, 0), (0, 0, length)]
+    faces = [(0, 1, 4), (1, 2, 4), (2, 3, 4), (3, 0, 4), (3, 2, 1, 0)]
+    ob = mesh_from(name, coll, verts, faces, mat, parent, smooth_shade=False)
+    q = V((0, 0, 1)).rotation_difference(V(direction).normalized())
+    ob.rotation_euler = (q @ Quaternion((0, 0, 1), twist)).to_euler()
+    ob.location = base
+    return ob
+
+
 def tube_mesh(name, coll, r0, r1, h, n=24, mat=None, parent=None, cap=False):
     """an open tube along +Z (light pillars, beams): radius r0 at the bottom, r1 at the top"""
     verts, faces = [], []
@@ -483,7 +495,7 @@ def hawaiian(name, tile_studs=2.4):
 
 
 class Climber:
-    """The player's own avatar, hand-built as a blocky Roblox R6 rig: light skin, swoopy brown hair, purple shades,
+    """The player's own avatar, hand-built as a blocky Roblox R6 rig: light skin, spiky brown hair, purple shades,
     a magenta Hawaiian shirt with a gold striped tie, dark teal shorts, white sneakers, a brown leather satchel at the
     left hip, and the UFO hat (built separately in Film.build_ufo: it hovers upright above the head).
     Local frame: feet at the origin, facing -Y, up +Z, right = -X.
@@ -509,7 +521,8 @@ class Climber:
         self.root = empty("Climber", coll, size=1.0)
         r = self.root
         self.hip = empty("Climber_Hip", coll, r, (0, 0, 2.0))
-        box("Climber_Torso", coll, (2.0, 1.0, 2.0), (0, 0, 1.0), shirt, 0.07, self.hip)
+        box("Climber_Torso", coll, (2.08, 1.08, 2.0), (0, 0, 1.0), shirt, 0.14, self.hip)
+        box("Climber_Hem", coll, (2.16, 1.16, 0.3), (0, 0, 0.1), shirt, 0.1, self.hip)
         # open collar (two lapels) and the gold striped tie down the front (-Y)
         for sx, rz in ((-0.3, 0.5), (0.3, -0.5)):
             box("Climber_Collar", coll, (0.55, 0.12, 0.42), (sx, -0.53, 1.82), shirt, 0.04, self.hip).rotation_euler = (0, rz, 0)
@@ -534,32 +547,40 @@ class Climber:
             a = math.radians(-50 + 25 * i)
             box("Climber_Smile", coll, (0.09, 0.05, 0.06), (0.26 * math.sin(a), -0.61, 0.42 - 0.08 * math.cos(a)), mouth,
                 0.02, self.neck)
-        # swoopy brown hair: a full cap, the back, long sides, bangs swept down to the shades, messy tufts on top
-        box("Climber_HairCap", coll, (1.46, 1.4, 0.52), (0, 0.04, 1.2), hair, 0.16, self.neck)
-        box("Climber_HairBack", coll, (1.44, 0.4, 1.1), (0, 0.55, 0.76), hair, 0.14, self.neck)
-        for sx in (-0.7, 0.7):
-            box("Climber_HairSide", coll, (0.22, 1.05, 0.82), (sx, 0.12, 0.86), hair, 0.09, self.neck)
-        for x, z, w, ry, col in ((-0.38, 1.0, 0.5, -0.25, hair2), (0.05, 1.02, 0.48, 0.1, hair),
-                                 (0.42, 0.98, 0.46, 0.3, hair2)):
-            box("Climber_Bang", coll, (w, 0.28, 0.42), (x, -0.6, z), col, 0.1, self.neck).rotation_euler = (0.12, ry, 0)
-        tufts = [(-0.45, 0.05, 1.5, 0.35, -0.25), (-0.12, -0.2, 1.56, -0.2, 0.3), (0.22, 0.02, 1.55, 0.25, -0.2),
-                 (0.48, 0.2, 1.48, -0.4, 0.15), (-0.3, 0.42, 1.46, 0.3, 0.35), (0.12, 0.45, 1.48, -0.15, -0.35),
-                 (0.0, -0.45, 1.44, 0.0, 0.45)]
-        for i, (x, y, z, ry, rx) in enumerate(tufts):
-            box("Climber_Tuft", coll, (0.42, 0.42, 0.42), (x, y, z), hair2 if i % 3 == 0 else hair, 0.13,
-                self.neck).rotation_euler = (rx, ry, 0.4 * i)
+        # spiky brown hair: a cap hugging the skull, then rows of pointed spikes radiating from the crown,
+        # longest around the back and sides, and three short spikes falling over the forehead to the shades
+        box("Climber_HairCap", coll, (1.36, 1.3, 0.5), (0, 0.04, 1.14), hair, 0.18, self.neck)
+        box("Climber_HairBack", coll, (1.34, 0.32, 0.95), (0, 0.5, 0.78), hair, 0.14, self.neck)
+        c = V((0, 0.08, 0.85))
+        # (elevation, azimuths (0 = back, 180 = front), length, base width, radius, droop, back-sweep):
+        # the locks sweep back and fall down like anime hair instead of radiating like an urchin
+        rows = [
+            (72, (40, 140, 220, 320), 0.66, 0.5, 0.5, 0.0, 0.55),
+            (40, (25, 70, 115, 150, 210, 245, 290, 335), 0.78, 0.5, 0.55, -0.45, 0.35),
+            (8, (0, 40, 80, 120, 240, 280, 320), 0.82, 0.48, 0.58, -0.95, 0.25),
+            (-22, (-35, 0, 35), 0.62, 0.44, 0.52, -1.1, 0.2),
+        ]
+        n = 0
+        for el, azs, ln, w, rad, droop, sweep in rows:
+            e = math.radians(el)
+            for az in azs:
+                t = math.radians(az)
+                d = V((math.sin(t) * math.cos(e), math.cos(t) * math.cos(e), math.sin(e)))
+                spike("Climber_Spike", coll, c + d * rad, d + V((0, sweep, droop)), ln * (0.9 + 0.1 * (n % 3)),
+                      w, hair2 if n % 3 == 0 else hair, self.neck, twist=0.3 * n)
+                n += 1
+        for x, tilt in ((-0.36, -0.35), (0.0, 0.0), (0.36, 0.35)):
+            spike("Climber_Bang", coll, V((x, -0.52, 1.18)), V((tilt * 0.6, -0.55, -1.0)), 0.5, 0.36,
+                  hair2 if x == 0 else hair, self.neck)
         self.sh = {}
         self.knuckle = {}
         for side, sx in (("L", 1.5), ("R", -1.5)):
             s = empty("Climber_Shoulder" + side, coll, self.hip, (sx, 0, 1.85))
-            box("Climber_Arm" + side, coll, (0.98, 0.98, 1.55), (0, 0, -0.72), skin, 0.08, s)
-            box("Climber_Sleeve" + side, coll, (1.06, 1.06, 0.72), (0, 0, -0.25), shirt, 0.06, s)
-            # the hand: a palm block and a finger block that curls at the knuckle (a chunky Roblox mitten)
-            box("Climber_Palm" + side, coll, (0.98, 0.98, 0.32), (0, 0, -1.62), skin, 0.08, s)
-            k = empty("Climber_Knuckle" + side, coll, s, (0, -0.25, -1.78))
-            box("Climber_Fingers" + side, coll, (0.94, 0.5, 0.36), (0, 0.25, -0.16), skin, 0.1, k)
-            box("Climber_Thumb" + side, coll, (0.24, 0.3, 0.36), (-0.52 if side == "L" else 0.52, -0.22, -1.6), skin,
-                0.07, s)
+            box("Climber_Sleeve" + side, coll, (1.2, 1.2, 0.92), (0, 0, -0.3), shirt, 0.16, s)
+            box("Climber_Arm" + side, coll, (0.9, 0.9, 1.0), (0, 0, -1.12), skin, 0.1, s)
+            # the hand: one rounded Roblox block at the wrist; the "curl" tilts it a little
+            k = empty("Climber_Knuckle" + side, coll, s, (0, 0, -1.6))
+            box("Climber_Hand" + side, coll, (0.86, 0.86, 0.46), (0, 0, -0.22), skin, 0.16, k)
             self.sh[side] = s
             self.knuckle[side] = k
         self.leg = {}
@@ -587,8 +608,8 @@ class Climber:
         bk.rot(self.leg["R"], f, (-st.get("legR", 0.0), 0, 0))
         bk.rot(self.sh["L"], f, (-st.get("armL", 0.0), -st.get("armLs", 0.0), 0))
         bk.rot(self.sh["R"], f, (-st.get("armR", 0.0), st.get("armRs", 0.0), 0))
-        bk.rot(self.knuckle["L"], f, (-st.get("curlL", 0.0) * math.radians(110), 0, 0))
-        bk.rot(self.knuckle["R"], f, (-st.get("curlR", 0.0) * math.radians(110), 0, 0))
+        bk.rot(self.knuckle["L"], f, (-st.get("curlL", 0.0) * math.radians(30), 0, 0))
+        bk.rot(self.knuckle["R"], f, (-st.get("curlR", 0.0) * math.radians(30), 0, 0))
 
 
 def walk_pose(phase, amp_leg=0.6, amp_arm=0.55, bob=0.12):
@@ -2414,6 +2435,7 @@ def main():
     ap.add_argument("--preview", action="store_true", help="render the 6 check frames to play/clips/preview/")
     ap.add_argument("--full", action="store_true", help="render all 900 frames and encode play/clips/nimbus_story_clip.mp4")
     ap.add_argument("--frames", help="comma list of frames to render (preview folder)")
+    ap.add_argument("--chunk", type=int, default=0, help="with --full: render only the next N missing frames (encode when none are left)")
     ap.add_argument("--res", type=int, default=100, help="resolution percentage (default 100)")
     ap.add_argument("--samples", type=int, default=0, help="render samples (EEVEE default 32, preview 16)")
     ap.add_argument("--cycles", action="store_true", help="Cycles (64 samples + denoiser) instead of EEVEE")
@@ -2496,8 +2518,12 @@ def main():
         film.render_frames(frames, PREVIEW_DIR)
     if a.full:
         todo = [f for f in range(1, N + 1) if not os.path.exists(os.path.join(FRAMES_DIR, "%04d.png" % f))]
-        film.render_frames(todo, FRAMES_DIR, "%04d.png")
-        film.encode()
+        left = len(todo) - (a.chunk if a.chunk else len(todo))
+        film.render_frames(todo[:a.chunk] if a.chunk else todo, FRAMES_DIR, "%04d.png")
+        if left > 0:
+            print("[clip] chunk done, %d frames left" % left)
+        else:
+            film.encode()
     print("[clip] done in %.1fs" % (time.time() - t0))
 
 
