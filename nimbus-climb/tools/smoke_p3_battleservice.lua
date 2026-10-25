@@ -878,7 +878,10 @@ S.p3bs_raid = scenario("p3bs_raid", function()
 	local m2 = K.logSize()
 	bs.JoinRaid(r2)
 	local s2 = bs.GetRaidStatus()
-	T.check(s2.Players == 2 and s2.MaxHp > s1.MaxHp, "p3 raid: a second team raises the boss HP", s1.MaxHp .. " -> " .. s2.MaxHp)
+	-- bug batch 2 #2: two level-10 teams can sit on the boss's BaselineDps floor (HpPerPlayer x BaselineDps): then the HP holds
+	local floorHp = bc.BaselineDps and (bc.Bosses.storm_titan.HpPerPlayer * bc.BaselineDps("storm_titan")) or 0
+	T.check(s2.Players == 2 and (s2.MaxHp > s1.MaxHp or (s1.MaxHp <= floorHp + 1 and s2.MaxHp == s1.MaxHp)), "p3 raid: a second team raises the boss HP (or both sit on the BaselineDps floor)",
+		s1.MaxHp .. " -> " .. s2.MaxHp .. string.format(" (floor %.0f)", floorHp))
 	advance(0.3)
 	local spawnToR1, spawnToR2 = false, false
 	for _, ev in ipairs(eventsOf(r1, m2, "Spawn")) do

@@ -20,6 +20,8 @@
 --   BattleCatalog.Profiles[species] / ProfileOf(def|species)       { Attack = "Melee"|"Ranged", Range, MoveSpeed, Interval, HitRadius, DamageMult }
 --   BattleCatalog.Damage                                           HpScale 2.6, DamageScale 0.6, Variance 0.2, Crit, MinHit, MaxHit (duels 0.6),
 --                                                                  DoubleKoByDamage { Duel }, Meter* (NPC units), SpecialDpsShare ... (no Overtime, no Retreat*)
+--   BattleCatalog.MeterStart(entry, npc, wave) -> lo, hi           a unit's start meter range: players MeterStart 20-50, NPC units NpcMeterStart
+--                                                                  45-75, the Ring champion (entry.MeterStart) and dungeon waves 2+ LateMeterStart 80
 --   BattleCatalog.Specials[Kind]                                   { Name, Role, Text, Scale, ... } for Blast, Heal, Shield, Storm, Pounce, Freeze, Beam,
 --                                                                  Rally (fighter damage +35% 8 s), Haste (attack + move speed +35% 8 s); SpecialKinds (9)
 --   BattleCatalog.Roles = { Combat = { Power 1, Health 1, Name "Fighter" }, Support = { Power 2.6, Health 1.5, Name "Support" } }
@@ -52,6 +54,7 @@
 --   BattleCatalog.LossRules = { LossShare 1/3, LossMinSeconds 20, LossMinDamage 0.2 }; RealLoss(seconds, dealtShare); LossXp(winXp, seconds, dealtShare)
 --   BattleCatalog.Ring / ChampionTeam(round, seed) / RingPower / RingTarget / RingSeconds / RingRewards(round, incomePerSecond, isRecord)   (Phase 4, re-tuned)
 --   BattleCatalog.Bosses / BossOrder / NextBoss / BossHp(bossId, teams) / WeightedTeams / GroupFactor / BossRules (GroupExponent 0.2)
+--   BattleCatalog.BaselineDps(bossId) -> n                        the boss HP floor's DPS (HpPerPlayer x it): BossRules.Baseline's ExpectedDps
 --   BattleCatalog.Events / Raid / RaidTier(share, won) / EventPets() / Trophies / Duel (PowerGap 2, the quick queue band)
 --   BattleCatalog.Zones { Duel, Raid, Ring, Dungeon 44, DungeonBoss 56 x 72 }, TimeLimits { Duel 120, Raid 330, Ring 90, Dungeon 120 (fallback) }, Modes
 --   BattleCatalog.Dungeon / DungeonFloors (5.1); DungeonPower(floor, partySize); DungeonWave(floor, room, wave, partySize, seed) ->
@@ -186,10 +189,14 @@ BattleCatalog.Damage = {
 	Rate = { Base = 0.62, PerSpeed = 0.035 }, -- attacks per Interval: Base + PerSpeed x Speed  (7 -> 0.87, 15 -> 1.15)
 	Move = { Base = 0.75, PerSpeed = 0.025 }, -- NPC move speed factor: Base + PerSpeed x Speed    (7 -> 0.93, 15 -> 1.13)
 	MeterMax = 100, -- NPC units: SPECIAL at MeterMax (the fighter uses Fighter.SpecialMeterMax / MeterPerSecond / MeterOnHit / MeterOnHurt)
-	MeterStart = { 20, 50 }, -- every unit starts a battle with a random meter in this range (first casts spread out)
-	MeterOnHit = 4, -- NPC meter gained per hit dealt
+	MeterStart = { 20, 50 }, -- a PLAYER team's unit starts a battle with a random meter in this range (first casts spread out)
+	-- bug batch 2 (#27): enemy NPCs never cast before they died (a dungeon enemy gained ~30 meter in its ~10 s). NPC
+	-- units start higher and charge faster; the fighter keeps its own Fighter.Meter* numbers (only NPC units read these)
+	NpcMeterStart = { 45, 75 }, -- an NPC team's unit starts here (BattleCatalog.MeterStart) ...
+	LateMeterStart = 80, -- ... the Ring champion and dungeon waves 2+ at this (raid minions stay NoSpecial)
+	MeterOnHit = 8, -- NPC meter gained per hit dealt (4 -> 8, #27)
 	MeterOnHurt = 2, -- NPC meter gained per hit taken
-	MeterPerSecond = 2, -- NPC passive meter gain while alive
+	MeterPerSecond = 5, -- NPC passive meter gain while alive (2 -> 5, #27: a 20 s fight sees an NPC special)
 	CastSeconds = 0.5, -- a unit is Casting (no attacks) this long after a special
 	SpecialScale = 1, -- global multiplier on every special effect
 	-- a special is powered by its pet's own Power stat (x Roles.Power): effect x (base Power / Reference) ^ Exponent
@@ -210,6 +217,32 @@ BattleCatalog.Damage = {
 	Weaken = 0.85,
 	BurnTicks = 3,
 }
+
+-- The starting SPECIAL meter range of one unit (#27) -> lo, hi: a player team's unit MeterStart; an NPC unit
+-- NpcMeterStart, or LateMeterStart for an entry that carries MeterStart (the Ring champion) or a dungeon wave >= 2.
+-- BattleSim rolls lo + (hi - lo) x rand (one roll per unit, so the RNG stream is the same for every case).
+function BattleCatalog.MeterStart(entry, npc, wave)
+	local D = BattleCatalog.Damage
+	local top = num(D.MeterMax, 100)
+	local function range(r)
+		if type(r) == "table" then
+			local lo, hi = num(r[1], 0), num(r[2], 0)
+			return max(0, min(top, lo)), max(0, min(top, max(lo, hi)))
+		end
+		local v = max(0, min(top, num(r, 0)))
+		return v, v
+	end
+	if npc ~= true then
+		return range(D.MeterStart)
+	end
+	if type(entry) == "table" and finite(entry.MeterStart) then
+		return range(entry.MeterStart)
+	end
+	if finite(wave) and wave >= 2 and D.LateMeterStart ~= nil then
+		return range(D.LateMeterStart)
+	end
+	return range(D.NpcMeterStart or D.MeterStart)
+end
 
 ----------------------------------------------------------------------
 -- Special effects per Special.Kind (PetCatalog.SpecialKinds). "Scale" multiplies the pet's scaled Special.Power x
@@ -1175,6 +1208,7 @@ function BattleCatalog.ChampionTeam(round, seed)
 		Handicap = entry.Handicap,
 		Boost = entry.Boost,
 		Crowned = true,
+		MeterStart = BattleCatalog.Damage.LateMeterStart, -- #27: the champion opens with a special almost ready
 	}
 	return {
 		Owner = "npc",
@@ -1251,17 +1285,21 @@ BattleCatalog.Duel = {
 
 ----------------------------------------------------------------------
 -- The boss roster (Phase 3, kept). Boss damage is a fraction of the fighters' HP (DamageBasis blends each victim's own
--- max HP with the raid's average); boss HP lasts HpPerPlayer seconds of every team's expected DPS (BossHp). Telegraph
+-- max HP with the raid's average); boss HP lasts HpPerPlayer seconds of every team's expected DPS (BossHp), but never
+-- less than HpPerPlayer seconds of BaselineDps (#2: a weak solo cannot finish inside the 330 s raid window). Telegraph
 -- shapes: Circle { Radius } at a target point, Line { Width, Length } from the boss through a target point. The dash's
 -- i-frames and a step out of the shape both dodge a telegraph.
 ----------------------------------------------------------------------
 BattleCatalog.BossRules = {
 	DamageBasis = { Own = 0.6, Average = 0.4 },
-	MinHp = 600,
+	MinHp = 2500, -- #2: 600 -> 2500
+	-- #2: the boss HP floor = HpPerPlayer x BaselineDps(bossId): the ExpectedDps of this fighter (a level-25 evolved
+	-- (stage 1) Legendary, the Prestige-1 fighter of tools/sim_battle.lua), unless the boss sets its own BaselineDps
+	Baseline = { PetId = "ember_phoenix", Level = 25, Evo = 1 },
 	MinionHp = 0.7,
 	MinionDamage = 0.035,
 	GroupExponent = 0.2, -- boss HP x teams ^ GroupExponent (Phase 5: 0.25 -> 0.2, so 8 fighters finish in ~220 s)
-	DamageGroup = { Min = 0.35, FullAt = 8 }, -- dungeon fixes (7): 0.55 -> 0.35 (no bench regen: a solo raid has no heal but its own)
+	DamageGroup = { Min = 0.7, FullAt = 8 }, -- dungeon fixes (7): 0.55 -> 0.35 (no bench regen); #2: 0.35 -> 0.7 (a solo raid is meant to be hard)
 	MinionInterval = 1.4,
 	MinionLevelOf = "average",
 	Enrage = { Damage = 2, Cooldown = 0.7 },
@@ -1386,8 +1424,25 @@ function BattleCatalog.WeightedTeams(dpsList)
 	return n
 end
 
+-- The DPS a boss's HP floor is measured against (#2): the boss's own BaselineDps, else the ExpectedDps of the
+-- BossRules.Baseline fighter (so it follows the stat formulas)
+function BattleCatalog.BaselineDps(bossId)
+	local boss = BattleCatalog.Bosses[bossId]
+	if boss and finite(boss.BaselineDps) and boss.BaselineDps > 0 then
+		return boss.BaselineDps
+	end
+	local ref = BattleCatalog.BossRules.Baseline
+	if type(ref) ~= "table" then
+		return 0
+	end
+	local ok, dps = pcall(BattleCatalog.ExpectedDps, { Pets = { { PetId = ref.PetId, Key = ref.PetId, Level = ref.Level, Tier = ref.Tier, Evo = ref.Evo } } })
+	return (ok and finite(dps) and dps > 0) and dps or 0
+end
+
 -- Boss HP for a list of team specs (each { Pets = {...} }): HpPerPlayer seconds of every team's expected DPS, each
--- team's share weighted like the head count. Returns the total (x GroupFactor, at least MinHp) and the shares.
+-- team's share weighted like the head count, x GroupFactor; never below HpPerPlayer seconds of BaselineDps (#2: the
+-- floor is for the whole raid, so a weak group still adds up past it while a weak solo cannot), nor MinHp.
+-- Returns the total and the shares (scaled up with the floor, so they still add up to the total before GroupFactor).
 function BattleCatalog.BossHp(bossId, teams)
 	local boss = BattleCatalog.Bosses[bossId]
 	local seconds = boss and boss.HpPerPlayer or 150
@@ -1405,6 +1460,16 @@ function BattleCatalog.BossHp(bossId, teams)
 		total = total + shares[i]
 	end
 	total = total * BattleCatalog.GroupFactor(BattleCatalog.WeightedTeams(dpsList))
+	local floorHp = seconds * BattleCatalog.BaselineDps(bossId)
+	if total > 0 and total < floorHp then
+		local scale = floorHp / total
+		for i = 1, #shares do
+			shares[i] = shares[i] * scale
+		end
+		total = floorHp
+	elseif total <= 0 then
+		total = floorHp
+	end
 	local minHp = BattleCatalog.BossRules.MinHp
 	if total < minHp then
 		total = minHp
@@ -1901,6 +1966,9 @@ function BattleCatalog.Validate()
 			end
 			if not finite(b.HpPerPlayer) or b.HpPerPlayer <= 0 then
 				bad("boss " .. id .. ": HpPerPlayer must be positive")
+			end
+			if BattleCatalog.BaselineDps(id) <= 0 then
+				bad("boss " .. id .. ": BaselineDps must be positive (BossRules.Baseline names a real pet)")
 			end
 			if type(b.Attacks) ~= "table" or #b.Attacks < 1 then
 				bad("boss " .. id .. ": needs attacks")
