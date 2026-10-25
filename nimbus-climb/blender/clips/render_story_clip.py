@@ -124,17 +124,21 @@ def hop(p0, p1, t, h):
 
 
 def yaw_to(d):
-    """yaw (about +Z) that turns a model facing local -Y toward direction d"""
-    return math.atan2(-d.x, -d.y) if (abs(d.x) + abs(d.y)) > 1e-6 else 0.0
+    """yaw (about +Z) that turns a model facing local -Y toward direction d: Rz(yaw) @ (0,-1,0) = (sin, -cos)"""
+    return math.atan2(d.x, -d.y) if (abs(d.x) + abs(d.y)) > 1e-6 else 0.0
 
 
 def fwd(yaw):
-    return V((-math.sin(yaw), -math.cos(yaw), 0.0))
+    return V((math.sin(yaw), -math.cos(yaw), 0.0))
 
 
 def right(yaw):
-    # facing -Y, right is -X
-    return V((-math.cos(yaw), math.sin(yaw), 0.0))
+    # forward x up: facing -Y (yaw 0), right is -X
+    return V((-math.cos(yaw), -math.sin(yaw), 0.0))
+
+
+assert (fwd(yaw_to(V((1, 2, 0)))) - V((1, 2, 0)).normalized()).length < 1e-9
+assert (right(0.0) - V((-1, 0, 0))).length < 1e-9
 
 
 def wrap_angle(a):
@@ -420,47 +424,136 @@ class Baker:
 
 
 # ================================================================================================ the Climber (hand-built R6 rig)
+def hibiscus_tile(path, size=1024, seed=3):
+    """a seamless Hawaiian print tile: magenta ground, dark leaves, white five-petal hibiscus with pink hearts"""
+    from PIL import Image, ImageDraw
+    r = random.Random(seed)
+    big = Image.new("RGB", (size * 3, size * 3), (212, 34, 164))
+    d = ImageDraw.Draw(big)
+    flowers = [(r.uniform(0, size), r.uniform(0, size), r.uniform(70, 120), r.uniform(0, TAU)) for _ in range(7)]
+    leaves = [(r.uniform(0, size), r.uniform(0, size), r.uniform(0, TAU)) for _ in range(16)]
+
+    def ell(cx, cy, rx, ry, ang, col):
+        pts = []
+        for i in range(24):
+            t = TAU * i / 24
+            x, y = math.cos(t) * rx, math.sin(t) * ry
+            pts.append((cx + x * math.cos(ang) - y * math.sin(ang), cy + x * math.sin(ang) + y * math.cos(ang)))
+        d.polygon(pts, fill=col)
+
+    for ox in (0, size, 2 * size):
+        for oy in (0, size, 2 * size):
+            for x, y, ang in leaves:
+                ell(ox + x, oy + y, 70, 24, ang, (122, 12, 98))
+                ell(ox + x, oy + y, 60, 6, ang, (150, 30, 120))
+            for x, y, rad, ang in flowers:
+                for k in range(5):
+                    pa = ang + TAU * k / 5
+                    ell(ox + x + math.cos(pa) * rad * 0.55, oy + y + math.sin(pa) * rad * 0.55, rad * 0.55, rad * 0.36,
+                        pa, (252, 244, 250))
+                ell(ox + x, oy + y, rad * 0.42, rad * 0.42, 0, (255, 150, 214))
+                ell(ox + x, oy + y, rad * 0.14, rad * 0.14, 0, (255, 220, 90))
+    big.crop((size, size, 2 * size, 2 * size)).save(path)
+    return path
+
+
+def hawaiian(name, tile_studs=2.4):
+    """the magenta Hawaiian shirt: the painted hibiscus tile box-projected in object space"""
+    path = os.path.join(CA.CACHE, "hibiscus.png")
+    if not os.path.exists(path):
+        os.makedirs(CA.CACHE, exist_ok=True)
+        hibiscus_tile(path)
+    m = bpy.data.materials.new(name)
+    m.use_nodes = True
+    nt = m.node_tree
+    bsdf = nt.nodes.get("Principled BSDF")
+    bsdf.inputs["Roughness"].default_value = 0.5
+    tc = nt.nodes.new("ShaderNodeTexCoord")
+    mp = nt.nodes.new("ShaderNodeMapping")
+    mp.inputs["Scale"].default_value = (1 / tile_studs, 1 / tile_studs, 1 / tile_studs)
+    img = nt.nodes.new("ShaderNodeTexImage")
+    img.image = bpy.data.images.load(path)
+    img.projection = "BOX"
+    img.projection_blend = 0.15
+    nt.links.new(tc.outputs["Object"], mp.inputs["Vector"])
+    nt.links.new(mp.outputs["Vector"], img.inputs["Vector"])
+    nt.links.new(img.outputs["Color"], bsdf.inputs["Base Color"])
+    m.diffuse_color = rgb(212, 34, 164)
+    return m
+
+
 class Climber:
-    """A classic blocky Roblox R6 avatar (the rookie): yellow glossy skin, blue shirt, green trousers, a little brown
-    backpack with a cyan cloud patch. Local frame: feet at the origin, facing -Y, up +Z, right = -X.
+    """The player's own avatar, hand-built as a blocky Roblox R6 rig: light skin, swoopy brown hair, purple shades,
+    a magenta Hawaiian shirt with a gold striped tie, dark teal shorts, white sneakers, a brown leather satchel at the
+    left hip, and the UFO hat (built separately in Film.build_ufo: it hovers upright above the head).
+    Local frame: feet at the origin, facing -Y, up +Z, right = -X.
     Joints: Hip (body lean), Neck, ShoulderL/R, HipL/R, KnuckleR/L (fist curl)."""
 
     def __init__(self, coll):
-        skin = principled("Climber_Skin", rgb(245, 205, 48), rough=0.28, coat=0.6)
-        shirt = principled("Climber_Shirt", rgb(22, 104, 178), rough=0.55)
-        trim = principled("Climber_Trim", rgb(70, 220, 255), rough=0.3, emit=rgb(70, 220, 255), emit_strength=1.5)
-        pants = principled("Climber_Pants", rgb(64, 150, 74), rough=0.6)
-        shoe = principled("Climber_Shoe", rgb(40, 36, 44), rough=0.5)
-        pack = principled("Climber_Pack", rgb(140, 84, 44), rough=0.6)
-        strap = principled("Climber_Strap", rgb(70, 44, 26), rough=0.6)
-        face = principled("Climber_Face", rgb(18, 18, 22), rough=0.4)
-        self.mats = dict(skin=skin, shirt=shirt, trim=trim, pants=pants)
+        skin = principled("Climber_Skin", rgb(250, 212, 178), rough=0.32, coat=0.4)
+        shirt = hawaiian("Climber_Shirt")
+        tie = principled("Climber_Tie", rgb(236, 186, 48), rough=0.3, metal=0.2)
+        tie2 = principled("Climber_TieStripe", rgb(176, 112, 20), rough=0.35)
+        shorts = principled("Climber_Shorts", rgb(28, 70, 92), rough=0.65)
+        shoe = principled("Climber_Shoe", rgb(242, 238, 228), rough=0.45)
+        sole = principled("Climber_Sole", rgb(196, 160, 116), rough=0.6)
+        hair = principled("Climber_Hair", rgb(92, 54, 30), rough=0.55)
+        hair2 = principled("Climber_HairLight", rgb(124, 76, 42), rough=0.5)
+        lens = principled("Climber_Shades", rgb(40, 18, 64), rough=0.05, coat=1.0, emit=rgb(140, 70, 255),
+                          emit_strength=0.4)
+        rim = principled("Climber_ShadesRim", rgb(150, 60, 200), rough=0.3, metal=0.6)
+        mouth = principled("Climber_Mouth", rgb(40, 22, 22), rough=0.4)
+        leather = principled("Climber_Leather", rgb(112, 68, 38), rough=0.45, coat=0.3)
+        strap = principled("Climber_Strap", rgb(78, 46, 24), rough=0.6)
+        self.mats = dict(skin=skin, shirt=shirt, shorts=shorts)
         self.root = empty("Climber", coll, size=1.0)
         r = self.root
         self.hip = empty("Climber_Hip", coll, r, (0, 0, 2.0))
         box("Climber_Torso", coll, (2.0, 1.0, 2.0), (0, 0, 1.0), shirt, 0.07, self.hip)
-        box("Climber_Hem", coll, (2.04, 1.04, 0.16), (0, 0, 0.1), trim, 0.03, self.hip)
-        # backpack on the back (+Y)
-        box("Climber_Pack", coll, (1.4, 0.55, 1.35), (0, 0.76, 1.05), pack, 0.12, self.hip)
-        box("Climber_PackFlap", coll, (1.2, 0.2, 0.5), (0, 1.08, 1.45), strap, 0.06, self.hip)
-        box("Climber_PackPatch", coll, (0.55, 0.06, 0.3), (0, 1.18, 0.95), trim, 0.03, self.hip)
-        for sx in (-0.45, 0.45):
-            box("Climber_Strap", coll, (0.22, 0.08, 1.9), (sx, -0.53, 1.05), strap, 0.03, self.hip)
+        # open collar (two lapels) and the gold striped tie down the front (-Y)
+        for sx, rz in ((-0.3, 0.5), (0.3, -0.5)):
+            box("Climber_Collar", coll, (0.55, 0.12, 0.42), (sx, -0.53, 1.82), shirt, 0.04, self.hip).rotation_euler = (0, rz, 0)
+        box("Climber_Neck", coll, (0.5, 0.06, 0.3), (0, -0.51, 1.86), skin, 0.02, self.hip)
+        box("Climber_Tie", coll, (0.3, 0.08, 1.45), (0, -0.55, 1.0), tie, 0.03, self.hip)
+        for i in range(5):
+            box("Climber_TieStripe", coll, (0.3, 0.09, 0.07), (0, -0.556, 0.45 + 0.27 * i), tie2, 0.01, self.hip)
+        box("Climber_TieKnot", coll, (0.36, 0.12, 0.24), (0, -0.56, 1.72), tie2, 0.04, self.hip)
+        # the satchel strap across the chest and the brown leather satchel on the left hip (+X)
+        box("Climber_Strap", coll, (0.2, 1.06, 2.5), (0, 0, 1.0), strap, 0.03, self.hip).rotation_euler = (0, -0.68, 0)
+        box("Climber_Satchel", coll, (0.45, 1.05, 0.95), (1.2, -0.05, 0.05), leather, 0.12, self.hip)
+        box("Climber_SatchelFlap", coll, (0.5, 1.1, 0.35), (1.22, -0.05, 0.38), strap, 0.08, self.hip)
         self.neck = empty("Climber_Neck", coll, self.hip, (0, 0, 2.0))
         box("Climber_Head", coll, (1.25, 1.2, 1.2), (0, 0, 0.62), skin, 0.3, self.neck, segs=4)
-        # classic face on the front (-Y): two tall eyes and a smile (static, no facial acting)
-        for ex in (-0.22, 0.22):
-            box("Climber_Eye", coll, (0.12, 0.05, 0.26), (ex, -0.6, 0.78), face, 0.04, self.neck)
-        for i in range(7):
-            a = math.radians(-60 + 20 * i)
-            box("Climber_Smile", coll, (0.1, 0.05, 0.07), (0.32 * math.sin(a), -0.6, 0.5 - 0.12 * math.cos(a)), face,
+        # purple shades and a smile (static: no facial acting)
+        for ex in (-0.26, 0.26):
+            box("Climber_Lens", coll, (0.42, 0.06, 0.26), (ex, -0.62, 0.74), lens, 0.05, self.neck)
+        box("Climber_Bridge", coll, (0.2, 0.05, 0.06), (0, -0.63, 0.8), rim, 0.01, self.neck)
+        for sx in (-0.55, 0.55):
+            box("Climber_Temple", coll, (0.08, 0.6, 0.06), (sx * 1.1, -0.35, 0.8), rim, 0.01, self.neck)
+        for i in range(5):
+            a = math.radians(-50 + 25 * i)
+            box("Climber_Smile", coll, (0.09, 0.05, 0.06), (0.26 * math.sin(a), -0.61, 0.42 - 0.08 * math.cos(a)), mouth,
                 0.02, self.neck)
+        # swoopy brown hair: a full cap, the back, long sides, bangs swept down to the shades, messy tufts on top
+        box("Climber_HairCap", coll, (1.46, 1.4, 0.52), (0, 0.04, 1.2), hair, 0.16, self.neck)
+        box("Climber_HairBack", coll, (1.44, 0.4, 1.1), (0, 0.55, 0.76), hair, 0.14, self.neck)
+        for sx in (-0.7, 0.7):
+            box("Climber_HairSide", coll, (0.22, 1.05, 0.82), (sx, 0.12, 0.86), hair, 0.09, self.neck)
+        for x, z, w, ry, col in ((-0.38, 1.0, 0.5, -0.25, hair2), (0.05, 1.02, 0.48, 0.1, hair),
+                                 (0.42, 0.98, 0.46, 0.3, hair2)):
+            box("Climber_Bang", coll, (w, 0.28, 0.42), (x, -0.6, z), col, 0.1, self.neck).rotation_euler = (0.12, ry, 0)
+        tufts = [(-0.45, 0.05, 1.5, 0.35, -0.25), (-0.12, -0.2, 1.56, -0.2, 0.3), (0.22, 0.02, 1.55, 0.25, -0.2),
+                 (0.48, 0.2, 1.48, -0.4, 0.15), (-0.3, 0.42, 1.46, 0.3, 0.35), (0.12, 0.45, 1.48, -0.15, -0.35),
+                 (0.0, -0.45, 1.44, 0.0, 0.45)]
+        for i, (x, y, z, ry, rx) in enumerate(tufts):
+            box("Climber_Tuft", coll, (0.42, 0.42, 0.42), (x, y, z), hair2 if i % 3 == 0 else hair, 0.13,
+                self.neck).rotation_euler = (rx, ry, 0.4 * i)
         self.sh = {}
         self.knuckle = {}
         for side, sx in (("L", 1.5), ("R", -1.5)):
             s = empty("Climber_Shoulder" + side, coll, self.hip, (sx, 0, 1.85))
             box("Climber_Arm" + side, coll, (0.98, 0.98, 1.55), (0, 0, -0.72), skin, 0.08, s)
-            box("Climber_Sleeve" + side, coll, (1.04, 1.04, 0.55), (0, 0, -0.18), shirt, 0.06, s)
+            box("Climber_Sleeve" + side, coll, (1.06, 1.06, 0.72), (0, 0, -0.25), shirt, 0.06, s)
             # the hand: a palm block and a finger block that curls at the knuckle (a chunky Roblox mitten)
             box("Climber_Palm" + side, coll, (0.98, 0.98, 0.32), (0, 0, -1.62), skin, 0.08, s)
             k = empty("Climber_Knuckle" + side, coll, s, (0, -0.25, -1.78))
@@ -472,8 +565,11 @@ class Climber:
         self.leg = {}
         for side, sx in (("L", 0.5), ("R", -0.5)):
             h = empty("Climber_Hip" + side, coll, r, (sx, 0, 2.0))
-            box("Climber_Leg" + side, coll, (0.98, 0.98, 1.75), (0, 0, -0.9), pants, 0.06, h)
-            box("Climber_Shoe" + side, coll, (1.0, 1.08, 0.3), (0, -0.04, -1.86), shoe, 0.06, h)
+            box("Climber_Shorts" + side, coll, (1.02, 1.02, 1.0), (0, 0, -0.45), shorts, 0.06, h)
+            box("Climber_Cuff" + side, coll, (1.06, 1.06, 0.14), (0, 0, -0.95), shorts, 0.03, h)
+            box("Climber_Leg" + side, coll, (0.94, 0.94, 0.9), (0, 0, -1.4), skin, 0.06, h)
+            box("Climber_Shoe" + side, coll, (1.02, 1.14, 0.36), (0, -0.06, -1.8), shoe, 0.1, h)
+            box("Climber_Sole" + side, coll, (1.04, 1.16, 0.1), (0, -0.06, -1.97), sole, 0.03, h)
             self.leg[side] = h
         # the coin socket in the right hand, and the gem socket on the right palm
         self.hand_socket = empty("Climber_HandSocketR", coll, self.sh["R"], (0, -0.2, -2.0))
@@ -621,7 +717,7 @@ class World:
             ee.bokeh_max_size = 60
             ee.motion_blur_steps = 1
         sc.render.use_motion_blur = True
-        sc.render.motion_blur_shutter = 0.35
+        sc.render.motion_blur_shutter = 0.25
         sc.view_settings.view_transform = "AgX"
         try:
             sc.view_settings.look = "AgX - Medium High Contrast"
@@ -714,10 +810,10 @@ class World:
         mix.data_type = "RGBA"
         mix.blend_type = "MULTIPLY"
         mix.inputs["Factor"].default_value = 1.0
-        mix.inputs[7].default_value = rgb(78, 70, 140)
+        mix.inputs[7].default_value = rgb(120, 92, 150)
         nt.links.new(env.outputs["Color"], mix.inputs[6])
         nt.links.new(mix.outputs[2], bg.inputs["Color"])
-        bg.inputs["Strength"].default_value = 0.55
+        bg.inputs["Strength"].default_value = 0.7
         nt.links.new(bg.outputs[0], out.inputs["Surface"])
         self.world_bg = bg
         # volumetric fog (rule 4): a fog box around each set keeps the sky visible behind it
@@ -729,7 +825,7 @@ class World:
         fo = fnt.nodes.new("ShaderNodeOutputMaterial")
         pv = fnt.nodes.new("ShaderNodeVolumePrincipled")
         pv.inputs["Density"].default_value = 0.012
-        pv.inputs["Color"].default_value = rgb(150, 140, 200)
+        pv.inputs["Color"].default_value = rgb(196, 170, 214)
         pv.inputs["Anisotropy"].default_value = 0.35
         fnt.links.new(pv.outputs[0], fo.inputs["Volume"])
         self.fog_density = pv.inputs["Density"]
@@ -998,8 +1094,8 @@ class Film(World):
         """three-point rig that follows the hero and turns with the active camera: warm lantern key, cool purple
         fill, cyan / gold rim behind the subject"""
         self.rig = empty("LightRig", self.coll, None, (0, 0, 0), 1.0)
-        self.key = self.area("Key", rgb(255, 176, 104), 900, 4.0, self.rig)
-        self.fill = self.area("Fill", rgb(150, 120, 255), 380, 6.0, self.rig)
+        self.key = self.area("Key", rgb(255, 204, 150), 1100, 4.0, self.rig)
+        self.fill = self.area("Fill", rgb(170, 130, 255), 520, 6.0, self.rig)
         self.rim = self.area("Rim", rgb(90, 230, 255), 1400, 3.0, self.rig)
         self.moon = self.sun("Moon", rgb(150, 160, 255), 0.35, (math.radians(55), 0, math.radians(30)))
 
@@ -1008,7 +1104,7 @@ class Film(World):
         c = self.coll
         self.dragon0 = Pet("dragon0", self.specs, c, "Dragon0", scale=1.0)
         self.dragon2 = Pet("dragon2", self.specs, c, "Dragon2", scale=0.72)
-        self.storm = Pet("stormfang", self.specs, c, "Stormfang", scale=1.0)
+        self.storm = Pet("stormfang", self.specs, c, "Stormfang", scale=1.0)  # x3 on the altar (st["scale"])
         self.hydra = Pet("hydra", self.specs, c, "Hydra", scale=1.45)
         for p in (self.dragon0, self.dragon2, self.storm, self.hydra):
             self.tune_asset(p.objects, neon=5.0)
@@ -1055,7 +1151,7 @@ class Film(World):
     # -------------------------------------------------------------------------------------- fx
     def build_fx(self):
         c = self.coll
-        cyan = emission("BoltCyan", rgb(110, 240, 255), 40.0)
+        cyan = emission("BoltCyan", rgb(110, 240, 255), 6.0)
         self.bolt = bolt_mesh("StormBolt", c, V((0, 0, 0)), V((0, 1, 0)), cyan, 0.4, 9, 1.0, seed=3)
         self.bolt_mat = cyan
         self.bolt_light = self.point("BoltLight", V((0, 0, 0)), rgb(120, 230, 255), 0, 60, radius=0.5)
@@ -1091,9 +1187,9 @@ class Film(World):
                         gold, 0.03, piv)
             ring_mesh("RuneBand%d" % ring, c, rad - 0.55, rad - 0.42, 96, 0.04, gold, piv)
             self.runes.append(piv)
-        self.pillar_mat = emission("PillarGold", rgb(255, 214, 120), 6.0, alpha=0.55)
+        self.pillar_mat = emission("PillarGold", rgb(255, 214, 120), 3.0, alpha=0.28)
         self.pillar = tube_mesh("EvoPillar", c, 3.4, 2.4, 60, 32, self.pillar_mat)
-        self.pillar_core = tube_mesh("EvoPillarCore", c, 1.2, 0.8, 60, 24, emission("PillarCore", rgb(255, 250, 230), 12.0, alpha=0.8))
+        self.pillar_core = tube_mesh("EvoPillarCore", c, 1.2, 0.8, 60, 24, emission("PillarCore", rgb(255, 250, 230), 6.0, alpha=0.5))
         self.flash_mat = emission("EvoFlash", rgb(255, 255, 255), 30.0, alpha=0.9)
         bpy.ops.mesh.primitive_uv_sphere_add(radius=1.0, segments=24, ring_count=12)
         self.flash = bpy.context.active_object
@@ -1107,7 +1203,7 @@ class Film(World):
             s = box("Spark%d" % i, c, (0.22, 0.22, 0.22), (0, 0, 0), gold, 0.02)
             self.sparks.append(s)
         # Act 4: neon cyan dash trail (a ribbon rebuilt as a fixed path), storm bolts in the distance
-        self.dash_mat = emission("DashCyan", rgb(80, 240, 255), 14.0, alpha=0.85)
+        self.dash_mat = emission("DashCyan", rgb(80, 240, 255), 5.0, alpha=0.75)
         self.trail = None
         self.storm_bolts = []
         for i in range(4):
@@ -1125,7 +1221,7 @@ class Film(World):
         self.beam = tube_mesh("SpecialBeam", c, 0.7, 0.7, 1.0, 24, self.beam_mat)
         self.beam_core = tube_mesh("SpecialBeamCore", c, 0.28, 0.28, 1.0, 16, emission("BeamCore", rgb(255, 255, 235), 40.0))
         self.beam_light = self.point("BeamLight", V((0, 0, -300)), rgb(255, 200, 90), 0, 80, radius=1.0)
-        self.hydra_light = self.point("HydraGlow", ARENA + V((0, -14, 12)), rgb(180, 80, 255), 1800, 60, radius=3.0)
+        self.hydra_light = self.point("HydraGlow", ARENA + V((0, -2, 16)), rgb(190, 110, 255), 9000, 70, radius=3.0)
         # ghost afterimages of the phase dodge: 3 static copies of the evolved dragon with a ghost material
         self.ghost_mats = [emission("Ghost%d" % i, rgb(120, 240, 255), 2.0, alpha=0.0) for i in range(3)]
         self.ghosts = []
@@ -1136,12 +1232,87 @@ class Film(World):
                     ob.material_slots[0].link = "OBJECT"
                     ob.material_slots[0].material = self.ghost_mats[i]
             self.ghosts.append(g)
+        self.build_ufo()
         # Act 6 + finale: title
         self.title_mat = emission("TitleGold", rgb(255, 214, 110), 6.0, alpha=0.0)
         self.sub_mat = emission("TitleCyan", rgb(140, 240, 255), 4.0, alpha=0.0)
         font = bpy.data.fonts.load(FONT) if os.path.exists(FONT) else None
         self.title = self.text("Title", "NIMBUS CLIMB", self.title_mat, font, 1.0, 0.06)
         self.subtitle = self.text("Subtitle", "Climb the Storm. Together.", self.sub_mat, font, 0.36, 0.02)
+
+    def build_ufo(self):
+        """the avatar's UFO hat, hand-built: a grey saucer with a glass dome, a ring of blue lights, little fins,
+        a blue tractor beam down to the head and glowing rings that travel down the body"""
+        c = self.coll
+        metal = principled("UFO_Metal", rgb(150, 156, 172), rough=0.22, metal=0.85)
+        dark = principled("UFO_Dark", rgb(60, 64, 80), rough=0.3, metal=0.7)
+        glass = principled("UFO_Dome", rgb(120, 220, 255), rough=0.05, emit=rgb(90, 200, 255), emit_strength=1.2,
+                           alpha=0.6)
+        blue = emission("UFO_Light", rgb(80, 170, 255), 8.0)
+        self.ufo = empty("UFO", c, None, (0, 0, -400), 0.5)
+        bpy.ops.mesh.primitive_uv_sphere_add(radius=1.0, segments=40, ring_count=16)
+        hull = bpy.context.active_object
+        hull.name = "UFO_Hull"
+        hull.scale = (1.15, 1.15, 0.24)
+        hull.data.materials.append(metal)
+        hull.parent = self.ufo
+        for p in hull.data.polygons:
+            p.use_smooth = True
+        ring_mesh("UFO_Band", c, 1.1, 1.24, 64, 0.0, dark, self.ufo)
+        bpy.ops.mesh.primitive_uv_sphere_add(radius=0.48, segments=24, ring_count=12, location=(0, 0, 0.12))
+        dome = bpy.context.active_object
+        dome.name = "UFO_Dome"
+        dome.scale = (1, 1, 0.8)
+        dome.data.materials.append(glass)
+        dome.parent = self.ufo
+        for i in range(10):
+            a = TAU * i / 10
+            box("UFO_Lamp", c, (0.12, 0.12, 0.08), (math.cos(a) * 1.02, math.sin(a) * 1.02, -0.1), blue, 0.03, self.ufo)
+        for i in range(4):
+            a = TAU * i / 4 + 0.4
+            box("UFO_Fin", c, (0.1, 0.3, 0.22), (math.cos(a) * 0.7, math.sin(a) * 0.7, -0.26), dark, 0.03,
+                self.ufo).rotation_euler = (0, 0, a)
+        self.ufo_light = self.point("UFO_Glow", V((0, 0, -400)), rgb(90, 170, 255), 220, 12, radius=0.5)
+        self.ufo_light.parent = self.ufo
+        self.ufo_light.location = (0, 0, -0.6)
+        self.beam_m = emission("UFO_Beam", rgb(110, 180, 255), 2.5, alpha=0.22)
+        self.ufo_beam = tube_mesh("UFO_BeamCone", c, 0.62, 0.3, 0.95, 32, self.beam_m)
+        self.ufo_rings = []
+        for i in range(3):
+            m = emission("UFO_RingM%d" % i, rgb(110, 170, 255), 7.0, alpha=0.0)
+            ring = ring_mesh("UFO_Ring%d" % i, c, 0.93, 1.0, 72, 0.0, m)
+            self.ufo_rings.append((ring, m))
+
+    def head_world(self, st):
+        """approximate world position of the top of the avatar's head from its baked state"""
+        R = Matrix.Rotation(st["yaw"], 3, "Z") @ Matrix.Rotation(st.get("pitch", 0.0), 3, "X")
+        lean = Matrix.Rotation(st.get("lean", 0.0), 3, "X")
+        local = V((0, 0, 2.0 + st.get("hipz", 0.0))) + lean @ V((0, 0, 3.3))
+        return st["pos"] + R @ local
+
+    def direct_ufo(self, bk):
+        cs = self.cs
+        for f in range(1, N + 1):
+            st = cs[f]
+            t = f / FPS
+            top = self.head_world(st)
+            lying = 113 <= f <= 255
+            ufo_p = top + V((0, 0, 1.45 + 0.12 * math.sin(TAU * t / 1.4)))
+            bk.loc(self.ufo, f, ufo_p)
+            bk.rot(self.ufo, f, (0.06 * math.sin(TAU * t / 2.1), 0.06 * math.cos(TAU * t / 1.7), t * 1.4))
+            # the beam and the rings: only while standing (the UFO hovers on over a downed hero)
+            bk.show(self.ufo_beam, f, not lying)
+            bk.loc(self.ufo_beam, f, top + V((0, 0, 0.32)))
+            body = st["pos"]
+            for i, (ring, m) in enumerate(self.ufo_rings):
+                u = ((f + i * 15) % 45) / 45.0
+                z = top.z - 0.4 - u * (top.z - 0.4 - body.z)
+                bk.show(ring, f, not lying)
+                bk.loc(ring, f, V((body.x, body.y, z)))
+                rad = 1.55 + 0.75 * u
+                bk.scale(ring, f, (rad, rad, 1))
+                bk.key(m.node_tree.nodes["Mix Shader"].inputs[0], "default_value", -1, f,
+                       0.0 if lying else 0.85 * math.sin(math.pi * u))
 
     def text(self, name, body, mat, font, size, extrude):
         cu = bpy.data.curves.new(name, "FONT")
@@ -1163,12 +1334,13 @@ class Film(World):
         g = self.ground
         st = {}
         if f <= 150:  # ------------------------------------------------- Act 1: the bridge, the coin, the bolt
-            y0, y1 = 52.0, 20.0
+            y0, y1 = 52.0, 21.0
             u = seg(f, 1, 64)
             y = y0 - (y0 - y1) * (u * 0.82 + 0.18 * out_cubic(u)) if u < 1 else y1
             travelled = (y0 - y)
-            pos = V((0.0, y, 0))
-            st = dict(pos=pos, yaw=0.0)
+            # the tall crystal stands on the ring at (0, 12.4): the rookie drifts left of the bridge axis
+            pos = V((lerp(-1.0, -3.0, (y0 - y) / (y0 - y1)), y, 0))
+            st = dict(pos=pos, yaw=yaw_to(V((-2.0, -31.0, 0))) if f < 64 else yaw_to(ALTAR - V((-3.0, 21.0, 0))))
             stride = travelled / 2.5 * math.pi
             amt = 1.0 - smooth(seg(f, 58, 68))
             w = walk_pose(stride)
@@ -1188,8 +1360,8 @@ class Film(World):
                 st["armL"] = lerp(st.get("armL", 0), math.radians(25), flinch)
             if f >= 113:
                 u = seg(f, 113, 138)
-                land = V((0.0, 27.0, 0))
-                p = vlerp(V((0.0, y1, 0)), land, out_cubic(u))
+                land = V((-3.0, 28.0, 0))
+                p = vlerp(V((-3.0, y1, 0)), land, out_cubic(u))
                 p.z = 2.6 * math.sin(math.pi * min(u * 1.15, 1.0)) * (1 - u) + 0.0
                 st["pos"] = p
                 st["pitch"] = -math.radians(92) * smoother(u * 1.05) + math.radians(6) * settle(seg(f, 136, 150), 1.0)
@@ -1208,8 +1380,8 @@ class Film(World):
             st["pos"].z += g("altar", st["pos"].x, st["pos"].y) + (0.5 if f >= 113 else 0) * smooth(seg(f, 128, 138))
             return st
         if f <= 270:  # ------------------------------------------------- Act 2: the clenched fist, standing up
-            base = V((0.0, 27.0, g("altar", 0, 27.0)))
-            st = dict(pos=base + V((0, 0, 0.5)), yaw=0.0, pitch=-math.radians(92), armRs=math.radians(70),
+            base = V((-3.0, 28.0, g("altar", -3.0, 28.0)))
+            st = dict(pos=base + V((0, 0, 0.5)), yaw=yaw_to(ALTAR - V((-3.0, 21.0, 0))), pitch=-math.radians(92), armRs=math.radians(70),
                       armLs=math.radians(35), armR=math.radians(4), armL=math.radians(12))
             # breathing
             st["lean"] = 0.02 * math.sin(TAU * f / 70.0)
@@ -1259,7 +1431,7 @@ class Film(World):
             look_d = yaw_to(self.evo_c - b)
             st["yaw"] = ang_lerp(st["yaw"], look_d, smoother(seg(f, 352, 366)))
             # shield the eyes at the flash, then a fist pump at the reveal
-            sh = smooth(seg(f, 378, 384)) * (1 - smooth(seg(f, 396, 404)))
+            sh = smooth(seg(f, 372, 378)) * (1 - smooth(seg(f, 390, 398)))
             st["armL"] = st.get("armL", 0) + math.radians(150) * sh
             st["armLs"] = math.radians(-20) * sh
             st["lean"] -= 0.1 * sh
@@ -1303,12 +1475,12 @@ class Film(World):
             st["yaw"] = ang_lerp(0.0, math.radians(20), smooth(seg(f, 714, 730)))
             return st
         # ------------------------------------------------------------- Act 6: the oath
-        a, b = V((0, 30, 0)), V((0, 13, 0))
+        a, b = V((-2.0, 32, 0)), V((-3.5, 18.5, 0))
         u = seg(f, 751, 786)
         s = u * 0.85 + 0.15 * out_cubic(u)
         p = vlerp(a, b, s)
         p.z = g("altar", p.x, p.y)
-        st = dict(pos=p, yaw=0.0)
+        st = dict(pos=p, yaw=yaw_to(ALTAR - b))
         walk = 1 - smooth(seg(f, 780, 790))
         w = walk_pose((a.y - p.y) / 2.6 * math.pi)
         for k in ("legL", "legR", "armL", "armR", "hipz", "twist"):
@@ -1329,7 +1501,7 @@ class Film(World):
 
     def sky_path(self):
         """Act 4 key poses: (frame, position) of every take-off / landing on the spiral"""
-        top = lambda i: self.steps[i] + V((0, 0, 1.7 * (0.55 if i == len(self.steps) - 1 else 0.28) / 0.28 * 0.28 + 0.48))
+        top = lambda i: self.steps[i] + V((0, 0, 1.7 * (0.55 if i == len(self.steps) - 1 else 0.28) - 0.05))
         return top
 
     def sky_climber(self, f):
@@ -1405,22 +1577,22 @@ class Film(World):
         ago, so it trails like a pet), except in its scripted beats."""
         lag = 7
         c = cs_at(max(1, f - lag))
-        stage = 0 if f < 386 else 2
+        stage = 0 if f < 381 else 2
         left = -right(c["yaw"])
         if stage == 0:
             off = left * 2.4 + fwd(c["yaw"]) * -1.2 + V((0, 0, 2.2))
         else:
-            off = left * 3.6 + fwd(c["yaw"]) * -1.4 + V((0, 0, 3.1))
+            off = left * 5.4 + fwd(c["yaw"]) * 0.6 + V((0, 0, 3.4))
         st = dict(pos=c["pos"] + off, yaw=c["yaw"], scale=1.0)
         if 113 <= f <= 150:  # Act 1: tumbles back with the rookie and lands by the hand
             u = seg(f, 113, 140)
-            p0 = V((2.4, 21.0, 2.2))
-            p1 = V((-3.2, 26.8, 0.9))
+            p0 = V((-0.6, 22.0, 2.2))
+            p1 = self.hand_rest + V((0.4, -2.3, 0.4))
             p = hop(p0, p1, out_cubic(u), 1.4)
             st = dict(pos=p, yaw=math.radians(-150) * smooth(u), roll=math.radians(85) * smooth(seg(f, 120, 136)),
                       scale=1.0)
         elif 150 < f <= 232:  # Act 2: lying on its side, then it gets back up (195-226) and narrows its gaze
-            p = V((-3.2, 26.8, 0.9))
+            p = self.hand_rest + V((0.4, -2.3, 0.4))
             u = seg(f, 196, 220)
             up = out_back(u, 1.6)
             st = dict(pos=p + V((0.6 * up, -0.4 * up, 0.55 * up)), yaw=lerp(math.radians(-150), math.radians(-178), up),
@@ -1435,16 +1607,16 @@ class Film(World):
             u = smooth(seg(f, 338, 352))
             st["pos"] = vlerp(st["pos"], self.evo_c + V((0, 0, 3.0)), u)
             st["yaw"] = ang_lerp(st["yaw"], yaw_to(self.climber_pos_at(f) - self.evo_c), u)
-            ch = seg(f, 354, 384)
+            ch = seg(f, 352, 379)
             st["pos"] = st["pos"] + V((0, 0, 4.0 * smoother(ch)))
             st["yaw"] += TAU * 3.5 * in_cubic(ch)  # spins faster and faster
             if stage == 0:
-                st["scale"] = 1.0 - 0.96 * smooth(seg(f, 381, 386))
+                st["scale"] = 1.0 - 0.96 * smooth(seg(f, 376, 381))
             else:
-                r = seg(f, 386, 404)
+                r = seg(f, 381, 397)
                 st["scale"] = max(0.04, out_back(r, 2.6))
-                spin_down = 1 - out_cubic(seg(f, 386, 412))
-                st["yaw"] = yaw_to(self.climber_pos_at(f) - self.evo_c) + TAU * 2 * spin_down
+                spin_down = 1 - out_cubic(seg(f, 381, 420))
+                st["yaw"] = yaw_to(self.climber_pos_at(f) - self.evo_c) + TAU * 1 * spin_down
                 st["pos"] = self.evo_c + V((0, 0, 3.0 + 4.0 * (1 - smooth(seg(f, 404, 430))) + 1.2))
         elif 451 <= f <= 600:  # Act 4: flies beside the hero, bigger offset outward from the spiral
             out = (c["pos"] - SKY)
@@ -1453,7 +1625,12 @@ class Film(World):
                 out.normalize()
             st["pos"] = c["pos"] + out * 4.5 + V((0, 0, 3.5)) + fwd(c["yaw"]) * -1.0
             if f >= 584:
-                st["pos"] = c["pos"] + left * 3.8 + V((0, 0, 3.0))
+                cam, _ = self.summit_cam(f)
+                d = c["pos"] - cam
+                d.z = 0
+                d.normalize()
+                side = V((d.y, -d.x, 0))  # camera right
+                st["pos"] = c["pos"] + side * 6.5 + d * 2.0 + V((0, 0, 3.6))
         elif 601 <= f <= 750:  # Act 5
             cl = self.climber_pos_at(f)
             p = cl + V((4.5, -5.0, 3.2))
@@ -1469,7 +1646,7 @@ class Film(World):
             st["yaw"] = ang_lerp(0.0, yaw_to(hb - p), smooth(seg(f, 664, 672)))
             if f >= 712:  # back to the shoulder
                 u = smooth(seg(f, 712, 730))
-                st["pos"] = vlerp(p, cl + left * 3.6 + V((0, 0, 3.1)) + fwd(c["yaw"]) * -1.4, u)
+                st["pos"] = vlerp(p, cl + left * 5.4 + V((0, 0, 3.4)) + fwd(c["yaw"]) * 0.6, u)
                 st["yaw"] = ang_lerp(st["yaw"], c["yaw"], u)
         elif f >= 751:  # Act 6: at the left shoulder
             pass
@@ -1481,38 +1658,39 @@ class Film(World):
     def storm_state(self, f):
         """Stormfang: prowls over the portal, roars the bolt (Act 1); bows, leaps to the right shoulder (Act 6)"""
         t = f / FPS
-        base = ALTAR + V((0, 0, self.ground("altar", 0, 0) + 3.4))
-        if f <= 270 or f < 751:
-            a = t * 0.7
-            p = base + V((math.cos(a) * 2.6, math.sin(a) * 2.6, 0))
+        base = ALTAR + V((0, 0, self.ground("altar", 0, 0) + 7.0))
+        if f < 751:
+            a = t * 0.45
+            p = base + V((math.cos(a) * 3.2, math.sin(a) * 3.2, 0))
             yaw = a + math.pi  # walks tangentially
             yaw = yaw_to(V((-math.sin(a), math.cos(a), 0)))
-            st = dict(pos=p, yaw=yaw, scale=1.0)
+            st = dict(pos=p, yaw=yaw, scale=3.0)
             if 84 <= f <= 150:  # stops and turns to the rookie, windup crouch, roar (strike), recoil
                 u = smooth(seg(f, 84, 98))
-                st["pos"] = vlerp(p, base + V((0, 2.0, 0)), u)
-                st["yaw"] = ang_lerp(yaw, yaw_to(V((0, 1, 0))), u)
+                st["pos"] = vlerp(p, base + V((-0.4, 2.0, 0)), u)
+                st["yaw"] = ang_lerp(yaw, yaw_to(V((-3.0, 21.0, 0)) - base), u)
                 wind = smooth(seg(f, 100, 112)) * (1 - smooth(seg(f, 112, 114)))
                 strike = out_back(seg(f, 112, 118), 2.0) * (1 - smooth(seg(f, 122, 136)))
-                st["pos"] = st["pos"] + V((0, -0.4 * wind + 1.4 * strike, -0.35 * wind + 0.2 * strike))
+                st["pos"] = st["pos"] + V((0, -1.0 * wind + 3.0 * strike, -0.9 * wind + 0.5 * strike))
                 st["pitch"] = math.radians(10) * wind - math.radians(16) * strike
             return st
         # Act 6
-        face = yaw_to(V((0, 1, 0)))
-        st = dict(pos=base + V((0, 2.0, 0)), yaw=face, scale=1.0)
+        face = yaw_to(V((-3.5, 18.5, 0)) - base)
+        st = dict(pos=base + V((0, 2.0, 0)), yaw=face, scale=3.0)
         bow = smooth(seg(f, 812, 822)) * (1 - smooth(seg(f, 826, 832)))
         st["pitch"] = math.radians(28) * bow
-        st["pos"] = st["pos"] + V((0, 0, -0.7 * bow))
+        st["pos"] = st["pos"] + V((0, 0, -1.6 * bow))
         crouch = smooth(seg(f, 828, 834)) * (1 - smooth(seg(f, 834, 836)))
-        st["pos"] = st["pos"] + V((0, 0, -0.4 * crouch))
+        st["pos"] = st["pos"] + V((0, 0, -1.0 * crouch))
         st["pitch"] += math.radians(10) * crouch
         if f >= 834:
             cs = self.cs[min(f, N)]
             shoulder = cs["pos"] + right(cs["yaw"]) * 2.5 + V((0, 0, 4.6)) + fwd(cs["yaw"]) * 0.3
             u = seg(f, 834, 848)
-            st["pos"] = hop(base + V((0, 2.0, 0)), shoulder, out_cubic(u), 3.0)
+            st["pos"] = hop(base + V((0, 2.0, 0)), shoulder, out_cubic(u), 4.0)
             st["pitch"] = math.radians(-20) * math.sin(math.pi * u)
             st["yaw"] = ang_lerp(face, cs["yaw"], smooth(u))
+            st["scale"] = lerp(3.0, 1.0, out_cubic(seg(f, 836, 846)))  # the guardian becomes a companion
             # Storm Pounce pose on the shoulder: a lunge forward and back (out-back), settle
             if f >= 848:
                 pz = out_back(seg(f, 848, 856), 2.0) * (1 - smooth(seg(f, 860, 872)))
@@ -1548,48 +1726,60 @@ class Film(World):
             return cs[f]["pos"] + V((0, 0, dz))
 
         # Act 1
-        S.append((1, 58, 35, 2.8, 0.06, lambda f: (V((5.5, cs[f]["pos"].y + 13 - 4 * seg(f, 1, 58), 3.2)),
-                                                   V((0, cs[f]["pos"].y - 9, 3.4)))))
-        S.append((59, 108, 85, 2.0, 0.02, lambda f: (V((-3.0, 33.5 - 3.5 * smooth(seg(f, 59, 108)), 4.6)),
-                                                     vlerp(V((-0.4, 18.4, 3.6)), V((0, 3.0, 4.4)), smooth(seg(f, 84, 100))))))
-        S.append((109, 135, 35, 2.8, 0.18, lambda f: (V((-24, 15, 5.5)), V((0, 16 + 6 * seg(f, 109, 135), 2.4)))))
+        S.append((1, 58, 35, 2.8, 0.06, lambda f: (V((cs[f]["pos"].x + 3.2, cs[f]["pos"].y + 12 - 4 * seg(f, 1, 58), 3.4)),
+                                                   V((cs[f]["pos"].x - 0.6, cs[f]["pos"].y - 12, 4.6)),
+                                                   cs[f]["pos"] + V((0, 0, 3.0)))))
+        S.append((59, 108, 85, 2.0, 0.02, lambda f: (V((-27.0, 58.0 - 4.0 * smooth(seg(f, 59, 108)), 9.5)),
+                                                     vlerp(self.hand_pos(f), self.storm.head_world(self.storm_state(f)), 0.5)
+                                                     + V((0, 0, -0.6)),
+                                                     vlerp(self.hand_pos(f), self.storm.head_world(self.storm_state(f)),
+                                                           smooth(seg(f, 84, 100))))))
+        S.append((109, 135, 35, 2.8, 0.18, lambda f: (V((-24, 26, 6.0)), V((-2, 15 + 8 * seg(f, 109, 135), 4.0)))))
         S.append((136, 150, 85, 2.0, 0.03, lambda f: (self.hand_cam(f, 0), self.hand_pos(f))))
         # Act 2
-        S.append((151, 232, 85, 2.0, 0.01, lambda f: (self.hand_cam(f, 1), vlerp(self.hand_pos(f), V((-2.6, 26.6, 1.3)),
+        S.append((151, 232, 85, 2.0, 0.01, lambda f: (self.hand_cam(f, 1), vlerp(self.hand_pos(f), self.hand_rest + V((0.9, -2.7, 1.0)),
                                                                              smooth(seg(f, 196, 210))))))
         S.append((233, 270, 35, 2.8, 0.08, lambda f: self.whip(f)))
         # Act 3
-        S.append((271, 318, 35, 2.8, 0.14, lambda f: (cl(f) + right(cs[f]["yaw"]) * -11 + fwd(cs[f]["yaw"]) * 5 + V((0, 0, 0.8)),
+        S.append((271, 318, 35, 2.8, 0.14, lambda f: (cl(f) + right(cs[f]["yaw"]) * 11 + fwd(cs[f]["yaw"]) * 5 + V((0, 0, 0.8)),
                                                       cl(f, 2.4) + fwd(cs[f]["yaw"]) * 3)))
-        S.append((319, 352, 85, 2.0, 0.03, lambda f: (cl(f) + fwd(cs[f]["yaw"]) * -10 + right(cs[f]["yaw"]) * 3.2 + V((0, 0, 1.6)),
-                                                      vlerp(cl(f, 3.0), self.machine_c + V((0, 0, 5)), smooth(seg(f, 330, 344))))))
+        S.append((319, 352, 35, 2.8, 0.05, lambda f: (cl(f) + right(cs[f]["yaw"]) * 12 + fwd(cs[f]["yaw"]) * -4 + V((0, 0, 2.6)),
+                                                      vlerp(cl(f, 4.6), self.machine_c + V((0, 0, 4)), 0.35 * smooth(seg(f, 330, 348))),
+                                                      cl(f, 4.0))))
         S.append((353, 450, 35, 2.5, 0.04, lambda f: (self.evo_cam(f), self.evo_c + V((0, 0, 5.5 + 1.5 * smooth(seg(f, 360, 384)))))))
         # Act 4
         S.append((451, 505, 35, 2.8, 0.12, lambda f: self.sky_follow(f, 14, 4.0)))
         S.append((506, 545, 35, 2.5, 0.10, lambda f: self.dash_cam(f)))
         S.append((546, 600, 35, 2.8, 0.12, lambda f: self.summit_cam(f)))
         # Act 5
-        S.append((601, 628, 35, 2.8, 0.22, lambda f: (ARENA + V((-16, 58, 5)), vlerp(cl(f, 2), ARENA + V((0, -6, 10)), 0.45))))
+        S.append((601, 628, 35, 2.8, 0.22, lambda f: (ARENA + V((-10, 49, 1.8)), vlerp(cl(f, 2.4), ARENA + V((0, 30, 4.5)), 0.25),
+                                                      cl(f, 2.4))))
         S.append((629, 668, 35, 2.8, 0.10, lambda f: (cl(f) + V((-6, 11, 2.4)), vlerp(self.ds[f]["pos"], ARENA + V((0, -12, 9)), 0.3))))
-        S.append((669, 712, 35, 2.5, 0.16, lambda f: (self.ds[f]["pos"] + V((6.5, 9, 1.4)), vlerp(self.ds[f]["pos"], ARENA + V((0, -14, 11)), 0.55))))
-        S.append((713, 750, 85, 2.0, 0.02, lambda f: (self.gem_hand(f) + V((-2.0, -5.5 + 2.2 * smooth(seg(f, 713, 750)), 1.2 + 0.3 * smooth(seg(f, 713, 750)))) ,
+        S.append((669, 712, 35, 2.5, 0.16, lambda f: (self.ds[f]["pos"] + V((9.0, 15.0, 2.0)), vlerp(self.ds[f]["pos"], ARENA + V((0, -14, 14)), 0.6))))
+        S.append((713, 750, 85, 2.0, 0.02, lambda f: (self.gem_hand(f) + V((-8.0 + 1.5 * smooth(seg(f, 713, 750)), -1.2, 0.5)),
                                                       self.gem_hand(f))))
         # Act 6
-        S.append((751, 812, 85, 2.0, 0.02, lambda f: (cl(f) + V((-4.5, 13.5, 1.6)), vlerp(cl(f, 3.0), ALTAR + V((0, 0, 3)), smooth(seg(f, 786, 806)) * 0.6))))
-        S.append((813, 852, 35, 2.8, 0.05, lambda f: (V((-17, 12, 4.2)), vlerp(ALTAR + V((0, 3, 3.5)), cl(f, 3.4), smooth(seg(f, 828, 846))))))
-        S.append((853, 900, 35, 2.8, 0.0, lambda f: (cl(853, 0) + V((-7.5 - 1.5 * smooth(seg(f, 853, 900)), -15.5 - 2 * smooth(seg(f, 853, 900)), 2.0)),
-                                                     cl(853, 3.6))))
+        S.append((751, 812, 85, 2.0, 0.02, lambda f: (cl(f) + V((-8.0, 25.0, 3.2)), vlerp(cl(f, 3.4), ALTAR + V((0, 0, 4)), smooth(seg(f, 786, 806)) * 0.5))))
+        S.append((813, 852, 35, 2.8, 0.05, lambda f: (V((-17, 27, 6.5)), vlerp(V((-1.0, 9.0, 7.0)), cl(f, 4.2), smooth(seg(f, 836, 848)) * 0.7),
+                                                      self.storm_state(f)["pos"])))
+        S.append((853, 900, 35, 2.8, 0.0, lambda f: (cl(853, 0) + V((-1.2, 15.5 + 2.0 * smooth(seg(f, 853, 900)), 1.4)),
+                                                     cl(853, 4.4) + V((0.3, -4.0, 1.0)), cl(853, 3.6))))
         return S
 
     def hand_pos(self, f):
-        bpy.context.scene.frame_set(f)
-        return self.climber.hand_socket.matrix_world.translation.copy()
+        if not hasattr(self, "_hand"):
+            self._hand = {}
+        if f not in self._hand:
+            bpy.context.scene.frame_set(f)
+            self._hand[f] = self.climber.hand_socket.matrix_world.translation.copy()
+        return self._hand[f]
 
     def hand_cam(self, f, which):
         h = self.hand_rest
         if which == 0:
-            return h + V((3.6, -2.6, 0.7))
-        return h + V((3.4 - 0.4 * seg(f, 151, 232), -3.0, 0.6))
+            return h + V((-3.8, 6.8, 1.0))
+        u = smooth(seg(f, 151, 232))
+        return h + V((-4.6 + 0.4 * u, 8.6 - 0.8 * u, 1.2))
 
     def whip(self, f):
         cs = self.cs
@@ -1607,7 +1797,7 @@ class Film(World):
         c = self.evo_c
         u = smooth(seg(f, 353, 450))
         a = math.radians(-35 - 18 * u)
-        return c + V((math.sin(a) * 19, -math.cos(a) * 19 - 0, 2.2 + 1.0 * u))
+        return c + V((math.sin(a) * 21, -math.cos(a) * 21 - 0, 3.0 + 1.0 * u))
 
     def sky_follow(self, f, dist, h):
         cs = self.cs
@@ -1633,8 +1823,8 @@ class Film(World):
             side = -side
         cs = self.cs
         p = cs[f]["pos"]
-        cam = mid + side * 18 + V((0, 0, 7.0)) + d * (lerp(-4, 6, smooth(seg(f, 506, 545))))
-        return cam, p + V((0, 0, 2.6)) + d * 1.5
+        cam = p - d * 10.0 + side * 7.0 + V((0, 0, 3.5))
+        return cam, p + V((0, 0, 2.4)) + d * 4.0
 
     def summit_cam(self, f):
         top = self.steps[-1]
@@ -1644,7 +1834,7 @@ class Film(World):
         tang = V((-out.y, out.x, 0))
         cs = self.cs
         p = cs[f]["pos"]
-        cam = top + tang * 12 + out * -6 + V((0, 0, 1.2 - 14 * smooth(seg(f, 588, 600))))
+        cam = top + tang * 17 + out * -4 + V((0, 0, 6.5 - 12 * smooth(seg(f, 588, 600))))
         return cam, p + V((0, 0, 2.6))
 
     def gem_hand(self, f):
@@ -1720,6 +1910,7 @@ class Film(World):
                 bk.rot(h, f, (e.x + pitch, e.y, e.z + sway))
         # 5. props and fx
         self.direct_fx(bk)
+        self.direct_ufo(bk)
         # 6. cameras + the light rig
         self.direct_cameras(bk)
         n = bk.write()
@@ -1735,8 +1926,7 @@ class Film(World):
                 bk.show(ob, f, on)
         coin_track = {}
         for f in range(1, 151):
-            bpy.context.scene.frame_set(f)
-            coin_track[f] = self.climber.hand_socket.matrix_world.translation.copy()
+            coin_track[f] = self.hand_pos(f)
         drop0 = coin_track[113]
         for f in range(1, 151):
             if f < 113:
@@ -1750,8 +1940,8 @@ class Film(World):
             bk.loc(self.coin, f, p)
             bk.rot(self.coin, f, rot)
         # Stormfang's bolt (Act 1), on 113-121 with a flicker
-        storm_mouth = ALTAR + V((0, 3.2, self.ground("altar", 0, 0) + 4.4))
-        feet = V((0, 18.2, self.ground("altar", 0, 18.2) + 0.1))
+        storm_mouth = self.storm.head_world(self.storm_state(113)) + V((0, 0.6, 0))
+        feet = V((-2.7, 19.4, self.ground("altar", -2.7, 19.4) + 0.1))
         bolt_on = lambda f: 113 <= f <= 121 and f not in (116, 119)
         d = feet - storm_mouth
         for f in range(1, N + 1):
@@ -1760,11 +1950,11 @@ class Film(World):
         # the bolt mesh is built from (0,0,0)->(0,1,0): place + scale + aim it once (static during its 9 frames)
         self.bolt.location = storm_mouth
         self.bolt.rotation_euler = V((0, 1, 0)).rotation_difference(d.normalized()).to_euler()
-        self.bolt.scale = (d.length * 0.6, d.length, d.length * 0.6)
+        self.bolt.scale = (1.8, d.length, 1.8)
         for f in range(1, N + 1):
             on = 113 <= f <= 123
             k = (1.0 - seg(f, 113, 124)) * (0.4 if f in (116, 119) else 1.0) if on else 0.0
-            bk.key(self.bolt_light.data, "energy", -1, f, 60000 * k)
+            bk.key(self.bolt_light.data, "energy", -1, f, 14000 * k)
             bk.loc(self.bolt_light, f, feet + V((0, 0, 2)))
         # rain (Acts 1-2 and 6, the altar): the two tiles slide down 34 studs/s and wrap
         for f in range(1, N + 1):
@@ -1817,7 +2007,7 @@ class Film(World):
                 elif f < pour:
                     u = seg(f, pick, pick + 9)
                     orbit = c["orbit"] + t * 7.0
-                    hero = cs[f]["pos"] + V((math.cos(orbit) * 2.6, math.sin(orbit) * 2.6, 3.0 + 0.6 * math.sin(orbit * 2)))
+                    hero = cs[f]["pos"] + V((math.cos(orbit) * 2.0, math.sin(orbit) * 2.0, 7.4 + 0.4 * math.sin(orbit * 2)))
                     p = vlerp(c["home"], hero, in_quad(u) if u < 1 else 1.0)
                     if u < 1:
                         p.z += 2.0 * math.sin(math.pi * u)
@@ -1825,11 +2015,12 @@ class Film(World):
                 else:
                     u = seg(f, pour, pour + 10)
                     orbit = c["orbit"] + t * 7.0
-                    hero = cs[pour]["pos"] + V((math.cos(orbit) * 2.6, math.sin(orbit) * 2.6, 3.0))
+                    hero = cs[pour]["pos"] + V((math.cos(orbit) * 2.0, math.sin(orbit) * 2.0, 7.4))
                     p = hop(hero, hopper, in_quad(u), 3.0)
                 bk.loc(c["root"], f, p)
                 bk.rot(c["root"], f, (0, 0, spin))
-                bk.scale(c["root"], f, c["scale"] * (1 - 0.6 * smooth(seg(f, pour + 8, pour + 12))))
+                orb = smooth(seg(f, pick, pick + 9)) if f >= pick else 0.0
+                bk.scale(c["root"], f, c["scale"] * (1 - 0.45 * orb) * (1 - 0.6 * smooth(seg(f, pour + 8, pour + 12))))
         # food machine glow while it eats
         for f in range(1, N + 1):
             k = smooth(seg(f, 332, 338)) * (1 - smooth(seg(f, 352, 366)))
@@ -1847,42 +2038,43 @@ class Film(World):
                 bk.loc(piv, f, ec + V((0, 0, 0.12 + 0.02 * i)))
                 bk.rot(piv, f, (0, 0, (1 if i == 0 else -1) * (f / FPS) * (0.9 + 1.2 * smooth(seg(f, 360, 384)))))
                 bk.scale(piv, f, max(0.01, ig) * (1 + 0.08 * smooth(seg(f, 386, 392))))
-            pil = smoother(seg(f, 362, 376)) * fade
-            for ob, w in ((self.pillar, 1.0), (self.pillar_core, 1.0)):
-                bk.show(ob, f, on and pil > 0.01)
+            pil = smoother(seg(f, 360, 374)) * fade
+            for ob, core in ((self.pillar, False), (self.pillar_core, True)):
+                k = pil * (1 - smooth(seg(f, 380, 386))) if core else pil * (1 - 0.8 * smooth(seg(f, 381, 389)))
+                bk.show(ob, f, on and k > 0.01)
                 bk.loc(ob, f, ec + V((0, 0, 0.1)))
-                flare = 1 + 0.6 * smooth(seg(f, 380, 386)) * (1 - smooth(seg(f, 388, 400)))
-                bk.scale(ob, f, (max(0.01, pil) * flare, max(0.01, pil) * flare, max(0.01, pil)))
+                flare = 1 + 0.5 * smooth(seg(f, 375, 381)) * (1 - smooth(seg(f, 383, 395)))
+                bk.scale(ob, f, (max(0.01, k) * flare, max(0.01, k) * flare, max(0.01, k)))
             bk.key(self.pillar_mat.node_tree.nodes["Emission"].inputs["Strength"], "default_value", -1, f,
-                   6.0 + 30.0 * smooth(seg(f, 380, 386)) * (1 - smooth(seg(f, 388, 404))))
-            # the flash: 381-392, and the match-cut flash 440-450
-            fl1 = smooth(seg(f, 381, 386)) * (1 - smooth(seg(f, 386, 394)))
-            fl2 = in_cubic(seg(f, 438, 450))
+                   3.0 + 9.0 * smooth(seg(f, 375, 381)) * (1 - smooth(seg(f, 383, 398))))
+            # the flash: 376-388 (the burst), and the match-cut flash 438-450
+            fl1 = smooth(seg(f, 376, 381)) * (1 - smooth(seg(f, 381, 388)))
+            fl2 = in_cubic(seg(f, 438, 450)) if f <= 450 else 0.0
             fl = max(fl1, fl2)
             bk.show(self.flash, f, fl > 0.02)
             bk.loc(self.flash, f, ec + V((0, 0, 7.2)) if f < 430 else self.ds[f]["pos"] + V((0, 0, 1)))
-            bk.scale(self.flash, f, 0.3 + 4.5 * fl if f < 430 else 0.3 + 9.0 * fl)
-            bk.key(self.evo_light.data, "energy", -1, f, (0 if not on else 4000 * ig + 9000 * pil + 60000 * fl))
+            bk.scale(self.flash, f, 0.3 + 3.0 * fl if f < 430 else 0.3 + 9.0 * fl)
+            bk.key(self.evo_light.data, "energy", -1, f, (0 if not on else 2500 * ig + 3500 * pil + 18000 * fl))
             bk.loc(self.evo_light, f, ec + V((0, 0, 7)))
-            sh = seg(f, 386, 410)
-            bk.show(self.shock, f, 386 <= f <= 410)
+            sh = seg(f, 381, 405)
+            bk.show(self.shock, f, 381 <= f <= 405)
             bk.loc(self.shock, f, ec + V((0, 0, 0.2)))
             bk.scale(self.shock, f, (0.5 + 16 * out_cubic(sh), 0.5 + 16 * out_cubic(sh), 1))
-        bk.key(self.shock_mat.node_tree.nodes["Mix Shader"].inputs[0], "default_value", -1, 386, 0.9)
-        bk.key(self.shock_mat.node_tree.nodes["Mix Shader"].inputs[0], "default_value", -1, 410, 0.0)
+        bk.key(self.shock_mat.node_tree.nodes["Mix Shader"].inputs[0], "default_value", -1, 381, 0.9)
+        bk.key(self.shock_mat.node_tree.nodes["Mix Shader"].inputs[0], "default_value", -1, 405, 0.0)
         r = random.Random(9)
         for i, s in enumerate(self.sparks):
             d = V((r.uniform(-1, 1), r.uniform(-1, 1), r.uniform(0.3, 1.4))).normalized() * r.uniform(8, 16)
             spin = V((r.uniform(-9, 9), r.uniform(-9, 9), r.uniform(-9, 9)))
             for f in range(1, N + 1):
-                on = 386 <= f <= 420
+                on = 381 <= f <= 415
                 bk.show(s, f, on)
                 if on:
-                    t = (f - 386) / FPS
+                    t = (f - 381) / FPS
                     p = ec + V((0, 0, 7)) + d * t + V((0, 0, -16 * t * t))
                     bk.loc(s, f, p)
                     bk.rot(s, f, spin * t)
-                    bk.scale(s, f, max(0.05, 1 - seg(f, 405, 420)))
+                    bk.scale(s, f, max(0.05, 1 - seg(f, 400, 415)))
         # Act 4: pendulum swing (blade passes the dash line right after the hero, ~527), storm flashes, dash trail
         swing_axis = self.pend_axis_yaw
         for f in range(1, N + 1):
@@ -1899,7 +2091,8 @@ class Film(World):
         self.build_trail()
         for f in range(1, N + 1):
             on = 518 <= f <= 548
-            bk.show(self.trail, f, on)
+            for born, ob in self.trail_segs:
+                bk.show(ob, f, born <= f <= 548 and f >= 515)
             if on:
                 bk.key(self.dash_mat.node_tree.nodes["Mix Shader"].inputs[0], "default_value", -1, f,
                        0.9 * (1 - smooth(seg(f, 532, 548))))
@@ -1957,15 +2150,13 @@ class Film(World):
                     bk.scale(ob, f, (max(0.05, w), max(0.05, w), max(0.05, d.length * ext)))
             bk.loc(self.beam_light, f, target if on else V((0, 0, -300)))
             bk.key(self.beam_light.data, "energy", -1, f, 25000 * ext if on else 0)
-            bk.key(self.hydra_light.data, "energy", -1, f, 1800 if f < 704 else 0)
+            bk.key(self.hydra_light.data, "energy", -1, f, 9000 if f < 704 else 0)
         # gems: burst from the hydra 704, fall and bounce; 5 of them rise into the hero's palm 716-740
         self.gem_anchor = {}
         r = random.Random(4)
         center = ARENA + V((0, -14, 9))
-        for f in range(1, N + 1):
-            bpy.context.scene.frame_set(f) if 713 <= f <= 750 else None
-            if 713 <= f <= 750:
-                self.gem_anchor[f] = self.climber.hand_socket.matrix_world.translation.copy() + V((0, 0, 0.6))
+        for f in range(713, 751):
+            self.gem_anchor[f] = self.hand_pos(f) + V((0, 0, 0.6))
         for i, g in enumerate(self.gems):
             vel = V((r.uniform(-1, 1), r.uniform(-1, 1), r.uniform(0.6, 1.6))).normalized() * r.uniform(10, 22)
             spinv = V((r.uniform(-6, 6), r.uniform(-6, 6), r.uniform(-6, 6)))
@@ -1993,9 +2184,8 @@ class Film(World):
                 else:  # Act 6: the stream of gems from the hand into the altar vortex (arcs, one after another)
                     start = 790 + (i % 20)
                     u = seg(f, start, start + 12)
-                    bpy.context.scene.frame_set(f)
-                    hand = self.climber.hand_socket.matrix_world.translation.copy()
-                    p = hop(hand, ALTAR + V((r.uniform(-1, 1), r.uniform(-1, 1), self.ground("altar", 0, 0) + 0.6)), smooth(u), 2.0)
+                    hand = self.hand_pos(f)
+                    p = hop(hand, ALTAR + V((r.uniform(-1, 1), r.uniform(-1, 1), self.ground("altar", 0, 0) + 0.6)), smooth(u), 5.0)
                     bk.show(g, f, 0.0 < u < 1.0)
                     bk.loc(g, f, p)
                     bk.rot(g, f, spinv * (f / FPS))
@@ -2026,16 +2216,19 @@ class Film(World):
             bk.show(self.subtitle, f, f >= 868)
 
     def build_trail(self):
-        """the neon cyan dash ribbon along the hero's dash (frames 516-532), tapering at both ends"""
-        pts = [self.cs[f]["pos"] + V((0, 0, 2.6)) for f in range(514, 534)]
-        verts, faces = [], []
-        for i, p in enumerate(pts):
-            t = i / (len(pts) - 1)
-            w = 0.9 * math.sin(math.pi * t) + 0.05
-            verts += [p + V((0, 0, -w)), p + V((0, 0, w))]
-            if i:
-                faces.append((2 * i - 2, 2 * i - 1, 2 * i + 1, 2 * i))
-        self.trail = mesh_from("DashTrail", self.coll, verts, faces, self.dash_mat)
+        """the neon cyan dash ribbon: one short segment per frame of the dash (514-533), each appearing when the
+        hero has passed it, so the trail only ever lies BEHIND the hero"""
+        self.trail_segs = []
+        for f in range(514, 534):
+            a = self.cs[f]["pos"] + V((0, 0, 2.6))
+            b = self.cs[f + 1]["pos"] + V((0, 0, 2.6))
+            t0, t1 = (f - 514) / 20.0, (f - 513) / 20.0
+            w0 = 0.3 * math.sin(math.pi * t0) + 0.04
+            w1 = 0.3 * math.sin(math.pi * t1) + 0.04
+            verts = [a + V((0, 0, -w0)), a + V((0, 0, w0)), b + V((0, 0, w1)), b + V((0, 0, -w1))]
+            ob = mesh_from("DashTrail%02d" % (f - 514), self.coll, verts, [(0, 1, 2, 3)], self.dash_mat)
+            self.trail_segs.append((f + 1, ob))
+        self.trail = self.trail_segs[0][1]
 
     def direct_cameras(self, bk):
         self.cams = []
@@ -2052,16 +2245,20 @@ class Film(World):
             cd.dof.aperture_fstop = fstop
             cam = bpy.data.objects.new("Cam%02d" % k, cd)
             self.coll.objects.link(cam)
+            aim = empty("CameraTarget%02d" % k, self.coll, None, (0, 0, 0), 0.3)
             focus = empty("CameraFocus%02d" % k, self.coll, None, (0, 0, 0), 0.3)
             con = cam.constraints.new("TRACK_TO")
-            con.target = focus
+            con.target = aim
             con.track_axis = "TRACK_NEGATIVE_Z"
             con.up_axis = "UP_Y"
             cd.dof.focus_object = focus
             for f in range(a, b + 1):
-                cp, tp = fn(f)
+                r = fn(f)
+                cp, tp = r[0], r[1]
+                fp = r[2] if len(r) > 2 else tp
                 bk.loc(cam, f, cp)
-                bk.loc(focus, f, tp)
+                bk.loc(aim, f, tp)
+                bk.loc(focus, f, fp)
                 # the light rig: on the hero, turned so the rim sits behind the subject (away from the camera)
                 d = (tp - cp)
                 d.z = 0
@@ -2120,6 +2317,44 @@ class Film(World):
         self.subtitle.rotation_euler = rot
         self.subtitle.data.size = h * 0.045
         self.title_dist = dist * 0.7
+
+    def avatar_sheet(self):
+        """the player's avatar alone on a dark stage, to compare with their Roblox picture"""
+        self.setup_render()
+        self.sc.render.resolution_percentage = 50
+        w = bpy.data.worlds.new("Stage")
+        self.sc.world = w
+        w.use_nodes = True
+        w.node_tree.nodes["Background"].inputs["Color"].default_value = rgb(34, 30, 52)
+        self.climber = Climber(self.coll)
+        self.build_ufo()
+        self.cs = {f: dict(pos=V((0, 0, 0)), yaw=0.0, armR=0.12, armL=-0.1, armRs=0.08, armLs=0.08) for f in range(0, N + 1)}
+        bk = self.bk
+        for f in (1, 2):
+            self.climber.pose(bk, f, self.cs[f])
+        self.direct_ufo(bk)
+        bk.write()
+        for name, pos, col, wt in (("K", (-6, -8, 9), rgb(255, 236, 214), 2600), ("F", (8, -6, 4), rgb(200, 190, 255), 900),
+                                   ("R", (0, 9, 8), rgb(140, 220, 255), 2200)):
+            L = bpy.data.lights.new(name, "AREA")
+            L.energy, L.size, L.color = wt, 5, col[:3]
+            ob = bpy.data.objects.new(name, L)
+            ob.location = pos
+            ob.rotation_euler = (V((0, 0, 3)) - V(pos)).to_track_quat("-Z", "Y").to_euler()
+            self.coll.objects.link(ob)
+        cd = bpy.data.cameras.new("AvCam")
+        cd.lens = 50
+        cam = bpy.data.objects.new("AvCam", cd)
+        self.coll.objects.link(cam)
+        self.sc.camera = cam
+        self.sc.frame_set(12)
+        for name, ang in (("front", 0), ("threequarter", 40), ("back", 180)):
+            a = math.radians(ang)
+            cam.location = V((math.sin(a) * -17, -math.cos(a) * 17, 4.8))
+            cam.rotation_euler = (V((0, 0, 3.9)) - cam.location).to_track_quat("-Z", "Y").to_euler()
+            self.sc.render.filepath = os.path.join(PREVIEW_DIR, "avatar_%s.png" % name)
+            bpy.ops.render.render(write_still=True)
+            print("[clip] avatar", name)
 
     # ---------------------------------------------------------------------------------------- render
     def render_frames(self, frames, out_dir, name="frame_%04d.png"):
@@ -2186,6 +2421,8 @@ def main():
     ap.add_argument("--save-blend", action="store_true", help="also save play/clips/nimbus_story_clip.blend")
     ap.add_argument("--look", help="debug camera: x,y,z,tx,ty,tz[,lens[,frame]] -> play/clips/preview/look.png")
     ap.add_argument("--probe", help="print the hero / dragon / camera state at these frames (comma list)")
+    ap.add_argument("--sheet", action="store_true", help="low-res contact sheet: 2 frames per shot -> play/clips/preview/sheet_*.png")
+    ap.add_argument("--avatar", action="store_true", help="render the avatar alone (front, 3/4, back) to play/clips/preview/")
     ap.add_argument("--encode-only", action="store_true", help="only encode the frames already in play/clips/frames/")
     a = ap.parse_args(argv)
     if not (a.preview or a.full or a.frames or a.encode_only):
@@ -2195,6 +2432,9 @@ def main():
     t0 = time.time()
     bpy.ops.wm.read_factory_settings(use_empty=True)
     film = Film(a)
+    if a.avatar:
+        film.avatar_sheet()
+        return
     if a.encode_only:
         film.encode()
         return
@@ -2214,23 +2454,43 @@ def main():
                 tuple(round(v, 1) for v in foc.matrix_world.translation) if foc else None,
                 tuple(round(v, 1) for v in film.climber.hand_socket.matrix_world.translation)))
     if a.look:
-        v = [float(x) for x in a.look.split(",")]
-        cd = bpy.data.cameras.new("Look")
-        cd.lens = v[6] if len(v) > 6 else 24
-        cd.clip_end = 3000
-        cam = bpy.data.objects.new("Look", cd)
-        film.coll.objects.link(cam)
-        cam.location = v[:3]
-        cam.rotation_euler = (V(v[3:6]) - V(v[:3])).to_track_quat("-Z", "Y").to_euler()
         film.sc.timeline_markers.clear()
-        film.sc.camera = cam
-        f = int(v[7]) if len(v) > 7 else 1
-        film.sc.frame_set(f)
-        film.sc.render.filepath = os.path.join(PREVIEW_DIR, "look.png")
-        bpy.ops.render.render(write_still=True)
+        for i, spec in enumerate(a.look.split(";")):
+            v = [float(x) for x in spec.split(",")]
+            cd = bpy.data.cameras.new("Look%d" % i)
+            cd.lens = v[6] if len(v) > 6 else 24
+            cd.clip_end = 3000
+            cam = bpy.data.objects.new("Look%d" % i, cd)
+            film.coll.objects.link(cam)
+            cam.location = v[:3]
+            cam.rotation_euler = (V(v[3:6]) - V(v[:3])).to_track_quat("-Z", "Y").to_euler()
+            film.sc.camera = cam
+            film.sc.frame_set(int(v[7]) if len(v) > 7 else 1)
+            film.sc.render.filepath = os.path.join(PREVIEW_DIR, "look%d.png" % i)
+            bpy.ops.render.render(write_still=True)
         return
     if a.save_blend:
         bpy.ops.wm.save_as_mainfile(filepath=os.path.join(OUT_DIR, "nimbus_story_clip.blend"))
+    if a.sheet:
+        from PIL import Image, ImageDraw
+        frames = []
+        for cam, focus, shake, s0, s1 in film.cams:
+            frames += [s0 + (s1 - s0) // 4, s0 + 3 * (s1 - s0) // 4]
+        tmp = os.path.join(PREVIEW_DIR, "sheet_tmp")
+        film.render_frames(frames, tmp)
+        cols, w, h = 4, 480, 270
+        for page in range(0, len(frames), 20):
+            chunk = frames[page:page + 20]
+            rows = (len(chunk) + cols - 1) // cols
+            sheet = Image.new("RGB", (cols * w, rows * h), (0, 0, 0))
+            dr = ImageDraw.Draw(sheet)
+            for i, f in enumerate(chunk):
+                im = Image.open(os.path.join(tmp, "frame_%04d.png" % f)).convert("RGB").resize((w, h))
+                sheet.paste(im, ((i % cols) * w, (i // cols) * h))
+                dr.text(((i % cols) * w + 6, (i // cols) * h + 4), "f%d" % f, fill=(255, 255, 0))
+            sheet.save(os.path.join(PREVIEW_DIR, "sheet_%d.png" % (page // 20)))
+        print("[clip] sheet frames", frames)
+        return
     if a.preview or a.frames:
         frames = [int(x) for x in a.frames.split(",")] if a.frames else PREVIEW_FRAMES
         film.render_frames(frames, PREVIEW_DIR)

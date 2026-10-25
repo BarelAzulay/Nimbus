@@ -21,3 +21,6 @@ Source: [`claude-setup/CLAUDE_SYSTEM_SETUP.md`](claude-setup/CLAUDE_SYSTEM_SETUP
 ## Communication
 - Send a short progress update at every check-in: what finished, what's running, rough %.
 - When the player is away, keep working; schedule check-ins so work resumes by itself after usage limits.
+- Auto-compact is always on at a 500k-token window (`autoCompactWindow: 500000`). Never ask for a manual `/compact`;
+  keep progress in files (ledgers, `blender/clips/CLIP_PROGRESS.md`) so a compaction loses nothing. Re-read this file
+  and `brain.md` after every compaction.
