@@ -264,9 +264,9 @@ AttackFxCatalog.Elements = {
 		},
 		Impact = "fire burst + embers + scorch glow",
 		Detail = {
-			-- the scorch glow (Task 8 Studio + Gemini: an untextured disc read as a pink plastic plate; a soft glow sheet lying
-			-- on the ground instead)
-			{ Id = "Scorch", Kind = "Decal", Texture = "fx_glow", Beat = "Impact", At = "Ground", Tint = "Edge", Size = 5, Seconds = 0.9 },
+			-- the scorch glow: an untextured Decal = the engine's glow Disc (a soft fx_glow image since Task 8; a Texture would
+			-- make it a particle sheet and take one of the effect's 6 emitter slots: Task 8 fix round 3, review Important 1)
+			{ Id = "Scorch", Kind = "Decal", Beat = "Impact", At = "Ground", Tint = "Edge", Size = 5, Seconds = 0.9 },
 			-- (not on the ranged shot: its flame mantle + muzzle puff take the emitter budget, <= 6 per effect; not on the
 			-- Storm: its cloud + fire rain do, and a smoke puff under a cloud of fire reads as mud; not on the Blast: its charge
 			-- telegraph keeps its slot)
@@ -418,11 +418,20 @@ AttackFxCatalog.Basic = {
 		--                                          Storm's bolt), at least Beats.MinTravel
 		Shot = true,
 		Swap = { Slash = "MuzzleRing", DoubleArc = "ShotArcs", Afterimage = "ShotAfterimage" },
+		-- player note (b), fix round 3: the shot's impact EXPLODES at every rarity: a bigger burst of the element's sheet
+		-- (BurstBoost: Count / Size x), a fireball pop of the element's colour (Boom), a ground shock ring (BoomRing) and a
+		-- flash (BoomFlash, which replaces the Epic Flash: <= 3 lights at Secret). It grows with the effect's Size
+		-- (1.0 .. 1.4 by rarity) and with the ladder (the Epic Shockwave adds a second, wider ring). No emitter is added.
+		Skip = { Flash = true },
+		BurstBoost = { Count = 1.4, Size = 1.3 },
 		Layers = {
 			{ Id = "Muzzle", Kind = "Emitter", Texture = "$Burst", Beat = "Release", At = "Source", Tint = "Mid", Count = 4, Size = 1.3 },
 			-- (Task 8 Studio: untextured, the streak read as a flat white ribbon on a bright sky; streaked + the deep edge colour,
 			-- and a short comet tail (Lifetime, seconds): at the default 0.2 s it stretched back to the mouth mid-flight)
 			{ Id = "Streak", Kind = "Trail", Texture = "$Arc", Beat = "Travel", At = "Core", Tint = "Edge", Lifetime = 0.08 },
+			{ Id = "Boom", Kind = "Ring", Key = "vfx_orb", Beat = "Impact", At = "$Hit", Tint = "Mid", Grow = 1.25, Transparency = 0.3, Pop = true },
+			{ Id = "BoomRing", Kind = "Ring", Key = "vfx_ring", Beat = "Impact", At = "Ground", Tint = "Core", Grow = 1.3, Transparency = 0.3 },
+			{ Id = "BoomFlash", Kind = "Light", Beat = "Impact", At = "$Hit", Tint = "Core", Brightness = 1.5, Range = 7 },
 		},
 	},
 }
@@ -692,7 +701,7 @@ local function attackDef(req, element, sig)
 		detail[#detail + 1] = base.Layers
 		detail[#detail + 1] = entry.Layers
 		return {
-			Core = entry, Beats = beats, Skip = base.Skip or {}, Swap = base.Swap, Shot = base.Shot == true, Layers = {},
+			Core = entry, Beats = beats, Skip = base.Skip or {}, Swap = base.Swap, Shot = base.Shot == true, BurstBoost = base.BurstBoost, Layers = {},
 			Detail = detail, Slots = { entry }, Alive = true, Extras = true, Text = entry.Text,
 		}
 	elseif attack == "Element" then
@@ -937,6 +946,10 @@ function AttackFxCatalog.Resolve(req)
 				if layer then
 					if id == "Burst" and def.BurstShape then
 						layer.Shape = def.BurstShape
+					end
+					if id == "Burst" and def.BurstBoost then -- (the ranged impact explosion, player note (b))
+						layer.Size = (layer.Size or 1) * def.BurstBoost.Size
+						layer.Count = max(1, floor((layer.Count or 1) * def.BurstBoost.Count + 0.5))
 					end
 					if id == "Burst" and refs.Burst == element.Burst then
 						layer.Motion = element.BurstMotion -- e.g. Water's geyser column, Shadow's void implosion

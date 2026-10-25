@@ -144,6 +144,9 @@ local BAND = { Common = 1, Uncommon = 1, Rare = 2, Epic = 2, Legendary = 3, Myth
 local SIZE = { Common = 1.0, Uncommon = 1.05, Rare = 1.1, Epic = 1.15, Legendary = 1.2, Mythic = 1.3, Secret = 1.4 }
 local KINDS = { "Blast", "Beam", "Pounce", "Storm", "Freeze", "Heal", "Shield", "Rally", "Haste" }
 local SHAPES = { "Cone", "Circle", "Line" }
+-- fix round 3: elements whose recipes still go over the 6-emitter budget (Task 9 retunes them; the engine cap trims
+-- them by rank meanwhile). Measured 2026-10-25; Flame must never be here.
+local EMITTER_PENDING = { Water = true, Frost = true, Earth = true }
 local LAYER_KINDS = { Emitter = true, Beam = true, Trail = true, Light = true, Ring = true, Decal = true, Mesh = true }
 local AT = { Source = true, Core = true, Path = true, Target = true, Ground = true, Above = true, Behind = true, Self = true, Allies = true }
 local PATHS = { Projectile = true, Swipe = true, Ground = true, Self = true, Allies = true, Area = true }
@@ -182,6 +185,26 @@ local function greenOnly(c)
 end
 
 -- problems of one recipe against the shared rules (texture grid per layer kind, known keys, budgets); "" = fine
+-- AttackFx's emitter rule (isEmitter): an Emitter layer, or a Decal WITH a texture (drawn as a flat particle sheet);
+-- an untextured Decal is the glow Disc (no emitter). Counts the layers + the alive detail (fix round 3, review
+-- Important 1: the old count missed textured Decals, so Flame's textured Scorch pushed recipes past the cap unseen)
+local function isEmitterLayer(l)
+	return type(l) == "table" and (l.Kind == "Emitter" or (l.Kind == "Decal" and type(l.Texture) == "string"))
+end
+
+local function emitterCount(r)
+	local n = 0
+	for _, l in ipairs(type(r) == "table" and type(r.Layers) == "table" and r.Layers or {}) do
+		if isEmitterLayer(l) then
+			n = n + 1
+		end
+	end
+	if type(r) == "table" and isEmitterLayer(r.Alive) then
+		n = n + 1
+	end
+	return n
+end
+
 local function recipeProblems(r, tex, cores)
 	local bad = {}
 	local function key(k, where)
@@ -218,7 +241,7 @@ local function recipeProblems(r, tex, cores)
 			bad[#bad + 1] = "Core colour / material"
 		end
 	end
-	local emitters, ids = 0, {}
+	local ids = {}
 	if type(r.Layers) ~= "table" or #r.Layers == 0 then
 		bad[#bad + 1] = "no Layers"
 	else
@@ -247,9 +270,6 @@ local function recipeProblems(r, tex, cores)
 			if l.Count ~= nil and not (finiteNum(l.Count) and l.Count >= 1) then
 				bad[#bad + 1] = where .. " Count " .. tostring(l.Count)
 			end
-			if l.Kind == "Emitter" then
-				emitters = emitters + 1
-			end
 		end
 	end
 	if type(r.Alive) ~= "table" then
@@ -264,12 +284,6 @@ local function recipeProblems(r, tex, cores)
 		else
 			texture(r.Alive.Texture, k, "Alive")
 		end
-		if k == "Emitter" then
-			emitters = emitters + 1
-		end
-	end
-	if emitters > 6 then
-		bad[#bad + 1] = emitters .. " emitters (> 6)"
 	end
 	if type(r.Sig) == "table" and r.Sig.Actor ~= nil then
 		key(r.Sig.Actor.Key, "Sig.Actor")
@@ -367,6 +381,11 @@ S.p7vfx_catalog = guarded("p7vfx_catalog", function()
 	local matrix = T.tally("p7vfx catalog: every element x attack x rarity x stage resolves (finite beats <= 2.5 s / specials <= 3.5 s, Size <= 1.4, Band, known keys, strip/flipbook per layer kind, <= 6 emitters, unique layer ids)")
 	local mineRules = T.tally("p7vfx catalog: Mine = false -> Density 0.6, no camera punch, no screen glow; Mine = true -> Density 1, punch at band >= 3, glow at band 4")
 	local mono = T.tally("p7vfx catalog: each rarity keeps every layer of the rarities below it (layer ids and kinds monotonic across bands)")
+	-- fix round 3 (review Important 1): every recipe fits AttackFx's 6-emitter budget (MAX_EMITTERS.High), counted by the
+	-- engine's rule (textured Decals are emitters). The elements still over it are Task 9's to retune (EMITTER_PENDING):
+	-- until then the engine cap (Burst, then Impact, Slash, Travel, Alive first) trims them at run time; they are listed as a warning
+	local budget = T.tally("p7vfx catalog: every recipe fits the 6-emitter budget (engine rule: Emitters + textured Decals + an emitter Alive; Task 9 elements pending)")
+	local overPending = {}
 	local total = 0
 	for _, element in ipairs(elements) do
 		for _, v in ipairs(variants()) do
@@ -408,6 +427,14 @@ S.p7vfx_catalog = guarded("p7vfx_catalog", function()
 							if more ~= "" then
 								problems[#problems + 1] = more
 							end
+							local ne = emitterCount(r)
+							if ne > 6 and EMITTER_PENDING[element] then
+								local o = overPending[element] or { N = 0, Worst = 0, Kinds = {} }
+								overPending[element] = o
+								o.N, o.Worst, o.Kinds[v.label] = o.N + 1, math.max(o.Worst, ne), true
+							else
+								budget:case(ne <= 6, fmt("%s: %d emitters", label, ne))
+							end
 							matrix:case(#problems == 0, label .. ": " .. table.concat(problems, "; "))
 							local band = BAND[rarity]
 							if mine then
@@ -442,6 +469,21 @@ S.p7vfx_catalog = guarded("p7vfx_catalog", function()
 	matrix:report(total .. " resolves")
 	mineRules:report()
 	mono:report()
+	budget:report()
+	local pend, pendN = {}, 0
+	for element, o in pairs(overPending) do
+		local kinds = {}
+		for k in pairs(o.Kinds) do
+			kinds[#kinds + 1] = k
+		end
+		table.sort(kinds)
+		pend[#pend + 1] = fmt("%s: %d recipes (max %d emitters; %s)", element, o.N, o.Worst, table.concat(kinds, ", "))
+		pendN = pendN + o.N
+	end
+	if pendN > 0 then
+		table.sort(pend)
+		T.warn("p7vfx catalog: Task 9 pending: " .. pendN .. " recipes over the 6-emitter budget (the engine cap trims them)", table.concat(pend, " | "))
+	end
 
 	-- Mine defaults to "others" (nil is not my team)
 	local rNil = C.Resolve({ Element = "Flame", Attack = "Melee", Rarity = "Secret", Stage = 0 })
@@ -551,7 +593,7 @@ S.p7vfx_catalog = guarded("p7vfx_catalog", function()
 					sum = sum + (tonumber(r.Beats[b]) or 99)
 				end
 				local s = C.Signatures[def.Id]
-				sigOk:case(p == "" and sum <= 3.5 and s.Element == def.Element and s.Kind == kind and r.Band == C.BandOf(def.Rarity),
+				sigOk:case(p == "" and emitterCount(r) <= 6 and sum <= 3.5 and s.Element == def.Element and s.Kind == kind and r.Band == C.BandOf(def.Rarity),
 					def.Id .. ": " .. p .. fmt(" beats %.2f", sum))
 				if type(r.Core) == "table" then
 					usedSig[r.Core.Key] = true
@@ -724,6 +766,8 @@ S.p7vfx_catalog = guarded("p7vfx_catalog", function()
 		MuzzleRing = "Rare", ShotArcs = "Mythic", ShotAfterimage = "Legendary" } -- (Ranged: Slash -> MuzzleRing, DoubleArc ->
 	-- ShotArcs, Afterimage -> ShotAfterimage, player note 1)
 	local SWAPPED = { Ranged = { Slash = "MuzzleRing", DoubleArc = "ShotArcs", Afterimage = "ShotAfterimage" }, Melee = {} }
+	-- fix round 3 (player note b): the Ranged explosion's own flash (BoomFlash, from Common) replaces the Epic Flash
+	local SKIPPED = { Ranged = { Flash = true }, Melee = {} }
 	local rarityIndex = {}
 	for i, r in ipairs(RARITIES) do
 		rarityIndex[r] = i
@@ -750,7 +794,7 @@ S.p7vfx_catalog = guarded("p7vfx_catalog", function()
 					swappedIn = swappedIn or to == id
 				end
 				local ownSwap = (id == "MuzzleRing" or id == "ShotArcs" or id == "ShotAfterimage")
-				if swappedOut or (ownSwap and not swappedIn) then
+				if swappedOut or (ownSwap and not swappedIn) or SKIPPED[attack][id] then
 					lad:case(first[id] == nil, fmt("%s %s: %s is not drawn (swapped / not this attack's)", element, attack, id))
 				else
 					lad:case(first[id] ~= nil, fmt("%s %s: ladder layer %s missing", element, attack, id))
@@ -790,6 +834,7 @@ S.p7vfx_catalog = guarded("p7vfx_catalog", function()
 			local own = false
 			for _, l in ipairs(m and m.Layers or {}) do
 				own = own or l.Id == "Muzzle" or l.Id == "Streak" or l.Id == "MuzzleRing" or l.Id == "ShotArcs" or l.Id == "ShotAfterimage"
+					or l.Id == "Boom" or l.Id == "BoomRing" or l.Id == "BoomFlash"
 			end
 			local band = C.BandOf(rarity)
 			local wantSlash = band >= 2
@@ -801,6 +846,37 @@ S.p7vfx_catalog = guarded("p7vfx_catalog", function()
 		end
 	end
 	shot:report()
+
+	-- fix round 3, player note (b): every element's ranged impact EXPLODES: a flash (BoomFlash), a bigger burst of the
+	-- element's own particles (Burst Count / Size boosted over Melee's) and a pop + shockwave ring (Boom, BoomRing), all
+	-- non-emitter solids (no emitter budget), sized by the band (Size <= 1.4), <= 3 lights, no Epic Flash on top
+	local boom = T.tally("p7vfx catalog: every element x rarity Ranged impact explodes (Boom pop + BoomRing shock + BoomFlash light, burst bigger than Melee's, <= 3 lights, no Flash); Melee has none")
+	for _, element in ipairs(elements) do
+		local prevSize = 0
+		for _, rarity in ipairs(RARITIES) do
+			local r = C.Resolve({ Element = element, Attack = "Ranged", Rarity = rarity, Mine = true })
+			local m = C.Resolve({ Element = element, Attack = "Melee", Rarity = rarity, Mine = true })
+			local b, rg, fl = layerById(r, "Boom"), layerById(r, "BoomRing"), layerById(r, "BoomFlash")
+			local rb, mb = layerById(r, "Burst"), layerById(m, "Burst")
+			local lights = 0
+			for _, l in ipairs(r and r.Layers or {}) do
+				if l.Kind == "Light" then
+					lights = lights + 1
+				end
+			end
+			local bigger = rb ~= nil and mb ~= nil and rb.Texture == mb.Texture and (rb.Size or 1) > (mb.Size or 1) and (rb.Count or 1) > (mb.Count or 1)
+			boom:case(r ~= nil and b ~= nil and b.Kind == "Ring" and b.Pop == true and rb ~= nil and b.At == rb.At and b.Beat == "Impact"
+				and rg ~= nil and rg.Kind == "Ring" and rg.At == "Ground" and rg.Beat == "Impact"
+				and fl ~= nil and fl.Kind == "Light" and fl.Beat == "Impact"
+				and layerById(r, "Flash") == nil and lights <= 3 and bigger and r.Size <= 1.4 + 1e-9 and r.Size >= prevSize
+				and layerById(m, "Boom") == nil and layerById(m, "BoomRing") == nil and layerById(m, "BoomFlash") == nil,
+				fmt("%s Ranged %s: boom %s ring %s flash %s, Flash %s, lights %d, burst %s/%s vs melee %s/%s, size %.2f",
+					element, rarity, tostring(b ~= nil), tostring(rg ~= nil), tostring(fl ~= nil), tostring(layerById(r, "Flash") ~= nil), lights,
+					tostring(rb and rb.Count), tostring(rb and rb.Size), tostring(mb and mb.Count), tostring(mb and mb.Size), r and r.Size or -1))
+			prevSize = r and r.Size or prevSize
+		end
+	end
+	boom:report()
 	local fr = C.Resolve({ Element = "Flame", Attack = "Ranged", Rarity = "Common", Mine = true })
 	local frm, frmu = layerById(fr, "Mantle"), layerById(fr, "Muzzle")
 	T.check(fr and fr.Core.Key == "vfx_spear" and frm and frm.Texture == "fx_flame" and frm.Beat == "Travel" and frm.At == "Core"
@@ -996,6 +1072,44 @@ S.p7vfx_poses = guarded("p7vfx_poses", function()
 	local kick, kickFwd = extreme(P, "Strike", true, fwd, false), extreme(P, "Strike", true, fwd, true)
 	T.check(kick < -0.32 and kick > -0.38 and kickFwd < 0.05, "p7vfx poses: ranged Strike recoils backward 0.35 studs (never lunges)", fmt("min %.3f, max %.3f", kick, kickFwd))
 	local under = extreme(P, "Strike", false, fwd, false, 0.4, 1)
+	-- fix round 3, player note (a): the melee Strike is a LEAP: a hop arc up and forward that lands the hit at p 0.26
+	-- (where AttackFx puts the impact), then the recoil; amp (1 .. LEAP_AMP_MAX, from the rarity band) scales the
+	-- height and the reach a little. A body offset only: the ranged Strike / Shoot ignore it
+	local function at(p, amp, ranged)
+		local s0 = P.Sample("Strike", p, ranged, amp)
+		return forwardOf(s0.Body), s0.Body.Position.Y
+	end
+	local peakY, peakP = -1, -1
+	for i = 0, 100 do
+		local _, y = at(i / 100 * 0.26, 1)
+		if y > peakY then
+			peakY, peakP = y, i / 100 * 0.26
+		end
+	end
+	local landF, landY = at(0.26, 1)
+	local midF = at(0.13, 1)
+	T.check(peakY > 0.7 and peakY < 0.9 and peakP > 0.09 and peakP < 0.17 and math.abs(landY) < 0.05 and landF > 1.4 and landF < 1.56 and midF > 0.3 and midF < landF,
+		"p7vfx poses: melee Strike leaps: a hop arc ~0.8 high peaking mid-air (p ~0.13), landing the hit 1.5 forward at p 0.26",
+		fmt("peak %.3f at p %.3f, land fwd %.3f y %.3f, mid fwd %.3f", peakY, peakP, landF, landY, midF))
+	local _, peakBig = at(0.13, P.LEAP_AMP_MAX or 0)
+	local landBig = at(0.26, P.LEAP_AMP_MAX or 0)
+	local _, peakHuge = at(0.13, 9)
+	local _, peakTiny = at(0.13, 0.1)
+	local _, peakNaN = at(0.13, 0 / 0)
+	local _, peakOne = at(0.13, 1)
+	T.check(type(P.LEAP_AMP_MAX) == "number" and P.LEAP_AMP_MAX > 1 and P.LEAP_AMP_MAX <= 1.3 and peakBig > peakOne * 1.15 and landBig > landF * 1.15
+		and landBig < 2 and math.abs(peakHuge - peakBig) < 1e-6 and math.abs(peakTiny - peakOne) < 1e-6 and math.abs(peakNaN - peakOne) < 1e-6,
+		"p7vfx poses: a higher band leaps a little higher and further (amp up to LEAP_AMP_MAX, clamped; NaN = 1)",
+		fmt("max %s: peak %.3f vs %.3f, land %.3f vs %.3f, amp 9 %.3f, amp 0.1 %.3f", tostring(P.LEAP_AMP_MAX), peakBig, peakOne, landBig, landF, peakHuge, peakTiny))
+	local rangedSame = true
+	for i = 0, 20 do
+		local a = P.Sample("Strike", i / 20, true, 1).Body
+		local b = P.Sample("Strike", i / 20, true, 1.25).Body
+		local c = P.Sample("Shoot", i / 20, true, 1.25).Body
+		local d = P.Sample("Shoot", i / 20, true, 1).Body
+		rangedSame = rangedSame and (a.Position - b.Position).Magnitude < 1e-6 and (c.Position - d.Position).Magnitude < 1e-6
+	end
+	T.check(rangedSame, "p7vfx poses: the leap amp never changes the ranged Strike / Shoot")
 	T.check(under < -0.02 and under > -0.25, "p7vfx poses: melee Strike settles with a small overshoot behind its start", fmt("%.3f", under))
 	-- player note 1: the ranged Shoot is no lunge: the body kicks back ~0.45 and never moves forward, the head snaps
 	-- forward (nose down) to loose the shot early in the pose
@@ -1103,6 +1217,10 @@ S.p7vfx_poses = guarded("p7vfx_poses", function()
 	T.check(cfFinite(pb) and (pb.Position - P.Sample("Strike", 0.25).Body.Position).Magnitude < 1e-6, "p7vfx poses: PoseBody returns the pose's Body")
 	local pbr = PB.PoseBody({ Pose = { Name = "Strike", P = 0.1, Ranged = true } })
 	T.check(forwardOf(pbr) < 0, "p7vfx poses: PoseBody honours Ranged", fmt("%.3f", forwardOf(pbr)))
+	local pbAmp = PB.PoseBody({ Pose = { Name = "Strike", P = 0.13, Amp = 1.25 } })
+	T.check(cfFinite(pbAmp) and (pbAmp.Position - P.Sample("Strike", 0.13, false, 1.25).Body.Position).Magnitude < 1e-6
+		and pbAmp.Position.Y > PB.PoseBody({ Pose = { Name = "Strike", P = 0.13 } }).Position.Y + 0.05,
+		"p7vfx poses: PoseBody passes the pose's Amp (a higher leap)", fmt("%.3f", cfFinite(pbAmp) and pbAmp.Position.Y or -1))
 
 	-- one winged pet (flapping wings) and one tailed pet, each with a second evolution
 	local winged, tailed = nil, nil

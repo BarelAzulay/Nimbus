@@ -2656,7 +2656,7 @@ function Atk.Update(now)
 			local c = list[i]
 			if now >= c.at then
 				table.remove(list, i)
-				if c.B == St.battle and not c.u.gone and not Atk.Victory(c.B, c.u, 0) then
+				if c.B == St.battle and not c.u.gone and not c.u.parked and not Atk.Lying(c.u) and not Atk.Victory(c.B, c.u, 0) then
 					c.u.hopAt = now
 				end
 			else
@@ -2919,6 +2919,12 @@ function Atk.Swap(B, ev, dueAt)
 end
 
 -- the winners' cheer (Net.End): Victory after `delay` seconds; false = the old hop
+-- a pet that is KO'd (its Ko played, or drawn down) lies until it is parked: it never cheers (Task 8 fix round 3: the
+-- KO pose pin; a KO in the End batch had the pet hop up into Victory 1.4 s after the End)
+function Atk.Lying(u)
+	return u.koAt ~= nil or u.state == S_DOWN or (tonumber(u.hp) or 1) <= 0
+end
+
 function Atk.Victory(B, u, delay)
 	if not Atk.Mod() or u.isBoss or not u.model or not Atk.Drawable(u) then
 		return false
@@ -3013,7 +3019,7 @@ function Atk.PoseOf(u, now, down, busy, animate)
 	if ok and type(ps) == "table" and type(ps.Name) == "string" then
 		local cur = u.poseCur or {}
 		u.poseCur = cur
-		cur.Name, cur.P, cur.Ranged = ps.Name, ps.P, ps.Ranged
+		cur.Name, cur.P, cur.Ranged, cur.Amp = ps.Name, ps.P, ps.Ranged, ps.Amp
 		pose, body, src = cur, poseBody(cur), "fx"
 		local blend = num(ps.Blend, 1)
 		if type(ps.Prev) == "table" and blend < 1 then
@@ -3046,7 +3052,7 @@ function Atk.PoseOf(u, now, down, busy, animate)
 		u.poseSwitch = now
 		local from = u.poseFromPose or {}
 		u.poseFromPose = from
-		from.Name, from.P, from.Ranged = u.poseShown, u.poseShownP, u.poseShownRanged
+		from.Name, from.P, from.Ranged, from.Amp = u.poseShown, u.poseShownP, u.poseShownRanged, u.poseShownAmp
 	end
 	if u.poseSwitch then
 		local w = (now - u.poseSwitch) / num(AF.CROSSFADE, 0.12)
@@ -3067,6 +3073,7 @@ function Atk.PoseOf(u, now, down, busy, animate)
 	u.poseShown = pose and pose.Name or nil
 	u.poseShownP = pose and pose.P or nil
 	u.poseShownRanged = pose and pose.Ranged or nil
+	u.poseShownAmp = pose and pose.Amp or nil
 	u.poseLast, u.poseScaled = pose, nil
 	if not body then
 		return pose, nil
@@ -3786,6 +3793,34 @@ end
 
 Handlers[EV.Speed or "Speed"] = function()
 	-- (handled on arrival: Net.Pre)
+end
+
+-- the End: plays every queued event that is not held for a flying shot, in order; true when held ones are left
+function Net.PlayUnheld(B)
+	local q = B.evq
+	local items = {}
+	for i = 1, #q do
+		items[i] = q[i]
+	end
+	for i = #q, 1, -1 do
+		q[i] = nil
+	end
+	local held = false
+	for _, item in ipairs(items) do
+		if item.held then
+			q[#q + 1] = item
+			held = true
+		else
+			local fn = Handlers[item.ev.type]
+			if fn then
+				local ok, err = pcall(fn, B, item.ev)
+				if not ok then
+					warnOnce("event_" .. tostring(item.ev.type), "event " .. tostring(item.ev.type) .. " failed: " .. tostring(err))
+				end
+			end
+		end
+	end
+	return held
 end
 
 function Net.PlayDue(B, now)
@@ -7391,13 +7426,13 @@ end
 
 -- queue `ev` to play at `due` (in time order: a held event lets the others pass); a Hit whose shot lands late
 -- (ev.fxLate, Atk.Hit) holds its victim's next events until then
-function Net.Queue(B, ev, due)
+function Net.Queue(B, ev, due, held)
 	local q = B.evq
 	local i = #q
 	while i > 0 and q[i].t > due do
 		i = i - 1
 	end
-	table.insert(q, i + 1, { t = due, ev = ev })
+	table.insert(q, i + 1, { t = due, ev = ev, held = held == true })
 	if (tonumber(ev.fxLate) or 0) > 0 then
 		local id = heldUnitOf(ev)
 		if id then
@@ -7435,7 +7470,8 @@ function Net.Events(list, battleId)
 				local fn = Handlers[ev.type]
 				pcall(fn, B, ev)
 			else
-				Net.Queue(B, ev, t + hold + (tonumber(ev.fxLate) or 0))
+				local late = tonumber(ev.fxLate) or 0
+				Net.Queue(B, ev, t + hold + late, hold > 0 or late > 0)
 			end
 		end
 	end
@@ -7446,7 +7482,7 @@ end
 function Net.Cheer(B)
 	local now = os.clock()
 	for _, u in ipairs(B.list) do
-		if u.ally and u.root and not u.parked then
+		if u.ally and u.root and not u.parked and not Atk.Lying(u) then
 			local delay = math.random() * 0.4
 			if not Atk.Mod() then
 				u.hopAt = now + delay
@@ -7480,10 +7516,17 @@ function Net.End(payload, battleId)
 		end
 		return
 	end
-	-- play what is still queued, so the last KO shows
+	-- play what is still queued, so the last KO shows. Events held for a ranged shot still in flight (Net.Queue
+	-- `held`: its Hit, the victim's KO, the sim's End) keep their time: stepBattle drains them on the render clock
+	-- during the End grace, so the killing shot's number and "KO!" pop when it LANDS (Task 8 fix round 3, review
+	-- Important 3); the rest play now, like before
 	local latest = B.snaps[#B.snaps]
-	B.renderT = max(B.renderT, (latest and latest.T or B.renderT)) + 5
-	Net.PlayDue(B, os.clock())
+	if Net.PlayUnheld(B) then
+		B.drainHeld = true
+	else
+		B.renderT = max(B.renderT, (latest and latest.T or B.renderT)) + 5
+		Net.PlayDue(B, os.clock())
+	end
 	B.ended = true
 	B.endAt = os.clock()
 	Atk.EndSoon(B) -- (when the sim's End event has not played: the grace starts now, the cheers wait for it)
@@ -7582,6 +7625,16 @@ local function stepBattle(B, now, dt)
 			if t > B.renderT then
 				B.renderT = t
 			end
+		end
+		Net.PlayDue(B, now)
+	elseif B.drainHeld then
+		-- the End came with events held for a flying shot (Net.End): they play on the render clock as it lands; at
+		-- the latest after the End grace everything left plays and the clock jumps to the end like before
+		B.renderT = B.renderT + dt
+		if #B.evq == 0 or now - (B.endAt or now) >= K.FX_END_GRACE then
+			local latest = B.snaps[#B.snaps]
+			B.renderT = max(B.renderT, (latest and latest.T or B.renderT)) + 5
+			B.drainHeld = nil
 		end
 		Net.PlayDue(B, now)
 	end

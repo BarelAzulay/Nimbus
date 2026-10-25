@@ -626,19 +626,148 @@ S.client_p7vfx_engine = guarded("client_p7vfx_engine", function()
 	local hidden2, what2 = allHidden(folder)
 	T.check(hidden2, "mid-build error: the returned kits are hidden", tostring(what2))
 
-	-- 13) a charge glow dropped for lack of time takes no emitter slot (Lava Slam: 7 emitter layers, cap 6) -------------
-	Fx.Play(ctx({ Element = "Flame", Attack = "Special", Kind = "Blast", PetId = "magma_cub", Rarity = "Secret", DueAt = clock, Now = clock }))
-	local em = Fx._Live()[#Fx._Live()]
-	local crack, charge = false, false
-	for _, it in ipairs(em and em.Items or {}) do
-		if it.Kind == "Emitter" and it.Layer.Id == "SigLavaCrack" then
-			crack = true
-		elseif it.Kind == "Emitter" and it.Layer.Id == "Charge" then
-			charge = true
+	-- 13) a charge glow dropped for lack of time takes no emitter slot (an over-cap recipe: >= 7 emitter layers, cap 6) --
+	-- (fix round 3: Lava Slam no longer goes over (its Scorch is a glow disc, review Important 1), so the over-cap recipe is
+	-- found from the catalog: a Task 9 element whose Secret recipe has 7+ emitters and a charge emitter at the mouth)
+	local function engineEmitter(l)
+		return type(l) == "table" and (l.Kind == "Emitter" or (l.Kind == "Decal" and type(l.Texture) == "string"))
+	end
+	local over = nil
+	for _, e in ipairs({ "Water", "Frost", "Earth" }) do
+		for _, v in ipairs({ { Attack = "Special", Kind = "Blast" }, { Attack = "Special", Kind = "Storm" }, { Attack = "Special", Kind = "Pounce" }, { Attack = "Melee" }, { Attack = "Ranged" } }) do
+			local r = not over and Cat.Resolve({ Element = e, Attack = v.Attack, Kind = v.Kind, Rarity = "Secret", Stage = 0, Mine = true, Distance = 12 })
+			if r then
+				local n, hasCharge = 0, false
+				for _, l in ipairs(r.Layers) do
+					if engineEmitter(l) then
+						n = n + 1
+						hasCharge = hasCharge or ((l.Beat or "Impact") == "Charge" and l.At == "Source" and l.Kind ~= "Decal")
+					end
+				end
+				if engineEmitter(r.Alive) then
+					n = n + 1
+				end
+				if n >= Fx.MAX_EMITTERS.High + 1 and hasCharge then
+					over = { Element = e, Attack = v.Attack, Kind = v.Kind, N = n }
+				end
+			end
 		end
 	end
-	T.check(em and em.Times.Release == 0 and not charge and crack and em.Emitters == Fx.MAX_EMITTERS.High,
-		"no charge time: the dropped charge glow frees its emitter slot (the signature lava crack is drawn, 6 emitters)", em and tostring(em.Emitters))
+	local function drawnIds(em)
+		local ids = {}
+		for _, it in ipairs(em and em.Items or {}) do
+			if it.Kind == "Emitter" and it.Layer then
+				ids[it.Layer.Id] = true
+			end
+		end
+		return ids
+	end
+	if T.check(over ~= nil, "an over-cap recipe exists to test the emitter cap (a Task 9 element, 7+ emitters with a mouth charge)") then
+		Fx.Play(ctx({ Element = over.Element, Attack = over.Attack, Kind = over.Kind, Rarity = "Secret", From = { Unit = 70, Model = A }, DueAt = clock, Now = clock }))
+		local em = Fx._Live()[#Fx._Live()]
+		local ids = drawnIds(em)
+		T.check(em and em.Times.Release == 0 and not ids.Charge and ids.Burst and em.Emitters == math.min(Fx.MAX_EMITTERS.High, over.N - 1),
+			"no charge time: the dropped charge glow frees its emitter slot (the burst is drawn, the cap filled)",
+			fmt("%s %s %s: %d layers, %s emitters", over.Element, over.Attack, tostring(over.Kind), over.N, em and tostring(em.Emitters) or "?"))
+		run(3)
+		Fx.Play(ctx({ Element = over.Element, Attack = over.Attack, Kind = over.Kind, Rarity = "Secret", From = { Unit = 70, Model = A }, Now = clock }))
+		local em2 = Fx._Live()[#Fx._Live()]
+		local ids2 = drawnIds(em2)
+		T.check(em2 and em2.Emitters == Fx.MAX_EMITTERS.High and ids2.Burst, "over the cap: 6 emitters, the impact burst always kept",
+			em2 and tostring(em2.Emitters))
+		run(3)
+	end
+	-- review Important 1: Flame's Lava Slam (the old over-cap case) fits now: its Scorch is a glow disc, no emitter is cut
+	Fx.Play(ctx({ Element = "Flame", Attack = "Special", Kind = "Blast", PetId = "magma_cub", Rarity = "Secret", From = { Unit = 71, Model = A }, Now = clock }))
+	local fl = Fx._Live()[#Fx._Live()]
+	local flIds, scorchDisc = drawnIds(fl), false
+	for _, it in ipairs(fl and fl.Items or {}) do
+		scorchDisc = scorchDisc or (it.Kind == "Disc" and it.Layer and it.Layer.Id == "Scorch")
+	end
+	local wantFl = 0
+	local fr = Cat.Resolve({ Element = "Flame", Attack = "Special", Kind = "Blast", PetId = "magma_cub", Rarity = "Secret", Stage = 0, Mine = true, Distance = 12 })
+	for _, l in ipairs(fr and fr.Layers or {}) do
+		if engineEmitter(l) then
+			wantFl = wantFl + 1
+		end
+	end
+	wantFl = wantFl + (fr and engineEmitter(fr.Alive) and 1 or 0)
+	T.check(fl and scorchDisc and not flIds.Scorch and flIds.SigLavaCrack and flIds.Burst and wantFl <= Fx.MAX_EMITTERS.High and fl.Emitters == wantFl,
+		"review Important 1: Flame's Lava Slam fits the cap: Scorch is a glow disc, every emitter layer (lava crack, burst ...) drawn",
+		fmt("%s of %d emitters, scorch disc %s", fl and tostring(fl.Emitters) or "?", wantFl, tostring(scorchDisc)))
+	run(3)
+
+	-- 14) fix round 3, player note (a): the melee Strike is a leap whose Amp grows with the rarity band (Common 1, Secret
+	-- bigger, <= PetPoses.LEAP_AMP_MAX); the ranged Shoot carries none -------------------------------------------------
+	local function strikeAmp(rarity, attack)
+		Fx.ClearAll()
+		Fx.Play(ctx({ Attack = attack or "Melee", Element = "Flame", Rarity = rarity, From = { Unit = 80, Model = A }, To = { Unit = 81, Model = B }, Now = clock }))
+		local amp, name = nil, nil
+		run(1.6, function()
+			local po = Fx.Pose(80)
+			if po and (po.Name == "Strike" or po.Name == "Shoot") and amp == nil then
+				amp, name = po.Amp, po.Name
+			end
+		end)
+		return amp, name
+	end
+	local ampC, nameC = strikeAmp("Common")
+	local ampS = strikeAmp("Secret")
+	local ampR, nameR = strikeAmp("Secret", "Ranged")
+	T.check(nameC == "Strike" and ampC == 1 and type(ampS) == "number" and ampS > 1.15 and ampS <= 1.25 + 1e-9 and nameR == "Shoot" and (ampR == nil or ampR == 1),
+		"note (a): the melee Strike leap's Amp grows with the band (Common 1 -> Secret ~1.24); the ranged Shoot has none",
+		fmt("Common %s, Secret %s, ranged %s %s", tostring(ampC), tostring(ampS), tostring(nameR), tostring(ampR)))
+
+	-- 15) fix round 3, player note (b): every element's ranged impact explodes at the target: the Boom pop (a solid ball
+	-- of the element's colour growing at the hit point), the BoomRing shock on the ground and the BoomFlash light,
+	-- at Common and Secret; the burst is the element's own texture. Melee draws none of them -----------------------
+	local boomBad, boomSeen = {}, 0
+	for _, e in ipairs({ "Flame", "Water", "Frost", "Nature", "Earth", "Storm", "Celestial", "Shadow" }) do
+		for _, rarity in ipairs({ "Common", "Secret" }) do
+			Fx.ClearAll()
+			Fx.Play(ctx({ Attack = "Ranged", Element = e, Rarity = rarity, From = { Unit = 82, Model = A }, To = { Unit = 83, Model = B }, Now = clock }))
+			local ef = Fx._Live()[#Fx._Live()]
+			local popSeen, popNear, ringSeen, flashSeen, grew = false, false, false, false, false
+			local s0 = nil
+			if ef then
+				local t0 = ef.Start + ef.Times.Impact
+				run(math.max(0, t0 - clock) + 0.3, function()
+					for _, it in ipairs(ef.Items or {}) do
+						local id = it.Layer and it.Layer.Id
+						if id == "Boom" and it.Kind == "Solid" and it.Kit and it.Kit.Root.Transparency < 1 then
+							popSeen = true
+							popNear = popNear or (it.Kit.Root.Position - ef.Hit).Magnitude < 1.5
+							local sz = it.Kit.Root.Size.Magnitude
+							if s0 == nil then
+								s0 = sz
+							elseif sz > s0 * 1.3 then
+								grew = true
+							end
+						elseif id == "BoomRing" and it.Kind == "Solid" and it.Kit and it.Kit.Root.Transparency < 1 then
+							ringSeen = true
+						elseif id == "BoomFlash" and it.Kind == "Light" then
+							flashSeen = true
+						end
+					end
+				end)
+			end
+			boomSeen = boomSeen + 1
+			if not (popSeen and popNear and grew and ringSeen and flashSeen) then
+				boomBad[#boomBad + 1] = fmt("%s %s: pop %s near %s grew %s ring %s flash %s", e, rarity, tostring(popSeen), tostring(popNear), tostring(grew), tostring(ringSeen), tostring(flashSeen))
+			end
+		end
+	end
+	T.check(#boomBad == 0 and boomSeen >= 16, fmt("note (b): every element's ranged impact explodes at the target (Boom pop growing at the hit, BoomRing shock, BoomFlash light; %d plays)", boomSeen),
+		table.concat(boomBad, "; "))
+	Fx.ClearAll()
+	Fx.Play(ctx({ Attack = "Melee", Element = "Flame", Rarity = "Secret", From = { Unit = 84, Model = A }, To = { Unit = 85, Model = B }, Now = clock }))
+	local mel = Fx._Live()[#Fx._Live()]
+	local melBoom = false
+	for _, it in ipairs(mel and mel.Items or {}) do
+		local id = it.Layer and it.Layer.Id
+		melBoom = melBoom or id == "Boom" or id == "BoomRing" or id == "BoomFlash"
+	end
+	T.check(mel ~= nil and not melBoom, "note (b): the melee hit keeps its own impact (no ranged explosion layers)")
 	run(3)
 
 	-- clean up
@@ -1345,6 +1474,155 @@ S.client_p7vfx_battle = guarded("client_p7vfx_battle", function()
 		KC.advance(15)
 		poolsAtKeep("after the second battle")
 		T.check(type(BC.GetStats().AttackFx) == "table" and BC.GetStats().AttackFx.Live == 0, "GetStats().AttackFx = AttackFx.Stats()")
+
+		-- 6) fix round 3 (review Important 3 + the KO pose pin): the killing SHOT, a pet's KO and the End arrive in one
+		--    pulse with the End message right behind them. The shot's Hit and the boss's KO are held for the flying shot
+		--    (Net.Queue held): the End plays only the unheld events and drains the held ones on the render clock, so the
+		--    damage number and the boss's "KO!" pop when the shot LANDS, not at the End. The KO'd pet lies in its Ko pose
+		--    with a constant body offset from End + 1.0 s (the grace clears AttackFx) until it is parked
+		id = "p7vfx_raid_3"
+		LocalPlayer:SetAttribute("InBattle", id)
+		start = copyOf(rec.Start)
+		start.BattleId = id
+		KC.toClient("BattleState", "Start", start, id)
+		live.id, live.T = id, (start.T or 0)
+		local function fullSnap()
+			local snap = rec.Sim:SnapshotDelta({})
+			live.T = live.T + 0.1
+			snap.T, snap.BattleId = live.T, id
+			KC.toClient("BattleState", "Snapshot", snap, id)
+		end
+		for _ = 1, 8 do
+			fullSnap()
+			frames(0.1)
+		end
+		pulse(1.5)
+		local boss3, shooter3, koUnit3 = nil, nil, nil
+		for uid, info in pairs(infos) do
+			local g = BC.GetUnit(uid)
+			if g and info.kind == "Boss" and not g.Parked then
+				boss3 = uid
+			end
+		end
+		for uid, info in pairs(infos) do
+			local g = BC.GetUnit(uid)
+			if info.kind ~= "Boss" and drawable(g) and g.Model ~= nil and g.Hp and g.Hp > 0 then
+				if info.ranged == true and (not shooter3 or uid < shooter3) then
+					shooter3 = uid
+				end
+			end
+		end
+		for uid, info in pairs(infos) do
+			local g = BC.GetUnit(uid)
+			if uid ~= shooter3 and info.kind ~= "Boss" and drawable(g) and g.Model ~= nil and g.Hp and g.Hp > 0 and (not koUnit3 or uid < koUnit3) then
+				koUnit3 = uid
+			end
+		end
+		if T.check(boss3 and shooter3 and koUnit3 and true or false, "End with a shot in flight: a ranged pet, a second pet and the boss are on the floor",
+			fmt("boss %s shooter %s ko %s", tostring(boss3), tostring(shooter3), tostring(koUnit3))) then
+			local bossModel = BC.GetUnit(boss3).Model
+			local koModel = BC.GetUnit(koUnit3).Model
+			local function bossLabel(match)
+				local fx = workspace:FindFirstChild("ClientBattle") and workspace.ClientBattle:FindFirstChild("Fx")
+				for _, g in ipairs(fx and fx:GetDescendants() or {}) do
+					if g:IsA("TextLabel") and string.find(g.Text, match, 1, true) then
+						local bb = g:FindFirstAncestorOfClass("BillboardGui")
+						if bb and bb.Enabled and bb.Adornee and (bb.Adornee == bossModel or bb.Adornee:IsDescendantOf(bossModel)) then
+							return true
+						end
+					end
+				end
+				return false
+			end
+			-- the KO'd pet's drawn pose (PetBuilder.Animate's opts.Pose and the body offset it gives)
+			local koFrames = {}
+			local spyAnimate = PB.Animate
+			PB.Animate = function(model, t, opts)
+				if model == koModel and type(opts) == "table" then
+					local body = PB.PoseBody(opts)
+					koFrames[#koFrames + 1] = { At = os.clock(), Name = type(opts.Pose) == "table" and opts.Pose.Name or nil, Pos = body and body.Position, CF = body }
+				end
+				return spyAnimate(model, t, opts)
+			end
+			for _, su in ipairs(rec.Sim.units or {}) do
+				if su.id == koUnit3 then
+					su.hp = 0
+					su.state = downState
+				end
+			end
+			local n0 = #calls
+			KC.toClient("BattleState", "Events", {
+				{ type = "Hit", from = shooter3, to = boss3, dmg = 4321 },
+				{ type = "KO", unit = boss3, by = shooter3 },
+				{ type = "KO", unit = koUnit3, by = boss3 },
+				{ type = "End", reason = "BossDown", winnerSide = 1 },
+			}, id)
+			fullSnap()
+			local endAt = os.clock()
+			KC.toClient("BattleState", "End", { BattleId = id, Mode = "Raid", Outcome = "Win", Won = true, Spectator = false, Reason = "BossDown",
+				Rewards = { Tokens = 10, Gems = 0, Xp = 5, Trophies = 0, LevelUps = 0, Tier = "Gold", Share = 0.4, Damage = 500 } }, id)
+			local shot = nil
+			for i = n0 + 1, #calls do
+				if calls[i].Attack == "Ranged" and calls[i].From == shooter3 then
+					shot = calls[i]
+				end
+			end
+			local impactAt = nil
+			for _, e in ipairs(AF._Live()) do
+				if e.Unit == shooter3 and e.Recipe.Attack == "Ranged" then
+					impactAt = e.Start + e.Times.Impact
+				end
+			end
+			local numberAt, koAt, parkedAt, poseBad = nil, nil, nil, {}
+			if bossLabel("4321") then
+				numberAt = endAt -- (already up at the End: flushed early)
+			end
+			for _ = 1, 105 do
+				Mock.Step(1 / 30)
+				local now = os.clock()
+				if not numberAt and bossLabel("4321") then
+					numberAt = now
+				end
+				if not koAt and bossLabel("KO!") then
+					koAt = now
+				end
+				local g = BC.GetUnit(koUnit3)
+				if not parkedAt and (g == nil or g.Parked) then
+					parkedAt = now
+				end
+				if not parkedAt and now >= endAt + 1.0 and g and g.Pose ~= "Ko" then
+					poseBad[#poseBad + 1] = fmt("%.2f s: drawn %s", now - endAt, tostring(g.Pose))
+				end
+			end
+			PB.Animate = spyAnimate
+			T.check(shot ~= nil and shot.Result == true and type(shot.Late) == "number" and shot.Late > 0.05 and impactAt ~= nil and impactAt > endAt + 0.05,
+				"End with a shot in flight: (precondition) the killing shot is still flying when the End arrives", shot and fmt("late %s, lands %.2f s after the End", tostring(shot.Late), (impactAt or endAt) - endAt) or "no shot")
+			T.check(numberAt ~= nil and impactAt ~= nil and numberAt >= impactAt - 1 / 30 - 1e-3 and numberAt <= impactAt + 0.25,
+				"review Important 3: the killing shot's damage number pops when the shot lands, not at the End",
+				fmt("number %s s after the impact (impact %.2f s after the End)", numberAt and impactAt and fmt("%.3f", numberAt - impactAt) or "never", (impactAt or endAt) - endAt))
+			T.check(koAt ~= nil and impactAt ~= nil and koAt >= impactAt - 1 / 30 - 1e-3 and koAt <= impactAt + 0.25,
+				"review Important 3: ... and so does the boss's KO!", fmt("KO! %s s after the impact", koAt and impactAt and fmt("%.3f", koAt - impactAt) or "never"))
+			-- the pin: from End + 1.0 s until parked the pet is drawn in its Ko pose with one constant body offset
+			local ref, drift, wrong, n = nil, 0, {}, 0
+			for _, f in ipairs(koFrames) do
+				if f.At >= endAt + 1.0 and (not parkedAt or f.At < parkedAt) then
+					n = n + 1
+					if f.Name ~= "Ko" or not f.Pos then
+						wrong[#wrong + 1] = tostring(f.Name)
+					else
+						ref = ref or f.CF
+						drift = math.max(drift, (f.Pos - ref.Position).Magnitude, (ref.LookVector - f.CF.LookVector).Magnitude, (ref.UpVector - f.CF.UpVector).Magnitude)
+					end
+				end
+			end
+			T.check(parkedAt ~= nil and parkedAt > endAt + 1.2 and n >= 3 and #wrong == 0 and #poseBad == 0 and drift < 1e-3,
+				"KO pose pin: from End + 1.0 s until it is parked the KO'd pet is drawn in its Ko pose with a constant body offset",
+				fmt("parked %s s after the End, %d frames, not Ko: %s / %s, drift %.4f", parkedAt and fmt("%.2f", parkedAt - endAt) or "never", n,
+					table.concat(wrong, ","), table.concat(poseBad, ","), drift))
+		end
+		LocalPlayer:SetAttribute("InBattle", nil)
+		KC.advance(15)
+		poolsAtKeep("after the third battle")
 	end)
 	AF.Play = realPlay
 	PB.Animate = realAnimate

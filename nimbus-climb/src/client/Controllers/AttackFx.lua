@@ -110,6 +110,7 @@ local K = {
 	KO = 0.9,
 	VICTORY = 1.2,
 	SHOOT = 0.6, -- the ranged Shoot pose (PetPoses): the head snaps forward, the body kicks back, settles
+	LEAP_STEP = 0.08, -- the melee Strike's leap grows by this per rarity band above Common (PetPoses amp, <= 1.25)
 	BAND_RARITY = { "Common", "Rare", "Legendary", "Secret" },
 	PRIO = { Ko = 4, Cast = 3, Windup = 2, Strike = 2, Shoot = 2, Recoil = 2, Victory = 2, Hurt = 1 },
 }
@@ -1788,6 +1789,14 @@ local function addRingLayer(eff, layer)
 	local t0 = beatStart(eff, layer.Beat or "Impact") + (finite(layer.Delay) and layer.Delay or 0)
 	local flatRing = key == "vfx_ring"
 	local anchor = (layer.At == "Self") and "Self" or ((layer.At == "Source") and "Source" or "Hit")
+	if layer.Pop == true then -- a quick ball popping out at the anchor and fading (the ranged impact's fireball, note (b))
+		addSolid(eff, key, {
+			Layer = layer, Move = MOVE.Ring, Anchor = anchor, Color = layer.Color, Material = Enum.Material.Neon,
+			Trans = finite(layer.Transparency) and layer.Transparency or 0.2, T0 = t0, TG = t0 + 0.14, TF = t0 + 0.06,
+			T1 = min(eff.EndRel, t0 + 0.36), From = 0.35, To = finite(layer.Grow) and layer.Grow or 1,
+		})
+		return
+	end
 	if layer.Face == true then -- a quick ring standing up at the anchor, facing the attack (the ranged muzzle shock)
 		addSolid(eff, key, {
 			Layer = layer, Move = MOVE.Ring, Face = true, Anchor = anchor, Color = layer.Color, Material = Enum.Material.Neon,
@@ -1923,7 +1932,7 @@ local function poseSample(entry, now)
 	if best.StopAt then
 		el = el - min(max(0, now - best.StopAt), best.StopDur)
 	end
-	return best.Name, clamp01(el / best.Dur), best.Ranged == true
+	return best.Name, clamp01(el / best.Dur), best.Ranged == true, best.Amp
 end
 
 local function poseActive(entry, at)
@@ -1973,7 +1982,10 @@ local function schedulePoses(eff, now)
 			segs[#segs + 1] = { Name = "Shoot", T0 = st + T.Release, Dur = K.SHOOT, Ranged = true }
 		else
 			local dur = max(0.45, min(0.9, (T.Impact - T.Release) / 0.26))
-			segs[#segs + 1] = { Name = "Strike", T0 = st + T.Release, Dur = dur, StopAt = (not eff.Miss) and (st + T.Impact) or nil, StopDur = AttackFx.HIT_STOP }
+			-- the leap (player note (a)): it lands on the target at the impact (PetPoses Strike lands at p 0.26); a little
+			-- longer and higher per rarity band (Amp)
+			segs[#segs + 1] = { Name = "Strike", T0 = st + T.Release, Dur = dur, StopAt = (not eff.Miss) and (st + T.Impact) or nil, StopDur = AttackFx.HIT_STOP,
+				Amp = 1 + K.LEAP_STEP * ((tonumber(r.Band) or 1) - 1) }
 		end
 	elseif A == "Special" or A == "Element" then
 		-- Cast's release (p 0.66 .. 0.74) lands as the release beat ends
@@ -2377,7 +2389,7 @@ function AttackFx.Pose(unit)
 		return nil
 	end
 	local now = St.now or os.clock()
-	local name, p, ranged = poseSample(entry, now)
+	local name, p, ranged, amp = poseSample(entry, now)
 	local prev = entry.Prev
 	local out = entry.Out
 	if not out then
@@ -2387,26 +2399,26 @@ function AttackFx.Pose(unit)
 	out.Blend, out.Prev = 1, nil
 	if not name then
 		if prev and entry.SwitchAt and now < entry.SwitchAt then -- the new pose has not started: the old one plays on
-			local n2, p2, r2 = poseSample(prev, now)
+			local n2, p2, r2, a2 = poseSample(prev, now)
 			if n2 then
-				out.Name, out.P, out.Ranged = n2, p2, r2
+				out.Name, out.P, out.Ranged, out.Amp = n2, p2, r2, a2
 				return out
 			end
 		end
 		return nil
 	end
-	out.Name, out.P, out.Ranged = name, p, ranged
+	out.Name, out.P, out.Ranged, out.Amp = name, p, ranged, amp
 	if prev and entry.SwitchAt then
 		local w = (now - entry.SwitchAt) / AttackFx.CROSSFADE
 		if w < 1 then
-			local n2, p2, r2 = poseSample(prev, now)
+			local n2, p2, r2, a2 = poseSample(prev, now)
 			if n2 then
 				local po = entry.PrevOut
 				if not po then
 					po = {}
 					entry.PrevOut = po
 				end
-				po.Name, po.P, po.Ranged = n2, p2, r2
+				po.Name, po.P, po.Ranged, po.Amp = n2, p2, r2, a2
 				out.Blend = max(0, w)
 				out.Prev = po
 			end
