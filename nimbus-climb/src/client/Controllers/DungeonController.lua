@@ -33,6 +33,9 @@
 --   * Lighting: LightingStack.Push("Dungeon", preset, 1) when a run starts (darker ambient, ColorCorrection Brightness
 --     -0.12 / Contrast 0.1 / a warm grey tint, Atmosphere density +0.15); Pop("Dungeon", 1) on End or when the player
 --     is no longer in the pocket (InBattle released).
+--   * Camera (bug batch 2, #19): MovementController.SetZoomMax(K.ZOOM_RUN 14) with the first Run payload, so the camera
+--     stays inside the 16-stud rooms; SetZoomMax(nil) (the normal 40) on End, when the run vanished without an End
+--     (R.check) and, as a safety net, on any light-loop tick that finds the zoom capped with no run (every exit path).
 --   * Doors: the room models' DoorOpen / EntranceOpen attributes play a local slide (copies of the bars sink into the
 --     floor) in the player's own pocket.
 --   * The room change fade (DungeonState "Fade" { Out, Hold, In }): ONE black full-screen Frame in its own ScreenGui
@@ -98,6 +101,7 @@ local K = {
 	BACK_ACTION = "NimbusDungeonBack",
 	LIGHT_ID = "Dungeon",
 	LIGHT_SECONDS = 1,
+	ZOOM_RUN = 14, -- bug batch 2 (#19): the camera zoom cap inside a run (rooms are 16 studs high)
 }
 
 local Colors = Theme.Colors
@@ -181,6 +185,7 @@ local S = {
 	Warned = {},
 	Doors = {}, -- connections watching the pocket's doors
 	Pocket = nil,
+	Zoomed = false, -- the camera zoom is capped at K.ZOOM_RUN (a run)
 }
 
 local H = {} -- helpers
@@ -1949,6 +1954,19 @@ function R.light(on)
 	end
 end
 
+-- bug batch 2 (#19): the camera zoom cap of a run (MovementController.SetZoomMax: K.ZOOM_RUN on, nil = the normal 40)
+function R.zoom(on)
+	on = on == true
+	if on == S.Zoomed then
+		return
+	end
+	S.Zoomed = on
+	local MC = H.controller("MovementController")
+	if MC and type(MC.SetZoomMax) == "function" then
+		H.safe("zoom", MC.SetZoomMax, on and K.ZOOM_RUN or nil)
+	end
+end
+
 -- the pocket (workspace.Dungeons.Dungeon_<i>) the player stands in: the nearest holder within 400 studs
 function R.findPocket()
 	local folder = Workspace:FindFirstChild("Dungeons")
@@ -2084,6 +2102,7 @@ function R.onState(kind, payload)
 			DungeonController.Close()
 		end
 		R.light(true)
+		R.zoom(true)
 		H.safe("doors", R.watchDoors)
 		R.refresh()
 	elseif kind == "Loot" then
@@ -2130,6 +2149,7 @@ function R.onState(kind, payload)
 		S.Toast = nil
 		R.clearFade()
 		R.light(false)
+		R.zoom(false)
 		R.unwatchDoors()
 		R.refresh()
 	end
@@ -2143,9 +2163,11 @@ function R.check()
 		R.clearFade()
 		R.unwatchDoors()
 		R.light(false)
+		R.zoom(false)
 		R.refresh()
-	elseif S.Lit and not S.Run and not H.runAttr() then
+	elseif (S.Lit or S.Zoomed) and not S.Run and not H.runAttr() then
 		R.light(false)
+		R.zoom(false)
 	end
 end
 
@@ -2252,6 +2274,9 @@ function DungeonController.Init()
 		end
 		H.safe("tick fade", R.fadeTick)
 		H.safe("tick card", R.refresh)
+		if S.Zoomed and not S.Run then
+			H.safe("tick zoom", R.zoom, false) -- every exit path: no run, no zoom cap
+		end
 	end)
 end
 

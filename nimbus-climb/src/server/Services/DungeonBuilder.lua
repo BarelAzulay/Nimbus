@@ -510,8 +510,11 @@ local function enterLabel(targetRoom)
 	return "Room " .. tostring(targetRoom)
 end
 
+-- bug batch 2 (#19): the ceiling collides (CanCollide + CanQuery), so Roblox's camera occlusion (Poppercam only stops at
+-- colliding, queryable parts) keeps the camera under it: with the dungeon zoom cap of 14 a steep downward look used to
+-- lift the camera 18 studs up, through the 16-stud ceiling, above the pocket (nobody can jump that high)
 function Kit.ceiling(parent, w, d, y)
-	Kit.part(parent, CFrame.new(0, (y or CEIL_Y) + 0.5, 0), Vector3.new(w + 2, 1, d + 2), C.Ceiling, M.Slate, { Name = "Ceiling" })
+	Kit.part(parent, CFrame.new(0, (y or CEIL_Y) + 0.5, 0), Vector3.new(w + 2, 1, d + 2), C.Ceiling, M.Slate, { Name = "Ceiling", Collide = true })
 end
 
 -- props (pure decor sits in one NC_Detail model per room)
@@ -547,7 +550,8 @@ function Kit.moss(parent, cf, w, d)
 end
 
 function Kit.hay(parent, cf)
-	Kit.part(parent, cf * CFrame.new(0, 0.55, 0), Vector3.new(4.4, 1.1, 3.6), C.Hay, M.Sand, { Name = "Hay" })
+	-- bug batch 2 (#3): the bale collides (a 1.1 step, like the wall plinth): no wading through it
+	Kit.part(parent, cf * CFrame.new(0, 0.55, 0), Vector3.new(4.4, 1.1, 3.6), C.Hay, M.Sand, { Name = "Hay", Collide = true })
 	Kit.part(parent, cf * CFrame.new(0.5, 1.35, -0.3) * CFrame.Angles(0, 0.4, 0), Vector3.new(2.6, 0.6, 2), C.Hay, M.Sand, { Name = "Hay" })
 end
 
@@ -598,7 +602,9 @@ function Kit.stairs(parent, cf, width, steps, rise)
 	end
 end
 
+-- bug batch 2 (#3): an invisible collider around the foot, stem and bowl (the flame stays above it)
 function Kit.brazier(parent, cf)
+	Kit.part(parent, cf * CFrame.new(0, 1.8, 0), Vector3.new(3.2, 3.6, 3.2), C.Iron, M.Metal, { Name = "BrazierCollider", Collide = true, Transparency = 1 })
 	Kit.part(parent, cf * CFrame.new(0, 0.3, 0), Vector3.new(2, 0.6, 2), C.Iron, M.Metal, { Name = "BrazierFoot" })
 	Kit.part(parent, cf * CFrame.new(0, 1.6, 0), Vector3.new(0.5, 2, 0.5), C.Iron, M.Metal, { Name = "BrazierStem" })
 	Kit.part(parent, cf * CFrame.new(0, 3.0, 0) * CFrame.Angles(0, 0, PI / 2), Vector3.new(1.1, 3.2, 3.2), C.Iron, M.Metal, { Name = "BrazierBowl", Shape = Enum.PartType.Cylinder })
@@ -626,9 +632,10 @@ end
 function Kit.stalagmite(outer, cf, h)
 	h = h or 4
 	local parent = Mesh.group(outer, "StalagmiteStack")
+	-- bug batch 2 (#3): every tier collides (standing on the base used to put the player inside the upper tiers)
 	parent.PrimaryPart = Kit.part(parent, cf * CFrame.new(0, h * 0.2, 0) * CFrame.Angles(0, 0.4, 0), Vector3.new(2.6, h * 0.4, 2.6), C.RockDark, M.Slate, { Name = "Stalagmite", Collide = true })
-	Kit.part(parent, cf * CFrame.new(0, h * 0.55, 0) * CFrame.Angles(0, 0.8, 0), Vector3.new(1.6, h * 0.35, 1.6), C.Rock, M.Slate, { Name = "Stalagmite" })
-	Kit.part(parent, cf * CFrame.new(0, h * 0.85, 0), Vector3.new(0.7, h * 0.3, 0.7), C.Rock, M.Slate, { Name = "Stalagmite" })
+	Kit.part(parent, cf * CFrame.new(0, h * 0.55, 0) * CFrame.Angles(0, 0.8, 0), Vector3.new(1.6, h * 0.35, 1.6), C.Rock, M.Slate, { Name = "Stalagmite", Collide = true })
+	Kit.part(parent, cf * CFrame.new(0, h * 0.85, 0), Vector3.new(0.7, h * 0.3, 0.7), C.Rock, M.Slate, { Name = "Stalagmite", Collide = true })
 	Mesh.tag(parent, "dungeon_stalagmite", cf, nil, nil, h / 4)
 	return parent
 end
@@ -653,8 +660,10 @@ function Kit.rubble(parent, cf, seed)
 	end
 end
 
--- a weapon rack against a wall (cf on the wall face, LookVector into the room)
+-- a weapon rack against a wall (cf on the wall face, LookVector into the room); bug batch 2 (#3): one invisible
+-- collider over the whole rack (wall face to the front of the foot, up past the spear heads), so nobody stands in the spears
 function Kit.rack(parent, cf)
+	Kit.part(parent, cf * CFrame.new(0, 2.15, -0.55), Vector3.new(4.2, 4.3, 1.1), C.Wood, M.Wood, { Name = "RackCollider", Collide = true, Transparency = 1 })
 	Kit.part(parent, cf * CFrame.new(0, 1.6, -0.5), Vector3.new(4, 3.2, 0.3), C.Wood, M.Wood, { Name = "RackBack" })
 	Kit.part(parent, cf * CFrame.new(0, 0.3, -0.7), Vector3.new(4.2, 0.6, 0.8), C.Wood, M.Wood, { Name = "RackFoot" })
 	for i = -1, 1 do
@@ -677,8 +686,10 @@ function Kit.shield(parent, cf)
 	Kit.part(parent, cf * CFrame.new(0, 0, -0.65) * CFrame.Angles(0, 0, -0.75), Vector3.new(4, 0.25, 0.2), C.Gold, M.Metal, { Name = "Sword" })
 end
 
--- a stone guardian statue on a plinth
+-- a stone guardian statue on a plinth; bug batch 2 (#3): an invisible collider from the plinth top past the spear tip
+-- (arms, head and spear stick out of the body: standing on the plinth put the player inside them)
 function Kit.statue(parent, cf)
+	Kit.part(parent, cf * CFrame.new(0, 4.2, 0), Vector3.new(3.2, 6, 3.2), C.StoneLight, M.Marble, { Name = "StatueCollider", Collide = true, Transparency = 1 })
 	Kit.part(parent, cf * CFrame.new(0, 0.6, 0), Vector3.new(3, 1.2, 3), C.StoneDark, M.Slate, { Name = "StatueBase", Collide = true })
 	Kit.part(parent, cf * CFrame.new(0, 3.2, 0), Vector3.new(1.8, 4, 1.4), C.StoneLight, M.Marble, { Name = "StatueBody", Collide = true })
 	Kit.part(parent, cf * CFrame.new(0, 5.8, 0), Vector3.new(1.2, 1.2, 1.2), C.StoneLight, M.Marble, { Name = "StatueHead" })
@@ -714,8 +725,10 @@ function Kit.chandelier(parent, cf)
 	light.Parent = parent:FindFirstChild("ChandelierHub")
 end
 
--- a hearth in a wall (cf on the wall face at floor level, LookVector into the room)
+-- a hearth in a wall (cf on the wall face at floor level, LookVector into the room); bug batch 2 (#3): an invisible
+-- collider fills the fire opening between the sides (the back, the log and the flame), so nobody walks into the fire
 function Kit.hearth(parent, cf)
+	Kit.part(parent, cf * CFrame.new(0, 2.6, -0.9), Vector3.new(5, 5.2, 1.8), C.Ceiling, M.Slate, { Name = "HearthCollider", Collide = true, Transparency = 1 })
 	Kit.part(parent, cf * CFrame.new(-3.2, 2.6, -0.9), Vector3.new(1.4, 5.2, 1.8), C.StoneDark, M.Slate, { Name = "HearthSide", Collide = true })
 	Kit.part(parent, cf * CFrame.new(3.2, 2.6, -0.9), Vector3.new(1.4, 5.2, 1.8), C.StoneDark, M.Slate, { Name = "HearthSide", Collide = true })
 	Kit.part(parent, cf * CFrame.new(0, 5.6, -0.9), Vector3.new(7.8, 0.8, 2), C.StoneDark, M.Slate, { Name = "Mantle" })
@@ -874,9 +887,11 @@ function Rooms.Hall(variant)
 	Kit.rug(detail, CFrame.new(0, 0, -14), 10, 7)
 	Kit.skulls(detail, CFrame.new(-21, 0, -8))
 	Kit.rubble(detail, CFrame.new(12, 0, 20), seed + 7)
-	Kit.candles(detail, CFrame.new(-18, 2.5, 14))
+	-- bug batch 2 (#25): no table on the door axis (6 studs either side of the doors' centre line stay clear: the smoke
+	-- bug2dgn_doorlanes); the candles stand on a table in every variant (they floated in mid-air in Hall_2 / Hall_3)
 	if variant == 1 then
 		Kit.table(detail, CFrame.new(-18, 0, 14))
+		Kit.candles(detail, CFrame.new(-18, 2.5, 14))
 		Kit.bench(detail, CFrame.new(-18, 0, 11.4))
 		Kit.crate(detail, CFrame.new(20, 0, -18))
 		Kit.crate(detail, CFrame.new(20, 2.4, -18), 1.8)
@@ -887,6 +902,7 @@ function Rooms.Hall(variant)
 	elseif variant == 2 then
 		Kit.table(detail, CFrame.new(18, 0, -12))
 		Kit.table(detail, CFrame.new(18, 0, 16))
+		Kit.candles(detail, CFrame.new(18, 2.5, 16))
 		Kit.bench(detail, CFrame.new(18, 0, 13.4))
 		Kit.crate(detail, CFrame.new(-20, 0, 18), 2.8)
 		Kit.crate(detail, CFrame.new(-20, 0, 15), 1.8)
@@ -899,7 +915,8 @@ function Rooms.Hall(variant)
 		Kit.puddle(detail, CFrame.new(-8, 0, 12), 4, 4)
 		Kit.chain(detail, CFrame.new(-23.3, 11, 0))
 		Kit.chain(detail, CFrame.new(23.3, 11, 6))
-		Kit.table(detail, CFrame.new(0, 0, 19))
+		Kit.table(detail, CFrame.new(-18, 0, 14)) -- was (0, 0, 19): right in front of the exit door (#25)
+		Kit.candles(detail, CFrame.new(-18, 2.5, 14))
 	end
 	-- a loose stone or two
 	for _ = 1, 2 do
@@ -922,11 +939,11 @@ function Rooms.Cellar(variant)
 	Kit.part(model, CFrame.new(0, CEIL_Y - 0.6, -8), Vector3.new(w, 1.2, 1.6), C.Wood, M.Wood, { Name = "Beam" })
 	Kit.part(model, CFrame.new(0, CEIL_Y - 0.6, 8), Vector3.new(w, 1.2, 1.6), C.Wood, M.Wood, { Name = "Beam" })
 	Kit.wineRack(detail, CFrame.new(23.4, 0, 12) * CFrame.Angles(0, PI / 2, 0))
-	-- a cell in one corner: bars on two sides
+	-- a cell in one corner: bars on two sides (bug batch 2, #3: the bars collide, 0.9-stud gaps: nobody walks into the cell)
 	local cx, cz = 16, -14
 	for i = 0, 5 do
-		Kit.part(detail, CFrame.new(cx - 6 + i * 1.2, 4, cz + 6), Vector3.new(0.3, 8, 0.3), C.Iron, M.Metal, { Name = "CellBar" })
-		Kit.part(detail, CFrame.new(cx - 6, 4, cz + i * 1.2), Vector3.new(0.3, 8, 0.3), C.Iron, M.Metal, { Name = "CellBar" })
+		Kit.part(detail, CFrame.new(cx - 6 + i * 1.2, 4, cz + 6), Vector3.new(0.3, 8, 0.3), C.Iron, M.Metal, { Name = "CellBar", Collide = true })
+		Kit.part(detail, CFrame.new(cx - 6, 4, cz + i * 1.2), Vector3.new(0.3, 8, 0.3), C.Iron, M.Metal, { Name = "CellBar", Collide = true })
 	end
 	Kit.part(detail, CFrame.new(cx - 3, 8.1, cz + 3), Vector3.new(6.6, 0.3, 6.6), C.Iron, M.Metal, { Name = "CellRail" })
 	Kit.hay(detail, CFrame.new(cx + 0.5, 0, cz - 2))
@@ -947,8 +964,10 @@ function Rooms.Cellar(variant)
 	Kit.rack(detail, CFrame.new(-23.4, 0, -6) * CFrame.Angles(0, -PI / 2, 0))
 	Kit.candles(detail, CFrame.new(-19, 0, 0))
 	if variant == 2 then
-		Kit.table(detail, CFrame.new(0, 0, 20))
-		Kit.bench(detail, CFrame.new(0, 0, 17.4))
+		-- bug batch 2 (#25): the table + bench moved off the exit door's axis (they stood at x 0, z 20 / 17.4, 4 studs
+		-- in front of the doorway) to the free corner between the wine rack and the exit wall
+		Kit.table(detail, CFrame.new(14, 0, 18))
+		Kit.bench(detail, CFrame.new(14, 0, 15.4))
 		Kit.chain(detail, CFrame.new(-23.3, 11, 8))
 	elseif variant == 3 then
 		Kit.hay(detail, CFrame.new(18, 0, 18))
@@ -983,21 +1002,40 @@ function Rooms.Cave(variant)
 		if abs(x) > 6 then
 			Kit.rock(model, CFrame.new(x, 3 + r() * 5, -23.5 + 0.8 * r()), Vector3.new(6 + r() * 2, 6 + r() * 4, 3 + r() * 2), seed + i + 40)
 		end
-		Kit.rock(model, CFrame.new(x + 3, 3 + r() * 5, 23.5 - 0.8 * r()), Vector3.new(6 + r() * 2, 6 + r() * 4, 3 + r() * 2), seed + i + 60)
+		-- bug batch 2 (#25): the exit wall's bulges at x -3 / 9 stood in (or beside) the doorway; they slide sideways until
+		-- their tilted box clears the door lane (6 studs either side of the centre line); same r() calls, so the rest is unchanged
+		local ry, rz = 3 + r() * 5, 23.5 - 0.8 * r()
+		local size = Vector3.new(6 + r() * 2, 6 + r() * 4, 3 + r() * 2)
+		local ex = x + 3
+		local clear = 6.5 + size.X / 2 + 2 -- + the random tilt of Kit.rock
+		if abs(ex) < clear then
+			ex = (ex < 0) and -clear or clear
+		end
+		Kit.rock(model, CFrame.new(ex, ry, rz), size, seed + i + 60)
+	end
+	-- (#25) a stalagmite drawn on the exit's door lane (z > 10: its turned 2.6 base reaches z 12) steps out of it to the
+	-- side away from the pool (x -8 clears the lane); they are drawn at z -8..18, never on the entrance lane
+	local function offLane(x, z)
+		if abs(x) < 8 and z > 10 then
+			return -8
+		end
+		return x
 	end
 	for i = 1, 7 do
-		Kit.stalagmite(detail, CFrame.new(-18 + r() * 36, 0, -8 + r() * 26), 2.5 + r() * 2.5)
+		local sx, sz = -18 + r() * 36, -8 + r() * 26
+		Kit.stalagmite(detail, CFrame.new(offLane(sx, sz), 0, sz), 2.5 + r() * 2.5)
 	end
 	Kit.rock(detail, CFrame.new(-14, 1.2, -6), Vector3.new(3.5, 2.4, 3), seed + 81)
 	Kit.rock(detail, CFrame.new(8, 0.9, -16), Vector3.new(2.6, 1.8, 2.2), seed + 82)
 	Kit.rubble(detail, CFrame.new(-6, 0, 4), seed + 83)
 	Kit.skulls(detail, CFrame.new(18, 0, -18))
-	-- the pool in the far corner, a rim of stones and the waterfall wall over it
-	local px, pz = 15, 15
+	-- the pool in the far corner, a rim of stones and the waterfall wall over it (bug batch 2: the rim stones collide,
+	-- a 1.2 step like the wall plinth; the pool sits 1 stud further from the exit door so its rim keeps off the door lane)
+	local px, pz = 16, 15
 	Kit.part(model, CFrame.new(px, 0.1, pz), Vector3.new(14, 0.2, 12), C.Water, M.Glass, { Name = "Pool", Transparency = 0.3 })
 	for i = 1, 6 do
 		local ang = (i / 6) * PI * 2
-		Kit.part(model, CFrame.new(px + math.cos(ang) * 8.4, 0.6, pz + math.sin(ang) * 7.4) * CFrame.Angles(0, -ang, 0), Vector3.new(3.2, 1.2, 2), jitter(C.RockDark, seed + i), M.Slate, { Name = "PoolRim" })
+		Kit.part(model, CFrame.new(px + math.cos(ang) * 7.9, 0.6, pz + math.sin(ang) * 7.4) * CFrame.Angles(0, -ang, 0), Vector3.new(3.2, 1.2, 2), jitter(C.RockDark, seed + i), M.Slate, { Name = "PoolRim", Collide = true })
 	end
 	Kit.part(model, CFrame.new(px + 4, 7, 23.2), Vector3.new(6, 13, 0.6), C.Water, M.Glass, { Name = "Waterfall", Transparency = 0.45 })
 	for i = 1, 3 do
@@ -1009,7 +1047,7 @@ function Rooms.Cave(variant)
 	Kit.bones(detail, CFrame.new(-10, 0, 16))
 	if variant == 2 then
 		Kit.crate(detail, CFrame.new(-20, 0, 18))
-		Kit.stalagmite(detail, CFrame.new(-6, 0, -12), 4)
+		Kit.stalagmite(detail, CFrame.new(-9, 0, -12), 4) -- was x -6: its base reached into the entrance lane (#25)
 	elseif variant == 3 then
 		Kit.rock(detail, CFrame.new(-12, 1.5, 4), Vector3.new(4, 3, 3), seed + 90)
 		Kit.hay(detail, CFrame.new(20, 0, -16))
@@ -1045,7 +1083,7 @@ function Rooms.Bridge(variant)
 	Kit.ceiling(model, w, d)
 	for _, sx in ipairs({ -1, 1 }) do
 		for _, z in ipairs({ -12, 12 }) do
-			Kit.part(model, CFrame.new(sx * 20.5, 2.5, z), Vector3.new(0.6, 5, 0.6), C.Iron, M.Metal, { Name = "LampPost" })
+			Kit.part(model, CFrame.new(sx * 20.5, 2.5, z), Vector3.new(0.6, 5, 0.6), C.Iron, M.Metal, { Name = "LampPost", Collide = true })
 			local lamp = Kit.part(model, CFrame.new(sx * 20.5, 5.4, z), Vector3.new(1, 1, 1), C.Flame, M.Neon, { Name = "Lamp" })
 			local light = Instance.new("PointLight")
 			light.Name = "LampLight"
@@ -1104,9 +1142,9 @@ function Rooms.Throne(variant)
 	Kit.stairs(model, CFrame.new(0, 0, daisZ - 7 - 4.8), 10, 3, 0.8)
 	local tz = daisZ + 3
 	Kit.part(model, CFrame.new(0, 3.4, tz), Vector3.new(3.4, 2, 2.4), C.StoneDark, M.Slate, { Name = "ThroneSeat", Collide = true })
-	Kit.part(model, CFrame.new(0, 6.2, tz + 1), Vector3.new(3.4, 7.6, 0.6), C.StoneDark, M.Slate, { Name = "ThroneBack" })
-	Kit.part(model, CFrame.new(-1.7, 4.6, tz), Vector3.new(0.4, 2.4, 2.4), C.StoneDark, M.Slate, { Name = "ThroneArm" })
-	Kit.part(model, CFrame.new(1.7, 4.6, tz), Vector3.new(0.4, 2.4, 2.4), C.StoneDark, M.Slate, { Name = "ThroneArm" })
+	Kit.part(model, CFrame.new(0, 6.2, tz + 1), Vector3.new(3.4, 7.6, 0.6), C.StoneDark, M.Slate, { Name = "ThroneBack", Collide = true })
+	Kit.part(model, CFrame.new(-1.7, 4.6, tz), Vector3.new(0.4, 2.4, 2.4), C.StoneDark, M.Slate, { Name = "ThroneArm", Collide = true })
+	Kit.part(model, CFrame.new(1.7, 4.6, tz), Vector3.new(0.4, 2.4, 2.4), C.StoneDark, M.Slate, { Name = "ThroneArm", Collide = true })
 	Kit.part(model, CFrame.new(0, 10.4, tz + 1), Vector3.new(1.6, 1, 0.5), C.Gold, M.Metal, { Name = "ThroneCrown" })
 	Kit.part(model, CFrame.new(0, 4.6, tz - 0.2), Vector3.new(2.6, 0.5, 2), C.Carpet, M.Fabric, { Name = "ThroneCushion" })
 	Kit.brazier(model, CFrame.new(-8, 2.4, daisZ - 2))

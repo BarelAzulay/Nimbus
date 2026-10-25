@@ -37,6 +37,10 @@
 --     mobile DASH button hides (the battle cluster's DASH sends the same command). nil restores Q / B, Shift = run.
 --     BattleController uses it instead of SetDashKeys / SetFreeDash / SetDashListener. EXHAUST_RESUME is 22 (15% of the
 --     150 MaxStamina). Run / dash input is ignored until UiGate.HasPlayed() (the main menu, 7.2; no UiGate = played).
+--   * Bug batch 2 (#19): MovementController.SetZoomMax(n | nil) caps LocalPlayer.CameraMaxZoomDistance at n (DungeonController:
+--     14 while a dungeon run lasts, so the camera never leaves the 16-stud rooms); nil gives the normal ZOOM_MAX 40 back.
+--     The cap survives a respawn (applyCameraSettings re-applies it); junk (NaN, <= 0, inf, non-numbers) is ignored;
+--     CameraMinZoomDistance is only lowered when it would sit above the cap (first person is never forced).
 -- Plain Lua 5.1-compatible syntax only.
 
 local Players = game:GetService("Players")
@@ -73,6 +77,7 @@ local PUNCH_ATTACK = 0.07 -- seconds to reach the peak
 local PUNCH_TOTAL = 0.5 -- seconds until the punch has fully relaxed
 
 local ZOOM_MAX = 40 -- LocalPlayer.CameraMaxZoomDistance
+local zoomMax = ZOOM_MAX -- the cap in force (SetZoomMax: 14 inside a dungeon run)
 
 local EXHAUST_RESUME = 22 -- stamina needed to run again after hitting 0 (Phase 5: 15% of MaxStamina, Config.Movement.ExhaustResume)
 local RUN_RAMP_UP = 9 -- exponential smoothing rates (1/s)
@@ -182,7 +187,10 @@ end
 
 local function applyCameraSettings()
 	pcall(function()
-		LocalPlayer.CameraMaxZoomDistance = ZOOM_MAX
+		if LocalPlayer.CameraMinZoomDistance > zoomMax then
+			LocalPlayer.CameraMinZoomDistance = math.min(0.5, zoomMax)
+		end
+		LocalPlayer.CameraMaxZoomDistance = zoomMax
 	end)
 end
 
@@ -1449,6 +1457,21 @@ end
 -- fn() runs after every dash (nil clears it)
 function MovementController.SetDashListener(fn)
 	dashListener = type(fn) == "function" and fn or nil
+end
+
+-- bug batch 2 (#19): n caps the camera zoom (DungeonController: 14 in a run); nil restores ZOOM_MAX. Junk is ignored.
+function MovementController.SetZoomMax(n)
+	if n == nil then
+		zoomMax = ZOOM_MAX
+	elseif finite(n) and n > 0 then
+		zoomMax = Util.Clamp(n, 0.5, 400)
+	else
+		return zoomMax
+	end
+	if LocalPlayer then
+		applyCameraSettings()
+	end
+	return zoomMax
 end
 
 -- tests / tools: the speed ownership state
