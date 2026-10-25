@@ -1,11 +1,12 @@
 -- smoke_dgfix_mouse.lua: the mouse lock option (docs/dungeon-fixes/plan.md decision 6; owner: mouse-lock). Loaded by
 -- tools/smoke.py in the server world and the client world:
---   dgfixmouse_data    (server) Settings.MouseLock defaults to false (left out of the store while default); SettingsSet
---                      ("MouseLock", true) lands, is saved and survives a rejoin (GetSettings + the ProfileSync
+--   (bug batch 2 #21: the default is ON now; both halves were flipped: OFF is the stored, non-default value)
+--   dgfixmouse_data    (server) Settings.MouseLock defaults to true (left out of the store while default); SettingsSet
+--                      ("MouseLock", false) lands, is saved and survives a rejoin (GetSettings + the ProfileSync
 --                      snapshot); non-boolean values (1, "true", a table, nil, NaN) are refused by SetSetting and dropped
 --                      by the remote
---   client_dgfix_mouse (client) default off: no RenderStep binding, MouseBehavior untouched; a ProfileSync carrying
---                      Settings.MouseLock = true turns it on (rejoin data); LockCenter only while enabled with no hold, ONE
+--   client_dgfix_mouse (client) default on (no MouseLock in the profile); a saved OFF: no RenderStep binding,
+--                      MouseBehavior untouched; a ProfileSync carrying Settings.MouseLock = true turns it on (rejoin data); LockCenter only while enabled with no hold, ONE
 --                      binding "NimbusMouseLock" at RenderPriority.Camera + 1, nothing written per frame while unlocked;
 --                      Hold / Release are counted per reason, releasing an unknown reason is harmless; every NeonKit.Dock
 --                      window (menu Pets / Index, Care, Fusion, Arena, Dungeon, Obby, Settings) frees the cursor while open
@@ -50,7 +51,7 @@ local function serverScenarios()
 		local UID = 966101
 		local p = join("DgMouse", UID)
 		local s = DataS.GetSettings(p)
-		T.eq(s.MouseLock, false, "dgfix mouse data: MouseLock defaults to false")
+		T.eq(s.MouseLock, true, "dgfix mouse data: MouseLock defaults to true (bug batch 2 #21)")
 		T.eq(DataS.Save(p), true, "dgfix mouse data: (a save)")
 		T.eq((stored(UID) or {}).Settings, nil, "dgfix mouse data: default settings stay out of the store")
 		local bad = {}
@@ -62,37 +63,37 @@ local function serverScenarios()
 		if DataS.SetSetting(p, "MouseLock", nil) ~= false then
 			bad[#bad + 1] = "nil"
 		end
-		T.check(#bad == 0 and DataS.GetSettings(p).MouseLock == false, "dgfix mouse data: SetSetting refuses non-boolean MouseLock values", table.concat(bad, ", "))
+		T.check(#bad == 0 and DataS.GetSettings(p).MouseLock == true, "dgfix mouse data: SetSetting refuses non-boolean MouseLock values", table.concat(bad, ", "))
 		local folder = K.remoteFolder and K.remoteFolder()
 		local remote = folder and folder:FindFirstChild("SettingsSet")
 		if not T.check(remote ~= nil, "dgfix mouse data: the SettingsSet remote exists") then
 			leave({ p })
 			return
 		end
-		Mock.FromClient(remote, p, "MouseLock", "yes")
-		Mock.FromClient(remote, p, "MouseLock", 1)
-		T.eq(DataS.GetSettings(p).MouseLock, false, "dgfix mouse data: junk MouseLock through SettingsSet is dropped")
+		Mock.FromClient(remote, p, "MouseLock", "no")
+		Mock.FromClient(remote, p, "MouseLock", 0)
+		T.eq(DataS.GetSettings(p).MouseLock, true, "dgfix mouse data: junk MouseLock through SettingsSet is dropped")
 		advance(1.2) -- the bucket refills
-		Mock.FromClient(remote, p, "MouseLock", true)
-		T.eq(DataS.GetSettings(p).MouseLock, true, "dgfix mouse data: SettingsSet('MouseLock', true) lands")
+		Mock.FromClient(remote, p, "MouseLock", false)
+		T.eq(DataS.GetSettings(p).MouseLock, false, "dgfix mouse data: SettingsSet('MouseLock', false) lands")
 		T.eq(DataS.Save(p), true, "dgfix mouse data: saves")
 		local st = (stored(UID) or {}).Settings
-		T.check(type(st) == "table" and st.MouseLock == true, "dgfix mouse data: the store holds MouseLock = true")
+		T.check(type(st) == "table" and st.MouseLock == false, "dgfix mouse data: the store holds MouseLock = false")
 		leave({ p })
 		-- rejoin
 		local mark = K.logSize()
 		local p2 = join("DgMouse", UID)
-		T.eq(DataS.GetSettings(p2).MouseLock, true, "dgfix mouse data: MouseLock = true survives a rejoin")
+		T.eq(DataS.GetSettings(p2).MouseLock, false, "dgfix mouse data: MouseLock = false survives a rejoin")
 		DataS.Sync(p2)
 		local list = K.remotesFor("ProfileSync", p2.UserId, mark)
 		local snap = list[#list] and list[#list].args[1] or nil
-		T.check(type(snap) == "table" and type(snap.Settings) == "table" and snap.Settings.MouseLock == true, "dgfix mouse data: the rejoin's ProfileSync carries Settings.MouseLock = true")
-		-- and back off
-		Mock.FromClient(remote, p2, "MouseLock", false)
-		T.eq(DataS.GetSettings(p2).MouseLock, false, "dgfix mouse data: SettingsSet('MouseLock', false) lands")
+		T.check(type(snap) == "table" and type(snap.Settings) == "table" and snap.Settings.MouseLock == false, "dgfix mouse data: the rejoin's ProfileSync carries Settings.MouseLock = false")
+		-- and back on
+		Mock.FromClient(remote, p2, "MouseLock", true)
+		T.eq(DataS.GetSettings(p2).MouseLock, true, "dgfix mouse data: SettingsSet('MouseLock', true) lands")
 		leave({ p2 })
 		local st2 = (stored(UID) or {}).Settings
-		T.check(st2 == nil or st2.MouseLock == false, "dgfix mouse data: OFF again saves as the default")
+		T.check(st2 == nil or st2.MouseLock == true, "dgfix mouse data: ON again saves as the default")
 		K.flushErrors("dgfixmouse_data")
 	end)
 
@@ -178,9 +179,14 @@ local function clientScenarios()
 				T.info("dgfix mouse: holds at the start: " .. H.holdText(ML))
 			end
 
-			-- default off: no binding, nothing written
-			T.eq(CS.Get("MouseLock"), false, "dgfix mouse: the setting defaults to off")
-			T.eq(ML.IsEnabled(), false, "dgfix mouse: MouseLock is disabled by default")
+			-- bug batch 2 #21: a profile without Settings.MouseLock (new player, or saved before the option) = ON
+			T.eq(CS.Get("MouseLock"), true, "dgfix mouse: the setting defaults to ON (no MouseLock in the synced profile)")
+			T.eq(ML.IsEnabled(), true, "dgfix mouse: MouseLock is enabled by default")
+
+			-- a saved OFF stays off: no binding, nothing written
+			H.profile({ Music = 6, Sfx = 8, Gfx = "Auto", Shake = true, SeenNotes = 0, MouseLock = false })
+			T.eq(CS.Get("MouseLock"), false, "dgfix mouse: a ProfileSync with Settings.MouseLock = false is adopted (a saved OFF)")
+			T.eq(ML.IsEnabled(), false, "dgfix mouse: ...MouseLock disabled")
 			T.eq(ML.IsLocked(), false, "dgfix mouse: ...and not locked")
 			T.eq(Mock.RenderSteps[ML.BIND], nil, "dgfix mouse: no RenderStep binding while off")
 			UIS.MouseBehavior = Enum.MouseBehavior.LockCurrentPosition -- e.g. the camera's right-button pan

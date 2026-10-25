@@ -939,9 +939,8 @@ function MainMenuController.OpenSettings()
 	Win.chipRow(list, "Shake", "Camera shake", K.GLYPH_SHAKE, { { "ON", true }, { "OFF", false } }, 4)
 	local desktop = H.isDesktop()
 	if desktop then
-		local ml = H.mod("MouseLock")
-		local key = ml and ml.KEY_NAME
-		Win.chipRow(list, "MouseLock", key and ("Mouse lock  (" .. key .. " key)") or "Mouse lock", K.GLYPH_MOUSE, { { "ON", true }, { "OFF", false } }, 5)
+		-- (bug batch 2 #21: on by default; the key that frees it is in the note below)
+		Win.chipRow(list, "MouseLock", "Mouse lock (recommended)", K.GLYPH_MOUSE, { { "ON", true }, { "OFF", false } }, 5)
 	end
 	local note = "Low graphics hides small decorations and glow. Saved to your account."
 	if desktop then

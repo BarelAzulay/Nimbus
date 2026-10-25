@@ -71,7 +71,10 @@
 --                              (DataService.TeamsChanged / ActiveTeamKeys / FieldableKeys)
 --               "DungeonWon"   (Phase 5, replaces TrialWon) Dungeon floor 1 is cleared (DungeonService.FloorCleared, or the
 --                              saved Dungeon.Best >= 1, or a legacy Battle.TrialCleared[1]: veterans skip it)
---               "RaidSeen"     the player joined a Boss Raid, or stood in the arena while one was running
+--               "RaidSeen"     the player joined a Boss Raid, or stood in the arena while one was running (no step
+--                              uses it since bug batch 2 #24; kept for old data)
+--               "RaidFloor"    the player stands on the Boss Raid floor (ArenaInfo.Floor, server poll), or anything
+--                              that completes "RaidSeen" (a live raid seen then also earns a bonus toast)
 --               "GardenPlaced" (Phase 4) a pet sits in an open place of the Pet Garden (Home.Garden)
 --               "CoinsScooped" the player scooped Cloud Cash (TycoonService.CoinsScooped; a home that already has
 --                              the Food Machine passes at once)
@@ -82,7 +85,9 @@
 --   Gift        true: entering this step grants Config.Tutorial.GiftTokens once (Profile.Tutorial.Gifted)
 --   Hint        short objective line shown under the text while the step waits for an action (TutorialService
 --               may send a more precise one, e.g. the next pad on the way to the Kitchen)
---   Button      label of the Next button (CompleteOn = "Next" only)
+--   Button      label of the Next button (CompleteOn = "Next", or a step with AlsoNext)
+--   AlsoNext    true: the Next button shows next to the hint and pressing it completes the step too, beside its
+--               CompleteOn (bug batch 2 #24: the raid step)
 --
 -- Plain Lua 5.1-compatible syntax only.
 
@@ -300,14 +305,20 @@ TutorialSteps.Steps = {
 		Hint = "Clear Dungeon floor 1",
 	},
 	{
+		-- (bug batch 2 #24: was CompleteOn "RaidSeen", which kept a new player waiting up to RAID_MINUTES for a raid.
+		-- Informational now: standing on the raid floor or pressing Next completes it; a live raid seen on the way is a
+		-- bonus, never a blocker. The index stays 18, so a saved Step 18 lands here and can finish at once.)
 		Id = "raid",
 		Chapter = 3,
 		ChapterEnd = true,
 		Title = "Boss Raids!",
-		Text = "Every " .. RAID_MINUTES .. " minutes a giant boss stomps into the colosseum and everyone fights it together. Be there!",
+		Text = "A giant boss stomps into the colosseum and everyone fights it! Raids run every " .. RAID_MINUTES
+			.. " minutes: the board shows the timer.",
 		Target = { Kind = "Arena", Place = "Floor", Label = "Boss Raid floor" },
-		CompleteOn = "RaidSeen",
-		Hint = "Join or watch a Boss Raid",
+		CompleteOn = "RaidFloor",
+		AlsoNext = true,
+		Button = "Got it!",
+		Hint = "Step onto the raid floor",
 	},
 	---------------------------------------------------------------------- chapter 4: pets make the money (Phase 4)
 	{

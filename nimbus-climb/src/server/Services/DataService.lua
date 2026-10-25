@@ -26,7 +26,7 @@
 --     PetGrowth = { [key] = { Evo = 0..2, Speed, Physique, Ability, Defense = 0..10,
 --                            Job = { Stat, Ends, Rank, Slot, From, Paid } | nil } },
 --     Ring = { Best = 0..100000, Runs },
---     Migrations = { P4 = true, P5Dungeon = true, P5Home = true },
+--     Migrations = { P4 = true, P5Dungeon = true, P5Home = true, P5MouseLock = true },
 --     -- Phase 5 (ARCHITECTURE_V3.md "Phase 5 build contract" section 9; new TOP-LEVEL fields + new Home keys again, so
 --     -- a Phase 4 server still running during the rollout writes them back untouched through keepForeign)
 --     Dungeon = { Best = 0..100, Cleared = {[floor]=true} (a dense boolean array in the store), Runs, Clears },
@@ -637,11 +637,17 @@ local P5 = {
 	TRIALS_PER_FLOOR = 3, -- Best = min(10, floor(TrialBest / 3)) (9.2 step 2)
 	DUNGEON_MARK = "P5Dungeon", -- Migrations[name] of the one-time dungeon migration
 	HOME_MARK = "P5Home", -- Migrations[name] of the one-time home fold (TycoonCatalog.FoldLegacy + the Food -> berries step)
+	MOUSELOCK_MARK = "P5MouseLock", -- Migrations[name] of the one-time "mouse lock ON" step (bug batch 2 #21)
 	LEGACY_FOOD = { Snack = 200, Meal = 1200, Feast = 6400 }, -- berries per old food when TycoonCatalog.Berries.LegacyFood is missing
 	MAX_BERRIES = 1000000000, -- sanity cap (whole berries)
 	BERRIES_GAP = 0.5, -- seconds: the Berries attribute is written at most twice a second (trailing write; 10.2 m6)
 	SETTING_KEYS = { "Music", "Sfx", "Gfx", "Shake", "SeenNotes", "MouseLock" },
-	SETTING_DEFAULTS = { Music = 6, Sfx = 8, Gfx = "Auto", Shake = true, SeenNotes = 0, MouseLock = false }, -- 7.2 (+ MouseLock: dungeon-fixes 6)
+	-- 7.2 (+ MouseLock: dungeon-fixes 6). Bug batch 2 #21: MouseLock defaults to ON (a new profile, or a stored Settings
+	-- table without the key). A stored false is NOT always a choice: since the option landed the store writes the whole
+	-- Settings table (MouseLock = false, the old default) as soon as any one setting is non-default, so the one-time
+	-- P5MouseLock step (P5.migrateMouseLock) turns the lock on ONCE for a profile without that marker. A player who sets
+	-- MouseLock (SetSetting: the L key or the Settings row) marks it too, so a false chosen after this release stays false.
+	SETTING_DEFAULTS = { Music = 6, Sfx = 8, Gfx = "Auto", Shake = true, SeenNotes = 0, MouseLock = true },
 	GFX = { Auto = true, Low = true, High = true },
 	MAX_VOLUME = 10, -- Music / Sfx 0..10
 	MAX_NOTES = 1000, -- SeenNotes 0..1000 (UpdateNotes.Latest is a small version number)
@@ -5250,6 +5256,15 @@ function DataService.SetSetting(player, key, value)
 		settings[key] = clean
 		entry.Dirty = true
 	end
+	if key == "MouseLock" then
+		-- an explicit choice: the one-time "lock ON" step never overrides it (also a choice made while provisional,
+		-- before the step ran on the recovered profile; Migrations is a union, so the marker survives the merge)
+		local migrations = ensureTable(entry.Profile, "Migrations")
+		if migrations[P5.MOUSELOCK_MARK] ~= true then
+			migrations[P5.MOUSELOCK_MARK] = true
+			entry.Dirty = true
+		end
+	end
 	return true
 end
 
@@ -5368,6 +5383,17 @@ function P5.migrateHome(entry, player)
 	return info
 end
 
+-- Bug batch 2 #21 (P5MouseLock) on a LIVE profile: Settings.MouseLock = true and the marker, once. A stored false from
+-- before this step was the old default written along with another setting, not a choice (a false set through
+-- SetSetting carries the marker already). Returns true when the setting changed.
+function P5.migrateMouseLock(profile)
+	local settings = ensureTable(profile, "Settings")
+	local changed = settings.MouseLock ~= true
+	settings.MouseLock = true
+	ensureTable(profile, "Migrations")[P5.MOUSELOCK_MARK] = true
+	return changed
+end
+
 -- Runs the Phase 5 migrations on a cache entry when they are due (loaded, not provisional; each one idempotent through
 -- its marker, a profile another server migrated is left alone). Returns { Dungeon = info | nil, Home = info | nil } or nil.
 function P5.migrateEntry(entry, player)
@@ -5386,6 +5412,15 @@ function P5.migrateEntry(entry, player)
 			out = { Dungeon = info }
 		else
 			warn("[DataService] Phase 5 dungeon migration failed (it runs again on the next load): " .. tostring(info))
+		end
+	end
+	if tableOr(profile.Migrations)[P5.MOUSELOCK_MARK] ~= true then
+		-- bug batch 2 #21: no toast, no Migrated signal (the client reads the setting from the Sync right after)
+		local okLock, err = pcall(P5.migrateMouseLock, profile)
+		if okLock then
+			entry.Dirty = true
+		else
+			warn("[DataService] mouse lock migration failed (it runs again on the next load): " .. tostring(err))
 		end
 	end
 	local okHome, home = pcall(P5.migrateHome, entry, player)

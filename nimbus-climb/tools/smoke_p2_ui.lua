@@ -91,7 +91,7 @@ local function serverScenarios()
 		T.eq(start, 10, "p2ui: chapter 2 starts at step 10 (a finished Phase 1 tutorial stored Step = 10)")
 		local known = { Next = true, NearSpot = true, ShopOpened = true, Rolled = true, Equipped = true, IndexOpened = true,
 			MatchStarted = true, MatchEnded = true, Claimed = true, Built = true, Collected = true, Fed = true,
-			ArenaReached = true, TeamSet = true, DungeonWon = true, RaidSeen = true, -- (Phase 3, chapter 3; Phase 5 DungeonWon)
+			ArenaReached = true, TeamSet = true, DungeonWon = true, RaidSeen = true, RaidFloor = true, -- (Phase 3, chapter 3; Phase 5 DungeonWon; bug batch 2 #24 RaidFloor)
 			GardenPlaced = true, CoinsScooped = true, TrainingStarted = true, RingWon = true, PortalUsed = true } -- (Phase 4)
 		local bad, ends = {}, {}
 		for i, step in ipairs(Steps.Steps) do

@@ -8,8 +8,9 @@
 --     top-left panel area and right of the menu column (both MEASURED: NimbusHud attribute TopLeftBottom /
 --     BottomLeftTop and NimbusMenu.MenuColumn / MenuButton_*). It holds a round portrait of Nimbus (PetBuilder
 --     Cloudy Dragon in a ViewportFrame, gently flapping, livelier while talking), the step title, "Step 3/9",
---     progress pips, the typewriter text, a hint line with the live distance, a Next button (CompleteOn = "Next")
---     and a small "Skip tutorial" link that asks to confirm. Tapping the portrait folds the card into a bubble;
+--     progress pips, the typewriter text, a hint line with the live distance, a Next button (CompleteOn = "Next",
+--     or AlsoNext) and a small "Skip tutorial" link that asks to confirm. Tapping the portrait folds the card into a
+--     bubble (the portrait keeps flapping in it, at half the frame rate);
 --     screens too small for the card get the bubble automatically. The HUD's bottom-left block (HP / stamina card)
 --     is a hard limit: a bubble that has no room under the top-left panel (party / match panel on a landscape
 --     phone) sits beside that panel instead. A card the player opens in the plain lobby may cover the idle vitals
@@ -108,6 +109,7 @@ local K = {
 	SKIP_LOCK = 3,
 	LAYOUT_EVERY = 0.5,
 	PORTRAIT_STEP = 1 / 30,
+	PORTRAIT_FOLDED_STEP = 1 / 15, -- the folded bubble keeps flapping at half the rate (bug batch 2 #23; phone battery)
 	FINALE_SECONDS = 4.5,
 	-- world guide (studs)
 	VOXEL = 0.36,
@@ -479,6 +481,12 @@ local function getRemote(name)
 	return nil
 end
 
+-- true when the current step shows the Next button: a "Next" step, or one with AlsoNext (bug batch 2 #24: the raid
+-- step completes on its floor OR on Next)
+local function nextShown(st)
+	return st ~= nil and not st.Done and (st.CompleteOn == "Next" or st.AlsoNext == true)
+end
+
 -- Sends a tutorial event. Window / Next events go out only when the current step waits for them.
 local function fireEvent(name)
 	if not R.event then
@@ -486,7 +494,7 @@ local function fireEvent(name)
 	end
 	if name ~= "Sync" and name ~= "Skip" then
 		local st = S.state
-		if not st or st.Done or EVENT_NEEDS[name] ~= st.CompleteOn then
+		if not st or st.Done or (EVENT_NEEDS[name] ~= st.CompleteOn and not (name == "Next" and nextShown(st))) then
 			return false
 		end
 	end
@@ -1227,7 +1235,7 @@ local function setConfirming(on)
 	S.confirming = on and true or false
 	UI.Confirm.Visible = S.confirming
 	UI.SkipLink.Visible = not S.confirming
-	UI.Next.Visible = not S.confirming and S.state ~= nil and S.state.CompleteOn == "Next" and not S.state.Done
+	UI.Next.Visible = not S.confirming and nextShown(S.state)
 end
 
 local function buildPanel()
@@ -1591,7 +1599,7 @@ local function updatePortrait(dt, t)
 		return
 	end
 	P.accum = P.accum + dt
-	if P.accum < K.PORTRAIT_STEP then
+	if P.accum < (collapsed() and K.PORTRAIT_FOLDED_STEP or K.PORTRAIT_STEP) then
 		return
 	end
 	P.accum = 0
@@ -1791,7 +1799,7 @@ local function renderStep()
 	end
 	paintPips(st.Step, false)
 	UI.Hint.Text = hintText()
-	local isNext = st.CompleteOn == "Next"
+	local isNext = nextShown(st)
 	UI.Next.Text = st.Button or "Next"
 	setStyle(UI.Next, st.Step >= st.Total and "Gold" or "Green")
 	setDisabled(UI.Next, false)
@@ -2537,6 +2545,7 @@ local function sanitize(payload)
 		CompleteOn = type(payload.CompleteOn) == "string" and payload.CompleteOn or nil,
 		Hint = type(payload.Hint) == "string" and payload.Hint or nil,
 		Button = type(payload.Button) == "string" and payload.Button or nil,
+		AlsoNext = payload.AlsoNext == true,
 		Done = payload.Done == true,
 		Completed = payload.Completed == true,
 		Skipped = payload.Skipped == true,
@@ -2572,6 +2581,9 @@ local function sanitize(payload)
 		st.CompleteOn = st.CompleteOn or def.CompleteOn
 		st.Hint = st.Hint or def.Hint
 		st.Button = st.Button or def.Button
+		if payload.AlsoNext == nil and def.AlsoNext == true and st.CompleteOn == def.CompleteOn then
+			st.AlsoNext = true -- an older server: the shared step list knows
+		end
 		if st.Title == "" and type(def.Title) == "string" then
 			st.Title = def.Title
 		end
@@ -2671,9 +2683,9 @@ function TutorialController.Step(dt)
 	end
 	if S.shown then
 		safe("typewriter", updateTypewriter, dt)
-		if not collapsed() then
-			safe("portrait", updatePortrait, dt, t)
-		end
+		-- the portrait animates whenever the panel shows: the folded bubble IS UI.Portrait, so it keeps flapping there
+		-- too (at PORTRAIT_FOLDED_STEP; bug batch 2 #23: it froze while folded)
+		safe("portrait", updatePortrait, dt, t)
 		S.hintTimer = S.hintTimer - dt
 		if S.hintTimer <= 0 then
 			S.hintTimer = 0.25
