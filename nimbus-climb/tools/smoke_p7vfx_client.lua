@@ -121,6 +121,8 @@ local function allHidden(folder)
 			return false, d:GetFullName()
 		elseif d:IsA("Light") and d.Enabled and d.Brightness > 0 then
 			return false, d:GetFullName()
+		elseif d:IsA("ImageLabel") and d.ImageTransparency < 1 then -- a glow disc's soft sheet
+			return false, d:GetFullName()
 		end
 	end
 	return true
@@ -525,13 +527,16 @@ S.client_p7vfx_engine = guarded("client_p7vfx_engine", function()
 		and rl.ImpactLate > 0 and rl.ImpactLate <= minTravel + 1e-6,
 		"note 1: a short lead keeps the shot's MinTravel flight; ctx.ImpactLate = how much after the event it lands",
 		es and fmt("flight %.3f (min %.2f), late %s", flight, minTravel, tostring(rl.ImpactLate)))
-	local streak = false
+	local streak, life = false, nil
 	for _, it in ipairs(es and es.Items or {}) do
 		if it.Kind == "Trail" and it.Layer and it.Layer.Id == "Streak" and it.Mode == "Core" then
-			streak = true
+			streak, life = true, it.Kit and it.Kit.Trail.Lifetime
 		end
 	end
 	T.check(streak, "note 1: a Streak trail rides the shot (even at Common)")
+	-- (Task 8: a short comet tail, never a tether back to the mouth: well under the flight time)
+	T.check(type(life) == "number" and life > 0 and life <= 0.1 and life < flight * 0.5,
+		"note 1: the Streak is a short comet tail (its Lifetime, not the 0.2 s default)", tostring(life))
 	local src, dst = A:GetPivot().Position, B:GetPivot().Position
 	local gap = (dst - src).Magnitude
 	run(es.Times.Travel + flight * 0.5 - (clock - es.Start))
@@ -564,6 +569,16 @@ S.client_p7vfx_engine = guarded("client_p7vfx_engine", function()
 	end
 	T.check(crackId ~= nil and crackY ~= nil and crackY > 1.0 and crackY < 1.25, "a ground-flat sheet (Earth's crack) lies on the floor", tostring(crackY))
 	T.check(discY ~= nil and discY > 1.0 and discY < 1.25, "a glow disc (ground glow) lies on the floor", tostring(discY))
+	-- (Task 8: the glow disc is a soft fx_glow sheet on the cylinder's up face, not a hard Neon plate)
+	local soft = nil
+	for _, it in ipairs(ec.Items) do
+		if it.Kind == "Disc" and it.Kit then
+			local up = it.Kit.Root.CFrame:VectorToWorldSpace(Vector3.new(1, 0, 0))
+			soft = it.Soft == true and it.Kit.Root.Transparency == 1 and it.Kit.Img.ImageTransparency < 1
+				and it.Kit.Img.Image == "rbxassetid://" .. tostring(Ids.fx_glow) and it.Kit.Gui.Face == Enum.NormalId.Right and up.Y > 0.99
+		end
+	end
+	T.check(soft == true, "the glow disc is a soft glow image facing up (the part itself stays invisible)")
 	run(3)
 
 	-- 12) an error mid-build: Play returns false, counts the error, and every kit taken so far goes back (no orphan) ------

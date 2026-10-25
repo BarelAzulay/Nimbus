@@ -11,7 +11,9 @@
 --   Ladder                                      the layers each rarity ADDS (every rarity keeps all the layers below it)
 --   LayerSlots[id]                              the layer templates the ladder names ("$Burst" etc. = the element's sheet)
 --   Elements[element]                           "Elements: normal attacks": palette, melee swipe, ranged projectile +
---                                               trail, impact sheets, the "alive" detail, the Storm special's rain
+--                                               trail, impact sheets, the "alive" detail, the Storm special's rain,
+--                                               Tints[layerId]? (an explicit colour for a shared layer, like a signature's;
+--                                               a signature's own Tints win)
 --   Shapes[shape]                               the 8 element attacks (Cone / Circle / Line of BattleCatalog.ElementAttacks)
 --   Specials[kind]                              "Specials (the 9 kinds)": core, beats, extra layers, skipped ladder layers
 --   Reactions (Hurt / Ko / Victory)             the small reaction effects
@@ -41,8 +43,8 @@
 --                Core = { Key (vfx_* MeshIds key), Color, Material, Path ("Projectile"|"Swipe"|"Ground"|"Self"|"Allies"|
 --                "Area"), Glow, InnerColor?, RimColor?, RimShift?, Upgraded, Speed?, Count?, Scale?, ... shape flags },
 --                Layers = { { Id, Kind ("Emitter"|"Beam"|"Trail"|"Light"|"Ring"|"Decal"|"Mesh"), Beat, At, Texture?, Key?,
---                Color, Count?, Size?, Motion?, Delay?, ... } } (a template's Except = { [Attack] = true } leaves it out of
---                those attacks), Alive = { Kind ("Emitter"|"Beam"|"Decal"|"Mesh"), Texture?,
+--                Color, Count?, Size?, Motion?, Delay?, ... } } (a template's Except = { [Attack or special Kind] = true } leaves
+--                it out of those attacks), Alive = { Kind ("Emitter"|"Beam"|"Decal"|"Mesh"), Texture?,
 --                Key?, Motion, Color, Count, Seconds, Text } ({} = none) }
 --     Layer kinds: Emitter = a flipbook ParticleEmitter (4x4 sheet); Beam / Trail = a grid-1 strip or untextured; Light =
 --     a PointLight; Ring = an expanding solid vfx_* mesh (vfx_ring / vfx_shell); Decal = a ground-flat layer (a 4x4 sheet
@@ -171,16 +173,22 @@ AttackFxCatalog.LayerSlots = {
 	Trail = { Kind = "Emitter", Texture = "$Trail", Beat = "Travel", At = "Core", Tint = "Mid", Count = 10, Size = 1 },
 	Slash = { Kind = "Emitter", Texture = "fx_slash", Beat = "Release", At = "Source", Tint = "Core", Count = 1, Size = 4 },
 	GroundGlow = { Kind = "Decal", Beat = "Impact", At = "Ground", Tint = "Edge", Size = 5, Seconds = 0.6 }, -- an untextured glow disc
-	Shockwave = { Kind = "Ring", Key = "vfx_ring", Beat = "Impact", At = "Ground", Tint = "Mid", Grow = 3 },
-	Flash = { Kind = "Light", Beat = "Impact", At = "$Hit", Tint = "Core", Brightness = 3, Range = 12 },
+	-- (Task 8, Studio + Gemini: at 3 / 4 the flash + bloom washed the pets white and a 14-stud ring buried the target:
+	-- lights <= 2 brightness / 8 studs range, the shockwave ~7 studs across and see-through)
+	Shockwave = { Kind = "Ring", Key = "vfx_ring", Beat = "Impact", At = "Ground", Tint = "Mid", Grow = 1.7, Transparency = 0.35 },
+	Flash = { Kind = "Light", Beat = "Impact", At = "$Hit", Tint = "Core", Brightness = 1.6, Range = 8 },
 	Afterimage = { Kind = "Trail", Texture = "fx_speedlines", Beat = "Travel", At = "Core", Tint = "Edge", Afterimages = 2 },
-	Bloom = { Kind = "Light", Beat = "Release", At = "Core", Tint = "Hot", Brightness = 4, Range = 14, Pulse = true },
-	DoubleArc = { Kind = "Beam", Beat = "Release", At = "Source", Tint = "Hot", Curve = 3, Width = 1.2 }, -- the second crescent, a curved Beam
+	Bloom = { Kind = "Light", Beat = "Release", At = "Core", Tint = "Hot", Brightness = 1.8, Range = 8, Pulse = true },
+	-- the second crescent, a curved Beam (Task 8 Studio: untextured it read as a flat white slab; streaked with the arc sheet)
+	DoubleArc = { Kind = "Beam", Texture = "$Arc", Beat = "Release", At = "Source", Tint = "Hot", Curve = 3, Width = 1.2 },
 	Field = { Kind = "Decal", Texture = "$Ground", Beat = "Linger", At = "Ground", Tint = "Mid", Size = 7, Seconds = 1.0, GroundOnly = true },
-	PlasmaRim = { Kind = "Light", Beat = "Travel", At = "Core", Tint = "Edge", Brightness = 2, Range = 8, ColorShift = true },
+	PlasmaRim = { Kind = "Light", Beat = "Travel", At = "Core", Tint = "Edge", Brightness = 1.2, Range = 6, ColorShift = true },
 	-- the ranged swaps (Basic.Ranged.Swap, player note 1: a shot is no swing): the Rare crescent becomes a muzzle shock
 	-- ring standing at the mouth, facing the shot; the Mythic double arcs become two spiral arcs wrapped round the shot
-	MuzzleRing = { Kind = "Ring", Key = "vfx_ring", Beat = "Release", At = "Source", Tint = "Core", Grow = 0.75, Face = true, Transparency = 0.15 },
+	MuzzleRing = { Kind = "Ring", Key = "vfx_ring", Beat = "Release", At = "Source", Tint = "Core", Grow = 0.55, Face = true, Transparency = 0.3 },
+	-- the ranged shot's afterimages: short comet tails (Task 8 + Gemini: at the 0.2 s default they stretched back to the
+	-- mouth mid-flight and the shot read as a tether)
+	ShotAfterimage = { Kind = "Trail", Texture = "fx_speedlines", Beat = "Travel", At = "Core", Tint = "Edge", Afterimages = 2, Lifetime = 0.1 },
 	ShotArcs = { Kind = "Beam", Texture = "$Arc", Beat = "Travel", At = "Path", Tint = "Hot", Spiral = true, Curve = 1.2, Width = 0.45, Count = 2 },
 }
 
@@ -245,23 +253,32 @@ AttackFxCatalog.Elements = {
 		Rain = { Key = "vfx_orb", Texture = "fx_droplets", Kind = "Emitter", Scale = 0.3, Text = "a downpour" },
 	},
 	Flame = {
-		Palette = { Core = rgb(255, 232, 150), Mid = rgb(255, 122, 40), Edge = rgb(214, 54, 22), Hot = rgb(140, 200, 255), Smoke = rgb(74, 56, 48) },
+		Palette = { Core = rgb(255, 232, 150), Mid = rgb(255, 122, 40), Edge = rgb(214, 54, 22), Hot = rgb(140, 200, 255), Smoke = rgb(112, 92, 82) },
 		Material = "Neon",
 		Burst = "fx_flame", BurstMotion = "Burst", Trail = "fx_embers", Ground = nil, Motif = "fx_embers", Arc = "fx_speedlines",
 		Melee = { Key = "vfx_crescent", Path = "Swipe", Text = "crescent of fire" },
 		Ranged = {
-			Key = "vfx_spear", Path = "Projectile", Text = "flame spear, ember trail",
+			Key = "vfx_spear", Path = "Projectile", Text = "flame spear, ember trail", Scale = 0.6, Girth = 1.25,
 			-- the spear flies wrapped in fire: flame licks stream off it all the way to the target (a flame bolt)
-			Layers = { { Id = "Mantle", Kind = "Emitter", Texture = "fx_flame", Beat = "Travel", At = "Core", Count = 10, Size = 1.5 } },
+			Layers = { { Id = "Mantle", Kind = "Emitter", Texture = "fx_flame", Beat = "Travel", At = "Core", Count = 14, Size = 2.4 } },
 		},
 		Impact = "fire burst + embers + scorch glow",
 		Detail = {
-			{ Id = "Scorch", Kind = "Decal", Beat = "Impact", At = "Ground", Tint = "Edge", Size = 4, Seconds = 0.9 }, -- the scorch glow
-			-- (not on the ranged shot: its flame mantle + muzzle puff take the emitter budget, <= 6 per effect)
-			{ Id = "Smoke", Kind = "Emitter", Texture = "fx_smoke", Beat = "Impact", At = "$Hit", Tint = "Smoke", Motion = "Rise", Count = 6, Size = 1.6, Except = { Ranged = true } },
+			-- the scorch glow (Task 8 Studio + Gemini: an untextured disc read as a pink plastic plate; a soft glow sheet lying
+			-- on the ground instead)
+			{ Id = "Scorch", Kind = "Decal", Texture = "fx_glow", Beat = "Impact", At = "Ground", Tint = "Edge", Size = 5, Seconds = 0.9 },
+			-- (not on the ranged shot: its flame mantle + muzzle puff take the emitter budget, <= 6 per effect; not on the
+			-- Storm: its cloud + fire rain do, and a smoke puff under a cloud of fire reads as mud; not on the Blast: its charge
+			-- telegraph keeps its slot)
+			-- (Task 8 Studio: at 74/56/48 and on the impact frame the fresh puff read as a black ball inside the fire burst;
+			-- a lighter soot, rising as the burst fades)
+			{ Id = "Smoke", Kind = "Emitter", Texture = "fx_smoke", Beat = "Impact", At = "$Hit", Tint = "Smoke", Motion = "Rise", Delay = 0.12, Count = 6, Size = 1.6, Except = { Ranged = true, Storm = true, Blast = true } },
 		},
 		Alive = { Kind = "Emitter", Texture = "fx_embers", Motion = "SwirlUp", Count = 8, Seconds = 0.9, Text = "embers swirl upward on heat" },
 		Rain = { Key = "vfx_spear", Texture = "fx_flame", Kind = "Emitter", Scale = 0.4, Text = "fire rain" },
+		-- (Task 8 Studio + Gemini: tinted the deep fire red the Storm cloud read as a blood-red blob; a smoky maroon ash
+		-- cloud, the fire rain and its flashes carry the heat)
+		Tints = { Cloud = rgb(150, 100, 84) },
 	},
 	Frost = {
 		Palette = { Core = rgb(240, 252, 255), Mid = rgb(150, 222, 248), Edge = rgb(86, 168, 232), Hot = rgb(255, 255, 255), Smoke = rgb(200, 230, 245) },
@@ -400,10 +417,12 @@ AttackFxCatalog.Basic = {
 		Beats = { Charge = 0.18, Linger = 0.5 }, -- Travel by distance at Beats.RangedSpeed (an element's Ranged.Speed wins:
 		--                                          Storm's bolt), at least Beats.MinTravel
 		Shot = true,
-		Swap = { Slash = "MuzzleRing", DoubleArc = "ShotArcs" },
+		Swap = { Slash = "MuzzleRing", DoubleArc = "ShotArcs", Afterimage = "ShotAfterimage" },
 		Layers = {
 			{ Id = "Muzzle", Kind = "Emitter", Texture = "$Burst", Beat = "Release", At = "Source", Tint = "Mid", Count = 4, Size = 1.3 },
-			{ Id = "Streak", Kind = "Trail", Beat = "Travel", At = "Core", Tint = "Mid" },
+			-- (Task 8 Studio: untextured, the streak read as a flat white ribbon on a bright sky; streaked + the deep edge colour,
+			-- and a short comet tail (Lifetime, seconds): at the default 0.2 s it stretched back to the mouth mid-flight)
+			{ Id = "Streak", Kind = "Trail", Texture = "$Arc", Beat = "Travel", At = "Core", Tint = "Edge", Lifetime = 0.08 },
 		},
 	},
 }
@@ -415,7 +434,8 @@ AttackFxCatalog.Basic = {
 AttackFxCatalog.Shapes = {
 	Cone = { Text = "a fanned blast of the element", Core = { Key = "vfx_crescent", Path = "Area", Fan = true, Count = 3 }, Beats = { Charge = 0.2, Travel = 0.22, Linger = 0.5 } },
 	Circle = { Text = "a ground nova", Core = { Key = "vfx_ring", Path = "Area", Grow = 4 }, Beats = { Charge = 0.2, Travel = 0.2, Linger = 0.5 } },
-	Line = { Text = "a long sweeping strike", Core = { Key = "vfx_beam", Path = "Area", Stretch = true }, Beats = { Charge = 0.2, Travel = 0.35, Linger = 0.5 } },
+	-- (Task 8 Studio: at full width the line was a solid 1.3-stud bar that hid the target; a thinner, see-through beam)
+	Line = { Text = "a long sweeping strike", Core = { Key = "vfx_beam", Path = "Area", Stretch = true, Thick = 0.5, Transparency = 0.25 }, Beats = { Charge = 0.2, Travel = 0.35, Linger = 0.5 } },
 }
 
 ----------------------------------------------------------------------
@@ -428,11 +448,14 @@ local SUPPORT_SKIP = { Trail = true, Slash = true, Afterimage = true, DoubleArc 
 AttackFxCatalog.Specials = {
 	Blast = {
 		Text = "an orb grows above the pet, fires, and explodes into a dome + shockwave",
-		Core = { Key = "vfx_orb", Path = "Projectile", Rise = 3, Grow = true },
+		-- (Task 8 Studio + Gemini: solid, the Secret white-plasma orb read as a flat white sticker; see-through, its rim twin
+		-- shows inside)
+		Core = { Key = "vfx_orb", Path = "Projectile", Rise = 3, Grow = true, Transparency = 0.45 },
 		Beats = { Charge = 0.55, Linger = 0.6 },
 		Layers = {
-			{ Id = "Dome", Kind = "Ring", Key = "vfx_shell", Beat = "Impact", At = "$Hit", Tint = "Mid", Grow = 2.2, Transparency = 0.5 },
-			{ Id = "Blastwave", Kind = "Ring", Key = "vfx_ring", Beat = "Impact", At = "Ground", Tint = "Core", Grow = 3.5 },
+			-- (Task 8: a see-through dome ~1.5x a pet, the target stays visible inside it; the blastwave ~9 studs)
+			{ Id = "Dome", Kind = "Ring", Key = "vfx_shell", Beat = "Impact", At = "$Hit", Tint = "Mid", Grow = 1.5, Transparency = 0.72 },
+			{ Id = "Blastwave", Kind = "Ring", Key = "vfx_ring", Beat = "Impact", At = "Ground", Tint = "Core", Grow = 2.2, Transparency = 0.3 },
 		},
 		Skip = {},
 	},
@@ -448,7 +471,7 @@ AttackFxCatalog.Specials = {
 	},
 	Pounce = {
 		Text = "crouch, a leap with afterimages, a slam landing that cracks the ground",
-		Core = { Key = "vfx_ring", Path = "Ground", Grow = 3 },
+		Core = { Key = "vfx_ring", Path = "Ground", Grow = 2.2 },
 		Beats = { Charge = 0.4, Travel = 0.35, Linger = 0.6 },
 		Layers = {
 			{ Id = "Leap", Kind = "Trail", Texture = "fx_speedlines", Beat = "Travel", At = "Self", Tint = "Edge", Afterimages = 3 },
@@ -785,7 +808,7 @@ local function addExtras(out, list, tier, ctx, scale)
 		return
 	end
 	for _, tpl in ipairs(list) do
-		if (tpl.From or "Common") == tier and not (type(tpl.Except) == "table" and tpl.Except[ctx.attack]) then
+		if (tpl.From or "Common") == tier and not (type(tpl.Except) == "table" and (tpl.Except[ctx.attack] or (ctx.kind and tpl.Except[ctx.kind]))) then
 			local layer = buildLayer(tpl.Id, tpl, ctx, scale)
 			if layer then
 				out[#out + 1] = layer
@@ -897,8 +920,9 @@ function AttackFxCatalog.Resolve(req)
 		hitAt = HIT_AT[core.Path] or "Target",
 		countScale = AttackFxCatalog.CountScale[band],
 		detailScale = AttackFxCatalog.DetailScale[band],
-		tints = sig and sig.Tints or nil,
+		tints = (element.Tints or (sig and sig.Tints)) and merge(copy(element.Tints or {}), sig and sig.Tints) or nil,
 		attack = req.Attack,
+		kind = (req.Attack == "Special") and req.Kind or nil,
 	}
 	local layers = {}
 	local myOrder = rarityOrder[rarity]

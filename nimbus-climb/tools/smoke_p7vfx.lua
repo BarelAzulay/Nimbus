@@ -721,8 +721,9 @@ S.p7vfx_catalog = guarded("p7vfx_catalog", function()
 	-- the ladder layers join exactly where the spec ladder puts them (Melee / Ranged of every element)
 	local LADDER_AT = { Charge = "Common", Burst = "Common", Trail = "Uncommon", Slash = "Rare", GroundGlow = "Rare", Shockwave = "Epic", Flash = "Epic",
 		Afterimage = "Legendary", Bloom = "Legendary", DoubleArc = "Mythic", Field = "Mythic", PlasmaRim = "Secret",
-		MuzzleRing = "Rare", ShotArcs = "Mythic" } -- (Ranged: Slash -> MuzzleRing, DoubleArc -> ShotArcs, player note 1)
-	local SWAPPED = { Ranged = { Slash = "MuzzleRing", DoubleArc = "ShotArcs" }, Melee = {} }
+		MuzzleRing = "Rare", ShotArcs = "Mythic", ShotAfterimage = "Legendary" } -- (Ranged: Slash -> MuzzleRing, DoubleArc ->
+	-- ShotArcs, Afterimage -> ShotAfterimage, player note 1)
+	local SWAPPED = { Ranged = { Slash = "MuzzleRing", DoubleArc = "ShotArcs", Afterimage = "ShotAfterimage" }, Melee = {} }
 	local rarityIndex = {}
 	for i, r in ipairs(RARITIES) do
 		rarityIndex[r] = i
@@ -748,7 +749,7 @@ S.p7vfx_catalog = guarded("p7vfx_catalog", function()
 				for _, to in pairs(SWAPPED[attack]) do
 					swappedIn = swappedIn or to == id
 				end
-				local ownSwap = (id == "MuzzleRing" or id == "ShotArcs")
+				local ownSwap = (id == "MuzzleRing" or id == "ShotArcs" or id == "ShotAfterimage")
 				if swappedOut or (ownSwap and not swappedIn) then
 					lad:case(first[id] == nil, fmt("%s %s: %s is not drawn (swapped / not this attack's)", element, attack, id))
 				else
@@ -764,8 +765,11 @@ S.p7vfx_catalog = guarded("p7vfx_catalog", function()
 	for _, element in ipairs(elements) do
 		for _, rarity in ipairs(RARITIES) do
 			local r = C.Resolve({ Element = element, Attack = "Ranged", Rarity = rarity, Mine = true })
-			local travel, muzzle, crescent = false, false, false
+			local travel, muzzle, crescent, tether = false, false, false, false
 			for _, l in ipairs(r and r.Layers or {}) do
+				if l.Kind == "Trail" and l.At == "Core" and not (type(l.Lifetime) == "number" and l.Lifetime <= 0.1) then
+					tether = true -- (Task 8: a trail on the shot is a short comet tail, never a tether back to the mouth)
+				end
 				if l.Beat == "Travel" and (l.At == "Core" or l.At == "Path") then
 					travel = true -- the Core rides the shot from the mouth to the target; Path = mouth -> target
 				end
@@ -778,13 +782,14 @@ S.p7vfx_catalog = guarded("p7vfx_catalog", function()
 			end
 			local b = r and r.Beats or {}
 			shot:case(r ~= nil and r.Core.Path == "Projectile" and not r.Core.Stretch and finiteNum(r.Core.Speed) and b.MinTravel == C.Beats.MinTravel
-				and b.Travel >= b.MinTravel - 1e-9 and layerById(r, "Streak") ~= nil and layerById(r, "Streak").Kind == "Trail" and travel and muzzle and not crescent,
-				fmt("%s Ranged %s: path %s, travel %.2f, min %s, travel layer %s, muzzle %s, crescent %s", element, rarity, tostring(r and r.Core.Path),
-					b.Travel or -1, tostring(b.MinTravel), tostring(travel), tostring(muzzle), tostring(crescent)))
+				and b.Travel >= b.MinTravel - 1e-9 and layerById(r, "Streak") ~= nil and layerById(r, "Streak").Kind == "Trail" and travel and muzzle and not crescent
+				and not tether,
+				fmt("%s Ranged %s: path %s, travel %.2f, min %s, travel layer %s, muzzle %s, crescent %s, tether %s", element, rarity, tostring(r and r.Core.Path),
+					b.Travel or -1, tostring(b.MinTravel), tostring(travel), tostring(muzzle), tostring(crescent), tostring(tether)))
 			local m = C.Resolve({ Element = element, Attack = "Melee", Rarity = rarity, Mine = true })
 			local own = false
 			for _, l in ipairs(m and m.Layers or {}) do
-				own = own or l.Id == "Muzzle" or l.Id == "Streak" or l.Id == "MuzzleRing" or l.Id == "ShotArcs"
+				own = own or l.Id == "Muzzle" or l.Id == "Streak" or l.Id == "MuzzleRing" or l.Id == "ShotArcs" or l.Id == "ShotAfterimage"
 			end
 			local band = C.BandOf(rarity)
 			local wantSlash = band >= 2

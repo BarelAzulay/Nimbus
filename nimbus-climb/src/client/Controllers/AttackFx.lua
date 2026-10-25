@@ -58,7 +58,9 @@
 --   Beam     two host Parts with an Attachment each + a Beam (fx_lightning / fx_speedlines strips, or untextured)
 --   Trail    a host Part with two Attachments + a Trail
 --   Light    a host Part + a PointLight
---   Disc     a flat Neon cylinder (untextured ground glows: scorch, ground glow, the Shadow floor darkening)
+--   Disc     a flat cylinder carrying a soft glow image (fx_glow) on its top face (untextured ground glows: scorch,
+--            ground glow, the Shadow floor darkening; Task 8: a hard Neon plate read as pink plastic). Without the
+--            glow texture id it falls back to the plain Neon cylinder.
 --   Core     the single MeshPart "Core" of a vfx_* key from MeshLibrary.Assemble, tinted (Color / Material from the
 --            recipe; band 2+ adds a hot inner core, band 3+ a twin blade / fins), scaled and faded with easing
 -- Cores: a key MeshLibrary.IsReady says is not usable here is skipped: the effect still plays with its texture
@@ -381,8 +383,20 @@ function NEW.Disc(folder)
 	local d = hostPart("FxDisc")
 	d.Shape = Enum.PartType.Cylinder
 	d.Material = Enum.Material.Neon
+	local g = Instance.new("SurfaceGui")
+	g.Face = Enum.NormalId.Right -- the cylinder's end cap: up once the disc lies flat
+	g.LightInfluence = 0
+	g.CanvasSize = Vector2.new(64, 64)
+	g.Parent = d
+	local im = Instance.new("ImageLabel")
+	im.BackgroundTransparency = 1
+	im.Size = UDim2.fromScale(1, 1)
+	im.ImageTransparency = 1
+	im.ImageRectOffset = Vector2.new(256, 256) -- fx_glow is a 4x4 flipbook sheet (1024 px): one frame, not all 16
+	im.ImageRectSize = Vector2.new(256, 256)
+	im.Parent = g
 	d.Parent = folder
-	return { Kind = "Disc", Root = d, N = 1 }
+	return { Kind = "Disc", Root = d, Gui = g, Img = im, N = 3 }
 end
 
 local function coreReady(key)
@@ -455,6 +469,9 @@ local function hide(kit)
 		kit.Light.Brightness = 0
 	else
 		kit.Root.Transparency = 1
+		if kit.Img then
+			kit.Img.ImageTransparency = 1
+		end
 	end
 end
 
@@ -1119,6 +1136,9 @@ function DRAW.Disc(eff, it, t)
 		if d.Transparency < 1 then
 			d.Transparency = 1
 		end
+		if it.Soft and it.Kit.Img.ImageTransparency < 1 then
+			it.Kit.Img.ImageTransparency = 1
+		end
 		return
 	end
 	atPoints(eff, it.At, it.Pts)
@@ -1131,7 +1151,12 @@ function DRAW.Disc(eff, it, t)
 	local size = it.D * g
 	d.Size = V3(0.06, size, size)
 	d.CFrame = CFrame.new(p) * CFrame.Angles(0, 0, pi / 2)
-	d.Transparency = fadeTo(it, smooth(seg(t, it.T0 + (it.T1 - it.T0) * 0.4, it.T1)))
+	local tr = fadeTo(it, smooth(seg(t, it.T0 + (it.T1 - it.T0) * 0.4, it.T1)))
+	if it.Soft then
+		it.Kit.Img.ImageTransparency = tr
+	else
+		d.Transparency = tr
+	end
 end
 
 ----------------------------------------------------------------------
@@ -1214,13 +1239,15 @@ local function buildCore(eff)
 		end
 		local charged = core.Grow == true or finite(core.Rise)
 		local t0 = charged and 0 or T.Release
-		local main = addSolid(eff, key, look({ Move = MOVE.Projectile, T0 = t0, T1 = endImpact, Charged = charged }))
+		-- core.Girth: the shot's width x (its length stays: a thick bolt, not a longer spear)
+		local girth = (finite(core.Girth) and core.Girth > 0) and V3(core.Girth, core.Girth, 1) or ONE
+		local main = addSolid(eff, key, look({ Move = MOVE.Projectile, T0 = t0, T1 = endImpact, Charged = charged, Shape = girth }))
 		if main and core.InnerColor then -- band 2+: a hot inner core showing through
 			main.Trans = max(main.Trans, 0.35)
-			addSolid(eff, key, look({ Move = MOVE.Projectile, T0 = t0, T1 = endImpact, Charged = charged, Color = core.InnerColor, Material = Enum.Material.Neon, Trans = 0, Shift = false, S = S * 0.55 }))
+			addSolid(eff, key, look({ Move = MOVE.Projectile, T0 = t0, T1 = endImpact, Charged = charged, Color = core.InnerColor, Material = Enum.Material.Neon, Trans = 0, Shift = false, S = S * 0.55, Shape = girth }))
 		end
 		if core.Upgraded then -- band 3+: fins (the twin turned a quarter)
-			addSolid(eff, key, look({ Move = MOVE.Projectile, T0 = t0, T1 = endImpact, Charged = charged, Role = "Twin", Shape = V3(0.75, 0.75, 1.1), Color = core.RimColor or core.InnerColor or core.Color }))
+			addSolid(eff, key, look({ Move = MOVE.Projectile, T0 = t0, T1 = endImpact, Charged = charged, Role = "Twin", Shape = V3(0.75, 0.75, 1.1) * girth, Color = core.RimColor or core.InnerColor or core.Color }))
 		end
 	elseif path == "Swipe" then
 		local t1 = T.Linger + 0.2
@@ -1274,7 +1301,8 @@ local function buildCore(eff)
 				addSolid(eff, key, look({ Move = MOVE.Fly, T0 = T.Release, T1 = T.Linger + 0.15, Ang = ang, Trans = (i == (n + 1) / 2) and trans or max(trans, 0.25) }))
 			end
 		elseif core.Stretch then
-			addSolid(eff, key, look({ Move = MOVE.Stretch, T0 = T.Travel - 0.02, Line = true, Thick = 1.2 }))
+			-- (the recipe's Core.Thick wins: Task 8, the Line core was always 1.2 thick whatever the catalog said)
+			addSolid(eff, key, look({ Move = MOVE.Stretch, T0 = T.Travel - 0.02, Line = true, Thick = finite(core.Thick) and core.Thick or 1.2 }))
 		elseif key == "vfx_ring" then -- the Circle nova
 			local to = (eff.Reach * 2) / 4 / max(0.1, S)
 			addSolid(eff, key, look({ Move = MOVE.Ring, Flat = true, Anchor = "Self", T0 = T.Travel, TG = T.Impact + 0.1, TF = T.Impact, T1 = T.Linger + 0.35, From = 0.3, To = to }))
@@ -1684,7 +1712,9 @@ local function addTrailLayer(eff, layer)
 		tr.Color = ColorSequence.new(c:Lerp(WHITE, 0.4), c)
 		tr.Transparency = NumberSequence.new({ kp(0, 0.15), kp(1, 1) })
 		tr.WidthScale = NumberSequence.new({ kp(0, 1), kp(1, 0.1) })
-		tr.Lifetime = 0.2
+		-- (a layer's Lifetime wins: Task 8 + Gemini, the ranged Streak at 0.2 s reached back to the mouth mid-flight and
+		-- read as a tether, not a shot; a short comet tail instead)
+		tr.Lifetime = (finite(layer.Lifetime) and layer.Lifetime > 0) and min(1, layer.Lifetime) or 0.2
 		tr.LightEmission = 1
 		tr.LightInfluence = 0
 		tr.FaceCamera = true
@@ -1731,14 +1761,25 @@ local function addDiscLayer(eff, layer)
 	local kit = take("Disc")
 	local d = kit.Root
 	local darken = layer.Motion == "Darken"
-	d.Color = typeof(layer.Color) == "Color3" and layer.Color or WHITE
+	local color = typeof(layer.Color) == "Color3" and layer.Color or WHITE
+	d.Color = color
 	d.Material = darken and Enum.Material.SmoothPlastic or Enum.Material.Neon
 	d.Transparency = 1
+	local glow = dep("TextureIds")
+	glow = glow and glow.fx_glow
+	local soft = glow ~= nil and kit.Img ~= nil
+	if kit.Img then
+		kit.Img.Image = soft and ("rbxassetid://" .. tostring(glow)) or ""
+		kit.Img.ImageColor3 = color
+		kit.Img.ImageTransparency = 1
+		kit.Gui.LightInfluence = darken and 1 or 0 -- a glow shines; the Shadow darkening is a lit dark blot
+		kit.Gui.Brightness = darken and 1 or 1.6
+	end
 	local at = layer.At
 	if at ~= "Allies" and at ~= "Self" and at ~= "Source" then
 		at = "Ground"
 	end
-	addItem(eff, { Kind = "Disc", Kit = kit, Layer = layer, At = at, T0 = t0, T1 = max(t0 + 0.1, t1), D = (finite(layer.Size) and layer.Size or 4) * eff.Size, Trans = darken and 0.5 or 0.35, Pts = {}, Fn = DRAW.Disc })
+	addItem(eff, { Kind = "Disc", Kit = kit, Layer = layer, At = at, T0 = t0, T1 = max(t0 + 0.1, t1), D = (finite(layer.Size) and layer.Size or 4) * eff.Size, Trans = soft and 0.2 or 0.5, Soft = soft, Pts = {}, Fn = DRAW.Disc }) -- (Task 8: the soft sheet fades out to its rim by itself; a plain plate stays half see-through)
 end
 
 local function addRingLayer(eff, layer)
