@@ -617,6 +617,7 @@ local function clientScenarios()
 		-- like Shake, ONE SettingsSet per change
 		T.eq(CS.Clean("MouseLock", 1), nil, "p5settings: MouseLock must be a boolean")
 		T.eq(CS.Get("MouseLock"), true, "p5settings: MouseLock starts ON (bug batch 2 #21: the default)")
+		T.eq(CS.DEFAULTS.MouseLock, true, "p5settings: ClientSettings.DEFAULTS.MouseLock is true (matches State.lua and DataService)")
 		local mouseRow = H.find(holder, "Row_MouseLock")
 		if T.check(mouseRow ~= nil, "p5settings: a Mouse lock row on a keyboard + mouse device") then
 			local title = mouseRow:FindFirstChild("Title")

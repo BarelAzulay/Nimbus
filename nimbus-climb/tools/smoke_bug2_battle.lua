@@ -1,12 +1,14 @@
--- smoke_bug2_battle.lua: bug batch 2, lane battle-balance (shared/BattleCatalog.lua; BattleSim.lua read-only), loaded
+-- smoke_bug2_battle.lua: bug batch 2, lane battle-balance (shared/BattleCatalog.lua + the BattleSim meterStart hook), loaded
 -- by tools/smoke.py in the SERVER world as pure scenarios.
 --   bug2bat_npc_specials  #27 enemy NPCs use specials: Damage.MeterOnHit 8 / MeterPerSecond 5 (NPC units only; the
 --                         fighter keeps Fighter.MeterPerSecond 6 / MeterOnHit 4 and Damage.MeterStart 20-50),
 --                         BattleCatalog.MeterStart (NPC 45-75, the Ring champion + dungeon waves 2+ at 80, players
 --                         20-50), the champion entry carries MeterStart 80; a 20 s Ring fight (round 15 vs a Lv 6 team,
 --                         the screenshot) shows an NPC special on every seed; most dungeon enemies cast before they
---                         die; raid minions never cast; a WARNING while BattleSim does not yet roll the start meter
---                         from BattleCatalog.MeterStart (the proposed one-line hook, see the lane report)
+--                         die; raid minions never cast; BattleSim.meterStart rolls the start meter from
+--                         BattleCatalog.MeterStart (integration hook): the champion starts at 80, NPC duel units at
+--                         45-75 with an NPC special within 20 s on every seed, dungeon wave 1 at 45-75 and wave 2 at 80,
+--                         raid minions still never cast over 90 s
 --   bug2bat_raid_balance  #2 a boss raid is not soloable by a weak player: BossHp >= HpPerPlayer x BaselineDps(boss)
 --                         (the ExpectedDps of BossRules.Baseline, a Lv 25 evolved ember_phoenix), DamageGroup.Min 0.7,
 --                         MinHp 2500, GroupExponent 0.2; a strong solo / a group keep their own DPS-based HP; idle alts
@@ -94,6 +96,7 @@ local function npcSpecials(SIM, b, owner, seconds)
 					side[info.id] = info.side
 				end
 			elseif ev.type == "Special" and side[ev.unit] == 2 then
+				ev.at = ev.at or b:Time() -- the sim time of the step that fired it
 				list[#list + 1] = ev
 			end
 		end
@@ -219,7 +222,7 @@ S.bug2bat_npc_specials = guarded("bug2bat_npc_specials", function()
 		end
 	end
 	T.check(minions > 0 and minionSpecials == 0, "#27 raid minions stay NoSpecial (no special kind, no Special event over 30 s)", fmt("%d minions, %d specials", minions, minionSpecials))
-	-- the start meter: BattleSim rolls it from BattleCatalog.MeterStart once the (read-only here) hook lands
+	-- the start meter: BattleSim rolls it from BattleCatalog.MeterStart (the integration hook in meterStart)
 	local ring = BS.new({ Mode = "Ring", Seed = 1, Round = 15, Teams = { SIM.team(1, 1, SIM.Stages[3].Pets), BC.ChampionTeam(15, 1) } })
 	local champMeter, fighterMeter = nil, nil
 	for _, u in ipairs(ring and ring.units or {}) do
@@ -230,11 +233,96 @@ S.bug2bat_npc_specials = guarded("bug2bat_npc_specials", function()
 		end
 	end
 	T.check(fighterMeter and fighterMeter >= 20 and fighterMeter <= 50, "#27 the player's fighter starts at 20-50 meter", tostring(fighterMeter))
-	if near(champMeter, 80, 1e-6) then
-		T.ok("#27 BattleSim starts the Ring champion at 80 meter (BattleCatalog.MeterStart hook live)")
-	else
-		T.warn("#27 BattleSim does not roll the start meter from BattleCatalog.MeterStart yet (champion " .. fmt("%.1f", champMeter or -1) .. ", want 80): the battle-file branch must add the one-line hook from lane-battle-balance-report.md")
+	T.check(near(champMeter, 80, 1e-6), "#27 BattleSim starts the Ring champion at 80 meter (the BattleCatalog.MeterStart hook in meterStart)", fmt("%.1f", champMeter or -1))
+
+	-- integration (the hook): a sim duel vs two NPC foxes. The NPC units start at 45-75, the player's pets at 20-50, and
+	-- an NPC special fires within 20 s on every seed
+	local duelSeeds, duelCast, npcLo, npcHi, slowest = 0, 0, math.huge, -math.huge, 0
+	local playerStartOk = true
+	for seed = 1, 6 do
+		local npcTeam = SIM.team("foxes", 2, { SIM.pet("maple_fox", 6), SIM.pet("maple_fox", 6) }, { Npc = true })
+		local duel = BS.new({ Mode = "Duel", Seed = seed, Teams = { SIM.team(1, 1, SIM.Stages[3].Pets), npcTeam } })
+		if duel then
+			duelSeeds = duelSeeds + 1
+			for _, u in ipairs(duel.units or {}) do
+				if u.side == 2 then
+					npcLo, npcHi = math.min(npcLo, u.meter), math.max(npcHi, u.meter)
+				elseif u.meter < 20 or u.meter > 50 then
+					playerStartOk = false
+				end
+			end
+			local list = npcSpecials(SIM, duel, 1, 20)
+			if #list > 0 then
+				duelCast = duelCast + 1
+				local first = duel:Time()
+				for _, ev in ipairs(list) do
+					first = math.min(first, ev.at or first)
+				end
+				slowest = math.max(slowest, first)
+			end
+		end
 	end
+	T.check(duelSeeds == 6 and npcLo >= 45 and npcHi <= 75, "#27 hook: NPC duel units start at 45-75 meter", fmt("%.1f-%.1f over %d fights", npcLo, npcHi, duelSeeds))
+	T.check(playerStartOk, "#27 hook: the player team's units still start at 20-50 meter")
+	T.check(duelSeeds == 6 and duelCast == 6, "#27 hook: a 20 s sim duel vs two NPC foxes shows an NPC special on every seed", fmt("%d of %d fights (latest first special by %.1f s)", duelCast, duelSeeds, slowest))
+
+	-- integration (the hook): dungeon wave 2+ enemies start at 80, wave 1 at 45-75
+	local dg = BS.new({ Mode = "Dungeon", Seed = 4, Teams = { SIM.team(1, 1, SIM.Stages[3].Pets) } })
+	local w1 = dg and dg:SpawnEnemies(BC.DungeonWave(3, 1, 1, 1, 4).Pets, { Wave = 1 }) or {}
+	local w1ok, w2ok = #w1 > 0, false
+	local byId = {}
+	for _, u in ipairs(dg and dg.units or {}) do
+		byId[u.id] = u
+	end
+	for _, info in ipairs(w1) do
+		local u = byId[info.id]
+		w1ok = w1ok and u ~= nil and u.meter >= 45 and u.meter <= 75
+	end
+	local w2 = dg and dg:SpawnEnemies(BC.DungeonWave(3, 1, 2, 1, 4).Pets, { Wave = 2 }) or {}
+	for _, u in ipairs(dg and dg.units or {}) do
+		byId[u.id] = u
+	end
+	w2ok = #w2 > 0
+	for _, info in ipairs(w2) do
+		local u = byId[info.id]
+		w2ok = w2ok and u ~= nil and near(u.meter, 80, 1e-6)
+	end
+	T.check(w1ok, "#27 hook: dungeon wave 1 enemies start at 45-75 meter", #w1 .. " enemies")
+	T.check(w2ok, "#27 hook: dungeon wave 2 enemies start at 80 meter", #w2 .. " enemies")
+
+	-- integration (the hook): raid minions still never cast now that BattleSim rolls start meters from the catalog (90 s, 3 seeds)
+	local rMinions, rSpecials, rKinds = 0, 0, 0
+	for seed = 1, 3 do
+		local raid = BS.new({ Mode = "Raid", Boss = "storm_titan", Seed = seed, Teams = { SIM.team(1, 1, SIM.Stages[5].Pets) } })
+		if raid and raid.boss then
+			raid.boss.hp = raid.boss.maxHp * 0.6
+			local seen = {}
+			local steps = 0
+			while not raid:IsFinished() and steps < 900 do
+				local events = raid:Step(0.1)
+				steps = steps + 1
+				for _, u in ipairs(raid.units) do
+					if u.kind == "Minion" and not seen[u] then
+						seen[u] = true
+						rMinions = rMinions + 1
+						if u.specialKind ~= nil then
+							rKinds = rKinds + 1
+						end
+					end
+				end
+				for _, ev in ipairs(events) do
+					if ev.type == "Special" then
+						for _, u in ipairs(raid.units) do
+							if u.id == ev.unit and u.kind == "Minion" then
+								rSpecials = rSpecials + 1
+							end
+						end
+					end
+				end
+			end
+		end
+	end
+	T.check(rMinions > 0 and rKinds == 0 and rSpecials == 0, "#27 hook: raid minions never cast (no special kind, no Special event over 90 s on 3 seeds)", fmt("%d minions, %d with a special kind, %d minion specials", rMinions, rKinds, rSpecials))
 end)
 
 ----------------------------------------------------------------------------------------------------

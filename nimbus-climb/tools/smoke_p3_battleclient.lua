@@ -552,6 +552,15 @@ S.client_p3battle_trial = guarded("client_p3battle_trial", function()
 	T.eq(#commandsSince(idx), 1, "controls: a second ATTACK within the throttle is not sent")
 	Mock.TriggerAction("NimbusBattleAttack", "End", Mock.NewInput("F", "Keyboard", "End"))
 	d:step(30)
+	-- (bug batch 2 #27: wave NPCs start at 45-75 meter and cast in the first seconds, so a Freeze or a fighter swap can
+	-- leave the fighter Stunned / Casting (arriving) right now; wait, at most 2 s, until it can act before testing ELEMENT)
+	for _ = 1, 20 do
+		local f, now = d:fighter(), d.sim:Time()
+		if f and f.alive and now >= (f.stunUntil or 0) and now >= (f.castUntil or 0) then
+			break
+		end
+		d:step(30)
+	end
 	idx = #Mock.RemoteLog
 	Mock.TriggerAction("NimbusBattleElement", "Begin", Mock.NewInput("E", "Keyboard", "Begin"))
 	cmds = commandsSince(idx)
