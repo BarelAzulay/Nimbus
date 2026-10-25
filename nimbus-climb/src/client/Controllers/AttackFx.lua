@@ -38,7 +38,8 @@
 --   AttackFx.Cancel(unitId)         drops the unit's pose and ends the effects it cast (a unit swapped out / gone)
 --   AttackFx.ClearAll()             ends everything (the battle is over)
 --   AttackFx.SetQuality("Low" | "High" | nil)   nil = follow client/GraphicsQuality.Effective(). Low: emitters per
---       effect <= 2, particle counts halved, no Beams / Trails / bloom light; switching to Low strips the Beams /
+--       effect <= 2 (the Burst, then the first of the recipe's LowKeep it has: the element's most characteristic one),
+--       particle counts halved, no Beams / Trails / bloom light; switching to Low strips the Beams /
 --       Trails of the live effects at once
 --   AttackFx.Stats() -> { Live, Stepped, Emitters, Beams, Trails, Lights, Cores, Pooled, PoolInstances, Errors }
 --       Live = full effects, Stepped = stepped-down ones, the rest = kits held by live effects / pooled kits
@@ -133,8 +134,10 @@ local SHEETS = {
 	fx_iceshards = { "Loop", 16, 0.45 }, fx_snow = { "Loop", 12, 0.5 }, fx_frostmist = { "OneShot", 16, 0.3 },
 	fx_petals = { "Loop", 16, 0.3 }, fx_leaves = { "Loop", 16, 0.15 }, fx_thorn = { "OneShot", 24, 0.2 },
 	fx_rock = { "Loop", 16, 0 }, fx_dust = { "OneShot", 16, 0 }, fx_crack = { "OneShot", 20, 0.6 },
-	fx_sparks = { "Loop", 24, 1 }, fx_stormcloud = { "Loop", 12, 0.1 }, fx_stars = { "Loop", 16, 0.9 },
-	fx_rays = { "OneShot", 20, 1 }, fx_sparkle = { "Loop", 16, 1 }, fx_wisps = { "Loop", 16, 0.4 },
+	-- (Task 9 Studio: fully additive, the golden stars / rays summed to a white flare on the pale arena; half-lit they
+	-- keep their gold)
+	fx_sparks = { "Loop", 24, 1 }, fx_stormcloud = { "Loop", 12, 0.1 }, fx_stars = { "Loop", 16, 0.5 },
+	fx_rays = { "OneShot", 20, 0.5 }, fx_sparkle = { "Loop", 16, 1 }, fx_wisps = { "Loop", 16, 0.4 },
 	fx_voidring = { "OneShot", 20, 0.5 }, fx_darkglass = { "Loop", 16, 0.2 }, fx_slash = { "OneShot", 30, 1 },
 	fx_shock = { "OneShot", 20, 0.9 }, fx_glow = { "Loop", 12, 1 }, fx_streak = { "Loop", 24, 1 },
 	fx_hexshield = { "Loop", 16, 0.8 },
@@ -677,7 +680,9 @@ MOVE.Projectile = function(eff, it, t)
 	if appear <= 0 then
 		return nil
 	end
-	local pop = seg(t, T.Impact, T.Linger + 0.05)
+	-- (a basic ranged shot bursts into its explosion at once: Task 9 Studio, Water's orb lingering 0.2 s on the target,
+	-- swelling, read as a bubble round it)
+	local pop = eff.Recipe.Beats.MinTravel and seg(t, T.Impact, T.Impact + 0.08) or seg(t, T.Impact, T.Linger + 0.05)
 	local pos = eff.CorePos
 	local look = eff.Hit - pos
 	if look.Magnitude < 0.05 then
@@ -1359,10 +1364,13 @@ local function buildCore(eff)
 	end
 end
 
--- the emitter layers this effect can afford, best first (the impact burst, then the impact detail ...)
-local function emitterRank(layer)
+-- the emitter layers this effect can afford, best first (the impact burst, then the impact detail ...); `keep` = the
+-- recipe's LowKeep ({ [id] = order }) at Low quality: the element's chosen layer comes right after the Burst
+local function emitterRank(layer, keep)
 	if layer.Id == "Burst" then
 		return 0
+	elseif keep and keep[layer.Id] then
+		return 0.5 + keep[layer.Id] * 0.01
 	elseif layer.Beat == "Impact" then
 		return 1
 	elseif layer.Id == "Slash" then
@@ -1447,15 +1455,17 @@ local function tuneEmitter(eff, it, layer)
 		em.Acceleration = V3(0, -22, 0)
 		em.RotSpeed = NumberRange.new(-220, 220)
 		life = { 0.45, 0.7 }
-	elseif m == "Geyser" or m == "Erupt" then -- an upward column
-		em.SpreadAngle = Vector2.new(10, 10)
-		em.Speed = NumberRange.new(11 * S, 16 * S)
+	elseif m == "Geyser" or m == "Erupt" then -- an upward column (Task 9: a fountain of drops rising from a patch of
+		-- ground round the hit, not one clump: at the impact frame a single point read as a bubble)
+		host.Size = V3(2.2 * S, 0.3, 2.2 * S)
+		em.SpreadAngle = Vector2.new(14, 14)
+		em.Speed = NumberRange.new(12 * S, 18 * S)
 		em.Drag = 0.5
 		em.Acceleration = V3(0, -30, 0)
 		life = { 0.5, 0.7 }
 		sizeSeq = { 0.5, 1, 0.85 }
-	elseif m == "Implode" then -- pulled inward to the centre
-		host.Size = V3(4.5, 4.5, 4.5) * S
+	elseif m == "Implode" then -- pulled inward to the centre (Task 9: from a 3.2-stud shell, 4.5 swallowed the target)
+		host.Size = V3(3.2, 3.2, 3.2) * S
 		em.Shape = Enum.ParticleEmitterShape.Sphere
 		em.ShapeStyle = Enum.ParticleEmitterShapeStyle.Surface
 		em.ShapeInOut = Enum.ParticleEmitterShapeInOut.Inward
@@ -1564,7 +1574,9 @@ local function tuneEmitter(eff, it, layer)
 	local lo = min(life[1], hi)
 	em.Lifetime = NumberRange.new(lo, hi)
 	em.Size = NumberSequence.new({ kp(0, sz * sizeSeq[1]), kp(0.2, sz * sizeSeq[2]), kp(1, sz * sizeSeq[3]) })
-	em.Transparency = NumberSequence.new({ kp(0, start), kp(0.12, 0), kp(hold, 0.1), kp(1, 1) })
+	-- (a layer's Transparency lifts the whole curve: Task 9, the band 4 ladder layers washed out the leap and the target)
+	local a = finite(layer.Transparency) and clamp01(layer.Transparency) or 0
+	em.Transparency = NumberSequence.new({ kp(0, a + (1 - a) * start), kp(0.12, a), kp(hold, a + (1 - a) * 0.1), kp(1, 1) })
 end
 
 local EMITTER_MOTIONS = { Geyser = true, Implode = true, Fling = true, Rise = true, Shatter = true, Erupt = true, Burst = true, Bounce = true, SwirlUp = true }
@@ -1656,8 +1668,11 @@ local function addBeamLayer(eff, layer)
 		local b = kit.Beam
 		local c = typeof(layer.Color) == "Color3" and layer.Color or WHITE
 		b.Color = ColorSequence.new(c:Lerp(WHITE, 0.35), c)
-		b.Transparency = NumberSequence.new({ kp(0, 0.35), kp(0.15, 0), kp(0.85, 0), kp(1, 0.35) })
-		b.LightEmission = 1
+		local a = finite(layer.Transparency) and clamp01(layer.Transparency) or 0 -- (Task 9: a see-through Mythic double arc)
+		b.Transparency = NumberSequence.new({ kp(0, a + (1 - a) * 0.35), kp(0.15, a), kp(0.85, a), kp(1, a + (1 - a) * 0.35) })
+		-- (Task 9 Studio: additive, the thin lightning strip vanished on the pale sky / floor; drawn mostly opaque in its
+		-- colour it reads as a bolt)
+		b.LightEmission = (layer.Texture == "fx_lightning") and 0.25 or 1
 		b.LightInfluence = 0
 		b.FaceCamera = true
 		b.CurveSize0 = 0
@@ -2367,10 +2382,17 @@ function AttackFx.Play(ctx)
 			layers[#layers + 1] = a
 		end
 		local cap = AttackFx.MAX_EMITTERS[quality] or 6
+		local keep = nil
+		if quality == "Low" and type(r.LowKeep) == "table" then
+			keep = {}
+			for i, id in ipairs(r.LowKeep) do
+				keep[id] = keep[id] or i
+			end
+		end
 		local ranked = {}
 		for i, layer in ipairs(layers) do
 			if isEmitter(layer) and not chargeDropped(eff, layer) then
-				ranked[#ranked + 1] = { L = layer, R = emitterRank(layer), I = i }
+				ranked[#ranked + 1] = { L = layer, R = emitterRank(layer, keep), I = i }
 			end
 		end
 		table.sort(ranked, function(a, b)

@@ -627,32 +627,40 @@ S.client_p7vfx_engine = guarded("client_p7vfx_engine", function()
 	T.check(hidden2, "mid-build error: the returned kits are hidden", tostring(what2))
 
 	-- 13) a charge glow dropped for lack of time takes no emitter slot (an over-cap recipe: >= 7 emitter layers, cap 6) --
-	-- (fix round 3: Lava Slam no longer goes over (its Scorch is a glow disc, review Important 1), so the over-cap recipe is
-	-- found from the catalog: a Task 9 element whose Secret recipe has 7+ emitters and a charge emitter at the mouth)
+	-- (Task 9: every catalog recipe fits the cap now, so the over-cap recipe is SYNTHETIC: the real Flame Secret Melee
+	-- (a mouth charge glow + 5 more emitters) plus 3 extra impact emitters, through a catalog stand-in)
 	local function engineEmitter(l)
 		return type(l) == "table" and (l.Kind == "Emitter" or (l.Kind == "Decal" and type(l.Texture) == "string"))
 	end
-	local over = nil
-	for _, e in ipairs({ "Water", "Frost", "Earth" }) do
-		for _, v in ipairs({ { Attack = "Special", Kind = "Blast" }, { Attack = "Special", Kind = "Storm" }, { Attack = "Special", Kind = "Pounce" }, { Attack = "Melee" }, { Attack = "Ranged" } }) do
-			local r = not over and Cat.Resolve({ Element = e, Attack = v.Attack, Kind = v.Kind, Rarity = "Secret", Stage = 0, Mine = true, Distance = 12 })
-			if r then
-				local n, hasCharge = 0, false
-				for _, l in ipairs(r.Layers) do
-					if engineEmitter(l) then
-						n = n + 1
-						hasCharge = hasCharge or ((l.Beat or "Impact") == "Charge" and l.At == "Source" and l.Kind ~= "Decal")
-					end
-				end
-				if engineEmitter(r.Alive) then
-					n = n + 1
-				end
-				if n >= Fx.MAX_EMITTERS.High + 1 and hasCharge then
-					over = { Element = e, Attack = v.Attack, Kind = v.Kind, N = n }
+	local synthCat = setmetatable({
+		Resolve = function(req)
+			local r = Cat.Resolve(req)
+			if r and req.Element == "Flame" and req.Attack == "Melee" then
+				for i = 1, 3 do
+					r.Layers[#r.Layers + 1] = { Id = "Synth" .. i, Kind = "Emitter", Texture = "fx_glow", Beat = "Impact", At = "Target", Color = Color3.new(1, 1, 1), Count = 4, Size = 1 }
 				end
 			end
+			return r
+		end,
+	}, { __index = Cat })
+	local over = nil
+	do
+		local r = synthCat.Resolve({ Element = "Flame", Attack = "Melee", Rarity = "Secret", Stage = 0, Mine = true, Distance = 12 })
+		local n, hasCharge = 0, false
+		for _, l in ipairs(r and r.Layers or {}) do
+			if engineEmitter(l) then
+				n = n + 1
+				hasCharge = hasCharge or ((l.Beat or "Impact") == "Charge" and l.At == "Source" and l.Kind ~= "Decal")
+			end
+		end
+		if r and engineEmitter(r.Alive) then
+			n = n + 1
+		end
+		if n >= Fx.MAX_EMITTERS.High + 1 and hasCharge then
+			over = { Element = "Flame", Attack = "Melee", N = n }
 		end
 	end
+	Fx._Deps({ AttackFxCatalog = synthCat })
 	local function drawnIds(em)
 		local ids = {}
 		for _, it in ipairs(em and em.Items or {}) do
@@ -662,7 +670,7 @@ S.client_p7vfx_engine = guarded("client_p7vfx_engine", function()
 		end
 		return ids
 	end
-	if T.check(over ~= nil, "an over-cap recipe exists to test the emitter cap (a Task 9 element, 7+ emitters with a mouth charge)") then
+	if T.check(over ~= nil, "a synthetic over-cap recipe (7+ emitters with a mouth charge) tests the emitter cap") then
 		Fx.Play(ctx({ Element = over.Element, Attack = over.Attack, Kind = over.Kind, Rarity = "Secret", From = { Unit = 70, Model = A }, DueAt = clock, Now = clock }))
 		local em = Fx._Live()[#Fx._Live()]
 		local ids = drawnIds(em)
@@ -677,6 +685,39 @@ S.client_p7vfx_engine = guarded("client_p7vfx_engine", function()
 			em2 and tostring(em2.Emitters))
 		run(3)
 	end
+	Fx._Deps({ AttackFxCatalog = false })
+
+	-- 13b) Task 9: Low quality's 2 emitters are chosen on purpose: the Burst + the recipe's LowKeep (the element's most
+	-- characteristic emitter), never left to the rank (which would keep an impact layer or the charge glow)
+	Fx.SetQuality("Low")
+	local lowWant = {
+		{ "Water", "Melee", "Ripple" }, { "Flame", "Ranged", "Mantle" }, { "Flame", "Melee", "Alive" }, { "Nature", "Melee", "Thorns" },
+		{ "Earth", "Melee", "Dust" }, { "Shadow", "Ranged", "Glass" }, { "Storm", "Melee", "ZigZag" }, { "Celestial", "Ranged", "Rays" },
+	}
+	local lowBad = {}
+	for _, w in ipairs(lowWant) do
+		Fx.ClearAll()
+		Fx.Play(ctx({ Element = w[1], Attack = w[2], Rarity = "Secret", From = { Unit = 72, Model = A }, Now = clock }))
+		local el = Fx._Live()[#Fx._Live()]
+		local ids, n = {}, 0
+		for _, it in ipairs(el and el.Items or {}) do
+			if it.Kind == "Emitter" and it.Layer then
+				ids[it.Layer.Alive and "Alive" or it.Layer.Id] = true
+				n = n + 1
+			end
+		end
+		if not (el and n == 2 and ids.Burst and ids[w[3]]) then
+			local list = {}
+			for k in pairs(ids) do
+				list[#list + 1] = k
+			end
+			lowBad[#lowBad + 1] = fmt("%s %s: %s", w[1], w[2], table.concat(list, ","))
+		end
+		run(3)
+	end
+	T.check(#lowBad == 0, "Low quality: 2 emitters = the Burst + the element's chosen one (LowKeep)", table.concat(lowBad, " | "))
+	Fx.SetQuality("High")
+	Fx.ClearAll()
 	-- review Important 1: Flame's Lava Slam (the old over-cap case) fits now: its Scorch is a glow disc, no emitter is cut
 	Fx.Play(ctx({ Element = "Flame", Attack = "Special", Kind = "Blast", PetId = "magma_cub", Rarity = "Secret", From = { Unit = 71, Model = A }, Now = clock }))
 	local fl = Fx._Live()[#Fx._Live()]
@@ -811,6 +852,9 @@ S.client_p7vfx_engine = guarded("client_p7vfx_engine", function()
 				end)
 			end
 			boomSeen = boomSeen + 1
+			if e == "Water" then -- (Task 9: Water's shot explodes as its geyser splash, no pop ball)
+				popSeen, popNear, grew = not popSeen, true, true
+			end
 			if not (popSeen and popNear and grew and ringSeen and flashSeen) then
 				boomBad[#boomBad + 1] = fmt("%s %s: pop %s near %s grew %s ring %s flash %s", e, rarity, tostring(popSeen), tostring(popNear), tostring(grew), tostring(ringSeen), tostring(flashSeen))
 			end

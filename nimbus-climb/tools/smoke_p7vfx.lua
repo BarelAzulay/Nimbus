@@ -144,9 +144,9 @@ local BAND = { Common = 1, Uncommon = 1, Rare = 2, Epic = 2, Legendary = 3, Myth
 local SIZE = { Common = 1.0, Uncommon = 1.05, Rare = 1.1, Epic = 1.15, Legendary = 1.2, Mythic = 1.3, Secret = 1.4 }
 local KINDS = { "Blast", "Beam", "Pounce", "Storm", "Freeze", "Heal", "Shield", "Rally", "Haste" }
 local SHAPES = { "Cone", "Circle", "Line" }
--- fix round 3: elements whose recipes still go over the 6-emitter budget (Task 9 retunes them; the engine cap trims
--- them by rank meanwhile). Measured 2026-10-25; Flame must never be here.
-local EMITTER_PENDING = { Water = true, Frost = true, Earth = true }
+-- fix round 3: elements whose recipes still go over the 6-emitter budget (the engine cap trims them by rank). Task 9
+-- retuned Water / Frost / Earth: none is pending now, every recipe must fit
+local EMITTER_PENDING = {}
 local LAYER_KINDS = { Emitter = true, Beam = true, Trail = true, Light = true, Ring = true, Decal = true, Mesh = true }
 local AT = { Source = true, Core = true, Path = true, Target = true, Ground = true, Above = true, Behind = true, Self = true, Allies = true }
 local PATHS = { Projectile = true, Swipe = true, Ground = true, Self = true, Allies = true, Area = true }
@@ -382,9 +382,9 @@ S.p7vfx_catalog = guarded("p7vfx_catalog", function()
 	local mineRules = T.tally("p7vfx catalog: Mine = false -> Density 0.6, no camera punch, no screen glow; Mine = true -> Density 1, punch at band >= 3, glow at band 4")
 	local mono = T.tally("p7vfx catalog: each rarity keeps every layer of the rarities below it (layer ids and kinds monotonic across bands)")
 	-- fix round 3 (review Important 1): every recipe fits AttackFx's 6-emitter budget (MAX_EMITTERS.High), counted by the
-	-- engine's rule (textured Decals are emitters). The elements still over it are Task 9's to retune (EMITTER_PENDING):
+	-- engine's rule (textured Decals are emitters). (Task 9 retuned every element; EMITTER_PENDING stays as the hook for a future over-budget element):
 	-- until then the engine cap (Burst, then Impact, Slash, Travel, Alive first) trims them at run time; they are listed as a warning
-	local budget = T.tally("p7vfx catalog: every recipe fits the 6-emitter budget (engine rule: Emitters + textured Decals + an emitter Alive; Task 9 elements pending)")
+	local budget = T.tally("p7vfx catalog: every recipe fits the 6-emitter budget (engine rule: Emitters + textured Decals + an emitter Alive)")
 	local overPending = {}
 	local total = 0
 	for _, element in ipairs(elements) do
@@ -717,9 +717,9 @@ S.p7vfx_catalog = guarded("p7vfx_catalog", function()
 	-- reduced count that grows by band; the ladder layers stay where the spec ladder puts them
 	local detail = {
 		Flame = { melee = { "Scorch", "Smoke" }, ranged = { "Scorch", "Mantle" }, burst = "fx_flame", alive = "SwirlUp" }, -- (Task 8: the shot wears its flame mantle, no smoke)
-		Water = { ids = { "Droplets", "Ripple" }, burst = "fx_splash", alive = "Bounce" },
+		Water = { ids = { "Ripple" }, burst = "fx_splash", alive = "Bounce" }, -- (Task 9 budget: the droplets are the alive bounce)
 		Frost = { ids = { "FrostRing", "FrostMist" }, burst = "fx_iceshards", alive = "Melt" },
-		Nature = { melee = { "Thorns", "Leaves" }, ranged = { "RootBurst" }, burst = "fx_petals", alive = "Wrap" },
+		Nature = { melee = { "Thorns", "Pollen" }, ranged = { "RootBurst" }, burst = "fx_petals", alive = "Wrap" }, -- (Task 9: green leaves -> golden pollen, read on grass)
 		Earth = { ids = { "Dust", "GroundCrack" }, burst = "fx_rock", alive = "Bounce" },
 		Storm = { ids = { "ZigZag" }, burst = "fx_glow", alive = "Strike" },
 		Celestial = { ids = { "Rays" }, burst = "fx_stars", alive = "Connect" },
@@ -850,7 +850,10 @@ S.p7vfx_catalog = guarded("p7vfx_catalog", function()
 	-- fix round 3, player note (b): every element's ranged impact EXPLODES: a flash (BoomFlash), a bigger burst of the
 	-- element's own particles (Burst Count / Size boosted over Melee's) and a pop + shockwave ring (Boom, BoomRing), all
 	-- non-emitter solids (no emitter budget), sized by the band (Size <= 1.4), <= 3 lights, no Epic Flash on top
-	local boom = T.tally("p7vfx catalog: every element x rarity Ranged impact explodes (Boom pop + BoomRing shock + BoomFlash light, burst bigger than Melee's, <= 3 lights, no Flash); Melee has none")
+	-- (Task 9: Water's shot explodes as its boosted geyser splash, not a pop ball: the ball read as a shield bubble.
+	-- Water drops the Boom (Ranged.Drop); every other element keeps it)
+	local NO_POP = { Water = true }
+	local boom = T.tally("p7vfx catalog: every element x rarity Ranged impact explodes (Boom pop (Water: its geyser) + BoomRing shock + BoomFlash light, burst bigger than Melee's, <= 3 lights, no Flash); Melee has none")
 	for _, element in ipairs(elements) do
 		local prevSize = 0
 		for _, rarity in ipairs(RARITIES) do
@@ -865,7 +868,8 @@ S.p7vfx_catalog = guarded("p7vfx_catalog", function()
 				end
 			end
 			local bigger = rb ~= nil and mb ~= nil and rb.Texture == mb.Texture and (rb.Size or 1) > (mb.Size or 1) and (rb.Count or 1) > (mb.Count or 1)
-			boom:case(r ~= nil and b ~= nil and b.Kind == "Ring" and b.Pop == true and rb ~= nil and b.At == rb.At and b.Beat == "Impact"
+			local popOk = NO_POP[element] and (b == nil and rb ~= nil and rb.Motion == "Geyser") or (b ~= nil and b.Kind == "Ring" and b.Pop == true and rb ~= nil and b.At == rb.At and b.Beat == "Impact")
+			boom:case(r ~= nil and popOk
 				and rg ~= nil and rg.Kind == "Ring" and rg.At == "Ground" and rg.Beat == "Impact"
 				and fl ~= nil and fl.Kind == "Light" and fl.Beat == "Impact"
 				and layerById(r, "Flash") == nil and lights <= 3 and bigger and r.Size <= 1.4 + 1e-9 and r.Size >= prevSize
@@ -885,9 +889,63 @@ S.p7vfx_catalog = guarded("p7vfx_catalog", function()
 
 	-- review minors: Water's droplets + geyser, Shadow's implosion before the glass, Nature's root burst as playable layers
 	local water = C.Resolve({ Element = "Water", Attack = "Melee", Rarity = "Common", Mine = true })
-	local wb, wd = layerById(water, "Burst"), layerById(water, "Droplets")
-	T.check(wb and wb.Texture == "fx_splash" and wb.Motion == "Geyser" and wd and wd.Texture == "fx_droplets" and wd.Kind == "Emitter",
-		"p7vfx catalog: Water's impact = a Geyser fx_splash burst + fx_droplets droplets")
+	local wb, wr = layerById(water, "Burst"), layerById(water, "Ripple")
+	T.check(wb and wb.Texture == "fx_splash" and wb.Motion == "Geyser" and wr and wr.Texture == "fx_ripple" and water.Alive.Texture == "fx_droplets"
+		and water.Alive.Motion == "Bounce" and water.Alive.Kind == "Emitter",
+		"p7vfx catalog: Water's impact = a Geyser fx_splash burst + the fx_ripple ring, the fx_droplets bouncing (alive)")
+
+	-- Task 9: a template's Except matches the RESOLVED kind: a signature special asked with Kind nil (Ember Phoenix's
+	-- Phoenix Flare is a Blast) still leaves out Flame's Smoke (Except Blast), like the same Blast asked by name
+	local sigNil = C.Resolve({ Element = "Flame", Attack = "Special", PetId = "ember_phoenix", Rarity = "Legendary", Mine = true })
+	local sigNamed = C.Resolve({ Element = "Flame", Attack = "Special", Kind = "Blast", PetId = "ember_phoenix", Rarity = "Legendary", Mine = true })
+	local plainStorm = C.Resolve({ Element = "Flame", Attack = "Special", Kind = "Beam", Rarity = "Legendary", Mine = true })
+	T.check(sigNil and sigNil.Kind == "Blast" and layerById(sigNil, "Smoke") == nil and sigNamed and layerById(sigNamed, "Smoke") == nil
+		and plainStorm and layerById(plainStorm, "Smoke") ~= nil,
+		"p7vfx catalog: Except matches the resolved kind (a signature Blast with Kind nil leaves out Flame's Smoke; a Beam keeps it)")
+
+	-- Task 9: Low quality's 2 emitters are chosen on purpose: the Burst + the element's most characteristic emitter
+	-- (recipe.LowKeep, the kind's / attack's pick first); every element's Melee and Ranged have one of them, at every rarity
+	local lowBad = {}
+	local function isEm(l)
+		return type(l) == "table" and (l.Kind == "Emitter" or (l.Kind == "Decal" and type(l.Texture) == "string"))
+	end
+	for _, element in ipairs(Config.Elements.Order) do
+		for _, attack in ipairs({ "Melee", "Ranged" }) do
+			for _, rarity in ipairs(RARITIES) do
+				local r = C.Resolve({ Element = element, Attack = attack, Rarity = rarity, Mine = true })
+				local found = nil
+				for _, id in ipairs(r and r.LowKeep or {}) do
+					if not found then
+						if id == "Alive" and isEm(r.Alive) then
+							found = id
+						end
+						local l = layerById(r, id)
+						if l and isEm(l) then
+							found = id
+						end
+					end
+				end
+				if not (r and type(r.LowKeep) == "table" and found and found ~= "Burst") then
+					lowBad[#lowBad + 1] = fmt("%s %s %s: LowKeep %s", element, attack, rarity, r and table.concat(r.LowKeep or {}, ",") or "?")
+				end
+			end
+		end
+	end
+	T.check(#lowBad == 0, "p7vfx catalog: every element's Melee / Ranged names its Low-quality emitter (LowKeep) and has it", table.concat(lowBad, " | "))
+	local stormLow = C.Resolve({ Element = "Water", Attack = "Special", Kind = "Storm", Rarity = "Rare", Mine = true })
+	T.check(stormLow and stormLow.LowKeep[1] == "Cloud" and stormLow.LowKeep[2] == "Ripple", "p7vfx catalog: a kind's Low pick comes before the element's (Storm: the cloud)",
+		stormLow and table.concat(stormLow.LowKeep, ","))
+
+	-- Task 9 player decision: the melee leap lands on the target, so a long gap gives it more air time (LeapTravel): the
+	-- base travel at battle range (centre ~4 studs), longer in the /fx preview (10 studs), capped; no Distance = the base
+	local function meleeTravel(element, d)
+		local r = C.Resolve({ Element = element, Attack = "Melee", Rarity = "Common", Mine = true, Distance = d })
+		return r and r.Beats.Travel or -1
+	end
+	T.check(math.abs(meleeTravel("Flame", 4) - 0.1) < 1e-9 and math.abs(meleeTravel("Flame", 10) - 0.22) < 1e-9 and math.abs(meleeTravel("Flame", 60) - 0.24) < 1e-9
+		and math.abs(meleeTravel("Frost", 10) - 0.27) < 1e-9 and math.abs(meleeTravel("Flame", nil) - 0.1) < 1e-9,
+		"p7vfx catalog: melee Travel grows with the gap past 4 studs (0.02 s/stud, +0.14 s max): the leap's air time",
+		fmt("4: %.3f, 10: %.3f, 60: %.3f, frost 10: %.3f", meleeTravel("Flame", 4), meleeTravel("Flame", 10), meleeTravel("Flame", 60), meleeTravel("Frost", 10)))
 	local shadow = C.Resolve({ Element = "Shadow", Attack = "Ranged", Rarity = "Common", Mine = true })
 	local sb, sg = layerById(shadow, "Burst"), layerById(shadow, "Glass")
 	T.check(sb and sb.Texture == "fx_voidring" and sb.Motion == "Implode" and sg and sg.Texture == "fx_darkglass" and finiteNum(sg.Delay) and sg.Delay > 0,
