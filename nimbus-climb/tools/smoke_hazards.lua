@@ -620,6 +620,7 @@ S.hazards = guarded("hazards", function()
 		T.fail("hazards: no WindGust in the sampled courses")
 	end
 
+	local cannonStand -- where a rider stands on the first cannon pad (reused by the stopFn steering check)
 	-- CloudCannon -------------------------------------------------------------------------------------------------------------
 	local cannons = all(Config.Tags.CloudCannon)
 	if #cannons > 0 then
@@ -689,6 +690,56 @@ S.hazards = guarded("hazards", function()
 			T.check(root().AssemblyLinearVelocity.Magnitude < 1, "a paused cannon does not fire")
 			active = true
 			away()
+
+			-- bug #8 (cannon checkpoint skip): no steering from the launch to the touchdown, and the walk speed /
+			-- AutoRotate come back on every path (touchdown, time limit, a freeze in between, ReleaseFlight, stopFn)
+			local hm = root().Parent:FindFirstChildOfClass("Humanoid")
+			local walk = Config.Physics.WalkSpeed
+			local function launchOnce()
+				advance(1.1) -- past the re-arm time
+				root().AssemblyLinearVelocity = Vector3.new(0, 0, 0)
+				Mock.Teleport(a, standing)
+				local t1 = Mock.Clock.now
+				while Mock.Clock.now - t1 < 2.0 do
+					advance(0.03)
+					if root().AssemblyLinearVelocity.Magnitude > 5 then
+						away()
+						return true
+					end
+				end
+				away()
+				return false
+			end
+			T.check(hm.WalkSpeed == walk and hm.AutoRotate == true, "steering: the rider walks normally before the next launch", "WalkSpeed " .. tostring(hm.WalkSpeed) .. " AutoRotate " .. tostring(hm.AutoRotate))
+			if T.check(launchOnce(), "steering: the cannon launches again") then
+				T.eq(hm.WalkSpeed, 0, "steering: WalkSpeed is 0 during a cannon flight (no air steering onto other steps)")
+				T.eq(hm.AutoRotate, false, "steering: AutoRotate is off during a cannon flight")
+				advance(flight - 0.25)
+				T.eq(hm.WalkSpeed, 0, "steering: still locked just before the touchdown")
+				hm.FloorMaterial = Enum.Material.Plastic -- touchdown
+				advance(0.35)
+				T.check(hm.WalkSpeed == walk and hm.AutoRotate == true, "steering: back at the touchdown (before FlightTime + landing grace)", "WalkSpeed " .. tostring(hm.WalkSpeed) .. " AutoRotate " .. tostring(hm.AutoRotate))
+				hm.FloorMaterial = Enum.Material.Air
+			end
+			if launchOnce() then
+				advance(flight + 0.9)
+				T.check(hm.WalkSpeed == walk and hm.AutoRotate == true, "steering: back after FlightTime + landing grace even without a floor contact", "WalkSpeed " .. tostring(hm.WalkSpeed))
+			end
+			if launchOnce() then
+				-- MatchService froze the rider meanwhile (anchored + WalkSpeed 0): the lock must not undo the freeze
+				root().Anchored = true
+				advance(flight + 0.9)
+				T.eq(hm.WalkSpeed, 0, "steering: a freeze during the flight is left alone (WalkSpeed stays 0)")
+				T.eq(hm.AutoRotate, true, "steering: ...but AutoRotate comes back")
+				root().Anchored = false
+				hm.WalkSpeed = walk
+			end
+			if launchOnce() then
+				T.eq(hm.WalkSpeed, 0, "steering: locked before ReleaseFlight")
+				HS.ReleaseFlight(a)
+				T.check(hm.WalkSpeed == walk and hm.AutoRotate == true, "steering: HazardService.ReleaseFlight (MatchService leave / detach) gives it back at once", "WalkSpeed " .. tostring(hm.WalkSpeed))
+			end
+			cannonStand = standing
 		end
 	else
 		T.fail("hazards: no CloudCannon in the sampled courses")
@@ -795,8 +846,26 @@ S.hazards = guarded("hazards", function()
 	end
 
 	-- stop: nothing keeps running -----------------------------------------------------------------------------------------------------
+	-- bug #8: a rider still in a cannon flight when the match stops gets the steering back from stopFn
+	local flyingAtStop = false
+	local hmStop = root().Parent:FindFirstChildOfClass("Humanoid")
+	if cannonStand then
+		advance(1.1)
+		root().AssemblyLinearVelocity = Vector3.new(0, 0, 0)
+		Mock.Teleport(a, cannonStand)
+		local t1 = Mock.Clock.now
+		while Mock.Clock.now - t1 < 2.0 and not flyingAtStop do
+			advance(0.03)
+			flyingAtStop = root().AssemblyLinearVelocity.Magnitude > 5
+		end
+		away()
+		T.check(flyingAtStop and hmStop.WalkSpeed == 0, "steering: a rider is in a cannon flight when the match stops")
+	end
 	for _, stop in ipairs(stops) do
 		stop()
+	end
+	if flyingAtStop then
+		T.check(hmStop.WalkSpeed == Config.Physics.WalkSpeed and hmStop.AutoRotate == true, "steering: stopFn() gives the rider's WalkSpeed / AutoRotate back", "WalkSpeed " .. tostring(hmStop.WalkSpeed))
 	end
 	advance(0.3)
 	local statsAfterStop = Mock.Stats()
