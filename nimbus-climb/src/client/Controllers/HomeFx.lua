@@ -37,7 +37,8 @@
 --     everyone's evolved pets are Low (3.7) while the posed-pet part budget lasts (K.HOME_PET_PARTS), at most
 --     K.ROAM_MAX_PETS posed pets over every home (own home first, then the nearest homes).
 --   * Cloud Cash (3.5): every drop of CoinDrops ("slot=cycle:stage[*]") is a pooled TokenLook coin ("Cash", Scale
---     0.8 / 1.0 / 1.15 / 1.3 by stage, no light; Lucky "GoldenCash" + sparkles) at HomeRoam.Plan(seed, slot, cycle).Poop
+--     0.8 / 1.0 / 1.15 / 1.3 by stage x CASH_SCALE: a stage-1 coin is 1.4 studs tall; no light, own coins carry
+--     TokenLook's soft halo ball; Lucky "GoldenCash" + sparkles) at HomeRoam.Plan(seed, slot, cycle).Poop
 --     that bobs and spins (TokenLook.Motion); a coin a pet popped is pending until CoinDrops lists it and fades after
 --     2.5 s unconfirmed; other players' coins are dimmed and still; the Welcome-back pile ("W") is a heap of rainbow
 --     coins at Garden.Slot.WelcomePile. The scoop (only the owner's coins are ever collectable, the server ledger
@@ -302,6 +303,7 @@ local G = {
 local R = {
 	cashPool = {}, -- [look] = { idle coin records { Part, Pieces, Alpha, Look, Half } }
 	cashAlive = 0,
+	cashParts = 0, -- the parts of the coins alive (6 per coin, + the glow ball of an own coin)
 	cashMade = 0,
 	bitPool = {}, -- idle berry / puff cubes
 	bitsAlive = 0,
@@ -2638,11 +2640,14 @@ function R.takeCash(look)
 		local palette, stage, d = string.match(look, "^(%a-)(%d)(d?)$")
 		local dim = d == "d"
 		local lucky = palette == "GoldenCash"
+		-- an own coin gets TokenLook's soft halo (one translucent Neon ball, no light) so it reads from the path
+		-- (bug batch 2 #17); other players' dimmed coins stay at 6 parts
 		local ok, part = pcall(TokenLook.Build, {
 			Palette = palette,
 			Scale = (R.STAGE_SCALE[tonumber(stage) or 1] or 1) * K.CASH_SCALE,
 			Light = false,
 			Sparkles = lucky and not dim,
+			Halo = not dim,
 		})
 		if not ok or typeof(part) ~= "Instance" then
 			return nil
@@ -2662,16 +2667,20 @@ function R.takeCash(look)
 			end
 			base[i] = p.Transparency
 		end
-		-- Half: the root is 9 voxels tall, the rim bands 11: half the coin's full height
-		c = { Part = part, Pieces = pieces, Alpha = base, Look = look, Half = part.Size.Y / 2 * 11 / 9 }
+		-- Half: the root is 9 voxels tall, the rim bands 11: half the coin's full height. Halo: TokenLook's glow ball
+		-- (anchored, NOT welded: R.moveCash carries it along)
+		local halo = part:FindFirstChild("Halo")
+		c = { Part = part, Pieces = pieces, Alpha = base, Look = look, Half = part.Size.Y / 2 * 11 / 9, Halo = halo and halo:IsA("BasePart") and halo or nil }
 		R.cashMade = R.cashMade + 1
 	end
 	R.cashAlive = R.cashAlive + 1
+	R.cashParts = R.cashParts + #c.Pieces
 	return c
 end
 
 function R.giveCash(c)
 	R.cashAlive = max(0, R.cashAlive - 1)
+	R.cashParts = max(0, R.cashParts - #c.Pieces)
 	c.Part.Parent = nil
 	R.fade(c, 0)
 	local list = R.cashPool[c.Look]
@@ -2712,6 +2721,15 @@ function R.dropPoint(rec, slot, cycle)
 	return plot:PointToWorldSpace(Vector3.new(x, R.ground(x, z), z))
 end
 
+-- moves a coin: the root carries its welded pieces (only while it is in the Workspace: see R.newCash), the unwelded
+-- glow ball follows by hand
+function R.moveCash(c, cf)
+	c.Part.CFrame = cf
+	if c.Halo then
+		c.Halo.CFrame = CFrame.new(cf.Position)
+	end
+end
+
 -- places a coin record at its rest point (bob / spin when it moves)
 function R.placeCash(c, moving)
 	local base = c.Point + Vector3.new(0, c.Half + K.CASH_HOVER, 0)
@@ -2723,9 +2741,9 @@ function R.placeCash(c, moving)
 		local speed = m.BobSpeed or 2.2
 		local yaw = c.Phase + clock * spin
 		base = base + Vector3.new(0, bob * 0.5 * (1 + sin(clock * speed + c.Phase)), 0)
-		c.Part.CFrame = CFrame.new(base) * CFrame.Angles(0, yaw, 0)
+		R.moveCash(c, CFrame.new(base) * CFrame.Angles(0, yaw, 0))
 	elseif not c.Still then
-		c.Part.CFrame = CFrame.new(base) * CFrame.Angles(0, c.Phase, 0)
+		R.moveCash(c, CFrame.new(base) * CFrame.Angles(0, c.Phase, 0))
 		c.Still = true
 	end
 end
@@ -2749,8 +2767,12 @@ function R.newCash(rec, key, slot, cycle, stage, lucky, pending)
 	c.Still = false
 	c.Phase = G.noise(slot, cycle) * 6.28
 	R.fade(c, 0)
-	R.placeCash(c, not dim)
+	-- parent FIRST, then move (bug batch 2 #17): a WeldConstraint is inactive outside the Workspace, so a CFrame set on
+	-- the unparented root left its welded pieces behind (at the origin for a new coin, at the last drop for a pooled
+	-- one) and the weld locked that gap on parenting; with the token_cash mesh the root is invisible, so the coin was
+	-- nowhere to be seen at its drop
 	c.Part.Parent = ensureFolder()
+	R.placeCash(c, not dim)
 	rec.Roam.Coins[key] = c
 	return c
 end
@@ -2768,7 +2790,7 @@ function R.spawnPending(rec, slot, cycle, from)
 	c = R.newCash(rec, key, slot, cycle, d and d.Stage or 1, d and d.Lucky or false, d == nil)
 	if c and not c.Dim then
 		c.Arc = { From = from, T = 0 }
-		c.Part.CFrame = CFrame.new(from)
+		R.moveCash(c, CFrame.new(from))
 	end
 end
 
@@ -2886,7 +2908,7 @@ function R.stepCoins(rec, dt)
 				R.placeCash(c, not c.Dim)
 			else
 				local pos = a.From:Lerp(rest, q) + Vector3.new(0, 1.4 * 4 * q * (1 - q), 0)
-				c.Part.CFrame = CFrame.new(pos) * CFrame.Angles(0, c.Phase + q * 8, 0)
+				R.moveCash(c, CFrame.new(pos) * CFrame.Angles(0, c.Phase + q * 8, 0))
 			end
 		elseif not c.Dim and rec.PetsAnimate then
 			R.placeCash(c, true)
@@ -4448,7 +4470,7 @@ function HomeFx.Stats()
 		HeapParts = heapParts,
 		HeapsMade = G.heapsMade,
 		Coins = coins, -- Cloud Cash coins drawn now (<= K.MAX_CASH)...
-		CoinParts = R.cashAlive * 6, -- ...x 6 parts (TokenLook "Cash": no halo, no light)
+		CoinParts = R.cashParts, -- ...6 parts each (TokenLook "Cash", no light) + the glow ball of an own coin
 		CashMade = R.cashMade, -- coin parts ever built (pooled per look)
 		Pending = pending, -- coins popped by a pet, waiting for CoinDrops
 		Poops = R.stats.Poops,

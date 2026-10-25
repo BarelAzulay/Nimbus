@@ -55,7 +55,7 @@ local CONTRACT = {
 		Eff = { Lucky = { 0, 0.02, 0.04, 0.06, 0.08, 0.10, 0.12, 0.15 }, Radius = { 8, 10, 12, 14, 16, 19, 22, 26 },
 			PileSeconds = { 300, 330, 360, 390, 420, 480, 540, 600 } } },
 	Kitchen = { Name = "Food Machine", Kind = "FoodMachine", Max = 5, Caps = { 1, 2, 4, 5 }, Req = { Press1 = 1 },
-		Price = { 300, 44000, 400000, 850000, 2400000 }, Eff = { FeedShare = { 0.25, 0.30, 0.35, 0.42, 0.50 } } },
+		Price = { 120, 22000, 400000, 850000, 2400000 }, Eff = { FeedShare = { 0.25, 0.30, 0.35, 0.42, 0.50 } } },
 	Gym = { Name = "Training Place", Kind = "Training", Max = 5, Caps = { 1, 2, 4, 5 }, Req = { Kitchen = 1 },
 		Price = { 3800, 140000, 520000, 1200000, 2800000 }, Eff = { Slots = { 1, 2, 3, 4, 5 } } },
 	Vault = { Name = "Vault", Kind = "Vault", Max = 5, Caps = { 1, 2, 4, 5 }, Req = { Press1 = 6 },
@@ -555,7 +555,12 @@ local function apiChecks(TC)
 		local k = (id == "House") and 1 or (def and def.Kind == "Decor") and 0.4 or 1.25
 		for lv, p in ipairs(old) do
 			local got = d and d.Price[lv]
-			priceT:case(type(got) == "number" and abs(got - p * k) <= 0.05 * max(1, p * k), id .. " L" .. lv .. ": " .. tostring(got) .. " vs " .. fmt(p * k, 0))
+			if id == "Kitchen" and lv <= 2 then
+				-- bug batch 2 #9 retuned the Food Machine's first two levels (starter wall): 120 / 22,000
+				priceT:case(got == ({ 120, 22000 })[lv], id .. " L" .. lv .. ": " .. tostring(got) .. " vs the batch-2 price")
+			else
+				priceT:case(type(got) == "number" and abs(got - p * k) <= 0.05 * max(1, p * k), id .. " L" .. lv .. ": " .. tostring(got) .. " vs " .. fmt(p * k, 0))
+			end
 		end
 	end
 	priceT:report()
