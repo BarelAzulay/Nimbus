@@ -61,6 +61,10 @@
 --                 TrialBest >= 1 (DataService.GetBattle): a Phase 4 veteran does not redo the step
 --   RaidSeen      the player joined a Boss Raid (BattleService.RaidJoined / a Raid BattleEnded naming them), has a raid
 --                 in the record (Battle.Raids), or stands in the arena while BattleService.GetRaidStatus() is not nil
+--   RaidFloor     (bug batch 2 #24, the raid step) the character stands on the Boss Raid floor (ArenaInfo.Floor footprint,
+--                 2 Hz poll), or anything that completes RaidSeen; the step also has AlsoNext, so "Next" completes it.
+--                 A live raid seen when it completes (joined, or in the arena while one runs) gives a bonus toast. The
+--                 hint is static ("Step onto the raid floor"), no countdown; a running raid says so instead.
 --   Next / ShopOpened / IndexOpened: client reports through the TutorialEvent remote, accepted only when they
 --                 match the CURRENT step. "Skip" ends the tutorial (no reward, no later chapter); "Sync" asks for the
 --                 current state again. The remote is type checked and rate limited.
@@ -80,12 +84,13 @@
 -- "Gate" = the Arena gate of the Gate Court (ArenaInfo.ArenaPortal; else ArenaInfo.Spawn, the forum), "Floor" = the
 -- colosseum floor, "Ring" = the Champion Ring portal (ArenaInfo.RingPortal; the gate of a free home first while the
 -- player has none), "Dungeon" = the Dungeon gate's pad (DungeonInfo.Pad); no arrow while the player fights (attribute
--- InBattle) or runs the Dungeon (DungeonService.GetRun). The raid step's hint counts down to the next raid in minutes
--- (EventService.SecondsUntil) or says that one is running.
+-- InBattle) or runs the Dungeon (DungeonService.GetRun). A "RaidSeen" step's hint counts down to the next raid in
+-- minutes (EventService.SecondsUntil) or says that one is running (the raid step is "RaidFloor" now: no countdown).
 --
 -- TutorialState payload (server -> that player, on join, on every change, on "Sync"):
 --   { Step = n, Total = #Steps, Id, Title, Text, Target = {Kind, Id, Label, Position = Vector3|nil, SpotIndex},
---     CompleteOn, Hint, Button, Gift = bool, Chapter, Done = bool, Completed = bool (finished this session),
+--     CompleteOn, Hint, Button, AlsoNext = bool (Next completes it too), Gift = bool, Chapter, Done = bool,
+--     Completed = bool (finished this session),
 --     Skipped = bool, Reward = tokens granted on completion }
 -- Plain Lua 5.1-compatible syntax only.
 
@@ -122,6 +127,8 @@ local RING_FINISH_TOKENS = 300
 local FEED_BERRIES = 500
 local DUNGEON_PAD_RADIUS = 12 -- studs (horizontal) around DungeonInfo.Pad: standing there opens the Dungeon window once
 local ARENA_RADIUS = 160 -- studs around ArenaInfo.Center that count as the arena when ArenaBuilder.InArena is missing
+local RAID_FLOOR_MARGIN = 4 -- studs around the Boss Raid floor's footprint that still count as on it (the raid step)
+local RAID_FLOOR_RADIUS = 48 -- studs around a Floor given only as a position (half of BattleCatalog.Zones.Raid)
 local ATTR_IN_BATTLE = "InBattle" -- BattleService's attribute (the battle id while the player fights)
 local STATION_FRONT_GAP = 2.5 -- studs in front of a station's footprint where its guide arrow stands
 local TOKEN_GLYPH = "\226\152\129" -- cloud
@@ -152,6 +159,7 @@ local KNOWN_COMPLETE_ON = {
 	ArenaReached = true,
 	TeamSet = true,
 	RaidSeen = true,
+	RaidFloor = true, -- bug batch 2 #24 (the raid step)
 	-- Phase 4 (chapter 2 rewritten + chapter 4)
 	GardenPlaced = true,
 	CoinsScooped = true,
@@ -338,6 +346,7 @@ local function buildSteps()
 				Gift = raw.Gift == true,
 				Hint = type(raw.Hint) == "string" and raw.Hint or nil,
 				Button = type(raw.Button) == "string" and raw.Button or nil,
+				AlsoNext = raw.AlsoNext == true,
 			})
 		end
 	end
@@ -1067,6 +1076,31 @@ local function inBattle(player)
 	return id ~= nil and id ~= false and id ~= ""
 end
 
+-- true while the character stands on the Boss Raid floor (ArenaInfo.Floor = { CFrame on the surface, Size }: inside
+-- its X / Z footprint + RAID_FLOOR_MARGIN, up to NEAR_SPOT_HEIGHT above it); a Floor given only as a position counts
+-- RAID_FLOOR_RADIUS around it (bug batch 2 #24)
+local function onRaidFloor(player)
+	local root = rootOf(player)
+	local info = getArenaInfo()
+	local floor = info and info.Floor
+	if not root or floor == nil then
+		return false
+	end
+	local cf = type(floor) == "table" and floor.CFrame or nil
+	local size = type(floor) == "table" and floor.Size or nil
+	if typeof(cf) == "CFrame" and typeof(size) == "Vector3" then
+		local rel = cf:PointToObjectSpace(root.Position)
+		return math.abs(rel.X) <= size.X / 2 + RAID_FLOOR_MARGIN and math.abs(rel.Z) <= size.Z / 2 + RAID_FLOOR_MARGIN
+			and rel.Y >= -RAID_FLOOR_MARGIN and rel.Y <= NEAR_SPOT_HEIGHT
+	end
+	local center = positionOfInfo(cf) or positionOfInfo(floor)
+	if typeof(center) ~= "Vector3" then
+		return false
+	end
+	local offset = root.Position - center
+	return Vector3.new(offset.X, 0, offset.Z).Magnitude <= RAID_FLOOR_RADIUS and math.abs(offset.Y) <= NEAR_SPOT_HEIGHT
+end
+
 local function activeTeamSize(player)
 	if not hasFunction(DataService, "ActiveTeamKeys") then
 		return 0
@@ -1224,6 +1258,9 @@ local function resolveStep(player, track, step)
 	local hint = step.Hint
 	if step.CompleteOn == "RaidSeen" then
 		hint = raidHint(step)
+	elseif step.CompleteOn == "RaidFloor" and raidStatus() then
+		-- (bug batch 2 #24: no countdown any more, it made new players wait; a raid on right now is worth a look)
+		hint = "A Boss Raid is on! Go to the colosseum"
 	end
 	if not target then
 		return nil, hint
@@ -1310,6 +1347,7 @@ local function buildPayload(player, track)
 		CompleteOn = step.CompleteOn,
 		Hint = hint,
 		Button = step.Button,
+		AlsoNext = step.AlsoNext == true,
 		Gift = step.Gift,
 		Chapter = step.Chapter,
 		Done = track.Done == true,
@@ -1488,6 +1526,11 @@ local function advance(player, track)
 		return
 	end
 	local index = track.Step
+	if step.CompleteOn == "RaidFloor" and (track.RaidSeen == true or (raidStatus() ~= nil and inArena(player))) then
+		-- bug batch 2 #24: a live raid seen on the raid step is a bonus (it never blocks the step any more); the toast IS
+		-- the bonus (nothing is stored: a badge would need a Profile.Tutorial field)
+		notify(player, "Bonus! You caught a live Boss Raid. Jump in and fight!", "good", 5)
+	end
 	TutorialService.StepCompleted:Fire(player, step.Id, index)
 	if index >= #steps then
 		finish(player, track, false)
@@ -1545,8 +1588,22 @@ local function impossible(player, track, step)
 		return not hasFunction(DungeonService, "StartSolo")
 	elseif kind == "RaidSeen" then
 		return BattleService == nil or not (hasFunction(BattleService, "GetRaidStatus") or hasSignal(BattleService, "BattleEnded"))
+	elseif kind == "RaidFloor" then
+		return not arenaKnown()
 	end
 	return false
+end
+
+-- the "RaidSeen" conditions: joined a raid this step, a raid in the record, or in the arena while one runs
+local function raidSeen(player, track)
+	if track.RaidSeen == true then
+		return true
+	end
+	local record = battleRecord(player)
+	if record and (tonumber(record.Raids) or 0) >= 1 then
+		return true
+	end
+	return raidStatus() ~= nil and inArena(player)
 end
 
 local function nearSpot(player)
@@ -1593,14 +1650,10 @@ local function satisfied(player, track, step)
 	elseif kind == "DungeonWon" then
 		return track.DungeonWon == true or dungeonOneCleared(player)
 	elseif kind == "RaidSeen" then
-		if track.RaidSeen == true then
-			return true
-		end
-		local record = battleRecord(player)
-		if record and (tonumber(record.Raids) or 0) >= 1 then
-			return true
-		end
-		return raidStatus() ~= nil and inArena(player)
+		return raidSeen(player, track)
+	elseif kind == "RaidFloor" then
+		-- bug batch 2 #24: on the floor (or Next, HandleEvent) is enough; a raid seen counts too, never needed
+		return (not inMatch(player) and onRaidFloor(player)) or raidSeen(player, track)
 	end
 	return false
 end
@@ -1843,7 +1896,7 @@ function TutorialService.HandleEvent(player, eventName)
 		return false, "Unknown event"
 	end
 	local step = currentStep(track)
-	if not step or step.CompleteOn ~= completes then
+	if not step or (step.CompleteOn ~= completes and not (completes == "Next" and step.AlsoNext)) then
 		return false, "Not the current step"
 	end
 	if completes == "Equipped" and equippedCsv(player) == "" then
@@ -2133,7 +2186,7 @@ function TutorialService.Init(lobbyInfo, deps)
 				local player = type(userId) == "number" and Players:GetPlayerByUserId(userId) or nil
 				local track = player and tracks[player]
 				local step = currentStep(track)
-				if step and step.CompleteOn == mark then
+				if step and (step.CompleteOn == mark or (mark == "RaidSeen" and step.CompleteOn == "RaidFloor")) then
 					track[mark] = true
 					nudge(player)
 				end
@@ -2155,7 +2208,7 @@ function TutorialService.Init(lobbyInfo, deps)
 		BattleService.RaidJoined:Connect(function(player)
 			local track = typeof(player) == "Instance" and tracks[player] or nil
 			local step = currentStep(track)
-			if step and step.CompleteOn == "RaidSeen" then
+			if step and (step.CompleteOn == "RaidSeen" or step.CompleteOn == "RaidFloor") then
 				track.RaidSeen = true
 				nudge(player)
 			end

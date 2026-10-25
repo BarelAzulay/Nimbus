@@ -4,7 +4,8 @@
 --   fighter   the played kit vs a passive NPC of k x its power (kit factor 1.3-1.7); mirror fights 8-45 s, none at 90 s
 --   support   Support (Economy) pets: DPS ratio 0.65-0.75 of Combat pets; a Support fighter can fight, best as a helper
 --   duels     mirror duels per stage (scripted players both sides): 40-60%, no draws, none at the 120 s limit
---   raids     1 / 4 / 8 / 16 dodging fighters finish every boss in 100-240 s; no one-shots; joins / leaves; idle alts
+--   raids     1 / 4 / 8 / 16 dodging fighters finish every boss in 100-240 s (a solo under half the boss's BaselineDps loses:
+--             bug batch 2 #2); Lv 5 / Lv 40 solos and groups; no one-shots; joins / leaves; idle alts
 --   ring      rounds 1-3 >= 95% for every single level-1 rollable pet; the stage medians S1 16 .. S10 51 (+-2)
 --   dungeon   floor 1 for the 12 single level-1 pets (100%); the stage ladder (monotonic, S10 >= floor 10); a 4-party +1 floor
 --   training  trained / evolved TeamPower ratios; trained mirror duels fair; trained raids 100-240 s
@@ -849,10 +850,11 @@ end)
 
 -- 5. raids
 section("raids", function(opts)
-	header("Raids: 1 / 4 / 8 / 16 dodging fighters (70% of wind-ups and telegraphs) should finish every boss in 100-240 s")
+	header("Raids: 1 / 4 / 8 / 16 dodging fighters (70% of wind-ups and telegraphs) should finish every boss in 100-240 s (a solo under half of BaselineDps should lose)")
 	local seeds = max(1, floor(opts.seeds / 8))
 	local stages = { { Id = "M5", Pets = SIM.Stages[5].Pets }, { Id = "M8", Pets = SIM.Stages[8].Pets } }
 	local wonCombos, combos, anyBossHit = 0, 0, 0
+	local weakSolos, weakSolosLost = 0, 0
 	local cellOk, avgOk = true, true
 	for _, boss in ipairs(BC.BossOrder) do
 		for _, stage in ipairs(stages) do
@@ -872,9 +874,19 @@ section("raids", function(opts)
 				end, policies, n)
 				out(fmt("  %-13s %-3s %2dp: win %3d%% dur %5.1f s (dodges %5.1f, dodged hits %5.1f, KOs %4.1f, maxBossHit %.2f, tele hits %4.1f)",
 					boss, stage.Id, players, agg.winPct, agg.avgDur, agg.dodges / max(1, agg.n), agg.misses / max(1, agg.n), agg.kos / max(1, agg.n), agg.maxBossHit, agg.teleHits / max(1, agg.n)))
-				combos = combos + 1
+				-- bug batch 2 #2: a solo with under half the boss's BaselineDps meets the HP floor and should lose (near the
+				-- baseline it is the edge: M8 at ~0.9 x still wins)
+				local weakSolo = players == 1 and BC.BaselineDps and BC.ExpectedDps({ Pets = stage.Pets }) < 0.5 * BC.BaselineDps(boss)
+				if weakSolo then
+					weakSolos = weakSolos + 1
+					if agg.winPct < 50 then
+						weakSolosLost = weakSolosLost + 1
+					end
+				else
+					combos = combos + 1
+				end
 				if agg.winPct >= 50 then
-					wonCombos = wonCombos + 1
+					wonCombos = wonCombos + (weakSolo and 0 or 1)
 					if agg.avgDur < 90 or agg.avgDur > 250 then
 						cellOk = false
 					end
@@ -888,17 +900,59 @@ section("raids", function(opts)
 			out(fmt("  %-13s %-3s average over 1/4/8/16 players: %.0f s", boss, stage.Id, cells > 0 and sumDur / cells or 0))
 		end
 	end
-	target("dodging fighters win nearly every raid (1/4/8/16 players, two stages, four bosses: >= 90% of the combos)", wonCombos >= combos * 0.9, fmt("%d of %d", wonCombos, combos))
+	target("dodging fighters win nearly every raid (1/4/8/16 players, two stages, four bosses: >= 90% of the combos; weak solos aside)", wonCombos >= combos * 0.9, fmt("%d of %d", wonCombos, combos))
+	target("a solo under half the boss's BaselineDps loses (bug batch 2 #2)", weakSolosLost == weakSolos, fmt("%d of %d lost", weakSolosLost, weakSolos))
 	target("won raids last 100-240 s per boss and stage (every single cell within 90-250 s: a few seeds per cell)", avgOk and cellOk)
 	target("no boss hit takes more than 80% of a fighter before the enrage", anyBossHit <= 0.8, fmt("max %.2f", anyBossHit))
 
+	header("Raids (bug batch 2 #2): 1 / 4 / 8 dodging teams at Lv 5 and Lv 40 vs the 330 s window (a Lv 5 solo cannot win)")
+	local raidSeeds = max(1, floor(seeds / 2))
+	local lv5 = { pet("maple_fox", 5), pet("bubble_axolotl", 5), pet("storm_tabby", 5) }
+	local lv40 = { pet("cloudy_dragon", 40, "Golden", { Evo = 1 }), pet("stormfang", 35, nil, { Evo = 1 }), pet("eclipse_dragon", 35, nil, { Evo = 1 }) }
+	local lv5SoloWins, lv5GroupOk, lv40Ok = 0, true, true
+	for _, boss in ipairs(BC.BossOrder) do
+		for _, case in ipairs({ { "Lv5", lv5 }, { "Lv40", lv40 } }) do
+			for _, players in ipairs({ 1, 4, 8 }) do
+				local policies = {}
+				for i = 1, players do
+					policies[100 + i] = "player"
+				end
+				local agg = series(function(seed)
+					local teams = {}
+					for i = 1, players do
+						teams[i] = team(100 + i, 1, case[2])
+					end
+					return { Mode = "Raid", Boss = boss, Seed = seed, Teams = teams }
+				end, policies, raidSeeds)
+				local hp = BC.BossHp(boss, (function()
+					local list = {}
+					for i = 1, players do
+						list[i] = { Pets = case[2] }
+					end
+					return list
+				end)())
+				out(fmt("  %-13s %-4s %dp: boss HP %8d  win %3d%%  dur %5.1f s  KOs %4.1f", boss, case[1], players, hp, agg.winPct, agg.avgDur, agg.kos / max(1, agg.n)))
+				if case[1] == "Lv5" and players == 1 then
+					lv5SoloWins = lv5SoloWins + agg.wins[1]
+				elseif case[1] == "Lv5" and players == 8 and agg.winPct < 100 then
+					lv5GroupOk = false
+				elseif case[1] == "Lv40" and agg.winPct < 100 then
+					lv40Ok = false
+				end
+			end
+		end
+	end
+	target("a Lv 5 solo never beats a raid boss (the BaselineDps HP floor)", lv5SoloWins == 0, fmt("%d wins", lv5SoloWins))
+	target("eight Lv 5 teams beat every boss; a Lv 40 solo and Lv 40 groups beat every boss", lv5GroupOk and lv40Ok)
+
 	header("Raids: joining late and leaving (boss HP shares)")
-	local b = BS.new({ Mode = "Raid", Boss = "frost_wyrm", Seed = 2, Teams = { team(1, 1, SIM.Stages[5].Pets, { Auto = true }) } })
+	-- S9 (Lv 40): above the BaselineDps floor, so its own DPS sets the boss HP (bug batch 2 #2)
+	local b = BS.new({ Mode = "Raid", Boss = "frost_wyrm", Seed = 2, Teams = { team(1, 1, SIM.Stages[9].Pets, { Auto = true }) } })
 	local hp0 = b:BossStatus().MaxHp
 	for _ = 1, 50 do
 		b:Step(DT)
 	end
-	b:AddTeam(team(2, 1, SIM.Stages[5].Pets, { Auto = true }))
+	b:AddTeam(team(2, 1, SIM.Stages[9].Pets, { Auto = true }))
 	local hp1 = b:BossStatus().MaxHp
 	for _ = 1, 50 do
 		b:Step(DT)
@@ -909,14 +963,14 @@ section("raids", function(opts)
 	target("boss HP grows when a player joins and shrinks back when they leave", hp1 > hp0 * 1.8 and abs(hp2 - hp0) <= hp0 * 0.05)
 
 	header("Raids: joiners who bring nothing (idle alts with level-1 Commons) do not inflate the boss for the real player")
-	local withAlts = { team(400, 1, SIM.Stages[7].Pets) }
+	local withAlts = { team(400, 1, SIM.Stages[9].Pets) } -- S9: above the BaselineDps floor (bug batch 2 #2)
 	for i = 1, 7 do
 		withAlts[#withAlts + 1] = team(400 + i, 1, SIM.Stages[1].Pets, { Auto = true })
 	end
-	local solo = BS.new({ Mode = "Raid", Boss = "storm_titan", Seed = 5, Teams = { team(400, 1, SIM.Stages[7].Pets) } })
+	local solo = BS.new({ Mode = "Raid", Boss = "storm_titan", Seed = 5, Teams = { team(400, 1, SIM.Stages[9].Pets) } })
 	local crowded = BS.new({ Mode = "Raid", Boss = "storm_titan", Seed = 5, Teams = withAlts })
 	local soloHp, crowdedHp = solo:BossStatus().MaxHp, crowded:BossStatus().MaxHp
-	out(fmt("  Storm Titan HP for one S7 team %d, with 7 idle alt teams %d (x%.2f); weighted head count %.2f", soloHp, crowdedHp, crowdedHp / soloHp, crowded.playerTeamCount or 0))
+	out(fmt("  Storm Titan HP for one S9 team %d, with 7 idle alt teams %d (x%.2f); weighted head count %.2f", soloHp, crowdedHp, crowdedHp / soloHp, crowded.playerTeamCount or 0))
 	target("seven alt teams with level-1 Commons add less than 15% to the boss's HP", crowdedHp <= soloHp * 1.15, fmt("x%.2f", crowdedHp / soloHp))
 end)
 

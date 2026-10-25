@@ -127,9 +127,10 @@ local function serverScenarios()
 			and byId.dungeon.Target.Place == "Dungeon" and Steps.IndexOf.dungeon == 17,
 			"p3ui: step 17 'trial' became 'dungeon': the Dungeon portal, completes on DungeonWon")
 		local minutes = BC and BC.Events and BC.Events.Schedule and BC.Events.Schedule[1] and BC.Events.Schedule[1].EveryMinutes or 20
-		T.check(byId.raid and byId.raid.CompleteOn == "RaidSeen" and byId.raid.ChapterEnd == true and byId.raid.Target and byId.raid.Target.Place == "Floor"
-			and tostring(byId.raid.Text):find("Every " .. tostring(minutes) .. " minutes", 1, true) ~= nil and not tostring(byId.raid.Text):find("{", 1, true),
-			"p3ui: 'raid' ends the chapter (ChapterEnd), points at the colosseum floor and quotes the raid schedule (every " .. tostring(minutes) .. " minutes)")
+		-- (bug batch 2 #24: informational: the raid floor or Next completes it, the text gives the schedule + the board tip)
+		T.check(byId.raid and byId.raid.CompleteOn == "RaidFloor" and byId.raid.AlsoNext == true and byId.raid.ChapterEnd == true and byId.raid.Target and byId.raid.Target.Place == "Floor"
+			and tostring(byId.raid.Text):find("Raids run every " .. tostring(minutes) .. " minutes: the board shows the timer", 1, true) ~= nil and not tostring(byId.raid.Text):find("{", 1, true),
+			"p3ui: 'raid' ends the chapter (ChapterEnd), points at the colosseum floor, completes on the floor or Next and quotes the raid schedule (every " .. tostring(minutes) .. " minutes)")
 		local ends = 0
 		for i = start, last do
 			if Steps.Steps[i].ChapterEnd then
@@ -139,7 +140,7 @@ local function serverScenarios()
 		T.eq(ends, 1, "p3ui: chapter 3 has exactly one ChapterEnd step")
 		local src = sourceOf("server/Services/TutorialService")
 		if type(src) == "string" then
-			for _, kind in ipairs({ "ArenaReached", "TeamSet", "DungeonWon", "RaidSeen" }) do
+			for _, kind in ipairs({ "ArenaReached", "TeamSet", "DungeonWon", "RaidSeen", "RaidFloor" }) do
 				T.check(src:find(kind .. " = true", 1, true) ~= nil, "p3ui: TutorialService knows CompleteOn " .. kind)
 			end
 		end
@@ -300,7 +301,8 @@ local function serverScenarios()
 		T.eq(stepId(p), "raid", "p3ui tutorial: clearing Dungeon floor 1 completes 'dungeon'")
 		st = state(p)
 		T.check(st and st.Target and near(st.Target.Position, info.Floor.CFrame.Position), "p3ui tutorial: 'raid' points at the colosseum floor")
-		T.check(st and tostring(st.Hint):find("Boss Raid", 1, true) ~= nil, "p3ui tutorial: 'raid' hints at the next Boss Raid", st and tostring(st.Hint))
+		T.check(st and tostring(st.Hint):find("raid floor", 1, true) ~= nil and not tostring(st.Hint):find(" min", 1, true),
+			"p3ui tutorial: 'raid' hints at the raid floor, no countdown (bug batch 2 #24)", st and tostring(st.Hint))
 		T.check(st and not tostring(st.Text):find("{", 1, true), "p3ui tutorial: the raid text has its minutes filled in", st and tostring(st.Text))
 		advance(1)
 		T.eq(stepId(p), "raid", "p3ui tutorial: no raid yet: 'raid' waits")

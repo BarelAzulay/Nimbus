@@ -482,7 +482,16 @@ local function placeAnchor(self, team, spec)
 	end
 end
 
-local function meterStart(self, D)
+local function meterStart(self, D, team, entry)
+	-- bug batch 2 #27: BattleCatalog.MeterStart(entry, npc, wave) picks the range (players 20-50, NPC units 45-75, the
+	-- Ring champion and dungeon waves 2+ at 80); one rand draw either way, so seeded fights keep their RNG order
+	local bc = catalog()
+	if bc and bc.MeterStart then
+		local lo, hi = bc.MeterStart(entry, team and team.npc, team and team.wave)
+		if finite(lo) and finite(hi) then
+			return lo + (hi - lo) * rand(self)
+		end
+	end
 	local ms = D.MeterStart
 	if type(ms) == "table" then
 		local lo, hi = num(ms[1], 0), num(ms[2], 0)
@@ -576,7 +585,7 @@ local function unitFromDef(self, team, def, entry, slot, kind)
 		target = nil,
 		nextAttack = self.t + rand(self) * us.Interval * 0.6,
 		retargetAt = 0,
-		meter = meterStart(self, D),
+		meter = meterStart(self, D, team, entry),
 		shield = 0,
 		shieldUntil = 0,
 		stunUntil = 0,

@@ -54,7 +54,8 @@
 --   StationDef = { Id, Name, Kind, Icon, Blurb, MaxLevel, Requires = { <stationId> = level, HomeLevel, House, Prestige },
 --     LevelRequires = { [level] = { HomeLevel } }, TierCaps = { Cottage, Villa, Manor, SkyCastle }, Price, Effects,
 --     Slot = { CFrame, Footprint, Pad, Walkable?, Perimeter?, Spots? (Training), Bowl / Beds / Fence / Entrance /
---     WelcomePile (Garden) }, KeepOnPrestige, ResetLevel, ComingSoon }
+--     WelcomePile (Garden) }, KeepOnPrestige, ResetLevel, ComingSoon, Ghost? ("Pad": a locked station shows no
+--     hologram, only its pad and sign; default: the hologram of its biggest blocks) }
 --   Effects by Kind: Farm { Food }, Garden { Lucky, Radius, PileSeconds }, FoodMachine { FeedShare }, Training
 --     { Slots }, Vault { PileSeconds, OfflinePercent, OfflineHours }, House { Tier, TierIndex, Name }, Fusion
 --     { TokenDiscount }, Arena { Battles }, Decor { Pieces, Style, ... build hints for HomeBuilder }
@@ -407,7 +408,9 @@ local STATIONS = {
 		Blurb = "Feed berries to your pets for XP. Upgrades give bigger meals.",
 		MaxLevel = 5, TierCaps = caps(1, 2, 4, 5),
 		Requires = { Press1 = 1 },
-		Price = { 300, 44000, 400000, 850000, 2400000 },
+		-- bug batch 2 #9: L1 300 -> 120 (a starter reaches it from the first poops + an obby run), L2 44,000 -> 22,000
+		-- (one farm step after the Garden's 15,000, ~farm L13; tools/sim_tycoon.py: all targets still met)
+		Price = { 120, 22000, 400000, 850000, 2400000 },
 		Effects = effectsOf("FeedShare", { 0.25, 0.30, 0.35, 0.42, 0.50 }),
 		-- the pad sits 1 stud nearer the gate than the contract's padAt(-19, 22.5): a 10-deep machine at z 29 starts
 		-- at z 24, and the 4-stud pad at 22.5 would reach into it (Validate "pad overlaps")
@@ -462,6 +465,9 @@ local STATIONS = {
 		Requires = { Kitchen = 1, Prestige = 1 },
 		Price = { 31000, 420000, 1800000 },
 		Effects = { { TokenDiscount = 0 }, { TokenDiscount = 0.1 }, { TokenDiscount = 0.2 } },
+		-- while locked only its pad + sign show: its biggest blocks are glass pods / chamber, a hologram of them read
+		-- as a broken model (bug batch 2 #10; HomeBuilder ghostFor)
+		Ghost = "Pad",
 		Slot = { CFrame = at(11, -25, 180), Footprint = V3(10, 12, 10), Pad = padAt(11, -16, 11, -25) },
 	},
 	{

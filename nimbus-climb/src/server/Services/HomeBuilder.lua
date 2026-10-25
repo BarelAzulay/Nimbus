@@ -24,7 +24,8 @@
 --                                               attributes StationId, OwnerUserId; disabled while locked; the Prestige
 --                                               pad's says "Prestige" and needs a 1.5 s hold). Pads missing from the list
 --                                               are removed, unchanged pads are kept. Locked "Unlocks at Prestige" /
---                                               "Coming soon" stations show a hologram silhouette (`Ghost_<Id>`).
+--                                               "Coming soon" stations show a hologram silhouette (`Ghost_<Id>`)
+--                                               unless their def says Ghost = "Pad" (the Fusion Machine: pad + sign).
 --   HomeBuilder.SetGarden(spotInfo, valid, open)  (TycoonService) the Garden's open beds (3 + Prestige stars, <= 12;
 --                                               NOT the Garden level) and the placed keys valid = { [slot] = key }: a
 --                                               new open count rebuilds the Garden (template Garden:<level>:<open>);
@@ -2874,6 +2875,11 @@ end
 
 local function ghostFor(rec, id, def)
 	if rec.Ghosts[id] or rec.Stations[id] or not def then
+		return
+	end
+	-- def.Ghost = "Pad": no hologram, the locked pad and its sign say it all (the Fusion Machine: a silhouette of its
+	-- glass pods / chamber read as a broken model, bug batch 2 #10)
+	if def.Ghost == "Pad" then
 		return
 	end
 	local ok, tpl = pcall(stationTemplate, def, 1, nil)

@@ -26,6 +26,12 @@
       "$properties": {
         "Technology": "ShadowMap"
       }
+    },
+    "TextChatService": {
+      "$className": "TextChatService",
+      "$properties": {
+        "ChatVersion": "TextChatService"
+      }
     }
   }
 }

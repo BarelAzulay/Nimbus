@@ -83,6 +83,7 @@ local CANNON_LANDING_GRACE = 0.8 -- extra protection after FlightTime for the to
 local CANNON_MAX_SPEED = 260 -- sanity cap for a broken Target / FlightTime
 local CANNON_DEFAULT_FLIGHT = 1.6
 local CANNON_MAX_LATENCY = 0.3 -- seconds of lag the launch compensates for at most
+local CANNON_STEER_POLL = 0.05 -- how often a steering lock checks for the touchdown (see lockSteering)
 
 ----------------------------------------------------------------------
 -- Palette: calm, readable colours (Theme.World when present, local fallbacks otherwise)
@@ -1012,10 +1013,11 @@ local function attachSpinBar(ctx, part)
 	local bar = {
 		part = part,
 		base = part.CFrame,
-		speed = math.rad(attrNumber(part, "Speed", 70)),
+		-- defaults = the middle (Hard) tier of CourseLayout's TIER.SpinSpeed / SpinDamage: slow enough to read, hits hard
+		speed = math.rad(attrNumber(part, "Speed", 65)),
 		phase = math.rad(attrNumber(part, "Phase", 0)),
 		-- hit data used by the shared moving-bar routine
-		damage = attrNumber(part, "Damage", 15),
+		damage = attrNumber(part, "Damage", 22),
 		kind = "SpinBar",
 		knockback = SPINBAR_KNOCKBACK,
 		lastHit = {},
@@ -1520,7 +1522,8 @@ end
 --   leaves its CURRENT position and reaches Target after FlightTime under workspace.Gravity:
 --       v = (Target - p) / t + Vector3.new(0, g * t / 2, 0)
 --   (Target is where the root passes at t = FlightTime). The player cannot be launched again for
---   CANNON_REARM seconds and is protected from all damage (fall / void included) while in flight.
+--   CANNON_REARM seconds and is protected from all damage (fall / void included) while in flight. They cannot
+--   steer the flight either (WalkSpeed 0 / AutoRotate off until the touchdown, see lockSteering).
 ----------------------------------------------------------------------
 local function chargeCannon(cannon)
 	cannon.charging = cannon.charging + 1
@@ -1561,6 +1564,100 @@ local function launchOrigin(player, root)
 	return position
 end
 
+-- No steering in a cannon flight (bug #8: riders steered the arc onto the steps above and skipped a stage).
+-- From the launch until the touchdown the rider's WalkSpeed is 0 (no air control; the client's MovementController
+-- reads a server 0 as "frozen", so no run or dash either) and AutoRotate is off. The touchdown is the first floor
+-- contact once FlightTime has passed, and at the latest FlightTime + CANNON_LANDING_GRACE. The values from before
+-- the launch come back on every path: touchdown / time limit, the match stopping (stopContext), the character dying
+-- or being removed, and MatchService detaching the player (HazardService.ReleaseFlight). A freeze, downed state or
+-- revive that wrote its own WalkSpeed meanwhile is left alone. player -> lock (one per player, across matches).
+local steerLocks = {}
+
+local function isGrounded(humanoid)
+	local ok, material = pcall(function()
+		return humanoid.FloorMaterial
+	end)
+	return ok and material ~= nil and material ~= Enum.Material.Air
+end
+
+local function releaseSteering(player, lock)
+	if not lock or steerLocks[player] ~= lock then
+		return
+	end
+	steerLocks[player] = nil
+	if lock.diedConn then
+		pcall(function()
+			lock.diedConn:Disconnect()
+		end)
+	end
+	local humanoid = lock.humanoid
+	pcall(function()
+		if not humanoid.Parent or humanoid.Health <= 0 then
+			return -- died / respawned: the next character starts with fresh values
+		end
+		if humanoid.WalkSpeed < 0.01 and not isDowned(player) then
+			local root = humanoid.Parent:FindFirstChild("HumanoidRootPart")
+			if not (root and root.Anchored) then -- anchored = frozen by MatchService, it unfreezes by itself
+				humanoid.WalkSpeed = lock.walkSpeed
+			end
+		end
+		if humanoid.AutoRotate == false then
+			humanoid.AutoRotate = lock.autoRotate
+		end
+	end)
+end
+
+local function lockSteering(ctx, player, humanoid, flight)
+	local now = os.clock()
+	local lock = steerLocks[player]
+	if lock and lock.humanoid ~= humanoid then
+		releaseSteering(player, lock) -- a lock left on an old character
+		lock = nil
+	end
+	if lock then
+		-- launched again while still locked (pad to pad): keep the values saved at the first launch
+		lock.ctx = ctx
+	else
+		lock = {
+			ctx = ctx,
+			humanoid = humanoid,
+			walkSpeed = humanoid.WalkSpeed,
+			autoRotate = humanoid.AutoRotate,
+		}
+		steerLocks[player] = lock
+		lock.diedConn = humanoid.Died:Connect(function()
+			releaseSteering(player, lock)
+		end)
+		task.spawn(function()
+			while steerLocks[player] == lock do
+				task.wait(CANNON_STEER_POLL)
+				local t = os.clock()
+				if lock.ctx.stopped or not humanoid.Parent or t >= lock.untilAt
+					or (t >= lock.landAt and isGrounded(humanoid)) then
+					releaseSteering(player, lock)
+				end
+			end
+		end)
+	end
+	lock.landAt = now + flight
+	lock.untilAt = now + flight + CANNON_LANDING_GRACE
+	humanoid.WalkSpeed = 0
+	humanoid.AutoRotate = false
+end
+
+-- Gives every steering lock of this context back (the match stopped).
+local function releaseContextSteering(ctx)
+	local list = {}
+	for player, lock in pairs(steerLocks) do
+		if lock.ctx == ctx then
+			table.insert(list, { player, lock })
+		end
+	end
+	for _, entry in ipairs(list) do
+		releaseSteering(entry[1], entry[2])
+	end
+end
+
 local function launchPlayer(ctx, cannon, player, root)
 	local gravity = Workspace.Gravity
 	local flight = cannon.flight
@@ -1573,6 +1670,11 @@ local function launchPlayer(ctx, cannon, player, root)
 	ctx.launchedAt[player] = os.clock()
 	-- no fall / void / hazard damage until just after the touchdown
 	pcall(DamageService.GrantInvulnerability, player, flight + CANNON_LANDING_GRACE)
+	-- ... and no steering until the touchdown (bug #8)
+	local humanoid = root.Parent and root.Parent:FindFirstChildOfClass("Humanoid")
+	if humanoid then
+		guarded("CannonSteer", lockSteering, ctx, player, humanoid, flight)
+	end
 	if cannon.puff then
 		cannon.puff:Emit(20)
 	end
@@ -1935,6 +2037,7 @@ local function stopContext(ctx)
 	end
 	ctx.temps = {}
 	ctx.launchedAt = {}
+	releaseContextSteering(ctx)
 end
 
 -- Start every tagged behaviour found under `container`.
@@ -1961,6 +2064,14 @@ function HazardService.Attach(container, matchHandle)
 	end
 	return function()
 		stopContext(ctx)
+	end
+end
+
+-- Gives a cannon rider's steering (WalkSpeed / AutoRotate) back at once; MatchService calls it when a player
+-- leaves or is detached from a match mid flight. A player without a lock is ignored.
+function HazardService.ReleaseFlight(player)
+	if player then
+		releaseSteering(player, steerLocks[player])
 	end
 end
 

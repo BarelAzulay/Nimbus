@@ -1,6 +1,9 @@
 -- MouseLock: the optional mouse lock (docs/dungeon-fixes/plan.md decision 6). With the setting MouseLock on (Settings
 -- window "Mouse lock", or the L key) the cursor stays locked in the screen centre and the mouse turns the camera, like
 -- Roblox's shift-lock without holding a key. Keyboard + mouse devices only: touch / gamepad-only devices are untouched.
+-- Bug batch 2 #21: the setting defaults to ON (the game is played with E / F prompts); "Mouse lock (recommended)" in
+-- Settings, OFF stays possible (not recommended), and a saved OFF is kept. The first lock of a session that lasts
+-- HINT_DELAY shows a "press L to free the cursor" pill low on the screen for HINT_SECONDS (NimbusMouseLockHint).
 --
 --   MouseLock.Start()           idempotent; reads ClientSettings "MouseLock" and follows its Changed signal
 --   MouseLock.SetEnabled(on)    turns the lock on / off on this client (not saved; the setting goes through ClientSettings)
@@ -17,8 +20,10 @@
 -- binding at all; on the change MouseBehavior = Default and MouseIconEnabled = true are written once.
 -- Automatic holds: every NeonKit.Dock window while shown, the main menu (MainMenuController), the loading screen
 -- (PlayerGui.NimbusLoading while it exists), NotifyController's result card (NimbusNotify attribute ResultCardLeft > 0),
--- the tutorial card (NimbusTutorial.TutorialPanel + its Main card shown; the folded bubble does not hold) and a focused
--- TextBox (chat). BattleController holds for its result card / LEAVE confirm itself (pcall'd require).
+-- the tutorial card (NimbusTutorial.TutorialPanel + its Main card shown; the folded bubble does not hold), a focused
+-- TextBox (chat) and (bug batch 2 #21) the overlays that are not docked windows: MenuController's RouletteStage and
+-- OddsPopup (NimbusMenu) and the NPC dialog card (NimbusNpcDialog.NpcDialog). BattleController holds for its result
+-- card / LEAVE confirm itself (pcall'd require).
 -- Plain Lua 5.1-compatible syntax only; task.* only.
 
 local Players = game:GetService("Players")
@@ -31,7 +36,11 @@ local K = {
 	BIND = "NimbusMouseLock",
 	KEY = Enum.KeyCode.L, -- the quick toggle (free: nothing in src/client binds L)
 	KEY_NAME = "L",
+	HINT_GUI = "NimbusMouseLockHint", -- the once-per-session "press L" pill (bug batch 2 #21)
+	HINT_DELAY = 0.5, -- seconds the cursor must stay locked before the hint shows (no flash between two windows)
+	HINT_SECONDS = 6,
 }
+MouseLock.HINT_GUI = K.HINT_GUI
 MouseLock.KEY_NAME = K.KEY_NAME
 MouseLock.BIND = K.BIND
 
@@ -45,6 +54,8 @@ local St = {
 	Settings = nil, -- client/ClientSettings (lazy; false when missing)
 	Watching = {}, -- [PlayerGui child name] = true (wired once per instance through Wired)
 	Wired = setmetatable({}, { __mode = "k" }),
+	Hinted = false, -- the "press L" hint was shown (or is pending) this session
+	HintGui = nil,
 }
 MouseLock._St = St
 
@@ -67,6 +78,87 @@ local function step()
 	UserInputService.MouseBehavior = Enum.MouseBehavior.LockCenter
 end
 
+----------------------------------------------------------------------
+-- the "press L" hint (bug batch 2 #21: the lock is on by default, so a new player must learn how to free the cursor
+-- for the HUD buttons and side cards). Once per session, the first time the cursor stays locked for HINT_DELAY: a
+-- small pill low on the screen (70% down) for HINT_SECONDS (ScreenGui "NimbusMouseLockHint"); gone at once on unlock.
+----------------------------------------------------------------------
+local function hideHint()
+	local gui = St.HintGui
+	St.HintGui = nil
+	if gui then
+		pcall(function()
+			gui:Destroy()
+		end)
+	end
+end
+
+-- shared/Theme (optional here, no hard dependency): the Button font, ScaledSize, TextOutline (readability rule)
+local function hintTheme()
+	local ok, theme = pcall(function()
+		local shared = game:GetService("ReplicatedStorage"):FindFirstChild("Shared")
+		local module = shared and shared:FindFirstChild("Theme")
+		return module and require(module) or nil
+	end)
+	return (ok and type(theme) == "table") and theme or nil
+end
+
+local function showHint()
+	if not St.Locked or St.HintGui then
+		if not St.Locked then
+			St.Hinted = false -- a lock that did not last: hint at the next one
+		end
+		return
+	end
+	local player = Players.LocalPlayer
+	local pg = player and player:FindFirstChildOfClass("PlayerGui")
+	if not pg then
+		return
+	end
+	local gui = Instance.new("ScreenGui")
+	gui.Name = K.HINT_GUI
+	gui.ResetOnSpawn = false
+	gui.IgnoreGuiInset = false -- (it carries text: v2 rule)
+	gui.DisplayOrder = 5
+	local label = Instance.new("TextLabel")
+	label.Name = "Hint"
+	label.AnchorPoint = Vector2.new(0.5, 0)
+	label.Position = UDim2.fromScale(0.5, 0.7) -- low, above the hotbar: never in the middle of the screen (v2 rule)
+	local theme = hintTheme()
+	local size = 20
+	if theme then
+		pcall(function()
+			size = tonumber(theme.ScaledSize(20)) or 20
+			label.Font = theme.Fonts.Button
+		end)
+	end
+	label.TextSize = size
+	label.Size = UDim2.fromOffset(0, math.floor(size * 2 + 0.5))
+	label.AutomaticSize = Enum.AutomaticSize.X
+	label.BackgroundColor3 = Color3.fromRGB(18, 20, 40)
+	label.BackgroundTransparency = 0.25
+	label.TextColor3 = Color3.fromRGB(255, 255, 255)
+	label.Text = "Mouse lock is ON  \194\183  press " .. K.KEY_NAME .. " to free the cursor"
+	local corner = Instance.new("UICorner")
+	corner.CornerRadius = UDim.new(0.5, 0)
+	corner.Parent = label
+	local pad = Instance.new("UIPadding")
+	pad.PaddingLeft = UDim.new(0, 18)
+	pad.PaddingRight = UDim.new(0, 18)
+	pad.Parent = label
+	if theme and type(theme.TextOutline) == "function" then
+		pcall(theme.TextOutline, label)
+	end
+	label.Parent = gui
+	gui.Parent = pg
+	St.HintGui = gui
+	task.delay(K.HINT_SECONDS, function()
+		if St.HintGui == gui then
+			hideHint()
+		end
+	end)
+end
+
 local function update()
 	if not St.Started then
 		return
@@ -84,7 +176,12 @@ local function update()
 		end
 		-- the binding writes LockCenter on the next frame (a hold that comes and goes inside one frame never warps)
 		St.Locked = St.Bound
+		if St.Locked and not St.Hinted then
+			St.Hinted = true
+			task.delay(K.HINT_DELAY, showHint)
+		end
 	else
+		hideHint()
 		if St.Bound then
 			pcall(function()
 				RunService:UnbindFromRenderStep(K.BIND)
@@ -294,10 +391,58 @@ local function watchTutorial(gui)
 	wire()
 end
 
+-- overlays that are not NeonKit.Dock windows (bug batch 2 #21, the lock is on by default now): one hold under
+-- "auto:<gui name>" while any of the named DIRECT children of the gui is Visible (they come and go: MenuController
+-- builds the roulette stage / odds popup per show and destroys them after)
+local function watchOverlays(names)
+	local wanted = {}
+	for _, name in ipairs(names) do
+		wanted[name] = true
+	end
+	return function(gui)
+		local key = "auto:" .. gui.Name
+		local wired = setmetatable({}, { __mode = "k" })
+		local function refresh()
+			local on = false
+			if gui.Parent ~= nil and gui.Enabled then
+				for _, child in ipairs(gui:GetChildren()) do
+					if wanted[child.Name] and child:IsA("GuiObject") and child.Visible then
+						on = true
+						break
+					end
+				end
+			end
+			flag(key, on)
+		end
+		local function wire(child)
+			if wanted[child.Name] and child:IsA("GuiObject") and not wired[child] then
+				wired[child] = true
+				child:GetPropertyChangedSignal("Visible"):Connect(refresh)
+			end
+			refresh()
+		end
+		gui.ChildAdded:Connect(wire)
+		gui.ChildRemoved:Connect(refresh)
+		gui:GetPropertyChangedSignal("Enabled"):Connect(refresh)
+		gui.AncestryChanged:Connect(refresh)
+		gui.Destroying:Connect(function()
+			flag(key, false)
+		end)
+		for _, child in ipairs(gui:GetChildren()) do
+			wire(child)
+		end
+		refresh()
+	end
+end
+
 local WATCHERS = {
 	NimbusLoading = watchLoading,
 	NimbusNotify = watchNotify,
 	NimbusTutorial = watchTutorial,
+	-- MenuController's full-screen roulette stage (the reveal's buttons) and the odds popup (inside NimbusMenu, not docked)
+	NimbusMenu = watchOverlays({ "RouletteStage", "OddsPopup" }),
+	-- NpcController's dialog card (Next / Close buttons), like the tutorial card
+	NimbusNpcDialog = watchOverlays({ "NpcDialog" }),
 }
 
 local function watchChild(child)

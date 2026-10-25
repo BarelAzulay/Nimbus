@@ -113,7 +113,8 @@
 --   "Bounce" = { Type, Pos = pad centre (at the step centre, y = top), PadSize = pad width, Power, LaunchSpeed,
 --                Apex = Power^2 / (2 * gravity) }                     attrs: Power, LaunchSpeed
 --   "SpinBar" = { Type, Pos = hub (step centre, y = top), Length, Speed = deg/s (signed), Damage, Count = 1|2,
---                 Height = bar centre above top }
+--                 Height = bar centre above top }  Length <= minDim - 4 (a 2 stud safe ring at the edge, so the
+--                 platform is >= 7 wide); Count 2 only on the top difficulty
 --       one SpinBar part per bar k = 1..Count (suggested size Length x 1.5 x 1.1), rotated (k-1) * 180 / Count
 --       degrees about Y; attrs Speed, Damage on each.
 --   "Storm" = { Type, DPS, Box = { Pos = centre of the box BASE (y = top), Size = Vector3(X, height, Z), Yaw } }
@@ -139,7 +140,8 @@
 --       the pad part carries tag CloudCannon, attrs Target (as given, world), FlightTime. HazardService sets the
 --       rider's velocity to v = (Target - rootPos) / t + (0, g t / 2, 0) so the root arrives exactly at Target.
 --       Guaranteed: Target is >= 2.5 studs inside the landing top, 1.0 <= FlightTime <= 2.2, launch speed <= 170,
---       peak <= 60 above the pad, 25-60 studs horizontally, nothing in the way (checked for the whole pad).
+--       peak <= 35 above the pad (TIER.CannonMaxApex), 25-60 studs horizontally, nothing in the way (checked for the
+--       whole pad). HazardService also takes the rider's steering away until the touchdown.
 --   "PlateBridge" = { Type, BridgeNumber = n, Span = { Pos = top centre, Size = Vector3(X, 1, Z), Yaw },
 --                     Sides = { Side, Side } }   (Sides[1] belongs to the run-up platform, Sides[2] to this step)
 --       Side = { Pos = top centre, Size = Vector3(7, 2, depth), Yaw, From = index of the step it sits beside, Gap,
@@ -269,8 +271,9 @@ end
 
 -- Per-difficulty-tier numbers (index = position in Config.Difficulties: 1 Easy .. 5 Saint).
 local TIER = {
-	SpinSpeed = { { 40, 60 }, { 55, 75 }, { 70, 100 }, { 90, 130 }, { 105, 148 } },
-	SpinDamage = { 8, 10, 14, 18, 22 },
+	-- bug #6: spin bars are slower (readable, skill based) but hit harder; HazardService's defaults are the Hard row
+	SpinSpeed = { { 35, 50 }, { 45, 60 }, { 55, 75 }, { 65, 90 }, { 75, 105 } },
+	SpinDamage = { 12, 16, 22, 28, 34 },
 	StormDPS = { 4, 5, 7, 10, 13 },
 	LightningDamage = { 16, 20, 24, 28, 34 },
 	LightningInterval = { 6, 5.5, 4.6, 4.0, 3.6 },
@@ -289,6 +292,16 @@ local TIER = {
 	WindWarning = { 1.8, 1.6, 1.4, 1.2, 1.0 },
 	GoldenPerStage = { { 1, 1 }, { 1, 2 }, { 1, 2 }, { 2, 2 }, { 2, 2 } },
 }
+-- Fixed balance rules (the same on every tier). They live on TIER because the generator function is at Lua 5.1's
+-- 60-upvalue limit (a new top-level local would break it):
+--   CannonMaxApex   root peak above the pad top (bug #8: was 60, high enough to steer onto the steps above)
+--   SpinSafeRing    free studs between a spin bar's end and the platform edge (bug #6), so a spin platform is at
+--   SpinMinPlatform least 3 + 2 * SpinSafeRing wide (bar length >= 3)
+--   SpinTwoBarTier  two crossed spin bars only from this tier on (the top difficulty)
+TIER.CannonMaxApex = 35
+TIER.SpinSafeRing = 2
+TIER.SpinMinPlatform = 3 + 2 * TIER.SpinSafeRing
+TIER.SpinTwoBarTier = 5
 
 ----------------------------------------------------------------------
 -- Small helpers
@@ -909,8 +922,8 @@ local function cannonLinkProblem(diff, a, ga, b, gb, lo, hi, rise)
 		if speed > 170 + EPS then
 			return string.format("cannon launch speed %.1f exceeds 170", speed)
 		end
-		if apex > 60 + EPS then
-			return string.format("cannon peak %.1f above the pad exceeds 60", apex)
+		if apex > TIER.CannonMaxApex + EPS then
+			return string.format("cannon peak %.1f above the pad exceeds %d", apex, TIER.CannonMaxApex)
 		end
 		if idx == 1 then
 			if not isNum(h.Speed) or abs(h.Speed - speed) > 0.5 or not isNum(h.Apex) or abs(h.Apex - apex) > 0.5 then
@@ -1094,8 +1107,12 @@ local function hazardProblem(diff, step, g, prev, gPrev)
 		if h.Count ~= 1 and h.Count ~= 2 then
 			return "SpinBar Count must be 1 or 2"
 		end
-		if h.Length < 3 - EPS or h.Length > minDim - 2.2 + EPS then
-			return string.format("SpinBar length %.1f does not fit a %.1f platform", h.Length, minDim)
+		if h.Count == 2 and tierOf(diff) < TIER.SpinTwoBarTier then
+			return "SpinBar: two bars only on the top difficulty"
+		end
+		-- a TIER.SpinSafeRing stud ring between the bar's end and the platform edge always stays free (bug #6)
+		if h.Length < 3 - EPS or h.Length > minDim - 2 * TIER.SpinSafeRing + EPS then
+			return string.format("SpinBar length %.1f leaves no %.0f stud safe ring on a %.1f platform", h.Length, TIER.SpinSafeRing, minDim)
 		end
 		if hypot(h.Pos.X - g.cx, h.Pos.Z - g.cz) > 0.5 or abs(h.Pos.Y - step.Pos.Y) > EPS then
 			return "SpinBar hub is not at the middle of its step"
@@ -2255,7 +2272,7 @@ local function runAttempt(diff, tier, seed, attemptNo, dbg)
 		elseif kind == "Moving" or kind == "Bounce" or kind == "StormPlatform" then
 			a = lo + (hi - lo) * 0.4
 		elseif kind == "SpinBarPlatform" then
-			a = max(lo + (hi - lo) * 0.4, 6.5)
+			a = max(lo + (hi - lo) * 0.4, TIER.SpinMinPlatform)
 		elseif kind == "LightningPlatform" then
 			a = max(lo + (hi - lo) * 0.3, 6)
 		end
@@ -2375,7 +2392,13 @@ local function runAttempt(diff, tier, seed, attemptNo, dbg)
 	local function attachCannon(prev, gPrev, step, g)
 		local tx, tz = g.cx, g.cz
 		local hdist = hypot(tx - gPrev.cx, tz - gPrev.cz)
-		local t0 = clamp(1.0 + hdist / 110, 1.05, 1.45)
+		-- the longest flight whose peak stays under TIER.CannonMaxApex: the root climbs vy^2 / 2g + ROOT_H with
+		-- vy = rise / t + g t / 2, so g/2 t^2 - K t + rise <= 0 with K = sqrt(2 g (TIER.CannonMaxApex - ROOT_H)) (bug #8)
+		local rise = step.Pos.Y - prev.Pos.Y
+		local K = sqrt(2 * PH.Gravity * (TIER.CannonMaxApex - ROOT_H))
+		local tApex = (K + sqrt(max(K * K - 2 * PH.Gravity * rise, 0))) / PH.Gravity - 0.01
+		local tTop = min(1.45, tApex)
+		local t0 = clamp(1.0 + hdist / 110, 1.0, tTop)
 		local aimX, aimZ = tx - gPrev.cx, tz - gPrev.cz
 		local al = hypot(aimX, aimZ)
 		if al < 0.01 then
@@ -2384,8 +2407,8 @@ local function runAttempt(diff, tier, seed, attemptNo, dbg)
 		local target = Vector3.new(tx, step.Pos.Y + ROOT_H, tz)
 		local minDim = minDimOf(prev.Size)
 		local padR = clamp(minDim * 0.3, 2.2, 3.4)
-		for _, t in ipairs({ t0, t0 + 0.08, t0 - 0.08, 1.25, 1.4, 1.12 }) do
-			if t >= 1.0 and t <= 1.45 then
+		for _, t in ipairs({ t0, t0 - 0.04, t0 - 0.08, 1.0 + (tTop - 1.0) * 0.5, 1.0 }) do
+			if t >= 1.0 and t <= tTop then
 				local vx, vy, vz = cannonVelocity(prev.Pos.Y, gPrev.cx, gPrev.cz, target, t)
 				prev.Hazard = {
 					Type = "Cannon",
@@ -2436,11 +2459,12 @@ local function runAttempt(diff, tier, seed, attemptNo, dbg)
 				speed = -speed
 			end
 			local count = 1
-			if tier >= 4 and minDim >= 7.5 and coin() then
+			if tier >= TIER.SpinTwoBarTier and coin() then
 				count = 2
 			end
+			-- the bar ends TIER.SpinSafeRing studs inside the edge: walking the rim or jumping the bar are both real options
 			step.Hazard = {
-				Type = "SpinBar", Pos = Vector3.new(g.cx, top, g.cz), Length = clamp(floor((minDim - 2.4) * 2) / 2, 3, 9),
+				Type = "SpinBar", Pos = Vector3.new(g.cx, top, g.cz), Length = clamp(floor((minDim - 2 * TIER.SpinSafeRing) * 2) / 2, 3, 9),
 				Speed = speed, Damage = byTier(TIER.SpinDamage, tier), Count = count, Height = 1.0,
 			}
 		elseif kind == "StormPlatform" then

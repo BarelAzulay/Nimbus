@@ -2447,6 +2447,23 @@ S.damage_rules = guarded("damage_rules", function()
 	local vd = remotesFor("DamageTaken", b.UserId, mark)[1]
 	T.check(vd ~= nil and vd.args[2] == "Void" and vd.args[1] == voidDamage, "the void deals VoidDamage[" .. "Easy" .. "] as 'Void'", vd and (tostring(vd.args[1]) .. " " .. tostring(vd.args[2])))
 	T.near(hum(b).Health, hpBefore - voidDamage, 1.5, "void damage is applied to health")
+	-- bug #8 (cannon checkpoint skip): checkpoints count in order only; a later one (standing on it or touching it) is
+	-- ignored until the one before it is reached, then it counts as soon as the team takes the next one
+	local cp2, cp3 = m.Course.Checkpoints[2], m.Course.Checkpoints[3]
+	if T.check(cp2 ~= nil and cp3 ~= nil and m.Checkpoint == 1, "checkpoint order: the course has checkpoints 2 and 3, the team is at 1") then
+		Mock.Teleport(a, cp3.Part.Position + Vector3.new(0, 3.5, 0))
+		advance(0.6)
+		T.eq(m.Checkpoint, 1, "checkpoint order: standing on checkpoint 3 while the team is at 1 does not skip checkpoint 2")
+		Mock.Touch(cp3.Part, root(a))
+		advance(0.2)
+		T.eq(m.Checkpoint, 1, "checkpoint order: touching checkpoint 3 out of order is ignored too")
+		Mock.Teleport(a, cp2.Part.Position + Vector3.new(0, 3.5, 0))
+		advance(0.6)
+		T.eq(m.Checkpoint, 2, "checkpoint order: checkpoint 2 (the next one) counts")
+		Mock.Teleport(a, cp3.Part.Position + Vector3.new(0, 3.5, 0))
+		advance(0.6)
+		T.eq(m.Checkpoint, 3, "checkpoint order: ...and then checkpoint 3")
+	end
 	-- cleanup
 	endAllMatches(players)
 	T.check(MS().GetMatchOf(a) == nil, "LeaveMatch removes the player from the match")

@@ -478,7 +478,7 @@ A home has **11 stations** (phase 4 had 18):
 |---|---|---|---|---|
 | **Pet Garden** | Your pets roam the yard, eat at the Food Bowl and poop Cloud Cash (3 places + 1 per Prestige); scoops from 8 -> 26 studs, the lawn holds 5 -> 10 min of coins, Lucky coins 0 % -> 15 % | 8 | claiming | free -> 3,000,000 |
 | **Berry Farm** | Grows berries: +7 -> +2,132 food per meal (bigger Cloud Cash, and more berries for your Berry Basket) | 40 | the Pet Garden | 15 -> 4,000,000 |
-| **Food Machine** | Turns berries into pet XP: a feed fills 25 % -> 50 % of the XP bar | 5 | the Berry Farm | 300 -> 2,400,000 |
+| **Food Machine** | Turns berries into pet XP: a feed fills 25 % -> 50 % of the XP bar | 5 | the Berry Farm | 120 -> 2,400,000 |
 | **Training Place** | Pets learn battle skills: 1 -> 5 pets train at once | 5 | the Food Machine | 3,800 -> 2,800,000 |
 | **Vault** | A bigger lawn (piles +5 -> +30 min) and offline coins | 5 | Berry Farm Lv 6 | 11,000 -> 2,500,000 |
 | **House** | Cottage -> Villa -> Manor -> Sky Castle (see below) | 4 | Berry Farm Lv 2 | 180 -> 880,000 |

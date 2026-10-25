@@ -1057,7 +1057,8 @@ S.p2flow_build = guarded("p2flow_build", function()
 		if T.check(fusionPrompt ~= nil, "flow build: with the Food Machine built, the Fusion Machine pad appears") then
 			T.check(fusionPrompt.Enabled == false and fusionPad ~= nil and fusionPad:GetAttribute("Locked") == "Unlocks at Prestige 1",
 				"flow build: ...locked: 'Unlocks at Prestige 1' (its prompt is off)", fusionPad and tostring(fusionPad:GetAttribute("Locked")) or "no pad model")
-			T.check(annInfo.Folder:FindFirstChild("Ghost_FusionMachine", true) ~= nil, "flow build: ...with the machine's silhouette on the yard")
+			-- bug batch 2 #10: no hologram any more (its glass read as a broken model): the locked pad and sign only
+			T.check(annInfo.Folder:FindFirstChild("Ghost_FusionMachine", true) == nil, "flow build: ...shown by its locked pad and sign only (no machine hologram)")
 			fund(ann, TC.PriceFor("FusionMachine", 1))
 			local c = cash(ann)
 			mark = K.logSize()

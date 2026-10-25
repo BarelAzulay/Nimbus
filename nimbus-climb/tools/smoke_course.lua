@@ -29,6 +29,11 @@ local RAD = math.pi / 180
 local huge = math.huge
 local sin, cos, sqrt, abs, floor, max, min = math.sin, math.cos, math.sqrt, math.abs, math.floor, math.max, math.min
 
+-- bug #6 spin bar balance per difficulty: { min deg/s, max deg/s, damage } (the approved table, re-stated independently)
+local SPIN_TIER = {
+	Easy = { 35, 50, 12 }, Medium = { 45, 60, 16 }, Hard = { 55, 75, 22 }, Extreme = { 65, 90, 28 }, Saint = { 75, 105, 34 },
+}
+
 local function sortedKeys(t)
 	local out = {}
 	for k in pairs(t) do
@@ -674,6 +679,20 @@ local function audit(layout, diff, Config, cannons)
 			elseif t == "SpinBar" then
 				if not isNum(h.Speed) or h.Speed == 0 or not isNum(h.Damage) or h.Damage <= 0 or (h.Count ~= 1 and h.Count ~= 2) or not isNum(h.Length) or h.Length <= 0 then
 					bad("hazards", "step " .. i .. " SpinBar: Speed / Damage / Count / Length")
+				else
+					-- bug #6 (spin bars: skill based, more damage): readable speed and harder hits per difficulty, a 2 stud
+					-- safe ring between the bar's end and the platform edge, two bars only on the top difficulty
+					local want = SPIN_TIER[diff.Id]
+					local minDim = min(s.Size.X, s.Size.Z)
+					if want and (abs(h.Speed) < want[1] - 1e-6 or abs(h.Speed) > want[2] + 1e-6 or h.Damage ~= want[3]) then
+						bad("hazards", "step " .. i .. " SpinBar: speed " .. fmt(h.Speed) .. " / damage " .. tostring(h.Damage) .. " outside the " .. diff.Id .. " tier (" .. want[1] .. "-" .. want[2] .. " deg/s, " .. want[3] .. " damage)")
+					end
+					if (minDim - h.Length) / 2 < 2 - 0.01 then
+						bad("hazards", "step " .. i .. " SpinBar: length " .. fmt(h.Length, 1) .. " leaves a " .. fmt((minDim - h.Length) / 2, 2) .. " stud ring on a " .. fmt(minDim, 1) .. " platform (needs 2)")
+					end
+					if h.Count == 2 and diff.Id ~= "Saint" then
+						bad("hazards", "step " .. i .. " SpinBar: two bars below the top difficulty (" .. diff.Id .. ")")
+					end
 				end
 			elseif t == "Storm" then
 				if not isNum(h.DPS) or h.DPS <= 0 or type(h.Box) ~= "table" or not isVec(h.Box.Pos) or not isVec(h.Box.Size) then
@@ -930,6 +949,11 @@ S.layouts = guarded("layouts", function()
 				for kind, c in pairs(st.HazardCounts) do
 					stats.hazardTypes[kind] = (stats.hazardTypes[kind] or 0) + c
 				end
+				for _, s in ipairs(layout.Steps) do
+					if type(s.Hazard) == "table" and s.Hazard.Type == "SpinBar" and s.Hazard.Count == 2 then
+						stats.twoBars = (stats.twoBars or 0) + 1
+					end
+				end
 				local sig = signature(layout)
 				if not stats.signatures[sig] then
 					stats.signatures[sig] = true
@@ -974,6 +998,10 @@ S.layouts = guarded("layouts", function()
 			T.check(#missingT == 0, diff.Id .. ": every offered stage theme appears over " .. seeds .. " seeds", "never generated: " .. table.concat(missingT, ", "))
 		end
 		T.check(stats.distinct >= stats.n * 0.9, diff.Id .. ": different seeds give different courses (" .. stats.distinct .. " distinct of " .. stats.n .. ")")
+		-- bug #6: two crossed spin bars stay a top-difficulty feature (the audit rejects them anywhere else)
+		if diff.Id == "Saint" and seeds >= 30 then
+			T.check((stats.twoBars or 0) > 0, "Saint: some spin platforms still carry two bars (" .. (stats.twoBars or 0) .. " over " .. seeds .. " seeds)")
+		end
 		-- a layout is a different seed's layout: the weights are respected (no theme the difficulty does not offer)
 		local foreign = {}
 		for th in pairs(stats.themes) do
@@ -1106,7 +1134,7 @@ S.cannon = guarded("cannon", function()
 	local tally = {
 		time = T.tally("cannon flight time is within 1.0 - 2.2 s"),
 		speed = T.tally("cannon launch speed is <= 170 studs/s"),
-		peak = T.tally("cannon peak height is <= 60 studs above the pad"),
+		peak = T.tally("cannon peak height is <= 35 studs above the pad (bug #8: no launch high enough to reach the steps above)"),
 		dist = T.tally("cannon flies 25 - 60 studs horizontally"),
 		margin = T.tally("cannon Target lies inside the landing top with a >= 2.5 stud margin"),
 		height = T.tally("cannon Target is one root height (3 studs) above the landing top"),
@@ -1131,7 +1159,7 @@ S.cannon = guarded("cannon", function()
 		sMax, aMax = max(sMax, speed), max(aMax, apex)
 		tMin, tMax = min(tMin, t), max(tMax, t)
 		tally.speed:case(speed <= 170 + 1e-6, who .. ": " .. fmt(speed) .. " studs/s")
-		tally.peak:case(apex <= 60 + 1e-6, who .. ": " .. fmt(apex) .. " studs")
+		tally.peak:case(apex <= 35 + 1e-6, who .. ": " .. fmt(apex) .. " studs")
 		tally.fields:case(c.speed ~= nil and c.apex ~= nil and abs(c.speed - speed) <= 0.5 and abs(c.apex - apex) <= 0.5, who .. ": Speed " .. tostring(c.speed) .. " vs " .. fmt(speed) .. ", Apex " .. tostring(c.apex) .. " vs " .. fmt(apex))
 		local hd = sqrt((c.target[1] - px) ^ 2 + (c.target[3] - pz) ^ 2)
 		dMin, dMax = min(dMin, hd), max(dMax, hd)

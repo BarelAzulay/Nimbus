@@ -592,12 +592,24 @@ end
 ----------------------------------------------------------------------
 -- Checkpoints, finish, void
 ----------------------------------------------------------------------
+-- The checkpoint the team takes next: the lowest usable index above the current one (nil after the last).
+-- Checkpoints count in order only, so a cannon flight or a lucky jump onto a later stage never skips one (bug #8).
+local function nextCheckpointIndex(match)
+	local checkpoints = match.Course.Checkpoints
+	for index = match.Checkpoint + 1, match.MaxCheckpoint do
+		if checkpoints[index] then
+			return index
+		end
+	end
+	return nil
+end
+
 reachCheckpoint = function(match, index, byPlayer)
 	if match.State ~= "Playing" or match.Stopped then
 		return
 	end
-	if index <= match.Checkpoint then
-		return
+	if index ~= nextCheckpointIndex(match) then
+		return -- an older one, or a later one before the one in between: ignored, never a skip
 	end
 	local cp = match.Course.Checkpoints[index]
 	if not cp then
@@ -897,6 +909,8 @@ detachPlayer = function(match, player, toLobby)
 			end)
 		end
 	end
+	-- a rider leaving mid cannon flight gets the steering (WalkSpeed / AutoRotate) back now, not at the touchdown
+	callDep("HazardService", "ReleaseFlight", player)
 	if player.Parent == nil then
 		return -- they left the game, nothing to restore
 	end
@@ -1110,14 +1124,12 @@ local function processPlayerPlaying(match, player)
 		return
 	end
 
-	-- checkpoints: highest unreached one the player is standing on
+	-- checkpoints: only the NEXT one counts (in order, bug #8); standing on a later one does nothing until then
 	local pos = root.Position
-	for index = match.MaxCheckpoint, match.Checkpoint + 1, -1 do
-		local cp = course.Checkpoints[index]
-		if cp and cp.Part and cp.Part.Parent and isOverPart(cp.Part, pos, 2, PAD_BELOW, PAD_ABOVE) then
-			reachCheckpoint(match, index, player)
-			break
-		end
+	local nextIndex = nextCheckpointIndex(match)
+	local cp = nextIndex and course.Checkpoints[nextIndex]
+	if cp and cp.Part and cp.Part.Parent and isOverPart(cp.Part, pos, 2, PAD_BELOW, PAD_ABOVE) then
+		reachCheckpoint(match, nextIndex, player)
 	end
 
 	local pad = course.Finish

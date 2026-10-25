@@ -22,7 +22,7 @@ local Remotes = require(Shared:WaitForChild("Remotes"))
 local ClientSettings = {}
 
 ClientSettings.KEYS = { "Music", "Sfx", "Gfx", "Shake", "SeenNotes", "MouseLock" }
-ClientSettings.DEFAULTS = { Music = 6, Sfx = 8, Gfx = "Auto", Shake = true, SeenNotes = 0, MouseLock = false }
+ClientSettings.DEFAULTS = { Music = 6, Sfx = 8, Gfx = "Auto", Shake = true, SeenNotes = 0, MouseLock = true }
 ClientSettings.GFX = { "Auto", "Low", "High" }
 ClientSettings.DEBOUNCE = 0.4
 ClientSettings.Changed = Util.Signal()

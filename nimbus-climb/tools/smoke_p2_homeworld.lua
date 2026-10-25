@@ -880,7 +880,13 @@ local function serverScenarios()
 								solid = true
 							end
 						end
-						ghostOk:case(ghost ~= nil and n <= 12 and n > 0 and not solid and find(ghost, "BuyPrompt") == nil, pad.StationId .. ": " .. n .. " parts")
+						local def = TC.Get(pad.StationId)
+						if def and def.Ghost == "Pad" then
+							-- bug batch 2 #10: a "Pad" station (the Fusion Machine) shows only its pad + sign, no hologram
+							ghostOk:case(ghost == nil and m ~= nil, pad.StationId .. ": Ghost = 'Pad' but " .. n .. " ghost parts")
+						else
+							ghostOk:case(ghost ~= nil and n <= 12 and n > 0 and not solid and find(ghost, "BuyPrompt") == nil, pad.StationId .. ": " .. n .. " parts")
+						end
 					end
 				end
 			end
@@ -1526,7 +1532,7 @@ local function clientScenarios()
 			"HomeFx: ...each coin lies on its HomeRoam poop point (Plan(seed, slot, cycle).Poop)")
 		local wp = base:PointToWorldSpace(gdef.Slot.WelcomePile)
 		T.check(hw and flat(hw.Point, wp) < 0.05, "HomeFx: ...and the Welcome-back heap at Garden.Slot.WelcomePile")
-		T.check(c1 and c2 and c1.Parts == 6 and c2.Parts == 6 and hw and hw.Parts <= 60, "HomeFx: a coin is 6 TokenLook parts (no halo, no light), the Welcome-back heap <= 60",
+		T.check(c1 and c2 and c1.Parts == 7 and c2.Parts == 7 and hw and hw.Parts <= 60, "HomeFx: an own coin is 6 TokenLook parts + its glow ball (no light; bug batch 2 #17), the Welcome-back heap <= 60",
 			tostring(c1 and c1.Parts) .. ", W " .. tostring(hw and hw.Parts))
 		local light = false
 		for _, d in ipairs(c1 and c1.Part:GetDescendants() or {}) do

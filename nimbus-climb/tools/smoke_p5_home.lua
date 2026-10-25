@@ -28,8 +28,11 @@
 --     client_p5home_roam     12 roaming pets posed within 0.5 stud of HomeRoam.At (+ the soft separation <= 1.5), eating
 --                            at the Food Bowl, an evolved pet at Low, a poop pops a pending TokenLook coin at Plan().Poop,
 --                            CoinDrops confirms it / it fades after 2.5 s, a merge changes the look, the scoop zip +
---                            '+$' at the drop, others' coins dimmed and still, budgets (24 pets, 36 coins x 6, 16
---                            bits, 9000 parts), a nap at the far point + Zzz, RoamVersion mismatch parks, beyond 110
+--                            '+$' at the drop, others' coins dimmed and still, budgets (24 pets, 36 coins x 6 + own
+--                            glow balls, 16 bits, 9000 parts), a nap at the far point + Zzz, RoamVersion mismatch parks,
+--                            beyond 110; bug batch 2 #17: with Roblox's weld rule (a WeldConstraint is inactive outside
+--                            the Workspace) every coin piece stays on its coin, new and pooled; stage 1 >= 1.2 studs
+--                            tall with a glow ball that follows it
 --     client_p5home_flow_ui  the three signs, the basket line follows Berries / BerryCap, berry flights, SignedPads'
 --                            'Unsigned' pad signs, the Home window texts (careui) when MenuController is there
 -- Plain Lua 5.1 syntax only; deterministic (fixed seeds and epochs, no game clock).
@@ -234,7 +237,8 @@ S.p5home_catalog = guarded("p5home_catalog", function()
 	for _ in pairs(signs) do
 		n = n + 1
 	end
-	T.check(signs.Press1 == true and signs.House == true and n == 2, "p5 home: with $200 only the affordable Farm 3 ($160) and Cottage ($180) are signed", idList(signs))
+	-- (bug batch 2 #9: the Food Machine costs $120 now, so it is the third affordable pad)
+	T.check(signs.Kitchen == true and signs.Press1 == true and signs.House == true and n == 3, "p5 home: with $200 the affordable Food Machine ($120), Farm 3 ($160) and Cottage ($180) are signed", idList(signs))
 	signs = TC.SignedPads(pads, 1e9)
 	n = 0
 	for id in pairs(signs) do
@@ -1334,6 +1338,51 @@ if CONTEXT == "client" then
 		local uid = LocalPlayer.UserId
 		local seed = ctx.seedOf(uid)
 		local outputBefore, errorsBefore = #Mock.Output, #Mock.Errors
+		-- bug batch 2 #17: Roblox's weld rule for this scenario. A WeldConstraint is inactive while a part is outside the
+		-- Workspace: a CFrame written then moves that part alone, and the weld keeps the gap once it is parented (the
+		-- mock otherwise carries welded parts along everywhere). Restored by cleanup.
+		local rawWelds = Mock._welds
+		Mock._welds = setmetatable({}, {
+			__index = function(_, part)
+				local set = rawWelds[part]
+				if set and part:IsDescendantOf(workspace) then
+					return set
+				end
+				return nil
+			end,
+			__newindex = function(_, part, set)
+				local old = rawWelds[part]
+				if old and old ~= set then
+					for w in pairs(old) do
+						set[w] = true
+					end
+				end
+				rawWelds[part] = set
+			end,
+		})
+		local cleanup0 = cleanup
+		cleanup = function()
+			Mock._welds = rawWelds
+			cleanup0()
+		end
+		-- every coin's pieces sit on its root (the halo ball centred on it): n coins, ok, the worst piece
+		local function coinsIntact(g0)
+			local n, worst, what = 0, 0, "none"
+			for key, c in pairs(g0.Coins) do
+				n = n + 1
+				local root = c.Part.Position
+				for _, d in ipairs(c.Part:GetDescendants()) do
+					if d:IsA("BasePart") then
+						local dist = (d.Position - root).Magnitude
+						local over = (d.Name == "Halo") and dist - 0.05 or dist - 1.5
+						if over > worst then
+							worst, what = over, key .. " " .. d.Name .. string.format(" %.1f studs off", dist)
+						end
+					end
+				end
+			end
+			return n, worst <= 0, what
+		end
 		ctx.pets(mine, 12, { [3] = 1 })
 		-- slot 1 eats (1 s into its cycle), slot 2 is 0.3 s before its poop, the rest spread over the cycle
 		local poopAt2 = HR.Plan(seed, 2, 5).PoopAt
@@ -1390,8 +1439,27 @@ if CONTEXT == "client" then
 		local c2 = g.Coins["2:5"]
 		T.check(c2 ~= nil and c2.Pending == true, "p5 roam client: slot 2 crossed PoopAt -> a pending Cloud Cash coin '2:5'", c2 and tostring(c2.Pending) or "none")
 		local want2 = mine.PlotCFrame:PointToWorldSpace(Vector3.new(HR.Plan(seed, 2, 5).Poop.x, 0, HR.Plan(seed, 2, 5).Poop.z))
-		T.check(c2 and flatDist(c2.Point, want2) < 0.05 and c2.Look == "Cash1" and c2.Parts == 6, "p5 roam client: ...at Plan(seed, 2, 5).Poop, TokenLook Cash stage 1, 6 parts", c2 and c2.Look or "")
+		T.check(c2 and flatDist(c2.Point, want2) < 0.05 and c2.Look == "Cash1" and c2.Parts == 7, "p5 roam client: ...at Plan(seed, 2, 5).Poop, TokenLook Cash stage 1, 6 parts + the glow ball", c2 and (c2.Look .. " " .. c2.Parts) or "")
 		T.check(g.Coins["4:5"] ~= nil, "p5 roam client: slot 4's poop pops its own pending coin too")
+		do
+			-- bug batch 2 #17: a stage-1 coin reads from the path: >= 1.2 studs tall, a soft glow ball that rides with it
+			local tall, halo = 0, nil
+			for _, d in ipairs(c2 and c2.Part:GetDescendants() or {}) do
+				if d:IsA("BasePart") then
+					if d.Name == "Halo" then
+						halo = d
+					else
+						tall = math.max(tall, d.Size.Y)
+					end
+				end
+			end
+			T.check(tall >= 1.2, "p5 roam client: (bug #17) a stage-1 coin is at least 1.2 studs tall", string.format("%.2f studs", tall))
+			T.check(halo ~= nil and halo.Material == Enum.Material.Neon and halo.Transparency < 1 and halo.Size.X > tall,
+				"p5 roam client: (bug #17) ...with a soft glow (TokenLook's Neon halo ball, wider than the coin)", halo and string.format("%.2f studs, transparency %.2f", halo.Size.X, halo.Transparency) or "no halo")
+			KC.advance(0.1)
+			T.check(halo ~= nil and (halo.Position - c2.Part.Position).Magnitude < 0.05, "p5 roam client: (bug #17) ...that follows the coin's arc / bob",
+				halo and string.format("%.2f studs off", (halo.Position - c2.Part.Position).Magnitude) or "")
+		end
 		mine.Folder:SetAttribute("CoinDrops", "2=5:1")
 		KC.advance(0.1)
 		g = ctx.g()
@@ -1413,6 +1481,10 @@ if CONTEXT == "client" then
 		KC.advance(0.1)
 		g = ctx.g()
 		T.check(g.Coins["2:5"] and g.Coins["2:5"].Look == "GoldenCash3" and g.Coins["2:5"].Lucky, "p5 roam client: a merged Lucky drop '2=5:3*' becomes GoldenCash at stage 3", g.Coins["2:5"] and g.Coins["2:5"].Look or "")
+		do
+			local n, ok, what = coinsIntact(g)
+			T.check(n > 0 and ok, "p5 roam client: (bug #17) every piece of a new coin stays on it under the weld rule (parented before it moves)", n .. " coins, worst " .. what)
+		end
 		-- the scoop: zip + "+$" at the drop
 		LocalPlayer:SetAttribute("Cash", 1000)
 		mine.Folder:SetAttribute("CollectorCash", 120)
@@ -1468,9 +1540,22 @@ if CONTEXT == "client" then
 			end
 		end
 		T.check(n > 0 and dimAll and still, "p5 roam client: another player's coins are dimmed and still", n .. " coins")
+		do
+			local nT, okT, whatT = coinsIntact(gt)
+			local nM, okM, whatM = coinsIntact(ctx.g())
+			T.check(nT > 0 and okT and nM > 0 and okM, "p5 roam client: (bug #17) ...and every coin of both homes stays whole under the weld rule (pooled ones too)",
+				nT .. " + " .. nM .. " coins, worst " .. (okT and whatM or whatT))
+			local glowOk = true
+			for _, c in pairs(gt.Coins) do
+				if c.Parts ~= 6 then
+					glowOk = false
+				end
+			end
+			T.check(glowOk, "p5 roam client: (bug #17) ...another player's dimmed coins carry no glow ball (6 parts)")
+		end
 		T.check(gt.Heaps.W and gt.Heaps.W.Dim, "p5 roam client: ...their Welcome-back heap too")
 		st = HF.Stats()
-		T.check(st.Coins <= 36 and st.CoinParts <= 36 * 6, "p5 roam client: <= 36 Cloud Cash coins x 6 parts over every home (72 drops listed)", st.Coins .. " coins")
+		T.check(st.Coins <= 36 and st.CoinParts <= 36 * 7, "p5 roam client: <= 36 Cloud Cash coins x 6 parts (+ an own coin's glow ball) over every home (72 drops listed)", st.Coins .. " coins, " .. tostring(st.CoinParts) .. " parts")
 		T.check(st.Posed <= 24 and st.GardenPets <= 24, "p5 roam client: <= 24 posed garden pets over every home (own home first)", st.Posed .. " posed, " .. st.GardenPets .. " placed")
 		local ownPlaced = 0
 		for _ in pairs(ctx.g().Pets) do
@@ -1530,6 +1615,15 @@ if CONTEXT == "client" then
 			left = left + 1
 		end
 		T.eq(left, 0, "p5 roam client: a home beyond 110 studs draws no pets and no coins")
+		-- bug batch 2 #17: back in range, the coins come out of the pools (moved while unparented before) and stay whole
+		ctx.standAt(mine.PlotCFrame * TC.Get("Garden").Slot.CFrame.Position)
+		for _ = 1, 12 do
+			KC.advance(0.1)
+		end
+		do
+			local n, ok, what = coinsIntact(ctx.g())
+			T.check(n > 0 and ok, "p5 roam client: (bug #17) back in range, the pooled coins are whole at their drops", n .. " coins, worst " .. what)
+		end
 		local errs = #Mock.Errors - errorsBefore
 		local warned = nil
 		for i = outputBefore + 1, #Mock.Output do

@@ -394,7 +394,8 @@ local function serverScenarios()
 		HB.ClearPlot(spot)
 		T.check(home:FindFirstChild("HouseLot") ~= nil, "visual plot: ClearPlot keeps the lot while the plot is owned (like the paths)")
 
-		-- a ghost for a station that unlocks later: a ForceField hologram
+		-- a station that unlocks later: the Fusion Machine (TycoonCatalog Ghost = "Pad", bug batch 2 #10) shows only its
+		-- locked pad and sign, no hologram of its glass pods / chamber (it read as a broken model)
 		local fusionPad = nil
 		for _, pad in ipairs(TC.AvailablePads({ Stations = { Press1 = 3, House = 1, Garden = 1, Kitchen = 1 }, Prestige = 0 })) do
 			if pad.StationId == "FusionMachine" then
@@ -404,17 +405,12 @@ local function serverScenarios()
 		if fusionPad and fusionPad.Locked then
 			HB.SetPads(spot, { fusionPad })
 			local ghost = home:FindFirstChild("Ghost_FusionMachine")
-			local holo, bad = 0, nil
-			for _, p in ipairs(parts(ghost)) do
-				if p.Material == Enum.Material.ForceField and p.Transparency < 0.9 and (p.Color.R + p.Color.G + p.Color.B) > 1.2 then
-					holo = holo + 1
-				end
-				if p.CanCollide or p.CanQuery or p.CanTouch then
-					bad = p.Name
-				end
-			end
-			T.check(ghost ~= nil and holo == #parts(ghost) and holo > 0 and holo <= 12 and bad == nil and find(ghost, "BuyPrompt") == nil,
-				"visual plot: a station that unlocks later shows a light ForceField hologram (no collisions, no prompts, <= 12 parts)", ghost and (holo .. " of " .. #parts(ghost)) or "no ghost")
+			local fpad = home:FindFirstChild("Pads") and home.Pads:FindFirstChild("Pad_FusionMachine")
+			local fsign = fpad and find(fpad, "PadSign", "BillboardGui")
+			local ftext = fsign and plainText(fsign) or ""
+			T.check(TC.Get("FusionMachine").Ghost == "Pad" and ghost == nil, "visual plot: the locked Fusion Machine shows no hologram (Ghost = 'Pad')",
+				ghost and (#parts(ghost) .. " ghost parts") or "no ghost")
+			T.check(fpad ~= nil and ftext:find("Prestige", 1, true) ~= nil, "visual plot: ...only its pad with the lock sign ('" .. ftext .. "')")
 		else
 			T.warn("visual plot: the Fusion Machine pad is not locked in the test home, ghost check skipped")
 		end
