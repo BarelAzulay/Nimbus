@@ -3019,7 +3019,7 @@ function Atk.PoseOf(u, now, down, busy, animate)
 	if ok and type(ps) == "table" and type(ps.Name) == "string" then
 		local cur = u.poseCur or {}
 		u.poseCur = cur
-		cur.Name, cur.P, cur.Ranged, cur.Amp = ps.Name, ps.P, ps.Ranged, ps.Amp
+		cur.Name, cur.P, cur.Ranged, cur.Amp, cur.Reach = ps.Name, ps.P, ps.Ranged, ps.Amp, ps.Reach
 		pose, body, src = cur, poseBody(cur), "fx"
 		local blend = num(ps.Blend, 1)
 		if type(ps.Prev) == "table" and blend < 1 then
@@ -3052,7 +3052,7 @@ function Atk.PoseOf(u, now, down, busy, animate)
 		u.poseSwitch = now
 		local from = u.poseFromPose or {}
 		u.poseFromPose = from
-		from.Name, from.P, from.Ranged, from.Amp = u.poseShown, u.poseShownP, u.poseShownRanged, u.poseShownAmp
+		from.Name, from.P, from.Ranged, from.Amp, from.Reach = u.poseShown, u.poseShownP, u.poseShownRanged, u.poseShownAmp, u.poseShownReach
 	end
 	if u.poseSwitch then
 		local w = (now - u.poseSwitch) / num(AF.CROSSFADE, 0.12)
@@ -3074,6 +3074,7 @@ function Atk.PoseOf(u, now, down, busy, animate)
 	u.poseShownP = pose and pose.P or nil
 	u.poseShownRanged = pose and pose.Ranged or nil
 	u.poseShownAmp = pose and pose.Amp or nil
+	u.poseShownReach = pose and pose.Reach or nil
 	u.poseLast, u.poseScaled = pose, nil
 	if not body then
 		return pose, nil

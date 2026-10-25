@@ -660,7 +660,7 @@ local function fxPose(AF, id)
 	if not ok or type(ps) ~= "table" or type(ps.Name) ~= "string" then
 		return nil, CFrame.new()
 	end
-	local pose = { Name = ps.Name, P = ps.P, Ranged = ps.Ranged }
+	local pose = { Name = ps.Name, P = ps.P, Ranged = ps.Ranged, Amp = ps.Amp, Reach = ps.Reach } -- (the leap's band and length)
 	local body = PetBuilder.PoseBody({ Pose = pose })
 	local blend = tonumber(ps.Blend) or 1
 	if type(ps.Prev) == "table" and blend < 1 then

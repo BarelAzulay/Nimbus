@@ -718,6 +718,65 @@ S.client_p7vfx_engine = guarded("client_p7vfx_engine", function()
 		"note (a): the melee Strike leap's Amp grows with the band (Common 1 -> Secret ~1.24); the ranged Shoot has none",
 		fmt("Common %s, Secret %s, ranged %s %s", tostring(ampC), tostring(ampS), tostring(nameR), tostring(ampR)))
 
+	-- 14b) Task 9 player decision: the melee leap lands on the target. The Strike carries Reach = the gap between the
+	-- caster's front edge and the target's near edge minus LEAP_MARGIN (0.3), in the caster's pose units (/ PB_Scale);
+	-- drawn as the battle draws it (root = pivot * PoseBody x PB_Scale), the caster's front edge lands LEAP_MARGIN short
+	-- of the target's near edge at the landing (p 0.26): the /fx preview (12 studs centre to centre, scale 1) and battle
+	-- range (4.5 studs, scale 1.3). Clamped to LEAP_MAX 12 world studs; the ranged Shoot carries no Reach
+	local PetPoses = moduleAt(ROOTS.shared .. "/PetPoses")
+	local function leapCase(name, gapCentre, scale)
+		local caster = unitModel(holder, name .. "C", Vector3.new(30, 2, 0))
+		local target = unitModel(holder, name .. "T", Vector3.new(30, 2, -gapCentre))
+		if scale then
+			caster:SetAttribute("PB_Scale", scale)
+		end
+		Fx.ClearAll()
+		Fx.Play(ctx({ Attack = "Melee", Element = "Flame", Rarity = "Common", From = { Unit = 90, Model = caster }, To = { Unit = 91, Model = target }, Now = clock }))
+		local reach = nil
+		run(0.6, function()
+			local po = Fx.Pose(90)
+			if po and po.Name == "Strike" and reach == nil then
+				reach = po.Reach
+			end
+		end)
+		local landFront = nil
+		if type(reach) == "number" then
+			local body = PetPoses.Sample("Strike", 0.26, false, 1, reach).Body
+			local s = scale or 1
+			local x, y, z, r00, r01, r02, r10, r11, r12, r20, r21, r22 = body:GetComponents()
+			local drawn = caster:GetPivot() * CFrame.new(x * s, y * s, z * s, r00, r01, r02, r10, r11, r12, r20, r21, r22)
+			landFront = -(drawn.Position.Z) + 1 -- the caster's front edge (its body is 2 studs deep, facing -Z)
+		end
+		local near = gapCentre - 1 -- the target's near edge
+		caster:Destroy()
+		target:Destroy()
+		run(2)
+		return reach, landFront, near
+	end
+	local rP, fP, nP = leapCase("Prev", 12, nil)
+	local rB, fB, nB = leapCase("Bat", 4.5, 1.3)
+	local rF = leapCase("Far", 40, nil)
+	local rF2 = leapCase("Far2", 40, 2)
+	T.check(type(rP) == "number" and math.abs(rP - 9.7) < 1e-3 and fP and math.abs((nP - fP) - 0.3) < 1e-3,
+		"leap (/fx preview, 12 studs): Reach 9.7 and the caster's front edge lands 0.3 short of the target's near edge",
+		fmt("reach %s, front %s, near %.2f", tostring(rP), tostring(fP), nP))
+	T.check(type(rB) == "number" and math.abs(rB - 2.2 / 1.3) < 1e-3 and fB and math.abs((nB - fB) - 0.3) < 1e-3,
+		"leap (battle range 4.5 studs, PB_Scale 1.3): a short hop, landing 0.3 short of the target's near edge",
+		fmt("reach %s, front %s, near %.2f", tostring(rB), tostring(fB), nB))
+	T.check(type(rF) == "number" and math.abs(rF - 12) < 1e-6 and type(rF2) == "number" and math.abs(rF2 - 6) < 1e-6,
+		"leap: clamped to LEAP_MAX 12 world studs (40 studs away: 12 at scale 1, 6 pose studs at scale 2)", fmt("%s / %s", tostring(rF), tostring(rF2)))
+	Fx.ClearAll()
+	Fx.Play(ctx({ Attack = "Ranged", Element = "Flame", Rarity = "Secret", From = { Unit = 92, Model = A }, To = { Unit = 93, Model = B }, Now = clock }))
+	local shootReach, shootSeen = "none", false
+	run(1.2, function()
+		local po = Fx.Pose(92)
+		if po and po.Name == "Shoot" and not shootSeen then
+			shootSeen, shootReach = true, po.Reach
+		end
+	end)
+	T.check(shootSeen and shootReach == nil, "leap: the ranged Shoot carries no Reach (ranged is unchanged)", tostring(shootReach))
+	run(3)
+
 	-- 15) fix round 3, player note (b): every element's ranged impact explodes at the target: the Boom pop (a solid ball
 	-- of the element's colour growing at the hit point), the BoomRing shock on the ground and the BoomFlash light,
 	-- at Common and Secret; the burst is the element's own texture. Melee draws none of them -----------------------

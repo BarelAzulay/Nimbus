@@ -22,14 +22,19 @@
 --       destroyed mid-travel ends the effect at its last known point; From.Model may be nil (From.Pos only).
 --   AttackFx.Update(now)            advances every live effect and pose; called from BattleController's existing
 --                                   per-frame step (no RenderStepped / Heartbeat connection of its own)
---   AttackFx.Pose(unitId) -> { Name, P, Ranged, Blend, Prev? } | nil   the pose a battle unit shows now (PetPoses
+--   AttackFx.Pose(unitId) -> { Name, P, Ranged, Amp?, Reach?, Blend, Prev? } | nil   the pose a battle unit shows now (PetPoses
 --       names; P 0..1). Blend = 1 normally; for AttackFx.CROSSFADE (0.12 s) after a pose replaces another mid-way,
 --       Blend rises 0 -> 1 and Prev = { Name, P, Ranged } is the replaced pose, still animating. The CALLER blends:
 --       root = frame * PoseBody(Prev):Lerp(PoseBody(cur), Blend), Animate with the current pose (Prev while
 --       Blend < 0.5; the returned tables are reused per unit: read them at once). The newest play on a unit wins (Ko > Cast > Windup / Strike / Shoot / Victory > Hurt while
 --       the higher one is still playing); Melee = Windup + the Strike lunge, Ranged = the ranged Windup (rear back) +
 --       Shoot (the head snaps forward, the body kicks back: never the lunge, player note 1); a melee Strike freezes for HIT_STOP (0.05 s) at the impact; Ko holds at P = 1 until
---       Cancel(unitId) / ClearAll(). nil = no attack pose (the caller shows IdleBattle or nothing).
+--       Cancel(unitId) / ClearAll(). nil = no attack pose (the caller shows IdleBattle or nothing). A melee Strike carries
+--       Amp (the band's leap scale) and Reach (AttackFx.LeapReach at the Play: the leap lands on the target); the caller
+--       passes both on to PetBuilder.PoseBody / Animate (PetPoses.Sample's amp, reach).
+--   AttackFx.LeapReach(src, tgt) -> number | nil   the melee leap's length in the caster's pose units (studs at scale
+--       1): from its front edge to the target's near edge, minus LEAP_MARGIN 0.3, clamped 0 .. LEAP_MAX 12 world studs,
+--       / the caster's PB_Scale. src / tgt = { Model?, Last = Vector3 }
 --   AttackFx.Cancel(unitId)         drops the unit's pose and ends the effects it cast (a unit swapped out / gone)
 --   AttackFx.ClearAll()             ends everything (the battle is over)
 --   AttackFx.SetQuality("Low" | "High" | nil)   nil = follow client/GraphicsQuality.Effective(). Low: emitters per
@@ -111,6 +116,10 @@ local K = {
 	VICTORY = 1.2,
 	SHOOT = 0.6, -- the ranged Shoot pose (PetPoses): the head snaps forward, the body kicks back, settles
 	LEAP_STEP = 0.08, -- the melee Strike's leap grows by this per rarity band above Common (PetPoses amp, <= 1.25)
+	-- (Task 9 player decision: the melee leap lands on the target) its forward reach = the gap between the caster's and
+	-- the target's facing edges minus LEAP_MARGIN, clamped 0 .. LEAP_MAX world studs
+	LEAP_MARGIN = 0.3,
+	LEAP_MAX = 12,
 	BAND_RARITY = { "Common", "Rare", "Legendary", "Secret" },
 	PRIO = { Ko = 4, Cast = 3, Windup = 2, Strike = 2, Shoot = 2, Recoil = 2, Victory = 2, Hurt = 1 },
 }
@@ -1932,7 +1941,7 @@ local function poseSample(entry, now)
 	if best.StopAt then
 		el = el - min(max(0, now - best.StopAt), best.StopDur)
 	end
-	return best.Name, clamp01(el / best.Dur), best.Ranged == true, best.Amp
+	return best.Name, clamp01(el / best.Dur), best.Ranged == true, best.Amp, best.Reach
 end
 
 local function poseActive(entry, at)
@@ -1964,6 +1973,46 @@ local function setPoses(unit, segs, now)
 	St.poses[unit] = entry
 end
 
+-- a model's oriented bounding box -> its centre's offset from `origin` along the flat unit `dir` and its half-length
+-- along it (nil without a model)
+local function spanAlong(model, origin, dir)
+	if not model then
+		return nil
+	end
+	local ok, cf, size = pcall(model.GetBoundingBox, model)
+	if not ok or typeof(cf) ~= "CFrame" or typeof(size) ~= "Vector3" then
+		return nil
+	end
+	local half = 0.5 * (abs(dir:Dot(cf.RightVector)) * size.X + abs(dir:Dot(cf.UpVector)) * size.Y + abs(dir:Dot(cf.LookVector)) * size.Z)
+	return (cf.Position - origin):Dot(dir), half
+end
+
+-- the melee leap's forward reach (Task 9 player decision: the jump lands on the target): from the caster's front edge
+-- to the target's near edge along the ground, minus K.LEAP_MARGIN, clamped 0 .. K.LEAP_MAX world studs; returned in
+-- the caster's pose units (PetPoses studs at scale 1: the drawing multiplies the body offset by the model's PB_Scale).
+-- Without models the pivots stand in with no size. nil = no target (the fixed hop)
+function AttackFx.LeapReach(src, tgt)
+	if not (src and tgt and typeof(src.Last) == "Vector3" and typeof(tgt.Last) == "Vector3") then
+		return nil
+	end
+	local d = flat(tgt.Last - src.Last)
+	local dist = d.Magnitude
+	if dist < 0.05 then
+		return 0
+	end
+	local u = d / dist
+	local c0, ch = spanAlong(src.Model, src.Last, u)
+	local t0, th = spanAlong(tgt.Model, src.Last, u)
+	local front = (c0 or 0) + (ch or 0)
+	local near = (t0 or dist) - (th or 0)
+	local world = max(0, min(K.LEAP_MAX, near - front - K.LEAP_MARGIN))
+	local s = src.Model and tonumber(src.Model:GetAttribute("PB_Scale")) or 1
+	if not finite(s) or s <= 0 then
+		s = 1
+	end
+	return world / s
+end
+
 local function schedulePoses(eff, now)
 	local r = eff.Recipe
 	local A = r.Attack
@@ -1983,9 +2032,10 @@ local function schedulePoses(eff, now)
 		else
 			local dur = max(0.45, min(0.9, (T.Impact - T.Release) / 0.26))
 			-- the leap (player note (a)): it lands on the target at the impact (PetPoses Strike lands at p 0.26); a little
-			-- longer and higher per rarity band (Amp)
+			-- longer and higher per rarity band (Amp). Melee only: its Reach is the gap to the target, so the leap lands ON
+			-- it (Task 9 player decision); an element Cone / Line and the Pounce keep the short fixed hop (a blast from the spot)
 			segs[#segs + 1] = { Name = "Strike", T0 = st + T.Release, Dur = dur, StopAt = (not eff.Miss) and (st + T.Impact) or nil, StopDur = AttackFx.HIT_STOP,
-				Amp = 1 + K.LEAP_STEP * ((tonumber(r.Band) or 1) - 1) }
+				Amp = 1 + K.LEAP_STEP * ((tonumber(r.Band) or 1) - 1), Reach = (A == "Melee") and AttackFx.LeapReach(eff.Src, eff.Targets[1]) or nil }
 		end
 	elseif A == "Special" or A == "Element" then
 		-- Cast's release (p 0.66 .. 0.74) lands as the release beat ends
@@ -2389,7 +2439,7 @@ function AttackFx.Pose(unit)
 		return nil
 	end
 	local now = St.now or os.clock()
-	local name, p, ranged, amp = poseSample(entry, now)
+	local name, p, ranged, amp, reach = poseSample(entry, now)
 	local prev = entry.Prev
 	local out = entry.Out
 	if not out then
@@ -2399,26 +2449,26 @@ function AttackFx.Pose(unit)
 	out.Blend, out.Prev = 1, nil
 	if not name then
 		if prev and entry.SwitchAt and now < entry.SwitchAt then -- the new pose has not started: the old one plays on
-			local n2, p2, r2, a2 = poseSample(prev, now)
+			local n2, p2, r2, a2, x2 = poseSample(prev, now)
 			if n2 then
-				out.Name, out.P, out.Ranged, out.Amp = n2, p2, r2, a2
+				out.Name, out.P, out.Ranged, out.Amp, out.Reach = n2, p2, r2, a2, x2
 				return out
 			end
 		end
 		return nil
 	end
-	out.Name, out.P, out.Ranged, out.Amp = name, p, ranged, amp
+	out.Name, out.P, out.Ranged, out.Amp, out.Reach = name, p, ranged, amp, reach
 	if prev and entry.SwitchAt then
 		local w = (now - entry.SwitchAt) / AttackFx.CROSSFADE
 		if w < 1 then
-			local n2, p2, r2, a2 = poseSample(prev, now)
+			local n2, p2, r2, a2, x2 = poseSample(prev, now)
 			if n2 then
 				local po = entry.PrevOut
 				if not po then
 					po = {}
 					entry.PrevOut = po
 				end
-				po.Name, po.P, po.Ranged, po.Amp = n2, p2, r2, a2
+				po.Name, po.P, po.Ranged, po.Amp, po.Reach = n2, p2, r2, a2, x2
 				out.Blend = max(0, w)
 				out.Prev = po
 			end

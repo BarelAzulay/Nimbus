@@ -11,7 +11,7 @@
 --   PetPoses.Holds = { Ko = true }           p = 1 is the pose's end state, held (the KO'd pet lies on its side until
 --                                            the poof covers it and the model is parked); every other one-shot pose
 --                                            is exactly at rest at p = 0 and p = 1, so starting / stopping never pops
---   PetPoses.Sample(name, p, ranged, amp) -> {
+--   PetPoses.Sample(name, p, ranged, amp, reach) -> {
 --       Body   = CFrame   offset of the pet's root in its OWN frame (the pet faces -Z = LookVector, up +Y, right
 --                        +X; PetBuilder header), studs as written below (battle units: BattleController writes
 --                        root = frame * Body; PetBuilder.PoseBody(opts) returns it)
@@ -28,13 +28,17 @@
 --   }   p is clamped to 0..1 (one-shot poses; nil / NaN = 0); `ranged` = the ranged variant (Strike: a kick back
 --       instead of the lunge; Windup / Recoil: rear back). An unknown name = rest. `amp` (number, default 1, clamped
 --       1 .. LEAP_AMP_MAX 1.25) scales the melee Strike's leap (length and height grow a little with rarity: AttackFx
---       passes 1 + 0.08 per band above Common); every other pose ignores it.
+--       passes 1 + 0.08 per band above Common); every other pose ignores it. `reach` (studs at scale 1, optional,
+--       clamped 0 .. LEAP_REACH_MAX 12; nil = the fixed 1.5 x amp hop): the melee Strike's forward distance, so the leap
+--       lands on the target (Task 9 player decision: AttackFx measures the gap between the two models' facing edges,
+--       minus a contact margin, and divides it by the caster's PB_Scale); the hop gets higher with it.
 --
 -- The shapes (spec + plan values; the extra motion is the "feel": anticipation, overshoot, settle):
 --   Windup     crouch 0.25 studs, wings swept back 25 deg and folded tight, tail up and lashing; ranged rears back
 --              (weight back, chin up). Holds the crouch, then springs up (the push-off into Strike).
 --   Strike     melee (player note (a), fix round 3): a LEAP at the target: a hop arc 0.8 studs high (x amp) that carries
---              the body 1.5 studs (x amp) along the LookVector, chin up on take-off, nose down coming in, landing at
+--              the body 1.5 studs (x amp) along the LookVector (with `reach`: exactly `reach` studs, the hop
+--              min(LEAP_H_MAX, (0.8 + 0.12 x reach) x amp) high: Task 9), chin up on take-off, nose down coming in, landing at
 --              p = 0.26 exactly when the hit lands (AttackFx times the pose so), a small squash on landing, then the
 --              recoil: it settles back with a small overshoot behind the start. Wings snap open 35 deg (overshoot ~38).
 --              ranged: a kick back 0.35 studs, chin up, wings snap open 35 deg, settle.
@@ -69,6 +73,9 @@ local LUNGE = 1.5
 local LEAP_H = 0.8 -- the melee Strike's hop height at amp 1 (studs)
 local LEAP_LAND = 0.26 -- the leap lands (and the hit lands) at this p
 PetPoses.LEAP_AMP_MAX = 1.25
+PetPoses.LEAP_REACH_MAX = 12 -- studs (scale 1): the longest leap a pose draws
+local LEAP_H_PER = 0.12 -- extra hop height per stud of reach (a longer jump goes higher)
+local LEAP_H_MAX = 2.4 -- studs: the highest hop
 local RANGED_KICK = 0.35
 local SHOOT_KICK = 0.45
 local CROUCH = 0.25
@@ -170,7 +177,7 @@ POSES.Windup = function(f, p, ranged)
 	f.still = 0.35 * a
 end
 
-POSES.Strike = function(f, p, ranged, amp)
+POSES.Strike = function(f, p, ranged, amp, reachIn)
 	-- the wings snap open early, hold, and fold back with the settle
 	local wings = outBack(seg(p, 0, 0.14), 1.70158) * settle(seg(p, 0.4, 1), 0.15)
 	f.back = -SNAP_OPEN * wings -- swung forward, broadside: the silhouette opens
@@ -187,11 +194,16 @@ POSES.Strike = function(f, p, ranged, amp)
 		-- the leap (player note (a)): take-off at p = 0, the hop arc, landing on the target at LEAP_LAND (the hit)
 		amp = amp or 1
 		local air = seg(p, 0, LEAP_LAND)
-		local reach = LUNGE * amp
-		local lunge = reach * smooth(air) * settle(seg(p, 0.38, 1), 0.18)
-		local k = lunge / reach
+		local reach, hop = LUNGE * amp, LEAP_H * amp
+		if reachIn then -- (Task 9: the measured gap: the leap lands on the target's near edge)
+			reach = reachIn
+			hop = math.min(LEAP_H_MAX, (LEAP_H + LEAP_H_PER * reach) * amp)
+		end
+		-- the recoil's overshoot behind the start stays small on a long leap (<= 0.27 studs)
+		local lunge = reach * smooth(air) * settle(seg(p, 0.38, 1), 0.18 * math.min(1, LUNGE / math.max(reach, 1e-3)))
+		local k = reach > 1e-3 and math.min(1, lunge / LUNGE) or 0
 		f.z = -lunge
-		f.y = LEAP_H * amp * sin(PI * air) -- the hop: up, over, down onto the target
+		f.y = hop * sin(PI * air) -- the hop: up, over, down onto the target
 			- 0.08 * sin(PI * seg(p, LEAP_LAND, 0.36)) -- a little squash on landing
 		-- chin up on take-off, then nose down onto the hit (eased back with the recoil)
 		f.pitch = 12 * sin(PI * seg(air, 0, 0.5)) - 16 * smooth(seg(air, 0.4, 1)) * settle(seg(p, 0.38, 1), 0)
@@ -325,7 +337,7 @@ local function newFrame()
 	}
 end
 
-function PetPoses.Sample(name, p, ranged, amp)
+function PetPoses.Sample(name, p, ranged, amp, reach)
 	local fn = POSES[name]
 	local f = newFrame()
 	p = tonumber(p) or 0
@@ -340,7 +352,13 @@ function PetPoses.Sample(name, p, ranged, amp)
 		if amp ~= amp then
 			amp = 1
 		end
-		fn(f, p, ranged == true, math.max(1, math.min(PetPoses.LEAP_AMP_MAX, amp)))
+		reach = tonumber(reach)
+		if reach ~= nil and (reach ~= reach or reach == math.huge or reach == -math.huge) then
+			reach = nil
+		elseif reach ~= nil then
+			reach = math.max(0, math.min(PetPoses.LEAP_REACH_MAX, reach))
+		end
+		fn(f, p, ranged == true, math.max(1, math.min(PetPoses.LEAP_AMP_MAX, amp)), reach)
 	end
 	local raise, back = rad(f.raise), rad(f.back)
 	return {

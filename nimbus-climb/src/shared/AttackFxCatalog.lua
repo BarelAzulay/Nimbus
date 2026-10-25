@@ -412,7 +412,10 @@ AttackFxCatalog.Beats = {
 -- ShotArcs), a muzzle puff of the element's burst sheet at the release, a glowing streak behind the shot at every
 -- rarity, and a guaranteed visible flight (RangedSpeed, MinTravel).
 AttackFxCatalog.Basic = {
-	Melee = { Beats = { Charge = 0.15, Travel = 0.1, Linger = 0.5 }, GroundTravel = 0.15 },
+	-- LeapTravel (player decision, Task 9: the melee leap lands on the target): with a known Distance (centre to centre)
+	-- the swing's Travel grows by PerStud past Near, up to Extra, so a long leap (the /fx preview's 10 studs) has the
+	-- air time to read as a jump; at battle range (~4 studs) it stays the base travel
+	Melee = { Beats = { Charge = 0.15, Travel = 0.1, Linger = 0.5 }, GroundTravel = 0.15, LeapTravel = { Near = 4, PerStud = 0.02, Extra = 0.14 } },
 	Ranged = {
 		Beats = { Charge = 0.18, Linger = 0.5 }, -- Travel by distance at Beats.RangedSpeed (an element's Ranged.Speed wins:
 		--                                          Storm's bolt), at least Beats.MinTravel
@@ -697,6 +700,11 @@ local function attackDef(req, element, sig)
 		if attack == "Melee" and entry.Path == "Ground" then
 			beats.Travel = base.GroundTravel
 		end
+		local d = tonumber(req.Distance)
+		if attack == "Melee" and base.LeapTravel and finite(d) then
+			local lt = base.LeapTravel
+			beats.Travel = beats.Travel + max(0, min(lt.Extra, (d - lt.Near) * lt.PerStud))
+		end
 		local detail = {} -- (no holes: ipairs) the attack's own layers, then the element's for this attack
 		detail[#detail + 1] = base.Layers
 		detail[#detail + 1] = entry.Layers
@@ -851,7 +859,7 @@ function AttackFxCatalog.Resolve(req)
 	if not element then
 		return nil
 	end
-	local def = attackDef({ Attack = req.Attack, Kind = req.Kind, Shape = req.Shape, Element = elementName }, element, sig)
+	local def = attackDef({ Attack = req.Attack, Kind = req.Kind, Shape = req.Shape, Element = elementName, Distance = req.Distance }, element, sig)
 	if not def then
 		return nil
 	end

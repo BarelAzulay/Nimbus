@@ -1222,6 +1222,43 @@ S.p7vfx_poses = guarded("p7vfx_poses", function()
 		and pbAmp.Position.Y > PB.PoseBody({ Pose = { Name = "Strike", P = 0.13 } }).Position.Y + 0.05,
 		"p7vfx poses: PoseBody passes the pose's Amp (a higher leap)", fmt("%.3f", cfFinite(pbAmp) and pbAmp.Position.Y or -1))
 
+	-- Task 9 player decision: the leap reaches the target: `reach` (studs at scale 1) is the exact forward distance at
+	-- the landing (p 0.26), the hop grows with it (0.8 + 0.12 x reach, capped), it is clamped 0 .. LEAP_REACH_MAX, and
+	-- it never changes the ranged Strike / Shoot. PoseBody passes the pose's Reach
+	local function reachAt(p, reach, amp)
+		local s0 = P.Sample("Strike", p, false, amp or 1, reach)
+		return forwardOf(s0.Body), s0.Body.Position.Y
+	end
+	local land2, land8 = reachAt(0.26, 2), reachAt(0.26, 8)
+	local _, hop2 = reachAt(0.13, 2)
+	local _, hop8 = reachAt(0.13, 8)
+	local land50 = reachAt(0.26, 50)
+	local land0, hop0 = reachAt(0.26, 0)
+	local landNeg = reachAt(0.26, -3)
+	local landNaN = reachAt(0.26, 0 / 0)
+	local _, hopMax = reachAt(0.13, 50, P.LEAP_AMP_MAX)
+	local under8 = 0
+	for i = 40, 100 do
+		under8 = math.min(under8, reachAt(i / 100, 8))
+	end
+	T.check(math.abs(land2 - 2) < 1e-6 and math.abs(land8 - 8) < 1e-6 and math.abs(hop2 - (0.8 + 0.24)) < 0.01 and math.abs(hop8 - (0.8 + 0.96)) < 0.01
+		and P.LEAP_REACH_MAX == 12 and math.abs(land50 - 12) < 1e-6 and math.abs(land0) < 1e-6 and math.abs(hop0) < 0.1 and math.abs(landNeg) < 1e-6
+		and math.abs(landNaN - 1.5) < 1e-6 and hopMax <= 2.4 + 1e-6 and under8 > -0.3,
+		"p7vfx poses: the leap's reach is its landing point (2 -> 2, 8 -> 8 studs at p 0.26), higher with reach, clamped 0 .. 12 (hop <= 2.4, recoil overshoot small)",
+		fmt("land %.3f / %.3f, hop %.3f / %.3f, 50 -> %.3f, 0 -> %.3f, -3 -> %.3f, NaN -> %.3f, hop max %.3f, under %.3f", land2, land8, hop2, hop8, land50, land0, landNeg, landNaN, hopMax, under8))
+	local rangedReach = true
+	for i = 0, 20 do
+		local a = P.Sample("Strike", i / 20, true, 1).Body
+		local b = P.Sample("Strike", i / 20, true, 1, 9).Body
+		local c = P.Sample("Shoot", i / 20, true, 1, 9).Body
+		local d = P.Sample("Shoot", i / 20, true, 1).Body
+		rangedReach = rangedReach and (a.Position - b.Position).Magnitude < 1e-6 and (c.Position - d.Position).Magnitude < 1e-6
+	end
+	T.check(rangedReach, "p7vfx poses: the leap reach never changes the ranged Strike / Shoot")
+	local pbReach = PB.PoseBody({ Pose = { Name = "Strike", P = 0.26, Reach = 6 } })
+	T.check(cfFinite(pbReach) and math.abs(forwardOf(pbReach) - 6) < 1e-6, "p7vfx poses: PoseBody passes the pose's Reach (the leap lands 6 studs on)",
+		fmt("%.3f", cfFinite(pbReach) and forwardOf(pbReach) or -1))
+
 	-- one winged pet (flapping wings) and one tailed pet, each with a second evolution
 	local winged, tailed = nil, nil
 	for _, def in ipairs(PC.Pets) do
