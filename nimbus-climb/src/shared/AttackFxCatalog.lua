@@ -429,7 +429,7 @@ AttackFxCatalog.Basic = {
 			-- (Task 8 Studio: untextured, the streak read as a flat white ribbon on a bright sky; streaked + the deep edge colour,
 			-- and a short comet tail (Lifetime, seconds): at the default 0.2 s it stretched back to the mouth mid-flight)
 			{ Id = "Streak", Kind = "Trail", Texture = "$Arc", Beat = "Travel", At = "Core", Tint = "Edge", Lifetime = 0.08 },
-			{ Id = "Boom", Kind = "Ring", Key = "vfx_orb", Beat = "Impact", At = "$Hit", Tint = "Mid", Grow = 1.25, Transparency = 0.3, Pop = true },
+			{ Id = "Boom", Kind = "Ring", Key = "vfx_orb", Beat = "Impact", At = "$Hit", Tint = "Mid", Grow = 1.25, Transparency = 0.5, Pop = true }, -- (Studio + Gemini: at 0.3 the ball hid the target)
 			{ Id = "BoomRing", Kind = "Ring", Key = "vfx_ring", Beat = "Impact", At = "Ground", Tint = "Core", Grow = 1.3, Transparency = 0.3 },
 			{ Id = "BoomFlash", Kind = "Light", Beat = "Impact", At = "$Hit", Tint = "Core", Brightness = 1.5, Range = 7 },
 		},
