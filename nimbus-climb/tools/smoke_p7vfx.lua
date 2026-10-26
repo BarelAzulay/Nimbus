@@ -951,6 +951,19 @@ S.p7vfx_catalog = guarded("p7vfx_catalog", function()
 	local eb = er and layerById(er, "Burst")
 	T.check(eb and eb.Texture == "fx_rock" and eb.Motion == "Shatter" and (eb.SpeedScale or 1) >= 1.5,
 		"p7vfx catalog: Earth's rock burst is flung outward (SpeedScale), not a boulder over the target")
+	-- Task 9 (Studio, Storm c2: a fully additive fx_glow muzzle puff was a white glare at the mouth): the ranged Muzzle
+	-- puff of the element's Burst sheet takes the element's BurstLight, like the Burst
+	local muzzleBad = {}
+	for _, element in ipairs(Config.Elements.Order) do
+		local e = C.Elements[element]
+		local r = C.Resolve({ Element = element, Attack = "Ranged", Rarity = "Secret", Mine = true })
+		local mz = r and layerById(r, "Muzzle")
+		if type(e.BurstLight) == "number" and mz and mz.Texture == e.Burst and mz.LightEmission ~= e.BurstLight then
+			muzzleBad[#muzzleBad + 1] = element
+		end
+	end
+	T.check(#muzzleBad == 0, "p7vfx catalog: a ranged Muzzle puff of the Burst sheet is lit like the element's Burst (BurstLight)",
+		table.concat(muzzleBad, ","))
 
 	-- Task 9: a template's Except matches the RESOLVED kind: a signature special asked with Kind nil (Ember Phoenix's
 	-- Phoenix Flare is a Blast) still leaves out Flame's Smoke (Except Blast), like the same Blast asked by name

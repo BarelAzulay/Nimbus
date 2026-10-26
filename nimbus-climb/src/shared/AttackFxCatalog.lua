@@ -1087,6 +1087,16 @@ function AttackFxCatalog.Resolve(req)
 		end
 	end
 
+	-- (Task 9 Studio, Storm c2: the ranged Muzzle puff is the element's Burst sheet, but fully additive (fx_glow 1) it read
+	-- as a white glare at the mouth: it takes the element's BurstLight like the Burst itself)
+	if finite(element.BurstLight) then
+		for _, layer in ipairs(layers) do
+			if layer.Id == "Muzzle" and layer.Texture == element.Burst then
+				layer.LightEmission = element.BurstLight
+			end
+		end
+	end
+
 	local recipe = {
 		Element = elementName,
 		Attack = req.Attack,
