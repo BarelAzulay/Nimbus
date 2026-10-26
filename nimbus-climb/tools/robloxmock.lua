@@ -3804,7 +3804,45 @@ defclass("WedgePart", "BasePart", { creatable = true })
 defclass("CornerWedgePart", "BasePart", { creatable = true })
 defclass("TrussPart", "BasePart", { creatable = true })
 defclass("SpawnLocation", "Part", { creatable = true, props = { Enabled = T.bool(true), Neutral = T.bool(true), Duration = T.num(10), AllowTeamChangeOnTouch = T.bool(false), TeamColor = T.brick() } })
-defclass("Seat", "Part", { creatable = true, props = { Disabled = T.bool(false) } })
+-- bug batch 2 #7: Occupant + Sit(humanoid) like Roblox (a Disabled or taken seat seats nobody; the engine's SeatWeld,
+-- Humanoid.Sit and SeatPart). Like the engine, removing the SeatWeld (a jump, a death: tests destroy it) frees the seat.
+defclass("Seat", "Part", {
+	creatable = true,
+	props = { Disabled = T.bool(false), Occupant = T.inst() },
+	methods = {
+		Sit = function(self, humanoid)
+			if self.Disabled or self.Occupant ~= nil or humanoid == nil or not humanoid:IsA("Humanoid") then
+				return
+			end
+			local char = humanoid.Parent
+			local root = char and char:FindFirstChild("HumanoidRootPart")
+			if not root then
+				return
+			end
+			local weld = Instance.new("Weld")
+			weld.Name = "SeatWeld"
+			weld.Part0 = self
+			weld.Part1 = root
+			weld.Parent = self
+			humanoid.Sit = true
+			humanoid.SeatPart = self
+			self.Occupant = humanoid
+			local conn
+			conn = weld.AncestryChanged:Connect(function()
+				if weld.Parent ~= self then
+					conn:Disconnect()
+					if self.Occupant == humanoid then
+						self.Occupant = nil
+					end
+					if humanoid.SeatPart == self then
+						humanoid.SeatPart = nil
+						humanoid.Sit = false
+					end
+				end
+			end)
+		end,
+	},
+})
 defclass("VehicleSeat", "BasePart", { creatable = true, props = { Disabled = T.bool(false), MaxSpeed = T.num(25), Torque = T.num(10), TurnSpeed = T.num(1), Throttle = T.num(0), Steer = T.num(0) } })
 defclass("MeshPart", "BasePart", {
 	creatable = true,

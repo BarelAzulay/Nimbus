@@ -10,10 +10,15 @@
 --
 -- Prompts (created here on LobbyInfo.Gates.<Id>.PromptPart, MaxActivationDistance 12, HoldDuration 0):
 --   AltarGatePrompt  "Travel" / "Storm Altar"   -> StormAltar.GetLanding(): the island deck at the bridge end
+-- bug batch 2 #4: and on StormAltar.GetReturnPad() (the small return portal beside the landing, MaxActivationDistance 8):
+--   PlazaGatePrompt  "Travel" / "Plaza"         -> LobbyInfo.Gates.Altar.ReturnCFrame: the plaza 18 studs in front of
+--                                                  the Altar gate (fallback: 15 studs in front of its prompt part)
+--                    Teleported fires (player, "Plaza"); the pad is looked up again when the altar was rebuilt.
 -- The Obby gate's prompt is PortalService's, the Dungeon gate's DungeonService's, Ring / Arena are ArenaBuilder's.
 -- Every use is checked on the server (Y12): the prompt is this one, the player is alive, not InMatch, not
--- InBattle, not locked on a portal pad (PortalService.IsLocked), within MaxActivationDistance + 4 of the prompt
--- part, and 1.5 s after their last use. Plain Lua 5.1-compatible syntax only.
+-- InBattle (also set for a whole dungeon run), not locked on a portal pad (PortalService.IsLocked), within
+-- MaxActivationDistance + 4 of the prompt part, and 1.5 s after their last use (one cooldown for both directions).
+-- A seated player (a lobby bench) is stood up before the teleport so the seat stays where it is. Plain Lua 5.1-compatible syntax only.
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -35,6 +40,7 @@ local ATTR_IN_MATCH = (Config.Attr and Config.Attr.InMatch) or "InMatch"
 
 local PROMPTS = {
 	Altar = { Name = "AltarGatePrompt", Action = "Travel", Object = "Storm Altar" },
+	Plaza = { Name = "PlazaGatePrompt", Action = "Travel", Object = "Plaza", Range = 8 }, -- bug batch 2 #4
 }
 local ORDER = { "Altar" } -- Phase 6: no Home gate (the Home window's Go home is the way home)
 
@@ -42,6 +48,7 @@ local S = {
 	deps = {},
 	prompts = {}, -- ProximityPrompt -> gate id
 	parts = {}, -- gate id -> prompt part
+	plazaCF = nil, -- bug batch 2 #4: the "Plaza" gate's arrival (LobbyInfo.Gates.Altar.ReturnCFrame)
 	lastUse = {}, -- Player -> os.clock() of the last accepted use
 	conn = nil,
 	initialized = false,
@@ -102,6 +109,19 @@ local function placeCharacter(player, cf)
 	if not root or typeof(cf) ~= "CFrame" then
 		return false
 	end
+	-- bug batch 2 #7: a seated player is welded to an anchored seat; break the weld first or the seat comes along
+	local humanoid = char:FindFirstChildOfClass("Humanoid")
+	local seat = humanoid and humanoid.SeatPart
+	if seat then
+		pcall(function()
+			for _, d in ipairs(seat:GetChildren()) do
+				if d:IsA("JointInstance") and d.Name == "SeatWeld" then
+					d:Destroy()
+				end
+			end
+			humanoid.Sit = false
+		end)
+	end
 	local ok = pcall(function()
 		char:PivotTo(cf)
 		root.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
@@ -114,8 +134,12 @@ function GateService.Use(player, gateId)
 	if typeof(player) ~= "Instance" or not player:IsA("Player") or player.Parent == nil then
 		return false, "junk"
 	end
+	if gateId == "Plaza" then
+		GateService._bindPlaza() -- the altar may have been rebuilt since Init
+	end
 	local part = S.parts[gateId]
-	if not part or part.Parent == nil then
+	local spec = PROMPTS[gateId]
+	if not part or part.Parent == nil or not spec then
 		return false, "junk"
 	end
 	local root = aliveRoot(player)
@@ -132,7 +156,7 @@ function GateService.Use(player, gateId)
 	if isLocked(player) then
 		return false, "locked"
 	end
-	if (root.Position - part.Position).Magnitude > PROMPT_RANGE + RANGE_SLACK then
+	if (root.Position - part.Position).Magnitude > (spec.Range or PROMPT_RANGE) + RANGE_SLACK then
 		return false, "far"
 	end
 	local now = os.clock()
@@ -151,6 +175,8 @@ function GateService.Use(player, gateId)
 			cf = ok and result or nil
 		end
 		moved = typeof(cf) == "CFrame" and placeCharacter(player, cf)
+	elseif gateId == "Plaza" then
+		moved = typeof(S.plazaCF) == "CFrame" and placeCharacter(player, S.plazaCF)
 	end
 	if not moved then
 		return false, "failed"
@@ -170,7 +196,7 @@ local function makePrompt(part, spec)
 	prompt.ObjectText = spec.Object
 	prompt.KeyboardKeyCode = Enum.KeyCode.E
 	prompt.HoldDuration = 0
-	prompt.MaxActivationDistance = PROMPT_RANGE
+	prompt.MaxActivationDistance = spec.Range or PROMPT_RANGE
 	prompt.RequiresLineOfSight = false
 	prompt.Parent = part
 	return prompt
@@ -194,6 +220,24 @@ function GateService.Init(lobbyInfo, deps)
 			warn("[GateService] the lobby has no " .. id .. " gate prompt part")
 		end
 	end
+	-- bug batch 2 #4: the way back from the Storm Altar (the arrival in front of the Altar gate, then the pad's prompt)
+	local altarGate = gates.Altar
+	if type(altarGate) == "table" and typeof(altarGate.ReturnCFrame) == "CFrame" then
+		S.plazaCF = altarGate.ReturnCFrame
+	elseif S.parts.Altar then
+		local p = S.parts.Altar
+		local look = Vector3.new(p.CFrame.LookVector.X, 0, p.CFrame.LookVector.Z)
+		look = look.Magnitude > 1e-3 and look.Unit or Vector3.new(0, 0, -1)
+		local front = p.Position + look * 15 - Vector3.new(0, 0.5, 0)
+		S.plazaCF = CFrame.lookAt(front, front + look)
+	end
+	GateService._bindPlaza()
+	local altar = S.deps.StormAltar
+	if type(altar) == "table" and type(altar.Built) == "table" and type(altar.Built.Connect) == "function" then
+		altar.Built:Connect(function()
+			GateService._bindPlaza() -- a rebuilt altar: the new pad gets the prompt at once
+		end)
+	end
 	S.conn = ProximityPromptService.PromptTriggered:Connect(function(prompt, player)
 		local id = S.prompts[prompt]
 		if not id then
@@ -209,8 +253,38 @@ function GateService.Init(lobbyInfo, deps)
 	end)
 end
 
--- The prompt of a gate ("Altar"), for tests and tutorials.
+-- bug batch 2 #4: (re)binds the "Plaza" gate to the Storm Altar's return pad; a rebuilt altar gets a fresh prompt.
+function GateService._bindPlaza()
+	local current = S.parts.Plaza
+	if current and current.Parent ~= nil then
+		return current
+	end
+	local altar = S.deps.StormAltar
+	local part = nil
+	if hasFn(altar, "GetReturnPad") then
+		local ok, result = pcall(altar.GetReturnPad)
+		part = ok and result or nil
+	end
+	for prompt, id in pairs(S.prompts) do
+		if id == "Plaza" then
+			S.prompts[prompt] = nil -- the old altar's prompt (destroyed with it)
+		end
+	end
+	S.parts.Plaza = nil
+	if typeof(part) == "Instance" and part:IsA("BasePart") and S.plazaCF then
+		local prompt = makePrompt(part, PROMPTS.Plaza)
+		S.prompts[prompt] = "Plaza"
+		S.parts.Plaza = part
+		return part
+	end
+	return nil
+end
+
+-- The prompt of a gate ("Altar", "Plaza"), for tests and tutorials.
 function GateService.GetPrompt(gateId)
+	if gateId == "Plaza" then
+		GateService._bindPlaza()
+	end
 	local part = S.parts[gateId]
 	local spec = PROMPTS[gateId]
 	return part and spec and part:FindFirstChild(spec.Name) or nil

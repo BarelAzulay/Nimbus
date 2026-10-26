@@ -64,7 +64,8 @@
 -- Part budget: the lobby with all six gates <= 8000 parts after the greedy voxel merge (10.3). Repeated decor (trees, lamps, benches, flower beds,
 -- the whole plot with its island, fence and gate, cloud puffs, sky clouds) is sculpted once and :Clone()d.
 -- No external assets: Parts, built-in particle textures and Theme-styled GUI text. Deterministic (seeded).
--- ProximityPrompts are NOT created here: PetService / ItemService attach them to the PromptParts.
+-- ProximityPrompts are NOT created here: PetService / ItemService attach them to the PromptParts. The one exception
+-- (bug batch 2 #7): every bench's "Sit" prompts, handled here (Benches).
 --
 -- Robustness: gates, spots, the shop machines and the item stall are what other services depend on. Each
 -- is built inside pcall with a plain-part fallback that still returns the same LobbyInfo shape (the
@@ -1184,7 +1185,188 @@ function Props.Lamp()
 	end)
 end
 
--- Wooden bench (plain parts, no Seat: running past must never sit you down). Faces -Z.
+-- bug batch 2 #7 (the player: "benches should be sittable, when a player sits on them the pets sit on the ground"):
+-- every bench carries invisible Seats that stay Disabled (running past still never sits you down) with a "Sit" prompt
+-- (E). The server checks the press (Benches.sit: alive, not in a battle / dungeon run / match, near, the seat free,
+-- the player not seated already, a 0.5 s cooldown), enables that seat for the sit and seats the player; when the
+-- occupant leaves (jump, death, leaving) the seat goes back to Disabled and its prompt shows again. While a seat is
+-- taken a 4 Hz watchdog frees it if a teleport dragged it (or its occupant) away and puts it back home.
+local Benches = {
+	SEAT = "BenchSeat",
+	PROMPT = "BenchSitPrompt",
+	RANGE = 7, -- the prompt's MaxActivationDistance ...
+	SLACK = 3, -- ... + this much on the server (lag)
+	COOLDOWN = 0.5,
+	DRIFT = 4, -- studs a taken seat or its occupant may stray from the seat's home before the watchdog frees it
+	lastUse = {}, -- [Player] = os.clock() of the last accepted sit
+	homes = {}, -- [Seat] = its CFrame as built
+	watched = {}, -- [Seat] = true while its watchdog runs
+	hooked = false,
+}
+
+-- one Seat (+ prompt) per 2.2 studs of bench (a seated player is ~2 studs wide): the bench seats two
+function Benches.addSeats(m, length, seatY, seatZ)
+	local n = math.max(1, math.floor(length / 2.2 + 1e-6))
+	for i = 1, n do
+		local seat = Instance.new("Seat")
+		seat.Name = Benches.SEAT
+		seat.Anchored = true
+		seat.Size = Vector3.new(2, 0.4, 1.8)
+		seat.CFrame = CFrame.new(-length / 2 + (i - 0.5) * length / n, seatY, seatZ) -- faces -Z like the bench
+		seat.Transparency = 1
+		seat.CanCollide = false
+		seat.CanQuery = false
+		seat.CastShadow = false
+		seat.Disabled = true
+		seat.Parent = m
+		local prompt = Instance.new("ProximityPrompt")
+		prompt.Name = Benches.PROMPT
+		prompt.ActionText = "Sit"
+		prompt.ObjectText = "Bench"
+		prompt.KeyboardKeyCode = Enum.KeyCode.E
+		prompt.HoldDuration = 0
+		prompt.MaxActivationDistance = Benches.RANGE
+		prompt.RequiresLineOfSight = false
+		prompt.Parent = seat
+	end
+end
+
+-- Sit `player` on `seat` (the prompt's handler; tests call it). -> ok, reason
+function Benches.sit(player, seat)
+	if typeof(player) ~= "Instance" or not player:IsA("Player") or player.Parent == nil then
+		return false, "junk"
+	end
+	if typeof(seat) ~= "Instance" or not seat:IsA("Seat") or seat.Name ~= Benches.SEAT or not seat:IsDescendantOf(Workspace) then
+		return false, "junk"
+	end
+	local char = player.Character
+	local humanoid = char and char:FindFirstChildOfClass("Humanoid")
+	local root = char and char:FindFirstChild("HumanoidRootPart")
+	if not humanoid or not root or humanoid.Health <= 0 then
+		return false, "dead"
+	end
+	-- InBattle is also set for a whole dungeon run (Config.Attr.InBattle)
+	local attr = Config.Attr or {}
+	local battle = player:GetAttribute(attr.InBattle or "InBattle")
+	if (battle ~= nil and battle ~= false) or player:GetAttribute(attr.InMatch or "InMatch") == true then
+		return false, "busy"
+	end
+	if (root.Position - seat.Position).Magnitude > Benches.RANGE + Benches.SLACK then
+		return false, "far"
+	end
+	if seat.Occupant ~= nil then
+		return false, "taken"
+	end
+	if humanoid.Sit or humanoid.SeatPart ~= nil then
+		return false, "seated"
+	end
+	local now = os.clock()
+	local last = Benches.lastUse[player]
+	if last and now - last < Benches.COOLDOWN then
+		return false, "cooldown"
+	end
+	Benches.lastUse[player] = now
+	seat.Disabled = false -- for this sit only: Benches.refresh disables it again once the seat is free
+	local ok = pcall(seat.Sit, seat, humanoid)
+	if ok and seat.Occupant == humanoid then
+		Benches.refresh(seat)
+		return true
+	end
+	-- the weld may land a frame later: give it a moment, then the seat is Disabled again unless someone sits
+	task.delay(0.5, function()
+		Benches.refresh(seat)
+	end)
+	return ok, ok and "pending" or "failed"
+end
+
+-- Disabled + prompt shown while free; prompt hidden (and the watchdog running) while taken
+function Benches.refresh(seat)
+	if seat.Parent == nil then
+		return
+	end
+	local taken = seat.Occupant ~= nil
+	seat.Disabled = not taken
+	local prompt = seat:FindFirstChild(Benches.PROMPT)
+	if prompt then
+		prompt.Enabled = not taken
+	end
+	if taken and not Benches.watched[seat] then
+		Benches.watched[seat] = true
+		task.spawn(Benches.watch, seat)
+	end
+end
+
+-- while the seat is taken: a teleport that moved the welded occupant (and with it the seat) frees the seat at home
+function Benches.watch(seat)
+	while seat.Parent and seat.Occupant ~= nil do
+		Benches.check(seat)
+		task.wait(0.25)
+	end
+	Benches.watched[seat] = nil
+	if seat.Parent then
+		Benches.refresh(seat)
+	end
+end
+
+function Benches.check(seat)
+	local home = Benches.homes[seat]
+	local occupant = seat.Occupant
+	local root = occupant and occupant.Parent and occupant.Parent:FindFirstChild("HumanoidRootPart")
+	if not home then
+		return
+	end
+	local strayed = (seat.Position - home.Position).Magnitude > Benches.DRIFT
+		or (root and (root.Position - home.Position).Magnitude > Benches.DRIFT + 3)
+	if not strayed then
+		return
+	end
+	for _, d in ipairs(seat:GetChildren()) do
+		if d:IsA("JointInstance") or d:IsA("WeldConstraint") then
+			d:Destroy() -- the SeatWeld: the occupant stays where the teleport put them
+		end
+	end
+	if occupant and occupant.Parent then
+		pcall(function()
+			occupant.Sit = false
+		end)
+	end
+	seat.CFrame = home
+	Benches.refresh(seat)
+end
+
+-- after the build: every bench seat gets its prompt handler, its Occupant watcher and its home CFrame
+function Benches.wire(root)
+	for _, seat in ipairs(root:GetDescendants()) do
+		if seat:IsA("Seat") and seat.Name == Benches.SEAT then
+			Benches.homes[seat] = seat.CFrame
+			local prompt = seat:FindFirstChild(Benches.PROMPT)
+			if prompt then
+				prompt.Triggered:Connect(function(player)
+					local ok, err = pcall(Benches.sit, player, seat)
+					if not ok then
+						warn("[LobbyBuilder] bench sit: " .. tostring(err))
+					end
+				end)
+			end
+			seat:GetPropertyChangedSignal("Occupant"):Connect(function()
+				Benches.refresh(seat)
+			end)
+			seat.AncestryChanged:Connect(function()
+				if not seat:IsDescendantOf(game) then
+					Benches.homes[seat] = nil
+				end
+			end)
+		end
+	end
+	if not Benches.hooked then
+		Benches.hooked = true
+		game:GetService("Players").PlayerRemoving:Connect(function(player)
+			Benches.lastUse[player] = nil
+		end)
+	end
+end
+
+-- Wooden bench (plain parts) with two Disabled Seats + "Sit" prompts (bug batch 2 #7, Benches). Faces -Z.
 function Props.Bench()
 	return template("Bench", function()
 		local m = Instance.new("Model")
@@ -1195,6 +1377,8 @@ function Props.Bench()
 		box(m, "Back", CFrame.new(0, 3.35, 1.05), Vector3.new(5.6, 0.7, 0.3), C.Plank)
 		box(m, "Frame", CFrame.new(-2.4, 1.6, 0.25), Vector3.new(0.4, 3.2, 2.2), C.Iron, { Collide = true })
 		box(m, "Frame", CFrame.new(2.4, 1.6, 0.25), Vector3.new(0.4, 3.2, 2.2), C.Iron, { Collide = true })
+		-- the seats' tops sit on the planks' top (1.75); between the frames (inner width 4.4 -> 2 x 2.2)
+		Benches.addSeats(m, 4.4, 1.55, 0.05)
 		return m
 	end)
 end
@@ -3889,6 +4073,9 @@ function LobbyBuilder.Build()
 	section("sky", function()
 		buildSky(root)
 	end)
+	section("benches", function()
+		Benches.wire(root) -- bug batch 2 #7: the Sit prompts of every bench (plaza lawns + gardens)
+	end)
 
 	root.Parent = Workspace
 	-- the templates and merged box lists are only needed while building
@@ -3922,6 +4109,14 @@ function LobbyBuilder.Build()
 	for id, g in pairs(gates) do
 		gateInfo[id] = { Model = g.Model, Pad = g.Pad, PromptPart = g.PromptPart }
 	end
+	-- bug batch 2 #4: where the Storm Altar's return portal (GateService gate "Plaza") lands: on the plaza 18 studs in
+	-- front of the Altar gate (~15.2 from its PromptAnchor at 2.8 out, well clear of the 12-stud prompt), 3 studs up,
+	-- looking at the plaza
+	local altarGate = sites.Altar
+	if gateInfo.Altar and typeof(altarGate) == "CFrame" then
+		local front = altarGate.Position + altarGate.LookVector * 18
+		gateInfo.Altar.ReturnCFrame = CFrame.lookAt(front + Vector3.new(0, 3, 0), front + altarGate.LookVector * 30 + Vector3.new(0, 3, 0))
+	end
 	return {
 		Folder = root,
 		SpawnCFrame = flatLook(spawnPos, focus),
@@ -3940,7 +4135,7 @@ function LobbyBuilder.Build()
 		-- folder every gate builder parents its gate to, and the lobby's own gates
 		GateSites = sites,
 		GatesFolder = gatesFolder,
-		Gates = gateInfo,
+		Gates = gateInfo, -- bug batch 2 #4: Gates.Altar.ReturnCFrame = the Storm Altar return portal's arrival
 		RingSite = sites.Ring, -- ArenaBuilder's Portal_Ring (C12)
 		DungeonSite = sites.Dungeon, -- DungeonBuilder.BuildPortal (W3)
 	}
@@ -3953,6 +4148,7 @@ end
 ----------------------------------------------------------------------
 LobbyBuilder._Kit = nil
 LobbyBuilder._Mesh = Mesh
+LobbyBuilder._Benches = Benches -- bug batch 2 #7: tests call _Benches.sit / .check
 
 -- the cells of a recorded VX.Cloud spec at `V` studs per voxel (tier heights keep their stud thickness)
 function LobbyBuilder._CloudGrid(spec, V)
