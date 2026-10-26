@@ -934,6 +934,17 @@ S.p7vfx_catalog = guarded("p7vfx_catalog", function()
 	T.check(fb and (fb.Transparency or 0) >= 0.2 and (fb.LightEmission or 1) <= 0.5 and fm and (fm.Core.Transparency or 0) >= 0.15
 		and fa and fa.Core.Key == "vfx_spike" and (fa.Core.Transparency or 0) >= 0.15,
 		"p7vfx catalog: Frost's shatter is see-through and half-lit, its ice spikes see-through (melee + element attack)")
+	-- Task 9 (Studio + Gemini: Nature's Secret roots / vines drew white-cream ghosts, then neon-yellow "electricity"): the
+	-- roots, the root burst and the wrap vines are rose (Mid), Mid and Edge are saturated (not pale), the roots see-through
+	local npal = C.Elements.Nature.Palette
+	local function saturated(c) return c and math.min(c.R, c.G, c.B) <= 0.5 end
+	local nm = C.Resolve({ Element = "Nature", Attack = "Melee", Rarity = "Secret", Mine = true })
+	local nr = C.Resolve({ Element = "Nature", Attack = "Ranged", Rarity = "Secret", Mine = true })
+	local na = C.Resolve({ Element = "Nature", Attack = "Element", Shape = "Circle", Rarity = "Secret", Mine = true })
+	local nrb = nr and layerById(nr, "RootBurst")
+	T.check(saturated(npal.Mid) and saturated(npal.Edge) and nm and nm.Alive and nm.Alive.Color == npal.Mid and nrb and nrb.Color == npal.Mid
+		and (nm.Core.Transparency or 0) >= 0.15 and na and na.Core.Key == "vfx_root" and (na.Core.Transparency or 0) >= 0.15,
+		"p7vfx catalog: Nature's roots / root burst / wrap vines are rose, its Mid and Edge saturated, the roots see-through")
 
 	-- Task 9: a template's Except matches the RESOLVED kind: a signature special asked with Kind nil (Ember Phoenix's
 	-- Phoenix Flare is a Blast) still leaves out Flame's Smoke (Except Blast), like the same Blast asked by name

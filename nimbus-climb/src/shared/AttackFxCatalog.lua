@@ -337,13 +337,18 @@ AttackFxCatalog.Elements = {
 	},
 	Nature = {
 		-- pink / yellow / cream only: Nature must read on green grass (no green-only colour anywhere)
-		Palette = { Core = rgb(255, 228, 120), Mid = rgb(255, 142, 192), Edge = rgb(240, 236, 150), Hot = rgb(255, 250, 214), Smoke = rgb(230, 210, 170) },
+		-- (Task 9 Studio c2 + Gemini: in Neon at Secret the light pink Mid and the cream Edge drew white on the pale floor:
+		-- the band 4 roots / vines (shifting Mid -> Edge) were white-cream ghosts over the target. A deeper rose pink and
+		-- a deep rose Edge (round 3: an amber Edge turned the Secret roots neon yellow, "electricity, not plants" - Gemini);
+		-- the yellow stays in Core: the pod glow, the pollen)
+		Palette = { Core = rgb(255, 228, 120), Mid = rgb(250, 110, 170), Edge = rgb(212, 58, 128), Hot = rgb(255, 250, 214), Smoke = rgb(230, 210, 170) },
 		Material = "Neon",
 		Burst = "fx_petals", BurstMotion = "Burst", Trail = "fx_petals", Ground = nil, Motif = "fx_petals", Arc = "fx_speedlines",
 		LowKeep = { "Thorns", "PodGlow" },
 		BurstScale = { Size = 0.8, Count = 1 }, -- (Task 9: the Secret petal burst hid the target)
 		Melee = {
-			Key = "vfx_root", Path = "Ground", Count = 3, Scale = 0.75, Text = "thorny roots erupt under the target", -- (Task 9: at Secret the roots buried the target)
+			-- (Task 9: at Secret the roots buried the target; round 3, Gemini: still swallowed it: a little see-through)
+			Key = "vfx_root", Path = "Ground", Count = 3, Scale = 0.75, Transparency = 0.2, Text = "thorny roots erupt under the target",
 			Layers = {
 				{ Id = "Thorns", Kind = "Emitter", Texture = "fx_thorn", Beat = "Travel", At = "$Hit", Count = 4, Size = 2.5 },
 				-- root burst debris: golden pollen (Task 9, checked on the arena lawn: the baked green fx_leaves vanished on the
@@ -355,15 +360,17 @@ AttackFxCatalog.Elements = {
 			Key = "vfx_orb", Path = "Projectile", Scale = 0.7, Text = "glowing seed pod, pink / yellow petal trail",
 			Layers = {
 				-- the root burst: the pod lands and roots erupt from the ground under the target
-				{ Id = "RootBurst", Kind = "Mesh", Key = "vfx_root", Beat = "Impact", At = "$Hit", Motion = "Erupt", Tint = "Edge", Count = 3, Scale = 0.6 },
+				-- (Task 9 round 3, Gemini: amber roots read as electricity / holy magic, not plants: rose pink)
+				{ Id = "RootBurst", Kind = "Mesh", Key = "vfx_root", Beat = "Impact", At = "$Hit", Motion = "Erupt", Tint = "Mid", Count = 3, Scale = 0.6 },
 				{ Id = "PodGlow", Kind = "Emitter", Texture = "fx_sparkle", Beat = "Impact", At = "$Hit", Tint = "Core", Count = 6, Size = 0.8 },
 			},
 		},
 		Impact = "root burst + petals",
 		Detail = {}, -- the petals are the Burst; the vines are the Alive detail
-		Alive = { Kind = "Mesh", Key = "vfx_root", Motion = "Wrap", Tint = "Edge", Count = 3, Seconds = 0.6, Text = "vines briefly wrap the target" },
+		-- (Task 9: at Secret (x1.4) the full-size vines buried the target: 0.7)
+		Alive = { Kind = "Mesh", Key = "vfx_root", Motion = "Wrap", Tint = "Mid", Count = 3, Scale = 0.7, Seconds = 0.6, Text = "vines briefly wrap the target" },
 		Rain = { Key = "vfx_orb", Texture = "fx_petals", Kind = "Emitter", Scale = 0.25, Text = "a petal shower" },
-		Area = { Key = "vfx_root", Count = 4 },
+		Area = { Key = "vfx_root", Count = 4, Transparency = 0.2 },
 	},
 	Earth = {
 		Palette = { Core = rgb(255, 204, 120), Mid = rgb(178, 128, 80), Edge = rgb(110, 78, 50), Hot = rgb(255, 150, 60), Smoke = rgb(196, 170, 130) },
