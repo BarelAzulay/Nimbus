@@ -1575,6 +1575,10 @@ local function tuneEmitter(eff, it, layer)
 		em.RotSpeed = NumberRange.new(-180, 180)
 		life = { 0.6, 0.9 }
 	end
+	-- a layer's SpeedScale (Task 9: Earth's chunks flung further, so the break scatters instead of piling up)
+	if finite(layer.SpeedScale) and layer.SpeedScale > 0 then
+		em.Speed = NumberRange.new(em.Speed.Min * layer.SpeedScale, em.Speed.Max * layer.SpeedScale)
+	end
 	-- particles end with the effect: the kit is reused right after it
 	local latest = eff.EndRel - it.T1
 	local hi = max(0.12, min(life[2], latest))

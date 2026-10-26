@@ -945,6 +945,12 @@ S.p7vfx_catalog = guarded("p7vfx_catalog", function()
 	T.check(saturated(npal.Mid) and saturated(npal.Edge) and nm and nm.Alive and nm.Alive.Color == npal.Mid and nrb and nrb.Color == npal.Mid
 		and (nm.Core.Transparency or 0) >= 0.15 and na and na.Core.Key == "vfx_root" and (na.Core.Transparency or 0) >= 0.15,
 		"p7vfx catalog: Nature's roots / root burst / wrap vines are rose, its Mid and Edge saturated, the roots see-through")
+	-- Task 9 (Studio + Gemini: the Shatter's drag held Earth's chunks in a ball that read as a boulder on the target): the
+	-- chunk burst is flung further (SpeedScale), so the rock breaks outward
+	local er = C.Resolve({ Element = "Earth", Attack = "Ranged", Rarity = "Secret", Mine = true })
+	local eb = er and layerById(er, "Burst")
+	T.check(eb and eb.Texture == "fx_rock" and eb.Motion == "Shatter" and (eb.SpeedScale or 1) >= 1.5,
+		"p7vfx catalog: Earth's rock burst is flung outward (SpeedScale), not a boulder over the target")
 
 	-- Task 9: a template's Except matches the RESOLVED kind: a signature special asked with Kind nil (Ember Phoenix's
 	-- Phoenix Flare is a Blast) still leaves out Flame's Smoke (Except Blast), like the same Blast asked by name

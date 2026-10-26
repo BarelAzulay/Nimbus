@@ -382,7 +382,9 @@ AttackFxCatalog.Elements = {
 		Burst = "fx_rock", BurstMotion = "Shatter", Trail = "fx_dust", Ground = nil, Motif = "fx_sparkle", Arc = "fx_speedlines",
 		LowKeep = { "Dust" },
 		PlasmaColor = "Core", -- (Task 9: the Secret rock's plasma heart glows gold, not white: a white boulder read as a snow cube)
-		BurstScale = { Size = 0.55, Count = 0.5 }, -- (fewer, smaller chunks: at full count they still read as one boulder)
+		-- (fewer, smaller chunks: at full count they still read as one boulder; round 2 again; round 3 (c2 + Gemini): the
+		-- Shatter's drag held the chunks in a 3-stud ball that hid the target: flung 1.9x further, a little smaller)
+		BurstScale = { Size = 0.36, Count = 0.4, Speed = 1.9 },
 		Melee = { Key = "vfx_spike", Path = "Ground", Count = 3, Text = "ground slam, rock spikes" },
 		Ranged = { Key = "vfx_chunk", Path = "Projectile", Scale = 2.2, Text = "boulder, dust trail" },
 		Impact = "rock breaks into voxel chunks + dust + ground crack",
@@ -1048,6 +1050,9 @@ function AttackFxCatalog.Resolve(req)
 							layer.Count = max(1, floor((layer.Count or 1) * (bs.Count or 1) + 0.5))
 							if finite(bs.Transparency) then -- (a see-through burst: the target stays readable inside it)
 								layer.Transparency = bs.Transparency
+							end
+							if finite(bs.Speed) then -- (a burst flung further: Earth's chunks scatter instead of piling into a boulder)
+								layer.SpeedScale = bs.Speed
 							end
 						end
 						if finite(element.BurstLight) then -- (Task 9: an additive burst summed to white on the pale arena)
