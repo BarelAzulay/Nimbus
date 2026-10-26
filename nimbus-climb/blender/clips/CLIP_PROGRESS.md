@@ -24,9 +24,18 @@
 `--sheet`, `--avatar`, `--frames`, `--res`, `--samples`, `--look=` (debug cameras, `;`-separated), `--probe`,
 `--encode-only`, `--save-blend`, `--rebuild-assets`.
 
-## Resume
-`%USERPROFILE%\.bpyenv\Scripts\python.exe -W ignore blender/clips/render_story_clip.py --full`
-(resumes from the frames already on disk). Output: `play/clips/nimbus_story_clip.mp4`.
+## Resume (frozen 2026-10-26, laptop battery)
+- The avatar was updated to match the player's picture (spiky anime hair, puffy short sleeves, Roblox block hands)
+  and checked on `--avatar` renders and a full `--sheet`. Committed.
+- The full render was stopped at 98 of 900 frames. They are in `play/clips/frames/` and use the NEW avatar; the
+  last, possibly partial frame was deleted. Resume (it skips the frames already on disk):
+  `%USERPROFILE%\.bpyenv\Scripts\python.exe -W ignore blender/clips/render_story_clip.py --full --chunk 900`
+  Speed: 15-60 s per frame in Acts 1-2. It is RAM-bound, so close Roblox Studio, Discord and browsers. Acts 3-5 are faster.
+- Then check `play/clips/nimbus_story_clip.mp4` frame by frame.
+- Then, as the player asked, MOVE the trailer project into `Projects Main\Nimbus trailer\`:
+  - the scripts, the rules, this file, the frames, the previews and the MP4;
+  - point `REPO` in both scripts at `Projects Main\Nimbus\nimbus-climb` (read-only);
+  - remove `blender/clips` and `play/clips` from the game repo in one commit.
 
 ## Open questions for the player
 - Is the brown item at the hip a satchel?
