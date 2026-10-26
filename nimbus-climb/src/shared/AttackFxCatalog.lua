@@ -288,7 +288,9 @@ AttackFxCatalog.Elements = {
 		Ranged = {
 			Key = "vfx_spear", Path = "Projectile", Text = "flame spear, ember trail", Scale = 0.6, Girth = 1.25,
 			-- the spear flies wrapped in fire: flame licks stream off it all the way to the target (a flame bolt)
-			Layers = { { Id = "Mantle", Kind = "Emitter", Texture = "fx_flame", Beat = "Travel", At = "Core", Count = 14, Size = 2.4 } },
+			-- (Task 9: at Secret (x1.4 size, x1.25 count) the additive mantle washed the whole gap pale yellow (Task 8 review):
+			-- smaller and half-lit, the fire keeps its orange)
+			Layers = { { Id = "Mantle", Kind = "Emitter", Texture = "fx_flame", Beat = "Travel", At = "Core", Count = 12, Size = 2.1, LightEmission = 0.45 } },
 			LowKeep = { "Mantle" }, -- the shot is a flame bolt: its fire mantle
 		},
 		Impact = "fire burst + embers + scorch glow",
@@ -406,7 +408,9 @@ AttackFxCatalog.Elements = {
 		-- (Task 9 Studio: the fx_glow burst was a white ball and the baked white lightning vanished on a pale sky: a small
 		-- blue burst, every bolt tinted the storm's blue)
 		BurstScale = { Size = 0.55, Count = 0.7 },
-		Tints = { Bolt = rgb(120, 136, 255), Arcs = rgb(120, 136, 255), Crackle = rgb(120, 136, 255) },
+		BurstLight = 0.4, -- (Task 9 round 2: still a white ball at Secret; half-lit the glow keeps the storm's blue)
+		-- (round 2: at 120/136/255 the bolt was a faint lilac squiggle on the pale floor: a deeper electric blue)
+		Tints = { Bolt = rgb(72, 98, 255), Arcs = rgb(72, 98, 255), Crackle = rgb(72, 98, 255) },
 		Melee = {
 			Key = "vfx_crescent", Path = "Swipe", Text = "electric claw, crackling arcs",
 			Layers = { { Id = "Arcs", Kind = "Beam", Texture = "fx_lightning", Beat = "Travel", At = "$Hit", Count = 2 } },
@@ -414,7 +418,7 @@ AttackFxCatalog.Elements = {
 		Ranged = {
 			Key = "vfx_shard", Path = "Projectile", Speed = 120, Scale = 0.8, Text = "jagged lightning bolt",
 			Layers = {
-				{ Id = "Bolt", Kind = "Beam", Texture = "fx_lightning", Beat = "Travel", At = "Path", Width = 2, Count = 2 },
+				{ Id = "Bolt", Kind = "Beam", Texture = "fx_lightning", Beat = "Travel", At = "Path", Width = 2.6, Count = 2 },
 				-- the bolt crackles round the target as it strikes (beams, no emitter)
 				{ Id = "Crackle", Kind = "Beam", Texture = "fx_lightning", Beat = "Impact", At = "$Hit", Count = 2 },
 			},
@@ -448,7 +452,10 @@ AttackFxCatalog.Elements = {
 		-- the void implosion is the Burst itself (BurstMotion "Implode": the fx_voidring contracts inward), then the glass
 		Burst = "fx_voidring", BurstMotion = "Implode", Trail = "fx_wisps", Ground = nil, Motif = "fx_wisps", Arc = "fx_speedlines",
 		LowKeep = { "Glass" },
-		BurstScale = { Size = 0.5, Count = 0.65 }, -- (Task 9: the void rings swarmed into a ball twice the pet's size)
+		-- (Task 9: the void rings swarmed into a ball twice the pet's size; round 2: still a swarm of glowing lilac rings at
+		-- Secret: fewer, smaller, unlit so they read as a dark void, not a light)
+		BurstScale = { Size = 0.42, Count = 0.45 },
+		BurstLight = 0,
 		Melee = { Key = "vfx_crescent", Path = "Swipe", Text = "dark claw, purple wisps" },
 		Ranged = { Key = "vfx_orb", Path = "Projectile", Text = "shadow orb pulling wisps" },
 		Impact = "void implosion, then black glass shatters with glitchy purple sparks",
