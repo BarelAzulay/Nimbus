@@ -1462,9 +1462,11 @@ local function tuneEmitter(eff, it, layer)
 		life = { 0.45, 0.7 }
 	elseif m == "Geyser" or m == "Erupt" then -- an upward column (Task 9: a fountain of drops rising from a patch of
 		-- ground round the hit, not one clump: at the impact frame a single point read as a bubble)
-		host.Size = V3(2.2 * S, 0.3, 2.2 * S)
-		em.SpreadAngle = Vector2.new(14, 14)
-		em.Speed = NumberRange.new(12 * S, 18 * S)
+		-- (round 3, Gemini: at +0.16 s the 2.2-stud patch of rising sheets still caged the target like a bubble: a narrow
+		-- base under the target that fans OUT in a V, so the spray bursts away from it)
+		host.Size = V3(1.2 * S, 0.3, 1.2 * S)
+		em.SpreadAngle = Vector2.new(34, 34)
+		em.Speed = NumberRange.new(13 * S, 19 * S)
 		em.Drag = 0.5
 		em.Acceleration = V3(0, -30, 0)
 		life = { 0.5, 0.7 }

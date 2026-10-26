@@ -262,7 +262,12 @@ AttackFxCatalog.Elements = {
 		LowKeep = { "Ripple" },
 		-- (Task 9 Studio + Gemini: 2.5-stud splash sheets clumped into a ball round the target and read as a shield bubble;
 		-- smaller, more drops: a spray that rises as a geyser)
-		BurstScale = { Size = 0.55, Count = 1.1 },
+		-- (round 2: the Secret splash still balled up over the target: smaller drops; Gemini: the column's core still dense
+		-- at Secret: a little see-through)
+		BurstScale = { Size = 0.42, Count = 1.1, Transparency = 0.35 }, -- (round 3, Gemini: the target hid in the Secret spray)
+		-- (round 2: from the target's middle the column of splash sheets read as a bubble round it (the "shield"); a geyser
+		-- erupts from the GROUND under the target and the spray rises past it)
+		BurstAt = "Ground",
 		Melee = { Key = "vfx_crescent", Path = "Swipe", Text = "crescent wave slash" },
 		-- (Task 9: the shot's explosion is the boosted geyser splash + the shock ring; the Boom pop ball read as a bubble)
 		Ranged = { Key = "vfx_orb", Path = "Projectile", Spin = true, Text = "spinning water orb, droplet trail", Drop = { Boom = true } },
@@ -1027,6 +1032,9 @@ function AttackFxCatalog.Resolve(req)
 						if bs then
 							layer.Size = (layer.Size or 1) * (bs.Size or 1)
 							layer.Count = max(1, floor((layer.Count or 1) * (bs.Count or 1) + 0.5))
+							if finite(bs.Transparency) then -- (a see-through burst: the target stays readable inside it)
+								layer.Transparency = bs.Transparency
+							end
 						end
 						if finite(element.BurstLight) then -- (Task 9: an additive burst summed to white on the pale arena)
 							layer.LightEmission = element.BurstLight

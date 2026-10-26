@@ -919,6 +919,12 @@ S.p7vfx_catalog = guarded("p7vfx_catalog", function()
 	T.check(wb and wb.Texture == "fx_splash" and wb.Motion == "Geyser" and wr and wr.Texture == "fx_ripple" and water.Alive.Texture == "fx_droplets"
 		and water.Alive.Motion == "Bounce" and water.Alive.Kind == "Emitter",
 		"p7vfx catalog: Water's impact = a Geyser fx_splash burst + the fx_ripple ring, the fx_droplets bouncing (alive)")
+	-- Task 9 (Studio + Gemini: the Water explosion read as a shield bubble round the target): the geyser erupts from the
+	-- GROUND under the target and its splash sheets are see-through
+	local wsec = C.Resolve({ Element = "Water", Attack = "Ranged", Rarity = "Secret", Mine = true })
+	local wsb, wsr = layerById(wsec, "Burst"), layerById(wsec, "Ripple")
+	T.check(wsb and wsb.At == "Ground" and (wsb.Transparency or 0) >= 0.3 and wsr ~= nil,
+		"p7vfx catalog: Water's shot explodes as a see-through geyser from the ground (not a bubble)")
 
 	-- Task 9: a template's Except matches the RESOLVED kind: a signature special asked with Kind nil (Ember Phoenix's
 	-- Phoenix Flare is a Blast) still leaves out Flame's Smoke (Except Blast), like the same Blast asked by name
