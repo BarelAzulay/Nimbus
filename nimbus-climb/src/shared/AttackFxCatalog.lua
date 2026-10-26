@@ -443,14 +443,21 @@ AttackFxCatalog.Elements = {
 		Burst = "fx_stars", BurstMotion = "Burst", Trail = "fx_sparkle", Ground = nil, Motif = "fx_stars", Arc = "fx_speedlines",
 		LowKeep = { "Rays" },
 		BurstScale = { Size = 0.6, Count = 0.65 }, -- (Task 9: the star burst + rays were a white flare over the target)
+		-- (round 3, c2: at Secret the shot's stars + rays still summed to a pale flare that hid the target: half-lit, the
+		-- burst (and the muzzle puff) keeps its gold)
+		BurstLight = 0.35,
 		Melee = { Key = "vfx_crescent", Path = "Swipe", Text = "golden starlight slash" },
 		Ranged = { Key = "vfx_star", Path = "Projectile", Spin = true, Text = "shooting star, sparkle tail" },
 		Impact = "star burst + light rays",
 		Detail = {
-			{ Id = "Rays", Kind = "Emitter", Texture = "fx_rays", Beat = "Impact", At = "$Hit", Count = 3, Size = 2.6 },
+			-- (round 3, c2: 2.6-stud rays, half-lit by the sheet, were the pale flare round the target at Secret: smaller, dimmer)
+			{ Id = "Rays", Kind = "Emitter", Texture = "fx_rays", Beat = "Impact", At = "$Hit", Count = 3, Size = 1.8, LightEmission = 0.3 },
 		},
-		Alive = { Kind = "Beam", Motion = "Connect", Tint = "Core", Count = 4, Seconds = 0.8, Text = "constellation lines join the stars" },
+		-- (round 3, c2: in the pale Core tint the lines read as stray white sticks in the sky: starlight gold)
+		Alive = { Kind = "Beam", Motion = "Connect", Tint = "Mid", Count = 4, Seconds = 0.8, Text = "constellation lines join the stars" },
 		Rain = { Key = "vfx_star", Texture = "fx_stars", Kind = "Emitter", Scale = 0.5, Text = "falling stars" },
+		-- (round 3, c2 + Gemini: the line / cone / ring cores read as solid yellow tape: see-through starlight)
+		Area = { Transparency = 0.45 },
 	},
 	Shadow = {
 		Palette = { Core = rgb(214, 156, 255), Mid = rgb(128, 72, 178), Edge = rgb(44, 22, 66), Hot = rgb(255, 96, 224), Smoke = rgb(60, 40, 80) },

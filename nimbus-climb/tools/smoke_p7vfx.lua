@@ -974,6 +974,15 @@ S.p7vfx_catalog = guarded("p7vfx_catalog", function()
 	T.check(sbolt and sbolt.Width <= 1.5 and szig and szig.Color == spal.Mid and (szig.LightEmission or 1) <= 0.6
 		and sline and (sline.Core.Transparency or 0) >= 0.4 and slb and slb.Width <= 1.5,
 		"p7vfx catalog: Storm's bolt is a narrow strip, its sparks the storm blue half-lit, its area cores see-through")
+	-- Task 9 round 3 (Celestial c2: the Secret star burst + rays summed to a pale flare that hid the target; the
+	-- constellation lines read as white sticks): half-lit stars, smaller dimmer rays, gold lines
+	local cpal = C.Elements.Celestial.Palette
+	local cs = C.Resolve({ Element = "Celestial", Attack = "Ranged", Rarity = "Secret", Mine = true })
+	local cb, crays = cs and layerById(cs, "Burst"), cs and layerById(cs, "Rays")
+	T.check(cb and (cb.LightEmission or 1) <= 0.5 and crays and crays.Size <= 2 and (crays.LightEmission or 1) <= 0.4
+		and cs.Alive and cs.Alive.Color == cpal.Mid
+		and (C.Resolve({ Element = "Celestial", Attack = "Element", Shape = "Line", Rarity = "Secret", Mine = true }).Core.Transparency or 0) >= 0.4,
+		"p7vfx catalog: Celestial's Secret star burst + rays are half-lit and smaller, the lines gold, the area cores see-through")
 
 	-- Task 9: a template's Except matches the RESOLVED kind: a signature special asked with Kind nil (Ember Phoenix's
 	-- Phoenix Flare is a Blast) still leaves out Flame's Smoke (Except Blast), like the same Blast asked by name
