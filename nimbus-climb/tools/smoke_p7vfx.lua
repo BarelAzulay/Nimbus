@@ -925,6 +925,15 @@ S.p7vfx_catalog = guarded("p7vfx_catalog", function()
 	local wsb, wsr = layerById(wsec, "Burst"), layerById(wsec, "Ripple")
 	T.check(wsb and wsb.At == "Ground" and (wsb.Transparency or 0) >= 0.3 and wsr ~= nil,
 		"p7vfx catalog: Water's shot explodes as a see-through geyser from the ground (not a bubble)")
+	-- Task 9 (Studio + Gemini: the Secret Frost shatter was a white blob that swallowed the target; the spikes read as
+	-- plastic): a see-through, half-lit shatter; see-through ice spikes on the melee and the element attack
+	local fr = C.Resolve({ Element = "Frost", Attack = "Ranged", Rarity = "Secret", Mine = true })
+	local fm = C.Resolve({ Element = "Frost", Attack = "Melee", Rarity = "Secret", Mine = true })
+	local fa = C.Resolve({ Element = "Frost", Attack = "Element", Shape = "Cone", Rarity = "Secret", Mine = true })
+	local fb = fr and layerById(fr, "Burst")
+	T.check(fb and (fb.Transparency or 0) >= 0.2 and (fb.LightEmission or 1) <= 0.5 and fm and (fm.Core.Transparency or 0) >= 0.15
+		and fa and fa.Core.Key == "vfx_spike" and (fa.Core.Transparency or 0) >= 0.15,
+		"p7vfx catalog: Frost's shatter is see-through and half-lit, its ice spikes see-through (melee + element attack)")
 
 	-- Task 9: a template's Except matches the RESOLVED kind: a signature special asked with Kind nil (Ember Phoenix's
 	-- Phoenix Flare is a Blast) still leaves out Flame's Smoke (Except Blast), like the same Blast asked by name

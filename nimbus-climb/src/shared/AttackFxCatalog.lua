@@ -310,15 +310,19 @@ AttackFxCatalog.Elements = {
 		Tints = { Cloud = rgb(150, 100, 84) },
 	},
 	Frost = {
-		Palette = { Core = rgb(240, 252, 255), Mid = rgb(150, 222, 248), Edge = rgb(86, 168, 232), Hot = rgb(255, 255, 255), Smoke = rgb(200, 230, 245) },
+		-- (Task 9 round 2: Mid 150/222/248 drew near white in Neon at Secret on the pale arena: a deeper ice blue)
+		Palette = { Core = rgb(240, 252, 255), Mid = rgb(118, 198, 246), Edge = rgb(70, 150, 226), Hot = rgb(255, 255, 255), Smoke = rgb(200, 230, 245) },
 		Material = "Glass",
 		-- (Task 9 emitter budget: Ground nil = the Mythic field is a soft frost-blue glow disc; the impact FrostRing sheet
 		-- already lies on the ground)
 		Burst = "fx_iceshards", BurstMotion = "Shatter", Trail = "fx_snow", Ground = nil, Motif = "fx_snow", Arc = "fx_speedlines",
 		LowKeep = { "FrostRing" },
-		-- (Task 9 Studio: the boosted Secret shatter was a white wall over the target; smaller, fewer shards)
-		BurstScale = { Size = 0.7, Count = 0.85 },
-		Melee = { Key = "vfx_spike", Path = "Ground", Count = 4, Text = "ice spikes burst from the ground along a path" },
+		-- (Task 9 Studio: the boosted Secret shatter was a white wall over the target; smaller, fewer shards; round 3 (c2 +
+		-- Gemini): still a white blob that swallowed the target on the pale floor: smaller, see-through, half-lit)
+		BurstScale = { Size = 0.5, Count = 0.7, Transparency = 0.25 },
+		BurstLight = 0.35,
+		-- (round 3, Gemini: the solid Neon spikes read as plastic, not ice: a little see-through)
+		Melee = { Key = "vfx_spike", Path = "Ground", Count = 4, Transparency = 0.2, Text = "ice spikes burst from the ground along a path" },
 		-- (Task 9 Studio: at scale 1 the pale shard vanished against a pale sky mid-flight)
 		Ranged = { Key = "vfx_shard", Path = "Projectile", Text = "sharp ice shard, snow trail", Scale = 1.35, Girth = 1.3 },
 		Impact = "crystal shatter + frost ring on the ground",
@@ -329,7 +333,7 @@ AttackFxCatalog.Elements = {
 		},
 		Alive = { Kind = "Mesh", Key = "vfx_shard", Motion = "Melt", Tint = "Mid", Count = 5, Seconds = 1.0, Text = "impact shards linger and visibly melt (~1 s)" },
 		Rain = { Key = "vfx_shard", Texture = "fx_snow", Kind = "Emitter", Scale = 0.5, Text = "hail" },
-		Area = { Key = "vfx_spike", Count = 5 },
+		Area = { Key = "vfx_spike", Count = 5, Transparency = 0.2 },
 	},
 	Nature = {
 		-- pink / yellow / cream only: Nature must read on green grass (no green-only colour anywhere)
@@ -792,6 +796,9 @@ local function attackDef(req, element, sig)
 		local core = copy(def.Core)
 		if area.Key then
 			core.Key, core.Count = area.Key, area.Count
+		end
+		if finite(area.Transparency) then -- (Task 9: Frost's see-through ice spikes)
+			core.Transparency = area.Transparency
 		end
 		return { Core = core, Beats = copy(def.Beats), Skip = { Afterimage = true }, Layers = {}, Detail = { area.Layers }, Slots = {}, Alive = true, Extras = true, Shape = shape, Text = def.Text }
 	elseif attack == "Special" then
