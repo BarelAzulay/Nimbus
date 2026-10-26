@@ -18,6 +18,10 @@ OUT = sys.argv[1] if len(sys.argv) > 1 else "."
 RES = int(sys.argv[sys.argv.index("--res") + 1]) if "--res" in sys.argv else 100
 SAMPLES = int(sys.argv[sys.argv.index("--samples") + 1]) if "--samples" in sys.argv else 32
 TAU = math.tau
+try:
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")  # the project path has Hebrew letters
+except Exception:
+    pass
 os.makedirs(OUT, exist_ok=True)
 
 
@@ -92,17 +96,28 @@ def swirl(coll, loc, rx, rz, name="Swirl", rect=False):
     out = nt.nodes.new("ShaderNodeOutputMaterial")
     em = nt.nodes.new("ShaderNodeEmission")
     tc = nt.nodes.new("ShaderNodeTexCoord")
-    wave = nt.nodes.new("ShaderNodeTexWave")
-    wave.wave_type = "RINGS"
-    wave.wave_profile = "SIN"
-    wave.inputs["Scale"].default_value = 1.6
-    wave.inputs["Distortion"].default_value = 6.0
-    wave.inputs["Detail"].default_value = 2.0
+    sep = nt.nodes.new("ShaderNodeSeparateXYZ")
+    nt.links.new(tc.outputs["Object"], sep.inputs["Vector"])
+
+    def op(kind, a, b=None, val=None):
+        n = nt.nodes.new("ShaderNodeMath")
+        n.operation = kind
+        nt.links.new(a, n.inputs[0])
+        if b is not None:
+            nt.links.new(b, n.inputs[1])
+        elif val is not None:
+            n.inputs[1].default_value = val
+        return n.outputs[0]
+
+    ang = op("ARCTAN2", sep.outputs["Z"], sep.outputs["X"])
+    rad = op("SQRT", op("ADD", op("MULTIPLY", sep.outputs["X"], sep.outputs["X"]),
+                        op("MULTIPLY", sep.outputs["Z"], sep.outputs["Z"])))
+    spiral = op("SINE", op("ADD", op("MULTIPLY", ang, val=3.0), op("MULTIPLY", rad, val=-2.6)))
+    fac = op("ADD", op("MULTIPLY", spiral, val=0.5), val=0.5)
     ramp = nt.nodes.new("ShaderNodeValToRGB")
     ramp.color_ramp.elements[0].color = rgb(30, 110, 235)
     ramp.color_ramp.elements[1].color = rgb(120, 225, 255)
-    nt.links.new(tc.outputs["Object"], wave.inputs["Vector"])
-    nt.links.new(wave.outputs["Fac"], ramp.inputs["Fac"])
+    nt.links.new(fac, ramp.inputs["Fac"])
     nt.links.new(ramp.outputs["Color"], em.inputs["Color"])
     em.inputs["Strength"].default_value = 1.1
     nt.links.new(em.outputs["Emission"], out.inputs["Surface"])
@@ -316,10 +331,10 @@ def stage():
     tc = nt.nodes.new("ShaderNodeTexCoord")
     sep = nt.nodes.new("ShaderNodeSeparateXYZ")
     ramp = nt.nodes.new("ShaderNodeValToRGB")
-    ramp.color_ramp.elements[0].color = rgb(255, 204, 196)
-    ramp.color_ramp.elements[1].color = rgb(110, 118, 214)
+    ramp.color_ramp.elements[0].color = rgb(250, 206, 222)
+    ramp.color_ramp.elements[1].color = rgb(118, 128, 226)
     ramp.color_ramp.elements[0].position = 0.0
-    ramp.color_ramp.elements[1].position = 0.45
+    ramp.color_ramp.elements[1].position = 0.22
     nt.links.new(tc.outputs["Normal"], sep.inputs["Vector"])
     nt.links.new(sep.outputs["Z"], ramp.inputs["Fac"])
     nt.links.new(ramp.outputs["Color"], bg.inputs["Color"])
@@ -327,8 +342,8 @@ def stage():
     coll = sc.collection
     # plaza floor: pale stone tiles
     t1, t2 = mat("Tile", (226, 224, 236), 0.35), mat("Tile2", (210, 208, 226), 0.35)
-    for i in range(-14, 15):
-        for j in range(-6, 8):
+    for i in range(-16, 17):
+        for j in range(-26, 9):
             box(coll, (3.9, 3.9, 0.4), (i * 4.0, j * 4.0, -0.2), t1 if (i + j) % 2 else t2, 0.05)
     for name, rot, energy, col in (("Sun", (0.85, 0.2, -0.6), 3.2, (1.0, 0.92, 0.84)),
                                    ("Fill", (1.1, 0.0, 2.6), 0.9, (0.72, 0.74, 1.0))):
