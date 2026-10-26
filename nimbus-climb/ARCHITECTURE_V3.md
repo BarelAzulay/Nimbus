@@ -1171,6 +1171,13 @@ FeedPrice(def, level)       = XpToNext(level) x RarityScale(def) x FeedBase     
   generic fan (`slotOffsets` :216-228): side = sin(a) x 2.4, back = 4 + (1 - cos(a)) x 2.5. Evolved followers: `back`
   x min(1.4, height / 3). Prototyped through the :744-838 filter math (integration's `follow_proto.py`): 4.5 / 4.6 / 6.5
   studs behind at rest, worst lag 7.7 studs at 24 studs/s (< 12), settles at 6.5 (< 8), never ahead while moving.
+* **Benches and resting pets** (bug batch 2 #7): every `Props.Bench` (the 4 plaza lawn benches, 2 per garden) carries two
+  invisible, non-colliding, Disabled `BenchSeat` Seats with a `BenchSitPrompt` "Sit" / "Bench" (E, range 7). LobbyBuilder's
+  `Benches` handler seats the player server-side (alive, not InBattle / InMatch, within 7 + 3, seat free, not already seated,
+  0.5 s cooldown); a seat is enabled only while taken (its prompt hidden), and a 4 Hz watchdog frees a seat a teleport
+  dragged away. While the owner sits (`Humanoid.Sit` or `SeatPart`), PetController's `SIT` step lays the followers down
+  in one row on the ground in front of the owner (HomeFx's `LIE_ANGLE`, slow flap, facing the owner, raycast to the ground,
+  glides capped at 14 + owner speed); standing up brings them back to their slots. InBattle still parks them first.
   Followers dive into the home portal and pop out behind the owner (3.10).
 
 #### 3.10 The home portal
@@ -2264,7 +2271,7 @@ damage solo; an AFK member or an idle alt gets nothing, the Phase 3 zero-damage-
 | XP per team pet | `(25 + 10f) x waves` (the boss room counts 4) via `PetCareService.GrantXp(player, key, xp, "Dungeon")` (floor 10 = 1,375 per run) | below the Ring on purpose: the Ring stays the free XP machine |
 | Loss | the room that ends a run pays a third of its XP when `BattleCatalog.RealLoss(result)` (>= 20 s or >= 20% damage; never Quit / leave / disconnect / shutdown) | the Phase 4 rule |
 | Floor cleared | `DungeonFirstClear(floor)` once per player per floor, decided INSIDE `DataService.MutateDungeon` (paid only when it returned "first"); needs the member to be a qualifying fighter of the BOSS room AND of at least one earlier room of the same run (`Member.Qualified[room]`) | once per server session; two servers can pay it twice only when the same player clears the same floor on both before either saved (no session lock, DataService:69; a narrow window, and Gems stay under the 135/h clamp), see 9.1 |
-| Boss chest | one per member in the treasure alcove (E, `DungeonRequest("Chest")`), rolled server-side from seed + userId, once; an unopened chest is opened for its owner (same mark) when the 45 s exit fires | 0.26 gems expected: negligible; Gems kinds only from floor 3 |
+| Boss chest | bug batch 2 #14: the treasure alcove has `DungeonBuilder.CHEST_COUNT` 4 chests (>= `CHEST_SLOTS` = `MAX_PARTY`, asserted at Init); each member picks ONE by walking to it and pressing its E `ChestPrompt` (`OpenChest(player, slot)`, within 9 studs; a taken chest is refused), each chest rolled server-side from seed + slot x 7919 (`BattleCatalog.DungeonChest(floor, seed + slot * 7919)`), one chest per member; a member who never picked gets the first free chest (same mark) when the 45 s exit fires (or on leaving / endRun at Treasure); no CHEST button | 0.26 gems expected: negligible; Gems kinds only from floor 3 |
 Economy: `sim_tycoon.py --dungeon 0.1` (a run every 10 min) +~8% Cash; combined with `--ring 0.08` it must print ALL TARGETS MET (C10).
 
 #### 5.3 Portal, party, run (player flow)
@@ -2283,7 +2290,7 @@ Economy: `sim_tycoon.py --dungeon 0.1` (a run every 10 min) +~8% Cash; combined 
 * Inside: Entrance Hall (`HallSeconds` 10, the floor banner) -> Room 1 (the fight starts when the first member crosses the `Threshold`; the
   others are placed at the `Entrance`) -> waves (next wave 1.5 s after the last enemy falls; side card "Wave 2 / 3") -> cleared: loot card
   "+$340 +24 tokens +70 XP", bars open after `Intermission` 2 s -> corridor (`DoorTime` 12 s, then stragglers are placed at the next
-  entrance) -> rooms 2, 3 -> Boss Room (escort at 50% HP) -> Treasure alcove (chests, exit portal "Back to the plaza", auto after 45 s: unopened chests are opened for their owners first).
+  entrance) -> rooms 2, 3 -> Boss Room (escort at 50% HP) -> Treasure alcove (4 chests, each member picks ONE with E; exit portal "Back to the plaza", auto after 45 s: a member who did not pick gets the first free chest first).
   Pets heal fully between rooms (a fresh encounter per room, C1); a member with 3 pets down is Downed for that room (spectates from the edge,
   back at full next room); everybody down = the room is lost = the run ends (loot paid stays): "Floor 3: the Frozen Crypt got you in room 3.
   Train your team and try again!", back at the portal after `RETURN_DELAY` 4. Per-room time limit 120 s (180 on floor 1) = a wipe.
@@ -2302,12 +2309,13 @@ try again in a minute").
 Party = { Leader, Floor, Members = { [userId] = { Player, Ready, Keys } }, Order, Countdown, Created, Run }
 Run = { Id = "D12", Floor, Seed, Pocket = { Index, Origin, Model }, State = "Hall"|"Fight"|"Corridor"|"Treasure"|"Ending", Room 1..4, Wave,
         Members = { [userId] = Member }, Order, Battle = battleId | nil, Rooms = { [room] = RoomInfo }, Paid = { [room] = { [userId] = true } },
-        Loot = { [userId] = { Cash, Tokens, Xp, Gems } }, Started, Joinable, Chests = { [userId] = "Closed"|"Opened" }, Cleared }
+        Loot = { [userId] = { Cash, Tokens, Xp, Gems } }, Started, Joinable, Chests = { [userId] = "Closed"|"Opened" },
+        ChestTaken = { [slot] = userId } (bug batch 2 #14: who took which alcove chest), Cleared }
 Member = { Player, Keys (fixed at the join), JoinedRoom, Downed, Left, Spec, Qualified = { [room] = true } (a qualifying fighter of that room) }
 RoomInfo = { Index, Kind, Model, Zone (NC_BattleZone), Entrance (CFrame), Threshold (part), Door = { Bars } }
 API: CreateParty(player, floor), JoinParty(player, leaderUserId), LeaveParty(player), SetReady(player, bool), SetFloor(player, floor) (leader),
   KickMember(leader, userId) (leader; never during a run),
-  StartRun(party) -> ok, runId | reason, StartSolo(player, floor), Quit(player), OpenChest(player), GetRun(player) -> { RunId, Floor, Room,
+  StartRun(party) -> ok, runId | reason, StartSolo(player, floor), Quit(player), OpenChest(player, slot) (bug batch 2 #14: the chest the member stands at, 1..CHEST_SLOTS), GetRun(player) -> { RunId, Floor, Room,
   State, Wave } | nil, KeysInRun(player) -> {[key] = true}, ListParties(), Shutdown() (BindToClose: every run void)
 Signals: RunEnded(runId, result = { Floor, Cleared, Members, Winners, Loot }) AFTER the payments; FloorCleared(player, floor)
 ```
@@ -2364,11 +2372,14 @@ brightness -20% saturation, Neon eyes in the element colour); enemies Low, <= 5 
 
 #### 5.7 Remotes (Config, lead W0)
 * `DungeonRequest(action, a, b)` c->s: "Open", "Create" (floor), "Join" (leaderUserId), "Leave", "Ready" (bool), "SetFloor" (floor), "Start",
-  "Solo" (floor), "Quit", "Chest", "Kick" (userId; leader only, party state only).
+  "Solo" (floor), "Quit", "Chest" (slot; bug batch 2 #14: sent by the chest's E prompt path, a request without a valid slot opens
+  nothing and toasts "Pick a chest: walk to one and press E"), "Kick" (userId; leader only, party state only).
 * `DungeonState(kind, payload)` s->c: "Lobby" `{ Parties = { {Leader, LeaderName, Floor, Count, Max = 4, Open, InRun, Room} }, Mine = { Leader,
   Floor, Members = { {UserId, Name, Ready, Power} }, Countdown } | nil, Record = { Best, Cleared, Runs, Clears } }` (<= 1/s per client);
-  "Run" `{ RunId, Floor, Name, Element, Room, RoomCount = 4, Wave, Waves, State, Members = { {UserId, Name, Downed, Left} }, Joinable }` (<= 1 KB);
-  "Loot" `{ Room, Cash, Tokens, Xp, LevelUps }`; "Chest" `{ Kind, Amount }`; "End" `{ Floor, Cleared, Reason, Totals = { Cash, Tokens, Xp, Gems },
+  "Run" `{ RunId, Floor, Name, Element, Room, RoomCount = 4, Wave, Waves, State, Members = { {UserId, Name, Downed, Left} }, Joinable,
+  ChestOwed }` (<= 1 KB; `ChestOwed` = the userIds still owed a chest pick, only in the Treasure state: the client says "Pick ONE chest!"
+  while it lists me, and switches the other ChestPrompts off locally once I picked or it does not list me);
+  "Loot" `{ Room, Cash, Tokens, Xp, LevelUps }`; "Chest" `{ Kind, Amount, Slot }`; "End" `{ Floor, Cleared, Reason, Totals = { Cash, Tokens, Xp, Gems },
   FirstClear | nil, Unlocked | nil, NewBest }`. `OpenPanel("Dungeon", { Floor })` from the server (tutorial, prompt).
 
 ### 6. World, gates, obby, art, sky, GUI (world design; worldstyle W1, worldlobby W2, neonkit W2, ui owners W3-W4)
@@ -2416,6 +2427,11 @@ in front of `Portal_Arena`, `ArenaInfo.LobbyCFrame`), Altar (LobbyBuilder, Cyan,
 IsLocked(player)` false; within MaxActivationDistance + 4; 1.5 s cooldown; Home -> `SpotService.Teleport(player)` (no plot -> a free gate +
 "Press E at the gate to claim this home!"), Altar -> `StormAltar.GetLanding()` (new: a CFrame on the island deck at the bridge end, 3 studs up,
 facing the altar); `GateService.Teleported:Fire(player, "Home"|"Altar")`. Main.server: after `SpotService.Init` and `PortalService.Init`.
+Plaza return portal (bug batch 2 #4): StormAltar builds a small `ReturnPortal` pad beside the landing (`StormAltar.GetReturnPad()`,
+re-bound on `StormAltar.Built`); GateService gate id "Plaza" puts `PlazaGatePrompt` "Travel" / "Plaza" (E, range 8) on it, with the
+same checks and the shared 1.5 s cooldown, and lands on `LobbyInfo.Gates.Altar.ReturnCFrame`: the plaza 18 studs in front of the
+Altar gate, 3 studs up, facing the plaza (>= 14 studs from the Altar gate's PromptPart, so its 12-stud prompt does not show on
+arrival); `Teleported:Fire(player, "Plaza")`. `placeCharacter` breaks a SeatWeld and stands a seated player up before the teleport.
 
 #### 6.3 One obby portal (lead W0 `shared/ObbyLevels.lua`; worldlobby W2 PortalService; dungeonclient W4 `ObbyController`)
 ```

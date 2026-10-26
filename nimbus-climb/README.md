@@ -290,7 +290,7 @@ or the VS Code "Rojo" extension are the easy ways to get it).
 | Run (drains stamina; in a battle hold `Ctrl`) | hold `Shift` | **RUN** button (tap to toggle) | `L3` (toggle) |
 | Dash (35 stamina, 1.6 s cooldown, works in the air; in a battle `Shift` makes your PET dash instead) | `Q` | **DASH** button | `B` |
 | Use an item | `1` `2` `3` `4` (or click / tap a slot) | tap a slot | - |
-| Talk to an NPC pet, use a gate of the Gate Court (the Obby level picker, the Dungeon, the Champion Ring, the Arena, the Storm Altar), claim a home, put a pet on a pet bed, use the Food Machine (*Feed pets*), the Training Place (*Train pets*), the Fusion Machine, the Arena Gate, a duel pad, the arena boards or a dungeon chest | `E` | tap the prompt | `X` |
+| Talk to an NPC pet, use a gate of the Gate Court (the Obby level picker, the Dungeon, the Champion Ring, the Arena, the Storm Altar), claim a home, put a pet on a pet bed, use the Food Machine (*Feed pets*), the Training Place (*Train pets*), the Fusion Machine, the Arena Gate, a duel pad, the arena boards, a dungeon chest, a bench (*Sit*) or the Storm Altar's return portal | `E` | tap the prompt | `X` |
 | Buy at a home pad (hold a moment) | hold `E` | hold the prompt | hold `X` |
 | Scoop your Cloud Cash | walk over it | walk over it | walk over it |
 | Go home through your own portal | **Home** tile -> **Go home**, then walk into the portal | the same | the same |
@@ -366,7 +366,12 @@ ends it (it asks first). Your step is saved, so the tutorial continues where you
 
 - **The Storm Altar** on its dark storm cloud at the village edge, with Stormfang prowling over the portal
   disc. Take its gate in the Gate Court or cross its bridge from the street, then press **E** at the altar to open
-  the gems-only **Secret Roulette** (see [Gems](#gems-and-the-secret-roulette)).
+  the gems-only **Secret Roulette** (see [Gems](#gems-and-the-secret-roulette)). To go back, step on the small
+  glowing **return portal** beside the landing and press **E** ("Travel / Plaza"): it puts you on the plaza in front
+  of the Storm Altar gate.
+- **Benches you can sit on.** Walk up to a lawn or garden bench and press **E** ("Sit"); two players fit on each
+  bench, and jumping stands you up. While you sit, your pets lie down on the ground in front of you and get up
+  again when you stand.
 - **The 16 home plots** on the big outer ring (see [Tycoon homes](#tycoon-homes)).
 - **The Battle Arena** on its own cloud island beyond the homes, reached by its gate in the Gate Court or by a stone
   bridge from the village street (see [Pet battles](#pet-battles)).
@@ -947,9 +952,11 @@ You need a pet; you do not need a home.
   |---|---|---|---|---|---|---|---|---|---|---|---|---|
   | Gems | 3 | 4 | 5 | 6 | 8 | 10 | 12 | 15 | 18 | 20 | 25 | 30 |
 
-- **The treasure:** after the boss every member gets a chest in the treasure room: press **E** at yours (Cash, Cloud
-  Tokens, or from floor 3 on sometimes Gems). The exit portal "Back to the plaza" takes you home (or wait 45 seconds:
-  an unopened chest opens for you first).
+- **The treasure:** after the boss the treasure room has four chests, and each one holds its own drop (Cash, Cloud
+  Tokens, or from floor 3 on sometimes Gems). Every member picks ONE: walk to a chest and press **E** ("Pick ONE
+  chest"). A chest someone took is closed for the others, and once you picked, the other chests' prompts go away.
+  There is no chest button on the run card. The exit portal "Back to the plaza" takes you home (or wait 45 seconds:
+  a member who did not pick gets the first free chest first).
 - **LEAVE** (press it twice) takes you out of a run at any time; the others go on.
 
 Your old Trial record counts: every 3 Trial levels you cleared before phase 5 unlocked one floor (up to floor 10).
