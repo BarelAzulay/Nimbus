@@ -199,6 +199,34 @@ local function serverScenarios()
 		return DGS().St.runOf[p]
 	end
 
+	-- bug batch 2 #14: the treasure alcove's chest part of `slot` (nil when the alcove is not built)
+	local function chestPart(run, slot)
+		local ri = run and run.Pocket and run.Pocket.Rooms[5] or nil
+		return ri and ri.Chests and ri.Chests[slot] or nil
+	end
+
+	-- stands `p` 3 studs in front of chest `slot`; how = "prompt" (E on its ChestPrompt, like the engine: the default) or
+	-- "remote" (DungeonRequest("Chest", slot)); -> the chest part
+	local function pickChest(p, run, slot, how)
+		local part = chestPart(run, slot)
+		if not part then
+			return nil
+		end
+		Mock.Teleport(p, CFrame.new(part.CFrame:PointToWorldSpace(Vector3.new(0, 2, 3))))
+		advance(0.6) -- past the 0.5 s Chest cooldown
+		if how == "remote" then
+			Mock.FromClient(remote("DungeonRequest"), p, "Chest", slot)
+			advance(0.05)
+		else
+			local prompt = part:FindFirstChild("ChestPrompt")
+			if prompt and prompt.Enabled then
+				Mock.Trigger(prompt, p)
+			end
+			advance(0.05)
+		end
+		return part
+	end
+
 	local function inBattle(p)
 		return p:GetAttribute(K.config().Attr.InBattle or "InBattle")
 	end
@@ -1158,12 +1186,16 @@ local function serverScenarios()
 		T.check(rec and rec.Best == 1 and rec.Cleared[1] == true and rec.Clears == 1, "p5 run: MutateDungeon raised Best 1, Cleared[1], Clears 1")
 		T.check(tokens(p) >= tok0 + 300 and cash(p) > cash0 and totalXp(p, WEAK[1]) > xp0, "p5 run: the first clear paid 300 tokens on top of the room loot; cash and XP grew")
 		local chestMark = K.logSize()
+		-- bug batch 2 #14: solo, the alcove still has a chest per party slot; the player picks ONE with its E prompt
+		T.check(chestPart(run, 1) and chestPart(run, 4), "p5 run: (#14) the solo alcove has its 4 chests")
 		request(p, "Chest")
+		T.check(run.Chests[p.UserId] == "Closed" and #states(p, chestMark, "Chest") == 0, "p5 run: (#14) a Chest request without a slot opens nothing")
+		pickChest(p, run, 3)
 		local chestMsg = lastState(p, "Chest", chestMark)
-		T.check(run.Chests[p.UserId] == "Opened" and chestMsg and (chestMsg.Kind == "Cash" or chestMsg.Kind == "Tokens") and chestMsg.Amount > 0, "p5 run: Chest opens once (Cash or Tokens on floor 1)")
-		advance(0.6)
-		request(p, "Chest")
-		T.check(#states(p, chestMark, "Chest") == 1, "p5 run: a second Chest request pays nothing")
+		T.check(run.Chests[p.UserId] == "Opened" and chestMsg and chestMsg.Slot == 3 and (chestMsg.Kind == "Cash" or chestMsg.Kind == "Tokens") and chestMsg.Amount > 0, "p5 run: E at chest 3 opens it once (Cash or Tokens on floor 1)")
+		pickChest(p, run, 1)
+		pickChest(p, run, 2, "remote")
+		T.check(#states(p, chestMark, "Chest") == 1 and chestPart(run, 1):GetAttribute("Opened") == nil, "p5 run: a second chest pays nothing and stays closed")
 		local endMark = K.logSize()
 		advance(d.TreasureSeconds + 1)
 		local endMsg = lastState(p, "End", endMark)
@@ -1360,8 +1392,12 @@ local function serverScenarios()
 		T.check(run.State == "Treasure" and run.Chests[uidA] == "Closed" and run.Chests[uidB] == "Closed" and run.Chests[uidC] == "Closed", "p5 loot: the Treasure closes a chest per QUALIFYING member (A rooms 1 + 4, B room 1, C the boss room)")
 		T.check(run.Chests[z.UserId] == nil and dgs.OpenChest(z) == false, "p5 loot: the AFK member (0 damage everywhere) gets NO chest; Chest is refused")
 		local chestMark = K.logSize()
-		local okC1 = dgs.OpenChest(a)
-		local okC2 = dgs.OpenChest(a)
+		local part1 = chestPart(run, 1)
+		if part1 then
+			Mock.Teleport(a, CFrame.new(part1.CFrame:PointToWorldSpace(Vector3.new(0, 2, 3))))
+		end
+		local okC1 = dgs.OpenChest(a, 1)
+		local okC2 = dgs.OpenChest(a, 2)
 		local chests = states(a, chestMark, "Chest")
 		T.check(okC1 == true and okC2 == false and #chests == 1 and run.Chests[uidA] == "Opened" and (chests[1].Kind == "Cash" or chests[1].Kind == "Tokens") and chests[1].Amount > 0,
 			"p5 loot: OpenChest pays once (Cash or Tokens on floor 1); a second open is refused")
@@ -1452,6 +1488,156 @@ local function serverScenarios()
 			T.check(totalXp(l, WEAK[1]) == xpL1 and tokens(l) == tokL and cash(l) == cashL and runOf(l) == nil, "p5 loot: Quit pays nothing")
 		end
 		cleanup({ l })
+	end)
+
+	------------------------------------------------------------------------------------------------
+	-- bug2chest_pick (bug batch 2 #14 "it lets you open a chest from the gui window, instead a player need to choose 1
+	-- chest to open (each chest = different drop)"): a full party of 4 in the treasure alcove (white-box: qualified,
+	-- Dg.enterTreasure). As many chests as members; a Chest request without a slot opens nothing; junk / far / taken
+	-- slots are refused; E at a chest opens THAT chest (Opened / OpenedBy, its prompt off for everyone, a glow) with the
+	-- roll of run.Seed + slot * 7919; one chest per member; nobody can take a taken chest; spam is rate limited; the 45 s
+	-- exit gives the member who did not pick the first free chest.
+	------------------------------------------------------------------------------------------------
+	S.bug2chest_pick = scenario("bug2chest_pick", function()
+		if not ready("bug2chest_pick") then
+			return
+		end
+		local dgs, bc = DGS(), BC()
+		local d = D()
+		local ps = {}
+		for i = 1, 4 do
+			ps[i] = newPlayer("DgnPick" .. i, WEAK, 5)
+			toPad(ps[i], i, 0)
+		end
+		local a, b, c, z = ps[1], ps[2], ps[3], ps[4]
+		request(a, "Create", 1)
+		for i = 2, 4 do
+			request(ps[i], "Join", a.UserId)
+			request(ps[i], "Ready", true)
+		end
+		request(a, "Start")
+		advance(6)
+		local run = runOf(a)
+		if not T.check(run ~= nil and count(run.Members) == 4, "bug2 chest: (setup) a full party of 4 in its Hall") then
+			cleanup(ps)
+			return
+		end
+		for _, p in ipairs(ps) do
+			run.Members[p.UserId].Qualified[1] = true
+		end
+		dgs.Dg.enterTreasure(run)
+		T.check(run.State == "Treasure", "bug2 chest: (setup) the run is in the treasure alcove")
+		-- as many chests as members, each with its own slot prompt
+		local n, promptsOk = 0, true
+		for slot = 1, 8 do
+			local part = chestPart(run, slot)
+			if part then
+				n = n + 1
+				local pr = part:FindFirstChild("ChestPrompt")
+				promptsOk = promptsOk and pr ~= nil and pr.Enabled == true and pr:GetAttribute("ChestSlot") == slot and part:GetAttribute("Opened") == nil
+			end
+		end
+		T.check(n >= 4 and n >= count(run.Members), "bug2 chest: the alcove has at least as many chests as a full party (" .. n .. " for 4)")
+		T.check(promptsOk, "bug2 chest: every chest has an enabled ChestPrompt carrying its ChestSlot")
+		local runMsg = lastState(a, "Run")
+		T.check(runMsg and type(runMsg.ChestOwed) == "table" and #runMsg.ChestOwed == 4, "bug2 chest: the Run payload lists the 4 members still owed a chest")
+		-- the old GUI request (no slot) and junk slots open nothing
+		local mark = K.logSize()
+		for _, p in ipairs(ps) do
+			request(p, "Chest")
+		end
+		advance(0.6)
+		local part1 = chestPart(run, 1)
+		Mock.Teleport(a, CFrame.new(part1.CFrame:PointToWorldSpace(Vector3.new(0, 2, 3))))
+		for _, junk in ipairs({ 0, 5, 1.5, -1, "1", 0 / 0, math.huge, {}, true }) do
+			advance(0.6)
+			request(a, "Chest", junk)
+		end
+		local opened = 0
+		for _, p in ipairs(ps) do
+			if run.Chests[p.UserId] ~= "Closed" then
+				opened = opened + 1
+			end
+			opened = opened + #states(p, mark, "Chest")
+		end
+		T.check(opened == 0 and next(run.ChestTaken) == nil, "bug2 chest: a Chest request without a slot (the old CHEST button) or with a junk slot opens nothing")
+		-- too far: A at chest 1 asks for chest 4 (18 studs away)
+		advance(0.6)
+		request(a, "Chest", 4)
+		local rootA = K.root(a)
+		local far = rootA and math.floor((rootA.Position - chestPart(run, 4).Position).Magnitude + 0.5) or -1
+		T.check(far > 9 and run.Chests[a.UserId] == "Closed" and run.ChestTaken[4] == nil, "bug2 chest: a chest out of reach (" .. far .. " studs) is refused")
+		-- A picks chest 2 with E
+		mark = K.logSize()
+		local cashA, tokA = cash(a), tokens(a)
+		local part2 = pickChest(a, run, 2)
+		local msgA = lastState(a, "Chest", mark)
+		local want2 = bc.DungeonChest(run.Floor, run.Seed + 2 * 7919)
+		T.check(run.Chests[a.UserId] == "Opened" and run.ChestTaken[2] == a.UserId and msgA and msgA.Slot == 2 and msgA.Kind == want2.Kind,
+			"bug2 chest: E at chest 2 opens chest 2 for A with the roll of seed + 2 x 7919 (" .. tostring(msgA and msgA.Kind) .. ")")
+		T.check((msgA and msgA.Kind == "Tokens" and tokens(a) - tokA == msgA.Amount) or (msgA and msgA.Kind == "Cash" and cash(a) - cashA == msgA.Amount), "bug2 chest: ...and pays that drop once")
+		local pr2 = part2 and part2:FindFirstChild("ChestPrompt")
+		T.check(part2 and part2:GetAttribute("Opened") == true and part2:GetAttribute("OpenedBy") == a.UserId and pr2 and pr2.Enabled == false and part2:FindFirstChild("OpenGlow") ~= nil,
+			"bug2 chest: chest 2 shows opened (Opened, OpenedBy, prompt off for everyone, the glow)")
+		runMsg = lastState(b, "Run", mark)
+		T.check(runMsg and #runMsg.ChestOwed == 3, "bug2 chest: the others' Run payload now lists 3 members owed a chest")
+		-- B cannot take chest 2 (remote at its side; the prompt is off), A cannot take a second chest
+		mark = K.logSize()
+		pickChest(b, run, 2, "remote")
+		T.check(run.Chests[b.UserId] == "Closed" and run.ChestTaken[2] == a.UserId and #states(b, mark, "Chest") == 0, "bug2 chest: B cannot open A's chest 2")
+		pickChest(a, run, 3)
+		pickChest(a, run, 3, "remote")
+		T.check(run.ChestTaken[3] == nil and #states(a, mark, "Chest") == 0, "bug2 chest: A cannot open a second chest (prompt or remote)")
+		-- spam: 40 requests in 2 s at chest 3 from A, nothing opens, no errors
+		local errors0 = #Mock.Errors
+		for i = 1, 40 do
+			Mock.FromClient(remote("DungeonRequest"), a, "Chest", 3)
+			if i % 4 == 0 then
+				advance(0.2)
+			end
+		end
+		T.check(run.ChestTaken[3] == nil and #states(a, mark, "Chest") == 0 and #Mock.Errors == errors0, "bug2 chest: 40 Chest requests in 2 s open nothing and raise no errors")
+		-- B and C pick their own chests (prompt / remote): each gets that chest's roll
+		mark = K.logSize()
+		pickChest(b, run, 3)
+		pickChest(c, run, 1, "remote")
+		local msgB, msgC = lastState(b, "Chest", mark), lastState(c, "Chest", mark)
+		T.check(msgB and msgB.Slot == 3 and msgB.Kind == bc.DungeonChest(run.Floor, run.Seed + 3 * 7919).Kind and run.ChestTaken[3] == b.UserId,
+			"bug2 chest: B picks chest 3 (its own roll)")
+		T.check(msgC and msgC.Slot == 1 and msgC.Kind == bc.DungeonChest(run.Floor, run.Seed + 1 * 7919).Kind and run.ChestTaken[1] == c.UserId,
+			"bug2 chest: C picks chest 1 by the remote while standing at it")
+		-- Z never picks: the 45 s exit gives Z the first free chest (4)
+		local tokZ, cashZ = tokens(z), cash(z)
+		mark = K.logSize()
+		advance((d.TreasureSeconds or 45) + 1)
+		local msgZ = lastState(z, "Chest", mark)
+		local part4 = chestPart(run, 4)
+		T.check(run.Chests[z.UserId] == "Opened" and run.ChestTaken[4] == z.UserId and msgZ and msgZ.Slot == 4 and (tokens(z) > tokZ or cash(z) > cashZ),
+			"bug2 chest: the 45 s exit opens the first free chest (4) for Z and pays it")
+		T.check(part4 == nil or part4.Parent == nil or part4:GetAttribute("OpenedBy") == z.UserId, "bug2 chest: ...and marks chest 4 as Z's")
+		local each = { [a.UserId] = 0, [b.UserId] = 0, [c.UserId] = 0, [z.UserId] = 0 }
+		for slot, uid in pairs(run.ChestTaken) do
+			each[uid] = (each[uid] or 0) + 1
+		end
+		T.check(each[a.UserId] == 1 and each[b.UserId] == 1 and each[c.UserId] == 1 and each[z.UserId] == 1, "bug2 chest: every member took exactly ONE chest")
+		advance(5)
+		cleanup(ps)
+		-- each chest is its own roll: deterministic per run seed + slot, and the four chests of a run differ in rolls
+		local mixed, same = 0, true
+		for seed = 1, 60 do
+			local kinds = {}
+			for slot = 1, 4 do
+				local r1 = bc.DungeonChest(3, seed * 131 + slot * 7919)
+				local r2 = bc.DungeonChest(3, seed * 131 + slot * 7919)
+				same = same and r1.Kind == r2.Kind and r1.Amount == r2.Amount
+				kinds[r1.Kind .. ":" .. tostring(r1.Amount)] = true
+			end
+			if count(kinds) > 1 then
+				mixed = mixed + 1
+			end
+		end
+		T.check(same, "bug2 chest: a chest's drop is deterministic (same run seed + slot = same drop)")
+		T.check(mixed >= 30, "bug2 chest: the four chests of a run hold different drops (" .. mixed .. " of 60 floor-3 runs mix kinds)")
 	end)
 
 	------------------------------------------------------------------------------------------------
@@ -2606,19 +2792,71 @@ local function clientScenarios()
 		Mock.Click(leave)
 		KC.advance(0.3)
 		T.eq(#C5.sends(mark, "Quit"), 1, "p5dgn " .. tag .. ": the second LEAVE sends DungeonRequest('Quit') once")
-		-- the treasure alcove: CHEST
+		-- the treasure alcove (bug batch 2 #14): no CHEST button anywhere, "Pick ONE chest!", the GUI never opens a chest
 		run.State, run.Room, run.Wave = "Treasure", 4, 2
+		local rgui = C5.pg():FindFirstChild("NimbusDungeonRun")
+		local chip = rgui and rgui:FindFirstChild("RunChip")
+		-- the alcove's chests in the pocket (two, each with its ChestPrompt like DungeonBuilder's Kit.chest)
+		local treasure = Instance.new("Model")
+		treasure.Name = "Treasure_1"
+		local chestPrompts = {}
+		for i = 1, 2 do
+			local chestPart = Instance.new("Part")
+			chestPart.Name = "Chest"
+			chestPart.Anchored = true
+			chestPart.CFrame = CFrame.new(at + Vector3.new(i * 6, 1, 30))
+			chestPart:SetAttribute("ChestSlot", i)
+			local pr = Instance.new("ProximityPrompt")
+			pr.Name = "ChestPrompt"
+			pr:SetAttribute("ChestSlot", i)
+			pr.Parent = chestPart
+			chestPart.Parent = treasure
+			chestPrompts[i] = pr
+		end
+		treasure.Parent = holder
+		local function promptsOn()
+			local n = 0
+			for _, pr in ipairs(chestPrompts) do
+				if pr.Enabled then
+					n = n + 1
+				end
+			end
+			return n
+		end
+		-- a member owed nothing (only another member's chest is still closed) is not told to pick
+		run.ChestOwed = { LP.UserId + 1 }
+		KC.toClient("DungeonState", "Run", run)
+		KC.advance(4.2) -- (the last Loot toast holds the phone chip's line for 4 s)
+		local status = phone and (chip and C5.find(chip, "Text")) or C5.find(card, "Status")
+		T.check(status and status.Text:find("Pick ONE", 1, true) == nil, "p5dgn " .. tag .. ": (#14) a member with no chest owed is not told to pick", status and status.Text)
+		T.eq(promptsOn(), 0, "p5dgn " .. tag .. ": (#14) a member owed no chest sees no chest prompts (switched off locally)")
+		for _, pr in ipairs(chestPrompts) do
+			pr.Enabled = true -- (as the server built them)
+		end
+		run.ChestOwed = { LP.UserId }
 		KC.toClient("DungeonState", "Run", run)
 		KC.advance(0.6)
+		T.eq(promptsOn(), 2, "p5dgn " .. tag .. ": (#14) while I still owe a pick the chest prompts stay on")
 		mark = #Mock.RemoteLog
-		local chest = phone and C5.find(card, "LeaveButton") or C5.find(card, "ChestButton")
-		T.check(chest and C5.shown(chest) and (not phone or chest.Text == "CHEST"), "p5dgn " .. tag .. ": the treasure alcove offers CHEST")
-		Mock.Click(chest)
-		KC.advance(0.3)
-		T.eq(#C5.sends(mark, "Chest"), 1, "p5dgn " .. tag .. ": CHEST sends DungeonRequest('Chest')")
-		KC.toClient("DungeonState", "Chest", { Kind = "Gems", Amount = 2 })
+		T.check(C5.find(rgui, "ChestButton") == nil, "p5dgn " .. tag .. ": (#14) the run card has no CHEST button")
+		local chipBtn = chip and C5.find(chip, "LeaveButton")
+		T.check(chipBtn and chipBtn.Text == "LEAVE", "p5dgn " .. tag .. ": (#14) the phone chip's button stays LEAVE in the alcove", chipBtn and chipBtn.Text)
+		status = phone and (chip and C5.find(chip, "Text")) or C5.find(card, "Status")
+		T.check(status and status.Text:find("Pick ONE chest!", 1, true) ~= nil, "p5dgn " .. tag .. ": (#14) the card says 'Pick ONE chest!'", status and status.Text)
+		if phone and chipBtn then
+			Mock.Click(chipBtn)
+			KC.advance(0.3)
+		end
+		T.eq(#C5.sends(mark, "Chest"), 0, "p5dgn " .. tag .. ": (#14) the run GUI sends no DungeonRequest('Chest')")
+		KC.toClient("DungeonState", "Chest", { Kind = "Gems", Amount = 2, Slot = 2 })
 		KC.advance(0.3)
 		T.check(DC.GetState().Totals.Gems == 2, "p5dgn " .. tag .. ": the chest's Gems join the totals")
+		T.eq(promptsOn(), 0, "p5dgn " .. tag .. ": (#14) after my pick the other chests' prompts are switched off locally")
+		run.ChestOwed = {}
+		KC.toClient("DungeonState", "Run", run)
+		KC.advance(4.2)
+		status = phone and (chip and C5.find(chip, "Text")) or C5.find(card, "Status")
+		T.check(status and status.Text:find("Pick ONE", 1, true) == nil, "p5dgn " .. tag .. ": (#14) after the pick the card stops asking", status and status.Text)
 		-- the End card; the light is popped
 		LP:SetAttribute("InBattle", nil)
 		KC.toClient("DungeonState", "End", { Floor = 3, Name = "Flooded Vaults", Cleared = true, Reason = "Cleared", Room = 4,

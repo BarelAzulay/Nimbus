@@ -8,7 +8,11 @@
 --   StormAltar.GetCFrame() -> CFrame | nil
 --   StormAltar.GetLanding() -> CFrame | nil  Phase 5 (6.2): where the Gate Court's Altar gate (GateService) puts a
 --                                           player: on the island deck at the bridge end, 3 studs up, facing the altar
---   StormAltar.Used                         Util.Signal; Fire(player) when a player uses the altar's prompt
+--   StormAltar.GetReturnPad() -> BasePart | nil  bug batch 2 #4: the invisible prompt anchor over the small return
+--                                           portal beside the landing (GateService puts its "Travel" / "Plaza" prompt
+--                                           on it: gate id "Plaza", back to the Gate Court)
+--   StormAltar.Built                        Util.Signal; Fire() after every Build (GateService re-binds the return pad)
+--   StormAltar.Used                        Util.Signal; Fire(player) when a player uses the altar's prompt
 --
 -- What it builds (all static; the client animates the showcase, ShowcaseController):
 --   Island     a dark navy storm cloud sculpted with shared/Voxel.lua, as in the art: a storm-blue walking top
@@ -44,6 +48,10 @@
 --              Roulette is not available there; while the gem system is missing or still checking the account the
 --              phase 1 side toast "The Storm Altar awakens soon: summon Secret pets with Gems!" is sent (toasts:
 --              Notify, rate-limited per player).
+--   Return     bug batch 2 #4: Model ReturnPortal, a small navy pad (an octagon 4 studs across, 0.2 high, flush on the
+--              deck) with a ring of cyan Neon segments, RETURN_AHEAD studs out along the bridge bearing and RETURN_SIDE
+--              to its side: beside the landing, clear of the arrival spot, the bridge lane and the walk to the dais.
+--              Only the pad collides. Its "ReturnPrompt" anchor carries GateService's prompt (no panel).
 --   Lights     a few soft electric-blue PointLights with small ranges (portal, head crystal, gate).
 -- No AltarSite: a free spot between the plaza and the plot ring road is searched (away from lobby parts, NPC spots
 -- and the spawn), and the dock is found by raycasting for the street. Collision only on walkable parts (island
@@ -81,6 +89,7 @@ local PetCatalog = optional("PetCatalog")
 
 local StormAltar = {}
 StormAltar.Used = Util.Signal()
+StormAltar.Built = Util.Signal() -- bug batch 2 #4: a (re)built altar has a new return pad
 
 ----------------------------------------------------------------------
 -- Constants (studs; altar-local frame: origin = dais centre on the walking surface, -Z = front = the plaza)
@@ -107,6 +116,9 @@ local BRIDGE_W = 8
 local RAMP_LEVEL = 5 -- studs of level deck over the island edge before the ramp slopes down to the street
 local GAP_HALF = 26 -- degrees kept free of rim billows around the bridge
 local MAX_PARTS = 500
+-- bug batch 2 #4: the return portal's centre in the bridge frame (studs out along the bridge bearing from the altar
+-- centre, studs to the side); the stone ring ends at 13.8, the landing arrives at ~17 on the centre line
+local RETURN_AHEAD, RETURN_SIDE, RETURN_PAD = 17, 5.5, 4
 -- the entrance gate's poster (World text rule: a SurfaceGui at 50 px per stud, titles >= 1 stud, lines >= 0.6 stud)
 local POSTER_PPS = 50
 local PANEL_W, PANEL_H = 12, 6.4 -- studs = 600 x 320 px
@@ -165,6 +177,7 @@ local C = {
 local altarModel = nil
 local altarCFrame = nil
 local altarLanding = nil -- Phase 5: GetLanding()
+local returnPad = nil -- bug batch 2 #4: GetReturnPad()
 local lastToast = {} -- [player] = os.clock() of the last toast
 local lastOpen = {} -- [player] = os.clock() of the last OpenPanel (Secret roulette)
 local playersHooked = false
@@ -1351,6 +1364,41 @@ local function onAltarUsed(player)
 	StormAltar.Used:Fire(player)
 end
 
+-- bug batch 2 #4 (the player: "add also a small portal from storm altar to lobby"): the small return portal beside the
+-- landing. gapDeg = the bridge bearing (altar-local degrees). The pad is a navy octagon (two turned squares) flush on
+-- the deck with a darker heart and a ring of eight cyan Neon segments; only the pad collides (0.2 high: walked over,
+-- never in the way). Returns the invisible prompt anchor (GateService adds the prompt). Part style like the dais; a
+-- Blender mesh for it is wave 3 art.
+local function buildReturnPortal(parent, A, gapDeg)
+	local m = newModel(parent, "ReturnPortal")
+	local spot = (polarCF(A, gapDeg, RETURN_AHEAD) * CFrame.new(RETURN_SIDE, 0, 0)).Position
+	local cf = flatLook(spot, A.Position) -- flat on the walking surface, facing the altar
+	local size = Vector3.new(RETURN_PAD / 1.0824, 0.2, RETURN_PAD / 1.0824) -- the octagon's corners are RETURN_PAD apart
+	block(m, "Pad", cf * CFrame.new(0, 0.1, 0), size, C.Disc, { Collide = true, Shadow = false })
+	block(m, "Pad", cf * CFrame.new(0, 0.1, 0) * CFrame.Angles(0, math.rad(45), 0), size, C.Disc, { Collide = true, Shadow = false })
+	block(m, "Heart", cf * CFrame.new(0, 0.205, 0) * CFrame.Angles(0, math.rad(22.5), 0), Vector3.new(1.9, 0.02, 1.9), C.DiscInner, { Shadow = false })
+	local rr = RETURN_PAD / 2 - 0.45 -- the ring's centre radius
+	local seg = 2 * rr * math.tan(math.rad(22.5)) + 0.08
+	for i = 0, 7 do
+		local a = math.rad(i * 45 + 22.5)
+		block(m, "Ring", cf * CFrame.Angles(0, a, 0) * CFrame.new(0, 0.26, -rr), Vector3.new(seg, 0.12, 0.26), C.CrystalCore, { Material = MAT.Neon, Shadow = false })
+	end
+	local anchor = invisible(m, "ReturnPrompt", cf * CFrame.new(0, 2.5, 0), Vector3.new(2, 2, 2))
+	local glow = Instance.new("PointLight")
+	glow.Name = "ReturnGlow"
+	glow.Color = C.CrystalCore
+	glow.Brightness = 0.8
+	glow.Range = 7
+	glow.Shadows = false
+	glow.Parent = anchor
+	local rise = Instance.new("Attachment")
+	rise.Name = "ReturnSparkles"
+	rise.CFrame = CFrame.new(0, -2.3, 0)
+	rise.Parent = anchor
+	sparkles(rise, 2, 1.6, 0.3)
+	return anchor
+end
+
 local function buildPrompt(parent, A)
 	local part = invisible(parent, "AltarPrompt", A * CFrame.new(0, 2.4, 0))
 	local prompt = Instance.new("ProximityPrompt")
@@ -1402,7 +1450,7 @@ function StormAltar.Build(lobbyInfo)
 	if old and old:IsA("Model") then
 		old:Destroy()
 	end
-	altarModel, altarCFrame, altarLanding = nil, nil, nil
+	altarModel, altarCFrame, altarLanding, returnPad = nil, nil, nil, nil
 
 	local info = type(lobbyInfo) == "table" and lobbyInfo or {}
 	local site = typeof(info.AltarSite) == "CFrame" and info.AltarSite or nil
@@ -1469,6 +1517,10 @@ function StormAltar.Build(lobbyInfo)
 	section("prompt", function()
 		buildPrompt(model, A)
 	end)
+	local padAnchor = nil
+	section("return portal", function()
+		padAnchor = buildReturnPortal(model, A, gapDeg)
+	end)
 	section("lights", function()
 		-- the head crystal glows softly onto the stones and the cloud
 		local glow = invisible(model, "CrystalGlow", polarCF(A, 180, RING_C - 1.5, 7))
@@ -1508,11 +1560,13 @@ function StormAltar.Build(lobbyInfo)
 	model.Parent = container -- parented last: the whole altar replicates in one step
 	altarModel = model
 	altarCFrame = A
+	returnPad = padAnchor
 	-- the Altar gate's arrival point: the island end of the bridge (else the front of the deck), facing the altar
 	local arrive = landing or (A * CFrame.new(0, 0, -(R_TOP - 6))).Position
 	arrive = Vector3.new(arrive.X, A.Position.Y, arrive.Z) + (Vector3.new(A.Position.X, arrive.Y, A.Position.Z) - Vector3.new(arrive.X, arrive.Y, arrive.Z)).Unit * 2
 	altarLanding = flatLook(arrive + Vector3.new(0, 3, 0), A.Position + Vector3.new(0, 3, 0))
 	print(string.format("[StormAltar] built (%d parts + showcase)", parts))
+	StormAltar.Built:Fire()
 	return A
 end
 
@@ -1530,6 +1584,14 @@ end
 function StormAltar.GetLanding()
 	if altarModel and altarModel.Parent then
 		return altarLanding
+	end
+	return nil
+end
+
+-- bug batch 2 #4: the return portal's prompt anchor (nil before Build, after a failed section or once the altar is gone)
+function StormAltar.GetReturnPad()
+	if returnPad and returnPad.Parent and altarModel and altarModel.Parent then
+		return returnPad
 	end
 	return nil
 end

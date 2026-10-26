@@ -57,6 +57,9 @@ local Voxel = require(Shared.Voxel)
 local WorldStyle = require(Shared.WorldStyle)
 
 local DungeonBuilder = {}
+-- bug batch 2 #14: the chests Treasure_1 builds (each member picks ONE); DungeonService.Init asserts this is >= its
+-- CHEST_SLOTS (= MAX_PARTY 4). Read through deps there, so no require loop.
+DungeonBuilder.CHEST_COUNT = 4
 
 local floor, max, min, abs = math.floor, math.max, math.min, math.abs
 local PI = math.pi
@@ -767,13 +770,15 @@ function Kit.chest(outer, cf, slot)
 	Kit.part(parent, cf * CFrame.new(0, 2.05, 0), Vector3.new(3.1, 0.5, 2.1), C.Wood, M.Wood, { Name = "ChestLid" })
 	Kit.part(parent, cf * CFrame.new(0, 1.0, 1.05), Vector3.new(0.6, 0.6, 0.15), C.Gold, M.Metal, { Name = "ChestLock" })
 	body:SetAttribute("ChestSlot", slot)
+	-- bug batch 2 #14: each member picks ONE chest by walking to it (DungeonService reads the prompt's ChestSlot, checks
+	-- the range and turns the prompt off for everyone once taken); 7 studs so the chests 6 apart do not overlap much
 	local prompt = Instance.new("ProximityPrompt")
 	prompt.Name = "ChestPrompt"
 	prompt.ActionText = "Open"
-	prompt.ObjectText = "Chest"
+	prompt.ObjectText = "Pick ONE chest"
 	prompt.KeyboardKeyCode = Enum.KeyCode.E
 	prompt.HoldDuration = 0
-	prompt.MaxActivationDistance = 10
+	prompt.MaxActivationDistance = 7
 	prompt.RequiresLineOfSight = false
 	prompt:SetAttribute("DungeonAction", "Chest")
 	prompt:SetAttribute("ChestSlot", slot)
@@ -1286,8 +1291,9 @@ function Rooms.Treasure()
 	Kit.ceiling(model, w, d)
 	Kit.torch(model, CFrame.new(-13.5, 6.5, 0) * CFrame.Angles(0, -PI / 2, 0))
 	Kit.torch(model, CFrame.new(13.5, 6.5, 0) * CFrame.Angles(0, PI / 2, 0))
-	for i = 1, 4 do
-		local x = -9 + (i - 1) * 6
+	local chests = DungeonBuilder.CHEST_COUNT
+	for i = 1, chests do
+		local x = (i - (chests + 1) / 2) * 6
 		Kit.chest(model, CFrame.new(x, 0, 3), i)
 		attach(base, "Chest" .. i, Vector3.new(x, 1.5, 3))
 	end

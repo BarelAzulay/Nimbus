@@ -15,7 +15,8 @@
 --                                      until State's PetGrowth catches up (never lower than the stored stage).
 --   PetController.GetCards()        -- debug: { { UserId, Key, Mode, Gui, Shown } } of every live pet card
 --   PetController.GetFollowerInfo(player) -- debug: { { Key, Model, Stage = built model stage, Want = card stage,
---                                      Level, Card = BillboardGui | nil, Parked, Diving, Back / Side = the slot (studs), Width, Slot } }
+--                                      Level, Card = BillboardGui | nil, Parked, Diving, Back / Side = the slot (studs), Width, Slot,
+--                                      Sitting = the owner sits and the pet has its ground spot (bug batch 2 #7) } }
 --
 -- What it does
 --   * Reads the player attribute `EquippedPets` (csv of pet KEYS, Config.Attr.EquippedPets) of EVERY player
@@ -52,6 +53,10 @@
 --   * Phase 4 home portal (3.10): when the owner's portal was just used (the player attribute HomePortal cleared /
 --     PortalArrived written, and a teleport > 35 studs within 0.5 s of it) the followers fly into the portal centre
 --     and shrink (0.4 s), then pop out of the arrival ring behind the owner (the fresh = 2 emerge path).
+--   * bug batch 2 #7: while the owner sits (Humanoid.Sit / SeatPart: a lobby bench or any seat) the followers settle
+--     on the ground in a row about 3 studs in front of the owner (side by side, no overlap), facing them, lying down in
+--     HomeFx's nap pose (its LIE_ANGLE roll and SLEEP_ANIM slow wings, copied into SIT), and ease back into the
+--     formation when the owner stands up. A battle still parks them first (that check comes before it).
 --   * Phase 3: while the owner's player attribute `InBattle` is set (BattleService), the followers are parked: the
 --     battle team fights on the floor, drawn by BattleController. They snap back into formation afterwards.
 --   * Owners that are downed keep their pets close; owners that teleport (> 35 studs in one step) or
@@ -217,6 +222,24 @@ local P4K = {
 	DIVE_NEAR = 8, -- studs: an owner this close to an open portal who teleports used it
 	PARK_DEFAULT = 4.6, -- s a follower stays parked by PlayEvolution when EvolutionFx cannot say
 	OVERRIDE_GRACE = 15, -- s after the park: a PlayEvolution stage State never confirmed is dropped (State wins)
+}
+
+-- bug batch 2 #7 (the player: "when a player sits on [a bench] the pets sit on the ground"): the settle-while-sitting
+-- tuning and helpers. The pose numbers are HomeFx's nap pose (G.LIE_ANGLE, G.SLEEP_ANIM), copied: HomeFx is not required.
+local SIT = {
+	AHEAD = 2.2, -- studs from the owner's root to the near edge of a pet (its centre: AHEAD + r, ~3-4 studs)
+	GAP = 0.5, -- studs between two pets of the row
+	LIE_ANGLE = 1.35, -- HomeFx G.LIE_ANGLE: radians a resting pet rolls onto its side
+	ANIM_FLAP = 0.15, -- HomeFx G.SLEEP_ANIM = { Flap = 0.15 }
+	RATE_V = 3, -- vertical filter rate while settling down / getting up (1/s; following: 7.5-10)
+	TILT_RATE = 3, -- roll / pitch easing while settling down / getting up (1/s; following: TILT_RATE 9)
+	EASE_OUT = 2, -- s after the owner stands up that the slower rates still apply
+	MAX_SPEED = 14, -- studs/s a pet may glide while settling down / getting up (+ the owner's own speed): no zooming
+	REPLAN = 1.5, -- studs the owner may move (a moving seat) before the row is laid out again
+	DROP = 14, -- studs searched below the owner for the ground
+	FALLBACK_DROP = 3, -- the ground under the owner's root when the ray finds nothing
+	params = nil, -- RaycastParams (lazy, reused)
+	lows = {}, -- ["key|stage"] = SIT.lieLow of the fresh model (wings / tail at rest, like HomeFx measures it)
 }
 
 -- Wing speed. PetBuilder.Animate beats the wings at FLAP_HZ * Flap * (1 + 1.25 * Excited) per second, so the
@@ -520,6 +543,13 @@ local function buildModel(f, p)
 	end
 	h = h or 2.7
 	p.height = h
+	-- bug batch 2 #7: the lying low point, measured on the fresh model (wings / tail at rest), once per key|stage
+	local lo = SIT.lows[hkey]
+	if lo == nil then
+		lo = SIT.lieLow(model)
+		SIT.lows[hkey] = lo
+	end
+	p.lieLo, p.lieModel = lo, model
 	p.lift = clamp((h - 2.7) * 0.35, -0.4, 0.6)
 	wd = wd or F5.DEFAULT_W
 	if p.width ~= wd then
@@ -583,6 +613,15 @@ local function newFollower(player)
 		index = 0,
 		downed = false,
 		established = false,
+		-- bug batch 2 #7: the owner's Humanoid and the sitting row (SIT)
+		hum = nil,
+		sitPlanned = false,
+		sitPx = 0,
+		sitPy = 0,
+		sitPz = 0,
+		sitFx = 0,
+		sitFz = -1,
+		sitUntil = 0,
 		failures = 0,
 		disabled = false,
 		nextRootCheck = 0,
@@ -643,6 +682,8 @@ end
 local function releaseCharacter(f)
 	f.root = nil
 	f.char = nil
+	f.hum = nil
+	f.sitPlanned = false
 	f.established = false
 	f.nextRootCheck = 0
 	setVisible(f, false)
@@ -1316,6 +1357,99 @@ end
 -- Per-frame update
 ----------------------------------------------------------------------
 -- Advances one follower by dt seconds. `viewPos` is where the viewer is (Vector3 or nil).
+----------------------------------------------------------------------
+-- bug batch 2 #7: settle while the owner sits (SIT)
+----------------------------------------------------------------------
+-- the owner sits on any seat (Humanoid.Sit, or a SeatPart: both replicate)
+function SIT.isSitting(f)
+	local hum = f.hum
+	if not hum or hum.Parent ~= f.char then
+		hum = f.char and f.char:FindFirstChildOfClass("Humanoid") or nil
+		f.hum = hum
+	end
+	return hum ~= nil and (hum.Sit == true or hum.SeatPart ~= nil)
+end
+
+-- lays the row out across the owner's front (once per sit, again when the owner moved REPLAN studs): every pet gets
+-- its lateral offset; its ground spot is found on its next update (SIT.place)
+function SIT.plan(f, root, px, py, pz)
+	local look = root.CFrame.LookVector
+	local lx, lz = look.X, look.Z
+	local m = sqrt(lx * lx + lz * lz)
+	if m < 1e-3 then
+		lx, lz, m = -sin(f.headYaw), -cos(f.headYaw), 1
+	end
+	f.sitFx, f.sitFz = lx / m, lz / m
+	f.sitPx, f.sitPy, f.sitPz = px, py, pz
+	local n = f.n
+	local total = SIT.GAP * math.max(0, n - 1)
+	for i = 1, n do
+		total = total + 2 * f.pets[i].r
+	end
+	local cursor = -total / 2
+	for i = 1, n do
+		local p = f.pets[i]
+		p.sitLat = cursor + p.r
+		cursor = cursor + 2 * p.r + SIT.GAP
+		p.sitModel = nil
+	end
+	f.sitPlanned = true
+end
+
+-- the lowest point of `model` below its pivot once it lies rolled SIT.LIE_ANGLE about its forward axis (HomeFx's
+-- LieLo, with every part's own rotation): the corners' y after Rz(LIE_ANGLE) is x sin + y cos. The body only: the
+-- wing / tail parts that Animate moves are left out (the body rests on the ground, the lower wing folds into it)
+function SIT.lieLow(model)
+	local okPivot, pivot = pcall(model.GetPivot, model)
+	if not okPivot then
+		return -1
+	end
+	local inv = pivot:Inverse()
+	local ls, lc = sin(SIT.LIE_ANGLE), cos(SIT.LIE_ANGLE)
+	local lo = nil
+	for _, part in ipairs(model:GetDescendants()) do
+		if part:IsA("BasePart") and part.Transparency < 1 and not isAnimatedPart(part) then
+			local rel = inv * part.CFrame
+			local c, s = rel.Position, part.Size
+			local ax, ay, az = rel.RightVector, rel.UpVector, rel.LookVector
+			local y = c.X * ls + c.Y * lc - (abs(ax.X * ls + ax.Y * lc) * s.X + abs(ay.X * ls + ay.Y * lc) * s.Y + abs(az.X * ls + az.Y * lc) * s.Z) / 2
+			if not lo or y < lo then
+				lo = y
+			end
+		end
+	end
+	return lo or -1
+end
+
+-- the pet's spot in the row: the ground under it (a ray, the owner and every pet excluded) and the lying height
+function SIT.place(f, p, model)
+	local fx, fz = f.sitFx, f.sitFz
+	local ahead = SIT.AHEAD + p.r
+	local lat = p.sitLat or 0
+	local x = f.sitPx + fx * ahead - fz * lat -- the owner's right = (-fz, fx)
+	local z = f.sitPz + fz * ahead + fx * lat
+	local ground = f.sitPy - SIT.FALLBACK_DROP
+	local params = SIT.params
+	if not params then
+		params = RaycastParams.new()
+		params.FilterType = Enum.RaycastFilterType.Exclude
+		params.RespectCanCollide = true
+		SIT.params = params
+	end
+	params.FilterDescendantsInstances = { f.char, petsFolder }
+	local ok, hit = pcall(workspace.Raycast, workspace, Vector3.new(x, f.sitPy + 1, z), Vector3.new(0, -SIT.DROP, 0), params)
+	if ok and hit then
+		ground = hit.Position.Y
+	end
+	if p.lieModel ~= model then
+		p.lieLo = SIT.lieLow(model)
+		p.lieModel = model
+	end
+	p.sitX, p.sitY, p.sitZ = x, ground - p.lieLo + 0.05, z
+	p.sitYaw = atan2(fx, fz) -- forward (-sin, -cos) = towards the owner
+	p.sitModel = model
+end
+
 local function stepFollower(f, dt, now, viewPos)
 	-- 1. owner root ------------------------------------------------------------------------------
 	local root = f.root
@@ -1481,6 +1615,19 @@ local function stepFollower(f, dt, now, viewPos)
 	local rx, rz = ch, -sh -- owner's right (horizontal)
 	local fx, fz = -sh, -ch -- owner's forward (horizontal)
 
+	-- 4b. bug batch 2 #7: the owner sits -> the pets settle on the ground in front of them (SIT)
+	local sitting = SIT.isSitting(f)
+	if sitting then
+		local mx, my, mz = px - f.sitPx, py - f.sitPy, pz - f.sitPz
+		if not f.sitPlanned or mx * mx + my * my + mz * mz > SIT.REPLAN * SIT.REPLAN then
+			SIT.plan(f, root, px, py, pz)
+		end
+		f.sitUntil = now + SIT.EASE_OUT
+	elseif f.sitPlanned then
+		f.sitPlanned = false
+	end
+	local settling = now < f.sitUntil
+
 	-- 5. pets: (a) build + the filter toward the slot, (b) the separation, (c) facing + the pose write --------
 	local pets = f.pets
 	local n = f.n
@@ -1523,6 +1670,12 @@ local function stepFollower(f, dt, now, viewPos)
 			local tx = px + rx * side + fx * fwd + leadX
 			local tz = pz + rz * side + fz * fwd + leadZ
 			local ty = py + p.up * (1 - 0.2 * downK) + p.lift + bob + 1.2 * RUN_RISE * runK + leadY
+			if sitting then
+				if p.sitModel ~= model then
+					SIT.place(f, p, model)
+				end
+				tx, ty, tz = p.sitX, p.sitY, p.sitZ
+			end
 
 			if p.fresh ~= 0 then
 				local from = p.emergeFrom
@@ -1547,7 +1700,16 @@ local function stepFollower(f, dt, now, viewPos)
 				p.yaw = face
 			end
 			local kh = 1 - exp(-p.rateH * dt)
-			local kvv = 1 - exp(-p.rateV * dt)
+			local kvv = 1 - exp(-(settling and SIT.RATE_V or p.rateV) * dt)
+			if settling then
+				-- bug batch 2 #7: glide to / from the ground spot instead of zooming across (the filter alone starts at
+				-- ~80 studs/s over the ~16 studs from a back slot to the front row)
+				local cap = (SIT.MAX_SPEED + hs) * dt
+				local mh = sqrt(ex * ex + ez * ez) * kh
+				if mh > cap then
+					kh = kh * cap / mh
+				end
+			end
 			p.x, p.y, p.z = ox + ex * kh, oy + ey * kvv, oz + ez * kh
 			p.lastX, p.lastZ = ox, oz
 			p.live = true
@@ -1610,7 +1772,11 @@ local function stepFollower(f, dt, now, viewPos)
 
 			local yawOld = p.yaw
 			local wobble = 0.1 * sin(now * 0.9 + p.phase2)
-			local yawStep = wrapAngle(face + p.yawBias + wobble - yawOld) * (1 - exp(-FACE_RATE * dt))
+			local aim = face + p.yawBias + wobble
+			if sitting and p.sitModel == model then
+				aim = p.sitYaw + p.yawBias -- lying in front of the owner, looking at them
+			end
+			local yawStep = wrapAngle(aim - yawOld) * (1 - exp(-FACE_RATE * dt))
 			local yaw = wrapAngle(yawOld + yawStep)
 			p.yaw = yaw
 			local syw, cyw = sin(yaw), cos(yaw)
@@ -1620,7 +1786,10 @@ local function stepFollower(f, dt, now, viewPos)
 			local rollT = clamp(yawStep / dt * BANK_GAIN, -BANK_MAX, BANK_MAX)
 				- clamp(lateralSpeed * 0.015, -0.3, 0.3)
 				+ 0.05 * sin(now * 1.3 + p.phase)
-			local kt = 1 - exp(-TILT_RATE * dt)
+			if sitting then
+				pitchT, rollT = 0, SIT.LIE_ANGLE -- HomeFx's nap pose: rolled onto the side
+			end
+			local kt = 1 - exp(-(settling and SIT.TILT_RATE or TILT_RATE) * dt)
 			local pitch = p.pitch + (pitchT - p.pitch) * kt
 			local roll = p.roll + (rollT - p.roll) * kt
 			p.pitch, p.roll = pitch, roll
@@ -1651,8 +1820,8 @@ local function stepFollower(f, dt, now, viewPos)
 
 				if p.animFails < 3 then
 					local o = p.opts
-					o.Flap = flapBase * p.flapVar
-					o.Excited = excited
+					o.Flap = sitting and SIT.ANIM_FLAP or flapBase * p.flapVar
+					o.Excited = sitting and 0 or excited
 					local okAnim = pcall(PetBuilder.Animate, model, now, o)
 					if not okAnim then
 						p.animFails = p.animFails + 1
@@ -1817,6 +1986,7 @@ function PetController.GetFollowerInfo(player)
 			Key = p.key, Model = p.model, Stage = p.stage, Want = p.want, Level = p.level,
 			Card = p.card and p.card.Gui or nil, Parked = p.parked, Diving = f.dive, Back = p.back,
 			Side = p.side, Width = p.width, Slot = p.slot,
+			Sitting = f.sitPlanned and p.model ~= nil and p.sitModel == p.model,
 		}
 	end
 	return out
