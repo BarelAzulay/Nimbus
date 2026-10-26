@@ -718,6 +718,35 @@ S.client_p7vfx_engine = guarded("client_p7vfx_engine", function()
 	T.check(#lowBad == 0, "Low quality: 2 emitters = the Burst + the element's chosen one (LowKeep)", table.concat(lowBad, " | "))
 	Fx.SetQuality("High")
 	Fx.ClearAll()
+
+	-- 13c) Task 9 (Studio: every Secret shell drew 50-80 % white, the "white ball"): the band 4 shot's shell breathes from
+	-- its OWN colour into the rim's, never toward white; the white plasma is the small heart inside
+	local shellBad, shellSeen = {}, 0
+	for _, e in ipairs({ "Water", "Nature", "Storm", "Shadow" }) do
+		Fx.ClearAll()
+		Fx.Play(ctx({ Element = e, Attack = "Ranged", Rarity = "Secret", From = { Unit = 73, Model = A }, Now = clock }))
+		local el = Fx._Live()[#Fx._Live()]
+		local main = nil
+		for _, it in ipairs(el and el.Items or {}) do
+			if it.Kind == "Solid" and it.Shift and not main then
+				main = it
+			end
+		end
+		local worst = 0
+		run(0.6, function()
+			local part = main and main.Kit and main.Kit.Root
+			if part and part.Transparency < 1 then
+				shellSeen = shellSeen + 1
+				local c = part.Color
+				worst = math.max(worst, math.min(c.R, c.G, c.B)) -- (white = every channel high)
+			end
+		end)
+		if not main or worst > 0.75 then
+			shellBad[#shellBad + 1] = fmt("%s: %s", e, main and fmt("min channel up to %.2f", worst) or "no shifting shell")
+		end
+	end
+	T.check(#shellBad == 0 and shellSeen > 0, "band 4 shot: the shifting shell keeps its colour (never drawn near white)", table.concat(shellBad, " | "))
+	Fx.ClearAll()
 	-- review Important 1: Flame's Lava Slam (the old over-cap case) fits now: its Scorch is a glow disc, no emitter is cut
 	Fx.Play(ctx({ Element = "Flame", Attack = "Special", Kind = "Blast", PetId = "magma_cub", Rarity = "Secret", From = { Unit = 71, Model = A }, Now = clock }))
 	local fl = Fx._Live()[#Fx._Live()]

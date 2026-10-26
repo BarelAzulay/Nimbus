@@ -887,6 +887,32 @@ S.p7vfx_catalog = guarded("p7vfx_catalog", function()
 		and frmu and frmu.Texture == "fx_flame" and layerById(fr, "Burst") and layerById(fr, "Burst").Texture == "fx_flame",
 		"p7vfx catalog: Flame's ranged shot = a flame spear wrapped in fire (Mantle) with a flame muzzle puff and a fire burst")
 
+	-- Task 9 (Studio, two rounds): band 4's white plasma is the HEART: every element's Secret shot / swipe core is a shell
+	-- of the element's colour (Palette.Mid) round a white-hot inner core (Earth: its PlasmaColor, gold), never a white shell;
+	-- the ground cores (spikes, roots) stay in the element's colour too. The slash arc + the double arcs are half-lit (an
+	-- additive sheet summed to white on the pale arena)
+	local plasmaBad = {}
+	for _, element in ipairs(Config.Elements.Order) do
+		local pal = C.Elements[element].Palette
+		local heart = C.Elements[element].PlasmaColor and pal[C.Elements[element].PlasmaColor] or Color3.new(1, 1, 1)
+		for _, attack in ipairs({ "Melee", "Ranged" }) do
+			local r = C.Resolve({ Element = element, Attack = attack, Rarity = "Secret", Mine = true })
+			local core = r and r.Core
+			local ok = core and core.Color == pal.Mid and core.RimShift == true
+			if ok and (core.Path == "Projectile" or core.Path == "Swipe") then
+				ok = core.InnerColor == heart
+			end
+			local sl, da = r and layerById(r, "Slash"), r and layerById(r, "DoubleArc")
+			if attack == "Melee" and not (sl and da and sl.LightEmission <= 0.5 and da.LightEmission <= 0.5 and (da.Color == pal.Mid or (C.Textures[da.Texture] and C.Textures[da.Texture].Baked))) then
+				ok = false
+			end
+			if not ok then
+				plasmaBad[#plasmaBad + 1] = element .. " " .. attack
+			end
+		end
+	end
+	T.check(#plasmaBad == 0, "p7vfx catalog: band 4 = an element-colour shell round a white-hot heart (no white shell), half-lit slash / double arcs", table.concat(plasmaBad, ", "))
+
 	-- review minors: Water's droplets + geyser, Shadow's implosion before the glass, Nature's root burst as playable layers
 	local water = C.Resolve({ Element = "Water", Attack = "Melee", Rarity = "Common", Mine = true })
 	local wb, wr = layerById(water, "Burst"), layerById(water, "Ripple")

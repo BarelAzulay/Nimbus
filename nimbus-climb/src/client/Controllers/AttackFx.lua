@@ -926,9 +926,12 @@ function DRAW.Solid(eff, it, t)
 	part.Size = V3(max(0.05, b.X * sv.X * s), max(0.05, b.Y * sv.Y * s), max(0.05, b.Z * sv.Z * s))
 	part.CFrame = cf
 	part.Transparency = tr
-	if it.Shift then -- the Secret core's colour-shifting rim: white plasma breathing into the rim colour
+	if it.Shift then -- the Secret core's colour-shifting rim: the shell breathing into the rim colour
+		-- (Task 9 Studio: breathing from WHITE, every band 4 shell was drawn 50-80 % white whatever its colour: the white
+		-- ball / white sheet; it breathes from its own colour now, the white plasma is the heart inside)
 		local h, sat, v = it.Shift:ToHSV()
-		part.Color = WHITE:Lerp(Color3.fromHSV((h + 0.08 * sin(t * 5)) % 1, sat, v), 0.3 + 0.2 * sin(t * 9))
+		local own = typeof(it.Color) == "Color3" and it.Color or WHITE
+		part.Color = own:Lerp(Color3.fromHSV((h + 0.08 * sin(t * 5)) % 1, sat, v), 0.3 + 0.2 * sin(t * 9))
 	end
 end
 
@@ -1430,8 +1433,10 @@ local function tuneEmitter(eff, it, layer)
 	em.FlipbookMode = Enum.ParticleFlipbookMode[sheet[1]]
 	em.FlipbookFramerate = NumberRange.new(sheet[2])
 	em.FlipbookStartRandom = sheet[1] == "Loop"
-	em.LightEmission = sheet[3]
-	em.LightInfluence = (sheet[3] >= 0.5) and 0 or 0.6
+	-- a layer's LightEmission overrides the sheet's (Task 9: the slash arc half-lit, so it keeps the element's colour)
+	local own = finite(layer.LightEmission)
+	em.LightEmission = own and clamp01(layer.LightEmission) or sheet[3]
+	em.LightInfluence = (own or sheet[3] >= 0.5) and 0 or 0.6
 	local c = typeof(layer.Color) == "Color3" and layer.Color or WHITE
 	if sheet[3] >= 0.8 then
 		em.Color = ColorSequence.new(c:Lerp(WHITE, 0.45), c) -- glows start hot
@@ -1672,7 +1677,7 @@ local function addBeamLayer(eff, layer)
 		b.Transparency = NumberSequence.new({ kp(0, a + (1 - a) * 0.35), kp(0.15, a), kp(0.85, a), kp(1, a + (1 - a) * 0.35) })
 		-- (Task 9 Studio: additive, the thin lightning strip vanished on the pale sky / floor; drawn mostly opaque in its
 		-- colour it reads as a bolt)
-		b.LightEmission = (layer.Texture == "fx_lightning") and 0.25 or 1
+		b.LightEmission = finite(layer.LightEmission) and clamp01(layer.LightEmission) or ((layer.Texture == "fx_lightning") and 0.25 or 1)
 		b.LightInfluence = 0
 		b.FaceCamera = true
 		b.CurveSize0 = 0

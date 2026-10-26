@@ -152,11 +152,12 @@ AttackFxCatalog.CoreLook = {
 	[1] = { Color = "Mid", Glow = 0 }, -- plain element colour (e.g. orange fire)
 	[2] = { Color = "Mid", Inner = "Hot", Glow = 0.35 }, -- brighter, a hot inner core (e.g. blue-hot fire)
 	[3] = { Color = "Core", Inner = "Hot", Glow = 0.7, Upgraded = true }, -- blazing core, upgraded shape (fins / a second blade)
-	-- (Task 9 Studio + Gemini: a solid white core read as a white ball / sticker and hid the target; a see-through white
-	-- plasma shell around a heart of the element's colour, the rim twin still shifting)
-	-- (Shell = the core's least transparency; GroundColor = the colour of the cores that rise from the ground / sweep an
-	-- area (spikes, roots, the cone fan): they have no inner heart, so white would read as plain white blobs)
-	[4] = { Color = "White", Inner = "Mid", Rim = "Edge", RimShift = true, Glow = 1, Upgraded = true, Material = "Neon", Shell = 0.5, GroundColor = "Core" }, -- white plasma, colour-shifting rim
+	-- (Task 9 Studio, two rounds: a white core, solid or as a see-through shell, read as a white ball / sheet on the pale
+	-- arena and hid the target (the Secret shot, the crescents, the spikes / roots). The white plasma is the HEART: a
+	-- white-hot inner core inside a shell of the element's colour, the rim twin shifting colour. The cores with no inner
+	-- heart (ground spikes / roots, the cone fan) stay in the element's colour. An element's PlasmaColor names the
+	-- Palette entry its heart takes instead of white (Earth: a gold-hot heart in the rock).)
+	[4] = { Color = "Mid", Inner = "White", Rim = "Edge", RimShift = true, Glow = 1, Upgraded = true, Material = "Neon" }, -- white plasma heart, colour-shifting rim
 }
 
 -- the layers each rarity adds, in rarity order (each keeps everything below it). The element's OWN impact detail
@@ -179,7 +180,9 @@ AttackFxCatalog.LayerSlots = {
 	Trail = { Kind = "Emitter", Texture = "$Trail", Beat = "Travel", At = "Core", Tint = "Mid", Count = 10, Size = 1 },
 	-- (Task 9: in the pale Core tint the arc read as a big white sheet over the leap and the target at Secret; the
 	-- element's colour, a little smaller and see-through)
-	Slash = { Kind = "Emitter", Texture = "fx_slash", Beat = "Release", At = "Source", Tint = "Mid", Count = 1, Size = 2.8, Transparency = 0.45 },
+	-- (Task 9 round 2: still additive (the sheet's LightEmission 1) the arc summed to white on the pale arena; half-lit it
+	-- keeps the element's colour)
+	Slash = { Kind = "Emitter", Texture = "fx_slash", Beat = "Release", At = "Source", Tint = "Mid", Count = 1, Size = 2.6, Transparency = 0.4, LightEmission = 0.35 },
 	GroundGlow = { Kind = "Decal", Beat = "Impact", At = "Ground", Tint = "Edge", Size = 5, Seconds = 0.6 }, -- an untextured glow disc
 	-- (Task 8, Studio + Gemini: at 3 / 4 the flash + bloom washed the pets white and a 14-stud ring buried the target:
 	-- lights <= 2 brightness / 8 studs range, the shockwave ~7 studs across and see-through)
@@ -189,7 +192,9 @@ AttackFxCatalog.LayerSlots = {
 	Bloom = { Kind = "Light", Beat = "Release", At = "Core", Tint = "Hot", Brightness = 1.4, Range = 8, Pulse = true },
 	-- the second crescent, a curved Beam (Task 8 Studio: untextured it read as a flat white slab; streaked with the arc sheet)
 	-- (Task 9: see-through, Gemini: >= 0.4, the Secret double slash hid the leap)
-	DoubleArc = { Kind = "Beam", Texture = "$Arc", Beat = "Release", At = "Source", Tint = "Hot", Curve = 3, Width = 1.0, Transparency = 0.45 },
+	-- (Task 9 round 2: in the pale Hot tint and additive the two arcs were a white half-moon over the target at Secret;
+	-- the element's colour, half-lit)
+	DoubleArc = { Kind = "Beam", Texture = "$Arc", Beat = "Release", At = "Source", Tint = "Mid", Curve = 3, Width = 1.0, Transparency = 0.4, LightEmission = 0.35 },
 	Field = { Kind = "Decal", Texture = "$Ground", Beat = "Linger", At = "Ground", Tint = "Mid", Size = 7, Seconds = 1.0, GroundOnly = true },
 	PlasmaRim = { Kind = "Light", Beat = "Travel", At = "Core", Tint = "Edge", Brightness = 1.2, Range = 6, ColorShift = true },
 	-- the ranged swaps (Basic.Ranged.Swap, player note 1: a shot is no swing): the Rare crescent becomes a muzzle shock
@@ -244,7 +249,8 @@ AttackFxCatalog.Textures = {
 -- every attack that hits an enemy shows it at EVERY rarity (counts x DetailScale: reduced at band 1, growing by band).
 -- Alive = the spec "Alive" detail (every rarity too). Melee / Ranged = the core + slot overrides + their own Layers
 -- (attack-specific detail, also every rarity) + Drop = { [layerId] = true } (shared Basic layers this element's attack
--- leaves out). BurstScale = { Size, Count } x the Burst (Task 9: tuned per element in Studio).
+-- leaves out). BurstScale = { Size, Count } x the Burst, BurstLight = the Burst's LightEmission (Task 9: tuned per element
+-- in Studio: an additive burst of a pale glow sheet summed to a white ball on the pale arena).
 ----------------------------------------------------------------------
 AttackFxCatalog.Elements = {
 	Water = {
@@ -326,7 +332,6 @@ AttackFxCatalog.Elements = {
 		Material = "Neon",
 		Burst = "fx_petals", BurstMotion = "Burst", Trail = "fx_petals", Ground = nil, Motif = "fx_petals", Arc = "fx_speedlines",
 		LowKeep = { "Thorns", "PodGlow" },
-		GroundPlasma = "Mid", -- (Task 9: at Secret the roots stay pink; in the pale Core they read as cream blobs over the target)
 		BurstScale = { Size = 0.8, Count = 1 }, -- (Task 9: the Secret petal burst hid the target)
 		Melee = {
 			Key = "vfx_root", Path = "Ground", Count = 3, Scale = 0.75, Text = "thorny roots erupt under the target", -- (Task 9: at Secret the roots buried the target)
@@ -360,7 +365,7 @@ AttackFxCatalog.Elements = {
 		-- breaks: smaller chunks flung out and falling, Shatter)
 		Burst = "fx_rock", BurstMotion = "Shatter", Trail = "fx_dust", Ground = nil, Motif = "fx_sparkle", Arc = "fx_speedlines",
 		LowKeep = { "Dust" },
-		PlasmaColor = "Core", -- (Task 9: a white Secret boulder read as a snow cube; it glows gold)
+		PlasmaColor = "Core", -- (Task 9: the Secret rock's plasma heart glows gold, not white: a white boulder read as a snow cube)
 		BurstScale = { Size = 0.55, Count = 0.5 }, -- (fewer, smaller chunks: at full count they still read as one boulder)
 		Melee = { Key = "vfx_spike", Path = "Ground", Count = 3, Text = "ground slam, rock spikes" },
 		Ranged = { Key = "vfx_chunk", Path = "Projectile", Scale = 2.2, Text = "boulder, dust trail" },
@@ -940,20 +945,14 @@ function AttackFxCatalog.Resolve(req)
 		core[slotName] = nil -- slot overrides that rode on the element's Melee / Ranged entry
 	end
 	local look = AttackFxCatalog.CoreLook[band]
-	core.Color = palette[(look.Color == "White" and element.PlasmaColor) or look.Color] or palette.Mid -- (Earth's band 4: a golden boulder, not a white one)
-	core.InnerColor = look.Inner and palette[look.Inner] or nil
+	core.Color = palette[look.Color] or palette.Mid
+	core.InnerColor = look.Inner and palette[(look.Inner == "White" and element.PlasmaColor) or look.Inner] or nil -- (Earth's band 4: a gold-hot heart)
 	core.RimColor = look.Rim and palette[look.Rim] or nil
 	core.RimShift = look.RimShift == true
 	core.Glow = look.Glow
 	core.Upgraded = look.Upgraded == true
 	if not (core.KeepMaterial and core.Material) then -- the Shield shell / Freeze cage stay Glass at every band
 		core.Material = look.Material or core.Material or element.Material or "Neon"
-	end
-	if look.Shell and not core.KeepMaterial then
-		core.Transparency = max(finite(core.Transparency) and core.Transparency or 0, look.Shell)
-	end
-	if look.GroundColor and (core.Path == "Ground" or core.Path == "Area") and core.Key ~= "vfx_ring" then
-		core.Color = palette[element.GroundPlasma or look.GroundColor] or core.Color
 	end
 	if core.Path == "Projectile" and not core.Stretch then
 		core.Speed = core.Speed or (def.Shot and B.RangedSpeed) or B.ProjectileSpeed
@@ -1028,6 +1027,12 @@ function AttackFxCatalog.Resolve(req)
 						if bs then
 							layer.Size = (layer.Size or 1) * (bs.Size or 1)
 							layer.Count = max(1, floor((layer.Count or 1) * (bs.Count or 1) + 0.5))
+						end
+						if finite(element.BurstLight) then -- (Task 9: an additive burst summed to white on the pale arena)
+							layer.LightEmission = element.BurstLight
+						end
+						if element.BurstAt and layer.At == "Target" then -- (Task 9: Water's geyser erupts from the ground)
+							layer.At = element.BurstAt
 						end
 					end
 					layers[#layers + 1] = layer
