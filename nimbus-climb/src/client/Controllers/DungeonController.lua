@@ -25,8 +25,10 @@
 --     the battle buttons ("Floor 3 - Frozen Crypt", "Room 2 / 4" pips with the boss room crowned, "Wave 1 / 3",
 --     the status: "Walk into the room", "Go to the door and press E" / "Waiting for 1 more (Ava)" (dungeon-fixes
 --     decision 2: no room changes by timer; the door's EnterPrompt E goes through ProximityPromptService on the
---     server, this controller sends nothing for it), "Open your chest!", member chips with Downed / Left, the
---     loot so far, LEAVE (two presses -> DungeonRequest("Quit")) and CHEST in the treasure alcove); on phones a one-line
+--     server, this controller sends nothing for it), "Pick ONE chest!" (bug batch 2 #14: no CHEST button; each
+--     member walks to ONE chest of the alcove and presses its E prompt, the server rolls that chest's own drop; once
+--     I picked or Run.ChestOwed does not list me, the pocket's other ChestPrompts are switched off locally),
+--     member chips with Downed / Left, the loot so far, LEAVE (two presses -> DungeonRequest("Quit"))); on phones a one-line
 --     chip in Roblox's top band. The party countdown uses the same card while the window is closed. Loot and chest
 --     toasts flash inside it ("Room 2 cleared! +$340 +24 tokens +70 XP"). The End card (totals, first clear, unlock,
 --     new best) sits at the right (desktop / landscape) or under the top bar (portrait), never in the centre.
@@ -1305,7 +1307,7 @@ function R.build()
 	local buttons = H.frame(body, "Buttons", { Size = UDim2.new(1, 0, 0, 48), LayoutOrder = 8 })
 	U.CardButtons = buttons
 	H.list(buttons, Enum.FillDirection.Horizontal, 8, Enum.HorizontalAlignment.Right)
-	U.CardChest = W.button(buttons, "ChestButton", G.Chest .. " CHEST", C.Gold, UDim2.new(0.5, -4, 1, 0), 1, R.chest)
+	-- (bug batch 2 #14: no CHEST button; a chest is picked only with its own E prompt in the alcove)
 	U.CardReady = W.button(buttons, "ReadyButton", "READY", C.Green, UDim2.new(0.5, -4, 1, 0), 2, R.ready)
 	U.CardLeave = W.button(buttons, "LeaveButton", "LEAVE", C.Red, UDim2.new(0.5, -4, 1, 0), 3, R.leave, "Outline")
 	-- the phone chip (one line in Roblox's top band)
@@ -1315,14 +1317,10 @@ function R.build()
 	U.ChipScale = Util.Create("UIScale", { Name = "ReadScale", Scale = 0.8, Parent = chip.Root })
 	U.ChipText = H.text(chip.Body, "Text", "", "Heading", 19, WHITE, { Position = UDim2.fromOffset(12, 0), Size = UDim2.new(1, -112, 1, 0), TextTruncate = Enum.TextTruncate.AtEnd })
 	U.ChipButton = W.button(chip.Body, "LeaveButton", "LEAVE", C.Red, UDim2.fromOffset(92, K.CHIP_H - 10), 1, function()
-		if S.Run and S.Run.State == "Treasure" and not S.ChestOpened and os.clock() > S.LeaveArmed then
-			R.chest()
-		elseif S.Run then
+		if S.Run then
 			R.leave()
 		elseif S.Lobby and S.Lobby.Mine and LocalPlayer and S.Lobby.Mine.Leader ~= LocalPlayer.UserId and not W.myReady(S.Lobby.Mine) then
 			R.ready()
-		else
-			R.chest()
 		end
 	end, "Outline")
 	U.ChipButton.AnchorPoint = Vector2.new(1, 0.5)
@@ -1361,10 +1359,39 @@ function R.ready()
 	end
 end
 
-function R.chest()
-	if S.Run and S.Run.State == "Treasure" then
-		if H.request("Chest") then
-			R.toast("Opening your chest...", C.Gold, 2)
+-- bug batch 2 #14: true while the server still owes me a chest in the alcove (Run.ChestOwed lists the members who have
+-- not picked one; an older payload without it: until my Chest arrives)
+function R.chestOwed()
+	local run = S.Run
+	if not run or run.State ~= "Treasure" or S.ChestOpened then
+		return false
+	end
+	if type(run.ChestOwed) ~= "table" then
+		return true
+	end
+	local me = LocalPlayer and LocalPlayer.UserId
+	for _, uid in ipairs(run.ChestOwed) do
+		if uid == me then
+			return true
+		end
+	end
+	return false
+end
+
+-- bug batch 2 #14: once I picked (or the alcove owes me nothing) the other chests' "Pick ONE chest / Open" prompts
+-- would only refuse: switch them off locally (the server still checks every pick; it switches taken ones off for all)
+function R.lockChests()
+	local run = S.Run
+	if not run or run.State ~= "Treasure" or R.chestOwed() then
+		return
+	end
+	local pocket = (S.Pocket and S.Pocket.Parent) and S.Pocket or R.findPocket()
+	if not pocket then
+		return
+	end
+	for _, d in ipairs(pocket:GetDescendants()) do
+		if d:IsA("ProximityPrompt") and d.Name == "ChestPrompt" and d.Enabled then
+			d.Enabled = false
 		end
 	end
 end
@@ -1470,7 +1497,7 @@ function R.statusText()
 	elseif run.State == "Fight" then
 		return (tonumber(run.Room) == 4) and "Boss fight! Beat the boss and its escort" or "Fight! Beat every wave"
 	elseif run.State == "Treasure" then
-		return "Open your chest! Exit in " .. H.clock(left or 0)
+		return (R.chestOwed() and "Pick ONE chest! Exit in " or "Back to the plaza in ") .. H.clock(left or 0)
 	elseif run.State == "Ending" then
 		return "Back to the plaza..."
 	end
@@ -1479,7 +1506,7 @@ end
 
 -- the run card is exactly as tall as its visible rows (fixed rows, no AutomaticSize)
 function R.cardHeight()
-	U.CardButtons.Visible = U.CardChest.Visible or U.CardReady.Visible or U.CardLeave.Visible
+	U.CardButtons.Visible = U.CardReady.Visible or U.CardLeave.Visible
 	U.ChipText.Size = UDim2.new(1, U.ChipButton.Visible and -112 or -20, 1, 0)
 	local h = 10 + 12
 	local n = 0
@@ -1504,7 +1531,7 @@ function R.chipText(room, count)
 	elseif run.State == "Corridor" then
 		return R.doorText(true) or "Walk in!"
 	elseif run.State == "Treasure" then
-		return "Chest! " .. H.clock(left or 0)
+		return (R.chestOwed() and "Pick ONE chest! " or "Exit in ") .. H.clock(left or 0)
 	end
 	return "Back soon..."
 end
@@ -1653,7 +1680,6 @@ function R.refresh()
 		U.CardMembers.Visible = false
 		U.CardLoot.Visible = false
 		U.CardToast.Visible = false
-		U.CardChest.Visible = false
 		U.CardReady.Visible = needReady
 		U.CardLeave.Visible = false
 		U.ChipText.Text = cd
@@ -1707,7 +1733,6 @@ function R.refresh()
 	local t = S.Totals
 	U.CardLoot.Visible = (t.Cash + t.Tokens + t.Xp + (t.Gems or 0)) > 0
 	U.CardLoot.Text = R.lootText()
-	U.CardChest.Visible = run.State == "Treasure" and not S.ChestOpened
 	U.CardReady.Visible = false
 	U.CardLeave.Visible = run.State ~= "Ending"
 	local armed = now <= S.LeaveArmed
@@ -1716,16 +1741,9 @@ function R.refresh()
 	U.ChipText.Text = toast and (toast.Short or toast.Text) or R.chipText(room, count)
 	U.ChipButton.Visible = run.State ~= "Ending"
 	R.cardHeight()
-	if run.State == "Treasure" and not S.ChestOpened then
-		U.ChipButton.Text = "CHEST"
-	else
-		U.ChipButton.Text = armed and "SURE?" or "LEAVE"
-	end
-	if run.State == "Treasure" and not S.ChestOpened and not armed then
-		U.ChipButton:SetAttribute("Color", "Gold")
-	else
-		U.ChipButton:SetAttribute("Color", "Red")
-	end
+	-- (bug batch 2 #14: the chip's button is LEAVE in the alcove too; chests open only at the chest)
+	U.ChipButton.Text = armed and "SURE?" or "LEAVE"
+	U.ChipButton:SetAttribute("Color", "Red")
 end
 
 function R.fillEnd()
@@ -2104,6 +2122,7 @@ function R.onState(kind, payload)
 		R.light(true)
 		R.zoom(true)
 		H.safe("doors", R.watchDoors)
+		H.safe("chests", R.lockChests)
 		R.refresh()
 	elseif kind == "Loot" then
 		S.Loot = payload
@@ -2134,6 +2153,7 @@ function R.onState(kind, payload)
 			S.Totals.Cash = S.Totals.Cash + amount
 		end
 		S.ChestOpened = true
+		H.safe("chests", R.lockChests)
 		local label = (kindName == "Cash") and ("$" .. H.commas(amount)) or (H.commas(amount) .. " " .. (kindName == "Gems" and "Gems" or "tokens"))
 		R.toast(G.Chest .. " Chest: +" .. label .. "!", (kindName == "Gems") and C.Gem or C.Gold, nil, G.Chest .. " +" .. label)
 	elseif kind == "Fade" then

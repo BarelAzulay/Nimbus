@@ -432,6 +432,22 @@ function Kit.dreq(p, action, a, b)
 	Mock.FromClient(Kit.remote("DungeonRequest"), p, action, a, b)
 	advance(0.05)
 end
+-- bug batch 2 #14: `p` walks to chest `slot` of the treasure alcove and presses its E prompt (the engine's path)
+function Kit.pickChest(p, run, slot)
+	local ri = run and run.Pocket and run.Pocket.Rooms[5] or nil
+	local part = ri and ri.Chests and ri.Chests[slot] or nil
+	local prompt = part and part:FindFirstChild("ChestPrompt")
+	if not prompt then
+		return false
+	end
+	Mock.Teleport(p, CFrame.new(part.CFrame:PointToWorldSpace(Vector3.new(0, 2, 3))))
+	advance(0.6)
+	if prompt.Enabled then
+		Mock.Trigger(prompt, p)
+	end
+	advance(0.05)
+	return true
+end
 function Kit.runOf(p)
 	local dgs = Kit.DGS()
 	return dgs and dgs.St.runOf[p] or nil
@@ -1467,9 +1483,8 @@ local function newBattle(X, nia)
 	if T.check(run ~= nil and nia:GetAttribute("InBattle") == run.Id, "p5 flow new: DungeonRequest Solo 1 at the portal starts her run (InBattle = the run id)") then
 		local rooms = Kit.clearRooms(run, { nia }, { remote = true, kit = true })
 		T.check(rooms == 4 and run.State == "Treasure", "p5 flow new: her team of 3 clears all four rooms of floor 1 (" .. rooms .. ")", tostring(run.State))
-		Kit.dreq(nia, "Chest")
-		advance(0.4)
-		Kit.dreq(nia, "Chest")
+		Kit.pickChest(nia, run, 2)
+		Kit.pickChest(nia, run, 3)
 		advance(BC.Dungeon.TreasureSeconds + 6)
 		local loots = Kit.dstates(nia, dm, "Loot")
 		local chests = Kit.dstates(nia, dm, "Chest")
@@ -1477,7 +1492,7 @@ local function newBattle(X, nia)
 		local fc = BC.DungeonFirstClear(1)
 		local chestTok = (chests[1] and chests[1].Kind == "Tokens") and chests[1].Amount or 0
 		local chestCash = (chests[1] and chests[1].Kind == "Cash") and chests[1].Amount or 0
-		T.check(#loots == 4 and #chests == 1, "p5 flow new: one Loot card per room and ONE chest (a second Chest request pays nothing)", #loots .. " loots, " .. #chests .. " chests")
+		T.check(#loots == 4 and #chests == 1, "p5 flow new: one Loot card per room and ONE chest (E at a second chest pays nothing)", #loots .. " loots, " .. #chests .. " chests")
 		T.eq(tokens(nia) - tok0, sumLoot(loots, "Tokens") + fc.Tokens + chestTok, "p5 flow new: Tokens = the rooms' loot + the first clear (" .. fc.Tokens .. ") + the chest, each paid once")
 		T.eq(gems(nia) - gem0, fc.Gems, "p5 flow new: ...the first clear's Gems (" .. fc.Gems .. ") once")
 		T.eq(cash(nia) - cash0, sumLoot(loots, "Cash") + chestCash, "p5 flow new: ...Cash = the rooms' loot + the chest")
@@ -1947,11 +1962,12 @@ local function partyRun(leader, members, floorIndex)
 	return Kit.runOf(leader)
 end
 
+-- (bug batch 2 #14) every member picks ONE chest (member i the chest i), then tries the next one too
 local function finishTreasure(run, members, D)
-	for _, m in ipairs(members) do
+	for i, m in ipairs(members) do
 		if Kit.runOf(m) == run then
-			Kit.dreq(m, "Chest")
-			Kit.dreq(m, "Chest")
+			Kit.pickChest(m, run, i)
+			Kit.pickChest(m, run, i % 4 + 1)
 		end
 	end
 	advance(D.TreasureSeconds + 6)

@@ -12,7 +12,7 @@
 --                               BattleService.SetRunProvider({ KeysInRun, GetRun }) (C16)
 --   API: CreateParty(player, floor), JoinParty(player, leaderUserId), LeaveParty(player), SetReady(player, bool),
 --        SetFloor(player, floor), KickMember(leader, userId), StartRun(party) -> ok, runId | reason,
---        StartSolo(player, floor), Quit(player), OpenChest(player), GetRun(player) -> { RunId, Floor, Room, State, Wave }
+--        StartSolo(player, floor), Quit(player), OpenChest(player, slot), GetRun(player) -> { RunId, Floor, Room, State, Wave }
 --        | nil, KeysInRun(player) -> {[key] = true}, ListParties(), Shutdown()
 --   Signals: RunEnded(runId, result = { Floor, Cleared, Members, Winners, Loot, Reason }) after the payments;
 --            FloorCleared(player, floor)
@@ -20,6 +20,11 @@
 --            Chest / Kick), DungeonState(kind, payload) s->c (Lobby <= 1/s, Run, Loot, Chest, End, Fade { Out, Hold,
 --            In, Room }), the gate's attribute DungeonBoard, the room models' DoorOpen / EntranceOpen attributes; the
 --            doors' EnterPrompt (DungeonAction "Enter") arrives through ProximityPromptService.PromptTriggered
+-- The treasure (bug batch 2, #14): every member owed a chest picks ONE of the alcove's chests with its E prompt (no GUI
+-- button). The prompt's ChestSlot goes to Dg.openChest(run, m, slot): a real slot, free, the member within CHEST_RANGE,
+-- the member's own chest still closed. The drop is rolled from run.Seed + slot * 7919 (every chest its own roll), the
+-- chest part is marked Opened / OpenedBy, its prompt disabled for everyone, a glow lit. A "Chest" request without a
+-- slot opens nothing. The 45 s exit (and a member leaving in the alcove) gives the first free slot.
 --
 -- Run.State: "Hall" -> "Corridor" (Phase "Threshold": at the room's entrance until a member crosses the Threshold part;
 -- Phase "Walk": the room is cleared, its exit bars open after Intermission) -> "Fight" -> ... -> "Treasure"
@@ -91,7 +96,11 @@ local K = {
 	CONFIRM_RANGE = 14, -- studs from the EnterPrompt's part (the prompt itself shows within 10)
 	WAIT_ALLOWANCE = 180, -- watchdog seconds per door wait (hall + 3 corridors + the boss exit = 5 waits, pooled)
 	DOOR_WAITS = 5,
+	CHEST_RANGE = 9, -- studs from the chest (its prompt shows within 7)
 }
+-- bug batch 2 #14: one pickable chest slot per possible member; Init asserts DungeonBuilder.CHEST_COUNT (the chests
+-- Treasure_1 builds) >= this, so a full party never runs out of chests (the builder comes in through deps, no require)
+K.CHEST_SLOTS = K.MAX_PARTY
 
 -- the room change's fade (dungeon-fixes decision 2): the server enters the next room after Out
 local FADE = { Out = 0.45, Hold = 0.35, In = 0.45 }
@@ -546,6 +555,16 @@ local function runPayload(run)
 	-- the door wait: who pressed E at the open door, how many presses are still missing (every member still in)
 	local door, target = Dg.nextDoor(run)
 	local confirmed, need = {}, 0
+	-- the treasure: who still has a chest to pick (the card says "Pick ONE chest!" to them only)
+	local owed = nil
+	if run.State == "Treasure" then
+		owed = {}
+		for _, m in ipairs(liveMembers(run)) do
+			if run.Chests[m.Player.UserId] == "Closed" then
+				owed[#owed + 1] = m.Player.UserId
+			end
+		end
+	end
 	if door then
 		local mine = run.ConfirmFor == target and run.Confirm or {}
 		for _, m in ipairs(liveMembers(run)) do
@@ -574,6 +593,7 @@ local function runPayload(run)
 		Phase = run.Phase,
 		Members = members,
 		Joinable = run.Joinable == true,
+		ChestOwed = owed,
 	}
 end
 
@@ -764,6 +784,7 @@ function Dg.begin(party, readyOnly)
 		StateAt = now(),
 		Joinable = true,
 		Chests = {},
+		ChestTaken = {}, -- slot -> userId: the alcove's chest that member picked (one chest, one member)
 		Cleared = false,
 		Party = party,
 		PocketIndex = index,
@@ -1492,7 +1513,7 @@ function Dg.removeMember(run, player, why)
 		pcall(BS.RemoveEncounterTeam, run.Battle, m.Player)
 	end
 	if run.State == "Treasure" and run.Chests[uid] == "Closed" then
-		pcall(Dg.openChest, run, m)
+		pcall(Dg.openChest, run, m, nil, true)
 	end
 	pcall(function()
 		try(St.deps.DataService, "MutateDungeon", m.Player, function(rec)
@@ -1555,19 +1576,105 @@ function Dg.removeMember(run, player, why)
 	return true
 end
 
--- a member's boss chest: rolled from the run seed + userId, paid once (the mark is written first)
-function Dg.openChest(run, m)
+-- the alcove's chest parts by slot ({} when the treasure room is not built)
+local function chestParts(run)
+	local info = roomInfo(run, 5)
+	return info and type(info.Chests) == "table" and info.Chests or {}
+end
+
+-- the first chest nobody took (a built one first); past CHEST_SLOTS only if every chest is gone (never with
+-- MAX_PARTY <= CHEST_SLOTS, but a member is never left without their drop)
+function Dg.freeChest(run)
+	local parts = chestParts(run)
+	for slot = 1, K.CHEST_SLOTS do
+		if not run.ChestTaken[slot] and parts[slot] and parts[slot].Parent then
+			return slot
+		end
+	end
+	local slot = 1
+	while run.ChestTaken[slot] do
+		slot = slot + 1
+	end
+	return slot
+end
+
+-- the picked chest: Opened / OpenedBy on the part, its prompt off for everyone, a warm glow and a burst of sparks (the
+-- Blender chest is one closed mesh: an open-lid mesh is wanted, wave 3 art)
+function Dg.markChest(run, slot, m)
+	local part = chestParts(run)[slot]
+	if not part or not part.Parent then
+		return false
+	end
+	pcall(function()
+		part:SetAttribute("Opened", true)
+		part:SetAttribute("OpenedBy", m.Player.UserId)
+		part:SetAttribute("OpenedByName", shortName(m.Player))
+		local prompt = part:FindFirstChild("ChestPrompt")
+		if prompt then
+			prompt.Enabled = false
+		end
+		if not part:FindFirstChild("OpenGlow") then
+			local glow = Instance.new("PointLight")
+			glow.Name = "OpenGlow"
+			glow.Color = Color3.fromRGB(255, 196, 80)
+			glow.Brightness = 2
+			glow.Range = 9
+			glow.Shadows = false
+			glow.Parent = part
+			local burst = Instance.new("ParticleEmitter")
+			burst.Name = "OpenBurst"
+			burst.Color = ColorSequence.new(Color3.fromRGB(255, 214, 90))
+			burst.LightEmission = 0.8
+			burst.Rate = 0
+			burst.Lifetime = NumberRange.new(0.6, 1.1)
+			burst.Speed = NumberRange.new(6, 10)
+			burst.SpreadAngle = Vector2.new(35, 35)
+			burst.Size = NumberSequence.new(0.35, 0)
+			burst.EmissionDirection = Enum.NormalId.Top
+			burst.Parent = part
+			burst:Emit(24)
+		end
+	end)
+	return true
+end
+
+-- a member's boss chest (bug batch 2, #14): the member picks ONE of the alcove's chests; each chest is its own roll
+-- (run seed + slot), paid once (the marks are written first). auto = the 45 s exit / a member leaving: the first free
+-- chest, no range check.
+function Dg.openChest(run, m, slot, auto)
 	local uid = m.Player.UserId
 	if run.Chests[uid] ~= "Closed" then
 		return false, "No chest"
 	end
+	run.ChestTaken = run.ChestTaken or {}
+	if auto then
+		slot = Dg.freeChest(run)
+	else
+		if not finite(slot) or slot ~= floor(slot) or slot < 1 or slot > K.CHEST_SLOTS then
+			return false, "Pick a chest: walk to one and press E"
+		end
+		local part = chestParts(run)[slot]
+		if not part or not part.Parent then
+			return false, "That chest is not here"
+		end
+		if run.ChestTaken[slot] then
+			return false, "That chest is taken, pick another one"
+		end
+		local root = rootOf(m.Player)
+		if not root or (root.Position - part.Position).Magnitude > K.CHEST_RANGE then
+			return false, "Walk to the chest first"
+		end
+	end
 	run.Chests[uid] = "Opened"
+	run.ChestTaken[slot] = uid
+	m.ChestSlot = slot
+	Dg.markChest(run, slot, m)
 	local BC = catalog()
 	local DS, TS = St.deps.DataService, St.deps.TycoonService
 	if not BC then
 		return false
 	end
-	local okC, chest = pcall(BC.DungeonChest, run.Floor, run.Seed + uid)
+	local okC, chest = pcall(BC.DungeonChest, run.Floor, run.Seed + slot * 7919)
 	if not okC or type(chest) ~= "table" then
 		return false
 	end
@@ -1591,12 +1698,11 @@ function Dg.openChest(run, m)
 		end
 		loot.Gems = loot.Gems + amount
 	end
-	m.Chest = { Kind = chest.Kind, Amount = amount }
-	sendState(m.Player, "Chest", { Kind = chest.Kind, Amount = amount })
-	local info = roomInfo(run, 5)
-	local part = info and info.Chests and info.Chests[((m.Slot or 1) - 1) % 4 + 1]
-	if part then
-		part:SetAttribute("Opened", true)
+	m.Chest = { Kind = chest.Kind, Amount = amount, Slot = slot }
+	sendState(m.Player, "Chest", { Kind = chest.Kind, Amount = amount, Slot = slot })
+	if not auto and run.State == "Treasure" then
+		-- the others' cards: who still has a chest to pick
+		sendRun(run)
 	end
 	return true, m.Chest
 end
@@ -1679,7 +1785,7 @@ function Dg.endRun(run, cleared, reason, immediate)
 	if run.State == "Treasure" and reason ~= "Shutdown" then
 		for _, m in ipairs(liveMembers(run)) do
 			if run.Chests[m.Player.UserId] == "Closed" then
-				pcall(Dg.openChest, run, m)
+				pcall(Dg.openChest, run, m, nil, true)
 			end
 		end
 	end
@@ -2069,7 +2175,8 @@ function DungeonService.Quit(player)
 	return true
 end
 
-function DungeonService.OpenChest(player)
+-- slot: the chest the member stands at (its prompt's ChestSlot); no slot opens nothing (bug batch 2, #14)
+function DungeonService.OpenChest(player, slot)
 	local run = St.runOf[player]
 	if not run then
 		return false, "You are not in a run"
@@ -2081,10 +2188,13 @@ function DungeonService.OpenChest(player)
 	if not m or m.Left then
 		return false, "No chest"
 	end
-	if run.Chests[player.UserId] ~= "Closed" then
-		return false, "Your chest is open"
+	if run.Chests[player.UserId] == nil then
+		return false, "No chest for you this run"
 	end
-	return Dg.openChest(run, m)
+	if run.Chests[player.UserId] ~= "Closed" then
+		return false, "You already picked your chest"
+	end
+	return Dg.openChest(run, m, slot)
 end
 
 function DungeonService.GetRun(player)
@@ -2274,7 +2384,8 @@ function DungeonService.Request(player, action, a, b)
 		end
 		return true
 	elseif action == "Chest" then
-		local ok, why = DungeonService.OpenChest(player)
+		-- a = the chest's slot (the prompt's ChestSlot); OpenChest checks it is free and the player stands at it
+		local ok, why = DungeonService.OpenChest(player, a)
 		if not ok then
 			return refuse(player, why)
 		end
@@ -2389,7 +2500,7 @@ local function tickRun(run, t)
 		if t - run.StateAt >= num(d.TreasureSeconds, 45) then
 			for _, m in ipairs(liveMembers(run)) do
 				if run.Chests[m.Player.UserId] == "Closed" then
-					pcall(Dg.openChest, run, m)
+					pcall(Dg.openChest, run, m, nil, true)
 				end
 			end
 			Dg.endRun(run, true, "Cleared")
@@ -2516,7 +2627,8 @@ local function onPromptTriggered(prompt, player)
 		end
 		Dg.confirm(run, player, prompt)
 	elseif action == "Chest" then
-		DungeonService.Request(player, "Chest")
+		-- the chest's E (#14): its own slot, through the same bucket / cooldown as the remote
+		DungeonService.Request(player, "Chest", prompt:GetAttribute("ChestSlot"))
 	else
 		DungeonService.Request(player, "Quit")
 	end
@@ -2528,6 +2640,11 @@ function DungeonService.Init(deps)
 	end
 	St.initialized = true
 	St.deps = type(deps) == "table" and deps or {}
+	local builtChests = type(St.deps.DungeonBuilder) == "table" and St.deps.DungeonBuilder.CHEST_COUNT or nil
+	if builtChests ~= nil then
+		assert(type(builtChests) == "number" and builtChests >= K.CHEST_SLOTS, "[DungeonService] DungeonBuilder.CHEST_COUNT ("
+			.. tostring(builtChests) .. ") must be >= CHEST_SLOTS = MAX_PARTY (" .. K.CHEST_SLOTS .. "): one chest per member")
+	end
 	if not St.deps.DungeonInfo and hasFn(St.deps.DungeonBuilder, "GetInfo") then
 		St.deps.DungeonInfo = St.deps.DungeonBuilder.GetInfo()
 	end

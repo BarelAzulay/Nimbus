@@ -1462,7 +1462,7 @@ S.p3flow_arrive = scenario("p3flow_arrive", function()
 		local run = FK.runOf(cy)
 		if T.check(run ~= nil, "flow tutorial: Cy starts Dungeon floor 1 solo at its portal") then
 			local rooms = FK.clearRooms(run, { cy }, { remote = true })
-			FK.dreq(cy, "Chest")
+			FK.pickChest(cy, run, 1)
 			advance(BC().Dungeon.TreasureSeconds + 6)
 			T.check(rooms == 4 and data.GetDungeon(cy).Best == 1 and tokens(cy) > tc0, "flow tutorial: ...his team of three clears it (Best 1, the loot paid)", tostring(rooms) .. " rooms")
 		end
