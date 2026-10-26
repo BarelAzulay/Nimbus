@@ -418,18 +418,24 @@ AttackFxCatalog.Elements = {
 		Ranged = {
 			Key = "vfx_shard", Path = "Projectile", Speed = 120, Scale = 0.8, Text = "jagged lightning bolt",
 			Layers = {
-				{ Id = "Bolt", Kind = "Beam", Texture = "fx_lightning", Beat = "Travel", At = "Path", Width = 2.6, Count = 2 },
+				-- (round 3, c2: 2.6 wide the strip's bolt wandered over a 3.6-stud band at Secret: a scribble on the floor, not
+				-- one bolt; narrow, the jag stays one bolt at the shot's height)
+				{ Id = "Bolt", Kind = "Beam", Texture = "fx_lightning", Beat = "Travel", At = "Path", Width = 1.3, Count = 2 },
 				-- the bolt crackles round the target as it strikes (beams, no emitter)
 				{ Id = "Crackle", Kind = "Beam", Texture = "fx_lightning", Beat = "Impact", At = "$Hit", Count = 2 },
 			},
 		},
 		Impact = "electric burst + zig-zag sparks",
 		Detail = {
-			{ Id = "ZigZag", Kind = "Emitter", Texture = "fx_sparks", Beat = "Impact", At = "$Hit", Tint = "Core", Count = 10, Size = 1.2 },
+			-- (Task 9 round 3, c2: in the pale Core tint, additive, the sparks summed to a white ball round the target at Secret;
+			-- the storm's blue, half-lit)
+			{ Id = "ZigZag", Kind = "Emitter", Texture = "fx_sparks", Beat = "Impact", At = "$Hit", Tint = "Mid", Count = 10, Size = 1.2, LightEmission = 0.5 },
 		},
 		Alive = { Kind = "Beam", Texture = "fx_lightning", Motion = "Strike", Color = rgb(120, 136, 255), Count = 2, Seconds = 0.6, Text = "stray bolts strike the ground nearby" },
 		Rain = { Key = "vfx_shard", Texture = "fx_lightning", Kind = "Beam", Scale = 0.6, Text = "lightning strikes" },
-		Area = { Layers = { { Id = "Bolt", Kind = "Beam", Texture = "fx_lightning", Beat = "Travel", At = "Path", Width = 1.6 } } },
+		-- (round 3, c2 + Gemini: the Secret line / cone / ring read as solid plastic slabs that buried the lightning: see-
+		-- through, so the bolt and the blue sparks define the strike; the bolt narrow like the shot's, one jag not a scribble)
+		Area = { Transparency = 0.5, Layers = { { Id = "Bolt", Kind = "Beam", Texture = "fx_lightning", Beat = "Travel", At = "Path", Width = 1.2 } } },
 	},
 	Celestial = {
 		Palette = { Core = rgb(255, 250, 224), Mid = rgb(255, 212, 104), Edge = rgb(236, 164, 64), Hot = rgb(255, 255, 255), Smoke = rgb(255, 236, 190) },

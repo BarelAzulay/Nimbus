@@ -964,6 +964,16 @@ S.p7vfx_catalog = guarded("p7vfx_catalog", function()
 	end
 	T.check(#muzzleBad == 0, "p7vfx catalog: a ranged Muzzle puff of the Burst sheet is lit like the element's Burst (BurstLight)",
 		table.concat(muzzleBad, ","))
+	-- Task 9 round 3 (Studio + Gemini, Storm c2: the 2.6-wide bolt strip was a scribble band on the floor, the sparks a
+	-- white ball, the Secret area cores solid slabs over the lightning)
+	local spal = C.Elements.Storm.Palette
+	local ss = C.Resolve({ Element = "Storm", Attack = "Ranged", Rarity = "Secret", Mine = true })
+	local sbolt, szig = ss and layerById(ss, "Bolt"), ss and layerById(ss, "ZigZag")
+	local sline = C.Resolve({ Element = "Storm", Attack = "Element", Shape = "Line", Rarity = "Secret", Mine = true })
+	local slb = sline and layerById(sline, "Bolt")
+	T.check(sbolt and sbolt.Width <= 1.5 and szig and szig.Color == spal.Mid and (szig.LightEmission or 1) <= 0.6
+		and sline and (sline.Core.Transparency or 0) >= 0.4 and slb and slb.Width <= 1.5,
+		"p7vfx catalog: Storm's bolt is a narrow strip, its sparks the storm blue half-lit, its area cores see-through")
 
 	-- Task 9: a template's Except matches the RESOLVED kind: a signature special asked with Kind nil (Ember Phoenix's
 	-- Phoenix Flare is a Blast) still leaves out Flame's Smoke (Except Blast), like the same Blast asked by name
