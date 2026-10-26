@@ -469,15 +469,21 @@ AttackFxCatalog.Elements = {
 		-- Secret: fewer, smaller, unlit so they read as a dark void, not a light)
 		BurstScale = { Size = 0.42, Count = 0.45 },
 		BurstLight = 0,
+		-- (round 3, Gemini on c0: a white-hot heart is a light, the opposite of a void: the Secret heart burns the glitch
+		-- pink inside the purple shell)
+		PlasmaColor = "Hot",
 		Melee = { Key = "vfx_crescent", Path = "Swipe", Text = "dark claw, purple wisps" },
 		Ranged = { Key = "vfx_orb", Path = "Projectile", Text = "shadow orb pulling wisps" },
 		Impact = "void implosion, then black glass shatters with glitchy purple sparks",
 		Detail = {
-			{ Id = "Glass", Kind = "Emitter", Texture = "fx_darkglass", Beat = "Impact", At = "$Hit", Delay = 0.12, Count = 8, Size = 1.2 },
+			-- (round 3, Gemini: bigger dark shards that block the pale floor read as glass breaking, not dust)
+			{ Id = "Glass", Kind = "Emitter", Texture = "fx_darkglass", Beat = "Impact", At = "$Hit", Delay = 0.12, Count = 8, Size = 1.55 },
 			{ Id = "GlitchSparks", Kind = "Emitter", Texture = "fx_sparks", Beat = "Impact", At = "$Hit", Tint = "Hot", Delay = 0.12, Count = 8, Size = 1 },
 		},
 		Alive = { Kind = "Decal", Motion = "Darken", Tint = "Edge", Count = 2, Seconds = 0.9, Text = "the floor darkens under the wisps" },
 		Rain = { Key = "vfx_shard", Texture = "fx_wisps", Kind = "Emitter", Scale = 0.5, Text = "falling shadow shards" },
+		-- (round 3, c0 + Gemini: the line / cone / ring cores were solid glowing magenta slabs (arcane, not void): see-through)
+		Area = { Transparency = 0.4 },
 	},
 }
 

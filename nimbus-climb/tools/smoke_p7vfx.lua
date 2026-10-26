@@ -983,6 +983,15 @@ S.p7vfx_catalog = guarded("p7vfx_catalog", function()
 		and cs.Alive and cs.Alive.Color == cpal.Mid
 		and (C.Resolve({ Element = "Celestial", Attack = "Element", Shape = "Line", Rarity = "Secret", Mine = true }).Core.Transparency or 0) >= 0.4,
 		"p7vfx catalog: Celestial's Secret star burst + rays are half-lit and smaller, the lines gold, the area cores see-through")
+	-- Task 9 round 3 (Gemini on the Shadow sheet: a white heart is a light, not a void; the glass too small to read; the
+	-- area cores solid glowing slabs): a glitch-pink heart, bigger dark glass, see-through area cores
+	local hpal = C.Elements.Shadow.Palette
+	local hs = C.Resolve({ Element = "Shadow", Attack = "Ranged", Rarity = "Secret", Mine = true })
+	local hg = hs and layerById(hs, "Glass")
+	local hl = C.Resolve({ Element = "Shadow", Attack = "Element", Shape = "Line", Rarity = "Secret", Mine = true })
+	T.check(hs and hs.Core.InnerColor == hpal.Hot and hs.Core.Color == hpal.Mid and hg and hg.Size >= 1.5
+		and hl and (hl.Core.Transparency or 0) >= 0.35,
+		"p7vfx catalog: Shadow's Secret heart is glitch pink (no white light), its glass big, its area cores see-through")
 
 	-- Task 9: a template's Except matches the RESOLVED kind: a signature special asked with Kind nil (Ember Phoenix's
 	-- Phoenix Flare is a Blast) still leaves out Flame's Smoke (Except Blast), like the same Blast asked by name
