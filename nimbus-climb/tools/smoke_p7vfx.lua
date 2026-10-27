@@ -424,8 +424,8 @@ local function signatureCatalog(C, tex, cores)
 	local em, ec, tw, mg, ri, sf, ob, ks = own("ember_phoenix"), own("eclipse_dragon"), own("twilight_dragon"), own("magma_cub"), own("rime_wyrmling"), own("stormfang"), own("obsidian_phoenix"), own("phantom_kitsune")
 	T.check(em.Core.Color == em.Palette.Mid and em.Core.InnerColor == em.Palette.Core and em.Core.Upgraded == false and sigLayer(em, "Trail").Texture == "fx_flame",
 		"p7vfx catalog: Ember Phoenix: an orange phoenix with a gold one inside (no crossed twin), flame tongues behind it")
-	T.check(tw.Core.Count == C.Specials.Storm.CoreCount[tw.Band] and tw.Core.Color == tw.Palette.Mid and sigLayer(tw, "Rain").Texture == "fx_sparkle",
-		"p7vfx catalog: Twilight Dragon: dark violet stars fall (the Storm's count for its band), lilac sparkle rain")
+	T.check(tw.Core.Count == C.Specials.Storm.CoreCount[tw.Band] and tw.Core.Color == tw.Palette.Mid and sigLayer(tw, "Rain").Texture == "fx_streak" and sigLayer(tw, "Rain").Streak == true,
+		"p7vfx catalog: Twilight Dragon: dark violet stars fall (the Storm's count for its band), lilac streak rain (Studio findings round)")
 	T.check(mg.Core.Transparency == 0 and mg.Core.InnerColor == mg.Palette.Hot and sigLayer(mg, "SigLavaCrack").At == "Ground" and sigLayer(mg, "SigLavaCrack").Beat == "Travel" and mg.Sig.Actor.Motion == "RingRise" and mg.Sig.Actor.Count == 5,
 		"p7vfx catalog: Magma Cub: a solid molten boulder with a yellow-hot heart, the lava crack opens under the target before the impact, 5 magma spikes ring the target")
 	T.check(ri.Core.Transparency >= 0.55 and ri.Core.Material == "Glass" and sigLayer(ri, "SigBreath").Kind == "Beam" and sigLayer(ri, "SigSnow").Along == true,
@@ -1238,7 +1238,13 @@ S.p7vfx_catalog = guarded("p7vfx_catalog", function()
 				end
 				local sid = SLOT_IDS[kind]
 				local sl = sid and layerById(r, sid)
-				if sid and kind ~= "Storm" or (kind == "Storm" and sl and sl.Kind ~= "Beam") then
+				if kind == "Storm" and sl and sl.Kind ~= "Beam" then
+					-- (Studio findings round) the Storm rains thin streaks unless the element's rain is solid / tumbling
+					local want = (E.Rain.Streak == false) and E.Rain.Texture or "fx_streak"
+					if not (sl.Texture == want and sl.Streak == true) then
+						tenBad[#tenBad + 1] = fmt("%s Storm %s: Rain texture %s (want %s, streak %s)", element, rarity, tostring(sl.Texture), want, tostring(sl.Streak))
+					end
+				elseif sid and kind ~= "Storm" then
 					if not (sl and own[sl.Texture]) then
 						tenBad[#tenBad + 1] = fmt("%s %s %s: %s texture %s is not the element's", element, kind, rarity, tostring(sid), tostring(sl and sl.Texture))
 					end

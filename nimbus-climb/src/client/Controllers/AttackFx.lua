@@ -115,6 +115,7 @@
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Workspace = game:GetService("Workspace")
+local Players = game:GetService("Players")
 
 local Client = script.Parent and script.Parent.Parent
 
@@ -176,6 +177,12 @@ local K = {
 	SHARDS = 8, -- shards of a shattered charge (x 0.5 at Low)
 	SHARD_TEX = "fx_sparkle", -- their sheet: four-point glints flung out like glass
 	RECOIL = 0.35, -- the shattered caster rears back (PetPoses Recoil) this long
+	-- (Studio findings round, 2026-10-27)
+	SHELL_FALLBACK = 0.7, -- a Shield dome with no ally model to fit: x its old size (~30 % smaller)
+	SHELL_APART = 0.46, -- a dome's radius is at most this x the distance to the nearest other ally (never one blob)
+	STREAK_ROT = 90, -- the fx_streak sheet is horizontal (head right): turned to run along the fall (VelocityParallel)
+	SEG_GAP = 0.2, -- a segmented Stretch core's default gap (share of each segment)
+	BODY_R = 1.2, -- studs: a character's / pet's body radius the Wishing Star keeps clear of (+ its own half-width)
 }
 AttackFx.POOL_KEEP_TOTAL = K.KEEP.Emitter + K.KEEP.Beam + K.KEEP.Trail + K.KEEP.Light + K.KEEP.Disc + K.KEEP.Rim + K.CORE_KEEP * K.CORE_KEYS
 
@@ -612,6 +619,55 @@ local function groundOf(eff, p)
 	return V3(p.X, p.Y - eff.Drop + 0.05, p.Z)
 end
 
+-- (Studio findings round) the spots a big piece must not pass through: the caster, and ctx.Avoid (a Vector3 or a list)
+-- or else the local player's character (the Wishing Star rose through the avatar)
+local function avoidSpots(eff, out)
+	out[1] = eff.S
+	local n = 1
+	local a = eff.Avoid
+	if typeof(a) == "Vector3" then
+		n = n + 1
+		out[n] = a
+	elseif type(a) == "table" then
+		for _, v in ipairs(a) do
+			if typeof(v) == "Vector3" then
+				n = n + 1
+				out[n] = v
+			end
+		end
+	else
+		local lp = Players and Players.LocalPlayer
+		local ch = lp and lp.Character
+		local root = ch and ch:FindFirstChild("HumanoidRootPart")
+		if root and root:IsA("BasePart") then
+			n = n + 1
+			out[n] = root.Position
+		end
+	end
+	for i = #out, n + 1, -1 do
+		out[i] = nil
+	end
+	return n
+end
+
+-- p pushed out (flat) to at least r studs from every avoid spot, along `fwd` when it sits right on one
+local function keepClear(eff, p, r, fwd)
+	local spots = eff.AvoidPts
+	local n = avoidSpots(eff, spots)
+	for _ = 1, 2 do -- (twice: a push away from one spot may land near the other)
+		for i = 1, n do
+			local c = spots[i]
+			local d = V3(p.X - c.X, 0, p.Z - c.Z)
+			local m = d.Magnitude
+			if m < r then
+				local dir = (m > 0.05) and (d / m) or fwd
+				p = V3(c.X, p.Y, c.Z) + dir * r
+			end
+		end
+	end
+	return p
+end
+
 local function hitOf(eff)
 	local hit
 	if eff.Path == "Self" then
@@ -784,6 +840,19 @@ MOVE.Stretch = function(eff, it, t)
 	local out = seg(t, T.Linger, eff.EndRel)
 	local len = L * grow
 	local th = (it.Thick or 1) * (1 + 0.1 * sin(t * 45)) * max(0.05, 1 - smooth(out))
+	if it.Segs then
+		-- (Studio findings round: Cloud Breath) segment Seg of Segs along the grown beam, a Gap share of it left open; the
+		-- gaps drift down the beam (the breath flows) and each segment's girth flickers on its own
+		local sl = len / it.Segs
+		local start = ((it.Seg - 1 + (t * 1.6) % 1) % it.Segs) * sl
+		local pl = min(sl * (1 - it.Gap), len - start) -- (the one flowing past the target is cut at it)
+		if pl < 0.05 then
+			return nil
+		end
+		local c = p0 + d.Unit * (start + pl / 2)
+		local tk = th * (0.85 + 0.15 * sin(t * 37 + it.Seg * 2.1))
+		return face(c, d), V3(tk, tk, pl / max(0.01, it.Base.Z * it.S)), fadeTo(it, smooth(out) * 0.6)
+	end
 	local c = p0 + d.Unit * (len / 2)
 	return face(c, d), V3(th, th, len / max(0.01, it.Base.Z * it.S)), fadeTo(it, smooth(out) * 0.6)
 end
@@ -844,7 +913,42 @@ MOVE.Shell = function(eff, it, t)
 	local ripple = 1 + 0.08 * sin(pi * seg(t, T.Impact, T.Impact + 0.3))
 	local fade = smooth(seg(t, it.TF, it.T1))
 	local cf = it.Disc and face(p, eff.Dir) or (CFrame.new(p) * CFrame.Angles(0, t * 0.8, 0))
-	return cf, ONE * (a * ripple), fadeTo(it, fade)
+	return cf, ONE * (a * ripple * (it.Fit or 1)), fadeTo(it, fade)
+end
+
+-- (Studio findings round) the Shield dome round ally i fits it: radius core.Fit x the ally's half-width, at most
+-- SHELL_APART x the distance to the nearest other ally (one dome each, never one blob) and its top at most TopClear
+-- studs over the ally's head (the name tag stays clear); never smaller than the ally's own half-width (a clumped pair
+-- may just touch rather than shrink into their bodies); no ally model: SHELL_FALLBACK x the old size. -> it.S multiplier
+local function shellFit(eff, i, base, s, core)
+	local side = eff.Targets[i]
+	local m = side and side.Model
+	local want = nil
+	if m and m.Parent and finite(core.Fit) then
+		local ok, size = pcall(m.GetExtentsSize, m)
+		local okP, piv = pcall(m.GetPivot, m)
+		if ok and typeof(size) == "Vector3" and okP and typeof(piv) == "CFrame" then
+			local half = max(size.X, size.Z) / 2
+			local r = core.Fit * half
+			local top = (finite(core.TopClear) and core.TopClear or 0.3) + size.Y / 2 -- (the pivot: the pet's middle)
+			r = min(r, top)
+			local floorR = min(half, top) -- (Gemini: clumped pets never get a dome shrunk inside their body)
+			local p = piv.Position
+			for j, q in ipairs(eff.T) do
+				if j ~= i and j <= K.MAX_ALLIES then
+					local d = flat(q - p).Magnitude
+					if d > 0.5 then
+						r = min(r, K.SHELL_APART * d)
+					end
+				end
+			end
+			want = 2 * max(0.6, floorR, r)
+		end
+	end
+	if not want then
+		return K.SHELL_FALLBACK
+	end
+	return want / max(0.05, base.X * s)
 end
 
 -- a quick pop (the hurt flash, the KO poof)
@@ -888,7 +992,8 @@ MOVE.Fall = function(eff, it, t)
 	end
 	local base = (it.Tgt and eff.T[it.Tgt]) or eff.Hit
 	local land = groundOf(eff, base + eff.Right * it.OffR + eff.Dir * it.OffD) + UP * 0.3
-	local top = land + UP * (K.ABOVE * eff.Size + 2)
+	-- (Studio findings round) out of the low cloud (eff.CloudLift: its Height over the hit point) when it has one
+	local top = land + UP * (eff.CloudLift and (eff.Drop + eff.CloudLift + 0.3) or (K.ABOVE * eff.Size + 2))
 	local u = seg(t, it.TR, it.TR + it.Drop)
 	local fade = seg(t, it.TR + it.Drop, it.TR + it.Drop + 0.15)
 	if fade >= 1 then
@@ -1084,8 +1189,16 @@ MOVE.Actor = function(eff, it, t)
 		local flap = 1 + 0.08 * sin(t * 13)
 		return face(p, dir) * CFrame.Angles(0, 0, 0.25 * k), V3(open * flap, 1, 1) * outBack(seg(t, it.T0, it.T0 + 0.25)), fadeTo(it, fade)
 	elseif m == "WishRise" then
-		local top = alliesCentre(eff) + UP * (K.ABOVE * 0.8 * eff.Size)
+		-- (Studio findings round: the star rose through the player's avatar) pushed Forward toward the allies' side and
+		-- kept Clear (+ its own half-width) away from the caster and the player's character the whole way
+		local mid = alliesCentre(eff)
+		local fwd = flat(mid - eff.S)
+		fwd = (fwd.Magnitude > 0.5) and fwd.Unit or eff.Dir
+		local top = mid + fwd * ((it.Forward or 0) * eff.Size) + UP * (K.ABOVE * 0.8 * eff.Size)
 		local p = (eff.S + UP):Lerp(top, outCubic(seg(t, it.T0, max(T.Travel, it.T0 + 0.45)))) + UP * (0.25 * sin(t * 3))
+		if it.ClearK then
+			p = keepClear(eff, p, it.ClearK * eff.Size + K.BODY_R + max(it.Base.X, it.Base.Z) * it.S / 2, fwd)
+		end
 		local a = 0.6 * sin(t * 1.5)
 		return face(p, -(eff.Dir * cos(a) + eff.Right * sin(a))), ONE * outBack(seg(t, it.T0, it.T0 + 0.3)), fadeTo(it, fade)
 	elseif m == "Seal" then
@@ -1196,7 +1309,7 @@ function DRAW.Emitter(eff, it, t)
 				-- (At "Ground" is already on the floor)
 				p = ((it.At == "Ground") and p or groundOf(eff, p)) + UP * (0.04 + 0.01 * it.Index)
 			end
-			emitAt(it, p, each)
+			emitAt(it, p + UP * (it.Lift or 0), each)
 		end
 		return
 	end
@@ -1230,7 +1343,7 @@ function DRAW.Emitter(eff, it, t)
 		elseif it.Stream == "Alive" then
 			p = groundOf(eff, p) + UP * 0.2
 		end
-		emitAt(it, p, max(1, floor(k / sqrt(n) + 0.5)))
+		emitAt(it, p + UP * (it.Lift or 0), max(1, floor(k / sqrt(n) + 0.5)))
 	end
 end
 
@@ -1547,7 +1660,10 @@ local function buildCore(eff)
 	local endImpact = T.Linger + 0.06
 	if path == "Projectile" then
 		if core.Stretch then
-			addSolid(eff, key, look({ Move = MOVE.Stretch, T0 = T.Travel - 0.02, Thick = core.Thick or 1 }))
+			local segs = (finite(core.Segments) and core.Segments >= 2) and min(4, floor(core.Segments)) or nil
+			for i = 1, segs or 1 do
+				addSolid(eff, key, look({ Move = MOVE.Stretch, T0 = T.Travel - 0.02, Thick = core.Thick or 1, Seg = segs and i or nil, Segs = segs, Gap = finite(core.Gap) and clamp01(core.Gap) or K.SEG_GAP }))
+			end
 			return
 		end
 		local charged = core.Grow == true or finite(core.Rise)
@@ -1671,7 +1787,10 @@ local function buildCore(eff)
 				addSolid(eff, key, look({ Move = MOVE.Ring, Flat = true, Anchor = i, T0 = T.Travel, TG = T.Impact + 0.1, TF = T.Linger, T1 = eff.EndRel, From = 0.4, To = finite(core.Grow) and core.Grow or 1.5, Spin = 1.5 }))
 			else
 				local disc = string.find(key, "disc", 1, true) ~= nil
-				addSolid(eff, key, look({ Move = MOVE.Shell, Anchor = i, OffD = disc and 1.2 * eff.Size or 0, Disc = disc, T0 = T.Travel, TF = T.Linger + (eff.EndRel - T.Linger) * 0.5, T1 = eff.EndRel }))
+				local sh = addSolid(eff, key, look({ Move = MOVE.Shell, Anchor = i, OffD = disc and 1.2 * eff.Size or 0, Disc = disc, T0 = T.Travel, TF = T.Linger + (eff.EndRel - T.Linger) * 0.5, T1 = eff.EndRel }))
+				if sh and not disc and finite(core.Fit) then
+					sh.Fit = shellFit(eff, i, sh.Base, sh.S, core)
+				end
 			end
 		end
 	end
@@ -1811,7 +1930,10 @@ local function tuneEmitter(eff, it, layer)
 	em.LightEmission = light
 	em.LightInfluence = (light >= 0.5) and 0 or 0.6
 	local c = typeof(layer.Color) == "Color3" and layer.Color or WHITE
-	if light >= 0.8 then
+	if typeof(layer.Color2) == "Color3" then
+		-- (Studio findings round) two tones: born in Color2 (the cloud's lit rim / underside), darkening into Color
+		em.Color = ColorSequence.new({ ColorSequenceKeypoint.new(0, layer.Color2), ColorSequenceKeypoint.new(0.45, layer.Color2:Lerp(c, 0.6)), ColorSequenceKeypoint.new(1, c) })
+	elseif light >= 0.8 then
 		em.Color = ColorSequence.new(c:Lerp(WHITE, 0.45), c) -- glows start hot
 	else
 		em.Color = ColorSequence.new(c, c:Lerp(BLACK, 0.2))
@@ -1932,6 +2054,29 @@ local function tuneEmitter(eff, it, layer)
 		em.Drag = 0
 		em.Acceleration = V3(0, -10, 0)
 		life = { 0.45, 0.6 }
+		if layer.Streak and key == "fx_streak" then
+			-- (Studio findings round: the Storm rain read as soft round blobs) thin streaks along the fall: the sheet's
+			-- horizontal streak turned STREAK_ROT onto the velocity, no spin, half-lit, a narrower host under the cloud
+			host.Size = V3(3.6 * S, 0.3, 3.6 * S)
+			em.Orientation = Enum.ParticleOrientation.VelocityParallel
+			em.Rotation = NumberRange.new(K.STREAK_ROT, K.STREAK_ROT)
+			em.RotSpeed = NumberRange.new(0, 0)
+			em.FlipbookStartRandom = true
+			em.LightEmission = min(light, 0.55)
+			em.LightInfluence = 0.2
+			em.Speed = NumberRange.new(16, 20)
+			sizeSeq = { 0.8, 1, 1 }
+		end
+	elseif m == "Ride" then -- (Studio findings round: the Pounce's storm cloud) puffs shed by the leaping pet, left behind
+		host.Size = V3(1.2 * S, 0.5, 1.2 * S)
+		em.SpreadAngle = Vector2.new(60, 60)
+		em.Speed = NumberRange.new(0.5, 1.5)
+		em.Drag = 2
+		em.Acceleration = V3(0, 0.6, 0)
+		em.ZOffset = -0.2
+		life = { 0.45, 0.7 }
+		sizeSeq = { 0.5, 1, 1.25 }
+		start = 0.2
 	elseif m == "Bounce" then
 		host.Size = V3(2.4 * S, 0.2, 2.4 * S)
 		em.SpreadAngle = Vector2.new(35, 35)
@@ -1990,6 +2135,9 @@ local function addEmitterLayer(eff, layer)
 		mode, preset = "Stream", "Gather"
 	elseif beat == "Charge" and at == "Above" then
 		mode, preset, t1 = "Stream", "Cloud", T.Travel + 0.05
+	elseif layer.Ride then -- (Studio findings round) streams off the leaping pet from the take-off to the landing
+		mode, preset, at = "Stream", "Ride", "Self"
+		t0, t1 = min(t0, T.Release), T.Impact + 0.05
 	elseif layer.Spiral then
 		mode, preset, stream = "Stream", "Spiral", "Spiral"
 	elseif layer.Along then -- (Task 10: the Beam's wrap) the element streams along mouth -> hit while the beam holds
@@ -2022,9 +2170,20 @@ local function addEmitterLayer(eff, layer)
 	if preset == "Flat" then
 		count = 1
 	end
+	-- (Studio findings round) an "Above" layer with a Height sits that many studs over the hit point, not ABOVE x size:
+	-- the Storm cloud low over its zone; the rain under it (and the core's falling pieces, MOVE.Fall) start from it
+	local lift = nil
+	if at == "Above" then
+		if finite(layer.Height) then
+			eff.CloudLift = layer.Height
+		end
+		if eff.CloudLift then
+			lift = eff.CloudLift - K.ABOVE * eff.Size
+		end
+	end
 	local it = addItem(eff, {
 		Kind = "Emitter", Kit = kit, Layer = layer, At = at, T0 = t0, T1 = t1, Mode = mode, Preset = preset, Stream = stream,
-		Count = count, Rate = count / max(0.05, t1 - t0), Acc = 1, Pts = {}, Flat = preset == "Flat", Fn = DRAW.Emitter,
+		Count = count, Rate = count / max(0.05, t1 - t0), Acc = 1, Pts = {}, Flat = preset == "Flat", Fn = DRAW.Emitter, Lift = lift,
 	})
 	tuneEmitter(eff, it, layer)
 end
@@ -2043,6 +2202,8 @@ local function addBeamLayer(eff, layer, allow)
 		mode, t1 = "Crescent", T.Impact + 0.2
 	elseif layer.Id == "Rain" then -- the Storm special's lightning rain: bolts strike down around the target
 		mode, t1 = "Strike", T.Impact + 0.2
+	elseif layer.Strike then -- (Studio findings round) bolts strike down round the hit from the beat (the Pounce slam)
+		mode, t1 = "Strike", t0 + 0.35
 	elseif at == "Path" then
 		mode, t1 = "Path", T.Impact + 0.08
 	else
@@ -2236,11 +2397,23 @@ local function addRingLayer(eff, layer)
 		end
 		return
 	end
-	addSolid(eff, key, {
-		Layer = layer, Move = MOVE.Ring, Flat = flatRing or layer.At == "Ground", Anchor = anchor, Color = layer.Color, Material = Enum.Material.Neon,
+	local ring = addSolid(eff, key, {
+		Layer = layer, Move = MOVE.Ring, Flat = (flatRing and layer.Level ~= true) or layer.At == "Ground", Anchor = anchor, Color = layer.Color, Material = Enum.Material.Neon,
 		Trans = finite(layer.Transparency) and layer.Transparency or 0.1, T0 = t0, TG = t0 + max(0.25, T.Linger - T.Impact + 0.2), TF = t0 + 0.08,
 		T1 = min(eff.EndRel, t0 + max(0.4, T.Linger - T.Impact + 0.35)), From = 0.35, To = finite(layer.Grow) and layer.Grow or 2.5,
 	})
+	-- (Studio findings round: the Eclipse Nova) OrbRadius: the ring's peak radius = this x the Blast orb's peak radius (its
+	-- main core piece at the impact: MOVE.Projectile's pop, x1.5)
+	if ring and finite(layer.OrbRadius) then
+		for _, c in ipairs(eff.Items) do
+			if c.Move == MOVE.Projectile then -- (the main piece: buildCore adds it first)
+				local orbR = c.Base.X * c.S * 1.5 / 2
+				ring.To = layer.OrbRadius * orbR / max(0.01, ring.Base.X * ring.S / 2)
+				ring.From = min(ring.From, ring.To * 0.3)
+				break
+			end
+		end
+	end
 end
 
 local function addMeshLayer(eff, layer)
@@ -2394,6 +2567,12 @@ local function buildActor(eff)
 	for _, anchor in ipairs(anchors) do
 		for i = 1, n do
 			local it = { Move = MOVE.Actor, Motion = motion, Anchor = anchor, I = i, N = n, Color = c, S = S, Material = mat, Trans = trans, T0 = t0, T1 = eff.EndRel, TF = tf, Actor = true }
+			if motion == "WishRise" then -- (Studio findings round) its keep-out radius: Clear x size + the body + its own half-width
+				it.Forward = finite(actor.Forward) and actor.Forward or nil
+				if finite(actor.Clear) then
+					it.ClearK = actor.Clear
+				end
+			end
 			if motion == "SpiralUp" then
 				it.Dive = max(0.1, T.Release - 0.15)
 				it.T1 = min(eff.EndRel, T.Impact + 0.75)
@@ -2416,6 +2595,12 @@ local function buildActor(eff)
 				end
 			elseif motion == "RingRise" then
 				local a = (i - 1) / n * TAU
+				if actor.Gap then
+					-- (Studio findings round: Lava Slam) the n spikes share the ring but the slot facing the caster (OffD < 0:
+					-- toward it, angle -pi/2) stays open: the target's flinch shows through it
+					local open = TAU / (n + 1)
+					a = -pi / 2 + open / 2 + (TAU - open) * (i - 0.5) / n
+				end
 				it.Move = MOVE.Rise
 				it.OffR, it.OffD = cos(a) * 2.5 * eff.Size, sin(a) * 2.5 * eff.Size
 				it.TR = t0 + 0.03 * (i - 1)
@@ -3083,6 +3268,7 @@ function AttackFx.Play(ctx)
 			Mine = ctx.Mine == true, Crit = ctx.Crit == true, Strong = ctx.Strong == true, Miss = ctx.Miss == true,
 			Stepped = step, Low = quality == "Low", Items = {}, Emitters = 0, Beams = 0, Trails = 0, Lights = 0, Cores = 0, Rims = 0,
 			Kind = ctx.Kind, Pre = isPre or nil, CueSeconds = isPre and (finite(ctx.Seconds) and max(0.1, ctx.Seconds) or K.PRE_HOLD) or nil,
+			Avoid = ctx.Avoid, AvoidPts = {}, -- (Studio findings round) the spots a big piece keeps clear of (avoidSpots)
 		}
 		for i, side in ipairs(targets) do
 			eff.T[i] = side.Last

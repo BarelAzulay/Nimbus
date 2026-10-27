@@ -50,7 +50,13 @@
 --                LightEmission? (overrides the sheet's / beam's default; the engine lights a layer under 0.5 by the scene
 --                and starts a glow hot from 0.8), SpeedScale? (x the emitter preset's speed), KeepCount? (n: a Beam layer
 --                that is the kind's / element's identity: under the 4-beam cap it gets n beams before any other layer's
---                second beam), ... } } (a template's
+--                second beam), (Studio findings round, 2026-10-27:) Height? (studs: an "Above" emitter this high over the hit
+--                point instead of ABOVE x size: the Storm cloud low over its zone, the rain falls from it), Tint2? (a
+--                second Palette entry -> Color2: an emitter's puffs are born in it and darken into Color: a two-tone cloud),
+--                Streak? (a falling rain layer drawn as thin velocity-aligned streaks when its sheet is fx_streak), Ride?
+--                (an emitter streaming off the caster through its leap: the Pounce's storm-cloud ride), Strike? (a Beam
+--                layer whose bolts strike down round the hit: the Pounce slam), Level? (a vfx_ring at the hit's height,
+--                not flat on the floor), OrbRadius? (a Ring's peak radius = this x the Blast orb's peak radius) ... } } (a template's
 --                Except = { [Attack or special Kind] = true } leaves
 --                it out of those attacks), Alive = { Kind ("Emitter"|"Beam"|"Decal"|"Mesh"), Texture?,
 --                Key?, Motion, Color, Count, Seconds, Text } ({} = none) }
@@ -365,7 +371,7 @@ AttackFxCatalog.Elements = {
 			{ Id = "FrostMist", Kind = "Emitter", Texture = "fx_frostmist", Beat = "Impact", At = "$Hit", Motion = "Rise", Delay = 0.08, Count = 5, Size = 1.2 },
 		},
 		Alive = { Kind = "Mesh", Key = "vfx_shard", Motion = "Melt", Tint = "Mid", Count = 5, Seconds = 1.0, Text = "impact shards linger and visibly melt (~1 s)" },
-		Rain = { Key = "vfx_shard", Texture = "fx_snow", Kind = "Emitter", Scale = 0.5, Text = "hail" },
+		Rain = { Key = "vfx_shard", Texture = "fx_snow", Kind = "Emitter", Scale = 0.5, Text = "hail", Streak = false },
 		Area = { Key = "vfx_spike", Count = 5, Transparency = 0.2 },
 		-- (Task 10) the pounce lands in a ring of see-through ice spikes; the Freeze cage gets an outer ring of them from
 		-- Epic (Gemini: the cage's own rarity step)
@@ -409,7 +415,7 @@ AttackFxCatalog.Elements = {
 		-- (Task 9: at Secret (x1.4) the full-size vines buried the target: 0.7)
 		Alive = { Kind = "Mesh", Key = "vfx_root", Motion = "Wrap", Tint = "Mid", Count = 3, Scale = 0.7, Seconds = 0.6, Text = "vines briefly wrap the target" },
 		-- (Task 10, Gemini: a petal shower alone is spring, not an ultimate: heavy seed pods fall with the petals)
-		Rain = { Key = "vfx_orb", Texture = "fx_petals", Kind = "Emitter", Scale = 0.42, Text = "seed pods and a petal shower" },
+		Rain = { Key = "vfx_orb", Texture = "fx_petals", Kind = "Emitter", Scale = 0.42, Text = "seed pods and a petal shower", Streak = false },
 		Area = { Key = "vfx_root", Count = 4, Transparency = 0.2 },
 		-- (Task 10) roots everywhere: the seed-pod Blast and the pounce landing burst roots out of the ground; the Freeze is
 		-- a ROOT cage (5 rose roots curling in round the target, not glass); the ward is a root curling up each bubble
@@ -443,7 +449,7 @@ AttackFxCatalog.Elements = {
 		},
 		-- (Task 9 Studio: full-size chunks piled into a boulder on the target at Secret; half size)
 		Alive = { Kind = "Mesh", Key = "vfx_chunk", Motion = "Bounce", Tint = "Mid", Scale = 0.5, Count = 5, Seconds = 0.8, Text = "chunks scatter and bounce" },
-		Rain = { Key = "vfx_chunk", Texture = "fx_rock", Kind = "Emitter", Scale = 1.2, Text = "a rock fall" },
+		Rain = { Key = "vfx_chunk", Texture = "fx_rock", Kind = "Emitter", Scale = 1.2, Text = "a rock fall", Streak = false },
 		Area = { Key = "vfx_spike", Count = 5 },
 		-- (Task 10) the Blast hurls a boulder (solid rock, not a see-through orb); the pounce is a ground slam with a ring of
 		-- rock spikes (its own GroundCrack is the crack: no second crack sheet); the Freeze is a STONE cage (Gemini: glass
@@ -529,7 +535,7 @@ AttackFxCatalog.Elements = {
 		},
 		-- (round 3, c2: in the pale Core tint the lines read as stray white sticks in the sky: starlight gold)
 		Alive = { Kind = "Beam", Motion = "Connect", Tint = "Mid", Count = 4, Seconds = 0.8, Text = "constellation lines join the stars" },
-		Rain = { Key = "vfx_star", Texture = "fx_stars", Kind = "Emitter", Scale = 0.5, Text = "falling stars" },
+		Rain = { Key = "vfx_star", Texture = "fx_stars", Kind = "Emitter", Scale = 0.5, Text = "falling stars", Streak = false },
 		-- (round 3, c2 + Gemini: the line / cone / ring cores read as solid yellow tape: see-through starlight)
 		Area = { Transparency = 0.45 },
 		-- (Task 10) the Blast is a spinning star; stars wheel round the Freeze cage (Gemini: a plain glass cage had no cosmos;
@@ -705,9 +711,14 @@ AttackFxCatalog.Specials = {
 		Core = { Key = "$RainKey", Path = "Area", Count = 8, Fall = true },
 		CoreCount = { 5, 6, 7, 8 }, -- (Task 10, Gemini: the rain grows with rarity)
 		Beats = { Charge = 0.6, Travel = 0.45, Linger = 0.7 },
+		-- (Studio findings round, Gemini top 5 #1: an opaque navy / purple blob, size 3-6, high over the zone, read as a paint
+		-- smear behind it) a smaller, partly see-through cloud LOW over the zone (Height 4.5 studs over the hit point), its
+		-- puffs born in the lighter Mid and darkening into the Edge (a lit rim / underside), half-lit. The rain falls from it
+		-- as thin velocity-aligned streaks (fx_streak) where the element's rain is a liquid / fire / shadow (Water, Flame,
+		-- Shadow); hail, petals, rocks and stars keep their own tumbling sheets (Rain.Streak = false), Storm rains lightning
 		Layers = {
-			{ Id = "Cloud", Kind = "Emitter", Texture = "fx_stormcloud", Beat = "Charge", At = "Above", Tint = "Edge", Count = 6, Size = 4 },
-			{ Id = "Rain", Kind = "$RainKind", Texture = "$RainTexture", Beat = "Travel", At = "Above", Tint = "Mid", Count = 12, Size = 1 },
+			{ Id = "Cloud", Kind = "Emitter", Texture = "fx_stormcloud", Beat = "Charge", At = "Above", Tint = "Edge", Tint2 = "Mid", Count = 5, Size = 2.6, Height = 4.5, Transparency = 0.42, LightEmission = 0.22 },
+			{ Id = "Rain", Kind = "$RainKind", Texture = "$RainStreak", Beat = "Travel", At = "Above", Tint = "Mid", Count = 12, Size = 0.8, Streak = true },
 		},
 		LowKeep = { "Cloud" },
 		-- (Task 10: no Mythic double crescent: a slash arc in a rain cloud reads as nothing)
@@ -734,7 +745,10 @@ AttackFxCatalog.Specials = {
 	},
 	Shield = {
 		Text = "a hexagon bubble around each ally, rippling when hit",
-		Core = { Key = "vfx_shell", Path = "Allies", Material = "Glass", KeepMaterial = true, Transparency = 0.6 }, -- Glass at every band
+		-- (Studio findings round, Gemini top 5 #2: the 7-stud domes overlapped into one blob and hid the name tags) each
+		-- dome fits ITS ally: radius Fit x the ally's half-width, never touching the next ally's dome, its top at most
+		-- TopClear studs over the ally's head (the name tag stays clear), ~30 % smaller; more see-through. Glass at every band
+		Core = { Key = "vfx_shell", Path = "Allies", Material = "Glass", KeepMaterial = true, Transparency = 0.72, Fit = 1.35, TopClear = 0.3 },
 		Beats = { Charge = 0.4, Travel = 0.2, Linger = 0.8 },
 		Slots = { Burst = "fx_hexshield" },
 		-- (Task 10: the element rises over each bubble: the hex bubble alone had no element but its colour)
@@ -812,7 +826,8 @@ AttackFxCatalog.Reactions = {
 	-- the hit). One emitter, no light, no charge: it plays on every absorbed hit of a 6 s shield
 	ShieldHit = {
 		Text = "the shield ripples: the hex bubble swells and fades as it absorbs a hit",
-		Core = { Key = "vfx_shell", Path = "Self", Flash = true, From = 1, To = 1.3, Material = "Glass", KeepMaterial = true, Transparency = 0.6 },
+		-- (Studio findings round: the Shield domes fit their ally now, ~0.55 x the old shell: the ripple swells from that)
+		Core = { Key = "vfx_shell", Path = "Self", Flash = true, From = 0.55, To = 0.72, Material = "Glass", KeepMaterial = true, Transparency = 0.7 },
 		Beats = { Charge = 0, Release = 0, Travel = 0, Linger = 0.35 },
 		Slots = { Burst = "fx_hexshield" },
 		BurstBoost = { Size = 0.7, Count = 0.5 }, -- (a pulse, not the Shield's full burst)
@@ -837,11 +852,15 @@ AttackFxCatalog.Reactions = {
 --             nothing; Ember's wing glow is its bloom light: <= 3 lights at every rarity)
 --   Drop      { [layer id] = true } kind / element layers it replaces     Alive = false: no alive detail
 --   LowKeep   its own pick for Low quality's second emitter (before the kind's / element's)
+--   Tweak     { [layer id] = { field = value } } (Studio findings round) fields set on a kind / element layer it keeps
+--             (Lava Slam's see-through Dome)
 --   Actor     its vfx_sig_* piece(s): { Key, At, Motion (AttackFx MOVE.Actor), Beat, Count?, Scale?, Tint | Color,
 --             Material? ("Neon" default, "Glass"), Transparency?, Rim? = { Tint | Color, Scale?, Back?, Transparency? }:
 --             a bigger glowing copy just behind each piece, Echo? = { Color, Count?, Lag?, Transparency? }: dimmer copies
---             trailing each piece along its path }; built before the layers, Count x Density for others' pets; Low
---             quality draws no rim / echo
+--             trailing each piece along its path, Gap? = true (RingRise: the slot facing the caster stays open, the
+--             target's flinch shows through it), Clear? / Forward? (WishRise: studs x size kept clear round the caster and
+--             the local player's character / pushed toward the allies) }; built before the layers, Count x Density for
+--             others' pets; Low quality draws no rim / echo
 --   Core.Spread  (a Storm) the rain falls on EVERY target, round robin, not round the aimed one (Obsidian: the enemies in
 --                its Storm zone)
 --   DimWorld  (Eclipse Nova) seconds the battle stays dim after the impact (own pet only: AttackFx.Hooks.DimWorld ->
@@ -879,7 +898,8 @@ AttackFxCatalog.Signatures = {
 		Alive = false,
 	},
 	-- a dusk-violet cloud; dark violet stars fall out of it (Gemini, option b: the 5-point star, not the unicorn's comet;
-	-- the plain Shadow Storm already rains shards) with lilac sparkle, into a violet pool of dusk on the floor; a lilac
+	-- the plain Shadow Storm already rains shards) with lilac streaks (Studio findings round: the Storm rain is thin
+	-- falling streaks; was lilac sparkle), into a violet pool of dusk on the floor; a lilac
 	-- crescent DUSK MOON (deep violet glow behind it) rises behind the storm (Gemini's second pass: the pet had no
 	-- piece of its own; it has no vfx_sig_* mesh, so the shared crescent stands upright as a moon, see the report)
 	twilight_dragon = {
@@ -898,15 +918,26 @@ AttackFxCatalog.Signatures = {
 		Name = "Cloud Breath", Rarity = "Mythic", Element = "Storm", Kind = "Beam",
 		Twist = "a cloud dragon spirals up, then breathes the beam on the dive",
 		Beats = { Charge = 0.65 },
+		-- (Studio findings round, Gemini top 5 #5: a solid white neon bar with a glare that hid the target) the breath is
+		-- 3 see-through segments with gaps (Segments / Gap: AttackFx MOVE.Stretch), the target shows through and between
+		-- them; the kind's big Flare is traded for a smaller see-through one
+		Core = { Transparency = 0.5, Segments = 3, Gap = 0.22 },
+		Drop = { Flare = true },
 		Actor = { Key = "vfx_sig_cloud_dragon", At = "Source", Motion = "SpiralUp", Beat = "Charge", Tint = "Core", Transparency = 0.1 },
-		Layers = { { Id = "SigCloud", Kind = "Emitter", Texture = "fx_stormcloud", Beat = "Release", At = "Source", Motion = "Burst", Tint = "Smoke", Count = 5, Size = 2.5 } },
+		Layers = {
+			{ Id = "SigCloud", Kind = "Emitter", Texture = "fx_stormcloud", Beat = "Release", At = "Source", Motion = "Burst", Tint = "Smoke", Count = 5, Size = 2.5 },
+			{ Id = "SigFlare", Kind = "Emitter", Texture = "fx_glow", Beat = "Impact", At = "$Hit", Tint = "Hot", Count = 3, Size = 1.6, Transparency = 0.35 },
+		},
 	},
 	-- a giant wishing star rises over the allies (Gemini: a gold glass body with a deep gold neon rim, not a solid neon
 	-- blob) and showers falling stars on each of them while the heal's star spirals rise
 	starlight_unicorn = {
 		Name = "Wishing Star", Rarity = "Mythic", Element = "Celestial", Kind = "Heal",
 		Twist = "a giant wishing star rises and showers allies",
-		Actor = { Key = "vfx_sig_wish_star", At = "Above", Motion = "WishRise", Beat = "Charge", Tint = "Mid", Material = "Glass", Transparency = 0.15, Rim = { Tint = "Edge", Scale = 1.1, Transparency = 0.2 } },
+		-- (Studio findings round, Gemini top 5 #4: the giant star rose straight through the player's avatar) its path keeps
+		-- Clear studs (x size, + its own half-width) away from the caster and the local player's character, pushed Forward
+		-- toward the allies' side
+		Actor = { Key = "vfx_sig_wish_star", At = "Above", Motion = "WishRise", Beat = "Charge", Tint = "Mid", Material = "Glass", Transparency = 0.15, Rim = { Tint = "Edge", Scale = 1.1, Transparency = 0.2 }, Clear = 1.5, Forward = 1.5 },
 		Layers = { { Id = "SigShower", Kind = "Emitter", Texture = "fx_stars", Beat = "Travel", At = "Allies", Count = 14, Size = 1, Fall = true } },
 	},
 	-- as the pet leaps, an electric storm-wolf charges out of it and through the target, two bolts crackling along its
@@ -915,9 +946,21 @@ AttackFxCatalog.Signatures = {
 		Name = "Storm Pounce", Rarity = "Secret", Element = "Storm", Kind = "Pounce",
 		Twist = "a lightning storm-wolf charges through the target",
 		Actor = { Key = "vfx_sig_wolf", At = "Source", Motion = "ChargeThrough", Beat = "Travel", Color = rgb(80, 180, 255), Rim = { Color = rgb(40, 60, 200), Scale = 1.1, Transparency = 0.3 } },
-		Skip = { DoubleArc = true },
-		Tints = { SigBolts = rgb(90, 170, 255) },
-		Layers = { { Id = "SigBolts", Kind = "Beam", Texture = "fx_lightning", Beat = "Travel", At = "Path", Count = 2, KeepCount = 2 } },
+		Skip = { DoubleArc = true, Flash = true }, -- (the slam's own flash replaces the ladder's: <= 3 lights)
+		Tints = { SigBolts = rgb(90, 170, 255), SigSlamBolts = rgb(150, 210, 255), SigCloudRide = rgb(46, 60, 120) },
+		-- (Studio findings round, Gemini top 5 #3: the Secret landing read weaker than Lava Slam / Glacier Breath) the slam:
+		-- a wide shock ring races over the ground, two bolts strike down round the target, a lightning flash; the pet rides a
+		-- storm cloud through the leap (its two bolts, the slam bolts: the 4-beam cap; the slam bolts replace the element's
+		-- stray alive bolts: Alive = false)
+		Alive = false,
+		Layers = {
+			{ Id = "SigBolts", Kind = "Beam", Texture = "fx_lightning", Beat = "Travel", At = "Path", Count = 2, KeepCount = 2 },
+			{ Id = "SigShock", Kind = "Ring", Key = "vfx_ring", Beat = "Impact", At = "Ground", Color = rgb(130, 205, 255), Grow = 3.6, Transparency = 0.2 },
+			{ Id = "SigSlamBolts", Kind = "Beam", Texture = "fx_lightning", Beat = "Impact", At = "Ground", Strike = true, Count = 2, KeepCount = 2, Width = 1.1 },
+			{ Id = "SigSlamFlash", Kind = "Light", Beat = "Impact", At = "Ground", Color = rgb(150, 210, 255), Brightness = 4, Range = 14 },
+			{ Id = "SigCloudRide", Kind = "Emitter", Texture = "fx_stormcloud", Beat = "Travel", At = "Self", Ride = true, Tint2 = "Mid", Count = 16, Size = 2.2, Transparency = 0.3 },
+		},
+		LowKeep = { "SigCloudRide" },
 	},
 	-- the battle dims (own pet); a black sun with a violet corona hangs over the target through the charge, the void orb
 	-- flies, and at the impact the sun drops onto the target and bursts flat over the floor as violet wisps fling out
@@ -928,7 +971,13 @@ AttackFxCatalog.Signatures = {
 		DimWorld = 0.6,
 		Actor = { Key = "vfx_sig_black_sun", At = "Above", Motion = "Eclipse", Beat = "Charge", Color = rgb(18, 8, 28), Scale = 0.6, Rim = { Color = rgb(186, 104, 255), Scale = 1.14, Transparency = 0.15 } },
 		Skip = { Slash = true },
-		Layers = { { Id = "SigCorona", Kind = "Emitter", Texture = "fx_wisps", Beat = "Impact", At = "$Hit", Motion = "Burst", Count = 10, Size = 1.4 } },
+		-- (Studio findings round, Ruling 19: the dim stays; a clearly bigger nova at the impact) a dark-purple ring with a
+		-- bright violet edge expands round the target at its height to 2x the orb's peak radius (OrbRadius)
+		Layers = {
+			{ Id = "SigCorona", Kind = "Emitter", Texture = "fx_wisps", Beat = "Impact", At = "$Hit", Motion = "Burst", Count = 10, Size = 1.4 },
+			{ Id = "SigNova", Kind = "Ring", Key = "vfx_ring", Beat = "Impact", At = "$Hit", Level = true, OrbRadius = 2, Color = rgb(74, 22, 128), Transparency = 0.1 },
+			{ Id = "SigNovaEdge", Kind = "Ring", Key = "vfx_ring", Beat = "Impact", At = "$Hit", Level = true, OrbRadius = 2.1, Color = rgb(232, 176, 255), Transparency = 0.3 },
+		},
 	},
 	-- RULING (Task 11 fix rounds 1 + 2, Gemini consulted): NOT a single-target dive. Its special is a Storm that hits the
 	-- enemies in the Storm zone (BattleSim: a Specials.Storm.Radius zone at the aimed target; BattleController's
@@ -979,7 +1028,10 @@ AttackFxCatalog.Signatures = {
 			{ Id = "SigLavaCrack", Kind = "Decal", Texture = "fx_crack", Beat = "Travel", At = "Ground", Color = rgb(255, 120, 40), Size = 6, Seconds = 1.2 },
 			{ Id = "SigEruption", Kind = "Emitter", Texture = "fx_flame", Beat = "Release", At = "Self", Motion = "Burst", Count = 8, Size = 1.3 },
 		},
-		Actor = { Key = "vfx_sig_lava_spike", At = "Target", Motion = "RingRise", Beat = "Impact", Count = 5, Tint = "Mid" },
+		-- (Studio findings round: the spikes + dome buried the target's flinch) the spike ring leaves the slot facing the
+		-- caster open (Gap) and the Blast dome is fainter
+		Actor = { Key = "vfx_sig_lava_spike", At = "Target", Motion = "RingRise", Beat = "Impact", Count = 5, Tint = "Mid", Gap = true },
+		Tweak = { Dome = { Transparency = 0.84 } },
 		LowKeep = { "SigLavaCrack" },
 	},
 	-- the wyrmling breathes a frost stream (an ice-blue beam, snow streaming along it), then the glacier rises out of the
@@ -988,7 +1040,8 @@ AttackFxCatalog.Signatures = {
 	rime_wyrmling = {
 		Name = "Glacier Breath", Rarity = "Secret", Element = "Frost", Kind = "Freeze",
 		Twist = "breathes a glacier that rises around the target",
-		Core = { Key = "vfx_sig_glacier", Transparency = 0.55 },
+		-- (Studio findings round: the glacier buried the target's flinch) thinner: 0.55 -> 0.66
+		Core = { Key = "vfx_sig_glacier", Transparency = 0.66 },
 		Beats = { Travel = 0.35 },
 		Drop = { IceSpikes = true },
 		Layers = {
@@ -1124,6 +1177,9 @@ local function slotsOf(def, element, sig)
 	local refs = {
 		Burst = element.Burst, Trail = element.Trail, Ground = element.Ground, Motif = element.Motif, Arc = element.Arc,
 		RainKey = element.Rain.Key, RainTexture = element.Rain.Texture, RainKind = element.Rain.Kind or "Emitter",
+		-- (Studio findings round) the Storm's rain sheet: thin falling streaks, unless the element's rain is solid / tumbling
+		-- (Rain.Streak = false) or a Beam (Storm's lightning)
+		RainStreak = (element.Rain.Streak == false or element.Rain.Kind == "Beam") and element.Rain.Texture or "fx_streak",
 		-- (Task 10 kind slots: see Specials)
 		ElementBurst = element.Burst, BurstMotion = element.BurstMotion or "Burst", Wrap = element.Trail, Ward = element.Motif, Gust = element.Trail,
 	}
@@ -1186,6 +1242,15 @@ local function buildLayer(id, tpl, ctx, scale)
 	layer.Color = colourOf(tpl, layer.Texture, ctx.palette, ctx.refs)
 	if ctx.tints and ctx.tints[id] then
 		layer.Color = ctx.tints[id]
+	end
+	if tpl.Tint2 ~= nil then -- (Studio findings round) a second tone: the puffs are born in it (the cloud's lit underside)
+		layer.Color2 = ctx.palette[tpl.Tint2]
+	end
+	layer.Tint2 = nil
+	if ctx.tweaks and type(ctx.tweaks[id]) == "table" then -- (a signature's Tweak on a layer it keeps)
+		for k, v in pairs(ctx.tweaks[id]) do
+			layer[k] = v
+		end
 	end
 	if finite(tpl.Count) then
 		layer.Count = max(1, floor(tpl.Count * (scale or ctx.countScale) + 0.5))
@@ -1342,6 +1407,7 @@ function AttackFxCatalog.Resolve(req)
 		attack = req.Attack,
 		kind = def.Kind, -- the resolved kind (a signature special may come with Kind nil: Task 8 review)
 		drop = def.Drop, -- the element's Melee / Ranged Drop: shared attack layers it replaces (Water's shot: no Boom ball)
+		tweaks = sig and type(sig.Tweak) == "table" and sig.Tweak or nil,
 	}
 	if sig and type(sig.Drop) == "table" then -- (Task 11) the kind / element layers a signature replaces (Rime: its glacier IS the spikes)
 		ctx.drop = merge(copy(def.Drop or {}), sig.Drop)

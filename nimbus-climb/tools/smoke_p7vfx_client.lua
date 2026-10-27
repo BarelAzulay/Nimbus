@@ -203,6 +203,359 @@ local function sigItems(el)
 	return per, core, actor, rims, alive, echoes
 end
 
+-- (Studio findings round, 2026-10-27: progress.md "Studio pass", Gemini's top 5 + Ruling 19) the signature specials'
+-- Studio fixes, drawn: the Storm cloud low over its zone, see-through, two-toned, the rain thin velocity-aligned streaks;
+-- one fitted dome per ally (no blob, under the name tag); the Secret Storm Pounce's slam (shock ring, slam bolts, flash,
+-- cloud ride); the Eclipse Nova ring (2x the orb's peak radius, at the hit's height); the Wishing Star clear of the caster
+-- and the player; Cloud Breath's segmented see-through beam; Glacier Breath / Lava Slam thinner at the target
+local function studioFindings(env)
+	local Fx, Cat, ctx, run = env.Fx, env.Cat, env.ctx, env.run
+	local Ids = moduleAt(ROOTS.shared .. "/TextureIds")
+	local function play(over, to)
+		Fx.ClearAll()
+		local c = ctx(over)
+		c.To = to or { Unit = 96, Model = env.B }
+		c.From = { Unit = 95, Model = env.A }
+		c.Now = env.clock()
+		local ok = Fx.Play(c)
+		return ok and Fx._Live()[#Fx._Live()] or nil
+	end
+	local function allies(n, withModel)
+		local to = {}
+		for i = 1, n do
+			local m = env.allies[i]
+			to[i] = withModel and { Unit = 200 + i, Model = m } or { Unit = 200 + i, Pos = m:GetPivot().Position }
+		end
+		return to
+	end
+	local function layerItems(el, id)
+		local out = {}
+		for _, it in ipairs(el and el.Items or {}) do
+			if it.Layer and it.Layer.Id == id then
+				out[#out + 1] = it
+			end
+		end
+		return out
+	end
+	local function coreItems(el, key)
+		local out = {}
+		for _, it in ipairs(el and el.Items or {}) do
+			if it.Kind == "Solid" and not it.Layer and not it.Actor and (not key or it.Kit.Key == key) then
+				out[#out + 1] = it
+			end
+		end
+		return out
+	end
+	local function minKey(seq)
+		local lo = math.huge
+		for _, k in ipairs(seq and seq.Keypoints or {}) do
+			lo = math.min(lo, k.Value)
+		end
+		return lo
+	end
+	local function maxKey(seq)
+		local hi = -math.huge
+		for _, k in ipairs(seq and seq.Keypoints or {}) do
+			hi = math.max(hi, k.Value)
+		end
+		return hi
+	end
+	local function flatDist(a, b)
+		return Vector3.new(a.X - b.X, 0, a.Z - b.Z).Magnitude
+	end
+
+	-- a) the Storm cloud (generic Storm, Obsidian, Twilight): 3.5-5.5 studs over the hit point, over it (not behind),
+	--    0.35-0.5 transparency at its peak, two tones, its puffs clear of the target's head; the rain thin streaks
+	local cloudBad, streakBad = {}, {}
+	for _, spec in ipairs({
+		{ "generic Storm", { Element = "Storm", Attack = "Special", Kind = "Storm", Rarity = "Legendary" } },
+		{ "Obsidian", { Element = "Flame", Attack = "Special", Kind = "Storm", Rarity = "Secret", PetId = "obsidian_phoenix" } },
+		{ "Twilight", { Element = "Shadow", Attack = "Special", Kind = "Storm", Rarity = "Legendary", PetId = "twilight_dragon" } },
+		{ "Water Storm", { Element = "Water", Attack = "Special", Kind = "Storm", Rarity = "Epic" } },
+	}) do
+		local el = play(spec[2])
+		local cloud = layerItems(el, "Cloud")[1]
+		local rain = layerItems(el, "Rain")[1]
+		local seenAt = nil
+		if cloud then
+			run(0.25, function()
+				if not seenAt and cloud.Acc ~= 1 then
+					seenAt = cloud.Kit.Root.Position
+				end
+			end)
+		end
+		local why = {}
+		if not (el and cloud and seenAt) then
+			why[#why + 1] = "no cloud drawn"
+		else
+			local em = cloud.Kit.Em
+			local up = seenAt.Y - el.Hit.Y
+			local off = flatDist(seenAt, el.Hit)
+			local peak = minKey(em.Transparency)
+			-- (two tones: its puffs are born in the lighter Color2 and end in the cloud's own Color)
+			local cs, c1, c2 = em.Color.Keypoints, cloud.Layer.Color, cloud.Layer.Color2
+			local function same(a, b)
+				return a ~= nil and b ~= nil and math.abs(a.R - b.R) + math.abs(a.G - b.G) + math.abs(a.B - b.B) < 1e-3
+			end
+			local twoTone = #cs >= 2 and c2 ~= nil and not same(c1, c2) and same(cs[1].Value, c2) and same(cs[#cs].Value, c1)
+			local bottom = up - maxKey(em.Size) / 2
+			if up < 3.5 or up > 5.5 or off > 0.5 then
+				why[#why + 1] = fmt("cloud %.2f studs over the hit, %.2f off it", up, off)
+			end
+			if peak < 0.35 or peak > 0.5 then
+				why[#why + 1] = fmt("peak transparency %.2f", peak)
+			end
+			if not twoTone then
+				why[#why + 1] = "one tone"
+			end
+			if bottom < 1.5 then
+				why[#why + 1] = fmt("its puffs reach %.2f studs over the hit (the target's head)", bottom)
+			end
+			-- the core's falling pieces start from the cloud, not from high over it
+			local topY = -math.huge
+			run(el.Times.Impact + 0.1 - 0.25, function()
+				for _, it in ipairs(coreItems(el)) do
+					if it.Kit and it.Kit.Root.Transparency < 1 then
+						topY = math.max(topY, it.Kit.Root.Position.Y - el.Hit.Y)
+					end
+				end
+			end)
+			if topY == -math.huge or topY > 5.5 then
+				why[#why + 1] = fmt("the rain pieces start %.2f studs over the hit", topY)
+			end
+		end
+		if #why > 0 then
+			cloudBad[#cloudBad + 1] = spec[1] .. ": " .. table.concat(why, ", ")
+		end
+		if spec[1] ~= "generic Storm" then -- (the Storm element rains lightning bolts: a Beam)
+			local em = rain and rain.Kit and rain.Kit.Em
+			if not (em and em.Orientation == Enum.ParticleOrientation.VelocityParallel and Ids and em.Texture == "rbxassetid://" .. tostring(Ids.fx_streak)
+				and em.Rotation.Min == em.Rotation.Max and em.RotSpeed.Min == 0 and em.RotSpeed.Max == 0) then
+				streakBad[#streakBad + 1] = fmt("%s: %s", spec[1], em and fmt("%s %s", tostring(em.Orientation), tostring(em.Texture)) or "no rain emitter")
+			end
+		end
+	end
+	T.check(#cloudBad == 0, "Studio findings: the Storm cloud sits 3.5-5.5 studs over its zone's hit point (not behind it), 0.35-0.5 see-through at its peak, two-toned, clear of the target's head",
+		table.concat(cloudBad, " | "))
+	T.check(#streakBad == 0, "Studio findings: the Storm rain falls as thin velocity-aligned fx_streak streaks (no spin), not soft round blobs", table.concat(streakBad, " | "))
+
+	-- b) the Shield domes (Sunbeam gold, Kitsune cyan): each fits its ally (1.0-1.4 x its half-width), never touches the
+	--    next ally's dome, its top under the name tag (<= 0.35 over the ally's head), >= 0.7 see-through; with no ally
+	--    model, 0.6-0.8 x the old size
+	local domeBad = {}
+	for _, pet in ipairs({ "sunbeam_bear", "phantom_kitsune" }) do
+		local s = Cat.Signatures[pet]
+		local el = play({ Element = s.Element, Attack = "Special", Kind = s.Kind, PetId = pet, Rarity = s.Rarity }, allies(4, true))
+		local shells = coreItems(el, "vfx_shell")
+		run((el and (el.Times.Impact + 0.4) or 0.5)) -- (past the impact's ripple)
+		local r, ok = {}, #shells == 4
+		for i, it in ipairs(shells) do
+			local part = it.Kit.Root
+			local m = env.allies[i]
+			local size = m:GetExtentsSize()
+			local half = math.max(size.X, size.Z) / 2
+			r[i] = part.Size.X / 2
+			local top = part.Position.Y + r[i]
+			local allyTop = m:GetPivot().Position.Y + size.Y / 2
+			if part.Transparency < 0.7 or r[i] < 1.0 * half or r[i] > 1.4 * half or top > allyTop + 0.35 then
+				ok = false
+				domeBad[#domeBad + 1] = fmt("%s ally %d: radius %.2f (ally %.2f), top %.2f over the head, transparency %.2f", pet, i, r[i], half, top - allyTop, part.Transparency)
+			end
+		end
+		for i = 1, #shells - 1 do
+			local d = flatDist(env.allies[i]:GetPivot().Position, env.allies[i + 1]:GetPivot().Position)
+			if r[i] and r[i + 1] and r[i] + r[i + 1] >= d then
+				domeBad[#domeBad + 1] = fmt("%s allies %d / %d: domes touch (%.2f + %.2f >= %.2f)", pet, i, i + 1, r[i], r[i + 1], d)
+			end
+		end
+		if not ok and #shells ~= 4 then
+			domeBad[#domeBad + 1] = fmt("%s: %d domes", pet, #shells)
+		end
+	end
+	-- two allies 2.2 studs apart: their domes shrink apart (never one blob); a squat wide ally: its dome stays under the tag
+	local holder = env.allies[1].Parent
+	local close1, close2 = unitModel(holder, "Close1", Vector3.new(30, 2, 0)), unitModel(holder, "Close2", Vector3.new(32.2, 2, 0))
+	local squat = unitModel(holder, "Squat", Vector3.new(40, 2, 0))
+	squat.PrimaryPart.Size = Vector3.new(3, 1.2, 3)
+	local elK = play({ Element = "Shadow", Attack = "Special", Kind = "Shield", PetId = "phantom_kitsune", Rarity = "Secret" },
+		{ { Unit = 301, Model = close1 }, { Unit = 302, Model = close2 }, { Unit = 303, Model = squat } })
+	local ks = coreItems(elK, "vfx_shell")
+	run((elK and (elK.Times.Impact + 0.4) or 0.5))
+	local rk = {}
+	for i, it in ipairs(ks) do
+		rk[i] = it.Kit and it.Kit.Root.Size.X / 2 or 0
+	end
+	local squatTop = (ks[3] and ks[3].Kit) and (ks[3].Kit.Root.Position.Y + rk[3]) or math.huge
+	if not (#ks == 3 and rk[1] + rk[2] < 2.2 and squatTop <= 2 + 0.6 + 0.35) then
+		domeBad[#domeBad + 1] = fmt("close allies: %.2f + %.2f vs 2.2 apart; squat ally: dome top %.2f over its head", rk[1] or 0, rk[2] or 0, squatTop - 2.6)
+	end
+	close1:Destroy()
+	close2:Destroy()
+	squat:Destroy()
+	-- two pets clumped 1.4 studs apart: each dome still encloses its pet (>= its half-width; Gemini: no dome shrunk inside
+	-- a body), they may touch there
+	local clump1, clump2 = unitModel(holder, "Clump1", Vector3.new(50, 2, 0)), unitModel(holder, "Clump2", Vector3.new(51.4, 2, 0))
+	local elC2 = play({ Element = "Shadow", Attack = "Special", Kind = "Shield", PetId = "phantom_kitsune", Rarity = "Secret" },
+		{ { Unit = 304, Model = clump1 }, { Unit = 305, Model = clump2 } })
+	local cs2 = coreItems(elC2, "vfx_shell")
+	run((elC2 and (elC2.Times.Impact + 0.4) or 0.5))
+	for i, it in ipairs(cs2) do
+		local rr = it.Kit and it.Kit.Root.Size.X / 2 or 0
+		if rr < 1.0 - 1e-3 then
+			domeBad[#domeBad + 1] = fmt("clumped ally %d: dome radius %.2f inside its half-width 1", i, rr)
+		end
+	end
+	if #cs2 ~= 2 then
+		domeBad[#domeBad + 1] = fmt("clumped allies: %d domes", #cs2)
+	end
+	clump1:Destroy()
+	clump2:Destroy()
+	local elF = play({ Element = "Shadow", Attack = "Special", Kind = "Shield", PetId = "phantom_kitsune", Rarity = "Secret" }, allies(2, false))
+	local fb = coreItems(elF, "vfx_shell")[1]
+	if not (fb and fb.Fit and fb.Fit >= 0.6 and fb.Fit <= 0.8) then
+		domeBad[#domeBad + 1] = fmt("no ally model: x%s the old size", fb and tostring(fb.Fit) or "?")
+	end
+	T.check(#domeBad == 0, "Studio findings: one dome per ally, fitted (1.0-1.4 x its half-width), no two touching, under the name tag, >= 0.7 see-through (no model: ~0.7 x the old size)",
+		table.concat(domeBad, " | "))
+
+	-- c) the Secret Storm Pounce lands big: a shock ring wider than the slam ring, two bolts striking at the slam, its
+	--    flash, the storm-cloud ride streaming through the leap; within the caps
+	local sf = Cat.Signatures.stormfang
+	local elP = play({ Element = sf.Element, Attack = "Special", Kind = sf.Kind, PetId = "stormfang", Rarity = "Secret" })
+	local shock, slam = layerItems(elP, "SigShock")[1], coreItems(elP, "vfx_ring")[1]
+	local bolts, ride, flash = layerItems(elP, "SigSlamBolts"), layerItems(elP, "SigCloudRide")[1], layerItems(elP, "SigSlamFlash")[1]
+	local shockR, slamR, boltsOn, rideOn, litBolt = 0, 0, 0, false, {}
+	if elP then
+		run(elP.EndRel - 0.05, function()
+			if shock and shock.Kit and shock.Kit.Root.Transparency < 1 then
+				shockR = math.max(shockR, shock.Kit.Root.Size.X)
+			end
+			if slam and slam.Kit and slam.Kit.Root.Transparency < 1 then
+				slamR = math.max(slamR, slam.Kit.Root.Size.X)
+			end
+			for i, b in ipairs(bolts) do -- (each bolt strikes at least once: they flicker on their own)
+				if b.Kit and b.Kit.Beam.Enabled and not litBolt[i] then
+					litBolt[i] = true
+					boltsOn = boltsOn + 1
+				end
+			end
+			if ride and ride.Acc ~= 1 then
+				rideOn = true
+			end
+		end)
+	end
+	local striking = #bolts > 0
+	for _, b in ipairs(bolts) do
+		striking = striking and b.Mode == "Strike"
+	end
+	T.check(elP ~= nil and elP.Emitters <= Fx.MAX_EMITTERS.High and elP.Beams <= Fx.MAX_BEAMS and elP.Lights <= Fx.MAX_LIGHTS and shock ~= nil and shockR > slamR * 1.3 and #bolts == 2 and boltsOn == 2 and striking
+		and flash ~= nil and ride ~= nil and rideOn,
+		"Studio findings: Storm Pounce (Secret) lands big: a shock ring wider than the slam ring, 2 bolts strike at the slam, its flash, the storm-cloud ride, within the caps",
+		fmt("shock %.2f vs slam %.2f, slam bolts %d (%d lit), flash %s, ride %s (%s), caps %s em %s beams %s lights",
+			shockR, slamR, #bolts, boltsOn, tostring(flash ~= nil), tostring(ride ~= nil), tostring(rideOn), tostring(elP and elP.Emitters), tostring(elP and elP.Beams), tostring(elP and elP.Lights)))
+
+	-- d) Eclipse Nova: a dark-purple ring with a bright edge round the target at its height, its peak radius 2x the orb's
+	local ec = Cat.Signatures.eclipse_dragon
+	local elN = play({ Element = ec.Element, Attack = "Special", Kind = ec.Kind, PetId = "eclipse_dragon", Rarity = "Secret" })
+	local nova, edge, orb = layerItems(elN, "SigNova")[1], layerItems(elN, "SigNovaEdge")[1], coreItems(elN, "vfx_orb")[1]
+	local novaR, orbR, novaY = 0, 0, nil
+	if elN then
+		run(elN.EndRel - 0.05, function()
+			if nova and nova.Kit and nova.Kit.Root.Transparency < 1 then
+				novaR = math.max(novaR, nova.Kit.Root.Size.X / 2)
+				novaY = nova.Kit.Root.Position.Y
+			end
+			if orb and orb.Kit and orb.Kit.Root.Transparency < 1 then
+				orbR = math.max(orbR, orb.Kit.Root.Size.X / 2)
+			end
+		end)
+	end
+	local ratio = orbR > 0 and novaR / orbR or 0
+	T.check(nova ~= nil and edge ~= nil and ratio >= 1.8 and ratio <= 2.25 and novaY ~= nil and math.abs(novaY - elN.Hit.Y) < 0.3
+		and nova.Color.R < 0.5 and edge.Color.R > nova.Color.R and edge.Color.G > nova.Color.G,
+		"Studio findings: Eclipse Nova bursts a dark-purple ring with a bright edge round the target (at its height), peaking at 2x the orb's radius (the dim stays: Ruling 19)",
+		fmt("ring %.2f / orb %.2f = %.2f, at %s over the hit", novaR, orbR, ratio, novaY and fmt("%.2f", novaY - elN.Hit.Y) or "-"))
+
+	-- e) the Wishing Star never passes through the caster or the player: its piece stays >= 2.5 studs (flat) from both,
+	--    the player standing right on its old path (between the caster and the allies)
+	local su = Cat.Signatures.starlight_unicorn
+	local player = env.A:GetPivot().Position:Lerp(env.allies[2]:GetPivot().Position, 0.4)
+	local elS = play({ Element = su.Element, Attack = "Special", Kind = su.Kind, PetId = "starlight_unicorn", Rarity = su.Rarity, Avoid = player }, allies(3, true))
+	local star = nil
+	for _, it in ipairs(elS and elS.Items or {}) do
+		if it.Actor and not it.Rim and not it.Echo then
+			star = it
+		end
+	end
+	local nearC, nearP, frames = math.huge, math.huge, 0
+	if elS and star then
+		local caster = env.A:GetPivot().Position
+		run(elS.EndRel - 0.05, function()
+			local part = star.Kit and star.Kit.Root
+			if part and part.Transparency < 1 then
+				frames = frames + 1
+				nearC = math.min(nearC, flatDist(part.Position, caster))
+				nearP = math.min(nearP, flatDist(part.Position, player))
+			end
+		end)
+	end
+	T.check(star ~= nil and frames > 10 and nearC >= 2.5 and nearP >= 2.5,
+		"Studio findings: the Wishing Star's path keeps clear of the caster and the player's character (>= 2.5 studs flat, the player on its old path)",
+		fmt("%d frames, nearest caster %.2f, player %.2f", frames, nearC, nearP))
+
+	-- f) Cloud Breath: the beam core is 3 see-through segments with gaps (never a solid bar), the small see-through flare
+	local cd = Cat.Signatures.cloudy_dragon
+	local elC = play({ Element = cd.Element, Attack = "Special", Kind = cd.Kind, PetId = "cloudy_dragon", Rarity = cd.Rarity })
+	local segs = coreItems(elC, "vfx_beam")
+	local worst, minTr, seenMid = 0, 1, 0
+	if elC then
+		run(elC.Times.Impact + 0.02)
+		for _ = 1, 18 do -- (the gaps drift down the beam: ~a whole cycle)
+			run(1 / 30)
+			local len, vis, beam = 0, 0, (elC.Hit - elC.Mouth).Magnitude
+			for _, it in ipairs(segs) do
+				local part = it.Kit.Root
+				if part.Transparency < 1 then
+					vis = vis + 1
+					len = len + part.Size.Z
+					minTr = math.min(minTr, part.Transparency)
+				end
+			end
+			if vis >= 2 then
+				seenMid = seenMid + 1
+			end
+			if vis == 0 then
+				break -- (the breath is over)
+			end
+			worst = math.max(worst, beam > 0 and len / beam or 1)
+		end
+	end
+	T.check(#segs == 3 and seenMid >= 4 and worst <= 0.85 and minTr >= 0.4 and #layerItems(elC, "Flare") == 0 and #layerItems(elC, "SigFlare") == 1,
+		"Studio findings: Cloud Breath's beam is 3 see-through segments with gaps (<= 85 % of its length drawn, >= 0.4 transparent), the target visible through it; a small flare",
+		fmt("%d segments, %d frames with >= 2 drawn, drawn share %.2f, transparency %.2f, Flare %d, SigFlare %d", #segs, seenMid, worst, minTr, #layerItems(elC, "Flare"), #layerItems(elC, "SigFlare")))
+
+	-- g) Glacier Breath / Lava Slam thinner at the target: the glacier >= 0.65 see-through; the lava spikes leave the slot
+	--    facing the caster open (none within 30 degrees of it) and the dome is >= 0.8 see-through
+	local ri = Cat.Signatures.rime_wyrmling
+	local elG = play({ Element = ri.Element, Attack = "Special", Kind = ri.Kind, PetId = "rime_wyrmling", Rarity = ri.Rarity })
+	local glacier = coreItems(elG, "vfx_sig_glacier")[1]
+	local mc = Cat.Signatures.magma_cub
+	local elL = play({ Element = mc.Element, Attack = "Special", Kind = mc.Kind, PetId = "magma_cub", Rarity = mc.Rarity })
+	local nearest, spikes = math.huge, 0
+	for _, it in ipairs(elL and elL.Items or {}) do
+		if it.Actor and not it.Rim and it.OffR and it.OffD then
+			spikes = spikes + 1
+			local a = math.deg(math.atan2(it.OffD, it.OffR)) -- (the caster is at -90: OffD < 0)
+			nearest = math.min(nearest, math.abs(((a + 90 + 180) % 360) - 180))
+		end
+	end
+	local dome = layerItems(elL, "Dome")[1]
+	T.check(glacier ~= nil and glacier.Trans >= 0.65 and spikes == 5 and nearest >= 30 and dome ~= nil and dome.Trans >= 0.8,
+		"Studio findings: Glacier Breath >= 0.65 see-through; Lava Slam's spikes leave the side facing the caster open and its dome is >= 0.8 see-through (the flinch shows)",
+		fmt("glacier %s, %d spikes, nearest %.0f deg from the caster's side, dome %s", glacier and fmt("%.2f", glacier.Trans) or "-", spikes, nearest, dome and fmt("%.2f", dome.Trans) or "-"))
+	Fx.ClearAll()
+end
+
 local function signatureEngine(env)
 	local Fx, Cat, ctx, run = env.Fx, env.Cat, env.ctx, env.run
 	local function play(pet, rarity, mine, nAllies)
@@ -1832,6 +2185,10 @@ S.client_p7vfx_engine = guarded("client_p7vfx_engine", function()
 	Fx.ClearAll()
 	-- 17) Task 11: the 12 signature specials (a file-level helper: this function is at the 200-locals limit)
 	signatureEngine({ Fx = Fx, Cat = Cat, ctx = ctx, run = run, clock = function()
+		return clock
+	end, A = A, B = B, allies = allyModels })
+	-- (Studio findings round) the signature specials' Studio fixes, drawn (a file-level helper: the locals limit)
+	studioFindings({ Fx = Fx, Cat = Cat, ctx = ctx, run = run, clock = function()
 		return clock
 	end, A = A, B = B, allies = allyModels })
 	for _, m in ipairs(allyModels) do
