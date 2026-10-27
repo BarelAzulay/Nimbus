@@ -17,6 +17,17 @@
 --                         top-right with readable numbers (>= 14 px) and touch nothing else (one row on the portrait
 --                         phone); the dungeon End card never covers them (they step aside, and come back); in a battle
 --                         on a landscape phone they move into Roblox's top band (CurrencyMode "TopBand") and back
+-- Studio check of #1 (wave 4a phone fixes):
+--   client_bug2gui_stickemu (client, keyboard + touch like Studio's device emulator / a touch laptop) a TouchGui with
+--                         a visible DynamicThumbstickFrame (built like PlayerModule's DynamicThumbstick) puts the
+--                         column into its touch layout: at 749x388 (iPhone 14), 800x360 (Galaxy A06), 667x375
+--                         (iPhone 7), 844x390 and 740x360 it ends >= 10 px above ThumbstickStart's top with tiles
+--                         >= 44 px; the stick going away gives back the desktop column
+--   client_bug2gui_stick_mobile (phone world) the same rule against the same TouchGui on a touch-only phone
+--   client_bug2gui_empty / client_bug2gui_empty_mobile the "No pets yet!" empty state of the Pets page and the Team
+--                         picker's (one helper, P5.emptyState): the Open Shop button's left and right edges inside its
+--                         column, the title / body / button text fits its box (TextFits, and the mock's text extent
+--                         at the label's scale), the block inside the grid well, at desktop and phone sizes
 -- Deterministic: mock clock only, no RNG; the viewport, the fold and the tutorial state are restored at the end.
 -- Plain Lua 5.1 syntax only.
 
@@ -460,6 +471,277 @@ S.client_bug2gui_mobile = guarded("client_bug2gui_mobile", function()
 	Mock.SetViewport(old[1], old[2])
 	KC.advance(1)
 	KC.flushErrors("client_bug2gui_mobile")
+end)
+
+----------------------------------------------------------------------------------------------------
+-- Studio check of #1: the column vs Roblox's real thumbstick ring, and the empty states on phones
+----------------------------------------------------------------------------------------------------
+-- A TouchGui like PlayerModule's (TouchControlFrame > DynamicThumbstickFrame > ThumbstickStart, the idle ring): the
+-- frame is 0.4 x 2/3 of the gui area (+ a 100 px safe inset) from 1/3 down, the ring 3.7 x 20 px (40 on screens
+-- whose gui area's short side is > 500) centred 3.3 rings in and 2.8 rings up from the frame's inset corner. In
+-- Studio's iPhone 14 emulation (749x388) this gives ThumbstickStart (29,237) 74 px and the frame (-100,110) 400x320,
+-- the values measured in Studio.
+function H.touchGui(W, Hh)
+	local pg = H.pg()
+	local old = pg:FindFirstChild("TouchGui")
+	if old then
+		old:Destroy()
+	end
+	local inset = Mock.TopInset or 58
+	local areaW, areaH = W, Hh - inset
+	local ring = (math.min(areaW, areaH) > 500) and 40 or 20
+	local safe = 100
+	local g = Instance.new("ScreenGui")
+	g.Name = "TouchGui"
+	g.ResetOnSpawn = false
+	g.IgnoreGuiInset = false
+	local frame = Instance.new("Frame")
+	frame.Name = "TouchControlFrame"
+	frame.BackgroundTransparency = 1
+	frame.Size = UDim2.new(1, 0, 1, 0)
+	frame.Parent = g
+	local stick = Instance.new("Frame")
+	stick.Name = "DynamicThumbstickFrame"
+	stick.BackgroundTransparency = 1
+	if areaW >= areaH then
+		stick.Size = UDim2.new(0.4, safe, 2 / 3, safe)
+		stick.Position = UDim2.new(0, -safe, 1 / 3, 0)
+	else
+		stick.Size = UDim2.new(1, safe, 0.4, safe)
+		stick.Position = UDim2.new(0, -safe, 0.6, 0)
+	end
+	stick.Parent = frame
+	local start = Instance.new("ImageLabel")
+	start.Name = "ThumbstickStart"
+	start.BackgroundTransparency = 1
+	start.AnchorPoint = Vector2.new(0.5, 0.5)
+	start.Position = UDim2.new(0, ring * 3.3 + safe, 1, -ring * 2.8 - safe)
+	start.Size = UDim2.fromOffset(ring * 3.7, ring * 3.7)
+	start.Parent = stick
+	g.Parent = pg
+	return g, start
+end
+
+-- the column against the ring: shown tiles >= 44 px, under the top bar, the column (tab included) ending >= 10 px
+-- above ThumbstickStart's top
+function H.checkStick(label, start)
+	local inset = Mock.TopInset or 58
+	local p = H.parts()
+	local ring = H.rect(start)
+	local minTile, lowest, inside = math.huge, 0, true
+	for _, id in ipairs(H.ORDER) do
+		local b = H.tile(id)
+		if b and H.shown(b) then
+			local r = H.rect(b)
+			minTile = math.min(minTile, r.x1 - r.x0, r.y1 - r.y0)
+			lowest = math.max(lowest, r.y1)
+			inside = inside and r.x0 >= 0 and r.y0 >= inset - 0.5
+		else
+			minTile = 0
+		end
+	end
+	lowest = math.max(lowest, H.rect(p.Column).y1)
+	T.check(minTile >= 44 and inside, label .. ": every tile is shown, >= 44 px, under the top bar", string.format("%.1f px", minTile))
+	T.check(lowest <= ring.y0 - 10, label .. ": the column ends >= 10 px above Roblox's thumbstick ring (ThumbstickStart)",
+		string.format("column bottom %.0f, ring top %.0f (gap %.0f)", lowest, ring.y0, ring.y0 - lowest))
+end
+
+H.STICK_SIZES = { { 749, 388 }, { 800, 360 }, { 667, 375 }, { 844, 390 }, { 740, 360 } }
+
+S.client_bug2gui_stickemu = guarded("client_bug2gui_stickemu", function()
+	local UIS = game:GetService("UserInputService")
+	local oldTouch, oldKeys = UIS.TouchEnabled, UIS.KeyboardEnabled
+	local old = { Mock.Viewport.X, Mock.Viewport.Y }
+	KC.toClient("MatchState", nil)
+	KC.toClient("PartyState", nil)
+	LocalPlayer:SetAttribute("InMatch", false)
+	H.closeAll()
+	H.unfold()
+	-- Studio's device emulator / a touch laptop: touch AND a keyboard (MenuController's touchDevice stays false)
+	UIS.TouchEnabled = true
+	UIS.KeyboardEnabled = true
+	local gui = nil
+	for _, size in ipairs(H.STICK_SIZES) do
+		local W, Hh = size[1], size[2]
+		Mock.SetViewport(W, Hh)
+		local start
+		gui, start = H.touchGui(W, Hh)
+		KC.advance(1.2) -- the menu polls for the stick 4x a second
+		H.checkStick(string.format("bug2gui emulator %dx%d", W, Hh), start)
+	end
+	-- the stick goes away (the player types / clicks on a hybrid device): the desktop column comes back, centred
+	if gui then
+		gui:Destroy()
+	end
+	Mock.SetViewport(1280, 720)
+	KC.advance(1.2)
+	local col = H.rect(H.parts().Column)
+	local inset = Mock.TopInset or 58
+	local pets = H.tile("Pets")
+	local pr = pets and H.rect(pets)
+	T.check(pets ~= nil and H.shown(pets) and math.abs((col.y0 + col.y1) / 2 - (inset + (720 - inset) / 2)) < 6 and pr.x1 - pr.x0 <= 46,
+		"bug2gui emulator: without the thumbstick the desktop column is back (44.8 px tiles, vertically centred)", H.fmt(col))
+	UIS.TouchEnabled, UIS.KeyboardEnabled = oldTouch, oldKeys
+	Mock.SetViewport(old[1], old[2])
+	KC.advance(1)
+	KC.flushErrors("client_bug2gui_stickemu")
+end)
+
+S.client_bug2gui_stick_mobile = guarded("client_bug2gui_stick_mobile", function()
+	local old = { Mock.Viewport.X, Mock.Viewport.Y }
+	KC.toClient("MatchState", nil)
+	KC.toClient("PartyState", nil)
+	LocalPlayer:SetAttribute("InMatch", false)
+	H.closeAll()
+	H.unfold()
+	local gui = nil
+	for _, size in ipairs(H.STICK_SIZES) do
+		local W, Hh = size[1], size[2]
+		Mock.SetViewport(W, Hh)
+		local start
+		gui, start = H.touchGui(W, Hh)
+		KC.advance(1.2)
+		H.checkStick(string.format("bug2gui phone stick %dx%d", W, Hh), start)
+	end
+	if gui then
+		gui:Destroy()
+	end
+	Mock.SetViewport(old[1], old[2])
+	KC.advance(1)
+	KC.flushErrors("client_bug2gui_stick_mobile")
+end)
+
+-- product of the UIScales from obj up to its ScreenGui (text sizes and the mock's text extent are unscaled px)
+function H.scaleOf(obj)
+	local s, node = 1, obj
+	while node and not node:IsA("ScreenGui") do
+		local u = node:FindFirstChildOfClass("UIScale")
+		if u then
+			s = s * u.Scale
+		end
+		node = node.Parent
+	end
+	return s
+end
+-- TextFits, and its equivalent from the mock's text extent at the label's scale (wrapped to the box's width)
+function H.textFits(lbl)
+	local s = H.scaleOf(lbl)
+	local abs = lbl.AbsoluteSize
+	local w, h = Mock.TextExtent(lbl, lbl.TextWrapped and (abs.X / math.max(s, 0.01)) or nil)
+	local ok = lbl.TextFits ~= false and w * s <= abs.X + 1 and h * s <= abs.Y + 1
+	return ok, string.format("'%s' needs %.0fx%.0f in %.0fx%.0f", lbl.Text, w * s, h * s, abs.X, abs.Y)
+end
+
+-- one empty state: the button's edges (and its 4 px glow) inside the column, every text fits, the block inside its
+-- column vertically too (a fixed well; a scrolling list may grow)
+function H.checkEmpty(label, empty, fixed)
+	if not T.check(empty ~= nil and H.shown(empty), label .. ": (setup) the empty state shows") then
+		return
+	end
+	local column = H.rect(empty.Parent)
+	local button = nil
+	for _, d in ipairs(empty:GetChildren()) do
+		if d:IsA("TextButton") then
+			button = d
+		end
+	end
+	if T.check(button ~= nil and H.shown(button), label .. ": the Open Shop button shows") then
+		local b = H.rect(button)
+		T.check(b.x0 - 4 >= column.x0 - 0.5 and b.x1 + 4 <= column.x1 + 0.5 and b.x1 - b.x0 >= 60,
+			label .. ": the button's left and right edges (and its glow) stay inside its column", H.fmt(b) .. " in " .. H.fmt(column))
+		local ok, why = H.textFits(button)
+		T.check(ok, label .. ": the button's text fits", why)
+	end
+	local bad, lowest, highest = {}, -math.huge, math.huge
+	for _, d in ipairs(empty:GetChildren()) do
+		if d:IsA("GuiObject") and H.shown(d) then
+			local r = H.rect(d)
+			lowest, highest = math.max(lowest, r.y1), math.min(highest, r.y0)
+			if r.x0 < column.x0 - 0.5 or r.x1 > column.x1 + 0.5 then
+				bad[#bad + 1] = d.Name .. " out of the column " .. H.fmt(r)
+			end
+			if d:IsA("TextLabel") then
+				local ok, why = H.textFits(d)
+				if not ok then
+					bad[#bad + 1] = d.Name .. ": " .. why
+				end
+			end
+		end
+	end
+	T.check(#bad == 0, label .. ": the title and the body wrap inside the column and their text fits", table.concat(bad, "; "))
+	if fixed then
+		T.check(highest >= column.y0 - 0.5 and lowest <= column.y1 + 0.5, label .. ": the whole block fits in the grid's well",
+			string.format("%.0f..%.0f in %s", highest, lowest, H.fmt(column)))
+	end
+end
+
+function H.emptyRun(world, sizes)
+	local State = H.client("State")
+	local oldKeys, oldLoaded = State.Keys, State.IsLoaded
+	local old = { Mock.Viewport.X, Mock.Viewport.Y }
+	KC.toClient("MatchState", nil)
+	KC.toClient("PartyState", nil)
+	LocalPlayer:SetAttribute("InMatch", false)
+	H.closeAll()
+	H.unfold()
+	State.Keys = function()
+		return {} -- no pets yet
+	end
+	State.IsLoaded = function()
+		return true -- (not "Loading...": the Open Shop button shows)
+	end
+	local ok, err = pcall(function()
+		for _, size in ipairs(sizes) do
+			local W, Hh = size[1], size[2]
+			Mock.SetViewport(W, Hh)
+			KC.advance(1)
+			local label = string.format("bug2gui %s %dx%d", world, W, Hh)
+			H.closeAll()
+			Mock.Click(H.tile("Pets"))
+			KC.advance(1)
+			local inv = H.parts().Menu:FindFirstChild("Window_Inventory")
+			local well = inv and inv:FindFirstChild("GridWell", true)
+			H.checkEmpty(label .. " Pets", well and well:FindFirstChild("Empty"), true)
+			-- the helper itself: squeezed into a 150 design px column the button still takes only the column's width
+			local left = well and well.Parent
+			if left and left:IsA("GuiObject") then
+				local was = left.Size
+				left.Size = UDim2.new(0, 150, 1, 0)
+				KC.advance(0.2)
+				H.checkEmpty(label .. " Pets squeezed to a 150 px column", well:FindFirstChild("Empty"), false)
+				left.Size = was
+				KC.advance(0.2)
+			end
+			H.closeAll()
+			Mock.Click(H.tile("Team"))
+			KC.advance(1)
+			local team = H.parts().Menu:FindFirstChild("Window_Team")
+			local empty = nil
+			for _, d in ipairs(team and team:GetDescendants() or {}) do
+				if d.Name == "Empty" and d:FindFirstChild("GoShop") then
+					empty = d
+				end
+			end
+			H.checkEmpty(label .. " Team", empty, false)
+			H.closeAll()
+		end
+	end)
+	State.Keys, State.IsLoaded = oldKeys, oldLoaded
+	if not ok then
+		T.fail("bug2gui " .. world .. " empty states: " .. tostring(err))
+	end
+	Mock.SetViewport(old[1], old[2])
+	KC.advance(1)
+end
+
+S.client_bug2gui_empty = guarded("client_bug2gui_empty", function()
+	H.emptyRun("empty", { { 1920, 1080 }, { 1280, 720 }, { 749, 388 } })
+	KC.flushErrors("client_bug2gui_empty")
+end)
+
+S.client_bug2gui_empty_mobile = guarded("client_bug2gui_empty_mobile", function()
+	H.emptyRun("phone empty", { { 749, 388 }, { 844, 390 }, { 800, 360 }, { 667, 375 }, { 740, 360 }, { 390, 844 } })
+	KC.flushErrors("client_bug2gui_empty_mobile")
 end)
 
 return S

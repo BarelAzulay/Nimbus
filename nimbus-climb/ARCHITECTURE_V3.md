@@ -2535,6 +2535,11 @@ right edge; NPC dialog moves to the side on phones; the results card = one compa
 above the thumbstick, never into the screen middle. The arrow tab `MenuColumn.Toggle` sits right after the last tile (the gear) and
 folds the column (0.25 s slide, only the tab at x 0; `MenuCollapsed` on NimbusMenu, `MenuController.SetColumnCollapsed(c, animate)` /
 `IsColumnCollapsed()`; session memory; a red dot repeats any tile badge while folded; a tutorial Menu step unfolds it).
+The touch layout (band above the stick, ending >= 10 px above PlayerModule's `ThumbstickStart` ring) applies on touch-only devices
+AND wherever `PlayerGui.TouchGui` shows a thumbstick frame (`P5.stickShown`, polled 4x a second: Studio's device emulator and
+touch laptops / tablets report `KeyboardEnabled` too). Empty states (Pets page, Team picker) use `P5.emptyState`: wrapped,
+auto-height text and an Open Shop button as wide as its column, capped at 220 / 200 px; on a landscape phone with no pets the
+Pets page's empty state takes the whole page (the detail card hides).
 `HudController`: currencies = thin strips (`STRIP_W` 168 x `STRIP_H` 32) stacked top-right under Roblox's top bar (`CurrencyMode`
 "TopRight"; portrait phones: one right-aligned row; a phone in a battle: "TopBand", inside the top bar); the vitals card bottom-centre,
 8 px above the MEASURED hotbar and centred on it (Regular on desktops, Compact on short touch screens), stepping aside / up from the
@@ -2544,7 +2549,8 @@ name: the vitals' top), `BottomCentreTop` / `BottomCentreLeft` / `BottomCentreRi
 (lifted above `BottomLeftTop` only when its x-span meets the card or the hotbar; desktops), MouseLock's "press L" pill (above
 `BottomCentreTop`, never above 65% of the height), DungeonController's phone End card (starts below `TopRightBottom`, shrinks to
 0.7 to clear the jump button, else the HUD hides the strips while it covers them), MovementController (RUN avoids the
-bottom-centre vitals footprint). Tests: `tools/smoke_bug2_gui.lua` (`client_bug2gui_layout`, `client_bug2gui_mobile`).
+bottom-centre vitals footprint). Tests: `tools/smoke_bug2_gui.lua` (`client_bug2gui_layout`, `client_bug2gui_mobile`, `client_bug2gui_stickemu`,
+`client_bug2gui_stick_mobile`, `client_bug2gui_empty`, `client_bug2gui_empty_mobile`).
 
 ### 7. Loading screen, main menu, settings (world design 7-8; menu W3)
 

@@ -72,7 +72,9 @@
 --     stays High), and the roulette pools are sculpted ahead of time (one pet per frame) when the Shop opens and
 --     when a spin is requested, so the spin itself only clones.
 --   * Touch screens: the menu column never reaches Roblox's thumbstick (bottom-left); in landscape it sits in the
---     band between the top margin and the stick (two slim columns of four on a phone, labels >= 14 px).
+--     band between the top margin and the stick (two slim columns of four on a phone, labels >= 14 px). "Touch" is a
+--     touch-only device OR any screen where PlayerModule's TouchGui shows a thumbstick (Studio's device emulator and
+--     touch laptops / tablets with a keyboard report KeyboardEnabled too, but still get the stick: P5.stickShown).
 --
 -- Remotes used: OpenPanel, RouletteResult (in); BuyRoulette, EquipPet, UnequipPet, BuyItem, GoToSpot, HomeAction,
 -- PetCare (out). Each remote action is sent at most every K.FIRE_GAP seconds (the server rate-limits as well).
@@ -184,10 +186,11 @@ local K = {
 	STRIP_DETAIL = "Low", -- roulette strip cells: small, static, moving fast (the reveal card keeps High)
 	ODDS_DETAIL = "Low", -- 88 px odds tiles
 	-- Roblox's touch thumbstick (bottom-left), gui px above the bottom edge: classic 70 px stick at 20 px on small
-	-- screens (the dynamic stick's idle ring reaches ~93) and 120 px at 0.75 * 120 on large ones
+	-- screens (the dynamic stick's idle ring, ThumbstickStart, reaches 93: 74 px centred 56 px up) and 120 px at
+	-- 0.75 * 120 on large ones (ThumbstickStart 148 px centred 112 px up: 186)
 	STICK_TOP_SMALL = 96,
 	STICK_TOP_LARGE = 210,
-	STICK_GAP = 8,
+	STICK_GAP = 10, -- the column ends >= 10 px above the ring (13 px above the real ThumbstickStart on a phone)
 	MIN_LABEL_PX = 14, -- smallest on-screen menu label on phones / tablets (readability rule)
 	GRID_ENTRY_H = 86, -- "Grid" layout: the label sits on the tile's bottom edge, so a row is shorter ...
 	GRID_LABEL_Y = -8, -- ... (label centre this far above the tile's bottom; "Column": 2 px below it)
@@ -2192,11 +2195,38 @@ function P5.tileVisibility(entry)
 	end
 end
 
+-- Roblox's touch thumbstick is (or will be) on screen: a touch-only device, or a screen where PlayerModule's TouchGui
+-- shows a thumbstick frame although the device also has a keyboard (Studio's device emulator, touch laptops,
+-- tablets with a keyboard: TouchEnabled AND KeyboardEnabled, so `touchDevice` is false there). The column then uses
+-- the touch layout: the band above the stick, thumb-sized tiles and tab. Polled by P5.watchSheets (the stick comes and
+-- goes with the last input type on hybrid devices).
+function P5.stickShown()
+	if touchDevice then
+		return true
+	end
+	local pg = LocalPlayer and LocalPlayer:FindFirstChildOfClass("PlayerGui")
+	local touchGui = pg and pg:FindFirstChild("TouchGui")
+	if not (touchGui and touchGui:IsA("ScreenGui") and touchGui.Enabled) then
+		return false
+	end
+	local frame = touchGui:FindFirstChild("TouchControlFrame")
+	if not (frame and frame:IsA("GuiObject") and frame.Visible) then
+		return false
+	end
+	for _, name in ipairs({ "DynamicThumbstickFrame", "ThumbstickFrame" }) do
+		local stick = frame:FindFirstChild(name)
+		if stick and stick:IsA("GuiObject") and stick.Visible then
+			return true
+		end
+	end
+	return false
+end
+
 -- Design size of the column frame for `cols` tile columns: the tiles plus the arrow tab beside them.
 function P5.columnSize(cols)
 	local rows = math.ceil(#MENU / cols)
 	local tilesW = cols * P5.TILE + (cols - 1) * P5.GAP
-	local tabW = touchDevice and P5.TAB_W_TOUCH or P5.TAB_W
+	local tabW = U.StickShown and P5.TAB_W_TOUCH or P5.TAB_W
 	return tilesW + P5.TAB_GAP + tabW, rows * P5.TILE + (rows - 1) * P5.GAP, tilesW
 end
 
@@ -2204,10 +2234,12 @@ end
 -- the last row, right after its last tile (the gear: with 3 columns that row holds only 2 tiles, and the tab must not
 -- leave an empty slot before it). Sets U.ColumnW / U.ColumnH / U.TilesW / U.TabX (design px).
 function P5.placeTiles(cols)
-	if U.Cols == cols then
+	local touch = U.StickShown == true -- the tab's width follows the touch layout
+	if U.Cols == cols and U.ColsTouch == touch then
 		return
 	end
 	U.Cols = cols
+	U.ColsTouch = touch
 	local w, h, tilesW = P5.columnSize(cols)
 	for index, spec in ipairs(MENU) do
 		local entry = Entries[spec.Id]
@@ -2425,14 +2457,19 @@ function P5.watchSheets()
 			elseif U.Collapsed then
 				safe("menu tab", P5.paintTab) -- the tab's dot follows the tiles' badges
 			end
+			-- Roblox's thumbstick appeared / went (hybrid devices, the emulator): the column moves above it / back
+			if U.Column and P5.stickShown() ~= (U.StickShown == true) then
+				safe("menu stick", relayoutMenu)
+			end
 			task.wait(0.25)
 		end
 	end)
 end
 
--- the column's place and scale: left-centre on desktops; on touch landscape screens in the band between the top
--- margin and Roblox's thumbstick; on portrait phones above the bottom sheet's top (0.44 H). One column when it fits
--- at P5.MIN_TILE_PX per tile, else two; folded (U.Collapsed) the column sits left of the edge with only its tab showing.
+-- the column's place and scale: left-centre on desktops; on touch landscape screens (P5.stickShown: a touch device or
+-- Roblox's thumbstick on screen) in the band between the top margin and the thumbstick; on portrait phones above the
+-- bottom sheet's top (0.44 H). One column when it fits at P5.MIN_TILE_PX per tile, else two; folded (U.Collapsed) the
+-- column sits left of the edge with only its tab showing.
 function relayoutMenu()
 	if not gui or not U.Column then
 		return
@@ -2441,7 +2478,9 @@ function relayoutMenu()
 	local factor = screenFactor()
 	local margin = screenMargin()
 	local pref = factor * P5.TILE_PX / P5.TILE
-	if touchDevice then
+	local touchLayout = P5.stickShown()
+	U.StickShown = touchLayout
+	if touchLayout then
 		pref = math.max(P5.TOUCH_TILE_PX, factor * P5.TILE_PX) / P5.TILE
 	end
 	local minScale = P5.MIN_TILE_PX / P5.TILE
@@ -2450,7 +2489,7 @@ function relayoutMenu()
 		local camera = workspace.CurrentCamera
 		local vp = camera and camera.ViewportSize or area
 		local bottom = area.Y - margin
-		if touchDevice then
+		if touchLayout then
 			bottom = area.Y - ((math.min(vp.X, vp.Y) <= 500) and K.STICK_TOP_SMALL or K.STICK_TOP_LARGE) - K.STICK_GAP
 		end
 		first = margin
@@ -2596,6 +2635,55 @@ end
 -- Inventory window: tabs Pets + Items. Phase 2: one slot per pet COPY key (tier / hybrid badges, levels), the detail
 -- card with level + XP, scaled stats and the Feed / Place in Garden / Train in Gym actions, and the Feed picker.
 ----------------------------------------------------------------------
+-- An empty-state block ("No pets yet!" + a line + a gold button) that fits whatever column it is in (bug batch 2 #1
+-- Studio check: on a landscape phone the Pets grid is ~180 design px wide and the old fixed 220 px button stuck out of
+-- it while the 56 px body box cut its text after two lines). The title and the body wrap and grow (AutomaticSize Y),
+-- the button takes the column's width (minus room for its 4 px glow ring) capped at opts.ButtonW, and the block grows
+-- with its content (opts.Fill: fill the parent and centre in it, else AutomaticSize Y in a list). Returns
+-- { Frame, Title, Body, Button }; opts: Parent, Title, Body, ButtonText, ButtonName, ButtonW, ButtonH, Callback,
+-- TitleSize, BodySize, BodyMaxW, Fill, LayoutOrder, ZIndex.
+function P5.emptyState(opts)
+	local out = {}
+	local frame = makeFrame(opts.Parent, "Empty", {
+		Size = opts.Fill and UDim2.new(1, 0, 1, 0) or UDim2.new(1, 0, 0, 0),
+		AutomaticSize = (not opts.Fill) and Enum.AutomaticSize.Y or nil,
+		LayoutOrder = opts.LayoutOrder or 0,
+		Visible = false,
+		ZIndex = opts.ZIndex or 1,
+	})
+	out.Frame = frame
+	pad(frame, 8, 0, 8, 0)
+	listLayout(frame, Enum.FillDirection.Vertical, 10, Enum.HorizontalAlignment.Center, opts.Fill and Enum.VerticalAlignment.Center or Enum.VerticalAlignment.Top)
+	if opts.Title then
+		out.Title = makeText(frame, "Title", opts.Title, "Title", opts.TitleSize or 32, WHITE, {
+			Size = UDim2.new(1, 0, 0, 0),
+			AutomaticSize = Enum.AutomaticSize.Y,
+			TextWrapped = true,
+			LayoutOrder = 1,
+		})
+	end
+	out.Body = makeText(frame, opts.Title and "Body" or "Text", opts.Body or "", "Body", opts.BodySize or 20, MUTED, {
+		Size = UDim2.new(1, 0, 0, 0),
+		AutomaticSize = Enum.AutomaticSize.Y,
+		TextWrapped = true,
+		LayoutOrder = 2,
+	})
+	-- (a short line on wide pages: as wide as before, 404 design px on the 1080p Pets page)
+	Util.Create("UISizeConstraint", { MaxSize = Vector2.new(opts.BodyMaxW or 404, math.huge), Parent = out.Body })
+	out.Button = CloudUI.Button({
+		Name = opts.ButtonName or "OpenShop",
+		Text = opts.ButtonText or "Open Shop",
+		Style = "Gold",
+		Size = UDim2.new(1, -8, 0, opts.ButtonH or 56), -- (1, -8): its glow ring reaches 4 px past each side
+		TextSize = 24,
+		LayoutOrder = 3,
+		Callback = opts.Callback,
+		Parent = frame,
+	})
+	Util.Create("UISizeConstraint", { MaxSize = Vector2.new(opts.ButtonW or 220, opts.ButtonH or 56), Parent = out.Button })
+	return out
+end
+
 -- Phase 5 (6.6): the Pets page in its three window shapes. "Wide" (a docked 820 px window): the grid left, a 300 px card
 -- right; "Tall" (720p / portrait sheets): the grid on top, the card below with the pet, its name, pills and level side
 -- by side and the six buttons in 2 rows of 3; "Short" (landscape phones, ~460 x 390): a 2-column grid left and a slim
@@ -2716,6 +2804,14 @@ function P5.petsLayout(W, w, h, narrow, short, tall)
 		scroll.Visible = room >= 40
 		scroll.Position = UDim2.fromOffset(4, 94)
 		scroll.Size = UDim2.new(1, -8, 0, math.max(0, room))
+	end
+	-- no pets yet on a landscape phone ("Short"): the detail card has nothing to show ("Pick a pet ..."), so the empty
+	-- state takes the whole page; in the grid's ~120 design px column its text and Open Shop button could not fit
+	W.LastLayout = { w, h, narrow, short, tall }
+	local wideEmpty = mode == "Short" and W.IsEmpty == true
+	W.Detail.Visible = not wideEmpty
+	if wideEmpty then
+		W.Left.Size = UDim2.new(1, 0, 1, 0)
 	end
 	W.NameFit.MaxTextSize = compact and 24 or 30
 	W.PlaceButtons()
@@ -3154,29 +3250,19 @@ do
 			W.GridWell = well
 			W.Grid = CloudUI.Grid(well, UDim2.fromOffset(104, 104), 10)
 
-			W.Empty = makeFrame(well, "Empty", { Size = UDim2.new(1, 0, 1, 0), Visible = false, ZIndex = 5 })
-			listLayout(W.Empty, Enum.FillDirection.Vertical, 12, Enum.HorizontalAlignment.Center, Enum.VerticalAlignment.Center)
-			W.EmptyTitle = makeText(W.Empty, "Title", "No pets yet!", "Title", 32, WHITE, {
-				Size = UDim2.new(1, -30, 0, 40),
-				LayoutOrder = 1,
-			})
-			W.EmptyBody = makeText(W.Empty, "Body", "Spin a roulette in the Shop to hatch your first winged friend.", "Body", 20, MUTED, {
-				Size = UDim2.new(1, -60, 0, 56),
-				TextWrapped = true,
-				LayoutOrder = 2,
-			})
-			W.EmptyButton = CloudUI.Button({
-				Name = "OpenShop",
-				Text = "Open Shop",
-				Style = "Gold",
-				Size = UDim2.fromOffset(220, 56),
-				TextSize = 24,
-				LayoutOrder = 3,
+			-- the empty state fits the grid's column in every shape (P5.emptyState: wrapped text, a capped button)
+			local empty = P5.emptyState({
+				Parent = well,
+				Fill = true,
+				ZIndex = 5,
+				Title = "No pets yet!",
+				Body = "Spin a roulette in the Shop to hatch your first winged friend.",
+				ButtonName = "OpenShop",
 				Callback = function()
 					menuActionShop()
 				end,
-				Parent = W.Empty,
 			})
+			W.Empty, W.EmptyTitle, W.EmptyBody, W.EmptyButton = empty.Frame, empty.Title, empty.Body, empty.Button
 
 			buildDetailCard(page)
 		end
@@ -3660,6 +3746,14 @@ do
 			end
 			W.Grid.Visible = #keys > 0
 			W.Empty.Visible = #keys == 0
+			if W.IsEmpty ~= (#keys == 0) then
+				-- the empty state came / went: on a landscape phone it takes / gives back the detail card's room
+				W.IsEmpty = #keys == 0
+				local L = W.LastLayout
+				if L then
+					safe("pets layout", P5.petsLayout, W, L[1], L[2], L[3], L[4], L[5])
+				end
+			end
 			if #keys == 0 then
 				local loaded = (State.IsLoaded == nil) or State.IsLoaded()
 				if loaded then
@@ -7954,23 +8048,19 @@ P3.Define = function()
 			HorizontalAlignment = Enum.HorizontalAlignment.Center,
 			Parent = ui.Grid,
 		})
-		ui.Empty = makeFrame(ui.RightScroll, "Empty", { Size = UDim2.new(1, 0, 0, 150), LayoutOrder = 3, Visible = false })
-		makeText(ui.Empty, "Text", "No pets yet! Spin a roulette in the Shop to hatch a battle buddy.", "Body", 19, MUTED, {
-			Size = UDim2.new(1, 0, 0, 60),
-			TextWrapped = true,
-		})
-		CloudUI.Button({
-			Name = "GoShop",
-			Text = "Open Shop",
-			AnchorPoint = Vector2.new(0.5, 0),
-			Position = UDim2.new(0.5, 0, 0, 70),
-			Size = UDim2.fromOffset(200, 50),
-			Style = "Gold",
-			Parent = ui.Empty,
+		-- (P5.emptyState, like the Pets page: wrapped text that grows, a button capped at the column's width)
+		ui.Empty = P5.emptyState({
+			Parent = ui.RightScroll,
+			LayoutOrder = 3,
+			Body = "No pets yet! Spin a roulette in the Shop to hatch a battle buddy.",
+			BodySize = 19,
+			ButtonName = "GoShop",
+			ButtonW = 200,
+			ButtonH = 50,
 			Callback = function()
 				safe("team shop", openWindow, "Shop", {})
 			end,
-		})
+		}).Frame
 
 		-- viewports of the picker tiles: a few per frame (time budget), Low detail
 		local function fillTiles()
