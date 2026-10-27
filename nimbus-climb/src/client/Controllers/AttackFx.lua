@@ -991,6 +991,13 @@ local BEAM = {}
 function BEAM.Path(eff, it, t)
 	local p0, p1 = eff.Mouth, eff.Hit
 	local grow = outCubic(seg(t, it.T0, it.T0 + max(0.06, (eff.Times.Impact - it.T0) * 0.5)))
+	-- (Task 9 Studio, Storm s3: grown on its own clock toward the target's pivot, the bolt raced ahead of the shot, low
+	-- over the floor: on a flying shot the strip runs from the mouth to the shot itself, then to the hit)
+	local core = eff.Recipe and eff.Recipe.Core
+	if eff.Path == "Projectile" and eff.CorePos and not (core and core.Stretch) then
+		p1 = (t < eff.Times.Impact) and eff.CorePos or eff.Hit
+		grow = 1
+	end
 	if it.I > 1 or it.Jitter then -- extra bolts jump about the main one
 		local f = floor(t * 20) + it.I * 7
 		local j = (hash(f, 1) - 0.5) * 1.6 * eff.Size

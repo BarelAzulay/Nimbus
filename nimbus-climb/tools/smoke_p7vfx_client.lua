@@ -747,6 +747,31 @@ S.client_p7vfx_engine = guarded("client_p7vfx_engine", function()
 	end
 	T.check(#shellBad == 0 and shellSeen > 0, "band 4 shot: the shifting shell keeps its colour (never drawn near white)", table.concat(shellBad, " | "))
 	Fx.ClearAll()
+	-- 13d) Task 9 (Studio, Storm s3: the bolt grew toward the target on its own clock, racing ahead of the shot, low over
+	-- the floor): on a flying shot the Path bolt runs from the mouth to the shot itself
+	Fx.Play(ctx({ Element = "Storm", Attack = "Ranged", Rarity = "Common", From = { Unit = 74, Model = A }, Now = clock }))
+	local se = Fx._Live()[#Fx._Live()]
+	local bolt = nil
+	for _, it in ipairs(se and se.Items or {}) do
+		if it.Kind == "Beam" and it.Layer and it.Layer.Id == "Bolt" and it.I == 1 then
+			bolt = it
+		end
+	end
+	local onShot, inFlight, worstGap = 0, 0, 0
+	run(0.8, function()
+		local tt = se and (clock - se.Start) or 0
+		if bolt and bolt.Kit.Beam.Enabled and se.CorePos and tt > se.Times.Travel + 0.03 and tt < se.Times.Impact - 0.03 then
+			inFlight = inFlight + 1
+			local gap = (bolt.Kit.H1.Position - se.CorePos).Magnitude
+			worstGap = math.max(worstGap, gap)
+			if gap < 0.05 then
+				onShot = onShot + 1
+			end
+		end
+	end)
+	T.check(bolt ~= nil and inFlight > 0 and onShot == inFlight, "Storm's ranged bolt runs from the mouth to the flying shot (its tip on the shot)",
+		fmt("%d / %d frames on the shot, worst gap %.2f", onShot, inFlight, worstGap))
+	Fx.ClearAll()
 	-- review Important 1: Flame's Lava Slam (the old over-cap case) fits now: its Scorch is a glow disc, no emitter is cut
 	Fx.Play(ctx({ Element = "Flame", Attack = "Special", Kind = "Blast", PetId = "magma_cub", Rarity = "Secret", From = { Unit = 71, Model = A }, Now = clock }))
 	local fl = Fx._Live()[#Fx._Live()]
