@@ -180,9 +180,14 @@ local K = {
 	-- (Studio findings round, 2026-10-27)
 	SHELL_FALLBACK = 0.7, -- a Shield dome with no ally model to fit: x its old size (~30 % smaller)
 	SHELL_APART = 0.46, -- a dome's radius is at most this x the distance to the nearest other ally (never one blob)
-	STREAK_ROT = 90, -- the fx_streak sheet is horizontal (head right): turned to run along the fall (VelocityParallel)
+	STREAK_ROT = 90, -- the fx_streak sheet is horizontal (head right): turned upright (FacingCameraWorldUp, Task 11c)
 	SEG_GAP = 0.2, -- a segmented Stretch core's default gap (share of each segment)
 	BODY_R = 1.2, -- studs: a character's / pet's body radius the Wishing Star keeps clear of (+ its own half-width)
+	-- (Task 11c, Studio round 2, 2026-10-27)
+	SWEEP_EDGE = 1.2, -- Obsidian's pass runs this far (x size) past the enemy line's ends (was 2.5): inside the zone
+	MOON_LIFT = 4.5, -- the dusk moon's height over the hit when the effect has no cloud lift (= the Storm cloud's Height)
+	MOON_BACK = 1.2, -- ... and how far (x size) behind the target, away from the caster
+	STREAK_SIZE = 0.8, -- the Storm rain's streaks x the Rain layer's Size (review M1: the sheets of hail / petals keep 1)
 }
 AttackFx.POOL_KEEP_TOTAL = K.KEEP.Emitter + K.KEEP.Beam + K.KEEP.Trail + K.KEEP.Light + K.KEEP.Disc + K.KEEP.Rim + K.CORE_KEEP * K.CORE_KEYS
 
@@ -650,16 +655,36 @@ local function avoidSpots(eff, out)
 	return n
 end
 
--- p pushed out (flat) to at least r studs from every avoid spot, along `fwd` when it sits right on one
-local function keepClear(eff, p, r, fwd)
+-- p pushed out (flat) to at least r studs from every avoid spot. The caster (spot 1, where the path starts) pushes it
+-- straight out (along `fwd` when it sits right on it); every other spot (the player) pushes it SIDEWAYS, across `fwd`,
+-- to a side picked once per piece (`sides`, by spot: the side the piece first passed on, +1 when dead on the line).
+-- (Task 11c, review I2: pushed radially, recomputed per frame, the star flipped across a spot it crossed: a ~10-stud
+-- teleport in one frame with the player on its line, the /fx stance) A sideways push to a fixed side grows from 0 at
+-- the keep-out circle's edge and back, so the path bends round the player smoothly.
+local function keepClear(eff, p, r, fwd, sides)
 	local spots = eff.AvoidPts
 	local n = avoidSpots(eff, spots)
+	local lat = fwd:Cross(UP)
 	for _ = 1, 2 do -- (twice: a push away from one spot may land near the other)
 		for i = 1, n do
 			local c = spots[i]
 			local d = V3(p.X - c.X, 0, p.Z - c.Z)
 			local m = d.Magnitude
-			if m < r then
+			if i > 1 and sides then
+				local s = d:Dot(lat)
+				local side = sides[i]
+				if not side then
+					side = (s < -0.05) and -1 or 1
+					sides[i] = side
+				end
+				if m < r then
+					local a = d:Dot(fwd)
+					local need = sqrt(max(0, r * r - a * a))
+					if s * side < need then
+						p = p + lat * (side * need - s)
+					end
+				end
+			elseif m < r then
 				local dir = (m > 0.05) and (d / m) or fwd
 				p = V3(c.X, p.Y, c.Z) + dir * r
 			end
@@ -841,15 +866,20 @@ MOVE.Stretch = function(eff, it, t)
 	local len = L * grow
 	local th = (it.Thick or 1) * (1 + 0.1 * sin(t * 45)) * max(0.05, 1 - smooth(out))
 	if it.Segs then
-		-- (Studio findings round: Cloud Breath) segment Seg of Segs along the grown beam, a Gap share of it left open; the
+		-- (Studio findings round: Cloud Breath) the grown beam cut in Segs lengths, a Gap share of each left open; the
 		-- gaps drift down the beam (the breath flows) and each segment's girth flickers on its own
+		-- (Task 11c, review I1 + Studio R2: drifting Segs pieces left the mouth end empty for up to a third of the beam, then
+		-- all snapped back a length at the wrap: two boxes with a hole) Segs + 1 pieces, piece Seg starting one length
+		-- behind the mouth, each clipped to the beam: one enters at the mouth as another leaves at the target, so the
+		-- mouth is always covered, the pattern is the same at the wrap and the only openings are the Gap shares
 		local sl = len / it.Segs
-		local start = ((it.Seg - 1 + (t * 1.6) % 1) % it.Segs) * sl
-		local pl = min(sl * (1 - it.Gap), len - start) -- (the one flowing past the target is cut at it)
+		local start = (it.Seg - 2 + (t * 1.6) % 1) * sl
+		local s0, s1 = max(0, start), min(len, start + sl * (1 - it.Gap))
+		local pl = s1 - s0
 		if pl < 0.05 then
 			return nil
 		end
-		local c = p0 + d.Unit * (start + pl / 2)
+		local c = p0 + d.Unit * (s0 + pl / 2)
 		local tk = th * (0.85 + 0.15 * sin(t * 37 + it.Seg * 2.1))
 		return face(c, d), V3(tk, tk, pl / max(0.01, it.Base.Z * it.S)), fadeTo(it, smooth(out) * 0.6)
 	end
@@ -912,43 +942,52 @@ MOVE.Shell = function(eff, it, t)
 	local p = anchorPoint(eff, it)
 	local ripple = 1 + 0.08 * sin(pi * seg(t, T.Impact, T.Impact + 0.3))
 	local fade = smooth(seg(t, it.TF, it.T1))
+	p = p - UP * (it.Sink or 0) -- (Task 11c I3: a squat pet's dome is sunk so its top stays under the name tag)
 	local cf = it.Disc and face(p, eff.Dir) or (CFrame.new(p) * CFrame.Angles(0, t * 0.8, 0))
 	return cf, ONE * (a * ripple * (it.Fit or 1)), fadeTo(it, fade)
 end
 
--- (Studio findings round) the Shield dome round ally i fits it: radius core.Fit x the ally's half-width, at most
+-- (Studio findings round) the Shield dome round a pet fits it: radius core.Fit x the pet's half-width, at most
 -- SHELL_APART x the distance to the nearest other ally (one dome each, never one blob) and its top at most TopClear
--- studs over the ally's head (the name tag stays clear); never smaller than the ally's own half-width (a clumped pair
--- may just touch rather than shrink into their bodies); no ally model: SHELL_FALLBACK x the old size. -> it.S multiplier
-local function shellFit(eff, i, base, s, core)
-	local side = eff.Targets[i]
+-- studs over the pet's head (the name tag stays clear); never smaller than the pet's own half-width (a clumped pair
+-- may just touch rather than shrink into their bodies). (Task 11c, review I3: on a pet wider than tall the TopClear
+-- cap won and the dome sat inside its body) the radius stays >= the half-width and the dome is SUNK by what its top
+-- would pass the TopClear line (half in the floor: a squat pet's dome reads fine). `side` = the pet ({ Model }),
+-- `others` = the other allies' points (eff.T with `skip` left out; nil: none, the ShieldHit's victim alone).
+-- -> it.S multiplier, sink (studs) | nil when the pet has no model in the game (the caller's fallback)
+local function fitFor(side, others, skip, base, s, core)
 	local m = side and side.Model
-	local want = nil
-	if m and m.Parent and finite(core.Fit) then
-		local ok, size = pcall(m.GetExtentsSize, m)
-		local okP, piv = pcall(m.GetPivot, m)
-		if ok and typeof(size) == "Vector3" and okP and typeof(piv) == "CFrame" then
-			local half = max(size.X, size.Z) / 2
-			local r = core.Fit * half
-			local top = (finite(core.TopClear) and core.TopClear or 0.3) + size.Y / 2 -- (the pivot: the pet's middle)
-			r = min(r, top)
-			local floorR = min(half, top) -- (Gemini: clumped pets never get a dome shrunk inside their body)
-			local p = piv.Position
-			for j, q in ipairs(eff.T) do
-				if j ~= i and j <= K.MAX_ALLIES then
-					local d = flat(q - p).Magnitude
-					if d > 0.5 then
-						r = min(r, K.SHELL_APART * d)
-					end
-				end
+	if not (m and m.Parent and finite(core.Fit)) then
+		return nil
+	end
+	local ok, size = pcall(m.GetExtentsSize, m)
+	local okP, piv = pcall(m.GetPivot, m)
+	if not (ok and typeof(size) == "Vector3" and okP and typeof(piv) == "CFrame") then
+		return nil
+	end
+	local half = max(size.X, size.Z) / 2
+	local top = (finite(core.TopClear) and core.TopClear or 0.3) + size.Y / 2 -- (the pivot: the pet's middle)
+	local r = min(core.Fit * half, max(top, half)) -- (round when it fits under the tag; never inside the body)
+	local p = piv.Position
+	for j, q in ipairs(others or {}) do
+		if j ~= skip and j <= K.MAX_ALLIES then
+			local d = flat(q - p).Magnitude
+			if d > 0.5 then
+				r = min(r, K.SHELL_APART * d)
 			end
-			want = 2 * max(0.6, floorR, r)
 		end
 	end
-	if not want then
-		return K.SHELL_FALLBACK
+	r = max(0.6, half, r) -- (Gemini: clumped pets never get a dome shrunk inside their body)
+	return 2 * r / max(0.05, base.X * s), max(0, r - top)
+end
+
+-- the Shield dome round ally i (no ally model: SHELL_FALLBACK x the old size, not sunk) -> it.S multiplier, sink
+local function shellFit(eff, i, base, s, core)
+	local fit, sink = fitFor(eff.Targets[i], eff.T, i, base, s, core)
+	if not fit then
+		return K.SHELL_FALLBACK, 0
 	end
-	return want / max(0.05, base.X * s)
+	return fit, sink
 end
 
 -- a quick pop (the hurt flash, the KO poof)
@@ -958,7 +997,7 @@ MOVE.Pop = function(eff, it, t)
 	end
 	local u = seg(t, it.T0, it.T1)
 	local s = it.From + (it.To - it.From) * outCubic(u)
-	return CFrame.new(anchorPoint(eff, it) + UP * 0.2), ONE * s, fadeTo(it, smooth(seg(u, 0.25, 1)))
+	return CFrame.new(anchorPoint(eff, it) + UP * (0.2 - (it.Sink or 0))), ONE * s, fadeTo(it, smooth(seg(u, 0.25, 1)))
 end
 
 -- the victory star: rises and spins
@@ -1100,12 +1139,14 @@ AttackFx._FieldLine = fieldLine -- (tests)
 --                  over the near end of the enemy line, wings folded; then a low swooping pass ACROSS the whole line,
 --                  end to end and past both ends (fieldLine), wings open, its Echo copies trailing as black-flame wings;
 --                  the pass is centred on the impact (a battle's cut charge starts it at the first frame instead), as
---                  the dark fire rains on every target; then it climbs away past the far end and fades
+--                  the dark fire rains on every target; then it climbs out over the far end and fades (Task 11c: all of it
+--                  inside the Storm's zone)
 --   WishRise       (Starlight Unicorn) rises from the caster (over >= 0.45 s) to high over the allies' middle, swaying
 --   Seal           (Sunbeam Bear) lies flat under each ally, turning and pulsing (a sun seal under the bubble)
 --   FoxFire        (Phantom Kitsune) the orbs circle the caster through the charge, then fly out and circle their allies
 --   RiseRoar       (Hydralotl) rises from the floor behind the caster in a fan and lunges forward once risen
---   MoonRise       (Twilight Dragon) a crescent dusk moon rises behind the storm over the target, upright, rocking
+--   MoonRise       (Twilight Dragon) a crescent dusk moon rises to the storm cloud's height just behind the target,
+--                  upright, rocking
 --   RingRise       (Magma Cub) MOVE.Rise in a ring round the target (set in buildActor); Rise (and unknown motions):
 --                  comes up into place, holds, fades
 MOVE.Actor = function(eff, it, t)
@@ -1166,9 +1207,12 @@ MOVE.Actor = function(eff, it, t)
 		else
 			c, ax, lo, hi = fieldLine(eff)
 		end
-		local edge = 2.5 * eff.Size
+		-- (Task 11c, Studio round 2, R1: 2.5 x size past each end, then flying on away along the axis and up, the bird hung
+		-- ~15 studs off the target over the NPCs as a giant magenta shape) just past the ends (SWEEP_EDGE), a lower climb,
+		-- and it climbs out where the pass ends, not away: the whole sweep stays inside the Storm's zone
+		local edge = K.SWEEP_EDGE * eff.Size
 		local a, b = c + ax * (lo - edge), c + ax * (hi + edge)
-		local low, rise = 1 + 0.8 * eff.Size, 2.2 * eff.Size -- (over the targets' middle: the pass's lowest / its climb at the ends)
+		local low, rise = 1 + 0.8 * eff.Size, 1.6 * eff.Size -- (over the targets' middle: the pass's lowest / its climb at the ends)
 		local p, dir, k
 		if t < it.TP0 then -- waiting high over the near end, wings folded
 			k = -1
@@ -1179,10 +1223,10 @@ MOVE.Actor = function(eff, it, t)
 			k = 2 * v - 1
 			p = a:Lerp(b, v) + UP * (low + rise * k * k)
 			dir = (b - a) + UP * (4 * rise * k)
-		else -- away and up as it fades
+		else -- up out of the far end as it fades (Task 11c R1: no longer away along the axis, out of the zone)
 			local w = t - it.TP1
 			k = 1
-			p = b + ax * (6 * eff.Size * w) + UP * (low + rise + 4 * eff.Size * w)
+			p = b + UP * (low + rise + 2 * eff.Size * w)
 			dir = ax + UP * 0.6
 		end
 		local open = 0.3 + 0.7 * outBack(seg(t, it.TP0 - 0.16, it.TP0)) -- (the wings snap open as it dives in)
@@ -1197,7 +1241,8 @@ MOVE.Actor = function(eff, it, t)
 		local top = mid + fwd * ((it.Forward or 0) * eff.Size) + UP * (K.ABOVE * 0.8 * eff.Size)
 		local p = (eff.S + UP):Lerp(top, outCubic(seg(t, it.T0, max(T.Travel, it.T0 + 0.45)))) + UP * (0.25 * sin(t * 3))
 		if it.ClearK then
-			p = keepClear(eff, p, it.ClearK * eff.Size + K.BODY_R + max(it.Base.X, it.Base.Z) * it.S / 2, fwd)
+			it.Sides = it.Sides or {} -- (Task 11c I2: per piece; its rim / echo copies keep their own, made the same way)
+			p = keepClear(eff, p, it.ClearK * eff.Size + K.BODY_R + max(it.Base.X, it.Base.Z) * it.S / 2, fwd, it.Sides)
 		end
 		local a = 0.6 * sin(t * 1.5)
 		return face(p, -(eff.Dir * cos(a) + eff.Right * sin(a))), ONE * outBack(seg(t, it.T0, it.T0 + 0.3)), fadeTo(it, fade)
@@ -1223,7 +1268,10 @@ MOVE.Actor = function(eff, it, t)
 		return face(base + UP * (h * (r - 0.5)) + look * (0.8 * nod), look) * CFrame.Angles(-0.35 * nod, 0, 0), ONE, fadeTo(it, fade)
 	elseif m == "MoonRise" then
 		-- (the crescent mesh lies flat (thin along Y): a quarter turn about X stands it up, its face to the caster)
-		local p = eff.Hit + UP * (K.ABOVE * 1.15 * eff.Size - 2 * (1 - outCubic(seg(t, it.T0, it.T0 + 0.5)))) + eff.Dir * (1.5 * eff.Size)
+		-- (Task 11c, Studio round 2, R3 + Ruling 20: at ABOVE x 1.15 x size (~9 studs) it read as a far-off arch) it rises to
+		-- the storm cloud's height over the hit (eff.CloudLift, else MOON_LIFT), MOON_BACK x size just behind the target
+		local lift = eff.CloudLift or K.MOON_LIFT
+		local p = eff.Hit + UP * (lift - 2 * (1 - outCubic(seg(t, it.T0, it.T0 + 0.5)))) + eff.Dir * (K.MOON_BACK * eff.Size)
 		return face(p, -eff.Dir) * CFrame.Angles(0, 0, 0.15 * sin(t * 1.6)) * CFrame.Angles(pi / 2, 0, 0), ONE * outBack(seg(t, it.T0, it.T0 + 0.3)), fadeTo(it, fade)
 	end
 	local p = anchorPoint(eff, it) - UP * (3 * (1 - outCubic(seg(t, it.T0, it.T0 + 0.5))))
@@ -1661,7 +1709,7 @@ local function buildCore(eff)
 	if path == "Projectile" then
 		if core.Stretch then
 			local segs = (finite(core.Segments) and core.Segments >= 2) and min(4, floor(core.Segments)) or nil
-			for i = 1, segs or 1 do
+			for i = 1, segs and (segs + 1) or 1 do -- (Task 11c I1: Segs + 1 pieces, MOVE.Stretch)
 				addSolid(eff, key, look({ Move = MOVE.Stretch, T0 = T.Travel - 0.02, Thick = core.Thick or 1, Seg = segs and i or nil, Segs = segs, Gap = finite(core.Gap) and clamp01(core.Gap) or K.SEG_GAP }))
 			end
 			return
@@ -1776,7 +1824,16 @@ local function buildCore(eff)
 			-- poof keep their defaults)
 			local from = finite(core.From) and core.From or (core.Poof and 0.8 or 0.6)
 			local to = finite(core.To) and core.To or (core.Poof and 2 or 1.6)
-			addSolid(eff, key, look({ Move = MOVE.Pop, Anchor = "Self", T0 = 0, T1 = core.Poof and min(eff.EndRel, 0.7) or min(eff.EndRel, 0.3), From = from, To = to, Trans = max(trans, core.Poof and 0.3 or 0.15) }))
+			local pop = addSolid(eff, key, look({ Move = MOVE.Pop, Anchor = "Self", T0 = 0, T1 = core.Poof and min(eff.EndRel, 0.7) or min(eff.EndRel, 0.3), From = from, To = to, Trans = max(trans, core.Poof and 0.3 or 0.15) }))
+			-- (Task 11c, review I4) the ShieldHit ripple (core.Fit) is the victim's own dome: it starts at the size the Shield
+			-- fitted round that pet (fitFor; the victim alone: no other ally to keep apart from) and swells by To / From;
+			-- no victim model: the catalog's From / To
+			if pop and finite(core.Fit) then
+				local fit, sink = fitFor(eff.Src, nil, nil, pop.Base, pop.S, core)
+				if fit then
+					pop.From, pop.To, pop.Sink = fit, fit * (to / max(0.05, from)), sink
+				end
+			end
 		else
 			addSolid(eff, key, look({ Move = MOVE.Star, T0 = T.Travel, T1 = eff.EndRel }))
 		end
@@ -1789,7 +1846,7 @@ local function buildCore(eff)
 				local disc = string.find(key, "disc", 1, true) ~= nil
 				local sh = addSolid(eff, key, look({ Move = MOVE.Shell, Anchor = i, OffD = disc and 1.2 * eff.Size or 0, Disc = disc, T0 = T.Travel, TF = T.Linger + (eff.EndRel - T.Linger) * 0.5, T1 = eff.EndRel }))
 				if sh and not disc and finite(core.Fit) then
-					sh.Fit = shellFit(eff, i, sh.Base, sh.S, core)
+					sh.Fit, sh.Sink = shellFit(eff, i, sh.Base, sh.S, core)
 				end
 			end
 		end
@@ -2056,18 +2113,26 @@ local function tuneEmitter(eff, it, layer)
 		life = { 0.45, 0.6 }
 		if layer.Streak and key == "fx_streak" then
 			-- (Studio findings round: the Storm rain read as soft round blobs) thin streaks along the fall: the sheet's
-			-- horizontal streak turned STREAK_ROT onto the velocity, no spin, half-lit, a narrower host under the cloud
+			-- horizontal streak turned STREAK_ROT upright, no spin, a narrower host under the cloud
+			-- (Task 11c, Studio round 2: R1 asked whether the streaks lay sideways. The rain falls straight down (spread 6
+			-- degrees), so the streaks are held upright to the WORLD (FacingCameraWorldUp: the sheet's up is world up, turned
+			-- to the camera about Y) rather than to the velocity: upright whichever image axis VelocityParallel would pin
+			-- to the velocity; STREAK_SIZE x the layer's Size (M1); R4: brighter, so the rain reads in daylight)
 			host.Size = V3(3.6 * S, 0.3, 3.6 * S)
-			em.Orientation = Enum.ParticleOrientation.VelocityParallel
+			em.Orientation = Enum.ParticleOrientation.FacingCameraWorldUp
 			em.Rotation = NumberRange.new(K.STREAK_ROT, K.STREAK_ROT)
 			em.RotSpeed = NumberRange.new(0, 0)
 			em.FlipbookStartRandom = true
-			em.LightEmission = min(light, 0.55)
-			em.LightInfluence = 0.2
+			em.LightEmission = min(light, 0.7)
+			em.LightInfluence = 0.1
+			em.Brightness = 1.3
 			em.Speed = NumberRange.new(16, 20)
+			sz = sz * K.STREAK_SIZE
 			sizeSeq = { 0.8, 1, 1 }
 		end
 	elseif m == "Ride" then -- (Studio findings round: the Pounce's storm cloud) puffs shed by the leaping pet, left behind
+		-- (review M7, parked: At "Self" follows the model's pivot, which carries the leap pose; a unit with no model (parked /
+		-- hidden, never drawn) gets no scripted hop here: its puffs stay at the take-off point)
 		host.Size = V3(1.2 * S, 0.5, 1.2 * S)
 		em.SpreadAngle = Vector2.new(60, 60)
 		em.Speed = NumberRange.new(0.5, 1.5)
@@ -2172,14 +2237,11 @@ local function addEmitterLayer(eff, layer)
 	end
 	-- (Studio findings round) an "Above" layer with a Height sits that many studs over the hit point, not ABOVE x size:
 	-- the Storm cloud low over its zone; the rain under it (and the core's falling pieces, MOVE.Fall) start from it
+	-- (Task 11c, review M8: eff.CloudLift is resolved before any layer is added (Play's pre-pass), not by the Cloud being
+	-- earlier in the catalog than the Rain)
 	local lift = nil
-	if at == "Above" then
-		if finite(layer.Height) then
-			eff.CloudLift = layer.Height
-		end
-		if eff.CloudLift then
-			lift = eff.CloudLift - K.ABOVE * eff.Size
-		end
+	if at == "Above" and eff.CloudLift then
+		lift = eff.CloudLift - K.ABOVE * eff.Size
 	end
 	local it = addItem(eff, {
 		Kind = "Emitter", Kit = kit, Layer = layer, At = at, T0 = t0, T1 = t1, Mode = mode, Preset = preset, Stream = stream,
@@ -2584,7 +2646,7 @@ local function buildActor(eff)
 			elseif motion == "Sweep" then -- (the pass, 0.64 s, centred on the impact; with a cut charge from the first frame)
 				it.TP0 = max(it.T0, T.Impact - 0.32)
 				it.TP1 = it.TP0 + 0.64
-				it.T1 = min(eff.EndRel, it.TP1 + 0.3)
+				it.T1 = min(eff.EndRel, it.TP1 + 0.25) -- (Task 11c R1: a quicker fade over the far end)
 				it.TF = it.TP1
 			elseif motion == "Seal" or motion == "FoxFire" then
 				it.TF = T.Linger + (eff.EndRel - T.Linger) * 0.5
@@ -2602,7 +2664,9 @@ local function buildActor(eff)
 					a = -pi / 2 + open / 2 + (TAU - open) * (i - 0.5) / n
 				end
 				it.Move = MOVE.Rise
-				it.OffR, it.OffD = cos(a) * 2.5 * eff.Size, sin(a) * 2.5 * eff.Size
+				-- (Task 11c R5: the ring's Radius, studs x size: Lava Slam's spikes spread so the target shows between them)
+				local rad = (finite(actor.Radius) and actor.Radius or 2.5) * eff.Size
+				it.OffR, it.OffD = cos(a) * rad, sin(a) * rad
 				it.TR = t0 + 0.03 * (i - 1)
 				it.TS = T.Linger + (eff.EndRel - T.Linger) * 0.3
 				it.Rot = CFrame.fromAxisAngle(V3(-sin(a), 0, cos(a)), 0.25)
@@ -3275,6 +3339,14 @@ function AttackFx.Play(ctx)
 		end
 		refresh(eff)
 		eff.CorePos = corePosOf(eff, 0)
+		-- (Task 11c, review M8) the cloud's lift, from the first "Above" layer with a Height, before the core / actor /
+		-- layers that read it (the rain emitter, the falling pieces, the dusk moon), whatever the layers' order
+		for _, layer in ipairs(r.Layers or {}) do
+			if layer.At == "Above" and finite(layer.Height) then
+				eff.CloudLift = layer.Height
+				break
+			end
+		end
 		-- what this effect draws: the core, the layers it can afford, the alive detail, the signature actor (a predicted
 		-- charge: only its charge at the mouth: the glow + motes, a glow light; its target is a guess)
 		if not isPre then

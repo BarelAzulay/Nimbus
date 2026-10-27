@@ -433,6 +433,65 @@ local function signatureCatalog(C, tex, cores)
 	T.check(sigLayer(sf, "SigBolts").KeepCount == 2 and sf.Sig.Actor.Motion == "ChargeThrough" and ob.Sig.Actor.Motion == "Sweep" and ob.Core.Spread == true and type(ob.Sig.Actor.Echo) == "table" and typeof(ob.Sig.Actor.Echo.Color) == "Color3" and tw.Sig.Actor.Motion == "MoonRise" and ks.Sig.Actor.Count == 9
 		and ec.Sig.Actor.Motion == "Eclipse" and ec.Sig.DimWorld > 0 and ec.Sig.DimWorld <= 1,
 		"p7vfx catalog: Stormfang keeps its 2 bolts, the wolf charges through; Obsidian's phoenix sweeps the field (no dive) with trailing black-flame echoes and rains on every target; Twilight's dusk moon rises; nine fox orbs; the black sun bursts after a short dim")
+	-- (Task 11c, review M2) every signature Tweak names a layer its recipe has at the pet's own rarity, sets only the
+	-- whitelisted fields, and lands on that layer (a Count as the full-density count, scaled like the template's)
+	local tweakBad = {}
+	local TF = C.TweakFields or {}
+	for _, pet in ipairs(SIGNATURE_PETS) do
+		local s = C.Signatures[pet]
+		if type(s.Tweak) == "table" then
+			local r = own(pet)
+			for id, fields in pairs(s.Tweak) do
+				local l = sigLayer(r, id)
+				if not l then
+					tweakBad[#tweakBad + 1] = pet .. ": no layer " .. tostring(id)
+				else
+					for k, v in pairs(fields) do
+						if not TF[k] then
+							tweakBad[#tweakBad + 1] = fmt("%s.%s: field %s not allowed", pet, id, tostring(k))
+						elseif k ~= "Count" and l[k] ~= v then
+							tweakBad[#tweakBad + 1] = fmt("%s.%s: %s = %s (tweak %s)", pet, id, k, tostring(l[k]), tostring(v))
+						end
+					end
+				end
+			end
+		end
+	end
+	T.check(#tweakBad == 0 and TF.Transparency and not TF.Kind and not TF.Texture and not TF.Id,
+		"p7vfx catalog (Task 11c M2): every signature Tweak names a layer it has, only whitelisted fields (no Kind / Texture / Id), applied", table.concat(tweakBad, " | "))
+	-- (Task 11c, review M3) every Tint2 names a Palette entry of every element (+ the signature's palette) it is drawn with
+	local tint2Bad = {}
+	for kind, def in pairs(C.Specials) do
+		for _, l in ipairs(def.Layers or {}) do
+			if l.Tint2 ~= nil then
+				for element, E in pairs(C.Elements) do
+					if E.Palette[l.Tint2] == nil then
+						tint2Bad[#tint2Bad + 1] = fmt("%s.%s Tint2 %s: not in %s's palette", kind, l.Id, tostring(l.Tint2), element)
+					end
+				end
+			end
+		end
+	end
+	for _, pet in ipairs(SIGNATURE_PETS) do
+		local s = C.Signatures[pet]
+		for _, l in ipairs(s.Layers or {}) do
+			if l.Tint2 ~= nil and C.Elements[s.Element].Palette[l.Tint2] == nil and not (s.Palette and s.Palette[l.Tint2] ~= nil) then
+				tint2Bad[#tint2Bad + 1] = fmt("%s.%s Tint2 %s", pet, l.Id, tostring(l.Tint2))
+			end
+		end
+	end
+	T.check(#tint2Bad == 0, "p7vfx catalog (Task 11c M3): every Tint2 names a Palette entry the recipe has (the two-tone never drops silently)", table.concat(tint2Bad, " | "))
+	-- (Task 11c, review M1) the Storm's Rain layer keeps Size 1 (the hail / petals / rocks / stars sheets their size; the
+	-- streak rain is cut to 0.8 in the engine)
+	local rainBad = {}
+	for _, element in ipairs({ "Frost", "Nature", "Earth", "Celestial", "Water" }) do
+		local r = C.Resolve({ Element = element, Attack = "Special", Kind = "Storm", Rarity = "Epic", Mine = true, Distance = 12 })
+		local l = r and sigLayer(r, "Rain")
+		if not (l and l.Size == 1) then
+			rainBad[#rainBad + 1] = fmt("%s: Rain size %s", element, tostring(l and l.Size))
+		end
+	end
+	T.check(#rainBad == 0, "p7vfx catalog (Task 11c M1): the Storm Rain layer is Size 1 for every element (the 0.8 cut is the streaks' only)", table.concat(rainBad, " | "))
 	local dims = {}
 	for _, pet in ipairs(SIGNATURE_PETS) do
 		if C.Signatures[pet].DimWorld ~= nil then

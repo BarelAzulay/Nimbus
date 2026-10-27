@@ -716,9 +716,14 @@ AttackFxCatalog.Specials = {
 		-- puffs born in the lighter Mid and darkening into the Edge (a lit rim / underside), half-lit. The rain falls from it
 		-- as thin velocity-aligned streaks (fx_streak) where the element's rain is a liquid / fire / shadow (Water, Flame,
 		-- Shadow); hail, petals, rocks and stars keep their own tumbling sheets (Rain.Streak = false), Storm rains lightning
+		-- (Task 11c, Studio round 2, R4: after that fix the generic Storm was a faint haze with thin rain: the cloud a little
+		-- more opaque (0.42 -> 0.3) and lit (0.22 -> 0.3), one more puff; the rain denser (12 -> 16), its streaks brighter
+		-- (AttackFx), and where the rain is lightning (the Storm element) 3 bolts kept under the 4-beam cap (KeepCount),
+		-- wider. M1: Size 1 on the layer (the hail / petals / rocks / stars keep their size); the streaks are cut to 0.8 in
+		-- the engine's streak branch)
 		Layers = {
-			{ Id = "Cloud", Kind = "Emitter", Texture = "fx_stormcloud", Beat = "Charge", At = "Above", Tint = "Edge", Tint2 = "Mid", Count = 5, Size = 2.6, Height = 4.5, Transparency = 0.42, LightEmission = 0.22 },
-			{ Id = "Rain", Kind = "$RainKind", Texture = "$RainStreak", Beat = "Travel", At = "Above", Tint = "Mid", Count = 12, Size = 0.8, Streak = true },
+			{ Id = "Cloud", Kind = "Emitter", Texture = "fx_stormcloud", Beat = "Charge", At = "Above", Tint = "Edge", Tint2 = "Mid", Count = 6, Size = 2.6, Height = 4.5, Transparency = 0.3, LightEmission = 0.3 },
+			{ Id = "Rain", Kind = "$RainKind", Texture = "$RainStreak", Beat = "Travel", At = "Above", Tint = "Mid", Count = 16, Size = 1, Streak = true, KeepCount = 3, Width = 1.1 },
 		},
 		LowKeep = { "Cloud" },
 		-- (Task 10: no Mythic double crescent: a slash arc in a rain cloud reads as nothing)
@@ -827,7 +832,10 @@ AttackFxCatalog.Reactions = {
 	ShieldHit = {
 		Text = "the shield ripples: the hex bubble swells and fades as it absorbs a hit",
 		-- (Studio findings round: the Shield domes fit their ally now, ~0.55 x the old shell: the ripple swells from that)
-		Core = { Key = "vfx_shell", Path = "Self", Flash = true, From = 0.55, To = 0.72, Material = "Glass", KeepMaterial = true, Transparency = 0.7 },
+		-- (Task 11c, review I4: a fixed From / To x the pet's size was ~1.5-2x the fitted Shield dome on a small pet at Secret,
+		-- smaller than it on a big one) Fit / TopClear like the Shield: the engine fits the ripple to the victim the way it
+		-- fits the dome (From = the dome's size, swelling by To / From); From / To stay the fallback with no victim model
+		Core = { Key = "vfx_shell", Path = "Self", Flash = true, From = 0.55, To = 0.72, Material = "Glass", KeepMaterial = true, Transparency = 0.7, Fit = 1.35, TopClear = 0.3 },
 		Beats = { Charge = 0, Release = 0, Travel = 0, Linger = 0.35 },
 		Slots = { Burst = "fx_hexshield" },
 		BurstBoost = { Size = 0.7, Count = 0.5 }, -- (a pulse, not the Shield's full burst)
@@ -852,13 +860,15 @@ AttackFxCatalog.Reactions = {
 --             nothing; Ember's wing glow is its bloom light: <= 3 lights at every rarity)
 --   Drop      { [layer id] = true } kind / element layers it replaces     Alive = false: no alive detail
 --   LowKeep   its own pick for Low quality's second emitter (before the kind's / element's)
---   Tweak     { [layer id] = { field = value } } (Studio findings round) fields set on a kind / element layer it keeps
---             (Lava Slam's see-through Dome)
+--   Tweak     { [layer id] = { field = value } } (Studio findings round) fields set on a kind / element / ladder layer it
+--             keeps (Lava Slam's see-through Dome); only TWEAK_FIELDS (Task 11c, review M2: a Kind / Texture / Id would
+--             break the layer quietly); a Count is the layer's full-density count, scaled like the template's
 --   Actor     its vfx_sig_* piece(s): { Key, At, Motion (AttackFx MOVE.Actor), Beat, Count?, Scale?, Tint | Color,
 --             Material? ("Neon" default, "Glass"), Transparency?, Rim? = { Tint | Color, Scale?, Back?, Transparency? }:
 --             a bigger glowing copy just behind each piece, Echo? = { Color, Count?, Lag?, Transparency? }: dimmer copies
 --             trailing each piece along its path, Gap? = true (RingRise: the slot facing the caster stays open, the
---             target's flinch shows through it), Clear? / Forward? (WishRise: studs x size kept clear round the caster and
+--             target's flinch shows through it), Radius? (RingRise: the ring's radius, studs x size, default 2.5), Clear? /
+--             Forward? (WishRise: studs x size kept clear round the caster and
 --             the local player's character / pushed toward the allies) }; built before the layers, Count x Density for
 --             others' pets; Low quality draws no rim / echo
 --   Core.Spread  (a Storm) the rain falls on EVERY target, round robin, not round the aimed one (Obsidian: the enemies in
@@ -909,7 +919,10 @@ AttackFxCatalog.Signatures = {
 		Slots = { RainKey = "vfx_star", RainTexture = "fx_sparkle", RainKind = "Emitter" },
 		Core = { Tint = "Mid", Scale = 1.1 },
 		Layers = { { Id = "SigDusk", Kind = "Decal", Beat = "Travel", At = "Ground", Tint = "Mid", Size = 7, Seconds = 1.0 } },
-		Actor = { Key = "vfx_crescent", At = "Above", Motion = "MoonRise", Beat = "Charge", Scale = 1.3, Color = rgb(206, 166, 255), Transparency = 0.1, Rim = { Color = rgb(112, 56, 210), Scale = 1.12, Transparency = 0.25 } },
+		-- (Task 11c, Studio round 2, R3: at ~9 studs over the target, 6 studs wide and near-opaque neon, the moon read as a
+		-- separate magenta arch far away) ~30 % smaller, dimmer (more see-through, a softer lilac, a fainter corona); the
+		-- engine raises it to the storm cloud's height, just behind the target (MOVE.Actor "MoonRise")
+		Actor = { Key = "vfx_crescent", At = "Above", Motion = "MoonRise", Beat = "Charge", Scale = 0.9, Color = rgb(184, 150, 236), Transparency = 0.4, Rim = { Color = rgb(112, 56, 210), Scale = 1.12, Transparency = 0.55 } },
 	},
 	-- the cloud dragon spirals up round the pet through the charge, then dives down the beam onto the target (the beam is
 	-- its breath) and coils once round it, rising, as it fades (Gemini's second pass: in a battle the charge is cut, the
@@ -938,6 +951,9 @@ AttackFxCatalog.Signatures = {
 		-- Clear studs (x size, + its own half-width) away from the caster and the local player's character, pushed Forward
 		-- toward the allies' side
 		Actor = { Key = "vfx_sig_wish_star", At = "Above", Motion = "WishRise", Beat = "Charge", Tint = "Mid", Material = "Glass", Transparency = 0.15, Rim = { Tint = "Edge", Scale = 1.1, Transparency = 0.2 }, Clear = 1.5, Forward = 1.5 },
+		-- (Task 11c, Studio round 2, R7: the heal rings under the allies were thick, near-white neon bands) ~40 % thinner
+		-- (the ring piece x0.6: band and girth), the gold Mid instead of the band's pale Core, see-through
+		Core = { Scale = 0.6, Tint = "Mid", Transparency = 0.35 },
 		Layers = { { Id = "SigShower", Kind = "Emitter", Texture = "fx_stars", Beat = "Travel", At = "Allies", Count = 14, Size = 1, Fall = true } },
 	},
 	-- as the pet leaps, an electric storm-wolf charges out of it and through the target, two bolts crackling along its
@@ -996,7 +1012,10 @@ AttackFxCatalog.Signatures = {
 		Tints = { Rain = rgb(170, 70, 210), Burst = rgb(200, 90, 255), Alive = rgb(220, 110, 255), Cloud = rgb(92, 58, 108) }, -- the baked fire sheets darkened to shadow-fire
 		Core = { Spread = true },
 		Actor = {
-			Key = "vfx_sig_phoenix_wing", At = "Above", Motion = "Sweep", Beat = "Charge", Color = rgb(34, 12, 42), Scale = 0.9,
+			-- (Task 11c, Studio round 2, R1: x0.9 the bird spanned ~7.6 studs at Secret and, climbing away past the far end,
+			-- hung as a giant magenta shape ~15 studs off the target over the NPCs: a bird the size of the rain's reach, and
+			-- the engine keeps the pass and its climb-out inside the zone)
+			Key = "vfx_sig_phoenix_wing", At = "Above", Motion = "Sweep", Beat = "Charge", Color = rgb(34, 12, 42), Scale = 0.5,
 			Rim = { Color = rgb(222, 86, 255), Scale = 1.1, Transparency = 0.2 },
 			Echo = { Count = 2, Lag = 0.06, Color = rgb(96, 26, 120), Transparency = 0.45 },
 		},
@@ -1010,7 +1029,14 @@ AttackFxCatalog.Signatures = {
 		Twist = "nine ghost fox-fire orbs circle each ally",
 		Palette = { Core = rgb(220, 255, 250), Mid = rgb(124, 252, 228), Edge = rgb(60, 150, 170) },
 		Tints = { Ward = rgb(124, 252, 228) },
-		Actor = { Key = "vfx_sig_fox_orb", At = "Allies", Motion = "FoxFire", Beat = "Charge", Count = 9, Scale = 0.55, Tint = "Mid", Transparency = 0.1 },
+		-- (Task 11c, Studio round 2, R6: the shielded ally drowned in an overexposed white-blue glow ball: the ladder's three
+		-- lights on it, the hot hex burst, the wisps and the neon orbs) the lights at half brightness, the hex burst and the
+		-- wisps half-lit and ~0.3 more see-through, the orbs 0.4 see-through: the pet inside stays readable
+		Actor = { Key = "vfx_sig_fox_orb", At = "Allies", Motion = "FoxFire", Beat = "Charge", Count = 9, Scale = 0.55, Tint = "Mid", Transparency = 0.4 },
+		Tweak = {
+			Flash = { Brightness = 0.8 }, Bloom = { Brightness = 0.7 }, PlasmaRim = { Brightness = 0.6 },
+			Burst = { LightEmission = 0.4, Transparency = 0.3 }, Ward = { LightEmission = 0.2, Transparency = 0.3 },
+		},
 	},
 	-- ACCEPTED DEVIATION (Task 11 fix round 1 ruling, Gemini consulted): the spec's "erupts from a lava crack" is built
 	-- with the crack opening under the TARGET (none under the cub). Keep it: a battle cuts the charge, so a crack under
@@ -1030,7 +1056,10 @@ AttackFxCatalog.Signatures = {
 		},
 		-- (Studio findings round: the spikes + dome buried the target's flinch) the spike ring leaves the slot facing the
 		-- caster open (Gap) and the Blast dome is fainter
-		Actor = { Key = "vfx_sig_lava_spike", At = "Target", Motion = "RingRise", Beat = "Impact", Count = 5, Tint = "Mid", Gap = true },
+		-- (Task 11c, Studio round 2, R5 + Ruling 20: the spikes still big, opaque and hiding the target) ~35 % less volume
+		-- (x0.87 linear), 0.2 see-through (not ghostly), spread on a wider ring (Radius 3.1 x size, was 2.5) so the target's
+		-- silhouette shows between them
+		Actor = { Key = "vfx_sig_lava_spike", At = "Target", Motion = "RingRise", Beat = "Impact", Count = 5, Tint = "Mid", Gap = true, Scale = 0.87, Transparency = 0.2, Radius = 3.1 },
 		Tweak = { Dome = { Transparency = 0.84 } },
 		LowKeep = { "SigLavaCrack" },
 	},
@@ -1056,6 +1085,10 @@ AttackFxCatalog.Signatures = {
 		Name = "Void Fangs", Rarity = "Secret", Element = "Shadow", Kind = "Rally",
 		Twist = "void serpent heads rise behind the pet and roar",
 		Actor = { Key = "vfx_sig_serpent", At = "Behind", Motion = "RiseRoar", Beat = "Charge", Count = 3, Tint = "Mid", Transparency = 0.2, Rim = { Tint = "Hot", Scale = 1.08, Transparency = 0.25 } },
+		-- (Task 11c, Studio round 2, R8: the purple ground rings spread to the bottom of the screen: the roar pulses grew to
+		-- ~22 studs) every ground ring x0.5 across: the roar pulses (Grow 4 -> 2), the ring under each ally, the shockwave
+		Core = { Grow = 2 },
+		Tweak = { AllyRing = { Grow = 0.65 }, Shockwave = { Grow = 0.85 } },
 	},
 }
 
@@ -1220,6 +1253,11 @@ local function colourOf(spec, texture, palette, refs)
 	return palette[tint] or palette.Mid
 end
 
+-- (Task 11c, review M2) the fields a signature's Tweak may set on a layer it keeps (smoke p7vfx_catalog checks every
+-- Tweak names a layer its recipe has, with these fields only)
+local TWEAK_FIELDS = { Transparency = true, Size = true, LightEmission = true, Color = true, Grow = true, Width = true, Delay = true, Count = true, Brightness = true, Range = true }
+AttackFxCatalog.TweakFields = TWEAK_FIELDS
+
 -- one concrete layer from a template, or nil when it has nothing to draw (an Emitter without a sheet)
 local function buildLayer(id, tpl, ctx, scale)
 	local layer = copy(tpl)
@@ -1244,16 +1282,23 @@ local function buildLayer(id, tpl, ctx, scale)
 		layer.Color = ctx.tints[id]
 	end
 	if tpl.Tint2 ~= nil then -- (Studio findings round) a second tone: the puffs are born in it (the cloud's lit underside)
-		layer.Color2 = ctx.palette[tpl.Tint2]
+		layer.Color2 = ctx.palette[tpl.Tint2] or ctx.palette.Mid -- (Task 11c, review M3: an unknown entry falls back like Tint)
 	end
 	layer.Tint2 = nil
-	if ctx.tweaks and type(ctx.tweaks[id]) == "table" then -- (a signature's Tweak on a layer it keeps)
-		for k, v in pairs(ctx.tweaks[id]) do
-			layer[k] = v
+	local count = tpl.Count
+	local tweak = ctx.tweaks and ctx.tweaks[id]
+	if type(tweak) == "table" then -- (a signature's Tweak on a layer it keeps: the whitelisted fields only, Task 11c M2)
+		for k, v in pairs(tweak) do
+			if TWEAK_FIELDS[k] then
+				layer[k] = v
+			end
+		end
+		if finite(tweak.Count) then -- (the full-density count: scaled below like the template's, never overwritten)
+			count = tweak.Count
 		end
 	end
-	if finite(tpl.Count) then
-		layer.Count = max(1, floor(tpl.Count * (scale or ctx.countScale) + 0.5))
+	if finite(count) then
+		layer.Count = max(1, floor(count * (scale or ctx.countScale) + 0.5))
 	end
 	layer.Tint = nil
 	layer.From = nil
