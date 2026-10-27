@@ -15,7 +15,7 @@ Rules (they win over everything below):
    prints it; the tool shows it as `<hidden>`.
 2. **No real upload without your OK in the chat.** The first real upload is `cal_axes` (step 3), and Claude asks you
    before each new step. Uploads go to your Roblox account.
-3. **Never fake an id.** Every id in `MeshIds.lua` / `TextureIds.lua` comes from `tools/upload_assets.py`.
+3. **Never fake an id.** Every id in `MeshIds.lua` / `TextureIds.lua` / `AudioIds.lua` comes from `tools/upload_assets.py`.
 4. **Do not go around moderation.** A model Roblox rejects stays a Part model (step 8a).
 
 The technical background is in `docs/phase6/recipe.md` (4.7 and section 6) and `docs/phase6/research.md`.
@@ -258,6 +258,42 @@ to the centre (not outward). Graphics **Low** in SETTINGS: the gates stand still
 
 ---
 
+## 6b. The music and sounds (the original audio)
+
+12 files in `audio/` (`audio/README.md`: Suno music, ElevenLabs sound effects and drum loop, all original, picked by
+the player; no credit lines needed). `audio/audio.json` lists each key with its file, the file's `sha256`, its slot
+(`Music` / `Sfx` / `Ambient`) and `looped`. Until they are uploaded `src/shared/AudioIds.lua` is empty and the game is
+silent (nothing breaks); each sound starts playing by itself once its id is in `AudioIds.lua`.
+
+**CLAUDE** (ask first; one run = 12 audio uploads):
+```bash
+python3 tools/upload_assets.py --audio                   # dry run: 12 creates, assetType Audio, audio/ogg
+python3 tools/upload_assets.py --upload --audio          # real: writes audio/upload_state.json + src/shared/AudioIds.lua
+```
+Then commit `src/shared/AudioIds.lua` and `audio/upload_state.json` **together** (same commit).
+
+What to know:
+* **Moderation.** Roblox checks every audio upload; a new one can stay in review for a while (it is already in
+  `AudioIds.lua` and simply stays silent until approved). Run `python3 tools/upload_assets.py --upload --audio
+  --refresh` later to record the final states, and commit. A **rejected** sound is left out of `AudioIds.lua` and stays
+  silent: tell the owner, never work around moderation (no renaming, re-cutting or re-uploading to slip it past).
+* **Monthly quota.** Roblox counts audio uploads per account per month: about **10 without ID verification, 100 with
+  it**. The 12 files do not fit in an unverified month: verify the owner's ID first, or upload 10 now
+  (`--only MusicLobby,MusicBattle,MusicDungeon,Click,Confirm,Error,Reward,Whoosh,Inhale,Shatter`) and the ring's
+  `CrowdCheer,DrumLoop` next month. A refusal for the quota is a per-key failure; the run just goes on and a later run
+  uploads what is missing.
+* **Never updated in place.** Audio cannot be PATCHed: a changed file (put its new `sha256` in `audio/audio.json`)
+  uploads as a NEW asset; the old id goes to `previousAssetIds`. A `sha256` that does not match the file is refused,
+  and `--force` on an unchanged upload is refused (a duplicate that spends the quota).
+* An unknown create (`the create of KEY may have reached Roblox`): Creator Hub -> **Creations** -> **Development
+  Items** -> **Audio**, then `--audio --upload --only KEY --adopt KEY=<id>` or `--not-created KEY` (8g).
+
+**OWNER** Play-test: the lobby music fades in after PLAY; a fight switches to the battle track and back; a dungeon run
+plays its own track (the boss room the battle track); a Champion Ring fight has the crowd and the drums around the
+ring; SETTINGS Music / Sound sliders change them at once.
+
+---
+
 ## 7. OWNER: ship it
 
 When a batch looks good in Play: File -> **Publish to Roblox**, then **Migrate to Latest Update** on the Creator Hub
@@ -323,7 +359,8 @@ described: the last build was `--no-export` (plain `python3`, no Blender), so `b
 Everything goes back to the Part models when `MeshIds.lua` is empty:
 
 * **All models:** CLAUDE writes `src/shared/MeshIds.lua` back to the stub (the 2 comment lines + `return {}`),
-  commits, rebuilds the place file. OWNER publishes. The same for the swirl: `TextureIds.lua` -> `return {}`.
+  commits, rebuilds the place file. OWNER publishes. The same for the swirl: `TextureIds.lua` -> `return {}`, and
+  for the sounds: `AudioIds.lua` -> `return {}` (the game goes silent).
 * **One model:** delete its line (`key = 123,`) from `MeshIds.lua`, commit, publish.
 * Keep `blender/upload_state.json`: it still knows every uploaded asset, so going forward again needs no new upload.
   But the next uploader run writes **all** known ids back into `MeshIds.lua`: after any later run, check
@@ -342,8 +379,9 @@ Everything goes back to the Part models when `MeshIds.lua` is empty:
 | re-read moderation | `python3 tools/upload_assets.py --upload --refresh` |
 | "the create of KEY may have reached Roblox" | found in Creator Hub: `--upload --only KEY --adopt KEY=<id>`; not there: `--upload --only KEY --not-created KEY` (8g) |
 | texture Decal id -> Image id | `python3 tools/upload_assets.py --textures --upload --set-id KEY=<image id>` (section 6) |
+| the music and sounds | `python3 tools/upload_assets.py --audio` (dry) then `--upload --audio` (section 6b) |
 | "was not exported from this contentHash" | `/tmp/claude-0/bpyenv/bin/python blender/build_all.py --key <key>` (8h) |
-| re-send unchanged | `--force` (meshes only, rarely needed; refused for images) |
+| re-send unchanged | `--force` (meshes only, rarely needed; refused for images and audio) |
 | wait longer per upload | `--poll-timeout 600` (seconds, default 300) |
 | offline tests | `python3 tools/test_upload_assets.py` |
 | build a class / a key | `/tmp/claude-0/bpyenv/bin/python blender/build_all.py --class pets` / `--key pet_dog` |
@@ -351,4 +389,4 @@ Everything goes back to the Part models when `MeshIds.lua` is empty:
 | place file | `rojo build default.project.json -o play/NimbusClimb.rbxlx` then `python3 tools/verify_place.py` |
 
 Files the upload writes (commit them together): `src/shared/MeshIds.lua`, `blender/upload_state.json`,
-`src/shared/TextureIds.lua`, `blender/textures/upload_state.json`.
+`src/shared/TextureIds.lua`, `blender/textures/upload_state.json`, `src/shared/AudioIds.lua`, `audio/upload_state.json`.
