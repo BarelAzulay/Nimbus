@@ -2327,13 +2327,14 @@ local function liveRims()
 	return n
 end
 
-local function addChargeCues(eff)
+local function addChargeCues(eff, pre)
 	local r = eff.Recipe
 	if r.Attack ~= "Special" or eff.Miss or eff.Times.Release < AttackFx.CUE_MIN then
 		return
 	end
 	eff.Cue = true
-	if eff.Low or not eff.Src.Model or liveRims() >= AttackFx.MAX_RIMS then
+	-- (fix round 1, M3) the prediction this effect takes over hands its rim on: it does not count against the cap
+	if eff.Low or not eff.Src.Model or liveRims() - (pre and pre.Rims or 0) >= AttackFx.MAX_RIMS then
 		return
 	end
 	local kit = take("Rim")
@@ -2913,6 +2914,11 @@ local function retire(eff, now)
 	end
 	eff.Pre = nil
 	eff.Retired = true
+	if eff.InhaleToken ~= nil then
+		local token = eff.InhaleToken -- (fix round 1, M4) a charge given up hushes the inhale it still holds
+		eff.InhaleToken = nil
+		callHook("Hush", token)
+	end
 	local tRel = max(0, now - eff.Start)
 	eff.Times.Release = min(eff.Times.Release, tRel)
 	for _, it in ipairs(eff.Items) do
@@ -3149,7 +3155,7 @@ function AttackFx.Play(ctx)
 				addLayer(eff, layer, beams)
 			end
 		end
-		addChargeCues(eff) -- (Task 11b) the rim light + the inhale under a seen charge
+		addChargeCues(eff, pre) -- (Task 11b) the rim light + the inhale under a seen charge
 		St.live[#St.live + 1] = eff
 		if isPre then
 			local old = St.pre[eff.Unit]
@@ -3239,11 +3245,15 @@ function AttackFx.Shatter(unit, now, quiet)
 				tuneEmitter(eff, it, layer)
 			end
 		end
+		-- (fix round 1, I3) only the prediction's own held pose gives way at once; any other (a Ko) keeps K.PRIO
 		local old = St.poses[eff.Unit]
-		St.poses[eff.Unit] = nil
+		local own = old ~= nil and old.PreOf == eff
+		if own then
+			St.poses[eff.Unit] = nil
+		end
 		setPoses(eff.Unit, { { Name = "Recoil", T0 = now, Dur = K.RECOIL } }, now)
 		local entry = St.poses[eff.Unit]
-		if entry and old then
+		if own and entry and entry ~= old then
 			entry.Prev, entry.SwitchAt = old, now -- (crossfade from the held charge pose)
 		end
 		eff.Shattered = true

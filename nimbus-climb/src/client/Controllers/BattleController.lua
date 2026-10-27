@@ -230,6 +230,7 @@ local K = {
 	PRESS_WAIT = 0.7, -- a pressed SPECIAL's predicted charge waits this long for its Special event, then shatters
 	LATE_MAX = 0.35, -- a Special nobody here pressed: up to this much charge is given back, its impact (and its hits) that late
 	LAST_GASP = 0.05, -- a caster KO'd in its own late charge falls this long after the impact
+	HOLD_EPS = 0.02, -- (fix round 1, I1) a late Special's hit ends its victim's hold only this close to the hold's end
 	INHALE_PITCH = { 0.75, 1.35 }, -- the inhale (SoundFx "Whoosh") rises from / to this PlaybackSpeed under the charge
 	INHALE_IN = 0.08, -- seconds the inhale fades in ...
 	INHALE_OUT = 0.12, -- ... and out at the release (or when hushed)
@@ -2613,9 +2614,16 @@ function Me.Inhale(seconds, token, mine)
 	seconds = clamp(num(seconds, 0), 0.05, 2)
 	local rec = St.inhales[token]
 	if not rec then
-		local n = 0
-		for _ in pairs(St.inhales) do
+		local n, oldest = 0, nil
+		for tk, r in pairs(St.inhales) do
 			n = n + 1
+			if not r.mine and (oldest == nil or r.t0 < St.inhales[oldest].t0) then
+				oldest = tk
+			end
+		end
+		if mine and n >= K.INHALE_MAX and oldest ~= nil then
+			Me.Hush(oldest) -- (fix round 1, M7) my own inhale (the cue this is for) never loses to others' pets'
+			n = n - 1
 		end
 		local SF = n < K.INHALE_MAX and Me.Sound() or nil
 		if not SF or type(SF.Play) ~= "function" then
@@ -2630,7 +2638,7 @@ function Me.Inhale(seconds, token, mine)
 				St.inhales[tk] = nil -- (SoundFx's pool handed that sound out again)
 			end
 		end
-		rec = { sound = s, vol = s.Volume * (mine and 1 or K.INHALE_OTHERS) }
+		rec = { sound = s, vol = s.Volume * (mine and 1 or K.INHALE_OTHERS), mine = mine == true, t0 = os.clock() }
 		St.inhales[token] = rec
 		s.PlaybackSpeed = K.INHALE_PITCH[1]
 		s.Volume = 0
@@ -2727,7 +2735,7 @@ function Atk.Hook(m)
 	end
 	-- (Task 11b) the Special's charge sounds
 	m.Hooks.Inhale = function(seconds, token, mine)
-		Me.Inhale(seconds, token, mine)
+		return Me.Inhale(seconds, token, mine) -- (-> true when the sound plays)
 	end
 	m.Hooks.Hush = function(token)
 		Me.Hush(token)
@@ -3065,6 +3073,9 @@ function Atk.PreCharge(B, now)
 	if f.state == S_STUNNED or f.state == S_CASTING or f.state == S_DOWN or f.state == S_BENCHED then
 		return false
 	end
+	if St.pre and St.pre.B == B and St.pre.unit == f.id and now < St.pre.untilT then
+		return false -- (fix round 1, M4) a second press while the first waits: one prediction (the sim answers the first)
+	end
 	local AF = Atk.Mod()
 	if not AF or type(AF.Precharge) ~= "function" then
 		return false
@@ -3085,13 +3096,20 @@ function Atk.PreCharge(B, now)
 end
 
 -- (Task 11b) the predicted charge breaks (refused / no event): AttackFx's shards + Recoil + the "interrupted" sound;
--- `quiet` = it just fades (its Special came but could not play)
+-- `quiet` = it just fades (its Special came but could not play). (fix round 1, I3 / M5) quiet too when the fighter is
+-- no longer up (KO'd: its KO arrived or it is drawn down) or no longer my fighter (swapped out): no shards, Recoil or
+-- "interrupted" sound on a downed or benched pet
 function Atk.Shatter(B, quiet)
 	local p = St.pre
 	St.pre = nil
 	local AF = Mods.AttackFx
 	if not p or not AF or type(AF.Shatter) ~= "function" then
 		return false
+	end
+	local PB = p.B or B
+	local u = PB and PB.units[p.unit]
+	if not u or u.gone or u.parked or u.benched or Atk.Lying(u) or (PB.fighterId ~= nil and PB.fighterId ~= p.unit) then
+		quiet = true
 	end
 	local ok, r = pcall(AF.Shatter, p.unit, os.clock(), quiet == true)
 	return ok and r == true
@@ -3738,8 +3756,14 @@ Handlers[EV.Hit] = function(B, ev)
 		return
 	end
 	local dmg = num(ev.dmg, 0)
-	if ev.fxSpHeld then
-		Units.Unhold(victim) -- (Task 11b) a late Special's hit lands now: its HP drop shows
+	-- (Task 11b, fix round 1 I1 / M2) a held unit's drawn HP follows each hit's number: the hold's floor drops by this
+	-- hit's damage (a plain hit's on time, a late Special's at its impact; never under a last gasp's floor). A late
+	-- Special's hit ends the hold only when it is the last one due: another special's hold on the unit stays
+	if victim.holdHp and not ev.miss then
+		victim.holdHp = max(victim.holdFloor or 0, victim.holdHp - dmg)
+	end
+	if ev.fxSpHeld and (not victim.holdUntil or os.clock() >= victim.holdUntil - K.HOLD_EPS) then
+		Units.Unhold(victim)
 	end
 	-- AttackFx (played on arrival): a pet's plain attack (its swipe / shot, its Strike pose, the victim's Hurt pose) or
 	-- my pet's hurt from a boss; false = the cube bolt / lunge / nudge below
@@ -3974,6 +3998,9 @@ Handlers[EV.KO] = function(B, ev)
 		return
 	end
 	Units.Unhold(u) -- (Task 11b) a KO held for a late Special's impact (or a last gasp) plays now
+	if St.pre and St.pre.unit == u.id then
+		Atk.Shatter(B, true) -- (fix round 1, I3) my pressed fighter went down before its Special: the charge just fades
+	end
 	Atk.Result(B, ev) -- AttackFx's Ko (played on arrival) marks the pet poofed: no cube poof below, it tumbles and lies
 	if u.root and not u.parked then
 		Fx.Number(u.root, numberHeight(u) + 0.4, "KO!", Color3.fromRGB(220, 226, 240), K.CALLOUT_PX, 1.1)
@@ -7780,6 +7807,8 @@ local function heldUnitOf(ev)
 		return tonumber(ev.to)
 	elseif ev.type == EV.KO then
 		return tonumber(ev.unit)
+	elseif ev.type == (EV.Swap or "Swap") and ev.auto then
+		return tonumber(ev.out) -- (fix round 1, I2) the auto-swap of a fighter KO'd by a shot still flying waits with its KO
 	end
 	return nil
 end
@@ -7822,10 +7851,13 @@ function Units.Hold(B, id, untilClock, floor)
 	local f = floor or u.hp
 	u.holdHp = u.holdHp and max(u.holdHp, f) or f
 	u.holdState = u.state
+	if floor then
+		u.holdFloor = max(u.holdFloor or 0, floor) -- (fix round 1) the hits that play during the hold never draw it lower
+	end
 end
 
 function Units.Unhold(u)
-	u.holdUntil, u.holdHp, u.holdState = nil, nil, nil
+	u.holdUntil, u.holdHp, u.holdState, u.holdFloor = nil, nil, nil, nil
 end
 
 -- (Task 11b) seconds `ev` (due at t on the render clock, `lead` s from now) waits for a late Special's impact
@@ -7852,9 +7884,9 @@ function Net.SpecialHold(B, ev, t, lead)
 	elseif ev.type == EV.KO then
 		local id = tonumber(ev.unit) or -1
 		local own = holds[id]
-		if own and own.at > t then
+		local gasp = own ~= nil and own.at > t
+		if gasp then
 			w = own.at - t + K.LAST_GASP
-			Units.Hold(B, id, now + lead + w, 1)
 		end
 		for _, h in pairs(holds) do
 			if h.victims[id] and h.at > t then
@@ -7862,7 +7894,15 @@ function Net.SpecialHold(B, ev, t, lead)
 			end
 		end
 		if w > 0 then
-			Units.Hold(B, id, now + lead + w)
+			-- (fix round 1, M1) one hold: a last gasp floors the drawn HP at 1 (the killing hit's drop shows)
+			Units.Hold(B, id, now + lead + w, gasp and 1 or nil)
+		end
+	elseif ev.type == (EV.Swap or "Swap") and ev.auto then
+		-- (fix round 1, I2) the server's auto-swap of a fighter whose KO waits for a late impact: the "GO!" and the
+		-- entrance wait with it (the KO before it in this batch set the out unit's hold)
+		local o = B.units[tonumber(ev.out) or -1]
+		if o and o.holdUntil then
+			w = max(0, o.holdUntil - now - lead)
 		end
 	end
 	if w > 0 then
