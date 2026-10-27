@@ -148,6 +148,290 @@ local function identityShort(kind, recipe, per)
 	return out
 end
 
+local SIGNATURE_PETS_C = {
+	"ember_phoenix", "sunbeam_bear", "twilight_dragon", "cloudy_dragon", "starlight_unicorn", "stormfang",
+	"eclipse_dragon", "obsidian_phoenix", "phantom_kitsune", "magma_cub", "rime_wyrmling", "hydralotl",
+}
+-- (Task 11, test 17) the 12 signature specials in the engine. env = { Fx, Cat, ctx, run, clock = fn() -> now, A, B,
+-- allies = { 4 ally models } }. For each signature at every rarity (7: its own, and lower ones a budget step-down draws)
+-- the effect plays within every per-effect cap and DRAWS its signature: every non-light recipe layer has >= 1 item, the
+-- lights are min(3, light layers), its alive detail, its core (the signature's key), its actor pieces at their count
+-- (x the allies for a per-ally actor, its rim copy for each, others' pets x Density 0.6), the identity counts (Storm
+-- Pounce's 2 bolts, Cloud Breath's 2 spiral arcs). Kitsune's nine orbs: all nine on 1, 2 or 4 allies, spread round
+-- robin. Low quality: the actor stays, <= 2 emitters. The Eclipse dim: own pet only, given back on end / Cancel / ClearAll.
+local SIG_DRAW = {
+	ember_phoenix = { Core = "vfx_sig_phoenix_wing" },
+	sunbeam_bear = { Actor = 1, PerAlly = true },
+	twilight_dragon = { Core = "vfx_star", Actor = 1, Rim = true },
+	cloudy_dragon = { Actor = 1, Count = { Spiral = 2 } },
+	starlight_unicorn = { Actor = 1, Rim = true },
+	stormfang = { Actor = 1, Rim = true, Count = { SigBolts = 2 } },
+	eclipse_dragon = { Actor = 1, Rim = true },
+	obsidian_phoenix = { Actor = 1, Rim = true },
+	phantom_kitsune = { Actor = 9 },
+	magma_cub = { Core = "vfx_chunk", Actor = 5 },
+	rime_wyrmling = { Core = "vfx_sig_glacier" },
+	hydralotl = { Actor = 3, Rim = true },
+}
+local SIG_SUPPORT = { Heal = true, Shield = true, Rally = true, Haste = true }
+
+-- the items of a live effect: per layer id, the core pieces, the actor pieces / rims, the alive items
+local function sigItems(el)
+	local per, core, actor, rims, alive = {}, 0, 0, 0, 0
+	for _, it in ipairs(el.Items) do
+		local id = it.Layer and it.Layer.Id
+		if id then
+			per[id] = (per[id] or 0) + 1
+		end
+		if it.Layer and it.Layer.Alive then
+			alive = alive + 1
+		end
+		if it.Kind == "Solid" and not it.Layer then
+			if it.Rim then
+				rims = rims + 1
+			elseif it.Actor then
+				actor = actor + 1
+			else
+				core = core + 1
+			end
+		end
+	end
+	return per, core, actor, rims, alive
+end
+
+local function signatureEngine(env)
+	local Fx, Cat, ctx, run = env.Fx, env.Cat, env.ctx, env.run
+	local function play(pet, rarity, mine, nAllies)
+		local s = Cat.Signatures[pet]
+		local to = { Unit = 96, Model = env.B }
+		if SIG_SUPPORT[s.Kind] then
+			to = {}
+			for i = 1, nAllies or 4 do
+				to[i] = { Unit = 200 + i, Model = env.allies[i] }
+			end
+		end
+		Fx.ClearAll()
+		local ok = Fx.Play(ctx({ Element = s.Element, Attack = "Special", Kind = s.Kind, PetId = pet, Rarity = rarity, Mine = mine,
+			From = { Unit = 95, Model = env.A }, To = to, Now = env.clock() }))
+		return ok and Fx._Live()[#Fx._Live()] or nil, s
+	end
+	local bad, seen = {}, 0
+	for _, pet in ipairs(SIGNATURE_PETS_C) do
+		local want = SIG_DRAW[pet]
+		for _, rarity in ipairs(Cat.Rarities) do
+			for _, mine in ipairs({ true, false }) do
+				local el, s = play(pet, rarity, mine)
+				local why = {}
+				if not el or el.Recipe.Signature ~= pet then
+					why[#why + 1] = "did not play the signature"
+				else
+					local r = el.Recipe
+					local per, core, actor, rims, alive = sigItems(el)
+					if el.Emitters > Fx.MAX_EMITTERS.High or el.Beams > Fx.MAX_BEAMS or el.Trails > Fx.MAX_TRAILS or el.Lights > Fx.MAX_LIGHTS or el.Cores > Fx.MAX_CORES then
+						why[#why + 1] = fmt("over a cap: %d em %d beams %d trails %d lights %d cores", el.Emitters, el.Beams, el.Trails, el.Lights, el.Cores)
+					end
+					local lights = 0
+					for _, l in ipairs(r.Layers) do
+						if l.Kind == "Light" then
+							lights = lights + 1
+						elseif not per[l.Id] then
+							why[#why + 1] = "not drawn: " .. l.Id
+						end
+					end
+					if el.Lights ~= math.min(Fx.MAX_LIGHTS, lights) then
+						why[#why + 1] = fmt("%d of %d lights", el.Lights, lights)
+					end
+					if type(r.Alive) == "table" and r.Alive.Kind and alive == 0 then
+						why[#why + 1] = "no alive item"
+					end
+					if want.Core and not (r.Core.Key == want.Core and core >= 1) then
+						why[#why + 1] = fmt("core %s x%d", tostring(r.Core.Key), core)
+					end
+					if want.Actor then
+						local n = want.Actor
+						if not mine then
+							n = math.max(1, math.floor(n * Cat.OthersDensity + 0.5))
+						end
+						if want.PerAlly then
+							n = n * 4
+						end
+						if actor ~= n or rims ~= (want.Rim and n or 0) then
+							why[#why + 1] = fmt("%d actor pieces + %d rims (want %d%s)", actor, rims, n, want.Rim and " + rims" or "")
+						end
+					end
+					for id, n in pairs(want.Count or {}) do
+						if (per[id] or 0) < n then
+							why[#why + 1] = fmt("%d x %s (want >= %d)", per[id] or 0, id, n)
+						end
+					end
+				end
+				if #why > 0 then
+					bad[#bad + 1] = fmt("%s %s %s: %s", pet, rarity, mine and "mine" or "other", table.concat(why, ", "))
+				else
+					seen = seen + 1
+				end
+			end
+		end
+	end
+	T.check(#bad == 0 and seen == 12 * #Cat.Rarities * 2,
+		"Task 11: each of the 12 signatures at every rarity (mine / others) plays within the caps and draws all its layers, its alive detail, its signature core, its actor pieces + rims at their count (others' x 0.6), Storm Pounce's 2 bolts and Cloud Breath's 2 spiral arcs",
+		fmt("%d ok; %s", seen, table.concat(bad, " | ")))
+
+	-- 17a) nine fox-fire orbs whatever the allies: all nine circle one ally; on 2 / 4 allies they are shared round robin
+	local foxBad = {}
+	for _, n in ipairs({ 1, 2, 4 }) do
+		local el = play("phantom_kitsune", "Secret", true, n)
+		local by, total = {}, 0
+		for _, it in ipairs(el and el.Items or {}) do
+			if it.Actor and not it.Rim then
+				by[it.Ally] = (by[it.Ally] or 0) + 1
+				total = total + 1
+			end
+		end
+		local lo, hi = 99, 0
+		for a = 1, n do
+			lo, hi = math.min(lo, by[a] or 0), math.max(hi, by[a] or 0)
+		end
+		if not (el and total == 9 and lo >= 1 and hi - lo <= 1 and el.Cores <= Fx.MAX_CORES) then
+			foxBad[#foxBad + 1] = fmt("%d allies: %d orbs, %d..%d per ally", n, total, lo, hi)
+		end
+	end
+	T.check(#foxBad == 0, "Task 11: Foxfire Ward: nine fox-fire orbs on 1, 2 and 4 allies (shared round robin, within the piece cap)", table.concat(foxBad, " | "))
+
+	-- 17b) Low quality keeps the signature: the actor pieces stay, <= 2 emitters (the Burst + its LowKeep), no beams / trails
+	Fx.SetQuality("Low")
+	local lowBad = {}
+	for _, pet in ipairs(SIGNATURE_PETS_C) do
+		local el = play(pet, Cat.Signatures[pet].Rarity, true)
+		local _, core, actor = sigItems(el or { Items = {} })
+		local want = SIG_DRAW[pet]
+		if not (el and el.Emitters <= 2 and el.Beams == 0 and el.Trails == 0 and (not want.Actor or actor >= 1) and (not want.Core or core >= 1)) then
+			lowBad[#lowBad + 1] = fmt("%s: %s emitters, %d actor, %d core", pet, el and tostring(el.Emitters) or "?", actor, core)
+		end
+	end
+	Fx.SetQuality("High")
+	T.check(#lowBad == 0, "Task 11: Low quality: every signature keeps its actor / core, <= 2 emitters, no beams / trails", table.concat(lowBad, " | "))
+
+	-- 17d) battle timing: the special arrives with the short render lead (DueAt = now + 0.15: the charge is cut to ~0),
+	-- yet each signature's own piece is still SEEN after the impact (Cloud Breath's coil, the dusk moon, the black sun on
+	-- the floor, the serpents, the orbs, the seals, the spikes, the wishing star; Obsidian's dive bursts on it), and the
+	-- Hydralotl heads lunge only once they have risen
+	local seenBad = {}
+	local lunge = { early = 0, late = 0 }
+	for _, pet in ipairs(SIGNATURE_PETS_C) do
+		local want = SIG_DRAW[pet]
+		if want.Actor then
+			local s = Cat.Signatures[pet]
+			local to = { Unit = 96, Model = env.B }
+			if SIG_SUPPORT[s.Kind] then
+				to = {}
+				for i = 1, 4 do
+					to[i] = { Unit = 200 + i, Model = env.allies[i] }
+				end
+			end
+			Fx.ClearAll()
+			local now = env.clock()
+			Fx.Play(ctx({ Element = s.Element, Attack = "Special", Kind = s.Kind, PetId = pet, Rarity = s.Rarity, Mine = true,
+				From = { Unit = 95, Model = env.A }, To = to, Now = now, DueAt = now + 0.15 }))
+			local el = Fx._Live()[#Fx._Live()]
+			local after = (pet == "obsidian_phoenix") and 0.15 or 0.3
+			local shown = false
+			if el then
+				local impact = el.Start + el.Times.Impact
+				run(1 / 30, nil)
+				local head, p0 = nil, nil
+				for _, it in ipairs(el.Items) do
+					if it.Actor and not it.Rim and not head then
+						head = it
+					end
+				end
+				local stop = (pet == "hydralotl") and math.max(impact + after, el.Start + 0.75) or impact + after
+				while env.clock() < stop do
+					if pet == "hydralotl" and head and head.Kit then
+						-- (the lunge moves the head forward, flat: before the rise is done it must stay put)
+						local t = env.clock() - el.Start
+						local p = head.Kit.Root.Position
+						p = Vector3.new(p.X, 0, p.Z)
+						p0 = p0 or p
+						local d = (p - p0).Magnitude
+						if t < head.T0 + 0.27 then
+							lunge.early = math.max(lunge.early, d)
+						elseif t > head.T0 + 0.32 and t < head.T0 + 0.62 then
+							lunge.late = math.max(lunge.late, d)
+						end
+					end
+					run(1 / 30)
+				end
+				for _, it in ipairs(el.Items) do
+					if it.Actor and not it.Rim and it.Kit and it.Kit.Root.Transparency < 0.98 then
+						shown = true
+					end
+				end
+			end
+			if not (el and shown and el.Times.Charge < 0.2) then
+				seenBad[#seenBad + 1] = fmt("%s: %s (charge %.2f)", pet, el and "actor not seen" or "no effect", el and el.Times.Charge or -1)
+			end
+		end
+	end
+	Fx.ClearAll()
+	T.check(#seenBad == 0, "Task 11: battle timing (charge cut by a 0.15 s lead): every signature's own piece is still seen after the impact", table.concat(seenBad, " | "))
+	T.check(lunge.early < 0.05 and lunge.late > 0.4, "Task 11: battle timing: the Hydralotl serpents rise first, then lunge (not while rising)",
+		fmt("moved %.2f studs while rising, %.2f after", lunge.early, lunge.late))
+
+	-- 17c) the Eclipse dim (own pet only): one DimWorld with its own token + the caster's unit, lasting to DimWorld after
+	-- the impact; Undim with that token when the effect ends, is cancelled or cleared; nothing for others' pets or another
+	-- signature (the hooks found here are put back at the end)
+	local dims, undims = {}, {}
+	local hooks0 = { Fx.Hooks.DimWorld, Fx.Hooks.Undim }
+	Fx.Hooks.DimWorld = function(seconds, token, unit)
+		dims[#dims + 1] = { seconds, token, unit }
+	end
+	Fx.Hooks.Undim = function(token)
+		undims[#undims + 1] = token
+	end
+	local function eclipse(mine, unit)
+		Fx.ClearAll()
+		dims, undims = {}, {}
+		local c = ctx({ Element = "Shadow", Attack = "Special", Kind = "Blast", PetId = "eclipse_dragon", Rarity = "Secret", Mine = mine,
+			From = { Unit = unit, Model = env.A }, To = { Unit = 96, Model = env.B }, Now = env.clock() })
+		Fx.Play(c)
+		local el = Fx._Live()[#Fx._Live()]
+		run(1 / 30)
+		return el
+	end
+	local el = eclipse(true, 301)
+	local wantSecs = el and (el.Times.Impact - 1 / 30 + el.Recipe.Sig.DimWorld) or -1
+	local d1 = dims[1]
+	T.check(#dims == 1 and d1[3] == 301 and d1[2] ~= nil and math.abs(d1[1] - wantSecs) < 0.05 and #undims == 0,
+		"Task 11: Eclipse Nova (mine) dims once from its first frame to DimWorld after the impact, with its own token and the caster's unit",
+		fmt("%d dims, token %s unit %s, %.2f s (want %.2f), %d undims", #dims, tostring(d1 and d1[2]), tostring(d1 and d1[3]), d1 and d1[1] or -1, wantSecs, #undims))
+	run((el and (el.End - el.Start) or 3) + 0.2)
+	T.check(d1 ~= nil and #undims == 1 and undims[1] == d1[2] and Fx.Stats().Live == 0, "Task 11: ... and gives the light back (Undim with its token) when the effect ends", fmt("%d undims", #undims))
+	eclipse(true, 302)
+	Fx.Cancel(302)
+	T.check(#dims == 1 and #undims == 1 and undims[1] == dims[1][2], "Task 11: Eclipse Nova cancelled (its caster gone): Undim at once", fmt("%d dims, %d undims", #dims, #undims))
+	eclipse(true, 303)
+	Fx.ClearAll()
+	T.check(#dims == 1 and #undims == 1 and undims[1] == dims[1][2], "Task 11: Eclipse Nova cleared (the battle torn down): Undim at once", fmt("%d undims", #undims))
+	-- two casts of the same caster: each its own token (the first one's end must never lift the second one's dim)
+	eclipse(true, 305)
+	Fx.Play(ctx({ Element = "Shadow", Attack = "Special", Kind = "Blast", PetId = "eclipse_dragon", Rarity = "Secret", Mine = true,
+		From = { Unit = 305, Model = env.A }, To = { Unit = 96, Model = env.B }, Now = env.clock() }))
+	run(1 / 30)
+	T.check(#dims == 2 and dims[1][3] == 305 and dims[2][3] == 305 and dims[1][2] ~= dims[2][2], "Task 11: two Eclipse casts of one caster get tokens of their own",
+		fmt("%d dims, tokens %s / %s", #dims, tostring(dims[1] and dims[1][2]), tostring(dims[2] and dims[2][2])))
+	Fx.ClearAll()
+	el = eclipse(false, 304)
+	run(3)
+	T.check(#dims == 0 and #undims == 0, "Task 11: another player's Eclipse Nova never dims (nor undims)", fmt("%d dims, %d undims", #dims, #undims))
+	dims, undims = {}, {}
+	play("magma_cub", "Secret", true)
+	run(3)
+	T.check(#dims == 0 and #undims == 0, "Task 11: no other signature dims the battle", fmt("%d dims", #dims))
+	Fx.ClearAll()
+	Fx.Hooks.DimWorld, Fx.Hooks.Undim = hooks0[1], hooks0[2]
+end
+
 S.client_p7vfx_engine = guarded("client_p7vfx_engine", function()
 	local Fx = moduleAt(ROOTS.client .. "/Controllers/AttackFx")
 	local Cat = moduleAt(ROOTS.shared .. "/AttackFxCatalog")
@@ -1333,6 +1617,10 @@ S.client_p7vfx_engine = guarded("client_p7vfx_engine", function()
 	T.check(plus and plus.Rotation.Min == 0 and plus.Rotation.Max == 0 and plus.RotSpeed.Min == 0 and plus.RotSpeed.Max == 0,
 		"Heal: the sparkles are upright plus signs (no random roll, no spin)")
 	Fx.ClearAll()
+	-- 17) Task 11: the 12 signature specials (a file-level helper: this function is at the 200-locals limit)
+	signatureEngine({ Fx = Fx, Cat = Cat, ctx = ctx, run = run, clock = function()
+		return clock
+	end, A = A, B = B, allies = allyModels })
 	for _, m in ipairs(allyModels) do
 		m:Destroy()
 	end
@@ -1423,6 +1711,152 @@ local function copyOf(t)
 		c[k] = v
 	end
 	return c
+end
+
+-- (Task 11) Eclipse Nova's battle dim in a real battle: BattleController's hooks (Me.Dim / Me.Undim) push / pop the
+-- LightingStack preset "AttackFxDim". env = { BC, AF, KC, id, pulse, helper, kid, boss, f, bo, info = fn(uid) -> the
+-- unit's info }. -> E = { beforeKo(), afterKo(), stray(), torn(label) } for the hook-ins on the existing KO and End
+-- sections (a file-level helper: the scenario function is near the 200-locals limit)
+local DIM_ID_T = "AttackFxDim"
+local function eclipseBattle(env)
+	local BC, KC, id, pulse = env.BC, env.KC, env.id, env.pulse
+	local LS = moduleAt(ROOTS.client .. "/LightingStack")
+	local Lighting = game:GetService("Lighting")
+	local E = {}
+	local function dimmed()
+		for _, x in ipairs(LS and LS.Ids() or {}) do
+			if x == DIM_ID_T then
+				return true
+			end
+		end
+		return false
+	end
+	local function exposure()
+		return Lighting.ExposureCompensation
+	end
+	local function eclipseLive(uid)
+		for _, e in ipairs(env.AF._Live()) do
+			if e.Unit == uid and e.Recipe.Signature == "eclipse_dragon" then
+				return e
+			end
+		end
+		return nil
+	end
+	-- a unit takes Eclipse Dragon's look (a Spawn of the same unit: Units.Add keeps the model, re-reads the look)
+	local function skin(uid, on)
+		local info = copyOf(env.info(uid) or {})
+		if on then
+			info.petId, info.rarity, info.element, info.elements = "eclipse_dragon", "Secret", "Shadow", { "Shadow" }
+		end
+		KC.toClient("BattleState", "Events", { { type = "Spawn", units = { info } } }, id)
+		pulse(0.3)
+	end
+	local function cast(uid)
+		local g = BC.GetUnit(uid)
+		KC.toClient("BattleState", "Events", { { type = "Special", unit = uid, kind = "Blast", name = "Eclipse Nova", x = g.X, z = g.Z, tx = env.bo.X, tz = env.bo.Z, target = env.boss, targets = { env.boss } } }, id)
+	end
+	if not T.check(LS ~= nil and type(LS.Value) == "function" and BC._Me ~= nil and env.helper ~= nil and BC.GetUnit(env.helper) ~= nil,
+		"Eclipse dim (battle): LightingStack (with Value), the battle's Me and my bench helper (the caster) are there") then
+		return nil
+	end
+	-- the preset over a dungeon's look: every value darker than the one under it (added / the tint multiplied)
+	local under = { ExposureCompensation = -0.15, Brightness = -0.12, Saturation = 0.14, TintColor = Color3.fromRGB(236, 226, 212) }
+	local pr = BC._Me.DimPreset({ Value = function(_, prop)
+		return under[prop]
+	end })
+	local cc = pr.ColorCorrection or {}
+	T.check(pr.Lighting and math.abs(pr.Lighting.ExposureCompensation + 0.9) < 1e-6 and math.abs((cc.Brightness or 0) + 0.18) < 1e-6
+		and math.abs((cc.Saturation or 0) + 0.21) < 1e-6 and typeof(cc.TintColor) == "Color3" and cc.TintColor.R < under.TintColor.R
+		and cc.TintColor.G < under.TintColor.G and math.abs(cc.TintColor.B - under.TintColor.B) < 1e-6,
+		"Eclipse dim (battle): the dim preset is relative: exposure -0.75, brightness -0.06, saturation -0.35, the tint made violet over the look under it")
+	-- (an earlier scenario's AttackFx test may have cleared the hooks: point them back at this controller, its public way)
+	T.check(BC.FxHooks() == true and type(env.AF.Hooks.DimWorld) == "function" and type(env.AF.Hooks.Undim) == "function",
+		"Eclipse dim (battle): BattleController.FxHooks points AttackFx's DimWorld / Undim at the battle")
+	local helper = env.helper
+	skin(helper, true)
+	pulse(1)
+	local exp0 = exposure()
+	-- 1) mine: dims from the cast, holds through the impact, gives the light back when the effect is over
+	cast(helper)
+	pulse(0.4)
+	local el = eclipseLive(helper)
+	local onAt, expDim = dimmed(), exposure()
+	local impactAt = el and (el.Start + el.Times.Impact) or nil
+	local offAt = nil
+	for _ = 1, 40 do
+		pulse(0.1)
+		if not offAt and not dimmed() then
+			offAt = os.clock()
+		end
+	end
+	T.check(el ~= nil and onAt and math.abs(expDim - (exp0 - 0.75)) < 1e-3,
+		"Eclipse dim (battle): my Eclipse Nova dims the battle (LightingStack AttackFxDim, exposure 0.75 lower)",
+		fmt("live %s, dimmed %s, exposure %.3f (base %.3f)", tostring(el ~= nil), tostring(onAt), expDim, exp0))
+	T.check(offAt ~= nil and impactAt ~= nil and offAt >= impactAt and not dimmed() and math.abs(exposure() - exp0) < 1e-6 and eclipseLive(helper) == nil,
+		"Eclipse dim (battle): ... it holds through the impact and the light comes back (the base exposure) once it is over",
+		fmt("off %.2f s after the impact, exposure %.3f (base %.3f)", (offAt or 0) - (impactAt or 0), exposure(), exp0))
+	-- 2) relative to the look under it (a dungeon's darker preset): darker still, and a second cast never dims twice
+	pcall(LS.Push, "T11Under", { Lighting = { ExposureCompensation = exp0 - 0.4 } }, 0)
+	cast(helper)
+	pulse(0.4)
+	local e1 = exposure()
+	pulse(0.2) -- (the first dim still on: the re-cast overlaps it)
+	local stillOn = dimmed()
+	cast(helper)
+	pulse(0.4)
+	local e2 = exposure()
+	pulse(4)
+	local e3 = exposure()
+	pcall(LS.Pop, "T11Under", 0)
+	pulse(0.2)
+	T.check(stillOn and math.abs(e1 - (exp0 - 1.15)) < 1e-3 and math.abs(e2 - e1) < 1e-6 and math.abs(e3 - (exp0 - 0.4)) < 1e-6 and math.abs(exposure() - exp0) < 1e-6,
+		"Eclipse dim (battle): the dim is relative to the look under it (a darker dungeon gets darker), a re-cast never dims twice, the look under it comes back",
+		fmt("dim %.3f / re-cast %.3f (want %.3f), after %.3f (want %.3f), popped %.3f", e1, e2, exp0 - 1.15, e3, exp0 - 0.4, exposure()))
+	-- 3) another player's Eclipse Nova never dims my battle
+	if T.check(env.kid ~= nil and BC.GetUnit(env.kid) ~= nil, "Eclipse dim (battle): player 77's fighter is on the floor") then
+		skin(env.kid, true)
+		cast(env.kid)
+		pulse(0.4)
+		local played, d = eclipseLive(env.kid) ~= nil, dimmed()
+		pulse(3)
+		skin(env.kid, false)
+		T.check(played and not d and math.abs(exposure() - exp0) < 1e-6, "Eclipse dim (battle): another player's Eclipse Nova plays but never dims my battle",
+			fmt("played %s, dimmed %s", tostring(played), tostring(d)))
+	end
+	-- the KO hook-in: my Eclipse caster is knocked out mid-cast -> the light comes back at once, its effect still plays
+	function E.beforeKo()
+		local real = env.AF.Hooks.DimWorld
+		E.dueAt = nil
+		env.AF.Hooks.DimWorld = function(seconds, ...)
+			E.dueAt = os.clock() + seconds
+			return real(seconds, ...)
+		end
+		cast(helper)
+		pulse(0.2)
+		env.AF.Hooks.DimWorld = real
+		return T.check(dimmed() and eclipseLive(helper) ~= nil and E.dueAt ~= nil, "Eclipse dim (battle KO): my helper's Eclipse Nova dims (before its KO)")
+	end
+	function E.afterKo()
+		local e = eclipseLive(helper)
+		T.check(not dimmed() and e ~= nil and os.clock() < (E.dueAt or 0),
+			"Eclipse dim (battle KO): the caster's KO gives the light back at once (its effect still playing, the dim not yet due)",
+			fmt("dimmed %s, effect %s, %.2f s before the dim was due", tostring(dimmed()), tostring(e ~= nil), (E.dueAt or 0) - os.clock()))
+		pulse(0.4)
+		T.check(math.abs(exposure() - exp0) < 1e-6, "Eclipse dim (battle KO): ... back to the base exposure", fmt("%.3f (base %.3f)", exposure(), exp0))
+	end
+	-- the teardown hook-in: a dim no effect owns any more (DIM_MAX 2.5 s) is cut when the battle's effects are torn down
+	function E.stray()
+		E.strayAt = os.clock()
+		BC._Me.Dim(2.5, "t11stray")
+		pulse(0.2)
+		return dimmed()
+	end
+	function E.torn(label)
+		T.check(E.strayAt ~= nil and os.clock() - E.strayAt < 2.4 and not dimmed(),
+			"Eclipse dim (battle teardown): " .. label .. ": the battle's dim is cut before its time is up",
+			fmt("%.2f s after the dim, dimmed %s", os.clock() - (E.strayAt or 0), tostring(dimmed())))
+	end
+	return E
 end
 
 S.client_p7vfx_battle = guarded("client_p7vfx_battle", function()
@@ -1902,6 +2336,11 @@ S.client_p7vfx_battle = guarded("client_p7vfx_battle", function()
 					tostring(casterLook.Element), tostring(casterLook.Rarity)))
 			pulse(1)
 		end
+		-- 2a') Task 11: Eclipse Nova's battle dim (own pet only; back on end, KO and teardown: hook-ins below)
+		local E11 = eclipseBattle({ BC = BC, AF = AF, KC = KC, id = id, pulse = pulse, helper = helper, kid = rec.Team77 and rec.Team77.Fighter,
+			boss = boss, f = f, bo = bo, info = function(uid)
+				return infos[uid]
+			end })
 		-- DODGED! on a miss (both ways)
 		local function dodged()
 			local fx = workspace:FindFirstChild("ClientBattle") and workspace.ClientBattle:FindFirstChild("Fx")
@@ -1919,12 +2358,16 @@ S.client_p7vfx_battle = guarded("client_p7vfx_battle", function()
 		-- the KO: AttackFx's Ko poof replaces the cube poof
 		local koUnit = helper or fighter
 		pulse(1.8)
+		local koDim = E11 and koUnit == helper and E11.beforeKo() -- (Task 11 hook-in: the caster's KO ends its battle dim)
 		local p0 = BC.GetStats().FxParts
 		local n0 = #calls
 		KC.toClient("BattleState", "Events", { { type = "KO", unit = koUnit } }, id)
 		pulse(0.3)
 		T.check(#calls == n0 + 1 and calls[n0 + 1].Attack == "Ko" and calls[n0 + 1].Result == true and BC.GetStats().FxParts - p0 <= 0,
 			"handlers: a KO plays AttackFx Ko (no cube poof)", fmt("%d plays, %d new parts", #calls - n0, BC.GetStats().FxParts - p0))
+		if koDim then
+			E11.afterKo()
+		end
 
 		-- 2b) the KO on the render clock (fix round 2): AttackFx's Ko plays on arrival, the snapshot draws the pet down
 		--     when the event plays: the Ko pose holds, the effect plays its beats, nothing cancels it, the pet lies until
@@ -2070,6 +2513,7 @@ S.client_p7vfx_battle = guarded("client_p7vfx_battle", function()
 		-- 3) Review Focus 4 + Ruling 11: the killing blow and the End arrive together (like the sim's last step): the blow
 		--    lands visibly, no new effect starts, everything is gone (pools at keep size) within FX_END_GRACE 1.0 s
 		pulse(2.5)
+		local strayOn = E11 and E11.stray() -- (Task 11 hook-in: the effects' teardown cuts a battle dim)
 		local n3 = #calls
 		KC.toClient("BattleState", "Events", {
 			{ type = "Special", unit = fighter, kind = "Blast", name = "Test Blast", x = f.X, z = f.Z, tx = bo.X, tz = bo.Z, target = boss, targets = { boss } },
@@ -2117,6 +2561,9 @@ S.client_p7vfx_battle = guarded("client_p7vfx_battle", function()
 			"Review Focus 4 (End): AttackFx.Stats().Live == 0 within 1.0 s of the End (not before the impact)",
 			(zeroAt and due) and fmt("%.2f s after the impact", zeroAt - due) or "never")
 		poolsAtKeep("Review Focus 4 (End event mid-effect, after the grace)")
+		if strayOn then
+			E11.torn("the End's grace (Atk.ClearAll)")
+		end
 		T.check(AF.Pose(fighter) == nil and AF.Pose(boss) == nil, "Review Focus 4 (End): no pose is left")
 		KC.toClient("BattleState", "End", { BattleId = id, Mode = "Raid", Outcome = "Left", Won = false, Spectator = false, Reason = "Left" }, id)
 		LocalPlayer:SetAttribute("InBattle", nil)
