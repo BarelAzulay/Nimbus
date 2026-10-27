@@ -15,6 +15,12 @@
 -- crowd / stand a CrowdCheer (a plaza ring with stands only has to tag them). Everything is client-side and never
 -- replicated; a destroyed pocket takes its sounds with it.
 --
+-- LATE PARTS: a model replicates before its parts (a player joining while the pockets are still streaming in), so a
+-- Scan can find a Crowd / drummer / tagged stand with no BasePart yet, or only some of them. Every BasePart that lands
+-- in a pocket's Crowd or drummer (or in a tagged model) queues one deferred re-scan; the loop is made once the host has
+-- a part and moved when its anchor part changes or its spot moves more than K.MOVE_EPS studs. A battle's VFX parts
+-- elsewhere in the pocket do not trigger it.
+--
 --   RingAmbience.Init()                 watches workspace.BattlePockets and the two tags (once)
 --   RingAmbience.Scan(pocket)           attaches the pocket's sounds now (idempotent; tests / a late child)
 --   RingAmbience.Attach(host, name, offset) -> Sound | nil   a positional `name` loop at `host` (a Model, BasePart or
@@ -40,13 +46,15 @@ local K = {
 	ANCHOR = "RingAudio_", -- the Attachments made here
 	CROWD_LIFT = 3, -- studs above the bleacher's centre (the puffs' heads)
 	DRUM_SPOT = { X = 0.36, Y = 1.5, Z = 0.25 }, -- the fallback drummer spot: x / z share of the stand's size from its centre
+	MOVE_EPS = 4, -- studs: a re-scan moves a playing loop only when its anchor part changes or its spot moves this far
 }
 RingAmbience.K = K
 
 local St = {
 	started = false,
-	sites = {}, -- [pocket Model] = { crowd = Sound|nil, drum = Sound|nil, drumHost = Instance|nil }
-	tagged = {}, -- [tagged Instance] = Sound
+	sites = {}, -- [pocket Model] = { crowd = Sound|nil, drum = Sound|nil, drumHost = Instance|nil, crowdE / drumE = placement }
+	tagged = {}, -- [tagged Instance] = { sound, host, part, at }
+	pending = {}, -- [pocket Model] = true while a deferred re-scan is queued
 	conns = {},
 	SF = nil, -- client/SoundFx (lazy); false = unavailable
 }
@@ -101,23 +109,30 @@ local function bounds(host)
 	return nil, nil
 end
 
-function RingAmbience.Attach(host, name, offset)
+-- where a loop for `host` goes: the anchor part and the world spot (nil while the host has no BasePart yet)
+local function placement(host, offset)
+	if host:IsA("Attachment") then
+		return host, host.WorldPosition
+	end
+	local part = anchorPart(host)
+	local centre = bounds(host)
+	if not part or not centre then
+		return nil, nil
+	end
+	return part, centre + (offset or Vector3.new(0, K.CROWD_LIFT, 0))
+end
+
+-- a positional `name` loop on `part` at the world spot `at` (an Attachment host takes it directly)
+local function attachAt(host, part, at, name)
 	local SF = soundFx()
-	if typeof(host) ~= "Instance" or not SF or type(SF.Positional) ~= "function" then
+	if not SF or type(SF.Positional) ~= "function" then
 		return nil
 	end
-	local parent = nil
-	if host:IsA("Attachment") then
-		parent = host
-	else
-		local part = anchorPart(host)
-		local centre = bounds(host)
-		if not part or not centre then
-			return nil
-		end
+	local parent = host
+	if not host:IsA("Attachment") then
 		local att = Instance.new("Attachment")
 		att.Name = K.ANCHOR .. name
-		att.Position = part.CFrame:PointToObjectSpace(centre + (offset or Vector3.new(0, K.CROWD_LIFT, 0)))
+		att.Position = part.CFrame:PointToObjectSpace(at)
 		att.Parent = part
 		parent = att
 	end
@@ -131,6 +146,17 @@ function RingAmbience.Attach(host, name, offset)
 	return nil
 end
 
+function RingAmbience.Attach(host, name, offset)
+	if typeof(host) ~= "Instance" then
+		return nil
+	end
+	local part, at = placement(host, offset)
+	if not part then
+		return nil
+	end
+	return attachAt(host, part, at, name)
+end
+
 local function drop(sound)
 	if typeof(sound) == "Instance" then
 		local att = sound.Parent
@@ -139,6 +165,34 @@ local function drop(sound)
 			att:Destroy()
 		end
 	end
+end
+
+local function alive(sound)
+	return typeof(sound) == "Instance" and sound.Parent ~= nil
+end
+
+-- keeps entry (= { sound, host, part, at }) a `name` loop at `host`: kept while its anchor part and spot hold; moved
+-- (dropped + made again) when the host changes or its parts arrive later (a model replicates before its parts: the
+-- first part to land would otherwise be the anchor and the "centre" for good). A host with no part yet keeps what is on.
+local function ensure(entry, host, name, offset)
+	if not host then
+		return entry.sound
+	end
+	local part, at = placement(host, offset)
+	if not part then
+		return alive(entry.sound) and entry.sound or nil
+	end
+	if alive(entry.sound) and entry.host == host and entry.part == part and entry.at and (at - entry.at).Magnitude <= K.MOVE_EPS then
+		return entry.sound
+	end
+	drop(entry.sound)
+	entry.sound = attachAt(host, part, at, name)
+	if entry.sound then
+		entry.host, entry.part, entry.at = host, part, at
+	else
+		entry.host, entry.part, entry.at = nil, nil, nil
+	end
+	return entry.sound
 end
 
 local function isDrummer(inst)
@@ -170,26 +224,24 @@ function RingAmbience.Scan(pocket)
 	end
 	local site = St.sites[pocket]
 	if not site then
-		site = {}
+		site = { crowdE = {}, drumE = {} }
 		St.sites[pocket] = site
 	end
 	local crowd = pocket:FindFirstChild(K.CROWD)
-	if crowd and not (site.crowd and site.crowd.Parent) then
-		site.crowd = RingAmbience.Attach(crowd, "CrowdCheer")
-	end
+	site.crowd = ensure(site.crowdE, crowd, "CrowdCheer")
+	-- the drums: at the drummer once it has a part, else at the bleacher's back step at one end (the drummer's spot)
 	local drummer = drummerOf(pocket)
-	local host = drummer or crowd
-	if host and (site.drumHost ~= host or not (site.drum and site.drum.Parent)) then
-		drop(site.drum)
-		local offset = Vector3.new(0, 0, 0) -- (at the drummer itself)
-		if not drummer then
-			local _, size = bounds(crowd)
-			size = size or Vector3.new(30, 4, 8)
-			offset = Vector3.new(size.X * K.DRUM_SPOT.X, K.DRUM_SPOT.Y, size.Z * K.DRUM_SPOT.Z)
-		end
-		site.drum = RingAmbience.Attach(host, "DrumLoop", offset)
-		site.drumHost = site.drum and host or nil
+	if drummer and not placement(drummer, Vector3.new(0, 0, 0)) then
+		drummer = nil
 	end
+	local host, offset = drummer, Vector3.new(0, 0, 0)
+	if not drummer and crowd then
+		local _, size = bounds(crowd)
+		size = size or Vector3.new(30, 4, 8)
+		host, offset = crowd, Vector3.new(size.X * K.DRUM_SPOT.X, K.DRUM_SPOT.Y, size.Z * K.DRUM_SPOT.Z)
+	end
+	site.drum = ensure(site.drumE, host, "DrumLoop", offset)
+	site.drumHost = site.drum and site.drumE.host or nil
 	return site
 end
 
@@ -197,15 +249,43 @@ local function isPocket(inst)
 	return inst:IsA("Model") and string.sub(inst.Name, 1, #K.POCKET_PREFIX) == K.POCKET_PREFIX
 end
 
+-- a part of the crowd or of a drummer (walks up to the pocket: a few levels), not a battle's VFX part in the pocket
+local function inCrowdOrDrummer(d, pocket)
+	local a = d.Parent
+	while a and a ~= pocket do
+		if a.Name == K.CROWD or isDrummer(a) then
+			return true
+		end
+		a = a.Parent
+	end
+	return false
+end
+
+-- one deferred re-scan per pocket for a burst of arriving parts
+local function rescanSoon(pocket)
+	if St.pending[pocket] then
+		return
+	end
+	St.pending[pocket] = true
+	task.defer(function()
+		St.pending[pocket] = nil
+		if St.sites[pocket] then
+			RingAmbience.Scan(pocket)
+		end
+	end)
+end
+
 local function watchPocket(pocket)
 	if not isPocket(pocket) or St.sites[pocket] then
 		return
 	end
 	RingAmbience.Scan(pocket)
-	-- a crowd / drummer that replicates after the pocket itself
+	-- a crowd / drummer that replicates after the pocket itself, and their parts that replicate after them
 	table.insert(St.conns, pocket.DescendantAdded:Connect(function(d)
 		if d.Name == K.CROWD or isDrummer(d) then
 			RingAmbience.Scan(pocket)
+		elseif d:IsA("BasePart") and inCrowdOrDrummer(d, pocket) then
+			rescanSoon(pocket)
 		end
 	end))
 	table.insert(St.conns, pocket.AncestryChanged:Connect(function()
@@ -223,9 +303,6 @@ local function watchFolder(folder)
 end
 
 local function onTagged(inst, name)
-	if St.tagged[inst] and St.tagged[inst].Parent then
-		return
-	end
 	-- a drummer inside a ring pocket is the pocket's (Scan moves the drums there)
 	for pocket in pairs(St.sites) do
 		if inst:IsDescendantOf(pocket) then
@@ -233,7 +310,32 @@ local function onTagged(inst, name)
 			return
 		end
 	end
-	St.tagged[inst] = RingAmbience.Attach(inst, name)
+	local entry = St.tagged[inst]
+	if not entry then
+		entry = {}
+		St.tagged[inst] = entry
+		-- a tagged model's parts can land after it (and after its tag): place the loop again as they arrive
+		if not inst:IsA("BasePart") and not inst:IsA("Attachment") then
+			local pending = false
+			table.insert(St.conns, inst.DescendantAdded:Connect(function(d)
+				if d:IsA("BasePart") and not pending then
+					pending = true
+					task.defer(function()
+						pending = false
+						if St.tagged[inst] and inst.Parent then
+							ensure(St.tagged[inst], inst, name)
+						end
+					end)
+				end
+			end))
+		end
+		table.insert(St.conns, inst.AncestryChanged:Connect(function()
+			if not inst.Parent then
+				St.tagged[inst] = nil
+			end
+		end))
+	end
+	ensure(entry, inst, name)
 end
 
 function RingAmbience.Init()
@@ -273,7 +375,8 @@ function RingAmbience.Stats()
 			end
 		end
 	end
-	for _, s in pairs(St.tagged) do
+	for _, entry in pairs(St.tagged) do
+		local s = entry.sound
 		if typeof(s) == "Instance" and s.Parent then
 			if s.Name == "Loop_DrumLoop" then
 				drums = drums + 1

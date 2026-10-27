@@ -274,13 +274,15 @@ Then commit `src/shared/AudioIds.lua` and `audio/upload_state.json` **together**
 
 What to know:
 * **Moderation.** Roblox checks every audio upload; a new one can stay in review for a while (it is already in
-  `AudioIds.lua` and simply stays silent until approved). Run `python3 tools/upload_assets.py --upload --audio
+  `AudioIds.lua` and stays silent until approved). Meanwhile Studio's Output prints `Failed to load sound
+  rbxassetid://...` for each Sound that uses it (3 per pooled SFX, 1 per music track, 2 per ring pocket): that is
+  expected, not a bug; do not re-upload. Run `python3 tools/upload_assets.py --upload --audio
   --refresh` later to record the final states, and commit. A **rejected** sound is left out of `AudioIds.lua` and stays
   silent: tell the owner, never work around moderation (no renaming, re-cutting or re-uploading to slip it past).
 * **Monthly quota.** Roblox counts audio uploads per account per month: about **10 without ID verification, 100 with
   it**. The 12 files do not fit in an unverified month: verify the owner's ID first, or upload 10 now
-  (`--only MusicLobby,MusicBattle,MusicDungeon,Click,Confirm,Error,Reward,Whoosh,Inhale,Shatter`) and the ring's
-  `CrowdCheer,DrumLoop` next month. A refusal for the quota is a per-key failure; the run just goes on and a later run
+  (`--only MusicLobby,MusicBattle,MusicDungeon,Click,Confirm,Reward,Whoosh,Inhale,Shatter,CrowdCheer`) and
+  `DrumLoop,Error` next month (`Error` has no caller in the game yet; the Ring's crowd plays from the first batch). A refusal for the quota is a per-key failure; the run just goes on and a later run
   uploads what is missing.
 * **Never updated in place.** Audio cannot be PATCHed: a changed file (put its new `sha256` in `audio/audio.json`)
   uploads as a NEW asset; the old id goes to `previousAssetIds`. A `sha256` that does not match the file is refused,

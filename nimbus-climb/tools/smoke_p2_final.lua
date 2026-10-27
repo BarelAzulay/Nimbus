@@ -71,10 +71,10 @@ local NUMBER_WORDS = { "One", "Two", "Three", "Four", "Five", "Six", "Seven", "E
 ----------------------------------------------------------------------------------------------------
 -- text helpers
 ----------------------------------------------------------------------------------------------------
-local function readFile(rel)
+local function readFile(rel, mode)
 	local candidates = { rel, HERE .. "../" .. rel, "../" .. rel }
 	for _, path in ipairs(candidates) do
-		local fh = io.open(path, "r")
+		local fh = io.open(path, mode or "r") -- ("rb" for a binary file: Windows text mode stops at a 0x1A byte)
 		if fh then
 			local src = fh:read("*a")
 			fh:close()
@@ -1863,7 +1863,7 @@ local function checkChecklist5(Config, ownerText)
 	local s2 = flat(steps[2] or "")
 	t:case(#faces == 6 and has(s2, "(" .. table.concat(faces, " ") .. ")"), "step 2 names the six Config.Sky.Faces keys (" .. table.concat(faces, " ") .. ")")
 	for _, key in ipairs(faces) do
-		local png = readFile("branding/sky/Skybox" .. key .. ".png")
+		local png = readFile("branding/sky/Skybox" .. key .. ".png", "rb")
 		t:case(png ~= nil and #png > 1000 and has(s2, "`Skybox" .. key .. "`"), "branding/sky/Skybox" .. key .. ".png exists and step 2 names it")
 	end
 	-- step 3: every music and sound name of Config.Audio (its Keys: the names exist before their ids do)

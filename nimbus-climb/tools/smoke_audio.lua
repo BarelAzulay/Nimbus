@@ -18,11 +18,13 @@
 --                       dungeon room's won End plays no Reward of its own (its Loot does: one Reward per room);
 --                       MainMenuController starts the track SoundFx.Wanted() names (not a hard "Lobby")
 --   client_audio_charge BattleController's special charge plays SoundFx "Inhale" (PlaybackSpeed 0.75 rising to 1.35, faded
---                       in / out) and a broken charge "Shatter" (never the old Whoosh / Error); the source pins the names
+--                       in / out) and a broken charge "Shatter" (the Sounds carry the Inhale / Shatter ids)
 --   client_audio_ring   RingAmbience on a ring pocket: CrowdCheer + DrumLoop looped, InverseTapered, Config.Audio
 --                       Positional Min / Max, at the crowd stand, slot volume x setting; a Drummer added later takes the
 --                       drums, so does a crowd model marked Drummer = true (the art-wave crowd); a tagged plaza crowd
---                       (NC_RingCrowd) gets its own; a destroyed pocket takes its sounds
+--                       (NC_RingCrowd) gets its own; a destroyed pocket takes its sounds; LATE PARTS: an empty Crowd whose
+--                       parts land after it (a small one first) gets both loops at the whole stand's middle, one drum loop,
+--                       a VFX part elsewhere in the pocket triggers no re-scan, a tagged model's late parts get its loop
 -- Deterministic: mock clock only, fixed ids (fake numbers given for the test, never uploaded). Plain Lua 5.1 syntax only.
 
 local T = SmokeCommon.T
@@ -625,10 +627,7 @@ S.client_audio_charge = guarded("client_audio_charge", function()
 	if not T.check(Config and SF and BC and AF and type(BC.FxHooks) == "function", "audio charge: SoundFx, BattleController, AttackFx load") then
 		return
 	end
-	local src = readFile("src/client/Controllers/BattleController.lua") or ""
-	T.check(string.find(src, 'pcall(SF.Play, "Inhale")', 1, true) ~= nil and string.find(src, 'pcall(SF.Play, "Shatter")', 1, true) ~= nil
-		and string.find(src, 'pcall(SF.Play, "Whoosh")', 1, true) == nil and string.find(src, 'pcall(SF.Play, "Error")', 1, true) == nil,
-		"audio charge: BattleController plays SoundFx \"Inhale\" / \"Shatter\" (no borrowed Whoosh / Error)")
+	-- (the requirement is pinned by behaviour below: the hooks' Sounds carry Config.Audio.Sfx.Inhale / Shatter ids)
 	local restore = giveIds(Config)
 	BC.FxHooks()
 	local hk = AF.Hooks
@@ -734,6 +733,96 @@ S.client_audio_ring = guarded("client_audio_ring", function()
 		T.check(#drums2 == 1 and drums2[1]:IsDescendantOf(drizzle), "audio ring: a crowd model marked Drummer = true (the art-wave drummer) takes the DrumLoop",
 			fmt("%d drum loops", #drums2))
 		pocket2:Destroy()
+		KC.advance(0.1)
+		-- a late join: the pocket and an EMPTY Crowd model replicate first, its parts after (one, then the rest)
+		local folder = Workspace:FindFirstChild("BattlePockets")
+		local late = Instance.new("Model")
+		late.Name = "RingPocket_" .. (190 + pocketSeq)
+		late.Parent = folder
+		KC.advance(0.1)
+		local lateCrowd = Instance.new("Model")
+		lateCrowd.Name = "Crowd"
+		lateCrowd.Parent = late
+		KC.advance(0.1)
+		local empty = #sounds(late)
+		local base = Vector3.new(-8000, 900, 4000)
+		local steps = {}
+		for i, spec in ipairs({ { 4, 1, 2, 0.5, 1.9, -14 }, { 34, 1.5, 3.8, 0.75, 1.9, 0 }, { 28, 3.5, 3.8, 1.75, 5.7, 0 } }) do
+			local step = Instance.new("Part")
+			step.Name = "StandStep"
+			step.Size = Vector3.new(spec[1], spec[2], spec[3])
+			step.CFrame = CFrame.new(base + Vector3.new(spec[6], spec[4], 37.6 + spec[5]))
+			step.Parent = lateCrowd
+			steps[i] = step
+			if i == 1 then
+				KC.advance(0.1) -- (a small part lands alone first: it must not stay the anchor)
+			end
+		end
+		KC.advance(0.1)
+		local lateList = sounds(late)
+		local lc, ld = nil, nil
+		for _, s in ipairs(lateList) do
+			if s.Name == "Loop_CrowdCheer" then
+				lc = s
+			elseif s.Name == "Loop_DrumLoop" then
+				ld = s
+			end
+		end
+		T.check(empty == 0 and #lateList == 2 and lc and ld and lc.IsPlaying and ld.IsPlaying,
+			"audio ring: a Crowd whose parts replicate after it still gets its CrowdCheer + DrumLoop once they land (no rejoin needed)",
+			fmt("empty %d, then %d sounds", empty, #lateList))
+		if lc then
+			local lpos = lc.Parent.WorldPosition
+			T.check(lc.Parent.Parent == steps[3] and math.abs(lpos.X - base.X) < 1 and lpos.Z > base.Z + 37 and lpos.Z < base.Z + 50,
+				"audio ring: ... at the whole stand's middle on its biggest step (not on the first small part that landed)", tostring(lpos))
+		end
+		local lateDrums = 0
+		for _, s in ipairs(lateList) do
+			if s.Name == "Loop_DrumLoop" then
+				lateDrums = lateDrums + 1
+			end
+		end
+		T.eq(lateDrums, 1, "audio ring: the late crowd's re-scans leave one DrumLoop (no duplicates)")
+		-- a battle's VFX part in the pocket (not in the crowd) does not move the loops
+		local before = lc
+		local vfx = Instance.new("Part")
+		vfx.Name = "Spark"
+		vfx.Size = Vector3.new(80, 80, 80)
+		vfx.CFrame = CFrame.new(base + Vector3.new(0, 10, 0))
+		local scans, scan0 = 0, RA.Scan
+		RA.Scan = function(...)
+			scans = scans + 1
+			return scan0(...)
+		end
+		vfx.Parent = late
+		KC.advance(0.1)
+		RA.Scan = scan0
+		local still = nil
+		for _, s in ipairs(sounds(late)) do
+			if s.Name == "Loop_CrowdCheer" then
+				still = s
+			end
+		end
+		T.check(before ~= nil and still == before and scans == 0, "audio ring: a VFX part elsewhere in the pocket leaves the crowd's loop where it is (no re-scan)",
+			fmt("%d scans", scans))
+		late:Destroy()
+		KC.advance(0.1)
+		-- a tagged plaza stand model whose parts land after its tag
+		local lateStand = Instance.new("Model")
+		lateStand.Name = "PlazaStandsLate"
+		CollectionService:AddTag(lateStand, "NC_RingCrowd")
+		lateStand.Parent = Workspace
+		KC.advance(0.1)
+		local standEmpty = #sounds(lateStand)
+		local standPart = Instance.new("Part")
+		standPart.Size = Vector3.new(20, 4, 6)
+		standPart.CFrame = CFrame.new(300, 10, 300)
+		standPart.Parent = lateStand
+		KC.advance(0.1)
+		local standList = sounds(lateStand)
+		T.check(standEmpty == 0 and #standList == 1 and standList[1].Name == "Loop_CrowdCheer",
+			"audio ring: a tagged NC_RingCrowd model whose parts land after it gets its CrowdCheer then", fmt("%d -> %d", standEmpty, #standList))
+		lateStand:Destroy()
 		KC.advance(0.1)
 		-- a plaza crowd tagged NC_RingCrowd gets its own CrowdCheer
 		local plaza = Instance.new("Part")

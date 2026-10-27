@@ -223,6 +223,9 @@ function SoundFx.Music(context)
 	St.Context = context
 	local old = St.Music
 	St.Music = nil
+	if St.FadeIn then
+		pcall(St.FadeIn.Cancel, St.FadeIn) -- (the old track's fade-in stops before its fade-out starts)
+	end
 	St.FadeIn = nil
 	fadeOut(old, oldContext)
 	local id = context and SoundFx.Id("Music", context) or nil

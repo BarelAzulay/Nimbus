@@ -8138,6 +8138,10 @@ function Net.End(payload, battleId)
 	Input.Movement(B, false)
 	B.pending = {}
 	local participant = payload.Spectator ~= true and B.Fighter
+	local ringNext = participant and Ring.IsNext(B, payload)
+	if not ringNext then
+		Net.Music() -- (first: an error in the cards / result below cannot leave the Battle music on; a won ring round sets it at the tail)
+	end
 	Cards.AfterFight(B, payload)
 	local rw = type(payload.Rewards) == "table" and payload.Rewards or nil
 	if participant and B.Mode == "Dungeon" and (payload.Outcome == "Win" or payload.Won == true or (rw and rw.Dungeon == true and payload.Reason == "Cleared")) then
@@ -8145,7 +8149,7 @@ function Net.End(payload, battleId)
 		B.linger = K.END_LINGER
 		Hud.SetVisible(false)
 		Net.Cheer(B)
-	elseif participant and Ring.IsNext(B, payload) then
+	elseif ringNext then
 		-- a won Champion Ring round: the side card "Round 8 won! ... Round 9 in 3", the floor stays until the next Start
 		B.linger = Ring.LINGER
 		Ring.ShowNext(B, payload)
