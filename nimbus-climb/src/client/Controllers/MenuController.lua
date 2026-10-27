@@ -75,6 +75,8 @@
 --     band between the top margin and the stick (two slim columns of four on a phone, labels >= 14 px). "Touch" is a
 --     touch-only device OR any screen where PlayerModule's TouchGui shows a thumbstick (Studio's device emulator and
 --     touch laptops / tablets with a keyboard report KeyboardEnabled too, but still get the stick: P5.stickShown).
+--     Once the stick has been seen the touch layout stays for the session (respawn, the Esc menu and a hybrid's
+--     mouse / touch switches hide the stick for a moment; the column must not snap back and forth).
 --
 -- Remotes used: OpenPanel, RouletteResult (in); BuyRoulette, EquipPet, UnequipPet, BuyItem, GoToSpot, HomeAction,
 -- PetCare (out). Each remote action is sent at most every K.FIRE_GAP seconds (the server rate-limits as well).
@@ -191,6 +193,9 @@ local K = {
 	STICK_TOP_SMALL = 96,
 	STICK_TOP_LARGE = 210,
 	STICK_GAP = 10, -- the column ends >= 10 px above the ring (13 px above the real ThumbstickStart on a phone)
+	STICK_BIG = 500, -- PlayerModule's DynamicThumbstick doubles its ring when its gui area's short side is > this
+	-- the thumbstick frames PlayerModule puts in TouchGui.TouchControlFrame (P5.stickShown, polled 4x a second)
+	STICK_FRAMES = { "DynamicThumbstickFrame", "ThumbstickFrame" },
 	MIN_LABEL_PX = 14, -- smallest on-screen menu label on phones / tablets (readability rule)
 	GRID_ENTRY_H = 86, -- "Grid" layout: the label sits on the tile's bottom edge, so a row is shorter ...
 	GRID_LABEL_Y = -8, -- ... (label centre this far above the tile's bottom; "Column": 2 px below it)
@@ -1589,7 +1594,7 @@ local function screenFactor()
 end
 
 local function screenMargin()
-	if touchDevice then
+	if touchDevice or U.StickSeen then -- the same touch decision as P5.stickShown (the phone's margin in the emulator)
 		return K.TOUCH_EDGE
 	end
 	return K.EDGE
@@ -2198,24 +2203,24 @@ end
 -- Roblox's touch thumbstick is (or will be) on screen: a touch-only device, or a screen where PlayerModule's TouchGui
 -- shows a thumbstick frame although the device also has a keyboard (Studio's device emulator, touch laptops,
 -- tablets with a keyboard: TouchEnabled AND KeyboardEnabled, so `touchDevice` is false there). The column then uses
--- the touch layout: the band above the stick, thumb-sized tiles and tab. Polled by P5.watchSheets (the stick comes and
--- goes with the last input type on hybrid devices).
+-- the touch layout: the band above the stick, thumb-sized tiles and tab. Polled by P5.watchSheets until it is true.
+-- LATCHED: once seen, true for the rest of the session. PlayerModule hides the stick on respawn and while the Esc menu
+-- is open (TouchGui.Enabled, not read here) and on every mouse / keyboard input of a hybrid device (the frame's
+-- Visible); following those would snap the column between layouts. A keyboard-only PC never gets the stick frames.
 function P5.stickShown()
-	if touchDevice then
+	if touchDevice or U.StickSeen then
 		return true
 	end
 	local pg = LocalPlayer and LocalPlayer:FindFirstChildOfClass("PlayerGui")
 	local touchGui = pg and pg:FindFirstChild("TouchGui")
-	if not (touchGui and touchGui:IsA("ScreenGui") and touchGui.Enabled) then
-		return false
-	end
-	local frame = touchGui:FindFirstChild("TouchControlFrame")
+	local frame = touchGui and touchGui:FindFirstChild("TouchControlFrame")
 	if not (frame and frame:IsA("GuiObject") and frame.Visible) then
 		return false
 	end
-	for _, name in ipairs({ "DynamicThumbstickFrame", "ThumbstickFrame" }) do
+	for _, name in ipairs(K.STICK_FRAMES) do
 		local stick = frame:FindFirstChild(name)
 		if stick and stick:IsA("GuiObject") and stick.Visible then
+			U.StickSeen = true -- latched for the session (U lives as long as the client)
 			return true
 		end
 	end
@@ -2457,8 +2462,8 @@ function P5.watchSheets()
 			elseif U.Collapsed then
 				safe("menu tab", P5.paintTab) -- the tab's dot follows the tiles' badges
 			end
-			-- Roblox's thumbstick appeared / went (hybrid devices, the emulator): the column moves above it / back
-			if U.Column and P5.stickShown() ~= (U.StickShown == true) then
+			-- Roblox's thumbstick appeared (hybrid devices, the emulator): the column moves above it, for good (latched)
+			if U.Column and not U.StickShown and P5.stickShown() then
 				safe("menu stick", relayoutMenu)
 			end
 			task.wait(0.25)
@@ -2476,21 +2481,22 @@ function relayoutMenu()
 	end
 	local area = guiSize()
 	local factor = screenFactor()
+	local touchLayout = P5.stickShown() -- first: it latches U.StickSeen, which screenMargin reads
+	U.StickShown = touchLayout
 	local margin = screenMargin()
 	local pref = factor * P5.TILE_PX / P5.TILE
-	local touchLayout = P5.stickShown()
-	U.StickShown = touchLayout
 	if touchLayout then
 		pref = math.max(P5.TOUCH_TILE_PX, factor * P5.TILE_PX) / P5.TILE
 	end
 	local minScale = P5.MIN_TILE_PX / P5.TILE
 	local first, avail -- gui px: the top of the band the column is centred in, and its height
 	if area.X >= area.Y then
-		local camera = workspace.CurrentCamera
-		local vp = camera and camera.ViewportSize or area
 		local bottom = area.Y - margin
 		if touchLayout then
-			bottom = area.Y - ((math.min(vp.X, vp.Y) <= 500) and K.STICK_TOP_SMALL or K.STICK_TOP_LARGE) - K.STICK_GAP
+			-- the ring's size follows TouchControlFrame's AbsoluteSize, which is this gui area (neither ignores the top
+			-- bar), not the camera viewport: a 540 px tall screen (482 px area) still gets the small ring
+			local big = math.min(area.X, area.Y) > K.STICK_BIG
+			bottom = area.Y - (big and K.STICK_TOP_LARGE or K.STICK_TOP_SMALL) - K.STICK_GAP
 		end
 		first = margin
 		avail = bottom - margin
@@ -9167,6 +9173,14 @@ end
 
 function MenuController.IsColumnCollapsed()
 	return U.Collapsed == true
+end
+
+-- Debug helper (smoke tests): forget that Roblox's thumbstick was seen (a fresh session) and lay the column out again.
+function MenuController.ResetStickSeen()
+	U.StickSeen = nil
+	if U.Column then
+		safe("menu stick", relayoutMenu)
+	end
 end
 
 -- Debug helper (smoke tests): true once `petId` was pre-sculpted at the roulette strip's detail.

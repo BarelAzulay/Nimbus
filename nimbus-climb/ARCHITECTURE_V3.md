@@ -2537,7 +2537,11 @@ folds the column (0.25 s slide, only the tab at x 0; `MenuCollapsed` on NimbusMe
 `IsColumnCollapsed()`; session memory; a red dot repeats any tile badge while folded; a tutorial Menu step unfolds it).
 The touch layout (band above the stick, ending >= 10 px above PlayerModule's `ThumbstickStart` ring) applies on touch-only devices
 AND wherever `PlayerGui.TouchGui` shows a thumbstick frame (`P5.stickShown`, polled 4x a second: Studio's device emulator and
-touch laptops / tablets report `KeyboardEnabled` too). Empty states (Pets page, Team picker) use `P5.emptyState`: wrapped,
+touch laptops / tablets report `KeyboardEnabled` too). It is LATCHED (`U.StickSeen`): once the stick was seen the touch layout
+and the 20 px phone margin stay for the session, so respawn, the Esc menu (`TouchGui.Enabled`, not read) and a hybrid's mouse input
+(the stick frame hidden) never snap the column back; a keyboard-only PC never gets the frames and keeps the desktop layout. The
+stick reservation (96 / 210 px) follows the gui area's short side (> 500: large), as DynamicThumbstick reads
+`TouchControlFrame.AbsoluteSize`. Empty states (Pets page, Team picker) use `P5.emptyState`: wrapped,
 auto-height text and an Open Shop button as wide as its column, capped at 220 / 200 px; on a landscape phone with no pets the
 Pets page's empty state takes the whole page (the detail card hides).
 `HudController`: currencies = thin strips (`STRIP_W` 168 x `STRIP_H` 32) stacked top-right under Roblox's top bar (`CurrencyMode`

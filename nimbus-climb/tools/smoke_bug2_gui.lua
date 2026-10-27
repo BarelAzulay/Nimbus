@@ -21,8 +21,11 @@
 --   client_bug2gui_stickemu (client, keyboard + touch like Studio's device emulator / a touch laptop) a TouchGui with
 --                         a visible DynamicThumbstickFrame (built like PlayerModule's DynamicThumbstick) puts the
 --                         column into its touch layout: at 749x388 (iPhone 14), 800x360 (Galaxy A06), 667x375
---                         (iPhone 7), 844x390 and 740x360 it ends >= 10 px above ThumbstickStart's top with tiles
---                         >= 44 px; the stick going away gives back the desktop column
+--                         (iPhone 7), 844x390, 740x360 and 1000x540 (a 482 px gui area: still the small ring) it
+--                         ends >= 10 px above ThumbstickStart's top with tiles >= 44 px, centred in the band down to
+--                         the ring, at the phone's 20 px edge margin; the touch layout is LATCHED: the Esc menu and
+--                         respawn (TouchGui.Enabled false / true), a hybrid's mouse input (the stick frame hidden), the
+--                         TouchGui rebuilt and the stick gone for good never move the column back to the desktop layout
 --   client_bug2gui_stick_mobile (phone world) the same rule against the same TouchGui on a touch-only phone
 --   client_bug2gui_empty / client_bug2gui_empty_mobile the "No pets yet!" empty state of the Pets page and the Team
 --                         picker's (one helper, P5.emptyState): the Open Shop button's left and right edges inside its
@@ -478,7 +481,9 @@ end)
 ----------------------------------------------------------------------------------------------------
 -- A TouchGui like PlayerModule's (TouchControlFrame > DynamicThumbstickFrame > ThumbstickStart, the idle ring): the
 -- frame is 0.4 x 2/3 of the gui area (+ a 100 px safe inset) from 1/3 down, the ring 3.7 x 20 px (40 on screens
--- whose gui area's short side is > 500) centred 3.3 rings in and 2.8 rings up from the frame's inset corner. In
+-- whose gui area's short side is > 500: DynamicThumbstick reads TouchControlFrame.AbsoluteSize, the viewport minus the
+-- top bar, and MenuController picks its stick reservation from the same gui area) centred 3.3 rings in and 2.8 rings
+-- up from the frame's inset corner. In
 -- Studio's iPhone 14 emulation (749x388) this gives ThumbstickStart (29,237) 74 px and the frame (-100,110) 400x320,
 -- the values measured in Studio.
 function H.touchGui(W, Hh)
@@ -540,13 +545,28 @@ function H.checkStick(label, start)
 			minTile = 0
 		end
 	end
-	lowest = math.max(lowest, H.rect(p.Column).y1)
+	local col = H.rect(p.Column)
+	lowest = math.max(lowest, col.y1)
 	T.check(minTile >= 44 and inside, label .. ": every tile is shown, >= 44 px, under the top bar", string.format("%.1f px", minTile))
 	T.check(lowest <= ring.y0 - 10, label .. ": the column ends >= 10 px above Roblox's thumbstick ring (ThumbstickStart)",
 		string.format("column bottom %.0f, ring top %.0f (gap %.0f)", lowest, ring.y0, ring.y0 - lowest))
+	-- the band is sized for THIS ring (a large-ring reservation on a small-ring screen would centre it higher)
+	local bandMid = (inset + 20 + ring.y0 - 10) / 2
+	T.check(math.abs((col.y0 + col.y1) / 2 - bandMid) <= 8, label .. ": the column is centred in the band from the top margin down to the ring",
+		string.format("column %s, band centre %.0f", H.fmt(col), bandMid))
+	T.check(math.abs(col.x0 - 20) < 1, label .. ": the column sits at the phone's 20 px edge margin", H.fmt(col))
 end
 
-H.STICK_SIZES = { { 749, 388 }, { 800, 360 }, { 667, 375 }, { 844, 390 }, { 740, 360 } }
+-- 1000x540: the viewport's short side is > 500 but the gui area's (482) is not, so PlayerModule draws the small ring
+H.STICK_SIZES = { { 749, 388 }, { 800, 360 }, { 667, 375 }, { 844, 390 }, { 740, 360 }, { 1000, 540 } }
+
+-- the column's place and its Pets tile's size (screen px), to see that nothing moved it
+function H.columnShot()
+	local col = H.rect(H.parts().Column)
+	local pets = H.tile("Pets")
+	local pr = pets and H.rect(pets)
+	return string.format("%s / pets %.1f", H.fmt(col), pr and (pr.x1 - pr.x0) or -1)
+end
 
 S.client_bug2gui_stickemu = guarded("client_bug2gui_stickemu", function()
 	local UIS = game:GetService("UserInputService")
@@ -560,27 +580,60 @@ S.client_bug2gui_stickemu = guarded("client_bug2gui_stickemu", function()
 	-- Studio's device emulator / a touch laptop: touch AND a keyboard (MenuController's touchDevice stays false)
 	UIS.TouchEnabled = true
 	UIS.KeyboardEnabled = true
-	local gui = nil
+	local MC = H.mod("MenuController")
+	local gui, start = nil, nil
 	for _, size in ipairs(H.STICK_SIZES) do
 		local W, Hh = size[1], size[2]
 		Mock.SetViewport(W, Hh)
-		local start
 		gui, start = H.touchGui(W, Hh)
 		KC.advance(1.2) -- the menu polls for the stick 4x a second
 		H.checkStick(string.format("bug2gui emulator %dx%d", W, Hh), start)
 	end
-	-- the stick goes away (the player types / clicks on a hybrid device): the desktop column comes back, centred
-	if gui then
-		gui:Destroy()
+	-- the stick hides for a moment: none of these may move the column (PlayerModule's ControlModule hides TouchGui on
+	-- respawn and while the Esc menu is open, and the stick frame on a hybrid's mouse / keyboard input)
+	Mock.SetViewport(749, 388)
+	gui, start = H.touchGui(749, 388)
+	KC.advance(1.2)
+	local shot = H.columnShot()
+	local function same(what)
+		KC.advance(1.2)
+		local now = H.columnShot()
+		T.check(now == shot, "bug2gui emulator: " .. what .. " does not relayout the column", now .. " (was " .. shot .. ")")
 	end
+	gui.Enabled = false
+	same("the Esc menu / respawn hiding TouchGui (Enabled false)")
+	gui.Enabled = true
+	same("TouchGui coming back (Enabled true)")
+	local stick = gui:FindFirstChild("DynamicThumbstickFrame", true)
+	stick.Visible = false
+	same("a hybrid's mouse input hiding the stick frame")
+	stick.Visible = true
+	same("the stick frame coming back")
+	gui:Destroy()
+	same("TouchGui destroyed")
+	gui, start = H.touchGui(749, 388)
+	same("TouchGui rebuilt")
+	-- the stick gone for good (a touch laptop used with the mouse from now on): the column keeps the touch layout
+	gui:Destroy()
+	gui = nil
 	Mock.SetViewport(1280, 720)
 	KC.advance(1.2)
 	local col = H.rect(H.parts().Column)
-	local inset = Mock.TopInset or 58
 	local pets = H.tile("Pets")
 	local pr = pets and H.rect(pets)
+	T.check(pets ~= nil and H.shown(pets) and col.y1 <= 720 - 210 and pr.x1 - pr.x0 > 46 and math.abs(col.x0 - 20) < 1,
+		"bug2gui emulator: without the thumbstick the column keeps its touch layout (thumb-sized tiles above the stick zone, 20 px margin)",
+		H.fmt(col) .. string.format(" / pets %.1f", pr and (pr.x1 - pr.x0) or -1))
+	-- a fresh session that never sees the stick (a keyboard-only PC): the desktop column, centred
+	if MC and type(MC.ResetStickSeen) == "function" then
+		MC.ResetStickSeen()
+	end
+	KC.advance(1.2)
+	col = H.rect(H.parts().Column)
+	local inset = Mock.TopInset or 58
+	pr = pets and H.rect(pets)
 	T.check(pets ~= nil and H.shown(pets) and math.abs((col.y0 + col.y1) / 2 - (inset + (720 - inset) / 2)) < 6 and pr.x1 - pr.x0 <= 46,
-		"bug2gui emulator: without the thumbstick the desktop column is back (44.8 px tiles, vertically centred)", H.fmt(col))
+		"bug2gui emulator: a session that never saw the thumbstick has the desktop column (44.8 px tiles, vertically centred)", H.fmt(col))
 	UIS.TouchEnabled, UIS.KeyboardEnabled = oldTouch, oldKeys
 	Mock.SetViewport(old[1], old[2])
 	KC.advance(1)
