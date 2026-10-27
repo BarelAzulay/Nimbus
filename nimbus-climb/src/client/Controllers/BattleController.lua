@@ -226,6 +226,13 @@ local K = {
 	--                    shot's flight is never cut below AttackFx's MinTravel (player note 1)
 	RIPPLE_TICK_GAP = 0.75, -- (Task 10 re-review M8) a zone / burn tick's shield ripple waits this long after the unit's
 	--                    last ripple: every other 0.5 s zone tick (the cube path's 50 % zone flash, made deterministic)
+	-- (Task 11) a signature's battle dim (Eclipse Nova, own pet): LightingStack preset DIM_ID, in over DIM_IN, out over
+	-- DIM_OUT once its seconds are up, at once (DIM_CUT) when the battle is torn down
+	DIM_ID = "AttackFxDim",
+	DIM_IN = 0.15,
+	DIM_OUT = 0.3,
+	DIM_CUT = 0,
+	DIM_MAX = 2.5, -- seconds a dim can be asked for (a bad hook argument never leaves the battle dark)
 	BUILD_BUDGET = 0.006, -- seconds of model building per frame (the first build of a frame always runs)
 	BUILD_MAX = 4,
 	CROWD = 14, -- more units than this: other players' / enemy pets are drawn every other frame
@@ -394,6 +401,7 @@ local St = {
 	holds = {}, -- [key] = { index, t, fired }: a helper key / portrait held (0.5 s = swap)
 	movementOn = false, -- MovementController's battle switches are set
 	shake = nil, -- { t0, dur, amp } camera shake
+	dim = nil, -- (Task 11) { t0, dur, token, unit } a signature's battle dim (LightingStack K.DIM_ID pushed)
 }
 
 local Hud = {} -- the battle HUD (built once, lazily)
@@ -2416,8 +2424,9 @@ function Me.UpdateShake(now)
 end
 
 -- AttackFx's screen hooks (own pets only, AttackFx decides when): a soft glow along the screen edges (a Secret pet's
--- hit) and a brief dim of the view (a signature's twist), on their own ScreenGui UNDER the battle HUD; edge-only and
--- see-through, never over the fight's centre (spec "Never hide the fight"). Built on the first use.
+-- hit), on its own ScreenGui UNDER the battle HUD; edge-only and see-through, never over the fight's centre (spec
+-- "Never hide the fight"). Built on the first use. (A signature's battle dim is a Lighting preset since Task 11:
+-- Me.Dim; the HUD is never darkened.)
 function Me.ScreenFx()
 	local g = St.screenFx
 	if g and g.gui.Parent then
@@ -2428,7 +2437,6 @@ function Me.ScreenFx()
 		return nil
 	end
 	local gui = make("ScreenGui", { Name = "NimbusBattleFx", ResetOnSpawn = false, IgnoreGuiInset = true, DisplayOrder = K.DISPLAY_ORDER - 3 })
-	local dim = make("Frame", { Name = "Dim", Size = UDim2.fromScale(1, 1), BackgroundColor3 = Color3.new(0, 0, 0), BackgroundTransparency = 1, BorderSizePixel = 0, Visible = false }, gui)
 	local edges = {}
 	-- { position, size, gradient rotation (0 = opaque at the left) }: 9% of the height / 6% of the width deep
 	for i, e in ipairs({
@@ -2442,7 +2450,7 @@ function Me.ScreenFx()
 		edges[i] = f
 	end
 	gui.Parent = pg
-	g = { gui = gui, dim = dim, edges = edges, glow = nil, dimAt = nil }
+	g = { gui = gui, edges = edges, glow = nil }
 	St.screenFx = g
 	return g
 end
@@ -2461,22 +2469,103 @@ function Me.Glow(color, seconds)
 	BattleController._wake()
 end
 
--- AttackFx.Hooks.DimWorld: the view darkens a little for `seconds` (in over 0.15 s, out over the last third)
-function Me.Dim(seconds)
-	local g = Me.ScreenFx()
-	if not g then
-		return
+-- (Task 11) the battle dim's look: the world darker, a little desaturated and violet (Eclipse Nova's black sun); the
+-- HUD and the effects' Neon stay bright. RELATIVE to the look under it (LightingStack.Value without the dim itself):
+-- the arena (server ExposureCompensation -0.15, NimbusColor Brightness 0 / Saturation 0.14) -> -0.9 / -0.06 / -0.21,
+-- and a dungeon battle (its own darker ColorCorrection) gets darker still, never brighter. Exposure / Brightness /
+-- Saturation are added, the tint multiplies. LightingStack gives the look under it back on the Pop
+Me.DIM_DELTA = { Exposure = -0.75, Brightness = -0.06, Saturation = -0.35, Tint = Color3.fromRGB(214, 198, 255) }
+
+function Me.Lights()
+	if Mods.Lights == nil then
+		Mods.Lights = optional(Client, "LightingStack") or false
 	end
-	g.dimAt = { t0 = os.clock(), dur = clamp(num(seconds, 0.6), 0.2, 2) }
-	g.dim.Visible = true
+	local ls = Mods.Lights
+	return (ls and type(ls.Push) == "function" and type(ls.Pop) == "function") and ls or nil
+end
+
+-- the dim preset over what the battle shows now (a property whose instance is missing is left out)
+function Me.DimPreset(ls)
+	local d = Me.DIM_DELTA
+	local function value(group, prop)
+		if type(ls.Value) ~= "function" then
+			return nil
+		end
+		local ok, v = pcall(ls.Value, group, prop, K.DIM_ID)
+		return ok and v or nil
+	end
+	local preset = {}
+	local exp = value("Lighting", "ExposureCompensation")
+	if type(exp) == "number" then
+		preset.Lighting = { ExposureCompensation = exp + d.Exposure }
+	end
+	local cc = {}
+	local bri, sat, tint = value("ColorCorrection", "Brightness"), value("ColorCorrection", "Saturation"), value("ColorCorrection", "TintColor")
+	if type(bri) == "number" then
+		cc.Brightness = bri + d.Brightness
+	end
+	if type(sat) == "number" then
+		cc.Saturation = max(-1, sat + d.Saturation)
+	end
+	if typeof(tint) == "Color3" then
+		cc.TintColor = Color3.new(tint.R * d.Tint.R, tint.G * d.Tint.G, tint.B * d.Tint.B)
+	end
+	if next(cc) then
+		preset.ColorCorrection = cc
+	end
+	return preset
+end
+
+-- AttackFx.Hooks.DimWorld (own pet only: AttackFx decides): the battle darkens for `seconds` (LightingStack preset
+-- K.DIM_ID, in over DIM_IN; Me.UpdateScreenFx pops it over DIM_OUT when the time is up). `token` = the effect's own
+-- token: Me.Undim(token) ends it early (that effect ended); `unit` = the caster's unit id: Me.UndimCaster(unit) ends it
+-- on the caster's KO. A new dim replaces the old one (and its token: an older cast's end never lifts it).
+function Me.Dim(seconds, token, unit)
+	local ls = Me.Lights()
+	if not ls then
+		return false
+	end
+	if token == nil then
+		token = true
+	end
+	St.dim = { t0 = os.clock(), dur = clamp(num(seconds, 0.6), 0.2, K.DIM_MAX), token = token, unit = unit }
+	pcall(ls.Push, K.DIM_ID, Me.DimPreset(ls), K.DIM_IN)
 	BattleController._wake()
+	return true
+end
+
+-- the light comes back (over `fade` seconds, default DIM_OUT): token nil = whatever dims (a teardown), else only that
+-- caster's dim. -> true when a dim ended
+function Me.Undim(token, fade)
+	local d = St.dim
+	if not d or (token ~= nil and d.token ~= token) then
+		return false
+	end
+	St.dim = nil
+	local ls = Me.Lights()
+	if ls then
+		pcall(ls.Pop, K.DIM_ID, fade or K.DIM_OUT)
+	end
+	return true
+end
+
+-- the caster `unit` was knocked out: its battle dim (if the dim is its) ends now. -> true when a dim ended
+function Me.UndimCaster(unit)
+	local d = St.dim
+	if not d or unit == nil or d.unit ~= unit then
+		return false
+	end
+	return Me.Undim(d.token)
 end
 
 -- per frame while a glow / dim shows; -> true while one does
 function Me.UpdateScreenFx(now)
+	if St.dim and now - St.dim.t0 >= St.dim.dur then
+		Me.Undim(nil, K.DIM_OUT)
+	end
 	local g = St.screenFx
-	if not g or not (g.glow or g.dimAt) then
-		return false
+	if not g or not g.glow then
+		return St.dim ~= nil
 	end
 	if g.glow then
 		local p = (now - g.glow.t0) / g.glow.dur
@@ -2489,16 +2578,7 @@ function Me.UpdateScreenFx(now)
 			g.glow = nil
 		end
 	end
-	if g.dimAt then
-		local t, d = now - g.dimAt.t0, g.dimAt.dur
-		local k = clamp(t / 0.15, 0, 1) * clamp((d - t) / (d / 3), 0, 1)
-		g.dim.BackgroundTransparency = 1 - 0.35 * k
-		if t >= d then
-			g.dimAt = nil
-			g.dim.Visible = false
-		end
-	end
-	return g.glow ~= nil or g.dimAt ~= nil
+	return g.glow ~= nil or St.dim ~= nil
 end
 
 ----------------------------------------------------------------------
@@ -2515,22 +2595,34 @@ local BUFF_LOOK = { Heal = "Heal", Regen = "Heal", Shield = "Shield", Taken = "S
 Atk.EVENTS = { [EV.Hit] = true, [EV.Special] = true, [EV.Element or "Element"] = true, [EV.KO] = true, [EV.Buff or "Buff"] = true, [EV.Swap or "Swap"] = true }
 Atk.bodyOpts = { Pose = nil } -- (one table for every PetBuilder.PoseBody call)
 
--- client/Controllers/AttackFx (nil when missing); on the first load its hooks go to Me (camera punch = Me.Shake: the
--- Shake setting and SHAKE_MAX apply) and the Graphics setting is applied
+-- AttackFx's hooks go to Me: camera punch = Me.Shake (the Shake setting and SHAKE_MAX apply), the edge glow, and a
+-- signature's battle dim (Me.Dim / Me.Undim, Task 11)
+function Atk.Hook(m)
+	if type(m) ~= "table" or type(m.Hooks) ~= "table" then
+		return
+	end
+	m.Hooks.Punch = function(amount, seconds)
+		Me.Shake(amount, seconds)
+	end
+	m.Hooks.ScreenGlow = function(color, seconds)
+		Me.Glow(color, seconds)
+	end
+	m.Hooks.DimWorld = function(seconds, token, unit)
+		Me.Dim(seconds, token, unit)
+	end
+	m.Hooks.Undim = function(token)
+		Me.Undim(token)
+	end
+end
+
+-- client/Controllers/AttackFx (nil when missing); on the first load its hooks go to Me (Atk.Hook) and the Graphics
+-- setting is applied
 function Atk.Mod()
 	if Mods.AttackFx == nil then
 		local m = optional(script.Parent, "AttackFx")
 		Mods.AttackFx = (m and type(m.Play) == "function" and type(m.Pose) == "function" and type(m.Update) == "function") and m or false
-		if Mods.AttackFx and type(m.Hooks) == "table" then
-			m.Hooks.Punch = function(amount, seconds)
-				Me.Shake(amount, seconds)
-			end
-			m.Hooks.ScreenGlow = function(color, seconds)
-				Me.Glow(color, seconds)
-			end
-			m.Hooks.DimWorld = function(seconds)
-				Me.Dim(seconds)
-			end
+		if Mods.AttackFx then
+			Atk.Hook(m)
 		end
 		Atk.SyncQuality()
 	end
@@ -2619,6 +2711,7 @@ function Atk.ClearAll()
 	if AF and type(AF.ClearAll) == "function" then
 		pcall(AF.ClearAll)
 	end
+	Me.Undim(nil, K.DIM_CUT) -- (Task 11) a torn-down battle never stays dark (AttackFx's own Undim came first if it could)
 end
 
 -- the battle's end (the sim's End event, or the End message if it comes first): no new effect (Atk.Play refuses),
@@ -3660,6 +3753,7 @@ Handlers[EV.KO] = function(B, ev)
 	end
 	u.hp = 0
 	u.state = S_DOWN
+	Me.UndimCaster(u.id) -- (Task 11) a knocked-out caster's battle dim ends with it (its effect may still finish its beats)
 	if B.lock == u.id then
 		B.lock = nil
 	end
@@ -8197,5 +8291,14 @@ function BattleController.Init()
 end
 
 BattleController._Units = Units -- TESTS ONLY (tools/smoke_p6_creatures.lua: the fx mesh slots)
+BattleController._Me = Me -- TESTS ONLY (tools/smoke_p7vfx_client.lua: the Eclipse dim, Task 11)
+
+-- (Task 11) loads client/Controllers/AttackFx and points its Hooks at this controller (camera punch, edge glow, the
+-- battle dim) outside a battle too: the /fx preview (DevPetShow) shows a signature's dim as a battle would. -> loaded
+function BattleController.FxHooks()
+	local m = Atk.Mod()
+	Atk.Hook(m) -- (again: a hook someone cleared is pointed back here)
+	return m ~= nil
+end
 
 return BattleController

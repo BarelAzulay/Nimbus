@@ -577,6 +577,18 @@ local function fxModules()
 			ok, m = pcall(require, inst)
 		end
 		FX.Mod = (ok and type(m) == "table" and type(m.Play) == "function" and type(m.Update) == "function") and m or false
+		-- (Task 11) before the first battle nothing has pointed AttackFx's hooks anywhere: BattleController does it (the
+		-- camera punch, the edge glow, a signature's battle dim), so /fx shows a signature as a battle would
+		if FX.Mod and type(FX.Mod.Hooks) == "table" and FX.Mod.Hooks.DimWorld == nil then
+			local bcInst = script.Parent:FindFirstChild("BattleController")
+			local okBc, BC = false, nil
+			if bcInst then
+				okBc, BC = pcall(require, bcInst)
+			end
+			if okBc and type(BC) == "table" and type(BC.FxHooks) == "function" then
+				pcall(BC.FxHooks)
+			end
+		end
 	end
 	if FX.Cat == nil then
 		local inst = Shared:FindFirstChild("AttackFxCatalog")

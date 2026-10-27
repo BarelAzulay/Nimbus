@@ -47,10 +47,13 @@
 --       Trails of the live effects at once
 --   AttackFx.Stats() -> { Live, Stepped, Emitters, Beams, Trails, Lights, Cores, Pooled, PoolInstances, Errors }
 --       Live = full effects, Stepped = stepped-down ones, the rest = kits held by live effects / pooled kits
---   AttackFx.Hooks = { Punch = fn(amount, seconds), ScreenGlow = fn(color, seconds), DimWorld = fn(seconds) }
+--   AttackFx.Hooks = { Punch = fn(amount, seconds), ScreenGlow = fn(color, seconds), DimWorld = fn(seconds, token, unit),
+--                      Undim = fn(token) }
 --       set by the caller: the camera punch (own pet, band 3+, amount <= PUNCH_MAX 0.35: route it through
 --       BattleController's Me.Shake / ShakeScale path), the edge glow (own pet, band 4) and a signature's dimming
---       (own pet). AttackFx never touches the camera or Lighting itself; other players' effects call no hook.
+--       (own pet: Eclipse Nova; seconds = from now to the recipe's Sig.DimWorld after the impact, token = a number of
+--       its own per effect, unit = the caster's unit id or nil); Undim(token) comes when that effect ends for any reason: end, Cancel, ClearAll,
+--       error). AttackFx never touches the camera or Lighting itself; other players' effects call no hook.
 --   AttackFx.Folder() -> Folder     workspace.ClientBattle.AttackFx (the kits, live and pooled)
 --   Tests: AttackFx._Deps({ MeshLibrary =, TextureIds =, GraphicsQuality = }) (false = the real one again),
 --          AttackFx._Live() (the live effects)
@@ -86,8 +89,9 @@
 -- double crescent, stray strikes, constellation lines), Trail (afterimages, the pounce leap, wind on allies), Light
 -- (flash, bloom pulse, the colour-shifting plasma rim), Ring (vfx_ring / vfx_shell expanding), Mesh (vfx_* pieces
 -- erupting). Layer Delay = seconds after its beat starts; At "Behind" = behind the caster. Unknown motions play as
--- a plain burst. The signature Actor (vfx_sig_*) moves by its Motion (SpiralUp, Rise, ChargeThrough, Burst, Sweep,
--- Orbit, RingRise, RiseRoar).
+-- a plain burst. The signature Actor (vfx_sig_*) moves by its Motion (SpiralUp, ChargeThrough, Eclipse, WingDive,
+-- WishRise, Seal, FoxFire, RingRise, RiseRoar, MoonRise, Rise: see MOVE.Actor); Task 11: it is built right after the core (the
+-- piece cap never cuts it), Count x Density pieces for others' pets, Rim = a bigger glowing copy behind each piece.
 -- Task 10 (the 9 special kinds): an Emitter with Along = true streams along mouth -> hit while the beam holds (the Beam's
 -- wrap); Drift = true streams off its points over its beat (the Haste gust); Shape "Plus" holds the sheet upright, no
 -- roll / spin (the Heal's plus sparkles); a Ring or Mesh layer At "Allies" puts its piece(s) on each ally (the Rally
@@ -111,7 +115,7 @@ AttackFx.MAX_CORES = 14
 AttackFx.PUNCH_MAX = 0.35 -- BattleController SHAKE_MAX
 AttackFx.CROSSFADE = 0.12
 AttackFx.HIT_STOP = 0.05
-AttackFx.Hooks = { Punch = nil, ScreenGlow = nil, DimWorld = nil }
+AttackFx.Hooks = { Punch = nil, ScreenGlow = nil, DimWorld = nil, Undim = nil }
 
 local K = {
 	PARENT = "ClientBattle",
@@ -295,6 +299,7 @@ local St = {
 	folder = nil,
 	errors = 0,
 	warned = {},
+	dimSeq = 0, -- (Task 11) the last battle-dim token handed to Hooks.DimWorld
 }
 
 local function warnOnce(key, msg)
@@ -868,7 +873,35 @@ MOVE.Bounce = function(eff, it, t)
 	return CFrame.new(p) * CFrame.Angles(q * it.SX, q * it.SY, 0), ONE, fadeTo(it, smooth(seg(t, it.T1 - 0.25, it.T1)))
 end
 
--- the signature actor (a vfx_sig_* piece) by its Motion
+-- the middle of the allies a support special lands on (the caster's spot without any)
+local function alliesCentre(eff)
+	local n = min(#eff.T, K.MAX_ALLIES)
+	if n < 1 then
+		return eff.S
+	end
+	local sum = V3(0, 0, 0)
+	for i = 1, n do
+		sum = sum + eff.T[i]
+	end
+	return sum / n
+end
+
+-- the signature actor (a vfx_sig_* piece, Task 11) by its Motion:
+-- (In battle the charge is cut to the render lead, ~0.1-0.45 s: every motion keeps its identity AFTER the impact too.)
+--   SpiralUp       (Cloudy Dragon) spirals up round the caster through the charge, dives along the beam onto the hit,
+--                  then coils once round the target, rising, as it fades
+--   ChargeThrough  (Stormfang) from the mouth through the target and 3 studs past it, over the leap
+--   Eclipse        (Eclipse Dragon) hangs over the target through the charge, turning; at the impact it drops onto the
+--                  target, lies flat on the floor and bursts outward as it fades (a ring on the ground, never a wall)
+--   WingDive       (Obsidian Phoenix) over the target with its wings folded; they snap open as the rain begins (Travel),
+--                  then it dives nose-down onto the target and bursts at the impact
+--   WishRise       (Starlight Unicorn) rises from the caster (over >= 0.45 s) to high over the allies' middle, swaying
+--   Seal           (Sunbeam Bear) lies flat under each ally, turning and pulsing (a sun seal under the bubble)
+--   FoxFire        (Phantom Kitsune) the orbs circle the caster through the charge, then fly out and circle their allies
+--   RiseRoar       (Hydralotl) rises from the floor behind the caster in a fan and lunges forward once risen
+--   MoonRise       (Twilight Dragon) a crescent dusk moon rises behind the storm over the target, upright, rocking
+--   RingRise       (Magma Cub) MOVE.Rise in a ring round the target (set in buildActor); Rise (and unknown motions):
+--                  comes up into place, holds, fades
 MOVE.Actor = function(eff, it, t)
 	local T = eff.Times
 	if t < it.T0 then
@@ -879,42 +912,88 @@ MOVE.Actor = function(eff, it, t)
 	local fade = smooth(seg(t, it.TF, it.T1))
 	if m == "SpiralUp" then
 		local top = eff.S + UP * (1 + 4.5 * eff.Size)
+		local dive = it.Dive or T.Travel
 		local p, look
-		if t < T.Travel then
-			local v = seg(t, it.T0, T.Travel)
+		if t < dive then
+			local v = seg(t, it.T0, dive)
 			local a = v * TAU * 1.5 + it.I
-			p = eff.S + UP * (1 + 4.5 * eff.Size * smooth(v)) + (eff.Right * cos(a) + eff.Dir * sin(a)) * (1.8 * (1 - v))
+			p = eff.S + UP * (1 + 4.5 * eff.Size * smooth(v)) + (eff.Right * cos(a) + eff.Dir * sin(a)) * (1.8 * eff.Size * (1 - 0.6 * v))
 			look = eff.Right * -sin(a) + eff.Dir * cos(a) + UP * 0.6
+		elseif t >= T.Impact then -- (the coil: once round the target, rising, the radius opening from the dive's end)
+			local v = seg(t, T.Impact, it.T1)
+			local a = v * TAU * 1.25 - pi / 2
+			local r = 1.6 * eff.Size * smooth(min(1, v * 3))
+			p = eff.Hit + UP * (0.5 + 2.5 * eff.Size * v) + (eff.Right * cos(a) + eff.Dir * sin(a)) * r
+			look = eff.Right * -sin(a) + eff.Dir * cos(a) + UP * 0.5
 		else
-			local v = seg(t, T.Travel, T.Impact)
-			p = top:Lerp(eff.Hit, v * v)
+			local v = seg(t, dive, T.Impact)
+			p = top:Lerp(eff.Hit + UP * 0.5, v * v)
 			look = eff.Hit - top
 		end
 		return face(p, look), ONE * outBack(seg(t, it.T0, it.T0 + 0.2)), fadeTo(it, fade)
 	elseif m == "ChargeThrough" then
 		local p = eff.Mouth:Lerp(eff.Hit + eff.Dir * 3, outCubic(u))
 		return face(p, eff.Dir), ONE * outBack(seg(u, 0, 0.15)), fadeTo(it, fade)
-	elseif m == "Burst" then
-		local p = eff.Hit + UP * 0.6
-		return face(p, -eff.Dir) * CFrame.Angles(0, 0, t * 2), ONE * (0.2 + 1.2 * outCubic(seg(t, it.T0, it.T0 + 0.5))), fadeTo(it, fade)
-	elseif m == "Sweep" then
-		local p = eff.Hit + UP * (4 * eff.Size) + eff.Right * ((-6 + 12 * smooth(u)) * eff.Size)
-		return face(p, eff.Right) * CFrame.Angles(0.3, 0, 0), ONE * outBack(seg(u, 0, 0.15)), fadeTo(it, fade)
-	elseif m == "Orbit" then
-		local center = (type(it.Anchor) == "number" and eff.T[it.Anchor]) or eff.Hit
-		local a = it.I / it.N * TAU + t * 3
-		local p = center + V3(cos(a) * 1.6 * eff.Size, 0.3 * sin(t * 4 + it.I), sin(a) * 1.6 * eff.Size)
-		return CFrame.new(p) * CFrame.Angles(0, -a, 0), ONE * outBack(seg(t, it.T0, it.T0 + 0.2)), fadeTo(it, fade)
+	elseif m == "Eclipse" then
+		local spin = CFrame.Angles(0, 0, t * 1.4)
+		local hang = face(eff.Hit + UP * (4.2 * eff.Size), -eff.Dir) * spin
+		if t < T.Impact then
+			return hang, ONE * (outBack(seg(t, it.T0, it.T0 + 0.35)) * (1 + 0.04 * sin(t * 9))), fadeTo(it, 0)
+		end
+		local v = seg(t, T.Impact, T.Impact + 0.12)
+		local flat = CFrame.new(groundOf(eff, eff.Hit) + UP * 0.15) * CFrame.Angles(pi / 2, 0, 0) * spin
+		local w = seg(t, T.Impact + 0.08, it.T1)
+		return hang:Lerp(flat, v * v), ONE * (1 + 1.3 * outCubic(w)), fadeTo(it, smooth(w))
+	elseif m == "WingDive" then
+		local open = 0.3 + 0.7 * outBack(seg(t, T.Travel, T.Travel + 0.16))
+		local flap = 1 + 0.06 * sin(t * 11)
+		local top = eff.Hit + UP * (K.ABOVE * 0.85 * eff.Size)
+		local d = seg(t, min(T.Travel + 0.15, T.Impact - 0.1), T.Impact)
+		local p = top:Lerp(eff.Hit + UP * 0.8, d * d)
+		local burst = 1 + 0.5 * outCubic(seg(t, T.Impact, it.T1))
+		return face(p, -eff.Dir) * CFrame.Angles(-0.9 * d, 0, 0), V3(open * flap, 1, 1) * (outBack(seg(t, it.T0, it.T0 + 0.3)) * burst), fadeTo(it, fade)
+	elseif m == "WishRise" then
+		local top = alliesCentre(eff) + UP * (K.ABOVE * 0.8 * eff.Size)
+		local p = (eff.S + UP):Lerp(top, outCubic(seg(t, it.T0, max(T.Travel, it.T0 + 0.45)))) + UP * (0.25 * sin(t * 3))
+		local a = 0.6 * sin(t * 1.5)
+		return face(p, -(eff.Dir * cos(a) + eff.Right * sin(a))), ONE * outBack(seg(t, it.T0, it.T0 + 0.3)), fadeTo(it, fade)
+	elseif m == "Seal" then
+		local p = groundOf(eff, anchorPoint(eff, it)) + UP * 0.12
+		local pulse = 1 + 0.06 * sin(t * 7)
+		return CFrame.new(p) * CFrame.Angles(pi / 2, 0, 0) * CFrame.Angles(0, 0, t * 0.9), ONE * (outBack(seg(t, it.T0, it.T0 + 0.25)) * pulse), fadeTo(it, fade)
+	elseif m == "FoxFire" then
+		local a1 = it.I / it.N * TAU + t * 4
+		local p1 = eff.S + V3(cos(a1) * 1.5 * eff.Size, 0.8 * eff.Size + 0.3 * sin(t * 5 + it.I), sin(a1) * 1.5 * eff.Size)
+		local a2 = it.J / it.M * TAU + t * 3
+		local p2 = (eff.T[it.Ally] or eff.S) + V3(cos(a2) * 1.6 * eff.Size, 0.3 * sin(t * 4 + it.I), sin(a2) * 1.6 * eff.Size)
+		local v = smooth(seg(t, T.Travel, T.Travel + 0.3))
+		return CFrame.new(p1:Lerp(p2, v)) * CFrame.Angles(0, -(a1 * (1 - v) + a2 * v), 0), ONE * outBack(seg(t, it.T0, it.T0 + 0.2)), fadeTo(it, fade)
 	elseif m == "RiseRoar" then
 		local base = groundOf(eff, anchorPoint(eff, it))
 		local h = it.Base.Y * it.S
 		local r = outBack(seg(t, it.T0, it.T0 + 0.3))
-		local nod = sin(pi * seg(t, T.Release, T.Release + 0.35))
-		return face(base + UP * (h * (r - 0.5)) + eff.Dir * (0.5 * nod), eff.Dir) * CFrame.Angles(-0.35 * nod, 0, 0), ONE, fadeTo(it, fade)
+		local nodAt = max(T.Release, it.T0 + 0.3) -- (in battle the release comes at once: the lunge waits for the rise)
+		local nod = sin(pi * seg(t, nodAt, nodAt + 0.35))
+		local yaw = it.Yaw or 0
+		local look = eff.Dir * cos(yaw) + eff.Right * sin(yaw)
+		return face(base + UP * (h * (r - 0.5)) + look * (0.8 * nod), look) * CFrame.Angles(-0.35 * nod, 0, 0), ONE, fadeTo(it, fade)
+	elseif m == "MoonRise" then
+		-- (the crescent mesh lies flat (thin along Y): a quarter turn about X stands it up, its face to the caster)
+		local p = eff.Hit + UP * (K.ABOVE * 1.15 * eff.Size - 2 * (1 - outCubic(seg(t, it.T0, it.T0 + 0.5)))) + eff.Dir * (1.5 * eff.Size)
+		return face(p, -eff.Dir) * CFrame.Angles(0, 0, 0.15 * sin(t * 1.6)) * CFrame.Angles(pi / 2, 0, 0), ONE * outBack(seg(t, it.T0, it.T0 + 0.3)), fadeTo(it, fade)
 	end
-	-- Rise (and unknown motions): comes up into place, holds, fades
 	local p = anchorPoint(eff, it) - UP * (3 * (1 - outCubic(seg(t, it.T0, it.T0 + 0.5))))
 	return face(p, -eff.Dir), ONE * outBack(seg(t, it.T0, it.T0 + 0.25)), fadeTo(it, fade)
+end
+
+-- an actor's rim (Task 11): the same piece a little bigger, just behind it seen from the caster's side, in a glowing
+-- colour: the black sun's corona, the dark phoenix's magenta edge, the serpents' glitch-pink outline
+MOVE.ActorRim = function(eff, it, t)
+	local cf, sv, tr = MOVE.Actor(eff, it, t)
+	if not cf then
+		return nil
+	end
+	return cf + eff.Dir * (it.RimBack * it.S), sv * it.RimScale, tr
 end
 
 ----------------------------------------------------------------------
@@ -2049,6 +2128,10 @@ local function addLayer(eff, layer, beams)
 	end
 end
 
+-- the signature actor (Task 11): its vfx_sig_* piece(s). Built right after the core, so the per-effect piece cap
+-- (MAX_CORES) never cuts the pet's identity: Count pieces (other players' pets: Count x Density, at least 1), each with
+-- its Rim copy when the actor has one, never more than the pieces left under the cap. At "Allies" puts Count pieces on
+-- each ally (the Sunbeam seals); FoxFire spreads its Count over the allies instead (9 orbs: 3 / 2 / 2 / 2 on 4 allies)
 local function buildActor(eff)
 	local sig = eff.Recipe.Sig
 	local actor = sig and sig.Actor
@@ -2056,39 +2139,78 @@ local function buildActor(eff)
 		return
 	end
 	local T = eff.Times
+	local motion = actor.Motion
 	local t0 = beatStart(eff, actor.Beat or "Charge")
 	local S = eff.Size * (finite(actor.Scale) and actor.Scale or 1)
 	local c = typeof(actor.Color) == "Color3" and actor.Color or WHITE
-	local n = min(9, max(1, finite(actor.Count) and actor.Count or 1))
+	local mat = material(actor.Material or "Neon")
+	local trans = finite(actor.Transparency) and max(0, min(0.9, actor.Transparency)) or 0
+	local rim = (type(actor.Rim) == "table" and typeof(actor.Rim.Color) == "Color3") and actor.Rim or nil
+	local per = rim and 2 or 1
+	local n = min(9, max(1, finite(actor.Count) and floor(actor.Count) or 1))
+	local density = finite(eff.Recipe.Density) and eff.Recipe.Density or 1
+	if density < 1 then
+		n = max(1, floor(n * density + 0.5))
+	end
+	local room = AttackFx.MAX_CORES - eff.Cores
+	local allies = min(K.MAX_ALLIES, max(1, #eff.T))
 	local anchors = {}
-	if actor.At == "Allies" then
-		local allies = min(K.MAX_ALLIES, max(1, #eff.T))
-		n = min(n, floor(12 / allies))
+	if actor.At == "Allies" and motion ~= "FoxFire" then
+		n = min(n, floor(room / (allies * per)))
 		for a = 1, allies do
 			anchors[#anchors + 1] = a
 		end
 	else
+		n = min(n, floor(room / per))
 		anchors[1] = actor.At == "Target" and "Hit" or (actor.At or "Hit")
 	end
+	local tf = T.Linger + (eff.EndRel - T.Linger) * 0.4
 	for _, anchor in ipairs(anchors) do
 		for i = 1, n do
-			local it = { Move = MOVE.Actor, Motion = actor.Motion, Anchor = anchor, I = i, N = n, Color = c, S = S, Material = Enum.Material.Neon, T0 = t0, T1 = eff.EndRel, TF = T.Linger + (eff.EndRel - T.Linger) * 0.4 }
-			if actor.Motion == "SpiralUp" then
-				it.T1 = T.Impact + 0.15
-				it.TF = T.Impact
-			elseif actor.Motion == "ChargeThrough" then
+			local it = { Move = MOVE.Actor, Motion = motion, Anchor = anchor, I = i, N = n, Color = c, S = S, Material = mat, Trans = trans, T0 = t0, T1 = eff.EndRel, TF = tf, Actor = true }
+			if motion == "SpiralUp" then
+				it.Dive = max(0.1, T.Release - 0.15)
+				it.T1 = min(eff.EndRel, T.Impact + 0.75)
+				it.TF = T.Impact + (it.T1 - T.Impact) * 0.5
+			elseif motion == "ChargeThrough" then
 				it.T0, it.T1, it.TF = T.Travel, T.Linger + 0.2, T.Impact + 0.05
-			elseif actor.Motion == "Sweep" then
-				it.T1, it.TF = T.Impact + 0.2, T.Travel
-			elseif actor.Motion == "RingRise" then
+			elseif motion == "Eclipse" then
+				it.T1 = min(eff.EndRel, T.Impact + 0.7)
+			elseif motion == "WingDive" then
+				it.T1, it.TF = min(eff.EndRel, T.Impact + 0.3), T.Impact
+			elseif motion == "Seal" or motion == "FoxFire" then
+				it.TF = T.Linger + (eff.EndRel - T.Linger) * 0.5
+				if motion == "FoxFire" then -- (round robin: orb i circles ally Ally, as the J-th of its M orbs)
+					it.Ally = (i - 1) % allies + 1
+					it.J = floor((i - 1) / allies)
+					it.M = floor((n - it.Ally) / allies) + 1
+				end
+			elseif motion == "RingRise" then
 				local a = (i - 1) / n * TAU
 				it.Move = MOVE.Rise
 				it.OffR, it.OffD = cos(a) * 2.5 * eff.Size, sin(a) * 2.5 * eff.Size
 				it.TR = t0 + 0.03 * (i - 1)
 				it.TS = T.Linger + (eff.EndRel - T.Linger) * 0.3
 				it.Rot = CFrame.fromAxisAngle(V3(-sin(a), 0, cos(a)), 0.25)
-			elseif actor.Motion == "RiseRoar" then
-				it.OffR = (i - (n + 1) / 2) * 1.6 * eff.Size
+			elseif motion == "RiseRoar" then -- a fan: the outer heads turn out a little, the middle one stands tallest
+				local k = i - (n + 1) / 2
+				it.OffR = k * 1.6 * eff.Size
+				it.Yaw = k * 0.35
+				if abs(k) < 0.25 then
+					it.S = S * 1.15
+				end
+			end
+			if rim then
+				local r = {}
+				for key, v in pairs(it) do
+					r[key] = v
+				end
+				r.Move = (it.Move == MOVE.Actor) and MOVE.ActorRim or it.Move
+				r.Color, r.Material, r.Rim = rim.Color, Enum.Material.Neon, true
+				r.Trans = finite(rim.Transparency) and rim.Transparency or 0.35
+				r.RimScale = finite(rim.Scale) and rim.Scale or 1.12
+				r.RimBack = finite(rim.Back) and rim.Back or 0.25
+				addSolid(eff, actor.Key, r)
 			end
 			addSolid(eff, actor.Key, it)
 		end
@@ -2253,6 +2375,16 @@ end
 ----------------------------------------------------------------------
 -- Effects: lifecycle
 ----------------------------------------------------------------------
+local function callHook(name, ...)
+	local fn = AttackFx.Hooks[name]
+	if type(fn) == "function" then
+		local ok, err = pcall(fn, ...)
+		if not ok then
+			warnOnce("hook" .. name, "hook " .. name .. " failed: " .. tostring(err))
+		end
+	end
+end
+
 local function release(eff)
 	for _, it in ipairs(eff.Items) do
 		if it.Kit then
@@ -2271,6 +2403,13 @@ local function finish(eff)
 		end
 	end
 	release(eff)
+	-- (Task 11) a signature that dimmed the battle (Eclipse Nova) gives the light back whenever it ends: its own end, a
+	-- Cancel (the caster swapped out / gone), ClearAll (the battle torn down) or a failed build / step
+	if eff.DimToken ~= nil then
+		local token = eff.DimToken
+		eff.DimToken = nil
+		callHook("Undim", token)
+	end
 end
 
 -- Low quality: drop the Beams / Trails / bloom of a live effect at once
@@ -2325,16 +2464,6 @@ local function applyQuality()
 	return q
 end
 
-local function callHook(name, ...)
-	local fn = AttackFx.Hooks[name]
-	if type(fn) == "function" then
-		local ok, err = pcall(fn, ...)
-		if not ok then
-			warnOnce("hook" .. name, "hook " .. name .. " failed: " .. tostring(err))
-		end
-	end
-end
-
 local function stepEffect(eff, now)
 	local t = now - eff.Start
 	eff.Dt = max(0, min(0.1, now - (eff.LastNow or now)))
@@ -2347,8 +2476,14 @@ local function stepEffect(eff, now)
 	local r = eff.Recipe
 	if not eff.Dimmed then
 		eff.Dimmed = true
-		if eff.Mine and r.Sig and finite(r.Sig.DimWorld) then
-			callHook("DimWorld", r.Sig.DimWorld)
+		-- (Task 11) a signature's battle dim (own pet only): from the first frame to DimWorld seconds after the impact. The
+		-- hook gets a token of its own per effect (an older cast's end never lifts a newer cast's dim) and the caster's
+		-- unit (BattleController ends that dim early on the caster's KO); finish calls Hooks.Undim(token) whenever the
+		-- effect ends, so a cancelled or torn-down effect never leaves the battle dark
+		if eff.Mine and r.Sig and finite(r.Sig.DimWorld) and r.Sig.DimWorld >= 0 then
+			St.dimSeq = St.dimSeq + 1
+			eff.DimToken = St.dimSeq
+			callHook("DimWorld", max(0.2, eff.Times.Impact - t) + r.Sig.DimWorld, eff.DimToken, eff.Unit)
 		end
 	end
 	if not eff.Punched and t >= eff.Times.Impact then
@@ -2544,6 +2679,7 @@ function AttackFx.Play(ctx)
 		eff.CorePos = corePosOf(eff, 0)
 		-- what this effect draws: the core, the layers it can afford, the alive detail, the signature actor
 		buildCore(eff)
+		buildActor(eff) -- (Task 11: before the layers, so the 14-piece cap never cuts the signature's own pieces)
 		local layers = {}
 		for _, layer in ipairs(r.Layers or {}) do
 			if not (eff.Miss and (layer.Beat == "Impact" or layer.Beat == "Linger")) then
@@ -2589,7 +2725,6 @@ function AttackFx.Play(ctx)
 				addLayer(eff, layer, beams)
 			end
 		end
-		buildActor(eff)
 		St.live[#St.live + 1] = eff
 		schedulePoses(eff, now)
 		return true
