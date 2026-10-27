@@ -32,7 +32,10 @@
 --     new best) sits at the right (desktop / landscape) or under the top bar (portrait), never in the centre.
 --   * Lighting: LightingStack.Push("Dungeon", preset, 1) when a run starts (darker ambient, ColorCorrection Brightness
 --     -0.12 / Contrast 0.1 / a warm grey tint, Atmosphere density +0.15); Pop("Dungeon", 1) on End or when the player
---     is no longer in the pocket (InBattle released).
+--     is no longer in the pocket (InBattle released). The music follows the same switch: SoundFx.SetLayer("Dungeon",
+--     true / false) (the Dungeon track while the run lasts; BattleController's Battle layer wins in the boss room).
+--   * Sounds: SoundFx "Reward" when the chest pays out (DungeonState "Chest") and when a room's loot comes in (not
+--     the third-of-the-XP consolation of a lost run).
 --   * Doors: the room models' DoorOpen / EntranceOpen attributes play a local slide (copies of the bars sink into the
 --     floor) in the player's own pocket.
 --   * The room change fade (DungeonState "Fade" { Out, Hold, In }): ONE black full-screen Frame in its own ScreenGui
@@ -1933,12 +1936,36 @@ function R.preset()
 	return preset
 end
 
+-- client/SoundFx (optional: a build without it is silent)
+function R.soundFx()
+	if R.SF == nil then
+		local module = Client:FindFirstChild("SoundFx")
+		local ok, result = false, nil
+		if module then
+			ok, result = pcall(require, module)
+		end
+		R.SF = (ok and type(result) == "table") and result or false
+	end
+	return R.SF or nil
+end
+
+function R.sound(name)
+	local SF = R.soundFx()
+	if SF and type(SF.Play) == "function" then
+		H.safe("sound", SF.Play, name)
+	end
+end
+
 function R.light(on)
 	if on == S.Lit then
 		return
 	end
 	local LS = R.lightingStack()
 	S.Lit = on
+	local SF = R.soundFx()
+	if SF and type(SF.SetLayer) == "function" then
+		H.safe("music", SF.SetLayer, "Dungeon", on) -- (the dungeon's track while in the run; back to the lobby's after)
+	end
 	if not LS then
 		return
 	end
@@ -2104,6 +2131,9 @@ function R.onState(kind, payload)
 			end
 		end
 		R.toast(text, payload.Loss and C.Blue or C.Gold, nil, "+$" .. H.commas(payload.Cash) .. " +" .. H.commas(payload.Tokens) .. G.Cloud .. " +" .. H.commas(payload.Xp) .. "XP")
+		if not payload.Loss then
+			R.sound("Reward")
+		end
 	elseif kind == "Chest" then
 		local amount = tonumber(payload.Amount) or 0
 		local kindName = tostring(payload.Kind)
@@ -2117,6 +2147,7 @@ function R.onState(kind, payload)
 		S.ChestOpened = true
 		local label = (kindName == "Cash") and ("$" .. H.commas(amount)) or (H.commas(amount) .. " " .. (kindName == "Gems" and "Gems" or "tokens"))
 		R.toast(G.Chest .. " Chest: +" .. label .. "!", (kindName == "Gems") and C.Gem or C.Gold, nil, G.Chest .. " +" .. label)
+		R.sound("Reward")
 	elseif kind == "Fade" then
 		if S.Run then
 			R.fade(payload)

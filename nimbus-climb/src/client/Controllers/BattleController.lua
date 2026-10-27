@@ -63,11 +63,14 @@
 --   * (Task 11b, the Special pre-charge, player option C; no server change) MY SPECIAL press predicts its charge at once
 --     when my view says it can go (Atk.PreCharge -> AttackFx.Precharge: glow + motes, rim, inhale, Cast pose); its Special
 --     event takes it over (backdated to the press, the impact still on its DueAt); a rejected Order or PRESS_WAIT (0.7 s)
---     without the event shatters it (shards, Recoil, SoundFx "Error"). Every other Special (bots, NPCs, allies, enemies,
+--     without the event shatters it (shards, Recoil, SoundFx "Shatter"). Every other Special (bots, NPCs, allies, enemies,
 --     my pet with no press) gets its charge back: its impact lands up to LATE_MAX (0.35 s) after its event, and that
 --     special's own hits / Storm ticks due before the impact, the KOs they cause (Net.SpecialHold) and their units' drawn
 --     HP (Units.Hold) wait for it; a caster KO'd in its own late charge falls LAST_GASP after its impact. Other hits play
---     on time; the End is not held. The inhale = SoundFx "Whoosh" (Me.Inhale), its pitch rising to the release.
+--     on time; the End is not held. The inhale = SoundFx "Inhale" (Me.Inhale), its pitch rising to the release.
+--   * Music (client/SoundFx layers): my fight sets the "Battle" layer (Net.Music: at Start, End and Cleanup; a won
+--     Champion Ring round keeps it until the next round; a dungeon room keeps the Dungeon track, its boss room plays
+--     Battle); a won fight's result plays SoundFx "Reward" with the winners' cheer.
 --   * The player's CHARACTER is the fighter's body (B1): my fighter (High) is drawn at the shoulder offset (1.8, 0.5,
 --     0.6) of the SERVER fighter position, blended toward the character root while the two are within 2 studs and
 --     following the server position beyond (lerp 0.35 per 60 Hz frame), so what looks in reach is in reach. My two
@@ -179,7 +182,7 @@ local Mods = {
 	AttackFx = nil, -- client/Controllers/AttackFx (lazy: Atk.Mod); false = unavailable (the cube Fx.* draw everything)
 	FxCat = nil, -- shared/AttackFxCatalog (lazy: Atk.Look)
 	Gfx = nil, -- client/GraphicsQuality (lazy: Atk.SyncQuality)
-	Sound = nil, -- client/SoundFx (lazy: Me.Sound, Task 11b: the charge's inhale / shatter); false = unavailable
+	Sound = nil, -- client/SoundFx (lazy: Me.Sound: the charge's inhale / shatter, the Battle music layer, Reward); false = unavailable
 }
 
 local BattleController = {}
@@ -233,7 +236,7 @@ local K = {
 	HOLD_EPS = 0.02, -- (fix round 1, I1) a late Special's hit ends its victim's hold only this close to the hold's end
 	UNBENCH_SLACK = 0.25, -- (fix round 2, I2-b) a held auto-swap's incoming pet stays benched until its Swap plays; this
 	--                       long past the hold it unbenches anyway (a Swap that never plays never hides a pet for good)
-	INHALE_PITCH = { 0.75, 1.35 }, -- the inhale (SoundFx "Whoosh") rises from / to this PlaybackSpeed under the charge
+	INHALE_PITCH = { 0.75, 1.35 }, -- the inhale (SoundFx "Inhale") rises from / to this PlaybackSpeed under the charge
 	INHALE_IN = 0.08, -- seconds the inhale fades in ...
 	INHALE_OUT = 0.12, -- ... and out at the release (or when hushed)
 	INHALE_OTHERS = 0.4, -- volume x for others' pets' inhales
@@ -426,6 +429,8 @@ local St = {
 	dim = nil, -- (Task 11) { t0, dur, token, unit } a signature's battle dim (LightingStack K.DIM_ID pushed)
 	pre = nil, -- (Task 11b) { B, unit, t0, untilT } my pressed SPECIAL's predicted charge, waiting for its event
 	inhales = {}, -- (Task 11b) token -> { sound, t0, dur, vol } the charges' inhale sounds
+	musicOn = nil, -- SoundFx's "Battle" layer as Net.Music last set it
+	starting = nil, -- true while Net.Start cleans the battle before (Net.Cleanup leaves the music to Net.Start)
 }
 
 local Hud = {} -- the battle HUD (built once, lazily)
@@ -2636,9 +2641,9 @@ function Me.UndimCaster(unit)
 	return Me.Undim(d.token)
 end
 
--- (Task 11b) the charges' sounds reuse SoundFx's own Sfx (Config.Audio; no new asset): "Whoosh" = the inhale under a
--- Special's charge (PlaybackSpeed rising INHALE_PITCH[1] -> [2] to the release, a short fade in / out), "Error" = a
--- shattered charge. An empty id plays nothing and nothing breaks
+-- (Task 11b; original audio) the charges' own SoundFx sounds (Config.Audio.Sfx): "Inhale" = the inhale under a
+-- Special's charge (PlaybackSpeed rising INHALE_PITCH[1] -> [2] to the release, a short fade in / out), "Shatter" = a
+-- shattered charge. A missing id plays nothing and nothing breaks
 function Me.Sound()
 	if Mods.Sound == nil then
 		Mods.Sound = optional(Client, "SoundFx") or false
@@ -2670,7 +2675,7 @@ function Me.Inhale(seconds, token, mine)
 		if not SF or type(SF.Play) ~= "function" then
 			return false
 		end
-		local ok, s = pcall(SF.Play, "Whoosh")
+		local ok, s = pcall(SF.Play, "Inhale")
 		if not ok or typeof(s) ~= "Instance" then
 			return false
 		end
@@ -2713,7 +2718,7 @@ end
 function Me.ShatterSound(mine)
 	local SF = Me.Sound()
 	if SF and type(SF.Play) == "function" then
-		local ok, s = pcall(SF.Play, "Error")
+		local ok, s = pcall(SF.Play, "Shatter")
 		if ok and typeof(s) == "Instance" and not mine then
 			s.Volume = s.Volume * K.INHALE_OTHERS
 		end
@@ -6798,6 +6803,7 @@ end
 -- the run ended between two rounds (its final End names the last round's id): the result card replaces the side card
 function Ring.FinalAfterWin(B, payload)
 	B.ringNext = nil
+	Net.Music()
 	Ring.HideNext()
 	B.linger = K.END_LINGER
 	B.endAt = os.clock()
@@ -7534,6 +7540,34 @@ end
 ----------------------------------------------------------------------
 -- Messages
 ----------------------------------------------------------------------
+-- the music: SoundFx's "Battle" layer is on while MY fight runs (a fighter, not a spectator), and between two won
+-- Champion Ring rounds (B.ringNext: the floor stays, so does the beat). A dungeon room keeps the Dungeon track
+-- (DungeonController's layer) except its boss room. -> the layer's state
+function Net.Music()
+	local B = St.battle
+	local on = false
+	if B and B.Fighter and (not B.ended or B.ringNext ~= nil) then
+		local d = B.Mode == "Dungeon" and B.Dungeon or nil
+		on = B.Mode ~= "Dungeon" or (type(d) == "table" and d.Boss == true and num(d.Room, 0) >= 3)
+	end
+	if St.musicOn ~= on then
+		local SF = Me.Sound()
+		if SF and type(SF.SetLayer) == "function" then
+			pcall(SF.SetLayer, "Battle", on)
+		end
+		St.musicOn = on
+	end
+	return on
+end
+
+-- a clear earn moment (a won fight's payout): SoundFx "Reward"
+function Net.RewardSound()
+	local SF = Me.Sound()
+	if SF and type(SF.Play) == "function" then
+		pcall(SF.Play, "Reward")
+	end
+end
+
 function Net.Cleanup(B, immediate)
 	if not B then
 		return
@@ -7566,6 +7600,9 @@ function Net.Cleanup(B, immediate)
 	Atk.ClearAll() -- (unit ids restart with every battle: no effect or pose may outlive its floor)
 	if immediate then
 		Fx.ClearAll()
+	end
+	if not St.starting then
+		Net.Music() -- (a chained Start sets the music once the new battle is in: no Battle -> Lobby -> Battle blink)
 	end
 end
 
@@ -7614,6 +7651,7 @@ function Net.Start(payload, battleId)
 		Input.Bind(B.Fighter)
 		Input.Movement(B, B.Fighter)
 		Hud.Rebuild()
+		Net.Music()
 		return
 	end
 	-- the next Champion Ring round in the same pocket / the next dungeon room: my pets' models (and their cards)
@@ -7621,7 +7659,12 @@ function Net.Start(payload, battleId)
 	local chain = B and ((B.ringNext and tostring(payload.Mode) == "Ring") or (B.ended and B.Fighter and B.Mode == "Dungeon" and tostring(payload.Mode) == "Dungeon"))
 	local carry = chain and Ring.TakeModels(B) or nil
 	if B then
-		Net.Cleanup(B, false)
+		St.starting = true
+		local okClean, errClean = pcall(Net.Cleanup, B, false)
+		St.starting = nil
+		if not okClean then
+			error(errClean, 0)
+		end
 	end
 	B = newBattle(payload, battleId)
 	B.sides = type(payload.Sides) == "table" and payload.Sides or {}
@@ -7651,6 +7694,7 @@ function Net.Start(payload, battleId)
 	Input.Bind(B.Fighter)
 	Input.Movement(B, B.Fighter)
 	Hud.Rebuild()
+	Net.Music()
 	BattleController._wake()
 end
 
@@ -8109,14 +8153,16 @@ function Net.End(payload, battleId)
 	elseif participant then
 		B.linger = K.END_LINGER
 		Hud.ShowResult(B, payload)
-		-- winners cheer
+		-- winners cheer (and hear their payout)
 		if payload.Outcome == "Win" or payload.Won then
 			Net.Cheer(B)
+			Net.RewardSound()
 		end
 	else
 		B.linger = (payload.Reason == "OutOfRange") and 0 or K.SPECTATOR_LINGER
 		Hud.SetVisible(false)
 	end
+	Net.Music() -- (the fight is over: back to the Dungeon / Lobby track; a won ring round keeps the beat)
 	if B.linger <= 0 then
 		Net.Cleanup(B, false)
 	end

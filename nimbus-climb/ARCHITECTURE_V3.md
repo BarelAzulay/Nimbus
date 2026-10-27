@@ -2550,7 +2550,10 @@ menu disabled the script fades itself after 2 s. One 0.25 s poll loop, no per-fr
 * `src/client/ClientSettings.lua` (`Get(key)`, `Changed`), `src/client/SoundFx.lua` (`Play(name)` Click / Confirm / Error / Reward / Whoosh at
   Sfx/10; `Music(context)` Lobby / Battle / Dungeon at Music/10, 1 s crossfade; `Config.Audio = { Music = { Lobby = "", Battle = "", Dungeon = "" },
   Sfx = { Click = "", Confirm = "", Error = "", Reward = "", Whoosh = "" } }`: empty = silent, the README tells the owner to paste free Creator
-  Store ids), `src/client/GraphicsQuality.lua` (Auto: `SavedQualityLevel <= 3` = Low; Low pushes "GfxLow" (Bloom / SunRays / DoF off, Clouds
+  Store ids; **superseded 2026-10-27 by the original audio**: `Config.Audio.Keys` names the `src/shared/AudioIds.lua` key of every sound
+  (written by `tools/upload_assets.py --audio` from `audio/audio.json`), Music / Sfx / Ambient hold the AudioIds numbers, `Volume` the slot
+  volumes; SoundFx adds Inhale / Shatter / CrowdCheer / DrumLoop, `SetLayer` (Battle over Dungeon over Lobby) and `Positional`; the ring's
+  crowd + drums: `src/client/Controllers/RingAmbience.lua`), `src/client/GraphicsQuality.lua` (Auto: `SavedQualityLevel <= 3` = Low; Low pushes "GfxLow" (Bloom / SunRays / DoF off, Clouds
   Density 0.4), reparents `NC_Detail` models to a local holder, disables their emitters, pauses SkyDragonController; High restores).
 * `src/shared/UpdateNotes.lua` (lead W0): `{ Latest = 5, Notes = { { Version = 5, Title = "The Big Sky Update", Lines = {...} }, ... }, Credits =
   { "Game by <owner>", "Built with Claude" }, Tips = { 12 tips } }`; opening UPDATES sends `SettingsSet("SeenNotes", Latest)`.
@@ -2756,10 +2759,10 @@ p3_battleclient / p3_visual`, `dump_gui` `arena:trials`, `render_*` `pocket` (tr
    Studio until approved). Right-click each -> Copy ID -> paste into `Config.Sky.Faces` as `Bk = "rbxassetid://123..."` (Bk Dn Ft Lf Rt Up by file
    name). Until all six are set the game shows the built-in fallback: a pink-lavender haze, a Roblox cloud layer tinted pink and 3000 stars (no
    seams, a little flatter than the painted sky). Left and right swapped -> swap the Lf and Rt ids. [`Bulk Import`]
-3. Music and sounds (optional): Studio -> Toolbox -> Marketplace -> Audio; search ("calm loop", "click"), keep only results that say the audio can
-   be used in any experience (Roblox-provided audio plays everywhere; another user's private upload stays silent in your game); click -> Copy
-   Asset ID -> paste into `Config.Audio.Music.Lobby / Battle / Dungeon` and `Config.Audio.Sfx.*` as `"rbxassetid://..."`. Empty = silent, nothing
-   breaks. [`Config.Audio`]
+3. Music and sounds: the game's own original audio (`audio/`, 12 files) goes up with the owner's keyed upload session:
+   `python3 tools/upload_assets.py --audio` (dry run) then `--upload --audio`; it writes `src/shared/AudioIds.lua`, which `Config.Audio` reads
+   (docs/phase6/OWNER_UPLOAD.md 6b: moderation, the monthly audio quota). A sound without an id is silent, nothing breaks. (Until 2026-10-27
+   this step pasted free Toolbox ids into Config.Audio.) [`Config.Audio`]
 4. Icons (optional): the menu tiles use emoji glyphs; a PNG you Bulk Import (step 2) pasted into `Config.Icons[id]` replaces one. [`Config.Icons`]
 5. Lighting on a slow PC or phone: `default.project.json`, the line `"Technology": "Future"` -> `"ShadowMap"` (one word), save, publish. Players
    can also pick Graphics: Low in SETTINGS. [`ShadowMap`]

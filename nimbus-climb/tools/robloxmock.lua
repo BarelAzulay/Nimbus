@@ -3965,7 +3965,7 @@ defclass("Highlight", "Instance", {
 defclass("ForceField", "Instance", { creatable = true, props = { Visible = T.bool(true) } })
 defclass("Sound", "Instance", {
 	creatable = true,
-	props = { SoundId = T.str(""), Volume = T.num(0.5), Playing = T.bool(false), TimePosition = T.num(0), PlaybackSpeed = T.num(1), Looped = T.bool(false), RollOffMaxDistance = T.num(10000), RollOffMinDistance = T.num(10), PlayOnRemove = T.bool(false) },
+	props = { SoundId = T.str(""), Volume = T.num(0.5), Playing = T.bool(false), TimePosition = T.num(0), PlaybackSpeed = T.num(1), Looped = T.bool(false), RollOffMaxDistance = T.num(10000), RollOffMinDistance = T.num(10), RollOffMode = T.enum("RollOffMode", "Inverse"), PlayOnRemove = T.bool(false) },
 	events = { "Ended", "Played", "Paused", "Resumed", "Stopped", "Loaded" },
 	getters = {
 		IsPlaying = function(_, st)

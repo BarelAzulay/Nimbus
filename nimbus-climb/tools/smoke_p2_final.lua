@@ -1776,7 +1776,7 @@ local CHECKLIST = {
 	{ 0, "rojo serve", { "src/shared/Config.lua", "play/NimbusClimb.rbxlx", "Connect", "rojo build" } },
 	{ 1, "Migrate to Latest Update", { "Publish to Roblox", "create.roblox.com", "phase 4 and phase 5 servers run together" } },
 	{ 2, "Bulk Import", { "Asset Manager", "branding/sky/", "IMAGES", "a Decal id would NOT work", "moderation", "Copy ID", "Config.Sky.Faces", "Swap the `Lf` and `Rt` ids" } },
-	{ 3, "Config.Audio", { "Toolbox", "Copy Asset ID", "Empty = silent" } },
+	{ 3, "Config.Audio", { "upload_assets.py --audio", "AudioIds.lua", "6b", "is silent, nothing breaks" } },
 	{ 4, "Config.Icons", { "emoji" } },
 	{ 5, "ShadowMap", { "default.project.json", "\"Technology\": \"ShadowMap\"", "Graphics: **Low**" } },
 	{ 6, "Developer Products", { "Config.Gems.Products", "Product ID" } },
@@ -1866,11 +1866,11 @@ local function checkChecklist5(Config, ownerText)
 		local png = readFile("branding/sky/Skybox" .. key .. ".png")
 		t:case(png ~= nil and #png > 1000 and has(s2, "`Skybox" .. key .. "`"), "branding/sky/Skybox" .. key .. ".png exists and step 2 names it")
 	end
-	-- step 3: every music and sound name of Config.Audio
+	-- step 3: every music and sound name of Config.Audio (its Keys: the names exist before their ids do)
 	local A = Config.Audio or {}
 	local s3 = flat(steps[3] or "")
-	for _, group in ipairs({ "Music", "Sfx" }) do
-		for _, key in ipairs(sortedKeys(A[group])) do
+	for _, group in ipairs({ "Music", "Sfx", "Ambient" }) do
+		for _, key in ipairs(sortedKeys((A.Keys or A)[group])) do
 			t:case(has(s3, "`" .. key .. "`") or has(s3, "." .. key .. "`"), "step 3 names Config.Audio." .. group .. "." .. key)
 		end
 	end

@@ -40,6 +40,8 @@ local CONTROLLER_NAMES = {
 	-- Phase 5 (ARCHITECTURE_V3.md "Phase 5 build contract" 5.6, 6.3)
 	"DungeonController", -- the Dungeon window, run cards, chest prompt, the dungeon lighting preset
 	"ObbyController", -- the obby level picker at the Obby gate
+	-- the original audio (Config.Audio): the Champion Ring's crowd + drums as positional loops
+	"RingAmbience",
 }
 
 local TAG = "[NimbusClimb] "
@@ -50,7 +52,7 @@ local OPTIONAL = { SkyDragonController = true, IndexController = true, NpcContro
 	HomeFx = true, FusionController = true,
 	BattleController = true, ArenaController = true,
 	CareController = true, HomePortalFx = true,
-	MainMenuController = true, DungeonController = true, ObbyController = true }
+	MainMenuController = true, DungeonController = true, ObbyController = true, RingAmbience = true }
 
 local client = script.Parent
 task.spawn(function() local okMesh, MeshLibrary = pcall(function() return require(game:GetService("ReplicatedStorage"):WaitForChild("Shared"):WaitForChild("MeshLibrary", 30)) end) if okMesh and type(MeshLibrary) == "table" then MeshLibrary.Start() end end) -- Phase 6: Blender meshes
