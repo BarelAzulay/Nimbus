@@ -567,7 +567,20 @@ end
 ----------------------------------------------------------------------
 -- Fx (/fx): the pet attack VFX preview (client/Controllers/AttackFx + shared/AttackFxCatalog, loaded on the first use)
 ----------------------------------------------------------------------
-local FX = { Mod = nil, Cat = nil }
+local FX = { Mod = nil, Cat = nil, BC = nil }
+
+-- BattleController (required once; false when it cannot load): its AttackFx hooks, and whether its loop steps AttackFx
+local function fxBattle()
+	if FX.BC == nil then
+		local bcInst = script.Parent:FindFirstChild("BattleController")
+		local okBc, BC = false, nil
+		if bcInst then
+			okBc, BC = pcall(require, bcInst)
+		end
+		FX.BC = (okBc and type(BC) == "table") and BC or false
+	end
+	return FX.BC or nil
+end
 
 local function fxModules()
 	if FX.Mod == nil then
@@ -580,12 +593,8 @@ local function fxModules()
 		-- (Task 11) before the first battle nothing has pointed AttackFx's hooks anywhere: BattleController does it (the
 		-- camera punch, the edge glow, a signature's battle dim), so /fx shows a signature as a battle would
 		if FX.Mod and type(FX.Mod.Hooks) == "table" and FX.Mod.Hooks.DimWorld == nil then
-			local bcInst = script.Parent:FindFirstChild("BattleController")
-			local okBc, BC = false, nil
-			if bcInst then
-				okBc, BC = pcall(require, bcInst)
-			end
-			if okBc and type(BC) == "table" and type(BC.FxHooks) == "function" then
+			local BC = fxBattle()
+			if BC and type(BC.FxHooks) == "function" then
 				pcall(BC.FxHooks)
 			end
 		end
@@ -706,7 +715,17 @@ local function fxStep()
 		return
 	end
 	local now = os.clock()
-	pcall(AF.Update, now)
+	-- (Task 11 fix round 1, M2) while BattleController's loop runs (an Eclipse dim wakes it) it steps AttackFx itself:
+	-- one Update a frame, never two
+	local BC = fxBattle()
+	local stepped = false
+	if BC and type(BC.StepsAttackFx) == "function" then
+		local ok, yes = pcall(BC.StepsAttackFx)
+		stepped = ok and yes == true
+	end
+	if not stepped then
+		pcall(AF.Update, now)
+	end
 	for _, side in ipairs(run.Sides) do
 		if side.Model.Parent then
 			local pose, body = fxPose(AF, side.Id)

@@ -1668,6 +1668,41 @@ local function clientScenarios()
 			local heal = live[#live]
 			T.check(#models() == 4 and allies == 2 and heal and heal.Recipe.Kind == "Heal" and #heal.T == 4,
 				"DEV pets: Fx of a support special (Heal) lands on 4 allies: the pair + 2 stand-ins", #models() .. " models, " .. allies .. " extra, " .. tostring(heal and #heal.T) .. " targets")
+			-- (Task 11 fix round 1, M2) an Eclipse Nova in /fx dims the world, which wakes BattleController's frame loop (it steps
+			-- AttackFx too): AttackFx.Update still runs ONCE a frame (the fake clock: two calls in one frame share their `now`).
+			-- (The dim hook here only wakes the loop, as Me.Dim does, without touching Lighting: a real dim makes LightingStack
+			-- snapshot a lasting base for ExposureCompensation, which client_p5lightingstack later sets by hand)
+			local okBC, BCm = pcall(require, Mock.GetPath(ROOTS["client"] .. "/Controllers/BattleController"))
+			if T.check(okBC and type(BCm) == "table" and type(BCm.StepsAttackFx) == "function" and type(BCm._wake) == "function", "DEV pets: BattleController.StepsAttackFx exists") then
+				local realUpdate = AF.Update
+				local hooks0 = { AF.Hooks.DimWorld, AF.Hooks.Undim }
+				AF.Hooks.DimWorld = function()
+					BCm._wake()
+				end
+				AF.Hooks.Undim = function() end
+				local calls, twice, last, woke, sig = 0, 0, nil, false, nil
+				AF.Update = function(now, ...)
+					calls = calls + 1
+					if last ~= nil and now == last then
+						twice = twice + 1
+					end
+					last = now
+					woke = woke or BCm.StepsAttackFx() == true
+					return realUpdate(now, ...)
+				end
+				local okRun, err = pcall(function()
+					KC.toClient("DevPetShow", "Fx", { Element = "Shadow", Attack = "Special", Kind = "Blast", Rarity = "Secret", Stage = 0 })
+					advance(0.1)
+					local lv = AF._Live and AF._Live() or {}
+					sig = lv[#lv] and lv[#lv].Recipe.Signature
+					advance(1.6)
+				end)
+				AF.Update = realUpdate
+				AF.Hooks.DimWorld, AF.Hooks.Undim = hooks0[1], hooks0[2]
+				T.check(okRun and sig == "eclipse_dragon" and woke and calls > 20 and twice == 0,
+					"DEV pets: /fx Eclipse Nova: the dim wakes BattleController's loop, yet AttackFx.Update runs once a frame (never twice)",
+					string.format("%s, sig %s, woke %s, %d calls, %d twice in a frame", tostring(err or "ok"), tostring(sig), tostring(woke), calls, twice))
+			end
 			KC.toClient("DevPetShow", "Clear", {})
 			advance(0.3)
 			T.check(Show.Count() == 0 and AF.Stats().Live + AF.Stats().Stepped == 0, "DEV pets: Clear (/clearpets) removes the Fx pets and ends their effects")

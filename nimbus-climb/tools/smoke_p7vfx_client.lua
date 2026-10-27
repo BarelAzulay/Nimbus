@@ -167,7 +167,7 @@ local SIG_DRAW = {
 	starlight_unicorn = { Actor = 1, Rim = true },
 	stormfang = { Actor = 1, Rim = true, Count = { SigBolts = 2 } },
 	eclipse_dragon = { Actor = 1, Rim = true },
-	obsidian_phoenix = { Actor = 1, Rim = true },
+	obsidian_phoenix = { Actor = 1, Rim = true, Echo = 2 },
 	phantom_kitsune = { Actor = 9 },
 	magma_cub = { Core = "vfx_chunk", Actor = 5 },
 	rime_wyrmling = { Core = "vfx_sig_glacier" },
@@ -175,9 +175,9 @@ local SIG_DRAW = {
 }
 local SIG_SUPPORT = { Heal = true, Shield = true, Rally = true, Haste = true }
 
--- the items of a live effect: per layer id, the core pieces, the actor pieces / rims, the alive items
+-- the items of a live effect: per layer id, the core pieces, the actor pieces / rims, the alive items, the actor echoes
 local function sigItems(el)
-	local per, core, actor, rims, alive = {}, 0, 0, 0, 0
+	local per, core, actor, rims, alive, echoes = {}, 0, 0, 0, 0, 0
 	for _, it in ipairs(el.Items) do
 		local id = it.Layer and it.Layer.Id
 		if id then
@@ -189,6 +189,8 @@ local function sigItems(el)
 		if it.Kind == "Solid" and not it.Layer then
 			if it.Rim then
 				rims = rims + 1
+			elseif it.Echo then
+				echoes = echoes + 1
 			elseif it.Actor then
 				actor = actor + 1
 			else
@@ -196,7 +198,7 @@ local function sigItems(el)
 			end
 		end
 	end
-	return per, core, actor, rims, alive
+	return per, core, actor, rims, alive, echoes
 end
 
 local function signatureEngine(env)
@@ -226,7 +228,7 @@ local function signatureEngine(env)
 					why[#why + 1] = "did not play the signature"
 				else
 					local r = el.Recipe
-					local per, core, actor, rims, alive = sigItems(el)
+					local per, core, actor, rims, alive, echoes = sigItems(el)
 					if el.Emitters > Fx.MAX_EMITTERS.High or el.Beams > Fx.MAX_BEAMS or el.Trails > Fx.MAX_TRAILS or el.Lights > Fx.MAX_LIGHTS or el.Cores > Fx.MAX_CORES then
 						why[#why + 1] = fmt("over a cap: %d em %d beams %d trails %d lights %d cores", el.Emitters, el.Beams, el.Trails, el.Lights, el.Cores)
 					end
@@ -255,8 +257,8 @@ local function signatureEngine(env)
 						if want.PerAlly then
 							n = n * 4
 						end
-						if actor ~= n or rims ~= (want.Rim and n or 0) then
-							why[#why + 1] = fmt("%d actor pieces + %d rims (want %d%s)", actor, rims, n, want.Rim and " + rims" or "")
+						if actor ~= n or rims ~= (want.Rim and n or 0) or echoes ~= (want.Echo or 0) * n then
+							why[#why + 1] = fmt("%d actor pieces + %d rims + %d echoes (want %d%s, %d echoes)", actor, rims, echoes, n, want.Rim and " + rims" or "", (want.Echo or 0) * n)
 						end
 					end
 					for id, n in pairs(want.Count or {}) do
@@ -298,23 +300,24 @@ local function signatureEngine(env)
 	end
 	T.check(#foxBad == 0, "Task 11: Foxfire Ward: nine fox-fire orbs on 1, 2 and 4 allies (shared round robin, within the piece cap)", table.concat(foxBad, " | "))
 
-	-- 17b) Low quality keeps the signature: the actor pieces stay, <= 2 emitters (the Burst + its LowKeep), no beams / trails
+	-- 17b) Low quality keeps the signature: the actor pieces stay, <= 2 emitters (the Burst + its LowKeep), no beams / trails,
+	-- and (fix round 1, M1) no rim / echo copies (a second see-through MeshPart per piece: the phone's overdraw cost)
 	Fx.SetQuality("Low")
 	local lowBad = {}
 	for _, pet in ipairs(SIGNATURE_PETS_C) do
 		local el = play(pet, Cat.Signatures[pet].Rarity, true)
-		local _, core, actor = sigItems(el or { Items = {} })
+		local _, core, actor, rims, _, echoes = sigItems(el or { Items = {} })
 		local want = SIG_DRAW[pet]
-		if not (el and el.Emitters <= 2 and el.Beams == 0 and el.Trails == 0 and (not want.Actor or actor >= 1) and (not want.Core or core >= 1)) then
-			lowBad[#lowBad + 1] = fmt("%s: %s emitters, %d actor, %d core", pet, el and tostring(el.Emitters) or "?", actor, core)
+		if not (el and el.Emitters <= 2 and el.Beams == 0 and el.Trails == 0 and (not want.Actor or actor >= 1) and (not want.Core or core >= 1) and rims == 0 and echoes == 0) then
+			lowBad[#lowBad + 1] = fmt("%s: %s emitters, %d actor, %d core, %d rims, %d echoes", pet, el and tostring(el.Emitters) or "?", actor, core, rims, echoes)
 		end
 	end
 	Fx.SetQuality("High")
-	T.check(#lowBad == 0, "Task 11: Low quality: every signature keeps its actor / core, <= 2 emitters, no beams / trails", table.concat(lowBad, " | "))
+	T.check(#lowBad == 0, "Task 11: Low quality: every signature keeps its actor / core, <= 2 emitters, no beams / trails, no rims / echoes (rims == 0)", table.concat(lowBad, " | "))
 
 	-- 17d) battle timing: the special arrives with the short render lead (DueAt = now + 0.15: the charge is cut to ~0),
 	-- yet each signature's own piece is still SEEN after the impact (Cloud Breath's coil, the dusk moon, the black sun on
-	-- the floor, the serpents, the orbs, the seals, the spikes, the wishing star; Obsidian's dive bursts on it), and the
+	-- the floor, the serpents, the orbs, the seals, the spikes, the wishing star; Obsidian's pass: 17e), and the
 	-- Hydralotl heads lunge only once they have risen
 	local seenBad = {}
 	local lunge = { early = 0, late = 0 }
@@ -334,7 +337,7 @@ local function signatureEngine(env)
 			Fx.Play(ctx({ Element = s.Element, Attack = "Special", Kind = s.Kind, PetId = pet, Rarity = s.Rarity, Mine = true,
 				From = { Unit = 95, Model = env.A }, To = to, Now = now, DueAt = now + 0.15 }))
 			local el = Fx._Live()[#Fx._Live()]
-			local after = (pet == "obsidian_phoenix") and 0.15 or 0.3
+			local after = 0.3
 			local shown = false
 			if el then
 				local impact = el.Start + el.Times.Impact
@@ -377,6 +380,129 @@ local function signatureEngine(env)
 	T.check(#seenBad == 0, "Task 11: battle timing (charge cut by a 0.15 s lead): every signature's own piece is still seen after the impact", table.concat(seenBad, " | "))
 	T.check(lunge.early < 0.05 and lunge.late > 0.4, "Task 11: battle timing: the Hydralotl serpents rise first, then lunge (not while rising)",
 		fmt("moved %.2f studs while rising, %.2f after", lunge.early, lunge.late))
+
+	-- 17e) (Task 11 fix round 1 ruling) Obsidian's Shadowflame Storm hits EVERY enemy, so no single-target dive: around the
+	-- impact (the charge is cut in a battle) the phoenix makes a LOW pass across the whole enemy line, end to end, passing
+	-- over every enemy, and the dark fire rain lands on every target. Two groups (4 in a line; 2 far apart on a slant),
+	-- each with a battle's 0.15 s lead and with the full /fx charge
+	local sweepBad = {}
+	local groups = {
+		{ Name = "4 in a line", Models = { env.allies[1], env.allies[2], env.allies[3], env.allies[4] } },
+		{ Name = "2 far apart", Models = { env.B, env.allies[4] } },
+	}
+	for _, g in ipairs(groups) do
+		for _, lead in ipairs({ 0.15, false }) do
+			local label = g.Name .. (lead and " (battle lead)" or " (/fx charge)")
+			local to, pts = {}, {}
+			for i, m in ipairs(g.Models) do
+				to[i] = { Unit = 310 + i, Model = m }
+				pts[i] = m:GetPivot().Position
+			end
+			Fx.ClearAll()
+			local now = env.clock()
+			Fx.Play(ctx({ Element = "Flame", Attack = "Special", Kind = "Storm", PetId = "obsidian_phoenix", Rarity = "Secret", Mine = true,
+				From = { Unit = 95, Model = env.A }, To = to, Now = now, DueAt = lead and (now + lead) or nil }))
+			local el = Fx._Live()[#Fx._Live()]
+			local bird = nil
+			for _, it in ipairs(el and el.Items or {}) do
+				if it.Actor and not it.Rim and not it.Echo then
+					bird = it
+				end
+			end
+			if not (el and el.Recipe.Signature == "obsidian_phoenix" and bird) then
+				sweepBad[#sweepBad + 1] = label .. ": no Obsidian effect / phoenix"
+			else
+				-- the enemy line: the flat axis through the two targets farthest apart, the targets' extent along it
+				local ax, far = nil, 0
+				for i = 1, #pts - 1 do
+					for j = i + 1, #pts do
+						local d = Vector3.new(pts[j].X - pts[i].X, 0, pts[j].Z - pts[i].Z)
+						if d.Magnitude > far then
+							far, ax = d.Magnitude, d.Unit
+						end
+					end
+				end
+				local lo, hi, midY = math.huge, -math.huge, 0
+				for _, p in ipairs(pts) do
+					local k = p:Dot(ax)
+					lo, hi, midY = math.min(lo, k), math.max(hi, k), midY + p.Y / #pts
+				end
+				local size = el.Size
+				local impact = el.Start + el.Times.Impact
+				local w0, w1 = impact - 0.4, impact + 0.6 -- (the impact's window)
+				local seenLo, seenHi, lowest, atImpact = math.huge, -math.huge, math.huge, nil
+				local near = {} -- per target: the closest the phoenix came (flat) in the window
+				local land = {} -- per rain piece: its last seen point and time
+				for i = 1, #pts do
+					near[i] = math.huge
+				end
+				local stop = math.max(w1, el.Start + el.Times.Linger + 0.4)
+				while env.clock() < stop do
+					run(1 / 30)
+					local t = env.clock()
+					local root = bird.Kit and bird.Kit.Root
+					if root and root.Transparency < 0.98 and t >= w0 and t <= w1 then
+						local p = root.Position
+						local k = p:Dot(ax)
+						seenLo, seenHi = math.min(seenLo, k), math.max(seenHi, k)
+						lowest = math.min(lowest, p.Y - midY)
+						for i, q in ipairs(pts) do
+							near[i] = math.min(near[i], Vector3.new(p.X - q.X, 0, p.Z - q.Z).Magnitude)
+						end
+						if not atImpact and t >= impact then
+							atImpact = k
+						end
+					end
+					for _, it in ipairs(el.Items) do
+						if it.Kind == "Solid" and not it.Layer and not it.Actor and it.Kit and it.Kit.Root.Transparency < 0.98 then
+							land[it] = { it.Kit.Root.Position, t }
+						end
+					end
+				end
+				local why = {}
+				if not (seenLo <= lo and seenHi >= hi) then
+					why[#why + 1] = fmt("pass %.1f..%.1f does not span the enemies %.1f..%.1f", seenLo, seenHi, lo, hi)
+				end
+				if not (atImpact and atImpact >= lo - 3 * size and atImpact <= hi + 3 * size) then
+					why[#why + 1] = "not over the enemy line at the impact"
+				end
+				if lowest > 1 + 1.2 * size then
+					why[#why + 1] = fmt("not low: %.1f studs over the enemies at best", lowest)
+				end
+				for i = 1, #pts do
+					if near[i] > 2 then
+						why[#why + 1] = fmt("passes %.1f studs wide of enemy %d", near[i], i)
+					end
+				end
+				local covered, pieces = 0, 0
+				for i, q in ipairs(pts) do
+					local hit = false
+					for _, l in pairs(land) do
+						if Vector3.new(l[1].X - q.X, 0, l[1].Z - q.Z).Magnitude <= 1.4 * size + 0.3 and l[2] >= w0 and l[2] <= w1 then
+							hit = true
+						end
+					end
+					covered = covered + (hit and 1 or 0)
+				end
+				for _ in pairs(land) do
+					pieces = pieces + 1
+				end
+				if covered ~= #pts then
+					why[#why + 1] = fmt("the rain (%d pieces) lands on %d of %d targets in the impact's window", pieces, covered, #pts)
+				end
+				if el.Cores > Fx.MAX_CORES or el.Emitters > Fx.MAX_EMITTERS.High or el.Beams > Fx.MAX_BEAMS or el.Lights > Fx.MAX_LIGHTS or el.Trails > Fx.MAX_TRAILS then
+					why[#why + 1] = fmt("over a cap: %d pieces %d em %d beams %d lights", el.Cores, el.Emitters, el.Beams, el.Lights)
+				end
+				if #why > 0 then
+					sweepBad[#sweepBad + 1] = label .. ": " .. table.concat(why, ", ")
+				end
+			end
+		end
+	end
+	Fx.ClearAll()
+	T.check(#sweepBad == 0,
+		"Task 11 fix: Obsidian's Shadowflame Storm: around the impact a low pass spans the whole enemy line (over every enemy), the dark fire rains on every target, within the caps (battle lead and /fx)",
+		table.concat(sweepBad, " | "))
 
 	-- 17c) the Eclipse dim (own pet only): one DimWorld with its own token + the caster's unit, lasting to DimWorld after
 	-- the impact; Undim with that token when the effect ends, is cancelled or cleared; nothing for others' pets or another
@@ -428,6 +554,36 @@ local function signatureEngine(env)
 	play("magma_cub", "Secret", true)
 	run(3)
 	T.check(#dims == 0 and #undims == 0, "Task 11: no other signature dims the battle", fmt("%d dims", #dims))
+	-- (fix round 1, M3) a MISSED Eclipse Nova never dims and its black sun never drops onto the floor (it fades where it
+	-- hangs); the same cast that hits drops it flat (the control)
+	local function sunLowest(miss)
+		Fx.ClearAll()
+		dims, undims = {}, {}
+		Fx.Play(ctx({ Element = "Shadow", Attack = "Special", Kind = "Blast", PetId = "eclipse_dragon", Rarity = "Secret", Mine = true, Miss = miss,
+			From = { Unit = 306, Model = env.A }, To = { Unit = 96, Model = env.B }, Now = env.clock() }))
+		local mel = Fx._Live()[#Fx._Live()]
+		local sun = nil
+		for _, it in ipairs(mel and mel.Items or {}) do
+			if it.Actor and not it.Rim and not it.Echo then
+				sun = it
+			end
+		end
+		local lowest, lastSeen = math.huge, -1
+		local stop = mel and (mel.Start + mel.Times.Impact + 0.6) or env.clock()
+		while env.clock() < stop do
+			run(1 / 30)
+			if sun and sun.Kit and sun.Kit.Root.Transparency < 0.98 then
+				lowest, lastSeen = math.min(lowest, sun.Kit.Root.Position.Y), env.clock() - mel.Start - mel.Times.Impact
+			end
+		end
+		return mel ~= nil and sun ~= nil, lowest, #dims, lastSeen
+	end
+	local floorY = env.B:GetPivot().Position.Y - (2 - 0.5) -- (ctx Ground 0.5: the units' centres 1.5 over it)
+	local okHit, lowHit, dimsHit = sunLowest(false)
+	local okMiss, lowMiss, dimsMiss, lastMiss = sunLowest(true)
+	T.check(okHit and okMiss and dimsMiss == 0 and lowMiss > floorY + 2 and lastMiss <= 0.35 and dimsHit == 1 and lowHit < floorY + 1,
+		"Task 11 fix: a MISSED Eclipse Nova never dims the battle and its black sun never drops (it fades where it hangs); a hit dims and drops it",
+		fmt("miss: %d dims, lowest %.2f (floor %.2f), seen to impact + %.2f s | hit: %d dims, lowest %.2f", dimsMiss, lowMiss, floorY, lastMiss, dimsHit, lowHit))
 	Fx.ClearAll()
 	Fx.Hooks.DimWorld, Fx.Hooks.Undim = hooks0[1], hooks0[2]
 end

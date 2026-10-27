@@ -839,7 +839,10 @@ AttackFxCatalog.Reactions = {
 --   LowKeep   its own pick for Low quality's second emitter (before the kind's / element's)
 --   Actor     its vfx_sig_* piece(s): { Key, At, Motion (AttackFx MOVE.Actor), Beat, Count?, Scale?, Tint | Color,
 --             Material? ("Neon" default, "Glass"), Transparency?, Rim? = { Tint | Color, Scale?, Back?, Transparency? }:
---             a bigger glowing copy just behind each piece }; built before the layers, Count x Density for others' pets
+--             a bigger glowing copy just behind each piece, Echo? = { Color, Count?, Lag?, Transparency? }: dimmer copies
+--             trailing each piece along its path }; built before the layers, Count x Density for others' pets; Low
+--             quality draws no rim / echo
+--   Core.Spread  (a Storm) the rain falls on EVERY target, round robin, not round the aimed one (Obsidian's field storm)
 --   DimWorld  (Eclipse Nova) seconds the battle stays dim after the impact (own pet only: AttackFx.Hooks.DimWorld ->
 --             BattleController, a LightingStack preset; it dims from the cast's first frame, Undim on end / KO / teardown)
 -- Every signature is checked at every rarity it can be drawn at (all 7: a budget step-down draws one band lower) x
@@ -862,7 +865,9 @@ AttackFxCatalog.Signatures = {
 		},
 		LowKeep = { "SigWingFlare" },
 	},
-	-- (Gemini: a disc standing in front of an ally clips into it and hides it) a gold sun seal lies flat under each ally,
+	-- ACCEPTED DEVIATION (Task 11 fix round 1 ruling, Gemini consulted): the spec's "sun-disc shield" is built as a sun
+	-- seal lying flat under each ally PLUS the gold shield bubble, not a standing disc. Keep it: a standing disc clips into
+	-- the ally and hides it. (Gemini) a gold sun seal lies flat under each ally,
 	-- turning and pulsing, under the gold glass bubble; light rays flare up off each at the impact; no bouncing rocks
 	sunbeam_bear = {
 		Name = "Golden Aegis", Rarity = "Legendary", Element = "Earth", Kind = "Shield",
@@ -924,18 +929,28 @@ AttackFxCatalog.Signatures = {
 		Skip = { Slash = true },
 		Layers = { { Id = "SigCorona", Kind = "Emitter", Texture = "fx_wisps", Beat = "Impact", At = "$Hit", Motion = "Burst", Count = 10, Size = 1.4 } },
 	},
-	-- (Gemini: a 10-stud sky sweep is a roof over a raid) a black phoenix with a magenta rim appears over the target, wings
-	-- folded; they snap open as the dark fire starts to rain, then it DIVES nose-down onto the target and bursts (Gemini's
-	-- second pass: a hovering bird was passive, and it tells it apart from Ember's flying orb): violet fire spears, violet
-	-- flames, an ash-violet cloud
+	-- RULING (Task 11 fix round 1, Gemini consulted): NOT a single-target dive. Its special is a field-wide Storm that hits
+	-- EVERY enemy, so a dive onto one target misread the mechanic. A black phoenix with a magenta rim waits over the near
+	-- end of the enemy line, wings folded, then makes a LOW sweeping pass across the whole line, end to end (AttackFx
+	-- MOVE.Actor "Sweep"), its black-flame wings trailing (Echo), the pass centred on the impact (a battle cuts the
+	-- charge, so the beat lives at the impact) while the dark fire rains on every target (Core.Spread); violet fire
+	-- spears, violet flames, an ash-violet cloud. Tests: client_p7vfx_engine 17e (the pass spans the group, the rain
+	-- covers every target). Do not turn it back into a dive or a hover.
 	obsidian_phoenix = {
 		Name = "Shadowflame Storm", Rarity = "Secret", Element = "Flame", Kind = "Storm",
 		Twist = "black-flame wings sweep the field; dark fire rains",
 		Palette = { Core = rgb(255, 150, 240), Mid = rgb(150, 40, 170), Edge = rgb(40, 12, 44), Smoke = rgb(30, 16, 36) },
 		Tints = { Rain = rgb(170, 70, 210), Burst = rgb(200, 90, 255), Alive = rgb(220, 110, 255), Cloud = rgb(92, 58, 108) }, -- the baked fire sheets darkened to shadow-fire
-		Actor = { Key = "vfx_sig_phoenix_wing", At = "Above", Motion = "WingDive", Beat = "Charge", Color = rgb(34, 12, 42), Scale = 0.9, Rim = { Color = rgb(222, 86, 255), Scale = 1.1, Transparency = 0.2 } },
+		Core = { Spread = true },
+		Actor = {
+			Key = "vfx_sig_phoenix_wing", At = "Above", Motion = "Sweep", Beat = "Charge", Color = rgb(34, 12, 42), Scale = 0.9,
+			Rim = { Color = rgb(222, 86, 255), Scale = 1.1, Transparency = 0.2 },
+			Echo = { Count = 2, Lag = 0.06, Color = rgb(96, 26, 120), Transparency = 0.45 },
+		},
 	},
-	-- nine teal fox-fire orbs circle the kitsune through the charge (its nine tails), then fly out and circle the allies
+	-- ACCEPTED DEVIATION (Task 11 fix round 1 ruling, Gemini consulted): the spec's "nine orbs circle EACH ally" is built
+	-- as nine orbs in all, SHARED over the allies (3 / 2 / 2 / 2 on four). Keep it: 9 x 4 = 36 pieces breaks the 14-piece
+	-- cap. Nine teal fox-fire orbs circle the kitsune through the charge (its nine tails), then fly out and circle the allies
 	-- (all nine round one ally; 3 / 2 / 2 / 2 round four: the 14-piece cap); teal glass bubbles, teal wisps rising
 	phantom_kitsune = {
 		Name = "Foxfire Ward", Rarity = "Secret", Element = "Shadow", Kind = "Shield",
@@ -944,7 +959,10 @@ AttackFxCatalog.Signatures = {
 		Tints = { Ward = rgb(124, 252, 228) },
 		Actor = { Key = "vfx_sig_fox_orb", At = "Allies", Motion = "FoxFire", Beat = "Charge", Count = 9, Scale = 0.55, Tint = "Mid", Transparency = 0.1 },
 	},
-	-- lava spurts up round the cub as it heaves the orb, a molten boulder (yellow-hot heart), and slams it on the target:
+	-- ACCEPTED DEVIATION (Task 11 fix round 1 ruling, Gemini consulted): the spec's "erupts from a lava crack" is built
+	-- with the crack opening under the TARGET (none under the cub). Keep it: a battle cuts the charge, so a crack under
+	-- the cub would never be seen; the target's crack is the warning before the spikes.
+	-- Lava spurts up round the cub as it heaves the orb, a molten boulder (yellow-hot heart), and slams it on the target:
 	-- a lava crack glows open under the target just before (Gemini's second pass: the cub's own crack lived in the
 	-- charge, which a battle cuts) and 5 magma spikes erupt from it in a ring; deeper lava reds
 	magma_cub = {

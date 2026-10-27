@@ -430,9 +430,9 @@ local function signatureCatalog(C, tex, cores)
 		"p7vfx catalog: Magma Cub: a solid molten boulder with a yellow-hot heart, the lava crack opens under the target before the impact, 5 magma spikes ring the target")
 	T.check(ri.Core.Transparency >= 0.55 and ri.Core.Material == "Glass" and sigLayer(ri, "SigBreath").Kind == "Beam" and sigLayer(ri, "SigSnow").Along == true,
 		"p7vfx catalog: Rime Wyrmling: a see-through glass glacier (>= 0.55), a frost-breath beam with snow streaming along it")
-	T.check(sigLayer(sf, "SigBolts").KeepCount == 2 and sf.Sig.Actor.Motion == "ChargeThrough" and ob.Sig.Actor.Motion == "WingDive" and tw.Sig.Actor.Motion == "MoonRise" and ks.Sig.Actor.Count == 9
+	T.check(sigLayer(sf, "SigBolts").KeepCount == 2 and sf.Sig.Actor.Motion == "ChargeThrough" and ob.Sig.Actor.Motion == "Sweep" and ob.Core.Spread == true and type(ob.Sig.Actor.Echo) == "table" and typeof(ob.Sig.Actor.Echo.Color) == "Color3" and tw.Sig.Actor.Motion == "MoonRise" and ks.Sig.Actor.Count == 9
 		and ec.Sig.Actor.Motion == "Eclipse" and ec.Sig.DimWorld > 0 and ec.Sig.DimWorld <= 1,
-		"p7vfx catalog: Stormfang keeps its 2 bolts, the wolf charges through; Obsidian's phoenix dives; Twilight's dusk moon rises; nine fox orbs; the black sun bursts after a short dim")
+		"p7vfx catalog: Stormfang keeps its 2 bolts, the wolf charges through; Obsidian's phoenix sweeps the field (no dive) with trailing black-flame echoes and rains on every target; Twilight's dusk moon rises; nine fox orbs; the black sun bursts after a short dim")
 	local dims = {}
 	for _, pet in ipairs(SIGNATURE_PETS) do
 		if C.Signatures[pet].DimWorld ~= nil then

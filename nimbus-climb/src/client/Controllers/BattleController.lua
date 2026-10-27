@@ -8301,4 +8301,11 @@ function BattleController.FxHooks()
 	return m ~= nil
 end
 
+-- (Task 11 fix round 1, M2) true while this controller's frame loop runs and steps AttackFx itself (Atk.Update): the
+-- /fx preview (DevPetShow) then leaves its own AttackFx.Update out, so an effect is stepped once a frame (an Eclipse dim
+-- in /fx wakes this loop through Me.Dim). The loop keeps running while any AttackFx effect lives (Atk.Pending)
+function BattleController.StepsAttackFx()
+	return St.loop ~= nil and Mods.AttackFx ~= nil and Mods.AttackFx ~= false
+end
+
 return BattleController
