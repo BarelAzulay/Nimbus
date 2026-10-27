@@ -1,0 +1,74 @@
+{
+ "id": "plaza-logo-crowd",
+ "bug": 11,
+ "title": "Champion Ring: a new floor emblem and a crowd that moves and cheers",
+ "brief": "You said the ground logo in the Champion Ring is bugged and looks bad, and the crowd needs animation and sound. You were right on all three. The gold 'crown' is built from a bar and three prongs, so from every side except the champion's it reads as a giant letter E. The game's 0.5-stud mesh bake turns the round violet disc into a jagged blob, and the three white gems end up under the floor surface. The seven spectators are baked into the ring's floor mesh, so nothing can move them, and the game has no crowd sound at all. Those fixes ship whatever you pick: the emblem becomes its own fine-voxel mesh, every spectator becomes its own piece that can move, and a crowd sound system is added. What you choose here is the look: three ideas for who built the ring, what is on the floor, and who sits in the stands. Each one has a 4-frame strip of the crowd: idle, a big hit, a round won and a boss round, with the sound each moment plays. Pick one, ask for changes, or mix an emblem from one with a crowd from another.",
+ "today": "today.png",
+ "today_render": "today_render.png",
+ "lineup": "lineup.png",
+ "bake_check": "bake_check.png",
+ "agreement": "Gemini picked B, Grandpaws' Ring. The star-paw emblem was Gemini's own idea, and it said pet spectators tie the ring to the pet battling. Claude picked A, Sky-Sailors' Ring, for two reasons. First, the fighters and the champion in this ring are already pets, so a stand full of pet spectators competes with the fight from the high camera, and a player could mistake a spectator for an opponent. Weather clouds read as clouds, they belong to the Nimbus sky, and their reactions (a thunder flash on a big hit, a drizzle at a boss round, rain-patter applause) exist in no other game. Second, the compass star looks the same from every side, so it can never read as a letter again. After hearing this, Gemini said it agreed with A. It gave in quickly, though, so its first pick, B, is the one recorded. Claude took two of Gemini's changes: A's story now ties to pets (the sky-ships' pets sparred here), and C's rosette is heavy forged gold instead of a paper ribbon. Claude rejected Gemini's glowing runes and glowing water trough for B, as generic magic glow in a style that keeps Neon rare. Claude also rejected Gemini's first two answers as generic or off-brief: a sine-wave bob with gibberish 'yays' and wind chimes, and a story that kept the E as an 'Escalation Engine'.",
+ "fixes": [
+  "The logo reads as an E: the emblem is 4 boxes, a 9 x 1.8 bar plus three prongs (2 x 6.2 and two of 1.8 x 4.2), at src/server/Services/ArenaBuilder.lua:3015-3019. The new emblem replaces them.",
+  "The disc is jagged because the emblem is baked into the one big arena_pocket mesh at 0.5-stud voxels (blender/catalog/arenadungeon.json 'arena_pocket' args vs 0.5; tagged at ArenaBuilder.lua:3090). Its 16-sided disc is 8 rotated slabs (:3014 via disc16 at :1802), and these rasterise into a stair-stepped edge. That bake is also over its 24,000-tri budget, so it drops to detail level 0 (36,592 -> 17,676 tris). Fix: move the emblem parts out of the pocket's tagged model into a sibling 'RingEmblem' with its own key, arena_emblem, at 0.25-stud voxels. bake_check.png shows that A needs the 0.25 key, while B and C survive even at 0.5.",
+  "The three white gems are buried. EmblemGem is a Keep part (Mesh.Keep.Pocket, ArenaBuilder.lua:565) with its top at 0.20 studs, but the bake puts the floor surface at 0.3125 studs (arena_style.align_y offset). So the gems sit 0.11 studs under the mesh, which is why they show at most as stray white squares. Fix: drop them. None of the new emblems uses Neon.",
+  "Z-fighting in the Part fallback (shown whenever the mesh is not dressed): RingCanvas (ArenaBuilder.lua:3009) has slab tops at 0.040-0.068 and EmblemDisc (:3014) has tops at 0.060-0.088. Canvas slab 5 is level with disc slab 0, and canvas slab 7 sits above disc slabs 0-1 near the disc's rim, so sand flickers through the violet edge. Fix: put the emblem's lowest top above 0.068 (topY 0.1).",
+  "The crowd cannot move. The 7 puffs are baked into the static arena_pocket mesh (catalog: 'cloud-puff crowd'; arena_style 'puff' family). All 7 puffs' 56 parts also share one 'CrowdPuffs' model (ArenaBuilder.lua:2932-2948), so there is no single spectator to tween. Fix: give each spectator its own Model (PrimaryPart = the body) outside the pocket's tagged subtree, with its own mesh key(s). The stone steps stay in the pocket bake.",
+  "No crowd animation or sound exists. No client code touches the crowd (no Crowd/Puff in src/client). SoundFx only knows the UI names Click/Confirm/Error/Reward/Whoosh (src/client/SoundFx.lua:27), and every id in Config.Audio is empty (src/shared/Config.lua:502-505), so the game is silent everywhere today. Fix: a client RingCrowdFx that runs only while the player is in their own pocket. It plays the idle loop, and reacts to a big hit / KO, a round won and a boss round from the Ring battle flow (the Ring result card is at src/client/Controllers/BattleController.lua:4603, Ring.ResultLines :5570). The sounds are 3D Sounds on the stand, with each spectator's PlaybackSpeed jittered 0.9-1.2 (Gemini's idea) so the cheer sounds like a crowd. The owner supplies the audio ids.",
+  "Side finding, the same bake offset: the baked ring floor's top is 0.28 studs above the Part floor players stand on (0.028 vs 0.3125), so feet sink slightly into the visual floor. It is worth checking when the pocket is re-baked."
+ ],
+ "motion": {"a": "motion_a.png", "b": "motion_b.png", "c": "motion_c.png"},
+ "options": [
+  {
+   "id": "a",
+   "name": "Sky-Sailors' Ring",
+   "picks": ["claude"],
+   "img": "option_a.png",
+   "motion": "motion_a.png",
+   "story": "The sky-ship crews built this ring so their ships' pets could spar between voyages, and they set a ship's compass star into the floor. The old weather clouds that once pushed those ships now sit in the stands in sailor caps. They are a drippy rain cloud, a grumpy thunder-cloud captain, a sun puff, a snow puff in a scarf, and a sleepy fog with a spyglass.",
+   "palette": [[156, 96, 238], [250, 190, 56], [206, 160, 80], [214, 180, 120], [118, 124, 150], [40, 54, 110]],
+   "details": [
+    "Emblem: an 8-point compass star with four long gold points (north points to the champion) and four short cream points, all two-tone shaded. It sits on the violet disc with a brass rim and a rope-coil border.",
+    "Lived-in: one point has a newer steel repair plate with four rivets. A ship's bell and a red-white life ring hang on the flag mast, a coil of rope lies on the step, and a line of signal flags runs over the stand.",
+    "Crowd idle: a slow breathing swell, the rain cloud drips, snowflakes drift and the flags flap. Big hit: the captain flashes with a lightning bolt and everyone leans back ('rumble-oooh').",
+    "Round won: everyone puffs up, the caps fly, the bell swings (ship's bell + rain-patter applause). Boss round: the clouds darken, lean in and drizzle (a low thunder roll).",
+    "Sounds: a wind + rigging-creak loop, the ship's bell, a thunder rumble 'oooh' and rain-patter applause.",
+    "Budget: arena_emblem at 0.25-stud voxels (about 3-4k tris after greedy meshing). It needs the fine key: at 0.5 the star turns into a plain cross (bake_check.png). 7 spectators at about 600-1,200 tris each, body + arms + cap as rigid MeshParts. The bell, life ring and flags are one small prop key."
+   ]
+  },
+  {
+   "id": "b",
+   "name": "Grandpaws' Ring",
+   "picks": ["gemini"],
+   "img": "option_b.png",
+   "motion": "motion_b.png",
+   "story": "The first pet tamers built this ring for their pets and stamped a giant paw into the middle, with a champion's star for the main pad. Today the pets' families come to watch: cats, pups, a bunny, a duckling and a hamster. They bring a homemade bedsheet banner, foam paws and a little drummer pup.",
+   "palette": [[156, 96, 238], [250, 190, 56], [246, 230, 196], [246, 170, 90], [196, 146, 100], [168, 112, 236]],
+   "details": [
+    "Emblem: a gold star main pad and four gold toe beans (pointing at the champion) on the violet disc, with a cream rim. Three old claw scratches cross the violet.",
+    "Lived-in: a trail of worn paw prints runs from the fighter's pad to the emblem. A brass water bowl sits on a red mat at the foot of the stand, plus a hand-painted banner and a patchwork pennant.",
+    "Crowd idle: pets sway and the drummer taps (a soft murmur of mews and yips). Big hit: paws over the eyes (a gasp, 'awww').",
+    "Round won: foam paws up and everyone hops (a cheer, each pet at its own pitch). Boss round: all stand and the banner shakes (a drum roll).",
+    "Risk (Claude): the fighters are pets too, so from the high camera the stand competes with the fight.",
+    "Budget: arena_emblem survives even the 0.5 bake (bake_check.png). 7 pets at about 800-1,500 tris each (more pieces: ears, paws, props). The banner and pennant are one small prop key."
+   ]
+  },
+  {
+   "id": "c",
+   "name": "Cloud Fair Ring",
+   "picks": [],
+   "img": "option_c.png",
+   "motion": "motion_c.png",
+   "story": "Every season a travelling sky fair sets up here, and the winner's prize is a forged gold rosette, set into the floor. Big cloud parents watch from the stands with cloud kids on their shoulders. The kids wave pennants and hug popcorn tubs, one parent rings a hand bell, and a chalk scoreboard keeps the tally.",
+   "palette": [[250, 190, 56], [156, 96, 238], [176, 116, 246], [236, 72, 80], [255, 214, 228], [52, 70, 64]],
+   "details": [
+    "Emblem: a heavy forged rosette, a scalloped gold ring with a two-tone edge around a violet centre, a chunky 5-point star, and two violet ribbon tails reaching toward the fighter's side.",
+    "Lived-in: red-and-white striped fair poles with triangle bunting, a chalk scoreboard on an easel with the round tallies, and popcorn tubs.",
+    "Crowd idle: the kids bounce on their parents' shoulders and the pennants wave (a soft fairground organ loop). Big hit: the kids hide behind their parents' heads ('oooh').",
+    "Round won: popcorn pops into the air, the hand bell rings and the tally gets a new chalk mark (popcorn pops + bell). Boss round: everyone stands and stomps (stomp-stomp + a party horn).",
+    "Closest to today's cute cloud-puff crowd: the same kind of spectators, with a story and props added.",
+    "Budget: arena_emblem survives the 0.5 bake (bake_check.png). 7 parents + 5 kids at about 500-1,000 tris each (12 movers, the most of the three). The poles, bunting and scoreboard are one prop key."
+   ]
+  }
+ ]
+}

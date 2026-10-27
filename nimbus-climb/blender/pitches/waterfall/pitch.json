@@ -1,0 +1,69 @@
+{
+ "id": "waterfall",
+ "bug": 13,
+ "title": "Lobby fountain: a new look and water that actually moves",
+ "brief": "You said the fountain needs a better design and its water animation is broken. You were right: none of the water moves. The 'falls' are eight solid blue sticks, and the only spray starts inside the Nimbus statue, so you can't see it. The animation fix ships whatever you pick: the falling water scrolls, splashes and ripples rise where it lands, and the spray comes out where you can see it. What you choose here is the look. There are three ideas, each with a 4-frame strip of its water motion. Pick one, ask for changes, or keep today's shape with only the animation fix.",
+ "today": "today.png",
+ "today_render": "today_render.png",
+ "lineup": "lineup.png",
+ "agreement": "Gemini picks B, Nimbus' Bath: Nimbus spitting one arc of water into the pool is a single clear animation that fixes the 'animation' complaint at a glance. Claude picks C, Sky-Oasis Steps: you wrote 'waterful', which most likely means waterfall, and C is the only idea built around real falls (three, island to island). It also gives the Climb lobby a little climb up to the mascot. We disagreed. Gemini first offered a 'spiral cloud cascade' with glowing orbiting stars, which Claude rejected as generic, so A (the settlers' Rain-Catcher) is Claude's replacement for it. Gemini agreed with A and said it expected Claude to pick A. Gemini also changed B: its first version was a sunken pool, which players would fall into on a busy plaza, so B became a raised, waist-high bath.",
+ "fixes": [
+  "The spray is hidden inside the statue: the Spray anchor is at centre + 10.6 studs (src/server/Services/LobbyBuilder.lua:1996), but Nimbus's lowest point is placed at TOP + 10.0 (:2029 topY = TOP + 9.4, plus 0.6 at :2036), so the particles spawn inside the dragon. Fix: move the emitters out to the bowl rims or the fall impact points (in B, under Nimbus's mouth).",
+  "No water animation exists: no client code touches the fountain (grep Fountain src/client returns nothing). prop_fountain_water is one static Glass MeshPart (Transparency 0.35), and the falls are 8 + 8 solid 0.5 x 3.2 / 0.4 x 2.6 boxes (blender/kit/props/lobby.py:391-392). Fix: turn each fall into Beam sheets with TextureSpeed (they animate on their own, no script needed; this was Gemini's idea), add splash emitters at each impact, and add a small client FountainFx for the pool ripples, bobbing floaters and anything that spins.",
+  "The spray uses the sparkle star texture (emitter() default, LobbyBuilder.lua:470 e.Texture = SPARKLES), so it reads as glitter instead of water. Fix: use a soft droplet or circle texture with a white-to-blue colour ramp."
+ ],
+ "motion": {"a": "motion_a.png", "b": "motion_b.png", "c": "motion_c.png"},
+ "options": [
+  {
+   "id": "a",
+   "name": "The Rain-Catcher",
+   "picks": [],
+   "img": "option_a.png",
+   "motion": "motion_a.png",
+   "story": "The first sky-settlers had no river, so they tied a rain cloud to a copper funnel and let it drip. The rain runs down a pipe onto a turning wooden water wheel that splashes into an old cobbled trough. Kids still fill buckets at the brass tap, and Nimbus sits on the funnel rim like a weathervane.",
+   "palette": [[150, 150, 162], [206, 124, 72], [108, 190, 168], [150, 102, 60], [96, 186, 240]],
+   "details": [
+    "Moves: the water wheel turns, the chute sheet scrolls onto its paddles, drops fall off them, rain drips from the cloud, and the toy boat bobs",
+    "Octagonal cobble trough, waist-high (2.5 studs), with moss in the joints",
+    "Copper funnel with green patina streaks and brass rivets; a timber frame with braces and a maintenance ladder",
+    "A captive rain cloud on a rope, a brass spigot and bucket, a chalk tally of rainy days, a red toy boat",
+    "About 22 studs tall with the cloud, the tallest of the three",
+    "Mesh budget: basin + frame within the 7,500-tri centrepiece budget; the wheel is its own ~1,500-tri key (it spins)"
+   ]
+  },
+  {
+   "id": "b",
+   "name": "Nimbus' Bath",
+   "picks": ["gemini"],
+   "img": "option_b.png",
+   "motion": "motion_b.png",
+   "story": "This is Nimbus's own bathtub: he sits on a mossy rock in the middle and spits a long arc of water across the pool for fun. It's a raised sandstone bath with a turquoise mosaic band, worn steps where players sit, and lucky coins on the tiled floor. A rubber duck, lily pads and a towel rail make it look lived-in.",
+   "palette": [[234, 218, 192], [84, 196, 208], [110, 214, 236], [246, 200, 70], [98, 182, 92]],
+   "details": [
+    "Moves: the water arc scrolls out of Nimbus's mouth, drops fly along it, a splash ring and ripples spread where it lands, the duck and lily pads bob",
+    "Raised waist-high bath (2.7 studs) instead of a sunken pool, so nobody falls in (Gemini's change)",
+    "Worn bathing steps on the front, chips in the cap stones, a mosaic floor with a ring pattern and tossed coins",
+    "A towel rail with striped towels, a scrub brush, a soap bar, a rubber duck and three lily pads (one with a flower)",
+    "Lowest silhouette (about 11 studs to the crown); Nimbus is the star, at eye level from the plaza",
+    "Mesh budget: about 5,000 tris (basin + rock); Nimbus stays the pet build in a new 'spit' pose (head raised, mouth open)"
+   ]
+  },
+  {
+   "id": "c",
+   "name": "Sky-Oasis Steps",
+   "picks": ["claude"],
+   "img": "option_c.png",
+   "motion": "motion_c.png",
+   "story": "Three chunks of a broken sky-island, propped on old stone pillars, with a spring on the top one where Nimbus nests. Water pours from island to island and finishes in a big fall into a mossy rock pool. Stepping stones, a ladder and a knotted rope make it a tiny climb up to the mascot.",
+   "palette": [[112, 200, 92], [150, 106, 72], [170, 170, 186], [96, 186, 240], [182, 132, 82]],
+   "details": [
+    "Moves: three falls scroll (top to middle, a big middle to pool, and a small west fall), splashes and mist rise at each landing, ripples spread, the paper boat bobs",
+    "The islands sit on stone pillars with hanging roots, no 'magic beams' (Claude's change to Gemini's version)",
+    "A mini climb: stepping stones in the pool, a wooden ladder, a knotted rope up to Nimbus's twig nest",
+    "A blocky tree, flower tufts, a lantern post, a wooden sign on the rim and a paper boat",
+    "About 18 studs to the crown, close to today's height, so the plaza skyline stays the same",
+    "Mesh budget: about 7,000 tris (pool + 3 islands) within the 7,500-tri centrepiece budget; the falls are Beams, not mesh"
+   ]
+  }
+ ]
+}

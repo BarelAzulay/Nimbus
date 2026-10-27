@@ -1,0 +1,67 @@
+{
+ "id": "ground",
+ "bug": 12,
+ "title": "Lobby lawn: real grass and flowers instead of flat coloured squares",
+ "brief": "You asked for better grass and flowers. Today the lawn is flat green, and the 'flowers' are flat 2 x 2 coloured squares lying on it. Some even poke out from under the trees. Below are three ways to dress the same corner of the plaza with real 3D grass and flowers, all built in Blender. Each picture has the same tree, lamp, bench, flower bed, a player and a pet for scale, and a close-up in the corner. In all three, the flat squares go away and nothing grows through the trees, lamps or benches; that part ships whatever you pick. Pick the look: A, a mown park lawn; B, a wild windy meadow (its grass sways); or C, a tidy cottage garden. You can also ask for changes or mix ideas.",
+ "today": "today.png",
+ "today_render": "today_render.png",
+ "lineup": "lineup.png",
+ "motion": {"b": "motion_b.png"},
+ "agreement": "Gemini first picked C, the Settlers' Cottage Garden. Its reason: the flowers sit in tight clumps, so most of the lawn stays open and pets are easy to see. Claude picked B, the Wind-Sown Sky Meadow, because your request leads with grass, and B is the only option where the grass itself changes: it gets height, it sways in the wind, and it has a reason to look that way (the high sky wind). It is also the biggest change from today. Gemini agreed with that argument and switched its final pick to B. Gemini had predicted Claude would pick A. Claude also pushed back on four of Gemini's ideas. Gemini wanted rolling hills, but the lobby's walking surfaces must stay flat. A caretaker NPC and pollen particles were out of scope. Flowers 3 studs wide were far too big next to a player. In C, Gemini drew the stone rings and stepping stones as flat painted shapes, which is exactly what you complained about, so they became real raised stones. Gemini agreed to all of this. Gemini contributed the best small details: the lamp-lighter's pile of grass clippings (A), dandelion seeds already flying downwind (B), and a child's crooked lupin drawing on the plant marker (C). In B, the grass also thins out near the paths, so pets stay visible (another Gemini idea).",
+ "fixes": [
+  "Flower squares show up under trees, lamps and benches: the lawn grid is built first (buildPlaza calls buildPlazaGround at src/server/Services/LobbyBuilder.lua:2565) and picks its 'Flower' cells in plazaCell (:1711-1717), and only then does buildPlazaDecor reserve the spots for trees and other props (:2462-2506, reserve at :1781). plazaCell never checks those reserves, so a square can land under a tree's roots (the pink square at the tree in your screenshot). Fix: the new grass and flowers are scattered after the decor, and they skip anything plazaFree (:1765) marks as taken.",
+  "The flat squares are removed everywhere they are made: on the plaza lawn (plazaCell, LobbyBuilder.lua:1711-1717), on the shop lawn (:3085-3086) and on the garden islands (:3871-3873). The squares are baked into the floor_plaza_lawnpatches mesh (Mesh.tag at :1853-1855, src/shared/MeshManifests/floor_plaza_lawnpatches.lua), so that key is re-baked in the same change. Otherwise its LayoutSig no longer matches and the lawn patches fall back to plain Parts.",
+  "The new grass and flowers never collide (players and pets walk through them). They carry the Detail tag (LobbyBuilder.lua:101), so the Low graphics setting hides them. They are baked into a few chunk meshes instead of hundreds of separate parts, so the lobby stays inside its 8,000-part budget."
+ ],
+ "options": [
+  {
+   "id": "a",
+   "name": "The Groundskeeper's Lawn",
+   "picks": [],
+   "img": "option_a.png",
+   "story": "The lamp-lighter also mows the lawn, in neat light and dark stripes. Long grass is left only where the mower can't reach: round the tree trunk, the lamp post, the bench legs and the flower bed. Clover and daisies creep in along the path edges, and players have worn a dirt shortcut across the corner, right past a 'keep off the grass' sign that someone knocked crooked.",
+   "palette": [[126, 204, 96], [96, 172, 78], [156, 122, 86], [246, 246, 240], [104, 184, 84]],
+   "details": [
+    "Mown stripes in two greens, 4 studs wide, across the whole lawn",
+    "Long tufts (0.8-1.2 studs) only round the trunk, the lamp foot, the bench legs and the bed's planks",
+    "A clover and daisy fringe up to 2 studs in from every path edge",
+    "A worn dirt shortcut where players cut the corner, with trampled grass along its sides",
+    "Small touches: a rake leaning on the tree, a crooked 'keep off the grass' sign, and a swept pile of clippings at the lamp (Gemini's idea)",
+    "Budget as rendered: 13,400 tris per 2,400 sq studs of lawn, mostly in the edge fringe, so it gets thinned by about half in game"
+   ]
+  },
+  {
+   "id": "b",
+   "name": "Wind-Sown Sky Meadow",
+   "picks": ["gemini", "claude"],
+   "img": "option_b.png",
+   "motion": "motion_b.png",
+   "story": "Up here the wind never stops, and nobody mows the outer lawns anymore. The grass grows in tufts that all lean the same way, and the wind tore open an old seed sack by the flower bed, so a long trail of pink and yellow wildflowers streams out of it across the lawn. Dandelions and blue cornflowers rode in on the same wind, and some dandelion seeds are still flying.",
+   "palette": [[72, 140, 62], [148, 208, 100], [196, 204, 120], [246, 150, 188], [250, 214, 92], [96, 140, 236]],
+   "details": [
+    "Moves: the tufts and flower stems sway in gusts that roll across the lawn downwind (cheap client sway, a 4 s loop; see the 4-frame strip)",
+    "Clumpy grass tufts 0.5-1.0 stud tall (under the pet's head), some with straw-coloured tips",
+    "The grass thins out to plain lawn within about 2.5 studs of every path, so paths and pets stay easy to read (Gemini's idea)",
+    "A torn seed sack slumped against the flower bed, with spilled seed and a trail of the bed's own two flower colours streaming downwind",
+    "Dandelions, dandelion clocks with seeds blowing away (Gemini's idea), and blue cornflowers",
+    "Budget as rendered: 32,800 tris per 2,400 sq studs, the heaviest option; in game it goes only on the outer lawns, about 4 times thinner, in chunk meshes"
+   ]
+  },
+  {
+   "id": "c",
+   "name": "Settlers' Cottage Garden",
+   "picks": [],
+   "img": "option_c.png",
+   "story": "The first settlers' families still look after little plots on the lawn: tulips in a ring of stones, mixed lupins with a child's painted plant marker, and forget-me-nots round the old tree. Stepping stones lead from the path to the bench, and a low box hedge lines the walk. The rest of the lawn stays short and open, with a few daisies the families leave alone.",
+   "palette": [[112, 188, 88], [224, 62, 72], [150, 108, 222], [178, 172, 162], [74, 146, 72], [120, 170, 246]],
+   "details": [
+    "Small single-species clumps in rings of real raised stones (0.2-0.3 stud): red tulips, with one yellow bulb that got mixed into the bag",
+    "Mixed lupin spikes (violet, blue, pink) with a painted plant marker showing a child's crooked lupin drawing (Gemini's idea)",
+    "Forget-me-nots between the tree's roots inside a stone ring, and a watering can left by the tulips",
+    "Stepping stones from the path to the bench, 0.18 stud proud, inside the lawn's 0.3-stud step rule",
+    "A low 0.8-stud box hedge along the walk, with gaps at the bench and the lamp; it never hides a pet",
+    "Budget as rendered: 8,700 tris per 2,400 sq studs (about 2,000 per clump), the lightest; it costs per clump, not per area"
+   ]
+  }
+ ]
+}

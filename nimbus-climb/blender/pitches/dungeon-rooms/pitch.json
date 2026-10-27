@@ -1,0 +1,72 @@
+{
+ "id": "dungeon-rooms",
+ "bug": 5,
+ "title": "Dungeon rooms: a real art pass for every room (texture, look and quality)",
+ "brief": "You asked for a big Blender upgrade of all the dungeon rooms. Today every room on every floor uses the same flat lilac brick, the same sandstone floor and plain block pillars. The floor names promise Frozen, Ember and Flooded places, but only a few small parts (the banners and the green floor lines) change colour. The boss room also has hay, a barrel and a table pasted in from the cellar. Below are three complete looks for the dungeon kit (walls, floor, pillars, arches, doors, torches, banners, carpet, throne, statues), all built in Blender. Each picture shows the same boss room as your screenshot, with a player for scale, a close-up of a wall, and one wall module dressed for three floors (Mossy Cellar, Frozen Crypt, Ember Forge) to show how each look changes from floor to floor. All three keep the game's blocky style. The 'texture' is baked into the models: every brick has its own colour, with real mortar gaps, chipped edges, moss, soot and frost. Pick A, a proper castle undercroft; B, the weather guild's machine halls; or C, a seed vault taken over by roots. You can also ask for changes or mix ideas. The bug fixes listed below ship whichever look you pick.",
+ "today": "today.png",
+ "today_render": "today_render.png",
+ "lineup": "lineup.png",
+ "agreement": "Gemini proposed three directions: a weather-machine archive, an overgrown star-seed nursery and a crashed sky prison. Gemini's first pick was the nursery. Claude dropped the prison because a shank, dried blood and prison gangs are too grim for a cute pet game. Claude added a 'castle done properly' option (A), because you might like the castle and only dislike how cheap it looks. Gemini agreed and said players often want their original idea done well rather than replaced. Claude also made the other two more concrete: the archive became B (no bird droppings, no wall of spinning gears) and the nursery became C (built walls that roots are breaking into, with plants on the walls only so the fight floor stays clear). Gemini's final pick is B: it is the most original and the most 'sky world'. Gemini also said you will probably prefer A. Claude picks A. It fixes exactly what you named (texture, look and quality). It fits all five room types the dungeon already has (hall, cellar, cave, bridge, throne) and the floor names (Cellar, Crypt, Halls, Keep, Throne) without new gameplay pieces. It is also the lightest of the three. So the pick is split: Gemini B, Claude A.",
+ "fixes": [
+  "The boss room's banner hangs over a wall torch, so the flame pokes out through the cloth (the yellow flame on the green banner in your screenshot). The banners are placed at z -10 and 6 (src/server/Services/DungeonBuilder.lua:1169-1170), but the 72-deep Throne room puts its side torches at z -27, -9, 9 and 27 (roomShell, DungeonBuilder.lua:847-851). The fix is to hang the banners between the torches, at z 0 and 18.",
+  "Banners, shields and wall torches float in the air in front of the walls. Callers place them 0.5-0.6 stud in front of the wall face (Hall banners :885-886 and shield :888 at z 23.4 against a face at 24; Throne banners :1169-1170 at x 29.4 against 30, shield :1165; torches :850-854 at hw - 0.5). Kit.banner (:581-584) then adds another 0.45-0.5, so the cloth hangs about 0.9 stud off the wall with nothing holding it. The fix is to mount them on the wall face (pole and cloth about 0.3 stud out, clear of the 0.11-stud brick courses) and to give every hanging piece a visible bracket. The baked torch mesh only moves with its mount point, so it needs no re-bake.",
+  "Art rule gap (every visible model must be a Blender mesh): the throne, dais and stairs (:1143-1154), the arch lintel, the two diagonal 'ArchStone' blocks and the keystone (Kit.arch :591-598), the statues (:694-702), the braziers (:609-622), the banners, shield, carpet, barrels, tables, hay, cauldron, wine rack, chandelier and hearth are still plain Parts. Only walls, floors, pillars, the torch, the door frame, the crate, the chest, rocks, cracks and stalagmites have mesh keys (blender/catalog/arenadungeon.json). Whatever look wins, each of these pieces gets its own key, and the Part build stays underneath as the collider and fallback, as the walls already do.",
+  "The hay bale, barrel, crate, table, puddles and flat moss square pasted into the boss room (:1174-1182) are removed. Every option replaces them with props that belong in a throne room."
+ ],
+ "options": [
+  {
+   "id": "a",
+   "name": "The Cloudkeep Undercroft",
+   "picks": ["claude"],
+   "img": "option_a.png",
+   "story": "The first sky-kings carved their castle cellars into the underside of a floating island. That is why the boss room has a round window looking out at open sky behind the throne. The stone is still well kept: someone mops the floor, the candles are replaced, and a child left a wooden toy sword leaning on the throne (Gemini's idea). Centuries of torches have left soot on the walls, and moss grows in the low joints.",
+   "palette": [[236, 226, 204], [150, 136, 122], [94, 112, 146], [204, 192, 172], [172, 38, 52], [224, 184, 84], [176, 214, 255]],
+   "details": [
+    "Walls: cream limestone blocks of mixed lengths with real mortar gaps, a few blocks set slightly crooked, an odd pinkish stone here and there, a slate-blue plinth and a cornice on small corbels",
+    "Floor: big worn flagstones in two sizes; a paler worn path down the aisle, some cracked stones, and one broken stone patched with planks",
+    "Pillars and arches: octagonal drum pillars; real round arches of wedge stones under a slate hood, with a small cloud carved on the keystone (no more diagonal brace blocks)",
+    "Throne: a carved stone throne with a red cushion, a cloud crest and a gold ring, under a round sky window that lights the room (this also fixes far parts reading navy-black)",
+    "Banners: blue swallow-tail banners with the cloud crest on iron brackets; the floor's element colour is a stripe across the bottom, and one banner hangs a little crooked (Gemini's idea)",
+    "Torches: iron cage sconces, each with a soot mark on the stone above it; candle wax runs down the front of the dais",
+    "Floors change the weathering, not the masonry: moss and mushrooms for the Mossy Cellar, frost and icicles under the cornice for the Frozen Crypt, soot and glowing ember cracks for the Ember Forge, water lines and drips for the Flooded Vaults",
+    "Budget: the mock-up is 86k tris for the whole boss room as unoptimised chamfered boxes. In game, the same keys are re-baked (wall, floor, pillar, door) plus about 8 new prop keys (throne, window, arch, statue, brazier, banner, carpet, candles), targeting about 8k tris per wall key and 3k per prop. Server part counts are unchanged."
+   ]
+  },
+  {
+   "id": "b",
+   "name": "The Weatherworks",
+   "picks": ["gemini"],
+   "img": "option_b.png",
+   "story": "The Cloud-Smiths' guild built these machine halls inside the island to make the sky's weather: rain tanks, frost valves, boilers and lightning rods. The guild left long ago, but the machines still hiss and the gauges still twitch. Their old maintenance robots stand guard, and the guild master's lightning-rod chair sits inside the great weather astrolabe.",
+   "palette": [[236, 238, 244], [62, 76, 108], [74, 172, 142], [222, 172, 72], [128, 140, 168], [130, 226, 255], [64, 82, 136]],
+   "details": [
+    "Walls: white dressed panels with brass rivets at the corners, a storm-blue plinth with a brass rail, and an iron girder on top",
+    "Two runs of verdigris copper pipes on stand-off brackets with brass flanges, vertical drops, and pressure gauges with twitching needles",
+    "Floor: slate-blue tiles with brass-edged grates every 12 studs; a faint cyan hum shows through the slots (kept dim so it doesn't repeat today's lime lines)",
+    "Throne: an iron and brass chair with a copper lightning rod, inside three turning astrolabe rings around a captured cloud with a cyan core",
+    "The braziers become condenser coils; the statues become retired weather robots with barometer faces and wind-cup antennas; the arches are riveted storm-blue girders with a little brass weathervane",
+    "Human touches: a big red valve wheel with a chalk arrow and a wrench left beneath it; a leaking pipe dripping into a bucket; a maintenance clipboard hung on a pipe; sooty handprints on the door frame (the wrench, clipboard and handprints are Gemini's ideas)",
+    "Floors change the machine the room serves: rain tanks (Mossy Cellar, Flooded Vaults), frosted pipes with icicles and a cryo valve (Frozen Crypt), glowing orange pipes and a boiler fire door (Ember Forge)",
+    "Budget: the mock-up is 126k tris for the boss room. In game, about 12 new prop keys (pipe runs, gauge, lantern, astrolabe, robot, coil, girder arch) at about 8k per wall key and 3k per prop. Pipes and gauges are part of the wall keys, so server part counts do not change."
+   ]
+  },
+  {
+   "id": "c",
+   "name": "The Root Conservatory",
+   "picks": [],
+   "img": "option_c.png",
+   "story": "The island's gardeners dug a seed vault into the island's soil and topped it with a glasshouse. Then the island's own roots broke in through the walls, and the vault went wild. The gardeners still come down: shears are jammed in a hedge knight, a cracked pot spills soil, and the patched watering can sits by the throne, a hollow tree stump with a moss cushion.",
+   "palette": [[198, 118, 84], [104, 82, 66], [124, 86, 56], [88, 164, 82], [148, 150, 128], [228, 234, 224], [255, 226, 130]],
+   "details": [
+    "Walls: small terracotta bricks over a rough soil-stone base, with white glasshouse ribs every 9 studs leaning into the roof",
+    "Thick 3D roots break in at the top of the walls and crawl down with leaves on them. Plants grow on the WALLS only, so the fight floor stays clear (Gemini's warning: real volume, not flat decals)",
+    "Floor: mossy grey flagstones with grass in the joints; the carpet becomes a terracotta herringbone path",
+    "Throne: a hollow stump with a moss cushion, roots spreading over a moss-topped dais, and a crown of leaves with one glowing star-flower",
+    "Light comes from star-bulbs hanging off roots and glasshouse ribs, jar lanterns on hooks, and two glowing pitcher plants in place of the braziers",
+    "The statues are hedge knights in planters; one still has the gardener's shears stuck in it. The shears, the cracked pot and the patched watering can are Gemini's ideas. The arch is two roots woven together with bulbs hanging from it",
+    "Floors change what grows: ferns, moss and mushrooms (Mossy Cellar); white frost-flowers and frosted pale roots (Frozen Crypt); glowing fire-blooms and charred roots (Ember Forge)",
+    "Budget: the mock-up is 222k tris for the boss room, the heaviest (leaves and roots). In game, roots and leaves are baked into the wall keys and thinned by about half, aiming for about 10k per wall key. This option needs the most new art."
+   ]
+  }
+ ]
+}

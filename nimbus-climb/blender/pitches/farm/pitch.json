@@ -1,0 +1,68 @@
+{
+ "id": "farm",
+ "bug": 20,
+ "title": "Berry Farm: fix the broken look, then give the farm a real design",
+ "brief": "Your screenshot shows the Berry Farm drawn wrong. The barn by the sign is the plain block version, and the soil, the wooden frame and the red-berry row next to it are missing. About 15 studs away, a second, rougher copy of the barn stands with one row of blue-berry cubes. We rebuilt today's level 18 farm in Blender from the game's own code (see the TODAY picture). The baked model itself is fine, so the mix-up happens when the game swaps in the model. That fix ships whatever you pick below. The design is weak too: every bush is a plain green cube with two berry squares on it, and nothing says who runs this farm. Below are three new looks, all built in Blender at the same size. Each keeps the 40 levels (one new plant per level: red berries 1-10, blue berries 11-22, golden vines 23-37, the Starberry tree 38-40), keeps the building with the farm sign at the same end, and has a 5.3-stud player on the buy pad for scale. Every picture also has a growth strip for levels 5, 18, 30 and 40. Pick A, a cosy old family croft; B, a garden made from a retired cloud-ship; or C, a tidy greenhouse that catches clouds for water. You can also ask for changes or mix ideas.",
+ "today": "today.png",
+ "today_render": "today_render.png",
+ "lineup": "lineup.png",
+ "agreement": "Gemini first proposed a crashed aeroplane scrap farm, a sky-tech cloud nursery and a cosy heirloom croft. Claude pushed back on all three. Rust, oil drums and gears look grimy next to the bright lobby, so the plane wreck became a retired cloud-ship crew's garden (B), made of painted wood, brass and sailcloth. A glass cover over every bush would cost too much to draw, and a running-water channel is a separate animation system, so the nursery became a greenhouse with a cloud-catcher net and a rain barrel (C). In the croft (A), the fireflies and the picnic blanket over row 2 were dropped: row 2 is empty grass until level 11. For all three, Claude set the rule that a bush is a rounded dome with hanging berry clusters, never a cube, with one plant per level so you can count the growth. Gemini agreed with every point and added the small details: the ship's bell that calls the pets to dinner and the painted anchor (B), the brass rain gauge and the rolled awning (C), and the step stool and watering can (A). Gemini picks B, the most 'sky world' of the three, and thinks you will pick A. Claude picks A: it fixes exactly what you reported (the farm looks broken and blocky), it stays closest to the barn and field you already know, and it is the cheapest to build and to fit into the triangle budget for all 40 levels. So the picks are split: Gemini B, Claude A.",
+ "fixes": [
+  "Two farms drawn at once (the bug in your screenshot). The plain block barn is shown, but its plinth, soil rows, frame and red row are not, and a rough copy of the barn with one row of blue-berry cubes stands about 15 studs away. Its stair-stepped door brace matches the half-detail plot model home_farm_N_low. The baked models are not the cause: the Blender kit rebuilds home_farm_18 (6,638 triangles) and home_farm_18_low (1,364) with the same triangle counts and the same layout signature (78 / -254.31 / 581.46) as the shipped manifests, and they draw the rows on their soil with no bush inside the barn (today_render.png). The fault is in how the game places the model and hides the block version: MeshLibrary.Dress hides the Part build only once, when the model loads (src/shared/MeshLibrary.lua:1493-1555, hideLocally at :1467, called at :1546); the plot distance system swaps the full and half-detail models (MeshLibrary.SetLod :1654-1685, src/client/Controllers/HomeFx.lua:4136-4220); and the model's position is guessed from its outline, which cannot tell a 180-degree turn on a one-piece model (MeshLibrary.lua:656). Every one of the 80 home_farm keys is a single 36.5 x 7-stud piece. Fix: reproduce in Studio at levels 11, 18 and 22, walking between the near, mid and far distances. Then make the farm's facing certain (store the facing in the manifest, or bake a small second piece so the fit can see which way it faces), and hide the block parts again whenever the model is rebuilt or a part streams back in. Check Station_Press1 has exactly one ML_Mesh and that only the Lantern stays visible.",
+  "The triage guess is ruled out: row 2 is not offset from its soil, and no bush is baked into the barn in home_farm_18 or in the levels next to it. The keys do not need a re-bake for that.",
+  "The fallback bushes are cubes. Whenever the model is off, each bush is one green cube (Kit.ball makes a cube by design: 'no round primitives', src/server/Services/HomeBuilder.lua:589-591; bushes at :840-849, :879-889). Without adding parts (the farm is capped at 150 parts and level 40 already uses about 145), each fallback bush becomes a flatter box (wider than tall) sitting on its soil, so the fallback reads as a bush rather than a floating cube.",
+  "Whichever look wins, the plant layout stays the game's own (Farm.ROWS, the bush sizes and Farm.age in HomeBuilder.lua:828-849). The Part build stays as the collider and fallback, and all 40 levels plus their _low models are re-baked from it (blender/catalog/home.json home_farm_1..40). The new bush, stone, hull or glass details go into blender/kit/props/home_style.py."
+ ],
+ "options": [
+  {
+   "id": "a",
+   "name": "Heritage Sky-Croft",
+   "picks": ["claude"],
+   "img": "option_a.png",
+   "story": "One family has farmed this corner of the island for generations. The stone terraces were stacked by hand and have gone mossy, and the old barn roof sags a little in the middle. Someone small still works here: a step stool stands by the crates, and a straw sun hat was left on top of them.",
+   "palette": [[190, 64, 62], [92, 112, 156], [184, 178, 166], [110, 74, 48], [104, 156, 72], [226, 192, 104], [244, 238, 226]],
+   "details": [
+    "Beds: three soil steps held by dry-stone walls of mixed stones with mortar gaps and moss on the top course, in place of today's flat planks",
+    "Bushes: rounded leafy domes with a heavy clump drooping over the front wall; red or blue berries hang in clusters of 2-3 under the leaves",
+    "Barn: red board walls, white corner trim, a brown door with a white X brace, slate-blue stepped shingles with a few patched ones, a ridge that sags in the middle, the hay-loft door open with straw poking out, and a swallows' nest under the eave",
+    "Trellis (levels 23-37): bent branch posts tied with rope; the gold-berry vines twist up them",
+    "Human touches: the sun hat on the crates, the step stool and a dented watering can on the front wall (Gemini's ideas); the lantern by the door",
+    "The Starberry tree (38-40) grows on a mossy stone mound at the far end",
+    "Budget: the mock-up is 44k-59k triangles (levels 5-40), drawn face by face. The game bake merges faces and drops detail to fit the 8,000-triangle station budget; today's level 18 bake already fits rounded bushes in 6,638. This is the closest to today, so it is the lowest-risk option"
+   ]
+  },
+  {
+   "id": "b",
+   "name": "Sky-Sailor's Allotment",
+   "picks": ["gemini"],
+   "img": "option_b.png",
+   "story": "When the old cloud-ship retired, her crew pulled her lifeboats onto the island and filled them with soil. The shed is the ship's cabin with a lifeboat turned upside down as its roof, red bottom paint on top. The mast still stands in the middle of the beds, and the crew ring the ship's bell to call the pets to dinner.",
+   "palette": [[193, 138, 93], [70, 130, 180], [242, 240, 230], [230, 197, 92], [196, 70, 64], [214, 178, 128], [90, 186, 74]],
+   "details": [
+    "Beds: three planked lifeboat hulls with rounded ends, stepping up toward the back, with a navy gunwale, a white stripe and brass rivets; all three sit on a deck of planks",
+    "Shed: white plank cabin walls with a navy base, round brass portholes, a navy door, and an upturned lifeboat roof (red bottom paint on top, a white waterline, wood strakes and a keel ridge), with a little propeller weathervane",
+    "Trellis (levels 23-37): oars stuck blade-up as posts with a rope between them, plus the old mast with a yard arm and rigging down to the bed ends. The vines climb the oars",
+    "Human touches: the brass ship's bell on the yard arm and the painted anchor with a coiled mooring rope by the door (Gemini's ideas); sea-chest crates",
+    "The Starberry tree (38-40) grows in the old crow's-nest tub",
+    "Budget: the mock-up is 46k-66k triangles, the heaviest (mast and rigging). The rigging ropes would be thinned in the game bake to fit 8,000"
+   ]
+  },
+  {
+   "id": "c",
+   "name": "Cloud-Catcher Glasshouse",
+   "picks": [],
+   "img": "option_c.png",
+   "story": "A careful botanist grows berries up here with water caught from passing clouds. A brass net on the greenhouse roof combs moisture out of a small cloud, and a pipe carries the water down to a rain barrel. Everything is tidy: clipped bushes, white planters with brass caps, seedlings in pots on the shelf inside.",
+   "palette": [[248, 248, 246], [212, 175, 70], [78, 54, 40], [175, 236, 232], [100, 190, 104], [196, 192, 184], [150, 104, 66]],
+   "details": [
+    "Beds: three separate white plank planters with brass caps on raked gravel; the soil is dark loam with a few puddle glints",
+    "Bushes: clipped topiary domes, three tidy stacked tiers, with neat berry clusters",
+    "Building: a glasshouse-barn with a white brick knee wall, white glazing bars, mint glass walls and roof, a glass door under a rolled striped awning, and a potting shelf with seedlings visible inside",
+    "On the roof ridge: the cloud-catcher, a brass hoop with a rope net and a small cloud caught in it; a brass gutter pipe runs down to a wooden rain barrel with brass hoops",
+    "Trellis (levels 23-37): five brass hoops over the back planter; the vines climb them",
+    "Human touches: a brass rain gauge staked in the front row and the rolled awning over the door (Gemini's ideas)",
+    "Budget: the mock-up is 45k-62k triangles. The glass is one extra see-through part per key (the kit already supports a 'Glass' part). The see-through walls and roof cost extra drawing, so they need a check on a phone"
+   ]
+  }
+ ]
+}
