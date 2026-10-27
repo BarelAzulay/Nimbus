@@ -217,7 +217,8 @@
         "SetSetting",
         "PlacedCopies",
         "GardenBusyKeys",
-        "CheckTeam"
+        "CheckTeam",
+        "ClosedBedOverlap"
       ],
       "signals": [
         "ProfileLoaded",

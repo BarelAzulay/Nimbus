@@ -58,6 +58,10 @@
 --   after the write puts the pet back in its place. Rate limited (its own cooldown + the HomeAction burst).
 -- * Old saves where a pet was both in the Garden and equipped / in a team: DataService keeps it with the player and
 --   takes it out of the Garden on load; this module shows ONE toast that names those pets (Migrated "B2GardenSolo").
+-- * Closed places (#18 follow-up): only the OPEN places (1..GardenSlots) lock a pet. A copy resting on a place a
+--   Prestige closed (it sleeps there, "Prestige to open", and earns nothing) may follow / join a team; once it does,
+--   Garden.releaseClosed takes it off that place silently (after PetService.PerksChanged and DataService.TeamsChanged,
+--   through DataService.ClosedBedOverlap). A recall only ever takes from an open place.
 -- * House tiers (every 10 Home Levels: Villa 10, Manor 20, Sky Castle 30) and the station caps per tier come from
 --   TycoonCatalog (lock reasons on the pads). Prestige (Home Level 40 + Sky Castle): TycoonCatalog.StationsAfterPrestige
 --   (decor kept, the Garden back at its ResetLevel 1 so the coins never stop), the bank and the piles zeroed, Cash to 0,
@@ -2007,16 +2011,51 @@ function Garden.jobsOf(player, profile, key)
 	return n, false
 end
 
--- the Garden place a recall takes the pet from: its highest numbered place (the one DataService's old-save repair
--- empties first too), or nil
+-- the Garden place a recall takes the pet from: its highest numbered OPEN place (the one DataService's old-save repair
+-- empties first too; a copy on a closed place is not busy, so it never needs a recall), or nil
 function Garden.slotOf(home, key)
+	local open = gardenSlots(home)
 	local best = nil
 	for slot, k in pairs(type(home) == "table" and type(home.Garden) == "table" and home.Garden or {}) do
-		if k == key and type(slot) == "number" and (best == nil or slot > best) then
+		if k == key and type(slot) == "number" and (open < 1 or slot <= open) and (best == nil or slot > best) then
 			best = slot
 		end
 	end
 	return best
+end
+
+-- Bug batch 2 #18 follow-up: a copy resting on a CLOSED garden place (above the open count: a Prestige closed it, it
+-- sleeps there under the "Prestige to open" sign and earns nothing) is not busy, so it may follow the player or join a
+-- team. Once it does, it leaves that place SILENTLY (no dialog, no toast): DataService.ClosedBedOverlap names the
+-- places, one Home write empties them, the plot redraws. Runs after every equip change (PetService.PerksChanged) and
+-- team change (DataService.TeamsChanged); a no-op without such an overlap. Returns true when it emptied a place.
+Garden.releasing = {}
+function Garden.releaseClosed(player)
+	if Garden.releasing[player] or not isPlayer(player) or not dataService or type(dataService.ClosedBedOverlap) ~= "function" then
+		return false
+	end
+	local ok, slots = pcall(dataService.ClosedBedOverlap, player)
+	if not ok or type(slots) ~= "table" or #slots == 0 then
+		return false
+	end
+	Garden.releasing[player] = true
+	local wrote = mutateHome(player, function(live)
+		local open = gardenSlots(live)
+		local any = false
+		for _, slot in ipairs(slots) do
+			if type(live.Garden) == "table" and live.Garden[slot] ~= nil and open >= 1 and slot > open then
+				live.Garden[slot] = nil
+				any = true
+			end
+		end
+		return any
+	end)
+	Garden.releasing[player] = nil
+	if wrote then
+		Garden.refreshPlot(player)
+		TycoonService.HomeChanged:Fire(player)
+	end
+	return wrote == true
 end
 
 -- the one toast for an old save's pets that left the Garden on load (they stayed with the player / in a team)
@@ -3105,6 +3144,18 @@ function TycoonService.Init(lobbyInfo, deps)
 					Garden.announceSolo(player, info.Keys)
 				end)
 			end
+		end)
+	end
+	-- bug batch 2 #18 follow-up: a pet resting on a closed garden place that now follows the player or sits in a team
+	-- leaves that place silently
+	if dataService.TeamsChanged and type(dataService.TeamsChanged.Connect) == "function" then
+		dataService.TeamsChanged:Connect(function(player)
+			Garden.releaseClosed(player)
+		end)
+	end
+	if petService and petService.PerksChanged and type(petService.PerksChanged.Connect) == "function" then
+		petService.PerksChanged:Connect(function(player)
+			Garden.releaseClosed(player)
 		end)
 	end
 

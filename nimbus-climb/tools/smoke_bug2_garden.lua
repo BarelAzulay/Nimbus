@@ -27,6 +27,10 @@
 --                       before the following ones, so a player whose only followers are copies of the inputs keeps
 --                       them (the result takes the freed garden place); when the inputs free an equipped place AND a
 --                       garden place the result follows and the garden place is left free (toast)
+--   bug2garden_closed   (follow-up) a place ABOVE the open count (a Prestige ended LegacySlots: the pet sleeps there under
+--                       "Prestige to open" and earns nothing) does not lock its pet: PlacedCopies / GardenBusyKeys skip it, FieldableKeys
+--                       offers it; Equip / SetTeam take it off that place silently (no toast); open places keep the lock;
+--                       an old save empties a closed place silently (only open-place pets get the event + the toast)
 -- Deterministic: mock clock only, no RNG. Plain Lua 5.1 syntax only.
 
 local K = _G.K
@@ -540,6 +544,146 @@ S.bug2garden_oldsave = guarded("bug2garden_oldsave", function()
 		and (DataS.GetHome(q).Garden or {})[1] == b and sameList(DataS.GetProfile(q).Equipped, { a }),
 		"bug2 garden old save: a profile without an overlap gets the marker, no event and no toast; nothing moves")
 	leave(q)
+	conn:Disconnect()
+end)
+
+----------------------------------------------------------------------------------------------------
+-- follow-up: a CLOSED place (above the open count: a Prestige closed it, "Prestige to open", it earns nothing)
+-- does not lock its pet; equipping / teaming it takes it off that place silently. Open places keep the lock. The
+-- old-save repair empties a closed place silently too (no event, no toast for it).
+S.bug2garden_closed = guarded("bug2garden_closed", function()
+	if not K.needBoot() then
+		return
+	end
+	local DataS, Pets = mod("DataService"), mod("PetService")
+	local Ty = requireAt("server/Services/TycoonService")
+	local TC = requireAt("shared/TycoonCatalog")
+	if not T.check(Ty and TC and type(DataS.ClosedBedOverlap) == "function", "bug2 garden closed: the API is there (DataService.ClosedBedOverlap)") then
+		return
+	end
+	local data = Mock.DataStore.Data
+	local ids = petIds(6)
+	local a, b, c, d, e, f = ids[1], ids[2], ids[3], ids[4], ids[5], ids[6]
+	local function gardenToasts(p, mark)
+		local n = 0
+		for _, ev in ipairs(K.remotesFor("Notify", p.UserId, mark)) do
+			if tostring(ev.args[1]):lower():find("garden", 1, true) then
+				n = n + 1
+			end
+		end
+		return n
+	end
+
+	-- a veteran with 6 places (LegacySlots) puts b on place 1, a on place 5 and d on place 6; then a Prestige ends the
+	-- legacy places: 3 + 1 star = 4 open, places 5 and 6 are closed (a and d rest there and earn nothing)
+	local p, prof = gardener("GardenClosed", { a, b, c, d })
+	DataS.MutateHome(p, function(home)
+		home.LegacySlots = 6
+	end)
+	Ty.GardenSet(p, 1, b)
+	Ty.GardenSet(p, 5, a)
+	Ty.GardenSet(p, 6, d)
+	DataS.MutateHome(p, function(home)
+		home.Prestige = 1
+	end)
+	advance(0.3)
+	local function garden()
+		return Ty.GetHome(p).Garden or {}
+	end
+	local home = Ty.GetHome(p)
+	T.check(home.LegacySlots == nil and TC.GardenSlots(home) == 4 and garden()[1] == b and garden()[5] == a and garden()[6] == d,
+		"bug2 garden closed: (setup) the Prestige closed places 5 and 6 (4 open); a and d rest there, b works on place 1",
+		tostring(TC.GardenSlots(home)) .. " / " .. tostring(garden()[5]) .. "," .. tostring(garden()[6]))
+	local placed, busy = DataS.PlacedCopies(p), DataS.GardenBusyKeys(p)
+	T.check(placed[a] == nil and placed[d] == nil and busy[a] == nil and busy[d] == nil and placed[b] == 1 and busy[b] == true,
+		"bug2 garden closed: a pet on a closed place is NOT busy (PlacedCopies / GardenBusyKeys skip it); the open place still counts")
+	T.check(has(DataS.FieldableKeys(p), a) and has(DataS.FieldableKeys(p), d) and not has(DataS.FieldableKeys(p), b),
+		"bug2 garden closed: ...FieldableKeys offers a and d, not b", listText(DataS.FieldableKeys(p)))
+	T.check(#DataS.ClosedBedOverlap(p) == 0, "bug2 garden closed: ...no overlap yet (nobody follows / fights)")
+
+	-- equip: it follows, and leaves its closed place silently (no dialog: the server needs no recall; no toast)
+	local mark = K.logSize()
+	local ok, why = Pets.CanEquip(p, a, 0)
+	T.check(ok == true, "bug2 garden closed: CanEquip passes for the resting pet", tostring(why))
+	ok, why = Pets.Equip(p, a)
+	advance(0.3)
+	T.check(ok == true and has(prof.Equipped, a) and equippedAttr(p):find(a, 1, true) ~= nil, "bug2 garden closed: Equip makes it follow", tostring(why))
+	T.check(garden()[5] == nil and garden()[6] == d and garden()[1] == b, "bug2 garden closed: ...and it left closed place 5 (the others stay)",
+		tostring(garden()[5]) .. "," .. tostring(garden()[6]) .. "," .. tostring(garden()[1]))
+	T.eq(gardenToasts(p, mark), 0, "bug2 garden closed: ...silently (no garden toast)")
+
+	-- team: d joins a team and leaves closed place 6 silently
+	mark = K.logSize()
+	ok, why = DataS.SetTeam(p, 1, { d, c })
+	advance(0.3)
+	T.check(ok == true and sameList(DataS.GetTeams(p).Presets[1], { d, c }) and garden()[6] == nil,
+		"bug2 garden closed: SetTeam puts the resting pet in a team, and it leaves closed place 6", tostring(why) .. " / " .. tostring(garden()[6]))
+	T.eq(gardenToasts(p, mark), 0, "bug2 garden closed: ...silently (no garden toast)")
+	T.check(#DataS.ClosedBedOverlap(p) == 0, "bug2 garden closed: ...no overlap is left")
+
+	-- open places keep the lock
+	ok, why = Pets.Equip(p, b)
+	T.check(ok == false and tostring(why):find("is gardening", 1, true) ~= nil and garden()[1] == b, "bug2 garden closed: an OPEN place keeps the lock (Equip refused, b stays)", tostring(why))
+	ok, why = DataS.SetTeam(p, 2, { b })
+	T.check(ok == false and tostring(why):find("gardening", 1, true) ~= nil and garden()[1] == b, "bug2 garden closed: ...SetTeam refused too", tostring(why))
+	leave(p)
+
+	-- an old save: e (equipped, in team 1, owned once) on closed place 5 and f (equipped, owned once) on open place 2.
+	-- On load both stay with the player; f leaves its open place with the event + the toast, e leaves its closed place
+	-- silently (not named, no event of its own)
+	local events = {}
+	local conn = DataS.Migrated:Connect(function(who, name, info)
+		if name == "B2GardenSolo" then
+			events[#events + 1] = { who = who, info = info }
+		end
+	end)
+	local OLD = 987511
+	data[storeKey(OLD)] = {
+		Version = 2, Tokens = 0, Pets = { [e] = 1, [f] = 1, [c] = 1 }, Equipped = { e, f }, Items = {},
+		Stats = { Matches = 0, Wins = 0, TokensEarned = 0, Spins = 0, BestTimes = {} },
+		Home = { Level = 1, Prestige = 1, Stations = { Garden = 1 }, Garden = { c, f, "", "", e }, Gym = {}, CollectorCash = 0, LastSeen = 0 },
+		Teams = { Presets = { { e }, {}, {} }, Active = 1 },
+		Migrations = { P4 = true, P5Dungeon = true, P5Home = true, P5MouseLock = true },
+	}
+	mark = K.logSize()
+	local q = join("ClosedSave", OLD)
+	advance(5)
+	local g = DataS.GetHome(q).Garden or {}
+	T.check(sameList(DataS.GetProfile(q).Equipped, { e, f }) and sameList(DataS.GetTeams(q).Presets[1], { e }),
+		"bug2 garden closed old save: e and f stay with the player and e stays in its team", listText(DataS.GetProfile(q).Equipped))
+	T.check(g[1] == c and g[2] == nil and g[5] == nil, "bug2 garden closed old save: f left open place 2, e left closed place 5, c (garden only) stays",
+		tostring(g[1]) .. "," .. tostring(g[2]) .. "," .. tostring(g[5]))
+	local mine = {}
+	for _, ev in ipairs(events) do
+		if ev.who == q then
+			mine[#mine + 1] = ev
+		end
+	end
+	T.check(#mine == 1 and type(mine[1].info) == "table" and sameList(mine[1].info.Keys, { f }),
+		"bug2 garden closed old save: the event names only f (the open place); e's closed place went silently", mine[1] and listText(mine[1].info and mine[1].info.Keys) or "no event")
+	T.check(K.notified(q, nameOf(f), "info", mark) and not K.notified(q, nameOf(e), "info", mark), "bug2 garden closed old save: ...the toast names f, not e")
+	leave(q)
+
+	-- an old save whose ONLY overlap is a closed place: emptied, no event, no toast
+	local ONLY = 987512
+	data[storeKey(ONLY)] = {
+		Version = 2, Tokens = 0, Pets = { [e] = 1 }, Equipped = { e }, Items = {},
+		Stats = { Matches = 0, Wins = 0, TokensEarned = 0, Spins = 0, BestTimes = {} },
+		Home = { Level = 1, Prestige = 0, Stations = { Garden = 1 }, Garden = { "", "", "", e }, Gym = {}, CollectorCash = 0, LastSeen = 0 },
+		Migrations = { P4 = true, P5Dungeon = true, P5Home = true, P5MouseLock = true },
+	}
+	mark = K.logSize()
+	local r = join("ClosedOnly", ONLY)
+	advance(5)
+	local n = 0
+	for _, ev in ipairs(events) do
+		if ev.who == r then
+			n = n + 1
+		end
+	end
+	T.check(sameList(DataS.GetProfile(r).Equipped, { e }) and (DataS.GetHome(r).Garden or {})[4] == nil and n == 0 and not K.notified(r, "one job at a time", nil, mark),
+		"bug2 garden closed old save: a closed place is the only overlap: the pet keeps following, the place is emptied, no event, no toast")
+	leave(r)
 	conn:Disconnect()
 end)
 

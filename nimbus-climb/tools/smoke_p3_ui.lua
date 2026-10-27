@@ -778,6 +778,18 @@ local function clientScenarios()
 		MC.Open("Pets", { Key = "bubble_axolotl" })
 		advance(0.6)
 		local petsWin = menu:FindFirstChild("Window_Inventory")
+		-- its card in the Pets grid carries the same seedling "Gardening" badge as its Team tile (and is dimmed);
+		-- a pet that is not gardening has neither
+		local axoCard = petsWin and find(petsWin, "Pet_bubble_axolotl")
+		local axoTag = axoCard and find(axoCard, "GardenTag")
+		local axoText = axoTag and find(axoTag, "Busy")
+		T.check(axoTag and shown(axoTag) and axoText and axoText.Text:find("Gardening", 1, true) and axoText.Text:find("\240\159\140\177", 1, true)
+			and axoText.TextSize >= 18 and find(axoCard, "Dim") and shown(find(axoCard, "Dim")),
+			"p3ui recall: Pets > a gardening pet's card is dimmed with the seedling 'Gardening' badge (bug batch 2 #18)", axoText and axoText.Text)
+		local pupCard = petsWin and find(petsWin, "Pet_pebble_pup")
+		local pupTag = pupCard and find(pupCard, "GardenTag")
+		T.check(pupCard ~= nil and not (pupTag and shown(pupTag)) and not (find(pupCard, "Dim") and shown(find(pupCard, "Dim"))),
+			"p3ui recall: ...a pet that is not gardening has no badge and is not dimmed")
 		local equipBtn = petsWin and find(petsWin, "Equip")
 		T.check(equipBtn and shown(equipBtn) and not disabled(equipBtn), "p3ui recall: Pets > a gardening pet keeps Equip pressable (the press asks)")
 		mark = #Mock.RemoteLog

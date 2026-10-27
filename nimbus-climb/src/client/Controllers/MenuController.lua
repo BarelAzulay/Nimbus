@@ -1230,9 +1230,19 @@ function P2.slotsHolding(map, key)
 	return out
 end
 
--- bug batch 2 #18: copies of a key working in the Garden, and whether it has NO copy free of it (busy gardening)
+-- bug batch 2 #18: copies of a key working in the Garden, and whether it has NO copy free of it (busy gardening).
+-- Only OPEN places count (DataService P3.placedCopies): a copy resting on a place a Prestige closed earns nothing and
+-- is free to follow / fight (the server takes it off that bed silently).
 function P2.gardenCopies(key)
-	return #P2.slotsHolding(P2.homeData().Garden, key)
+	local home = P2.homeData()
+	local open = P2.catalogCall("GardenSlots", home) or 0
+	local n = 0
+	for _, slot in ipairs(P2.slotsHolding(home.Garden, key)) do
+		if open < 1 or slot <= open then
+			n = n + 1
+		end
+	end
+	return n
 end
 function P2.isGardening(key)
 	local garden = P2.gardenCopies(key)
@@ -3261,6 +3271,31 @@ do
 					slot.WorkChip.Position = UDim2.fromOffset(slot.TierChip.Visible and 36 or 4, 4)
 				end
 			end
+			-- bug batch 2 #18: a pet with no copy free of the Garden is busy gardening: its card is dimmed under the same
+			-- seedling "Gardening" badge as its Team tile (Equip then asks to take it out). Two lines: the 104 px card is
+			-- too narrow for "seedling Gardening" on one line at 18 px.
+			local gardening = P2.isGardening(key)
+			if gardening and not slot.GardenTag then
+				local tag = makeFrame(slot.Button, "GardenTag", {
+					AnchorPoint = Vector2.new(0.5, 0.5),
+					Position = UDim2.fromScale(0.5, 0.52),
+					Size = UDim2.new(1, -10, 0, 50),
+					BackgroundTransparency = 0,
+					BackgroundColor3 = Theme.Darken(C2.Kind.Garden, 0.25),
+					ZIndex = 9,
+				})
+				corner(tag, 12)
+				stroke(tag, NAVY, 2.5, 0)
+				slot.GardenText = makeText(tag, "Busy", G.Seedling .. "\nGardening", "Body", 18, WHITE, {
+					Size = UDim2.new(1, 0, 1, 0),
+					ZIndex = 10,
+				})
+				slot.GardenTag = tag
+			end
+			if slot.GardenTag then
+				slot.GardenTag.Visible = gardening
+			end
+			slot.SetDimmed(gardening)
 		end
 
 		local function setPills(def, key, color, elements)

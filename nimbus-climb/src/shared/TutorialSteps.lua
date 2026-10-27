@@ -288,7 +288,9 @@ TutorialSteps.Steps = {
 		Id = "team",
 		Chapter = 3,
 		Title = "Pick Your Team",
-		Text = "Battles need a team of 3 (a fighter + 2 helpers)! Tap Team and put your pets in. Same-element pets power each other up!",
+		-- (bug batch 2 #18: a pet in the Garden is busy, and step 11 put a new player's only pet there: its Team tile
+		-- asks "Take it out of the garden and put it in your team?", so the text says to tap it and say Yes)
+		Text = "Battles need 3 pets (a fighter + 2 helpers)! Tap Team to add them. Same elements power up. A gardening pet? Tap it, say Yes!",
 		Target = { Kind = "Menu", Id = "Team" },
 		CompleteOn = "TeamSet",
 		Hint = "Tap Team and put in 3 pets",

@@ -44,7 +44,12 @@
 --   Phase 3 prestige unlock of a 4th slot is gone); every key needs a FREE copy: owned (PetKeys.Count) more often than it
 --   works in the Garden or the Gym (bug batch 2 #18, "Remote recall": a Garden pet is BUSY gardening, it can neither
 --   follow you (Equipped) nor fight; this replaces the Phase 4 rule "a Garden pet keeps earning at home while it follows
---   you and fights"; Phase 4 empties the Gym on its one-time migration). A key that loses its free copy (fused away,
+--   you and fights"; Phase 4 empties the Gym on its one-time migration). Only OPEN garden places lock (follow-up): a
+--   copy on a place ABOVE the open count (TycoonCatalog.GardenSlots; a Prestige closed it, the pet sleeps there under
+--   its "Prestige to open" sign and earns nothing) is not busy (P3.placedCopies skips it, P3.closedSlot); once it
+--   follows or joins a preset it leaves that place silently (live: TycoonService after PetService.PerksChanged /
+--   TeamsChanged, through ClosedBedOverlap; on load: P3.gardenSolo, closed places first, no toast; in the merge nothing
+--   to do: the record keeps the pet with the player and the next load empties the bed). A key that loses its free copy (fused away,
 --   released, a developer reset, its last copy placed in the Garden / Gym) is dropped from every preset ("pruned", the
 --   pets behind it move up a slot): in every copy taken for a save or a snapshot, in the merge, and in the live profile
 --   on every Sync and after a MutateHome that moved pets (TeamsChanged fires then). Equipped follows the same copy rule
@@ -75,8 +80,9 @@
 --   normalizeEquipped drops such keys from Equipped (a Phase 3 server may have equipped one during the rollout),
 --   FieldableKeys and ActiveTeamKeys skip them; P3.checkTeam keeps accepting them in presets and P3.prune is NEVER
 --   taught about training (it runs in normalizeProfile, copyProfile, applyDelta and MutateHome's pruneLive and would
---   delete the pet from its preset for good). Garden pets ARE busy (bug batch 2 #18: P3.placedCopies counts Home.Garden
---   and Home.Gym; unlike training this is a write-time lock: GardenSet unequips the copy and the prune drops the preset).
+--   delete the pet from its preset for good). Garden pets ARE busy (bug batch 2 #18: P3.placedCopies counts the OPEN
+--   places of Home.Garden and Home.Gym; unlike training this is a write-time lock: GardenSet unequips the copy and the
+--   prune drops the preset; a closed place does not lock, see the team rule above).
 --   Ring: Best = the highest Champion Ring round won (0 = never), Runs = finished runs.
 --   Migrations: one-time data migrations this profile went through (P4 = the Phase 4 migration, section 4.3).
 --   Home.LegacySlots (a veteran's old garden size when it was above 3 + Prestige) and Home.LegacyPrices (true for a
@@ -208,6 +214,8 @@
 --                                       while provisional): PetService.Equip and its re-validation read it
 --     GardenBusyKeys(player) -> {[key] = true}      every owned key with NO copy free of the Garden / Gym (the "gardening"
 --                                       badge; BattleService's ring fallback skips them; {} until loaded / provisional)
+--     ClosedBedOverlap(player) -> {slot...}         CLOSED garden places (above the open count) whose copy now also
+--                                       follows / sits in a preset; TycoonService empties them silently ({} when none)
 --     ActiveTeamKeys(player) -> {key...}            the active preset's usable keys in slot order, compacted (Phase 4: a
 --                                       training pet is skipped at read time, the preset keeps it); {} when the team
 --                                       is empty, the profile is not loaded or is provisional
@@ -1307,8 +1315,9 @@ end
 -- training (a Phase 3 server may have equipped one during the rollout; the pet comes back by itself when the job
 -- ends: PetCareService's auto-return). Runs after Pets, Tiers, Hybrids AND PetGrowth are final: tier and hybrid
 -- copies count too, and the training lock reads the clean growth map. Bug batch 2 #18: copies working in the Garden /
--- Gym of profile.Home cannot follow (normalizeProfile calls this before its Home is read, so a stored overlap is left to
--- P3.gardenSolo there, which keeps the pet equipped and takes it out of the Garden).
+-- Gym of profile.Home cannot follow (open places only: a copy resting on a closed one may, P3.placedCopies;
+-- normalizeProfile calls this before its Home is read, so a stored overlap is left to P3.gardenSolo there, which keeps
+-- the pet equipped and takes it out of the Garden).
 local function normalizeEquipped(profile)
 	local out = {}
 	local used = {}
@@ -1404,29 +1413,81 @@ end
 -- stored arrays (""). Bug batch 2 #18 ("Remote recall"): the Garden counts again (Phase 4 had dropped it: "a garden
 -- pet earns at home while it follows you and fights"); a garden pet is busy gardening. Training stays a read-time
 -- filter, never a prune. Home.Gym is emptied by the one-time Phase 4 migration (kept so Phase 3 writes during the
--- rollout stay understood).
+-- rollout stay understood). A CLOSED garden place does not count (P3.closedSlot: a copy resting there earns nothing,
+-- so it is not busy; it may follow and fight, and leaves that place silently when it does).
 function P3.placedCopies(profile)
 	local out = {}
 	local home = type(profile) == "table" and profile.Home or nil
 	if type(home) ~= "table" then
 		return out
 	end
-	for _, place in ipairs({ home.Garden, home.Gym }) do
-		for _, key in pairs(tableOr(place)) do
-			if type(key) == "string" and key ~= "" then
-				out[key] = (out[key] or 0) + 1
-			end
+	local open = P3.gardenOpen(home)
+	for slot, key in pairs(tableOr(home.Garden)) do
+		if type(key) == "string" and key ~= "" and not P3.closedSlot(slot, open) then
+			out[key] = (out[key] or 0) + 1
+		end
+	end
+	for _, key in pairs(tableOr(home.Gym)) do
+		if type(key) == "string" and key ~= "" then
+			out[key] = (out[key] or 0) + 1
 		end
 	end
 	return out
+end
+
+-- Bug batch 2 #18 follow-up: the open garden places of a home (TycoonCatalog.GardenSlots: 3 + 1 per Prestige star, or
+-- the veteran's LegacySlots), or nil when that cannot be told (no catalog, or no Garden built: then no place counts as
+-- closed, the safe side of the lock).
+function P3.gardenOpen(home)
+	local catalog = getTycoonCatalog()
+	if type(home) ~= "table" or not catalog or type(catalog.GardenSlots) ~= "function" then
+		return nil
+	end
+	local ok, open = pcall(catalog.GardenSlots, home)
+	if ok and isFinite(open) and open >= 1 then
+		return math.floor(open)
+	end
+	return nil
+end
+
+-- true for a numbered garden place ABOVE the open count (`open` from P3.gardenOpen): a Prestige closed it (the
+-- veteran's LegacySlots ended), the pet sleeps on it ("Prestige to open") and earns nothing. Stored arrays and
+-- string slot names ("5") read through slotId; a named slot is never closed.
+function P3.closedSlot(slot, open)
+	local id = slotId(slot)
+	return open ~= nil and type(id) == "number" and id > open
 end
 
 -- Bug batch 2 #18, old saves (the Phase 4 rule let a Garden pet follow and fight): every key whose copies cannot cover
 -- both its Garden places and its other jobs (the equipped copies, or 1 when a preset lists it) LEAVES the Garden
 -- (its highest places first) until they do: the pet stays equipped / in its team, no team is emptied. Edits the clean
 -- profile in place (Home.Garden keyed by slot, Equipped, Teams clean); deterministic, and a no-op without an overlap
--- (so it never loops). Returns the keys that left the Garden (sorted), or nil when nothing moved.
+-- (so it never loops). Returns the keys that left an OPEN place (sorted; they get the toast), or nil when none did.
+-- Closed places (P3.closedSlot) go first and silently: a copy resting there is not busy (P3.placedCopies skips it),
+-- so the pet just leaves that bed, the same as TycoonService's live release after an equip / team change.
 function P3.gardenSolo(profile)
+	local plan = P3.soloPlan(profile)
+	if not plan then
+		return nil
+	end
+	local garden = profile.Home.Garden
+	for _, slot in ipairs(plan.Closed) do
+		garden[slot] = nil
+	end
+	for _, slot in ipairs(plan.Open) do
+		garden[slot] = nil
+	end
+	if #plan.Moved == 0 then
+		return nil
+	end
+	return plan.Moved
+end
+
+-- The Garden places of a profile whose copy also follows the player / sits in a preset (see P3.gardenSolo), without
+-- changing anything: { Closed = {slot...}, Open = {slot...}, Moved = {key...} (the keys of Open, sorted) }, or nil
+-- when there is no overlap. Closed places are freed first. The live profile never has an Open overlap (the lock), so
+-- DataService.ClosedBedOverlap reads only Closed.
+function P3.soloPlan(profile)
 	local home = type(profile) == "table" and profile.Home or nil
 	local garden = type(home) == "table" and home.Garden or nil
 	if type(garden) ~= "table" or next(garden) == nil then
@@ -1446,18 +1507,20 @@ function P3.gardenSolo(profile)
 			end
 		end
 	end
-	local slotsOf = {}
+	local open = P3.gardenOpen(home)
+	local slotsOf, closedOf = {}, {}
 	for slot, key in pairs(garden) do
 		if type(key) == "string" and key ~= "" and need[key] then
-			local list = slotsOf[key]
+			local byKey = P3.closedSlot(slot, open) and closedOf or slotsOf
+			local list = byKey[key]
 			if not list then
 				list = {}
-				slotsOf[key] = list
+				byKey[key] = list
 			end
 			list[#list + 1] = slot
 		end
 	end
-	if next(slotsOf) == nil then
+	if next(slotsOf) == nil and next(closedOf) == nil then
 		return nil
 	end
 	local gym = {}
@@ -1466,32 +1529,45 @@ function P3.gardenSolo(profile)
 			gym[key] = (gym[key] or 0) + 1
 		end
 	end
-	local moved = {}
-	for key, slots in pairs(slotsOf) do
-		table.sort(slots, function(a, b)
-			if type(a) == type(b) then
-				return a > b
-			end
-			return type(a) == "string" -- named slots go first, then the highest numbers
-		end)
-		local owned = ownedCount(profile, key) - (gym[key] or 0)
-		local want = math.min(need[key], owned) -- (a key owned too rarely is the prune's job, not the Garden's)
-		local free = owned - #slots
-		local i = 1
-		while free < want and slots[i] ~= nil do
-			garden[slots[i]] = nil
-			free = free + 1
-			i = i + 1
+	local function highestFirst(a, b)
+		if type(a) == type(b) then
+			return a > b
 		end
-		if i > 1 then
-			moved[#moved + 1] = key
+		return type(a) == "string" -- named slots go first, then the highest numbers
+	end
+	local plan = { Closed = {}, Open = {}, Moved = {} }
+	for key in pairs(need) do
+		local slots, closed = slotsOf[key] or {}, closedOf[key] or {}
+		if #slots > 0 or #closed > 0 then
+			table.sort(slots, highestFirst)
+			table.sort(closed, highestFirst)
+			local owned = ownedCount(profile, key) - (gym[key] or 0)
+			local want = math.min(need[key], owned) -- (a key owned too rarely is the prune's job, not the Garden's)
+			local free = owned - #slots - #closed
+			-- closed places first (silent: the copy resting there is not busy), then the open ones (the old-save repair)
+			local i = 1
+			while free < want and closed[i] ~= nil do
+				plan.Closed[#plan.Closed + 1] = closed[i]
+				free = free + 1
+				i = i + 1
+			end
+			i = 1
+			while free < want and slots[i] ~= nil do
+				plan.Open[#plan.Open + 1] = slots[i]
+				free = free + 1
+				i = i + 1
+			end
+			if i > 1 then
+				plan.Moved[#plan.Moved + 1] = key
+			end
 		end
 	end
-	if #moved == 0 then
+	if #plan.Closed == 0 and #plan.Open == 0 then
 		return nil
 	end
-	table.sort(moved)
-	return moved
+	table.sort(plan.Closed)
+	table.sort(plan.Moved)
+	return plan
 end
 
 -- Drops (in place) every key without a free copy (owned more often than placed in the Garden / Gym) and every key past
@@ -4628,8 +4704,9 @@ function P3.checkTeam(profile, keys, freeKey)
 				-- bug batch 2 #18: a Garden pet is busy gardening (the client asks first and recalls it with ONE request,
 				-- TycoonService.GardenRecall); a Gym copy stays the old reason
 				local home = type(profile.Home) == "table" and profile.Home or {}
-				for _, k in pairs(tableOr(home.Garden)) do
-					if k == key then
+				local open = P3.gardenOpen(home)
+				for slot, k in pairs(tableOr(home.Garden)) do
+					if k == key and not P3.closedSlot(slot, open) then
 						return false, "That pet is gardening! Take it out of the garden first"
 					end
 				end
@@ -4738,8 +4815,9 @@ function DataService.FieldableKeys(player)
 	return out
 end
 
--- Bug batch 2 #18: { [key] = copies working in the Garden / Gym } of the live profile (a copy), {} until loaded / while
--- provisional (stand-in data must not unequip anything). PetService.Equip and its re-validation read it.
+-- Bug batch 2 #18: { [key] = copies working in the Garden (open places only) / Gym } of the live profile (a copy), {}
+-- until loaded / while provisional (stand-in data must not unequip anything). PetService.Equip and its re-validation
+-- read it.
 function DataService.PlacedCopies(player)
 	local entry = P3.realEntry(player)
 	if not entry then
@@ -4762,6 +4840,23 @@ function DataService.GardenBusyKeys(player)
 		if owned >= 1 and owned - n < 1 then
 			out[key] = true
 		end
+	end
+	return out
+end
+
+-- Bug batch 2 #18 follow-up: the CLOSED garden places (above the open count: a Prestige closed them, the pet rests
+-- there and earns nothing) whose copy now also follows the player or sits in a battle preset, ascending; {} when
+-- none, until loaded / while provisional. Changes nothing: TycoonService empties them silently after an equip / team
+-- change (its plot shows the pet leave the bed). Open places never show up here (the lock refuses that overlap).
+function DataService.ClosedBedOverlap(player)
+	local entry = P3.realEntry(player)
+	if not entry then
+		return {}
+	end
+	local plan = P3.soloPlan(entry.Profile)
+	local out = {}
+	for i, slot in ipairs(plan and plan.Closed or {}) do
+		out[i] = slot
 	end
 	return out
 end
