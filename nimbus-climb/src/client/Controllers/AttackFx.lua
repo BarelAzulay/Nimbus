@@ -180,7 +180,9 @@ local K = {
 	-- (Studio findings round, 2026-10-27)
 	SHELL_FALLBACK = 0.7, -- a Shield dome with no ally model to fit: x its old size (~30 % smaller)
 	SHELL_APART = 0.46, -- a dome's radius is at most this x the distance to the nearest other ally (never one blob)
-	STREAK_ROT = 90, -- the fx_streak sheet is horizontal (head right): turned upright (FacingCameraWorldUp, Task 11c)
+	-- the fx_streak sheet is horizontal (head right): turned upright (FacingCameraWorldUp, Task 11c). (Task 11d, Studio
+	-- round 3, S1: at +90 the hot head pointed UP, the falling rain read as "!" marks) -90: the head leads the fall
+	STREAK_ROT = -90,
 	SEG_GAP = 0.2, -- a segmented Stretch core's default gap (share of each segment)
 	BODY_R = 1.2, -- studs: a character's / pet's body radius the Wishing Star keeps clear of (+ its own half-width)
 	-- (Task 11c, Studio round 2, 2026-10-27)
@@ -188,6 +190,10 @@ local K = {
 	MOON_LIFT = 4.5, -- the dusk moon's height over the hit when the effect has no cloud lift (= the Storm cloud's Height)
 	MOON_BACK = 1.2, -- ... and how far (x size) behind the target, away from the caster
 	STREAK_SIZE = 0.8, -- the Storm rain's streaks x the Rain layer's Size (review M1: the sheets of hail / petals keep 1)
+	-- (Task 11d, Studio round 3, 2026-10-27)
+	MOON_GAP = 0.1, -- S4: studs between the storm cloud's top and the dusk moon's lowest point (it sits just above the puffs)
+	SERPENT_CLEAR = 0.3, -- S5: the Void Fangs heads' tops stay this far at most over the caster's head (under its name tag)
+	SERPENT_GAP = 0.6, -- S5: ... rooted this far (x size) past the caster's body, away from the viewer
 }
 AttackFx.POOL_KEEP_TOTAL = K.KEEP.Emitter + K.KEEP.Beam + K.KEEP.Trail + K.KEEP.Light + K.KEEP.Disc + K.KEEP.Rim + K.CORE_KEEP * K.CORE_KEYS
 
@@ -823,6 +829,26 @@ local function fadeTo(it, f)
 	return it.Trans + (1 - it.Trans) * f
 end
 
+-- (Task 11d) away from the viewer: the camera's look direction (flattened when `flatOnly`: a direction along the
+-- floor), or `fallback` with no camera / a camera looking straight down
+local function viewBack(fallback, flatOnly)
+	local cam = Workspace.CurrentCamera
+	if cam then
+		local ok, lv = pcall(function()
+			return cam.CFrame.LookVector
+		end)
+		if ok and typeof(lv) == "Vector3" then
+			if flatOnly then
+				lv = flat(lv)
+			end
+			if lv.Magnitude > 0.2 then
+				return lv.Unit
+			end
+		end
+	end
+	return fallback
+end
+
 MOVE.Projectile = function(eff, it, t)
 	local T, core = eff.Times, eff.Recipe.Core
 	local appear
@@ -997,7 +1023,9 @@ MOVE.Pop = function(eff, it, t)
 	end
 	local u = seg(t, it.T0, it.T1)
 	local s = it.From + (it.To - it.From) * outCubic(u)
-	return CFrame.new(anchorPoint(eff, it) + UP * (0.2 - (it.Sink or 0))), ONE * s, fadeTo(it, smooth(seg(u, 0.25, 1)))
+	-- (Task 11d, review M1: the ShieldHit ripple fitted to the victim's dome sits at the dome's own centre, not 0.2 over
+	-- it; the hurt flash / KO poof keep the +0.2 at the pet's chest)
+	return CFrame.new(anchorPoint(eff, it) + UP * ((it.Fitted and 0 or 0.2) - (it.Sink or 0))), ONE * s, fadeTo(it, smooth(seg(u, 0.25, 1)))
 end
 
 -- the victory star: rises and spins
@@ -1258,19 +1286,39 @@ MOVE.Actor = function(eff, it, t)
 		local v = smooth(seg(t, T.Travel, T.Travel + 0.3))
 		return CFrame.new(p1:Lerp(p2, v)) * CFrame.Angles(0, -(a1 * (1 - v) + a2 * v), 0), ONE * outBack(seg(t, it.T0, it.T0 + 0.2)), fadeTo(it, fade)
 	elseif m == "RiseRoar" then
-		local base = groundOf(eff, anchorPoint(eff, it))
-		local h = it.Base.Y * it.S
+		-- (Task 11d, Studio round 3, S5: rooted Behind along -eff.Dir (a Rally's Dir points at its first ally, the caster
+		-- itself in /fx: world -Z) and 7-8 studs tall, the necks stood in front of the Hydralotl and over its name tag) rooted
+		-- it.Back studs past the caster's body AWAY from the viewer (the camera's flat look, frozen per effect; no camera:
+		-- behind the caster, -Dir), the fan across that; scaled (it.Fit, the rim copy alike) so the tallest head's top stays
+		-- SERPENT_CLEAR at most over the caster's head, its rise overshoot and the rim included
+		if not eff.RoarBack then
+			eff.RoarBack = viewBack(-eff.Dir, true)
+		end
+		local back = eff.RoarBack
+		if not it.Fit then
+			it.Fit = min(1, (it.HMax or huge) / max(0.05, it.Base.Y * (it.STop or it.S) * 1.15))
+		end
+		local f = it.Fit
+		local spread = 0.8 * it.Base.X * (it.STop or it.S) / 1.15 * f -- (the fan's spacing: 0.8 x a side head's width)
+		local base = groundOf(eff, eff.S) + back * (it.Back or (K.BEHIND * eff.Size)) + back:Cross(UP) * ((it.FanK or 0) * spread)
+		local h = it.Base.Y * it.S * f
 		local r = outBack(seg(t, it.T0, it.T0 + 0.3))
 		local nodAt = max(T.Release, it.T0 + 0.3) -- (in battle the release comes at once: the lunge waits for the rise)
 		local nod = sin(pi * seg(t, nodAt, nodAt + 0.35))
 		local yaw = it.Yaw or 0
 		local look = eff.Dir * cos(yaw) + eff.Right * sin(yaw)
-		return face(base + UP * (h * (r - 0.5)) + look * (0.8 * nod), look) * CFrame.Angles(-0.35 * nod, 0, 0), ONE, fadeTo(it, fade)
+		return face(base + UP * (h * (r - 0.5)) + look * (0.8 * nod), look) * CFrame.Angles(-0.35 * nod, 0, 0), ONE * f, fadeTo(it, fade)
 	elseif m == "MoonRise" then
 		-- (the crescent mesh lies flat (thin along Y): a quarter turn about X stands it up, its face to the caster)
 		-- (Task 11c, Studio round 2, R3 + Ruling 20: at ABOVE x 1.15 x size (~9 studs) it read as a far-off arch) it rises to
 		-- the storm cloud's height over the hit (eff.CloudLift, else MOON_LIFT), MOON_BACK x size just behind the target
+		-- (Task 11d, Studio round 3, S4: at the cloud's own height it was lost inside the puffs) its lowest point MOON_GAP
+		-- over the cloud's top (eff.CloudTop: the puffs' height + half their size), its centre half its standing height
+		-- (the mesh's Z) over that
 		local lift = eff.CloudLift or K.MOON_LIFT
+		if eff.CloudTop then
+			lift = eff.CloudTop + K.MOON_GAP + 0.5 * it.Base.Z * it.S
+		end
 		local p = eff.Hit + UP * (lift - 2 * (1 - outCubic(seg(t, it.T0, it.T0 + 0.5)))) + eff.Dir * (K.MOON_BACK * eff.Size)
 		return face(p, -eff.Dir) * CFrame.Angles(0, 0, 0.15 * sin(t * 1.6)) * CFrame.Angles(pi / 2, 0, 0), ONE * outBack(seg(t, it.T0, it.T0 + 0.3)), fadeTo(it, fade)
 	end
@@ -1278,14 +1326,17 @@ MOVE.Actor = function(eff, it, t)
 	return face(p, -eff.Dir), ONE * outBack(seg(t, it.T0, it.T0 + 0.25)), fadeTo(it, fade)
 end
 
--- an actor's rim (Task 11): the same piece a little bigger, just behind it seen from the caster's side, in a glowing
--- colour: the black sun's corona, the dark phoenix's magenta edge, the serpents' glitch-pink outline
+-- an actor's rim (Task 11): the same piece a little bigger, just behind it, in a glowing colour: the black sun's
+-- corona, the dark phoenix's magenta edge, the serpents' glitch-pink outline. (Task 11d, Fable review I1: pushed along
+-- eff.Dir it sat behind the body only seen from the caster's side; from the target's side (the /fx camera, an enemy's
+-- Obsidian in a battle) the see-through magenta copy covered the black bird) pushed along the camera's look, so it is
+-- behind the body for whoever watches (no camera: eff.Dir, as before)
 MOVE.ActorRim = function(eff, it, t)
 	local cf, sv, tr = MOVE.Actor(eff, it, t)
 	if not cf then
 		return nil
 	end
-	return cf + eff.Dir * (it.RimBack * it.S), sv * it.RimScale, tr
+	return cf + viewBack(eff.Dir) * (it.RimBack * it.S), sv * it.RimScale, tr
 end
 
 -- an actor's echo (fix round 1): the same piece where it was Lag seconds ago, a little smaller, in its dimmer flame
@@ -1831,7 +1882,7 @@ local function buildCore(eff)
 			if pop and finite(core.Fit) then
 				local fit, sink = fitFor(eff.Src, nil, nil, pop.Base, pop.S, core)
 				if fit then
-					pop.From, pop.To, pop.Sink = fit, fit * (to / max(0.05, from)), sink
+					pop.From, pop.To, pop.Sink, pop.Fitted = fit, fit * (to / max(0.05, from)), sink, true
 				end
 			end
 		else
@@ -2158,6 +2209,11 @@ local function tuneEmitter(eff, it, layer)
 		em.RotSpeed = NumberRange.new(-180, 180)
 		life = { 0.6, 0.9 }
 	end
+	-- (Task 11d, Studio round 3, S2) an emitter layer's Brightness (self-lit sheets, LightInfluence 0: Cloud Breath's
+	-- puff, the grey storm-cloud sheet drawn white-blue instead of a dark navy smudge)
+	if finite(layer.Brightness) and layer.Brightness > 0 then
+		em.Brightness = layer.Brightness
+	end
 	-- (Task 10: the Heal's plus-shaped sparkles: the 4-point glint held upright, no random roll or spin = a "+")
 	if layer.Shape == "Plus" then
 		em.Rotation = NumberRange.new(0, 0)
@@ -2199,7 +2255,10 @@ local function addEmitterLayer(eff, layer)
 		end
 		mode, preset = "Stream", "Gather"
 	elseif beat == "Charge" and at == "Above" then
-		mode, preset, t1 = "Stream", "Cloud", T.Travel + 0.05
+		-- (Task 11d, Studio round 3, S3: streaming only through the charge, its last puffs faded out by ~1.3 s and the zone
+		-- was empty by the hit: the generic Storm read as nothing at 1.4 s) the cloud keeps forming until the impact, so it
+		-- hangs over the zone through the rain, the hit and most of the linger
+		mode, preset, t1 = "Stream", "Cloud", T.Impact
 	elseif layer.Ride then -- (Studio findings round) streams off the leaping pet from the take-off to the landing
 		mode, preset, at = "Stream", "Ride", "Self"
 		t0, t1 = min(t0, T.Release), T.Impact + 0.05
@@ -2591,6 +2650,23 @@ end
 -- Echo = { Count, Lag, Color, Transparency? } (fix round 1): dimmer copies trailing each piece along its path (Obsidian's
 -- black-flame wings). Low quality (fix round 1, M1) builds no rim and no echo: a second see-through MeshPart per piece
 -- is the phone's overdraw cost; the actor itself stays
+-- (Task 11d, Studio round 3, S5) the room the Void Fangs heads have round the caster: the highest their tops may reach
+-- over the floor (the caster's head + SERPENT_CLEAR: its name tag stays clear) and how far past its middle they root
+-- (its half-width + SERPENT_GAP x size). From the caster model's bounding box (the floor eff.Drop under its pivot); no
+-- model: a pet 2 x Drop tall, 1 stud half-width
+local function roarRoom(eff)
+	local top, half = 2 * eff.Drop, 1
+	local m = eff.Src and eff.Src.Model
+	if m and m.Parent then
+		local ok, cf, size = pcall(m.GetBoundingBox, m)
+		if ok and typeof(cf) == "CFrame" and typeof(size) == "Vector3" then
+			top = cf.Position.Y + size.Y / 2 - (eff.S.Y - eff.Drop)
+			half = max(size.X, size.Z) / 2
+		end
+	end
+	return max(0.5, top) + K.SERPENT_CLEAR, half + K.SERPENT_GAP * eff.Size
+end
+
 local function buildActor(eff)
 	local sig = eff.Recipe.Sig
 	local actor = sig and sig.Actor
@@ -2672,11 +2748,13 @@ local function buildActor(eff)
 				it.Rot = CFrame.fromAxisAngle(V3(-sin(a), 0, cos(a)), 0.25)
 			elseif motion == "RiseRoar" then -- a fan: the outer heads turn out a little, the middle one stands tallest
 				local k = i - (n + 1) / 2
-				it.OffR = k * 1.6 * eff.Size
+				it.FanK = k -- (Task 11d S5: the fan's spacing follows the fitted heads, MOVE.Actor)
 				it.Yaw = k * 0.35
 				if abs(k) < 0.25 then
 					it.S = S * 1.15
 				end
+				it.STop = S * 1.15
+				it.HMax, it.Back = roarRoom(eff)
 			end
 			if rim then
 				local r = {}
@@ -3341,9 +3419,13 @@ function AttackFx.Play(ctx)
 		eff.CorePos = corePosOf(eff, 0)
 		-- (Task 11c, review M8) the cloud's lift, from the first "Above" layer with a Height, before the core / actor /
 		-- layers that read it (the rain emitter, the falling pieces, the dusk moon), whatever the layers' order
+		-- (Task 11d, review M5: read from the recipe's layers, so the rain and the falling pieces start from the cloud's
+		-- height whether or not the Cloud emitter itself survives the emitter budget; today it always does: it is the
+		-- Storm's LowKeep. S4: + the cloud's top, its height + half its puffs' size, for the dusk moon over it)
 		for _, layer in ipairs(r.Layers or {}) do
 			if layer.At == "Above" and finite(layer.Height) then
 				eff.CloudLift = layer.Height
+				eff.CloudTop = layer.Height + 0.5 * (finite(layer.Size) and layer.Size or 1) * eff.Size
 				break
 			end
 		end

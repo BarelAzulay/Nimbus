@@ -329,10 +329,12 @@ local function studioFindings(env)
 		end
 		if spec[1] ~= "generic Storm" then -- (the Storm element rains lightning bolts: a Beam)
 			local em = rain and rain.Kit and rain.Kit.Em
-			-- (Task 11c, R1: upright to the world, the horizontal sheet turned a quarter: FacingCameraWorldUp + Rotation +-90,
+			-- (Task 11c, R1: upright to the world, the horizontal sheet turned a quarter: FacingCameraWorldUp + Rotation,
 			-- falling straight down (spread <= 10 degrees, out of the bottom), a few studs at most; R4: brighter)
+			-- (Task 11d, Studio round 3, S1: at +90 the sheet's hot head (on the right) pointed UP, "!" marks: -90 exactly,
+			-- the head leads the fall)
 			if not (em and em.Orientation == Enum.ParticleOrientation.FacingCameraWorldUp and Ids and em.Texture == "rbxassetid://" .. tostring(Ids.fx_streak)
-				and em.Rotation.Min == em.Rotation.Max and math.abs(math.abs(em.Rotation.Min) - 90) < 1e-6 and em.RotSpeed.Min == 0 and em.RotSpeed.Max == 0
+				and em.Rotation.Min == -90 and em.Rotation.Max == -90 and em.RotSpeed.Min == 0 and em.RotSpeed.Max == 0
 				and em.SpreadAngle.X <= 10 and em.SpreadAngle.Y <= 10 and em.EmissionDirection == Enum.NormalId.Bottom and maxKey(em.Size) <= 3
 				and em.LightEmission >= 0.6 and em.Brightness >= 1.2) then
 				streakBad[#streakBad + 1] = fmt("%s: %s", spec[1], em and fmt("%s %s", tostring(em.Orientation), tostring(em.Texture)) or "no rain emitter")
@@ -341,7 +343,7 @@ local function studioFindings(env)
 	end
 	T.check(#cloudBad == 0, "Studio findings: the Storm cloud sits 3.5-5.5 studs over its zone's hit point (not behind it), 0.25-0.4 see-through at its peak (Task 11c R4), two-toned, clear of the target's head",
 		table.concat(cloudBad, " | "))
-	T.check(#streakBad == 0, "Studio findings + Task 11c R1 / R4: the Storm rain falls as thin upright fx_streak streaks (world-up, a quarter turn, no spin, straight down, <= 3 studs, brighter), not soft round blobs or sideways sheets", table.concat(streakBad, " | "))
+	T.check(#streakBad == 0, "Studio findings + Task 11c R1 / R4 + Task 11d S1: the Storm rain falls as thin upright fx_streak streaks (world-up, Rotation -90: the hot head leads DOWN, no spin, straight down, <= 3 studs, brighter), not soft round blobs, sideways sheets or \"!\" marks", table.concat(streakBad, " | "))
 
 	-- b) the Shield domes (Sunbeam gold, Kitsune cyan): each fits its ally (1.0-1.4 x its half-width), never touches the
 	--    next ally's dome, its top under the name tag (<= 0.35 over the ally's head), >= 0.7 see-through; with no ally
@@ -714,8 +716,9 @@ local function studioRound2(env)
 			end
 		end)
 	end
-	T.check(star ~= nil and seen > 10 and step < 2 and nearP >= 2.5,
-		"Task 11c I2: the Wishing Star bends round the player on its path without a jump (flat step < 2 studs per frame) and keeps >= 2.5 studs off them",
+	-- (Task 11d, review M6: < 1.2 studs, 1.6 x its normal ~0.73-stud step, so a half flip (a 2-3 stud hop) fails too)
+	T.check(star ~= nil and seen > 10 and step < 1.2 and nearP >= 2.5,
+		"Task 11c I2: the Wishing Star bends round the player on its path without a jump (flat step < 1.2 studs per frame) and keeps >= 2.5 studs off them",
 		fmt("%d frames, biggest flat step %.2f studs, nearest the player %.2f", seen, step, nearP))
 
 	-- I4) the ShieldHit ripple starts at the size of the Shield dome fitted round the same pet (+-10 %), a squat pet's
@@ -735,8 +738,35 @@ local function studioRound2(env)
 		end)[1]
 		local dW = dome and dome.Fit and dome.Fit * dome.Base.X * dome.S or 0
 		local rW = rip and rip.From * rip.Base.X * rip.S or 0
-		if not (dome and rip and dW > 0 and math.abs(rW / dW - 1) <= 0.1 and rip.To > rip.From and math.abs((rip.Sink or 0) - (dome.Sink or 0)) < 1e-6) then
-			ripBad[#ripBad + 1] = fmt("%s: ripple %.2f vs dome %.2f studs across, sink %.2f vs %.2f", m.Name, rW, dW, rip and rip.Sink or -1, dome and dome.Sink or -1)
+		-- (Task 11d, review M1) drawn, the ripple's centre is the dome's (no +0.2 over it)
+		local dY, rY = nil, nil
+		if dome and rip then -- (both replayed: the ShieldHit play above handed the dome's kit back)
+			local dSeen = false
+			elD = sig("phantom_kitsune", { { Unit = 401, Model = m } })
+			dome = items(elD, function(it)
+				return it.Kind == "Solid" and not it.Layer and not it.Actor and it.Kit.Key == "vfx_shell"
+			end)[1]
+			if elD and dome then
+				run(elD.Times.Impact + 0.3, function()
+					if not dSeen and dome.Kit.Root.Transparency < 1 then
+						dSeen = true
+						dY = dome.Kit.Root.Position.Y
+					end
+				end)
+			end
+			elR = play({ Element = "Shadow", Attack = "ShieldHit", Rarity = "Secret" }, { Unit = 96, Model = env.B }, { Unit = 401, Model = m })
+			rip = items(elR, function(it)
+				return it.Kind == "Solid" and not it.Layer and it.Kit.Key == "vfx_shell"
+			end)[1]
+			if rip then
+				run(0.1)
+				rY = rip.Kit.Root.Transparency < 1 and rip.Kit.Root.Position.Y or nil
+			end
+		end
+		if not (dome and rip and dW > 0 and math.abs(rW / dW - 1) <= 0.1 and rip.To > rip.From and math.abs((rip.Sink or 0) - (dome.Sink or 0)) < 1e-6
+			and dY and rY and math.abs(rY - dY) < 0.02) then
+			ripBad[#ripBad + 1] = fmt("%s: ripple %.2f vs dome %.2f studs across, sink %.2f vs %.2f, centre %s vs %s", m.Name, rW, dW, rip and rip.Sink or -1, dome and dome.Sink or -1,
+				rY and fmt("%.2f", rY) or "-", dY and fmt("%.2f", dY) or "-")
 		end
 	end
 	squat:Destroy()
@@ -748,7 +778,7 @@ local function studioRound2(env)
 	if not (rip0 and rip0.From == hc.From and rip0.To == hc.To) then
 		ripBad[#ripBad + 1] = "no victim model: not the catalog's From / To"
 	end
-	T.check(#ripBad == 0, "Task 11c I4: the ShieldHit ripple is the victim's fitted Shield dome (+-10 %, sunk alike on a squat pet), swelling from it; no model: the catalog's From / To",
+	T.check(#ripBad == 0, "Task 11c I4 + Task 11d M1: the ShieldHit ripple is the victim's fitted Shield dome (+-10 %, sunk alike on a squat pet, at the dome's own centre), swelling from it; no model: the catalog's From / To",
 		table.concat(ripBad, " | "))
 
 	-- R1) Obsidian's Shadowflame Storm on one target (the /fx stance): the phoenix, its rim and its echoes stay inside the
@@ -790,14 +820,19 @@ local function studioRound2(env)
 		"Task 11c R1: Obsidian's phoenix (rim + echoes) stays inside its Storm zone over the target, low, a few studs across, and climbs out over the far end (no giant shape off over the NPCs)",
 		fmt("%d pieces, farthest %.2f studs (zone %.1f), highest %.2f over the target, bird %.2f across, drift after the pass %.2f", #birds, far, zone, high, wide, drift))
 
-	-- R3) Twilight's dusk moon: risen to the storm cloud's height (3.5-5.5 over the hit), just behind the target from the
-	--     caster (<= 2.5 studs off it, on the far side), ~30 % smaller than before (4 x 1.3 x size), dimmer
+	-- R3) Twilight's dusk moon: just behind the target from the caster (<= 2.5 studs off it, on the far side), ~30 %
+	--     smaller than before (4 x 1.3 x size); (Task 11d, Studio round 3, S4: lost inside the puffs at the cloud's own
+	--     height) its lowest point just over the storm cloud's top (the cloud's Height + half its puffs' size: 0-0.5 studs
+	--     over it, in the real crescent's studs), between the old opaque arch and the 11c ghost (0.2-0.35 see-through,
+	--     corona 0.35-0.5)
 	local tw = Cat.Signatures.twilight_dragon
 	local elT = sig("twilight_dragon")
 	local moon = items(elT, isBody)[1]
 	local rim = items(elT, function(it)
 		return it.Actor and it.Rim
 	end)[1]
+	local cloudL = items(elT, byLayer("Cloud"))[1]
+	local cloudTop = cloudL and (cloudL.Layer.Height + 0.5 * cloudL.Layer.Size * elT.Size) or nil
 	local mY, mOff, mBack, mW = nil, nil, nil, 0
 	if elT and moon then
 		local tRisen = moon.T0 + 0.55
@@ -811,10 +846,12 @@ local function studioRound2(env)
 		mW = peakSize(elT, { moon }) / moon.Base.X * (realScale("vfx_crescent", 1) or 4) -- (the real crescent's studs)
 	end
 	local oldW = (realScale("vfx_crescent", 1) or 4) * 1.3 * Cat.SizeOf(tw.Rarity, 0) -- (Scale 1.3 before)
-	T.check(moon ~= nil and rim ~= nil and mY ~= nil and mY >= 3.5 and mY <= 5.5 and mOff <= 2.5 and mBack > 0.3 and mW > 0 and mW <= 0.75 * oldW and moon.Trans >= 0.35 and rim.Trans >= 0.5,
-		"Task 11c R3: the dusk moon rises to the storm cloud's height just behind the target, ~30 % smaller, dimmer (a moon in the storm, not a far arch)",
-		fmt("%s over the hit, %s off it (%s behind), %.2f across (was %.2f), transparency %.2f / rim %.2f", mY and fmt("%.2f", mY) or "-", mOff and fmt("%.2f", mOff) or "-",
-			mBack and fmt("%.2f", mBack) or "-", mW, oldW, moon and moon.Trans or -1, rim and rim.Trans or -1))
+	local mLow = (mY and moon) and (mY - 0.5 * (realScale("vfx_crescent", 3) or 2) * moon.S) or nil -- (stood up: the mesh's Z is its height)
+	T.check(moon ~= nil and rim ~= nil and mLow ~= nil and cloudTop ~= nil and mLow >= cloudTop and mLow <= cloudTop + 0.5 and mOff <= 2.5 and mBack > 0.3 and mW > 0 and mW <= 0.75 * oldW
+		and moon.Trans >= 0.2 and moon.Trans <= 0.35 and rim.Trans >= 0.35 and rim.Trans <= 0.5,
+		"Task 11c R3 + Task 11d S4: the dusk moon sits just over the storm cloud's top (not inside the puffs), just behind the target, ~30 % smaller than the old arch, moderately bright",
+		fmt("its bottom %s over the hit (cloud top %s), %s off it (%s behind), %.2f across (was %.2f), transparency %.2f / rim %.2f", mLow and fmt("%.2f", mLow) or "-",
+			cloudTop and fmt("%.2f", cloudTop) or "-", mOff and fmt("%.2f", mOff) or "-", mBack and fmt("%.2f", mBack) or "-", mW, oldW, moon and moon.Trans or -1, rim and rim.Trans or -1))
 
 	-- R5) Lava Slam's spikes: <= 0.66 of the old volume, 0.2 see-through, spread on a ring >= 3 x size so the target
 	--     shows between them (a clear gap between neighbours)
@@ -954,6 +991,283 @@ local function studioRound2(env)
 	end
 	T.check(wOk, "Task 11c R4: the generic Storm rains 3 lightning bolts (wider), within the 4-beam cap",
 		fmt("%d rain bolts, %s beams", #bolts, tostring(elG and elG.Beams)))
+	Fx.ClearAll()
+end
+
+-- (Task 11d, Studio round 3 + the Fable review of 57c05a7, task-11d-brief.md) drawn: Cloud Breath's mouth puff light and
+-- small (S2); the generic Storm's cloud hangs over the zone through the hit, grey-blue, shading not adding, with a steady
+-- streak rain under it and its bolts, in the /fx stance and with a battle's lead (S3); the Void Fangs heads rooted past
+-- the caster away from the viewer, under its name tag (S5); the Wishing Star's burst halved (S6); the actor rim behind
+-- the body for the viewer (I1); Lava Slam's spikes inside their crack (M2)
+local function studioRound3(env)
+	local Fx, Cat, ctx, run = env.Fx, env.Cat, env.ctx, env.run
+	local function play(over, to, from)
+		Fx.ClearAll()
+		local c = ctx(over)
+		c.To = to or { Unit = 96, Model = env.B }
+		c.From = from or { Unit = 95, Model = env.A }
+		c.Now = env.clock()
+		local ok = Fx.Play(c)
+		return ok and Fx._Live()[#Fx._Live()] or nil
+	end
+	local function sig(pet, to, extra)
+		local s = Cat.Signatures[pet]
+		local over = { Element = s.Element, Attack = "Special", Kind = s.Kind, PetId = pet, Rarity = s.Rarity }
+		for k, v in pairs(extra or {}) do
+			over[k] = v
+		end
+		return play(over, to)
+	end
+	local function items(el, pred)
+		local out = {}
+		for _, it in ipairs(el and el.Items or {}) do
+			if pred(it) then
+				out[#out + 1] = it
+			end
+		end
+		return out
+	end
+	local function byLayer(id)
+		return function(it)
+			return it.Layer ~= nil and it.Layer.Id == id
+		end
+	end
+	local function maxKey(seq)
+		local hi = -math.huge
+		for _, k in ipairs(seq and seq.Keypoints or {}) do
+			hi = math.max(hi, k.Value)
+		end
+		return hi
+	end
+	local function minKey(seq)
+		local lo = math.huge
+		for _, k in ipairs(seq and seq.Keypoints or {}) do
+			lo = math.min(lo, k.Value)
+		end
+		return lo
+	end
+	local function flatV(v)
+		return Vector3.new(v.X, 0, v.Z)
+	end
+	local cam = workspace.CurrentCamera
+	local cam0 = cam and cam.CFrame
+	local function look(from, at) -- the camera at `from` looking at `at` (restored at the end)
+		if cam then
+			cam.CFrame = CFrame.lookAt(from, at)
+		end
+	end
+
+	-- S2) Cloud Breath: the puff at the mouth is a CLOUD dragon's (light white-blue, self-lit, half see-through, small);
+	--     no emitter at the caster draws a dark, scene-lit sheet over it
+	local elC = sig("cloudy_dragon")
+	local puffBad = {}
+	local puff = items(elC, byLayer("SigCloud"))[1]
+	local pe = puff and puff.Kit and puff.Kit.Em
+	if not pe then
+		puffBad[#puffBad + 1] = "no mouth puff"
+	else
+		local c = pe.Color.Keypoints[1].Value
+		local studs = maxKey(pe.Size)
+		if math.min(c.R, c.G, c.B) < 0.85 or pe.LightInfluence > 0 or pe.Brightness < 1.5 or minKey(pe.Transparency) < 0.4 or studs > 2 * elC.Size or puff.Count > 5 then
+			puffBad[#puffBad + 1] = fmt("puff rgb %d,%d,%d, light influence %.2f, brightness %.2f, transparency %.2f, %.2f studs (%.2f x size), %d puffs", c.R * 255, c.G * 255, c.B * 255,
+				pe.LightInfluence, pe.Brightness, minKey(pe.Transparency), studs, studs / elC.Size, puff.Count)
+		end
+	end
+	for _, it in ipairs(items(elC, function(it)
+		return it.Kind == "Emitter" and (it.At == "Source" or it.At == "Self" or it.At == "Behind")
+	end)) do
+		local em = it.Kit.Em
+		local c = em.Color.Keypoints[#em.Color.Keypoints].Value
+		local luma = 0.3 * c.R + 0.59 * c.G + 0.11 * c.B
+		if em.LightInfluence > 0 and luma < 0.75 then
+			puffBad[#puffBad + 1] = fmt("%s at the caster: scene-lit, luma %.2f", it.Layer.Id, luma)
+		end
+	end
+	T.check(elC ~= nil and #puffBad == 0, "Task 11d S2: Cloud Breath's mouth puff is light white-blue, self-lit, >= 0.4 see-through and small (<= 2 x size, <= 5 puffs): no dark smoke over the Cloudy Dragon",
+		table.concat(puffBad, " | "))
+
+	-- S3) the generic Storm (Storm element, Epic, the /fx stance: the dummy + 2 foes; and a battle's 0.15 s lead with the
+	--     charge given back): the cloud is drawn, forms until the impact and its puffs live past the linger's start; 10
+	--     puffs at full density; grey-blue (low saturation), mostly shading (LightEmission <= 0.15); a steady fx_streak
+	--     rain out of the cloud (head down) under 3 lightning bolts; within the caps
+	local stormBad = {}
+	local foes = { { Unit = 96, Model = env.B }, { Unit = 201, Model = env.allies[1] }, { Unit = 202, Model = env.allies[2] } }
+	for _, lead in ipairs({ false, 0.15 }) do
+		local label = lead and "battle" or "/fx"
+		local el = play({ Element = "Storm", Attack = "Special", Kind = "Storm", Rarity = "Epic", DueAt = lead and (env.clock() + lead) or nil, LateMax = lead and 0.35 or nil }, foes)
+		local cloud = items(el, byLayer("Cloud"))[1]
+		local drizzle = items(el, byLayer("Drizzle"))[1]
+		local bolts = items(el, byLayer("Rain"))
+		local why = {}
+		if not (el and cloud and drizzle) then
+			why[#why + 1] = fmt("cloud %s, drizzle %s", tostring(cloud ~= nil), tostring(drizzle ~= nil))
+		else
+			local T = el.Times
+			local em, de = cloud.Kit.Em, drizzle.Kit.Em
+			local cEnd = cloud.Layer.Color
+			local hi, lo = math.max(cEnd.R, cEnd.G, cEnd.B), math.min(cEnd.R, cEnd.G, cEnd.B)
+			local luma = 0.3 * cEnd.R + 0.59 * cEnd.G + 0.11 * cEnd.B
+			if cloud.T1 < T.Impact - 1e-6 or cloud.T1 + em.Lifetime.Min < T.Linger + 0.3 then
+				why[#why + 1] = fmt("cloud forms until %.2f (impact %.2f), its last puffs gone by %.2f (linger %.2f)", cloud.T1, T.Impact, cloud.T1 + em.Lifetime.Min, T.Linger)
+			end
+			if cloud.Layer.Count < 10 or em.LightEmission > 0.15 or (hi - lo) / hi > 0.35 or luma < 0.55 or luma > 0.85 then
+				why[#why + 1] = fmt("cloud %d puffs, light %.2f, rgb %d,%d,%d", cloud.Layer.Count, em.LightEmission, cEnd.R * 255, cEnd.G * 255, cEnd.B * 255)
+			end
+			local emitted, firstAt, lastAt = 0, nil, nil
+			local acc0 = cloud.Acc
+			run(T.Impact + 0.1, function()
+				if cloud.Acc ~= acc0 then
+					local t = env.clock() - el.Start
+					firstAt, lastAt = firstAt or t, t
+					emitted = emitted + 1
+				end
+				acc0 = cloud.Acc
+			end)
+			if emitted < 5 or not lastAt or lastAt < T.Impact - 0.15 then
+				why[#why + 1] = fmt("cloud drawn on %d frames, %s to %s", emitted, tostring(firstAt), tostring(lastAt))
+			end
+			if not (drizzle.Preset == "Fall" and drizzle.Lift ~= nil and de.Rotation.Min == -90 and de.Rotation.Max == -90 and de.EmissionDirection == Enum.NormalId.Bottom) then
+				why[#why + 1] = fmt("drizzle %s, lift %s, rotation %s", tostring(drizzle.Preset), tostring(drizzle.Lift), tostring(de.Rotation.Min))
+			end
+			if #bolts ~= 3 or el.Emitters > Fx.MAX_EMITTERS.High or el.Beams > Fx.MAX_BEAMS or el.Lights > Fx.MAX_LIGHTS then
+				why[#why + 1] = fmt("%d bolts, %d emitters, %d beams, %d lights", #bolts, el.Emitters, el.Beams, el.Lights)
+			end
+		end
+		if #why > 0 then
+			stormBad[#stormBad + 1] = label .. ": " .. table.concat(why, ", ")
+		end
+	end
+	-- Low quality keeps the cloud (the Storm's LowKeep), <= 2 emitters
+	Fx.SetQuality("Low")
+	local elLow = play({ Element = "Storm", Attack = "Special", Kind = "Storm", Rarity = "Epic" }, foes)
+	if not (elLow and elLow.Emitters <= 2 and #items(elLow, byLayer("Cloud")) == 1) then
+		stormBad[#stormBad + 1] = fmt("Low: %s emitters, cloud %d", elLow and tostring(elLow.Emitters) or "?", #items(elLow, byLayer("Cloud")))
+	end
+	Fx.SetQuality("High")
+	T.check(#stormBad == 0, "Task 11d S3: the generic Storm's grey-blue cloud hangs over the zone from the charge through the hit (10 puffs, shading), a steady streak rain falls out of it under 3 bolts, in the /fx stance and in a battle; Low keeps the cloud",
+		table.concat(stormBad, " | "))
+
+	-- S5 + I1) Void Fangs in the /fx stance: the camera looks at the caster from the target's side, a little above. Every
+	--     head (and its rim) roots past the caster's body on the far side from the camera, its top <= 0.4 over the
+	--     caster's head (SERPENT_CLEAR 0.3 + the 0.05 floor lift: the name tag), the bodies >= 0.25 see-through; each rim sits behind its head for the camera.
+	--     The camera looking straight down (no usable look): behind the caster, -Dir (the old side)
+	local a0 = env.A:GetPivot().Position
+	local aSize = env.A:GetExtentsSize()
+	local aTop = a0.Y + aSize.Y / 2
+	local serpBad = {}
+	for _, view in ipairs({ { "target side", Vector3.new(0, 4, -14) }, { "beside", Vector3.new(12, 5, -2) }, { "overhead", Vector3.new(0.01, 20, 0) } }) do
+		local camAt = a0 + view[2]
+		look(camAt, a0)
+		local el = sig("hydralotl", { { Unit = 201, Model = env.allies[1] }, { Unit = 202, Model = env.allies[2] } })
+		local back = flatV(a0 - camAt)
+		if back.Magnitude < 0.2 then
+			back = el and -el.Dir or Vector3.new(0, 0, 1)
+		end
+		back = back.Unit
+		local heads = items(el, function(it)
+			return it.Actor == true
+		end)
+		local worstTop, nearest, behind, rimFront, seen, lowTrans = -math.huge, math.huge, math.huge, 0, 0, 1
+		if el then
+			run(el.EndRel - 0.05, function()
+				local pairsSeen = {}
+				for _, it in ipairs(heads) do
+					local part = it.Kit and it.Kit.Root
+					if part and part.Transparency < 0.98 then
+						seen = seen + 1
+						local p = part.Position
+						worstTop = math.max(worstTop, p.Y + part.Size.Y / 2 - aTop)
+						local d = flatV(p - a0)
+						behind = math.min(behind, d:Dot(back))
+						nearest = math.min(nearest, d.Magnitude)
+						if not it.Rim then
+							lowTrans = math.min(lowTrans, it.Trans)
+						end
+						pairsSeen[it.FanK or 0] = pairsSeen[it.FanK or 0] or {}
+						pairsSeen[it.FanK or 0][it.Rim and "rim" or "body"] = p
+					end
+				end
+				if view[1] ~= "overhead" then
+					local camLook = (a0 - camAt).Unit
+					for _, pr in pairs(pairsSeen) do
+						if pr.rim and pr.body and (pr.rim - pr.body):Dot(camLook) <= 0 then
+							rimFront = rimFront + 1
+						end
+					end
+				end
+			end)
+		end
+		local halfW = math.max(aSize.X, aSize.Z) / 2
+		if not (el and #heads == 6 and seen > 20 and worstTop <= 0.4 and behind > 0 and nearest >= halfW and lowTrans >= 0.25 and rimFront == 0) then
+			serpBad[#serpBad + 1] = fmt("%s: %d pieces (%d drawn), top %.2f over the caster's head, nearest %.2f flat (half-width %.2f), %.2f on the far side, transparency %.2f, rim in front %d frames",
+				view[1], #heads, seen, worstTop, nearest, halfW, behind, lowTrans, rimFront)
+		end
+	end
+	T.check(#serpBad == 0, "Task 11d S5 + I1: the Void Fangs heads root past the caster away from the camera (overhead: behind it), their tops under its name tag, 0.25 see-through, each rim behind its head for the viewer",
+		table.concat(serpBad, " | "))
+
+	-- I1) Obsidian's rim is behind the black bird for the camera from either side (target side / caster side)
+	local rimBad = {}
+	local b0 = env.B:GetPivot().Position
+	for _, side in ipairs({ { "target side", b0 + Vector3.new(0, 5, -12) }, { "caster side", a0 + Vector3.new(0, 5, 10) } }) do
+		look(side[2], (a0 + b0) / 2)
+		local el = sig("obsidian_phoenix")
+		local body = items(el, function(it)
+			return it.Actor and not it.Rim and not it.Echo
+		end)[1]
+		local rim = items(el, function(it)
+			return it.Actor and it.Rim
+		end)[1]
+		local frames, wrong = 0, 0
+		if el and body and rim then
+			run(el.EndRel - 0.05, function()
+				local bp, rp = body.Kit.Root, rim.Kit.Root
+				if bp.Transparency < 0.98 and rp.Transparency < 0.98 then
+					frames = frames + 1
+					local lookV = cam and (bp.Position - cam.CFrame.Position).Unit or el.Dir
+					if (rp.Position - bp.Position):Dot(lookV) <= 0 then
+						wrong = wrong + 1
+					end
+				end
+			end)
+		end
+		if not (frames > 5 and wrong == 0) then
+			rimBad[#rimBad + 1] = fmt("%s: %d frames, rim in front on %d", side[1], frames, wrong)
+		end
+	end
+	if cam and cam0 then
+		cam.CFrame = cam0
+	end
+	T.check(#rimBad == 0, "Task 11d I1: Obsidian's magenta rim sits behind the black phoenix for the camera, from the target's side and the caster's (a black bird with a magenta edge)",
+		table.concat(rimBad, " | "))
+
+	-- S6) the Wishing Star's heal burst: <= half the plain Celestial Heal's (size and light)
+	local function burstOf(el)
+		local it = items(el, byLayer("Burst"))[1]
+		return it and it.Kit and it.Kit.Em
+	end
+	local allies2 = { { Unit = 201, Model = env.allies[1] }, { Unit = 202, Model = env.allies[2] } }
+	local su = Cat.Signatures.starlight_unicorn
+	local plainB = burstOf(play({ Element = su.Element, Attack = "Special", Kind = "Heal", Rarity = su.Rarity }, allies2))
+	local pS, pL = plainB and maxKey(plainB.Size) or 0, plainB and plainB.LightEmission or 0
+	local wishB = burstOf(sig("starlight_unicorn", allies2))
+	local wS, wL = wishB and maxKey(wishB.Size) or math.huge, wishB and wishB.LightEmission or math.huge
+	T.check(pS > 0 and pL > 0 and wS <= 0.5 * pS + 1e-6 and wL <= 0.5 * pL + 1e-6,
+		"Task 11d S6: the Wishing Star's heal burst is half the plain Celestial Heal's size and light (no white ball over an ally)",
+		fmt("burst %.2f studs / light %.2f vs the plain heal's %.2f / %.2f", wS, wL, pS, pL))
+
+	-- M2) Lava Slam: the spikes stand inside their crack (the crack's radius >= the spike ring's + 0.3)
+	local elL = sig("magma_cub")
+	local crack = items(elL, byLayer("SigLavaCrack"))[1]
+	local ringR = 0
+	for _, it in ipairs(items(elL, function(it)
+		return it.Actor and not it.Rim and it.OffR ~= nil
+	end)) do
+		ringR = math.max(ringR, math.sqrt(it.OffR * it.OffR + it.OffD * it.OffD))
+	end
+	local crackR = crack and crack.Kit and maxKey(crack.Kit.Em.Size) / 1.1 / 2 or 0 -- (the Flat sheet's size at 1.0 of its curve)
+	T.check(ringR > 0 and crackR >= ringR + 0.3, "Task 11d M2: Lava Slam's spikes stand inside the lava crack they erupt from",
+		fmt("crack radius %.2f, spike ring %.2f", crackR, ringR))
 	Fx.ClearAll()
 end
 
@@ -2594,6 +2908,10 @@ S.client_p7vfx_engine = guarded("client_p7vfx_engine", function()
 	end, A = A, B = B, allies = allyModels })
 	-- (Task 11c) the Studio round 2 fixes + the Fable review's I1 / I2 / I4, drawn
 	studioRound2({ Fx = Fx, Cat = Cat, ctx = ctx, run = run, clock = function()
+		return clock
+	end, A = A, B = B, allies = allyModels })
+	-- (Task 11d) the Studio round 3 fixes + the Fable review's I1 / M2, drawn
+	studioRound3({ Fx = Fx, Cat = Cat, ctx = ctx, run = run, clock = function()
 		return clock
 	end, A = A, B = B, allies = allyModels })
 	for _, m in ipairs(allyModels) do

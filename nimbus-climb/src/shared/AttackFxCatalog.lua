@@ -515,6 +515,13 @@ AttackFxCatalog.Elements = {
 			Blast = { Layers = { { Id = "Crackle", Kind = "Beam", Texture = "fx_lightning", Beat = "Impact", At = "$Hit", Count = 2, KeepCount = 2 } } },
 			Freeze = { Layers = { { Id = "Arcs", Kind = "Beam", Texture = "fx_lightning", Beat = "Impact", At = "$Hit", Count = 2, KeepCount = 2 } } },
 			Heal = { Slots = { Motif = "fx_sparkle" }, Tints = { Spiral = rgb(150, 170, 255) } },
+			-- (Task 11d, Studio round 3, S3: the generic Storm read as nothing from the /fx camera; its rain is lightning only,
+			-- 3 bolts flickering through the travel) a soft grey-blue cloud (the deep Edge blue on the grey sheet was a navy
+			-- smudge) and a steady blue streak rain falling out of it under the bolts (one more emitter: 5 of 6)
+			Storm = {
+				Tints = { Cloud = rgb(165, 178, 220) },
+				Layers = { { Id = "Drizzle", Kind = "Emitter", Texture = "fx_streak", Beat = "Travel", At = "Above", Fall = true, Streak = true, Tint = "Mid", Count = 14, Size = 1 } },
+			},
 		},
 	},
 	Celestial = {
@@ -721,8 +728,14 @@ AttackFxCatalog.Specials = {
 		-- (AttackFx), and where the rain is lightning (the Storm element) 3 bolts kept under the 4-beam cap (KeepCount),
 		-- wider. M1: Size 1 on the layer (the hail / petals / rocks / stars keep their size); the streaks are cut to 0.8 in
 		-- the engine's streak branch)
+		-- (Task 11d, Studio round 3, S3 / S4: the generic Storm still read as nothing at 1.4 s and the Dusk Storm as a faint
+		-- haze. The cloud streamed only through the charge (gone by the hit), a few puffs, a third additive: the grey sheet
+		-- added to the pale arena washed out) the cloud now forms until the impact (AttackFx), 10 puffs, LightEmission 0.1
+		-- (it shades the floor instead of adding light to it); still 0.3 see-through, low over the zone
+		-- (review M3) the Rain's KeepCount / Width only apply where the rain is a Beam (the Storm element's lightning,
+		-- $RainKind); the other elements' emitter rains ignore them
 		Layers = {
-			{ Id = "Cloud", Kind = "Emitter", Texture = "fx_stormcloud", Beat = "Charge", At = "Above", Tint = "Edge", Tint2 = "Mid", Count = 6, Size = 2.6, Height = 4.5, Transparency = 0.3, LightEmission = 0.3 },
+			{ Id = "Cloud", Kind = "Emitter", Texture = "fx_stormcloud", Beat = "Charge", At = "Above", Tint = "Edge", Tint2 = "Mid", Count = 10, Size = 2.6, Height = 4.5, Transparency = 0.3, LightEmission = 0.1 },
 			{ Id = "Rain", Kind = "$RainKind", Texture = "$RainStreak", Beat = "Travel", At = "Above", Tint = "Mid", Count = 16, Size = 1, Streak = true, KeepCount = 3, Width = 1.1 },
 		},
 		LowKeep = { "Cloud" },
@@ -922,7 +935,10 @@ AttackFxCatalog.Signatures = {
 		-- (Task 11c, Studio round 2, R3: at ~9 studs over the target, 6 studs wide and near-opaque neon, the moon read as a
 		-- separate magenta arch far away) ~30 % smaller, dimmer (more see-through, a softer lilac, a fainter corona); the
 		-- engine raises it to the storm cloud's height, just behind the target (MOVE.Actor "MoonRise")
-		Actor = { Key = "vfx_crescent", At = "Above", Motion = "MoonRise", Beat = "Charge", Scale = 0.9, Color = rgb(184, 150, 236), Transparency = 0.4, Rim = { Color = rgb(112, 56, 210), Scale = 1.12, Transparency = 0.55 } },
+		-- (Task 11d, Studio round 3, S4: inside the puffs at 0.4 / 0.55 see-through the moon did not read at all) just over
+		-- the cloud's top (the engine), between the old near-opaque neon arch and that: 0.25 see-through, a brighter lilac,
+		-- the corona 0.4
+		Actor = { Key = "vfx_crescent", At = "Above", Motion = "MoonRise", Beat = "Charge", Scale = 0.9, Color = rgb(198, 162, 250), Transparency = 0.25, Rim = { Color = rgb(112, 56, 210), Scale = 1.12, Transparency = 0.4 } },
 	},
 	-- the cloud dragon spirals up round the pet through the charge, then dives down the beam onto the target (the beam is
 	-- its breath) and coils once round it, rising, as it fades (Gemini's second pass: in a battle the charge is cut, the
@@ -938,7 +954,10 @@ AttackFxCatalog.Signatures = {
 		Drop = { Flare = true },
 		Actor = { Key = "vfx_sig_cloud_dragon", At = "Source", Motion = "SpiralUp", Beat = "Charge", Tint = "Core", Transparency = 0.1 },
 		Layers = {
-			{ Id = "SigCloud", Kind = "Emitter", Texture = "fx_stormcloud", Beat = "Release", At = "Source", Motion = "Burst", Tint = "Smoke", Count = 5, Size = 2.5 },
+			-- (Task 11d, Studio round 3, S2: the grey storm-cloud sheet in the grey Smoke tint, lit by the scene, was a dense
+			-- dark-navy cloud over the Cloudy Dragon through the release) a CLOUD dragon's breath: a small soft puff at the
+			-- mouth, white-blue and self-lit (Brightness 2 lifts the grey sheet to white), half see-through
+			{ Id = "SigCloud", Kind = "Emitter", Texture = "fx_stormcloud", Beat = "Release", At = "Source", Motion = "Burst", Color = rgb(226, 238, 255), Count = 3, Size = 1.4, Transparency = 0.45, LightEmission = 0.5, Brightness = 2 },
 			{ Id = "SigFlare", Kind = "Emitter", Texture = "fx_glow", Beat = "Impact", At = "$Hit", Tint = "Hot", Count = 3, Size = 1.6, Transparency = 0.35 },
 		},
 	},
@@ -955,6 +974,9 @@ AttackFxCatalog.Signatures = {
 		-- (the ring piece x0.6: band and girth), the gold Mid instead of the band's pale Core, see-through
 		Core = { Scale = 0.6, Tint = "Mid", Transparency = 0.35 },
 		Layers = { { Id = "SigShower", Kind = "Emitter", Texture = "fx_stars", Beat = "Travel", At = "Allies", Count = 14, Size = 1, Fall = true } },
+		-- (Task 11d, Studio round 3, S6: the heal's fully additive sparkle burst summed to a white ball that hid an ally)
+		-- half the size, half the light
+		Tweak = { Burst = { Size = 1.25, LightEmission = 0.5 } },
 	},
 	-- as the pet leaps, an electric storm-wolf charges out of it and through the target, two bolts crackling along its
 	-- path (the Mythic slash arc is left out: both bolts under the 4-beam cap)
@@ -1051,7 +1073,9 @@ AttackFxCatalog.Signatures = {
 		Core = { Key = "vfx_chunk", Scale = 1.5, Transparency = 0, InnerTint = "Hot" },
 		Skip = { Slash = true },
 		Layers = {
-			{ Id = "SigLavaCrack", Kind = "Decal", Texture = "fx_crack", Beat = "Travel", At = "Ground", Color = rgb(255, 120, 40), Size = 6, Seconds = 1.2 },
+			-- (Task 11d, review M2: at Size 6 the crack's rim ran through the spikes on their wider ring (Radius 3.1): 7, so
+			-- they stand inside the glow they erupt from)
+			{ Id = "SigLavaCrack", Kind = "Decal", Texture = "fx_crack", Beat = "Travel", At = "Ground", Color = rgb(255, 120, 40), Size = 7, Seconds = 1.2 },
 			{ Id = "SigEruption", Kind = "Emitter", Texture = "fx_flame", Beat = "Release", At = "Self", Motion = "Burst", Count = 8, Size = 1.3 },
 		},
 		-- (Studio findings round: the spikes + dome buried the target's flinch) the spike ring leaves the slot facing the
@@ -1084,7 +1108,10 @@ AttackFxCatalog.Signatures = {
 	hydralotl = {
 		Name = "Void Fangs", Rarity = "Secret", Element = "Shadow", Kind = "Rally",
 		Twist = "void serpent heads rise behind the pet and roar",
-		Actor = { Key = "vfx_sig_serpent", At = "Behind", Motion = "RiseRoar", Beat = "Charge", Count = 3, Tint = "Mid", Transparency = 0.2, Rim = { Tint = "Hot", Scale = 1.08, Transparency = 0.25 } },
+		-- (Task 11d, Studio round 3, S5: 7-8 studs tall and rooted in front of the pet from the /fx camera, the necks hid it
+		-- and its name tag) "Behind" = just past the pet's body AWAY from the viewer, the tallest top at most 0.3 over the
+		-- pet's head (AttackFx MOVE.Actor RiseRoar); 0.25 see-through
+		Actor = { Key = "vfx_sig_serpent", At = "Behind", Motion = "RiseRoar", Beat = "Charge", Count = 3, Tint = "Mid", Transparency = 0.25, Rim = { Tint = "Hot", Scale = 1.08, Transparency = 0.25 } },
 		-- (Task 11c, Studio round 2, R8: the purple ground rings spread to the bottom of the screen: the roar pulses grew to
 		-- ~22 studs) every ground ring x0.5 across: the roar pulses (Grow 4 -> 2), the ring under each ally, the shockwave
 		Core = { Grow = 2 },
