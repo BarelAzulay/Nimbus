@@ -15,7 +15,8 @@
 --                                               Tints[layerId]? (an explicit colour for a shared layer, like a signature's;
 --                                               a signature's own Tints win)
 --   Shapes[shape]                               the 8 element attacks (Cone / Circle / Line of BattleCatalog.ElementAttacks)
---   Specials[kind]                              "Specials (the 9 kinds)": core, beats, extra layers, skipped ladder layers
+--   Specials[kind]                              "Specials (the 9 kinds)": core, beats, extra layers, skipped ladder layers;
+--                                               each element retextures them by its sheets (slots) + Elements[e].Specials
 --   Reactions (Hurt / Ko / Victory)             the small reaction effects
 --   Signatures[petId]                           "Signature specials (12 pets)": overrides on top of their kind
 --   Textures[key]                               mirror of blender/vfx/textures.json { Grid = 4 | 1, Baked = bool } (smoke
@@ -207,6 +208,9 @@ AttackFxCatalog.LayerSlots = {
 	-- mouth mid-flight and the shot read as a tether)
 	ShotAfterimage = { Kind = "Trail", Texture = "fx_speedlines", Beat = "Travel", At = "Core", Tint = "Edge", Afterimages = 2, Lifetime = 0.1 },
 	ShotArcs = { Kind = "Beam", Texture = "$Arc", Beat = "Travel", At = "Path", Tint = "Hot", Spiral = true, Curve = 1.2, Width = 0.45, Count = 2 },
+	-- the Pounce's swap (Task 10): its Legendary afterimages are two more speed-line trails riding the leaping pet (a trail
+	-- on the core would sit still on the slam point and draw nothing)
+	LeapEcho = { Kind = "Trail", Texture = "fx_speedlines", Beat = "Travel", At = "Self", Tint = "Mid", Afterimages = 2 },
 }
 
 ----------------------------------------------------------------------
@@ -261,6 +265,10 @@ AttackFxCatalog.Textures = {
 --   PlasmaColor  the band 4 white heart's Palette entry instead of white (Earth "Core" gold, Shadow "Hot" pink)
 --   Tints        { [layerId] = Color3 } (Alive = the alive detail's colour)
 --   Area         { Transparency?, Layers? } the element attacks' (Cone / Circle / Line) core transparency + own layers
+--   Specials     { [kind] = { Core?, Slots?, Layers?, Drop?, Tints?, LowKeep? } } (Task 10) the element's own take on a
+--                special kind: Core fields merged over the kind's core, Slots re-point the kind's slots ($Wrap, $Ward ...),
+--                Layers added (From = their tier), Drop = { [layerId] = true } the kind layers it leaves out, Tints for
+--                this kind only. A signature pet's overrides still win.
 ----------------------------------------------------------------------
 AttackFxCatalog.Elements = {
 	Water = {
@@ -288,6 +296,11 @@ AttackFxCatalog.Elements = {
 		},
 		Alive = { Kind = "Emitter", Texture = "fx_droplets", Motion = "Bounce", Count = 6, Seconds = 0.7, Text = "droplets bounce on the ground, then pop" },
 		Rain = { Key = "vfx_orb", Texture = "fx_droplets", Kind = "Emitter", Scale = 0.3, Text = "a downpour" },
+		-- (Task 10) a water orb spins as it flies; the pounce lands in a splash (the geyser + ripple), not a ground crack
+		Specials = {
+			Blast = { Core = { Spin = true } },
+			Pounce = { Drop = { SlamCrack = true } },
+		},
 	},
 	Flame = {
 		Palette = { Core = rgb(255, 232, 150), Mid = rgb(255, 122, 40), Edge = rgb(214, 54, 22), Hot = rgb(140, 200, 255), Smoke = rgb(112, 92, 82) },
@@ -320,6 +333,12 @@ AttackFxCatalog.Elements = {
 		-- (Task 8 Studio + Gemini: tinted the deep fire red the Storm cloud read as a blood-red blob; a smoky maroon ash
 		-- cloud, the fire rain and its flashes carry the heat)
 		Tints = { Cloud = rgb(150, 100, 84) },
+		-- (Task 10) Blast / Pounce / Storm approved at check-in 2 (unchanged). The beam is a fire breath (flame tongues along
+		-- it, not embers); the ward is flames licking up each bubble (Gemini: embers on a hex bubble read as tech, not fire)
+		Specials = {
+			Beam = { Slots = { Wrap = "fx_flame" } },
+			Shield = { Slots = { Ward = "fx_flame" } },
+		},
 	},
 	Frost = {
 		-- (Task 9 round 2: Mid 150/222/248 drew near white in Neon at Secret on the pale arena: a deeper ice blue)
@@ -346,6 +365,12 @@ AttackFxCatalog.Elements = {
 		Alive = { Kind = "Mesh", Key = "vfx_shard", Motion = "Melt", Tint = "Mid", Count = 5, Seconds = 1.0, Text = "impact shards linger and visibly melt (~1 s)" },
 		Rain = { Key = "vfx_shard", Texture = "fx_snow", Kind = "Emitter", Scale = 0.5, Text = "hail" },
 		Area = { Key = "vfx_spike", Count = 5, Transparency = 0.2 },
+		-- (Task 10) the pounce lands in a ring of see-through ice spikes; the Freeze cage gets an outer ring of them from
+		-- Epic (Gemini: the cage's own rarity step)
+		Specials = {
+			Pounce = { Layers = { { Id = "IceSpikes", Kind = "Mesh", Key = "vfx_spike", Beat = "Impact", At = "$Hit", Motion = "Erupt", Tint = "Mid", Count = 4, Scale = 0.6, Transparency = 0.2 } } },
+			Freeze = { Layers = { { Id = "IceSpikes", Kind = "Mesh", Key = "vfx_spike", Beat = "Impact", At = "$Hit", Motion = "Erupt", Tint = "Mid", Count = 5, Scale = 0.55, Transparency = 0.2, From = "Epic" } } },
+		},
 	},
 	Nature = {
 		-- pink / yellow / cream only: Nature must read on green grass (no green-only colour anywhere)
@@ -381,8 +406,17 @@ AttackFxCatalog.Elements = {
 		Detail = {}, -- the petals are the Burst; the vines are the Alive detail
 		-- (Task 9: at Secret (x1.4) the full-size vines buried the target: 0.7)
 		Alive = { Kind = "Mesh", Key = "vfx_root", Motion = "Wrap", Tint = "Mid", Count = 3, Scale = 0.7, Seconds = 0.6, Text = "vines briefly wrap the target" },
-		Rain = { Key = "vfx_orb", Texture = "fx_petals", Kind = "Emitter", Scale = 0.25, Text = "a petal shower" },
+		-- (Task 10, Gemini: a petal shower alone is spring, not an ultimate: heavy seed pods fall with the petals)
+		Rain = { Key = "vfx_orb", Texture = "fx_petals", Kind = "Emitter", Scale = 0.42, Text = "seed pods and a petal shower" },
 		Area = { Key = "vfx_root", Count = 4, Transparency = 0.2 },
+		-- (Task 10) roots everywhere: the seed-pod Blast and the pounce landing burst roots out of the ground; the Freeze is
+		-- a ROOT cage (5 rose roots curling in round the target, not glass); the ward is a root curling up each bubble
+		Specials = {
+			Blast = { Core = { Scale = 0.85 }, Layers = { { Id = "RootBurst", Kind = "Mesh", Key = "vfx_root", Beat = "Impact", At = "$Hit", Motion = "Erupt", Tint = "Mid", Count = 3, Scale = 0.6, Transparency = 0.2 } } },
+			Pounce = { Layers = { { Id = "RootBurst", Kind = "Mesh", Key = "vfx_root", Beat = "Impact", At = "$Hit", Motion = "Erupt", Tint = "Mid", Count = 3, Scale = 0.6, Transparency = 0.2 } } },
+			Freeze = { Core = { Key = "vfx_root", Count = 5, Material = "Neon", KeepMaterial = false, Transparency = 0.2, Scale = 0.8 } },
+			Shield = { Layers = { { Id = "RootWard", Kind = "Mesh", Key = "vfx_root", Beat = "Travel", At = "Allies", Motion = "Wrap", Tint = "Mid", Count = 1, Scale = 0.55, Transparency = 0.2 } } },
+		},
 	},
 	Earth = {
 		Palette = { Core = rgb(255, 204, 120), Mid = rgb(178, 128, 80), Edge = rgb(110, 78, 50), Hot = rgb(255, 150, 60), Smoke = rgb(196, 170, 130) },
@@ -409,6 +443,20 @@ AttackFxCatalog.Elements = {
 		Alive = { Kind = "Mesh", Key = "vfx_chunk", Motion = "Bounce", Tint = "Mid", Scale = 0.5, Count = 5, Seconds = 0.8, Text = "chunks scatter and bounce" },
 		Rain = { Key = "vfx_chunk", Texture = "fx_rock", Kind = "Emitter", Scale = 1.2, Text = "a rock fall" },
 		Area = { Key = "vfx_spike", Count = 5 },
+		-- (Task 10) the Blast hurls a boulder (solid rock, not a see-through orb); the pounce is a ground slam with a ring of
+		-- rock spikes (its own GroundCrack is the crack: no second crack sheet); the Freeze is a STONE cage (Gemini: glass
+		-- is off-theme for earth), ringed by rock spikes from Epic
+		Specials = {
+			Blast = { Core = { Key = "vfx_chunk", Scale = 1.3, Transparency = 0 } },
+			Pounce = { Drop = { SlamCrack = true }, Layers = { { Id = "RockSpikes", Kind = "Mesh", Key = "vfx_spike", Beat = "Impact", At = "$Hit", Motion = "Erupt", Tint = "Mid", Count = 4, Scale = 0.65 } } },
+			Freeze = {
+				Core = { Material = "SmoothPlastic", Transparency = 0.1 },
+				Layers = { { Id = "RockSpikes", Kind = "Mesh", Key = "vfx_spike", Beat = "Impact", At = "$Hit", Motion = "Erupt", Tint = "Edge", Count = 5, Scale = 0.55, From = "Epic" } },
+			},
+			-- (the motif is the runtime fx_sparkle: in the rock-brown Mid it read as dull specks; the gold of the seam)
+			Shield = { Tints = { Ward = rgb(255, 204, 120) } },
+			Rally = { Tints = { Rouse = rgb(255, 204, 120) } },
+		},
 	},
 	Storm = {
 		Palette = { Core = rgb(224, 236, 255), Mid = rgb(110, 128, 255), Edge = rgb(60, 72, 210), Hot = rgb(255, 252, 170), Smoke = rgb(120, 124, 150) },
@@ -452,6 +500,13 @@ AttackFxCatalog.Elements = {
 		-- (round 3, c2 + Gemini: the Secret line / cone / ring read as solid plastic slabs that buried the lightning: see-
 		-- through, so the bolt and the blue sparks define the strike; the bolt narrow like the shot's, one jag not a scribble)
 		Area = { Transparency = 0.5, Layers = { { Id = "Bolt", Kind = "Beam", Texture = "fx_lightning", Beat = "Travel", At = "Path", Width = 1.2 } } },
+		-- (Task 10) ball lightning: the Blast's orb crackles at the hit; the Freeze cage is electric (two arcs crackle round
+		-- it); the Heal is soft blue glints (Gemini: sparks rising off allies read as electrocution, not healing)
+		Specials = {
+			Blast = { Layers = { { Id = "Crackle", Kind = "Beam", Texture = "fx_lightning", Beat = "Impact", At = "$Hit", Count = 2 } } },
+			Freeze = { Layers = { { Id = "Arcs", Kind = "Beam", Texture = "fx_lightning", Beat = "Impact", At = "$Hit", Count = 2 } } },
+			Heal = { Slots = { Motif = "fx_sparkle" }, Tints = { Spiral = rgb(150, 170, 255) } },
+		},
 	},
 	Celestial = {
 		Palette = { Core = rgb(255, 250, 224), Mid = rgb(255, 212, 104), Edge = rgb(236, 164, 64), Hot = rgb(255, 255, 255), Smoke = rgb(255, 236, 190) },
@@ -474,6 +529,12 @@ AttackFxCatalog.Elements = {
 		Rain = { Key = "vfx_star", Texture = "fx_stars", Kind = "Emitter", Scale = 0.5, Text = "falling stars" },
 		-- (round 3, c2 + Gemini: the line / cone / ring cores read as solid yellow tape: see-through starlight)
 		Area = { Transparency = 0.45 },
+		-- (Task 10) the Blast is a spinning star; stars wheel round the Freeze cage (Gemini: a plain glass cage had no cosmos;
+		-- outside the cage, so the target stays readable)
+		Specials = {
+			Blast = { Core = { Key = "vfx_star", Spin = true } },
+			Freeze = { Layers = { { Id = "StarSpin", Kind = "Emitter", Texture = "fx_stars", Beat = "Linger", At = "$Hit", Spiral = true, Count = 8, Size = 0.8 } } },
+		},
 	},
 	Shadow = {
 		Palette = { Core = rgb(214, 156, 255), Mid = rgb(128, 72, 178), Edge = rgb(44, 22, 66), Hot = rgb(255, 96, 224), Smoke = rgb(60, 40, 80) },
@@ -500,6 +561,10 @@ AttackFxCatalog.Elements = {
 		Rain = { Key = "vfx_shard", Texture = "fx_wisps", Kind = "Emitter", Scale = 0.5, Text = "falling shadow shards" },
 		-- (round 3, c0 + Gemini: the line / cone / ring cores were solid glowing magenta slabs (arcane, not void): see-through)
 		Area = { Transparency = 0.4 },
+		-- (Task 10, Gemini: wisps streaming off a hasted ally read as a curse: glitch-pink sparks; the wind lines stay purple)
+		Specials = {
+			Haste = { Slots = { Gust = "fx_sparks" }, Tints = { Gust = rgb(255, 96, 224) } },
+		},
 	},
 }
 
@@ -574,6 +639,17 @@ AttackFxCatalog.Shapes = {
 ----------------------------------------------------------------------
 local SUPPORT_SKIP = { Trail = true, Slash = true, Afterimage = true, DoubleArc = true }
 
+-- Task 10 (the 9 kinds for every element; Gemini design pass, see task-10-report.md). Each kind draws the element's own
+-- sheets through slots: $Burst (the impact burst), $Trail, $Motif, $Arc, $Rain*, and the kind slots below, which an
+-- element may re-point in Elements[e].Specials[kind].Slots:
+--   $ElementBurst / $BurstMotion  the element's impact sheet and its motion, even where the kind swaps $Burst (Rally's roar)
+--   $Wrap   the Beam's particles streaming along it (default the element's Trail)
+--   $Ward   the Shield's element rising over each bubble (default Motif)
+--   $Gust   the Haste's element streaming off each ally (default Trail)
+-- Kind fields besides Core / Beats / Layers / Slots / Skip / LowKeep: Swap (ladder layer -> LayerSlots template, like
+-- Basic.Ranged), CoreCount[band] (the core's piece count per band: rarity = more), ThickBand[band] (the Beam's thickness
+-- per band). Every kind fits the effect caps (6 emitters, 4 beams, 4 trails, 3 lights: Rally / Freeze have their own
+-- light, so the Epic Flash is skipped).
 AttackFxCatalog.Specials = {
 	Blast = {
 		Text = "an orb grows above the pet, fires, and explodes into a dome + shockwave",
@@ -591,40 +667,51 @@ AttackFxCatalog.Specials = {
 	Beam = {
 		Text = "charge glow at the mouth, then a thick beam wrapped in spiral arcs; impact flare at the end",
 		Core = { Key = "vfx_beam", Path = "Projectile", Stretch = true, Thick = 1.4 },
+		-- (Task 10, Gemini: a wider beam by band reads as rarer without one more emitter; x Size 1.0 .. 1.4)
+		ThickBand = { 1.1, 1.3, 1.5, 1.7 },
 		Beats = { Charge = 0.5, Travel = 0.1, Linger = 0.5 },
 		Layers = {
 			{ Id = "Spiral", Kind = "Beam", Texture = "$Arc", Beat = "Travel", At = "Path", Tint = "Edge", Spiral = true, Count = 2 },
 			{ Id = "Flare", Kind = "Emitter", Texture = "fx_glow", Beat = "Impact", At = "$Hit", Tint = "Hot", Count = 4, Size = 3 },
+			-- (Task 10) the element streams along the beam while it holds (fire licks, a water jet's drops, snow, petals,
+			-- dust, sparks, sparkle, wisps): sparse and small, drifting off the beam (Gemini: a dense wrap looks messy)
+			{ Id = "Wrap", Kind = "Emitter", Texture = "$Wrap", Beat = "Travel", At = "Path", Along = true, Tint = "Mid", Count = 9, Size = 0.9 },
 		},
-		Skip = { Trail = true, Slash = true },
+		-- (no Afterimage: the beam does not move, a trail on it would draw nothing)
+		Skip = { Trail = true, Slash = true, Afterimage = true },
 	},
 	Pounce = {
 		Text = "crouch, a leap with afterimages, a slam landing that cracks the ground",
 		Core = { Key = "vfx_ring", Path = "Ground", Grow = 2.2 },
 		Beats = { Charge = 0.4, Travel = 0.35, Linger = 0.6 },
 		Layers = {
-			{ Id = "Leap", Kind = "Trail", Texture = "fx_speedlines", Beat = "Travel", At = "Self", Tint = "Edge", Afterimages = 3 },
+			-- (Task 10: the trail rides the leaping pet (AttackFx), one at Common; the Legendary afterimages add two more)
+			{ Id = "Leap", Kind = "Trail", Texture = "fx_speedlines", Beat = "Travel", At = "Self", Tint = "Edge", Afterimages = 1 },
 			{ Id = "SlamCrack", Kind = "Decal", Texture = "fx_crack", Beat = "Impact", At = "Ground", Size = 6, Seconds = 0.8 },
 		},
+		Swap = { Afterimage = "LeapEcho" },
 		Skip = { Trail = true },
 	},
 	Storm = {
 		Text = "a cloud gathers over the target and rains the element",
 		Core = { Key = "$RainKey", Path = "Area", Count = 8, Fall = true },
+		CoreCount = { 5, 6, 7, 8 }, -- (Task 10, Gemini: the rain grows with rarity)
 		Beats = { Charge = 0.6, Travel = 0.45, Linger = 0.7 },
 		Layers = {
 			{ Id = "Cloud", Kind = "Emitter", Texture = "fx_stormcloud", Beat = "Charge", At = "Above", Tint = "Edge", Count = 6, Size = 4 },
 			{ Id = "Rain", Kind = "$RainKind", Texture = "$RainTexture", Beat = "Travel", At = "Above", Tint = "Mid", Count = 12, Size = 1 },
 		},
 		LowKeep = { "Cloud" },
-		Skip = { Trail = true, Slash = true, Afterimage = true },
+		-- (Task 10: no Mythic double crescent: a slash arc in a rain cloud reads as nothing)
+		Skip = { Trail = true, Slash = true, Afterimage = true, DoubleArc = true },
 	},
 	Freeze = {
 		Text = "a crystal cage in the element's colour locks the target",
 		Core = { Key = "vfx_cage", Path = "Ground", Material = "Glass", KeepMaterial = true, Rise = true }, -- Glass at every band
 		Beats = { Charge = 0.4, Travel = 0.2, Linger = 0.7 },
 		Layers = { { Id = "Lock", Kind = "Light", Beat = "Impact", At = "$Hit", Tint = "Core", Brightness = 2, Range = 8 } },
-		Skip = { Trail = true, Slash = true, Afterimage = true },
+		-- (Task 10: the Lock is the flash (3 lights at Secret); no double crescent on a cage)
+		Skip = { Trail = true, Slash = true, Afterimage = true, DoubleArc = true, Flash = true },
 	},
 	Heal = {
 		Text = "spirals of glowing petals rise around allies, plus-shaped sparkles",
@@ -633,7 +720,7 @@ AttackFxCatalog.Specials = {
 		Slots = { Burst = "fx_sparkle" },
 		Layers = { { Id = "Spiral", Kind = "Emitter", Texture = "$Motif", Beat = "Travel", At = "Allies", Tint = "Core", Spiral = true, Count = 10, Size = 1 } },
 		LowKeep = { "Spiral" },
-		BurstShape = "Plus",
+		BurstShape = "Plus", -- (Task 10: the 4-point glint held upright, not spinning: a "+" (AttackFx))
 		Skip = SUPPORT_SKIP,
 		Detail = false, -- lands on allies: no element impact detail
 	},
@@ -642,7 +729,9 @@ AttackFxCatalog.Specials = {
 		Core = { Key = "vfx_shell", Path = "Allies", Material = "Glass", KeepMaterial = true, Transparency = 0.6 }, -- Glass at every band
 		Beats = { Charge = 0.4, Travel = 0.2, Linger = 0.8 },
 		Slots = { Burst = "fx_hexshield" },
-		Layers = {},
+		-- (Task 10: the element rises over each bubble: the hex bubble alone had no element but its colour)
+		Layers = { { Id = "Ward", Kind = "Emitter", Texture = "$Ward", Beat = "Travel", At = "Allies", Motion = "Rise", Tint = "Mid", Count = 7, Size = 1 } },
+		LowKeep = { "Ward" },
 		Skip = SUPPORT_SKIP,
 		Detail = false, -- lands on allies: no element impact detail
 	},
@@ -651,8 +740,17 @@ AttackFxCatalog.Specials = {
 		Core = { Key = "vfx_ring", Path = "Self", Grow = 4, Pulses = 3 },
 		Beats = { Charge = 0.45, Travel = 0.25, Linger = 0.6 },
 		Slots = { Burst = "fx_shock" },
-		Layers = { { Id = "AllyGlow", Kind = "Light", Beat = "Impact", At = "Allies", Tint = "Core", Brightness = 2, Range = 8 } },
-		Skip = SUPPORT_SKIP,
+		Layers = {
+			{ Id = "AllyGlow", Kind = "Light", Beat = "Impact", At = "Allies", Tint = "Core", Brightness = 2, Range = 8 },
+			-- (Task 10) the roar: a burst of the element's own impact sheet from the pet (fire, a geyser, an ice shatter ...)
+			{ Id = "Roar", Kind = "Emitter", Texture = "$ElementBurst", Motion = "$BurstMotion", Beat = "Release", At = "Self", Tint = "Mid", Count = 8, Size = 1.6 },
+			-- each ally lights up: a ring rises under it and the element's motif flares on it (one light at the allies'
+			-- centre was all there was)
+			{ Id = "AllyRing", Kind = "Ring", Key = "vfx_ring", Beat = "Impact", At = "Allies", Tint = "Mid", Grow = 1.3, Transparency = 0.35 },
+			{ Id = "Rouse", Kind = "Emitter", Texture = "$Motif", Beat = "Impact", At = "Allies", Motion = "Rise", Tint = "Mid", Count = 8, Size = 1 },
+		},
+		LowKeep = { "Roar" },
+		Skip = { Trail = true, Slash = true, Afterimage = true, DoubleArc = true, Flash = true }, -- (AllyGlow is its flash)
 		Detail = false, -- lands on allies: no element impact detail
 	},
 	Haste = {
@@ -660,7 +758,13 @@ AttackFxCatalog.Specials = {
 		Core = { Key = "vfx_ring", Path = "Allies", Grow = 1.2 },
 		Beats = { Charge = 0.4, Travel = 0.2, Linger = 0.6 },
 		Slots = { Burst = "fx_streak" },
-		Layers = { { Id = "Wind", Kind = "Trail", Texture = "fx_speedlines", Beat = "Linger", At = "Allies", Tint = "Core" } },
+		Layers = {
+			-- (Task 10: in the pale Core tint the wind read as white; the element's colour)
+			{ Id = "Wind", Kind = "Trail", Texture = "fx_speedlines", Beat = "Linger", At = "Allies", Tint = "Mid" },
+			-- the element streams off each ally as it speeds up (embers, drops, snow, petals, dust, sparks, sparkle)
+			{ Id = "Gust", Kind = "Emitter", Texture = "$Gust", Beat = "Linger", At = "Allies", Drift = true, Tint = "Mid", Count = 10, Size = 0.9 },
+		},
+		LowKeep = { "Gust" },
 		Skip = SUPPORT_SKIP,
 		Detail = false, -- lands on allies: no element impact detail
 	},
@@ -861,7 +965,24 @@ local function attackDef(req, element, sig)
 		if not def then
 			return nil
 		end
-		return { Core = def.Core, Beats = copy(def.Beats), Skip = def.Skip or {}, Layers = { def.Layers }, Detail = {}, Slots = { def.Slots }, Alive = true, Extras = def.Detail ~= false, Kind = kind, Text = def.Text, Special = true, BurstShape = def.BurstShape, LowKeep = def.LowKeep }
+		-- (Task 10) the element's own take on the kind: Core fields merged over the kind's, its Slots / Layers / Drop /
+		-- Tints / LowKeep on top (a signature still wins over both)
+		local es = type(element.Specials) == "table" and element.Specials[kind] or nil
+		if type(es) ~= "table" then
+			es = {}
+		end
+		local core = merge(copy(def.Core), es.Core)
+		local lowKeep = {}
+		for _, list in ipairs({ es.LowKeep or {}, def.LowKeep or {} }) do
+			for _, id in ipairs(list) do
+				lowKeep[#lowKeep + 1] = id
+			end
+		end
+		return {
+			Core = core, Beats = copy(def.Beats), Skip = def.Skip or {}, Swap = def.Swap, Layers = { def.Layers, es.Layers }, Detail = {},
+			Slots = { def.Slots, es.Slots }, Alive = true, Extras = def.Detail ~= false, Kind = kind, Text = def.Text, Special = true,
+			BurstShape = def.BurstShape, LowKeep = lowKeep, Drop = es.Drop, Tints = es.Tints, CoreCount = def.CoreCount, ThickBand = def.ThickBand,
+		}
 	end
 	local def = REACTIONS[attack]
 	if not def then
@@ -874,6 +995,8 @@ local function slotsOf(def, element, sig)
 	local refs = {
 		Burst = element.Burst, Trail = element.Trail, Ground = element.Ground, Motif = element.Motif, Arc = element.Arc,
 		RainKey = element.Rain.Key, RainTexture = element.Rain.Texture, RainKind = element.Rain.Kind or "Emitter",
+		-- (Task 10 kind slots: see Specials)
+		ElementBurst = element.Burst, BurstMotion = element.BurstMotion or "Burst", Wrap = element.Trail, Ward = element.Motif, Gust = element.Trail,
 	}
 	for i = 1, #def.Slots do
 		local s = def.Slots[i]
@@ -919,6 +1042,7 @@ local function buildLayer(id, tpl, ctx, scale)
 	layer.Kind = ref(tpl.Kind, ctx.refs)
 	layer.Texture = ref(tpl.Texture, ctx.refs)
 	layer.Key = ref(tpl.Key, ctx.refs)
+	layer.Motion = ref(tpl.Motion, ctx.refs) -- (Task 10: "$BurstMotion", the Rally roar moves like the element's burst)
 	if layer.Kind == "Emitter" and layer.Texture == nil then
 		return nil
 	end
@@ -1020,6 +1144,13 @@ function AttackFxCatalog.Resolve(req)
 	if core.Path == "Projectile" and not core.Stretch then
 		core.Speed = core.Speed or (def.Shot and B.RangedSpeed) or B.ProjectileSpeed
 	end
+	-- (Task 10) a kind's core grows with the band: more falling pieces (Storm), a wider beam (Beam)
+	if type(def.CoreCount) == "table" and finite(def.CoreCount[band]) then
+		core.Count = def.CoreCount[band]
+	end
+	if type(def.ThickBand) == "table" and finite(def.ThickBand[band]) then
+		core.Thick = def.ThickBand[band]
+	end
 
 	-- beats
 	local beats = merge(def.Beats, sig and sig.Beats)
@@ -1061,7 +1192,8 @@ function AttackFxCatalog.Resolve(req)
 		hitAt = HIT_AT[core.Path] or "Target",
 		countScale = AttackFxCatalog.CountScale[band],
 		detailScale = AttackFxCatalog.DetailScale[band],
-		tints = (element.Tints or (sig and sig.Tints)) and merge(copy(element.Tints or {}), sig and sig.Tints) or nil,
+		-- (the element's Tints, then its own take on this special kind (Task 10), then a signature's)
+		tints = (element.Tints or def.Tints or (sig and sig.Tints)) and merge(merge(copy(element.Tints or {}), def.Tints), sig and sig.Tints) or nil,
 		attack = req.Attack,
 		kind = def.Kind, -- the resolved kind (a signature special may come with Kind nil: Task 8 review)
 		drop = def.Drop, -- the element's Melee / Ranged Drop: shared attack layers it replaces (Water's shot: no Boom ball)
@@ -1126,7 +1258,7 @@ function AttackFxCatalog.Resolve(req)
 	-- as a white glare at the mouth: it takes the element's BurstLight like the Burst itself)
 	if finite(element.BurstLight) then
 		for _, layer in ipairs(layers) do
-			if layer.Id == "Muzzle" and layer.Texture == element.Burst then
+			if (layer.Id == "Muzzle" or layer.Id == "Roar") and layer.Texture == element.Burst then -- (Task 10: the Rally roar too)
 				layer.LightEmission = element.BurstLight
 			end
 		end

@@ -1024,6 +1024,241 @@ S.client_p7vfx_engine = guarded("client_p7vfx_engine", function()
 	T.check(mel ~= nil and not melBoom, "note (b): the melee hit keeps its own impact (no ranged explosion layers)")
 	run(3)
 
+	-- 16) Task 10: the 9 special kinds for every element. For every element x kind x rarity at High (the support kinds on
+	-- 4 allies) the effect plays within every per-effect cap and DRAWS what makes it that element's kind: every layer of
+	-- the recipe has >= 1 item (the emitter / beam budgets fit, so nothing is cut), its alive detail is drawn, and the
+	-- lights are min(3, light layers). The identity layers are named on purpose (a recipe that lost them fails here):
+	-- Beam Wrap (the element streaming along it), Shield Ward, Rally Roar + AllyRing / Rouse on each ally, Haste Gust +
+	-- Wind on each ally, and the per-element pieces (Frost / Earth spike rings, Nature roots, Storm crackle / arcs,
+	-- Celestial star spin)
+	local allyModels = {}
+	for i = 1, 4 do
+		allyModels[i] = unitModel(holder, "Ally" .. i, Vector3.new(-6 + 4 * i, 2, 6))
+	end
+	local SUPPORT = { Heal = true, Shield = true, Rally = true, Haste = true }
+	local IDENT = {
+		Beam = { "Wrap", "Spiral", "Flare" }, Shield = { "Ward" }, Rally = { "Roar", "AllyRing", "Rouse" }, Haste = { "Gust", "Wind" },
+		Heal = { "Spiral" }, Storm = { "Cloud", "Rain" }, Pounce = { "Leap" }, Blast = { "Dome", "Blastwave" }, Freeze = { "Lock" },
+	}
+	local OWN = {
+		Frost = { Pounce = "IceSpikes", Freeze = "IceSpikes@Epic" }, Earth = { Pounce = "RockSpikes", Freeze = "RockSpikes@Epic" },
+		Nature = { Blast = "RootBurst", Pounce = "RootBurst", Shield = "RootWard" }, Storm = { Blast = "Crackle", Freeze = "Arcs" },
+		Celestial = { Freeze = "StarSpin" },
+	}
+	local rOrder = {}
+	for i, r in ipairs(Cat.Rarities) do
+		rOrder[r] = i
+	end
+	local kindBad, kindSeen = {}, 0
+	for _, e in ipairs({ "Flame", "Water", "Frost", "Nature", "Earth", "Storm", "Celestial", "Shadow" }) do
+		for _, kind in ipairs(Cat.KindNames) do
+			for _, rarity in ipairs(Cat.Rarities) do
+				Fx.ClearAll()
+				local to = { Unit = 96, Model = B }
+				if SUPPORT[kind] then
+					to = {}
+					for i = 1, 4 do
+						to[i] = { Unit = 200 + i, Model = allyModels[i] }
+					end
+				end
+				local played = Fx.Play(ctx({ Element = e, Attack = "Special", Kind = kind, Rarity = rarity, From = { Unit = 95, Model = A }, To = to, Now = clock }))
+				local el = played and Fx._Live()[#Fx._Live()] or nil
+				local r = el and el.Recipe
+				local why = {}
+				if not el then
+					why[#why + 1] = "did not play"
+				else
+					local per, alive = {}, 0
+					for _, it in ipairs(el.Items) do
+						local id = it.Layer and it.Layer.Id
+						if id then
+							per[id] = (per[id] or 0) + 1
+						end
+						if it.Layer and it.Layer.Alive then
+							alive = alive + 1
+						end
+					end
+					if el.Emitters > Fx.MAX_EMITTERS.High or el.Beams > Fx.MAX_BEAMS or el.Trails > Fx.MAX_TRAILS or el.Lights > Fx.MAX_LIGHTS or el.Cores > Fx.MAX_CORES then
+						why[#why + 1] = fmt("over a cap: %d em %d beams %d trails %d lights %d cores", el.Emitters, el.Beams, el.Trails, el.Lights, el.Cores)
+					end
+					if type(r.Alive) == "table" and r.Alive.Kind and alive == 0 then
+						why[#why + 1] = "no alive item"
+					end
+					local lights = 0
+					for _, l in ipairs(r.Layers) do
+						if l.Kind == "Light" then
+							lights = lights + 1
+						elseif not per[l.Id] then
+							why[#why + 1] = "not drawn: " .. l.Id
+						end
+					end
+					if el.Lights ~= math.min(Fx.MAX_LIGHTS, lights) then
+						why[#why + 1] = fmt("%d of %d lights", el.Lights, lights)
+					end
+					for _, id in ipairs(IDENT[kind] or {}) do
+						if not per[id] then
+							why[#why + 1] = "no " .. id
+						end
+					end
+					local own = OWN[e] and OWN[e][kind]
+					if own then
+						local id, from = string.match(own, "^([^@]+)@?(.*)$")
+						local due = from == "" or rOrder[rarity] >= rOrder[from]
+						if due and not per[id] then
+							why[#why + 1] = "no own " .. id
+						elseif not due and per[id] then
+							why[#why + 1] = id .. " before " .. from
+						end
+					end
+					-- on each ally: the Rally rings and the Haste wind (4 allies)
+					if kind == "Rally" and per.AllyRing ~= 4 then
+						why[#why + 1] = fmt("%s ally rings", tostring(per.AllyRing))
+					elseif kind == "Haste" and per.Wind ~= 4 then
+						why[#why + 1] = fmt("%s wind trails", tostring(per.Wind))
+					end
+					-- the support cores: a shell / ring on each of the 4 allies
+					if kind == "Shield" or kind == "Heal" or kind == "Haste" then
+						local cores = 0
+						for _, it in ipairs(el.Items) do
+							if it.Kind == "Solid" and not it.Layer and type(it.Anchor) == "number" then
+								cores = cores + 1
+							end
+						end
+						if cores ~= 4 then
+							why[#why + 1] = fmt("%d ally cores", cores)
+						end
+					end
+				end
+				if #why > 0 then
+					kindBad[#kindBad + 1] = fmt("%s %s %s: %s", e, kind, rarity, table.concat(why, ", "))
+				else
+					kindSeen = kindSeen + 1
+				end
+			end
+		end
+	end
+	T.check(#kindBad == 0 and kindSeen == 8 * 9 * #Cat.Rarities,
+		"Task 10: every element x special kind x rarity plays within the caps and draws all its layers, its alive detail and its kind / element identity (support kinds on 4 allies)",
+		fmt("%d ok; %s", kindSeen, table.concat(kindBad, " | ")))
+	Fx.ClearAll()
+	-- 16b) Low quality: every element x kind keeps 2 emitters at most: the Burst and the kind's chosen one (LowKeep)
+	Fx.SetQuality("Low")
+	local lowBad = {}
+	for _, e in ipairs({ "Flame", "Water", "Frost", "Nature", "Earth", "Storm", "Celestial", "Shadow" }) do
+		for _, kind in ipairs(Cat.KindNames) do
+			Fx.ClearAll()
+			Fx.Play(ctx({ Element = e, Attack = "Special", Kind = kind, Rarity = "Secret", From = { Unit = 97, Model = A }, To = { Unit = 98, Model = B }, Now = clock }))
+			local el = Fx._Live()[#Fx._Live()]
+			local ids = drawnIds(el)
+			local want = el and el.Recipe.LowKeep[1]
+			local firstKept = nil
+			for _, id in ipairs(el and el.Recipe.LowKeep or {}) do
+				for _, l in ipairs(el.Recipe.Layers) do
+					if l.Id == id and engineEmitter(l) then
+						firstKept = firstKept or id
+					end
+				end
+			end
+			if not (el and el.Emitters <= 2 and ids.Burst and (firstKept == nil or ids[firstKept]) and el.Beams == 0 and el.Trails == 0) then
+				lowBad[#lowBad + 1] = fmt("%s %s: %s emitters, burst %s, keep %s (%s)", e, kind, el and tostring(el.Emitters) or "?", tostring(ids.Burst), tostring(firstKept), tostring(want))
+			end
+		end
+	end
+	Fx.SetQuality("High")
+	T.check(#lowBad == 0, "Task 10: Low quality: every element's special keeps the Burst + its kind's chosen emitter, no beams / trails", table.concat(lowBad, " | "))
+	Fx.ClearAll()
+
+	-- 16c) the Pounce leaps like the melee: its Strike carries Reach = the gap (AttackFx.LeapReach) and a world Landing;
+	-- the landing (p 0.26) falls on the slam; Pose(unit, base) shrinks the leap by what the base has covered (the server
+	-- moves a pouncing pet to its target) and never below 0; without a base it is the full gap
+	local pc = unitModel(holder, "PounceC", Vector3.new(60, 2, 0))
+	local pt = unitModel(holder, "PounceT", Vector3.new(60, 2, -12))
+	Fx.Play(ctx({ Attack = "Special", Kind = "Pounce", Element = "Earth", Rarity = "Rare", From = { Unit = 110, Model = pc }, To = { Unit = 111, Model = pt }, Now = clock }))
+	local pe = Fx._Live()[#Fx._Live()]
+	local p0 = pc:GetPivot().Position
+	local gap = Fx.LeapReach({ Model = pc, Last = p0 }, { Model = pt, Last = pt:GetPivot().Position })
+	local strikeReach, pAtImpact, halfReach, pastReach = nil, nil, nil, nil
+	local impactAt = pe and (pe.Start + pe.Times.Impact)
+	local trailOn, trailFollows = false, true
+	run(1.6, function()
+		local po = Fx.Pose(110)
+		if po and po.Name == "Strike" then
+			strikeReach = strikeReach or po.Reach
+			if impactAt and pAtImpact == nil and clock >= impactAt then
+				pAtImpact = po.P
+			end
+			local half = Fx.Pose(110, p0 + Vector3.new(0, 0, -5))
+			halfReach = halfReach or (half and half.Reach)
+			local past = Fx.Pose(110, p0 + Vector3.new(0, 0, -30))
+			pastReach = pastReach or (past and past.Reach)
+		end
+		-- the leap trail rides the pet: move the caster along (as the drawn pose would) and the trail's host follows
+		for _, it in ipairs(pe and pe.Items or {}) do
+			if it.Kind == "Trail" and it.Layer and it.Layer.Id == "Leap" and it.On and clock - pe.Start <= it.T1 then
+				trailOn = true
+				local want = pc:GetPivot().Position + Vector3.new(0, 0.3, 0)
+				if (it.Kit.Root.Position - want).Magnitude > 0.05 then
+					trailFollows = false
+				end
+			end
+		end
+		pc:PivotTo(pc:GetPivot() + Vector3.new(0, 0, -0.05))
+	end)
+	T.check(type(gap) == "number" and gap > 8 and strikeReach and math.abs(strikeReach - gap) < 1e-3,
+		"Pounce: the Strike leaps the whole gap (Reach = AttackFx.LeapReach, like the melee)", fmt("reach %s, gap %s", tostring(strikeReach), tostring(gap)))
+	T.check(pAtImpact and math.abs(pAtImpact - 0.26) < 0.05, "Pounce: the leap lands (Strike p 0.26) on the slam (the impact)", tostring(pAtImpact))
+	T.check(halfReach and math.abs(halfReach - (gap - 5)) < 1e-3 and pastReach == 0,
+		"Pounce: Pose(unit, base) leaps only what is left from the drawn base to the landing (5 studs covered: gap - 5; past it: 0)",
+		fmt("%s / %s", tostring(halfReach), tostring(pastReach)))
+	T.check(trailOn and trailFollows, "Pounce: the leap trail rides the leaping pet (its pivot), not a scripted arc")
+	pc:Destroy()
+	pt:Destroy()
+	run(2)
+
+	-- 16d) the Beam's wrap streams the element along the beam (mouth -> hit), the Heal's sparkles are upright plus signs
+	Fx.ClearAll()
+	Fx.Play(ctx({ Attack = "Special", Kind = "Beam", Element = "Flame", Rarity = "Epic", From = { Unit = 112, Model = A }, To = { Unit = 113, Model = B }, Now = clock }))
+	local be = Fx._Live()[#Fx._Live()]
+	local wrap = nil
+	for _, it in ipairs(be and be.Items or {}) do
+		if it.Kind == "Emitter" and it.Layer and it.Layer.Id == "Wrap" then
+			wrap = it
+		end
+	end
+	local onLine, offLine, spread = 0, 0, {}
+	run(1.2, function()
+		if wrap and wrap.Seq and wrap.Seq > 0 and not spread[wrap.Seq] then
+			spread[wrap.Seq] = true
+			local p = wrap.Kit.Root.Position
+			local a, b = be.Mouth, be.Hit
+			local d = (b - a)
+			local u = math.max(0, math.min(1, (p - a):Dot(d) / d:Dot(d)))
+			if (a + d * u - p).Magnitude <= 0.6 * be.Size then
+				onLine = onLine + 1
+			else
+				offLine = offLine + 1
+			end
+		end
+	end)
+	T.check(wrap and wrap.Kit.Em.Texture ~= "" and wrap.Layer.Texture == "fx_flame" and onLine >= 3 and offLine == 0,
+		"Beam: the element streams along the beam (Flame: flame tongues, every emit point on mouth -> hit)", fmt("%d on, %d off", onLine, offLine))
+	Fx.ClearAll()
+	Fx.Play(ctx({ Attack = "Special", Kind = "Heal", Element = "Nature", Rarity = "Rare", From = { Unit = 114, Model = A }, To = { { Unit = 115, Model = B } }, Now = clock }))
+	local he = Fx._Live()[#Fx._Live()]
+	local plus = nil
+	for _, it in ipairs(he and he.Items or {}) do
+		if it.Kind == "Emitter" and it.Layer and it.Layer.Id == "Burst" then
+			plus = it.Kit.Em
+		end
+	end
+	T.check(plus and plus.Rotation.Min == 0 and plus.Rotation.Max == 0 and plus.RotSpeed.Min == 0 and plus.RotSpeed.Max == 0,
+		"Heal: the sparkles are upright plus signs (no random roll, no spin)")
+	Fx.ClearAll()
+	for _, m in ipairs(allyModels) do
+		m:Destroy()
+	end
+	run(1)
+
 	-- clean up
 	Fx.ClearAll()
 	Fx.Hooks.Punch = nil

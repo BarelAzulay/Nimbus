@@ -1060,19 +1060,114 @@ S.p7vfx_catalog = guarded("p7vfx_catalog", function()
 	T.check(rb and rb.Kind == "Mesh" and rb.Key == "vfx_root" and rb.Motion == "Erupt" and rb.Texture == nil,
 		"p7vfx catalog: Nature's ranged root burst is a vfx_root Mesh layer that erupts")
 
-	-- the Shield shell and the Freeze cage stay Glass at every band (other cores follow the band)
-	local glass = T.tally("p7vfx catalog: Shield shell / Freeze cage cores are Glass at every rarity; other band-4 cores are Neon")
+	-- the Shield shell and the Freeze cage stay Glass at every band (other cores follow the band); Task 10: Earth's cage is
+	-- stone at every band (SmoothPlastic), Nature's Freeze is a root cage (vfx_root, the band's material)
+	local glass = T.tally("p7vfx catalog: Shield shell / Freeze cage cores are Glass at every rarity (Earth's cage stone, Nature's roots); other band-4 cores are Neon")
+	local CAGE = { Earth = { Key = "vfx_cage", Material = "SmoothPlastic" }, Nature = { Key = "vfx_root" } }
 	for _, element in ipairs(elements) do
 		for _, rarity in ipairs(RARITIES) do
 			for _, kind in ipairs({ "Shield", "Freeze" }) do
 				local r = C.Resolve({ Element = element, Attack = "Special", Kind = kind, Rarity = rarity, Mine = true })
-				glass:case(r and r.Core.Material == "Glass", fmt("%s %s %s: %s", element, kind, rarity, tostring(r and r.Core.Material)))
+				local want = (kind == "Freeze" and CAGE[element]) or { Key = (kind == "Freeze") and "vfx_cage" or "vfx_shell", Material = "Glass" }
+				local band = BAND[rarity]
+				local mat = want.Material or ((band == 4) and "Neon" or C.Elements[element].Material)
+				glass:case(r and r.Core.Key == want.Key and r.Core.Material == mat, fmt("%s %s %s: %s %s (want %s %s)", element, kind, rarity, tostring(r and r.Core.Key), tostring(r and r.Core.Material), want.Key, mat))
 			end
 		end
 		local blast = C.Resolve({ Element = element, Attack = "Special", Kind = "Blast", Rarity = "Secret", Mine = true })
 		glass:case(blast and blast.Core.Material == "Neon", element .. " Secret Blast core " .. tostring(blast and blast.Core.Material))
 	end
 	glass:report()
+	-- Task 10: the 9 special kinds for every element. Every element x kind x rarity: <= 3 Light layers (a 4th would be
+	-- dropped silently by the engine's MAX_LIGHTS: Rally / Freeze have their own light, so they skip the Epic Flash);
+	-- the kind's element slots are the element's OWN sheets (Beam Wrap, Shield Ward, Rally Roar / Rouse, Haste Gust,
+	-- Heal Spiral, Storm Rain), so 8 elements give 8 different looks; the rain grows with rarity (Storm CoreCount 5 -> 8)
+	-- and the beam thickens (Beam ThickBand); the Pounce's Legendary afterimages ride the leap (LeapEcho, no core trail)
+	local SLOT_IDS = { Beam = "Wrap", Shield = "Ward", Rally = "Rouse", Haste = "Gust", Heal = "Spiral", Storm = "Rain" }
+	local tenBad, tenN = {}, 0
+	local looks = {}
+	for _, element in ipairs(elements) do
+		local own = {}
+		local E = C.Elements[element]
+		for _, key in ipairs({ E.Burst, E.Trail, E.Motif, E.Rain and E.Rain.Texture }) do
+			own[key] = true
+		end
+		for kind, es in pairs(E.Specials or {}) do
+			for _, v in pairs(es.Slots or {}) do
+				own[v] = true
+			end
+		end
+		for _, kind in ipairs(KINDS) do
+			for _, rarity in ipairs(RARITIES) do
+				tenN = tenN + 1
+				local r = C.Resolve({ Element = element, Attack = "Special", Kind = kind, Rarity = rarity, Mine = true })
+				local lights = 0
+				for _, l in ipairs(r and r.Layers or {}) do
+					if l.Kind == "Light" then
+						lights = lights + 1
+					end
+				end
+				if lights > 3 then
+					tenBad[#tenBad + 1] = fmt("%s %s %s: %d lights", element, kind, rarity, lights)
+				end
+				local sid = SLOT_IDS[kind]
+				local sl = sid and layerById(r, sid)
+				if sid and kind ~= "Storm" or (kind == "Storm" and sl and sl.Kind ~= "Beam") then
+					if not (sl and own[sl.Texture]) then
+						tenBad[#tenBad + 1] = fmt("%s %s %s: %s texture %s is not the element's", element, kind, rarity, tostring(sid), tostring(sl and sl.Texture))
+					end
+				end
+				if kind == "Rally" then
+					local roar = layerById(r, "Roar")
+					if not (roar and roar.Texture == E.Burst and roar.Motion == (E.BurstMotion or "Burst")) then
+						tenBad[#tenBad + 1] = fmt("%s Rally %s: the roar is not the element's burst", element, rarity)
+					end
+				end
+				if rarity == "Secret" and sid then
+					looks[kind] = looks[kind] or {}
+					looks[kind][(sl and sl.Texture or "?") .. "/" .. tostring(sl and sl.Color)] = true
+				end
+				if kind == "Pounce" then
+					local echo, after = layerById(r, "LeapEcho"), layerById(r, "Afterimage")
+					local band = BAND[rarity]
+					if after or ((band >= 3) ~= (echo ~= nil)) or (echo and echo.At ~= "Self") then
+						tenBad[#tenBad + 1] = fmt("%s Pounce %s: LeapEcho %s, Afterimage %s", element, rarity, tostring(echo ~= nil), tostring(after ~= nil))
+					end
+				end
+			end
+		end
+		local counts, thick = {}, {}
+		for _, rarity in ipairs({ "Common", "Rare", "Legendary", "Secret" }) do
+			counts[#counts + 1] = C.Resolve({ Element = element, Attack = "Special", Kind = "Storm", Rarity = rarity, Mine = true }).Core.Count
+			thick[#thick + 1] = C.Resolve({ Element = element, Attack = "Special", Kind = "Beam", Rarity = rarity, Mine = true }).Core.Thick
+		end
+		if not (counts[1] == 5 and counts[4] == 8 and counts[2] > counts[1] and counts[3] > counts[2] and thick[4] > thick[3] and thick[3] > thick[2] and thick[2] > thick[1]) then
+			tenBad[#tenBad + 1] = fmt("%s: rain %s, beam %s", element, table.concat(counts, "/"), table.concat(thick, "/"))
+		end
+	end
+	for kind, set in pairs(looks) do
+		local n = 0
+		for _ in pairs(set) do
+			n = n + 1
+		end
+		if n < 6 then -- (a few elements share a sheet, e.g. Storm / Shadow sparks: their colour differs)
+			tenBad[#tenBad + 1] = fmt("%s: only %d different element looks", kind, n)
+		end
+	end
+	T.check(#tenBad == 0, fmt("p7vfx catalog: Task 10 specials: <= 3 lights, each kind wears the element's own sheets (8 looks), the rain / beam grow with rarity, the Pounce afterimages ride the leap (%d recipes)", tenN),
+		table.concat(tenBad, " | "))
+	local earthBlast = C.Resolve({ Element = "Earth", Attack = "Special", Kind = "Blast", Rarity = "Common", Mine = true })
+	local celBlast = C.Resolve({ Element = "Celestial", Attack = "Special", Kind = "Blast", Rarity = "Common", Mine = true })
+	local natFreeze = C.Resolve({ Element = "Nature", Attack = "Special", Kind = "Freeze", Rarity = "Rare", Mine = true })
+	local waterPounce = C.Resolve({ Element = "Water", Attack = "Special", Kind = "Pounce", Rarity = "Rare", Mine = true })
+	local flameBeam = C.Resolve({ Element = "Flame", Attack = "Special", Kind = "Beam", Rarity = "Rare", Mine = true })
+	local shadowHaste = C.Resolve({ Element = "Shadow", Attack = "Special", Kind = "Haste", Rarity = "Rare", Mine = true })
+	local stormHeal = C.Resolve({ Element = "Storm", Attack = "Special", Kind = "Heal", Rarity = "Rare", Mine = true })
+	T.check(earthBlast.Core.Key == "vfx_chunk" and earthBlast.Core.Transparency == 0 and celBlast.Core.Key == "vfx_star" and celBlast.Core.Spin == true
+		and natFreeze.Core.Key == "vfx_root" and natFreeze.Core.Count == 5 and not layerById(waterPounce, "SlamCrack") and layerById(waterPounce, "Ripple")
+		and layerById(flameBeam, "Wrap").Texture == "fx_flame" and layerById(shadowHaste, "Gust").Texture == "fx_sparks"
+		and layerById(stormHeal, "Spiral").Texture == "fx_sparkle",
+		"p7vfx catalog: Task 10 element takes: Earth hurls a boulder, Celestial a star, Nature's root cage, Water's splash pounce (no crack), Flame's fire breath, Shadow's glitch haste, Storm's soft heal glints")
 	local hyd = C.Resolve({ Element = "Shadow", Attack = "Special", Kind = "Rally", Rarity = "Secret", PetId = "hydralotl", Mine = true })
 	T.check(hyd and hyd.Sig and hyd.Sig.Actor and hyd.Sig.Actor.At == "Behind", "p7vfx catalog: Hydralotl's serpents rise Behind the pet (a documented At)")
 end)
