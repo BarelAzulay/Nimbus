@@ -73,9 +73,13 @@ Special pet-type keys (wave 2 / 2.5):
   dog / bear hybrid on an earless species.
 * **Gates**: 6 keys `gate_<obby|ring|arena|dungeon|home|altar>`, one per crest (`WorldStyle.GateMeshKey(shape,
   glyph)`); every `BuildGate` gate with that crest shares it (arena gates, the dungeon portal, the arena's Return
-  gate wears `gate_home`).  Neon parts stay Roblox parts (keep lists).  The 7th, `gate_homeportal`
+  gate wears `gate_home`).  Neon parts stay Roblox parts (keep lists).  `gate_home` is built by
+  `kit/props/gates_homestead.py` (prop `gate_homestead`, polish 2026-10-27): the same BuildGate contract in the
+  homestead family (coursed stone, oak hoop with bronze straps inside the gate-colour band, an enamel plate with a
+  brass cottage on a post between two porch lanterns whose glass is the Neon CrestWindows).  The 7th, `gate_homeportal`
   (`kit/props/gates_homeportal.py`, prop `home_portal`), is not a BuildGate gate: it is the player's summoned home
-  portal (a 4 x 7 stud homestead gate: coursed stone, oak arch, keystone plate in the player's colour), assembled on
+  portal (a 4 x 7 stud homestead gate: coursed stone, a 0.125-lattice oak arch, keystone plate in the player's colour
+  with the brass cottage), assembled on
   the client by `HomePortalFx` (Part copy until the key is usable); its Neon vortex stays Parts there.
 * **World keys** (lobby, home, arena, dungeon) bake today's Part build; a `LayoutSig` in the manifest must match the
   live build, otherwise that piece stays on its Parts until it is rebuilt.

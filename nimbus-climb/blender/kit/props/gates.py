@@ -5,13 +5,16 @@ hoopVoxels / archVoxels + the Crest.* glyphs), re-sculpted finer (0.5-stud gate 
 
     gate_obby     hoop + 5-star crest (cloud glyph)        gate_arena    hoop + shield and crossed swords (swords)
     gate_ring     the crowned square arch (crown)          gate_dungeon  hoop + skull over crossed bones (torch)
-    gate_home     hoop + little house (house; the arena's  gate_altar    hoop + storm cloud (bolt)
-                  green Return gate)
+    gate_altar    hoop + storm cloud (bolt)
+
+gate_home (the arena's green Return gate, glyph "house") is built by props/gates_homestead.py (prop "gate_homestead",
+polish 2026-10-27: the homestead family of gate_homeportal) on this same BuildGate contract; its old cartoon cottage
+crest is gone.
 
 The mesh replaces ONLY the Part voxels the client hides when it dresses the gate (WorldStyle.GATE_MESH_HIDE):
 the stone base / pillars (Stone, StoneDark), the white cloud frame (Frame), the coloured band / caps / keystone /
 crown (Trim) and the crest bodies.  The Neon glow ring, the swirl, the gems, the star gems, the skull's eyes, the
-house windows and the storm bolt stay SEPARATE Neon Parts (PortalFxController animates them), so this mesh leaves
+house windows (CrestWindow) and the storm bolt stay SEPARATE Neon Parts (PortalFxController animates them), so this mesh leaves
 their cells free and sits flush around them.
 
 Frame: the gate's site (ground under the gate centre, front = -Z), exactly the Part gate's frame: Part voxel
@@ -62,7 +65,6 @@ KINDS = {
     "ring": ("Arch", None, (250, 190, 56)),
     "arena": ("Hoop", "swords", (222, 74, 80)),
     "dungeon": ("Hoop", "torch", (150, 110, 220)),
-    "home": ("Hoop", "house", (96, 190, 140)),
     "altar": ("Hoop", "bolt", (64, 196, 222)),
 }
 
@@ -318,29 +320,6 @@ def crest_swords(C):
         C.put("Gold", ((uu ** 2 + (vv + 3.1) ** 2) < 0.24 ** 2 * 1.6) & zf)
 
 
-def crest_house(C):
-    """Home / Return: a cream cottage with a stepped coral roof (tile rows), a plank door with a gold knob, white
-    window frames around the Neon windows (Parts at x +-1.25, y 23.7, z -0.725..-0.575), a chimney and a smoke puff"""
-    crest_post(C)
-    C.put("Cream", C.box(-1.9, 1.9, 22.1, 24.5, -0.6, 0.6))
-    C.put("Bone", C.box(-2.0, 2.0, 22.0, 22.25, -0.7, 0.7))  # sill
-    for i, (hw, y0) in enumerate(((2.4, 24.5), (2.0, 24.85), (1.6, 25.2), (1.15, 25.5))):
-        C.put("RoofCoral", C.box(-hw, hw, y0, y0 + 0.35, -0.75, 0.75))
-        C.put("RoofCoralLight", C.box(-hw, hw, y0 + 0.25, y0 + 0.35, -0.75, 0.75) & ((np.floor(C.X * 2) % 2) == 0))
-    C.put("RoofCoralLight", C.box(-0.75, 0.75, 25.85, 26.0, -0.5, 0.5))
-    C.put("PlankDark", C.box(1.25, 1.75, 25.2, 26.25, -0.05, 0.55))
-    C.put("Edge", C.box(1.15, 1.85, 26.0, 26.25, -0.15, 0.65))
-    C.put("CloudPuff", C.ell((1.65, 26.6, 0.25), (0.42, 0.3, 0.3)) | C.ell((1.95, 26.85, 0.25), (0.3, 0.24, 0.24)))
-    C.put("Plank", C.box(-0.5, 0.5, 22.15, 23.55, -0.75, -0.5))
-    C.put("PlankDark", C.box(-0.5, 0.5, 23.3, 23.55, -0.75, -0.5))
-    C.put("Gold", C.box(0.15, 0.4, 22.75, 23.0, -0.85, -0.6))
-    for s in (-1, 1):
-        fx = s * 1.25
-        C.put("Frame", C.box(fx - 0.5, fx + 0.5, 23.25, 24.15, -0.7, -0.5) & ~C.box(fx - 0.35, fx + 0.35, 23.35, 24.05, -1, 0))
-        C.put("Plank", C.box(fx - 0.6, fx + 0.6, 23.1, 23.3, -0.8, -0.5))  # window box
-        C.put("RoofCoral", C.box(fx - 0.5, fx + 0.5, 23.3, 23.45, -0.85, -0.65) & ((np.floor(C.X * 4) % 2) == 0))  # flowers
-
-
 def crest_torch(C):
     """Dungeon: a cute rounded skull (dark sockets around the gate-coloured Neon eyes, which are Parts at x +-0.8,
     y 23.75, z -0.83..-0.71), a little navy nose, a tooth row on the jaw, over two crossed knobbly bones"""
@@ -381,7 +360,7 @@ def crest_bolt(C):
     C.carve(C.Z < -0.7)  # the bolt's face stays clear
 
 
-CRESTS = {"cloud": crest_cloud, "swords": crest_swords, "house": crest_house, "torch": crest_torch, "bolt": crest_bolt}
+CRESTS = {"cloud": crest_cloud, "swords": crest_swords, "torch": crest_torch, "bolt": crest_bolt}
 
 
 def recipes_for(keys):

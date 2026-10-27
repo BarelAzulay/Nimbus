@@ -286,9 +286,9 @@ function P.partFrame(rec, add, part)
 			part(Vector3.new(1, math.pi * 2.5 / n * 1.06, 1.5), arch * CFrame.Angles(0, 0, a) * CFrame.new(2.5, 0, 0), OAK)
 		end
 	end
-	part(Vector3.new(1, 1.75, 2), CFrame.new(0, g + 8.125, 0), OAK_DARK) -- keystone
-	part(Vector3.new(0.875, 1.125, 0.125), CFrame.new(0, g + 8.06, -1.06), rec.Color:Lerp(NAVY, 0.65)) -- its plate (the mesh Enamel recipe)
-	part(Vector3.new(1.5, 0.25, 1.5), CFrame.new(0, g + 8.875, 0), BRASS:Lerp(OAK_DARK, 0.6)) -- the bronze cap
+	part(Vector3.new(1.75, 1.75, 2), CFrame.new(0, g + 8.125, 0), OAK_DARK) -- keystone (polish 2026-10-27: 1.75 wide)
+	part(Vector3.new(1.375, 1.5, 0.125), CFrame.new(0, g + 8.125, -1.06), rec.Color:Lerp(NAVY, 0.65)) -- its plate (the mesh Enamel recipe)
+	part(Vector3.new(2, 0.125, 2), CFrame.new(0, g + 9.0625, 0), BRASS:Lerp(OAK_DARK, 0.6)) -- the bronze cap
 end
 
 function P.build(rec)

@@ -38,7 +38,8 @@ PAL = {
     "SlabWorn": (218, 213, 203),    # the threshold's middle, polished by feet
     "Edge": (168, 160, 150),        # the slab's lower lip
     "Oak": (165, 125, 85),          # Gemini: soft weathered oak
-    "OakDark": (125, 85, 55),       # lamination lines / butt joints / the keystone
+    "OakDark": (125, 85, 55),       # butt joints / the keystone
+    "OakSeam": (150, 110, 74),      # the glue line between the arch plies (a hairline)
     "Bronze": (92, 76, 64),         # Gemini: aged bronze straps (not gothic black iron)
     "Brass": (196, 160, 86),        # muted brass (rivets, plate rim, emblem)
     "IvyBase": (106, 142, 100),
@@ -128,32 +129,70 @@ def pillar(G, s, r):
     G.paint("StoneGrime", G.box(ax0, ax1, CAP_TOP - V, CAP_TOP, -2, 2) & (np.abs(G.Z) > ARCH_Z), only="SlabStone")
 
 
-def arch(G):
-    """a laminated oak arch (three plank layers, staggered butt joints), two aged-bronze straps with brass rivets,
-    a darker oak keystone with a bronze cap"""
-    r = np.sqrt(G.X ** 2 + (G.Y - CAP_TOP) ** 2)
-    ang = np.degrees(np.arctan2(G.Y - CAP_TOP, G.X))  # 0 = right springing, 90 = crown, 180 = left
-    body = (r >= ARCH_R0) & (r < ARCH_R1) & (G.Y > CAP_TOP) & (np.abs(G.Z) < ARCH_Z)
-    G.put("Oak", body)
-    # butt joints between the bent planks (radial dark lines on the faces, none on the soffit); lamination rings were
-    # tried and dropped: on a 0.25 lattice they stair-step into speckle
-    face = np.abs(G.Z) > ARCH_Z - V
-    for c in (62.0, 118.0):
-        G.paint("OakDark", body & face & (np.abs(np.radians(ang - c) * r) < 0.13))
-    # the keystone: darker oak, proud of the arch on every side, a capping course and a bronze cap
-    G.put("OakDark", G.box(-0.5, 0.5, 7.25, 8.75, -ARCH_Z - V, ARCH_Z + V))
-    G.put("OakDark", G.box(-0.75, 0.75, 8.5, 8.75, -ARCH_Z - V, ARCH_Z + V))
-    G.put("Bronze", G.box(-0.75, 0.75, 8.75, 9.0, -ARCH_Z, ARCH_Z))
-    # bronze straps wrapping the beam at 40 and 140 degrees, two brass rivets on each face
-    for a in (40.0, 140.0):
-        tang = np.abs(np.radians(ang - a) * r)  # arc distance from the strap line
-        strap = (r >= ARCH_R0 - V) & (r < ARCH_R1 + V) & (tang < 0.27) & (np.abs(G.Z) < ARCH_Z + V) & (G.Y > CAP_TOP)
-        G.put("Bronze", strap)
-        for rr in (2.3, 2.75):
-            px = math.cos(math.radians(a)) * rr
-            py = CAP_TOP + math.sin(math.radians(a)) * rr
-            for z in (-ARCH_Z - 1.5 * V, ARCH_Z + 1.5 * V):
-                cell(G, "Brass", px, py, z)
+AV = 0.125              # arch voxel (polish 2026-10-27: the 0.25 arch stair-stepped into lumps)
+PLY = (ARCH_R0 + ARCH_R1) / 2   # the glue line between the two equal 0.5-stud plies
+KEY_HW, KEY_Y0, KEY_Y1 = 0.875, 7.25, 9.0  # the keystone (1.75 wide, its front face 0.25 proud of the arch faces)
+
+
+def on_circle(A, cx, cy, R):
+    """the supercover of the circle r = R in the XY plane: every cell the curve passes through (a clean, gap-free
+    1-cell line on any lattice; a plain |r - R| < AV / 2 test breaks into diagonal speckle)"""
+    dx, dy = A.X - cx, A.Y - cy
+    r = np.sqrt(dx ** 2 + dy ** 2) + 1e-9
+    reach = AV / 2 * (np.abs(dx) + np.abs(dy)) / r
+    return np.abs(r - R) < reach
+
+
+def on_ray(A, cx, cy, deg):
+    """the supercover of the ray from (cx, cy) at `deg` (0 = +X, counter-clockwise) in the XY plane"""
+    c, s = math.cos(math.radians(deg)), math.sin(math.radians(deg))
+    dx, dy = A.X - cx, A.Y - cy
+    reach = AV / 2 * (abs(c) + abs(s))
+    return (np.abs(-s * dx + c * dy) < reach) & (c * dx + s * dy > 0)
+
+
+def arch(A):
+    """a bent-laminated oak arch on its own 0.125 lattice (a clean, even curve): two equal plies (a faint glue line at
+    r 2.5), butt joints staggered between the plies (outer ply at 30 / 150 degrees, inner ply at 60 / 120, the crown
+    joint under the keystone); bronze shoes where the timber stands on the stone caps; two flat aged-bronze straps at
+    45 / 135 degrees binding both plies between the joints (proud on the faces and the back, the soffit line left
+    clean) with two brass rivets on each face; a squared dark-oak keystone with a bronze cap.  Polish 2026-10-27:
+    no planed-arris carve and flat oak shading (on a stair-stepped curve both made the blotchy, lumpy read)."""
+    r = np.sqrt(A.X ** 2 + (A.Y - CAP_TOP) ** 2)
+    ang = np.degrees(np.arctan2(A.Y - CAP_TOP, A.X))  # 0 = right springing, 90 = crown, 180 = left
+    az = np.abs(A.Z)
+    up = A.Y > CAP_TOP
+    body = (r >= ARCH_R0) & (r < ARCH_R1) & up & (az < ARCH_Z)
+    A.put("Oak", body)
+    face = az > ARCH_Z - AV
+    # the glue line between the plies, on the faces only (a hairline, not a groove)
+    A.paint("OakSeam", body & face & on_circle(A, 0.0, CAP_TOP, PLY))
+    # butt joints: a 1-cell groove across the faces, the soffit and the back of each ply, dark at the bottom
+    for c, inner in ((30.0, False), (150.0, False), (60.0, True), (120.0, True)):
+        ply = (r < PLY) if inner else (r >= PLY)
+        line = body & ply & on_ray(A, 0.0, CAP_TOP, c)
+        skin = face | (r < ARCH_R0 + AV) | (r >= ARCH_R1 - AV)
+        A.carve(line & skin)
+        A.paint("OakDark", line & ~skin)
+    # bronze shoes: the arch feet stand in a flat bronze band (one cell proud, 3 cells high) on the caps
+    for s_ in (-1, 1):
+        x0, x1 = sorted((s_ * (ARCH_R0 - AV), s_ * (ARCH_R1 + AV)))
+        A.put("Bronze", A.box(x0, x1, CAP_TOP, CAP_TOP + 3 * AV, -ARCH_Z - AV, ARCH_Z + AV)
+              & ~A.box(-ARCH_R0, ARCH_R0, 0, 99, -9, 9))
+    # the straps: flat bronze bands 2 cells wide, one cell proud on the faces and the back; no lip under the soffit
+    for a in (45.0, 135.0):
+        c, s = math.cos(math.radians(a)), math.sin(math.radians(a))
+        along = -s * A.X + c * (A.Y - CAP_TOP)  # signed distance across the strap's centre line
+        strap = (r >= ARCH_R0) & (r < ARCH_R1 + AV) & (np.abs(along) < AV) & (az < ARCH_Z + AV) & up
+        A.put("Bronze", strap)
+        for rr in (2.25, 2.75):
+            px, py = c * rr, CAP_TOP + s * rr
+            for z in (-ARCH_Z - 1.5 * AV, ARCH_Z + 1.5 * AV):
+                A.put("Brass", A.cbox((px, py, z), (AV * 0.9,) * 3))
+    # the keystone: dark oak, 1.75 x 1.75, its faces 0.25 proud of the arch faces, a bronze cap
+    kz = ARCH_Z + 2 * AV
+    A.put("OakDark", A.box(-KEY_HW, KEY_HW, KEY_Y0, KEY_Y1, -kz, kz))
+    A.put("Bronze", A.box(-KEY_HW - AV, KEY_HW + AV, KEY_Y1, KEY_Y1 + AV, -kz, kz))
 
 
 def ivy(G, r):
@@ -194,34 +233,42 @@ def ivy(G, r):
         G.put(key, G.box(PILLAR_OUT - dx - V, PILLAR_OUT - dx + V, dy, dy + V, -PILLAR_Z - V, -PILLAR_Z), keep=True)
 
 
-# the keystone plate, 0.125-stud voxels (7 x 9 cells), one string per row from the top: B brass rim, E enamel (the
-# portal colour); EMBLEM marks the embossed brass house (one cell proud) drawn over the enamel
-PLATE = ["BBBBBBB"] + ["BEEEEEB"] * 7 + ["BBBBBBB"]
-EMBLEM = [".......",          # (fix round: a pentagon house with one door; the old 3-wide body on two legs read
-          ".......",          # as a chess rook / space invader)
-          "...#...",
-          "..###..",
-          ".#####.",
-          ".#####.",
-          ".##.##.",
-          ".##.##.",
-          "......."]
+# the keystone plate, 0.125-stud voxels (11 x 12 cells: 1.375 x 1.5 studs on the 1.75 keystone), one string per row from the top: B brass rim, E enamel (the
+# portal colour); EMBLEM is the embossed brass cottage drawn over the enamel: "@" two cells proud (the roof and the
+# chimney), "#" one cell proud (the walls), "." the enamel showing (the door).  Polish 2026-10-27: the pentagon house
+# on two legs read as a castle / rook; a cottage needs eaves wider than its walls, a chimney on the slope and a door.
+PLATE = ["BBBBBBBBBBB"] + ["BEEEEEEEEEB"] * 10 + ["BBBBBBBBBBB"]
+EMBLEM = ["...........",
+          "...........",
+          ".......@...",        # the chimney, rising from the right slope
+          ".....@.@...",        # the ridge
+          "....@@@@...",
+          "...@@@@@@..",
+          "..@@@@@@@..",        # the eaves, wider than the walls
+          "...#####...",
+          "...#####...",        # (Gemini round 1: a door up to the eaves split the house into two legs)
+          "...##.##...",        # the door
+          "...##.##...",
+          "..........."]
 
 
-def plate(C):
-    """the keystone plate: a brass rim around an enamel field in the portal colour with an embossed brass house; no
-    lettering (Gemini: a literal HOME sign reads tacky; the name tag above already says whose portal it is)"""
-    zp = -ARCH_Z - V - PV / 2       # the plate layer on the keystone's front face (z -1.0)
-    ze = zp - PV                    # the embossed layer
-    top = 8.625
-    for row in range(9):
-        y = top - (row + 0.5) * PV
-        for col in range(7):
-            x = (col - 3) * PV
-            k = PLATE[row][col]
-            C.put("Brass" if k == "B" else "Enamel", C.cbox((x, y, zp), (PV * 0.9, PV * 0.9, PV * 0.9)))
-            if EMBLEM[row][col] == "#" or (k == "B" and row in (0, 8)):
-                C.put("Brass", C.cbox((x, y, ze), (PV * 0.9, PV * 0.9, PV * 0.9)))
+def plate(C, top=8.875, zf=-ARCH_Z - 2 * AV, grid=(PLATE, EMBLEM), step=PV):
+    """a brass-rimmed enamel plate in the portal colour with an embossed brass cottage; no lettering (Gemini: a
+    literal HOME sign reads tacky; the name tag above already says whose portal it is).  `zf` is the face it sits on."""
+    rows, emb = grid
+    ncol = len(rows[0])
+    zp = zf - step / 2               # the plate layer (enamel and rim)
+    for row in range(len(rows)):
+        y = top - (row + 0.5) * step
+        for col in range(ncol):
+            x = ((ncol - 1) / 2 - col) * step  # +X is the viewer's left (front = -Z): drawn as seen
+            k = rows[row][col]
+            C.put("Brass" if k == "B" else "Enamel", C.cbox((x, y, zp), (step * 0.9,) * 3))
+            lift = {"#": 1, "@": 2}.get(emb[row][col], 0)
+            if k == "B":
+                lift = max(lift, 1)  # the rim stands one cell proud: the enamel sits in a shallow tray
+            for k2 in range(1, lift + 1):
+                C.put("Brass", C.cbox((x, y, zp - k2 * step), (step * 0.9,) * 3))
 
 
 def recipes(keys):
@@ -230,10 +277,11 @@ def recipes(keys):
 
 @prop("home_portal")
 def build_home_portal(entry, kit):
-    """catalog args: {"K": 4.0, "KC": 8.0, "seed": 7}"""
+    """catalog args: {"K": 4.0, "KA": 8.0, "KC": 8.0, "seed": 7}"""
     args = entry.get("args") or {}
     K = float(args.get("K", 4.0))
     KC = float(args.get("KC", 8.0))
+    KA = float(args.get("KA", 8.0))
     r = np.random.default_rng(int(args.get("seed", 7)))
     m = kit.model(entry["key"], "gate", vs=1.0 / K, K=K)
     used = {}
@@ -241,13 +289,19 @@ def build_home_portal(entry, kit):
     threshold(G)
     for s in (-1, 1):
         pillar(G, s, r)
-    arch(G)
     ivy(G, r)
     gkeys = [k for k in G.g.keys if k and np.any(G.L == G.g.ids[k])]
     fixed = tuple(k for k in gkeys if k not in TINTED and k not in OWN)
     kit.mesh(m, G.g, recipes=recipes(gkeys), group="Gate", vs=1.0 / K, offset=G.offset(), fixed_keys=fixed, used=used,
              shade_opts={"Brass": dict(dark=False), "IvyTip": dict(dark=False)})
-    # the plate grid: x cell centres on multiples of 0.125 (origin x -1/16) so the 7-cell plate is centred on x 0
+    # the arch on a 0.125 lattice (cells span multiples of 0.125: its springing lines up with the 0.25 caps)
+    A = Lat(kit, KA, (0, 7.25, 0), 3.5, "Arch")
+    arch(A)
+    akeys = [k for k in A.g.keys if k and np.any(A.L == A.g.ids[k])]
+    afixed = tuple(k for k in akeys if k not in TINTED and k not in OWN)
+    kit.mesh(m, A.g, recipes=recipes(akeys), group="Arch", vs=1.0 / KA, offset=A.offset(), fixed_keys=afixed, used=used,
+             flat=("Oak", "OakSeam", "OakDark", "Bronze"), shade_opts={"Brass": dict(dark=False)})
+    # the plate grid: x cell centres on multiples of 0.125 (origin x -1/16) so the 11-cell plate is centred on x 0
     C = Lat(kit, KC, (-PV / 2, 8.0, -1.0), 1.0, "Crest")
     plate(C)
     ckeys = [k for k in C.g.keys if k and np.any(C.L == C.g.ids[k])]
