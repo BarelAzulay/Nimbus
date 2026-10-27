@@ -214,7 +214,11 @@
         "AddBerries",
         "SpendBerries",
         "GetSettings",
-        "SetSetting"
+        "SetSetting",
+        "PlacedCopies",
+        "GardenBusyKeys",
+        "CheckTeam",
+        "ClosedBedOverlap"
       ],
       "signals": [
         "ProfileLoaded",
@@ -294,7 +298,8 @@
         "GetPerks",
         "GetTokenMultiplier",
         "Refresh",
-        "UnequipKey"
+        "UnequipKey",
+        "CanEquip"
       ],
       "signals": [
         "PerksChanged",
@@ -567,6 +572,7 @@
         "Prestige",
         "IncomePerSecond",
         "GardenSet",
+        "GardenRecall",
         "GoHome",
         "Piles",
         "PileSeconds",

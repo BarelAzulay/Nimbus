@@ -127,7 +127,8 @@ Pet Garden, food is berries now, and the Trials made way for the Dungeon (see
 - **Your pets make the money.** Build your free **Pet Garden** and put pets in it (**3 places**, +1 every Prestige).
   They eat from their bowls and pop out **rainbow coins**. Walk over the coins to scoop them: only YOU can scoop
   yours. Economy pets make 60 % more than Combat pets; rarer, higher-level, Golden / Rainbow and evolved pets make
-  more. Garden pets can still follow you and fight.
+  more. A garden pet is busy gardening: it does not follow you or fight until you take it out (Equip or Team asks
+  first and takes it out for you).
 - **Your presses grew into food plants.** Berry Bush, Carrot Patch, Cloud Melons, Starfruit Tree: tastier food makes
   every coin bigger. The Collector is now a **Coin Magnet**: coins fly to you from farther away and piles hold more.
   Same pads, same levels, same Home Level: nobody loses a level.
@@ -519,7 +520,11 @@ until then the House pad says *Reach Home Level N*. Every new house raises how f
 Your pets make the money here. Build the free **Pet Garden** (the first pad of every home), then press **E** on an
 empty pet bed (*Put a pet here*) and pick a pet, or open **Pets**, pick a pet and press **Garden**. The Garden
 has **3 places** at first and gets **+1 every Prestige** (up to 12 places). Any pet can work there, Economy or
-Combat, and garden pets can still follow you and fight at the same time. Only a pet in training cannot (see
+Combat. A pet does one job at a time: a garden pet leaves your side and your teams, and pressing **Equip** or picking
+it for a team asks *This pet is gardening! Take it out of the garden and equip it?* (**Yes** takes it out and equips
+it in one go). In **Pets** its card is dimmed with a green *Gardening* badge. A pet asleep on a bed that a Prestige
+closed (its sign says *Prestige to open*; it earns nothing there) is not busy: equip it or put it in a team and it
+simply leaves that bed, no question asked. A pet in training cannot garden either (see
 [the Training Place](#the-training-place)).
 
 **Roaming:** garden pets do not sit still. Each one walks to the **Food Bowl** in the middle of the garden, eats,
@@ -834,8 +839,9 @@ Tap the **Team** tile in the menu. A team is **3 pets**: slot 1 is your **FIGHTE
 **HELPERS**. **Set as fighter** on a team pet moves it into slot 1. You can save up to **3 teams** (the tabs *Team 1*
 to *Team 3*); **Use this team** picks the one you fight with. Tap a slot, then a pet: every pet shows its element,
 level and battle power. The screen shows your **team power** (compare it with a Dungeon floor's recommended power),
-the element bonuses your team gets right now and the element wheel. Garden pets can fight too (they keep earning at
-home); a pet in training sits out until it is done (its tile says *Training*). Without a team, the game picks the
+the element bonuses your team gets right now and the element wheel. Garden pets are busy gardening (their tile says
+*Gardening*; tap one to take it out of the garden and into the team); a pet in training sits out until it is done
+(its tile says *Training*). Without a team, the game picks the
 pets following you, or else your strongest pets. Pet levels count a lot: feed your pets at the Food Machine, evolve
 them and train their skills at the Training Place.
 
@@ -1182,20 +1188,25 @@ never drops below 14 px on a phone.
   (**Auto**, **Low** for slow phones and PCs, **High**), Camera shake (on / off) and **Mouse lock** (on / off, or
   press `L`: the cursor stays in the middle of the screen and the mouse turns the camera; windows free it). They
   apply at once and are saved with your profile.
-- **Left, vertically centred: the menu** of glossy square tiles: Pets, Items, Team, Index, Shop, Home, and the small
-  Stats and Settings tiles. Windows close with Esc, the red X or gamepad B.
+- **Left, vertically centred: the menu**, one slim column of glossy square tiles: Pets, Items, Team, Index, Shop,
+  Home, Stats and the Settings gear. The small **arrow tab** beside the gear folds the column against the left edge
+  (only the tab stays; a red dot on it means a tile has news) and brings it back; the game remembers it until you
+  leave. A tutorial step that points at a tile unfolds it. On phones the tiles wrap into two slim columns (three on
+  very small phones) so nothing sits under your thumbstick. Windows close with Esc, the red X or gamepad B.
 - **Top-left:** party panel in the lobby (the obby level with its stars, the countdown, members, the **Leave** button
   and, for the leader, **CHANGE**), match panel (difficulty, timer, checkpoints, team) in a climb. The tutorial card
   sits below it.
-- **Bottom-left:** your **Cloud Tokens**, **Cash** and **Gems** (big numbers with K / M), and under them the
-  **health and stamina card**: a heart badge with a thick health bar (it flashes and shakes when you are hit and
-  pulses when you are low), a lightning badge with the stamina bar (thin marks show how many dashes you have left),
-  and the dash ring that sweeps while dash recharges. NPC dialogs open just above it.
-- **Right: toasts** stack at the top-right (purchases, level-ups, "Welcome back! Your pets made ..." and the
-  rest), and the compact result card shows up at the right edge after a climb. **Bottom-centre:** the item hotbar
-  (1-4).
-- On phones the HUD moves up to clear the thumbstick, and on short landscape screens the currency counters move
-  to the top-right.
+- **Top-right:** your **Cloud Tokens**, **Cash** and **Gems** as thin strips (coin + number with K / M), right under
+  Roblox's top bar; in a climb only the token strip shows, with the "+n" you picked up. On a portrait phone they
+  sit side by side in one row; in a battle on a phone they move into Roblox's top bar.
+- **Bottom-centre:** the item hotbar (1-4) and, right above it, the **health and stamina card**: a heart badge with
+  a thick health bar (it flashes and shakes when you are hit and pulses when you are low), a lightning badge with
+  the stamina bar (thin marks show how many dashes you have left), and the dash ring that sweeps while dash
+  recharges. NPC dialogs open at the bottom-left.
+- **Right: toasts** stack at the top-right under the currency strips (purchases, level-ups, "Welcome back! Your
+  pets made ..." and the rest), and the compact result card shows up at the right edge after a climb.
+- On phones nothing sits under the thumbstick or the jump button: the health card steps aside or up, and the
+  Dungeon's result card opens under the currency strips.
 - **In the Battle Arena:** duel invites, the raid card and the event countdown are small cards at the right edge.
   **In a battle:** your fighter's card and your helpers top-left, the enemies on the right, the action buttons at the
   bottom right (see [In a battle](#in-a-battle-one-fighter-two-helpers)); in the ring "CHAMPION RING - Round 8 - Best

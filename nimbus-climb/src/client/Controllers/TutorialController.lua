@@ -906,6 +906,10 @@ local function layout()
 			-- beside the top-left panel (party panel) at the top edge
 			positions[#positions + 1] = { Top = edge - K.PORTRAIT_Y * k, Left = hud.TopLeftRight + K.GAP * k }
 		end
+		if hud.TopRightBottom > 0 then
+			-- below the HUD's top-right block (the currency strips) when they leave the top too narrow
+			positions[#positions + 1] = { Top = hud.TopRightBottom + K.GAP * k - K.PORTRAIT_Y * k, Left = nil }
+		end
 		local function try(pos, avoidBar, compact, lastResort)
 			S.compactCard = compact
 			local t = pos.Top

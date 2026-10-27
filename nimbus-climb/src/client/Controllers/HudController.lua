@@ -11,26 +11,34 @@
 --                 slot (portal name + a big red Leave button, the only way out of a locked portal; the
 --                 countdown; the members; "Locked until launch" + the head count); the small title card
 --                 slides in there at join and leaves after four seconds
---   bottom-left   Currency stack (Cloud Tokens now: cloud coin + big abbreviated number, "+n" while in a
---                 match; Cash and Gems rows appear by themselves once those player attributes exist),
---                 above the vitals card: heart badge + thick HP tube (white damage trail, hit flash + shake,
---                 low-health pulse, DOWNED state), lightning badge + stamina tube (dims when run dry) and
---                 the dash ring (cooldown sweep). Raised on touch devices to clear the thumbstick; short
---                 touch screens get a compact card (VG.Compact) so it never sits on the hotbar.
---   top-right     The currency stack moves here on short screens (landscape phones) where there is no
---                 room above the raised vitals; the toast stack (NotifyController) then starts below it.
+--   top-right     (bug batch 2 #1, option A "Split & shift") the currencies as thin strips stacked under
+--                 Roblox's top bar, right-aligned: Cash, Gems, Cloud Tokens (coin + abbreviated number, "+n"
+--                 chip on the token strip while in a match; Cash and Gems appear by themselves once those
+--                 player attributes exist, and hide in a match). The toast stack (NotifyController) starts
+--                 below them (TopRightBottom). A portrait screen lines them up in ONE row there (a stack would
+--                 eat the toasts' room); a phone in a battle / dungeon run moves them into Roblox's top band
+--                 when they fit there in one row (the battle HUD owns the top corners); a phone's dungeon End
+--                 card starts below them (DungeonController reads TopRightBottom); one that still covers the
+--                 corner (no room above the jump button) hides them meanwhile.
+--   bottom-centre The vitals card, right above the pet hotbar (centred on the measured bar): heart badge +
+--                 thick HP tube (white damage trail, hit flash + shake, low-health pulse, DOWNED state),
+--                 lightning badge + stamina tube (dims when run dry) and the dash ring (cooldown sweep). Short touch
+--                 screens get the flatter compact card (VG.Compact); it never shares rows with Roblox's
+--                 thumbstick / jump button or the RUN / DASH buttons (it steps up above them where it must).
+--   left-centre   MenuController's slim tile column (not ours; measured).
 --
 -- Sizes follow the v3 readability rule: every panel is designed in 1080p pixels (body text >= 18, numbers
 -- 30+, titles 26-34) and carries a UIScale of Theme.ScreenFactor() = clamp(viewportY / 1080, 0.8, 1.25), so
 -- the smallest text is 14.4 px on a phone. The UIScale sits on the panel, the margins on full-screen holder
 -- frames, so scaling never moves a panel away from its corner.
 --
--- Neighbours are MEASURED, not guessed: the menu column (NimbusMenu.MenuColumn, left-centre, drawn above us)
--- and the touch RUN / DASH buttons (MobileControls). Whatever of ours would run into the column steps aside
--- to its right; the vitals and the currency stack never reach under the touch buttons. The geometry is
+-- Neighbours are MEASURED, not guessed: the menu column (NimbusMenu.MenuColumn, left-centre, drawn above us),
+-- the pet hotbar (NimbusHotbar.Hotbar) and the touch RUN / DASH buttons (MobileControls). Whatever of ours would
+-- run into the column steps aside to its right; the vitals never reach under the touch buttons. The geometry is
 -- re-checked twice a second and on every viewport change, and published as attributes on the NimbusHud
--- gui (TopLeftRight, TopLeftBottom, TopRightBottom, BottomLeftTop, HudScale; gui-area pixels) so the
--- toasts and side panels can keep clear of the HUD.
+-- gui (TopLeftRight, TopLeftBottom, TopRightLeft, TopRightBottom, BottomLeftTop = the top of the bottom block (the
+-- vitals card), BottomCentreTop / Left / Right = the vitals card, HudScale100; gui-area pixels) so the toasts,
+-- dialogs and side panels can keep clear of the HUD.
 --
 -- Data: Humanoid health, player attributes (CloudTokens, MatchTokens, InMatch, Downed, Stamina, Cash, Gems)
 -- and the MatchState / PartyState remotes. Everything is nil-safe: no humanoid, no match, no party, a
@@ -69,24 +77,49 @@ local HudController = {}
 local K = {
 	EDGE = 12, -- margin to the screen edge
 	TOUCH_EDGE = 20, -- larger side margin on touch devices (notches, rounded corners)
-	TOUCH_RAISE_SMALL = 150, -- gui px the vitals are lifted on phones (thumbstick room)
-	TOUCH_RAISE_LARGE = 220, -- ... and on tablets
-	TOUCH_RAISE_MIN = 64, -- short landscape phones lift less so the top-left panel still fits above
 	SMALL_PHONE = 500, -- Roblox's own touch controls shrink when the smaller screen side is at most this
 
-	VITALS_W = 340,
+	VITALS_W = 300, -- bug batch 2 #1: a compact card, about the hotbar's width (it sits right above it)
 	VITALS_H = 93, -- the vitals card (see VG below for its inside)
 	VITALS_MIN_W = 236, -- narrowest the vitals get squeezed on a small phone
-	STACK_GAP = 10, -- between the vitals and the currency stack (scaled)
+	HOTBAR_GAP = 8, -- screen px between the hotbar's top and the vitals card
+	HOTBAR_FALLBACK = 78, -- gui px the hotbar reaches above the bottom edge while it cannot be measured (14 + 64)
+	OBSTACLE_GAP = 8, -- kept between the vitals and the column / the touch buttons / Roblox's stick and jump button
+	-- Roblox's own touch controls (gui px; small = the smaller screen side <= SMALL_PHONE): the thumbstick's zone at
+	-- the bottom-left (width, height above the bottom edge: the dynamic stick's idle ring reaches ~93 px on phones)
+	-- and the jump button (J x J square, left edge 1.5 J + 10 and right edge 0.5 J + 10 px from the right edge, bottom
+	-- 20 px (small) or 0.75 J above the bottom edge)
+	STICK_W_SMALL = 110,
+	STICK_H_SMALL = 96,
+	STICK_H_PORTRAIT = 150, -- a portrait phone's thumb roams higher: the card keeps the old raise there
+	STICK_W_LARGE = 190,
+	STICK_H_LARGE = 210,
+	JUMP_SMALL = 70,
+	JUMP_LARGE = 120,
 
-	CUR_W = 240, -- one currency pill
-	CUR_H = 46,
-	CUR_GAP = 10,
-	CUR_MIN_W = 190,
-	CUR_PAIR_MIN_W = 236, -- two compact pills side by side need this much
-	COIN = 54, -- the round coin badge overlapping the pill's left end
-	CHIP_W = 76, -- the "+n" match chip on the token pill
-	COIN_COMPACT = 42, -- coin of a compact (paired) pill
+	-- bug batch 2 #1 (option A): the currencies are thin strips stacked in the top-right corner, right-aligned
+	STRIP_W = 168, -- one strip (design px); in a match the token strip grows by its "+n" chip
+	STRIP_H = 32,
+	STRIP_GAP = 6,
+	STRIP_COIN = 30, -- the coin at the strip's left end
+	STRIP_TEXT = 24, -- the number (shrinks to STRIP_TEXT_MIN for long numbers; >= 14 px on a phone)
+	STRIP_TEXT_MIN = 18,
+	STRIP_CHIP_W = 56, -- the "+n" match chip on the token strip
+	STRIP_CHIP_H = 24,
+	-- ... except in a battle / dungeon run on a landscape phone, where the battle HUD needs the right edge: there the
+	-- strips sit in ONE row inside Roblox's top band (the v5 place the battle HUD is laid out around)
+	BAND_LEFT = 150, -- the row starts right of Roblox's top-bar buttons (screen px) ...
+	BAND_RIGHT = 72, -- ... and ends left of its "..." button
+	BAND_INSET = 58, -- the top bar's height when the gui inset cannot be measured
+	BAND_MIN_W = 120, -- a strip in the band is squeezed to this at most
+	-- ... and on a portrait screen the strips sit side by side in ONE row at the top right (a stack would eat the
+	-- room the toasts below it need there), each this wide at most / at least
+	ROW_MAX_W = 140,
+	ROW_MIN_W = 104,
+
+	COIN = 54, -- the v5 pill geometry (setRowGeometry false / true): the round coin badge of a full pill ...
+	CHIP_W = 76, -- ... the "+n" match chip on it ...
+	COIN_COMPACT = 42, -- ... and the coin of a compact pill
 
 	PANEL_W = 330, -- match + party panels
 	PANEL_MIN_W = 272, -- ... squeezed this far on short screens (keeps their text out of the screen middle)
@@ -94,19 +127,13 @@ local K = {
 	TITLE_W = 300,
 	TITLE_H = 78,
 
-	-- Menu column fallback (only while MenuController's column cannot be measured): 6 tiles of the v3 menu.
-	BAND_LEFT = 150, -- v5: landscape phones: the pills' row starts right of Roblox's top-bar buttons (screen px) ...
-	BAND_RIGHT = 72, -- ... and ends left of its "..." button
-	BAND_INSET = 58, -- the top bar's height when the gui inset cannot be measured
-	BAND_W = 160, -- design width of one compact pill in the top band (128 px at the phone scale) ...
-	BAND_MIN_W = 120, -- ... squeezed to this at most
-	MENU_FALLBACK_W = 76,
-	MENU_FALLBACK_ENTRY = 82,
-	MENU_FALLBACK_GAP = 6,
-	MENU_FALLBACK_COUNT = 6,
+	-- Menu column fallback (only while MenuController's column cannot be measured)
+	MENU_FALLBACK_W = 82, -- bug batch 2 #1: one column of eight 56 px tiles + its arrow tab
+	MENU_FALLBACK_ENTRY = 56,
+	MENU_FALLBACK_GAP = 5,
+	MENU_FALLBACK_COUNT = 8,
 	MENU_CLEARANCE = 8, -- empty strip kept between the column and whatever steps aside for it
 	SPAN_MARGIN = 4, -- two vertical spans closer than this count as touching
-	BUTTON_CLEARANCE = 8, -- kept between our blocks and the touch RUN / DASH buttons
 
 	LOW_HEALTH = 0.3, -- below this the heart beats and the card pulses red
 	TRAIL_HOLD = 0.45, -- seconds the white damage trail waits before it catches up
@@ -120,12 +147,11 @@ local K = {
 	LAYOUT_POLL = 0.5, -- seconds between two geometry checks
 }
 
--- VG: geometry of the vitals card in design px (1080p), width 236-340 (the bars stretch with it; the badges
+-- VG: geometry of the vitals card in design px (1080p), width 236-300 (the bars stretch with it; the badges
 -- and the dash ring keep their size). H = the layout slot, CARD_H = the card drawn in it (from the top).
--- Left column: the heart badge over the lightning badge, both overlapping the card's left edge like the coins
--- of the currency pills above (same column). Regular: the dash ring ends the stamina row. Compact (short touch
--- screens, landscape phones, where the slot sits right on the hotbar): a flatter card that leaves a gap at the
--- bottom of its slot, with a bigger dash ring at the right end spanning both rows.
+-- Left column: the heart badge over the lightning badge, both overlapping the card's left edge. Regular (desktops):
+-- the dash ring ends the stamina row. Compact (short touch screens, landscape phones): a flatter card that
+-- leaves a gap at the bottom of its slot, with a bigger dash ring at the right end spanning both rows.
 local VG = {
 	Regular = {
 		H = K.VITALS_H, CARD_H = K.VITALS_H, CARD_X = 20, CARD_CORNER = 22,
@@ -141,7 +167,6 @@ local VG = {
 		ST_X = 34, ST_Y = 45, ST_H = 18,
 		RING = 46, RING_Y = 35, RING_GAP = 8, RING_FACE = 30, RING_TEXT = 22, RING_SPAN = true,
 	},
-	COMPACT_SPARE = 10, -- use Compact when Regular leaves less than this above the minimum touch raise
 }
 
 local Colors = Theme.Colors
@@ -210,7 +235,7 @@ local Items = {} -- sliding panels, see present()
 local Cur = {} -- currency rows by id: { Def, Attr, Row, Amount, AmountScale, CoinScale, Target, Display, Shown, Seen, Visible }
 
 local S = {
-	match = nil, party = nil, downed = false, currencyMode = "BottomLeft", panelW = K.PANEL_W,
+	match = nil, party = nil, downed = false, currencyMode = "TopRight", panelW = K.PANEL_W,
 	yieldToResult = false, -- a narrow screen with the result card open: the match panel steps away
 }
 local H = { -- health
@@ -619,23 +644,6 @@ local function visibleCurrencies()
 	return list
 end
 
--- Rows of a currency stack style: "Column" = one pill per row, "Pairs" = two compact pills per row (a last
--- single pill gets the full width).
-local function stackRows(count, style)
-	if style == "Row" then
-		return 1
-	end
-	if style == "Pairs" then
-		return math.ceil(count / 2)
-	end
-	return count
-end
-
-local function stackHeight(count, style)
-	local rows = math.max(1, stackRows(count, style))
-	return rows * K.CUR_H + (rows - 1) * K.CUR_GAP
-end
-
 -- Sets one corner holder's margins. The left margin eases to its new value when `animate` is set (a panel that
 -- is showing grows a row and must not hop sideways); everything else snaps.
 local function setPadding(name, left, top, right, bottom, animate)
@@ -675,12 +683,94 @@ local layoutCurrencyRows -- (style, width) -> places the rows; defined with the 
 local setPanelWidth -- (designWidth) -> resizes the match / party panels; defined with the panels below
 local setVitalsGeometry -- (VG.Regular | VG.Compact) -> places the vitals card's parts; defined with the card
 
--- Lays out the four corners. Inputs are measured every time; when nothing changed since the last call the
--- work is skipped (it runs twice a second). `animate` eases the top-left shift; `force` skips the check.
---   * desktop 1920x1080 (scale 1): vitals y 940-1010 (gui), the token pill right above them, panels top-left;
---   * phone landscape 844x390 (scale 0.8): vitals lifted ~90 px, the currency stack moves top-right;
---   * phone portrait 390x844: vitals lifted 150 px, squeezed between the menu column and the DASH button;
---     three currencies pair up (two compact pills per row) so the stack stays out of the screen centre.
+-- The pet hotbar (HotbarController: NimbusHotbar.Hotbar, bottom centre) in our coordinates, nil while unmeasurable.
+local function hotbarRect()
+	local pg = playerGui()
+	local bar = pg and pg:FindFirstChild("NimbusHotbar")
+	if not (bar and bar:IsA("ScreenGui") and bar.Enabled) then
+		return nil
+	end
+	local holder = bar:FindFirstChild("Hotbar")
+	if holder and holder:IsA("GuiObject") and holder.AbsoluteSize.X > 0 and shownIn(holder, bar) then
+		return rectOf(holder, insetShift(bar))
+	end
+	return nil
+end
+
+-- Cards that own the top-right corner for a moment (in our coordinates, nil when none is up): the currency strips
+-- step out of their way. Today: DungeonController's End card (NimbusDungeonRun.EndCard), which phones draw under the
+-- strips while a run's result shows (and in the corner itself only when that leaves no room above the jump button).
+local function cornerCardRect()
+	local pg = playerGui()
+	local run = pg and pg:FindFirstChild("NimbusDungeonRun")
+	if not (run and run:IsA("ScreenGui") and run.Enabled) then
+		return nil
+	end
+	local card = run:FindFirstChild("EndCard")
+	if card and card:IsA("GuiObject") and card.AbsoluteSize.X > 0 and shownIn(card, run) then
+		return rectOf(card, insetShift(run))
+	end
+	return nil
+end
+
+-- Roblox's own touch controls (thumbstick zone bottom-left, jump button bottom-right) in our coordinates.
+local function robloxTouchRects(area, vp)
+	local small = math.min(vp.X, vp.Y) <= K.SMALL_PHONE
+	local j = small and K.JUMP_SMALL or K.JUMP_LARGE
+	local jumpBottom = small and 20 or j * 0.75
+	local stickW = small and K.STICK_W_SMALL or K.STICK_W_LARGE
+	local stickH = small and K.STICK_H_SMALL or K.STICK_H_LARGE
+	if small and vp.Y > vp.X then
+		stickH = K.STICK_H_PORTRAIT
+	end
+	return {
+		{ x0 = 0, y0 = area.Y - stickH, x1 = stickW, y1 = area.Y },
+		{ x0 = area.X - (1.5 * j + 10), y0 = area.Y - jumpBottom - j, x1 = area.X - (0.5 * j + 10), y1 = area.Y - jumpBottom },
+	}
+end
+
+-- Where the vitals card goes (bug batch 2 #1): bottom centre, its bottom at `bottom` (gui px, right above the hotbar)
+-- and centred on `cx` (the hotbar's centre), as wide as `w` design px (>= minW). Whatever shares its rows - the menu
+-- column, the touch RUN / DASH buttons, Roblox's stick and jump button - limits it from the side it is on; when the
+-- room left is narrower than minW the card steps up just above the lowest of those and tries again, but never with
+-- its top above `ceiling` (the middle of the screen): there it keeps the last rows, squeezed to minW.
+-- Returns left (gui px), width (design px), bottom (gui px).
+local function placeVitals(area, k, w, minW, h, bottom, cx, obstacles, side, ceiling)
+	local gap = K.OBSTACLE_GAP
+	for _ = 1, 6 do
+		local top = bottom - h * k
+		local left, right = side, area.X - side
+		local step = nil
+		for _, r in ipairs(obstacles) do
+			if top < r.y1 + gap and bottom > r.y0 - gap then
+				if (r.x0 + r.x1) / 2 < cx then
+					left = math.max(left, r.x1 + gap)
+				else
+					right = math.min(right, r.x0 - gap)
+				end
+				step = math.max(step or -math.huge, r.y0 - gap)
+			end
+		end
+		if right - left >= minW * k or not step or step - h * k < ceiling then
+			local width = math.floor(Util.Clamp((right - left) / k, minW, w))
+			local half = width * k / 2
+			local x = Util.Clamp(cx, left + half, math.max(left + half, right - half))
+			return x - half, width, bottom
+		end
+		bottom = step
+	end
+	return cx - minW * k / 2, minW, bottom
+end
+
+-- Lays out the HUD (bug batch 2 #1, option A "Split & shift"). Inputs are measured every time; when nothing changed
+-- since the last call the work is skipped (it runs twice a second). `animate` eases the top-left shift; `force`
+-- skips the check.
+--   * currencies: thin strips stacked in the top-right corner (right-aligned, below Roblox's top bar), every device;
+--   * vitals: bottom centre, right above the pet hotbar (centred on it, so it follows the bar when a side panel
+--     pushes the bar left), compact width; on touch screens it never shares rows with Roblox's stick / jump button
+--     or the RUN / DASH buttons (it steps up above them on a portrait phone);
+--   * the match / party panels and the title card keep the top-left corner (right of the menu column when they would
+--     reach it).
 local function applyMargins(animate, force)
 	if not UI.Gui or not M then
 		return
@@ -693,10 +783,21 @@ local function applyMargins(animate, force)
 	local inset = math.max(0, vp.Y - area.Y)
 	local column = menuRect(area)
 	local buttons = touch and mobileRects() or {}
+	local bar = hotbarRect()
+	local cornerCard = cornerCardRect()
 	local hasPanel, hasTitle, topH = topLeftState()
 	local currencies = visibleCurrencies()
+	local inMatch = S.match ~= nil or (player and player:GetAttribute(Config.Attr.InMatch) == true)
+	local inBattle = player ~= nil and player:GetAttribute(Config.Attr.InBattle or "InBattle") ~= nil
+	-- a phone in a battle / dungeon run: the strips go into Roblox's top band when they fit there in one row (the
+	-- battle HUD owns the top corners; a landscape phone always has the room, a portrait one for a single strip),
+	-- else (a portrait phone with Cash / Gems) they keep the narrow stack and the battle HUD's fighter card narrows
+	local nCur = math.max(1, #currencies)
+	local topBand = touch and inBattle and math.min(vp.X, vp.Y) <= K.SMALL_PHONE
+		and nCur * K.BAND_MIN_W * k + (nCur - 1) * K.STRIP_GAP * k <= vp.X - K.BAND_LEFT - K.BAND_RIGHT
 
-	local parts = { area.X, area.Y, vp.X, vp.Y, k, touch and 1 or 0, hasPanel and 1 or 0, hasTitle and 1 or 0, topH, rectKey(column) }
+	local parts = { area.X, area.Y, vp.X, vp.Y, k, touch and 1 or 0, hasPanel and 1 or 0, hasTitle and 1 or 0, topH,
+		rectKey(column), rectKey(bar), rectKey(cornerCard), inMatch and 1 or 0, topBand and 1 or 0, inBattle and 1 or 0 }
 	for _, c in ipairs(currencies) do
 		table.insert(parts, c.Id)
 	end
@@ -715,124 +816,11 @@ local function applyMargins(animate, force)
 		end
 		return side
 	end
-	local function rightLimit(top, bottom)
-		local limit = area.X - side
-		for _, r in ipairs(buttons) do
-			if top < r.y1 + K.BUTTON_CLEARANCE and bottom > r.y0 - K.BUTTON_CLEARANCE then
-				limit = math.min(limit, r.x0 - K.BUTTON_CLEARANCE)
-			end
-		end
-		return limit
-	end
 	-- the middle of the screen the game must never write into (the layout rule), in gui-area pixels
 	local band = {
 		x0 = vp.X * (0.5 - K.CENTRE_TOL), x1 = vp.X * (0.5 + K.CENTRE_TOL),
 		y0 = vp.Y * (0.5 - K.CENTRE_TOL) - inset, y1 = vp.Y * (0.5 + K.CENTRE_TOL) - inset,
 	}
-	local function inBand(x0, x1, y0, y1)
-		return x0 < band.x1 and x1 > band.x0 and y0 < band.y1 and y1 > band.y0
-	end
-
-	-- how high the bottom-left block sits, and how tall the vitals card is
-	local raise = K.EDGE
-	local geometry = VG.Regular
-	if touch then
-		local want = (math.min(vp.X, vp.Y) <= K.SMALL_PHONE) and K.TOUCH_RAISE_SMALL or K.TOUCH_RAISE_LARGE
-		-- short landscape screens: keep room for the tallest top-left panel (4-player match) above the vitals;
-		-- when the regular card would sit right on the hotbar, the compact card takes its place
-		local room = area.Y - K.EDGE - M.TopReserve * k - K.STACK_GAP * k
-		if room - VG.Regular.H * k < K.TOUCH_RAISE_MIN + VG.COMPACT_SPARE then
-			geometry = VG.Compact
-		end
-		raise = math.floor(Util.Clamp(math.min(want, room - geometry.H * k), K.TOUCH_RAISE_MIN, want))
-	end
-	if setVitalsGeometry then
-		setVitalsGeometry(geometry)
-	end
-	local vitalsH = geometry.H
-
-	-- vitals and the currency stack share one left edge (the column above them or beside them)
-	local vitalsBottom = area.Y - raise
-	local vitalsTop = vitalsBottom - vitalsH * k
-	local curBottom = vitalsTop - K.STACK_GAP * k
-	local reserveBottom = K.EDGE + M.TopReserve * k + K.STACK_GAP * k
-	local n = math.max(1, #currencies)
-
-	-- currency stack: above the vitals as a column, else paired up, else in the top-right corner
-	local mode, style = "TopRight", (n >= 3) and "Pairs" or "Column"
-	local blockLeft = clearOfColumn(vitalsTop, vitalsBottom)
-	local curLeft = blockLeft
-	local curW = K.CUR_W
-	local candidates = { "Column" }
-	if n >= 2 then
-		table.insert(candidates, "Pairs")
-	end
-	-- v5 (6.6): on a landscape phone the pills sit in a row in Roblox's top band, right of its buttons
-	local topBand = touch and vp.X > vp.Y and math.min(vp.X, vp.Y) <= K.SMALL_PHONE
-	if topBand then
-		candidates = {}
-		mode, style = "TopBand", "Row"
-		-- in a match the token pill also carries the "+n" chip: the pill grows by the chip so it never covers the number
-		local bandW = K.BAND_W
-		if currencies[1] and currencies[1].Chip and (S.match ~= nil or (player and player:GetAttribute(Config.Attr.InMatch) == true)) then
-			bandW = K.BAND_W + K.CHIP_W + 6
-		end
-		curW = math.floor(Util.Clamp((vp.X - K.BAND_LEFT - K.BAND_RIGHT - (n - 1) * K.CUR_GAP * k) / n / k, K.BAND_MIN_W, bandW))
-	end
-	for _, candidate in ipairs(candidates) do
-		local h = stackHeight(n, candidate) * k
-		local top = curBottom - h
-		local left = math.max(blockLeft, clearOfColumn(top, curBottom))
-		local minW = (candidate == "Pairs") and K.CUR_PAIR_MIN_W or K.CUR_MIN_W
-		local w = math.floor(Util.Clamp((rightLimit(top, curBottom) - left) / k, minW, K.CUR_W))
-		if inBand(left, left + w * k, top, curBottom) then
-			-- a slightly narrower stack may stay clear of the middle
-			w = math.max(minW, math.floor(math.min(w, (band.x0 - left) / k)))
-		end
-		if top >= reserveBottom and not inBand(left, left + w * k, top, curBottom) then
-			mode, style, curLeft, curW = "BottomLeft", candidate, left, w
-			break
-		end
-	end
-	if mode == "BottomLeft" then
-		blockLeft = curLeft
-	end
-
-	local vitalsRoom = rightLimit(vitalsTop, vitalsBottom) - blockLeft
-	local vitalsW = math.floor(Util.Clamp(vitalsRoom / k, K.VITALS_MIN_W, K.VITALS_W))
-	if UI.Vitals then
-		UI.Vitals.Size = UDim2.fromOffset(vitalsW, vitalsH)
-		UI.Vitals.Position = UDim2.new(0, blockLeft, 1, -raise)
-	end
-
-	local stackH = stackHeight(n, style)
-	local topRightBottom, topRightLeft = 0, 0
-	local bottomLeftTop = vitalsTop
-	if UI.Currency then
-		if layoutCurrencyRows then
-			layoutCurrencyRows(currencies, style, curW)
-		end
-		UI.Currency.Size = UDim2.fromOffset(curW, stackH)
-		if mode == "TopBand" then
-			-- in the top bar band (above the gui area: the gui starts below Roblox's top bar)
-			UI.Currency.Parent = UI.TopRight
-			UI.Currency.AnchorPoint = Vector2.new(0, 0.5)
-			UI.Currency.Size = UDim2.fromOffset(n * curW + (n - 1) * K.CUR_GAP, K.CUR_H)
-			UI.Currency.Position = UDim2.new(0, K.BAND_LEFT, 0, -math.max(inset, K.BAND_INSET) / 2)
-		elseif mode == "BottomLeft" then
-			UI.Currency.Parent = UI.BottomLeft
-			UI.Currency.AnchorPoint = Vector2.new(0, 1)
-			UI.Currency.Position = UDim2.new(0, curLeft, 1, -(raise + (vitalsH + K.STACK_GAP) * k))
-			bottomLeftTop = curBottom - stackH * k
-		else
-			UI.Currency.Parent = UI.TopRight
-			UI.Currency.AnchorPoint = Vector2.new(1, 0)
-			UI.Currency.Position = UDim2.new(1, -side, 0, K.EDGE)
-			topRightBottom = K.EDGE + stackH * k
-			topRightLeft = area.X - side - curW * k
-		end
-	end
-	S.currencyMode = mode
 
 	-- top-left panels: right of the menu column when they would reach it, and on short screens no wider than
 	-- what keeps their text out of the middle of the screen
@@ -841,8 +829,8 @@ local function applyMargins(animate, force)
 	if topH > 0 then
 		topLeft = clearOfColumn(K.EDGE, K.EDGE + topH * k)
 		if topLeft > side and topLeft + K.PANEL_MIN_W * k > area.X - side then
-			-- a narrow portrait phone has no room beside the 2-column tile grid (the panel would run off the right
-			-- edge): the panel keeps the corner and MenuController moves the grid below it (our TopLeftBottom)
+			-- a narrow portrait phone has no room beside the tile column (the panel would run off the right edge): the
+			-- panel keeps the corner and MenuController moves the tiles below it (our TopLeftBottom)
 			topLeft = side
 		end
 		if K.EDGE + topH * k > band.y0 then
@@ -852,11 +840,108 @@ local function applyMargins(animate, force)
 	if setPanelWidth then
 		setPanelWidth(panelW)
 	end
+
+	-- vitals: the regular card, the flatter compact card on short touch screens (landscape phones: the bottom band
+	-- between the stick and the jump button is busy there)
+	local geometry = (touch and vp.Y <= K.SMALL_PHONE) and VG.Compact or VG.Regular
+	if setVitalsGeometry then
+		setVitalsGeometry(geometry)
+	end
+	local vitalsH = geometry.H
+	local vitalsBottom, cx
+	if bar then
+		vitalsBottom = bar.y0 - K.HOTBAR_GAP
+		cx = (bar.x0 + bar.x1) / 2
+	else
+		vitalsBottom = area.Y - K.HOTBAR_FALLBACK * k - K.HOTBAR_GAP
+		cx = area.X / 2
+	end
+	local obstacles = {}
+	if column then
+		table.insert(obstacles, column)
+	end
+	if topH > 0 then
+		-- the match / party panel (a 4-player party on a landscape phone reaches the bottom band)
+		local w = math.max(hasPanel and panelW or 0, hasTitle and K.TITLE_W or 0)
+		table.insert(obstacles, { x0 = topLeft, y0 = K.EDGE, x1 = topLeft + w * k, y1 = K.EDGE + topH * k })
+	end
+	for _, r in ipairs(buttons) do
+		table.insert(obstacles, r)
+	end
+	if touch then
+		for _, r in ipairs(robloxTouchRects(area, vp)) do
+			table.insert(obstacles, r)
+		end
+	end
+	local vitalsLeft, vitalsW
+	vitalsLeft, vitalsW, vitalsBottom = placeVitals(area, k, K.VITALS_W, K.VITALS_MIN_W, vitalsH, vitalsBottom, cx, obstacles, side, band.y1)
+	local vitalsTop = vitalsBottom - vitalsH * k
+	if UI.Vitals then
+		UI.Vitals.AnchorPoint = Vector2.new(0, 1)
+		UI.Vitals.Size = UDim2.fromOffset(vitalsW, vitalsH)
+		UI.Vitals.Position = UDim2.new(0, math.floor(vitalsLeft + 0.5), 0, math.floor(vitalsBottom + 0.5))
+	end
+
+	-- currencies: thin strips stacked top-right, right-aligned (the token strip carries the "+n" chip in a match)
+	local n = math.max(1, #currencies)
+	local stripW = K.STRIP_W
+	for _, c in ipairs(currencies) do
+		if c.Chip and inMatch then
+			stripW = math.max(stripW, K.STRIP_W + K.STRIP_CHIP_W + 6)
+		end
+	end
+	local stackH = n * K.STRIP_H + (n - 1) * K.STRIP_GAP
+	local topRightBottom, topRightLeft = 0, 0
+	local mode = "TopRight"
+	if UI.Currency and topBand then
+		-- one row in the top band (above the gui area: the gui starts below Roblox's top bar)
+		mode = "TopBand"
+		local bandW = math.floor(Util.Clamp((vp.X - K.BAND_LEFT - K.BAND_RIGHT - (n - 1) * K.STRIP_GAP * k) / n / k, K.BAND_MIN_W, stripW))
+		if layoutCurrencyRows then
+			layoutCurrencyRows(currencies, "Band", bandW)
+		end
+		UI.Currency.Parent = UI.TopRight
+		UI.Currency.AnchorPoint = Vector2.new(0, 0.5)
+		UI.Currency.Size = UDim2.fromOffset(n * bandW + (n - 1) * K.STRIP_GAP, K.STRIP_H)
+		UI.Currency.Position = UDim2.new(0, K.BAND_LEFT, 0, -math.max(inset, K.BAND_INSET) / 2)
+		if not UI.Currency.Visible then
+			UI.Currency.Visible = true
+		end
+	elseif UI.Currency then
+		local blockW, blockH = stripW, stackH
+		if vp.X < vp.Y and n > 1 and not inBattle then
+			-- portrait: one row, right-aligned (in a battle the narrow stack: the fighter card narrows beside it)
+			local rowW = math.floor(Util.Clamp((area.X - 2 * side - (n - 1) * K.STRIP_GAP * k) / n / k, K.ROW_MIN_W, math.min(K.ROW_MAX_W, stripW)))
+			blockW, blockH = n * rowW + (n - 1) * K.STRIP_GAP, K.STRIP_H
+			if layoutCurrencyRows then
+				layoutCurrencyRows(currencies, "Band", rowW)
+			end
+		elseif layoutCurrencyRows then
+			layoutCurrencyRows(currencies, "Strips", stripW)
+		end
+		UI.Currency.Parent = UI.TopRight
+		UI.Currency.AnchorPoint = Vector2.new(1, 0)
+		UI.Currency.Size = UDim2.fromOffset(blockW, blockH)
+		UI.Currency.Position = UDim2.new(1, -side, 0, K.EDGE)
+		topRightBottom = K.EDGE + blockH * k
+		topRightLeft = area.X - side - blockW * k
+		-- a card that takes the corner for a moment (a dungeon run's result on a phone) hides the strips meanwhile
+		local strips = { x0 = topRightLeft, y0 = K.EDGE, x1 = area.X - side, y1 = topRightBottom }
+		local yield = cornerCard ~= nil and cornerCard.x0 < strips.x1 and strips.x0 < cornerCard.x1
+			and cornerCard.y0 < strips.y1 and strips.y0 < cornerCard.y1
+		if UI.Currency.Visible == yield then
+			UI.Currency.Visible = not yield
+		end
+	end
+	S.currencyMode = mode
+
 	setPadding("TopLeft", topLeft, K.EDGE, 0, 0, animate)
 	setPadding("TopRight", 0, 0, 0, 0)
 	setPadding("BottomLeft", 0, 0, 0, 0)
 
-	-- tell the neighbours (toasts, side panels) where the HUD is, in gui-area pixels
+	-- tell the neighbours (toasts, side panels, NPC dialogs, the tutorial) where the HUD is, in gui-area pixels.
+	-- BottomLeftTop keeps its name for them: the top of the HUD's bottom block, now the centred vitals card
+	-- (BottomCentreTop / BottomCentreLeft / BottomCentreRight give the card's extent).
 	local topW = 0
 	if hasPanel then
 		topW = panelW
@@ -869,7 +954,10 @@ local function applyMargins(animate, force)
 	publish("TopLeftBottom", topH > 0 and (K.EDGE + topH * k) or 0)
 	publish("TopRightBottom", topRightBottom)
 	publish("TopRightLeft", topRightLeft)
-	publish("BottomLeftTop", bottomLeftTop)
+	publish("BottomLeftTop", vitalsTop)
+	publish("BottomCentreTop", vitalsTop)
+	publish("BottomCentreLeft", vitalsLeft)
+	publish("BottomCentreRight", vitalsLeft + vitalsW * k)
 	if UI.Gui:GetAttribute("CurrencyMode") ~= mode then
 		UI.Gui:SetAttribute("CurrencyMode", mode)
 	end
@@ -1385,7 +1473,7 @@ local function buildCurrencyRow(parent, entry)
 	local color = def.Color or Colors.Token
 	local glow = def.Glow or Colors.TokenGlow
 	local row = newFrame(parent, "Currency_" .. entry.Id, {
-		Size = UDim2.fromOffset(K.CUR_W, K.CUR_H),
+		Size = UDim2.fromOffset(K.STRIP_W, K.STRIP_H),
 		Visible = false,
 	})
 
@@ -1435,7 +1523,7 @@ local function buildCurrencyRow(parent, entry)
 		Neon = neon, Stroke = bodyStroke,
 		Amount = amount, AmountScale = newScale(amount, 1), CoinScale = newScale(coin, 1),
 		Target = 0, Display = 0, Shown = nil, Seen = false, Available = false, ChipShown = false,
-		Width = K.CUR_W, Compact = nil,
+		Width = K.STRIP_W, Compact = nil,
 	}
 
 	if entry.Run then
@@ -1462,31 +1550,49 @@ local function buildCurrencyRow(parent, entry)
 	return c
 end
 
--- Inner geometry of one pill: a full pill has the big coin, a compact (paired) one a smaller coin.
+-- Coin size of a row for its geometry: a full pill has the big coin, a compact (paired / top band) one a smaller
+-- coin, a strip (bug batch 2 #1: the thin top-right strips) the smallest.
+local function coinSizeOf(c)
+	if c.Compact == "Strip" then
+		return K.STRIP_COIN
+	end
+	return c.Compact and K.COIN_COMPACT or K.COIN
+end
+
+-- Inner geometry of one pill (`compact`: false = full pill, true = compact pill, "Strip" = thin strip).
 local function setRowGeometry(c, compact)
 	if c.Compact == compact then
 		return
 	end
 	c.Compact = compact
-	local coinSize = compact and K.COIN_COMPACT or K.COIN
+	local strip = compact == "Strip"
+	local coinSize = coinSizeOf(c)
 	c.Coin.Size = UDim2.fromOffset(coinSize, coinSize)
 	if c.CoinGlyph then
-		c.CoinGlyph.TextSize = compact and 24 or 30
+		c.CoinGlyph.TextSize = strip and 19 or (compact and 24 or 30)
+	end
+	if c.Chip then
+		c.Chip.Size = strip and UDim2.fromOffset(K.STRIP_CHIP_W, K.STRIP_CHIP_H) or UDim2.fromOffset(K.CHIP_W, 32)
+		c.Chip.Position = UDim2.new(1, strip and -4 or -7, 0.5, 0)
+		c.RunLabel.TextSize = strip and 18 or 21
 	end
 	c.Body.Position = UDim2.fromOffset(math.floor(coinSize * 0.4), 0)
 	c.Body.Size = UDim2.new(1, -math.floor(coinSize * 0.4), 1, 0)
 	c.Shine.Position = UDim2.new(0.5, math.floor(coinSize * 0.25), 0, 4)
 	c.Shine.Size = UDim2.new(1, -math.floor(coinSize * 0.9), 0, 2)
-	c.Lip.Position = UDim2.new(0.5, 0, 1, -3)
-	c.Lip.Size = UDim2.new(1, -6, 0.55, -3)
-	c.Amount.Position = UDim2.new(0, coinSize + 8, 0.5, -1)
+	c.Lip.Position = UDim2.new(0.5, 0, 1, strip and -2 or -3)
+	c.Lip.Size = UDim2.new(1, -6, 0.55, strip and -2 or -3)
+	c.Amount.Position = UDim2.new(0, coinSize + (strip and 6 or 8), 0.5, -1)
+	if c.Stroke then
+		c.Stroke.Thickness = strip and 2 or 3
+	end
 end
 
 local function buildCurrency(holder)
 	local root = newFrame(holder, "Currency", {
-		AnchorPoint = Vector2.new(0, 1),
-		Position = UDim2.new(0, K.EDGE, 1, -K.EDGE - K.VITALS_H - K.STACK_GAP),
-		Size = UDim2.fromOffset(K.CUR_W, K.CUR_H),
+		AnchorPoint = Vector2.new(1, 0),
+		Position = UDim2.new(1, -K.EDGE, 0, K.EDGE),
+		Size = UDim2.fromOffset(K.STRIP_W, K.STRIP_H),
 	})
 	addViewportScale(root)
 	UI.Currency = root
@@ -2181,17 +2287,21 @@ end
 -- The number shrinks to fit the room left beside the coin and the optional "+n" chip.
 local function setAmountText(c, n)
 	local text = Theme.ShortNumber(n)
-	local coinSize = c.Compact and K.COIN_COMPACT or K.COIN
-	local chip = c.ChipShown and (K.CHIP_W + 6) or 0
-	local avail = c.Width - (coinSize + 8) - 10 - chip
-	local size = Util.Clamp(math.floor(avail / (math.max(1, #text) * 0.6)), 18, 32)
+	local strip = c.Compact == "Strip"
+	local coinSize = coinSizeOf(c)
+	local chip = c.ChipShown and ((strip and K.STRIP_CHIP_W or K.CHIP_W) + 6) or 0
+	local lead = coinSize + (strip and 6 or 8)
+	local avail = c.Width - lead - 10 - chip
+	local size = Util.Clamp(math.floor(avail / (math.max(1, #text) * 0.6)), strip and K.STRIP_TEXT_MIN or 18, strip and K.STRIP_TEXT or 32)
 	c.Amount.Text = text
 	c.Amount.TextSize = size
-	c.Amount.Size = UDim2.new(1, -(coinSize + 8) - 10 - chip, 1, -2)
+	c.Amount.Size = UDim2.new(1, -lead - 10 - chip, 1, -2)
 end
 
--- Places the rows of `list` (top to bottom) in a stack `width` design px wide: "Column" = one pill per row,
--- "Pairs" = two compact pills per row (a last single pill gets the full width). Other rows are hidden.
+-- Places the rows of `list` (top to bottom) in a stack `width` design px wide (bug batch 2 #1: style "Strips", one
+-- thin strip per row, right-aligned; in a match the token strip is wider by its "+n" chip, so the chip never covers
+-- the number), or (style "Band") side by side, each `width` wide (a landscape phone's top band in a battle). Other
+-- rows are hidden.
 layoutCurrencyRows = function(list, style, width)
 	local shown = {}
 	for _, c in ipairs(list) do
@@ -2203,40 +2313,25 @@ layoutCurrencyRows = function(list, style, width)
 			c.Row.Visible = false
 		end
 	end
-	if style == "Row" then
-		for j, c in ipairs(list) do
-			c.Row.Position = UDim2.fromOffset((j - 1) * (width + K.CUR_GAP), 0)
-			c.Row.Size = UDim2.fromOffset(width, K.CUR_H)
-			c.Row.Visible = true
-			local resized = c.Width ~= width
-			c.Width = width
-			setRowGeometry(c, true)
-			if resized or c.Shown == nil then
-				setAmountText(c, c.Shown or c.Display)
-			end
+	for j, c in ipairs(list) do
+		local w = K.STRIP_W
+		if c.Chip and inMatchNow() then
+			w = K.STRIP_W + K.STRIP_CHIP_W + 6
 		end
-		return
-	end
-	local y = 0
-	local i = 1
-	while i <= #list do
-		local pair = style == "Pairs" and i < #list
-		local items = pair and { list[i], list[i + 1] } or { list[i] }
-		local w = pair and math.floor((width - K.CUR_GAP) / 2) or width
-		for j, c in ipairs(items) do
-			local x = (j - 1) * (w + K.CUR_GAP)
-			c.Row.Position = UDim2.fromOffset(x, y)
-			c.Row.Size = UDim2.fromOffset(w, K.CUR_H)
-			c.Row.Visible = true
-			local resized = c.Width ~= w
-			c.Width = w
-			setRowGeometry(c, pair)
-			if resized or c.Shown == nil then
-				setAmountText(c, c.Shown or c.Display)
-			end
+		if style == "Band" then
+			w = width
+			c.Row.Position = UDim2.fromOffset((j - 1) * (width + K.STRIP_GAP), 0)
+		else
+			c.Row.Position = UDim2.fromOffset(width - w, (j - 1) * (K.STRIP_H + K.STRIP_GAP))
 		end
-		i = i + #items
-		y = y + K.CUR_H + K.CUR_GAP
+		c.Row.Size = UDim2.fromOffset(w, K.STRIP_H)
+		c.Row.Visible = true
+		local resized = c.Width ~= w
+		c.Width = w
+		setRowGeometry(c, "Strip")
+		if resized or c.Shown == nil then
+			setAmountText(c, c.Shown or c.Display)
+		end
 	end
 end
 
@@ -2859,8 +2954,8 @@ local function buildGui()
 	UI.TopRight = topRight
 	UI.BottomLeft = bottomLeft
 
-	buildVitals(bottomLeft)
-	buildCurrency(bottomLeft)
+	buildVitals(bottomLeft) -- (the holder keeps its v3 name; the layout centres the card above the hotbar)
+	buildCurrency(topRight)
 	buildMatch(topLeft)
 	buildParty(topLeft)
 	buildTitleCard(topLeft)
@@ -2976,6 +3071,10 @@ function HudController.Init()
 	end))
 	track(player:GetAttributeChangedSignal(attr.Downed):Connect(function()
 		guard("downed", setDowned, player:GetAttribute(attr.Downed) == true)
+	end))
+	-- a battle / dungeon run starts or ends: a landscape phone's strips move at once (the battle HUD lays out around them)
+	track(player:GetAttributeChangedSignal(attr.InBattle or "InBattle"):Connect(function()
+		guard("in battle", applyMargins, false, true)
 	end))
 	refreshRunChip()
 	if player:GetAttribute(attr.Downed) == true then

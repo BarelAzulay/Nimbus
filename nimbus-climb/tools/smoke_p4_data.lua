@@ -8,7 +8,7 @@
 --                    rollback on error / false, no Evo / rank down (an owned entry removed keeps its numbers, an
 --                    unowned one may go), copies handed out; TrainingKeys is the read-time lock: FieldableKeys and
 --                    ActiveTeamKeys skip a training pet while SetTeam / the preset keep it; P3.placedCopies counts
---                    Home.Gym only (a garden pet joins a team and is not pruned; a Gym copy still is);
+--                    Home.Garden + Home.Gym (bug batch 2 #18: a garden pet is busy, leaves its team and is refused);
 --                    GetEvolution / SetEvolution (only up, PetCatalog.MaxEvolution per rarity, owned keys); GetRing /
 --                    MutateRing (Best only up, Runs whole >= 0, rollback); IsMigrated / MarkMigrated; SetPetLevel
 --                    (1..the curve's max level 100); the synced PetGrowth (zero numbers left out) and Ring
@@ -462,13 +462,16 @@ S.p4data_growth = guarded("p4data_growth", function()
 	end)
 	T.check(count(DataS.TrainingKeys(p)) == 0 and sameList(DataS.ActiveTeamKeys(p), { a, b, c }) and DataS.GetGrowthMap(p)[b] == nil,
 		"p4 growth: the job done, the pet is back in the active team at once (its empty entry goes)", listText(DataS.ActiveTeamKeys(p)))
-	-- garden pets are no longer busy; a Gym copy still is (Phase 3 writes stay understood)
+	-- bug batch 2 #18: garden pets are busy again (P3.placedCopies counts Home.Garden + Home.Gym); a Gym copy still is
 	T.check(DataS.MutateHome(p, function(home)
 		home.Garden[1] = c
-	end) == true and sameList(DataS.GetTeams(p).Presets[1], { a, b, c }) and sameList(DataS.ActiveTeamKeys(p), { a, b, c }),
-		"p4 growth: a pet whose only copy works in the Garden stays in its team (P3.placedCopies counts Home.Gym only)", listText(DataS.GetTeams(p).Presets[1]))
+	end) == true and sameList(DataS.GetTeams(p).Presets[1], { a, b }) and sameList(DataS.ActiveTeamKeys(p), { a, b }),
+		"p4 growth: a pet whose only copy goes to the Garden leaves its team (bug batch 2 #18: busy gardening)", listText(DataS.GetTeams(p).Presets[1]))
 	okTeam, whyTeam = DataS.SetTeam(p, 3, { c })
-	T.check(okTeam == true, "p4 growth: ...and SetTeam accepts a garden pet", tostring(whyTeam))
+	T.check(okTeam == false and tostring(whyTeam):find("gardening", 1, true) ~= nil, "p4 growth: ...and SetTeam refuses a garden pet ('gardening')", tostring(whyTeam))
+	DataS.MutateHome(p, function(home)
+		home.Garden[1] = nil
+	end)
 	T.check(DataS.MutateHome(p, function(home)
 		home.Gym[1] = d
 	end) == true and sameList(DataS.GetTeams(p).Presets[2], { b }), "p4 growth: a pet whose only copy sits in the (retired) Gym still leaves its team (Phase 3 data written during the rollout stays understood)", listText(DataS.GetTeams(p).Presets[2]))
@@ -694,7 +697,8 @@ S.p4data_save = guarded("p4data_save", function()
 	T.check(DataS.GetRing(j).Best == 100000 and DataS.GetRing(j).Runs == 0, "p4 save: Ring.Best is capped at 100000 and Runs never below 0")
 	local nonP5 = 0
 	for name in pairs(DataS.GetProfile(j).Migrations or {}) do
-		if string.sub(tostring(name), 1, 2) ~= "P5" then -- (Phase 5 adds its own P5Dungeon / P5Home markers on the load)
+		-- (Phase 5 adds its own P5Dungeon / P5Home markers on the load, bug batch 2 #18 its B2GardenSolo marker)
+		if string.sub(tostring(name), 1, 2) ~= "P5" and name ~= "B2GardenSolo" then
 			nonP5 = nonP5 + 1
 		end
 	end
@@ -1079,8 +1083,13 @@ S.p4data_migrate = guarded("p4data_migrate", function()
 		and legacyFeast == 6400 and DataS.GetBerries(v) == 3 * legacyFeast,
 		"p4 migrate: no one-time payout: Cash, Gems, Tokens, the gym pet's level are as stored; the leftover food (Feast 3) is converted exactly into 3 x 6400 berries by P5Home",
 		tostring(DataS.GetFood(v, "Feast")) .. " Feast / " .. tostring(DataS.GetBerries(v)) .. " berries")
-	T.check(sameList(DataS.FieldableKeys(v), K.M["shared/PetKeys"] and K.M["shared/PetKeys"].List(DataS.GetProfile(v)) or DataS.FieldableKeys(v)) and DataS.SetTeam(v, 1, { g, h, a }) == true,
-		"p4 migrate: the freed gym pets and the garden pets can all join a team")
+	-- bug batch 2 #18: the freed gym pets can join a team; the 6 garden pets are busy gardening (not fieldable)
+	local fieldV = {}
+	for _, key in ipairs(DataS.FieldableKeys(v)) do
+		fieldV[key] = true
+	end
+	T.check(count(fieldV) == 2 and fieldV[g] and fieldV[h] and DataS.SetTeam(v, 1, { g, h }) == true and DataS.SetTeam(v, 2, { a }) == false,
+		"p4 migrate: the freed gym pets can join a team; the garden pets are busy gardening (bug batch 2 #18)", listText(DataS.FieldableKeys(v)))
 	local snap = lastSnapshot(v, mark)
 	T.check(type(snap) == "table" and type(snap.Home) == "table" and snap.Home.LegacySlots == 6 and snap.Home.LegacyPrices == true and type(snap.Home.Gym) == "table" and #snap.Home.Gym == 0,
 		"p4 migrate: the first ProfileSync already shows LegacySlots / LegacyPrices and the empty Gym")

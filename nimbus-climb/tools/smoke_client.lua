@@ -572,7 +572,8 @@ local function currencyChecks()
 	local vitals = hud:FindFirstChild("BottomLeft") and hud.BottomLeft:FindFirstChild("Vitals")
 	local cx = (tokens.AbsolutePosition.X + tokens.AbsoluteSize.X / 2) / vp.X
 	local cy = (tokens.AbsolutePosition.Y + tokens.AbsoluteSize.Y / 2) / vp.Y
-	T.check(cx < 0.45 and cy > 0.5 and (vitals == nil or tokens.AbsolutePosition.Y + tokens.AbsoluteSize.Y <= vitals.AbsolutePosition.Y + 1), "HUD: the currency stack sits bottom-left, above the HP bar", string.format("centre %.2f,%.2f", cx, cy))
+	-- bug batch 2 #1 (option A): the currencies are thin strips in the top-right corner, the HP bar bottom-centre
+	T.check(cx > 0.75 and cy < 0.2 and (vitals == nil or tokens.AbsolutePosition.Y + tokens.AbsoluteSize.Y <= vitals.AbsolutePosition.Y + 1), "HUD: the currency stack sits top-right, far above the HP bar", string.format("centre %.2f,%.2f", cx, cy))
 	LocalPlayer:SetAttribute(Config.Attr.Cash, 1500)
 	LocalPlayer:SetAttribute(Config.Attr.Gems, 12)
 	advance(0.8)
@@ -1354,16 +1355,18 @@ S.client_mobile = guarded("client_mobile", function()
 						T.check(not overlaps(col, o), label .. ": the menu column does not cover " .. other[2], show(col) .. " vs " .. show(o))
 					end
 				end
-				-- MenuController (Phase 5, 6.6): a 2 x 3 grid of 66 px tiles (gap 6) and a small row of 46 px tiles (Stats + the
-				-- gear) under ONE UIScale (ColumnScale). Its size must be the laid-out grid + row, scaled once (the mock used to
-				-- apply the UIScale twice), vertically centred in the screen area on desktops, above Roblox's thumbstick on touch
-				-- landscape screens, and above the bottom sheet's top (0.44 H) on portrait phones.
+				-- MenuController (bug batch 2 #1, option A): eight 66 px tiles (gap 6: seven Entry_ tiles + Gear_Settings) in
+				-- ONE column, wrapped into two (or three) columns where one column would push the tiles under 44 px, under ONE
+				-- UIScale (ColumnScale). Its height must be the laid-out rows, scaled once (the mock used to apply the UIScale
+				-- twice), vertically centred in the screen area on desktops, above Roblox's thumbstick on touch landscape
+				-- screens, and above the bottom sheet's top (0.44 H) on portrait phones.
 				local entries, grid = {}, {}
 				for _, entry in ipairs(menuColumn:GetChildren()) do
 					if entry:IsA("GuiObject") and entry.Name:find("^Entry_") then
 						entries[#entries + 1] = entry
 					end
 				end
+				local gearEntry = menuColumn:FindFirstChild("Gear_Settings")
 				local count = #entries
 				local colScale = menuColumn:FindFirstChildOfClass("UIScale")
 				local factor = colScale and colScale.Scale or 1
@@ -1372,6 +1375,9 @@ S.client_mobile = guarded("client_mobile", function()
 					biggest = math.max(biggest, entry.AbsoluteSize.X)
 				end
 				local xs, ys = {}, {}
+				for _, entry in ipairs(gearEntry and { gearEntry } or {}) do
+					entries[#entries + 1] = entry
+				end
 				for _, entry in ipairs(entries) do
 					if entry.AbsoluteSize.X >= biggest - 1 then
 						grid[#grid + 1] = entry
@@ -1386,11 +1392,14 @@ S.client_mobile = guarded("client_mobile", function()
 				for _ in pairs(ys) do
 					rows = rows + 1
 				end
-				T.info("*" .. label .. ": menu grid " .. columns .. "x" .. rows .. " + small row, scale " .. fmt(factor, 2))
-				if T.check(count == #CONTRACT.v3.menuEntries, label .. ": the menu column has its entries (six tiles + Stats)", tostring(count)) then
-					T.check(#grid == 6 and columns == 2 and rows == 3, label .. ": the tiles form a 2 x 3 grid", #grid .. " tiles, " .. columns .. " column(s), " .. rows .. " row(s)")
-					local expected = (3 * (66 + 6) + 2 + 46) * factor
-					T.check(math.abs(menuColumn.AbsoluteSize.Y - expected) <= 1.5, label .. ": the menu column height is the grid + the small row, scaled once", fmt(menuColumn.AbsoluteSize.Y, 1) .. " px vs " .. fmt(expected, 1))
+				T.info("*" .. label .. ": menu tiles " .. columns .. "x" .. rows .. ", scale " .. fmt(factor, 2))
+				if T.check(count == #CONTRACT.v3.menuEntries and gearEntry ~= nil, label .. ": the menu column has its entries (six tiles + Stats) and the gear", tostring(count)) then
+					local landscapeDesk = w >= h and not (game:GetService("UserInputService").TouchEnabled and not game:GetService("UserInputService").KeyboardEnabled)
+					T.check(#grid == 8 and columns * rows >= 8 and columns <= 3 and (columns == 1 or not landscapeDesk) and (columns - 1) * rows < 8,
+						label .. ": the eight tiles form one column (wrapped only where a column does not fit)", #grid .. " tiles, " .. columns .. " column(s), " .. rows .. " row(s)")
+					local expected = (rows * 66 + (rows - 1) * 6) * factor
+					T.check(math.abs(menuColumn.AbsoluteSize.Y - expected) <= 1.5, label .. ": the menu column height is its rows, scaled once", fmt(menuColumn.AbsoluteSize.Y, 1) .. " px vs " .. fmt(expected, 1))
+					T.check(biggest >= 44 - 0.5, label .. ": the tiles stay >= 44 px", fmt(biggest, 1) .. " px")
 					local smallest = math.huge
 					for _, entry in ipairs(entries) do
 						for _, d in ipairs(entry:GetDescendants()) do

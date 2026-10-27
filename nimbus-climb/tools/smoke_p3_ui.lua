@@ -639,9 +639,12 @@ local function clientScenarios()
 			n = n + 1
 		end
 		T.eq(n, #OWNED, "p3ui team: the picker lists every owned pet copy")
-		-- (Phase 4: garden pets fight too; a pet in training is the busy one)
+		-- bug batch 2 #18 ("Remote recall"): a pet working in the Garden is busy gardening (it cannot fight): its tile is
+		-- dimmed with a "Gardening" badge; a tap asks to take it out (checked below)
 		local garden = picks.Pick_bubble_axolotl
-		T.check(garden and not (find(garden, "Dim") and shown(find(garden, "Dim"))), "p3ui team: a pet working in the Garden is NOT dimmed (Phase 4: garden pets fight)")
+		local gardenBusy = garden and find(garden, "Busy")
+		T.check(garden and find(garden, "Dim") and shown(find(garden, "Dim")) and gardenBusy and gardenBusy.Text:find("Gardening", 1, true) ~= nil,
+			"p3ui team: a pet working in the Garden is dimmed with a 'Gardening' badge (bug batch 2 #18)", gardenBusy and gardenBusy.Text)
 		local busy = picks.Pick_honey_bunny
 		T.check(busy and find(busy, "Dim") and shown(find(busy, "Dim")), "p3ui team: a pet in training is dimmed in the picker")
 		local inTeam = picks["Pick_" .. TEAM[2]]
@@ -711,6 +714,118 @@ local function clientScenarios()
 		T.check(lines and lines.Text:find("340", 1, true) and lines.Text:find("Dungeon: floor", 1, true), "p3ui stats: the Stats window shows trophies and the dungeon floor", lines and lines.Text)
 		MC.Close()
 		advance(0.4)
+
+		------------------------------------------------------------ bug batch 2 #18: the garden recall question
+		-- HomeAction sends since `mark`: { {action, arg}... }
+		local function homeActions(m)
+			local out = {}
+			for i = (m or 0) + 1, #Mock.RemoteLog do
+				local e = Mock.RemoteLog[i]
+				if e.kind == "server" and e.remote == "HomeAction" then
+					out[#out + 1] = { (e.args or {})[1], (e.args or {})[2] }
+				end
+			end
+			return out
+		end
+		local function recallBox()
+			local box = menu:FindFirstChild("GardenRecall")
+			return box ~= nil and shown(box) and box or nil
+		end
+		toClient("ProfileSync", snapshot(0))
+		advance(4.5)
+		MC.Open("Team")
+		advance(0.6)
+		Mock.Click(find(win, "Preset3"))
+		advance(0.3)
+		local axo
+		for _, c in ipairs(find(win, "PickerGrid") and find(win, "PickerGrid"):GetChildren() or {}) do
+			if c.Name == "Pick_bubble_axolotl" then
+				axo = c
+			end
+		end
+		mark = #Mock.RemoteLog
+		Mock.Click(axo)
+		advance(0.4)
+		local box = recallBox()
+		local title = box and find(box, "Title")
+		local body = box and find(box, "Body")
+		T.check(box and title and title.Text:find("This pet is gardening!", 1, true) and body and body.Text:find("Take it out of the garden", 1, true),
+			"p3ui recall: tapping a gardening pet's tile opens NimbusMenu.GardenRecall ('This pet is gardening! Take it out of the garden and ...?')", body and body.Text)
+		T.check(box and find(box, "RecallYes") and find(box, "RecallNo"), "p3ui recall: ...with Yes and No")
+		T.check(lastRequest(mark, "TeamSet") == nil and #homeActions(mark) == 0, "p3ui recall: ...and sends nothing yet")
+		local small6 = box and smallTexts(box, 18) or {}
+		T.check(#small6 == 0, "p3ui recall: every text of the question is >= 18 design px", table.concat(small6, ", "))
+		Mock.Click(box and find(box, "RecallNo"))
+		advance(0.4)
+		T.check(recallBox() == nil and #homeActions(mark) == 0 and lastRequest(mark, "TeamSet") == nil, "p3ui recall: No closes it and sends nothing")
+		Mock.Click(axo)
+		advance(0.4)
+		box = recallBox()
+		mark = #Mock.RemoteLog
+		Mock.Click(box and find(box, "RecallYes"))
+		advance(0.4)
+		local sent = homeActions(mark)
+		local arg = sent[1] and sent[1][2]
+		T.check(#sent == 1 and sent[1][1] == "GardenRecall" and type(arg) == "table" and arg.Key == "bubble_axolotl" and arg.To == "Team" and arg.Preset == 3
+			and type(arg.Keys) == "table" and #arg.Keys == 1 and arg.Keys[1] == "bubble_axolotl",
+			"p3ui recall: Yes sends ONE HomeAction('GardenRecall', { Key, To = 'Team', Preset = 3, Keys = the new team })", arg and (tostring(arg.To) .. "/" .. tostring(arg.Preset)) or tostring(#sent))
+		T.check(recallBox() == nil and lastRequest(mark, "TeamSet") == nil, "p3ui recall: ...closes the question and sends no TeamSet (the server stores the team)")
+		MC.Close()
+		advance(0.4)
+		-- the Pets window: Equip on a gardening pet asks the same question (To = "Equip")
+		toClient("ProfileSync", snapshot(0))
+		advance(0.5)
+		MC.Open("Pets", { Key = "bubble_axolotl" })
+		advance(0.6)
+		local petsWin = menu:FindFirstChild("Window_Inventory")
+		-- its card in the Pets grid carries the same seedling "Gardening" badge as its Team tile (and is dimmed);
+		-- a pet that is not gardening has neither
+		local axoCard = petsWin and find(petsWin, "Pet_bubble_axolotl")
+		local axoTag = axoCard and find(axoCard, "GardenTag")
+		local axoText = axoTag and find(axoTag, "Busy")
+		T.check(axoTag and shown(axoTag) and axoText and axoText.Text:find("Gardening", 1, true) and axoText.Text:find("\240\159\140\177", 1, true)
+			and axoText.TextSize >= 18 and find(axoCard, "Dim") and shown(find(axoCard, "Dim")),
+			"p3ui recall: Pets > a gardening pet's card is dimmed with the seedling 'Gardening' badge (bug batch 2 #18)", axoText and axoText.Text)
+		local pupCard = petsWin and find(petsWin, "Pet_pebble_pup")
+		local pupTag = pupCard and find(pupCard, "GardenTag")
+		T.check(pupCard ~= nil and not (pupTag and shown(pupTag)) and not (find(pupCard, "Dim") and shown(find(pupCard, "Dim"))),
+			"p3ui recall: ...a pet that is not gardening has no badge and is not dimmed")
+		local equipBtn = petsWin and find(petsWin, "Equip")
+		T.check(equipBtn and shown(equipBtn) and not disabled(equipBtn), "p3ui recall: Pets > a gardening pet keeps Equip pressable (the press asks)")
+		mark = #Mock.RemoteLog
+		Mock.Click(equipBtn)
+		advance(0.4)
+		local equipCalls = 0
+		for i = mark + 1, #Mock.RemoteLog do
+			local e = Mock.RemoteLog[i]
+			if e.kind == "server" and e.remote == "EquipPet" then
+				equipCalls = equipCalls + 1
+			end
+		end
+		box = recallBox()
+		body = box and find(box, "Body")
+		T.check(box and body and body.Text:find("equip it?", 1, true) and equipCalls == 0 and #homeActions(mark) == 0,
+			"p3ui recall: Pets > a gardening pet > Equip asks first ('... and equip it?'), no EquipPet", body and body.Text or (petsWin and "no question" or "no Pets window"))
+		Mock.Click(box and find(box, "RecallNo"))
+		advance(0.4)
+		T.check(recallBox() == nil and #homeActions(mark) == 0, "p3ui recall: No sends nothing")
+		Mock.Click(equipBtn)
+		advance(0.4)
+		box = recallBox()
+		mark = #Mock.RemoteLog
+		Mock.Click(box and find(box, "RecallYes"))
+		advance(0.4)
+		sent = homeActions(mark)
+		arg = sent[1] and sent[1][2]
+		T.check(#sent == 1 and sent[1][1] == "GardenRecall" and type(arg) == "table" and arg.Key == "bubble_axolotl" and arg.To == "Equip",
+			"p3ui recall: Yes sends ONE HomeAction('GardenRecall', { Key, To = 'Equip' })", tostring(#sent))
+		-- Esc / B closes the question like No
+		Mock.Click(equipBtn)
+		advance(0.4)
+		T.check(recallBox() ~= nil, "p3ui recall: (asked again)")
+		MC.Close()
+		advance(0.4)
+		T.check(recallBox() == nil, "p3ui recall: closing the window closes the question")
 
 		------------------------------------------------------------ the Trial window is gone (Phase 5 10.5; dungeonclient W4)
 		local arena = pg():FindFirstChild("NimbusArena")
@@ -922,7 +1037,8 @@ local function clientScenarios()
 			local cb = Mock.GuiBox(column)
 			T.check(entries == 7 and cols == 2, "p3ui phone 844x390: seven tiles (Team included) in two columns", entries .. " tiles, " .. cols .. " columns")
 			T.check(labels == 7 and #small == 0, "p3ui phone 844x390: every tile keeps its label, >= 14 px", labels .. " labels; " .. table.concat(small, ", "))
-			T.check(cb ~= nil and cb.w >= 105 and cb.w <= 115, "p3ui phone 844x390: the column is the 2-tile grid at touch scale (105-115 px)", cb and string.format("%.0f px", cb.w) or "no box")
+			-- (bug batch 2 #1: the column frame also holds the fold tab beside its last row)
+			T.check(cb ~= nil and cb.w >= 120 and cb.w <= 135, "p3ui phone 844x390: the column is the 2-tile grid + its fold tab at touch scale (120-135 px)", cb and string.format("%.0f px", cb.w) or "no box")
 			-- gui-area pixels, like MenuController's own band (the classic stick's top is 96 px above the area's bottom)
 			local area = Mock.GuiLayerSize(column)
 			local bottom = column.AbsolutePosition.Y + column.AbsoluteSize.Y

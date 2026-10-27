@@ -613,29 +613,36 @@ S.client_p5hud_pills = guarded("client_p5hud_pills", function()
 	end
 	local amount = pill("Cash") and pill("Cash"):FindFirstChild("Amount")
 	T.check(amount and amount.Text == "12.4K", "p5hud_pills: Cash reads 12.4K", amount and amount.Text or "none")
-	-- desktop: bottom-left above the vitals card
-	local vitals = hud and hud:FindFirstChild("Vitals", true)
-	local cash = pill("Cash")
-	if cash and vitals then
-		local a, v = NK.rect(cash), NK.rect(vitals)
-		T.check(a.y1 <= v.y0 + 1 and a.x0 < 0.3 * Mock.Viewport.X, "p5hud_pills: 1920x1080: the pills stack bottom-left above the vitals")
+	-- bug batch 2 #1 (option A): thin strips stacked top-right, right-aligned, under Roblox's top bar - on a desktop and
+	-- on a landscape phone alike
+	local function stackedTopRight(w, h, stripMax)
+		local col, ok = {}, true
+		for _, id in ipairs({ "Cash", "Gems", "Tokens" }) do
+			local p = pill(id)
+			if p and NK.shown(p) then
+				col[#col + 1] = NK.rect(p)
+			else
+				ok = false
+			end
+		end
+		ok = ok and #col == 3
+		for i, r in ipairs(col) do
+			ok = ok and r.y0 >= (Mock.TopInset or 58) - 0.5 and r.x1 <= w + 0.5 and r.x1 >= w - 40 and r.y1 < 0.45 * h
+				and (r.x1 - r.x0) <= stripMax and (r.y1 - r.y0) <= 36
+			if i > 1 then
+				ok = ok and r.y0 >= col[i - 1].y1 and math.abs(r.x1 - col[i - 1].x1) < 1
+			end
+		end
+		return ok, col[1] and string.format("%.0f,%.0f - %.0f,%.0f", col[1].x0, col[1].y0, col[1].x1, col[1].y1) or "none"
 	end
-	-- landscape phone: one row in Roblox's top band, right of its buttons (x >= 150)
+	local okPc, firstPc = stackedTopRight(1920, 1080, 180)
+	T.check(okPc and hud:GetAttribute("CurrencyMode") == "TopRight",
+		"p5hud_pills: 1920x1080: thin strips (<= 180 x 36 px) stacked top-right, right-aligned, under the top bar", firstPc)
 	local restore = NK.screen(844, 390, true)
 	NK.advance(1.2)
-	local inBand, row = true, {}
-	for _, id in ipairs({ "Cash", "Gems", "Tokens" }) do
-		local p = pill(id)
-		if p and NK.shown(p) then
-			local r = NK.rect(p)
-			row[#row + 1] = r
-			inBand = inBand and r.x0 >= 150 - 0.5 and (r.y0 + r.y1) / 2 < (Mock.TopInset or 58) and r.x1 <= 844 - 60
-		else
-			inBand = false
-		end
-	end
-	T.check(inBand and #row == 3 and math.abs(row[1].y0 - row[3].y0) < 1 and hud:GetAttribute("CurrencyMode") == "TopBand",
-		"p5hud_pills: 844x390: the three pills sit in one row in the top band (x >= 150)")
+	local okPhone, firstPhone = stackedTopRight(844, 390, 150)
+	T.check(okPhone and hud:GetAttribute("CurrencyMode") == "TopRight",
+		"p5hud_pills: 844x390: the same strips stacked top-right (clear of the jump button at the bottom)", firstPhone)
 	restore()
 	NK.advance(1)
 	LocalPlayer:SetAttribute(Config.Attr.Cash, oldCash)

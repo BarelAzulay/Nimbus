@@ -554,6 +554,34 @@ local function clientScenarios()
 					T.check(hint() == nil, "bug2 mouse: a hold (a window opens) removes the hint at once")
 					ML.Release("bug2:hint")
 					KC.advance(0.8)
+					-- bug batch 2 #1: the pill never meets the bottom-centre vitals card, also on a short desktop window (600 px; below
+					-- ~590 px the middle-band rule wins and the 6-second pill may touch the card's top)
+					local oldVp = { Mock.Viewport.X, Mock.Viewport.Y }
+					for _, size in ipairs({ { 1920, 1080 }, { 1280, 600 } }) do
+						Mock.SetViewport(size[1], size[2])
+						KC.advance(1.2)
+						St.Hinted = false
+						ML.Hold("bug2:hint")
+						ML.Release("bug2:hint")
+						KC.advance(0.6)
+						local hg = hint()
+						local pill = hg and hg:FindFirstChild("Hint")
+						local vitals = H.pg():FindFirstChild("NimbusHud")
+						vitals = vitals and vitals:FindFirstChild("BottomLeft") and vitals.BottomLeft:FindFirstChild("Vitals")
+						if T.check(pill ~= nil and vitals ~= nil, string.format("bug2 mouse %dx%d: (setup) the pill and the vitals card", size[1], size[2])) then
+							local py0, py1 = pill.AbsolutePosition.Y, pill.AbsolutePosition.Y + pill.AbsoluteSize.Y
+							local vy0 = vitals.AbsolutePosition.Y
+							local areaH = hg.AbsoluteSize.Y
+							T.check(py1 <= vy0 and py0 >= 0.645 * areaH - 0.5,
+								string.format("bug2 mouse %dx%d: the 'press L' pill sits above the vitals card, below the middle band", size[1], size[2]),
+								string.format("pill %.0f-%.0f, vitals top %.0f, area %.0f", py0, py1, vy0, areaH))
+						end
+						ML.Hold("bug2:hint")
+						ML.Release("bug2:hint")
+						KC.advance(0.3)
+					end
+					Mock.SetViewport(oldVp[1], oldVp[2])
+					KC.advance(1.2)
 				end
 			end
 		end)

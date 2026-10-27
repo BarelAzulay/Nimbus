@@ -1096,6 +1096,12 @@ S.p4care_train = guarded("p4care_train", function()
 	advance(0.2)
 	local okR4, job4 = Care.Train(p, eco.Id, "Ability")
 	T.check(okR4 and job4.From == "Follow" and equippedCount(p, eco.Id) == 0, "care train: an equipped pet trains with From 'Follow'", okR4 and job4.From or tostring(job4))
+	-- (bug batch 2 #18: a garden pet cannot follow: the two leave the Garden before they are equipped)
+	for slot, k in pairs(homeOf(p).Garden or {}) do
+		if k == combat.Id or k == rare.Id then
+			Ty.GardenSet(p, slot, nil)
+		end
+	end
 	Pets.Equip(p, combat.Id)
 	Pets.Equip(p, rare.Id)
 	local third = pickPet("Combat", "Uncommon") or pickPet("Economy", "Uncommon")

@@ -19,6 +19,12 @@
 --     equipped one during the rollout).
 --   * PetService.UnequipKey(player, key) -> removed   takes every equipped copy of the key off (PetCareService calls it
 --     when a pet starts training).
+-- Bug batch 2 #18 ("Remote recall"): a pet working in the Garden is busy gardening. A copy placed in the Garden / Gym
+--   (DataService.PlacedCopies) cannot follow: Equip refuses it ("Rocky is gardening! Take it out of the garden first";
+--   the client asks first and recalls it with ONE request, TycoonService.GardenRecall) and the list re-validation drops
+--   such copies (TycoonService.GardenSet calls Refresh after placing a pet).
+--   PetService.CanEquip(player, key, freed?) -> ok, reason   Equip's checks without equipping; `freed` = copies about to
+--     leave the Garden (the recall checks before it takes the pet out).
 --   * attribute EquippedInfo (Config.Attr) = "23:1,5:0": level:evolution stage per EquippedPets entry, written by
 --     refreshPlayer (equip changes, Refresh after level-ups / evolutions) only when it changed and at most every 0.5 s
 --     per player (a burst of level-ups coalesces into one deferred write); other clients draw the pet cards and the
@@ -341,6 +347,19 @@ local function trainingLeft(player, key)
 	return string.format("%d:%02d", math.floor(s / 60), s % 60)
 end
 
+-- Bug batch 2 #18: { [key] = copies working in the Garden / Gym } (DataService.PlacedCopies; {} before the load,
+-- while provisional or without that API)
+local function placedCopies(player)
+	if type(DataService.PlacedCopies) ~= "function" then
+		return {}
+	end
+	local ok, map = pcall(DataService.PlacedCopies, player)
+	if ok and type(map) == "table" then
+		return map
+	end
+	return {}
+end
+
 local function petLevelOf(player, key)
 	if type(DataService.GetPetLevel) ~= "function" then
 		return 1
@@ -450,19 +469,21 @@ local function refreshPlayer(player, silent)
 end
 
 -- Drops equipped keys that are unknown (pets that left the catalog, hybrids whose record is gone), owned fewer
--- times than they are equipped (copies fused away) or training (Phase 4: a training pet cannot be on the player; a
--- Phase 3 server may have equipped one during the rollout), and trims to the slot limit. Returns true if anything changed.
+-- times than they are equipped (copies fused away), training (Phase 4: a training pet cannot be on the player; a
+-- Phase 3 server may have equipped one during the rollout) or working in the Garden (bug batch 2 #18: the copies
+-- placed there do not count), and trims to the slot limit. Returns true if anything changed.
 local function validateEquipped(profile, player)
 	if type(profile.Equipped) ~= "table" then
 		profile.Equipped = {}
 	end
 	local training = player and trainingKeys(player) or {}
+	local placed = player and placedCopies(player) or {}
 	local kept = {}
 	local used = {}
 	for _, key in ipairs(profile.Equipped) do
 		if type(key) == "string" and #kept < Config.Pets.MaxEquipped and defOf(key, profile) and not training[key] then
 			local n = (used[key] or 0) + 1
-			if n <= ownedCount(profile, key) then
+			if n <= ownedCount(profile, key) - (placed[key] or 0) then
 				used[key] = n
 				table.insert(kept, key)
 			end
@@ -568,7 +589,8 @@ end
 -- Public API: equip / unequip
 ----------------------------------------------------------------------
 
-function PetService.Equip(player, key)
+-- Equip's checks (ok, reason); `freed` (bug batch 2 #18) = Garden copies about to be taken out (the recall).
+function PetService.CanEquip(player, key, freed)
 	if not isLivePlayer(player) then
 		return false, "Player unavailable"
 	end
@@ -597,13 +619,29 @@ function PetService.Equip(player, key)
 		return false, tostring(name) .. " is training" .. (left and (" (" .. left .. " left)") or "")
 	end
 	local equipped = profile.Equipped
+	local count = countOf(equipped, key)
+	-- bug batch 2 #18: a copy working in the Garden is busy gardening (the recall frees `freed` copies first)
+	local placed = math.max(0, (placedCopies(player)[key] or 0) - (type(freed) == "number" and math.max(0, math.floor(freed)) or 0))
+	if count < owned and count >= owned - placed then
+		local def = defOf(key, profile)
+		local name = type(def) == "table" and (def.DisplayName or def.Name) or key
+		return false, tostring(name) .. " is gardening! Take it out of the garden first"
+	end
 	if #equipped >= Config.Pets.MaxEquipped then
 		return false, "All " .. Config.Pets.MaxEquipped .. " pet slots are full"
 	end
-	if countOf(equipped, key) >= owned then
+	if count >= owned then
 		return false, "All your copies are already equipped"
 	end
-	table.insert(equipped, key)
+	return true
+end
+
+function PetService.Equip(player, key)
+	local ok, reason = PetService.CanEquip(player, key, 0)
+	if not ok then
+		return false, reason
+	end
+	table.insert(DataService.GetProfile(player).Equipped, key)
 	finishEquipChange(player)
 	return true
 end
