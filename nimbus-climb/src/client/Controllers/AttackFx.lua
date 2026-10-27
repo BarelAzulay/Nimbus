@@ -34,7 +34,8 @@
 --       passes both on to PetBuilder.PoseBody / Animate (PetPoses.Sample's amp, reach).
 --   AttackFx.LeapReach(src, tgt) -> number | nil   the melee leap's length in the caster's pose units (studs at scale
 --       1): from its front edge to the target's near edge, minus LEAP_MARGIN 0.3, clamped 0 .. LEAP_MAX 12 world studs,
---       / the caster's PB_Scale. src / tgt = { Model?, Last = Vector3 }
+--       / the caster's PB_Scale (the leap's only clamp: PetPoses' LEAP_REACH_MAX is a safety ceiling that a reach from
+--       here never meets, so a small pet lands as far as a big one). src / tgt = { Model?, Last = Vector3 }
 --   AttackFx.Cancel(unitId)         drops the unit's pose and ends the effects it cast (a unit swapped out / gone)
 --   AttackFx.ClearAll()             ends everything (the battle is over)
 --   AttackFx.SetQuality("Low" | "High" | nil)   nil = follow client/GraphicsQuality.Effective(). Low: emitters per
@@ -1500,11 +1501,13 @@ local function tuneEmitter(eff, it, layer)
 	em.FlipbookFramerate = NumberRange.new(sheet[2])
 	em.FlipbookStartRandom = sheet[1] == "Loop"
 	-- a layer's LightEmission overrides the sheet's (Task 9: the slash arc half-lit, so it keeps the element's colour)
-	local own = finite(layer.LightEmission)
-	em.LightEmission = own and clamp01(layer.LightEmission) or sheet[3]
-	em.LightInfluence = (own or sheet[3] >= 0.5) and 0 or 0.6
+	-- (review M2 / M3: the lit / hot rules read the EFFECTIVE value: a half-lit override (Storm's BurstLight 0.4 on
+	-- fx_glow) neither opens 45 % white nor ignores the scene light, like a sheet of the same value)
+	local light = finite(layer.LightEmission) and clamp01(layer.LightEmission) or sheet[3]
+	em.LightEmission = light
+	em.LightInfluence = (light >= 0.5) and 0 or 0.6
 	local c = typeof(layer.Color) == "Color3" and layer.Color or WHITE
-	if sheet[3] >= 0.8 then
+	if light >= 0.8 then
 		em.Color = ColorSequence.new(c:Lerp(WHITE, 0.45), c) -- glows start hot
 	else
 		em.Color = ColorSequence.new(c, c:Lerp(BLACK, 0.2))

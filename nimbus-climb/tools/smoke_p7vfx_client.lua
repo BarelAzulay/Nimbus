@@ -832,6 +832,37 @@ S.client_p7vfx_engine = guarded("client_p7vfx_engine", function()
 	T.check(#aliveBad == 0 and aliveSeen == 8 * 2 * #Cat.Rarities, "every element x Melee / Ranged x rarity draws its alive detail under the caps (beams ranked: alive, own, ladder)",
 		fmt("%d ok; %s", aliveSeen, table.concat(aliveBad, " | ")))
 	Fx.ClearAll()
+	-- 13f) review M2 / M3: an emitter's lit / hot rules read its EFFECTIVE LightEmission (the layer's override, else the
+	-- sheet's): Storm's Burst (fx_glow, BurstLight 0.4) is lit by the scene and opens in its own colour (not 45 % white);
+	-- the ZigZag sparks (0.5) ignore the scene light, not hot; the plain fx_glow charge (sheet 1) still starts hot
+	Fx.Play(ctx({ Element = "Storm", Attack = "Ranged", Rarity = "Secret", From = { Unit = 76, Model = A }, Now = clock }))
+	local lit = Fx._Live()[#Fx._Live()]
+	local function emOf(id)
+		for _, it in ipairs(lit and lit.Items or {}) do
+			if it.Kind == "Emitter" and it.Layer and it.Layer.Id == id then
+				return it.Kit.Em, it.Layer
+			end
+		end
+		return nil
+	end
+	local function near(a, b)
+		return a and b and math.abs(a.R - b.R) + math.abs(a.G - b.G) + math.abs(a.B - b.B) < 1e-3
+	end
+	local bEm, bL = emOf("Burst")
+	local zEm, zL = emOf("ZigZag")
+	local cEm, cL = emOf("Charge")
+	local litWhy = {}
+	if not (bEm and math.abs(bEm.LightEmission - 0.4) < 1e-6 and bEm.LightInfluence == 0.6 and near(bEm.Color.Keypoints[1].Value, bL.Color)) then
+		litWhy[#litWhy + 1] = bEm and fmt("Burst LE %.2f LI %.2f", bEm.LightEmission, bEm.LightInfluence) or "no Burst"
+	end
+	if not (zEm and zEm.LightInfluence == 0 and near(zEm.Color.Keypoints[1].Value, zL.Color)) then
+		litWhy[#litWhy + 1] = zEm and fmt("ZigZag LI %.2f", zEm.LightInfluence) or "no ZigZag"
+	end
+	if not (cEm and cEm.LightEmission == 1 and cEm.LightInfluence == 0 and not near(cEm.Color.Keypoints[1].Value, cL.Color)) then
+		litWhy[#litWhy + 1] = cEm and "Charge not hot" or "no Charge"
+	end
+	T.check(#litWhy == 0, "emitters: lit / hot by the effective LightEmission (a half-lit Burst is scene-lit, not white-hot)", table.concat(litWhy, " | "))
+	Fx.ClearAll()
 	-- review Important 1: Flame's Lava Slam (the old over-cap case) fits now: its Scorch is a glow disc, no emitter is cut
 	Fx.Play(ctx({ Element = "Flame", Attack = "Special", Kind = "Blast", PetId = "magma_cub", Rarity = "Secret", From = { Unit = 71, Model = A }, Now = clock }))
 	local fl = Fx._Live()[#Fx._Live()]
@@ -912,6 +943,7 @@ S.client_p7vfx_engine = guarded("client_p7vfx_engine", function()
 	local rB, fB, nB = leapCase("Bat", 4.5, 1.3)
 	local rF = leapCase("Far", 40, nil)
 	local rF2 = leapCase("Far2", 40, 2)
+	local rH, fH = leapCase("FarHalf", 40, 0.5)
 	T.check(type(rP) == "number" and math.abs(rP - 9.7) < 1e-3 and fP and math.abs((nP - fP) - 0.3) < 1e-3,
 		"leap (/fx preview, 12 studs): Reach 9.7 and the caster's front edge lands 0.3 short of the target's near edge",
 		fmt("reach %s, front %s, near %.2f", tostring(rP), tostring(fP), nP))
@@ -920,6 +952,11 @@ S.client_p7vfx_engine = guarded("client_p7vfx_engine", function()
 		fmt("reach %s, front %s, near %.2f", tostring(rB), tostring(fB), nB))
 	T.check(type(rF) == "number" and math.abs(rF - 12) < 1e-6 and type(rF2) == "number" and math.abs(rF2 - 6) < 1e-6,
 		"leap: clamped to LEAP_MAX 12 world studs (40 studs away: 12 at scale 1, 6 pose studs at scale 2)", fmt("%s / %s", tostring(rF), tostring(rF2)))
+	-- review M5: clamped ONCE (world studs): at PB_Scale 0.5 the 12-stud leap is 24 pose studs and is drawn 12 studs on
+	-- (a second, pose-unit clamp at 12 landed it 6 short)
+	T.check(type(rH) == "number" and math.abs(rH - 24) < 1e-6 and fH and math.abs(fH - 13) < 1e-3,
+		"leap: clamped once, in world studs (PB_Scale 0.5, 40 studs away: Reach 24 pose studs, the front edge lands 12 studs on)",
+		fmt("reach %s, front %s", tostring(rH), tostring(fH)))
 	Fx.ClearAll()
 	Fx.Play(ctx({ Attack = "Ranged", Element = "Flame", Rarity = "Secret", From = { Unit = 92, Model = A }, To = { Unit = 93, Model = B }, Now = clock }))
 	local shootReach, shootSeen = "none", false

@@ -29,7 +29,8 @@
 --       instead of the lunge; Windup / Recoil: rear back). An unknown name = rest. `amp` (number, default 1, clamped
 --       1 .. LEAP_AMP_MAX 1.25) scales the melee Strike's leap (length and height grow a little with rarity: AttackFx
 --       passes 1 + 0.08 per band above Common); every other pose ignores it. `reach` (studs at scale 1, optional,
---       clamped 0 .. LEAP_REACH_MAX 12; nil = the fixed 1.5 x amp hop): the melee Strike's forward distance, so the leap
+--       >= 0, a safety ceiling LEAP_REACH_MAX 240 (the real clamp is AttackFx's, in world studs); nil = the fixed 1.5 x
+--       amp hop): the melee Strike's forward distance, so the leap
 --       lands on the target (Task 9 player decision: AttackFx measures the gap between the two models' facing edges,
 --       minus a contact margin, and divides it by the caster's PB_Scale); the hop gets higher with it.
 --
@@ -73,7 +74,10 @@ local LUNGE = 1.5
 local LEAP_H = 0.8 -- the melee Strike's hop height at amp 1 (studs)
 local LEAP_LAND = 0.26 -- the leap lands (and the hit lands) at this p
 PetPoses.LEAP_AMP_MAX = 1.25
-PetPoses.LEAP_REACH_MAX = 12 -- studs (scale 1): the longest leap a pose draws
+-- studs (scale 1): a safety ceiling only (Task 9 review M5: the leap is clamped ONCE, by AttackFx.LeapReach, at LEAP_MAX
+-- 12 WORLD studs, then divided by the caster's PB_Scale; a pose clamp of 12 bit first below scale 1 and landed short).
+-- 240 = 12 / PetBuilder's smallest scale 0.05, so a reach AttackFx sends never meets it
+PetPoses.LEAP_REACH_MAX = 240
 local LEAP_H_PER = 0.12 -- extra hop height per stud of reach (a longer jump goes higher)
 local LEAP_H_MAX = 2.4 -- studs: the highest hop
 local RANGED_KICK = 0.35

@@ -974,6 +974,12 @@ S.p7vfx_catalog = guarded("p7vfx_catalog", function()
 	T.check(sbolt and sbolt.Width <= 1.8 and szig and szig.Color == spal.Mid and (szig.LightEmission or 1) <= 0.6
 		and sline and (sline.Core.Transparency or 0) >= 0.4 and slb and slb.Width <= 1.5,
 		"p7vfx catalog: Storm's bolt is a narrow strip, its sparks the storm blue half-lit, its area cores see-through")
+	-- review M1: the stray strikes are the bolt's deep electric blue (Tints.Alive), not the rejected faint lilac
+	local stint = C.Elements.Storm.Tints
+	local smelee = C.Resolve({ Element = "Storm", Attack = "Melee", Rarity = "Rare", Mine = true })
+	T.check(stint and stint.Alive and stint.Alive == stint.Bolt and C.Elements.Storm.Alive.Color == nil and ss and ss.Alive.Color == stint.Bolt
+		and smelee and smelee.Alive.Color == stint.Bolt,
+		"p7vfx catalog: Storm's stray strikes take the bolt's blue (Tints.Alive = Tints.Bolt)", ss and tostring(ss.Alive.Color))
 	-- Task 9 round 3 (Celestial c2: the Secret star burst + rays summed to a pale flare that hid the target; the
 	-- constellation lines read as white sticks): half-lit stars, smaller dimmer rays, gold lines
 	local cpal = C.Elements.Celestial.Palette
@@ -1380,8 +1386,9 @@ S.p7vfx_poses = guarded("p7vfx_poses", function()
 		"p7vfx poses: PoseBody passes the pose's Amp (a higher leap)", fmt("%.3f", cfFinite(pbAmp) and pbAmp.Position.Y or -1))
 
 	-- Task 9 player decision: the leap reaches the target: `reach` (studs at scale 1) is the exact forward distance at
-	-- the landing (p 0.26), the hop grows with it (0.8 + 0.12 x reach, capped), it is clamped 0 .. LEAP_REACH_MAX, and
-	-- it never changes the ranged Strike / Shoot. PoseBody passes the pose's Reach
+	-- the landing (p 0.26), the hop grows with it (0.8 + 0.12 x reach, capped), it is >= 0 under a safety ceiling
+	-- LEAP_REACH_MAX 240 (review M5: the leap's one clamp is AttackFx's, in world studs; a pose clamp of 12 landed a
+	-- pet below scale 1 short), and it never changes the ranged Strike / Shoot. PoseBody passes the pose's Reach
 	local function reachAt(p, reach, amp)
 		local s0 = P.Sample("Strike", p, false, amp or 1, reach)
 		return forwardOf(s0.Body), s0.Body.Position.Y
@@ -1390,6 +1397,7 @@ S.p7vfx_poses = guarded("p7vfx_poses", function()
 	local _, hop2 = reachAt(0.13, 2)
 	local _, hop8 = reachAt(0.13, 8)
 	local land50 = reachAt(0.26, 50)
+	local land1k = reachAt(0.26, 1000)
 	local land0, hop0 = reachAt(0.26, 0)
 	local landNeg = reachAt(0.26, -3)
 	local landNaN = reachAt(0.26, 0 / 0)
@@ -1399,10 +1407,10 @@ S.p7vfx_poses = guarded("p7vfx_poses", function()
 		under8 = math.min(under8, reachAt(i / 100, 8))
 	end
 	T.check(math.abs(land2 - 2) < 1e-6 and math.abs(land8 - 8) < 1e-6 and math.abs(hop2 - (0.8 + 0.24)) < 0.01 and math.abs(hop8 - (0.8 + 0.96)) < 0.01
-		and P.LEAP_REACH_MAX == 12 and math.abs(land50 - 12) < 1e-6 and math.abs(land0) < 1e-6 and math.abs(hop0) < 0.1 and math.abs(landNeg) < 1e-6
+		and P.LEAP_REACH_MAX == 240 and math.abs(land50 - 50) < 1e-6 and math.abs(land1k - 240) < 1e-6 and math.abs(land0) < 1e-6 and math.abs(hop0) < 0.1 and math.abs(landNeg) < 1e-6
 		and math.abs(landNaN - 1.5) < 1e-6 and hopMax <= 2.4 + 1e-6 and under8 > -0.3,
-		"p7vfx poses: the leap's reach is its landing point (2 -> 2, 8 -> 8 studs at p 0.26), higher with reach, clamped 0 .. 12 (hop <= 2.4, recoil overshoot small)",
-		fmt("land %.3f / %.3f, hop %.3f / %.3f, 50 -> %.3f, 0 -> %.3f, -3 -> %.3f, NaN -> %.3f, hop max %.3f, under %.3f", land2, land8, hop2, hop8, land50, land0, landNeg, landNaN, hopMax, under8))
+		"p7vfx poses: the leap's reach is its landing point (2 -> 2, 8 -> 8 studs at p 0.26), higher with reach, 50 -> 50 (no pose clamp at 12), >= 0, ceiling 240 (hop <= 2.4, recoil overshoot small)",
+		fmt("land %.3f / %.3f, hop %.3f / %.3f, 50 -> %.3f, 1000 -> %.3f, 0 -> %.3f, -3 -> %.3f, NaN -> %.3f, hop max %.3f, under %.3f", land2, land8, hop2, hop8, land50, land1k, land0, landNeg, landNaN, hopMax, under8))
 	local rangedReach = true
 	for i = 0, 20 do
 		local a = P.Sample("Strike", i / 20, true, 1).Body

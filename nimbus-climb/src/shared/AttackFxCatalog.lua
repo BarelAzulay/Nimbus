@@ -45,7 +45,10 @@
 --                LowKeep = { layerId, ... } (Low quality keeps the Burst and then the first of these that the effect has: the
 --                element's most characteristic emitter, chosen on purpose, not left to the engine's rank),
 --                Layers = { { Id, Kind ("Emitter"|"Beam"|"Trail"|"Light"|"Ring"|"Decal"|"Mesh"), Beat, At, Texture?, Key?,
---                Color, Count?, Size?, Motion?, Delay?, ... } } (a template's Except = { [Attack or special Kind] = true } leaves
+--                Color, Count?, Size?, Motion?, Delay?, Transparency? (0..1: lifts the layer's whole fade, see-through),
+--                LightEmission? (overrides the sheet's / beam's default; the engine lights a layer under 0.5 by the scene
+--                and starts a glow hot from 0.8), SpeedScale? (x the emitter preset's speed), ... } } (a template's
+--                Except = { [Attack or special Kind] = true } leaves
 --                it out of those attacks), Alive = { Kind ("Emitter"|"Beam"|"Decal"|"Mesh"), Texture?,
 --                Key?, Motion, Color, Count, Seconds, Text } ({} = none) }
 --     Layer kinds: Emitter = a flipbook ParticleEmitter (4x4 sheet); Beam / Trail = a grid-1 strip or untextured; Light =
@@ -220,7 +223,7 @@ AttackFxCatalog.Textures = {
 	fx_snow = { Grid = 4, Baked = true },
 	fx_frostmist = { Grid = 4, Baked = true },
 	fx_petals = { Grid = 4, Baked = true },
-	fx_leaves = { Grid = 4, Baked = true },
+	fx_leaves = { Grid = 4, Baked = true }, -- UNUSED since Task 9 (Nature's green leaves vanished on the lawn: golden pollen); kept as the textures.json mirror
 	fx_thorn = { Grid = 4, Baked = true },
 	fx_rock = { Grid = 4, Baked = true },
 	fx_dust = { Grid = 4, Baked = true },
@@ -249,8 +252,15 @@ AttackFxCatalog.Textures = {
 -- every attack that hits an enemy shows it at EVERY rarity (counts x DetailScale: reduced at band 1, growing by band).
 -- Alive = the spec "Alive" detail (every rarity too). Melee / Ranged = the core + slot overrides + their own Layers
 -- (attack-specific detail, also every rarity) + Drop = { [layerId] = true } (shared Basic layers this element's attack
--- leaves out). BurstScale = { Size, Count } x the Burst, BurstLight = the Burst's LightEmission (Task 9: tuned per element
--- in Studio: an additive burst of a pale glow sheet summed to a white ball on the pale arena).
+-- leaves out). Task 9 per-element knobs (tuned in Studio: an additive burst of a pale glow sheet summed to a white ball on
+-- the pale arena):
+--   BurstScale = { Size, Count, Transparency?, Speed? }  x the Burst's size / count; its Transparency; Speed -> the
+--                                                        Burst layer's SpeedScale (chunks flung further)
+--   BurstLight   the Burst's (and the ranged Muzzle puff's) LightEmission
+--   BurstAt      where the Burst sits when it would sit on the Target (Water: "Ground", the geyser from the floor)
+--   PlasmaColor  the band 4 white heart's Palette entry instead of white (Earth "Core" gold, Shadow "Hot" pink)
+--   Tints        { [layerId] = Color3 } (Alive = the alive detail's colour)
+--   Area         { Transparency?, Layers? } the element attacks' (Cone / Circle / Line) core transparency + own layers
 ----------------------------------------------------------------------
 AttackFxCatalog.Elements = {
 	Water = {
@@ -410,7 +420,8 @@ AttackFxCatalog.Elements = {
 		BurstScale = { Size = 0.55, Count = 0.7 },
 		BurstLight = 0.4, -- (Task 9 round 2: still a white ball at Secret; half-lit the glow keeps the storm's blue)
 		-- (round 2: at 120/136/255 the bolt was a faint lilac squiggle on the pale floor: a deeper electric blue)
-		Tints = { Bolt = rgb(72, 98, 255), Arcs = rgb(72, 98, 255), Crackle = rgb(72, 98, 255) },
+		-- (review M1: the stray strikes too, Tints.Alive; they kept the lilac)
+		Tints = { Bolt = rgb(72, 98, 255), Arcs = rgb(72, 98, 255), Crackle = rgb(72, 98, 255), Alive = rgb(72, 98, 255) },
 		Melee = {
 			Key = "vfx_crescent", Path = "Swipe", Text = "electric claw, crackling arcs",
 			Layers = { { Id = "Arcs", Kind = "Beam", Texture = "fx_lightning", Beat = "Travel", At = "$Hit", Count = 2 } },
@@ -436,7 +447,7 @@ AttackFxCatalog.Elements = {
 			-- the storm's blue, half-lit)
 			{ Id = "ZigZag", Kind = "Emitter", Texture = "fx_sparks", Beat = "Impact", At = "$Hit", Tint = "Mid", Count = 10, Size = 1.2, LightEmission = 0.5 },
 		},
-		Alive = { Kind = "Beam", Texture = "fx_lightning", Motion = "Strike", Color = rgb(120, 136, 255), Count = 2, Seconds = 0.6, Text = "stray bolts strike the ground nearby" },
+		Alive = { Kind = "Beam", Texture = "fx_lightning", Motion = "Strike", Count = 2, Seconds = 0.6, Text = "stray bolts strike the ground nearby" },
 		Rain = { Key = "vfx_shard", Texture = "fx_lightning", Kind = "Beam", Scale = 0.6, Text = "lightning strikes" },
 		-- (round 3, c2 + Gemini: the Secret line / cone / ring read as solid plastic slabs that buried the lightning: see-
 		-- through, so the bolt and the blue sparks define the strike; the bolt narrow like the shot's, one jag not a scribble)
@@ -949,7 +960,7 @@ end
 
 local function aliveOf(element, palette, countScale)
 	local a = copy(element.Alive)
-	a.Color = colourOf(element.Alive, a.Texture, palette, {})
+	a.Color = (element.Tints and element.Tints.Alive) or colourOf(element.Alive, a.Texture, palette, {})
 	a.Count = max(1, floor((a.Count or 1) * countScale + 0.5))
 	a.Tint = nil
 	return a
