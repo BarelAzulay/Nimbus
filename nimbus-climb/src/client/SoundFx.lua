@@ -44,6 +44,7 @@ local St = {
 	Pools = {}, -- [name] = { Sound, ... }
 	Next = {}, -- [name] = next pool index
 	Music = nil, -- the playing music Sound
+	FadeIn = nil, -- its fade-in Tween while it runs (a settings change cancels it: the new volume wins)
 	Context = nil,
 	Layers = {}, -- [layer] = true while on
 	Pos = {}, -- [context] = TimePosition when it faded out (Config.Audio.Resume)
@@ -130,6 +131,12 @@ local function onChanged(key)
 		return
 	end
 	if key == "Music" and St.Music and St.Context then
+		if St.FadeIn then
+			pcall(function()
+				St.FadeIn:Cancel() -- (else the fade-in would still end on the volume of the old setting)
+			end)
+			St.FadeIn = nil
+		end
 		St.Music.Volume = SoundFx.SlotVolume(St.Context, "Music")
 	end
 	for sound, rec in pairs(St.Loops) do
@@ -216,6 +223,7 @@ function SoundFx.Music(context)
 	St.Context = context
 	local old = St.Music
 	St.Music = nil
+	St.FadeIn = nil
 	fadeOut(old, oldContext)
 	local id = context and SoundFx.Id("Music", context) or nil
 	if not id then
@@ -232,7 +240,14 @@ function SoundFx.Music(context)
 	pcall(function()
 		sound:Play()
 	end)
-	TweenService:Create(sound, TweenInfo.new(fade()), { Volume = SoundFx.SlotVolume(context, "Music") }):Play()
+	local tween = TweenService:Create(sound, TweenInfo.new(fade()), { Volume = SoundFx.SlotVolume(context, "Music") })
+	St.FadeIn = tween
+	tween.Completed:Connect(function()
+		if St.FadeIn == tween then
+			St.FadeIn = nil
+		end
+	end)
+	tween:Play()
 	return sound
 end
 

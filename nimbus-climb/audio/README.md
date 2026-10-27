@@ -34,4 +34,7 @@ my fights MusicBattle, a dungeon's boss room too), Click / Confirm / Whoosh (men
 Shatter took over the broken charge), Reward (a won fight, a
 dungeon room's loot, the dungeon chest), Inhale / Shatter (a Special's charge and a broken charge, BattleController),
 CrowdCheer / DrumLoop (positional loops at the Champion Ring pocket's crowd stand, client/Controllers/RingAmbience;
-the drums move to a drummer once one exists). Slot volumes: `Config.Audio.Volume`.
+the drums move to a drummer once one exists: a part named `Drummer`, a crowd model with the attribute `Drummer = true`
+(the art-wave branch's drummer) or anything tagged `NC_RingDrummer`; a plaza stand tagged `NC_RingCrowd` gets its own
+crowd loop). Slot volumes: `Config.Audio.Volume`. A won dungeon room plays Reward once, with its Loot (not at the
+room's End too).

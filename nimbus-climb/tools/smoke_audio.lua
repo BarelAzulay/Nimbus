@@ -14,12 +14,15 @@
 --                       win's Reward), a won ring round keeps Battle until the next round, a spectator hears no battle
 --                       music; a dungeon run plays Dungeon (rooms too), its boss room Battle, back to Dungeon after it,
 --                       Lobby when the run ends; the chest and a room's loot play Reward; the Music / Sfx settings apply
---                       at once to the music and the positional loops
+--                       at once to the music and the positional loops (also while a track is still fading in); a
+--                       dungeon room's won End plays no Reward of its own (its Loot does: one Reward per room);
+--                       MainMenuController starts the track SoundFx.Wanted() names (not a hard "Lobby")
 --   client_audio_charge BattleController's special charge plays SoundFx "Inhale" (PlaybackSpeed 0.75 rising to 1.35, faded
 --                       in / out) and a broken charge "Shatter" (never the old Whoosh / Error); the source pins the names
 --   client_audio_ring   RingAmbience on a ring pocket: CrowdCheer + DrumLoop looped, InverseTapered, Config.Audio
 --                       Positional Min / Max, at the crowd stand, slot volume x setting; a Drummer added later takes the
---                       drums; a tagged plaza crowd (NC_RingCrowd) gets its own; a destroyed pocket takes its sounds
+--                       drums, so does a crowd model marked Drummer = true (the art-wave crowd); a tagged plaza crowd
+--                       (NC_RingCrowd) gets its own; a destroyed pocket takes its sounds
 -- Deterministic: mock clock only, fixed ids (fake numbers given for the test, never uploaded). Plain Lua 5.1 syntax only.
 
 local T = SmokeCommon.T
@@ -524,6 +527,13 @@ S.client_audio_music = guarded("client_audio_music", function()
 		local d2 = SF.Current()
 		BC.HandleState("End", { BattleId = "audio_room1", Mode = "Dungeon", Outcome = "Win", Won = true, Reason = "Cleared", Rewards = { Dungeon = true } }, "audio_room1")
 		KC.advance(0.3)
+		local roomEndReward = false
+		for _, s in ipairs(sounds(SoundService)) do
+			if string.find(s.Name, "Sfx_Reward", 1, true) and s.IsPlaying then
+				roomEndReward = true
+			end
+		end
+		T.check(not roomEndReward, "audio reward: a won dungeon room's End plays no Reward of its own (the room's Loot does: one per room)")
 		fireDungeon("Loot", { Room = 1, Cash = 40, Tokens = 4, Xp = 20 })
 		local lootReward = false
 		for _, s in ipairs(sounds(SoundService)) do
@@ -574,9 +584,30 @@ S.client_audio_music = guarded("client_audio_music", function()
 			and math.abs(crowd.Volume - Config.Audio.Volume.CrowdCheer) < 1e-6
 		T.check(mutedMusic and mutedSfx and loud, "audio settings: Music 0 mutes the music + the drums (not the crowd), Sfx 0 the crowd + the effects; at 10 each plays its slot volume",
 			fmt("music %s sfx %s loud %s", tostring(mutedMusic), tostring(mutedSfx), tostring(loud)))
+		-- a settings change while a track is still fading in wins over the fade's target
+		SF.Music("Dungeon")
+		KC.advance(0.1)
+		CS.Set("Music", 0)
+		KC.advance(2)
+		local _, fading = music(SF)
+		local fadeMuted = fading ~= nil and fading.Name == "Music_Dungeon" and fading.Volume == 0
+		CS.Set("Music", 10)
+		KC.advance(2)
+		T.check(fadeMuted and math.abs(fading.Volume - Config.Audio.Volume.MusicDungeon) < 1e-6,
+			"audio settings: Music 0 during a track's fade-in keeps it muted (the fade does not end on the old volume); back to 10 -> its slot volume",
+			fading and fmt("muted %s, then %.3f", tostring(fadeMuted), fading.Volume) or "no music")
+		SF.Music("Lobby")
 		CS.Set("Music", m0)
 		CS.Set("Sfx", s0)
 		part:Destroy()
+		-- MainMenuController starts the music the layers ask for (a battle already on is not overridden by Lobby)
+		local mm = readFile("src/client/Controllers/MainMenuController.lua") or ""
+		T.check(string.find(mm, "SoundFx.Wanted()", 1, true) ~= nil and string.find(mm, 'SoundFx.Music, "Lobby")', 1, true) == nil,
+			"audio music: MainMenuController starts SoundFx.Music(SoundFx.Wanted()), not a hard Lobby")
+		SF.SetLayer("Battle", true)
+		local wanted = SF.Wanted()
+		SF.SetLayer("Battle", false)
+		T.eq(wanted, "Battle", "audio music: SoundFx.Wanted() names the Battle layer while it is on")
 	end)
 	T.check(okRun, "client_audio_music ran to the end", tostring(err))
 	T.check(#Mock.Errors == e0, "audio music: no script error")
@@ -681,6 +712,29 @@ S.client_audio_ring = guarded("client_audio_ring", function()
 		end
 		T.check(#drums == 1 and drums[1]:IsDescendantOf(drummer), "audio ring: a Drummer added to the pocket takes the DrumLoop (one, at the drummer; the bleacher's fallback is gone)",
 			fmt("%d drum loops", #drums))
+		-- the art-wave crowd: a spectator model marked Drummer = true (no "Drummer" name) takes the drums of its pocket
+		local pocket2, crowd2 = fakePocket(Vector3.new(-6000, 900, 4000))
+		KC.advance(0.1)
+		local drizzle = Instance.new("Model")
+		drizzle.Name = "Spectator_drizzle"
+		drizzle:SetAttribute("Drummer", true)
+		local body = Instance.new("Part")
+		body.Name = "Body"
+		body.Size = Vector3.new(2.8, 2.5, 2.2)
+		body.CFrame = CFrame.new(-6000 + 6, 905, 4000 + 44)
+		body.Parent = drizzle
+		drizzle.Parent = crowd2
+		KC.advance(0.1)
+		local drums2 = {}
+		for _, s in ipairs(sounds(pocket2)) do
+			if s.Name == "Loop_DrumLoop" then
+				drums2[#drums2 + 1] = s
+			end
+		end
+		T.check(#drums2 == 1 and drums2[1]:IsDescendantOf(drizzle), "audio ring: a crowd model marked Drummer = true (the art-wave drummer) takes the DrumLoop",
+			fmt("%d drum loops", #drums2))
+		pocket2:Destroy()
+		KC.advance(0.1)
 		-- a plaza crowd tagged NC_RingCrowd gets its own CrowdCheer
 		local plaza = Instance.new("Part")
 		plaza.Name = "PlazaStands"

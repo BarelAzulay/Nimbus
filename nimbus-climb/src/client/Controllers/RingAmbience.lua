@@ -9,10 +9,11 @@
 -- (CrowdCheer: Sfx, DrumLoop: Music). A sound without an id (AudioIds) is simply not made.
 --
 -- THE DRUMMER HOOK (no drummer model exists in this branch): a model or part named "Drummer" anywhere in a ring pocket,
--- or ANY instance tagged "NC_RingDrummer" (CollectionService; e.g. a drummer at a plaza ring), gets the DrumLoop; in a
--- pocket it then replaces the fallback at the bleacher. Likewise "NC_RingCrowd" gives any crowd / stand a CrowdCheer
--- (a plaza ring with stands only has to tag them). Everything is client-side and never replicated; a destroyed pocket
--- takes its sounds with it.
+-- one with the attribute Drummer = true (the art-wave branch's crowd: ArenaBuilder Ring.spectator marks its drummer
+-- "Spectator_drizzle" so), or ANY instance tagged "NC_RingDrummer" (CollectionService; e.g. a drummer at a plaza ring),
+-- gets the DrumLoop; in a pocket it then replaces the fallback at the bleacher. Likewise "NC_RingCrowd" gives any
+-- crowd / stand a CrowdCheer (a plaza ring with stands only has to tag them). Everything is client-side and never
+-- replicated; a destroyed pocket takes its sounds with it.
 --
 --   RingAmbience.Init()                 watches workspace.BattlePockets and the two tags (once)
 --   RingAmbience.Scan(pocket)           attaches the pocket's sounds now (idempotent; tests / a late child)
@@ -140,11 +141,20 @@ local function drop(sound)
 	end
 end
 
--- the pocket's drummer: a descendant named Drummer or tagged NC_RingDrummer
+local function isDrummer(inst)
+	return inst.Name == K.DRUMMER or inst:GetAttribute(K.DRUMMER) == true
+end
+
+-- the pocket's drummer: a descendant named Drummer, marked Drummer = true or tagged NC_RingDrummer
 local function drummerOf(pocket)
 	local named = pocket:FindFirstChild(K.DRUMMER, true)
 	if named then
 		return named
+	end
+	for _, d in ipairs(pocket:GetDescendants()) do
+		if d:GetAttribute(K.DRUMMER) == true then
+			return d
+		end
 	end
 	for _, inst in ipairs(CollectionService:GetTagged(K.DRUMMER_TAG)) do
 		if inst:IsDescendantOf(pocket) then
@@ -194,7 +204,7 @@ local function watchPocket(pocket)
 	RingAmbience.Scan(pocket)
 	-- a crowd / drummer that replicates after the pocket itself
 	table.insert(St.conns, pocket.DescendantAdded:Connect(function(d)
-		if d.Name == K.CROWD or d.Name == K.DRUMMER then
+		if d.Name == K.CROWD or isDrummer(d) then
 			RingAmbience.Scan(pocket)
 		end
 	end))
