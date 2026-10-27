@@ -842,7 +842,8 @@ AttackFxCatalog.Reactions = {
 --             a bigger glowing copy just behind each piece, Echo? = { Color, Count?, Lag?, Transparency? }: dimmer copies
 --             trailing each piece along its path }; built before the layers, Count x Density for others' pets; Low
 --             quality draws no rim / echo
---   Core.Spread  (a Storm) the rain falls on EVERY target, round robin, not round the aimed one (Obsidian's field storm)
+--   Core.Spread  (a Storm) the rain falls on EVERY target, round robin, not round the aimed one (Obsidian: the enemies in
+--                its Storm zone)
 --   DimWorld  (Eclipse Nova) seconds the battle stays dim after the impact (own pet only: AttackFx.Hooks.DimWorld ->
 --             BattleController, a LightingStack preset; it dims from the cast's first frame, Undim on end / KO / teardown)
 -- Every signature is checked at every rarity it can be drawn at (all 7: a budget step-down draws one band lower) x
@@ -929,13 +930,16 @@ AttackFxCatalog.Signatures = {
 		Skip = { Slash = true },
 		Layers = { { Id = "SigCorona", Kind = "Emitter", Texture = "fx_wisps", Beat = "Impact", At = "$Hit", Motion = "Burst", Count = 10, Size = 1.4 } },
 	},
-	-- RULING (Task 11 fix round 1, Gemini consulted): NOT a single-target dive. Its special is a field-wide Storm that hits
-	-- EVERY enemy, so a dive onto one target misread the mechanic. A black phoenix with a magenta rim waits over the near
-	-- end of the enemy line, wings folded, then makes a LOW sweeping pass across the whole line, end to end (AttackFx
-	-- MOVE.Actor "Sweep"), its black-flame wings trailing (Echo), the pass centred on the impact (a battle cuts the
-	-- charge, so the beat lives at the impact) while the dark fire rains on every target (Core.Spread); violet fire
-	-- spears, violet flames, an ash-violet cloud. Tests: client_p7vfx_engine 17e (the pass spans the group, the rain
-	-- covers every target). Do not turn it back into a dive or a hover.
+	-- RULING (Task 11 fix rounds 1 + 2, Gemini consulted): NOT a single-target dive. Its special is a Storm that hits the
+	-- enemies in the Storm zone (BattleSim: a Specials.Storm.Radius zone at the aimed target; BattleController's
+	-- Atk.Special gathers them, the sim's event names only the aimed one), so a dive onto one target misread the
+	-- mechanic. A black phoenix with a magenta rim waits over the near end of that enemy group, wings folded, then makes
+	-- a LOW sweeping pass across it, end to end (AttackFx MOVE.Actor "Sweep"; one enemy in the zone: a short crossing
+	-- over it), its black-flame wings trailing (Echo), the pass centred on the impact (a battle cuts the charge, so the
+	-- beat lives at the impact) while the dark fire rains on every enemy in the zone (Core.Spread); violet fire spears,
+	-- violet flames, an ash-violet cloud. Tests: client_p7vfx_engine 17e (the pass spans the group, the rain covers every
+	-- target), client_p7vfx_storm (the battle path), client_dev_pets (the /fx stand-ins). Do not turn it back into a
+	-- dive or a hover.
 	obsidian_phoenix = {
 		Name = "Shadowflame Storm", Rarity = "Secret", Element = "Flame", Kind = "Storm",
 		Twist = "black-flame wings sweep the field; dark fire rains",

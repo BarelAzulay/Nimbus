@@ -23,6 +23,8 @@
 --               before the sim's End: the winners' Victory starts after the grace and is not cut;
 --               Review Focus 4 + Ruling 11: the killing blow + End in one batch: the blow stays live past its impact, no
 --               new effect starts, Live == 0 and the pools at keep size within 1.0 s; a Leave mid-effect: at once.
+--   client_p7vfx_storm  (Task 11 fix round 2) a Storm special in a recorded Duel lands on exactly the enemies the sim's
+--               zone hits (BattleController's Atk.Special gathers them: the event names only the aimed one).
 
 local T = SmokeCommon.T
 local guarded = SmokeCommon.guarded
@@ -381,7 +383,8 @@ local function signatureEngine(env)
 	T.check(lunge.early < 0.05 and lunge.late > 0.4, "Task 11: battle timing: the Hydralotl serpents rise first, then lunge (not while rising)",
 		fmt("moved %.2f studs while rising, %.2f after", lunge.early, lunge.late))
 
-	-- 17e) (Task 11 fix round 1 ruling) Obsidian's Shadowflame Storm hits EVERY enemy, so no single-target dive: around the
+	-- 17e) (Task 11 fix round 1 ruling) Obsidian's Shadowflame Storm hits every enemy in its zone (BattleController gathers
+	-- them: client_p7vfx_storm), so no single-target dive: around the
 	-- impact (the charge is cut in a battle) the phoenix makes a LOW pass across the whole enemy line, end to end, passing
 	-- over every enemy, and the dark fire rain lands on every target. Two groups (4 in a line; 2 far apart on a slant),
 	-- each with a battle's 0.15 s lead and with the full /fx charge
@@ -503,6 +506,60 @@ local function signatureEngine(env)
 	T.check(#sweepBad == 0,
 		"Task 11 fix: Obsidian's Shadowflame Storm: around the impact a low pass spans the whole enemy line (over every enemy), the dark fire rains on every target, within the caps (battle lead and /fx)",
 		table.concat(sweepBad, " | "))
+
+	-- 17f) (fix round 2, M7) the pass's axis is frozen when it starts (TP0): two enemies 10 studs apart across the caster's
+	-- view turn 150 degrees round their middle during the pass (past square to the caster: a per-frame axis would flip
+	-- there and swap the pass's ends). The phoenix keeps going one way along the axis it started on, with no jump
+	do
+		local m1, m2 = env.allies[1], env.allies[2]
+		local cf1, cf2 = m1:GetPivot(), m2:GetPivot()
+		local a0 = env.A:GetPivot().Position
+		local p0 = env.B:GetPivot().Position
+		local dir = Vector3.new(p0.X - a0.X, 0, p0.Z - a0.Z).Unit
+		local right = dir:Cross(Vector3.new(0, 1, 0))
+		local function place(theta)
+			local r = CFrame.Angles(0, theta, 0)
+			m1:PivotTo(CFrame.new(p0 + r:VectorToWorldSpace(-right * 5)))
+			m2:PivotTo(CFrame.new(p0 + r:VectorToWorldSpace(right * 5)))
+		end
+		place(0)
+		Fx.ClearAll()
+		Fx.Play(ctx({ Element = "Flame", Attack = "Special", Kind = "Storm", PetId = "obsidian_phoenix", Rarity = "Secret", Mine = true,
+			From = { Unit = 95, Model = env.A }, To = { { Unit = 321, Model = m1 }, { Unit = 322, Model = m2 } }, Now = env.clock() }))
+		local el = Fx._Live()[#Fx._Live()]
+		local bird = nil
+		for _, it in ipairs(el and el.Items or {}) do
+			if it.Actor and not it.Rim and not it.Echo then
+				bird = it
+			end
+		end
+		local back, jump, frames, prev = 0, 0, 0, nil
+		if el and bird and bird.TP0 then
+			local tp0, tp1 = el.Start + bird.TP0, el.Start + bird.TP1
+			while env.clock() < tp1 do
+				local t = env.clock()
+				place(math.rad(150) * math.max(0, math.min(1, (t - tp0) / (tp1 - tp0))))
+				run(1 / 30)
+				local root = bird.Kit and bird.Kit.Root
+				if env.clock() > tp0 and env.clock() <= tp1 and root then
+					local p = Vector3.new(root.Position.X, 0, root.Position.Z)
+					if prev then
+						local d = p - prev
+						back = math.max(back, -d:Dot(right))
+						jump = math.max(jump, d.Magnitude)
+						frames = frames + 1
+					end
+					prev = p
+				end
+			end
+		end
+		Fx.ClearAll()
+		m1:PivotTo(cf1)
+		m2:PivotTo(cf2)
+		T.check(el ~= nil and bird ~= nil and frames >= 10 and back < 0.05 and jump < 2.5,
+			"Task 11 fix round 2 (M7): Obsidian's pass keeps the axis it started on while its two enemies turn 150 degrees: one way, no jump",
+			fmt("%d frames, at most %.2f studs back along the start axis, biggest step %.2f studs", frames, back, jump))
+	end
 
 	-- 17c) the Eclipse dim (own pet only): one DimWorld with its own token + the caster's unit, lasting to DimWorld after
 	-- the impact; Undim with that token when the effect ends, is cancelled or cleared; nothing for others' pets or another
@@ -2972,6 +3029,175 @@ S.client_p7vfx_battle = guarded("client_p7vfx_battle", function()
 	T.check(warned == nil and #Mock.Errors == err0, "client_p7vfx_battle: no errors or BattleController / AttackFx warnings", tostring(warned))
 	AF.SetQuality(nil)
 	KC.flushErrors("client_p7vfx_battle")
+end)
+
+----------------------------------------------------------------------------------------------------------------------
+-- client_p7vfx_storm (Task 11 fix round 2, I1): a Storm special in a real battle lands on the enemies in its ZONE.
+-- BattleSim's Storm is a Specials.Storm.Radius zone at the aimed target and its Special event names only that target;
+-- BattleController's Atk.Special gathers the living enemies in the zone. A recorded Duel (my Obsidian Phoenix against
+-- 5 standing NPC frogs: the aimed one, one beside it, one in only by its body (centre past the radius, edge inside),
+-- one just out, one far off): the sim's own events go to the client and the
+-- Obsidian effect's targets must be exactly the enemies the sim's zone ticks hit: several (#T > 1: the sweep and the
+-- spread rain are reached) when they stand together, one (#T == 1) when the aimed enemy stands alone
+----------------------------------------------------------------------------------------------------------------------
+S.client_p7vfx_storm = guarded("client_p7vfx_storm", function()
+	local BC = moduleAt(ROOTS.client .. "/Controllers/BattleController")
+	local AF = moduleAt(ROOTS.client .. "/Controllers/AttackFx")
+	local Sim = moduleAt(ROOTS.shared .. "/BattleSim")
+	if not T.check(BC ~= nil and AF ~= nil and Sim ~= nil and KC ~= nil, "Storm zone (battle): BattleController, AttackFx, BattleSim load") then
+		return
+	end
+	local out0, err0 = #Mock.Output, #Mock.Errors
+	local me = LocalPlayer.UserId
+	local frogs = {}
+	for i = 1, 5 do
+		frogs[i] = { PetId = "puddle_frog", Key = "puddle_frog", Level = 20, Tier = "Normal", Slot = i }
+	end
+	local sim, why = Sim.new({ Mode = "Duel", Seed = 23, Id = "p7vfx_storm", Zone = { X = 60, Z = 60 }, TimeLimit = 300,
+		Teams = { { Owner = me, Side = 1, Pets = { { PetId = "obsidian_phoenix", Key = "obsidian_phoenix", Level = 20, Tier = "Normal", Slot = 1 } } },
+			{ Owner = "frogs", Side = 2, Npc = true, Pets = frogs } } })
+	if not T.check(sim ~= nil, "Storm zone (battle): a Duel of my Obsidian Phoenix against 5 NPC frogs", tostring(why)) then
+		return
+	end
+	-- the frogs stand still (moveSpeed 0) and nobody falls. Round the aimed one at (6, 0), r = BattleCatalog's Storm
+	-- Radius: one 3 studs off, one r + 0.6 x its body radius off (in by its edge: inCircle), one r + its radius + 1.5
+	-- off (out); one far off at (24, 14). My phoenix stands in the zone too (the zone hits only enemies)
+	local BCat = moduleAt(ROOTS.shared .. "/BattleCatalog")
+	local r = BCat and BCat.Specials and BCat.Specials.Storm and tonumber(BCat.Specials.Storm.Radius) or nil
+	local mine, foes = nil, {}
+	for _, u in ipairs(sim.units) do
+		u.maxHp, u.hp = 1e7, 1e7
+		if u.side == 1 then
+			mine = u
+			u.x, u.z = 3, 3 -- (inside the zone itself: an ally there is never a target)
+		else
+			foes[#foes + 1] = u
+		end
+	end
+	if not T.check(r ~= nil and mine ~= nil and #foes == 5, "Storm zone (battle): my fighter + 5 frogs on the floor (and the Storm Radius in BattleCatalog)", fmt("%d frogs, radius %s", #foes, tostring(r))) then
+		return
+	end
+	local rad = foes[1].radius
+	local spots = { { 6, 0 }, { 8, 2.2 }, { 6, r + 0.6 * rad }, { 6, -(r + rad + 1.5) }, { 24, 14 } }
+	for i, u in ipairs(foes) do
+		u.x, u.z, u.moveSpeed = spots[i][1], spots[i][2], 0
+	end
+	local id = "p7vfx_storm_1"
+	local start = sim:Describe()
+	start.BattleId = id
+	start.Zone = { CFrame = CFrame.new(0, 200, 0), Size = Vector3.new(start.Zone.X, 30, start.Zone.Z), X = start.Zone.X, Z = start.Zone.Z }
+	start.Names = { [tostring(me)] = LocalPlayer.Name }
+	start.Side, start.Spectator, start.T = 1, false, sim:Time()
+	local team = sim:TeamOf(me)
+	if team then
+		start.Team = { Fighter = team.Fighter, Bench = team.Bench, Lives = team.Lives, Speed = team.Speed,
+			Cooldowns = { Element = team.Cooldowns.Element, Dash = team.Cooldowns.Dash, Swap = team.Cooldowns.Swap, Buff = {} } }
+	end
+	LocalPlayer:SetAttribute("InBattle", id)
+	AF.ClearAll()
+	AF.SetQuality("High")
+	KC.toClient("BattleState", "Start", start, id)
+	local last = {}
+	-- one server step: its events and its wire snapshot to the client, then the frames of that step
+	local function step(dt)
+		local evs = sim:Step(dt)
+		if #evs > 0 then
+			KC.toClient("BattleState", "Events", evs, id)
+		end
+		local snap = sim:SnapshotDelta(last)
+		snap.BattleId = id
+		KC.toClient("BattleState", "Snapshot", snap, id)
+		for _ = 1, math.max(1, math.floor(dt * 30 + 0.5)) do
+			Mock.Step(1 / 30)
+		end
+		return evs
+	end
+	for _ = 1, 10 do
+		step(0.1)
+	end
+	-- cast at `aim`: the sim's own Special / Zone / Hit events; -> the enemies the zone's ticks hit (the first 0.7 s),
+	-- the Obsidian effect's target units, the Special event
+	local function storm(aim)
+		mine.meter, mine.castUntil, mine.nextAttack = 100, 0, 0
+		sim:Command(me, "Target", aim.id)
+		local okC, whyC = sim:Command(me, "Special")
+		local hit, special = {}, nil
+		local evs = step(0.1)
+		local fx = nil
+		for _, e in ipairs(AF._Live()) do
+			if e.Unit == mine.id and e.Recipe.Signature == "obsidian_phoenix" then
+				fx = e
+			end
+		end
+		for _ = 1, 7 do
+			for _, ev in ipairs(evs) do
+				if ev.type == "Special" and ev.unit == mine.id then
+					special = ev
+				elseif ev.type == "Hit" and ev.zone and ev.from == mine.id then
+					hit[tonumber(ev.to)] = true
+				end
+			end
+			evs = step(0.1)
+		end
+		local units = {}
+		for _, side in ipairs(fx and fx.Targets or {}) do
+			units[#units + 1] = side.Unit
+		end
+		-- (the zone runs out, the meter refills by hand for the next cast)
+		for _ = 1, 45 do
+			step(0.1)
+		end
+		return okC and special and hit, units, special, fx, whyC
+	end
+	local function same(hit, units)
+		local n = 0
+		for _ in pairs(hit or {}) do
+			n = n + 1
+		end
+		if n ~= #units then
+			return false
+		end
+		for _, u in ipairs(units) do
+			if not (hit or {})[u] then
+				return false
+			end
+		end
+		return true
+	end
+	local function list(set)
+		local o = {}
+		for k in pairs(set or {}) do
+			o[#o + 1] = tostring(k)
+		end
+		table.sort(o)
+		return table.concat(o, ",")
+	end
+	local hitA, unitsA, evA, fxA, whyA = storm(foes[1])
+	T.check(evA ~= nil and evA.targets == nil and fxA ~= nil and fxA.Targets[1] and fxA.Targets[1].Unit == foes[1].id,
+		"Storm zone (battle): the sim's Storm event names only the aimed frog; my Obsidian's effect plays, aimed at it first",
+		fmt("cast %s, event targets %s, effect %s", tostring(whyA or "ok"), tostring(evA and evA.targets), tostring(fxA ~= nil)))
+	T.check(fxA ~= nil and #fxA.T > 1 and #fxA.T == 3 and same(hitA, unitsA),
+		"Storm zone (battle): 3 frogs in the zone (one by its edge), one just out: the effect lands on exactly the 3 the zone hits (#eff.T > 1: the sweep and the spread rain)",
+		fmt("#T %s, effect units {%s}, the zone hit {%s}", tostring(fxA and #fxA.T), table.concat(unitsA, ","), list(hitA)))
+	local hitB, unitsB, evB, fxB, whyB = storm(foes[5])
+	T.check(evB ~= nil and fxB ~= nil and #fxB.T == 1 and unitsB[1] == foes[5].id and same(hitB, unitsB),
+		"Storm zone (battle): the far frog alone in the zone: the effect lands on it alone (#eff.T == 1), as the zone hits",
+		fmt("cast %s, #T %s, effect units {%s}, the zone hit {%s}", tostring(whyB or "ok"), tostring(fxB and #fxB.T), table.concat(unitsB, ","), list(hitB)))
+	KC.toClient("BattleState", "End", { BattleId = id, Mode = "Duel", Outcome = "Win", Won = true, Spectator = false, Reason = "Wipe",
+		Rewards = { Tokens = 0, Gems = 0, Xp = 0, Trophies = 0, LevelUps = 0 } }, id)
+	LocalPlayer:SetAttribute("InBattle", nil)
+	KC.advance(15)
+	local warned = nil
+	for i = out0 + 1, #Mock.Output do
+		local o = Mock.Output[i]
+		if o.kind == "warn" and (o.text:find("BattleController", 1, true) or o.text:find("AttackFx", 1, true)) then
+			warned = o.text
+			break
+		end
+	end
+	T.check(warned == nil and #Mock.Errors == err0 and AF.Stats().Live == 0, "client_p7vfx_storm: no errors or BattleController / AttackFx warnings, nothing left live", tostring(warned))
+	AF.SetQuality(nil)
+	KC.flushErrors("client_p7vfx_storm")
 end)
 
 return S

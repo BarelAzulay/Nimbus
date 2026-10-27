@@ -392,6 +392,7 @@ local St = {
 	gamepad = false, -- the last input was a gamepad
 	tap = nil, -- { pos, t } a press that may become a tap
 	frameNo = 0,
+	fxFrame = 0, -- (fix round 2, M8) the frameNo of the last frame whose loop reached Atk.Update (equal at rest: no frame failed)
 	perf = { frames = 0, total = 0, peak = 0, last = 0, builds = 0, split = {} },
 	warned = {},
 	remoteCmd = nil,
@@ -2733,6 +2734,7 @@ function Atk.Update(now)
 	if not AF then
 		return
 	end
+	St.fxFrame = St.frameNo -- (fix round 2, M8) the frame loop stepped AttackFx in this frame (StepsAttackFx)
 	local ok, err = pcall(AF.Update, now)
 	if not ok then
 		warnOnce("attackfx", "AttackFx.Update failed: " .. tostring(err))
@@ -2790,6 +2792,30 @@ end
 -- crouch / lunge / nudge come back until a play succeeds again)
 function Atk.Drives(u)
 	return (Mods.AttackFx and Atk.Posable() and u.fxDriven ~= false) and true or false
+end
+
+-- (Task 11 fix round 2, I1) the living enemies of `u` inside a Storm's zone: BattleSim's castSpecial puts the zone at the
+-- aimed target (ev.tx, ev.tz) with radius Specials.Storm.Radius (BattleCatalog, the same table the sim reads) and its
+-- tickZones hits a body on the floor whose edge reaches the circle (inCircle: d <= r + its radius). The sim's Special
+-- event names only the aimed target, so the effect's targets are gathered here, in the units' list order
+local function stormZone(B, u, ev)
+	local S = SPECIALS.Storm
+	local r = type(S) == "table" and tonumber(S.Radius) or nil
+	local x, z = tonumber(ev.tx), tonumber(ev.tz)
+	local out = {}
+	if not (r and x and z) then
+		return out
+	end
+	for _, e in ipairs(B.list) do
+		if e.side ~= u.side and not e.gone and not e.benched and e.hp > 0 and e.state ~= S_DOWN then
+			local dx, dz = e.x - x, e.z - z
+			local reach = r + num(e.radius, 0)
+			if dx * dx + dz * dz <= reach * reach then
+				out[#out + 1] = e
+			end
+		end
+	end
+	return out
 end
 
 -- the hits of a played Special / Element on these sides are AttackFx's (their Hurt pose: no nudge)
@@ -2922,6 +2948,11 @@ function Atk.Special(B, ev, dueAt)
 		add(ev.target) -- the aimed target first (AttackFx aims at To[1])
 		for _, id in ipairs(type(ev.targets) == "table" and ev.targets or {}) do
 			add(id)
+		end
+		if kind == "Storm" then -- (fix round 2, I1) + every other enemy in the zone (the event carries only the aimed one)
+			for _, e in ipairs(stormZone(B, u, ev)) do
+				add(e.id)
+			end
 		end
 	end
 	if #to == 0 then
@@ -7912,10 +7943,10 @@ function Units.UpdateFocus(B, now)
 end
 
 local function onFrame(dt)
+	St.frameNo = St.frameNo + 1 -- (first: a frame that fails before Atk.Update shows in StepsAttackFx, fix round 2 M8)
 	local perfClock = BattleController.PerfClock or os.clock
 	local p0 = perfClock()
 	local t0 = os.clock()
-	St.frameNo = St.frameNo + 1
 	local now = t0
 	local B = St.battle
 	if B then
@@ -8303,9 +8334,18 @@ end
 
 -- (Task 11 fix round 1, M2) true while this controller's frame loop runs and steps AttackFx itself (Atk.Update): the
 -- /fx preview (DevPetShow) then leaves its own AttackFx.Update out, so an effect is stepped once a frame (an Eclipse dim
--- in /fx wakes this loop through Me.Dim). The loop keeps running while any AttackFx effect lives (Atk.Pending)
+-- in /fx wakes this loop through Me.Dim). The loop keeps running while any AttackFx effect lives (Atk.Pending).
+-- (fix round 2, M8) and only while the loop really reaches Atk.Update: the last frame it ran (St.frameNo, counted first
+-- thing in onFrame) is the frame Atk.Update stepped (St.fxFrame). A loop that fails earlier in its frame every frame
+-- (pcall'd, one warning) stays connected but steps nothing: the caller then steps AttackFx itself. (Either order of the
+-- two RenderStepped handlers in a frame: before onFrame both still hold the last frame's numbers, after it this one's)
 function BattleController.StepsAttackFx()
-	return St.loop ~= nil and Mods.AttackFx ~= nil and Mods.AttackFx ~= false
+	return St.loop ~= nil and Mods.AttackFx ~= nil and Mods.AttackFx ~= false and St.fxFrame == St.frameNo
+end
+
+-- TESTS ONLY (tools/smoke_dev.lua, M8): re-arm a once-only warning after a check that faults a frame on purpose
+function BattleController._Unwarn(key)
+	St.warned[key] = nil
 end
 
 return BattleController

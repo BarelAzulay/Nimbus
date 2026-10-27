@@ -93,7 +93,8 @@
 -- WishRise, Seal, FoxFire, RingRise, RiseRoar, MoonRise, Rise: see MOVE.Actor); Task 11: it is built right after the core (the
 -- piece cap never cuts it), Count x Density pieces for others' pets, Rim = a bigger glowing copy behind each piece, Echo =
 -- dimmer copies trailing it along its path (Obsidian's black-flame wings); Low quality builds neither (fix round 1, M1).
--- A Storm core with Spread = true rains on EVERY target (round robin), not round the aimed one (Obsidian's field storm).
+-- A Storm core with Spread = true rains on EVERY target (round robin), not round the aimed one (Obsidian: the enemies in
+-- its Storm zone, which BattleController gathers: fix round 2, I1).
 -- Task 10 (the 9 special kinds): an Emitter with Along = true streams along mouth -> hit while the beam holds (the Beam's
 -- wrap); Drift = true streams off its points over its beat (the Haste gust); Shape "Plus" holds the sheet upright, no
 -- roll / spin (the Heal's plus sparkles); a Ring or Mesh layer At "Allies" puts its piece(s) on each ally (the Rally
@@ -830,7 +831,7 @@ MOVE.Fly = function(eff, it, t)
 end
 
 -- a piece of the Storm special's rain: falls from the cloud, pops on landing (round its own target `Tgt` when the core
--- spreads the rain over the whole field, else round the hit point)
+-- spreads the rain over the enemies in the Storm zone, else round the hit point)
 MOVE.Fall = function(eff, it, t)
 	if t < it.TR then
 		return nil
@@ -890,32 +891,38 @@ local function alliesCentre(eff)
 	return sum / n
 end
 
--- the enemy group a field-wide special lands on (Task 11 fix round 1: Obsidian's sweep) -> its middle, its long axis
--- (flat: the line through the two targets farthest apart, turned to run along the caster's right; the caster's right
--- itself while they stand within a stud of each other) and the targets' extent along it (lo <= 0 <= hi, from the middle)
-local function fieldLine(eff)
+-- the enemy group a zone special lands on (Task 11 fix round 1: Obsidian's sweep over the enemies in its Storm zone)
+-- -> its middle, its long axis (flat: the line through the two targets farthest apart, turned to run along the caster's right; the caster's right
+-- itself while they stand within a stud of each other) and the targets' extent along it (lo <= 0 <= hi, from the middle).
+-- `fixed` (fix round 2, M7): this axis instead (the Sweep freezes it when its pass starts); the middle and the extent
+-- still follow the targets along it
+local function fieldLine(eff, fixed)
 	local n = #eff.T
 	if n < 1 then
-		return eff.Hit, eff.Right, 0, 0
+		return eff.Hit, fixed or eff.Right, 0, 0
 	end
 	local c = V3(0, 0, 0)
 	for i = 1, n do
 		c = c + eff.T[i]
 	end
 	c = c / n
-	local ax, far = eff.Right, 1
-	for i = 1, n - 1 do
-		for j = i + 1, n do
-			local d = flat(eff.T[j] - eff.T[i])
-			local m = d.Magnitude
-			if m > far then
-				far, ax = m, d / m
+	local ax = fixed
+	if not ax then
+		local far = 1
+		ax = eff.Right
+		for i = 1, n - 1 do
+			for j = i + 1, n do
+				local d = flat(eff.T[j] - eff.T[i])
+				local m = d.Magnitude
+				if m > far then
+					far, ax = m, d / m
+				end
 			end
 		end
-	end
-	local side = ax:Dot(eff.Right)
-	if side < -0.05 or (side <= 0.05 and ax:Dot(eff.Dir) < 0) then
-		ax = -ax
+		local side = ax:Dot(eff.Right)
+		if side < -0.05 or (side <= 0.05 and ax:Dot(eff.Dir) < 0) then
+			ax = -ax
+		end
 	end
 	local lo, hi = 0, 0
 	for i = 1, n do
@@ -934,7 +941,7 @@ AttackFx._FieldLine = fieldLine -- (tests)
 --   Eclipse        (Eclipse Dragon) hangs over the target through the charge, turning; at the impact it drops onto the
 --                  target, lies flat on the floor and bursts outward as it fades (a ring on the ground, never a wall)
 --                  A MISSED Eclipse Nova (fix round 1, M3): the sun never drops; it fades where it hangs at the impact
---   Sweep          (Obsidian Phoenix; fix round 1 ruling: its Storm hits EVERY enemy, so no single-target dive) waits
+--   Sweep          (Obsidian Phoenix; ruling: its Storm hits every enemy IN ITS ZONE, so no single-target dive) waits
 --                  over the near end of the enemy line, wings folded; then a low swooping pass ACROSS the whole line,
 --                  end to end and past both ends (fieldLine), wings open, its Echo copies trailing as black-flame wings;
 --                  the pass is centred on the impact (a battle's cut charge starts it at the first frame instead), as
@@ -992,7 +999,18 @@ MOVE.Actor = function(eff, it, t)
 		local w = seg(t, T.Impact + 0.08, it.T1)
 		return hang:Lerp(flat, v * v), ONE * (1 + 1.3 * outCubic(w)), fadeTo(it, smooth(w))
 	elseif m == "Sweep" then
-		local c, ax, lo, hi = fieldLine(eff)
+		-- (fix round 2, M7) the axis is frozen on the effect when the pass starts (TP0; the bird, its rim and its echoes
+		-- share it): targets moving mid-pass can no longer swap its ends and jump the bird across the line
+		local c, ax, lo, hi
+		if t >= it.TP0 then
+			if not eff.SweepAx then
+				local _, a0 = fieldLine(eff)
+				eff.SweepAx = a0
+			end
+			c, ax, lo, hi = fieldLine(eff, eff.SweepAx)
+		else
+			c, ax, lo, hi = fieldLine(eff)
+		end
 		local edge = 2.5 * eff.Size
 		local a, b = c + ax * (lo - edge), c + ax * (hi + edge)
 		local low, rise = 1 + 0.8 * eff.Size, 2.2 * eff.Size -- (over the targets' middle: the pass's lowest / its climb at the ends)
@@ -1504,7 +1522,8 @@ local function buildCore(eff)
 		local travel = max(0.05, T.Impact - T.Travel)
 		if core.Fall then -- the Storm special: the element rains out of the cloud
 			local n = min(8, finite(core.Count) and core.Count or 6)
-			-- (fix round 1: Spread = a field-wide storm rains on EVERY target, round robin, at least one piece each)
+			-- (fix round 1: Spread = the storm rains on EVERY target in its zone, round robin, at least one piece each up to
+			-- 8 targets: a 9th+ enemy in the zone stays dry, cosmetic)
 			local nT = #eff.T
 			local spread = core.Spread == true and nT > 1
 			if spread then

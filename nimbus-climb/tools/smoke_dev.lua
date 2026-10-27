@@ -1668,6 +1668,33 @@ local function clientScenarios()
 			local heal = live[#live]
 			T.check(#models() == 4 and allies == 2 and heal and heal.Recipe.Kind == "Heal" and #heal.T == 4,
 				"DEV pets: Fx of a support special (Heal) lands on 4 allies: the pair + 2 stand-ins", #models() .. " models, " .. allies .. " extra, " .. tostring(heal and #heal.T) .. " targets")
+			-- (Task 11 fix round 2, I1) a Storm hits the enemies in its zone: /fx previews it on the dummy + 2 stand-in enemies
+			-- inside the zone, so Obsidian's sweep and spread rain are reached (#eff.T > 1), not a lone-target pass
+			do
+				KC.toClient("DevPetShow", "Fx", { Element = "Flame", Attack = "Special", Kind = "Storm", Rarity = "Secret", Stage = 0 })
+				advance(0.3)
+				local okBCat, BCat = pcall(require, Mock.GetPath(ROOTS["shared"] .. "/BattleCatalog"))
+				local zoneR = okBCat and type(BCat) == "table" and BCat.Specials and BCat.Specials.Storm and tonumber(BCat.Specials.Storm.Radius) or 0
+				local foes, foeFar, dummyPos = 0, 0, nil
+				for _, m in ipairs(models()) do
+					if m:GetAttribute("DevFx") == "Target" then
+						dummyPos = m.PrimaryPart.Position
+					end
+				end
+				for _, m in ipairs(models()) do
+					if m:GetAttribute("DevFx") == "Foe" then
+						foes = foes + 1
+						local d = dummyPos and (Vector3.new(m.PrimaryPart.Position.X, 0, m.PrimaryPart.Position.Z) - Vector3.new(dummyPos.X, 0, dummyPos.Z)).Magnitude or math.huge
+						foeFar = math.max(foeFar, d)
+					end
+				end
+				local live2 = AF._Live and AF._Live() or {}
+				local storm = live2[#live2]
+				T.check(#models() == 4 and foes == 2 and foeFar < zoneR and storm and storm.Recipe.Signature == "obsidian_phoenix" and #storm.T > 1 and #storm.T == 3,
+					"DEV pets: Fx of Obsidian's Storm lands on 3 enemies (the dummy + 2 stand-ins inside the zone): #eff.T > 1",
+					#models() .. " models, " .. foes .. " stand-ins (farthest " .. string.format("%.1f", foeFar) .. " studs off the dummy), sig "
+						.. tostring(storm and storm.Recipe.Signature) .. ", " .. tostring(storm and #storm.T) .. " targets, zone radius " .. zoneR)
+			end
 			-- (Task 11 fix round 1, M2) an Eclipse Nova in /fx dims the world, which wakes BattleController's frame loop (it steps
 			-- AttackFx too): AttackFx.Update still runs ONCE a frame (the fake clock: two calls in one frame share their `now`).
 			-- (The dim hook here only wakes the loop, as Me.Dim does, without touching Lighting: a real dim makes LightingStack
@@ -1702,6 +1729,52 @@ local function clientScenarios()
 				T.check(okRun and sig == "eclipse_dragon" and woke and calls > 20 and twice == 0,
 					"DEV pets: /fx Eclipse Nova: the dim wakes BattleController's loop, yet AttackFx.Update runs once a frame (never twice)",
 					string.format("%s, sig %s, woke %s, %d calls, %d twice in a frame", tostring(err or "ok"), tostring(sig), tostring(woke), calls, twice))
+				-- (Task 11 fix round 2, M8) a frame loop that fails before Atk.Update EVERY frame (pcall'd: one warning) stays
+				-- connected but steps nothing: StepsAttackFx then says false and the /fx preview steps AttackFx itself
+				do
+					local hooks1 = { AF.Hooks.DimWorld, AF.Hooks.Undim }
+					AF.Hooks.DimWorld = function()
+						BCm._wake()
+					end
+					AF.Hooks.Undim = function() end
+					local o0, perf0 = #Mock.Output, BCm.PerfClock
+					local healthy, faults, calls2, twice2, last2, says = false, 0, 0, 0, nil, nil
+					local okRun2, err2 = pcall(function()
+						KC.toClient("DevPetShow", "Fx", { Element = "Shadow", Attack = "Special", Kind = "Blast", Rarity = "Secret", Stage = 0 })
+						advance(0.1)
+						healthy = BCm.StepsAttackFx() == true
+						BCm.PerfClock = function()
+							faults = faults + 1
+							error("M8 check: this frame fails before Atk.Update")
+						end
+						AF.Update = function(now, ...)
+							calls2 = calls2 + 1
+							if last2 ~= nil and now == last2 then
+								twice2 = twice2 + 1
+							end
+							last2 = now
+							return realUpdate(now, ...)
+						end
+						advance(1)
+						says = BCm.StepsAttackFx()
+					end)
+					BCm.PerfClock = perf0
+					AF.Update = realUpdate
+					AF.Hooks.DimWorld, AF.Hooks.Undim = hooks1[1], hooks1[2]
+					-- (the planted fault's one warning belongs to this check: dropped, and re-armed for any later real failure)
+					for i = #Mock.Output, o0 + 1, -1 do
+						local o = Mock.Output[i]
+						if o.kind == "warn" and tostring(o.text):find("M8 check", 1, true) then
+							table.remove(Mock.Output, i)
+						end
+					end
+					if type(BCm._Unwarn) == "function" then
+						BCm._Unwarn("frame")
+					end
+					T.check(okRun2 and healthy and faults >= 20 and says == false and calls2 >= faults - 1 and twice2 == 0,
+						"DEV pets: /fx while BattleController's loop runs but fails before Atk.Update every frame: StepsAttackFx says false and /fx steps AttackFx itself (once a frame)",
+						string.format("%s, healthy %s, %d failed frames, StepsAttackFx %s, %d Update calls, %d twice", tostring(err2 or "ok"), tostring(healthy), faults, tostring(says), calls2, twice2))
+				end
 			end
 			KC.toClient("DevPetShow", "Clear", {})
 			advance(0.3)

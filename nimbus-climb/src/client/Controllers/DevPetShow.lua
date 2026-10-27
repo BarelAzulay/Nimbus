@@ -26,7 +26,9 @@
 --                           short-lived RenderStepped drives AttackFx.Update + the poses (AttackFx.Pose -> the body offset
 --                           PetBuilder.PoseBody on the pivot + PetBuilder.Animate opts.Pose) for FX_SECONDS; a Special
 --                           without a kind plays the caster's own; the support kinds land on both pets and on 2 more
---                           stand-in allies behind them (4 allies: Task 10)
+--                           stand-in allies behind them (4 allies: Task 10); a Storm (an attack special that hits the
+--                           enemies in its zone) lands on the dummy and 2 stand-in enemies beside and behind it, inside
+--                           the zone (3 enemies: Task 11 fix round 2, I1)
 --   Clear {}                stops an evolution or a lineup and removes every showcase pet (and the Fx pair: AttackFx.Cancel)
 -- Lineup, Evolve, Fx and Clear take over from whatever was running; Spawn adds to it. Resting pets get the tag
 -- NC_Showcase (ShowcaseController makes them hover, flap, wag and blink) and a compact name tag (World text rule:
@@ -88,6 +90,8 @@ local K = {
 	FX_BACK = 3, -- ... their line this much further than a lone pet would stand
 	FX_SECONDS = 6, -- the preview's update runs this long (the longest special + its linger)
 	FX_ALLY_BACK = 4, -- (Task 10) a support special's 2 extra allies stand this far behind the pair (4 allies in all)
+	FX_FOE_BACK = 3.5, -- (Task 11 fix round 2) a Storm's 2 extra enemies stand this far behind the dummy ...
+	FX_FOE_SIDE = 2.5, -- ... and this far to either side (4.3 studs off: inside the Storm Radius; client_dev_pets)
 }
 local STAGE_NAMES = { [0] = "Normal", [1] = "Evolved", [2] = "Evolved II" }
 
@@ -100,6 +104,7 @@ local initialized = false
 local fxRun = nil -- the /fx preview: { Sides = { { Id, Model, Base } x2 }, Until, Conn }
 local FX_CASTER, FX_TARGET = "DevFx:Caster", "DevFx:Target" -- AttackFx unit ids (never a battle's numbers)
 local FX_ALLIES = { "DevFx:Ally1", "DevFx:Ally2" } -- (Task 10) the 2 extra allies of a support special
+local FX_FOES = { "DevFx:Foe1", "DevFx:Foe2" } -- (Task 11 fix round 2) the 2 extra enemies in a Storm's zone
 
 ----------------------------------------------------------------------
 -- Helpers
@@ -685,6 +690,9 @@ function fxStop()
 		for _, id in ipairs(FX_ALLIES) do
 			pcall(AF.Cancel, id)
 		end
+		for _, id in ipairs(FX_FOES) do
+			pcall(AF.Cancel, id)
+		end
 	end
 end
 
@@ -802,6 +810,24 @@ local function fxPlay(payload)
 				ally.Parent = parent
 				to[#to + 1] = { Unit = id, Model = ally, Pos = aPose.Position }
 				sides[#sides + 1] = { Id = id, Model = ally, Base = aPose }
+			end
+		end
+	elseif attack == "Special" and kind == "Storm" then
+		-- (Task 11 fix round 2, I1) a Storm hits the enemies in its zone (BattleController gathers them in a battle): the
+		-- dummy + 2 stand-in enemies behind it, one to either side, facing the caster (Obsidian's sweep crosses all three)
+		to = { tSide }
+		for i, id in ipairs(FX_FOES) do
+			local eDef = fxDummy(payload.Element, i)
+			local foe = eDef and build(eDef, 0, "High")
+			if foe then
+				local eBottom = extentOf(foe)
+				local spot = tSpot + look * K.FX_FOE_BACK + right * ((i == 1) and -K.FX_FOE_SIDE or K.FX_FOE_SIDE)
+				local ePose = poseAt(spot, eBottom, -right, char, origin.Y - 3)
+				foe:PivotTo(ePose)
+				foe:SetAttribute("DevFx", "Foe")
+				foe.Parent = parent
+				to[#to + 1] = { Unit = id, Model = foe, Pos = ePose.Position }
+				sides[#sides + 1] = { Id = id, Model = foe, Base = ePose }
 			end
 		end
 	elseif attack == "Melee" or attack == "Ranged" or attack == "Special" or attack == "Element" then
