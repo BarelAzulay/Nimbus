@@ -422,6 +422,9 @@ AttackFxCatalog.Elements = {
 				-- (round 3, c2: 2.6 wide the strip's bolt wandered over a 3.6-stud band at Secret: a scribble on the floor, not
 				-- one bolt; narrower and running mouth -> shot (engine), the jag stays one bolt at the shot's height; s4: at 1.3
 				-- the Common bolt's line was hairline-thin)
+				-- (review I1: Bolt + Crackle ask for up to 3 beams each; the engine ranks beams (the alive strikes first, the
+				-- ladder's ShotArcs last, one each before any second), so under the 4-beam cap the shot draws Bolt 1 + Crackle 1
+				-- + 1-2 stray strikes, + 1 ShotArc at Mythic / Secret)
 				{ Id = "Bolt", Kind = "Beam", Texture = "fx_lightning", Beat = "Travel", At = "Path", Width = 1.6, Count = 2 },
 				-- the bolt crackles round the target as it strikes (beams, no emitter)
 				{ Id = "Crackle", Kind = "Beam", Texture = "fx_lightning", Beat = "Impact", At = "$Hit", Count = 2 },

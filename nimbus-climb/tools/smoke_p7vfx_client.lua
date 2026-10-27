@@ -772,6 +772,66 @@ S.client_p7vfx_engine = guarded("client_p7vfx_engine", function()
 	T.check(bolt ~= nil and inFlight > 0 and onShot == inFlight, "Storm's ranged bolt runs from the mouth to the flying shot (its tip on the shot)",
 		fmt("%d / %d frames on the shot, worst gap %.2f", onShot, inFlight, worstGap))
 	Fx.ClearAll()
+	-- 13e) Task 9 review I1 / I2 (+ M6): the alive detail is DRAWN under the caps, not only in the recipe: for every
+	-- element x Melee / Ranged x rarity at High the effect builds >= 1 Alive item (emitter / beam / mesh / disc); a
+	-- constellation (Connect) alive draws all its lines; every beam layer of the recipe gets at least one beam when the
+	-- recipe has <= MAX_BEAMS beam layers; the beam / emitter caps hold. (Built in catalog order with the alive detail
+	-- last, Storm's own Bolt + Crackle took all 4 beams from Rare up: no stray strikes, no Mythic ShotArcs; the Celestial
+	-- Secret shot drew 1 of its 3 constellation lines)
+	local aliveBad, aliveSeen = {}, 0
+	for _, e in ipairs({ "Flame", "Water", "Frost", "Nature", "Earth", "Storm", "Celestial", "Shadow" }) do
+		for _, attack in ipairs({ "Melee", "Ranged" }) do
+			for _, rarity in ipairs(Cat.Rarities) do
+				Fx.ClearAll()
+				local played = Fx.Play(ctx({ Element = e, Attack = attack, Rarity = rarity, From = { Unit = 75, Model = A }, Now = clock }))
+				local el = played and Fx._Live()[#Fx._Live()] or nil
+				local r = el and el.Recipe
+				local alive, aliveBeams, beamLayers, beamsOf = 0, 0, {}, {}
+				for _, it in ipairs(el and el.Items or {}) do
+					if it.Layer and it.Layer.Alive then
+						alive = alive + 1
+						if it.Kind == "Beam" then
+							aliveBeams = aliveBeams + 1
+						end
+					end
+					if it.Kind == "Beam" and it.Layer then
+						beamsOf[it.Layer] = (beamsOf[it.Layer] or 0) + 1
+					end
+				end
+				for _, l in ipairs(r and r.Layers or {}) do
+					if l.Kind == "Beam" then
+						beamLayers[#beamLayers + 1] = l
+					end
+				end
+				local why = nil
+				if not el then
+					why = "no effect"
+				elseif not (type(r.Alive) == "table" and r.Alive.Kind) then
+					why = "no alive detail in the recipe"
+				elseif alive == 0 then
+					why = fmt("no Alive item drawn (%d beams, %d emitters)", el.Beams, el.Emitters)
+				elseif r.Alive.Kind == "Beam" and r.Alive.Motion == "Connect" and aliveBeams < math.min(3, r.Alive.Count or 1) then
+					why = fmt("%d of %d constellation lines", aliveBeams, math.min(3, r.Alive.Count or 1))
+				elseif el.Beams > Fx.MAX_BEAMS or el.Emitters > Fx.MAX_EMITTERS.High then
+					why = fmt("over the caps: %d beams, %d emitters", el.Beams, el.Emitters)
+				elseif #beamLayers + ((r.Alive.Kind == "Beam") and 1 or 0) <= Fx.MAX_BEAMS then
+					for _, l in ipairs(beamLayers) do
+						if not beamsOf[l] then
+							why = (why and why .. ", " or "beam layer not drawn: ") .. tostring(l.Id)
+						end
+					end
+				end
+				if why then
+					aliveBad[#aliveBad + 1] = fmt("%s %s %s: %s", e, attack, rarity, why)
+				else
+					aliveSeen = aliveSeen + 1
+				end
+			end
+		end
+	end
+	T.check(#aliveBad == 0 and aliveSeen == 8 * 2 * #Cat.Rarities, "every element x Melee / Ranged x rarity draws its alive detail under the caps (beams ranked: alive, own, ladder)",
+		fmt("%d ok; %s", aliveSeen, table.concat(aliveBad, " | ")))
+	Fx.ClearAll()
 	-- review Important 1: Flame's Lava Slam (the old over-cap case) fits now: its Scorch is a glow disc, no emitter is cut
 	Fx.Play(ctx({ Element = "Flame", Attack = "Special", Kind = "Blast", PetId = "magma_cub", Rarity = "Secret", From = { Unit = 71, Model = A }, Now = clock }))
 	local fl = Fx._Live()[#Fx._Live()]

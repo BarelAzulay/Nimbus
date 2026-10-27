@@ -53,7 +53,10 @@
 --
 -- Budget: MAX_LIVE (10) full effects; over it a play steps down one rarity band (MAX_STEPPED more at most), then
 -- Play returns false. Per effect: MAX_EMITTERS (6 High / 2 Low) ParticleEmitters, MAX_BEAMS, MAX_TRAILS,
--- MAX_LIGHTS, MAX_CORES solid pieces. Counts are the catalog's FULL density x recipe.Density (0.6 for others' pets)
+-- MAX_LIGHTS, MAX_CORES solid pieces. Over a cap the layers are RANKED, never cut in catalog order: emitters by
+-- emitterRank (the Burst, LowKeep, impact detail ...), beams by beamRank (the alive detail, the recipe's own beams, the
+-- ladder's DoubleArc / ShotArcs; one beam each first, then each layer's own count, best first: beamBudget).
+-- Counts are the catalog's FULL density x recipe.Density (0.6 for others' pets)
 -- x 0.5 at Low. Emitters stay Enabled = false (Rate 0) and are fired with Emit(): one emitter serves several points
 -- (allies, rain) and nothing ever streams on by itself.
 --
@@ -1399,6 +1402,62 @@ local function isEmitter(layer)
 	return layer.Kind == "Emitter" or (layer.Kind == "Decal" and type(layer.Texture) == "string")
 end
 
+-- the beams a Beam layer asks for (addBeamLayer draws at most this many)
+local function beamWant(layer)
+	return min(3, max(1, finite(layer.Count) and floor(layer.Count) or 1))
+end
+
+-- the beam layers this effect can afford, best first, like emitterRank (Task 9 review I1 / M6: built in catalog order
+-- with the alive detail appended last, Storm's own Bolt + Crackle took all 4 beams from Rare up and its stray strikes
+-- and the Mythic ShotArcs never drew; the Celestial Secret shot drew 1 of its 3 constellation lines): the alive detail,
+-- then the recipe's own beams (the element's / attack's / kind's / signature's), then the rarity ladder's arcs
+-- (DoubleArc / ShotArcs: a LayerSlots template)
+local function beamRank(layer, slots)
+	if layer.Alive then
+		return 0
+	elseif slots and slots[layer.Id] then
+		return 2
+	end
+	return 1
+end
+
+-- how many beams each Beam layer gets ({ [layer] = n }) under `cap`: one each first, best first (every beam layer is
+-- seen while there is room), then the rest of each layer's own count, best first (the alive detail fills up first)
+local function beamBudget(layers, cap)
+	local catalog = dep("AttackFxCatalog")
+	local slots = type(catalog) == "table" and catalog.LayerSlots or nil
+	local ranked = {}
+	for i, layer in ipairs(layers) do
+		if layer.Kind == "Beam" then
+			ranked[#ranked + 1] = { L = layer, R = beamRank(layer, slots), I = i, N = beamWant(layer) }
+		end
+	end
+	table.sort(ranked, function(a, b)
+		if a.R ~= b.R then
+			return a.R < b.R
+		end
+		return a.I < b.I
+	end)
+	local give, left = {}, cap
+	for _, e in ipairs(ranked) do
+		if left <= 0 then
+			break
+		end
+		give[e.L], left = 1, left - 1
+	end
+	for _, e in ipairs(ranked) do
+		if left <= 0 then
+			break
+		end
+		local g = give[e.L]
+		if g and e.N > g then
+			local more = min(e.N - g, left)
+			give[e.L], left = g + more, left - more
+		end
+	end
+	return give
+end
+
 -- a charge glow at the mouth with no charge shown (shortened to fit the event): drawn by nobody, so it never takes
 -- one of the effect's emitter slots
 local function chargeDropped(eff, layer)
@@ -1654,7 +1713,8 @@ local function addEmitterLayer(eff, layer)
 	tuneEmitter(eff, it, layer)
 end
 
-local function addBeamLayer(eff, layer)
+-- `allow` = the beams beamBudget gave this layer (nil = its own count)
+local function addBeamLayer(eff, layer, allow)
 	local T = eff.Times
 	local beat = layer.Beat or "Travel"
 	local t0 = beatStart(eff, beat) + (finite(layer.Delay) and layer.Delay or 0)
@@ -1672,9 +1732,9 @@ local function addBeamLayer(eff, layer)
 	else
 		mode, t1 = "Arc", T.Impact + 0.15
 	end
-	local n = min(3, max(1, (finite(layer.Count) and layer.Count or 1)))
-	if mode == "Connect" then
-		n = min(4, n)
+	local n = beamWant(layer)
+	if allow then
+		n = min(n, allow)
 	end
 	local id = layer.Texture and dep("TextureIds")[layer.Texture]
 	for i = 1, n do
@@ -1888,15 +1948,16 @@ local function addMeshLayer(eff, layer)
 	end
 end
 
-local function addLayer(eff, layer)
+local function addLayer(eff, layer, beams)
 	local kind = layer.Kind
 	if isEmitter(layer) then
 		addEmitterLayer(eff, layer)
 	elseif kind == "Decal" then
 		addDiscLayer(eff, layer)
 	elseif kind == "Beam" then
-		if not eff.Low then
-			addBeamLayer(eff, layer)
+		local allow = beams and (beams[layer] or 0) or nil
+		if not eff.Low and allow ~= 0 then
+			addBeamLayer(eff, layer, allow)
 		end
 	elseif kind == "Trail" then
 		if not eff.Low then
@@ -2423,9 +2484,10 @@ function AttackFx.Play(ctx)
 		for i = 1, min(cap, #ranked) do
 			allowed[ranked[i].L] = true
 		end
+		local beams = beamBudget(layers, AttackFx.MAX_BEAMS) -- (the alive detail first, the ladder's arcs last)
 		for _, layer in ipairs(layers) do
 			if not isEmitter(layer) or allowed[layer] then
-				addLayer(eff, layer)
+				addLayer(eff, layer, beams)
 			end
 		end
 		buildActor(eff)
