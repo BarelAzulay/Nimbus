@@ -6,7 +6,7 @@ return {
 		Min = { -4, 0, -1.5 },
 		Size = { 8.5, 9.125, 3 },
 	},
-	ContentHash = "bd164c8bbe9a06c946c68fac78e4ef94",
+	ContentHash = "b88a1248ffffa14428f6a51017ce5b33",
 	DarkFactor = { 0.8425, 0.85, 0.8875 },
 	DeepFactor = { 0.7098, 0.7225, 0.7877 },
 	Groups = {},
@@ -29,7 +29,7 @@ return {
 			Name = "Fixed2",
 			Shade = "fixed",
 			Size = { 6.25, 3.625, 2 },
-			Tris = 1056,
+			Tris = 932,
 		},
 		{
 			Center = { 0, 8.125, -1.0625 },
@@ -80,6 +80,6 @@ return {
 	},
 	Rig = "",
 	StructureHash = "495abccfd26a16c0d83985e0918731c3",
-	Tris = 2992,
+	Tris = 2868,
 	VoxelStuds = 0.25,
 }

@@ -167,13 +167,15 @@ def arch(A):
     face = az > ARCH_Z - AV
     # the glue line between the plies, on the faces only (a hairline, not a groove)
     A.paint("OakSeam", body & face & on_circle(A, 0.0, CAP_TOP, PLY))
-    # butt joints: a 1-cell groove across the faces, the soffit and the back of each ply, dark at the bottom
+    # butt joints: a dark line drawn across the faces and the soffit of each ply, a 1-cell groove only on the
+    # extrados skin (fix round 2026-10-27: a groove carved along a stair-stepped diagonal on the faces read as a
+    # jagged notch beside each strap; on the back the step direction hides the groove)
     for c, inner in ((30.0, False), (150.0, False), (60.0, True), (120.0, True)):
         ply = (r < PLY) if inner else (r >= PLY)
         line = body & ply & on_ray(A, 0.0, CAP_TOP, c)
-        skin = face | (r < ARCH_R0 + AV) | (r >= ARCH_R1 - AV)
-        A.carve(line & skin)
-        A.paint("OakDark", line & ~skin)
+        ext = r >= ARCH_R1 - AV
+        A.carve(line & ext)
+        A.paint("OakDark", line & ~ext)
     # bronze shoes: the arch feet stand in a flat bronze band (one cell proud, 3 cells high) on the caps
     for s_ in (-1, 1):
         x0, x1 = sorted((s_ * (ARCH_R0 - AV), s_ * (ARCH_R1 + AV)))

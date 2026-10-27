@@ -64,11 +64,12 @@
    "args": {
     "K": 2.0,
     "KP": 4.0,
+    "KS": 4.0,
     "KC": 8.0,
     "seed": 11
    },
    "budget": "gate",
-   "description": "Nimbus Climb Home / Return gate in the homestead family: coursed stone, oak hoop with bronze straps in the gate-colour band, enamel plate with a brass cottage and porch lanterns (Neon parts stay in Roblox)"
+   "description": "Nimbus Climb Home / Return gate in the homestead family: coursed stone, oak hoop with bronze straps in the gate-colour band, a house sign: enamel plate with a big brass cottage whose lit windows are the Neon crest windows (Neon parts stay in Roblox)"
   },
   {
    "key": "gate_altar",

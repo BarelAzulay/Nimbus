@@ -375,7 +375,7 @@ def recipes_for(keys):
 
 @prop("gate")
 def build_gate(entry, kit):
-    """catalog args: {"kind": obby | ring | arena | dungeon | home | altar, "K": 2.0, "KC": 4.0}"""
+    """catalog args: {"kind": obby | ring | arena | dungeon | altar, "K": 2.0, "KC": 4.0}"""
     args = entry.get("args") or {}
     kind = args.get("kind", "obby")
     shape, crest, preview = KINDS[kind]

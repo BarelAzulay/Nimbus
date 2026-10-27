@@ -3,13 +3,13 @@ Gate Court size, hoop and role (WorldStyle.BuildGate, glyph "house"), but drops 
 cloud-frame toy look for the home portal's craft language (props/gates_homeportal.py, key gate_homeportal):
 
     coursed stone pillars (joints recessed one cell, staggered, warm odd stones, chipped corners, grime at the foot)
-    under stone impost caps with bronze collars round the Neon cap glows; the hoop as a bent oak ring (12 even
-    segments, butt joints every 30 degrees) inside the band in the gate colour (["Primary"], the Trim part), bound by four
-    flat bronze straps with brass rivets; a dark-oak keystone with a bronze cap and a brass rim round the Neon gem;
-    on top, a dark-oak post carrying a brass-rimmed enamel plate (the gate colour pulled to navy) with an
-    embossed brass cottage (pitched roof, chimney, door, two windows; no lettering), flanked by two bronze porch
-    lanterns on bracket arms whose glass is the gate's own Neon CrestWindow Parts; ivy on the -X pillar (the viewer's right), a
-    tuft and a loose stone at the +X foot.
+    under stone impost caps with bronze collars round the Neon cap glows; the hoop as a bent oak ring (four
+    quarter segments) inside the band in the gate colour (["Primary"], the Trim part), bound by four flat bronze
+    straps with brass rivets; a dark-oak keystone with a bronze cap and a brass rim round the Neon gem; on top, a
+    house sign (fix round 2026-10-27): a dark-oak board with a brass-rimmed enamel plate (the gate colour pulled to
+    navy) and a big embossed brass cottage (kicked eaves, chimney, door; no lettering) whose two lit windows are the
+    gate's own Neon CrestWindow Parts in brass frames with glazing crosses; ivy on the -X pillar (the viewer's
+    right), a tuft and a loose stone at the +X foot.
 
 The contract with WorldStyle.BuildGate is unchanged (see props/gates.py): the frame is the gate's site (front -Z,
 ML_Offset (0, -11.5, 0)); the mesh replaces ONLY the GATE_MESH_HIDE Parts (Stone, StoneDark, Frame, Trim, the crest
@@ -19,8 +19,9 @@ stay Parts, so this mesh leaves their cells free and sits around them.  The oak 
 voxels (r 6.6..9.6, |z| < 1.5), so the invisible collision Parts stay inside the visible mesh.
 
 Lattices: slab, caps, ring and keystone on the Gate Court gates' 0.5 cells (K 2, the Part lattice: the same stepped
-hoop as its siblings), the pillars and ivy on 0.25 cells (KP 4: where players stand close), the crest on 0.125 cells
-(KC 8, x cell centres on multiples of 0.125 so the odd-width plate and emblem are centred on x 0).
+hoop as its siblings), the pillars and ivy on 0.25 cells (KP 4: where players stand close), the sign on 0.25 cells
+(KS 4, its own group), the window frames on 0.125 cells (KC 8, x cell centres on multiples of 0.125 so the frames
+fit round the CrestWindows at x +-0.9..1.6).  Everything stays under 26.75: the GateTag is anchored at 27.
 """
 import math
 
@@ -44,8 +45,7 @@ SHAFT_Y0, SHAFT_Y1 = 2.5, 11.0
 OAK_Z = 1.25            # the oak ring's half depth (the band in the gate colour stands 0.25 prouder)
 BAND_Z = 1.5
 KEY_ROWS = ((19.0, 2.0), (19.5, 2.25), (20.0, 2.5), (20.5, 2.75))  # the keystone wedge (as the Part keystone)
-WIN_X = 1.25            # the Neon CrestWindows' centres (WorldStyle Crest.house)
-CV = 0.125              # crest cell
+CV = 0.125              # window-trim cell
 
 
 def cc(v, step):
@@ -87,8 +87,13 @@ def pillar(G, s, r):
             sz = (G.Z < cc(jz, V)) if r.random() < 0.5 else (G.Z > cc(jz, V))
             G.paint("StoneWarm", band & sx & sz & ~joints, only="Stone")
     G.paint("StoneGrime", shaft & (G.Y < SHAFT_Y0 + 2.0) & ~joints, only=["Stone", "StoneWarm"])
-    G.put("Mortar", joints & ~shell)
-    G.carve(joints & shell)
+    # where the hoop ends against the shaft's inner face (from the band's foot, y ~5.5, up) the joints stay flush:
+    # recessed there they opened small dark slots behind the ring's end face (fix round 2026-10-27)
+    inner = (G.X < x0 + V) if s > 0 else (G.X > x1 - V)
+    foot = RING_Y - math.sqrt(RING["Outer"] ** 2 - (PILLAR_X - PILLAR_H) ** 2) - V
+    flush = inner & (G.Y > foot) & (np.abs(G.Z) < BAND_Z)
+    G.put("Mortar", joints & (~shell | flush))
+    G.carve(joints & shell & ~flush)
     for _ in range(14):
         y = SHAFT_Y0 + (SHAFT_Y1 - SHAFT_Y0 - 0.5) * r.random() ** 1.5
         ex = (x0 + V / 2) if r.random() < 0.5 else (x1 - V / 2)
@@ -109,8 +114,8 @@ def cap(G, s):
 
 def ring(G):
     """the hoop on the Gate Court gates' 0.5 lattice (the same stepped curve as its siblings; 0.25 cells cost ~2.5k
-    more triangles): a bent oak ring (r 6.6..8.6, 12 even segments, butt joints every 30 degrees) inside the band
-    in the gate colour (r 8.6..9.6), four flat bronze straps (45 / 135 / 225 / 315 degrees) with brass rivets.
+    more triangles): a bent oak ring (r 6.6..8.6, four quarter segments) inside the band in the gate colour
+    (r 8.6..9.6), four flat bronze straps (45 / 135 / 225 / 315 degrees, halfway along each segment) with brass rivets.
     Where the ring passes the pillar shafts (the 0.25 grid) it stops at the shaft (no coplanar faces)."""
     V = 1.0 / G.K
     r = G.radius()
@@ -119,17 +124,15 @@ def ring(G):
     oak = (r >= RING["Inner"]) & (r < RING["Band"]) & (az < OAK_Z) & clear
     G.put("Oak", oak)
     G.put("Trim", (r >= RING["Band"]) & (r < RING["Outer"]) & (az < BAND_Z) & clear)
-    face = az > OAK_Z - V
-    # the butt joints: 12 even segments (every 30 degrees, the crown one under the keystone), a groove across the
-    # faces, dark at the bottom; the straps fall halfway between them.  (Staggering the plies' joints every 15
-    # degrees read as scattered dark blotches at 0.5 cells: dropped.)
-    for k in range(12):
-        c = 30.0 * k
-        if k == 3:
-            continue
-        line = oak & on_ray(G, 0.0, RING_Y, c, V)
-        G.carve(line & face)
-        G.paint("OakDark", line & ~face)
+    # the butt joints: four quarter segments (the 0 / 180 joints sit inside the caps, 90 under the keystone), so the
+    # one that shows is at the foot: a clean one-cell vertical line (the ring centre is a cell bound, so it takes
+    # the cell column just +X of it), drawn dark across the faces, a groove only on the intrados.  Fix round
+    # 2026-10-27: 12 joints every 30 degrees carved on the 0.5 lattice read as stair-stepped spokes (a wagon
+    # wheel); a bent ring needs few joints, and the straps already break it up.
+    line = oak & (G.X > 0) & (G.X < V) & (G.Y < RING_Y)
+    intra = r < RING["Inner"] + V
+    G.carve(line & intra)
+    G.paint("OakDark", line & ~intra)
     for a in (45.0, 135.0, 225.0, 315.0):
         c, s = math.cos(math.radians(a)), math.sin(math.radians(a))
         hug = np.where(r < RING["Band"], OAK_Z, BAND_Z) + V   # the strap hugs the oak and the band, one cell proud
@@ -147,7 +150,8 @@ def keystone(G):
     for y0, hx in KEY_ROWS:
         G.put("OakDark", G.rrect(0, 0, hx, 1.5, 0.25, y0, y0 + 0.5))
     G.put("Bronze", G.rrect(0, 0, 3.0, 1.5, 0.25, 21.0, 21.5))
-    G.put("Brass", G.box(-1.0, 1.0, 18.5, 21.5, -2.0, -1.5) & ~G.box(-0.5, 0.5, 19.0, 21.0, -2.5, -1.5))
+    # the rim is open at the top (fix round 2026-10-27: a top bar at 21..21.5 hid the sign's door from the ground)
+    G.put("Brass", G.box(-1.0, 1.0, 18.5, 21.0, -2.0, -1.5) & ~G.box(-0.5, 0.5, 19.0, 21.0, -2.5, -1.5))
     G.carve(G.box(-0.5, 0.5, 19.0, 21.0, -2.5, -1.5))  # the gem's cell stays free
     for s in (-1, 1):  # the Neon cap glow blocks (x +-9, y 12..14) keep their cells: no mesh inside them
         G.carve(G.box(s * PILLAR_X - 0.5, s * PILLAR_X + 0.5, 12.0, 14.0, -0.5, 0.5))
@@ -230,86 +234,88 @@ def cling(G):
 
 
 # ---------------------------------------------------------------------------------------------------------------
-# the crest (0.125 cells): post, enamel plate with the brass cottage, two porch lanterns
+# the crest (fix round 2026-10-27): the house sign, big enough to read from the ground.  Round 1's 1.6 x 2.1 plate
+# with a 1.1 x 1.4 cottage on a post between two lanterns was a brass smudge from 20-30 studs (review Important 2).
+# The sign cannot grow upward: the GateTag BillboardGui is anchored at 27 studs and grows up from there (WorldStyle
+# GATE.TagLift; "every crest stays under ~26"), so it fills the room the old cartoon cottage had (x +-3, y 21.5..26.75)
+# and the cottage's two lit windows ARE the gate's Neon CrestWindow Parts (x +-1.25, y 23.35..24.05, z -0.725..-0.575),
+# as in the Part crest: a lit house reads as "home" from across the arena.  The lanterns went with that.
 # ---------------------------------------------------------------------------------------------------------------
-# the plate: 13 x 17 cells (1.625 x 2.125 studs), one string per row from the top; B brass rim, E enamel.  EMBLEM:
-# "@" two cells proud (roof, chimney), "#" one cell proud (walls), "." the enamel (door, windows).  Drawn as seen
-# from the front.  The same cottage as the home portal's plate, at gate size (two windows by the door).
-PLATE = ["B" * 13] + ["B" + "E" * 11 + "B"] * 15 + ["B" * 13]
-EMBLEM = ["." * 13,
-          "." * 13,
-          ".........@...",       # the chimney, rising from the right slope (well clear of the ridge)
-          ".........@...",
-          "......@..@...",       # the ridge
-          ".....@@@.@...",
-          "....@@@@@@...",
-          "...@@@@@@@@..",
-          "..@@@@@@@@@@.",       # the eaves, wider than the walls
-          "...#######...",
-          "...#.###.#...",       # two windows
-          "...#.###.#...",
-          "...###.###...",       # the door (Gemini round 1: kept below a solid lintel, not up to the eaves)
-          "...###.###...",
-          "...###.###...",
-          "." * 13,
-          "." * 13]
-POST_HX, POST_Z = 0.4375, 0.25
-POST_Y0, POST_Y1 = 21.375, 25.25
-BACK_HX, BACK_Y0, BACK_Y1 = 0.9375, 22.625, 25.0   # the dark-oak backing one cell round the plate
-PLATE_TOP = 24.875
+# the sign (0.25 cells, x bounds on multiples of 0.25 so the even 22-cell plate is centred on x 0): a dark-oak board
+# on the keystone cap, a brass-rimmed enamel plate (the gate colour pulled to navy, as the portal's) and the cottage
+# embossed in brass.  PLATE: B brass rim, E enamel; one string per row from the top (row r spans y 26.5 - 0.25 (r + 1)
+# .. 26.5 - 0.25 r), drawn as seen from the front (column 0 = +X, the viewer's left).  EMBLEM: "@" two cells proud
+# (roof, chimney), "#" one cell proud (walls), "." the enamel (door, margin; the window holes, rows 9..12, columns
+# 4..7 / 14..17 = x 0.75..1.75, y 23.25..24.25, hold the Neon windows).
+SV = 0.25
+SIGN_TOP = 26.5                     # the plate's top (the board stands one cell higher: 26.75 < the tag's 27)
+SIGN_HX = 2.75                      # the plate's half width (22 cells); the board is one cell wider each side
+PLATE = ["B" * 22] + ["B" + "E" * 20 + "B"] * 18 + ["B" * 22]
+EMBLEM = ["......................",
+          "..........@@..........",   # the ridge
+          ".........@@@@..@@@@...",   # the chimney's cap, below the ridge; its stack stands on the right slope
+          "........@@@@@@..@@....",
+          ".......@@@@@@@@.@@....",
+          "......@@@@@@@@@@@@....",
+          ".....@@@@@@@@@@@@@....",
+          "....@@@@@@@@@@@@@@....",
+          "..@@@@@@@@@@@@@@@@@@..",   # the eaves, kicked out one cell past the walls
+          "...#....######....#...",   # the two windows (the Neon CrestWindows), right under the eaves
+          "...#....######....#...",
+          "...#....######....#...",
+          "...#....######....#...",
+          "...#######..#######...",   # the door (1.25 tall: its top shows over the keystone from the ground)
+          "...#######..#######...",
+          "...#######..#######...",
+          "...#######..#######...",
+          "...#######..#######...",
+          "......................",
+          "......................"]
+assert len(PLATE) == len(EMBLEM) == 20 and all(len(s) == 22 for s in PLATE + EMBLEM)
+WIN = (0.9, 1.6, 23.35, 24.05, -0.725, -0.575)   # a CrestWindow Part (x mirrored for the other one)
 
 
-def crest(C):
-    """a dark-oak post standing on the keystone cap with a bronze collar and a bronze finial; on its face a
-    dark-oak backing with the brass-rimmed enamel plate and the embossed cottage; two bronze porch lanterns on
-    bracket arms either side (their glass is the gate's Neon CrestWindow Parts)"""
-    S = CV
-    C.put("OakDark", C.box(-POST_HX, POST_HX, POST_Y0, POST_Y1, -POST_Z, POST_Z))
-    C.put("Bronze", C.box(-0.5625, 0.5625, 21.5, 21.75, -0.375, 0.375))
-    C.put("Bronze", C.box(-0.5625, 0.5625, POST_Y1, POST_Y1 + S, -0.375, 0.375))
-    C.put("Bronze", C.box(-0.3125, 0.3125, POST_Y1 + S, POST_Y1 + 2 * S, -0.25, 0.25))
-    C.put("Brass", C.box(-0.1875, 0.1875, POST_Y1 + 2 * S, POST_Y1 + 3 * S, -0.125, 0.125))
-    C.put("OakDark", C.box(-BACK_HX, BACK_HX, BACK_Y0, BACK_Y1, -POST_Z, POST_Z))
-    # the plate on the backing's front face
-    zp = -POST_Z - S / 2
+def sign(S):
+    """the board, the plate and the embossed cottage; two bronze battens on the back"""
+    V = SV
+    S.put("OakDark", S.box(-SIGN_HX - V, SIGN_HX + V, 21.5, SIGN_TOP + V, -V, V))
+    for y0 in (22.25, 25.5):
+        S.put("Bronze", S.box(-SIGN_HX, SIGN_HX, y0, y0 + V, V, 2 * V))
+    zp = -V - V / 2                  # the plate layer (z -0.5..-0.25)
     ncol = len(PLATE[0])
     for row in range(len(PLATE)):
-        y = PLATE_TOP - (row + 0.5) * S
+        y = SIGN_TOP - (row + 0.5) * V
         for col in range(ncol):
-            x = ((ncol - 1) / 2 - col) * S   # +X is the viewer's left (front = -Z)
+            x = ((ncol - 1) / 2 - col) * V
             k = PLATE[row][col]
-            C.put("Brass" if k == "B" else "Enamel", C.cbox((x, y, zp), (S * 0.9,) * 3))
+            S.put("Brass" if k == "B" else "Enamel", S.cbox((x, y, zp), (V * 0.9,) * 3))
             lift = {"#": 1, "@": 2}.get(EMBLEM[row][col], 0)
             if k == "B":
                 lift = max(lift, 1)
             for k2 in range(1, lift + 1):
-                C.put("Brass", C.cbox((x, y, zp - k2 * S), (S * 0.9,) * 3))
-    # the porch lanterns round the Neon windows (x +-1.25, y 23.35..24.05, z -0.725..-0.575): a tray and finial, two
-    # corner posts each side of the glass, a back plate, a cap and a stepped hood, hung from a bracket arm off the
-    # backing (crest z cell bounds are multiples of 0.125: the glass sits inside the posts' depth)
+                S.put("Brass", S.cbox((x, y, zp - k2 * V), (V * 0.9,) * 3))
+    for sx in (-1, 1):  # the Neon windows keep their cells
+        x0, x1 = sorted((sx * WIN[0], sx * WIN[1]))
+        S.carve(S.box(x0, x1, *WIN[2:]))
+
+
+def window_trim(C):
+    """0.125 cells (x bounds on odd sixteenths, as the CrestWindows' centres need): round each Neon window a brass
+    frame and a glazing cross one cell in front of the glass, a deeper sill under it; nothing inside the glass"""
     for sx in (-1, 1):
-        def bx(a, b, y0, y1, z0, z1, key="Bronze"):
+        def bx(a, b, y0, y1, z0, z1):
             xa, xb = sorted((sx * a, sx * b))
-            C.put(key, C.box(xa, xb, y0, y1, z0, z1))
-        bx(0.8125, 1.6875, 23.25, 23.375, -0.875, -0.375)                    # tray (one cell proud of the glass)
-        bx(1.1875, 1.3125, 23.125, 23.25, -0.625, -0.5, "Brass")             # finial
-        for a, b in ((0.8125, 0.9375), (1.5625, 1.6875)):
-            bx(a, b, 23.375, 24.0, -0.75, -0.625)                            # front posts
-            bx(a, b, 23.375, 24.0, -0.5, -0.375)                             # back posts
-        bx(0.9375, 1.5625, 23.375, 24.0, -0.625, -0.5)                       # back plate (behind the glass face)
-        bx(0.8125, 1.6875, 24.0, 24.125, -0.875, -0.375)                     # cap (one cell proud of the glass)
-        bx(1.1875, 1.3125, 23.375, 24.0, -0.875, -0.75)                      # glazing bars in front of the glass
-        bx(0.9375, 1.5625, 23.625, 23.75, -0.875, -0.75)                     # (Gemini round 1: caged, not glued on)
-        for a, b in ((0.8125, 0.9375), (1.5625, 1.6875)):
-            bx(a, b, 23.375, 24.0, -0.875, -0.75)                            # the front corner posts, flush with them
-        bx(0.9375, 1.5625, 24.125, 24.25, -0.75, -0.375)                     # hood
-        bx(1.0625, 1.4375, 24.25, 24.375, -0.625, -0.5)
-        bx(1.1875, 1.3125, 24.375, 24.5, -0.625, -0.5, "Brass")              # the hanger ring
-        bx(BACK_HX, 1.4375, 24.5, 24.625, -0.625, -0.5)                      # the bracket arm
-        bx(BACK_HX, 1.0625, 24.5, 24.625, -0.5, 0.125)                       # its foot, fixed to the backing's side
-        bx(1.4375, 1.5625, 24.375, 24.625, -0.625, -0.5)                     # the arm's curled tip
-        bx(BACK_HX, 1.0625, 24.0, 24.5, -0.625, -0.5)                        # the brace under the arm
-    C.carve(C.box(-1.6, -0.9, 23.35, 24.05, -0.725, -0.575) | C.box(0.9, 1.6, 23.35, 24.05, -0.725, -0.575))
+            C.put("Brass", C.box(xa, xb, y0, y1, z0, z1))
+        z0, z1 = -0.875, -0.75
+        bx(0.6875, 0.8125, 23.125, 24.25, z0, z1)        # the frame's jambs
+        bx(1.6875, 1.8125, 23.125, 24.25, z0, z1)
+        bx(0.8125, 1.6875, 24.125, 24.25, z0, z1)         # head (under the eaves)
+        bx(0.8125, 1.6875, 23.125, 23.25, z0, z1)         # bottom rail
+        bx(1.1875, 1.3125, 23.25, 24.125, z0, z1)         # the glazing cross
+        bx(0.8125, 1.6875, 23.625, 23.75, z0, z1)
+        bx(0.5625, 1.9375, 23.0, 23.125, -1.0, -0.75)     # the sill, two cells proud
+        xa, xb = sorted((sx * WIN[0], sx * WIN[1]))
+        C.carve(C.box(xa, xb, *WIN[2:]))
 
 
 def recipes(keys):
@@ -318,10 +324,11 @@ def recipes(keys):
 
 @prop("gate_homestead")
 def build_gate_homestead(entry, kit):
-    """catalog args: {"K": 2.0, "KP": 4.0, "KC": 8.0, "seed": 11}"""
+    """catalog args: {"K": 2.0, "KP": 4.0, "KS": 4.0, "KC": 8.0, "seed": 11}"""
     args = entry.get("args") or {}
     K = float(args.get("K", 2.0))
     KP = float(args.get("KP", 4.0))
+    KS = float(args.get("KS", 4.0))
     KC = float(args.get("KC", 8.0))
     r = np.random.default_rng(int(args.get("seed", 11)))
     m = kit.model(entry["key"], "gate", vs=1.0 / K, K=K)
@@ -338,13 +345,19 @@ def build_gate_homestead(entry, kit):
     pfixed = tuple(k for k in pkeys if k not in TINTED and k not in OWN)
     kit.mesh(m, P.g, recipes=recipes(pkeys), group="Pillars", vs=1.0 / KP, offset=P.offset(), fixed_keys=pfixed,
              used=used, shade_opts={"IvyTip": dict(dark=False)})
-    C = Lat(kit, KC, (-CV / 2, 24.0, 0), 3.0, "Crest")
-    crest(C)
+    S = Lat(kit, KS, (0, 24.0, 0), 3.5, "Sign")
+    sign(S)
+    skeys = [k for k in S.g.keys if k and np.any(S.L == S.g.ids[k])]
+    sfixed = tuple(k for k in skeys if k not in TINTED and k not in OWN)
+    kit.mesh(m, S.g, recipes=recipes(skeys), group="Sign", vs=1.0 / KS, offset=S.offset(), fixed_keys=sfixed,
+             used=used, flat=("OakDark", "Bronze"),
+             shade_opts={"Brass": dict(dark=False), "Enamel": dict(dark=False, light=False)})
+    C = Lat(kit, KC, (-CV / 2, 23.5, 0), 2.5, "Crest")
+    window_trim(C)
     ckeys = [k for k in C.g.keys if k and np.any(C.L == C.g.ids[k])]
     cfixed = tuple(k for k in ckeys if k not in TINTED and k not in OWN)
     kit.mesh(m, C.g, recipes=recipes(ckeys), group="Crest", vs=1.0 / KC, offset=C.offset(), fixed_keys=cfixed,
-             used=used, flat=("Oak", "OakDark", "Bronze"),
-             shade_opts={"Brass": dict(dark=False), "Enamel": dict(dark=False, light=False)})
+             used=used, shade_opts={"Brass": dict(dark=False)})
     m.meta = {
         "source": "WorldStyle.BuildGate (Hoop, house) in the homestead family of gate_homeportal (polish 2026-10-27)",
         "pivot": "the gate site: ground under the gate centre, front = -Z (WorldStyle tags ML_Offset (0, -11.5, 0))",

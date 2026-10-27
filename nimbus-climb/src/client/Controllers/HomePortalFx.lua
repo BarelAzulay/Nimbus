@@ -51,7 +51,7 @@ local K = {
 	-- floor (round top: centre 5.5 up, radius 2), the stone pillars 2 studs deep (the recess the vortex sits in)
 	CENTER_Y = 4.0,
 	MESH_KEY = "gate_homeportal",
-	TOP = 9.0, -- the gate's top above the floor (the name tag floats over it)
+	TOP = 9.125, -- the gate's top above the floor (the keystone's bronze cap; the name tag floats over it)
 	OPEN_HALF = 2.0, -- half the opening's width
 	ARCH_Y = 5.5, -- the arch centre above the floor (= the springing line on the caps)
 	-- the vortex (fix round, review: one vortex family with the Gate Court gates): client/PortalVortex at the vortex

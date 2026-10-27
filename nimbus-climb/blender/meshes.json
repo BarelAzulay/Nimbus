@@ -6737,29 +6737,29 @@
   },
   "gate_home": {
    "class": "gates",
-   "contentHash": "0ee1954775d24ac7fae4b639a4741ccb",
-   "description": "Nimbus Climb Home / Return gate in the homestead family: coursed stone, oak hoop with bronze straps in the gate-colour band, enamel plate with a brass cottage and porch lanterns (Neon parts stay in Roblox)",
+   "contentHash": "ff5fd295f69bdeb9fc0cc2c41c727a03",
+   "description": "Nimbus Climb Home / Return gate in the homestead family: coursed stone, oak hoop with bronze straps in the gate-colour band, a house sign: enamel plate with a big brass cottage whose lit windows are the Neon crest windows (Neon parts stay in Roblox)",
    "displayName": "NC Gate Home",
    "fbx": "blender/out/gate_home.fbx",
-   "fbxSha256": "03b6990d52a04c3b6dcd30c98c0bc02401844290986d08049cf18ed513807992",
+   "fbxSha256": "55933aeb7fe3d4cce61af23820dcdc7af340f99d261a62304fcea9d26e3a3219",
    "manifest": "src/shared/MeshManifests/gate_home.lua",
-   "maxTrianglesPerMesh": 1706,
-   "parts": 10,
-   "structureHash": "6b95038acd121114d8f48ec58f2fa96f",
-   "tris": 5222
+   "maxTrianglesPerMesh": 1514,
+   "parts": 11,
+   "structureHash": "af7f58c9446bf94333a67305ecc9ce52",
+   "tris": 4846
   },
   "gate_homeportal": {
    "class": "gates",
-   "contentHash": "bd164c8bbe9a06c946c68fac78e4ef94",
+   "contentHash": "b88a1248ffffa14428f6a51017ce5b33",
    "description": "Nimbus Climb home portal: the player's homestead gate (coursed stone pillars, oak arch with bronze straps, keystone plate in the portal colour, ivy; the Neon vortex stays in Roblox)",
    "displayName": "NC Gate Homeportal",
    "fbx": "blender/out/gate_homeportal.fbx",
-   "fbxSha256": "6f24741faee9740015ce4538d1f7fa62b44f9660c565808a0606e46edb941101",
+   "fbxSha256": "5fc11310243ed33656ae11be5d0bfd533351b20f9e47b112812b8149c659d36b",
    "manifest": "src/shared/MeshManifests/gate_homeportal.lua",
    "maxTrianglesPerMesh": 1272,
    "parts": 5,
    "structureHash": "495abccfd26a16c0d83985e0918731c3",
-   "tris": 2992
+   "tris": 2868
   },
   "gate_obby": {
    "class": "gates",
