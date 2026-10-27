@@ -45,6 +45,19 @@
 --   writes LastSeen (X6; the "Welcome back! Your pets made $X ..." toast).
 -- * GardenSet (any role): slot 1..GardenSlots(home), an owned free copy, not a training key (DataService.TrainingKeys),
 --   not a key in the caller's running battle (BattleService.KeysInBattle when it exists); nil / "" clears any slot.
+--   Bug batch 2 #18 ("Remote recall"): a Garden pet is BUSY gardening (one job at a time). Placing a pet takes that copy
+--   off the player (PetService.Refresh: the equipped copy no longer counts) and out of every battle preset (DataService
+--   prunes a key without a free copy) in the same step; the toast names what it left ("your side", "your team" or
+--   both). During an obby match (InMatch) placing the copy that follows the player is refused ("Finish your match
+--   first", like Equip / Unequip); a spare copy may still go. Garden earnings are unchanged.
+-- * GardenRecall (bug batch 2 #18): HomeAction "GardenRecall" { Key, To = "Equip" } or { Key, To = "Team", Preset = 1..3,
+--   Keys = {key | false ...} (the team in slot order, like BattleRequest "TeamSet") }: ONE request that takes one copy of
+--   the pet out of the Garden (its highest place) AND equips it / stores that team. Everything is checked BEFORE the
+--   Garden lets it go (PetService.CanEquip with the freed copy: ownership, slots, match / training locks;
+--   DataService.CheckTeam: ownership, the 3 slots, duplicates, the other keys free; the Key must be in Keys); a refusal
+--   after the write puts the pet back in its place. Rate limited (its own cooldown + the HomeAction burst).
+-- * Old saves where a pet was both in the Garden and equipped / in a team: DataService keeps it with the player and
+--   takes it out of the Garden on load; this module shows ONE toast that names those pets (Migrated "B2GardenSolo").
 -- * House tiers (every 10 Home Levels: Villa 10, Manor 20, Sky Castle 30) and the station caps per tier come from
 --   TycoonCatalog (lock reasons on the pads). Prestige (Home Level 40 + Sky Castle): TycoonCatalog.StationsAfterPrestige
 --   (decor kept, the Garden back at its ResetLevel 1 so the coins never stop), the bank and the piles zeroed, Cash to 0,
@@ -59,7 +72,7 @@
 --   claim this home!"), writes PortalArrived = server time and fires PortalUsed. Zero server parts (HomePortalFx draws).
 -- * Safe zones (3.11): nothing here starts damage or a fight; every teleport refuses InBattle.
 -- * Remote HomeAction(action, arg): "Upgrade" stationId, "GardenSet" {slot, key|nil} (also {Slot =, Key =}),
---   "Collect", "Prestige", "GoHome". Types, ranges and NaN are checked; every action is rate limited (a per-action
+--   "GardenRecall" {Key =, To =, Preset =, Keys =}, "Collect", "Prestige", "GoHome". Types, ranges and NaN are checked; every action is rate limited (a per-action
 --   cooldown plus a per-player burst budget); refusals answer with a side toast (repeated texts are throttled).
 -- * Replication (5.3 / Phase 5 10.2): the plot folder (SpotInfo.Folder) carries attributes for the clients, written
 --   only on change: HomeLevel, Prestige, CollectorCash (the bank, whole), IncomePerSecond, GardenPets ("1=cat;3=fox@Golden",
@@ -84,6 +97,7 @@
 --   PileSeconds(player) -> seconds (+ CollectorCap alias), CoinsWaiting(player) -> whole Cash on the lawn
 --   Drops(player) -> { { Slot, Cycle, Position, Value, Lucky, Poops, Stage } } (slot then cycle order; nil without a plot)
 --   GardenSet(player, slot, key) -> ok, reason      OpenHomePortal(player) -> ok, reason   GoHome = OpenHomePortal
+--   GardenRecall(player, key, target) -> ok, reason   target = { To = "Equip" } | { To = "Team", Preset, Keys } (#18)
 --   ClearCoins(player) (the developer reset: bank + piles to 0)
 --   Signals HomeChanged(player), Claimed(player, spotInfo), Prestiged(player, stars), Released(player, spotInfo),
 --           CoinsScooped(player, amount), PortalUsed(player)
@@ -117,6 +131,7 @@ local CLAIM_COOLDOWN = 0.5
 local BUY_COOLDOWN = 0.2
 local COLLECT_COOLDOWN = 0.5
 local GARDEN_COOLDOWN = 0.2
+local RECALL_COOLDOWN = 0.5 -- bug batch 2 #18: GardenRecall (take a pet out of the Garden + equip / team it)
 local PRESTIGE_COOLDOWN = 1
 local COLLECT_TOAST_GAP = 3 -- seconds between "scooped" toasts of the explicit Collect action
 local BURST_SIZE = 10 -- HomeAction / prompt requests a player may send at once...
@@ -1965,6 +1980,83 @@ local function trainingLeftText(player, key)
 	return nil
 end
 
+-- Bug batch 2 #18 helpers (one table, one new top-level local)
+local Garden = {}
+
+-- the other jobs of a key: following, inTeam = how many of its copies follow the player, and whether any battle preset
+-- lists it
+function Garden.jobsOf(player, profile, key)
+	local n = 0
+	for _, k in ipairs(type(profile) == "table" and type(profile.Equipped) == "table" and profile.Equipped or {}) do
+		if k == key then
+			n = n + 1
+		end
+	end
+	if dataService and type(dataService.GetTeams) == "function" then
+		local ok, teams = pcall(dataService.GetTeams, player)
+		if ok and type(teams) == "table" and type(teams.Presets) == "table" then
+			for _, list in pairs(teams.Presets) do
+				for _, k in ipairs(type(list) == "table" and list or {}) do
+					if k == key then
+						return n, true
+					end
+				end
+			end
+		end
+	end
+	return n, false
+end
+
+-- the Garden place a recall takes the pet from: its highest numbered place (the one DataService's old-save repair
+-- empties first too), or nil
+function Garden.slotOf(home, key)
+	local best = nil
+	for slot, k in pairs(type(home) == "table" and type(home.Garden) == "table" and home.Garden or {}) do
+		if k == key and type(slot) == "number" and (best == nil or slot > best) then
+			best = slot
+		end
+	end
+	return best
+end
+
+-- the one toast for an old save's pets that left the Garden on load (they stayed with the player / in a team)
+function Garden.announceSolo(player, keys)
+	if not isPlayer(player) or not player.Parent then
+		return
+	end
+	local profile = getProfile(player)
+	local names = {}
+	for _, key in ipairs(keys) do
+		local def = petDefOf(key, profile)
+		if def and #names < 3 then
+			names[#names + 1] = tostring(def.DisplayName or def.Name or key)
+		end
+	end
+	if #names == 0 then
+		return
+	end
+	local list = table.concat(names, ", ")
+	if #keys > #names then
+		list = list .. " and " .. (#keys - #names) .. " more"
+	end
+	notify(player, "New rule: a pet does one job at a time! " .. list .. (#keys == 1 and " stays" or " stay")
+		.. " with you and your team, so " .. (#keys == 1 and "it" or "they") .. " left your garden. Put other pets in the garden to keep the coins coming!", "info", 10)
+end
+
+-- after a Garden write: the coin epochs and the plot (X5 / Y8: the epoch rule, right away)
+function Garden.refreshPlot(player)
+	if not plots[player] then
+		return
+	end
+	local after = getHome(player)
+	if after then
+		local income, _, valid, entries = incomeOf(player, after)
+		local st = Coins.ensure(player)
+		Coins.followKeys(st, valid, Coins.serverNow(), Coins.cycle(), gardenSlots(after))
+		syncPlot(player, after, income, valid, entries)
+	end
+end
+
 -- { [key] = true } of the caller's keys in a running battle or ring run (BattleService.KeysInBattle when it exists).
 local function keysInBattle(player)
 	if battleService and type(battleService.KeysInBattle) == "function" then
@@ -2006,6 +2098,10 @@ function TycoonService.GardenSet(player, slot, key)
 	end
 	local profile = getProfile(player)
 	local def = nil
+	local following, inTeam = 0, false
+	if key ~= nil then
+		following, inTeam = Garden.jobsOf(player, profile, key)
+	end
 	if key ~= nil then
 		local tier, why
 		def, tier, why = petDefOf(key, profile)
@@ -2051,6 +2147,12 @@ function TycoonService.GardenSet(player, slot, key)
 			why = "You have no free copy of that pet"
 			return false
 		end
+		-- bug batch 2 #18: a placed copy stops following, which a running match must not do (its perks would drop
+		-- mid-run; PetService.Equip / Unequip are locked during a match too). A spare copy may still go to work.
+		if uses + following > ownedCount(profile, key) and player:GetAttribute(Config.Attr.InMatch) == true then
+			why = "Finish your match first"
+			return false
+		end
 		live.Garden[slot] = key
 		if offlineDone[player] then
 			live.LastSeen = os.time()
@@ -2063,18 +2165,142 @@ function TycoonService.GardenSet(player, slot, key)
 		end
 		return true, nil -- nothing to change (already there / already empty)
 	end
-	if plots[player] then
-		local after = getHome(player)
-		if after then
-			local income, _, valid, entries = incomeOf(player, after)
-			local st = Coins.ensure(player)
-			Coins.followKeys(st, valid, Coins.serverNow(), Coins.cycle(), gardenSlots(after)) -- X5 / Y8: the epoch rule, right away
-			syncPlot(player, after, income, valid, entries)
-		end
+	if key ~= nil and petService and type(petService.Refresh) == "function" then
+		-- bug batch 2 #18: the copy that went to work stops following (MutateHome pruned the presets already)
+		pcall(petService.Refresh, player)
 	end
+	Garden.refreshPlot(player)
 	if key ~= nil then
 		local name = (def and (def.DisplayName or def.Name)) or key
-		notify(player, tostring(name) .. " is working in your Garden!", "good", 3)
+		-- the toast names the job(s) the pet really left
+		local followingNow, inTeamNow = Garden.jobsOf(player, getProfile(player), key)
+		local side, team = followingNow < following, inTeam and not inTeamNow
+		local left = (side and team and "your side and your team") or (side and "your side") or (team and "your team") or nil
+		notify(player, tostring(name) .. " is working in your Garden!" .. (left and (" It left " .. left .. ": one job at a time.") or ""), "good", left and 5 or 3)
+	end
+	TycoonService.HomeChanged:Fire(player)
+	return true, nil
+end
+
+-- Bug batch 2 #18: the untrusted recall target -> { To = "Equip" } | { To = "Team", Preset, Keys = {[1..4] = key | false} }
+-- | nil (junk: wrong types, NaN, a huge table)
+function Garden.target(arg)
+	if type(arg) ~= "table" then
+		return nil
+	end
+	if arg.To == "Equip" then
+		return { To = "Equip" }
+	end
+	if arg.To ~= "Team" then
+		return nil
+	end
+	local preset, keys = arg.Preset, arg.Keys
+	if type(preset) ~= "number" or preset ~= preset or preset ~= math.floor(preset) or preset < 1 or preset > 3 then
+		return nil
+	end
+	if type(keys) ~= "table" then
+		return nil
+	end
+	local clean, n = {}, 0
+	for k, v in pairs(keys) do
+		n = n + 1
+		if n > 8 or type(k) ~= "number" or k ~= math.floor(k) or k < 1 or k > 4 then
+			return nil
+		end
+		if v ~= false and v ~= "" and not validKeyString(v) then
+			return nil
+		end
+		clean[k] = v
+	end
+	return { To = "Team", Preset = preset, Keys = clean }
+end
+
+function TycoonService.GardenRecall(player, key, target)
+	if not initialized or not catalog then
+		return false, "Homes are not ready yet"
+	end
+	if not isPlayer(player) then
+		return false, "Not in the game"
+	end
+	if not validKeyString(key) then
+		return false, "Unknown pet"
+	end
+	target = Garden.target(target)
+	if not target then
+		return false, "That is not valid"
+	end
+	local home = getHome(player)
+	if not home then
+		return false, "Your home is still loading..."
+	end
+	local profile = getProfile(player)
+	local def = petDefOf(key, profile)
+	if not def then
+		return false, "Unknown pet"
+	end
+	local slot = Garden.slotOf(home, key)
+	if not slot then
+		return false, "That pet is not in your garden"
+	end
+	-- every check BEFORE the Garden lets the pet go (one copy counts as freed)
+	local ok, reason
+	if target.To == "Equip" then
+		if not petService or type(petService.CanEquip) ~= "function" or type(petService.Equip) ~= "function" then
+			return false, "Pets are not ready yet"
+		end
+		ok, reason = petService.CanEquip(player, key, 1)
+	else
+		local listed = false
+		for _, k in pairs(target.Keys) do
+			listed = listed or k == key
+		end
+		if not listed then
+			return false, "That team is not valid"
+		end
+		if type(dataService.CheckTeam) ~= "function" or type(dataService.SetTeam) ~= "function" then
+			return false, "Teams are not ready yet"
+		end
+		ok, reason = dataService.CheckTeam(player, target.Preset, target.Keys, key)
+	end
+	if not ok then
+		return false, reason or "You cannot do that right now"
+	end
+	local took = mutateHome(player, function(live)
+		if type(live.Garden) ~= "table" or live.Garden[slot] ~= key then
+			return false
+		end
+		live.Garden[slot] = nil
+		return true
+	end)
+	if not took then
+		return false, "That pet is not in your garden"
+	end
+	if target.To == "Equip" then
+		ok, reason = petService.Equip(player, key)
+	else
+		ok, reason = dataService.SetTeam(player, target.Preset, target.Keys)
+	end
+	if not ok then
+		-- (never expected: the checks above passed and nothing yielded) the pet goes back to its place
+		mutateHome(player, function(live)
+			if type(live.Garden) ~= "table" then
+				live.Garden = {}
+			end
+			if live.Garden[slot] ~= nil then
+				return false
+			end
+			live.Garden[slot] = key
+			return true
+		end)
+		Garden.refreshPlot(player)
+		return false, reason or "You cannot do that right now"
+	end
+	Garden.refreshPlot(player)
+	local name = tostring(def.DisplayName or def.Name or key)
+	if target.To == "Equip" then
+		notify(player, name .. " left the garden and follows you now!", "good", 3)
+	else
+		notify(player, name .. " left the garden and joined Team " .. target.Preset .. "!", "good", 3)
 	end
 	TycoonService.HomeChanged:Fire(player)
 	return true, nil
@@ -2745,6 +2971,15 @@ local function onHomeAction(player, action, arg)
 		if not ok then
 			toastOnce(player, reason or "You cannot place that pet", "bad")
 		end
+	elseif action == "GardenRecall" then
+		-- bug batch 2 #18: { Key, To = "Equip" | "Team", Preset, Keys } (Garden.target checks the shape)
+		if type(arg) ~= "table" or not cooldown(player, "Recall", RECALL_COOLDOWN) then
+			return
+		end
+		local ok, reason = TycoonService.GardenRecall(player, arg.Key, arg)
+		if not ok then
+			toastOnce(player, reason or "You cannot take that pet out", "bad")
+		end
 	elseif action == "Collect" then
 		if not cooldown(player, "Collect", COLLECT_COOLDOWN) then
 			return
@@ -2859,6 +3094,17 @@ function TycoonService.Init(lobbyInfo, deps)
 	if dataService.ProfileRebased and type(dataService.ProfileRebased.Connect) == "function" then
 		dataService.ProfileRebased:Connect(function(player)
 			onHomeLoaded(player)
+		end)
+	end
+	if dataService.Migrated and type(dataService.Migrated.Connect) == "function" then
+		-- bug batch 2 #18: an old save's pets that were BOTH in the Garden and with the player stayed with the player and
+		-- left the Garden on this load: ONE toast names them (DataService fires it once per read that moved pets)
+		dataService.Migrated:Connect(function(player, name, info)
+			if name == "B2GardenSolo" and type(info) == "table" and type(info.Keys) == "table" then
+				task.delay(OFFLINE_TOAST_DELAY + 1, function()
+					Garden.announceSolo(player, info.Keys)
+				end)
+			end
 		end)
 	end
 

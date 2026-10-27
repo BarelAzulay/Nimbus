@@ -91,7 +91,8 @@
 --     startRound) near Portal_Ring (ArenaInfo.RingPortal, else the Portal_Ring model; RING_RANGE studs) -> StartRing. The
 --     entry checks, in this order with their toasts: a home claimed this session (TycoonService.GetPlot, "Claim your home
 --     first"), at least one owned pet ("You need a pet"), the fighters (the active team with training pets skipped, else
---     the equipped keys, else the best owned pets by UnitPower, up to GetTeams().Slots = 3; Pets[1] is the fighter),
+--     the equipped keys, else the best owned pets by UnitPower, up to GetTeams().Slots = 3; Pets[1] is the fighter; bug
+--     batch 2 #18: a pet busy gardening, DataService.GardenBusyKeys, is skipped everywhere like a training pet),
 --     canBattle, within RING_RANGE of the portal ("Walk to the Champion Ring portal"), the profile loaded and not
 --     provisional, the start round (1, or a boss round 10k with Ring.Best >= 10k). One RingRun per player: { Id, Player,
 --     UserId, Name, Pocket, PocketIndex, Zone, Round, Start, Seed, Keys (fixed at the start), Wins, Cash, Xp, Tokens,
@@ -2755,11 +2756,16 @@ end
 
 -- The ring's fighters, in the contract's order: the active team (training pets skipped), else the equipped keys, else
 -- the best owned pets by UnitPower; training pets skipped everywhere; at most GetTeams().Slots. -> keys, source
+-- Bug batch 2 #18: a pet busy gardening (every copy in the Garden: DataService.GardenBusyKeys) never fights either.
 function RingRun.fighters(player, owned)
 	local DS = dataService()
 	local training = try(DS, "TrainingKeys", player)
 	if type(training) ~= "table" then
 		training = {}
+	end
+	local gardening = try(DS, "GardenBusyKeys", player)
+	if type(gardening) ~= "table" then
+		gardening = {}
 	end
 	local teams = try(DS, "GetTeams", player)
 	local slots = (type(teams) == "table" and tonumber(teams.Slots)) or 3
@@ -2769,7 +2775,7 @@ function RingRun.fighters(player, owned)
 			if #out >= slots then
 				break
 			end
-			if type(key) == "string" and not training[key] and not seen[key] then
+			if type(key) == "string" and not training[key] and not gardening[key] and not seen[key] then
 				seen[key] = true
 				out[#out + 1] = key
 			end
@@ -2791,7 +2797,7 @@ function RingRun.fighters(player, owned)
 	end
 	local scored = {}
 	for _, key in ipairs(type(owned) == "table" and owned or {}) do
-		if type(key) == "string" and not training[key] and PetKeys then
+		if type(key) == "string" and not training[key] and not gardening[key] and PetKeys then
 			local okD, def = pcall(PetKeys.DefOf, key, profile)
 			if okD and type(def) == "table" and type(def.Stats) == "table" then
 				local okP, parsed = pcall(PetKeys.Parse, key)
@@ -3342,7 +3348,7 @@ function BattleService.StartRing(player, startRound)
 	-- 3) the fighters: the team, else the equipped pets, else the best owned pets (training pets skipped)
 	local keys, source = RingRun.fighters(player, owned)
 	if #keys == 0 then
-		return false, "Your pets are all training right now"
+		return false, "Your pets are all training or gardening right now"
 	end
 	-- 4) free to battle
 	local ok, why = canBattle(player)

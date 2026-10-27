@@ -17,14 +17,18 @@
 --          MenuController.Hint(text, kind) -> the side hint (CareController's local refusals use it)
 --          MenuController.SetColumnHidden(hidden) -> hides / shows the menu tiles (BattleController: the team cards
 --          take the left edge of a landscape phone during a battle; the column frame keeps its place)
+--          MenuController.SetColumnCollapsed(collapsed, animate) / IsColumnCollapsed() -> folds the column against the
+--          left edge like its arrow tab does (bug batch 2 #1; remembered for the session)
 --
 -- Screen: ScreenGui "NimbusMenu" (display order 20, IgnoreGuiInset = false).
---   * Menu column, left-centre (the reference style): square-ish rounded icon tiles with a big glyph and a
---     bold label under each - Inventory, Pets, Index, Shop, Home, Stats and Team. Each tile is a TextButton named
---     MenuButton_<Id> (Ids Inventory, Pets, Index, Shop, Spot, Stats, Team: the Home tile keeps the v3 id "Spot" so
---     saved tutorial targets keep working) inside a frame Entry_<Id> of the frame "MenuColumn". The open window's tile
---     glows gold; a red "!" marks new pets and Pet Index rewards waiting to be claimed. On short screens (landscape
---     phones) the column becomes a grid so it keeps a readable scale.
+--   * Menu column, left-centre (bug batch 2 #1, option A): ONE slim column of square neon tiles with a glyph and a
+--     bold label - Pets, Items, Team, Index, Shop, Home, Stats and the Settings gear - 56 px on a 1080p desktop. Each
+--     tile is a TextButton named MenuButton_<Id> (Ids Inventory, Pets, Index, Shop, Spot, Stats, Team, Settings: the
+--     Home tile keeps the v3 id "Spot" so saved tutorial targets keep working) inside a frame Entry_<Id> of the frame
+--     "MenuColumn". The open window's tile glows gold; a red "!" marks new pets and Pet Index rewards waiting to be
+--     claimed. A small arrow tab (MenuColumn.Toggle) folds the column against the left edge and back (remembered for
+--     the session; the tab repeats a tile's red dot while folded; a tutorial step pointing at a tile unfolds it). On
+--     short screens (landscape / portrait phones) the tiles wrap into two slim columns so they stay >= 44 px.
 --   * Windows (CloudUI.Panel, centred because the player asked for them, nudged right only when the menu
 --     column would cover them): Inventory (tabs Pets + Items, pet detail card), Shop (tabs Roulettes + Items + Gems,
 --     odds popup), Stats, Home and Team. The Pet Index is IndexController's window: the Index tile and
@@ -68,8 +72,7 @@
 --     stays High), and the roulette pools are sculpted ahead of time (one pet per frame) when the Shop opens and
 --     when a spin is requested, so the spin itself only clones.
 --   * Touch screens: the menu column never reaches Roblox's thumbstick (bottom-left); in landscape it sits in the
---     band between the top margin and the stick (2 x 3 grid with the labels on the tiles, or icon-only tiles
---     when labels would drop below 14 px).
+--     band between the top margin and the stick (two slim columns of four on a phone, labels >= 14 px).
 --
 -- Remotes used: OpenPanel, RouletteResult (in); BuyRoulette, EquipPet, UnequipPet, BuyItem, GoToSpot, HomeAction,
 -- PetCare (out). Each remote action is sent at most every K.FIRE_GAP seconds (the server rate-limits as well).
@@ -1227,6 +1230,15 @@ function P2.slotsHolding(map, key)
 	return out
 end
 
+-- bug batch 2 #18: copies of a key working in the Garden, and whether it has NO copy free of it (busy gardening)
+function P2.gardenCopies(key)
+	return #P2.slotsHolding(P2.homeData().Garden, key)
+end
+function P2.isGardening(key)
+	local garden = P2.gardenCopies(key)
+	return garden > 0 and State.OwnedCount(key) - garden < 1
+end
+
 function P2.firstFreeSlot(map, count)
 	for slot = 1, count do
 		if type(map) ~= "table" or map[slot] == nil then
@@ -1444,6 +1456,68 @@ end
 
 local function fire(name, ...)
 	return fireKeyed(name, name, ...)
+end
+
+-- "This pet is gardening! Take it out of the garden and equip it?" [Yes] [No]. Yes = ONE request (HomeAction
+-- "GardenRecall"; the server checks everything and takes it out + equips / stores the team); No = nothing.
+-- target = { To = "Equip" } | { To = "Team", Preset = n, Keys = {...} }; onYes (optional) runs after the request.
+function P2.askRecall(key, target, onYes)
+	if P2.RecallDialog then
+		P2.RecallDialog:Destroy()
+	end
+	local overlay = makeFrame(gui, "GardenRecall", {
+		Size = UDim2.fromScale(1, 1),
+		BackgroundTransparency = 0.35,
+		BackgroundColor3 = Color3.fromRGB(8, 12, 32),
+		Active = true,
+		ZIndex = 60,
+	})
+	P2.RecallDialog = overlay
+	local box = makeFrame(overlay, "Box", {
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		Position = UDim2.fromScale(0.5, 0.5),
+		Size = UDim2.new(0.92, 0, 0, 210), -- phone: 92 % of the width, capped at 420 px
+		BackgroundTransparency = 0,
+		BackgroundColor3 = WHITE,
+		ZIndex = 61,
+	})
+	Util.Create("UISizeConstraint", { MaxSize = Vector2.new(420, 210), Parent = box })
+	corner(box, 16)
+	stroke(box, C2.Kind.Garden, 4, 0)
+	Theme.Gradient(box, Colors.PanelLight, Colors.Panel, 90)
+	makeText(box, "Title", G.Seedling .. " This pet is gardening!", "Title", 28, C2.Kind.Garden, {
+		Position = UDim2.fromOffset(16, 12), Size = UDim2.new(1, -32, 0, 36), ZIndex = 62,
+	})
+	local verb = target.To == "Team" and "put it in your team?" or "equip it?"
+	makeText(box, "Body", "Take it out of the garden and " .. verb, "Body", 20, WHITE, {
+		Position = UDim2.fromOffset(16, 54), Size = UDim2.new(1, -32, 0, 60), TextWrapped = true, ZIndex = 62,
+	})
+	local buttons = makeFrame(box, "Buttons", {
+		AnchorPoint = Vector2.new(0.5, 1), Position = UDim2.new(0.5, 0, 1, -14), Size = UDim2.new(1, -32, 0, 56), ZIndex = 62,
+	})
+	listLayout(buttons, Enum.FillDirection.Horizontal, 14, Enum.HorizontalAlignment.Center, Enum.VerticalAlignment.Center)
+	local function close()
+		if P2.RecallDialog == overlay then
+			P2.RecallDialog = nil
+		end
+		overlay:Destroy()
+	end
+	CloudUI.Button({
+		Name = "RecallYes", Text = "Yes", Style = "Green", Size = UDim2.fromOffset(150, 56), TextSize = 24, LayoutOrder = 1, ZIndex = 63,
+		Callback = function()
+			close()
+			local arg = { Key = key, To = target.To, Preset = target.Preset, Keys = target.Keys }
+			if fireKeyed("HomeAction:Recall", "HomeAction", "GardenRecall", arg) and onYes then
+				onYes()
+			end
+		end,
+		Parent = buttons,
+	})
+	CloudUI.Button({
+		Name = "RecallNo", Text = "No", Style = "Pink", Size = UDim2.fromOffset(150, 56), TextSize = 24, LayoutOrder = 2, ZIndex = 63,
+		Callback = close,
+		Parent = buttons,
+	})
 end
 
 ----------------------------------------------------------------------
@@ -1782,6 +1856,11 @@ function closeWindow(id, instant)
 	win.Shown = false
 	win.Token = win.Token + 1
 	local mine = win.Token
+	if P2.RecallDialog then
+		-- bug batch 2 #18: the garden recall question goes with its window
+		P2.RecallDialog:Destroy()
+		P2.RecallDialog = nil
+	end
 	if openId == id then
 		openId = nil
 	end
@@ -1848,6 +1927,12 @@ function handleBack()
 	end
 	if Odds.Gui then
 		closeOdds()
+		return true
+	end
+	if P2.RecallDialog then
+		-- bug batch 2 #18: Esc / B answers the garden recall question "No"
+		P2.RecallDialog:Destroy()
+		P2.RecallDialog = nil
 		return true
 	end
 	if openId then
@@ -1999,10 +2084,16 @@ function P5.openSettings()
 	showHint("Settings are getting ready. Try again soon!", "info")
 end
 
--- The menu (6.6, image 21.png): a 2 x 3 grid of neon tiles (Pets, Items, Team / Index, Shop, Home) and a small row
--- (Stats, the Settings gear). Each tile is a NeonKit.Tile whose root is the TextButton MenuButton_<Id> inside a
--- frame Entry_<Id> of the frame "MenuColumn" (names kept: the tutorial rings them; the gear's frame is Gear_Settings).
--- Tiles are designed at 66 px under one UIScale: 84 px on a 1080p screen, ~66 at 720p, ~53 on phones (labels >= 14 px).
+-- The menu (bug batch 2 #1, option A "Split & shift"): ONE slim column of eight neon tiles against the left edge,
+-- vertically centred (Pets, Items, Team, Index, Shop, Home, Stats, the Settings gear), with a small arrow tab beside
+-- its last tile that slides the column off the edge and back (remembered for the session). Each tile is a
+-- NeonKit.Tile whose root is the TextButton MenuButton_<Id> inside a frame Entry_<Id> of the frame "MenuColumn" (names
+-- kept: the tutorial rings them; the gear's frame is Gear_Settings; the tab is MenuColumn.Toggle, so everything that
+-- measures the column also keeps clear of the tab). Tiles are designed at 66 px under one UIScale: 56 px on a 1080p
+-- desktop (x the screen factor), 50 px on touch screens, never below 44 px (a thumb). Where one column does not fit
+-- that minimum (the band above a landscape phone's thumbstick, the strip above a portrait phone's sheet) the tiles
+-- wrap into two slim columns of four (three columns on the shortest phones), still clear of the stick and never
+-- reaching into the middle of the screen.
 local MENU = {
 	{ Id = "Pets", Label = "Pets", Icon = "Pets", Color = "Orange", Action = menuActionPets },
 	{ Id = "Inventory", Label = "Items", Icon = "Items", Color = "Blue", Action = menuActionInventory },
@@ -2012,14 +2103,22 @@ local MENU = {
 	{ Id = "Index", Label = "Index", Icon = "Index", Color = "Purple", Action = menuActionIndex },
 	{ Id = "Shop", Label = "Shop", Icon = "Shop", Color = "Green", Action = menuActionShop },
 	{ Id = "Spot", Label = "Home", Icon = "Home", Color = "Yellow", Action = menuActionSpot },
-	{ Id = "Stats", Label = "Stats", Icon = "Stats", Color = "Cyan", Small = true, Action = menuActionStats },
-	{ Id = "Settings", Label = "Settings", Icon = "Settings", Color = "Grey", Small = true, Gear = true, Action = function()
+	{ Id = "Stats", Label = "Stats", Icon = "Stats", Color = "Cyan", Action = menuActionStats },
+	{ Id = "Settings", Label = "Settings", Icon = "Settings", Color = "Grey", Gear = true, Action = function()
 		P5.openSettings()
 	end },
 }
-P5.TILE = 66 -- design px of a grid tile
-P5.SMALL = 46 -- design px of a small-row tile (icon only)
-P5.GAP = 6
+P5.TILE = 66 -- design px of a tile
+P5.GAP = 6 -- between two tiles (design px)
+P5.TILE_PX = 56 -- on-screen tile on a 1080p desktop (x the screen factor)
+P5.TOUCH_TILE_PX = 50 -- ... on touch screens (tablets: the larger of this and TILE_PX x the factor)
+P5.MIN_TILE_PX = 44 -- one column needs this much per tile, else the tiles wrap into two columns (a thumb)
+P5.TAB_GAP = 4 -- design px between the tiles and the arrow tab
+P5.TAB_W = 24 -- design width of the arrow tab (touch: TAB_W_TOUCH, wider for a thumb)
+P5.TAB_W_TOUCH = 30
+P5.MAX_COLS = 3 -- the tiles wrap into at most this many columns (the shortest landscape phones)
+P5.CENTRE_TOL = 0.145 -- the column never reaches into the screen middle (|dx| < 14.5% of the width: HudController's rule)
+P5.SLIDE = 0.25 -- seconds of the collapse / expand slide
 
 -- active (its window is open): the gold glow ring + a gold label; disabled (in a match): grey
 local function paintTile(entry)
@@ -2040,8 +2139,8 @@ local function paintTile(entry)
 end
 
 local function buildTile(column, spec, index)
-	local size = spec.Small and P5.SMALL or P5.TILE
-	local entry = { Id = spec.Id, Color = spec.Color, Small = spec.Small }
+	local size = P5.TILE
+	local entry = { Id = spec.Id, Color = spec.Color }
 	entry.Root = makeFrame(column, (spec.Gear and "Gear_" or "Entry_") .. spec.Id, {
 		Size = UDim2.fromOffset(size, size),
 		LayoutOrder = index,
@@ -2068,37 +2167,191 @@ local function buildTile(column, spec, index)
 	end)
 	function entry.SetBadge(on)
 		tile.SetBadge(on)
+		P5.paintTab() -- a folded column still shows that a tile wants attention
 	end
 	paintTile(entry)
 	Entries[spec.Id] = entry
-	if U.ColumnHidden and entry.Root then
-		entry.Root.Visible = false -- a battle on a landscape phone holds the left edge (SetColumnHidden)
-	end
+	P5.tileVisibility(entry) -- a battle on a landscape phone (SetColumnHidden) / a collapsed column hide the tiles
 	return entry
+end
+
+-- A tile shows unless a battle holds the left edge (SetColumnHidden) or the column is folded away (after its slide).
+function P5.tileVisibility(entry)
+	if entry and entry.Root then
+		entry.Root.Visible = not U.ColumnHidden and not U.TilesFolded
+	end
+end
+
+-- Design size of the column frame for `cols` tile columns: the tiles plus the arrow tab beside them.
+function P5.columnSize(cols)
+	local rows = math.ceil(#MENU / cols)
+	local tilesW = cols * P5.TILE + (cols - 1) * P5.GAP
+	local tabW = touchDevice and P5.TAB_W_TOUCH or P5.TAB_W
+	return tilesW + P5.TAB_GAP + tabW, rows * P5.TILE + (rows - 1) * P5.GAP, tilesW
+end
+
+-- Places the tiles in `cols` columns (row by row: Pets Items / Team Index / ... in two columns) and the tab beside
+-- the last row, right after its last tile (the gear: with 3 columns that row holds only 2 tiles, and the tab must not
+-- leave an empty slot before it). Sets U.ColumnW / U.ColumnH / U.TilesW / U.TabX (design px).
+function P5.placeTiles(cols)
+	if U.Cols == cols then
+		return
+	end
+	U.Cols = cols
+	local w, h, tilesW = P5.columnSize(cols)
+	for index, spec in ipairs(MENU) do
+		local entry = Entries[spec.Id]
+		if entry and entry.Root then
+			local i = index - 1
+			entry.Root.Position = UDim2.fromOffset((i % cols) * (P5.TILE + P5.GAP), math.floor(i / cols) * (P5.TILE + P5.GAP))
+		end
+	end
+	local lastRow = #MENU - (math.ceil(#MENU / cols) - 1) * cols
+	U.ColumnW, U.ColumnH, U.TilesW = w, h, tilesW
+	U.TabX = lastRow * (P5.TILE + P5.GAP) - P5.GAP + P5.TAB_GAP
+	U.Column.Size = UDim2.fromOffset(w, h)
+	if U.Tab then
+		U.Tab.Size = UDim2.fromOffset(w - tilesW - P5.TAB_GAP, P5.TILE)
+		U.Tab.Position = UDim2.fromOffset(U.TabX, h - P5.TILE)
+	end
+end
+
+-- The tab's arrow points where a click sends the column ("<" fold away, ">" bring back); while folded, a red dot
+-- repeats any tile's badge (new pets, Index rewards).
+function P5.paintTab()
+	if not U.Tab then
+		return
+	end
+	local arrow = U.Collapsed and ">" or "<"
+	if U.TabArrow.Text ~= arrow then
+		U.TabArrow.Text = arrow
+	end
+	local badge = false
+	if U.Collapsed then
+		for _, entry in pairs(Entries) do
+			local dot = entry.Tile and entry.Tile.Badge
+			badge = badge or (dot ~= nil and dot.Visible == true)
+		end
+	end
+	if U.TabBadge.Visible ~= badge then
+		U.TabBadge.Visible = badge
+	end
+	if U.Tab:GetAttribute("Collapsed") ~= (U.Collapsed == true) then
+		U.Tab:SetAttribute("Collapsed", U.Collapsed == true)
+	end
+end
+
+-- Folds the column away against the left edge (only the tab stays) or brings it back. Remembered for the session
+-- (U.Collapsed lives as long as the client; the menu gui never resets on respawn).
+function P5.setCollapsed(on, animate)
+	on = on == true
+	if U.Collapsed == on then
+		return
+	end
+	U.Collapsed = on
+	U.FoldSerial = (U.FoldSerial or 0) + 1
+	local serial = U.FoldSerial
+	if not on then
+		U.TilesFolded = false
+		for _, entry in pairs(Entries) do
+			P5.tileVisibility(entry)
+		end
+	end
+	P5.paintTab()
+	if gui and gui:GetAttribute("MenuCollapsed") ~= on then
+		gui:SetAttribute("MenuCollapsed", on)
+	end
+	P5.slideAnimate = animate == true
+	relayoutMenu()
+	P5.slideAnimate = false
+	if on then
+		-- the tiles hide once they are off screen: nothing measures, rings or selects a tile nobody can see
+		local function fold()
+			if U.Collapsed and U.FoldSerial == serial then
+				U.TilesFolded = true
+				for _, entry in pairs(Entries) do
+					P5.tileVisibility(entry)
+				end
+			end
+		end
+		if animate then
+			task.delay(P5.SLIDE + 0.05, fold)
+		else
+			fold()
+		end
+	end
+end
+
+-- The tutorial needs a tile while one of its steps points at the menu: a folded column comes back for it.
+function P5.tutorialWantsMenu()
+	if P5.Tutorial == nil then
+		P5.Tutorial = false
+		local controllers = script.Parent
+		local inst = controllers and controllers:FindFirstChild("TutorialController")
+		if inst then
+			local ok, mod = pcall(require, inst)
+			if ok and type(mod) == "table" and type(mod.GetState) == "function" then
+				P5.Tutorial = mod
+			end
+		end
+	end
+	if not P5.Tutorial then
+		return false
+	end
+	local ok, st = pcall(P5.Tutorial.GetState)
+	return ok and type(st) == "table" and not st.Done and type(st.Target) == "table" and st.Target.Kind == "Menu"
 end
 
 local function buildColumn()
 	local column = makeFrame(gui, "MenuColumn", {
-		AnchorPoint = Vector2.new(0, 0.5),
+		AnchorPoint = Vector2.new(0, 0),
 		Position = UDim2.new(0, K.EDGE, 0.5, 0),
 		ZIndex = 2,
 	})
 	U.Column = column
 	U.ColumnScale = Util.Create("UIScale", { Name = "ViewportScale", Scale = 1, Parent = column })
-	local grid, n = 0, 0
 	for index, spec in ipairs(MENU) do
-		local entry = buildTile(column, spec, index)
-		if spec.Small then
-			n = n + 1
-			entry.Root.Position = UDim2.fromOffset((n - 1) * (P5.SMALL + P5.GAP), 3 * (P5.TILE + P5.GAP) + 2)
-		else
-			entry.Root.Position = UDim2.fromOffset((grid % 2) * (P5.TILE + P5.GAP), math.floor(grid / 2) * (P5.TILE + P5.GAP))
-			grid = grid + 1
-		end
+		buildTile(column, spec, index)
 	end
-	U.ColumnW = 2 * P5.TILE + P5.GAP
-	U.ColumnH = 3 * (P5.TILE + P5.GAP) + 2 + P5.SMALL
-	column.Size = UDim2.fromOffset(U.ColumnW, U.ColumnH)
+	-- the hide / show tab: a slim navy tab with an arrow, beside the last tile (the gear), so the tutorial's pointer
+	-- at Pets / Team / Index / Home never lands on it
+	local tab = Util.Create("TextButton", {
+		Name = "Toggle",
+		Text = "",
+		AutoButtonColor = false,
+		BackgroundColor3 = Colors.PanelBottom or NAVY,
+		BackgroundTransparency = 0.08,
+		BorderSizePixel = 0,
+		ZIndex = 3,
+		Parent = column,
+	})
+	corner(tab, 8)
+	U.TabStroke = stroke(tab, Theme.Lighten(Colors.PanelTop or NAVY, 0.35), 2, 0.1)
+	U.TabArrow = makeText(tab, "Arrow", "<", "Display", 26, WHITE, {
+		Size = UDim2.fromScale(1, 1),
+		TextXAlignment = Enum.TextXAlignment.Center,
+		ZIndex = 4,
+	})
+	U.TabBadge = makeFrame(tab, "Badge", {
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		Position = UDim2.new(1, -2, 0, 4),
+		Size = UDim2.fromOffset(14, 14),
+		BackgroundTransparency = 0,
+		BackgroundColor3 = Theme.Neon and Theme.Neon.Red or Colors.Bad,
+		Visible = false,
+		ZIndex = 5,
+	})
+	round(U.TabBadge)
+	stroke(U.TabBadge, INK, 2, 0)
+	U.Tab = tab
+	tab.Activated:Connect(function()
+		safe("menu fold", P5.setCollapsed, not U.Collapsed, true)
+	end)
+	CloudUI.Tooltip(tab, function()
+		return U.Collapsed and "Show menu" or "Hide menu"
+	end)
+	P5.placeTiles(1)
+	P5.paintTab()
 end
 
 -- Phase 5 (6.6): on a portrait phone a window is a bottom sheet; while ANY docked sheet is up (ours, the Care / Index /
@@ -2156,13 +2409,20 @@ function P5.watchSheets()
 				U.SheetHidden = hide
 				U.Column.Visible = not hide
 			end
+			-- a tutorial step that points at a tile brings a folded column back (the ring needs the tile on screen)
+			if U.Collapsed and P5.tutorialWantsMenu() then
+				safe("menu unfold", P5.setCollapsed, false, true)
+			elseif U.Collapsed then
+				safe("menu tab", P5.paintTab) -- the tab's dot follows the tiles' badges
+			end
 			task.wait(0.25)
 		end
 	end)
 end
 
--- the tile grid's place and scale: left-centre on desktops; on touch landscape screens in the band between the top
--- margin and Roblox's thumbstick; on portrait phones above the bottom sheet's top (0.44 H)
+-- the column's place and scale: left-centre on desktops; on touch landscape screens in the band between the top
+-- margin and Roblox's thumbstick; on portrait phones above the bottom sheet's top (0.44 H). One column when it fits
+-- at P5.MIN_TILE_PX per tile, else two; folded (U.Collapsed) the column sits left of the edge with only its tab showing.
 function relayoutMenu()
 	if not gui or not U.Column then
 		return
@@ -2170,9 +2430,12 @@ function relayoutMenu()
 	local area = guiSize()
 	local factor = screenFactor()
 	local margin = screenMargin()
-	local w, h = U.ColumnW or 140, U.ColumnH or 270
-	local scale = touchDevice and 0.8 or factor * (84 / P5.TILE)
-	local top -- gui px of the column's top edge
+	local pref = factor * P5.TILE_PX / P5.TILE
+	if touchDevice then
+		pref = math.max(P5.TOUCH_TILE_PX, factor * P5.TILE_PX) / P5.TILE
+	end
+	local minScale = P5.MIN_TILE_PX / P5.TILE
+	local first, avail -- gui px: the top of the band the column is centred in, and its height
 	if area.X >= area.Y then
 		local camera = workspace.CurrentCamera
 		local vp = camera and camera.ViewportSize or area
@@ -2180,38 +2443,70 @@ function relayoutMenu()
 		if touchDevice then
 			bottom = area.Y - ((math.min(vp.X, vp.Y) <= 500) and K.STICK_TOP_SMALL or K.STICK_TOP_LARGE) - K.STICK_GAP
 		end
-		local avail = bottom - margin
-		scale = math.min(scale, avail / h)
-		top = margin + math.max(0, (avail - h * scale) / 2)
+		first = margin
+		avail = bottom - margin
 	else
 		local inset = P5.inset()
 		local bottom = (area.Y + inset) * 0.44 - inset - margin -- the bottom sheet's top edge (0.44 of the SCREEN)
-		local first = margin + 80 * factor -- under the HUD's top-left corner
+		first = margin + 80 * factor -- under the HUD's top-left corner
 		local hudBottom = P5.hudTopLeftBottom()
 		if hudBottom > 0 and hudBottom + margin > first then
-			-- a party / match panel is up: there is no room for it beside the grid on a phone this narrow, so the
-			-- panel keeps the top-left corner and the grid steps below it (no sheet is up: the grid hides for one)
+			-- a party / match panel is up: there is no room for it beside the tiles on a phone this narrow, so the
+			-- panel keeps the top-left corner and the tiles step below it (no sheet is up: the tiles hide for one)
 			first = hudBottom + margin
-			bottom = math.max(bottom, first + h * scale)
+			local _, h2 = P5.columnSize(2)
+			bottom = math.max(bottom, first + h2 * pref)
 		end
-		local avail = math.max(60, bottom - first)
-		scale = math.min(scale, avail / h)
-		top = first + math.max(0, (avail - h * scale) / 2)
+		avail = math.max(60, bottom - first)
 	end
+	-- one column when it fits with tiles >= MIN_TILE_PX, else the fewest columns that do
+	local cols = 1
+	while cols < P5.MAX_COLS and avail < select(2, P5.columnSize(cols)) * minScale do
+		cols = cols + 1
+	end
+	P5.placeTiles(cols)
+	local w, h = U.ColumnW, U.ColumnH
+	local scale = math.min(pref, avail / h)
+	-- never into the middle of the screen (a narrow portrait phone): the column's right edge stays left of it
+	local camera = workspace.CurrentCamera
+	local vpX = (camera and camera.ViewportSize.X > 2) and camera.ViewportSize.X or area.X
+	scale = math.min(scale, math.max(minScale * 0.9, (vpX * (0.5 - P5.CENTRE_TOL) - 2 - margin) / w))
+	local top = first + math.max(0, (avail - h * scale) / 2)
 	U.ColumnScale.Scale = scale
-	-- a squeezed grid (short landscape phones) grows its labels so they stay >= 14 screen px
+	-- a squeezed column (short screens) grows its labels so they stay >= 14 screen px
 	local labelPx = math.min(26, math.max(18, math.ceil(14.5 / math.max(scale, 0.3))))
+	-- ... and so does the "!" of a tile's red badge (its dot grows around it)
+	local markPx = math.max(14, math.ceil(14.5 / math.max(scale, 0.3)))
 	for _, entry in pairs(Entries) do
 		if entry.Label then
 			entry.Label.TextSize = labelPx
 			entry.Label.Size = UDim2.new(1, 12, 0, labelPx + 2)
 		end
+		local badge = entry.Tile and entry.Tile.Badge
+		local mark = badge and badge:FindFirstChild("Mark")
+		if mark and mark:IsA("TextLabel") then
+			mark.TextSize = markPx
+			badge.Size = UDim2.fromOffset(math.max(22, markPx + 4), math.max(22, markPx + 4))
+		end
 	end
+	local left = margin
+	if U.Collapsed then
+		left = -math.floor(U.TabX * scale + 0.5) -- only the tab shows, flush with the edge
+	end
+	local goal = UDim2.new(0, left, 0, math.floor(top + 0.5))
 	U.Column.AnchorPoint = Vector2.new(0, 0)
-	U.Column.Position = UDim2.new(0, margin, 0, math.floor(top + 0.5))
+	if U.SlideTween then
+		U.SlideTween:Cancel()
+		U.SlideTween = nil
+	end
+	if P5.slideAnimate then
+		U.SlideTween = tween(U.Column, P5.SLIDE, { Position = goal }, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+	else
+		U.Column.Position = goal
+	end
 	if Hint.Frame then
 		-- next to the column, and never wide enough to reach the middle of the screen
-		local hintLeft = margin + w * scale + 10
+		local hintLeft = left + w * scale + 10
 		local room = math.max(120, area.X * 0.34 - hintLeft - 28 * factor)
 		Hint.Scale.Scale = factor
 		Hint.Frame.Position = UDim2.new(0, hintLeft, 0, math.floor(top + h * scale / 2 + 0.5))
@@ -2671,8 +2966,15 @@ do
 				Size = UDim2.new(0.5, -6, 1 / 3, -6),
 				TextSize = 22,
 				Callback = function()
-					if pets.Selected then
-						fire("EquipPet", pets.Selected)
+					local key = pets.Selected
+					if not key then
+						return
+					end
+					if W.EquipGardening then
+						-- bug batch 2 #18: every free copy is gardening: ask, then take one out and equip it (one request)
+						P2.askRecall(key, { To = "Equip" })
+					else
+						fire("EquipPet", key)
 					end
 				end,
 				Parent = buttons,
@@ -3154,6 +3456,8 @@ do
 			local totalEquipped = #State.Get().Equipped
 			local canEquip = equipped < owned and totalEquipped < maxEquipped and job == nil
 			CloudUI.SetDisabled(W.EquipBtn, not canEquip)
+			-- bug batch 2 #18: every free copy is gardening -> the press asks to take one out of the garden
+			W.EquipGardening = canEquip and equipped >= owned - P2.gardenCopies(key)
 			CloudUI.SetDisabled(W.UnequipBtn, equipped <= 0)
 			CloudUI.SetDisabled(W.FeedBtn, inMatch())
 			CloudUI.SetDisabled(W.TrainBtn, inMatch())
@@ -6456,10 +6760,11 @@ P3.Define = function()
 		return a
 	end
 
-	-- Phase 4: garden pets join teams too; a pet in training stays in its preset but sits out the fights until it is
-	-- done (the server skips it at read time), so its tile only says "Training"
+	-- bug batch 2 #18: a copy working in the Garden is busy gardening (it cannot fight; its tile says "Gardening" and a
+	-- tap asks to take it out); a pet in training stays in its preset but sits out the fights until it is done (the
+	-- server skips it at read time), so its tile says "Training"
 	local function freeCopies(key)
-		return State.OwnedCount(key)
+		return State.OwnedCount(key) - P2.gardenCopies(key)
 	end
 
 	local function entryOf(key)
@@ -6601,24 +6906,45 @@ P3.Define = function()
 				return
 			end
 		end
+		local slots = slotCount()
+		local function placed()
+			if T.Selected and T.Selected <= slots then
+				if T.Selected <= #list then
+					list[T.Selected] = key
+				else
+					list[#list + 1] = key
+				end
+				return true
+			elseif #list < slots then
+				list[#list + 1] = key
+				return true
+			end
+			return false
+		end
 		if freeCopies(key) < 1 then
+			if P2.gardenCopies(key) > 0 and State.OwnedCount(key) > 0 then
+				-- bug batch 2 #18: it is gardening: ask, then ONE request takes it out and stores this team
+				if not placed() then
+					showHint("Your team is full. Tap a team slot, then a pet to swap it.", "info")
+					return
+				end
+				T.Selected = nil
+				P2.askRecall(key, { To = "Team", Preset = preset, Keys = copyList(list) }, function()
+					-- the server stores the team itself (no TeamSet): show it at once, the next sync confirms it
+					T.Draft[preset] = list
+					T.DraftAt[preset] = os.clock()
+					refreshTeam()
+				end)
+				return
+			end
 			showHint("You have no free copy of that pet.", "info")
 			return
 		end
-		local slots = slotCount()
-		if T.Selected and T.Selected <= slots then
-			if T.Selected <= #list then
-				list[T.Selected] = key
-			else
-				list[#list + 1] = key
-			end
-			T.Selected = nil
-		elseif #list < slots then
-			list[#list + 1] = key
-		else
+		if not placed() then
 			showHint("Your team is full. Tap a team slot, then a pet to swap it.", "info")
 			return
 		end
+		T.Selected = nil
 		setDraft(preset, list)
 	end
 
@@ -7447,6 +7773,8 @@ P3.Define = function()
 			local busy = nil
 			if P2.job(row.Key) then
 				busy = "Training"
+			elseif P2.isGardening(row.Key) then
+				busy = G.Seedling .. " Gardening" -- bug batch 2 #18: a tap asks to take it out of the garden
 			end
 			paintTile(tile, row.Entry, slotOf[row.Key], busy)
 		end
@@ -8699,10 +9027,21 @@ end
 function MenuController.SetColumnHidden(hidden)
 	U.ColumnHidden = hidden == true
 	for _, entry in pairs(Entries) do
-		if entry.Root then
-			entry.Root.Visible = not U.ColumnHidden
-		end
+		P5.tileVisibility(entry)
 	end
+	if U.Tab then
+		U.Tab.Visible = not U.ColumnHidden
+	end
+end
+
+-- Bug batch 2 #1: folds the menu column against the left edge (true) or brings it back (false); the arrow tab does
+-- the same. IsColumnCollapsed() -> the remembered state (this session).
+function MenuController.SetColumnCollapsed(collapsed, animate)
+	safe("menu fold", P5.setCollapsed, collapsed == true, animate == true)
+end
+
+function MenuController.IsColumnCollapsed()
+	return U.Collapsed == true
 end
 
 -- Debug helper (smoke tests): true once `petId` was pre-sculpted at the roulette strip's detail.

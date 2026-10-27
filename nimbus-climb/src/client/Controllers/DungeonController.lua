@@ -1589,18 +1589,27 @@ function R.place()
 	S.CardMode = nil
 	-- the End card
 	local endH = U.End.Root.Size.Y.Offset
+	-- bug batch 2 #1: phones start the End card below the HUD's top-right currency strips, so they stay in view
+	-- for the result (the HUD still hides them should the card ever reach them)
+	local strips = R.stripsBottom()
 	if phone and w < h then
-		-- portrait: right of the menu tile column, under the currency pills (clear of the screen's centre)
+		-- portrait: right of the menu tile column, under the currency strips (clear of the screen's centre)
 		local scale = 0.8
 		U.EndScale.Scale = scale
 		U.End.Root.Size = UDim2.fromOffset(math.floor((w - 172) / scale), endH)
-		U.End.Root.Position = UDim2.fromOffset(160, math.floor(h * 0.18) - top)
+		U.End.Root.Position = UDim2.fromOffset(160, math.max(math.floor(h * 0.18) - top, strips))
 	elseif phone then
-		local scale = 0.8
+		-- landscape: below the strips it must still end above Roblox's jump button (70 px, 20 px off the bottom); it
+		-- shrinks down to 0.7 (20 px design text -> 14 px) for that, else it keeps its old spot and the strips hide
+		local y = math.max(52 - top, strips)
+		local scale = math.min(0.8, (h - top - 90 - 8 - y) / math.max(1, endH))
+		if scale < 0.7 then
+			y, scale = 52 - top, 0.8
+		end
 		local width = math.min(K.END_W, math.floor(w * 0.44 / scale))
 		U.EndScale.Scale = scale
 		U.End.Root.Size = UDim2.fromOffset(width, endH)
-		U.End.Root.Position = UDim2.fromOffset(math.floor(w - 12 - width * scale), 52 - top)
+		U.End.Root.Position = UDim2.fromOffset(math.floor(w - 12 - width * scale), y)
 	else
 		U.EndScale.Scale = f
 		U.End.Root.Size = UDim2.fromOffset(K.END_W, endH)
@@ -1624,7 +1633,19 @@ function R.place()
 	end
 end
 
--- landscape phones: the HUD's currency pills share Roblox's top band; the chip starts right of them
+-- just below the HUD's currency strips when they sit in the top-right corner under the top bar (gui-area px, the
+-- same space as our cards), 0 when they are elsewhere (Roblox's top band in a battle) or unmeasured
+function R.stripsBottom()
+	local pg = LocalPlayer and LocalPlayer:FindFirstChildOfClass("PlayerGui")
+	local hud = pg and pg:FindFirstChild("NimbusHud")
+	if not hud or hud:GetAttribute("CurrencyMode") ~= "TopRight" then
+		return 0
+	end
+	local bottom = tonumber(hud:GetAttribute("TopRightBottom"))
+	return (bottom and bottom > 0) and math.ceil(bottom + 8) or 0
+end
+
+-- landscape phones in a battle: the HUD's currency strips share Roblox's top band; the chip starts right of them
 function R.pillsRight()
 	local pg = LocalPlayer and LocalPlayer:FindFirstChildOfClass("PlayerGui")
 	local hud = pg and pg:FindFirstChild("NimbusHud")

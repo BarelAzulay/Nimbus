@@ -35,8 +35,10 @@
 --                        DataStore merge after the prestige: a stale prestige-0 write (station level, +Cash, +Gems,
 --                        +Snacks) lands before this server saves: the prestiged Home and Cash win, Gems and Snacks add up.
 --   p2flow_fusion_gems   After the prestige: the star prices, the Fusion Machine pad unlocks; three copies (one in the
---                        Garden, one equipped) fuse only next to the machine: the Golden copy takes over the garden
---                        place and the equipped place and makes x1.5 coins; gem packs through ProcessReceipt; the Storm
+--                        Garden, one equipped) fuse only next to the machine: the Golden copy takes over the equipped
+--                        place (bug batch 2 #18: one job at a time, so the garden place is left free, with a toast; the
+--                        Combat pet in the Garden cannot be equipped, another pet keeps following); put back in the
+--                        Garden it stops following and makes x1.5 coins; gem packs through ProcessReceipt; the Storm
 --                        Altar opens the Secret roulette; a gem spin; mixing that pet with the trained Combat pet makes a
 --                        hybrid that takes its garden place and keeps its training ranks; the podium tag.
 --   p2flow_rejoin        Ann leaves with coins on her lawn (kept as the bank) and her plot is cleared; Cid rejoins and
@@ -1494,7 +1496,8 @@ S.p2flow_fusion_gems = guarded("p2flow_fusion_gems", function()
 		return
 	end
 
-	-- three copies: one works in the Garden, one is equipped (with the Combat pet, so a pet stays equipped)
+	-- three copies: one works in the Garden, one is equipped (with another pet, so a pet stays equipped). Bug batch 2 #18:
+	-- the Combat pet works in the Garden too, so it cannot follow (the EquipPet remote refuses it: "gardening")
 	DataS.AddTokens(ann, 100)
 	for _ = 1, 2 do
 		withRoll(F.eco, function()
@@ -1503,10 +1506,25 @@ S.p2flow_fusion_gems = guarded("p2flow_fusion_gems", function()
 		end)
 	end
 	advance(0.4)
+	local buddy = nil
+	for _, def in ipairs(X.PC.Pets) do
+		if not buddy and def.Rarity == "Common" and not def.EventOnly and def.Id ~= F.eco and def.Id ~= F.combat and PK.Count(prof, def.Id) == 0 then
+			buddy = def.Id
+		end
+	end
+	PK.Add(prof, buddy, 1)
+	DataS.MarkDirty(ann)
+	local markEq = K.logSize()
 	Mock.FromClient(remote("EquipPet"), ann, F.combat)
 	advance(0.4)
-	T.check(PK.Count(prof, F.eco) == 3 and home(ann).Garden[1] == F.eco and prof.Equipped[1] == F.eco and prof.Equipped[2] == F.combat,
-		"flow fusion: (precondition) 3 copies, one in the Garden; equipped: the pet + the Combat pet", PK.Count(prof, F.eco) .. " / {" .. table.concat(prof.Equipped, ",") .. "}")
+	T.check(toasted(ann, "gardening", markEq, "bad") and #prof.Equipped == 0, "flow fusion: the Combat pet working in the Garden cannot be equipped ('gardening', bug batch 2 #18)",
+		"{" .. table.concat(prof.Equipped, ",") .. "}")
+	Mock.FromClient(remote("EquipPet"), ann, F.eco)
+	advance(0.4)
+	Mock.FromClient(remote("EquipPet"), ann, buddy)
+	advance(0.4)
+	T.check(PK.Count(prof, F.eco) == 3 and home(ann).Garden[1] == F.eco and prof.Equipped[1] == F.eco and prof.Equipped[2] == buddy,
+		"flow fusion: (precondition) 3 copies, one in the Garden; equipped: a free copy of the pet + another pet", PK.Count(prof, F.eco) .. " / {" .. table.concat(prof.Equipped, ",") .. "}")
 	local level0 = DataS.GetPetLevel(ann, F.eco)
 	local cost = TC.FusionCost("Upgrade", X.PC.Get(F.eco).Rarity, "Golden", 1)
 	DataS.AddTokens(ann, (cost and cost.Tokens) or 0)
@@ -1529,14 +1547,23 @@ S.p2flow_fusion_gems = guarded("p2flow_fusion_gems", function()
 	local golden = PK.Make(F.eco, "Golden")
 	T.check(PK.Count(prof, F.eco) == 0 and PK.Count(prof, golden) == 1, "flow fusion: Upgrade at the machine: 3 copies -> 1 " .. golden)
 	T.eq(tokens(ann), t0 - ((cost and cost.Tokens) or 0), "flow fusion: ...for the TycoonCatalog cost in Cloud Tokens")
-	T.eq(home(ann).Garden[1], golden, "flow fusion: ...the Golden copy took over the garden slot")
-	T.check(prof.Equipped[1] == golden and prof.Equipped[2] == F.combat and ann:GetAttribute(Config.Attr.EquippedPets) == golden .. "," .. F.combat,
-		"flow fusion: ...and the equipped place", table.concat(prof.Equipped, ","))
+	-- bug batch 2 #18: one job at a time: the inputs freed an equipped place AND a garden place; the Golden copy takes
+	-- the equipped place only (the player keeps a follower) and the garden place is left free, with a toast
+	T.check(#prof.Equipped == 2 and prof.Equipped[1] == golden and prof.Equipped[2] == buddy and ann:GetAttribute(Config.Attr.EquippedPets) == golden .. "," .. buddy,
+		"flow fusion: ...the Golden copy took over the equipped place", table.concat(prof.Equipped, ","))
+	T.check(home(ann).Garden[1] == nil and toasted(ann, "It follows you, so its garden place is free", mark, "good"),
+		"flow fusion: ...and NOT also the garden place (one job at a time, bug batch 2 #18): the toast says the place is free", tostring(home(ann).Garden[1]))
 	T.eq(DataS.GetPetLevel(ann, golden), level0, "flow fusion: ...and keeps the level of its inputs")
 	local results = K.remotesFor("Fusion", ann.UserId, mark)
 	local res = results[#results]
 	T.check(res and res.args[1] == "Result" and type(res.args[2]) == "table" and res.args[2].Ok == true and res.args[2].Key == golden,
 		"flow fusion: the window gets Fusion('Result', {Ok, Key}) for its animation")
+	advance(1.2)
+	-- Ann puts the Golden pet to work in the free place: it leaves her side, the other pet keeps following
+	Mock.FromClient(remote("HomeAction"), ann, "GardenSet", { 1, golden })
+	advance(0.6)
+	T.check(home(ann).Garden[1] == golden and #prof.Equipped == 1 and prof.Equipped[1] == buddy and ann:GetAttribute(Config.Attr.EquippedPets) == buddy,
+		"flow fusion: GardenSet puts the Golden pet in the free garden place; it stops following, the other pet still follows", table.concat(prof.Equipped, ","))
 	advance(1.2)
 	T.eq(annInfo.Folder:GetAttribute("GardenPets"), "1=" .. golden .. ";2=" .. F.combat, "flow fusion: the plot shows the Golden pet in the Garden")
 	local ecoDef, combatDef = X.PC.Get(F.eco), X.PC.Get(F.combat)
@@ -1688,7 +1715,12 @@ S.p2flow_fusion_gems = guarded("p2flow_fusion_gems", function()
 			local gh = DataS.GetGrowth(ann, hybridKey)
 			T.check(gh and gh.Physique >= 1 and gh.Speed >= 1 and gh.Evo == 0, "flow fusion: ...and keeps the best training ranks of its parents (Physique 1, Speed 1), unevolved",
 				gh and (tostring(gh.Physique) .. "/" .. tostring(gh.Speed) .. "/" .. tostring(gh.Evo)) or "")
-			T.check(prof.Equipped[2] == hybridKey, "flow fusion: ...and the equipped place of the Combat pet", table.concat(prof.Equipped, ","))
+			-- (bug batch 2 #18: the Combat pet was gardening, not following, so the hybrid only takes its garden place)
+			local follows = false
+			for _, k in ipairs(prof.Equipped) do
+				follows = follows or k == hybridKey
+			end
+			T.check(not follows, "flow fusion: ...and, gardening like its input, it does not follow (one job at a time)", table.concat(prof.Equipped, ","))
 			F.hybrid = hybridKey
 
 			-- the hybrid is Ann's best pet now: it takes her podium, on a tag plate that hugs its short blended name

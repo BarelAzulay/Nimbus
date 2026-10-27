@@ -10,6 +10,13 @@ Updated: 2026-10-18 (after wave 2). Branch `v3-phase4`. Plan: `ARCHITECTURE_V3.m
 - Pet bars above each pet; Champion Ring needs a claimed home + 1 pet.
 - Fable for the riskiest builders, Opus elsewhere; effort HIGH (player choice). Talk to the player in caveman mode.
 - Gem product IDs: player has not made them yet (put them in Config.Gems.Products when sent).
+- **Bug batch 2 (2026-10) #1: compact HUD, option A "Split & shift"**: currencies as thin strips top-right, ONE slim
+  left menu column with a fold arrow tab, the vitals card bottom-centre above the hotbar; phones: nothing under the
+  thumbstick / jump (tiles wrap into 2-3 columns there). See ARCHITECTURE_V3 "HUD layout (bug batch 2 #1)".
+- **Bug batch 2 (2026-10) #18: garden pets, option B "Remote recall"**: a garden pet cannot follow or fight;
+  Equip / Team on it asks "This pet is gardening! Take it out of the garden and equip it?" (Yes = one GardenRecall
+  request), a "Gardening" badge on its Team tile. Old saves with a pet both gardening and following / on a team keep
+  it on the team; it leaves the garden.
 
 ## Waves
 | Wave | Builders | State |

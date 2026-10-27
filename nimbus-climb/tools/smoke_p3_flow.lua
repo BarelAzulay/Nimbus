@@ -19,8 +19,8 @@
 --                   then 3 pets saved (toast, TeamsChanged once, ProfileSync); Bo keeps a second preset. Cy claims his
 --                   home (E at a free gate: his Phase 2 build comes back), buys the Arena Gate on its pad (a "Coming
 --                   soon" pad in Phase 2) and walks through it to the arena ("arena" -> "team", the Team tile rings);
---                   his Garden pet MAY join (Phase 4: only a training pet is busy), four pets are accepted (slot 4 at
---                   Prestige 1) -> Phase 5: a team of 3 -> "dungeon" (the arrow at the Dungeon portal): Cy clears floor 1
+--                   his Garden pet is refused ("gardening", bug batch 2 #18: a garden pet is busy; Phase 4 had let it
+--                   join) -> Phase 5: a team of 3 -> "dungeon" (the arrow at the Dungeon portal): Cy clears floor 1
 --                   solo through DungeonRequest (the shared driver of smoke_p5_flow.lua) -> "raid"; his migrated
 --                   Press1 = 2 reads as a level-2 Berry Farm
 --   (p3flow_trials was deleted with the Trials: Phase 5 contract 10.5; its chapter step is the dungeon now)
@@ -1433,12 +1433,12 @@ S.p3flow_arrive = scenario("p3flow_arrive", function()
 	ts = tutorial(cy)
 	T.check(ts and ts.Id == "team" and ts.Target and ts.Target.Kind == "Menu" and ts.Target.Id == "Team",
 		"flow tutorial: arriving in the Battle Arena -> 'team' (the Team tile rings)", ts and tostring(ts.Id) or "nil")
-	-- Phase 4: his Garden pet earns at home AND may fight (only a training pet is busy); four pets are fine at Prestige 1
+	-- bug batch 2 #18: his Garden pet is busy gardening (Phase 4 had let it fight): the team is refused with a reason
 	local m4 = K.logSize()
 	request(cy, "TeamSet", 1, { TEAMS.Cy[1], TEAMS.CyGarden })
 	advance(0.6)
-	T.check(sameList(data.GetTeams(cy).Presets[1], { TEAMS.Cy[1], TEAMS.CyGarden }) and sameList(data.ActiveTeamKeys(cy), { TEAMS.Cy[1], TEAMS.CyGarden }),
-		"flow teams: Cy's pet that works in his Garden MAY join a team (Phase 4: garden pets stay available)", table.concat(toasts(cy, m4), " | "))
+	T.check(#data.GetTeams(cy).Presets[1] == 0 and table.concat(toasts(cy, m4), " | "):find("gardening", 1, true) ~= nil,
+		"flow teams: Cy's pet that works in his Garden cannot join a team ('That pet is gardening!', bug batch 2 #18)", table.concat(toasts(cy, m4), " | "))
 	request(cy, "TeamSet", 1, { TEAMS.Cy[1], TEAMS.Cy[2], TEAMS.Cy[3] })
 	waitFor(function()
 		return stepId(cy) ~= "team"

@@ -14,7 +14,7 @@
 --   * The dash is velocity-based: for DashDuration seconds the horizontal velocity of the
 --     HumanoidRootPart is re-asserted every physics step while the vertical velocity is left alone.
 --   * v2: stamina regenerates (1 + player attribute PerkStaminaRegen) times as fast (pet perk), and the mobile
---     RUN / DASH buttons are laid out around Roblox's jump button, the hotbar and the raised HP bar.
+--     RUN / DASH buttons are laid out around Roblox's jump button, the hotbar and the vitals card above it.
 --   * Phase 5 (ARCHITECTURE_V3.md "Phase 5 build contract" 3.9 / 4.4; battleclient): BattleController drives three
 --     battle switches on Start / Speed / End:
 --       MovementController.SetDashKeys(keys | nil)   in battle Shift = DASH (keys = { LeftShift, RightShift, ButtonB }),
@@ -412,13 +412,15 @@ local function toggleRun()
 end
 
 -- Footprints of the other things that live at the bottom of a touch screen. KEEP IN SYNC with
--- HotbarController.lua (SLOT/GAP/TOUCH_BOTTOM, scale 0.75..1.2) and HudController.lua (VITALS_W/H,
--- TOUCH_EDGE, TOUCH_RAISE_SMALL/LARGE, scale 0.7..1.25). Only used to keep our buttons clear of them.
+-- HotbarController.lua (SLOT/GAP/TOUCH_BOTTOM, scale 0.75..1.2) and HudController.lua (VITALS_W, VITALS_H /
+-- VG.Compact.H, HOTBAR_GAP, scale Theme.ScreenFactor). Only used to keep our buttons clear of them.
 -- (On a narrow phone the hotbar slides a few px LEFT of centre to clear the jump button; our buttons are all
 -- right of it, so the centred footprint below still covers every spot they could touch.)
+-- bug batch 2 #1: the vitals card is bottom-CENTRE now, right above the hotbar (8 px), centred on it; the regular
+-- card is 93 design px tall, the compact one (short touch screens, height <= 500) 80. The HUD itself then keeps the
+-- card clear of RUN / DASH (it measures them), so this only steers RUN to a spot that leaves the card alone.
 local HOTBAR_W, HOTBAR_H, HOTBAR_BOTTOM = 280, 64, 16
-local VITALS_W, VITALS_H, VITALS_LEFT = 300, 54, 20
-local VITALS_RAISE_SMALL, VITALS_RAISE_LARGE = 150, 220
+local VITALS_W, VITALS_H, VITALS_H_COMPACT, VITALS_GAP = 300, 93, 80, 8
 
 -- Rectangles are { left, bottom, right, top } in pixels from the screen's left / BOTTOM edge.
 local function rectsOverlap(a, b)
@@ -426,7 +428,7 @@ local function rectsOverlap(a, b)
 end
 
 -- Places DASH and RUN around Roblox's own jump button without covering it, the hotbar (bottom centre)
--- or the raised HP bar (bottom left).
+-- or the vitals card right above it.
 --
 -- Roblox's default TouchJump is a J x J square (J = 70 when min(screen axis) <= 500, else 120) whose left edge
 -- is 1.5 J + 10 px and whose right edge is 0.5 J + 10 px from the screen's right edge; its bottom edge is
@@ -454,13 +456,14 @@ local function layoutMobileControls(m)
 		w * 0.5 + hotbarHalf,
 		HOTBAR_BOTTOM + HOTBAR_H * hotbarScale + 8,
 	}
-	local vitalsScale = Util.Clamp(math.min(w / 1280, h / 720), 0.7, 1.25)
-	local raise = small and VITALS_RAISE_SMALL or VITALS_RAISE_LARGE
+	local vitalsScale = Theme.ScreenFactor(h)
+	local vitalsHalf = VITALS_W * vitalsScale * 0.5 + 8
+	local vitalsBottom = HOTBAR_BOTTOM + HOTBAR_H * hotbarScale + VITALS_GAP
 	local vitals = {
-		VITALS_LEFT - 4,
-		raise - 6,
-		VITALS_LEFT + VITALS_W * vitalsScale + 8,
-		raise + VITALS_H * vitalsScale + 6,
+		w * 0.5 - vitalsHalf,
+		vitalsBottom - 4,
+		w * 0.5 + vitalsHalf,
+		vitalsBottom + (h <= 500 and VITALS_H_COMPACT or VITALS_H) * vitalsScale + 6,
 	}
 	local jumpRect = { w - jumpLeft - 4, jumpBottom - 4, w - jumpRight + 4, jumpTop + 4 }
 

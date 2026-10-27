@@ -152,6 +152,16 @@ local function showHint()
 	label.Parent = gui
 	gui.Parent = pg
 	St.HintGui = gui
+	-- short desktop windows: 70 % down would reach the HUD's bottom-centre vitals card (bug batch 2 #1), so the pill
+	-- stands just above the card's top (NimbusHud attribute BottomCentreTop, same gui-area pixels: both keep the
+	-- inset), but never up into the middle of the screen (the v2 rule's band ends at 64.5 % of the height)
+	local hud = pg:FindFirstChild("NimbusHud")
+	local top = hud and tonumber(hud:GetAttribute("BottomCentreTop"))
+	local areaH = gui.AbsoluteSize.Y
+	if top and top > 0 and areaH > 0 then
+		local y = math.max(0.65 * areaH, math.min(0.7 * areaH, top - 8 - label.Size.Y.Offset))
+		label.Position = UDim2.new(0.5, 0, 0, math.floor(y))
+	end
 	task.delay(K.HINT_SECONDS, function()
 		if St.HintGui == gui then
 			hideHint()

@@ -13,8 +13,9 @@
 -- 70 studs update every other frame. One RenderStepped connection drives everything.
 --
 -- Dialog (ScreenGui "NimbusNpcDialog", display order 13): a side card at the BOTTOM-LEFT, above the HUD's
--- bottom-left stack (NimbusHud attribute BottomLeftTop) and right of the menu column when they would overlap,
--- never centred. It shows the NPC's name tab, a portrait viewport of the pet, its title, the line in a dark text
+-- bottom block (NimbusHud attribute BottomLeftTop: the bottom-centre vitals card) only when its x-span meets that
+-- card (BottomCentreLeft / BottomCentreRight) or the hotbar under it, else near the bottom edge (desktops; touch
+-- keeps the HUD's line above the thumbstick), and right of the menu column when they would overlap, never centred. It shows the NPC's name tab, a portrait viewport of the pet, its title, the line in a dark text
 -- well with a typewriter reveal (numbers and key phrases highlighted), page dots, and Next / Close buttons.
 -- Lines cycle (Next on the last line starts over). Triggering the prompt again (E) also advances; clicking the
 -- text finishes the current line. The card closes when you walk away, die or enter a match.
@@ -1095,6 +1096,20 @@ local function tutorialRect()
 	return nil
 end
 
+-- The pet hotbar (NimbusHotbar.Hotbar, bottom centre) in gui-area pixels, nil while hidden or unmeasured.
+local function hotbarRect()
+	local pg = playerGui()
+	local bar = pg and pg:FindFirstChild("NimbusHotbar")
+	if not (bar and bar:IsA("ScreenGui") and bar.Enabled) then
+		return nil
+	end
+	local holder = bar:FindFirstChild("Hotbar")
+	if holder and holder:IsA("GuiObject") and shownIn(holder, bar) and holder.AbsoluteSize.X > 0 then
+		return rectOf(holder, insetShift(bar))
+	end
+	return nil
+end
+
 -- Fits the card into the box left..rightLimit x topLimit..bottom (gui px): returns scale, design width, design
 -- height. Narrow boxes get the compact card; the scale may come out below K.MIN_SCALE (= does not fit).
 local function fitCard(left, bottom, topLimit, rightLimit, f)
@@ -1140,11 +1155,12 @@ local function layoutDialog()
 	end
 	rightLimit = math.min(rightLimit, area.X - edge)
 
-	-- bottom: just above the HUD's bottom-left stack (or an estimate of it); top: below the top-left panel
+	-- bottom: just above the HUD's bottom block (the vitals card, or an estimate of it); top: below the top-left panel
 	local pg = playerGui()
 	local hud = pg and pg:FindFirstChild("NimbusHud")
 	local bottom = area.Y - edge - 190 * f
 	local topLimit = edge
+	local centre = nil -- the vitals card's x-span (bug batch 2 #1: it sits bottom-centre, not bottom-left)
 	if hud and hud:IsA("ScreenGui") then
 		local shift = insetShift(hud)
 		local blt = hud:GetAttribute("BottomLeftTop")
@@ -1155,27 +1171,55 @@ local function layoutDialog()
 		if type(tlb) == "number" and tlb > 0 then
 			topLimit = tlb + shift + K.GAP
 		end
+		local bcl, bcr = hud:GetAttribute("BottomCentreLeft"), hud:GetAttribute("BottomCentreRight")
+		if type(bcl) == "number" and type(bcr) == "number" and bcr > bcl then
+			centre = { x0 = bcl, x1 = bcr }
+		end
 	end
 	bottom = clamp(bottom, 60, area.Y - edge)
 
 	-- 1) bottom-left above the HUD, stepping aside from the menu column / the tutorial card on our rows
 	local column = menuColumnRect()
 	local tut = tutorialRect()
-	local left = edge
-	local probeTop = bottom - (K.H + K.TAB_ABOVE) * f
-	local function sharesRows(r)
-		return r ~= nil and r.y1 > probeTop and r.y0 < bottom
+	local function placeAt(b)
+		local left = edge
+		local probeTop = b - (K.H + K.TAB_ABOVE) * f
+		local function sharesRows(r)
+			return r ~= nil and r.y1 > probeTop and r.y0 < b
+		end
+		if sharesRows(column) then
+			left = math.max(left, column.x1 + K.GAP)
+		end
+		if sharesRows(tut) and tut.x0 < left + K.W * f then
+			local alt = tut.x1 + K.GAP
+			if alt + K.W_MIN * K.MIN_SCALE <= rightLimit then
+				left = math.max(left, alt)
+			end
+		end
+		local s, cw, ch = fitCard(left, b, topLimit, rightLimit, f)
+		return s, cw, ch, left
 	end
-	if sharesRows(column) then
-		left = math.max(left, column.x1 + K.GAP)
-	end
-	if sharesRows(tut) and tut.x0 < left + K.W * f then
-		local alt = tut.x1 + K.GAP
-		if alt + K.W_MIN * K.MIN_SCALE <= rightLimit then
-			left = math.max(left, alt)
+	local scale, w, h, left = placeAt(bottom)
+	-- desktops: the vitals card is bottom-CENTRE now, so the dialog only has to stand above it when its x-span
+	-- actually meets the card (or the hotbar under it); otherwise it keeps its own default bottom near the edge.
+	-- (Touch keeps the HUD's line: Roblox's thumbstick owns the bottom-left corner there.)
+	if centre and not touch then
+		local low = area.Y - edge
+		local bar = hotbarRect()
+		local function clear(b, l, s, cw)
+			local x1 = l + cw * s
+			if x1 + K.GAP > centre.x0 and l < centre.x1 + K.GAP then
+				return false
+			end
+			return bar == nil or b <= bar.y0 - K.GAP or x1 + K.GAP <= bar.x0 or l >= bar.x1 + K.GAP
+		end
+		if low > bottom + 1 and clear(bottom, left, scale, w) then
+			local s2, w2, h2, l2 = placeAt(low)
+			if clear(low, l2, s2, w2) then
+				bottom, scale, w, h, left = low, s2, w2, h2, l2
+			end
 		end
 	end
-	local scale, w, h = fitCard(left, bottom, topLimit, rightLimit, f)
 	local x, y = left, bottom
 	if scale < K.MIN_SCALE and column and column.y0 > topLimit then
 		-- 2) narrow screens: above the menu column, from the left edge

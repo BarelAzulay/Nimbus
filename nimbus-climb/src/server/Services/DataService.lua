@@ -26,7 +26,7 @@
 --     PetGrowth = { [key] = { Evo = 0..2, Speed, Physique, Ability, Defense = 0..10,
 --                            Job = { Stat, Ends, Rank, Slot, From, Paid } | nil } },
 --     Ring = { Best = 0..100000, Runs },
---     Migrations = { P4 = true, P5Dungeon = true, P5Home = true, P5MouseLock = true },
+--     Migrations = { P4 = true, P5Dungeon = true, P5Home = true, P5MouseLock = true, B2GardenSolo = true },
 --     -- Phase 5 (ARCHITECTURE_V3.md "Phase 5 build contract" section 9; new TOP-LEVEL fields + new Home keys again, so
 --     -- a Phase 4 server still running during the rollout writes them back untouched through keepForeign)
 --     Dungeon = { Best = 0..100, Cleared = {[floor]=true} (a dense boolean array in the store), Runs, Clears },
@@ -42,11 +42,27 @@
 --   berries ONCE by the P5Home step and is never written again.
 --   Battle teams: a preset lists up to 3 UNIQUE keys in slot order (Phase 5: 3 always, slot 1 = the fighter; the
 --   Phase 3 prestige unlock of a 4th slot is gone); every key needs a FREE copy: owned (PetKeys.Count) more often than it
---   works in the Gym (Phase 4: a Garden pet keeps earning at home while it follows you and fights, so only Home.Gym
---   copies count, and Phase 4 empties the Gym on its one-time migration). A key that loses its free copy (fused away,
---   released, a developer reset, its last copy placed in the Gym) is dropped from every preset ("pruned", the pets
---   behind it move up a slot): in every copy taken for a save or a snapshot, in the merge, and in the live profile on
---   every Sync and after a MutateHome that moved pets (TeamsChanged fires then). A Phase 2 profile (no Teams / Battle,
+--   works in the Garden or the Gym (bug batch 2 #18, "Remote recall": a Garden pet is BUSY gardening, it can neither
+--   follow you (Equipped) nor fight; this replaces the Phase 4 rule "a Garden pet keeps earning at home while it follows
+--   you and fights"; Phase 4 empties the Gym on its one-time migration). A key that loses its free copy (fused away,
+--   released, a developer reset, its last copy placed in the Garden / Gym) is dropped from every preset ("pruned", the
+--   pets behind it move up a slot): in every copy taken for a save or a snapshot, in the merge, and in the live profile
+--   on every Sync and after a MutateHome that moved pets (TeamsChanged fires then). Equipped follows the same copy rule
+--   (normalizeEquipped in the merge, PetService.Equip / its re-validation; TycoonService.GardenSet unequips the copy).
+--   Bug batch 2 #18 old saves: a stored profile whose pet is BOTH in the Garden and equipped / in a preset (the Phase 4
+--   rule allowed it) is repaired when it is read (P3.gardenSolo in normalizeProfile, before the presets are pruned): the
+--   pet STAYS equipped / in its team and LEAVES the Garden (no player loses a fighter, no team is emptied). The repair
+--   is deterministic and only acts on such an overlap, so it never loops; the load that moved pets records them
+--   (MigratedNow(player, "B2GardenSolo") = { Keys }) and fires Migrated(player, "B2GardenSolo", info) once (TycoonService
+--   shows the one explaining toast); the marker Migrations.B2GardenSolo is set on the first loaded, real profile.
+--   THE MARKER IS A RECORD, NOT A GATE: the repair runs on EVERY normalizeProfile read (it is idempotent and a no-op
+--   without an overlap). So an overlap written later (an old Phase 4 server during the rollout) is repaired again on
+--   the next load, with the event and the toast again. Two outcomes, both deterministic and neither looping:
+--     * on LOAD (normalizeProfile -> P3.gardenSolo, before the prune): the PLAYER wins: the pet stays equipped / in
+--       its team and leaves the Garden;
+--     * in the MERGE (applyDelta -> normalizeEquipped with Home, then P3.prune): the GARDEN wins: the placement the
+--       other server wrote stands and the pet leaves Equipped / its presets (p5flow_merge pins it).
+--   A Phase 2 profile (no Teams / Battle,
 --   or the empty Teams reserve) gets the defaults: 3 empty presets, preset 1 active, a zeroed battle record.
 --   Phase 4 pet growth, per KEY like levels: Evo is the evolution stage the player unlocked by pressing EVOLVE
 --   (0..2; the boost counts only from the stored stage, never from the level alone); Speed / Physique / Ability /
@@ -59,7 +75,8 @@
 --   normalizeEquipped drops such keys from Equipped (a Phase 3 server may have equipped one during the rollout),
 --   FieldableKeys and ActiveTeamKeys skip them; P3.checkTeam keeps accepting them in presets and P3.prune is NEVER
 --   taught about training (it runs in normalizeProfile, copyProfile, applyDelta and MutateHome's pruneLive and would
---   delete the pet from its preset for good). Garden pets are never busy (P3.placedCopies counts Home.Gym only).
+--   delete the pet from its preset for good). Garden pets ARE busy (bug batch 2 #18: P3.placedCopies counts Home.Garden
+--   and Home.Gym; unlike training this is a write-time lock: GardenSet unequips the copy and the prune drops the preset).
 --   Ring: Best = the highest Champion Ring round won (0 = never), Runs = finished runs.
 --   Migrations: one-time data migrations this profile went through (P4 = the Phase 4 migration, section 4.3).
 --   Home.LegacySlots (a veteran's old garden size when it was above 3 + Prestige) and Home.LegacyPrices (true for a
@@ -178,11 +195,19 @@
 --     SetTeam(player, preset, keys) -> ok, reason   preset 1..3; keys = the pets in slot order ("" / false = an empty
 --                                       slot; the list is compacted). Refused: junk, a pet in a slot past Slots (slot 4
 --                                       before the prestige unlock), the same key twice, a key not owned, a key whose
---                                       copies all work in the Garden / Gym, a profile not loaded or provisional. An
---                                       empty list clears the preset. MarkDirty + SyncSoon + TeamsChanged.
+--                                       copies all work in the Garden / Gym ("<pet> is gardening! ..." for a Garden
+--                                       pet: the client offers the recall, TycoonService.GardenRecall), a profile not
+--                                       loaded or provisional. An empty list clears the preset. MarkDirty + SyncSoon +
+--                                       TeamsChanged.
+--     CheckTeam(player, preset, keys, freeKey?) -> ok, reason   SetTeam's checks without writing; freeKey counts one
+--                                       copy of that key as out of the Garden (bug batch 2 #18: the recall check)
 --     SelectTeam(player, preset) -> ok, reason      makes that preset the active one (MarkDirty + SyncSoon + TeamsChanged)
---     FieldableKeys(player) -> {key...}             every owned key with a copy free for a team (not in the Gym, not in
---                                       training; Phase 4: a garden pet may fight)
+--     FieldableKeys(player) -> {key...}             every owned key with a copy free for a team (not in the Garden or the
+--                                       Gym, not in training; bug batch 2 #18: a garden pet is busy)
+--     PlacedCopies(player) -> {[key] = n}           copies working in the Garden / Gym (bug batch 2 #18; {} until loaded /
+--                                       while provisional): PetService.Equip and its re-validation read it
+--     GardenBusyKeys(player) -> {[key] = true}      every owned key with NO copy free of the Garden / Gym (the "gardening"
+--                                       badge; BattleService's ring fallback skips them; {} until loaded / provisional)
 --     ActiveTeamKeys(player) -> {key...}            the active preset's usable keys in slot order, compacted (Phase 4: a
 --                                       training pet is skipped at read time, the preset keeps it); {} when the team
 --                                       is empty, the profile is not loaded or is provisional
@@ -237,7 +262,9 @@
 --                                       shows the toast when it is set and "P4Welcome" is not, then
 --                                       MarkMigrated(player, "P4Welcome") (a union: never shown twice).
 --     Migrated                          Util.Signal (exists at module load) Fire(player, name, info) right after the
---                                       ProfileLoaded / ProfileRebased that ran a migration
+--                                       ProfileLoaded / ProfileRebased that ran a migration; bug batch 2 #18:
+--                                       "B2GardenSolo" { Keys = {key...} } when the read took pets out of the Garden
+--                                       (they stayed equipped / in a team; MigratedNow(player, "B2GardenSolo") too)
 --     SetPetLevel(player, key, level) -> ok   developer tools: writes { Level, Xp = 0 } for an OWNED key (1..the curve's
 --                                       max level); refused until loaded / while provisional; synced
 --   ProfileSync snapshot: Tokens, Pets, Equipped, Items, Stats, SpotIndex, Perks, Discovered, IndexClaimed,
@@ -638,6 +665,7 @@ local P5 = {
 	DUNGEON_MARK = "P5Dungeon", -- Migrations[name] of the one-time dungeon migration
 	HOME_MARK = "P5Home", -- Migrations[name] of the one-time home fold (TycoonCatalog.FoldLegacy + the Food -> berries step)
 	MOUSELOCK_MARK = "P5MouseLock", -- Migrations[name] of the one-time "mouse lock ON" step (bug batch 2 #21)
+	GARDEN_MARK = "B2GardenSolo", -- Migrations[name]: the profile went through the garden-exclusive rule (bug batch 2 #18)
 	LEGACY_FOOD = { Snack = 200, Meal = 1200, Feast = 6400 }, -- berries per old food when TycoonCatalog.Berries.LegacyFood is missing
 	MAX_BERRIES = 1000000000, -- sanity cap (whole berries)
 	BERRIES_GAP = 0.5, -- seconds: the Berries attribute is written at most twice a second (trailing write; 10.2 m6)
@@ -1278,15 +1306,18 @@ end
 -- Drops equipped keys that are not owned, are over their owned count, exceed the slot limit, or (Phase 4) are in
 -- training (a Phase 3 server may have equipped one during the rollout; the pet comes back by itself when the job
 -- ends: PetCareService's auto-return). Runs after Pets, Tiers, Hybrids AND PetGrowth are final: tier and hybrid
--- copies count too, and the training lock reads the clean growth map.
+-- copies count too, and the training lock reads the clean growth map. Bug batch 2 #18: copies working in the Garden /
+-- Gym of profile.Home cannot follow (normalizeProfile calls this before its Home is read, so a stored overlap is left to
+-- P3.gardenSolo there, which keeps the pet equipped and takes it out of the Garden).
 local function normalizeEquipped(profile)
 	local out = {}
 	local used = {}
 	local maxEquipped = Config.Pets.MaxEquipped
 	local training = P4.trainingSet(profile.PetGrowth)
+	local placed = P3.placedCopies(profile)
 	for _, id in ipairs(profile.Equipped) do
 		if type(id) == "string" and #out < maxEquipped and not training[id] then
-			local owned = ownedCount(profile, id)
+			local owned = ownedCount(profile, id) - (placed[id] or 0)
 			local count = used[id] or 0
 			if count < owned then
 				used[id] = count + 1
@@ -1369,22 +1400,98 @@ function P3.slotsOf(_)
 	return P3.SLOTS
 end
 
--- { [key] = copies working in the Gym } (those copies cannot fight). Live slot maps or stored arrays (""). Phase 4:
--- the Garden no longer counts (a garden pet earns at home while it follows you and fights; training is the only busy
--- state and it is a read-time filter, never a prune), and Home.Gym is emptied by the one-time Phase 4 migration, so
--- this is {} for every migrated profile (kept so Phase 3 writes during the rollout stay understood).
+-- { [key] = copies working in the Garden or the Gym } (those copies can neither follow nor fight). Live slot maps or
+-- stored arrays (""). Bug batch 2 #18 ("Remote recall"): the Garden counts again (Phase 4 had dropped it: "a garden
+-- pet earns at home while it follows you and fights"); a garden pet is busy gardening. Training stays a read-time
+-- filter, never a prune. Home.Gym is emptied by the one-time Phase 4 migration (kept so Phase 3 writes during the
+-- rollout stay understood).
 function P3.placedCopies(profile)
 	local out = {}
 	local home = type(profile) == "table" and profile.Home or nil
 	if type(home) ~= "table" then
 		return out
 	end
-	for _, key in pairs(tableOr(home.Gym)) do
-		if type(key) == "string" and key ~= "" then
-			out[key] = (out[key] or 0) + 1
+	for _, place in ipairs({ home.Garden, home.Gym }) do
+		for _, key in pairs(tableOr(place)) do
+			if type(key) == "string" and key ~= "" then
+				out[key] = (out[key] or 0) + 1
+			end
 		end
 	end
 	return out
+end
+
+-- Bug batch 2 #18, old saves (the Phase 4 rule let a Garden pet follow and fight): every key whose copies cannot cover
+-- both its Garden places and its other jobs (the equipped copies, or 1 when a preset lists it) LEAVES the Garden
+-- (its highest places first) until they do: the pet stays equipped / in its team, no team is emptied. Edits the clean
+-- profile in place (Home.Garden keyed by slot, Equipped, Teams clean); deterministic, and a no-op without an overlap
+-- (so it never loops). Returns the keys that left the Garden (sorted), or nil when nothing moved.
+function P3.gardenSolo(profile)
+	local home = type(profile) == "table" and profile.Home or nil
+	local garden = type(home) == "table" and home.Garden or nil
+	if type(garden) ~= "table" or next(garden) == nil then
+		return nil
+	end
+	local need = {}
+	for _, key in ipairs(tableOr(profile.Equipped)) do
+		if type(key) == "string" then
+			need[key] = (need[key] or 0) + 1
+		end
+	end
+	local presets = type(profile.Teams) == "table" and profile.Teams.Presets or nil
+	for _, list in pairs(tableOr(presets)) do
+		for _, key in ipairs(tableOr(list)) do
+			if type(key) == "string" and (need[key] or 0) < 1 then
+				need[key] = 1
+			end
+		end
+	end
+	local slotsOf = {}
+	for slot, key in pairs(garden) do
+		if type(key) == "string" and key ~= "" and need[key] then
+			local list = slotsOf[key]
+			if not list then
+				list = {}
+				slotsOf[key] = list
+			end
+			list[#list + 1] = slot
+		end
+	end
+	if next(slotsOf) == nil then
+		return nil
+	end
+	local gym = {}
+	for _, key in pairs(tableOr(home.Gym)) do
+		if type(key) == "string" and key ~= "" then
+			gym[key] = (gym[key] or 0) + 1
+		end
+	end
+	local moved = {}
+	for key, slots in pairs(slotsOf) do
+		table.sort(slots, function(a, b)
+			if type(a) == type(b) then
+				return a > b
+			end
+			return type(a) == "string" -- named slots go first, then the highest numbers
+		end)
+		local owned = ownedCount(profile, key) - (gym[key] or 0)
+		local want = math.min(need[key], owned) -- (a key owned too rarely is the prune's job, not the Garden's)
+		local free = owned - #slots
+		local i = 1
+		while free < want and slots[i] ~= nil do
+			garden[slots[i]] = nil
+			free = free + 1
+			i = i + 1
+		end
+		if i > 1 then
+			moved[#moved + 1] = key
+		end
+	end
+	if #moved == 0 then
+		return nil
+	end
+	table.sort(moved)
+	return moved
 end
 
 -- Drops (in place) every key without a free copy (owned more often than placed in the Garden / Gym) and every key past
@@ -1823,7 +1930,8 @@ local function copyProfile(p)
 end
 
 -- Untrusted stored value (nil / number / v1 table / v2 table / v3 table / Phase 2 table) -> clean profile. Pure.
-local function normalizeProfile(raw)
+-- `info` (optional): a table that receives GardenMoved = { key... } when P3.gardenSolo took pets out of the Garden.
+local function normalizeProfile(raw, info)
 	local p = newProfile()
 	if type(raw) == "number" then
 		p.Tokens = sanitize(raw)
@@ -1902,6 +2010,12 @@ local function normalizeProfile(raw)
 	p.GemReceipts = cleanReceipts(raw.GemReceipts, true)
 	-- Phase 3 (migration: a Phase 2 profile has no Teams / Battle and gets the defaults; stale keys are pruned)
 	p.Teams = P3.cleanTeams(raw.Teams)
+	-- bug batch 2 #18: a pet both in the Garden and equipped / in a preset (an old save) leaves the Garden FIRST, so
+	-- the prune below (which counts Garden copies now) never takes a fighter out of its team
+	local moved = P3.gardenSolo(p)
+	if moved and type(info) == "table" then
+		info.GardenMoved = moved
+	end
 	P3.prune(p, p.Teams)
 	p.Battle = P3.cleanBattle(raw.Battle)
 	return p
@@ -3247,8 +3361,11 @@ local function fetchProfile(userId)
 		return false, nil, false
 	end
 	if raw ~= nil then
-		-- the 4th value: the raw record held a preset longer than 3 keys (Phase 5, 4.8: Load fires TeamsChanged once)
-		return true, normalizeProfile(raw), false, P5.hadLongPreset(raw)
+		-- the 4th value: the raw record held a preset longer than 3 keys (Phase 5, 4.8: Load fires TeamsChanged once);
+		-- the 5th: the keys P3.gardenSolo took out of the Garden (bug batch 2 #18) or nil
+		local info = {}
+		local profile = normalizeProfile(raw, info)
+		return true, profile, false, P5.hadLongPreset(raw), info.GardenMoved
 	end
 	-- Nothing in v2: look for a v1 save to migrate.
 	local legacy = getLegacyStore()
@@ -3330,10 +3447,10 @@ local function loadEntry(player)
 	end
 
 	entry.Loading = true
-	local fetched, stored, migrated, trimmed = false, nil, false, false
-	local pok, a, b, c, d = pcall(fetchProfile, userId)
+	local fetched, stored, migrated, trimmed, moved = false, nil, false, false, nil
+	local pok, a, b, c, d, e = pcall(fetchProfile, userId)
 	if pok then
-		fetched, stored, migrated, trimmed = a, b, c, d == true
+		fetched, stored, migrated, trimmed, moved = a, b, c, d == true, e
 	else
 		warn("[DataService] fetch errored: " .. tostring(a))
 	end
@@ -3350,6 +3467,7 @@ local function loadEntry(player)
 		if trimmed then
 			entry.TeamsTrimmed = true -- Phase 5 (4.8): a stored 4-key preset loads with 3; Load fires TeamsChanged once
 		end
+		entry.GardenMoved = moved -- bug batch 2 #18: pets that left the Garden on this read (P3.gardenAnnounce)
 	else
 		entry.LoadFailed = true -- play on with defaults; saves/recovery merge with the real data later
 	end
@@ -3369,21 +3487,24 @@ local function announceRebase(userId, entry)
 	-- snapshot and the signals (idempotent: a profile another server already migrated is left alone)
 	local migrated = P4.migrateEntry(entry, player)
 	local migrated5 = P5.migrateEntry(entry, player) -- Phase 5: after a recovered load too (idempotent)
+	local garden = P3.gardenMigrate(entry) -- bug batch 2 #18: the marker + what this read took out of the Garden
 	entry.TeamsTrimmed = nil
 	DataService.Sync(player)
 	DataService.ProfileRebased:Fire(player, entry.Profile)
 	DataService.TeamsChanged:Fire(player) -- the presets may have come from another server
 	P4.announceMigration(player, migrated)
 	P5.announceMigration(player, migrated5)
+	P3.gardenAnnounce(player, garden)
 end
 
 -- Re-reads the store for an entry whose load failed and merges the session on top of it.
 -- Caller holds the entry lock. Returns true on success.
 local function recover(entry, userId)
-	local fetched, stored, migrated = fetchProfile(userId)
+	local fetched, stored, migrated, _, moved = fetchProfile(userId)
 	if not fetched then
 		return false
 	end
+	entry.GardenMoved = moved -- bug batch 2 #18 (announced by announceRebase)
 	local source = stored or newProfile()
 	local newBase = newProfile()
 	if stored and not migrated then
@@ -3740,6 +3861,8 @@ function DataService.Load(player)
 		local migrated = P4.migrateEntry(entry, player)
 		-- Phase 5: the dungeon record from the old Trials and the home fold (section 9.2), in the same step
 		local migrated5 = P5.migrateEntry(entry, player)
+		-- bug batch 2 #18: the garden-exclusive marker + the pets the read took out of the Garden (old saves)
+		local garden = P3.gardenMigrate(entry)
 		DataService.Sync(player)
 		DataService.ProfileLoaded:Fire(player, entry.Profile)
 		if entry.TeamsTrimmed then
@@ -3748,6 +3871,7 @@ function DataService.Load(player)
 		end
 		P4.announceMigration(player, migrated)
 		P5.announceMigration(player, migrated5)
+		P3.gardenAnnounce(player, garden)
 	end
 	P5.markProfileLoaded(player)
 	return entry.Profile
@@ -4394,7 +4518,8 @@ function DataService.MutateHome(player, fn)
 		return false
 	end
 	entry.Dirty = true
-	-- Phase 3: a pet whose last free copy went to the Garden / Gym leaves the battle teams
+	-- Phase 3: a pet whose last free copy went to the Garden / Gym leaves the battle teams (bug batch 2 #18: the Garden
+	-- counts again; the caller unequips the copy, see TycoonService.GardenSet)
 	local pruned = visible and P3.pruneLive(entry)
 	if visible then
 		DataService.SyncSoon(player)
@@ -4466,8 +4591,9 @@ function P3.validPreset(preset)
 	return isFinite(preset) and preset >= 1 and preset <= P3.PRESETS and preset == math.floor(preset)
 end
 
--- Checks a requested team against a profile. ok, keys (slot order, compacted) | reason
-function P3.checkTeam(profile, keys)
+-- Checks a requested team against a profile. ok, keys (slot order, compacted) | reason. `freeKey` (optional, bug
+-- batch 2 #18): count one copy of that key as free of the Garden (the recall check, before the Garden lets it go).
+function P3.checkTeam(profile, keys, freeKey)
 	if type(keys) ~= "table" then
 		return false, "That team is not valid"
 	end
@@ -4480,6 +4606,9 @@ function P3.checkTeam(profile, keys)
 		end
 	end
 	local placed = P3.placedCopies(profile)
+	if type(freeKey) == "string" and (placed[freeKey] or 0) > 0 then
+		placed[freeKey] = placed[freeKey] - 1
+	end
 	local list, seen = {}, {}
 	for i = 1, P3.MAX_SLOTS do
 		local key = keys[i]
@@ -4496,6 +4625,14 @@ function P3.checkTeam(profile, keys)
 				return false, "You do not own that pet"
 			end
 			if owned - (placed[key] or 0) < 1 then
+				-- bug batch 2 #18: a Garden pet is busy gardening (the client asks first and recalls it with ONE request,
+				-- TycoonService.GardenRecall); a Gym copy stays the old reason
+				local home = type(profile.Home) == "table" and profile.Home or {}
+				for _, k in pairs(tableOr(home.Garden)) do
+					if k == key then
+						return false, "That pet is gardening! Take it out of the garden first"
+					end
+				end
 				return false, "That pet is busy in your Garden or Gym"
 			end
 			list[#list + 1] = key
@@ -4535,6 +4672,23 @@ function DataService.SetTeam(player, preset, keys)
 	return true
 end
 
+-- Bug batch 2 #18 (the recall check): would SetTeam(player, preset, keys) pass once ONE copy of `freeKey` left the
+-- Garden? Changes nothing. ok, reason
+function DataService.CheckTeam(player, preset, keys, freeKey)
+	if not player or not P3.validPreset(preset) then
+		return false, "Pick a team from 1 to " .. P3.PRESETS
+	end
+	local entry = P3.realEntry(player)
+	if not entry then
+		return false, "Your data is still loading"
+	end
+	local ok, result = P3.checkTeam(entry.Profile, keys, freeKey)
+	if not ok then
+		return false, result
+	end
+	return true
+end
+
 -- Makes a preset the active one. ok, reason
 function DataService.SelectTeam(player, preset)
 	if not player or not P3.validPreset(preset) then
@@ -4552,9 +4706,9 @@ function DataService.SelectTeam(player, preset)
 	return true
 end
 
--- Every owned key that could join a team right now (a copy not busy in the Gym, and not in training: Phase 4's
--- read-time lock; a garden pet may fight): what the Team picker offers and what the tutorial's "team" step counts.
--- {} until loaded or while provisional.
+-- Every owned key that could join a team right now (a copy not busy in the Garden / Gym, and not in training: Phase
+-- 4's read-time lock; bug batch 2 #18: a garden pet is busy): what the Team picker offers and what the tutorial's
+-- "team" step counts. {} until loaded or while provisional.
 function DataService.FieldableKeys(player)
 	local entry = P3.realEntry(player)
 	if not entry then
@@ -4579,6 +4733,34 @@ function DataService.FieldableKeys(player)
 	for _, key in ipairs(owned) do
 		if type(key) == "string" and P3.teamKey(key) and not training[key] and ownedCount(profile, key) - (placed[key] or 0) >= 1 then
 			out[#out + 1] = key
+		end
+	end
+	return out
+end
+
+-- Bug batch 2 #18: { [key] = copies working in the Garden / Gym } of the live profile (a copy), {} until loaded / while
+-- provisional (stand-in data must not unequip anything). PetService.Equip and its re-validation read it.
+function DataService.PlacedCopies(player)
+	local entry = P3.realEntry(player)
+	if not entry then
+		return {}
+	end
+	return P3.placedCopies(entry.Profile)
+end
+
+-- Bug batch 2 #18: { [key] = true } of every owned key with NO copy free of the Garden / Gym (busy gardening: no
+-- follow, no team, no fight; the ring fallback skips them). {} until loaded / while provisional.
+function DataService.GardenBusyKeys(player)
+	local entry = P3.realEntry(player)
+	if not entry then
+		return {}
+	end
+	local profile = entry.Profile
+	local out = {}
+	for key, n in pairs(P3.placedCopies(profile)) do
+		local owned = ownedCount(profile, key)
+		if owned >= 1 and owned - n < 1 then
+			out[key] = true
 		end
 	end
 	return out
@@ -5078,6 +5260,41 @@ function P4.migrateEntry(entry, player)
 	end
 	entry.MigratedNow[P4.MIGRATION] = info
 	return info
+end
+
+-- (The marker below is a record only, never consulted: the read-time repair itself runs on every load, see the header.)
+-- Bug batch 2 #18 on a loaded, real profile: sets the marker Migrations.B2GardenSolo the first time and takes the keys
+-- this read moved out of the Garden (entry.GardenMoved, P3.gardenSolo in normalizeProfile) -> info { Keys = {key...} }
+-- (also MigratedNow(player, "B2GardenSolo")), or nil when nothing moved. A provisional profile waits for its recovery.
+function P3.gardenMigrate(entry)
+	if not entry or not entry.Loaded or isProvisional(entry) then
+		return nil
+	end
+	local migrations = ensureTable(entry.Profile, "Migrations")
+	if migrations[P5.GARDEN_MARK] ~= true then
+		migrations[P5.GARDEN_MARK] = true
+		entry.Dirty = true
+	end
+	local moved = entry.GardenMoved
+	entry.GardenMoved = nil
+	if type(moved) ~= "table" or #moved == 0 then
+		return nil
+	end
+	entry.Dirty = true -- the store still holds the overlap until the next save (every read repairs it the same way)
+	local info = { Keys = copyList(moved) }
+	if type(entry.MigratedNow) ~= "table" then
+		entry.MigratedNow = {}
+	end
+	entry.MigratedNow[P5.GARDEN_MARK] = info
+	return info
+end
+
+-- Fires Migrated(player, "B2GardenSolo", { Keys }) right after the ProfileLoaded / ProfileRebased whose read moved pets
+-- out of the Garden (TycoonService shows the one explaining toast).
+function P3.gardenAnnounce(player, info)
+	if type(info) == "table" and player then
+		DataService.Migrated:Fire(player, P5.GARDEN_MARK, deepCopy(info))
+	end
 end
 
 -- Fires Migrated(player, "P4", info) right after the ProfileLoaded / ProfileRebased that ran the migration.
