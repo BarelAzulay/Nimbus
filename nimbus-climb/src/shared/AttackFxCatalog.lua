@@ -416,11 +416,13 @@ AttackFxCatalog.Elements = {
 			Layers = { { Id = "Arcs", Kind = "Beam", Texture = "fx_lightning", Beat = "Travel", At = "$Hit", Count = 2 } },
 		},
 		Ranged = {
-			Key = "vfx_shard", Path = "Projectile", Speed = 120, Scale = 0.8, Text = "jagged lightning bolt",
+			-- (round 3, s4: at 0.8 the Common shard was a speck mid-gap)
+			Key = "vfx_shard", Path = "Projectile", Speed = 120, Scale = 1.1, Text = "jagged lightning bolt",
 			Layers = {
 				-- (round 3, c2: 2.6 wide the strip's bolt wandered over a 3.6-stud band at Secret: a scribble on the floor, not
-				-- one bolt; narrow, the jag stays one bolt at the shot's height)
-				{ Id = "Bolt", Kind = "Beam", Texture = "fx_lightning", Beat = "Travel", At = "Path", Width = 1.3, Count = 2 },
+				-- one bolt; narrower and running mouth -> shot (engine), the jag stays one bolt at the shot's height; s4: at 1.3
+				-- the Common bolt's line was hairline-thin)
+				{ Id = "Bolt", Kind = "Beam", Texture = "fx_lightning", Beat = "Travel", At = "Path", Width = 1.6, Count = 2 },
 				-- the bolt crackles round the target as it strikes (beams, no emitter)
 				{ Id = "Crackle", Kind = "Beam", Texture = "fx_lightning", Beat = "Impact", At = "$Hit", Count = 2 },
 			},

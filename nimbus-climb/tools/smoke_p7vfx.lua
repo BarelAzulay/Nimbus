@@ -971,7 +971,7 @@ S.p7vfx_catalog = guarded("p7vfx_catalog", function()
 	local sbolt, szig = ss and layerById(ss, "Bolt"), ss and layerById(ss, "ZigZag")
 	local sline = C.Resolve({ Element = "Storm", Attack = "Element", Shape = "Line", Rarity = "Secret", Mine = true })
 	local slb = sline and layerById(sline, "Bolt")
-	T.check(sbolt and sbolt.Width <= 1.5 and szig and szig.Color == spal.Mid and (szig.LightEmission or 1) <= 0.6
+	T.check(sbolt and sbolt.Width <= 1.8 and szig and szig.Color == spal.Mid and (szig.LightEmission or 1) <= 0.6
 		and sline and (sline.Core.Transparency or 0) >= 0.4 and slb and slb.Width <= 1.5,
 		"p7vfx catalog: Storm's bolt is a narrow strip, its sparks the storm blue half-lit, its area cores see-through")
 	-- Task 9 round 3 (Celestial c2: the Secret star burst + rays summed to a pale flare that hid the target; the
