@@ -6,7 +6,7 @@ return {
 		Min = { -11.5, 0, -2.5 },
 		Size = { 23, 26.75, 5 },
 	},
-	ContentHash = "ff5fd295f69bdeb9fc0cc2c41c727a03",
+	ContentHash = "bf8344a7c4264a7a899d3d199794ac72",
 	DarkFactor = { 0.8425, 0.85, 0.8875 },
 	DeepFactor = { 0.7098, 0.7225, 0.7877 },
 	Groups = {},
@@ -41,7 +41,7 @@ return {
 			Name = "Fixed",
 			Shade = "fixed",
 			Size = { 23, 21.5, 5 },
-			Tris = 1514,
+			Tris = 1534,
 		},
 		{
 			Center = { -0.25, 1.5, 0 },
@@ -74,7 +74,7 @@ return {
 			Name = "Trim",
 			Shade = "base",
 			Size = { 19, 18.5, 3 },
-			Tris = 576,
+			Tris = 566,
 		},
 		{
 			Center = { 0, 16.25, 0 },
@@ -85,7 +85,7 @@ return {
 			Name = "TrimLight",
 			Shade = "light",
 			Size = { 19, 8.5, 3 },
-			Tris = 124,
+			Tris = 126,
 		},
 		{
 			Center = { -0.25, 6.5, -0.375 },
@@ -147,6 +147,6 @@ return {
 	},
 	Rig = "",
 	StructureHash = "af7f58c9446bf94333a67305ecc9ce52",
-	Tris = 4846,
+	Tris = 4858,
 	VoxelStuds = 0.5,
 }

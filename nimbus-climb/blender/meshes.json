@@ -6737,16 +6737,16 @@
   },
   "gate_home": {
    "class": "gates",
-   "contentHash": "ff5fd295f69bdeb9fc0cc2c41c727a03",
+   "contentHash": "bf8344a7c4264a7a899d3d199794ac72",
    "description": "Nimbus Climb Home / Return gate in the homestead family: coursed stone, oak hoop with bronze straps in the gate-colour band, a house sign: enamel plate with a big brass cottage whose lit windows are the Neon crest windows (Neon parts stay in Roblox)",
    "displayName": "NC Gate Home",
    "fbx": "blender/out/gate_home.fbx",
-   "fbxSha256": "55933aeb7fe3d4cce61af23820dcdc7af340f99d261a62304fcea9d26e3a3219",
+   "fbxSha256": "9bbe56e0a35fadaab21aa930139f4448bc47a34963950d54390647f98eaf3690",
    "manifest": "src/shared/MeshManifests/gate_home.lua",
-   "maxTrianglesPerMesh": 1514,
+   "maxTrianglesPerMesh": 1534,
    "parts": 11,
    "structureHash": "af7f58c9446bf94333a67305ecc9ce52",
-   "tris": 4846
+   "tris": 4858
   },
   "gate_homeportal": {
    "class": "gates",
