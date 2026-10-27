@@ -25,8 +25,8 @@ python3 -m venv /tmp/claude-0/bpyenv
 python3 blender/kit/selftest.py                                              # hooks, recipes, determinism, manifests
 ```
 Classes (one catalog each, `blender/catalog/<class>.json`): `calibration` (cal_axes + the test key
-prop_portal_reference), `pets` (94 keys), `evolved` (354), `creatures` (60), `gates` (6), `lobby` (63), `home` (168),
-`arenadungeon` (52): 798 uploadable keys (W3 added `prop_plot_low` and the 80 home plot `_low` keys
+prop_portal_reference), `pets` (94 keys), `evolved` (354), `creatures` (60), `gates` (7), `lobby` (63), `home` (168),
+`arenadungeon` (52): 799 uploadable keys (W3 added `prop_plot_low` and the 80 home plot `_low` keys
 `home_<stem>_<level>_low`).  `blender/out/previews/<name>.png` holds the preview sheets.
 Per key: `blender/out/<key>.fbx`, `.manifest.json`, `.tris.json.gz` (not committed, rebuilt from here) and the
 committed `src/shared/MeshManifests/<key>.lua` + `blender/meshes.json` (uploader index: fbx, displayName, hashes,
@@ -73,7 +73,14 @@ Special pet-type keys (wave 2 / 2.5):
   dog / bear hybrid on an earless species.
 * **Gates**: 6 keys `gate_<obby|ring|arena|dungeon|home|altar>`, one per crest (`WorldStyle.GateMeshKey(shape,
   glyph)`); every `BuildGate` gate with that crest shares it (arena gates, the dungeon portal, the arena's Return
-  gate wears `gate_home`).  Neon parts stay Roblox parts (keep lists).
+  gate wears `gate_home`).  Neon parts stay Roblox parts (keep lists).  `gate_home` is built by
+  `kit/props/gates_homestead.py` (prop `gate_homestead`, polish 2026-10-27): the same BuildGate contract in the
+  homestead family (coursed stone, oak hoop with bronze straps inside the gate-colour band, a house sign under the
+  GateTag: an enamel plate with a big brass cottage whose two lit windows are the Neon CrestWindows).  The 7th, `gate_homeportal`
+  (`kit/props/gates_homeportal.py`, prop `home_portal`), is not a BuildGate gate: it is the player's summoned home
+  portal (a 4 x 7 stud homestead gate: coursed stone, a 0.125-lattice oak arch, keystone plate in the player's colour
+  with the brass cottage), assembled on
+  the client by `HomePortalFx` (Part copy until the key is usable); its Neon vortex stays Parts there.
 * **World keys** (lobby, home, arena, dungeon) bake today's Part build; a `LayoutSig` in the manifest must match the
   live build, otherwise that piece stays on its Parts until it is rebuilt.
 

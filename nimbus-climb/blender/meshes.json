@@ -6737,16 +6737,29 @@
   },
   "gate_home": {
    "class": "gates",
-   "contentHash": "4bcc9e4ee4833e3f8d13a9d452bafc83",
-   "description": "Nimbus Climb Home / Return gate: hoop + little house (stone, cloud frame, coloured band, crest; Neon parts stay in Roblox)",
+   "contentHash": "bf8344a7c4264a7a899d3d199794ac72",
+   "description": "Nimbus Climb Home / Return gate in the homestead family: coursed stone, oak hoop with bronze straps in the gate-colour band, a house sign: enamel plate with a big brass cottage whose lit windows are the Neon crest windows (Neon parts stay in Roblox)",
    "displayName": "NC Gate Home",
    "fbx": "blender/out/gate_home.fbx",
-   "fbxSha256": "7d5ce5c20bff99212ff7b9fcc63eaacdea8d6982ac4cf8b92917d324e85f0d9e",
+   "fbxSha256": "9bbe56e0a35fadaab21aa930139f4448bc47a34963950d54390647f98eaf3690",
    "manifest": "src/shared/MeshManifests/gate_home.lua",
-   "maxTrianglesPerMesh": 896,
-   "parts": 12,
-   "structureHash": "99ce61110645c690c90441b29da73444",
-   "tris": 3794
+   "maxTrianglesPerMesh": 1534,
+   "parts": 11,
+   "structureHash": "af7f58c9446bf94333a67305ecc9ce52",
+   "tris": 4858
+  },
+  "gate_homeportal": {
+   "class": "gates",
+   "contentHash": "b88a1248ffffa14428f6a51017ce5b33",
+   "description": "Nimbus Climb home portal: the player's homestead gate (coursed stone pillars, oak arch with bronze straps, keystone plate in the portal colour, ivy; the Neon vortex stays in Roblox)",
+   "displayName": "NC Gate Homeportal",
+   "fbx": "blender/out/gate_homeportal.fbx",
+   "fbxSha256": "5fc11310243ed33656ae11be5d0bfd533351b20f9e47b112812b8149c659d36b",
+   "manifest": "src/shared/MeshManifests/gate_homeportal.lua",
+   "maxTrianglesPerMesh": 1272,
+   "parts": 5,
+   "structureHash": "495abccfd26a16c0d83985e0918731c3",
+   "tris": 2868
   },
   "gate_obby": {
    "class": "gates",

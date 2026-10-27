@@ -22,6 +22,10 @@
 --   PortalVortex.Build(rec, folder, ids, color, seed) -> v
 --   PortalVortex.Show(v, on)            PortalVortex.Animate(v, t, fade, static)        PortalVortex.Destroy(v)
 --   PortalVortex.SwirlLook(v) -> { Color, Transparency }   what the gate's old Swirl parts show while the vortex does
+--   PortalVortex.SetLook(v, scale, dim) -> writes   a vortex that grows / shrinks (scale 0..1 of its built size, about
+--                                       its centre) and dims (0 = as built, 1 = gone); writes only on a (quantised) change
+-- A caller without Swirl parts (the per-player home portal, HomePortalFx) passes rec.Fixed = { Center = CFrame, Radius,
+-- Speed } instead: the vortex floats at Center (its front = -Z), Radius studs across, turning Speed x as fast.
 
 local PortalVortex = {}
 
@@ -121,6 +125,10 @@ end
 -- (the ring's front faces cover its edge). Otherwise (the effects-only fallback, or the crowned arch whose taller
 -- opening keeps the old swirl as backdrop) the vortex floats just in front of the swirl and stays inside its edge.
 function PortalVortex.Layout(rec, mode)
+	local fixed = rec.Fixed
+	if type(fixed) == "table" and typeof(fixed.Center) == "CFrame" and type(fixed.Radius) == "number" then
+		return { Center = fixed.Center, Radius = fixed.Radius, Arch = false, Behind = false }
+	end
 	local origin = rec.Origin or CFrame.new()
 	local x0, x1, y0, y1 = math.huge, -math.huge, math.huge, -math.huge
 	for _, e in ipairs(rec.Swirl or {}) do
@@ -270,7 +278,7 @@ local function arm(part, i, n, radius, sweep, width0, width1, color, transparenc
 		LightInfluence = 0,
 		Brightness = 1.6,
 		Enabled = false,
-	}, part)
+	}, part), at0, at1
 end
 
 local function buildFallback(v, tint, folder)
@@ -278,6 +286,12 @@ local function buildFallback(v, tint, folder)
 	v.SpinA = plane(folder, "VortexArms", v.Center, radius)
 	v.SpinB = plane(folder, "VortexFine", v.Center, radius)
 	v.Beams = {}
+	v.BeamBase = {} -- the built geometry of every beam (SetLook scales it)
+	local function keep(beam, at0, at1)
+		v.Beams[#v.Beams + 1] = beam
+		v.BeamBase[#v.BeamBase + 1] = { Beam = beam, A0 = at0, A1 = at1, CF0 = at0.CFrame, CF1 = at1.CFrame, W0 = beam.Width0, W1 = beam.Width1,
+			C0 = beam.CurveSize0, C1 = beam.CurveSize1, T = beam.Transparency }
+	end
 	local armColor = ColorSequence.new(tint.arm, tint.fine)
 	local armT = NumberSequence.new({
 		NumberSequenceKeypoint.new(0, 0.55),
@@ -285,7 +299,7 @@ local function buildFallback(v, tint, folder)
 		NumberSequenceKeypoint.new(1, 0.9),
 	})
 	for i = 1, K.ARMS do
-		v.Beams[#v.Beams + 1] = arm(v.SpinA, i, K.ARMS, radius, K.ARM_SWEEP, radius * 0.19, 0.12, armColor, armT, 0.7, "Arm")
+		keep(arm(v.SpinA, i, K.ARMS, radius, K.ARM_SWEEP, radius * 0.19, 0.12, armColor, armT, 0.7, "Arm"))
 	end
 	local fineColor = ColorSequence.new(tint.fine, tint.spark)
 	local fineT = NumberSequence.new({
@@ -294,7 +308,7 @@ local function buildFallback(v, tint, folder)
 		NumberSequenceKeypoint.new(1, 0.95),
 	})
 	for i = 1, K.FINE do
-		v.Beams[#v.Beams + 1] = arm(v.SpinB, i, K.FINE, radius, K.FINE_SWEEP, radius * 0.06, 0.03, fineColor, fineT, 1, "Fine")
+		keep(arm(v.SpinB, i, K.FINE, radius, K.FINE_SWEEP, radius * 0.06, 0.03, fineColor, fineT, 1, "Fine"))
 	end
 	-- light streaks pulled to the centre
 	local streaks = make("ParticleEmitter", {
@@ -322,6 +336,7 @@ local function buildFallback(v, tint, folder)
 	try(streaks, "Squash", NumberSequence.new(1.4))
 	try(streaks, "Brightness", 2)
 	v.Streaks = streaks
+	v.StreakT = streaks.Transparency
 	-- rim crackles: short bright sparks on the rim, emitted in soft bursts
 	local crackle = make("ParticleEmitter", {
 		Name = "VortexCrackle",
@@ -369,6 +384,9 @@ function PortalVortex.Build(rec, folder, ids, color, seed)
 		Static = false,
 		LastA = -1,
 		LastB = -1,
+		Speed = (type(rec.Fixed) == "table" and tonumber(rec.Fixed.Speed)) or 1,
+		Scale = 1,
+		Dim = 0,
 	}
 	v.Plane = plane(folder, "PortalVortex", layout.Center, layout.Radius)
 	if v.Mode == "Texture" then
@@ -470,7 +488,7 @@ local function animateTexture(v, t, fade, breath)
 			local spec = e.Spec
 			local rot, tr, sc = spec.Rot0 or 0, e.Base, 1
 			if spec.Spin then
-				rot = rot + K[spec.Spin] * t * mirror
+				rot = rot + K[spec.Spin] * v.Speed * t * mirror
 			elseif spec.Flow then
 				local phase = (t / K.STREAK_PERIOD + spec.Flow) % 1
 				sc = 1.12 - 0.8 * phase
@@ -484,7 +502,7 @@ local function animateTexture(v, t, fade, breath)
 				tr = e.Base + 0.08 * breath * fade
 			end
 			rot = q(rot % 360, 0.5)
-			tr = q(tr, 0.01)
+			tr = q(tr + (1 - tr) * v.Dim, 0.01)
 			sc = q(sc, 0.005)
 			if write(e, "Rotation", rot) then
 				e.Label.Rotation = rot
@@ -503,7 +521,7 @@ local function animateTexture(v, t, fade, breath)
 	if not v.Static then
 		local idx, a = crackle(v, t)
 		for i, c in ipairs(v.Crackles) do
-			local tr = (i == idx) and q(1 - 0.85 * a * fade, 0.02) or 1
+			local tr = (i == idx) and q(1 - 0.85 * a * fade * (1 - v.Dim), 0.02) or 1
 			if tr ~= c.Last then
 				c.Last = tr
 				c.Label.ImageTransparency = tr
@@ -517,8 +535,8 @@ end
 
 local function animateFallback(v, t)
 	local writes = 0
-	local a = q((K.ARMS_SPEED * t) % 360, 0.25)
-	local b = q((K.FINE_SPEED * t + 23) % 360, 0.25)
+	local a = q((K.ARMS_SPEED * v.Speed * t) % 360, 0.25)
+	local b = q((K.FINE_SPEED * v.Speed * t + 23) % 360, 0.25)
 	if a ~= v.LastA then
 		v.LastA = a
 		v.SpinA.CFrame = v.Center * CFrame.Angles(0, 0, -math.rad(a))
@@ -561,6 +579,63 @@ function PortalVortex.Animate(v, t, fade, breath, static)
 		return animateTexture(v, t, fade or 1, breath or 0.5)
 	end
 	return animateFallback(v, t)
+end
+
+-- a NumberSequence with every transparency pushed toward 1 by dim
+local function dimmed(seq, dim)
+	if dim <= 0 then
+		return seq
+	end
+	local keys = {}
+	for i, kp in ipairs(seq.Keypoints) do
+		keys[i] = NumberSequenceKeypoint.new(kp.Time, kp.Value + (1 - kp.Value) * dim)
+	end
+	return NumberSequence.new(keys)
+end
+
+-- grow / shrink about the centre (scale, quantised to 0.02) and dim (quantised to 0.05); -> property writes made
+function PortalVortex.SetLook(v, scale, dim)
+	if not v then
+		return 0
+	end
+	scale = q(math.max(0.02, math.min(1, tonumber(scale) or 1)), 0.02)
+	dim = q(math.max(0, math.min(1, tonumber(dim) or 0)), 0.05)
+	local writes = 0
+	if scale ~= v.Scale then
+		v.Scale = scale
+		local r = v.Radius * scale
+		v.Plane.Size = Vector3.new(r * 2, r * 2, 0.05)
+		writes = writes + 1
+		if v.Mode == "Fallback" then
+			for _, b in ipairs(v.BeamBase) do
+				b.A0.CFrame = b.CF0 - b.CF0.Position + b.CF0.Position * scale
+				b.A1.CFrame = b.CF1 - b.CF1.Position + b.CF1.Position * scale
+				b.Beam.Width0, b.Beam.Width1 = b.W0 * scale, b.W1 * scale
+				b.Beam.CurveSize0, b.Beam.CurveSize1 = b.C0 * scale, b.C1 * scale
+				writes = writes + 6
+			end
+			v.Streaks.Speed = NumberRange.new(r * 0.85, r * 1.1)
+			writes = writes + 1
+		end
+	end
+	if dim ~= v.Dim then
+		v.Dim = dim
+		if v.Mode == "Fallback" then
+			for _, b in ipairs(v.BeamBase) do
+				b.Beam.Transparency = dimmed(b.T, dim)
+				writes = writes + 1
+			end
+			v.Streaks.Transparency = dimmed(v.StreakT, dim)
+			writes = writes + 1
+		else
+			for _, list in ipairs({ v.Layers, v.BackLayers }) do
+				for _, e in ipairs(list) do
+					e.Last.T = nil -- animateTexture writes every layer's transparency again, dimmed
+				end
+			end
+		end
+	end
+	return writes
 end
 
 function PortalVortex.Destroy(v)

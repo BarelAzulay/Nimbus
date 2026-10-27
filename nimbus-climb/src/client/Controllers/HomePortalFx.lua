@@ -4,13 +4,17 @@
 --   HomePortalFx.Init()
 --   HomePortalFx.Stop()            disconnects everything and removes every part it made
 --   HomePortalFx.Stats() -> { Portals, Parts, Shown, Faded, Closing, Rings, RingParts, Opened, Arrivals }
---   HomePortalFx.Portal(player) -> { Model, Center, Yaw, ClosesAt, Faded, Closing, Name } | nil   (tests / debugging)
+--   HomePortalFx.Portal(player) -> { Model, Center, Yaw, ClosesAt, Faded, Closing, Name, Scale, Gui, Mesh } | nil   (tests / debugging)
 --
 -- * Config.Attr.HomePortal on a player = "x,y,z,yaw,closesAt" while their portal is open (x, y, z: the point on the
 --   floor; yaw in degrees, CFrame.Angles(0, rad(yaw), 0).LookVector = the owner's facing when they opened it;
 --   closesAt: workspace:GetServerTimeNow() when it closes, 10 s after opening). Every player's portal is drawn while it
---   is within K.DRAW_RANGE studs of the camera: a standing voxel ring (<= 30 parts) in the player's colour facing back
---   toward the owner, a swirl that turns inside it, a glowing surface, sparkles, and a 22 px name tag
+--   is within K.DRAW_RANGE studs of the camera, facing back toward the owner: a small homestead gate (the Blender mesh
+--   gate_homeportal via MeshLibrary.Assemble, or its Part copy while the key is not usable here: coursed stone pillars,
+--   an oak arch, a keystone plate in the player's colour) around a vortex in the player's colour: the Gate Court gates'
+--   own vortex (client/PortalVortex: 6 broad + 9 fine Beam spiral arms turning inward at two speeds, light streaks
+--   pulled to the centre, rim crackles; the textured layers once shared/TextureIds has them) in front of a deep Neon
+--   backdrop filling the 4 x 7 stud opening, a lighter well and a bright core (<= 40 parts in all), sparkles, and a 22 px name tag
 --   "Alex's portal" (pixel-sized BillboardGui with a stroke and a backing plate, World text rule). Other players'
 --   portals are faded (only the owner and their pets can go through). It grows in when it opens and shrinks away when
 --   the attribute is cleared (used) or closesAt passes (expired).
@@ -42,12 +46,26 @@ local ARRIVED_ATTR = ATTR.PortalArrived or "PortalArrived"
 
 local K = {
 	DRAW_RANGE = 150, -- studs from the camera: portals farther away are not drawn
-	RING_RADIUS = 2.6, -- studs: the ring's middle line
-	RING_BLOCKS = 20, -- voxel blocks around the ring
-	CENTER_Y = 3.0, -- the ring's centre above the floor point
+	-- the homestead gate (blender gate_homeportal; bug 2026-10-24, pitch A + the player's note): the local frame's origin
+	-- is the vortex centre, CENTER_Y above the floor point; the walk-through opening is x -2..2, y 0.5..7.5 above the
+	-- floor (round top: centre 5.5 up, radius 2), the stone pillars 2 studs deep (the recess the vortex sits in)
+	CENTER_Y = 4.0,
+	MESH_KEY = "gate_homeportal",
+	TOP = 9.125, -- the gate's top above the floor (the keystone's bronze cap; the name tag floats over it)
+	OPEN_HALF = 2.0, -- half the opening's width
+	ARCH_Y = 5.5, -- the arch centre above the floor (= the springing line on the caps)
+	-- the vortex (fix round, review: one vortex family with the Gate Court gates): client/PortalVortex at the vortex
+	-- centre, a little wider than the opening so its rim tucks behind the pillars and the arch (the swirl reads as seen
+	-- THROUGH the doorway), turning faster than a 23-stud gate's (same rim speed on a smaller disc)
+	VORTEX_R = 2.4,
+	VORTEX_Z = -0.1, -- the vortex plane (local Z; the front is -Z): mid-recess, the pillars run -1..1
+	VORTEX_SPEED = 1.6, -- x PortalVortex's speeds (arms 26, fine 48 deg/s): ~42 and ~77 deg/s (Gemini: slower reads heavier, less fan)
+	CORE = 0.6, -- the bright core ball (Gemini: smaller, more of the deep well shows round it)
+	CORE_Z = 0.25, -- just behind the vortex plane: the arms' faded inner ends run over it
+	BACK_Z = 0.82, -- the deep backdrop (inside the pillars' back face at +1)
+	BREATH_PERIOD = 3.6,
 	OPEN_TIME = 0.35, -- grow in
 	CLOSE_TIME = 0.4, -- shrink away
-	SWIRL_SPEED = 2.4, -- radians per second
 	FADED = 0.55, -- extra transparency of other players' portals
 	ARRIVAL_TIME = 1.5,
 	ARRIVAL_BLOCKS = 14,
@@ -55,6 +73,7 @@ local K = {
 	MAX_ARRIVALS = 4,
 	NAME_PX = 22, -- the name tag at 1080p
 }
+HomePortalFx.K = K
 
 -- the players' portal colours (by UserId): bright, never the gold of the coins
 local PALETTE = {
@@ -161,42 +180,172 @@ function P.cameraPos()
 end
 
 ----------------------------------------------------------------------
--- The portal model: <= 30 parts, local layout around the ring centre (the portal faces -Z of its frame)
+-- The portal model: a homestead gate around a Neon vortex, local layout around the vortex centre (faces -Z)
+--   Frame   the gate: the Blender mesh gate_homeportal (MeshLibrary.Assemble, when the key is usable here) or, until
+--           then, a Part copy of the same silhouette (threshold, plinths, pillars, caps, a 7-block oak arch, the
+--           keystone and its plate in the portal colour): <= 16 parts
+--   Surface the deep backdrop filling the opening (a block + a disc for the round top) and the lighter well round the centre
+--   Core    the bright eye at the back of the funnel (carries the sparkles and the name tag)
+--   Vortex  client/PortalVortex.Build with a fixed layout (3 invisible client parts carrying the Beams / emitters, or
+--           the textured SurfaceGui plane); SetLook grows / shrinks / dims it with the gate, Animate turns it
+-- <= 40 parts in all.
 ----------------------------------------------------------------------
+local STONE = Color3.fromRGB(226, 221, 209)
+local SLAB = Color3.fromRGB(206, 200, 188)
+local OAK = Color3.fromRGB(165, 125, 85)
+local OAK_DARK = Color3.fromRGB(125, 85, 55)
+local BRASS = Color3.fromRGB(196, 160, 86)
+local NAVY = Color3.fromRGB(34, 42, 76)
+
+function P.meshLib()
+	if P.ML ~= nil then
+		return P.ML or nil
+	end
+	local ok, ml = pcall(function()
+		return require(Shared:FindFirstChild("MeshLibrary"))
+	end)
+	P.ML = (ok and type(ml) == "table") and ml or false
+	return P.ML or nil
+end
+
+-- a client module next to Controllers (PortalVortex, GraphicsQuality), required once; nil when missing
+function P.clientModule(name)
+	P.Mods = P.Mods or {}
+	if P.Mods[name] == nil then
+		P.Mods[name] = false
+		local client = script.Parent and script.Parent.Parent
+		local module = client and client:FindFirstChild(name)
+		if module then
+			local ok, mod = pcall(require, module)
+			if ok and type(mod) == "table" then
+				P.Mods[name] = mod
+			end
+		end
+	end
+	return P.Mods[name] or nil
+end
+
+-- the vortex texture ids (shared/TextureIds, filled by the upload session; empty = PortalVortex's effects-only fallback)
+function P.textureIds()
+	if P.Ids == nil then
+		local ok, ids = pcall(function()
+			return require(Shared:FindFirstChild("TextureIds"))
+		end)
+		P.Ids = (ok and type(ids) == "table") and ids or {}
+	end
+	return P.Ids
+end
+
+-- Low graphics: the vortex holds still (as the gates' do)
+function P.lowQuality()
+	local GQ = P.clientModule("GraphicsQuality")
+	if GQ and type(GQ.Effective) == "function" then
+		local ok, mode = pcall(GQ.Effective)
+		return ok and mode == "Low"
+	end
+	return false
+end
+
+-- the gate as the Blender mesh: true when it was used (every part an item of kind "Frame"), false = build the Parts
+function P.meshFrame(rec, model, add)
+	local ml = P.meshLib()
+	if not ml or type(ml.Active) ~= "function" or not ml.Active() or not ml.IsReady(K.MESH_KEY) then
+		return false
+	end
+	local ok, mesh = pcall(ml.Assemble, { Name = "HomePortalMesh", Root = false, Parts = { { Key = K.MESH_KEY } } },
+		{ Primary = rec.Color }, { At = CFrame.new(0, -K.CENTER_Y, 0) })
+	if not ok or not mesh then
+		return false
+	end
+	for _, d in ipairs(mesh:GetChildren()) do
+		if d:IsA("BasePart") then
+			d.CastShadow = false
+			d.Parent = model
+			add(d, d.CFrame, d.Size, d.Transparency, "Frame")
+		end
+	end
+	mesh:Destroy()
+	return true
+end
+
+-- the Part copy of the gate (same silhouette, plain colours) while the mesh is not usable here
+function P.partFrame(rec, add, part)
+	local g = -K.CENTER_Y -- the floor in local Y
+	local h = K.OPEN_HALF
+	part(Vector3.new(7.5, 0.5, 3), CFrame.new(0, g + 0.25, 0), SLAB) -- threshold
+	for s = -1, 1, 2 do
+		part(Vector3.new(2, 0.75, 2.5), CFrame.new(s * (h + 0.75), g + 0.875, 0), SLAB) -- plinth
+		part(Vector3.new(1.5, 3.75, 2), CFrame.new(s * (h + 0.75), g + 3.125, 0), STONE) -- pillar
+		part(Vector3.new(2.25, 0.5, 2.5), CFrame.new(s * (h + 0.875), g + 5.25, 0), SLAB) -- impost cap
+	end
+	local arch = CFrame.new(0, g + K.ARCH_Y, 0)
+	local n = 7
+	for i = 1, n do
+		if i ~= 4 then
+			local a = (i - 0.5) / n * math.pi
+			part(Vector3.new(1, math.pi * 2.5 / n * 1.06, 1.5), arch * CFrame.Angles(0, 0, a) * CFrame.new(2.5, 0, 0), OAK)
+		end
+	end
+	part(Vector3.new(1.75, 1.75, 2), CFrame.new(0, g + 8.125, 0), OAK_DARK) -- keystone (polish 2026-10-27: 1.75 wide)
+	part(Vector3.new(1.375, 1.5, 0.125), CFrame.new(0, g + 8.125, -1.06), rec.Color:Lerp(NAVY, 0.65)) -- its plate (the mesh Enamel recipe)
+	part(Vector3.new(2, 0.125, 2), CFrame.new(0, g + 9.0625, 0), BRASS:Lerp(OAK_DARK, 0.6)) -- the bronze cap
+end
+
 function P.build(rec)
 	local color = rec.Color
 	local model = Instance.new("Model")
 	model.Name = "HomePortal"
-	local items = {} -- { Part, Local (CFrame), Size (Vector3), Trans, Kind }
-	local function add(name, size, cf, c, material, trans, kind)
+	local items = {} -- { Part, Local (CFrame), Size (Vector3), Trans, Kind, Arm, Block }
+	local function add(p, cf, size, trans, kind)
+		local it = { Part = p, Local = cf, Size = size, Trans = trans or 0, Kind = kind }
+		items[#items + 1] = it
+		return it
+	end
+	local function make(name, size, cf, c, material, trans, kind)
 		local p = P.part(name, size, c, material, trans)
 		p.Parent = model
-		items[#items + 1] = { Part = p, Local = cf, Size = size, Trans = trans or 0, Kind = kind }
-		return p
+		return add(p, cf, size, trans, kind)
 	end
-	local r = K.RING_RADIUS
-	local seg = 2 * math.pi * r / K.RING_BLOCKS
-	for i = 1, K.RING_BLOCKS do
-		local a = (i - 0.5) / K.RING_BLOCKS * 2 * math.pi
-		local shade = (i % 2 == 0) and P.lighten(color, 0.25) or color
-		if i % 5 == 0 then
-			shade = GOLD
+	rec.Mesh = P.meshFrame(rec, model, add)
+	if not rec.Mesh then
+		P.partFrame(rec, add, function(size, cf, c)
+			make("Frame", size, cf, c, Enum.Material.SmoothPlastic, 0, "Frame")
+		end)
+	end
+	-- the deep backdrop (a block up to the springing line + a disc for the round top), just inside the back face
+	local deep = P.darken(color:Lerp(NAVY, 0.25), 0.55) -- a deep, rich well (Gemini review: not candy blue)
+	local h = K.OPEN_HALF - 0.05
+	local yMid = (0.5 + K.ARCH_Y) / 2 - K.CENTER_Y
+	make("Surface", Vector3.new(h * 2, K.ARCH_Y - 0.5, 0.1), CFrame.new(0, yMid, K.BACK_Z), deep, Enum.Material.Neon, 0, "Surface")
+	local disc = make("Surface", Vector3.new(0.1, h * 2, h * 2), CFrame.new(0, K.ARCH_Y - K.CENTER_Y, K.BACK_Z + 0.02) * CFrame.Angles(0, math.pi / 2, 0),
+		deep, Enum.Material.Neon, 0, "Surface")
+	disc.Part.Shape = Enum.PartType.Cylinder
+	-- the well: a lighter disc round the centre, a step in front of the backdrop (the funnel's throat)
+	local well = make("Surface", Vector3.new(0.1, 2.8, 2.8), CFrame.new(0, 0, K.BACK_Z - 0.06) * CFrame.Angles(0, math.pi / 2, 0),
+		P.darken(color, 0.3), Enum.Material.Neon, 0, "Surface")
+	well.Part.Shape = Enum.PartType.Cylinder
+	-- the bright core at the back of the funnel
+	local core = make("Core", Vector3.new(K.CORE, K.CORE, K.CORE), CFrame.new(0, 0, K.CORE_Z), P.lighten(color, 0.85), Enum.Material.Neon, 0, "Core")
+	core.Part.Shape = Enum.PartType.Ball
+	-- the vortex: the Gate Court gates' own (PortalVortex), at the vortex centre in front of the backdrop
+	local V = P.clientModule("PortalVortex")
+	if V and type(V.Build) == "function" and type(V.SetLook) == "function" then
+		local seed = math.abs(math.floor(tonumber(rec.Player and rec.Player.UserId) or 0)) % 100000 + 11
+		local ok, v = pcall(V.Build, { Fixed = { Center = rec.Frame * CFrame.new(0, 0, K.VORTEX_Z), Radius = K.VORTEX_R, Speed = K.VORTEX_SPEED } },
+			model, P.textureIds(), color, seed)
+		if ok and v then
+			V.SetStatic(v, P.lowQuality())
+			V.SetLook(v, 0.02, 0)
+			V.Show(v, true)
+			rec.Vortex = v
+		elseif not warned then
+			warned = true
+			warn("[HomePortalFx] vortex: " .. tostring(v))
 		end
-		-- each block sits on the circle, its long side along the ring (a voxel ring with stepped edges)
-		add("Ring", Vector3.new(seg * 1.08, 0.55, 0.6), CFrame.Angles(0, 0, a) * CFrame.new(0, r, 0), shade, Enum.Material.SmoothPlastic, 0, "Ring")
 	end
-	-- the glowing surface inside (two crossed squares read as a round disc) and the swirl arms that turn
-	add("Surface", Vector3.new(r * 1.27, r * 1.27, 0.08), CFrame.Angles(0, 0, math.pi / 4), P.darken(color, 0.1), Enum.Material.Neon, 0.3, "Surface")
-	add("Surface", Vector3.new(r * 1.27, r * 1.27, 0.06), CFrame.new(0, 0, 0.02), P.darken(color, 0.25), Enum.Material.Neon, 0.35, "Surface")
-	for k = 1, 3 do
-		add("Swirl", Vector3.new(r * 1.5, 0.26, 0.1), CFrame.new(0, 0, -0.06), P.lighten(color, 0.75), Enum.Material.Neon, 0.05, "Swirl" .. k)
-	end
-	-- the base: a stone step under the ring and a glowing sill
-	add("Base", Vector3.new(r * 1.6, 0.4, 1.4), CFrame.new(0, -r - 0.2, 0), P.darken(color, 0.45), Enum.Material.SmoothPlastic, 0, "Base")
-	add("Sill", Vector3.new(r * 1.2, 0.12, 1.0), CFrame.new(0, -r + 0.06, 0), P.lighten(color, 0.5), Enum.Material.Neon, 0.2, "Base")
-	local center = items[K.RING_BLOCKS + 1].Part
+	local center = core.Part
 	model.PrimaryPart = center
-	-- sparkles drift out of the surface
+	-- sparkles drift out of the core
 	local att = Instance.new("Attachment")
 	att.Name = "Sparkles"
 	att.Parent = center
@@ -214,13 +363,13 @@ function P.build(rec)
 	if not ok then
 		att:Destroy()
 	end
-	-- the name tag (pixel-sized, World text rule)
+	-- the name tag (pixel-sized, World text rule), over the gate's top
 	local gui = Instance.new("BillboardGui")
 	gui.Name = "PortalName"
 	gui.LightInfluence = 0
 	gui.AlwaysOnTop = false
 	gui.MaxDistance = 120
-	gui.StudsOffset = Vector3.new(0, r + 1.4, 0)
+	gui.StudsOffset = Vector3.new(0, K.TOP + 1.2 - K.CENTER_Y, 0)
 	gui.Parent = center
 	local px = K.NAME_PX
 	if Theme and type(Theme.ScaledSize) == "function" then
@@ -259,31 +408,38 @@ function P.build(rec)
 		end
 	end
 	rec.Model, rec.Items, rec.Gui, rec.Label = model, items, gui, label
+	rec.PlacedScale, rec.PlacedFade = nil, nil
 	model.Parent = P.ensureFolder()
 end
 
--- writes every part for the current scale / swirl angle / fade (only portals near the camera, never for far ones)
+-- writes the parts for the current scale / fade (only portals near the camera, never for far ones): the gate, the
+-- backdrop and the core only when the scale or fade changed (or the record is Dirty: just built); the vortex every
+-- frame (PortalVortex writes only quantised changes: its two spinners' turn, plus its size / dimming while it grows,
+-- shrinks or fades)
 function P.place(rec)
 	local s = math.max(0.02, rec.Scale)
 	local frame = rec.Frame
 	local fade = rec.Faded and K.FADED or 0
-	for _, it in ipairs(rec.Items) do
-		local loc = it.Local
-		local kind = it.Kind
-		if kind and string.sub(kind, 1, 5) == "Swirl" then
-			local k = tonumber(string.sub(kind, 6)) or 1
-			loc = CFrame.Angles(0, 0, rec.Angle + k * (math.pi / 3)) * loc
+	local closing = rec.Closing and (1 - s) or 0
+	local still = not rec.Dirty and rec.PlacedScale == s and rec.PlacedFade == fade + closing
+	rec.PlacedScale, rec.PlacedFade, rec.Dirty = s, fade + closing, nil
+	if not still then
+		for _, it in ipairs(rec.Items) do
+			local loc = it.Local
+			it.Part.CFrame = frame * (CFrame.new(loc.Position * s) * (loc - loc.Position))
+			it.Part.Size = it.Size * s
+			local t = it.Trans + (1 - it.Trans) * fade
+			t = t + (1 - t) * closing
+			if it.Part.Transparency ~= t then
+				it.Part.Transparency = t
+			end
 		end
-		local p = loc.Position * s
-		it.Part.CFrame = frame * (CFrame.new(p) * (loc - loc.Position))
-		it.Part.Size = it.Size * s
-		local t = it.Trans + (1 - it.Trans) * fade
-		if rec.Closing then
-			t = t + (1 - t) * (1 - s)
-		end
-		if it.Part.Transparency ~= t then
-			it.Part.Transparency = t
-		end
+	end
+	local V = rec.Vortex and P.clientModule("PortalVortex")
+	if V then
+		V.SetLook(rec.Vortex, s, fade + (1 - fade) * closing)
+		local breath = 0.5 + 0.5 * math.sin(rec.Time / K.BREATH_PERIOD * 2 * math.pi)
+		V.Animate(rec.Vortex, rec.Time, s, breath, rec.Vortex.Static)
 	end
 	if rec.Gui then
 		local show = s > 0.6 and not rec.Closing
@@ -292,15 +448,19 @@ function P.place(rec)
 		end
 	end
 end
-
 function P.destroy(rec)
+	local V = rec.Vortex and P.clientModule("PortalVortex")
+	if V then
+		V.Destroy(rec.Vortex)
+	end
 	if rec.Model then
 		rec.Model:Destroy()
 	end
-	rec.Model, rec.Items, rec.Gui, rec.Label = nil, nil, nil, nil
+	rec.Model, rec.Items, rec.Gui, rec.Label, rec.Vortex = nil, nil, nil, nil, nil
 end
 
--- the HomePortal attribute of a player changed: open / move / close their portal
+-- the HomePortal attribute of a player changed: open / move / close their portal (a moved portal is rebuilt at the
+-- new place on the next frame: the vortex's centre is fixed when it is built)
 function P.refresh(player)
 	local text = player:GetAttribute(PORTAL_ATTR)
 	local point, yaw, closesAt = P.parse(text)
@@ -322,9 +482,11 @@ function P.refresh(player)
 		return
 	end
 	if not rec then
-		rec = { Player = player, Scale = 0, Angle = 0, Opening = true }
+		rec = { Player = player, Scale = 0, Time = 0, Opening = true }
 		portals[player] = rec
 		stats.Opened = stats.Opened + 1
+	elseif rec.Model then
+		P.destroy(rec) -- moved: rebuilt where it now stands (P.step), at its current scale
 	end
 	rec.Point, rec.Yaw, rec.ClosesAt, rec.Frame = point, yaw, closesAt, frame
 	rec.Name = (player.DisplayName ~= nil and player.DisplayName ~= "") and player.DisplayName or player.Name
@@ -432,7 +594,7 @@ function P.step(dt)
 			rec.Scale = 1
 		end
 		if rec.Model and portals[player] then
-			rec.Angle = (rec.Angle + dt * K.SWIRL_SPEED) % (2 * math.pi)
+			rec.Time = (rec.Time or 0) + dt
 			P.place(rec)
 		end
 	end
@@ -527,7 +689,16 @@ function HomePortalFx.Portal(player)
 		return nil
 	end
 	return { Model = rec.Model, Center = rec.Center, Yaw = rec.Yaw, ClosesAt = rec.ClosesAt, Faded = rec.Faded, Closing = rec.Closing == true,
-		Name = rec.Label and rec.Label.Text or nil, Scale = rec.Scale, Gui = rec.Gui }
+		Name = rec.Label and rec.Label.Text or nil, Scale = rec.Scale, Gui = rec.Gui, Mesh = rec.Mesh == true, Vortex = rec.Vortex }
+end
+
+-- the gate mesh became usable here: portals still wearing the Part copy are rebuilt with the mesh on the next frame
+function P.meshArrived()
+	for _, rec in pairs(portals) do
+		if rec.Model and not rec.Mesh and not rec.Closing then
+			P.destroy(rec)
+		end
+	end
 end
 
 function HomePortalFx.Init()
@@ -542,6 +713,15 @@ function HomePortalFx.Init()
 	conns[#conns + 1] = Players.PlayerAdded:Connect(P.watch)
 	conns[#conns + 1] = Players.PlayerRemoving:Connect(P.unwatch)
 	loopConn = RunService.RenderStepped:Connect(P.safeStep)
+	-- a waiter ranks gate_homeportal ahead of the ~800 keys preloading in arrival order (MeshLibrary: rank 1)
+	local ml = P.meshLib()
+	if ml and type(ml.OnReady) == "function" then
+		pcall(ml.OnReady, K.MESH_KEY, function()
+			if initialized then
+				P.meshArrived()
+			end
+		end)
+	end
 end
 
 function HomePortalFx.Stop()
