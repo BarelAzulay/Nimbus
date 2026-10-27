@@ -319,6 +319,129 @@ local function subset(a, b)
 	return true
 end
 
+-- (Task 11) the 12 signature specials, catalog side. Each signature is drawn at its pet's rarity, but a budget step-down
+-- draws it one band lower and a look may carry another rarity, so EVERY rarity x stage, mine or not, must resolve to the
+-- signature within the effect caps (<= 6 emitters, <= 3 lights), with its own pieces: the signature core (when it has
+-- one), its actor (a vfx_sig_* key with a Color3 rim when it has one) and its identity layers; the trades it makes
+-- (Skip / Drop / Alive) never come back. -> nothing (T.check / T.tally inside)
+local SIG_SPEC = {
+	-- Core = the core key; Actor = the actor key; Ids = identity layers (every rarity); Not = layers it trades away
+	ember_phoenix = { Core = "vfx_sig_phoenix_wing", Ids = { "SigWingGlow", "SigWingFlare", "Dome", "Blastwave" }, Not = { "Slash", "Bloom" } },
+	sunbeam_bear = { Core = "vfx_shell", Actor = "vfx_sig_sun_disc", Ids = { "SigRays", "Ward" }, NoAlive = true },
+	twilight_dragon = { Core = "vfx_star", Actor = "vfx_crescent", Rim = true, Ids = { "Cloud", "Rain", "SigDusk" } },
+	cloudy_dragon = { Actor = "vfx_sig_cloud_dragon", Ids = { "SigCloud", "Spiral", "Wrap" } },
+	starlight_unicorn = { Actor = "vfx_sig_wish_star", Rim = true, Ids = { "SigShower", "Spiral" } },
+	stormfang = { Actor = "vfx_sig_wolf", Rim = true, Ids = { "SigBolts", "Leap" }, Not = { "DoubleArc" } },
+	eclipse_dragon = { Actor = "vfx_sig_black_sun", Rim = true, Ids = { "SigCorona", "Dome", "Blastwave" }, Not = { "Slash" }, Dim = true },
+	obsidian_phoenix = { Actor = "vfx_sig_phoenix_wing", Rim = true, Ids = { "Cloud", "Rain" } },
+	phantom_kitsune = { Actor = "vfx_sig_fox_orb", Ids = { "Ward" } },
+	magma_cub = { Core = "vfx_chunk", Actor = "vfx_sig_lava_spike", Ids = { "SigLavaCrack", "SigEruption", "Dome" }, Not = { "Slash" } },
+	rime_wyrmling = { Core = "vfx_sig_glacier", Ids = { "SigBreath", "SigSnow", "Lock" }, Not = { "IceSpikes" } },
+	hydralotl = { Actor = "vfx_sig_serpent", Rim = true, Ids = { "Roar", "AllyRing", "Rouse" } },
+}
+
+local function sigLayer(r, id)
+	for _, l in ipairs(r.Layers) do
+		if l.Id == id then
+			return l
+		end
+	end
+	return nil
+end
+
+local function signatureCatalog(C, tex, cores)
+	local sigAll = T.tally("p7vfx catalog: Task 11: each of the 12 signatures at every rarity x stage, mine or not: resolves to the signature, <= 6 emitters, <= 3 lights, its core / actor / identity layers, its trades kept out")
+	local lightsOf = function(r)
+		local n = 0
+		for _, l in ipairs(r.Layers) do
+			if l.Kind == "Light" then
+				n = n + 1
+			end
+		end
+		return n
+	end
+	for _, pet in ipairs(SIGNATURE_PETS) do
+		local s, spec = C.Signatures[pet], SIG_SPEC[pet]
+		for _, rarity in ipairs(C.Rarities) do
+			for stage = 0, 2 do
+				for _, mine in ipairs({ true, false }) do
+					local r = C.Resolve({ Element = s.Element, Attack = "Special", Kind = s.Kind, Rarity = rarity, Stage = stage, PetId = pet, Mine = mine, Distance = 12 })
+					local why = {}
+					if not (r and r.Signature == pet and r.Kind == s.Kind and type(r.Sig) == "table") then
+						why[#why + 1] = "not the signature"
+					else
+						if emitterCount(r) > 6 then
+							why[#why + 1] = emitterCount(r) .. " emitters"
+						end
+						if lightsOf(r) > 3 then
+							why[#why + 1] = lightsOf(r) .. " lights"
+						end
+						if spec.Core and r.Core.Key ~= spec.Core then
+							why[#why + 1] = "core " .. tostring(r.Core.Key)
+						end
+						local a = r.Sig.Actor
+						if spec.Actor and not (type(a) == "table" and a.Key == spec.Actor and cores[a.Key] and typeof(a.Color) == "Color3") then
+							why[#why + 1] = "actor " .. tostring(a and a.Key)
+						elseif not spec.Actor and a ~= nil then
+							why[#why + 1] = "an actor it should not have"
+						end
+						if spec.Rim and not (type(a) == "table" and type(a.Rim) == "table" and typeof(a.Rim.Color) == "Color3") then
+							why[#why + 1] = "no rim colour"
+						end
+						for _, id in ipairs(spec.Ids) do
+							if not sigLayer(r, id) then
+								why[#why + 1] = "no " .. id
+							end
+						end
+						for _, id in ipairs(spec.Not or {}) do
+							if sigLayer(r, id) then
+								why[#why + 1] = "traded " .. id .. " is back"
+							end
+						end
+						if spec.NoAlive and r.Alive.Kind ~= nil then
+							why[#why + 1] = "alive detail back"
+						end
+						if (spec.Dim == true) ~= (type(r.Sig.DimWorld) == "number" and r.Sig.DimWorld >= 0) then
+							why[#why + 1] = "DimWorld " .. tostring(r.Sig.DimWorld)
+						end
+						local p = recipeProblems(r, tex, cores)
+						if p ~= "" then
+							why[#why + 1] = p
+						end
+					end
+					sigAll:case(#why == 0, fmt("%s %s s%d %s: %s", pet, rarity, stage, mine and "mine" or "other", table.concat(why, ", ")))
+				end
+			end
+		end
+	end
+	sigAll:report()
+
+	-- the design choices that make each one its pet's (task-11-report.md, Gemini pass), at the pet's own rarity
+	local function own(pet)
+		local s = C.Signatures[pet]
+		return C.Resolve({ Element = s.Element, Attack = "Special", Kind = s.Kind, Rarity = s.Rarity, Stage = 0, PetId = pet, Mine = true, Distance = 12 })
+	end
+	local em, ec, tw, mg, ri, sf, ob, ks = own("ember_phoenix"), own("eclipse_dragon"), own("twilight_dragon"), own("magma_cub"), own("rime_wyrmling"), own("stormfang"), own("obsidian_phoenix"), own("phantom_kitsune")
+	T.check(em.Core.Color == em.Palette.Mid and em.Core.InnerColor == em.Palette.Core and em.Core.Upgraded == false and sigLayer(em, "Trail").Texture == "fx_flame",
+		"p7vfx catalog: Ember Phoenix: an orange phoenix with a gold one inside (no crossed twin), flame tongues behind it")
+	T.check(tw.Core.Count == C.Specials.Storm.CoreCount[tw.Band] and tw.Core.Color == tw.Palette.Mid and sigLayer(tw, "Rain").Texture == "fx_sparkle",
+		"p7vfx catalog: Twilight Dragon: dark violet stars fall (the Storm's count for its band), lilac sparkle rain")
+	T.check(mg.Core.Transparency == 0 and mg.Core.InnerColor == mg.Palette.Hot and sigLayer(mg, "SigLavaCrack").At == "Ground" and sigLayer(mg, "SigLavaCrack").Beat == "Travel" and mg.Sig.Actor.Motion == "RingRise" and mg.Sig.Actor.Count == 5,
+		"p7vfx catalog: Magma Cub: a solid molten boulder with a yellow-hot heart, the lava crack opens under the target before the impact, 5 magma spikes ring the target")
+	T.check(ri.Core.Transparency >= 0.55 and ri.Core.Material == "Glass" and sigLayer(ri, "SigBreath").Kind == "Beam" and sigLayer(ri, "SigSnow").Along == true,
+		"p7vfx catalog: Rime Wyrmling: a see-through glass glacier (>= 0.55), a frost-breath beam with snow streaming along it")
+	T.check(sigLayer(sf, "SigBolts").KeepCount == 2 and sf.Sig.Actor.Motion == "ChargeThrough" and ob.Sig.Actor.Motion == "WingDive" and tw.Sig.Actor.Motion == "MoonRise" and ks.Sig.Actor.Count == 9
+		and ec.Sig.Actor.Motion == "Eclipse" and ec.Sig.DimWorld > 0 and ec.Sig.DimWorld <= 1,
+		"p7vfx catalog: Stormfang keeps its 2 bolts, the wolf charges through; Obsidian's phoenix dives; Twilight's dusk moon rises; nine fox orbs; the black sun bursts after a short dim")
+	local dims = {}
+	for _, pet in ipairs(SIGNATURE_PETS) do
+		if C.Signatures[pet].DimWorld ~= nil then
+			dims[#dims + 1] = pet
+		end
+	end
+	T.check(#dims == 1 and dims[1] == "eclipse_dragon", "p7vfx catalog: only Eclipse Nova dims the battle", table.concat(dims, ","))
+end
+
 S.p7vfx_catalog = guarded("p7vfx_catalog", function()
 	local C = sharedModule("AttackFxCatalog")
 	if C == nil then
@@ -618,6 +741,7 @@ S.p7vfx_catalog = guarded("p7vfx_catalog", function()
 	local withoutKind = C.Resolve({ Element = "Flame", Attack = "Special", Rarity = "Legendary", PetId = "ember_phoenix", Mine = true })
 	T.check(withoutKind ~= nil and withoutKind.Signature == "ember_phoenix" and withoutKind.Kind == "Blast",
 		"p7vfx catalog: a signature pet's Special without a Kind uses the signature's kind")
+	signatureCatalog(C, tex, cores) -- (Task 11)
 
 	-- Unit: from a BattleSim unitInfo (Review Focus 2: hybrids)
 	local function rarityOf(id)

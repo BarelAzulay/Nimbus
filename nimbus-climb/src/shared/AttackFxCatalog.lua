@@ -826,83 +826,161 @@ AttackFxCatalog.Reactions = {
 }
 
 ----------------------------------------------------------------------
--- Signature specials (spec table, 12 pets). Overrides on top of the kind: Core (merged), Palette (merged), Slots,
--- Layers (added, From Common), Tints[layerId] (an explicit colour for a base layer), Beats, Actor (a vfx_sig_* solid
--- mesh piece), DimWorld (seconds the battle dims).
+-- Signature specials (spec table, 12 pets; Task 11, Gemini design pass in task-11-report.md). Each is its kind's
+-- special at the pet's rarity (the element's take included) + the pet's own pieces. Overrides on top of the kind:
+--   Core      merged over the kind's core; Key = a vfx_sig_* core; Tint / InnerTint = the Palette entries of the body /
+--             its hot heart instead of the band's; NoTwin = no band 3+ quarter-turned twin
+--   Palette   merged over the element's        Slots   re-point the kind's slots ($Trail, $RainKey ...)
+--   Layers    added (From = their tier, default Common: every rarity the pet can be drawn at)
+--   Tints     { [layerId] = Color3 } (Alive = the alive detail)          Beats   merged over the kind's
+--   Skip      { [ladder layer] = true } ladder layers it trades for its own (a slash crescent on a blast reads as
+--             nothing; Ember's wing glow is its bloom light: <= 3 lights at every rarity)
+--   Drop      { [layer id] = true } kind / element layers it replaces     Alive = false: no alive detail
+--   LowKeep   its own pick for Low quality's second emitter (before the kind's / element's)
+--   Actor     its vfx_sig_* piece(s): { Key, At, Motion (AttackFx MOVE.Actor), Beat, Count?, Scale?, Tint | Color,
+--             Material? ("Neon" default, "Glass"), Transparency?, Rim? = { Tint | Color, Scale?, Back?, Transparency? }:
+--             a bigger glowing copy just behind each piece }; built before the layers, Count x Density for others' pets
+--   DimWorld  (Eclipse Nova) seconds the battle stays dim after the impact (own pet only: AttackFx.Hooks.DimWorld ->
+--             BattleController, a LightingStack preset; it dims from the cast's first frame, Undim on end / KO / teardown)
+-- Every signature is checked at every rarity it can be drawn at (all 7: a budget step-down draws one band lower) x
+-- stage within the effect caps (6 emitters, 4 beams, 4 trails, 3 lights, 14 pieces), its core / actor / identity
+-- layers drawn at their count (smoke p7vfx_catalog, client_p7vfx_engine 17).
 ----------------------------------------------------------------------
 AttackFxCatalog.Signatures = {
+	-- the Blast orb IS a phoenix: it forms over the pet with its wings spread (a gold phoenix glowing inside a see-through
+	-- orange one), flies and explodes; flame tongues stream behind it; the wings flare at the release and a warm light
+	-- glows on the pet through the charge (it is the bloom light: <= 3 lights at every rarity)
 	ember_phoenix = {
 		Name = "Phoenix Flare", Rarity = "Legendary", Element = "Flame", Kind = "Blast",
 		Twist = "spreads blazing wings, the orb is a phoenix-shaped fireball",
-		Core = { Key = "vfx_sig_phoenix_wing", Scale = 0.8 },
-		Layers = { { Id = "SigWingGlow", Kind = "Light", Beat = "Charge", At = "Source", Tint = "Hot", Brightness = 3, Range = 14 } },
+		Core = { Key = "vfx_sig_phoenix_wing", Scale = 0.75, Tint = "Mid", InnerTint = "Core", NoTwin = true, Transparency = 0.3 },
+		Slots = { Trail = "fx_flame" },
+		Skip = { Slash = true, Bloom = true },
+		Layers = {
+			{ Id = "SigWingGlow", Kind = "Light", Beat = "Charge", At = "Source", Tint = "Core", Brightness = 2, Range = 10 },
+			{ Id = "SigWingFlare", Kind = "Emitter", Texture = "fx_flame", Beat = "Release", At = "Source", Motion = "Burst", Count = 6, Size = 1.6, LightEmission = 0.5 },
+		},
+		LowKeep = { "SigWingFlare" },
 	},
+	-- (Gemini: a disc standing in front of an ally clips into it and hides it) a gold sun seal lies flat under each ally,
+	-- turning and pulsing, under the gold glass bubble; light rays flare up off each at the impact; no bouncing rocks
 	sunbeam_bear = {
 		Name = "Golden Aegis", Rarity = "Legendary", Element = "Earth", Kind = "Shield",
 		Twist = "a golden sun-disc shield with rays",
-		Core = { Key = "vfx_sig_sun_disc", Material = "Neon", Transparency = 0.2 },
 		Palette = { Core = rgb(255, 244, 196), Mid = rgb(255, 210, 110), Edge = rgb(232, 150, 40), Hot = rgb(255, 255, 230) },
-		Layers = { { Id = "SigRays", Kind = "Emitter", Texture = "fx_rays", Beat = "Impact", At = "Allies", Count = 3, Size = 5 } },
+		Actor = { Key = "vfx_sig_sun_disc", At = "Allies", Motion = "Seal", Beat = "Travel", Scale = 0.6, Tint = "Mid", Transparency = 0.25 },
+		Layers = { { Id = "SigRays", Kind = "Emitter", Texture = "fx_rays", Beat = "Impact", At = "Allies", Count = 3, Size = 3.5, LightEmission = 0.4 } },
+		Alive = false,
 	},
+	-- a dusk-violet cloud; dark violet stars fall out of it (Gemini, option b: the 5-point star, not the unicorn's comet;
+	-- the plain Shadow Storm already rains shards) with lilac sparkle, into a violet pool of dusk on the floor; a lilac
+	-- crescent DUSK MOON (deep violet glow behind it) rises behind the storm (Gemini's second pass: the pet had no
+	-- piece of its own; it has no vfx_sig_* mesh, so the shared crescent stands upright as a moon, see the report)
 	twilight_dragon = {
 		Name = "Dusk Storm", Rarity = "Legendary", Element = "Shadow", Kind = "Storm",
 		Twist = "a dusk-purple storm with falling shadow stars",
-		Palette = { Core = rgb(236, 190, 255), Mid = rgb(176, 124, 236), Edge = rgb(72, 40, 120) },
+		Palette = { Core = rgb(236, 190, 255), Mid = rgb(150, 96, 220), Edge = rgb(64, 34, 110), Hot = rgb(255, 150, 240) },
 		Slots = { RainKey = "vfx_star", RainTexture = "fx_sparkle", RainKind = "Emitter" },
+		Core = { Tint = "Mid", Scale = 1.1 },
+		Layers = { { Id = "SigDusk", Kind = "Decal", Beat = "Travel", At = "Ground", Tint = "Mid", Size = 7, Seconds = 1.0 } },
+		Actor = { Key = "vfx_crescent", At = "Above", Motion = "MoonRise", Beat = "Charge", Scale = 1.3, Color = rgb(206, 166, 255), Transparency = 0.1, Rim = { Color = rgb(112, 56, 210), Scale = 1.12, Transparency = 0.25 } },
 	},
+	-- the cloud dragon spirals up round the pet through the charge, then dives down the beam onto the target (the beam is
+	-- its breath) and coils once round it, rising, as it fades (Gemini's second pass: in a battle the charge is cut, the
+	-- coil keeps the dragon in view); a puff of storm cloud bursts from its mouth at the release
 	cloudy_dragon = {
 		Name = "Cloud Breath", Rarity = "Mythic", Element = "Storm", Kind = "Beam",
 		Twist = "a cloud dragon spirals up, then breathes the beam on the dive",
-		Actor = { Key = "vfx_sig_cloud_dragon", At = "Source", Motion = "SpiralUp", Beat = "Charge", Tint = "Core" },
 		Beats = { Charge = 0.65 },
+		Actor = { Key = "vfx_sig_cloud_dragon", At = "Source", Motion = "SpiralUp", Beat = "Charge", Tint = "Core", Transparency = 0.1 },
+		Layers = { { Id = "SigCloud", Kind = "Emitter", Texture = "fx_stormcloud", Beat = "Release", At = "Source", Motion = "Burst", Tint = "Smoke", Count = 5, Size = 2.5 } },
 	},
+	-- a giant wishing star rises over the allies (Gemini: a gold glass body with a deep gold neon rim, not a solid neon
+	-- blob) and showers falling stars on each of them while the heal's star spirals rise
 	starlight_unicorn = {
 		Name = "Wishing Star", Rarity = "Mythic", Element = "Celestial", Kind = "Heal",
 		Twist = "a giant wishing star rises and showers allies",
-		Actor = { Key = "vfx_sig_wish_star", At = "Above", Motion = "Rise", Beat = "Charge", Tint = "Mid" },
+		Actor = { Key = "vfx_sig_wish_star", At = "Above", Motion = "WishRise", Beat = "Charge", Tint = "Mid", Material = "Glass", Transparency = 0.15, Rim = { Tint = "Edge", Scale = 1.1, Transparency = 0.2 } },
 		Layers = { { Id = "SigShower", Kind = "Emitter", Texture = "fx_stars", Beat = "Travel", At = "Allies", Count = 14, Size = 1, Fall = true } },
 	},
+	-- as the pet leaps, an electric storm-wolf charges out of it and through the target, two bolts crackling along its
+	-- path (the Mythic slash arc is left out: both bolts under the 4-beam cap)
 	stormfang = {
 		Name = "Storm Pounce", Rarity = "Secret", Element = "Storm", Kind = "Pounce",
 		Twist = "a lightning storm-wolf charges through the target",
-		Actor = { Key = "vfx_sig_wolf", At = "Source", Motion = "ChargeThrough", Beat = "Travel", Tint = "Core" },
-		Layers = { { Id = "SigBolts", Kind = "Beam", Texture = "fx_lightning", Beat = "Travel", At = "Path", Count = 3 } },
+		Actor = { Key = "vfx_sig_wolf", At = "Source", Motion = "ChargeThrough", Beat = "Travel", Color = rgb(80, 180, 255), Rim = { Color = rgb(40, 60, 200), Scale = 1.1, Transparency = 0.3 } },
+		Skip = { DoubleArc = true },
+		Tints = { SigBolts = rgb(90, 170, 255) },
+		Layers = { { Id = "SigBolts", Kind = "Beam", Texture = "fx_lightning", Beat = "Travel", At = "Path", Count = 2, KeepCount = 2 } },
 	},
+	-- the battle dims (own pet); a black sun with a violet corona hangs over the target through the charge, the void orb
+	-- flies, and at the impact the sun drops onto the target and bursts flat over the floor as violet wisps fling out
+	-- (the slash crescent, nothing on a blast, makes room for the wisps)
 	eclipse_dragon = {
 		Name = "Eclipse Nova", Rarity = "Secret", Element = "Shadow", Kind = "Blast",
 		Twist = "the battle dims for a moment; a black-sun ring bursts",
 		DimWorld = 0.6,
-		Actor = { Key = "vfx_sig_black_sun", At = "Target", Motion = "Burst", Beat = "Impact", Color = rgb(20, 10, 30) },
+		Actor = { Key = "vfx_sig_black_sun", At = "Above", Motion = "Eclipse", Beat = "Charge", Color = rgb(18, 8, 28), Scale = 0.6, Rim = { Color = rgb(186, 104, 255), Scale = 1.14, Transparency = 0.15 } },
+		Skip = { Slash = true },
+		Layers = { { Id = "SigCorona", Kind = "Emitter", Texture = "fx_wisps", Beat = "Impact", At = "$Hit", Motion = "Burst", Count = 10, Size = 1.4 } },
 	},
+	-- (Gemini: a 10-stud sky sweep is a roof over a raid) a black phoenix with a magenta rim appears over the target, wings
+	-- folded; they snap open as the dark fire starts to rain, then it DIVES nose-down onto the target and bursts (Gemini's
+	-- second pass: a hovering bird was passive, and it tells it apart from Ember's flying orb): violet fire spears, violet
+	-- flames, an ash-violet cloud
 	obsidian_phoenix = {
 		Name = "Shadowflame Storm", Rarity = "Secret", Element = "Flame", Kind = "Storm",
 		Twist = "black-flame wings sweep the field; dark fire rains",
 		Palette = { Core = rgb(255, 150, 240), Mid = rgb(150, 40, 170), Edge = rgb(40, 12, 44), Smoke = rgb(30, 16, 36) },
-		Tints = { Rain = rgb(170, 70, 210) }, -- the baked fire sheet darkened to shadow-fire
-		Actor = { Key = "vfx_sig_phoenix_wing", At = "Above", Motion = "Sweep", Beat = "Charge", Color = rgb(40, 16, 48), Scale = 1.4 },
+		Tints = { Rain = rgb(170, 70, 210), Burst = rgb(200, 90, 255), Alive = rgb(220, 110, 255), Cloud = rgb(92, 58, 108) }, -- the baked fire sheets darkened to shadow-fire
+		Actor = { Key = "vfx_sig_phoenix_wing", At = "Above", Motion = "WingDive", Beat = "Charge", Color = rgb(34, 12, 42), Scale = 0.9, Rim = { Color = rgb(222, 86, 255), Scale = 1.1, Transparency = 0.2 } },
 	},
+	-- nine teal fox-fire orbs circle the kitsune through the charge (its nine tails), then fly out and circle the allies
+	-- (all nine round one ally; 3 / 2 / 2 / 2 round four: the 14-piece cap); teal glass bubbles, teal wisps rising
 	phantom_kitsune = {
 		Name = "Foxfire Ward", Rarity = "Secret", Element = "Shadow", Kind = "Shield",
 		Twist = "nine ghost fox-fire orbs circle each ally",
 		Palette = { Core = rgb(220, 255, 250), Mid = rgb(124, 252, 228), Edge = rgb(60, 150, 170) },
-		Actor = { Key = "vfx_sig_fox_orb", At = "Allies", Motion = "Orbit", Beat = "Travel", Count = 9, Scale = 0.5, Tint = "Mid" },
+		Tints = { Ward = rgb(124, 252, 228) },
+		Actor = { Key = "vfx_sig_fox_orb", At = "Allies", Motion = "FoxFire", Beat = "Charge", Count = 9, Scale = 0.55, Tint = "Mid", Transparency = 0.1 },
 	},
+	-- lava spurts up round the cub as it heaves the orb, a molten boulder (yellow-hot heart), and slams it on the target:
+	-- a lava crack glows open under the target just before (Gemini's second pass: the cub's own crack lived in the
+	-- charge, which a battle cuts) and 5 magma spikes erupt from it in a ring; deeper lava reds
 	magma_cub = {
 		Name = "Lava Slam", Rarity = "Secret", Element = "Flame", Kind = "Blast",
 		Twist = "erupts from a lava crack; magma spikes ring the target",
-		Layers = { { Id = "SigLavaCrack", Kind = "Decal", Texture = "fx_crack", Beat = "Charge", At = "Source", Color = rgb(255, 150, 80), Size = 5, Seconds = 1.0 } },
+		Palette = { Core = rgb(255, 206, 96), Mid = rgb(255, 92, 24), Edge = rgb(150, 28, 8), Hot = rgb(255, 238, 150), Smoke = rgb(74, 44, 36) },
+		Core = { Key = "vfx_chunk", Scale = 1.5, Transparency = 0, InnerTint = "Hot" },
+		Skip = { Slash = true },
+		Layers = {
+			{ Id = "SigLavaCrack", Kind = "Decal", Texture = "fx_crack", Beat = "Travel", At = "Ground", Color = rgb(255, 120, 40), Size = 6, Seconds = 1.2 },
+			{ Id = "SigEruption", Kind = "Emitter", Texture = "fx_flame", Beat = "Release", At = "Self", Motion = "Burst", Count = 8, Size = 1.3 },
+		},
 		Actor = { Key = "vfx_sig_lava_spike", At = "Target", Motion = "RingRise", Beat = "Impact", Count = 5, Tint = "Mid" },
+		LowKeep = { "SigLavaCrack" },
 	},
+	-- the wyrmling breathes a frost stream (an ice-blue beam, snow streaming along it), then the glacier rises out of the
+	-- floor round the target in place of the cage, see-through (Gemini: >= 0.55, the frozen pet stays readable); it IS
+	-- the ring of spikes, so the Frost spike ring is left out
 	rime_wyrmling = {
 		Name = "Glacier Breath", Rarity = "Secret", Element = "Frost", Kind = "Freeze",
 		Twist = "breathes a glacier that rises around the target",
-		Core = { Key = "vfx_sig_glacier" },
-		Layers = { { Id = "SigBreath", Kind = "Beam", Beat = "Travel", At = "Path", Tint = "Core", Width = 2 } },
+		Core = { Key = "vfx_sig_glacier", Transparency = 0.55 },
+		Beats = { Travel = 0.35 },
+		Drop = { IceSpikes = true },
+		Layers = {
+			{ Id = "SigBreath", Kind = "Beam", Texture = "fx_speedlines", Beat = "Travel", At = "Path", Tint = "Mid", Width = 1.6, Transparency = 0.2 },
+			{ Id = "SigSnow", Kind = "Emitter", Texture = "fx_snow", Beat = "Travel", At = "Path", Along = true, Count = 10, Size = 0.9 },
+		},
+		LowKeep = { "SigSnow" },
 	},
+	-- three void serpent heads (a glitch-pink rim) rise from the floor behind the pet in a fan, the middle one tallest,
+	-- and lunge forward roaring at the release with the Rally's void roar and rings
 	hydralotl = {
 		Name = "Void Fangs", Rarity = "Secret", Element = "Shadow", Kind = "Rally",
 		Twist = "void serpent heads rise behind the pet and roar",
-		Actor = { Key = "vfx_sig_serpent", At = "Behind", Motion = "RiseRoar", Beat = "Charge", Count = 3, Tint = "Mid" },
+		Actor = { Key = "vfx_sig_serpent", At = "Behind", Motion = "RiseRoar", Beat = "Charge", Count = 3, Tint = "Mid", Transparency = 0.2, Rim = { Tint = "Hot", Scale = 1.08, Transparency = 0.25 } },
 	},
 }
 
@@ -1111,9 +1189,9 @@ local function addExtras(out, list, tier, ctx, scale)
 	end
 end
 
-local function aliveOf(element, palette, countScale)
+local function aliveOf(element, palette, countScale, sigTints)
 	local a = copy(element.Alive)
-	a.Color = (element.Tints and element.Tints.Alive) or colourOf(element.Alive, a.Texture, palette, {})
+	a.Color = (sigTints and sigTints.Alive) or (element.Tints and element.Tints.Alive) or colourOf(element.Alive, a.Texture, palette, {})
 	a.Count = max(1, floor((a.Count or 1) * countScale + 0.5))
 	a.Tint = nil
 	return a
@@ -1180,6 +1258,22 @@ function AttackFxCatalog.Resolve(req)
 	if type(def.ThickBand) == "table" and finite(def.ThickBand[band]) then
 		core.Thick = def.ThickBand[band]
 	end
+	-- (Task 11) a signature's core colour: Tint / InnerTint name the Palette entries its body / hot heart take instead of
+	-- the band's (Ember's orange phoenix with a gold one inside, not the band's pale yellow round a blue-hot heart);
+	-- NoTwin = no band 3+ quarter-turned twin (a phoenix crossed with itself reads as a spinning star)
+	local sc = sig and type(sig.Core) == "table" and sig.Core or nil
+	if sc then
+		if sc.Tint and palette[sc.Tint] then
+			core.Color = palette[sc.Tint]
+		end
+		if sc.InnerTint and core.InnerColor and palette[sc.InnerTint] then
+			core.InnerColor = palette[sc.InnerTint]
+		end
+		if sc.NoTwin then
+			core.Upgraded = false
+		end
+	end
+	core.Tint, core.InnerTint, core.NoTwin = nil, nil, nil
 
 	-- beats
 	local beats = merge(def.Beats, sig and sig.Beats)
@@ -1227,6 +1321,10 @@ function AttackFxCatalog.Resolve(req)
 		kind = def.Kind, -- the resolved kind (a signature special may come with Kind nil: Task 8 review)
 		drop = def.Drop, -- the element's Melee / Ranged Drop: shared attack layers it replaces (Water's shot: no Boom ball)
 	}
+	if sig and type(sig.Drop) == "table" then -- (Task 11) the kind / element layers a signature replaces (Rime: its glacier IS the spikes)
+		ctx.drop = merge(copy(def.Drop or {}), sig.Drop)
+	end
+	local sigSkip = sig and type(sig.Skip) == "table" and sig.Skip or {} -- (Task 11) ladder layers a signature trades for its own
 	local layers = {}
 	local myOrder = rarityOrder[rarity]
 	for _, step in ipairs(AttackFxCatalog.Ladder) do
@@ -1234,7 +1332,7 @@ function AttackFxCatalog.Resolve(req)
 			break
 		end
 		for _, ladderId in ipairs(step.Add) do
-			if not def.Skip[ladderId] then
+			if not def.Skip[ladderId] and not sigSkip[ladderId] then
 				local id = (def.Swap and def.Swap[ladderId]) or ladderId -- (Ranged: Slash -> MuzzleRing, DoubleArc -> ShotArcs)
 				local layer = buildLayer(id, AttackFxCatalog.LayerSlots[id], ctx)
 				if layer then
@@ -1312,12 +1410,14 @@ function AttackFxCatalog.Resolve(req)
 		ImpactAt = out.Charge + out.Release + out.Travel,
 		Core = core,
 		Layers = layers,
-		Alive = def.Alive and aliveOf(element, palette, ctx.detailScale) or {},
+		-- (Task 11: a signature may leave the element's alive detail out (Alive = false: Sunbeam's ward has no bouncing rocks)
+		-- or tint it, Tints.Alive: Obsidian's embers burn violet)
+		Alive = (def.Alive and not (sig and sig.Alive == false)) and aliveOf(element, palette, ctx.detailScale, sig and sig.Tints) or {},
 		LowKeep = {},
 	}
 	-- Low quality's second emitter after the Burst (AttackFx: MAX_EMITTERS.Low 2): the kind's pick, then the attack's,
 	-- then the element's; the engine keeps the first one this effect has
-	for _, list in ipairs({ def.LowKeep or {}, element.LowKeep or {} }) do
+	for _, list in ipairs({ (sig and sig.LowKeep) or {}, def.LowKeep or {}, element.LowKeep or {} }) do -- (a signature's own pick first)
 		for _, id in ipairs(list) do
 			recipe.LowKeep[#recipe.LowKeep + 1] = id
 		end
@@ -1327,6 +1427,10 @@ function AttackFxCatalog.Resolve(req)
 		if actor then
 			actor.Color = actor.Color or palette[actor.Tint or "Mid"] or palette.Mid
 			actor.Tint = nil
+			if type(actor.Rim) == "table" then -- (Task 11) the rim's colour: its own Color, else a Palette entry
+				actor.Rim.Color = actor.Rim.Color or palette[actor.Rim.Tint or "Hot"] or palette.Hot
+				actor.Rim.Tint = nil
+			end
 		end
 		recipe.Sig = { Name = sig.Name, Twist = sig.Twist, Actor = actor, DimWorld = sig.DimWorld }
 	end
