@@ -1,7 +1,7 @@
 {
  "class": "gates",
  "owner": "W2 art-gates",
- "doc": "blender/README.md + docs/phase6/review/gates/README.md. Keys: gate_<obby|ring|arena|dungeon|home|altar> (type prop 'gate', kit/props/gates.py; P4 hoop family, contract 6.0.3). One key per gate kind, shared by every BuildGate call of that glyph (lobby, arena Ring / Arena / Return, dungeon portal): gate_home dresses the arena's green Return gate. Pivot = the gate site; WorldStyle.BuildGate tags the gate model (ML_Offset (0, -11.5, 0)). The Neon glow ring / swirl / gems stay Parts.",
+ "doc": "blender/README.md + docs/phase6/review/gates/README.md. Keys: gate_<obby|ring|arena|dungeon|home|altar> (type prop 'gate', kit/props/gates.py; P4 hoop family, contract 6.0.3). One key per gate kind, shared by every BuildGate call of that glyph (lobby, arena Ring / Arena / Return, dungeon portal): gate_home dresses the arena's green Return gate. Pivot = the gate site; WorldStyle.BuildGate tags the gate model (ML_Offset (0, -11.5, 0)). The Neon glow ring / swirl / gems stay Parts. gate_homeportal (prop 'home_portal', kit/props/gates_homeportal.py) is the player's personal home portal of client/Controllers/HomePortalFx (MeshLibrary.Assemble on the client, Part fallback there); not a BuildGate gate.",
  "budgets": {
   "gate": {
    "tris": 8000,
@@ -80,6 +80,18 @@
    },
    "budget": "gate",
    "description": "Nimbus Climb Storm Altar gate: hoop + storm cloud (stone, cloud frame, coloured band, crest; Neon parts stay in Roblox)"
+  },
+  {
+   "key": "gate_homeportal",
+   "type": "prop",
+   "prop": "home_portal",
+   "args": {
+    "K": 4.0,
+    "KC": 8.0,
+    "seed": 7
+   },
+   "budget": "gate",
+   "description": "Nimbus Climb home portal: the player's homestead gate (coursed stone pillars, oak arch with bronze straps, keystone plate in the portal colour, ivy; the Neon vortex stays in Roblox)"
   }
  ],
  "sets": [],
@@ -112,6 +124,11 @@
   {
    "name": "gate_altar",
    "body": "gate_altar",
+   "res": 520
+  },
+  {
+   "name": "gate_homeportal",
+   "body": "gate_homeportal",
    "res": 520
   }
  ]

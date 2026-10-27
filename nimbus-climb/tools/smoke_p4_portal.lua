@@ -14,10 +14,13 @@
 --                      InBattle (safe zones: no teleport can pull a player out of a fight); junk arguments
 --   CLIENT (wave 3, homefx), client/Controllers/HomePortalFx.lua:
 --   client_p4portal_ring  HomePortal draws the ring (<= 30 anchored client parts) on the floor point, across the
---                         owner's yaw, with a 22 px "<name>'s portal" tag (pixel-sized, stroke) and a turning swirl;
+--                         owner's yaw, with a 22 px "<name>'s portal" tag (pixel-sized, stroke) and the gates' turning
+--                         vortex (PortalVortex); a moved portal is redrawn at its new point;
 --                         another player's portal faded, one beyond 150 studs not drawn; cleared -> it shrinks away,
 --                         closesAt passed -> it goes by itself; junk draws nothing; PortalArrived plays the arrival
 --                         ring (<= 20 parts, 1.5 s); Stop() removes everything, Init() draws again
+--   client_p4portal_mesh  with gate_homeportal usable (fixture template), the gate is the Blender mesh (every manifest
+--                         part, enamel tinted, no Part copy) around the Neon vortex; the manifest is in budget
 --   client_p4portal_dive  the owner walks into their portal and is teleported home: the followers (PetController) dive
 --                         into the portal centre while it shrinks away, the arrival ring plays, the pets pop out
 --                         behind the owner
@@ -90,7 +93,7 @@ local function clientScenarios()
 			advance(0.6)
 			local info = Fx.Portal(LocalPlayer)
 			local parts = partsOf(info and info.Model)
-			T.check(info ~= nil and info.Model ~= nil and #parts >= 12 and #parts <= 30, "p4 portal client: the HomePortal attribute draws the portal ring (<= 30 voxel parts)",
+			T.check(info ~= nil and info.Model ~= nil and #parts >= 12 and #parts <= 40, "p4 portal client: the HomePortal attribute draws the homestead gate + vortex (<= 40 parts)",
 				tostring(#parts) .. " parts")
 			local solid = 0
 			for _, p in ipairs(parts) do
@@ -99,18 +102,28 @@ local function clientScenarios()
 				end
 			end
 			T.check(#parts > 0 and solid == 0, "p4 portal client: ...client parts only, anchored, no collisions / touches / queries")
-			T.check(info and info.Center and (info.Center - (at + Vector3.new(0, 3, 0))).Magnitude < 0.05, "p4 portal client: ...standing on the floor point (its centre 3 studs above it)")
+			local centerY = (type(Fx.K) == "table" and Fx.K.CENTER_Y) or 4
+			T.check(info and info.Center and (info.Center - (at + Vector3.new(0, centerY, 0))).Magnitude < 0.05, "p4 portal client: ...standing on the floor point (its vortex centre " .. tostring(centerY) .. " studs above it)")
+			-- body size (bug 2026-10-24): the gate's frame is tall enough for an R15 avatar (~5.3) and not a giant
+			local lo, hi = math.huge, -math.huge
+			for _, p in ipairs(parts) do
+				if p.Name ~= "Swirl" then
+					local d = p.Position - info.Center
+					lo, hi = math.min(lo, d.Y - p.Size.Y / 2), math.max(hi, d.Y + p.Size.Y / 2)
+				end
+			end
+			T.check(hi - lo >= 7.5 and hi - lo <= 11, "p4 portal client: ...a body-sized gate (7.5..11 studs tall)", fmt("%.2f studs", hi - lo))
 			-- facing: the ring stands across the owner's heading (yaw 90: CFrame.Angles(0, rad(90), 0).LookVector)
 			local look = CFrame.Angles(0, math.rad(90), 0).LookVector
 			local spreadAlong, spreadAcross = 0, 0
 			for _, p in ipairs(parts) do
-				if p.Name == "Ring" then
+				if p.Name == "Frame" or p:GetAttribute("ML_Key") ~= nil then
 					local d = p.Position - info.Center
 					spreadAlong = math.max(spreadAlong, math.abs(d:Dot(look)))
 					spreadAcross = math.max(spreadAcross, math.abs(d:Dot(look:Cross(Vector3.new(0, 1, 0)))))
 				end
 			end
-			T.check(spreadAlong < 0.5 and spreadAcross > 2, "p4 portal client: ...facing the owner (the ring stands across the yaw)", fmt("%.2f along, %.2f across", spreadAlong, spreadAcross))
+			T.check(spreadAlong < 1.25 and spreadAcross > 2, "p4 portal client: ...facing the owner (the gate stands across the yaw)", fmt("%.2f along, %.2f across", spreadAlong, spreadAcross))
 			T.check(info and not info.Faded, "p4 portal client: ...the owner's own portal is not faded")
 			local gui = info and info.Gui
 			local label = gui and gui:FindFirstChild("Name", true)
@@ -119,26 +132,48 @@ local function clientScenarios()
 			T.check(gui and gui:IsA("BillboardGui") and gui.Size.X.Scale == 0 and gui.LightInfluence == 0 and label.TextSize >= 22
 				and (label.TextStrokeTransparency <= 0.5 or label:FindFirstChild("TextOutline") ~= nil) and gui.MaxDistance >= 60,
 				"p4 portal client: ...a pixel-sized 22 px tag with a stroke (World text rule)", label and tostring(label.TextSize) or "")
-			local sw = nil
-			for _, p in ipairs(parts) do
-				if p.Name == "Swirl" then
-					sw = p
+			-- the vortex (fix round): the Gate Court gates' own PortalVortex (no texture ids yet: Beam spiral arms on two
+			-- turning spinner parts), centred in the opening, grown to full size, not dimmed
+			local beams, sw = 0, nil
+			for _, d in ipairs(info and info.Model and info.Model:GetDescendants() or {}) do
+				if d:IsA("Beam") then
+					beams = beams + 1
+				elseif d:IsA("BasePart") and d.Name == "VortexArms" then
+					sw = d
 				end
 			end
+			local vx = info and info.Vortex
+			T.check(vx ~= nil and beams >= 12 and sw ~= nil and (sw.Position - info.Center).Magnitude < 0.5,
+				"p4 portal client: ...its vortex is the gates' PortalVortex (>= 12 spiral arms) at the opening's centre", fmt("%d beams", beams))
+			T.check(vx and vx.Scale == 1 and vx.Dim == 0 and vx.Radius >= 2 and vx.Radius <= 2.6,
+				"p4 portal client: ...grown to full size (radius 2..2.6: the opening's width), not dimmed", vx and fmt("scale %.2f, dim %.2f, r %.2f", vx.Scale, vx.Dim, vx.Radius) or "none")
 			local c0 = sw and sw.CFrame
 			advance(0.3)
 			T.check(sw and c0 and (sw.CFrame.RightVector - c0.RightVector).Magnitude > 0.05, "p4 portal client: ...its swirl turns")
+			-- moved (review: the gate must follow, not only the vortex): the same open portal at a new point is rebuilt there
+			local moved = at + Vector3.new(0, 0, 6)
+			LocalPlayer:SetAttribute("HomePortal", portalText(moved, 90, now + 10))
+			advance(0.2)
+			local mi = Fx.Portal(LocalPlayer)
+			local far = 0
+			for _, p in ipairs(partsOf(mi and mi.Model)) do
+				far = math.max(far, (p.Position - (moved + Vector3.new(0, centerY, 0))).Magnitude)
+			end
+			T.check(mi and mi.Model and (mi.Center - (moved + Vector3.new(0, centerY, 0))).Magnitude < 0.05 and far < 6,
+				"p4 portal client: a moved portal is redrawn at its new point (gate, vortex and all)", fmt("farthest part %.2f studs", far))
+			info = mi or info
 			-- another player's portal: faded; a portal far from the camera: not drawn
 			other:SetAttribute("HomePortal", portalText(at + Vector3.new(10, 0, 0), 0, now + 10))
 			advance(0.6)
 			local oi = Fx.Portal(other)
 			local minT = 1
 			for _, p in ipairs(partsOf(oi and oi.Model)) do
-				if p.Name == "Ring" then
+				if p.Name == "Frame" or p:GetAttribute("ML_Key") ~= nil then
 					minT = math.min(minT, p.Transparency)
 				end
 			end
 			T.check(oi and oi.Model and oi.Faded and minT >= 0.5, "p4 portal client: another player's portal is drawn faded (only its owner can go through)", fmt("%.2f", minT))
+			T.check(oi and oi.Vortex and oi.Vortex.Dim >= 0.5, "p4 portal client: ...its vortex dimmed too", oi and oi.Vortex and fmt("%.2f", oi.Vortex.Dim) or "no vortex")
 			other:SetAttribute("HomePortal", portalText(at + Vector3.new(400, 0, 0), 0, now + 10))
 			advance(0.6)
 			oi = Fx.Portal(other)
@@ -150,6 +185,8 @@ local function clientScenarios()
 			advance(0.15)
 			local mid = Fx.Portal(LocalPlayer)
 			T.check(mid and mid.Closing and mid.Scale < 1 and mid.Scale > 0, "p4 portal client: used (the attribute cleared): the portal shrinks away...", mid and fmt("%.2f", mid.Scale) or "gone at once")
+			T.check(mid and mid.Vortex and mid.Vortex.Scale < 1 and mid.Vortex.Dim > 0, "p4 portal client: ...its vortex shrinking and fading with it",
+				mid and mid.Vortex and fmt("scale %.2f, dim %.2f", mid.Vortex.Scale, mid.Vortex.Dim) or "no vortex")
 			advance(0.5)
 			T.check(Fx.Portal(LocalPlayer) == nil and (model == nil or model.Parent == nil), "p4 portal client: ...and is gone")
 			-- expired: closesAt passes while the attribute is still there
@@ -211,6 +248,127 @@ local function clientScenarios()
 		end
 		T.check(warned == nil and #Mock.Errors == errorsBefore, "p4 portal client: no errors or warnings from HomePortalFx", tostring(warned))
 		KC.flushErrors("client_p4portal_ring")
+	end)
+
+	-- the homestead gate as the Blender mesh (bug 2026-10-24): with gate_homeportal usable here, HomePortalFx assembles
+	-- the mesh (no Part copy of the gate), tints its enamel plate in the player's colour, keeps the Neon vortex as Parts
+	CS.client_p4portal_mesh = guarded("client_p4portal_mesh", function()
+		local Fx = KC.M.HomePortalFx or moduleAt("client", "Controllers/HomePortalFx")
+		local ML = moduleAt("shared", "MeshLibrary")
+		if not T.check(type(Fx) == "table" and ML and type(ML._Configure) == "function" and type(ML.Manifest) == "function",
+			"p4 portal mesh: HomePortalFx + MeshLibrary load") then
+			return
+		end
+		local key = (Fx.K and Fx.K.MESH_KEY) or "gate_homeportal"
+		local man = ML.Manifest(key)
+		if not T.check(man ~= nil and type(man.Parts) == "table" and #man.Parts > 0, "p4 portal mesh: the committed manifest " .. key .. " loads") then
+			return
+		end
+		local tris, neon = 0, 0
+		for _, p in ipairs((man.Raw and (man.Raw.Parts or man.Raw.parts)) or man.Parts) do
+			tris = tris + (tonumber(p.tris or p.Tris) or 0)
+			if (p.material or p.Material) == "Neon" then
+				neon = neon + 1
+			end
+		end
+		T.check(#man.Parts <= 20 and tris > 0 and tris <= 8000 and neon == 0, "p4 portal mesh: within the gate budget (8000 tris / 20 parts), no Neon in the mesh",
+			fmt("%d tris, %d parts", tris, #man.Parts))
+		Fx.Init()
+		ML._Reset()
+		local RS = game:GetService("ReplicatedStorage")
+		local root = Instance.new("Folder")
+		root.Name = "P4PortalMeshes"
+		root.Parent = RS
+		local tpl = Instance.new("Model")
+		tpl.Name = key
+		for _, p in ipairs(man.Parts) do
+			local part = Instance.new("MeshPart")
+			part.Name = p.name
+			part.Size = Vector3.new(p.size[1], p.size[2], p.size[3])
+			part.CFrame = CFrame.new(p.center[1], p.center[2], p.center[3])
+			part.Anchored = true
+			part.CanCollide = false
+			part.CanTouch = false
+			part.CanQuery = false
+			part.Parent = tpl
+		end
+		tpl:SetAttribute("ML_Status", "ready")
+		tpl.Parent = root
+		ML._Configure({ Root = root, Ids = { [key] = 9201 } })
+		local cam = workspace.CurrentCamera
+		local savedCam = cam and cam.CFrame
+		local ok, err = pcall(function()
+			-- (fix round) the gate key is waited on, so MeshLibrary preloads it ahead of the keys queued in arrival order;
+			-- a portal opened before it is ready wears the Part copy, then the mesh as soon as the key arrives
+			Fx.Stop()
+			Fx.Init()
+			T.check(type(ML._Waiters) ~= "function" or ML._Waiters(key) >= 1, "p4 portal mesh: HomePortalFx waits on " .. key .. " (preloaded at rank 1)",
+				tostring(type(ML._Waiters) == "function" and ML._Waiters(key)))
+			local at = Vector3.new(4200, 300, 4000)
+			if cam then
+				cam.CFrame = CFrame.lookAt(at + Vector3.new(0, 8, -24), at)
+			end
+			LocalPlayer:SetAttribute("HomePortal", nil)
+			advance(0.6)
+			LocalPlayer:SetAttribute("HomePortal", portalText(at, 0, workspace:GetServerTimeNow() + 10))
+			advance(0.4)
+			local early = Fx.Portal(LocalPlayer)
+			T.check(early and early.Model and early.Mesh == false, "p4 portal mesh: a portal opened before the key is ready wears the Part copy")
+			ML.Start()
+			advance(1)
+			T.check(ML.IsReady(key), "p4 portal mesh: " .. key .. " ready after the preload (fixture)")
+			advance(0.2)
+			local info = Fx.Portal(LocalPlayer)
+			local parts = partsOf(info and info.Model)
+			local meshParts, frameParts, swirl, enamel = 0, 0, 0, nil
+			for _, d in ipairs(info and info.Model and info.Model:GetDescendants() or {}) do
+				if d:IsA("Beam") then
+					swirl = swirl + 1
+				end
+			end
+			for _, p in ipairs(parts) do
+				if p:GetAttribute("ML_Key") == key then
+					meshParts = meshParts + 1
+					if p:GetAttribute("MK_Key") == "Enamel" then
+						enamel = p
+					end
+				elseif p.Name == "Frame" then
+					frameParts = frameParts + 1
+				end
+			end
+			T.check(info and info.Mesh == true and meshParts == #man.Parts and frameParts == 0,
+				"p4 portal mesh: ...and once the key is ready the open portal wears the Blender mesh (every manifest part, no Part copy)", fmt("%d mesh, %d Part frame", meshParts, frameParts))
+			T.check(swirl >= 12 and #parts <= 40, "p4 portal mesh: ...around the gates' vortex (Beam arms; <= 40 parts in all)", fmt("%d beams, %d parts", swirl, #parts))
+			local floor = at
+			local lo, hi = math.huge, -math.huge
+			for _, p in ipairs(parts) do
+				if p:GetAttribute("ML_Key") == key then
+					lo, hi = math.min(lo, p.Position.Y - p.Size.Y / 2), math.max(hi, p.Position.Y + p.Size.Y / 2)
+				end
+			end
+			T.check(math.abs(lo - floor.Y) < 0.1 and hi - lo > 8 and hi - lo < 10, "p4 portal mesh: ...standing on the floor point, ~9 studs tall",
+				fmt("bottom %.2f above the floor, %.2f tall", lo - floor.Y, hi - lo))
+			if T.check(enamel ~= nil, "p4 portal mesh: ...with its enamel plate part (MK_Key Enamel)") then
+				local c = enamel.Color
+				T.check(math.abs(c.R - c.G) + math.abs(c.G - c.B) > 0.05 and c ~= Color3.new(1, 1, 1), "p4 portal mesh: ...tinted from the player's portal colour", tostring(c))
+			end
+			LocalPlayer:SetAttribute("HomePortal", nil)
+			advance(0.6)
+			T.check(Fx.Portal(LocalPlayer) == nil, "p4 portal mesh: ...and it shrinks away like the Part one")
+		end)
+		if cam and savedCam then
+			cam.CFrame = savedCam
+		end
+		LocalPlayer:SetAttribute("HomePortal", nil)
+		advance(0.3)
+		ML._Reset()
+		root:Destroy()
+		local P6 = rawget(_G, "P6Pets")
+		if P6 and P6.MeshMode then
+			P6.Install(P6.PetKeys()) -- --mesh: put back the global fixture set that _Reset wiped
+		end
+		T.check(ok, "p4 portal mesh: scenario ran to the end", tostring(err))
+		KC.flushErrors("client_p4portal_mesh")
 	end)
 
 	-- the followers' dive (PetController, wave 2) with HomePortalFx drawing the same portal

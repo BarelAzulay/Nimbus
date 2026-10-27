@@ -6748,6 +6748,19 @@
    "structureHash": "99ce61110645c690c90441b29da73444",
    "tris": 3794
   },
+  "gate_homeportal": {
+   "class": "gates",
+   "contentHash": "440050fa0c26ba5ab0d033f16ae83b72",
+   "description": "Nimbus Climb home portal: the player's homestead gate (coursed stone pillars, oak arch with bronze straps, keystone plate in the portal colour, ivy; the Neon vortex stays in Roblox)",
+   "displayName": "NC Gate Homeportal",
+   "fbx": "blender/out/gate_homeportal.fbx",
+   "fbxSha256": "e18c3fe5e1bbc51dad0cd6986537c0438c55b6e7ea593501f7dc56cbf2c86190",
+   "manifest": "src/shared/MeshManifests/gate_homeportal.lua",
+   "maxTrianglesPerMesh": 1856,
+   "parts": 4,
+   "structureHash": "3575d1fbcd4acd5c8e03beb15c5ec486",
+   "tris": 2452
+  },
   "gate_obby": {
    "class": "gates",
    "contentHash": "8a9a4f041e67fd4468426a218bedba36",
