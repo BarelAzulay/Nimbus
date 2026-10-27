@@ -159,7 +159,7 @@ local SIGNATURE_PETS = {
 -- every attack variant a recipe can be asked for: { Attack, Kind?, Shape?, label }
 local function variants()
 	local out = {}
-	for _, a in ipairs({ "Melee", "Ranged", "Hurt", "Ko", "Victory" }) do
+	for _, a in ipairs({ "Melee", "Ranged", "Hurt", "Ko", "Victory", "ShieldHit" }) do
 		out[#out + 1] = { Attack = a, label = a }
 	end
 	for _, s in ipairs(SHAPES) do
@@ -543,7 +543,7 @@ S.p7vfx_catalog = guarded("p7vfx_catalog", function()
 	local ranges = T.tally("p7vfx catalog: attack beats in range (Charge 0.12-0.3 / specials <= 0.8, Release 0.05, Impact 0.15, Linger 0.4-1.0)")
 	for _, element in ipairs(elements) do
 		for _, v in ipairs(variants()) do
-			if v.Attack ~= "Hurt" and v.Attack ~= "Ko" and v.Attack ~= "Victory" then
+			if v.Attack ~= "Hurt" and v.Attack ~= "Ko" and v.Attack ~= "Victory" and v.Attack ~= "ShieldHit" then
 				for _, rarity in ipairs(RARITIES) do
 					local r = C.Resolve({ Element = element, Attack = v.Attack, Kind = v.Kind, Shape = v.Shape, Rarity = rarity, Mine = true })
 					local b = r and r.Beats or {}
@@ -1170,6 +1170,41 @@ S.p7vfx_catalog = guarded("p7vfx_catalog", function()
 		"p7vfx catalog: Task 10 element takes: Earth hurls a boulder, Celestial a star, Nature's root cage, Water's splash pounce (no crack), Flame's fire breath, Shadow's glitch haste, Storm's soft heal glints")
 	local hyd = C.Resolve({ Element = "Shadow", Attack = "Special", Kind = "Rally", Rarity = "Secret", PetId = "hydralotl", Mine = true })
 	T.check(hyd and hyd.Sig and hyd.Sig.Actor and hyd.Sig.Actor.At == "Behind", "p7vfx catalog: Hydralotl's serpents rise Behind the pet (a documented At)")
+	-- Task 10 review I1 (Ruling 17): the Shield ripples when a later hit is absorbed: ShieldHit resolves for every element
+	-- x rarity: the hex shell (vfx_shell, see-through Glass) + the fx_hexshield pulse in the element's Mid, at most 1
+	-- emitter, no light, no charge, a short linger (it plays on every absorbed hit)
+	local ripple = T.tally("p7vfx catalog: ShieldHit (the shield ripple): every element x rarity, hex shell + hex pulse in the element's colour, <= 1 emitter, 0 lights, no charge")
+	for _, element in ipairs(elements) do
+		for _, rarity in ipairs(RARITIES) do
+			local r = C.Resolve({ Element = element, Attack = "ShieldHit", Rarity = rarity, Mine = true })
+			local burst = r and layerById(r, "Burst")
+			local lights = 0
+			for _, l in ipairs(r and r.Layers or {}) do
+				if l.Kind == "Light" then
+					lights = lights + 1
+				end
+			end
+			ripple:case(r ~= nil and r.Core.Key == "vfx_shell" and r.Core.Path == "Self" and r.Core.Material == "Glass" and r.Core.Transparency >= 0.5
+				and burst and burst.Texture == "fx_hexshield" and burst.Color == C.Elements[element].Palette.Mid and burst.At == "Self"
+				and emitterCount(r) <= 1 and lights == 0 and r.Beats.Charge == 0 and r.ImpactAt == 0 and r.Beats.Linger <= 0.5,
+				fmt("%s %s: core %s %s, burst %s, %d emitters, %d lights, charge %s, linger %s", element, rarity, tostring(r and r.Core.Key), tostring(r and r.Core.Material),
+					tostring(burst and burst.Texture), r and emitterCount(r) or -1, lights, tostring(r and r.Beats.Charge), tostring(r and r.Beats.Linger)))
+		end
+	end
+	ripple:report()
+	-- Task 10 review I2: the Beam draws no Mythic double crescent at any rarity (a slash arc on a beam reads as nothing and
+	-- took a beam from the spiral); its Spiral keeps 2 arcs under the cap (KeepCount 2: AttackFx beamBudget)
+	local beamBad = {}
+	for _, element in ipairs(elements) do
+		for _, rarity in ipairs(RARITIES) do
+			local r = C.Resolve({ Element = element, Attack = "Special", Kind = "Beam", Rarity = rarity, Mine = true })
+			local sp = layerById(r, "Spiral")
+			if layerById(r, "DoubleArc") or not (sp and sp.Count >= 2 and sp.KeepCount == 2) then
+				beamBad[#beamBad + 1] = element .. " " .. rarity
+			end
+		end
+	end
+	T.check(#beamBad == 0, "p7vfx catalog: the Beam has no DoubleArc at any rarity, its Spiral keeps 2 arcs (KeepCount 2)", table.concat(beamBad, ", "))
 end)
 
 ----------------------------------------------------------------------

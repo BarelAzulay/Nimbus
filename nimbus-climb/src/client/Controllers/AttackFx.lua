@@ -7,7 +7,7 @@
 -- API:
 --   AttackFx.Play(ctx) -> bool     false = not played (the caller draws its cube Fx.* instead): unknown attack /
 --       element / kind / shape, no source point, a texture key missing from TextureIds, the budget full, an error.
---       ctx = { Attack ("Melee" | "Ranged" | "Special" | "Element" | "Hurt" | "Ko" | "Victory"), Kind (Special),
+--       ctx = { Attack ("Melee" | "Ranged" | "Special" | "Element" | "Hurt" | "Ko" | "Victory" | "ShieldHit" (no pose)), Kind (Special),
 --               Shape (Element: "Cone" | "Circle" | "Line"), Element, Rarity, Stage, PetId,
 --               From = { Unit, Model, Pos }, To = { Unit, Model, Pos } or a list of them (allies / several targets),
 --               Mine (own team: full density, camera punch, screen glow), Crit, Strong, Miss,
@@ -59,7 +59,8 @@
 -- Play returns false. Per effect: MAX_EMITTERS (6 High / 2 Low) ParticleEmitters, MAX_BEAMS, MAX_TRAILS,
 -- MAX_LIGHTS, MAX_CORES solid pieces. Over a cap the layers are RANKED, never cut in catalog order: emitters by
 -- emitterRank (the Burst, LowKeep, impact detail ...), beams by beamRank (the alive detail, the recipe's own beams, the
--- ladder's DoubleArc / ShotArcs; one beam each first, then each layer's own count, best first: beamBudget).
+-- ladder's DoubleArc / ShotArcs; one beam each first, then each layer's KeepCount (a kind's identity: the Beam's two
+-- spiral arcs, Task 10 review I2), then each layer's own count, best first: beamBudget).
 -- Counts are the catalog's FULL density x recipe.Density (0.6 for others' pets)
 -- x 0.5 at Low. Emitters stay Enabled = false (Rate 0) and are fired with Emit(): one emitter serves several points
 -- (allies, rain) and nothing ever streams on by itself.
@@ -1390,7 +1391,11 @@ local function buildCore(eff)
 				addSolid(eff, key, look({ Move = MOVE.Ring, Flat = true, Anchor = "Self", T0 = t0, TG = t0 + 0.45, TF = t0 + 0.1, T1 = t0 + 0.55, From = 0.3, To = finite(core.Grow) and core.Grow or 3 }))
 			end
 		elseif core.Flash or core.Poof then
-			addSolid(eff, key, look({ Move = MOVE.Pop, Anchor = "Self", T0 = 0, T1 = core.Poof and min(eff.EndRel, 0.7) or min(eff.EndRel, 0.3), From = core.Poof and 0.8 or 0.6, To = core.Poof and 2 or 1.6, Trans = core.Poof and 0.3 or 0.15 }))
+			-- (Task 10 review I1: the ShieldHit ripple sets its own From / To and a see-through shell; the hurt flash / KO
+			-- poof keep their defaults)
+			local from = finite(core.From) and core.From or (core.Poof and 0.8 or 0.6)
+			local to = finite(core.To) and core.To or (core.Poof and 2 or 1.6)
+			addSolid(eff, key, look({ Move = MOVE.Pop, Anchor = "Self", T0 = 0, T1 = core.Poof and min(eff.EndRel, 0.7) or min(eff.EndRel, 0.3), From = from, To = to, Trans = max(trans, core.Poof and 0.3 or 0.15) }))
 		else
 			addSolid(eff, key, look({ Move = MOVE.Star, T0 = T.Travel, T1 = eff.EndRel }))
 		end
@@ -1475,14 +1480,19 @@ local function beamBudget(layers, cap)
 		end
 		give[e.L], left = 1, left - 1
 	end
-	for _, e in ipairs(ranked) do
-		if left <= 0 then
-			break
-		end
-		local g = give[e.L]
-		if g and e.N > g then
-			local more = min(e.N - g, left)
-			give[e.L], left = g + more, left - more
+	-- (Task 10 review I2: a layer's KeepCount, the kind's / element's identity like the Beam's two spiral arcs, is
+	-- filled before any other layer's second beam; then each layer's own count, best first)
+	for pass = 1, 2 do
+		for _, e in ipairs(ranked) do
+			if left <= 0 then
+				break
+			end
+			local g, k = give[e.L], e.L.KeepCount
+			local want = (pass == 2) and e.N or (finite(k) and min(e.N, floor(k)) or 0)
+			if g and want > g then
+				local more = min(want - g, left)
+				give[e.L], left = g + more, left - more
+			end
 		end
 	end
 	return give

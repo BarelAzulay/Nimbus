@@ -128,6 +128,26 @@ local function allHidden(folder)
 	return true
 end
 
+-- (Task 10 review M2 / I2, test 16) the identity layers keep their COUNT at every rarity, not just one item: the Beam's
+-- two spiral arcs (the 4-beam cap with the element's alive beams and the Mythic double crescent cut them to one),
+-- Storm's two crackle bolts / cage arcs (a third from Legendary when the cap has room); the wrap streams.
+-- { kind = { layerId = at least n } }, checked where the recipe has the layer. -> the shortfalls ({} = fine)
+local IDENT_COUNT = { Beam = { Spiral = 2, Wrap = 1 }, Blast = { Crackle = 2 }, Freeze = { Arcs = 2 } }
+local function identityShort(kind, recipe, per)
+	local out = {}
+	for id, want in pairs(IDENT_COUNT[kind] or {}) do
+		local has = false
+		for _, l in ipairs(recipe.Layers) do
+			has = has or l.Id == id
+		end
+		local n = per[id] or 0
+		if has and n < want then
+			out[#out + 1] = string.format("%d x %s (want >= %d)", n, id, want)
+		end
+	end
+	return out
+end
+
 S.client_p7vfx_engine = guarded("client_p7vfx_engine", function()
 	local Fx = moduleAt(ROOTS.client .. "/Controllers/AttackFx")
 	local Cat = moduleAt(ROOTS.shared .. "/AttackFxCatalog")
@@ -1100,6 +1120,9 @@ S.client_p7vfx_engine = guarded("client_p7vfx_engine", function()
 							why[#why + 1] = "no " .. id
 						end
 					end
+					for _, short in ipairs(identityShort(kind, r, per)) do -- (review M2: at their count, IDENT_COUNT)
+						why[#why + 1] = short
+					end
 					local own = OWN[e] and OWN[e][kind]
 					if own then
 						local id, from = string.match(own, "^([^@]+)@?(.*)$")
@@ -1138,7 +1161,7 @@ S.client_p7vfx_engine = guarded("client_p7vfx_engine", function()
 		end
 	end
 	T.check(#kindBad == 0 and kindSeen == 8 * 9 * #Cat.Rarities,
-		"Task 10: every element x special kind x rarity plays within the caps and draws all its layers, its alive detail and its kind / element identity (support kinds on 4 allies)",
+		"Task 10: every element x special kind x rarity plays within the caps and draws all its layers, its alive detail and its kind / element identity at full count (Beam 2 spiral arcs, Storm 2 crackle / cage arcs; support kinds on 4 allies)",
 		fmt("%d ok; %s", kindSeen, table.concat(kindBad, " | ")))
 	Fx.ClearAll()
 	-- 16b) Low quality: every element x kind keeps 2 emitters at most: the Burst and the kind's chosen one (LowKeep)
@@ -1499,11 +1522,32 @@ S.client_p7vfx_battle = guarded("client_p7vfx_battle", function()
 				local want = expected(ev)
 				local n0 = #calls
 				KC.toClient("BattleState", "Events", { ev }, id)
-				local got = {}
+				local got, ripples = {}, {}
 				for i = n0 + 1, #calls do
-					got[#got + 1] = calls[i]
+					-- (Task 10 review I1: an absorbed hit also ripples the victim's shield: ShieldHit, apart from the attack's play)
+					if calls[i].Attack == "ShieldHit" then
+						ripples[#ripples + 1] = calls[i]
+					else
+						got[#got + 1] = calls[i]
+					end
 				end
 				local label = ev.type .. (ev.kind and (" " .. tostring(ev.kind)) or "") .. " #" .. tostring(ev.from or ev.unit)
+				if ev.type == "Hit" then
+					local v, a = BC.GetUnit(tonumber(ev.to) or -1), BC.GetUnit(tonumber(ev.from) or -1)
+					local rip = (tonumber(ev.absorbed) or 0) > 0 and not ev.miss and v ~= nil and v.Kind ~= "Boss" and drawable(v) and v.Model ~= nil
+						and not (a and a.Kind == "Boss" and not v.Mine)
+					if #ripples ~= (rip and 1 or 0) then
+						bad[#bad + 1] = fmt("%s (absorbed %s): %d shield ripples, %d expected", label, tostring(ev.absorbed), #ripples, rip and 1 or 0)
+					elseif rip then
+						local c = ripples[1]
+						if c.From ~= v.Id or type(c.DueAt) ~= "number" or (got[1] and got[1].DueAt ~= c.DueAt) then
+							bad[#bad + 1] = fmt("%s: the shield ripple from %s at %s (the hit's play at %s)", label, tostring(c.From), tostring(c.DueAt), tostring(got[1] and got[1].DueAt))
+						end
+						seen.ShieldHit = (seen.ShieldHit or 0) + 1
+					end
+				elseif #ripples > 0 then
+					bad[#bad + 1] = label .. ": a shield ripple on a " .. ev.type
+				end
 				if want == nil then
 					if #got > 0 then
 						bad[#bad + 1] = label .. ": " .. #got .. " plays, none expected (" .. tostring(got[1].Attack) .. ")"
@@ -1663,6 +1707,56 @@ S.client_p7vfx_battle = guarded("client_p7vfx_battle", function()
 		force = nil
 		T.check(#liveBad == 0, "handlers: Special / Element / ranged Hit / Buff play AttackFx once and draw no cube Fx while it plays", table.concat(liveBad, "; "))
 		T.check(#fallbackBad == 0, "handlers: when AttackFx.Play returns false the old cube Fx.* call still runs", table.concat(fallbackBad, "; "))
+		-- 2a) Task 10 review I1 (Ruling 17: "a hexagon bubble around each ally, rippling when hit"): after a Shield, every
+		--     hit it absorbs plays ShieldHit on the victim at the hit's time (on arrival, the same DueAt as the hit's own
+		--     play), in the look of the pet whose shield it is; 1 emitter, no light. A plain hit (nothing absorbed) does not
+		do
+			local caster = helper or fighter
+			pulse(1.8)
+			KC.toClient("BattleState", "Events", { { type = "Special", unit = caster, kind = "Shield", name = "Test Shield", x = f.X, z = f.Z, shields = { fighter } } }, id)
+			pulse(0.6)
+			local function hitCalls(ev)
+				pulse(0.8)
+				local n0 = #calls
+				KC.toClient("BattleState", "Events", { ev }, id)
+				local got, rip = {}, nil
+				for i = n0 + 1, #calls do
+					got[#got + 1] = calls[i]
+					if calls[i].Attack == "ShieldHit" then
+						rip = calls[i]
+					end
+				end
+				local fx = nil
+				for _, e in ipairs(AF._Live()) do
+					if e.Recipe and e.Recipe.Attack == "ShieldHit" then
+						fx = e
+					end
+				end
+				return got, rip, fx
+			end
+			local look = Cat.Unit(infos[caster] or {})
+			local got1, rip1, fx1 = hitCalls({ type = "Hit", from = boss, to = fighter, dmg = 2, absorbed = 6 })
+			local hurt1 = nil
+			for _, c in ipairs(got1) do
+				if c.Attack == "Hurt" then
+					hurt1 = c
+				end
+			end
+			T.check(rip1 and rip1.Result == true and rip1.From == fighter and hurt1 and type(rip1.DueAt) == "number" and rip1.DueAt == hurt1.DueAt
+				and rip1.DueAt > rip1.At and #got1 == 2,
+				"shield ripple: a boss hit my fighter's shield absorbs plays ShieldHit on the fighter (on arrival, the hit's DueAt) beside its Hurt",
+				fmt("%d plays, ripple %s from %s due %s (hurt due %s)", #got1, tostring(rip1 and rip1.Result), tostring(rip1 and rip1.From), tostring(rip1 and rip1.DueAt), tostring(hurt1 and hurt1.DueAt)))
+			T.check(rip1 and rip1.Element == look.Element and rip1.Rarity == look.Rarity, "shield ripple: in the look of the pet whose Shield it is (its element and rarity)",
+				fmt("%s %s, want %s %s", tostring(rip1 and rip1.Element), tostring(rip1 and rip1.Rarity), tostring(look.Element), tostring(look.Rarity)))
+			T.check(fx1 and fx1.Emitters <= 1 and fx1.Lights == 0 and fx1.Recipe.Core.Key == "vfx_shell", "shield ripple: the hex shell + one emitter, no light",
+				fx1 and fmt("%d emitters, %d lights, core %s", fx1.Emitters, fx1.Lights, tostring(fx1.Recipe.Core.Key)) or "no live ShieldHit")
+			local got2, rip2 = hitCalls({ type = "Hit", from = boss, to = fighter, dmg = 5 })
+			T.check(rip2 == nil and #got2 == 1 and got2[1].Attack == "Hurt", "shield ripple: a plain hit (nothing absorbed) plays only its Hurt", fmt("%d plays", #got2))
+			-- a special's damage the shield absorbs ripples too (its own effect is the special's)
+			local got3, rip3 = hitCalls({ type = "Hit", from = boss, to = fighter, dmg = 0, absorbed = 9, special = "Blast" })
+			T.check(rip3 and rip3.Result == true and #got3 == 1, "shield ripple: a special's hit the shield absorbs ripples it (one play)", fmt("%d plays", #got3))
+			pulse(1)
+		end
 		-- DODGED! on a miss (both ways)
 		local function dodged()
 			local fx = workspace:FindFirstChild("ClientBattle") and workspace.ClientBattle:FindFirstChild("Fx")

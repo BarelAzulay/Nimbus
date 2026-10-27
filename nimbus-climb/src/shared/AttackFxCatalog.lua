@@ -17,7 +17,7 @@
 --   Shapes[shape]                               the 8 element attacks (Cone / Circle / Line of BattleCatalog.ElementAttacks)
 --   Specials[kind]                              "Specials (the 9 kinds)": core, beats, extra layers, skipped ladder layers;
 --                                               each element retextures them by its sheets (slots) + Elements[e].Specials
---   Reactions (Hurt / Ko / Victory)             the small reaction effects
+--   Reactions (Hurt / Ko / Victory / ShieldHit) the small reaction effects (ShieldHit: a shield absorbs a later hit)
 --   Signatures[petId]                           "Signature specials (12 pets)": overrides on top of their kind
 --   Textures[key]                               mirror of blender/vfx/textures.json { Grid = 4 | 1, Baked = bool } (smoke
 --                                               p7vfx_catalog checks it): Grid 1 strips (fx_lightning, fx_speedlines) are
@@ -29,7 +29,7 @@
 --                                                                  unknown rarity = Common, stage clamped to 0..2 (non-number 0)
 --   AttackFxCatalog.Resolve(req) -> recipe | nil                   req = { Element, Attack, Kind, Shape, Rarity, Stage, PetId,
 --                                                                  Mine, Distance? }; Attack = "Melee" | "Ranged" | "Special" |
---                                                                  "Element" | "Hurt" | "Ko" | "Victory"; Kind = one of the 9
+--                                                                  "Element" | "Hurt" | "Ko" | "Victory" | "ShieldHit"; Kind = one of the 9
 --                                                                  special kinds (Special; a signature pet may leave it nil);
 --                                                                  Shape = "Cone" | "Circle" | "Line" (Element; nil = the element's
 --                                                                  BattleCatalog shape); Distance = studs to the target (projectile
@@ -48,7 +48,9 @@
 --                Layers = { { Id, Kind ("Emitter"|"Beam"|"Trail"|"Light"|"Ring"|"Decal"|"Mesh"), Beat, At, Texture?, Key?,
 --                Color, Count?, Size?, Motion?, Delay?, Transparency? (0..1: lifts the layer's whole fade, see-through),
 --                LightEmission? (overrides the sheet's / beam's default; the engine lights a layer under 0.5 by the scene
---                and starts a glow hot from 0.8), SpeedScale? (x the emitter preset's speed), ... } } (a template's
+--                and starts a glow hot from 0.8), SpeedScale? (x the emitter preset's speed), KeepCount? (n: a Beam layer
+--                that is the kind's / element's identity: under the 4-beam cap it gets n beams before any other layer's
+--                second beam), ... } } (a template's
 --                Except = { [Attack or special Kind] = true } leaves
 --                it out of those attacks), Alive = { Kind ("Emitter"|"Beam"|"Decal"|"Mesh"), Texture?,
 --                Key?, Motion, Color, Count, Seconds, Text } ({} = none) }
@@ -131,7 +133,7 @@ end
 -- Names
 ----------------------------------------------------------------------
 AttackFxCatalog.Rarities = { "Common", "Uncommon", "Rare", "Epic", "Legendary", "Mythic", "Secret" }
-AttackFxCatalog.AttackNames = { "Melee", "Ranged", "Special", "Element", "Hurt", "Ko", "Victory" }
+AttackFxCatalog.AttackNames = { "Melee", "Ranged", "Special", "Element", "Hurt", "Ko", "Victory", "ShieldHit" }
 AttackFxCatalog.KindNames = { "Blast", "Heal", "Shield", "Storm", "Pounce", "Freeze", "Beam", "Rally", "Haste" } -- PetCatalog.SpecialKinds
 AttackFxCatalog.ShapeNames = { "Cone", "Circle", "Line" }
 
@@ -503,8 +505,9 @@ AttackFxCatalog.Elements = {
 		-- (Task 10) ball lightning: the Blast's orb crackles at the hit; the Freeze cage is electric (two arcs crackle round
 		-- it); the Heal is soft blue glints (Gemini: sparks rising off allies read as electrocution, not healing)
 		Specials = {
-			Blast = { Layers = { { Id = "Crackle", Kind = "Beam", Texture = "fx_lightning", Beat = "Impact", At = "$Hit", Count = 2 } } },
-			Freeze = { Layers = { { Id = "Arcs", Kind = "Beam", Texture = "fx_lightning", Beat = "Impact", At = "$Hit", Count = 2 } } },
+			-- (KeepCount, Task 10 review I2 / M2: both bolts at every rarity; the stray strikes (alive) take what is left)
+			Blast = { Layers = { { Id = "Crackle", Kind = "Beam", Texture = "fx_lightning", Beat = "Impact", At = "$Hit", Count = 2, KeepCount = 2 } } },
+			Freeze = { Layers = { { Id = "Arcs", Kind = "Beam", Texture = "fx_lightning", Beat = "Impact", At = "$Hit", Count = 2, KeepCount = 2 } } },
 			Heal = { Slots = { Motif = "fx_sparkle" }, Tints = { Spiral = rgb(150, 170, 255) } },
 		},
 	},
@@ -671,14 +674,19 @@ AttackFxCatalog.Specials = {
 		ThickBand = { 1.1, 1.3, 1.5, 1.7 },
 		Beats = { Charge = 0.5, Travel = 0.1, Linger = 0.5 },
 		Layers = {
-			{ Id = "Spiral", Kind = "Beam", Texture = "$Arc", Beat = "Travel", At = "Path", Tint = "Edge", Spiral = true, Count = 2 },
+			-- (KeepCount, Task 10 review I2: the kind's identity, "wrapped in spiral arcs", keeps both arcs under the 4-beam
+			-- cap; the element's alive beams take what is left, never the second arc (a third arc from Legendary when there
+			-- is room))
+			{ Id = "Spiral", Kind = "Beam", Texture = "$Arc", Beat = "Travel", At = "Path", Tint = "Edge", Spiral = true, Count = 2, KeepCount = 2 },
 			{ Id = "Flare", Kind = "Emitter", Texture = "fx_glow", Beat = "Impact", At = "$Hit", Tint = "Hot", Count = 4, Size = 3 },
 			-- (Task 10) the element streams along the beam while it holds (fire licks, a water jet's drops, snow, petals,
 			-- dust, sparks, sparkle, wisps): sparse and small, drifting off the beam (Gemini: a dense wrap looks messy)
 			{ Id = "Wrap", Kind = "Emitter", Texture = "$Wrap", Beat = "Travel", At = "Path", Along = true, Tint = "Mid", Count = 9, Size = 0.9 },
 		},
-		-- (no Afterimage: the beam does not move, a trail on it would draw nothing)
-		Skip = { Trail = true, Slash = true, Afterimage = true },
+		-- (no Afterimage: the beam does not move, a trail on it would draw nothing; Task 10 review I2: no Mythic double
+		-- crescent either, a slash arc on a beam reads as nothing and took one of the 4 beams from the spiral: the wider
+		-- ThickBand marks Mythic / Secret)
+		Skip = { Trail = true, Slash = true, Afterimage = true, DoubleArc = true },
 	},
 	Pounce = {
 		Text = "crouch, a leap with afterimages, a slam landing that cracks the ground",
@@ -797,6 +805,20 @@ AttackFxCatalog.Reactions = {
 		Slots = { Burst = "fx_sparkle" },
 		Layers = { { Id = "Confetti", Kind = "Emitter", Texture = "$Motif", Beat = "Impact", At = "Self", Tint = "Core", Count = 10, Size = 1 } },
 		Skip = REACTION_SKIP,
+	},
+	-- (Task 10 review I1, Ruling 17: "a hexagon bubble round each ally, rippling when hit") a hit the shield absorbs after
+	-- the Shield's own impact: the bubble swells out a little and fades (a see-through glass shell, From / To x the pet's
+	-- size) and the hex sheet pulses on it, in the shield's element colour (BattleController plays it on the victim at
+	-- the hit). One emitter, no light, no charge: it plays on every absorbed hit of a 6 s shield
+	ShieldHit = {
+		Text = "the shield ripples: the hex bubble swells and fades as it absorbs a hit",
+		Core = { Key = "vfx_shell", Path = "Self", Flash = true, From = 1, To = 1.3, Material = "Glass", KeepMaterial = true, Transparency = 0.6 },
+		Beats = { Charge = 0, Release = 0, Travel = 0, Linger = 0.35 },
+		Slots = { Burst = "fx_hexshield" },
+		BurstBoost = { Size = 0.7, Count = 0.5 }, -- (a pulse, not the Shield's full burst)
+		LowKeep = { "Burst" },
+		Short = true, -- (like the Hurt: the linger does not grow with the band)
+		Skip = { Charge = true, Trail = true, Slash = true, GroundGlow = true, Shockwave = true, Flash = true, Afterimage = true, Bloom = true, DoubleArc = true, Field = true, PlasmaRim = true },
 	},
 }
 
@@ -979,8 +1001,9 @@ local function attackDef(req, element, sig)
 			end
 		end
 		return {
-			Core = core, Beats = copy(def.Beats), Skip = def.Skip or {}, Swap = def.Swap, Layers = { def.Layers, es.Layers }, Detail = {},
-			Slots = { def.Slots, es.Slots }, Alive = true, Extras = def.Detail ~= false, Kind = kind, Text = def.Text, Special = true,
+			-- (review M1: no leading nil hole in the lists: slotsOf / ipairs read them in order)
+			Core = core, Beats = copy(def.Beats), Skip = def.Skip or {}, Swap = def.Swap, Layers = { def.Layers or {}, es.Layers }, Detail = {},
+			Slots = { def.Slots or {}, es.Slots }, Alive = true, Extras = def.Detail ~= false, Kind = kind, Text = def.Text, Special = true,
 			BurstShape = def.BurstShape, LowKeep = lowKeep, Drop = es.Drop, Tints = es.Tints, CoreCount = def.CoreCount, ThickBand = def.ThickBand,
 		}
 	end
@@ -988,7 +1011,10 @@ local function attackDef(req, element, sig)
 	if not def then
 		return nil
 	end
-	return { Core = def.Core, Beats = copy(def.Beats), Skip = def.Skip or {}, Layers = { def.Layers }, Detail = {}, Slots = { def.Slots }, Alive = false, Extras = false, Text = def.Text }
+	return {
+		Core = def.Core, Beats = copy(def.Beats), Skip = def.Skip or {}, Layers = { def.Layers or {} }, Detail = {}, Slots = { def.Slots or {} }, Alive = false,
+		Extras = false, Text = def.Text, BurstBoost = def.BurstBoost, LowKeep = def.LowKeep, Short = def.Short == true,
+	}
 end
 
 local function slotsOf(def, element, sig)
@@ -1172,7 +1198,7 @@ function AttackFxCatalog.Resolve(req)
 		end
 	end
 	local linger = beats.Linger or 0.5
-	if req.Attack ~= "Hurt" then
+	if req.Attack ~= "Hurt" and not def.Short then
 		linger = linger + B.LingerStep * (band - 1)
 	end
 	local out = {

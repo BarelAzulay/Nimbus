@@ -2725,11 +2725,26 @@ end
 -- a Hit: a pet's plain attack (melee swipe / ranged shot; Miss = it flies past), a boss's hit on MY pet (its Hurt;
 -- other players' pets keep the nudge: a boss slam can hit a dozen pets and the budget is for the attacks). The damage
 -- of a special / element / zone / burn is drawn by its own event.
+-- (Task 10 review I1, Ruling 17) a hit the victim's shield absorbs: the bubble ripples (ShieldHit) on the victim at the
+-- hit, in the look of the pet whose Shield it is (u.shieldBy: the Shield special / the helper's shield buff), else the
+-- victim's own. Never on a boss; a boss's hit ripples only MY pets (like its Hurt: one slam can hit a dozen pets)
+function Atk.ShieldHit(B, v, a, dueAt)
+	if v.isBoss or not v.model or not Atk.Drawable(v) or (a and a.isBoss and not v.mine) then
+		return false
+	end
+	local by = v.shieldBy and B.units[v.shieldBy] or nil
+	return Atk.Play(lookCtx(by or v, { Attack = "ShieldHit", PetId = false, From = Atk.Side(B, v), Mine = v.mine == true, DueAt = dueAt, Ground = groundOf(B, v) }))
+end
+
 function Atk.Hit(B, ev, dueAt)
 	local v = B.units[tonumber(ev.to) or -1]
 	local a = ev.from ~= nil and B.units[tonumber(ev.from) or -1] or nil
 	if not v or (ev.from ~= nil and not a) then
 		return nil
+	end
+	-- (any absorbed hit: a plain attack, a special's, an element's, a zone's; the attack's own effect is apart)
+	if num(ev.absorbed, 0) > 0 and not ev.miss then
+		Atk.ShieldHit(B, v, a, dueAt)
 	end
 	if ev.special or ev.element or ev.zone or ev.burn then
 		return "none"
@@ -3503,6 +3518,9 @@ Handlers[EV.Special] = function(B, ev)
 			if a and a.root and not a.parked then
 				a.shieldUntil = os.clock() + seconds + 0.5
 			end
+			if a and u then
+				a.shieldBy = u.id -- (its later absorbed hits ripple in u's look: Atk.ShieldHit)
+			end
 		end
 		local stun = num(S.Stun, 1) + 0.4
 		for _, id in ipairs(kind == "Freeze" and type(ev.stunned) == "table" and ev.stunned or {}) do
@@ -3533,6 +3551,9 @@ Handlers[EV.Special] = function(B, ev)
 			if a and a.root and not a.parked then
 				a.shieldUntil = os.clock() + seconds + 0.5
 				Fx.Ring(unitCenter(B, a), 2.2, COLORS.Shield, 10, 0.4, 0.5, 0.2)
+			end
+			if a and u then
+				a.shieldBy = u.id
 			end
 		end
 	elseif kind == "Pounce" then
@@ -3738,6 +3759,10 @@ Handlers[EV.Buff or "Buff"] = function(B, ev)
 	local played = Atk.Result(B, ev) -- AttackFx: the support special the buff is like, on the fighter
 	if helper and helper.mine then
 		helper.flyAt = os.clock() -- fly to the fighter and back
+	end
+	local bdef = BattleCatalog and type(BattleCatalog.Buffs) == "table" and BattleCatalog.Buffs[tostring(ev.kind)] or nil
+	if helper and fighter and type(bdef) == "table" and bdef.Effect == "Shield" then
+		fighter.shieldBy = helper.id -- (the shield's later absorbed hits ripple in the helper's look: Atk.ShieldHit)
 	end
 	if fighter then
 		calloutAbove(fighter, string.upper(tostring(ev.name or ev.kind or "BUFF")), color:Lerp(COLORS.White, 0.2), K.CALLOUT_PX, 1.4)
