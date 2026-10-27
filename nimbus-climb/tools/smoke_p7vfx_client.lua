@@ -1067,8 +1067,10 @@ local function studioRound3(env)
 		puffBad[#puffBad + 1] = "no mouth puff"
 	else
 		local c = pe.Color.Keypoints[1].Value
+		-- (review M3) the end colour too: the engine darkens it toward black, only Brightness keeps it white
+		local cEnd = pe.Color.Keypoints[#pe.Color.Keypoints].Value
 		local studs = maxKey(pe.Size)
-		if math.min(c.R, c.G, c.B) < 0.85 or pe.LightInfluence > 0 or pe.Brightness < 1.5 or minKey(pe.Transparency) < 0.4 or studs > 2 * elC.Size or puff.Count > 5 then
+		if math.min(c.R, c.G, c.B) < 0.85 or math.min(cEnd.R, cEnd.G, cEnd.B) * pe.Brightness < 1 or pe.LightInfluence > 0 or pe.Brightness < 1.5 or minKey(pe.Transparency) < 0.4 or studs > 2 * elC.Size or puff.Count > 5 then
 			puffBad[#puffBad + 1] = fmt("puff rgb %d,%d,%d, light influence %.2f, brightness %.2f, transparency %.2f, %.2f studs (%.2f x size), %d puffs", c.R * 255, c.G * 255, c.B * 255,
 				pe.LightInfluence, pe.Brightness, minKey(pe.Transparency), studs, studs / elC.Size, puff.Count)
 		end
@@ -1202,6 +1204,9 @@ local function studioRound3(env)
 			serpBad[#serpBad + 1] = fmt("%s: %d pieces (%d drawn), top %.2f over the caster's head, nearest %.2f flat (half-width %.2f), %.2f on the far side, transparency %.2f, rim in front %d frames",
 				view[1], #heads, seen, worstTop, nearest, halfW, behind, lowTrans, rimFront)
 		end
+	end
+	if cam and cam0 then -- (review M5) restore per block, not only after the last one
+		cam.CFrame = cam0
 	end
 	T.check(#serpBad == 0, "Task 11d S5 + I1: the Void Fangs heads root past the caster away from the camera (overhead: behind it), their tops under its name tag, 0.25 see-through, each rim behind its head for the viewer",
 		table.concat(serpBad, " | "))

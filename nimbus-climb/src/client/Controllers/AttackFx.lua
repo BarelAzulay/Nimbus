@@ -830,20 +830,17 @@ local function fadeTo(it, f)
 end
 
 -- (Task 11d) away from the viewer: the camera's look direction (flattened when `flatOnly`: a direction along the
--- floor), or `fallback` with no camera / a camera looking straight down
+-- floor), or `fallback` with no camera / a camera looking straight down. Called per rim piece per frame (Task 11d
+-- review I1): no closure, no pcall (reading cam.CFrame cannot throw)
 local function viewBack(fallback, flatOnly)
 	local cam = Workspace.CurrentCamera
 	if cam then
-		local ok, lv = pcall(function()
-			return cam.CFrame.LookVector
-		end)
-		if ok and typeof(lv) == "Vector3" then
-			if flatOnly then
-				lv = flat(lv)
-			end
-			if lv.Magnitude > 0.2 then
-				return lv.Unit
-			end
+		local lv = cam.CFrame.LookVector
+		if flatOnly then
+			lv = flat(lv)
+		end
+		if lv.Magnitude > 0.2 then
+			return lv.Unit
 		end
 	end
 	return fallback
