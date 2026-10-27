@@ -22,7 +22,7 @@
 --       destroyed mid-travel ends the effect at its last known point; From.Model may be nil (From.Pos only).
 --   AttackFx.Update(now)            advances every live effect and pose; called from BattleController's existing
 --                                   per-frame step (no RenderStepped / Heartbeat connection of its own)
---   AttackFx.Pose(unitId) -> { Name, P, Ranged, Amp?, Reach?, Blend, Prev? } | nil   the pose a battle unit shows now (PetPoses
+--   AttackFx.Pose(unitId, base?) -> { Name, P, Ranged, Amp?, Reach?, Blend, Prev? } | nil   the pose a battle unit shows now (PetPoses
 --       names; P 0..1). Blend = 1 normally; for AttackFx.CROSSFADE (0.12 s) after a pose replaces another mid-way,
 --       Blend rises 0 -> 1 and Prev = { Name, P, Ranged } is the replaced pose, still animating. The CALLER blends:
 --       root = frame * PoseBody(Prev):Lerp(PoseBody(cur), Blend), Animate with the current pose (Prev while
@@ -31,7 +31,10 @@
 --       Shoot (the head snaps forward, the body kicks back: never the lunge, player note 1); a melee Strike freezes for HIT_STOP (0.05 s) at the impact; Ko holds at P = 1 until
 --       Cancel(unitId) / ClearAll(). nil = no attack pose (the caller shows IdleBattle or nothing). A melee Strike carries
 --       Amp (the band's leap scale) and Reach (AttackFx.LeapReach at the Play: the leap lands on the target); the caller
---       passes both on to PetBuilder.PoseBody / Animate (PetPoses.Sample's amp, reach).
+--       passes both on to PetBuilder.PoseBody / Animate (PetPoses.Sample's amp, reach). A Pounce (Task 10) leaps like
+--       the melee (Reach = the gap, its landing on the slam); with `base` (Vector3, the unit's drawn spot before the pose)
+--       its Reach is what is LEFT from the base to the landing spot fixed at the Play: the server moves a pouncing pet to
+--       its target, and as the drawn base slides there the leap shrinks, so the pet is never carried past the target.
 --   AttackFx.LeapReach(src, tgt) -> number | nil   the melee leap's length in the caster's pose units (studs at scale
 --       1): from its front edge to the target's near edge, minus LEAP_MARGIN 0.3, clamped 0 .. LEAP_MAX 12 world studs,
 --       / the caster's PB_Scale (the leap's only clamp: PetPoses' LEAP_REACH_MAX is a safety ceiling that a reach from
@@ -84,6 +87,11 @@
 -- erupting). Layer Delay = seconds after its beat starts; At "Behind" = behind the caster. Unknown motions play as
 -- a plain burst. The signature Actor (vfx_sig_*) moves by its Motion (SpiralUp, Rise, ChargeThrough, Burst, Sweep,
 -- Orbit, RingRise, RiseRoar).
+-- Task 10 (the 9 special kinds): an Emitter with Along = true streams along mouth -> hit while the beam holds (the Beam's
+-- wrap); Drift = true streams off its points over its beat (the Haste gust); Shape "Plus" holds the sheet upright, no
+-- roll / spin (the Heal's plus sparkles); a Ring or Mesh layer At "Allies" puts its piece(s) on each ally (the Rally
+-- rings, the Nature ward's root); a Mesh layer's Transparency makes it see-through; the Pounce leaps the gap like the
+-- melee and its leap trails ride the pet's pivot (scripted hop without a model).
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Workspace = game:GetService("Workspace")
@@ -125,6 +133,8 @@ local K = {
 	-- the target's facing edges minus LEAP_MARGIN, clamped 0 .. LEAP_MAX world studs
 	LEAP_MARGIN = 0.3,
 	LEAP_MAX = 12,
+	POUNCE_DUR_MAX = 1.6, -- (Task 10) the Pounce's Strike: up to 1.6 s, its landing (p 0.26) on the slam
+	LEAP_TRAIL_UP = 0.3, -- (Task 10) the leap trails ride the pet this far over its pivot
 	BAND_RARITY = { "Common", "Rare", "Legendary", "Secret" },
 	PRIO = { Ko = 4, Cast = 3, Windup = 2, Strike = 2, Shoot = 2, Recoil = 2, Victory = 2, Hurt = 1 },
 }
@@ -975,6 +985,17 @@ function DRAW.Emitter(eff, it, t)
 		return
 	end
 	it.Acc = it.Acc - k
+	if it.Stream == "Along" then -- (Task 10) one particle at each of k points spread along the grown beam
+		local p0, p1 = eff.Mouth, eff.Hit
+		local reach = outCubic(seg(t, eff.Times.Travel, eff.Times.Impact))
+		for i = 1, min(k, 6) do
+			it.Seq = (it.Seq or 0) + 1
+			local f = (0.08 + 0.9 * hash(it.Seq, 51)) * reach
+			local j = (hash(it.Seq, 52) - 0.5) * 0.5 * eff.Size
+			emitAt(it, p0:Lerp(p1, f) + eff.Right * j + UP * ((hash(it.Seq, 53) - 0.5) * 0.4 * eff.Size), 1)
+		end
+		return
+	end
 	local n = atPoints(eff, it.At, pts)
 	local u = seg(t, it.T0, it.T1)
 	for i = 1, n do
@@ -1105,9 +1126,17 @@ function DRAW.Trail(eff, it, t)
 	local p, look
 	local u = seg(t, it.T0, it.T1)
 	if it.Mode == "Leap" then
-		local g0, g1 = eff.S, eff.Hit
-		p = g0:Lerp(g1, outCubic(u)) + UP * (1.6 * eff.Size * sin(pi * u)) + eff.Right * it.Side
-		look = g1 - g0
+		if eff.Src.Model then
+			-- (Task 10) the afterimages ride the leaping pet itself: its pivot carries the Strike pose (the drawn root), so
+			-- the streak follows the real jump, wherever the gap-based leap lands
+			p = eff.S + UP * K.LEAP_TRAIL_UP + eff.Right * it.Side
+			look = eff.Dir
+		else -- (no model: a scripted hop from the start point to the hit)
+			local g0, g1 = it.From or eff.S, eff.Hit
+			it.From = g0
+			p = g0:Lerp(g1, outCubic(u)) + UP * (1.6 * eff.Size * sin(pi * u)) + eff.Right * it.Side
+			look = g1 - g0
+		end
 	elseif it.Mode == "Wind" then
 		local c = eff.T[it.Ally] or eff.S
 		local a = u * TAU * 1.5 + it.Ally
@@ -1644,6 +1673,11 @@ local function tuneEmitter(eff, it, layer)
 		em.RotSpeed = NumberRange.new(-180, 180)
 		life = { 0.6, 0.9 }
 	end
+	-- (Task 10: the Heal's plus-shaped sparkles: the 4-point glint held upright, no random roll or spin = a "+")
+	if layer.Shape == "Plus" then
+		em.Rotation = NumberRange.new(0, 0)
+		em.RotSpeed = NumberRange.new(0, 0)
+	end
 	-- a layer's SpeedScale (Task 9: Earth's chunks flung further, so the break scatters instead of piling up)
 	if finite(layer.SpeedScale) and layer.SpeedScale > 0 then
 		em.Speed = NumberRange.new(em.Speed.Min * layer.SpeedScale, em.Speed.Max * layer.SpeedScale)
@@ -1683,6 +1717,10 @@ local function addEmitterLayer(eff, layer)
 		mode, preset, t1 = "Stream", "Cloud", T.Travel + 0.05
 	elseif layer.Spiral then
 		mode, preset, stream = "Stream", "Spiral", "Spiral"
+	elseif layer.Along then -- (Task 10: the Beam's wrap) the element streams along mouth -> hit while the beam holds
+		mode, preset, stream, t1 = "Stream", "Trail", "Along", T.Linger + 0.15
+	elseif layer.Drift then -- (Task 10: the Haste gust) the element streams off each point over the beat
+		mode, preset = "Stream", "Trail"
 	elseif layer.Fall or layer.Id == "Rain" then
 		mode, preset, at, t1 = "Stream", "Fall", "Above", T.Impact + 0.05
 	elseif beat == "Travel" and at == "Core" then
@@ -1794,6 +1832,9 @@ local function addTrailLayer(eff, layer)
 	local t1 = beatEnd(eff, beat)
 	if beat == "Travel" then
 		t1 = T.Impact
+	end
+	if layer.At == "Self" then -- (Task 10) the leap trails: from the take-off (the Strike starts at the release) to the landing
+		t0, t1 = min(t0, T.Release), T.Impact + 0.05
 	end
 	local list = {}
 	if layer.At == "Allies" then
@@ -1910,6 +1951,16 @@ local function addRingLayer(eff, layer)
 		})
 		return
 	end
+	if layer.At == "Allies" then -- (Task 10: the Rally lights up each ally) one ring under each ally (<= MAX_ALLIES)
+		for i = 1, min(K.MAX_ALLIES, max(1, #eff.T)) do
+			addSolid(eff, key, {
+				Layer = layer, Move = MOVE.Ring, Flat = true, Anchor = eff.T[i] and i or "Self", Color = layer.Color, Material = Enum.Material.Neon,
+				Trans = finite(layer.Transparency) and layer.Transparency or 0.1, T0 = t0, TG = t0 + 0.35, TF = t0 + 0.12,
+				T1 = min(eff.EndRel, t0 + 0.6), From = 0.4, To = finite(layer.Grow) and layer.Grow or 1.3, Spin = 1.5,
+			})
+		end
+		return
+	end
 	addSolid(eff, key, {
 		Layer = layer, Move = MOVE.Ring, Flat = flatRing or layer.At == "Ground", Anchor = anchor, Color = layer.Color, Material = Enum.Material.Neon,
 		Trans = finite(layer.Transparency) and layer.Transparency or 0.1, T0 = t0, TG = t0 + max(0.25, T.Linger - T.Impact + 0.2), TF = t0 + 0.08,
@@ -1928,26 +1979,39 @@ local function addMeshLayer(eff, layer)
 	local S = eff.Size * (finite(layer.Scale) and layer.Scale or 1)
 	local c = typeof(layer.Color) == "Color3" and layer.Color or WHITE
 	local m = layer.Motion
-	for i = 1, n do
-		local a = (i - 1) / n * TAU + hash(i, 41) * 0.6
-		local rad = (n == 1) and 0 or 1.1 * eff.Size
-		local it = { Layer = layer, Color = c, S = S, Anchor = "Hit", OffR = cos(a) * rad, OffD = sin(a) * rad, T0 = t0 }
-		if layer.Alive and m == "Melt" then
-			it.Move, it.Material, it.Trans, it.T1 = MOVE.Melt, Enum.Material.Glass, 0.15, min(eff.EndRel, t0 + (finite(layer.Seconds) and layer.Seconds or 1))
-			it.Rot = CFrame.Angles(pi / 2 - 0.2, hash(i, 42) * TAU, 0)
-		elseif layer.Alive and m == "Bounce" then
-			it.Move, it.Material, it.T1 = MOVE.Bounce, Enum.Material.SmoothPlastic, min(eff.EndRel, t0 + (finite(layer.Seconds) and layer.Seconds or 0.8))
-			it.T0 = T.Impact
-			it.VY, it.VH, it.Ang = (5 + 3 * hash(i, 43)) * eff.Size, (3 + 3 * hash(i, 44)) * eff.Size, a
-			it.SX, it.SY = 6 + 6 * hash(i, 45), 4 + 6 * hash(i, 46)
-		else -- Erupt / Wrap / anything else: up out of the ground around the target
-			it.Move, it.Material = MOVE.Rise, Enum.Material.Neon
-			it.TR = t0 + 0.04 * (i - 1)
-			it.TS = (layer.Alive and t0 + (finite(layer.Seconds) and layer.Seconds or 0.6) * 0.6) or (T.Linger + (eff.EndRel - T.Linger) * 0.3)
-			it.T1 = min(eff.EndRel, layer.Alive and t0 + (finite(layer.Seconds) and layer.Seconds or 0.6) or eff.EndRel)
-			it.Rot = CFrame.fromAxisAngle(V3(-sin(a), 0, cos(a)), (m == "Wrap") and -0.5 or -0.2) * CFrame.Angles(0, hash(i, 47) * TAU, 0)
+	-- (Task 10) At "Allies": the pieces on each ally (the Nature ward's root); Transparency: see-through (the ice / root
+	-- rings of the specials, like the element's see-through spikes)
+	local anchors = { "Hit" }
+	if layer.At == "Allies" then
+		anchors = {}
+		for a = 1, min(K.MAX_ALLIES, max(1, #eff.T)) do
+			anchors[a] = eff.T[a] and a or "Self"
 		end
-		addSolid(eff, key, it)
+		n = min(n, max(1, floor(12 / #anchors)))
+	end
+	local trans = finite(layer.Transparency) and clamp01(layer.Transparency) or nil
+	for _, anchor in ipairs(anchors) do
+		for i = 1, n do
+			local a = (i - 1) / n * TAU + hash(i, 41) * 0.6
+			local rad = (n == 1) and 0 or 1.1 * eff.Size
+			local it = { Layer = layer, Color = c, S = S, Anchor = anchor, OffR = cos(a) * rad, OffD = sin(a) * rad, T0 = t0, Trans = trans }
+			if layer.Alive and m == "Melt" then
+				it.Move, it.Material, it.Trans, it.T1 = MOVE.Melt, Enum.Material.Glass, 0.15, min(eff.EndRel, t0 + (finite(layer.Seconds) and layer.Seconds or 1))
+				it.Rot = CFrame.Angles(pi / 2 - 0.2, hash(i, 42) * TAU, 0)
+			elseif layer.Alive and m == "Bounce" then
+				it.Move, it.Material, it.T1 = MOVE.Bounce, Enum.Material.SmoothPlastic, min(eff.EndRel, t0 + (finite(layer.Seconds) and layer.Seconds or 0.8))
+				it.T0 = T.Impact
+				it.VY, it.VH, it.Ang = (5 + 3 * hash(i, 43)) * eff.Size, (3 + 3 * hash(i, 44)) * eff.Size, a
+				it.SX, it.SY = 6 + 6 * hash(i, 45), 4 + 6 * hash(i, 46)
+			else -- Erupt / Wrap / anything else: up out of the ground around the target
+				it.Move, it.Material = MOVE.Rise, Enum.Material.Neon
+				it.TR = t0 + 0.04 * (i - 1)
+				it.TS = (layer.Alive and t0 + (finite(layer.Seconds) and layer.Seconds or 0.6) * 0.6) or (T.Linger + (eff.EndRel - T.Linger) * 0.3)
+				it.T1 = min(eff.EndRel, layer.Alive and t0 + (finite(layer.Seconds) and layer.Seconds or 0.6) or eff.EndRel)
+				it.Rot = CFrame.fromAxisAngle(V3(-sin(a), 0, cos(a)), (m == "Wrap") and -0.5 or -0.2) * CFrame.Angles(0, hash(i, 47) * TAU, 0)
+			end
+			addSolid(eff, key, it)
+		end
 	end
 end
 
@@ -2024,7 +2088,9 @@ end
 ----------------------------------------------------------------------
 -- Poses
 ----------------------------------------------------------------------
-local function poseSample(entry, now)
+-- `base` (optional, Vector3): the unit's drawn position before the pose; a Pounce leap (seg.Landing) then reaches only
+-- from there to its landing spot, so a base the server slides to the target does not carry the pet past it (Task 10)
+local function poseSample(entry, now, base)
 	local best = nil
 	for _, s in ipairs(entry.Segs) do
 		if now >= s.T0 and (now < s.T0 + s.Dur or s.Hold) then
@@ -2038,7 +2104,12 @@ local function poseSample(entry, now)
 	if best.StopAt then
 		el = el - min(max(0, now - best.StopAt), best.StopDur)
 	end
-	return best.Name, clamp01(el / best.Dur), best.Ranged == true, best.Amp, best.Reach
+	local reach = best.Reach
+	if best.Landing and typeof(base) == "Vector3" then
+		local left = (best.Landing - flat(base)):Dot(best.Dir)
+		reach = max(0, min(K.LEAP_MAX, finite(left) and left or 0)) / best.Scale
+	end
+	return best.Name, clamp01(el / best.Dur), best.Ranged == true, best.Amp, reach
 end
 
 local function poseActive(entry, at)
@@ -2127,12 +2198,27 @@ local function schedulePoses(eff, now)
 			-- forward to loose the shot while the body kicks back; the pet stays at its spot
 			segs[#segs + 1] = { Name = "Shoot", T0 = st + T.Release, Dur = K.SHOOT, Ranged = true }
 		else
-			local dur = max(0.45, min(0.9, (T.Impact - T.Release) / 0.26))
+			-- (Task 10) the Pounce leaps across the whole gap like the melee: a longer flight, so its Strike may run longer
+			-- (POUNCE_DUR_MAX) for the landing (p 0.26) to fall on the slam
+			local pounce = A == "Special" and r.Kind == "Pounce"
+			local dur = max(0.45, min(pounce and K.POUNCE_DUR_MAX or 0.9, (T.Impact - T.Release) / 0.26))
 			-- the leap (player note (a)): it lands on the target at the impact (PetPoses Strike lands at p 0.26); a little
-			-- longer and higher per rarity band (Amp). Melee only: its Reach is the gap to the target, so the leap lands ON
-			-- it (Task 9 player decision); an element Cone / Line and the Pounce keep the short fixed hop (a blast from the spot)
-			segs[#segs + 1] = { Name = "Strike", T0 = st + T.Release, Dur = dur, StopAt = (not eff.Miss) and (st + T.Impact) or nil, StopDur = AttackFx.HIT_STOP,
-				Amp = 1 + K.LEAP_STEP * ((tonumber(r.Band) or 1) - 1), Reach = (A == "Melee") and AttackFx.LeapReach(eff.Src, eff.Targets[1]) or nil }
+			-- longer and higher per rarity band (Amp). Melee and Pounce: the Reach is the gap to the target, so the leap
+			-- lands ON it (Task 9 player decision; Task 10 for the Pounce); an element Cone / Line keeps the short fixed hop
+			-- (a blast from the spot)
+			local seg = { Name = "Strike", T0 = st + T.Release, Dur = dur, StopAt = (not eff.Miss) and (st + T.Impact) or nil, StopDur = AttackFx.HIT_STOP,
+				Amp = 1 + K.LEAP_STEP * ((tonumber(r.Band) or 1) - 1), Reach = (A == "Melee" or pounce) and AttackFx.LeapReach(eff.Src, eff.Targets[1]) or nil }
+			if pounce and seg.Reach and eff.Src.Last then
+				-- the landing in the world: the server moves a pouncing pet to its target (BattleSim), so its drawn base slides
+				-- there at the impact; AttackFx.Pose(unit, base) then shrinks the leap by what the base has covered, and the
+				-- pet stays on its landing spot instead of being carried past the target and back
+				local s = eff.Src.Model and tonumber(eff.Src.Model:GetAttribute("PB_Scale")) or 1
+				if not finite(s) or s <= 0 then
+					s = 1
+				end
+				seg.Landing, seg.Dir, seg.Scale = flat(eff.Src.Last) + eff.Dir * (seg.Reach * s), eff.Dir, s
+			end
+			segs[#segs + 1] = seg
 		end
 	elseif A == "Special" or A == "Element" then
 		-- Cast's release (p 0.66 .. 0.74) lands as the release beat ends
@@ -2538,13 +2624,13 @@ function AttackFx.Update(now)
 end
 
 -- (the returned table and its Prev are reused per pose entry: read them at once, do not keep them across frames)
-function AttackFx.Pose(unit)
+function AttackFx.Pose(unit, base)
 	local entry = St.poses[unit]
 	if not entry then
 		return nil
 	end
 	local now = St.now or os.clock()
-	local name, p, ranged, amp, reach = poseSample(entry, now)
+	local name, p, ranged, amp, reach = poseSample(entry, now, base)
 	local prev = entry.Prev
 	local out = entry.Out
 	if not out then
@@ -2554,7 +2640,7 @@ function AttackFx.Pose(unit)
 	out.Blend, out.Prev = 1, nil
 	if not name then
 		if prev and entry.SwitchAt and now < entry.SwitchAt then -- the new pose has not started: the old one plays on
-			local n2, p2, r2, a2, x2 = poseSample(prev, now)
+			local n2, p2, r2, a2, x2 = poseSample(prev, now, base)
 			if n2 then
 				out.Name, out.P, out.Ranged, out.Amp, out.Reach = n2, p2, r2, a2, x2
 				return out
@@ -2566,7 +2652,7 @@ function AttackFx.Pose(unit)
 	if prev and entry.SwitchAt then
 		local w = (now - entry.SwitchAt) / AttackFx.CROSSFADE
 		if w < 1 then
-			local n2, p2, r2, a2, x2 = poseSample(prev, now)
+			local n2, p2, r2, a2, x2 = poseSample(prev, now, base)
 			if n2 then
 				local po = entry.PrevOut
 				if not po then

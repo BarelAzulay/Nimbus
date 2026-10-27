@@ -1656,6 +1656,18 @@ local function clientScenarios()
 			KC.toClient("DevPetShow", "Fx", { Element = "Storm", Attack = "Special", Kind = "Beam", Rarity = "Mythic", Stage = 2 })
 			advance(0.3)
 			T.check(#models() == 2 and AF.Stats().Live + AF.Stats().Stepped >= 1, "DEV pets: a second Fx replaces the pair and plays (Storm Special Beam Mythic)")
+			-- Task 10: a support special is previewed on 4 allies (the pair + 2 stand-ins behind it), each one under the effect
+			KC.toClient("DevPetShow", "Fx", { Element = "Nature", Attack = "Special", Kind = "Heal", Rarity = "Rare", Stage = 0 })
+			advance(0.3)
+			local allies, live = 0, AF._Live and AF._Live() or {}
+			for _, m in ipairs(models()) do
+				if m:GetAttribute("DevFx") == "Ally" then
+					allies = allies + 1
+				end
+			end
+			local heal = live[#live]
+			T.check(#models() == 4 and allies == 2 and heal and heal.Recipe.Kind == "Heal" and #heal.T == 4,
+				"DEV pets: Fx of a support special (Heal) lands on 4 allies: the pair + 2 stand-ins", #models() .. " models, " .. allies .. " extra, " .. tostring(heal and #heal.T) .. " targets")
 			KC.toClient("DevPetShow", "Clear", {})
 			advance(0.3)
 			T.check(Show.Count() == 0 and AF.Stats().Live + AF.Stats().Stepped == 0, "DEV pets: Clear (/clearpets) removes the Fx pets and ends their effects")

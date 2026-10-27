@@ -25,7 +25,8 @@
 --                           each other; client/Controllers/AttackFx plays the attack (Mine = true: full density) and a
 --                           short-lived RenderStepped drives AttackFx.Update + the poses (AttackFx.Pose -> the body offset
 --                           PetBuilder.PoseBody on the pivot + PetBuilder.Animate opts.Pose) for FX_SECONDS; a Special
---                           without a kind plays the caster's own; the support kinds land on both pets
+--                           without a kind plays the caster's own; the support kinds land on both pets and on 2 more
+--                           stand-in allies behind them (4 allies: Task 10)
 --   Clear {}                stops an evolution or a lineup and removes every showcase pet (and the Fx pair: AttackFx.Cancel)
 -- Lineup, Evolve, Fx and Clear take over from whatever was running; Spawn adds to it. Resting pets get the tag
 -- NC_Showcase (ShowcaseController makes them hover, flap, wag and blink) and a compact name tag (World text rule:
@@ -86,6 +87,7 @@ local K = {
 	FX_APART = 10, -- /fx: studs between the caster and the dummy target ...
 	FX_BACK = 3, -- ... their line this much further than a lone pet would stand
 	FX_SECONDS = 6, -- the preview's update runs this long (the longest special + its linger)
+	FX_ALLY_BACK = 4, -- (Task 10) a support special's 2 extra allies stand this far behind the pair (4 allies in all)
 }
 local STAGE_NAMES = { [0] = "Normal", [1] = "Evolved", [2] = "Evolved II" }
 
@@ -97,6 +99,7 @@ local busy = 0
 local initialized = false
 local fxRun = nil -- the /fx preview: { Sides = { { Id, Model, Base } x2 }, Until, Conn }
 local FX_CASTER, FX_TARGET = "DevFx:Caster", "DevFx:Target" -- AttackFx unit ids (never a battle's numbers)
+local FX_ALLIES = { "DevFx:Ally1", "DevFx:Ally2" } -- (Task 10) the 2 extra allies of a support special
 
 ----------------------------------------------------------------------
 -- Helpers
@@ -628,14 +631,21 @@ local function fxCaster(element, rarity, kind)
 	return best or PetCatalog.Pets[1]
 end
 
--- the dummy target: the first Common pet of another element (a plain stand-in)
-local function fxDummy(element)
+-- the dummy target: the first Common pet of another element (a plain stand-in); `skip` = that many such pets passed
+-- over first (the support specials' extra allies: different stand-ins)
+local function fxDummy(element, skip)
+	skip = skip or 0
+	local first = nil
 	for _, def in ipairs(PetCatalog.Pets or {}) do
 		if type(def) == "table" and def.Rarity == "Common" and firstElement(def) ~= element then
-			return def
+			first = first or def
+			if skip <= 0 then
+				return def
+			end
+			skip = skip - 1
 		end
 	end
-	return PetCatalog.Pets[1]
+	return first or PetCatalog.Pets[1]
 end
 
 function fxStop()
@@ -651,6 +661,9 @@ function fxStop()
 	if AF and type(AF.Cancel) == "function" then
 		pcall(AF.Cancel, FX_CASTER)
 		pcall(AF.Cancel, FX_TARGET)
+		for _, id in ipairs(FX_ALLIES) do
+			pcall(AF.Cancel, id)
+		end
 	end
 end
 
@@ -743,12 +756,27 @@ local function fxPlay(payload)
 		kind = (type(def.Special) == "table" and listHas(Cat.KindNames, def.Special.Kind)) and def.Special.Kind or "Blast"
 	end
 	local to = nil
+	local sides = { { Id = FX_CASTER, Model = caster, Base = cPose }, { Id = FX_TARGET, Model = dummy, Base = tPose } }
 	if attack == "Special" and (kind == "Heal" or kind == "Shield" or kind == "Rally" or kind == "Haste") then
 		to = { cSide, tSide } -- (the support kinds land on allies: both)
+		-- (Task 10) + 2 more stand-in allies behind the pair, facing the player: a support special is checked on 4 allies
+		for i, id in ipairs(FX_ALLIES) do
+			local aDef = fxDummy(payload.Element, i)
+			local ally = aDef and build(aDef, 0, "High")
+			if ally then
+				local aBottom = extentOf(ally)
+				local aPose = poseAt(((i == 1) and cSpot or tSpot) + look * K.FX_ALLY_BACK, aBottom, -look, char, origin.Y - 3)
+				ally:PivotTo(aPose)
+				ally:SetAttribute("DevFx", "Ally")
+				ally.Parent = parent
+				to[#to + 1] = { Unit = id, Model = ally, Pos = aPose.Position }
+				sides[#sides + 1] = { Id = id, Model = ally, Base = aPose }
+			end
+		end
 	elseif attack == "Melee" or attack == "Ranged" or attack == "Special" or attack == "Element" then
 		to = tSide
 	end
-	fxRun = { Sides = { { Id = FX_CASTER, Model = caster, Base = cPose }, { Id = FX_TARGET, Model = dummy, Base = tPose } }, Until = os.clock() + K.FX_SECONDS }
+	fxRun = { Sides = sides, Until = os.clock() + K.FX_SECONDS }
 	local okPlay, played = pcall(AF.Play, {
 		Attack = attack, Kind = (attack == "Special") and kind or nil, Shape = payload.Shape, Element = payload.Element,
 		Rarity = payload.Rarity, Stage = payload.Stage, PetId = (def.Rarity == payload.Rarity) and def.Id or nil, Mine = true,

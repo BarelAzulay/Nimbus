@@ -1751,11 +1751,11 @@ function Units.Update(B, u, now, dt, sa, sb, alpha, animate)
 	if not stunned then
 		bob = sin(now * 3.1 + u.phase) * K.BOB
 	end
-	local pose, body = Atk.PoseOf(u, now, down, false, animate)
 	if u.windup and not Atk.Drives(u) then
 		oy = oy - 0.35 -- the wind-up crouch (Winding: the dash cue; AttackFx shows its held Windup pose instead)
 	end
 	local cf = worldFrame(B, x + ox, (u.centerY or 1.5) + bob + oy, z + oz, u.yaw)
+	local pose, body = Atk.PoseOf(u, now, down, false, animate, cf.Position)
 	if body then
 		cf = cf * body
 	end
@@ -2229,7 +2229,7 @@ function Me.Draw(B, u, now, dt, x, z)
 	local busy = (isFighter and (u.state == S_MOVING or Me.Walking())) or u.flyAt ~= nil or u.swapAt ~= nil
 	-- a helper that only breathes (the battle idle) is posed every other frame, like the other pets (stepBattle)
 	local animate = isFighter or u.poseSrc ~= "idle" or (St.frameNo + (u.slot or 0)) % 2 == 0
-	local pose, body = Atk.PoseOf(u, now, down, busy, animate)
+	local pose, body = Atk.PoseOf(u, now, down, busy, animate, p)
 	if body then
 		cf = cf * body
 	end
@@ -3004,8 +3004,9 @@ end
 -- (the End's ClearAll: the pet still lies there); PetPoses' Windup held while the snapshot says Winding (the dash
 -- cue's crouch, for a unit AttackFx drives); the battle idle (Atk.Idles; P = time + a per-unit phase, so the pets do
 -- not breathe or glance in step). A switch between those sources crossfades over AttackFx.CROSSFADE like AttackFx's
--- own Prev / Blend: the body blends, Animate keeps the previous pose for the first half.
-function Atk.PoseOf(u, now, down, busy, animate)
+-- own Prev / Blend: the body blends, Animate keeps the previous pose for the first half. `base` = the unit's drawn spot
+-- (world, before the pose): AttackFx.Pose shortens a Pounce leap by what the server's slide to the target has covered.
+function Atk.PoseOf(u, now, down, busy, animate, base)
 	local AF = Mods.AttackFx
 	if not AF or u.isBoss or not Atk.Posable() then
 		return nil, nil
@@ -3015,7 +3016,7 @@ function Atk.PoseOf(u, now, down, busy, animate)
 		-- (src "fx") still runs so its body offset (the Strike lunge) moves every frame
 	end
 	local pose, body, src = nil, nil, nil
-	local ok, ps = pcall(AF.Pose, u.id)
+	local ok, ps = pcall(AF.Pose, u.id, base) -- (base: the drawn spot; a Pounce lands where the server slides the pet)
 	if ok and type(ps) == "table" and type(ps.Name) == "string" then
 		local cur = u.poseCur or {}
 		u.poseCur = cur
