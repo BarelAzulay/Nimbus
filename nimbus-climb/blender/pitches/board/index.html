@@ -115,6 +115,11 @@ dialog .cap { color: #fff; font-family: var(--f-display); text-align: center; ma
   .decide { grid-template-columns: minmax(0, 1fr); }
   .pitch { padding: 16px; }
 }
+.fixes { border-left: 3px solid var(--ok); padding: 10px 14px; background: var(--chip); border-radius: 0 10px 10px 0; max-width: 80ch; }
+.fixes h3 { font-size: 1rem; margin-bottom: 4px; }
+.fixes ul { margin: 0; padding-left: 18px; font-size: .9rem; color: var(--muted); }
+.motion-cap { font-size: .8rem; color: var(--muted); margin-top: -4px; }
+.shot.motion { aspect-ratio: auto; object-fit: contain; }
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
 </style>
 
@@ -182,6 +187,7 @@ dialog .cap { color: #fff; font-family: var(--f-display); text-align: center; ma
         const on = chosen === o.id;
         return `<article class="opt${on ? " chosen" : ""}">
           ${shot(o.img, `${p.title}, option ${String.fromCharCode(65 + i)}: ${o.name}`)}
+          ${o.motion ? `${shot(o.motion, `${o.name}: how it moves, frame by frame`, "shot motion")}<p class="motion-cap">How it moves (frames left to right)</p>` : ""}
           <div class="opt-title"><h3>${esc(o.name)}</h3><span class="letter">option ${String.fromCharCode(65 + i)}</span></div>
           <div class="picks">${picks}</div>
           <p class="story">${esc(o.story)}</p>
@@ -203,6 +209,7 @@ dialog .cap { color: #fff; font-family: var(--f-display); text-align: center; ma
           ${status}
         </div>
         <p class="lede">${esc(p.brief)}</p>
+        ${(p.fixes || []).length ? `<div class="fixes"><h3>Bugs fixed whatever you pick</h3><ul>${p.fixes.map((f) => `<li>${esc(f)}</li>`).join("")}</ul></div>` : ""}
         <div class="brief">
           <figure class="ref" style="margin:0">${shot(p.today, p.title + " today")}<figcaption>Today in the game</figcaption></figure>
           <figure class="ref" style="margin:0">${shot(p.lineup, p.title + ": all options side by side")}<figcaption>All options side by side, at the same scale</figcaption></figure>
