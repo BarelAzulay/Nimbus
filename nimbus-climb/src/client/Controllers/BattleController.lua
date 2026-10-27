@@ -231,6 +231,8 @@ local K = {
 	LATE_MAX = 0.35, -- a Special nobody here pressed: up to this much charge is given back, its impact (and its hits) that late
 	LAST_GASP = 0.05, -- a caster KO'd in its own late charge falls this long after the impact
 	HOLD_EPS = 0.02, -- (fix round 1, I1) a late Special's hit ends its victim's hold only this close to the hold's end
+	UNBENCH_SLACK = 0.25, -- (fix round 2, I2-b) a held auto-swap's incoming pet stays benched until its Swap plays; this
+	--                       long past the hold it unbenches anyway (a Swap that never plays never hides a pet for good)
 	INHALE_PITCH = { 0.75, 1.35 }, -- the inhale (SoundFx "Whoosh") rises from / to this PlaybackSpeed under the charge
 	INHALE_IN = 0.08, -- seconds the inhale fades in ...
 	INHALE_OUT = 0.12, -- ... and out at the release (or when hushed)
@@ -1462,7 +1464,8 @@ local function buildUnit(B, u)
 	end
 	-- evolved units use the Low evolved form (within the petEvoLow / petEvo2Low budgets), like evolved followers;
 	-- Phase 5 (10.3): my fighter High, my helpers Low (a helper swapped in is rebuilt at High: Units.Rebuild)
-	local detail = (u.mine and u.evo == 0 and not u.benched) and "High" or "Low"
+	-- (fix round 2, I2-b) a held auto-swap's incoming pet (unbenchAt) is my next fighter: High while it waits
+	local detail = (u.mine and u.evo == 0 and (not u.benched or u.unbenchAt ~= nil)) and "High" or "Low"
 	-- dungeon enemies wear the Wild look (contract 5.6 / C13): darker, tinted toward the floor's element, Neon eyes
 	local wild = nil
 	if u.info.wild and not u.ally then
@@ -1578,7 +1581,7 @@ function Units.BuildPending(B)
 			break
 		end
 		local u = table.remove(q, 1)
-		if u.benched and not u.mine and not u.isBoss then
+		if u.benched and not u.mine and not u.isBoss and not u.unbenchAt then
 			u.needBuild = true -- another player's helper: not drawn while it sits on the bench
 		elseif not u.gone and (not u.model or u.rebuild) then
 			local ok, err = pcall(buildUnit, B, u)
@@ -1666,13 +1669,23 @@ function Units.Update(B, u, now, dt, sa, sb, alpha, animate)
 			u.windAt = now -- (the held Windup pose gathers from here: Atk.PoseOf)
 		end
 		u.windup = winding
-		local benched = u.state == S_BENCHED
+		local onBench = u.state == S_BENCHED
+		local benched = onBench
+		-- (fix round 2, I2-b) the incoming pet of a held auto-swap stays on the bench until its Swap plays (the handler
+		-- unbenches it; UNBENCH_SLACK is the fall-back): another player's is built meanwhile, still parked
+		if u.unbenchAt then
+			if now < u.unbenchAt then
+				benched = true
+			else
+				u.unbenchAt = nil
+			end
+		end
 		if benched ~= u.benched then
 			u.benched = benched
-			if not benched and not u.model and u.needBuild and not u.failed then
-				u.needBuild = nil
-				B.buildQueue[#B.buildQueue + 1] = u
-			end
+		end
+		if not onBench and not u.model and u.needBuild and not u.failed then
+			u.needBuild = nil
+			B.buildQueue[#B.buildQueue + 1] = u
 		end
 		if u.mine and d.lives ~= nil and B.Fighter and not benched and (B.fighterId == nil or u.id == B.fighterId) then
 			B.lives = u.lives -- (only the fighter's record carries the team's lives)
@@ -2360,6 +2373,34 @@ function Me.DashDir(B, u, ev)
 end
 
 -- starts the drawn dash of pet u (a streak out and back + a trail), once per event
+-- my Swap: the incoming pet becomes my fighter (HUD, High detail), the out one goes to the bench, and the two trade
+-- places along the SWAP_TIME arc from where they are drawn now. On the Swap's arrival (Net.Pre); a held auto-swap's
+-- when it plays (fix round 2, I2-b: the KO'd fighter stays where it stood until its impact, and the arc starts from
+-- the real spots: before, it started when the Swap played, after the pets had already slid most of the way)
+function Me.Switch(B, ev)
+	local old = B.fighterId
+	B.fighterId = tonumber(ev["in"]) or B.fighterId
+	local incoming = B.units[B.fighterId]
+	if incoming then
+		incoming.benched = false
+		incoming.unbenchAt = nil
+		B.fighterEvo = incoming.evo or 0
+		Units.Rebuild(B, incoming)
+	end
+	local out = old and B.units[old]
+	if out and out ~= incoming then
+		out.benched = true
+	end
+	pcall(Hud.Rebuild)
+	local now = os.clock()
+	for _, u in ipairs({ incoming or false, out or false }) do
+		if u and u.mine and u.drawn then
+			u.swapFrom = u.drawn
+			u.swapAt = now
+		end
+	end
+end
+
 function Me.StartDash(B, u, ev)
 	u.dashEv = ev
 	if not u.model or u.parked or u.hidden then
@@ -2617,7 +2658,7 @@ function Me.Inhale(seconds, token, mine)
 		local n, oldest = 0, nil
 		for tk, r in pairs(St.inhales) do
 			n = n + 1
-			if not r.mine and (oldest == nil or r.t0 < St.inhales[oldest].t0) then
+			if not r.mine and (oldest == nil or r.start < St.inhales[oldest].start) then
 				oldest = tk
 			end
 		end
@@ -2638,7 +2679,8 @@ function Me.Inhale(seconds, token, mine)
 				St.inhales[tk] = nil -- (SoundFx's pool handed that sound out again)
 			end
 		end
-		rec = { sound = s, vol = s.Volume * (mine and 1 or K.INHALE_OTHERS), mine = mine == true, t0 = os.clock() }
+		-- (fix round 2, M5') `start` (when it began) picks the oldest; t0 is the last retime
+		rec = { sound = s, vol = s.Volume * (mine and 1 or K.INHALE_OTHERS), mine = mine == true, t0 = os.clock(), start = os.clock() }
 		St.inhales[token] = rec
 		s.PlaybackSpeed = K.INHALE_PITCH[1]
 		s.Volume = 0
@@ -3063,7 +3105,8 @@ end
 -- or PRESS_WAIT without the event (Atk.Update) shatters it
 function Atk.PreCharge(B, now)
 	local f = B and B.fighterId and B.units[B.fighterId] or nil
-	if not f or B.ended or B.simEnded or St.fxEndAt or not f.model or not Atk.Drawable(f) then
+	-- (fix round 2) never on a fighter whose KO arrived (Atk.Lying): a held auto-swap keeps it my fighter till its impact
+	if not f or B.ended or B.simEnded or St.fxEndAt or not f.model or not Atk.Drawable(f) or Atk.Lying(f) then
 		return false
 	end
 	local kind = type(f.special) == "table" and f.special.Kind or nil
@@ -4154,7 +4197,18 @@ end
 
 Handlers[EV.Swap or "Swap"] = function(B, ev)
 	local incoming = B.units[tonumber(ev["in"]) or -1]
-	local out = B.units[tonumber(ev.out) or -1]
+	-- (fix round 2, I2-b) a held auto-swap: the incoming pet leaves the bench now (another player's is unparked for its
+	-- GO!), and my two pets trade places now (Me.Switch; Net.Pre left it for this moment)
+	if incoming and incoming.unbenchAt then
+		incoming.unbenchAt = nil
+		if not incoming.mine and incoming.state ~= S_BENCHED then
+			incoming.benched = false
+			parkUnit(incoming, false)
+		end
+	end
+	if ev.fxSwitchLate and B.Fighter and not B.ended and ev.owner == myUserId() then
+		Me.Switch(B, ev)
+	end
 	local played = Atk.Result(B, ev) -- AttackFx: the incoming pet's entrance (Victory)
 	if incoming and incoming.model and not incoming.parked then
 		calloutAbove(incoming, ev.auto and "GO!" or "SWAP!", COLORS.Dodge, K.CALLOUT_PX, 1)
@@ -4162,13 +4216,7 @@ Handlers[EV.Swap or "Swap"] = function(B, ev)
 			Fx.Burst(unitCenter(B, incoming), elementColor(incoming.element), 10, 8, 0.45, 0.45, { up = 0.7, color2 = COLORS.White })
 		end
 	end
-	local now = os.clock()
-	for _, u in ipairs({ incoming, out }) do
-		if u and u.mine and u.drawn then
-			u.swapFrom = u.drawn
-			u.swapAt = now
-		end
-	end
+	-- (my pets' arc starts at the trade: Me.Switch)
 end
 
 Handlers[EV.Windup or "Windup"] = function(B, ev)
@@ -7716,19 +7764,10 @@ function Net.Pre(B, ev)
 			if not predicted and not ev.auto then
 				B.cd.Swap = now + (B.cdLen.Swap or 10)
 			end
-			local old = B.fighterId
-			B.fighterId = tonumber(ev["in"]) or B.fighterId
-			local incoming = B.units[B.fighterId]
-			if incoming then
-				incoming.benched = false
-				B.fighterEvo = incoming.evo or 0
-				Units.Rebuild(B, incoming)
+			-- (fix round 2, I2-b) a held auto-swap (its KO waits for a late impact) trades the pets when it plays
+			if not ev.fxSwitchLate then
+				Me.Switch(B, ev)
 			end
-			local out = old and B.units[old]
-			if out and out ~= incoming then
-				out.benched = true
-			end
-			pcall(Hud.Rebuild)
 		end
 	elseif t == EV.Hit then
 		if B.fighterId and tonumber(ev.from) == B.fighterId and not ev.special and not ev.element and not ev.zone then
@@ -7842,7 +7881,8 @@ end
 -- ends it when it plays (Units.Unhold)
 function Units.Hold(B, id, untilClock, floor)
 	local u = id and B.units[id]
-	if not u or u.state == S_DOWN or num(u.hp, 0) <= 0 then
+	-- (fix round 2, M2') a unit already held may be drawn at 0 (a plain hit took its floor there): its hold still extends
+	if not u or (not u.holdUntil and (u.state == S_DOWN or num(u.hp, 0) <= 0)) then
 		return
 	end
 	if not u.holdUntil or u.holdUntil < untilClock then
@@ -7964,13 +8004,25 @@ function Net.Events(list, battleId)
 	local lead = B.haveOffset and clamp(t - B.renderT, 0, K.FX_LEAD_MAX) or 0
 	for _, ev in ipairs(list) do
 		if type(ev) == "table" and type(ev.type) == "string" then
+			-- a victim whose ranged shot is still flying (Net.Hold): its Hit / KO wait for the shot to land
+			-- (Task 11b) ... or a late Special's impact: its own hits, the KOs they cause, a last gasp, the End
+			local hold = max(Net.Hold(B, ev, t), Net.SpecialHold(B, ev, t, lead))
+			if hold > 0 and ev.type == (EV.Swap or "Swap") and ev.auto then
+				-- (fix round 2, I2-b) the held auto-swap trades the pets when it plays, not now: my fighter switch waits
+				-- (Net.Pre / the Swap handler), the incoming pet stays benched (another player's: parked) till then
+				ev.fxSwitchLate = true
+				local inc = B.units[tonumber(ev["in"]) or -1]
+				if inc then
+					inc.unbenchAt = os.clock() + lead + hold + K.UNBENCH_SLACK
+					if inc.mine then
+						Units.Rebuild(B, inc) -- (my new fighter's High model is built while it waits: its GO! lands on it)
+					end
+				end
+			end
 			local okPre, errPre = pcall(Net.Pre, B, ev)
 			if not okPre then
 				warnOnce("pre_" .. ev.type, "event " .. ev.type .. " (HUD) failed: " .. tostring(errPre))
 			end
-			-- a victim whose ranged shot is still flying (Net.Hold): its Hit / KO wait for the shot to land
-			-- (Task 11b) ... or a late Special's impact: its own hits, the KOs they cause, a last gasp, the End
-			local hold = max(Net.Hold(B, ev, t), Net.SpecialHold(B, ev, t, lead))
 			Atk.Arrive(B, ev, lead + hold)
 			Net.SpecialArrived(B, ev, t)
 			-- telegraphs start at once (their fill must complete at the hit), the rest on the render clock
@@ -8663,6 +8715,11 @@ end
 
 function BattleController._Pre()
 	return St.pre
+end
+
+-- TESTS ONLY (fix round 2, M5'): the inhale records by token
+function BattleController._Inhales()
+	return St.inhales
 end
 
 -- (Task 11) loads client/Controllers/AttackFx and points its Hooks at this controller (camera punch, edge glow, the
