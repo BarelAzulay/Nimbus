@@ -2036,7 +2036,9 @@ local function eclipseBattle(env)
 		T.check(played and not d and math.abs(exposure() - exp0) < 1e-6, "Eclipse dim (battle): another player's Eclipse Nova plays but never dims my battle",
 			fmt("played %s, dimmed %s", tostring(played), tostring(d)))
 	end
-	-- the KO hook-in: my Eclipse caster is knocked out mid-cast -> the light comes back at once, its effect still plays
+	-- the KO hook-in: my Eclipse caster is knocked out mid-cast -> the light comes back when its KO plays, its effect
+	-- still plays. (Task 11b: the helper's Special came with no press, so it lands late and its caster's KO in that late
+	-- charge is a LAST GASP: the KO plays just after the impact; the light comes back then, still before the dim was due)
 	function E.beforeKo()
 		local real = env.AF.Hooks.DimWorld
 		E.dueAt = nil
@@ -2047,13 +2049,27 @@ local function eclipseBattle(env)
 		cast(helper)
 		pulse(0.2)
 		env.AF.Hooks.DimWorld = real
-		return T.check(dimmed() and eclipseLive(helper) ~= nil and E.dueAt ~= nil, "Eclipse dim (battle KO): my helper's Eclipse Nova dims (before its KO)")
+		local el = eclipseLive(helper)
+		E.impactAt = el and (el.Start + el.Times.Impact) or nil
+		return T.check(dimmed() and el ~= nil and E.dueAt ~= nil, "Eclipse dim (battle KO): my helper's Eclipse Nova dims (before its KO)")
 	end
 	function E.afterKo()
+		-- (the KO arrived 0.3 s ago; a last gasp plays it up to LATE_MAX + LAST_GASP after its time)
+		local offAt = (not dimmed()) and os.clock() or nil
+		for _ = 1, 4 do
+			if offAt then
+				break
+			end
+			pulse(0.1)
+			if not dimmed() then
+				offAt = os.clock()
+			end
+		end
 		local e = eclipseLive(helper)
-		T.check(not dimmed() and e ~= nil and os.clock() < (E.dueAt or 0),
-			"Eclipse dim (battle KO): the caster's KO gives the light back at once (its effect still playing, the dim not yet due)",
-			fmt("dimmed %s, effect %s, %.2f s before the dim was due", tostring(dimmed()), tostring(e ~= nil), (E.dueAt or 0) - os.clock()))
+		T.check(offAt ~= nil and e ~= nil and offAt < (E.dueAt or 0) and E.impactAt ~= nil and offAt >= E.impactAt - 1e-3,
+			"Eclipse dim (battle KO): the caster's KO (a last gasp: after its impact) gives the light back, its effect still playing, the dim not yet due",
+			fmt("off %s s after the impact, effect %s, %.2f s before the dim was due", offAt and fmt("%.2f", offAt - (E.impactAt or 0)) or "never",
+				tostring(e ~= nil), (E.dueAt or 0) - (offAt or os.clock())))
 		pulse(0.4)
 		T.check(math.abs(exposure() - exp0) < 1e-6, "Eclipse dim (battle KO): ... back to the base exposure", fmt("%.3f (base %.3f)", exposure(), exp0))
 	end
@@ -3198,6 +3214,669 @@ S.client_p7vfx_storm = guarded("client_p7vfx_storm", function()
 	T.check(warned == nil and #Mock.Errors == err0 and AF.Stats().Live == 0, "client_p7vfx_storm: no errors or BattleController / AttackFx warnings, nothing left live", tostring(warned))
 	AF.SetQuality(nil)
 	KC.flushErrors("client_p7vfx_storm")
+end)
+
+----------------------------------------------------------------------------------------------------------------------
+-- client_p7vfx_precharge (Task 11b, the Special pre-charge, player option C): real BattleSim Duels fed to the client
+-- the way BattleService sends them (events + wire snapshots per 0.1 s step), the press through BattleController.Command.
+--   A) my press, its Special event ~0.33 s / ~0.23 s later: the charge shows at once (glow + motes, rim, inhale, Cast);
+--      the real effect takes it over: the same glow kit (no restart), its start backdated to the press, >= 0.25 s of
+--      charge before the release, the impact exactly on the DueAt the old path gives (its hit's number then), the same
+--      inhale token (retimed). B) refused (Order rejected) and C) no event within PRESS_WAIT: it shatters (shards,
+--      Recoil, the "interrupted" hook), no Special effect, no impact.
+--   D) my pet's Special with no press: the impact lands late (DueAt + ImpactLate, 0 < late <= LATE_MAX); the damage
+--      numbers, HP-bar drops, flinches (flashes) and the KO of its targets wait for the impact, a plain hit on the same
+--      target in the same window does not. E) a bot's Special: late too, others' cues (inhale mine = false).
+--   F) last gasp: a bot KO'd in its own late charge: its effect lands, its KO plays after the impact, not drawn down
+--      before. G) a Storm: the zone tick due before the impact is held, a later one plays on time.
+--   H) the /fx preview (DevPetShow) plays the full charge once (no prediction, no double charge).
+-- BattleSim / BattleService are untouched by Task 11b (git diff in the report); their own scenarios guard them.
+----------------------------------------------------------------------------------------------------------------------
+local PRE_LATE_MAX, PRE_WAIT, PRE_MIN = 0.35, 0.7, 0.25
+local FRAME = 1 / 30
+
+-- a Duel: my `myPet` against NPC `bots`; -> sim, start payload
+local function preDuel(Sim, me, myPet, bots, id, seed)
+	local foes = {}
+	for i, p in ipairs(bots) do
+		foes[i] = { PetId = p, Key = p, Level = 20, Tier = "Normal", Slot = i }
+	end
+	local sim, why = Sim.new({ Mode = "Duel", Seed = seed or 41, Id = id, Zone = { X = 60, Z = 60 }, TimeLimit = 900,
+		Teams = { { Owner = me, Side = 1, Pets = { { PetId = myPet, Key = myPet, Level = 20, Tier = "Normal", Slot = 1 } } },
+			{ Owner = "bots", Side = 2, Npc = true, Pets = foes } } })
+	if not sim then
+		return nil, why
+	end
+	local start = sim:Describe()
+	start.BattleId = id
+	start.Zone = { CFrame = CFrame.new(0, 200, 0), Size = Vector3.new(start.Zone.X, 30, start.Zone.Z), X = start.Zone.X, Z = start.Zone.Z }
+	start.Names = { [tostring(me)] = LocalPlayer.Name }
+	start.Side, start.Spectator, start.T = 1, false, sim:Time()
+	local team = sim:TeamOf(me)
+	if team then
+		start.Team = { Fighter = team.Fighter, Bench = team.Bench, Lives = team.Lives, Speed = team.Speed,
+			Cooldowns = { Element = team.Cooldowns.Element, Dash = team.Cooldowns.Dash, Swap = team.Cooldowns.Swap, Buff = {} } }
+	end
+	return sim, start
+end
+
+-- an item of an effect by kind + layer id
+local function itemOf(eff, kind, id)
+	for _, it in ipairs(eff and eff.Items or {}) do
+		if it.Kind == kind and it.Layer and it.Layer.Id == id then
+			return it
+		end
+	end
+	return nil
+end
+
+-- the live effect of `uid` whose recipe is `attack` (not a prediction)
+local function liveOf(AF, uid, attack)
+	local found = nil
+	for _, e in ipairs(AF._Live()) do
+		if e.Unit == uid and e.Recipe.Attack == attack and not e.Pre and not e.Retired then
+			found = e
+		end
+	end
+	return found
+end
+
+S.client_p7vfx_precharge = guarded("client_p7vfx_precharge", function()
+	local BC = moduleAt(ROOTS.client .. "/Controllers/BattleController")
+	local AF = moduleAt(ROOTS.client .. "/Controllers/AttackFx")
+	local Sim = moduleAt(ROOTS.shared .. "/BattleSim")
+	local Config = moduleAt(ROOTS.shared .. "/Config")
+	if not T.check(BC ~= nil and AF ~= nil and Sim ~= nil and KC ~= nil and BC._Fx ~= nil and type(BC._Unit) == "function"
+		and type(AF.Precharge) == "function" and type(AF.Shatter) == "function", "pre-charge: BattleController (+ test hooks), AttackFx (Precharge / Shatter), BattleSim load") then
+		return
+	end
+	local out0, err0 = #Mock.Output, #Mock.Errors
+	local me = LocalPlayer.UserId
+	local downState = (Sim.States and Sim.States.Down) or 5
+	-- the logs: every AttackFx play, the battle's world numbers / flashes, the charge hooks
+	local plays, numbers, flashes, inhales, hushes, shatters = {}, {}, {}, {}, {}, {}
+	local realPlay, realNumber, realFlash = AF.Play, BC._Fx.Number, BC._Fx.Flash
+	AF.Play = function(ctx)
+		local r = realPlay(ctx)
+		plays[#plays + 1] = { ctx = ctx, r = r, at = os.clock() }
+		return r
+	end
+	BC._Fx.Number = function(adornee, height, text, ...)
+		numbers[#numbers + 1] = { adornee = adornee, text = tostring(text), at = os.clock() }
+		return realNumber(adornee, height, text, ...)
+	end
+	BC._Fx.Flash = function(u, ...)
+		flashes[#flashes + 1] = { id = u and u.id, at = os.clock() }
+		return realFlash(u, ...)
+	end
+	BC.FxHooks()
+	local hk = AF.Hooks
+	local realInhale, realHush, realShatter = hk.Inhale, hk.Hush, hk.Shatter
+	hk.Inhale = function(seconds, token, mine)
+		inhales[#inhales + 1] = { seconds = seconds, token = token, mine = mine, at = os.clock() }
+		return realInhale and realInhale(seconds, token, mine)
+	end
+	hk.Hush = function(token)
+		hushes[#hushes + 1] = { token = token, at = os.clock() }
+		return realHush and realHush(token)
+	end
+	hk.Shatter = function(mine, unit)
+		shatters[#shatters + 1] = { mine = mine, unit = unit, at = os.clock() }
+		return realShatter and realShatter(mine, unit)
+	end
+	-- (the inhale's sound: SoundFx's "Whoosh" given an id for this test; the project ships them empty)
+	local audio = Config and Config.Audio and Config.Audio.Sfx
+	local oldWhoosh = audio and audio.Whoosh
+	if audio then
+		audio.Whoosh = "rbxassetid://1"
+	end
+	local function numberAt(uid, since, pred)
+		local u = BC._Unit(uid)
+		for _, n in ipairs(numbers) do
+			if n.at >= since and u and n.adornee == u.root and (not pred or pred(n.text)) then
+				return n.at, n.text
+			end
+		end
+		return nil
+	end
+	local function flashTimes(uid, since)
+		local out = {}
+		for _, f in ipairs(flashes) do
+			if f.id == uid and f.at >= since then
+				out[#out + 1] = f.at
+			end
+		end
+		return out
+	end
+	local function playOf(uid, attack, since, pre)
+		for _, p in ipairs(plays) do
+			local c = p.ctx
+			if p.at >= since and c.Attack == attack and c.From and c.From.Unit == uid and (c.Pre == true) == (pre == true) then
+				return p
+			end
+		end
+		return nil
+	end
+	local AF_SetQ = AF.SetQuality
+	local ok, err = pcall(function()
+		------------------------------------------------------------------------------------------------------------------
+		-- battle 1: my Puddle Frog (Blast) against three NPC frogs
+		------------------------------------------------------------------------------------------------------------------
+		local sim, start = preDuel(Sim, me, "puddle_frog", { "puddle_frog", "puddle_frog", "puddle_frog" }, "p7vfx_pre_1")
+		if not T.check(sim ~= nil, "pre-charge: a Duel of my Blast pet against 3 NPC frogs", tostring(start)) then
+			return
+		end
+		local mine, bots = nil, {}
+		for _, u in ipairs(sim.units) do
+			u.maxHp, u.hp = 1e6, 1e6
+			u.nextAttack = 1e9 -- (no plain attacks: every hit here is a special's, or one the test sends)
+			if u.side == 1 then
+				mine = u
+			else
+				bots[#bots + 1] = u
+				u.moveSpeed = 0
+			end
+		end
+		if not T.check(mine ~= nil and #bots == 3, "pre-charge: my fighter + 3 frogs") then
+			return
+		end
+		mine.x, mine.z = 0, 0
+		bots[1].x, bots[1].z = 5, 0
+		bots[2].x, bots[2].z = 5, 3
+		bots[3].x, bots[3].z = -16, 12
+		local id = start.BattleId
+		LocalPlayer:SetAttribute("InBattle", id)
+		AF.ClearAll()
+		AF.SetQuality("High")
+		KC.toClient("BattleState", "Start", start, id)
+		local last = {}
+		local extra = nil -- events the test adds to the next step's batch (after the sim's own)
+		local watch = nil -- per frame
+		local function step(dt)
+			local evs = sim:Step(dt or 0.1)
+			local list = {}
+			for _, e in ipairs(evs) do
+				list[#list + 1] = e
+			end
+			for _, e in ipairs(extra or {}) do
+				list[#list + 1] = e
+			end
+			extra = nil
+			local sent = os.clock()
+			if #list > 0 then
+				KC.toClient("BattleState", "Events", list, id)
+			end
+			local snap = sim:SnapshotDelta(last)
+			snap.BattleId = id
+			KC.toClient("BattleState", "Snapshot", snap, id)
+			for _ = 1, 3 do
+				Mock.Step(FRAME)
+				if watch then
+					watch()
+				end
+			end
+			return evs, sent
+		end
+		local function steps(n)
+			for _ = 1, n do
+				step(0.1)
+			end
+		end
+		steps(10)
+		local function full()
+			mine.meter, mine.castUntil = 100, 0
+			if mine.state == Sim.States.Casting then
+				mine.state = Sim.States.Idle
+			end
+		end
+		sim:Command(me, "Target", bots[1].id)
+		-- A) my press, the event `wait` steps later
+		local function press(wait, label)
+			full()
+			steps(3)
+			local P = os.clock()
+			local nP = #plays
+			local sent = BC.Command("Special")
+			local pre = AF.Precharging(mine.id)
+			local glow = itemOf(pre, "Emitter", "Charge")
+			local glowKit = glow and glow.Kit
+			local rim = itemOf(pre, "Rim", "Rim")
+			local pose = AF.Pose(mine.id)
+			Mock.Step(FRAME)
+			local inh = inhales[#inhales]
+			local low = nil
+			local SSA = game:GetService("SoundService"):FindFirstChild("NimbusSounds")
+			for _, s in ipairs(SSA and SSA:GetChildren() or {}) do
+				if s.Name:find("Sfx_Whoosh", 1, true) and math.abs(s.PlaybackSpeed - 0.75) < 1e-6 then
+					low = s
+				end
+			end
+			T.check(low ~= nil, "pre-charge A" .. label .. ": the inhale sound starts low (PlaybackSpeed 0.75) to rise under the charge")
+			T.check(sent and pre ~= nil and glowKit ~= nil and rim ~= nil and pose ~= nil and pose.Name == "Cast" and inh ~= nil and inh.mine == true and inh.at >= P,
+				"pre-charge A" .. label .. ": my press shows the charge at once: the glow + motes, the rim light, the Cast pose, the inhale (mine)",
+				fmt("sent %s, pre %s, glow %s, rim %s, pose %s, inhale %s", tostring(sent), tostring(pre ~= nil), tostring(glowKit ~= nil), tostring(rim ~= nil),
+					tostring(pose and pose.Name), tostring(inh and inh.mine)))
+			T.check(#plays == nP + 1 and plays[nP + 1].ctx.Pre == true and plays[nP + 1].ctx.DueAt == nil,
+				"pre-charge A" .. label .. ": the prediction is a charge only (no DueAt, no impact)")
+			-- the server hears the press `wait` steps later (the round trip)
+			steps(wait - 1)
+			T.check(AF.Precharging(mine.id) == pre and pre.Items[glow.Index] == glow and glow.Kit == glowKit,
+				"pre-charge A" .. label .. ": the predicted charge holds while it waits for the event")
+			local okC = sim:Command(me, "Special")
+			local _, arrived = step(0.1)
+			local p = playOf(mine.id, "Special", arrived, false)
+			local eff = liveOf(AF, mine.id, "Special")
+			local c = p and p.ctx
+			local due = c and c.DueAt
+			local g2 = itemOf(eff, "Emitter", "Charge")
+			local inh2 = inhales[#inhales]
+			T.check(okC and p ~= nil and p.r == true and c.Precharged == true and eff ~= nil and math.abs(eff.Start - P) < 1e-6 and AF.Precharging(mine.id) == nil,
+				"pre-charge A" .. label .. ": its Special event takes the charge over: the real effect starts at the press (backdated)",
+				fmt("event %.2f s after the press, played %s, precharged %s, start %.3f vs press %.3f", (arrived or 0) - P, tostring(p and p.r), tostring(c and c.Precharged),
+					eff and eff.Start or -1, P))
+			T.check(g2 ~= nil and g2.Kit == glowKit and g2.Adopted == true,
+				"pre-charge A" .. label .. ": the glow did not restart (the real effect's charge glow IS the prediction's emitter, its particles live on)")
+			T.check(eff ~= nil and type(due) == "number" and math.abs(eff.Start + eff.Times.Impact - due) < 1e-6 and (c.ImpactLate or 0) == 0,
+				"pre-charge A" .. label .. ": the impact is exactly on the DueAt the old path gives (no delay)",
+				eff and due and fmt("impact %.4f, DueAt %.4f, late %s", eff.Start + eff.Times.Impact, due, tostring(c.ImpactLate)) or "no effect")
+			T.check(eff ~= nil and eff.Times.Release >= PRE_MIN - 1e-6, "pre-charge A" .. label .. ": >= 0.25 s of charge is seen before the release",
+				eff and fmt("%.3f s", eff.Times.Release) or "no effect")
+			-- the inhale carries on: no new one starts; the same token is retimed to the real release, or (a release that is
+			-- already due) hushed right then
+			local fresh, retimed, hushed = false, false, false
+			for _, x in ipairs(inhales) do
+				if x.at >= P and inh and x.token ~= inh.token then
+					fresh = true
+				elseif x.at >= arrived and inh and x.token == inh.token then
+					retimed = true
+				end
+			end
+			for _, h in ipairs(hushes) do
+				if inh and h.token == inh.token and h.at >= arrived and eff and h.at <= eff.Start + eff.Times.Release + FRAME + 1e-3 then
+					hushed = true
+				end
+			end
+			T.check(inh ~= nil and not fresh and (retimed or hushed),
+				"pre-charge A" .. label .. ": the inhale carries on (the same token: retimed to the real release, or hushed at it), never restarts",
+				fmt("fresh %s, retimed %s, hushed %s, inh2 %s", tostring(fresh), tostring(retimed), tostring(hushed), tostring(inh2 and inh2.token)))
+			-- the special's hit is not held: its number shows at DueAt
+			local sp = nil
+			for _ = 1, 6 do
+				step(0.1)
+				sp = sp or numberAt(bots[1].id, arrived)
+			end
+			T.check(sp ~= nil and due ~= nil and sp >= due - FRAME - 1e-3 and sp <= due + 0.1,
+				"pre-charge A" .. label .. ": its hit's damage number shows at the impact (DueAt), not held",
+				sp and due and fmt("%.3f s after DueAt", sp - due) or "no number")
+			steps(10)
+			return eff
+		end
+		-- (the event's arrival: one frame + (wait - 1) steps after the press: ~0.33 s / ~0.23 s)
+		press(4, " (event ~0.33 s)")
+		press(3, " (event ~0.23 s)")
+
+		-- B) refused: the server's Order echo `rejected`
+		local function broken(label, P, nP)
+			local sh = shatters[#shatters]
+			local e = nil
+			for _, x in ipairs(AF._Live()) do
+				if x.Unit == mine.id and x.Retired and itemOf(x, "Emitter", "Shards") then
+					e = x
+				end
+			end
+			local pose = AF.Pose(mine.id)
+			T.check(sh ~= nil and sh.at >= P and sh.mine == true and AF.Precharging(mine.id) == nil and e ~= nil and pose ~= nil and pose.Name == "Recoil",
+				"pre-charge " .. label .. ": the charge shatters (shards fly, the pet rears back, the 'interrupted' sound hook)",
+				fmt("shatter %s, prediction left %s, shards %s, pose %s", tostring(sh ~= nil and sh.at >= P), tostring(AF.Precharging(mine.id) ~= nil), tostring(e ~= nil),
+					tostring(pose and pose.Name)))
+			steps(10)
+			T.check(playOf(mine.id, "Special", P, false) == nil and liveOf(AF, mine.id, "Special") == nil,
+				"pre-charge " .. label .. ": no Special effect, no impact")
+			return sh
+		end
+		full()
+		steps(3)
+		local PB, nB = os.clock(), #plays
+		BC.Command("Special")
+		step(0.1)
+		mine.meter = 0 -- (the server's view: not full after all)
+		local okB, whyB = sim:Command(me, "Special")
+		step(0.1)
+		local shB = broken("B (refused)", PB, nB)
+		T.check(not okB and shB ~= nil and shB.at - PB < 0.35, "pre-charge B: the refusal arrives before PRESS_WAIT and breaks it at once", fmt("%s, %.2f s", tostring(whyB), shB and shB.at - PB or -1))
+		-- C) no event within PRESS_WAIT
+		full()
+		steps(3)
+		local PC = os.clock()
+		BC.Command("Special")
+		local heldAt = nil
+		watch = function()
+			if AF.Precharging(mine.id) ~= nil then
+				heldAt = os.clock()
+			end
+		end
+		steps(9)
+		watch = nil
+		mine.meter = 0
+		local shC = broken("C (no event)", PC, #plays)
+		T.check(shC ~= nil and heldAt ~= nil and heldAt - PC >= PRE_WAIT - FRAME - 1e-3 and shC.at - PC >= PRE_WAIT - 1e-3 and shC.at - PC <= PRE_WAIT + FRAME + 1e-3,
+			"pre-charge C: it waits PRESS_WAIT (0.7 s) for the event, then shatters", fmt("held until %.2f s, shattered at %.2f s", (heldAt or PC) - PC, (shC and shC.at or PC) - PC))
+		-- C') Low quality: the prediction keeps the LowKeep budget (<= 1 emitter + the shards = 2), no rim Highlight
+		AF.SetQuality("Low")
+		full()
+		steps(3)
+		local PL = os.clock()
+		BC.Command("Special")
+		local preL = AF.Precharging(mine.id)
+		local emL, rimL = preL and preL.Emitters, preL and itemOf(preL, "Rim", "Rim")
+		steps(9)
+		mine.meter = 0
+		local shL = nil
+		for _, x in ipairs(AF._Live()) do
+			if x.Unit == mine.id and x.Retired and itemOf(x, "Emitter", "Shards") then
+				shL = x
+			end
+		end
+		T.check(preL ~= nil and emL ~= nil and emL <= 1 and rimL == nil and shL ~= nil and shL.Emitters <= 2 and shatters[#shatters].at >= PL,
+			"pre-charge C': at Low the prediction keeps <= 1 emitter (+ the shards: 2, the Low cap), no rim Highlight, and still shatters",
+			fmt("emitters %s, rim %s, shattered %s", tostring(emL), tostring(rimL ~= nil), tostring(shL ~= nil)))
+		steps(10)
+		AF.SetQuality("High")
+
+		-- D) my pet's Special with NO press: late impact; its hits / KO held, a plain hit on the same target not
+		bots[1].hp = 5 -- (the Blast knocks it out)
+		local hp2 = BC._Unit(bots[2].id).hp
+		full()
+		steps(3)
+		sim:Command(me, "Target", bots[1].id)
+		sim:Command(me, "Special")
+		extra = { { type = "Hit", from = mine.id, to = bots[2].id, dmg = 3 } } -- a plain hit on bot 2 in the same window
+		local dropAt, downAt, b1hp = nil, nil, {}
+		local maxRims, capsOk = 0, true
+		watch = function()
+			local u2, u1 = BC._Unit(bots[2].id), BC._Unit(bots[1].id)
+			if not dropAt and u2 and u2.hp < hp2 then
+				dropAt = os.clock()
+			end
+			if not downAt and u1 and (u1.state == downState or u1.hp <= 0) then
+				downAt = os.clock()
+			end
+			local s = AF.Stats()
+			maxRims = math.max(maxRims, s.Rims or 0)
+			for _, e in ipairs(AF._Live()) do
+				if e.Emitters > 6 or e.Beams > 4 or e.Lights > 3 then
+					capsOk = false
+				end
+			end
+		end
+		local nD = #plays
+		local evsD, A = step(0.1)
+		local p = playOf(mine.id, "Special", A, false)
+		local c = p and p.ctx
+		local eff = liveOf(AF, mine.id, "Special")
+		local I = eff and (eff.Start + eff.Times.Impact)
+		local spDmg = {}
+		for _, e in ipairs(evsD) do
+			if e.type == "Hit" and e.special and e.from == mine.id then
+				spDmg[e.to] = tostring(math.floor((e.dmg or 0) + 0.5))
+			end
+		end
+		T.check(p ~= nil and p.r == true and c.LateMax == PRE_LATE_MAX and not c.Precharged and eff ~= nil and type(c.ImpactLate) == "number" and c.ImpactLate > 0.1
+			and c.ImpactLate <= PRE_LATE_MAX + 1e-6 and math.abs(I - (c.DueAt + c.ImpactLate)) < 1e-6,
+			"pre-charge D: my pet's Special with no press lands late: impact = DueAt + late, 0 < late <= LATE_MAX (its charge given back)",
+			c and fmt("late %s, impact - DueAt %.3f", tostring(c.ImpactLate), (I or 0) - (c.DueAt or 0)) or "no play")
+		T.check(eff ~= nil and eff.Times.Release >= 0.3 and itemOf(eff, "Rim", "Rim") ~= nil and itemOf(eff, "Emitter", "Charge") ~= nil,
+			"pre-charge D: its charge is seen (>= 0.3 s) with the rim light and the charge glow", eff and fmt("charge %.2f s", eff.Times.Release) or "")
+		for _ = 1, 8 do
+			step(0.1)
+		end
+		watch = nil
+		local plainAt = numberAt(bots[2].id, A, function(t)
+			return t == "3"
+		end)
+		local spAt = spDmg[bots[2].id] and numberAt(bots[2].id, A, function(t)
+			return t:find(spDmg[bots[2].id], 1, true) ~= nil and t ~= "3"
+		end)
+		local koAt = numberAt(bots[1].id, A, function(t)
+			return t == "KO!"
+		end)
+		local f2 = flashTimes(bots[2].id, A)
+		T.check(I ~= nil and spAt ~= nil and spAt >= I - FRAME - 1e-3 and spAt <= I + 0.12,
+			"pre-charge D: the special's damage number waits for the impact", spAt and I and fmt("%.3f s after the impact", spAt - I) or "no number")
+		T.check(I ~= nil and plainAt ~= nil and plainAt < I - 0.1, "pre-charge D: a plain hit on the same target in the same window is NOT held",
+			plainAt and I and fmt("%.3f s before the impact", I - plainAt) or "no number")
+		T.check(I ~= nil and dropAt ~= nil and dropAt >= I - FRAME - 1e-3 and dropAt <= I + 0.15,
+			"pre-charge D: the target's drawn HP does not drop before the impact (the snapshots already carry it), then drops",
+			dropAt and I and fmt("dropped %.3f s after the impact", dropAt - I) or "never dropped")
+		local early, atImpact = false, false
+		for _, t in ipairs(f2) do
+			if t < I - 0.1 then
+				early = true
+			elseif t >= I - FRAME - 1e-3 and t <= I + 0.12 then
+				atImpact = true
+			end
+		end
+		T.check(early and atImpact, "pre-charge D: the special's flinch (hit flash) waits for the impact; the plain hit's flinches on time",
+			fmt("%d flashes on bot 2", #f2))
+		T.check(I ~= nil and koAt ~= nil and koAt >= I - FRAME - 1e-3 and downAt ~= nil and downAt >= I - FRAME - 1e-3,
+			"pre-charge D: the KO of its target waits for the impact (KO! and drawn down not before)",
+			fmt("KO! %s, down %s (s after the impact)", koAt and fmt("%.3f", koAt - I) or "never", downAt and fmt("%.3f", downAt - I) or "never"))
+		T.check(maxRims >= 1 and maxRims <= AF.MAX_RIMS and capsOk, "pre-charge D: the caps hold (rims <= MAX_RIMS, emitters <= 6, beams <= 4, lights <= 3)",
+			fmt("rims %d", maxRims))
+		-- the inhale's sound (SoundFx "Whoosh", an existing Sfx name): risen to the top pitch at the release, faded out
+		local SS = game:GetService("SoundService")
+		local folderS = SS:FindFirstChild("NimbusSounds")
+		local whoosh, risen = 0, false
+		for _, s in ipairs(folderS and folderS:GetChildren() or {}) do
+			if s.Name:find("Sfx_Whoosh", 1, true) then
+				whoosh = whoosh + 1
+				if math.abs(s.PlaybackSpeed - 1.35) < 1e-6 and s.Volume == 0 then
+					risen = true
+				end
+			end
+		end
+		T.check(whoosh >= 1 and risen, "pre-charge D: the inhale is SoundFx's Whoosh, its pitch risen to 1.35 by the release, then faded out",
+			fmt("%d whoosh sounds", whoosh))
+		local _ = nD
+
+		-- E) a bot's Special (another unit's): late too; its inhale is an other's (mine = false)
+		local function botCast(u)
+			u.meter, u.autoCastAt = 100, sim:Time()
+			for _ = 1, 25 do
+				local evs, sent = step(0.1)
+				for _, e in ipairs(evs) do
+					if e.type == "Special" and e.unit == u.id then
+						return e, sent, evs
+					end
+				end
+			end
+			return nil
+		end
+		local nI = #inhales
+		local evE, AE, evsE = botCast(bots[2])
+		local pE = evE and playOf(bots[2].id, "Special", AE, false)
+		local cE = pE and pE.ctx
+		local myDmg = nil
+		for _, e in ipairs(evsE or {}) do
+			if e.type == "Hit" and e.special and e.from == bots[2].id and e.to == mine.id then
+				myDmg = tostring(math.floor((e.dmg or 0) + 0.5))
+			end
+		end
+		local effE = liveOf(AF, bots[2].id, "Special")
+		local IE = effE and (effE.Start + effE.Times.Impact)
+		steps(6)
+		local myAt = myDmg and numberAt(mine.id, AE or 0, function(t)
+			return t:find(myDmg, 1, true) ~= nil
+		end)
+		local othersInhale = false
+		for i = nI + 1, #inhales do
+			if inhales[i].mine == false then
+				othersInhale = true
+			end
+		end
+		T.check(cE ~= nil and pE.r == true and cE.Mine == false and (cE.ImpactLate or 0) > 0.1 and othersInhale,
+			"pre-charge E: a bot's Special lands late too, with the charge cues (an other's inhale)", cE and fmt("late %s", tostring(cE.ImpactLate)) or "no bot special")
+		T.check(IE ~= nil and myAt ~= nil and myAt >= IE - FRAME - 1e-3 and myAt <= IE + 0.12, "pre-charge E: its hit on my pet shows at its (late) impact",
+			myAt and IE and fmt("%.3f s after the impact", myAt - IE) or "no number")
+
+		-- F) last gasp: bot 3 is knocked out in its own late charge (by my pressed Special: no late of its own)
+		bots[3].hp = 5
+		steps(10)
+		full()
+		sim:Command(me, "Target", bots[3].id)
+		steps(2)
+		BC.Command("Special")
+		local evF, AF1 = botCast(bots[3])
+		local effF = liveOf(AF, bots[3].id, "Special")
+		local IF = effF and (effF.Start + effF.Times.Impact)
+		local downF, liveAtImpact = nil, nil
+		watch = function()
+			local u3 = BC._Unit(bots[3].id)
+			if not downF and u3 and (u3.state == downState or u3.hp <= 0) then
+				downF = os.clock()
+			end
+			if IF and liveAtImpact == nil and os.clock() >= IF + 0.02 then
+				liveAtImpact = false
+				for _, e in ipairs(AF._Live()) do
+					if e == effF then
+						liveAtImpact = true
+					end
+				end
+			end
+		end
+		sim:Command(me, "Special")
+		local _, A2 = step(0.1)
+		steps(8)
+		watch = nil
+		local koF = numberAt(bots[3].id, A2 or 0, function(t)
+			return t == "KO!"
+		end)
+		T.check(evF ~= nil and effF ~= nil and AF1 ~= nil and A2 ~= nil and IF ~= nil and A2 < IF - 0.15,
+			"pre-charge F: (setup) bot 3's late Special, then my Special knocks it out inside its charge", IF and A2 and fmt("KO event %.2f s before its impact", IF - A2) or "")
+		T.check(liveAtImpact == true, "pre-charge F: last gasp: the KO'd caster's effect still lands (live past its impact)")
+		T.check(IF ~= nil and koF ~= nil and koF >= IF + 0.05 - FRAME - 1e-3 and downF ~= nil and downF >= IF - 1e-3,
+			"pre-charge F: last gasp: the caster's KO (KO! / drawn down) plays just after its impact",
+			fmt("KO! %s, down %s (s after the impact)", koF and IF and fmt("%.3f", koF - IF) or "never", downF and IF and fmt("%.3f", downF - IF) or "never"))
+
+		KC.toClient("BattleState", "End", { BattleId = id, Mode = "Duel", Outcome = "Win", Won = true, Spectator = false, Reason = "Wipe",
+			Rewards = { Tokens = 0, Gems = 0, Xp = 0, Trophies = 0, LevelUps = 0 } }, id)
+		LocalPlayer:SetAttribute("InBattle", nil)
+		KC.advance(15)
+
+		------------------------------------------------------------------------------------------------------------------
+		-- battle 2 (G): my Obsidian Phoenix's Storm with no press: the zone tick due before the late impact is held
+		------------------------------------------------------------------------------------------------------------------
+		local sim2, start2 = preDuel(Sim, me, "obsidian_phoenix", { "puddle_frog" }, "p7vfx_pre_2", 43)
+		if not T.check(sim2 ~= nil, "pre-charge G: a Duel of my Obsidian Phoenix (Storm) against a frog", tostring(start2)) then
+			return
+		end
+		sim = sim2
+		mine, bots = nil, {}
+		for _, u in ipairs(sim.units) do
+			u.maxHp, u.hp = 1e6, 1e6
+			u.nextAttack = 1e9
+			if u.side == 1 then
+				mine = u
+				u.x, u.z = 0, 0
+			else
+				bots[#bots + 1] = u
+				u.x, u.z, u.moveSpeed = 7, 0, 0
+			end
+		end
+		id = start2.BattleId
+		last = {}
+		LocalPlayer:SetAttribute("InBattle", id)
+		KC.toClient("BattleState", "Start", start2, id)
+		steps(10)
+		full()
+		sim:Command(me, "Target", bots[1].id)
+		sim:Command(me, "Special")
+		local evsG, AG = step(0.1)
+		local zone = sim.zones and sim.zones[#sim.zones]
+		local effG = liveOf(AF, mine.id, "Special")
+		local IG = effG and (effG.Start + effG.Times.Impact)
+		local okG = zone ~= nil and effG ~= nil
+		if zone then
+			zone.nextTick = sim:Time() -- (the first tick comes in the next step: before the late impact)
+		end
+		local ticks = {}
+		for _ = 1, 10 do
+			local evs, sent = step(0.1)
+			for _, e in ipairs(evs) do
+				if e.type == "Hit" and e.zone and e.from == mine.id then
+					ticks[#ticks + 1] = { sent = sent, dmg = tostring(math.floor((e.dmg or 0) + 0.5)) }
+				end
+			end
+		end
+		local function tickNumber(k)
+			local tk = ticks[k]
+			return tk and numberAt(bots[1].id, tk.sent, function(t)
+				return t:find(tk.dmg, 1, true) ~= nil
+			end)
+		end
+		local t1, t2 = tickNumber(1), tickNumber(2)
+		local lead = effG and AG and (IG - (effG.Start + 0)) -- (unused)
+		local _ = lead
+		T.check(okG and #ticks >= 2 and ticks[1].sent < IG - 0.1 and ticks[2].sent > IG, "pre-charge G: (setup) a tick arrives before the late impact, the next after it",
+			fmt("%d ticks", #ticks))
+		T.check(t1 ~= nil and IG ~= nil and t1 >= IG - FRAME - 1e-3 and t1 <= IG + 0.12, "pre-charge G: the Storm tick due before its impact waits for it",
+			t1 and IG and fmt("%.3f s after the impact", t1 - IG) or "no number")
+		T.check(t2 ~= nil and ticks[2] ~= nil and t2 - ticks[2].sent <= 0.12 + 0.1 + FRAME, "pre-charge G: a later tick plays on time (not held)",
+			t2 and fmt("%.3f s after it arrived", t2 - ticks[2].sent) or "no number")
+		local _ = evsG
+		KC.toClient("BattleState", "End", { BattleId = id, Mode = "Duel", Outcome = "Win", Won = true, Spectator = false, Reason = "Wipe",
+			Rewards = { Tokens = 0, Gems = 0, Xp = 0, Trophies = 0, LevelUps = 0 } }, id)
+		LocalPlayer:SetAttribute("InBattle", nil)
+		KC.advance(15)
+
+		------------------------------------------------------------------------------------------------------------------
+		-- H) the /fx preview (DevPetShow): the full authored charge, once (no prediction, no late, no double charge)
+		------------------------------------------------------------------------------------------------------------------
+		local nH = #plays
+		KC.toClient("DevPetShow", "Fx", { Element = "Flame", Attack = "Special", Kind = "Blast", Rarity = "Legendary", Stage = 0 })
+		Mock.Step(FRAME)
+		local specials, preH = 0, 0
+		local pH = nil
+		for i = nH + 1, #plays do
+			local cc = plays[i].ctx
+			if cc.Attack == "Special" then
+				if cc.Pre then
+					preH = preH + 1
+				else
+					specials = specials + 1
+					pH = plays[i]
+				end
+			end
+		end
+		local effH = pH and liveOf(AF, pH.ctx.From and pH.ctx.From.Unit, "Special")
+		local Cat = moduleAt(ROOTS.shared .. "/AttackFxCatalog")
+		local rH = Cat and Cat.Resolve({ Element = "Flame", Attack = "Special", Kind = "Blast", Rarity = "Legendary", Stage = 0, Mine = true })
+		T.check(specials == 1 and preH == 0 and pH.r == true and pH.ctx.DueAt == nil and pH.ctx.LateMax == nil and not pH.ctx.Precharged and effH ~= nil and rH ~= nil
+			and math.abs(effH.Times.Release - rH.Beats.Charge) < 1e-6,
+			"pre-charge H: /fx plays the Special once with its full authored charge (no prediction, no late, not double-charged)",
+			fmt("%d plays (%d predictions), charge %s vs %s", specials, preH, effH and fmt("%.2f", effH.Times.Release) or "-", rH and tostring(rH.Beats.Charge) or "-"))
+		KC.toClient("DevPetShow", "Clear", {})
+		KC.advance(3)
+	end)
+	AF.Play, BC._Fx.Number, BC._Fx.Flash = realPlay, realNumber, realFlash
+	hk.Inhale, hk.Hush, hk.Shatter = realInhale, realHush, realShatter
+	if audio then
+		audio.Whoosh = oldWhoosh
+	end
+	AF_SetQ(nil)
+	if not ok then
+		T.fail("client_p7vfx_precharge raised an error", tostring(err))
+	end
+	local warned = nil
+	for i = out0 + 1, #Mock.Output do
+		local o = Mock.Output[i]
+		if o.kind == "warn" and (o.text:find("BattleController", 1, true) or o.text:find("AttackFx", 1, true)) then
+			warned = o.text
+			break
+		end
+	end
+	T.check(warned == nil and #Mock.Errors == err0 and AF.Stats().Live == 0, "client_p7vfx_precharge: no errors or BattleController / AttackFx warnings, nothing left live", tostring(warned))
+	KC.flushErrors("client_p7vfx_precharge")
 end)
 
 return S

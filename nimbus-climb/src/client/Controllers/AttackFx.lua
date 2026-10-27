@@ -45,15 +45,27 @@
 --       effect <= 2 (the Burst, then the first of the recipe's LowKeep it has: the element's most characteristic one),
 --       particle counts halved, no Beams / Trails / bloom light; switching to Low strips the Beams /
 --       Trails of the live effects at once
---   AttackFx.Stats() -> { Live, Stepped, Emitters, Beams, Trails, Lights, Cores, Pooled, PoolInstances, Errors }
+--   AttackFx.Stats() -> { Live, Stepped, Emitters, Beams, Trails, Lights, Cores, Rims, Pooled, PoolInstances, Errors }
 --       Live = full effects, Stepped = stepped-down ones, the rest = kits held by live effects / pooled kits
 --   AttackFx.Hooks = { Punch = fn(amount, seconds), ScreenGlow = fn(color, seconds), DimWorld = fn(seconds, token, unit),
---                      Undim = fn(token) }
+--                      Undim = fn(token), Inhale = fn(seconds, token, mine), Hush = fn(token), Shatter = fn(mine, unit) }
 --       set by the caller: the camera punch (own pet, band 3+, amount <= PUNCH_MAX 0.35: route it through
 --       BattleController's Me.Shake / ShakeScale path), the edge glow (own pet, band 4) and a signature's dimming
 --       (own pet: Eclipse Nova; seconds = from now to the recipe's Sig.DimWorld after the impact, token = a number of
 --       its own per effect, unit = the caster's unit id or nil); Undim(token) comes when that effect ends for any reason: end, Cancel, ClearAll,
 --       error). AttackFx never touches the camera or Lighting itself; other players' effects call no hook.
+--   (Task 11b, the Special pre-charge) Play's ctx may also carry LateMax (a battle Special nobody pressed: the charge the
+--       render lead cut is given back, up to LateMax seconds, and ctx.ImpactLate = that much: the impact lands after
+--       DueAt; BattleController holds that special's hits for it) or Precharged = true (the caster's predicted charge,
+--       if one lives, is taken over: the charge is backdated to the press, the impact stays on DueAt, the glow / rim /
+--       inhale carry on). A Special with >= CUE_MIN of its charge seen gets the charge cues: a rim Highlight on the caster
+--       (High only, MAX_RIMS live) and Hooks.Inhale(seconds to the release, token, mine) (Hooks.Hush(token) when it ends
+--       early). At such a battle Special its charge glow ranks right after the Burst / LowKeep.
+--   AttackFx.Precharge(ctx) -> bool   a press's predicted charge (Kind, From, To = the likely target, Mine, Seconds =
+--       how long the caller waits for the event): the charge at the mouth + rim + inhale + a held Cast (Pounce: Windup)
+--       pose, open-ended (<= K.PRE_HOLD); no core, no impact
+--   AttackFx.Shatter(unit, now?, quiet?) -> bool   the prediction breaks (refused / no event): shards, the glow fades, Recoil,
+--       Hooks.Shatter(mine, unit); false when the unit has none (quiet = true: it only fades).   AttackFx.Precharging(unit) -> effect | nil
 --   AttackFx.Folder() -> Folder     workspace.ClientBattle.AttackFx (the kits, live and pooled)
 --   Tests: AttackFx._Deps({ MeshLibrary =, TextureIds =, GraphicsQuality = }) (false = the real one again),
 --          AttackFx._Live() (the live effects)
@@ -118,12 +130,18 @@ AttackFx.MAX_CORES = 14
 AttackFx.PUNCH_MAX = 0.35 -- BattleController SHAKE_MAX
 AttackFx.CROSSFADE = 0.12
 AttackFx.HIT_STOP = 0.05
-AttackFx.Hooks = { Punch = nil, ScreenGlow = nil, DimWorld = nil, Undim = nil }
+-- (Task 11b) a Special's charge cues: a rim Highlight on the charging pet (at most MAX_RIMS live at once, High only)
+-- and the inhale sound hook, both only when at least CUE_MIN seconds of the charge are seen; a press's predicted charge
+-- that is refused / never confirmed shatters: its shards fly for SHATTER seconds
+AttackFx.MAX_RIMS = 3
+AttackFx.CUE_MIN = 0.15
+AttackFx.SHATTER = 0.45
+AttackFx.Hooks = { Punch = nil, ScreenGlow = nil, DimWorld = nil, Undim = nil, Inhale = nil, Hush = nil, Shatter = nil }
 
 local K = {
 	PARENT = "ClientBattle",
 	FOLDER = "AttackFx",
-	KEEP = { Emitter = 24, Beam = 8, Trail = 6, Light = 8, Disc = 8 },
+	KEEP = { Emitter = 24, Beam = 8, Trail = 6, Light = 8, Disc = 8, Rim = 3 },
 	CORE_KEEP = 6, -- per vfx_* key
 	CORE_KEYS = 22,
 	LOW_COUNT = 0.5,
@@ -145,8 +163,21 @@ local K = {
 	LEAP_TRAIL_UP = 0.3, -- (Task 10) the leap trails ride the pet this far over its pivot
 	BAND_RARITY = { "Common", "Rare", "Legendary", "Secret" },
 	PRIO = { Ko = 4, Cast = 3, Windup = 2, Strike = 2, Shoot = 2, Recoil = 2, Victory = 2, Hurt = 1 },
+	-- (Task 11b) the charge cues and the predicted charge
+	RIM_IN = 0.3, -- the rim Highlight fades in over this from the charge's start (a backdated charge keeps its rim)
+	RIM_OUT = 0.25, -- ... and out over this after the release
+	RIM_OUTLINE = 0.2, -- its outline transparency at full
+	RIM_FILL = 0.82, -- its fill transparency at full (a faint wash of the element's colour)
+	PRE_HOLD = 1.2, -- seconds a predicted charge lasts at most (BattleController shatters it sooner: its PRESS_WAIT)
+	PRE_CAST_P = 0.5, -- the predicted charge's Cast pose holds at this p (risen, wings spread, eyes shut gathering power)
+	PRE_WINDUP_P = 0.6, -- ... a Pounce's Windup holds at this p (the full crouch)
+	PRE_MIN_CHARGE = 0.25, -- a pressed Special shows at least this much charge before its release (travel gives way)
+	RETIRE = 0.45, -- a charge given up (shattered, or the part the real effect did not take over) ends this long after
+	SHARDS = 8, -- shards of a shattered charge (x 0.5 at Low)
+	SHARD_TEX = "fx_sparkle", -- their sheet: four-point glints flung out like glass
+	RECOIL = 0.35, -- the shattered caster rears back (PetPoses Recoil) this long
 }
-AttackFx.POOL_KEEP_TOTAL = K.KEEP.Emitter + K.KEEP.Beam + K.KEEP.Trail + K.KEEP.Light + K.KEEP.Disc + K.CORE_KEEP * K.CORE_KEYS
+AttackFx.POOL_KEEP_TOTAL = K.KEEP.Emitter + K.KEEP.Beam + K.KEEP.Trail + K.KEEP.Light + K.KEEP.Disc + K.KEEP.Rim + K.CORE_KEEP * K.CORE_KEYS
 
 -- the 4x4 sheets of blender/vfx/textures.json: key -> { FlipbookMode, fps, LightEmission }
 -- (fx_lightning / fx_speedlines are grid-1 strips: Beams / Trails only)
@@ -294,8 +325,9 @@ end
 local St = {
 	live = {}, -- live effects, in play order
 	poses = {}, -- unitId -> { Segs, Prio, Prev?, SwitchAt? }
-	pool = { Emitter = {}, Beam = {}, Trail = {}, Light = {}, Disc = {} },
+	pool = { Emitter = {}, Beam = {}, Trail = {}, Light = {}, Disc = {}, Rim = {} },
 	corePool = {}, -- key -> { kits }
+	pre = {}, -- (Task 11b) unitId -> its predicted charge (an effect with Pre = true)
 	forced = nil, -- SetQuality's mode (nil = GraphicsQuality)
 	mode = nil, -- the mode applied to the live effects
 	now = nil, -- the last Update clock
@@ -303,6 +335,7 @@ local St = {
 	errors = 0,
 	warned = {},
 	dimSeq = 0, -- (Task 11) the last battle-dim token handed to Hooks.DimWorld
+	cueSeq = 0, -- (Task 11b) the last inhale token handed to Hooks.Inhale
 }
 
 local function warnOnce(key, msg)
@@ -318,7 +351,7 @@ local function ensureFolder()
 		return f
 	end
 	-- the folder is gone (a battle clean-up destroyed ClientBattle): the pooled kits went with it
-	St.pool = { Emitter = {}, Beam = {}, Trail = {}, Light = {}, Disc = {} }
+	St.pool = { Emitter = {}, Beam = {}, Trail = {}, Light = {}, Disc = {}, Rim = {} }
 	St.corePool = {}
 	local root = Workspace:FindFirstChild(K.PARENT)
 	if not root then
@@ -435,6 +468,20 @@ function NEW.Disc(folder)
 	return { Kind = "Disc", Root = d, Gui = g, Img = im, N = 3 }
 end
 
+-- (Task 11b) a Special's rim light: a Highlight on the charging pet's model (an outline + a faint wash of its colour)
+function NEW.Rim(folder)
+	local h = Instance.new("Highlight")
+	h.Name = "FxRim"
+	h.Enabled = false
+	h.FillTransparency = 1
+	h.OutlineTransparency = 1
+	pcall(function()
+		h.DepthMode = "Occluded" -- (never through the arena walls; by name, like BattleController's hit flash)
+	end)
+	h.Parent = folder
+	return { Kind = "Rim", Root = h, Hl = h, N = 1 }
+end
+
 local function coreReady(key)
 	local ML = dep("MeshLibrary")
 	if not (ML and type(ML.IsReady) == "function" and type(key) == "string") then
@@ -503,6 +550,9 @@ local function hide(kit)
 	elseif k == "Light" then
 		kit.Light.Enabled = false
 		kit.Light.Brightness = 0
+	elseif k == "Rim" then
+		kit.Hl.Enabled = false
+		kit.Hl.Adornee = nil
 	else
 		kit.Root.Transparency = 1
 		if kit.Img then
@@ -1391,6 +1441,37 @@ function DRAW.Disc(eff, it, t)
 	end
 end
 
+-- (Task 11b) the rim light on the charging pet: fades in from the charge's start (RIM_IN; a charge backdated to a
+-- press keeps the strength its prediction reached), holds to the release, fades out over RIM_OUT
+function DRAW.Rim(eff, it, t)
+	local hl = it.Kit.Hl
+	local m = eff.Src.Model
+	local rel = eff.Times.Release
+	local a = 0
+	if m and m.Parent and t >= 0 then
+		if t <= rel then
+			a = smooth(t / K.RIM_IN)
+		else
+			a = 1 - smooth(seg(t, rel, rel + K.RIM_OUT))
+		end
+	end
+	it.A = a
+	if a <= 0.01 then
+		if hl.Enabled then
+			hl.Enabled = false
+		end
+		return
+	end
+	if hl.Adornee ~= m then
+		hl.Adornee = m
+	end
+	hl.OutlineTransparency = 1 - (1 - K.RIM_OUTLINE) * a
+	hl.FillTransparency = 1 - (1 - K.RIM_FILL) * a
+	if not hl.Enabled then
+		hl.Enabled = true
+	end
+end
+
 ----------------------------------------------------------------------
 -- Building an effect's items
 ----------------------------------------------------------------------
@@ -2233,6 +2314,40 @@ local function addLayer(eff, layer, beams)
 	end
 end
 
+-- (Task 11b) the charge cues of a Special whose charge is seen (>= CUE_MIN: a battle's late impact or a press's
+-- backdated charge, the /fx preview; a charge cut to the render lead shows none): eff.Cue = the inhale (Hooks.Inhale at
+-- its first frame) and the rim Highlight on the caster (High only, at most MAX_RIMS live: own and others' alike)
+local RIM_LAYER = { Id = "Rim", Kind = "Rim" }
+
+local function liveRims()
+	local n = 0
+	for _, e in ipairs(St.live) do
+		n = n + (e.Rims or 0)
+	end
+	return n
+end
+
+local function addChargeCues(eff)
+	local r = eff.Recipe
+	if r.Attack ~= "Special" or eff.Miss or eff.Times.Release < AttackFx.CUE_MIN then
+		return
+	end
+	eff.Cue = true
+	if eff.Low or not eff.Src.Model or liveRims() >= AttackFx.MAX_RIMS then
+		return
+	end
+	local kit = take("Rim")
+	if not kit then
+		return
+	end
+	local pal = type(r.Palette) == "table" and r.Palette or {}
+	local edge = typeof(pal.Edge) == "Color3" and pal.Edge or WHITE
+	kit.Hl.OutlineColor = (r.Core and typeof(r.Core.RimColor) == "Color3") and r.Core.RimColor or edge
+	kit.Hl.FillColor = typeof(pal.Mid) == "Color3" and pal.Mid or edge
+	eff.Rims = (eff.Rims or 0) + 1
+	addItem(eff, { Kind = "Rim", Kit = kit, Layer = RIM_LAYER, T0 = 0, T1 = eff.Times.Release + K.RIM_OUT, Fn = DRAW.Rim })
+end
+
 -- the signature actor (Task 11): its vfx_sig_* piece(s). Built right after the core, so the per-effect piece cap
 -- (MAX_CORES) never cuts the pet's identity: Count pieces (other players' pets: Count x Density, at least 1), each with
 -- its Rim copy when the actor has one, never more than the pieces left under the cap. At "Allies" puts Count pieces on
@@ -2519,7 +2634,7 @@ local function release(eff)
 		end
 	end
 	eff.Items = {}
-	eff.Emitters, eff.Beams, eff.Trails, eff.Lights, eff.Cores = 0, 0, 0, 0, 0
+	eff.Emitters, eff.Beams, eff.Trails, eff.Lights, eff.Cores, eff.Rims = 0, 0, 0, 0, 0, 0
 end
 
 local function finish(eff)
@@ -2528,7 +2643,21 @@ local function finish(eff)
 			table.remove(St.live, i)
 		end
 	end
+	if eff.Pre and St.pre[eff.Unit] == eff then
+		St.pre[eff.Unit] = nil
+	end
+	local pose = St.poses[eff.Unit]
+	if pose and pose.PreOf == eff then
+		St.poses[eff.Unit] = nil -- (a predicted charge's held pose never outlives it)
+	end
 	release(eff)
+	-- (Task 11b) an inhale still rising ends with its effect (a real effect that took a press's charge over took its
+	-- token: the prediction gives none back)
+	if eff.InhaleToken ~= nil then
+		local token = eff.InhaleToken
+		eff.InhaleToken = nil
+		callHook("Hush", token)
+	end
 	-- (Task 11) a signature that dimmed the battle (Eclipse Nova) gives the light back whenever it ends: its own end, a
 	-- Cancel (the caster swapped out / gone), ClearAll (the battle torn down) or a failed build / step
 	if eff.DimToken ~= nil then
@@ -2544,11 +2673,13 @@ local function strip(eff)
 	local keep = {}
 	for _, it in ipairs(eff.Items) do
 		local layer = it.Layer
-		local drop = it.Kind == "Beam" or it.Kind == "Trail" or (it.Kind == "Light" and layer and (layer.Pulse or layer.Id == "Bloom"))
+		local drop = it.Kind == "Beam" or it.Kind == "Trail" or it.Kind == "Rim" or (it.Kind == "Light" and layer and (layer.Pulse or layer.Id == "Bloom"))
 		if drop then
 			give(it.Kit)
 			it.Kit = nil
-			if it.Kind == "Beam" then
+			if it.Kind == "Rim" then
+				eff.Rims = 0
+			elseif it.Kind == "Beam" then
 				eff.Beams = eff.Beams - 1
 			elseif it.Kind == "Trail" then
 				eff.Trails = eff.Trails - 1
@@ -2607,15 +2738,33 @@ local function stepEffect(eff, now)
 		-- unit (BattleController ends that dim early on the caster's KO); finish calls Hooks.Undim(token) whenever the
 		-- effect ends, so a cancelled or torn-down effect never leaves the battle dark. A MISSED cast never dims (fix
 		-- round 1, M3: a dim + the black sun dropping read as a hit)
-		if eff.Mine and not eff.Miss and r.Sig and finite(r.Sig.DimWorld) and r.Sig.DimWorld >= 0 then
+		if eff.Mine and not eff.Miss and not eff.Pre and r.Sig and finite(r.Sig.DimWorld) and r.Sig.DimWorld >= 0 then
 			St.dimSeq = St.dimSeq + 1
 			eff.DimToken = St.dimSeq
 			callHook("DimWorld", max(0.2, eff.Times.Impact - t) + r.Sig.DimWorld, eff.DimToken, eff.Unit)
 		end
 	end
+	-- (Task 11b) the inhale under a seen charge: Hooks.Inhale(seconds to the release, token, mine) at the first frame. A
+	-- real effect that took a press's predicted charge over keeps its token: the call retimes the same sound (no restart)
+	if eff.Cue and not eff.Inhaled then
+		eff.Inhaled = true
+		local left = (eff.Pre and eff.CueSeconds or eff.Times.Release) - t
+		if left > 0.05 then
+			if eff.InhaleToken == nil then
+				St.cueSeq = St.cueSeq + 1
+				eff.InhaleToken = St.cueSeq
+			end
+			callHook("Inhale", left, eff.InhaleToken, eff.Mine)
+		elseif eff.InhaleToken ~= nil then
+			-- (a press's inhale taken over by a Special whose release is now: it ends here)
+			local token = eff.InhaleToken
+			eff.InhaleToken = nil
+			callHook("Hush", token)
+		end
+	end
 	if not eff.Punched and t >= eff.Times.Impact then
 		eff.Punched = true
-		if eff.Mine and not eff.Miss then
+		if eff.Mine and not eff.Miss and not eff.Pre then
 			if r.CameraPunch then
 				callHook("Punch", min(AttackFx.PUNCH_MAX, 0.14 + 0.06 * (r.Band - 3) + (eff.Crit and 0.05 or 0)), 0.2)
 			end
@@ -2688,7 +2837,7 @@ end
 
 -- -> start, charge, release, travel, late (seconds the impact lands AFTER dueAt: only a recipe's MinTravel, a basic
 -- ranged shot's flight, is never cut, so the shot is always seen crossing the gap: player note 1)
-local function fitTimes(b, now, dueAt)
+local function fitTimes0(b, now, dueAt)
 	local C, R, Tr = b.Charge or 0, b.Release or 0, b.Travel or 0
 	local keep = finite(b.MinTravel) and max(0, min(Tr, b.MinTravel)) or 0
 	local start, late = now, 0
@@ -2711,6 +2860,116 @@ local function fitTimes(b, now, dueAt)
 		end
 	end
 	return start, C, R, Tr, late
+end
+
+-- (Task 11b) `lateMax` (a battle Special, no press): the charge the cut took is given back, up to lateMax seconds, and
+-- the impact lands that much later (late += min(authored charge - the charge the lead left, lateMax); the release and
+-- the travel stay as the lead fits them). `from` (a press's predicted charge, a clock time <= now): the charge is
+-- backdated to it (start = from) and grows by the time since, so the impact stays on dueAt
+local function fitTimes(b, now, dueAt, lateMax, from)
+	local start, C, R, Tr, late = fitTimes0(b, now, dueAt)
+	if finite(from) and from < start then
+		C = C + (start - from)
+		start = from
+		-- a quick round trip: the charge still reads (>= PRE_MIN_CHARGE before the release), the travel then the release
+		-- give way; the impact stays on dueAt
+		local short = min(K.PRE_MIN_CHARGE, C + R + Tr) - C
+		if short > 0 then
+			local c = min(Tr, short)
+			Tr, short, C = Tr - c, short - c, C + c
+			c = min(R, short)
+			R, C = R - c, C + c
+		end
+	elseif finite(lateMax) and lateMax > 0 then
+		local extra = max(0, min((b.Charge or 0) - C, lateMax))
+		C = C + extra
+		late = late + extra
+	end
+	return start, C, R, Tr, late
+end
+
+-- (Task 11b) an effect's counts from the kits it still holds (after a hand-over)
+local function recount(eff)
+	local n = { Emitter = 0, Beam = 0, Trail = 0, Light = 0, Rim = 0 }
+	local cores = 0
+	for _, it in ipairs(eff.Items) do
+		local kit = it.Kit
+		if kit then
+			if kit.Kind == "Core" then
+				cores = cores + 1
+			elseif n[kit.Kind] then
+				n[kit.Kind] = n[kit.Kind] + 1
+			end
+		end
+	end
+	eff.Emitters, eff.Beams, eff.Trails, eff.Lights, eff.Rims, eff.Cores = n.Emitter, n.Beam, n.Trail, n.Light, n.Rim, cores
+end
+
+-- (Task 11b) a charge given up (shattered, or what the real effect did not take over): out of St.pre, its streams stop
+-- now, its rim / light fade, the particles already out live on; gone RETIRE seconds from now
+local function retire(eff, now)
+	if St.pre[eff.Unit] == eff then
+		St.pre[eff.Unit] = nil
+	end
+	eff.Pre = nil
+	eff.Retired = true
+	local tRel = max(0, now - eff.Start)
+	eff.Times.Release = min(eff.Times.Release, tRel)
+	for _, it in ipairs(eff.Items) do
+		if it.Kind == "Emitter" and it.Mode == "Stream" then
+			it.T1 = min(it.T1, tRel)
+		elseif it.Kind == "Light" then
+			it.T1 = min(it.T1, tRel + 0.15)
+		end
+	end
+	eff.EndRel = min(eff.EndRel, tRel + K.RETIRE)
+	eff.End = eff.Start + eff.EndRel
+end
+
+-- (Task 11b) the real Special takes over its press's predicted charge: each of its items with a twin in the prediction
+-- (same kind + layer Id: the charge glow / motes, a charge light, the rim) takes the twin's kit (the particles already
+-- out, the rim's strength: nothing restarts; its own fresh kit goes back to the pool); the inhale's token passes on
+-- (the sound is retimed, not restarted); the rest of the prediction retires
+local function adopt(eff, pre, now)
+	local twins = {}
+	for _, it in ipairs(pre.Items) do
+		local id = it.Kit and it.Layer and it.Layer.Id
+		if id ~= nil then
+			twins[it.Kind .. "|" .. tostring(id)] = it
+		end
+	end
+	for _, it in ipairs(eff.Items) do
+		local id = it.Kit and it.Layer and it.Layer.Id
+		local old = id ~= nil and twins[it.Kind .. "|" .. tostring(id)] or nil
+		if old and old.Kit and old.Kit.Kind == it.Kit.Kind then
+			give(it.Kit)
+			it.Kit, old.Kit = old.Kit, nil
+			it.Acc = old.Acc or it.Acc
+			it.Fired = old.Fired
+			it.Adopted = true
+			eff.Adopted = (eff.Adopted or 0) + 1
+		end
+	end
+	if pre.InhaleToken ~= nil then
+		eff.InhaleToken = pre.InhaleToken
+		pre.InhaleToken = nil
+	end
+	eff.PreStart = pre.Start
+	recount(pre)
+	retire(pre, now)
+end
+
+-- (Task 11b) the predicted charge's pose: Cast (a Pounce: its Windup) held at PRE_CAST_P / PRE_WINDUP_P until the real
+-- effect's poses replace it (crossfade) or the charge shatters (Recoil)
+local function preparePose(eff, now)
+	local pounce = eff.Kind == "Pounce"
+	local dur = pounce and 1 or 0.6
+	local p = pounce and K.PRE_WINDUP_P or K.PRE_CAST_P
+	setPoses(eff.Unit, { { Name = pounce and "Windup" or "Cast", T0 = now, Dur = dur, StopAt = now + dur * p, StopDur = K.PRE_HOLD + 1, Hold = true } }, now)
+	local entry = St.poses[eff.Unit]
+	if entry then
+		entry.PreOf = eff
+	end
 end
 
 function AttackFx.Play(ctx)
@@ -2759,13 +3018,32 @@ function AttackFx.Play(ctx)
 			return false
 		end
 		local quality = applyQuality()
-		local start, C, R, Tr, late = fitTimes(r.Beats, now, ctx.DueAt)
+		-- (Task 11b) a press's predicted charge (ctx.Pre: AttackFx.Precharge) / the real Special taking it over
+		-- (ctx.Precharged: its charge backdated to the press, the prediction's charge items handed on) / a battle Special
+		-- with no press (ctx.LateMax: the charge given back, the impact that much after DueAt)
+		local isPre = ctx.Pre == true and r.Attack == "Special"
+		local pre = nil
+		if ctx.Precharged and not isPre and r.Attack == "Special" then
+			local p = St.pre[src.Unit]
+			if p and p.Kind == ctx.Kind then
+				pre = p
+			end
+		end
+		local start, C, R, Tr, late = fitTimes(r.Beats, now, ctx.DueAt, (not isPre and not pre) and ctx.LateMax or nil, pre and pre.Start or nil)
 		ctx.ImpactLate = late
 		local Imp, L = r.Beats.Impact or 0.15, r.Beats.Linger or 0.5
 		local aliveSecs = (type(r.Alive) == "table" and finite(r.Alive.Seconds)) and r.Alive.Seconds or 0
 		local T = { Charge = 0, Release = C, Travel = C + R, Impact = C + R + Tr }
 		T.Linger = T.Impact + Imp
 		local endRel = T.Linger + max(L, aliveSecs)
+		if isPre then
+			-- open-ended: only the charge, until the real effect takes it over or it shatters (<= PRE_HOLD); its particles
+			-- may live their full life (the tuned Lifetime stops at EndRel)
+			start, late = now, 0
+			ctx.ImpactLate = 0
+			T = { Charge = 0, Release = K.PRE_HOLD, Travel = K.PRE_HOLD, Impact = K.PRE_HOLD + 10, Linger = K.PRE_HOLD + 10 }
+			endRel = K.PRE_HOLD + 0.5
+		end
 		local area = (r.Attack == "Element") and (r.Shape or "Cone") or nil
 		local reach
 		if area == "Line" then
@@ -2797,23 +3075,31 @@ function AttackFx.Play(ctx)
 			Path = r.Core.Path, Area = area, Reach = reach, Drop = drop, Size = r.Size or 1,
 			Start = start, Times = T, EndRel = endRel, End = start + endRel,
 			Mine = ctx.Mine == true, Crit = ctx.Crit == true, Strong = ctx.Strong == true, Miss = ctx.Miss == true,
-			Stepped = step, Low = quality == "Low", Items = {}, Emitters = 0, Beams = 0, Trails = 0, Lights = 0, Cores = 0,
+			Stepped = step, Low = quality == "Low", Items = {}, Emitters = 0, Beams = 0, Trails = 0, Lights = 0, Cores = 0, Rims = 0,
+			Kind = ctx.Kind, Pre = isPre or nil, CueSeconds = isPre and (finite(ctx.Seconds) and max(0.1, ctx.Seconds) or K.PRE_HOLD) or nil,
 		}
 		for i, side in ipairs(targets) do
 			eff.T[i] = side.Last
 		end
 		refresh(eff)
 		eff.CorePos = corePosOf(eff, 0)
-		-- what this effect draws: the core, the layers it can afford, the alive detail, the signature actor
-		buildCore(eff)
-		buildActor(eff) -- (Task 11: before the layers, so the 14-piece cap never cuts the signature's own pieces)
+		-- what this effect draws: the core, the layers it can afford, the alive detail, the signature actor (a predicted
+		-- charge: only its charge at the mouth: the glow + motes, a glow light; its target is a guess)
+		if not isPre then
+			buildCore(eff)
+			buildActor(eff) -- (Task 11: before the layers, so the 14-piece cap never cuts the signature's own pieces)
+		end
 		local layers = {}
 		for _, layer in ipairs(r.Layers or {}) do
-			if not (eff.Miss and (layer.Beat == "Impact" or layer.Beat == "Linger")) then
+			if isPre then
+				if layer.Beat == "Charge" and layer.At == "Source" and (layer.Kind == "Emitter" or layer.Kind == "Light") then
+					layers[#layers + 1] = layer
+				end
+			elseif not (eff.Miss and (layer.Beat == "Impact" or layer.Beat == "Linger")) then
 				layers[#layers + 1] = layer
 			end
 		end
-		if type(r.Alive) == "table" and r.Alive.Kind and not eff.Miss then
+		if type(r.Alive) == "table" and r.Alive.Kind and not eff.Miss and not isPre then
 			local a = {}
 			for k, v in pairs(r.Alive) do
 				a[k] = v
@@ -2823,6 +3109,9 @@ function AttackFx.Play(ctx)
 			layers[#layers + 1] = a
 		end
 		local cap = AttackFx.MAX_EMITTERS[quality] or 6
+		if isPre then
+			cap = cap - 1 -- (room for the shards if it shatters)
+		end
 		local keep = nil
 		if quality == "Low" and type(r.LowKeep) == "table" then
 			keep = {}
@@ -2830,10 +3119,18 @@ function AttackFx.Play(ctx)
 				keep[id] = keep[id] or i
 			end
 		end
+		-- (Task 11b) a battle Special whose charge is seen keeps its charge glow at the mouth right after the Burst and
+		-- the LowKeep (it ranked last: the charge used to be cut to the render lead); the /fx preview (no DueAt) ranks as
+		-- before
+		local glowFirst = finite(ctx.DueAt) and r.Attack == "Special" and T.Release >= AttackFx.CUE_MIN
 		local ranked = {}
 		for i, layer in ipairs(layers) do
 			if isEmitter(layer) and not chargeDropped(eff, layer) then
-				ranked[#ranked + 1] = { L = layer, R = emitterRank(layer, keep), I = i }
+				local rank = emitterRank(layer, keep)
+				if glowFirst and layer.Beat == "Charge" and layer.At == "Source" and rank > 0.9 then
+					rank = 0.9
+				end
+				ranked[#ranked + 1] = { L = layer, R = rank, I = i }
 			end
 		end
 		table.sort(ranked, function(a, b)
@@ -2852,8 +3149,21 @@ function AttackFx.Play(ctx)
 				addLayer(eff, layer, beams)
 			end
 		end
+		addChargeCues(eff) -- (Task 11b) the rim light + the inhale under a seen charge
 		St.live[#St.live + 1] = eff
-		schedulePoses(eff, now)
+		if isPre then
+			local old = St.pre[eff.Unit]
+			if old then
+				retire(old, now)
+			end
+			St.pre[eff.Unit] = eff
+			preparePose(eff, now)
+		else
+			schedulePoses(eff, now)
+			if pre then
+				adopt(eff, pre, now)
+			end
+		end
 		return true
 	end)
 	if not ok then
@@ -2865,6 +3175,86 @@ function AttackFx.Play(ctx)
 		return false
 	end
 	return result == true
+end
+
+-- (Task 11b) a press's predicted charge on the caster: the Special's charge at its mouth (glow + motes), the rim, the
+-- inhale and the Cast pose, open-ended (<= PRE_HOLD; ctx.Seconds = how long the caller waits: the inhale's rise). ctx as
+-- Play's (Kind, From, To = the target it will likely aim at, Element / Rarity / ..., Mine, Now); no DueAt. The real
+-- Special takes it over with Play(ctx with Precharged = true); a refusal / no event: Shatter(unit). A newer prediction
+-- on the unit retires the older one.
+function AttackFx.Precharge(ctx)
+	if type(ctx) ~= "table" then
+		return false
+	end
+	local c = {}
+	for k, v in pairs(ctx) do
+		c[k] = v
+	end
+	c.Pre, c.Attack, c.DueAt, c.Precharged, c.LateMax, c.Miss, c.Crit = true, "Special", nil, nil, nil, nil, nil
+	return AttackFx.Play(c)
+end
+
+-- (Task 11b) the unit's live predicted charge (read only) | nil
+function AttackFx.Precharging(unit)
+	return St.pre[unit]
+end
+
+-- (Task 11b) the predicted charge breaks: a few shards fly off the mouth (K.SHARDS of SHARD_TEX in the edge colour, the
+-- Shatter burst), its glow / rim fade (retire), the caster rears back (Recoil), the inhale is hushed and
+-- Hooks.Shatter(mine, unit) plays the "interrupted" sound. No impact. `quiet` = it only fades (its Special came but
+-- could not play: no shards, no Recoil, no sound). -> true when there was a prediction to break
+function AttackFx.Shatter(unit, now, quiet)
+	local eff = St.pre[unit]
+	if not eff then
+		return false
+	end
+	now = finite(now) and now or (St.now or os.clock())
+	local ok, err = pcall(function()
+		if eff.InhaleToken ~= nil then
+			local token = eff.InhaleToken
+			eff.InhaleToken = nil
+			callHook("Hush", token)
+		end
+		retire(eff, now)
+		if quiet then
+			local e = St.poses[eff.Unit]
+			if e and e.PreOf == eff then
+				St.poses[eff.Unit] = nil -- (its held charge pose ends with it)
+			end
+			return
+		end
+		local tRel = max(0, now - eff.Start)
+		local ids = dep("TextureIds")
+		local id = type(ids) == "table" and ids[K.SHARD_TEX] or nil
+		if type(id) == "number" and id > 0 then
+			local pal = type(eff.Recipe.Palette) == "table" and eff.Recipe.Palette or {}
+			local layer = { Id = "Shards", Kind = "Emitter", Texture = K.SHARD_TEX, Beat = "Charge", At = "Source", Size = 0.8,
+				Color = typeof(pal.Edge) == "Color3" and pal.Edge or WHITE }
+			local kit = take("Emitter")
+			if kit then
+				eff.Emitters = eff.Emitters + 1
+				local count = max(2, floor(K.SHARDS * eff.Recipe.Density * (eff.Low and K.LOW_COUNT or 1) + 0.5))
+				local it = addItem(eff, { Kind = "Emitter", Kit = kit, Layer = layer, At = "Source", T0 = tRel, T1 = tRel, Mode = "Burst", Preset = "Shatter",
+					Count = count, Rate = 0, Acc = 0, Pts = {}, Fn = DRAW.Emitter })
+				tuneEmitter(eff, it, layer)
+			end
+		end
+		local old = St.poses[eff.Unit]
+		St.poses[eff.Unit] = nil
+		setPoses(eff.Unit, { { Name = "Recoil", T0 = now, Dur = K.RECOIL } }, now)
+		local entry = St.poses[eff.Unit]
+		if entry and old then
+			entry.Prev, entry.SwitchAt = old, now -- (crossfade from the held charge pose)
+		end
+		eff.Shattered = true
+		callHook("Shatter", eff.Mine, eff.Unit)
+	end)
+	if not ok then
+		St.errors = St.errors + 1
+		warnOnce("shatter", "Shatter failed: " .. tostring(err))
+		pcall(finish, eff)
+	end
+	return true
 end
 
 function AttackFx.Update(now)
@@ -2956,6 +3346,7 @@ function AttackFx.ClearAll()
 	end
 	St.live = {}
 	St.poses = {}
+	St.pre = {}
 end
 
 function AttackFx.SetQuality(q)
@@ -2967,7 +3358,7 @@ function AttackFx.SetQuality(q)
 end
 
 function AttackFx.Stats()
-	local s = { Live = 0, Stepped = 0, Emitters = 0, Beams = 0, Trails = 0, Lights = 0, Cores = 0, Pooled = 0, PoolInstances = 0, Errors = St.errors }
+	local s = { Live = 0, Stepped = 0, Emitters = 0, Beams = 0, Trails = 0, Lights = 0, Cores = 0, Rims = 0, Pooled = 0, PoolInstances = 0, Errors = St.errors }
 	for _, eff in ipairs(St.live) do
 		if eff.Stepped then
 			s.Stepped = s.Stepped + 1
@@ -2979,6 +3370,7 @@ function AttackFx.Stats()
 		s.Trails = s.Trails + eff.Trails
 		s.Lights = s.Lights + eff.Lights
 		s.Cores = s.Cores + eff.Cores
+		s.Rims = s.Rims + (eff.Rims or 0)
 	end
 	local function count(list)
 		for _, kit in ipairs(list) do

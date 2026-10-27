@@ -60,6 +60,14 @@
 --     winners' Victory waits for it); a Leave ends the leavers' own effects at once (AttackFx.Cancel), every teardown
 --     clears at once. Camera punch -> Me.Shake (own pets),
 --     the Secret screen-edge glow / a signature's dim -> Me.ScreenFx. GraphicsQuality drives AttackFx.SetQuality.
+--   * (Task 11b, the Special pre-charge, player option C; no server change) MY SPECIAL press predicts its charge at once
+--     when my view says it can go (Atk.PreCharge -> AttackFx.Precharge: glow + motes, rim, inhale, Cast pose); its Special
+--     event takes it over (backdated to the press, the impact still on its DueAt); a rejected Order or PRESS_WAIT (0.7 s)
+--     without the event shatters it (shards, Recoil, SoundFx "Error"). Every other Special (bots, NPCs, allies, enemies,
+--     my pet with no press) gets its charge back: its impact lands up to LATE_MAX (0.35 s) after its event, and that
+--     special's own hits / Storm ticks due before the impact, the KOs they cause (Net.SpecialHold) and their units' drawn
+--     HP (Units.Hold) wait for it; a caster KO'd in its own late charge falls LAST_GASP after its impact. Other hits play
+--     on time; the End is not held. The inhale = SoundFx "Whoosh" (Me.Inhale), its pitch rising to the release.
 --   * The player's CHARACTER is the fighter's body (B1): my fighter (High) is drawn at the shoulder offset (1.8, 0.5,
 --     0.6) of the SERVER fighter position, blended toward the character root while the two are within 2 studs and
 --     following the server position beyond (lerp 0.35 per 60 Hz frame), so what looks in reach is in reach. My two
@@ -171,6 +179,7 @@ local Mods = {
 	AttackFx = nil, -- client/Controllers/AttackFx (lazy: Atk.Mod); false = unavailable (the cube Fx.* draw everything)
 	FxCat = nil, -- shared/AttackFxCatalog (lazy: Atk.Look)
 	Gfx = nil, -- client/GraphicsQuality (lazy: Atk.SyncQuality)
+	Sound = nil, -- client/SoundFx (lazy: Me.Sound, Task 11b: the charge's inhale / shatter); false = unavailable
 }
 
 local BattleController = {}
@@ -217,6 +226,15 @@ local K = {
 	KO_TIME = 0.9, -- PetPoses Ko (AttackFx K.KO): the tumble, then the pose holds
 	KO_CONFIRM = 1.0, -- a played Ko whose pet no snapshot draws down within this long is dropped (no KO after all)
 	FX_LEAD_MAX = 0.45, -- seconds an effect may start before its event plays (the render delay: the charge beat)
+	-- (Task 11b, the Special pre-charge, player option C) a press predicts the charge; every other Special lands late
+	PRESS_WAIT = 0.7, -- a pressed SPECIAL's predicted charge waits this long for its Special event, then shatters
+	LATE_MAX = 0.35, -- a Special nobody here pressed: up to this much charge is given back, its impact (and its hits) that late
+	LAST_GASP = 0.05, -- a caster KO'd in its own late charge falls this long after the impact
+	INHALE_PITCH = { 0.75, 1.35 }, -- the inhale (SoundFx "Whoosh") rises from / to this PlaybackSpeed under the charge
+	INHALE_IN = 0.08, -- seconds the inhale fades in ...
+	INHALE_OUT = 0.12, -- ... and out at the release (or when hushed)
+	INHALE_OTHERS = 0.4, -- volume x for others' pets' inhales
+	INHALE_MAX = 2, -- inhales at once (a crowded raid: the rest charge silently)
 	FX_COVER = 1.6, -- seconds after a played Special / Element during which its targets' hits are AttackFx's (Hurt pose)
 	WINDUP_HOLD = 0.6, -- PetPoses Windup is held at this p while Winding (its crouch is full from p 0.5 to 0.82) ...
 	WINDUP_IN = 0.25, -- ... reached in this many seconds
@@ -403,6 +421,8 @@ local St = {
 	movementOn = false, -- MovementController's battle switches are set
 	shake = nil, -- { t0, dur, amp } camera shake
 	dim = nil, -- (Task 11) { t0, dur, token, unit } a signature's battle dim (LightingStack K.DIM_ID pushed)
+	pre = nil, -- (Task 11b) { B, unit, t0, untilT } my pressed SPECIAL's predicted charge, waiting for its event
+	inhales = {}, -- (Task 11b) token -> { sound, t0, dur, vol } the charges' inhale sounds
 }
 
 local Hud = {} -- the battle HUD (built once, lazily)
@@ -1613,8 +1633,23 @@ function Units.Update(B, u, now, dt, sa, sb, alpha, animate)
 	end
 	local d = (alpha >= 0.5 and type(b) == "table" and b) or (type(a) == "table" and a) or (type(b) == "table" and b) or nil
 	if d then
-		u.hp = num(d.hp, u.hp)
-		u.state = num(d.state, u.state)
+		local hp, state = num(d.hp, u.hp), num(d.state, u.state)
+		-- (Task 11b) a late Special's hit (or a caster's last gasp) not landed yet: the drawn HP never drops under its
+		-- hold and the unit is not drawn down before it (Units.Hold); the snapshots already carry the new HP
+		if u.holdUntil then
+			if now < u.holdUntil then
+				if u.holdHp and hp < u.holdHp then
+					hp = u.holdHp
+				end
+				if state == S_DOWN then
+					state = u.holdState or STATES.Idle or 0
+				end
+			else
+				Units.Unhold(u)
+			end
+		end
+		u.hp = hp
+		u.state = state
 		u.target = d.target
 		u.meter = num(d.meter, 0)
 		u.shield = num(d.shield, 0)
@@ -2559,6 +2594,82 @@ function Me.UndimCaster(unit)
 	return Me.Undim(d.token)
 end
 
+-- (Task 11b) the charges' sounds reuse SoundFx's own Sfx (Config.Audio; no new asset): "Whoosh" = the inhale under a
+-- Special's charge (PlaybackSpeed rising INHALE_PITCH[1] -> [2] to the release, a short fade in / out), "Error" = a
+-- shattered charge. An empty id plays nothing and nothing breaks
+function Me.Sound()
+	if Mods.Sound == nil then
+		Mods.Sound = optional(Client, "SoundFx") or false
+	end
+	return Mods.Sound or nil
+end
+
+-- AttackFx Hooks.Inhale: a token's first call starts the sound, a later one (the real Special taking over a press's
+-- charge) retimes the same rise from where it is; others' pets at INHALE_OTHERS volume; INHALE_MAX at once
+function Me.Inhale(seconds, token, mine)
+	if token == nil then
+		return false
+	end
+	seconds = clamp(num(seconds, 0), 0.05, 2)
+	local rec = St.inhales[token]
+	if not rec then
+		local n = 0
+		for _ in pairs(St.inhales) do
+			n = n + 1
+		end
+		local SF = n < K.INHALE_MAX and Me.Sound() or nil
+		if not SF or type(SF.Play) ~= "function" then
+			return false
+		end
+		local ok, s = pcall(SF.Play, "Whoosh")
+		if not ok or typeof(s) ~= "Instance" then
+			return false
+		end
+		for tk, r in pairs(St.inhales) do
+			if r.sound == s then
+				St.inhales[tk] = nil -- (SoundFx's pool handed that sound out again)
+			end
+		end
+		rec = { sound = s, vol = s.Volume * (mine and 1 or K.INHALE_OTHERS) }
+		St.inhales[token] = rec
+		s.PlaybackSpeed = K.INHALE_PITCH[1]
+		s.Volume = 0
+		pcall(Util.Tween, s, K.INHALE_IN, { Volume = rec.vol })
+	end
+	local stamp = os.clock()
+	rec.t0, rec.dur, rec.stamp = stamp, seconds, stamp
+	pcall(Util.Tween, rec.sound, seconds, { PlaybackSpeed = K.INHALE_PITCH[2] }, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
+	task.delay(seconds, function()
+		if St.inhales[token] == rec and rec.stamp == stamp then
+			Me.Hush(token)
+		end
+	end)
+	return true
+end
+
+-- AttackFx Hooks.Hush (the charge ended early) and the release: the inhale fades out
+function Me.Hush(token)
+	local rec = token ~= nil and St.inhales[token] or nil
+	if not rec then
+		return
+	end
+	St.inhales[token] = nil
+	if rec.sound and rec.sound.Parent then
+		pcall(Util.Tween, rec.sound, K.INHALE_OUT, { Volume = 0 })
+	end
+end
+
+-- AttackFx Hooks.Shatter: the "interrupted" cue of a broken press
+function Me.ShatterSound(mine)
+	local SF = Me.Sound()
+	if SF and type(SF.Play) == "function" then
+		local ok, s = pcall(SF.Play, "Error")
+		if ok and typeof(s) == "Instance" and not mine then
+			s.Volume = s.Volume * K.INHALE_OTHERS
+		end
+	end
+end
+
 -- per frame while a glow / dim shows; -> true while one does
 function Me.UpdateScreenFx(now)
 	if St.dim and now - St.dim.t0 >= St.dim.dur then
@@ -2613,6 +2724,16 @@ function Atk.Hook(m)
 	end
 	m.Hooks.Undim = function(token)
 		Me.Undim(token)
+	end
+	-- (Task 11b) the Special's charge sounds
+	m.Hooks.Inhale = function(seconds, token, mine)
+		Me.Inhale(seconds, token, mine)
+	end
+	m.Hooks.Hush = function(token)
+		Me.Hush(token)
+	end
+	m.Hooks.Shatter = function(mine)
+		Me.ShatterSound(mine)
 	end
 end
 
@@ -2708,6 +2829,10 @@ end
 function Atk.ClearAll()
 	St.fxEndAt = nil
 	St.cheers = {}
+	St.pre = nil -- (Task 11b: AttackFx.ClearAll drops the predicted charge too)
+	for token in pairs(St.inhales) do
+		Me.Hush(token)
+	end
 	local AF = Mods.AttackFx
 	if AF and type(AF.ClearAll) == "function" then
 		pcall(AF.ClearAll)
@@ -2735,6 +2860,11 @@ function Atk.Update(now)
 		return
 	end
 	St.fxFrame = St.frameNo -- (fix round 2, M8) the frame loop stepped AttackFx in this frame (StepsAttackFx)
+	-- (Task 11b) a pressed SPECIAL whose event did not come within PRESS_WAIT: its predicted charge shatters
+	local pre = St.pre
+	if pre and now >= pre.untilT then
+		Atk.Shatter(pre.B)
+	end
 	local ok, err = pcall(AF.Update, now)
 	if not ok then
 		warnOnce("attackfx", "AttackFx.Update failed: " .. tostring(err))
@@ -2918,7 +3048,60 @@ function Atk.Hit(B, ev, dueAt)
 	return played
 end
 
--- a Special: the caster's kind (its signature for the 12 top pets: PetId), at its targets / allies / the aimed spot
+-- (Task 11b) my SPECIAL press: when my own view says it can go (my fighter drawn, it has a special, the meter full in
+-- the latest snapshot, not stunned / casting / down, the fight on), its charge shows at once on my fighter
+-- (AttackFx.Precharge: the glow + motes, the rim, the inhale, the held Cast pose), aimed at my lock (else its snapshot
+-- target). Its Special event takes it over (Atk.Special: impact still on the event's time); a rejected Order (Net.Pre)
+-- or PRESS_WAIT without the event (Atk.Update) shatters it
+function Atk.PreCharge(B, now)
+	local f = B and B.fighterId and B.units[B.fighterId] or nil
+	if not f or B.ended or B.simEnded or St.fxEndAt or not f.model or not Atk.Drawable(f) then
+		return false
+	end
+	local kind = type(f.special) == "table" and f.special.Kind or nil
+	if type(kind) ~= "string" or kind == "" or num(f.meter, 0) < METER_MAX or num(f.hp, 0) <= 0 then
+		return false
+	end
+	if f.state == S_STUNNED or f.state == S_CASTING or f.state == S_DOWN or f.state == S_BENCHED then
+		return false
+	end
+	local AF = Atk.Mod()
+	if not AF or type(AF.Precharge) ~= "function" then
+		return false
+	end
+	local tgt = (B.lock and B.units[B.lock]) or (f.target and B.units[f.target]) or nil
+	local to = nil
+	if tgt and not tgt.gone and not SUPPORT_KINDS[kind] then
+		to = { Atk.Side(B, tgt) }
+	end
+	local ok, played = pcall(AF.Precharge, lookCtx(f, {
+		Kind = kind, From = Atk.Side(B, f), To = to, Mine = true, Seconds = K.PRESS_WAIT, Ground = groundOf(B, f), Now = now,
+	}))
+	if ok and played == true then
+		St.pre = { B = B, unit = f.id, t0 = now, untilT = now + K.PRESS_WAIT }
+		return true
+	end
+	return false
+end
+
+-- (Task 11b) the predicted charge breaks (refused / no event): AttackFx's shards + Recoil + the "interrupted" sound;
+-- `quiet` = it just fades (its Special came but could not play)
+function Atk.Shatter(B, quiet)
+	local p = St.pre
+	St.pre = nil
+	local AF = Mods.AttackFx
+	if not p or not AF or type(AF.Shatter) ~= "function" then
+		return false
+	end
+	local ok, r = pcall(AF.Shatter, p.unit, os.clock(), quiet == true)
+	return ok and r == true
+end
+
+-- a Special: the caster's kind (its signature for the 12 top pets: PetId), at its targets / allies / the aimed spot.
+-- (Task 11b) my pressed Special takes over its predicted charge (Precharged: backdated to the press, impact on dueAt);
+-- every other one (bots, NPCs, allies, enemies, my pet with no press) gets its charge back: LateMax, the impact up to
+-- LATE_MAX after dueAt (ev.fxSpLate: Net.Events holds this special's hits, the KOs they cause and a last gasp till then).
+-- A Pounce never lands late: the server moves a pouncing bot onto its target at the event, its leap must land then
 function Atk.Special(B, ev, dueAt)
 	local u = B.units[tonumber(ev.unit) or -1]
 	if not u then
@@ -2962,12 +3145,27 @@ function Atk.Special(B, ev, dueAt)
 			to[1] = { Pos = worldPoint(B, num(ev.tx, u.x), u.centerY or 1.5, num(ev.tz, u.z)) } -- (nobody in reach)
 		end
 	end
-	local played = Atk.Play(lookCtx(u, {
+	local pre = St.pre
+	local precharged = pre ~= nil and pre.B == B and pre.unit == u.id
+	if precharged then
+		St.pre = nil
+	end
+	local ctx = lookCtx(u, {
 		Attack = "Special", Kind = kind, From = Atk.Side(B, u), To = to, Mine = u.mine == true, DueAt = dueAt,
 		Angle = tonumber(ev.angle) and worldAngle(B, tonumber(ev.angle)) or nil, Ground = groundOf(B, u),
-	}))
+		Precharged = precharged or nil, LateMax = (not precharged and kind ~= "Pounce") and K.LATE_MAX or nil,
+	})
+	local played = Atk.Play(ctx)
 	u.fxDriven = played
+	if precharged and not played then
+		St.pre = pre
+		Atk.Shatter(B, true) -- (the Special came but could not play: its prediction fades, no "interrupted" cue)
+	end
 	if played then
+		local late = tonumber(ctx.ImpactLate) or 0
+		if late == late and late > 0 then
+			ev.fxSpLate = min(late, K.LATE_MAX)
+		end
 		cover(B, to, dueAt)
 		if kind == "Storm" then
 			u.stormFxUntil = dueAt + 1 -- its Zone draws only the damage field (AttackFx's cloud rains)
@@ -3540,6 +3738,9 @@ Handlers[EV.Hit] = function(B, ev)
 		return
 	end
 	local dmg = num(ev.dmg, 0)
+	if ev.fxSpHeld then
+		Units.Unhold(victim) -- (Task 11b) a late Special's hit lands now: its HP drop shows
+	end
 	-- AttackFx (played on arrival): a pet's plain attack (its swipe / shot, its Strike pose, the victim's Hurt pose) or
 	-- my pet's hurt from a boss; false = the cube bolt / lunge / nudge below
 	local played = Atk.Result(B, ev)
@@ -3772,6 +3973,7 @@ Handlers[EV.KO] = function(B, ev)
 	if not u then
 		return
 	end
+	Units.Unhold(u) -- (Task 11b) a KO held for a late Special's impact (or a last gasp) plays now
 	Atk.Result(B, ev) -- AttackFx's Ko (played on arrival) marks the pet poofed: no cube poof below, it tumbles and lies
 	if u.root and not u.parked then
 		Fx.Number(u.root, numberHeight(u) + 0.4, "KO!", Color3.fromRGB(220, 226, 240), K.CALLOUT_PX, 1.1)
@@ -7185,6 +7387,7 @@ function Input.Predict(B, action, arg, now)
 		end
 	elseif action == "Special" then
 		pend.Special = { t = now }
+		Atk.PreCharge(B, now) -- (Task 11b) its charge shows at once when my view says it can go
 	end
 	if action ~= "Target" then
 		Hud.Pop(Hud.ButtonOf(action, tonumber(arg)))
@@ -7442,6 +7645,9 @@ function Net.Pre(B, ev)
 		local action = tostring(ev.order or "")
 		if ev.rejected ~= nil then
 			St.rejected = (St.rejected or 0) + 1
+			if action == "Special" then
+				Atk.Shatter(B) -- (Task 11b) the predicted charge breaks
+			end
 			local p = B.pending[action]
 			if p then
 				Input.Revert(B, action, true)
@@ -7602,6 +7808,88 @@ function Net.Hold(B, ev, t)
 	return min(h - t, K.FX_LATE_MAX)
 end
 
+-- (Task 11b) the drawn HP / state of unit `id` wait until `untilClock` (os.clock): Units.Update never draws its HP
+-- under `floor` (the HP drawn now; a caster's last gasp: 1) nor the unit down before then. A KO / the held hit itself
+-- ends it when it plays (Units.Unhold)
+function Units.Hold(B, id, untilClock, floor)
+	local u = id and B.units[id]
+	if not u or u.state == S_DOWN or num(u.hp, 0) <= 0 then
+		return
+	end
+	if not u.holdUntil or u.holdUntil < untilClock then
+		u.holdUntil = untilClock
+	end
+	local f = floor or u.hp
+	u.holdHp = u.holdHp and max(u.holdHp, f) or f
+	u.holdState = u.state
+end
+
+function Units.Unhold(u)
+	u.holdUntil, u.holdHp, u.holdState = nil, nil, nil
+end
+
+-- (Task 11b) seconds `ev` (due at t on the render clock, `lead` s from now) waits for a late Special's impact
+-- (B.spHold[caster] = { at, kind, victims }: Net.SpecialArrived): that special's own hits (Hit.special from the caster)
+-- and its Storm's zone ticks (Hit.zone + kind) due before the impact, the KO of a unit they hit and the caster's own
+-- KO in its late charge (+ LAST_GASP: the effect lands first). Their units' drawn HP waits too (Units.Hold). Other hits
+-- on the same units (a plain attack, another unit's) play on time. The End does not wait: its grace (FX_END_GRACE
+-- 1 s > LATE_MAX) lets the effect land and the held events drain on the render clock (Net.End, B.drainHeld)
+function Net.SpecialHold(B, ev, t, lead)
+	local holds = B.spHold
+	if not holds then
+		return 0
+	end
+	local now = os.clock()
+	local w = 0
+	if ev.type == EV.Hit then
+		local h = holds[tonumber(ev.from) or -1]
+		local v = tonumber(ev.to)
+		if h and v and h.at > t and (ev.special ~= nil or (ev.zone and tostring(ev.kind or "") == h.kind)) then
+			w = h.at - t
+			h.victims[v] = true
+			Units.Hold(B, v, now + lead + w)
+		end
+	elseif ev.type == EV.KO then
+		local id = tonumber(ev.unit) or -1
+		local own = holds[id]
+		if own and own.at > t then
+			w = own.at - t + K.LAST_GASP
+			Units.Hold(B, id, now + lead + w, 1)
+		end
+		for _, h in pairs(holds) do
+			if h.victims[id] and h.at > t then
+				w = max(w, h.at - t)
+			end
+		end
+		if w > 0 then
+			Units.Hold(B, id, now + lead + w)
+		end
+	end
+	if w > 0 then
+		ev.fxSpHeld = true
+	end
+	return min(w, K.LATE_MAX + K.LAST_GASP)
+end
+
+-- (Task 11b) a Special that lands late (ev.fxSpLate, Atk.Special): its hold, until the impact on the render clock
+function Net.SpecialArrived(B, ev, t)
+	local late = ev.type == EV.Special and tonumber(ev.fxSpLate) or nil
+	if not late or late <= 0 then
+		return
+	end
+	local holds = B.spHold or {}
+	B.spHold = holds
+	for id, h in pairs(holds) do
+		if h.at < t - 2 then
+			holds[id] = nil -- (long past)
+		end
+	end
+	local id = tonumber(ev.unit)
+	if id then
+		holds[id] = { at = t + late, kind = tostring(ev.kind or ""), victims = {} }
+	end
+end
+
 -- queue `ev` to play at `due` (in time order: a held event lets the others pass); a Hit whose shot lands late
 -- (ev.fxLate, Atk.Hit) holds its victim's next events until then
 function Net.Queue(B, ev, due, held)
@@ -7641,8 +7929,10 @@ function Net.Events(list, battleId)
 				warnOnce("pre_" .. ev.type, "event " .. ev.type .. " (HUD) failed: " .. tostring(errPre))
 			end
 			-- a victim whose ranged shot is still flying (Net.Hold): its Hit / KO wait for the shot to land
-			local hold = Net.Hold(B, ev, t)
+			-- (Task 11b) ... or a late Special's impact: its own hits, the KOs they cause, a last gasp, the End
+			local hold = max(Net.Hold(B, ev, t), Net.SpecialHold(B, ev, t, lead))
 			Atk.Arrive(B, ev, lead + hold)
+			Net.SpecialArrived(B, ev, t)
 			-- telegraphs start at once (their fill must complete at the hit), the rest on the render clock
 			if ev.type == EV.Telegraph then
 				local fn = Handlers[ev.type]
@@ -8323,6 +8613,17 @@ end
 
 BattleController._Units = Units -- TESTS ONLY (tools/smoke_p6_creatures.lua: the fx mesh slots)
 BattleController._Me = Me -- TESTS ONLY (tools/smoke_p7vfx_client.lua: the Eclipse dim, Task 11)
+BattleController._Fx = Fx -- TESTS ONLY (tools/smoke_p7vfx_client.lua: the Special pre-charge, Task 11b: numbers / flashes)
+
+-- TESTS ONLY (Task 11b): the raw battle unit record (its drawn HP, hold, hurt time) and my predicted charge
+function BattleController._Unit(id)
+	local B = St.battle
+	return B and B.units[id] or nil
+end
+
+function BattleController._Pre()
+	return St.pre
+end
 
 -- (Task 11) loads client/Controllers/AttackFx and points its Hooks at this controller (camera punch, edge glow, the
 -- battle dim) outside a battle too: the /fx preview (DevPetShow) shows a signature's dim as a battle would. -> loaded
