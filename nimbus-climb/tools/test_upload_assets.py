@@ -401,6 +401,29 @@ def main():
     U.CLASS = U.CLASSES["mesh"]
     check("TextureIds.lua: numbers only, rejected left out", "vortex_arms = 77," in lua and "vortex_rim" not in lua and "TextureIds" not in lua.split("return")[1], lua)
 
+    # 12b) bug #12 review: an uploaded asset that no longer matches the committed build does not ship its id
+    sroot = os.path.join(tmp, "stale")
+    os.makedirs(os.path.join(sroot, "src", "shared", "MeshManifests"))
+    for k, sig in (("floor_a", True), ("floor_b", True), ("prop_c", False), ("prop_d", False), ("floor_e", True)):
+        with open(os.path.join(sroot, "src", "shared", "MeshManifests", k + ".lua"), "w") as f:
+            f.write("return {\n" + ("\tAttachments = { LayoutSig = { Pos = { 1, 2, 3 } } },\n" if sig else "") + "}\n")
+    sstate = {"assets": {
+        "floor_a": {"assetId": 11, "contentHash": "c1", "structureHash": "s1"},   # re-baked, new structure -> out
+        "floor_b": {"assetId": 12, "contentHash": "c1", "structureHash": "s1"},   # re-baked layout, same structure -> out
+        "prop_c": {"assetId": 13, "contentHash": "c1", "structureHash": "s1"},    # designed prop PATCH pending -> stays
+        "prop_d": {"assetId": 14, "contentHash": "c1", "structureHash": "s1"},    # new structure -> out
+        "floor_e": {"assetId": 15, "contentHash": "c1", "structureHash": "s1"}}}  # unchanged -> stays
+    sidx = {"floor_a": {"contentHash": "c2", "structureHash": "s2"}, "floor_b": {"contentHash": "c2", "structureHash": "s1"},
+            "prop_c": {"contentHash": "c2", "structureHash": "s1"}, "prop_d": {"contentHash": "c2", "structureHash": "s2"},
+            "floor_e": {"contentHash": "c1", "structureHash": "s1"}}
+    stale = U.stale_keys(sstate, sidx, sroot)
+    lua = U.mesh_ids_lua(sstate, stale)
+    check("stale ids are left out of MeshIds.lua (new structure, or a re-baked LayoutSig floor); a designed prop's PATCH keeps its id",
+          stale == {"floor_a", "floor_b", "prop_d"} and "prop_c = 13," in lua and "floor_e = 15," in lua and "floor_a" not in lua
+          and "floor_b" not in lua and "prop_d" not in lua, (sorted(stale), lua))
+    sstate["assets"]["floor_b"].update(contentHash="c2")  # floor_b re-uploaded (a new version, same id)
+    check("a re-uploaded floor ships again", "floor_b = 12," in U.mesh_ids_lua(sstate, U.stale_keys(sstate, sidx, sroot)))
+
     # 13) review3 tooling-0: the FBX must be the one exported for this contentHash (meshes.json fbxSha256 / manifest)
     froot, findex = make_repo(os.path.join(tmp, "fresh"))
     fout = os.path.join(froot, "blender", "out")

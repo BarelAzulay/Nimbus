@@ -192,6 +192,7 @@ local C = {
 	Grass = rgb(108, 186, 86),
 	GrassLight = rgb(132, 202, 98),
 	GrassDark = rgb(86, 160, 76),
+	GrassWild = rgb(94, 168, 76), -- bug #12: the unmown outer meadow's floor (between Grass and GrassDark)
 	Hedge = rgb(74, 146, 72),
 	HedgeLight = rgb(100, 170, 84),
 	Stone = rgb(208, 202, 190), -- cream stone paths
@@ -221,6 +222,16 @@ local C = {
 	Blossom = rgb(246, 174, 204),
 	BlossomWhite = rgb(250, 228, 238),
 	Soil = rgb(120, 86, 64),
+	-- the Sky-Oasis fountain (bug #13): cool natural rock, island soil, twigs, rope, the paper boat, the sign's paint
+	Rock = rgb(170, 170, 186),
+	RockDark = rgb(140, 142, 160),
+	Dirt = rgb(150, 106, 72),
+	DirtDark = rgb(120, 84, 58),
+	PoolFloor = rgb(112, 132, 156),
+	Twig = rgb(156, 112, 70),
+	Rope = rgb(214, 192, 142),
+	Paper = rgb(250, 248, 240),
+	SignPaint = rgb(122, 170, 206),
 	Navy = rgb(34, 42, 76),
 	Violet = rgb(68, 60, 118),
 	Ink = (Theme.Colors and Theme.Colors.Ink) or rgb(26, 32, 64),
@@ -1708,13 +1719,12 @@ local function plazaCell(x, z, L)
 			end
 		end
 	end
-	-- flower pixels on open lawn: a scattered meadow near the rim and a few denser patches
-	if not l2 and not l3 then
-		local h = hash3(math.floor(x), 0, math.floor(z), 21)
-		local meadow = vnoise(x + 900, z + 900, 26, 5) > 0.84
-		if r < PLAZA_R - 3.5 and ((r > G.RingRoadR + 8 and r < PLAZA_R - 6 and h < 0.03) or (meadow and h < 0.07)) then
-			l1 = "Flower" .. (math.floor(hash3(math.floor(x), 1, math.floor(z), 4) * #FLOWERS) + 1)
-		end
+	-- (bug #12: no flat "Flower" lawn pixels any more: the grass and wildflowers are 3D clumps the clients grow from
+	-- the Meadow scatter, built after every prop has its place: see Meadow below.) The unmown outer lawns get a
+	-- slightly deeper floor in soft drifts, so the gaps between the tufts read as meadow, not mown lawn.
+	if not l1 and not l2 and not l3 and r > G.RingRoadR + G.PathHalf + 1.5 and r < PLAZA_R - 3.5
+		and vnoise(x - 700, z + 300, 34, 29) > 0.28 then
+		l1 = "GrassWild"
 	end
 	return l1, l2, l3
 end
@@ -1952,61 +1962,541 @@ local function buildPlazaBody(f, L)
 	end
 end
 
--- Fountain on the roundabout: stone basin, translucent water, two tiers with falling water, spray, and
--- Nimbus the Cloudy Dragon (PetBuilder) perched on top when the pet modules are available.
+-- Fountain on the roundabout (bug #13, the player's pick on the pitch board: option C "Sky-Oasis Steps"). Three chunks
+-- of a broken sky-island stand in a mossy rock pool: the low one came down in the water, the settlers propped the
+-- other two on drum-stone pillars. A spring on the top island feeds a small fall onto the middle island, its stream
+-- runs to the big fall into the pool, and a seep on the low island gives a small west fall. Players climb it: stepping
+-- stones, a ladder (low -> middle) and a knotted rope (middle -> top) up to Nimbus's twig nest.
+--   Meshes (blender/kit/props/lobby_oasis.py, catalog lobby.json): prop_oasis_pool / _islands / _water dress the Part
+--   build below (the colliders and the fallback until the keys are uploaded), prop_oasis_boat rides the paper boat's
+--   root part (ML_Weld; client FountainFx bobs it). The falls are Beams (TextureSpeed: they move with no script), the
+--   splashes / ripples / mist ParticleEmitters with Roblox's own soft textures (no glitter: the old spray was the
+--   sparkle star and started inside the statue). The two climbs are invisible TrussParts with plank landings on top.
+-- OASIS mirrors the kit's LAYOUT (studs, fountain frame: origin = the ground under the pool centre, -Z = the front,
+-- toward the plaza centre). Change both together; tools/smoke_bug13_fountain.lua checks them against the manifests.
+local OASIS = {
+	PoolIn = 8.6, -- the rim wall's inner radius (the water reaches it)
+	RimR = 9.55, -- the boulders' centre line
+	Water = 1.25, -- the water surface
+	Islands = { -- centre (x, z), grass top, radii (x, z), underside depth below the soil band
+		{ C = { -3.8, -0.6 }, Top = 4.0, R = { 3.4, 3.2 }, Depth = 2.6 },
+		{ C = { 3.0, -1.0 }, Top = 7.5, R = { 3.4, 3.3 }, Depth = 2.6 },
+		{ C = { -0.6, 4.0 }, Top = 10.5, R = { 4.3, 3.4 }, Depth = 3.0 },
+	},
+	Stones = { { -2.3, -7.0, 2.0, 1.05 }, { -3.6, -5.3, 3.0, 0.95 } }, -- x, z, top, radius
+	-- the climbs: truss centre (x, z), bottom / top, the face the player climbs (local), the plank landing's extent
+	Ladder = { C = { -1.4, -0.85 }, Y0 = 3.55, Y1 = 7.55, Deck = { -2.45, -0.25 } },
+	Rope = { C = { 2.3, 0.5 }, Y0 = 6.6, Y1 = 10.6, Deck = { -0.55, 1.55 } },
+	Nest = { C = { -0.9, 4.7 }, R = 2.35, Floor = 10.5 },
+	StatueScale = 2.1, -- Nimbus nests in it (2.6 swallowed the top island; Gemini and Claude agreed on 2.1)
+	Tree = { -6.0, -1.7 },
+	Lantern = { 5.4, 0.6 },
+	Spring = { 2.0, 5.6 },
+	Streams = {
+		{ { 2.0, 4.8 }, { 2.7, 3.4 }, { 3.15, 2.35 } }, -- island 3: the spring -> its right rim
+		{ { 3.75, 1.75 }, { 3.85, -0.8 }, { 3.6, -4.2 } }, -- island 2: under the small fall -> its front rim
+		{ { -5.0, 1.0 }, { -5.9, 1.1 }, { -6.75, 1.05 } }, -- island 1: the seep -> its west rim
+	},
+	-- the falls: lip (x, y, z), outward direction (x, z), landing height, sheet width; Big = the one into the pool
+	Falls = {
+		{ Lip = { 3.25, 10.25, 2.25 }, Dir = { 0.81, -0.59 }, Land = 7.5, Width = 1.0 },
+		{ Lip = { 3.6, 7.25, -4.35 }, Dir = { 0.12, -0.99 }, Land = 1.25, Width = 1.9, Big = true },
+		{ Lip = { -6.85, 3.85, 1.05 }, Dir = { -0.95, 0.31 }, Land = 1.25, Width = 1.0 },
+	},
+	Sign = { Pos = { -6.45, -9.2 }, Face = { -0.57, -0.82 } },
+	Boat = { 0.7, -6.3 },
+}
+
+-- Roblox's own particle textures (shipped with every client; nothing to upload)
+local Oasis = {} -- the fountain helpers (one main-chunk local: LobbyBuilder is near the 200-locals limit)
+Oasis.Tex = {
+	Glow = "rbxasset://textures/particles/explosion01_implosion_main.dds", -- a soft round glow: drops, fall cores, streaks
+	Ring = "rbxasset://textures/particles/explosion01_shockwave_main.dds", -- a soft ring: ripples
+	Puff = "rbxasset://textures/particles/smoke_main.dds", -- a soft puff: foam, mist
+}
+-- Fall direction. The Beam reference: a positive TextureSpeed scrolls the texture from Attachment0 toward Attachment1,
+-- a negative one from Attachment1 toward Attachment0. Each fall's Attachment0 is its impact and Attachment1 its lip, so
+-- Flow = -1 runs the streaks downhill, lip -> impact. (Studio check #1 after upload: if they ever climb, the engine
+-- disagrees with its docs: flip this to 1.)
+Oasis.Flow = -1
+
+Oasis.Drop = ColorSequence.new(rgb(236, 248, 255), rgb(160, 214, 250))
+Oasis.Foam = ColorSequence.new(rgb(250, 253, 255), rgb(214, 236, 252))
+
+-- fountain-local stud point -> world
+function Oasis.at(origin, x, y, z)
+	return (origin * CFrame.new(x, y, z)).Position
+end
+
+-- An emitter with the water look: soft round texture by default, never the sparkle star.
+function Oasis.emitter(parent, props)
+	local e = emitter(parent, {
+		Texture = Oasis.Tex.Glow,
+		Color = Oasis.Drop,
+		LightEmission = 0.35,
+		LightInfluence = 0.4,
+		Rotation = NumberRange.new(0, 360),
+		RotSpeed = NumberRange.new(0, 0),
+	})
+	for k, v in pairs(props or {}) do
+		e[k] = v
+	end
+	return e
+end
+
+-- Voxel helpers for the Part build in fountain-local studs. Grid "fine" = 0.5-stud voxels whose rows span
+-- [j * 0.5, j * 0.5 + 0.5] above the ground (built at origin * (0, 0.25, 0)); grid "rock" = 1-stud voxels spanning
+-- [j, j + 1] (built at origin * (0, 0.5, 0)). So island tops (4.0 / 7.5 / 10.5) and stone tops land exactly.
+function Oasis.fill(g, x0, x1, z0, z1, y0, y1, key, inside)
+	for i = math.floor(x0 * 2), math.ceil(x1 * 2) do
+		for k = math.floor(z0 * 2), math.ceil(z1 * 2) do
+			local x, z = i * 0.5, k * 0.5
+			local lo, hi = inside(x, z)
+			if lo then
+				for j = math.max(math.ceil(lo * 2 - 0.5), math.floor(y0 * 2)), math.min(math.floor(hi * 2 - 0.5), math.ceil(y1 * 2)) do
+					Voxel.Set(g, i, j, k, key)
+				end
+			end
+		end
+	end
+end
+
+function Oasis.island(g, I, isLow)
+	local cx, cz, rx, rz = I.C[1], I.C[2], I.R[1], I.R[2]
+	local top = I.Top
+	Oasis.fill(g, cx - rx - 0.5, cx + rx + 0.5, cz - rz - 0.5, cz + rz + 0.5, 0, top, "Dirt", function(x, z)
+		local q = math.sqrt(((x - cx) / rx) ^ 2 + ((z - cz) / rz) ^ 2)
+		if q > 1 then
+			return nil
+		end
+		-- the soil band (1 stud) then the craggy cone: deeper toward the middle; the low island reaches the pool floor
+		local depth = 1.0 + (I.Depth + 0.2) * (1 - q ^ 1.6)
+		local bottom = isLow and math.max(0, top - depth - 1.5) or (top - depth)
+		return bottom, top
+	end)
+	-- grass on top (a slight lip past the soil), a stony core toward the tip
+	Oasis.fill(g, cx - rx - 0.6, cx + rx + 0.6, cz - rz - 0.6, cz + rz + 0.6, top - 0.5, top, "Grass", function(x, z)
+		local q = math.sqrt(((x - cx) / (rx + 0.2)) ^ 2 + ((z - cz) / (rz + 0.2)) ^ 2)
+		if q > 1 then
+			return nil
+		end
+		return top - 0.5, top
+	end)
+	-- the stony tip: the lowest part of the cone turns to rock
+	local tipY = top - 1.0 - (I.Depth + 0.2) * 0.7
+	for i = math.floor((cx - rx) * 2), math.ceil((cx + rx) * 2) do
+		for k = math.floor((cz - rz) * 2), math.ceil((cz + rz) * 2) do
+			for j = 0, math.floor(tipY * 2) do
+				if Voxel.Get(g, i, j, k) == "Dirt" then
+					Voxel.Set(g, i, j, k, "Rock")
+				end
+			end
+		end
+	end
+	-- a darker soil band a stud under the grass (the broken edge's strata)
+	local jb = math.floor((top - 1.5) * 2)
+	for i = math.floor((cx - rx) * 2), math.ceil((cx + rx) * 2) do
+		for k = math.floor((cz - rz) * 2), math.ceil((cz + rz) * 2) do
+			if Voxel.Get(g, i, jb, k) == "Dirt" then
+				Voxel.Set(g, i, jb, k, "DirtDark")
+			end
+		end
+	end
+end
+
+-- distance from (x, z) to the polyline `pts` ({ {x, z}, ... })
+function Oasis.polyDist(x, z, pts)
+	local best = math.huge
+	for n = 1, #pts - 1 do
+		local ax, az, bx, bz = pts[n][1], pts[n][2], pts[n + 1][1], pts[n + 1][2]
+		local vx, vz = bx - ax, bz - az
+		local t = ((x - ax) * vx + (z - az) * vz) / math.max(vx * vx + vz * vz, 1e-9)
+		t = math.max(0, math.min(1, t))
+		best = math.min(best, math.sqrt((x - ax - vx * t) ^ 2 + (z - az - vz * t) ^ 2))
+	end
+	return best
+end
+
+function Oasis.partBuild(m, origin)
+	local O = OASIS
+	local fineCF = origin * CFrame.new(0, 0.25, 0)
+	local rockCF = origin * CFrame.new(0, 0.5, 0)
+	-- 1) the pool: boulder rim (1-stud voxels) and the stepping stones, collidable
+	local rock = Voxel.NewGrid(16)
+	VX.Ring(rock, 0, 0, O.PoolIn, O.PoolIn + 1.2, 0, 0, "RockDark")
+	for i = 0, 20 do
+		local a = (i + (Voxel.Hash(i, 1, 21, 3) - 0.5) * 0.35) / 21 * math.pi * 2
+		local rr = O.RimR + (Voxel.Hash(i, 2, 21, 3) - 0.5) * 0.4
+		local h = 2 -- boulder tops at 2 studs (the meshes' 1.55 .. 2.25), size varies with the hash below
+		Voxel.Shape(rock, {
+			Kind = "Ellipsoid",
+			Key = (i % 4 == 1) and "RockDark" or "Rock",
+			Center = { math.cos(a) * rr, h * 0.5 - 0.5, math.sin(a) * rr },
+			Radius = { 0.9 + Voxel.Hash(i, 4, 21, 3) * 0.3, h * 0.5 + 0.3, 1.3 + Voxel.Hash(i, 3, 21, 3) * 0.5 },
+			Rotation = CFrame.Angles(0, -a, 0),
+		})
+	end
+	for _, s in ipairs(O.Stones) do
+		VX.Disc(rock, s[1], s[2], s[4], 0, s[3] - 1, "Rock")
+	end
+	Voxel.Shade(rock, { Only = { Rock = true, RockDark = true }, Smooth = 1, Seed = 13 })
+	local pool = Instance.new("Model")
+	pool.Name = "Pool"
+	pool.Parent = m
+	VX.Build(rock, { V = 1, Name = "Rim", CF = rockCF, Collide = true, Parent = pool, MaxParts = 84 })
+	-- the pool floor: four squares turned by 22.5 degrees (a 16-gon whose corners hide under the rim), 0.5 stud thick
+	local side = O.PoolIn * 2 * math.cos(math.pi / 4) + 0.2
+	for i = 0, 3 do
+		box(pool, "Floor", origin * CFrame.new(0, 0.25, 0) * CFrame.Angles(0, i * math.pi / 8, 0), Vector3.new(side, 0.5, side),
+			C.PoolFloor, { Collide = true, Shadow = false })
+	end
+	-- the sign (pool key): two posts and the faded board, Parts
+	do
+		local sp, sf = O.Sign.Pos, O.Sign.Face
+		local yaw = math.atan2(-sf[1], -sf[2])
+		local cf = origin * CFrame.new(sp[1], 0, sp[2]) * CFrame.Angles(0, yaw, 0)
+		local sign = Instance.new("Model")
+		sign.Name = "Sign"
+		sign.Parent = pool
+		for _, sx in ipairs({ -1.15, 1.15 }) do
+			box(sign, "Post", cf * CFrame.new(sx, 1.45, 0.12), Vector3.new(0.3, 2.9, 0.3), C.PlankDark, { Collide = true })
+		end
+		box(sign, "Board", cf * CFrame.new(0, 2.02, -0.06), Vector3.new(2.6, 1.2, 0.22), C.Plank)
+		box(sign, "Cap", cf * CFrame.new(0, 2.75, 0), Vector3.new(2.8, 0.18, 0.4), C.PlankLight)
+		box(sign, "Paint", cf * CFrame.new(-0.45, 2.05, -0.19), Vector3.new(0.5, 0.6, 0.06), C.SignPaint)
+	end
+
+	-- 2) the islands, pillars and the pool floor (0.5-stud voxels), collidable
+	local g = Voxel.NewGrid(64)
+	local I1, I2, I3 = O.Islands[1], O.Islands[2], O.Islands[3]
+	for _, p in ipairs({ { I2.C[1] - 0.1, I2.C[2] + 0.2, I2.Top - 3.5, 0.9 }, { I3.C[1] + 0.2, I3.C[2] + 0.1, I3.Top - 3.9, 1.0 } }) do
+		Oasis.fill(g, p[1] - 1.2, p[1] + 1.2, p[2] - 1.2, p[2] + 1.2, 0, p[3], "Rock", function(x, z)
+			if (x - p[1]) ^ 2 + (z - p[2]) ^ 2 > p[4] * p[4] then
+				return nil
+			end
+			return 0, p[3]
+		end)
+	end
+	for i, I in ipairs(O.Islands) do
+		Oasis.island(g, I, i == 1)
+	end
+	-- the streams: the top grass row cut away along each stream (the water grid fills the channel)
+	for s, pts in ipairs(O.Streams) do
+		local j = math.floor(O.Islands[4 - s].Top * 2 - 0.5)
+		for i = -24, 24 do
+			for k = -24, 24 do
+				if Oasis.polyDist(i * 0.5, k * 0.5, pts) <= 0.45 then
+					Voxel.Set(g, i, j, k, nil)
+				end
+			end
+		end
+	end
+	Voxel.Shade(g, { Only = { Grass = true }, Smooth = 1, Seed = 5 })
+	local islands = Instance.new("Model")
+	islands.Name = "Islands"
+	islands.Parent = m
+	VX.Build(g, { V = 0.5, Name = "Ground", CF = fineCF, Collide = true, Parent = islands, MaxParts = 180 })
+
+	-- 3) decor on the islands (islands key), not collidable: the tree, the nest, the lantern, ladder, rope, landings
+	local d = Voxel.NewGrid(64)
+	local function shape(t)
+		Voxel.Shape(d, t)
+	end
+	local function v(x, y, z) -- studs -> fine voxel coords
+		return { x * 2, (y - 0.25) * 2, z * 2 }
+	end
+	local tx, tz = O.Tree[1], O.Tree[2]
+	shape({ Kind = "Capsule", Key = "Bark", A = v(tx, I1.Top, tz), B = v(tx, I1.Top + 2.6, tz), Radius = 0.6, RadiusB = 0.45 })
+	shape({ Kind = "Ellipsoid", Key = "Leaf", Center = v(tx, I1.Top + 3.3, tz), Radius = { 2.7, 2.1, 2.6 } })
+	shape({ Kind = "Ellipsoid", Key = "Leaf", Center = v(tx + 0.7, I1.Top + 2.75, tz - 0.25), Radius = { 1.7, 1.4, 1.7 } })
+	local nc = O.Nest.C
+	shape({ Kind = "Torus", Key = "Twig", Center = v(nc[1], O.Nest.Floor + 0.25, nc[2]), Radius = O.Nest.R * 2, Thickness = 0.8 })
+	local lx, lz = O.Lantern[1], O.Lantern[2]
+	-- (thin pieces are capsules: a capsule always keeps the voxels along its line, a thin box can miss every centre)
+	shape({ Kind = "Capsule", Key = "PlankDark", A = v(lx, I2.Top, lz), B = v(lx, I2.Top + 2.5, lz), Radius = 0.5 })
+	shape({ Kind = "Capsule", Key = "Iron", A = v(lx, I2.Top + 2.45, lz), B = v(lx - 0.65, I2.Top + 2.45, lz), Radius = 0.4 })
+	shape({ Kind = "Box", Key = "Iron", Center = v(lx - 0.65, I2.Top + 2.1, lz), Size = { 2, 1, 2 } })
+	shape({ Kind = "Box", Key = "Lamp", Center = v(lx - 0.65, I2.Top + 1.6, lz), Size = { 1.2, 1.4, 1.2 } })
+	-- the ladder on the low truss's -X face, its landing; the rope on the high truss's -Z face, its landing
+	local L, R = O.Ladder, O.Rope
+	local fx = L.C[1] - 1.0 + 0.12
+	for _, sz in ipairs({ -0.7, 0.7 }) do
+		shape({ Kind = "Capsule", Key = "Plank", A = v(fx, L.Y0 + 0.4, L.C[2] + sz), B = v(fx, L.Y1 + 0.75, L.C[2] + sz), Radius = 0.5 })
+	end
+	local y = L.Y0 + 0.95
+	while y < L.Y1 - 0.3 do
+		shape({ Kind = "Capsule", Key = "PlankLight", A = v(fx, y, L.C[2] - 0.75), B = v(fx, y, L.C[2] + 0.75), Radius = 0.4 })
+		y = y + 0.75
+	end
+	shape({ Kind = "Box", Key = "Plank", Center = v((L.Deck[1] + L.Deck[2]) / 2, L.Y1 - 0.25, L.C[2]), Size = { (L.Deck[2] - L.Deck[1]) * 2, 1, 4 } })
+	shape({ Kind = "Box", Key = "Plank", Center = v(R.C[1], R.Y1 - 0.25, (R.Deck[1] + R.Deck[2]) / 2), Size = { 4, 1, (R.Deck[2] - R.Deck[1]) * 2 } })
+	shape({ Kind = "Capsule", Key = "Rope", A = v(R.C[1], I2.Top, R.C[2] - 0.9), B = v(R.C[1], R.Y1 + 0.05, R.C[2] - 0.9), Radius = 0.45 })
+	local ky = R.Y1 - 0.6
+	while ky > I2.Top + 0.6 do -- the knots
+		shape({ Kind = "Ellipsoid", Key = "Rope", Center = v(R.C[1], ky, R.C[2] - 0.9), Radius = 0.8 })
+		ky = ky - 0.7
+	end
+	-- (not NC_Detail: the ladder and the rope show where to climb, Low graphics keeps them)
+	VX.Build(d, { V = 0.5, Name = "Decor", CF = fineCF, Collide = false, Parent = islands, MaxParts = 60 })
+
+	-- 4) the water (water key): the pool surface and the island streams, translucent, not collidable
+	local w = Voxel.NewGrid(64)
+	local wCF = origin -- 0.5-stud rows centred on j * 0.5: the surface row j = 2 spans 0.75 .. 1.25
+	Oasis.fill(w, -O.PoolIn, O.PoolIn, -O.PoolIn, O.PoolIn, 0, 2, "Water", function(x, z)
+		if x * x + z * z > (O.PoolIn + 0.2) ^ 2 then
+			return nil
+		end
+		return 0.5, 1.5
+	end)
+	for s, pts in ipairs(O.Streams) do
+		local jy = math.floor((O.Islands[4 - s].Top - 0.1) * 2) -- the row just under the channel lip
+		for i = -24, 24 do
+			for k = -24, 24 do
+				if Oasis.polyDist(i * 0.5, k * 0.5, pts) <= 0.45 then
+					Voxel.Set(w, i, jy, k, "Water")
+				end
+			end
+		end
+	end
+	local waterModel = VX.Build(w, { V = 0.5, Name = "Water", CF = wCF, Collide = false, Parent = m })
+	return pool, islands, waterModel
+end
+
+-- One fall: a soft core sheet and thin fast streaks (Beams, FaceCamera), droplets off the lip (big fall), and at the
+-- impact a splash of drops, foam, ripple rings on the water (and mist off the big one). Attachment0 = the impact,
+-- Attachment1 = the lip (Oasis.Flow = -1: the texture runs A1 -> A0, down); both live on the invisible `anchor` part.
+function Oasis.fall(anchor, origin, f, index)
+	local lx, ly, lz = f.Lip[1], f.Lip[2], f.Lip[3]
+	local dx, dz = f.Dir[1], f.Dir[2]
+	local drop = ly - f.Land
+	local throw = 0.3 + drop * 0.1
+	local up = Vector3.new(0, 1, 0)
+	local out = Vector3.new(dx, 0, dz).Unit
+	local side = Vector3.new(-dz, 0, dx).Unit
+	local lip = Vector3.new(lx, ly + 0.05, lz) + out * 0.2
+	local impact = Vector3.new(lx, f.Land, lz) + out * (0.2 + throw)
+	local inv = anchor.CFrame:Inverse() * origin -- fountain-local -> anchor-local
+	local function attach(name, pos, xAxis)
+		local a = Instance.new("Attachment")
+		a.Name = name
+		a.CFrame = inv * CFrame.fromMatrix(pos, xAxis, side:Cross(xAxis).Unit)
+		a.Parent = anchor
+		return a
+	end
+	local xBottom = up -- from the impact the curve rises (P1 = A0 + X0 * CurveSize0)
+	local xTop = (out * -0.6 + up * 0.8).Unit -- P2 = A1 - X1 * CurveSize1: out and down from the lip
+	local function beam(name, a0, a1, props)
+		local b = Instance.new("Beam")
+		b.Name = name
+		b.Attachment0 = a0
+		b.Attachment1 = a1
+		b.FaceCamera = true
+		b.Segments = 14
+		b.CurveSize0 = drop * 0.3
+		b.CurveSize1 = 0.45 + throw * 0.5
+		b.LightInfluence = 0.5
+		for k, v in pairs(props) do
+			b[k] = v
+		end
+		b.Parent = anchor
+		return b
+	end
+	local tag = "Fall" .. index
+	local a0 = attach(tag .. "Impact", impact, xBottom)
+	local a1 = attach(tag .. "Lip", lip, xTop)
+	beam(tag .. "Core", a0, a1, {
+		Texture = Oasis.Tex.Glow,
+		TextureMode = Enum.TextureMode.Stretch,
+		TextureLength = 1,
+		TextureSpeed = 0,
+		Width0 = f.Width * 1.25,
+		Width1 = f.Width,
+		Color = ColorSequence.new(rgb(150, 206, 246), rgb(120, 190, 242)),
+		Transparency = NumberSequence.new({
+			NumberSequenceKeypoint.new(0, 0.45),
+			NumberSequenceKeypoint.new(0.15, 0.2),
+			NumberSequenceKeypoint.new(0.9, 0.2),
+			NumberSequenceKeypoint.new(1, 0.5),
+		}),
+		LightEmission = 0.15,
+	})
+	local n = f.Big and 3 or 2
+	for k = 1, n do
+		local off = ((k - 1) / math.max(1, n - 1) - 0.5) * f.Width * 0.55
+		local s0 = attach(tag .. "StreakImpact" .. k, impact + side * off * 1.2, xBottom)
+		local s1 = attach(tag .. "StreakLip" .. k, lip + side * off, xTop)
+		beam(tag .. "Streak" .. k, s0, s1, {
+			Texture = Oasis.Tex.Glow,
+			TextureMode = Enum.TextureMode.Wrap,
+			TextureLength = 0.9 + k * 0.15,
+			TextureSpeed = Oasis.Flow * (2.4 + k * 0.35 + (f.Big and 0.4 or 0)),
+			Width0 = 0.42,
+			Width1 = 0.32,
+			Color = Oasis.Foam,
+			Transparency = NumberSequence.new({
+				NumberSequenceKeypoint.new(0, 0.6),
+				NumberSequenceKeypoint.new(0.2, 0.15),
+				NumberSequenceKeypoint.new(0.85, 0.15),
+				NumberSequenceKeypoint.new(1, 0.7),
+			}),
+			LightEmission = 0.45,
+			ZOffset = 0.05 * k,
+		})
+	end
+	-- the impact: drops, foam (and mist) on the Splash part, tagged NC_Detail so Low graphics (GraphicsQuality) parks
+	-- it with its emitters off; the ripple rings on their own untagged part, so on Low the falls (Core + streak Beams)
+	-- still land in rings on the water
+	local big = f.Big and 1 or 0.6
+	local splash = anchorPart(anchor.Parent, tag .. "Splash", Oasis.at(origin, impact.X, f.Land + 0.1, impact.Z),
+		Vector3.new(f.Width, 0.2, f.Width))
+	splash.CFrame = origin * CFrame.new(impact.X, f.Land + 0.1, impact.Z)
+	CollectionService:AddTag(splash, DETAIL_TAG)
+	local rings = anchorPart(anchor.Parent, tag .. "Ripples", splash.Position, Vector3.new(f.Width, 0.2, f.Width))
+	rings.CFrame = splash.CFrame
+	Oasis.emitter(splash, {
+		Name = "Drops",
+		Rate = 30 * big,
+		Lifetime = NumberRange.new(0.45, 0.8),
+		Speed = NumberRange.new(3.5 * big + 1, 6 * big + 1),
+		SpreadAngle = Vector2.new(38, 38),
+		Acceleration = Vector3.new(0, -24, 0),
+		Size = NumberSequence.new({ NumberSequenceKeypoint.new(0, 0.38), NumberSequenceKeypoint.new(1, 0.08) }),
+		Transparency = NumberSequence.new({ NumberSequenceKeypoint.new(0, 0.1), NumberSequenceKeypoint.new(1, 0.6) }),
+	})
+	Oasis.emitter(splash, {
+		Name = "Foam",
+		Texture = Oasis.Tex.Puff,
+		Color = Oasis.Foam,
+		Rate = 9 * big,
+		Lifetime = NumberRange.new(0.6, 1.0),
+		Speed = NumberRange.new(0.6, 1.6),
+		SpreadAngle = Vector2.new(60, 60),
+		Acceleration = Vector3.new(0, -1, 0),
+		Size = NumberSequence.new({ NumberSequenceKeypoint.new(0, 0.7 * big + 0.3), NumberSequenceKeypoint.new(1, 1.9 * big + 0.4) }),
+		Transparency = NumberSequence.new({ NumberSequenceKeypoint.new(0, 0.35), NumberSequenceKeypoint.new(1, 1) }),
+		RotSpeed = NumberRange.new(-40, 40),
+		LightEmission = 0.2,
+	})
+	Oasis.emitter(rings, {
+		Name = "Ripples",
+		Texture = Oasis.Tex.Ring,
+		Color = Oasis.Foam,
+		Orientation = Enum.ParticleOrientation.VelocityPerpendicular, -- flat on the water
+		EmissionDirection = Enum.NormalId.Top,
+		Rate = 2.4 * big + 0.4,
+		Lifetime = NumberRange.new(1.1, 1.4),
+		Speed = NumberRange.new(0.05, 0.05),
+		Size = NumberSequence.new({ NumberSequenceKeypoint.new(0, 0.6), NumberSequenceKeypoint.new(1, 3.4 * big + 0.6) }),
+		Transparency = NumberSequence.new({ NumberSequenceKeypoint.new(0, 0.3), NumberSequenceKeypoint.new(1, 1) }),
+		LightEmission = 0.25,
+	})
+	if f.Big then
+		Oasis.emitter(splash, {
+			Name = "Mist",
+			Texture = Oasis.Tex.Puff,
+			Color = Oasis.Foam,
+			Rate = 4,
+			Lifetime = NumberRange.new(1.6, 2.6),
+			Speed = NumberRange.new(0.6, 1.2),
+			SpreadAngle = Vector2.new(70, 70),
+			Acceleration = Vector3.new(0, 0.4, 0),
+			Size = NumberSequence.new({ NumberSequenceKeypoint.new(0, 1.8), NumberSequenceKeypoint.new(1, 4.2) }),
+			Transparency = NumberSequence.new({ NumberSequenceKeypoint.new(0, 0.75), NumberSequenceKeypoint.new(1, 1) }),
+			RotSpeed = NumberRange.new(-20, 20),
+			LightEmission = 0.1,
+		})
+		-- droplets breaking off the lip (the sheet tears into drops as it falls): the part's front (-Z) faces out
+		local lipWorld = Oasis.at(origin, lip.X, lip.Y - 0.1, lip.Z)
+		local outWorld = origin:VectorToWorldSpace(out)
+		local lipPart = anchorPart(anchor.Parent, tag .. "LipDrops", lipWorld, Vector3.new(f.Width, 0.2, 0.3))
+		lipPart.CFrame = CFrame.lookAt(lipWorld, lipWorld + outWorld)
+		CollectionService:AddTag(lipPart, DETAIL_TAG)
+		Oasis.emitter(lipPart, {
+			Name = "LipDrops",
+			Rate = 12,
+			Lifetime = NumberRange.new(0.5, 0.8),
+			Speed = NumberRange.new(1.2, 2.2),
+			EmissionDirection = Enum.NormalId.Front,
+			SpreadAngle = Vector2.new(15, 15),
+			Acceleration = Vector3.new(0, -26, 0),
+			Size = NumberSequence.new({ NumberSequenceKeypoint.new(0, 0.3), NumberSequenceKeypoint.new(1, 0.14) }),
+			Transparency = NumberSequence.new({ NumberSequenceKeypoint.new(0, 0.2), NumberSequenceKeypoint.new(1, 0.5) }),
+		})
+	end
+	return impact
+end
+
+-- The paper boat: one root Part and its sail under it, both Anchored like every lobby part (the server never moves
+-- them; client FountainFx moves the root and the sail together at their rest offsets, and the dressed mesh rides the
+-- root, ML_Weld). Returns the root and its fountain-local rest frame.
+function Oasis.boat(m, origin)
+	local b = OASIS.Boat
+	local rest = CFrame.new(b[1], OASIS.Water, b[2]) * CFrame.Angles(0, 0.5, 0)
+	local cf = origin * rest
+	local root = box(m, "PaperBoat", cf * CFrame.new(0, 0.1, 0), Vector3.new(0.6, 0.3, 1.3), C.Paper, { Shadow = false })
+	local sail = box(root, "Sail", cf * CFrame.new(0, 0.5, 0), Vector3.new(0.1, 0.55, 0.6), C.Paper, { Shadow = false })
+	sail.CanCollide = false
+	root:SetAttribute("ML_Weld", true) -- a moving root: the dressed mesh is welded to it (MeshLibrary.Dress)
+	CollectionService:AddTag(root, "OasisBoat")
+	return root, rest
+end
+
 local function buildFountain(f, centre, lookTarget)
 	local m = newModel(f, "Fountain")
-	local g = Voxel.NewGrid(16)
-	VX.Ring(g, 0, 0, 7.6, 9.6, 0, 1, "Slate")
-	VX.Ring(g, 0, 0, 7.2, 10.1, 2, 2, "MarbleShade")
-	VX.Disc(g, 0, 0, 7.6, 0, 0, "WaterDeep")
-	VX.Disc(g, 0, 0, 7.6, 1, 1, "Water")
-	VX.Disc(g, 0, 0, 1.7, 1, 4, "Slate")
-	VX.Disc(g, 0, 0, 4.3, 4, 4, "MarbleShade")
-	VX.Ring(g, 0, 0, 3.4, 4.3, 5, 5, "MarbleShade")
-	VX.Disc(g, 0, 0, 3.3, 5, 5, "Water")
-	VX.Disc(g, 0, 0, 1.1, 6, 8, "Slate")
-	VX.Disc(g, 0, 0, 2.5, 8, 8, "MarbleShade")
-	VX.Ring(g, 0, 0, 1.7, 2.5, 9, 9, "MarbleShade")
-	VX.Disc(g, 0, 0, 1.6, 9, 9, "Water")
-	-- falling water from both bowls
-	for _, d in ipairs({ { 1, 0 }, { -1, 0 }, { 0, 1 }, { 0, -1 } }) do
-		VX.Fill(g, d[1] * 5, d[1] * 5, 2, 4, d[2] * 5, d[2] * 5, "Water")
-		VX.Fill(g, d[1] * 3, d[1] * 3, 6, 8, d[2] * 3, d[2] * 3, "Water")
-	end
-	-- gold trim studs on the rim
-	for i = 0, 7 do
-		local a = i / 8 * math.pi * 2
-		Voxel.Set(g, math.floor(math.cos(a) * 8.6 + 0.5), 2, math.floor(math.sin(a) * 8.6 + 0.5), "Gold")
-	end
-	Voxel.Shade(g, { Only = { Slate = true, MarbleShade = true }, Smooth = 1, Seed = 2 })
-	local water = VX.Split(g, { Water = true })
-	local cf = CFrame.new(centre.X, TOP + 0.5, centre.Z)
-	local basin = VX.Build(g, { V = 1, Name = "Basin", CF = cf, Collide = true, Parent = m, MaxParts = 64 })
-	local waterModel = VX.Build(water, { V = 1, Name = "Water", CF = cf, Collide = false, Parent = m })
-	-- Phase 6: the basin and its water (the Nimbus statue on top stays the pet build)
-	local ground = CFrame.new(centre.X, TOP, centre.Z)
-	if basin then
-		Mesh.tag(basin, "prop_fountain", ground)
-	end
+	local ground = flatLook(Vector3.new(centre.X, TOP, centre.Z), Vector3.new(lookTarget.X, TOP, lookTarget.Z))
+	local pool, islands, waterModel = Oasis.partBuild(m, ground)
+	-- Phase 6: the Blender meshes dress these Part builds once their keys are uploaded (the Parts stay the colliders)
+	Mesh.tag(pool, "prop_oasis_pool", ground)
+	Mesh.tag(islands, "prop_oasis_islands", ground)
 	if waterModel then
-		Mesh.tag(waterModel, "prop_fountain_water", ground)
+		Mesh.tag(waterModel, "prop_oasis_water", ground)
+	end
+	local boat, boatRest = Oasis.boat(m, ground)
+	Mesh.tag(boat, "prop_oasis_boat", ground * boatRest)
+
+	-- the climbs: invisible trusses (reliable climbing for every rig), tops flush with the plank landings
+	for _, spec in ipairs({ { "LadderTruss", OASIS.Ladder }, { "RopeTruss", OASIS.Rope } }) do
+		local c = spec[2]
+		local t = Instance.new("TrussPart")
+		t.Name = spec[1]
+		t.Anchored = true
+		t.Size = Vector3.new(2, c.Y1 - c.Y0, 2)
+		t.CFrame = ground * CFrame.new(c.C[1], (c.Y0 + c.Y1) / 2, c.C[2])
+		t.Transparency = 1
+		t.CanCollide = true
+		t.CanQuery = true
+		t.CanTouch = false
+		t.CastShadow = false
+		t.Parent = m
 	end
 
-	local spray = anchorPart(m, "Spray", centre + Vector3.new(0, 10.6, 0))
-	emitter(spray, {
-		Color = ColorSequence.new(rgb(206, 236, 255), rgb(150, 208, 250)),
-		Rate = 26,
-		Lifetime = NumberRange.new(0.9, 1.4),
-		Speed = NumberRange.new(5, 8),
-		SpreadAngle = Vector2.new(24, 24),
-		Acceleration = Vector3.new(0, -18, 0),
-		Size = popSize(0.55),
-		LightEmission = 0.3,
+	-- the water: three falls (Beams on one anchor), their splashes, a few bubbles at the spring
+	local anchor = anchorPart(m, "Falls", ground.Position)
+	anchor.CFrame = ground
+	CollectionService:AddTag(anchor, "OasisFalls")
+	for i, fall in ipairs(OASIS.Falls) do
+		Oasis.fall(anchor, ground, fall, i)
+	end
+	local sp = OASIS.Spring
+	local bubbles = anchorPart(m, "SpringBubbles", Oasis.at(ground, sp[1] - 0.05, OASIS.Islands[3].Top - 0.2, sp[2] - 0.75),
+		Vector3.new(0.8, 0.1, 0.6))
+	CollectionService:AddTag(bubbles, DETAIL_TAG) -- Low graphics: the bubbles rest (the falls and ripples keep running)
+	Oasis.emitter(bubbles, {
+		Name = "Bubbles",
+		Rate = 5,
+		Lifetime = NumberRange.new(0.4, 0.7),
+		Speed = NumberRange.new(0.5, 1.0),
+		SpreadAngle = Vector2.new(20, 20),
+		Acceleration = Vector3.new(0, -2, 0),
+		Size = NumberSequence.new({ NumberSequenceKeypoint.new(0, 0.22), NumberSequenceKeypoint.new(1, 0.05) }),
+		Transparency = NumberSequence.new({ NumberSequenceKeypoint.new(0, 0.2), NumberSequenceKeypoint.new(1, 0.8) }),
 	})
-	pointLight(spray, rgb(170, 220, 255), 0.6, 18)
+	-- the lantern's warm glow on the middle island (the old blue spray light went with the spray)
+	local lp = OASIS.Lantern
+	local lamp = anchorPart(m, "LanternLight", Oasis.at(ground, lp[1] - 0.65, OASIS.Islands[2].Top + 1.6, lp[2] - 0.05))
+	pointLight(lamp, C.Lamp, 0.8, 12)
 
-	-- Nimbus on top (optional)
+	-- Nimbus in the nest (optional: the pet modules); the statue's lowest point sits on the nest floor, facing front
 	local ok, err = pcall(function()
 		local builderModule = Shared:FindFirstChild("PetBuilder")
 		local catalogModule = Shared:FindFirstChild("PetCatalog")
@@ -2019,22 +2509,21 @@ local function buildFountain(f, centre, lookTarget)
 		if not def or type(PetBuilder.Build) ~= "function" then
 			return
 		end
-		local opts = { Scale = 2.6, Detail = "Low" }
+		local opts = { Scale = OASIS.StatueScale, Detail = "Low" }
+		local nest = OASIS.Nest
 		local function statue()
 			local pet = PetBuilder.Build(def, opts)
 			if not pet then
 				return nil
 			end
 			pet.Name = "NimbusStatue"
-			local topY = TOP + 9.4 -- perched on the top bowl's rim (its stone top is TOP + 10)
 			pet:PivotTo(CFrame.new(0, 0, 0))
 			local boxCf, boxSize = pet:GetBoundingBox()
 			local bottom = pet:GetPivot().Position.Y - (boxCf.Position.Y - boxSize.Y * 0.5)
 			if type(bottom) ~= "number" or bottom ~= bottom or bottom < -50 or bottom > 100 then
 				bottom = 2
 			end
-			local y = topY + bottom + 0.6
-			pet:PivotTo(flatLook(Vector3.new(centre.X, y, centre.Z), lookTarget))
+			pet:PivotTo(ground * CFrame.new(nest.C[1], nest.Floor + bottom, nest.C[2]))
 			for _, d in ipairs(pet:GetDescendants()) do
 				if d:IsA("BasePart") then
 					d.Anchored = true
@@ -2544,7 +3033,10 @@ local function buildPlazaDecor(f, L)
 	for i, a in ipairs(beds) do
 		local pos = plazaSpot(a, G.RingRoadR - G.PathHalf - 14, 4, L)
 		if pos then
-			place(Props.FlowerBed((i - 1) % #FLOWERS + 1), faceCentre(pos - Vector3.new(0, LAWN, 0)), decor, "FlowerBed")
+			local bed = place(Props.FlowerBed((i - 1) % #FLOWERS + 1), faceCentre(pos - Vector3.new(0, LAWN, 0)), decor, "FlowerBed")
+			if bed then
+				bed:SetAttribute("FlowerVariant", (i - 1) % #FLOWERS + 1) -- bug #12: the seed drift wears the bed's colours
+			end
 		end
 	end
 
@@ -3082,9 +3574,7 @@ local function buildShop(root, L)
 				end
 				if r <= 19 or (z < 0 and math.abs(x) <= 5) then
 					Voxel.Set(grids[4], i, 0, k, "Stone")
-				elseif not court and not path and r > R - 7 and r < R - 3 and hash3(i, 3, k, 8) < 0.07 then
-					Voxel.Set(grids[2], i, 0, k, "Flower" .. (math.floor(hash3(i, 4, k, 2) * #FLOWERS) + 1))
-				end
+				end -- (bug #12: the rim's flat flower pixels became Meadow clumps)
 				if r <= 19 then
 					if r >= 12 and r <= 13.5 then
 						Voxel.Set(grids[5], i, 0, k, "StoneLight")
@@ -3869,9 +4359,7 @@ local function buildGarden(parent, spec, L)
 		end
 		if r > R - 3 then
 			l1 = nil -- lawn only at the very edge
-		elseif not l2 and r > R - 6 and hash3(math.floor(x), 7, math.floor(z), 3) < 0.09 then
-			l1 = "Flower" .. (math.floor(hash3(math.floor(x), 8, math.floor(z), 6) * #FLOWERS) + 1)
-		end
+		end -- (bug #12: the rim's flat flower pixels became Meadow clumps)
 		return l1, l2, l3, nil
 	end, "floor_garden_" .. gardenKind .. "_")
 
@@ -3979,6 +4467,669 @@ local function defaultNpcSpots(L)
 	return spots
 end
 
+----------------------------------------------------------------------
+-- Bug #12 "Wind-Sown Sky Meadow" (the player's pick, option B; note: "make sure the grass/flowers quality is high and
+-- the animation is smooth"). Up here the wind never stops: the outer lawns go wild (tufts leaning downwind, grass gone
+-- to seed, wildflowers, cornflowers, dandelions), the settlers still mow the inner lawns (short tufts, clover, daisies),
+-- and a sack of flower seed torn open against a flower bed sends a trail of the bed's own two colours downwind.
+--
+-- The SERVER only decides where things grow; it builds no grass parts (the lobby is at ~7.5k of its 8k-part budget):
+--   * it reads the built ground itself (every lawn / patch / path / prop part in the lobby, rasterised on a 1-stud
+--     grid per area), so a clump can never sit on a path, under a tree's roots, a lamp, a bench, a flower bed, the
+--     fountain, an NPC spot or past the rim, whatever the layout becomes; grass thins out near every edge
+--     (MEADOW.Edge / Thin);
+--   * it scatters clumps on a jittered 2-stud grid AFTER all of that exists (the old flat squares were picked before
+--     the props reserved their spots: the pink square under the tree in the bug screenshot);
+--   * it publishes the result as compact strings on workspace.NimbusLobby.Meadow (attributes Clumps1..N: 9 chars
+--     per clump) + Wind / Base / Kinds / Tint1..6; clients (MeadowFx) grow the clumps locally from the Blender keys
+--     (meadow_*) or plain-part stand-ins, thin them with distance and sway them in rolling gusts;
+--   * the torn seed sacks are a small Part build + Mesh.tag "prop_seedsack" (Detail decor), and a few invisible
+--     emitter boxes let dandelion seeds drift downwind over the wild lawns (NC_Detail: Low graphics parks them).
+----------------------------------------------------------------------
+-- (built inside its own function: its helpers stay out of this chunk's local-variable budget)
+local Meadow = (function()
+	local Meadow = {}
+	local MEADOW = {
+		Version = 1,
+		-- the lobby's prevailing wind (from the west-south-west): every blade leans along it, the gusts roll along it
+		Wind = Vector3.new(0.96, 0, 0.28).Unit,
+		-- clump kinds: index (1-based) -> mesh key (the encoding stores index - 1)
+		Kinds = { "meadow_tuft_tall", "meadow_tuft_short", "meadow_tuft_seed", "meadow_sprig", "meadow_flowers",
+			"meadow_cornflower", "meadow_dandelion", "meadow_clover" },
+		Cell = 1.7, -- candidate grid: at most one clump per 1.7 x 1.7-stud cell, jittered inside it
+		Edge = 1.1, -- no clump closer than this to a path, a prop, an NPC spot or the rim (studs)
+		Thin = 2.6, -- ... and up to this distance only short ones, sparser (paths and pets stay easy to read)
+		Pad = 0.35, -- props (anything standing on the lawn) are grown by this before the distance test
+		Density = { wild = 0.9, mown = 0.48, garden = 0.4 }, -- mown 0.34 -> 0.48 after the final review (the inner lawns read bare)
+		-- weights per zone, in Kinds order (tall, short, seed, sprig, flowers, cornflower, dandelion, clover)
+		Mix = {
+			wild = { 22, 22, 10, 26, 8, 5, 5, 2 },
+			mown = { 0, 34, 0, 20, 20, 0, 6, 20 }, -- more short tufts + daisies (they read from afar), fewer sprigs
+			garden = { 14, 26, 0, 18, 22, 5, 4, 11 },
+			edge = { 0, 30, 0, 50, 0, 0, 0, 20 },
+		},
+		-- wildflower tints (index into FLOWERS): wild meadow pink / yellow / white, mown lawn white daisies, gardens any
+		WildTints = { 1, 1, 1, 2, 2, 2, 3, 3 },
+		ChunkClumps = 450, -- clumps per attribute string (9 chars each: ~4 KB per attribute)
+		Sacks = 2, -- plaza flower beds that get a torn seed sack (the best downwind runs)
+		Sack = { W = 1.15, D = 0.85, H = 1.35, Lean = 0.22 }, -- blender/kit/props/lobby_meadow.py SACK
+		Drift = { Length = 24, Width0 = 1.3, Spread = 0.3 },
+		Seeds = { Sectors = 6, MinClocks = 6, Rate = 1.2 },
+		GLOW = "rbxasset://textures/particles/explosion01_implosion_main.dds",
+		Stats = nil, -- the last scatter's numbers (tests, the build log)
+	}
+	Meadow.K = MEADOW
+
+	local B64 = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"
+	local B64I = {}
+	for i = 1, #B64 do
+		B64I[string.sub(B64, i, i)] = i - 1
+	end
+
+	local function b64(v, n)
+		local out = {}
+		for i = n, 1, -1 do
+			local d = v % 64
+			out[i] = string.sub(B64, d + 1, d + 1)
+			v = (v - d) / 64
+		end
+		return table.concat(out)
+	end
+
+	-- one clump -> 9 chars: [kind*8 + tint] [x: 3] [z: 3] [yaw 0..63] [scale 0..15 + 16 * patch]; x / z relative to the
+	-- lobby origin, 1/64 stud, +-2048
+	function Meadow.encode(c)
+		local qx = math.floor((c.X + 2048) * 64 + 0.5)
+		local qz = math.floor((c.Z + 2048) * 64 + 0.5)
+		qx = math.max(0, math.min(262143, qx))
+		qz = math.max(0, math.min(262143, qz))
+		local yaw = math.floor(((c.Yaw % (2 * math.pi)) / (2 * math.pi)) * 64 + 0.5) % 64
+		local sc = math.max(0, math.min(15, math.floor((c.Scale - 0.7) / 0.04 + 0.5)))
+		return b64((c.Kind - 1) * 8 + (c.Tint or 0), 1) .. b64(qx, 3) .. b64(qz, 3) .. b64(yaw, 1)
+			.. b64(sc + (c.Patch and 16 or 0), 1)
+	end
+
+	function Meadow.decode(s, i)
+		local function n(a, len)
+			local v = 0
+			for j = a, a + len - 1 do
+				v = v * 64 + (B64I[string.sub(s, j, j)] or 0)
+			end
+			return v
+		end
+		local o = (i - 1) * 9 + 1
+		local kt = n(o, 1)
+		local tint = kt % 8
+		local f = n(o + 8, 1)
+		return {
+			Kind = (kt - tint) / 8 + 1,
+			Tint = tint,
+			X = n(o + 1, 3) / 64 - 2048,
+			Z = n(o + 4, 3) / 64 - 2048,
+			Yaw = n(o + 7, 1) / 64 * 2 * math.pi,
+			Scale = 0.7 + (f % 16) * 0.04,
+			Patch = f >= 16,
+		}
+	end
+
+	-- ground codes of a 1-stud grid: 0 nothing (sky), 1 lawn, 2 lawn patch (0.1 higher), 3 blocked (path, border, prop)
+	local function areaGrid(cx, cz, R)
+		local N = math.ceil(R) + 2
+		return { CX = cx, CZ = cz, R = R, N = N, S = 2 * N, Code = {}, Dist = nil }
+	end
+
+	local function gridIndex(g, x, z)
+		local i = math.floor(x - g.CX) + g.N
+		local k = math.floor(z - g.CZ) + g.N
+		if i < 0 or k < 0 or i >= g.S or k >= g.S then
+			return nil
+		end
+		return i * g.S + k + 1
+	end
+
+	local function gridMark(g, x0, z0, x1, z1, code)
+		local S, N = g.S, g.N
+		local i0 = math.max(0, math.floor(x0 - g.CX) + N)
+		local i1 = math.min(S - 1, math.floor(x1 - g.CX) + N)
+		local k0 = math.max(0, math.floor(z0 - g.CZ) + N)
+		local k1 = math.min(S - 1, math.floor(z1 - g.CZ) + N)
+		local code_ = g.Code
+		for i = i0, i1 do
+			local base = i * S + 1
+			for k = k0, k1 do
+				local idx = base + k
+				if (code_[idx] or 0) < code then
+					code_[idx] = code
+				end
+			end
+		end
+	end
+
+	local function gridCircle(g, x, z, r)
+		gridMark(g, x - r, z - r, x + r, z + r, 3)
+	end
+
+	-- every visible part of the lobby that reaches into the area: lawn / patch / blocked
+	local function rasterise(g, parts)
+		local R = g.R + 2
+		for _, p in ipairs(parts) do
+			local pos, s, cf = p.Position, p.Size, p.CFrame
+			local rx, ry, rz = cf.RightVector, cf.UpVector, cf.LookVector
+			local ex = (math.abs(rx.X) * s.X + math.abs(ry.X) * s.Y + math.abs(rz.X) * s.Z) / 2
+			local ey = (math.abs(rx.Y) * s.X + math.abs(ry.Y) * s.Y + math.abs(rz.Y) * s.Z) / 2
+			local ez = (math.abs(rx.Z) * s.X + math.abs(ry.Z) * s.Y + math.abs(rz.Z) * s.Z) / 2
+			if pos.X + ex >= g.CX - R and pos.X - ex <= g.CX + R and pos.Z + ez >= g.CZ - R and pos.Z - ez <= g.CZ + R then
+				local top, bottom = pos.Y + ey, pos.Y - ey
+				if top > TOP - LAWN - 0.05 and bottom < TOP + 2.5 then
+					if top <= TOP - LAWN + 0.05 then
+						-- the lawn layer: cells whose centre it covers (half-open, so neighbouring slabs never double up)
+						gridMark(g, pos.X - ex + 0.5, pos.Z - ez + 0.5, pos.X + ex - 0.5, pos.Z + ez - 0.5, 1)
+					elseif top <= TOP - LAWN + 0.15 then
+						gridMark(g, pos.X - ex + 0.5, pos.Z - ez + 0.5, pos.X + ex - 0.5, pos.Z + ez - 0.5, 2)
+					elseif top <= TOP + 0.15 then
+						gridMark(g, pos.X - ex, pos.Z - ez, pos.X + ex, pos.Z + ez, 3) -- borders, paths, inlays
+					else
+						local pad = MEADOW.Pad -- anything standing on the lawn: trunks, roots, lamps, benches, beds...
+						local aligned = math.abs(ry.Y) > 0.999 and (math.abs(rx.X) > 0.999 or math.abs(rx.Z) > 0.999)
+						if aligned then
+							gridMark(g, pos.X - ex - pad, pos.Z - ez - pad, pos.X + ex + pad, pos.Z + ez + pad, 3)
+						else
+							-- a turned prop: only the cells its own (padded) box covers, not its world bounding box
+							local S, N, code = g.S, g.N, g.Code
+							local hx, hy, hz = s.X / 2 + pad, s.Y / 2 + pad, s.Z / 2 + pad
+							local i0 = math.max(0, math.floor(pos.X - ex - pad - g.CX) + N)
+							local i1 = math.min(S - 1, math.floor(pos.X + ex + pad - g.CX) + N)
+							local k0 = math.max(0, math.floor(pos.Z - ez - pad - g.CZ) + N)
+							local k1 = math.min(S - 1, math.floor(pos.Z + ez + pad - g.CZ) + N)
+							local yProbe = math.max(bottom, math.min(top, TOP - LAWN + 0.1))
+							for i = i0, i1 do
+								for k = k0, k1 do
+									local q = cf:PointToObjectSpace(Vector3.new(g.CX + i - N + 0.5, yProbe, g.CZ + k - N + 0.5))
+									if math.abs(q.X) <= hx and math.abs(q.Z) <= hz and math.abs(q.Y) <= hy then
+										code[i * S + k + 1] = 3
+									end
+								end
+							end
+						end
+					end
+				end
+			end
+		end
+	end
+
+	-- distance (studs) from every cell to the nearest cell that is not lawn (chamfer 3-4 / 3)
+	local function distances(g)
+		local S, code = g.S, g.Code
+		local D = {}
+		local BIG = 1e6
+		for idx = 1, S * S do
+			local c = code[idx] or 0
+			D[idx] = (c == 1 or c == 2) and BIG or 0
+		end
+		for i = 0, S - 1 do
+			for k = 0, S - 1 do
+				local idx = i * S + k + 1
+				local d = D[idx]
+				if d > 0 then
+					if i > 0 then
+						d = math.min(d, D[idx - S] + 3)
+						if k > 0 then
+							d = math.min(d, D[idx - S - 1] + 4)
+						end
+						if k < S - 1 then
+							d = math.min(d, D[idx - S + 1] + 4)
+						end
+					else
+						d = math.min(d, 3)
+					end
+					if k > 0 then
+						d = math.min(d, D[idx - 1] + 3)
+					else
+						d = math.min(d, 3)
+					end
+					D[idx] = d
+				end
+			end
+		end
+		for i = S - 1, 0, -1 do
+			for k = S - 1, 0, -1 do
+				local idx = i * S + k + 1
+				local d = D[idx]
+				if d > 0 then
+					if i < S - 1 then
+						d = math.min(d, D[idx + S] + 3)
+						if k > 0 then
+							d = math.min(d, D[idx + S - 1] + 4)
+						end
+						if k < S - 1 then
+							d = math.min(d, D[idx + S + 1] + 4)
+						end
+					else
+						d = math.min(d, 3)
+					end
+					if k < S - 1 then
+						d = math.min(d, D[idx + 1] + 3)
+					else
+						d = math.min(d, 3)
+					end
+					D[idx] = d
+				end
+			end
+		end
+		g.Dist = D
+	end
+
+	-- distance of a point to the nearest non-lawn cell (studs; the cell centre value, minus half a cell of slack)
+	local function distAt(g, x, z)
+		local idx = gridIndex(g, x, z)
+		if not idx then
+			return 0
+		end
+		return math.max(0, g.Dist[idx] / 3 - 0.5)
+	end
+
+	local function pick(weights, h)
+		local total = 0
+		for _, w in ipairs(weights) do
+			total = total + w
+		end
+		local t = h * total
+		for i, w in ipairs(weights) do
+			t = t - w
+			if t < 0 then
+				return i
+			end
+		end
+		return #weights
+	end
+
+	-- the lobby's parts once (visible ones only), shared by every area
+	local function lobbyParts(root)
+		local list = {}
+		for _, d in ipairs(root:GetDescendants()) do
+			if d:IsA("BasePart") and d.Transparency < 0.99 then
+				list[#list + 1] = d
+			end
+		end
+		return list
+	end
+
+	-- the seed sacks: at the plaza's flower beds whose downwind run over open lawn is longest; returns the comets
+	local function buildSacks(root, g, decorParent)
+		local beds = {}
+		for _, d in ipairs(root:GetDescendants()) do
+			if d:IsA("Model") and d.Name == "FlowerBed" and d.Parent and d.Parent.Name == "LawnDecor" then
+				beds[#beds + 1] = d
+			end
+		end
+		table.sort(beds, function(a, b)
+			local pa, pb = a:GetPivot().Position, b:GetPivot().Position
+			return pa.X + pa.Z * 0.001 < pb.X + pb.Z * 0.001
+		end)
+		local w = MEADOW.Wind
+		local up = Vector3.new(0, 1, 0)
+		local options = {}
+		for bi, bed in ipairs(beds) do
+			local pivot = bed:GetPivot()
+			-- the bed's half extents in its own frame (its parts)
+			local hx, hz = 0, 0
+			for _, p in ipairs(bed:GetDescendants()) do
+				if p:IsA("BasePart") then
+					local lp = pivot:PointToObjectSpace(p.Position)
+					local ls = pivot:VectorToObjectSpace(p.CFrame:VectorToWorldSpace(p.Size))
+					hx = math.max(hx, math.abs(lp.X) + math.abs(ls.X) / 2)
+					hz = math.max(hz, math.abs(lp.Z) + math.abs(ls.Z) / 2)
+				end
+			end
+			local v = tonumber((bed:GetAttribute("FlowerVariant"))) or (((bi - 1) % #FLOWERS) + 1)
+			for _, side in ipairs({ { 1, 0 }, { -1, 0 }, { 0, 1 }, { 0, -1 } }) do
+				local nLocal = Vector3.new(side[1], 0, side[2])
+				local n = pivot:VectorToWorldSpace(nLocal)
+				n = Vector3.new(n.X, 0, n.Z).Unit
+				local look = -n
+				local right = look:Cross(up)
+				if right:Dot(w) > 0.5 then
+					local reach = (side[1] ~= 0) and hx or hz
+					local along = (side[1] ~= 0) and hz or hx
+					local footD = reach + MEADOW.Sack.D / 2 + 0.25
+					-- the sack slumps at the downwind end of that side, its spill just past the bed's corner
+					local tangent = right
+					local offset = math.max(0, along + 0.8 - (MEADOW.Sack.W / 2 + 0.7)) -- the spill lands just past the corner
+					local foot = pivot.Position + n * footD + tangent * offset
+					local spill = foot + right * (MEADOW.Sack.W / 2 + 0.7)
+					local okFoot = true
+					for _, probe in ipairs({ foot, spill, foot - right * 0.5 }) do
+						local idx = gridIndex(g, probe.X, probe.Z)
+						local c = idx and g.Code[idx] or 0
+						if c ~= 1 and c ~= 2 then
+							okFoot = false
+						end
+					end
+					if okFoot then
+						local run = 0
+						for t = 1, MEADOW.Drift.Length do
+							local q = spill + w * t
+							local idx = gridIndex(g, q.X, q.Z)
+							local c = idx and g.Code[idx] or 0
+							if c ~= 1 and c ~= 2 then
+								break
+							end
+							run = t
+						end
+						local score = run + right:Dot(w) * 4
+						options[#options + 1] = { Bed = bed, Score = score, Foot = foot, Look = look, Spill = spill,
+							Variant = v, Patch = (g.Code[gridIndex(g, foot.X, foot.Z)] == 2) }
+					end
+				end
+			end
+		end
+		table.sort(options, function(a, b)
+			if math.abs(a.Score - b.Score) > 1e-6 then
+				return a.Score > b.Score
+			end
+			return a.Foot.X < b.Foot.X
+		end)
+		local comets, used = {}, {}
+		local S = MEADOW.Sack
+		local burlap, burlapDark, seed, twine = rgb(206, 178, 128), rgb(190, 162, 114), rgb(232, 214, 160), rgb(160, 122, 78)
+		for _, o in ipairs(options) do
+			if #comets >= MEADOW.Sacks then
+				break
+			end
+			if not used[o.Bed] then
+				used[o.Bed] = true
+				local y = TOP - LAWN + (o.Patch and 0.1 or 0)
+				local frame = CFrame.lookAt(Vector3.new(o.Foot.X, y, o.Foot.Z), Vector3.new(o.Foot.X, y, o.Foot.Z) + o.Look)
+				local m = newModel(decorParent, "SeedSack")
+				m:SetAttribute("Bed", o.Bed:GetFullName())
+				-- the Part build (the fallback and the shape the mesh dresses): a slumped body, the bunched neck, the
+				-- flopped top and the spilled mound
+				local tilt = frame * CFrame.Angles(-S.Lean, 0, 0)
+				box(m, "Sack", tilt * CFrame.new(0, S.H / 2, 0), Vector3.new(S.W, S.H, S.D), burlap)
+				box(m, "SackNeck", tilt * CFrame.new(0, S.H + 0.08, 0), Vector3.new(0.5, 0.26, 0.5), twine)
+				box(m, "SackTop", tilt * CFrame.new(0, S.H + 0.32, 0.05), Vector3.new(0.6, 0.28, 0.45), burlapDark)
+				box(m, "Spill", frame * CFrame.new(S.W / 2 + 0.5, 0.06, 0.2), Vector3.new(1.0, 0.16, 0.9), seed)
+				m.WorldPivot = frame
+				Mesh.tag(m, "prop_seedsack", frame)
+				gridCircle(g, o.Foot.X, o.Foot.Z, 1.0)
+				gridCircle(g, o.Spill.X, o.Spill.Z, 0.8)
+				local v = o.Variant
+				comets[#comets + 1] = { From = o.Spill, Tints = { v, v % #FLOWERS + 1 }, Sack = m }
+			end
+		end
+		return comets
+	end
+
+	-- where a point sits in a seed drift (a comet streaming downwind from the spill): t along it, its half width there
+	local function inComet(c, x, z)
+		local w = MEADOW.Wind
+		local rel = Vector3.new(x - c.From.X, 0, z - c.From.Z)
+		local t = rel:Dot(w)
+		local side = math.abs(rel.X * w.Z - rel.Z * w.X)
+		local half = MEADOW.Drift.Width0 + math.max(0, t) * MEADOW.Drift.Spread
+		if t >= -0.6 and t <= MEADOW.Drift.Length and side <= half then
+			return t, side, half
+		end
+		return nil
+	end
+
+	local function zoneScale(zone, edge, h)
+		if zone == "wild" and not edge then
+			return 0.9 + 0.32 * h
+		elseif zone == "mown" then
+			return 0.72 + 0.2 * h
+		end
+		return 0.8 + 0.26 * h
+	end
+
+	-- one area's clumps (appended to `out`); zoneOf(x, z) -> "wild" | "mown" | "garden" | nil (relative to the area centre)
+	local function scatter(g, out, zoneOf, seed, comets, npcSpots)
+		for _, s in ipairs(npcSpots or {}) do
+			local p = typeof(s) == "CFrame" and s.Position or s
+			if typeof(p) == "Vector3" then
+				gridCircle(g, p.X, p.Z, 3)
+			end
+		end
+		distances(g)
+		local cell = MEADOW.Cell
+		local n = math.ceil(g.R / cell)
+		local w = MEADOW.Wind
+		local yaw0 = math.atan2(-w.Z, w.X) -- CFrame.Angles(0, yaw0, 0) turns +X onto the wind
+		local stats = out.Stats
+		local function add(kind, tint, x, z, h, sc, code, zone, drift)
+			out[#out + 1] = {
+				Kind = kind,
+				Tint = tint,
+				X = x - OX,
+				Z = z - OZ,
+				Yaw = yaw0 + (h - 0.5) * 0.7,
+				Scale = sc,
+				Patch = code == 2,
+				Zone = zone,
+				Drift = drift,
+			}
+			local key = drift and "Drift" or zone
+			stats[key] = (stats[key] or 0) + 1
+		end
+		-- the meadow / lawn on a jittered 2-stud grid
+		for i = -n, n - 1 do
+			for k = -n, n - 1 do
+				local h1, h2 = hash3(i, 1, k, seed), hash3(i, 2, k, seed)
+				local lx, lz = (i + 0.12 + 0.76 * h1) * cell, (k + 0.12 + 0.76 * h2) * cell
+				local x, z = g.CX + lx, g.CZ + lz
+				local idx = gridIndex(g, x, z)
+				local code = idx and g.Code[idx] or 0
+				if (code == 1 or code == 2) and lx * lx + lz * lz <= g.R * g.R then
+					local d = distAt(g, x, z)
+					local zone = zoneOf(lx, lz)
+					if zone and d >= MEADOW.Edge then
+						local p, mix = MEADOW.Density[zone] or 0, MEADOW.Mix[zone]
+						-- clumpy meadow: soft patches of thicker and thinner growth
+						p = p * (0.45 + 0.75 * vnoise(x + 311, z - 97, 13, seed + 3))
+						for _, c in ipairs(comets or {}) do
+							if inComet(c, x, z) then
+								p = p * 0.5 -- the drift's flowers stand in thinner grass
+							end
+						end
+						local edge = d < MEADOW.Thin
+						if edge then
+							p = p * (0.1 + 0.4 * (d - MEADOW.Edge) / (MEADOW.Thin - MEADOW.Edge))
+							mix = MEADOW.Mix.edge
+						end
+						if hash3(i, 3, k, seed) < p then
+							local kind = pick(mix, hash3(i, 4, k, seed))
+							local tint = 0
+							if kind == 5 then
+								if zone == "wild" then
+									tint = MEADOW.WildTints[math.floor(hash3(i, 5, k, seed) * #MEADOW.WildTints) + 1]
+								elseif zone == "mown" then
+									tint = (hash3(i, 5, k, seed) < 0.7) and 3 or 2 -- daisies, a few buttercups
+								else
+									tint = math.floor(hash3(i, 5, k, seed) * #FLOWERS) + 1
+								end
+							end
+							add(kind, tint, x, z, hash3(i, 9, k, seed), zoneScale(zone, edge, hash3(i, 6, k, seed)), code, zone, false)
+						end
+					end
+				end
+			end
+		end
+		-- the seed drifts: the bed's two colours on a finer 1-stud grid, densest by the sack, thinning downwind
+		for ci, c in ipairs(comets or {}) do
+			local L_ = MEADOW.Drift.Length
+			local reach = L_ + MEADOW.Drift.Width0 + L_ * MEADOW.Drift.Spread + 1
+			local i0, i1 = math.floor(c.From.X - reach), math.ceil(c.From.X + reach)
+			local k0, k1 = math.floor(c.From.Z - reach), math.ceil(c.From.Z + reach)
+			for i = i0, i1 do
+				for k = k0, k1 do
+					local hs = seed + 50 + ci
+					local x, z = i + 0.1 + 0.8 * hash3(i, 11, k, hs), k + 0.1 + 0.8 * hash3(i, 12, k, hs)
+					local t, side, half = inComet(c, x, z)
+					local idx = gridIndex(g, x, z)
+					local code = idx and g.Code[idx] or 0
+					if t and (code == 1 or code == 2) and distAt(g, x, z) >= MEADOW.Edge * 0.8 then
+						local fall = 1 - math.max(0, t) / L_
+						local core = 1 - side / (half + 0.01)
+						local p = 0.9 * (fall ^ 0.6) * (0.5 + 0.5 * core)
+						if hash3(i, 13, k, hs) < p then
+							local r = hash3(i, 14, k, hs)
+							local kind, tint = 5, c.Tints[(hash3(i, 15, k, hs) < 0.55) and 1 or 2]
+							if r > 0.9 then
+								kind, tint = 4, 0
+							elseif r > 0.85 then
+								kind, tint = 8, 0
+							end
+							add(kind, tint, x, z, hash3(i, 16, k, hs), 0.74 + 0.22 * hash3(i, 17, k, hs), code, zoneOf(x - g.CX, z - g.CZ) or "mown", true)
+						end
+					end
+				end
+			end
+		end
+	end
+
+	-- dandelion seeds drifting off the wild lawns: one invisible emitter box per sector rich in seed clocks
+	local function buildSeeds(parent, clumps)
+		local K = MEADOW.Seeds
+		local sectors = {}
+		for _, c in ipairs(clumps) do
+			if c.Kind == 7 and c.Zone == "wild" then
+				local a = math.floor(((math.deg(atan2(c.Z, c.X)) % 360) / 360) * K.Sectors) + 1
+				local s = sectors[a] or { N = 0, X = 0, Z = 0, X2 = 0, Z2 = 0 }
+				s.N, s.X, s.Z = s.N + 1, s.X + c.X, s.Z + c.Z
+				s.X2, s.Z2 = s.X2 + c.X * c.X, s.Z2 + c.Z * c.Z
+				sectors[a] = s
+			end
+		end
+		local model = newModel(parent, "MeadowSeeds")
+		CollectionService:AddTag(model, DETAIL_TAG)
+		local w = MEADOW.Wind
+		for a = 1, K.Sectors do
+			local s = sectors[a]
+			if s and s.N >= K.MinClocks then
+				local mx, mz = s.X / s.N, s.Z / s.N
+				local sx = math.sqrt(math.max(1, s.X2 / s.N - mx * mx)) * 2
+				local sz = math.sqrt(math.max(1, s.Z2 / s.N - mz * mz)) * 2
+				local anchor = anchorPart(model, "Seeds" .. a, Vector3.new(OX + mx, TOP + 0.4, OZ + mz),
+					Vector3.new(math.min(40, sx), 0.6, math.min(40, sz)))
+				local e = emitter(anchor, {
+					Texture = MEADOW.GLOW,
+					Color = ColorSequence.new(rgb(255, 255, 250)),
+					LightEmission = 0.25,
+					LightInfluence = 0.6,
+					Rate = K.Rate,
+					Lifetime = NumberRange.new(6, 10),
+					Speed = NumberRange.new(0.4, 1.0),
+					SpreadAngle = Vector2.new(25, 25),
+					Acceleration = Vector3.new(w.X * 0.9, 0.12, w.Z * 0.9),
+					Drag = 0.35,
+					Size = NumberSequence.new({
+						NumberSequenceKeypoint.new(0, 0),
+						NumberSequenceKeypoint.new(0.1, 0.16),
+						NumberSequenceKeypoint.new(0.85, 0.13),
+						NumberSequenceKeypoint.new(1, 0),
+					}),
+					Transparency = FADE_IN_OUT,
+					RotSpeed = NumberRange.new(-40, 40),
+				})
+				e.Name = "DandelionSeeds"
+				pcall(function()
+					e.Shape = Enum.ParticleEmitterShape.Box
+					e.ShapeStyle = Enum.ParticleEmitterShapeStyle.Volume
+				end)
+			end
+		end
+		return model
+	end
+
+	-- publish the clumps for the clients (MeadowFx): attributes only, no parts
+	local function publish(root, clumps)
+		local folder = Instance.new("Folder")
+		folder.Name = "Meadow"
+		local chunk, buf, nchunks = MEADOW.ChunkClumps, {}, 0
+		for i, c in ipairs(clumps) do
+			buf[#buf + 1] = Meadow.encode(c)
+			if #buf >= chunk or i == #clumps then
+				nchunks = nchunks + 1
+				folder:SetAttribute("Clumps" .. nchunks, table.concat(buf))
+				buf = {}
+			end
+		end
+		folder:SetAttribute("Version", MEADOW.Version)
+		folder:SetAttribute("Count", #clumps)
+		folder:SetAttribute("Chunks", nchunks)
+		folder:SetAttribute("Wind", MEADOW.Wind)
+		folder:SetAttribute("Base", TOP - LAWN)
+		folder:SetAttribute("Origin", Vector3.new(OX, 0, OZ))
+		folder:SetAttribute("Kinds", table.concat(MEADOW.Kinds, ","))
+		for i, col in ipairs(FLOWERS) do
+			folder:SetAttribute("Tint" .. i, col)
+		end
+		folder.Parent = root
+		return folder
+	end
+
+	function Meadow.build(root, L)
+		local parts = lobbyParts(root)
+		local clumps = { Stats = {} }
+		local plaza = root:FindFirstChild("Plaza")
+		-- the plaza: wild beyond the circle walk, mown inside it
+		if plaza then
+			local g = areaGrid(OX, OZ, PLAZA_R - 4.5)
+			rasterise(g, parts)
+			local decor = plaza:FindFirstChild("LawnDecor") or plaza
+			local okSacks, comets = pcall(buildSacks, root, g, decor)
+			if not okSacks then
+				warn("[LobbyBuilder] meadow sacks failed: " .. tostring(comets))
+				comets = {}
+			end
+			local wildR = G.RingRoadR + G.PathHalf
+			scatter(g, clumps, function(x, z)
+				local r = math.sqrt(x * x + z * z)
+				if r > wildR then
+					return "wild"
+				end
+				return "mown"
+			end, 1201, comets, L and L.NpcSpots)
+			clumps.Comets = comets
+		end
+		-- the shop lawn and the garden islands: a lighter garden mix
+		local shop = root:FindFirstChild("Shop")
+		if shop and L and L.ShopCenter then
+			local g = areaGrid(L.ShopCenter.X, L.ShopCenter.Z, (L.ShopR or 30) - 3)
+			rasterise(g, parts)
+			scatter(g, clumps, function()
+				return "garden"
+			end, 1301)
+		end
+		local gardens = root:FindFirstChild("Gardens")
+		if gardens and L and L.Gardens then
+			for gi, spec in ipairs(L.Gardens) do
+				local c = polar(spec.Angle, G.GardenR, TOP)
+				local g = areaGrid(c.X, c.Z, G.GardenSize - 3)
+				rasterise(g, parts)
+				scatter(g, clumps, function()
+					return "garden"
+				end, 1400 + gi)
+			end
+		end
+		local stats = clumps.Stats
+		clumps.Stats = nil
+		local comets = clumps.Comets or {}
+		clumps.Comets = nil
+		section("meadow seeds", function()
+			buildSeeds(plaza or root, clumps)
+		end)
+		local folder = publish(root, clumps)
+		stats.Total = #clumps
+		stats.Sacks = #comets
+		MEADOW.Stats = stats
+		MEADOW.Last = { Clumps = clumps, Comets = comets, Folder = folder }
+		return folder
+	end
+
+	return Meadow
+end)()
+
 function LobbyBuilder.Build()
 	templates = {}
 	reserved = {}
@@ -4076,6 +5227,9 @@ function LobbyBuilder.Build()
 	section("benches", function()
 		Benches.wire(root) -- bug batch 2 #7: the Sit prompts of every bench (plaza lawns + gardens)
 	end)
+	section("meadow", function()
+		Meadow.build(root, L) -- bug #12: where the grass and wildflowers grow (after every prop has its place)
+	end)
 
 	root.Parent = Workspace
 	-- the templates and merged box lists are only needed while building
@@ -4148,7 +5302,9 @@ end
 ----------------------------------------------------------------------
 LobbyBuilder._Kit = nil
 LobbyBuilder._Mesh = Mesh
+LobbyBuilder._Oasis = OASIS -- bug #13: the fountain layout (tests compare it with the committed meshes)
 LobbyBuilder._Benches = Benches -- bug batch 2 #7: tests call _Benches.sit / .check
+LobbyBuilder._Meadow = Meadow -- bug #12: tests decode the scatter (Meadow.decode, Meadow.K.Stats / .Last)
 
 -- the cells of a recorded VX.Cloud spec at `V` studs per voxel (tier heights keep their stud thickness)
 function LobbyBuilder._CloudGrid(spec, V)

@@ -3,7 +3,7 @@ Started as a copy of props/home_style.py (art-home's bake: raster, families, sha
 never break each other; extended for the arena and the dungeon:
 
     bake(model, boxes, vs, budget, opts) -> stats      opts: tints {part name: "Primary" | "Secondary"}, solid (name
-                                                        of the baked part), soften (cloud rounding, cells), aligny,
+                                                        of the baked part), soften (cloud rounding, cells), aligny, offy,
                                                         rock (seeded rock shapes for "Rock" boxes)
 
 1. Raster: every visible box becomes voxels of `vs` studs (cell centres inside the box), the biggest first so small
@@ -773,7 +773,10 @@ def bake(m, boxes, vs, budget=4000, opts=None):
         if b["name"] in tints:
             b = dict(b, rgb=(255, 255, 255))
         bx.append(b)
-    R = Raster(bx, vs, align=opts.get("align", True), offy=align_y(bx, vs) if opts.get("aligny") else None)
+    # offy (a number): a fixed y offset of the voxel boundaries instead of align_y's pick (bug #11: the Champion Ring
+    # pocket pins its boundaries at 0.0625 + k * 0.5 so the baked ring floor meets the Part floor players stand on)
+    offy = float(opts["offy"]) if opts.get("offy") is not None else (align_y(bx, vs) if opts.get("aligny") else None)
+    R = Raster(bx, vs, align=opts.get("align", True), offy=offy)
     R.paint()
     softened = soften(R, set(opts.get("soften_names") or ("Cloud",)), int(opts.get("soften", 0)))
     name = opts.get("solid") or "Fixed"

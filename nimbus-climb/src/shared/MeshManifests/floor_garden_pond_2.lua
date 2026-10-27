@@ -2,16 +2,16 @@
 return {
 	Attachments = {
 		LayoutSig = {
-			Pos = { 26, 22.564, 363.8 },
+			Pos = { 15, 45.915, 278.2 },
 			Rot = { { 1, 0, 0 }, { 0, 1, 0 }, { 0, 0, 1 } },
 		},
 	},
 	Bounds = {
-		Max = { 19, -0.3, 19 },
-		Min = { -19, -2.3, -19 },
-		Size = { 38, 2, 38 },
+		Max = { 17, -0.3, 19 },
+		Min = { -17, -2.3, -19 },
+		Size = { 34, 2, 38 },
 	},
-	ContentHash = "2e2ba99b07fc72a758c7d9533ed48da6",
+	ContentHash = "5d777f4dc1fd5fadeb76f3252ed4105d",
 	DarkFactor = { 0.8425, 0.85, 0.8875 },
 	DeepFactor = { 0.7098, 0.7225, 0.7877 },
 	Groups = {},
@@ -32,12 +32,12 @@ return {
 			Material = "SmoothPlastic",
 			Name = "Fixed",
 			Shade = "fixed",
-			Size = { 38, 2, 38 },
-			Tris = 304,
+			Size = { 34, 2, 38 },
+			Tris = 180,
 		},
 	},
 	Rig = "",
-	StructureHash = "7c87714c39c8a3ef7af961a2b8cee947",
-	Tris = 304,
+	StructureHash = "cf8ad71e5ffc17e7612344f30efa0c96",
+	Tris = 180,
 	VoxelStuds = 0.25,
 }

@@ -2,16 +2,16 @@
 return {
 	Attachments = {
 		LayoutSig = {
-			Pos = { 27, 65.673, 748.8 },
+			Pos = { 20, 134.76, 699.6 },
 			Rot = { { 1, 0, 0 }, { 0, 1, 0 }, { 0, 0, 1 } },
 		},
 	},
 	Bounds = {
 		Max = { 23, -0.3, 31 },
-		Min = { -29, -2.3, -31 },
-		Size = { 52, 2, 62 },
+		Min = { -29, -2.3, -17 },
+		Size = { 52, 2, 48 },
 	},
-	ContentHash = "2088c17aa0bea59eeee2b328b00c89b2",
+	ContentHash = "be73514ce9a9567087a0048dce1618c0",
 	DarkFactor = { 0.8425, 0.85, 0.8875 },
 	DeepFactor = { 0.7098, 0.7225, 0.7877 },
 	Groups = {},
@@ -25,19 +25,19 @@ return {
 	},
 	Parts = {
 		{
-			Center = { -3, -1.3, 0 },
+			Center = { -3, -1.3, 7 },
 			Color = "vertex",
 			Group = "Floor",
 			Key = "Fixed",
 			Material = "SmoothPlastic",
 			Name = "Fixed",
 			Shade = "fixed",
-			Size = { 52, 2, 62 },
-			Tris = 316,
+			Size = { 52, 2, 48 },
+			Tris = 240,
 		},
 	},
 	Rig = "",
-	StructureHash = "7a6bd2fd3ea3862a7aa2ebd71c478176",
-	Tris = 316,
+	StructureHash = "ec16fcd4ebdf15a6b3cd2a0dafac5617",
+	Tris = 240,
 	VoxelStuds = 0.25,
 }

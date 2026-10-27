@@ -209,7 +209,10 @@ class Builder:
             translucent = (bool(getattr(o, "transparency", 0)) or o.material in ("Glass", "ForceField")) and not getattr(o, "meshed_closed", False)
             for corners, _ in o.quads:
                 c = np.asarray(corners, float)
-                n = np.cross(c[1] - c[0], c[3] - c[0])
+                # the exact area vector of a planar quad (half the cross of its diagonals): the same number as
+                # cross(c1 - c0, c3 - c0) for the mesher's rectangles, and right for the meadow's tapered blades
+                # (props/lobby_meadow.py: trapezoid sides)
+                n = 0.5 * np.cross(c[2] - c[0], c[3] - c[1])
                 area = float(np.linalg.norm(n))
                 if area < 1e-9:
                     problems.append("%s: zero-area quad" % o.name)

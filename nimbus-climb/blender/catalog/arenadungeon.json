@@ -38,6 +38,14 @@
   "floor": {
    "tris": 1000,
    "parts": 1
+  },
+  "emblem": {
+   "tris": 6000,
+   "parts": 8
+  },
+  "crowd": {
+   "tris": 2400,
+   "parts": 8
   }
  },
  "keys": [
@@ -268,10 +276,188 @@
    "args": {
     "vs": 0.5,
     "aligny": true,
-    "soften": 1
+    "soften": 1,
+    "offy": 0.0625
    },
    "budget": "big",
-   "description": "Champion Ring pocket: cloud, ring, crown posts, cloud-puff crowd"
+   "description": "Champion Ring pocket: cloud, stone deck, ring floor and rim, crown posts, the crowd's stone bleacher (the emblem and the crowd are their own keys)"
+  },
+  {
+   "key": "arena_emblem",
+   "type": "prop",
+   "prop": "arena_crowd",
+   "args": {
+    "part": "emblem"
+   },
+   "budget": "emblem",
+   "description": "Champion Ring floor emblem (bug #11): the sky-sailors' compass star, brass rim, rope coil, riveted repair plate (0.25-stud voxels)"
+  },
+  {
+   "key": "arena_crowd_rain",
+   "type": "prop",
+   "prop": "arena_crowd",
+   "args": {
+    "part": "body",
+    "name": "rain"
+   },
+   "budget": "crowd",
+   "description": "Champion Ring crowd (bug #11): Rain, a drippy rain cloud in a sailor cap; tinted per instance (ML_Primary); RingCrowdFx moves it"
+  },
+  {
+   "key": "arena_crowd_captain",
+   "type": "prop",
+   "prop": "arena_crowd",
+   "args": {
+    "part": "body",
+    "name": "captain"
+   },
+   "budget": "crowd",
+   "description": "Champion Ring crowd (bug #11): the grumpy Thunder-cloud Captain (flashes on a big hit); tinted per instance (ML_Primary); RingCrowdFx moves it"
+  },
+  {
+   "key": "arena_crowd_sun",
+   "type": "prop",
+   "prop": "arena_crowd",
+   "args": {
+    "part": "body",
+    "name": "sun"
+   },
+   "budget": "crowd",
+   "description": "Champion Ring crowd (bug #11): Sun puff with rays, in a sailor cap; tinted per instance (ML_Primary); RingCrowdFx moves it"
+  },
+  {
+   "key": "arena_crowd_snow",
+   "type": "prop",
+   "prop": "arena_crowd",
+   "args": {
+    "part": "body",
+    "name": "snow"
+   },
+   "budget": "crowd",
+   "description": "Champion Ring crowd (bug #11): Snow puff in a striped scarf; tinted per instance (ML_Primary); RingCrowdFx moves it"
+  },
+  {
+   "key": "arena_crowd_breeze",
+   "type": "prop",
+   "prop": "arena_crowd",
+   "args": {
+    "part": "body",
+    "name": "breeze"
+   },
+   "budget": "crowd",
+   "description": "Champion Ring crowd (bug #11): Breeze, whistling, in a sailor cap; tinted per instance (ML_Primary); RingCrowdFx moves it"
+  },
+  {
+   "key": "arena_crowd_drizzle",
+   "type": "prop",
+   "prop": "arena_crowd",
+   "args": {
+    "part": "body",
+    "name": "drizzle"
+   },
+   "budget": "crowd",
+   "description": "Champion Ring crowd (bug #11): Drizzle, the ship's drummer boy, with his side drum; tinted per instance (ML_Primary); RingCrowdFx moves it"
+  },
+  {
+   "key": "arena_crowd_fog",
+   "type": "prop",
+   "prop": "arena_crowd",
+   "args": {
+    "part": "body",
+    "name": "fog"
+   },
+   "budget": "crowd",
+   "description": "Champion Ring crowd (bug #11): Fog, the dozing lookout (his spyglass is his arm key); tinted per instance (ML_Primary); RingCrowdFx moves it"
+  },
+  {
+   "key": "arena_crowd_arm",
+   "type": "prop",
+   "prop": "arena_crowd",
+   "args": {
+    "part": "arm"
+   },
+   "budget": "tiny",
+   "description": "Champion Ring crowd: a stubby cloud arm (tinted per spectator; RingCrowdFx swings it at the shoulder)"
+  },
+  {
+   "key": "arena_crowd_stick",
+   "type": "prop",
+   "prop": "arena_crowd",
+   "args": {
+    "part": "stick"
+   },
+   "budget": "tiny",
+   "description": "Champion Ring crowd: Drizzle's arm with a drumstick (RingCrowdFx beats the drum with it)"
+  },
+  {
+   "key": "arena_crowd_spyglass",
+   "type": "prop",
+   "prop": "arena_crowd",
+   "args": {
+    "part": "spyglass"
+   },
+   "budget": "tiny",
+   "description": "Champion Ring crowd: Fog's arm with the brass spyglass"
+  },
+  {
+   "key": "arena_crowd_cap",
+   "type": "prop",
+   "prop": "arena_crowd",
+   "args": {
+    "part": "cap"
+   },
+   "budget": "tiny",
+   "description": "Champion Ring crowd: a sailor cap (flies up when a round is won)"
+  },
+  {
+   "key": "arena_crowd_captaincap",
+   "type": "prop",
+   "prop": "arena_crowd",
+   "args": {
+    "part": "captaincap"
+   },
+   "budget": "tiny",
+   "description": "Champion Ring crowd: the Captain's cap"
+  },
+  {
+   "key": "arena_crowd_rig",
+   "type": "prop",
+   "prop": "arena_crowd",
+   "args": {
+    "part": "rig"
+   },
+   "budget": "piece",
+   "description": "Champion Ring crowd: the two flag masts, the bell bracket, the life ring and the rope coil"
+  },
+  {
+   "key": "arena_crowd_flags",
+   "type": "prop",
+   "prop": "arena_crowd",
+   "args": {
+    "part": "flags"
+   },
+   "budget": "small",
+   "description": "Champion Ring crowd: the signal-flag line (NIMBUS NIMBUS in the international code; sways in the wind)"
+  },
+  {
+   "key": "arena_crowd_bell",
+   "type": "prop",
+   "prop": "arena_crowd",
+   "args": {
+    "part": "bell"
+   },
+   "budget": "tiny",
+   "description": "Champion Ring crowd: the ship's bell (swings and rings when a round is won)"
+  },
+  {
+   "key": "arena_crowd_drum",
+   "type": "prop",
+   "prop": "arena_crowd",
+   "args": {
+    "part": "drum"
+   },
+   "budget": "tiny",
+   "description": "Champion Ring crowd: Drizzle's side drum (navy shell, red hoops, rope tension, the ship's star; rides his body)"
   },
   {
    "key": "dungeon_wall_10_lite",

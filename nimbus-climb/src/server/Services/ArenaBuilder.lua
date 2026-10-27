@@ -32,8 +32,9 @@
 --       cell; CFrame = floor surface centre (axis aligned), Size = the battle floor (BattleCatalog.Zones.Ring), Spawn =
 --       where the fighter stands (side 1, -Z, looking at the enemy side). Phase 5: the only kind is "Ring" (nil and
 --       unknown kinds build it too; the Trial pocket is deleted): the Champion Ring, a round ring (16-gon floor of
---       apothem 33: the 44 x 44 square fits at any rotation) with a gold rim, four crown posts and a small cheering crowd of cloud puffs on a cloud bleacher behind the champion's
---       side (<= 220 parts, zone Mode "Ring", ZoneId "Ring"). Building an index that exists returns it.
+--       apothem 33: the 44 x 44 square fits at any rotation) with a gold rim, four crown posts, the compass-star emblem (RingEmblem) and the sky-sailor crowd (bug #11: one
+--       RingCrowd Model per Ring.CAST cloud incl. Drizzle the drummer, the flag masts, the bell; RingCrowdFx animates
+--       them on the client) on a stone bleacher behind the champion's side (<= 250 parts, zone Mode "Ring", ZoneId "Ring"). Building an index that exists returns it.
 --   ArenaBuilder.FreePocket(zone)              removes that pocket (the table from BuildPocket, its index or Model)
 --   ArenaBuilder.ApplyArenaState(state)        EventService: draws the ArenaState table (the same one it broadcasts:
 --       { Next = { Kind, BossId, StartsIn }, Raid = { Active, BossId, Hp, MaxHp, Players, EndsIn }, Double = { Active,
@@ -562,7 +563,8 @@ Mesh.Keep = {
 	Lantern = { "LanternLamp" },
 	Trophy = { "TrophyStar", "Gem" },
 	Bridge = { "Flame", "ArchSign" },
-	Pocket = { "RingRimInlay", "EmblemGem", "CrownGem", "SpawnGlow", "ChampionGlow" },
+	-- (bug #11: the pads stay Parts over the bake, so they keep their height whichever way the floor is drawn)
+	Pocket = { "RingRimInlay", "CrownGem", "SpawnGlow", "ChampionGlow", "SpawnPad", "ChampionPad" },
 }
 ArenaBuilder._Mesh = Mesh
 
@@ -2914,39 +2916,215 @@ function Ring.paintFront(g, x, y, key)
 	end
 end
 
--- the cheering crowd: a cloud bleacher with two steps behind the champion's side and seven cloud puffs on it in soft
--- colours (a chunky body with a cloud bump on top, little arms thrown up, dark eyes and an open smile: 8 blocks each).
--- Stand-local studs: x across, y up from the cloud top, the front edge at z = 0 facing -Z (the ring).
-Ring.PuffTints = { rgb(255, 255, 255), rgb(255, 208, 224), rgb(198, 228, 255), rgb(226, 212, 255), rgb(204, 244, 216) }
+-- Bug #11 (art wave, the player's pick: option A "Sky-Sailors' Ring" + "add a drummer like in option b"). The sky-ship
+-- crews built this ring so their ships' pets could spar between voyages; the old weather clouds that pushed those ships
+-- sit in the stands in sailor caps, and Drizzle, the smallest, is the ship's drummer boy in the middle of the back row.
+-- Every spectator is its own Model of separate ROOT parts (Body, ArmL, ArmR, Cap, Drum), each a Mesh.tag target of
+-- its own Blender key (blender/kit/props/arena_crowd.py mirrors Ring.CAST / Ring.RIG) with ML_Weld, so the client
+-- RingCrowdFx can move them (the old 56 puff parts shared one static model baked into arena_pocket: nothing could
+-- move). The stone bleacher stays in the pocket bake. Stand-local studs: x across, y up from the deck, the front edge
+-- at z = 0 facing -Z (the ring); the step tops are at y 1.75 / 3.75 (the stand sits at y Ring.StandY = -0.1875, so
+-- they land on the pocket bake's voxel boundaries: arena_pocket args.offy).
+Ring.StandY = -0.1875
+Ring.CrowdTag = "RingCrowd"
+-- { Name, Seat = { x, y, z } (stand-local), Body = { w, h, d }, Tint, Cap ("sailor" | "captain" | nil), Tilt (cap roll),
+--   Arms = { L, R } (arm | stick | spyglass), Mood, Drummer }
+Ring.CAST = {
+	{ Name = "rain", Seat = { -12, 1.75, 1.9 }, Body = { 3.2, 2.8, 2.4 }, Tint = rgb(176, 196, 222), Cap = "sailor", Tilt = -0.14, Arms = { "arm", "arm" }, Mood = "smile" },
+	{ Name = "captain", Seat = { -4, 1.75, 1.9 }, Body = { 3.8, 3.2, 2.6 }, Tint = rgb(118, 124, 150), Cap = "captain", Tilt = -0.06, Arms = { "arm", "arm" }, Mood = "grump" },
+	{ Name = "sun", Seat = { 4, 1.75, 1.9 }, Body = { 3.2, 2.8, 2.4 }, Tint = rgb(255, 228, 150), Cap = "sailor", Tilt = 0.14, Arms = { "arm", "arm" }, Mood = "smile" },
+	{ Name = "snow", Seat = { 12, 1.75, 1.9 }, Body = { 3.0, 2.7, 2.3 }, Tint = rgb(246, 250, 255), Cap = "sailor", Tilt = 0.12, Arms = { "arm", "arm" }, Mood = "smile" },
+	{ Name = "breeze", Seat = { -8, 3.75, 5.7 }, Body = { 3.0, 2.7, 2.3 }, Tint = rgb(204, 244, 216), Cap = "sailor", Tilt = 0.16, Arms = { "arm", "arm" }, Mood = "whistle" },
+	{ Name = "drizzle", Seat = { 0, 3.75, 5.7 }, Body = { 2.8, 2.5, 2.2 }, Tint = rgb(196, 222, 246), Cap = "sailor", Tilt = -0.1, Arms = { "stick", "stick" }, Mood = "focus", Drummer = true },
+	{ Name = "fog", Seat = { 8, 3.75, 5.7 }, Body = { 3.4, 2.9, 2.4 }, Tint = rgb(226, 216, 246), Cap = nil, Tilt = 0, Arms = { "arm", "spyglass" }, Mood = "sleepy" },
+}
+Ring.ARM_REST = 1.2 -- radians: a cloud arm's rest roll out from hanging (the stubby arms stand out at the sides)
+Ring.STICK_YAW = 0.74 -- each stick arm turns this far in toward the drum (L -, R +, about Y)
+Ring.DRUM = { At = Vector3.new(0, 0.44, -1.41), Tilt = -0.35, R = 0.72, H = 0.64 } -- body-local: the drum's centre, tilted toward him
+Ring.RIG = {
+	MastX = 15.0,
+	MastZ = 5.0,
+	MastTop = 11.0,
+	Bell = Vector3.new(-15.0, 6.8, 3.65),
+	Life = Vector3.new(-15.0, 4.1, 4.5),
+	Coil = Vector3.new(15.4, 1.75, 1.7),
+}
+Ring.CrowdInk = rgb(42, 46, 70)
+
+-- a spectator's body frame (stand-local): -Z faces the ring centre (the stand origin is FloorA + 4.6 behind it)
+function Ring.seatFrame(spec)
+	local s = spec.Seat
+	local pos = Vector3.new(s[1], s[2], s[3])
+	local centre = Vector3.new(0, s[2], -(Ring.FloorA + 4.6))
+	return CFrame.lookAt(pos, centre)
+end
+
+-- the Blender body key's attachments (arena_crowd.py body_frame): cap point, shoulders L / R (body-local)
+function Ring.bodyFrame(spec)
+	local w, h = spec.Body[1], spec.Body[2]
+	local function r3(v)
+		return floor(v * 1000 + 0.5) / 1000
+	end
+	local sh = r3(h * (spec.Drummer and 0.57 or 0.5))
+	return Vector3.new(0.05, r3(h * 0.96), 0), Vector3.new(r3(-w / 2 + 0.1), sh, -0.05), Vector3.new(r3(w / 2 - 0.1), sh, -0.05)
+end
+
+-- one moving root part (a Mesh.tag target of `key` whose mesh pivot is `origin`): BuildPocket tags it from these
+-- attributes (CrowdKey, CrowdOff = the pivot in the part's frame, CrowdTint = the ML_Primary look)
+function Ring.crowdRoot(parent, name, key, origin, size, centre, color, tint)
+	local p = box(parent, name, centre, size, color, { Shadow = false })
+	p.CanQuery = false
+	p:SetAttribute("ML_Weld", true) -- a moving root: the dressed mesh is welded to it (MeshLibrary.Dress)
+	p:SetAttribute("CrowdKey", key)
+	p:SetAttribute("CrowdOff", centre:Inverse() * origin)
+	if tint then
+		p:SetAttribute("CrowdTint", tint)
+	end
+	return p
+end
+
+-- the Part build of one spectator (what players see until the keys are uploaded; nothing in the crowd collides)
+function Ring.spectator(parent, spec, standLocal)
+	local m = newModel(parent, "Spectator_" .. spec.Name)
+	m:SetAttribute("Spectator", spec.Name)
+	m:SetAttribute("Mood", spec.Mood)
+	if spec.Drummer then
+		m:SetAttribute("Drummer", true)
+	end
+	CollectionService:AddTag(m, Ring.CrowdTag)
+	local w, h, d = spec.Body[1], spec.Body[2], spec.Body[3]
+	local seat = standLocal * Ring.seatFrame(spec)
+	local tint = spec.Tint
+	local body = Ring.crowdRoot(m, "Body", "arena_crowd_" .. spec.Name, seat, Vector3.new(w * 0.86, h * 0.94, d * 0.86), seat * CFrame.new(0, h * 0.47, 0), tint, tint)
+	-- (the Part build stays lean: the pocket keeps its 250-part budget; the meshes carry the detail)
+	local fz = -d * 0.43 - 0.05
+	local ey = h * (spec.Drummer and 0.5 or ((spec.Name == "snow") and 0.55 or 0.45))
+	local ex = 0.42 * w / 3.2 + 0.12
+	for _, sx in ipairs({ -1, 1 }) do
+		local eyeH = (spec.Mood == "sleepy") and 0.14 or ((spec.Mood == "focus") and 0.45 or 0.62)
+		box(body, "PuffEye", seat * CFrame.new(sx * ex, ey, fz), Vector3.new(0.42, eyeH, 0.1), Ring.CrowdInk, { Shadow = false })
+	end
+	local cap, shL, shR = Ring.bodyFrame(spec)
+	local armTint = tint:Lerp(rgb(0, 0, 0), 0.08)
+	for i, sh in ipairs({ shL, shR }) do
+		local side = (i == 1) and -1 or 1
+		local kind = spec.Arms[i]
+		local rest
+		if kind == "stick" then
+			rest = CFrame.Angles(0, side * Ring.STICK_YAW, 0)
+		elseif kind == "spyglass" then
+			rest = CFrame.new()
+		else
+			rest = CFrame.Angles(0, 0, side * Ring.ARM_REST)
+		end
+		local origin = seat * CFrame.new(sh) * rest
+		local centre = (kind == "arm") and origin * CFrame.new(0, -0.4, 0) or origin * CFrame.new(0, -0.18, -0.35)
+		local arm = Ring.crowdRoot(m, (i == 1) and "ArmL" or "ArmR", "arena_crowd_" .. kind, origin, Vector3.new(0.55, 0.9, 0.55), centre, armTint, armTint)
+		if kind == "stick" then
+			box(arm, "Drumstick", origin * CFrame.new(0, -0.55, -1.1) * CFrame.Angles(rad(-21), 0, 0), Vector3.new(0.14, 0.14, 1.0), rgb(150, 98, 58), { Shadow = false })
+		elseif kind == "spyglass" then
+			box(arm, "Spyglass", origin * CFrame.new(-1.0, 0.13, -1.68) * CFrame.Angles(rad(9), 0, 0), Vector3.new(0.34, 0.34, 1.4), rgb(206, 160, 80), { Shadow = false })
+		end
+	end
+	if spec.Cap then
+		local origin = seat * CFrame.new(cap) * CFrame.Angles(0, 0, spec.Tilt)
+		if spec.Cap == "captain" then
+			local c = Ring.crowdRoot(m, "Cap", "arena_crowd_captaincap", origin, Vector3.new(1.8, 0.6, 1.8), origin * CFrame.new(0, 0.3, 0), rgb(40, 54, 110))
+			box(c, "CapVisor", origin * CFrame.new(0, 0.08, -0.85), Vector3.new(1.2, 0.12, 0.6), rgb(30, 32, 44), { Shadow = false })
+		else
+			local c = Ring.crowdRoot(m, "Cap", "arena_crowd_cap", origin, Vector3.new(1.5, 0.45, 1.5), origin * CFrame.new(0, 0.2, 0), rgb(246, 248, 252))
+		end
+	end
+	if spec.Drummer then
+		local origin = seat * CFrame.new(Ring.DRUM.At) * CFrame.Angles(Ring.DRUM.Tilt, 0, 0)
+		local drum = Ring.crowdRoot(m, "Drum", "arena_crowd_drum", origin, Vector3.new(1.44, 0.64, 1.44), origin, rgb(44, 60, 122))
+		box(drum, "DrumHoop", origin * CFrame.new(0, 0.27, 0), Vector3.new(1.56, 0.14, 1.56), rgb(214, 62, 66), { Shadow = false })
+	end
+	-- (Rain's drips and Snow's flakes are client particles: RingCrowdFx, on the body root, off on Low graphics)
+	return m
+end
+
+-- the rigging (flag masts, bell bracket, life ring, rope coil), the signal-flag line and the ship's bell
+function Ring.rigging(parent, standLocal)
+	local R = Ring.RIG
+	local wood = rgb(150, 104, 66)
+	local rig = newModel(parent, "Rigging")
+	rig:SetAttribute("CrowdKey", "arena_crowd_rig")
+	for _, sx in ipairs({ -1, 1 }) do
+		local x = sx * R.MastX
+		box(rig, "Mast", standLocal * CFrame.new(x, R.MastTop / 2 + 0.2, R.MastZ), Vector3.new(0.45, R.MastTop + 0.4, 0.45), wood, { Shadow = false })
+	end
+	box(rig, "BellArm", standLocal * CFrame.new(R.Bell.X, R.Bell.Y + 0.12, (R.Bell.Z + R.MastZ) / 2), Vector3.new(0.14, 0.14, R.MastZ - R.Bell.Z + 0.25), rgb(70, 74, 92), { Shadow = false })
+	box(rig, "LifeRing", standLocal * CFrame.new(R.Life), Vector3.new(1.5, 1.5, 0.4), rgb(232, 70, 66), { Shadow = false })
+	-- the flag line: one straight root (the rope) with flags under it (the mesh has 12 code flags, NIMBUS NIMBUS; the
+	-- Part build hangs two)
+	local lineOrigin = standLocal * CFrame.new(0, R.MastTop, R.MastZ)
+	local line = Ring.crowdRoot(parent, "FlagLine", "arena_crowd_flags", lineOrigin, Vector3.new(2 * R.MastX, 0.12, 0.12), lineOrigin * CFrame.new(0, -1.2, 0), rgb(96, 74, 52))
+	local cols = { N = rgb(40, 86, 190), I = rgb(250, 204, 56), M = rgb(40, 86, 190), B = rgb(226, 62, 62), U = rgb(226, 62, 62), S = rgb(248, 248, 250) }
+	local word = "NIMBUSNIMBUS"
+	for i = 3, #word, 6 do
+		local x = R.MastX - 2 * R.MastX * i / (#word + 1)
+		local s = (x + R.MastX) / (2 * R.MastX)
+		local y = -0.25 - 1.6 * sin(pi * s)
+		box(line, "Flag", lineOrigin * CFrame.new(x, y - 0.9, 0), Vector3.new(1.5, 1.5, 0.12), cols[word:sub(i, i)], { Shadow = false })
+	end
+	local bellOrigin = standLocal * CFrame.new(R.Bell)
+	Ring.crowdRoot(parent, "Bell", "arena_crowd_bell", bellOrigin, Vector3.new(1.0, 0.95, 1.0), bellOrigin * CFrame.new(0, -0.7, 0), rgb(226, 178, 76))
+	return rig
+end
+
+-- the stone bleacher (in the pocket bake): two Slate steps with Marble nosings, tops at 1.75 / 3.75 (stand-local)
 function Ring.crowdStand()
 	if Ring.standTpl then
 		return Ring.standTpl
 	end
 	local m = newModel(nil, "CrowdStand")
-	-- Phase 5: a stone bleacher (Slate steps with Marble nosings on a plinth); the cloud puffs on it are characters
-	-- (like pets: their own soft look, tagged NC_StyleExempt)
-	Art.part(m, "StandStep", CFrame.new(0, 0.75, 1.9), Vector3.new(34, 1.5, 3.8), "Stone", { Collide = true, Shadow = false })
-	Art.part(m, "StandStep", CFrame.new(0, 1.75, 5.7), Vector3.new(28, 3.5, 3.8), "StoneDark", { Collide = true, Shadow = false })
-	Art.part(m, "StandNosing", CFrame.new(0, 1.58, 0.15), Vector3.new(34.2, 0.18, 0.5), "Marble", { Shadow = false })
-	Art.part(m, "StandNosing", CFrame.new(0, 3.58, 3.95), Vector3.new(28.2, 0.18, 0.5), "Marble", { Shadow = false })
-	local puffs = newModel(m, "CrowdPuffs")
-	Art.tag(puffs, "Exempt")
-	local spots = { { -12, 1.5, 1.9 }, { -4, 1.5, 1.9 }, { 4, 1.5, 1.9 }, { 12, 1.5, 1.9 }, { -8, 3.5, 5.7 }, { 0, 3.5, 5.7 }, { 8, 3.5, 5.7 } }
-	for i, sp in ipairs(spots) do
-		local tint = Ring.PuffTints[(i - 1) % #Ring.PuffTints + 1]
-		local base = CFrame.new(sp[1], sp[2], sp[3]) * CFrame.Angles(0, rad((i % 3 - 1) * 8), 0)
-		local shade = tint:Lerp(C.MistDark, 0.22)
-		local m = puffs
-		box(m, "PuffBody", base * CFrame.new(0, 1.1, 0), Vector3.new(3.4, 2.2, 2.4), tint, { Shadow = false })
-		box(m, "PuffTop", base * CFrame.new(0, 2.6, 0.1), Vector3.new(2.6, 0.8, 2.1), tint, { Shadow = false })
-		box(m, "PuffBump", base * CFrame.new(-0.3, 3.3, 0.2), Vector3.new(1.4, 0.7, 1.5), tint, { Shadow = false })
-		for _, sx in ipairs({ -1, 1 }) do
-			box(m, "PuffArm", base * CFrame.new(sx * 2, 2.3, 0) * CFrame.Angles(0, 0, rad(-sx * 28)), Vector3.new(0.6, 1.7, 0.6), shade, { Shadow = false })
-			box(m, "PuffEye", base * CFrame.new(sx * 0.6, 1.75, -1.22), Vector3.new(0.38, 0.7, 0.1), C.Ink, { Shadow = false })
-		end
-		box(m, "PuffMouth", base * CFrame.new(0, 1.05, -1.22), Vector3.new(0.7, 0.35, 0.1), rgb(196, 70, 104), { Shadow = false })
-	end
+	Art.part(m, "StandStep", CFrame.new(0, 0.875, 1.9), Vector3.new(34, 1.75, 3.8), "Stone", { Collide = true, Shadow = false })
+	Art.part(m, "StandStep", CFrame.new(0, 1.875, 5.7), Vector3.new(28, 3.75, 3.8), "StoneDark", { Collide = true, Shadow = false })
+	Art.part(m, "StandNosing", CFrame.new(0, 1.8, 0.15), Vector3.new(34.2, 0.18, 0.5), "Marble", { Shadow = false })
+	Art.part(m, "StandNosing", CFrame.new(0, 3.8, 3.95), Vector3.new(28.2, 0.18, 0.5), "Marble", { Shadow = false })
 	Ring.standTpl = m
+	return m
+end
+
+-- the crowd + rigging template (stand-local), tagged exempt: characters and props keep their own look
+function Ring.crowdTemplate()
+	if Ring.crowdTpl then
+		return Ring.crowdTpl
+	end
+	local m = newModel(nil, "Crowd")
+	Art.tag(m, "Exempt")
+	for _, spec in ipairs(Ring.CAST) do
+		Ring.spectator(m, spec, CFrame.new())
+	end
+	Ring.rigging(m, CFrame.new())
+	Ring.crowdTpl = m
+	return m
+end
+
+-- the compass star's Part build (what players see until arena_emblem is uploaded). Every top is ABOVE the canvas
+-- (0.10 .. 0.30; the canvas tops end at 0.068): the old disc z-fought the canvas near its rim.
+function Ring.emblem(parent)
+	local m = newModel(parent, "RingEmblem")
+	-- a violet octagon (4 slabs, 0.004 apart; P6 A1 allows no Cylinder parts) under the 8-point compass rose: the 4 gold
+	-- points over 4 cream diagonal points (one cream bar per diagonal, 2 parts: the 250-part budget). The brass rim and
+	-- the rope coil are left to the mesh
+	for j = 0, 3 do
+		box(m, "EmblemDisc", CFrame.Angles(0, j * pi / 4, 0) * CFrame.new(0, 0.12 + j * 0.004 - 0.1, 0), Vector3.new(2 * 7.0 * math.tan(pi / 8), 0.2, 14), Ring.Accent, { Shadow = false })
+	end
+	local gold, goldDark = rgb(250, 190, 56), rgb(206, 132, 34)
+	for q = 0, 1 do
+		box(m, "EmblemStar", CFrame.Angles(0, pi / 4 + q * pi / 2, 0) * CFrame.new(0, 0.15, 0), Vector3.new(1.2, 0.1, 8.6), rgb(252, 240, 210), { Shadow = false })
+	end
+	for q = 0, 3 do
+		local a = CFrame.Angles(0, q * pi / 2, 0)
+		local len = (q == 0) and 6.35 or 5.85
+		-- a long point: its wide root, then its narrow tip (north's is the red needle)
+		box(m, "EmblemStar", a * CFrame.new(0, 0.17, len * 0.3), Vector3.new(1.1, 0.1, len * 0.6), (q % 2 == 0) and gold or goldDark, { Shadow = false })
+		box(m, "EmblemStar", a * CFrame.new(0, 0.18, len * 0.78), Vector3.new(0.5, 0.1, len * 0.36), (q == 0) and rgb(226, 74, 70) or gold, { Shadow = false })
+	end
+	box(m, "EmblemHub", CFrame.Angles(0, pi / 4, 0) * CFrame.new(0, 0.2, 0), Vector3.new(1.7, 0.16, 1.7), gold, { Shadow = false })
+	box(m, "EmblemPlate", CFrame.new(2.35, 0.19, -2.35) * CFrame.Angles(0, pi / 4, 0), Vector3.new(1.7, 0.1, 1.7), rgb(150, 154, 168), { Shadow = false })
 	return m
 end
 
@@ -2969,7 +3147,10 @@ function Ring.pocketTemplate()
 	if Ring.tpl then
 		return Ring.tpl
 	end
-	local m = newModel(nil, "RingPocket")
+	local root = newModel(nil, "RingPocket")
+	-- bug #11: everything static lives in RingBase (the arena_pocket bake); the emblem (arena_emblem) and the crowd
+	-- (one Model per spectator, the rigging) are its siblings, so each is its own dress target (targets never nest)
+	local m = newModel(root, "RingBase")
 	-- the cloud: round, a little wider than the rim, the crowd stands on its top
 	local rng = Util.NewRng(SEED + 41)
 	local puffs = {}
@@ -3008,26 +3189,23 @@ function Ring.pocketTemplate()
 	-- a paler canvas in the middle (the fighters' lanes stay warm sand)
 	disc16(m, "RingCanvas", CFrame.new(), 23, 0.04, 0.3, Art.P.SandLight, MAT.Sand, false)
 	-- the rim: a Marble curb with a thin champion-gold Neon inlay all around
-	ring16(m, "RingRim", CFrame.new(), Ring.FloorA - 0.4, Ring.RimOut, 0.7, 1.9, Art.P.Marble, MAT.Marble, true)
-	ring16(m, "RingRimInlay", CFrame.new(), Ring.FloorA + 0.9, Ring.FloorA + 1.4, 0.74, 0.06, Ring.Color, MAT.Neon, false)
-	-- the crown in the middle: a violet disc with a gold crown pointing at the champion's side (+Z)
-	disc16(m, "EmblemDisc", CFrame.new(), 7.5, 0.06, 0.2, Art.tone(Ring.Accent, 0.44, 0.45, 0.7), MAT.Slate, false)
-	local emblem = { { 0, -3.4, 9, 1.8 }, { 0, 0.4, 2, 6.2 }, { -3.6, -0.6, 1.8, 4.2 }, { 3.6, -0.6, 1.8, 4.2 } }
-	for _, e in ipairs(emblem) do
-		-- { x, z centre, width, depth }
-		box(m, "EmblemCrown", CFrame.new(e[1], 0.12, e[2]), Vector3.new(e[3], 0.12, e[4]), Art.P.Gold, { Material = MAT.Metal, Shadow = false })
-	end
-	for _, e in ipairs({ { 0, 4.3 }, { -3.6, 2.3 }, { 3.6, 2.3 } }) do
-		box(m, "EmblemGem", CFrame.new(e[1], 0.14, e[2]) * CFrame.Angles(0, math.rad(45), 0), Vector3.new(1.3, 0.12, 1.3), rgb(255, 244, 214), { Material = MAT.Neon, Shadow = false })
-	end
+	-- (bug #11: the rim top sits on a bake voxel boundary, 0.5625, so the kept Neon inlay lies on the baked rim)
+	ring16(m, "RingRim", CFrame.new(), Ring.FloorA - 0.4, Ring.RimOut, 0.5625, 1.9, Art.P.Marble, MAT.Marble, true)
+	ring16(m, "RingRimInlay", CFrame.new(), Ring.FloorA + 0.9, Ring.FloorA + 1.4, 0.6, 0.06, Ring.Color, MAT.Neon, false)
+	-- bug #11: the compass star (its own Model and key; the old "crown" of four boxes read as a giant letter E, the 0.5
+	-- bake made its disc jagged and buried its three Neon gems under the baked floor)
+	Ring.emblem(root)
 	-- four crown posts on the diagonals, two of them lit
 	local postR = Ring.RimOut + 2
 	for j = 0, 3 do
 		local a = rad(45 + 90 * j)
 		Ring.crownPost(m, CFrame.new(cos(a) * postR, -0.15, sin(a) * postR), j % 2 == 0)
 	end
-	-- the cheering crowd on its cloud bleacher behind the champion's side (+Z)
-	place(Ring.crowdStand(), CFrame.new(0, -0.15, Ring.FloorA + 4.6), m, "Crowd")
+	-- the cheering crowd on its stone bleacher behind the champion's side (+Z): the steps in the bake, the sky-sailor
+	-- clouds and their rigging beside it (bug #11)
+	local standCF = CFrame.new(0, Ring.StandY, Ring.FloorA + 4.6)
+	place(Ring.crowdStand(), standCF, m, "Stand")
+	place(Ring.crowdTemplate(), standCF, root, "Crowd")
 	-- confetti over the crowd (particles only: no server animation)
 	local confetti = box(m, "Confetti", CFrame.new(0, 14, 0), Vector3.new(80, 1, 80), Ring.Color, { Transparency = 1, Shadow = false })
 	confetti.CanQuery = false
@@ -3046,9 +3224,40 @@ function Ring.pocketTemplate()
 	box(m, "SpawnGlow", CFrame.new(0, 0.32, -(hf - 7)), Vector3.new(5.6, 0.2, 5.6), rgb(96, 196, 108), { Material = MAT.Neon, Shadow = false })
 	box(m, "ChampionPad", CFrame.new(0, 0.1, hf - 7), Vector3.new(7, 0.4, 7), Art.P.Brass, { Collide = true, Material = MAT.Metal, Shadow = false })
 	box(m, "ChampionGlow", CFrame.new(0, 0.32, hf - 7), Vector3.new(5.6, 0.2, 5.6), Ring.Accent, { Material = MAT.Neon, Shadow = false })
-	m:SetAttribute("ArtFixes", Art.enforce(m))
-	Ring.tpl = m
-	return m
+	root:SetAttribute("ArtFixes", Art.enforce(root))
+	Ring.tpl = root
+	return root
+end
+
+-- the pocket's dress targets (bug #11): RingBase = arena_pocket, RingEmblem = arena_emblem, the rigging, and every crowd
+-- root (its CrowdKey / CrowdOff / CrowdTint attributes); siblings, never nested
+function Ring.tagPocket(model, cf)
+	local base = model:FindFirstChild("RingBase")
+	if base then
+		Mesh.tag(base, "arena_pocket", cf, nil, Mesh.Keep.Pocket)
+	end
+	local emblem = model:FindFirstChild("RingEmblem")
+	if emblem then
+		Mesh.tag(emblem, "arena_emblem", cf)
+	end
+	local crowd = model:FindFirstChild("Crowd")
+	if not crowd then
+		return
+	end
+	local standCF = cf * CFrame.new(0, Ring.StandY, Ring.FloorA + 4.6)
+	local rig = crowd:FindFirstChild("Rigging")
+	if rig then
+		Mesh.tag(rig, "arena_crowd_rig", standCF)
+	end
+	for _, d in ipairs(crowd:GetDescendants()) do
+		if d:IsA("BasePart") then
+			local key, off = d:GetAttribute("CrowdKey"), d:GetAttribute("CrowdOff")
+			if type(key) == "string" and typeof(off) == "CFrame" then
+				local tint = d:GetAttribute("CrowdTint")
+				Mesh.tag(d, key, d.CFrame * off, typeof(tint) == "Color3" and { Primary = tint } or nil)
+			end
+		end
+	end
 end
 
 function ArenaBuilder.GetPocket(index)
@@ -3087,7 +3296,7 @@ function ArenaBuilder.BuildPocket(index, kind)
 	local model = place(tpl, cf, holder, "RingPocket_" .. index)
 	model:SetAttribute("PocketIndex", index)
 	model:SetAttribute("PocketKind", "Ring")
-	Mesh.tag(model, "arena_pocket", cf, nil, Mesh.Keep.Pocket)
+	Ring.tagPocket(model, cf)
 	local floorSize = zoneFloorSize("Ring")
 	local hf = Ring.FloorA
 	local zone = makeZone(model, "BattleZone_Ring", cf, Ring.RimOut, "Ring", floorSize, "Ring", index)
@@ -3549,5 +3758,7 @@ function ArenaBuilder.ZoneAt(position)
 	end
 	return nil
 end
+
+ArenaBuilder._Ring = Ring -- TESTS / the kit (bug #11: Ring.CAST, Ring.RIG, Ring.DRUM, Ring.tagPocket)
 
 return ArenaBuilder

@@ -789,8 +789,8 @@ S.p3arena_pockets = guarded("p3arena_pockets", function()
 					rim = rim + 1
 				elseif d.Name == "CrownGem" then
 					posts = posts + 1
-				elseif d.Name == "PuffBody" then
-					puffs = puffs + 1
+				elseif d.Name == "Body" and d.Parent and d.Parent:GetAttribute("Spectator") ~= nil then
+					puffs = puffs + 1 -- bug #11: a sky-sailor cloud (its own Model)
 				end
 				local rel = ring.CFrame:PointToObjectSpace(d.Position)
 				if d.CanCollide and d.Transparency < 1 and rel.Y > 0.6 and rel.Y < 6 and abs(rel.X) < gx / 2 and abs(rel.Z) < gz / 2 then
@@ -1269,8 +1269,8 @@ S.p3arena_art = guarded("p3arena_art", function()
 		T.check(n <= 250, "arena art: the ring pocket stays <= 250 parts", n .. " parts")
 		T.eq(rp.Model:GetAttribute("ArtFixes"), 0, "arena art: the pocket needed no safety-net fixes")
 		artAudit(rp.Model, "ring pocket art", WS)
-		local crowd = rp.Model:FindFirstChild("CrowdPuffs", true)
-		T.check(crowd ~= nil and CollectionService:HasTag(crowd, exemptTag), "ring pocket art: the cheering cloud puffs are characters (tagged exempt)")
+		local crowd = rp.Model:FindFirstChild("Crowd")
+		T.check(crowd ~= nil and CollectionService:HasTag(crowd, exemptTag), "ring pocket art: the cheering sky-sailor clouds are characters (tagged exempt)")
 		local pk = 0
 		for _, p in ipairs(partsOf(rp.Model)) do
 			if p.Name == "Kerb" then
@@ -1319,7 +1319,7 @@ S.p3arena_mesh = guarded("p3arena_mesh", function()
 	-- the recorded Tag calls (sorted: deterministic)
 	local recs = {}
 	for target, r in pairs(Mesh.Placed) do
-		if target.Parent and (target:IsDescendantOf(info.Model) or (rp and target == rp.Model)) then
+		if target.Parent and (target:IsDescendantOf(info.Model) or (rp and (target == rp.Model or target:IsDescendantOf(rp.Model)))) then
 			recs[#recs + 1] = { Target = target, Key = r.Key, Origin = r.Origin, Look = r.Look, Keep = r.Keep, Scale = r.Scale, Name = target:GetFullName() }
 		end
 	end

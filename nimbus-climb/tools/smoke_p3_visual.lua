@@ -248,7 +248,8 @@ local function serverScenarios()
 					rimGold = rimGold + 1
 				elseif p.Name == "CrownGem" and p.Material == Enum.Material.Neon then
 					gems = gems + 1
-				elseif p.Name == "PuffBody" then
+				elseif p.Name == "Body" and p.Parent and p.Parent:GetAttribute("Spectator") ~= nil then
+					-- bug #11: the sky-sailor clouds (one Model per spectator, its Body root carries the eyes)
 					tints[colorKey(p.Color)] = true
 					if abs(rel.X) < 22 and abs(rel.Z) < 22 then
 						faceBad = faceBad + 1
@@ -256,12 +257,7 @@ local function serverScenarios()
 				elseif p.Name == "PuffEye" then
 					eyes = eyes + 1
 					-- the eyes sit on the side that looks at the ring centre
-					local body = nil
-					for _, q in ipairs(p.Parent:GetChildren()) do
-						if q.Name == "PuffBody" and (q.Position - p.Position).Magnitude < 2.5 then
-							body = q
-						end
-					end
+					local body = (p.Parent and p.Parent.Name == "Body") and p.Parent or nil
 					if body then
 						local toCentre = (rp.CFrame.Position - body.Position) * Vector3.new(1, 0, 1)
 						if (p.Position - body.Position):Dot(toCentre) <= 0 then

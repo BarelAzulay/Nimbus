@@ -33,6 +33,14 @@
   "centrepiece": {
    "tris": 7500,
    "parts": 8
+  },
+  "meadow": {
+   "tris": 300,
+   "parts": 1
+  },
+  "meadowFlower": {
+   "tris": 500,
+   "parts": 2
   }
  },
  "keys": [
@@ -412,20 +420,118 @@
    "description": "Lobby flower bed (flowers follow the bed's two colours)"
   },
   {
-   "key": "prop_fountain",
+   "key": "meadow_tuft_tall",
    "type": "prop",
-   "prop": "lobby_fountain",
-   "budget": "centrepiece",
-   "description": "Plaza fountain basin"
+   "prop": "meadow_tuft",
+   "args": {
+    "kind": "tall"
+   },
+   "budget": "meadow",
+   "description": "Lobby meadow (bug #12): lush grass tuft, 8 blades leaning downwind, two straw tips"
   },
   {
-   "key": "prop_fountain_water",
+   "key": "meadow_tuft_short",
    "type": "prop",
-   "prop": "lobby_fountain",
-   "budget": "prop",
-   "description": "Plaza fountain water",
+   "prop": "meadow_tuft",
    "args": {
-    "water": true
+    "kind": "short"
+   },
+   "budget": "meadow",
+   "description": "Lobby meadow (bug #12): low wide grass tuft"
+  },
+  {
+   "key": "meadow_tuft_seed",
+   "type": "prop",
+   "prop": "meadow_tuft",
+   "args": {
+    "kind": "seed"
+   },
+   "budget": "meadow",
+   "description": "Lobby meadow (bug #12): wild grass gone to seed (straw seed heads)"
+  },
+  {
+   "key": "meadow_sprig",
+   "type": "prop",
+   "prop": "meadow_tuft",
+   "args": {
+    "kind": "sprig"
+   },
+   "budget": "meadow",
+   "description": "Lobby meadow (bug #12): a few short blades (path edges, mown lawns)"
+  },
+  {
+   "key": "meadow_flowers",
+   "type": "prop",
+   "prop": "meadow_flowers",
+   "budget": "meadowFlower",
+   "description": "Lobby meadow (bug #12): three wildflowers, petals tinted per instance (Primary)"
+  },
+  {
+   "key": "meadow_cornflower",
+   "type": "prop",
+   "prop": "meadow_cornflower",
+   "budget": "meadowFlower",
+   "description": "Lobby meadow (bug #12): three blue cornflowers"
+  },
+  {
+   "key": "meadow_dandelion",
+   "type": "prop",
+   "prop": "meadow_dandelion",
+   "budget": "meadowFlower",
+   "description": "Lobby meadow (bug #12): dandelion rosette, two heads and a seed clock"
+  },
+  {
+   "key": "meadow_clover",
+   "type": "prop",
+   "prop": "meadow_clover",
+   "budget": "meadowFlower",
+   "description": "Lobby meadow (bug #12): low clover patch with one four-leaf clover"
+  },
+  {
+   "key": "prop_seedsack",
+   "type": "prop",
+   "prop": "lobby_seedsack",
+   "budget": "propBig",
+   "description": "Lobby meadow (bug #12): the torn seed sack against a flower bed"
+  },
+  {
+   "key": "prop_oasis_pool",
+   "type": "prop",
+   "prop": "lobby_oasis",
+   "budget": "centrepiece",
+   "description": "Plaza fountain (Sky-Oasis Steps): the mossy rock pool, stepping stones and sign post",
+   "args": {
+    "part": "pool"
+   }
+  },
+  {
+   "key": "prop_oasis_islands",
+   "type": "prop",
+   "prop": "lobby_oasis",
+   "budget": "centrepiece",
+   "description": "Plaza fountain (Sky-Oasis Steps): three sky-island chunks on drum-stone pillars, nest, tree, ladder, rope, lantern",
+   "args": {
+    "part": "islands"
+   }
+  },
+  {
+   "key": "prop_oasis_water",
+   "type": "prop",
+   "prop": "lobby_oasis",
+   "budget": "prop",
+   "description": "Plaza fountain (Sky-Oasis Steps): the pool surface and the island streams",
+   "args": {
+    "part": "water"
+   }
+  },
+  {
+   "key": "prop_oasis_boat",
+   "type": "prop",
+   "prop": "lobby_oasis",
+   "budget": "prop",
+   "description": "Plaza fountain (Sky-Oasis Steps): the paper boat (bobbed by FountainFx)",
+   "args": {
+    "part": "boat"
    }
   },
   {
@@ -570,9 +676,58 @@
    "res": 420
   },
   {
-   "name": "lobby_prop_fountain",
-   "body": "prop_fountain",
+   "name": "lobby_meadow_tuft_tall",
+   "body": "meadow_tuft_tall",
    "res": 420
+  },
+  {
+   "name": "lobby_meadow_tuft_short",
+   "body": "meadow_tuft_short",
+   "res": 420
+  },
+  {
+   "name": "lobby_meadow_tuft_seed",
+   "body": "meadow_tuft_seed",
+   "res": 420
+  },
+  {
+   "name": "lobby_meadow_sprig",
+   "body": "meadow_sprig",
+   "res": 420
+  },
+  {
+   "name": "lobby_meadow_flowers",
+   "body": "meadow_flowers",
+   "res": 420
+  },
+  {
+   "name": "lobby_meadow_cornflower",
+   "body": "meadow_cornflower",
+   "res": 420
+  },
+  {
+   "name": "lobby_meadow_dandelion",
+   "body": "meadow_dandelion",
+   "res": 420
+  },
+  {
+   "name": "lobby_meadow_clover",
+   "body": "meadow_clover",
+   "res": 420
+  },
+  {
+   "name": "lobby_prop_seedsack",
+   "body": "prop_seedsack",
+   "res": 420
+  },
+  {
+   "name": "lobby_prop_oasis",
+   "body": "prop_oasis_pool",
+   "res": 420,
+   "attach": [
+    "prop_oasis_islands",
+    "prop_oasis_water"
+   ]
   },
   {
    "name": "lobby_prop_welcome_arch",

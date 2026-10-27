@@ -52,9 +52,9 @@ local ALTAR_KEYS = {
 }
 local PROP_KEYS = {
 	"prop_tree_round", "prop_tree_blossom", "prop_tree_pine", "prop_lamp", "prop_bench", "prop_flowerbed",
-	"prop_fountain", "prop_fountain_water", "prop_welcome_arch", "prop_obelisk", "prop_banner", "prop_board_s",
+	"prop_oasis_pool", "prop_oasis_islands", "prop_oasis_water", "prop_oasis_boat", "prop_welcome_arch", "prop_obelisk", "prop_banner", "prop_board_s",
 	"prop_board_l", "prop_roulette", "prop_item_stall", "prop_token_statue", "prop_shop_arch", "prop_pond",
-	"prop_pond_water",
+	"prop_pond_water", "prop_seedsack", -- (bug #12: the meadow_* clumps are not tagged: MeadowFx assembles them on the client)
 }
 
 local function allKeys()
