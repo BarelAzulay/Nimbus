@@ -379,7 +379,7 @@ S.p7vfx_catalog = guarded("p7vfx_catalog", function()
 	-- the full matrix: element x attack variant x rarity x stage x mine
 	local elements = Config.Elements.Order
 	local matrix = T.tally("p7vfx catalog: every element x attack x rarity x stage resolves (finite beats <= 2.5 s / specials <= 3.5 s, Size <= 1.4, Band, known keys, strip/flipbook per layer kind, <= 6 emitters, unique layer ids)")
-	local mineRules = T.tally("p7vfx catalog: Mine = false -> Density 0.6, no camera punch, no screen glow; Mine = true -> Density 1, punch at band >= 3, glow at band 4")
+	local mineRules = T.tally("p7vfx catalog: Mine = false -> Density 0.6, no camera punch, no screen glow; Mine = true -> Density 1, punch at band >= 3, glow at band 4 (never for the Quiet ShieldHit ripple)")
 	local mono = T.tally("p7vfx catalog: each rarity keeps every layer of the rarities below it (layer ids and kinds monotonic across bands)")
 	-- fix round 3 (review Important 1): every recipe fits AttackFx's 6-emitter budget (MAX_EMITTERS.High), counted by the
 	-- engine's rule (textured Decals are emitters). (Task 9 retuned every element; EMITTER_PENDING stays as the hook for a future over-budget element):
@@ -439,7 +439,9 @@ S.p7vfx_catalog = guarded("p7vfx_catalog", function()
 							local band = BAND[rarity]
 							if mine then
 								mineRecipe = r
-								mineRules:case(r.Density == 1 and r.CameraPunch == (band >= 3) and r.ScreenGlow == (band == 4),
+								-- (Task 10 re-review I4: the shield ripple is Quiet: no punch / glow at any band)
+								local loud = v.Attack ~= "ShieldHit"
+								mineRules:case(r.Density == 1 and r.CameraPunch == (loud and band >= 3) and r.ScreenGlow == (loud and band == 4),
 									fmt("%s mine: Density %s punch %s glow %s", label, tostring(r.Density), tostring(r.CameraPunch), tostring(r.ScreenGlow)))
 							else
 								mineRules:case(r.Density == 0.6 and r.CameraPunch == false and r.ScreenGlow == false,
@@ -1172,8 +1174,9 @@ S.p7vfx_catalog = guarded("p7vfx_catalog", function()
 	T.check(hyd and hyd.Sig and hyd.Sig.Actor and hyd.Sig.Actor.At == "Behind", "p7vfx catalog: Hydralotl's serpents rise Behind the pet (a documented At)")
 	-- Task 10 review I1 (Ruling 17): the Shield ripples when a later hit is absorbed: ShieldHit resolves for every element
 	-- x rarity: the hex shell (vfx_shell, see-through Glass) + the fx_hexshield pulse in the element's Mid, at most 1
-	-- emitter, no light, no charge, a short linger (it plays on every absorbed hit)
-	local ripple = T.tally("p7vfx catalog: ShieldHit (the shield ripple): every element x rarity, hex shell + hex pulse in the element's colour, <= 1 emitter, 0 lights, no charge")
+	-- emitter, no light, no charge, a short linger (it plays on every absorbed hit); re-review I4: never a camera punch or
+	-- a screen glow, even mine at Mythic / Secret
+	local ripple = T.tally("p7vfx catalog: ShieldHit (the shield ripple): every element x rarity, hex shell + hex pulse in the element's colour, <= 1 emitter, 0 lights, no charge, mine: no camera punch, no screen glow")
 	for _, element in ipairs(elements) do
 		for _, rarity in ipairs(RARITIES) do
 			local r = C.Resolve({ Element = element, Attack = "ShieldHit", Rarity = rarity, Mine = true })
@@ -1186,25 +1189,28 @@ S.p7vfx_catalog = guarded("p7vfx_catalog", function()
 			end
 			ripple:case(r ~= nil and r.Core.Key == "vfx_shell" and r.Core.Path == "Self" and r.Core.Material == "Glass" and r.Core.Transparency >= 0.5
 				and burst and burst.Texture == "fx_hexshield" and burst.Color == C.Elements[element].Palette.Mid and burst.At == "Self"
-				and emitterCount(r) <= 1 and lights == 0 and r.Beats.Charge == 0 and r.ImpactAt == 0 and r.Beats.Linger <= 0.5,
-				fmt("%s %s: core %s %s, burst %s, %d emitters, %d lights, charge %s, linger %s", element, rarity, tostring(r and r.Core.Key), tostring(r and r.Core.Material),
-					tostring(burst and burst.Texture), r and emitterCount(r) or -1, lights, tostring(r and r.Beats.Charge), tostring(r and r.Beats.Linger)))
+				and emitterCount(r) <= 1 and lights == 0 and r.Beats.Charge == 0 and r.ImpactAt == 0 and r.Beats.Linger <= 0.5
+				and r.CameraPunch == false and r.ScreenGlow == false,
+				fmt("%s %s: core %s %s, burst %s, %d emitters, %d lights, charge %s, linger %s, punch %s, glow %s", element, rarity, tostring(r and r.Core.Key), tostring(r and r.Core.Material),
+					tostring(burst and burst.Texture), r and emitterCount(r) or -1, lights, tostring(r and r.Beats.Charge), tostring(r and r.Beats.Linger),
+					tostring(r and r.CameraPunch), tostring(r and r.ScreenGlow)))
 		end
 	end
 	ripple:report()
 	-- Task 10 review I2: the Beam draws no Mythic double crescent at any rarity (a slash arc on a beam reads as nothing and
-	-- took a beam from the spiral); its Spiral keeps 2 arcs under the cap (KeepCount 2: AttackFx beamBudget)
+	-- took a beam from the spiral); its Spiral asks 2 arcs (re-review M10 i: that the engine DRAWS both under the cap is
+	-- client_p7vfx_engine 16a, KeepCount on / off, and test 16's identity counts; nothing to echo here)
 	local beamBad = {}
 	for _, element in ipairs(elements) do
 		for _, rarity in ipairs(RARITIES) do
 			local r = C.Resolve({ Element = element, Attack = "Special", Kind = "Beam", Rarity = rarity, Mine = true })
 			local sp = layerById(r, "Spiral")
-			if layerById(r, "DoubleArc") or not (sp and sp.Count >= 2 and sp.KeepCount == 2) then
+			if layerById(r, "DoubleArc") or not (sp and sp.Count >= 2) then
 				beamBad[#beamBad + 1] = element .. " " .. rarity
 			end
 		end
 	end
-	T.check(#beamBad == 0, "p7vfx catalog: the Beam has no DoubleArc at any rarity, its Spiral keeps 2 arcs (KeepCount 2)", table.concat(beamBad, ", "))
+	T.check(#beamBad == 0, "p7vfx catalog: the Beam has no DoubleArc at any rarity, its Spiral asks >= 2 arcs", table.concat(beamBad, ", "))
 end)
 
 ----------------------------------------------------------------------

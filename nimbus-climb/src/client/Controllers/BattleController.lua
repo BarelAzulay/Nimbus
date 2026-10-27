@@ -224,6 +224,8 @@ local K = {
 	FX_END_GRACE = 1.0, -- after the sim's End: no new AttackFx effect; the live ones finish for at most this long
 	FX_LATE_MAX = 0.3, -- seconds a ranged shot's Hit (and the victim's later events) may play after their time: the
 	--                    shot's flight is never cut below AttackFx's MinTravel (player note 1)
+	RIPPLE_TICK_GAP = 0.75, -- (Task 10 re-review M8) a zone / burn tick's shield ripple waits this long after the unit's
+	--                    last ripple: every other 0.5 s zone tick (the cube path's 50 % zone flash, made deterministic)
 	BUILD_BUDGET = 0.006, -- seconds of model building per frame (the first build of a frame always runs)
 	BUILD_MAX = 4,
 	CROWD = 14, -- more units than this: other players' / enemy pets are drawn every other frame
@@ -2726,38 +2728,44 @@ end
 -- other players' pets keep the nudge: a boss slam can hit a dozen pets and the budget is for the attacks). The damage
 -- of a special / element / zone / burn is drawn by its own event.
 -- (Task 10 review I1, Ruling 17) a hit the victim's shield absorbs: the bubble ripples (ShieldHit) on the victim at the
--- hit, in the look of the pet whose Shield it is (u.shieldBy: the Shield special / the helper's shield buff), else the
--- victim's own. Never on a boss; a boss's hit ripples only MY pets (like its Hurt: one slam can hit a dozen pets)
-function Atk.ShieldHit(B, v, a, dueAt)
+-- hit, in the look of the pet whose Shield it is (u.shieldBy while its shield lasts: u.shieldUntil), else the victim's
+-- own. Never on a boss; a boss's hit ripples only MY pets (like its Hurt: one slam can hit a dozen pets).
+-- (re-review M8) a zone / burn tick (`tick`) ripples only RIPPLE_TICK_GAP after the unit's last ripple (a Linger zone
+-- ticks every 0.5 s on every shielded pet in it); a hit from an attacker always ripples
+function Atk.ShieldHit(B, v, a, dueAt, tick)
 	if v.isBoss or not v.model or not Atk.Drawable(v) or (a and a.isBoss and not v.mine) then
 		return false
 	end
+	if tick and v.rippleAt and dueAt - v.rippleAt < K.RIPPLE_TICK_GAP then
+		return false
+	end
+	-- (re-review M9) the caster's look only while its shield lasts: a shield the client never saw cast (a rejoin
+	-- snapshot) ripples in the victim's own look, not in a stale caster's
+	if v.shieldBy and not ((tonumber(v.shieldUntil) or 0) > os.clock()) then
+		v.shieldBy = nil
+	end
 	local by = v.shieldBy and B.units[v.shieldBy] or nil
-	return Atk.Play(lookCtx(by or v, { Attack = "ShieldHit", PetId = false, From = Atk.Side(B, v), Mine = v.mine == true, DueAt = dueAt, Ground = groundOf(B, v) }))
+	local played = Atk.Play(lookCtx(by or v, { Attack = "ShieldHit", PetId = false, From = Atk.Side(B, v), Mine = v.mine == true, DueAt = dueAt, Ground = groundOf(B, v) }))
+	if played then
+		v.rippleAt = dueAt
+	end
+	return played
 end
 
-function Atk.Hit(B, ev, dueAt)
-	local v = B.units[tonumber(ev.to) or -1]
-	local a = ev.from ~= nil and B.units[tonumber(ev.from) or -1] or nil
-	if not v or (ev.from ~= nil and not a) then
-		return nil
-	end
-	-- (any absorbed hit: a plain attack, a special's, an element's, a zone's; the attack's own effect is apart)
-	if num(ev.absorbed, 0) > 0 and not ev.miss then
-		Atk.ShieldHit(B, v, a, dueAt)
-	end
+-- the Hit's own play (Atk.Hit): its result and the seconds its impact lands after dueAt (a ranged shot's flight)
+local function hitPlay(B, ev, dueAt, v, a)
 	if ev.special or ev.element or ev.zone or ev.burn then
-		return "none"
+		return "none", 0
 	end
 	if ev.tele or (a and a.isBoss) then
 		if ev.miss or v.isBoss or not v.mine or not Atk.Drawable(v) then
-			return "none"
+			return "none", 0
 		end
 		local el = a and Atk.Look(a).Element or nil
-		return Atk.Play(lookCtx(v, { Attack = "Hurt", Element = el, From = Atk.Side(B, v), Mine = true, Crit = ev.crit == true, DueAt = dueAt, Ground = groundOf(B, v) }))
+		return Atk.Play(lookCtx(v, { Attack = "Hurt", Element = el, From = Atk.Side(B, v), Mine = true, Crit = ev.crit == true, DueAt = dueAt, Ground = groundOf(B, v) })), 0
 	end
 	if not a or not Atk.Drawable(a) then
-		return "none"
+		return "none", 0
 	end
 	local ctx = lookCtx(a, {
 		Attack = a.ranged and "Ranged" or "Melee", From = Atk.Side(B, a), To = Atk.Side(B, v), Mine = a.mine == true,
@@ -2770,6 +2778,23 @@ function Atk.Hit(B, ev, dueAt)
 	local late = played and tonumber(ctx.ImpactLate) or 0
 	if late == late and late > 0 then
 		ev.fxLate = min(late, K.FX_LATE_MAX)
+		return played, ev.fxLate
+	end
+	return played, 0
+end
+
+function Atk.Hit(B, ev, dueAt)
+	local v = B.units[tonumber(ev.to) or -1]
+	local a = ev.from ~= nil and B.units[tonumber(ev.from) or -1] or nil
+	if not v or (ev.from ~= nil and not a) then
+		return nil
+	end
+	local played, late = hitPlay(B, ev, dueAt, v, a)
+	-- (any absorbed hit: a plain attack, a special's, an element's, a zone's; the attack's own effect is apart). After
+	-- the hit's play (re-review I3): a ranged shot's ripple lands with the shot (dueAt + its late), like the BLOCK
+	-- number, the Hurt pose and the impact (Net.Events holds them by ev.fxLate)
+	if num(ev.absorbed, 0) > 0 and not ev.miss then
+		Atk.ShieldHit(B, v, a, dueAt + late, (ev.zone or ev.burn) and true or false)
 	end
 	return played
 end
@@ -3515,11 +3540,10 @@ Handlers[EV.Special] = function(B, ev)
 		local seconds = num(S.Seconds, 6)
 		for _, id in ipairs(kind == "Shield" and type(ev.shields) == "table" and ev.shields or {}) do
 			local a = B.units[tonumber(id) or -1]
-			if a and a.root and not a.parked then
+			if a then
+				-- (its later absorbed hits ripple in u's look while the shield lasts: Atk.ShieldHit)
 				a.shieldUntil = os.clock() + seconds + 0.5
-			end
-			if a and u then
-				a.shieldBy = u.id -- (its later absorbed hits ripple in u's look: Atk.ShieldHit)
+				a.shieldBy = u and u.id or nil
 			end
 		end
 		local stun = num(S.Stun, 1) + 0.4
@@ -3549,11 +3573,11 @@ Handlers[EV.Special] = function(B, ev)
 		for _, id in ipairs(type(ev.shields) == "table" and ev.shields or {}) do
 			local a = B.units[tonumber(id) or -1]
 			if a and a.root and not a.parked then
-				a.shieldUntil = os.clock() + seconds + 0.5
 				Fx.Ring(unitCenter(B, a), 2.2, COLORS.Shield, 10, 0.4, 0.5, 0.2)
 			end
-			if a and u then
-				a.shieldBy = u.id
+			if a then
+				a.shieldUntil = os.clock() + seconds + 0.5
+				a.shieldBy = u and u.id or nil
 			end
 		end
 	elseif kind == "Pounce" then
@@ -3762,7 +3786,9 @@ Handlers[EV.Buff or "Buff"] = function(B, ev)
 	end
 	local bdef = BattleCatalog and type(BattleCatalog.Buffs) == "table" and BattleCatalog.Buffs[tostring(ev.kind)] or nil
 	if helper and fighter and type(bdef) == "table" and bdef.Effect == "Shield" then
-		fighter.shieldBy = helper.id -- (the shield's later absorbed hits ripple in the helper's look: Atk.ShieldHit)
+		-- (the shield's later absorbed hits ripple in the helper's look while it lasts: Atk.ShieldHit)
+		fighter.shieldBy = helper.id
+		fighter.shieldUntil = os.clock() + num(bdef.Seconds, 6) + 0.5
 	end
 	if fighter then
 		calloutAbove(fighter, string.upper(tostring(ev.name or ev.kind or "BUFF")), color:Lerp(COLORS.White, 0.2), K.CALLOUT_PX, 1.4)

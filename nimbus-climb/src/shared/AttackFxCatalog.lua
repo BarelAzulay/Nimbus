@@ -36,8 +36,8 @@
 --                                                                  travel, default 14). nil for an unknown element / attack / kind /
 --                                                                  shape (the caller falls back to the cube Fx).
 --     recipe = { Element, Attack, Kind, Shape, Rarity, Stage, Band, Size, Density (1 mine / 0.6 others), CameraPunch
---                (mine and band >= 3), ScreenGlow (mine and band 4), Signature (petId | nil), Sig = { Name, Twist, Actor,
---                DimWorld } | nil, Palette = { Core, Mid, Edge, Hot, Smoke }, Text,
+--                (mine and band >= 3; never a Quiet reaction: ShieldHit), ScreenGlow (mine and band 4; not Quiet),
+--                Signature (petId | nil), Sig = { Name, Twist, Actor, DimWorld } | nil, Palette = { Core, Mid, Edge, Hot, Smoke }, Text,
 --                Beats = { Charge, Release, Travel, Impact, Linger, MinTravel? } (seconds), ImpactAt (= Charge + Release +
 --                Travel: the engine starts the effect so that impact lands on the server event, never later, except
 --                that a basic Ranged shot keeps MinTravel of flight: player note 1, the shot is always seen crossing),
@@ -818,6 +818,9 @@ AttackFxCatalog.Reactions = {
 		BurstBoost = { Size = 0.7, Count = 0.5 }, -- (a pulse, not the Shield's full burst)
 		LowKeep = { "Burst" },
 		Short = true, -- (like the Hurt: the linger does not grow with the band)
+		-- (Task 10 re-review I4) no camera punch, no screen glow at any band: it plays on every absorbed hit, a Linger
+		-- zone's 0.5 s ticks included, and on a boss hit beside the Hurt's own punch
+		Quiet = true,
 		Skip = { Charge = true, Trail = true, Slash = true, GroundGlow = true, Shockwave = true, Flash = true, Afterimage = true, Bloom = true, DoubleArc = true, Field = true, PlasmaRim = true },
 	},
 }
@@ -1013,7 +1016,7 @@ local function attackDef(req, element, sig)
 	end
 	return {
 		Core = def.Core, Beats = copy(def.Beats), Skip = def.Skip or {}, Layers = { def.Layers or {} }, Detail = {}, Slots = { def.Slots or {} }, Alive = false,
-		Extras = false, Text = def.Text, BurstBoost = def.BurstBoost, LowKeep = def.LowKeep, Short = def.Short == true,
+		Extras = false, Text = def.Text, BurstBoost = def.BurstBoost, LowKeep = def.LowKeep, Short = def.Short == true, Quiet = def.Quiet == true,
 	}
 end
 
@@ -1300,8 +1303,8 @@ function AttackFxCatalog.Resolve(req)
 		Band = band,
 		Size = AttackFxCatalog.SizeOf(rarity, stage),
 		Density = mine and 1 or AttackFxCatalog.OthersDensity,
-		CameraPunch = mine and band >= 3,
-		ScreenGlow = mine and band == 4,
+		CameraPunch = mine and band >= 3 and not def.Quiet,
+		ScreenGlow = mine and band == 4 and not def.Quiet,
 		Signature = sig and petId or nil,
 		Palette = palette,
 		Text = def.Text,

@@ -493,6 +493,28 @@ S.client_p7vfx_engine = guarded("client_p7vfx_engine", function()
 	Fx.Play(ctx({ Element = "Shadow", Attack = "Special", Kind = "Blast", PetId = "eclipse_dragon", Rarity = "Secret", Mine = true, Now = clock }))
 	run(3)
 	T.check(glows == 1 and dims == 1, "Mine = true: Eclipse Nova calls ScreenGlow once and DimWorld once", fmt("%d glows, %d dims", glows, dims))
+	-- (Task 10 re-review I4) the shield ripple never punches the camera nor glows the screen, even MINE from a Mythic /
+	-- Secret shield (it plays on every absorbed hit, a Linger zone's 0.5 s ticks included); the Hurt at Secret still
+	-- does (the same hooks, counted: the 0 is not a dead stub)
+	do
+		punches, glows = {}, 0
+		local played = 0
+		for _, rarity in ipairs({ "Mythic", "Secret" }) do
+			local c = ctx({ Element = "Celestial", Attack = "ShieldHit", Rarity = rarity, Mine = true, Now = clock })
+			c.To = nil
+			played = played + (Fx.Play(c) and 1 or 0)
+			run(1)
+		end
+		T.check(played == 2 and #punches == 0 and glows == 0, "Mine = true ShieldHit at Mythic / Secret: no camera punch, no screen glow (Hooks stub)",
+			fmt("%d played, %d punches, %d glows", played, #punches, glows))
+		local c = ctx({ Element = "Celestial", Attack = "Hurt", Rarity = "Secret", Mine = true, Now = clock })
+		c.To = nil
+		local hurt = Fx.Play(c)
+		run(1)
+		T.check(hurt and #punches == 1 and glows == 1, "Mine = true Hurt at Secret: still one punch and one glow through the same hooks",
+			fmt("played %s, %d punches, %d glows", tostring(hurt), #punches, glows))
+		punches = {}
+	end
 	Fx.Hooks.ScreenGlow, Fx.Hooks.DimWorld = nil, nil
 
 	-- 10) DueAt: impact never after the event; an early event waits and lands exactly on it ---------------------------
@@ -1163,6 +1185,40 @@ S.client_p7vfx_engine = guarded("client_p7vfx_engine", function()
 	T.check(#kindBad == 0 and kindSeen == 8 * 9 * #Cat.Rarities,
 		"Task 10: every element x special kind x rarity plays within the caps and draws all its layers, its alive detail and its kind / element identity at full count (Beam 2 spiral arcs, Storm 2 crackle / cage arcs; support kinds on 4 allies)",
 		fmt("%d ok; %s", kindSeen, table.concat(kindBad, " | ")))
+	-- 16a) (Task 10 re-review M10 i) KeepCount is what keeps the Beam's 2 spiral arcs (behaviour, not the constant): Storm
+	--      Beam Secret drawn with the catalog's Spiral as it is, then with its KeepCount taken off for this check (the
+	--      alive strikes then fill the 4-beam cap first and the spiral drops to 1 arc), then put back
+	do
+		local sp = nil
+		for _, l in ipairs(Cat.Specials.Beam.Layers) do
+			if l.Id == "Spiral" then
+				sp = l
+			end
+		end
+		local function spirals()
+			Fx.ClearAll()
+			Fx.Play(ctx({ Element = "Storm", Attack = "Special", Kind = "Beam", Rarity = "Secret", From = { Unit = 95, Model = A }, To = { Unit = 96, Model = B }, Now = clock }))
+			local el, n = Fx._Live()[#Fx._Live()], 0
+			for _, it in ipairs(el and el.Items or {}) do
+				if it.Layer and it.Layer.Id == "Spiral" then
+					n = n + 1
+				end
+			end
+			return n
+		end
+		local keep = sp and sp.KeepCount
+		local with = spirals()
+		if sp then
+			sp.KeepCount = nil
+		end
+		local ok, without = pcall(spirals)
+		if sp then
+			sp.KeepCount = keep
+		end
+		T.check(sp ~= nil and keep ~= nil and with >= 2 and ok and without < with,
+			"KeepCount (behaviour): Storm Beam Secret draws its 2 spiral arcs with the Spiral's KeepCount and fewer without it",
+			fmt("%d arcs with KeepCount %s, %s without", with, tostring(keep), tostring(without)))
+	end
 	Fx.ClearAll()
 	-- 16b) Low quality: every element x kind keeps 2 emitters at most: the Burst and the kind's chosen one (LowKeep)
 	Fx.SetQuality("Low")
@@ -1513,7 +1569,7 @@ S.client_p7vfx_battle = guarded("client_p7vfx_battle", function()
 		learn(start.Units)
 		KC.toClient("BattleState", "Start", start, id)
 		frames(0.1)
-		local seen, bad, wrongLook, leads = {}, {}, {}, { n = 0, positive = 0, max = 0 }
+		local seen, bad, wrongLook, leads, lastRip = {}, {}, {}, { n = 0, positive = 0, max = 0 }, {}
 		for _, st in ipairs(rec.Steps) do
 			for _, ev in ipairs(st.Events) do
 				if ev.type == "Spawn" or ev.type == "Wave" then
@@ -1536,13 +1592,18 @@ S.client_p7vfx_battle = guarded("client_p7vfx_battle", function()
 					local v, a = BC.GetUnit(tonumber(ev.to) or -1), BC.GetUnit(tonumber(ev.from) or -1)
 					local rip = (tonumber(ev.absorbed) or 0) > 0 and not ev.miss and v ~= nil and v.Kind ~= "Boss" and drawable(v) and v.Model ~= nil
 						and not (a and a.Kind == "Boss" and not v.Mine)
-					if #ripples ~= (rip and 1 or 0) then
+					-- (re-review M8) a zone / burn tick within RIPPLE_TICK_GAP 0.75 s of the victim's last ripple may skip it
+					local skipOk = rip and (ev.zone or ev.burn) and lastRip[v.Id] ~= nil and os.clock() - lastRip[v.Id] < 0.75 + 0.05
+					if #ripples ~= (rip and 1 or 0) and not (skipOk and #ripples == 0) then
 						bad[#bad + 1] = fmt("%s (absorbed %s): %d shield ripples, %d expected", label, tostring(ev.absorbed), #ripples, rip and 1 or 0)
-					elseif rip then
-						local c = ripples[1]
-						if c.From ~= v.Id or type(c.DueAt) ~= "number" or (got[1] and got[1].DueAt ~= c.DueAt) then
-							bad[#bad + 1] = fmt("%s: the shield ripple from %s at %s (the hit's play at %s)", label, tostring(c.From), tostring(c.DueAt), tostring(got[1] and got[1].DueAt))
+					elseif rip and #ripples == 1 then
+						-- (re-review I3) the ripple lands with the hit: a ranged shot's at its DueAt + ImpactLate (<= FX_LATE_MAX 0.3)
+						local c, h = ripples[1], got[1]
+						local due = h and type(h.DueAt) == "number" and h.DueAt + ((h.Result == true and math.min(tonumber(h.Late) or 0, 0.3)) or 0) or nil
+						if c.From ~= v.Id or type(c.DueAt) ~= "number" or (due and math.abs(due - c.DueAt) > 1e-6) then
+							bad[#bad + 1] = fmt("%s: the shield ripple from %s at %s (the hit's play at %s, late %s)", label, tostring(c.From), tostring(c.DueAt), tostring(h and h.DueAt), tostring(h and h.Late))
 						end
+						lastRip[v.Id] = c.DueAt
 						seen.ShieldHit = (seen.ShieldHit or 0) + 1
 					end
 				elseif #ripples > 0 then
@@ -1710,8 +1771,10 @@ S.client_p7vfx_battle = guarded("client_p7vfx_battle", function()
 		-- 2a) Task 10 review I1 (Ruling 17: "a hexagon bubble around each ally, rippling when hit"): after a Shield, every
 		--     hit it absorbs plays ShieldHit on the victim at the hit's time (on arrival, the same DueAt as the hit's own
 		--     play), in the look of the pet whose shield it is; 1 emitter, no light. A plain hit (nothing absorbed) does not
-		do
-			local caster = helper or fighter
+		--     (re-review M10 iii: the caster is my bench helper, never the fighter itself: a look check against the
+		--     victim's own look would pass for nothing)
+		if T.check(helper ~= nil and helper ~= fighter and BC.GetUnit(helper) ~= nil, "shield ripple: my bench helper is in the battle (the shield's caster)") then
+			local caster = helper
 			pulse(1.8)
 			KC.toClient("BattleState", "Events", { { type = "Special", unit = caster, kind = "Shield", name = "Test Shield", x = f.X, z = f.Z, shields = { fighter } } }, id)
 			pulse(0.6)
@@ -1755,6 +1818,88 @@ S.client_p7vfx_battle = guarded("client_p7vfx_battle", function()
 			-- a special's damage the shield absorbs ripples too (its own effect is the special's)
 			local got3, rip3 = hitCalls({ type = "Hit", from = boss, to = fighter, dmg = 0, absorbed = 9, special = "Blast" })
 			T.check(rip3 and rip3.Result == true and #got3 == 1, "shield ripple: a special's hit the shield absorbs ripples it (one play)", fmt("%d plays", #got3))
+			-- (re-review I4 + M10 ii) a Mythic caster's shield: my fighter's ripple in the Mythic look, through the
+			-- battle's real hooks (counted): no camera punch, no screen glow. The helper's info is refreshed to Mythic by
+			-- a Spawn of the same unit (Units.Add: the info and its look), then put back
+			do
+				local info0 = infos[caster]
+				local mythic = copyOf(info0 or {})
+				mythic.rarity = "Mythic"
+				KC.toClient("BattleState", "Events", { { type = "Spawn", units = { mythic } } }, id)
+				pulse(0.3)
+				local punchN, glowN = 0, 0
+				local realPunch, realGlow = AF.Hooks.Punch, AF.Hooks.ScreenGlow
+				AF.Hooks.Punch = function(...)
+					punchN = punchN + 1
+					return realPunch and realPunch(...)
+				end
+				AF.Hooks.ScreenGlow = function(...)
+					glowN = glowN + 1
+					return realGlow and realGlow(...)
+				end
+				local got4, rip4 = hitCalls({ type = "Hit", from = boss, to = fighter, dmg = 0, absorbed = 9, special = "Blast" })
+				pulse(0.8)
+				AF.Hooks.Punch, AF.Hooks.ScreenGlow = realPunch, realGlow
+				KC.toClient("BattleState", "Events", { { type = "Spawn", units = { info0 } } }, id)
+				pulse(0.3)
+				T.check(info0 ~= nil and rip4 and rip4.Result == true and rip4.Rarity == "Mythic" and rip4.Mine == true and #got4 == 1 and punchN == 0 and glowN == 0,
+					"shield ripple: a Mythic caster's shield ripples my fighter in the Mythic look with no camera punch and no screen glow (the battle's hooks, counted)",
+					fmt("ripple %s %s mine %s, %d plays, %d punches, %d glows", tostring(rip4 and rip4.Result), tostring(rip4 and rip4.Rarity), tostring(rip4 and rip4.Mine), #got4, punchN, glowN))
+			end
+			-- (re-review I3) a ranged pet's shot the shield absorbs: the ripple lands WITH the shot (its DueAt + the
+			-- shot's ctx.ImpactLate: MinTravel keeps its flight past the event), like the BLOCK number and the Hurt pose
+			local shooter = nil
+			for uid, info in pairs(infos) do
+				local g = BC.GetUnit(uid)
+				if info.ranged == true and info.kind ~= "Boss" and uid ~= fighter and drawable(g) and g.Model ~= nil and (not shooter or uid < shooter) then
+					shooter = uid
+				end
+			end
+			if T.check(shooter ~= nil, "shield ripple: a ranged pet (not my fighter) is on the floor") then
+				pulse(1)
+				KC.toClient("BattleState", "Events", { { type = "Special", unit = caster, kind = "Shield", name = "Test Shield", x = f.X, z = f.Z, shields = { fighter } } }, id)
+				pulse(0.6)
+				local got5, rip5 = hitCalls({ type = "Hit", from = shooter, to = fighter, dmg = 1, absorbed = 6 })
+				local shot = nil
+				for _, c in ipairs(got5) do
+					if c.Attack == "Ranged" then
+						shot = c
+					end
+				end
+				local want = shot and type(shot.DueAt) == "number" and type(shot.Late) == "number" and shot.DueAt + math.min(shot.Late, 0.3) or nil
+				T.check(shot and shot.Result == true and shot.Late > 0.05 and rip5 and rip5.Result == true and want and math.abs(rip5.DueAt - want) < 1e-6,
+					"shield ripple: a ranged shot's absorbed hit ripples when the shot lands (its DueAt + ctx.ImpactLate), not before",
+					fmt("shot due %s late %s, ripple due %s", tostring(shot and shot.DueAt), tostring(shot and shot.Late), tostring(rip5 and rip5.DueAt)))
+			end
+			-- (re-review M8) a Linger zone's 0.5 s ticks on a shielded pet ripple every other tick (RIPPLE_TICK_GAP 0.75 s
+			-- after the last ripple); a hit from an attacker right after a tick still ripples
+			pulse(1)
+			local tickRips = {}
+			for i = 1, 3 do
+				local n0 = #calls
+				KC.toClient("BattleState", "Events", { { type = "Hit", from = boss, to = fighter, dmg = 0, absorbed = 2, zone = true, kind = "Storm" } }, id)
+				for j = n0 + 1, #calls do
+					if calls[j].Attack == "ShieldHit" then
+						tickRips[i] = calls[j]
+					end
+				end
+				pulse(0.5)
+			end
+			local n7 = #calls
+			KC.toClient("BattleState", "Events", { { type = "Hit", from = boss, to = fighter, dmg = 0, absorbed = 2, special = "Blast" } }, id)
+			local hitRip = calls[n7 + 1] and calls[n7 + 1].Attack == "ShieldHit"
+			T.check(tickRips[1] ~= nil and tickRips[2] == nil and tickRips[3] ~= nil and hitRip,
+				"shield ripple: zone ticks 0.5 s apart ripple every other tick; an attacker's hit always ripples",
+				fmt("ticks %s / %s / %s, hit %s", tostring(tickRips[1] ~= nil), tostring(tickRips[2] ~= nil), tostring(tickRips[3] ~= nil), tostring(hitRip)))
+			-- (re-review M9) once the shield is over, a ripple (a shield the client never saw cast: a rejoin snapshot) is in
+			-- the victim's own look, not the last caster's
+			pulse(7)
+			local own, casterLook = Cat.Unit(infos[fighter] or {}), Cat.Unit(infos[caster] or {})
+			local _, rip6 = hitCalls({ type = "Hit", from = boss, to = fighter, dmg = 0, absorbed = 3, special = "Blast" })
+			T.check((own.Element ~= casterLook.Element or own.Rarity ~= casterLook.Rarity) and rip6 and rip6.Element == own.Element and rip6.Rarity == own.Rarity,
+				"shield ripple: after the caster's shield ends, a ripple takes the victim's own look (not a stale caster's)",
+				fmt("%s %s, own %s %s, caster %s %s", tostring(rip6 and rip6.Element), tostring(rip6 and rip6.Rarity), tostring(own.Element), tostring(own.Rarity),
+					tostring(casterLook.Element), tostring(casterLook.Rarity)))
 			pulse(1)
 		end
 		-- DODGED! on a miss (both ways)
