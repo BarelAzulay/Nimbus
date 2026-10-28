@@ -271,9 +271,11 @@
       "uploadedOutside": true
     },
     "vortex_arms": {
-      "assetId": 102075581665453,
+      "assetId": 119118616302745,
       "contentHash": "f7e3f9fd212444534c1f781836323b3efe139cd584bce7d0fd535150b187fd87",
+      "decalAssetId": 102075581665453,
       "fileSha256": "f7e3f9fd212444534c1f781836323b3efe139cd584bce7d0fd535150b187fd87",
+      "idSetByHand": "2026-10-28T20:18:12Z",
       "moderationState": "Approved",
       "revisionCreateTime": "2026-10-28T11:33:17.086Z",
       "revisionId": "1",
@@ -281,9 +283,11 @@
       "uploadedAt": "2026-10-28T11:33:18Z"
     },
     "vortex_core": {
-      "assetId": 76694921978406,
+      "assetId": 129041111215945,
       "contentHash": "3eab00032b152418c96a64d57a323cde1146e7bb1590fc2317a754e614aabeb9",
+      "decalAssetId": 76694921978406,
       "fileSha256": "3eab00032b152418c96a64d57a323cde1146e7bb1590fc2317a754e614aabeb9",
+      "idSetByHand": "2026-10-28T20:18:12Z",
       "moderationState": "Approved",
       "revisionCreateTime": "2026-10-28T11:33:19.424Z",
       "revisionId": "1",
@@ -291,9 +295,11 @@
       "uploadedAt": "2026-10-28T11:33:20Z"
     },
     "vortex_crackle_1": {
-      "assetId": 73492387863381,
+      "assetId": 95961013736665,
       "contentHash": "a72b4327fb264fe2f4d57c938c80eb8d080ebafa92c15cb86eaff9cd6c8493bb",
+      "decalAssetId": 73492387863381,
       "fileSha256": "a72b4327fb264fe2f4d57c938c80eb8d080ebafa92c15cb86eaff9cd6c8493bb",
+      "idSetByHand": "2026-10-28T20:18:12Z",
       "moderationState": "Approved",
       "revisionCreateTime": "2026-10-28T11:33:22.268Z",
       "revisionId": "1",
@@ -301,9 +307,11 @@
       "uploadedAt": "2026-10-28T11:33:23Z"
     },
     "vortex_crackle_2": {
-      "assetId": 125464102130829,
+      "assetId": 96505941591902,
       "contentHash": "fb881e4f68c52024ed260ff8eac0fbf3c731fce496c833e02b1020d2f44ed9b9",
+      "decalAssetId": 125464102130829,
       "fileSha256": "fb881e4f68c52024ed260ff8eac0fbf3c731fce496c833e02b1020d2f44ed9b9",
+      "idSetByHand": "2026-10-28T20:18:12Z",
       "moderationState": "Approved",
       "revisionCreateTime": "2026-10-28T11:33:25.279Z",
       "revisionId": "1",
@@ -311,9 +319,11 @@
       "uploadedAt": "2026-10-28T11:33:26Z"
     },
     "vortex_crackle_3": {
-      "assetId": 83682840798160,
+      "assetId": 123552333087704,
       "contentHash": "333af0904810f7bbf62b550b73c9ee6f801910e2fa5e23a89cca3f12e65ed09f",
+      "decalAssetId": 83682840798160,
       "fileSha256": "333af0904810f7bbf62b550b73c9ee6f801910e2fa5e23a89cca3f12e65ed09f",
+      "idSetByHand": "2026-10-28T20:18:12Z",
       "moderationState": "Approved",
       "revisionCreateTime": "2026-10-28T11:33:27.841Z",
       "revisionId": "1",
@@ -321,9 +331,11 @@
       "uploadedAt": "2026-10-28T11:33:29Z"
     },
     "vortex_crackle_4": {
-      "assetId": 126690789654993,
+      "assetId": 127067005006899,
       "contentHash": "0a64f336b4865389e7d4a9817fd8712bd0e81a383dfc446ca8f3c8e7acc88da2",
+      "decalAssetId": 126690789654993,
       "fileSha256": "0a64f336b4865389e7d4a9817fd8712bd0e81a383dfc446ca8f3c8e7acc88da2",
+      "idSetByHand": "2026-10-28T20:18:12Z",
       "moderationState": "Approved",
       "revisionCreateTime": "2026-10-28T11:33:31.217Z",
       "revisionId": "1",
@@ -331,9 +343,11 @@
       "uploadedAt": "2026-10-28T11:33:34Z"
     },
     "vortex_disc": {
-      "assetId": 91351712750570,
+      "assetId": 105057795129420,
       "contentHash": "7990f638d9e53bc09ccc6970892ebe5c7f8b0a9880788af27c29df3bdf312426",
+      "decalAssetId": 91351712750570,
       "fileSha256": "7990f638d9e53bc09ccc6970892ebe5c7f8b0a9880788af27c29df3bdf312426",
+      "idSetByHand": "2026-10-28T20:18:12Z",
       "moderationState": "Approved",
       "revisionCreateTime": "2026-10-28T11:33:36.994Z",
       "revisionId": "1",
@@ -341,9 +355,11 @@
       "uploadedAt": "2026-10-28T11:33:38Z"
     },
     "vortex_fine": {
-      "assetId": 81717060018290,
+      "assetId": 86352833715478,
       "contentHash": "38d5c1f7c1182dd725ae270cd4db525dfc6a6d8cedb4b3ec3e3ffc5527b4d441",
+      "decalAssetId": 81717060018290,
       "fileSha256": "38d5c1f7c1182dd725ae270cd4db525dfc6a6d8cedb4b3ec3e3ffc5527b4d441",
+      "idSetByHand": "2026-10-28T20:18:12Z",
       "moderationState": "Approved",
       "revisionCreateTime": "2026-10-28T11:33:41.531Z",
       "revisionId": "1",
@@ -351,9 +367,11 @@
       "uploadedAt": "2026-10-28T11:33:44Z"
     },
     "vortex_rim": {
-      "assetId": 130265885214543,
+      "assetId": 83628052782246,
       "contentHash": "596fdc04f38222432da27a90823c9f85b3177b745c119c02064f274bcdef694c",
+      "decalAssetId": 130265885214543,
       "fileSha256": "596fdc04f38222432da27a90823c9f85b3177b745c119c02064f274bcdef694c",
+      "idSetByHand": "2026-10-28T20:18:12Z",
       "moderationState": "Approved",
       "revisionCreateTime": "2026-10-28T11:33:45.824Z",
       "revisionId": "1",
@@ -361,9 +379,11 @@
       "uploadedAt": "2026-10-28T11:33:50Z"
     },
     "vortex_streaks": {
-      "assetId": 139418752628734,
+      "assetId": 85494088167832,
       "contentHash": "66726bf1157311d89096b499ed374b53d7f603a88b4a8d5b924c7e7ba8628799",
+      "decalAssetId": 139418752628734,
       "fileSha256": "66726bf1157311d89096b499ed374b53d7f603a88b4a8d5b924c7e7ba8628799",
+      "idSetByHand": "2026-10-28T20:18:12Z",
       "moderationState": "Approved",
       "revisionCreateTime": "2026-10-28T11:33:51.710Z",
       "revisionId": "1",
