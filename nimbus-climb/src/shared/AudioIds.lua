@@ -3,4 +3,16 @@
 -- Rejected assets are left out; assets still in review are listed and stay silent until approved
 -- (meanwhile Roblox prints "Failed to load sound" for them: expected, not a bug, do not re-upload).
 return {
+	Click = 101923001399658,
+	Confirm = 93625869218589,
+	CrowdCheer = 119170729048425,
+	DrumLoop = 138374051097799,
+	Error = 132903472054298,
+	Inhale = 121211731068373,
+	MusicBattle = 127625565715812,
+	MusicDungeon = 94101303405171,
+	MusicLobby = 131666256172390,
+	Reward = 107490081183346,
+	Shatter = 92617655874659,
+	Whoosh = 88852561549620,
 }
