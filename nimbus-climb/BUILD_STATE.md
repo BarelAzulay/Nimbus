@@ -5,6 +5,7 @@ Updated: 2026-10-18 (after wave 2). Branch `v3-phase4`. Plan: `ARCHITECTURE_V3.m
 
 ## Player decisions (all settled)
 - **2026-10-20 ART RULE: Blender models only** (no Roblox Part-built / Toolbox models). See ARCHITECTURE_V3 "ART RULE".
+- 2026-10-28 (bugs #16 / #22, wave 5 fight lane): the ENGAGE rule: "the character leads when it moves, the pet fights when it stands" (BattleSim fighterStep: still 0.5 s + an enemy within Fighter.EngageRange 14 = the pet leaves to fight at the honest run; a 3-stud step / no enemy / > EngageLeash 18 = back to FOLLOW; BattleService skips the leash while engaged). F / X / ATTACK: a tap = Attack() and the server KEEPS a live lock (no cycle); hold 0.4 s = the next target (Target, like Tab / RT); caption ATTACK. The DEV tile measures the battle HUD (never on the action cluster).
 - Evolve button; 2nd evolution only Epic+; level cap 100 for all pets (XP curve keeps rising).
 - Presses become food plants, Collector = Coin Magnet, Kitchen = Food Machine, Gym = Training Place.
 - Pet bars above each pet; Champion Ring needs a claimed home + 1 pet.

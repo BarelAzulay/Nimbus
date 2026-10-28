@@ -111,8 +111,13 @@
 --   no hold repeat, no predicted swing (lunges from the server's Hits); the gold arrow shows the enemy the pet attacks
 --   (the lock, else its snapshot target, see-through); Dash events draw the pet's dash (mine on arrival); ELEMENT's E
 --   passes to a shown ProximityPrompt; MouseLock.Hold / Release ("BattleResult", "BattleLeave") via a pcall'd require.
+-- * Bugs #16 / #22 (wave 5): a tap of F / X / ATTACK = Attack() at once (the server KEEPS a live lock in EngageRange:
+--   no re-target); HOLD it ATTACK_HOLD (0.4 s) = the next target (Input.CycleTarget -> Target(id), Tab / RT's path; the
+--   caption flashes NEXT for NEXT_FLASH); a world click stays one Attack(pick) (holding the mouse never cycles). The
+--   server's engage rule walks my pet off to fight while I stand: the shoulder offset fades with the blend share (an
+--   engaged pet is drawn where the server has it) and its Engage { on = true } plays the arrival hop.
 -- Keys (ContextActionService, High priority, sunk, bound ONLY while fighting and inert before UiGate.HasPlayed()):
--- F / X attack (pick the target), E / Y element (E passes while a prompt is shown), Q / RB special, Tab / T / RT / LT
+-- F / X attack (hold = the next target), E / Y element (E passes while a prompt is shown), Q / RB special, Tab / T / RT / LT
 -- lock, 1 / 2 (LB / D-up) buff (hold = swap), D-left / D-right swap; the item hotbar keeps 1-4 outside battles.
 --
 -- Cost: one RenderStepped connection, alive only while a battle is drawn or effects play. Per frame: one root CFrame
@@ -287,6 +292,8 @@ local K = {
 	CD_SLACK = 0.15, -- a press this close to the end of a cooldown is sent (the server's clock decides)
 	PENDING_TIMEOUT = 0.6, -- seconds a prediction waits for its event
 	SWAP_HOLD = 0.5, -- hold a helper key / portrait this long = swap
+	ATTACK_HOLD = 0.4, -- bug #16: hold F / X / ATTACK this long = the next target (a tap attacks at once)
+	NEXT_FLASH = 0.6, -- the ATTACK caption reads NEXT this long after a hold-cycle
 	RING_DT = 0.1, -- the rings / countdowns are written at 10 Hz
 	LOSS_TIME = 0.4, -- the red HP loss trail drains this long behind a loss
 	-- the drawn fighter / helpers (B1, 4.7)
@@ -2153,13 +2160,17 @@ function Me.FighterTarget(B, u, x, z)
 	local dx, dz = rp.X - server.X, rp.Z - server.Z
 	local d = sqrt(dx * dx + dz * dz)
 	local ax, az, share = server.X, server.Z, K.FOLLOW_LERP
+	local k = 0
 	if d <= K.BLEND_DIST then
-		local k = 1 - d / K.BLEND_DIST
+		k = 1 - d / K.BLEND_DIST
 		ax, az = server.X + dx * k, server.Z + dz * k
 		share = 0.6
 	end
-	local off = rcf:VectorToWorldSpace(K.SHOULDER)
-	return Vector3.new(ax + off.X, rp.Y + off.Y, az + off.Z), share, rcf
+	-- bug #22: the shoulder offset (and the character's height) fade with the blend share: at my side the pet sits on
+	-- the shoulder as before; 2+ studs out (an ENGAGED pet fighting) it is drawn where the server has it
+	local off = rcf:VectorToWorldSpace(K.SHOULDER) * k
+	local y = server.Y + (rp.Y + off.Y - server.Y) * k
+	return Vector3.new(ax + off.X, y, az + off.Z), share, rcf, d
 end
 
 -- a helper's spot behind me (index 1 / 2 = HELPER_A / HELPER_B); without a character behind the drawn fighter
@@ -2195,9 +2206,9 @@ function Me.Draw(B, u, now, dt, x, z)
 		return
 	end
 	local isFighter = u.id == B.fighterId or (B.fighterId == nil and not u.benched)
-	local target, share, rcf
+	local target, share, rcf, blendD
 	if isFighter then
-		target, share, rcf = Me.FighterTarget(B, u, x, z)
+		target, share, rcf, blendD = Me.FighterTarget(B, u, x, z)
 	else
 		target, share = Me.HelperSpot(B, Me.HelperIndex(B, u)), 0.25
 		-- a Buff: fly to the fighter and back (BUFF_FLY)
@@ -2286,7 +2297,8 @@ function Me.Draw(B, u, now, dt, x, z)
 	local p = u.drawn + off + Vector3.new(0, bob, 0)
 	local cf = CFrame.new(p) * CFrame.Angles(0, u.wyaw, 0)
 	-- no battle idle while my fighter moves under my input (or a helper flies / swaps)
-	local busy = (isFighter and (u.state == S_MOVING or Me.Walking())) or u.flyAt ~= nil or u.swapAt ~= nil
+	-- (bug #22: my walking only counts while the pet is at my side; an engaged pet keeps its battle idle)
+	local busy = (isFighter and (u.state == S_MOVING or (Me.Walking() and (blendD == nil or blendD <= K.BLEND_DIST)))) or u.flyAt ~= nil or u.swapAt ~= nil
 	-- a helper that only breathes (the battle idle) is posed every other frame, like the other pets (stepBattle)
 	local animate = isFighter or u.poseSrc ~= "idle" or (St.frameNo + (u.slot or 0)) % 2 == 0
 	local pose, body = Atk.PoseOf(u, now, down, busy, animate, p)
@@ -4250,6 +4262,19 @@ Handlers[EV.Speed or "Speed"] = function()
 	-- (handled on arrival: Net.Pre)
 end
 
+-- bug #22: my pet leaves me to fight (the server's engage rule): the arrival hop = "it goes"; nothing else (no parts,
+-- the same on Low graphics); another player's pet just moves with its snapshots
+Handlers[EV.Engage or "Engage"] = function(B, ev)
+	if ev.on ~= true or not B.fighterId or tonumber(ev.unit) ~= B.fighterId then
+		return
+	end
+	local u = B.units[B.fighterId]
+	if u and u.model and not u.parked then
+		u.hopAt = os.clock()
+	end
+	Hud.enemyDirty = true
+end
+
 -- the End: plays every queued event that is not held for a flying shot, in order; true when held ones are left
 function Net.PlayUnheld(B)
 	local q = B.evq
@@ -4783,12 +4808,18 @@ function Hud.BuildActions()
 			local t = input.UserInputType
 			if t == Enum.UserInputType.Touch or t == Enum.UserInputType.MouseButton1 then
 				Input.Press(action, true)
+				if action == "Attack" then
+					Input.HoldStart("attackButton", 0, os.clock(), "Attack") -- bug #16: hold 0.4 s = the next target
+				end
 			end
 		end)
 		b.InputEnded:Connect(function(input)
 			local t = input.UserInputType
 			if t == Enum.UserInputType.Touch or t == Enum.UserInputType.MouseButton1 then
 				Input.Press(action, false)
+				if action == "Attack" then
+					Input.HoldEnd("attackButton")
+				end
 			end
 		end)
 	end
@@ -5347,7 +5378,8 @@ function Hud.Captions(B)
 	local f = B.fighterId and B.units[B.fighterId]
 	local ea = f and type(f.info.elementAttack) == "table" and f.info.elementAttack or nil
 	local caps = {
-		Attack = "PICK TARGET",
+		-- bug #16: ATTACK (a tap attacks the lock / the nearest); NEXT for NEXT_FLASH after a hold picked the next target
+		Attack = (St.nextFlashUntil and os.clock() < St.nextFlashUntil) and "NEXT" or "ATTACK",
 		Element = ea and string.upper(tostring(ea.Name)) or "ELEMENT",
 		Special = "SPECIAL",
 		Dash = "DASH",
@@ -6981,6 +7013,9 @@ function Input.OnAction(name, state, input)
 	if name == K.ACTION_ATTACK then
 		if began then
 			Input.Press("Attack", true)
+			Input.HoldStart("attackKey", 0, os.clock(), "Attack") -- bug #16: hold 0.4 s = the next target
+		elseif ended then
+			Input.HoldEnd("attackKey")
 		end
 	elseif name == K.ACTION_ELEMENT then
 		if began then
@@ -7107,25 +7142,37 @@ function Input.Press(kind, down, arg)
 	BattleController.Command(kind)
 end
 
--- per frame: a helper key / portrait held 0.5 s swaps
+-- per frame: a helper key / portrait held 0.5 s swaps; an ATTACK key / button held 0.4 s locks the next target (bug #16)
 function Input.Tick(B, now)
 	if not B or not fighting() then
 		return
 	end
 	for key, h in pairs(St.holds or {}) do
-		if not h.fired and now - h.t >= K.SWAP_HOLD then
+		if h.kind == "Attack" then
+			if not h.fired and now - h.t >= K.ATTACK_HOLD then
+				h.fired = true
+				Input.CycleTarget()
+				St.nextFlashUntil = os.clock() + K.NEXT_FLASH
+				Hud.Captions(B)
+			end
+		elseif not h.fired and now - h.t >= K.SWAP_HOLD then
 			h.fired = true
 			Input.Helper("Swap", h.index)
 		end
 	end
+	if St.nextFlashUntil and os.clock() >= St.nextFlashUntil then
+		St.nextFlashUntil = nil
+		Hud.Captions(B)
+	end
 end
 
-function Input.HoldStart(key, index, t)
+-- `kind` "Attack" = an ATTACK hold (bug #16: it cycles the target, never a helper's Buff / Swap)
+function Input.HoldStart(key, index, t, kind)
 	if not fighting() or not Input.GateOpen() then
 		return
 	end
 	St.holds = St.holds or {}
-	St.holds[key] = { index = index, t = t, fired = false }
+	St.holds[key] = { index = index, t = t, fired = false, kind = kind }
 	BattleController._wake()
 end
 
@@ -7135,7 +7182,7 @@ function Input.HoldEnd(key)
 		return
 	end
 	St.holds[key] = nil
-	if not h.fired then
+	if not h.fired and h.kind ~= "Attack" then
 		Input.Helper("Buff", h.index)
 	end
 end
@@ -7144,7 +7191,7 @@ end
 function Input.HoldFrac(index, now)
 	local best = 0
 	for _, h in pairs(St.holds or {}) do
-		if h.index == index and not h.fired then
+		if h.index == index and not h.fired and h.kind ~= "Attack" then
 			local p = (now - h.t - 0.1) / (K.SWAP_HOLD - 0.1)
 			if p > best then
 				best = min(1, p)

@@ -14,7 +14,8 @@
 --   client_dgfix_attack   F / the ATTACK button / a click send ONE "Attack" order (nil = nearest / next; a click on an
 --                         enemy = its id; with the mouse locked the enemy under the screen centre), holding repeats
 --                         nothing, no predicted swing, the arrow marks the enemy the pet attacks (picked = solid, its
---                         own pick = see-through), the ATTACK caption "PICK TARGET"
+--                         own pick = see-through), the ATTACK caption "ATTACK" (bug #16; a tap of F, the hold-to-cycle
+--                         is pinned by smoke_fight.lua client_fight_attack)
 --   client_dgfix_dash     Shift / RightShift in a battle send "Dash" only: no character velocity, no stamina change, no
 --                         character dash cooldown; RUN on Ctrl; the DASH button sends the same; the Dash event draws my
 --                         OWN pet's dash (out and back) and another pet's; after the battle Shift runs and Q dashes
@@ -554,14 +555,15 @@ S.client_dgfix_attack = guarded("client_dgfix_attack", function()
 	else
 		T.check(BC.GetStats().Focus == nil, "dgfix attack: no pick and no target of its own: no arrow")
 	end
-	-- F: one order, nothing while it is held
+	-- F: one order (a tap; bug #16: a hold of 0.4 s adds ONE Target(next), smoke_fight.lua), no repeat
 	local idx = #Mock.RemoteLog
 	d.noForward = true
 	Mock.TriggerAction("NimbusBattleAttack", "Begin", Mock.NewInput("F", "Keyboard", "Begin"))
-	H.step(60, 1 / 30)
+	H.step(6, 1 / 30)
 	Mock.TriggerAction("NimbusBattleAttack", "End", Mock.NewInput("F", "Keyboard", "End"))
+	H.step(54, 1 / 30)
 	local cmds = H.commands(idx)
-	T.check(#cmds == 1 and cmds[1].action == "Attack" and cmds[1].arg == nil, "dgfix attack: F sends ONE Attack (nil = the nearest / the next), holding it repeats nothing",
+	T.check(#cmds == 1 and cmds[1].action == "Attack" and cmds[1].arg == nil, "dgfix attack: F sends ONE Attack (nil = keep the live lock / the nearest), nothing repeats",
 		#cmds .. " sent")
 	local f = BC.GetUnit(BC.GetBattle().FighterId)
 	T.check(f and f.Drawn ~= nil, "dgfix attack: my fighter is drawn")
@@ -576,7 +578,7 @@ S.client_dgfix_attack = guarded("client_dgfix_attack", function()
 	cmds = H.commands(idx)
 	T.check(btn and #cmds == 1 and cmds[1].action == "Attack", "dgfix attack: the ATTACK button sends one Attack order", #cmds .. " sent")
 	local cap = H.find("Root.Commands.AttackButton.Caption")
-	T.check(cap and cap.Text == "PICK TARGET", "dgfix attack: the ATTACK caption says PICK TARGET", cap and cap.Text or "nil")
+	T.check(cap and cap.Text == "ATTACK", "dgfix attack: the ATTACK caption says ATTACK (bug #16)", cap and cap.Text or "nil")
 	-- a click on an enemy (the mock camera projects every unit to the screen centre): Attack(its id), the arrow on it
 	H.step(10, 0.05)
 	local vp = Mock.Viewport

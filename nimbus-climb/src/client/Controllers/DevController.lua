@@ -15,7 +15,8 @@
 --   * DevTile: a chunky cloud tile in the menu tiles' style (glossy face, thick navy outline, big "DEV") with the
 --     TextButton "DevButton", docked to the RIGHT edge. Its spot is MEASURED, never guessed: the lowest free place
 --     on the right edge that touches none of the menu column, the HUD blocks (NimbusHud panels + its published
---     TopRight geometry), the hotbar, the tutorial panel, the touch RUN / DASH buttons and Roblox's jump button,
+--     TopRight geometry), the battle HUD's visible blocks (NimbusBattle.Root: the action cluster, the team card, the
+--     enemy list, the top card, LEAVE; bug #16), the hotbar, the tutorial panel, the touch RUN / DASH buttons and Roblox's jump button,
 --     and stays out of the middle of the screen. On a PC that is the bottom-right corner; on phones and tablets it
 --     sits just above the thumb buttons. The top of the side-toast column (NimbusNotify's ToastStack, measured;
 --     room for its two newest toasts) is kept free too whenever the screen has room for that. Re-checked twice a
@@ -71,6 +72,7 @@ local K = {
 	CENTRE_TOL = 0.145, -- the middle of the screen: |dx| < 14.5% of the width and |dy| < 14.5% of the height
 	SCAN_STEP = 4, -- screen px between two candidate spots of the tile
 	TILE = 84, -- same size as a menu tile
+	TILE_MIN_SHRINK = 0.75, -- bug #16: the tile may shrink this far to fit a short screen's gap (text 30 x 0.75 = 22 design px)
 	TILE_TEXT = 30,
 	PANEL_W = 340,
 	TITLE_TEXT = 28,
@@ -706,6 +708,26 @@ local function neighbours(area, factor)
 			out[#out + 1] = { x0 = layout.TopRightLeft, y0 = 0, x1 = area.X, y1 = trb }
 		end
 	end
+	-- bug #16: the battle HUD (BattleController's NimbusBattle): every visible top-level block of its Root (the action
+	-- cluster Commands, Team, Enemies, TopCard, LEAVE, ...), so the tile never sits on the ATTACK button; plus the
+	-- cluster's own buttons (on a phone the Commands frame is a small anchor and its buttons sit outside it)
+	local battle = enabledGui(pg, "NimbusBattle")
+	if battle then
+		local root = battle:FindFirstChild("Root")
+		local dy = insetShift(battle)
+		for _, block in ipairs(root and root:GetChildren() or {}) do
+			if block:IsA("GuiObject") and block.Visible then
+				addRect(out, block, battle, dy)
+				if block.Name == "Commands" then
+					for _, b in ipairs(block:GetChildren()) do
+						if b:IsA("GuiObject") then
+							addRect(out, b, battle, dy)
+						end
+					end
+				end
+			end
+		end
+	end
 	local hotbar = enabledGui(pg, "NimbusHotbar")
 	if hotbar then
 		addRect(out, hotbar:FindFirstChild("Hotbar"), hotbar, insetShift(hotbar))
@@ -785,40 +807,60 @@ local function touches(a, b, gap)
 end
 
 -- Bottom edge (gui px) of the lowest spot for a size x size tile at the right edge `right` that touches no
--- blocker and stays out of the band; nil when there is none.
-local function lowestFreeSpot(area, side, right, size, blockers, band)
+-- blocker and stays out of the band; nil when there is none. `precise`: a blocked candidate jumps to just above
+-- the blocker it touches (no SCAN_STEP grid), so a narrow gap that just fits the tile is found.
+local function lowestFreeSpot(area, side, right, size, blockers, band, precise)
 	local y1 = area.Y - side
 	while y1 - size >= side do
 		local rect = { x0 = right - size, y0 = y1 - size, x1 = right, y1 = y1 }
 		local free = not touches(rect, band, 0)
+		local nextY = y1 - K.SCAN_STEP
 		if free then
 			for _, r in ipairs(blockers) do
 				if touches(rect, r, K.GAP) then
 					free = false
+					if precise then
+						nextY = math.min(y1 - 0.5, r.y0 - K.GAP - 0.01)
+					end
 					break
 				end
 			end
+		elseif precise then
+			nextY = y1 - 1
 		end
 		if free then
 			return y1
 		end
-		y1 = y1 - K.SCAN_STEP
+		y1 = nextY
 	end
 	return nil
 end
 
--- Bottom-right corner (gui px) of the tile: the lowest free spot on the right edge, clear of the toasts' room
--- too when the screen has space for that (a short phone screen has not: then only toasts may touch it).
+-- Bottom-right corner (gui px) of the tile and its size share: the lowest free spot on the right edge, clear of
+-- the toasts' room too when the screen has space for that (a short phone screen has not: then only toasts may
+-- touch it). Bug #16: a short landscape phone in a battle (the enemy list above, the thumb buttons below) may have
+-- no full-size stretch left on the right edge: the tile then shrinks (down to TILE_MIN_SHRINK, its text stays
+-- readable) into the biggest gap rather than covering the battle HUD.
 local function placeTile(area, side, size, layout, band)
 	local right = area.X - side
 	for _, blockers in ipairs({ joined(layout.Others, layout.Toasts), layout.Others }) do
 		local y1 = lowestFreeSpot(area, side, right, size, blockers, band)
 		if y1 then
-			return right, y1
+			return right, y1, 1
+		end
+	end
+	local shrink = 1
+	while shrink > K.TILE_MIN_SHRINK + 1e-9 do
+		shrink = math.max(K.TILE_MIN_SHRINK, shrink - 0.05)
+		for _, blockers in ipairs({ joined(layout.Others, layout.Toasts), layout.Others }) do
+			local y1 = lowestFreeSpot(area, side, right, size * shrink, blockers, band, true)
+			if y1 then
+				return right, y1, shrink
+			end
 		end
 	end
 	-- no free spot at all (a tiny window): the top-right corner
-	return right, math.min(area.Y - side, side + size)
+	return right, math.min(area.Y - side, side + size), 1
 end
 
 -- Free vertical stretches [y0, y1] of the column [x0, x1] between top and bottom. `headroom` is kept free below
@@ -919,8 +961,8 @@ function DevController.Relayout()
 	local side = isTouchDevice() and K.TOUCH_EDGE or K.EDGE
 	local layout = neighbours(area, factor)
 	local band = centreBand(area)
-	local tx, ty = placeTile(area, side, K.TILE * factor, layout, band)
-	setIfChanged("tileScale", UI.TileScale, "Scale", factor)
+	local tx, ty, shrink = placeTile(area, side, K.TILE * factor, layout, band)
+	setIfChanged("tileScale", UI.TileScale, "Scale", factor * shrink)
 	setIfChanged("tilePos", UI.Tile, "Position", UDim2.fromOffset(math.floor(tx + 0.5), math.floor(ty + 0.5)))
 	if panelOpen then
 		local px, py, height, scale = placePanel(area, side, factor, layout, band)
