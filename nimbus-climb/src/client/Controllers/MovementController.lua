@@ -41,6 +41,16 @@
 --     14 while a dungeon run lasts, so the camera never leaves the 16-stud rooms); nil gives the normal ZOOM_MAX 40 back.
 --     The cap survives a respawn (applyCameraSettings re-applies it); junk (NaN, <= 0, inf, non-numbers) is ignored;
 --     CameraMinZoomDistance is only lowered when it would sit above the cap (first person is never forced).
+--   * Wave 5 dungeon camera (bugs #15 / #26; DungeonController / BattleController). This controller is the one place
+--     that writes Camera.FieldOfView and the character's WalkSpeed every frame, so the cinematics go through it:
+--       MovementController.SetFovOverride(fov | nil)  while set the FOV is `fov` (+ a live punch) instead of 70 + run +
+--                                                    dash; nil = the normal FOV again
+--       MovementController.FovPunch(degrees, seconds) a quick zoom punch: + degrees * (1 - p)^2 over `seconds` on top
+--                                                    of whatever is written (a second punch keeps the larger one)
+--       MovementController.SetCinematic(walkSpeed | nil)  a scripted walk (the room walk-in): run / dash input is
+--                                                    ignored, the mobile buttons dim like Downed, WalkSpeed = walkSpeed
+--                                                    (the "server owns WalkSpeed" watch suspended, a server 0 still
+--                                                    wins); nil = the normal speed rules at once. GetSpeedState().Cinematic
 -- Plain Lua 5.1-compatible syntax only.
 
 local Players = game:GetService("Players")
@@ -122,6 +132,9 @@ local dashLength = P.DashCooldown -- the cooldown of the current / last dash (th
 local freeDashCooldown = nil
 local dashKeys = nil -- the battle's dash keys (nil = the obby keys Q / B)
 local dashListener = nil -- called after every dash (BattleController: BattleCommand "Dash")
+local cinematic = nil -- wave 5: the walk speed of a scripted walk-in (SetCinematic); run / dash ignored while set
+local fovOverride = nil -- wave 5: SetFovOverride (the cinematics' FOV)
+local fovPunch = nil -- wave 5: { amount, t0, dur } FovPunch
 local petDash = nil -- dungeon fixes: the battle's pet dash (SetPetDash); while set the dash keys call it and the character never dashes
 local PET_DASH_KEYS = { Enum.KeyCode.LeftShift, Enum.KeyCode.RightShift, Enum.KeyCode.ButtonB }
 local uiGate = nil -- client/UiGate (menu W3), loaded lazily; false when missing
@@ -401,7 +414,7 @@ local function denyFeedback(handle)
 end
 
 local function toggleRun()
-	if not ctx or isLocked() then
+	if not ctx or isLocked() or cinematic then
 		return
 	end
 	if exhausted and not runToggled then
@@ -825,6 +838,9 @@ local function dashBlockedReason()
 	if isLocked() then
 		return "locked"
 	end
+	if cinematic then
+		return "cinematic"
+	end
 	if dash then
 		return "dashing"
 	end
@@ -1012,9 +1028,12 @@ local function step(dt)
 	if battleSpeed and serverSpeed >= FROZEN_SPEED then
 		baseSpeed = battleSpeed.walk
 	end
+	if cinematic and serverSpeed >= FROZEN_SPEED then
+		baseSpeed = cinematic
+	end
 
-	-- 2. Lockout: Downed or frozen players cannot run or dash.
-	local locked = isLocked()
+	-- 2. Lockout: Downed or frozen players cannot run or dash (nor during a scripted walk-in).
+	local locked = isLocked() or cinematic ~= nil
 	if locked then
 		if dash then
 			endDash(true)
@@ -1066,8 +1085,8 @@ local function step(dt)
 
 	-- 5. Write WalkSpeed: base speed + run boost (the battle run instead of RunSpeed in a battle). Outside a battle
 	--    it stops touching it when not running; in a battle the walk itself is ours to write.
-	if baseSpeed >= FROZEN_SPEED and (runBlend > 0.001 or battleSpeed ~= nil) then
-		local runTarget = battleSpeed and battleSpeed.run or math.max(baseSpeed, P.RunSpeed)
+	if baseSpeed >= FROZEN_SPEED and (runBlend > 0.001 or battleSpeed ~= nil or cinematic ~= nil) then
+		local runTarget = (cinematic and baseSpeed) or (battleSpeed and battleSpeed.run) or math.max(baseSpeed, P.RunSpeed)
 		local speed = baseSpeed + (runTarget - baseSpeed) * runBlend
 		if lastWritten == nil or math.abs(speed - lastWritten) > 0.001 or math.abs(current - speed) > SPEED_EPS then
 			humanoid.WalkSpeed = speed
@@ -1112,7 +1131,16 @@ local function step(dt)
 	-- 8. Camera FOV: widen while running, punch on dash.
 	local camera = workspace.CurrentCamera
 	if camera then
-		local fov = BASE_FOV + RUN_FOV_BOOST * runBlend + DASH_FOV_BOOST * dashPunchValue(now)
+		local fov = fovOverride or (BASE_FOV + RUN_FOV_BOOST * runBlend + DASH_FOV_BOOST * dashPunchValue(now))
+		local fp = fovPunch
+		if fp then
+			local p = (now - fp.t0) / fp.dur
+			if p >= 1 or p < 0 then
+				fovPunch = nil
+			else
+				fov = fov + fp.amount * (1 - p) * (1 - p)
+			end
+		end
 		if c.lastFov == nil or math.abs(fov - c.lastFov) > 0.01 then
 			camera.FieldOfView = fov
 			c.lastFov = fov
@@ -1163,8 +1191,9 @@ function unbindCharacter()
 	end
 	c.instances = {}
 
+	fovPunch = nil
 	local camera = workspace.CurrentCamera
-	if camera and c.lastFov ~= nil and c.lastFov ~= BASE_FOV then
+	if camera and c.lastFov ~= nil and c.lastFov ~= BASE_FOV and fovOverride == nil then
 		pcall(function()
 			camera.FieldOfView = BASE_FOV
 		end)
@@ -1492,7 +1521,94 @@ function MovementController.GetSpeedState()
 		Stamina = stamina,
 		ExhaustResume = EXHAUST_RESUME,
 		Written = lastWritten,
+		Cinematic = cinematic ~= nil,
+		FovOverride = fovOverride,
 	}
+end
+
+-- wave 5 (bugs #15 / #26): the cinematics' FOV (nil = 70 + run + dash again); written at once when a character is bound
+function MovementController.SetFovOverride(fov)
+	if not finite(fov) then
+		fovOverride = nil
+	else
+		fovOverride = Util.Clamp(fov, 20, 110)
+	end
+	local camera = workspace.CurrentCamera
+	local c = ctx
+	if camera and fovOverride then
+		pcall(function()
+			camera.FieldOfView = fovOverride
+		end)
+		if c then
+			c.lastFov = fovOverride
+		end
+	elseif c then
+		c.lastFov = nil -- (the next frame writes the normal FOV)
+	elseif camera then
+		pcall(function()
+			camera.FieldOfView = BASE_FOV -- (no character bound: no frame will write it back)
+		end)
+	end
+end
+
+-- a quick zoom punch (big attacks in a dungeon): + degrees, easing out over `seconds`; the larger of two live punches wins
+function MovementController.FovPunch(degrees, seconds)
+	if not finite(degrees) or degrees <= 0 then
+		return false
+	end
+	seconds = (finite(seconds) and seconds > 0) and math.min(seconds, 2) or 0.25
+	local now = os.clock()
+	local live = fovPunch
+	if live then
+		local p = (now - live.t0) / live.dur
+		if p >= 0 and p < 1 and live.amount * (1 - p) * (1 - p) >= degrees then
+			return false
+		end
+	end
+	fovPunch = { amount = math.min(degrees, 20), t0 = now, dur = seconds }
+	return true
+end
+
+-- a scripted walk (the room walk-in): WalkSpeed = walkSpeed, run / dash ignored; nil gives the normal rules back at once
+function MovementController.SetCinematic(walkSpeed)
+	if not finite(walkSpeed) or walkSpeed <= 0 then
+		if cinematic == nil then
+			return
+		end
+		cinematic = nil
+		local c = ctx
+		if c and c.humanoid and c.humanoid.Parent and lastWritten ~= nil then
+			local current = c.humanoid.WalkSpeed
+			if math.abs(current - lastWritten) <= SPEED_EPS then
+				baseSpeed = (battleSpeed and serverSpeed >= FROZEN_SPEED) and battleSpeed.walk or serverSpeed
+				c.humanoid.WalkSpeed = baseSpeed
+				lastWritten = battleSpeed and baseSpeed or nil
+			end
+		end
+		return
+	end
+	cinematic = Util.Clamp(walkSpeed, 1, 100)
+	runToggled = false
+	runBlend = 0
+	if dash then
+		endDash(true)
+	end
+	local c = ctx
+	if not c or not c.humanoid or not c.humanoid.Parent then
+		return
+	end
+	local humanoid = c.humanoid
+	local current = humanoid.WalkSpeed
+	if lastWritten == nil or math.abs(current - lastWritten) > SPEED_EPS then
+		serverSpeed = current
+		lastWritten = nil
+	end
+	if serverSpeed < FROZEN_SPEED then
+		return -- frozen / Downed: the server's 0 wins
+	end
+	baseSpeed = cinematic
+	humanoid.WalkSpeed = cinematic
+	lastWritten = cinematic
 end
 
 function MovementController.Init()

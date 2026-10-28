@@ -18,13 +18,21 @@
 --            FloorCleared(player, floor)
 --   Remotes: DungeonRequest(action, a, b) c->s (Open / Create / Join / Leave / Ready / SetFloor / Start / Solo / Quit /
 --            Chest / Kick), DungeonState(kind, payload) s->c (Lobby <= 1/s, Run, Loot, Chest, End, Fade { Out, Hold,
---            In, Room }), the gate's attribute DungeonBoard, the room models' DoorOpen / EntranceOpen attributes; the
---            doors' EnterPrompt (DungeonAction "Enter") arrives through ProximityPromptService.PromptTriggered
+--            In, Room }, Enter { Cover, Reveal, Element, Floor, Name }), the gate's attribute DungeonBoard, the room
+--            models' DoorOpen / EntranceOpen attributes; the doors' EnterPrompt (DungeonAction "Enter") arrives through
+--            ProximityPromptService.PromptTriggered
 -- The treasure (bug batch 2, #14): every member owed a chest picks ONE of the alcove's chests with its E prompt (no GUI
 -- button). The prompt's ChestSlot goes to Dg.openChest(run, m, slot): a real slot, free, the member within CHEST_RANGE,
 -- the member's own chest still closed. The drop is rolled from run.Seed + slot * 7919 (every chest its own roll), the
 -- chest part is marked Opened / OpenedBy, its prompt disabled for everyone, a glow lit. A "Chest" request without a
 -- slot opens nothing. The 45 s exit (and a member leaving in the alcove) gives the first free slot.
+-- Wave 5 (bugs #15 / #26): a run starts with DungeonState("Enter") to every member; the members are teleported into
+-- the hall ENTER.Cover seconds later (Dg.finishEnter, under the client's voxel cover; run.Transit holds the lock
+-- meanwhile). A room's fight starts on the first Threshold crossing or WALK_IN_TIMEOUT (3 s) after enterRoom (the
+-- client walks its character in under the fade); startFight moves only members outside the room's Zone box (onto the
+-- Threshold line), nobody is yanked back. The player attribute InFight (Config.Attr.InFight) is true only while the
+-- member's team fights a room (startFight -> onRoomEnd / removeMember / endRun / unbind): PetController shows the
+-- followers the rest of the run (InBattle stays the run id for the whole run).
 --
 -- Run.State: "Hall" -> "Corridor" (Phase "Threshold": at the room's entrance until a member crosses the Threshold part;
 -- Phase "Walk": the room is cleared, its exit bars open after Intermission) -> "Fight" -> ... -> "Treasure"
@@ -74,12 +82,14 @@ end
 local ATTR_IN_BATTLE = (Config.Attr and Config.Attr.InBattle) or "InBattle"
 local ATTR_IN_MATCH = (Config.Attr and Config.Attr.InMatch) or "InMatch"
 local ATTR_PORTAL_LOCKED = (Config.Attr and Config.Attr.PortalLocked) or "PortalLocked"
+local ATTR_IN_FIGHT = (Config.Attr and Config.Attr.InFight) or "InFight"
 
 local K = {
 	MAX_PARTY = 4,
 	RETURN_DELAY = 4,
 	START_COUNTDOWN = 5, -- "Dungeon in 5..."
-	THRESHOLD_TIMEOUT = 30, -- nobody crossed the Threshold: the fight starts anyway (keeps a run moving)
+	WALK_IN_TIMEOUT = 3, -- bug #26: nobody crossed the Threshold 3 s after the room was entered (fade-in 0.45 + the
+	-- 1.3 s walk-in + lag): the fight starts anyway. The old 30 s THRESHOLD_TIMEOUT was the dead wait.
 	WATCHDOG_MISSING = 15,
 	LEASH = 80, -- studs from the room centre
 	LEASH_STRIKES = 2,
@@ -104,6 +114,10 @@ K.CHEST_SLOTS = K.MAX_PARTY
 
 -- the room change's fade (dungeon-fixes decision 2): the server enters the next room after Out
 local FADE = { Out = 0.45, Hold = 0.35, In = 0.45 }
+-- the dungeon entrance (bug #15): the client covers the screen in voxel blocks over Cover seconds, the server teleports
+-- the members into the hall after Cover, the blocks fall away over Reveal (sent in the payload, never hard-coded there)
+local ENTER = { Cover = 0.55, Reveal = 0.9 }
+DungeonService.ENTER = ENTER
 
 local COOLDOWN = { Create = 2, Join = 1, Ready = 0.3, SetFloor = 0.5, Start = 1.5, Quit = 1, Chest = 0.5, Open = 0.5, Kick = 1, Leave = 0.5, Solo = 1.5, Enter = 0.25 }
 local ACTIONS = { Open = true, Create = true, Join = true, Leave = true, Ready = true, SetFloor = true, Start = true, Solo = true, Quit = true, Chest = true, Kick = true }
@@ -286,6 +300,15 @@ local function setInBattle(player, value)
 	end
 end
 
+-- bug #26: InFight = true only while the member's team fights a room (the followers park then; nil = they follow)
+local function setInFight(player, on)
+	if isPlayer(player) then
+		pcall(function()
+			player:SetAttribute(ATTR_IN_FIGHT, on and true or nil)
+		end)
+	end
+end
+
 local function shortName(player)
 	return isPlayer(player) and (player.DisplayName or player.Name) or "?"
 end
@@ -352,7 +375,7 @@ function DungeonService.MaxRunSeconds(floorIndex)
 	local d = D()
 	local roomTime = (floorIndex == 1) and num(d.Floor1RoomTime, 180) or num(d.RoomTime, 120)
 	local fade = FADE.Out + FADE.Hold + FADE.In
-	local worst = 4 * roomTime + 4 * (K.THRESHOLD_TIMEOUT + num(d.Intermission, 2)) + K.DOOR_WAITS * (K.WAIT_ALLOWANCE + fade) + num(d.TreasureSeconds, 45) + 120
+	local worst = 4 * roomTime + 4 * (K.WALK_IN_TIMEOUT + num(d.Intermission, 2)) + K.DOOR_WAITS * (K.WAIT_ALLOWANCE + fade) + num(d.TreasureSeconds, 45) + 120
 	return max(num(d.RunMaxSeconds, 700), worst)
 end
 
@@ -713,6 +736,7 @@ local function unbindMember(run, player)
 	if isPlayer(player) and player:GetAttribute(ATTR_IN_BATTLE) == run.Id then
 		setInBattle(player, nil)
 	end
+	setInFight(player, nil)
 	St.strikes[player] = nil
 end
 
@@ -845,19 +869,52 @@ function Dg.begin(party, readyOnly)
 	for _, uid in ipairs(run.Order) do
 		bindMember(run, run.Members[uid].Player)
 	end
-	local hall = pocket.Hall
-	for i, uid in ipairs(run.Order) do
-		local cf = hall and hall.Spawns and hall.Spawns[((i - 1) % 4) + 1] or CFrame.new(pocket.Origin + Vector3.new(0, 4, 0))
-		teleport(run.Members[uid].Player, cf)
+	-- bug #15: the entrance cover first (the client's voxel blocks), the teleport into the hall after ENTER.Cover
+	-- (Dg.finishEnter); the Transit lock holds the doors, the late joins and the confirms meanwhile
+	run.Transit = true
+	run.TransitSeq = (run.TransitSeq or 0) + 1
+	local seq = run.TransitSeq
+	local enter = { Cover = ENTER.Cover, Reveal = ENTER.Reveal, Element = run.Element, Floor = floorIndex, Name = run.Name }
+	for _, m in ipairs(liveMembers(run)) do
+		sendState(m.Player, "Enter", enter)
 	end
 	party.Run = run
 	St.runs[run.Id] = run
 	St.runOrder[#St.runOrder + 1] = run.Id
 	run.State = "Hall"
 	run.StateAt = now()
+	markLobbyDirty()
+	task.delay(ENTER.Cover, function()
+		local ok, err = pcall(Dg.finishEnter, run, seq)
+		if not ok then
+			warn("[DungeonService] the dungeon entrance failed: " .. tostring(err))
+			pcall(Dg.endRun, run, false, "Error")
+		end
+	end)
+	return true, run.Id
+end
+
+-- Dg.finishEnter(run, seq) -> bool: the members into the hall under the entrance cover (once per begin)
+function Dg.finishEnter(run, seq)
+	if run.State ~= "Hall" or run.TransitSeq ~= seq or not run.Transit then
+		return false
+	end
+	run.Transit = nil
+	local hall = run.Pocket and run.Pocket.Hall
+	for i, uid in ipairs(run.Order) do
+		local m = run.Members[uid]
+		if m and not m.Left and isPlayer(m.Player) then
+			m.Joined = now() -- (the FAR check's grace: the teleport replicates within it)
+			local cf = hall and hall.Spawns and hall.Spawns[((i - 1) % 4) + 1] or CFrame.new(run.Pocket.Origin + Vector3.new(0, 4, 0))
+			teleport(m.Player, cf)
+		end
+	end
+	if countLive(run) == 0 then
+		return false
+	end
 	sendRun(run)
 	markLobbyDirty()
-	return true, run.Id
+	return true
 end
 
 -- a late joiner enters the run in its Hall / Corridor (earlier rooms pay nothing: JoinedRoom = the next fight room)
@@ -1170,7 +1227,14 @@ function Dg.startFight(run)
 		m.Spec = spec
 		m.Downed = false
 		teams[#teams + 1] = { Player = m.Player, Spec = spec }
-		teleport(m.Player, info.Entrance * CFrame.new(((i - 1) % 4) * 2.4 - 3.6, 0, 0))
+		-- bug #26: a member already inside the room (walked in) keeps their spot; anyone else (still in the corridor, no
+		-- character, elsewhere) is placed on the Threshold line, never yanked back to the Entrance
+		local root = rootOf(m.Player)
+		if not (root and Dg.insideBox(info.Zone, root.Position)) then
+			local line = info.Threshold and info.Threshold.Parent and (info.Threshold.CFrame * CFrame.new(((i - 1) % 4) * 2.4 - 3.6, -1, 0)) -- (the part is centred 2.5 up: a root 3 up, like the Entrance)
+				or (info.Entrance * CFrame.new(((i - 1) % 4) * 2.4 - 3.6, 0, 0))
+			teleport(m.Player, line)
+		end
 	end
 	if #teams == 0 then
 		return Dg.endRun(run, false, "Abandoned")
@@ -1184,6 +1248,10 @@ function Dg.startFight(run)
 	if typeof(floorCf) ~= "CFrame" then
 		local fy = info.Zone:GetAttribute("FloorY")
 		floorCf = info.Zone.CFrame * CFrame.new(0, (finite(fy) and fy or (info.Zone.Position.Y - 6)) - info.Zone.Position.Y, 0)
+	end
+	-- bug #26: the followers park only now (BattleController draws the team from the Start it is about to send)
+	for _, team in ipairs(teams) do
+		setInFight(team.Player, true)
 	end
 	local id, why = BS.OpenEncounter({
 		Mode = "Dungeon",
@@ -1463,6 +1531,10 @@ function Dg.onRoomEnd(run, result, battleId)
 	end
 	if battleId and run.Battle ~= battleId then
 		return
+	end
+	-- bug #26: the fight is over (every reason): the followers come back
+	for _, m in ipairs(liveMembers(run)) do
+		setInFight(m.Player, nil)
 	end
 	result = type(result) == "table" and result or { Reason = "Error" }
 	local room = run.Room
@@ -1810,6 +1882,7 @@ function Dg.endRun(run, cleared, reason, immediate)
 	end)
 	-- 2. Runs + 1 and the End card for everyone still in
 	for _, m in ipairs(liveMembers(run)) do
+		setInFight(m.Player, nil)
 		pcall(function()
 			try(St.deps.DataService, "MutateDungeon", m.Player, function(rec)
 				rec.Runs = (tonumber(rec.Runs) or 0) + 1
@@ -2411,6 +2484,7 @@ local function insideBox(part, position)
 	local s = part.Size
 	return abs(rel.X) <= s.X / 2 + 1 and abs(rel.Y) <= s.Y / 2 + 3 and abs(rel.Z) <= s.Z / 2 + 1
 end
+Dg.insideBox = insideBox -- (Dg.startFight: who already walked into the room)
 
 local function tickRun(run, t)
 	local d = D()
@@ -2432,7 +2506,10 @@ local function tickRun(run, t)
 			Dg.removeMember(run, p, "Left")
 		else
 			local root = rootOf(p)
-			if root and run.Pocket and (root.Position - run.Pocket.Origin).Magnitude > K.FAR and t - (m.Joined or run.Started) > 1 then
+			-- (wave 5: never while the entrance cover still holds the party at the gate: State Hall + Transit, before
+			-- Dg.finishEnter; a late task.delay must not drop them as "Left")
+			local covering = run.State == "Hall" and run.Transit and not m.Joined
+			if root and run.Pocket and not covering and (root.Position - run.Pocket.Origin).Magnitude > K.FAR and t - (m.Joined or run.Started) > 1 then
 				Dg.removeMember(run, p, "Left")
 			end
 		end
@@ -2454,7 +2531,7 @@ local function tickRun(run, t)
 					break
 				end
 			end
-			if cross or t - run.StateAt >= K.THRESHOLD_TIMEOUT then
+			if cross or t - run.StateAt >= K.WALK_IN_TIMEOUT then
 				Dg.startFight(run)
 			end
 		else

@@ -726,11 +726,16 @@ S.client_p5input = guarded("client_p5input", function()
 	d.noForward = true
 	H.step(75, 1 / 30) -- 2.5 s held
 	local held = H.count(idx, "Attack")
+	local heldTarget = H.count(idx, "Target")
 	Mock.TriggerAction("NimbusBattleAttack", "End", Mock.NewInput("F", "Keyboard", "End"))
 	T.eq(held, 1, "p5 input: F sends ONE Attack order, holding it repeats nothing")
+	T.eq(heldTarget, 1, "p5 input: ... a hold (>= 0.4 s) adds exactly ONE Target(next) (bug #16), no repeat")
 	local idx2 = #Mock.RemoteLog
 	H.step(30, 1 / 30)
-	T.eq(H.count(idx2, "Attack"), 0, "p5 input: ... and nothing after the release")
+	T.eq(H.count(idx2, "Attack") + H.count(idx2, "Target"), 0, "p5 input: ... and nothing after the release")
+	-- (the hold's Target was not forwarded: T clears that predicted lock so Tab below starts from no lock)
+	Mock.TriggerAction("NimbusBattleTarget", "Begin", Mock.NewInput("T", "Keyboard", "Begin"))
+	H.step(3, 1 / 30)
 	d.noForward = false
 	d.logIndex = #Mock.RemoteLog
 	-- helper keys: a tap = Buff, held 0.5 s = Swap
@@ -917,6 +922,11 @@ S.client_p5models = guarded("client_p5models", function()
 	-- the Winding crouch + its yellow flash (the dash cue)
 	local enemy = d:enemyIds()[1]
 	local flashes = 0
+	-- (a quiet unit sends nothing in a delta: forget its last record so this step carries it in full; with the engage
+	-- rule of bug #22 the pet and the enemy can both stand still between two hits)
+	if d.last then
+		d.last[enemy] = nil
+	end
 	d:step(30, function(snap)
 		-- white-box on the wire: set the windup bit on the enemy's code
 		local U = snap.U

@@ -76,6 +76,14 @@
 --   * Enemies wind up visibly: Winding plays a crouch + a brief yellow Highlight (the dash cue), their list row flashes
 --     "!"; "DODGED!" (cyan) on Hit.miss; buff names float above the fighter in the buff's colour; element attacks draw
 --     their cone / circle / line; camera shakes x ClientSettings.Get("Shake") (Humanoid.CameraOffset, tiny, rare).
+--   * Wave 5 dungeon camera (bugs #15 / #26): the shake rides on the resting CameraOffset (DungeonController's dungeon
+--     shoulder) and gives it back; in a dungeon every hit on my fighter shakes lightly (HIT_SHAKE_LIGHT) and an AttackFx
+--     punch >= PUNCH_BIG also punches the FOV (MovementController.FovPunch, FOV_PUNCH 6 degrees x min(1, amount / 0.4));
+--     the Shake setting turns off only the shakes (player ruling 2026-10-28: the FOV punch plays regardless). A cleared
+--     dungeon room's floor goes after DUNGEON_LINGER 1 s; BattleController.FighterDrawn(userId) says whether a player's
+--     dungeon fighter is still drawn (a lost room's KO'd models linger; the followers wait for it); my fighter's first
+--     drawn spot is its follower's (PetController), and BattleController.LastDrawn(userId) -> pos, key tells
+--     PetController where each player's fighter was drawn last (the followers walk back from there).
 --
 -- * The battle HUD (only while the local player fights; ScreenGui "NimbusBattle", designed in 1080p px under one
 --   UIScale of Theme.ScreenFactor(), NeonKit cards, fonts via Theme roles, nothing in the screen centre):
@@ -111,8 +119,13 @@
 --   no hold repeat, no predicted swing (lunges from the server's Hits); the gold arrow shows the enemy the pet attacks
 --   (the lock, else its snapshot target, see-through); Dash events draw the pet's dash (mine on arrival); ELEMENT's E
 --   passes to a shown ProximityPrompt; MouseLock.Hold / Release ("BattleResult", "BattleLeave") via a pcall'd require.
+-- * Bugs #16 / #22 (wave 5): a tap of F / X / ATTACK = Attack() at once (the server KEEPS a live lock in EngageRange:
+--   no re-target); HOLD it ATTACK_HOLD (0.4 s) = the next target (Input.CycleTarget -> Target(id), Tab / RT's path; the
+--   caption flashes NEXT for NEXT_FLASH); a world click stays one Attack(pick) (holding the mouse never cycles). The
+--   server's engage rule walks my pet off to fight while I stand: the shoulder offset fades with the blend share (an
+--   engaged pet is drawn where the server has it) and its Engage { on = true } plays the arrival hop.
 -- Keys (ContextActionService, High priority, sunk, bound ONLY while fighting and inert before UiGate.HasPlayed()):
--- F / X attack (pick the target), E / Y element (E passes while a prompt is shown), Q / RB special, Tab / T / RT / LT
+-- F / X attack (hold = the next target), E / Y element (E passes while a prompt is shown), Q / RB special, Tab / T / RT / LT
 -- lock, 1 / 2 (LB / D-up) buff (hold = swap), D-left / D-right swap; the item hotbar keeps 1-4 outside battles.
 --
 -- Cost: one RenderStepped connection, alive only while a battle is drawn or effects play. Per frame: one root CFrame
@@ -272,6 +285,12 @@ local K = {
 	NUMBER_DISTANCE = 170,
 	BAR_DISTANCE = 140,
 	END_LINGER = 3.5, -- seconds the floor stays drawn after the end
+	DUNGEON_LINGER = 1.0, -- wave 5 (bug #26): a cleared dungeon room's floor goes after this (= PetController.HANDOVER)
+	HIT_SHAKE_LIGHT = { 0.07, 0.12 }, -- wave 5 (bug #15): every hit on my fighter in a dungeon (amount, seconds)
+	FOV_PUNCH = 6, -- wave 5 (bug #15): degrees of FOV punch on a big attack in a dungeon (AttackFx punch >= PUNCH_BIG)
+	FOV_PUNCH_TIME = 0.25,
+	PUNCH_BIG = 0.2,
+	LAST_DRAWN_AGE = 5, -- seconds a dungeon fighter's last drawn spot is kept for the followers' hand-over
 	SPECTATOR_LINGER = 1.5,
 	RESULT_SECONDS = 12,
 	CMD_GAP = 0.25, -- local throttle between two commands of a kind
@@ -287,6 +306,8 @@ local K = {
 	CD_SLACK = 0.15, -- a press this close to the end of a cooldown is sent (the server's clock decides)
 	PENDING_TIMEOUT = 0.6, -- seconds a prediction waits for its event
 	SWAP_HOLD = 0.5, -- hold a helper key / portrait this long = swap
+	ATTACK_HOLD = 0.4, -- bug #16: hold F / X / ATTACK this long = the next target (a tap attacks at once)
+	NEXT_FLASH = 0.6, -- the ATTACK caption reads NEXT this long after a hold-cycle
 	RING_DT = 0.1, -- the rings / countdowns are written at 10 Hz
 	LOSS_TIME = 0.4, -- the red HP loss trail drains this long behind a loss
 	-- the drawn fighter / helpers (B1, 4.7)
@@ -422,7 +443,8 @@ local St = {
 	mouseHolds = {}, -- [reason] = true: our client/MouseLock holds (the cursor is free)
 	holds = {}, -- [key] = { index, t, fired }: a helper key / portrait held (0.5 s = swap)
 	movementOn = false, -- MovementController's battle switches are set
-	shake = nil, -- { t0, dur, amp } camera shake
+	shake = nil, -- { t0, dur, amp, base, last, hum } camera shake (base = the resting CameraOffset, e.g. the dungeon shoulder)
+	lastDrawn = {}, -- wave 5 (bug #26): [userId] = { Pos, Key, At } where a dungeon fighter was drawn last (Net.Cleanup)
 	dim = nil, -- (Task 11) { t0, dur, token, unit } a signature's battle dim (LightingStack K.DIM_ID pushed)
 	pre = nil, -- (Task 11b) { B, unit, t0, untilT } my pressed SPECIAL's predicted charge, waiting for its event
 	inhales = {}, -- (Task 11b) token -> { sound, t0, dur, vol } the charges' inhale sounds
@@ -2153,13 +2175,18 @@ function Me.FighterTarget(B, u, x, z)
 	local dx, dz = rp.X - server.X, rp.Z - server.Z
 	local d = sqrt(dx * dx + dz * dz)
 	local ax, az, share = server.X, server.Z, K.FOLLOW_LERP
+	local k = 0
 	if d <= K.BLEND_DIST then
-		local k = 1 - d / K.BLEND_DIST
+		k = 1 - d / K.BLEND_DIST
 		ax, az = server.X + dx * k, server.Z + dz * k
 		share = 0.6
 	end
-	local off = rcf:VectorToWorldSpace(K.SHOULDER)
-	return Vector3.new(ax + off.X, rp.Y + off.Y, az + off.Z), share, rcf
+	-- bug #22: the shoulder offset (and the character's height) fade with the blend share: at my side the pet sits on
+	-- the shoulder as before; 2+ studs out (an ENGAGED pet fighting) it is drawn where the server has it
+	local offW = rcf:VectorToWorldSpace(K.SHOULDER)
+	local off = offW * k
+	local y = server.Y + (rp.Y + offW.Y - server.Y) * k -- (the shoulder height scaled by k once, not k^2)
+	return Vector3.new(ax + off.X, y, az + off.Z), share, rcf, d
 end
 
 -- a helper's spot behind me (index 1 / 2 = HELPER_A / HELPER_B); without a character behind the drawn fighter
@@ -2190,14 +2217,84 @@ function Me.HelperIndex(B, u)
 end
 
 -- per frame: my fighter / my helpers (positions + facing + bob + animation; the server never moves these parts)
+-- wave 5 (bug #26): a dungeon fighter's first drawn spot is where its follower pet stood (PetController), so the pet
+-- walks from the formation to the shoulder instead of popping there; nil = the shoulder as before
+function Me.SeedFromFollower(B, u, target)
+	if B.Mode ~= "Dungeon" or not LocalPlayer then
+		return nil
+	end
+	if Mods.Pets == nil then
+		Mods.Pets = optional(script.Parent, "PetController") or false
+	end
+	local pc = Mods.Pets
+	if not pc or type(pc.GetFollowerInfo) ~= "function" then
+		return nil
+	end
+	local ok, list = pcall(pc.GetFollowerInfo, LocalPlayer)
+	if not ok or type(list) ~= "table" then
+		return nil
+	end
+	local key = u.info and u.info.key
+	for _, e in ipairs(list) do
+		if e.Key == key and typeof(e.Model) == "Instance" then
+			local okP, cf = pcall(e.Model.GetPivot, e.Model)
+			if okP and typeof(cf) == "CFrame" and (cf.Position - target).Magnitude < 30 then
+				return cf.Position
+			end
+		end
+	end
+	return nil
+end
+
+-- the active fighter unit of a player in battle B (mine: B.fighterId; others: their unit that is not on the bench)
+function Me.FighterOf(B, userId)
+	if userId == myUserId() and B.Fighter and B.fighterId and B.units[B.fighterId] then
+		return B.units[B.fighterId]
+	end
+	for _, u in ipairs(B.list) do
+		if u.owner == userId and not u.benched and u.side == 1 then
+			return u
+		end
+	end
+	return nil
+end
+
+function Me.SpotOf(u)
+	if u.model and u.model.Parent then
+		local ok, cf = pcall(u.model.GetPivot, u.model)
+		if ok and typeof(cf) == "CFrame" then
+			return cf.Position
+		end
+	end
+	return u.drawn
+end
+
+-- before a dungeon floor goes: where every player's fighter was drawn (PetController's hand-over reads it)
+function Me.RecordDrawn(B)
+	local seen = {}
+	for _, u in ipairs(B.list) do
+		local uid = tonumber(u.owner)
+		if uid and not seen[uid] then
+			local f = Me.FighterOf(B, uid)
+			if f then
+				seen[uid] = true
+				local pos = Me.SpotOf(f)
+				if typeof(pos) == "Vector3" then
+					St.lastDrawn[uid] = { Pos = pos, Key = f.info and f.info.key, At = os.clock() }
+				end
+			end
+		end
+	end
+end
+
 function Me.Draw(B, u, now, dt, x, z)
 	if u.parked then
 		return
 	end
 	local isFighter = u.id == B.fighterId or (B.fighterId == nil and not u.benched)
-	local target, share, rcf
+	local target, share, rcf, blendD
 	if isFighter then
-		target, share, rcf = Me.FighterTarget(B, u, x, z)
+		target, share, rcf, blendD = Me.FighterTarget(B, u, x, z)
 	else
 		target, share = Me.HelperSpot(B, Me.HelperIndex(B, u)), 0.25
 		-- a Buff: fly to the fighter and back (BUFF_FLY)
@@ -2225,7 +2322,7 @@ function Me.Draw(B, u, now, dt, x, z)
 		end
 	end
 	if not u.drawn then
-		u.drawn = target
+		u.drawn = (isFighter and Me.SeedFromFollower(B, u, target)) or target
 	else
 		u.drawn = u.drawn:Lerp(target, lerpShare(share, dt))
 	end
@@ -2286,7 +2383,8 @@ function Me.Draw(B, u, now, dt, x, z)
 	local p = u.drawn + off + Vector3.new(0, bob, 0)
 	local cf = CFrame.new(p) * CFrame.Angles(0, u.wyaw, 0)
 	-- no battle idle while my fighter moves under my input (or a helper flies / swaps)
-	local busy = (isFighter and (u.state == S_MOVING or Me.Walking())) or u.flyAt ~= nil or u.swapAt ~= nil
+	-- (bug #22: my walking only counts while the pet is at my side; an engaged pet keeps its battle idle)
+	local busy = (isFighter and (u.state == S_MOVING or (Me.Walking() and (blendD == nil or blendD <= K.BLEND_DIST)))) or u.flyAt ~= nil or u.swapAt ~= nil
 	-- a helper that only breathes (the battle idle) is posed every other frame, like the other pets (stepBattle)
 	local animate = isFighter or u.poseSrc ~= "idle" or (St.frameNo + (u.slot or 0)) % 2 == 0
 	local pose, body = Atk.PoseOf(u, now, down, busy, animate, p)
@@ -2478,7 +2576,8 @@ function Me.Shake(amount, dur)
 	if scale <= 0 then
 		return
 	end
-	St.shake = { t0 = os.clock(), dur = dur or 0.18, amp = min(K.SHAKE_MAX, (amount or 0.2) * scale) }
+	local old = St.shake
+	St.shake = { t0 = os.clock(), dur = dur or 0.18, amp = min(K.SHAKE_MAX, (amount or 0.2) * scale), base = old and old.base, last = old and old.last, hum = old and old.hum }
 	BattleController._wake()
 end
 
@@ -2489,16 +2588,44 @@ function Me.UpdateShake(now)
 	end
 	local char = LocalPlayer and LocalPlayer.Character
 	local hum = char and char:FindFirstChildOfClass("Humanoid")
+	-- wave 5 (bug #15): the shake rides on the resting offset (the dungeon shoulder) and gives it back at the end; an
+	-- offset someone else wrote meanwhile (DungeonController's shoulder on / off, a new character) becomes the base
+	if hum then
+		local cur = hum.CameraOffset
+		if sh.hum ~= hum or sh.base == nil or sh.last == nil or (cur - sh.last).Magnitude > 1e-4 then
+			sh.base = cur
+			sh.hum = hum
+		end
+	end
 	local p = (now - sh.t0) / sh.dur
 	if p >= 1 or not hum then
 		St.shake = nil
 		if hum then
-			hum.CameraOffset = Vector3.new(0, 0, 0)
+			hum.CameraOffset = sh.base or Vector3.new(0, 0, 0)
 		end
 		return
 	end
 	local a = sh.amp * (1 - p)
-	hum.CameraOffset = Vector3.new(sin(now * 71) * a, cos(now * 63) * a * 0.6, 0)
+	local v = sh.base + Vector3.new(sin(now * 71) * a, cos(now * 63) * a * 0.6, 0)
+	hum.CameraOffset = v
+	sh.last = v
+end
+
+-- wave 5 (bug #15): a big attack (AttackFx's punch >= PUNCH_BIG: a rare+ special, a crit) punches the FOV, in a
+-- dungeon only; the Camera shake setting does NOT gate it (player ruling 2026-10-28: Shake OFF = only the hit shakes
+-- go; the punch is a short zoom, not a shake). MovementController owns the FOV
+function Me.FovPunch(amount)
+	local B = St.battle
+	amount = tonumber(amount) or 0
+	if not B or B.Mode ~= "Dungeon" or amount < K.PUNCH_BIG then
+		return false
+	end
+	local mc = Hud.Movement()
+	if mc and type(mc.FovPunch) == "function" then
+		local ok = pcall(mc.FovPunch, K.FOV_PUNCH * min(1, amount / 0.4), K.FOV_PUNCH_TIME)
+		return ok
+	end
+	return false
 end
 
 -- AttackFx's screen hooks (own pets only, AttackFx decides when): a soft glow along the screen edges (a Secret pet's
@@ -2765,6 +2892,7 @@ function Atk.Hook(m)
 	end
 	m.Hooks.Punch = function(amount, seconds)
 		Me.Shake(amount, seconds)
+		Me.FovPunch(amount)
 	end
 	m.Hooks.ScreenGlow = function(color, seconds)
 		Me.Glow(color, seconds)
@@ -3852,6 +3980,8 @@ Handlers[EV.Hit] = function(B, ev)
 	-- my fighter hit hard: a tiny camera shake (x the Shake setting)
 	if victim.mine and B.Fighter and victim.id == B.fighterId and dmg >= victim.maxHp * 0.12 then
 		Me.Shake(0.18, 0.16)
+	elseif victim.mine and B.Fighter and victim.id == B.fighterId and B.Mode == "Dungeon" and dmg > 0 then
+		Me.Shake(K.HIT_SHAKE_LIGHT[1], K.HIT_SHAKE_LIGHT[2]) -- wave 5 (bug #15): a light shake on every hit in a dungeon
 	end
 	-- victim feedback
 	if not victim.isBoss and attacker then
@@ -4248,6 +4378,19 @@ end
 
 Handlers[EV.Speed or "Speed"] = function()
 	-- (handled on arrival: Net.Pre)
+end
+
+-- bug #22: my pet leaves me to fight (the server's engage rule): the arrival hop = "it goes"; nothing else (no parts,
+-- the same on Low graphics); another player's pet just moves with its snapshots
+Handlers[EV.Engage or "Engage"] = function(B, ev)
+	if ev.on ~= true or not B.fighterId or tonumber(ev.unit) ~= B.fighterId then
+		return
+	end
+	local u = B.units[B.fighterId]
+	if u and u.model and not u.parked then
+		u.hopAt = os.clock()
+	end
+	Hud.enemyDirty = true
 end
 
 -- the End: plays every queued event that is not held for a flying shot, in order; true when held ones are left
@@ -4783,12 +4926,20 @@ function Hud.BuildActions()
 			local t = input.UserInputType
 			if t == Enum.UserInputType.Touch or t == Enum.UserInputType.MouseButton1 then
 				Input.Press(action, true)
+				if action == "Attack" then
+					-- bug #16: hold 0.4 s = the next target; the hold remembers its input + button so a slide off the button
+					-- (whose own InputEnded may never fire) cancels it instead of re-targeting
+					Input.HoldStart("attackButton", 0, os.clock(), "Attack", input, b)
+				end
 			end
 		end)
 		b.InputEnded:Connect(function(input)
 			local t = input.UserInputType
 			if t == Enum.UserInputType.Touch or t == Enum.UserInputType.MouseButton1 then
 				Input.Press(action, false)
+				if action == "Attack" then
+					Input.HoldEnd("attackButton")
+				end
 			end
 		end)
 	end
@@ -5347,7 +5498,8 @@ function Hud.Captions(B)
 	local f = B.fighterId and B.units[B.fighterId]
 	local ea = f and type(f.info.elementAttack) == "table" and f.info.elementAttack or nil
 	local caps = {
-		Attack = "PICK TARGET",
+		-- bug #16: ATTACK (a tap attacks the lock / the nearest); NEXT for NEXT_FLASH after a hold picked the next target
+		Attack = (St.nextFlashUntil and os.clock() < St.nextFlashUntil) and "NEXT" or "ATTACK",
 		Element = ea and string.upper(tostring(ea.Name)) or "ELEMENT",
 		Special = "SPECIAL",
 		Dash = "DASH",
@@ -6981,6 +7133,9 @@ function Input.OnAction(name, state, input)
 	if name == K.ACTION_ATTACK then
 		if began then
 			Input.Press("Attack", true)
+			Input.HoldStart("attackKey", 0, os.clock(), "Attack") -- bug #16: hold 0.4 s = the next target
+		elseif ended then
+			Input.HoldEnd("attackKey")
 		end
 	elseif name == K.ACTION_ELEMENT then
 		if began then
@@ -7107,25 +7262,40 @@ function Input.Press(kind, down, arg)
 	BattleController.Command(kind)
 end
 
--- per frame: a helper key / portrait held 0.5 s swaps
+-- per frame: a helper key / portrait held 0.5 s swaps; an ATTACK key / button held 0.4 s locks the next target (bug #16)
 function Input.Tick(B, now)
 	if not B or not fighting() then
 		return
 	end
 	for key, h in pairs(St.holds or {}) do
-		if not h.fired and now - h.t >= K.SWAP_HOLD then
+		if h.kind == "Attack" and not h.fired and h.gui and h.input and not Input.OnButton(h.input, h.gui) then
+			St.holds[key] = nil -- the touch / cursor slid off the ATTACK button: no re-target the player did not ask for
+		elseif h.kind == "Attack" then
+			if not h.fired and now - h.t >= K.ATTACK_HOLD then
+				h.fired = true
+				Input.CycleTarget()
+				St.nextFlashUntil = os.clock() + K.NEXT_FLASH
+				Hud.Captions(B)
+			end
+		elseif not h.fired and now - h.t >= K.SWAP_HOLD then
 			h.fired = true
 			Input.Helper("Swap", h.index)
 		end
 	end
+	if St.nextFlashUntil and os.clock() >= St.nextFlashUntil then
+		St.nextFlashUntil = nil
+		Hud.Captions(B)
+	end
 end
 
-function Input.HoldStart(key, index, t)
+-- `kind` "Attack" = an ATTACK hold (bug #16: it cycles the target, never a helper's Buff / Swap); `input` / `gui` (the
+-- ATTACK button's touch / click): the hold is dropped when that input leaves the button or ends anywhere
+function Input.HoldStart(key, index, t, kind, input, gui)
 	if not fighting() or not Input.GateOpen() then
 		return
 	end
 	St.holds = St.holds or {}
-	St.holds[key] = { index = index, t = t, fired = false }
+	St.holds[key] = { index = index, t = t, fired = false, kind = kind, input = input, gui = gui }
 	BattleController._wake()
 end
 
@@ -7135,7 +7305,7 @@ function Input.HoldEnd(key)
 		return
 	end
 	St.holds[key] = nil
-	if not h.fired then
+	if not h.fired and h.kind ~= "Attack" then
 		Input.Helper("Buff", h.index)
 	end
 end
@@ -7144,7 +7314,7 @@ end
 function Input.HoldFrac(index, now)
 	local best = 0
 	for _, h in pairs(St.holds or {}) do
-		if h.index == index and not h.fired then
+		if h.index == index and not h.fired and h.kind ~= "Attack" then
 			local p = (now - h.t - 0.1) / (K.SWAP_HOLD - 0.1)
 			if p > best then
 				best = min(1, p)
@@ -7285,8 +7455,27 @@ function Input.MouseLocked()
 	return ok and locked == true
 end
 
+-- is `input` (a touch / the mouse, GUI-inset space) still over `gui` (a few px of slack)?
+function Input.OnButton(input, gui)
+	local ok, inside = pcall(function()
+		local p = input.Position
+		local sg = gui:FindFirstAncestorOfClass("ScreenGui")
+		local y = p.Y + ((sg and sg.IgnoreGuiInset) and guiInset() or 0)
+		local a, s = gui.AbsolutePosition, gui.AbsoluteSize
+		local slack = 6
+		return gui.Visible and p.X >= a.X - slack and p.X <= a.X + s.X + slack and y >= a.Y - slack and y <= a.Y + s.Y + slack
+	end)
+	return not ok or inside == true
+end
+
 function Input.OnEnded(input)
 	local t = input.UserInputType
+	-- the ATTACK button's hold ends with its own touch / the mouse button wherever it is released (bug #16 review: a
+	-- release off the button never reaches the button's InputEnded)
+	local ah = St.holds and St.holds.attackButton
+	if ah and ((t == Enum.UserInputType.MouseButton1 and (ah.input == nil or ah.input.UserInputType == t)) or (t == Enum.UserInputType.Touch and (ah.input == nil or ah.input == input))) then
+		Input.HoldEnd("attackButton")
+	end
 	local tap = St.tap
 	if not tap or t ~= Enum.UserInputType.Touch then
 		return
@@ -7537,6 +7726,9 @@ end
 function Net.Cleanup(B, immediate)
 	if not B then
 		return
+	end
+	if B.Mode == "Dungeon" then
+		pcall(Me.RecordDrawn, B)
 	end
 	Tele.ClearAll(B)
 	for _, u in ipairs(B.list) do
@@ -8097,8 +8289,9 @@ function Net.End(payload, battleId)
 	Cards.AfterFight(B, payload)
 	local rw = type(payload.Rewards) == "table" and payload.Rewards or nil
 	if participant and B.Mode == "Dungeon" and (payload.Outcome == "Win" or payload.Won == true or (rw and rw.Dungeon == true and payload.Reason == "Cleared")) then
-		-- a cleared dungeon room: no result card (DungeonController shows the loot); the floor waits for the next room
-		B.linger = K.END_LINGER
+		-- a cleared dungeon room: no result card (DungeonController shows the loot); the floor goes after DUNGEON_LINGER
+		-- (bug #26: then the followers take over, PetController.HANDOVER)
+		B.linger = K.DUNGEON_LINGER
 		Hud.SetVisible(false)
 		Net.Cheer(B)
 	elseif participant and Ring.IsNext(B, payload) then
@@ -8480,6 +8673,46 @@ function BattleController.GetUnit(id)
 		-- pet attack VFX: the battle pose drawn last frame (PetPoses name; nil = none)
 		Pose = u.poseShown, PoseP = u.poseShownP,
 	}
+end
+
+-- wave 5 (bug #26): where the player's dungeon fighter is (still drawn) or was last drawn (<= LAST_DRAWN_AGE s ago)
+-- -> Vector3, key | nil (PetController's hand-over: the follower walks back from there)
+function BattleController.LastDrawn(userId)
+	userId = tonumber(userId)
+	if not userId then
+		return nil
+	end
+	local B = St.battle
+	if B and B.Mode == "Dungeon" then
+		local u = Me.FighterOf(B, userId)
+		local pos = u and Me.SpotOf(u)
+		if typeof(pos) == "Vector3" then
+			return pos, u.info and u.info.key
+		end
+	end
+	local e = St.lastDrawn[userId]
+	if e and os.clock() - e.At <= K.LAST_DRAWN_AGE then
+		return e.Pos, e.Key
+	end
+	St.lastDrawn[userId] = nil
+	return nil
+end
+
+-- wave 5 polish: is the player's dungeon fighter still drawn on the floor (a lost room's KO'd models linger END_LINGER)?
+-- PetController keeps the followers parked while it is (never two copies of the team on screen)
+function BattleController.FighterDrawn(userId)
+	userId = tonumber(userId)
+	local B = St.battle
+	if not userId or not B or B.Mode ~= "Dungeon" then
+		return false
+	end
+	local u = Me.FighterOf(B, userId)
+	return u ~= nil and u.model ~= nil and u.model.Parent ~= nil
+end
+
+function BattleController.LastDrawnKey(userId)
+	local _, key = BattleController.LastDrawn(userId)
+	return key
 end
 
 function BattleController.GetStats()

@@ -442,7 +442,7 @@ S.p5sim_fighter = guarded("p5sim_fighter", function()
 		return ev.order == "Target" and ev.target == e.id and ev.rejected == nil
 	end) ~= nil and b:TeamOf(1).Lock == e.id, "Target locks a unit (Order event, TeamOf.Lock)")
 	ok, why = b:Command(1, "Attack")
-	T.check(ok == true and why == e.id and tm.lock == e, "Attack() with the only enemy locked keeps it (the cycle wraps)")
+	T.check(ok == true and why == e.id and tm.lock == e, "Attack() keeps a live lock in EngageRange (bug #16: no cycle, no re-target)")
 	ok, why = b:Command(1, "Target", f.id)
 	T.check(not ok and why == "BadTarget" and b:Command(1, "Target", nil) == true and tm.lock == nil, "a lock on an ally is refused; Target nil clears")
 	-- ELEMENT: cooldown and every shape
@@ -856,7 +856,9 @@ S.p5sim_fighter = guarded("p5sim_fighter", function()
 		b10:Step(0.1)
 		T.check(near(f10.z, sp.Run * 0.6 * F.MoveSlack * 0.1, 0.03) and near(b10:SpeedOf(1).Run, sp.Run * 0.6, 1e-6), "a Slow lowers the cap and SpeedOf by x0.6")
 		f10.slowUntil = 0
-		-- the fighter stops at the wanted point, clamped inside the floor
+		-- the fighter stops at the wanted point, clamped inside the floor (FOLLOW: white-box, the engage rule of bug #22 held
+		-- off; smoke_fight.lua pins it)
+		t10.disengagedAt = huge
 		b10:Command(1, "Move", 0, 0)
 		for _ = 1, 30 do
 			b10:Step(0.1)
@@ -1275,7 +1277,12 @@ S.p5sim_determinism = guarded("p5sim_determinism", function()
 			if x > 20 then
 				x = -20
 			end
-			b:Command(1, "Move", x, steps * 0.05 - 10)
+			-- bug #22: a 2 s still phase (steps 40-59) so the engage rule (FOLLOW -> ENGAGED -> pull) is in the stream
+			if steps < 40 or steps >= 60 then
+				b:Command(1, "Move", x, steps * 0.05 - 10)
+			else
+				b:Command(1, "Move", 2, -8)
+			end
 			local e = firstEnemy(b)
 			if e then
 				b:Command(1, "Attack", e.id)
@@ -1331,6 +1338,7 @@ S.p5sim_determinism = guarded("p5sim_determinism", function()
 	local a, ra, sa = script(42)
 	local b2, rb = script(42)
 	T.check(a == b2 and ra == rb, "the same seed and command stream (Move points included) replay the same events and snapshots", fmt("%d steps, %s", sa, tostring(ra)))
+	T.check(a:find("on=true", 1, true) ~= nil and a:find("type=Engage", 1, true) ~= nil, "...with the engage rule in the stream (a 2 s still phase engages: an Engage event)")
 	local c = script(43)
 	T.check(c ~= a, "another seed plays differently")
 	T.check(#a > 1000 and sa > 50, "the scripted fight is long enough to mean something", sa)
@@ -1591,7 +1599,9 @@ S.p5battle_balance = guarded("p5battle_balance", function()
 	end
 	local raidB = SIM.series(raid4, policies, 3)
 	T.check(raid1.wins[1] == 3 and raid1.avgDur >= 100 and raid1.avgDur <= 240, "a solo prestige-2 fighter beats the Storm Titan in 100-240 s", fmt("%d of 3, %.0f s", raid1.wins[1], raid1.avgDur))
-	T.check(raidB.wins[1] == 3 and raidB.avgDur >= 100 and raidB.avgDur <= 240 and raidB.maxBossHit <= 0.8, "four mid fighters beat the Frost Wyrm in 100-240 s with no hit over 80%", fmt("%d of 3, %.0f s, max hit %.2f", raidB.wins[1], raidB.avgDur, raidB.maxBossHit))
+	-- (bug #22 wave 5: the engage rule lets a standing raider's pet walk back to the boss after a dodge, so a 3-seed cell
+	-- runs a little faster, ~98 s; the lower bound is the harness's own per-cell band (sim_battle: 90-250 s per cell))
+	T.check(raidB.wins[1] == 3 and raidB.avgDur >= 90 and raidB.avgDur <= 240 and raidB.maxBossHit <= 0.8, "four mid fighters beat the Frost Wyrm in 90-240 s (one cell) with no hit over 80%", fmt("%d of 3, %.0f s, max hit %.2f", raidB.wins[1], raidB.avgDur, raidB.maxBossHit))
 	-- ring: rounds 1-3 for the weakest starter; the S1 / S10 medians
 	local wins = 0
 	for seed = 1, 6 do

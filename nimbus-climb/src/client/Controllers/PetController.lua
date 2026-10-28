@@ -59,6 +59,13 @@
 --     formation when the owner stands up. A battle still parks them first (that check comes before it).
 --   * Phase 3: while the owner's player attribute `InBattle` is set (BattleService), the followers are parked: the
 --     battle team fights on the floor, drawn by BattleController. They snap back into formation afterwards.
+--     Wave 5 (bug #26): in a dungeon InBattle is the RUN id ("D12") for the whole run, so there the followers park
+--     only while the attribute InFight is true (DungeonService: a room's fight); in the hall, the corridors, the
+--     walk-ins and the treasure they follow. When InFight goes true -> nil they stay parked HANDOVER seconds more
+--     (= BattleController's dungeon linger: the fighter model is still drawn), and longer while BattleController still
+--     draws the fighter (BattleController.FighterDrawn: a LOST room's KO'd models linger), at most HANDOVER_MAX 5 s;
+--     then they reappear and the fighter pet walks back into its slot from where BattleController last drew it
+--     (BattleController.LastDrawn(userId)). The name cards show / hide with the followers.
 --   * Owners that are downed keep their pets close; owners that teleport (> 35 studs in one step) or
 --     respawn get their pets snapped back into formation. A pet that ends up > 60 studs from its slot snaps.
 --   * Pets of OTHER players are only shown within 150 studs of the viewer (with a little hysteresis) and are
@@ -151,6 +158,15 @@ local LOD_FAR = 105 -- ... and beyond this one every 4th frame
 -- Teleports and catch-up
 local TELEPORT_STEP2 = 35 * 35 -- owner moved further than this in one update -> snap the formation
 local SNAP_DIST2 = 60 * 60 -- a pet further than this from its slot snaps to it
+
+-- wave 5 (bug #26): seconds the followers wait after a dungeon fight (= BattleController K.DUNGEON_LINGER)
+local HANDOVER = 1.0
+PetController.HANDOVER = HANDOVER
+-- the hand-over also waits while BattleController still draws the fighter (a LOST room: the KO'd models linger
+-- END_LINGER 3.5 s with the result card), but never longer than this after the fight ended
+local HANDOVER_MAX = 5.0
+PetController.HANDOVER_MAX = HANDOVER_MAX
+local ATTR_IN_FIGHT = (Config.Attr and Config.Attr.InFight) or "InFight"
 
 -- Time steps
 local MAX_DT = 0.1
@@ -893,6 +909,19 @@ local function trackPlayer(player)
 	conns[#conns + 1] = player.CharacterAdded:Connect(function()
 		f.nextRootCheck = 0 -- look for the new HumanoidRootPart on the next frame
 	end)
+	-- wave 5 (bug #26): a dungeon fight ended (InFight true -> nil): the hand-over (the fighter model goes first)
+	f.inFight = player:GetAttribute(ATTR_IN_FIGHT) == true
+	conns[#conns + 1] = player:GetAttributeChangedSignal(ATTR_IN_FIGHT):Connect(function()
+		local on = player:GetAttribute(ATTR_IN_FIGHT) == true
+		if f.inFight and not on then
+			f.handoverUntil = os.clock() + HANDOVER
+			f.handoverCap = os.clock() + HANDOVER_MAX
+		elseif on then
+			f.handoverUntil = nil
+			f.handoverCap = nil
+		end
+		f.inFight = on
+	end)
 	conns[#conns + 1] = player.CharacterRemoving:Connect(function(char)
 		if f.char == char then
 			releaseCharacter(f)
@@ -1354,6 +1383,76 @@ function P4.onStateChanged()
 end
 
 ----------------------------------------------------------------------
+-- Wave 5 (bug #26): the dungeon hand-over
+----------------------------------------------------------------------
+-- a dungeon run id ("D12"), not a battle id ("B7"; BattleService.Enc.isRunId)
+function P4.isRunId(v)
+	return type(v) == "string" and v:sub(1, 1) == "D"
+end
+
+-- true = the follower is parked now: InBattle set, unless it is a dungeon run id with no fight on (InFight) and no
+-- hand-over running; the hand-over's end shows the follower again (P4.emerge)
+function P4.parkWanted(f)
+	local inBattle = f.player:GetAttribute("InBattle")
+	if inBattle ~= nil and (f.player:GetAttribute(ATTR_IN_FIGHT) == true or not P4.isRunId(inBattle)) then
+		return true
+	end
+	if f.handoverUntil then
+		local now = os.clock()
+		if now < f.handoverUntil or (now < (f.handoverCap or 0) and P4.fighterDrawn(f)) then
+			return true
+		end
+		f.handoverUntil = nil
+		f.handoverCap = nil
+		if not f.visible then
+			setVisible(f, true)
+			P4.emerge(f)
+		end
+	end
+	return false
+end
+
+-- BattleController still draws this player's dungeon fighter (a lost room's KO'd models linger)
+function P4.fighterDrawn(f)
+	if P4.BC == nil then
+		P4.BC = optionalModule(script.Parent, "BattleController") or false
+	end
+	local BC = P4.BC
+	if not BC or type(BC.FighterDrawn) ~= "function" then
+		return false
+	end
+	local ok, drawn = pcall(BC.FighterDrawn, f.userId)
+	return ok and drawn == true
+end
+
+-- the followers reappear after a dungeon fight: the fighter pet starts where BattleController last drew it
+function P4.emerge(f)
+	if P4.BC == nil then
+		P4.BC = optionalModule(script.Parent, "BattleController") or false
+	end
+	local BC = P4.BC
+	if not BC or type(BC.LastDrawn) ~= "function" then
+		return
+	end
+	local ok, pos, key = pcall(BC.LastDrawn, f.userId)
+	if not ok or typeof(pos) ~= "Vector3" then
+		return
+	end
+	local target = nil
+	for i = 1, f.n do
+		local p = f.pets[i]
+		if key ~= nil and p.key == key then
+			target = p
+			break
+		end
+	end
+	target = target or f.pets[1]
+	if target then
+		target.emergeFrom = pos
+	end
+end
+
+----------------------------------------------------------------------
 -- Per-frame update
 ----------------------------------------------------------------------
 -- Advances one follower by dt seconds. `viewPos` is where the viewer is (Vector3 or nil).
@@ -1500,7 +1599,9 @@ local function stepFollower(f, dt, now, viewPos)
 	end
 
 	-- 3. culling + level of detail -------------------------------------------------------------
-	if f.player:GetAttribute("InBattle") ~= nil then -- Phase 3: the team fights (BattleController draws it): park the followers
+	-- Phase 3: the team fights (BattleController draws it): park the followers. Wave 5 (bug #26): a dungeon run id
+	-- parks only during a room's fight (InFight) and the hand-over after it (P4.parkWanted)
+	if P4.parkWanted(f) then
 		setVisible(f, false)
 		return
 	end

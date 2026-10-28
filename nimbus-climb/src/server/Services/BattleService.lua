@@ -120,7 +120,10 @@
 -- tick every live participant's character root (zone-local) is fed as Command(owner, "Move", x, z); after them the LEASH
 -- measures the gap between the character and the server fighter: a gap > Fighter.Leash (10) for Fighter.LeashSeconds (3)
 -- = a leaver in Duel / Ring, a RemoveTeam in Raid / Dungeon (a run-off or a teleport; an in-zone speed hack is not leashed
--- and gains nothing). After each step: "Events" (the Step() events) to the receivers that already have the battle,
+-- and gains nothing). Bug #22: while the sim team is ENGAGED (BattleSim's engage rule: the character stands, the pet left
+-- it to fight) the leash is skipped (Cmd.engaged, white-box like Cmd.stunned): the sim bounds the gap itself
+-- (Fighter.EngageLeash 18) and drops back to FOLLOW when the character walks > EngagePull (7) away; the FOLLOW leash then
+-- runs as before (a teleport is leashed at most ~1 s later). After each step: "Events" (the Step() events) to the receivers that already have the battle,
 -- "Start" to new receivers, then "Snapshot". Messages (BattleState(kind, payload, battleId)):
 --   "Start"    battle:Describe() + Zone = { CFrame (floor centre), Size (Vector3: X, height, Z), X, Z } + Names =
 --              { [tostring(userId)] = name } + Side (the receiver's side, 0 for a spectator) + Spectator + T + Ring (ring
@@ -130,7 +133,7 @@
 --              receiver's previous snapshot, as flat numbers (BattleSim.DecodeSnapshot decodes; code = id x 1024 + lives x 256
 --              + windup x 128 + mask x 8 + state). Fighters get a snapshot every step (10 Hz), spectators every other step.
 --   "Events"   the list of Step() events (Hit / Special / KO / Telegraph / Spawn / Enrage / Order / Zone / Leave / End /
---              Element / Dash / Buff / Swap / Windup / Wave / EnemiesDown / Speed), only when the step produced any; a
+--              Element / Dash / Buff / Swap / Windup / Wave / EnemiesDown / Speed / Engage), only when the step produced any; a
 --              refusal of a command BEFORE the sim (NotInZone, junk) also echoes Order { owner, order, rejected }.
 --   "End"      { BattleId, Mode, Result (the public result: owner maps keyed by tostring(userId)), Rewards (the
 --              receiver's own, nil for spectators), Outcome = "Win" | "Loss" | "Draw" | "Left" | nil, Won, Spectator,
@@ -3885,6 +3888,12 @@ function Cmd.stunned(b, part, gap, F)
 	return (part.LeashGraceUntil or 0) > t
 end
 
+-- bug #22: the sim team is ENGAGED (white-box: BattleSim's team.engage): its pet left the standing character to fight
+function Cmd.engaged(b, part)
+	local team = Cmd.simTeam(b, part.UserId)
+	return team ~= nil and type(team.engage) == "table"
+end
+
 -- the leash: the gap between the character and the server fighter AFTER the legal step, > Fighter.Leash for
 -- Fighter.LeashSeconds = a run-off / teleport (a leaver in Duel / Ring, a RemoveTeam in Raid / Dungeon)
 function Cmd.leash(b, part, dt)
@@ -3906,6 +3915,12 @@ function Cmd.leash(b, part, dt)
 	-- the stun lasts, nor during the catch-up after it (the gap closes at legal run x (MoveSlack - 1)); B1 / C15: a legit
 	-- raider frozen by a boss is never leashed. The presence check (the zone + its margin) still applies.
 	if Cmd.stunned(b, part, gap, F) then
+		part.LeashT = 0
+		return false
+	end
+	-- bug #22: an ENGAGED pet fights away from its standing character on purpose; the sim bounds it (EngageLeash) and the
+	-- character's step (> EngagePull) brings it back to FOLLOW, where this leash runs again
+	if Cmd.engaged(b, part) then
 		part.LeashT = 0
 		return false
 	end
