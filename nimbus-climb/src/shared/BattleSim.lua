@@ -23,8 +23,10 @@
 --               Mode Dungeon: side 2 may start empty (SpawnEnemies fills it).
 --   battle:Command(owner, action, arg) -> ok, reason, extra
 --     "Attack" (targetId | nil)       DIRECTS the fighter (dungeon fixes 4; it never swings by itself): Attack(id) locks that enemy,
---                                     Attack() locks the nearest targetable enemy (a press while the lock IS that one cycles to the
---                                     next nearest, by distance then id); -> true, lockId, "OutOfReach" | nil (the lock is beyond
+--                                     Attack() KEEPS a live lock within EngageRange + its radius of the fighter (bug #16: F never
+--                                     pulls the pet off its enemy; no echo), else locks the nearest targetable enemy (by distance
+--                                     then id; the old cycle is gone: the client's hold-F / Tab / RT send Target(next) for that);
+--                                     -> true, lockId, "OutOfReach" | nil (the lock is beyond
 --                                     range + radius + AttackSlack: BattleService toasts "Too far!"); refused: Down / BadTarget /
 --                                     NoTarget. Echo: Order { owner, order = "Attack", target } when the lock changes.
 --                                     THE AUTO-ATTACK: every step a player's fighter that is not Stunned / Casting / Dashing /
@@ -42,6 +44,17 @@
 --                                     while Casting / Stunned
 --     "Move" (x, z)                   the fighter's wanted floor point (the CHARACTER position; never from a remote): the fighter walks
 --                                     toward it at <= legal run x MoveSlack (x DashSpeed / RunSpeed while Dashing), clamped to the floor
+--                                     THE ENGAGE RULE (bug #22: "the character leads when it moves, the pet fights when it stands"):
+--                                     FOLLOW (above) -> ENGAGED when the Move point has been still EngageStillSeconds (no Move at all
+--                                     = still, stand = the fighter's own point), EngageCooldown passed since the last disengage, the
+--                                     fighter is not arriving / Casting, and an engage target exists: the lock, else the fresh threat
+--                                     (who hit it within ThreatSeconds), else the nearest targetable enemy, each within EngageRange +
+--                                     its radius of the STAND point (the Move point when it engaged). Engaged, the fighter ignores
+--                                     the Move point and walks at the honest legal run (no MoveSlack; x the dash factor, 0 Stunned)
+--                                     to reach - 0.5 (melee) / reach - 1 (ranged: it holds at the edge of its range) of the target.
+--                                     Back to FOLLOW when the Move point leaves the stand point by > EngagePull, no target is in
+--                                     range, or the fighter is > EngageLeash from the stand point; a Swap / the fighter's KO /
+--                                     RemoveTeam drop it too. Harness Auto teams (autoFighter) never engage: today's exact behaviour.
 --     "Forfeit" ()                    Duel / Ring: the team is knocked out; Raid / Dungeon: RemoveTeam
 --   battle:Step(dt) -> events;  battle:Snapshot();  battle:SnapshotDelta(last);  BattleSim.DecodeSnapshot(payload, prev)
 --   battle:AddTeam(team) -> infos | nil, reason;  battle:RemoveTeam(owner) -> ok
@@ -50,7 +63,8 @@
 --   battle:LivingEnemies() -> n;  battle:BossHp() -> 0..1 | nil;  battle:Finish(reason) -> ok, events  ("Cleared" = side 1 wins,
 --                                     "Abandoned" / "Shutdown" / ... = no winner);  battle:Abort(reason) = Finish
 --   battle:TeamOf(owner) -> { Owner, Side, Fighter = id, Bench = { id, id }, Lives, Speed = { Walk, Run }, Cooldowns = { Element, Dash,
---                                     Swap, Buff = { [slot] = seconds } }, Lock, Damage, Kills, Left, Forfeited, Units = { {id, slot, hp,
+--                                     Swap, Buff = { [slot] = seconds } }, Lock, Engaged (the engaged target id | nil), Damage, Kills,
+--                                     Left, Forfeited, Units = { {id, slot, hp,
 --                                     maxHp, meter, state, alive, bench}... } }
 --   battle:SpeedOf(owner) -> { Walk, Run }   the fighter's current legal speeds (speed buffs / slows included)
 --   battle:Result() -> nil while running, else { Mode, Reason, WinnerSide, Winners, Losers, Draw, Forfeit, BossId, Round, Damage =
@@ -64,8 +78,9 @@
 --   battle:Time(), IsFinished(), Owners(), BossStatus(), SetAnchor(owner, x, z)
 --   BattleSim.States = { Idle 0, Moving 1, Attacking 2, Benched 3, Casting 4, Down 5, Stunned 6, Dashing 7 }  (Winding = Attacking + windup bit)
 --   BattleSim.Events = { Hit, Special, KO, Telegraph, Spawn, Enrage, Order, Zone, Leave, End, Element, Dash, Buff, Swap, Windup, Wave,
---                        EnemiesDown, Speed }
+--                        EnemiesDown, Speed, Engage }
 -- Event shapes:
+--   Engage     { owner, unit (the fighter), on = true, target }  /  { owner, unit, on = false }   (only the FOLLOW / ENGAGED flips)
 --   Hit        { from, to, dmg, elem, crit, absorbed, miss = true (dodged), burn = true, leech = n, element = name, special = kind,
 --                tele, zone, attack, buffDmg = true }
 --   Special    { unit, kind, name, x, z, tx, tz, target, targets, heals, shields, stunned, angle }
@@ -129,6 +144,7 @@ BattleSim.Events = {
 	Wave = "Wave",
 	EnemiesDown = "EnemiesDown",
 	Speed = "Speed",
+	Engage = "Engage",
 }
 BattleSim.Actions = { "Attack", "Element", "Special", "Dash", "Target", "Buff", "Swap", "Move", "Forfeit" }
 BattleSim.Modes = { "Duel", "Raid", "Ring", "Dungeon" }
@@ -241,6 +257,7 @@ local FALLBACK_FIGHTER = {
 	MeterPerSecond = 6, MeterOnHit = 4, MeterOnHurt = 2, DashSeconds = 0.35, DashCooldown = 2.5, DashIFrames = 0.35, SwapCooldown = 10,
 	SwapCastSeconds = 0.6, BenchRegenPerSecond = 0, ArriveSeconds = 1.2, DownAutoSwap = true, HelperCooldown = 15, SupportCooldown = 12, Windup = 0.45,
 	KitFactor = 1.5, HelperWeight = 0.35, Lives = 3, WalkMult = 1.15, WalkMin = 12, WalkMax = 20, RunMult = 1.3, MoveSlack = 1.25,
+	Leash = 10, LeashSeconds = 3, EngageRange = 14, EngageLeash = 18, EngagePull = 3, EngageStillSeconds = 0.5, EngageCooldown = 0.5,
 }
 
 local function damageRules()
@@ -424,6 +441,12 @@ local function newTeamRecord(self, spec, side)
 		lock = nil,
 		wantX = nil,
 		wantZ = nil,
+		-- the engage rule (bug #22): nil | { target, unit, standX, standZ, since }; the still detector; the re-engage cooldown
+		engage = nil,
+		lastWantX = nil,
+		lastWantZ = nil,
+		movedAt = self.t or 0, -- a new team (late join / rejoin) engages after EngageStillSeconds like any other
+		disengagedAt = -huge,
 		faceX = 0,
 		faceZ = 1,
 		anchorX = 0,
@@ -1255,6 +1278,7 @@ function BattleSim:TeamOf(owner)
 			Buff = buffs,
 		},
 		Lock = team.lock and team.lock.id or nil,
+		Engaged = team.engage and team.engage.target.id or nil,
 		Damage = team.damage,
 		Kills = team.kills,
 		Left = team.left,
@@ -1521,6 +1545,19 @@ end
 
 local swapIn -- forward (the auto-swap on a fighter's KO)
 
+-- the engage rule (bug #22): back to FOLLOW; `events` nil = no event (RemoveTeam: the Leave event says it all)
+local function dropEngage(self, team, events)
+	local e = team.engage
+	if not e then
+		return
+	end
+	team.engage = nil
+	team.disengagedAt = self.t
+	if events then
+		events[#events + 1] = { type = EV.Engage, owner = team.owner, unit = e.unit, on = false }
+	end
+end
+
 local function knockOut(self, u, by, events, forfeit)
 	u.alive = false
 	u.hp = 0
@@ -1543,6 +1580,9 @@ local function knockOut(self, u, by, events, forfeit)
 	end
 	events[#events + 1] = ev
 	local team = u.team
+	if team.player and u == team.fighter then
+		dropEngage(self, team, events)
+	end
 	-- a downed fighter is replaced by the next alive helper at once (3 lives)
 	if team.player and u == team.fighter and not forfeit and fighterRules().DownAutoSwap ~= false then
 		for _, v in ipairs(team.units) do
@@ -2188,6 +2228,8 @@ function swapIn(self, team, incoming, events, auto)
 	local F = fighterRules()
 	local out = team.fighter
 	local x, z = team.anchorX, team.anchorZ
+	-- the incoming pet starts in FOLLOW (it re-engages after its cast + the still time)
+	dropEngage(self, team, events)
 	if out then
 		x, z = out.x, out.z
 		if out.alive then
@@ -2795,6 +2837,111 @@ function fighterSwing(self, team, f, events)
 	return true
 end
 
+----------------------------------------------------------------------
+-- The engage rule (bug #22): "the character leads when it moves, the pet fights when it stands"
+----------------------------------------------------------------------
+-- the enemy an engaged fighter fights, judged from the stand point (sx, sz): the lock, else the fresh threat, else the
+-- nearest targetable enemy, each within EngageRange + its radius (ties: the lower id; self.units is in id order)
+local function engageTarget(self, team, f, sx, sz)
+	local range = num(fighterRules().EngageRange, 14)
+	local lock = lockOf(team)
+	if lock and targetable(self, lock) and dist(sx, sz, lock.x, lock.z) <= range + lock.radius then
+		return lock
+	end
+	local threat = f.threat
+	if threat and threat.side ~= team.side and targetable(self, threat)
+		and self.t - (f.threatAt or -huge) <= num(damageRules().ThreatSeconds, 3)
+		and dist(sx, sz, threat.x, threat.z) <= range + threat.radius then
+		return threat
+	end
+	local best, bestD = nil, huge
+	local list = self.units
+	local side = team.side
+	for i = 1, #list do
+		local e = list[i]
+		if e.side ~= side and targetable(self, e) then
+			local d = dist(sx, sz, e.x, e.z)
+			if d <= range + e.radius and d < bestD then
+				best, bestD = e, d
+			end
+		end
+	end
+	return best
+end
+
+-- the engaged approach: the honest legal run (no MoveSlack), x the dash factor while Dashing, 0 while Stunned; melee to
+-- reach - 0.5 (NPC parity, well inside AttackSlack), ranged to reach - 1 (it holds at the edge of its range, no kiting)
+local function engageStep(self, team, f, target, dt)
+	local t = self.t
+	local _, run = legalSpeeds(self, team)
+	local step = run * dt
+	if t < f.dashUntil then
+		step = step * dashSpeedFactor()
+	end
+	if t < f.stunUntil then
+		step = 0
+	end
+	local reach = f.range + target.radius
+	local stop = max(0, f.ranged and (reach - 1.0) or (reach - 0.5))
+	local ox, oz = f.x, f.z
+	if step > 0 then
+		moveToward(f, target.x, target.z, step, stop)
+	end
+	clampToFloor(self, f)
+	f.moving = dist(ox, oz, f.x, f.z) > 0.05
+	local dx, dz = target.x - f.x, target.z - f.z
+	local d = sqrt(dx * dx + dz * dz)
+	if d > 0.01 then
+		team.faceX, team.faceZ = dx / d, dz / d
+	end
+end
+
+-- FOLLOW <-> ENGAGED for a player's fighter this step (before it moves) -> the engaged target | nil
+local function engageUpdate(self, team, f, events)
+	local F = fighterRules()
+	local t = self.t
+	-- the still detector: the Move point moved > 0.3 stud since the last step = the character walks
+	if team.wantX ~= nil then
+		if team.lastWantX ~= nil and dist(team.wantX, team.wantZ, team.lastWantX, team.lastWantZ) > 0.3 then
+			team.movedAt = t
+		end
+		team.lastWantX, team.lastWantZ = team.wantX, team.wantZ
+	end
+	local e = team.engage
+	if e then
+		if e.unit ~= f.id then
+			dropEngage(self, team, events)
+			return nil
+		end
+		local pulled = team.wantX ~= nil and dist(team.wantX, team.wantZ, e.standX, e.standZ) > num(F.EngagePull, 3)
+		local strayed = dist(f.x, f.z, e.standX, e.standZ) > num(F.EngageLeash, 18)
+		local target = (not pulled and not strayed) and engageTarget(self, team, f, e.standX, e.standZ) or nil
+		if not target then
+			dropEngage(self, team, events)
+			return nil
+		end
+		e.target = target
+		return target
+	end
+	if t - team.movedAt < num(F.EngageStillSeconds, 0.5) or t - team.disengagedAt < num(F.EngageCooldown, 0.5) then
+		return nil
+	end
+	if arriving(self, f) or t < f.castUntil then
+		return nil
+	end
+	local sx, sz = team.wantX, team.wantZ
+	if sx == nil then
+		sx, sz = f.x, f.z -- no Move at all (a dead character, the harness): the stand point is the fighter's own
+	end
+	local target = engageTarget(self, team, f, sx, sz)
+	if not target then
+		return nil
+	end
+	team.engage = { target = target, unit = f.id, standX = sx, standZ = sz, since = t }
+	events[#events + 1] = { type = EV.Engage, owner = team.owner, unit = f.id, on = true, target = target.id }
+	return target
+end
+
 local function fighterStep(self, team, dt, events)
 	local f = team.fighter
 	if not f or not f.alive or f.gone or f.benched then
@@ -2807,8 +2954,15 @@ local function fighterStep(self, team, dt, events)
 	if team.auto and not team.npc then
 		autoFighter(self, team, f, dt, events)
 	end
+	-- the engage rule (bug #22); harness Auto teams keep today's exact behaviour (autoFighter drives wantX itself)
+	local engaged = nil
+	if not team.auto then
+		engaged = engageUpdate(self, team, f, events)
+	end
+	if engaged then
+		engageStep(self, team, f, engaged, dt)
 	-- movement toward the wanted point at <= legal run x MoveSlack (x the dash factor while Dashing)
-	if team.wantX ~= nil then
+	elseif team.wantX ~= nil then
 		local _, run = legalSpeeds(self, team)
 		local cap = run * num(F.MoveSlack, 1.25)
 		if t < f.dashUntil then
@@ -2848,15 +3002,16 @@ local function fighterStep(self, team, dt, events)
 	else
 		f.state = S_IDLE
 	end
-	-- the lock is the drawn target
-	f.target = lockOf(team)
+	-- the drawn target: the lock, else the enemy the engaged pet fights (the snapshot's target bit)
+	f.target = lockOf(team) or (team.engage and team.engage.target) or nil
 	-- dungeon fixes (7): no passive bench regen in combat (only a healing pet's Heal special / Heal buff heals the bench)
 end
 
 local doCommand -- forward
 
 -- the harness / Auto fighter: approaches its target at the legal run speed and presses the kit (no dodging: the
--- scripted player of tools/sim_battle.lua does that)
+-- scripted player of tools/sim_battle.lua does that). It rewrites wantX / wantZ itself every step, so an Auto team never
+-- runs the engage rule (fighterStep skips it): the balance harness keeps today's exact numbers.
 function autoFighter(self, team, f, dt, events)
 	local target = lockOf(team) or nearestEnemy(self, f)
 	if not target then
@@ -3218,9 +3373,10 @@ local function unitArg(self, team, arg)
 	return unit
 end
 
--- Attack() with no id: the nearest targetable enemy, or the next one by distance after the current lock (repeated presses
--- cycle; ties by id so it is deterministic)
-local function cycleTarget(self, team, f)
+-- Attack() with no id and no live lock in EngageRange: the nearest targetable enemy (ties by id so it is deterministic).
+-- Bug #16: the old "a press on the lock cycles to the next" is gone (it walked the pet off its enemy); the deliberate
+-- re-target is the client's hold-F / Tab / RT -> Target(next id)
+local function nearestTarget(self, team, f)
 	local list = {}
 	for _, e in ipairs(self.units) do
 		if e.side ~= team.side and targetable(self, e) then
@@ -3237,14 +3393,6 @@ local function cycleTarget(self, team, f)
 		end
 		return a.e.id < b.e.id
 	end)
-	local lock = lockOf(team)
-	if lock then
-		for i, entry in ipairs(list) do
-			if entry.e == lock then
-				return list[(i % #list) + 1].e
-			end
-		end
-	end
 	return list[1].e
 end
 
@@ -3325,7 +3473,13 @@ function doCommand(self, team, action, arg, events)
 				return false, "BadTarget"
 			end
 		else
-			target = cycleTarget(self, team, f)
+			-- bug #16: a live lock within EngageRange is KEPT (F never pulls the pet off its enemy; no echo below)
+			local lock = lockOf(team)
+			if lock and targetable(self, lock) and dist(f.x, f.z, lock.x, lock.z) <= num(F.EngageRange, 14) + lock.radius then
+				target = lock
+			else
+				target = nearestTarget(self, team, f)
+			end
 			if not target then
 				return false, "NoTarget"
 			end
@@ -3502,6 +3656,7 @@ function BattleSim:RemoveTeam(owner)
 		return false
 	end
 	team.left = true
+	dropEngage(self, team, nil)
 	local ids = {}
 	for _, u in ipairs(team.units) do
 		ids[#ids + 1] = u.id
