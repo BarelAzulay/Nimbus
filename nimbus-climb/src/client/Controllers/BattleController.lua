@@ -79,7 +79,9 @@
 --   * Wave 5 dungeon camera (bugs #15 / #26): the shake rides on the resting CameraOffset (DungeonController's dungeon
 --     shoulder) and gives it back; in a dungeon every hit on my fighter shakes lightly (HIT_SHAKE_LIGHT) and an AttackFx
 --     punch >= PUNCH_BIG also punches the FOV (MovementController.FovPunch, FOV_PUNCH 6 degrees x min(1, amount / 0.4));
---     both off with the Shake setting. A cleared dungeon room's floor goes after DUNGEON_LINGER 1 s; my fighter's first
+--     the Shake setting turns off only the shakes (player ruling 2026-10-28: the FOV punch plays regardless). A cleared
+--     dungeon room's floor goes after DUNGEON_LINGER 1 s; BattleController.FighterDrawn(userId) says whether a player's
+--     dungeon fighter is still drawn (a lost room's KO'd models linger; the followers wait for it); my fighter's first
 --     drawn spot is its follower's (PetController), and BattleController.LastDrawn(userId) -> pos, key tells
 --     PetController where each player's fighter was drawn last (the followers walk back from there).
 --
@@ -2610,11 +2612,12 @@ function Me.UpdateShake(now)
 end
 
 -- wave 5 (bug #15): a big attack (AttackFx's punch >= PUNCH_BIG: a rare+ special, a crit) punches the FOV, in a
--- dungeon only and only with the Camera shake setting on (MovementController owns the FOV)
+-- dungeon only; the Camera shake setting does NOT gate it (player ruling 2026-10-28: Shake OFF = only the hit shakes
+-- go; the punch is a short zoom, not a shake). MovementController owns the FOV
 function Me.FovPunch(amount)
 	local B = St.battle
 	amount = tonumber(amount) or 0
-	if not B or B.Mode ~= "Dungeon" or amount < K.PUNCH_BIG or Me.ShakeScale() <= 0 then
+	if not B or B.Mode ~= "Dungeon" or amount < K.PUNCH_BIG then
 		return false
 	end
 	local mc = Hud.Movement()
@@ -8693,6 +8696,18 @@ function BattleController.LastDrawn(userId)
 	end
 	St.lastDrawn[userId] = nil
 	return nil
+end
+
+-- wave 5 polish: is the player's dungeon fighter still drawn on the floor (a lost room's KO'd models linger END_LINGER)?
+-- PetController keeps the followers parked while it is (never two copies of the team on screen)
+function BattleController.FighterDrawn(userId)
+	userId = tonumber(userId)
+	local B = St.battle
+	if not userId or not B or B.Mode ~= "Dungeon" then
+		return false
+	end
+	local u = Me.FighterOf(B, userId)
+	return u ~= nil and u.model ~= nil and u.model.Parent ~= nil
 end
 
 function BattleController.LastDrawnKey(userId)

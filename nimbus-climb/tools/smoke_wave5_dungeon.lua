@@ -21,17 +21,22 @@
 --                         Cinematic; after the walk + blend: Custom, FOV 70, controls back; a game-processed click does not
 --                         skip, a free click skips (the character at the Threshold), the sink key skips, a Fight payload
 --                         hands back within 0.45 s, End clears at once, no room model = no walk-in, a lost RenderStep is
---                         cleared by the light loop, Shake OFF = a static shot
+--                         cleared by the light loop; the lane / end point come from where the root stands at the fade-in
+--                         (a Run payload that beat the teleport); Shake OFF: the walk-in shot still moves (player ruling
+--                         2026-10-28: the setting turns off only the hit shakes)
 --   client_w5dgn_enter    the voxel entrance: 16 x 9 cells on 1920 x 1080 (DisplayOrder 26), the camera rush (Scriptable ->
---                         Custom by the cover), every cell full by 0.55, the fresh Run makes them fall, the gui off by 0.95;
---                         9 x 16 on a portrait phone, End during the cover clears at once; Low = 8 x 5 and a click in the
---                         reveal hides at once; no Run: reveal at 3 s and clear; Shake OFF: the camera never leaves its type
+--                         Custom by the cover), every cell full by 0.45 (Cover 0.55 - ENTER_MARGIN), no Workspace walk to find
+--                         the gate, the fresh Run makes them fall, the gui off by 0.95; 9 x 16 on a portrait phone, End during
+--                         the cover clears at once; Low = 8 x 5 and a click in the reveal hides at once; no Run: reveal at 3 s
+--                         and clear; Shake OFF: the rush still plays (ruling 2026-10-28); a camera > 60 studs from the gate:
+--                         no rush, the blocks still cover
 --   client_w5pets_follow  InBattle = a run id with no InFight: the followers show; InFight true parks them; InFight nil keeps
 --                         them parked 0.5 s, shows them by 1.1 s, the fighter-key pet starting where BattleController last
 --                         drew it; InBattle = a battle id still parks (regression)
 --   client_w5dgn_camera   the dungeon shoulder offset on the run's Run payload, kept through a shake (AttackFx punch), zero
 --                         on End; in a dungeon battle a 5 % hit on my fighter shakes once and a big punch (0.25) opens the
---                         FOV and lets it go within 0.3 s; Shake OFF: neither; a raid: no light shake, no FOV punch
+--                         FOV and lets it go within 0.3 s; Shake OFF: no shake but the FOV punch still plays (ruling
+--                         2026-10-28); a raid: no light shake, no FOV punch
 -- Plain Lua 5.1 syntax only.
 
 local CONTEXT = (ARGS and ARGS.context) or "server"
@@ -742,7 +747,25 @@ local function clientScenarios()
 		KC.advance(1.4)
 		T.check(DC.GetState().Walk == nil and c.CameraType == Enum.CameraType.Custom, "w5 walk-in: a stuck walk clears by 3 s (the light loop's safety)")
 
-		-- Shake OFF: a static hero shot
+		-- the Run payload beat the teleport: the root is still at the previous room's exit when the walk-in is prepared and
+		-- lands by the door under the black; the lane and the end point follow where it stands as the fade lifts
+		KC.toClient("DungeonState", "Run", runPayload("Fight", nil, 1, id))
+		KC.advance(0.1)
+		Mock.Teleport(LP, CFrame.new(P0 + Vector3.new(60, 20, 40)))
+		KC.advance(0.05)
+		enterRoom(id, 1)
+		local preparedAt = DC.GetState().Walk
+		Mock.Teleport(LP, CFrame.new(P0 + Vector3.new(3, 0, 0), P0 + Vector3.new(3, 0, -1)))
+		stepUntil(function()
+			return DC.GetState().Walk == "Walk"
+		end, 0.6)
+		local wtpL = KC.hum().WalkToPoint
+		T.check(preparedAt == "Hold" and typeof(wtpL) == "Vector3" and math.abs(wtpL.X - (th.Position.X + 3)) < 0.2 and math.abs(wtpL.Y - KC.root().Position.Y) < 0.5,
+			"w5 walk-in: the lane / end point are recomputed at the fade-in from where the root stands (not the stale pre-teleport spot)",
+			string.format("%s, MoveTo %s, Threshold X %.1f", tostring(preparedAt), tostring(wtpL), th.Position.X))
+		KC.advance(2.0)
+
+		-- Shake OFF: the walk-in shot still moves (player ruling 2026-10-28: the setting turns off only the hit shakes)
 		setShake(false)
 		KC.toClient("DungeonState", "Run", runPayload("Fight", nil, 1, id))
 		KC.advance(0.1)
@@ -754,8 +777,8 @@ local function clientScenarios()
 		local cf1 = c.CFrame
 		KC.advance(0.5)
 		local cf2 = c.CFrame
-		T.check(DC.GetState().Walk == "Walk" and (cf1.Position - cf2.Position).Magnitude < 1e-3 and cf1.LookVector:Dot(cf2.LookVector) > 0.99999,
-			"w5 walk-in: Shake OFF: the camera does not move during the walk-in (static shot)")
+		T.check(DC.GetState().Walk == "Walk" and (cf1.Position - cf2.Position).Magnitude > 0.3 and c.CameraType == Enum.CameraType.Scriptable,
+			"w5 walk-in: Shake OFF: the walk-in shot still plays (the camera dollies)", string.format("moved %.2f, %s, %s, cf1 %s", (cf1.Position - cf2.Position).Magnitude, tostring(DC.GetState().Walk), tostring(c.CameraType), tostring(cf1.Position)))
 		setShake(true)
 		endRun()
 		LP:SetAttribute("InBattle", nil)
@@ -813,14 +836,32 @@ local function clientScenarios()
 		c.CameraType = Enum.CameraType.Custom
 		c.CFrame = CFrame.lookAt(Vector3.new(0, 300, 40), Vector3.new(0, 300, 0))
 		LP:SetAttribute("InBattle", "D95")
+		-- the gate lookup never walks the whole Workspace (a hitch on a big plaza)
+		local wsMethods = Mock.Classes and Mock.Classes.Workspace and Mock.Classes.Workspace.methods
+		local realGD = wsMethods and wsMethods.GetDescendants
+		local walks = 0
+		if realGD then
+			wsMethods.GetDescendants = function(self, ...)
+				if self == Workspace then
+					walks = walks + 1
+				end
+				return realGD(self, ...)
+			end
+		end
 		KC.toClient("DungeonState", "Enter", enterPayload())
 		Mock.Step(1 / 30)
+		if realGD then
+			wsMethods.GetDescendants = realGD
+		end
+		T.check(realGD ~= nil and walks == 0, "w5 enter: the Dungeon gate is found without a Workspace:GetDescendants() walk", walks .. " walks")
 		local list, gui = cells()
 		T.check(gui and gui.Enabled and gui.DisplayOrder == 26 and gui.IgnoreGuiInset == true and #list == 144, "w5 enter: NimbusDungeonEnter (DisplayOrder 26) with 16 x 9 cells on 1920 x 1080", tostring(#list))
 		T.check(DC.GetState().Enter == "Rush" and c.CameraType == Enum.CameraType.Scriptable, "w5 enter: the camera rushes into the gate (Scriptable)", tostring(DC.GetState().Enter))
 		KC.advance(0.3)
 		T.check((c.CFrame.Position - Vector3.new(0, 300, 40)).Magnitude > 3, "w5 enter: the camera moved toward the vortex")
-		KC.advance(0.27)
+		KC.advance(0.12)
+		T.check(allFull(list, 16, 9) and DC.GetState().Enter ~= "Hold", "w5 enter: every cell full by 0.45 s (ENTER_MARGIN before Cover 0.55: the teleport can never show at the edges)", tostring(DC.GetState().Enter))
+		KC.advance(0.15)
 		T.check(allFull(list, 16, 9) and c.CameraType == Enum.CameraType.Custom and DC.GetState().Enter == "Hold", "w5 enter: every cell full by 0.55 s, the camera back to Custom under them", tostring(DC.GetState().Enter))
 		KC.toClient("DungeonState", "Run", runPayload("Hall", nil, 0, "D95"))
 		KC.advance(0.3)
@@ -876,9 +917,21 @@ local function clientScenarios()
 		KC.advance(1.0)
 		T.check(gui.Enabled == false and DC.GetState().Enter == nil, "w5 enter: ... and the blocks are gone")
 
-		-- Shake OFF: no rush (the camera keeps its type), the blocks still play
+		-- Shake OFF: the rush still plays (player ruling 2026-10-28: the setting turns off only the hit shakes)
+		KC.advance(0.6)
+		endRun()
 		setShake(false)
 		c.CameraType = Enum.CameraType.Custom
+		c.CFrame = CFrame.lookAt(Vector3.new(0, 300, 40), Vector3.new(0, 300, 0))
+		KC.toClient("DungeonState", "Enter", enterPayload())
+		Mock.Step(1 / 30)
+		T.check(DC.GetState().Enter == "Rush" and c.CameraType == Enum.CameraType.Scriptable and gui.Enabled, "w5 enter: Shake OFF: the camera rush still plays (Scriptable), the blocks cover",
+			tostring(DC.GetState().Enter))
+		setShake(true)
+		endRun()
+		-- a camera far from the gate (a member who wandered off): no flight across the plaza, the blocks still cover
+		c.CameraType = Enum.CameraType.Custom
+		c.CFrame = CFrame.lookAt(Vector3.new(0, 300, 100), Vector3.new(0, 300, 0))
 		KC.toClient("DungeonState", "Enter", enterPayload())
 		local never = true
 		for _ = 1, 20 do
@@ -887,8 +940,7 @@ local function clientScenarios()
 				never = false
 			end
 		end
-		T.check(never and DC.GetState().Enter ~= nil and gui.Enabled, "w5 enter: Shake OFF: no camera rush, the blocks still cover")
-		setShake(true)
+		T.check(never and DC.GetState().Enter ~= nil and gui.Enabled, "w5 enter: a camera 100 studs from the gate (> 60): no rush, the blocks still cover")
 		endRun()
 		LP:SetAttribute("InBattle", nil)
 		gate:Destroy()
@@ -944,13 +996,27 @@ local function clientScenarios()
 			local m = pc.GetFollowerInfo(LP)[1].Model
 			return m ~= nil and m:IsDescendantOf(Workspace)
 		end
+		local function cardsShown()
+			local n, on = 0, 0
+			for _, c in ipairs(pc.GetCards()) do
+				if c.UserId == LP.UserId then
+					n = n + 1
+					on = on + (c.Shown and 1 or 0)
+				end
+			end
+			return n, on
+		end
 		LP:SetAttribute("InBattle", "D1")
-		KC.advance(0.2)
+		KC.advance(0.6)
 		T.check(shown(), "w5 pets: visible in the corridor (InBattle = a run id, InFight nil)")
+		local nc, onc = cardsShown()
+		T.check(nc == 2 and onc == 2, "w5 pets: ...and their name cards show with them (the cards follow the park rule, not InBattle)", onc .. " of " .. nc)
 		LP:SetAttribute("InFight", true)
 		Mock.Step(1 / 30)
 		Mock.Step(1 / 30)
 		T.check(not shown(), "w5 pets: InFight true parks them within a frame (BattleController draws the team)")
+		nc, onc = cardsShown()
+		T.check(onc == 0, "w5 pets: ...and their name cards hide", onc .. " of " .. nc)
 		local real = BC.LastDrawn
 		local spot = KC.root().Position + Vector3.new(6, 0, 0)
 		local key = info[1].Key
@@ -973,9 +1039,35 @@ local function clientScenarios()
 			local d = m and (m:GetPivot().Position - spot).Magnitude or 99
 			T.check(d < 2.5, "w5 pets: the fighter-key pet starts where BattleController last drew the fighter", string.format("%.2f studs", d))
 		end)
+		-- a LOST room: the KO'd fighter is still drawn (END_LINGER) after the hand-over: the followers wait for it
+		local drawnUntil = 0
+		local realDrawn = BC.FighterDrawn
+		BC.FighterDrawn = function(uid)
+			return uid == LP.UserId and Mock.Clock.now < drawnUntil
+		end
+		local ok2, err2 = pcall(function()
+			LP:SetAttribute("InFight", true)
+			KC.advance(0.2)
+			drawnUntil = Mock.Clock.now + 2.5
+			LP:SetAttribute("InFight", nil)
+			KC.advance(1.6)
+			T.check(not shown(), "w5 pets: a lost room: still parked at +1.6 s while the KO'd fighter model is drawn (no two teams on screen)")
+			KC.advance(1.1)
+			T.check(shown(), "w5 pets: ...and back once the fighter is gone")
+			LP:SetAttribute("InFight", true)
+			KC.advance(0.2)
+			drawnUntil = Mock.Clock.now + 60
+			LP:SetAttribute("InFight", nil)
+			KC.advance(5.3)
+			T.check(shown(), "w5 pets: ...never longer than HANDOVER_MAX (5 s) after the fight, whatever BattleController says")
+		end)
+		BC.FighterDrawn = realDrawn
 		BC.LastDrawn = real
 		if not ok then
 			error(err, 0)
+		end
+		if not ok2 then
+			error(err2, 0)
 		end
 		LP:SetAttribute("InBattle", "B7")
 		Mock.Step(1 / 30)
@@ -1129,7 +1221,9 @@ local function clientScenarios()
 			local offBefore = hum.CameraOffset
 			punch(0.25, 0.2)
 			Mock.Step(1 / 30)
-			T.check(math.abs(c.FieldOfView - base) < 0.05 and (hum.CameraOffset - offBefore).Magnitude < 1e-4, "w5 camera: Shake OFF: no FOV punch, no shake")
+			T.check(c.FieldOfView > base + 1 and (hum.CameraOffset - offBefore).Magnitude < 1e-4, "w5 camera: Shake OFF: no shake, but the FOV punch still plays (player ruling 2026-10-28)",
+				string.format("FOV %.2f -> %.2f", base, c.FieldOfView))
+			KC.advance(0.3)
 			setShake(true)
 		end
 		d.finish()

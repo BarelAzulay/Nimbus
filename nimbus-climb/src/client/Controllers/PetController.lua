@@ -57,8 +57,10 @@
 --     Wave 5 (bug #26): in a dungeon InBattle is the RUN id ("D12") for the whole run, so there the followers park
 --     only while the attribute InFight is true (DungeonService: a room's fight); in the hall, the corridors, the
 --     walk-ins and the treasure they follow. When InFight goes true -> nil they stay parked HANDOVER seconds more
---     (= BattleController's dungeon linger: the fighter model is still drawn), then reappear and the fighter pet walks
---     back into its slot from where BattleController last drew it (BattleController.LastDrawn(userId)).
+--     (= BattleController's dungeon linger: the fighter model is still drawn), and longer while BattleController still
+--     draws the fighter (BattleController.FighterDrawn: a LOST room's KO'd models linger), at most HANDOVER_MAX 5 s;
+--     then they reappear and the fighter pet walks back into its slot from where BattleController last drew it
+--     (BattleController.LastDrawn(userId)). The name cards show / hide with the followers.
 --   * Owners that are downed keep their pets close; owners that teleport (> 35 studs in one step) or
 --     respawn get their pets snapped back into formation. A pet that ends up > 60 studs from its slot snaps.
 --   * Pets of OTHER players are only shown within 150 studs of the viewer (with a little hysteresis) and are
@@ -155,6 +157,10 @@ local SNAP_DIST2 = 60 * 60 -- a pet further than this from its slot snaps to it
 -- wave 5 (bug #26): seconds the followers wait after a dungeon fight (= BattleController K.DUNGEON_LINGER)
 local HANDOVER = 1.0
 PetController.HANDOVER = HANDOVER
+-- the hand-over also waits while BattleController still draws the fighter (a LOST room: the KO'd models linger
+-- END_LINGER 3.5 s with the result card), but never longer than this after the fight ended
+local HANDOVER_MAX = 5.0
+PetController.HANDOVER_MAX = HANDOVER_MAX
 local ATTR_IN_FIGHT = (Config.Attr and Config.Attr.InFight) or "InFight"
 
 -- Time steps
@@ -868,8 +874,10 @@ local function trackPlayer(player)
 		local on = player:GetAttribute(ATTR_IN_FIGHT) == true
 		if f.inFight and not on then
 			f.handoverUntil = os.clock() + HANDOVER
+			f.handoverCap = os.clock() + HANDOVER_MAX
 		elseif on then
 			f.handoverUntil = nil
+			f.handoverCap = nil
 		end
 		f.inFight = on
 	end)
@@ -1349,16 +1357,31 @@ function P4.parkWanted(f)
 		return true
 	end
 	if f.handoverUntil then
-		if os.clock() < f.handoverUntil then
+		local now = os.clock()
+		if now < f.handoverUntil or (now < (f.handoverCap or 0) and P4.fighterDrawn(f)) then
 			return true
 		end
 		f.handoverUntil = nil
+		f.handoverCap = nil
 		if not f.visible then
 			setVisible(f, true)
 			P4.emerge(f)
 		end
 	end
 	return false
+end
+
+-- BattleController still draws this player's dungeon fighter (a lost room's KO'd models linger)
+function P4.fighterDrawn(f)
+	if P4.BC == nil then
+		P4.BC = optionalModule(script.Parent, "BattleController") or false
+	end
+	local BC = P4.BC
+	if not BC or type(BC.FighterDrawn) ~= "function" then
+		return false
+	end
+	local ok, drawn = pcall(BC.FighterDrawn, f.userId)
+	return ok and drawn == true
 end
 
 -- the followers reappear after a dungeon fight: the fighter pet starts where BattleController last drew it

@@ -21,6 +21,8 @@
 --   PortalFxController.Stop()        disconnects everything and restores every gate
 --   PortalFxController.Stats() -> { Gates, Active, Parts, Writes, Time, Quality }
 --   PortalFxController.Gate(model) -> the record of a tracked gate (tests) | nil
+--   PortalFxController.FindGate(id) -> the tracked gate Model whose GateId is `id` | nil (DungeonController's entrance
+--                                      rush: no Workspace walk)
 --   PortalFxController.K             the tuning numbers (tests read them)
 --   PortalFxController.Flare(model, seconds) -> bool   wave 5 (bug #15): the Dungeon entrance: the ring and the light
 --                                    flare up and settle over `seconds` (the same properties, restored as always);
@@ -666,6 +668,16 @@ end
 
 function PortalFx.Gate(model)
 	return St.Gates[model]
+end
+
+function PortalFx.FindGate(id)
+	id = tostring(id)
+	for model, rec in pairs(St.Gates) do
+		if rec.Id == id and model.Parent then
+			return model
+		end
+	end
+	return nil
 end
 
 -- wave 5 (bug #15): the gate flares up (the Dungeon entrance's rush); a static gate (Low, out of range) does nothing

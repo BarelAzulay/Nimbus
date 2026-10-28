@@ -54,9 +54,11 @@
 --       (the character is set at the Threshold). Never stuck: WALK_SAFETY 3 s, End, the InBattle release, the
 --       character removed. Outside a fade (a late join, a rejoin) there is no walk-in.
 --     - The dungeon camera: Humanoid.CameraOffset = DUNGEON_SHOULDER (a little over the right shoulder) for the run,
---       zero again on End / leaving the run. The Camera shake setting OFF = the walk-in is a static shot and there is
---       no rush (the blocks still play: they are UI). MovementController.SetFovOverride / SetCinematic do the FOV and
---       the walk speed (the one place that writes them every frame).
+--       zero again on End / leaving the run. The Camera shake setting OFF turns off ONLY the hit shakes (player ruling
+--       2026-10-28): the entrance rush, the walk-in shot and the FOV punch on big attacks play regardless (all short and
+--       skippable). The rush is skipped when the camera is > ENTER_RUSH_MAX from the gate (no flight across the plaza).
+--       MovementController.SetFovOverride / SetCinematic do the FOV and the walk speed (the one place that writes them
+--       every frame).
 -- Remotes: DungeonState (in), OpenPanel (in), DungeonRequest (out). One side panel at a time: opening it closes the
 -- menu windows, the Pet Index, the Fusion / Care windows and the Arena windows; theirs close this one. Esc / gamepad
 -- B / the red X / walking 40 studs away from the gate close it. Text is designed at 1080p (>= 18 design px).
@@ -122,7 +124,7 @@ local K = {
 	WALK_BLEND = 0.35, -- the scripted -> normal camera blend
 	WALK_SKIP_BLEND = 0.25,
 	WALK_FIGHT_GRACE = 0.4, -- the fight started (someone crossed): the walk-in hands back control within this
-	WALK_CAM = { Ahead = 9, Pull = 3, Up = 3.5, Settle = 0.8, Swing = 2.5, Fov0 = 60, Fov1 = 70, StaticFov = 66 },
+	WALK_CAM = { Ahead = 9, Pull = 3, Up = 3.5, Settle = 0.8, Swing = 2.5, Fov0 = 60, Fov1 = 70 },
 	WALK_SAFETY = 3, -- the camera is never left Scriptable longer than this
 	WALK_REISSUE = 0.5, -- Humanoid:MoveTo again this often (a fresh Humanoid needs it)
 	WALK_LANE = 4.8, -- studs: everybody keeps their lane across the doorway
@@ -135,7 +137,9 @@ local K = {
 	ENTER_GRID = { Desktop = { 16, 9 }, Portrait = { 9, 16 }, Low = { 8, 5 }, LowPortrait = { 5, 8 } },
 	ENTER_RUSH = 0.5, -- the camera rush into the gate
 	ENTER_RUSH_FOV = 55,
-	ENTER_LEAD = 0.15, -- the first blocks pop this long after the rush began
+	ENTER_RUSH_MAX = 60, -- studs: a camera further than this from the gate gets no rush (the blocks still cover)
+	ENTER_LEAD = 0.10, -- the first blocks pop this long after the rush began
+	ENTER_MARGIN = 0.15, -- every block is full this long before Cover (the hall teleport can never show at the edges)
 	ENTER_POP = 0.12, -- one block's pop-in (Back Out)
 	ENTER_HOP = 0.12, -- the reveal: a block's hop ...
 	ENTER_FALL = 0.5, -- ... and its fall
@@ -2140,18 +2144,6 @@ function H.mcCall(fn, ...)
 	end
 end
 
--- the Camera shake setting (ClientSettings "Shake", default on): off = no scripted camera motion (reduce motion)
-function H.shakeOn()
-	local cs = H.clientModule("ClientSettings")
-	if cs and type(cs.Get) == "function" then
-		local ok, v = pcall(cs.Get, "Shake")
-		if ok then
-			return v ~= false
-		end
-	end
-	return true
-end
-
 function H.lowGfx()
 	local gq = H.clientModule("GraphicsQuality")
 	if gq and type(gq.Effective) == "function" then
@@ -2284,10 +2276,6 @@ end
 -- the camera of the walk-in at progress e (0..1): inside the room, in front of the walkers, looking back at them
 function R.walkCam(w, e)
 	local c = K.WALK_CAM
-	if w.Static then
-		local at = w.End + w.Inward * (c.Ahead + c.Pull * 0.5) + Vector3.new(0, c.Up - c.Settle * 0.5, 0)
-		return CFrame.lookAt(at, w.End - w.Inward * 3 + Vector3.new(0, 1.2, 0))
-	end
 	local at = w.End + w.Inward * (c.Ahead + c.Pull * e) + w.Right * (c.Swing * math.sin(e * math.pi / 2) * w.Side) + Vector3.new(0, c.Up - c.Settle * e, 0)
 	return CFrame.lookAt(at, w.Root.Position + Vector3.new(0, 1.2, 0))
 end
@@ -2323,20 +2311,15 @@ function R.walkPrepare(room, key)
 	end
 	inward = inward.Unit
 	local right = inward:Cross(Vector3.new(0, 1, 0))
-	local lane = math.max(-K.WALK_LANE, math.min(K.WALK_LANE, (root.Position - th.Position):Dot(right)))
-	local base = Vector3.new(th.Position.X, root.Position.Y, th.Position.Z)
 	local fade = S.Fade
 	local w = {
 		Token = (S.WalkSeq or 0) + 1,
 		Room = room,
 		Key = key,
 		Phase = "Hold",
+		Th = th,
 		Inward = inward,
 		Right = right,
-		Lane = lane,
-		Side = (lane >= 0) and -1 or 1, -- the swing goes to the far side of my lane: the party stays centred
-		End = base + inward * K.WALK_IN + right * lane,
-		Static = not H.shakeOn(),
 		Hum = hum,
 		Root = root,
 		CamOff = fade and fade.CamOff or (camera.CFrame.Position - root.Position),
@@ -2344,11 +2327,12 @@ function R.walkPrepare(room, key)
 		HardAt = os.clock() + K.FADE_SAFETY + K.WALK_SAFETY,
 		T0 = os.clock(),
 	}
+	R.walkLane(w)
 	S.WalkSeq = w.Token
 	S.Walk = w
 	camera.CameraType = Enum.CameraType.Scriptable
 	camera.CFrame = R.walkCam(w, 0)
-	H.mcCall("SetFovOverride", w.Static and K.WALK_CAM.StaticFov or K.WALK_CAM.Fov0)
+	H.mcCall("SetFovOverride", K.WALK_CAM.Fov0)
 	H.mcCall("SetCinematic", K.WALK_SPEED)
 	R.walkControls(true, w)
 	RunService:BindToRenderStep(K.WALK_BIND, H.renderPriority(2), function(dt)
@@ -2362,11 +2346,25 @@ function R.walkPrepare(room, key)
 	return true
 end
 
+-- my lane across the doorway and the end point, from where the root stands NOW (the server's teleport into the room
+-- and its Run payload are not ordered, so R.walkGo recomputes them as the fade lifts)
+function R.walkLane(w)
+	local th, root, right = w.Th, w.Root, w.Right
+	local lane = math.max(-K.WALK_LANE, math.min(K.WALK_LANE, (root.Position - th.Position):Dot(right)))
+	local base = Vector3.new(th.Position.X, root.Position.Y, th.Position.Z)
+	w.Lane = lane
+	w.Side = (lane >= 0) and -1 or 1 -- the swing goes to the far side of my lane: the party stays centred
+	w.End = base + w.Inward * K.WALK_IN + right * lane
+end
+
 -- the fade lifts: the character walks in
 function R.walkGo()
 	local w = S.Walk
 	if not w or w.Phase ~= "Hold" then
 		return
+	end
+	if w.Th.Parent and w.Root.Parent then
+		R.walkLane(w)
 	end
 	w.Phase = "Walk"
 	w.T0 = os.clock()
@@ -2401,7 +2399,7 @@ function R.walkStep(_dt)
 		end
 		camera.CFrame = R.walkCam(w, e)
 		local c = K.WALK_CAM
-		H.mcCall("SetFovOverride", w.Static and c.StaticFov or (c.Fov0 + (c.Fov1 - c.Fov0) * e))
+		H.mcCall("SetFovOverride", c.Fov0 + (c.Fov1 - c.Fov0) * e)
 		if w.Phase == "Walk" then
 			if now >= w.NextMove then
 				w.NextMove = now + K.WALK_REISSUE
@@ -2511,15 +2509,36 @@ end
 ----------------------------------------------------------------------
 -- Wave 5 (bug #15): the voxel-shatter entrance and the dungeon shoulder camera
 ----------------------------------------------------------------------
--- the Dungeon gate (GateId "Dungeon"; its PrimaryPart GlowCore is the vortex centre)
+-- the Dungeon gate (GateId "Dungeon"; its PrimaryPart GlowCore is the vortex centre). Looked up in the known places
+-- only (the Gate Court folder NimbusLobby/Gates, PortalFxController's tracked gates, Workspace's own children), never
+-- with a Workspace:GetDescendants() walk (a hitch on a big plaza at the worst moment)
 function R.dungeonGate()
 	local g = S.Gate
 	if g and g.Parent then
 		return g
 	end
 	S.Gate = nil
-	for _, d in ipairs(Workspace:GetDescendants()) do
-		if d:IsA("Model") and d:GetAttribute("GateId") == "Dungeon" then
+	local function isGate(d)
+		return typeof(d) == "Instance" and d:IsA("Model") and d:GetAttribute("GateId") == "Dungeon"
+	end
+	local lobby = Workspace:FindFirstChild("NimbusLobby")
+	local folder = lobby and lobby:FindFirstChild("Gates")
+	for _, d in ipairs(folder and folder:GetChildren() or {}) do
+		if isGate(d) then
+			S.Gate = d
+			return d
+		end
+	end
+	local pfx = H.controller("PortalFxController")
+	if pfx and type(pfx.FindGate) == "function" then
+		local ok, d = pcall(pfx.FindGate, "Dungeon")
+		if ok and isGate(d) and d:IsDescendantOf(Workspace) then
+			S.Gate = d
+			return d
+		end
+	end
+	for _, d in ipairs(Workspace:GetChildren()) do
+		if isGate(d) then
 			S.Gate = d
 			return d
 		end
@@ -2638,8 +2657,11 @@ function R.enter(payload)
 	}
 	S.EnterSeq = e.Token
 	local camera = Workspace.CurrentCamera
-	local gate = H.shakeOn() and R.dungeonGate() or nil
+	local gate = R.dungeonGate()
 	local core = gate and gate.PrimaryPart
+	if camera and core and (camera.CFrame.Position - core.Position).Magnitude > K.ENTER_RUSH_MAX then
+		core = nil -- the camera is far from the gate (a member who wandered off): no flight across the plaza
+	end
 	if camera and core then
 		local cp = core.Position
 		local lv = core.CFrame.LookVector
@@ -2689,7 +2711,7 @@ function R.enterStep(_dt)
 				e.Phase = "Cover"
 			end
 		end
-		local span = math.max(0, e.Cover - e.Lead - K.ENTER_POP)
+		local span = math.max(0, e.Cover - K.ENTER_MARGIN - e.Lead - K.ENTER_POP) -- full by Cover - ENTER_MARGIN
 		for _, cell in ipairs(U.EnterCells) do
 			local k = H.clamp01((t - (e.Lead + span * cell.Dist)) / K.ENTER_POP)
 			local s = (k >= 1) and 1 or backOut(k)
