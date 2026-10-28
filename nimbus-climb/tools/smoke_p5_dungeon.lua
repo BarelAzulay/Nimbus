@@ -569,7 +569,11 @@ local function serverScenarios()
 	local function startSolo(p, floorIndex)
 		toPad(p, 0, 0)
 		request(p, "Solo", floorIndex or 1)
-		return runOf(p)
+		local run = runOf(p)
+		if run then
+			advance(0.6) -- wave 5 (bug #15): the entrance cover (DungeonService ENTER.Cover 0.55), then the hall
+		end
+		return run
 	end
 
 	-- the BattleService battle record of an encounter (white-box, tests only: BattleService exposes no sim accessor; the
@@ -1536,7 +1540,10 @@ local function serverScenarios()
 			request(qb, "Quit")
 			advance(0.6)
 			local mb = run.Members[qb.UserId]
-			T.check(mb and mb.Left == true and inBattle(qb) == nil and runOf(qb) == nil and run.State == "Fight" and lastState(qb, "End", mark) ~= nil and bs.IsInBattle(qb) == false,
+			-- (wave 5: the fight starts where the members stand, no yank to the Entrance, so the remaining strong team may
+			-- clear floor 1's sleepy room inside these 0.6 s: "goes on" = still fighting or in the cleared corridor)
+			local goesOn = run.State == "Fight" or (run.State == "Corridor" and run.Phase == "Walk")
+			T.check(mb and mb.Left == true and inBattle(qb) == nil and runOf(qb) == nil and goesOn and lastState(qb, "End", mark) ~= nil and bs.IsInBattle(qb) == false,
 				"p5 ends: Quit mid-fight removes that member only (End sent, InBattle nil, out of the encounter); the run goes on")
 			local i = info()
 			local root = K.root(qb)
@@ -1578,7 +1585,8 @@ local function serverScenarios()
 			Mock.RemovePlayer(lb)
 			advance(0.6)
 			local mb = run.Members[lb.UserId]
-			T.check(mb and mb.Left == true and mb.LeftWhy == "Disconnect" and run.State == "Fight" and count(run.Members) == 2, "p5 ends: a disconnect removes that member (Disconnect); the run goes on")
+			local goesOn = run.State == "Fight" or (run.State == "Corridor" and run.Phase == "Walk") -- (see the Quit check)
+			T.check(mb and mb.Left == true and mb.LeftWhy == "Disconnect" and goesOn and count(run.Members) == 2, "p5 ends: a disconnect removes that member (Disconnect); the run goes on")
 			Mock.Respawn(la)
 			advance(1.2)
 			local ma = run.Members[la.UserId]
@@ -1652,8 +1660,8 @@ local function serverScenarios()
 			local maxT = dgs.MaxRunSeconds(1)
 			local roomT = d.Floor1RoomTime
 			-- dungeon-fixes decision 2: no DoorTime / HallSeconds any more; 5 door waits of 180 s (pooled) are allowed
-			T.check(maxT >= d.RunMaxSeconds and maxT >= 4 * roomT + 4 * (30 + d.Intermission) + 5 * 180 + d.TreasureSeconds + 120 and dgs.MaxRunSeconds(2) >= 4 * d.RoomTime + 5 * 180,
-				"p5 ends: MaxRunSeconds(1) covers four 180 s rooms + the 30 s Threshold waits + 5 door waits of 180 s (a slow-walking group) + treasure + 120 (" .. tostring(maxT) .. " >= " .. tostring(d.RunMaxSeconds) .. ")")
+			T.check(maxT >= d.RunMaxSeconds and maxT >= 4 * roomT + 4 * (3 + d.Intermission) + 5 * 180 + d.TreasureSeconds + 120 and dgs.MaxRunSeconds(2) >= 4 * d.RoomTime + 5 * 180,
+				"p5 ends: MaxRunSeconds(1) covers four 180 s rooms + the 3 s walk-in waits (wave 5, was 30 s) + 5 door waits of 180 s (a slow-walking group) + treasure + 120 (" .. tostring(maxT) .. " >= " .. tostring(d.RunMaxSeconds) .. ")")
 			run.Started = Mock.Clock.now - d.RunMaxSeconds - 1
 			advance(1.2)
 			T.check(run.State ~= "Ending", "p5 ends: a floor-1 run older than the catalog's 703 s is NOT killed (a slow legit run)", tostring(run.State))
