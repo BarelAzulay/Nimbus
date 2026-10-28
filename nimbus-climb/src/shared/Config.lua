@@ -498,12 +498,61 @@ Config.Sky = {
 	Faces = { Bk = "", Dn = "", Ft = "", Lf = "", Rt = "", Up = "" },
 }
 
--- Music and sounds (optional): free Creator Store audio ids as "rbxassetid://<id>". Empty = silent, nothing breaks.
--- SoundFx.Music(context) crossfades Lobby / Battle / Dungeon at the player's Music setting; Play(name) at the Sfx setting.
-Config.Audio = {
-	Music = { Lobby = "", Battle = "", Dungeon = "" },
-	Sfx = { Click = "", Confirm = "", Error = "", Reward = "", Whoosh = "" },
+-- Music and sounds: the player's ORIGINAL audio (nimbus-climb/audio/, audio/README.md), uploaded by the owner's keyed
+-- session with tools/upload_assets.py --audio into shared/AudioIds.lua (audio key -> number; docs/phase6/OWNER_UPLOAD.md
+-- section 6b). Config.Audio.Keys names the AudioIds key of every sound; Music / Sfx / Ambient hold the ids that exist
+-- (numbers; a missing key = that sound is silent, no error, no warning). client/SoundFx turns them into Sounds:
+--   Music[context]  "Lobby" | "Battle" | "Dungeon", looped, crossfaded (SoundFx.Music / SetLayer), at the Music setting
+--   Sfx[name]       one-shots (SoundFx.Play): Click Confirm Error Reward Whoosh, Inhale (a Special's charge, its pitch
+--                   rising 0.75 -> 1.35 in BattleController) and Shatter (a broken charge), at the Sfx setting
+--   Ambient[name]   positional loops (SoundFx.Positional): the Champion Ring's CrowdCheer (Sfx setting) and DrumLoop
+--                   (Music setting) at the ring pocket's crowd stand (client/Controllers/RingAmbience)
+-- Volume[key] is THE one place for slot volumes (0..1, times the player's Music / Sfx setting / 10): music lower than
+-- the effects; the ring's crowd and drums under the music (and they fade out with distance).
+local AudioIds = require(script.Parent.AudioIds)
+local AUDIO_KEYS = {
+	Music = { Lobby = "MusicLobby", Battle = "MusicBattle", Dungeon = "MusicDungeon" },
+	Sfx = { Click = "Click", Confirm = "Confirm", Error = "Error", Reward = "Reward", Whoosh = "Whoosh", Inhale = "Inhale", Shatter = "Shatter" },
+	Ambient = { CrowdCheer = "CrowdCheer", DrumLoop = "DrumLoop" },
 }
+Config.Audio = {
+	Keys = AUDIO_KEYS,
+	Music = {},
+	Sfx = {},
+	Ambient = {},
+	Volume = {
+		MusicLobby = 0.45,
+		MusicBattle = 0.5,
+		MusicDungeon = 0.45,
+		Click = 0.6,
+		Confirm = 0.8,
+		Error = 0.7,
+		Reward = 0.8,
+		Whoosh = 0.7,
+		Inhale = 0.8,
+		Shatter = 0.85,
+		CrowdCheer = 0.3,
+		DrumLoop = 0.35,
+	},
+	-- which player setting scales a key (ClientSettings "Music" / "Sfx"); a key not listed follows its group (Music ->
+	-- "Music", Sfx / Ambient -> "Sfx")
+	Setting = { DrumLoop = "Music" },
+	Fade = 1.2, -- seconds of the music crossfade
+	Resume = { Lobby = true, Dungeon = true }, -- these tracks continue where they stopped (Battle starts from its top)
+	-- positional loops: full volume within Min studs, InverseTapered down to silence at Max (ring pockets are 380 apart)
+	Positional = {
+		CrowdCheer = { Min = 30, Max = 140 },
+		DrumLoop = { Min = 24, Max = 120 },
+	},
+}
+for group, keys in pairs(AUDIO_KEYS) do
+	for name, key in pairs(keys) do
+		local id = AudioIds[key]
+		if type(id) == "number" and id > 0 and id == math.floor(id) then
+			Config.Audio[group][name] = id
+		end
+	end
+end
 
 -- Menu icons (optional): the tiles use emoji glyphs; Config.Icons[tileId] = "rbxassetid://<id>" replaces one with an
 -- image (NeonKit.Icon). Empty table = glyphs everywhere.

@@ -1,0 +1,54 @@
+{
+ "MusicLobby": {
+  "src": "incoming/suno/MusicLobby_SU2.wav",
+  "bpm": 84.7,
+  "start_s": 2.71,
+  "end_s": 87.77,
+  "bars": 30,
+  "loop_s": 85.06,
+  "steady_run_s": [
+   2.0,
+   90.0
+  ],
+  "seam_match": 0.197
+ },
+ "MusicBattle": {
+  "src": "incoming/suno/MusicBattle_SU2.wav",
+  "bpm": 136.0,
+  "start_s": 10.44,
+  "end_s": 89.86,
+  "bars": 45,
+  "loop_s": 79.42,
+  "steady_run_s": [
+   10.0,
+   94.0
+  ],
+  "seam_match": 0.129
+ },
+ "MusicDungeon": {
+  "src": "incoming/suno/MusicDungeon_SU1.wav",
+  "bpm": 97.5,
+  "start_s": 8.62,
+  "end_s": 102.3,
+  "bars": 38,
+  "loop_s": 93.68,
+  "steady_run_s": [
+   8.0,
+   106.0
+  ],
+  "seam_match": 0.064
+ },
+ "DrumLoop": {
+  "src": "incoming/music/DrumLoop_EL1.mp3",
+  "bpm": 120.2,
+  "start_s": 0.5,
+  "end_s": 26.52,
+  "bars": 13,
+  "loop_s": 26.02,
+  "steady_run_s": [
+   0.0,
+   28.0
+  ],
+  "seam_match": 0.803
+ }
+}

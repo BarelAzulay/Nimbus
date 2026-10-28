@@ -99,9 +99,9 @@ class Fake(BaseHTTPRequestHandler):
         req = json.loads(parts["request"][0].decode())
         data, ct, head = parts["fileContent"]
         problems = []
-        if (req.get("assetType"), ct) not in (("Model", "model/fbx"), ("Decal", "image/png")) or 'filename="' not in head:
+        if (req.get("assetType"), ct) not in (("Model", "model/fbx"), ("Decal", "image/png"), ("Audio", "audio/ogg"), ("Audio", "audio/mpeg"))                 or 'filename="' not in head:
             problems.append("fileContent part / assetType")
-        if asset_id is not None and STATE["assets"][asset_id].get("type") == "Decal":
+        if asset_id is not None and STATE["assets"][asset_id].get("type") in ("Decal", "Audio"):
             STATE["log"].append(("PATCH-refused", self.path))
             return self.reply(400, {"code": "INVALID_ARGUMENT", "message": "content updates are Model-only"})
         mode = STATE["post_mode"].pop(0) if asset_id is None and STATE["post_mode"] else None
@@ -880,8 +880,174 @@ def main():
                 if got != expect:
                     wrong.append((("Controllers/" if allowed else "shared/") + label, got, res.stdout[-300:]))
         check("check.mjs AttackFx asset-id rule: %d cases in client/Controllers, none elsewhere" % len(cases), not wrong, wrong)
+        # the original audio: client/SoundFx.lua joins AudioIds numbers under the same rule (nowhere else gets it), and
+        # shared/AudioIds.lua holds only [string] = number (rule audio-ids)
+        sfdir = os.path.join(tmp, "soundfx", "src", "client")
+        os.makedirs(os.path.join(sfdir, "Controllers"))
+        wrong = []
+        for where, allowed in ((os.path.join(sfdir, "SoundFx.lua"), True), (os.path.join(sfdir, "Controllers", "SoundFx.lua"), False)):
+            for label, src, want in cases:
+                with open(where, "w") as f:
+                    f.write(src + "\n")
+                res = subprocess.run([node, os.path.join(HERE, "check.mjs"), where], capture_output=True, text=True)
+                got = res.stdout.count("asset-id")
+                expect = want if allowed else (3 if want == 0 else want)
+                if got != expect:
+                    wrong.append((("client/" if allowed else "Controllers/") + label, got, res.stdout[-300:]))
+        check("check.mjs SoundFx asset-id rule: %d cases in client/SoundFx.lua, none elsewhere" % len(cases), not wrong, wrong)
+        aidir = os.path.join(tmp, "audioids", "src", "shared")
+        os.makedirs(aidir)
+        aifile = os.path.join(aidir, "AudioIds.lua")
+        wrong = []
+        for label, src, want in (("empty stub", "return {\n}", 0), ("numbers", "return {\n\tClick = 123,\n\tMusicLobby = 132235279556961,\n}", 0),
+                                 ("a string id", 'return {\n\tClick = "rbxassetid://1",\n}', 1), ("code", "local x = 1\nreturn { Click = x }", 1)):
+            with open(aifile, "w") as f:
+                f.write(src + "\n")
+            res = subprocess.run([node, os.path.join(HERE, "check.mjs"), aifile], capture_output=True, text=True)
+            got = res.stdout.count("audio-ids")
+            if (got > 0) != (want > 0):
+                wrong.append((label, got, res.stdout[-300:]))
+        check("check.mjs audio-ids rule: AudioIds.lua holds only [string] = number (4 cases)", not wrong, wrong)
     else:
         print("SKIP check.mjs PortalVortex cases (no node)")
+
+    # 22) --audio (the Audio class: the original music + sounds): audio/audio.json -> assetType Audio, audio/ogg or
+    #     audio/mpeg by extension, state audio/upload_state.json, src/shared/AudioIds.lua; never PATCHed (a changed file =
+    #     a NEW asset), the manifest sha256 must be the file's, --force on an unchanged upload refused
+    aroot = os.path.join(tmp, "audio")
+    os.makedirs(os.path.join(aroot, "audio"))
+    os.makedirs(os.path.join(aroot, "src", "shared"))
+    astate = os.path.join(aroot, "audio", "upload_state.json")
+    alua = os.path.join(aroot, "src", "shared", "AudioIds.lua")
+    aentries = {}
+
+    def audio_file(key, ext, payload):
+        rel = "audio/%s%s" % (key, ext)
+        head = b"OggS\0\2" if ext == ".ogg" else b"ID3\3\0"
+        with open(os.path.join(aroot, *rel.split("/")), "wb") as f:
+            f.write(head + payload)
+        return rel
+
+    def write_audio(entries):
+        with open(os.path.join(aroot, "audio", "audio.json"), "w") as f:
+            json.dump({"comment": "test", "keys": entries}, f)
+
+    for ak, ext, slot, looped in (("MusicLobby", ".ogg", "Music", True), ("Click", ".ogg", "Sfx", False), ("Reward", ".mp3", "Sfx", False)):
+        rel = audio_file(ak, ext, ak.encode() * 40)
+        aentries[ak] = {"file": rel, "sha256": sha_of(os.path.join(aroot, *rel.split("/"))), "slot": slot, "looped": looped}
+    write_audio(aentries)
+
+    def ast(key=None):
+        with open(astate) as f:
+            data = json.load(f)
+        return data if key is None else data["assets"].get(key, {})
+
+    n = len(STATE["log"])
+    code, out = run(aroot, base, "--audio")
+    check("--audio dry run: exit 0, three Audio creates (audio/ogg x2, audio/mpeg for the .mp3), nothing sent or written",
+          code == 0 and "DRY RUN" in out and out.count('"assetType": "Audio"') == 3 and out.count("; audio/ogg;") == 2
+          and out.count("; audio/mpeg;") == 1 and len(STATE["log"]) == n and not os.path.exists(astate) and not os.path.exists(alua), out)
+    code, out = run(aroot, base, "--audio", "--only", "pet_dog")
+    check("--audio --only checks the audio manifest", code == 2 and "audio.json" in out and len(STATE["log"]) == n, out)
+    wrong = []
+    for label, extra, want in (("--audio with --textures", ("--audio", "--textures"), "one asset class"),
+                               ("--audio with --set-id", ("--audio", "--set-id", "Click=5"), "--adopt"),
+                               ("--audio with --class", ("--audio", "--class", "pets"), "audio keys")):
+        code, out = run(aroot, base, "--upload", *extra)
+        if code != 2 or want not in out or "Traceback" in out:
+            wrong.append((label, code, out[-300:]))
+    bad_manifests = (("no sha256", {"file": "audio/Click.ogg", "slot": "Sfx", "looped": False}, "sha256"),
+                     ("a bad slot", {"file": "audio/Click.ogg", "sha256": "0" * 64, "slot": "Voice", "looped": False}, "slot"),
+                     ("a path out of the repo", {"file": "../x.ogg", "sha256": "0" * 64, "slot": "Sfx", "looped": False}, "repo-relative"),
+                     ("not an audio extension", {"file": "audio/Click.png", "sha256": "0" * 64, "slot": "Sfx", "looped": False}, ".ogg"))
+    for label, entry, want in bad_manifests:
+        write_audio({"Click": entry})
+        code, out = run(aroot, base, "--audio")
+        if code != 2 or want not in out or "Traceback" in out:
+            wrong.append((label, code, out[-300:]))
+    write_audio(aentries)
+    check("--audio refusals: with --textures / --set-id / --class, malformed manifests (%d cases, exit 2, nothing sent)" % (3 + len(bad_manifests)),
+          not wrong and len(STATE["log"]) == n and not os.path.exists(astate), wrong)
+
+    n_w = len(writes())
+    code, out = run(aroot, base, "--audio", "--upload")
+    a1 = ast()
+    aids = {k: r.get("assetId") for k, r in a1["assets"].items()}
+    alua_text = open(alua).read()
+    aentries_lua = re.findall(r"^\t(\w+) = (\d+),$", alua_text, re.M)
+    abody = re.sub(r"--[^\n]*", "", alua_text).strip()
+    check("--audio --upload (fake): three Audio POSTs, well-formed, ids + sha256 + moderation in audio/upload_state.json",
+          code == 0 and len(writes()) == n_w + 3 and all(x[0] == "POST" for x in writes()[n_w:]) and not STATE["bad"]
+          and all(isinstance(v, int) for v in aids.values()) and sorted(aids) == ["Click", "MusicLobby", "Reward"]
+          and a1["assets"]["Click"]["contentHash"] == aentries["Click"]["sha256"] and a1["assets"]["Click"]["fileSha256"] == aentries["Click"]["sha256"]
+          and a1["assets"]["Click"]["moderationState"] == "MODERATION_STATE_REVIEWING" and a1.get("creator") == {"type": "user", "id": "123456"}, out)
+    check("AudioIds.lua: sorted [string] = number entries only (in-review ids listed), generated header",
+          [e[0] for e in aentries_lua] == sorted(aids) and all(int(e[1]) == aids[e[0]] for e in aentries_lua)
+          and re.fullmatch(r"return \{\n(\t\w+ = \d+,\n)*\}", abody) is not None and "upload_assets.py --audio" in alua_text
+          and "rbxassetid" not in alua_text and KEY not in alua_text, alua_text)
+    n = len(STATE["log"])
+    code, out = run(aroot, base, "--audio", "--upload")
+    check("--audio again, files unchanged: every key skipped (sha256 = the fingerprint), nothing sent", code == 0
+          and out.count("skip: unchanged") == 3 and len(STATE["log"]) == n, out)
+    code, out = run(aroot, base, "--audio", "--upload", "--force", "--only", "Click")
+    check("--force on an uploaded, unchanged audio file is refused (a duplicate + a month's upload spent)", code == 1
+          and "duplicate" in out and len(STATE["log"]) == n, out)
+
+    # a changed file whose manifest still has the old sha256: refused (never uploaded under the old hash)
+    with open(os.path.join(aroot, "audio", "Click.ogg"), "ab") as f:
+        f.write(b"remastered")
+    aentries["Click"]["sha256"] = "f" * 64
+    write_audio(aentries)
+    code, out = run(aroot, base, "--audio", "--upload", "--only", "Click")
+    check("a manifest sha256 that is not the file's is refused (stale), nothing sent", code == 1 and "stale" in out
+          and len(STATE["log"]) == n and ast("Click")["assetId"] == aids["Click"], out)
+    # ... with the right sha256: a NEW asset (POST), never a PATCH; the old id kept; AudioIds.lua follows
+    aentries["Click"]["sha256"] = sha_of(os.path.join(aroot, "audio", "Click.ogg"))
+    write_audio(aentries)
+    code, out = run(aroot, base, "--audio", "--upload", "--only", "Click")
+    click = ast("Click")
+    new_w = [x[0] for x in STATE["log"][n:] if x[0] in ("POST", "PATCH", "PATCH-refused")]
+    check("a changed audio file: one POST (new asset), no PATCH; the old id in previousAssetIds; AudioIds.lua follows",
+          code == 0 and new_w == ["POST"] and click["assetId"] != aids["Click"] and click["previousAssetIds"] == [aids["Click"]]
+          and "Click = %d," % click["assetId"] in open(alua).read() and "Click = %d," % aids["Click"] not in open(alua).read(), out)
+    U.CLASS = U.CLASSES["audio"]
+    p_audio = U.plan("Click", {"contentHash": "new", "structureHash": "s"}, {"assetId": 5, "contentHash": "old", "structureHash": "s"})
+    U.CLASS = U.CLASSES["mesh"]
+    check("plan(): changed audio -> new-asset, even with an equal structureHash (never update)", p_audio[0] == "new-asset", p_audio)
+
+    # a file that is not what its extension says: refused before sending
+    with open(os.path.join(aroot, "audio", "Reward.mp3"), "wb") as f:
+        f.write(b"OggS this is not an mp3")
+    aentries["Reward"]["sha256"] = sha_of(os.path.join(aroot, "audio", "Reward.mp3"))
+    write_audio(aentries)
+    n = len(STATE["log"])
+    code, out = run(aroot, base, "--audio", "--upload", "--only", "Reward")
+    check("an .mp3 that is not an mp3 is refused (first bytes), nothing sent", code == 1 and "not a real .mp3" in out
+          and len(STATE["log"]) == n, out)
+
+    # moderation: a rejected audio key leaves AudioIds.lua (silent in game), the others stay
+    STATE["reject"].add(aids["MusicLobby"])
+    code, out = run(aroot, base, "--audio", "--upload", "--refresh")
+    alua_text = open(alua).read()
+    check("--audio --refresh: a REJECTED audio id is left out of AudioIds.lua (that sound stays silent), the others stay",
+          code == 0 and ast("MusicLobby")["moderationState"] == "MODERATION_STATE_REJECTED" and "MusicLobby =" not in alua_text
+          and "Click = %d," % click["assetId"] in alua_text and not [x for x in STATE["log"][n:] if x[0] in ("POST", "PATCH")], alua_text)
+    STATE["reject"].discard(aids["MusicLobby"])
+
+    # an unknown create (504 after the backend made it): pendingCreate, the audio Creator Hub hint, then --adopt
+    rel = audio_file("Shatter", ".ogg", b"glass" * 40)
+    aentries["Shatter"] = {"file": rel, "sha256": sha_of(os.path.join(aroot, *rel.split("/"))), "slot": "Sfx", "looped": False}
+    write_audio(aentries)
+    n_assets = len(STATE["assets"])
+    STATE["post_mode"] = ["create_504"]
+    code, out = run(aroot, base, "--audio", "--upload", "--only", "Shatter")
+    made_a = STATE["next_id"] - 1
+    check("--audio: a 504 after the create -> no second POST, pendingCreate, the hint names an audio in Creator Hub",
+          code == 1 and len(STATE["assets"]) == n_assets + 1 and ast("Shatter").get("pendingCreate") and "an audio named" in out
+          and "--adopt Shatter=" in out, out)
+    code, out = run(aroot, base, "--audio", "--upload", "--only", "Shatter", "--adopt", "Shatter=%d" % made_a)
+    check("--audio --adopt records the id it made; AudioIds.lua lists it", code == 0 and ast("Shatter").get("assetId") == made_a
+          and not ast("Shatter").get("pendingCreate") and "Shatter = %d," % made_a in open(alua).read(), out)
 
     # 11) the throttle (unit, fake clock): the 4th call in a minute waits
     clock = [0.0]

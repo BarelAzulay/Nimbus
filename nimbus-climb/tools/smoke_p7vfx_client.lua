@@ -4416,11 +4416,11 @@ S.client_p7vfx_precharge = guarded("client_p7vfx_precharge", function()
 		shatters[#shatters + 1] = { mine = mine, unit = unit, at = os.clock() }
 		return realShatter and realShatter(mine, unit)
 	end
-	-- (the inhale's sound: SoundFx's "Whoosh" given an id for this test; the project ships them empty)
+	-- (the inhale's sound: SoundFx's "Inhale" given an id for this test, in case AudioIds has none yet)
 	local audio = Config and Config.Audio and Config.Audio.Sfx
-	local oldWhoosh = audio and audio.Whoosh
+	local oldInhale = audio and audio.Inhale
 	if audio then
-		audio.Whoosh = "rbxassetid://1"
+		audio.Inhale = "rbxassetid://1"
 	end
 	local function numberAt(uid, since, pred)
 		local u = BC._Unit(uid)
@@ -4539,7 +4539,7 @@ S.client_p7vfx_precharge = guarded("client_p7vfx_precharge", function()
 			local low = nil
 			local SSA = game:GetService("SoundService"):FindFirstChild("NimbusSounds")
 			for _, s in ipairs(SSA and SSA:GetChildren() or {}) do
-				if s.Name:find("Sfx_Whoosh", 1, true) and math.abs(s.PlaybackSpeed - 0.75) < 1e-6 then
+				if s.Name:find("Sfx_Inhale", 1, true) and math.abs(s.PlaybackSpeed - 0.75) < 1e-6 then
 					low = s
 				end
 			end
@@ -4760,20 +4760,20 @@ S.client_p7vfx_precharge = guarded("client_p7vfx_precharge", function()
 			fmt("KO! %s, down %s (s after the impact)", koAt and fmt("%.3f", koAt - I) or "never", downAt and fmt("%.3f", downAt - I) or "never"))
 		T.check(maxRims >= 1 and maxRims <= AF.MAX_RIMS and capsOk, "pre-charge D: the caps hold (rims <= MAX_RIMS, emitters <= 6, beams <= 4, lights <= 3)",
 			fmt("rims %d", maxRims))
-		-- the inhale's sound (SoundFx "Whoosh", an existing Sfx name): risen to the top pitch at the release, faded out
+		-- the inhale's sound (SoundFx "Inhale", the original audio's own sound): risen to the top pitch at the release, faded out
 		local SS = game:GetService("SoundService")
 		local folderS = SS:FindFirstChild("NimbusSounds")
 		local whoosh, risen = 0, false
 		for _, s in ipairs(folderS and folderS:GetChildren() or {}) do
-			if s.Name:find("Sfx_Whoosh", 1, true) then
+			if s.Name:find("Sfx_Inhale", 1, true) then
 				whoosh = whoosh + 1
 				if math.abs(s.PlaybackSpeed - 1.35) < 1e-6 and s.Volume == 0 then
 					risen = true
 				end
 			end
 		end
-		T.check(whoosh >= 1 and risen, "pre-charge D: the inhale is SoundFx's Whoosh, its pitch risen to 1.35 by the release, then faded out",
-			fmt("%d whoosh sounds", whoosh))
+		T.check(whoosh >= 1 and risen, "pre-charge D: the inhale is SoundFx's Inhale, its pitch risen to 1.35 by the release, then faded out",
+			fmt("%d inhale sounds", whoosh))
 
 		-- E) a bot's Special (another unit's): late too; its inhale is an other's (mine = false)
 		local function botCast(u)
@@ -5541,7 +5541,7 @@ S.client_p7vfx_precharge = guarded("client_p7vfx_precharge", function()
 	AF.Play, BC._Fx.Number, BC._Fx.Flash = realPlay, realNumber, realFlash
 	hk.Inhale, hk.Hush, hk.Shatter = realInhale, realHush, realShatter
 	if audio then
-		audio.Whoosh = oldWhoosh
+		audio.Inhale = oldInhale
 	end
 	AF_SetQ(nil)
 	if not ok then

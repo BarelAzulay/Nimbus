@@ -1338,11 +1338,13 @@ Things only you can do, by hand, once. Steps 3 and 4 are optional; everything wo
    Until all six are set the game shows the built-in fallback sky (a pink-lavender haze, a Roblox cloud layer tinted
    pink and 3000 stars: no seams, a little flatter than the painted sky), and Output shows a yellow
    `[LightingService]` line naming the missing face. Left and right look swapped? Swap the `Lf` and `Rt` ids.
-3. **Music and sounds (optional):** Studio -> Toolbox -> Marketplace -> **Audio**; search ("calm loop", "click") and
-   keep only results that say the audio can be used in any experience (Roblox-provided audio plays everywhere;
-   another user's private upload stays silent in your game). Click -> **Copy Asset ID** -> paste it into
-   `Config.Audio.Music.Lobby` / `Battle` / `Dungeon` and `Config.Audio.Sfx` (`Click`, `Confirm`, `Error`, `Reward`,
-   `Whoosh`) as `"rbxassetid://..."`. Empty = silent, nothing breaks.
+3. **Music and sounds:** the game has its own original audio in `audio/` (12 files, see `audio/README.md`). The
+   upload session puts them on Roblox with `python3 tools/upload_assets.py --audio` (a dry run) and then
+   `python3 tools/upload_assets.py --upload --audio`, which writes `src/shared/AudioIds.lua`; `Config.Audio` reads
+   it (`Config.Audio.Music.Lobby` / `Battle` / `Dungeon`, `Config.Audio.Sfx` (`Click`, `Confirm`, `Error`, `Reward`,
+   `Whoosh`, `Inhale`, `Shatter`) and `Config.Audio.Ambient` (`CrowdCheer`, `DrumLoop`: the Champion Ring's crowd
+   and drums), slot volumes in `Config.Audio.Volume`). Roblox moderates audio and counts audio uploads per month
+   (docs/phase6/OWNER_UPLOAD.md section 6b). A sound with no id yet is silent, nothing breaks.
 4. **Icons (optional):** the menu tiles use emoji; a PNG you Bulk Import (step 2) and paste into `Config.Icons` (for
    example `Config.Icons.Shop = "rbxassetid://..."`) replaces one.
 5. **Lighting:** since phase 6 the game is back to the bright cartoon look: `default.project.json` has the line
@@ -1454,7 +1456,7 @@ src/shared   Config (every number)  TycoonCatalog (every tycoon number)  Theme  
              battle simulation)  BossBuilder  WorldStyle (gates, plinths, the art rules)  HomeRoam (the roaming plan
              of garden pets, shared by server and clients)  TokenLook (the coin look of tokens and Cloud Cash)
              MeshLibrary (loads the Blender models)  MeshIds (generated: model asset ids)  TextureIds (generated:
-             the gate vortex image ids)  MeshManifests (generated:
+             the gate vortex image ids)  AudioIds (generated: the original music and sound ids)  MeshManifests (generated:
              one module per Blender model)  PetFx (the auras and effects of evolved pets)  AttackFxCatalog (the look
              of every pet attack effect: recipes by element, attack, rarity band, signature)  PetPoses (the
              battle poses pets strike, cast, flinch and celebrate with, on PetBuilder's rig)
@@ -1473,7 +1475,8 @@ src/client   Main.client.lua; State; UiGate (nothing shows before PLAY); ClientS
              windows), HomeFx (roaming pets, Cloud Cash, berries), HomePortalFx (the home portal), Fusion, Battle,
              Arena, Dungeon (the Dungeon window and run), Obby (the level picker), PortalFx (the gates' soft
              animation: a light running round the ring, the swirl breathing, gems twinkling), MeshFallback (shows the
-             block pet on a device where a Blender model failed to load)
+             block pet on a device where a Blender model failed to load), RingAmbience (the Champion Ring's crowd
+             and drums, heard only near the ring)
 ```
 
 The **server is authoritative** (health, tokens, Cash, Gems, berries, pets, items, checkpoints, matches, home

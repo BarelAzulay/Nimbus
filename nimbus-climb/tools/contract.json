@@ -875,12 +875,31 @@
     },
     "client/SoundFx": {
       "optional": true,
-      "_comment": "ARCHITECTURE_V3.md \"Phase 5 build contract\" 7.3 (wave 3, menu)",
+      "_comment": "ARCHITECTURE_V3.md \"Phase 5 build contract\" 7.3 (wave 3, menu); the original audio: SetLayer, Positional, SlotVolume, Id, Wanted",
       "functions": [
         "Play",
         "Music",
         "Current",
-        "Volume"
+        "Volume",
+        "SetLayer",
+        "Wanted",
+        "Positional",
+        "SlotVolume",
+        "Id"
+      ],
+      "fields": [
+        "NAMES",
+        "LAYERS"
+      ]
+    },
+    "client/Controllers/RingAmbience": {
+      "optional": true,
+      "_comment": "the original audio: the Champion Ring's crowd + drums (positional loops) and the Drummer / NC_RingCrowd / NC_RingDrummer hooks",
+      "functions": [
+        "Init",
+        "Scan",
+        "Attach",
+        "Stats"
       ]
     },
     "client/GraphicsQuality": {
