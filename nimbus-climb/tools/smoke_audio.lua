@@ -316,7 +316,11 @@ S.client_audio_keys = guarded("client_audio_keys", function()
 			end
 		end
 		T.check(#wrong == 0, "audio keys: Config.Audio maps every key to its AudioIds number; a missing (Reward) or non-number (Whoosh) id stays out", table.concat(wrong, ", "))
+		-- the real AudioIds has every id since the upload: wipe the Music ids for this one call
+		local realMusic = Config.Audio.Music
+		Config.Audio.Music = {}
 		local id = SF.Id("Music", "Lobby")
+		Config.Audio.Music = realMusic
 		T.check(id == nil, "audio keys: SoundFx.Id with no id -> nil (silent)", tostring(id))
 	end
 	box:Destroy()
@@ -432,7 +436,8 @@ S.client_audio_silent = guarded("client_audio_silent", function()
 	end
 	local after = #sounds()
 	local bad = outputSince(n0)
-	T.check(inh ~= true and after == before and anchors == 0, "audio silent: the charge hooks, a battle, a dungeon run (chest) and a ring pocket make no Sound and leave no anchor",
+	-- <= : a track that was playing with the real ids may stop once they are wiped; no NEW Sound may appear
+	T.check(inh ~= true and after <= before and anchors == 0, "audio silent: the charge hooks, a battle, a dungeon run (chest) and a ring pocket make no Sound and leave no anchor",
 		fmt("sounds %d -> %d, anchors %d", before, after, anchors))
 	T.check(#bad == 0 and #Mock.Errors == e0, "audio silent: no warning, no error while the ids are missing", table.concat(bad, " | "))
 	pocket:Destroy()
