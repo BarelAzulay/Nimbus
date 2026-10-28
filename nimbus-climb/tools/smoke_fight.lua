@@ -179,8 +179,8 @@ local function serverScenarios()
 			return
 		end
 		local F = BC.Fighter
-		T.check(F.EngageRange == 14 and F.EngageLeash == 18 and F.EngagePull == 3 and F.EngageStillSeconds == 0.5 and F.EngageCooldown == 0.5
-			and BS.Events.Engage == "Engage", "fight core: Fighter.EngageRange 14 / EngageLeash 18 / EngagePull 3 / EngageStillSeconds 0.5 / EngageCooldown 0.5, Events.Engage")
+		T.check(F.EngageRange == 14 and F.EngageLeash == 18 and F.EngagePull == 7 and F.EngageStillSeconds == 0.5 and F.EngageCooldown == 0.5
+			and BS.Events.Engage == "Engage", "fight core: Fighter.EngageRange 14 / EngageLeash 18 / EngagePull 7 / EngageStillSeconds 0.5 / EngageCooldown 0.5, Events.Engage")
 
 		-- (1) + (2): stand 12 studs from an enemy: engaged after the still time, the approach at the legal run, a hit
 		do
@@ -231,18 +231,29 @@ local function serverScenarios()
 				fmt("max %.3f vs run x dt %.3f", maxStep, run * 0.1))
 			T.check(b:Snapshot().Units[f.id].target == e.id, "fight core (1): the snapshot's target bit shows the enemy the pet fights")
 
-			-- (3): a 1 stud sway keeps it; 3.5 studs = the pull: back to FOLLOW the same step, at run x MoveSlack
+			-- (3): a 1 stud sway keeps it; a 6 stud reposition keeps it (player ruling 2026-10-28, EngagePull 7); a walk of
+			-- ~7.5 studs = the pull: back to FOLLOW the same step, at run x MoveSlack
 			local sway = false
 			for _ = 1, 5 do
 				stepAt(b, 1, -10)
 				sway = sway or engaged(b) ~= e.id
 			end
 			T.check(not sway, "fight core (3): a Move point 1 stud from the stand point keeps the engage")
+			local repos = false
+			for i = 1, 10 do
+				stepAt(b, 1 + 0.5 * i, -10) -- walks out to 6 studs from the stand point
+				repos = repos or engaged(b) ~= e.id
+			end
+			for _ = 1, 5 do
+				stepAt(b, 6, -10)
+				repos = repos or engaged(b) ~= e.id
+			end
+			T.check(not repos, "fight core (3): walking 6 studs from the stand point (< EngagePull 7) keeps the pet in the fight")
 			local fx, fz = f.x, f.z
-			local pullEvs = stepAt(b, 3.5, -10)
+			local pullEvs = stepAt(b, 7.2, -8) -- ~7.5 studs from the stand point (0, -10)
 			T.check(engaged(b) == nil and find(pullEvs, "Engage", function(x)
 				return x.on == false and x.unit == f.id
-			end) ~= nil, "fight core (3): a step > EngagePull (3.5 studs) drops it the same step (Engage on = false)")
+			end) ~= nil, "fight core (3): a walk > EngagePull (~7.5 studs) drops it the same step (Engage on = false)")
 			local moved = d2(fx, fz, f.x, f.z)
 			T.check(moved > run * 0.1 * 1.05 and moved <= run * F.MoveSlack * 0.1 + 0.02, "fight core (3): ...and the pet walks back toward the Move point at today's FOLLOW cap (run x MoveSlack)",
 				fmt("%.3f (run x dt %.3f, cap %.3f)", moved, run * 0.1, run * F.MoveSlack * 0.1))
@@ -250,22 +261,22 @@ local function serverScenarios()
 			-- (4): walking keeps FOLLOW (no re-engage while the Move point moves); standing re-engages after cooldown + still
 			local walkAgain = false
 			for i = 1, 15 do
-				stepAt(b, 3.5 + ((i % 2 == 0) and 0.5 or -0.5), -10)
+				stepAt(b, 7.2 + ((i % 2 == 0) and 0.5 or -0.5), -8)
 				walkAgain = walkAgain or engaged(b) ~= nil
 			end
 			T.check(not walkAgain, "fight core (4): no re-engage while the character keeps walking (the still gate)")
 			local t1 = b:Time()
-			standFor(b, 15, 3.5, -10, function()
+			standFor(b, 15, 7.2, -8, function()
 				return engaged(b) ~= nil
 			end)
 			local tRe = b:Time() - t1
 			T.check(engaged(b) == e.id and tRe >= F.EngageStillSeconds - 0.05, "fight core (4): standing again re-engages after the still time", fmt("%.2f s", tRe))
 			-- the cooldown: a pull and an immediate stand wait EngageCooldown before the next engage
-			stepAt(b, 8, -10)
+			stepAt(b, 0, -10) -- ~7.5 studs from the stand point (7.2, -8); the enemy stays in EngageRange of the new point
 			local tPull = b:Time()
 			local coolEarly = false
 			for _ = 1, 3 do
-				stepAt(b, 8, -10)
+				stepAt(b, 0, -10)
 				if engaged(b) ~= nil and b:Time() - tPull < F.EngageCooldown - 0.05 then
 					coolEarly = true
 				end

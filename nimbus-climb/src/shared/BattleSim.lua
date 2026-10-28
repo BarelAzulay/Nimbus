@@ -257,7 +257,7 @@ local FALLBACK_FIGHTER = {
 	MeterPerSecond = 6, MeterOnHit = 4, MeterOnHurt = 2, DashSeconds = 0.35, DashCooldown = 2.5, DashIFrames = 0.35, SwapCooldown = 10,
 	SwapCastSeconds = 0.6, BenchRegenPerSecond = 0, ArriveSeconds = 1.2, DownAutoSwap = true, HelperCooldown = 15, SupportCooldown = 12, Windup = 0.45,
 	KitFactor = 1.5, HelperWeight = 0.35, Lives = 3, WalkMult = 1.15, WalkMin = 12, WalkMax = 20, RunMult = 1.3, MoveSlack = 1.25,
-	Leash = 10, LeashSeconds = 3, EngageRange = 14, EngageLeash = 18, EngagePull = 3, EngageStillSeconds = 0.5, EngageCooldown = 0.5,
+	Leash = 10, LeashSeconds = 3, EngageRange = 14, EngageLeash = 18, EngagePull = 7, EngageStillSeconds = 0.5, EngageCooldown = 0.5,
 }
 
 local function damageRules()
@@ -2913,7 +2913,7 @@ local function engageUpdate(self, team, f, events)
 			dropEngage(self, team, events)
 			return nil
 		end
-		local pulled = team.wantX ~= nil and dist(team.wantX, team.wantZ, e.standX, e.standZ) > num(F.EngagePull, 3)
+		local pulled = team.wantX ~= nil and dist(team.wantX, team.wantZ, e.standX, e.standZ) > num(F.EngagePull, 7)
 		local strayed = dist(f.x, f.z, e.standX, e.standZ) > num(F.EngageLeash, 18)
 		local target = (not pulled and not strayed) and engageTarget(self, team, f, e.standX, e.standZ) or nil
 		if not target then

@@ -31,7 +31,7 @@
 --                                                                  SupportCooldown 12, Windup 0.45, ArriveSeconds 1.2 (a spawned enemy's entrance),
 --                                                                  KitFactor 1.5, HelperWeight 0.35, Lives 3, WalkMult 1.15, WalkMin 12, WalkMax 20, RunMult 1.3,
 --                                                                  MoveSlack 1.25, Leash 10, LeashSeconds 3, EngageRange 14, EngageLeash 18,
---                                                                  EngagePull 3, EngageStillSeconds 0.5, EngageCooldown 0.5 (bug #22: the
+--                                                                  EngagePull 7, EngageStillSeconds 0.5, EngageCooldown 0.5 (bug #22: the
 --                                                                  fighter leaves a STANDING character to fight; BattleSim "ENGAGE")
 --   BattleCatalog.Fighter.WalkOf(moveSpeed) -> walk (12..20); Fighter.RunOf(walk) -> walk x RunMult; Fighter.SpeedsOf(moveSpeed) -> walk, run
 --   BattleCatalog.ElementAttacks[element]                          { Name, Shape = "Cone"|"Circle"|"Line", Angle, Length, Radius, Width, Push, Burn, Slow, Leech,
@@ -292,7 +292,7 @@ BattleCatalog.Fighter = {
 	-- bug #22 (the engage rule, BattleSim fighterStep): "the character leads when it moves, the pet fights when it stands"
 	EngageRange = 14, -- an enemy within this of the standing character's point (+ its radius): the fighter leaves to fight it
 	EngageLeash = 18, -- an engaged fighter never strays further than this from the stand point (>= EngageRange)
-	EngagePull = 3, -- the character steps more than this from where it stood = come back (a deliberate step: 0.2 s of running)
+	EngagePull = 7, -- the character walks more than this from where it stood = come back (ruling 2026-10-28: a small reposition keeps the fight)
 	EngageStillSeconds = 0.5, -- the Move point must have been still this long before the fighter engages
 	EngageCooldown = 0.5, -- after a disengage, no re-engage for this long (no flapping at the range edge)
 }

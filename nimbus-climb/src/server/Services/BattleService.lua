@@ -121,7 +121,7 @@
 -- = a leaver in Duel / Ring, a RemoveTeam in Raid / Dungeon (a run-off or a teleport; an in-zone speed hack is not leashed
 -- and gains nothing). Bug #22: while the sim team is ENGAGED (BattleSim's engage rule: the character stands, the pet left
 -- it to fight) the leash is skipped (Cmd.engaged, white-box like Cmd.stunned): the sim bounds the gap itself
--- (Fighter.EngageLeash 18) and drops back to FOLLOW when the character steps > EngagePull (3) away; the FOLLOW leash then
+-- (Fighter.EngageLeash 18) and drops back to FOLLOW when the character walks > EngagePull (7) away; the FOLLOW leash then
 -- runs as before (a teleport is leashed at most ~1 s later). After each step: "Events" (the Step() events) to the receivers that already have the battle,
 -- "Start" to new receivers, then "Snapshot". Messages (BattleState(kind, payload, battleId)):
 --   "Start"    battle:Describe() + Zone = { CFrame (floor centre), Size (Vector3: X, height, Z), X, Z } + Names =
