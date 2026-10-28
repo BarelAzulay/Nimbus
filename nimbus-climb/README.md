@@ -925,8 +925,11 @@ You need a pet; you do not need a home.
   **START** (and can remove a member with the X). Unready members get 30 seconds ("Starting in 30 - press READY"),
   then the run starts without them. The leader picks the floor; friends are carried along and get the floor too. A
   party can also take a new member while it is still in room 1 or 2.
-- **Inside:** you start in the Entrance Hall, then walk into room 1; the fight starts when someone crosses the line
-  inside the door. Every room has 2-3 waves (floor 1: three single sleepy enemies, made so that any single level-1 pet
+- **Inside:** stepping through the Dungeon gate, the camera rushes into the vortex and the screen breaks into glowing
+  blocks that fall away to reveal the Entrance Hall (any key, click or tap skips). After each door you walk into the
+  room together (the camera in front of you, any key skips) and the fight starts when the first of you crosses the line
+  inside the door; nobody waits more than 3 seconds. Your pets follow you the whole time, and the camera sits a little
+  over your shoulder (big attacks punch the view, hits shake it; the Camera shake setting turns that off). Every room has 2-3 waves (floor 1: three single sleepy enemies, made so that any single level-1 pet
   wins); every wave arrives in a flash of light (for a moment it cannot be hit and does not attack). When a room is
   clear its exit opens: go to the next door and press `E` (the whole party presses it, then the screen fades into the
   next room). Your pets heal fully between rooms. You have **2 minutes** per room (**3 minutes** on floor 1); a member whose

@@ -22,6 +22,9 @@
 --   PortalFxController.Stats() -> { Gates, Active, Parts, Writes, Time, Quality }
 --   PortalFxController.Gate(model) -> the record of a tracked gate (tests) | nil
 --   PortalFxController.K             the tuning numbers (tests read them)
+--   PortalFxController.Flare(model, seconds) -> bool   wave 5 (bug #15): the Dungeon entrance: the ring and the light
+--                                    flare up and settle over `seconds` (the same properties, restored as always);
+--                                    false for an untracked / static gate (Low graphics)
 -- Plain Lua 5.1-compatible syntax only.
 
 local CollectionService = game:GetService("CollectionService")
@@ -56,6 +59,9 @@ local K = {
 	GEM_LIFT = 0.6,
 	-- the light pulse
 	LIGHT_AMP = 0.22, -- brightness x (1 +- this)
+	-- wave 5 (bug #15): the entrance flare (PortalFx.Flare): the ring toward white, the light brighter, settling
+	FLARE_RING = 0.6,
+	FLARE_LIGHT = 1.2, -- brightness + LightBase x this at the peak
 	-- the sparkles drift upward while the gate is animated
 	SPARKLE_RISE = Vector3.new(0, 1.1, 0),
 }
@@ -485,8 +491,17 @@ end
 local function animate(rec, t)
 	local fade = smooth01(rec.Fade)
 	local phase = rec.Phase
+	local flare = 0
+	if rec.FlareAt then
+		local p = (os.clock() - rec.FlareAt) / rec.FlareDur
+		if p >= 1 or p < 0 then
+			rec.FlareAt = nil
+		else
+			flare = 1 - p
+		end
+	end
 	for _, e in ipairs(rec.Ring) do
-		setColor(e, PortalFx.RingLevel(t, e.Angle, phase), fade)
+		setColor(e, math.min(1, PortalFx.RingLevel(t, e.Angle, phase) + K.FLARE_RING * flare), fade)
 	end
 	local V = rec.Vortex and vortexModule()
 	if V and rec.Vortex.Shown then
@@ -510,7 +525,7 @@ local function animate(rec, t)
 		setColor(e, PortalFx.GemLevel(t, e.Index, n, phase), fade)
 	end
 	if rec.Light then
-		local b = rec.LightBase * (1 + K.LIGHT_AMP * fade * (2 * PortalFx.Breath(t, phase) - 1))
+		local b = rec.LightBase * (1 + K.LIGHT_AMP * fade * (2 * PortalFx.Breath(t, phase) - 1) + K.FLARE_LIGHT * flare)
 		b = math.floor(b * 200 + 0.5) / 200
 		if b ~= rec.LastLight then
 			rec.LastLight = b
@@ -651,6 +666,17 @@ end
 
 function PortalFx.Gate(model)
 	return St.Gates[model]
+end
+
+-- wave 5 (bug #15): the gate flares up (the Dungeon entrance's rush); a static gate (Low, out of range) does nothing
+function PortalFx.Flare(model, seconds)
+	local rec = St.Gates[model]
+	if not rec or St.Quality == "Low" or not rec.On then
+		return false
+	end
+	rec.FlareAt = os.clock()
+	rec.FlareDur = (type(seconds) == "number" and seconds > 0) and math.min(seconds, 3) or 0.6
+	return true
 end
 
 function PortalFx.Stop()
