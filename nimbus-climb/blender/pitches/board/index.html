@@ -1,0 +1,295 @@
+<title>Nimbus Design Pitches</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fredoka:wght@500;600&family=Atkinson+Hyperlegible:wght@400;700&family=JetBrains+Mono:wght@500&display=swap">
+<style>
+/* Layout: one column of pitch "boards"; each board = brief + today + lineup, then option cards, then the decision bar. */
+:root {
+  --bg: #eef0fb;          /* pale twilight sky */
+  --panel: #ffffff;
+  --ink: #1f2245;
+  --muted: #5d6290;
+  --line: #d6d9f0;
+  --accent: #4b57d6;      /* periwinkle */
+  --accent-ink: #ffffff;
+  --gold: #c99a1e;        /* crest gold */
+  --gemini: #2f7fd8;
+  --claude: #c2622d;
+  --ok: #23875a;
+  --warn: #b7791f;
+  --skip: #7a7f9e;
+  --chip: #e3e6fa;
+  --shadow: 0 1px 2px rgba(31, 34, 69, .06), 0 6px 18px rgba(31, 34, 69, .07);
+  --f-display: "Fredoka", "Trebuchet MS", system-ui, sans-serif;
+  --f-body: "Atkinson Hyperlegible", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --f-mono: "JetBrains Mono", ui-monospace, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #14162b; --panel: #1d2040; --ink: #eceefe; --muted: #a3a8d6; --line: #30345e;
+    --accent: #8d97ff; --accent-ink: #14162b; --gold: #e8bd4b; --gemini: #6fb1ff; --claude: #f0956a;
+    --ok: #4fc58c; --warn: #e6ad55; --skip: #9ba0c4; --chip: #2a2e57;
+    --shadow: 0 1px 2px rgba(0, 0, 0, .3), 0 8px 22px rgba(0, 0, 0, .28);
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #14162b; --panel: #1d2040; --ink: #eceefe; --muted: #a3a8d6; --line: #30345e;
+  --accent: #8d97ff; --accent-ink: #14162b; --gold: #e8bd4b; --gemini: #6fb1ff; --claude: #f0956a;
+  --ok: #4fc58c; --warn: #e6ad55; --skip: #9ba0c4; --chip: #2a2e57;
+  --shadow: 0 1px 2px rgba(0, 0, 0, .3), 0 8px 22px rgba(0, 0, 0, .28);
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body {
+  background: var(--bg); color: var(--ink); font: 16px/1.55 var(--f-body);
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 28px 64px;
+}
+.wrap { max-width: 1120px; margin: 0 auto; display: flex; flex-direction: column; gap: 28px; }
+h1, h2, h3 { font-family: var(--f-display); font-weight: 600; text-wrap: balance; margin: 0; letter-spacing: .005em; }
+h1 { font-size: clamp(1.9rem, 4vw, 2.6rem); line-height: 1.1; }
+h2 { font-size: 1.6rem; line-height: 1.15; }
+h3 { font-size: 1.15rem; }
+p { margin: 0; }
+.lede { color: var(--muted); max-width: 64ch; }
+.top { display: flex; flex-wrap: wrap; gap: 16px 28px; align-items: flex-end; justify-content: space-between; }
+.tally { display: flex; flex-wrap: wrap; gap: 8px; }
+.pill { display: inline-flex; align-items: center; gap: 6px; padding: 4px 11px; border-radius: 999px; background: var(--chip);
+  font-size: .85rem; font-weight: 700; white-space: nowrap; }
+.pill i { width: 8px; height: 8px; border-radius: 50%; display: inline-block; background: currentColor; }
+.s-wait { color: var(--accent); } .s-approve { color: var(--ok); } .s-change { color: var(--warn); } .s-skip { color: var(--skip); }
+.empty { background: var(--panel); border: 1px dashed var(--line); border-radius: 14px; padding: 32px; text-align: center; color: var(--muted); }
+
+.pitch { background: var(--panel); border-radius: 18px; box-shadow: var(--shadow); padding: 24px; display: flex; flex-direction: column; gap: 22px; }
+.pitch-head { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 10px 20px; align-items: flex-start; }
+.eyebrow { font: 500 .75rem var(--f-mono); text-transform: uppercase; letter-spacing: .08em; color: var(--muted); }
+.brief { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.6fr); gap: 18px; }
+.ref { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.ref figcaption { font-size: .85rem; color: var(--muted); }
+.shot { display: block; width: 100%; border-radius: 12px; border: 1px solid var(--line); background: var(--chip); cursor: zoom-in;
+  aspect-ratio: 4 / 3; object-fit: cover; padding: 0; }
+.note-agree { border-left: 3px solid var(--gold); padding: 8px 14px; background: var(--chip); border-radius: 0 10px 10px 0; font-size: .95rem; max-width: 80ch; }
+
+.options { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 16px; }
+.opt { border: 2px solid var(--line); border-radius: 14px; padding: 12px; display: flex; flex-direction: column; gap: 10px; min-width: 0;
+  transition: border-color .15s, transform .15s; }
+.opt.chosen { border-color: var(--accent); }
+.opt-title { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+.letter { font: 500 .8rem var(--f-mono); color: var(--muted); }
+.picks { display: flex; flex-wrap: wrap; gap: 6px; min-height: 26px; }
+.pick { font-size: .78rem; font-weight: 700; padding: 3px 9px; border-radius: 999px; border: 1.5px solid currentColor; }
+.pick.gemini { color: var(--gemini); } .pick.claude { color: var(--claude); }
+.story { font-size: .93rem; }
+.swatches { display: flex; gap: 6px; }
+.sw { width: 22px; height: 22px; border-radius: 6px; border: 1px solid var(--line); }
+details summary { cursor: pointer; font-weight: 700; font-size: .9rem; }
+details ul { margin: 6px 0 0; padding-left: 18px; font-size: .9rem; color: var(--muted); }
+.choose { margin-top: auto; }
+
+button { font: 700 .95rem var(--f-body); border-radius: 10px; padding: 9px 14px; border: 1.5px solid var(--line); background: var(--panel);
+  color: var(--ink); cursor: pointer; }
+button:hover:not(:disabled) { border-color: var(--accent); }
+button:focus-visible, textarea:focus-visible, .shot:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+button:disabled { opacity: .5; cursor: not-allowed; }
+.choose[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+
+.decide { border-top: 1px solid var(--line); padding-top: 18px; display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 14px 20px; align-items: start; }
+.decide label { font-weight: 700; font-size: .9rem; display: block; margin-bottom: 6px; }
+textarea { width: 100%; min-height: 76px; resize: vertical; border-radius: 10px; border: 1.5px solid var(--line); background: var(--bg);
+  color: var(--ink); padding: 10px 12px; font: .95rem/1.45 var(--f-body); }
+.verbs { display: flex; flex-wrap: wrap; gap: 8px; align-self: end; }
+.v-approve { background: var(--ok); border-color: var(--ok); color: #fff; }
+.v-change { border-color: var(--warn); color: var(--warn); }
+.v-skip { color: var(--skip); }
+.saved { grid-column: 1 / -1; font-size: .88rem; color: var(--muted); min-height: 1.3em; }
+.saved b { color: var(--ink); }
+
+dialog { border: 0; padding: 0; background: transparent; max-width: min(1200px, 96vw); }
+dialog::backdrop { background: rgba(10, 12, 30, .78); }
+dialog img { display: block; max-width: 100%; max-height: 86vh; border-radius: 12px; }
+dialog .cap { color: #fff; font-family: var(--f-display); text-align: center; margin-top: 8px; }
+
+@media (max-width: 720px) {
+  .brief { grid-template-columns: minmax(0, 1fr); }
+  .decide { grid-template-columns: minmax(0, 1fr); }
+  .pitch { padding: 16px; }
+}
+.fixes { border-left: 3px solid var(--ok); padding: 10px 14px; background: var(--chip); border-radius: 0 10px 10px 0; max-width: 80ch; }
+.fixes h3 { font-size: 1rem; margin-bottom: 4px; }
+.fixes ul { margin: 0; padding-left: 18px; font-size: .9rem; color: var(--muted); }
+.motion-cap { font-size: .8rem; color: var(--muted); margin-top: -4px; }
+.shot.motion { aspect-ratio: auto; object-fit: contain; }
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+
+<div class="wrap">
+  <header class="top">
+    <div>
+      <p class="eyebrow">Nimbus Climb · design approvals</p>
+      <h1>Nimbus Design Pitches</h1>
+      <p class="lede">Each object gets a few designs rendered in Blender at game scale (the grey figure is a 5-stud player). Choose a design, then approve it, ask for changes, or skip it. Your choice and note save here, and Claude reads them before building anything.</p>
+    </div>
+    <div class="tally" id="tally" aria-live="polite"></div>
+  </header>
+  <main id="pitches">
+    <div class="empty" id="loading">Loading the pitches…</div>
+  </main>
+</div>
+
+<dialog id="zoom" aria-label="Enlarged render">
+  <img id="zoomImg" alt="">
+  <p class="cap" id="zoomCap"></p>
+</dialog>
+
+<script>
+(() => {
+  const $ = (s, el = document) => el.querySelector(s);
+  const esc = (t) => String(t ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+  const VERB = { approve: "Approved", change: "Changes requested", skip: "Skipped" };
+
+  const state = { pitches: [], decisions: {}, chosen: {}, drafts: {}, canWrite: true, db: null, uid: null, busy: {} };
+
+  function zoom(src, cap) {
+    const d = $("#zoom");
+    $("#zoomImg").src = src; $("#zoomImg").alt = cap; $("#zoomCap").textContent = cap;
+    if (d.showModal) d.showModal();
+  }
+  $("#zoom").addEventListener("click", () => $("#zoom").close());
+
+  function tally() {
+    const n = { wait: 0, approve: 0, change: 0, skip: 0 };
+    for (const p of state.pitches) n[(state.decisions[p.id] || {}).verdict || "wait"]++;
+    $("#tally").innerHTML = state.pitches.length ? [
+      ["wait", "Waiting"], ["approve", "Approved"], ["change", "Changes"], ["skip", "Skipped"]
+    ].map(([k, l]) => `<span class="pill s-${k}"><i></i>${l} ${n[k]}</span>`).join("") : "";
+  }
+
+  function shot(src, cap, cls = "shot") {
+    if (!src) return `<div class="${cls}" role="img" aria-label="${esc(cap)}: render coming"></div>`;
+    return `<img class="${cls}" src="${esc(src)}" alt="${esc(cap)}" tabindex="0" data-zoom="${esc(src)}" data-cap="${esc(cap)}" loading="lazy">`;
+  }
+
+  function render() {
+    const host = $("#pitches");
+    tally();
+    if (!state.pitches.length) {
+      host.innerHTML = `<div class="empty">No pitches yet. When Claude has designs for an object, they appear here with renders, and you get a link.</div>`;
+      return;
+    }
+    host.innerHTML = state.pitches.map((p) => {
+      const dec = state.decisions[p.id] || {};
+      const chosen = state.chosen[p.id] ?? dec.choice ?? null;
+      const opts = (p.options || []).map((o, i) => {
+        const picks = (o.picks || []).map((w) => `<span class="pick ${w}">${w === "gemini" ? "Gemini's pick" : "Claude's pick"}</span>`).join("");
+        const sw = (o.palette || []).map((c) => `<span class="sw" style="background:rgb(${c.join(",")})" title="RGB ${c.join(", ")}"></span>`).join("");
+        const det = (o.details || []).map((d) => `<li>${esc(d)}</li>`).join("");
+        const on = chosen === o.id;
+        return `<article class="opt${on ? " chosen" : ""}">
+          ${shot(o.img, `${p.title}, option ${String.fromCharCode(65 + i)}: ${o.name}`)}
+          ${o.motion ? `${shot(o.motion, `${o.name}: how it moves, frame by frame`, "shot motion")}<p class="motion-cap">How it moves (frames left to right)</p>` : ""}
+          <div class="opt-title"><h3>${esc(o.name)}</h3><span class="letter">option ${String.fromCharCode(65 + i)}</span></div>
+          <div class="picks">${picks}</div>
+          <p class="story">${esc(o.story)}</p>
+          ${sw ? `<div class="swatches" aria-label="Palette">${sw}</div>` : ""}
+          ${det ? `<details><summary>Small details</summary><ul>${det}</ul></details>` : ""}
+          <button class="choose" type="button" data-pitch="${esc(p.id)}" data-opt="${esc(o.id)}" aria-pressed="${on}" ${state.canWrite ? "" : "disabled"}>${on ? "Chosen" : "Choose this design"}</button>
+        </article>`;
+      }).join("");
+      const verdict = dec.verdict;
+      const when = dec.at ? new Date(dec.at).toLocaleString() : "";
+      const chosenName = (p.options || []).find((o) => o.id === dec.choice)?.name;
+      const status = verdict
+        ? `<span class="pill s-${verdict}"><i></i>${VERB[verdict]}</span>`
+        : `<span class="pill s-wait"><i></i>Waiting for you</span>`;
+      const draft = state.drafts[p.id] ?? dec.note ?? "";
+      return `<section class="pitch" aria-labelledby="h-${esc(p.id)}">
+        <div class="pitch-head">
+          <div><p class="eyebrow">${esc(p.kind || "Model")}${p.source ? " · " + esc(p.source) : ""}</p><h2 id="h-${esc(p.id)}">${esc(p.title)}</h2></div>
+          ${status}
+        </div>
+        <p class="lede">${esc(p.brief)}</p>
+        ${(p.fixes || []).length ? `<div class="fixes"><h3>Bugs fixed whatever you pick</h3><ul>${p.fixes.map((f) => `<li>${esc(f)}</li>`).join("")}</ul></div>` : ""}
+        <div class="brief">
+          <figure class="ref" style="margin:0">${shot(p.today, p.title + " today")}<figcaption>Today in the game</figcaption></figure>
+          <figure class="ref" style="margin:0">${shot(p.lineup, p.title + ": all options side by side")}<figcaption>All options side by side, at the same scale</figcaption></figure>
+        </div>
+        ${p.agreement ? `<p class="note-agree">${esc(p.agreement)}</p>` : ""}
+        <div class="options">${opts}</div>
+        <div class="decide">
+          <div>
+            <label for="note-${esc(p.id)}">Your note (what to change, or anything to add)</label>
+            <textarea id="note-${esc(p.id)}" data-note="${esc(p.id)}" placeholder="e.g. Option B, but with the cottage from A on top" ${state.canWrite ? "" : "disabled"}>${esc(draft)}</textarea>
+          </div>
+          <div class="verbs">
+            <button type="button" class="v-approve" data-verdict="approve" data-pitch="${esc(p.id)}" ${state.canWrite ? "" : "disabled"}>Approve chosen</button>
+            <button type="button" class="v-change" data-verdict="change" data-pitch="${esc(p.id)}" ${state.canWrite ? "" : "disabled"}>Request changes</button>
+            <button type="button" class="v-skip" data-verdict="skip" data-pitch="${esc(p.id)}" ${state.canWrite ? "" : "disabled"}>Skip</button>
+          </div>
+          <p class="saved" id="saved-${esc(p.id)}">${verdict ? `<b>${VERB[verdict]}</b>${chosenName ? ": " + esc(chosenName) : ""}${when ? " · saved " + esc(when) : ""}` : (state.canWrite ? "Not decided yet." : "Read-only: you can view this board but not decide.")}</p>
+        </div>
+      </section>`;
+    }).join("");
+  }
+
+  document.addEventListener("click", async (e) => {
+    const z = e.target.closest("[data-zoom]");
+    if (z) return zoom(z.dataset.zoom, z.dataset.cap);
+    const c = e.target.closest(".choose");
+    if (c) { state.chosen[c.dataset.pitch] = c.dataset.opt; return render(); }
+    const v = e.target.closest("[data-verdict]");
+    if (v) return decide(v.dataset.pitch, v.dataset.verdict);
+  });
+  document.addEventListener("keydown", (e) => {
+    const z = e.target.closest && e.target.closest("[data-zoom]");
+    if (z && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); zoom(z.dataset.zoom, z.dataset.cap); }
+  });
+  document.addEventListener("input", (e) => {
+    const t = e.target.closest("[data-note]");
+    if (t) state.drafts[t.dataset.note] = t.value;
+  });
+
+  async function decide(pid, verdict) {
+    const msg = $("#saved-" + CSS.escape(pid));
+    const choice = state.chosen[pid] ?? (state.decisions[pid] || {}).choice ?? null;
+    if (verdict === "approve" && !choice) { msg.textContent = "Choose a design first, then approve it."; return; }
+    if (!state.db) { msg.textContent = "Saving isn't available in this view. Open the board on claude.ai while signed in."; return; }
+    if (state.busy[pid]) return;
+    state.busy[pid] = true;
+    msg.textContent = "Saving…";
+    const note = state.drafts[pid] ?? (state.decisions[pid] || {}).note ?? "";
+    try {
+      await state.db.doc("decisions/" + pid).set({ choice, verdict, note, at: new Date().toISOString(), by: state.uid || null });
+      delete state.drafts[pid];
+      delete state.chosen[pid];
+    } catch (err) {
+      if (err && err.code === "invalid_argument") { state.canWrite = false; render(); }
+      msg.textContent = err && err.code === "quota_exceeded" ? "The board is full. Ask Claude to clear old pitches." : "Couldn't save. Check your connection and try again.";
+    } finally { state.busy[pid] = false; }
+  }
+
+  async function start() {
+    const [db, user] = await Promise.all([window.claude?.use?.("db") ?? null, window.claude?.use?.("user") ?? null]);
+    if (!db) {
+      $("#pitches").innerHTML = `<div class="empty">This board needs to be opened on claude.ai while signed in to load the pitches.</div>`;
+      return;
+    }
+    state.db = db;
+    if (user) {
+      try { state.uid = await user.id(); } catch (_) {}
+      try { const w = await user.can("data.write"); if (w === false) state.canWrite = false; } catch (_) {}
+    }
+    db.collection("pitches").orderBy("order").onSnapshot((snap) => {
+      state.pitches = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+      render();
+    }, () => { $("#pitches").innerHTML = `<div class="empty">The pitches couldn't load. Reload the page to try again.</div>`; });
+    db.collection("decisions").onSnapshot((snap) => {
+      const m = {};
+      for (const d of snap.docs) m[d.id] = d.data();
+      state.decisions = m;
+      render();
+    });
+  }
+  start();
+})();
+</script>

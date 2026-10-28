@@ -1,0 +1,279 @@
+{
+  "assets": {
+    "fx_crack": {
+      "assetId": 96614468669578,
+      "contentHash": "5c9b88ff4eaca42c6539a89add27641151122abe888ddaf77f525873f732598f",
+      "fileSha256": "5c9b88ff4eaca42c6539a89add27641151122abe888ddaf77f525873f732598f",
+      "idSetByHand": "2026-10-23T20:03:18Z",
+      "moderationState": null,
+      "structureHash": "c949ca5f2270f9c991f288082a0370bc",
+      "uploadedOutside": true
+    },
+    "fx_darkglass": {
+      "assetId": 107399066957226,
+      "contentHash": "a28ae851df26c6108fa9ab28629a1dba932106be835e7f0cabde6e2e01c1d576",
+      "fileSha256": "a28ae851df26c6108fa9ab28629a1dba932106be835e7f0cabde6e2e01c1d576",
+      "idSetByHand": "2026-10-23T20:03:18Z",
+      "moderationState": null,
+      "structureHash": "c949ca5f2270f9c991f288082a0370bc",
+      "uploadedOutside": true
+    },
+    "fx_droplets": {
+      "assetId": 98654791201529,
+      "contentHash": "349231faa813b902cd757bc9ff19263e8095df27c641ddf89102ea4eaf4a8f98",
+      "fileSha256": "349231faa813b902cd757bc9ff19263e8095df27c641ddf89102ea4eaf4a8f98",
+      "idSetByHand": "2026-10-23T20:03:18Z",
+      "moderationState": null,
+      "structureHash": "c949ca5f2270f9c991f288082a0370bc",
+      "uploadedOutside": true
+    },
+    "fx_dust": {
+      "assetId": 97041365913266,
+      "contentHash": "9da02cf7cec303e1b8fe24b8bde0ba349fc23928f39c37fa35fb7b736101a509",
+      "fileSha256": "9da02cf7cec303e1b8fe24b8bde0ba349fc23928f39c37fa35fb7b736101a509",
+      "idSetByHand": "2026-10-23T20:03:18Z",
+      "moderationState": null,
+      "structureHash": "c949ca5f2270f9c991f288082a0370bc",
+      "uploadedOutside": true
+    },
+    "fx_embers": {
+      "assetId": 127699388134054,
+      "contentHash": "c73cd63c0cbc00c18635632366cf078773088bcb5aac33ce0a528070125c0e7a",
+      "fileSha256": "c73cd63c0cbc00c18635632366cf078773088bcb5aac33ce0a528070125c0e7a",
+      "idSetByHand": "2026-10-23T20:03:18Z",
+      "moderationState": null,
+      "structureHash": "c949ca5f2270f9c991f288082a0370bc",
+      "uploadedOutside": true
+    },
+    "fx_flame": {
+      "assetId": 100572671905352,
+      "contentHash": "ff3bad6cf8d16bdb7409e73f6e776bbd152f77277724328842de442311c932ae",
+      "fileSha256": "ff3bad6cf8d16bdb7409e73f6e776bbd152f77277724328842de442311c932ae",
+      "idSetByHand": "2026-10-23T20:03:18Z",
+      "moderationState": null,
+      "structureHash": "c949ca5f2270f9c991f288082a0370bc",
+      "uploadedOutside": true
+    },
+    "fx_frostmist": {
+      "assetId": 76524464875607,
+      "contentHash": "71ad545a55fa7ad04bbcf61749550b856407ff12e9e57fdb5d376ca877c215f9",
+      "fileSha256": "71ad545a55fa7ad04bbcf61749550b856407ff12e9e57fdb5d376ca877c215f9",
+      "idSetByHand": "2026-10-23T20:03:18Z",
+      "moderationState": null,
+      "structureHash": "c949ca5f2270f9c991f288082a0370bc",
+      "uploadedOutside": true
+    },
+    "fx_glow": {
+      "assetId": 76288588290992,
+      "contentHash": "e7ec3f07cd4fbf9612180b2f883ba49a97127a384e5fc1659442928ae02b9b21",
+      "fileSha256": "e7ec3f07cd4fbf9612180b2f883ba49a97127a384e5fc1659442928ae02b9b21",
+      "idSetByHand": "2026-10-23T20:03:18Z",
+      "moderationState": null,
+      "structureHash": "c949ca5f2270f9c991f288082a0370bc",
+      "uploadedOutside": true
+    },
+    "fx_hexshield": {
+      "assetId": 140427438072283,
+      "contentHash": "d89f28a06451acdf700306ad32f2411ba779914a75af573c06e05807e5bbeb0e",
+      "fileSha256": "d89f28a06451acdf700306ad32f2411ba779914a75af573c06e05807e5bbeb0e",
+      "idSetByHand": "2026-10-23T20:03:18Z",
+      "moderationState": null,
+      "structureHash": "c949ca5f2270f9c991f288082a0370bc",
+      "uploadedOutside": true
+    },
+    "fx_iceshards": {
+      "assetId": 103299749959857,
+      "contentHash": "6bdd063f507cb36c457bc3289bcf0043dbd1f22fb08b1439c709db4bbe42487b",
+      "fileSha256": "6bdd063f507cb36c457bc3289bcf0043dbd1f22fb08b1439c709db4bbe42487b",
+      "idSetByHand": "2026-10-23T20:03:18Z",
+      "moderationState": null,
+      "structureHash": "c949ca5f2270f9c991f288082a0370bc",
+      "uploadedOutside": true
+    },
+    "fx_leaves": {
+      "assetId": 124450836244222,
+      "contentHash": "c5135cb05a2a1fb598686c1de6926d282dbd8af4121dc230c0ac461c9240eb14",
+      "fileSha256": "c5135cb05a2a1fb598686c1de6926d282dbd8af4121dc230c0ac461c9240eb14",
+      "idSetByHand": "2026-10-23T20:03:18Z",
+      "moderationState": null,
+      "structureHash": "c949ca5f2270f9c991f288082a0370bc",
+      "uploadedOutside": true
+    },
+    "fx_lightning": {
+      "assetId": 92545254590429,
+      "contentHash": "7a94d2839a73289e2bce653168ac63ade7070fa0931f7c77e260cb3a9b23c4d2",
+      "fileSha256": "7a94d2839a73289e2bce653168ac63ade7070fa0931f7c77e260cb3a9b23c4d2",
+      "idSetByHand": "2026-10-23T20:03:18Z",
+      "moderationState": null,
+      "structureHash": "574a838c014cd04a97ff2731562dcda6",
+      "uploadedOutside": true
+    },
+    "fx_petals": {
+      "assetId": 112847438178174,
+      "contentHash": "b143c153683ece3227bcdced2bb85622c9991b2de49b7ac94cd1efd8788e107c",
+      "fileSha256": "b143c153683ece3227bcdced2bb85622c9991b2de49b7ac94cd1efd8788e107c",
+      "idSetByHand": "2026-10-23T20:03:18Z",
+      "moderationState": null,
+      "structureHash": "c949ca5f2270f9c991f288082a0370bc",
+      "uploadedOutside": true
+    },
+    "fx_rays": {
+      "assetId": 103206195395652,
+      "contentHash": "18928e122f06178f0c1c5f2b4880eed5021a8f7412ad13c9093d91444dabed89",
+      "fileSha256": "18928e122f06178f0c1c5f2b4880eed5021a8f7412ad13c9093d91444dabed89",
+      "idSetByHand": "2026-10-23T20:03:18Z",
+      "moderationState": null,
+      "structureHash": "c949ca5f2270f9c991f288082a0370bc",
+      "uploadedOutside": true
+    },
+    "fx_ripple": {
+      "assetId": 110792204013066,
+      "contentHash": "a6bd86ed0f8bfe79941fa2d783f9f9a11347bfa794cc4fa98ec15e9ab6410251",
+      "fileSha256": "a6bd86ed0f8bfe79941fa2d783f9f9a11347bfa794cc4fa98ec15e9ab6410251",
+      "idSetByHand": "2026-10-23T20:03:18Z",
+      "moderationState": null,
+      "structureHash": "c949ca5f2270f9c991f288082a0370bc",
+      "uploadedOutside": true
+    },
+    "fx_rock": {
+      "assetId": 87833097448324,
+      "contentHash": "3ae9fb8cbe5372a5a42c304f6cc237470abbd427168f1db85720ace42ae2ddcc",
+      "fileSha256": "3ae9fb8cbe5372a5a42c304f6cc237470abbd427168f1db85720ace42ae2ddcc",
+      "idSetByHand": "2026-10-23T20:03:18Z",
+      "moderationState": null,
+      "structureHash": "c949ca5f2270f9c991f288082a0370bc",
+      "uploadedOutside": true
+    },
+    "fx_shock": {
+      "assetId": 99734523394147,
+      "contentHash": "baa740b2dfbae424cbbfd2b18b921b822a5c2d9569155b72c7bd8fa405dfc03e",
+      "fileSha256": "baa740b2dfbae424cbbfd2b18b921b822a5c2d9569155b72c7bd8fa405dfc03e",
+      "idSetByHand": "2026-10-23T20:03:18Z",
+      "moderationState": null,
+      "structureHash": "c949ca5f2270f9c991f288082a0370bc",
+      "uploadedOutside": true
+    },
+    "fx_slash": {
+      "assetId": 100907802300639,
+      "contentHash": "38a285bdd6272db1425c671d7d5a0615423fb7d612fa8c46913ba75f3d0eb04a",
+      "fileSha256": "38a285bdd6272db1425c671d7d5a0615423fb7d612fa8c46913ba75f3d0eb04a",
+      "idSetByHand": "2026-10-23T20:03:18Z",
+      "moderationState": null,
+      "structureHash": "c949ca5f2270f9c991f288082a0370bc",
+      "uploadedOutside": true
+    },
+    "fx_smoke": {
+      "assetId": 109553016614728,
+      "contentHash": "250ba34a27b7d60ae307434e6e164da84ddd90d8abc20baca55cd34051bbec6b",
+      "fileSha256": "250ba34a27b7d60ae307434e6e164da84ddd90d8abc20baca55cd34051bbec6b",
+      "idSetByHand": "2026-10-23T20:03:18Z",
+      "moderationState": null,
+      "structureHash": "c949ca5f2270f9c991f288082a0370bc",
+      "uploadedOutside": true
+    },
+    "fx_snow": {
+      "assetId": 123909396368018,
+      "contentHash": "7aaf2d3dbcb86cae7684326e273b6c166092859c4d1f5dbece8f4275c426a55b",
+      "fileSha256": "7aaf2d3dbcb86cae7684326e273b6c166092859c4d1f5dbece8f4275c426a55b",
+      "idSetByHand": "2026-10-23T20:03:18Z",
+      "moderationState": null,
+      "structureHash": "c949ca5f2270f9c991f288082a0370bc",
+      "uploadedOutside": true
+    },
+    "fx_sparkle": {
+      "assetId": 99857625496036,
+      "contentHash": "68249bc778d3287367be671d2a8fcd4ed132542351e8356039731d0c2cff598b",
+      "fileSha256": "68249bc778d3287367be671d2a8fcd4ed132542351e8356039731d0c2cff598b",
+      "idSetByHand": "2026-10-23T20:03:18Z",
+      "moderationState": null,
+      "structureHash": "c949ca5f2270f9c991f288082a0370bc",
+      "uploadedOutside": true
+    },
+    "fx_sparks": {
+      "assetId": 114631488200090,
+      "contentHash": "c94031c8abb03bb04688f8e2e6e0ce5bb7659cd59c4650d147527e390cb6f5e4",
+      "fileSha256": "c94031c8abb03bb04688f8e2e6e0ce5bb7659cd59c4650d147527e390cb6f5e4",
+      "idSetByHand": "2026-10-23T20:03:18Z",
+      "moderationState": null,
+      "structureHash": "c949ca5f2270f9c991f288082a0370bc",
+      "uploadedOutside": true
+    },
+    "fx_speedlines": {
+      "assetId": 87600549574108,
+      "contentHash": "03c75834d6fdd04189d604a7c50e17ff1f94cf999cf598a98dfb1af2880e3c8b",
+      "fileSha256": "03c75834d6fdd04189d604a7c50e17ff1f94cf999cf598a98dfb1af2880e3c8b",
+      "idSetByHand": "2026-10-23T20:03:18Z",
+      "moderationState": null,
+      "structureHash": "574a838c014cd04a97ff2731562dcda6",
+      "uploadedOutside": true
+    },
+    "fx_splash": {
+      "assetId": 132924707062115,
+      "contentHash": "2ccd4eb76b4211d871404aab9a80294e8c014946beb0b37cc5b52b6f1e6f9611",
+      "fileSha256": "2ccd4eb76b4211d871404aab9a80294e8c014946beb0b37cc5b52b6f1e6f9611",
+      "idSetByHand": "2026-10-23T20:03:18Z",
+      "moderationState": null,
+      "structureHash": "c949ca5f2270f9c991f288082a0370bc",
+      "uploadedOutside": true
+    },
+    "fx_stars": {
+      "assetId": 89303769054998,
+      "contentHash": "5a01dd2c4c9579330bfe1d320bec2d21a27b6c6ff01a5b508497abcf1e1e27b6",
+      "fileSha256": "5a01dd2c4c9579330bfe1d320bec2d21a27b6c6ff01a5b508497abcf1e1e27b6",
+      "idSetByHand": "2026-10-23T20:03:18Z",
+      "moderationState": null,
+      "structureHash": "c949ca5f2270f9c991f288082a0370bc",
+      "uploadedOutside": true
+    },
+    "fx_stormcloud": {
+      "assetId": 114358196558354,
+      "contentHash": "b30fdbabd1b1b94346611b9bf836b66a230f235669f25d60dcabc0231e552ff8",
+      "fileSha256": "b30fdbabd1b1b94346611b9bf836b66a230f235669f25d60dcabc0231e552ff8",
+      "idSetByHand": "2026-10-23T20:03:18Z",
+      "moderationState": null,
+      "structureHash": "c949ca5f2270f9c991f288082a0370bc",
+      "uploadedOutside": true
+    },
+    "fx_streak": {
+      "assetId": 70662988105622,
+      "contentHash": "c1b66753665e4b125b58646674d1f0f73dcf0ea71759e14b6f34749a99a112ab",
+      "fileSha256": "c1b66753665e4b125b58646674d1f0f73dcf0ea71759e14b6f34749a99a112ab",
+      "idSetByHand": "2026-10-23T20:03:18Z",
+      "moderationState": null,
+      "structureHash": "c949ca5f2270f9c991f288082a0370bc",
+      "uploadedOutside": true
+    },
+    "fx_thorn": {
+      "assetId": 108794659764717,
+      "contentHash": "fcca30ca84707c6c60278359034da2fa1e2f140f8b1a2a8158d3a75cd71dc3e3",
+      "fileSha256": "fcca30ca84707c6c60278359034da2fa1e2f140f8b1a2a8158d3a75cd71dc3e3",
+      "idSetByHand": "2026-10-23T20:03:18Z",
+      "moderationState": null,
+      "structureHash": "c949ca5f2270f9c991f288082a0370bc",
+      "uploadedOutside": true
+    },
+    "fx_voidring": {
+      "assetId": 72735299069339,
+      "contentHash": "78f186e093fce8a4c0506771030ff4394f8cc89050416e9d3243b463d139759a",
+      "fileSha256": "78f186e093fce8a4c0506771030ff4394f8cc89050416e9d3243b463d139759a",
+      "idSetByHand": "2026-10-23T20:03:18Z",
+      "moderationState": null,
+      "structureHash": "c949ca5f2270f9c991f288082a0370bc",
+      "uploadedOutside": true
+    },
+    "fx_wisps": {
+      "assetId": 87801455217864,
+      "contentHash": "8001227067605b842c5da282ca6820a87187a45293650fe18068d2fae722c7e3",
+      "fileSha256": "8001227067605b842c5da282ca6820a87187a45293650fe18068d2fae722c7e3",
+      "idSetByHand": "2026-10-23T20:03:18Z",
+      "moderationState": null,
+      "structureHash": "c949ca5f2270f9c991f288082a0370bc",
+      "uploadedOutside": true
+    }
+  },
+  "creator": {
+    "id": "93742920",
+    "type": "user"
+  },
+  "version": 1
+}

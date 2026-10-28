@@ -1,0 +1,469 @@
+{
+ "class": "vfx",
+ "owner": "pet attack VFX, Task 2",
+ "doc": "docs/superpowers/specs/2026-10-23-pet-attack-vfx-design.md (Budgets: solid cores, sparse textures). Keys vfx_<shape> and vfx_sig_<name>: the solid glowing body of every attack effect, built by props/vfx_cores.py (prop vfx_cores, args.shape). ONE MeshPart named Core per key (group Core), white Neon (MeshPart.Color tints it at runtime; vertex colours carry a dark accent 0.84 / deep 0.71), pivot = bounds centre, +Y up, -Z forward. args.size = the design size in studs per axis ('max' = the largest axis), checked by blender/kit/selftest.py.",
+ "budgets": {
+  "core": {
+   "tris": 2000,
+   "parts": 1
+  },
+  "coreBig": {
+   "tris": 4000,
+   "parts": 1
+  },
+  "sig": {
+   "tris": 6000,
+   "parts": 1
+  }
+ },
+ "keys": [
+  {
+   "key": "vfx_orb",
+   "type": "prop",
+   "prop": "vfx_cores",
+   "args": {
+    "shape": "orb",
+    "size": {
+     "x": 2,
+     "y": 2,
+     "z": 2
+    }
+   },
+   "budget": "core",
+   "description": "Effect core: orb (projectile / blast body), 2 studs"
+  },
+  {
+   "key": "vfx_crescent",
+   "type": "prop",
+   "prop": "vfx_cores",
+   "args": {
+    "shape": "crescent",
+    "size": {
+     "x": 4,
+     "y": 0.4,
+     "z": 2
+    }
+   },
+   "budget": "core",
+   "description": "Effect core: crescent slash arc, 4 x 0.4 x 2, convex edge towards -Z"
+  },
+  {
+   "key": "vfx_spear",
+   "type": "prop",
+   "prop": "vfx_cores",
+   "args": {
+    "shape": "spear",
+    "size": {
+     "z": 5
+    }
+   },
+   "budget": "core",
+   "description": "Effect core: spear / lance, 5 long, tip towards -Z"
+  },
+  {
+   "key": "vfx_spike",
+   "type": "prop",
+   "prop": "vfx_cores",
+   "args": {
+    "shape": "spike",
+    "size": {
+     "y": 3
+    }
+   },
+   "budget": "core",
+   "description": "Effect core: ground spike, 3 tall"
+  },
+  {
+   "key": "vfx_ring",
+   "type": "prop",
+   "prop": "vfx_cores",
+   "args": {
+    "shape": "ring",
+    "size": {
+     "x": 4,
+     "z": 4
+    }
+   },
+   "budget": "core",
+   "description": "Effect core: shockwave ring, 4 across, flat in XZ"
+  },
+  {
+   "key": "vfx_shell",
+   "type": "prop",
+   "prop": "vfx_cores",
+   "args": {
+    "shape": "shell",
+    "size": {
+     "x": 5,
+     "y": 5,
+     "z": 5
+    }
+   },
+   "budget": "coreBig",
+   "description": "Effect core: shield shell (hollow bubble), 5 across"
+  },
+  {
+   "key": "vfx_beam",
+   "type": "prop",
+   "prop": "vfx_cores",
+   "args": {
+    "shape": "beam",
+    "size": {
+     "x": 1,
+     "y": 1,
+     "z": 8
+    }
+   },
+   "budget": "core",
+   "description": "Effect core: beam 1 x 1 x 8 along Z (stretched at runtime)"
+  },
+  {
+   "key": "vfx_shard",
+   "type": "prop",
+   "prop": "vfx_cores",
+   "args": {
+    "shape": "shard",
+    "size": {
+     "max": 1.2
+    }
+   },
+   "budget": "core",
+   "description": "Effect core: crystal shard, 1.2 long, tip towards -Z"
+  },
+  {
+   "key": "vfx_chunk",
+   "type": "prop",
+   "prop": "vfx_cores",
+   "args": {
+    "shape": "chunk",
+    "size": {
+     "max": 0.8
+    }
+   },
+   "budget": "core",
+   "description": "Effect core: rock chunk debris, 0.8"
+  },
+  {
+   "key": "vfx_star",
+   "type": "prop",
+   "prop": "vfx_cores",
+   "args": {
+    "shape": "star",
+    "size": {
+     "max": 1.5
+    }
+   },
+   "budget": "core",
+   "description": "Effect core: five-point star, 1.5 across, facing -Z"
+  },
+  {
+   "key": "vfx_root",
+   "type": "prop",
+   "prop": "vfx_cores",
+   "args": {
+    "shape": "root",
+    "size": {
+     "y": 4
+    }
+   },
+   "budget": "core",
+   "description": "Effect core: twisting root rising from the ground, 4 tall"
+  },
+  {
+   "key": "vfx_cage",
+   "type": "prop",
+   "prop": "vfx_cores",
+   "args": {
+    "shape": "cage",
+    "size": {
+     "max": 4
+    }
+   },
+   "budget": "coreBig",
+   "description": "Effect core: domed cage of bars, 4 across"
+  },
+  {
+   "key": "vfx_sig_phoenix_wing",
+   "type": "prop",
+   "prop": "vfx_cores",
+   "args": {
+    "shape": "sig_phoenix_wing",
+    "size": {
+     "x": 6
+    }
+   },
+   "budget": "sig",
+   "description": "Signature core (Ember / Obsidian Phoenix): phoenix with blazing wings spread, 6 span, facing -Z"
+  },
+  {
+   "key": "vfx_sig_sun_disc",
+   "type": "prop",
+   "prop": "vfx_cores",
+   "args": {
+    "shape": "sig_sun_disc",
+    "size": {
+     "x": 5,
+     "y": 5
+    }
+   },
+   "budget": "sig",
+   "description": "Signature core (Sunbeam Bear): sun-disc shield with rays, 5 across, facing -Z"
+  },
+  {
+   "key": "vfx_sig_wolf",
+   "type": "prop",
+   "prop": "vfx_cores",
+   "args": {
+    "shape": "sig_wolf",
+    "size": {
+     "z": 5
+    }
+   },
+   "budget": "sig",
+   "description": "Signature core (Stormfang): lightning storm-wolf mid-pounce, 5 long, facing -Z"
+  },
+  {
+   "key": "vfx_sig_black_sun",
+   "type": "prop",
+   "prop": "vfx_cores",
+   "args": {
+    "shape": "sig_black_sun",
+    "size": {
+     "x": 6,
+     "y": 6
+    }
+   },
+   "budget": "sig",
+   "description": "Signature core (Eclipse Dragon): black-sun ring with a flame corona, 6 across, facing -Z"
+  },
+  {
+   "key": "vfx_sig_cloud_dragon",
+   "type": "prop",
+   "prop": "vfx_cores",
+   "args": {
+    "shape": "sig_cloud_dragon",
+    "size": {
+     "y": 5.3
+    }
+   },
+   "budget": "sig",
+   "description": "Signature core (Cloudy Dragon): cloud dragon spiralling up, 5.3 tall, head towards -Z"
+  },
+  {
+   "key": "vfx_sig_wish_star",
+   "type": "prop",
+   "prop": "vfx_cores",
+   "args": {
+    "shape": "sig_wish_star",
+    "size": {
+     "y": 4.3
+    }
+   },
+   "budget": "sig",
+   "description": "Signature core (Starlight Unicorn): giant wishing star with a comet tail, 4.3 tall, facing -Z"
+  },
+  {
+   "key": "vfx_sig_fox_orb",
+   "type": "prop",
+   "prop": "vfx_cores",
+   "args": {
+    "shape": "sig_fox_orb",
+    "size": {
+     "y": 2
+    }
+   },
+   "budget": "sig",
+   "description": "Signature core (Phantom Kitsune): fox-fire orb with a curling flame tip, 2 tall"
+  },
+  {
+   "key": "vfx_sig_lava_spike",
+   "type": "prop",
+   "prop": "vfx_cores",
+   "args": {
+    "shape": "sig_lava_spike",
+    "size": {
+     "y": 3.3
+    }
+   },
+   "budget": "sig",
+   "description": "Signature core (Magma Cub): cracked magma spike cluster, 3.3 tall"
+  },
+  {
+   "key": "vfx_sig_glacier",
+   "type": "prop",
+   "prop": "vfx_cores",
+   "args": {
+    "shape": "sig_glacier",
+    "size": {
+     "max": 5
+    }
+   },
+   "budget": "sig",
+   "description": "Signature core (Rime Wyrmling): ring of glacier crystals rising around the target, 5 across"
+  },
+  {
+   "key": "vfx_sig_serpent",
+   "type": "prop",
+   "prop": "vfx_cores",
+   "args": {
+    "shape": "sig_serpent",
+    "size": {
+     "y": 5
+    }
+   },
+   "budget": "sig",
+   "description": "Signature core (Hydralotl): void serpent head rearing with open jaws, 5 tall, facing -Z"
+  }
+ ],
+ "sets": [],
+ "previews": [
+  {
+   "name": "cores_preview",
+   "out": "vfx/out/cores_preview.png",
+   "sheet": [
+    "vfx_orb",
+    "vfx_crescent",
+    "vfx_spear",
+    "vfx_spike",
+    "vfx_ring",
+    "vfx_shell",
+    "vfx_beam",
+    "vfx_shard",
+    "vfx_chunk",
+    "vfx_star",
+    "vfx_root",
+    "vfx_cage",
+    "vfx_sig_phoenix_wing",
+    "vfx_sig_sun_disc",
+    "vfx_sig_wolf",
+    "vfx_sig_black_sun",
+    "vfx_sig_cloud_dragon",
+    "vfx_sig_wish_star",
+    "vfx_sig_fox_orb",
+    "vfx_sig_lava_spike",
+    "vfx_sig_glacier",
+    "vfx_sig_serpent"
+   ],
+   "tint": {
+    "vfx_orb": [
+     255,
+     140,
+     50
+    ],
+    "vfx_crescent": [
+     120,
+     220,
+     255
+    ],
+    "vfx_spear": [
+     255,
+     214,
+     90
+    ],
+    "vfx_spike": [
+     190,
+     140,
+     90
+    ],
+    "vfx_ring": [
+     180,
+     120,
+     255
+    ],
+    "vfx_shell": [
+     130,
+     200,
+     255
+    ],
+    "vfx_beam": [
+     255,
+     245,
+     140
+    ],
+    "vfx_shard": [
+     150,
+     230,
+     255
+    ],
+    "vfx_chunk": [
+     175,
+     130,
+     90
+    ],
+    "vfx_star": [
+     255,
+     220,
+     110
+    ],
+    "vfx_root": [
+     110,
+     210,
+     90
+    ],
+    "vfx_cage": [
+     160,
+     225,
+     255
+    ],
+    "vfx_sig_phoenix_wing": [
+     255,
+     120,
+     40
+    ],
+    "vfx_sig_sun_disc": [
+     255,
+     200,
+     60
+    ],
+    "vfx_sig_wolf": [
+     110,
+     190,
+     255
+    ],
+    "vfx_sig_black_sun": [
+     150,
+     80,
+     220
+    ],
+    "vfx_sig_cloud_dragon": [
+     210,
+     235,
+     255
+    ],
+    "vfx_sig_wish_star": [
+     255,
+     236,
+     150
+    ],
+    "vfx_sig_fox_orb": [
+     150,
+     120,
+     255
+    ],
+    "vfx_sig_lava_spike": [
+     255,
+     90,
+     30
+    ],
+    "vfx_sig_glacier": [
+     140,
+     220,
+     255
+    ],
+    "vfx_sig_serpent": [
+     170,
+     90,
+     230
+    ]
+   },
+   "res": 220,
+   "cols": 3,
+   "views": [
+    "front",
+    "threequarter",
+    "side",
+    "top"
+   ]
+  }
+ ]
+}

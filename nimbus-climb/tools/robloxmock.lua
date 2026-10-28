@@ -1609,6 +1609,9 @@ local CLOSED_ENUMS = {
 	ParticleEmitterShape = "Box Sphere Cylinder Disc",
 	ParticleEmitterShapeStyle = "Volume Surface",
 	ParticleEmitterShapeInOut = "Outward Inward InAndOut",
+	-- [owner: pet attack VFX, Task 6] AttackFx flipbook sheets (4x4 grids, mode + fps from blender/vfx/textures.json)
+	ParticleFlipbookLayout = "None Grid2x2 Grid4x4 Grid8x8",
+	ParticleFlipbookMode = "Loop OneShot PingPong Random",
 	Technology = "Legacy Voxel Compatibility ShadowMap Future",
 	CameraType = "Fixed Watch Attach Track Follow Custom Scriptable Orbital",
 	RigType = "R6 R15",
@@ -3955,6 +3958,9 @@ defclass("ParticleEmitter", "Instance", {
 		Shape = T.enum("ParticleEmitterShape", "Box"), ShapeStyle = T.enum("ParticleEmitterShapeStyle", "Volume"),
 		ShapeInOut = T.enum("ParticleEmitterShapeInOut", "Outward"), ShapePartial = T.num(1), Squash = T.ns(0), VelocityInheritance = T.num(0),
 		WindAffectsDrag = T.bool(false), Brightness = T.num(1),
+		-- [owner: pet attack VFX, Task 6] flipbook sheets
+		FlipbookLayout = T.enum("ParticleFlipbookLayout", "None"), FlipbookMode = T.enum("ParticleFlipbookMode", "Loop"),
+		FlipbookFramerate = T.nr(1, 1), FlipbookStartRandom = T.bool(false),
 	},
 	methods = {
 		Emit = function(self, count)

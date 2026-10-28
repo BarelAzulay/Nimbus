@@ -23,6 +23,12 @@ operation returns must load in an ImageLabel ("rbxassetid://<id>"); if it is the
 the Image id in with --set-id KEY=IMAGEID (--textures --upload --set-id ...: sends nothing, records the Image id as
 assetId, keeps the Decal id as decalAssetId, rewrites TextureIds.lua). Never --upload without the player's OK.
 --set-id on a mesh key is refused unless --allow-mesh-set-id says it is meant (a Model id needs no swap).
+The Image class also reads the pet attack VFX sheets: blender/vfx/textures.json (a list of {key, ...}) -> the PNGs
+blender/vfx/out/<key>.png (rendered by blender/vfx/render_textures.py, git-ignored, byte-identical on a re-render);
+contentHash = the PNG's sha256 (none while the PNG is not rendered: a run of that key then fails with the render hint).
+An image uploaded OUTSIDE this tool (Roblox Studio's upload_image returns the Image id itself) is recorded with
+--textures --upload --set-id KEY=IMAGEID on a key that has no asset yet: it takes the current PNG's contentHash (so a
+later run skips it), sends nothing, and needs ROBLOX_CREATOR_ID (the owner of the ids) but not ROBLOX_API_KEY.
 
 Environment (never stored, never printed):
     ROBLOX_API_KEY       Open Cloud API key with the Assets API (Read + Write), made by the experience owner
@@ -69,6 +75,7 @@ import http.client
 import json
 import os
 import re
+import struct
 import sys
 import time
 import urllib.error
@@ -363,6 +370,42 @@ CLASSES = {
               "build": "python3 blender/textures/build_vortex.py  (%s)"},
 }
 CLASS = CLASSES["mesh"]
+# the second Image-class index: the pet attack VFX sheets (render_textures.py writes them into blender/vfx/out/)
+VFX_INDEX = ("blender", "vfx", "textures.json")
+VFX_BUILD = "blender -b -P blender/vfx/render_textures.py -- --out blender/vfx/out  (%s; the Blender of blender/README.md)"
+
+
+def png_structure(path):
+    """an image's structureHash: its size + pixel format from the PNG IHDR (None if it is not a PNG)"""
+    with open(path, "rb") as f:
+        head = f.read(26)
+    if len(head) < 26 or head[:8] != b"\x89PNG\r\n\x1a\n" or head[12:16] != b"IHDR":
+        return None
+    w, h = struct.unpack(">II", head[16:24])
+    return hashlib.md5(("png %dx%d depth %d color %d" % (w, h, head[24], head[25])).encode()).hexdigest()
+
+
+def load_vfx_textures(root):
+    """blender/vfx/textures.json -> index entries for the Image class ({} when the manifest is absent). The PNGs are
+    generated (git-ignored): contentHash / structureHash come from the file on disk, None while it is not rendered."""
+    path = os.path.join(root, *VFX_INDEX)
+    if not os.path.isfile(path):
+        return {}
+    with open(path, encoding="utf-8") as f:
+        data = json.load(f)
+    out = {}
+    for t in (data.get("textures") if isinstance(data, dict) else None) or []:
+        key = t.get("key") if isinstance(t, dict) else None
+        if not isinstance(key, str) or not KEY_RE.match(key) or key in out:
+            raise Refusal("%s: bad or repeated texture key %r" % (os.path.relpath(path, root), key))
+        rel = "blender/vfx/out/%s.png" % key
+        png = os.path.join(root, *rel.split("/"))
+        have = os.path.isfile(png)
+        out[key] = {"png": rel, "displayName": "NC " + key.replace("_", " "),
+                    "description": "Nimbus Climb pet attack VFX texture " + key,
+                    "contentHash": sha256_file(png) if have else None,
+                    "structureHash": png_structure(png) if have else None, "build": VFX_BUILD}
+    return out
 
 
 def png_path(root, key, entry):
@@ -381,7 +424,7 @@ def check_entry(root, key, entry):
     if CLASS["file"] == "png":
         path = png_path(root, key, entry)
         if not os.path.isfile(path):
-            raise UploadError("missing %s (build it: %s)" % (os.path.relpath(path, root), CLASS["build"] % key))
+            raise UploadError("missing %s (build it: %s)" % (os.path.relpath(path, root), (entry.get("build") or CLASS["build"]) % key))
         size = os.path.getsize(path)
         if size > MAX_FILE_BYTES:
             raise UploadError("%s is %.1f MB; the API takes up to 20 MB" % (path, size / 1048576.0))
@@ -556,6 +599,22 @@ def set_id(key, record, new_id, log):
     log("  set-id: %s = %d (%s)" % (key, new_id, what))
 
 
+def record_outside(key, record, entry, new_id, root, log):
+    """--textures --set-id KEY=ID on a key with no asset yet: the Image was uploaded outside this tool (Roblox Studio's
+    upload_image returns the Image id, no Decal). Nothing is sent: assetId = ID, and the PNG's current hashes are taken
+    as the uploaded content, so a later run skips the key until its PNG changes (then a NEW asset, like any image)."""
+    path = png_path(root, key, entry)
+    record["assetId"] = new_id
+    record["contentHash"] = entry.get("contentHash")
+    record["structureHash"] = entry.get("structureHash")
+    record["fileSha256"] = sha256_file(path)
+    record["moderationState"] = None
+    record["uploadedOutside"] = True
+    record["idSetByHand"] = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+    record.pop("lastError", None)
+    log("  set-id: %s = %d (an Image uploaded outside this tool, recorded against %s)" % (key, new_id, os.path.relpath(path, root)))
+
+
 def finish(client, key, record, args, log):
     op_id = record["pendingOperation"]
     deadline = time.monotonic() + args.poll_timeout
@@ -624,7 +683,8 @@ def mesh_ids_lua(state):
     if CLASS["file"] == "png":
         lines = [
             "-- GENERATED by tools/upload_assets.py --textures (Phase 6) from blender/textures/upload_state.json. Do not edit.",
-            "-- Texture key -> Roblox Image asset id (numbers only). Empty = the gates' vortex uses its effects-only fallback.",
+            "-- Texture key -> Roblox Image asset id (numbers only): the gate vortex layers (no vortex key = the vortex's",
+            "-- effects-only fallback) and the pet attack VFX sheets fx_* (blender/vfx/textures.json).",
             "-- Rejected assets are left out; assets still in review are listed and simply fall back until approved.",
             "return {",
         ]
@@ -651,7 +711,8 @@ def parse_args(argv):
     ap.add_argument("--only", action="append", default=[], help="these keys only (repeatable or comma separated)")
     ap.add_argument("--refresh", action="store_true", help="only re-read revision + moderation of known assets")
     ap.add_argument("--force", action="store_true", help="upload even when the contentHash is unchanged")
-    ap.add_argument("--textures", action="store_true", help="the Image class: blender/textures/textures.json -> TextureIds.lua")
+    ap.add_argument("--textures", action="store_true",
+                    help="the Image class: blender/textures/textures.json + blender/vfx/textures.json -> TextureIds.lua")
     ap.add_argument("--adopt", action="append", default=[], metavar="KEY=ASSETID",
                     help="a create whose outcome was unknown DID make this asset (seen in Creator Hub): record its id")
     ap.add_argument("--not-created", action="append", default=[], metavar="KEY",
@@ -719,8 +780,14 @@ def set_ids_run(args, assets, state, keys, creator, state_path, lua_path, root):
         if rec.get("pendingCreate") or rec.get("pendingOperation"):
             raise Refusal("--set-id %s: its upload is not finished (settle it first: a plain run / --adopt / --not-created)" % key)
         if not isinstance(rec.get("assetId"), int):
-            raise Refusal("--set-id %s: no uploaded asset recorded yet (upload it first; --set-id only swaps the id of "
-                          "an uploaded asset)" % key)
+            if CLASS["file"] != "png":
+                raise Refusal("--set-id %s: no uploaded asset recorded yet (upload it first; --set-id only swaps the id of "
+                              "an uploaded asset)" % key)
+            # an image uploaded outside this tool (Studio upload_image): recorded against the PNG on disk now
+            if not assets[key].get("contentHash") or not os.path.isfile(png_path(root, key, assets[key])):
+                raise Refusal("--set-id %s: no uploaded asset recorded yet and no PNG to record it against (build the PNG "
+                              "that was uploaded first: %s)" % (key, (assets[key].get("build") or CLASS["build"]) % key))
+            continue
         if rec["assetId"] == new_id:
             raise Refusal("--set-id %s=%d: that is already its id (nothing to change)" % (key, new_id))
         if CLASS["file"] == "png" and rec.get("decalAssetId") == new_id:
@@ -730,7 +797,11 @@ def set_ids_run(args, assets, state, keys, creator, state_path, lua_path, root):
                                                            else "SET-ID:", len(args.set_id)))
     for key in sorted(args.set_id):
         print("- " + key)
-        set_id(key, state["assets"][key], args.set_id[key], lambda m: print(m, flush=True))
+        rec = state["assets"].setdefault(key, {})
+        if isinstance(rec.get("assetId"), int):
+            set_id(key, rec, args.set_id[key], lambda m: print(m, flush=True))
+        else:
+            record_outside(key, rec, assets[key], args.set_id[key], root, lambda m: print(m, flush=True))
     if args.dry_run:
         print("dry run: nothing was sent and nothing was written")
     else:
@@ -756,6 +827,12 @@ def main(argv=None):
             raise Refusal("no %s yet (build the textures first: python3 blender/textures/build_vortex.py)" % os.path.relpath(index_path, root))
         raise Refusal("no %s yet (build the meshes first: %s)" % (os.path.relpath(index_path, root), BUILD_ALL))
     assets = load_index(index_path)
+    if args.textures:
+        vfx = load_vfx_textures(root)
+        clash = sorted(set(vfx) & set(assets))
+        if clash:
+            raise Refusal("%s and %s both list %s" % ("/".join(CLASS["index"]), "/".join(VFX_INDEX), ", ".join(clash)))
+        assets.update(vfx)
     try:
         with open(state_path, encoding="utf-8") as f:
             state = json.load(f)
@@ -770,7 +847,10 @@ def main(argv=None):
         raise Refusal("ROBLOX_CREATOR_TYPE must be 'user' or 'group'")
     if creator_id and not creator_id.isdigit():
         raise Refusal("ROBLOX_CREATOR_ID must be a number (the experience owner's user or group id)")
-    if not args.dry_run and (not api_key or not creator_id):
+    if not args.dry_run and args.set_id and not creator_id:
+        raise Refusal("--set-id --upload needs ROBLOX_CREATOR_ID in the environment (the owner of the ids, recorded in the "
+                      "state file); it sends nothing, so ROBLOX_API_KEY is not needed")
+    if not args.dry_run and not args.set_id and (not api_key or not creator_id):
         raise Refusal("--upload needs ROBLOX_API_KEY and ROBLOX_CREATOR_ID in the environment (a new session loads them)")
     creator = {"type": creator_type, "id": creator_id or "<ROBLOX_CREATOR_ID>"}
     stored = state.get("creator")

@@ -3,6 +3,21 @@
 Checks and helpers for Nimbus Climb. The test pipeline (`run_checks.sh`, `syntax.py`, `check.mjs`, `smoke.py`) is
 described in the "Tests" section of the main `README.md`.
 
+## Windows setup
+
+The Python tools (`smoke.py`, the simulators, the renderers) need Python 3.12 with lupa, NumPy and Pillow. On
+Windows, skip the Microsoft Store `python` / `python3` stubs and install the real interpreter, then call it through
+the `py` launcher:
+
+```sh
+winget install -e --id Python.Python.3.12
+py -3.12 -m pip install lupa numpy pillow
+```
+
+Check it with `py -3.12 -c "import lupa, numpy, PIL; print('ok')"`, and run the tools as `py -3.12 tools/smoke.py
+--quick` wherever this file says `python3`. If `py` is not found right after the install, open a new terminal (or
+call `%LOCALAPPDATA%\Programs\Python\Launcher\py.exe` directly).
+
 ## Place verifier: is the place file up to date?
 
 `verify_place.py` checks a Rojo-built place against `src/` (Python 3 only, no other packages): every

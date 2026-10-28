@@ -8,3 +8,4 @@ blender/meshes.json.lock
 blender/meshes.json.tmp
 *.rbxl.lock
 *.rbxlx.lock
+blender/vfx/out/
