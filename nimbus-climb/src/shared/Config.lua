@@ -80,6 +80,7 @@ Config.Attr = {
 	PortalArrived = "PortalArrived", -- server time of the last arrival through the home portal (TycoonService)
 	-- Phase 5 (ARCHITECTURE_V3.md "Phase 5 build contract", section 10.2)
 	InBattle = "InBattle", -- battle id, or a dungeon RUN id ("D12") for the whole run (BattleService / DungeonService write; C11)
+	InFight = "InFight", -- bool: BattleController draws this player's pets now (DungeonService; dungeon fights only, bug #26)
 	Berries = "Berries", -- whole berries (DataService only, inside AddBerries / SpendBerries, <= 2 writes/s)
 	ObbyLevel = "ObbyLevel", -- the obby difficulty id the player picked at the Obby gate (PortalService writes)
 	ProfileLoaded = "ProfileLoaded", -- true once the profile is loaded or provisional (DataService writes; the loading screen reads it)
