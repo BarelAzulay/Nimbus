@@ -975,10 +975,14 @@ local function clientScenarios()
 		T.check(cap and cap.Text == "ATTACK", "fight client: ...and reads ATTACK again after NEXT_FLASH", cap and cap.Text or "nil")
 		-- the ATTACK button (mouse and touch) and the gamepad X: the same gesture
 		local btn = H.find("Root.Commands.AttackButton")
+		local function onBtn()
+			local a, s = btn.AbsolutePosition, btn.AbsoluteSize
+			return Vector3.new(a.X + s.X / 2, a.Y + s.Y / 2, 0)
+		end
 		local function buttonHold(kind, seconds)
-			Mock.FireSignal(btn, "InputBegan", Mock.NewInput("Unknown", kind, "Begin"), false)
+			Mock.FireSignal(btn, "InputBegan", Mock.NewInput("Unknown", kind, "Begin", { Position = onBtn() }), false)
 			H.step(max(1, floor(seconds * 30 + 0.5)), 1 / 30)
-			Mock.FireSignal(btn, "InputEnded", Mock.NewInput("Unknown", kind, "End"), false)
+			Mock.FireSignal(btn, "InputEnded", Mock.NewInput("Unknown", kind, "End", { Position = onBtn() }), false)
 			H.step(20, 1 / 30)
 		end
 		local okButtons = btn ~= nil
@@ -998,6 +1002,37 @@ local function clientScenarios()
 			end
 		end
 		T.check(okButtons, "fight client: the ATTACK button: a tap = one Attack, a 0.4 s hold = one Attack + one Target (mouse and touch)", table.concat(detail, "; "))
+		-- a slide off the ATTACK button within 0.4 s: no re-target (the button's own InputEnded never fires)
+		local slideOk, slideDetail = btn ~= nil, {}
+		for _, kind in ipairs({ "Touch", "MouseButton1" }) do
+			if btn then
+				-- (a) the thumb slides off and stays down past 0.4 s
+				idx = #Mock.RemoteLog
+				local inp = Mock.NewInput("Unknown", kind, "Begin", { Position = onBtn() })
+				Mock.FireSignal(btn, "InputBegan", inp, false)
+				H.step(4, 1 / 30)
+				inp.Position = onBtn() + Vector3.new(-260, -220, 0)
+				inp.UserInputState = Enum.UserInputState.Change
+				H.step(20, 1 / 30)
+				local tA = H.count(idx, "Target")
+				inp.UserInputState = Enum.UserInputState.End
+				Mock.FireSignal(UserInputService, "InputEnded", inp, false)
+				H.step(10, 1 / 30)
+				-- (b) it slides off and lifts off the button at 0.2 s (only the global InputEnded fires); then 0.6 s more
+				idx = #Mock.RemoteLog
+				inp = Mock.NewInput("Unknown", kind, "Begin", { Position = onBtn() })
+				Mock.FireSignal(btn, "InputBegan", inp, false)
+				H.step(6, 1 / 30)
+				inp.UserInputState = Enum.UserInputState.End
+				Mock.FireSignal(UserInputService, "InputEnded", inp, false)
+				H.step(20, 1 / 30)
+				local tB = H.count(idx, "Target")
+				slideDetail[#slideDetail + 1] = fmt("%s stay-down %d, lift-off %d", kind, tA, tB)
+				slideOk = slideOk and tA == 0 and tB == 0
+				H.step(10, 1 / 30)
+			end
+		end
+		T.check(slideOk, "fight client: a touch / click slid off the ATTACK button within 0.4 s never re-targets (held off it, or released off it)", table.concat(slideDetail, "; "))
 		idx = #Mock.RemoteLog
 		press("NimbusBattleAttack", "ButtonX", "Gamepad1", 0.15)
 		H.step(20, 1 / 30)
@@ -1079,6 +1114,10 @@ local function clientScenarios()
 				local farOff = sqrt((far.X - 8) ^ 2 + far.Z ^ 2)
 				T.check(farOff <= 0.3 and abs(far.Y - 201.5) <= 0.3, "fight client (" .. quality .. "): the server point 8 studs out is drawn there (xz within 0.3)", fmt("%.2f studs off, y %.2f", farOff, far.Y))
 				T.check((side - shoulder).Magnitude <= 0.01, "fight client (" .. quality .. "): at my side the pet sits on the shoulder as before", fmt("%.3f", (side - shoulder).Magnitude))
+				-- halfway into the blend (BLEND_DIST 2: 1 stud out, k = 0.5) the height is server + (root + shoulder - server) x k
+				local half = Me.FighterTarget(fakeB, fakeU, 1, 0)
+				local wantY = 201.5 + (203 + K.SHOULDER.Y - 201.5) * 0.5
+				T.check(abs(half.Y - wantY) <= 0.02, "fight client (" .. quality .. "): halfway (k = 0.5) the shoulder height is scaled by k once, not k^2", fmt("y %.3f, want %.3f", half.Y, wantY))
 			end
 			if GQ and type(GQ.Apply) == "function" then
 				GQ.Apply("High")
@@ -1171,6 +1210,30 @@ local function clientScenarios()
 					end
 				end
 				T.check(clear, tag .. ": ...in particular not the action cluster (its frame and every button, >= 4 px clear)")
+				if size[4] == "hidden" and cmd then
+					-- a Commands button laid exactly over the tile: visible = the tile moves off it; hidden = it reserves nothing
+					local tilePos = tile.AbsolutePosition
+					local ca = cmd.AbsolutePosition
+					local decoy = Instance.new("Frame")
+					decoy.Name = "W5DecoyButton"
+					decoy.AnchorPoint = Vector2.new(0, 0)
+					decoy.Position = UDim2.fromOffset(tr.x0 - ca.X, tr.y0 - ca.Y)
+					decoy.Size = UDim2.fromOffset(tr.x1 - tr.x0, tr.y1 - tr.y0)
+					decoy.Visible = true
+					decoy.Parent = cmd
+					Dev.Relayout()
+					H.step(2, 1 / 30)
+					local movedVisible = (tile.AbsolutePosition - tilePos).Magnitude > 4
+					decoy.Visible = false
+					Dev.Relayout()
+					H.step(2, 1 / 30)
+					local back = (tile.AbsolutePosition - tilePos).Magnitude < 1
+					decoy:Destroy()
+					Dev.Relayout()
+					H.step(2, 1 / 30)
+					T.check(movedVisible and back, tag .. ": a VISIBLE Commands button blocks the tile, a HIDDEN one reserves no slot",
+						fmt("visible moved %s, hidden back %s", tostring(movedVisible), tostring(back)))
+				end
 				local cap = H.find("Root.Commands.AttackButton.Caption")
 				if cap and shownIn(cap) then
 					local cr = rectOf(cap)
@@ -1189,7 +1252,7 @@ local function clientScenarios()
 	end
 
 	S.client_fight_dev = guarded("client_fight_dev", function()
-		devCheck("fight dev", { { 1920, 1080 }, { 1366, 768 }, { 844, 390, "cluster" }, { 390, 844 }, { 749, 388, "cluster" } }, { 1920, 1080 })
+		devCheck("fight dev", { { 1920, 1080 }, { 1366, 768 }, { 844, 390, "cluster" }, { 390, 844 }, { 749, 388, "cluster" }, { 1920, 1080, nil, "hidden" } }, { 1920, 1080 })
 	end)
 
 	S.client_fight_dev_mobile = guarded("client_fight_dev_mobile", function()

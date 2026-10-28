@@ -2181,8 +2181,9 @@ function Me.FighterTarget(B, u, x, z)
 	end
 	-- bug #22: the shoulder offset (and the character's height) fade with the blend share: at my side the pet sits on
 	-- the shoulder as before; 2+ studs out (an ENGAGED pet fighting) it is drawn where the server has it
-	local off = rcf:VectorToWorldSpace(K.SHOULDER) * k
-	local y = server.Y + (rp.Y + off.Y - server.Y) * k
+	local offW = rcf:VectorToWorldSpace(K.SHOULDER)
+	local off = offW * k
+	local y = server.Y + (rp.Y + offW.Y - server.Y) * k -- (the shoulder height scaled by k once, not k^2)
 	return Vector3.new(ax + off.X, y, az + off.Z), share, rcf, d
 end
 
@@ -4923,7 +4924,9 @@ function Hud.BuildActions()
 			if t == Enum.UserInputType.Touch or t == Enum.UserInputType.MouseButton1 then
 				Input.Press(action, true)
 				if action == "Attack" then
-					Input.HoldStart("attackButton", 0, os.clock(), "Attack") -- bug #16: hold 0.4 s = the next target
+					-- bug #16: hold 0.4 s = the next target; the hold remembers its input + button so a slide off the button
+					-- (whose own InputEnded may never fire) cancels it instead of re-targeting
+					Input.HoldStart("attackButton", 0, os.clock(), "Attack", input, b)
 				end
 			end
 		end)
@@ -7262,7 +7265,9 @@ function Input.Tick(B, now)
 		return
 	end
 	for key, h in pairs(St.holds or {}) do
-		if h.kind == "Attack" then
+		if h.kind == "Attack" and not h.fired and h.gui and h.input and not Input.OnButton(h.input, h.gui) then
+			St.holds[key] = nil -- the touch / cursor slid off the ATTACK button: no re-target the player did not ask for
+		elseif h.kind == "Attack" then
 			if not h.fired and now - h.t >= K.ATTACK_HOLD then
 				h.fired = true
 				Input.CycleTarget()
@@ -7280,13 +7285,14 @@ function Input.Tick(B, now)
 	end
 end
 
--- `kind` "Attack" = an ATTACK hold (bug #16: it cycles the target, never a helper's Buff / Swap)
-function Input.HoldStart(key, index, t, kind)
+-- `kind` "Attack" = an ATTACK hold (bug #16: it cycles the target, never a helper's Buff / Swap); `input` / `gui` (the
+-- ATTACK button's touch / click): the hold is dropped when that input leaves the button or ends anywhere
+function Input.HoldStart(key, index, t, kind, input, gui)
 	if not fighting() or not Input.GateOpen() then
 		return
 	end
 	St.holds = St.holds or {}
-	St.holds[key] = { index = index, t = t, fired = false, kind = kind }
+	St.holds[key] = { index = index, t = t, fired = false, kind = kind, input = input, gui = gui }
 	BattleController._wake()
 end
 
@@ -7446,8 +7452,27 @@ function Input.MouseLocked()
 	return ok and locked == true
 end
 
+-- is `input` (a touch / the mouse, GUI-inset space) still over `gui` (a few px of slack)?
+function Input.OnButton(input, gui)
+	local ok, inside = pcall(function()
+		local p = input.Position
+		local sg = gui:FindFirstAncestorOfClass("ScreenGui")
+		local y = p.Y + ((sg and sg.IgnoreGuiInset) and guiInset() or 0)
+		local a, s = gui.AbsolutePosition, gui.AbsoluteSize
+		local slack = 6
+		return gui.Visible and p.X >= a.X - slack and p.X <= a.X + s.X + slack and y >= a.Y - slack and y <= a.Y + s.Y + slack
+	end)
+	return not ok or inside == true
+end
+
 function Input.OnEnded(input)
 	local t = input.UserInputType
+	-- the ATTACK button's hold ends with its own touch / the mouse button wherever it is released (bug #16 review: a
+	-- release off the button never reaches the button's InputEnded)
+	local ah = St.holds and St.holds.attackButton
+	if ah and ((t == Enum.UserInputType.MouseButton1 and (ah.input == nil or ah.input.UserInputType == t)) or (t == Enum.UserInputType.Touch and (ah.input == nil or ah.input == input))) then
+		Input.HoldEnd("attackButton")
+	end
 	local tap = St.tap
 	if not tap or t ~= Enum.UserInputType.Touch then
 		return
