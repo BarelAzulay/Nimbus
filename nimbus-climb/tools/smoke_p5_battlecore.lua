@@ -19,7 +19,8 @@
 --   p5dgn_catalog      Dungeon / DungeonFloors / DungeonPower (floor 10 = 2048) / DungeonWave (deterministic, never EventOnly,
 --                      floor 1 one handicapped enemy, the boss entry) / DungeonRewards / DungeonFirstClear totals / DungeonChest
 --   p5battle_balance   tools/sim_battle.lua as a library: the balance subset (support ratio, kit factor, mirror duels, the 2.4
---                      wave rule, raids, ring medians, floor 1 by one level-1 pet, S10 >= floor 10)
+--                      wave rule, the element counter (balance-5: decides an even fight, worth x1.15-1.45 power), raids,
+--                      ring medians, floor 1 by one level-1 pet, S10 >= floor 10)
 -- White-box: a few checks reach into battle.units / battle.teams (same Lua state) to set HP, meters or positions.
 -- Plain Lua 5.1 syntax only.
 
@@ -1569,6 +1570,15 @@ S.p5battle_balance = guarded("p5battle_balance", function()
 		wins1, n, draws = wins1 + agg.wins[1], n + agg.n, draws + agg.draws
 	end
 	T.check(n == 24 and draws == 0 and wins1 >= 6 and wins1 <= 18, "mirror duels (S3, S8): no draws and a fair split (25-75% over 24 fights)", fmt("%d of %d", wins1, n))
+	-- balance-5: the element counter (Water bubble_axolotl vs Flame maple_fox L10, neutral helpers, the wheel on vs off;
+	-- the old Flame-vs-Nature pair was neutral on the wheel). 128 fights a point on 9f381c4: worth x1.28, 100% at even
+	local okEc, ec = pcall(SIM.elementCounter, 8, true)
+	if T.check(okEc and type(ec) == "table", "SIM.elementCounter runs (8 seeds a seating)", tostring(ec)) then
+		local E = loadModule("Config").Elements
+		T.check(E.StrongMultiplier == 1.5 and E.WeakMultiplier == 0.75, "the element scan restores Config.Elements (Strong 1.5 / Weak 0.75)", fmt("%s / %s", tostring(E.StrongMultiplier), tostring(E.WeakMultiplier)))
+		T.check(ec.flatLevel ~= nil and ec.atEven >= 90, "the element counter decides an even fight: Water beats Flame >= 90% at the level that splits ~50% with the wheel off", fmt("L%s, %.0f%%", tostring(ec.flatLevel), ec.atEven))
+		T.check(ec.worth >= 1.15 and ec.worth <= 1.45, "the element counter is worth x1.15-1.45 TeamPower (not everything)", fmt("x%.2f (even at power %.1f with the wheel, %.1f without)", ec.worth, ec.realPower or 0, ec.flatPower or 0))
+	end
 	-- the 2.4 wave rule: a fighter with helpers beats three enemies of 0.8 x its power
 	local foxUp = BC.UnitPower("maple_fox", 10)
 	local waveWins = 0

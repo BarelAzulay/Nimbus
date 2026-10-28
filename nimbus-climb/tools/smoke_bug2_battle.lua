@@ -12,7 +12,8 @@
 --   bug2bat_raid_balance  #2 a boss raid is not soloable by a weak player: BossHp >= HpPerPlayer x BaselineDps(boss)
 --                         (the ExpectedDps of BossRules.Baseline, a Lv 25 evolved ember_phoenix), DamageGroup.Min 0.7,
 --                         MinHp 2500, GroupExponent 0.2; a strong solo / a group keep their own DPS-based HP; idle alts
---                         never lower it; the sim: a Lv 5 solo loses, a Lv 40 solo and eight Lv 5 teams win
+--                         never lower it; the sim: a Lv 5 solo loses, a Lv 40 solo and eight Lv 5 teams win; balance-5:
+--                         lava_golem HpPerPlayer 85, a solo M5 loses to it and eight M5 teams win >= 5 of 8 seeds
 -- White-box: a few checks read battle.units (same Lua state). Plain Lua 5.1 syntax only.
 
 local T = SmokeCommon.T
@@ -400,6 +401,15 @@ S.bug2bat_raid_balance = guarded("bug2bat_raid_balance", function()
 	T.check(soloRuns == 4 and soloWins == 0, "#2 a Lv 5 solo cannot beat a raid boss inside the 330 s window (before: won in ~50-100 s)", table.concat(detail, "; "))
 	T.check(strongRuns == 4 and strongWins == 4, "#2 a Lv 40 solo still beats the raid boss", table.concat(detail, "; "))
 	T.check(groupRuns == 2 and groupWins == 2, "#2 eight Lv 5 teams together still beat the raid boss", table.concat(detail, "; "))
+	-- balance-5: the Lava Golem counters the Frost-heavy mid team (M5) and the bug #22 engaged pets (EngagePull 7) cost
+	-- that group time: 8 x M5 won 44% of 32 seeds at HpPerPlayer 90. At 85: 84% of 32 (6 of seeds 1-8), a solo M5 still
+	-- loses with ~65% of the boss left, and the other bosses keep HpPerPlayer 100
+	T.check(BC.Bosses.lava_golem.HpPerPlayer == 85 and BC.Bosses.storm_titan.HpPerPlayer == 100 and BC.Bosses.frost_wyrm.HpPerPlayer == 100 and BC.Bosses.shadow_hydra.HpPerPlayer == 100,
+		"balance-5: lava_golem HpPerPlayer 90 -> 85, the other bosses 100", tostring(BC.Bosses.lava_golem.HpPerPlayer))
+	local lavaSolo = SIM.midGroup("lava_golem", 1, 2)
+	local lavaGroup = SIM.midGroup("lava_golem", 8, 8)
+	T.check(lavaSolo.n == 2 and lavaSolo.wins[1] == 0, "balance-5 (#2): a solo mid (M5) team still loses to the Lava Golem", fmt("%d of %d", lavaSolo.wins[1], lavaSolo.n))
+	T.check(lavaGroup.n == 8 and lavaGroup.wins[1] >= 5 and lavaGroup.avgDur <= 240, "balance-5 (#2): eight mid (M5) teams win a fair share against the Lava Golem (>= 5 of 8 seeds, before the enrage on average)", fmt("%d of %d, %.0f s", lavaGroup.wins[1], lavaGroup.n, lavaGroup.avgDur))
 end)
 
 return S

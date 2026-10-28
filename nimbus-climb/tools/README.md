@@ -92,8 +92,8 @@ SIM_BATTLE="quick only=duels,raids" python3 -c "import lupa.luajit21 as L; L.Lua
   | `roster` | every pet's battle numbers (UnitStats, role, walk / run speed, buff, element attack) |
   | `fighter` | the played kit against a passive NPC of k x its power (kit factor 1.25-1.7); mirror fights 6-45 s, none at the Ring's 90 s |
   | `support` | Support (Economy) pets: DPS ratio 0.65-0.75 of Combat pets; a Support fighter beats 2 x puddle_frog L8 in 10-60 % of seeds |
-  | `duels` | mirror duels per stage with scripted players on both sides: fair (40-60 % overall, 30-70 % per stage), no draws |
-  | `raids` | 1 / 4 / 8 / 16 dodging fighters finish every boss in 100-240 s; no one-shots; joins / leaves; idle alts |
+  | `duels` | mirror duels per stage with scripted players on both sides: fair (40-60 % overall, 30-70 % per stage), no draws; the element counter (Water bubble_axolotl vs Flame maple_fox L10, neutral helpers, the wheel on vs off): it decides an even fight (>= 90 %) and is worth x1.15-1.45 TeamPower |
+  | `raids` | 1 / 4 / 8 / 16 dodging fighters finish every boss in 100-240 s (a solo under half of BaselineDps loses); eight mid (M5) teams win >= 60 % of every boss; Lv 5 / Lv 40 solos and groups; no one-shots; joins / leaves; idle alts |
   | `ring` | rounds 1-3 >= 95 % for every single level-1 rollable pet; the stage medians S1 16 .. S10 51 (+-2) |
   | `dungeon` | floor 1 for the 12 single level-1 pets (100 %); the stage ladder (monotonic, S10 >= floor 10); a 4-party gains a floor |
   | `training` | trained / evolved TeamPower ratios; trained mirror duels fair; trained raids 100-240 s |

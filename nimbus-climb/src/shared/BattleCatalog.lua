@@ -1351,7 +1351,8 @@ BattleCatalog.Bosses = {
 		Name = "Lava Golem",
 		Element = "Flame",
 		Blurb = "A walking volcano. Water pets cool it down.",
-		HpPerPlayer = 90, -- its Eruption sends every melee fighter running, so its HP is a little lower
+		HpPerPlayer = 85, -- its Eruption sends every melee fighter running, so its HP is a little lower (balance-5: 90 -> 85,
+		-- the bug #22 engaged pets (EngagePull 7) cost the Frost-heavy mid group time: 8 x M5 won 44% of 32 seeds, now 84%)
 		Radius = 8,
 		Scale = 1,
 		Basic = { Name = "Magma Fist", Interval = 2.8, Damage = 0.05, Range = 20 },
