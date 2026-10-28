@@ -37,7 +37,9 @@
 --     EvalColor(recipe, look) -> Color3   (the kit's recipe language, blender/kit/nvox/colors.py)
 --     Assemble(spec, look, opts) -> Model | nil (nil = build the Part version, never a mix)
 --     Tag(target, key, look, keep)   SERVER: mark a Part build to be dressed with mesh `key` on every client
---                                    (look.Hide = { names }: ML_Hide, hide ONLY these part names instead of all-but-keep)
+--                                    (look.Hide = { names }: ML_Hide, hide ONLY these part names instead of all-but-keep;
+--                                    look.At = CFrame: ML_At, the WORLD CFrame the mesh goes to, used instead of
+--                                    pivot * ML_Offset for a target that never moves: no client pivot read at all)
 --     Dress(target, key, opts)       CLIENT: hide the Part build locally (Keep parts stay) and show the mesh on it;
 --                                    a BasePart target with ML_Weld = true gets its mesh unanchored + welded to it
 --                                    (a moving root: TokenFx coins), never a part inside another target's ML_Mesh
@@ -103,6 +105,7 @@ local localBroken = {} -- client: key -> true when this device could not fetch i
 local waiters = {} -- key -> { fn, ... }
 local manifestCache = {} -- key -> manifest table | false
 local lodSigOk = {} -- LowKey memo: "<key>|<key>_low" -> layouts match (perf-plots LOD)
+local dressSets = setmetatable({}, { __mode = "k" }) -- client: dressed target -> { Keep, Hide } (bug #20 re-hide)
 local connections = {}
 local folder = nil
 local started = false
@@ -1186,6 +1189,12 @@ function MeshLibrary._Reset()
 		c:Disconnect()
 	end
 	connections = {}
+	for _, sets in pairs(dressSets) do
+		if sets.Conn then
+			sets.Conn:Disconnect()
+		end
+	end
+	table.clear(dressSets)
 	ids, status, localReady, localBroken, waiters, manifestCache, handlers = {}, {}, {}, {}, {}, {}, {}
 	lodSigOk = {} -- perf-plots LOD memo (LowKey)
 	folder = nil
@@ -1410,6 +1419,17 @@ function MeshLibrary.Tag(target, key, look, keep)
 		if typeof(look.Offset) == "CFrame" then
 			target:SetAttribute("ML_Offset", cfToString(look.Offset))
 		end
+		if typeof(look.At) == "CFrame" then
+			-- (bug #20 "two farms") the world spot itself, for a target that stays put (a placed home station): a
+			-- client that dresses while the Model is still replicating reads GetPivot() before its PrimaryPart (the
+			-- Cabin, built last) arrives, i.e. another pivot than the one ML_Offset was computed from, and assembled the
+			-- mesh ~16 studs along the field. The attribute arrives with the Model, so the spot never depends on order.
+			local c = { look.At:GetComponents() }
+			for i = 1, #c do
+				c[i] = string.format("%.9g", c[i])
+			end
+			target:SetAttribute("ML_At", table.concat(c, ","))
+		end
 		if type(look.Hide) == "table" then
 			-- hide-list mode: Dress hides ONLY BaseParts with these names (anything a builder adds later stays)
 			local names = {}
@@ -1464,27 +1484,82 @@ local function pivotOf(target)
 	return target:GetPivot()
 end
 
+-- where a dressed target's mesh goes: ML_At (Tag look.At, a fixed world spot) when set, else pivot * ML_Offset
+local function dressAt(target, offset)
+	return stringToCF(target:GetAttribute("ML_At"))
+		or pivotOf(target) * (offset or stringToCF(target:GetAttribute("ML_Offset")) or CFrame.new())
+end
+MeshLibrary._DressAt = dressAt -- TESTS ONLY
+
+-- one part of a dressed target: hidden locally unless kept (or, in hide-list mode, unless listed); never a part of an
+-- ML_Mesh (this target's or a nested dressed target's)
+local function hideOne(d, keep, mesh, hide)
+	if not d:IsA("BasePart") then
+		return false
+	end
+	local hit
+	if hide then
+		hit = hide[d.Name] == true
+	else
+		hit = not keep[d.Name]
+	end
+	if hit and not (mesh and d:IsDescendantOf(mesh)) and not d:FindFirstAncestor("ML_Mesh") then
+		d.Transparency = 1 -- set on the client: local only; still collides, still found by name
+		for _, deco in ipairs(d:GetChildren()) do
+			if deco:IsA("Decal") or deco:IsA("Texture") then
+				deco.Transparency = 1
+			end
+		end
+		return true
+	end
+	return false
+end
+
 local function hideLocally(target, keep, mesh, hide)
 	local list = target:GetDescendants()
 	list[#list + 1] = target
 	for _, d in ipairs(list) do
-		local hit = false
-		if d:IsA("BasePart") then
-			if hide then
-				hit = hide[d.Name] == true
-			else
-				hit = not keep[d.Name]
-			end
-		end
-		if hit and not d:IsDescendantOf(mesh) and not d:FindFirstAncestor("ML_Mesh") then
-			d.Transparency = 1 -- set on the client: local only; still collides, still found by name
-			for _, deco in ipairs(d:GetChildren()) do
-				if deco:IsA("Decal") or deco:IsA("Texture") then
-					deco.Transparency = 1
-				end
-			end
-		end
+		hideOne(d, keep, mesh, hide)
 	end
+end
+
+-- (bug #20 "two farms") a dressed target keeps its Part build hidden for as long as it wears its mesh: a part that
+-- joins it later (GraphicsQuality's NC_Detail decor coming back from its local holder, a part a builder re-parents)
+-- is hidden like the rest, and a kept part that joins while the plot LOD hides the target is hidden with it.
+-- SetLod re-applies the hide after every mesh rebuild (MeshLibrary.Rehide).
+local function watchDressed(target, keep, hide)
+	local old = dressSets[target]
+	if old and old.Conn then
+		old.Conn:Disconnect() -- a re-dress (after an undress / a test _Reset) never stacks a second watcher
+	end
+	local sets = { Keep = keep, Hide = hide }
+	dressSets[target] = sets
+	local conn
+	conn = target.DescendantAdded:Connect(function(d)
+		if not d:IsA("BasePart") or d:FindFirstAncestor("ML_Mesh") then
+			return
+		end
+		if not target:FindFirstChild("ML_Mesh") then
+			return -- undressed (never today): the Part build is the look again
+		end
+		if not hideOne(d, keep, nil, hide) and target:GetAttribute("ML_LodHidden") == true and d.Transparency < 0.999 then
+			d:SetAttribute("ML_LodT", d.Transparency)
+			d.Transparency = 1
+		end
+	end)
+	sets.Conn = conn -- released by the next watch of this target, by _Reset, or by the target's Destroy
+	return conn
+end
+
+-- re-hides the Part build of a dressed target (no-op on a target Dress never dressed here); true when it ran
+function MeshLibrary.Rehide(target)
+	local sets = typeof(target) == "Instance" and dressSets[target] or nil
+	local mesh = sets and target:FindFirstChild("ML_Mesh")
+	if not mesh then
+		return false
+	end
+	hideLocally(target, sets.Keep, mesh, sets.Hide)
+	return true
 end
 
 -- opts (optional): { Keep = { Name = true } | { "Name" }, Hide = { Name = true } | { "Name" } (hide-list mode: only
@@ -1504,9 +1579,9 @@ function MeshLibrary.Dress(target, key, opts)
 			return
 		end
 		local look = opts.Look or lookFromAttributes(target)
-		local offset = opts.Offset or stringToCF(target:GetAttribute("ML_Offset")) or CFrame.new()
+		local at = (typeof(opts.Offset) == "CFrame" and pivotOf(target) * opts.Offset) or dressAt(target)
 		local mesh = MeshLibrary.Assemble({ Name = "ML_Mesh", Root = false, Parts = { { Key = key } } }, look,
-			{ Scale = tonumber(target:GetAttribute("ML_Scale")) or 1, At = pivotOf(target) * offset })
+			{ Scale = tonumber(target:GetAttribute("ML_Scale")) or 1, At = at })
 		if not mesh then
 			return
 		end
@@ -1544,6 +1619,7 @@ function MeshLibrary.Dress(target, key, opts)
 			end
 		end
 		hideLocally(target, keep, mesh, hide)
+		watchDressed(target, keep, hide)
 		if target:IsA("BasePart") and target:GetAttribute("ML_Weld") == true then
 			-- a moving root (TokenFx spins / bobs the server coin): the mesh rides on it
 			for _, p in ipairs(mesh:GetDescendants()) do
@@ -1665,15 +1741,15 @@ function MeshLibrary.SetLod(target, level)
 		local want = (level == "Low" and MeshLibrary.LowKey(key)) or key
 		local shown = mesh:GetAttribute(LOD_SHOWN) or key
 		if shown ~= want then
-			local offset = stringToCF(target:GetAttribute("ML_Offset")) or CFrame.new()
 			local fresh = MeshLibrary.Assemble({ Name = "ML_Mesh", Root = false, Parts = { { Key = want } } }, lookFromAttributes(target),
-				{ Scale = tonumber(target:GetAttribute("ML_Scale")) or 1, At = pivotOf(target) * offset })
+				{ Scale = tonumber(target:GetAttribute("ML_Scale")) or 1, At = dressAt(target) })
 			if fresh then
 				if want ~= key then
 					fresh:SetAttribute(LOD_SHOWN, want)
 				end
 				mesh:Destroy()
 				fresh.Parent = target
+				MeshLibrary.Rehide(target) -- bug #20: the Part build stays hidden under every rebuilt mesh
 			end
 		end
 	end

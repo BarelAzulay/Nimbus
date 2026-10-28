@@ -45,7 +45,7 @@ local CONTROLLER_NAMES = {
 	-- bug #12
 	"MeadowFx", -- the lobby's grass and wildflowers (grown here from the server's scatter) and their wind sway
 	-- bug #11
-	"RingCrowdFx", -- the Champion Ring's sky-sailor crowd: the drum beat, cheers, caps, bell, flags (+ Config.Audio.Crowd)
+	"RingCrowdFx", -- the Champion Ring's sky-sailor crowd: the drum beat, cheers, caps, bell, flags (animation only; sounds: audio branch)
 }
 
 local TAG = "[NimbusClimb] "

@@ -52,7 +52,10 @@
 --                              Training Place 90, House 150, Fusion 90, Fence 90, Fountain 80, others 80; a fully
 --                              built plot <= 950 with its pads):
 --                              * Farm (Press1, Berry Farm, 40 levels): red-berry bushes 1-10, blue-berry bushes 11-22,
---                                a golden trellis 23-37, the glowing Starberry tree 38-40, a barn + crates; the
+--                                a golden trellis 23-37 (oars, rope, mast), the glowing Starberry tree 38-40 in a crow's-nest
+--                                tub; bug #20: the Sky-Sailor's Allotment (lifeboat hulls on a deck, the cabin under an
+--                                upturned boat, propeller weathervane = element home_farm_propeller; the ship's `Bell`
+--                                is tagged NC_FarmBell for the audio branch, no sound code here); the
 --                                BillboardGui `FarmSign` ("Berry Farm Lv N" / "Grows berries for your pets", 70 studs);
 --                                point BerryPoint (where HomeFx's berry flights start)
 --                              * Garden: the fence ring with the entrance, the Food Bowl (`FoodBowl` + `BowlSign`
@@ -125,6 +128,7 @@ end
 ----------------------------------------------------------------------
 local MAT = Enum.Material
 local HOME_TAG = "NC_Home"
+local FARM_BELL_TAG = "NC_FarmBell" -- bug #20: the farm's ship bell ("calls the pets to dinner"), for the audio branch
 local PROMPT_RANGE = 9 -- studs: buy pads and station prompts
 local PRESTIGE_HOLD = 1.5 -- seconds: the Prestige pad's prompt (it opens the prestige confirmation, never a quick tap)
 local CLAIM_RANGE = 12
@@ -818,62 +822,86 @@ end
 local Art = {}
 
 ----------------------------------------------------------------------
--- Berry Farm (Press1, Kind Farm, 40 levels; contract 3.6): a long terraced field beside the PressLane, front -Z
--- toward the lane, local +X = the north end. Three wooden-framed soil rows rise toward the back: the front row
--- grows red-berry bushes (one per level 1-10), the middle row blue-berry bushes (11-22), the back row a golden
--- trellis (a vine with gold berries per level 23-37), and the glowing Starberry tree on its mound at the north end
--- (38-40). Planted bushes keep growing for a few levels. A little red barn, berry crates and the farm sign stand
--- at the south end. <= 150 parts (L40 ~ 145).
+-- Berry Farm (Press1, Kind Farm, 40 levels; contract 3.6; bug #20 option B "Sky-Sailor's Allotment"): when the old
+-- cloud-ship retired, her crew hauled three lifeboats onto the island, filled them with soil and laid the ship's deck
+-- under them. Front -Z toward the lane, local +X = the north end. On a plank deck: three planked lifeboat hulls step up
+-- toward the back (the front one grows red-berry bushes, one per level 1-10; the middle one blue (11-22); the back one
+-- a gold vine per level (23-37) up the oars stuck blade-up in it, with a rope between them and the ship's old mast and
+-- rigging in the middle), and the Starberry tree (38-40) in the old crow's-nest tub at the north end. At the south end
+-- the crew's cabin: white planks, navy corners and door, two brass portholes, an upturned lifeboat as its roof (red
+-- bottom paint up, a keel ridge) with a propeller weathervane, the ship's bell by the door (it calls the pets to
+-- dinner), the farm sign, sea-chest crates of berries, the painted anchor and its coiled mooring rope.
+-- The Part build is the collider and the fallback: boxes only (P6 A1). The Blender bake (blender/kit/props/
+-- home_style.py, style "allotment") turns these boxes into the round hulls, domed bushes with hanging berry clusters,
+-- blade-up oars, the boat roof, the bell and the anchor; the Propeller is its own spinning element key
+-- (home_farm_propeller, HomeFx spins it). The plant layout (Farm.ROWS, sizes, Farm.age) is the game's own. <= 150
+-- parts (L40 147).
 ----------------------------------------------------------------------
 local Farm = {}
-Farm.X0, Farm.X1 = -10.8, 13.2 -- the soil frame (local x)
-Farm.ROWS = { { Z = -2.25, Top = 0.75 }, { Z = 0.0, Top = 1.15 }, { Z = 2.25, Top = 1.55 } }
+Farm.X0, Farm.X1 = -10.8, 13.2 -- the planted span (local x); the hulls run 0.3 past it at each end
+Farm.ROWS = { { Z = -2.25, Top = 0.75 }, { Z = 0.0, Top = 1.15 }, { Z = 2.25, Top = 1.55 } } -- soil tops
 Farm.RED, Farm.BLUE, Farm.VINES = 10, 12, 15 -- plants per row (levels 1-10, 11-22, 23-37)
 Farm.TREE_X = 15.7
+Farm.DECK = 0.3 -- the deck top
+Farm.SHED = { X = -15.6, Z = 0.6, W = 4.8, D = 5.4, H = 3.2 } -- the crew's cabin (walls)
+Farm.TUB_TOP = 1.25 -- the soil in the crow's-nest tub (the tree stands on it)
+-- the allotment palette (pitch B): ship's timber, navy trim, sailcloth white, brass, red bottom paint, deck, rope
+Farm.C = {
+	Hull = rgb(193, 138, 93),
+	HullDark = rgb(170, 118, 78),
+	Navy = rgb(70, 130, 180),
+	Sail = rgb(242, 240, 230),
+	Brass = rgb(230, 197, 92),
+	Anti = rgb(196, 70, 64),
+	Deck = rgb(214, 178, 128),
+	Rope = rgb(222, 204, 158),
+	Anchor = rgb(58, 74, 112),
+	Chest = rgb(196, 150, 98),
+	Porthole = rgb(150, 210, 240),
+}
 
 -- how grown a plant planted at level `at` is at `level` (0 = just planted .. 1 = full)
 function Farm.age(level, at, span)
 	return max(0, min(1, (level - at) / (span or 6)))
 end
 
--- a berry bush: a leafy ball with berries on its front (the yard side)
+-- a berry bush: a leafy box a little wider than tall seated on its soil (the bake rounds it into a dome) with its
+-- berries hanging on the yard side, under the leaves (the bake hangs them as clusters on stalks)
 function Farm.bush(parent, x, row, d, berry, berry2, n, seed)
 	local r = Farm.ROWS[row]
-	local cy = r.Top + d * 0.4
-	Kit.ball(parent, "Bush", Vector3.new(x, cy, r.Z), d, Kit.jit(row == 1 and K.Leafy or K.LeafyDark, seed), M.Leafy)
-	local spots = { { -0.28, 0.12 }, { 0.26, 0.26 }, { 0.04, -0.1 } }
+	local h = d * 0.78
+	local cy = r.Top + h / 2 - 0.06
+	Kit.p(parent, "Bush", CFrame.new(x, cy, r.Z), Vector3.new(d, h, d), Kit.jit(row == 1 and K.Leafy or K.LeafyDark, seed), M.Leafy)
+	local spots = { { -0.28, -0.08 }, { 0.26, 0.1 }, { 0.04, -0.28 } }
 	for k = 1, n do
 		local o = spots[k]
-		Kit.ball(parent, "Berry", Vector3.new(x + o[1] * d, cy + o[2] * d, r.Z - d * 0.4), 0.42 + 0.04 * k, (k % 2 == 0) and berry2 or berry, M.Plastic)
+		Kit.ball(parent, "Berry", Vector3.new(x + o[1] * d, cy + o[2] * h, r.Z - d * 0.42), 0.42 + 0.04 * k, (k % 2 == 0) and berry2 or berry, M.Plastic)
 	end
 end
 
 function Art.Farm(def, level)
 	local tpl = newTemplate("BerryFarm")
 	local m = tpl.Model
+	local FC = Farm.C
 	level = max(1, min(floor(level), (def and def.MaxLevel) or 40))
 	local x0, x1 = Farm.X0, Farm.X1
 	local len = x1 - x0
 	local cx = (x0 + x1) / 2
-	-- the field: a slate plinth, three soil rows stepping up toward the back (grass where a row is not planted yet)
-	Kit.p(m, "Plinth", CFrame.new(cx + 2.4, 0.15, 0), Vector3.new(len + 4.8, 0.3, 7.0), K.SlateDark, M.Slate, true)
+	local y0 = Farm.DECK
+	-- the ship's deck under the whole allotment (walkable)
+	Kit.p(m, "ShipDeck", CFrame.new(-0.15, y0 / 2, 0), Vector3.new(36.3, y0, 7.0), FC.Deck, M.Planks, true)
+	-- three lifeboat hulls stepping up toward the back, each filled with soil (grass while its row is not planted)
+	local hx0, hx1 = x0 - 0.3, x1 + 0.3
 	for i, r in ipairs(Farm.ROWS) do
 		local planted = (i == 1) or (i == 2 and level > Farm.RED) or (i == 3 and level > Farm.RED + Farm.BLUE)
-		local top = r.Top -- an unplanted row is a grassed-over bed, ready for its bushes
-		Kit.p(m, planted and "Soil" or "Grass", CFrame.new(cx, (0.3 + top) / 2, r.Z), Vector3.new(len - 0.3, top - 0.3, 2.15),
+		local hullTop = r.Top - 0.06
+		Kit.p(m, "Hull", CFrame.new((hx0 + hx1) / 2, (y0 + hullTop) / 2, r.Z), Vector3.new(hx1 - hx0, hullTop - y0, 2.15),
+			Kit.jit(FC.Hull, i), M.Planks, true)
+		Kit.p(m, planted and "Soil" or "Grass", CFrame.new(cx, r.Top - 0.15, r.Z), Vector3.new(len, 0.3, 1.6),
 			planted and Kit.jit(K.Soil, i) or K.Grass, planted and M.Sand or M.Grass, true)
 	end
-	-- the wooden frame: the front board, two step boards between the rows, the back board and the two ends
-	local fz = { -3.35, -1.12, 1.12, 3.35 }
-	local fh = { 0.85, 1.25, 1.65, 1.65 }
-	for i, z in ipairs(fz) do
-		Kit.p(m, "Frame", CFrame.new(cx, fh[i] / 2, z), Vector3.new(len + 0.3, fh[i], 0.3), Kit.jit(K.Planks, 10 + i), M.Planks, i == 1 or i == 4)
-	end
-	for _, x in ipairs({ x0, x1 }) do
-		Kit.p(m, "FrameEnd", CFrame.new(x, 0.85, 0), Vector3.new(0.3, 1.7, 7.0), K.PlanksDark, M.Planks, true)
-	end
-	-- the north mound where the Starberry tree grows
-	Kit.cyl(m, "Mound", Farm.TREE_X, 0.3, 0, 4.4, 0.5, K.Grass, M.Grass, true)
+	-- the old crow's-nest tub at the north end (the Starberry tree grows in it at 38-40)
+	Kit.p(m, "Tub", CFrame.new(Farm.TREE_X, (y0 + 1.4) / 2, 0), Vector3.new(3.2, 1.4 - y0, 3.2), FC.HullDark, M.Planks, true)
 	-- row 1: red berries (levels 1-10)
 	local span = len - 1.2
 	for i = 1, min(level, Farm.RED) do
@@ -887,15 +915,25 @@ function Art.Farm(def, level)
 		local g = Farm.age(level, Farm.RED + i, 6)
 		Farm.bush(m, x, 2, 1.35 + 0.45 * g, K.BerryBlue, K.BerryBlue2, (g >= 0.5) and 2 or 1, 20 + i)
 	end
-	-- row 3: the golden trellis (levels 23-37): six posts and a top rail, then one vine with gold berries per level
+	-- row 3 (levels 23-37): six oars stuck blade-up in the back hull with a rope between them, the ship's old mast
+	-- (yard arm, rigging down to the end oars) in the middle, then one vine with gold berries per level
 	local vines = min(level - Farm.RED - Farm.BLUE, Farm.VINES)
 	if vines > 0 then
 		local r = Farm.ROWS[3]
+		local oz = r.Z + 0.35
 		for k = 0, 5 do
 			local px = x0 + 0.5 + k * (len - 1.0) / 5
-			Kit.p(m, "TrellisPost", CFrame.new(px, r.Top + 1.75, r.Z + 0.35), Vector3.new(0.3, 3.5, 0.3), K.Wood, M.Wood)
+			Kit.p(m, "Oar", CFrame.new(px, r.Top + 1.75, oz), Vector3.new(0.3, 3.5, 0.3), FC.HullDark, M.Wood)
 		end
-		Kit.p(m, "TrellisRail", CFrame.new(cx, r.Top + 3.4, r.Z + 0.35), Vector3.new(len - 0.6, 0.25, 0.25), K.Wood, M.Wood)
+		Kit.p(m, "Rope", CFrame.new(cx, r.Top + 2.35, oz), Vector3.new(len - 1.0, 0.18, 0.18), FC.Rope, M.Fabric)
+		local mz = r.Z + 0.75
+		Kit.p(m, "Mast", CFrame.new(cx, r.Top + 3.5, mz), Vector3.new(0.5, 7.0, 0.5), FC.Hull, M.Wood)
+		Kit.p(m, "Yard", CFrame.new(cx, r.Top + 5.8, mz - 0.375), Vector3.new(4.0, 0.25, 0.25), FC.HullDark, M.Wood)
+		for _, ex in ipairs({ x0 + 0.5, x1 - 0.5 }) do
+			local a = Vector3.new(cx, r.Top + 6.6, mz)
+			local b = Vector3.new(ex, r.Top + 2.35, oz)
+			Kit.p(m, "Rigging", CFrame.lookAt((a + b) / 2, b), Vector3.new(0.12, 0.12, (b - a).Magnitude), FC.Rope, M.Fabric)
+		end
 		local vspan = len - 1.4
 		for j = 1, vines do
 			local x = x0 + 0.7 + (j - 0.5) * vspan / Farm.VINES
@@ -905,10 +943,11 @@ function Art.Farm(def, level)
 			Kit.ball(m, "GoldBerry", Vector3.new(x + ((j % 2 == 0) and 0.25 or -0.25), r.Top + h * 0.62, r.Z - 0.3), 0.5 + 0.12 * g, K.BerryGold, M.Metal)
 		end
 	end
-	-- a young sapling on the mound foreshadows the Starberry tree (30-37)
+	-- a young sapling in the tub foreshadows the Starberry tree (30-37)
+	local ty = Farm.TUB_TOP
 	if level >= 30 and level < 38 then
-		Kit.cyl(m, "Sapling", Farm.TREE_X, 0.8, 0, 0.35, 1.6, K.Wood, M.Wood)
-		Kit.ball(m, "SaplingLeaves", Vector3.new(Farm.TREE_X, 2.7, 0), 1.5, K.LeafyTeal, M.Leafy)
+		Kit.cyl(m, "Sapling", Farm.TREE_X, ty, 0, 0.35, 1.6, K.Wood, M.Wood)
+		Kit.ball(m, "SaplingLeaves", Vector3.new(Farm.TREE_X, ty + 1.9, 0), 1.5, K.LeafyTeal, M.Leafy)
 	end
 	-- the Starberry tree (levels 38-40): a trunk, a teal crown of three puffs and glowing star fruit
 	if level >= 38 then
@@ -916,8 +955,8 @@ function Art.Farm(def, level)
 		local trunkH = 2.6 + 0.7 * t
 		local crown = 3.0 + 0.55 * t
 		local tx = Farm.TREE_X
-		Kit.cyl(m, "Trunk", tx, 0.8, 0, 0.9, trunkH, K.Wood, M.Wood)
-		local cy = 0.8 + trunkH + crown * 0.3
+		Kit.cyl(m, "Trunk", tx, ty, 0, 0.9, trunkH, K.Wood, M.Wood)
+		local cy = ty + trunkH + crown * 0.3
 		Kit.ball(m, "Crown", Vector3.new(tx, cy, 0), crown, K.LeafyTeal, M.Leafy)
 		Kit.ball(m, "Crown", Vector3.new(tx - crown * 0.32, cy - crown * 0.22, -0.3), crown * 0.66, Kit.jit(K.LeafyTeal, 7), M.Leafy)
 		Kit.ball(m, "Crown", Vector3.new(tx + crown * 0.32, cy - crown * 0.18, 0.3), crown * 0.62, Kit.jit(K.LeafyTeal, 9), M.Leafy)
@@ -935,33 +974,44 @@ function Art.Farm(def, level)
 			end
 		end
 	end
-	-- the little red barn at the south end (its door faces the lane)
-	local bx = -15.6
-	local bw, bd, bh = 4.8, 5.4, 3.4
-	local bz = 0.6
-	Kit.p(m, "BarnPlinth", CFrame.new(bx, 0.25, bz), Vector3.new(bw + 0.5, 0.5, bd + 0.5), K.SlateDark, M.Slate, true)
-	Kit.p(m, "Barn", CFrame.new(bx, 0.5 + bh / 2, bz), Vector3.new(bw, bh, bd), K.BarnRed, M.Planks, true)
-	for _, sx in ipairs({ -1, 1 }) do
-		Kit.corner(m, bx + sx * (bw / 2 - 0.15), 0.5, bz - bd / 2 + 0.15, bh, K.Whitewash, M.Wood)
+	-- the crew's cabin at the south end (its door faces the lane)
+	local S = Farm.SHED
+	local bx, bz, bw, bd, bh = S.X, S.Z, S.W, S.D, S.H
+	local front = bz - bd / 2
+	Kit.p(m, "Cabin", CFrame.new(bx, y0 + bh / 2, bz), Vector3.new(bw, bh, bd), FC.Sail, M.Planks, true)
+	for _, sx in ipairs({ -1, 1 }) do -- slim navy corner posts (white plank walls between them)
+		Kit.p(m, "CornerPost", CFrame.new(bx + sx * (bw / 2 - 0.12), y0 + bh / 2, front + 0.12), Vector3.new(0.36, bh, 0.36), FC.Navy, M.Wood)
 	end
-	-- the roof: its ridge runs front to back, so the gable (with the hay-loft door) faces the lane
-	local roofCF = CFrame.new(bx, 0.5 + bh, bz) * CFrame.Angles(0, PI / 2, 0)
-	local slabs = Kit.gable(m, "BarnRoof", roofCF, bd, bw, 2.0, K.Shingle, M.Shingles, { Overhang = 0.45, Ridge = K.WoodDark, GableColor = K.BarnRed })
-	slabs[1].Name = "BarnRoof"
-	Kit.p(m, "BarnDoor", CFrame.new(bx, 0.5 + 1.25, bz - bd / 2 - 0.06), Vector3.new(2.0, 2.5, 0.14), K.WoodDark, M.Wood)
-	Kit.p(m, "DoorBrace", CFrame.new(bx, 0.5 + 1.25, bz - bd / 2 - 0.15) * CFrame.Angles(0, 0, math.atan(2.5 / 2.0)), Vector3.new(3.0, 0.22, 0.06), K.Whitewash, M.Wood)
-	Kit.p(m, "LoftDoor", CFrame.new(bx, 0.5 + bh + 0.65, bz - bd / 2 - 0.2), Vector3.new(1.0, 0.9, 0.12), K.WoodDark, M.Wood)
-	local sign = Kit.p(m, "SignBoard", CFrame.new(bx, 0.5 + bh - 0.45, bz - bd / 2 - 0.1), Vector3.new(2.8, 0.55, 0.12), K.Whitewash, M.Wood)
+	-- the roof: the ship's lifeboat turned upside down (keel along the cabin, front to back), red bottom paint up
+	local ry = y0 + bh
+	Kit.p(m, "HullRoof", CFrame.new(bx, ry + 0.45, bz), Vector3.new(bw + 1.2, 1.1, bd + 1.2), FC.Hull, M.Planks)
+	Kit.p(m, "HullRoof", CFrame.new(bx, ry + 1.35, bz), Vector3.new(bw - 1.0, 0.9, bd + 0.9), FC.Anti, M.Planks)
+	Kit.p(m, "Keel", CFrame.new(bx, ry + 1.95, bz), Vector3.new(0.35, 0.3, bd + 1.4), FC.HullDark, M.Wood)
+	-- the propeller weathervane on the keel (HomeFx spins the Propeller: its own element key, home_farm_propeller)
+	Kit.p(m, "VanePost", CFrame.new(bx, ry + 2.6, bz), Vector3.new(0.2, 1.0, 0.2), FC.HullDark, M.Wood)
+	Kit.p(m, "Propeller", CFrame.new(bx, ry + 2.85, bz - 0.25), Vector3.new(1.9, 0.3, 0.15), FC.Navy, M.Wood)
+	-- the navy door, the sign board over it, two brass portholes on the field side, the ship's bell by the door
+	Kit.p(m, "Door", CFrame.new(bx, y0 + 1.15, front - 0.06), Vector3.new(1.8, 2.3, 0.14), FC.Navy, M.Wood)
+	local sign = Kit.p(m, "SignBoard", CFrame.new(bx, y0 + 2.75, front - 0.1), Vector3.new(2.8, 0.55, 0.12), K.Whitewash, M.Wood)
+	for _, pz in ipairs({ bz - 0.9, bz + 1.1 }) do
+		Kit.p(m, "Porthole", CFrame.new(bx + bw / 2 + 0.02, y0 + 2.0, pz), Vector3.new(0.12, 0.8, 0.8), FC.Porthole, M.Glass, false,
+			{ Transparency = 0.25 })
+	end
+	local bell = Kit.p(m, "Bell", CFrame.new(bx + 1.6, y0 + 2.05, front - 0.38), Vector3.new(0.75, 0.8, 0.75), FC.Brass, M.Metal)
+	CollectionService:AddTag(bell, FARM_BELL_TAG) -- the audio branch rings it (no sound code here); clones keep the tag
 	if level >= 10 then
-		Kit.lantern(m, Vector3.new(bx + 1.55, 0.5 + 2.6, bz - bd / 2 - 0.35), 0.45, true)
+		Kit.lantern(m, Vector3.new(bx - 1.7, y0 + 2.55, front - 0.35), 0.45, true)
 	end
-	-- berry crates by the barn (pure decor)
+	-- the painted anchor leaning on the wall under the lantern, its coiled mooring rope at its foot
+	Kit.p(m, "Anchor", CFrame.new(bx - 1.43, y0 + 0.95, front - 0.25) * CFrame.Angles(rad(8), 0, 0), Vector3.new(1.0, 1.9, 0.25), FC.Anchor, M.Metal)
+	Kit.p(m, "RopeCoil", CFrame.new(bx - 1.3, y0 + 0.15, front - 0.95), Vector3.new(0.95, 0.3, 0.95), FC.Rope, M.Fabric)
+	-- sea-chest crates of berries by the cabin (pure decor)
 	local d = Kit.detail(m, "Crates")
-	local crates = { { -12.25, 0.55, -2.6, K.BerryRed }, { -12.25, 0.55, -1.3, K.BerryBlue }, { -12.25, 1.65, -1.95, K.BerryGold } }
+	local crates = { { -12.25, y0 + 0.55, -0.9, K.BerryRed }, { -12.25, y0 + 0.55, 0.4, K.BerryBlue }, { -12.25, y0 + 1.65, -0.25, K.BerryGold } }
 	local nCrates = (level >= 23) and 3 or ((level >= 11) and 2 or 1)
 	for i = 1, nCrates do
 		local c = crates[i]
-		Kit.p(d, "Crate", CFrame.new(c[1], c[2], c[3]) * CFrame.Angles(0, rad((i - 2) * 6), 0), Vector3.new(1.15, 1.1, 1.15), Kit.jit(K.PlanksLight, i), M.Planks)
+		Kit.p(d, "Crate", CFrame.new(c[1], c[2], c[3]) * CFrame.Angles(0, rad((i - 2) * 6), 0), Vector3.new(1.15, 1.1, 1.15), Kit.jit(FC.Chest, i), M.Planks)
 		Kit.p(d, "CrateBerries", CFrame.new(c[1], c[2] + 0.6, c[3]) * CFrame.Angles(0, rad((i - 2) * 6), 0), Vector3.new(0.95, 0.18, 0.95), c[4], M.Plastic)
 	end
 	-- the farm sign (World text rule, MaxDistance 70)
@@ -2575,6 +2625,8 @@ local Mesh = {
 	},
 	-- per-Part element keys (station Kind -> part name -> key); the element meshes' own parts use the same names
 	Elements = {
+		-- the Berry Farm's propeller weathervane: its own key so HomeFx can spin it (bug #20 option B)
+		Farm = { Propeller = "home_farm_propeller" },
 		Garden = {
 			Bed = "home_bed_frame", Cushion = "home_bed_cushion", Headboard = "home_bed_headboard",
 			BedRoof = "home_bed_roof", SoilBed = "home_bed_soil", Stem = "home_bed_stem", Sprout = "home_bed_sprout",
@@ -2676,8 +2728,11 @@ function Mesh.info(def, level, tpl)
 	return tpl.Mesh
 end
 
--- tags a placed station (model pivot = cf) and its element parts; returns the number of tags
-function Mesh.station(m, def, level, tpl, cf)
+-- tags a placed station (model pivot = cf) and its element parts; returns the number of tags. pinned = true (a station
+-- placed on its plot, it never moves): the mesh spot is written as the world CFrame `cf` itself (ML_At), so a client
+-- that dresses while the Model is still replicating (its PrimaryPart, the biggest part, may arrive last: the farm's
+-- Cabin) never reads another pivot than the server did (bug #20 "two farms": the mesh ~16 studs along the field)
+function Mesh.station(m, def, level, tpl, cf, pinned)
 	local ML = Mesh.lib()
 	if not ML or not tpl or not tpl.Model then
 		return 0
@@ -2686,7 +2741,7 @@ function Mesh.station(m, def, level, tpl, cf)
 	local tags = 0
 	local key = info.Key
 	if key and ML.Status(key) ~= "missing" and Mesh.sigOk(ML, key, info.Sig[1], info.Sig[2], info.Sig[3]) then
-		ML.Tag(m, key, { Offset = m:GetPivot():Inverse() * cf }, info.Keep)
+		ML.Tag(m, key, { Offset = m:GetPivot():Inverse() * cf, At = pinned and cf or nil }, info.Keep)
 		tags = tags + 1
 	end
 	local elements = Mesh.elementsOf(def)
@@ -2724,7 +2779,7 @@ local function placeStation(rec, def, level)
 		m:SetAttribute(name, v)
 	end
 	applyOwnerAttr(rec, m)
-	Mesh.station(m, def, level, tpl, slotCF) -- Phase 6: the Blender mesh (no-op without uploaded ids)
+	Mesh.station(m, def, level, tpl, slotCF, true) -- Phase 6: the Blender mesh (no-op without uploaded ids), pinned
 	return m
 end
 

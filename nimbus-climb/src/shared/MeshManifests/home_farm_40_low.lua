@@ -2,16 +2,16 @@
 return {
 	Attachments = {
 		LayoutSig = {
-			Pos = { 136, 50.5517, 870.7175 },
+			Pos = { 140, 16.3586, 871.6398 },
 			Rot = { { 1, 0, 0 }, { 0, 1, 0 }, { 0, 0, 1 } },
 		},
 	},
 	Bounds = {
-		Max = { 18.875, 9, 3.6875 },
-		Min = { -18.625, 0, -3.8125 },
+		Max = { 18.875, 9, 3.75 },
+		Min = { -18.625, 0, -3.75 },
 		Size = { 37.5, 9, 7.5 },
 	},
-	ContentHash = "35ff9616d8b07ba17c9b8a6df56efe17",
+	ContentHash = "af59da184c537997d38d5c08e1553a97",
 	DarkFactor = { 0.8425, 0.85, 0.8875 },
 	DeepFactor = { 0.7098, 0.7225, 0.7877 },
 	Groups = {},
@@ -25,7 +25,7 @@ return {
 	},
 	Parts = {
 		{
-			Center = { 0.125, 4.5, -0.0625 },
+			Center = { 0.125, 4.5, 0 },
 			Color = "vertex",
 			Group = "Fixed",
 			Key = "Fixed",
@@ -33,11 +33,23 @@ return {
 			Name = "Fixed",
 			Shade = "fixed",
 			Size = { 37.5, 9, 7.5 },
-			Tris = 2516,
+			Tris = 2788,
+		},
+		{
+			Center = { -13.375, 2.25, 0.75 },
+			Color = "vertex",
+			Group = "Glass",
+			Key = "Glass",
+			Material = "Glass",
+			Name = "Glass",
+			Shade = "fixed",
+			Size = { 0.5, 0.5, 3 },
+			Transparency = 0.2,
+			Tris = 24,
 		},
 	},
 	Rig = "",
-	StructureHash = "2829dd7275617502fc1e89a3e9dd6d8a",
-	Tris = 2516,
+	StructureHash = "19919467cbcf1b9e2242b0702eb75a09",
+	Tris = 2812,
 	VoxelStuds = 0.5,
 }

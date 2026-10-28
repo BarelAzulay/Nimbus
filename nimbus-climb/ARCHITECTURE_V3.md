@@ -1995,7 +1995,11 @@ RoamSeed = (OwnerUserId % 2147483646) + 1;  epochs are workspace:GetServerTimeNo
 
 #### 3.6 HomeBuilder art (homeworld W2; home 9 + world 4.1)
 `Art.Farm(level)` (3 rows of bushes along the lane: L1-10 red berries, L11-22 a blue row, L23-37 golden trellis, L38-40 the glowing
-Starberry tree; crates + a little barn; Wood / Grass / Slate via Voxel; <= **150** parts), `Art.Garden(def, level, open)` (fence ring with
+Starberry tree; bug #20 art wave: the Sky-Sailor's Allotment, the rows planted in three old lifeboat hulls on a plank deck, a
+sky-sailor's cabin under an upturned red lifeboat with a propeller weathervane, bell, anchor, portholes and sea chests, oars +
+rope + a mast with rigging from 23, the Starberry tree in a crow's-nest tub; the `Bell` carries the tag `NC_FarmBell` for the audio
+branch; <= **150** parts; a placed station's mesh tag carries `ML_At` = its slot CFrame, so a client dressing it mid-replication
+never reads a pivot from the parts it has so far), `Art.Garden(def, level, open)` (fence ring with
 the entrance, 12 beds: open = cushion + tiny roof, closed = seedling + "Prestige to open"; the Food Bowl + sign; <= **95**),
 `Art.Fence` / `Art.Fountain` with the absorbed looks (<= **90** / **80**), `Art.FoodMachine` + `Hopper` and `Art.Training` + `Spot1..5`
 on their swapped slots, the three signs of 3.4; **restyled as well** (judge M8): `Art.House` (4 tiers: Slate plinth, WoodPlanks / Brick walls,

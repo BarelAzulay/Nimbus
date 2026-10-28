@@ -2927,6 +2927,9 @@ end
 -- they land on the pocket bake's voxel boundaries: arena_pocket args.offy).
 Ring.StandY = -0.1875
 Ring.CrowdTag = "RingCrowd"
+-- the audio branch's hooks (client RingAmbience; no sound code here): the crowd stand Model and the drummer's Model
+Ring.SoundCrowdTag = "NC_RingCrowd"
+Ring.SoundDrummerTag = "NC_RingDrummer"
 -- { Name, Seat = { x, y, z } (stand-local), Body = { w, h, d }, Tint, Cap ("sailor" | "captain" | nil), Tilt (cap roll),
 --   Arms = { L, R } (arm | stick | spyglass), Mood, Drummer }
 Ring.CAST = {
@@ -2990,6 +2993,7 @@ function Ring.spectator(parent, spec, standLocal)
 	m:SetAttribute("Mood", spec.Mood)
 	if spec.Drummer then
 		m:SetAttribute("Drummer", true)
+		CollectionService:AddTag(m, Ring.SoundDrummerTag) -- the drum loop plays from him (audio branch)
 	end
 	CollectionService:AddTag(m, Ring.CrowdTag)
 	local w, h, d = spec.Body[1], spec.Body[2], spec.Body[3]
@@ -3094,6 +3098,7 @@ function Ring.crowdTemplate()
 	end
 	local m = newModel(nil, "Crowd")
 	Art.tag(m, "Exempt")
+	CollectionService:AddTag(m, Ring.SoundCrowdTag) -- the crowd cheer loop plays from the stand (audio branch)
 	for _, spec in ipairs(Ring.CAST) do
 		Ring.spectator(m, spec, CFrame.new())
 	end
@@ -3118,10 +3123,10 @@ function Ring.emblem(parent)
 	end
 	for q = 0, 3 do
 		local a = CFrame.Angles(0, q * pi / 2, 0)
-		local len = (q == 0) and 6.35 or 5.85
-		-- a long point: its wide root, then its narrow tip (north's is the red needle)
+		local len = 5.85 -- all four alike (option A)
+		-- a long point: its wide root, then its narrow tip (all gold, as in the approved option A)
 		box(m, "EmblemStar", a * CFrame.new(0, 0.17, len * 0.3), Vector3.new(1.1, 0.1, len * 0.6), (q % 2 == 0) and gold or goldDark, { Shadow = false })
-		box(m, "EmblemStar", a * CFrame.new(0, 0.18, len * 0.78), Vector3.new(0.5, 0.1, len * 0.36), (q == 0) and rgb(226, 74, 70) or gold, { Shadow = false })
+		box(m, "EmblemStar", a * CFrame.new(0, 0.18, len * 0.78), Vector3.new(0.5, 0.1, len * 0.36), gold, { Shadow = false })
 	end
 	box(m, "EmblemHub", CFrame.Angles(0, pi / 4, 0) * CFrame.new(0, 0.2, 0), Vector3.new(1.7, 0.16, 1.7), gold, { Shadow = false })
 	box(m, "EmblemPlate", CFrame.new(2.35, 0.19, -2.35) * CFrame.Angles(0, pi / 4, 0), Vector3.new(1.7, 0.1, 1.7), rgb(150, 154, 168), { Shadow = false })

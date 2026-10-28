@@ -495,7 +495,7 @@ A home has **11 stations** (phase 4 had 18):
 
 A pad shows up as soon as the stations it needs are built; until the rest is there too (a house tier, a Prestige
 star) its sign says what is missing. Every station grows visibly with its level (a level-1 Berry Farm is a few
-red-berry bushes by a little red barn; blue berries come at level 11, a golden trellis at 23 and the glowing Starberry
+red-berry bushes in an old lifeboat hull by a sky-sailor's cabin under an upturned red boat; blue berries come at level 11, a golden trellis at 23 and the glowing Starberry
 tree at 38), and three world signs tell the berry story: the Berry Farm ("Grows berries for your pets"), the Food Bowl ("Pets eat here, then poop Cloud Cash!") and the Food Machine
 ("Berries -> XP: press E", with your Berry Basket under it). Decor is cheap, counts toward your Home Level like
 everything else and is **kept when you prestige**.
@@ -1325,9 +1325,7 @@ Things only you can do, by hand, once. Steps 3 and 4 are optional; everything wo
    keep only results that say the audio can be used in any experience (Roblox-provided audio plays everywhere;
    another user's private upload stays silent in your game). Click -> **Copy Asset ID** -> paste it into
    `Config.Audio.Music.Lobby` / `Battle` / `Dungeon` and `Config.Audio.Sfx` (`Click`, `Confirm`, `Error`, `Reward`,
-   `Whoosh`) as `"rbxassetid://..."`. The Champion Ring's crowd (bug #11) has its own list,
-   `Config.Audio.Crowd` (`Ambient` wind + rigging loop, `Ooh`, `Applause`, `Aww`, `Bell`, `Thunder`, `Drum` one hit,
-   `DrumRoll`). Empty = silent, nothing breaks.
+   `Whoosh`) as `"rbxassetid://..."`. Empty = silent, nothing breaks.
 4. **Icons (optional):** the menu tiles use emoji; a PNG you Bulk Import (step 2) and paste into `Config.Icons` (for
    example `Config.Icons.Shop = "rbxassetid://..."`) replaces one.
 5. **Lighting:** since phase 6 the game is back to the bright cartoon look: `default.project.json` has the line
@@ -1457,7 +1455,8 @@ src/client   Main.client.lua; State; UiGate (nothing shows before PLAY); ClientS
              fountain's paper-boat drift + an optional water loop), MeadowFx (grows the lobby's wind-blown grass and
              wildflower clumps near the camera from the server's Meadow scatter and sways them), RingCrowdFx (the Champion
              Ring's sky-sailor crowd: the drummer's beat, bob and sway, cheers on big hits / round won / lost, the boss
-             round's storm, flags and bell; the sounds of Config.Audio.Crowd), MeshFallback (shows the
+             round's storm, flags and bell; no sound here: the audio branch's RingAmbience finds the stand by its
+             NC_RingCrowd tag and the drummer by NC_RingDrummer), MeshFallback (shows the
              block pet on a device where a Blender model failed to load)
 ```
 

@@ -1,5 +1,5 @@
--- RingCrowdFx (client, bug #11 "crowd needs animation and sound"; the player's pick: the Sky-Sailors' Ring with a
--- drummer): the Champion Ring's crowd of retired weather clouds comes alive. The server (ArenaBuilder Ring.spectator)
+-- RingCrowdFx (client, bug #11 "crowd needs animation and sound": this module is the ANIMATION; the player's pick:
+-- the Sky-Sailors' Ring with a drummer): the Champion Ring's crowd of retired weather clouds comes alive. The server (ArenaBuilder Ring.spectator)
 -- builds each spectator as a Model tagged "RingCrowd" with separate anchored ROOT parts: Body, ArmL, ArmR, Cap and
 -- (Drizzle, the ship's drummer boy) Drum. Each root carries its mesh pivot in the "CrowdOff" attribute; once the
 -- Blender keys are uploaded the dressed meshes are welded to the roots (ML_Weld) and simply ride them. Next to the
@@ -12,13 +12,13 @@
 --     battle's running average): everyone leans back with the arms up ("rumble-oooh"), the Thunder Captain flashes with
 --     a lightning bolt (a PointLight + two Beams), Drizzle misses a beat, Fog snaps his spyglass up;
 --   * a round won ("End" won): they hop and throw their arms up, the caps fly, the bell swings, the drum goes double
---     time (ship's bell + rain-patter applause);
+--     time;
 --   * a round lost: they droop ("awww");
 --   * a boss round ("Start".Ring.Champion.Boss): the clouds darken and lean in, drizzle falls from all of them, the
---     drum rolls (a low thunder roll), until that round ends.
--- Sounds play only when Config.Audio.Crowd holds ids (all empty today: the owner pastes them; README); the idle drum
--- tap only during a ring fight. The ids and the Sfx volume are read once per REFRESH, not per sound. Voices are 3D
--- Sounds on each body with its own PlaybackSpeed (0.9 - 1.2), so a cheer sounds like a crowd and not one voice.
+--     drum rolls, until that round ends.
+-- NO SOUND HERE: the crowd and drum sounds belong to the audio branch (client RingAmbience + SoundFx, ids in AudioIds).
+-- It finds this stand by its tags: the Crowd model is tagged "NC_RingCrowd" and Drizzle's model "NC_RingDrummer" (with
+-- the attribute Drummer = true); ArenaBuilder Ring.crowdTemplate / Ring.spectator set them.
 -- Cheap: ONE Heartbeat connection, UPDATE_HZ (LOW_HZ on Low graphics), only stands within RANGE studs of the camera
 -- move; out of range, on Stop() or when the tag goes away every part returns exactly to its rest frame and colour.
 --
@@ -29,7 +29,7 @@
 --   RingCrowdFx.HandleState(kind, payload)   the BattleState remote's handler (Start / Events / End)
 --   RingCrowdFx.Pose(spec, t, cue, cueT, boss) -> pose   pure: the offsets of one spectator at time t
 --   RingCrowdFx.StickAngle(side, beat, mode) -> radians  pure: a drumstick's lift (0 = on the drum head)
---   RingCrowdFx.Stats() -> { Spectators, Moving, Writes, Beats, Cue, Boss, Quality, Sounds, Emitters }
+--   RingCrowdFx.Stats() -> { Spectators, Moving, Writes, Beats, Cue, Boss, Quality, Emitters }
 --   RingCrowdFx.K                            the tuning numbers
 -- Plain Lua 5.1-compatible syntax only.
 
@@ -77,8 +77,6 @@ local K = {
 	BIG_HIT = 1.8, -- a hit this many times the battle's running average is a big hit
 	BIG_MIN_HITS = 3,
 	CUE_GAP = 2.0, -- seconds between two big-hit cues
-	VOICE = 0.32, -- volume of one cloud's voice x the Sfx setting
-	SOUND_RANGE = 90,
 }
 RingCrowdFx.K = K
 
@@ -105,11 +103,7 @@ local St = {
 	Boss = false,
 	BossFade = 0,
 	Battle = nil, -- { Id, Hits, Sum, LastCue }
-	Sounds = {},
-	Audio = nil, -- Config.Audio.Crowd, cached (refreshed every REFRESH)
-	Sfx = 1, -- the Sfx setting 0..1, cached (refreshed every REFRESH)
 	Emitters = 0,
-	Rng = Random.new(11),
 }
 RingCrowdFx._St = St
 
@@ -381,7 +375,6 @@ local function track(model)
 		Captain = name == "captain",
 		Pieces = {},
 		Moving = false,
-		Pitch = 0.9 + St.Rng:NextNumber() * 0.3, -- this cloud's voice (0.9 - 1.2)
 	}
 	local body0 = model:FindFirstChild("Body")
 	if not (body0 and body0:IsA("BasePart")) then
@@ -436,7 +429,7 @@ local function forget(model)
 end
 
 ----------------------------------------------------------------------
--- Client-only bits: weather particles, the captain's flash, voices
+-- Client-only bits: weather particles, the captain's flash
 ----------------------------------------------------------------------
 local function own(rec, inst)
 	rec.Owned = rec.Owned or {}
@@ -553,105 +546,8 @@ local function ensureClientBits(rec)
 	end
 end
 
--- Config.Audio.Crowd and the Sfx setting are read once per REFRESH (refresh() -> readAudio), never per sound; no
--- WaitForChild here (it runs inside Heartbeat): a missing module just means "no ids / full volume" until the next read
-local function audioIds()
-	local ok, Config = pcall(function()
-		local shared = ReplicatedStorage:FindFirstChild("Shared")
-		local mod = shared and shared:FindFirstChild("Config")
-		return mod and require(mod) or nil
-	end)
-	local audio = ok and type(Config) == "table" and Config.Audio
-	local crowd = type(audio) == "table" and audio.Crowd
-	return type(crowd) == "table" and crowd or {}
-end
-
-local function sfxVolume()
-	local ok, ClientSettings = pcall(function()
-		local client = script.Parent and script.Parent.Parent
-		local mod = client and client:FindFirstChild("ClientSettings")
-		return mod and require(mod) or nil
-	end)
-	if ok and type(ClientSettings) == "table" and type(ClientSettings.Get) == "function" then
-		local v = tonumber(ClientSettings.Get("Sfx"))
-		if v then
-			return max(0, min(1, v / 10))
-		end
-	end
-	return 1
-end
-
-local function readAudio()
-	St.Audio = audioIds()
-	St.Sfx = sfxVolume()
-end
-
--- plays `name` from `part` (a 3D Sound, made once per part + name) when Config.Audio.Crowd[name] holds an id
-local function play(part, name, volume, speed, looped)
-	if not St.Audio then
-		readAudio()
-	end
-	local id = St.Audio[name]
-	if type(id) ~= "string" or id == "" or not part or not part.Parent then
-		return nil
-	end
-	local s = St.Sounds[part] and St.Sounds[part][name]
-	if not s or not s.Parent then
-		s = Instance.new("Sound")
-		s.Name = "Crowd_" .. name
-		s.SoundId = id
-		s.RollOffMaxDistance = K.SOUND_RANGE
-		s.RollOffMinDistance = 12
-		s.Looped = looped == true
-		s.Parent = part
-		St.Sounds[part] = St.Sounds[part] or {}
-		St.Sounds[part][name] = s
-	end
-	s.Volume = (volume or K.VOICE) * (St.Sfx or 1)
-	s.PlaybackSpeed = speed or 1
-	pcall(function()
-		s:Play()
-	end)
-	return s
-end
-
 local function bodyPart(rec)
 	return rec.Pieces.Body and rec.Pieces.Body.Part
-end
-
-local function cueSounds(name)
-	for _, rec in pairs(St.Specs) do
-		if rec.On then
-			local body = bodyPart(rec)
-			if name == "Hit" then
-				play(body, "Ooh", K.VOICE, rec.Pitch)
-				if rec.Captain then
-					play(body, "Thunder", 0.6, 1)
-				end
-			elseif name == "Won" then
-				play(body, "Applause", K.VOICE, rec.Pitch)
-				if rec.Drummer then
-					play(body, "Drum", 0.4, 1.15)
-				end
-			elseif name == "Lost" then
-				play(body, "Aww", K.VOICE, rec.Pitch)
-			elseif name == "Boss" then
-				if rec.Captain then
-					play(body, "Thunder", 0.7, 0.8)
-				end
-				if rec.Drummer then
-					play(body, "DrumRoll", 0.5, 1)
-				end
-			end
-		end
-	end
-	if name == "Won" then
-		for _, ex in pairs(St.Extras) do
-			if ex.Kind == "Bell" and ex.On then
-				play(ex.Part, "Bell", 0.55, 1)
-			end
-		end
-	end
 end
 
 ----------------------------------------------------------------------
@@ -660,7 +556,6 @@ end
 function RingCrowdFx.Cue(name)
 	if name == "Boss" then
 		St.Boss = true
-		cueSounds("Boss")
 		return
 	end
 	if name == "BossEnd" then
@@ -671,7 +566,6 @@ function RingCrowdFx.Cue(name)
 		return
 	end
 	St.Cue = { Name = name, T0 = St.Time }
-	cueSounds(name)
 end
 
 local function isRing(payload)
@@ -742,7 +636,6 @@ end
 ----------------------------------------------------------------------
 local function refresh()
 	St.Quality = quality()
-	readAudio()
 	-- a spectator whose tag arrived before its Body replicated was skipped by track(): pick it up now
 	if St.Started then
 		for _, model in ipairs(CollectionService:GetTagged(K.TAG)) do
@@ -781,15 +674,6 @@ local function refresh()
 			ex.Moving = false
 		end
 		ex.On = on
-		-- the wind + rigging-creak loop rides the flag line while the stand is near (only with an id)
-		if ex.Kind == "Flags" then
-			if on and not ex.Ambient then
-				ex.Ambient = play(part, "Ambient", 0.3, 1, true)
-			elseif not on and ex.Ambient then
-				ex.Ambient:Stop()
-				ex.Ambient = nil
-			end
-		end
 	end
 end
 
@@ -865,8 +749,7 @@ function RingCrowdFx.Step(dt)
 		end
 	end
 	local beat = floor(t * K.BPM / 60)
-	local drumHit = beat ~= St.LastBeat
-	if drumHit then
+	if beat ~= St.LastBeat then
 		St.LastBeat = beat
 		St.Beats = St.Beats + 1
 	end
@@ -875,10 +758,6 @@ function RingCrowdFx.Step(dt)
 		if rec.On then
 			local pose = stepRec(rec, t, cueName, cueT)
 			bell = pose.BellSwing
-			-- the drum tap keeps time only while a ring fight is on (not between rounds or over the result card)
-			if drumHit and rec.Drummer and St.Battle ~= nil and not St.Boss and cueName == nil then
-				play(bodyPart(rec), "Drum", 0.12, 1)
-			end
 		end
 	end
 	for _, ex in pairs(St.Extras) do
@@ -902,14 +781,8 @@ function RingCrowdFx.Stats()
 			moving = moving + 1
 		end
 	end
-	local sounds = 0
-	for _, list in pairs(St.Sounds) do
-		for _ in pairs(list) do
-			sounds = sounds + 1
-		end
-	end
 	return { Spectators = St.Count, Moving = moving, Writes = St.Writes, Beats = St.Beats,
-		Cue = St.Cue and St.Cue.Name or nil, Boss = St.Boss, Quality = St.Quality, Sounds = sounds, Emitters = St.Emitters }
+		Cue = St.Cue and St.Cue.Name or nil, Boss = St.Boss, Quality = St.Quality, Emitters = St.Emitters }
 end
 
 function RingCrowdFx.Stop()
@@ -932,13 +805,6 @@ function RingCrowdFx.Stop()
 		restPiece(ex)
 		St.Extras[part] = nil
 	end
-	for _, list in pairs(St.Sounds) do
-		for _, s in pairs(list) do
-			s:Destroy()
-		end
-	end
-	St.Sounds = {}
-	St.Audio = nil
 	St.Count = 0
 	St.Emitters = 0
 	St.Cue = nil

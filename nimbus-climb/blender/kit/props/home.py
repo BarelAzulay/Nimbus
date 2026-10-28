@@ -166,6 +166,14 @@ def budget_tris(entry, default):
     return int(b.get("tris") or default)
 
 
+def style_pass(bx, vs, a):
+    """catalog args "style": a station's own shape pass before the bake (the Part build stays boxes)"""
+    if a.get("style") == "allotment":  # the Berry Farm, bug #20 option B (props/home_allotment.py)
+        from props import home_allotment as HA
+        return HA.expand(bx, vs)
+    return bx
+
+
 def finish(m, sig, meta):
     m.groups = {}
     m.attachments = {"LayoutSig": layout_sig(sig)}
@@ -181,6 +189,7 @@ def home_station(entry, kit):
     st = station(a["station"], a["level"], a.get("open"))
     bx = parse_boxes(st["Boxes"])
     vs = float(a.get("vs", 0.25))
+    bx = style_pass(bx, vs, a)
     m = kit.model(entry["key"], "prop", vs=vs, K=1.0)
     stats = HS.bake(m, bx, vs, budget=budget_tris(entry, 4000), opts=a)
     return finish(m, st["Sig"], {"source": "HomeBuilder.BuildStationModel(%s, %s) Part build" % (a["station"], a["level"]),
@@ -195,6 +204,7 @@ def home_element(entry, kit):
     el = element(a.get("station", "Garden"), a.get("level", 8), a.get("open", 6), a["part"])
     bx = parse_boxes(el["Boxes"])
     vs = float(a.get("vs", 0.125))
+    bx = style_pass(bx, vs, a)
     m = kit.model(entry["key"], "prop", vs=vs, K=1.0)
     stats = HS.bake(m, bx, vs, budget=budget_tris(entry, 600), opts=dict(a, name=a["part"]))
     return finish(m, el["Sig"], {"source": "HomeBuilder %s part %s" % (a.get("station", "Garden"), a["part"]),

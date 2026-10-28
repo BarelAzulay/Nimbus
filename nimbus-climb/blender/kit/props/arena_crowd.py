@@ -117,13 +117,15 @@ def _vox_paint(S, key, only, x, y, z, w=1, h=1, depth=2.0):
 # ------------------------------------------------------------------------------------------------- the emblem
 def _emblem(S):
     """the ship's compass star on a violet disc in a brass rim with a rope coil border; one short point carries a newer
-    riveted steel repair plate; north (the champion, +Z) has a red needle tip; a gold hub with a violet pin"""
+    riveted steel repair plate; a gold hub with a violet pin. North (the champion, +Z) is the same gold point as the
+    other three, as in the approved option_a.png (round 1 gave it a red needle tip that ran over the
+    rope coil: not in the approved picture, dropped in fix round part 2 on Gemini's check)"""
     g = S.g
     v = 1.0 / S.K
     L0, L1, L2 = 0.0, v, 2 * v  # voxel rows (centres)
     R_RIM, R_ROPE, R_DISC = 7.5, 6.75, 5.9
     # radii and the exponents measured off option_a.png's top view (gold ~0.9 wide at mid-length, cream ~1.6 at the root)
-    STAR_HUB, STAR_LONG, STAR_NORTH, STAR_SHORT, P_LONG, P_SHORT = 1.25, 5.85, 6.35, 4.4, 4.2, 2.4
+    STAR_HUB, STAR_LONG, STAR_NORTH, STAR_SHORT, P_LONG, P_SHORT = 1.25, 5.85, 5.85, 4.4, 4.2, 2.4  # north = the others (option A)
     n = int(math.ceil(R_RIM * S.K)) + 1
     TAU = 2 * math.pi
     c45 = math.sqrt(0.5)
@@ -157,8 +159,6 @@ def _emblem(S):
             al = 1.0 - abs(dl) / (TAU / 8)
             if r <= STAR_HUB + ((STAR_NORTH if q == 0 else STAR_LONG) - STAR_HUB) * al ** P_LONG:
                 key = "CsGold" if dl >= 0 else "CsGoldDark"
-                if q == 0 and z > 4.45:
-                    key = "CsNorth"   # the north needle tip (red, like a ship's compass card)
                 cells[(i, 1, k)] = key
                 cells[(i, 0, k)] = key
                 continue
@@ -167,12 +167,6 @@ def _emblem(S):
                 key = "CsCream" if ds >= 0 else "CsCreamDark"
                 cells[(i, 1, k)] = key
                 cells[(i, 0, k)] = key
-    # the north point reaches over the rope coil (row 0) to the rim
-    for i in range(-n, n + 1):
-        for k in range(-n, n + 1):
-            x, z = i * v, k * v
-            if z > R_DISC - 0.05 and z <= 6.85 and abs(x) <= 0.55 * (6.85 - z) / 0.95 + 0.01:
-                cells[(i, 0, k)] = "CsNorth"
     # the hub: a gold boss (rows 1) with a violet pin (row 2)
     for i in range(-8, 9):
         for k in range(-8, 9):
@@ -198,7 +192,7 @@ def _emblem(S):
         cells[(i, 2, k)] = "CsRivet"
     for (i, j, k), key in cells.items():
         g.L[i + g.half, j + g.half, k + g.half] = g.kid(key)
-    S.flat |= {"CsNorth", "CsRivet"}
+    S.flat |= {"CsRivet"}
 
 
 # ------------------------------------------------------------------------------------------------- bodies

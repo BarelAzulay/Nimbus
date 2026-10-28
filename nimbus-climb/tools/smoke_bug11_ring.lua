@@ -11,14 +11,16 @@
 --                    drummer (Drizzle) with a Drum and two sticks, every cloud sits on its step and faces the ring; the
 --                    rigging (masts, flag line, bell) beside it; the steps' tops at 1.75 / 3.75 stand-local; the pads
 --                    stay kept Parts of arena_pocket; dress targets never nest; a key without an id is not tagged;
---                    Config.Audio.Crowd holds the 8 crowd sound names as strings (empty = silent)
+--                    the sound hooks for the audio branch: the Crowd model is tagged NC_RingCrowd, the drummer's
+--                    model NC_RingDrummer (+ Drummer = true), and this branch adds no Config.Audio.Crowd
 --   client_bug11ring_crowd (client) RingCrowdFx: Pose / StickAngle are pure and in time (left stick on even beats,
 --                    right on odd, idle motion small), the cues (Hit lean + the captain's flash, Won hop + caps up,
 --                    Lost slump, Boss roll + forward lean), a tagged fake stand near the camera moves (Body, arms, cap,
 --                    drum ride the seat; anchored kids keep their offsets), the flag line swings, the boss round darkens
 --                    and the colours come back, out of range / Stop() / untagging put every part exactly at rest, Low graphics = LOW_HZ,
 --                    HandleState with fake BattleState payloads (ring Start + boss, big-hit Events, End won / lost,
---                    another battle's Events ignored, a Duel ignored), no Sound without an id
+--                    another battle's Events ignored, a Duel ignored), RingCrowdFx makes no Sound at all (the audio
+--                    branch owns the crowd's sounds)
 -- Deterministic: mock clock only. Plain Lua 5.1 syntax only.
 
 local T = SmokeCommon.T
@@ -27,8 +29,6 @@ local CONTEXT = (ARGS and ARGS.context) or "server"
 
 local abs, max, min = math.abs, math.max, math.min
 local fmt = string.format
-
-local CROWD_SOUNDS = { "Ambient", "Ooh", "Applause", "Aww", "Bell", "Thunder", "Drum", "DrumRoll" }
 
 ----------------------------------------------------------------------------------------------------
 -- server half
@@ -274,19 +274,31 @@ local function serverScenarios()
 			end
 		end
 		T.check(#nested == 0, "bug11 ring: dress targets never nest (one dress per subtree)", table.concat(nested, ", "))
-		-- 4. the crowd's sounds: names only, strings (empty = silent until the player uploads them)
-		local Config = requireAt("shared/Config")
-		local A = Config and Config.Audio and Config.Audio.Crowd
-		if T.check(type(A) == "table", "bug11 ring: Config.Audio.Crowd exists") then
-			local bad = {}
-			for _, n in ipairs(CROWD_SOUNDS) do
-				local v = A[n]
-				if type(v) ~= "string" or (v ~= "" and not v:match("^rbxassetid://%d+$")) then
-					bad[#bad + 1] = n .. "=" .. tostring(v)
-				end
+		-- 4. the sound hooks: no sound code in this branch; the audio branch (client RingAmbience) finds the stand and
+		-- the drummer by these tags, and Config.Audio gets no Crowd list here
+		T.check(Ring.SoundCrowdTag == "NC_RingCrowd" and CS:HasTag(crowd, "NC_RingCrowd") and crowd.Name == "Crowd",
+			"bug11 ring: the pocket's crowd stand Model 'Crowd' is tagged NC_RingCrowd (the audio branch's crowd loop)")
+		local drumTagged = {}
+		for _, inst in ipairs(CS:GetTagged("NC_RingDrummer")) do
+			if inst:IsDescendantOf(crowd) then
+				drumTagged[#drumTagged + 1] = inst
 			end
-			T.check(#bad == 0, "bug11 ring: every crowd sound is a string ('' or rbxassetid://<n>)", table.concat(bad, ", "))
 		end
+		local dm = drumTagged[1]
+		T.check(#drumTagged == 1 and dm:IsA("Model") and dm:GetAttribute("Drummer") == true and dm:GetAttribute("Spectator") == "drizzle"
+			and dm:FindFirstChild("Drum") ~= nil and Ring.SoundDrummerTag == "NC_RingDrummer",
+			"bug11 ring: exactly one Model in the stand is tagged NC_RingDrummer: Drizzle, with Drummer = true and his Drum",
+			fmt("%d tagged", #drumTagged))
+		local tagCount = 0
+		for _, d in ipairs(crowd:GetDescendants()) do
+			if CS:HasTag(d, "NC_RingCrowd") then
+				tagCount = tagCount + 1
+			end
+		end
+		T.check(tagCount == 0, "bug11 ring: only the stand itself carries NC_RingCrowd (one crowd loop per pocket)", tostring(tagCount))
+		local Config = requireAt("shared/Config")
+		T.check(type(Config) == "table" and type(Config.Audio) == "table" and Config.Audio.Crowd == nil,
+			"bug11 ring: no Config.Audio.Crowd in this branch (the sounds are the audio branch's: AudioIds + SoundFx)")
 		AB.FreePocket(43)
 		K.flushErrors("bug11ring_server")
 	end)
@@ -508,14 +520,14 @@ local function clientScenarios()
 		local capUp = (f.Cap.Position - rest[f.Cap].CF.Position).Y
 		T.check(capUp > 1.0, "bug11 crowd: a won round sends the caps up", fmt("%.2f", capUp))
 		KC.advance(K.WON_TIME)
-		-- no Sound without an id (Config.Audio.Crowd is empty until the player uploads)
+		-- no sound code here (the audio branch owns the crowd's sounds): not one Sound after the hit / won / boss cues
 		local sounds = 0
 		for _, d in ipairs(f.Crowd:GetDescendants()) do
-			if d:IsA("Sound") and (d.SoundId == "" or d.SoundId == nil) then
+			if d:IsA("Sound") then
 				sounds = sounds + 1
 			end
 		end
-		T.check(sounds == 0, "bug11 crowd: no empty Sound is ever made (a crowd sound plays only with an id)")
+		T.check(sounds == 0 and FX.Stats().Sounds == nil and K.VOICE == nil, "bug11 crowd: RingCrowdFx makes no Sound (animation only; the sounds come from the audio branch)", tostring(sounds))
 		-- Low graphics: the crowd still cheers (it is cheap: ~40 parts) but at LOW_HZ (fewer writes), weather off
 		if St then
 			local w0 = FX.Stats().Writes
@@ -546,45 +558,24 @@ local function clientScenarios()
 			CS:RemoveTag(late, K.TAG)
 			late:Destroy()
 		end
-		-- the idle drum tap plays only during a ring fight (a test id in Config.Audio.Crowd.Drum)
+		-- a ring fight's beat: the drummer's sticks and body keep moving during a fight and between rounds (the drum loop
+		-- itself is the audio branch's)
 		do
-			local shared = game:GetService("ReplicatedStorage"):FindFirstChild("Shared")
-			local cfgMod = shared and shared:FindFirstChild("Config")
-			local okC, Config = pcall(function()
-				return cfgMod and require(cfgMod)
-			end)
-			local crowdIds = okC and type(Config) == "table" and type(Config.Audio) == "table" and Config.Audio.Crowd
-			if T.check(type(crowdIds) == "table", "bug11 crowd: Config.Audio.Crowd is reachable from the client (ReplicatedStorage.Shared.Config)") then
-				local saved = crowdIds.Drum
-				crowdIds.Drum = "rbxassetid://1"
-				local function drumSounds()
-					local n = 0
-					for _, d in ipairs(f.Crowd:GetDescendants()) do
-						if d:IsA("Sound") and d.Name == "Crowd_Drum" then
-							n = n + 1
-						end
-					end
-					return n
-				end
-				St.Battle = nil
-				KC.advance(K.REFRESH + 1.0)
-				local idleTaps = drumSounds()
-				St.Battle = { Id = "tap", Hits = 0, Sum = 0, LastCue = -math.huge }
-				KC.advance(1.0)
-				local fightTaps = drumSounds()
-				St.Battle = nil
-				crowdIds.Drum = saved
-				KC.advance(K.REFRESH + 0.1)
-				T.check(idleTaps == 0 and fightTaps >= 1, "bug11 crowd: the drum tap keeps time only during a ring fight (silent between rounds)", fmt("idle %d fight %d", idleTaps, fightTaps))
-				for _, d in ipairs(f.Crowd:GetDescendants()) do
-					if d:IsA("Sound") then
-						d:Destroy()
-					end
-				end
-				for part in pairs(St.Sounds) do
-					St.Sounds[part] = nil
+			St.Battle = { Id = "tap", Hits = 0, Sum = 0, LastCue = -math.huge }
+			local b0 = FX.Stats().Beats
+			KC.advance(1.0)
+			local b1 = FX.Stats().Beats
+			St.Battle = nil
+			KC.advance(1.0)
+			local b2 = FX.Stats().Beats
+			T.check(b1 - b0 >= 2 and b2 - b1 >= 2, "bug11 crowd: the drummer keeps the beat in a fight and between rounds (2 beats a second)", fmt("fight %d idle %d", b1 - b0, b2 - b1))
+			local sounds2 = 0
+			for _, d in ipairs(f.Crowd:GetDescendants()) do
+				if d:IsA("Sound") then
+					sounds2 = sounds2 + 1
 				end
 			end
+			T.check(sounds2 == 0, "bug11 crowd: ...and still no Sound from RingCrowdFx during a fight", tostring(sounds2))
 		end
 		-- 3. HandleState with fake BattleState payloads
 		FX.HandleState("Start", { Mode = "Duel", BattleId = "d1" }, "d1")

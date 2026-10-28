@@ -504,12 +504,6 @@ Config.Audio = {
 	Sfx = { Click = "", Confirm = "", Error = "", Reward = "", Whoosh = "" },
 	-- bug #13: a looping water sound for the lobby fountain (client FountainFx plays it at the Sfx setting, 70-stud rolloff)
 	Ambient = { Fountain = "" },
-	-- bug #11: the Champion Ring's sky-sailor crowd (client RingCrowdFx, 3D Sounds on the stand at the Sfx setting, each
-	-- cloud's voice at its own pitch 0.9 - 1.2). Ambient = a wind + rigging-creak loop, Ooh = the big-hit "rumble-oooh",
-	-- Applause = rain-patter applause (a round won), Aww = a round lost, Bell = the ship's bell, Thunder = the captain's
-	-- rumble / the boss round's low thunder roll, Drum = one drum tap (the beat, only during a ring fight), DrumRoll =
-	-- the boss round's roll
-	Crowd = { Ambient = "", Ooh = "", Applause = "", Aww = "", Bell = "", Thunder = "", Drum = "", DrumRoll = "" },
 }
 
 -- Menu icons (optional): the tiles use emoji glyphs; Config.Icons[tileId] = "rbxassetid://<id>" replaces one with an

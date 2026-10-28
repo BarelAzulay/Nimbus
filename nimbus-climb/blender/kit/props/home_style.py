@@ -61,6 +61,11 @@ SHAPES = {
 }
 
 
+# extra shape kinds / families registered by a style module (props/home_allotment.py): kind -> fn
+EXTRA_SHAPES = {}
+EXTRA_FAMILIES = {}
+
+
 def family(name):
     for f, rx in _FAM_RE:
         if rx.match(name):
@@ -164,9 +169,11 @@ class Raster:
         # so its diagonal stays one connected line
         h = np.maximum(b["size"] / 2, self.vs * (0.5 if _axis_aligned(b["R"]) else 0.72))
         m = (np.abs(L[..., 0]) <= h[0] + 1e-6) & (np.abs(L[..., 1]) <= h[1] + 1e-6) & (np.abs(L[..., 2]) <= h[2] + 1e-6)
-        shp = SHAPES.get(b["name"])
+        shp = b.get("shp") or SHAPES.get(b["name"])  # a style's box may carry its own shape
         if shp is None:
             return m
+        if shp[0] in EXTRA_SHAPES:
+            return m & EXTRA_SHAPES[shp[0]](self, b, L, h, shp)
         q = np.maximum(h, self.vs)
         if shp[0] == "blob":
             p = shp[1]
@@ -260,7 +267,7 @@ class Detail:
 
     def run(self):
         R = self.R
-        fams = [family(b["name"]) for b in R.boxes]
+        fams = [b.get("fam") or family(b["name"]) for b in R.boxes]  # a style's box may carry its own family
         idx = np.argwhere(self.skin)
         if len(idx) == 0:
             return
@@ -280,6 +287,8 @@ class Detail:
             fn = getattr(self, "fam_" + fams[pi], None)
             if fn:
                 fn(R.boxes[pi], pi, idx[grp])
+            elif fams[pi] in EXTRA_FAMILIES:
+                EXTRA_FAMILIES[fams[pi]](self, R.boxes[pi], pi, idx[grp])
         self.stats["level"] = self.level
 
     # local integer coordinates (cells) of skin cells in a part's frame + which faces are open
@@ -523,6 +532,9 @@ def shade_and_colors(R, D):
     bottom = nb[2] & occ & ~top
     light = np.array(C.shade_light((0.0, 0.0, 0.0)))  # lerp target part: shade_light(c) = c + (1 - c) * t
     t = light.max() if light.max() > 0 else 0.15
+    # catalog args "topLight" (default 1): a coarse LOD bake whose parts are one cell thick (the farm _low keys, 0.5
+    # studs) shows the lightened top cell on every side, so it scales the top skin down to keep the High key's colours
+    t *= float(getattr(R, "top_light", 1.0))
     rgb[top] = rgb[top] + (1.0 - rgb[top]) * t
     rgb[bottom] = rgb[bottom] * np.array(DARK)
     # deep creases: occupied cells under an overhang (empty below, occupied 1-2 cells beside below) - cheap AO
@@ -613,6 +625,7 @@ def bake(m, boxes, vs, budget=4000, opts=None):
     """boxes -> m's objects; returns stats.  Steps the detail level down until the triangles fit `budget`."""
     opts = opts or {}
     R = Raster(boxes, vs, align=opts.get("align", True))
+    R.top_light = float(opts.get("topLight", 1.0))
     R.paint()
     name = opts.get("name") or "Fixed"
     tries = []

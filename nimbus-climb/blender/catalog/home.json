@@ -31,10 +31,12 @@
    "prop": "home_station",
    "args": {
     "station": "Press1",
-    "level": 1
+    "level": 1,
+    "style": "allotment",
+    "vs": 0.3
    },
    "budget": "stationBig",
-   "description": "Home Berry Farm level 1 (fine-voxel bake of the Part build)"
+   "description": "Home Berry Farm level 1 (Sky-Sailor's Allotment, bug #20 B: 0.3-stud voxel bake of the Part build, style pass props/home_allotment.py)"
   },
   {
    "key": "home_farm_2",
@@ -42,10 +44,12 @@
    "prop": "home_station",
    "args": {
     "station": "Press1",
-    "level": 2
+    "level": 2,
+    "style": "allotment",
+    "vs": 0.3
    },
    "budget": "stationBig",
-   "description": "Home Berry Farm level 2 (fine-voxel bake of the Part build)"
+   "description": "Home Berry Farm level 2 (Sky-Sailor's Allotment, bug #20 B: 0.3-stud voxel bake of the Part build, style pass props/home_allotment.py)"
   },
   {
    "key": "home_farm_3",
@@ -53,10 +57,12 @@
    "prop": "home_station",
    "args": {
     "station": "Press1",
-    "level": 3
+    "level": 3,
+    "style": "allotment",
+    "vs": 0.3
    },
    "budget": "stationBig",
-   "description": "Home Berry Farm level 3 (fine-voxel bake of the Part build)"
+   "description": "Home Berry Farm level 3 (Sky-Sailor's Allotment, bug #20 B: 0.3-stud voxel bake of the Part build, style pass props/home_allotment.py)"
   },
   {
    "key": "home_farm_4",
@@ -64,10 +70,12 @@
    "prop": "home_station",
    "args": {
     "station": "Press1",
-    "level": 4
+    "level": 4,
+    "style": "allotment",
+    "vs": 0.3
    },
    "budget": "stationBig",
-   "description": "Home Berry Farm level 4 (fine-voxel bake of the Part build)"
+   "description": "Home Berry Farm level 4 (Sky-Sailor's Allotment, bug #20 B: 0.3-stud voxel bake of the Part build, style pass props/home_allotment.py)"
   },
   {
    "key": "home_farm_5",
@@ -75,10 +83,12 @@
    "prop": "home_station",
    "args": {
     "station": "Press1",
-    "level": 5
+    "level": 5,
+    "style": "allotment",
+    "vs": 0.3
    },
    "budget": "stationBig",
-   "description": "Home Berry Farm level 5 (fine-voxel bake of the Part build)"
+   "description": "Home Berry Farm level 5 (Sky-Sailor's Allotment, bug #20 B: 0.3-stud voxel bake of the Part build, style pass props/home_allotment.py)"
   },
   {
    "key": "home_farm_6",
@@ -86,10 +96,12 @@
    "prop": "home_station",
    "args": {
     "station": "Press1",
-    "level": 6
+    "level": 6,
+    "style": "allotment",
+    "vs": 0.3
    },
    "budget": "stationBig",
-   "description": "Home Berry Farm level 6 (fine-voxel bake of the Part build)"
+   "description": "Home Berry Farm level 6 (Sky-Sailor's Allotment, bug #20 B: 0.3-stud voxel bake of the Part build, style pass props/home_allotment.py)"
   },
   {
    "key": "home_farm_7",
@@ -97,10 +109,12 @@
    "prop": "home_station",
    "args": {
     "station": "Press1",
-    "level": 7
+    "level": 7,
+    "style": "allotment",
+    "vs": 0.3
    },
    "budget": "stationBig",
-   "description": "Home Berry Farm level 7 (fine-voxel bake of the Part build)"
+   "description": "Home Berry Farm level 7 (Sky-Sailor's Allotment, bug #20 B: 0.3-stud voxel bake of the Part build, style pass props/home_allotment.py)"
   },
   {
    "key": "home_farm_8",
@@ -108,10 +122,12 @@
    "prop": "home_station",
    "args": {
     "station": "Press1",
-    "level": 8
+    "level": 8,
+    "style": "allotment",
+    "vs": 0.3
    },
    "budget": "stationBig",
-   "description": "Home Berry Farm level 8 (fine-voxel bake of the Part build)"
+   "description": "Home Berry Farm level 8 (Sky-Sailor's Allotment, bug #20 B: 0.3-stud voxel bake of the Part build, style pass props/home_allotment.py)"
   },
   {
    "key": "home_farm_9",
@@ -119,10 +135,12 @@
    "prop": "home_station",
    "args": {
     "station": "Press1",
-    "level": 9
+    "level": 9,
+    "style": "allotment",
+    "vs": 0.3
    },
    "budget": "stationBig",
-   "description": "Home Berry Farm level 9 (fine-voxel bake of the Part build)"
+   "description": "Home Berry Farm level 9 (Sky-Sailor's Allotment, bug #20 B: 0.3-stud voxel bake of the Part build, style pass props/home_allotment.py)"
   },
   {
    "key": "home_farm_10",
@@ -130,10 +148,12 @@
    "prop": "home_station",
    "args": {
     "station": "Press1",
-    "level": 10
+    "level": 10,
+    "style": "allotment",
+    "vs": 0.3
    },
    "budget": "stationBig",
-   "description": "Home Berry Farm level 10 (fine-voxel bake of the Part build)"
+   "description": "Home Berry Farm level 10 (Sky-Sailor's Allotment, bug #20 B: 0.3-stud voxel bake of the Part build, style pass props/home_allotment.py)"
   },
   {
    "key": "home_farm_11",
@@ -141,10 +161,12 @@
    "prop": "home_station",
    "args": {
     "station": "Press1",
-    "level": 11
+    "level": 11,
+    "style": "allotment",
+    "vs": 0.3
    },
    "budget": "stationBig",
-   "description": "Home Berry Farm level 11 (fine-voxel bake of the Part build)"
+   "description": "Home Berry Farm level 11 (Sky-Sailor's Allotment, bug #20 B: 0.3-stud voxel bake of the Part build, style pass props/home_allotment.py)"
   },
   {
    "key": "home_farm_12",
@@ -152,10 +174,12 @@
    "prop": "home_station",
    "args": {
     "station": "Press1",
-    "level": 12
+    "level": 12,
+    "style": "allotment",
+    "vs": 0.3
    },
    "budget": "stationBig",
-   "description": "Home Berry Farm level 12 (fine-voxel bake of the Part build)"
+   "description": "Home Berry Farm level 12 (Sky-Sailor's Allotment, bug #20 B: 0.3-stud voxel bake of the Part build, style pass props/home_allotment.py)"
   },
   {
    "key": "home_farm_13",
@@ -163,10 +187,12 @@
    "prop": "home_station",
    "args": {
     "station": "Press1",
-    "level": 13
+    "level": 13,
+    "style": "allotment",
+    "vs": 0.3
    },
    "budget": "stationBig",
-   "description": "Home Berry Farm level 13 (fine-voxel bake of the Part build)"
+   "description": "Home Berry Farm level 13 (Sky-Sailor's Allotment, bug #20 B: 0.3-stud voxel bake of the Part build, style pass props/home_allotment.py)"
   },
   {
    "key": "home_farm_14",
@@ -174,10 +200,12 @@
    "prop": "home_station",
    "args": {
     "station": "Press1",
-    "level": 14
+    "level": 14,
+    "style": "allotment",
+    "vs": 0.3
    },
    "budget": "stationBig",
-   "description": "Home Berry Farm level 14 (fine-voxel bake of the Part build)"
+   "description": "Home Berry Farm level 14 (Sky-Sailor's Allotment, bug #20 B: 0.3-stud voxel bake of the Part build, style pass props/home_allotment.py)"
   },
   {
    "key": "home_farm_15",
@@ -185,10 +213,12 @@
    "prop": "home_station",
    "args": {
     "station": "Press1",
-    "level": 15
+    "level": 15,
+    "style": "allotment",
+    "vs": 0.3
    },
    "budget": "stationBig",
-   "description": "Home Berry Farm level 15 (fine-voxel bake of the Part build)"
+   "description": "Home Berry Farm level 15 (Sky-Sailor's Allotment, bug #20 B: 0.3-stud voxel bake of the Part build, style pass props/home_allotment.py)"
   },
   {
    "key": "home_farm_16",
@@ -196,10 +226,12 @@
    "prop": "home_station",
    "args": {
     "station": "Press1",
-    "level": 16
+    "level": 16,
+    "style": "allotment",
+    "vs": 0.3
    },
    "budget": "stationBig",
-   "description": "Home Berry Farm level 16 (fine-voxel bake of the Part build)"
+   "description": "Home Berry Farm level 16 (Sky-Sailor's Allotment, bug #20 B: 0.3-stud voxel bake of the Part build, style pass props/home_allotment.py)"
   },
   {
    "key": "home_farm_17",
@@ -207,10 +239,12 @@
    "prop": "home_station",
    "args": {
     "station": "Press1",
-    "level": 17
+    "level": 17,
+    "style": "allotment",
+    "vs": 0.3
    },
    "budget": "stationBig",
-   "description": "Home Berry Farm level 17 (fine-voxel bake of the Part build)"
+   "description": "Home Berry Farm level 17 (Sky-Sailor's Allotment, bug #20 B: 0.3-stud voxel bake of the Part build, style pass props/home_allotment.py)"
   },
   {
    "key": "home_farm_18",
@@ -218,10 +252,12 @@
    "prop": "home_station",
    "args": {
     "station": "Press1",
-    "level": 18
+    "level": 18,
+    "style": "allotment",
+    "vs": 0.3
    },
    "budget": "stationBig",
-   "description": "Home Berry Farm level 18 (fine-voxel bake of the Part build)"
+   "description": "Home Berry Farm level 18 (Sky-Sailor's Allotment, bug #20 B: 0.3-stud voxel bake of the Part build, style pass props/home_allotment.py)"
   },
   {
    "key": "home_farm_19",
@@ -229,10 +265,12 @@
    "prop": "home_station",
    "args": {
     "station": "Press1",
-    "level": 19
+    "level": 19,
+    "style": "allotment",
+    "vs": 0.3
    },
    "budget": "stationBig",
-   "description": "Home Berry Farm level 19 (fine-voxel bake of the Part build)"
+   "description": "Home Berry Farm level 19 (Sky-Sailor's Allotment, bug #20 B: 0.3-stud voxel bake of the Part build, style pass props/home_allotment.py)"
   },
   {
    "key": "home_farm_20",
@@ -240,10 +278,12 @@
    "prop": "home_station",
    "args": {
     "station": "Press1",
-    "level": 20
+    "level": 20,
+    "style": "allotment",
+    "vs": 0.3
    },
    "budget": "stationBig",
-   "description": "Home Berry Farm level 20 (fine-voxel bake of the Part build)"
+   "description": "Home Berry Farm level 20 (Sky-Sailor's Allotment, bug #20 B: 0.3-stud voxel bake of the Part build, style pass props/home_allotment.py)"
   },
   {
    "key": "home_farm_21",
@@ -251,10 +291,12 @@
    "prop": "home_station",
    "args": {
     "station": "Press1",
-    "level": 21
+    "level": 21,
+    "style": "allotment",
+    "vs": 0.3
    },
    "budget": "stationBig",
-   "description": "Home Berry Farm level 21 (fine-voxel bake of the Part build)"
+   "description": "Home Berry Farm level 21 (Sky-Sailor's Allotment, bug #20 B: 0.3-stud voxel bake of the Part build, style pass props/home_allotment.py)"
   },
   {
    "key": "home_farm_22",
@@ -262,10 +304,12 @@
    "prop": "home_station",
    "args": {
     "station": "Press1",
-    "level": 22
+    "level": 22,
+    "style": "allotment",
+    "vs": 0.3
    },
    "budget": "stationBig",
-   "description": "Home Berry Farm level 22 (fine-voxel bake of the Part build)"
+   "description": "Home Berry Farm level 22 (Sky-Sailor's Allotment, bug #20 B: 0.3-stud voxel bake of the Part build, style pass props/home_allotment.py)"
   },
   {
    "key": "home_farm_23",
@@ -273,10 +317,12 @@
    "prop": "home_station",
    "args": {
     "station": "Press1",
-    "level": 23
+    "level": 23,
+    "style": "allotment",
+    "vs": 0.3
    },
    "budget": "stationBig",
-   "description": "Home Berry Farm level 23 (fine-voxel bake of the Part build)"
+   "description": "Home Berry Farm level 23 (Sky-Sailor's Allotment, bug #20 B: 0.3-stud voxel bake of the Part build, style pass props/home_allotment.py)"
   },
   {
    "key": "home_farm_24",
@@ -284,10 +330,12 @@
    "prop": "home_station",
    "args": {
     "station": "Press1",
-    "level": 24
+    "level": 24,
+    "style": "allotment",
+    "vs": 0.3
    },
    "budget": "stationBig",
-   "description": "Home Berry Farm level 24 (fine-voxel bake of the Part build)"
+   "description": "Home Berry Farm level 24 (Sky-Sailor's Allotment, bug #20 B: 0.3-stud voxel bake of the Part build, style pass props/home_allotment.py)"
   },
   {
    "key": "home_farm_25",
@@ -295,10 +343,12 @@
    "prop": "home_station",
    "args": {
     "station": "Press1",
-    "level": 25
+    "level": 25,
+    "style": "allotment",
+    "vs": 0.3
    },
    "budget": "stationBig",
-   "description": "Home Berry Farm level 25 (fine-voxel bake of the Part build)"
+   "description": "Home Berry Farm level 25 (Sky-Sailor's Allotment, bug #20 B: 0.3-stud voxel bake of the Part build, style pass props/home_allotment.py)"
   },
   {
    "key": "home_farm_26",
@@ -306,10 +356,12 @@
    "prop": "home_station",
    "args": {
     "station": "Press1",
-    "level": 26
+    "level": 26,
+    "style": "allotment",
+    "vs": 0.3
    },
    "budget": "stationBig",
-   "description": "Home Berry Farm level 26 (fine-voxel bake of the Part build)"
+   "description": "Home Berry Farm level 26 (Sky-Sailor's Allotment, bug #20 B: 0.3-stud voxel bake of the Part build, style pass props/home_allotment.py)"
   },
   {
    "key": "home_farm_27",
@@ -317,10 +369,12 @@
    "prop": "home_station",
    "args": {
     "station": "Press1",
-    "level": 27
+    "level": 27,
+    "style": "allotment",
+    "vs": 0.3
    },
    "budget": "stationBig",
-   "description": "Home Berry Farm level 27 (fine-voxel bake of the Part build)"
+   "description": "Home Berry Farm level 27 (Sky-Sailor's Allotment, bug #20 B: 0.3-stud voxel bake of the Part build, style pass props/home_allotment.py)"
   },
   {
    "key": "home_farm_28",
@@ -328,10 +382,12 @@
    "prop": "home_station",
    "args": {
     "station": "Press1",
-    "level": 28
+    "level": 28,
+    "style": "allotment",
+    "vs": 0.3
    },
    "budget": "stationBig",
-   "description": "Home Berry Farm level 28 (fine-voxel bake of the Part build)"
+   "description": "Home Berry Farm level 28 (Sky-Sailor's Allotment, bug #20 B: 0.3-stud voxel bake of the Part build, style pass props/home_allotment.py)"
   },
   {
    "key": "home_farm_29",
@@ -339,10 +395,12 @@
    "prop": "home_station",
    "args": {
     "station": "Press1",
-    "level": 29
+    "level": 29,
+    "style": "allotment",
+    "vs": 0.3
    },
    "budget": "stationBig",
-   "description": "Home Berry Farm level 29 (fine-voxel bake of the Part build)"
+   "description": "Home Berry Farm level 29 (Sky-Sailor's Allotment, bug #20 B: 0.3-stud voxel bake of the Part build, style pass props/home_allotment.py)"
   },
   {
    "key": "home_farm_30",
@@ -350,10 +408,12 @@
    "prop": "home_station",
    "args": {
     "station": "Press1",
-    "level": 30
+    "level": 30,
+    "style": "allotment",
+    "vs": 0.3
    },
    "budget": "stationBig",
-   "description": "Home Berry Farm level 30 (fine-voxel bake of the Part build)"
+   "description": "Home Berry Farm level 30 (Sky-Sailor's Allotment, bug #20 B: 0.3-stud voxel bake of the Part build, style pass props/home_allotment.py)"
   },
   {
    "key": "home_farm_31",
@@ -361,10 +421,12 @@
    "prop": "home_station",
    "args": {
     "station": "Press1",
-    "level": 31
+    "level": 31,
+    "style": "allotment",
+    "vs": 0.3
    },
    "budget": "stationBig",
-   "description": "Home Berry Farm level 31 (fine-voxel bake of the Part build)"
+   "description": "Home Berry Farm level 31 (Sky-Sailor's Allotment, bug #20 B: 0.3-stud voxel bake of the Part build, style pass props/home_allotment.py)"
   },
   {
    "key": "home_farm_32",
@@ -372,10 +434,12 @@
    "prop": "home_station",
    "args": {
     "station": "Press1",
-    "level": 32
+    "level": 32,
+    "style": "allotment",
+    "vs": 0.3
    },
    "budget": "stationBig",
-   "description": "Home Berry Farm level 32 (fine-voxel bake of the Part build)"
+   "description": "Home Berry Farm level 32 (Sky-Sailor's Allotment, bug #20 B: 0.3-stud voxel bake of the Part build, style pass props/home_allotment.py)"
   },
   {
    "key": "home_farm_33",
@@ -383,10 +447,12 @@
    "prop": "home_station",
    "args": {
     "station": "Press1",
-    "level": 33
+    "level": 33,
+    "style": "allotment",
+    "vs": 0.3
    },
    "budget": "stationBig",
-   "description": "Home Berry Farm level 33 (fine-voxel bake of the Part build)"
+   "description": "Home Berry Farm level 33 (Sky-Sailor's Allotment, bug #20 B: 0.3-stud voxel bake of the Part build, style pass props/home_allotment.py)"
   },
   {
    "key": "home_farm_34",
@@ -394,10 +460,12 @@
    "prop": "home_station",
    "args": {
     "station": "Press1",
-    "level": 34
+    "level": 34,
+    "style": "allotment",
+    "vs": 0.3
    },
    "budget": "stationBig",
-   "description": "Home Berry Farm level 34 (fine-voxel bake of the Part build)"
+   "description": "Home Berry Farm level 34 (Sky-Sailor's Allotment, bug #20 B: 0.3-stud voxel bake of the Part build, style pass props/home_allotment.py)"
   },
   {
    "key": "home_farm_35",
@@ -405,10 +473,12 @@
    "prop": "home_station",
    "args": {
     "station": "Press1",
-    "level": 35
+    "level": 35,
+    "style": "allotment",
+    "vs": 0.3
    },
    "budget": "stationBig",
-   "description": "Home Berry Farm level 35 (fine-voxel bake of the Part build)"
+   "description": "Home Berry Farm level 35 (Sky-Sailor's Allotment, bug #20 B: 0.3-stud voxel bake of the Part build, style pass props/home_allotment.py)"
   },
   {
    "key": "home_farm_36",
@@ -416,10 +486,12 @@
    "prop": "home_station",
    "args": {
     "station": "Press1",
-    "level": 36
+    "level": 36,
+    "style": "allotment",
+    "vs": 0.3
    },
    "budget": "stationBig",
-   "description": "Home Berry Farm level 36 (fine-voxel bake of the Part build)"
+   "description": "Home Berry Farm level 36 (Sky-Sailor's Allotment, bug #20 B: 0.3-stud voxel bake of the Part build, style pass props/home_allotment.py)"
   },
   {
    "key": "home_farm_37",
@@ -427,10 +499,12 @@
    "prop": "home_station",
    "args": {
     "station": "Press1",
-    "level": 37
+    "level": 37,
+    "style": "allotment",
+    "vs": 0.3
    },
    "budget": "stationBig",
-   "description": "Home Berry Farm level 37 (fine-voxel bake of the Part build)"
+   "description": "Home Berry Farm level 37 (Sky-Sailor's Allotment, bug #20 B: 0.3-stud voxel bake of the Part build, style pass props/home_allotment.py)"
   },
   {
    "key": "home_farm_38",
@@ -438,10 +512,12 @@
    "prop": "home_station",
    "args": {
     "station": "Press1",
-    "level": 38
+    "level": 38,
+    "style": "allotment",
+    "vs": 0.3
    },
    "budget": "stationBig",
-   "description": "Home Berry Farm level 38 (fine-voxel bake of the Part build)"
+   "description": "Home Berry Farm level 38 (Sky-Sailor's Allotment, bug #20 B: 0.3-stud voxel bake of the Part build, style pass props/home_allotment.py)"
   },
   {
    "key": "home_farm_39",
@@ -449,10 +525,12 @@
    "prop": "home_station",
    "args": {
     "station": "Press1",
-    "level": 39
+    "level": 39,
+    "style": "allotment",
+    "vs": 0.3
    },
    "budget": "stationBig",
-   "description": "Home Berry Farm level 39 (fine-voxel bake of the Part build)"
+   "description": "Home Berry Farm level 39 (Sky-Sailor's Allotment, bug #20 B: 0.3-stud voxel bake of the Part build, style pass props/home_allotment.py)"
   },
   {
    "key": "home_farm_40",
@@ -460,10 +538,12 @@
    "prop": "home_station",
    "args": {
     "station": "Press1",
-    "level": 40
+    "level": 40,
+    "style": "allotment",
+    "vs": 0.3
    },
    "budget": "stationBig",
-   "description": "Home Berry Farm level 40 (fine-voxel bake of the Part build)"
+   "description": "Home Berry Farm level 40 (Sky-Sailor's Allotment, bug #20 B: 0.3-stud voxel bake of the Part build, style pass props/home_allotment.py)"
   },
   {
    "key": "home_garden_1",
@@ -1038,10 +1118,12 @@
     "station": "Press1",
     "level": 1,
     "vs": 0.5,
-    "detail": 1
+    "detail": 1,
+    "style": "allotment",
+    "topLight": 0.5
    },
    "budget": "stationBig",
-   "description": "Home Berry Farm level 1 (far-plot LOD: 0.5-stud bake of the same Part build)"
+   "description": "Home Berry Farm level 1 (Sky-Sailor's Allotment far-plot LOD: 0.5-stud bake of the same Part build + style pass)"
   },
   {
    "key": "home_farm_2_low",
@@ -1051,10 +1133,12 @@
     "station": "Press1",
     "level": 2,
     "vs": 0.5,
-    "detail": 1
+    "detail": 1,
+    "style": "allotment",
+    "topLight": 0.5
    },
    "budget": "stationBig",
-   "description": "Home Berry Farm level 2 (far-plot LOD: 0.5-stud bake of the same Part build)"
+   "description": "Home Berry Farm level 2 (Sky-Sailor's Allotment far-plot LOD: 0.5-stud bake of the same Part build + style pass)"
   },
   {
    "key": "home_farm_3_low",
@@ -1064,10 +1148,12 @@
     "station": "Press1",
     "level": 3,
     "vs": 0.5,
-    "detail": 1
+    "detail": 1,
+    "style": "allotment",
+    "topLight": 0.5
    },
    "budget": "stationBig",
-   "description": "Home Berry Farm level 3 (far-plot LOD: 0.5-stud bake of the same Part build)"
+   "description": "Home Berry Farm level 3 (Sky-Sailor's Allotment far-plot LOD: 0.5-stud bake of the same Part build + style pass)"
   },
   {
    "key": "home_farm_4_low",
@@ -1077,10 +1163,12 @@
     "station": "Press1",
     "level": 4,
     "vs": 0.5,
-    "detail": 1
+    "detail": 1,
+    "style": "allotment",
+    "topLight": 0.5
    },
    "budget": "stationBig",
-   "description": "Home Berry Farm level 4 (far-plot LOD: 0.5-stud bake of the same Part build)"
+   "description": "Home Berry Farm level 4 (Sky-Sailor's Allotment far-plot LOD: 0.5-stud bake of the same Part build + style pass)"
   },
   {
    "key": "home_farm_5_low",
@@ -1090,10 +1178,12 @@
     "station": "Press1",
     "level": 5,
     "vs": 0.5,
-    "detail": 1
+    "detail": 1,
+    "style": "allotment",
+    "topLight": 0.5
    },
    "budget": "stationBig",
-   "description": "Home Berry Farm level 5 (far-plot LOD: 0.5-stud bake of the same Part build)"
+   "description": "Home Berry Farm level 5 (Sky-Sailor's Allotment far-plot LOD: 0.5-stud bake of the same Part build + style pass)"
   },
   {
    "key": "home_farm_6_low",
@@ -1103,10 +1193,12 @@
     "station": "Press1",
     "level": 6,
     "vs": 0.5,
-    "detail": 1
+    "detail": 1,
+    "style": "allotment",
+    "topLight": 0.5
    },
    "budget": "stationBig",
-   "description": "Home Berry Farm level 6 (far-plot LOD: 0.5-stud bake of the same Part build)"
+   "description": "Home Berry Farm level 6 (Sky-Sailor's Allotment far-plot LOD: 0.5-stud bake of the same Part build + style pass)"
   },
   {
    "key": "home_farm_7_low",
@@ -1116,10 +1208,12 @@
     "station": "Press1",
     "level": 7,
     "vs": 0.5,
-    "detail": 1
+    "detail": 1,
+    "style": "allotment",
+    "topLight": 0.5
    },
    "budget": "stationBig",
-   "description": "Home Berry Farm level 7 (far-plot LOD: 0.5-stud bake of the same Part build)"
+   "description": "Home Berry Farm level 7 (Sky-Sailor's Allotment far-plot LOD: 0.5-stud bake of the same Part build + style pass)"
   },
   {
    "key": "home_farm_8_low",
@@ -1129,10 +1223,12 @@
     "station": "Press1",
     "level": 8,
     "vs": 0.5,
-    "detail": 1
+    "detail": 1,
+    "style": "allotment",
+    "topLight": 0.5
    },
    "budget": "stationBig",
-   "description": "Home Berry Farm level 8 (far-plot LOD: 0.5-stud bake of the same Part build)"
+   "description": "Home Berry Farm level 8 (Sky-Sailor's Allotment far-plot LOD: 0.5-stud bake of the same Part build + style pass)"
   },
   {
    "key": "home_farm_9_low",
@@ -1142,10 +1238,12 @@
     "station": "Press1",
     "level": 9,
     "vs": 0.5,
-    "detail": 1
+    "detail": 1,
+    "style": "allotment",
+    "topLight": 0.5
    },
    "budget": "stationBig",
-   "description": "Home Berry Farm level 9 (far-plot LOD: 0.5-stud bake of the same Part build)"
+   "description": "Home Berry Farm level 9 (Sky-Sailor's Allotment far-plot LOD: 0.5-stud bake of the same Part build + style pass)"
   },
   {
    "key": "home_farm_10_low",
@@ -1155,10 +1253,12 @@
     "station": "Press1",
     "level": 10,
     "vs": 0.5,
-    "detail": 1
+    "detail": 1,
+    "style": "allotment",
+    "topLight": 0.5
    },
    "budget": "stationBig",
-   "description": "Home Berry Farm level 10 (far-plot LOD: 0.5-stud bake of the same Part build)"
+   "description": "Home Berry Farm level 10 (Sky-Sailor's Allotment far-plot LOD: 0.5-stud bake of the same Part build + style pass)"
   },
   {
    "key": "home_farm_11_low",
@@ -1168,10 +1268,12 @@
     "station": "Press1",
     "level": 11,
     "vs": 0.5,
-    "detail": 1
+    "detail": 1,
+    "style": "allotment",
+    "topLight": 0.5
    },
    "budget": "stationBig",
-   "description": "Home Berry Farm level 11 (far-plot LOD: 0.5-stud bake of the same Part build)"
+   "description": "Home Berry Farm level 11 (Sky-Sailor's Allotment far-plot LOD: 0.5-stud bake of the same Part build + style pass)"
   },
   {
    "key": "home_farm_12_low",
@@ -1181,10 +1283,12 @@
     "station": "Press1",
     "level": 12,
     "vs": 0.5,
-    "detail": 1
+    "detail": 1,
+    "style": "allotment",
+    "topLight": 0.5
    },
    "budget": "stationBig",
-   "description": "Home Berry Farm level 12 (far-plot LOD: 0.5-stud bake of the same Part build)"
+   "description": "Home Berry Farm level 12 (Sky-Sailor's Allotment far-plot LOD: 0.5-stud bake of the same Part build + style pass)"
   },
   {
    "key": "home_farm_13_low",
@@ -1194,10 +1298,12 @@
     "station": "Press1",
     "level": 13,
     "vs": 0.5,
-    "detail": 1
+    "detail": 1,
+    "style": "allotment",
+    "topLight": 0.5
    },
    "budget": "stationBig",
-   "description": "Home Berry Farm level 13 (far-plot LOD: 0.5-stud bake of the same Part build)"
+   "description": "Home Berry Farm level 13 (Sky-Sailor's Allotment far-plot LOD: 0.5-stud bake of the same Part build + style pass)"
   },
   {
    "key": "home_farm_14_low",
@@ -1207,10 +1313,12 @@
     "station": "Press1",
     "level": 14,
     "vs": 0.5,
-    "detail": 1
+    "detail": 1,
+    "style": "allotment",
+    "topLight": 0.5
    },
    "budget": "stationBig",
-   "description": "Home Berry Farm level 14 (far-plot LOD: 0.5-stud bake of the same Part build)"
+   "description": "Home Berry Farm level 14 (Sky-Sailor's Allotment far-plot LOD: 0.5-stud bake of the same Part build + style pass)"
   },
   {
    "key": "home_farm_15_low",
@@ -1220,10 +1328,12 @@
     "station": "Press1",
     "level": 15,
     "vs": 0.5,
-    "detail": 1
+    "detail": 1,
+    "style": "allotment",
+    "topLight": 0.5
    },
    "budget": "stationBig",
-   "description": "Home Berry Farm level 15 (far-plot LOD: 0.5-stud bake of the same Part build)"
+   "description": "Home Berry Farm level 15 (Sky-Sailor's Allotment far-plot LOD: 0.5-stud bake of the same Part build + style pass)"
   },
   {
    "key": "home_farm_16_low",
@@ -1233,10 +1343,12 @@
     "station": "Press1",
     "level": 16,
     "vs": 0.5,
-    "detail": 1
+    "detail": 1,
+    "style": "allotment",
+    "topLight": 0.5
    },
    "budget": "stationBig",
-   "description": "Home Berry Farm level 16 (far-plot LOD: 0.5-stud bake of the same Part build)"
+   "description": "Home Berry Farm level 16 (Sky-Sailor's Allotment far-plot LOD: 0.5-stud bake of the same Part build + style pass)"
   },
   {
    "key": "home_farm_17_low",
@@ -1246,10 +1358,12 @@
     "station": "Press1",
     "level": 17,
     "vs": 0.5,
-    "detail": 1
+    "detail": 1,
+    "style": "allotment",
+    "topLight": 0.5
    },
    "budget": "stationBig",
-   "description": "Home Berry Farm level 17 (far-plot LOD: 0.5-stud bake of the same Part build)"
+   "description": "Home Berry Farm level 17 (Sky-Sailor's Allotment far-plot LOD: 0.5-stud bake of the same Part build + style pass)"
   },
   {
    "key": "home_farm_18_low",
@@ -1259,10 +1373,12 @@
     "station": "Press1",
     "level": 18,
     "vs": 0.5,
-    "detail": 1
+    "detail": 1,
+    "style": "allotment",
+    "topLight": 0.5
    },
    "budget": "stationBig",
-   "description": "Home Berry Farm level 18 (far-plot LOD: 0.5-stud bake of the same Part build)"
+   "description": "Home Berry Farm level 18 (Sky-Sailor's Allotment far-plot LOD: 0.5-stud bake of the same Part build + style pass)"
   },
   {
    "key": "home_farm_19_low",
@@ -1272,10 +1388,12 @@
     "station": "Press1",
     "level": 19,
     "vs": 0.5,
-    "detail": 1
+    "detail": 1,
+    "style": "allotment",
+    "topLight": 0.5
    },
    "budget": "stationBig",
-   "description": "Home Berry Farm level 19 (far-plot LOD: 0.5-stud bake of the same Part build)"
+   "description": "Home Berry Farm level 19 (Sky-Sailor's Allotment far-plot LOD: 0.5-stud bake of the same Part build + style pass)"
   },
   {
    "key": "home_farm_20_low",
@@ -1285,10 +1403,12 @@
     "station": "Press1",
     "level": 20,
     "vs": 0.5,
-    "detail": 1
+    "detail": 1,
+    "style": "allotment",
+    "topLight": 0.5
    },
    "budget": "stationBig",
-   "description": "Home Berry Farm level 20 (far-plot LOD: 0.5-stud bake of the same Part build)"
+   "description": "Home Berry Farm level 20 (Sky-Sailor's Allotment far-plot LOD: 0.5-stud bake of the same Part build + style pass)"
   },
   {
    "key": "home_farm_21_low",
@@ -1298,10 +1418,12 @@
     "station": "Press1",
     "level": 21,
     "vs": 0.5,
-    "detail": 1
+    "detail": 1,
+    "style": "allotment",
+    "topLight": 0.5
    },
    "budget": "stationBig",
-   "description": "Home Berry Farm level 21 (far-plot LOD: 0.5-stud bake of the same Part build)"
+   "description": "Home Berry Farm level 21 (Sky-Sailor's Allotment far-plot LOD: 0.5-stud bake of the same Part build + style pass)"
   },
   {
    "key": "home_farm_22_low",
@@ -1311,10 +1433,12 @@
     "station": "Press1",
     "level": 22,
     "vs": 0.5,
-    "detail": 1
+    "detail": 1,
+    "style": "allotment",
+    "topLight": 0.5
    },
    "budget": "stationBig",
-   "description": "Home Berry Farm level 22 (far-plot LOD: 0.5-stud bake of the same Part build)"
+   "description": "Home Berry Farm level 22 (Sky-Sailor's Allotment far-plot LOD: 0.5-stud bake of the same Part build + style pass)"
   },
   {
    "key": "home_farm_23_low",
@@ -1324,10 +1448,12 @@
     "station": "Press1",
     "level": 23,
     "vs": 0.5,
-    "detail": 1
+    "detail": 1,
+    "style": "allotment",
+    "topLight": 0.5
    },
    "budget": "stationBig",
-   "description": "Home Berry Farm level 23 (far-plot LOD: 0.5-stud bake of the same Part build)"
+   "description": "Home Berry Farm level 23 (Sky-Sailor's Allotment far-plot LOD: 0.5-stud bake of the same Part build + style pass)"
   },
   {
    "key": "home_farm_24_low",
@@ -1337,10 +1463,12 @@
     "station": "Press1",
     "level": 24,
     "vs": 0.5,
-    "detail": 1
+    "detail": 1,
+    "style": "allotment",
+    "topLight": 0.5
    },
    "budget": "stationBig",
-   "description": "Home Berry Farm level 24 (far-plot LOD: 0.5-stud bake of the same Part build)"
+   "description": "Home Berry Farm level 24 (Sky-Sailor's Allotment far-plot LOD: 0.5-stud bake of the same Part build + style pass)"
   },
   {
    "key": "home_farm_25_low",
@@ -1350,10 +1478,12 @@
     "station": "Press1",
     "level": 25,
     "vs": 0.5,
-    "detail": 1
+    "detail": 1,
+    "style": "allotment",
+    "topLight": 0.5
    },
    "budget": "stationBig",
-   "description": "Home Berry Farm level 25 (far-plot LOD: 0.5-stud bake of the same Part build)"
+   "description": "Home Berry Farm level 25 (Sky-Sailor's Allotment far-plot LOD: 0.5-stud bake of the same Part build + style pass)"
   },
   {
    "key": "home_farm_26_low",
@@ -1363,10 +1493,12 @@
     "station": "Press1",
     "level": 26,
     "vs": 0.5,
-    "detail": 1
+    "detail": 1,
+    "style": "allotment",
+    "topLight": 0.5
    },
    "budget": "stationBig",
-   "description": "Home Berry Farm level 26 (far-plot LOD: 0.5-stud bake of the same Part build)"
+   "description": "Home Berry Farm level 26 (Sky-Sailor's Allotment far-plot LOD: 0.5-stud bake of the same Part build + style pass)"
   },
   {
    "key": "home_farm_27_low",
@@ -1376,10 +1508,12 @@
     "station": "Press1",
     "level": 27,
     "vs": 0.5,
-    "detail": 1
+    "detail": 1,
+    "style": "allotment",
+    "topLight": 0.5
    },
    "budget": "stationBig",
-   "description": "Home Berry Farm level 27 (far-plot LOD: 0.5-stud bake of the same Part build)"
+   "description": "Home Berry Farm level 27 (Sky-Sailor's Allotment far-plot LOD: 0.5-stud bake of the same Part build + style pass)"
   },
   {
    "key": "home_farm_28_low",
@@ -1389,10 +1523,12 @@
     "station": "Press1",
     "level": 28,
     "vs": 0.5,
-    "detail": 1
+    "detail": 1,
+    "style": "allotment",
+    "topLight": 0.5
    },
    "budget": "stationBig",
-   "description": "Home Berry Farm level 28 (far-plot LOD: 0.5-stud bake of the same Part build)"
+   "description": "Home Berry Farm level 28 (Sky-Sailor's Allotment far-plot LOD: 0.5-stud bake of the same Part build + style pass)"
   },
   {
    "key": "home_farm_29_low",
@@ -1402,10 +1538,12 @@
     "station": "Press1",
     "level": 29,
     "vs": 0.5,
-    "detail": 1
+    "detail": 1,
+    "style": "allotment",
+    "topLight": 0.5
    },
    "budget": "stationBig",
-   "description": "Home Berry Farm level 29 (far-plot LOD: 0.5-stud bake of the same Part build)"
+   "description": "Home Berry Farm level 29 (Sky-Sailor's Allotment far-plot LOD: 0.5-stud bake of the same Part build + style pass)"
   },
   {
    "key": "home_farm_30_low",
@@ -1415,10 +1553,12 @@
     "station": "Press1",
     "level": 30,
     "vs": 0.5,
-    "detail": 1
+    "detail": 1,
+    "style": "allotment",
+    "topLight": 0.5
    },
    "budget": "stationBig",
-   "description": "Home Berry Farm level 30 (far-plot LOD: 0.5-stud bake of the same Part build)"
+   "description": "Home Berry Farm level 30 (Sky-Sailor's Allotment far-plot LOD: 0.5-stud bake of the same Part build + style pass)"
   },
   {
    "key": "home_farm_31_low",
@@ -1428,10 +1568,12 @@
     "station": "Press1",
     "level": 31,
     "vs": 0.5,
-    "detail": 1
+    "detail": 1,
+    "style": "allotment",
+    "topLight": 0.5
    },
    "budget": "stationBig",
-   "description": "Home Berry Farm level 31 (far-plot LOD: 0.5-stud bake of the same Part build)"
+   "description": "Home Berry Farm level 31 (Sky-Sailor's Allotment far-plot LOD: 0.5-stud bake of the same Part build + style pass)"
   },
   {
    "key": "home_farm_32_low",
@@ -1441,10 +1583,12 @@
     "station": "Press1",
     "level": 32,
     "vs": 0.5,
-    "detail": 1
+    "detail": 1,
+    "style": "allotment",
+    "topLight": 0.5
    },
    "budget": "stationBig",
-   "description": "Home Berry Farm level 32 (far-plot LOD: 0.5-stud bake of the same Part build)"
+   "description": "Home Berry Farm level 32 (Sky-Sailor's Allotment far-plot LOD: 0.5-stud bake of the same Part build + style pass)"
   },
   {
    "key": "home_farm_33_low",
@@ -1454,10 +1598,12 @@
     "station": "Press1",
     "level": 33,
     "vs": 0.5,
-    "detail": 1
+    "detail": 1,
+    "style": "allotment",
+    "topLight": 0.5
    },
    "budget": "stationBig",
-   "description": "Home Berry Farm level 33 (far-plot LOD: 0.5-stud bake of the same Part build)"
+   "description": "Home Berry Farm level 33 (Sky-Sailor's Allotment far-plot LOD: 0.5-stud bake of the same Part build + style pass)"
   },
   {
    "key": "home_farm_34_low",
@@ -1467,10 +1613,12 @@
     "station": "Press1",
     "level": 34,
     "vs": 0.5,
-    "detail": 1
+    "detail": 1,
+    "style": "allotment",
+    "topLight": 0.5
    },
    "budget": "stationBig",
-   "description": "Home Berry Farm level 34 (far-plot LOD: 0.5-stud bake of the same Part build)"
+   "description": "Home Berry Farm level 34 (Sky-Sailor's Allotment far-plot LOD: 0.5-stud bake of the same Part build + style pass)"
   },
   {
    "key": "home_farm_35_low",
@@ -1480,10 +1628,12 @@
     "station": "Press1",
     "level": 35,
     "vs": 0.5,
-    "detail": 1
+    "detail": 1,
+    "style": "allotment",
+    "topLight": 0.5
    },
    "budget": "stationBig",
-   "description": "Home Berry Farm level 35 (far-plot LOD: 0.5-stud bake of the same Part build)"
+   "description": "Home Berry Farm level 35 (Sky-Sailor's Allotment far-plot LOD: 0.5-stud bake of the same Part build + style pass)"
   },
   {
    "key": "home_farm_36_low",
@@ -1493,10 +1643,12 @@
     "station": "Press1",
     "level": 36,
     "vs": 0.5,
-    "detail": 1
+    "detail": 1,
+    "style": "allotment",
+    "topLight": 0.5
    },
    "budget": "stationBig",
-   "description": "Home Berry Farm level 36 (far-plot LOD: 0.5-stud bake of the same Part build)"
+   "description": "Home Berry Farm level 36 (Sky-Sailor's Allotment far-plot LOD: 0.5-stud bake of the same Part build + style pass)"
   },
   {
    "key": "home_farm_37_low",
@@ -1506,10 +1658,12 @@
     "station": "Press1",
     "level": 37,
     "vs": 0.5,
-    "detail": 1
+    "detail": 1,
+    "style": "allotment",
+    "topLight": 0.5
    },
    "budget": "stationBig",
-   "description": "Home Berry Farm level 37 (far-plot LOD: 0.5-stud bake of the same Part build)"
+   "description": "Home Berry Farm level 37 (Sky-Sailor's Allotment far-plot LOD: 0.5-stud bake of the same Part build + style pass)"
   },
   {
    "key": "home_farm_38_low",
@@ -1519,10 +1673,12 @@
     "station": "Press1",
     "level": 38,
     "vs": 0.5,
-    "detail": 1
+    "detail": 1,
+    "style": "allotment",
+    "topLight": 0.5
    },
    "budget": "stationBig",
-   "description": "Home Berry Farm level 38 (far-plot LOD: 0.5-stud bake of the same Part build)"
+   "description": "Home Berry Farm level 38 (Sky-Sailor's Allotment far-plot LOD: 0.5-stud bake of the same Part build + style pass)"
   },
   {
    "key": "home_farm_39_low",
@@ -1532,10 +1688,12 @@
     "station": "Press1",
     "level": 39,
     "vs": 0.5,
-    "detail": 1
+    "detail": 1,
+    "style": "allotment",
+    "topLight": 0.5
    },
    "budget": "stationBig",
-   "description": "Home Berry Farm level 39 (far-plot LOD: 0.5-stud bake of the same Part build)"
+   "description": "Home Berry Farm level 39 (Sky-Sailor's Allotment far-plot LOD: 0.5-stud bake of the same Part build + style pass)"
   },
   {
    "key": "home_farm_40_low",
@@ -1545,10 +1703,26 @@
     "station": "Press1",
     "level": 40,
     "vs": 0.5,
-    "detail": 1
+    "detail": 1,
+    "style": "allotment",
+    "topLight": 0.5
    },
    "budget": "stationBig",
-   "description": "Home Berry Farm level 40 (far-plot LOD: 0.5-stud bake of the same Part build)"
+   "description": "Home Berry Farm level 40 (Sky-Sailor's Allotment far-plot LOD: 0.5-stud bake of the same Part build + style pass)"
+  },
+  {
+   "key": "home_farm_propeller",
+   "type": "prop",
+   "prop": "home_element",
+   "args": {
+    "station": "Press1",
+    "level": 1,
+    "part": "Propeller",
+    "vs": 0.125,
+    "style": "allotment"
+   },
+   "budget": "element",
+   "description": "Berry Farm propeller weathervane (bug #20 B): its own element key on the farm's Propeller Part (pivot = the part) so HomeFx can spin it; hub + four blades with red tips"
   },
   {
    "key": "home_garden_1_low",

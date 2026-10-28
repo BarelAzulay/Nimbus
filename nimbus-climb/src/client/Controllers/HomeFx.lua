@@ -131,6 +131,8 @@ local K = {
 	GLOW_SWING = 0.3, -- transparency swing of a breathing glow
 	SWIRL_SPEED = 1.4, -- radians per second of the Fusion Machine's swirl
 	SWIRL_BOB = 0.25,
+	VANE_SPEED = 1.1, -- radians per second of the Berry Farm's propeller weathervane (bug #20 B: a slow sky breeze)
+	VANE_GUST = 0.35, -- +- share of VANE_SPEED the breeze adds and takes away (a slow swell, never a stop)
 	PAD_PULSE = 3.2,
 	PAD_DIM = 0.6, -- glow transparency of a pad the local player cannot pay for yet
 	LOCKED_SIGN_NEAR = 6, -- studs: the sign of one of the local player's LOCKED pads (its lock reason) shows only
@@ -3800,6 +3802,51 @@ local function stepSwirl(sw, dt)
 	end
 end
 
+-- the Berry Farm's propeller weathervane (bug #20 B, HomeBuilder Art.Farm "Propeller"; its mesh is the element key
+-- home_farm_propeller, dressed onto the Part): it turns slowly about its own axis (the Part's local Z, toward the
+-- lane) with a gentle swell. The Part and its ML_Mesh (when dressed) move together; a pop-in finishes first.
+function G.findVane(st)
+	local p = st.Model:FindFirstChild("Propeller", true)
+	if p and p:IsA("BasePart") then
+		st.Vane = { Part = p, Base = p.CFrame, Angle = 0, Clock = 0 }
+	end
+end
+
+-- a Propeller that replicates after its Station_ model (ChildAdded ran findVane before it was there) still gets its
+-- weathervane record; true when it registered one
+function G.lateVane(rec, d)
+	local farm = rec.Farm
+	if d.Name ~= "Propeller" or not farm or farm.Vane or not d:IsA("BasePart") or not d:IsDescendantOf(farm.Model)
+		or d:FindFirstAncestor("ML_Mesh") then
+		return false
+	end
+	G.findVane(farm)
+	return farm.Vane ~= nil
+end
+
+function G.stepVane(st, dt)
+	local v = st.Vane
+	if st.Popping then
+		if st.Popping.Done then
+			st.Popping = nil
+		else
+			return
+		end
+	end
+	if not v.Part.Parent then
+		st.Vane = nil
+		return
+	end
+	v.Clock = v.Clock + dt
+	v.Angle = (v.Angle + dt * K.VANE_SPEED * (1 + K.VANE_GUST * sin(v.Clock * 0.45))) % (2 * pi)
+	local cf = v.Base * CFrame.Angles(0, 0, v.Angle)
+	v.Part.CFrame = cf
+	local mesh = v.Part:FindFirstChild("ML_Mesh")
+	if mesh then
+		mesh:PivotTo(cf)
+	end
+end
+
 -- the station kind (HomeBuilder writes Kind; older builds only the id)
 local STATION_KINDS = { Press1 = "Farm", Kitchen = "FoodMachine", Gym = "Training", Garden = "Garden", FusionMachine = "Fusion" }
 
@@ -3816,6 +3863,7 @@ local function registerStation(rec, model)
 	rec.Stations[model] = st
 	if kind == "Farm" then
 		rec.Farm = st
+		G.findVane(st)
 	elseif kind == "FoodMachine" then
 		rec.Machine = st
 		R.basket(rec)
@@ -3900,6 +3948,7 @@ local function onDescendant(rec, d)
 	if d:GetAttribute("ML_DressKey") ~= nil then
 		rec.LodDirty = true -- a newly tagged station / bed piece: the plot LOD list is rebuilt at the next check
 	end
+	G.lateVane(rec, d)
 	if d:IsA("ProximityPrompt") then
 		if d.Name ~= "ClaimPrompt" then
 			trackPrompt(d, rec)
@@ -4350,6 +4399,9 @@ local function step(dt)
 					for _, sw in ipairs(rec.Swirls) do
 						stepSwirl(sw, dt)
 					end
+					if rec.Farm and rec.Farm.Vane then -- the farm's propeller weathervane (rests with the hidden station)
+						G.stepVane(rec.Farm, dt)
+					end
 				end
 				stepPads(rec, dt)
 				stepPetStations(rec)
@@ -4598,6 +4650,7 @@ function HomeFx.Init()
 end
 
 HomeFx._StartPop = startPop -- TESTS ONLY (tools/smoke_p6_mesh.lua: a dressed station never pops)
+HomeFx._Vane = { Find = G.findVane, Late = G.lateVane, Step = G.stepVane, K = K } -- TESTS ONLY (tools/smoke_bug20_farm.lua: the farm's weathervane)
 
 -- plot LOD (tests / debugging; tools/smoke_p6_lod.lua): the tier of one home ("High" | "Low" | "Far" | nil before the
 -- first check or with empty MeshIds), its targets and the counters; the constants for tools/mesh_budget.py parity

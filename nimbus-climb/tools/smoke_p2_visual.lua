@@ -191,8 +191,9 @@ local function serverScenarios()
 		detail:report()
 
 		-- the Berry Farm reads at a glance: red berries in the front row, blue ones in the middle, gold vines at the back,
-		-- the Starberry tree glowing at 38-40 (a warm light at 40), the barn and its crates at the south end
-		local farm = T.tally("visual art: the Berry Farm shows its berries (red L1-10, + blue L11-22, + gold L23-37, the glowing Starberry tree L38-40) by a red barn")
+		-- the Starberry tree glowing at 38-40 (a warm light at 40), the sky-sailor's cabin under its red upturned lifeboat at the
+		-- south end (bug #20 art wave: the barn became the Sky-Sailor's Allotment)
+		local farm = T.tally("visual art: the Berry Farm shows its berries (red L1-10, + blue L11-22, + gold L23-37, the glowing Starberry tree L38-40) by the cabin under a red upturned boat")
 		local function berryColours(m)
 			local red, blue, gold = 0, 0, 0
 			for _, p in ipairs(parts(m)) do
@@ -211,7 +212,12 @@ local function serverScenarios()
 		for _, case in ipairs({ { 5, true, false, false }, { 15, true, true, false }, { 30, true, true, true }, { 40, true, true, true } }) do
 			local m = HB.BuildStationModel("Press1", case[1])
 			local red, blue, gold = berryColours(m)
-			local barn = m and find(m, "Barn", "BasePart")
+			local barn = nil -- the red keel-up boat roof over the cabin
+			for _, p in ipairs(m and parts(m) or {}) do
+				if p.Name == "HullRoof" and p.Color.R > p.Color.G * 1.5 and find(m, "Cabin", "BasePart") then
+					barn = p
+				end
+			end
 			local stars = count(m, "Starberry")
 			local glow = m and find(m, "Starberry") and m:FindFirstChildWhichIsA("PointLight", true)
 			local okTree = (case[1] >= 38) == (stars > 0) and ((case[1] < 40) or (glow ~= nil and glow.Brightness <= 1.5 and glow.Range <= 16))
