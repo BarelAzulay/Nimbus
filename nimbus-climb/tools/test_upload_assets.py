@@ -99,9 +99,9 @@ class Fake(BaseHTTPRequestHandler):
         req = json.loads(parts["request"][0].decode())
         data, ct, head = parts["fileContent"]
         problems = []
-        if (req.get("assetType"), ct) not in (("Model", "model/fbx"), ("Decal", "image/png")) or 'filename="' not in head:
+        if (req.get("assetType"), ct) not in (("Model", "model/fbx"), ("Decal", "image/png"), ("Audio", "audio/ogg"), ("Audio", "audio/mpeg"))                 or 'filename="' not in head:
             problems.append("fileContent part / assetType")
-        if asset_id is not None and STATE["assets"][asset_id].get("type") == "Decal":
+        if asset_id is not None and STATE["assets"][asset_id].get("type") in ("Decal", "Audio"):
             STATE["log"].append(("PATCH-refused", self.path))
             return self.reply(400, {"code": "INVALID_ARGUMENT", "message": "content updates are Model-only"})
         mode = STATE["post_mode"].pop(0) if asset_id is None and STATE["post_mode"] else None
@@ -221,6 +221,11 @@ def run(root, base, *extra):
             code = e.code if not isinstance(e, U.Refusal) else 2
             buf.write("refused: %s\n" % e)
     return code, buf.getvalue()
+
+
+def run_keys_of(out):
+    """the keys a run lists ("- key" lines), in order"""
+    return [ln[2:] for ln in out.splitlines() if ln.startswith("- ")]
 
 
 def main():
@@ -745,6 +750,70 @@ def main():
           and "cal_axes = %d," % (cal_id + 7) in open(os.path.join(mroot, "src", "shared", "MeshIds.lua")).read()
           and len(STATE["log"]) == n, (out, cal))
 
+    # 21) pet attack VFX: --textures also reads blender/vfx/textures.json (PNGs in blender/vfx/out/); an Image uploaded
+    #     outside the tool (Studio upload_image) is recorded with --set-id on a key with no asset yet, and survives later runs
+    import struct as _struct
+    vroot = os.path.join(tmp, "vfxtex")
+    os.makedirs(os.path.join(vroot, "blender", "textures", "vortex"))
+    os.makedirs(os.path.join(vroot, "blender", "vfx", "out"))
+    os.makedirs(os.path.join(vroot, "src", "shared"))
+    vindex = {"comment": "test", "keys": {}}
+    with open(os.path.join(vroot, "blender", "textures", "vortex", "vortex_arms.png"), "wb") as f:
+        f.write(b"\x89PNG\r\n\x1a\nvortex_arms")
+    vindex["keys"]["vortex_arms"] = {"png": "blender/textures/vortex/vortex_arms.png", "contentHash": "h-va", "structureHash": "image"}
+    with open(os.path.join(vroot, "blender", "textures", "textures.json"), "w") as f:
+        json.dump(vindex, f)
+    with open(os.path.join(vroot, "blender", "vfx", "textures.json"), "w") as f:
+        json.dump({"comment": "test", "textures": [{"key": "fx_flame", "grid": 4}, {"key": "fx_glow", "grid": 4}, {"key": "fx_unrendered", "grid": 4}]}, f)
+    for vk in ("fx_flame", "fx_glow"):
+        with open(os.path.join(vroot, "blender", "vfx", "out", vk + ".png"), "wb") as f:
+            f.write(b"\x89PNG\r\n\x1a\n" + _struct.pack(">I", 13) + b"IHDR" + _struct.pack(">II", 1024, 1024) + bytes([8, 6, 0, 0, 0]) + vk.encode())
+    vstate = os.path.join(vroot, "blender", "textures", "upload_state.json")
+    vlua = os.path.join(vroot, "src", "shared", "TextureIds.lua")
+    n = len(STATE["log"])
+    code, out = run(vroot, base, "--textures", "--only", "fx_flame,vortex_arms")
+    check("--textures reads blender/vfx/textures.json too: fx keys plan Decal / image/png creates (dry run, nothing sent)",
+          code == 0 and run_keys_of(out) == ["fx_flame", "vortex_arms"] and out.count('"assetType": "Decal"') == 2
+          and len(STATE["log"]) == n and not os.path.exists(vlua), out)
+    code, out = run(vroot, base, "--textures", "--only", "fx_unrendered")
+    check("an unrendered fx PNG: the run of that key fails with the render hint (never sent)", code == 1
+          and "blender/vfx/render_textures.py" in out and len(STATE["log"]) == n, out)
+    saved_key = os.environ.pop("ROBLOX_API_KEY", None)
+    saved_cid = os.environ.pop("ROBLOX_CREATOR_ID", None)
+    code, out = run(vroot, base, "--textures", "--upload", "--set-id", "fx_flame=777001")
+    check("--set-id --upload without ROBLOX_CREATOR_ID is refused", code == 2 and "ROBLOX_CREATOR_ID" in out and not os.path.exists(vstate), out)
+    os.environ["ROBLOX_CREATOR_ID"] = "123456"
+    code, out = run(vroot, base, "--textures", "--upload", "--set-id", "fx_unrendered=777003")
+    check("--set-id of an outside image with no PNG to record it against is refused", code == 2 and "render_textures.py" in out
+          and not os.path.exists(vstate), out)
+    code, out = run(vroot, base, "--textures", "--upload", "--set-id", "fx_flame=777001,fx_glow=777002")
+    with open(vstate) as f:
+        vs = json.load(f)
+    flame = vs["assets"].get("fx_flame", {})
+    vlua_text = open(vlua).read()
+    check("--set-id records Images uploaded outside the tool (no API key needed, nothing sent): assetId, the PNG's hashes, TextureIds.lua",
+          code == 0 and flame.get("assetId") == 777001 and flame.get("contentHash") == sha_of(os.path.join(vroot, "blender", "vfx", "out", "fx_flame.png"))
+          and flame.get("structureHash") and flame.get("uploadedOutside") is True and "decalAssetId" not in flame
+          and vs["assets"]["fx_glow"]["assetId"] == 777002 and "fx_flame = 777001," in vlua_text and "fx_glow = 777002," in vlua_text
+          and len(STATE["log"]) == n and vs.get("creator") == {"type": "user", "id": "123456"}, (out, flame))
+    if saved_key is not None:
+        os.environ["ROBLOX_API_KEY"] = saved_key
+    if saved_cid is not None:
+        os.environ["ROBLOX_CREATOR_ID"] = saved_cid
+    code, out = run(vroot, base, "--textures", "--upload", "--only", "fx_flame,fx_glow,vortex_arms")
+    with open(vstate) as f:
+        vs = json.load(f)
+    vlua_text = open(vlua).read()
+    posts = [x for x in STATE["log"][n:] if x[0] in ("POST", "PATCH", "PATCH-refused")]
+    check("a later --textures upload skips the recorded fx keys and keeps them in TextureIds.lua next to the new vortex id",
+          code == 0 and [x[0] for x in posts] == ["POST"] and out.count("skip: unchanged") == 2
+          and "fx_flame = 777001," in vlua_text and "fx_glow = 777002," in vlua_text
+          and "vortex_arms = %d," % vs["assets"]["vortex_arms"]["assetId"] in vlua_text, out)
+    with open(os.path.join(vroot, "blender", "vfx", "textures.json"), "w") as f:
+        json.dump({"textures": [{"key": "vortex_arms"}]}, f)
+    code, out = run(vroot, base, "--textures")
+    check("a key in both texture indexes is refused", code == 2 and "both list vortex_arms" in out, out)
+
     # 20) W3c --class CATALOG: the upload keys of blender/catalog/<CATALOG>.json, combined with --only
     croot, _ = make_repo(os.path.join(tmp, "classes"))
     cdir = os.path.join(croot, "blender", "catalog")
@@ -816,8 +885,192 @@ def main():
             if got != want:
                 wrong.append((label, got, res.stdout[-300:]))
         check("check.mjs PortalVortex asset-id rule: %d cases" % len(cases), not wrong, wrong)
+        # pet attack VFX, Task 6: client/Controllers/AttackFx.lua joins TextureIds ids the same way, under the same rule;
+        # the same file name anywhere else gets no allowance
+        adir = os.path.join(tmp, "attackfx", "src", "client", "Controllers")
+        os.makedirs(adir)
+        sdir = os.path.join(tmp, "attackfx", "src", "shared")
+        os.makedirs(sdir)
+        wrong = []
+        for where, allowed in ((os.path.join(adir, "AttackFx.lua"), True), (os.path.join(sdir, "AttackFx.lua"), False)):
+            for label, src, want in cases:
+                with open(where, "w") as f:
+                    f.write(src + "\n")
+                res = subprocess.run([node, os.path.join(HERE, "check.mjs"), where], capture_output=True, text=True)
+                got = res.stdout.count("asset-id")
+                # outside client/Controllers the good joins are errors too (one per prefix literal: 3)
+                expect = want if allowed else (3 if want == 0 else want)
+                if got != expect:
+                    wrong.append((("Controllers/" if allowed else "shared/") + label, got, res.stdout[-300:]))
+        check("check.mjs AttackFx asset-id rule: %d cases in client/Controllers, none elsewhere" % len(cases), not wrong, wrong)
+        # the original audio: client/SoundFx.lua joins AudioIds numbers under the same rule (nowhere else gets it), and
+        # shared/AudioIds.lua holds only [string] = number (rule audio-ids)
+        sfdir = os.path.join(tmp, "soundfx", "src", "client")
+        os.makedirs(os.path.join(sfdir, "Controllers"))
+        wrong = []
+        for where, allowed in ((os.path.join(sfdir, "SoundFx.lua"), True), (os.path.join(sfdir, "Controllers", "SoundFx.lua"), False)):
+            for label, src, want in cases:
+                with open(where, "w") as f:
+                    f.write(src + "\n")
+                res = subprocess.run([node, os.path.join(HERE, "check.mjs"), where], capture_output=True, text=True)
+                got = res.stdout.count("asset-id")
+                expect = want if allowed else (3 if want == 0 else want)
+                if got != expect:
+                    wrong.append((("client/" if allowed else "Controllers/") + label, got, res.stdout[-300:]))
+        check("check.mjs SoundFx asset-id rule: %d cases in client/SoundFx.lua, none elsewhere" % len(cases), not wrong, wrong)
+        aidir = os.path.join(tmp, "audioids", "src", "shared")
+        os.makedirs(aidir)
+        aifile = os.path.join(aidir, "AudioIds.lua")
+        wrong = []
+        for label, src, want in (("empty stub", "return {\n}", 0), ("numbers", "return {\n\tClick = 123,\n\tMusicLobby = 132235279556961,\n}", 0),
+                                 ("a string id", 'return {\n\tClick = "rbxassetid://1",\n}', 1), ("code", "local x = 1\nreturn { Click = x }", 1)):
+            with open(aifile, "w") as f:
+                f.write(src + "\n")
+            res = subprocess.run([node, os.path.join(HERE, "check.mjs"), aifile], capture_output=True, text=True)
+            got = res.stdout.count("audio-ids")
+            if (got > 0) != (want > 0):
+                wrong.append((label, got, res.stdout[-300:]))
+        check("check.mjs audio-ids rule: AudioIds.lua holds only [string] = number (4 cases)", not wrong, wrong)
     else:
         print("SKIP check.mjs PortalVortex cases (no node)")
+
+    # 22) --audio (the Audio class: the original music + sounds): audio/audio.json -> assetType Audio, audio/ogg or
+    #     audio/mpeg by extension, state audio/upload_state.json, src/shared/AudioIds.lua; never PATCHed (a changed file =
+    #     a NEW asset), the manifest sha256 must be the file's, --force on an unchanged upload refused
+    aroot = os.path.join(tmp, "audio")
+    os.makedirs(os.path.join(aroot, "audio"))
+    os.makedirs(os.path.join(aroot, "src", "shared"))
+    astate = os.path.join(aroot, "audio", "upload_state.json")
+    alua = os.path.join(aroot, "src", "shared", "AudioIds.lua")
+    aentries = {}
+
+    def audio_file(key, ext, payload):
+        rel = "audio/%s%s" % (key, ext)
+        head = b"OggS\0\2" if ext == ".ogg" else b"ID3\3\0"
+        with open(os.path.join(aroot, *rel.split("/")), "wb") as f:
+            f.write(head + payload)
+        return rel
+
+    def write_audio(entries):
+        with open(os.path.join(aroot, "audio", "audio.json"), "w") as f:
+            json.dump({"comment": "test", "keys": entries}, f)
+
+    for ak, ext, slot, looped in (("MusicLobby", ".ogg", "Music", True), ("Click", ".ogg", "Sfx", False), ("Reward", ".mp3", "Sfx", False)):
+        rel = audio_file(ak, ext, ak.encode() * 40)
+        aentries[ak] = {"file": rel, "sha256": sha_of(os.path.join(aroot, *rel.split("/"))), "slot": slot, "looped": looped}
+    write_audio(aentries)
+
+    def ast(key=None):
+        with open(astate) as f:
+            data = json.load(f)
+        return data if key is None else data["assets"].get(key, {})
+
+    n = len(STATE["log"])
+    code, out = run(aroot, base, "--audio")
+    check("--audio dry run: exit 0, three Audio creates (audio/ogg x2, audio/mpeg for the .mp3), nothing sent or written",
+          code == 0 and "DRY RUN" in out and out.count('"assetType": "Audio"') == 3 and out.count("; audio/ogg;") == 2
+          and out.count("; audio/mpeg;") == 1 and len(STATE["log"]) == n and not os.path.exists(astate) and not os.path.exists(alua), out)
+    code, out = run(aroot, base, "--audio", "--only", "pet_dog")
+    check("--audio --only checks the audio manifest", code == 2 and "audio.json" in out and len(STATE["log"]) == n, out)
+    wrong = []
+    for label, extra, want in (("--audio with --textures", ("--audio", "--textures"), "one asset class"),
+                               ("--audio with --set-id", ("--audio", "--set-id", "Click=5"), "--adopt"),
+                               ("--audio with --class", ("--audio", "--class", "pets"), "audio keys")):
+        code, out = run(aroot, base, "--upload", *extra)
+        if code != 2 or want not in out or "Traceback" in out:
+            wrong.append((label, code, out[-300:]))
+    bad_manifests = (("no sha256", {"file": "audio/Click.ogg", "slot": "Sfx", "looped": False}, "sha256"),
+                     ("a bad slot", {"file": "audio/Click.ogg", "sha256": "0" * 64, "slot": "Voice", "looped": False}, "slot"),
+                     ("a path out of the repo", {"file": "../x.ogg", "sha256": "0" * 64, "slot": "Sfx", "looped": False}, "repo-relative"),
+                     ("not an audio extension", {"file": "audio/Click.png", "sha256": "0" * 64, "slot": "Sfx", "looped": False}, ".ogg"))
+    for label, entry, want in bad_manifests:
+        write_audio({"Click": entry})
+        code, out = run(aroot, base, "--audio")
+        if code != 2 or want not in out or "Traceback" in out:
+            wrong.append((label, code, out[-300:]))
+    write_audio(aentries)
+    check("--audio refusals: with --textures / --set-id / --class, malformed manifests (%d cases, exit 2, nothing sent)" % (3 + len(bad_manifests)),
+          not wrong and len(STATE["log"]) == n and not os.path.exists(astate), wrong)
+
+    n_w = len(writes())
+    code, out = run(aroot, base, "--audio", "--upload")
+    a1 = ast()
+    aids = {k: r.get("assetId") for k, r in a1["assets"].items()}
+    alua_text = open(alua).read()
+    aentries_lua = re.findall(r"^\t(\w+) = (\d+),$", alua_text, re.M)
+    abody = re.sub(r"--[^\n]*", "", alua_text).strip()
+    check("--audio --upload (fake): three Audio POSTs, well-formed, ids + sha256 + moderation in audio/upload_state.json",
+          code == 0 and len(writes()) == n_w + 3 and all(x[0] == "POST" for x in writes()[n_w:]) and not STATE["bad"]
+          and all(isinstance(v, int) for v in aids.values()) and sorted(aids) == ["Click", "MusicLobby", "Reward"]
+          and a1["assets"]["Click"]["contentHash"] == aentries["Click"]["sha256"] and a1["assets"]["Click"]["fileSha256"] == aentries["Click"]["sha256"]
+          and a1["assets"]["Click"]["moderationState"] == "MODERATION_STATE_REVIEWING" and a1.get("creator") == {"type": "user", "id": "123456"}, out)
+    check("AudioIds.lua: sorted [string] = number entries only (in-review ids listed), generated header",
+          [e[0] for e in aentries_lua] == sorted(aids) and all(int(e[1]) == aids[e[0]] for e in aentries_lua)
+          and re.fullmatch(r"return \{\n(\t\w+ = \d+,\n)*\}", abody) is not None and "upload_assets.py --audio" in alua_text
+          and "rbxassetid" not in alua_text and KEY not in alua_text, alua_text)
+    n = len(STATE["log"])
+    code, out = run(aroot, base, "--audio", "--upload")
+    check("--audio again, files unchanged: every key skipped (sha256 = the fingerprint), nothing sent", code == 0
+          and out.count("skip: unchanged") == 3 and len(STATE["log"]) == n, out)
+    code, out = run(aroot, base, "--audio", "--upload", "--force", "--only", "Click")
+    check("--force on an uploaded, unchanged audio file is refused (a duplicate + a month's upload spent)", code == 1
+          and "duplicate" in out and len(STATE["log"]) == n, out)
+
+    # a changed file whose manifest still has the old sha256: refused (never uploaded under the old hash)
+    with open(os.path.join(aroot, "audio", "Click.ogg"), "ab") as f:
+        f.write(b"remastered")
+    aentries["Click"]["sha256"] = "f" * 64
+    write_audio(aentries)
+    code, out = run(aroot, base, "--audio", "--upload", "--only", "Click")
+    check("a manifest sha256 that is not the file's is refused (stale), nothing sent", code == 1 and "stale" in out
+          and len(STATE["log"]) == n and ast("Click")["assetId"] == aids["Click"], out)
+    # ... with the right sha256: a NEW asset (POST), never a PATCH; the old id kept; AudioIds.lua follows
+    aentries["Click"]["sha256"] = sha_of(os.path.join(aroot, "audio", "Click.ogg"))
+    write_audio(aentries)
+    code, out = run(aroot, base, "--audio", "--upload", "--only", "Click")
+    click = ast("Click")
+    new_w = [x[0] for x in STATE["log"][n:] if x[0] in ("POST", "PATCH", "PATCH-refused")]
+    check("a changed audio file: one POST (new asset), no PATCH; the old id in previousAssetIds; AudioIds.lua follows",
+          code == 0 and new_w == ["POST"] and click["assetId"] != aids["Click"] and click["previousAssetIds"] == [aids["Click"]]
+          and "Click = %d," % click["assetId"] in open(alua).read() and "Click = %d," % aids["Click"] not in open(alua).read(), out)
+    U.CLASS = U.CLASSES["audio"]
+    p_audio = U.plan("Click", {"contentHash": "new", "structureHash": "s"}, {"assetId": 5, "contentHash": "old", "structureHash": "s"})
+    U.CLASS = U.CLASSES["mesh"]
+    check("plan(): changed audio -> new-asset, even with an equal structureHash (never update)", p_audio[0] == "new-asset", p_audio)
+
+    # a file that is not what its extension says: refused before sending
+    with open(os.path.join(aroot, "audio", "Reward.mp3"), "wb") as f:
+        f.write(b"OggS this is not an mp3")
+    aentries["Reward"]["sha256"] = sha_of(os.path.join(aroot, "audio", "Reward.mp3"))
+    write_audio(aentries)
+    n = len(STATE["log"])
+    code, out = run(aroot, base, "--audio", "--upload", "--only", "Reward")
+    check("an .mp3 that is not an mp3 is refused (first bytes), nothing sent", code == 1 and "not a real .mp3" in out
+          and len(STATE["log"]) == n, out)
+
+    # moderation: a rejected audio key leaves AudioIds.lua (silent in game), the others stay
+    STATE["reject"].add(aids["MusicLobby"])
+    code, out = run(aroot, base, "--audio", "--upload", "--refresh")
+    alua_text = open(alua).read()
+    check("--audio --refresh: a REJECTED audio id is left out of AudioIds.lua (that sound stays silent), the others stay",
+          code == 0 and ast("MusicLobby")["moderationState"] == "MODERATION_STATE_REJECTED" and "MusicLobby =" not in alua_text
+          and "Click = %d," % click["assetId"] in alua_text and not [x for x in STATE["log"][n:] if x[0] in ("POST", "PATCH")], alua_text)
+    STATE["reject"].discard(aids["MusicLobby"])
+
+    # an unknown create (504 after the backend made it): pendingCreate, the audio Creator Hub hint, then --adopt
+    rel = audio_file("Shatter", ".ogg", b"glass" * 40)
+    aentries["Shatter"] = {"file": rel, "sha256": sha_of(os.path.join(aroot, *rel.split("/"))), "slot": "Sfx", "looped": False}
+    write_audio(aentries)
+    n_assets = len(STATE["assets"])
+    STATE["post_mode"] = ["create_504"]
+    code, out = run(aroot, base, "--audio", "--upload", "--only", "Shatter")
+    made_a = STATE["next_id"] - 1
+    check("--audio: a 504 after the create -> no second POST, pendingCreate, the hint names an audio in Creator Hub",
+          code == 1 and len(STATE["assets"]) == n_assets + 1 and ast("Shatter").get("pendingCreate") and "an audio named" in out
+          and "--adopt Shatter=" in out, out)
+    code, out = run(aroot, base, "--audio", "--upload", "--only", "Shatter", "--adopt", "Shatter=%d" % made_a)
+    check("--audio --adopt records the id it made; AudioIds.lua lists it", code == 0 and ast("Shatter").get("assetId") == made_a
+          and not ast("Shatter").get("pendingCreate") and "Shatter = %d," % made_a in open(alua).read(), out)
 
     # 11) the throttle (unit, fake clock): the 4th call in a minute waits
     clock = [0.0]

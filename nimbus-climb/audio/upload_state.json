@@ -1,0 +1,129 @@
+{
+  "assets": {
+    "Click": {
+      "assetId": 101923001399658,
+      "contentHash": "78009b681fd624039f70f89e0645df8ef3f87cafc25f6271079e322916e22a03",
+      "fileSha256": "78009b681fd624039f70f89e0645df8ef3f87cafc25f6271079e322916e22a03",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-10-28T04:33:12.481Z",
+      "revisionId": "1",
+      "structureHash": null,
+      "uploadedAt": "2026-10-28T04:33:14Z"
+    },
+    "Confirm": {
+      "assetId": 93625869218589,
+      "contentHash": "963a14dd66c76fc71bc50d9bb0a901ef0e9f7541eeacfe8010382cd18c53d560",
+      "fileSha256": "963a14dd66c76fc71bc50d9bb0a901ef0e9f7541eeacfe8010382cd18c53d560",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-10-28T04:33:15.709Z",
+      "revisionId": "1",
+      "structureHash": null,
+      "uploadedAt": "2026-10-28T04:33:16Z"
+    },
+    "CrowdCheer": {
+      "assetId": 119170729048425,
+      "contentHash": "6be0108adb9250e69d2e66865c9278583eeeb50270a94541d5d9b36406117169",
+      "fileSha256": "6be0108adb9250e69d2e66865c9278583eeeb50270a94541d5d9b36406117169",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-10-28T04:33:19.121Z",
+      "revisionId": "1",
+      "structureHash": null,
+      "uploadedAt": "2026-10-28T04:33:20Z"
+    },
+    "DrumLoop": {
+      "assetId": 138374051097799,
+      "contentHash": "a7f3da3d4d1f96e941315b11b01f98a16f27e0bf2b8098e08871af7933661ba4",
+      "fileSha256": "a7f3da3d4d1f96e941315b11b01f98a16f27e0bf2b8098e08871af7933661ba4",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-10-28T04:33:22.520Z",
+      "revisionId": "1",
+      "structureHash": null,
+      "uploadedAt": "2026-10-28T04:33:23Z"
+    },
+    "Error": {
+      "assetId": 132903472054298,
+      "contentHash": "aa33bd57b3c657302286ff106560dee92b8de3d4c219e539fdb70b7541905182",
+      "fileSha256": "aa33bd57b3c657302286ff106560dee92b8de3d4c219e539fdb70b7541905182",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-10-28T04:33:26.060Z",
+      "revisionId": "1",
+      "structureHash": null,
+      "uploadedAt": "2026-10-28T04:33:27Z"
+    },
+    "Inhale": {
+      "assetId": 121211731068373,
+      "contentHash": "db6c136f8fda021c98927c117dbf7240acd068331c1c83c49e07318757fda673",
+      "fileSha256": "db6c136f8fda021c98927c117dbf7240acd068331c1c83c49e07318757fda673",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-10-28T04:33:29.043Z",
+      "revisionId": "1",
+      "structureHash": null,
+      "uploadedAt": "2026-10-28T04:33:31Z"
+    },
+    "MusicBattle": {
+      "assetId": 127625565715812,
+      "contentHash": "a658e48fa97247a94b0911051668bb91696a7e402dd79e8c2d36058484da8403",
+      "fileSha256": "a658e48fa97247a94b0911051668bb91696a7e402dd79e8c2d36058484da8403",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-10-28T04:33:35.138Z",
+      "revisionId": "1",
+      "structureHash": null,
+      "uploadedAt": "2026-10-28T04:33:35Z"
+    },
+    "MusicDungeon": {
+      "assetId": 94101303405171,
+      "contentHash": "281b5a91a920013c84ee27bb4cb6752b693bc88625bd312bf4243c49661791b3",
+      "fileSha256": "281b5a91a920013c84ee27bb4cb6752b693bc88625bd312bf4243c49661791b3",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-10-28T04:33:41.636Z",
+      "revisionId": "1",
+      "structureHash": null,
+      "uploadedAt": "2026-10-28T04:33:44Z"
+    },
+    "MusicLobby": {
+      "assetId": 131666256172390,
+      "contentHash": "decf81d1ee565a7cb0aedde3f8f03fcb916a57d9afad12ed472c940619d3591c",
+      "fileSha256": "decf81d1ee565a7cb0aedde3f8f03fcb916a57d9afad12ed472c940619d3591c",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-10-28T04:33:48.305Z",
+      "revisionId": "1",
+      "structureHash": null,
+      "uploadedAt": "2026-10-28T04:33:51Z"
+    },
+    "Reward": {
+      "assetId": 107490081183346,
+      "contentHash": "afdcfd7babdc2d2685e0efd1af152fbda57ed5beff63d1c686f50e94afcf9573",
+      "fileSha256": "afdcfd7babdc2d2685e0efd1af152fbda57ed5beff63d1c686f50e94afcf9573",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-10-28T04:33:53.586Z",
+      "revisionId": "1",
+      "structureHash": null,
+      "uploadedAt": "2026-10-28T04:33:54Z"
+    },
+    "Shatter": {
+      "assetId": 92617655874659,
+      "contentHash": "1c384eded093896795e08953a5ff0157e934619d8c5540423c1550e9315914df",
+      "fileSha256": "1c384eded093896795e08953a5ff0157e934619d8c5540423c1550e9315914df",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-10-28T04:33:57.019Z",
+      "revisionId": "1",
+      "structureHash": null,
+      "uploadedAt": "2026-10-28T04:33:58Z"
+    },
+    "Whoosh": {
+      "assetId": 88852561549620,
+      "contentHash": "f7649ba3005cfb74f8e353b8e4f9bd1d3103e1e913c5efbd6772174301111891",
+      "fileSha256": "f7649ba3005cfb74f8e353b8e4f9bd1d3103e1e913c5efbd6772174301111891",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-10-28T04:34:00.318Z",
+      "revisionId": "1",
+      "structureHash": null,
+      "uploadedAt": "2026-10-28T04:34:02Z"
+    }
+  },
+  "creator": {
+    "id": "93742920",
+    "type": "user"
+  },
+  "version": 1
+}

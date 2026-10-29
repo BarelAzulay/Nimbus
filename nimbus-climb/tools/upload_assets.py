@@ -11,6 +11,7 @@ only prints what it would send and writes nothing.
     python3 tools/upload_assets.py --textures               # dry run of the IMAGE class: the gate vortex PNG layers
     python3 tools/upload_assets.py --class pets             # dry run of one catalog class (blender/catalog/pets.json)
     python3 tools/upload_assets.py --textures --set-id vortex_arms=123   # dry run of the Decal -> Image id swap
+    python3 tools/upload_assets.py --audio                  # dry run of the AUDIO class: the game's original music + sounds
 
 --class CATALOG (repeatable / comma separated): the upload keys of blender/catalog/<CATALOG>.json (the entries without
 "upload": false, _low keys included), added to the --only keys. Mesh class only.
@@ -23,6 +24,22 @@ operation returns must load in an ImageLabel ("rbxassetid://<id>"); if it is the
 the Image id in with --set-id KEY=IMAGEID (--textures --upload --set-id ...: sends nothing, records the Image id as
 assetId, keeps the Decal id as decalAssetId, rewrites TextureIds.lua). Never --upload without the player's OK.
 --set-id on a mesh key is refused unless --allow-mesh-set-id says it is meant (a Model id needs no swap).
+The Image class also reads the pet attack VFX sheets: blender/vfx/textures.json (a list of {key, ...}) -> the PNGs
+blender/vfx/out/<key>.png (rendered by blender/vfx/render_textures.py, git-ignored, byte-identical on a re-render);
+contentHash = the PNG's sha256 (none while the PNG is not rendered: a run of that key then fails with the render hint).
+An image uploaded OUTSIDE this tool (Roblox Studio's upload_image returns the Image id itself) is recorded with
+--textures --upload --set-id KEY=IMAGEID on a key that has no asset yet: it takes the current PNG's contentHash (so a
+later run skips it), sends nothing, and needs ROBLOX_CREATOR_ID (the owner of the ids) but not ROBLOX_API_KEY.
+
+--audio: the same rules for the Audio class: index audio/audio.json ({ "keys": { key: { file, sha256, slot, looped } } },
+the player's original music and sounds, audio/README.md), state audio/upload_state.json, output src/shared/AudioIds.lua
+(rule audio-ids: numbers only; a key with no id = that sound stays silent in game). Each file goes up as assetType
+"Audio" with the mime of its extension (.ogg audio/ogg, .mp3 audio/mpeg, .wav audio/wav, .flac audio/flac). The
+manifest's sha256 must be the file's (a stale entry fails that key, which is never uploaded under the old hash; the other keys go on). Audio is NEVER
+updated in place (Open Cloud content updates are Model-only): a changed file is a NEW asset whose id replaces the old
+one; --force on an unchanged, uploaded file is refused (a duplicate). Roblox moderates audio (it can stay in review for
+a while; a rejected key is left out of AudioIds.lua and stays silent - never work around moderation) and counts audio
+uploads per account per month (10 without ID verification, 100 with it): one --audio run is 12 uploads.
 
 Environment (never stored, never printed):
     ROBLOX_API_KEY       Open Cloud API key with the Assets API (Read + Write), made by the experience owner
@@ -69,6 +86,7 @@ import http.client
 import json
 import os
 import re
+import struct
 import sys
 import time
 import urllib.error
@@ -341,6 +359,8 @@ def plan(key, entry, record):
         return "create", "no asset yet"
     if record.get("contentHash") == content and content:
         return "skip", "unchanged (contentHash %s)" % str(content)[:12]
+    if CLASS["file"] == "audio":
+        return "new-asset", "audio changed (new sha256): audio cannot be updated in place -> a NEW asset, the id changes"
     if CLASS["file"] == "png":
         # Open Cloud updates the content of Models only: a changed image (same size or not) is always a new asset
         what = "same size" if struct and record.get("structureHash") == struct else "size / format changed"
@@ -361,8 +381,97 @@ CLASSES = {
     "image": {"index": ("blender", "textures", "textures.json"), "state": ("blender", "textures", "upload_state.json"),
               "lua": ("src", "shared", "TextureIds.lua"), "assetType": "Decal", "ext": ".png", "mime": "image/png", "file": "png",
               "build": "python3 blender/textures/build_vortex.py  (%s)"},
+    "audio": {"index": ("audio", "audio.json"), "state": ("audio", "upload_state.json"), "lua": ("src", "shared", "AudioIds.lua"),
+              "assetType": "Audio", "ext": ".ogg", "mime": "audio/ogg", "file": "audio",
+              "build": "put the file in audio/ and its sha256 in audio/audio.json  (%s)"},
 }
+# the Audio class: extension -> Content-Type (Open Cloud "Assets usage": .mp3 audio/mpeg, .ogg audio/ogg, .wav audio/wav,
+# .flac audio/flac); the file's first bytes must match its extension
+AUDIO_MIME = {".ogg": "audio/ogg", ".mp3": "audio/mpeg", ".wav": "audio/wav", ".flac": "audio/flac"}
+AUDIO_SLOTS = ("Music", "Sfx", "Ambient")
+SHA_RE = re.compile(r"^[0-9a-f]{64}$")
 CLASS = CLASSES["mesh"]
+# the second Image-class index: the pet attack VFX sheets (render_textures.py writes them into blender/vfx/out/)
+VFX_INDEX = ("blender", "vfx", "textures.json")
+VFX_BUILD = "blender -b -P blender/vfx/render_textures.py -- --out blender/vfx/out  (%s; the Blender of blender/README.md)"
+
+
+def png_structure(path):
+    """an image's structureHash: its size + pixel format from the PNG IHDR (None if it is not a PNG)"""
+    with open(path, "rb") as f:
+        head = f.read(26)
+    if len(head) < 26 or head[:8] != b"\x89PNG\r\n\x1a\n" or head[12:16] != b"IHDR":
+        return None
+    w, h = struct.unpack(">II", head[16:24])
+    return hashlib.md5(("png %dx%d depth %d color %d" % (w, h, head[24], head[25])).encode()).hexdigest()
+
+
+def load_vfx_textures(root):
+    """blender/vfx/textures.json -> index entries for the Image class ({} when the manifest is absent). The PNGs are
+    generated (git-ignored): contentHash / structureHash come from the file on disk, None while it is not rendered."""
+    path = os.path.join(root, *VFX_INDEX)
+    if not os.path.isfile(path):
+        return {}
+    with open(path, encoding="utf-8") as f:
+        data = json.load(f)
+    out = {}
+    for t in (data.get("textures") if isinstance(data, dict) else None) or []:
+        key = t.get("key") if isinstance(t, dict) else None
+        if not isinstance(key, str) or not KEY_RE.match(key) or key in out:
+            raise Refusal("%s: bad or repeated texture key %r" % (os.path.relpath(path, root), key))
+        rel = "blender/vfx/out/%s.png" % key
+        png = os.path.join(root, *rel.split("/"))
+        have = os.path.isfile(png)
+        out[key] = {"png": rel, "displayName": "NC " + key.replace("_", " "),
+                    "description": "Nimbus Climb pet attack VFX texture " + key,
+                    "contentHash": sha256_file(png) if have else None,
+                    "structureHash": png_structure(png) if have else None, "build": VFX_BUILD}
+    return out
+
+
+def load_audio(root, path):
+    """audio/audio.json -> index entries for the Audio class: { key: { file, sha256, slot, looped } } (+ the
+    contentHash = sha256, a displayName and a description). A malformed entry refuses the whole run."""
+    rel = os.path.relpath(path, root)
+    assets = load_index(path)
+    for key, e in assets.items():
+        f = e.get("file")
+        if not isinstance(f, str) or not f or os.path.isabs(f) or ".." in f.replace("\\", "/").split("/"):
+            raise Refusal("%s: %s has no repo-relative \"file\"" % (rel, key))
+        if os.path.splitext(f)[1].lower() not in AUDIO_MIME:
+            raise Refusal("%s: %s: %s is not %s" % (rel, key, f, " / ".join(sorted(AUDIO_MIME))))
+        if not isinstance(e.get("sha256"), str) or not SHA_RE.match(e["sha256"]):
+            raise Refusal("%s: %s has no sha256 (64 lowercase hex digits of the file)" % (rel, key))
+        if e.get("slot") not in AUDIO_SLOTS:
+            raise Refusal("%s: %s: slot must be one of %s, not %r" % (rel, key, ", ".join(AUDIO_SLOTS), e.get("slot")))
+        if not isinstance(e.get("looped"), bool):
+            raise Refusal("%s: %s: looped must be true or false" % (rel, key))
+        e["contentHash"] = e["sha256"]
+        e.setdefault("displayName", "NC " + key)
+        e.setdefault("description", "Nimbus Climb original %s audio %s (%s)" % (e["slot"].lower(), key, "loop" if e["looped"] else "one-shot"))
+    return assets
+
+
+def audio_magic_ok(path):
+    """the first bytes match the extension (an mp3 renamed .ogg is refused before Roblox refuses it)"""
+    ext = os.path.splitext(path)[1].lower()
+    with open(path, "rb") as f:
+        head = f.read(12)
+    if ext == ".ogg":
+        return head[:4] == b"OggS"
+    if ext == ".mp3":
+        return head[:3] == b"ID3" or (len(head) >= 2 and head[0] == 0xFF and (head[1] & 0xE0) == 0xE0)
+    if ext == ".wav":
+        return head[:4] == b"RIFF" and head[8:12] == b"WAVE"
+    if ext == ".flac":
+        return head[:4] == b"fLaC"
+    return False
+
+
+def mime_of(path):
+    if CLASS["file"] == "audio":
+        return AUDIO_MIME.get(os.path.splitext(path)[1].lower(), CLASS["mime"])
+    return CLASS["mime"]
 
 
 def png_path(root, key, entry):
@@ -378,10 +487,25 @@ def png_path(root, key, entry):
 
 
 def check_entry(root, key, entry):
+    if CLASS["file"] == "audio":
+        path = os.path.join(root, *entry["file"].replace("\\", "/").split("/"))
+        rel = os.path.relpath(path, root)
+        if not os.path.isfile(path):
+            raise UploadError("missing %s (%s)" % (rel, CLASS["build"] % key))
+        size = os.path.getsize(path)
+        if size > MAX_FILE_BYTES:
+            raise UploadError("%s is %.1f MB; the API takes up to 20 MB" % (rel, size / 1048576.0))
+        if not audio_magic_ok(path):
+            raise UploadError("%s is not a real %s file (its first bytes do not match the extension)" % (rel, os.path.splitext(path)[1]))
+        sha = sha256_file(path)
+        if sha != entry.get("sha256"):
+            raise UploadError("%s: audio/audio.json sha256 is stale (%s...; the file is %s...): put the file's sha256 in "
+                              "audio/audio.json, never upload under the old hash" % (key, str(entry.get("sha256"))[:12], sha[:12]))
+        return path, size
     if CLASS["file"] == "png":
         path = png_path(root, key, entry)
         if not os.path.isfile(path):
-            raise UploadError("missing %s (build it: %s)" % (os.path.relpath(path, root), CLASS["build"] % key))
+            raise UploadError("missing %s (build it: %s)" % (os.path.relpath(path, root), (entry.get("build") or CLASS["build"]) % key))
         size = os.path.getsize(path)
         if size > MAX_FILE_BYTES:
             raise UploadError("%s is %.1f MB; the API takes up to 20 MB" % (path, size / 1048576.0))
@@ -457,12 +581,17 @@ def upload_one(client, key, entry, record, creator, root, args, log):
     if action == "skip" and CLASS["file"] == "png":
         raise UploadError("--force on the uploaded image %s refused: images are never updated in place, so it would only "
                           "make a duplicate asset (change the PNG to upload a new one)" % key)
+    if action == "skip" and CLASS["file"] == "audio":
+        raise UploadError("--force on the uploaded audio %s refused: audio is never updated in place, so it would only "
+                          "make a duplicate asset and spend one of the month's audio uploads (change the file to upload "
+                          "a new one)" % key)
     path, size = check_entry(root, key, entry)
     asset_id = record.get("assetId") if action in ("update", "skip") else None
     req = request_json(key, entry, creator, asset_id)
     with open(path, "rb") as f:
         data = f.read()
-    body, ctype = encode_multipart([("request", json.dumps(req))], [("fileContent", os.path.basename(path), CLASS["mime"], data)])
+    mime = mime_of(path)
+    body, ctype = encode_multipart([("request", json.dumps(req))], [("fileContent", os.path.basename(path), mime, data)])
     if asset_id:
         method, api_path = "PATCH", UPDATE_PATH.format(assetId=asset_id)
     else:
@@ -470,7 +599,7 @@ def upload_one(client, key, entry, record, creator, root, args, log):
     describe = [
         "Content-Type: multipart/form-data (%d bytes)" % len(body),
         "part 'request': %s" % json.dumps(req),
-        "part 'fileContent': %s; %s; %d bytes; sha256 %s" % (os.path.relpath(path, root), CLASS["mime"], size, sha256_file(path)[:16]),
+        "part 'fileContent': %s; %s; %d bytes; sha256 %s" % (os.path.relpath(path, root), mime, size, sha256_file(path)[:16]),
         "then GET %s until done -> assetId / revisionId / moderationResult" % OPERATION_PATH,
     ]
     file_sha = sha256_file(path)
@@ -511,9 +640,10 @@ def upload_one(client, key, entry, record, creator, root, args, log):
 
 
 def unknown_hint(key, pc):
+    what = {"audio": "an audio", "png": "a decal"}.get(CLASS["file"], "a model")
     return ("the create of %s may have reached Roblox (%s, started %s). Do NOT upload it again blindly: look in Creator "
-            "Hub > Creations for a model/decal named \"%s\" made then. Found it: re-run with --adopt %s=<its id>. Not "
-            "there: re-run with --not-created %s" % (key, pc.get("why"), pc.get("startedAt"), pc.get("displayName"), key, key))
+            "Hub > Creations for %s named \"%s\" made then. Found it: re-run with --adopt %s=<its id>. Not "
+            "there: re-run with --not-created %s" % (key, pc.get("why"), pc.get("startedAt"), what, pc.get("displayName"), key, key))
 
 
 def adopt(key, record, asset_id, log):
@@ -554,6 +684,22 @@ def set_id(key, record, new_id, log):
     record["idSetByHand"] = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
     record.pop("lastError", None)
     log("  set-id: %s = %d (%s)" % (key, new_id, what))
+
+
+def record_outside(key, record, entry, new_id, root, log):
+    """--textures --set-id KEY=ID on a key with no asset yet: the Image was uploaded outside this tool (Roblox Studio's
+    upload_image returns the Image id, no Decal). Nothing is sent: assetId = ID, and the PNG's current hashes are taken
+    as the uploaded content, so a later run skips the key until its PNG changes (then a NEW asset, like any image)."""
+    path = png_path(root, key, entry)
+    record["assetId"] = new_id
+    record["contentHash"] = entry.get("contentHash")
+    record["structureHash"] = entry.get("structureHash")
+    record["fileSha256"] = sha256_file(path)
+    record["moderationState"] = None
+    record["uploadedOutside"] = True
+    record["idSetByHand"] = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+    record.pop("lastError", None)
+    log("  set-id: %s = %d (an Image uploaded outside this tool, recorded against %s)" % (key, new_id, os.path.relpath(path, root)))
 
 
 def finish(client, key, record, args, log):
@@ -602,7 +748,11 @@ def finish(client, key, record, args, log):
     record.pop("lastError", None)
     log("  done: asset %d revision %s moderation %s" % (new_id, record["revisionId"], record["moderationState"]))
     if is_rejected(record["moderationState"]):
-        log("  WARNING: %s was REJECTED by moderation; it is left out of MeshIds.lua (the Part build stays)" % key)
+        if CLASS["file"] == "audio":
+            log("  WARNING: %s was REJECTED by moderation; it is left out of AudioIds.lua (that sound stays silent; never "
+                "work around moderation)" % key)
+        else:
+            log("  WARNING: %s was REJECTED by moderation; it is left out of MeshIds.lua (the Part build stays)" % key)
     return record
 
 
@@ -625,7 +775,7 @@ def stale_keys(state, assets, root):
     manifest has a LayoutSig: the floors), another contentHash - the live Part layout matches the NEW manifest, so the
     OLD mesh would be dressed over it. They come back in MeshIds.lua as soon as they are uploaded in this or a later run."""
     out = set()
-    if CLASS["file"] == "png" or not assets:
+    if CLASS["file"] in ("png", "audio") or not assets:
         return out
     for key, rec in state.get("assets", {}).items():
         entry = assets.get(key) or {}
@@ -646,10 +796,19 @@ def stale_keys(state, assets, root):
 def mesh_ids_lua(state, skip=()):
     """src/shared/MeshIds.lua (or TextureIds.lua): one sorted table of [string] = number (check.mjs mesh-ids / texture-ids).
     skip: keys left out (stale_keys: an uploaded asset that no longer matches the committed build)."""
-    if CLASS["file"] == "png":
+    if CLASS["file"] == "audio":
+        lines = [
+            "-- GENERATED by tools/upload_assets.py --audio from audio/upload_state.json. Do not edit by hand.",
+            "-- Audio key -> Roblox Audio asset id (numbers only), read by Config.Audio. No key = that sound stays silent.",
+            "-- Rejected assets are left out; assets still in review are listed and stay silent until approved",
+            "-- (meanwhile Roblox prints \"Failed to load sound\" for them: expected, not a bug, do not re-upload).",
+            "return {",
+        ]
+    elif CLASS["file"] == "png":
         lines = [
             "-- GENERATED by tools/upload_assets.py --textures (Phase 6) from blender/textures/upload_state.json. Do not edit.",
-            "-- Texture key -> Roblox Image asset id (numbers only). Empty = the gates' vortex uses its effects-only fallback.",
+            "-- Texture key -> Roblox Image asset id (numbers only): the gate vortex layers (no vortex key = the vortex's",
+            "-- effects-only fallback) and the pet attack VFX sheets fx_* (blender/vfx/textures.json).",
             "-- Rejected assets are left out; assets still in review are listed and simply fall back until approved.",
             "return {",
         ]
@@ -676,7 +835,10 @@ def parse_args(argv):
     ap.add_argument("--only", action="append", default=[], help="these keys only (repeatable or comma separated)")
     ap.add_argument("--refresh", action="store_true", help="only re-read revision + moderation of known assets")
     ap.add_argument("--force", action="store_true", help="upload even when the contentHash is unchanged")
-    ap.add_argument("--textures", action="store_true", help="the Image class: blender/textures/textures.json -> TextureIds.lua")
+    ap.add_argument("--textures", action="store_true",
+                    help="the Image class: blender/textures/textures.json + blender/vfx/textures.json -> TextureIds.lua")
+    ap.add_argument("--audio", action="store_true",
+                    help="the Audio class: audio/audio.json (the original music + sounds) -> src/shared/AudioIds.lua")
     ap.add_argument("--adopt", action="append", default=[], metavar="KEY=ASSETID",
                     help="a create whose outcome was unknown DID make this asset (seen in Creator Hub): record its id")
     ap.add_argument("--not-created", action="append", default=[], metavar="KEY",
@@ -725,6 +887,11 @@ def parse_args(argv):
                       "--adopt / --not-created / --class")
     if args.allow_mesh_set_id and not args.set_id:
         raise Refusal("--allow-mesh-set-id goes with --set-id")
+    if args.audio and args.textures:
+        raise Refusal("--audio and --textures together: one asset class per run")
+    if args.audio and args.set_id:
+        raise Refusal("--set-id is for the textures' Decal -> Image id swap; an audio id comes from its upload (a create "
+                      "of unknown outcome is settled with --adopt KEY=ID)")
     return args
 
 
@@ -744,8 +911,14 @@ def set_ids_run(args, assets, state, keys, creator, state_path, lua_path, root):
         if rec.get("pendingCreate") or rec.get("pendingOperation"):
             raise Refusal("--set-id %s: its upload is not finished (settle it first: a plain run / --adopt / --not-created)" % key)
         if not isinstance(rec.get("assetId"), int):
-            raise Refusal("--set-id %s: no uploaded asset recorded yet (upload it first; --set-id only swaps the id of "
-                          "an uploaded asset)" % key)
+            if CLASS["file"] != "png":
+                raise Refusal("--set-id %s: no uploaded asset recorded yet (upload it first; --set-id only swaps the id of "
+                              "an uploaded asset)" % key)
+            # an image uploaded outside this tool (Studio upload_image): recorded against the PNG on disk now
+            if not assets[key].get("contentHash") or not os.path.isfile(png_path(root, key, assets[key])):
+                raise Refusal("--set-id %s: no uploaded asset recorded yet and no PNG to record it against (build the PNG "
+                              "that was uploaded first: %s)" % (key, (assets[key].get("build") or CLASS["build"]) % key))
+            continue
         if rec["assetId"] == new_id:
             raise Refusal("--set-id %s=%d: that is already its id (nothing to change)" % (key, new_id))
         if CLASS["file"] == "png" and rec.get("decalAssetId") == new_id:
@@ -755,7 +928,11 @@ def set_ids_run(args, assets, state, keys, creator, state_path, lua_path, root):
                                                            else "SET-ID:", len(args.set_id)))
     for key in sorted(args.set_id):
         print("- " + key)
-        set_id(key, state["assets"][key], args.set_id[key], lambda m: print(m, flush=True))
+        rec = state["assets"].setdefault(key, {})
+        if isinstance(rec.get("assetId"), int):
+            set_id(key, rec, args.set_id[key], lambda m: print(m, flush=True))
+        else:
+            record_outside(key, rec, assets[key], args.set_id[key], root, lambda m: print(m, flush=True))
     if args.dry_run:
         print("dry run: nothing was sent and nothing was written")
     else:
@@ -771,7 +948,7 @@ def set_ids_run(args, assets, state, keys, creator, state_path, lua_path, root):
 def main(argv=None):
     global CLASS
     args = parse_args(argv)
-    CLASS = CLASSES["image" if args.textures else "mesh"]
+    CLASS = CLASSES["image" if args.textures else ("audio" if args.audio else "mesh")]
     root = os.path.abspath(args.root)
     index_path = os.path.join(root, *CLASS["index"])
     state_path = os.path.join(root, *CLASS["state"])
@@ -779,8 +956,16 @@ def main(argv=None):
     if not os.path.isfile(index_path):
         if args.textures:
             raise Refusal("no %s yet (build the textures first: python3 blender/textures/build_vortex.py)" % os.path.relpath(index_path, root))
+        if args.audio:
+            raise Refusal("no %s yet (the audio manifest: audio/README.md)" % os.path.relpath(index_path, root))
         raise Refusal("no %s yet (build the meshes first: %s)" % (os.path.relpath(index_path, root), BUILD_ALL))
-    assets = load_index(index_path)
+    assets = load_audio(root, index_path) if args.audio else load_index(index_path)
+    if args.textures:
+        vfx = load_vfx_textures(root)
+        clash = sorted(set(vfx) & set(assets))
+        if clash:
+            raise Refusal("%s and %s both list %s" % ("/".join(CLASS["index"]), "/".join(VFX_INDEX), ", ".join(clash)))
+        assets.update(vfx)
     try:
         with open(state_path, encoding="utf-8") as f:
             state = json.load(f)
@@ -795,15 +980,18 @@ def main(argv=None):
         raise Refusal("ROBLOX_CREATOR_TYPE must be 'user' or 'group'")
     if creator_id and not creator_id.isdigit():
         raise Refusal("ROBLOX_CREATOR_ID must be a number (the experience owner's user or group id)")
-    if not args.dry_run and (not api_key or not creator_id):
+    if not args.dry_run and args.set_id and not creator_id:
+        raise Refusal("--set-id --upload needs ROBLOX_CREATOR_ID in the environment (the owner of the ids, recorded in the "
+                      "state file); it sends nothing, so ROBLOX_API_KEY is not needed")
+    if not args.dry_run and not args.set_id and (not api_key or not creator_id):
         raise Refusal("--upload needs ROBLOX_API_KEY and ROBLOX_CREATOR_ID in the environment (a new session loads them)")
     creator = {"type": creator_type, "id": creator_id or "<ROBLOX_CREATOR_ID>"}
     stored = state.get("creator")
     if stored and creator_id and stored != creator:
         raise Refusal("upload_state.json belongs to %s %s, not %s %s: another owner cannot update these assets and the "
                       "game could not load them. Refusing." % (stored.get("type"), stored.get("id"), creator_type, creator_id))
-    if args.classes and args.textures:
-        raise Refusal("--class names a mesh catalog (blender/catalog/); the textures have none: use --only")
+    if args.classes and (args.textures or args.audio):
+        raise Refusal("--class names a mesh catalog (blender/catalog/); the %s have none: use --only" % ("textures" if args.textures else "audio keys"))
     for name in args.classes:
         args.only += [k for k in catalog_keys(root, name) if k not in args.only]
     unknown = [k for k in args.only if k not in assets]

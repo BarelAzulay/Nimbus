@@ -10,7 +10,7 @@
 --   DungeonController.Request(action, a, b) -> bool   DungeonRequest(action, a, b), spaced per action (K.FIRE_GAP);
 --                                             the server validates everything (DungeonService ladder + cooldowns)
 --   DungeonController.GetState() -> { Window, Floor, Lobby, Run, End, Loot, Totals, Ready, Lit, CardMode, Countdown, Fade,
---                                     Door }
+--                                     Door, Enter, Walk, Shoulder }
 --   DungeonController.Opened / Closed (Util.Signal)
 --
 -- What the player sees
@@ -34,7 +34,10 @@
 --     new best) sits at the right (desktop / landscape) or under the top bar (portrait), never in the centre.
 --   * Lighting: LightingStack.Push("Dungeon", preset, 1) when a run starts (darker ambient, ColorCorrection Brightness
 --     -0.12 / Contrast 0.1 / a warm grey tint, Atmosphere density +0.15); Pop("Dungeon", 1) on End or when the player
---     is no longer in the pocket (InBattle released).
+--     is no longer in the pocket (InBattle released). The music follows the same switch: SoundFx.SetLayer("Dungeon",
+--     true / false) (the Dungeon track while the run lasts; BattleController's Battle layer wins in the boss room).
+--   * Sounds: SoundFx "Reward" when the chest pays out (DungeonState "Chest") and when a room's loot comes in (not
+--     the third-of-the-XP consolation of a lost run).
 --   * Camera (bug batch 2, #19): MovementController.SetZoomMax(K.ZOOM_RUN 14) with the first Run payload, so the camera
 --     stays inside the 16-stud rooms; SetZoomMax(nil) (the normal 40) on End, when the run vanished without an End
 --     (R.check) and, as a safety net, on any light-loop tick that finds the zoom capped with no run (every exit path).
@@ -44,6 +47,26 @@
 --     NimbusDungeonFade (IgnoreGuiInset, DisplayOrder K.FADE_ORDER 25: above the HUD 10, the battle HUD / run card 12
 --     and the windows 20-23, below Notify 30); tweens to black over Out, holds (until the next room's Run payload,
 --     at least Hold), back over In; never stuck: a FADE_SAFETY 3 s clear, End and leaving the run clear it at once.
+--   * Wave 5 (bugs #15 / #26):
+--     - The entrance (DungeonState "Enter" { Cover, Reveal, Element }, before the server teleports the party into the
+--       hall after Cover): the camera rushes into the Dungeon gate's vortex (0.5 s, FOV 70 -> 55, the gate flares,
+--       Whoosh), the screen fills with voxel blocks in the floor's element colour from the centre out (ScreenGui
+--       NimbusDungeonEnter, DisplayOrder K.ENTER_ORDER 26; 16 x 9 / 9 x 16 portrait / 8 x 5 on Low graphics), they
+--       hold until the run's first Run payload, then hop and fall away (Reveal). Any key / click / tap skips (the
+--       cover snaps full, the reveal ends at once); ENTER_SAFETY 3 s, End and the run's InBattle release clear it.
+--     - The room walk-in: when the next room's Run payload (Corridor / Threshold) arrives under the fade, the camera is
+--       placed inside the room looking back through the doorway (Scriptable, FOV 60), the controls are off and, as the
+--       fade lifts, the character walks itself (Humanoid:MoveTo, 6 studs/s) past the Threshold while the camera dollies
+--       back, swings a little and opens to FOV 70; the first member across starts the fight on the server; then the
+--       camera blends back (0.35 s) to where it was at the door and the controls return. Any key / click / tap skips
+--       (the character is set at the Threshold). Never stuck: WALK_SAFETY 3 s, End, the InBattle release, the
+--       character removed. Outside a fade (a late join, a rejoin) there is no walk-in.
+--     - The dungeon camera: Humanoid.CameraOffset = DUNGEON_SHOULDER (a little over the right shoulder) for the run,
+--       zero again on End / leaving the run. The Camera shake setting OFF turns off ONLY the hit shakes (player ruling
+--       2026-10-28): the entrance rush, the walk-in shot and the FOV punch on big attacks play regardless (all short and
+--       skippable). The rush is skipped when the camera is > ENTER_RUSH_MAX from the gate (no flight across the plaza).
+--       MovementController.SetFovOverride / SetCinematic do the FOV and the walk speed (the one place that writes them
+--       every frame).
 -- Remotes: DungeonState (in), OpenPanel (in), DungeonRequest (out). One side panel at a time: opening it closes the
 -- menu windows, the Pet Index, the Fusion / Care windows and the Arena windows; theirs close this one. Esc / gamepad
 -- B / the red X / walking 40 studs away from the gate close it. Text is designed at 1080p (>= 18 design px).
@@ -106,6 +129,36 @@ local K = {
 	MOOD_RETRY = 1, -- bug #5 review: re-read the tier mood every 1 s ...
 	MOOD_TRIES = 10, -- ... up to 10 s while the run is lit (streaming / a slow join)
 	ZOOM_RUN = 14, -- bug batch 2 (#19): the camera zoom cap inside a run (rooms are 16 studs high)
+	ZOOM_NUDGE = 10, -- wave 5 (#15): a run starts zoomed in to 10 (the shoulder camera), the player may zoom out to the cap
+	-- wave 5 (bug #26): the room walk-in (seconds, studs, degrees)
+	WALK_SECONDS = 1.3, -- the scripted walk's camera clock (7.5 studs at WALK_SPEED)
+	WALK_SPEED = 6, -- studs/s, a deliberate "entering" pace
+	WALK_BLEND = 0.35, -- the scripted -> normal camera blend
+	WALK_SKIP_BLEND = 0.25,
+	WALK_FIGHT_GRACE = 0.4, -- the fight started (someone crossed): the walk-in hands back control within this
+	WALK_CAM = { Ahead = 9, Pull = 3, Up = 3.5, Settle = 0.8, Swing = 2.5, Fov0 = 60, Fov1 = 70 },
+	WALK_SAFETY = 3, -- the camera is never left Scriptable longer than this
+	WALK_REISSUE = 0.5, -- Humanoid:MoveTo again this often (a fresh Humanoid needs it)
+	WALK_LANE = 4.8, -- studs: everybody keeps their lane across the doorway
+	WALK_IN = 1.5, -- studs past the Threshold's centre (inside its box)
+	WALK_REACH = 1.2, -- this close to the end point = arrived
+	WALK_BIND = "NimbusDungeonWalk",
+	WALK_ACTION = "NimbusDungeonWalkSink",
+	-- wave 5 (bug #15): the voxel-shatter entrance
+	ENTER_ORDER = 26, -- above the fade (25) and every window, below Notify (30)
+	ENTER_GRID = { Desktop = { 16, 9 }, Portrait = { 9, 16 }, Low = { 8, 5 }, LowPortrait = { 5, 8 } },
+	ENTER_RUSH = 0.5, -- the camera rush into the gate
+	ENTER_RUSH_FOV = 55,
+	ENTER_RUSH_MAX = 60, -- studs: a camera further than this from the gate gets no rush (the blocks still cover)
+	ENTER_LEAD = 0.10, -- the first blocks pop this long after the rush began
+	ENTER_MARGIN = 0.15, -- every block is full this long before Cover (the hall teleport can never show at the edges)
+	ENTER_POP = 0.12, -- one block's pop-in (Back Out)
+	ENTER_HOP = 0.12, -- the reveal: a block's hop ...
+	ENTER_FALL = 0.5, -- ... and its fall
+	ENTER_JITTER = 0.08,
+	ENTER_SAFETY = 3, -- the blocks never stay longer than this without the run's Run payload
+	ENTER_BIND = "NimbusDungeonEnter",
+	DUNGEON_SHOULDER = Vector3.new(1.4, 0.35, 0), -- Humanoid.CameraOffset inside a run (bug #15 "3D" camera)
 }
 
 local Colors = Theme.Colors
@@ -190,6 +243,10 @@ local S = {
 	Doors = {}, -- connections watching the pocket's doors
 	Pocket = nil,
 	Zoomed = false, -- the camera zoom is capped at K.ZOOM_RUN (a run)
+	Walk = nil, -- wave 5: the room walk-in (R.walkPrepare)
+	Enter = nil, -- wave 5: the voxel-shatter entrance (R.enter)
+	Gate = nil, -- the Dungeon gate model (GateId "Dungeon"), cached
+	ShoulderHum = nil, -- the Humanoid whose CameraOffset is the dungeon shoulder
 }
 
 local H = {} -- helpers
@@ -1275,6 +1332,9 @@ function DungeonController.GetState()
 		Countdown = S.Lobby and S.Lobby.Mine and W.countdown(S.Lobby.Mine) or nil,
 		Fade = S.Fade and S.Fade.Phase or nil, -- "Out" | "Hold" | "In" while the room change fade shows
 		Door = (S.Run and R.doorWait()) or nil, -- "press" | "wait" | "go" at an open door
+		Enter = S.Enter and S.Enter.Phase or nil, -- "Rush" | "Cover" | "Hold" | "Reveal" while the entrance plays
+		Walk = S.Walk and S.Walk.Phase or nil, -- "Hold" | "Walk" | "Blend" while the room walk-in plays
+		Shoulder = S.ShoulderHum ~= nil,
 	}
 end
 
@@ -1495,6 +1555,9 @@ function R.statusText()
 		if run.Phase == "Walk" then
 			return door or "Room cleared! The bars open..."
 		end
+		if S.Walk then
+			return "Here we go!"
+		end
 		return door or "Walk into the room to start the fight"
 	elseif run.State == "Fight" then
 		return (tonumber(run.Room) == 4) and "Boss fight! Beat the boss and its escort" or "Fight! Beat every wave"
@@ -1591,18 +1654,27 @@ function R.place()
 	S.CardMode = nil
 	-- the End card
 	local endH = U.End.Root.Size.Y.Offset
+	-- bug batch 2 #1: phones start the End card below the HUD's top-right currency strips, so they stay in view
+	-- for the result (the HUD still hides them should the card ever reach them)
+	local strips = R.stripsBottom()
 	if phone and w < h then
-		-- portrait: right of the menu tile column, under the currency pills (clear of the screen's centre)
+		-- portrait: right of the menu tile column, under the currency strips (clear of the screen's centre)
 		local scale = 0.8
 		U.EndScale.Scale = scale
 		U.End.Root.Size = UDim2.fromOffset(math.floor((w - 172) / scale), endH)
-		U.End.Root.Position = UDim2.fromOffset(160, math.floor(h * 0.18) - top)
+		U.End.Root.Position = UDim2.fromOffset(160, math.max(math.floor(h * 0.18) - top, strips))
 	elseif phone then
-		local scale = 0.8
+		-- landscape: below the strips it must still end above Roblox's jump button (70 px, 20 px off the bottom); it
+		-- shrinks down to 0.7 (20 px design text -> 14 px) for that, else it keeps its old spot and the strips hide
+		local y = math.max(52 - top, strips)
+		local scale = math.min(0.8, (h - top - 90 - 8 - y) / math.max(1, endH))
+		if scale < 0.7 then
+			y, scale = 52 - top, 0.8
+		end
 		local width = math.min(K.END_W, math.floor(w * 0.44 / scale))
 		U.EndScale.Scale = scale
 		U.End.Root.Size = UDim2.fromOffset(width, endH)
-		U.End.Root.Position = UDim2.fromOffset(math.floor(w - 12 - width * scale), 52 - top)
+		U.End.Root.Position = UDim2.fromOffset(math.floor(w - 12 - width * scale), y)
 	else
 		U.EndScale.Scale = f
 		U.End.Root.Size = UDim2.fromOffset(K.END_W, endH)
@@ -1626,7 +1698,19 @@ function R.place()
 	end
 end
 
--- landscape phones: the HUD's currency pills share Roblox's top band; the chip starts right of them
+-- just below the HUD's currency strips when they sit in the top-right corner under the top bar (gui-area px, the
+-- same space as our cards), 0 when they are elsewhere (Roblox's top band in a battle) or unmeasured
+function R.stripsBottom()
+	local pg = LocalPlayer and LocalPlayer:FindFirstChildOfClass("PlayerGui")
+	local hud = pg and pg:FindFirstChild("NimbusHud")
+	if not hud or hud:GetAttribute("CurrencyMode") ~= "TopRight" then
+		return 0
+	end
+	local bottom = tonumber(hud:GetAttribute("TopRightBottom"))
+	return (bottom and bottom > 0) and math.ceil(bottom + 8) or 0
+end
+
+-- landscape phones in a battle: the HUD's currency strips share Roblox's top band; the chip starts right of them
 function R.pillsRight()
 	local pg = LocalPlayer and LocalPlayer:FindFirstChildOfClass("PlayerGui")
 	local hud = pg and pg:FindFirstChild("NimbusHud")
@@ -1864,6 +1948,13 @@ function R.fade(payload)
 		Phase = "Out",
 		HardAt = os.clock() + K.FADE_SAFETY,
 	}
+	-- wave 5: where the camera sits behind the character at the door (the walk-in blends back to it)
+	local camera = Workspace.CurrentCamera
+	local rp = H.rootPosition()
+	if camera and rp and camera.CameraType ~= Enum.CameraType.Scriptable then
+		fade.CamOff = camera.CFrame.Position - rp
+		fade.CamRot = camera.CFrame - camera.CFrame.Position
+	end
 	S.FadeSeq = fade.Token
 	S.Fade = fade
 	U.FadeGui.Enabled = true
@@ -1891,6 +1982,9 @@ function R.fadeIn()
 		return
 	end
 	fade.Phase = "In"
+	if S.Walk and S.Walk.Phase == "Hold" then
+		H.safe("walk go", R.walkGo)
+	end
 	R.fadeTween(1, fade.In)
 	task.delay(fade.In, function()
 		if S.Fade == fade then
@@ -1902,6 +1996,9 @@ end
 -- the overlay off at once (End, leaving the run, the safety timeout)
 function R.clearFade()
 	S.Fade = nil
+	if S.Walk and S.Walk.Phase == "Hold" then
+		H.safe("walk go", R.walkGo)
+	end
 	if S.FadeTween then
 		pcall(function()
 			S.FadeTween:Cancel()
@@ -1987,12 +2084,36 @@ function R.preset()
 	return preset
 end
 
+-- client/SoundFx (optional: a build without it is silent)
+function R.soundFx()
+	if R.SF == nil then
+		local module = Client:FindFirstChild("SoundFx")
+		local ok, result = false, nil
+		if module then
+			ok, result = pcall(require, module)
+		end
+		R.SF = (ok and type(result) == "table") and result or false
+	end
+	return R.SF or nil
+end
+
+function R.sound(name)
+	local SF = R.soundFx()
+	if SF and type(SF.Play) == "function" then
+		H.safe("sound", SF.Play, name)
+	end
+end
+
 function R.light(on)
 	if on == S.Lit then
 		return
 	end
 	local LS = R.lightingStack()
 	S.Lit = on
+	local SF = R.soundFx()
+	if SF and type(SF.SetLayer) == "function" then
+		H.safe("music", SF.SetLayer, "Dungeon", on) -- (the dungeon's track while in the run; back to the lobby's after)
+	end
 	if not LS then
 		return
 	end
@@ -2031,7 +2152,17 @@ function R.zoom(on)
 	S.Zoomed = on
 	local MC = H.controller("MovementController")
 	if MC and type(MC.SetZoomMax) == "function" then
-		H.safe("zoom", MC.SetZoomMax, on and K.ZOOM_RUN or nil)
+		if not on then
+			H.safe("zoom", MC.SetZoomMax, nil)
+			return
+		end
+		-- the nudge: the max at 10 pulls the current zoom in at once, then the cap goes back up to 14
+		H.safe("zoom", MC.SetZoomMax, K.ZOOM_NUDGE)
+		task.delay(0.1, function()
+			if S.Zoomed then
+				H.safe("zoom", MC.SetZoomMax, K.ZOOM_RUN)
+			end
+		end)
 	end
 end
 
@@ -2129,6 +2260,740 @@ function R.watchDoors()
 end
 
 ----------------------------------------------------------------------
+-- Wave 5 helpers (bugs #15 / #26)
+----------------------------------------------------------------------
+function H.clientModule(name)
+	H.Mods = H.Mods or {}
+	if H.Mods[name] == nil then
+		local inst = Client:FindFirstChild(name)
+		local ok, mod = false, nil
+		if inst then
+			ok, mod = pcall(require, inst)
+		end
+		H.Mods[name] = (ok and type(mod) == "table") and mod or false
+	end
+	return H.Mods[name] or nil
+end
+
+function H.mc()
+	if H.MC == nil then
+		H.MC = H.controller("MovementController") or false
+	end
+	return H.MC or nil
+end
+
+function H.mcCall(fn, ...)
+	local mc = H.mc()
+	if mc and type(mc[fn]) == "function" then
+		pcall(mc[fn], ...)
+	end
+end
+
+function H.lowGfx()
+	local gq = H.clientModule("GraphicsQuality")
+	if gq and type(gq.Effective) == "function" then
+		local ok, mode = pcall(gq.Effective)
+		return ok and mode == "Low"
+	end
+	return false
+end
+
+function H.character()
+	local char = LocalPlayer and LocalPlayer.Character
+	local hum = char and char:FindFirstChildOfClass("Humanoid")
+	local root = char and char:FindFirstChild("HumanoidRootPart")
+	if hum and root and root:IsA("BasePart") then
+		return char, hum, root
+	end
+	return nil
+end
+
+function H.renderPriority(extra)
+	local ok, v = pcall(function()
+		return Enum.RenderPriority.Camera.Value
+	end)
+	return (ok and v or 200) + extra
+end
+
+function H.smooth(p)
+	return p * p * (3 - 2 * p)
+end
+
+function H.clamp01(v)
+	return math.max(0, math.min(1, v))
+end
+
+-- a key / click / tap / button that skips a cinematic (not a mouse move, a stick, a focus change, sensors)
+local SKIP_IGNORE = { MouseMovement = true, MouseWheel = true, Focus = true, TextInput = true, Gyro = true, Accelerometer = true, None = true, InputMethod = true }
+local STICKS = { Thumbstick1 = true, Thumbstick2 = true }
+function H.isSkipInput(input)
+	if typeof(input) ~= "Instance" and type(input) ~= "table" and typeof(input) ~= "InputObject" then
+		return false
+	end
+	local okT, t = pcall(function()
+		return input.UserInputType.Name
+	end)
+	local okK, k = pcall(function()
+		return input.KeyCode.Name
+	end)
+	if not okT or SKIP_IGNORE[t] then
+		return false
+	end
+	if okK and STICKS[k] then
+		return false
+	end
+	if okT and t:sub(1, 7) == "Gamepad" and (not okK or k == "Unknown") then
+		return false
+	end
+	return true
+end
+
+function H.onSkipInput(input, processed)
+	if not S.Walk and not S.Enter then
+		return
+	end
+	if processed then
+		return
+	end
+	if not H.isSkipInput(input) then
+		return
+	end
+	if S.Walk then
+		R.walkSkip()
+	elseif S.Enter then
+		R.enterSkip()
+	end
+end
+
+----------------------------------------------------------------------
+-- Wave 5 (bug #26): the room walk-in
+----------------------------------------------------------------------
+local SINK_KEYS = {
+	Enum.KeyCode.W, Enum.KeyCode.A, Enum.KeyCode.S, Enum.KeyCode.D, Enum.KeyCode.Up, Enum.KeyCode.Down, Enum.KeyCode.Left,
+	Enum.KeyCode.Right, Enum.KeyCode.Space, Enum.KeyCode.ButtonA, Enum.KeyCode.Thumbstick1,
+}
+
+-- the movement keys during the walk-in: sunk (the character walks itself); a press skips
+function R.walkSink(_name, state, input)
+	if state == Enum.UserInputState.Begin then
+		local okK, k = pcall(function()
+			return input.KeyCode.Name
+		end)
+		if not (okK and STICKS[k]) then
+			R.walkSkip()
+		end
+	end
+	return Enum.ContextActionResult.Sink
+end
+
+function R.walkControls(off, w)
+	if off then
+		local ok, controls = pcall(function()
+			local ps = LocalPlayer:FindFirstChild("PlayerScripts")
+			local pm = ps and ps:FindFirstChild("PlayerModule")
+			if not pm then
+				return nil
+			end
+			return require(pm):GetControls()
+		end)
+		if ok and type(controls) == "table" and type(controls.Disable) == "function" then
+			if pcall(controls.Disable, controls) then
+				w.Controls = controls
+			end
+		end
+		w.Sunk = pcall(function()
+			ContextActionService:BindActionAtPriority(K.WALK_ACTION, R.walkSink, false, Enum.ContextActionPriority.High.Value + 1, (table.unpack or unpack)(SINK_KEYS))
+		end)
+	else
+		if w.Controls then
+			pcall(w.Controls.Enable, w.Controls)
+			w.Controls = nil
+		end
+		if w.Sunk then
+			pcall(function()
+				ContextActionService:UnbindAction(K.WALK_ACTION)
+			end)
+			w.Sunk = false
+		end
+	end
+end
+
+-- the camera of the walk-in at progress e (0..1): inside the room, in front of the walkers, looking back at them
+function R.walkCam(w, e)
+	local c = K.WALK_CAM
+	local at = w.End + w.Inward * (c.Ahead + c.Pull * e) + w.Right * (c.Swing * math.sin(e * math.pi / 2) * w.Side) + Vector3.new(0, c.Up - c.Settle * e, 0)
+	return CFrame.lookAt(at, w.Root.Position + Vector3.new(0, 1.2, 0))
+end
+
+-- the next room's Run payload arrived under the fade: set the shot up while the screen is still black
+function R.walkPrepare(room, key)
+	if S.Walk then
+		R.walkClear()
+	end
+	if H.inMatch() or not LocalPlayer then
+		return false
+	end
+	local char, hum, root = H.character()
+	local camera = Workspace.CurrentCamera
+	if not char or hum.Health <= 0 or not camera then
+		return false
+	end
+	local pocket = (S.Pocket and S.Pocket.Parent and S.Pocket) or R.findPocket()
+	local model = pocket and pocket:FindFirstChild("Room_" .. tostring(room))
+	local th = model and model:FindFirstChild("Threshold")
+	if not th or not th:IsA("BasePart") then
+		return false
+	end
+	local doorPos = H.positionOf(model:FindFirstChild("Door_Entrance")) or root.Position
+	local d = th.Position - doorPos
+	local inward = Vector3.new(d.X, 0, d.Z)
+	if inward.Magnitude < 0.5 then
+		d = th.Position - root.Position
+		inward = Vector3.new(d.X, 0, d.Z)
+	end
+	if inward.Magnitude < 0.5 then
+		return false
+	end
+	inward = inward.Unit
+	local right = inward:Cross(Vector3.new(0, 1, 0))
+	local fade = S.Fade
+	local w = {
+		Token = (S.WalkSeq or 0) + 1,
+		Room = room,
+		Key = key,
+		Phase = "Hold",
+		Th = th,
+		Inward = inward,
+		Right = right,
+		Hum = hum,
+		Root = root,
+		CamOff = fade and fade.CamOff or (camera.CFrame.Position - root.Position),
+		CamRot = fade and fade.CamRot or (camera.CFrame - camera.CFrame.Position),
+		HardAt = os.clock() + K.FADE_SAFETY + K.WALK_SAFETY,
+		T0 = os.clock(),
+	}
+	R.walkLane(w)
+	S.WalkSeq = w.Token
+	S.Walk = w
+	camera.CameraType = Enum.CameraType.Scriptable
+	camera.CFrame = R.walkCam(w, 0)
+	H.mcCall("SetFovOverride", K.WALK_CAM.Fov0)
+	H.mcCall("SetCinematic", K.WALK_SPEED)
+	R.walkControls(true, w)
+	RunService:BindToRenderStep(K.WALK_BIND, H.renderPriority(2), function(dt)
+		H.safe("walk step", R.walkStep, dt)
+	end)
+	R.refresh()
+	-- the fade is already lifting (a late payload): go now
+	if S.Fade == nil or S.Fade.Phase == "In" then
+		R.walkGo()
+	end
+	return true
+end
+
+-- my lane across the doorway and the end point, from where the root stands NOW (the server's teleport into the room
+-- and its Run payload are not ordered, so R.walkGo recomputes them as the fade lifts)
+function R.walkLane(w)
+	local th, root, right = w.Th, w.Root, w.Right
+	local lane = math.max(-K.WALK_LANE, math.min(K.WALK_LANE, (root.Position - th.Position):Dot(right)))
+	local base = Vector3.new(th.Position.X, root.Position.Y, th.Position.Z)
+	w.Lane = lane
+	w.Side = (lane >= 0) and -1 or 1 -- the swing goes to the far side of my lane: the party stays centred
+	w.End = base + w.Inward * K.WALK_IN + right * lane
+end
+
+-- the fade lifts: the character walks in
+function R.walkGo()
+	local w = S.Walk
+	if not w or w.Phase ~= "Hold" then
+		return
+	end
+	if w.Th.Parent and w.Root.Parent then
+		R.walkLane(w)
+	end
+	w.Phase = "Walk"
+	w.T0 = os.clock()
+	w.HardAt = w.T0 + K.WALK_SAFETY
+	w.NextMove = w.T0 + K.WALK_REISSUE
+	pcall(function()
+		w.Hum:MoveTo(w.End)
+	end)
+end
+
+function R.walkStep(_dt)
+	local w = S.Walk
+	if not w then
+		pcall(function()
+			RunService:UnbindFromRenderStep(K.WALK_BIND)
+		end)
+		return
+	end
+	local now = os.clock()
+	local camera = Workspace.CurrentCamera
+	if now >= w.HardAt or not camera or not w.Root.Parent or not w.Hum.Parent then
+		return R.walkClear()
+	end
+	if w.Phase == "Hold" or w.Phase == "Walk" then
+		local p, e = 0, 0
+		if w.Phase == "Walk" then
+			p = H.clamp01((now - w.T0) / K.WALK_SECONDS)
+			e = H.smooth(p)
+		end
+		if camera.CameraType ~= Enum.CameraType.Scriptable then
+			camera.CameraType = Enum.CameraType.Scriptable
+		end
+		camera.CFrame = R.walkCam(w, e)
+		local c = K.WALK_CAM
+		H.mcCall("SetFovOverride", c.Fov0 + (c.Fov1 - c.Fov0) * e)
+		if w.Phase == "Walk" then
+			if now >= w.NextMove then
+				w.NextMove = now + K.WALK_REISSUE
+				pcall(function()
+					w.Hum:MoveTo(w.End)
+				end)
+			end
+			local rp = w.Root.Position
+			local flat = Vector3.new(rp.X - w.End.X, 0, rp.Z - w.End.Z).Magnitude
+			if flat < K.WALK_REACH or p >= 1 or (w.ReleaseBy and now >= w.ReleaseBy) then
+				R.walkRelease()
+			end
+		end
+	elseif w.Phase == "Blend" then
+		local q = H.clamp01((now - w.T0) / w.Dur)
+		local s = H.smooth(q)
+		local target = CFrame.new(w.Root.Position + w.CamOff) * w.CamRot
+		camera.CFrame = w.From:Lerp(target, s)
+		H.mcCall("SetFovOverride", w.FromFov + (K.WALK_CAM.Fov1 - w.FromFov) * s)
+		if q >= 1 then
+			R.walkClear()
+		end
+	end
+end
+
+-- control comes back now; the camera blends to where it was at the door over `dur`
+function R.walkRelease(dur)
+	local w = S.Walk
+	if not w or w.Phase == "Blend" then
+		return
+	end
+	local camera = Workspace.CurrentCamera
+	w.Phase = "Blend"
+	w.T0 = os.clock()
+	w.Dur = dur or K.WALK_BLEND
+	w.From = camera and camera.CFrame or CFrame.new()
+	w.FromFov = camera and camera.FieldOfView or K.WALK_CAM.Fov1
+	w.HardAt = w.T0 + w.Dur + 1
+	H.mcCall("SetCinematic", nil)
+	R.walkControls(false, w)
+	R.refresh()
+end
+
+-- any key / click / tap: at the Threshold at once (the server sees the crossing on its next tick)
+function R.walkSkip()
+	local w = S.Walk
+	if not w or w.Phase == "Blend" then
+		return
+	end
+	local char = LocalPlayer and LocalPlayer.Character
+	if char and w.Root.Parent then
+		local at = Vector3.new(w.End.X, w.Root.Position.Y, w.End.Z)
+		pcall(function()
+			char:PivotTo(CFrame.lookAt(at, at + w.Inward))
+		end)
+	end
+	R.walkRelease(K.WALK_SKIP_BLEND)
+end
+
+-- the fight began (someone crossed the line): the walk-in hands control back within WALK_FIGHT_GRACE
+function R.walkFight()
+	local w = S.Walk
+	if not w then
+		return
+	end
+	if w.Phase == "Hold" then
+		return R.walkClear()
+	end
+	if w.Phase == "Walk" then
+		local by = os.clock() + K.WALK_FIGHT_GRACE
+		w.ReleaseBy = math.min(w.ReleaseBy or by, by)
+	end
+end
+
+-- every exit path (idempotent): the camera back to Custom, the FOV and the controls back, nothing bound
+function R.walkClear()
+	local w = S.Walk
+	if not w then
+		return
+	end
+	S.Walk = nil
+	pcall(function()
+		RunService:UnbindFromRenderStep(K.WALK_BIND)
+	end)
+	H.mcCall("SetFovOverride", nil)
+	H.mcCall("SetCinematic", nil)
+	R.walkControls(false, w)
+	local camera = Workspace.CurrentCamera
+	if camera and camera.CameraType == Enum.CameraType.Scriptable then
+		camera.CameraType = Enum.CameraType.Custom
+	end
+	R.refresh()
+end
+
+-- the light loop's safety net (a lost RenderStep never leaves the camera Scriptable)
+function R.walkTick()
+	local w = S.Walk
+	if w and os.clock() >= w.HardAt then
+		R.walkClear()
+	end
+	local e = S.Enter
+	if e and os.clock() >= e.HardAt + 2 then
+		R.enterClear()
+	end
+end
+
+----------------------------------------------------------------------
+-- Wave 5 (bug #15): the voxel-shatter entrance and the dungeon shoulder camera
+----------------------------------------------------------------------
+-- the Dungeon gate (GateId "Dungeon"; its PrimaryPart GlowCore is the vortex centre). Looked up in the known places
+-- only (the Gate Court folder NimbusLobby/Gates, PortalFxController's tracked gates, Workspace's own children), never
+-- with a Workspace:GetDescendants() walk (a hitch on a big plaza at the worst moment)
+function R.dungeonGate()
+	local g = S.Gate
+	if g and g.Parent then
+		return g
+	end
+	S.Gate = nil
+	local function isGate(d)
+		return typeof(d) == "Instance" and d:IsA("Model") and d:GetAttribute("GateId") == "Dungeon"
+	end
+	local lobby = Workspace:FindFirstChild("NimbusLobby")
+	local folder = lobby and lobby:FindFirstChild("Gates")
+	for _, d in ipairs(folder and folder:GetChildren() or {}) do
+		if isGate(d) then
+			S.Gate = d
+			return d
+		end
+	end
+	local pfx = H.controller("PortalFxController")
+	if pfx and type(pfx.FindGate) == "function" then
+		local ok, d = pcall(pfx.FindGate, "Dungeon")
+		if ok and isGate(d) and d:IsDescendantOf(Workspace) then
+			S.Gate = d
+			return d
+		end
+	end
+	for _, d in ipairs(Workspace:GetChildren()) do
+		if isGate(d) then
+			S.Gate = d
+			return d
+		end
+	end
+	return nil
+end
+
+function R.enterGrid(low)
+	local vp = H.viewport()
+	local portrait = vp.Y > vp.X
+	local g = K.ENTER_GRID
+	local pick = low and (portrait and g.LowPortrait or g.Low) or (portrait and g.Portrait or g.Desktop)
+	return pick[1], pick[2]
+end
+
+-- the block grid (built once per grid size)
+function R.buildEnter(cols, rows)
+	if not U.EnterGui then
+		local gui = CloudUI.NewScreenGui("NimbusDungeonEnter", K.ENTER_ORDER)
+		gui.IgnoreGuiInset = true
+		gui.Enabled = false
+		U.EnterGui = gui
+		U.EnterGrid = H.frame(gui, "Grid", { Size = UDim2.fromScale(1, 1), ZIndex = 10 })
+	end
+	if U.EnterCols == cols and U.EnterRows == rows and U.EnterCells then
+		return
+	end
+	H.clear(U.EnterGrid)
+	U.EnterCells = {}
+	U.EnterCols, U.EnterRows = cols, rows
+	local maxD = math.sqrt((cols / 2) ^ 2 + (rows / 2) ^ 2)
+	for r = 0, rows - 1 do
+		for c = 0, cols - 1 do
+			local x, y = (c + 0.5) / cols, (r + 0.5) / rows
+			local f = Util.Create("Frame", {
+				Name = "Cell",
+				AnchorPoint = Vector2.new(0.5, 0.5),
+				Position = UDim2.fromScale(x, y),
+				Size = UDim2.fromScale(0, 0),
+				BorderSizePixel = 0,
+				BackgroundTransparency = 0,
+				ZIndex = 10,
+				Parent = U.EnterGrid,
+			})
+			local stroke = H.stroke(f, INK, 1, 0)
+			local dx, dy = c + 0.5 - cols / 2, r + 0.5 - rows / 2
+			local hash = (c * 7 + r * 13 + c * r * 3) % 17
+			U.EnterCells[#U.EnterCells + 1] = {
+				F = f, Stroke = stroke, X = x, Y = y, W = 1 / cols, H = 1 / rows,
+				Dist = math.sqrt(dx * dx + dy * dy) / maxD,
+				Hash = hash,
+				Jitter = (hash % 9) / 8 * K.ENTER_JITTER,
+				Rot = ((hash % 2 == 0) and 1 or -1) * (8 + hash % 12),
+				Shade = (hash % 7) * 0.025 - 0.075,
+			}
+		end
+	end
+end
+
+function R.enterColour(element)
+	local base = H.elementColor(element) or C.Accent
+	for _, cell in ipairs(U.EnterCells or {}) do
+		local col = (cell.Shade >= 0) and Theme.Lighten(base, cell.Shade) or base:Lerp(Color3.new(0, 0, 0), -cell.Shade)
+		cell.F.BackgroundColor3 = col
+		cell.Stroke.Color = col:Lerp(Color3.new(0, 0, 0), 0.25)
+	end
+end
+
+function R.enterResetCells()
+	for _, cell in ipairs(U.EnterCells or {}) do
+		cell.F.Size = UDim2.fromScale(0, 0)
+		cell.F.Position = UDim2.fromScale(cell.X, cell.Y)
+		cell.F.Rotation = 0
+		cell.F.BackgroundTransparency = 0
+		cell.S, cell.Ty = nil, nil
+	end
+end
+
+local function backOut(k)
+	local c1 = 1.70158
+	local c3 = c1 + 1
+	local m = k - 1
+	return 1 + c3 * m * m * m + c1 * m * m
+end
+
+-- DungeonState "Enter": the rush + the blocks; the server teleports the party after Cover
+function R.enter(payload)
+	if S.Run or H.inMatch() then
+		return
+	end
+	if S.Enter then
+		R.enterClear()
+	end
+	local function secs(v, default)
+		v = tonumber(v)
+		if not v or v ~= v then
+			return default
+		end
+		return math.max(0.1, math.min(2, v))
+	end
+	local low = H.lowGfx()
+	local cols, rows = R.enterGrid(low)
+	R.buildEnter(cols, rows)
+	R.enterResetCells()
+	R.enterColour(payload.Element)
+	local now = os.clock()
+	local e = {
+		Token = (S.EnterSeq or 0) + 1,
+		Phase = "Cover",
+		Cover = secs(payload.Cover, 0.55),
+		Reveal = secs(payload.Reveal, 0.9),
+		At = now,
+		HardAt = now + K.ENTER_SAFETY,
+		Low = low,
+		Lead = 0,
+	}
+	S.EnterSeq = e.Token
+	local camera = Workspace.CurrentCamera
+	local gate = R.dungeonGate()
+	local core = gate and gate.PrimaryPart
+	if camera and core and (camera.CFrame.Position - core.Position).Magnitude > K.ENTER_RUSH_MAX then
+		core = nil -- the camera is far from the gate (a member who wandered off): no flight across the plaza
+	end
+	if camera and core then
+		local cp = core.Position
+		local lv = core.CFrame.LookVector
+		local sign = ((camera.CFrame.Position - cp):Dot(lv) >= 0) and 1 or -1
+		local target = cp + lv * sign
+		e.Rush = { From = camera.CFrame, To = CFrame.lookAt(target, cp), Fov = camera.FieldOfView }
+		e.Phase = "Rush"
+		e.Lead = K.ENTER_LEAD
+		camera.CameraType = Enum.CameraType.Scriptable
+		local pfx = H.controller("PortalFxController")
+		if pfx and type(pfx.Flare) == "function" then
+			pcall(pfx.Flare, gate, 0.6)
+		end
+		local sfx = H.clientModule("SoundFx")
+		if sfx and type(sfx.Play) == "function" then
+			pcall(sfx.Play, "Whoosh")
+		end
+	end
+	S.Enter = e
+	U.EnterGui.Enabled = true
+	RunService:BindToRenderStep(K.ENTER_BIND, H.renderPriority(3), function(dt)
+		H.safe("enter step", R.enterStep, dt)
+	end)
+end
+
+function R.enterStep(_dt)
+	local e = S.Enter
+	if not e then
+		pcall(function()
+			RunService:UnbindFromRenderStep(K.ENTER_BIND)
+		end)
+		return
+	end
+	local now = os.clock()
+	local t = now - e.At
+	if e.Phase == "Rush" or e.Phase == "Cover" then
+		if now >= e.HardAt then
+			return R.enterClear()
+		end
+		local camera = Workspace.CurrentCamera
+		if e.Rush and camera then
+			local p = H.clamp01(t / K.ENTER_RUSH)
+			local q = p * p
+			camera.CFrame = e.Rush.From:Lerp(e.Rush.To, q)
+			H.mcCall("SetFovOverride", e.Rush.Fov + (K.ENTER_RUSH_FOV - e.Rush.Fov) * q)
+			if p >= 1 then
+				e.Phase = "Cover"
+			end
+		end
+		local span = math.max(0, e.Cover - K.ENTER_MARGIN - e.Lead - K.ENTER_POP) -- full by Cover - ENTER_MARGIN
+		for _, cell in ipairs(U.EnterCells) do
+			local k = H.clamp01((t - (e.Lead + span * cell.Dist)) / K.ENTER_POP)
+			local s = (k >= 1) and 1 or backOut(k)
+			if s ~= cell.S then
+				cell.S = s
+				cell.F.Size = UDim2.new(cell.W * s, 2, cell.H * s, 2)
+			end
+		end
+		if t >= e.Cover then
+			R.enterSnapCover()
+		end
+	elseif e.Phase == "Hold" then
+		if e.RunSeen then
+			R.enterReveal()
+		elseif now >= e.HardAt then
+			-- no run came (refused / ended during the cover): reveal anyway
+			R.enterReveal()
+		end
+	elseif e.Phase == "Reveal" then
+		local tr = now - e.RevealAt
+		local spread = math.max(0, e.Reveal - K.ENTER_HOP - K.ENTER_FALL - K.ENTER_JITTER)
+		for _, cell in ipairs(U.EnterCells) do
+			local tau = tr - (spread * cell.Dist + cell.Jitter)
+			local y, q = 0, 0
+			if tau > 0 then
+				if tau < K.ENTER_HOP then
+					y = -0.06 * math.sin(tau / K.ENTER_HOP * math.pi / 2)
+				else
+					q = H.clamp01((tau - K.ENTER_HOP) / K.ENTER_FALL)
+					y = -0.06 + 1.36 * q * q
+				end
+			end
+			if y ~= cell.Ty then
+				cell.Ty = y
+				cell.F.Position = UDim2.fromScale(cell.X, cell.Y + y)
+				if not e.Low then
+					cell.F.Rotation = cell.Rot * q
+					cell.F.BackgroundTransparency = 0.35 * q
+				end
+			end
+		end
+		if tr >= e.Reveal or now >= e.HardAt then
+			R.enterClear()
+		end
+	end
+end
+
+-- every block full; the camera back to normal under them (the teleport is about to happen / happened)
+function R.enterSnapCover()
+	local e = S.Enter
+	if not e or (e.Phase ~= "Rush" and e.Phase ~= "Cover") then
+		return
+	end
+	for _, cell in ipairs(U.EnterCells or {}) do
+		cell.S = 1
+		cell.F.Size = UDim2.new(cell.W, 2, cell.H, 2)
+	end
+	R.enterCamera(e)
+	e.Phase = "Hold"
+	if e.RunSeen then
+		R.enterReveal()
+	end
+end
+
+function R.enterCamera(e)
+	if e.Rush and not e.CameraBack then
+		e.CameraBack = true
+		H.mcCall("SetFovOverride", nil)
+		local camera = Workspace.CurrentCamera
+		if camera and camera.CameraType == Enum.CameraType.Scriptable then
+			camera.CameraType = Enum.CameraType.Custom
+		end
+	end
+end
+
+-- the run's first Run payload (the party stands in the hall): the blocks hop and fall away
+function R.enterReveal()
+	local e = S.Enter
+	if not e or e.Phase == "Reveal" then
+		return
+	end
+	if e.Phase == "Rush" or e.Phase == "Cover" then
+		e.RunSeen = true
+		return -- (the cover finishes first: the teleport is under it)
+	end
+	e.Phase = "Reveal"
+	e.RevealAt = os.clock()
+	e.HardAt = e.RevealAt + e.Reveal + 0.5
+end
+
+function R.enterSkip()
+	local e = S.Enter
+	if not e then
+		return
+	end
+	if e.Phase == "Rush" or e.Phase == "Cover" then
+		R.enterSnapCover()
+	elseif e.Phase == "Reveal" then
+		R.enterClear()
+	end
+end
+
+-- every exit path (idempotent): nothing bound, the camera and the FOV back, the blocks hidden and reset
+function R.enterClear()
+	local e = S.Enter
+	if not e then
+		return
+	end
+	S.Enter = nil
+	pcall(function()
+		RunService:UnbindFromRenderStep(K.ENTER_BIND)
+	end)
+	R.enterCamera(e)
+	if U.EnterGui then
+		U.EnterGui.Enabled = false
+	end
+	R.enterResetCells()
+end
+
+-- the dungeon shoulder: Humanoid.CameraOffset while in a run (re-applied to a new character), zero outside
+function R.shoulder()
+	local _, hum = H.character()
+	if S.Run and hum then
+		if S.ShoulderHum ~= hum then
+			S.ShoulderHum = hum
+			hum.CameraOffset = K.DUNGEON_SHOULDER
+		end
+	elseif S.ShoulderHum then
+		local old = S.ShoulderHum
+		S.ShoulderHum = nil
+		if old.Parent then
+			old.CameraOffset = Vector3.new(0, 0, 0)
+		end
+	end
+end
+
+----------------------------------------------------------------------
 -- Server messages
 ----------------------------------------------------------------------
 function R.onState(kind, payload)
@@ -2162,6 +3027,23 @@ function R.onState(kind, payload)
 		end
 		S.Run = payload
 		S.RunAt = os.clock()
+		-- wave 5 (bug #15): the run's first payload lifts the entrance blocks
+		if fresh and S.Enter then
+			R.enterReveal()
+		end
+		-- wave 5 (bug #26): the next room arrived under the fade: the walk-in (set up while black); another phase ends it
+		local room = tonumber(payload.Room) or 0
+		if S.Walk and key ~= S.Walk.Key then
+			if payload.State == "Fight" and not fresh then
+				R.walkFight()
+			else
+				R.walkClear()
+			end
+		end
+		if not S.Walk and S.Fade and (S.Fade.Phase == "Out" or S.Fade.Phase == "Hold") and key ~= S.Fade.Key and payload.State == "Corridor"
+			and payload.Phase == "Threshold" and room >= 1 and room <= 4 then
+			H.safe("walk prepare", R.walkPrepare, room, key)
+		end
 		-- the next room arrived while the screen holds black: fade back in
 		if S.Fade and S.Fade.Phase == "Hold" and key ~= S.Fade.Key then
 			R.fadeIn()
@@ -2173,7 +3055,10 @@ function R.onState(kind, payload)
 		R.zoom(true)
 		H.safe("doors", R.watchDoors)
 		H.safe("chests", R.lockChests)
+		H.safe("shoulder", R.shoulder)
 		R.refresh()
+	elseif kind == "Enter" then
+		H.safe("enter", R.enter, payload)
 	elseif kind == "Loot" then
 		S.Loot = payload
 		local t = S.Totals
@@ -2192,6 +3077,9 @@ function R.onState(kind, payload)
 			end
 		end
 		R.toast(text, payload.Loss and C.Blue or C.Gold, nil, "+$" .. H.commas(payload.Cash) .. " +" .. H.commas(payload.Tokens) .. G.Cloud .. " +" .. H.commas(payload.Xp) .. "XP")
+		if not payload.Loss then
+			R.sound("Reward")
+		end
 	elseif kind == "Chest" then
 		local amount = tonumber(payload.Amount) or 0
 		local kindName = tostring(payload.Kind)
@@ -2206,6 +3094,7 @@ function R.onState(kind, payload)
 		H.safe("chests", R.lockChests)
 		local label = (kindName == "Cash") and ("$" .. H.commas(amount)) or (H.commas(amount) .. " " .. (kindName == "Gems" and "Gems" or "tokens"))
 		R.toast(G.Chest .. " Chest: +" .. label .. "!", (kindName == "Gems") and C.Gem or C.Gold, nil, G.Chest .. " +" .. label)
+		R.sound("Reward")
 	elseif kind == "Fade" then
 		if S.Run then
 			R.fade(payload)
@@ -2217,10 +3106,13 @@ function R.onState(kind, payload)
 		S.PhaseKey = nil
 		S.LeaveArmed = 0
 		S.Toast = nil
+		H.safe("walk clear", R.walkClear)
+		H.safe("enter clear", R.enterClear)
 		R.clearFade()
 		R.light(false)
 		R.zoom(false)
 		R.unwatchDoors()
+		H.safe("shoulder", R.shoulder)
 		R.refresh()
 	end
 end
@@ -2230,6 +3122,9 @@ function R.check()
 	if S.Run and not H.runAttr() and os.clock() - S.RunAt > 3 then
 		S.Run = nil
 		S.PhaseKey = nil
+		H.safe("walk clear", R.walkClear)
+		H.safe("enter clear", R.enterClear)
+		H.safe("shoulder", R.shoulder)
 		R.clearFade()
 		R.unwatchDoors()
 		R.light(false)
@@ -2294,11 +3189,22 @@ function DungeonController.Init()
 			H.safe("InMatch", R.refresh)
 		end)
 		LocalPlayer:GetAttributeChangedSignal((Config.Attr and Config.Attr.InBattle) or "InBattle"):Connect(function()
+			-- wave 5: out of the run (released): no cinematic may stay on
+			if not H.runAttr() then
+				H.safe("walk clear", R.walkClear)
+				H.safe("enter clear", R.enterClear)
+			end
 			task.delay(3.2, function()
 				H.safe("InBattle", R.check)
 			end)
 		end)
+		LocalPlayer.CharacterRemoving:Connect(function()
+			H.safe("walk clear", R.walkClear) -- (death / respawn: the walk-in ends with the character)
+		end)
 	end
+	UserInputService.InputBegan:Connect(function(input, processed)
+		H.safe("skip", H.onSkipInput, input, processed)
+	end)
 	UserInputService.InputBegan:Connect(function(input)
 		if S.Open and input.KeyCode == Enum.KeyCode.Escape then
 			DungeonController.Close()
@@ -2343,6 +3249,8 @@ function DungeonController.Init()
 			H.safe("tick window", W.refresh)
 		end
 		H.safe("tick fade", R.fadeTick)
+		H.safe("tick walk", R.walkTick)
+		H.safe("tick shoulder", R.shoulder)
 		H.safe("tick card", R.refresh)
 		if S.Zoomed and not S.Run then
 			H.safe("tick zoom", R.zoom, false) -- every exit path: no run, no zoom cap

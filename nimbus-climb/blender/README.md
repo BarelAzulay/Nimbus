@@ -14,6 +14,20 @@ python3 -m venv /tmp/claude-0/bpyenv
 ```
 `python3` with `lupa` + `numpy` is enough for everything except FBX export and Cycles previews (`--no-export`).
 
+### Windows
+
+bpy 5.2.2 has no wheel for Python 3.12 (`pip download bpy==5.2.2` finds none); it needs Python 3.13:
+```
+winget install -e --id Python.Python.3.13
+py -3.13 -m venv %USERPROFILE%\.bpyenv
+%USERPROFILE%\.bpyenv\Scripts\python.exe -m pip install bpy==5.2.2 numpy lupa pillow
+%USERPROFILE%\.bpyenv\Scripts\python.exe blender/build_all.py --class vfx --preview      # export builds + previews
+py -3.12 blender/kit/selftest.py                                                         # no bpy needed (lupa + numpy)
+```
+Use that venv's python wherever this file says `/tmp/claude-0/bpyenv/bin/python`.  `build_all.py` re-runs itself
+with `PYTHONHASHSEED=0` through a child process on Windows (no `exec` there) and locks `meshes.json` with
+`msvcrt` instead of `fcntl`.  Installing 3.13 makes it the `py` launcher's default: name the version (`py -3.12`).
+
 ## Build
 
 ```
@@ -25,9 +39,11 @@ python3 -m venv /tmp/claude-0/bpyenv
 python3 blender/kit/selftest.py                                              # hooks, recipes, determinism, manifests
 ```
 Classes (one catalog each, `blender/catalog/<class>.json`): `calibration` (cal_axes + the test key
-prop_portal_reference), `pets` (94 keys), `evolved` (354), `creatures` (60), `gates` (6), `lobby` (63), `home` (168),
-`arenadungeon` (52): 798 uploadable keys (W3 added `prop_plot_low` and the 80 home plot `_low` keys
-`home_<stem>_<level>_low`).  `blender/out/previews/<name>.png` holds the preview sheets.
+prop_portal_reference), `pets` (94 keys), `evolved` (354), `creatures` (60), `gates` (7), `lobby` (63), `home` (168),
+`arenadungeon` (52), `vfx` (22, the pet attack effect cores): 821 uploadable keys (W3 added `prop_plot_low` and the 80 home plot `_low` keys
+`home_<stem>_<level>_low`).  `blender/out/previews/<name>.png` holds the preview sheets; a catalog preview with
+`"sheet": [keys]` renders a labelled contact sheet of single-part keys instead (front / three-quarter / side / top,
+tinted with `"tint"`) to `blender/<out>` (vfx: `blender/vfx/out/cores_preview.png`).
 Per key: `blender/out/<key>.fbx`, `.manifest.json`, `.tris.json.gz` (not committed, rebuilt from here) and the
 committed `src/shared/MeshManifests/<key>.lua` + `blender/meshes.json` (uploader index: fbx, displayName, hashes,
 `fbxSha256` = the sha256 of the FBX exported and verified for this contentHash).
@@ -47,7 +63,7 @@ Meta.attach), `meshevo:<petId>:<1|2>[:Low]` (evolved body + its evowing_ pairs);
 | `wing` | the same blueprint's `WingL` group (R = exact mirror) | `build_pet_wing` | the wing hinge (body attachment `WingL` / `WingR`) |
 | `acc` | voxels the accessory adds (pet with it minus pet without it) | `build_pet_accessory` | body attachment `Hat` (or `attach`) |
 | `boss` | `BossBuilder._Blueprint(id, k)`, one key per joint | `kit/bosskit.py` | the joint pivot |
-| `prop` | Python designs registered in `kit/props/*.py` (gates, lobby, home, arena, dungeon, sky dragon, pedestal, tokens) | `props.REGISTRY[name](entry, kit)` | builder origin |
+| `prop` | Python designs registered in `kit/props/*.py` (gates, lobby, home, arena, dungeon, sky dragon, pedestal, tokens, vfx cores) | `props.REGISTRY[name](entry, kit)` | builder origin |
 | `cal` | `kit/calib.py` (cal_axes, the first upload) | | origin |
 
 Steps for bridge keys: shaded grids from Lua (Voxel.Shade's `_Light` / `_Dark`) -> the face pass
@@ -73,7 +89,14 @@ Special pet-type keys (wave 2 / 2.5):
   dog / bear hybrid on an earless species.
 * **Gates**: 6 keys `gate_<obby|ring|arena|dungeon|home|altar>`, one per crest (`WorldStyle.GateMeshKey(shape,
   glyph)`); every `BuildGate` gate with that crest shares it (arena gates, the dungeon portal, the arena's Return
-  gate wears `gate_home`).  Neon parts stay Roblox parts (keep lists).
+  gate wears `gate_home`).  Neon parts stay Roblox parts (keep lists).  `gate_home` is built by
+  `kit/props/gates_homestead.py` (prop `gate_homestead`, polish 2026-10-27): the same BuildGate contract in the
+  homestead family (coursed stone, oak hoop with bronze straps inside the gate-colour band, a house sign under the
+  GateTag: an enamel plate with a big brass cottage whose two lit windows are the Neon CrestWindows).  The 7th, `gate_homeportal`
+  (`kit/props/gates_homeportal.py`, prop `home_portal`), is not a BuildGate gate: it is the player's summoned home
+  portal (a 4 x 7 stud homestead gate: coursed stone, a 0.125-lattice oak arch, keystone plate in the player's colour
+  with the brass cottage), assembled on
+  the client by `HomePortalFx` (Part copy until the key is usable); its Neon vortex stays Parts there.
 * **World keys** (lobby, home, arena, dungeon) bake today's Part build; a `LayoutSig` in the manifest must match the
   live build, otherwise that piece stays on its Parts until it is rebuilt.
 
@@ -131,6 +154,7 @@ also makes `build_all` exit 1).  The numbers live in each catalog's `budgets` (t
 | lobby | prop 2000 / 8, propBig 4000 / 8, plot 9000 / 8, cloud 3500 / 2, island 14000 / 3, floor 10000 / 8, centrepiece 7500 / 8 |
 | home | station 4000 / 8, stationBig 8000 / 8, decor 2000 / 8, house 10000 / 8, element 600 / 2 |
 | arenadungeon | tiny 900 / 4 ... island 36000 / 8 |
+| vfx | core 2000 / 1, coreBig 4000 / 1 (shell, cage), sig 6000 / 1 (one MeshPart `Core` per key) |
 
 evo1Body went from 40 to 44 parts in wave 2.5: keys that tests look up by name (Spark, EyeIris, EyeGlint, EyeRing,
 Basalt, HydraHead ...) may no longer be baked into `Fixed`, so a few bodies have more parts.  Any new by-name lookup

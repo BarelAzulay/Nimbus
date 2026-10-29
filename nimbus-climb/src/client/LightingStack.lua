@@ -7,6 +7,8 @@
 --       preset = { Lighting = {...}, Atmosphere = {...}, ColorCorrection = {...}, Bloom = {...}, SunRays = {...},
 --                  Clouds = {...}, DepthOfField = {...}, Sky = {...} }   (property name -> value per group)
 --   LightingStack.Pop(id, seconds)            removes it and restores what is under it; an unknown id is a no-op
+--   LightingStack.Value(group, prop, skipId) -> value | nil   what group.prop is without preset skipId (the topmost
+--       other preset that sets it, else the base, else the instance's current value)
 --   LightingStack.Top() -> id | nil           the topmost preset's id
 --   LightingStack.Ids() -> { id, ... }        bottom to top (tests / debugging)
 --
@@ -15,7 +17,8 @@
 -- other tweenable values are tweened (TweenService, client side); booleans / strings / enums switch at once.
 -- A new Push / Pop cancels the running tween of each object first, so values never jump back. Missing instances
 -- (no Atmosphere / Clouds on this client) are skipped quietly. No per-frame code, no connections.
--- Users: DungeonController ("Dungeon"), GraphicsQuality ("GfxLow"). Nothing else on the client writes Lighting.
+-- Users: DungeonController ("Dungeon"), GraphicsQuality ("GfxLow"), BattleController ("AttackFxDim": a signature's
+-- brief battle dim, Task 11 of the pet attack VFX). Nothing else on the client writes Lighting.
 -- Plain Lua 5.1-compatible syntax only.
 
 local Lighting = game:GetService("Lighting")
@@ -209,6 +212,32 @@ function LightingStack.Pop(id, seconds)
 	end
 	table.remove(stack, i)
 	apply(seconds)
+end
+
+-- the value group.prop has (or comes back to) without preset `skipId`: the topmost OTHER preset that sets it, else
+-- the base, else the instance's current value (no preset ever named it). nil when the group's instance is missing.
+-- A preset made relative to the look under it (BattleController's battle dim: darker than whatever the dungeon /
+-- the arena shows) reads it here, so a re-push never dims what it already dimmed, and a running tween never leaks in
+function LightingStack.Value(group, prop, skipId)
+	for i = #stack, 1, -1 do
+		local entry = stack[i]
+		local props = entry.Id ~= skipId and entry.Preset[group]
+		if type(props) == "table" and props[prop] ~= nil then
+			return props[prop]
+		end
+	end
+	if base[group] and base[group][prop] ~= nil then
+		return base[group][prop]
+	end
+	local get = GROUPS[group]
+	local inst = get and get()
+	if not inst then
+		return nil
+	end
+	local ok, value = pcall(function()
+		return inst[prop]
+	end)
+	return ok and value or nil
 end
 
 function LightingStack.Top()

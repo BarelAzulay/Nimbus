@@ -720,6 +720,12 @@ S.p5dgn_migrate = guarded("p5dgn_migrate", function()
 	if folds then
 		TCat.FoldLegacy(expected.Home, true)
 	end
+	-- bug batch 2 #18: this Phase 4 record's pet b is equipped, in the team AND on bed 2 (the old rule allowed it): the
+	-- read keeps it with the player and takes it out of the Garden; that is the only other Home change
+	local stGarden = type(st.Home) == "table" and type(st.Home.Garden) == "table" and st.Home.Garden or {}
+	T.check(stGarden[1] == ids[1] and (stGarden[2] == nil or stGarden[2] == ""),
+		"p5 migrate: (bug batch 2 #18) b, equipped and in the team, left bed 2; a keeps bed 1", tostring(stGarden[1]) .. "," .. tostring(stGarden[2]))
+	expected.Home.Garden = deepCopy(stGarden)
 	local differs = {}
 	for key, value in pairs(expected) do
 		if key ~= "Migrations" and key ~= "Teams" and key ~= "Tutorial" and not deepEqual(st[key], value) then
@@ -735,7 +741,7 @@ S.p5dgn_migrate = guarded("p5dgn_migrate", function()
 	local homeDiffers = {}
 	local sth = type(st.Home) == "table" and st.Home or {}
 	for key, value in pairs(before.Home) do
-		if key ~= "Stations" and not deepEqual(sth[key], value) then
+		if key ~= "Stations" and key ~= "Garden" and not deepEqual(sth[key], value) then
 			homeDiffers[#homeDiffers + 1] = key
 		end
 	end

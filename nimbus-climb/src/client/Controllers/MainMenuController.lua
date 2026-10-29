@@ -14,7 +14,7 @@
 --     Shown once per session; respawns never show it again. DevController's /menu reopens it (Open(): client-side
 --     only, the character stays, MenuPlay is never sent again).
 -- With Enabled false: UiGate.MarkPlayed() at once, nothing gated (the loading screen fades by itself).
--- Always: GraphicsQuality.Init() and SoundFx.Music("Lobby").
+-- Always: GraphicsQuality.Init() and SoundFx.Music(SoundFx.Wanted()) (Lobby unless a battle / dungeon layer is on).
 --
 -- Layout (NeonKit; design px of a 1080p screen under one UIScale clamp(H / 1080, 0.8, 1.25)): a left column on
 -- landscape screens (x = 60, <= 0.42 W), a centred column on portrait ones: logo NIMBUS / CLIMB, the tag line, the
@@ -1133,7 +1133,9 @@ function MainMenuController.Init()
 	end
 	local SoundFx = H.mod("SoundFx")
 	if SoundFx and type(SoundFx.Music) == "function" then
-		H.safe("music", SoundFx.Music, "Lobby")
+		-- the track the game state asks for (SoundFx layers: a battle / dungeon that is already on wins), else Lobby
+		local context = type(SoundFx.Wanted) == "function" and SoundFx.Wanted() or "Lobby"
+		H.safe("music", SoundFx.Music, context)
 	end
 	M.Enabled = H.menuCfg().Enabled == true
 	if not M.Enabled then

@@ -17,7 +17,12 @@
 --   remote must also come from near the player's own Fusion Machine (the window opens with E at the machine).
 -- * Copies in use: inputs are taken from free copies first. A copy that is equipped or working in the Garden is taken
 --   off first (never consumed while in use), and the result takes over the freed place (the equipped slot; the freed
---   Garden slot whatever its role: Phase 4 gardens take any pet). If the inputs are the player's ONLY equipped pets
+--   Garden slot whatever its role: Phase 4 gardens take any pet). Bug batch 2 #18 (one job at a time: a Garden pet
+--   cannot follow, so an equipped copy and a placed copy are different copies): the copies in use beyond what is left
+--   leave their jobs together, the placed ones first, so a player whose followers are spare copies keeps them; when
+--   the inputs freed BOTH an equipped slot and a Garden place, the result takes the equipped slot
+--   only (the player keeps a follower, like the old-save ruling) and the Garden place is left empty; the result toast
+--   says so. If the inputs are the player's ONLY equipped pets
 --   (fusing would leave nothing equipped) the fusion is refused: unequip them or equip another pet. Phase 4
 --   (ARCHITECTURE_V3.md "Phase 4 build contract" 3.6 / 4.5): a TRAINING input (DataService.TrainingKeys) is refused
 --   ("Rocky is training: wait for it to finish"); old Home.Gym slots are only cleared (no Gym placement: the Gym is the
@@ -531,7 +536,8 @@ local function sortedSlots(map, key)
 end
 
 -- Takes `n` copies of each input key: { equippedIdx = {i = true}, garden = {slot...}, gym = {slot...} } of what must
--- be freed, or nil, reason when the copies are not there.
+-- be freed, or nil, reason when the copies are not there. Equipped and placed copies are separate copies (bug batch 2
+-- #18), so they are counted together against what is left.
 local function planUse(profile, home, inputs)
 	local freeEq, freeGarden, freeGym = {}, {}, {}
 	for _, input in ipairs(inputs) do
@@ -541,14 +547,21 @@ local function planUse(profile, home, inputs)
 			return nil, input.Short
 		end
 		local left = owned - n
-		-- equipped copies beyond what is left are taken off (the last equipped ones first)
 		local eqIdx = {}
 		for i, k in ipairs(type(profile.Equipped) == "table" and profile.Equipped or {}) do
 			if k == key then
 				eqIdx[#eqIdx + 1] = i
 			end
 		end
-		local dropEq = #eqIdx - left
+		local gymSlots = sortedSlots(home.Gym, key)
+		local gardenSlots = sortedSlots(home.Garden, key)
+		-- bug batch 2 #18 (one job at a time): an equipped copy and a placed copy are DIFFERENT copies now, so the copies
+		-- in use beyond what is left leave their jobs together: the placed ones first (Gym, then Garden), then the
+		-- equipped ones (the last equipped first), so the player keeps a follower whenever a copy can stay
+		local placed = #gymSlots + #gardenSlots
+		local over = #eqIdx + placed - left
+		local dropPlaced = math.max(0, math.min(over, placed))
+		local dropEq = over - dropPlaced
 		for j = #eqIdx, 1, -1 do
 			if dropEq <= 0 then
 				break
@@ -556,10 +569,6 @@ local function planUse(profile, home, inputs)
 			freeEq[eqIdx[j]] = true
 			dropEq = dropEq - 1
 		end
-		-- placed copies (Garden + Gym share the copies) beyond what is left leave their slot (Gym first)
-		local gymSlots = sortedSlots(home.Gym, key)
-		local gardenSlots = sortedSlots(home.Garden, key)
-		local dropPlaced = #gymSlots + #gardenSlots - left
 		for _, slot in ipairs(gymSlots) do
 			if dropPlaced <= 0 then
 				break
@@ -1019,12 +1028,15 @@ local function execute(player, plan)
 		warn("[FusionService] fusion rolled back: " .. tostring(err))
 		return false, "The fusion fizzled: nothing was used"
 	end
-	-- the result takes over the places the inputs left, and their evolution / training
-	rebuildEquipped(profile, plan.Freed, resultKey)
+	-- the result takes over the places the inputs left, and their evolution / training. Bug batch 2 #18: one job at a
+	-- time, so a result that follows the player does not also take the freed Garden place (PetService.Refresh would
+	-- otherwise drop the follow, past checkEquippedRule, and could leave the player with no pet)
+	local follows = rebuildEquipped(profile, plan.Freed, resultKey)
 	writeLevel(profile, resultKey, plan.Level)
 	carryGrowth(player, plan, resultKey, before)
 	local def = defOf(resultKey, profile)
-	freeHomeSlots(player, plan.Freed, resultKey)
+	freeHomeSlots(player, plan.Freed, (not follows) and resultKey or nil)
+	plan.LeftGarden = follows and #plan.Freed.Garden > 0 or nil
 	dsCall("MarkDirty", player)
 	return true, resultKey, def, consumed
 end
@@ -1048,10 +1060,12 @@ local function finish(player, plan, resultKey, def, consumed)
 	dsCall("Sync", player)
 	local name = displayName(def, resultKey)
 	local rarity = (type(def) == "table" and def.Rarity) or plan.Rarity
+	-- bug batch 2 #18: say where the garden place went when the result follows instead
+	local tail = plan.LeftGarden and " It follows you, so its garden place is free." or ""
 	if plan.Action == "Mix" then
-		notify(player, "New hybrid: " .. name .. " (" .. tostring(rarity) .. ")!", "good", 4)
+		notify(player, "New hybrid: " .. name .. " (" .. tostring(rarity) .. ")!" .. tail, "good", plan.LeftGarden and 5 or 4)
 	else
-		notify(player, "Fusion complete: " .. name .. "!", "good", 4)
+		notify(player, "Fusion complete: " .. name .. "!" .. tail, "good", plan.LeftGarden and 5 or 4)
 	end
 	reply(player, {
 		Ok = true,

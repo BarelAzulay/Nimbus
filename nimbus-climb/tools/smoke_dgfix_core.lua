@@ -2,7 +2,8 @@
 -- shared/BattleSim.lua + shared/BattleCatalog.lua), loaded by tools/smoke.py in the SERVER world as pure scenarios.
 --   dgfixcore_auto      a player's fighter AUTO-ATTACKS in Duel (both PvP fighters), Ring, Raid and Dungeon; it never
 --                       moves the unit; no swing while Stunned / Casting / Dashing; the NPC AI is unchanged
---   dgfixcore_direct    ATTACK directs: Attack(id) locks, Attack() locks the nearest and cycles on repeated presses; a far
+--   dgfixcore_direct    ATTACK directs: Attack(id) locks, Attack() locks the nearest and KEEPS it on repeated presses
+--                       (bug #16: no cycle; the engage rule is held off here, smoke_fight.lua pins it); a far
 --                       lock is accepted with "OutOfReach" (the pet hits the nearest in reach meanwhile); the Order echo
 --                       only when the lock changes; refusals (BadTarget / NoTarget / Down)
 --   dgfixcore_arrive    enemies spawned after the start (SpawnEnemies waves, AddTeam, raid minions) arrive for
@@ -254,6 +255,8 @@ S.dgfixcore_direct = guarded("dgfixcore_direct", function()
 	local tm = b.teams[1]
 	local f = tm.fighter
 	putFighter(tm, 0, 0)
+	-- white-box: FOLLOW only (the pet stays put; the engage rule of bug #22 is pinned by smoke_fight.lua)
+	tm.disengagedAt = huge
 	local okN, whyN = b:Command(1, "Attack")
 	T.check(okN == false and whyN == "NoTarget", "Attack() with no enemy on the floor -> NoTarget", tostring(whyN))
 	b:SpawnEnemies({ pet("biscuit_bear", 20), pet("biscuit_bear", 20), pet("biscuit_bear", 20) }, { Wave = 1, Anchor = { 0, 10 } })
@@ -266,13 +269,13 @@ S.dgfixcore_direct = guarded("dgfixcore_direct", function()
 		e.maxHp, e.hp = 1e9, 1e9
 		put(e, 0, 2 + 4 * i) -- e1 at 6 (in reach of a 4.5-range tabby + slack), e2 at 10, e3 at 14
 	end
-	-- Attack(): the nearest; repeated presses cycle by distance and wrap
+	-- Attack(): the nearest; repeated presses KEEP the live lock (bug #16: the old cycle walked the pet off its enemy)
 	local ok1, id1 = b:Command(1, "Attack")
 	local ok2, id2 = b:Command(1, "Attack")
 	local ok3, id3 = b:Command(1, "Attack")
 	local ok4, id4 = b:Command(1, "Attack")
-	T.check(ok1 and id1 == list[1].id and ok2 and id2 == list[2].id and ok3 and id3 == list[3].id and ok4 and id4 == list[1].id and tm.lock == list[1],
-		"Attack() locks the nearest; each further press cycles to the next nearest and wraps", fmt("%s %s %s %s", tostring(id1), tostring(id2), tostring(id3), tostring(id4)))
+	T.check(ok1 and id1 == list[1].id and ok2 and id2 == list[1].id and ok3 and id3 == list[1].id and ok4 and id4 == list[1].id and tm.lock == list[1],
+		"Attack() locks the nearest; further presses keep that live lock (no cycle)", fmt("%s %s %s %s", tostring(id1), tostring(id2), tostring(id3), tostring(id4)))
 	-- Attack(id): a lock; far = accepted with OutOfReach, and the pet keeps hitting what IS in reach meanwhile
 	local okF, idF, extraF = b:Command(1, "Attack", list[3].id)
 	f.nextAttack = 0
@@ -305,7 +308,9 @@ S.dgfixcore_direct = guarded("dgfixcore_direct", function()
 	local okB, whyB = b:Command(1, "Attack", f.id)
 	local okJ, whyJ = b:Command(1, "Attack", 0.5)
 	T.check(okB == false and whyB == "BadTarget" and okJ == false and whyJ == "BadTarget", "Attack on an ally / a junk id -> BadTarget")
-	-- the lock dies -> it clears, the next Attack() picks the nearest again
+	-- the lock dies -> it clears, the next Attack() picks the nearest again (the presses above left list[1] locked: Attack()
+	-- keeps a live lock now, bug #16; lock list[2] by id)
+	b:Command(1, "Attack", list[2].id)
 	list[2].hp = 1
 	list[2].maxHp = 100
 	list[2].defense = 0

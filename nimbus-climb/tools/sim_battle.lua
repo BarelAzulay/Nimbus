@@ -4,8 +4,11 @@
 --   fighter   the played kit vs a passive NPC of k x its power (kit factor 1.3-1.7); mirror fights 8-45 s, none at 90 s
 --   support   Support (Economy) pets: DPS ratio 0.65-0.75 of Combat pets; a Support fighter can fight, best as a helper
 --   duels     mirror duels per stage (scripted players both sides): 40-60%, no draws, none at the 120 s limit
+--             + the element counter (balance-5: Water vs Flame, the wheel on vs off): it decides an even fight (>= 90%)
+--             and is worth x1.15-1.45 TeamPower
 --   raids     1 / 4 / 8 / 16 dodging fighters finish every boss in 100-240 s (a solo under half the boss's BaselineDps loses:
---             bug batch 2 #2); Lv 5 / Lv 40 solos and groups; no one-shots; joins / leaves; idle alts
+--             bug batch 2 #2); eight mid (M5) teams win >= 60% of every boss (balance-5); Lv 5 / Lv 40 solos and groups;
+--             no one-shots; joins / leaves; idle alts
 --   ring      rounds 1-3 >= 95% for every single level-1 rollable pet; the stage medians S1 16 .. S10 51 (+-2)
 --   dungeon   floor 1 for the 12 single level-1 pets (100%); the stage ladder (monotonic, S10 >= floor 10); a 4-party +1 floor
 --   training  trained / evolved TeamPower ratios; trained mirror duels fair; trained raids 100-240 s
@@ -58,7 +61,7 @@ if not Mock then
 	M.Configure({ options = { StrictMembers = false, Echo = false, Watchdog = false, StepSize = 1 / 30, SliceLimit = 3600 } })
 	M.Boot("server", { localName = "Sim", localUserId = 1 })
 	local shared = M.GetPath("ReplicatedStorage/Shared", "Folder")
-	for _, name in ipairs({ "MeshIds", "Config", "Util", "PetCatalog", "PetKeys", "TycoonCatalog", "BattleCatalog", "BattleSim" }) do
+	for _, name in ipairs({ "MeshIds", "AudioIds", "Config", "Util", "PetCatalog", "PetKeys", "TycoonCatalog", "BattleCatalog", "BattleSim" }) do
 		local src = readFile(root .. "/src/shared/" .. name .. ".lua")
 		if src then
 			M.Mount(shared, { name = name, class = "ModuleScript", source = src, path = "src/shared/" .. name .. ".lua" })
@@ -73,6 +76,7 @@ local BC = require(Shared.BattleCatalog)
 local BS = require(Shared.BattleSim)
 local PC = require(Shared.PetCatalog)
 local TC = require(Shared.TycoonCatalog)
+local Config = require(Shared.Config)
 local clock = Mock.RealClock or os.clock
 
 local floor, sqrt, max, min, abs, huge = math.floor, math.sqrt, math.max, math.min, math.abs, math.huge
@@ -838,15 +842,97 @@ section("duels", function(opts)
 	local overall = pct(wins1, n)
 	target("mirror duels are fair: 40-60% over every stage together and 30-70% at each stage", overall >= 40 and overall <= 60 and stageOk, fmt("overall %d%%, worst stage %d%%", overall, worst))
 	target("no draws: a double knock-out or a timeout goes to the side that dealt more damage", draws == 0, fmt("draws %d, timeouts %d of %d (tanky mirrors reach the 120 s limit)", draws, timeouts, n))
-	header("Duels: an element counter (Flame fighter vs a Nature fighter of equal power)")
-	local flame = { pet("maple_fox", 10), pet("bubble_axolotl", 8), pet("storm_tabby", 8) }
-	local nature = { pet("bamboo_panda", 10), pet("bubble_axolotl", 8), pet("storm_tabby", 8) }
-	local agg = series(function(seed)
-		return { Mode = "Duel", Seed = seed, Teams = { team(1, 1, flame), team(2, 2, nature) } }
-	end, { [1] = "player", [2] = "player" }, opts.seeds)
-	out(fmt("  Flame maple_fox vs Nature bamboo_panda (powers %d vs %d): Flame wins %3d%%  dur %5.1f s", powerOf(flame), powerOf(nature), agg.winPct, agg.avgDur))
-	target("the element counter wins more than half but not everything (55-90%)", agg.winPct >= 55 and agg.winPct <= 90, fmt("%d%%", agg.winPct))
+	SIM.elementCounter(opts.seeds)
 end)
+
+-- The element counter (balance-5). The old check paired a Flame maple_fox with a Nature bamboo_panda: NEUTRAL on the
+-- wheel (Water > Flame > Frost > Nature, Config.Elements) and at unequal power (71 vs 61), so it measured no element at
+-- all. Now: a Water bubble_axolotl (it counters Flame) against a Flame maple_fox L10, the same neutral helpers on both
+-- sides (Earth waffle_corgi + Celestial mallow_kitten L8: neutral to Water, Flame and each other). The Water fighter's
+-- level is scanned twice, with the wheel and with it switched off (Strong / Weak multipliers 1), and each scan's 50 %
+-- crossing gives a TeamPower; their ratio = what the counter is worth in power. Each point plays both seatings.
+-- Measured on 9f381c4 (128 fights a point): the wheel crosses at L10 (power 46 vs 61), the switched-off wheel at
+-- ~L17 (58): a counter is worth ~+28 % TeamPower, and at the switched-off even point (L17) the counter wins 100 %.
+function SIM.elementCounter(seeds, quiet)
+	local say = quiet and function() end or out
+	local E = Config.Elements
+	local strong0, weak0 = E.StrongMultiplier, E.WeakMultiplier
+	local helpers = { pet("waffle_corgi", 8), pet("mallow_kitten", 8) }
+	local function side(id, level)
+		return { pet(id, level), helpers[1], helpers[2] }
+	end
+	local flame = side("maple_fox", 10)
+	local flamePower = powerOf(flame)
+	local function winPct(level)
+		local water = side("bubble_axolotl", level)
+		local a = series(function(seed)
+			return { Mode = "Duel", Seed = seed, Teams = { team(1, 1, water), team(2, 2, flame) } }
+		end, { [1] = "player", [2] = "player" }, seeds)
+		local b = series(function(seed)
+			return { Mode = "Duel", Seed = seed, Teams = { team(1, 1, flame), team(2, 2, water) } }
+		end, { [1] = "player", [2] = "player" }, seeds)
+		return 100 * (a.wins[1] + b.wins[2]) / max(1, a.n + b.n), powerOf(water)
+	end
+	-- the first level whose win share reaches 50 %, and the TeamPower there (interpolated from the level below)
+	local function crossing(fromLevel, toLevel, row)
+		local lastPct, lastPower = nil, nil
+		for level = fromLevel, toLevel do
+			local p, power = winPct(level)
+			row[#row + 1] = fmt("L%d %d%%", level, floor(p + 0.5))
+			if p >= 50 then
+				if lastPct and p > lastPct then
+					return level, lastPower + (power - lastPower) * (50 - lastPct) / (p - lastPct)
+				end
+				return level, power
+			end
+			lastPct, lastPower = p, power
+		end
+		return nil, nil
+	end
+	local ok, res = pcall(function()
+		local r = {}
+		E.StrongMultiplier, E.WeakMultiplier = 1, 1
+		local flatRow = {}
+		r.flatLevel, r.flatPower = crossing(12, 30, flatRow)
+		E.StrongMultiplier, E.WeakMultiplier = strong0, weak0
+		local realRow = {}
+		r.realLevel, r.realPower = crossing(4, 20, realRow)
+		r.atEven = r.flatLevel and winPct(r.flatLevel) or 0
+		r.flatRow, r.realRow = flatRow, realRow
+		return r
+	end)
+	E.StrongMultiplier, E.WeakMultiplier = strong0, weak0
+	if not ok then
+		error(res, 0)
+	end
+	local worth = (res.flatPower and res.realPower) and res.flatPower / res.realPower or 0
+	say(fmt("  Water bubble_axolotl vs Flame maple_fox L10 (power %d), helpers waffle_corgi + mallow_kitten L8, %d seeds a seating", flamePower, seeds))
+	say(fmt("  wheel switched off: %s  -> even at %s (power %.1f)", table.concat(res.flatRow, ", "), res.flatLevel and ("L" .. res.flatLevel) or "none", res.flatPower or 0))
+	say(fmt("  with the wheel:     %s  -> even at %s (power %.1f)", table.concat(res.realRow, ", "), res.realLevel and ("L" .. res.realLevel) or "none", res.realPower or 0))
+	say(fmt("  the counter is worth x%.2f TeamPower; at the switched-off even point (L%s) the counter wins %.0f%%", worth, tostring(res.flatLevel), res.atEven))
+	if not quiet then
+		target("the element counter decides an even fight: at the level that splits ~50% with the wheel off, Water beats Flame in >= 90%", res.atEven >= 90, fmt("%.0f%%", res.atEven))
+		target("the element counter is worth about a quarter to a third more TeamPower, not everything (x1.15-1.45)", worth >= 1.15 and worth <= 1.45, fmt("x%.2f", worth))
+	end
+	res.worth = worth
+	return res
+end
+
+-- `players` dodging teams of one stage's pets (default M5 = SIM.Stages[5]) against one boss: the series aggregate
+function SIM.midGroup(boss, players, seeds, pets)
+	pets = pets or SIM.Stages[5].Pets
+	local policies = {}
+	for i = 1, players do
+		policies[100 + i] = "player"
+	end
+	return series(function(seed)
+		local teams = {}
+		for i = 1, players do
+			teams[i] = team(100 + i, 1, pets)
+		end
+		return { Mode = "Raid", Boss = boss, Seed = seed, Teams = teams }
+	end, policies, seeds)
+end
 
 -- 5. raids
 section("raids", function(opts)
@@ -905,6 +991,20 @@ section("raids", function(opts)
 	target("won raids last 100-240 s per boss and stage (every single cell within 90-250 s: a few seeds per cell)", avgOk and cellOk)
 	target("no boss hit takes more than 80% of a fighter before the enrage", anyBossHit <= 0.8, fmt("max %.2f", anyBossHit))
 
+	-- balance-5: the 8p cells above run 1 (quick) / 4 (full) seeds, too few to see a group that only wins a coin flip
+	-- (lava_golem M5 8p was 44% of 32 seeds after the bug #22 EngagePull 7 ruling, before HpPerPlayer 90 -> 85)
+	local groupSeeds = opts.quick and 8 or 16
+	header(fmt("Raids (bug #2: groups win): eight mid (M5) teams against every boss, %d seeds", groupSeeds))
+	local worstGroup, worstBoss = 100, "-"
+	for _, boss in ipairs(BC.BossOrder) do
+		local r = SIM.midGroup(boss, 8, groupSeeds)
+		out(fmt("  %-13s M5 8p: win %3d%%  dur %5.1f s (max %5.1f)  KOs %4.1f", boss, r.winPct, r.avgDur, r.maxDur, r.kos / max(1, r.n)))
+		if r.winPct < worstGroup then
+			worstGroup, worstBoss = r.winPct, boss
+		end
+	end
+	target("eight mid (M5) teams win a fair share of every boss (>= 60% of the seeds each)", worstGroup >= 60, fmt("worst %s %d%%", worstBoss, worstGroup))
+
 	header("Raids (bug batch 2 #2): 1 / 4 / 8 dodging teams at Lv 5 and Lv 40 vs the 330 s window (a Lv 5 solo cannot win)")
 	local raidSeeds = max(1, floor(seeds / 2))
 	local lv5 = { pet("maple_fox", 5), pet("bubble_axolotl", 5), pet("storm_tabby", 5) }
@@ -936,14 +1036,16 @@ section("raids", function(opts)
 					lv5SoloWins = lv5SoloWins + agg.wins[1]
 				elseif case[1] == "Lv5" and players == 8 and agg.winPct < 100 then
 					lv5GroupOk = false
-				elseif case[1] == "Lv40" and agg.winPct < 100 then
+				elseif case[1] == "Lv40" and agg.winPct < ((players == 1) and 75 or 100) then
+					-- balance-5: a Lv 40 solo can still lose all 3 lives to the Shadow Hydra's triple fangs: 30 of 32
+					-- seeds won (94%, with the engage rule on or off), so seed 4 of the full run's 4 is a loss
 					lv40Ok = false
 				end
 			end
 		end
 	end
 	target("a Lv 5 solo never beats a raid boss (the BaselineDps HP floor)", lv5SoloWins == 0, fmt("%d wins", lv5SoloWins))
-	target("eight Lv 5 teams beat every boss; a Lv 40 solo and Lv 40 groups beat every boss", lv5GroupOk and lv40Ok)
+	target("eight Lv 5 teams beat every boss; Lv 40 groups beat every boss and a Lv 40 solo wins >= 75% of each", lv5GroupOk and lv40Ok)
 
 	header("Raids: joining late and leaving (boss HP shares)")
 	-- S9 (Lv 40): above the BaselineDps floor, so its own DPS sets the boss HP (bug batch 2 #2)

@@ -1424,10 +1424,18 @@ local function newBattle(X, nia)
 	local Config = config()
 	local DataS, Ty, TC, BC, PC = X.DataS, X.Ty, X.TC, X.BC, X.PC
 	local petId = WEAK[1]
-	-- /petlevel 20 (the owner's developer command) + EVOLVE: stage 1 multiplies the LEVEL bonus by 1.5 (3.1)
+	-- /petlevel 20 (the owner's developer command) + EVOLVE: stage 1 multiplies the LEVEL bonus by 1.5 (3.1). Bug batch 2
+	-- #18: her pet works on bed 1 (busy gardening, not following): the "Remote recall" takes it out and equips it in one
+	-- request, and after the level it goes back to its bed (and stops following)
+	Mock.FromClient(Kit.remote("HomeAction"), nia, "GardenRecall", { Key = petId, To = "Equip" })
+	advance(0.6)
+	T.check(home(nia).Garden[1] == nil and listHas(DataS.GetProfile(nia).Equipped, petId), "p5 flow new: GardenRecall takes her pet off bed 1 and equips it in one request (bug batch 2 #18)")
 	chat(nia, "/petlevel 20")
 	local lv20 = DataS.GetPetLevel(nia, petId)
 	T.eq(lv20, 20, "p5 flow new: '/petlevel 20' sets her equipped pet to level 20")
+	Mock.FromClient(Kit.remote("HomeAction"), nia, "GardenSet", { 1, petId })
+	advance(0.5)
+	T.check(home(nia).Garden[1] == petId and not listHas(DataS.GetProfile(nia).Equipped, petId), "p5 flow new: ...back on bed 1 it stops following (one job at a time)")
 	advance(1.2)
 	local inc0 = Ty.IncomePerSecond(nia)
 	local mark = K.logSize()
@@ -1464,10 +1472,17 @@ local function newBattle(X, nia)
 	T.check(#DataS.GetTeams(nia).Presets[1] ~= 4 and toasted(nia, "Teams have 3 pets", mark), "p5 flow new: a 4-pet team is refused ('Teams have 3 pets: a fighter and two helpers')",
 		table.concat(toasts(nia, nil, mark), " | "))
 	advance(1.2)
+	-- bug batch 2 #18: her garden pet is busy gardening: a team with it is refused ("gardening")
+	mark = K.logSize()
 	Mock.FromClient(Kit.remote("BattleRequest"), nia, "TeamSet", 1, { STRONG[1], petId, WEAK[2] })
 	advance(0.6)
+	T.check(#DataS.GetTeams(nia).Presets[1] == 0 and toasted(nia, "gardening", mark), "p5 flow new: her garden pet cannot join the team ('gardening', bug batch 2 #18)",
+		table.concat(toasts(nia, nil, mark), " | "))
+	advance(1.2)
+	Mock.FromClient(Kit.remote("BattleRequest"), nia, "TeamSet", 1, { STRONG[1], WEAK[2], WEAK[3] })
+	advance(0.6)
 	local team = DataS.GetTeams(nia)
-	T.check(team.Slots == 3 and listText(team.Presets[1]) == listText({ STRONG[1], petId, WEAK[2] }), "p5 flow new: she saves her team of 3 (fighter " .. STRONG[1] .. " + two helpers)", listText(team.Presets[1]))
+	T.check(team.Slots == 3 and listText(team.Presets[1]) == listText({ STRONG[1], WEAK[2], WEAK[3] }), "p5 flow new: she saves her team of 3 (fighter " .. STRONG[1] .. " + two helpers)", listText(team.Presets[1]))
 	waitStep(nia, "dungeon", 3)
 	T.eq(stepOf(nia), "dungeon", "p5 flow new: the team completes 'team' -> 'dungeon'")
 	local dinfo = Kit.dinfo()
@@ -2323,7 +2338,8 @@ local function mergeTwoServers(X, gus, ecos, combats)
 			d.Runs = d.Runs + 1
 		end)
 		B.SetSetting(gus, "Music", 2)
-		local okT = B.SetTeam(gus, 1, { combats[1], combats[2], ecos[1] })
+		-- (bug batch 2 #18: his eco pets all work in the Garden, so the team is three Combat pets)
+		local okT = B.SetTeam(gus, 1, { combats[1], combats[2], combats[3] })
 		T.check(okB and firstB and okT and B.Save(gus) == true, "p5 flow merge: server B clears floor 4 first, adds 100 berries, sets Music 2 and a team, and saves")
 		-- A (this server, live): +50 berries, the SAME first clear before it read B's save, Music 9
 		DataS.AddBerries(gus, 50)
@@ -2385,6 +2401,19 @@ local function mergeRollout(X, gus, combats, ecos)
 		T.check(DataS.GetBerries(gus) == keep.Berries and dungeonText(DataS.GetDungeon(gus)) == keep.Dungeon and DataS.GetSettings(gus).Music == keep.Music and DataS.GetTokens(gus) == keep.Tokens + 6,
 			"p5 flow merge: nothing lost: berries, Dungeon, Settings kept; the tokens of both servers land once")
 		T.check(#DataS.GetTeams(gus).Presets[1] == 3 and DataS.GetProfile(gus).Pets[ecos[1]] ~= nil, "p5 flow merge: the old server's 4-key team reads as 3 keys; the 4th pet stays owned")
+		-- bug batch 2 #18 rollout: the Phase 4 server put a GARDEN pet (ecos[1]) in the team; this server never lets it
+		-- fight (the garden placement wins the merge, the pet keeps working in the Garden)
+		local teamA = DataS.GetTeams(gus).Presets[1]
+		local inTeam = false
+		for _, k in ipairs(teamA) do
+			inTeam = inTeam or k == ecos[1]
+		end
+		local gHome = DataS.GetHome(gus) or {}
+		local inGarden = false
+		for _, k in pairs(gHome.Garden or {}) do
+			inGarden = inGarden or k == ecos[1]
+		end
+		T.check(not inTeam and inGarden, "p5 flow merge: (bug batch 2 #18) the garden pet the old server teamed up stays in the Garden and out of the team", listText(teamA))
 		T.check(DataS.GetFood(gus, "Snack") == 1 and DataS.GetBerries(gus) == keep.Berries, "p5 flow merge: the old server's Snack stays Food (no second conversion, no free berries)")
 	end)
 	T.check(release() == true, "p5 flow merge: the Phase 4 module's hooks are dropped with it")

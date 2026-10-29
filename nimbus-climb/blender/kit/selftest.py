@@ -11,6 +11,8 @@ Checks
               translucent closure rule of build_all.check_geometry, the hybrid ear variants (hyb_dog_ears /
               hyb_bear_ears) are picked by PetBuilder for earless bodies (a LEAD REQUEST check until runtime-pets
               adds it)
+  prop hooks  every catalog prop entry names a builder registered by kit/props/*.py ("<class>: hook <name> missing")
+  vfx         the pet attack VFX cores (catalog vfx): one white Neon part Core per key, args.size, manifest up to date
   manifests   every src/shared/MeshManifests/*.lua loads in Lua and follows the name contract (recipe 4.3): Body parts
               are palette keys (+Light / Dark), group parts start with their group name, MK keys present, Fixed
               parts bake no referenced key (tools/mesh_names.py), recipes use known ops; blender/meshes.json lists
@@ -206,6 +208,56 @@ def test_wave25():
           "(PetBuilder.lua MESH.makePlan ~:6991, see the fix-kit wave 2.5 report)", ears)
 
 
+def test_prop_hooks():
+    """every prop entry of every catalog names a builder that kit/props/*.py registers"""
+    import build_all
+    import props
+    reg = props.load_all()
+    for cls, cat in build_all.load_catalogs().items():
+        for name in sorted({e["prop"] for e in cat.get("keys", []) if e.get("type") == "prop"}):
+            check(name in reg, "%s: hook %s %s" % (cls, name, "registered" if name in reg else "missing"))
+
+
+def test_vfx(br):
+    """pet attack VFX cores (catalog vfx): ONE white Neon MeshPart `Core` per key, the design size of args.size
+    (per axis, 'max' = the largest axis; +-1 voxel or 4%), and the committed manifest = a fresh build"""
+    import build_all
+    import props
+    from bridge import lua2py
+    from nvox.manifest import hashes
+    cats = build_all.load_catalogs()
+    cat = cats.get("vfx")
+    check(cat is not None, "vfx: catalog blender/catalog/vfx.json")
+    if cat is None:
+        return
+    hooked = "vfx_cores" in props.load_all()
+    b = build_all.Builder(export=False, verbose=False)
+    for e in cat["keys"]:
+        key = e["key"]
+        f = os.path.join(REPO, "src/shared/MeshManifests/%s.lua" % key)
+        if not os.path.exists(f):
+            check(False, "vfx: %s manifest built" % key, "no src/shared/MeshManifests/%s.lua" % key)
+            continue
+        t = lua2py(lua_table(br.rt, f))
+        parts = t.get("Parts") or []
+        p = parts[0] if parts else {}
+        check(len(parts) == 1 and p.get("Name") == "Core" and p.get("Color") == ["rgb", 255, 255, 255]
+              and p.get("Material") == "Neon", "vfx: %s is one white Neon part Core" % key,
+              [(q.get("Name"), q.get("Color"), q.get("Material")) for q in parts])
+        size = t["Bounds"]["Size"]
+        vs = float(t.get("VoxelStuds") or 0.1)
+        bad = []
+        for axis, want in (e.get("args") or {}).get("size", {}).items():
+            got = max(size) if axis == "max" else size["xyz".index(axis)]
+            if abs(got - want) > max(vs * 1.01, 0.04 * want):
+                bad.append("%s %.3f != %s" % (axis, got, want))
+        check(not bad, "vfx: %s size %s" % (key, "x".join("%.2f" % s for s in size)), bad)
+        if hooked:
+            entry = dict(e, _class="vfx")
+            h = hashes(b.build(entry, build_all.resolve_budget(cat, entry)))[0]
+            check(h == t.get("ContentHash"), "vfx: %s committed manifest = a fresh build" % key, (t.get("ContentHash"), h))
+
+
 def main():
     t0 = time.time()
     from bridge import Bridge
@@ -214,6 +266,8 @@ def main():
     test_recipes(br)
     test_determinism(br)
     test_wave25()
+    test_prop_hooks()
+    test_vfx(br)
     test_manifests(br)
     fails = [r for r in RESULTS if not r[0]]
     print("selftest: %d checks, %d failed, %.1fs" % (len(RESULTS), len(fails), time.time() - t0))

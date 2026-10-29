@@ -432,13 +432,17 @@ local function clientScenarios()
 			local b = btn(id)
 			return b and b.AbsolutePosition or Vector2.new(-1, -1)
 		end
-		local a, b2, c = at("Pets"), at("Inventory"), at("Team")
-		T.check(math.abs(a.Y - b2.Y) < 1 and b2.X > a.X and math.abs(c.X - a.X) < 1 and c.Y > a.Y
-			and math.abs(at("Index").Y - c.Y) < 1 and at("Shop").Y > c.Y and math.abs(at("Spot").Y - at("Shop").Y) < 1,
-			"p5tiles: a 2 x 3 grid (Pets | Items, Team | Index, Shop | Home)")
-		T.check(at("Stats").Y > at("Shop").Y and math.abs(at("Settings").Y - at("Stats").Y) < 1, "p5tiles: the small row (Stats, Settings) under the grid")
+		-- bug batch 2 #1 (option A): ONE slim column, top to bottom Pets, Items, Team, Index, Shop, Home, Stats, gear
+		local order = { "Pets", "Inventory", "Team", "Index", "Shop", "Spot", "Stats", "Settings" }
+		local oneColumn = true
+		for i = 2, #order do
+			local p, q = at(order[i - 1]), at(order[i])
+			oneColumn = oneColumn and math.abs(q.X - p.X) < 1 and q.Y > p.Y + 40
+		end
+		T.check(oneColumn, "p5tiles: one column (Pets, Items, Team, Index, Shop, Home, Stats, Settings) top to bottom")
 		local pets = btn("Pets")
-		T.check(pets and math.abs(pets.AbsoluteSize.X - 84) <= 2, "p5tiles: tiles are 84 px on a 1080p screen", pets and tostring(pets.AbsoluteSize) or "")
+		T.check(pets and math.abs(pets.AbsoluteSize.X - 56) <= 2 and math.abs(btn("Settings").AbsoluteSize.X - 56) <= 2,
+			"p5tiles: tiles are 56 px on a 1080p screen (the gear too)", pets and tostring(pets.AbsoluteSize) or "")
 		local label = pets and pets:FindFirstChild("Label", true)
 		T.check(label and label.Text == "Pets", "p5tiles: ...with their labels")
 		-- every window docked by the window rule, no backdrop

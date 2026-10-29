@@ -19,8 +19,10 @@
 --                                     Speed = { Walk, Run }, Dungeon, Threat, Cue ("Dash" | nil), InterpDelay, TeamPlace,
 --                                     Round, Best, Next, ... } | nil
 --   BattleController.GetUnit(id) -> { Id, Side, Kind, Name, Hp, MaxHp, State, Meter, Model, X, Z, World, Card, Level,
---                                     Evo, Xp, XpNext, Crowned, Writes, Benched, Windup, Drawn (the drawn root position) }
---   BattleController.GetStats() / ResetStats() / IsHudVisible() / ScreenPick(x, y) / GetTelegraphs()   (as Phase 3)
+--                                     Evo, Xp, XpNext, Crowned, Writes, Benched, Windup, Drawn (the drawn root position),
+--                                     Pose, PoseP (the battle pose drawn: a PetPoses name | nil, its p) }
+--   BattleController.GetStats() / ResetStats() / IsHudVisible() / ScreenPick(x, y) / GetTelegraphs()   (as Phase 3;
+--                                     GetStats().AttackFx = AttackFx.Stats() once the pet attack VFX are loaded)
 --
 -- Messages (BattleState(kind, payload, battleId), sent by BattleService)
 --   "Start"    battle:Describe() + Zone + Names + Side (0 = spectator) + Spectator + T + Ring / Dungeon (= the encounter's
@@ -41,6 +43,34 @@
 --     parts welded to the anchored root once per build (a pose is one root CFrame write); raid boss poses; telegraphs
 --     that fill until the dodge deadline then flash; hit flashes, pooled world damage numbers (never screen-centre),
 --     KO poofs, special VFX; a PetCard above every pet unit (Phase 4, with the fighter's lives pips *).
+--   * Pet attack VFX (docs/superpowers/specs/2026-10-23-pet-attack-vfx-design.md, section "Atk"): every Hit / Special /
+--     Element / KO / Buff / Swap event and the winners' cheer play client/Controllers/AttackFx FIRST; the cube Fx.* of
+--     each handler is the fallback when AttackFx.Play returns false (Low budget, a missing texture, an error). They play
+--     when the event ARRIVES with DueAt = the time it plays on the render clock (the INTERP_DELAY lead is the charge
+--     beat; the impact lands with the damage number; a ranged pet's shot keeps AttackFx's MinTravel of flight, so when
+--     the lead is short its Hit, and the victim's later Hit / KO and the End, play up to FX_LATE_MAX later: Net.Hold /
+--     Net.Queue, player note 1). AttackFx's poses (PetBuilder.Animate opts.Pose + the body offset
+--     PetBuilder.PoseBody x the build scale on the root write) replace the old lunge / recoil, the wind-up crouch (now
+--     PetPoses' Windup held while the snapshot says Winding) and the hurt nudge for the units it drives; between attacks
+--     those units breathe and glance (PetPoses IdleBattle, out of step per unit; not on Low, not while my fighter moves
+--     under my input; posed every other frame like a strided pet); a KO'd pet tumbles and lies (KO_PARK_FX) before it
+--     is parked (its Ko plays on arrival: only a pet drawn down and up again, or a KO no snapshot confirms within
+--     KO_CONFIRM, drops it). The sim's End starts no new
+--     effect and lets the live ones finish for FX_END_GRACE (1 s: the killing blow lands), then AttackFx.ClearAll (the
+--     winners' Victory waits for it); a Leave ends the leavers' own effects at once (AttackFx.Cancel), every teardown
+--     clears at once. Camera punch -> Me.Shake (own pets),
+--     the Secret screen-edge glow / a signature's dim -> Me.ScreenFx. GraphicsQuality drives AttackFx.SetQuality.
+--   * (Task 11b, the Special pre-charge, player option C; no server change) MY SPECIAL press predicts its charge at once
+--     when my view says it can go (Atk.PreCharge -> AttackFx.Precharge: glow + motes, rim, inhale, Cast pose); its Special
+--     event takes it over (backdated to the press, the impact still on its DueAt); a rejected Order or PRESS_WAIT (0.7 s)
+--     without the event shatters it (shards, Recoil, SoundFx "Shatter"). Every other Special (bots, NPCs, allies, enemies,
+--     my pet with no press) gets its charge back: its impact lands up to LATE_MAX (0.35 s) after its event, and that
+--     special's own hits / Storm ticks due before the impact, the KOs they cause (Net.SpecialHold) and their units' drawn
+--     HP (Units.Hold) wait for it; a caster KO'd in its own late charge falls LAST_GASP after its impact. Other hits play
+--     on time; the End is not held. The inhale = SoundFx "Inhale" (Me.Inhale), its pitch rising to the release.
+--   * Music (client/SoundFx layers): my fight sets the "Battle" layer (Net.Music: at Start, End and Cleanup; a won
+--     Champion Ring round keeps it until the next round; a dungeon room keeps the Dungeon track, its boss room plays
+--     Battle); a won fight's result plays SoundFx "Reward" with the winners' cheer.
 --   * The player's CHARACTER is the fighter's body (B1): my fighter (High) is drawn at the shoulder offset (1.8, 0.5,
 --     0.6) of the SERVER fighter position, blended toward the character root while the two are within 2 studs and
 --     following the server position beyond (lerp 0.35 per 60 Hz frame), so what looks in reach is in reach. My two
@@ -49,6 +79,14 @@
 --   * Enemies wind up visibly: Winding plays a crouch + a brief yellow Highlight (the dash cue), their list row flashes
 --     "!"; "DODGED!" (cyan) on Hit.miss; buff names float above the fighter in the buff's colour; element attacks draw
 --     their cone / circle / line; camera shakes x ClientSettings.Get("Shake") (Humanoid.CameraOffset, tiny, rare).
+--   * Wave 5 dungeon camera (bugs #15 / #26): the shake rides on the resting CameraOffset (DungeonController's dungeon
+--     shoulder) and gives it back; in a dungeon every hit on my fighter shakes lightly (HIT_SHAKE_LIGHT) and an AttackFx
+--     punch >= PUNCH_BIG also punches the FOV (MovementController.FovPunch, FOV_PUNCH 6 degrees x min(1, amount / 0.4));
+--     the Shake setting turns off only the shakes (player ruling 2026-10-28: the FOV punch plays regardless). A cleared
+--     dungeon room's floor goes after DUNGEON_LINGER 1 s; BattleController.FighterDrawn(userId) says whether a player's
+--     dungeon fighter is still drawn (a lost room's KO'd models linger; the followers wait for it); my fighter's first
+--     drawn spot is its follower's (PetController), and BattleController.LastDrawn(userId) -> pos, key tells
+--     PetController where each player's fighter was drawn last (the followers walk back from there).
 --
 -- * The battle HUD (only while the local player fights; ScreenGui "NimbusBattle", designed in 1080p px under one
 --   UIScale of Theme.ScreenFactor(), NeonKit cards, fonts via Theme roles, nothing in the screen centre):
@@ -84,14 +122,20 @@
 --   no hold repeat, no predicted swing (lunges from the server's Hits); the gold arrow shows the enemy the pet attacks
 --   (the lock, else its snapshot target, see-through); Dash events draw the pet's dash (mine on arrival); ELEMENT's E
 --   passes to a shown ProximityPrompt; MouseLock.Hold / Release ("BattleResult", "BattleLeave") via a pcall'd require.
+-- * Bugs #16 / #22 (wave 5): a tap of F / X / ATTACK = Attack() at once (the server KEEPS a live lock in EngageRange:
+--   no re-target); HOLD it ATTACK_HOLD (0.4 s) = the next target (Input.CycleTarget -> Target(id), Tab / RT's path; the
+--   caption flashes NEXT for NEXT_FLASH); a world click stays one Attack(pick) (holding the mouse never cycles). The
+--   server's engage rule walks my pet off to fight while I stand: the shoulder offset fades with the blend share (an
+--   engaged pet is drawn where the server has it) and its Engage { on = true } plays the arrival hop.
 -- Keys (ContextActionService, High priority, sunk, bound ONLY while fighting and inert before UiGate.HasPlayed()):
--- F / X attack (pick the target), E / Y element (E passes while a prompt is shown), Q / RB special, Tab / T / RT / LT
+-- F / X attack (hold = the next target), E / Y element (E passes while a prompt is shown), Q / RB special, Tab / T / RT / LT
 -- lock, 1 / 2 (LB / D-up) buff (hold = swap), D-left / D-right swap; the item hotbar keeps 1-4 outside battles.
 --
 -- Cost: one RenderStepped connection, alive only while a battle is drawn or effects play. Per frame: one root CFrame
 -- write per pet + PetBuilder.Animate per visible pet (strided for far / crowded ones; a strided frame moves the
 -- animated parts with the root in one BulkMoveTo), one BossBuilder.Animate, the pooled
--- effects, HUD writes only when a shown value changes, the rings at 10 Hz. GetStats() reports the measured ms.
+-- effects (+ AttackFx.Update(now): AttackFx has no frame loop of its own), HUD writes only when a shown value
+-- changes, the rings at 10 Hz. GetStats() reports the measured ms.
 -- Plain Lua 5.1-compatible syntax only. Every font comes from a Theme role. No asset ids.
 
 local Players = game:GetService("Players")
@@ -148,6 +192,10 @@ local Mods = {
 	Mesh = nil, -- shared/MeshLibrary (lazy: Units.FxMesh); false = unavailable
 	Evo = nil, -- client/Controllers/EvolutionFx (lazy: Units.EvoFx, the enemies' arrival)
 	MouseLock = nil, -- client/MouseLock (lazy, optional: Me.MouseHold); false = not there (yet)
+	AttackFx = nil, -- client/Controllers/AttackFx (lazy: Atk.Mod); false = unavailable (the cube Fx.* draw everything)
+	FxCat = nil, -- shared/AttackFxCatalog (lazy: Atk.Look)
+	Gfx = nil, -- client/GraphicsQuality (lazy: Atk.SyncQuality)
+	Sound = nil, -- client/SoundFx (lazy: Me.Sound: the charge's inhale / shatter, the Battle music layer, Reward); false = unavailable
 }
 
 local BattleController = {}
@@ -190,6 +238,38 @@ local K = {
 	HOP_TIME = 0.4,
 	HOP_HEIGHT = 2.6,
 	KO_PARK = 0.3, -- seconds after a KO before the downed pet is parked (the poof covers it)
+	KO_PARK_FX = 1.6, -- with AttackFx's Ko: the pet tumbles onto its side (KO_TIME) and lies a moment before it is parked
+	KO_TIME = 0.9, -- PetPoses Ko (AttackFx K.KO): the tumble, then the pose holds
+	KO_CONFIRM = 1.0, -- a played Ko whose pet no snapshot draws down within this long is dropped (no KO after all)
+	FX_LEAD_MAX = 0.45, -- seconds an effect may start before its event plays (the render delay: the charge beat)
+	-- (Task 11b, the Special pre-charge, player option C) a press predicts the charge; every other Special lands late
+	PRESS_WAIT = 0.7, -- a pressed SPECIAL's predicted charge waits this long for its Special event, then shatters
+	LATE_MAX = 0.35, -- a Special nobody here pressed: up to this much charge is given back, its impact (and its hits) that late
+	LAST_GASP = 0.05, -- a caster KO'd in its own late charge falls this long after the impact
+	HOLD_EPS = 0.02, -- (fix round 1, I1) a late Special's hit ends its victim's hold only this close to the hold's end
+	UNBENCH_SLACK = 0.25, -- (fix round 2, I2-b) a held auto-swap's incoming pet stays benched until its Swap plays; this
+	--                       long past the hold it unbenches anyway (a Swap that never plays never hides a pet for good)
+	INHALE_PITCH = { 0.75, 1.35 }, -- the inhale (SoundFx "Inhale") rises from / to this PlaybackSpeed under the charge
+	INHALE_IN = 0.08, -- seconds the inhale fades in ...
+	INHALE_OUT = 0.12, -- ... and out at the release (or when hushed)
+	INHALE_OTHERS = 0.4, -- volume x for others' pets' inhales
+	INHALE_MAX = 2, -- inhales at once (a crowded raid: the rest charge silently)
+	FX_COVER = 1.6, -- seconds after a played Special / Element during which its targets' hits are AttackFx's (Hurt pose)
+	WINDUP_HOLD = 0.6, -- PetPoses Windup is held at this p while Winding (its crouch is full from p 0.5 to 0.82) ...
+	WINDUP_IN = 0.25, -- ... reached in this many seconds
+	IDLE_PHASE = 2.2, -- the battle idle's per-unit time offset = u.phase (0..2 pi) x this (pets breathe out of step)
+	FX_END_GRACE = 1.0, -- after the sim's End: no new AttackFx effect; the live ones finish for at most this long
+	FX_LATE_MAX = 0.3, -- seconds a ranged shot's Hit (and the victim's later events) may play after their time: the
+	--                    shot's flight is never cut below AttackFx's MinTravel (player note 1)
+	RIPPLE_TICK_GAP = 0.75, -- (Task 10 re-review M8) a zone / burn tick's shield ripple waits this long after the unit's
+	--                    last ripple: every other 0.5 s zone tick (the cube path's 50 % zone flash, made deterministic)
+	-- (Task 11) a signature's battle dim (Eclipse Nova, own pet): LightingStack preset DIM_ID, in over DIM_IN, out over
+	-- DIM_OUT once its seconds are up, at once (DIM_CUT) when the battle is torn down
+	DIM_ID = "AttackFxDim",
+	DIM_IN = 0.15,
+	DIM_OUT = 0.3,
+	DIM_CUT = 0,
+	DIM_MAX = 2.5, -- seconds a dim can be asked for (a bad hook argument never leaves the battle dark)
 	BUILD_BUDGET = 0.006, -- seconds of model building per frame (the first build of a frame always runs)
 	BUILD_MAX = 4,
 	CROWD = 14, -- more units than this: other players' / enemy pets are drawn every other frame
@@ -208,6 +288,12 @@ local K = {
 	NUMBER_DISTANCE = 170,
 	BAR_DISTANCE = 140,
 	END_LINGER = 3.5, -- seconds the floor stays drawn after the end
+	DUNGEON_LINGER = 1.0, -- wave 5 (bug #26): a cleared dungeon room's floor goes after this (= PetController.HANDOVER)
+	HIT_SHAKE_LIGHT = { 0.07, 0.12 }, -- wave 5 (bug #15): every hit on my fighter in a dungeon (amount, seconds)
+	FOV_PUNCH = 6, -- wave 5 (bug #15): degrees of FOV punch on a big attack in a dungeon (AttackFx punch >= PUNCH_BIG)
+	FOV_PUNCH_TIME = 0.25,
+	PUNCH_BIG = 0.2,
+	LAST_DRAWN_AGE = 5, -- seconds a dungeon fighter's last drawn spot is kept for the followers' hand-over
 	SPECTATOR_LINGER = 1.5,
 	RESULT_SECONDS = 12,
 	CMD_GAP = 0.25, -- local throttle between two commands of a kind
@@ -223,6 +309,8 @@ local K = {
 	CD_SLACK = 0.15, -- a press this close to the end of a cooldown is sent (the server's clock decides)
 	PENDING_TIMEOUT = 0.6, -- seconds a prediction waits for its event
 	SWAP_HOLD = 0.5, -- hold a helper key / portrait this long = swap
+	ATTACK_HOLD = 0.4, -- bug #16: hold F / X / ATTACK this long = the next target (a tap attacks at once)
+	NEXT_FLASH = 0.6, -- the ATTACK caption reads NEXT this long after a hold-cycle
 	RING_DT = 0.1, -- the rings / countdowns are written at 10 Hz
 	LOSS_TIME = 0.4, -- the red HP loss trail drains this long behind a loss
 	-- the drawn fighter / helpers (B1, 4.7)
@@ -349,6 +437,7 @@ local St = {
 	gamepad = false, -- the last input was a gamepad
 	tap = nil, -- { pos, t } a press that may become a tap
 	frameNo = 0,
+	fxFrame = 0, -- (fix round 2, M8) the frameNo of the last frame whose loop reached Atk.Update (equal at rest: no frame failed)
 	perf = { frames = 0, total = 0, peak = 0, last = 0, builds = 0, split = {} },
 	warned = {},
 	remoteCmd = nil,
@@ -357,7 +446,13 @@ local St = {
 	mouseHolds = {}, -- [reason] = true: our client/MouseLock holds (the cursor is free)
 	holds = {}, -- [key] = { index, t, fired }: a helper key / portrait held (0.5 s = swap)
 	movementOn = false, -- MovementController's battle switches are set
-	shake = nil, -- { t0, dur, amp } camera shake
+	shake = nil, -- { t0, dur, amp, base, last, hum } camera shake (base = the resting CameraOffset, e.g. the dungeon shoulder)
+	lastDrawn = {}, -- wave 5 (bug #26): [userId] = { Pos, Key, At } where a dungeon fighter was drawn last (Net.Cleanup)
+	dim = nil, -- (Task 11) { t0, dur, token, unit } a signature's battle dim (LightingStack K.DIM_ID pushed)
+	pre = nil, -- (Task 11b) { B, unit, t0, untilT } my pressed SPECIAL's predicted charge, waiting for its event
+	inhales = {}, -- (Task 11b) token -> { sound, t0, dur, vol } the charges' inhale sounds
+	musicOn = nil, -- SoundFx's "Battle" layer as Net.Music last set it
+	starting = nil, -- true while Net.Start cleans the battle before (Net.Cleanup leaves the music to Net.Start)
 }
 
 local Hud = {} -- the battle HUD (built once, lazily)
@@ -370,6 +465,7 @@ local Cards = {} -- Phase 4: the PetCard above every battle unit
 local Ring = {} -- Phase 4: the Champion Ring HUD (round / record / next-round side card / run card)
 local Leave = {} -- LEAVE (two presses -> BattleCommand "Forfeit"): Champion Ring runs only
 local Me = {} -- Phase 5: my fighter at the character's shoulder, my helpers behind me, the camera shake
+local Atk = {} -- pet attack VFX: client/Controllers/AttackFx first (the cube Fx.* as the fallback) + the battle poses
 
 ----------------------------------------------------------------------
 -- Helpers
@@ -780,7 +876,8 @@ local function zoneUpdate(e, p, now)
 	end
 end
 
--- a damaging area on the floor for `seconds`: Storm (a voxel storm cloud with lightning) or a lingering pool
+-- a damaging area on the floor for `seconds`: Storm (a voxel storm cloud with lightning), Field (the disc only: the
+-- cloud is AttackFx's) or a lingering pool
 function Fx.Zone(floorCF, r, seconds, color, kind)
 	local parts = {}
 	local disc = Fx.Part(color, Enum.Material.Neon, 0.7)
@@ -820,6 +917,8 @@ function Fx.Zone(floorCF, r, seconds, color, kind)
 			bolt.Size = Vector3.new(0.25, (e.oy - pos.Y) / 3 + 0.4, 0.25)
 			parts[#parts + 1] = bolt
 		end
+	elseif kind == "Field" then
+		e.field = true -- (the disc alone)
 	else
 		e.bubbles = true
 		for _ = 1, 7 do
@@ -1066,6 +1165,8 @@ local function newBattle(payload, battleId)
 		haveOffset = false,
 		renderT = num(payload.T, 0),
 		evq = {},
+		fxEv = {}, -- [event] = what AttackFx did with it on arrival (Atk.Arrive / Atk.Result)
+		fxHold = {}, -- [unit id] = render-clock time a ranged shot at it lands (Net.Queue / Net.Hold: its next events wait)
 		teles = {},
 		buildQueue = {},
 		-- Phase 5: my team (Start.Team), the lock, the cooldowns (os.clock ready times) and the predictions
@@ -1183,6 +1284,7 @@ function Units.Add(B, info)
 	local u = B.units[id]
 	if u then
 		u.info = info
+		u.fxLook = nil -- (Atk.Look reads the new info)
 		return u
 	end
 	local me = myUserId()
@@ -1316,6 +1418,7 @@ function Units.Remove(B, id)
 	if B.boss == u then
 		B.boss = nil
 	end
+	Atk.Cancel(u.id) -- its own attack effects and its pose end with it
 	Units.Destroy(u)
 end
 
@@ -1388,7 +1491,8 @@ local function buildUnit(B, u)
 	end
 	-- evolved units use the Low evolved form (within the petEvoLow / petEvo2Low budgets), like evolved followers;
 	-- Phase 5 (10.3): my fighter High, my helpers Low (a helper swapped in is rebuilt at High: Units.Rebuild)
-	local detail = (u.mine and u.evo == 0 and not u.benched) and "High" or "Low"
+	-- (fix round 2, I2-b) a held auto-swap's incoming pet (unbenchAt) is my next fighter: High while it waits
+	local detail = (u.mine and u.evo == 0 and (not u.benched or u.unbenchAt ~= nil)) and "High" or "Low"
 	-- dungeon enemies wear the Wild look (contract 5.6 / C13): darker, tinted toward the floor's element, Neon eyes
 	local wild = nil
 	if u.info.wild and not u.ally then
@@ -1404,6 +1508,7 @@ local function buildUnit(B, u)
 	local okSize, size = pcall(model.GetExtentsSize, model)
 	u.height = (okSize and typeof(size) == "Vector3") and size.Y or 3.5
 	u.centerY = u.height / 2 + K.HOVER
+	u.pbScale = num(model:GetAttribute("PB_Scale"), K.PET_SCALE * u.scale) -- (the pose body offsets are studs at scale 1)
 	-- weld at the built pose FIRST, then move: a pose is one root CFrame write from here on
 	local okWeld = pcall(weldStatic, model, root)
 	u.rigid = okWeld
@@ -1503,7 +1608,7 @@ function Units.BuildPending(B)
 			break
 		end
 		local u = table.remove(q, 1)
-		if u.benched and not u.mine and not u.isBoss then
+		if u.benched and not u.mine and not u.isBoss and not u.unbenchAt then
 			u.needBuild = true -- another player's helper: not drawn while it sits on the bench
 		elseif not u.gone and (not u.model or u.rebuild) then
 			local ok, err = pcall(buildUnit, B, u)
@@ -1559,8 +1664,23 @@ function Units.Update(B, u, now, dt, sa, sb, alpha, animate)
 	end
 	local d = (alpha >= 0.5 and type(b) == "table" and b) or (type(a) == "table" and a) or (type(b) == "table" and b) or nil
 	if d then
-		u.hp = num(d.hp, u.hp)
-		u.state = num(d.state, u.state)
+		local hp, state = num(d.hp, u.hp), num(d.state, u.state)
+		-- (Task 11b) a late Special's hit (or a caster's last gasp) not landed yet: the drawn HP never drops under its
+		-- hold and the unit is not drawn down before it (Units.Hold); the snapshots already carry the new HP
+		if u.holdUntil then
+			if now < u.holdUntil then
+				if u.holdHp and hp < u.holdHp then
+					hp = u.holdHp
+				end
+				if state == S_DOWN then
+					state = u.holdState or STATES.Idle or 0
+				end
+			else
+				Units.Unhold(u)
+			end
+		end
+		u.hp = hp
+		u.state = state
 		u.target = d.target
 		u.meter = num(d.meter, 0)
 		u.shield = num(d.shield, 0)
@@ -1572,14 +1692,27 @@ function Units.Update(B, u, now, dt, sa, sb, alpha, animate)
 		if winding and not u.windup and not u.ally then
 			Fx.Flash(u, COLORS.Windup, K.WINDUP_FLASH) -- the dash cue
 		end
+		if winding and not u.windup then
+			u.windAt = now -- (the held Windup pose gathers from here: Atk.PoseOf)
+		end
 		u.windup = winding
-		local benched = u.state == S_BENCHED
+		local onBench = u.state == S_BENCHED
+		local benched = onBench
+		-- (fix round 2, I2-b) the incoming pet of a held auto-swap stays on the bench until its Swap plays (the handler
+		-- unbenches it; UNBENCH_SLACK is the fall-back): another player's is built meanwhile, still parked
+		if u.unbenchAt then
+			if now < u.unbenchAt then
+				benched = true
+			else
+				u.unbenchAt = nil
+			end
+		end
 		if benched ~= u.benched then
 			u.benched = benched
-			if not benched and not u.model and u.needBuild and not u.failed then
-				u.needBuild = nil
-				B.buildQueue[#B.buildQueue + 1] = u
-			end
+		end
+		if not onBench and not u.model and u.needBuild and not u.failed then
+			u.needBuild = nil
+			B.buildQueue[#B.buildQueue + 1] = u
 		end
 		if u.mine and d.lives ~= nil and B.Fighter and not benched and (B.fighterId == nil or u.id == B.fighterId) then
 			B.lives = u.lives -- (only the fighter's record carries the team's lives)
@@ -1612,7 +1745,7 @@ function Units.Update(B, u, now, dt, sa, sb, alpha, animate)
 	if u.card and (u.cardHp ~= u.hp or u.cardMeter ~= u.meter or u.cardLives ~= u.lives) then
 		Cards.Live(u) -- only when the snapshot changed the HP / meter (at most 10 Hz), never a write per frame
 	end
-	-- downed pets: poof once, then park
+	-- downed pets: poof once, then park (AttackFx's Ko: the poof played, the pet tumbles and lies until KO_PARK_FX)
 	if down then
 		if not u.downAt then
 			u.downAt = now
@@ -1622,13 +1755,25 @@ function Units.Update(B, u, now, dt, sa, sb, alpha, animate)
 				Fx.Burst(pos, Color3.fromRGB(236, 240, 250), 12, 9, 0.5, 0.6, { color2 = elementColor(u.element), alpha = 0.05 })
 			end
 		end
-		if now - u.downAt >= K.KO_PARK then
+		if now - u.downAt >= (u.koAt and K.KO_PARK_FX or K.KO_PARK) then
 			parkUnit(u, true)
 		end
-		return
-	elseif u.parked then
-		u.downAt = nil
-		parkUnit(u, false)
+		if not u.koAt or u.parked then
+			return
+		end
+	else
+		-- AttackFx's Ko plays when the KO event ARRIVES, before the render clock draws the pet down: only a pet that was
+		-- drawn down and is up again (a revive), or a KO no snapshot confirmed within KO_CONFIRM, ends its Ko pose
+		if u.koAt and (u.downAt or now > u.koAt + K.KO_CONFIRM) then
+			u.koAt = nil
+			u.poofed = nil
+			Atk.Cancel(u.id)
+		end
+		if u.downAt or u.parked then
+			u.downAt = nil
+			u.poofed = nil -- (up again: its next KO poofs)
+			parkUnit(u, false)
+		end
 	end
 	u.accDt = (u.accDt or 0) + dt
 	if u.mine and B.Fighter and not B.ended then
@@ -1662,7 +1807,7 @@ function Units.Update(B, u, now, dt, sa, sb, alpha, animate)
 		local p = (now - u.lungeAt) / K.LUNGE_TIME
 		if p >= 1 then
 			u.lungeAt = nil
-		else
+		elseif not u.lungeFx then -- (AttackFx's Strike pose replaces the lunge / recoil of an attack it played)
 			local amt = sin(p * pi) * (u.ranged and -K.RECOIL_DIST or K.LUNGE_DIST)
 			ox, oz = u.lungeX * amt, u.lungeZ * amt
 		end
@@ -1679,7 +1824,7 @@ function Units.Update(B, u, now, dt, sa, sb, alpha, animate)
 		local p = (now - u.hurtAt) / 0.18
 		if p >= 1 then
 			u.hurtAt = nil
-		else
+		elseif not u.hurtFx then -- (AttackFx's Hurt pose replaces the nudge)
 			local amt = sin(p * pi) * 0.3
 			ox, oz = ox + (u.hurtX or 0) * amt, oz + (u.hurtZ or 0) * amt
 		end
@@ -1689,14 +1834,18 @@ function Units.Update(B, u, now, dt, sa, sb, alpha, animate)
 		ox, oz = ox + (u.dashX or 0) * amt, oz + (u.dashZ or 0) * amt
 	end
 	local bob = 0
-	local stunned = u.state == S_STUNNED
+	local stunned = u.state == S_STUNNED or down
 	if not stunned then
 		bob = sin(now * 3.1 + u.phase) * K.BOB
 	end
-	if u.windup then
-		oy = oy - 0.35 -- the wind-up crouch (Winding: the dash cue)
+	if u.windup and not Atk.Drives(u) then
+		oy = oy - 0.35 -- the wind-up crouch (Winding: the dash cue; AttackFx shows its held Windup pose instead)
 	end
 	local cf = worldFrame(B, x + ox, (u.centerY or 1.5) + bob + oy, z + oz, u.yaw)
+	local pose, body = Atk.PoseOf(u, now, down, false, animate, cf.Position)
+	if body then
+		cf = cf * body
+	end
 	if u.rigid then
 		if not animate or u.animBroken or not PetBuilder then
 			Units.CarryLoose(u, cf) -- no Animate this frame: the wings / animated parts keep their pose on the root
@@ -1709,6 +1858,7 @@ function Units.Update(B, u, now, dt, sa, sb, alpha, animate)
 		local opts = u.animOpts
 		opts.Flap = stunned and 0 or ((u.state == S_DASHING or mx * mx + mz * mz > 0.0004) and 1.8 or 1)
 		opts.Excited = u.windup and 1 or ((u.state == S_ATTACKING or u.state == S_CASTING) and 0.6 or 0)
+		opts.Pose = pose
 		local ok = pcall(PetBuilder.Animate, u.model, now + u.phase, opts)
 		if not ok then
 			u.animBroken = true
@@ -2030,13 +2180,18 @@ function Me.FighterTarget(B, u, x, z)
 	local dx, dz = rp.X - server.X, rp.Z - server.Z
 	local d = sqrt(dx * dx + dz * dz)
 	local ax, az, share = server.X, server.Z, K.FOLLOW_LERP
+	local k = 0
 	if d <= K.BLEND_DIST then
-		local k = 1 - d / K.BLEND_DIST
+		k = 1 - d / K.BLEND_DIST
 		ax, az = server.X + dx * k, server.Z + dz * k
 		share = 0.6
 	end
-	local off = rcf:VectorToWorldSpace(K.SHOULDER)
-	return Vector3.new(ax + off.X, rp.Y + off.Y, az + off.Z), share, rcf
+	-- bug #22: the shoulder offset (and the character's height) fade with the blend share: at my side the pet sits on
+	-- the shoulder as before; 2+ studs out (an ENGAGED pet fighting) it is drawn where the server has it
+	local offW = rcf:VectorToWorldSpace(K.SHOULDER)
+	local off = offW * k
+	local y = server.Y + (rp.Y + offW.Y - server.Y) * k -- (the shoulder height scaled by k once, not k^2)
+	return Vector3.new(ax + off.X, y, az + off.Z), share, rcf, d
 end
 
 -- a helper's spot behind me (index 1 / 2 = HELPER_A / HELPER_B); without a character behind the drawn fighter
@@ -2067,14 +2222,84 @@ function Me.HelperIndex(B, u)
 end
 
 -- per frame: my fighter / my helpers (positions + facing + bob + animation; the server never moves these parts)
+-- wave 5 (bug #26): a dungeon fighter's first drawn spot is where its follower pet stood (PetController), so the pet
+-- walks from the formation to the shoulder instead of popping there; nil = the shoulder as before
+function Me.SeedFromFollower(B, u, target)
+	if B.Mode ~= "Dungeon" or not LocalPlayer then
+		return nil
+	end
+	if Mods.Pets == nil then
+		Mods.Pets = optional(script.Parent, "PetController") or false
+	end
+	local pc = Mods.Pets
+	if not pc or type(pc.GetFollowerInfo) ~= "function" then
+		return nil
+	end
+	local ok, list = pcall(pc.GetFollowerInfo, LocalPlayer)
+	if not ok or type(list) ~= "table" then
+		return nil
+	end
+	local key = u.info and u.info.key
+	for _, e in ipairs(list) do
+		if e.Key == key and typeof(e.Model) == "Instance" then
+			local okP, cf = pcall(e.Model.GetPivot, e.Model)
+			if okP and typeof(cf) == "CFrame" and (cf.Position - target).Magnitude < 30 then
+				return cf.Position
+			end
+		end
+	end
+	return nil
+end
+
+-- the active fighter unit of a player in battle B (mine: B.fighterId; others: their unit that is not on the bench)
+function Me.FighterOf(B, userId)
+	if userId == myUserId() and B.Fighter and B.fighterId and B.units[B.fighterId] then
+		return B.units[B.fighterId]
+	end
+	for _, u in ipairs(B.list) do
+		if u.owner == userId and not u.benched and u.side == 1 then
+			return u
+		end
+	end
+	return nil
+end
+
+function Me.SpotOf(u)
+	if u.model and u.model.Parent then
+		local ok, cf = pcall(u.model.GetPivot, u.model)
+		if ok and typeof(cf) == "CFrame" then
+			return cf.Position
+		end
+	end
+	return u.drawn
+end
+
+-- before a dungeon floor goes: where every player's fighter was drawn (PetController's hand-over reads it)
+function Me.RecordDrawn(B)
+	local seen = {}
+	for _, u in ipairs(B.list) do
+		local uid = tonumber(u.owner)
+		if uid and not seen[uid] then
+			local f = Me.FighterOf(B, uid)
+			if f then
+				seen[uid] = true
+				local pos = Me.SpotOf(f)
+				if typeof(pos) == "Vector3" then
+					St.lastDrawn[uid] = { Pos = pos, Key = f.info and f.info.key, At = os.clock() }
+				end
+			end
+		end
+	end
+end
+
 function Me.Draw(B, u, now, dt, x, z)
 	if u.parked then
 		return
 	end
 	local isFighter = u.id == B.fighterId or (B.fighterId == nil and not u.benched)
-	local target, share, rcf
+	local target, share, rcf, blendD
 	if isFighter then
-		target, share, rcf = Me.FighterTarget(B, u, x, z)
+		target, share, rcf, blendD = Me.FighterTarget(B, u, x, z)
 	else
 		target, share = Me.HelperSpot(B, Me.HelperIndex(B, u)), 0.25
 		-- a Buff: fly to the fighter and back (BUFF_FLY)
@@ -2102,7 +2327,7 @@ function Me.Draw(B, u, now, dt, x, z)
 		end
 	end
 	if not u.drawn then
-		u.drawn = target
+		u.drawn = (isFighter and Me.SeedFromFollower(B, u, target)) or target
 	else
 		u.drawn = u.drawn:Lerp(target, lerpShare(share, dt))
 	end
@@ -2137,7 +2362,7 @@ function Me.Draw(B, u, now, dt, x, z)
 		local p = (now - u.lungeAt) / K.LUNGE_TIME
 		if p >= 1 then
 			u.lungeAt = nil
-		else
+		elseif not u.lungeFx then -- (AttackFx's Strike pose replaces the lunge / recoil of an attack it played)
 			off = off + zoneDir(B, u.lungeX or 0, u.lungeZ or 0) * (sin(p * pi) * (u.ranged and -K.RECOIL_DIST or K.LUNGE_DIST))
 		end
 	end
@@ -2153,31 +2378,60 @@ function Me.Draw(B, u, now, dt, x, z)
 		local p = (now - u.hurtAt) / 0.18
 		if p >= 1 then
 			u.hurtAt = nil
-		else
+		elseif not u.hurtFx then -- (AttackFx's Hurt pose replaces the nudge)
 			off = off + zoneDir(B, u.hurtX or 0, u.hurtZ or 0) * (sin(p * pi) * 0.3)
 		end
 	end
-	local stunned = u.state == S_STUNNED
+	local down = u.state == S_DOWN or u.hp <= 0
+	local stunned = u.state == S_STUNNED or down
 	local bob = stunned and 0 or sin(now * 3.1 + u.phase) * K.BOB
 	local p = u.drawn + off + Vector3.new(0, bob, 0)
 	local cf = CFrame.new(p) * CFrame.Angles(0, u.wyaw, 0)
+	-- no battle idle while my fighter moves under my input (or a helper flies / swaps)
+	-- (bug #22: my walking only counts while the pet is at my side; an engaged pet keeps its battle idle)
+	local busy = (isFighter and (u.state == S_MOVING or (Me.Walking() and (blendD == nil or blendD <= K.BLEND_DIST)))) or u.flyAt ~= nil or u.swapAt ~= nil
+	-- a helper that only breathes (the battle idle) is posed every other frame, like the other pets (stepBattle)
+	local animate = isFighter or u.poseSrc ~= "idle" or (St.frameNo + (u.slot or 0)) % 2 == 0
+	local pose, body = Atk.PoseOf(u, now, down, busy, animate, p)
+	if body then
+		cf = cf * body
+	end
 	if u.rigid then
+		if not animate then
+			Units.CarryLoose(u, cf) -- (the wings keep their pose on the root this frame)
+		end
 		u.root.CFrame = cf
 	else
 		pcall(u.model.PivotTo, u.model, cf)
 	end
 	u.posed = true
-	if PetBuilder and not u.animBroken then
+	if animate and PetBuilder and not u.animBroken then
 		local opts = u.animOpts
 		local moving = rcf ~= nil and isFighter and u.state == S_MOVING
 		opts.Flap = stunned and 0 or ((u.state == S_DASHING or u.dashAt or moving or u.flyAt) and 1.8 or 1)
 		opts.Excited = (u.state == S_ATTACKING or u.state == S_CASTING) and 0.6 or 0
+		opts.Pose = pose
 		local ok = pcall(PetBuilder.Animate, u.model, now + u.phase, opts)
 		if not ok then
 			u.animBroken = true
 		end
 	end
 	Units.UpdateStatus(B, u, now, cf)
+end
+
+local function moveDirection(hum)
+	return hum.MoveDirection
+end
+
+-- the character walks under the player's input (Humanoid.MoveDirection)
+function Me.Walking()
+	local char = LocalPlayer and LocalPlayer.Character
+	local hum = char and char:FindFirstChildOfClass("Humanoid")
+	if not hum then
+		return false
+	end
+	local ok, dir = pcall(moveDirection, hum)
+	return ok and typeof(dir) == "Vector3" and dir.Magnitude > 0.1
 end
 
 -- the zone-local direction (x, z) of a Dash event: ev.dir (an angle like Element's, or { x, z }), ev.dx / ev.dz, the
@@ -2222,6 +2476,34 @@ function Me.DashDir(B, u, ev)
 end
 
 -- starts the drawn dash of pet u (a streak out and back + a trail), once per event
+-- my Swap: the incoming pet becomes my fighter (HUD, High detail), the out one goes to the bench, and the two trade
+-- places along the SWAP_TIME arc from where they are drawn now. On the Swap's arrival (Net.Pre); a held auto-swap's
+-- when it plays (fix round 2, I2-b: the KO'd fighter stays where it stood until its impact, and the arc starts from
+-- the real spots: before, it started when the Swap played, after the pets had already slid most of the way)
+function Me.Switch(B, ev)
+	local old = B.fighterId
+	B.fighterId = tonumber(ev["in"]) or B.fighterId
+	local incoming = B.units[B.fighterId]
+	if incoming then
+		incoming.benched = false
+		incoming.unbenchAt = nil
+		B.fighterEvo = incoming.evo or 0
+		Units.Rebuild(B, incoming)
+	end
+	local out = old and B.units[old]
+	if out and out ~= incoming then
+		out.benched = true
+	end
+	pcall(Hud.Rebuild)
+	local now = os.clock()
+	for _, u in ipairs({ incoming or false, out or false }) do
+		if u and u.mine and u.drawn then
+			u.swapFrom = u.drawn
+			u.swapAt = now
+		end
+	end
+end
+
 function Me.StartDash(B, u, ev)
 	u.dashEv = ev
 	if not u.model or u.parked or u.hidden then
@@ -2299,7 +2581,8 @@ function Me.Shake(amount, dur)
 	if scale <= 0 then
 		return
 	end
-	St.shake = { t0 = os.clock(), dur = dur or 0.18, amp = min(K.SHAKE_MAX, (amount or 0.2) * scale) }
+	local old = St.shake
+	St.shake = { t0 = os.clock(), dur = dur or 0.18, amp = min(K.SHAKE_MAX, (amount or 0.2) * scale), base = old and old.base, last = old and old.last, hum = old and old.hum }
 	BattleController._wake()
 end
 
@@ -2310,16 +2593,1060 @@ function Me.UpdateShake(now)
 	end
 	local char = LocalPlayer and LocalPlayer.Character
 	local hum = char and char:FindFirstChildOfClass("Humanoid")
+	-- wave 5 (bug #15): the shake rides on the resting offset (the dungeon shoulder) and gives it back at the end; an
+	-- offset someone else wrote meanwhile (DungeonController's shoulder on / off, a new character) becomes the base
+	if hum then
+		local cur = hum.CameraOffset
+		if sh.hum ~= hum or sh.base == nil or sh.last == nil or (cur - sh.last).Magnitude > 1e-4 then
+			sh.base = cur
+			sh.hum = hum
+		end
+	end
 	local p = (now - sh.t0) / sh.dur
 	if p >= 1 or not hum then
 		St.shake = nil
 		if hum then
-			hum.CameraOffset = Vector3.new(0, 0, 0)
+			hum.CameraOffset = sh.base or Vector3.new(0, 0, 0)
 		end
 		return
 	end
 	local a = sh.amp * (1 - p)
-	hum.CameraOffset = Vector3.new(sin(now * 71) * a, cos(now * 63) * a * 0.6, 0)
+	local v = sh.base + Vector3.new(sin(now * 71) * a, cos(now * 63) * a * 0.6, 0)
+	hum.CameraOffset = v
+	sh.last = v
+end
+
+-- wave 5 (bug #15): a big attack (AttackFx's punch >= PUNCH_BIG: a rare+ special, a crit) punches the FOV, in a
+-- dungeon only; the Camera shake setting does NOT gate it (player ruling 2026-10-28: Shake OFF = only the hit shakes
+-- go; the punch is a short zoom, not a shake). MovementController owns the FOV
+function Me.FovPunch(amount)
+	local B = St.battle
+	amount = tonumber(amount) or 0
+	if not B or B.Mode ~= "Dungeon" or amount < K.PUNCH_BIG then
+		return false
+	end
+	local mc = Hud.Movement()
+	if mc and type(mc.FovPunch) == "function" then
+		local ok = pcall(mc.FovPunch, K.FOV_PUNCH * min(1, amount / 0.4), K.FOV_PUNCH_TIME)
+		return ok
+	end
+	return false
+end
+
+-- AttackFx's screen hooks (own pets only, AttackFx decides when): a soft glow along the screen edges (a Secret pet's
+-- hit), on its own ScreenGui UNDER the battle HUD; edge-only and see-through, never over the fight's centre (spec
+-- "Never hide the fight"). Built on the first use. (A signature's battle dim is a Lighting preset since Task 11:
+-- Me.Dim; the HUD is never darkened.)
+function Me.ScreenFx()
+	local g = St.screenFx
+	if g and g.gui.Parent then
+		return g
+	end
+	local pg = LocalPlayer and LocalPlayer:FindFirstChildOfClass("PlayerGui")
+	if not pg then
+		return nil
+	end
+	local gui = make("ScreenGui", { Name = "NimbusBattleFx", ResetOnSpawn = false, IgnoreGuiInset = true, DisplayOrder = K.DISPLAY_ORDER - 3 })
+	local edges = {}
+	-- { position, size, gradient rotation (0 = opaque at the left) }: 9% of the height / 6% of the width deep
+	for i, e in ipairs({
+		{ UDim2.fromScale(0, 0), UDim2.fromScale(1, 0.09), 90 },
+		{ UDim2.fromScale(0, 0.91), UDim2.fromScale(1, 0.09), 270 },
+		{ UDim2.fromScale(0, 0), UDim2.fromScale(0.06, 1), 0 },
+		{ UDim2.fromScale(0.94, 0), UDim2.fromScale(0.06, 1), 180 },
+	}) do
+		local f = make("Frame", { Name = "Edge" .. i, Position = e[1], Size = e[2], BackgroundColor3 = COLORS.White, BackgroundTransparency = 1, BorderSizePixel = 0, Visible = false }, gui)
+		make("UIGradient", { Rotation = e[3], Transparency = NumberSequence.new({ NumberSequenceKeypoint.new(0, 0), NumberSequenceKeypoint.new(1, 1) }) }, f)
+		edges[i] = f
+	end
+	gui.Parent = pg
+	g = { gui = gui, edges = edges, glow = nil }
+	St.screenFx = g
+	return g
+end
+
+-- AttackFx.Hooks.ScreenGlow: the edges light up in `color` and fade over `seconds`
+function Me.Glow(color, seconds)
+	local g = Me.ScreenFx()
+	if not g then
+		return
+	end
+	g.glow = { t0 = os.clock(), dur = clamp(num(seconds, 0.35), 0.1, 1.5) }
+	for _, f in ipairs(g.edges) do
+		f.BackgroundColor3 = typeof(color) == "Color3" and color or COLORS.White
+		f.Visible = true
+	end
+	BattleController._wake()
+end
+
+-- (Task 11) the battle dim's look: the world darker, a little desaturated and violet (Eclipse Nova's black sun); the
+-- HUD and the effects' Neon stay bright. RELATIVE to the look under it (LightingStack.Value without the dim itself):
+-- the arena (server ExposureCompensation -0.15, NimbusColor Brightness 0 / Saturation 0.14) -> -0.9 / -0.06 / -0.21,
+-- and a dungeon battle (its own darker ColorCorrection) gets darker still, never brighter. Exposure / Brightness /
+-- Saturation are added, the tint multiplies. LightingStack gives the look under it back on the Pop
+Me.DIM_DELTA = { Exposure = -0.75, Brightness = -0.06, Saturation = -0.35, Tint = Color3.fromRGB(214, 198, 255) }
+
+function Me.Lights()
+	if Mods.Lights == nil then
+		Mods.Lights = optional(Client, "LightingStack") or false
+	end
+	local ls = Mods.Lights
+	return (ls and type(ls.Push) == "function" and type(ls.Pop) == "function") and ls or nil
+end
+
+-- the dim preset over what the battle shows now (a property whose instance is missing is left out)
+function Me.DimPreset(ls)
+	local d = Me.DIM_DELTA
+	local function value(group, prop)
+		if type(ls.Value) ~= "function" then
+			return nil
+		end
+		local ok, v = pcall(ls.Value, group, prop, K.DIM_ID)
+		return ok and v or nil
+	end
+	local preset = {}
+	local exp = value("Lighting", "ExposureCompensation")
+	if type(exp) == "number" then
+		preset.Lighting = { ExposureCompensation = exp + d.Exposure }
+	end
+	local cc = {}
+	local bri, sat, tint = value("ColorCorrection", "Brightness"), value("ColorCorrection", "Saturation"), value("ColorCorrection", "TintColor")
+	if type(bri) == "number" then
+		cc.Brightness = bri + d.Brightness
+	end
+	if type(sat) == "number" then
+		cc.Saturation = max(-1, sat + d.Saturation)
+	end
+	if typeof(tint) == "Color3" then
+		cc.TintColor = Color3.new(tint.R * d.Tint.R, tint.G * d.Tint.G, tint.B * d.Tint.B)
+	end
+	if next(cc) then
+		preset.ColorCorrection = cc
+	end
+	return preset
+end
+
+-- AttackFx.Hooks.DimWorld (own pet only: AttackFx decides): the battle darkens for `seconds` (LightingStack preset
+-- K.DIM_ID, in over DIM_IN; Me.UpdateScreenFx pops it over DIM_OUT when the time is up). `token` = the effect's own
+-- token: Me.Undim(token) ends it early (that effect ended); `unit` = the caster's unit id: Me.UndimCaster(unit) ends it
+-- on the caster's KO. A new dim replaces the old one (and its token: an older cast's end never lifts it).
+function Me.Dim(seconds, token, unit)
+	local ls = Me.Lights()
+	if not ls then
+		return false
+	end
+	if token == nil then
+		token = true
+	end
+	St.dim = { t0 = os.clock(), dur = clamp(num(seconds, 0.6), 0.2, K.DIM_MAX), token = token, unit = unit }
+	pcall(ls.Push, K.DIM_ID, Me.DimPreset(ls), K.DIM_IN)
+	BattleController._wake()
+	return true
+end
+
+-- the light comes back (over `fade` seconds, default DIM_OUT): token nil = whatever dims (a teardown), else only that
+-- caster's dim. -> true when a dim ended
+function Me.Undim(token, fade)
+	local d = St.dim
+	if not d or (token ~= nil and d.token ~= token) then
+		return false
+	end
+	St.dim = nil
+	local ls = Me.Lights()
+	if ls then
+		pcall(ls.Pop, K.DIM_ID, fade or K.DIM_OUT)
+	end
+	return true
+end
+
+-- the caster `unit` was knocked out: its battle dim (if the dim is its) ends now. -> true when a dim ended
+function Me.UndimCaster(unit)
+	local d = St.dim
+	if not d or unit == nil or d.unit ~= unit then
+		return false
+	end
+	return Me.Undim(d.token)
+end
+
+-- (Task 11b; original audio) the charges' own SoundFx sounds (Config.Audio.Sfx): "Inhale" = the inhale under a
+-- Special's charge (PlaybackSpeed rising INHALE_PITCH[1] -> [2] to the release, a short fade in / out), "Shatter" = a
+-- shattered charge. A missing id plays nothing and nothing breaks
+function Me.Sound()
+	if Mods.Sound == nil then
+		Mods.Sound = optional(Client, "SoundFx") or false
+	end
+	return Mods.Sound or nil
+end
+
+-- AttackFx Hooks.Inhale: a token's first call starts the sound, a later one (the real Special taking over a press's
+-- charge) retimes the same rise from where it is; others' pets at INHALE_OTHERS volume; INHALE_MAX at once
+function Me.Inhale(seconds, token, mine)
+	if token == nil then
+		return false
+	end
+	seconds = clamp(num(seconds, 0), 0.05, 2)
+	local rec = St.inhales[token]
+	if not rec then
+		local n, oldest = 0, nil
+		for tk, r in pairs(St.inhales) do
+			n = n + 1
+			if not r.mine and (oldest == nil or r.start < St.inhales[oldest].start) then
+				oldest = tk
+			end
+		end
+		if mine and n >= K.INHALE_MAX and oldest ~= nil then
+			Me.Hush(oldest) -- (fix round 1, M7) my own inhale (the cue this is for) never loses to others' pets'
+			n = n - 1
+		end
+		local SF = n < K.INHALE_MAX and Me.Sound() or nil
+		if not SF or type(SF.Play) ~= "function" then
+			return false
+		end
+		local ok, s = pcall(SF.Play, "Inhale")
+		if not ok or typeof(s) ~= "Instance" then
+			return false
+		end
+		for tk, r in pairs(St.inhales) do
+			if r.sound == s then
+				St.inhales[tk] = nil -- (SoundFx's pool handed that sound out again)
+			end
+		end
+		-- (fix round 2, M5') `start` (when it began) picks the oldest; t0 is the last retime
+		rec = { sound = s, vol = s.Volume * (mine and 1 or K.INHALE_OTHERS), mine = mine == true, t0 = os.clock(), start = os.clock() }
+		St.inhales[token] = rec
+		s.PlaybackSpeed = K.INHALE_PITCH[1]
+		s.Volume = 0
+		pcall(Util.Tween, s, K.INHALE_IN, { Volume = rec.vol })
+	end
+	local stamp = os.clock()
+	rec.t0, rec.dur, rec.stamp = stamp, seconds, stamp
+	pcall(Util.Tween, rec.sound, seconds, { PlaybackSpeed = K.INHALE_PITCH[2] }, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
+	task.delay(seconds, function()
+		if St.inhales[token] == rec and rec.stamp == stamp then
+			Me.Hush(token)
+		end
+	end)
+	return true
+end
+
+-- AttackFx Hooks.Hush (the charge ended early) and the release: the inhale fades out
+function Me.Hush(token)
+	local rec = token ~= nil and St.inhales[token] or nil
+	if not rec then
+		return
+	end
+	St.inhales[token] = nil
+	if rec.sound and rec.sound.Parent then
+		pcall(Util.Tween, rec.sound, K.INHALE_OUT, { Volume = 0 })
+	end
+end
+
+-- AttackFx Hooks.Shatter: the "interrupted" cue of a broken press
+function Me.ShatterSound(mine)
+	local SF = Me.Sound()
+	if SF and type(SF.Play) == "function" then
+		local ok, s = pcall(SF.Play, "Shatter")
+		if ok and typeof(s) == "Instance" and not mine then
+			s.Volume = s.Volume * K.INHALE_OTHERS
+		end
+	end
+end
+
+-- per frame while a glow / dim shows; -> true while one does
+function Me.UpdateScreenFx(now)
+	if St.dim and now - St.dim.t0 >= St.dim.dur then
+		Me.Undim(nil, K.DIM_OUT)
+	end
+	local g = St.screenFx
+	if not g or not g.glow then
+		return St.dim ~= nil
+	end
+	if g.glow then
+		local p = (now - g.glow.t0) / g.glow.dur
+		local a = (p >= 1) and 1 or (0.45 + 0.55 * p * p) -- at most 55% opaque, at the very edge
+		for _, f in ipairs(g.edges) do
+			f.BackgroundTransparency = a
+			f.Visible = p < 1
+		end
+		if p >= 1 then
+			g.glow = nil
+		end
+	end
+	return g.glow ~= nil or St.dim ~= nil
+end
+
+----------------------------------------------------------------------
+-- Pet attack VFX (docs/superpowers/specs/2026-10-23-pet-attack-vfx-design.md "Architecture", "Timing without server
+-- changes", "Budgets, quality, readability"; plan Task 7). client/Controllers/AttackFx plays every pet attack FIRST;
+-- each handler keeps its cube Fx.* as the fallback (AttackFx.Play false: the budget, Low limits, a missing texture,
+-- an error). Bosses keep their own attack visuals (out of scope); a boss's hit on MY pet plays its Hurt reaction.
+----------------------------------------------------------------------
+local IDENTITY = CFrame.new()
+local SUPPORT_KINDS = { Heal = true, Shield = true, Rally = true, Haste = true }
+-- a helper buff's Effect (BattleCatalog.Buffs) -> the support special whose look it borrows
+local BUFF_LOOK = { Heal = "Heal", Regen = "Heal", Shield = "Shield", Taken = "Shield", Damage = "Rally", Lifesteal = "Rally", Speed = "Haste", AttackSpeed = "Haste", Chill = "Haste" }
+-- the events AttackFx plays (on arrival: Net.Events)
+Atk.EVENTS = { [EV.Hit] = true, [EV.Special] = true, [EV.Element or "Element"] = true, [EV.KO] = true, [EV.Buff or "Buff"] = true, [EV.Swap or "Swap"] = true }
+Atk.bodyOpts = { Pose = nil } -- (one table for every PetBuilder.PoseBody call)
+
+-- AttackFx's hooks go to Me: camera punch = Me.Shake (the Shake setting and SHAKE_MAX apply), the edge glow, and a
+-- signature's battle dim (Me.Dim / Me.Undim, Task 11)
+function Atk.Hook(m)
+	if type(m) ~= "table" or type(m.Hooks) ~= "table" then
+		return
+	end
+	m.Hooks.Punch = function(amount, seconds)
+		Me.Shake(amount, seconds)
+		Me.FovPunch(amount)
+	end
+	m.Hooks.ScreenGlow = function(color, seconds)
+		Me.Glow(color, seconds)
+	end
+	m.Hooks.DimWorld = function(seconds, token, unit)
+		Me.Dim(seconds, token, unit)
+	end
+	m.Hooks.Undim = function(token)
+		Me.Undim(token)
+	end
+	-- (Task 11b) the Special's charge sounds
+	m.Hooks.Inhale = function(seconds, token, mine)
+		return Me.Inhale(seconds, token, mine) -- (-> true when the sound plays)
+	end
+	m.Hooks.Hush = function(token)
+		Me.Hush(token)
+	end
+	m.Hooks.Shatter = function(mine)
+		Me.ShatterSound(mine)
+	end
+end
+
+-- client/Controllers/AttackFx (nil when missing); on the first load its hooks go to Me (Atk.Hook) and the Graphics
+-- setting is applied
+function Atk.Mod()
+	if Mods.AttackFx == nil then
+		local m = optional(script.Parent, "AttackFx")
+		Mods.AttackFx = (m and type(m.Play) == "function" and type(m.Pose) == "function" and type(m.Update) == "function") and m or false
+		if Mods.AttackFx then
+			Atk.Hook(m)
+		end
+		Atk.SyncQuality()
+	end
+	return Mods.AttackFx or nil
+end
+
+-- GraphicsQuality.Effective() -> AttackFx.SetQuality (at the first load and on every Graphics change, like PetFx;
+-- before GraphicsQuality has started AttackFx follows it by itself)
+function Atk.SyncQuality()
+	local AF = Mods.AttackFx
+	if not AF or type(AF.SetQuality) ~= "function" then
+		return
+	end
+	if Mods.Gfx == nil then
+		Mods.Gfx = optional(Client, "GraphicsQuality") or false
+	end
+	local gq = Mods.Gfx
+	if gq and type(gq.Effective) == "function" and type(gq._St) == "table" and gq._St.Started then
+		local ok, mode = pcall(gq.Effective)
+		if ok and (mode == "Low" or mode == "High") then
+			pcall(AF.SetQuality, mode)
+			St.fxLow = mode == "Low" -- (no battle idle on the light path: Atk.Idles)
+		end
+	end
+end
+
+-- what a unit's effects look like: AttackFxCatalog.Unit(info) = { Element, Rarity, Stage, PetId, Ranged } (cached)
+function Atk.Look(u)
+	if u.fxLook then
+		return u.fxLook
+	end
+	if Mods.FxCat == nil then
+		Mods.FxCat = optional(Shared, "AttackFxCatalog") or false
+	end
+	local look = nil
+	if Mods.FxCat and type(Mods.FxCat.Unit) == "function" then
+		local ok, r = pcall(Mods.FxCat.Unit, u.info)
+		look = ok and type(r) == "table" and r or nil
+	end
+	u.fxLook = look or {}
+	return u.fxLook
+end
+
+-- drawn on this screen (not parked, not arriving, not another player's helper on the bench)
+function Atk.Drawable(u)
+	return u ~= nil and not u.gone and not u.parked and not u.hidden and not (u.benched and not u.mine)
+end
+
+-- an AttackFx side: the unit's model while it is drawn, else its point
+function Atk.Side(B, u)
+	return { Unit = u.id, Model = (u.model and not u.parked and not u.hidden) and u.model or nil, Pos = unitCenter(B, u) }
+end
+
+local function groundOf(B, u)
+	return worldPoint(B, u.x, 0, u.z).Y
+end
+
+-- a zone-local angle (direction (cos a, sin a) on the floor, BattleSim's) as AttackFx's WORLD yaw
+local function worldAngle(B, a)
+	local w = zoneDir(B, cos(a), sin(a))
+	return atan2(w.Z, w.X)
+end
+
+-- AttackFx.Play (pcall'd) -> true only when it plays (never during the End grace: the cube fallback then)
+function Atk.Play(ctx)
+	local AF = Atk.Mod()
+	if not AF or St.fxEndAt then
+		return false
+	end
+	local ok, played = pcall(AF.Play, ctx)
+	return ok and played == true
+end
+
+function Atk.Cancel(id)
+	local AF = Mods.AttackFx
+	if AF and type(AF.Cancel) == "function" then
+		pcall(AF.Cancel, id)
+	end
+end
+
+-- every effect and pose ends now (a teardown: Leave of my team, Net.Cleanup, Stop); a pending End grace is over too
+function Atk.ClearAll()
+	St.fxEndAt = nil
+	St.cheers = {}
+	St.pre = nil -- (Task 11b: AttackFx.ClearAll drops the predicted charge too)
+	for token in pairs(St.inhales) do
+		Me.Hush(token)
+	end
+	local AF = Mods.AttackFx
+	if AF and type(AF.ClearAll) == "function" then
+		pcall(AF.ClearAll)
+	end
+	Me.Undim(nil, K.DIM_CUT) -- (Task 11) a torn-down battle never stays dark (AttackFx's own Undim came first if it could)
+end
+
+-- the battle's end (the sim's End event, or the End message if it comes first): no new effect (Atk.Play refuses),
+-- the live ones get FX_END_GRACE seconds, then ClearAll; once per battle, so a late End event never cuts the
+-- winners' Victory that starts after the grace
+function Atk.EndSoon(B)
+	if B.fxGrace or not Mods.AttackFx then
+		return
+	end
+	B.fxGrace = true
+	if not St.fxEndAt then
+		St.fxEndAt = os.clock() + K.FX_END_GRACE
+	end
+	BattleController._wake()
+end
+
+function Atk.Update(now)
+	local AF = Mods.AttackFx
+	if not AF then
+		return
+	end
+	St.fxFrame = St.frameNo -- (fix round 2, M8) the frame loop stepped AttackFx in this frame (StepsAttackFx)
+	-- (Task 11b) a pressed SPECIAL whose event did not come within PRESS_WAIT: its predicted charge shatters
+	local pre = St.pre
+	if pre and now >= pre.untilT then
+		Atk.Shatter(pre.B)
+	end
+	local ok, err = pcall(AF.Update, now)
+	if not ok then
+		warnOnce("attackfx", "AttackFx.Update failed: " .. tostring(err))
+	end
+	-- the End grace: over at its deadline, or as soon as nothing plays any more
+	if St.fxEndAt and (now >= St.fxEndAt or not Atk.Busy()) then
+		local cheers = St.cheers or {}
+		Atk.ClearAll()
+		St.cheers = cheers
+	end
+	-- the winners' cheers wait for the grace (Net.Cheer): Victory, else the old hop
+	local list = St.cheers
+	if not St.fxEndAt and list and #list > 0 then
+		local i = 1
+		while i <= #list do
+			local c = list[i]
+			if now >= c.at then
+				table.remove(list, i)
+				if c.B == St.battle and not c.u.gone and not c.u.parked and not Atk.Lying(c.u) and not Atk.Victory(c.B, c.u, 0) then
+					c.u.hopAt = now
+				end
+			else
+				i = i + 1
+			end
+		end
+	end
+end
+
+-- AttackFx still plays something (the frame loop stays awake)
+function Atk.Busy()
+	local s = Atk.Stats()
+	return s ~= nil and ((s.Live or 0) + (s.Stepped or 0)) > 0
+end
+
+-- something of the pet attack VFX still needs frames (live effects, the End grace, cheers waiting)
+function Atk.Pending()
+	return St.fxEndAt ~= nil or (St.cheers ~= nil and #St.cheers > 0) or Atk.Busy()
+end
+
+function Atk.Stats()
+	local AF = Mods.AttackFx
+	if not AF or type(AF.Stats) ~= "function" then
+		return nil
+	end
+	local ok, s = pcall(AF.Stats)
+	return (ok and type(s) == "table") and s or nil
+end
+
+-- the poses can be drawn (PetBuilder.PoseBody / Animate opts.Pose in this build)
+function Atk.Posable()
+	return PetBuilder ~= nil and type(PetBuilder.PoseBody) == "function"
+end
+
+-- AttackFx drives this unit's body: loaded, poses drawable, and its last attack here was not refused (else the old
+-- crouch / lunge / nudge come back until a play succeeds again)
+function Atk.Drives(u)
+	return (Mods.AttackFx and Atk.Posable() and u.fxDriven ~= false) and true or false
+end
+
+-- (Task 11 fix round 2, I1) the living enemies of `u` inside a Storm's zone: BattleSim's castSpecial puts the zone at the
+-- aimed target (ev.tx, ev.tz) with radius Specials.Storm.Radius (BattleCatalog, the same table the sim reads) and its
+-- tickZones hits a body on the floor whose edge reaches the circle (inCircle: d <= r + its radius). The sim's Special
+-- event names only the aimed target, so the effect's targets are gathered here, in the units' list order
+local function stormZone(B, u, ev)
+	local S = SPECIALS.Storm
+	local r = type(S) == "table" and tonumber(S.Radius) or nil
+	local x, z = tonumber(ev.tx), tonumber(ev.tz)
+	local out = {}
+	if not (r and x and z) then
+		return out
+	end
+	for _, e in ipairs(B.list) do
+		if e.side ~= u.side and not e.gone and not e.benched and e.hp > 0 and e.state ~= S_DOWN then
+			local dx, dz = e.x - x, e.z - z
+			local reach = r + num(e.radius, 0)
+			if dx * dx + dz * dz <= reach * reach then
+				out[#out + 1] = e
+			end
+		end
+	end
+	return out
+end
+
+-- the hits of a played Special / Element on these sides are AttackFx's (their Hurt pose: no nudge)
+local function cover(B, to, dueAt)
+	for _, side in ipairs(to) do
+		local t = side.Unit and B.units[side.Unit]
+		if t then
+			t.fxHitUntil = dueAt + K.FX_COVER
+		end
+	end
+end
+
+-- a play's look from the unit (AttackFxCatalog.Unit): Element (unless given), Rarity, Stage, PetId (unless given;
+-- false = none: a helper buff never plays its pet's signature special)
+local function lookCtx(u, ctx)
+	local look = Atk.Look(u)
+	ctx.Element = ctx.Element or look.Element
+	ctx.Rarity = look.Rarity
+	ctx.Stage = look.Stage
+	if ctx.PetId == nil then
+		ctx.PetId = look.PetId
+	elseif ctx.PetId == false then
+		ctx.PetId = nil
+	end
+	return ctx
+end
+
+-- a Hit: a pet's plain attack (melee swipe / ranged shot; Miss = it flies past), a boss's hit on MY pet (its Hurt;
+-- other players' pets keep the nudge: a boss slam can hit a dozen pets and the budget is for the attacks). The damage
+-- of a special / element / zone / burn is drawn by its own event.
+-- (Task 10 review I1, Ruling 17) a hit the victim's shield absorbs: the bubble ripples (ShieldHit) on the victim at the
+-- hit, in the look of the pet whose Shield it is (u.shieldBy while its shield lasts: u.shieldUntil), else the victim's
+-- own. Never on a boss; a boss's hit ripples only MY pets (like its Hurt: one slam can hit a dozen pets).
+-- (re-review M8) a zone / burn tick (`tick`) ripples only RIPPLE_TICK_GAP after the unit's last ripple (a Linger zone
+-- ticks every 0.5 s on every shielded pet in it); a hit from an attacker always ripples
+function Atk.ShieldHit(B, v, a, dueAt, tick)
+	if v.isBoss or not v.model or not Atk.Drawable(v) or (a and a.isBoss and not v.mine) then
+		return false
+	end
+	if tick and v.rippleAt and dueAt - v.rippleAt < K.RIPPLE_TICK_GAP then
+		return false
+	end
+	-- (re-review M9) the caster's look only while its shield lasts: a shield the client never saw cast (a rejoin
+	-- snapshot) ripples in the victim's own look, not in a stale caster's
+	if v.shieldBy and not ((tonumber(v.shieldUntil) or 0) > os.clock()) then
+		v.shieldBy = nil
+	end
+	local by = v.shieldBy and B.units[v.shieldBy] or nil
+	local played = Atk.Play(lookCtx(by or v, { Attack = "ShieldHit", PetId = false, From = Atk.Side(B, v), Mine = v.mine == true, DueAt = dueAt, Ground = groundOf(B, v) }))
+	if played then
+		v.rippleAt = dueAt
+	end
+	return played
+end
+
+-- the Hit's own play (Atk.Hit): its result and the seconds its impact lands after dueAt (a ranged shot's flight)
+local function hitPlay(B, ev, dueAt, v, a)
+	if ev.special or ev.element or ev.zone or ev.burn then
+		return "none", 0
+	end
+	if ev.tele or (a and a.isBoss) then
+		if ev.miss or v.isBoss or not v.mine or not Atk.Drawable(v) then
+			return "none", 0
+		end
+		local el = a and Atk.Look(a).Element or nil
+		return Atk.Play(lookCtx(v, { Attack = "Hurt", Element = el, From = Atk.Side(B, v), Mine = true, Crit = ev.crit == true, DueAt = dueAt, Ground = groundOf(B, v) })), 0
+	end
+	if not a or not Atk.Drawable(a) then
+		return "none", 0
+	end
+	local ctx = lookCtx(a, {
+		Attack = a.ranged and "Ranged" or "Melee", From = Atk.Side(B, a), To = Atk.Side(B, v), Mine = a.mine == true,
+		Crit = ev.crit == true, Strong = num(ev.elem, 1) > 1, Miss = ev.miss == true, DueAt = dueAt, Ground = groundOf(B, a),
+	})
+	local played = Atk.Play(ctx)
+	a.fxDriven = played
+	-- a ranged shot keeps its flight (AttackFx MinTravel): its impact may land after the event's time; Net.Events
+	-- then plays the Hit (number, flash) and the victim's next events that much later, so they land with the shot
+	local late = played and tonumber(ctx.ImpactLate) or 0
+	if late == late and late > 0 then
+		ev.fxLate = min(late, K.FX_LATE_MAX)
+		return played, ev.fxLate
+	end
+	return played, 0
+end
+
+function Atk.Hit(B, ev, dueAt)
+	local v = B.units[tonumber(ev.to) or -1]
+	local a = ev.from ~= nil and B.units[tonumber(ev.from) or -1] or nil
+	if not v or (ev.from ~= nil and not a) then
+		return nil
+	end
+	local played, late = hitPlay(B, ev, dueAt, v, a)
+	-- (any absorbed hit: a plain attack, a special's, an element's, a zone's; the attack's own effect is apart). After
+	-- the hit's play (re-review I3): a ranged shot's ripple lands with the shot (dueAt + its late), like the BLOCK
+	-- number, the Hurt pose and the impact (Net.Events holds them by ev.fxLate)
+	if num(ev.absorbed, 0) > 0 and not ev.miss then
+		Atk.ShieldHit(B, v, a, dueAt + late, (ev.zone or ev.burn) and true or false)
+	end
+	return played
+end
+
+-- (Task 11b) my SPECIAL press: when my own view says it can go (my fighter drawn, it has a special, the meter full in
+-- the latest snapshot, not stunned / casting / down, the fight on), its charge shows at once on my fighter
+-- (AttackFx.Precharge: the glow + motes, the rim, the inhale, the held Cast pose), aimed at my lock (else its snapshot
+-- target). Its Special event takes it over (Atk.Special: impact still on the event's time); a rejected Order (Net.Pre)
+-- or PRESS_WAIT without the event (Atk.Update) shatters it
+function Atk.PreCharge(B, now)
+	local f = B and B.fighterId and B.units[B.fighterId] or nil
+	-- (fix round 2) never on a fighter whose KO arrived (Atk.Lying): a held auto-swap keeps it my fighter till its impact
+	if not f or B.ended or B.simEnded or St.fxEndAt or not f.model or not Atk.Drawable(f) or Atk.Lying(f) then
+		return false
+	end
+	local kind = type(f.special) == "table" and f.special.Kind or nil
+	if type(kind) ~= "string" or kind == "" or num(f.meter, 0) < METER_MAX or num(f.hp, 0) <= 0 then
+		return false
+	end
+	if f.state == S_STUNNED or f.state == S_CASTING or f.state == S_DOWN or f.state == S_BENCHED then
+		return false
+	end
+	if St.pre and St.pre.B == B and St.pre.unit == f.id and now < St.pre.untilT then
+		return false -- (fix round 1, M4) a second press while the first waits: one prediction (the sim answers the first)
+	end
+	local AF = Atk.Mod()
+	if not AF or type(AF.Precharge) ~= "function" then
+		return false
+	end
+	local tgt = (B.lock and B.units[B.lock]) or (f.target and B.units[f.target]) or nil
+	local to = nil
+	if tgt and not tgt.gone and not SUPPORT_KINDS[kind] then
+		to = { Atk.Side(B, tgt) }
+	end
+	local ok, played = pcall(AF.Precharge, lookCtx(f, {
+		Kind = kind, From = Atk.Side(B, f), To = to, Mine = true, Seconds = K.PRESS_WAIT, Ground = groundOf(B, f), Now = now,
+	}))
+	if ok and played == true then
+		St.pre = { B = B, unit = f.id, t0 = now, untilT = now + K.PRESS_WAIT }
+		return true
+	end
+	return false
+end
+
+-- (Task 11b) the predicted charge breaks (refused / no event): AttackFx's shards + Recoil + the "interrupted" sound;
+-- `quiet` = it just fades (its Special came but could not play). (fix round 1, I3 / M5) quiet too when the fighter is
+-- no longer up (KO'd: its KO arrived or it is drawn down) or no longer my fighter (swapped out): no shards, Recoil or
+-- "interrupted" sound on a downed or benched pet
+function Atk.Shatter(B, quiet)
+	local p = St.pre
+	St.pre = nil
+	local AF = Mods.AttackFx
+	if not p or not AF or type(AF.Shatter) ~= "function" then
+		return false
+	end
+	local PB = p.B or B
+	local u = PB and PB.units[p.unit]
+	if not u or u.gone or u.parked or u.benched or Atk.Lying(u) or (PB.fighterId ~= nil and PB.fighterId ~= p.unit) then
+		quiet = true
+	end
+	local ok, r = pcall(AF.Shatter, p.unit, os.clock(), quiet == true)
+	return ok and r == true
+end
+
+-- a Special: the caster's kind (its signature for the 12 top pets: PetId), at its targets / allies / the aimed spot.
+-- (Task 11b) my pressed Special takes over its predicted charge (Precharged: backdated to the press, impact on dueAt);
+-- every other one (bots, NPCs, allies, enemies, my pet with no press) gets its charge back: LateMax, the impact up to
+-- LATE_MAX after dueAt (ev.fxSpLate: Net.Events holds this special's hits, the KOs they cause and a last gasp till then).
+-- A Pounce never lands late: the server moves a pouncing bot onto its target at the event, its leap must land then
+function Atk.Special(B, ev, dueAt)
+	local u = B.units[tonumber(ev.unit) or -1]
+	if not u then
+		return nil
+	end
+	if u.isBoss or not Atk.Drawable(u) then
+		return "none"
+	end
+	local kind = tostring(ev.kind or "")
+	local to, seen = {}, {}
+	local function add(id)
+		local t = B.units[tonumber(id) or -1]
+		if t and not seen[t] and not t.gone then
+			seen[t] = true
+			to[#to + 1] = Atk.Side(B, t)
+		end
+	end
+	if kind == "Heal" then
+		for _, h in ipairs(type(ev.heals) == "table" and ev.heals or {}) do
+			add(type(h) == "table" and h[1] or nil)
+		end
+	elseif kind == "Shield" then
+		for _, id in ipairs(type(ev.shields) == "table" and ev.shields or {}) do
+			add(id)
+		end
+	else
+		add(ev.target) -- the aimed target first (AttackFx aims at To[1])
+		for _, id in ipairs(type(ev.targets) == "table" and ev.targets or {}) do
+			add(id)
+		end
+		if kind == "Storm" then -- (fix round 2, I1) + every other enemy in the zone (the event carries only the aimed one)
+			for _, e in ipairs(stormZone(B, u, ev)) do
+				add(e.id)
+			end
+		end
+	end
+	if #to == 0 then
+		if SUPPORT_KINDS[kind] then
+			add(u.id)
+		else
+			to[1] = { Pos = worldPoint(B, num(ev.tx, u.x), u.centerY or 1.5, num(ev.tz, u.z)) } -- (nobody in reach)
+		end
+	end
+	local pre = St.pre
+	local precharged = pre ~= nil and pre.B == B and pre.unit == u.id
+	if precharged then
+		St.pre = nil
+	end
+	local ctx = lookCtx(u, {
+		Attack = "Special", Kind = kind, From = Atk.Side(B, u), To = to, Mine = u.mine == true, DueAt = dueAt,
+		Angle = tonumber(ev.angle) and worldAngle(B, tonumber(ev.angle)) or nil, Ground = groundOf(B, u),
+		Precharged = precharged or nil, LateMax = (not precharged and kind ~= "Pounce") and K.LATE_MAX or nil,
+	})
+	local played = Atk.Play(ctx)
+	u.fxDriven = played
+	if precharged and not played then
+		St.pre = pre
+		Atk.Shatter(B, true) -- (the Special came but could not play: its prediction fades, no "interrupted" cue)
+	end
+	if played then
+		local late = tonumber(ctx.ImpactLate) or 0
+		if late == late and late > 0 then
+			ev.fxSpLate = min(late, K.LATE_MAX)
+		end
+		cover(B, to, dueAt)
+		if kind == "Storm" then
+			u.stormFxUntil = dueAt + 1 -- its Zone draws only the damage field (AttackFx's cloud rains)
+		end
+	end
+	return played
+end
+
+-- an element attack (Cone / Circle / Line of BattleCatalog.ElementAttacks) along the event's aim
+function Atk.Element(B, ev, dueAt)
+	local u = B.units[tonumber(ev.unit) or -1]
+	if not u then
+		return nil
+	end
+	if u.isBoss or not Atk.Drawable(u) then
+		return "none"
+	end
+	Atk.Look(u) -- (loads AttackFxCatalog)
+	local cat = Mods.FxCat or nil
+	local element = ev.element
+	if not (cat and type(cat.Elements) == "table" and type(element) == "string" and cat.Elements[element]) then
+		element = nil -- (lookCtx: the unit's own)
+	end
+	local shape = ev.shape
+	local def = BattleCatalog and type(BattleCatalog.ElementAttacks) == "table" and BattleCatalog.ElementAttacks[ev.element] or nil
+	local radius, length = nil, nil
+	if type(def) == "table" then
+		if shape == "Line" then
+			length = tonumber(def.Length)
+		elseif shape == "Circle" then
+			radius = tonumber(def.Radius)
+		else
+			radius = tonumber(def.Length)
+		end
+	end
+	-- the targets, the one nearest the aimed point first (AttackFx aims at To[1])
+	local tx, tz = num(ev.tx, u.x), num(ev.tz, u.z)
+	local list = {}
+	for _, id in ipairs(type(ev.targets) == "table" and ev.targets or {}) do
+		local t = B.units[tonumber(id) or -1]
+		if t and not t.gone then
+			list[#list + 1] = t
+		end
+	end
+	table.sort(list, function(p, q)
+		local dp = (p.x - tx) * (p.x - tx) + (p.z - tz) * (p.z - tz)
+		local dq = (q.x - tx) * (q.x - tx) + (q.z - tz) * (q.z - tz)
+		if dp ~= dq then
+			return dp < dq
+		end
+		return p.id < q.id
+	end)
+	local to = {}
+	for i, t in ipairs(list) do
+		to[i] = Atk.Side(B, t)
+	end
+	local played = Atk.Play(lookCtx(u, {
+		Attack = "Element", Shape = shape, Element = element, From = Atk.Side(B, u), To = (#to > 0) and to or nil,
+		Angle = worldAngle(B, num(ev.angle, 0)), Radius = radius, Length = length, Mine = u.mine == true, DueAt = dueAt,
+		Ground = groundOf(B, u),
+	}))
+	u.fxDriven = played
+	if played then
+		cover(B, to, dueAt)
+	end
+	return played
+end
+
+-- a KO: the element-coloured poof + the Ko pose (tumbles, then holds: the pet lies until it is parked)
+function Atk.Ko(B, ev, dueAt)
+	local u = B.units[tonumber(ev.unit) or -1]
+	if not u then
+		return nil
+	end
+	if u.isBoss or not u.model or not Atk.Drawable(u) then
+		return "none"
+	end
+	local played = Atk.Play(lookCtx(u, { Attack = "Ko", From = Atk.Side(B, u), Mine = u.mine == true, DueAt = dueAt, Ground = groundOf(B, u) }))
+	if played then
+		u.koAt = dueAt
+		u.poofed = true -- (AttackFx's poof replaces the cube poof)
+	end
+	return played
+end
+
+-- a helper's buff on its fighter: the support special it is like (Heal / Shield / Rally / Haste) on the fighter
+function Atk.Buff(B, ev, dueAt)
+	local h = B.units[tonumber(ev.unit) or -1]
+	local f = B.units[tonumber(ev.target) or -1]
+	if not h or not f then
+		return nil
+	end
+	if f.isBoss or not f.model or not Atk.Drawable(f) then
+		return "none"
+	end
+	local def = BattleCatalog and type(BattleCatalog.Buffs) == "table" and BattleCatalog.Buffs[tostring(ev.kind)] or nil
+	local kind = BUFF_LOOK[(type(def) == "table" and def.Effect) or tostring(ev.kind)] or "Rally"
+	-- (another player's helper is not drawn: the buff rises from its fighter)
+	local from = (h.model and Atk.Drawable(h)) and Atk.Side(B, h) or { Pos = unitCenter(B, f) }
+	return Atk.Play(lookCtx(h, { Attack = "Special", Kind = kind, PetId = false, From = from, To = { Atk.Side(B, f) }, Mine = h.mine == true, DueAt = dueAt, Ground = groundOf(B, f) }))
+end
+
+-- a Swap: the incoming pet's entrance (Victory: hop-spin + sparkles)
+function Atk.Swap(B, ev, dueAt)
+	local inc = B.units[tonumber(ev["in"]) or -1]
+	if not inc then
+		return nil
+	end
+	if inc.isBoss or not inc.model or not Atk.Drawable(inc) then
+		return "none"
+	end
+	return Atk.Play(lookCtx(inc, { Attack = "Victory", From = Atk.Side(B, inc), Mine = inc.mine == true, DueAt = dueAt, Ground = groundOf(B, inc) }))
+end
+
+-- the winners' cheer (Net.End): Victory after `delay` seconds; false = the old hop
+-- a pet that is KO'd (its Ko played, or drawn down) lies until it is parked: it never cheers (Task 8 fix round 3: the
+-- KO pose pin; a KO in the End batch had the pet hop up into Victory 1.4 s after the End)
+function Atk.Lying(u)
+	return u.koAt ~= nil or u.state == S_DOWN or (tonumber(u.hp) or 1) <= 0
+end
+
+function Atk.Victory(B, u, delay)
+	if not Atk.Mod() or u.isBoss or not u.model or not Atk.Drawable(u) then
+		return false
+	end
+	return Atk.Play(lookCtx(u, { Attack = "Victory", From = Atk.Side(B, u), Mine = u.mine == true, Now = os.clock() + delay, Ground = groundOf(B, u) }))
+end
+
+-- one event: true = AttackFx plays it (the handler draws no cube effect), false = refused (the handler's cube Fx.*),
+-- "none" = nothing of AttackFx's, nil = a unit it names is not known yet (asked again when the event plays)
+function Atk.Event(B, ev, dueAt)
+	if B.ended or not Atk.Mod() then
+		return "none"
+	end
+	local t = ev.type
+	if t == EV.Hit then
+		return Atk.Hit(B, ev, dueAt)
+	elseif t == EV.Special then
+		return Atk.Special(B, ev, dueAt)
+	elseif t == (EV.Element or "Element") then
+		return Atk.Element(B, ev, dueAt)
+	elseif t == EV.KO then
+		return Atk.Ko(B, ev, dueAt)
+	elseif t == (EV.Buff or "Buff") then
+		return Atk.Buff(B, ev, dueAt)
+	elseif t == (EV.Swap or "Swap") then
+		return Atk.Swap(B, ev, dueAt)
+	end
+	return "none"
+end
+
+-- an event ARRIVES (Net.Events): its effect starts now with the impact due when the event plays on the render clock
+-- (`lead` seconds from now: the charge beat; AttackFx shortens the charge when the lead is short)
+function Atk.Arrive(B, ev, lead)
+	if not Atk.EVENTS[ev.type] then
+		return
+	end
+	local ok, r = pcall(Atk.Event, B, ev, os.clock() + lead)
+	if not ok then
+		warnOnce("attackfx_" .. tostring(ev.type), "AttackFx for " .. tostring(ev.type) .. " failed: " .. tostring(r))
+	elseif r ~= nil then
+		B.fxEv[ev] = r
+	end
+end
+
+-- the handler's answer when the event plays: did AttackFx play it? (an event that arrived before a unit it names was
+-- known is played now, impact at once)
+function Atk.Result(B, ev)
+	local r = B.fxEv[ev]
+	if r ~= nil then
+		B.fxEv[ev] = nil
+	else
+		local ok, res = pcall(Atk.Event, B, ev, os.clock())
+		r = ok and res or false
+	end
+	return r == true
+end
+
+-- PetBuilder.PoseBody of a pose (identity without one)
+local function poseBody(pose)
+	Atk.bodyOpts.Pose = pose
+	local ok, cf = pcall(PetBuilder.PoseBody, Atk.bodyOpts)
+	Atk.bodyOpts.Pose = nil
+	return (ok and typeof(cf) == "CFrame") and cf or IDENTITY
+end
+
+-- the battle idle (PetPoses IdleBattle: breathing, a glance every 2-4 s) shows while AttackFx drives the unit and
+-- nothing else does: not on Low graphics (the light path keeps the old drawing), not while down, stunned, winding,
+-- dashing or moving under the player's input (my fighter: `busy`), never on a boss
+function Atk.Idles(u, down, busy)
+	return not busy and not down and not u.windup and not St.fxLow and u.state ~= S_STUNNED and u.state ~= S_DASHING
+		and not u.dashAt and Atk.Drives(u)
+end
+
+-- the pose a battle pet shows now -> pose (PetBuilder.Animate opts.Pose) and its body offset (studs x the build
+-- scale, for the root write: root = frame * body), or nil, nil (no pose: exactly the old drawing). In order:
+-- AttackFx's pose (its crossfade honoured: Prev -> current over Blend); the Ko pose held after AttackFx let it go
+-- (the End's ClearAll: the pet still lies there); PetPoses' Windup held while the snapshot says Winding (the dash
+-- cue's crouch, for a unit AttackFx drives); the battle idle (Atk.Idles; P = time + a per-unit phase, so the pets do
+-- not breathe or glance in step). A switch between those sources crossfades over AttackFx.CROSSFADE like AttackFx's
+-- own Prev / Blend: the body blends, Animate keeps the previous pose for the first half. `base` = the unit's drawn spot
+-- (world, before the pose): AttackFx.Pose shortens a Pounce leap by what the server's slide to the target has covered.
+function Atk.PoseOf(u, now, down, busy, animate, base)
+	local AF = Mods.AttackFx
+	if not AF or u.isBoss or not Atk.Posable() then
+		return nil, nil
+	end
+	if animate == false and not u.poseSwitch and u.poseSrc ~= "fx" then
+		return u.poseLast, u.poseScaled -- a strided frame: the last pose rides along (Units.CarryLoose); an attack pose
+		-- (src "fx") still runs so its body offset (the Strike lunge) moves every frame
+	end
+	local pose, body, src = nil, nil, nil
+	local ok, ps = pcall(AF.Pose, u.id, base) -- (base: the drawn spot; a Pounce lands where the server slides the pet)
+	if ok and type(ps) == "table" and type(ps.Name) == "string" then
+		local cur = u.poseCur or {}
+		u.poseCur = cur
+		cur.Name, cur.P, cur.Ranged, cur.Amp, cur.Reach = ps.Name, ps.P, ps.Ranged, ps.Amp, ps.Reach
+		pose, body, src = cur, poseBody(cur), "fx"
+		local blend = num(ps.Blend, 1)
+		if type(ps.Prev) == "table" and blend < 1 then
+			body = poseBody(ps.Prev):Lerp(body, clamp(blend, 0, 1))
+			if blend < 0.5 then
+				pose = ps.Prev
+			end
+		end
+	else
+		local hold = u.poseHold or {}
+		u.poseHold = hold
+		if down and u.koAt then
+			hold.Name, hold.P, hold.Ranged = "Ko", clamp((now - u.koAt) / K.KO_TIME, 0, 1), false
+			src = "ko"
+		elseif u.windup and not down and Atk.Drives(u) then
+			hold.Name, hold.P, hold.Ranged = "Windup", min(K.WINDUP_HOLD, max(0, now - (u.windAt or now)) / K.WINDUP_IN * 0.5), u.ranged == true
+			src = "hold"
+		elseif Atk.Idles(u, down, busy) then
+			hold.Name, hold.P, hold.Ranged = "IdleBattle", now + u.phase * K.IDLE_PHASE, false
+			src = "idle"
+		end
+		if src then
+			pose, body = hold, poseBody(hold)
+		end
+	end
+	if src ~= u.poseSrc then
+		-- the crossfade starts from what was shown (an IdleBattle keeps running while it fades out)
+		u.poseSrc = src
+		u.poseFrom = u.poseBody
+		u.poseSwitch = now
+		local from = u.poseFromPose or {}
+		u.poseFromPose = from
+		from.Name, from.P, from.Ranged, from.Amp, from.Reach = u.poseShown, u.poseShownP, u.poseShownRanged, u.poseShownAmp, u.poseShownReach
+	end
+	if u.poseSwitch then
+		local w = (now - u.poseSwitch) / num(AF.CROSSFADE, 0.12)
+		if w < 1 then
+			body = (u.poseFrom or IDENTITY):Lerp(body or IDENTITY, max(0, w))
+			local from = u.poseFromPose
+			if w < 0.5 and from and from.Name then
+				if from.Name == "IdleBattle" then
+					from.P = now + u.phase * K.IDLE_PHASE
+				end
+				pose = from
+			end
+		else
+			u.poseSwitch, u.poseFrom = nil, nil
+		end
+	end
+	u.poseBody = body
+	u.poseShown = pose and pose.Name or nil
+	u.poseShownP = pose and pose.P or nil
+	u.poseShownRanged = pose and pose.Ranged or nil
+	u.poseShownAmp = pose and pose.Amp or nil
+	u.poseShownReach = pose and pose.Reach or nil
+	u.poseLast, u.poseScaled = pose, nil
+	if not body then
+		return pose, nil
+	end
+	local s = u.pbScale
+	if not s then
+		s = (u.model and num(u.model:GetAttribute("PB_Scale"), nil)) or K.PET_SCALE * (u.scale or 1)
+		u.pbScale = s
+	end
+	if s ~= 1 then
+		local x, y, z, r00, r01, r02, r10, r11, r12, r20, r21, r22 = body:GetComponents()
+		body = CFrame.new(x * s, y * s, z * s, r00, r01, r02, r10, r11, r12, r20, r21, r22)
+	end
+	u.poseScaled = body
+	return pose, body
 end
 
 ----------------------------------------------------------------------
@@ -2605,6 +3932,18 @@ Handlers[EV.Hit] = function(B, ev)
 		return
 	end
 	local dmg = num(ev.dmg, 0)
+	-- (Task 11b, fix round 1 I1 / M2) a held unit's drawn HP follows each hit's number: the hold's floor drops by this
+	-- hit's damage (a plain hit's on time, a late Special's at its impact; never under a last gasp's floor). A late
+	-- Special's hit ends the hold only when it is the last one due: another special's hold on the unit stays
+	if victim.holdHp and not ev.miss then
+		victim.holdHp = max(victim.holdFloor or 0, victim.holdHp - dmg)
+	end
+	if ev.fxSpHeld and (not victim.holdUntil or os.clock() >= victim.holdUntil - K.HOLD_EPS) then
+		Units.Unhold(victim)
+	end
+	-- AttackFx (played on arrival): a pet's plain attack (its swipe / shot, its Strike pose, the victim's Hurt pose) or
+	-- my pet's hurt from a boss; false = the cube bolt / lunge / nudge below
+	local played = Atk.Result(B, ev)
 	-- Phase 5: a dodged hit (dash i-frames / out of reach at the impact)
 	if ev.miss then
 		if victim.root and not victim.parked then
@@ -2616,6 +3955,7 @@ Handlers[EV.Hit] = function(B, ev)
 			if d > 0.01 then
 				attacker.lungeAt = os.clock()
 				attacker.lungeX, attacker.lungeZ = dx / d, dz / d
+				attacker.lungeFx = played and Atk.Posable()
 			end
 		end
 		return
@@ -2635,8 +3975,9 @@ Handlers[EV.Hit] = function(B, ev)
 			if d > 0.01 then
 				attacker.lungeAt = os.clock()
 				attacker.lungeX, attacker.lungeZ = dx / d, dz / d
+				attacker.lungeFx = played and Atk.Posable() -- (the Strike pose replaces the lunge offset)
 			end
-			if attacker.ranged and attacker.model and not attacker.parked then
+			if not played and attacker.ranged and attacker.model and not attacker.parked then
 				Fx.Bolt(unitCenter(B, attacker), unitCenter(B, victim), elementColor(attacker.element), 0.42, 0.24)
 			end
 		end
@@ -2644,6 +3985,8 @@ Handlers[EV.Hit] = function(B, ev)
 	-- my fighter hit hard: a tiny camera shake (x the Shake setting)
 	if victim.mine and B.Fighter and victim.id == B.fighterId and dmg >= victim.maxHp * 0.12 then
 		Me.Shake(0.18, 0.16)
+	elseif victim.mine and B.Fighter and victim.id == B.fighterId and B.Mode == "Dungeon" and dmg > 0 then
+		Me.Shake(K.HIT_SHAKE_LIGHT[1], K.HIT_SHAKE_LIGHT[2]) -- wave 5 (bug #15): a light shake on every hit in a dungeon
 	end
 	-- victim feedback
 	if not victim.isBoss and attacker then
@@ -2652,6 +3995,8 @@ Handlers[EV.Hit] = function(B, ev)
 		if d > 0.01 then
 			victim.hurtAt = os.clock()
 			victim.hurtX, victim.hurtZ = dx / d, dz / d
+			-- the Hurt pose instead of the nudge: this hit's effect played, or a played special / element covers it
+			victim.hurtFx = Atk.Posable() and (played or (victim.fxHitUntil ~= nil and victim.hurtAt <= victim.fxHitUntil))
 		end
 	end
 	if not ev.zone or math.random() < 0.5 then
@@ -2701,13 +4046,41 @@ Handlers[EV.Special] = function(B, ev)
 	local kind = tostring(ev.kind or "")
 	local color = specialColor(u, kind)
 	local S = SPECIALS[kind] or {}
+	-- AttackFx (played on arrival) draws the special; the cube Fx.* below only when it did not (the callout, the heal
+	-- numbers and the shield / ice bookkeeping stay either way)
+	local cubes = not Atk.Result(B, ev)
 	if u and u.root and not u.parked then
 		local label = tostring(ev.name or kind)
 		Fx.Number(u.root, numberHeight(u) + 0.6, string.upper(label) .. "!", color:Lerp(COLORS.White, 0.2), K.CALLOUT_PX, 1.2)
-		Fx.Burst(unitCenter(B, u), color, 8, 6, 0.35, 0.45, { up = 0.9, gravity = 4 })
+		if cubes then
+			Fx.Burst(unitCenter(B, u), color, 8, 6, 0.35, 0.45, { up = 0.9, gravity = 4 })
+		end
 	end
 	local tx, tz = num(ev.tx, num(ev.x, 0)), num(ev.tz, num(ev.z, 0))
-	if kind == "Blast" then
+	if not cubes then
+		for _, h in ipairs(kind == "Heal" and type(ev.heals) == "table" and ev.heals or {}) do
+			local a = B.units[tonumber(h[1]) or -1]
+			if a and a.root and not a.parked and num(h[2], 0) > 0 then
+				Fx.Number(a.root, numberHeight(a), "+" .. tostring(floor(num(h[2], 0) + 0.5)), COLORS.Heal, K.NUMBER_PX)
+			end
+		end
+		local seconds = num(S.Seconds, 6)
+		for _, id in ipairs(kind == "Shield" and type(ev.shields) == "table" and ev.shields or {}) do
+			local a = B.units[tonumber(id) or -1]
+			if a then
+				-- (its later absorbed hits ripple in u's look while the shield lasts: Atk.ShieldHit)
+				a.shieldUntil = os.clock() + seconds + 0.5
+				a.shieldBy = u and u.id or nil
+			end
+		end
+		local stun = num(S.Stun, 1) + 0.4
+		for _, id in ipairs(kind == "Freeze" and type(ev.stunned) == "table" and ev.stunned or {}) do
+			local a = B.units[tonumber(id) or -1]
+			if a then
+				a.iceUntil = os.clock() + stun
+			end
+		end
+	elseif kind == "Blast" then
 		local c = worldPoint(B, tx, 0.6, tz)
 		local r = num(S.Radius, 7)
 		Fx.Ring(c, r, color, 20, 0.8, 0.5, 0.05)
@@ -2727,8 +4100,11 @@ Handlers[EV.Special] = function(B, ev)
 		for _, id in ipairs(type(ev.shields) == "table" and ev.shields or {}) do
 			local a = B.units[tonumber(id) or -1]
 			if a and a.root and not a.parked then
-				a.shieldUntil = os.clock() + seconds + 0.5
 				Fx.Ring(unitCenter(B, a), 2.2, COLORS.Shield, 10, 0.4, 0.5, 0.2)
+			end
+			if a then
+				a.shieldUntil = os.clock() + seconds + 0.5
+				a.shieldBy = u and u.id or nil
 			end
 		end
 	elseif kind == "Pounce" then
@@ -2778,7 +4154,9 @@ Handlers[EV.Zone] = function(B, ev)
 	local floorCF = worldFrame(B, x, 0, z, 0)
 	if kind == "Storm" then
 		local u = B.units[tonumber(ev.unit) or -1]
-		Fx.Zone(floorCF, r, seconds, specialColor(u, "Storm"), "Storm")
+		-- AttackFx's Storm special rains from its own cloud: the zone then draws only its damage field on the floor
+		local field = u and u.stormFxUntil ~= nil and os.clock() <= u.stormFxUntil
+		Fx.Zone(floorCF, r, seconds, specialColor(u, "Storm"), field and "Field" or "Storm")
 	else
 		local color = Color3.fromRGB(255, 120, 60)
 		local BB = lazyBoss()
@@ -2797,6 +4175,11 @@ Handlers[EV.KO] = function(B, ev)
 	if not u then
 		return
 	end
+	Units.Unhold(u) -- (Task 11b) a KO held for a late Special's impact (or a last gasp) plays now
+	if St.pre and St.pre.unit == u.id then
+		Atk.Shatter(B, true) -- (fix round 1, I3) my pressed fighter went down before its Special: the charge just fades
+	end
+	Atk.Result(B, ev) -- AttackFx's Ko (played on arrival) marks the pet poofed: no cube poof below, it tumbles and lies
 	if u.root and not u.parked then
 		Fx.Number(u.root, numberHeight(u) + 0.4, "KO!", Color3.fromRGB(220, 226, 240), K.CALLOUT_PX, 1.1)
 		if not u.isBoss and not u.poofed then
@@ -2808,6 +4191,7 @@ Handlers[EV.KO] = function(B, ev)
 	end
 	u.hp = 0
 	u.state = S_DOWN
+	Me.UndimCaster(u.id) -- (Task 11) a knocked-out caster's battle dim ends with it (its effect may still finish its beats)
 	if B.lock == u.id then
 		B.lock = nil
 	end
@@ -2853,6 +4237,7 @@ Handlers[EV.Order] = function()
 	-- (handled on arrival: Net.Pre)
 end
 
+-- (Units.Remove ends each leaver's own AttackFx effects and pose: AttackFx.Cancel)
 Handlers[EV.Leave] = function(B, ev)
 	for _, id in ipairs(type(ev.units) == "table" and ev.units or {}) do
 		local u = B.units[tonumber(id) or -1]
@@ -2868,6 +4253,9 @@ end
 
 Handlers[EV.End] = function(B)
 	B.simEnded = true
+	-- the fight is over (Review Focus 4, Ruling 11): no new attack effect from here; the live ones (the killing blow
+	-- lands visibly) finish for at most FX_END_GRACE, then AttackFx.ClearAll (Atk.Update)
+	Atk.EndSoon(B)
 end
 
 -- Phase 5 events (the visuals, on the render clock; the HUD / prediction side runs on arrival in Net.Pre)
@@ -2883,7 +4271,11 @@ Handlers[EV.Element or "Element"] = function(B, ev)
 	local sx, sz = num(ev.x, u and u.x or 0), num(ev.z, u and u.z or 0)
 	local angle = num(ev.angle, 0)
 	local shape = tostring(ev.shape or "Cone")
+	local played = Atk.Result(B, ev) -- AttackFx (played on arrival): the shape in the element's textures + the cast pose
 	calloutAbove(u, string.upper(tostring(ev.name or ev.element or "")) .. "!", color:Lerp(COLORS.White, 0.25))
+	if played then
+		return
+	end
 	if u and u.id ~= B.fighterId then
 		u.hopAt = os.clock()
 	end
@@ -2920,12 +4312,19 @@ Handlers[EV.Buff or "Buff"] = function(B, ev)
 	local helper = B.units[tonumber(ev.unit) or -1]
 	local fighter = B.units[tonumber(ev.target) or -1]
 	local color = (helper and elementColor(helper.element)) or COLORS.Heal
+	local played = Atk.Result(B, ev) -- AttackFx: the support special the buff is like, on the fighter
 	if helper and helper.mine then
 		helper.flyAt = os.clock() -- fly to the fighter and back
 	end
+	local bdef = BattleCatalog and type(BattleCatalog.Buffs) == "table" and BattleCatalog.Buffs[tostring(ev.kind)] or nil
+	if helper and fighter and type(bdef) == "table" and bdef.Effect == "Shield" then
+		-- (the shield's later absorbed hits ripple in the helper's look while it lasts: Atk.ShieldHit)
+		fighter.shieldBy = helper.id
+		fighter.shieldUntil = os.clock() + num(bdef.Seconds, 6) + 0.5
+	end
 	if fighter then
 		calloutAbove(fighter, string.upper(tostring(ev.name or ev.kind or "BUFF")), color:Lerp(COLORS.White, 0.2), K.CALLOUT_PX, 1.4)
-		if fighter.model and not fighter.parked then
+		if not played and fighter.model and not fighter.parked then
 			Fx.Rise(unitCenter(B, fighter), color, 10, 0.32, 0.9, 1.6)
 		end
 	end
@@ -2933,18 +4332,26 @@ end
 
 Handlers[EV.Swap or "Swap"] = function(B, ev)
 	local incoming = B.units[tonumber(ev["in"]) or -1]
-	local out = B.units[tonumber(ev.out) or -1]
-	if incoming and incoming.model and not incoming.parked then
-		calloutAbove(incoming, ev.auto and "GO!" or "SWAP!", COLORS.Dodge, K.CALLOUT_PX, 1)
-		Fx.Burst(unitCenter(B, incoming), elementColor(incoming.element), 10, 8, 0.45, 0.45, { up = 0.7, color2 = COLORS.White })
-	end
-	local now = os.clock()
-	for _, u in ipairs({ incoming, out }) do
-		if u and u.mine and u.drawn then
-			u.swapFrom = u.drawn
-			u.swapAt = now
+	-- (fix round 2, I2-b) a held auto-swap: the incoming pet leaves the bench now (another player's is unparked for its
+	-- GO!), and my two pets trade places now (Me.Switch; Net.Pre left it for this moment)
+	if incoming and incoming.unbenchAt then
+		incoming.unbenchAt = nil
+		if not incoming.mine and incoming.state ~= S_BENCHED then
+			incoming.benched = false
+			parkUnit(incoming, false)
 		end
 	end
+	if ev.fxSwitchLate and B.Fighter and not B.ended and ev.owner == myUserId() then
+		Me.Switch(B, ev)
+	end
+	local played = Atk.Result(B, ev) -- AttackFx: the incoming pet's entrance (Victory)
+	if incoming and incoming.model and not incoming.parked then
+		calloutAbove(incoming, ev.auto and "GO!" or "SWAP!", COLORS.Dodge, K.CALLOUT_PX, 1)
+		if not played then
+			Fx.Burst(unitCenter(B, incoming), elementColor(incoming.element), 10, 8, 0.45, 0.45, { up = 0.7, color2 = COLORS.White })
+		end
+	end
+	-- (my pets' arc starts at the trade: Me.Switch)
 end
 
 Handlers[EV.Windup or "Windup"] = function(B, ev)
@@ -2976,6 +4383,47 @@ end
 
 Handlers[EV.Speed or "Speed"] = function()
 	-- (handled on arrival: Net.Pre)
+end
+
+-- bug #22: my pet leaves me to fight (the server's engage rule): the arrival hop = "it goes"; nothing else (no parts,
+-- the same on Low graphics); another player's pet just moves with its snapshots
+Handlers[EV.Engage or "Engage"] = function(B, ev)
+	if ev.on ~= true or not B.fighterId or tonumber(ev.unit) ~= B.fighterId then
+		return
+	end
+	local u = B.units[B.fighterId]
+	if u and u.model and not u.parked then
+		u.hopAt = os.clock()
+	end
+	Hud.enemyDirty = true
+end
+
+-- the End: plays every queued event that is not held for a flying shot, in order; true when held ones are left
+function Net.PlayUnheld(B)
+	local q = B.evq
+	local items = {}
+	for i = 1, #q do
+		items[i] = q[i]
+	end
+	for i = #q, 1, -1 do
+		q[i] = nil
+	end
+	local held = false
+	for _, item in ipairs(items) do
+		if item.held then
+			q[#q + 1] = item
+			held = true
+		else
+			local fn = Handlers[item.ev.type]
+			if fn then
+				local ok, err = pcall(fn, B, item.ev)
+				if not ok then
+					warnOnce("event_" .. tostring(item.ev.type), "event " .. tostring(item.ev.type) .. " failed: " .. tostring(err))
+				end
+			end
+		end
+	end
+	return held
 end
 
 function Net.PlayDue(B, now)
@@ -3483,12 +4931,20 @@ function Hud.BuildActions()
 			local t = input.UserInputType
 			if t == Enum.UserInputType.Touch or t == Enum.UserInputType.MouseButton1 then
 				Input.Press(action, true)
+				if action == "Attack" then
+					-- bug #16: hold 0.4 s = the next target; the hold remembers its input + button so a slide off the button
+					-- (whose own InputEnded may never fire) cancels it instead of re-targeting
+					Input.HoldStart("attackButton", 0, os.clock(), "Attack", input, b)
+				end
 			end
 		end)
 		b.InputEnded:Connect(function(input)
 			local t = input.UserInputType
 			if t == Enum.UserInputType.Touch or t == Enum.UserInputType.MouseButton1 then
 				Input.Press(action, false)
+				if action == "Attack" then
+					Input.HoldEnd("attackButton")
+				end
 			end
 		end)
 	end
@@ -4047,7 +5503,8 @@ function Hud.Captions(B)
 	local f = B.fighterId and B.units[B.fighterId]
 	local ea = f and type(f.info.elementAttack) == "table" and f.info.elementAttack or nil
 	local caps = {
-		Attack = "PICK TARGET",
+		-- bug #16: ATTACK (a tap attacks the lock / the nearest); NEXT for NEXT_FLASH after a hold picked the next target
+		Attack = (St.nextFlashUntil and os.clock() < St.nextFlashUntil) and "NEXT" or "ATTACK",
 		Element = ea and string.upper(tostring(ea.Name)) or "ELEMENT",
 		Special = "SPECIAL",
 		Dash = "DASH",
@@ -5498,6 +6955,7 @@ end
 -- the run ended between two rounds (its final End names the last round's id): the result card replaces the side card
 function Ring.FinalAfterWin(B, payload)
 	B.ringNext = nil
+	Net.Music()
 	Ring.HideNext()
 	B.linger = K.END_LINGER
 	B.endAt = os.clock()
@@ -5681,6 +7139,9 @@ function Input.OnAction(name, state, input)
 	if name == K.ACTION_ATTACK then
 		if began then
 			Input.Press("Attack", true)
+			Input.HoldStart("attackKey", 0, os.clock(), "Attack") -- bug #16: hold 0.4 s = the next target
+		elseif ended then
+			Input.HoldEnd("attackKey")
 		end
 	elseif name == K.ACTION_ELEMENT then
 		if began then
@@ -5807,25 +7268,40 @@ function Input.Press(kind, down, arg)
 	BattleController.Command(kind)
 end
 
--- per frame: a helper key / portrait held 0.5 s swaps
+-- per frame: a helper key / portrait held 0.5 s swaps; an ATTACK key / button held 0.4 s locks the next target (bug #16)
 function Input.Tick(B, now)
 	if not B or not fighting() then
 		return
 	end
 	for key, h in pairs(St.holds or {}) do
-		if not h.fired and now - h.t >= K.SWAP_HOLD then
+		if h.kind == "Attack" and not h.fired and h.gui and h.input and not Input.OnButton(h.input, h.gui) then
+			St.holds[key] = nil -- the touch / cursor slid off the ATTACK button: no re-target the player did not ask for
+		elseif h.kind == "Attack" then
+			if not h.fired and now - h.t >= K.ATTACK_HOLD then
+				h.fired = true
+				Input.CycleTarget()
+				St.nextFlashUntil = os.clock() + K.NEXT_FLASH
+				Hud.Captions(B)
+			end
+		elseif not h.fired and now - h.t >= K.SWAP_HOLD then
 			h.fired = true
 			Input.Helper("Swap", h.index)
 		end
 	end
+	if St.nextFlashUntil and os.clock() >= St.nextFlashUntil then
+		St.nextFlashUntil = nil
+		Hud.Captions(B)
+	end
 end
 
-function Input.HoldStart(key, index, t)
+-- `kind` "Attack" = an ATTACK hold (bug #16: it cycles the target, never a helper's Buff / Swap); `input` / `gui` (the
+-- ATTACK button's touch / click): the hold is dropped when that input leaves the button or ends anywhere
+function Input.HoldStart(key, index, t, kind, input, gui)
 	if not fighting() or not Input.GateOpen() then
 		return
 	end
 	St.holds = St.holds or {}
-	St.holds[key] = { index = index, t = t, fired = false }
+	St.holds[key] = { index = index, t = t, fired = false, kind = kind, input = input, gui = gui }
 	BattleController._wake()
 end
 
@@ -5835,7 +7311,7 @@ function Input.HoldEnd(key)
 		return
 	end
 	St.holds[key] = nil
-	if not h.fired then
+	if not h.fired and h.kind ~= "Attack" then
 		Input.Helper("Buff", h.index)
 	end
 end
@@ -5844,7 +7320,7 @@ end
 function Input.HoldFrac(index, now)
 	local best = 0
 	for _, h in pairs(St.holds or {}) do
-		if h.index == index and not h.fired then
+		if h.index == index and not h.fired and h.kind ~= "Attack" then
 			local p = (now - h.t - 0.1) / (K.SWAP_HOLD - 0.1)
 			if p > best then
 				best = min(1, p)
@@ -5985,8 +7461,27 @@ function Input.MouseLocked()
 	return ok and locked == true
 end
 
+-- is `input` (a touch / the mouse, GUI-inset space) still over `gui` (a few px of slack)?
+function Input.OnButton(input, gui)
+	local ok, inside = pcall(function()
+		local p = input.Position
+		local sg = gui:FindFirstAncestorOfClass("ScreenGui")
+		local y = p.Y + ((sg and sg.IgnoreGuiInset) and guiInset() or 0)
+		local a, s = gui.AbsolutePosition, gui.AbsoluteSize
+		local slack = 6
+		return gui.Visible and p.X >= a.X - slack and p.X <= a.X + s.X + slack and y >= a.Y - slack and y <= a.Y + s.Y + slack
+	end)
+	return not ok or inside == true
+end
+
 function Input.OnEnded(input)
 	local t = input.UserInputType
+	-- the ATTACK button's hold ends with its own touch / the mouse button wherever it is released (bug #16 review: a
+	-- release off the button never reaches the button's InputEnded)
+	local ah = St.holds and St.holds.attackButton
+	if ah and ((t == Enum.UserInputType.MouseButton1 and (ah.input == nil or ah.input.UserInputType == t)) or (t == Enum.UserInputType.Touch and (ah.input == nil or ah.input == input))) then
+		Input.HoldEnd("attackButton")
+	end
 	local tap = St.tap
 	if not tap or t ~= Enum.UserInputType.Touch then
 		return
@@ -6162,6 +7657,7 @@ function Input.Predict(B, action, arg, now)
 		end
 	elseif action == "Special" then
 		pend.Special = { t = now }
+		Atk.PreCharge(B, now) -- (Task 11b) its charge shows at once when my view says it can go
 	end
 	if action ~= "Target" then
 		Hud.Pop(Hud.ButtonOf(action, tonumber(arg)))
@@ -6233,9 +7729,40 @@ end
 ----------------------------------------------------------------------
 -- Messages
 ----------------------------------------------------------------------
+-- the music: SoundFx's "Battle" layer is on while MY fight runs (a fighter, not a spectator), and between two won
+-- Champion Ring rounds (B.ringNext: the floor stays, so does the beat). A dungeon room keeps the Dungeon track
+-- (DungeonController's layer) except its boss room. -> the layer's state
+function Net.Music()
+	local B = St.battle
+	local on = false
+	if B and B.Fighter and (not B.ended or B.ringNext ~= nil) then
+		local d = B.Mode == "Dungeon" and B.Dungeon or nil
+		on = B.Mode ~= "Dungeon" or (type(d) == "table" and d.Boss == true and num(d.Room, 0) >= 3)
+	end
+	if St.musicOn ~= on then
+		local SF = Me.Sound()
+		if SF and type(SF.SetLayer) == "function" then
+			pcall(SF.SetLayer, "Battle", on)
+		end
+		St.musicOn = on
+	end
+	return on
+end
+
+-- a clear earn moment (a won fight's payout): SoundFx "Reward"
+function Net.RewardSound()
+	local SF = Me.Sound()
+	if SF and type(SF.Play) == "function" then
+		pcall(SF.Play, "Reward")
+	end
+end
+
 function Net.Cleanup(B, immediate)
 	if not B then
 		return
+	end
+	if B.Mode == "Dungeon" then
+		pcall(Me.RecordDrawn, B)
 	end
 	Tele.ClearAll(B)
 	for _, u in ipairs(B.list) do
@@ -6262,8 +7789,12 @@ function Net.Cleanup(B, immediate)
 			Hud.SetVisible(false)
 		end
 	end
+	Atk.ClearAll() -- (unit ids restart with every battle: no effect or pose may outlive its floor)
 	if immediate then
 		Fx.ClearAll()
+	end
+	if not St.starting then
+		Net.Music() -- (a chained Start sets the music once the new battle is in: no Battle -> Lobby -> Battle blink)
 	end
 end
 
@@ -6312,6 +7843,7 @@ function Net.Start(payload, battleId)
 		Input.Bind(B.Fighter)
 		Input.Movement(B, B.Fighter)
 		Hud.Rebuild()
+		Net.Music()
 		return
 	end
 	-- the next Champion Ring round in the same pocket / the next dungeon room: my pets' models (and their cards)
@@ -6319,11 +7851,17 @@ function Net.Start(payload, battleId)
 	local chain = B and ((B.ringNext and tostring(payload.Mode) == "Ring") or (B.ended and B.Fighter and B.Mode == "Dungeon" and tostring(payload.Mode) == "Dungeon"))
 	local carry = chain and Ring.TakeModels(B) or nil
 	if B then
-		Net.Cleanup(B, false)
+		St.starting = true
+		local okClean, errClean = pcall(Net.Cleanup, B, false)
+		St.starting = nil
+		if not okClean then
+			error(errClean, 0)
+		end
 	end
 	B = newBattle(payload, battleId)
 	B.sides = type(payload.Sides) == "table" and payload.Sides or {}
 	St.battle = B
+	Atk.Mod() -- (the pet attack VFX load with the first battle)
 	B.renderT = num(payload.T, 0)
 	for _, info in ipairs(type(payload.Units) == "table" and payload.Units or {}) do
 		Units.Add(B, info)
@@ -6348,6 +7886,7 @@ function Net.Start(payload, battleId)
 	Input.Bind(B.Fighter)
 	Input.Movement(B, B.Fighter)
 	Hud.Rebuild()
+	Net.Music()
 	BattleController._wake()
 end
 
@@ -6417,6 +7956,9 @@ function Net.Pre(B, ev)
 		local action = tostring(ev.order or "")
 		if ev.rejected ~= nil then
 			St.rejected = (St.rejected or 0) + 1
+			if action == "Special" then
+				Atk.Shatter(B) -- (Task 11b) the predicted charge breaks
+			end
 			local p = B.pending[action]
 			if p then
 				Input.Revert(B, action, true)
@@ -6458,19 +8000,10 @@ function Net.Pre(B, ev)
 			if not predicted and not ev.auto then
 				B.cd.Swap = now + (B.cdLen.Swap or 10)
 			end
-			local old = B.fighterId
-			B.fighterId = tonumber(ev["in"]) or B.fighterId
-			local incoming = B.units[B.fighterId]
-			if incoming then
-				incoming.benched = false
-				B.fighterEvo = incoming.evo or 0
-				Units.Rebuild(B, incoming)
+			-- (fix round 2, I2-b) a held auto-swap (its KO waits for a late impact) trades the pets when it plays
+			if not ev.fxSwitchLate then
+				Me.Switch(B, ev)
 			end
-			local out = old and B.units[old]
-			if out and out ~= incoming then
-				out.benched = true
-			end
-			pcall(Hud.Rebuild)
 		end
 	elseif t == EV.Hit then
 		if B.fighterId and tonumber(ev.from) == B.fighterId and not ev.special and not ev.element and not ev.zone then
@@ -6543,6 +8076,156 @@ function Net.Snapshot(payload, battleId)
 	end
 end
 
+-- the unit an event lands on (the ranged-shot hold): a Hit's victim, a KO'd unit
+local function heldUnitOf(ev)
+	if ev.type == EV.Hit then
+		return tonumber(ev.to)
+	elseif ev.type == EV.KO then
+		return tonumber(ev.unit)
+	elseif ev.type == (EV.Swap or "Swap") and ev.auto then
+		return tonumber(ev.out) -- (fix round 1, I2) the auto-swap of a fighter KO'd by a shot still flying waits with its KO
+	end
+	return nil
+end
+
+-- seconds `ev` (due at t) waits for a ranged shot still flying at its unit (B.fxHold: when the shot lands), <=
+-- FX_LATE_MAX; the End waits for every shot (the killing blow lands first)
+function Net.Hold(B, ev, t)
+	local holds = B.fxHold
+	if not holds then
+		return 0
+	end
+	local h = nil
+	if ev.type == EV.End then
+		for _, v in pairs(holds) do
+			if not h or v > h then
+				h = v
+			end
+		end
+	else
+		local id = heldUnitOf(ev)
+		h = id and holds[id]
+	end
+	if not h or h <= t then
+		return 0
+	end
+	return min(h - t, K.FX_LATE_MAX)
+end
+
+-- (Task 11b) the drawn HP / state of unit `id` wait until `untilClock` (os.clock): Units.Update never draws its HP
+-- under `floor` (the HP drawn now; a caster's last gasp: 1) nor the unit down before then. A KO / the held hit itself
+-- ends it when it plays (Units.Unhold)
+function Units.Hold(B, id, untilClock, floor)
+	local u = id and B.units[id]
+	-- (fix round 2, M2') a unit already held may be drawn at 0 (a plain hit took its floor there): its hold still extends
+	if not u or (not u.holdUntil and (u.state == S_DOWN or num(u.hp, 0) <= 0)) then
+		return
+	end
+	if not u.holdUntil or u.holdUntil < untilClock then
+		u.holdUntil = untilClock
+	end
+	local f = floor or u.hp
+	u.holdHp = u.holdHp and max(u.holdHp, f) or f
+	u.holdState = u.state
+	if floor then
+		u.holdFloor = max(u.holdFloor or 0, floor) -- (fix round 1) the hits that play during the hold never draw it lower
+	end
+end
+
+function Units.Unhold(u)
+	u.holdUntil, u.holdHp, u.holdState, u.holdFloor = nil, nil, nil, nil
+end
+
+-- (Task 11b) seconds `ev` (due at t on the render clock, `lead` s from now) waits for a late Special's impact
+-- (B.spHold[caster] = { at, kind, victims }: Net.SpecialArrived): that special's own hits (Hit.special from the caster)
+-- and its Storm's zone ticks (Hit.zone + kind) due before the impact, the KO of a unit they hit and the caster's own
+-- KO in its late charge (+ LAST_GASP: the effect lands first). Their units' drawn HP waits too (Units.Hold). Other hits
+-- on the same units (a plain attack, another unit's) play on time. The End does not wait: its grace (FX_END_GRACE
+-- 1 s > LATE_MAX) lets the effect land and the held events drain on the render clock (Net.End, B.drainHeld)
+function Net.SpecialHold(B, ev, t, lead)
+	local holds = B.spHold
+	if not holds then
+		return 0
+	end
+	local now = os.clock()
+	local w = 0
+	if ev.type == EV.Hit then
+		local h = holds[tonumber(ev.from) or -1]
+		local v = tonumber(ev.to)
+		if h and v and h.at > t and (ev.special ~= nil or (ev.zone and tostring(ev.kind or "") == h.kind)) then
+			w = h.at - t
+			h.victims[v] = true
+			Units.Hold(B, v, now + lead + w)
+		end
+	elseif ev.type == EV.KO then
+		local id = tonumber(ev.unit) or -1
+		local own = holds[id]
+		local gasp = own ~= nil and own.at > t
+		if gasp then
+			w = own.at - t + K.LAST_GASP
+		end
+		for _, h in pairs(holds) do
+			if h.victims[id] and h.at > t then
+				w = max(w, h.at - t)
+			end
+		end
+		if w > 0 then
+			-- (fix round 1, M1) one hold: a last gasp floors the drawn HP at 1 (the killing hit's drop shows)
+			Units.Hold(B, id, now + lead + w, gasp and 1 or nil)
+		end
+	elseif ev.type == (EV.Swap or "Swap") and ev.auto then
+		-- (fix round 1, I2) the server's auto-swap of a fighter whose KO waits for a late impact: the "GO!" and the
+		-- entrance wait with it (the KO before it in this batch set the out unit's hold)
+		local o = B.units[tonumber(ev.out) or -1]
+		if o and o.holdUntil then
+			w = max(0, o.holdUntil - now - lead)
+		end
+	end
+	if w > 0 then
+		ev.fxSpHeld = true
+	end
+	return min(w, K.LATE_MAX + K.LAST_GASP)
+end
+
+-- (Task 11b) a Special that lands late (ev.fxSpLate, Atk.Special): its hold, until the impact on the render clock
+function Net.SpecialArrived(B, ev, t)
+	local late = ev.type == EV.Special and tonumber(ev.fxSpLate) or nil
+	if not late or late <= 0 then
+		return
+	end
+	local holds = B.spHold or {}
+	B.spHold = holds
+	for id, h in pairs(holds) do
+		if h.at < t - 2 then
+			holds[id] = nil -- (long past)
+		end
+	end
+	local id = tonumber(ev.unit)
+	if id then
+		holds[id] = { at = t + late, kind = tostring(ev.kind or ""), victims = {} }
+	end
+end
+
+-- queue `ev` to play at `due` (in time order: a held event lets the others pass); a Hit whose shot lands late
+-- (ev.fxLate, Atk.Hit) holds its victim's next events until then
+function Net.Queue(B, ev, due, held)
+	local q = B.evq
+	local i = #q
+	while i > 0 and q[i].t > due do
+		i = i - 1
+	end
+	table.insert(q, i + 1, { t = due, ev = ev, held = held == true })
+	if (tonumber(ev.fxLate) or 0) > 0 then
+		local id = heldUnitOf(ev)
+		if id then
+			B.fxHold = B.fxHold or {}
+			if (B.fxHold[id] or -math.huge) < due then
+				B.fxHold[id] = due
+			end
+		end
+	end
+end
+
 function Net.Events(list, battleId)
 	local B = St.battle
 	if not B or type(list) ~= "table" then
@@ -6553,18 +8236,57 @@ function Net.Events(list, battleId)
 	end
 	-- played on the delayed render clock: stamp them with the estimated server time of their arrival
 	local t = B.haveOffset and (os.clock() + B.offset) or B.renderT
+	-- the pet attack VFX start NOW, their impact due when the event plays (t - renderT from now: the render delay)
+	local lead = B.haveOffset and clamp(t - B.renderT, 0, K.FX_LEAD_MAX) or 0
 	for _, ev in ipairs(list) do
 		if type(ev) == "table" and type(ev.type) == "string" then
+			-- a victim whose ranged shot is still flying (Net.Hold): its Hit / KO wait for the shot to land
+			-- (Task 11b) ... or a late Special's impact: its own hits, the KOs they cause, a last gasp, the End
+			local hold = max(Net.Hold(B, ev, t), Net.SpecialHold(B, ev, t, lead))
+			if hold > 0 and ev.type == (EV.Swap or "Swap") and ev.auto then
+				-- (fix round 2, I2-b) the held auto-swap trades the pets when it plays, not now: my fighter switch waits
+				-- (Net.Pre / the Swap handler), the incoming pet stays benched (another player's: parked) till then
+				ev.fxSwitchLate = true
+				local inc = B.units[tonumber(ev["in"]) or -1]
+				if inc then
+					inc.unbenchAt = os.clock() + lead + hold + K.UNBENCH_SLACK
+					if inc.mine then
+						Units.Rebuild(B, inc) -- (my new fighter's High model is built while it waits: its GO! lands on it)
+					end
+				end
+			end
 			local okPre, errPre = pcall(Net.Pre, B, ev)
 			if not okPre then
 				warnOnce("pre_" .. ev.type, "event " .. ev.type .. " (HUD) failed: " .. tostring(errPre))
 			end
+			Atk.Arrive(B, ev, lead + hold)
+			Net.SpecialArrived(B, ev, t)
 			-- telegraphs start at once (their fill must complete at the hit), the rest on the render clock
 			if ev.type == EV.Telegraph then
 				local fn = Handlers[ev.type]
 				pcall(fn, B, ev)
 			else
-				B.evq[#B.evq + 1] = { t = t, ev = ev }
+				local late = tonumber(ev.fxLate) or 0
+				Net.Queue(B, ev, t + hold + late, hold > 0 or late > 0)
+			end
+		end
+	end
+end
+
+-- the winners cheer: AttackFx's Victory (hop-spin + sparkles), else the old hop; a little apart (0-0.4 s). During the
+-- End grace (Ruling 11: no new effect) the cheers wait for it in St.cheers (Atk.Update plays them)
+function Net.Cheer(B)
+	local now = os.clock()
+	for _, u in ipairs(B.list) do
+		if u.ally and u.root and not u.parked and not Atk.Lying(u) then
+			local delay = math.random() * 0.4
+			if not Atk.Mod() then
+				u.hopAt = now + delay
+			elseif St.fxEndAt then
+				St.cheers = St.cheers or {}
+				St.cheers[#St.cheers + 1] = { B = B, u = u, at = St.fxEndAt + delay }
+			elseif not Atk.Victory(B, u, delay) then
+				u.hopAt = now + delay
 			end
 		end
 	end
@@ -6590,51 +8312,54 @@ function Net.End(payload, battleId)
 		end
 		return
 	end
-	-- play what is still queued, so the last KO shows
+	-- play what is still queued, so the last KO shows. Events held for a ranged shot still in flight (Net.Queue
+	-- `held`: its Hit, the victim's KO, the sim's End) keep their time: stepBattle drains them on the render clock
+	-- during the End grace, so the killing shot's number and "KO!" pop when it LANDS (Task 8 fix round 3, review
+	-- Important 3); the rest play now, like before
 	local latest = B.snaps[#B.snaps]
-	B.renderT = max(B.renderT, (latest and latest.T or B.renderT)) + 5
-	Net.PlayDue(B, os.clock())
+	if Net.PlayUnheld(B) then
+		B.drainHeld = true
+	else
+		B.renderT = max(B.renderT, (latest and latest.T or B.renderT)) + 5
+		Net.PlayDue(B, os.clock())
+	end
 	B.ended = true
 	B.endAt = os.clock()
+	Atk.EndSoon(B) -- (when the sim's End event has not played: the grace starts now, the cheers wait for it)
 	Input.Bind(false)
 	Input.Movement(B, false)
 	B.pending = {}
 	local participant = payload.Spectator ~= true and B.Fighter
+	local ringNext = participant and Ring.IsNext(B, payload)
+	if not ringNext then
+		Net.Music() -- (first: an error in the cards / result below cannot leave the Battle music on; a won ring round sets it at the tail)
+	end
 	Cards.AfterFight(B, payload)
 	local rw = type(payload.Rewards) == "table" and payload.Rewards or nil
 	if participant and B.Mode == "Dungeon" and (payload.Outcome == "Win" or payload.Won == true or (rw and rw.Dungeon == true and payload.Reason == "Cleared")) then
-		-- a cleared dungeon room: no result card (DungeonController shows the loot); the floor waits for the next room
-		B.linger = K.END_LINGER
+		-- a cleared dungeon room: no result card (DungeonController shows the loot); the floor goes after DUNGEON_LINGER
+		-- (bug #26: then the followers take over, PetController.HANDOVER)
+		B.linger = K.DUNGEON_LINGER
 		Hud.SetVisible(false)
-		for _, u in ipairs(B.list) do
-			if u.ally and u.root and not u.parked then
-				u.hopAt = os.clock() + math.random() * 0.4
-			end
-		end
-	elseif participant and Ring.IsNext(B, payload) then
+		Net.Cheer(B)
+	elseif ringNext then
 		-- a won Champion Ring round: the side card "Round 8 won! ... Round 9 in 3", the floor stays until the next Start
 		B.linger = Ring.LINGER
 		Ring.ShowNext(B, payload)
-		for _, u in ipairs(B.list) do
-			if u.ally and u.root and not u.parked then
-				u.hopAt = os.clock() + math.random() * 0.4
-			end
-		end
+		Net.Cheer(B)
 	elseif participant then
 		B.linger = K.END_LINGER
 		Hud.ShowResult(B, payload)
-		-- winners cheer
+		-- winners cheer (and hear their payout)
 		if payload.Outcome == "Win" or payload.Won then
-			for _, u in ipairs(B.list) do
-				if u.ally and u.root and not u.parked then
-					u.hopAt = os.clock() + math.random() * 0.4
-				end
-			end
+			Net.Cheer(B)
+			Net.RewardSound()
 		end
 	else
 		B.linger = (payload.Reason == "OutOfRange") and 0 or K.SPECTATOR_LINGER
 		Hud.SetVisible(false)
 	end
+	Net.Music() -- (the fight is over: back to the Dungeon / Lobby track; a won ring round keeps the beat)
 	if B.linger <= 0 then
 		Net.Cleanup(B, false)
 	end
@@ -6705,6 +8430,16 @@ local function stepBattle(B, now, dt)
 			end
 		end
 		Net.PlayDue(B, now)
+	elseif B.drainHeld then
+		-- the End came with events held for a flying shot (Net.End): they play on the render clock as it lands; at
+		-- the latest after the End grace everything left plays and the clock jumps to the end like before
+		B.renderT = B.renderT + dt
+		if #B.evq == 0 or now - (B.endAt or now) >= K.FX_END_GRACE then
+			local latest = B.snaps[#B.snaps]
+			B.renderT = max(B.renderT, (latest and latest.T or B.renderT)) + 5
+			B.drainHeld = nil
+		end
+		Net.PlayDue(B, now)
 	end
 	local sa, sb, alpha = sampleSnaps(B)
 	s0 = section("Events", s0)
@@ -6727,6 +8462,10 @@ local function stepBattle(B, now, dt)
 				elseif d2 > K.ANIM_MID * K.ANIM_MID then
 					stride = 3
 				end
+			end
+			-- a pet that only breathes (the battle idle) is posed every other frame: the idle is slow
+			if stride < 2 and u.poseSrc == "idle" then
+				stride = 2
 			end
 			-- a strided frame skips only the pose (PetBuilder.Animate); the root moves every frame and carries the
 			-- animated parts rigidly (Units.CarryLoose), so the pet never stutters and never comes apart
@@ -6829,10 +8568,10 @@ function Units.UpdateFocus(B, now)
 end
 
 local function onFrame(dt)
+	St.frameNo = St.frameNo + 1 -- (first: a frame that fails before Atk.Update shows in StepsAttackFx, fix round 2 M8)
 	local perfClock = BattleController.PerfClock or os.clock
 	local p0 = perfClock()
 	local t0 = os.clock()
-	St.frameNo = St.frameNo + 1
 	local now = t0
 	local B = St.battle
 	if B then
@@ -6845,6 +8584,8 @@ local function onFrame(dt)
 	Fx.Update(now)
 	Fx.UpdateNumbers(now)
 	Fx.UpdateFlashes(now)
+	Atk.Update(now) -- the pet attack VFX and poses (AttackFx has no frame loop of its own)
+	local screenFx = Me.UpdateScreenFx(now)
 	Hud.UpdateResult(now)
 	Ring.UpdateNext(now)
 	Me.UpdateShake(now)
@@ -6858,7 +8599,8 @@ local function onFrame(dt)
 		perf.peak = ms
 	end
 	-- the loop sleeps when nothing is drawn
-	if not St.battle and #St.effects == 0 and #St.numbers == 0 and #St.flashes == 0 and not St.result and not St.next and not St.shake then
+	if not St.battle and #St.effects == 0 and #St.numbers == 0 and #St.flashes == 0 and not St.result and not St.next and not St.shake
+		and not screenFx and not Atk.Pending() then
 		if St.loop then
 			St.loop:Disconnect()
 			St.loop = nil
@@ -6978,7 +8720,49 @@ function BattleController.GetUnit(id)
 		-- dungeon fixes: arriving (the model hidden until the flash), the drawn pet dash, the wild look
 		Arriving = u.arrive ~= nil, Hidden = u.hidden == true, ArriveFx = u.arriveFx ~= nil, DashAt = u.dashAt,
 		Wild = u.info.wild == true,
+		-- pet attack VFX: the battle pose drawn last frame (PetPoses name; nil = none)
+		Pose = u.poseShown, PoseP = u.poseShownP,
 	}
+end
+
+-- wave 5 (bug #26): where the player's dungeon fighter is (still drawn) or was last drawn (<= LAST_DRAWN_AGE s ago)
+-- -> Vector3, key | nil (PetController's hand-over: the follower walks back from there)
+function BattleController.LastDrawn(userId)
+	userId = tonumber(userId)
+	if not userId then
+		return nil
+	end
+	local B = St.battle
+	if B and B.Mode == "Dungeon" then
+		local u = Me.FighterOf(B, userId)
+		local pos = u and Me.SpotOf(u)
+		if typeof(pos) == "Vector3" then
+			return pos, u.info and u.info.key
+		end
+	end
+	local e = St.lastDrawn[userId]
+	if e and os.clock() - e.At <= K.LAST_DRAWN_AGE then
+		return e.Pos, e.Key
+	end
+	St.lastDrawn[userId] = nil
+	return nil
+end
+
+-- wave 5 polish: is the player's dungeon fighter still drawn on the floor (a lost room's KO'd models linger END_LINGER)?
+-- PetController keeps the followers parked while it is (never two copies of the team on screen)
+function BattleController.FighterDrawn(userId)
+	userId = tonumber(userId)
+	local B = St.battle
+	if not userId or not B or B.Mode ~= "Dungeon" then
+		return false
+	end
+	local u = Me.FighterOf(B, userId)
+	return u ~= nil and u.model ~= nil and u.model.Parent ~= nil
+end
+
+function BattleController.LastDrawnKey(userId)
+	local _, key = BattleController.LastDrawn(userId)
+	return key
 end
 
 function BattleController.GetStats()
@@ -7021,6 +8805,7 @@ function BattleController.GetStats()
 		Timeouts = St.timeouts or 0,
 		Dashes = St.dashes or 0, -- pet dashes drawn (Dash events)
 		Arrivals = St.arrivals or 0, -- arrival effects started (EvolutionFx.Arrive)
+		AttackFx = Atk.Stats(), -- AttackFx.Stats() (nil before the first battle loads it)
 		Focus = (function()
 			local b = St.battle
 			local u, auto = nil, false
@@ -7052,6 +8837,11 @@ function BattleController.Stop()
 		Net.Cleanup(St.battle, true)
 	end
 	Fx.ClearAll()
+	Atk.ClearAll()
+	if St.screenFx then
+		pcall(St.screenFx.gui.Destroy, St.screenFx.gui)
+		St.screenFx = nil
+	end
 	Input.Bind(false)
 	Input.Movement(nil, false)
 	St.shake = nil
@@ -7148,6 +8938,22 @@ function BattleController.Init()
 	if okS and sConn then
 		conns[#conns + 1] = sConn
 	end
+	-- the Graphics setting drives AttackFx's quality (like PetFx: ClientSettings.Changed "Gfx", then
+	-- GraphicsQuality.Effective() once GraphicsQuality has applied it)
+	local okG, gConn = pcall(function()
+		if Mods.Settings == nil then
+			Mods.Settings = optional(Client, "ClientSettings") or false
+		end
+		local cs = Mods.Settings
+		return cs and cs.Changed and cs.Changed:Connect(function(key)
+			if key == "Gfx" then
+				task.defer(Atk.SyncQuality)
+			end
+		end)
+	end)
+	if okG and gConn then
+		conns[#conns + 1] = gConn
+	end
 	local cam = workspace.CurrentCamera
 	if cam then
 		conns[#conns + 1] = cam:GetPropertyChangedSignal("ViewportSize"):Connect(function()
@@ -7181,5 +8987,46 @@ function BattleController.Init()
 end
 
 BattleController._Units = Units -- TESTS ONLY (tools/smoke_p6_creatures.lua: the fx mesh slots)
+BattleController._Me = Me -- TESTS ONLY (tools/smoke_p7vfx_client.lua: the Eclipse dim, Task 11)
+BattleController._Fx = Fx -- TESTS ONLY (tools/smoke_p7vfx_client.lua: the Special pre-charge, Task 11b: numbers / flashes)
+
+-- TESTS ONLY (Task 11b): the raw battle unit record (its drawn HP, hold, hurt time) and my predicted charge
+function BattleController._Unit(id)
+	local B = St.battle
+	return B and B.units[id] or nil
+end
+
+function BattleController._Pre()
+	return St.pre
+end
+
+-- TESTS ONLY (fix round 2, M5'): the inhale records by token
+function BattleController._Inhales()
+	return St.inhales
+end
+
+-- (Task 11) loads client/Controllers/AttackFx and points its Hooks at this controller (camera punch, edge glow, the
+-- battle dim) outside a battle too: the /fx preview (DevPetShow) shows a signature's dim as a battle would. -> loaded
+function BattleController.FxHooks()
+	local m = Atk.Mod()
+	Atk.Hook(m) -- (again: a hook someone cleared is pointed back here)
+	return m ~= nil
+end
+
+-- (Task 11 fix round 1, M2) true while this controller's frame loop runs and steps AttackFx itself (Atk.Update): the
+-- /fx preview (DevPetShow) then leaves its own AttackFx.Update out, so an effect is stepped once a frame (an Eclipse dim
+-- in /fx wakes this loop through Me.Dim). The loop keeps running while any AttackFx effect lives (Atk.Pending).
+-- (fix round 2, M8) and only while the loop really reaches Atk.Update: the last frame it ran (St.frameNo, counted first
+-- thing in onFrame) is the frame Atk.Update stepped (St.fxFrame). A loop that fails earlier in its frame every frame
+-- (pcall'd, one warning) stays connected but steps nothing: the caller then steps AttackFx itself. (Either order of the
+-- two RenderStepped handlers in a frame: before onFrame both still hold the last frame's numbers, after it this one's)
+function BattleController.StepsAttackFx()
+	return St.loop ~= nil and Mods.AttackFx ~= nil and Mods.AttackFx ~= false and St.fxFrame == St.frameNo
+end
+
+-- TESTS ONLY (tools/smoke_dev.lua, M8): re-arm a once-only warning after a check that faults a frame on purpose
+function BattleController._Unwarn(key)
+	St.warned[key] = nil
+end
 
 return BattleController

@@ -1017,46 +1017,31 @@ S.client_menu = guarded("client_menu", function()
 		end
 		T.check(present == #names and extra == #names, "...with six entries: " .. table.concat(names, ", "), present .. " of " .. #names .. " found, " .. extra .. " entries in total")
 		T.check(buttonsOk, "...each tile is a TextButton named MenuButton_<Id> (the tutorial rings it)")
-		-- Phase 5 (6.6): a 2 x 3 grid of tiles in menu order (row = floor((i-1)/2): Y rises by row, X by column) and a
-		-- small row (Stats + the gear) under it
-		local grid, small = {}, {}
+		-- bug batch 2 #1 (option A): ONE column of same-size tiles in menu order (Y rises with LayoutOrder, X stays),
+		-- the Settings gear (Gear_Settings) last
+		local grid = {}
 		for _, n in ipairs(names) do
-			local e = entries[n]
-			if e then
-				if e.AbsoluteSize.X < (entries.Pets or e).AbsoluteSize.X - 1 then
-					small[#small + 1] = e
-				else
-					grid[#grid + 1] = e
-				end
+			if entries[n] then
+				grid[#grid + 1] = entries[n]
 			end
+		end
+		local gear = column:FindFirstChild("Gear_Settings")
+		if gear then
+			grid[#grid + 1] = gear
 		end
 		table.sort(grid, function(a, b)
 			return a.LayoutOrder < b.LayoutOrder
 		end)
-		local ordered, why = #grid == 6, (#grid .. " grid tiles")
-		for i = 1, #grid do
-			for j = i + 1, #grid do
-				local a, b = grid[i], grid[j]
-				local ra, rb = math.floor((i - 1) / 2), math.floor((j - 1) / 2)
-				local ay, by = a.AbsolutePosition.Y, b.AbsolutePosition.Y
-				local ax, bx = a.AbsolutePosition.X, b.AbsolutePosition.X
-				if ra < rb and not (ay < by - 1) then
-					ordered, why = false, a.Name .. " is not above " .. b.Name
-				elseif ra == rb and not (abs(ay - by) <= 1 and ax < bx - 1) then
-					ordered, why = false, a.Name .. " / " .. b.Name .. " are not side by side in order"
-				end
+		local ordered, why = #grid == #names + 1 and gear ~= nil, (#grid .. " tiles")
+		for i = 2, #grid do
+			local a, b = grid[i - 1], grid[i]
+			if not (abs(a.AbsolutePosition.X - b.AbsolutePosition.X) <= 1 and a.AbsolutePosition.Y + a.AbsoluteSize.Y <= b.AbsolutePosition.Y + 1) then
+				ordered, why = false, a.Name .. " is not right above " .. b.Name
+			elseif abs(a.AbsoluteSize.X - b.AbsoluteSize.X) > 1 then
+				ordered, why = false, a.Name .. " / " .. b.Name .. " differ in size"
 			end
 		end
-		local lowest = -math.huge
-		for _, e in ipairs(grid) do
-			lowest = math.max(lowest, e.AbsolutePosition.Y + e.AbsoluteSize.Y)
-		end
-		for _, e in ipairs(small) do
-			if e.AbsolutePosition.Y < lowest - 1 then
-				ordered, why = false, e.Name .. " (small row) is not under the grid"
-			end
-		end
-		T.check(ordered, "...laid out as a 2-column grid in menu order (the small row under it)", why)
+		T.check(ordered, "...laid out as ONE column in menu order (the Settings gear last, all tiles one size)", why)
 		local cx = column.AbsolutePosition.X + column.AbsoluteSize.X / 2
 		local cy = column.AbsolutePosition.Y + column.AbsoluteSize.Y / 2
 		T.check(cx < vp.X * 0.12, "the column is on the left edge", string.format("centre x %.2f of the screen", cx / vp.X))
@@ -1681,6 +1666,32 @@ local function npcClientChecks()
 		local cx = (card.AbsolutePosition.X + card.AbsoluteSize.X / 2) / vp.X
 		local cy = (card.AbsolutePosition.Y + card.AbsoluteSize.Y / 2) / vp.Y
 		T.check(cx < 0.45 and cy > 0.5, "NPC: the dialog is a side card at the bottom-left", string.format("centre %.2f,%.2f", cx, cy))
+		-- bug batch 2 #1: the vitals card is bottom-CENTRE now; the dialog keeps clear of it and of the hotbar, and
+		-- (its x-span clear of them at 1920x1080) it is no longer lifted above a card that is not in its way
+		local function screenRect(obj)
+			local sg = obj:FindFirstAncestorOfClass("ScreenGui")
+			local dy = (sg and not sg.IgnoreGuiInset) and (Mock.TopInset or 0) or 0
+			local p, s = obj.AbsolutePosition, obj.AbsoluteSize
+			return { x0 = p.X, y0 = p.Y + dy, x1 = p.X + s.X, y1 = p.Y + dy + s.Y }
+		end
+		local function hits(a, b)
+			return a.x0 < b.x1 - 0.5 and b.x0 < a.x1 - 0.5 and a.y0 < b.y1 - 0.5 and b.y0 < a.y1 - 0.5
+		end
+		local hudGui = gui():FindFirstChild("NimbusHud")
+		local vitals = hudGui and hudGui:FindFirstChild("BottomLeft") and hudGui.BottomLeft:FindFirstChild("Vitals")
+		local barGui = gui():FindFirstChild("NimbusHotbar")
+		local bar = barGui and barGui:FindFirstChild("Hotbar")
+		local c = screenRect(card)
+		if T.check(vitals ~= nil, "NPC: the HUD's vitals card is there to measure against") then
+			local v = screenRect(vitals)
+			local b = bar and bar.Visible and bar.AbsoluteSize.X > 0 and screenRect(bar) or nil
+			T.check(not hits(c, v) and not (b and hits(c, b)), "NPC: the dialog touches neither the vitals card nor the hotbar",
+				string.format("dialog %.0f,%.0f-%.0f,%.0f", c.x0, c.y0, c.x1, c.y1))
+			if vp.X >= 1600 and c.x1 < v.x0 and (b == nil or c.x1 < b.x0) then
+				T.check(c.y1 > v.y0, "NPC: ...and, clear of them side-ways, it is not lifted above the vitals card's top",
+					string.format("dialog bottom %.0f, vitals top %.0f", c.y1, v.y0))
+			end
+		end
 	end
 	T.check(#centredTexts(CONTRACT.v2.centreTolerance) == 0, "NPC: nothing is shown in the middle of the screen while talking", describeCentred(centredTexts(CONTRACT.v2.centreTolerance)))
 	do
@@ -2337,10 +2348,11 @@ local function layoutRule(label)
 
 	-- HP / token pill / menu column / hotbar sit at their corners
 	local vitals = gui().NimbusHud.BottomLeft:FindFirstChild("Vitals")
-	local pill = gui().NimbusHud.TopRight:FindFirstChild("TokenPill")
+	-- bug batch 2 #1 (option A): the vitals sit bottom-centre above the hotbar, the currency strips top-right
+	local pill = gui().NimbusHud.TopRight:FindFirstChild("TokenPill") or gui().NimbusHud.TopRight:FindFirstChild("Currency")
 	if vitals then
 		local x, y = zoneOf(vitals)
-		T.check(x < 0.45 and y > 0.6, label .. ": the HP bar is bottom-left", string.format("centre %.2f,%.2f", x, y))
+		T.check(math.abs(x - 0.5) < 0.15 and y > 0.6, label .. ": the HP bar is bottom-centre", string.format("centre %.2f,%.2f", x, y))
 	end
 	if pill then
 		local x, y = zoneOf(pill)

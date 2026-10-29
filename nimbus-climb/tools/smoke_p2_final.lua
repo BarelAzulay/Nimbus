@@ -71,10 +71,10 @@ local NUMBER_WORDS = { "One", "Two", "Three", "Four", "Five", "Six", "Seven", "E
 ----------------------------------------------------------------------------------------------------
 -- text helpers
 ----------------------------------------------------------------------------------------------------
-local function readFile(rel)
+local function readFile(rel, mode)
 	local candidates = { rel, HERE .. "../" .. rel, "../" .. rel }
 	for _, path in ipairs(candidates) do
-		local fh = io.open(path, "rb") -- binary: Windows text mode stops a PNG at its first Ctrl-Z byte
+		local fh = io.open(path, mode or "r") -- ("rb" for a binary file: Windows text mode stops at a 0x1A byte)
 		if fh then
 			local src = fh:read("*a")
 			fh:close()
@@ -1776,7 +1776,7 @@ local CHECKLIST = {
 	{ 0, "rojo serve", { "src/shared/Config.lua", "play/NimbusClimb.rbxlx", "Connect", "rojo build" } },
 	{ 1, "Migrate to Latest Update", { "Publish to Roblox", "create.roblox.com", "phase 4 and phase 5 servers run together" } },
 	{ 2, "Bulk Import", { "Asset Manager", "branding/sky/", "IMAGES", "a Decal id would NOT work", "moderation", "Copy ID", "Config.Sky.Faces", "Swap the `Lf` and `Rt` ids" } },
-	{ 3, "Config.Audio", { "Toolbox", "Copy Asset ID", "Empty = silent" } },
+	{ 3, "Config.Audio", { "upload_assets.py --audio", "AudioIds.lua", "6b", "is silent, nothing breaks" } },
 	{ 4, "Config.Icons", { "emoji" } },
 	{ 5, "ShadowMap", { "default.project.json", "\"Technology\": \"ShadowMap\"", "Graphics: **Low**" } },
 	{ 6, "Developer Products", { "Config.Gems.Products", "Product ID" } },
@@ -1863,14 +1863,14 @@ local function checkChecklist5(Config, ownerText)
 	local s2 = flat(steps[2] or "")
 	t:case(#faces == 6 and has(s2, "(" .. table.concat(faces, " ") .. ")"), "step 2 names the six Config.Sky.Faces keys (" .. table.concat(faces, " ") .. ")")
 	for _, key in ipairs(faces) do
-		local png = readFile("branding/sky/Skybox" .. key .. ".png")
+		local png = readFile("branding/sky/Skybox" .. key .. ".png", "rb")
 		t:case(png ~= nil and #png > 1000 and has(s2, "`Skybox" .. key .. "`"), "branding/sky/Skybox" .. key .. ".png exists and step 2 names it")
 	end
-	-- step 3: every music and sound name of Config.Audio
+	-- step 3: every music and sound name of Config.Audio (its Keys: the names exist before their ids do)
 	local A = Config.Audio or {}
 	local s3 = flat(steps[3] or "")
-	for _, group in ipairs({ "Music", "Sfx" }) do
-		for _, key in ipairs(sortedKeys(A[group])) do
+	for _, group in ipairs({ "Music", "Sfx", "Ambient" }) do
+		for _, key in ipairs(sortedKeys((A.Keys or A)[group])) do
 			t:case(has(s3, "`" .. key .. "`") or has(s3, "." .. key .. "`"), "step 3 names Config.Audio." .. group .. "." .. key)
 		end
 	end

@@ -1,4 +1,4 @@
--- DevPetShow (client): the developer's pet showcase. The server half is DevService ("/pet", "/pets", "/evolve",
+-- DevPetShow (client): the developer's pet showcase. The server half is DevService ("/pet", "/pets", "/evolve", "/fx",
 -- "/clearpets"): it checks the permission and sends DevPetShow(action, payload) to the developer's own client.
 --
 --   DevPetShow.Init()
@@ -17,8 +17,20 @@
 --                           after another in front of the player; Steps = { {PetId, From, To}, ... } with To = From + 1.
 --                           A pet's line carries on with the evolved pet (normal -> evolved -> evolved II); after a
 --                           short pause the next pet of a reel takes its place. The last one stays.
---   Clear {}                stops an evolution or a lineup and removes every showcase pet
--- Lineup, Evolve and Clear take over from whatever was running; Spawn adds to it. Resting pets get the tag
+--   Fx {Element, Attack, Kind, Shape, Rarity, Stage}   the pet attack VFX preview (plan
+--                           docs/superpowers/plans/2026-10-23-pet-attack-vfx.md Task 7): clears, then a caster pet (the
+--                           catalog pet of that first element, of that rarity / special kind when there is one; else
+--                           any pet of the element: the effect keeps the asked rarity) and a dummy target (a Common pet
+--                           of another element) FX_APART (10) studs apart across the view in front of the player, facing
+--                           each other; client/Controllers/AttackFx plays the attack (Mine = true: full density) and a
+--                           short-lived RenderStepped drives AttackFx.Update + the poses (AttackFx.Pose -> the body offset
+--                           PetBuilder.PoseBody on the pivot + PetBuilder.Animate opts.Pose) for FX_SECONDS; a Special
+--                           without a kind plays the caster's own; the support kinds land on both pets and on 2 more
+--                           stand-in allies behind them (4 allies: Task 10); a Storm (an attack special that hits the
+--                           enemies in its zone) lands on the dummy and 2 stand-in enemies beside and behind it, inside
+--                           the zone (3 enemies: Task 11 fix round 2, I1)
+--   Clear {}                stops an evolution or a lineup and removes every showcase pet (and the Fx pair: AttackFx.Cancel)
+-- Lineup, Evolve, Fx and Clear take over from whatever was running; Spawn adds to it. Resting pets get the tag
 -- NC_Showcase (ShowcaseController makes them hover, flap, wag and blink) and a compact name tag (World text rule:
 -- pixel-sized, 24 px name and 19 px info line, outlined, on a solid plate sized to its text, LightInfluence 0,
 -- MaxDistance 120). Payloads are checked again here (catalog ids, stages each pet really has).
@@ -27,6 +39,7 @@
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local CollectionService = game:GetService("CollectionService")
+local RunService = game:GetService("RunService")
 local Workspace = game:GetService("Workspace")
 
 local Shared = ReplicatedStorage:WaitForChild("Shared")
@@ -73,6 +86,12 @@ local K = {
 	TAG_H = 70,
 	TAG_DISTANCE = 120,
 	RAY = 90, -- studs searched down for the ground
+	FX_APART = 10, -- /fx: studs between the caster and the dummy target ...
+	FX_BACK = 3, -- ... their line this much further than a lone pet would stand
+	FX_SECONDS = 6, -- the preview's update runs this long (the longest special + its linger)
+	FX_ALLY_BACK = 4, -- (Task 10) a support special's 2 extra allies stand this far behind the pair (4 allies in all)
+	FX_FOE_BACK = 3.5, -- (Task 11 fix round 2) a Storm's 2 extra enemies stand this far behind the dummy ...
+	FX_FOE_SIDE = 2.5, -- ... and this far to either side (4.3 studs off: inside the Storm Radius; client_dev_pets)
 }
 local STAGE_NAMES = { [0] = "Normal", [1] = "Evolved", [2] = "Evolved II" }
 
@@ -82,6 +101,10 @@ local generation = 0 -- Lineup / Evolve / Clear bump it: a running lineup or evo
 local current = nil -- the EvolutionFx handle that is playing
 local busy = 0
 local initialized = false
+local fxRun = nil -- the /fx preview: { Sides = { { Id, Model, Base } x2 }, Until, Conn }
+local FX_CASTER, FX_TARGET = "DevFx:Caster", "DevFx:Target" -- AttackFx unit ids (never a battle's numbers)
+local FX_ALLIES = { "DevFx:Ally1", "DevFx:Ally2" } -- (Task 10) the 2 extra allies of a support special
+local FX_FOES = { "DevFx:Foe1", "DevFx:Foe2" } -- (Task 11 fix round 2) the 2 extra enemies in a Storm's zone
 
 ----------------------------------------------------------------------
 -- Helpers
@@ -286,11 +309,14 @@ local function rest(model, def, stage, pos, radius)
 	end
 end
 
+local fxStop -- (the Fx section below)
+
 local function clearAll()
 	if current then
 		pcall(current.Stop)
 		current = nil
 	end
+	fxStop()
 	for _, rec in ipairs(pets) do
 		pcall(function()
 			rec.Model:Destroy()
@@ -543,6 +569,289 @@ local function evolveReel(payload, gen)
 	return true
 end
 
+----------------------------------------------------------------------
+-- Fx (/fx): the pet attack VFX preview (client/Controllers/AttackFx + shared/AttackFxCatalog, loaded on the first use)
+----------------------------------------------------------------------
+local FX = { Mod = nil, Cat = nil, BC = nil }
+
+-- BattleController (required once; false when it cannot load): its AttackFx hooks, and whether its loop steps AttackFx
+local function fxBattle()
+	if FX.BC == nil then
+		local bcInst = script.Parent:FindFirstChild("BattleController")
+		local okBc, BC = false, nil
+		if bcInst then
+			okBc, BC = pcall(require, bcInst)
+		end
+		FX.BC = (okBc and type(BC) == "table") and BC or false
+	end
+	return FX.BC or nil
+end
+
+local function fxModules()
+	if FX.Mod == nil then
+		local inst = script.Parent:FindFirstChild("AttackFx")
+		local ok, m = false, nil
+		if inst then
+			ok, m = pcall(require, inst)
+		end
+		FX.Mod = (ok and type(m) == "table" and type(m.Play) == "function" and type(m.Update) == "function") and m or false
+		-- (Task 11) before the first battle nothing has pointed AttackFx's hooks anywhere: BattleController does it (the
+		-- camera punch, the edge glow, a signature's battle dim), so /fx shows a signature as a battle would
+		if FX.Mod and type(FX.Mod.Hooks) == "table" and FX.Mod.Hooks.DimWorld == nil then
+			local BC = fxBattle()
+			if BC and type(BC.FxHooks) == "function" then
+				pcall(BC.FxHooks)
+			end
+		end
+	end
+	if FX.Cat == nil then
+		local inst = Shared:FindFirstChild("AttackFxCatalog")
+		local ok, m = false, nil
+		if inst then
+			ok, m = pcall(require, inst)
+		end
+		FX.Cat = (ok and type(m) == "table" and type(m.Elements) == "table") and m or false
+	end
+	return FX.Mod or nil, FX.Cat or nil
+end
+
+local function listHas(list, name)
+	for _, v in ipairs(type(list) == "table" and list or {}) do
+		if v == name then
+			return true
+		end
+	end
+	return false
+end
+
+-- the payload checked again: catalog names only, a whole stage 0..2
+local function fxValid(p, Cat)
+	return type(p.Element) == "string" and Cat.Elements[p.Element] ~= nil and listHas(Cat.AttackNames, p.Attack)
+		and (p.Kind == nil or listHas(Cat.KindNames, p.Kind)) and (p.Shape == nil or listHas(Cat.ShapeNames, p.Shape))
+		and listHas(Cat.Rarities, p.Rarity) and type(p.Stage) == "number" and p.Stage == math.floor(p.Stage) and p.Stage >= 0 and p.Stage <= 2
+end
+
+local function firstElement(def)
+	if type(PetCatalog.ElementsOf) == "function" then
+		local ok, list = pcall(PetCatalog.ElementsOf, def)
+		if ok and type(list) == "table" and list[1] then
+			return list[1]
+		end
+	end
+	return def.Element
+end
+
+-- the catalog pet that casts: its first element is `element`; the same rarity first, then the same special kind (a
+-- signature pet when one matches); else any pet of the element (the effect keeps the asked rarity: the pet only
+-- stands in)
+local function fxCaster(element, rarity, kind)
+	local best, bestScore = nil, -1
+	for _, def in ipairs(PetCatalog.Pets or {}) do
+		if type(def) == "table" and type(def.Id) == "string" and firstElement(def) == element then
+			local score = ((def.Rarity == rarity) and 4 or 0) + ((kind and type(def.Special) == "table" and def.Special.Kind == kind) and 2 or 0)
+			if score > bestScore then
+				best, bestScore = def, score
+			end
+		end
+	end
+	return best or PetCatalog.Pets[1]
+end
+
+-- the dummy target: the first Common pet of another element (a plain stand-in); `skip` = that many such pets passed
+-- over first (the support specials' extra allies: different stand-ins)
+local function fxDummy(element, skip)
+	skip = skip or 0
+	local first = nil
+	for _, def in ipairs(PetCatalog.Pets or {}) do
+		if type(def) == "table" and def.Rarity == "Common" and firstElement(def) ~= element then
+			first = first or def
+			if skip <= 0 then
+				return def
+			end
+			skip = skip - 1
+		end
+	end
+	return first or PetCatalog.Pets[1]
+end
+
+function fxStop()
+	local run = fxRun
+	fxRun = nil
+	if not run then
+		return
+	end
+	if run.Conn then
+		run.Conn:Disconnect()
+	end
+	local AF = FX.Mod
+	if AF and type(AF.Cancel) == "function" then
+		pcall(AF.Cancel, FX_CASTER)
+		pcall(AF.Cancel, FX_TARGET)
+		for _, id in ipairs(FX_ALLIES) do
+			pcall(AF.Cancel, id)
+		end
+		for _, id in ipairs(FX_FOES) do
+			pcall(AF.Cancel, id)
+		end
+	end
+end
+
+-- PetBuilder.PoseBody of AttackFx's pose for `id` (its crossfade honoured) -> pose for Animate, body CFrame
+local function fxPose(AF, id)
+	local ok, ps = pcall(AF.Pose, id)
+	if not ok or type(ps) ~= "table" or type(ps.Name) ~= "string" then
+		return nil, CFrame.new()
+	end
+	local pose = { Name = ps.Name, P = ps.P, Ranged = ps.Ranged, Amp = ps.Amp, Reach = ps.Reach } -- (the leap's band and length)
+	local body = PetBuilder.PoseBody({ Pose = pose })
+	local blend = tonumber(ps.Blend) or 1
+	if type(ps.Prev) == "table" and blend < 1 then
+		body = PetBuilder.PoseBody({ Pose = ps.Prev }):Lerp(body, math.max(0, blend))
+		if blend < 0.5 then
+			pose = ps.Prev
+		end
+	end
+	return pose, body
+end
+
+-- per frame while the preview plays (its own short-lived RenderStepped: AttackFx has no loop, and the pair is not
+-- tagged NC_Showcase, so ShowcaseController never moves it): AttackFx.Update, then each pet at its spot x its pose
+local function fxStep()
+	local run = fxRun
+	local AF = FX.Mod
+	if not run or not AF then
+		return
+	end
+	local now = os.clock()
+	-- (Task 11 fix round 1, M2) while BattleController's loop runs (an Eclipse dim wakes it) it steps AttackFx itself:
+	-- one Update a frame, never two
+	local BC = fxBattle()
+	local stepped = false
+	if BC and type(BC.StepsAttackFx) == "function" then
+		local ok, yes = pcall(BC.StepsAttackFx)
+		stepped = ok and yes == true
+	end
+	if not stepped then
+		pcall(AF.Update, now)
+	end
+	for _, side in ipairs(run.Sides) do
+		if side.Model.Parent then
+			local pose, body = fxPose(AF, side.Id)
+			pcall(function()
+				side.Model:PivotTo(side.Base * body)
+			end)
+			pcall(PetBuilder.Animate, side.Model, now, { Pose = pose })
+		end
+	end
+	if now >= run.Until then
+		-- (the last pose stays: a Ko'd caster lies until /clearpets)
+		if run.Conn then
+			run.Conn:Disconnect()
+			run.Conn = nil
+		end
+	end
+end
+
+local function fxPlay(payload)
+	local AF, Cat = fxModules()
+	if not (AF and Cat) or not fxValid(payload, Cat) then
+		return false
+	end
+	local def = fxCaster(payload.Element, payload.Rarity, payload.Kind)
+	local stage = validStage(def, payload.Stage) and payload.Stage or 0
+	local caster = build(def, stage, "High")
+	local dummyDef = fxDummy(payload.Element)
+	local dummy = dummyDef and build(dummyDef, 0, "High")
+	if not (caster and dummy) then
+		if caster then
+			caster:Destroy()
+		end
+		return false
+	end
+	-- side by side across the player's view, FX_APART studs apart, facing each other
+	local origin, look, char = playerFrame()
+	local right = Vector3.new(-look.Z, 0, look.X)
+	local cBottom, _, cRadius = extentOf(caster)
+	local tBottom, _, tRadius = extentOf(dummy)
+	local center = Vector3.new(origin.X, 0, origin.Z) + look * (K.AHEAD + math.max(cRadius, tRadius) + K.FX_BACK)
+	local cSpot = center - right * (K.FX_APART / 2)
+	local tSpot = center + right * (K.FX_APART / 2)
+	local cPose, ground = poseAt(cSpot, cBottom, right, char, origin.Y - 3)
+	local tPose = poseAt(tSpot, tBottom, -right, char, origin.Y - 3)
+	local parent = getFolder()
+	caster:PivotTo(cPose)
+	dummy:PivotTo(tPose)
+	caster:SetAttribute("DevFx", "Caster")
+	caster:SetAttribute("DevFxElement", payload.Element)
+	caster:SetAttribute("DevFxRarity", payload.Rarity)
+	dummy:SetAttribute("DevFx", "Target")
+	caster.Parent = parent
+	dummy.Parent = parent
+	nameTag(caster, def, stage, select(2, extentOf(caster)))
+	local cSide = { Unit = FX_CASTER, Model = caster, Pos = caster:GetPivot().Position }
+	local tSide = { Unit = FX_TARGET, Model = dummy, Pos = dummy:GetPivot().Position }
+	local attack, kind = payload.Attack, payload.Kind
+	if attack == "Special" and not kind then
+		kind = (type(def.Special) == "table" and listHas(Cat.KindNames, def.Special.Kind)) and def.Special.Kind or "Blast"
+	end
+	local to = nil
+	local sides = { { Id = FX_CASTER, Model = caster, Base = cPose }, { Id = FX_TARGET, Model = dummy, Base = tPose } }
+	if attack == "Special" and (kind == "Heal" or kind == "Shield" or kind == "Rally" or kind == "Haste") then
+		to = { cSide, tSide } -- (the support kinds land on allies: both)
+		-- (Task 10) + 2 more stand-in allies behind the pair, facing the player: a support special is checked on 4 allies
+		for i, id in ipairs(FX_ALLIES) do
+			local aDef = fxDummy(payload.Element, i)
+			local ally = aDef and build(aDef, 0, "High")
+			if ally then
+				local aBottom = extentOf(ally)
+				local aPose = poseAt(((i == 1) and cSpot or tSpot) + look * K.FX_ALLY_BACK, aBottom, -look, char, origin.Y - 3)
+				ally:PivotTo(aPose)
+				ally:SetAttribute("DevFx", "Ally")
+				ally.Parent = parent
+				to[#to + 1] = { Unit = id, Model = ally, Pos = aPose.Position }
+				sides[#sides + 1] = { Id = id, Model = ally, Base = aPose }
+			end
+		end
+	elseif attack == "Special" and kind == "Storm" then
+		-- (Task 11 fix round 2, I1) a Storm hits the enemies in its zone (BattleController gathers them in a battle): the
+		-- dummy + 2 stand-in enemies behind it, one to either side, facing the caster (Obsidian's sweep crosses all three)
+		to = { tSide }
+		for i, id in ipairs(FX_FOES) do
+			local eDef = fxDummy(payload.Element, i)
+			local foe = eDef and build(eDef, 0, "High")
+			if foe then
+				local eBottom = extentOf(foe)
+				local spot = tSpot + look * K.FX_FOE_BACK + right * ((i == 1) and -K.FX_FOE_SIDE or K.FX_FOE_SIDE)
+				local ePose = poseAt(spot, eBottom, -right, char, origin.Y - 3)
+				foe:PivotTo(ePose)
+				foe:SetAttribute("DevFx", "Foe")
+				foe.Parent = parent
+				to[#to + 1] = { Unit = id, Model = foe, Pos = ePose.Position }
+				sides[#sides + 1] = { Id = id, Model = foe, Base = ePose }
+			end
+		end
+	elseif attack == "Melee" or attack == "Ranged" or attack == "Special" or attack == "Element" then
+		to = tSide
+	end
+	fxRun = { Sides = sides, Until = os.clock() + K.FX_SECONDS }
+	local okPlay, played = pcall(AF.Play, {
+		Attack = attack, Kind = (attack == "Special") and kind or nil, Shape = payload.Shape, Element = payload.Element,
+		Rarity = payload.Rarity, Stage = payload.Stage, PetId = (def.Rarity == payload.Rarity) and def.Id or nil, Mine = true,
+		From = cSide, To = to, Ground = ground,
+	})
+	if not (okPlay and played == true) then
+		warn("[DevPetShow] AttackFx did not play " .. tostring(payload.Element) .. " " .. tostring(attack) .. ": " .. tostring(played))
+	end
+	fxRun.Conn = RunService.RenderStepped:Connect(function()
+		local ok, err = pcall(fxStep)
+		if not ok then
+			warn("[DevPetShow] Fx update failed: " .. tostring(err))
+			fxStop()
+		end
+	end)
+	return true
+end
+
 function DevPetShow.Handle(action, payload)
 	if type(action) ~= "string" then
 		return false
@@ -559,14 +868,27 @@ function DevPetShow.Handle(action, payload)
 		end
 		return ok and result == true
 	end
-	if action ~= "Lineup" and action ~= "Evolve" and action ~= "Clear" then
+	if action ~= "Lineup" and action ~= "Evolve" and action ~= "Clear" and action ~= "Fx" then
 		return false
+	end
+	if action == "Fx" then
+		local _, Cat = fxModules()
+		if not (Cat and fxValid(payload, Cat)) then
+			return false
+		end
 	end
 	generation = generation + 1
 	local gen = generation
 	clearAll()
 	if action == "Clear" then
 		return true
+	end
+	if action == "Fx" then
+		local ok, result = pcall(fxPlay, payload)
+		if not ok then
+			warn("[DevPetShow] Fx failed: " .. tostring(result))
+		end
+		return ok and result == true
 	end
 	task.spawn(function()
 		local fn = (action == "Lineup") and lineup or evolveReel

@@ -277,6 +277,7 @@ loop, no per-frame allocation, frozen when far from the lobby (player in a match
   role's default size; text stroke on light backgrounds; keep all existing keys/functions.
 * `CloudUI`: a more polished chunky style like the reference (thick dark outline, glossy top strip, bold title bar
   with big title text, red X button, consistent paddings), all sizes via the readability rule. API compatible.
+* (Superseded by bug batch 2 #1 "Split & shift": see "HUD layout (bug batch 2 #1)" in the Phase 5 GUI notes.)
 * `HudController`: bigger, cleaner HUD; a **currency stack** at the bottom-left above the HP bar showing Cloud Tokens
   now (big number with K/M abbreviations and the cloud glyph) and ready to show Cash and Gems when those attributes
   exist (phase 2); everything else per the layout map, sized by the rule.
@@ -898,9 +899,15 @@ ScoopRadius(home) = Magnet Radius (6 studs without)
   No button. `HomeAction "Collect"` stays as "scoop every pile in range" (old clients, tests). Invariant: the sum of the
   live piles + the Welcome-back pile == `Home.CollectorCash` (section 4.1). Other players' coins are drawn dimmed and
   never move (one-time hint "Only the owner can pick these up").
-* **Garden pets stay available**: they can follow you and fight while they earn at home. Only a TRAINING pet is busy
-  (`P3.placedCopies` counts only `Home.Gym`, which Phase 4 empties on load: section 4). A training pet cannot be placed
-  in the Garden ("Rocky is training (2:10 left)"); starting training takes a pet out of the Garden by itself (3.7).
+* **Garden pets are busy** (bug batch 2 #18, option B "Remote recall"; this replaces the Phase 4 rule "garden pets stay
+  available: they can follow you and fight while they earn at home"): `P3.placedCopies` counts `Home.Garden` +
+  `Home.Gym`; GardenSet unequips the copy and prunes the presets (refused mid-match for the following copy); `HomeAction
+  GardenRecall` takes one copy out and equips it / stores the team in one request (the Pets Equip button and the Team
+  tile ask "This pet is gardening! Take it out of the garden and equip it?" first); FusionService uses the gardening
+  copies before the following ones and a result that follows leaves the freed garden place empty; old saves keep the
+  pet with the player and take it out of the Garden on read (`P3.gardenSolo`, marker `B2GardenSolo`, one toast). A
+  training pet cannot be placed in the Garden ("Rocky is training (2:10 left)"); starting training takes a pet out of
+  the Garden by itself (3.7).
 * **Offline:** unchanged Vault table (10-30% for up to 1-4 h) on `IncomePerSecond`, into the Welcome-back pile.
 * Garden places above the open count (an old Garden L8 after a prestige that removed LegacySlots) keep their key but do
   not eat: the Pets panel says "Resting (garden full)" and the place shows the pet asleep on a closed bed. Nothing is
@@ -1327,7 +1334,7 @@ Everything else needs NO data change, by construction:
 | `PetLevels` | same; caps raised to 100 | caps only go up; a pet at 20+ / 50 is "Ready to evolve!" and gets its own EVOLVE moment |
 | Prestige stars | + garden places, x1.25 coins, old prices this run | same field |
 | `Tutorial.Step` | same index rule; chapter 4 appended | section 9 |
-| `Teams` presets | unchanged (garden pets may now fight; training pets are skipped at read time) | no pruning |
+| `Teams` presets | unchanged (garden pets may now fight, superseded by bug batch 2 #18; training pets are skipped at read time) | no pruning |
 | Equipped pets | unchanged | a training key is dropped on load (none exist at migration) |
 
 No one-time Cash payout anywhere (a payout plus a marker can double-pay across two servers; every credit above is data
@@ -1543,7 +1550,7 @@ Every action: type / range / NaN checks, a per-action cooldown and the shared pe
 | `smoke_p2_data.lua`, `smoke_p3_data.lua`, `smoke_polish_data.lua`, `smoke_dev.lua` | data (W1) | new fields (sanitize, defaults, merges, provisional, snapshot); the busy checks (p3data :285-290, :351-363): a garden pet now joins teams and is not pruned, the Gym cases become `TrainingKeys` (read-time skip, preset kept); forward compatibility: a Phase 3 fixture keeps the new fields; reset wipes PetGrowth / Ring; `/petlevel` |
 | `smoke_p2_ui.lua` | careui (W3) | chapter-2 ids (:77-80) `claim,garden,coins,machine,feed`, checks (:113-118), known CompleteOn (:84-86 + GardenPlaced, CoinsScooped, TrainingStarted, RingWon, PortalUsed), NPC needles (:147-153: Food Machine, Feed, EVOLVE, Training Place, Champion Ring, Pet Garden, rainbow coins), Home window rows (Station_Press1 upgrade still sends `Upgrade Press1`; Station_Press4 "Needs"; no Collect), Pets panel actions, FeedPicker -> the CareController list |
 | `smoke_p3_ui.lua` | ui (W3) | chapter-3 loops (:91 / :101 / :129) stop at `ChapterStart[4] - 1`; p3ui_tutorial end step (:307) = `ChapterStart[4]`; NPC needles (:179: Training Place, Food Machine; the kept coach_corgi "Trial Portal", granny_owl "Gems", professor_axolotl "Fusion Machine" / "Storm Altar") |
-| `smoke_p3_flow.lua` | battleservice (W2), then flow (W4) | a lost trial >= 20 s now gives 1/3 XP (:1488); GymSet (:1533-1539) -> Train (skipped, preset kept); Cy's garden pet may join his team (:22, :384, :1357); the migrated save (:1107 / :1263) keeps `Press1 = 2` as a Berry Bush |
+| `smoke_p3_flow.lua` | battleservice (W2), then flow (W4) | a lost trial >= 20 s now gives 1/3 XP (:1488); GymSet (:1533-1539) -> Train (skipped, preset kept); Cy's garden pet in his TeamSet is refused with a "gardening" toast (bug batch 2 #18; was: may join his team) (:22, :384, :1357); the migrated save (:1107 / :1263) keeps `Press1 = 2` as a Berry Bush |
 | `smoke_p3_battlecore.lua`, `sim_battle.lua` | battlecore (W1) | Modes + "Ring", Zones / TimeLimits, `ChampionTeam` monotonic with no ceiling (Boost > 1 from about round 45), `UnitStats` extras, Defense in `applyDamage`, `MeterRate`; the trial numbers (:206-223) unchanged |
 | `smoke_p3_battleservice.lua`, `smoke_p3_fix_server.lua`, `smoke_p3_fixcheck.lua` | battleservice (W2) | trial loss XP; teamOf extras and the ring fallback; Mode names; `KeysInBattle`; GoHome refused InBattle |
 | `smoke_p3_arenaworld.lua` | arenaworld (W2) | arena <= 2500 WITH Portal_Ring; `RingPrompt` + `OpenPanel = "Ring"`; a Ring pocket 100..250 parts with a Ring-mode zone; `ZoneAt`; the Arena Gate sample (:699) unchanged |
@@ -1733,7 +1740,7 @@ pure clients (battleclient, homefx) have slack.
 | R12 | Plot part budget is tight (911 -> ~900-925 of 950) | bowls, fruit, props, heaps, coins are client parts; per-station caps; trim decor details first; the homeworld engineer measures each level |
 | R13 | Home portal geometry (no floor, inside a wall, a slope) | server raycasts with fallbacks to the character's own spot; only the owner walking in teleports |
 | R14 | Leftover Feasts give veterans a burst of free XP at launch | bounded by their stock (food they already paid for) |
-| R15 | Phase 3's "a garden pet cannot fight" rule is dropped | one function (`P3.placedCopies`); the affected tests are listed in 8.2; the README says it in one line |
+| R15 | Phase 3's "a garden pet cannot fight" rule is dropped (superseded by bug batch 2 #18: garden pets are busy again) | one function (`P3.placedCopies`); the affected tests are listed in 8.2; the README says it in one line |
 | R16 | A kid who climbs the ring all day earns up to ~50% more than the garden alone and leaves it at 136 Gems/h at Prestige 5 | bounded by construction (seconds of own income, 9 s cap per round); Phase 3 itself ran 100-133 Gems/h; if the owner wants fewer Gems, `Prestige.GemRewardStep` is one number |
 | R17 | Sounds for the scoop "ding" | engine sounds (`rbxasset://sounds/...`) only if the project allows them; otherwise the scoop stays visual |
 | R18 | Test churn: Phase 2 / 3 tests pin presses, Collector, Kitchen cooking and Gym XP in many files | the station ids, remote names, `ChapterStart[2] == 10` and the chapter-3 ids are kept to limit it; 8.2 lists every file and owner |
@@ -2528,6 +2535,33 @@ CHANGE chip, stamina ticks (3.9); `HotbarController` neon slots 64 / 54 / 46 + `
 right edge; NPC dialog moves to the side on phones; the results card = one compact card top-right (<= 25%). `IndexController`, `CareController`,
 `ArenaController`, `FusionController`, `DungeonController`, `ObbyController`, `BattleController` use `NeonKit.Dock` / NeonKit cards (their owners).
 
+**HUD layout (bug batch 2 #1, option A "Split & shift"; replaces the 2x3 grid and the bottom-left pills above).**
+`MenuController`: ONE column `MenuColumn` of 8 tiles (Pets, Items, Team, Index, Shop, Home, Stats, gear; 66 design px, 56 px at 1080p,
+50 px on touch, >= 44 px), left edge, vertically centred; phones wrap it into the fewest columns (2, or 3 on 740x360-class) that fit
+above the thumbstick, never into the screen middle. The arrow tab `MenuColumn.Toggle` sits right after the last tile (the gear) and
+folds the column (0.25 s slide, only the tab at x 0; `MenuCollapsed` on NimbusMenu, `MenuController.SetColumnCollapsed(c, animate)` /
+`IsColumnCollapsed()`; session memory; a red dot repeats any tile badge while folded; a tutorial Menu step unfolds it).
+The touch layout (band above the stick, ending >= 10 px above PlayerModule's `ThumbstickStart` ring) applies on touch-only devices
+AND wherever `PlayerGui.TouchGui` shows a thumbstick frame (`P5.stickShown`, polled 4x a second: Studio's device emulator and
+touch laptops / tablets report `KeyboardEnabled` too). It is LATCHED (`U.StickSeen`): once the stick was seen the touch layout
+and the 20 px phone margin stay for the session, so respawn, the Esc menu (`TouchGui.Enabled`, not read) and a hybrid's mouse input
+(the stick frame hidden) never snap the column back; a keyboard-only PC never gets the frames and keeps the desktop layout. The
+stick reservation (96 / 210 px) follows the gui area's short side (> 500: large), as DynamicThumbstick reads
+`TouchControlFrame.AbsoluteSize`. Empty states (Pets page, Team picker) use `P5.emptyState`: wrapped,
+auto-height text and an Open Shop button as wide as its column, capped at 220 / 200 px; on a landscape phone with no pets the
+Pets page's empty state takes the whole page (the detail card hides).
+`HudController`: currencies = thin strips (`STRIP_W` 168 x `STRIP_H` 32) stacked top-right under Roblox's top bar (`CurrencyMode`
+"TopRight"; portrait phones: one right-aligned row; a phone in a battle: "TopBand", inside the top bar); the vitals card bottom-centre,
+8 px above the MEASURED hotbar and centred on it (Regular on desktops, Compact on short touch screens), stepping aside / up from the
+menu column, a top-left panel, RUN / DASH and Roblox's stick / jump. Published on NimbusHud (gui-area px): `BottomLeftTop` (kept
+name: the vitals' top), `BottomCentreTop` / `BottomCentreLeft` / `BottomCentreRight`, `TopRightBottom` / `TopRightLeft`,
+`TopLeft*`, `HudScale100`. Readers: TutorialController (a card candidate below `TopRightBottom` for portrait phones), NpcController
+(lifted above `BottomLeftTop` only when its x-span meets the card or the hotbar; desktops), MouseLock's "press L" pill (above
+`BottomCentreTop`, never above 65% of the height), DungeonController's phone End card (starts below `TopRightBottom`, shrinks to
+0.7 to clear the jump button, else the HUD hides the strips while it covers them), MovementController (RUN avoids the
+bottom-centre vitals footprint). Tests: `tools/smoke_bug2_gui.lua` (`client_bug2gui_layout`, `client_bug2gui_mobile`, `client_bug2gui_stickemu`,
+`client_bug2gui_stick_mobile`, `client_bug2gui_empty`, `client_bug2gui_empty_mobile`).
+
 ### 7. Loading screen, main menu, settings (world design 7-8; menu W3)
 
 #### 7.1 `src/first/LoadingScreen.client.lua` (ReplicatedFirst)
@@ -2572,7 +2606,10 @@ menu disabled the script fades itself after 2 s. One 0.25 s poll loop, no per-fr
 * `src/client/ClientSettings.lua` (`Get(key)`, `Changed`), `src/client/SoundFx.lua` (`Play(name)` Click / Confirm / Error / Reward / Whoosh at
   Sfx/10; `Music(context)` Lobby / Battle / Dungeon at Music/10, 1 s crossfade; `Config.Audio = { Music = { Lobby = "", Battle = "", Dungeon = "" },
   Sfx = { Click = "", Confirm = "", Error = "", Reward = "", Whoosh = "" } }`: empty = silent, the README tells the owner to paste free Creator
-  Store ids), `src/client/GraphicsQuality.lua` (Auto: `SavedQualityLevel <= 3` = Low; Low pushes "GfxLow" (Bloom / SunRays / DoF off, Clouds
+  Store ids; **superseded 2026-10-27 by the original audio**: `Config.Audio.Keys` names the `src/shared/AudioIds.lua` key of every sound
+  (written by `tools/upload_assets.py --audio` from `audio/audio.json`), Music / Sfx / Ambient hold the AudioIds numbers, `Volume` the slot
+  volumes; SoundFx adds Inhale / Shatter / CrowdCheer / DrumLoop, `SetLayer` (Battle over Dungeon over Lobby) and `Positional`; the ring's
+  crowd + drums: `src/client/Controllers/RingAmbience.lua`), `src/client/GraphicsQuality.lua` (Auto: `SavedQualityLevel <= 3` = Low; Low pushes "GfxLow" (Bloom / SunRays / DoF off, Clouds
   Density 0.4), reparents `NC_Detail` models to a local holder, disables their emitters, pauses SkyDragonController; High restores).
 * `src/shared/UpdateNotes.lua` (lead W0): `{ Latest = 5, Notes = { { Version = 5, Title = "The Big Sky Update", Lines = {...} }, ... }, Credits =
   { "Game by <owner>", "Built with Claude" }, Tips = { 12 tips } }`; opening UPDATES sends `SettingsSet("SeenNotes", Latest)`.
@@ -2778,10 +2815,10 @@ p3_battleclient / p3_visual`, `dump_gui` `arena:trials`, `render_*` `pocket` (tr
    Studio until approved). Right-click each -> Copy ID -> paste into `Config.Sky.Faces` as `Bk = "rbxassetid://123..."` (Bk Dn Ft Lf Rt Up by file
    name). Until all six are set the game shows the built-in fallback: a pink-lavender haze, a Roblox cloud layer tinted pink and 3000 stars (no
    seams, a little flatter than the painted sky). Left and right swapped -> swap the Lf and Rt ids. [`Bulk Import`]
-3. Music and sounds (optional): Studio -> Toolbox -> Marketplace -> Audio; search ("calm loop", "click"), keep only results that say the audio can
-   be used in any experience (Roblox-provided audio plays everywhere; another user's private upload stays silent in your game); click -> Copy
-   Asset ID -> paste into `Config.Audio.Music.Lobby / Battle / Dungeon` and `Config.Audio.Sfx.*` as `"rbxassetid://..."`. Empty = silent, nothing
-   breaks. [`Config.Audio`]
+3. Music and sounds: the game's own original audio (`audio/`, 12 files) goes up with the owner's keyed upload session:
+   `python3 tools/upload_assets.py --audio` (dry run) then `--upload --audio`; it writes `src/shared/AudioIds.lua`, which `Config.Audio` reads
+   (docs/phase6/OWNER_UPLOAD.md 6b: moderation, the monthly audio quota). A sound without an id is silent, nothing breaks. (Until 2026-10-27
+   this step pasted free Toolbox ids into Config.Audio.) [`Config.Audio`]
 4. Icons (optional): the menu tiles use emoji glyphs; a PNG you Bulk Import (step 2) pasted into `Config.Icons[id]` replaces one. [`Config.Icons`]
 5. Lighting on a slow PC or phone: `default.project.json`, the line `"Technology": "Future"` -> `"ShadowMap"` (one word), save, publish. Players
    can also pick Graphics: Low in SETTINGS. [`ShadowMap`]

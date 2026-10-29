@@ -127,7 +127,8 @@ Pet Garden, food is berries now, and the Trials made way for the Dungeon (see
 - **Your pets make the money.** Build your free **Pet Garden** and put pets in it (**3 places**, +1 every Prestige).
   They eat from their bowls and pop out **rainbow coins**. Walk over the coins to scoop them: only YOU can scoop
   yours. Economy pets make 60 % more than Combat pets; rarer, higher-level, Golden / Rainbow and evolved pets make
-  more. Garden pets can still follow you and fight.
+  more. A garden pet is busy gardening: it does not follow you or fight until you take it out (Equip or Team asks
+  first and takes it out for you).
 - **Your presses grew into food plants.** Berry Bush, Carrot Patch, Cloud Melons, Starfruit Tree: tastier food makes
   every coin bigger. The Collector is now a **Coin Magnet**: coins fly to you from farther away and piles hold more.
   Same pads, same levels, same Home Level: nobody loses a level.
@@ -519,7 +520,11 @@ until then the House pad says *Reach Home Level N*. Every new house raises how f
 Your pets make the money here. Build the free **Pet Garden** (the first pad of every home), then press **E** on an
 empty pet bed (*Put a pet here*) and pick a pet, or open **Pets**, pick a pet and press **Garden**. The Garden
 has **3 places** at first and gets **+1 every Prestige** (up to 12 places). Any pet can work there, Economy or
-Combat, and garden pets can still follow you and fight at the same time. Only a pet in training cannot (see
+Combat. A pet does one job at a time: a garden pet leaves your side and your teams, and pressing **Equip** or picking
+it for a team asks *This pet is gardening! Take it out of the garden and equip it?* (**Yes** takes it out and equips
+it in one go). In **Pets** its card is dimmed with a green *Gardening* badge. A pet asleep on a bed that a Prestige
+closed (its sign says *Prestige to open*; it earns nothing there) is not busy: equip it or put it in a team and it
+simply leaves that bed, no question asked. A pet in training cannot garden either (see
 [the Training Place](#the-training-place)).
 
 **Roaming:** garden pets do not sit still. Each one walks to the **Food Bowl** in the middle of the garden, eats,
@@ -834,8 +839,9 @@ Tap the **Team** tile in the menu. A team is **3 pets**: slot 1 is your **FIGHTE
 **HELPERS**. **Set as fighter** on a team pet moves it into slot 1. You can save up to **3 teams** (the tabs *Team 1*
 to *Team 3*); **Use this team** picks the one you fight with. Tap a slot, then a pet: every pet shows its element,
 level and battle power. The screen shows your **team power** (compare it with a Dungeon floor's recommended power),
-the element bonuses your team gets right now and the element wheel. Garden pets can fight too (they keep earning at
-home); a pet in training sits out until it is done (its tile says *Training*). Without a team, the game picks the
+the element bonuses your team gets right now and the element wheel. Garden pets are busy gardening (their tile says
+*Gardening*; tap one to take it out of the garden and into the team); a pet in training sits out until it is done
+(its tile says *Training*). Without a team, the game picks the
 pets following you, or else your strongest pets. Pet levels count a lot: feed your pets at the Food Machine, evolve
 them and train their skills at the Training Place.
 
@@ -930,8 +936,12 @@ You need a pet; you do not need a home.
   **START** (and can remove a member with the X). Unready members get 30 seconds ("Starting in 30 - press READY"),
   then the run starts without them. The leader picks the floor; friends are carried along and get the floor too. A
   party can also take a new member while it is still in room 1 or 2.
-- **Inside:** you start in the Entrance Hall, then walk into room 1; the fight starts when someone crosses the line
-  inside the door. Every room has 2-3 waves (floor 1: three single sleepy enemies, made so that any single level-1 pet
+- **Inside:** stepping through the Dungeon gate, the camera rushes into the vortex and the screen breaks into glowing
+  blocks that fall away to reveal the Entrance Hall (any key, click or tap skips). After each door you walk into the
+  room together (the camera in front of you, any key skips) and the fight starts when the first of you crosses the line
+  inside the door; nobody waits more than 3 seconds. Your pets follow you the whole time, and the camera sits a little
+  over your shoulder (big attacks punch the view, hits shake it; the Camera shake setting turns off only the hit shakes: the rush, the
+  walk-in and the punch are short, skippable and always play). Every room has 2-3 waves (floor 1: three single sleepy enemies, made so that any single level-1 pet
   wins); every wave arrives in a flash of light (for a moment it cannot be hit and does not attack). When a room is
   clear its exit opens: go to the next door and press `E` (the whole party presses it, then the screen fades into the
   next room). Your pets heal fully between rooms. You have **2 minutes** per room (**3 minutes** on floor 1); a member whose
@@ -1179,23 +1189,29 @@ never drops below 14 px on a phone.
   seconds), then the **main menu** over a slow flight around the Gate Court: **PLAY**, **SETTINGS** and **UPDATES**
   (with a NEW badge when there is something new). Your character only appears when you press PLAY.
 - **Settings** (in the main menu, and later from the **Settings** tile): Music and Sound volume (0-10), Graphics
-  (**Auto**, **Low** for slow phones and PCs, **High**), Camera shake (on / off) and **Mouse lock** (on / off, or
+  (**Auto**, **Low** for slow phones and PCs, **High**), Camera shake (on / off: the small shakes when you are hit; the dungeon's entrance rush, walk-in and big-attack
+  zoom are not shakes and always play) and **Mouse lock** (on / off, or
   press `L`: the cursor stays in the middle of the screen and the mouse turns the camera; windows free it). They
   apply at once and are saved with your profile.
-- **Left, vertically centred: the menu** of glossy square tiles: Pets, Items, Team, Index, Shop, Home, and the small
-  Stats and Settings tiles. Windows close with Esc, the red X or gamepad B.
+- **Left, vertically centred: the menu**, one slim column of glossy square tiles: Pets, Items, Team, Index, Shop,
+  Home, Stats and the Settings gear. The small **arrow tab** beside the gear folds the column against the left edge
+  (only the tab stays; a red dot on it means a tile has news) and brings it back; the game remembers it until you
+  leave. A tutorial step that points at a tile unfolds it. On phones the tiles wrap into two slim columns (three on
+  very small phones) so nothing sits under your thumbstick. Windows close with Esc, the red X or gamepad B.
 - **Top-left:** party panel in the lobby (the obby level with its stars, the countdown, members, the **Leave** button
   and, for the leader, **CHANGE**), match panel (difficulty, timer, checkpoints, team) in a climb. The tutorial card
   sits below it.
-- **Bottom-left:** your **Cloud Tokens**, **Cash** and **Gems** (big numbers with K / M), and under them the
-  **health and stamina card**: a heart badge with a thick health bar (it flashes and shakes when you are hit and
-  pulses when you are low), a lightning badge with the stamina bar (thin marks show how many dashes you have left),
-  and the dash ring that sweeps while dash recharges. NPC dialogs open just above it.
-- **Right: toasts** stack at the top-right (purchases, level-ups, "Welcome back! Your pets made ..." and the
-  rest), and the compact result card shows up at the right edge after a climb. **Bottom-centre:** the item hotbar
-  (1-4).
-- On phones the HUD moves up to clear the thumbstick, and on short landscape screens the currency counters move
-  to the top-right.
+- **Top-right:** your **Cloud Tokens**, **Cash** and **Gems** as thin strips (coin + number with K / M), right under
+  Roblox's top bar; in a climb only the token strip shows, with the "+n" you picked up. On a portrait phone they
+  sit side by side in one row; in a battle on a phone they move into Roblox's top bar.
+- **Bottom-centre:** the item hotbar (1-4) and, right above it, the **health and stamina card**: a heart badge with
+  a thick health bar (it flashes and shakes when you are hit and pulses when you are low), a lightning badge with
+  the stamina bar (thin marks show how many dashes you have left), and the dash ring that sweeps while dash
+  recharges. NPC dialogs open at the bottom-left.
+- **Right: toasts** stack at the top-right under the currency strips (purchases, level-ups, "Welcome back! Your
+  pets made ..." and the rest), and the compact result card shows up at the right edge after a climb.
+- On phones nothing sits under the thumbstick or the jump button: the health card steps aside or up, and the
+  Dungeon's result card opens under the currency strips.
 - **In the Battle Arena:** duel invites, the raid card and the event countdown are small cards at the right edge.
   **In a battle:** your fighter's card and your helpers top-left, the enemies on the right, the action buttons at the
   bottom right (see [In a battle](#in-a-battle-one-fighter-two-helpers)); in the ring "CHAMPION RING - Round 8 - Best
@@ -1252,11 +1268,12 @@ runs Lua code and the game never sees what you type there.
 | `/pets [stage]` | Every pet lined up in rows in front of you: `/pets` (normal), `/pets 1` (all 33 evolved), `/pets 2` (the 16 second evolutions). |
 | `/evolve <name> [stage]` | Plays that pet's evolution animation in front of you: with no stage its whole line (normal -> evolved, then -> second evolution for Epic pets and up), `1` only normal -> evolved, `2` only evolved -> second evolution. |
 | `/evolve all [stage]` | Every pet's evolutions one after another (all 49 take about 4½ minutes; `/evolve all 2` plays just the 16 second evolutions). |
-| `/clearpets` | Stops an evolution and removes the showcase pets. |
+| `/fx <element> <attack> [kind or shape] [rarity] [stage]` | Previews a pet attack effect: a pet of that element (and rarity) and a dummy target stand 10 studs apart in front of you and the attack plays. `<attack>` is `melee`, `ranged`, `special`, `element`, `hurt`, `ko` or `victory`; then, in any order, a special's kind (`blast`, `beam`, `pounce`, `storm`, `freeze`, `heal`, `shield`, `rally`, `haste`; none = the pet's own), an element attack's shape (`cone`, `circle`, `line`), a rarity (default `common`) and a stage (`0`-`2`). Any case: `/fx flame ranged epic`, `/fx storm special beam mythic 2`. |
+| `/clearpets` | Stops an evolution and removes the showcase pets (and the `/fx` pair). |
 | `/devhelp` | Two toasts listing the commands. |
 | `/menu` | Opens the main menu again (PLAY, SETTINGS, UPDATES) on your own screen only: your character stays where it is. Press PLAY to close it. |
 
-The pet showcase (`/pet`, `/pets`, `/evolve`, `/clearpets`) is built on your own screen only: other players do not
+The pet showcase (`/pet`, `/pets`, `/evolve`, `/fx`, `/clearpets`) is built on your own screen only: other players do not
 see it, nothing is saved and your pets are not touched. The evolution animation is
 `src/client/Controllers/EvolutionFx.lua` (the pet charges up and spins in a pillar of light over a ring of runes,
 bursts into a flash and the evolved pet pops out; the second evolution gets a double ring and more sparks); the
@@ -1321,11 +1338,13 @@ Things only you can do, by hand, once. Steps 3 and 4 are optional; everything wo
    Until all six are set the game shows the built-in fallback sky (a pink-lavender haze, a Roblox cloud layer tinted
    pink and 3000 stars: no seams, a little flatter than the painted sky), and Output shows a yellow
    `[LightingService]` line naming the missing face. Left and right look swapped? Swap the `Lf` and `Rt` ids.
-3. **Music and sounds (optional):** Studio -> Toolbox -> Marketplace -> **Audio**; search ("calm loop", "click") and
-   keep only results that say the audio can be used in any experience (Roblox-provided audio plays everywhere;
-   another user's private upload stays silent in your game). Click -> **Copy Asset ID** -> paste it into
-   `Config.Audio.Music.Lobby` / `Battle` / `Dungeon` and `Config.Audio.Sfx` (`Click`, `Confirm`, `Error`, `Reward`,
-   `Whoosh`) as `"rbxassetid://..."`. Empty = silent, nothing breaks.
+3. **Music and sounds:** the game has its own original audio in `audio/` (12 files, see `audio/README.md`). The
+   upload session puts them on Roblox with `python3 tools/upload_assets.py --audio` (a dry run) and then
+   `python3 tools/upload_assets.py --upload --audio`, which writes `src/shared/AudioIds.lua`; `Config.Audio` reads
+   it (`Config.Audio.Music.Lobby` / `Battle` / `Dungeon`, `Config.Audio.Sfx` (`Click`, `Confirm`, `Error`, `Reward`,
+   `Whoosh`, `Inhale`, `Shatter`) and `Config.Audio.Ambient` (`CrowdCheer`, `DrumLoop`: the Champion Ring's crowd
+   and drums), slot volumes in `Config.Audio.Volume`). Roblox moderates audio and counts audio uploads per month
+   (docs/phase6/OWNER_UPLOAD.md section 6b). A sound with no id yet is silent, nothing breaks.
 4. **Icons (optional):** the menu tiles use emoji; a PNG you Bulk Import (step 2) and paste into `Config.Icons` (for
    example `Config.Icons.Shop = "rbxassetid://..."`) replaces one.
 5. **Lighting:** since phase 6 the game is back to the bright cartoon look: `default.project.json` has the line
@@ -1437,8 +1456,10 @@ src/shared   Config (every number)  TycoonCatalog (every tycoon number)  Theme  
              battle simulation)  BossBuilder  WorldStyle (gates, plinths, the art rules)  HomeRoam (the roaming plan
              of garden pets, shared by server and clients)  TokenLook (the coin look of tokens and Cloud Cash)
              MeshLibrary (loads the Blender models)  MeshIds (generated: model asset ids)  TextureIds (generated:
-             the gate vortex image ids)  MeshManifests (generated:
-             one module per Blender model)  PetFx (the auras and effects of evolved pets)
+             the gate vortex image ids)  AudioIds (generated: the original music and sound ids)  MeshManifests (generated:
+             one module per Blender model)  PetFx (the auras and effects of evolved pets)  AttackFxCatalog (the look
+             of every pet attack effect: recipes by element, attack, rarity band, signature)  PetPoses (the
+             battle poses pets strike, cast, flinch and celebrate with, on PetBuilder's rig)
 src/server   Main.server.lua; Services: Lighting, LobbyBuilder, StormAltar, Player (the spawn after PLAY), Data,
              Damage, Token, Hazard, Course (layout + builder), Match, Portal, Gate (the Altar gate's prompt), Spot, Pet,
              Item, Index, Tutorial, Npc, Dev, Tycoon, HomeBuilder, PetCare, Fusion, Gem, ArenaBuilder, Battle, Event,
@@ -1448,7 +1469,9 @@ src/client   Main.client.lua; State; UiGate (nothing shows before PLAY); ClientS
              LightingStack (lighting looks, e.g. the Dungeon); UI/CloudUI; UI/NeonKit (the neon cards, tiles and side
              panels); UI/PetCard (the cards above pets); Controllers: Movement, MainMenu (main menu + settings), Hud,
              DamageFx, Notify, Menu, Hotbar, Pet, TokenFx, Index, Tutorial, Npc, SkyDragon, Showcase, Dev, DevPetShow
-             (pet showcase), EvolutionFx (evolution animation, the dungeon enemies' arrival), Care (Food Machine, Garden, training and EVOLVE
+             (pet showcase, /fx attack preview), EvolutionFx (evolution animation, the dungeon enemies' arrival),
+             AttackFx (plays the pet attack effects: Blender cores, flipbook particles, beams, trails and lights,
+             pooled, within a budget, plus the battle poses; BattleController plays it first, cubes as the fallback), Care (Food Machine, Garden, training and EVOLVE
              windows), HomeFx (roaming pets, Cloud Cash, berries), HomePortalFx (the home portal), Fusion, Battle,
              Arena, Dungeon (the Dungeon window and run), Obby (the level picker), PortalFx (the gates' soft
              animation: a light running round the ring, the swirl breathing, gems twinkling), FountainFx (the lobby
@@ -1458,7 +1481,8 @@ src/client   Main.client.lua; State; UiGate (nothing shows before PLAY); ClientS
              round's storm, flags and bell; no sound here: the audio branch's RingAmbience finds the stand by its
              NC_RingCrowd tag and the drummer by NC_RingDrummer), DungeonFx (the Weatherworks boss room's astrolabe:
              turns the NC_DungeonSpin rings near the camera; no sound here), MeshFallback (shows the
-             block pet on a device where a Blender model failed to load)
+             block pet on a device where a Blender model failed to load), RingAmbience (the Champion Ring's crowd
+             and drums, heard only near the ring)
 ```
 
 The **server is authoritative** (health, tokens, Cash, Gems, berries, pets, items, checkpoints, matches, home

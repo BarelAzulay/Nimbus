@@ -91,7 +91,8 @@
 --     startRound) near Portal_Ring (ArenaInfo.RingPortal, else the Portal_Ring model; RING_RANGE studs) -> StartRing. The
 --     entry checks, in this order with their toasts: a home claimed this session (TycoonService.GetPlot, "Claim your home
 --     first"), at least one owned pet ("You need a pet"), the fighters (the active team with training pets skipped, else
---     the equipped keys, else the best owned pets by UnitPower, up to GetTeams().Slots = 3; Pets[1] is the fighter),
+--     the equipped keys, else the best owned pets by UnitPower, up to GetTeams().Slots = 3; Pets[1] is the fighter; bug
+--     batch 2 #18: a pet busy gardening, DataService.GardenBusyKeys, is skipped everywhere like a training pet),
 --     canBattle, within RING_RANGE of the portal ("Walk to the Champion Ring portal"), the profile loaded and not
 --     provisional, the start round (1, or a boss round 10k with Ring.Best >= 10k). One RingRun per player: { Id, Player,
 --     UserId, Name, Pocket, PocketIndex, Zone, Round, Start, Seed, Keys (fixed at the start), Wins, Cash, Xp, Tokens,
@@ -119,7 +120,10 @@
 -- tick every live participant's character root (zone-local) is fed as Command(owner, "Move", x, z); after them the LEASH
 -- measures the gap between the character and the server fighter: a gap > Fighter.Leash (10) for Fighter.LeashSeconds (3)
 -- = a leaver in Duel / Ring, a RemoveTeam in Raid / Dungeon (a run-off or a teleport; an in-zone speed hack is not leashed
--- and gains nothing). After each step: "Events" (the Step() events) to the receivers that already have the battle,
+-- and gains nothing). Bug #22: while the sim team is ENGAGED (BattleSim's engage rule: the character stands, the pet left
+-- it to fight) the leash is skipped (Cmd.engaged, white-box like Cmd.stunned): the sim bounds the gap itself
+-- (Fighter.EngageLeash 18) and drops back to FOLLOW when the character walks > EngagePull (7) away; the FOLLOW leash then
+-- runs as before (a teleport is leashed at most ~1 s later). After each step: "Events" (the Step() events) to the receivers that already have the battle,
 -- "Start" to new receivers, then "Snapshot". Messages (BattleState(kind, payload, battleId)):
 --   "Start"    battle:Describe() + Zone = { CFrame (floor centre), Size (Vector3: X, height, Z), X, Z } + Names =
 --              { [tostring(userId)] = name } + Side (the receiver's side, 0 for a spectator) + Spectator + T + Ring (ring
@@ -129,7 +133,7 @@
 --              receiver's previous snapshot, as flat numbers (BattleSim.DecodeSnapshot decodes; code = id x 1024 + lives x 256
 --              + windup x 128 + mask x 8 + state). Fighters get a snapshot every step (10 Hz), spectators every other step.
 --   "Events"   the list of Step() events (Hit / Special / KO / Telegraph / Spawn / Enrage / Order / Zone / Leave / End /
---              Element / Dash / Buff / Swap / Windup / Wave / EnemiesDown / Speed), only when the step produced any; a
+--              Element / Dash / Buff / Swap / Windup / Wave / EnemiesDown / Speed / Engage), only when the step produced any; a
 --              refusal of a command BEFORE the sim (NotInZone, junk) also echoes Order { owner, order, rejected }.
 --   "End"      { BattleId, Mode, Result (the public result: owner maps keyed by tostring(userId)), Rewards (the
 --              receiver's own, nil for spectators), Outcome = "Win" | "Loss" | "Draw" | "Left" | nil, Won, Spectator,
@@ -2755,11 +2759,16 @@ end
 
 -- The ring's fighters, in the contract's order: the active team (training pets skipped), else the equipped keys, else
 -- the best owned pets by UnitPower; training pets skipped everywhere; at most GetTeams().Slots. -> keys, source
+-- Bug batch 2 #18: a pet busy gardening (every copy in the Garden: DataService.GardenBusyKeys) never fights either.
 function RingRun.fighters(player, owned)
 	local DS = dataService()
 	local training = try(DS, "TrainingKeys", player)
 	if type(training) ~= "table" then
 		training = {}
+	end
+	local gardening = try(DS, "GardenBusyKeys", player)
+	if type(gardening) ~= "table" then
+		gardening = {}
 	end
 	local teams = try(DS, "GetTeams", player)
 	local slots = (type(teams) == "table" and tonumber(teams.Slots)) or 3
@@ -2769,7 +2778,7 @@ function RingRun.fighters(player, owned)
 			if #out >= slots then
 				break
 			end
-			if type(key) == "string" and not training[key] and not seen[key] then
+			if type(key) == "string" and not training[key] and not gardening[key] and not seen[key] then
 				seen[key] = true
 				out[#out + 1] = key
 			end
@@ -2791,7 +2800,7 @@ function RingRun.fighters(player, owned)
 	end
 	local scored = {}
 	for _, key in ipairs(type(owned) == "table" and owned or {}) do
-		if type(key) == "string" and not training[key] and PetKeys then
+		if type(key) == "string" and not training[key] and not gardening[key] and PetKeys then
 			local okD, def = pcall(PetKeys.DefOf, key, profile)
 			if okD and type(def) == "table" and type(def.Stats) == "table" then
 				local okP, parsed = pcall(PetKeys.Parse, key)
@@ -3342,7 +3351,7 @@ function BattleService.StartRing(player, startRound)
 	-- 3) the fighters: the team, else the equipped pets, else the best owned pets (training pets skipped)
 	local keys, source = RingRun.fighters(player, owned)
 	if #keys == 0 then
-		return false, "Your pets are all training right now"
+		return false, "Your pets are all training or gardening right now"
 	end
 	-- 4) free to battle
 	local ok, why = canBattle(player)
@@ -3879,6 +3888,12 @@ function Cmd.stunned(b, part, gap, F)
 	return (part.LeashGraceUntil or 0) > t
 end
 
+-- bug #22: the sim team is ENGAGED (white-box: BattleSim's team.engage): its pet left the standing character to fight
+function Cmd.engaged(b, part)
+	local team = Cmd.simTeam(b, part.UserId)
+	return team ~= nil and type(team.engage) == "table"
+end
+
 -- the leash: the gap between the character and the server fighter AFTER the legal step, > Fighter.Leash for
 -- Fighter.LeashSeconds = a run-off / teleport (a leaver in Duel / Ring, a RemoveTeam in Raid / Dungeon)
 function Cmd.leash(b, part, dt)
@@ -3900,6 +3915,12 @@ function Cmd.leash(b, part, dt)
 	-- the stun lasts, nor during the catch-up after it (the gap closes at legal run x (MoveSlack - 1)); B1 / C15: a legit
 	-- raider frozen by a boss is never leashed. The presence check (the zone + its margin) still applies.
 	if Cmd.stunned(b, part, gap, F) then
+		part.LeashT = 0
+		return false
+	end
+	-- bug #22: an ENGAGED pet fights away from its standing character on purpose; the sim bounds it (EngageLeash) and the
+	-- character's step (> EngagePull) brings it back to FOLLOW, where this leash runs again
+	if Cmd.engaged(b, part) then
 		part.LeashT = 0
 		return false
 	end

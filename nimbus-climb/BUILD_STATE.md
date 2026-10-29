@@ -5,11 +5,20 @@ Updated: 2026-10-18 (after wave 2). Branch `v3-phase4`. Plan: `ARCHITECTURE_V3.m
 
 ## Player decisions (all settled)
 - **2026-10-20 ART RULE: Blender models only** (no Roblox Part-built / Toolbox models). See ARCHITECTURE_V3 "ART RULE".
+- 2026-10-28 (bugs #16 / #22, wave 5 fight lane): the ENGAGE rule: "the character leads when it moves, the pet fights when it stands" (BattleSim fighterStep: still 0.5 s + an enemy within Fighter.EngageRange 14 = the pet leaves to fight at the honest run; a 7-stud walk (Fighter.EngagePull; player ruling 2026-10-28: a small reposition keeps the pet in the fight) / no enemy / > EngageLeash 18 = back to FOLLOW; BattleService skips the leash while engaged). F / X / ATTACK: a tap = Attack() and the server KEEPS a live lock (no cycle); hold 0.4 s = the next target (Target, like Tab / RT); caption ATTACK. The DEV tile measures the battle HUD (never on the action cluster).
+- 2026-10-28 (player ruling, wave 5 dungeon camera): the Camera shake setting OFF turns off ONLY the hit shakes; the dungeon entrance rush, the room walk-in shot and the FOV punch on big attacks always play (short, skippable). The rush is skipped when the camera is > 60 studs from the gate.
 - Evolve button; 2nd evolution only Epic+; level cap 100 for all pets (XP curve keeps rising).
 - Presses become food plants, Collector = Coin Magnet, Kitchen = Food Machine, Gym = Training Place.
 - Pet bars above each pet; Champion Ring needs a claimed home + 1 pet.
 - Fable for the riskiest builders, Opus elsewhere; effort HIGH (player choice). Talk to the player in caveman mode.
 - Gem product IDs: player has not made them yet (put them in Config.Gems.Products when sent).
+- **Bug batch 2 (2026-10) #1: compact HUD, option A "Split & shift"**: currencies as thin strips top-right, ONE slim
+  left menu column with a fold arrow tab, the vitals card bottom-centre above the hotbar; phones: nothing under the
+  thumbstick / jump (tiles wrap into 2-3 columns there). See ARCHITECTURE_V3 "HUD layout (bug batch 2 #1)".
+- **Bug batch 2 (2026-10) #18: garden pets, option B "Remote recall"**: a garden pet cannot follow or fight;
+  Equip / Team on it asks "This pet is gardening! Take it out of the garden and equip it?" (Yes = one GardenRecall
+  request), a "Gardening" badge on its Team tile. Old saves with a pet both gardening and following / on a team keep
+  it on the team; it leaves the garden.
 
 ## Waves
 | Wave | Builders | State |

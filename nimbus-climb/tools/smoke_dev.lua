@@ -12,6 +12,10 @@
 --                      of waiting forever), chat commands, logging; Studio (everyone allowed, AllowInStudio /
 --                      Enabled switches, StudioAutoGrant); a build with the tools switched off still listens on
 --                      DevCommand (Roblox would queue the events otherwise) and refuses everything
+--                      the pet showcase (/pet, /pets, /evolve, /clearpets) and /fx <element> <attack> [kind|shape]
+--                      [rarity] [stage] (AttackFxCatalog names, any case; refused for others and with a 'bad' toast
+--                      for an unknown element / attack / word) -> DevPetShow("Fx", { Element, Attack, Kind, Shape,
+--                      Rarity, Stage }) to the developer only
 --   client_dev         (client, 1920x1080 + other window sizes) the DEV button only exists with NC_Dev on the
 --                      PlayerGui, sits on the right edge clear of the menu column / HUD / hotbar / tutorial panel,
 --                      the toasts' room and the middle; the "Developer tools" side panel (never centred, readable,
@@ -872,6 +876,67 @@ local function serverScenarios()
 		T.eq(#shows(stranger, markS), 0, "DEV showcase: a normal player's showcase commands send nothing (chat and remote)")
 	end
 
+	-- /fx <element> <attack> [kind|shape] [rarity] [stage] (pet attack VFX, plan Task 7): validated against
+	-- AttackFxCatalog, sent as DevPetShow("Fx", { Element, Attack, Kind, Shape, Rarity, Stage }) to the developer only
+	local function fxShowcase(owner, stranger)
+		local function shows(p, mark)
+			local out = {}
+			for _, e in ipairs(K.remotesFor("DevPetShow", p.UserId, mark)) do
+				out[#out + 1] = { action = e.args[1], payload = e.args[2] or {} }
+			end
+			return out
+		end
+		local before = snapshotOf(owner)
+		local mark = chat(owner, "/fx Flame Ranged Epic")
+		local list = shows(owner, mark)
+		local e = list[1] or { payload = {} }
+		local p = e.payload
+		T.check(#list == 1 and e.action == "Fx" and p.Element == "Flame" and p.Attack == "Ranged" and p.Rarity == "Epic" and p.Stage == 0 and p.Kind == nil and p.Shape == nil,
+			"DEV fx: '/fx Flame Ranged Epic' (a developer) -> DevPetShow Fx { Flame, Ranged, Epic, stage 0 }",
+			#list .. " events, " .. tostring(e.action) .. " " .. tostring(p.Element) .. " " .. tostring(p.Attack) .. " " .. tostring(p.Rarity) .. " " .. tostring(p.Stage))
+		T.check(lastToast(owner, mark).kind ~= "bad" and lastToast(owner, mark).text:find("Flame", 1, true) ~= nil, "DEV fx: ...with a toast naming it", lastToast(owner, mark).text)
+		mark = chat(owner, "/FX flame SPECIAL blast legendary 2")
+		e = shows(owner, mark)[1] or { payload = {} }
+		p = e.payload
+		T.check(p.Element == "Flame" and p.Attack == "Special" and p.Kind == "Blast" and p.Rarity == "Legendary" and p.Stage == 2,
+			"DEV fx: any case; a special's kind, the rarity and the stage words in any order ('/FX flame SPECIAL blast legendary 2')",
+			tostring(p.Element) .. " " .. tostring(p.Attack) .. " " .. tostring(p.Kind) .. " " .. tostring(p.Rarity) .. " " .. tostring(p.Stage))
+		mark = send(owner, "fx", "water element circle evolved")
+		e = shows(owner, mark)[1] or { payload = {} }
+		p = e.payload
+		T.check(p.Element == "Water" and p.Attack == "Element" and p.Shape == "Circle" and p.Rarity == "Common" and p.Stage == 1,
+			"DEV fx: an element attack's shape through the DevCommand remote; the rarity defaults to Common",
+			tostring(p.Element) .. " " .. tostring(p.Attack) .. " " .. tostring(p.Shape) .. " " .. tostring(p.Rarity) .. " " .. tostring(p.Stage))
+		local refusals = {
+			{ "/fx Lava Ranged", "no element" },
+			{ "/fx Flame Kick", "no attack" },
+			{ "/fx", "which element" },
+			{ "/fx Flame", "which attack" },
+			{ "/fx Flame Melee Blast", "Special" },
+			{ "/fx Flame Ranged Shiny", "shiny" },
+			{ "/fx Flame Ranged Epic Rare", "two rarities" },
+			{ "/fx flame special blast beam", "two kinds" },
+			{ "/fx water element cone line", "two shapes" },
+			{ "/fx earth melee 1 evolved2", "two stages" },
+		}
+		for _, r in ipairs(refusals) do
+			mark = chat(owner, r[1])
+			local toast = lastToast(owner, mark)
+			T.check(#shows(owner, mark) == 0 and toast.kind == "bad" and toast.text:lower():find(r[2]:lower(), 1, true) ~= nil,
+				"DEV fx: '" .. r[1] .. "' is refused with a 'bad' toast and sends nothing", toast.text)
+		end
+		mark = send(owner, "fx", { Element = "Flame" })
+		T.check(#shows(owner, mark) == 0 and lastToast(owner, mark).kind == "bad", "DEV fx: a forged value (a table) is refused", lastToast(owner, mark).text)
+		local unchanged, diff = same(before, snapshotOf(owner))
+		T.check(unchanged, "DEV fx: /fx changes no data", diff)
+		local markS = K.logSize()
+		chat(stranger, "/fx Flame Ranged Epic")
+		send(stranger, "fx", "Flame Ranged Epic")
+		advance(2.1)
+		T.eq(#shows(stranger, markS), 0, "DEV fx: '/fx Flame Ranged Epic' from a normal player is refused (sends nothing)")
+		T.eq(#devToasts(stranger, markS), 0, "DEV fx: ...and they get no DEV toast")
+	end
+
 	S.dev_tools = guarded("dev_tools", function()
 		if not K.needBoot() then
 			return
@@ -913,6 +978,7 @@ local function serverScenarios()
 			groupGame(Dev, Config, joined, stranger)
 			local owner = ownerCommands(Dev, Config, joined)
 			petShowcase(Dev, owner, stranger)
+			fxShowcase(owner, stranger)
 			resetMidTutorial(Config, joined)
 			switchedOff(Config, owner)
 			studio(Dev, Config, joined, owner)
@@ -1558,6 +1624,162 @@ local function clientScenarios()
 		T.check(h.Done and a.Parent == nil and b.Parent ~= nil and off < 0.01 and Fx.Count() == 0, "DEV pets: Stop() ends it at once: the old pet gone, the evolved one at rest at the pose", string.format("%.3f studs off", off))
 		b:Destroy()
 		T.check(typeof(c1) == "Color3" and typeof(c2) == "Color3", "DEV pets: PetBuilder.EvolutionColors gives two colours")
+
+		-- Fx (/fx): a caster pet and a dummy target 10 studs apart in front of the player play AttackFx; Clear removes them
+		local okAF, AF = pcall(require, Mock.GetPath(ROOTS["client"] .. "/Controllers/AttackFx"))
+		if T.check(okAF and type(AF) == "table" and type(AF.Stats) == "function", "DEV pets: client/Controllers/AttackFx.lua loads") then
+			T.check(Show.Handle("Fx", { Element = "Lava", Attack = "Ranged", Rarity = "Epic", Stage = 0 }) == false
+				and Show.Handle("Fx", { Element = "Flame", Attack = "Kick", Rarity = "Epic", Stage = 0 }) == false,
+				"DEV pets: an Fx payload with an unknown element / attack builds nothing")
+			KC.toClient("DevPetShow", "Fx", { Element = "Flame", Attack = "Ranged", Rarity = "Epic", Stage = 0 })
+			advance(0.2)
+			list = models()
+			local caster, dummy = nil, nil
+			for _, m in ipairs(list) do
+				if m:GetAttribute("DevFx") == "Caster" then
+					caster = m
+				elseif m:GetAttribute("DevFx") == "Target" then
+					dummy = m
+				end
+			end
+			local apart = (caster and dummy) and (Vector3.new(caster.PrimaryPart.Position.X, 0, caster.PrimaryPart.Position.Z) - Vector3.new(dummy.PrimaryPart.Position.X, 0, dummy.PrimaryPart.Position.Z)).Magnitude or -1
+			T.check(#list == 2 and caster ~= nil and dummy ~= nil and math.abs(apart - 10) < 0.6, "DEV pets: Fx builds a caster pet and a dummy target 10 studs apart (the showcase cleared)",
+				#list .. " models, " .. string.format("%.1f", apart) .. " studs")
+			local mid = (caster and dummy) and (caster.PrimaryPart.Position + dummy.PrimaryPart.Position) / 2 or me.Position
+			local toMid = mid - me.Position
+			T.check(Vector3.new(toMid.X, 0, toMid.Z):Dot(look) > 3, "DEV pets: ...in front of the player")
+			local st = AF.Stats()
+			T.check(st.Live + st.Stepped >= 1 and caster and caster:GetAttribute("DevFxElement") == "Flame" and caster:GetAttribute("DevFxRarity") == "Epic",
+				"DEV pets: ...and the caster (a Flame pet) plays the AttackFx effect", "Live " .. st.Live)
+			advance(3)
+			T.eq(AF.Stats().Live + AF.Stats().Stepped, 0, "DEV pets: the Fx effect ends by itself")
+			KC.toClient("DevPetShow", "Fx", { Element = "Storm", Attack = "Special", Kind = "Beam", Rarity = "Mythic", Stage = 2 })
+			advance(0.3)
+			T.check(#models() == 2 and AF.Stats().Live + AF.Stats().Stepped >= 1, "DEV pets: a second Fx replaces the pair and plays (Storm Special Beam Mythic)")
+			-- Task 10: a support special is previewed on 4 allies (the pair + 2 stand-ins behind it), each one under the effect
+			KC.toClient("DevPetShow", "Fx", { Element = "Nature", Attack = "Special", Kind = "Heal", Rarity = "Rare", Stage = 0 })
+			advance(0.3)
+			local allies, live = 0, AF._Live and AF._Live() or {}
+			for _, m in ipairs(models()) do
+				if m:GetAttribute("DevFx") == "Ally" then
+					allies = allies + 1
+				end
+			end
+			local heal = live[#live]
+			T.check(#models() == 4 and allies == 2 and heal and heal.Recipe.Kind == "Heal" and #heal.T == 4,
+				"DEV pets: Fx of a support special (Heal) lands on 4 allies: the pair + 2 stand-ins", #models() .. " models, " .. allies .. " extra, " .. tostring(heal and #heal.T) .. " targets")
+			-- (Task 11 fix round 2, I1) a Storm hits the enemies in its zone: /fx previews it on the dummy + 2 stand-in enemies
+			-- inside the zone, so Obsidian's sweep and spread rain are reached (#eff.T > 1), not a lone-target pass
+			do
+				KC.toClient("DevPetShow", "Fx", { Element = "Flame", Attack = "Special", Kind = "Storm", Rarity = "Secret", Stage = 0 })
+				advance(0.3)
+				local okBCat, BCat = pcall(require, Mock.GetPath(ROOTS["shared"] .. "/BattleCatalog"))
+				local zoneR = okBCat and type(BCat) == "table" and BCat.Specials and BCat.Specials.Storm and tonumber(BCat.Specials.Storm.Radius) or 0
+				local foes, foeFar, dummyPos = 0, 0, nil
+				for _, m in ipairs(models()) do
+					if m:GetAttribute("DevFx") == "Target" then
+						dummyPos = m.PrimaryPart.Position
+					end
+				end
+				for _, m in ipairs(models()) do
+					if m:GetAttribute("DevFx") == "Foe" then
+						foes = foes + 1
+						local d = dummyPos and (Vector3.new(m.PrimaryPart.Position.X, 0, m.PrimaryPart.Position.Z) - Vector3.new(dummyPos.X, 0, dummyPos.Z)).Magnitude or math.huge
+						foeFar = math.max(foeFar, d)
+					end
+				end
+				local live2 = AF._Live and AF._Live() or {}
+				local storm = live2[#live2]
+				T.check(#models() == 4 and foes == 2 and foeFar < zoneR and storm and storm.Recipe.Signature == "obsidian_phoenix" and #storm.T > 1 and #storm.T == 3,
+					"DEV pets: Fx of Obsidian's Storm lands on 3 enemies (the dummy + 2 stand-ins inside the zone): #eff.T > 1",
+					#models() .. " models, " .. foes .. " stand-ins (farthest " .. string.format("%.1f", foeFar) .. " studs off the dummy), sig "
+						.. tostring(storm and storm.Recipe.Signature) .. ", " .. tostring(storm and #storm.T) .. " targets, zone radius " .. zoneR)
+			end
+			-- (Task 11 fix round 1, M2) an Eclipse Nova in /fx dims the world, which wakes BattleController's frame loop (it steps
+			-- AttackFx too): AttackFx.Update still runs ONCE a frame (the fake clock: two calls in one frame share their `now`).
+			-- (The dim hook here only wakes the loop, as Me.Dim does, without touching Lighting: a real dim makes LightingStack
+			-- snapshot a lasting base for ExposureCompensation, which client_p5lightingstack later sets by hand)
+			local okBC, BCm = pcall(require, Mock.GetPath(ROOTS["client"] .. "/Controllers/BattleController"))
+			if T.check(okBC and type(BCm) == "table" and type(BCm.StepsAttackFx) == "function" and type(BCm._wake) == "function", "DEV pets: BattleController.StepsAttackFx exists") then
+				local realUpdate = AF.Update
+				local hooks0 = { AF.Hooks.DimWorld, AF.Hooks.Undim }
+				AF.Hooks.DimWorld = function()
+					BCm._wake()
+				end
+				AF.Hooks.Undim = function() end
+				local calls, twice, last, woke, sig = 0, 0, nil, false, nil
+				AF.Update = function(now, ...)
+					calls = calls + 1
+					if last ~= nil and now == last then
+						twice = twice + 1
+					end
+					last = now
+					woke = woke or BCm.StepsAttackFx() == true
+					return realUpdate(now, ...)
+				end
+				local okRun, err = pcall(function()
+					KC.toClient("DevPetShow", "Fx", { Element = "Shadow", Attack = "Special", Kind = "Blast", Rarity = "Secret", Stage = 0 })
+					advance(0.1)
+					local lv = AF._Live and AF._Live() or {}
+					sig = lv[#lv] and lv[#lv].Recipe.Signature
+					advance(1.6)
+				end)
+				AF.Update = realUpdate
+				AF.Hooks.DimWorld, AF.Hooks.Undim = hooks0[1], hooks0[2]
+				T.check(okRun and sig == "eclipse_dragon" and woke and calls > 20 and twice == 0,
+					"DEV pets: /fx Eclipse Nova: the dim wakes BattleController's loop, yet AttackFx.Update runs once a frame (never twice)",
+					string.format("%s, sig %s, woke %s, %d calls, %d twice in a frame", tostring(err or "ok"), tostring(sig), tostring(woke), calls, twice))
+				-- (Task 11 fix round 2, M8) a frame loop that fails before Atk.Update EVERY frame (pcall'd: one warning) stays
+				-- connected but steps nothing: StepsAttackFx then says false and the /fx preview steps AttackFx itself
+				do
+					local hooks1 = { AF.Hooks.DimWorld, AF.Hooks.Undim }
+					AF.Hooks.DimWorld = function()
+						BCm._wake()
+					end
+					AF.Hooks.Undim = function() end
+					local o0, perf0 = #Mock.Output, BCm.PerfClock
+					local healthy, faults, calls2, twice2, last2, says = false, 0, 0, 0, nil, nil
+					local okRun2, err2 = pcall(function()
+						KC.toClient("DevPetShow", "Fx", { Element = "Shadow", Attack = "Special", Kind = "Blast", Rarity = "Secret", Stage = 0 })
+						advance(0.1)
+						healthy = BCm.StepsAttackFx() == true
+						BCm.PerfClock = function()
+							faults = faults + 1
+							error("M8 check: this frame fails before Atk.Update")
+						end
+						AF.Update = function(now, ...)
+							calls2 = calls2 + 1
+							if last2 ~= nil and now == last2 then
+								twice2 = twice2 + 1
+							end
+							last2 = now
+							return realUpdate(now, ...)
+						end
+						advance(1)
+						says = BCm.StepsAttackFx()
+					end)
+					BCm.PerfClock = perf0
+					AF.Update = realUpdate
+					AF.Hooks.DimWorld, AF.Hooks.Undim = hooks1[1], hooks1[2]
+					-- (the planted fault's one warning belongs to this check: dropped, and re-armed for any later real failure)
+					for i = #Mock.Output, o0 + 1, -1 do
+						local o = Mock.Output[i]
+						if o.kind == "warn" and tostring(o.text):find("M8 check", 1, true) then
+							table.remove(Mock.Output, i)
+						end
+					end
+					if type(BCm._Unwarn) == "function" then
+						BCm._Unwarn("frame")
+					end
+					T.check(okRun2 and healthy and faults >= 20 and says == false and calls2 >= faults - 1 and twice2 == 0,
+						"DEV pets: /fx while BattleController's loop runs but fails before Atk.Update every frame: StepsAttackFx says false and /fx steps AttackFx itself (once a frame)",
+						string.format("%s, healthy %s, %d failed frames, StepsAttackFx %s, %d Update calls, %d twice", tostring(err2 or "ok"), tostring(healthy), faults, tostring(says), calls2, twice2))
+				end
+			end
+			KC.toClient("DevPetShow", "Clear", {})
+			advance(0.3)
+			T.check(Show.Count() == 0 and AF.Stats().Live + AF.Stats().Stepped == 0, "DEV pets: Clear (/clearpets) removes the Fx pets and ends their effects")
+		end
 		KC.flushErrors("dev pets")
 		KC.flushWarnings("dev pets")
 	end)

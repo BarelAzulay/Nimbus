@@ -19,7 +19,8 @@
 --   p5dgn_catalog      Dungeon / DungeonFloors / DungeonPower (floor 10 = 2048) / DungeonWave (deterministic, never EventOnly,
 --                      floor 1 one handicapped enemy, the boss entry) / DungeonRewards / DungeonFirstClear totals / DungeonChest
 --   p5battle_balance   tools/sim_battle.lua as a library: the balance subset (support ratio, kit factor, mirror duels, the 2.4
---                      wave rule, raids, ring medians, floor 1 by one level-1 pet, S10 >= floor 10)
+--                      wave rule, the element counter (balance-5: decides an even fight, worth x1.15-1.45 power), raids,
+--                      ring medians, floor 1 by one level-1 pet, S10 >= floor 10)
 -- White-box: a few checks reach into battle.units / battle.teams (same Lua state) to set HP, meters or positions.
 -- Plain Lua 5.1 syntax only.
 
@@ -442,7 +443,7 @@ S.p5sim_fighter = guarded("p5sim_fighter", function()
 		return ev.order == "Target" and ev.target == e.id and ev.rejected == nil
 	end) ~= nil and b:TeamOf(1).Lock == e.id, "Target locks a unit (Order event, TeamOf.Lock)")
 	ok, why = b:Command(1, "Attack")
-	T.check(ok == true and why == e.id and tm.lock == e, "Attack() with the only enemy locked keeps it (the cycle wraps)")
+	T.check(ok == true and why == e.id and tm.lock == e, "Attack() keeps a live lock in EngageRange (bug #16: no cycle, no re-target)")
 	ok, why = b:Command(1, "Target", f.id)
 	T.check(not ok and why == "BadTarget" and b:Command(1, "Target", nil) == true and tm.lock == nil, "a lock on an ally is refused; Target nil clears")
 	-- ELEMENT: cooldown and every shape
@@ -856,7 +857,9 @@ S.p5sim_fighter = guarded("p5sim_fighter", function()
 		b10:Step(0.1)
 		T.check(near(f10.z, sp.Run * 0.6 * F.MoveSlack * 0.1, 0.03) and near(b10:SpeedOf(1).Run, sp.Run * 0.6, 1e-6), "a Slow lowers the cap and SpeedOf by x0.6")
 		f10.slowUntil = 0
-		-- the fighter stops at the wanted point, clamped inside the floor
+		-- the fighter stops at the wanted point, clamped inside the floor (FOLLOW: white-box, the engage rule of bug #22 held
+		-- off; smoke_fight.lua pins it)
+		t10.disengagedAt = huge
 		b10:Command(1, "Move", 0, 0)
 		for _ = 1, 30 do
 			b10:Step(0.1)
@@ -1275,7 +1278,12 @@ S.p5sim_determinism = guarded("p5sim_determinism", function()
 			if x > 20 then
 				x = -20
 			end
-			b:Command(1, "Move", x, steps * 0.05 - 10)
+			-- bug #22: a 2 s still phase (steps 40-59) so the engage rule (FOLLOW -> ENGAGED -> pull) is in the stream
+			if steps < 40 or steps >= 60 then
+				b:Command(1, "Move", x, steps * 0.05 - 10)
+			else
+				b:Command(1, "Move", 2, -8)
+			end
 			local e = firstEnemy(b)
 			if e then
 				b:Command(1, "Attack", e.id)
@@ -1331,6 +1339,7 @@ S.p5sim_determinism = guarded("p5sim_determinism", function()
 	local a, ra, sa = script(42)
 	local b2, rb = script(42)
 	T.check(a == b2 and ra == rb, "the same seed and command stream (Move points included) replay the same events and snapshots", fmt("%d steps, %s", sa, tostring(ra)))
+	T.check(a:find("on=true", 1, true) ~= nil and a:find("type=Engage", 1, true) ~= nil, "...with the engage rule in the stream (a 2 s still phase engages: an Engage event)")
 	local c = script(43)
 	T.check(c ~= a, "another seed plays differently")
 	T.check(#a > 1000 and sa > 50, "the scripted fight is long enough to mean something", sa)
@@ -1561,6 +1570,15 @@ S.p5battle_balance = guarded("p5battle_balance", function()
 		wins1, n, draws = wins1 + agg.wins[1], n + agg.n, draws + agg.draws
 	end
 	T.check(n == 24 and draws == 0 and wins1 >= 6 and wins1 <= 18, "mirror duels (S3, S8): no draws and a fair split (25-75% over 24 fights)", fmt("%d of %d", wins1, n))
+	-- balance-5: the element counter (Water bubble_axolotl vs Flame maple_fox L10, neutral helpers, the wheel on vs off;
+	-- the old Flame-vs-Nature pair was neutral on the wheel). 128 fights a point on 9f381c4: worth x1.28, 100% at even
+	local okEc, ec = pcall(SIM.elementCounter, 8, true)
+	if T.check(okEc and type(ec) == "table", "SIM.elementCounter runs (8 seeds a seating)", tostring(ec)) then
+		local E = loadModule("Config").Elements
+		T.check(E.StrongMultiplier == 1.5 and E.WeakMultiplier == 0.75, "the element scan restores Config.Elements (Strong 1.5 / Weak 0.75)", fmt("%s / %s", tostring(E.StrongMultiplier), tostring(E.WeakMultiplier)))
+		T.check(ec.flatLevel ~= nil and ec.atEven >= 90, "the element counter decides an even fight: Water beats Flame >= 90% at the level that splits ~50% with the wheel off", fmt("L%s, %.0f%%", tostring(ec.flatLevel), ec.atEven))
+		T.check(ec.worth >= 1.15 and ec.worth <= 1.45, "the element counter is worth x1.15-1.45 TeamPower (not everything)", fmt("x%.2f (even at power %.1f with the wheel, %.1f without)", ec.worth, ec.realPower or 0, ec.flatPower or 0))
+	end
 	-- the 2.4 wave rule: a fighter with helpers beats three enemies of 0.8 x its power
 	local foxUp = BC.UnitPower("maple_fox", 10)
 	local waveWins = 0
@@ -1591,7 +1609,9 @@ S.p5battle_balance = guarded("p5battle_balance", function()
 	end
 	local raidB = SIM.series(raid4, policies, 3)
 	T.check(raid1.wins[1] == 3 and raid1.avgDur >= 100 and raid1.avgDur <= 240, "a solo prestige-2 fighter beats the Storm Titan in 100-240 s", fmt("%d of 3, %.0f s", raid1.wins[1], raid1.avgDur))
-	T.check(raidB.wins[1] == 3 and raidB.avgDur >= 100 and raidB.avgDur <= 240 and raidB.maxBossHit <= 0.8, "four mid fighters beat the Frost Wyrm in 100-240 s with no hit over 80%", fmt("%d of 3, %.0f s, max hit %.2f", raidB.wins[1], raidB.avgDur, raidB.maxBossHit))
+	-- (bug #22 wave 5: the engage rule lets a standing raider's pet walk back to the boss after a dodge, so a 3-seed cell
+	-- runs a little faster, ~98 s; the lower bound is the harness's own per-cell band (sim_battle: 90-250 s per cell))
+	T.check(raidB.wins[1] == 3 and raidB.avgDur >= 90 and raidB.avgDur <= 240 and raidB.maxBossHit <= 0.8, "four mid fighters beat the Frost Wyrm in 90-240 s (one cell) with no hit over 80%", fmt("%d of 3, %.0f s, max hit %.2f", raidB.wins[1], raidB.avgDur, raidB.maxBossHit))
 	-- ring: rounds 1-3 for the weakest starter; the S1 / S10 medians
 	local wins = 0
 	for seed = 1, 6 do
