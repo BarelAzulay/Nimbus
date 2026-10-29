@@ -22,6 +22,7 @@ return {
 	arena_board_event = 115236497467800,
 	arena_board_leader = 126681784675393,
 	arena_bridge = 121062021802328,
+	arena_crowd_arm = 82716767677107,
 	arena_floor = 75036762269780,
 	arena_forum = 123496737471228,
 	arena_hedge = 129104106009088,

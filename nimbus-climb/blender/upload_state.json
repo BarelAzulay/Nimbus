@@ -200,6 +200,23 @@
       "structureHash": "a29c7111a4c148e516c6a299497c3ee0",
       "uploadedAt": "2026-10-23T22:53:28Z"
     },
+    "arena_crowd_arm": {
+      "assetId": 82716767677107,
+      "contentHash": "64764deebc42d87c4b895a9df20a45e4",
+      "fileSha256": "46a4d7761c60cfdb7e1e9563256085570df659b6cda1489898b726cfa14d2096",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-10-29T11:20:43.658Z",
+      "revisionId": "1",
+      "structureHash": "63c8553abd2b7d3472078285946d03cd",
+      "uploadedAt": "2026-10-29T11:20:48Z"
+    },
+    "arena_crowd_bell": {
+      "pendingContentHash": "a62b4445192af113b7dfab100bb3f0c3",
+      "pendingFileSha256": "ecfd3891ee6e5c2c8651096476dd5b8f256110b4182dbe827bd2c18c3cf05a7c",
+      "pendingMode": "create",
+      "pendingOperation": "dd3b2a3d-2b6d-429e-aecc-5c50391fd1c3",
+      "pendingStructureHash": "9a22fa5228a368a6c591ef45433a5cd9"
+    },
     "arena_floor": {
       "assetId": 75036762269780,
       "contentHash": "d8ca3e7f52a6619e5abf56981d11fc94",
