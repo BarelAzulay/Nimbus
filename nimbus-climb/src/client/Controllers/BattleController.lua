@@ -84,6 +84,9 @@
 --     the callout only) and its parried Hit (miss + parry) no DODGED!; the drawn dash follows the event's dir (the
 --     sidestep); buff names float above the fighter in the buff's colour; element attacks draw
 --     their cone / circle / line; camera shakes x ClientSettings.Get("Shake") (Humanoid.CameraOffset, tiny, rare).
+--   * Wave 6: the trainer's cheer (TrainerCheer, my avatar only: Roblox replicates it to the others): the server's
+--     OnPodium attribute (Ring / PvP) loops Animate.PlayEmote("cheer"), my own Cheer event plays it once. Cheer up!
+--     (CheerUp, Raid / Dungeon fighters) sits right above the vitals card (HudController.GetLayout().Vitals).
 --   * Wave 5 dungeon camera (bugs #15 / #26): the shake rides on the resting CameraOffset (DungeonController's dungeon
 --     shoulder) and gives it back; in a dungeon every hit on my fighter shakes lightly (HIT_SHAKE_LIGHT) and an AttackFx
 --     punch >= PUNCH_BIG also punches the FOV (MovementController.FovPunch, FOV_PUNCH 6 degrees x min(1, amount / 0.4));

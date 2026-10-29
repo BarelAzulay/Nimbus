@@ -1119,6 +1119,7 @@ S.client_replay = guarded("client_replay", function()
 	local baselineGui = #gui():GetDescendants()
 	local baselineBreakdown = guiBreakdown()
 	local hadBattleHud = gui():FindFirstChild("NimbusBattle") ~= nil
+	local hadEnterGui = gui():FindFirstChild("NimbusDungeonEnter") ~= nil
 	local maxGui = 0
 	local total = 0
 	local shownResult, shownPanel, shownParty = false, false, false
@@ -1204,6 +1205,12 @@ S.client_replay = guarded("client_replay", function()
 			and type(BattleController.IsHudVisible) == "function" and not BattleController.IsHudVisible() then
 			idleBattleHud = 1 + #battleHud:GetDescendants()
 		end
+	end
+	-- (wave 6) the dungeon entrance's block grid (ScreenGui NimbusDungeonEnter) is built by the first Enter and kept, off,
+	-- for the next run: like the idle battle HUD, an idle grid that was not there before is not growth
+	local enterGui = gui():FindFirstChild("NimbusDungeonEnter")
+	if enterGui and not hadEnterGui and enterGui:IsA("ScreenGui") and enterGui.Enabled == false then
+		idleBattleHud = idleBattleHud + 1 + #enterGui:GetDescendants()
 	end
 	T.check(#gui():GetDescendants() - idleBattleHud <= baselineGui + 120, "the GUI is tidy after the replay (no growth from toasts, result cards, roulette reveals)", #gui():GetDescendants() .. " objects after (" .. idleBattleHud .. " of them the idle battle HUD), " .. baselineGui .. " before; now: " .. guiBreakdown() .. "; before: " .. baselineBreakdown)
 end)

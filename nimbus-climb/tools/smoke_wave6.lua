@@ -1464,6 +1464,16 @@ local function serverScenarios()
 			return
 		end
 		local p = newPlayer("W6Walk", STRONG, 60)
+		-- (five dungeon runs make this the busiest player of the server log: client_replay would replay its dungeon
+		-- traffic as the local player, so its messages stay out of the replication log, as the heavy battle tests do)
+		local recorder = Mock._onRemote
+		if recorder then
+			Mock._onRemote = function(entry)
+				if entry.userId ~= p.UserId then
+					recorder(entry)
+				end
+			end
+		end
 		data.MutateDungeon(p, function(rec)
 			rec.Best = math.max(tonumber(rec.Best) or 0, 11)
 		end)
@@ -1511,6 +1521,9 @@ local function serverScenarios()
 		end
 		K.removePlayers({ p })
 		advance(2)
+		if recorder then
+			Mock._onRemote = recorder
+		end
 		K.flushErrors("w6_dgn_walkin_floors")
 		K.flushWarnings("w6_dgn_walkin_floors", ALLOWED_WARNINGS)
 	end)

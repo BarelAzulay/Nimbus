@@ -611,6 +611,26 @@ local function serverScenarios()
 		local hpSolo = bs.GetRaidStatus().MaxHp
 		local okA = bs.JoinRaid(alt)
 		local hpBoth = bs.GetRaidStatus().MaxHp
+		-- (wave 6: every pet fights any enemy in the fight area by itself; the zero-share rule below needs an alt whose
+		-- pets never hit, so its engage rule is held off, white-box: the sim team's noEngage)
+		do
+			local f = bs.IsInBattle
+			for i = 1, 80 do
+				local name, v = debug.getupvalue(f, i)
+				if not name then
+					break
+				end
+				if name == "St" and type(v) == "table" and type(v.battles) == "table" then
+					local st = bs.GetRaidStatus()
+					local b = st and v.battles[st.BattleId]
+					local team = b and b.Sim and b.Sim.teamByOwner and b.Sim.teamByOwner[alt.UserId]
+					if team then
+						team.noEngage = true
+					end
+					break
+				end
+			end
+		end
 		T.check(okR and okJ and okA and hpBoth <= hpSolo * 1.12 and hpBoth >= hpSolo, "raid share: an alt team of level-1 Commons grows the boss by less than 12% (weighted head count) (#1)",
 			fmt("%d -> %d", hpSolo, hpBoth))
 		local altTokens0, altRaids0 = tokens(alt), record(alt).Raids or 0
@@ -810,7 +830,9 @@ local function serverScenarios()
 		local wRate, wPeak, wHz = stats(watcher)
 		T.info(fmt("*net16: fighter %.1f KB/s (peak second %.1f KB), %.1f snapshots/s; spectator %.1f KB/s, %.1f snapshots/s", rate / 1000, peak / 1000, hz, wRate / 1000, wHz))
 		T.check(rate > 0 and rate < 6000, "net16: a fighter in a full 16-raider raid gets under 6 KB/s on average (Phase 5 budget 10.3)", fmt("%.0f B/s", rate))
-		T.check(peak < 12000, "net16: ...and no second above 12 KB", fmt("%.0f B", peak))
+		-- (wave 6: every raider's pet now fights by itself, so all 16 hit the boss the whole time; Hit events are ~25% of the
+		-- bytes; the peak second measured 11.6-12.4 KB. The 6 KB/s average budget above is unchanged)
+		T.check(peak < 13000, "net16: ...and no second above 13 KB", fmt("%.0f B", peak))
 		T.check(hz >= 9 and hz <= 11, "net16: fighters still get ~10 snapshots per second", fmt("%.1f", hz))
 		T.check(wHz >= 4 and wHz <= 6 and wRate < rate, "net16: a spectator gets ~5 snapshots per second and less traffic", fmt("%.1f Hz, %.0f B/s", wHz, wRate))
 		-- the wire form and the round trip: the spectator's decoded picture equals the fighter's at the same T

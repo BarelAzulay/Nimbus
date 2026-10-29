@@ -2067,7 +2067,11 @@ BattleCatalog.Fighter = { AttackSlack 3.0 (studs of extra reach for latency: run
   after the last), AutoRepeat true, ElementCooldown 7, ElementMult 2.4, ElementRange 14, SpecialMeterMax 100, MeterPerSecond 6, MeterOnHit 4,
   MeterOnHurt 2, DashSeconds 0.35, DashCooldown 2.5, DashIFrames 0.35, SwapCooldown 10, SwapCastSeconds 0.6, BenchRegenPerSecond 0.03,
   DownAutoSwap true, HelperCooldown 15, SupportCooldown 12, Windup 0.45, KitFactor 1.5, HelperWeight 0.35, Lives 3, WalkMult 1.15, WalkMin 12, WalkMax 20,
-  RunMult 1.3, MoveSlack 1.25 (the server fighter's cap OVER THE LEGAL RUN SPEED: latency + a cheat margin), Leash 10, LeashSeconds 3 }
+  RunMult 1.3, MoveSlack 1.25 (the server fighter's cap OVER THE LEGAL RUN SPEED: latency + a cheat margin), Leash 10, LeashSeconds 3,
+  wave 6: ParryWindow 0.25, ParryStagger 0.4, ParryMeter 8, ParryBossGap 3, CheerBoost 0.05, CheerSeconds 5, CheerCooldown 20 }
+  (wave 6 "fight focus": the wave 5 Engage* numbers are gone, Validate refuses them. A fighter engages ANY enemy in the fight
+  area by itself: target order lock -> its sticky engaged target -> a fresh threat -> the nearest; the owner's walking never
+  pulls it back; BattleService skips the leash while it is engaged.)
 BattleCatalog.Fighter.WalkOf(moveSpeed) = clamp(moveSpeed x WalkMult, WalkMin, WalkMax);  Fighter.RunOf(walk) = walk x RunMult
   (mochi_slime 12 / 15.6 .. stormfang 20 / 26 studs/s; speed buffs scale both: Haste x1.35, Slow x0.6; NPC units keep their MoveSpeed)
 BattleCatalog.ElementAttacks[element] (one per Config.Elements.Order): Water "Tide Burst" Cone{70, 14, Push 4}; Flame "Flare" Cone{60, 14,
@@ -2106,7 +2110,16 @@ battle:Command(owner, action, arg) -> ok, reason
                             target.radius + AttackSlack, target = arg | lock | nearest in reach; nextAttack = max(nextAttack, t) + Interval
   "Element" (id | {x, z} | nil)  cooldown ElementCooldown; shape ElementAttacks[fighter.elems[1]] from the SERVER fighter position
   "Special" ()              meter >= MeterMax; offensive kinds as today; Heal / Shield / Rally / Haste act on the fighter
-  "Dash" ()                 cooldown DashCooldown -> state Dashing for DashSeconds, i-frames until t + DashIFrames
+  "Dash" ()                 cooldown DashCooldown -> state Dashing for DashSeconds, i-frames until t + DashIFrames. Wave 6: a SIDESTEP out
+                            of the threat (a circle: straight out from its centre; a line: perpendicular on the pet's side; none:
+                            perpendicular to the aim toward the floor centre; a corner keeps it on the floor), event Dash.dir. Pressed
+                            within ParryWindow of a timed hit (an NPC wind-up on the pet, a boss telegraph covering it) = a PARRY:
+                            0 damage, event Parry { unit, from, tele }, an NPC stunned ParryStagger, a boss starts nothing for
+                            ParryStagger (once per ParryBossGap), +ParryMeter meter; the parried telegraph's Hit is { miss, parry }
+  "Cheer" ()                wave 6, Raid / Dungeon only ("Cheer up!"): the fighter deals x (1 + CheerBoost) for CheerSeconds, cooldown
+                            CheerCooldown, never stacks; NoCheer in Ring / Duel (the podium cheer there is visual only); event Cheer
+                            { owner, unit, untilT }; Team.Cooldowns.Cheer / Team.Cheering. BattleService: any argument = BadArg, its own
+                            rate bucket (burst 2, 0.5 / s)
   "Target" (unitId|nil)     lock-on; Attack / Element default to it
   "Buff" (2|3)              that helper's buff; cooldown per helper (SupportCooldown / HelperCooldown)
   "Swap" (2|3)              fighter <-> helper; SwapCooldown; the incoming pet arrives Casting for SwapCastSeconds; refused while Casting / Stunned
