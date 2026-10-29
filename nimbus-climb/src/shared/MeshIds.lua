@@ -188,6 +188,7 @@ return {
 	dungeon_b_wall_62_door20 = 124748711575987,
 	dungeon_b_wall_72 = 114679545709279,
 	dungeon_barrel = 97282525214488,
+	dungeon_bench = 96134804424561,
 	dungeon_chest = 78637299762649,
 	dungeon_crack = 121217003541242,
 	dungeon_crate = 116637601972571,

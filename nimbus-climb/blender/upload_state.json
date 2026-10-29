@@ -1864,11 +1864,21 @@
       "uploadedAt": "2026-10-29T11:37:54Z"
     },
     "dungeon_bench": {
-      "pendingContentHash": "6e0b337a228121f2abf190bef101ffbf",
-      "pendingFileSha256": "ce7988b63e887cd81194d4daa218d3d0120bec14b091a8207362a08c9b518786",
+      "assetId": 96134804424561,
+      "contentHash": "6e0b337a228121f2abf190bef101ffbf",
+      "fileSha256": "ce7988b63e887cd81194d4daa218d3d0120bec14b091a8207362a08c9b518786",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-10-29T11:38:01.898Z",
+      "revisionId": "1",
+      "structureHash": "08a9635141010729a3a478380cec38fc",
+      "uploadedAt": "2026-10-29T11:38:05Z"
+    },
+    "dungeon_c_arch_10": {
+      "pendingContentHash": "c2f4756dbde829f5b80153a53d7a81cc",
+      "pendingFileSha256": "263504c3f5c334c9a1e36cb6e69a5b5616d10013a1d06fe11dc5170c12d1c564",
       "pendingMode": "create",
-      "pendingOperation": "10d9e88c-c746-40f2-8946-1f1a574f5c43",
-      "pendingStructureHash": "08a9635141010729a3a478380cec38fc"
+      "pendingOperation": "37e5d139-54f6-49b7-8e5d-6f6ece14d955",
+      "pendingStructureHash": "bdb92e9a7886b2577814bda37141cdd1"
     },
     "dungeon_chest": {
       "assetId": 78637299762649,
