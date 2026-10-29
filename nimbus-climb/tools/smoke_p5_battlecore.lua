@@ -619,8 +619,9 @@ S.p5sim_fighter = guarded("p5sim_fighter", function()
 		local evsD = b5:Step(0.1)
 		local dashEv = findEvent(evsD, "Dash")
 		T.check(okD and dashEv ~= nil and f5.state == BS.States.Dashing and f5.iframesUntil > b5:Time(), "Dash: Dashing state, i-frames, Dash event")
-		T.check(dashEv and dashEv.unit == f5.id and type(dashEv.dir) == "table" and near(dashEv.dir[1], 0, 0.011) and near(dashEv.dir[2], 1, 0.011) and dashEv.target == e5.id,
-			"the Dash event carries { unit, dir (toward the nearest enemy), target } for the pet's dash", dashEv and dashEv.dir and fmt("%.2f, %.2f", dashEv.dir[1], dashEv.dir[2]))
+		-- wave 6: no threat yet = the sidestep runs perpendicular to the aim (the enemy straight +Z), no target
+		T.check(dashEv and dashEv.unit == f5.id and type(dashEv.dir) == "table" and near(abs(dashEv.dir[1]), 1, 0.011) and near(dashEv.dir[2], 0, 0.011) and dashEv.target == nil,
+			"the Dash event carries { unit, dir (the sidestep: perpendicular to the nearest enemy with no threat), target nil }", dashEv and dashEv.dir and fmt("%.2f, %.2f", dashEv.dir[1], dashEv.dir[2]))
 		local okD2, whyD2 = b5:Command(1, "Dash")
 		T.check(not okD2 and whyD2 == "Cooldown" and b5:TeamOf(1).Cooldowns.Dash > 2, "a second Dash is refused Cooldown (~2.5 s)")
 		-- the wind-up: find a Windup aimed at the fighter, dash right before it lands -> a miss
@@ -631,6 +632,8 @@ S.p5sim_fighter = guarded("p5sim_fighter", function()
 			for _, ev in ipairs(evs) do
 				if ev.type == "Windup" and ev.target == f5.id and not windup then
 					windup = ev
+				elseif ev.type == "Parry" and ev.unit == f5.id then
+					misses = misses + 1 -- wave 6: a Dash inside ParryWindow parries (the wind-up is cancelled: no Hit at all)
 				elseif ev.type == "Hit" and ev.to == f5.id then
 					if ev.miss then
 						misses = misses + 1
@@ -645,7 +648,7 @@ S.p5sim_fighter = guarded("p5sim_fighter", function()
 			end
 		end
 		T.check(windup ~= nil and near(windup.at - (windup.at - F.Windup), F.Windup, 1e-6), "NPC attacks announce a Windup { unit, target, at } 0.45 s ahead")
-		T.check(misses >= 3 and misses > hitsOnMe, "dashing just before the wind-up lands turns the hits into misses (Hit miss = true)", fmt("%d misses, %d hits", misses, hitsOnMe))
+		T.check(misses >= 3 and misses > hitsOnMe, "dashing just before the wind-up lands turns the hits into misses / parries (Hit miss = true, Parry)", fmt("%d misses, %d hits", misses, hitsOnMe))
 		-- a telegraph is dodged the same way
 		local b6 = BS.new({ Mode = "Raid", Boss = "storm_titan", Seed = 3, Teams = { team(1, 1, { pet("cloudy_dragon", 25), pet("twilight_dragon", 28), pet("ember_phoenix", 26, "Golden") }) } })
 		local t6 = b6.teams[1]
@@ -842,8 +845,19 @@ S.p5sim_fighter = guarded("p5sim_fighter", function()
 		local dashFactor = Config.Physics.DashSpeed / Config.Physics.RunSpeed
 		f10.x, f10.z = 0, 0
 		b10:Command(1, "Dash")
+		local dashEv10 = nil
+		for _, ev in ipairs(b10.pending) do
+			if ev.type == "Dash" then
+				dashEv10 = ev
+			end
+		end
 		b10:Step(0.1)
-		T.check(near(f10.z, sp.Run * F.MoveSlack * dashFactor * 0.1, 0.05), "while Dashing the cap is x DashSpeed / RunSpeed", fmt("%.2f", f10.z))
+		-- wave 6: the dash is the SIDESTEP (along the Dash dir at legal run x DashSpeed / RunSpeed, 4 studs with no threat),
+		-- never a dash-speed rush toward the Move point
+		local hop = math.sqrt(f10.x * f10.x + f10.z * f10.z)
+		local along = dashEv10 and hop > 0 and (f10.x * dashEv10.dir[1] + f10.z * dashEv10.dir[2]) / hop or 0
+		T.check(near(hop, math.min(4, sp.Run * dashFactor * 0.1), 0.05) and along > 0.99, "while Dashing the fighter sidesteps along the Dash dir at <= run x DashSpeed / RunSpeed (4 studs, no threat)",
+			fmt("%.2f studs, along %.2f", hop, along))
 		-- Haste x1.35 and Slow x0.6 scale the cap and SpeedOf
 		for _ = 1, 6 do
 			b10:Step(0.1)

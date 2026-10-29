@@ -437,7 +437,8 @@ S.dgfixcore_dash = guarded("dgfixcore_dash", function()
 	local ok = b:Command(1, "Dash")
 	local evs = b:Step(0.1)
 	local d = find(evs, "Dash")
-	T.check(ok and d and d.unit == f.id and type(d.dir) == "table" and near(d.dir[1], 1, 0.011) and near(d.dir[2], 0, 0.011) and d.target == nil, "Dash with no enemy: dir = the fighter's facing, no target", d and d.dir and fmt("%.2f %.2f", d.dir[1], d.dir[2]))
+	-- wave 6: the dash is a SIDESTEP; no enemy and no threat = the facing turned 90 degrees
+	T.check(ok and d and d.unit == f.id and type(d.dir) == "table" and near(d.dir[1], 0, 0.011) and near(abs(d.dir[2]), 1, 0.011) and d.target == nil, "Dash with no enemy: dir = the facing turned 90 degrees (the sidestep), no target", d and d.dir and fmt("%.2f %.2f", d.dir[1], d.dir[2]))
 	T.check(f.iframesUntil > b:Time() and near(b:TeamOf(1).Cooldowns.Dash, F.DashCooldown - 0.1, 0.11), "Dash: i-frames and the DashCooldown unchanged")
 	local ok2, why2 = b:Command(1, "Dash")
 	T.check(ok2 == false and why2 == "Cooldown", "a second Dash is refused Cooldown")
@@ -453,18 +454,27 @@ S.dgfixcore_dash = guarded("dgfixcore_dash", function()
 	tm.dashReadyAt = 0
 	b:Command(1, "Dash")
 	d = find(b:Step(0.1), "Dash")
-	T.check(d and d.target == list[1].id and near(d.dir[1], 0, 0.011) and near(d.dir[2], 1, 0.011), "Dash: dir toward the nearest enemy (target = its id)", d and d.dir and fmt("%.2f %.2f", d.dir[1], d.dir[2]))
+	T.check(d and d.target == nil and near(abs(d.dir[1]), 1, 0.011) and near(d.dir[2], 0, 0.011), "Dash: no threat = perpendicular to the nearest enemy (wave 6: never into it), no target", d and d.dir and fmt("%.2f %.2f", d.dir[1], d.dir[2]))
 	b:Command(1, "Attack", list[2].id)
 	tm.dashReadyAt = 0
 	b:Command(1, "Dash")
 	d = find(b:Step(0.1), "Dash")
-	T.check(d and d.target == list[2].id and near(d.dir[1], -1, 0.011) and near(d.dir[2], 0, 0.011), "Dash: dir toward the LOCK when there is one", d and d.dir and fmt("%.2f %.2f", d.dir[1], d.dir[2]))
-	-- no character / Move dependency: without a Move feed the fighter does not move during its dash
+	T.check(d and d.target == nil and near(d.dir[1], 0, 0.011) and near(abs(d.dir[2]), 1, 0.011), "Dash: no threat = perpendicular to the LOCK when there is one", d and d.dir and fmt("%.2f %.2f", d.dir[1], d.dir[2]))
+	-- no character / Move dependency: without a Move feed the fighter sidesteps along the dir (wave 6) and stays there
+	tm.noEngage = true -- (white-box: the engage rule would walk it back to its enemy after the dash)
 	local x0, z0 = f.x, f.z
 	tm.dashReadyAt = 0
 	b:Command(1, "Dash")
-	stepFor(b, 4)
-	T.check(near(f.x, x0, 1e-9) and near(f.z, z0, 1e-9), "the server fighter stays put during its dash (the client draws the pet's streak; the character is the body)")
+	local dd = nil
+	for _, ev in ipairs(b.pending) do
+		if ev.type == "Dash" then
+			dd = ev
+		end
+	end
+	stepFor(b, 3)
+	local mx, mz = f.x - x0, f.z - z0
+	local ml = math.sqrt(mx * mx + mz * mz)
+	T.check(dd and ml >= 3.9 and (mx * dd.dir[1] + mz * dd.dir[2]) / ml > 0.99, "the server fighter sidesteps along the Dash dir (>= 4 studs, no Move feed needed)", fmt("%.2f studs", ml))
 	local n = 0
 	for k in pairs(d) do
 		n = n + 1

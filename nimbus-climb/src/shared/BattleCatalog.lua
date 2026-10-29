@@ -32,9 +32,10 @@
 --                                                                  BenchRegenPerSecond 0 (no passive heal in combat), DownAutoSwap, HelperCooldown 15,
 --                                                                  SupportCooldown 12, Windup 0.45, ArriveSeconds 1.2 (a spawned enemy's entrance),
 --                                                                  KitFactor 1.5, HelperWeight 0.35, Lives 3, WalkMult 1.15, WalkMin 12, WalkMax 20, RunMult 1.3,
---                                                                  MoveSlack 1.25, Leash 10, LeashSeconds 3 (wave 6: no Engage* numbers, the
---                                                                  pet fights any enemy in the fight area whatever the character does;
---                                                                  BattleSim "ENGAGE")
+--                                                                  MoveSlack 1.25, Leash 10, LeashSeconds 3, ParryWindow 0.25, ParryStagger
+--                                                                  0.4, ParryMeter 8, ParryBossGap 3 (wave 6: a timed Dash parries; no Engage*
+--                                                                  numbers: the pet fights any enemy in the fight area whatever the character
+--                                                                  does; BattleSim "ENGAGE")
 --   BattleCatalog.Fighter.WalkOf(moveSpeed) -> walk (12..20); Fighter.RunOf(walk) -> walk x RunMult; Fighter.SpeedsOf(moveSpeed) -> walk, run
 --   BattleCatalog.ElementAttacks[element]                          { Name, Shape = "Cone"|"Circle"|"Line", Angle, Length, Radius, Width, Push, Burn, Slow, Leech,
 --                                                                  Stun, MeterGain, Weaken } one per Config.Elements.Order
@@ -322,6 +323,12 @@ BattleCatalog.Fighter = {
 	MoveSlack = 1.25, -- the server fighter's cap OVER THE LEGAL RUN SPEED (latency + a cheat margin)
 	Leash = 10, -- a gap > Leash for LeashSeconds between the character and the server fighter = out (BattleService)
 	LeashSeconds = 3,
+	-- wave 6: Dash = a sidestep out of the threat; a Dash pressed within ParryWindow of a timed hit (an NPC wind-up on the pet,
+	-- a boss telegraph over it) PARRIES it (BattleSim "Dash")
+	ParryWindow = 0.25, -- seconds before the hit lands (<= DashIFrames: the i-frames always cover a parried hit)
+	ParryStagger = 0.4, -- the parried attacker: an NPC stunned this long, a boss starts nothing new this long
+	ParryMeter = 8, -- special meter per parried threat
+	ParryBossGap = 3, -- a boss is staggered at most once per this many seconds (a 16-raid of parries must not perma-lock it)
 	-- wave 6 (the engage rule, BattleSim fighterStep): the pet fights any targetable enemy on the floor (the fight area) and
 	-- the character's movement never pulls it off: EngageRange / EngageLeash / EngagePull / EngageStillSeconds /
 	-- EngageCooldown are gone (the floor is the bound)
@@ -1912,6 +1919,19 @@ function BattleCatalog.Validate()
 	end
 	if F.Windup <= F.DashIFrames * 0.8 then
 		bad("Fighter.Windup must leave the dash i-frames room to dodge")
+	end
+	-- wave 6: the parry (a timed Dash)
+	if not finite(F.ParryWindow) or F.ParryWindow <= 0 or F.ParryWindow > F.DashIFrames then
+		bad("Fighter.ParryWindow must be above 0 and <= DashIFrames")
+	end
+	if not finite(F.ParryStagger) or F.ParryStagger < 0 or F.ParryStagger > 1 then
+		bad("Fighter.ParryStagger must be 0..1 s")
+	end
+	if not finite(F.ParryMeter) or F.ParryMeter < 0 or F.ParryMeter > 30 then
+		bad("Fighter.ParryMeter must be 0..30")
+	end
+	if not finite(F.ParryBossGap) or not finite(F.ParryStagger) or F.ParryBossGap < F.ParryStagger then
+		bad("Fighter.ParryBossGap must be >= ParryStagger")
 	end
 	-- wave 6: the stand-still engage rule is gone; a stray Engage* number means a half-reverted catalog
 	for _, key in ipairs({ "EngageRange", "EngageLeash", "EngagePull", "EngageStillSeconds", "EngageCooldown" }) do

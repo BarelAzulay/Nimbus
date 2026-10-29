@@ -1,0 +1,490 @@
+-- smoke_wave6.lua: wave 6 "fight focus" (docs/superpowers/specs/2026-10-29-fight-focus-wave6-design.md, plan
+-- docs/superpowers/plans/2026-10-29-fight-focus-wave6-plan.md). Loaded by tools/smoke.py in BOTH worlds (ARGS.context).
+-- The engage rule itself (any enemy in the fight area, owner movement ignored) is pinned by smoke_fight.lua.
+--   w6_dash_parry         (server world, pure) Dash = a sidestep out of the threat, a timed Dash = a Parry: an NPC wind-up
+--                         parried 0.15 s before it lands (Parry event, 0 damage, the NPC stunned 0.4 s, +8 meter, the wind-up
+--                         cancelled), too early = no parry and the hit lands; a boss circle telegraph parried (the Hit is
+--                         miss + parry, the pet leaves the circle straight away from its centre, the boss starts nothing
+--                         for 0.4 s, a second parry within ParryBossGap gives no new stagger), a Line telegraph =
+--                         perpendicular on the pet's side; no threat = perpendicular to the aim toward the floor centre,
+--                         a corner keeps it on the floor and never closer to the aim; an engaged pet moves along the
+--                         sidestep, then walks back and swings; Validate rejects bad Parry numbers
+-- White-box: the server half reaches into battle.units / battle.teams / battle.telegraphs (same Lua state). Plain Lua 5.1
+-- syntax only.
+
+local T = SmokeCommon.T
+local guarded = SmokeCommon.guarded
+local CONTEXT = (ARGS and ARGS.context) or "server"
+
+local abs, floor, sqrt, huge, max, min = math.abs, math.floor, math.sqrt, math.huge, math.max, math.min
+local cos, sin, atan2 = math.cos, math.sin, math.atan2
+local fmt = string.format
+
+----------------------------------------------------------------------------------------------------
+-- the server world
+----------------------------------------------------------------------------------------------------
+local function serverScenarios()
+	local S = {}
+	local K = _G.K
+
+	local function loadModule(name)
+		local inst = K.moduleInstance("shared/" .. name)
+		if not inst then
+			return nil
+		end
+		local ok, result = pcall(require, inst)
+		if ok and type(result) == "table" then
+			return result
+		end
+		return nil
+	end
+
+	local function pet(key, level, extra)
+		local p = { Key = key, Level = level or 1 }
+		for k, v in pairs(extra or {}) do
+			p[k] = v
+		end
+		return p
+	end
+
+	local function team(owner, side, pets, flags)
+		local list = {}
+		for i, p in ipairs(pets) do
+			local e = {}
+			for k, v in pairs(p) do
+				e[k] = v
+			end
+			e.Slot = e.Slot or i
+			list[i] = e
+		end
+		local spec = { Owner = owner, Side = side, Pets = list }
+		for k, v in pairs(flags or {}) do
+			spec[k] = v
+		end
+		return spec
+	end
+
+	local function d2(ax, az, bx, bz)
+		return sqrt((ax - bx) ^ 2 + (az - bz) ^ 2)
+	end
+
+	local function put(u, x, z)
+		u.x, u.z, u.px, u.pz = x, z, x, z
+	end
+
+	local function find(events, kind, pred)
+		for _, ev in ipairs(events) do
+			if ev.type == kind and (pred == nil or pred(ev)) then
+				return ev
+			end
+		end
+		return nil
+	end
+
+	local function count(events, kind, pred)
+		local n = 0
+		for _, ev in ipairs(events) do
+			if ev.type == kind and (pred == nil or pred(ev)) then
+				n = n + 1
+			end
+		end
+		return n
+	end
+
+	local function append(all, evs)
+		for _, ev in ipairs(evs) do
+			all[#all + 1] = ev
+		end
+		return all
+	end
+
+	-- a passive, immobile, unkillable enemy that is already on the floor (no arrival)
+	local function dummy(u, x, z)
+		put(u, x, z)
+		u.arriveUntil = nil
+		u.iframesUntil = 0
+		u.nextAttack = huge
+		u.windAt = nil
+		u.hit = 0
+		u.moveSpeed = 0
+		u.maxHp, u.hp = 1e9, 1e9
+		u.defense = 0
+		return u
+	end
+
+	-- a Dungeon sim with my team (owner 1): `key` the fighter, two helpers
+	local function world(BS, key, level, seed)
+		local b = BS.new({ Mode = "Dungeon", Seed = seed or 5, Zone = 60, Teams = { team(1, 1, { pet(key or "storm_tabby", level or 12), pet("pebble_pup", 5), pet("honey_bunny", 5) }) } })
+		return b, b.teams[1]
+	end
+
+	-- `n` enemies spawned as one wave, then made dummies at the given points
+	local function enemiesAt(b, points, key, level)
+		local list = {}
+		for i = 1, #points do
+			list[i] = pet(key or "biscuit_bear", level or 20)
+		end
+		local infos = b:SpawnEnemies(list, { Wave = (b.waveCount or 0) + 1, Anchor = { 0, 20 } })
+		local out = {}
+		for i, info in ipairs(infos or {}) do
+			out[i] = dummy(b.units[info.id], points[i][1], points[i][2])
+		end
+		return out
+	end
+
+	-- one 10 Hz step with the Move point (x, z) fed first (BattleService.feedMoves); nil x = no Move (no character)
+	local function stepAt(b, x, z, owner)
+		if x ~= nil then
+			b:Command(owner or 1, "Move", x, z)
+		end
+		return b:Step(0.1)
+	end
+
+	-- steps while standing at (x, z) until pred(events, i) or n steps; -> all events, the step count
+	local function standFor(b, n, x, z, pred)
+		local all = {}
+		for i = 1, n do
+			local evs = stepAt(b, x, z)
+			append(all, evs)
+			if pred and pred(evs, i) then
+				return all, i
+			end
+		end
+		return all, n
+	end
+
+	local function engaged(b, owner)
+		local tm = b:TeamOf(owner or 1)
+		return tm and tm.Engaged
+	end
+
+	-- the events a command queued (they come out on the next Step); the command's own result
+	local function pendingOf(b)
+		local out = {}
+		for _, ev in ipairs(b.pending or {}) do
+			out[#out + 1] = ev
+		end
+		return out
+	end
+
+	-- an NPC that fights for real (no arrival), next to my fighter: steps until its wind-up on my fighter starts
+	local function windupWorld(BS, seed)
+		local b, tm = world(BS, "storm_tabby", 12, seed)
+		local f = tm.fighter
+		put(f, 0, -10)
+		f.maxHp, f.hp = 1e6, 1e6
+		local infos = b:SpawnEnemies({ pet("biscuit_bear", 20) }, { Wave = 1, Anchor = { 0, 20 } })
+		local npc = b.units[infos[1].id]
+		npc.arriveUntil, npc.iframesUntil = nil, 0
+		npc.maxHp, npc.hp = 1e9, 1e9
+		npc.specialKind = nil
+		npc.nextAttack = 0
+		put(npc, 0, -7)
+		local windT = nil
+		for _ = 1, 40 do
+			local evs = stepAt(b, 0, -10)
+			if find(evs, "Windup", function(x)
+				return x.unit == npc.id and x.target == f.id
+			end) then
+				windT = b:Time()
+				break
+			end
+		end
+		return b, tm, f, npc, windT
+	end
+
+	------------------------------------------------------------------------------------------------
+	-- w6_dash_parry
+	------------------------------------------------------------------------------------------------
+	S.w6_dash_parry = guarded("w6_dash_parry", function()
+		local BC = loadModule("BattleCatalog")
+		local BS = loadModule("BattleSim")
+		if not T.check(BC and BS, "dash/parry: BattleCatalog + BattleSim load") then
+			return
+		end
+		local F = BC.Fighter
+		T.check(F.ParryWindow == 0.25 and F.ParryStagger == 0.4 and F.ParryMeter == 8 and F.ParryBossGap == 3 and F.DashIFrames == 0.35 and F.DashCooldown == 2.5
+			and F.DashSeconds == 0.35 and BS.Events.Parry == "Parry", "dash/parry: Fighter.ParryWindow 0.25 / ParryStagger 0.4 / ParryMeter 8 / ParryBossGap 3; Dash numbers unchanged; Events.Parry")
+
+		-- (a): an NPC wind-up parried 0.15 s before it lands
+		do
+			local b, tm, f, npc, windT = windupWorld(BS, 5)
+			if T.check(windT ~= nil and npc.windAt ~= nil, "dash/parry (a): (setup) the NPC winds up on my fighter") then
+				local windAt = npc.windAt
+				while b:Time() < windAt - 0.15 - 1e-6 do
+					stepAt(b, 0, -10)
+				end
+				local tPress = b:Time()
+				local hp0 = f.hp
+				f.meter = 50
+				local ok = b:Command(1, "Dash")
+				local queued = pendingOf(b)
+				local parry = find(queued, "Parry")
+				T.check(ok and parry ~= nil and parry.unit == f.id and parry.from == npc.id and parry.tele == nil and abs(windAt - tPress - 0.15) < 0.051,
+					"dash/parry (a): a Dash 0.15 s before the wind-up lands = ONE Parry { unit = fighter, from = the NPC }", fmt("press %.2f s before", windAt - tPress))
+				T.check(abs(f.meter - 58) < 1e-6, "dash/parry (a): ...the pet gains ParryMeter (+8)", fmt("%.2f", f.meter))
+				T.check(npc.stunUntil >= tPress + 0.4 - 0.05 and npc.windAt == nil, "dash/parry (a): ...the NPC is staggered 0.4 s (stunned, its wind-up cancelled)", fmt("stun until +%.2f", npc.stunUntil - tPress))
+				local after = {}
+				while b:Time() < windAt + 0.3 do
+					append(after, stepAt(b, 0, -10))
+				end
+				T.check(f.hp >= hp0 and find(after, "Hit", function(x)
+					return x.from == npc.id and x.to == f.id
+				end) == nil, "dash/parry (a): ...no damage and no DODGED miss for the cancelled wind-up", fmt("hp %.0f -> %.0f", hp0, f.hp))
+			end
+		end
+
+		-- (b): too early (the wind-up's start, 0.45 s before it lands): no parry, the hit lands, the cooldown is spent
+		do
+			local b, tm, f, npc, windT = windupWorld(BS, 6)
+			if T.check(windT ~= nil, "dash/parry (b): (setup) the NPC winds up on my fighter") then
+				local windAt = npc.windAt
+				local ok = b:Command(1, "Dash")
+				local queued = pendingOf(b)
+				local cd = b:TeamOf(1).Cooldowns.Dash
+				local after = {}
+				while b:Time() < windAt + 0.25 do
+					append(after, stepAt(b, 0, -10))
+				end
+				T.check(ok and find(queued, "Parry") == nil and find(after, "Parry") == nil, "dash/parry (b): a Dash 0.45 s before the hit (outside ParryWindow) is no parry")
+				T.check(find(after, "Hit", function(x)
+					return x.from == npc.id and x.to == f.id and not x.miss and (x.dmg or 0) > 0
+				end) ~= nil, "dash/parry (b): ...the hit lands (the i-frames ended; the wind-up hop stays in the NPC's reach)")
+				T.check(cd > 2, "dash/parry (b): ...and the dash cooldown is spent", fmt("%.2f", cd))
+			end
+		end
+
+		-- (c): a boss circle telegraph parried; the stagger; ParryBossGap; a Line telegraph
+		do
+			local b = BS.new({ Mode = "Raid", Boss = "storm_titan", Seed = 3, Teams = { team(1, 1, { pet("cloudy_dragon", 20), pet("pebble_pup", 5), pet("honey_bunny", 5) }), team(2, 1, { pet("biscuit_bear", 30) }) } })
+			local boss = b.boss
+			local tm, t2 = b.teams[1], b.teams[2]
+			local f, g = tm.fighter, t2.fighter
+			tm.noEngage, t2.noEngage = true, true
+			f.maxHp, f.hp, g.maxHp, g.hp = 1e7, 1e7, 1e7, 1e7
+			for i = 1, 12 do
+				b:Step(0.1)
+			end
+			for _, u in ipairs(b.units) do
+				if u.side == 2 and u ~= boss then
+					u.alive, u.gone = false, true -- (no minions in this check)
+				end
+			end
+			local fx, fz = boss.x + 20, boss.z
+			local gx, gz = boss.x, boss.z - boss.radius - 1
+			put(f, fx, fz)
+			put(g, gx, gz)
+			local function both()
+				b:Command(2, "Move", gx, gz)
+				return stepAt(b, f.x, f.z)
+			end
+			boss.nextAttack = huge
+			for _, entry in ipairs(boss.attacks) do
+				entry.nextAt = huge
+			end
+			for i = #b.telegraphs, 1, -1 do
+				b.telegraphs[i] = nil
+			end
+			both()
+			local def = boss.attacks[1].def
+			local cx, cz = f.x + 2, f.z
+			local t0 = b:Time()
+			b.telegraphs[#b.telegraphs + 1] = { id = 901, boss = boss, attack = def, at = t0 + 0.1, shape = "Circle", x = cx, z = cz, r = 8 }
+			-- the boss is ready to act the moment the stagger ends
+			boss.nextAttack = 0
+			for _, entry in ipairs(boss.attacks) do
+				entry.nextAt = 0
+			end
+			f.meter = 20
+			local ok = b:Command(1, "Dash")
+			local queued = pendingOf(b)
+			local parry = find(queued, "Parry")
+			local dash = find(queued, "Dash")
+			T.check(ok and parry ~= nil and parry.from == boss.id and parry.tele == 901 and abs(f.meter - 28) < 1e-6, "dash/parry (c): a Dash 0.1 s before a boss circle lands = Parry { from = boss, tele = id }, +8 meter",
+				fmt("meter %.1f", f.meter))
+			local stag = {}
+			for _ = 1, 3 do
+				append(stag, both())
+			end
+			local hitTele = find(stag, "Hit", function(x)
+				return x.tele == 901 and x.to == f.id
+			end)
+			T.check(hitTele ~= nil and hitTele.miss == true and hitTele.parry == true and (hitTele.dmg or 0) == 0, "dash/parry (c): ...the telegraph's Hit on the fighter is miss = true, parry = true")
+			local out = d2(f.x, f.z, cx, cz)
+			local ax, az = (fx - cx), (fz - cz)
+			local al = sqrt(ax * ax + az * az)
+			local dot = dash and (dash.dir[1] * ax / al + dash.dir[2] * az / al) or -1
+			T.check(out > 8 + f.radius and dot > 0.9, "dash/parry (c): ...the pet sidesteps straight away from the circle's centre and ends outside it",
+				fmt("%.2f from the centre (r 8 + radius %.1f), dot %.2f", out, f.radius, dot))
+			T.check(find(stag, "Hit", function(x)
+				return x.from == boss.id and x.tele == nil
+			end) == nil and find(stag, "Telegraph") == nil, "dash/parry (c): ...the boss starts no basic attack and no telegraph for 0.4 s (ready, staggered)")
+			local woke = {}
+			for _ = 1, 10 do
+				append(woke, both())
+			end
+			T.check(find(woke, "Hit", function(x)
+				return x.from == boss.id and x.tele == nil
+			end) ~= nil or find(woke, "Telegraph") ~= nil, "dash/parry (c): ...and acts again once the stagger ends")
+			-- a second parry 1 s later (the cooldown reset white-box): Parry + meter, no new stagger (ParryBossGap 3)
+			boss.nextAttack = huge
+			for _, entry in ipairs(boss.attacks) do
+				entry.nextAt = huge
+			end
+			for i = #b.telegraphs, 1, -1 do
+				b.telegraphs[i] = nil
+			end
+			local firstAt, firstUntil = boss.staggerAt, boss.staggerUntil
+			tm.dashReadyAt = 0
+			local t1 = b:Time()
+			b.telegraphs[#b.telegraphs + 1] = { id = 902, boss = boss, attack = def, at = t1 + 0.1, shape = "Circle", x = f.x, z = f.z + 1, r = 8 }
+			local m1 = f.meter
+			local ok2 = b:Command(1, "Dash")
+			local q2 = pendingOf(b)
+			T.check(ok2 and find(q2, "Parry", function(x)
+				return x.tele == 902
+			end) ~= nil and abs(f.meter - min(100, m1 + 8)) < 1e-6 and boss.staggerAt == firstAt and boss.staggerUntil == firstUntil and t1 - firstAt < F.ParryBossGap,
+				"dash/parry (c): a second parry within ParryBossGap: Parry + meter, but no new boss stagger", fmt("%.1f s after the first", t1 - (firstAt or 0)))
+			both()
+			both()
+			-- a Line telegraph: perpendicular to the line, on the pet's side
+			for _ = 1, 30 do
+				both()
+			end
+			tm.dashReadyAt = 0
+			put(f, boss.x + 15, boss.z + 1)
+			local ang = atan2(0, 1) -- the line runs +X from the boss, 1 stud beside the fighter
+			local t3 = b:Time()
+			b.telegraphs[#b.telegraphs + 1] = { id = 903, boss = boss, attack = def, at = t3 + 0.2, shape = "Line", x = boss.x, z = boss.z, angle = ang, length = 30, width = 6 }
+			b:Command(1, "Dash")
+			local q3 = pendingOf(b)
+			local dl = find(q3, "Dash")
+			local lineDot = dl and (dl.dir[1] * cos(ang) + dl.dir[2] * sin(ang)) or 1
+			local sideDot = dl and dl.dir[2] or -1 -- the fighter is on the +Z side of the line
+			T.check(dl ~= nil and abs(lineDot) < 0.1 and sideDot > 0.9 and find(q3, "Parry", function(x)
+				return x.tele == 903
+			end) ~= nil, "dash/parry (c): a Line telegraph: the sidestep is perpendicular to the line (|dot| < 0.1), to the side the pet is on",
+				fmt("dot %.2f, side %.2f", lineDot, sideDot))
+		end
+
+		-- (d) Review Focus 3: no threat: perpendicular to the aim toward the centre; a corner stays on the floor, never closer
+		do
+			local b, tm = world(BS)
+			local f = tm.fighter
+			tm.noEngage = true
+			local hx = b.zone.HalfX - f.radius
+			put(f, -hx, 0)
+			local e = enemiesAt(b, { { -hx, 12 } })[1]
+			b:Command(1, "Target", e.id)
+			stepAt(b, f.x, f.z)
+			local aimX, aimZ = e.x - f.x, e.z - f.z
+			local aimL = sqrt(aimX * aimX + aimZ * aimZ)
+			b:Command(1, "Dash")
+			local dash = find(pendingOf(b), "Dash")
+			T.check(dash ~= nil and dash.dir[1] > 0.98 and abs(dash.dir[1] * aimX + dash.dir[2] * aimZ) / aimL < 0.06 and dash.target == nil, "dash/parry (d): no threat, the -X edge, the lock straight +Z: the sidestep is perpendicular to the aim, toward the centre (+X)",
+				dash and fmt("dir %.2f, %.2f", dash.dir[1], dash.dir[2]) or "no Dash event")
+			-- a corner, the aim diagonal (both perpendiculars run into a wall)
+			local b2, tm2 = world(BS)
+			local f2 = tm2.fighter
+			tm2.noEngage = true
+			local cxh, czh = b2.zone.HalfX - f2.radius, b2.zone.HalfZ - f2.radius
+			put(f2, -cxh, -czh)
+			local e2 = enemiesAt(b2, { { -cxh + 8, -czh + 8 } })[1]
+			b2:Command(1, "Target", e2.id)
+			stepAt(b2, f2.x, f2.z)
+			local before = d2(f2.x, f2.z, e2.x, e2.z)
+			b2:Command(1, "Dash")
+			local worst = huge
+			local onFloor = true
+			for _ = 1, 3 do
+				stepAt(b2, -cxh, -czh)
+				worst = min(worst, d2(f2.x, f2.z, e2.x, e2.z))
+				onFloor = onFloor and abs(f2.x) <= b2.zone.HalfX - f2.radius + 1e-6 and abs(f2.z) <= b2.zone.HalfZ - f2.radius + 1e-6
+			end
+			T.check(onFloor and worst >= before - 1e-6, "dash/parry (d): a dash in a corner stays on the floor and never ends closer to the aim", fmt("%.2f -> min %.2f", before, worst))
+			-- a corner with a telegraph centred inside the floor: it still leaves the circle when possible
+			local b3 = BS.new({ Mode = "Raid", Boss = "storm_titan", Seed = 4, Teams = { team(1, 1, { pet("cloudy_dragon", 20) }) } })
+			local boss3 = b3.boss
+			local tm3 = b3.teams[1]
+			local f3 = tm3.fighter
+			tm3.noEngage = true
+			f3.maxHp, f3.hp = 1e7, 1e7
+			boss3.nextAttack = huge
+			for _, entry in ipairs(boss3.attacks) do
+				entry.nextAt = huge
+			end
+			local hx3, hz3 = b3.zone.HalfX - f3.radius, b3.zone.HalfZ - f3.radius
+			put(f3, -hx3, -hz3)
+			b3:Step(0.1)
+			for i = #b3.telegraphs, 1, -1 do
+				b3.telegraphs[i] = nil
+			end
+			local ccx, ccz = -hx3 + 3, -hz3 + 3 -- the centre 3 studs inward on both axes: straight away = into the walls
+			b3.telegraphs[1] = { id = 904, boss = boss3, attack = boss3.attacks[1].def, at = b3:Time() + 0.3, shape = "Circle", x = ccx, z = ccz, r = 8 }
+			b3:Command(1, "Dash")
+			for _ = 1, 3 do
+				stepAt(b3, -hx3, -hz3)
+			end
+			T.check(d2(f3.x, f3.z, ccx, ccz) > 8 + f3.radius, "dash/parry (d): in a corner a circle centred inside the floor is still left (along the wall)",
+				fmt("%.2f from the centre", d2(f3.x, f3.z, ccx, ccz)))
+		end
+
+		-- (e): an engaged pet dashing moves along the sidestep (not toward its target), then walks back and swings again
+		do
+			local b, tm = world(BS)
+			local f = tm.fighter
+			put(f, 0, -10)
+			local e = enemiesAt(b, { { 0, -4 } })[1]
+			standFor(b, 20, 0, -10)
+			T.check(engaged(b) == e.id, "dash/parry (e): (setup) engaged")
+			local x0, z0 = f.x, f.z
+			tm.dashReadyAt = 0
+			b:Command(1, "Dash")
+			local dash = find(pendingOf(b), "Dash")
+			stepAt(b, 0, -10)
+			stepAt(b, 0, -10)
+			local mx, mz = f.x - x0, f.z - z0
+			local ml = sqrt(mx * mx + mz * mz)
+			local dot = (dash and ml > 0.01) and (mx / ml * dash.dir[1] + mz / ml * dash.dir[2]) or -1
+			T.check(dash ~= nil and abs(dash.dir[1] - f.dashDX) <= 0.01 and abs(dash.dir[2] - f.dashDZ) <= 0.01, "dash/parry (e): the Dash event's dir is the sidestep vector (within 0.01)")
+			T.check(ml > 1 and dot > 0.9, "dash/parry (e): during DashSeconds the engaged pet moves along the sidestep", fmt("moved %.2f, dot %.2f", ml, dot))
+			local hits = standFor(b, 25, 0, -10, function(evs)
+				return find(evs, "Hit", function(x)
+					return x.from == f.id and x.to == e.id
+				end) ~= nil
+			end)
+			T.check(find(hits, "Hit", function(x)
+				return x.from == f.id and x.to == e.id
+			end) ~= nil and engaged(b) == e.id, "dash/parry (e): ...then it walks back and swings again (still engaged)")
+		end
+
+		-- (f): Validate rejects bad Parry numbers
+		do
+			local function rejects(key, value)
+				local old = F[key]
+				F[key] = value
+				local ok = BC.Validate()
+				F[key] = old
+				return ok == false
+			end
+			T.check(rejects("ParryWindow", 0.5) and rejects("ParryWindow", 0) and rejects("ParryMeter", 50) and rejects("ParryStagger", 2) and rejects("ParryBossGap", 0.1),
+				"dash/parry (f): Validate rejects ParryWindow 0.5 (> DashIFrames) / 0, ParryMeter 50, ParryStagger 2, ParryBossGap < ParryStagger")
+			T.check(BC.Validate() == true, "dash/parry (f): ...and passes with the shipped numbers")
+		end
+	end)
+
+	return S
+end
+
+----------------------------------------------------------------------------------------------------
+-- the client world
+----------------------------------------------------------------------------------------------------
+local function clientScenarios()
+	local S = {}
+	return S
+end
+
+if CONTEXT == "server" then
+	return serverScenarios()
+end
+return clientScenarios()
