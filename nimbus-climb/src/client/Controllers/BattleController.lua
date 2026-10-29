@@ -196,6 +196,7 @@ local Mods = {
 	FxCat = nil, -- shared/AttackFxCatalog (lazy: Atk.Look)
 	Gfx = nil, -- client/GraphicsQuality (lazy: Atk.SyncQuality)
 	Sound = nil, -- client/SoundFx (lazy: Me.Sound: the charge's inhale / shatter, the Battle music layer, Reward); false = unavailable
+	Cheer = nil, -- wave 6: client/Controllers/TrainerCheer (lazy: Cheer.Mod); false = unavailable
 }
 
 local BattleController = {}
@@ -3923,6 +3924,47 @@ local function numberHeight(u)
 	return (u.height or 3) / 2 + 1.8
 end
 
+----------------------------------------------------------------------
+-- wave 6: the trainer's cheer (TrainerCheer): my avatar loops the cheer emote while the server holds me on the podium
+-- (Config.Attr.OnPodium: Champion Ring / PvP) and plays it once on my own Cheer event (Cheer up!, dungeon / raid).
+-- Only my avatar: Roblox replicates a character's animation to everyone else. No sound (the sound wave).
+----------------------------------------------------------------------
+local Cheer = {}
+
+function Cheer.Mod()
+	if Mods.Cheer == nil then
+		Mods.Cheer = optional(script.Parent, "TrainerCheer") or false
+	end
+	return Mods.Cheer or nil
+end
+
+-- the podium attribute -> the loop
+function Cheer.SyncPodium()
+	local m = Cheer.Mod()
+	if not m then
+		return
+	end
+	local attr = (Config.Attr and Config.Attr.OnPodium) or "OnPodium"
+	if LocalPlayer and LocalPlayer:GetAttribute(attr) == true then
+		if not m.IsLooping() then
+			m.StartLoop(LocalPlayer.Character)
+		end
+	else
+		m.StopLoop()
+	end
+end
+
+-- my own Cheer up! landed on the server: one cheer (BattleController.Cheer's HUD part is Hud.CheerFired)
+function Cheer.Mine(B, ev)
+	local m = Cheer.Mod()
+	if m and LocalPlayer then
+		m.Play(LocalPlayer.Character)
+	end
+	if Cheer.OnFired then
+		Cheer.OnFired(B, ev)
+	end
+end
+
 local Handlers = {}
 
 Handlers[EV.Hit] = function(B, ev)
@@ -4305,6 +4347,13 @@ Handlers[EV.Dash or "Dash"] = function(B, ev)
 	local u = B.units[tonumber(ev.unit) or -1]
 	if u and u.dashEv ~= ev then
 		Me.StartDash(B, u, ev)
+	end
+end
+
+-- wave 6: Cheer up! (dungeon / raid): only my own avatar cheers here (the others' avatars replicate)
+Handlers[EV.Cheer or "Cheer"] = function(B, ev)
+	if tonumber(ev.owner) == myUserId() then
+		Cheer.Mine(B, ev)
 	end
 end
 
@@ -8845,6 +8894,9 @@ function BattleController.Stop()
 	Input.Bind(false)
 	Input.Movement(nil, false)
 	St.shake = nil
+	if Mods.Cheer then
+		pcall(Mods.Cheer.StopLoop)
+	end
 	for _, c in ipairs(St.conns) do
 		pcall(function()
 			c:Disconnect()
@@ -8965,6 +9017,21 @@ function BattleController.Init()
 				pcall(Hud.ShowResult, r.battle, r.payload) -- the card re-places itself (top right on a landscape phone)
 			end
 		end)
+	end
+	-- wave 6: the podium cheer loop follows the server's OnPodium attribute
+	if LocalPlayer then
+		local okP, pConn = pcall(function()
+			return LocalPlayer:GetAttributeChangedSignal((Config.Attr and Config.Attr.OnPodium) or "OnPodium"):Connect(function()
+				local ok, err = pcall(Cheer.SyncPodium)
+				if not ok then
+					warnOnce("podium", err)
+				end
+			end)
+		end)
+		if okP and pConn then
+			conns[#conns + 1] = pConn
+		end
+		pcall(Cheer.SyncPodium)
 	end
 	-- the remote (BattleState may arrive a little after the controller starts)
 	task.spawn(function()

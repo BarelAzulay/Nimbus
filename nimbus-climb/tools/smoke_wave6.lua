@@ -24,6 +24,9 @@
 --                         edge; the round's End frees it, the next round re-locks; one toast a run; death mid-round /
 --                         respawn never leave an anchored character; a duel locks both, a forfeit frees both; a
 --                         disconnect clears the record; Shutdown frees everyone; raid joiners / dungeon members never
+--   client_w6_podium_cheer (client world) OnPodium = true loops Animate.PlayEmote("cheer") (now, again within 4.5 s),
+--                         nil stops it; my own Cheer event plays once, another owner's none; not standing = retries;
+--                         no PlayEmote = false, no error; no Sound instance
 -- White-box: the server half reaches into battle.units / battle.teams / battle.telegraphs (same Lua state). Plain Lua 5.1
 -- syntax only.
 
@@ -1203,7 +1206,326 @@ end
 -- the client world
 ----------------------------------------------------------------------------------------------------
 local function clientScenarios()
+	local KC = _G.KC
 	local S = {}
+	local Players = game:GetService("Players")
+	local LocalPlayer = Players.LocalPlayer
+
+	local H = {}
+
+	function H.moduleAt(top, rest)
+		local inst = Mock.GetPath(ROOTS[top] .. "/" .. rest)
+		if not inst then
+			return nil
+		end
+		local ok, result = pcall(require, inst)
+		return ok and type(result) == "table" and result or nil
+	end
+
+	function H.step(n, dt)
+		for _ = 1, n or 1 do
+			Mock.Step(dt)
+		end
+	end
+
+	function H.gui()
+		local pg = LocalPlayer:FindFirstChild("PlayerGui")
+		return pg and pg:FindFirstChild("NimbusBattle")
+	end
+
+	function H.find(path)
+		local cur = H.gui()
+		for name in string.gmatch(path, "[^%.]+") do
+			if not cur then
+				return nil
+			end
+			cur = cur:FindFirstChild(name)
+		end
+		return cur
+	end
+
+	function H.commands(index)
+		local out = {}
+		for _, e in ipairs(KC.serverCalls("BattleCommand", index)) do
+			out[#out + 1] = { action = e.args[1], arg = e.args[2] }
+		end
+		return out
+	end
+
+	function H.count(index, action)
+		local n = 0
+		for _, c in ipairs(H.commands(index)) do
+			if c.action == action then
+				n = n + 1
+			end
+		end
+		return n
+	end
+
+	function H.sounds()
+		local n = 0
+		for _, d in ipairs(game:GetDescendants()) do
+			if d:IsA("Sound") then
+				n = n + 1
+			end
+		end
+		return n
+	end
+
+	-- combat pets of the catalog with different specials
+	function H.team(n, skip, level)
+		local PC = H.moduleAt("shared", "PetCatalog")
+		local out, kinds = {}, {}
+		skip = skip or 0
+		for _, def in ipairs(PC and PC.Pets or {}) do
+			local sp = type(def.Special) == "table" and def.Special.Kind or nil
+			if sp and def.Role == "Combat" and not kinds[sp] and def.Rarity ~= "Secret" and not def.EventOnly then
+				if skip > 0 then
+					skip = skip - 1
+				else
+					kinds[sp] = true
+					out[#out + 1] = { Key = def.Id, PetId = def.Id, Level = level or 12, Tier = "Normal", Slot = #out + 1 }
+					if #out >= n then
+						break
+					end
+				end
+			end
+		end
+		return out
+	end
+
+	-- a BattleSim driven the way BattleService sends it (Start, Events + Snapshot each step); my BattleCommand calls are
+	-- forwarded into the sim unless noForward. mode: "Dungeon" | "Raid" | "Duel" | "Ring"
+	local Driver = {}
+	Driver.__index = Driver
+
+	function H.driver(mode)
+		local Sim = H.moduleAt("shared", "BattleSim")
+		local BCat = H.moduleAt("shared", "BattleCatalog")
+		if not Sim or not BCat then
+			return nil
+		end
+		mode = mode or "Dungeon"
+		local id = "w6_" .. mode .. "_" .. tostring(math.random(100000, 999999))
+		local me = { Owner = LocalPlayer.UserId, Side = 1, Pets = H.team(3, 0, 14) }
+		local setup = { Mode = mode, Seed = 9, Id = id, Teams = { me } }
+		if mode == "Dungeon" then
+			setup.Zone, setup.TimeLimit = { X = 44, Z = 44 }, 300
+		elseif mode == "Raid" then
+			setup.Boss = "storm_titan"
+		elseif mode == "Duel" then
+			setup.Teams[2] = { Owner = 424242, Side = 2, Pets = H.team(3, 3, 10) }
+		elseif mode == "Ring" then
+			setup.Round = 1
+			setup.Teams[2] = BCat.ChampionTeam(1, 1)
+		end
+		local sim = Sim.new(setup)
+		if not sim then
+			return nil
+		end
+		return setmetatable({ sim = sim, id = id, mode = mode, zoneCF = CFrame.new(0, 200, 0), logIndex = #Mock.RemoteLog, me = LocalPlayer.UserId,
+			dungeon = (mode == "Dungeon") and { Floor = 2, Room = 1, Wave = 1, Waves = 3, Name = "Ember Hall", Element = "Flame" } or nil }, Driver)
+	end
+
+	function Driver:start()
+		local p = self.sim:Describe()
+		p.BattleId = self.id
+		p.Zone = { CFrame = self.zoneCF, Size = Vector3.new(p.Zone.X, 30, p.Zone.Z), X = p.Zone.X, Z = p.Zone.Z }
+		p.Names = { [tostring(self.me)] = LocalPlayer.Name }
+		p.Side = 1
+		p.Spectator = false
+		p.T = self.sim:Time()
+		p.Dungeon = self.dungeon
+		local team = self.sim:TeamOf(self.me)
+		p.Team = { Fighter = team.Fighter, Bench = team.Bench, Lives = team.Lives, Speed = team.Speed,
+			Cooldowns = { Element = team.Cooldowns.Element, Dash = team.Cooldowns.Dash, Swap = team.Cooldowns.Swap, Cheer = team.Cooldowns.Cheer, Buff = {} } }
+		LocalPlayer:SetAttribute("InBattle", self.id)
+		KC.toClient("BattleState", "Start", p, self.id)
+	end
+
+	function Driver:spawn(n)
+		local wave = H.team(n, 3, 10)
+		for _, e in ipairs(wave) do
+			e.Slot = nil
+			e.Wild = true
+		end
+		return self.sim:SpawnEnemies(wave, { Wave = 1, Anchor = { 0, 10 } })
+	end
+
+	function Driver:events(list)
+		KC.toClient("BattleState", "Events", list, self.id)
+	end
+
+	function Driver:step(fps)
+		if self.noForward then
+			self.logIndex = #Mock.RemoteLog
+		else
+			for _, c in ipairs(H.commands(self.logIndex)) do
+				pcall(self.sim.Command, self.sim, self.me, c.action, c.arg)
+			end
+			self.logIndex = #Mock.RemoteLog
+		end
+		local evs = self.sim:Step(0.1)
+		if #evs > 0 then
+			KC.toClient("BattleState", "Events", evs, self.id)
+		end
+		self.last = self.last or {}
+		local snap = self.sim:SnapshotDelta(self.last)
+		snap.BattleId = self.id
+		KC.toClient("BattleState", "Snapshot", snap, self.id)
+		local frames = max(1, floor((fps or 30) * 0.1 + 0.5))
+		H.step(frames, 0.1 / frames)
+		return evs
+	end
+
+	function Driver:run(seconds, fps)
+		for _ = 1, floor(seconds / 0.1 + 0.5) do
+			self:step(fps)
+			if self.sim:IsFinished() then
+				break
+			end
+		end
+	end
+
+	-- a fighting battle of `mode` with passive enemies (a dungeon gets a wave)
+	function H.fighting(mode)
+		local d = H.driver(mode)
+		if not d then
+			return nil
+		end
+		d:start()
+		d:step(30)
+		if d.mode == "Dungeon" then
+			local infos = d:spawn(3)
+			for _, info in ipairs(infos or {}) do
+				local u = d.sim.units[info.id]
+				u.nextAttack, u.hit, u.maxHp, u.hp, u.moveSpeed = huge, 0, 1e9, 1e9, 0
+			end
+		end
+		for _, u in ipairs(d.sim.units) do
+			if u.side == 2 then
+				u.nextAttack, u.hit = huge, 0
+				if u.kind == "Boss" then
+					for _, entry in ipairs(u.attacks or {}) do
+						entry.nextAt = huge
+					end
+				end
+			end
+		end
+		d:run(1.6, 30)
+		return d
+	end
+
+	function H.cleanup(BC, d)
+		if d and BC.GetBattle() then
+			KC.toClient("BattleState", "End", { BattleId = d.id, Mode = d.mode, Outcome = "Left", Won = false, Spectator = false, Reason = "Left" }, d.id)
+		end
+		LocalPlayer:SetAttribute("InBattle", nil)
+		KC.advance(15)
+		local r = H.find("Root.ResultCard.Body.OkButton")
+		if r and r.Visible then
+			Mock.Click(r)
+		end
+		Mock.Step(0.1)
+	end
+
+	-- a recording PlayEmote on my character's Animate (the default Animate script's emote hook) -> calls, restore()
+	function H.fakeEmote(answer)
+		local char = LocalPlayer.Character
+		local calls = {}
+		if not char then
+			return calls, function() end
+		end
+		local animate = char:FindFirstChild("Animate")
+		local made = false
+		if not animate then
+			animate = Instance.new("LocalScript")
+			animate.Name = "Animate"
+			animate.Parent = char
+			made = true
+		end
+		local saved = animate:FindFirstChild("PlayEmote")
+		if saved then
+			saved.Name = "PlayEmote_w6saved"
+		end
+		local fn = Instance.new("BindableFunction")
+		fn.Name = "PlayEmote"
+		fn.OnInvoke = function(name)
+			calls[#calls + 1] = { name = name, at = os.clock() }
+			if type(answer) == "function" then
+				return answer(#calls)
+			end
+			return true
+		end
+		fn.Parent = animate
+		return calls, function()
+			fn:Destroy()
+			if saved then
+				saved.Name = "PlayEmote"
+			end
+			if made then
+				animate:Destroy()
+			end
+		end, fn
+	end
+
+	------------------------------------------------------------------------------------------------
+	-- client_w6_podium_cheer
+	------------------------------------------------------------------------------------------------
+	S.client_w6_podium_cheer = guarded("client_w6_podium_cheer", function()
+		local BC = H.moduleAt("client", "Controllers/BattleController")
+		local TC = H.moduleAt("client", "Controllers/TrainerCheer")
+		if not T.check(BC ~= nil and TC ~= nil and LocalPlayer.Character ~= nil, "podium cheer: BattleController + TrainerCheer load, my character exists") then
+			return
+		end
+		local err0 = #Mock.Errors
+		local sounds0 = H.sounds()
+		local calls, restore = H.fakeEmote()
+		-- OnPodium = true: the cheer at once and again within 4.5 s
+		LocalPlayer:SetAttribute("OnPodium", true)
+		H.step(9, 1 / 30)
+		local first = #calls
+		H.step(135, 1 / 30)
+		local second = #calls
+		T.check(first >= 1 and calls[1].name == "cheer" and second >= 2, "podium cheer: OnPodium = true -> PlayEmote(\"cheer\") within 0.3 s and again within 4.5 s (the loop)",
+			fmt("%d in 0.3 s, %d in 4.8 s", first, second))
+		-- OnPodium nil: no more calls for 6 s
+		LocalPlayer:SetAttribute("OnPodium", nil)
+		H.step(3, 1 / 30)
+		local stopped = #calls
+		H.step(180, 1 / 30)
+		T.check(#calls == stopped and not TC.IsLooping(), "podium cheer: OnPodium nil -> the loop stops (no call for 6 s)", fmt("%d more", #calls - stopped))
+		-- my own Cheer event -> exactly one play; another owner's -> none
+		local d = H.fighting("Dungeon")
+		if T.check(d ~= nil and BC.GetBattle() ~= nil, "podium cheer: (setup) a fighting dungeon HUD") then
+			local n0 = #calls
+			local fid = d.sim:TeamOf(d.me).Fighter
+			d:events({ { type = "Cheer", owner = d.me, unit = fid, untilT = d.sim:Time() + 5 } })
+			H.step(30, 1 / 30)
+			T.check(#calls - n0 == 1, "podium cheer: my own Cheer event -> exactly ONE cheer", fmt("%d plays", #calls - n0))
+			local n1 = #calls
+			d:events({ { type = "Cheer", owner = 515151, unit = 99, untilT = d.sim:Time() + 5 } })
+			H.step(30, 1 / 30)
+			T.check(#calls == n1, "podium cheer: another owner's Cheer event plays nothing here (their avatar replicates)")
+			H.cleanup(BC, d)
+		end
+		-- not standing yet (PlayEmote answers false): a few retries, then it plays
+		restore()
+		local calls2, restore2 = H.fakeEmote(function(n)
+			return n >= 3
+		end)
+		local okRetry = TC.Play(LocalPlayer.Character)
+		H.step(45, 1 / 30)
+		T.check(okRetry == true and #calls2 == 3, "podium cheer: while the pose is not standing it retries every 0.2 s (up to 1 s)", #calls2 .. " tries")
+		restore2()
+		-- no PlayEmote / no Animate: no error, false
+		local model = Instance.new("Model")
+		T.check(TC.Play(model) == false and TC.Play(nil) == false, "podium cheer: a rig without Animate.PlayEmote -> false, no error")
+		model:Destroy()
+		T.check(#Mock.Errors == err0 and H.sounds() == sounds0, "podium cheer: no script error and no Sound instance created")
+		KC.flushErrors("client_w6_podium_cheer")
+	end)
+
 	return S
 end
 
