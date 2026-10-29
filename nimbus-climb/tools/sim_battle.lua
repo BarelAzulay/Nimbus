@@ -6,14 +6,16 @@
 --   duels     mirror duels per stage (scripted players both sides): 40-60%, no draws, none at the 120 s limit
 --             + the element counter (balance-5: Water vs Flame, the wheel on vs off): it decides an even fight (>= 90%)
 --             and is worth x1.15-1.45 TeamPower
---   raids     1 / 4 / 8 / 16 dodging fighters finish every boss in 100-240 s (a solo under half the boss's BaselineDps loses:
+--   raids     1 / 4 / 8 / 16 parrying trainers (wave 6: the trainer stands, times the Dash) finish every boss in 100-240 s (a solo under half the boss's BaselineDps loses:
 --             bug batch 2 #2); eight mid (M5) teams win >= 60% of every boss (balance-5); Lv 5 / Lv 40 solos and groups;
 --             no one-shots; joins / leaves; idle alts
 --   ring      rounds 1-3 >= 95% for every single level-1 rollable pet; the stage medians S1 16 .. S10 51 (+-2)
 --   dungeon   floor 1 for the 12 single level-1 pets (100%); the stage ladder (monotonic, S10 >= floor 10); a 4-party +1 floor
 --   training  trained / evolved TeamPower ratios; trained mirror duels fair; trained raids 100-240 s
 --   move      the B1 character patterns (random targets + an r 14 circle) at the legal run speed with a 200 ms feed delay:
---             the server fighter keeps up (gap <= 0.5 after the catch-up, zero leashes); a run-off past the zone is leashed
+--             the server fighter keeps up (gap <= 0.5 after the catch-up, zero leashes); a run-off past the zone is leashed;
+--             wave 6: an engaged pet ignores the walking character (zero Engage off), a wandering trainer's raid plays
+--             like a standing one's
 --   perf      a 16-fighter raid with waves steps in well under 1 ms;  progression: XP / Cash behind each stage, Validate
 --
 -- Run it (lupa, from the repo root; see tools/README.md):
@@ -208,9 +210,13 @@ SIM.Stages = {
 SIM.RingMedians = { S1 = 16, S3 = 23, S5 = 28, S7 = 36, S9 = 44, S10 = 51 }
 
 ----------------------------------------------------------------------
--- A scripted player (the character + the kit): walks the character at the legal run speed toward its target, keeps its
--- range, directs the auto-attacking pet (ATTACK on a new target), ELEMENT / SPECIAL when ready, helper BUFFs, SWAPs a dying fighter, and DASHes out
--- of a wind-up or a telegraph with probability opts.dodge (default 0.7) after a human reaction (0.1-0.3 s)
+-- A scripted player (the trainer + the kit). Wave 6: the trainer STANDS (opts.move "stand", default; "wander" = a slow
+-- random walk inside the zone) and the pet fights by itself (the engage rule); the skill is the timed Dash: for each
+-- wind-up aimed at my fighter and each telegraph covering it, with probability opts.dodge (the skill rate, default 0.7)
+-- Dash inside ParryWindow (0.05-0.2 s before it lands), else with probability opts.mistime (default 0.5) too early (0.45-
+-- 0.8 s before), else not at all; never sooner than a human reaction (0.1-0.3 s); the 2.5 s cooldown is real (the earliest
+-- pending press wins). It directs the pet (ATTACK on a new target in reach), ELEMENT / SPECIAL when ready, helper BUFFs,
+-- SWAPs a dying fighter and presses Cheer up! whenever it is ready in a raid / dungeon (opts.cheer, default true).
 ----------------------------------------------------------------------
 local Player = {}
 Player.__index = Player
@@ -256,10 +262,12 @@ function Player.new(battle, owner, seed, opts)
 	local me = tinfo and tinfo.Fighter and snap.Units[tinfo.Fighter]
 	self.cx, self.cz = me and me.x or 0, me and me.z or 0
 	self.dashAt = nil
-	self.escape = nil
-	self.escapeUntil = 0
+	self.wanderX, self.wanderZ = nil, nil
+	self.wanderRand = lcg(seed + 101) -- its own stream: wandering never changes the Dash rolls
 	self.castAt = nil
 	self.dodges = 0
+	self.parries = 0
+	self.mode = battle.mode
 	self.lastHp = nil
 	self.delay = self.opts.delay or 0 -- the feed delay in steps (the move section: 200 ms = 2)
 	self.history = {}
@@ -301,39 +309,32 @@ function Player:step(events, snapshot)
 	if dodge == nil then
 		dodge = 0.7
 	end
-	-- threats: a wind-up aimed at me, a telegraph covering my character
+	local mistime = self.opts.mistime
+	if mistime == nil then
+		mistime = 0.5
+	end
+	-- the timed Dash: a wind-up aimed at my fighter, a telegraph covering it
 	for _, ev in ipairs(events) do
-		if ev.type == "Windup" and ev.target == fid and dodge > 0 then
-			if self.rand() < dodge then
-				local at = ev.at - 0.05 - 0.1 * self.rand()
-				if at < t + 0.05 then
-					at = t + 0.05
-				end
-				if not self.dashAt or at < self.dashAt then
-					self.dashAt = at
-				end
+		local at = nil
+		if ev.type == "Windup" and ev.target == fid then
+			at = ev.at
+		elseif ev.type == "Telegraph" and inShape(ev, me.x, me.z, myInfo.radius or 2) then
+			at = ev.at
+		elseif ev.type == "Parry" and ev.unit == fid then
+			self.parries = self.parries + 1
+		end
+		if at and dodge > 0 then
+			local press = nil
+			local roll = self.rand()
+			if roll < dodge then
+				press = at - (0.05 + 0.15 * self.rand())
+			elseif self.rand() < mistime then
+				press = at - (0.45 + 0.35 * self.rand())
 			end
-		elseif ev.type == "Telegraph" and dodge > 0 and inShape(ev, me.x, me.z, myInfo.radius or 2) then
-			if self.rand() < dodge then
-				-- run out of the shape (the shortest way), and dash just before it lands as a backup
-				local ex, ez
-				if ev.shape == "Line" then
-					local dirX, dirZ = cos(ev.angle), sin(ev.angle)
-					local side = ((me.x - ev.x) * dirZ - (me.z - ev.z) * dirX) >= 0 and 1 or -1
-					ex, ez = me.x + side * dirZ * (ev.width + 4), me.z - side * dirX * (ev.width + 4)
-				else
-					local dx, dz = me.x - ev.x, me.z - ev.z
-					local d = sqrt(dx * dx + dz * dz)
-					if d < 0.01 then
-						dx, dz, d = 1, 0, 1
-					end
-					ex, ez = ev.x + dx / d * (ev.r + 4), ev.z + dz / d * (ev.r + 4)
-				end
-				self.escape = { x = max(-self.zoneX + 2, min(self.zoneX - 2, ex)), z = max(-self.zoneZ + 2, min(self.zoneZ - 2, ez)) }
-				self.escapeUntil = ev.at + 0.3
-				local at = ev.at - 0.1 - 0.1 * self.rand()
-				if not self.dashAt or at < self.dashAt then
-					self.dashAt = max(at, t + self:reaction())
+			if press then
+				press = max(press, t + self:reaction())
+				if not self.dashAt or press < self.dashAt then
+					self.dashAt = press
 				end
 			end
 		end
@@ -350,34 +351,22 @@ function Player:step(events, snapshot)
 			end
 		end
 	end
-	-- the character walks: to the escape point, else toward the target to its reach
-	local speeds = tinfo.Speed or { Run = 16 }
-	local run = speeds.Run or 16
-	local goalX, goalZ = self.cx, self.cz
-	if self.escape and t < self.escapeUntil then
-		goalX, goalZ = self.escape.x, self.escape.z
-	elseif target then
-		local tu = units[target]
-		local tinfo2 = self.info[target]
-		local want = (myInfo.range or 4) + (tinfo2 and tinfo2.radius or 2) - 0.8
-		local dx, dz = tu.x - self.cx, tu.z - self.cz
-		local d = sqrt(dx * dx + dz * dz)
-		if d > want and d > 0.01 then
-			goalX, goalZ = tu.x - dx / d * want, tu.z - dz / d * want
-		elseif d < want - 2 and d > 0.01 and myInfo.ranged then
-			goalX, goalZ = tu.x - dx / d * want, tu.z - dz / d * want
+	-- the trainer stands (the podium / the fight area's edge); "wander" = a slow random walk inside the zone
+	if self.opts.move == "wander" then
+		if not self.wanderX or dist(self.cx, self.cz, self.wanderX, self.wanderZ) < 1 then
+			self.wanderX = (self.wanderRand() * 2 - 1) * (self.zoneX - 3)
+			self.wanderZ = (self.wanderRand() * 2 - 1) * (self.zoneZ - 3)
 		end
-	else
-		self.escape = nil
+		local speeds = tinfo.Speed or { Walk = 12 }
+		local gx, gz = self.wanderX - self.cx, self.wanderZ - self.cz
+		local gd = sqrt(gx * gx + gz * gz)
+		if gd > 0.05 then
+			local step = min(gd, (speeds.Walk or 12) * 0.5 * DT)
+			self.cx, self.cz = self.cx + gx / gd * step, self.cz + gz / gd * step
+		end
+		self.cx = max(-self.zoneX + 1, min(self.zoneX - 1, self.cx))
+		self.cz = max(-self.zoneZ + 1, min(self.zoneZ - 1, self.cz))
 	end
-	local gx, gz = goalX - self.cx, goalZ - self.cz
-	local gd = sqrt(gx * gx + gz * gz)
-	if gd > 0.05 then
-		local step = min(gd, run * DT)
-		self.cx, self.cz = self.cx + gx / gd * step, self.cz + gz / gd * step
-	end
-	self.cx = max(-self.zoneX + 1, min(self.zoneX - 1, self.cx))
-	self.cz = max(-self.zoneZ + 1, min(self.zoneZ - 1, self.cz))
 	-- the Move feed (with an optional delay of `delay` steps: what a 200 ms old position looks like)
 	self.history[#self.history + 1] = { self.cx, self.cz }
 	local idx = max(1, #self.history - self.delay)
@@ -385,6 +374,11 @@ function Player:step(events, snapshot)
 	b:Command(self.owner, "Move", fed[1], fed[2])
 	if #self.history > 64 then
 		table.remove(self.history, 1)
+	end
+	-- Cheer up! (raids / dungeons) whenever it is ready
+	local cdNow = tinfo.Cooldowns or {}
+	if self.opts.cheer ~= false and (self.mode == "Raid" or self.mode == "Dungeon") and (cdNow.Cheer or 0) <= 0 and target then
+		b:Command(self.owner, "Cheer")
 	end
 	-- dash
 	if self.dashAt and t >= self.dashAt then
@@ -477,7 +471,7 @@ function SIM.run(setup, policies, playerOpts)
 	table.sort(players, function(a, c)
 		return tostring(a.owner) < tostring(c.owner)
 	end)
-	local stats = { steps = 0, events = 0, hits = 0, misses = 0, kos = 0, specials = 0, telegraphs = 0, maxPetHit = 0, maxBossHit = 0, bossHits = 0, dodges = 0, teleHits = 0, swaps = 0, buffs = 0, elements = 0 }
+	local stats = { steps = 0, events = 0, hits = 0, misses = 0, kos = 0, specials = 0, telegraphs = 0, maxPetHit = 0, maxBossHit = 0, bossHits = 0, dodges = 0, parries = 0, teleHits = 0, swaps = 0, buffs = 0, elements = 0 }
 	local hpOf = {}
 	local kindOf = {}
 	for _, info in ipairs(b:StaticUnits()) do
@@ -544,6 +538,7 @@ function SIM.run(setup, policies, playerOpts)
 	stats.seconds = clock() - t0
 	for _, p in ipairs(players) do
 		stats.dodges = stats.dodges + p.dodges
+		stats.parries = stats.parries + p.parries
 	end
 	local result = b:Result()
 	if not result then
@@ -553,7 +548,7 @@ function SIM.run(setup, policies, playerOpts)
 end
 
 local function series(makeSetup, policies, seeds, playerOpts)
-	local agg = { n = 0, wins = { [1] = 0, [2] = 0 }, draws = 0, timeouts = 0, dur = 0, maxDur = 0, maxPetHit = 0, maxBossHit = 0, kos = 0, specials = 0, seconds = 0, dodges = 0, telegraphs = 0, teleHits = 0, bossHits = 0, misses = 0, durations = {} }
+	local agg = { n = 0, wins = { [1] = 0, [2] = 0 }, draws = 0, timeouts = 0, dur = 0, maxDur = 0, maxPetHit = 0, maxBossHit = 0, kos = 0, specials = 0, seconds = 0, dodges = 0, parries = 0, telegraphs = 0, teleHits = 0, bossHits = 0, misses = 0, durations = {} }
 	for seed = 1, seeds do
 		local result, stats = SIM.run(makeSetup(seed), policies, playerOpts)
 		if result then
@@ -575,6 +570,7 @@ local function series(makeSetup, policies, seeds, playerOpts)
 			agg.specials = agg.specials + stats.specials
 			agg.seconds = agg.seconds + stats.seconds
 			agg.dodges = agg.dodges + stats.dodges
+			agg.parries = agg.parries + stats.parries
 			agg.telegraphs = agg.telegraphs + stats.telegraphs
 			agg.teleHits = agg.teleHits + stats.teleHits
 			agg.bossHits = agg.bossHits + stats.bossHits
@@ -958,8 +954,8 @@ section("raids", function(opts)
 					end
 					return { Mode = "Raid", Boss = boss, Seed = seed, Teams = teams }
 				end, policies, n)
-				out(fmt("  %-13s %-3s %2dp: win %3d%% dur %5.1f s (dodges %5.1f, dodged hits %5.1f, KOs %4.1f, maxBossHit %.2f, tele hits %4.1f)",
-					boss, stage.Id, players, agg.winPct, agg.avgDur, agg.dodges / max(1, agg.n), agg.misses / max(1, agg.n), agg.kos / max(1, agg.n), agg.maxBossHit, agg.teleHits / max(1, agg.n)))
+				out(fmt("  %-13s %-3s %2dp: win %3d%% dur %5.1f s (dashes %5.1f, parries %5.1f, dodged hits %5.1f, KOs %4.1f, maxBossHit %.2f, tele hits %4.1f)",
+					boss, stage.Id, players, agg.winPct, agg.avgDur, agg.dodges / max(1, agg.n), agg.parries / max(1, agg.n), agg.misses / max(1, agg.n), agg.kos / max(1, agg.n), agg.maxBossHit, agg.teleHits / max(1, agg.n)))
 				-- bug batch 2 #2: a solo with under half the boss's BaselineDps meets the HP floor and should lose (near the
 				-- baseline it is the edge: M8 at ~0.9 x still wins)
 				local weakSolo = players == 1 and BC.BaselineDps and BC.ExpectedDps({ Pets = stage.Pets }) < 0.5 * BC.BaselineDps(boss)
@@ -1376,10 +1372,12 @@ section("move", function()
 	local allOk = true
 	for _, c in ipairs({ { "mochi_slime", 1 }, { "sunbeam_bear", 20 }, { "stormfang", 50 } }) do
 		local b = BS.new({ Mode = "Duel", Seed = 9, Teams = { team(1, 1, { pet(c[1], c[2]) }), team("npc", 2, { pet("honey_bunny", 1, nil, { Handicap = 0.3 }) }, { Npc = true, Specials = false }) }, Specials = false })
-		-- the fighter auto-attacks (dungeon fixes 4): the dummy may neither fall nor hit, the battle must outlast the patterns
+		-- the fighter auto-attacks (dungeon fixes 4): the dummy may neither fall nor hit, the battle must outlast the patterns;
+		-- wave 6: it is untargetable (still arriving) so the pet FOLLOWs and the patterns measure the follow, not the engage rule
 		for _, u in ipairs(b.units) do
 			if u.side == 2 then
 				u.maxHp, u.hp, u.hit = 1e9, 1e9, 0
+				u.arriveUntil = huge
 			end
 		end
 		local sp = b:SpeedOf(1)
@@ -1449,6 +1447,70 @@ section("move", function()
 		out(fmt("  %-13s L%-2d walk %4.1f run %4.1f cap %4.1f: random targets max gap %.2f (after catch-up %.2f), leashes %d; circle gap %.2f; run-off leashed after 3 s: %s", c[1], c[2], sp.Walk, sp.Run, sp.Run * F.MoveSlack, maxGap, maxGapLate, leashes, circleGap, tostring(offLeashed)))
 	end
 	target("the server fighter keeps within 0.5 stud of the fed position after the catch-up, zero leashes; a run-off past the zone is leashed", allOk)
+	-- wave 6: an engaged pet ignores the walking character (the random pattern next to a TARGETABLE dummy)
+	do
+		local b = BS.new({ Mode = "Duel", Seed = 9, Teams = { team(1, 1, { pet("sunbeam_bear", 20) }), team("npc", 2, { pet("honey_bunny", 1, nil, { Handicap = 0.3 }) }, { Npc = true, Specials = false }) }, Specials = false })
+		for _, u in ipairs(b.units) do
+			if u.side == 2 then
+				u.maxHp, u.hp, u.hit, u.moveSpeed = 1e9, 1e9, 0, 0
+				u.arriveUntil = nil
+			end
+		end
+		local sp = b:SpeedOf(1)
+		local rng = lcg(7)
+		local tid = b:TeamOf(1).Fighter
+		local cx, cz = b.units[tid].x, b.units[tid].z
+		local tx, tz = cx, cz
+		local h = b.zone.HalfX - 2
+		local offs, ons, engagedSteps = 0, 0, 0
+		for _ = 1, 400 do
+			if dist(cx, cz, tx, tz) < 2 then
+				tx, tz = (rng() * 2 - 1) * h, (rng() * 2 - 1) * h
+			end
+			local d = dist(cx, cz, tx, tz)
+			local s = min(d, sp.Run * DT)
+			cx, cz = cx + (tx - cx) / d * s, cz + (tz - cz) / d * s
+			b:Command(1, "Move", cx, cz)
+			for _, ev in ipairs(b:Step(DT)) do
+				if ev.type == "Engage" and ev.on == false then
+					offs = offs + 1
+				elseif ev.type == "Engage" and ev.on == true then
+					ons = ons + 1
+				end
+			end
+			if b:TeamOf(1).Engaged then
+				engagedSteps = engagedSteps + 1
+			end
+		end
+		out(fmt("  engaged pet + a trainer running random targets for 40 s: Engage on %d, off %d, engaged %d of 400 steps", ons, offs, engagedSteps))
+		target("an engaged pet ignores the walking character: zero Engage off while the character runs the random pattern next to a targetable dummy", ons == 1 and offs == 0 and engagedSteps >= 399)
+	end
+	-- wave 6: a wandering trainer's raid plays like a standing one's (movement changes nothing; one cell, two seeds)
+	do
+		local function raid(seed)
+			local teams = {}
+			local policies = {}
+			for i = 1, 4 do
+				teams[i] = team(400 + i, 1, SIM.Stages[5].Pets)
+				policies[400 + i] = "player"
+			end
+			return { Mode = "Raid", Boss = "frost_wyrm", Seed = seed, Teams = teams }, policies
+		end
+		local stand, wander = 0, 0
+		local okAll = true
+		for seed = 1, 2 do
+			local setup, policies = raid(seed)
+			local r1 = SIM.run(setup, policies, { move = "stand" })
+			setup, policies = raid(seed)
+			local r2 = SIM.run(setup, policies, { move = "wander" })
+			stand = stand + (r1 and r1.Duration or 0)
+			wander = wander + (r2 and r2.Duration or 0)
+			okAll = okAll and r1 and r2 and r1.WinnerSide == r2.WinnerSide
+		end
+		local ratio = wander / max(1, stand)
+		out(fmt("  frost_wyrm M5 4p, 2 seeds: standing trainers %.1f s, wandering trainers %.1f s (x%.2f)", stand / 2, wander / 2, ratio))
+		target("a wandering trainer's raid plays like a standing one's (same outcome, duration within 15%)", okAll and abs(ratio - 1) <= 0.15)
+	end
 end)
 
 -- 10. perf
