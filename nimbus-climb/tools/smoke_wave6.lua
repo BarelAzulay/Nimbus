@@ -12,6 +12,10 @@
 --   w6_cheer_core         (server world, pure) Cheer up! in Raid and Dungeon: +5% on the fighter's plain hits (two seeded
 --                         battles compared), Cooldowns.Cheer 20, no stacking, off after 5 s, ready after 20 s; Ring / Duel
 --                         NoCheer, Down, an Npc team refused; Validate
+--   w6_cheer_service      (server world, booted) BattleCommand("Cheer") in a party dungeon encounter: the sim boost and
+--                         the Cheer event to both members; 40 calls in 1 s = ONE accepted, <= 1 rejected echo a step, ONE
+--                         throttled toast, no stacking; junk refused without errors; no battle -> NoBattle; the Start
+--                         payload's Team.Cooldowns.Cheer = 0; a raid accepts it, a duel refuses NoCheer
 -- White-box: the server half reaches into battle.units / battle.teams / battle.telegraphs (same Lua state). Plain Lua 5.1
 -- syntax only.
 
@@ -602,6 +606,297 @@ local function serverScenarios()
 			T.check(rejects("CheerBoost", 0.2) and rejects("CheerSeconds", 20) and rejects("CheerBoost", 0) and BC.Validate() == true,
 				"cheer core: Validate rejects CheerBoost 0.2 / 0 and CheerSeconds 20 (not below the cooldown); passes as shipped")
 		end
+	end)
+
+	------------------------------------------------------------------------------------------------
+	-- the booted half: helpers (the shape of smoke_p5_battleservice.lua)
+	------------------------------------------------------------------------------------------------
+	local advance = K.advance
+	local ALLOWED_WARNINGS = { "[BattleService]", "[DataService]", "[TycoonService]", "[PetCareService]", "[EventService]", "[MeshLibrary]", "[DungeonService]" }
+	local seq = 0
+	local STRONG = { "cloudy_dragon", "ember_phoenix", "aurora_fox" }
+	local MID = { "twilight_dragon", "moonlit_owl", "candy_unicorn" }
+
+	local function req(path)
+		local inst = K.moduleInstance(path)
+		if not inst then
+			return nil
+		end
+		local ok, m = pcall(require, inst)
+		if ok and type(m) == "table" then
+			return m
+		end
+		return nil
+	end
+
+	local function arenaInfo()
+		local ab = req("server/Services/ArenaBuilder")
+		return ab and ab.GetInfo and ab.GetInfo() or nil
+	end
+
+	-- a player with a battle team (pets owned, team preset 1 = the first 3); `level` sets every pet's level
+	local function newPlayer(prefix, pets, level)
+		seq = seq + 1
+		local p = Mock.AddPlayer(prefix .. seq, 969000 + seq)
+		advance(1.0)
+		local data = req("server/Services/DataService")
+		local prof = data.GetProfile(p)
+		if prof and pets then
+			for _, id in ipairs(pets) do
+				prof.Pets[id] = (prof.Pets[id] or 0) + 1
+				if level then
+					prof.PetLevels[id] = { Level = level, Xp = 0 }
+				end
+			end
+			data.MarkDirty(p)
+			local ok, why = data.SetTeam(p, 1, pets)
+			if not ok then
+				T.fail("(setup) SetTeam for " .. p.Name .. " failed", tostring(why))
+			end
+		end
+		return p
+	end
+
+	local function toArena(p, dx, dz)
+		local info = arenaInfo()
+		Mock.Teleport(p, info.Spawn * CFrame.new(dx or 0, 0, dz or 0))
+		advance(0.05)
+	end
+
+	local function battleMsgs(p, fromIndex, kind)
+		local out = {}
+		local log = Mock.RemoteLog
+		for i = (fromIndex or 0) + 1, #log do
+			local e = log[i]
+			if e.remote == "BattleState" and e.kind == "client" and e.userId == p.UserId and (kind == nil or e.args[1] == kind) then
+				out[#out + 1] = e
+			end
+		end
+		return out
+	end
+
+	local function eventsOf(p, fromIndex, evType)
+		local out = {}
+		for _, e in ipairs(battleMsgs(p, fromIndex, "Events")) do
+			for _, ev in ipairs(e.args[2]) do
+				if evType == nil or ev.type == evType then
+					out[#out + 1] = ev
+				end
+			end
+		end
+		return out
+	end
+
+	local function toasted(p, needle, fromIndex)
+		local n = 0
+		for _, e in ipairs(K.remotesFor("Notify", p.UserId, fromIndex or 0)) do
+			if tostring(e.args[1]):find(needle, 1, true) then
+				n = n + 1
+			end
+		end
+		return n
+	end
+
+	-- the BattleService state (white-box: St is an upvalue of IsInBattle)
+	local function serviceState(bs)
+		local f = bs and bs.IsInBattle
+		if type(f) ~= "function" then
+			return nil
+		end
+		for i = 1, 80 do
+			local name, v = debug.getupvalue(f, i)
+			if not name then
+				break
+			end
+			if name == "St" and type(v) == "table" then
+				return v
+			end
+		end
+		return nil
+	end
+
+	local function battleRecord(bs, battleId)
+		local st = serviceState(bs)
+		return st and st.battles and battleId and st.battles[battleId] or nil
+	end
+
+	-- EventService's scheduler must not open a raid in the middle of these scenarios
+	local realStartRaid = nil
+	local function holdRaidSchedule(bs)
+		if realStartRaid == nil then
+			realStartRaid = bs.StartRaid
+			bs.StartRaid = function()
+				return false, "A raid is already running"
+			end
+		end
+		return realStartRaid
+	end
+	local function releaseRaidSchedule(bs)
+		if realStartRaid then
+			bs.StartRaid = realStartRaid
+			realStartRaid = nil
+		end
+	end
+
+	local function cleanup(list)
+		local bs = req("server/Services/BattleService")
+		for _, p in ipairs(list) do
+			if p.Parent and bs and bs.IsInBattle(p) then
+				bs.Forfeit(p)
+			end
+		end
+		advance(0.3)
+		K.removePlayers(list)
+		advance(5)
+	end
+
+	-- a dungeon encounter far out in the sky: -> battle id, the zone part, the place(p, x, z) helper
+	local function encounter(bs, players, seed)
+		local part = Instance.new("Part")
+		part.Name = "NC_BattleZone"
+		part.Anchored = true
+		part.CanCollide = false
+		part.Transparency = 1
+		part.Size = Vector3.new(60, 2, 60)
+		part.CFrame = CFrame.new(5600 + 200 * (seed % 7), 640, -2700)
+		part:SetAttribute("Mode", "Dungeon")
+		part.Parent = workspace
+		local function place(p, x, z)
+			Mock.Teleport(p, CFrame.new(part.CFrame:PointToWorldSpace(Vector3.new(x, 3, z))))
+		end
+		local teams = {}
+		for i, p in ipairs(players) do
+			teams[i] = { Player = p }
+			place(p, -6 + 4 * i, -10)
+		end
+		advance(0.05)
+		local id, why = bs.OpenEncounter({ Mode = "Dungeon", Zone = part, Seed = seed, TimeLimit = 300, Label = "w6", Teams = teams,
+			Extra = { Floor = 1, Room = 1, Wave = 1, Waves = 1, Name = "W6 Room" }, KeepInBattle = true })
+		return id, part, place, why
+	end
+
+	------------------------------------------------------------------------------------------------
+	-- w6_cheer_service (booted)
+	------------------------------------------------------------------------------------------------
+	S.w6_cheer_service = guarded("w6_cheer_service", function()
+		if not K.needBoot() then
+			return
+		end
+		local bs = req("server/Services/BattleService")
+		if not T.check(bs and type(bs.OpenEncounter) == "function" and arenaInfo() ~= nil, "cheer svc: BattleService + the arena load") then
+			return
+		end
+		local cmd = K.remoteFolder():FindFirstChild("BattleCommand")
+		local a = newPlayer("CheerA", STRONG, 20)
+		local c = newPlayer("CheerB", MID, 20)
+		local mark = K.logSize()
+		local id, part, place, why = encounter(bs, { a, c }, 6101)
+		advance(0.3)
+		local b = battleRecord(bs, id)
+		local sim = b and b.Sim
+		if not T.check(type(id) == "string" and sim ~= nil, "cheer svc: (setup) a dungeon encounter for a party of two", tostring(why)) then
+			part:Destroy()
+			cleanup({ a, c })
+			return
+		end
+		local infos = bs.SpawnWave(id, { { PetId = "biscuit_bear", Level = 30 } }, { Wave = 1, Name = "W1" })
+		local e = infos and infos[1] and sim.units[infos[1].id]
+		if e then
+			dummy(e, 0, 10)
+		end
+		advance(0.3)
+		local start = battleMsgs(a, mark, "Start")[1]
+		local sp = start and start.args[2]
+		T.check(sp and sp.Team and sp.Team.Cooldowns and sp.Team.Cooldowns.Cheer == 0, "cheer svc: the Start payload carries Team.Cooldowns.Cheer = 0")
+		-- the remote: one Cheer -> the sim boost and the Cheer event to both party members
+		local m1 = K.logSize()
+		Mock.FromClient(cmd, a, "Cheer")
+		advance(0.3)
+		local tmA = sim:TeamOf(a.UserId)
+		local evA = eventsOf(a, m1, "Cheer")
+		local evC = eventsOf(c, m1, "Cheer")
+		T.check(tmA and tmA.Cheering == true and #evA == 1 and #evC == 1 and evA[1].owner == a.UserId, "cheer svc: BattleCommand(\"Cheer\") -> the sim boost (Cheering) and ONE Cheer event to both party members",
+			fmt("Cheering %s, events %d / %d", tostring(tmA and tmA.Cheering), #evA, #evC))
+		-- spam: 40 calls in 1 s from the other member -> exactly one accepted, one throttled Cooldown toast, <= 1 echo a step
+		local m2 = K.logSize()
+		for _ = 1, 40 do
+			Mock.FromClient(cmd, c, "Cheer")
+			advance(0.025)
+		end
+		advance(0.3)
+		local accepted = 0
+		for _, ev in ipairs(eventsOf(c, m2, "Cheer")) do
+			if ev.owner == c.UserId then
+				accepted = accepted + 1
+			end
+		end
+		local worstEcho = 0
+		for _, msg in ipairs(battleMsgs(c, m2, "Events")) do
+			local n = 0
+			for _, ev in ipairs(msg.args[2]) do
+				if ev.type == "Order" and ev.order == "Cheer" and ev.rejected and ev.owner == c.UserId then
+					n = n + 1
+				end
+			end
+			worstEcho = max(worstEcho, n)
+		end
+		local nToast = toasted(c, "Not ready", m2)
+		local tmC = sim:TeamOf(c.UserId)
+		T.check(accepted == 1 and worstEcho <= 1 and nToast == 1 and tmC.Cheering == true and tmC.Cooldowns.Cheer > 18,
+			"cheer svc: 40 Cheer calls in 1 s -> exactly ONE accepted, <= 1 rejected echo a step, ONE throttled \"Not ready\" toast",
+			fmt("accepted %d, worst echo %d, toasts %d", accepted, worstEcho, nToast))
+		T.check(sim.teamByOwner[c.UserId].cheerUntil - sim:Time() <= 5 + 1e-6,
+			"cheer svc: ...and the boost never stacks past one window (5 s)")
+		-- junk: an argument, a 200-char action, NaN -> refused, nothing breaks
+		local errs0 = #Mock.Errors
+		local okJ, whyJ = bs.Command(a, "Cheer", { 1, 2 })
+		Mock.FromClient(cmd, a, "Cheer", { 1, 2 })
+		Mock.FromClient(cmd, a, string.rep("C", 200))
+		Mock.FromClient(cmd, a, "Cheer", 0 / 0)
+		Mock.FromClient(cmd, a, "Cheer", "x")
+		advance(0.3)
+		T.check(okJ == false and whyJ == "BadArg" and #Mock.Errors == errs0, "cheer svc: junk (an argument, a 200-char action, NaN, a string) is refused without an error", tostring(whyJ))
+		-- a player in no battle / a spectator
+		local z = newPlayer("CheerSpec", STRONG, 5)
+		place(z, 0, 0)
+		advance(0.3)
+		local okZ, whyZ = bs.Command(z, "Cheer")
+		T.check(okZ == false and whyZ == "NoBattle", "cheer svc: a spectator / a player in no battle -> refused (NoBattle)", tostring(whyZ))
+		bs.FinishEncounter(id, "Abandoned")
+		advance(0.3)
+		part:Destroy()
+		cleanup({ a, c, z })
+
+		-- a raid: Cheer works there too
+		local startRaid = holdRaidSchedule(bs)
+		if bs.GetRaidStatus() ~= nil then
+			bs.EndRaid()
+			advance(0.2)
+		end
+		local r = newPlayer("CheerRaid", STRONG, 20)
+		toArena(r, 0, 6)
+		local okR = startRaid("lava_golem")
+		local okJR = okR and bs.JoinRaid(r)
+		advance(0.5)
+		local okC, whyC = bs.Command(r, "Cheer")
+		T.check(okR and okJR and okC == true, "cheer svc: a raid: Cheer is accepted", tostring(whyC))
+		bs.EndRaid()
+		advance(0.3)
+		releaseRaidSchedule(bs)
+		cleanup({ r })
+
+		-- a duel: refused NoCheer (the podium cheer there is visual only)
+		local x = newPlayer("CheerDx", MID, 10)
+		local y = newPlayer("CheerDy", MID, 10)
+		toArena(x, 3, 0)
+		toArena(y, -3, 0)
+		local okD, idD = bs.StartDuel(x, y)
+		advance(0.3)
+		local okN, whyN = bs.Command(x, "Cheer")
+		T.check(okD == true and okN == false and whyN == "NoCheer", "cheer svc: a duel -> refused NoCheer", tostring(idD) .. " / " .. tostring(whyN))
+		cleanup({ x, y })
+		K.flushErrors("w6_cheer_service")
+		K.flushWarnings("w6_cheer_service", ALLOWED_WARNINGS)
 	end)
 
 	return S

@@ -11,11 +11,11 @@
 --                         near enemy, Attack() keeps it (no echo), Target(id) switches the engaged target; a ranged
 --                         fighter holds at its range 40 studs out; Stunned = no move, still engaged; Swap drops it, the
 --                         incoming pet engages after its cast (no still time); Validate; determinism with walking
---   fight_engage_service  (server world, booted) a dungeon encounter: the pet engages an enemy 13 studs from the standing
---                         character, the gap stays > Fighter.Leash for > LeashSeconds + 1 and nobody is leashed (the
---                         leash is off while engaged); the Engage event reaches the client; Attack(id) on a far enemy
---                         still toasts "Too far!" once; a jump + run-off drops the engage (Engage on = false) and the
---                         player is removed within LeashSeconds + 3
+--   fight_engage_service  (server world, booted) a dungeon encounter, wave 6: the pet engages an enemy 30 studs from the
+--                         standing character; the character then walks the room for 8 s: nobody is leashed and the pet
+--                         never disengages (the gap > Fighter.Leash on the way); the Engage event reaches the client;
+--                         Attack(id) on a far enemy still toasts "Too far!" once; a jump + run-off out of the zone removes
+--                         the player (the presence check) within LeashSeconds + 3
 --   client_fight_attack   (client world) F tap = ONE Attack(nil) and no Target; F held 0.4 s = exactly one Target(next)
 --                         and nothing on release; the ATTACK button (mouse / touch) and ButtonX the same; a held world
 --                         click = one Attack(id), never a Target; the caption ATTACK, NEXT for 0.6 s after a hold-cycle;
@@ -577,25 +577,34 @@ local function serverScenarios()
 			K.removePlayers({ p })
 			return
 		end
-		dummy(e, 0, 3)
-		f.range = 1 -- white-box: a short reach, so the engaged pet stands > Leash (10) from its standing owner
+		dummy(e, 0, 20) -- 30 studs from the standing character
 		local mark1 = K.logSize()
-		local maxGap, wasEngaged, engagedTicks = 0, false, 0
 		local tStand = Mock.Clock.now
-		while Mock.Clock.now - tStand < F.LeashSeconds + 2 do
+		while Mock.Clock.now - tStand < 1 do
 			place(0, -10)
 			advance(0.1)
-			if type(tm.engage) == "table" then
-				wasEngaged = true
-				engagedTicks = engagedTicks + 1
-				maxGap = max(maxGap, d2(f.x, f.z, 0, -10))
+		end
+		T.check(type(tm.engage) == "table" and tm.engage.target == e, "fight svc: an enemy 30 studs from the standing character: the pet engages it")
+		-- the character walks the room for 8 s (a loop around the floor): no leash, no disengage
+		local maxGap, offs = 0, 0
+		local mWalk = K.logSize()
+		local tWalk = Mock.Clock.now
+		while Mock.Clock.now - tWalk < 8 do
+			local a = (Mock.Clock.now - tWalk) * 0.8
+			place(28 * math.cos(a), 28 * math.sin(a))
+			advance(0.1)
+			maxGap = max(maxGap, d2(f.x, f.z, 28 * math.cos(a), 28 * math.sin(a)))
+		end
+		for _, ev in ipairs(eventsOf(p, mWalk, "Engage")) do
+			if ev.on == false then
+				offs = offs + 1
 			end
 		end
-		T.check(wasEngaged and maxGap > F.Leash, "fight svc: standing 13 studs from an enemy, the pet engages and fights > Leash from its owner", fmt("max gap %.1f", maxGap))
-		T.check(#left == 0 and bs.IsInBattle(p) and engagedTicks * 0.1 > F.LeashSeconds + 1, "fight svc: ...for > LeashSeconds + 1 and NOBODY is leashed (the leash is off while engaged)",
-			fmt("%d OnLeave, engaged %.1f s", #left, engagedTicks * 0.1))
+		T.check(#left == 0 and bs.IsInBattle(p) and offs == 0 and type(tm.engage) == "table" and maxGap > F.Leash,
+			"fight svc: the character walks the room for 8 s: NOBODY is leashed and the pet never disengages (the gap > Leash on the way)",
+			fmt("%d OnLeave, %d Engage off, max gap %.1f", #left, offs, maxGap))
 		local evOn = nil
-		for _, ev in ipairs(eventsOf(p, mark, "Engage")) do
+		for _, ev in ipairs(eventsOf(p, mark1, "Engage")) do
 			if ev.on == true and ev.owner == p.UserId and ev.target == e.id then
 				evOn = ev
 			end
@@ -619,30 +628,21 @@ local function serverScenarios()
 			end
 			T.check(n == 1, "fight svc: Attack(id) on a far enemy still toasts \"Too far!\" once", n .. " toasts")
 		end
-		-- a jump + a run-off: the pull drops the engage, then the FOLLOW leash removes the player
-		local mark2 = K.logSize()
-		local run = (sim:SpeedOf(p.UserId) or { Run = 16 }).Run
+		-- a jump + a run-off out of the zone: the presence check removes the player (the engaged pet never leashes it)
 		local fx, fz = f.x, f.z
 		local leftAt = nil
 		local t1 = Mock.Clock.now
 		for i = 1, 80 do
-			place(fx + 45 + run * 0.1 * i * 0.5, fz)
+			place(fx + 60 + 3 * i, fz)
 			advance(0.1)
 			if #left > 0 then
 				leftAt = Mock.Clock.now - t1
 				break
 			end
 		end
-		local off = nil
-		for _, ev in ipairs(eventsOf(p, mark2, "Engage")) do
-			if ev.on == false then
-				off = ev
-			end
-		end
-		T.check(off ~= nil, "fight svc: the character's jump drops the engage (Engage on = false reaches the client)")
 		local cause = left[1] and left[1][3]
-		T.check(leftAt ~= nil and leftAt <= F.LeashSeconds + 3 and not bs.IsInBattle(p) and (cause == "Leash" or cause == "Left"),
-			"fight svc: ...and the FOLLOW leash removes a run-off within LeashSeconds + 3 (anti-teleport kept)", fmt("after %.1f s, cause %s", leftAt or -1, tostring(cause)))
+		T.check(leftAt ~= nil and leftAt <= F.LeashSeconds + 3 and not bs.IsInBattle(p),
+			"fight svc: a jump + run-off out of the zone removes the player within LeashSeconds + 3 (anti-teleport kept)", fmt("after %.1f s, cause %s", leftAt or -1, tostring(cause)))
 		bs.FinishEncounter(id, "Abandoned")
 		advance(0.3)
 		part:Destroy()
