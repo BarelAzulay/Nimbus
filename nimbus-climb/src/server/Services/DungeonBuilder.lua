@@ -171,14 +171,14 @@ DungeonBuilder.Styles = {
 		Deepen = 0.9, -- the tier's last floor: wall / floor colours x 0.9
 		Bricks = true, -- the protruding stones of a wall run (a terracotta brick out of line)
 		Palette = {
-			Stone = rgb(198, 118, 84), -- terracotta brick
+			Stone = rgb(147, 87, 62), -- old terracotta brick (the player's pick 2026-10-29: the middle, darker brick)
 			StoneDark = rgb(104, 82, 66), -- the soil-stone base
-			StoneLight = rgb(226, 170, 132),
-			Brick = rgb(186, 106, 78),
+			StoneLight = rgb(167, 126, 98),
+			Brick = rgb(138, 78, 58),
 			Flag = rgb(148, 154, 126), -- mossy grey flagstones
 			FlagDark = rgb(128, 136, 110),
 			Ceiling = rgb(84, 70, 58), -- old timber
-			Carpet = rgb(204, 126, 88), -- the terracotta path
+			Carpet = rgb(151, 93, 65), -- the terracotta path
 			Rock = rgb(150, 136, 112),
 			RockDark = rgb(120, 106, 88),
 			Abyss = rgb(46, 62, 56),
@@ -188,7 +188,7 @@ DungeonBuilder.Styles = {
 			Core = rgb(236, 255, 150), -- the pitcher plants' glow
 			CoreLight = rgb(220, 255, 170),
 		},
-		Mood = { Ambient = rgb(94, 88, 96), Outdoor = rgb(110, 104, 112), Brightness = -0.05, Contrast = 0.06, Tint = rgb(246, 238, 222) },
+		Mood = { Ambient = rgb(82, 76, 92), Outdoor = rgb(98, 92, 108), Brightness = -0.08, Contrast = 0.1, Tint = rgb(240, 232, 220) },
 	},
 	b = {
 		Id = "b",
