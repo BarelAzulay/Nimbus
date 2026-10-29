@@ -35,6 +35,9 @@
 --   client_w6_cheer_mobile (phone world) the same placement at 844x390 / 390x844 / 749x388 on a touch phone (a landscape
 --                         phone: the spot above is the screen middle, so beside the card on the left, top level), >= 44x44 px,
 --                         clear of the action cluster, RUN / DASH and Roblox's jump button
+--   client_w6_parry_fx    (client world) a Parry event: "PARRY!" once (gold, the callout size) + a gold ring and flash on
+--                         the pet, gone in 1.5 s; Hit { miss, parry } no DODGED!, a plain miss DODGED!; the drawn dash
+--                         follows the event's dir (dot > 0.9) not its target; Low graphics = the callout only; no Sound
 -- White-box: the server half reaches into battle.units / battle.teams / battle.telegraphs (same Lua state). Plain Lua 5.1
 -- syntax only.
 
@@ -1791,6 +1794,136 @@ local function clientScenarios()
 		H.step(15, 1 / 30)
 		T.check(#Mock.Errors == err0, "cheer phone: no script error")
 		KC.flushErrors("client_w6_cheer_mobile")
+	end)
+
+	------------------------------------------------------------------------------------------------
+	-- client_w6_parry_fx
+	------------------------------------------------------------------------------------------------
+	local GOLD = nil
+
+	local function near(c, ref)
+		return c and ref and abs(c.R - ref.R) < 0.03 and abs(c.G - ref.G) < 0.03 and abs(c.B - ref.B) < 0.03
+	end
+
+	-- the enabled battle numbers reading `text` -> list of their labels
+	local function numbersReading(text)
+		local out = {}
+		for _, g in ipairs(workspace:GetDescendants()) do
+			if g:IsA("BillboardGui") and g.Name == "BattleNumber" and g.Enabled then
+				local l = g:FindFirstChild("Text")
+				if l and l.Text == text and l.TextTransparency < 0.95 then
+					out[#out + 1] = l
+				end
+			end
+		end
+		return out
+	end
+
+	-- the gold flash / ring seen on unit u's model over `frames` frames -> max gold neon parts, flash seen
+	local function watchGold(d, u, steps)
+		local maxParts, flash = 0, false
+		for _ = 1, steps do
+			d:step(30)
+			local n = 0
+			for _, p in ipairs(workspace:GetDescendants()) do
+				if p:IsA("BasePart") and p.Material == Enum.Material.Neon and p.Transparency < 0.95 and near(p.Color, GOLD) then
+					n = n + 1
+				elseif p:IsA("Highlight") and p.Enabled and p.Adornee == u.Model and near(p.FillColor, GOLD) and p.FillTransparency < 0.9 then
+					flash = true
+				end
+			end
+			maxParts = max(maxParts, n)
+		end
+		return maxParts, flash
+	end
+
+	S.client_w6_parry_fx = guarded("client_w6_parry_fx", function()
+		local BC = H.moduleAt("client", "Controllers/BattleController")
+		local Theme = H.moduleAt("shared", "Theme")
+		local CS = H.moduleAt("client", "ClientSettings")
+		local GQ = H.moduleAt("client", "GraphicsQuality")
+		if not T.check(BC ~= nil and Theme ~= nil, "parry fx: BattleController + Theme load") then
+			return
+		end
+		GOLD = Theme.Colors.Gold or Color3.fromRGB(244, 196, 78)
+		local err0 = #Mock.Errors
+		local d = H.fighting("Dungeon")
+		if not T.check(d ~= nil and BC.GetBattle() ~= nil, "parry fx: (setup) a fighting dungeon HUD") then
+			return
+		end
+		-- (my pet stands still at my shoulder: the engage rule held off, the character idle)
+		d.sim.teamByOwner[d.me].noEngage = true
+		d:run(1.2, 30)
+		local fid = d.sim:TeamOf(d.me).Fighter
+		local enemyId = nil
+		for _, u in ipairs(d.sim.units) do
+			if u.side == 2 and u.hp > 0 then
+				enemyId = u.id
+				break
+			end
+		end
+		local f = BC.GetUnit(fid)
+		if not T.check(f ~= nil and f.Model ~= nil and enemyId ~= nil, "parry fx: (setup) my drawn fighter + an enemy") then
+			H.cleanup(BC, d)
+			return
+		end
+		local sounds0 = H.sounds()
+		local parries0 = BC.GetStats().Parries or 0
+		-- a Parry event on my fighter: PARRY! (gold, the callout size) once, a gold ring + flash on the pet
+		d:events({ { type = "Parry", unit = fid, from = enemyId } })
+		local parts, flash = watchGold(d, f, 4)
+		local labels = numbersReading("PARRY!")
+		local px = Theme.ScaledSize(26, 22)
+		T.check(#labels == 1 and near(labels[1].TextColor3, GOLD) and labels[1].TextSize == px, "parry fx: a Parry event shows \"PARRY!\" once, in gold, at the callout size",
+			fmt("%d labels%s", #labels, labels[1] and fmt(", size %s (want %s)", tostring(labels[1].TextSize), tostring(px)) or ""))
+		T.check(parts >= 8 and flash, "parry fx: ...and a short gold ring + flash on the pet", fmt("%d gold neon parts, flash %s", parts, tostring(flash)))
+		T.check((BC.GetStats().Parries or 0) == parries0 + 1, "parry fx: GetStats().Parries counts it")
+		d:run(1.5, 30)
+		local partsAfter = watchGold(d, f, 1)
+		T.check(partsAfter == 0 and #numbersReading("PARRY!") == 0, "parry fx: the ring and the callout are gone after 1.5 s", partsAfter .. " parts left")
+		-- the parried telegraph's Hit (miss + parry) -> no DODGED!; a plain miss -> DODGED!
+		d:events({ { type = "Hit", from = enemyId, to = fid, dmg = 0, miss = true, parry = true } })
+		d:run(0.4, 30)
+		T.check(#numbersReading("DODGED!") == 0, "parry fx: the parried Hit { miss, parry } shows no DODGED!", #numbersReading("DODGED!") .. " shown")
+		d:run(1.3, 30)
+		d:events({ { type = "Hit", from = enemyId, to = fid, dmg = 0, miss = true } })
+		d:run(0.4, 30)
+		T.check(#numbersReading("DODGED!") == 1, "parry fx: a plain miss still shows DODGED!", #numbersReading("DODGED!") .. " shown")
+		d:run(1.3, 30)
+		-- the drawn dash follows the event's dir (the sidestep), not its target (the enemy stands at +Z)
+		local p0 = BC.GetUnit(fid).Drawn
+		d:events({ { type = "Dash", unit = fid, dir = { 1, 0 }, target = enemyId } })
+		local best, bestLen = nil, 0
+		for _ = 1, 3 do
+			d:step(30)
+			local p = BC.GetUnit(fid).Drawn
+			local off = p and p0 and Vector3.new(p.X - p0.X, 0, p.Z - p0.Z)
+			if off and off.Magnitude > bestLen then
+				best, bestLen = off, off.Magnitude
+			end
+		end
+		local dot = best and best.Unit.X or -1
+		T.check(bestLen > 1 and dot > 0.9, "parry fx: the drawn pet dashes along the event's dir (+X), not toward its target (+Z)",
+			fmt("moved %.2f studs, dot %.2f", bestLen, dot))
+		d:run(1, 30)
+		-- Low graphics: the callout only
+		if CS and GQ and type(CS.Set) == "function" then
+			local before = CS.Get("Gfx")
+			CS.Set("Gfx", "Low")
+			d:run(0.2, 30)
+			if T.check(GQ.Effective() == "Low", "parry fx: (setup) Graphics Low") then
+				d:events({ { type = "Parry", unit = fid, from = enemyId } })
+				local lowParts, lowFlash = watchGold(d, f, 4)
+				T.check(#numbersReading("PARRY!") == 1 and lowParts == 0 and not lowFlash, "parry fx: Low graphics: the PARRY! callout only (no ring, no flash)",
+					fmt("%d labels, %d parts, flash %s", #numbersReading("PARRY!"), lowParts, tostring(lowFlash)))
+			end
+			CS.Set("Gfx", before or "Auto")
+			d:run(0.2, 30)
+		end
+		T.check(H.sounds() == sounds0, "parry fx: no Sound instance created", sounds0 .. " -> " .. H.sounds())
+		H.cleanup(BC, d)
+		T.check(#Mock.Errors == err0, "parry fx: no script error", tostring(Mock.Errors[#Mock.Errors]))
+		KC.flushErrors("client_w6_parry_fx")
 	end)
 
 	return S

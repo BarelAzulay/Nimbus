@@ -34,7 +34,8 @@
 --   "Snapshot" { BattleId, T, U = { number... } }: BattleSim:SnapshotDelta's wire form (lives + the windup bit packed in
 --              the code); the older { BattleId, T, Units } form (the tools' drivers) is taken as it is.
 --   "Events"   BattleSim events (Hit, Special, KO, Telegraph, Spawn, Enrage, Order, Zone, Leave, End, Element, Dash,
---              Buff, Swap, Windup, Wave, EnemiesDown, Speed); a rejected Order reaches only its owner (the shake).
+--              Buff, Swap, Windup, Wave, EnemiesDown, Speed; wave 6: Parry, Cheer, Engage); a rejected Order reaches only
+--              its owner (the shake).
 --   "End"      { BattleId, Mode, Result, Rewards, Outcome, Won, Spectator, Reason } (Rewards.Dungeon = true + Extra in
 --              the dungeon: no result card for a cleared room, DungeonController shows the loot)
 --
@@ -79,7 +80,9 @@
 --     helpers (Low) hover behind me at (-2, 1.2, 2) / (2, 1.2, 2), fly to the fighter on a Buff (0.6 s) and trade
 --     places with it on a Swap (0.5 s). Other players' helpers are not drawn (~1 unit per player in a 16-raid).
 --   * Enemies wind up visibly: Winding plays a crouch + a brief yellow Highlight (the dash cue), their list row flashes
---     "!"; "DODGED!" (cyan) on Hit.miss; buff names float above the fighter in the buff's colour; element attacks draw
+--     "!"; "DODGED!" (cyan) on Hit.miss; wave 6: a Parry shows "PARRY!" (gold) + a gold ring and flash on the pet (Low:
+--     the callout only) and its parried Hit (miss + parry) no DODGED!; the drawn dash follows the event's dir (the
+--     sidestep); buff names float above the fighter in the buff's colour; element attacks draw
 --     their cone / circle / line; camera shakes x ClientSettings.Get("Shake") (Humanoid.CameraOffset, tiny, rare).
 --   * Wave 5 dungeon camera (bugs #15 / #26): the shake rides on the resting CameraOffset (DungeonController's dungeon
 --     shoulder) and gives it back; in a dungeon every hit on my fighter shakes lightly (HIT_SHAKE_LIGHT) and an AttackFx
@@ -3995,9 +3998,9 @@ Handlers[EV.Hit] = function(B, ev)
 	-- AttackFx (played on arrival): a pet's plain attack (its swipe / shot, its Strike pose, the victim's Hurt pose) or
 	-- my pet's hurt from a boss; false = the cube bolt / lunge / nudge below
 	local played = Atk.Result(B, ev)
-	-- Phase 5: a dodged hit (dash i-frames / out of reach at the impact)
+	-- Phase 5: a dodged hit (dash i-frames / out of reach at the impact); wave 6: a parried one already said PARRY!
 	if ev.miss then
-		if victim.root and not victim.parked then
+		if victim.root and not victim.parked and not ev.parry then
 			Fx.Number(victim.root, numberHeight(victim) + 0.4, "DODGED!", COLORS.Dodge, K.CALLOUT_PX, 0.9)
 		end
 		if attacker and not attacker.isBoss then
@@ -4356,6 +4359,21 @@ Handlers[EV.Dash or "Dash"] = function(B, ev)
 	local u = B.units[tonumber(ev.unit) or -1]
 	if u and u.dashEv ~= ev then
 		Me.StartDash(B, u, ev)
+	end
+end
+
+-- wave 6: a timed Dash parried the threat (BattleSim's Parry): "PARRY!" in gold over the pet, a short gold ring + flash
+-- (Low graphics: the callout only). The parried telegraph's Hit (miss + parry) shows no DODGED!. No sound here.
+Handlers[EV.Parry or "Parry"] = function(B, ev)
+	local u = B.units[tonumber(ev.unit) or -1]
+	if not u then
+		return
+	end
+	St.parries = (St.parries or 0) + 1
+	calloutAbove(u, "PARRY!", COLORS.Gold, K.CALLOUT_PX, 1.1)
+	if not St.fxLow and u.root and not u.parked then
+		Fx.Ring(unitCenter(B, u), 2.2, COLORS.Gold, 10, 0.35, 0.35, 0.05)
+		Fx.Flash(u, COLORS.Gold, 0.25)
 	end
 end
 
@@ -9015,6 +9033,7 @@ function BattleController.GetStats()
 		Rejected = St.rejected or 0,
 		Timeouts = St.timeouts or 0,
 		Dashes = St.dashes or 0, -- pet dashes drawn (Dash events)
+		Parries = St.parries or 0, -- wave 6: Parry events shown (PARRY!)
 		Arrivals = St.arrivals or 0, -- arrival effects started (EvolutionFx.Arrive)
 		AttackFx = Atk.Stats(), -- AttackFx.Stats() (nil before the first battle loads it)
 		Focus = (function()
