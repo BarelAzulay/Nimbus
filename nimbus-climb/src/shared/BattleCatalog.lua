@@ -33,7 +33,8 @@
 --                                                                  SupportCooldown 12, Windup 0.45, ArriveSeconds 1.2 (a spawned enemy's entrance),
 --                                                                  KitFactor 1.5, HelperWeight 0.35, Lives 3, WalkMult 1.15, WalkMin 12, WalkMax 20, RunMult 1.3,
 --                                                                  MoveSlack 1.25, Leash 10, LeashSeconds 3, ParryWindow 0.25, ParryStagger
---                                                                  0.4, ParryMeter 8, ParryBossGap 3 (wave 6: a timed Dash parries; no Engage*
+--                                                                  0.4, ParryMeter 8, ParryBossGap 3, CheerBoost 0.05, CheerSeconds 5, CheerCooldown 20
+--                                                                  (wave 6: a timed Dash parries; Cheer up!; no Engage*
 --                                                                  numbers: the pet fights any enemy in the fight area whatever the character
 --                                                                  does; BattleSim "ENGAGE")
 --   BattleCatalog.Fighter.WalkOf(moveSpeed) -> walk (12..20); Fighter.RunOf(walk) -> walk x RunMult; Fighter.SpeedsOf(moveSpeed) -> walk, run
@@ -329,6 +330,10 @@ BattleCatalog.Fighter = {
 	ParryStagger = 0.4, -- the parried attacker: an NPC stunned this long, a boss starts nothing new this long
 	ParryMeter = 8, -- special meter per parried threat
 	ParryBossGap = 3, -- a boss is staggered at most once per this many seconds (a 16-raid of parries must not perma-lock it)
+	-- wave 6: "Cheer up!" (raids and dungeons): the cheering trainer's fighter deals +5% for 5 s, a 20 s cooldown, no stacking
+	CheerBoost = 0.05,
+	CheerSeconds = 5,
+	CheerCooldown = 20,
 	-- wave 6 (the engage rule, BattleSim fighterStep): the pet fights any targetable enemy on the floor (the fight area) and
 	-- the character's movement never pulls it off: EngageRange / EngageLeash / EngagePull / EngageStillSeconds /
 	-- EngageCooldown are gone (the floor is the bound)
@@ -1932,6 +1937,13 @@ function BattleCatalog.Validate()
 	end
 	if not finite(F.ParryBossGap) or not finite(F.ParryStagger) or F.ParryBossGap < F.ParryStagger then
 		bad("Fighter.ParryBossGap must be >= ParryStagger")
+	end
+	-- wave 6: Cheer up! is a really small boost with a cooldown (never a must-spam meta)
+	if not finite(F.CheerBoost) or F.CheerBoost <= 0 or F.CheerBoost > 0.1 then
+		bad("Fighter.CheerBoost must be above 0 and <= 0.1")
+	end
+	if not finite(F.CheerSeconds) or not finite(F.CheerCooldown) or F.CheerSeconds <= 0 or F.CheerSeconds >= F.CheerCooldown then
+		bad("Fighter.CheerSeconds must be above 0 and below CheerCooldown")
 	end
 	-- wave 6: the stand-still engage rule is gone; a stray Engage* number means a half-reverted catalog
 	for _, key in ipairs({ "EngageRange", "EngageLeash", "EngagePull", "EngageStillSeconds", "EngageCooldown" }) do

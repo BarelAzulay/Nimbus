@@ -9,6 +9,9 @@
 --                         perpendicular on the pet's side; no threat = perpendicular to the aim toward the floor centre,
 --                         a corner keeps it on the floor and never closer to the aim; an engaged pet moves along the
 --                         sidestep, then walks back and swings; Validate rejects bad Parry numbers
+--   w6_cheer_core         (server world, pure) Cheer up! in Raid and Dungeon: +5% on the fighter's plain hits (two seeded
+--                         battles compared), Cooldowns.Cheer 20, no stacking, off after 5 s, ready after 20 s; Ring / Duel
+--                         NoCheer, Down, an Npc team refused; Validate
 -- White-box: the server half reaches into battle.units / battle.teams / battle.telegraphs (same Lua state). Plain Lua 5.1
 -- syntax only.
 
@@ -470,6 +473,134 @@ local function serverScenarios()
 			T.check(rejects("ParryWindow", 0.5) and rejects("ParryWindow", 0) and rejects("ParryMeter", 50) and rejects("ParryStagger", 2) and rejects("ParryBossGap", 0.1),
 				"dash/parry (f): Validate rejects ParryWindow 0.5 (> DashIFrames) / 0, ParryMeter 50, ParryStagger 2, ParryBossGap < ParryStagger")
 			T.check(BC.Validate() == true, "dash/parry (f): ...and passes with the shipped numbers")
+		end
+	end)
+
+	------------------------------------------------------------------------------------------------
+	-- w6_cheer_core
+	------------------------------------------------------------------------------------------------
+	S.w6_cheer_core = guarded("w6_cheer_core", function()
+		local BC = loadModule("BattleCatalog")
+		local BS = loadModule("BattleSim")
+		if not T.check(BC and BS, "cheer core: BattleCatalog + BattleSim load") then
+			return
+		end
+		local F = BC.Fighter
+		T.check(F.CheerBoost == 0.05 and F.CheerSeconds == 5 and F.CheerCooldown == 20 and BS.Events.Cheer == "Cheer", "cheer core: Fighter.CheerBoost 0.05 / CheerSeconds 5 / CheerCooldown 20; Events.Cheer")
+
+		-- a battle where my fighter stands next to a target that never fights back: -> battle, fighter, victim
+		local function mk(mode)
+			if mode == "Raid" then
+				local b = BS.new({ Mode = "Raid", Boss = "storm_titan", Seed = 9, Teams = { team(1, 1, { pet("storm_tabby", 12), pet("pebble_pup", 5), pet("honey_bunny", 5) }) } })
+				local boss = b.boss
+				boss.nextAttack = huge
+				for _, entry in ipairs(boss.attacks) do
+					entry.nextAt = huge
+				end
+				boss.wavesDone = { true, true, true, true, true, true }
+				boss.maxHp, boss.hp = 1e8, 1e8
+				local f = b.teams[1].fighter
+				put(f, boss.x, boss.z - boss.radius - 1)
+				b.teams[1].noEngage = true
+				return b, f, boss
+			end
+			local b, tm = world(BS, "storm_tabby", 12, 9)
+			local f = tm.fighter
+			put(f, 0, -10)
+			tm.noEngage = true
+			local e = enemiesAt(b, { { 0, -7 } })[1]
+			return b, f, e
+		end
+
+		-- both battles step together; -> the hp ratio (A / B) of the fighter's plain hits in those steps
+		local function lockstep(A, fA, vA, B, fB, vB, n)
+			local ratios = {}
+			for _ = 1, n do
+				local hA, hB = vA.hp, vB.hp
+				local eA = stepAt(A, fA.x, fA.z)
+				stepAt(B, fB.x, fB.z)
+				local plain = find(eA, "Hit", function(x)
+					return x.from == fA.id and x.to == vA.id and not x.special and not x.element and not x.burn and not x.miss
+				end)
+				if plain and hB - vB.hp > 0 then
+					ratios[#ratios + 1] = { t = A:Time(), r = (hA - vA.hp) / (hB - vB.hp) }
+				end
+			end
+			return ratios
+		end
+		local function allNear(list, want)
+			if #list == 0 then
+				return false
+			end
+			for _, x in ipairs(list) do
+				if abs(x.r - want) > 1e-6 then
+					return false
+				end
+			end
+			return true
+		end
+
+		for _, mode in ipairs({ "Raid", "Dungeon" }) do
+			local A, fA, vA = mk(mode)
+			local B, fB, vB = mk(mode)
+			fA.specialKind, fB.specialKind = nil, nil -- (plain hits only; the element / special keep their own paths)
+			local t0 = A:Time()
+			local ok, why = A:Command(1, "Cheer")
+			local cheerEv = find(pendingOf(A), "Cheer")
+			T.check(ok == true and cheerEv ~= nil and cheerEv.owner == 1 and cheerEv.unit == fA.id and abs(cheerEv.untilT - (t0 + 5)) < 0.06 and A:TeamOf(1).Cheering == true,
+				"cheer core (" .. mode .. "): Cheer -> true, ONE Cheer { owner, unit, untilT = t + 5 }, TeamOf.Cheering", tostring(why))
+			T.check(abs(A:TeamOf(1).Cooldowns.Cheer - 20) < 1e-6 and B:TeamOf(1).Cooldowns.Cheer == 0, "cheer core (" .. mode .. "): TeamOf.Cooldowns.Cheer = 20 (0 when never used)")
+			local r1 = lockstep(A, fA, vA, B, fB, vB, 10)
+			T.check(allNear(r1, 1.05), "cheer core (" .. mode .. "): the cheered fighter's plain hits deal exactly x1.05 of the same seed's uncheered hits",
+				r1[1] and fmt("%d hits, first ratio %.6f", #r1, r1[1].r) or "no hit")
+			local ok2, why2, left = A:Command(1, "Cheer")
+			local r2 = lockstep(A, fA, vA, B, fB, vB, 25)
+			local early = {}
+			for _, x in ipairs(r2) do
+				if x.t < t0 + 5 - 0.05 then
+					early[#early + 1] = x
+				end
+			end
+			T.check(ok2 == false and why2 == "Cooldown" and left and left > 18 and allNear(early, 1.05),
+				"cheer core (" .. mode .. "): a second Cheer at +1 s -> false, Cooldown (the seconds left); the boost stays x1.05 (never x1.1025)", fmt("%s %s, %d hits", tostring(why2), tostring(left), #early))
+			while A:Time() < t0 + 5.05 do
+				lockstep(A, fA, vA, B, fB, vB, 1)
+			end
+			local r3 = lockstep(A, fA, vA, B, fB, vB, 20)
+			T.check(allNear(r3, 1.0) and A:TeamOf(1).Cheering == false, "cheer core (" .. mode .. "): after CheerSeconds the ratio is 1.0 (Cheering false)", r3[1] and fmt("%.6f", r3[1].r) or "no hit")
+			while A:Time() < t0 + 20.05 do
+				lockstep(A, fA, vA, B, fB, vB, 1)
+			end
+			T.check(A:Command(1, "Cheer") == true, "cheer core (" .. mode .. "): at +20.05 s Cheer works again")
+		end
+
+		-- refusals: Ring / Duel (the podium cheer there is visual only), a Down fighter, an Npc team
+		do
+			local ring = BS.new({ Mode = "Ring", Seed = 2, Round = 1, Teams = { team(1, 1, { pet("storm_tabby", 12) }), BC.ChampionTeam(1, 2) } })
+			local duel = BS.new({ Mode = "Duel", Seed = 2, Teams = { team(1, 1, { pet("storm_tabby", 12) }), team(2, 2, { pet("storm_tabby", 12) }) } })
+			local okR, whyR = ring:Command(1, "Cheer")
+			local okD, whyD = duel:Command(1, "Cheer")
+			T.check(okR == false and whyR == "NoCheer" and okD == false and whyD == "NoCheer", "cheer core: Ring and Duel -> false, NoCheer", tostring(whyR) .. " / " .. tostring(whyD))
+			local b = BS.new({ Mode = "Dungeon", Seed = 2, Teams = { team(1, 1, { pet("storm_tabby", 12) }) } })
+			local infos = b:SpawnEnemies({ pet("biscuit_bear", 5) }, { Wave = 1, Anchor = { 0, 10 } })
+			local okN, whyN = b:Command("wave:1", "Cheer")
+			T.check(infos and okN == false and whyN ~= nil, "cheer core: an Npc (wave) team -> refused", tostring(whyN))
+			b.teams[1].fighter.alive = false -- white-box: the last pet down
+			local okX, whyX = b:Command(1, "Cheer")
+			T.check(okX == false and whyX == "Down", "cheer core: the fighter Down -> false, Down", tostring(whyX))
+		end
+
+		-- Validate
+		do
+			local function rejects(key, value)
+				local old = F[key]
+				F[key] = value
+				local ok = BC.Validate()
+				F[key] = old
+				return ok == false
+			end
+			T.check(rejects("CheerBoost", 0.2) and rejects("CheerSeconds", 20) and rejects("CheerBoost", 0) and BC.Validate() == true,
+				"cheer core: Validate rejects CheerBoost 0.2 / 0 and CheerSeconds 20 (not below the cooldown); passes as shipped")
 		end
 	end)
 

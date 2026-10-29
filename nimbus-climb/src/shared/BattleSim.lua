@@ -67,6 +67,10 @@
 --                                     range) of the target. Back to FOLLOW only when no target is left (a wave still arriving, the
 --                                     fight's end); a Swap / the fighter's KO / RemoveTeam drop it too. Harness Auto teams
 --                                     (autoFighter) never engage: today's exact behaviour.
+--     "Cheer" ()                      wave 6, Raid / Dungeon only ("Cheer up!"): the fighter deals x (1 + CheerBoost 0.05) for
+--                                     CheerSeconds 5; cooldown CheerCooldown 20; never stacks (a cheer SETS the window). Refused:
+--                                     NoCheer (Ring / Duel: the podium cheer there is visual only), Down, Cooldown (extra =
+--                                     seconds left). Event Cheer { owner, unit (the fighter), untilT }
 --     "Forfeit" ()                    Duel / Ring: the team is knocked out; Raid / Dungeon: RemoveTeam
 --   battle:Step(dt) -> events;  battle:Snapshot();  battle:SnapshotDelta(last);  BattleSim.DecodeSnapshot(payload, prev)
 --   battle:AddTeam(team) -> infos | nil, reason;  battle:RemoveTeam(owner) -> ok
@@ -75,7 +79,8 @@
 --   battle:LivingEnemies() -> n;  battle:BossHp() -> 0..1 | nil;  battle:Finish(reason) -> ok, events  ("Cleared" = side 1 wins,
 --                                     "Abandoned" / "Shutdown" / ... = no winner);  battle:Abort(reason) = Finish
 --   battle:TeamOf(owner) -> { Owner, Side, Fighter = id, Bench = { id, id }, Lives, Speed = { Walk, Run }, Cooldowns = { Element, Dash,
---                                     Swap, Buff = { [slot] = seconds } }, Lock, Engaged (the engaged target id | nil), Damage, Kills,
+--                                     Swap, Cheer, Buff = { [slot] = seconds } }, Lock, Engaged (the engaged target id | nil),
+--                                     Cheering (the Cheer up! boost is on), Damage, Kills,
 --                                     Left, Forfeited, Units = { {id, slot, hp,
 --                                     maxHp, meter, state, alive, bench}... } }
 --   battle:SpeedOf(owner) -> { Walk, Run }   the fighter's current legal speeds (speed buffs / slows included)
@@ -101,6 +106,7 @@
 --   Order      { owner, order, target, rejected }   (every refused command echoes `rejected`; Attack / Target / Forfeit echo when accepted)
 --   Element    { unit, element, name, x, z, angle | tx, tz, targets }
 --   Dash       { unit, dir = { dx, dz } (the SIDESTEP: unit vector in floor space, 0.01 steps), target (the threat's source | nil) }
+--   Cheer      { owner, unit (the fighter), untilT (the boost's end, battle time) }
 --   Parry      { unit (the fighter), from (the attacker), tele (the telegraph id | nil) }; the parried telegraph's Hit on the
 --              fighter is { miss = true, parry = true }
 --   Buff       { owner, unit (the helper), kind, name, until, target (the fighter), amount, heals = { { id, hp }... } (Heal:
@@ -160,8 +166,9 @@ BattleSim.Events = {
 	Speed = "Speed",
 	Engage = "Engage",
 	Parry = "Parry",
+	Cheer = "Cheer",
 }
-BattleSim.Actions = { "Attack", "Element", "Special", "Dash", "Target", "Buff", "Swap", "Move", "Forfeit" }
+BattleSim.Actions = { "Attack", "Element", "Special", "Dash", "Target", "Buff", "Swap", "Move", "Cheer", "Forfeit" }
 BattleSim.Modes = { "Duel", "Raid", "Ring", "Dungeon" }
 local MODE_OK = {}
 for _, m in ipairs(BattleSim.Modes) do
@@ -273,6 +280,7 @@ local FALLBACK_FIGHTER = {
 	SwapCastSeconds = 0.6, BenchRegenPerSecond = 0, ArriveSeconds = 1.2, DownAutoSwap = true, HelperCooldown = 15, SupportCooldown = 12, Windup = 0.45,
 	KitFactor = 1.5, HelperWeight = 0.35, Lives = 3, WalkMult = 1.15, WalkMin = 12, WalkMax = 20, RunMult = 1.3, MoveSlack = 1.25,
 	Leash = 10, LeashSeconds = 3, ParryWindow = 0.25, ParryStagger = 0.4, ParryMeter = 8, ParryBossGap = 3,
+	CheerBoost = 0.05, CheerSeconds = 5, CheerCooldown = 20,
 }
 
 local function damageRules()
@@ -472,6 +480,8 @@ local function newTeamRecord(self, spec, side)
 		elementReadyAt = 0,
 		dashReadyAt = 0,
 		swapReadyAt = 0,
+		cheerUntil = 0, -- wave 6: the Cheer up! boost window and its cooldown
+		cheerReadyAt = 0,
 		lastWalk = nil,
 		lastRun = nil,
 		wave = finite(spec.Wave) and floor(spec.Wave) or nil,
@@ -1295,8 +1305,10 @@ function BattleSim:TeamOf(owner)
 			Element = max(0, team.elementReadyAt - t),
 			Dash = max(0, team.dashReadyAt - t),
 			Swap = max(0, team.swapReadyAt - t),
+			Cheer = max(0, team.cheerReadyAt - t),
 			Buff = buffs,
 		},
+		Cheering = t < team.cheerUntil,
 		Lock = team.lock and team.lock.id or nil,
 		Engaged = team.engage and team.engage.target.id or nil,
 		Damage = team.damage,
@@ -1625,9 +1637,13 @@ local function knockOut(self, u, by, events, forfeit)
 	end
 end
 
--- the attacker's damage multiplier from its buffs / statuses (Rally / Blaze, Weaken)
+-- the attacker's damage multiplier from its buffs / statuses (Rally / Blaze, Weaken; wave 6: the trainer's Cheer up!)
 local function attackMult(self, attacker)
 	local m = 1
+	local team = attacker.team
+	if team and team.player and attacker == team.fighter and self.t < (team.cheerUntil or 0) then
+		m = m * (1 + num(fighterRules().CheerBoost, 0.05))
+	end
 	if attacker.dmgBuffUntil and self.t < attacker.dmgBuffUntil then
 		m = m * attacker.dmgBuffMult
 	end
@@ -3749,6 +3765,19 @@ function doCommand(self, team, action, arg, events)
 		for _, ev in ipairs(parries) do
 			events[#events + 1] = ev
 		end
+		return true
+	elseif action == "Cheer" then
+		-- wave 6: the trainer's "Cheer up!" (dungeon + raid only; the Ring / PvP podium cheer is visual only)
+		if self.mode ~= "Raid" and self.mode ~= "Dungeon" then
+			return false, "NoCheer"
+		end
+		if t < team.cheerReadyAt then
+			return false, "Cooldown", r1(team.cheerReadyAt - t)
+		end
+		-- SET, never add: a cheer never stacks
+		team.cheerUntil = t + num(F.CheerSeconds, 5)
+		team.cheerReadyAt = t + num(F.CheerCooldown, 20)
+		events[#events + 1] = { type = EV.Cheer, owner = team.owner, unit = f.id, untilT = r1(team.cheerUntil) }
 		return true
 	elseif action == "Buff" then
 		local slot = tonumber(arg)
