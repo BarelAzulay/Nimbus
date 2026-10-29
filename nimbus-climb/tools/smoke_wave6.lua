@@ -16,6 +16,14 @@
 --                         the Cheer event to both members; 40 calls in 1 s = ONE accepted, <= 1 rejected echo a step, ONE
 --                         throttled toast, no stacking; junk refused without errors; no battle -> NoBattle; the Start
 --                         payload's Team.Cooldowns.Cheer = 0; a raid accepts it, a duel refuses NoCheer
+--   w6_podium_find        (server world, booted) the podium = the stand each mode teleports the trainer to: the Ring's
+--                         Zone.Spawn sits on the pocket's SpawnPad (outside the 44-stud floor), each duellist's stand on a
+--                         ChallengePad of its ring
+--   w6_podium_lock        (server world, booted) Ring round start = root Anchored at the SpawnPad + OnPodium; a 6-stud
+--                         nudge undone in one tick; Cheer = NoCheer; 12 s locked = no leash, the pet waits at the floor
+--                         edge; the round's End frees it, the next round re-locks; one toast a run; death mid-round /
+--                         respawn never leave an anchored character; a duel locks both, a forfeit frees both; a
+--                         disconnect clears the record; Shutdown frees everyone; raid joiners / dungeon members never
 -- White-box: the server half reaches into battle.units / battle.teams / battle.telegraphs (same Lua state). Plain Lua 5.1
 -- syntax only.
 
@@ -897,6 +905,295 @@ local function serverScenarios()
 		cleanup({ x, y })
 		K.flushErrors("w6_cheer_service")
 		K.flushWarnings("w6_cheer_service", ALLOWED_WARNINGS)
+	end)
+
+	------------------------------------------------------------------------------------------------
+	-- the podium (booted): helpers
+	------------------------------------------------------------------------------------------------
+	local function freeSpot()
+		local SS = req("server/Services/SpotService")
+		local spots = (K.W.lobbyInfo and K.W.lobbyInfo.Spots) or {}
+		for i = 1, K.config().Lobby.SpotCount do
+			if spots[i] and not (SS and SS.GetOwner(i)) then
+				return i
+			end
+		end
+		return nil
+	end
+
+	local function claimHome(p)
+		local Ty = req("server/Services/TycoonService")
+		local index = freeSpot()
+		if not Ty or not index then
+			return nil
+		end
+		local ok = Ty.Claim(p, index)
+		advance(0.6)
+		if not ok then
+			return nil
+		end
+		Ty.Buy(p, "Garden")
+		advance(0.3)
+		return index
+	end
+
+	local function ringPortalPos()
+		local info = arenaInfo()
+		local portal = info and info.RingPortal
+		if typeof(portal) == "Instance" then
+			return portal:IsA("BasePart") and portal.Position or portal:GetPivot().Position
+		elseif type(portal) == "table" and typeof(portal.Position) == "Vector3" then
+			return portal.Position
+		elseif typeof(portal) == "CFrame" then
+			return portal.Position
+		end
+		local inst = workspace:FindFirstChild("Portal_Ring", true)
+		if inst then
+			return inst:IsA("BasePart") and inst.Position or inst:GetPivot().Position
+		end
+		return nil
+	end
+
+	local function rootOf(p)
+		return Mock.GetRoot(p)
+	end
+
+	-- a Champion Ring run for a fresh level-1 climber: -> player, run record, battle record | nil
+	local function ringRun(bs, prefix)
+		local pos = ringPortalPos()
+		if not pos then
+			return nil
+		end
+		local p = newPlayer(prefix, { "pebble_pup" }, 1) -- (a weak climber: a round lasts long enough to look at)
+		claimHome(p)
+		Mock.Teleport(p, CFrame.new(pos + Vector3.new(0, 3, 6)))
+		advance(0.1)
+		local ok, id = bs.StartRing(p, 1)
+		advance(0.3)
+		local st = serviceState(bs)
+		local run = st and st.ringRuns and st.ringRuns[p]
+		return p, run, ok and run and run.Battle or nil, id
+	end
+
+	-- the ring run's current round ends as a win at once (white-box: BattleSim Finish("Cleared") = side 1 wins)
+	local function winRound(run)
+		local b = run and run.Battle
+		if b and b.Sim then
+			b.Sim:Finish("Cleared")
+		end
+		advance(0.3)
+	end
+
+	local function padUnder(model, name, pos)
+		for _, d in ipairs(model:GetDescendants()) do
+			if d:IsA("BasePart") and d.Name == name then
+				local lp = d.CFrame:PointToObjectSpace(pos)
+				if math.abs(lp.X) <= d.Size.X / 2 + 0.01 and math.abs(lp.Z) <= d.Size.Z / 2 + 0.01 then
+					return d, lp.Y - d.Size.Y / 2
+				end
+			end
+		end
+		return nil
+	end
+
+	------------------------------------------------------------------------------------------------
+	-- w6_podium_find (booted): the stands ARE the pads
+	------------------------------------------------------------------------------------------------
+	S.w6_podium_find = guarded("w6_podium_find", function()
+		if not K.needBoot() then
+			return
+		end
+		local bs = req("server/Services/BattleService")
+		if not T.check(bs and arenaInfo() ~= nil and ringPortalPos() ~= nil, "podium find: BattleService, the arena and the Champion Ring portal") then
+			return
+		end
+		local p, run, b, why = ringRun(bs, "PodRing")
+		if T.check(run ~= nil and b ~= nil and typeof(run.Zone.Spawn) == "CFrame" and run.Zone.Pocket and run.Zone.Pocket.Model, "podium find: (setup) a Champion Ring run with its pocket",
+			fmt("run %s, battle %s, %s, state %s, round %s, ok %s", tostring(run), tostring(b), tostring(why), tostring(run and run.State), tostring(run and run.Round), tostring(run and run.LastId))) then
+			local spawn = run.Zone.Spawn
+			local pad, above = padUnder(run.Zone.Pocket.Model, "SpawnPad", spawn.Position)
+			local lpos = run.Zone.CFrame:PointToObjectSpace(spawn.Position)
+			local x, z = lpos.X, lpos.Z
+			T.check(pad ~= nil and above >= 0 and above <= 3.5 and pad.Size.X <= 7.01 and pad.Size.Z <= 7.01,
+				"podium find: the Ring's stand (Zone.Spawn) is on the pocket's SpawnPad (top within 3.5 studs under it, inside its 7 x 7 footprint)",
+				pad and fmt("%.2f above the pad top", above) or "no SpawnPad under the stand")
+			T.check(math.abs(z) > run.Zone.Z / 2 or math.abs(x) > run.Zone.X / 2, "podium find: ...outside the 44-stud fighting floor", fmt("local %.1f, %.1f", x, z))
+		end
+		cleanup({ p })
+		local a = newPlayer("PodDa", MID, 10)
+		local c = newPlayer("PodDb", MID, 10)
+		toArena(a, 3, 0)
+		toArena(c, -3, 0)
+		local okD, idD = bs.StartDuel(a, c)
+		advance(0.3)
+		local bd = okD and battleRecord(bs, idD)
+		local ring = bd and arenaInfo().Rings[bd.RingIndex]
+		local onPads = 0
+		for _, pl in ipairs({ a, c }) do
+			local root = rootOf(pl)
+			for _, pad in ipairs(ring and ring.Pads or {}) do
+				if pad.Name == "ChallengePad" and root then
+					local lp = pad.CFrame:PointToObjectSpace(root.Position)
+					if math.abs(lp.X) <= pad.Size.X / 2 + 0.5 and math.abs(lp.Z) <= pad.Size.Z / 2 + 0.5 and lp.Y >= 0 and lp.Y <= 3.6 then
+						onPads = onPads + 1
+						break
+					end
+				end
+			end
+		end
+		T.check(okD and onPads == 2, "podium find: each duellist's stand (duelStand) is on a ChallengePad of that ring", fmt("%d of 2 on a pad", onPads))
+		cleanup({ a, c })
+		K.flushErrors("w6_podium_find")
+		K.flushWarnings("w6_podium_find", ALLOWED_WARNINGS)
+	end)
+
+	------------------------------------------------------------------------------------------------
+	-- w6_podium_lock (booted)
+	------------------------------------------------------------------------------------------------
+	S.w6_podium_lock = guarded("w6_podium_lock", function()
+		if not K.needBoot() then
+			return
+		end
+		local bs = req("server/Services/BattleService")
+		local Config = req("shared/Config")
+		if not T.check(bs and Config and Config.Attr.OnPodium == "OnPodium" and ringPortalPos() ~= nil, "podium lock: BattleService, Config.Attr.OnPodium, the ring portal") then
+			return
+		end
+		local ATTR = Config.Attr.OnPodium
+		local function locked(p)
+			local root = rootOf(p)
+			return root ~= nil and root.Anchored == true and p:GetAttribute(ATTR) == true
+		end
+		local function free(p)
+			local root = rootOf(p)
+			return (root == nil or root.Anchored == false) and p:GetAttribute(ATTR) == nil
+		end
+		-- the Ring: the round locks the climber on the SpawnPad
+		local m0 = K.logSize()
+		local p, run, b = ringRun(bs, "PodLock")
+		if not T.check(run ~= nil and b ~= nil, "podium lock: (setup) a ring run") then
+			cleanup({ p })
+			return
+		end
+		local spawn = run.Zone.Spawn
+		T.check(locked(p) and (rootOf(p).Position - spawn.Position).Magnitude < 0.5, "podium lock: a Ring round start: the root is Anchored on the SpawnPad, OnPodium = true")
+		local okC, whyC = bs.Command(p, "Cheer")
+		T.check(okC == false and whyC == "NoCheer", "podium lock: Cheer in the Ring -> NoCheer (the podium cheer is visual only)", tostring(whyC))
+		-- a scripted move of the root 6 studs away is undone within one tick
+		Mock.Teleport(p, spawn * CFrame.new(6, 0, 0))
+		advance(0.05)
+		T.check((rootOf(p).Position - spawn.Position).Magnitude <= 2 and locked(p), "podium lock: a root moved 6 studs off the pad is put back within one tick")
+		-- the Move feed still runs: the champion untargetable, 12 s locked: no leash, the pet waits at the floor edge by the pad
+		for _, u in ipairs(b.Sim.units) do
+			if u.side == 2 then
+				u.arriveUntil = math.huge
+				u.nextAttack = math.huge
+			end
+		end
+		advance(12)
+		local f = b.Sim.teams[1].fighter
+		local spos = run.Zone.CFrame:PointToObjectSpace(spawn.Position)
+		local sx, sz = spos.X, spos.Z
+		local hx, hz = run.Zone.X / 2 - f.radius, run.Zone.Z / 2 - f.radius
+		local ex, ez = math.max(-hx, math.min(hx, sx)), math.max(-hz, math.min(hz, sz))
+		T.check(bs.IsInBattle(p) and run.Battle == b and locked(p) and d2(f.x, f.z, ex, ez) < 2.5, "podium lock: 12 s locked: no leash, the pet FOLLOWs to the floor edge by the pad",
+			fmt("pet %.1f from the edge point", d2(f.x, f.z, ex, ez)))
+		for _, u in ipairs(b.Sim.units) do
+			if u.side == 2 then
+				u.arriveUntil = nil
+			end
+		end
+		-- the round's End: free for the intermission; the next round re-locks at the pad
+		winRound(run)
+		T.check(free(p) and run.State == "Intermission", "podium lock: the round's End -> unanchored, OnPodium nil (the intermission is free)", tostring(run.State))
+		local tWait = Mock.Clock.now
+		while run.State ~= "Fighting" and Mock.Clock.now - tWait < 8 do
+			advance(0.2)
+		end
+		advance(0.2)
+		T.check(run.State == "Fighting" and locked(p) and (rootOf(p).Position - spawn.Position).Magnitude < 0.5, "podium lock: the next round re-locks the climber on the pad")
+		local nToast = 0
+		for _, e in ipairs(K.remotesFor("Notify", p.UserId, m0)) do
+			if tostring(e.args[1]) == "You're the trainer: cheer your pet on from the podium!" then
+				nToast = nToast + 1
+			end
+		end
+		T.check(nToast == 1, "podium lock: ONE toast for the run: \"You're the trainer: cheer your pet on from the podium!\"", nToast .. " toasts")
+		-- Review Focus 2: death mid-round -> the lock lets go; the new character is never anchored
+		local oldRoot = rootOf(p)
+		Mock.Kill(p)
+		advance(0.1)
+		T.check(oldRoot.Anchored == false and p:GetAttribute(ATTR) == nil, "podium lock: death mid-round: the dead root is unanchored, OnPodium nil")
+		Mock.Respawn(p)
+		advance(0.5)
+		T.check(free(p) and rootOf(p) ~= oldRoot, "podium lock: ...and the fresh character is not anchored")
+		cleanup({ p })
+
+		-- a duel: both locked on their pads; a forfeit releases both
+		local a = newPlayer("PodLa", MID, 10)
+		local c = newPlayer("PodLb", MID, 10)
+		toArena(a, 3, 0)
+		toArena(c, -3, 0)
+		local okD = bs.StartDuel(a, c)
+		advance(0.3)
+		T.check(okD and locked(a) and locked(c), "podium lock: a duel: both duellists are locked on their pads")
+		bs.Forfeit(a)
+		advance(0.5)
+		T.check(free(a) and free(c), "podium lock: a forfeit releases both duellists")
+		-- a disconnect clears the lock record
+		toArena(a, 3, 0)
+		toArena(c, -3, 0)
+		advance(6)
+		local okD2 = bs.StartDuel(a, c)
+		advance(0.3)
+		local Podium = req("server/Services/Podium")
+		local wasLocked = Podium and Podium.IsLocked(a)
+		K.removePlayers({ a })
+		advance(1)
+		T.check(okD2 and wasLocked and Podium and not Podium.IsLocked(a), "podium lock: a disconnect clears the lock record")
+		advance(1)
+		T.check(free(c), "podium lock: ...and the opponent is free once the duel ends")
+		cleanup({ c })
+
+		-- Shutdown releases everyone
+		local q, qrun = ringRun(bs, "PodShut")
+		local wasQ = qrun and locked(q)
+		bs.Shutdown()
+		advance(0.3)
+		T.check(wasQ and free(q), "podium lock: BattleService.Shutdown() releases everyone")
+		bs.SetClosing(false)
+		cleanup({ q })
+
+		-- a raid joiner and a dungeon member are never locked
+		local startRaid = holdRaidSchedule(bs)
+		if bs.GetRaidStatus() ~= nil then
+			bs.EndRaid()
+			advance(0.2)
+		end
+		local r = newPlayer("PodRaid", STRONG, 20)
+		toArena(r, 0, 6)
+		local okR = startRaid("lava_golem")
+		local okJ = okR and bs.JoinRaid(r)
+		advance(1)
+		local raidFree = free(r)
+		bs.EndRaid()
+		advance(0.3)
+		releaseRaidSchedule(bs)
+		local dm = newPlayer("PodDgn", STRONG, 20)
+		local idE, partE = encounter(bs, { dm }, 6203)
+		advance(1)
+		local dgnFree = free(dm)
+		if idE then
+			bs.FinishEncounter(idE, "Abandoned")
+		end
+		advance(0.3)
+		if partE then
+			partE:Destroy()
+		end
+		T.check(okJ and raidFree and idE ~= nil and dgnFree, "podium lock: a raid joiner and a dungeon member are never locked")
+		cleanup({ r, dm })
+		K.flushErrors("w6_podium_lock")
+		K.flushWarnings("w6_podium_lock", ALLOWED_WARNINGS)
 	end)
 
 	return S

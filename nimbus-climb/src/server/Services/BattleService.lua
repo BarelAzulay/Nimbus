@@ -114,6 +114,12 @@
 --   * Dungeon: the encounter API above (one encounter per ROOM, a fresh BattleSim with full HP, C1). Forfeit is refused in a
 --     dungeon ("Use LEAVE": DungeonService's Quit calls RemoveEncounterTeam); `present` = inside the encounter's zone part
 --     (+ ZONE_MARGIN); a leaver / leash / disconnect = RemoveEncounterTeam (the others fight on).
+--   * Wave 6, the PODIUM (Services/Podium.lua): in a Champion Ring round and a PvP duel the trainer is locked on the stand
+--     this service teleports them to (the Ring pocket's SpawnPad = run.Zone.Spawn, re-teleported every round; the duel
+--     side's ChallengePad = duelStand): the root anchored, Config.Attr.OnPodium = true (the client loops the cheer emote),
+--     one toast a run / duel. Released at the round's end (the intermission is free), releaseParticipant (the end, Leave /
+--     Forfeit, a leaver), Shutdown, a death / respawn / disconnect, and a game teleport > Podium.LET_GO studs away (the
+--     presence check / leash then judge it as before). Never in raids or dungeons.
 --
 -- The loop: on Heartbeat every running battle runs the fixed 0.1 s steps that are due against the wall clock (a stalled
 -- server catches up at most MAX_CATCHUP steps per frame, merging their events into one message). Before the steps of a
@@ -245,6 +251,19 @@ local BattleCatalog = loadShared("BattleCatalog")
 local PetKeys = loadShared("PetKeys")
 local PetCatalog = loadShared("PetCatalog")
 local TycoonCatalog = loadShared("TycoonCatalog") -- Phase 4: XpToNext for the pet cards' xp / xpNext in "Start"
+-- wave 6: the podium lock of the Champion Ring / PvP trainer (a sibling module: Services/Podium.lua)
+local Podium = nil
+do
+	local inst = script.Parent and script.Parent:FindFirstChild("Podium")
+	if inst then
+		local ok, result = pcall(require, inst)
+		if ok and type(result) == "table" then
+			Podium = result
+		else
+			warn("[BattleService] Podium failed to load: " .. tostring(result))
+		end
+	end
+end
 
 ----------------------------------------------------------------------
 -- Tunables (Config.Battle does not exist: local constants, listed as a deviation)
@@ -1689,6 +1708,10 @@ end
 
 local function releaseParticipant(b, part)
 	local player = part.Player
+	-- wave 6: off the podium (only this battle's / ring run's lock: a ring's next round keeps its own)
+	if Podium and typeof(player) == "Instance" then
+		Podium.Release(player, b.Ring and b.Ring.Id or b.Id)
+	end
 	if St.battleOf[player] == b then
 		St.battleOf[player] = nil
 		if not part.KeepInBattle then
@@ -2404,6 +2427,11 @@ local function startDuel(pa, pb)
 	addParticipant(b, pb, 2, specB)
 	teleport(pa, duelStand(zone, ring, 1))
 	teleport(pb, duelStand(zone, ring, 2))
+	-- wave 6: the duellists are the trainers: locked on their ChallengePads for the fight (Podium)
+	if Podium then
+		Podium.Lock(pa, duelStand(zone, ring, 1), id)
+		Podium.Lock(pb, duelStand(zone, ring, 2), id)
+	end
 	beginBattle(b)
 	sendLobby(pa)
 	sendLobby(pb)
@@ -3132,6 +3160,13 @@ function RingRun.startRound(run)
 	run.State = "Fighting"
 	addParticipant(b, player, 1, spec) -- St.battleOf + InBattle move to the new round at once
 	St.pocketBusy[run.PocketIndex] = id
+	-- wave 6: every round starts with the trainer on the pocket's SpawnPad, locked there for the round (Podium)
+	if typeof(run.Zone.Spawn) == "CFrame" then
+		teleport(player, run.Zone.Spawn)
+		if Podium then
+			Podium.Lock(player, run.Zone.Spawn, run.Id)
+		end
+	end
 	beginBattle(b)
 	return true, id
 end
@@ -3161,6 +3196,10 @@ end
 -- round; anything else ends the run the trial way
 function RingRun.afterBattle(b, result)
 	local run = b.Ring
+	-- wave 6: the round is over: off the podium (the intermission is free; the next round re-locks)
+	if Podium and run and typeof(run.Player) == "Instance" then
+		Podium.Release(run.Player, run.Id)
+	end
 	if not run then
 		task.delay(C.RETURN_DELAY, function()
 			pcall(finishPocket, b)
@@ -4876,6 +4915,12 @@ end
 -- Heartbeat: every running battle steps whenever its fixed 0.1 s steps are due (one snapshot per step at 60 fps, a
 -- stalled frame runs at most MAX_CATCHUP steps in one message)
 local function onHeartbeat()
+	if Podium then
+		local okP, errP = pcall(Podium.Tick) -- wave 6: a locked trainer stays on the podium; dead / gone locks let go
+		if not okP then
+			warn("[BattleService] Podium.Tick failed: " .. tostring(errP))
+		end
+	end
 	if not St.running or #St.order == 0 then
 		return
 	end
@@ -4932,6 +4977,9 @@ function BattleService.Shutdown()
 	if raid and not raid.Battle then
 		raidEndedWithoutPlayers(raid, "Shutdown")
 	end
+	if Podium then
+		Podium.ReleaseAll() -- wave 6: nobody stays anchored
+	end
 	return true
 end
 
@@ -4959,6 +5007,9 @@ function BattleService.Init(deps)
 	St.initialized = true
 	deps = type(deps) == "table" and deps or {}
 	St.deps = deps
+	if Podium then
+		Podium.Init({ Notify = notify })
+	end
 	if type(deps.ArenaBuilder) == "table" then
 		St.arenaBuilder = deps.ArenaBuilder
 	end

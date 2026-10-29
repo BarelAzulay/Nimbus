@@ -84,6 +84,8 @@ Config.Attr = {
 	Berries = "Berries", -- whole berries (DataService only, inside AddBerries / SpendBerries, <= 2 writes/s)
 	ObbyLevel = "ObbyLevel", -- the obby difficulty id the player picked at the Obby gate (PortalService writes)
 	ProfileLoaded = "ProfileLoaded", -- true once the profile is loaded or provisional (DataService writes; the loading screen reads it)
+	-- wave 6 (fight focus): the trainer is locked on the podium (Champion Ring / PvP duel); the client loops the cheer emote
+	OnPodium = "OnPodium", -- bool, absent when free (BattleService / Podium write)
 }
 
 Config.Remotes = {

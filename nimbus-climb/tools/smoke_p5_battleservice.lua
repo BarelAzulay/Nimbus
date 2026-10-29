@@ -539,6 +539,24 @@ local function battleOf(battleId)
 	return nil
 end
 
+-- wave 6: every pet fights any enemy in the fight area by itself; a test that needs a pet that only FOLLOWs its character
+-- holds the engage rule off (white-box: the sim team's noEngage), and a duellist the podium lock holds is let go
+local function holdEngage(battleId, userId)
+	local b = battleOf(battleId)
+	local team = b and b.Sim and b.Sim.teamByOwner and b.Sim.teamByOwner[userId]
+	if team then
+		team.noEngage = true
+	end
+	return team ~= nil
+end
+
+local function freePodium(p)
+	local podium = req("server/Services/Podium")
+	if podium then
+		podium.Release(p)
+	end
+end
+
 -- dungeon fixes (4): fighters auto-attack; a test that needs a PASSIVE player holds every pet's swing (white-box)
 local function holdAttacks(battleId, userId)
 	local b = battleOf(battleId)
@@ -648,6 +666,8 @@ S.p5svc_commands = scenario("p5svc_commands", function()
 		return
 	end
 	advance(0.3)
+	holdEngage(id, x.UserId) -- (the command ladder is measured here; wave 6 pets would fight on their own)
+	holdEngage(id, y.UserId)
 	local tx = tracker(x)
 	tx.cursor = mark
 	pump(tx)
@@ -858,6 +878,11 @@ S.p5svc_position = scenario("p5svc_position", function()
 		return
 	end
 	advance(0.5)
+	-- (the FOLLOW cap and the FOLLOW leash are measured here: the wave 6 engage rule and the podium lock held off)
+	holdEngage(id, a.UserId)
+	holdEngage(id, b.UserId)
+	freePodium(a)
+	freePodium(b)
 	local ta = tracker(a)
 	ta.cursor = mark
 	pump(ta)
@@ -917,6 +942,11 @@ S.p5svc_position = scenario("p5svc_position", function()
 	bs.JoinRaid(r1)
 	bs.JoinRaid(r2)
 	advance(0.5)
+	do
+		-- (the FOLLOW leash: wave 6 skips it while the pet fights, the floor bounds the pet; held off here)
+		local stR = bs.GetRaidStatus()
+		holdEngage(stR and stR.BattleId, r1.UserId)
+	end
 	local tr1 = tracker(r1)
 	tr1.cursor = mark
 	pump(tr1)
@@ -949,7 +979,8 @@ S.p5svc_position = scenario("p5svc_position", function()
 	end
 	local e1 = lastMsg(r1, "End", m4)
 	local st = bs.GetRaidStatus()
-	T.check(e1 and e1.Outcome == "Left" and removedAt and removedAt >= F.LeashSeconds - 0.3 and removedAt <= F.LeashSeconds + 1.6 and st and st.Players == 1 and bs.IsInBattle(r2)
+	-- (wave 6: the FOLLOW leash counts from the teleport's first tick, no engage to drop first: -0.4 s tick slack)
+	T.check(e1 and e1.Outcome == "Left" and removedAt and removedAt >= F.LeashSeconds - 0.4 and removedAt <= F.LeashSeconds + 1.6 and st and st.Players == 1 and bs.IsInBattle(r2)
 		and r1:GetAttribute("InBattle") == nil and toasted(r1, "ran off", m4),
 		"p5 pos: a raider leashed out is removed from the raid (End Outcome Left, the others fight on)", string.format("after %.1f s, players %s", removedAt or -1, st and tostring(st.Players) or "nil"))
 	bs.EndRaid()
@@ -1279,6 +1310,8 @@ S.p5svc_duel_fair = scenario("p5svc_duel_fair", function()
 	toArena(b, -3, 0)
 	local m3 = K.logSize()
 	local ok2, id2 = bs.StartDuel(a, b)
+	holdEngage(id2, a.UserId) -- (passive: wave 6 pets would fight by themselves)
+	holdEngage(id2, b.UserId)
 	local tStart = Mock.Clock.now
 	K.waitFor(function()
 		return w.find(id2) ~= nil

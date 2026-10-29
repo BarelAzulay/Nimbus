@@ -2942,6 +2942,7 @@ end
 -- detector, no pull, no leash, no re-engage cooldown: the Move point plays no part while an enemy is targetable.
 local function engageUpdate(self, team, f, events)
 	if team.noEngage then
+		dropEngage(self, team, events)
 		return nil
 	end
 	local e = team.engage
