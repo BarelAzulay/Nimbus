@@ -449,14 +449,16 @@ local function serverScenarios()
 		local sman = requireAt("shared/MeshManifests/prop_seedsack")
 		local hy = type(sman) == "table" and sman.Bounds and sman.Bounds.Max[2] or 0
 		T.check(hy >= MK.Sack.H and hy <= MK.Sack.H + 0.7, fmt("bug12 meadow: the prop_seedsack manifest stands as tall as its Part build (%.2f)", hy))
-		-- fix round (review finding 1): the four floors re-baked without the squares must not ship their OLD uploaded ids,
-		-- or a live client dresses the square-baked meshes over the fixed Part floors (their LayoutSig matches the new
-		-- layout). Until the re-upload mints new ids, MeshIds holds none, so the Part floors show (check.mjs mesh-ids-stale
-		-- guards every key; upload_assets.py leaves stale keys out of MeshIds.lua).
+		-- fix round (review finding 1): the four floors re-baked without the squares must never ship their OLD (square-baked)
+		-- uploaded ids, or a live client dresses the square-baked meshes over the fixed Part floors (their LayoutSig matches
+		-- the new layout). No id = the Part floors; the art-wave upload (2026-10-29) minted new ids, and check.mjs
+		-- mesh-ids-stale guards that a shipped id matches the committed build (upload_assets.py leaves stale keys out).
+		local OLD = { floor_plaza_lawnpatches = 102227408722174, floor_shop_2 = 99144809635341,
+			floor_garden_blossom_2 = 115549554257291, floor_garden_pond_2 = 105820261522481 }
 		local ids = requireAt("shared/MeshIds")
 		local shipped, sigOk = {}, true
 		for _, key in ipairs({ "floor_plaza_lawnpatches", "floor_shop_2", "floor_garden_blossom_2", "floor_garden_pond_2" }) do
-			if type(ids) ~= "table" or ids[key] ~= nil then
+			if type(ids) ~= "table" or ids[key] == OLD[key] then
 				shipped[#shipped + 1] = key
 			end
 			local fm = requireAt("shared/MeshManifests/" .. key)
@@ -464,7 +466,7 @@ local function serverScenarios()
 				sigOk = false
 			end
 		end
-		T.check(#shipped == 0 and sigOk, "bug12 meadow: the re-baked square-free floors ship no stale id (Part floors until the re-upload)",
+		T.check(#shipped == 0 and sigOk, "bug12 meadow: the re-baked square-free floors never ship their old square-baked id (none, or the re-upload)",
 			table.concat(shipped, ", "))
 		K.flushErrors("bug12meadow_server")
 	end)
