@@ -369,6 +369,7 @@ S.p5sim_fighter = guarded("p5sim_fighter", function()
 	-- ATTACK (dungeon fixes 4): the fighter AUTO-ATTACKS; the command only DIRECTS it (a lock). Out of reach first.
 	local e = firstEnemy(b)
 	e.nextAttack = huge -- the tank holds its own hits during these checks (white-box)
+	tm.noEngage = true -- the auto-attack's own reach is measured here (white-box: the wave 6 engage rule would walk the pet in)
 	place(b, tm, 0, -10, 0, 10)
 	f.nextAttack = 0
 	local ok, why, extra = b:Command(1, "Attack")
@@ -826,6 +827,7 @@ S.p5sim_fighter = guarded("p5sim_fighter", function()
 	-- MOVE: the fighter walks toward the wanted point at <= legal run x MoveSlack
 	do
 		local b10, t10, f10 = arena(BS, { pet("mallow_kitten", 5), pet("pebble_pup", 5) }, tankNpc())
+		t10.noEngage = true -- FOLLOW only (white-box: the wave 6 engage rule is pinned by smoke_fight.lua)
 		local okM, whyM = b10:Command(1, "Move", 0 / 0, 5)
 		T.check(not okM and whyM == "BadPoint" and select(2, b10:Command(1, "Move", "a", 1)) == "BadPoint", "Move with NaN / junk is refused BadPoint")
 		local sp = b10:SpeedOf(1)
@@ -857,9 +859,7 @@ S.p5sim_fighter = guarded("p5sim_fighter", function()
 		b10:Step(0.1)
 		T.check(near(f10.z, sp.Run * 0.6 * F.MoveSlack * 0.1, 0.03) and near(b10:SpeedOf(1).Run, sp.Run * 0.6, 1e-6), "a Slow lowers the cap and SpeedOf by x0.6")
 		f10.slowUntil = 0
-		-- the fighter stops at the wanted point, clamped inside the floor (FOLLOW: white-box, the engage rule of bug #22 held
-		-- off; smoke_fight.lua pins it)
-		t10.disengagedAt = huge
+		-- the fighter stops at the wanted point, clamped inside the floor (FOLLOW: the engage rule held off above)
 		b10:Command(1, "Move", 0, 0)
 		for _ = 1, 30 do
 			b10:Step(0.1)
@@ -1078,6 +1078,7 @@ S.p5sim_modes = guarded("p5sim_modes", function()
 	r = b:Result()
 	T.check(r and r.Reason == "Timeout" and r.WinnerSide == 1 and countType(all, "Overtime") == 0, "a duel timeout goes to the side that dealt more damage; there is no Overtime", r and fmt("%s %s", r.Reason, tostring(r.WinnerSide)))
 	b = BS.new({ Mode = "Duel", Seed = 1, TimeLimit = 2, Teams = { team(1, 1, { pet("biscuit_bear", 10) }), team(2, 2, { pet("biscuit_bear", 10) }) } })
+	b.teams[1].noEngage, b.teams[2].noEngage = true, true -- (white-box: wave 6 pets engage anything on the floor; nobody fights here)
 	run(b, 100)
 	T.check(b:Result().Reason == "Timeout" and b:Result().Draw == true, "no damage at all = a Draw")
 	-- Forfeit: the team is knocked out, Forfeit result

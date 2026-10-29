@@ -1,18 +1,16 @@
 -- smoke_fight.lua: wave 5 "fight" lane, bugs #16 (F re-targeted the pet off its enemy, the caption read "PIC...", the
 -- DEV tile sat on the action cluster) and #22 (the pet stayed glued to a standing player instead of fighting).
 -- Spec: .superpowers/bugs-2026-10-24/wave5-fight-spec.md. Loaded by tools/smoke.py in BOTH worlds (ARGS.context).
---   fight_engage_core     (server world, pure) BattleSim's engage rule: FOLLOW -> ENGAGED after the Move point stood
---                         EngageStillSeconds with an enemy within EngageRange of the stand point (the Engage event,
---                         TeamOf.Engaged), the approach at the HONEST legal run (no MoveSlack), the hit lands; a small
---                         sway keeps it, a step > EngagePull drops it the same step (FOLLOW at run x MoveSlack again);
---                         no re-engage while walking, only after EngageCooldown + the still time; a far lock + a near
---                         enemy (engages the near one, the lock kept); a ranged fighter holds at the edge of its range;
---                         a KO'd target -> the next one with no command, none left -> back to the Move point (and the
---                         snapshot target bit = the engaged enemy); EngageLeash; Stunned = no move, still engaged;
---                         Attack() keeps a live lock with NO echo (no cycle), a dead lock -> the nearest, Attack(id) /
---                         Target(id) switch; no Move at all (a dead character) engages from the fighter's point; Swap
---                         drops it, the incoming pet re-engages after its cast; Validate rejects bad Engage numbers;
---                         determinism with a still phase
+--   fight_engage_core     (server world, pure) BattleSim's engage rule, wave 6 (fight focus): no Engage* numbers; an
+--                         enemy 30 studs from a WALKING character is engaged on the first step (the Engage event,
+--                         TeamOf.Engaged), the approach at the HONEST legal run (no MoveSlack), the hit lands; the
+--                         character walking 20 studs away and back never pulls the pet off (no Engage off, the pet stays
+--                         on its target); sticky: a new threat does not switch it, the target KO'd -> the enemy nearest
+--                         to the FIGHTER (a fresh threat first), none left -> Engage off and back to the Move point at
+--                         run x MoveSlack; a wave's arrival = exactly one Engage off + one Engage on; a far lock beats a
+--                         near enemy, Attack() keeps it (no echo), Target(id) switches the engaged target; a ranged
+--                         fighter holds at its range 40 studs out; Stunned = no move, still engaged; Swap drops it, the
+--                         incoming pet engages after its cast (no still time); Validate; determinism with walking
 --   fight_engage_service  (server world, booted) a dungeon encounter: the pet engages an enemy 13 studs from the standing
 --                         character, the gap stays > Fighter.Leash for > LeashSeconds + 1 and nobody is leashed (the
 --                         leash is off while engaged); the Engage event reaches the client; Attack(id) on a far enemy
@@ -179,307 +177,258 @@ local function serverScenarios()
 			return
 		end
 		local F = BC.Fighter
-		T.check(F.EngageRange == 14 and F.EngageLeash == 18 and F.EngagePull == 7 and F.EngageStillSeconds == 0.5 and F.EngageCooldown == 0.5
-			and BS.Events.Engage == "Engage", "fight core: Fighter.EngageRange 14 / EngageLeash 18 / EngagePull 7 / EngageStillSeconds 0.5 / EngageCooldown 0.5, Events.Engage")
+		local D = BC.Damage
+		-- (a): the stand-still rule's numbers are gone
+		T.check(F.EngageRange == nil and F.EngageLeash == nil and F.EngagePull == nil and F.EngageStillSeconds == nil and F.EngageCooldown == nil
+			and BS.Events.Engage == "Engage", "fight core (a): wave 6: no Fighter.EngageRange / EngageLeash / EngagePull / EngageStillSeconds / EngageCooldown; Events.Engage stays")
 
-		-- (1) + (2): stand 12 studs from an enemy: engaged after the still time, the approach at the legal run, a hit
+		-- the character walks: the Move point jitters 0.6 stud every step around (x, z)
+		local function walkStep(b, i, x, z)
+			return stepAt(b, x + ((i % 2 == 0) and 0.6 or -0.6), z)
+		end
+
+		-- (b) + (c): an enemy 30 studs from a WALKING character: engaged on the first step, the honest run, a hit; then the
+		-- character walks 20 studs away and back for 5 s and the pet never leaves its target
 		do
 			local b, tm = world(BS)
 			local f = tm.fighter
-			put(f, 0, -10)
-			local e = enemiesAt(b, { { 0, 2 } })[1]
-			-- walking first (the Move point moves > 0.3 stud a step): no engage
-			local walkEngaged = false
-			for i = 1, 8 do
-				stepAt(b, (i % 2 == 0) and 0.6 or -0.6, -10)
-				walkEngaged = walkEngaged or engaged(b) ~= nil
-			end
-			T.check(not walkEngaged, "fight core (1): while the character walks the pet does not engage (FOLLOW)")
-			local t0 = b:Time()
-			local evs = standFor(b, 15, 0, -10, function()
-				return engaged(b) ~= nil
-			end)
-			local tEng = b:Time() - t0
+			put(f, 0, -15)
+			local e = enemiesAt(b, { { 0, 15 } })[1]
+			local evs = walkStep(b, 1, 0, -15)
 			local ev = find(evs, "Engage", function(x)
 				return x.on == true
 			end)
-			T.check(engaged(b) == e.id and tEng >= F.EngageStillSeconds - 0.05 and tEng <= F.EngageStillSeconds + 0.2,
-				"fight core (1): standing EngageStillSeconds with an enemy 12 studs off: TeamOf.Engaged = that enemy", fmt("after %.2f s, Engaged %s", tEng, tostring(engaged(b))))
-			T.check(ev ~= nil and ev.owner == 1 and ev.unit == f.id and ev.target == e.id, "fight core (1): ...with the Engage { owner, unit, on = true, target } event")
+			T.check(engaged(b) == e.id and ev ~= nil and ev.owner == 1 and ev.unit == f.id and ev.target == e.id and count(evs, "Engage") == 1,
+				"fight core (b): an enemy 30 studs from a WALKING character: engaged on the first step with ONE Engage { owner, unit, on = true, target }",
+				tostring(engaged(b)))
 			local run = b:SpeedOf(1).Run
 			local reach = f.range + e.radius
-			local maxStep, sawFull, hit = 0, false, false
+			local maxStep, sawFull, hitAt = 0, false, nil
 			local lastX, lastZ = f.x, f.z
-			for _ = 1, 20 do
-				local s = stepAt(b, 0, -10)
+			local t0 = b:Time()
+			for i = 2, floor((30 / run + 2) / 0.1) do
+				local s = walkStep(b, i, 0, -15)
 				local travel = d2(lastX, lastZ, f.x, f.z)
 				lastX, lastZ = f.x, f.z
 				maxStep = max(maxStep, travel)
 				if travel >= run * 0.1 * 0.9 then
 					sawFull = true
 				end
-				if find(s, "Hit", function(x)
+				if not hitAt and find(s, "Hit", function(x)
 					return x.from == f.id and x.to == e.id and not x.miss
 				end) then
-					hit = true
+					hitAt = b:Time() - t0
 				end
 			end
-			local gap = d2(f.x, f.z, e.x, e.z)
-			T.check(gap <= reach + 0.2 and gap >= reach - 0.8, "fight core (1): the pet walks to the enemy (melee: reach - 0.5)", fmt("gap %.2f, reach %.2f", gap, reach))
-			T.check(hit, "fight core (1): ...and its auto-attack lands within 2 s")
-			T.check(maxStep <= run * 0.1 + 0.02 and sawFull, "fight core (2): the engaged approach runs at the HONEST legal run (<= run x dt per step, no MoveSlack)",
+			T.check(maxStep <= run * 0.1 + 0.02 and sawFull, "fight core (b): the engaged approach runs at the HONEST legal run (<= run x dt per step, a full-speed step seen)",
 				fmt("max %.3f vs run x dt %.3f", maxStep, run * 0.1))
-			T.check(b:Snapshot().Units[f.id].target == e.id, "fight core (1): the snapshot's target bit shows the enemy the pet fights")
-
-			-- (3): a 1 stud sway keeps it; a 6 stud reposition keeps it (player ruling 2026-10-28, EngagePull 7); a walk of
-			-- ~7.5 studs = the pull: back to FOLLOW the same step, at run x MoveSlack
-			local sway = false
-			for _ = 1, 5 do
-				stepAt(b, 1, -10)
-				sway = sway or engaged(b) ~= e.id
+			T.check(hitAt ~= nil, "fight core (b): ...and its auto-attack lands within 30 / run + 2 s", fmt("run %.1f, hit at %s", run, tostring(hitAt)))
+			T.check(b:Snapshot().Units[f.id].target == e.id, "fight core (b): the snapshot's target bit shows the enemy the pet fights")
+			-- (c) fight focus: the character walks 20 studs away (and back and forth) for 5 s
+			local offs, strayed, switched = 0, 0, false
+			for i = 1, 50 do
+				local phase = (i % 20) / 20
+				local x = (phase < 0.5) and (-20 * phase * 2) or (-20 * (1 - phase) * 2)
+				local s = stepAt(b, x, -15)
+				offs = offs + count(s, "Engage", function(y)
+					return y.on == false
+				end)
+				strayed = max(strayed, d2(f.x, f.z, e.x, e.z) - reach)
+				switched = switched or b:TeamOf(1).Engaged ~= e.id
 			end
-			T.check(not sway, "fight core (3): a Move point 1 stud from the stand point keeps the engage")
-			local repos = false
-			for i = 1, 10 do
-				stepAt(b, 1 + 0.5 * i, -10) -- walks out to 6 studs from the stand point
-				repos = repos or engaged(b) ~= e.id
-			end
-			for _ = 1, 5 do
-				stepAt(b, 6, -10)
-				repos = repos or engaged(b) ~= e.id
-			end
-			T.check(not repos, "fight core (3): walking 6 studs from the stand point (< EngagePull 7) keeps the pet in the fight")
-			local fx, fz = f.x, f.z
-			local pullEvs = stepAt(b, 7.2, -8) -- ~7.5 studs from the stand point (0, -10)
-			T.check(engaged(b) == nil and find(pullEvs, "Engage", function(x)
-				return x.on == false and x.unit == f.id
-			end) ~= nil, "fight core (3): a walk > EngagePull (~7.5 studs) drops it the same step (Engage on = false)")
-			local moved = d2(fx, fz, f.x, f.z)
-			T.check(moved > run * 0.1 * 1.05 and moved <= run * F.MoveSlack * 0.1 + 0.02, "fight core (3): ...and the pet walks back toward the Move point at today's FOLLOW cap (run x MoveSlack)",
-				fmt("%.3f (run x dt %.3f, cap %.3f)", moved, run * 0.1, run * F.MoveSlack * 0.1))
-
-			-- (4): walking keeps FOLLOW (no re-engage while the Move point moves); standing re-engages after cooldown + still
-			local walkAgain = false
-			for i = 1, 15 do
-				stepAt(b, 7.2 + ((i % 2 == 0) and 0.5 or -0.5), -8)
-				walkAgain = walkAgain or engaged(b) ~= nil
-			end
-			T.check(not walkAgain, "fight core (4): no re-engage while the character keeps walking (the still gate)")
-			local t1 = b:Time()
-			standFor(b, 15, 7.2, -8, function()
-				return engaged(b) ~= nil
-			end)
-			local tRe = b:Time() - t1
-			T.check(engaged(b) == e.id and tRe >= F.EngageStillSeconds - 0.05, "fight core (4): standing again re-engages after the still time", fmt("%.2f s", tRe))
-			-- the cooldown: a pull and an immediate stand wait EngageCooldown before the next engage
-			stepAt(b, 0, -10) -- ~7.5 studs from the stand point (7.2, -8); the enemy stays in EngageRange of the new point
-			local tPull = b:Time()
-			local coolEarly = false
-			for _ = 1, 3 do
-				stepAt(b, 0, -10)
-				if engaged(b) ~= nil and b:Time() - tPull < F.EngageCooldown - 0.05 then
-					coolEarly = true
-				end
-			end
-			T.check(not coolEarly, "fight core (4): no re-engage within EngageCooldown of a disengage")
+			T.check(offs == 0 and not switched and strayed <= 0.2, "fight core (c): the character walks 20 studs away and back for 5 s: no Engage off, the pet stays on its target (within reach + 0.2)",
+				fmt("offs %d, worst gap over reach %.2f, switched %s", offs, strayed, tostring(switched)))
 		end
 
-		-- (5): a far lock and a near enemy: it engages the near one, the lock stays the player's
-		do
-			local b, tm = world(BS)
-			put(tm.fighter, 0, -10)
-			local list = enemiesAt(b, { { 0, 10 }, { 0, -4 } }) -- 20 and 6 studs from the stand point
-			b:Command(1, "Target", list[1].id)
-			standFor(b, 10, 0, -10)
-			T.check(engaged(b) == list[2].id and b:TeamOf(1).Lock == list[1].id, "fight core (5): a lock 20 studs off + an enemy 6 studs off: engages the near one, TeamOf.Lock unchanged",
-				tostring(engaged(b)) .. " / lock " .. tostring(b:TeamOf(1).Lock))
-		end
-
-		-- (6): a ranged fighter holds at the edge of its range
-		do
-			local b, tm = world(BS, "puddle_frog", 12)
-			local f = tm.fighter
-			put(f, 0, -10)
-			local e = enemiesAt(b, { { 0, 4 } })[1] -- 14 studs
-			local edge = f.range + e.radius
-			local minGap = huge
-			for _ = 1, 30 do
-				stepAt(b, 0, -10)
-				minGap = min(minGap, d2(f.x, f.z, e.x, e.z))
-			end
-			T.check(f.ranged and engaged(b) == e.id and minGap >= edge - 1.5 and minGap <= edge, "fight core (6): a ranged fighter engages and holds at its range (never closer than range + radius - 1.5)",
-				fmt("ranged %s, min gap %.2f, range + radius %.2f", tostring(f.ranged), minGap, edge))
-		end
-
-		-- (7): the engaged target KO'd -> the next one in range with no command; none left -> back to the Move point
+		-- (d): sticky targets; a KO'd target -> the enemy nearest to the FIGHTER (a fresh threat first); none left -> FOLLOW
 		do
 			local b, tm = world(BS)
 			local f = tm.fighter
 			put(f, 0, -10)
-			local list = enemiesAt(b, { { 0, -2 }, { 4, -1 } }) -- 8 and ~9.8 studs
-			standFor(b, 10, 0, -10)
-			T.check(engaged(b) == list[1].id, "fight core (7): (setup) engaged on the nearest", tostring(engaged(b)))
-			local e1, e2 = list[1], list[2]
+			local list = enemiesAt(b, { { 0, -4 }, { 20, -10 }, { -8, -10 } }) -- 6, 20, 8 studs from the fighter
+			local e1, e2, e3 = list[1], list[2], list[3]
+			stepAt(b, 0, -10)
+			T.check(engaged(b) == e1.id, "fight core (d): (setup) engaged on the nearest", tostring(engaged(b)))
+			-- the far enemy hits the fighter: the engaged target stays
+			f.threat, f.threatAt = e2, b:Time()
+			local stuck = true
+			for _ = 1, 10 do
+				stepAt(b, 0, -10)
+				stuck = stuck and engaged(b) == e1.id
+			end
+			T.check(stuck, "fight core (d): a second enemy hits the fighter while it is engaged: the target does not change (sticky)")
+			-- the threat is stale (> ThreatSeconds): the KO'd target -> the remaining enemy nearest to the fighter
+			for _ = 1, floor((D.ThreatSeconds or 3) / 0.1) + 2 do
+				stepAt(b, 0, -10)
+			end
 			e1.maxHp, e1.hp = 100, 1
 			f.nextAttack = 0
 			standFor(b, 15, 0, -10, function()
 				return not e1.alive
 			end)
-			stepAt(b, 0, -10)
-			T.check(not e1.alive and engaged(b) == e2.id and b:TeamOf(1).Lock == nil, "fight core (7): the target falls: the pet takes the next enemy in range by itself (no command)",
-				tostring(engaged(b)))
-			T.check(b:Snapshot().Units[f.id].target == e2.id, "fight core (7): ...and the snapshot target (no lock) is the engaged enemy")
-			e2.maxHp, e2.hp = 100, 1
-			f.nextAttack = 0
-			standFor(b, 30, 0, -10, function()
-				return not e2.alive
-			end)
-			standFor(b, 20, 0, -10)
-			T.check(not e2.alive and engaged(b) == nil and d2(f.x, f.z, 0, -10) < 0.5, "fight core (7): none left in range: Engaged nil and the pet is back at the Move point",
-				fmt("%.2f studs off", d2(f.x, f.z, 0, -10)))
-		end
-
-		-- (8): EngageLeash: a pet > 18 studs from the stand point drops the engage (the target still in range)
-		do
-			local b, tm = world(BS)
-			local f = tm.fighter
-			put(f, 0, -2)
-			local e = enemiesAt(b, { { 0, 11 } })[1] -- 13 studs
-			standFor(b, 8, 0, -2)
-			T.check(engaged(b) == e.id, "fight core (8): (setup) engaged")
-			put(f, 0, -21) -- 19 studs from the stand point (white-box)
-			local evs = stepAt(b, 0, -2)
-			T.check(engaged(b) == nil and find(evs, "Engage", function(x)
-				return x.on == false
-			end) ~= nil, "fight core (8): beyond EngageLeash from the stand point the pet drops the engage (Engage on = false)")
-		end
-
-		-- (9): Stunned: no move, still engaged
-		do
-			local b, tm = world(BS)
-			local f = tm.fighter
-			put(f, 0, -10)
-			enemiesAt(b, { { 0, 2 } })
-			standFor(b, 15, 0, -10, function()
-				return engaged(b) ~= nil
-			end)
-			f.stunUntil = b:Time() + 0.5
-			local x0, z0 = f.x, f.z
-			for _ = 1, 4 do
+			local nearest = (d2(f.x, f.z, e3.x, e3.z) <= d2(f.x, f.z, e2.x, e2.z)) and e3 or e2
+			if not e1.alive and engaged(b) == e1.id then
 				stepAt(b, 0, -10)
 			end
-			T.check(engaged(b) ~= nil and d2(x0, z0, f.x, f.z) < 1e-6, "fight core (9): a stunned engaged pet stands (cap 0) and stays engaged")
-			standFor(b, 6, 0, -10)
-			T.check(d2(x0, z0, f.x, f.z) > 0.5, "fight core (9): ...and walks on when the stun ends")
+			T.check(not e1.alive and engaged(b) == nearest.id and b:TeamOf(1).Lock == nil, "fight core (d): the target falls: the pet takes the enemy nearest to the FIGHTER by itself (no command)",
+				fmt("engaged %s, nearest %d", tostring(engaged(b)), nearest.id))
+			T.check(b:Snapshot().Units[f.id].target == nearest.id, "fight core (d): ...and the snapshot target (no lock) is the engaged enemy")
+			-- a fresh threat beats the nearest when the target falls
+			local far = (nearest == e3) and e2 or e3
+			f.threat, f.threatAt = far, b:Time()
+			nearest.maxHp, nearest.hp = 100, 1
+			f.nextAttack = 0
+			standFor(b, 40, 0, -10, function()
+				return not nearest.alive
+			end)
+			if engaged(b) == nearest.id then
+				stepAt(b, 0, -10)
+			end
+			f.threat, f.threatAt = far, b:Time() -- (keep it fresh while it walks: it is the only one left anyway)
+			T.check(not nearest.alive and engaged(b) == far.id, "fight core (d): a fresh threat (hit within ThreatSeconds) is taken before the nearest", tostring(engaged(b)))
+			far.maxHp, far.hp = 100, 1
+			f.nextAttack = 0
+			local evsKo = standFor(b, 60, 0, -10, function()
+				return not far.alive
+			end)
+			local offEvs = standFor(b, 2, 0, -10)
+			for _, x in ipairs(offEvs) do
+				evsKo[#evsKo + 1] = x
+			end
+			T.check(not far.alive and engaged(b) == nil and count(evsKo, "Engage", function(x)
+				return x.on == false and x.unit == f.id
+			end) == 1, "fight core (d): none left: ONE Engage on = false, Engaged nil")
+			local fx, fz = f.x, f.z
+			stepAt(b, 0, -10)
+			local moved = d2(fx, fz, f.x, f.z)
+			local run = b:SpeedOf(1).Run
+			local gapBack = d2(fx, fz, 0, -10)
+			T.check(gapBack < run * 0.1 * 1.05 or (moved > run * 0.1 * 1.05 and moved <= run * F.MoveSlack * 0.1 + 0.02), "fight core (d): ...and the pet walks back toward the Move point at the FOLLOW cap (run x MoveSlack)",
+				fmt("%.3f (gap %.2f, run x dt %.3f, cap %.3f)", moved, gapBack, run * 0.1, run * F.MoveSlack * 0.1))
+			standFor(b, 30, 0, -10)
+			T.check(d2(f.x, f.z, 0, -10) < 0.5, "fight core (d): ...and stands at the Move point", fmt("%.2f studs off", d2(f.x, f.z, 0, -10)))
 		end
 
-		-- (10): Attack() keeps a live lock in EngageRange (no echo); a dead lock -> the nearest; Attack(id) / Target(id) switch
+		-- (e) Review Focus 1: a wave arriving after the last kill: exactly one Engage off, then one Engage on within 0.15 s of
+		-- the arrival end (no per-step flapping)
 		do
 			local b, tm = world(BS)
 			local f = tm.fighter
 			put(f, 0, -10)
-			tm.wantX, tm.wantZ = 0, -10
-			local list = enemiesAt(b, { { 0, -4 }, { 0, 0 }, { 6, -10 } }) -- 6, 10, 6 studs (ids break the tie)
-			b:Step(0.1)
-			local ok1, id1 = b:Command(1, "Attack")
-			local e1 = b:Step(0.1)
-			local ok2, id2 = b:Command(1, "Attack")
-			local e2 = b:Step(0.1)
-			T.check(ok1 and ok2 and id1 == id2 and tm.lock and tm.lock.id == id1 and count(e1, "Order", function(x)
-				return x.order == "Attack"
-			end) == 1, "fight core (10): Attack() locks the nearest (one echo)", tostring(id1) .. " / " .. tostring(id2))
-			T.check(count(e2, "Order") == 0, "fight core (10): a second Attack() on the live lock keeps it and sends NO Order echo (no cycle, no traffic)")
-			local ok3, id3 = b:Command(1, "Attack")
-			T.check(ok3 and id3 == id1, "fight core (10): ...a third press too (the lock never cycles)", tostring(id3))
-			-- the lock falls -> Attack() locks the nearest of the rest
-			local lock = tm.lock
-			lock.alive, lock.hp = false, 0
-			local okN, idN = b:Command(1, "Attack")
-			local nearest, nd = nil, huge
-			for _, e in ipairs(list) do
-				if e.alive then
-					local dd = d2(f.x, f.z, e.x, e.z)
-					if dd < nd or (dd == nd and e.id < nearest.id) then
-						nearest, nd = e, dd
+			local e = enemiesAt(b, { { 0, -4 } })[1]
+			stepAt(b, 0, -10)
+			e.maxHp, e.hp = 100, 1
+			f.nextAttack = 0
+			local all = standFor(b, 15, 0, -10, function()
+				return not e.alive
+			end)
+			local infos = b:SpawnEnemies({ pet("biscuit_bear", 20), pet("biscuit_bear", 20) }, { Wave = 2, Anchor = { 0, 10 } })
+			local wave = {}
+			for i, info in ipairs(infos or {}) do
+				local u = b.units[info.id]
+				u.nextAttack, u.hit, u.moveSpeed = huge, 0, 0
+				u.maxHp, u.hp = 1e9, 1e9
+				wave[i] = u
+			end
+			local arriveEnd = wave[1] and wave[1].arriveUntil or 0
+			local gap, onAt = {}, nil
+			for _ = 1, 25 do
+				local s = stepAt(b, 0, -10)
+				for _, x in ipairs(s) do
+					gap[#gap + 1] = x
+					if x.type == "Engage" and x.on == true and not onAt then
+						onAt = b:Time()
 					end
 				end
 			end
-			T.check(okN and nearest and idN == nearest.id, "fight core (10): a dead lock: Attack() locks the nearest living enemy", tostring(idN))
-			local other = nil
-			for _, e in ipairs(list) do
-				if e.alive and e.id ~= idN then
-					other = e
+			for _, x in ipairs(all) do
+				if x.type == "Engage" and x.on == false then
+					table.insert(gap, 1, x)
 				end
 			end
-			local okI, idI = b:Command(1, "Attack", other.id)
-			T.check(okI and idI == other.id and tm.lock == other, "fight core (10): Attack(id) switches the lock (the deliberate path)")
-			local okT = b:Command(1, "Target", idN)
-			T.check(okT and tm.lock and tm.lock.id == idN, "fight core (10): Target(id) switches it too (Tab / RT / hold-F)")
-			-- a lock beyond EngageRange of the fighter: Attack() takes the nearest instead
-			put(other, 0, 26)
-			b:Command(1, "Target", other.id)
-			local okF, idF = b:Command(1, "Attack")
-			T.check(okF and idF ~= other.id, "fight core (10): a lock beyond EngageRange: Attack() locks the nearest", tostring(idF))
+			T.check(#wave == 2 and count(gap, "Engage") == 2 and count(gap, "Engage", function(x)
+				return x.on == false
+			end) == 1 and onAt ~= nil and onAt - arriveEnd <= 0.15 + 1e-6 and onAt >= arriveEnd - 1e-6,
+				"fight core (e): a wave arriving after the last kill: exactly ONE Engage off and ONE Engage on, within 0.15 s of the arrival end",
+				fmt("%d Engage events over the gap, on at %s, arrival end %.2f", count(gap, "Engage"), tostring(onAt), arriveEnd))
 		end
 
-		-- (11): no Move at all (a dead character): engages from the fighter's own point
+		-- (f): a far lock (35 studs) + a near enemy: the pet engages the LOCK; Attack() keeps it with no echo; Target(near) switches
 		do
 			local b, tm = world(BS)
 			local f = tm.fighter
-			put(f, 0, 0)
-			tm.wantX, tm.wantZ = nil, nil
-			local e = enemiesAt(b, { { 0, 8 } })[1]
-			standFor(b, 10, nil, nil)
-			T.check(engaged(b) == e.id and tm.engage and abs(tm.engage.standX) < 1e-6 and abs(tm.engage.standZ) < 1e-6, "fight core (11): no Move ever (no character): the pet engages from its own point")
+			put(f, 0, -20)
+			local list = enemiesAt(b, { { 0, 15 }, { 0, -15 } }) -- 35 and 5 studs
+			local farE, nearE = list[1], list[2]
+			b:Command(1, "Target", farE.id)
+			stepAt(b, 0, -20)
+			T.check(engaged(b) == farE.id and b:TeamOf(1).Lock == farE.id, "fight core (f): a lock 35 studs off + an enemy 5 studs off: the pet engages the LOCK", tostring(engaged(b)))
+			stepAt(b, 0, -20)
+			local okA, idA = b:Command(1, "Attack")
+			local evA = stepAt(b, 0, -20)
+			T.check(okA and idA == farE.id and count(evA, "Order") == 0, "fight core (f): Attack() keeps that far lock (anywhere on the floor) with NO Order echo", tostring(idA))
+			local okT = b:Command(1, "Target", nearE.id)
+			stepAt(b, 0, -20)
+			T.check(okT and engaged(b) == nearE.id, "fight core (f): Target(near.id) switches the engaged target within one step", tostring(engaged(b)))
+			-- the lock falls: Attack() with no lock keeps the enemy the pet fights
+			b:Command(1, "Target", nil)
+			stepAt(b, 0, -20)
+			local okK, idK = b:Command(1, "Attack")
+			T.check(okK and idK == engaged(b), "fight core (f): no lock: Attack() locks the enemy the engaged pet already fights", tostring(idK) .. " / " .. tostring(engaged(b)))
 		end
 
-		-- (12): Swap drops the engage; the incoming pet re-engages after its cast + the still time
+		-- (g): a ranged fighter holds at reach - 1 of a target 40 studs off; Stunned = no move, still engaged; Swap drops it
 		do
-			local b, tm = world(BS)
-			put(tm.fighter, 0, -10)
-			local e = enemiesAt(b, { { 0, -2 } })[1]
-			standFor(b, 10, 0, -10)
-			T.check(engaged(b) == e.id, "fight core (12): (setup) engaged")
+			local b, tm = world(BS, "puddle_frog", 12)
+			local f = tm.fighter
+			put(f, 0, -25)
+			local e = enemiesAt(b, { { 0, 15 } })[1] -- 40 studs
+			local edge = f.range + e.radius
+			local minGap = huge
+			for i = 1, 40 do
+				walkStep(b, i, 0, -25)
+				if i > 30 then
+					minGap = min(minGap, d2(f.x, f.z, e.x, e.z))
+				end
+			end
+			T.check(f.ranged and engaged(b) == e.id and minGap >= edge - 1.5 and minGap <= edge, "fight core (g): a ranged fighter engages a target 40 studs off and holds at its range",
+				fmt("ranged %s, min gap %.2f, range + radius %.2f", tostring(f.ranged), minGap, edge))
+			f.stunUntil = b:Time() + 0.5
+			put(e, 20, 15)
+			local x0, z0 = f.x, f.z
+			for _ = 1, 4 do
+				stepAt(b, 0, -25)
+			end
+			T.check(engaged(b) == e.id and d2(x0, z0, f.x, f.z) < 1e-6, "fight core (g): a stunned engaged pet stands (cap 0) and stays engaged")
+			standFor(b, 6, 0, -25)
+			T.check(d2(x0, z0, f.x, f.z) > 0.5, "fight core (g): ...and walks on when the stun ends")
 			tm.swapReadyAt = 0
 			b:Command(1, "Swap", 2)
 			local tSwap = b:Time()
-			local evs = stepAt(b, 0, -10)
+			local evs = stepAt(b, 0, -25)
 			T.check(engaged(b) == nil and find(evs, "Engage", function(x)
 				return x.on == false
-			end) ~= nil and find(evs, "Swap") ~= nil, "fight core (12): Swap drops the engage (Engage on = false)")
-			standFor(b, 20, 0, -10, function()
+			end) ~= nil and find(evs, "Swap") ~= nil, "fight core (g): Swap drops the engage (Engage on = false)")
+			standFor(b, 20, 0, -25, function()
 				return engaged(b) ~= nil
 			end)
 			local tRe = b:Time() - tSwap
-			T.check(engaged(b) == e.id and tm.engage.unit == tm.fighter.id and tRe >= F.SwapCastSeconds - 0.05 and tRe <= F.SwapCastSeconds + F.EngageStillSeconds + 0.3,
-				"fight core (12): ...the incoming pet re-engages after its cast", fmt("%.2f s", tRe))
+			T.check(engaged(b) == e.id and tm.engage.unit == tm.fighter.id and tRe >= F.SwapCastSeconds - 0.05 and tRe <= F.SwapCastSeconds + 0.15,
+				"fight core (g): ...the incoming pet engages right after its cast (no still time)", fmt("%.2f s", tRe))
 		end
 
-		-- (13): Validate rejects bad Engage numbers
+		-- (h): Validate; determinism with a walking character
 		do
-			local function rejects(key, value)
-				local old = F[key]
-				F[key] = value
-				local ok = BC.Validate()
-				F[key] = old
-				return ok == false
-			end
-			T.check(rejects("EngageRange", 0) and rejects("EngageLeash", 10) and rejects("EngagePull", 14) and rejects("EngageStillSeconds", 3) and rejects("EngageCooldown", -1),
-				"fight core (13): Validate rejects EngageRange 0, EngageLeash < EngageRange, EngagePull >= EngageRange, EngageStillSeconds > 2, a negative cooldown")
-			T.check(BC.Validate() == true, "fight core (13): ...and passes with the shipped numbers")
-		end
-
-		-- (14): determinism with a still phase
-		do
+			F.EngagePull = 7
+			local stray = BC.Validate()
+			F.EngagePull = nil
+			T.check(stray == false and BC.Validate() == true, "fight core (h): Validate passes the shipped catalog and rejects a stray (removed) Engage number")
 			local function play(seed)
 				local b = BS.new({ Mode = "Dungeon", Seed = seed, Zone = 60, Teams = { team(1, 1, { pet("storm_tabby", 12), pet("pebble_pup", 5), pet("honey_bunny", 5) }) } })
 				b:SpawnEnemies({ pet("biscuit_bear", 8), pet("honey_bunny", 8), pet("puddle_frog", 8) }, { Wave = 1, Anchor = { 0, 8 } })
 				local log = {}
 				for i = 1, 220 do
 					local x, z = -6 + (i % 40) * 0.3, -12
-					if (i >= 30 and i < 50) or (i >= 120 and i < 160) then
-						x, z = 0, -6 -- standing: the engage rule plays
-					end
 					b:Command(1, "Move", x, z)
 					if i % 37 == 0 then
 						b:Command(1, "Attack")
@@ -505,8 +454,8 @@ local function serverScenarios()
 				return table.concat(log, "\n")
 			end
 			local a, a2, c = play(77), play(77), play(78)
-			T.check(a == a2 and a:find("Engage:", 1, true) ~= nil, "fight core (14): the same seed + Move stream (still phases included) replays identical events and snapshots, with Engage flips")
-			T.check(a ~= c, "fight core (14): another seed plays differently")
+			T.check(a == a2 and a:find("Engage:", 1, true) ~= nil, "fight core (h): the same seed + Move stream (a walking character) replays identical events and snapshots, with Engage flips")
+			T.check(a ~= c, "fight core (h): another seed plays differently")
 		end
 	end)
 

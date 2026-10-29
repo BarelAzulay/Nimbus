@@ -191,7 +191,9 @@ S.dgfixcore_auto = guarded("dgfixcore_auto", function()
 	end)
 	local hit = hitBy(evs, tD.fighter.id, de.id)
 	T.check(hit ~= nil and bD:Time() >= F.ArriveSeconds - 1e-6, "Dungeon: the fighter auto-attacks the wave enemy once it has arrived", fmt("t %.1f", bD:Time()))
-	-- out of reach: no swing, no step toward the enemy
+	-- out of reach: no swing, no step toward the enemy (the auto-attack itself never walks; white-box: the wave 6 engage
+	-- rule, which does walk the pet to any enemy on the floor, is held off and pinned by smoke_fight.lua)
+	tD.noEngage = true
 	put(de, 0, 18)
 	tD.fighter.nextAttack = 0
 	evs = stepFor(bD, 5)
@@ -255,8 +257,8 @@ S.dgfixcore_direct = guarded("dgfixcore_direct", function()
 	local tm = b.teams[1]
 	local f = tm.fighter
 	putFighter(tm, 0, 0)
-	-- white-box: FOLLOW only (the pet stays put; the engage rule of bug #22 is pinned by smoke_fight.lua)
-	tm.disengagedAt = huge
+	-- white-box: FOLLOW only (the pet stays put; the engage rule of wave 6 is pinned by smoke_fight.lua)
+	tm.noEngage = true
 	local okN, whyN = b:Command(1, "Attack")
 	T.check(okN == false and whyN == "NoTarget", "Attack() with no enemy on the floor -> NoTarget", tostring(whyN))
 	b:SpawnEnemies({ pet("biscuit_bear", 20), pet("biscuit_bear", 20), pet("biscuit_bear", 20) }, { Wave = 1, Anchor = { 0, 10 } })
