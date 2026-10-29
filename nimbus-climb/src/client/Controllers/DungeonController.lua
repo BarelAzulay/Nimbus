@@ -2216,17 +2216,22 @@ local function camInBox(b, p)
 	return p.X >= b.Min.X and p.X <= b.Max.X and p.Y >= b.Min.Y and p.Y <= b.Max.Y and p.Z >= b.Min.Z and p.Z <= b.Max.Z
 end
 
--- where the ray F + boom * t (t >= 0) leaves box b shrunk by m (slab method; >= 0)
-local function camExit(b, F, boom, m)
-	local t = math.huge
-	for _, axis in ipairs({ "X", "Y", "Z" }) do
-		local v = boom[axis]
-		if v > 1e-6 then
-			t = math.min(t, (b.Max[axis] - m - F[axis]) / v)
-		elseif v < -1e-6 then
-			t = math.min(t, (b.Min[axis] + m - F[axis]) / v)
-		end
+-- one slab of camExit: the ray's t where it leaves [lo + m, hi - m] along one axis (v = the boom's component)
+local function camSlab(t, v, f, lo, hi, m)
+	if v > 1e-6 then
+		return math.min(t, (hi - m - f) / v)
+	elseif v < -1e-6 then
+		return math.min(t, (lo + m - f) / v)
 	end
+	return t
+end
+
+-- where the ray F + boom * t (t >= 0) leaves box b shrunk by m (slab method; >= 0). Runs several times a frame, so
+-- the three axes are unrolled (no per-frame table)
+local function camExit(b, F, boom, m)
+	local t = camSlab(math.huge, boom.X, F.X, b.Min.X, b.Max.X, m)
+	t = camSlab(t, boom.Y, F.Y, b.Min.Y, b.Max.Y, m)
+	t = camSlab(t, boom.Z, F.Z, b.Min.Z, b.Max.Z, m)
 	return math.max(0, t)
 end
 

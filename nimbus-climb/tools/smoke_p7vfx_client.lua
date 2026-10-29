@@ -5448,6 +5448,11 @@ S.client_p7vfx_precharge = guarded("client_p7vfx_precharge", function()
 			sim = sim4
 			local team4 = sim.teamByOwner[me]
 			local f4 = team4 and team4.fighter
+			if team4 then
+				-- (wave 6 fix round) the drawn hand-over is measured here, not the run to the frog after it (white-box:
+				-- the wave 6 engage rule would walk the incoming in during the GO! window)
+				team4.noEngage = true
+			end
 			local in4, bot4 = nil, nil
 			for _, u in ipairs(sim.units) do
 				u.maxHp, u.hp = 1e6, 1e6
