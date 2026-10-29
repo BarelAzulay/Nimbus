@@ -20,6 +20,9 @@
 --                                                      and the two bar doors; assembled under ServerStorage and parented
 --                                                      in ONE step
 --   DungeonBuilder.RemoveRoom(pocket, room)           destroys that room (and its inbound corridor)
+--   (wave 6) every placed piece model carries CamMin / CamMax (Vector3, world): its camera box (the W x D shell, a
+--                                                      corridor's floor tiles; floor - 2 .. its ceiling's bottom), read
+--                                                      by DungeonController's camera clamp
 --   DungeonBuilder.SetDoor(roomInfo, "Entrance"|"Exit", open) the bars' two states (CanCollide + Transparency) + the
 --                                                      room model attributes DoorOpen (exit) / EntranceOpen
 --   DungeonBuilder.FreeRun(index)                     the holder destroyed; the Dungeons folder goes with the last run
@@ -2165,6 +2168,35 @@ local function worldPoint(model, name)
 end
 
 -- clones the template of a piece and places it in pocket space (not parented yet)
+-- wave 6: the piece's camera box for DungeonController's camera clamp (attributes CamMin / CamMax, world space; pieces
+-- never rotate). The hall, the rooms and the treasure: the W x D shell; a corridor: its floor tiles (a Left / Right
+-- corridor's walkway is not centred on its origin). From 2 studs under the floor top up to the lowest Ceiling part's
+-- bottom (CEIL_Y without one).
+local function camBox(copy, piece, cf)
+	local o = cf.Position
+	local minX, maxX, minZ, maxZ = o.X - piece.W / 2, o.X + piece.W / 2, o.Z - piece.D / 2, o.Z + piece.D / 2
+	local detail = copy:FindFirstChild("Detail")
+	local ceil = nil
+	local fx0, fx1, fz0, fz1 = math.huge, -math.huge, math.huge, -math.huge
+	for _, d in ipairs(copy:GetDescendants()) do
+		if d:IsA("BasePart") and not (detail and d:IsDescendantOf(detail)) then
+			if d.Name == "Ceiling" then
+				local bottom = d.Position.Y - d.Size.Y / 2
+				ceil = ceil and min(ceil, bottom) or bottom
+			elseif d.Name == "Floor" and piece.Kind == "Corridor" then
+				local p, s = d.Position, d.Size
+				fx0, fx1 = min(fx0, p.X - s.X / 2), max(fx1, p.X + s.X / 2)
+				fz0, fz1 = min(fz0, p.Z - s.Z / 2), max(fz1, p.Z + s.Z / 2)
+			end
+		end
+	end
+	if fx0 < fx1 then
+		minX, maxX, minZ, maxZ = fx0, fx1, fz0, fz1
+	end
+	copy:SetAttribute("CamMin", Vector3.new(minX, o.Y - 2, minZ))
+	copy:SetAttribute("CamMax", Vector3.new(maxX, ceil or (o.Y + CEIL_Y), maxZ))
+end
+
 local function clonePiece(pocket, pieceIndex, holder)
 	local piece = pocket.Layout.Pieces[pieceIndex]
 	local template = DungeonBuilder.Template(piece.Name, pocket.Style or pocket.Layout.Style)
@@ -2182,6 +2214,7 @@ local function clonePiece(pocket, pieceIndex, holder)
 			d.CFrame = delta * d.CFrame
 		end
 	end
+	camBox(copy, piece, cf)
 	copy.Parent = holder
 	return copy
 end

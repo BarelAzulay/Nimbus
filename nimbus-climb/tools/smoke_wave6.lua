@@ -35,6 +35,18 @@
 --   client_w6_cheer_mobile (phone world) the same placement at 844x390 / 390x844 / 749x388 on a touch phone (a landscape
 --                         phone: the spot above is the screen middle, so beside the card on the left, top level), >= 44x44 px,
 --                         clear of the action cluster, RUN / DASH and Roblox's jump button
+--   w6_dgn_walkin_floors  (server world, booted) floors 1, 2, 5, 9, 12 one solo run after the other, rooms 1-4 through
+--                         their doors: the Fade first, the room's payload within Out + Hold + 0.5 s, NO new pocket
+--                         instance (the next room's build) ahead of it, the client's findPocket picks the run's holder,
+--                         Room_n has a Threshold + Door_Entrance >= 0.5 stud apart, nobody in the Threshold box yet
+--   client_w6_walkin_floors (client world) runs A-E (floors 1, 2, 5, 9, 12) back to back on a rebuilt Dungeon_1: every
+--                         room reaches Walk and ends Custom; a payload 2.6 s / 3.4 s after the Fade, one that beat the
+--                         teleport; a Fade with no room clears by FADE_SAFETY 6 s; a late payload: WalkSkip = NoFade
+--   w6_dgn_cambox         (server world, booted) floors 1, 2, 5, 9, 12: every piece has CamMin / CamMax holding its floor
+--                         tiles, CamMax.Y = its ceiling's bottom (+-0.3), consecutive boxes meet at the doorway
+--   client_w6_cambox      (client world) NimbusDungeonCamBox bound for a run: a boom over the wall / through the ceiling is
+--                         pulled in on its own ray to the box minus 0.6; inside = untouched; corridor -> room walk without
+--                         jumps; first person, Scriptable, a focus in no box: untouched; End unbinds
 --   client_w6_parry_fx    (client world) a Parry event: "PARRY!" once (gold, the callout size) + a gold ring and flash on
 --                         the pet, gone in 1.5 s; Hit { miss, parry } no DODGED!, a plain miss DODGED!; the drawn dash
 --                         follows the event's dir (dot > 0.9) not its target; Low graphics = the callout only; no Sound
@@ -1503,6 +1515,90 @@ local function serverScenarios()
 		K.flushWarnings("w6_dgn_walkin_floors", ALLOWED_WARNINGS)
 	end)
 
+
+	------------------------------------------------------------------------------------------------
+	-- w6_dgn_cambox (Task 11: every piece carries its camera box)
+	------------------------------------------------------------------------------------------------
+	S.w6_dgn_cambox = guarded("w6_dgn_cambox", function()
+		if not K.needBoot() then
+			return
+		end
+		local db = req("server/Services/DungeonBuilder")
+		if not T.check(db ~= nil and type(db.BuildRun) == "function", "dgn cambox: DungeonBuilder loads") then
+			return
+		end
+		for n, floorIndex in ipairs({ 1, 2, 5, 9, 12 }) do
+			local index = 12 - n + 1 -- (the top pocket indexes: no live run uses them here)
+			db.FreeRun(index)
+			local pocket = db.BuildRun(index, floorIndex, 4100 + floorIndex)
+			local bad = {}
+			if pocket then
+				for room = 2, 5 do
+					db.PlaceRoom(pocket, room)
+				end
+				-- the piece models by their PieceIndex
+				local byIndex = {}
+				for _, d in ipairs(pocket.Model:GetDescendants()) do
+					if d:IsA("Model") and d:GetAttribute("PieceIndex") then
+						byIndex[d:GetAttribute("PieceIndex")] = d
+					end
+				end
+				local boxes = {}
+				for i, piece in ipairs(pocket.Layout.Pieces) do
+					local m = byIndex[i]
+					local a, b = m and m:GetAttribute("CamMin"), m and m:GetAttribute("CamMax")
+					if not m then
+						bad[#bad + 1] = fmt("piece %d (%s) not placed", i, piece.Name)
+					elseif typeof(a) ~= "Vector3" or typeof(b) ~= "Vector3" then
+						bad[#bad + 1] = fmt("%s: no CamMin / CamMax", piece.Name)
+					else
+						boxes[i] = { a, b }
+						-- the floor footprint is inside, the ceiling's bottom is the top
+						local detail = m:FindFirstChild("Detail")
+						local lowCeil = nil
+						for _, d in ipairs(m:GetDescendants()) do
+							if d:IsA("BasePart") and not (detail and d:IsDescendantOf(detail)) then
+								if d.Name == "Floor" then
+									local p, s = d.Position, d.Size
+									if p.X - s.X / 2 < a.X - 0.1 or p.X + s.X / 2 > b.X + 0.1 or p.Z - s.Z / 2 < a.Z - 0.1 or p.Z + s.Z / 2 > b.Z + 0.1 or p.Y < a.Y then
+										bad[#bad + 1] = fmt("%s: a floor tile at %.1f,%.1f is outside the box", piece.Name, p.X - a.X, p.Z - a.Z)
+										break
+									end
+								elseif d.Name == "Ceiling" then
+									local bottom = d.Position.Y - d.Size.Y / 2
+									lowCeil = lowCeil and math.min(lowCeil, bottom) or bottom
+								end
+							end
+						end
+						if lowCeil and math.abs(lowCeil - b.Y) > 0.3 then
+							bad[#bad + 1] = fmt("%s: CamMax.Y %.2f vs the ceiling's bottom %.2f", piece.Name, b.Y, lowCeil)
+						elseif not lowCeil then
+							bad[#bad + 1] = fmt("%s: no Ceiling part", piece.Name)
+						end
+					end
+				end
+				-- consecutive pieces meet at the doorway (the pieces head +Z)
+				for i = 2, #pocket.Layout.Pieces do
+					local p, q = boxes[i - 1], boxes[i]
+					if p and q then
+						local gap = q[1].Z - p[2].Z
+						local overlapX = math.min(p[2].X, q[2].X) - math.max(p[1].X, q[1].X)
+						if gap > 0.1 or overlapX < 6 then
+							bad[#bad + 1] = fmt("pieces %d / %d: gap %.2f at the doorway, x overlap %.1f", i - 1, i, gap, overlapX)
+						end
+					end
+				end
+				db.FreeRun(index)
+			else
+				bad[#bad + 1] = "BuildRun failed"
+			end
+			T.check(#bad == 0, fmt("dgn cambox: floor %d: every piece (hall, corridors, rooms 1-4, treasure) has CamMin / CamMax holding its floor, topped by its ceiling; boxes meet at each doorway", floorIndex),
+				table.concat(bad, " | "))
+		end
+		K.flushErrors("w6_dgn_cambox")
+		K.flushWarnings("w6_dgn_cambox", ALLOWED_WARNINGS)
+	end)
+
 	return S
 end
 
@@ -2433,6 +2529,138 @@ local function clientScenarios()
 		T.check(cam.CameraType == Enum.CameraType.Custom and DC.GetState().Walk == nil, "walk-in floors: the camera is Custom at the end, no walk left")
 		T.check(#Mock.Errors == err0, "walk-in floors: no script error", tostring(Mock.Errors[#Mock.Errors]))
 		KC.flushErrors("client_w6_walkin_floors")
+	end)
+
+	------------------------------------------------------------------------------------------------
+	-- client_w6_cambox (Task 11: the camera stays inside the room)
+	------------------------------------------------------------------------------------------------
+	-- a pocket with a 15-deep corridor box joined to a 48 x 48 room box (CamMin / CamMax as DungeonBuilder sets them)
+	local CB0 = Vector3.new(-760, 90, 760) -- the room's floor centre (top)
+	local function cbPocket()
+		local folder = workspace:FindFirstChild("Dungeons")
+		if not folder then
+			folder = Instance.new("Folder")
+			folder.Name = "Dungeons"
+			folder.Parent = workspace
+		end
+		local holder = Instance.new("Model")
+		holder.Name = "Dungeon_CB"
+		local hall = Instance.new("Model")
+		hall.Name = "Entrance_1"
+		local hp = Instance.new("Part")
+		hp.Name = "Base"
+		hp.Anchored = true
+		hp.Position = CB0 + Vector3.new(0, -1.5, -50)
+		hp.Parent = hall
+		hall.Parent = holder
+		local staging = Instance.new("Model")
+		staging.Name = "Room_1"
+		local corridor = Instance.new("Model")
+		corridor.Name = "Corridor_Straight"
+		corridor:SetAttribute("CamMin", CB0 + Vector3.new(-5, -2, -39))
+		corridor:SetAttribute("CamMax", CB0 + Vector3.new(5, 15.8, -24))
+		corridor.Parent = staging
+		local room = Instance.new("Model")
+		room.Name = "Hall_1"
+		room:SetAttribute("CamMin", CB0 + Vector3.new(-24, -2, -24))
+		room:SetAttribute("CamMax", CB0 + Vector3.new(24, 15.8, 24))
+		room.Parent = staging
+		staging.Parent = holder
+		holder.Parent = folder
+		return holder
+	end
+
+	-- one frame as the camera scripts would leave it: Focus = F, the camera at C looking at F -> the camera after the step
+	local function cbFrame(F, C, kind)
+		local cam = workspace.CurrentCamera
+		cam.CameraType = kind or Enum.CameraType.Custom
+		cam.Focus = CFrame.new(F)
+		local cf = CFrame.lookAt(C, F)
+		cam.CFrame = cf
+		Mock.Step(1 / 60)
+		return cam.CFrame, cf
+	end
+
+	local function onRay(F, C, got)
+		local dir = (C - F).Unit
+		local rel = got.Position - F
+		local along = rel:Dot(dir)
+		return (rel - dir * along).Magnitude < 1e-3 and along >= -1e-3
+	end
+
+	S.client_w6_cambox = guarded("client_w6_cambox", function()
+		local DC = H.moduleAt("client", "Controllers/DungeonController")
+		if not T.check(DC ~= nil, "cambox: DungeonController loads") then
+			return
+		end
+		pcall(DC.Init)
+		local err0 = #Mock.Errors
+		LocalPlayer:SetAttribute("InMatch", false)
+		local holder = cbPocket()
+		local id = "D6CB"
+		LocalPlayer:SetAttribute("InBattle", id)
+		Mock.Teleport(LocalPlayer, CFrame.new(CB0 + Vector3.new(0, 3, 0)))
+		KC.advance(0.05)
+		KC.toClient("DungeonState", "Run", w6Run("Corridor", "Threshold", 1, id, 2))
+		KC.advance(0.3)
+		T.check(Mock.RenderSteps["NimbusDungeonCamBox"] ~= nil, "cambox: a run binds NimbusDungeonCamBox (RenderPriority.Camera + 1)",
+			tostring(Mock.RenderSteps["NimbusDungeonCamBox"] and Mock.RenderSteps["NimbusDungeonCamBox"].priority))
+		local m = 0.6
+		local lo, hi = CB0 + Vector3.new(-24 + m, -2 + m, -24 + m), CB0 + Vector3.new(24 - m, 15.8 - m, 24 - m)
+		local function inside(p)
+			return p.X >= lo.X - 1e-3 and p.X <= hi.X + 1e-3 and p.Y >= lo.Y - 1e-3 and p.Y <= hi.Y + 1e-3 and p.Z >= lo.Z - 1e-3 and p.Z <= hi.Z + 1e-3
+		end
+		-- a boom that leaves the room (14 up and back over the far wall): clamped on the same ray, inside the box - margin
+		local F = CB0 + Vector3.new(0, 3, 14)
+		local C = F + Vector3.new(0, 10, 16)
+		local got, asked = cbFrame(F, C)
+		T.check(inside(got.Position) and got.LookVector:Dot(asked.LookVector) > 1 - 1e-4 and onRay(F, C, got) and (got.Position - F).Magnitude < (C - F).Magnitude - 1,
+			"cambox: a boom over the wall is pulled in along its own ray to the box minus CAM_MARGIN", fmt("camera %s", tostring(got.Position - CB0)))
+		-- fully inside: untouched
+		F, C = CB0 + Vector3.new(0, 3, 0), CB0 + Vector3.new(0, 7, 8)
+		got, asked = cbFrame(F, C)
+		T.check((got.Position - asked.Position).Magnitude < 1e-4, "cambox: a boom inside the room is untouched")
+		-- over the ceiling: under CamMax.Y - 0.6
+		F, C = CB0 + Vector3.new(0, 3, 0), CB0 + Vector3.new(0, 17, 2)
+		got = cbFrame(F, C)
+		T.check(got.Position.Y <= CB0.Y + 15.8 - m + 1e-3 and got.Position.Y > CB0.Y + 14 and onRay(F, C, got), "cambox: a boom through the ceiling stops under CamMax.Y - 0.6",
+			fmt("y %.2f over the floor", got.Position.Y - CB0.Y))
+		-- Review Focus 5: the focus walks from the corridor into the room over 30 frames, the camera trailing behind it
+		local worst, last, lastF = 0, nil, nil
+		for i = 0, 30 do
+			local f = CB0 + Vector3.new(0, 3, -34 + i * (20 / 30))
+			local c = f + Vector3.new(1.5, 5, -12)
+			local g = cbFrame(f, c)
+			if last then
+				worst = max(worst, (g.Position - last).Magnitude - (f - lastF).Magnitude)
+			end
+			last, lastF = g.Position, f
+		end
+		T.check(worst <= 1, "cambox: walking from the corridor into the room the camera never jumps more than the focus move + 1 stud", fmt("worst extra %.2f", worst))
+		-- first person (a boom < 1 stud) and a Scriptable camera (the walk-in / the entrance): untouched
+		F = CB0 + Vector3.new(0, 3, 23.9)
+		C = F + Vector3.new(0, 0.3, 0.6)
+		got, asked = cbFrame(F, C)
+		T.check((got.Position - asked.Position).Magnitude < 1e-4, "cambox: a boom under 1 stud (first person) is untouched")
+		F, C = CB0 + Vector3.new(0, 3, 14), CB0 + Vector3.new(0, 13, 40)
+		got, asked = cbFrame(F, C, Enum.CameraType.Scriptable)
+		T.check((got.Position - asked.Position).Magnitude < 1e-4, "cambox: a Scriptable camera (walk-in, entrance) is untouched")
+		-- a focus in no box (a teleport frame): no clamp
+		F, C = CB0 + Vector3.new(200, 3, 0), CB0 + Vector3.new(200, 30, 40)
+		got, asked = cbFrame(F, C)
+		T.check((got.Position - asked.Position).Magnitude < 1e-4, "cambox: a focus outside every box is not clamped")
+		-- End unbinds
+		KC.toClient("DungeonState", "End", { Floor = 2, Name = "Floor 2", Cleared = false, Reason = "Quit", Room = 1, Totals = { Cash = 0, Tokens = 0, Xp = 0, Gems = 0 } })
+		KC.advance(0.2)
+		F, C = CB0 + Vector3.new(0, 3, 14), CB0 + Vector3.new(0, 13, 30)
+		got, asked = cbFrame(F, C)
+		T.check(Mock.RenderSteps["NimbusDungeonCamBox"] == nil and (got.Position - asked.Position).Magnitude < 1e-4, "cambox: End unbinds NimbusDungeonCamBox (the camera is free again)")
+		LocalPlayer:SetAttribute("InBattle", nil)
+		workspace.CurrentCamera.CameraType = Enum.CameraType.Custom
+		holder:Destroy()
+		KC.advance(0.5)
+		T.check(#Mock.Errors == err0, "cambox: no script error", tostring(Mock.Errors[#Mock.Errors]))
+		KC.flushErrors("client_w6_cambox")
 	end)
 
 	return S
